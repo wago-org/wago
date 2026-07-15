@@ -19,6 +19,17 @@ func stagedTagImportEntry(module, name string, typeIndex uint32) []byte {
 	return append(out, wasmtest.ULEB(typeIndex)...)
 }
 
+func stagedTagDeclarationModule(count int) []byte {
+	tags := make([][]byte, count)
+	for i := range tags {
+		tags[i] = []byte{0x00, 0x00}
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(13, wasmtest.Vec(tags...)),
+	)
+}
+
 func stagedTagProductProducerModule() []byte {
 	return wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(
@@ -140,6 +151,26 @@ func stagedImportedTagThrowModule() []byte {
 		wasmtest.Section(3, wasmtest.Vec([]byte{0x00})),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x08, 0x00, 0x0b}))),
 	)
+}
+
+func TestStagedTagProductNineTagCodecBound(t *testing.T) {
+	c := compileStagedExceptionHandling(t, stagedTagDeclarationModule(9))
+	defer c.Close()
+	blob, err := c.MarshalBinary()
+	if err != nil {
+		t.Fatalf("marshal nine-tag product: %v", err)
+	}
+	var loaded Compiled
+	if err := loaded.UnmarshalBinary(blob); err != nil {
+		t.Fatalf("unmarshal nine-tag product: %v", err)
+	}
+	defer loaded.Close()
+	if got := len((&Module{c: &loaded}).Metadata().Tags); got != 9 {
+		t.Fatalf("reloaded tag count = %d, want 9", got)
+	}
+	if _, err := compileStagedExceptionHandlingFeaturesForTest(stagedTagDeclarationModule(10), false); err == nil || !strings.Contains(err.Error(), "one to 9") {
+		t.Fatalf("ten-tag compile = %v, want bounded rejection", err)
+	}
 }
 
 func TestStagedTagProductMetadataIdentityLifecycle(t *testing.T) {

@@ -426,6 +426,16 @@ type tailDeferredArg struct {
 	float  bool
 }
 
+// discardEHHandlersForTail removes every handler owned by the current function.
+// The outermost live record always occupies slot zero and retains the handler that
+// was active at function entry. True tail transfer discards the current frame, so
+// its dynamic try scopes must not catch exceptions from the tail target.
+func (f *fn) discardEHHandlersForTail() {
+	if f.ehTryDepth != 0 {
+		f.a.Load64(RBP, RSP, f.ehRecordOff(0)+ehPrevOff)
+	}
+}
+
 // emitTailRegisterJump stages a register-ABI callee's arguments without
 // preserving any caller locals or operand values: a tail call has no continuation.
 // It then releases the current frame and emits the supplied direct/indirect jump.
@@ -519,6 +529,7 @@ func (f *fn) emitTailRegisterJump(ft *wasm.CompType, emitJump func()) {
 		}
 	}
 
+	f.discardEHHandlersForTail()
 	frameSite := f.a.Len() + 3
 	f.a.AddRsp(0)
 	f.sc.tailFrameSites = append(f.sc.tailFrameSites, frameSite)

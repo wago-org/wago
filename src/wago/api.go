@@ -449,15 +449,32 @@ func stagedTagFuncType(m *wasm.Module, index uint32) (*wasm.CompType, bool) {
 	return ft, ok
 }
 
-func stagedExceptionHandlingShape(m *wasm.Module, exceptionReferences bool) error {
-	const maxLocalTags = 8
-	const maxTryTables = 16
+func stagedExceptionHandlingShape(m *wasm.Module, exceptionReferences, tailCalls bool) error {
+	const maxLocalTags = 9
+	const maxTryTables = 24
 	const maxCatches = 8
 	if m.TagCount() == 0 || m.TagCount() > maxLocalTags {
 		return fmt.Errorf("bounded exception handling requires one to %d total tags", maxLocalTags)
 	}
-	if m.TableCount() != 0 || m.MemCount() != 0 || m.GlobalCount() != 0 || len(m.Elements) != 0 || len(m.Data) != 0 {
-		return fmt.Errorf("bounded exception handling requires functions without tables, memories, globals, elements, or data")
+	exactTailTable := tailCalls && m.TableCount() == 1 && m.ImportedTableCount() == 0 && len(m.Elements) == 1
+	if m.MemCount() != 0 || m.GlobalCount() != 0 || len(m.Data) != 0 || (m.TableCount() != 0 && !exactTailTable) || (len(m.Elements) != 0 && !exactTailTable) {
+		return fmt.Errorf("bounded exception handling requires functions without memory/global/data state and only the exact immutable local tail table")
+	}
+	for _, ex := range m.Exports {
+		if ex.Index.Kind == wasm.ExternTable {
+			return fmt.Errorf("bounded exception handling rejects exported tables")
+		}
+		if ex.Index.Kind == wasm.ExternFunc {
+			ft, ok := m.FuncSignature(ex.Index.Index)
+			if !ok {
+				return fmt.Errorf("bounded exception handling export %q has no function signature", ex.Name)
+			}
+			for _, typ := range append(append([]wasm.ValType(nil), ft.Params...), ft.Results...) {
+				if typ.Kind == wasm.ValRef && typ.Ref.Heap.Kind == wasm.HeapAbs && (typ.Ref.Heap.Abs == wasm.HeapExn || typ.Ref.Heap.Abs == wasm.HeapNoExn) {
+					return fmt.Errorf("bounded exception handling rejects exported exception-reference ABI in %q", ex.Name)
+				}
+			}
+		}
 	}
 	for i := 0; i < m.ImportedFuncCount(); i++ {
 		ft, ok := m.FuncSignature(uint32(i))
@@ -496,8 +513,28 @@ func stagedExceptionHandlingShape(m *wasm.Module, exceptionReferences bool) erro
 				if !exceptionReferences {
 					return fmt.Errorf("bounded exception handling rejects throw_ref")
 				}
-			case 0x12, 0x13, 0x15:
-				return fmt.Errorf("bounded exception handling rejects tail calls before handler transfer is proven")
+			case 0x12:
+				if !tailCalls {
+					return fmt.Errorf("bounded exception handling rejects tail calls before handler transfer is proven")
+				}
+				if _, err := r.U32(); err != nil {
+					return err
+				}
+			case 0x13:
+				if !tailCalls {
+					return fmt.Errorf("bounded exception handling rejects tail calls before handler transfer is proven")
+				}
+				if _, err := r.U32(); err != nil {
+					return err
+				}
+				if _, err := r.U32(); err != nil {
+					return err
+				}
+			case 0x15:
+				if _, err := r.U32(); err != nil {
+					return err
+				}
+				return fmt.Errorf("bounded exception handling function %d rejects reference tail calls", i)
 			case 0x1f:
 				tryCount++
 				if tryCount > maxTryTables {
@@ -585,7 +622,7 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 		if cfg.boundsChecks == BoundsChecksSignalsBased {
 			return nil, fmt.Errorf("compile: unsupported exception handling with signals-based bounds checks")
 		}
-		if err := stagedExceptionHandlingShape(m, features.ExceptionReferences); err != nil {
+		if err := stagedExceptionHandlingShape(m, features.ExceptionReferences, features.TailCalls); err != nil {
 			return nil, fmt.Errorf("compile: staged exception handling: %w", err)
 		}
 	}
@@ -1725,7 +1762,7 @@ func (c *Compiled) validate() error {
 	}
 	if c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 {
 		staged |= CoreFeatureExceptionHandling
-		if len(c.memoryDir.ehTags) > 8 {
+		if len(c.memoryDir.ehTags) > 9 {
 			return fmt.Errorf("compiled metadata invalid: staged exception tag directory")
 		}
 		importCount := 0
@@ -3145,7 +3182,12 @@ func hasValType(types []ValType, want ValType) bool {
 }
 
 func hasReferenceValType(types []ValType) bool {
-	return hasValType(types, ValFuncRef) || hasValType(types, ValExternRef)
+	for _, typ := range types {
+		if isReferenceValType(typ) {
+			return true
+		}
+	}
+	return false
 }
 
 func exactReferenceType(types []ValueTypeDescriptor, index int, legacy ValType) (ValueTypeDescriptor, bool) {
