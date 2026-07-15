@@ -45,11 +45,13 @@
   shape-specific multi-memory snapshot rejection, and a fixed-frame retained
   cross-instance root typed-tail transfer. Iteration 14 adds snapshot-v3 owned-local
   multi-memory round trips and a fixed 32-byte nested typed-tail return context.
-  Iteration 15 accounts the complete multi-memory family, replays all 51 pinned
-  `return_call_ref` commands (35 green assertions, 11 invalid modules, one explicit
-  reference-result ABI gate), restores two integer results across nested retained
-  tails, repeats 10,000 transfers, and stages bounded local memory64 size/grow plus
-  `i32.load/store`. Host and unsupported product/platform paths remain explicit.
+  Iteration 15 accounts the complete multi-memory family and all 51 pinned
+  `return_call_ref` commands. Iteration 16 makes all 47 `return_call` commands green
+  (3 modules, 33 assertions, 11 invalid), accounts all 79 `return_call_indirect`
+  commands (2 modules, 16 invalid, 11 malformed, one exact multi-table gate, 49
+  blocked actions), and expands bounded local memory64 to all 19 integer scalar
+  load/store opcodes. Cross-instance direct, general-table, float/SIMD/bulk memory64,
+  and unsupported product/platform paths remain explicit.
   Public typed-reference, multi-memory, compact-import, memory64, and tail-call
   execution remain disabled; the schema-2 totals remain byte-for-byte unchanged.
   The machine-readable schema-2 inventory is `tests/spec-v3-baseline.json`; see

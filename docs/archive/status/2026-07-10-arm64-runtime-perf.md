@@ -6,7 +6,7 @@
 
 Status date: 2026-07-15
 Branch: `wasm3`
-Code head before this report: `f5424668` (`amd64: resume nested typed tail callers`)
+Code head before this report: `3f2fc17f` (`amd64: execute memory64 integer scalars`)
 Base lineage: originally `origin/main` at `2aac98e5`; completed WebAssembly 3.0 iteration commits are retained.
 Scope: the primary repository plus the independently pinned Release 3 submodule inventory.
 
@@ -27,7 +27,7 @@ The most important qualification is platform scope. Linux/amd64 remains the matu
 
 ## Repository state
 
-- Git state before publishing this report, excluding submodules: exactly three iteration-13 implementation commits clean before the documentation commit.
+- Git state before publishing this report, excluding submodules: exactly three iteration-16 code/test commits clean before the documentation commit.
 - Tracked primary-repository files, excluding submodule trees: 584.
 - Tracked Go files, excluding submodule trees: 377.
 - Root Go packages reported by `go list ./...`: 32.
@@ -91,10 +91,10 @@ Important architectural properties:
 
 ### Partial
 
-- WebAssembly 3.0 tail calls: amd64 local register/wrapper direct, private-table indirect, tagged same-instance scalar-wrapper typed-reference, and retained cross-instance root/nested typed-reference milestones; public admission remains disabled. The pinned `return_call_ref` file accounts for all 51 commands with 35 green assertions and one reference-result ABI gate. Nested transfers restore two integer results and repeat 10,000 times through one fixed 32-byte record. Imported-direct/general-table/host/foreign-float/reference-result, snapshots, and arm64 remain explicit failures.
+- WebAssembly 3.0 tail calls: amd64 local register/wrapper direct, tail-position host imports, private-table indirect, tagged same-instance scalar-wrapper typed-reference, and retained cross-instance root/nested typed-reference milestones; public admission remains disabled. The pinned `return_call` file is fully green at 47 commands / 3 modules / 33 assertions / 11 invalid. `return_call_indirect` accounts all 79 commands with one general multi-table gate and 49 blocked actions. `return_call_ref` retains 35 green assertions and one reference-result ABI gate. Cross-instance direct/general-table/foreign-float/reference-result, snapshots, and arm64 remain explicit failures.
 - Typed function references: exact structural metadata/storage matching, `call_ref`, null-control lowering, exact public/host/global boundaries, harness identity, dynamic table lifecycle, and bounded 64-bit native structural keys are staged internally. Deliberate legacy 32-bit collisions separate; recursive/cross-instance keys agree; over-budget canonicalization fails closed without a global cache. Distinct `InstanceExport` producers are retained through consumer close; shifted cross-instance `call_ref` and root/nested `return_call_ref` survive producer logical close; null/wrong-key/host traps recover cleanly. Feature bits and snapshot gates remain exact. Broader tails, live reference snapshot state, public admission, remaining GC/reference instructions, and arm64 completion remain.
 - Multi-memory has strict staged AST/byte-backed validation, compact imports, exact product directories, codec v25, policy accounting, duplicate aliases, and snapshot-v3 owned-local state. Linux/amd64 explicit bounds executes every indexed scalar/SIMD/bulk/data form. The complete 42-file matrix accounts for 913 commands, 76 modules, 748 assertions, and three exact shared-basedata consumer gates with zero unexpected gaps. Registered memory-0 co-tenants remain bounded; general shared-basedata, imported/shared/registered snapshots, guard mode, public admission, and arm64 remain gated.
-- Memory64 now has one internal linux/amd64 explicit-bounds local slice: exact 64-bit metadata/codec limits, explicit max <=65,535 pages, `i64` size/grow, and `i32.load/store` with checked u64 address/offset addition. Imports, shared/data/multi-memory, other operation families, guard mode, public admission, snapshots, and arm64 remain gated. Table64, exception handling, and WasmGC retain non-product foundations.
+- Memory64 now has one internal linux/amd64 explicit-bounds local slice: exact 64-bit metadata/codec limits, explicit max <=65,535 pages, `i64` size/grow, all 12 integer loads, and all 7 integer stores with checked u64 address/offset addition. The 19-operation matrix covers signed/unsigned extension, exact-width writes, and end traps. Imports, shared/data/multi-memory, float/SIMD/bulk families, guard mode, public admission, snapshots, and arm64 remain gated. Table64, exception handling, and WasmGC retain non-product foundations.
 
 ### Planned
 
@@ -197,7 +197,7 @@ Representative documented results versus wazero:
 - TinyGo size build: about 0.43 MB; about 0.16 MB with UPX in the recorded experiment.
 - Project stats snapshot reports zero cgo lines and 79% generated test coverage.
 
-Iteration 15 current-host watchpoints measured root cross-instance `return_call_ref` at 62.93-67.25 ns/op, nested continuation at 82.06-89.72 ns/op, and staged memory64 store/load at 39.28-41.23 ns/op; all report 0 B/op and 0 allocations/op. The memory64 fixture is 144 Wasm bytes, emits 744 code bytes, marshals to 1,069 codec bytes, and reserves 196,608 bytes. The sparse snapshot-v3 fixture remains 198,339 bytes for 327,680 live bytes; `Snapshot=184`, `memorySnap=32`, `Compiled=712`, `Instance=792`, native descriptors=32, and basedata=256 bytes remain unchanged.
+Iteration 16 current-host watchpoints measured root cross-instance `return_call_ref` at 63.65-64.89 ns/op, nested continuation at 75.82-78.51 ns/op, and staged memory64 store/load at 36.73-37.33 ns/op; all report 0 B/op and 0 allocations/op. The original memory64 product fixture remains 144 Wasm bytes / 744 code bytes / 1,069 codec bytes / 196,608 reserved bytes; the new 19-operation integer matrix is 502 Wasm bytes and 3,227 code bytes. The sparse snapshot-v3 fixture remains 198,339 bytes for 327,680 live bytes; `Snapshot=184`, `memorySnap=32`, `Compiled=712`, `Instance=792`, native descriptors=32, and basedata=256 bytes remain unchanged.
 
 These are point-in-time machine-specific measurements. Future hot-path or footprint claims should continue to include measured before/after data.
 

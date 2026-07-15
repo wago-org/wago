@@ -125,11 +125,15 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   fixed 32-byte return record, restore both integer results through a trampoline,
   and repeat 10,000 cross-instance transfers without retaining the discarded callee
   frame. Exact typed globals may tail-enter tagged same-instance scalar wrappers;
-  hosts remain untagged and fail closed. The pinned `return_call_ref` runner accounts
-  for all 51 commands: 4 modules/35 assertions green, 11 invalid modules rejected,
-  and one valid reference-result module explicitly gated. Public admission,
-  imported-direct/general-table/host/foreign-float/reference-result tails, live typed
-  snapshot state, remaining GC/reference instructions, and arm64 parity remain gated.
+  hosts remain untagged and fail closed. A private direct-tail gate plus the existing
+  host bridge now makes all 47 pinned `return_call` commands green: 3 modules, 33
+  assertions, and 11 invalid modules. The `return_call_indirect` runner accounts for
+  all 79 commands: 2 modules, 16 invalid, 11 malformed, one exact general multi-table
+  gate, and 49 dependent blocked actions. The pinned `return_call_ref` runner retains
+  4 modules/35 assertions green, 11 invalid modules, and one reference-result gate.
+  Public admission, cross-instance direct/general-table/foreign-float/reference-result
+  tails, live typed snapshot state, remaining GC/reference instructions, and arm64
+  parity remain gated.
 - 🚧 Multi-memory now has an explicit internal AST/byte-backed gate, exact
   compiled/product declaration/import/export directories, declaration-based
   policy accounting, duplicate imported-memory alias deduplication, and codec v25
@@ -151,9 +155,11 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   arm64 remain.
 - 🚧 memory64 has one bounded linux/amd64 local execution slice: exact 64-bit
   metadata/codec limits, explicit maximum <=65,535 pages, checked u64 address/offset
-  arithmetic, `memory.size/grow`, and `i32.load/store`. Imports, shared/data/multi-
-  memory, other operation families, guard mode, public admission, and arm64 remain.
-  Table64, exception handling, and GC remain end-to-end work.
+  arithmetic, `memory.size/grow`, all 12 integer loads, and all 7 integer stores.
+  Signed/unsigned extensions, exact-width writes, end-of-memory traps, AST/byte-backed
+  admission, and float rejection are covered. Imports, shared/data/multi-memory,
+  float/SIMD/bulk families, guard mode, public admission, and arm64 remain. Table64,
+  exception handling, and GC remain end-to-end work.
 - [ ] Reach zero unexplained failures/skips in the official Release 3 core suite.
 
 **Engine & performance** (no-ir-plan P1–P7, measured against P1's stats)
@@ -218,13 +224,14 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
 - [ ] Threads & atomics
 - 🚧 Tail calls (`return_call` / `return_call_indirect` / `return_call_ref`):
   decoder/validator foundation plus amd64 local register- and wrapper-ABI direct,
-  private-immutable-table mixed indirect, same-instance local typed-reference, and
-  retained cross-instance root/nested typed-reference frame-reuse milestones exist.
-  Exact typed globals tail-enter tagged local scalar wrappers; retained nested
-  transfers restore two integers and repeat 10,000 times allocation-free. The pinned
-  `return_call_ref` file has 35 green assertions with one reference-result ABI gate.
-  Public admission, imported-direct/general-table/host/foreign-float/reference-result,
-  oversized signatures, snapshots, and arm64 execution remain.
+  tail-position host imports, private-immutable-table mixed indirect, same-instance
+  local typed-reference, and retained cross-instance root/nested typed-reference
+  frame-reuse milestones exist. The pinned `return_call` file is fully green at 47
+  commands / 3 modules / 33 assertions / 11 invalid. The 79-command indirect file
+  has one exact general multi-table gate and 49 blocked actions. `return_call_ref`
+  retains 35 green assertions and one reference-result ABI gate. Public admission,
+  cross-instance direct/general-table/foreign-float/reference-result, oversized
+  signatures, snapshots, and arm64 execution remain.
 - [x] Basic extended constant expressions: integer add/sub/mul, prior immutable
   globals, active offsets, strict validation, and codec-v25 persistence.
 - 🚧 Typed function references: typed `ref.func`, recursive structural equivalence,
