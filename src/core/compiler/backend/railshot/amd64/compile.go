@@ -808,6 +808,13 @@ func computeFuncHints(m *wasm.Module, funcIdx int, nGlobals int, importedFuncs i
 	if err != nil {
 		return funcHints{}, err
 	}
+	memory64 := false
+	if mt, ok := m.MemoryType(0); ok {
+		memory64 = mt.Limits.Addr64
+	}
+	if len(m.Code[funcIdx].BodyBytes) != 0 {
+		return scanBodyBytesMemory64(m.Code[funcIdx].BodyBytes, nLocals, nGlobals, uint32(importedFuncs+funcIdx), memory64)
+	}
 	return scanFuncBody(m.Code[funcIdx], nLocals, nGlobals, uint32(importedFuncs+funcIdx))
 }
 
@@ -848,6 +855,10 @@ func computeModuleHints(m *wasm.Module, nGlobals, importedFuncs int) ([]funcHint
 	if nGlobals > 0 && n > 0 {
 		agg = make([]int64, nGlobals)
 	}
+	memory64 := false
+	if mt, ok := m.MemoryType(0); ok {
+		memory64 = mt.Limits.Addr64
+	}
 	localAt := 0
 	for i := range m.Code {
 		nLocals := localCounts[i]
@@ -855,7 +866,7 @@ func computeModuleHints(m *wasm.Module, nGlobals, importedFuncs int) ([]funcHint
 		h := funcHintsWithStorage(localScores[localAt:localAt+nLocals], globalScores[globalAt:globalAt+nGlobals], globalEligibility[globalAt:globalAt+nGlobals])
 		h.nLocals = nLocals
 		var err error
-		h, err = scanFuncBodyInto(m.Code[i], nLocals, nGlobals, uint32(importedFuncs+i), h, &eligibilityTracker)
+		h, err = scanFuncBodyIntoMemory64(m.Code[i], nLocals, nGlobals, uint32(importedFuncs+i), h, &eligibilityTracker, memory64)
 		if err != nil {
 			return nil, nil, fmt.Errorf("function %d hints: %w", i, err)
 		}

@@ -1797,13 +1797,13 @@ func (f *fn) v128ReplaceLane(kind uint32, lane byte) {
 	f.pushVReg(x)
 }
 
-func (f *fn) simdMemAddr(memoryIndex, off uint32, size int) (base, ea Reg, disp int32, baseOwned, eaOwned bool) {
+func (f *fn) simdMemAddr(memoryIndex uint32, off uint64, size int) (base, ea Reg, disp int32, baseOwned, eaOwned bool) {
 	if memoryIndex != 0 {
-		base, ea, disp = f.indexedMemAddr(memoryIndex, off, size)
+		base, ea, disp = f.indexedMemAddr(memoryIndex, uint32(off), size)
 		f.pinned = f.pinned.add(base).add(ea)
 		return base, ea, disp, true, true
 	}
-	ea, eaOwned, _, disp = f.memAddr(off, size, true)
+	ea, eaOwned, _, disp = f.memAddr(uint32(off), size, true)
 	return RBX, ea, disp, false, eaOwned
 }
 

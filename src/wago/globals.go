@@ -594,10 +594,11 @@ func (c *Compiled) funcTypeKey(index int) uint64 {
 }
 
 type compiledMemoryDirectory struct {
-	defs         []memoryDef
-	exports      map[string]int
-	exactExports bool
-	staged       bool // internal execution gate; never serialized
+	defs           []memoryDef
+	exports        map[string]int
+	exactExports   bool
+	staged         bool // internal multi-memory execution gate; never serialized
+	stagedMemory64 bool // internal bounded memory64 execution gate; never serialized
 }
 
 // GlobalDef is the compact instantiate-time metadata for one wasm global.

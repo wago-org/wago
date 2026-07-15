@@ -76,6 +76,32 @@ func TableAddrType(tt TableType) ValType {
 	return I32
 }
 
+// MemoryType resolves a memory index across imported memories followed by local
+// definitions without materializing a parallel index.
+func (m *Module) MemoryType(idx uint32) (MemType, bool) {
+	if m == nil {
+		return MemType{}, false
+	}
+	n := uint32(0)
+	for i := range m.Imports {
+		if m.Imports[i].Type.Kind != ExternMem {
+			continue
+		}
+		if n == idx {
+			return m.Imports[i].Type.Mem, true
+		}
+		n++
+	}
+	if idx < n {
+		return MemType{}, false
+	}
+	local := int(idx - n)
+	if local < 0 || local >= len(m.Memories) {
+		return MemType{}, false
+	}
+	return m.Memories[local], true
+}
+
 func MemoryAddrType(mt MemType) ValType {
 	if mt.Limits.Addr64 {
 		return I64

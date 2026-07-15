@@ -165,8 +165,12 @@ func scanFuncBody(fn wasm.Func, nLocals, nGlobals int, selfIdx uint32) (funcHint
 }
 
 func scanFuncBodyInto(fn wasm.Func, nLocals, nGlobals int, selfIdx uint32, h funcHints, elig *globalEligibilityTracker) (funcHints, error) {
+	return scanFuncBodyIntoMemory64(fn, nLocals, nGlobals, selfIdx, h, elig, false)
+}
+
+func scanFuncBodyIntoMemory64(fn wasm.Func, nLocals, nGlobals int, selfIdx uint32, h funcHints, elig *globalEligibilityTracker, memory64 bool) (funcHints, error) {
 	if len(fn.BodyBytes) != 0 {
-		return scanBodyBytesInto(fn.BodyBytes, nLocals, nGlobals, selfIdx, h, elig)
+		return scanBodyBytesIntoMemory64(fn.BodyBytes, nLocals, nGlobals, selfIdx, h, elig, memory64)
 	}
 	return scanBodyInto(fn.Body, nLocals, nGlobals, selfIdx, h, elig), nil
 }
@@ -410,15 +414,23 @@ func (s *globalScoreByteScanner) classifyInstructionInto(op byte, imm *wasm.Inst
 // allocating Instruction trees. body includes the terminating end opcode and
 // excludes local declarations.
 func scanBodyBytes(body []byte, nLocals int, nGlobals int, selfIdx uint32) (funcHints, error) {
-	h := newFuncHints(nLocals, nGlobals)
-	elig := newGlobalEligibilityTracker(nGlobals)
-	return scanBodyBytesInto(body, nLocals, nGlobals, selfIdx, h, &elig)
+	return scanBodyBytesMemory64(body, nLocals, nGlobals, selfIdx, false)
 }
 
 func scanBodyBytesInto(body []byte, nLocals int, nGlobals int, selfIdx uint32, h funcHints, elig *globalEligibilityTracker) (funcHints, error) {
+	return scanBodyBytesIntoMemory64(body, nLocals, nGlobals, selfIdx, h, elig, false)
+}
+
+func scanBodyBytesMemory64(body []byte, nLocals int, nGlobals int, selfIdx uint32, memory64 bool) (funcHints, error) {
+	h := newFuncHints(nLocals, nGlobals)
+	elig := newGlobalEligibilityTracker(nGlobals)
+	return scanBodyBytesIntoMemory64(body, nLocals, nGlobals, selfIdx, h, &elig, memory64)
+}
+
+func scanBodyBytesIntoMemory64(body []byte, nLocals int, nGlobals int, selfIdx uint32, h funcHints, elig *globalEligibilityTracker, memory64 bool) (funcHints, error) {
 	elig.reset()
 	r := wasm.ReaderFrom(body)
-	s := byteBodyScanner{r: byteScanReader{Reader: &r}, h: h, nLocals: nLocals, nGlobals: nGlobals, selfIdx: selfIdx, elig: elig}
+	s := byteBodyScanner{r: byteScanReader{Reader: &r}, h: h, nLocals: nLocals, nGlobals: nGlobals, selfIdx: selfIdx, elig: elig, memory64: memory64}
 	called, term, err := s.scanExpr(0, 0, -1, false)
 	if err != nil {
 		return s.h, err
@@ -439,6 +451,7 @@ type byteBodyScanner struct {
 	nGlobals int
 	selfIdx  uint32
 	elig     *globalEligibilityTracker
+	memory64 bool
 }
 
 func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAtElse bool) (bool, byte, error) {
@@ -626,7 +639,11 @@ func (s *byteBodyScanner) classifyInstructionInto(op byte, imm *wasm.Instruction
 			}
 			imm.HasMemIndex, imm.MemIndex = true, index
 		}
-		if _, err := s.r.U32(); err != nil {
+		if s.memory64 {
+			if _, err := s.r.U64(); err != nil {
+				return err
+			}
+		} else if _, err := s.r.U32(); err != nil {
 			return err
 		}
 		imm.TouchesMemory = true

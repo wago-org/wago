@@ -131,6 +131,33 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 			return nil, fmt.Errorf("compile: unsupported memory multi-memory with signals-based bounds checks")
 		}
 	}
+	usesMemory64 := false
+	for i := uint32(0); i < uint32(m.MemCount()); i++ {
+		if mt, ok := m.MemoryType(i); ok && mt.Limits.Addr64 {
+			usesMemory64 = true
+		}
+	}
+	if features.Memory64 && usesMemory64 {
+		if goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64" {
+			return nil, fmt.Errorf("compile: unsupported memory memory64 staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
+		}
+		if cfg.boundsChecks == BoundsChecksSignalsBased {
+			return nil, fmt.Errorf("compile: unsupported memory memory64 with signals-based bounds checks")
+		}
+		if m.ImportedMemCount() != 0 || len(m.Memories) != 1 || m.MemCount() != 1 {
+			return nil, fmt.Errorf("compile: staged memory64 requires exactly one local memory and rejects imported or multi-memory shapes")
+		}
+		mt := m.Memories[0]
+		if mt.Shared {
+			return nil, fmt.Errorf("compile: staged memory64 rejects shared memory")
+		}
+		if len(m.Data) != 0 {
+			return nil, fmt.Errorf("compile: staged memory64 rejects active or passive data segments")
+		}
+		if mt.Limits.Max == nil || *mt.Limits.Max > 65535 {
+			return nil, fmt.Errorf("compile: staged memory64 requires an explicit maximum no greater than 65535 pages")
+		}
+	}
 	gcDescs, err := frontend.BuildGCTypeDescs(m)
 	if err != nil {
 		return nil, fmt.Errorf("gc descriptors: %w", err)
@@ -158,7 +185,7 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 	if err != nil {
 		return nil, fmt.Errorf("type metadata: %w", err)
 	}
-	c := &Compiled{Code: code, Entry: entry, InternalEntry: internalEntry, NumImports: importedFuncs, Types: types, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, memoryDir: &compiledMemoryDirectory{exports: map[string]int{}, exactExports: true, staged: features.MultiMemory && m.MemCount() > 1}, boundsMode: boundsMode, GCTypeDescs: gcDescs, requiredFeatures: moduleRequiredFeatures(m), dynamicImports: importedFuncs > 0}
+	c := &Compiled{Code: code, Entry: entry, InternalEntry: internalEntry, NumImports: importedFuncs, Types: types, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, memoryDir: &compiledMemoryDirectory{exports: map[string]int{}, exactExports: true, staged: features.MultiMemory && m.MemCount() > 1, stagedMemory64: features.Memory64 && usesMemory64}, boundsMode: boundsMode, GCTypeDescs: gcDescs, requiredFeatures: moduleRequiredFeatures(m), dynamicImports: importedFuncs > 0}
 	if importedFuncs > 0 {
 		c.importFuncSigs = make([]FuncSig, importedFuncs)
 		for i := 0; i < importedFuncs; i++ {
@@ -370,7 +397,7 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 	if len(c.memoryDir.defs) > 0 {
 		memory0 := c.memoryDir.defs[0]
 		c.HasMemory = true
-		if !memory0.Addr64 && memory0.Min <= uint64(^uint32(0)) {
+		if memory0.Min <= uint64(^uint32(0)) {
 			c.MemMinPages = uint32(memory0.Min)
 		}
 		c.MemMaxPages = 65535 // default memory-0 reservation ceiling
@@ -1076,8 +1103,13 @@ func (c *Compiled) validate() error {
 	required := c.requiredFeatures
 	unsupported := required &^ coreFeaturesWago
 	var staged CoreFeatures
-	if c.memoryDir != nil && c.memoryDir.staged {
-		staged |= CoreFeatureMultiMemory
+	if c.memoryDir != nil {
+		if c.memoryDir.staged {
+			staged |= CoreFeatureMultiMemory
+		}
+		if c.memoryDir.stagedMemory64 {
+			staged |= CoreFeatureMemory64
+		}
 	}
 	staged |= c.stagedFeatures()
 	if unsupported&^staged != 0 {

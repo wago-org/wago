@@ -51,6 +51,7 @@ type Features struct {
 	TypedFunctionReferences bool // internal staged gate for indexed/non-null function refs and call_ref
 	TypedTailCalls          bool // internal staged gate for bounded return_call_ref contexts
 	MultiMemory             bool // internal staged gate for bounded indexed memory execution
+	Memory64                bool // internal staged gate for bounded local 64-bit-address memory execution
 	SIMD                    bool // supported 0xfd v128 SIMD and relaxed-SIMD instructions
 	ExtendedConst           bool // i32/i64 add/sub/mul and prior immutable global.get in const expressions
 }
@@ -490,15 +491,24 @@ func (p supportPass) memories() error {
 	return nil
 }
 
-// checkMemType rejects memory shapes outside wago's non-shared, 32-bit model
-// (used for both defined and imported memories). Multi-page memories are
-// supported up to the 65535-page cap (4 GiB minus one page).
+// checkMemType rejects memory shapes outside wago's non-shared model. The staged
+// memory64 path deliberately retains the existing 65535-page reservation ceiling
+// and requires an explicit maximum; import/platform restrictions are enforced by
+// the product compile boundary before allocation.
 func (p supportPass) checkMemType(mem wasm.MemType, ctx string) error {
 	if mem.Shared {
 		return p.unsupported("memory", "shared", ctx)
 	}
 	if mem.Limits.Addr64 {
-		return p.unsupported("memory", "memory64 (memory64 disabled)", ctx)
+		if !p.feat.Memory64 {
+			return p.unsupported("memory", "memory64 (memory64 disabled)", ctx)
+		}
+		if mem.Limits.Max == nil {
+			return p.unsupported("memory", "memory64 requires an explicit bounded maximum", ctx)
+		}
+		if *mem.Limits.Max > 65535 {
+			return p.unsupported("memory", fmt.Sprintf("memory64 maximum %d pages exceeds staged ceiling 65535", *mem.Limits.Max), ctx)
+		}
 	}
 	if mem.Limits.Min > 65535 {
 		return p.unsupported("memory", fmt.Sprintf("minimum %d pages exceeds 65535", mem.Limits.Min), ctx)
@@ -968,11 +978,22 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 				return false, err
 			}
 		}
-		if _, err := r.U32(); err != nil { // offset
-			return false, err
-		}
 		if explicit && !p.feat.MultiMemory {
 			return false, p.unsupported("memory", fmt.Sprintf("explicit index %d", memIndex), ctx())
+		}
+		mt, ok := p.m.MemoryType(memIndex)
+		if !ok {
+			return false, p.unsupported("memory", fmt.Sprintf("unknown index %d", memIndex), ctx())
+		}
+		if mt.Limits.Addr64 {
+			if _, err := r.U64(); err != nil {
+				return false, err
+			}
+			if op != 0x28 && op != 0x36 {
+				return false, p.unsupported("memory64 instruction", fmt.Sprintf("opcode 0x%02x outside staged i32 load/store family", op), ctx())
+			}
+		} else if _, err := r.U32(); err != nil {
+			return false, err
 		}
 		return false, nil
 	case 0x3f, 0x40:
@@ -1155,6 +1176,9 @@ func (p supportPass) fcInstrByte(r *wasm.Reader, context func() string) error {
 		}
 		return nil
 	case 8:
+		if mt, ok := p.m.MemoryType(uint32(imm.Index2)); ok && mt.Limits.Addr64 {
+			return p.unsupported("memory64 instruction", "memory.init outside staged i32 load/store family", context())
+		}
 		if !p.feat.BulkMemory {
 			return p.unsupported("instruction", "memory.init (bulk-memory-operations disabled)", context())
 		}
@@ -1207,6 +1231,12 @@ func (p supportPass) fcInstrByte(r *wasm.Reader, context func() string) error {
 		}
 		return nil
 	case 10:
+		if dst, ok := p.m.MemoryType(uint32(imm.Index)); ok && dst.Limits.Addr64 {
+			return p.unsupported("memory64 instruction", "memory.copy outside staged i32 load/store family", context())
+		}
+		if src, ok := p.m.MemoryType(uint32(imm.Index2)); ok && src.Limits.Addr64 {
+			return p.unsupported("memory64 instruction", "memory.copy outside staged i32 load/store family", context())
+		}
 		if !p.feat.BulkMemory {
 			return p.unsupported("instruction", "memory.copy (bulk-memory-operations disabled)", context())
 		}
@@ -1215,6 +1245,9 @@ func (p supportPass) fcInstrByte(r *wasm.Reader, context func() string) error {
 		}
 		return nil
 	case 11:
+		if mt, ok := p.m.MemoryType(uint32(imm.Index)); ok && mt.Limits.Addr64 {
+			return p.unsupported("memory64 instruction", "memory.fill outside staged i32 load/store family", context())
+		}
 		if !p.feat.BulkMemory {
 			return p.unsupported("instruction", "memory.fill (bulk-memory-operations disabled)", context())
 		}
@@ -1370,6 +1403,21 @@ func (p supportPass) instr(in wasm.Instruction, context string) error {
 	if (in.Kind == wasm.InstrMemorySize || in.Kind == wasm.InstrMemoryGrow) && in.Index != 0 && !p.feat.MultiMemory {
 		return p.unsupported("memory", fmt.Sprintf("index %d", in.Index), context)
 	}
+	memoryIndex := uint32(0)
+	if in.MemArg().Mem != nil {
+		memoryIndex = uint32(*in.MemArg().Mem)
+	} else if in.Kind == wasm.InstrMemorySize || in.Kind == wasm.InstrMemoryGrow {
+		memoryIndex = in.Index
+	}
+	if mt, ok := p.m.MemoryType(memoryIndex); ok && mt.Limits.Addr64 {
+		switch in.Kind {
+		case wasm.InstrMemorySize, wasm.InstrMemoryGrow, wasm.InstrI32Load, wasm.InstrI32Store:
+		default:
+			if in.MemArg().Mem != nil {
+				return p.unsupported("memory64 instruction", in.Kind.String()+" outside staged i32 load/store family", context)
+			}
+		}
+	}
 	if err := p.instructionKind(in.Kind, context); err != nil {
 		return err
 	}
@@ -1382,14 +1430,26 @@ func (p supportPass) instr(in wasm.Instruction, context string) error {
 		}
 		return p.expr(wasm.Expr{Instrs: in.Else()}, context+" else")
 	case wasm.InstrMemoryInit:
+		if mt, ok := p.m.MemoryType(uint32(in.Index2)); ok && mt.Limits.Addr64 {
+			return p.unsupported("memory64 instruction", in.Kind.String()+" outside staged i32 load/store family", context)
+		}
 		if in.Index2 != 0 && !p.feat.MultiMemory {
 			return p.unsupported("memory", fmt.Sprintf("init memory index %d", in.Index2), context)
 		}
 	case wasm.InstrMemoryCopy:
+		if dst, ok := p.m.MemoryType(uint32(in.Index)); ok && dst.Limits.Addr64 {
+			return p.unsupported("memory64 instruction", in.Kind.String()+" outside staged i32 load/store family", context)
+		}
+		if src, ok := p.m.MemoryType(uint32(in.Index2)); ok && src.Limits.Addr64 {
+			return p.unsupported("memory64 instruction", in.Kind.String()+" outside staged i32 load/store family", context)
+		}
 		if (in.Index != 0 || in.Index2 != 0) && !p.feat.MultiMemory {
 			return p.unsupported("memory", fmt.Sprintf("copy indexes %d,%d", in.Index, in.Index2), context)
 		}
 	case wasm.InstrMemoryFill:
+		if mt, ok := p.m.MemoryType(uint32(in.Index)); ok && mt.Limits.Addr64 {
+			return p.unsupported("memory64 instruction", in.Kind.String()+" outside staged i32 load/store family", context)
+		}
 		if in.Index != 0 && !p.feat.MultiMemory {
 			return p.unsupported("memory", fmt.Sprintf("fill index %d", in.Index), context)
 		}

@@ -17,6 +17,19 @@ func TestTypeMetadataHelpersUseCanonicalFields(t *testing.T) {
 	if got := MemoryAddrType(MemType{Limits: Limits{Addr64: true}}); got != I64 {
 		t.Fatalf("MemoryAddrType = %s, want i64", got)
 	}
+	m := &Module{
+		Imports:  []Import{{Type: ExternType{Kind: ExternMem, Mem: MemType{Limits: Limits{Min: 1}}}}},
+		Memories: []MemType{{Limits: Limits{Min: 2, Addr64: true}}},
+	}
+	if mt, ok := m.MemoryType(0); !ok || mt.Limits.Min != 1 || mt.Limits.Addr64 {
+		t.Fatalf("imported MemoryType = %#v, %v", mt, ok)
+	}
+	if mt, ok := m.MemoryType(1); !ok || mt.Limits.Min != 2 || !mt.Limits.Addr64 {
+		t.Fatalf("local MemoryType = %#v, %v", mt, ok)
+	}
+	if _, ok := m.MemoryType(2); ok {
+		t.Fatal("out-of-range MemoryType resolved")
+	}
 }
 
 func TestLocalHelpersKeepRunsCompact(t *testing.T) {
