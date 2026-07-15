@@ -74,10 +74,16 @@ and skips as a whole when the tool is absent; it never turns missing tooling int
 a partial green matrix. Iteration 15 also adds
 `tests/spec-v3-staged-return-call-ref.json`: all 51 commands are accounted, with
 4 modules and 35 assertions green, 11 invalid modules rejected, and one valid
-reference-result module behind an explicit backend ABI gate. Snapshot-v3 owned-
-local restore, nested two-result typed-tail continuation, repeated transfers, and
-a bounded local memory64 slice are supplementary evidence; public gates remain
-closed, so the public schema-2 inventory remains byte-for-byte unchanged.
+reference-result module behind an explicit backend ABI gate. Iteration 16 adds
+`tests/spec-v3-staged-return-call.json`, fully green for all 47 commands (3 modules,
+33 assertions, 11 invalid), and `tests/spec-v3-staged-return-call-indirect.json`,
+which accounts for all 79 commands (2 modules, 16 invalid, 11 malformed, one exact
+general multi-table gate, 49 blocked actions). The latter must not be read as a
+skip reclassification: the private immutable-table milestone does not prove the
+pinned module's multiple local tables. Snapshot-v3 owned-local restore, nested
+typed-tail continuation, and bounded local memory64 integer scalars are
+supplementary evidence; public gates remain closed, so the public schema-2
+inventory remains byte-for-byte unchanged.
 Refresh the machine-readable red inventory with `scripts/spec3-baseline.sh`; the
 command remains nonzero until the zero-gap completion gate is met.
 

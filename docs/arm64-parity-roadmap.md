@@ -172,13 +172,16 @@ int-register `InstanceExport` wrappers. Iteration 14 adds an amd64-only fixed
 results, repeats 10,000 retained transfers, and tags exact same-instance scalar
 wrapper descriptors separately from host thunks. ARM64 masks that third tag on its
 already-supported ordinary indirect/reference call path, but emits no tail-transfer
-code and continues to reject tail-call admission. Exact multi-memory and memory64
-metadata/codec limits, compact import decoding, storage preflight, and snapshot-v3
-record parsing are shared. Every indexed multi-memory native path, owned-local
-multi-memory restore, registered-memory tenant, typed-tail transfer, and the new
-bounded memory64 size/grow/load/store path remains linux/amd64 explicit-bounds only.
-Memory64 requests on arm64 have a dedicated fail-closed test; the cross-build is not
-native execution evidence.
+code and continues to reject tail-call admission. Iteration 16 adds a private
+architecture-neutral direct/indirect tail frontend switch only so amd64 staged
+runners can reach proven lowering; a dedicated arm64 test rejects that staged switch
+before backend codegen. Exact multi-memory and memory64 metadata/codec limits,
+compact import decoding, storage preflight, and snapshot-v3 record parsing are
+shared. Every indexed multi-memory native path, owned-local multi-memory restore,
+registered-memory tenant, typed-tail transfer, direct/indirect tail execution, and
+the bounded memory64 size/grow/19-integer-scalar path remains linux/amd64 explicit-
+bounds only. Memory64 and tail-call requests on arm64 have dedicated fail-closed
+tests; the cross-build is not native execution evidence.
 The linux/arm64 cross-build is evidence that these fail-closed product/layout
 boundaries compile, not evidence of native execution support.
 

@@ -80,11 +80,14 @@ which restores caller memory/module context plus `RAX`/`RDX` before the ordinary
 continuation resumes. Iteration 15 proves both result slots, producer logical close,
 and 10,000 repeated cross-instance transfers; the pinned official file executes
 35 assertions, while its reference-result module remains an explicit ABI gate.
-Hosts, untagged foreign descriptors, foreign float results, nulls, wrong keys,
-snapshots, public admission, and arm64 tail execution remain explicit failures.
-`Instance`, basedata, and native descriptor sizes do not grow. Root transfers now
-measure 62.93-67.25 ns/op and nested transfers 82.06-89.72 ns/op, both 0 B/op and
-0 allocations/op on the iteration host.
+Hosts reached through typed descriptors, untagged foreign descriptors, foreign
+float results, nulls, wrong keys, snapshots, public admission, and arm64 typed-tail
+execution remain explicit failures. Iteration 16's direct `return_call` host support
+is a separate static-import path through the existing bounded host bridge; it does
+not tag or admit host funcref descriptors. `Instance`, basedata, and native
+descriptor sizes do not grow. Current root transfers measure 63.65-64.89 ns/op and
+nested transfers 75.82-78.51 ns/op, both 0 B/op and 0 allocations/op on the
+iteration host.
 
 The store never dereferences public bits or an unvalidated `refSlot`. Corrupted
 canonical metadata, cross-runtime/private-store imports, and unowned host-import
