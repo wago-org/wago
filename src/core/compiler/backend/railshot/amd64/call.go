@@ -1117,6 +1117,87 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 	}
 }
 
+// callRef invokes the descriptor-pointer funcref on top of the operand stack.
+// The immediate type supplies the expected canonical signature. Local int-only
+// descriptors may carry a tagged internal register-ABI entry; every other
+// descriptor uses the existing wrapper/cross-instance context path shared with
+// call_indirect.
+func (f *fn) callRef(r *wasm.Reader) error {
+	f.stats.call("ref")
+	typeIdx, err := r.U32()
+	if err != nil {
+		return err
+	}
+	ft, ok := f.m.TypeFunc(typeIdx)
+	if !ok {
+		return fmt.Errorf("call_ref: bad type %d", typeIdx)
+	}
+	canon := int32(f.m.StructuralTypeID(typeIdx))
+
+	ref := f.materialize(f.popValue())
+	f.pinned = f.pinned.add(ref)
+	f.a.TestSelf(ref, true)
+	f.trapIf(condE, trapIndirectOOB)
+
+	code := f.allocReg(0)
+	f.a.Load64(code, ref, runtime.TableEntryCodePtrOffset)
+	f.a.TestSelf(code, true)
+	f.trapIf(condE, trapIndirectOOB)
+	tid := f.allocReg(maskOf(code))
+	f.a.Load32(tid, ref, runtime.TableEntrySigIDOffset)
+	f.a.AluRI(cmpDigit, tid, canon, false)
+	f.release(tid)
+	f.trapIf(condNE, trapIndirectSig)
+	home := f.allocReg(maskOf(ref, code))
+	f.a.Load64(home, ref, runtime.TableEntryHomeLinMemOffset)
+	f.pinned = f.pinned.remove(ref)
+	f.release(ref)
+
+	if sigFitsRegABI(ft) && sigIsIntOnly(ft) {
+		// A tagged descriptor points at a same-instance internal entry. Untagged
+		// descriptors name wrapper entries and retain their real home linMem.
+		roots := f.rootsBottomToTop()
+		types := make([]machineType, len(roots))
+		for i, root := range roots {
+			types[i] = root.st.typ
+			if root.kind == ekDeferred && root.typ != mtNone {
+				types[i] = root.typ
+			}
+		}
+		f.pinned = f.pinned.add(code).add(home)
+		f.flush()
+		savedLocals := append([]localDef(nil), f.locals...)
+		tag := f.allocReg(maskOf(code, home))
+		f.a.MovReg64(tag, home)
+		f.a.ShiftImm(5, tag, 63, true)
+		f.a.TestSelf(tag, true)
+		f.release(tag)
+		wrapper := f.a.JccPlaceholder(condE)
+		f.pinned = f.pinned.remove(home)
+		f.emitRegisterCallVia(ft, -1, func() { f.a.CallReg(code) })
+		f.pinned = f.pinned.remove(code)
+		f.release(code)
+		done := f.a.JmpPlaceholder()
+
+		f.a.PatchRel32(wrapper, f.a.Len())
+		f.locals = savedLocals
+		f.setDepthTypes(types)
+		f.a.Store64(RBX, -int32(offSpillRegion), code)
+		f.pinned = f.pinned.remove(code)
+		f.release(code)
+		f.a.ShiftImm(4, home, 1, true)
+		f.a.ShiftImm(5, home, 1, true)
+		f.emitIndirectCallHomeAware(ft, home)
+		f.a.PatchRel32(done, f.a.Len())
+		return nil
+	}
+
+	f.a.Store64(RBX, -int32(offSpillRegion), code)
+	f.release(code)
+	f.emitIndirectCallHomeAware(ft, home)
+	return nil
+}
+
 // returnCallIndirect lowers the bounded indirect-tail milestone for a private,
 // immutable local funcref table. That proof guarantees that every same-signature
 // non-null entry is a same-module internal register-ABI target, so after the same

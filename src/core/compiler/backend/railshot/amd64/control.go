@@ -895,6 +895,9 @@ func skipImmediates(r *wasm.Reader, op byte) error {
 		}
 		_, err := r.U32()
 		return err
+	case op == 0x14 || op == 0x15: // call_ref / return_call_ref
+		_, err := r.U32()
+		return err
 	case op == 0x0C || op == 0x0D: // br / br_if
 		_, err := r.U32()
 		return err
