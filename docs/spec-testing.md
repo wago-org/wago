@@ -53,11 +53,14 @@ current schema-2 inventory processes all 258 files with zero parser failures:
 144 green/114 red, modules pass=1,691/skip=535, assertions
 pass=51,765/fail=5/skip=6,268. The five reached failures are two in `linking`, one
 in `multi-memory/linking0`, and two in `multi-memory/linking3`; the former
-`select` funcref wildcard failure is green. Iteration 11 completes staged indexed
-scalar grow/load/store and bulk/data lifecycle on linux/amd64 explicit bounds,
-deduplicates duplicate imported-memory aliases, and persists bounded 64-bit native
-type keys in codec v25 without enabling public typed references or multi-memory.
-The schema-2 inventory therefore remains byte-for-byte unchanged.
+`select` funcref wildcard failure is green. Iteration 12 completes every staged
+indexed SIMD memory form on linux/amd64 explicit bounds, updates the harness to
+resolve all registered memory imports, and proves allocation-free serialized
+basedata switching for the reached imported grow/size shape. It also retains
+cross-instance typed descriptor producers and persists typed/tail opcode feature
+requirements while snapshot preflight rejects unresolved contexts. Public gates
+and standardized compact-import decoding remain closed, so the schema-2 inventory
+remains byte-for-byte unchanged.
 Refresh the machine-readable red inventory with `scripts/spec3-baseline.sh`; the
 command remains nonzero until the zero-gap completion gate is met.
 

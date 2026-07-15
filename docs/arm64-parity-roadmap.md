@@ -164,9 +164,12 @@ producer-root release. Executable staged fixtures remain linux/amd64-only. These
 shared checks do not advertise typed references on ARM64 and do not replace
 backend parity tests for indexed params/results, `call_ref`, null control, full
 dynamic table/global storage, overwrite/close order under native execution, or
-typed tail contexts. Exact multi-memory product/codec directories are shared,
-but the staged native memory-1 directory and size/i32 load/store path is
-linux/amd64 explicit-bounds only; ARM64 has no indexed-memory codegen claim. The
+typed tail contexts. Iteration 12 retains cross-instance function producers and
+persists typed/tail feature requirements in architecture-neutral product code,
+but its `call_ref` execution proof remains amd64-only. Exact multi-memory
+product/codec directories are shared, while every indexed scalar/SIMD/bulk native
+path and serialized registered-memory basedata tenant remains linux/amd64
+explicit-bounds only; ARM64 has no indexed-memory codegen claim. The
 linux/arm64 cross-build is evidence that the fail-closed product
 boundary still compiles, not evidence of native execution support.
 
