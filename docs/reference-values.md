@@ -91,15 +91,19 @@ retained int-register `InstanceExport` direct imports. Link-time immutable wrapp
 addresses feed a dedicated four-word root/nested return record rather than any funcref
 or typed-tail scratch slot. Producer close order, million-step local continuation,
 10,000 repeated transfers, oversized-signature rejection, and recovery after a foreign
-trap are covered. Float/oversized direct signatures remain gated. Iteration 17's
+trap are covered. Iteration 20 reuses the same fixed record for exactly
+`(i32, f64) -> f64`: arguments still marshal through the target wrapper bank and the
+nested trampoline restores the sole result slot into XMM0. Other float and oversized
+direct signatures remain gated. Iteration 17's
 indirect-tail work is also
 separate from public token ownership: finite per-table analysis proves only local,
 unexported, unmutated tables whose entries are same-module functions. Scalar staged
 tail modules may tag GP/XMM internal descriptors; wrapper-only mixed-result targets
 use the fixed basedata argument bank. Ordinary Release 1/2 float descriptors retain
 the wrapper path, and imported/mutable/exported/host-descriptor tables remain gated.
-`Instance`, basedata, and native descriptor sizes do not grow. Iteration 19's retained
-direct cross-instance tail measured 60.97-61.67 ns/op at 0 B/op and 0 allocations/op.
+`Instance`, basedata, and native descriptor sizes do not grow. Iteration 20's exact
+mixed-float direct cross-instance tail measured 61.37-63.30 ns/op at 0 B/op and 0
+allocations/op; Iteration 19's integer watchpoint was 60.97-61.67 ns/op.
 Iteration 18's staged reference-result tail measured 97.15-99.04 ns/op at zero
 allocations; retained typed cross-instance root/nested watchpoints remain 63.65-64.89
 ns/op and 75.82-78.51 ns/op, both 0 B/op and 0 allocations/op on the iteration-16 host.
@@ -990,7 +994,7 @@ Snapshot products share one fail-closed validator. `Capture`, snapshot marshal,
 global until a resolver/state format exists. Iteration 12 additionally rejects any
 artifact whose code or metadata requires typed function references or tail calls,
 before imports are retained, start runs, or memory/global state mutates. Typed/tail
-opcode requirements are now recorded in the full-width codec-v25 feature word;
+opcode requirements are now recorded in the full-width codec-v26 feature word;
 compile-only staged admission is kept in a non-serialized code-cache sidecar, so a
 public load of the same artifact remains fail-closed. Iteration 13 keeps that rule
 for the compile-only typed-tail gate and makes multi-memory snapshot errors shape-
@@ -1015,7 +1019,7 @@ import, and exports. Table entries carry exact type, import, exports, declared
 minimum, and an optional exact declared maximum; implementation-only growth
 reserves are not reported as Wasm limits. Duplicate table imports remain separate
 index entries even when they use the same key. The same metadata is reconstructed
-from codec-v25-loaded modules. `Module.Imports` exposes the corresponding exact
+from codec-v26-loaded modules. `Module.Imports` exposes the corresponding exact
 function signatures, global types/mutability, and table types/limits.
 
 Cross-link teardown is locked as one ownership proof: a producer may be logically
@@ -1075,18 +1079,20 @@ reject every table/reference-global module.
 
 ## `.wago` compatibility
 
-Compiled-module codec version 25 stores flattened recursive type definitions,
+Compiled-module codec version 26 stores flattened recursive type definitions,
 exact reference nullability/exactness/heap identity, declared function type indexes,
-a deduplicated global/table/element value-type pool, exact indexed memory/data
-metadata, the direct memory-0 execution cache, collision-resistant 64-bit native
-signature keys, and the full optional feature mask. Version 24 and older blobs are
-rejected by the version-25 loader; unknown, truncated, out-of-range,
+a deduplicated global/table/element value-type pool, exact indexed memory/data/table-
+address metadata, the direct memory-0 execution cache, collision-resistant 64-bit
+native signature keys, and the full optional feature mask. Version 25 and older blobs are
+rejected by the version-26 loader because the table32/table64 address form is now
+explicit for every persisted table; unknown, truncated, out-of-range,
 ABI-inconsistent, or structurally missing feature metadata fails closed. SIMD
 blobs additionally reject on hosts without the documented CPU baseline.
 
-Codec v25 serializes reference globals as structure only: exact import/type/
+Codec v26 serializes reference globals as structure only: exact import/type/
 mutability/export metadata plus literal null, earlier immutable `global.get`, or
-structural `ref.func` initializers. It retains validated scalar extended-expression
+structural `ref.func` initializers. It also records the exact address form of every
+table declaration/import. It retains validated scalar extended-expression
 programs for numeric globals and active offsets, and serializes all compiled tables
 in Wasm index order with exact element type, import key/limits or local runtime
 size/capacity, the local declaration's explicit-maximum bit, initializer, and named

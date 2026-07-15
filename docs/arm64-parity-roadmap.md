@@ -133,7 +133,7 @@ Implement and test ARM64 `global.get`/`global.set` for `funcref` and `externref`
 - token/descriptor translation at public and cross-instance boundaries;
 - explicit same-store ownership requirements;
 - close-order and producer-retention behavior;
-- codec-v25 load/round-trip execution.
+- codec-v26 load/round-trip execution.
 
 ### Multiple tables and typed references
 
@@ -179,17 +179,21 @@ before backend codegen. Exact multi-memory and memory64 metadata/codec limits,
 compact import decoding, storage preflight, and snapshot-v3 record parsing are
 shared. Every indexed multi-memory native path, owned-local multi-memory restore,
 registered-memory tenant, typed-tail transfer, direct/indirect tail execution, and
-the bounded memory64 size/grow/23-scalar/SIMD-memory/active-data path remain linux/
-amd64 explicit-bounds only. Iteration 17's per-table indirect-tail analysis and finite
+the bounded memory64 size/grow/23-scalar/SIMD-memory/active-data/copy/fill path and
+local table64 size/get/set path remain linux/amd64 explicit-bounds only. Iteration
+17's per-table indirect-tail analysis and finite
 shared-basedata eligibility scan are architecture-neutral compile-time work. Iteration
 18 adds architecture-neutral i64 active-data metadata validation and imported numeric-
 global eligibility/ownership checks. Iteration 19 adds architecture-neutral sole-
 imported-table eligibility and ownership scans plus memory64-aware immediate walking,
 but native typed reference-result returns, direct cross-instance tail transitions,
-owner/tenant image switching, global/table-pointer installation, directory refresh,
-and memory64 SIMD/data execution have amd64 evidence only. Memory64 and tail-call
-requests on arm64 have dedicated fail-closed tests; the cross-build is not native
-execution evidence.
+owner/tenant image switching, global/table-pointer installation, directory refresh, and memory64 SIMD/data execution
+have amd64 evidence only. Iteration 20 adds architecture-neutral table-address metadata,
+codec-v26 rejection, and support scans, while memory64 bulk execution, table64 i64 index
+lowering, and the exact
+`(i32, f64) -> f64` direct cross-tail restoration have amd64 evidence only. Memory64,
+table64, and tail-call requests on arm64 have dedicated fail-closed tests; the
+cross-build is not native execution evidence.
 The linux/arm64 cross-build is evidence that these fail-closed product/layout
 boundaries compile, not evidence of native execution support.
 
@@ -418,7 +422,7 @@ Linux/arm64 passes all WebAssembly 1.0 semantics, runtime/API tests, explicit bo
 
 ### M3 — ARM64 WebAssembly 2.0
 
-Reference globals, multiple typed tables, owned host funcrefs, multi-value/reference combinations, bulk memory, codec v25, snapshots, and Release 2 conformance match amd64.
+Reference globals, multiple typed tables, owned host funcrefs, multi-value/reference combinations, bulk memory, codec v26, snapshots, and Release 2 conformance match amd64.
 
 ### M4 — SIMD and guard-page closeout
 
