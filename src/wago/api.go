@@ -110,12 +110,11 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 	return compileWithFrontendFeatures(cfg, wasmBytes, cfg.frontendFeatures())
 }
 
-func stagedTwoLocalTableCopyOperation(k wasm.InstrKind) (copy bool, tableOperation bool) {
+func stagedTwoLocalTableOperation(k wasm.InstrKind) (allowed bool, tableOperation bool) {
 	switch k {
-	case wasm.InstrTableCopy:
+	case wasm.InstrTableCopy, wasm.InstrTableGet, wasm.InstrTableSet, wasm.InstrTableSize:
 		return true, true
-	case wasm.InstrTableGet, wasm.InstrTableSet, wasm.InstrTableGrow, wasm.InstrTableSize,
-		wasm.InstrTableFill, wasm.InstrTableInit, wasm.InstrElemDrop,
+	case wasm.InstrTableGrow, wasm.InstrTableFill, wasm.InstrTableInit, wasm.InstrElemDrop,
 		wasm.InstrCallIndirect, wasm.InstrReturnCallIndirect:
 		return false, true
 	default:
@@ -123,18 +122,18 @@ func stagedTwoLocalTableCopyOperation(k wasm.InstrKind) (copy bool, tableOperati
 	}
 }
 
-func stagedTwoLocalTableCopyInstrs(instrs []wasm.Instruction) (bool, error) {
+func stagedTwoLocalTableInstrs(instrs []wasm.Instruction) (bool, error) {
 	found := false
 	for i := range instrs {
 		in := &instrs[i]
-		if copy, tableOperation := stagedTwoLocalTableCopyOperation(in.Kind); tableOperation {
-			if !copy {
-				return false, fmt.Errorf("instruction %s is outside the exact two-local-table copy slice", in.Kind)
+		if allowed, tableOperation := stagedTwoLocalTableOperation(in.Kind); tableOperation {
+			if !allowed {
+				return false, fmt.Errorf("instruction %s is outside the exact two-local-table read/write slice", in.Kind)
 			}
 			found = true
 		}
 		for _, nested := range [][]wasm.Instruction{in.Body().Instrs, in.Then(), in.Else()} {
-			nestedFound, err := stagedTwoLocalTableCopyInstrs(nested)
+			nestedFound, err := stagedTwoLocalTableInstrs(nested)
 			if err != nil {
 				return false, err
 			}
@@ -144,9 +143,9 @@ func stagedTwoLocalTableCopyInstrs(instrs []wasm.Instruction) (bool, error) {
 	return found, nil
 }
 
-func stagedTwoLocalTableCopyBody(body wasm.Expr) (bool, error) {
+func stagedTwoLocalTableBody(body wasm.Expr) (bool, error) {
 	if len(body.BodyBytes) == 0 {
-		return stagedTwoLocalTableCopyInstrs(body.Instrs)
+		return stagedTwoLocalTableInstrs(body.Instrs)
 	}
 	found := false
 	r := wasm.NewReader(body.BodyBytes)
@@ -159,9 +158,9 @@ func stagedTwoLocalTableCopyBody(body wasm.Expr) (bool, error) {
 		if err != nil {
 			return false, err
 		}
-		if copy, tableOperation := stagedTwoLocalTableCopyOperation(imm.Kind); tableOperation {
-			if !copy {
-				return false, fmt.Errorf("instruction %s is outside the exact two-local-table copy slice", imm.Kind)
+		if allowed, tableOperation := stagedTwoLocalTableOperation(imm.Kind); tableOperation {
+			if !allowed {
+				return false, fmt.Errorf("instruction %s is outside the exact two-local-table read/write slice", imm.Kind)
 			}
 			found = true
 		}
@@ -169,28 +168,28 @@ func stagedTwoLocalTableCopyBody(body wasm.Expr) (bool, error) {
 	return found, nil
 }
 
-func stagedTwoLocalTableCopyShape(m *wasm.Module) error {
+func stagedTwoLocalTableShape(m *wasm.Module) error {
 	if m.ImportedTableCount() != 0 || len(m.Tables) != 2 {
-		return fmt.Errorf("the exact two-local-table copy slice requires two local tables and no table imports")
+		return fmt.Errorf("the exact two-local-table slice requires two local tables and no table imports")
 	}
 	for i := range m.Tables {
 		if m.Tables[i].Init != nil {
-			return fmt.Errorf("table %d initializer expression is outside the exact two-local-table copy slice", i)
+			return fmt.Errorf("table %d initializer expression is outside the exact two-local-table slice", i)
 		}
 		if m.Tables[i].Type.Limits.Max == nil {
-			return fmt.Errorf("table %d requires an explicit maximum in the exact two-local-table copy slice", i)
+			return fmt.Errorf("table %d requires an explicit maximum in the exact two-local-table slice", i)
 		}
 	}
 	found := false
 	for i := range m.Code {
-		bodyFound, err := stagedTwoLocalTableCopyBody(wasm.Expr{Instrs: m.Code[i].Body.Instrs, BodyBytes: m.Code[i].BodyBytes})
+		bodyFound, err := stagedTwoLocalTableBody(wasm.Expr{Instrs: m.Code[i].Body.Instrs, BodyBytes: m.Code[i].BodyBytes})
 		if err != nil {
 			return fmt.Errorf("function %d: %w", i, err)
 		}
 		found = found || bodyFound
 	}
 	if !found {
-		return fmt.Errorf("the exact two-local-table copy slice requires table.copy")
+		return fmt.Errorf("the exact two-local-table slice requires a table operation")
 	}
 	return nil
 }
@@ -238,15 +237,15 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 		if cfg.boundsChecks == BoundsChecksSignalsBased {
 			return nil, fmt.Errorf("compile: unsupported table table64 with signals-based bounds checks")
 		}
-		twoLocalCopy := m.TableCount() == 2 && m.ImportedTableCount() == 0 && len(m.Tables) == 2
-		if m.TableCount() != 1 && !twoLocalCopy {
-			return nil, fmt.Errorf("compile: staged table64 requires exactly one local/imported table or the exact two-local-table copy slice")
+		twoLocal := m.TableCount() == 2 && m.ImportedTableCount() == 0 && len(m.Tables) == 2
+		if m.TableCount() != 1 && !twoLocal {
+			return nil, fmt.Errorf("compile: staged table64 requires exactly one local/imported table or the exact two-local-table slice")
 		}
 		if m.TableCount() == 1 && m.ImportedTableCount() != 0 && len(m.Tables) != 0 {
 			return nil, fmt.Errorf("compile: staged table64 rejects mixed imported/local table shapes")
 		}
-		if twoLocalCopy {
-			if err := stagedTwoLocalTableCopyShape(m); err != nil {
+		if twoLocal {
+			if err := stagedTwoLocalTableShape(m); err != nil {
 				return nil, fmt.Errorf("compile: staged table64 %w", err)
 			}
 		}
@@ -267,10 +266,10 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 			if e.Mode.Kind == wasm.ElemActive && (int(e.Mode.Table) < 0 || int(e.Mode.Table) >= m.TableCount()) {
 				return nil, fmt.Errorf("compile: staged table64 active element segment targets unavailable table %d", e.Mode.Table)
 			}
-			if !twoLocalCopy && e.Mode.Kind == wasm.ElemActive && e.Mode.Table != 0 {
+			if !twoLocal && e.Mode.Kind == wasm.ElemActive && e.Mode.Table != 0 {
 				return nil, fmt.Errorf("compile: staged table64 active element segment targets table %d, want the sole table 0", e.Mode.Table)
 			}
-			if !twoLocalCopy && m.ImportedTableCount() != 0 && e.Mode.Kind != wasm.ElemActive {
+			if !twoLocal && m.ImportedTableCount() != 0 && e.Mode.Kind != wasm.ElemActive {
 				return nil, fmt.Errorf("compile: imported table64 passive/declarative lifecycle remains outside the sole-local staged boundary")
 			}
 		}

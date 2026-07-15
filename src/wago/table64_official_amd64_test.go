@@ -126,7 +126,7 @@ func stagedTable64KnownGate(err error) bool {
 		"table64 maximum",
 		"requires a finite runtime bound no greater than 16384 entries",
 		"requires exactly one local/imported table",
-		"exact two-local-table copy slice",
+		"exact two-local-table",
 		"requires funcref table",
 		"table.init on imported table64 remains outside the staged boundary",
 		"imported table64 passive/declarative lifecycle remains outside the sole-local staged boundary",
