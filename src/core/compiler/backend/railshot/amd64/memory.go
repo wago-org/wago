@@ -798,38 +798,63 @@ func (f *fn) memorySize(r *wasm.Reader) error {
 // size in pages or -1 on failure. The reservation is mapped up front, so this is
 // a pure size-cache update (matching src/core/encoder/amd64); the base never moves.
 func (f *fn) memoryGrow(r *wasm.Reader) error {
-	if _, err := r.Byte(); err != nil { // memory index (validated == 0)
+	memoryIndex, err := r.U32()
+	if err != nil {
 		return err
 	}
 	f.invalidateBoundsCert() // memBytes changes; end the certificate conservatively
 	delta := f.materialize(f.popValue())
 	f.pinned = f.pinned.add(delta)
 	res := f.allocReg(maskOf(delta))
-	f.a.Load32(res, RBX, -bdCurPages) // old pages — the success result
-	nw := f.allocReg(maskOf(delta).add(res))
+	base := RBX
+	dir := regNone
+	entry := int32(0)
+	if memoryIndex != 0 {
+		dir = f.allocReg(maskOf(delta).add(res))
+		f.a.Load64(dir, RBX, -offMemoryDirPtr)
+		entry = int32(memoryIndex) * 16
+		base = f.allocReg(maskOf(delta).add(res).add(dir))
+		f.a.Load64(base, dir, entry)
+	}
+	f.a.Load32(res, base, -bdCurPages) // old pages — the success result
+	avoid := maskOf(delta).add(res).add(base)
+	if dir != regNone {
+		avoid = avoid.add(dir)
+	}
+	nw := f.allocReg(avoid)
 	f.a.MovRegReg32(nw, res)
 	f.a.Add32(nw, delta) // new = old + delta; CF on u32 overflow
 	failOverflow := f.a.JccPlaceholder(condB)
-	mx := f.allocReg(maskOf(delta).add(res).add(nw))
-	f.a.Load32(mx, RBX, -bdMaxPages)
+	mx := f.allocReg(avoid.add(nw))
+	f.a.Load32(mx, base, -bdMaxPages)
 	f.a.Cmp32(nw, mx)
 	failMax := f.a.JccPlaceholder(condA) // new > max
-	f.a.Store32(RBX, -bdCurPages, nw)
+	f.a.Store32(base, -bdCurPages, nw)
 	f.a.MovRegReg32(mx, nw)
 	f.a.ShiftImm(4, mx, wasmPageLog, false) // bytes = pages << 16 (digit 4 = shl)
-	f.a.Store32(RBX, -bdCurBytes, mx)
+	f.a.Store32(base, -bdCurBytes, mx)
+	if memoryIndex != 0 {
+		// The directory caches form one semantic size pair. Publish them only after
+		// every overflow/maximum check succeeds; failure leaves both fields intact.
+		f.a.Store32(dir, entry+8, mx)
+		f.a.Store32(dir, entry+12, nw)
+	}
 	done := f.a.JmpPlaceholder()
 	f.a.PatchRel32(failOverflow, f.a.Len())
 	f.a.PatchRel32(failMax, f.a.Len())
 	f.a.MovImm32(res, -1)
 	f.a.PatchRel32(done, f.a.Len())
-	if f.memSizeReg != regNone {
-		f.a.Load32(f.memSizeReg, RBX, -bdCurBytes) // refresh the memBytes cache (both paths)
+	if memoryIndex == 0 && f.memSizeReg != regNone {
+		f.a.Load32(f.memSizeReg, RBX, -bdCurBytes) // refresh the memory-0 cache (both paths)
 	}
 	f.pinned = f.pinned.remove(delta)
 	f.release(delta)
 	f.release(nw)
 	f.release(mx)
+	if memoryIndex != 0 {
+		f.release(base)
+		f.release(dir)
+	}
 	f.pushReg(res, mtI32)
 	return nil
 }

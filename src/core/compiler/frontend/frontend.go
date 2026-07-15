@@ -965,7 +965,7 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 		if _, err := r.U32(); err != nil { // offset
 			return false, err
 		}
-		if explicit && (!p.feat.MultiMemory || (op != 0x28 && op != 0x36)) {
+		if explicit && !p.feat.MultiMemory {
 			return false, p.unsupported("memory", fmt.Sprintf("explicit index %d", memIndex), ctx())
 		}
 		return false, nil
@@ -976,9 +976,6 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 		}
 		if index != 0 && !p.feat.MultiMemory {
 			return false, &wasm.DecodeError{Code: wasm.ErrInvalidInstruction, Offset: r.Offset() - 1}
-		}
-		if index != 0 && op == 0x40 {
-			return false, p.unsupported("memory", fmt.Sprintf("index %d", index), ctx())
 		}
 		return false, nil
 	case 0x41, 0x42, 0x43, 0x44:
@@ -1361,10 +1358,10 @@ func (p supportPass) instr(in wasm.Instruction, context string) error {
 			return err
 		}
 	}
-	if in.MemArg().Mem != nil && (!p.feat.MultiMemory || (in.Kind != wasm.InstrI32Load && in.Kind != wasm.InstrI32Store)) {
+	if in.MemArg().Mem != nil && !p.feat.MultiMemory {
 		return p.unsupported("memory", fmt.Sprintf("explicit index %d", *in.MemArg().Mem), context)
 	}
-	if (in.Kind == wasm.InstrMemorySize || in.Kind == wasm.InstrMemoryGrow) && in.Index != 0 && (!p.feat.MultiMemory || in.Kind == wasm.InstrMemoryGrow) {
+	if (in.Kind == wasm.InstrMemorySize || in.Kind == wasm.InstrMemoryGrow) && in.Index != 0 && !p.feat.MultiMemory {
 		return p.unsupported("memory", fmt.Sprintf("index %d", in.Index), context)
 	}
 	if err := p.instructionKind(in.Kind, context); err != nil {
