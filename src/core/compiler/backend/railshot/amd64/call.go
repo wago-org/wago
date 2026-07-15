@@ -231,7 +231,13 @@ func (f *fn) returnCall(r *wasm.Reader) error {
 	imported := f.m.ImportedFuncCount()
 	if int(idx) < imported {
 		if f.importBindings != nil && int(idx) < len(f.importBindings) && f.importBindings[idx].CrossInstance {
-			return fmt.Errorf("return_call: imported target %d requires unsupported cross-instance tail ABI", idx)
+			if !sigFitsRegABI(f.ft) || !sigFitsRegABI(ft) || !sigIsIntOnly(ft) {
+				return fmt.Errorf("return_call: imported target %d requires unsupported cross-instance tail ABI", idx)
+			}
+			f.stats.call("tail-direct-cross")
+			f.emitTailCrossDirectJump(ft, f.importBindings[idx])
+			f.unreachable = true
+			return nil
 		}
 		var err error
 		if f.syncHostCalls || len(ft.Results) != 0 {
@@ -276,6 +282,86 @@ func (f *fn) emitTailWrapperJump(ft *wasm.CompType, target int) {
 		site := f.a.JmpPlaceholder()
 		f.relocs = append(f.relocs, callReloc{at: site, target: target})
 	})
+}
+
+// emitTailCrossDirectJump transfers a direct imported tail to its retained
+// producer without using a funcref descriptor or the typed-tail scratch words.
+// The link-time binding supplies immutable wrapper/home addresses. Root adapters
+// discard their own continuation; nested register-ABI callers receive a fixed
+// four-word return record whose local trampoline restores the caller context and
+// up to two integer results. No frame or record accumulates with repeated tails.
+func (f *fn) emitTailCrossDirectJump(ft *wasm.CompType, b ImportBinding) {
+	p := len(ft.Params)
+	roots := f.rootsBottomToTop()
+	types := make([]machineType, len(roots))
+	for i, root := range roots {
+		types[i] = rootMachineType(root)
+	}
+	f.flush()
+	f.storePinnedGlobals(false)
+	f.storeModuleGlobals(RDX)
+
+	f.a.MovImm64(R11, b.CalleeLinMem)
+	f.a.MovReg64(RDI, R11)
+	f.a.LeaDisp(RDI, RDI, -int32(abi.TailArgsOffset))
+	argBase := len(types) - p
+	for i := range ft.Params {
+		srcSlot := slotOfLogicalTypes(types, argBase+i)
+		f.a.Load64(RAX, RSP, f.spillOff(srcSlot))
+		f.a.Store64(RDI, int32(i*8), RAX)
+	}
+
+	frameSite := f.a.Len() + 3
+	f.a.AddRsp(0)
+	f.sc.tailFrameSites = append(f.sc.tailFrameSites, frameSite)
+
+	f.a.Load64(RAX, RSP, 0)
+	leaSite := f.a.LeaRipPlaceholder(RDX)
+	f.a.PatchRel32(leaSite, f.adapterReturnOff)
+	f.a.Cmp64(RAX, RDX)
+	nested := f.a.JccPlaceholder(condNE)
+	f.a.Load64(RCX, RSP, 8)
+
+	copyControl := func() {
+		f.a.Load64(RAX, RBX, -offTrapReentry)
+		f.a.Store64(R11, -offTrapReentry, RAX)
+		f.a.Load64(RAX, RBX, -offStackFence)
+		f.a.Store64(R11, -offStackFence, RAX)
+		f.a.Load64(RAX, RBX, -offTrapCellPtr)
+		f.a.Store64(R11, -offTrapCellPtr, RAX)
+	}
+	copyControl()
+	f.a.MovImm64(RAX, b.CalleeEntry)
+	f.a.MovReg64(RSI, R11)
+	f.a.AddRsp(16)
+	f.a.JmpReg(RAX)
+
+	f.a.PatchRel32(nested, f.a.Len())
+	f.a.SubRsp(32)
+	trampolineSite := f.a.LeaRipPlaceholder(RAX)
+	f.a.Store64(RSP, 0, RAX)
+	f.a.Store64(RSP, 8, RBX)
+	f.a.LeaDisp(RCX, RSP, 16)
+	copyControl()
+	f.a.MovImm64(RAX, b.CalleeEntry)
+	f.a.MovReg64(RSI, R11)
+	f.a.JmpReg(RAX)
+
+	trampoline := f.a.Len()
+	f.a.PatchRel32(trampolineSite, trampoline)
+	f.a.Load64(RBX, RSP, 0)
+	if f.memSizeReg != regNone {
+		f.a.Load32(f.memSizeReg, RBX, -bdCurBytes)
+	}
+	f.deriveModuleGlobals()
+	if len(ft.Results) > 0 {
+		f.a.Load64(RAX, RSP, 8)
+	}
+	if len(ft.Results) > 1 {
+		f.a.Load64(RDX, RSP, 16)
+	}
+	f.a.AddRsp(24)
+	f.a.Ret()
 }
 
 func (f *fn) emitTailWrapperJumpVia(ft *wasm.CompType, emitJump func()) {
