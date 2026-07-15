@@ -107,13 +107,19 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   `call_ref`. Public structural type descriptors, exact signature/global/table/
   element inspection, and codec-v22 persistence are now present. Staged runtime
   storage/import matching uses cross-module structural subtype/equivalence;
-  runtime signature IDs include indexed/recursive structure; public invocation
-  and synchronous host funcref boundaries enforce exact types/nullability; amd64
-  executes `ref.as_non_null` and both null branches; local wrapper direct tails
-  use a fixed 16-slot bank; and the reached `select` funcref assertion is green.
-  Public admission, imported/cross-instance tail contexts, remaining dynamic
-  lifecycle/storage paths, snapshots, and arm64 remain gated.
-- [ ] Multi-memory, memory64/table64, exception handling, and GC end to end.
+  runtime signature IDs include indexed/recursive structure; public invocation,
+  synchronous host boundaries, and mutable global ingress/egress enforce exact
+  types/nullability. Shared funcref table/global roots are released after a
+  successful final overwrite and preserved on trapping writes. amd64 executes
+  `ref.as_non_null` and both null branches; local wrapper direct tails use a fixed
+  16-slot bank; and the reached `select` funcref assertion is green. Public
+  admission, imported/cross-instance tail contexts, full dynamic table proofs,
+  snapshots, collision-safe native identity policy, and arm64 remain gated.
+- 🚧 Multi-memory validation now has an explicit internal AST/byte-backed gate for
+  indexed `memory.size`/`memory.grow` and memargs; default validation and the
+  frontend/runtime remain fail-closed. Memory directories, metadata/codec,
+  lifecycle, imports/exports, snapshots, and codegen are next.
+- [ ] memory64/table64, exception handling, and GC end to end.
 - [ ] Reach zero unexplained failures/skips in the official Release 3 core suite.
 
 **Engine & performance** (no-ir-plan P1–P7, measured against P1's stats)
@@ -191,9 +197,13 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   feature. Staged exact storage/import compatibility, indexed/recursive runtime
   signature identity, `ref.as_non_null`, both null branches, exact public/host
   funcref boundaries, and non-null harness result matching are now proven.
-  Remaining dynamic storage/lifecycle instructions, typed tail contexts,
-  snapshots, public admission, and arm64 remain gated. Multi-memory,
-  memory64/table64, exception handling, and WasmGC remain active Core 3.0 scope;
+  Mutable global host/public boundaries now enforce exact indexed types and
+  nullability, and shared table/global producer roots release on successful final
+  overwrite without violating trap atomicity. Remaining dynamic table proofs,
+  typed tail contexts, snapshots, collision-safe native identity policy, public
+  admission, and arm64 remain gated. Multi-memory now has an explicit staged
+  validator path but no frontend/runtime execution; memory64/table64, exception
+  handling, and WasmGC remain active Core 3.0 scope;
   see `docs/wasm3.md` for exact boundaries.
 - [x] Reference-types product completion: signatures, locals, control,
   local/imported/shared globals, host ABI, explicit host funcref ownership/egress,

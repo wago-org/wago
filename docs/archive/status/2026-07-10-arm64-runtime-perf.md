@@ -6,7 +6,7 @@
 
 Status date: 2026-07-15
 Branch: `wasm3`
-Code head before this report: `92b28c12` (`amd64: tail-enter local wrapper contexts`)
+Code head before this report: `5757b454` (`wasm: stage multi-memory validation`)
 Base lineage: originally `origin/main` at `2aac98e5`; completed WebAssembly 3.0 iteration commits are retained.
 Scope: the primary repository plus the independently pinned Release 3 submodule inventory.
 
@@ -36,7 +36,7 @@ The most important qualification is platform scope. Linux/amd64 remains the matu
 - Source TODO/FIXME/XXX markers outside submodules, graph output, and the planning ledger: 5.
 - No release tag was shown in the current checkout; installation documentation still describes `v0.1.0` as the future public-prebuilt transition.
 
-Recent development has concentrated on WebAssembly 2.0 closeout, package-manager commands, funcref table initialization, plugin installation/publishing, bulk memory, table operations, and railshot constant/flags optimizations.
+Recent development has concentrated on WebAssembly 3.0 typed-reference structural identity and boundaries, exact mutable-global storage, bounded funcref producer lifecycle, staged multi-memory validation, and the pinned Release 3 oracle while preserving the completed WebAssembly 2.0 product surface.
 
 ## Knowledge graph
 
@@ -92,8 +92,8 @@ Important architectural properties:
 ### Partial
 
 - WebAssembly 3.0 tail calls: amd64 local register/wrapper direct, private-table indirect, and same-instance typed-reference milestones; public admission remains disabled.
-- Typed function references: exact structural metadata/storage matching, indexed/recursive runtime signature identity, `call_ref`, null-control lowering, exact public/synchronous-host funcref boundaries, and harness identity are staged internally; dynamic storage/lifecycle, typed tails, snapshots, public admission, and arm64 completion remain.
-- Multi-memory, memory64/table64, exception handling, and WasmGC have decode/validation or runtime foundations but are not executable product claims.
+- Typed function references: exact structural metadata/storage matching, indexed/recursive runtime signature identity, `call_ref`, null-control lowering, exact public/synchronous-host and mutable-global funcref boundaries, harness identity, and overwrite-triggered producer-root release are staged internally. Full dynamic table proofs, typed tails, snapshots, collision-safe native identity policy, public admission, and arm64 completion remain.
+- Multi-memory has an explicit staged AST/byte-backed validator path for indexed `memory.size`/`memory.grow` and memargs, but default validation, frontend/runtime execution, memory directories, metadata/codec, lifecycle, imports/exports, and snapshots remain fail-closed. memory64/table64, exception handling, and WasmGC retain validation or runtime foundations without executable product claims.
 
 ### Planned
 

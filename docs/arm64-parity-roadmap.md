@@ -158,12 +158,16 @@ ARM64 offset tests must retain this layout even while tail execution remains
 explicitly unsupported.
 
 Iteration 8 adds architecture-neutral structural signature IDs and exact public/
-synchronous-host typed-funcref boundary checks, but executable staged fixtures
-remain linux/amd64-only. These shared checks do not advertise typed references on
-ARM64 and do not replace backend parity tests for indexed params/results,
-`call_ref`, null control, dynamic table/global storage, or typed tail contexts.
-The linux/arm64 cross-build is evidence that the fail-closed product boundary
-still compiles, not evidence of native execution support.
+synchronous-host typed-funcref boundary checks. Iteration 9 extends the shared
+model through exact mutable-global ingress/egress and bounded overwrite-triggered
+producer-root release. Executable staged fixtures remain linux/amd64-only. These
+shared checks do not advertise typed references on ARM64 and do not replace
+backend parity tests for indexed params/results, `call_ref`, null control, full
+dynamic table/global storage, overwrite/close order under native execution, or
+typed tail contexts. The explicit multi-memory validator gate is also
+architecture-neutral validation only; ARM64 has no memory-directory/codegen
+claim. The linux/arm64 cross-build is evidence that the fail-closed product
+boundary still compiles, not evidence of native execution support.
 
 ### Owned host funcrefs
 

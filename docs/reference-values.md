@@ -550,11 +550,15 @@ instance's canonical descriptor only after code mapping; neither serialized nor
 public metadata contains the descriptor address. JIT `global.get` and
 `global.set` copy the internal 64-bit descriptor representation directly, so a
 non-null token accepted at `Invoke`, typed `Call`, or `SetGlobalValue` is resolved
-through the instance's exact reference store before it reaches the cell.
-`GlobalValue` performs the inverse checked translation and returns the stable
-token already owned by that store. The token entry retains the true producer's
-arena, code, and home context, so a global can continue returning the value after
-the producer's logical close.
+through the instance's exact reference store before it reaches the cell. For an
+indexed function reference, `Instance.SetGlobalValue`, `Global.SetValue`,
+`GlobalValue`, and `Global.GetValue` additionally compare the token/descriptor's
+full structural function type against the declaration and enforce nullability;
+the compact `ValFuncRef` ABI category is never sufficient. Failed type checks
+leave the cell unchanged. `GlobalValue` performs the inverse checked translation
+and returns the stable token already owned by that store. The token entry retains
+the true producer's arena, code, and home context, so a global can continue
+returning the value after the producer's logical close.
 
 The raw numeric `Instance.Global`/`SetGlobal` methods reject reference globals.
 An exported `*Global` returns zero from `Get` and rejects `Set` for a reference
@@ -567,7 +571,22 @@ owner and close-order model described above. A `ref.func` of an imported
 `InstanceExport` remains internally callable and keeps exact `refSlot`
 canonicalization against the true producer descriptor arena. Explicitly owned
 host-import descriptors and host-created funcref globals use the HostFuncRef/token
-model above. Raw unowned host descriptors still fail closed.
+model above. Raw unowned host descriptors still fail closed. If shared table or
+global storage retains a logically closed producer, every completed guest call
+that can mutate imported funcref storage reconciles the bounded owner roots after
+result tokenization. A successful final `table.set`/fill/copy/init/grow or
+`global.set` overwrite releases the producer and its physical resources; a
+trapping write leaves the descriptor and root intact. Host `Global.SetValue`
+performs the same reconciliation immediately. No container grows an unbounded
+history of overwritten producers.
+
+Iteration 9 temporary `testing.AllocsPerRun(1000, ...)` measurements reported zero
+allocations/run for matching indexed `Instance.SetGlobalValue` and
+`Global.SetValue`. Three 200 ms samples of ordinary imported-table invocation
+remained allocation-free: one imported table measured 63.77-64.38 ns/op and two
+imported tables measured 88.69-90.96 ns/op on the current host. These are current-
+host watchpoints, not before/after claims; root reconciliation is limited to
+modules that import funcref storage and scans only finite declared containers.
 
 On July 10, 2026, the pinned single-CPU null global set/get benchmark measured a
 21.49 ns/op median with 0 B/op and 0 allocs/op. Warmed Runtime instantiation of
