@@ -154,8 +154,10 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 		if mt.Shared {
 			return nil, fmt.Errorf("compile: staged memory64 rejects shared memory")
 		}
-		if len(m.Data) != 0 {
-			return nil, fmt.Errorf("compile: staged memory64 rejects active or passive data segments")
+		for i := range m.Data {
+			if m.Data[i].Mode.Kind == wasm.DataPassive {
+				return nil, fmt.Errorf("compile: staged memory64 rejects passive data segments")
+			}
 		}
 		if mt.Limits.Max == nil || *mt.Limits.Max > 65535 {
 			return nil, fmt.Errorf("compile: staged memory64 requires an explicit maximum no greater than 65535 pages")
@@ -500,12 +502,33 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 			c.PassiveData[i] = PassiveDataInit{Bytes: append([]byte(nil), d.Init...)}
 			continue
 		}
-		off, err := evalConstExprWithModule(d.Mode.Offset, wasm.I32, m)
+		want := wasm.I32
+		memory64 := false
+		if mt, ok := m.MemoryType(uint32(d.Mode.Mem)); ok && mt.Limits.Addr64 {
+			want = wasm.I64
+			memory64 = true
+		}
+		off, err := evalConstExprWithModule(d.Mode.Offset, want, m)
 		if err != nil {
 			return nil, fmt.Errorf("data %d offset: %w", i, err)
 		}
 		init := DataInit{MemoryIndex: uint32(d.Mode.Mem), Bytes: d.Init}
-		applyDataOffset(&init, off.Init())
+		if memory64 {
+			// OffsetInit's compact Base/HasGlobal forms are intentionally i32-only.
+			// Preserve the already validated i64 program in the existing Expr field so
+			// codec v25 remains stable while instantiation retains all 64 address bits.
+			if len(d.Mode.Offset.BodyBytes) != 0 {
+				init.Offset.Expr = append([]byte(nil), d.Mode.Offset.BodyBytes...)
+			} else {
+				encoded, err := wasm.EncodeExpr(d.Mode.Offset)
+				if err != nil {
+					return nil, fmt.Errorf("data %d offset encode: %w", i, err)
+				}
+				init.Offset.Expr = encoded
+			}
+		} else {
+			applyDataOffset(&init, off.Init())
+		}
 		c.Data = append(c.Data, init)
 	}
 	compiled := installCompiledFinalizer(c)
@@ -1344,16 +1367,19 @@ func (c *Compiled) validate() error {
 			}
 		}
 	}
-	validateOffset := func(kind string, seg int, offset OffsetInit) error {
+	validateOffset := func(kind string, seg int, offset OffsetInit, want ValType) error {
 		if offset.HasGlobal && len(offset.Expr) != 0 {
 			return fmt.Errorf("compiled metadata invalid: %s %d has multiple offset initializer forms", kind, seg)
 		}
 		if offset.HasGlobal {
+			if want != ValI32 {
+				return fmt.Errorf("compiled metadata invalid: %s %d uses compact i32 global offset for %s address", kind, seg, want)
+			}
 			return c.validateDeferredOffsetGlobal(kind, seg, offset.Global)
 		}
 		if len(offset.Expr) != 0 {
-			if err := validateCompiledScalarConstExpr(offset.Expr, ValI32, c.Globals, len(c.GlobalImports)); err != nil {
-				return fmt.Errorf("compiled metadata invalid: %s %d extended offset: %w", kind, seg, err)
+			if err := validateCompiledScalarConstExpr(offset.Expr, want, c.Globals, len(c.GlobalImports)); err != nil {
+				return fmt.Errorf("compiled metadata invalid: %s %d extended %s offset: %w", kind, seg, want, err)
 			}
 		}
 		return nil
@@ -1403,7 +1429,7 @@ func (c *Compiled) validate() error {
 		if elemErr != nil || tableErr != nil || !valueTypeSubtype(elemExact, c.Types, tableExact, c.Types) {
 			return fmt.Errorf("compiled metadata invalid: active element %d structural type does not match table %d", seg, el.TableIndex)
 		}
-		if err := validateOffset("element", seg, el.Offset); err != nil {
+		if err := validateOffset("element", seg, el.Offset, ValI32); err != nil {
 			return err
 		}
 		if err := validateElementValues("active", seg, el); err != nil {
@@ -1432,7 +1458,11 @@ func (c *Compiled) validate() error {
 				return fmt.Errorf("compiled metadata invalid: active data %d memory index %d out of range", seg, d.MemoryIndex)
 			}
 		}
-		if err := validateOffset("data", seg, d.Offset); err != nil {
+		want := ValI32
+		if count := c.memoryCount(); count != 0 && c.memoryDef(int(d.MemoryIndex)).Addr64 {
+			want = ValI64
+		}
+		if err := validateOffset("data", seg, d.Offset, want); err != nil {
 			return err
 		}
 	}
@@ -1560,20 +1590,23 @@ func (c *Compiled) validateCodecMetadata() error {
 			return fmt.Errorf("compiled metadata invalid: table export %q index %d out of range", name, tableIndex)
 		}
 	}
-	checkOffset := func(kind string, i int, offset OffsetInit) error {
+	checkOffset := func(kind string, i int, offset OffsetInit, want ValType) error {
 		if offset.HasGlobal && len(offset.Expr) != 0 {
 			return fmt.Errorf("compiled metadata invalid: %s %d has multiple offset initializer forms", kind, i)
 		}
+		if offset.HasGlobal && want != ValI32 {
+			return fmt.Errorf("compiled metadata invalid: %s %d uses compact i32 global offset for %s address", kind, i, want)
+		}
 		if len(offset.Expr) != 0 {
-			if err := validateCompiledScalarConstExpr(offset.Expr, ValI32, c.Globals, len(c.GlobalImports)); err != nil {
-				return fmt.Errorf("compiled metadata invalid: %s %d extended offset: %w", kind, i, err)
+			if err := validateCompiledScalarConstExpr(offset.Expr, want, c.Globals, len(c.GlobalImports)); err != nil {
+				return fmt.Errorf("compiled metadata invalid: %s %d extended %s offset: %w", kind, i, want, err)
 			}
 		}
 		return nil
 	}
 	checkElems := func(kind string, elems []ElemInit) error {
 		for i, elem := range elems {
-			if err := checkOffset(kind, i, elem.Offset); err != nil {
+			if err := checkOffset(kind, i, elem.Offset, ValI32); err != nil {
 				return err
 			}
 			refType := normalizedElemRefType(elem.RefType)
@@ -1592,7 +1625,11 @@ func (c *Compiled) validateCodecMetadata() error {
 		return err
 	}
 	for i, data := range c.Data {
-		if err := checkOffset("data", i, data.Offset); err != nil {
+		want := ValI32
+		if c.memoryCount() != 0 && c.memoryDef(int(data.MemoryIndex)).Addr64 {
+			want = ValI64
+		}
+		if err := checkOffset("data", i, data.Offset, want); err != nil {
 			return err
 		}
 	}

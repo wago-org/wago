@@ -34,7 +34,7 @@ func stagedMemory64KnownGate(err error) bool {
 		"memory64 requires an explicit bounded maximum",
 		"exceeds staged ceiling 65535",
 		"requires an explicit maximum no greater than 65535 pages",
-		"rejects active or passive data segments",
+		"rejects passive data segments",
 		"outside staged scalar family",
 		"requires exactly one local memory",
 	} {
