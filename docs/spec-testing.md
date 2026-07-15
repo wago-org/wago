@@ -72,21 +72,24 @@ commands are now gap-free: 79 instantiated modules, 771 successful assertions,
 blocked commands, or unexpected compile/link/assertion gaps. The runner requires pinned WABT
 and skips as a whole when the tool is absent; it never turns missing tooling into
 a partial green matrix. Iteration 15 also adds
-`tests/spec-v3-staged-return-call-ref.json`: all 51 commands are accounted, with
-4 modules and 35 assertions green, 11 invalid modules rejected, and one valid
-reference-result module behind an explicit backend ABI gate. Iteration 16 adds
+`tests/spec-v3-staged-return-call-ref.json`: Iteration 18 makes all 51 commands
+fully green under staged admission, with 5 modules and 35 assertions executing and
+11 invalid modules rejected. The admitted reference-result shape is one canonical
+funcref descriptor returned in RAX; broader reference/foreign result ABIs remain gated.
+Iteration 16 adds
 `tests/spec-v3-staged-return-call.json`, fully green for all 47 commands (3 modules,
 33 assertions, 11 invalid), and `tests/spec-v3-staged-return-call-indirect.json`,
 which Iteration 17 makes fully green for all 79 commands: 3 modules, 49 assertions,
 16 invalid, and 11 malformed. The proof is finite per local unexported/unmutated
  table; imported, mutable, exported, and host/cross-instance descriptor tables remain
-fail-closed. Iteration 17 also adds `tests/spec-v3-staged-memory64.json`, accounting
-807 commands across six pinned local address/alignment/float/load/grow/trap files:
-1 module and 8 assertions execute, while 42 policy/data/family gates and 614 dependent
-commands remain explicit; 83 invalid and 59 malformed cases are recorded. Snapshot-v3
-owned-local restore, nested typed-tail continuation, and bounded local memory64
-scalars are supplementary evidence; public gates remain closed, so the public schema-2
-inventory remains byte-for-byte unchanged.
+fail-closed. Iteration 17 also adds `tests/spec-v3-staged-memory64.json`; Iteration 18
+admits active data initialization with exact i64 offset metadata and updates the six-file
+accounting to 807 commands: 7 modules and 92 assertions execute, while 36 bounded-policy/
+family gates and 530 dependent commands remain explicit; 83 invalid and 59 malformed
+cases are recorded. Snapshot-v3 owned-local restore, nested typed-tail continuation,
+bounded local memory64 scalars/data, and imported-numeric-global basedata tenants are
+supplementary evidence; public gates remain closed, so the public schema-2 inventory
+remains byte-for-byte unchanged.
 Refresh the machine-readable red inventory with `scripts/spec3-baseline.sh`; the
 command remains nonzero until the zero-gap completion gate is met.
 

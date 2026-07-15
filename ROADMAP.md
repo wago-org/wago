@@ -130,11 +130,12 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   assertions, and 11 invalid modules. Per-table finite immutable-local proofs plus
   staged scalar descriptors and fixed-bank wrapper tails now make all 79
   `return_call_indirect` commands green: 3 modules, 49 assertions, 16 invalid, and
-  11 malformed. The pinned `return_call_ref` runner retains
-  4 modules/35 assertions green, 11 invalid modules, and one reference-result gate.
-  Public admission, cross-instance direct/general-table/foreign-float/reference-result
-  tails, live typed snapshot state, remaining GC/reference instructions, and arm64
-  parity remain gated.
+  11 malformed. The pinned `return_call_ref` runner is now gap-free at 51 commands,
+  5 modules, 35 assertions, and 11 invalid modules; one canonical funcref result uses
+  the staged RAX return path with exact descriptor ownership. Public admission,
+  cross-instance direct/general-table/foreign-float/general reference-result tails,
+  live typed snapshot state, remaining GC/reference instructions, and arm64 parity
+  remain gated.
 - 🚧 Multi-memory now has an explicit internal AST/byte-backed gate, exact
   compiled/product declaration/import/export directories, declaration-based
   policy accounting, duplicate imported-memory alias deduplication, and codec v25
@@ -143,8 +144,9 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   and passive data lifecycle, and `memory.init/copy/fill` with exact cross-memory,
   overlap, bounds, and drop behavior. A finite compile-only co-tenant proof now
   serializes owner/consumer basedata, refreshes bounded native directories, and
-  admits executable owners plus re-export-only function imports while rejecting
-  native imported calls, tables, globals, passive/reference state, and host calls.
+  admits executable owners, re-export-only function imports, and finite imported
+  numeric-global pointer arrays while rejecting native imported calls, tables,
+  local/reference/vector globals, passive/reference state, and host calls.
   Core 3 compact imports remain strict. The complete 42-file matrix is gap-free at
   913 commands, 79 modules, 771 assertions, 4 invalid, 22 unlinkable, and 20
   uninstantiable cases, with zero feature rejects or blocked commands.
@@ -155,13 +157,14 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   arm64 remain.
 - 🚧 memory64 has one bounded linux/amd64 local execution slice: exact 64-bit
   metadata/codec limits, explicit maximum <=65,535 pages, checked u64 address/offset
-  arithmetic, `memory.size/grow`, all 19 integer scalar operations, and all four
-  `f32`/`f64` scalar loads/stores. Signed/unsigned extensions, exact-width writes,
-  NaN payload preservation, end-of-memory traps, AST/byte-backed admission, and
-  unchanged memory32 code are covered. A six-file official accounting matrix records
-  807 commands, 1 admitted module, 8 assertions, 42 explicit gates, 614 blocked
-  dependents, 83 invalid, and 59 malformed cases with zero hidden gaps. Imports,
-  shared/data/multi-memory, SIMD/bulk, guard mode, public admission, and arm64 remain. Table64,
+  arithmetic, `memory.size/grow`, all 19 integer scalar operations, all four float
+  scalar operations, and active data initialization. Validated i64 offset programs
+  round-trip through codec v25; offset+length carry and bounds are checked before
+  copy, while passive data and snapshots remain explicit gates. A six-file official
+  accounting matrix records 807 commands, 7 admitted modules, 92 assertions, 36
+  explicit gates, 530 blocked dependents, 83 invalid, and 59 malformed cases with
+  zero hidden gaps. Imports, shared/multi-memory, SIMD/bulk, unbounded/excessive
+  reservations, guard mode, public admission, snapshots, and arm64 remain. Table64,
   exception handling, and GC remain end-to-end work.
 - [ ] Reach zero unexplained failures/skips in the official Release 3 core suite.
 
@@ -232,9 +235,10 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   frame-reuse milestones exist. The pinned `return_call` file is fully green at 47
   commands / 3 modules / 33 assertions / 11 invalid. The 79-command indirect file
   is fully green at 3 modules / 49 assertions / 16 invalid / 11 malformed. `return_call_ref`
-  retains 35 green assertions and one reference-result ABI gate. Public admission,
-  cross-instance direct/general-table/foreign-float/reference-result, oversized
-  signatures, snapshots, and arm64 execution remain.
+  is gap-free at 51 commands / 5 modules / 35 assertions / 11 invalid, including one
+  canonical funcref result. Public admission, cross-instance direct/general-table/
+  foreign-float/general reference-result, oversized signatures, snapshots, and arm64
+  execution remain.
 - [x] Basic extended constant expressions: integer add/sub/mul, prior immutable
   globals, active offsets, strict validation, and codec-v25 persistence.
 - 🚧 Typed function references: typed `ref.func`, recursive structural equivalence,

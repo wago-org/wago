@@ -50,11 +50,13 @@
   `return_call_ref` commands. Iteration 16 makes all 47 `return_call` commands green
   (3 modules, 33 assertions, 11 invalid), accounts all 79 `return_call_indirect`
   commands. Iteration 17 makes `return_call_indirect` fully green at 3 modules / 49
-  assertions / 16 invalid / 11 malformed, makes every multi-memory command gap-free,
-  admits all four bounded float scalar memory64 operations, and adds exact accounting
-  for 807 commands across six pinned memory64 files (1 module / 8 assertions green,
-  42 explicit gates / 614 blocked dependents / 83 invalid / 59 malformed). Cross-
-  instance direct tails, broader typed-tail results, SIMD/bulk/data memory64, and
+  assertions / 16 invalid / 11 malformed and makes every multi-memory command gap-free.
+  Iteration 18 makes `return_call_ref` gap-free at 51 commands / 5 modules / 35
+  assertions / 11 invalid, admits active memory64 data initialization, and updates
+  the exact six-file memory64 accounting to 807 commands / 7 modules / 92 assertions /
+  36 explicit gates / 530 blocked dependents / 83 invalid / 59 malformed. A shared-
+  basedata tenant may additionally retain a finite imported numeric-global array.
+  Cross-instance direct tails, broader typed-tail results, SIMD/bulk memory64, and
   unsupported product/platform paths remain explicit.
   Public typed-reference, multi-memory, compact-import, memory64, and tail-call
   execution remain disabled; the schema-2 totals remain byte-for-byte unchanged.

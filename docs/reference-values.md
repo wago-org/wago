@@ -78,10 +78,12 @@ released callee frame with one fixed 32-byte record containing a trampoline, cal
 linmem, and two integer result slots. The wrapper returns through the trampoline,
 which restores caller memory/module context plus `RAX`/`RDX` before the ordinary
 continuation resumes. Iteration 15 proves both result slots, producer logical close,
-and 10,000 repeated cross-instance transfers; the pinned official file executes
-35 assertions, while its reference-result module remains an explicit ABI gate.
-Hosts reached through typed descriptors, untagged foreign descriptors, foreign
-float results, nulls, wrong keys, snapshots, public admission, and arm64 typed-tail
+and 10,000 repeated cross-instance transfers. Iteration 18 makes the pinned official
+file gap-free at 51 commands / 5 modules / 35 assertions / 11 invalid modules by
+returning one canonical funcref descriptor in RAX; a focused public-token round trip
+proves that direct and tailed results retain the same function identity. Hosts reached
+through typed descriptors, untagged foreign descriptors, foreign float/general
+reference results, nulls, wrong keys, snapshots, public admission, and arm64 typed-tail
 execution remain explicit failures. Iteration 16's direct `return_call` host support
 is a separate static-import path through the existing bounded host bridge; it does
 not tag or admit host funcref descriptors. Iteration 17's indirect-tail work is also
@@ -90,8 +92,9 @@ unexported, unmutated tables whose entries are same-module functions. Scalar sta
 tail modules may tag GP/XMM internal descriptors; wrapper-only mixed-result targets
 use the fixed basedata argument bank. Ordinary Release 1/2 float descriptors retain
 the wrapper path, and imported/mutable/exported/host-descriptor tables remain gated.
-`Instance`, basedata, and native descriptor sizes do not grow. The most recent typed-
-tail watchpoints remain root 63.65-64.89 ns/op and nested 75.82-78.51 ns/op, both
+`Instance`, basedata, and native descriptor sizes do not grow. Iteration 18's staged
+reference-result tail measured 97.15-99.04 ns/op at zero allocations; retained cross-
+instance root/nested watchpoints remain 63.65-64.89 ns/op and 75.82-78.51 ns/op, both
 0 B/op and 0 allocations/op on the iteration-16 host.
 
 The store never dereferences public bits or an unvalidated `refSlot`. Corrupted
