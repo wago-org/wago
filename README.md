@@ -529,7 +529,7 @@ for the listed subset. [FEATURES.md](FEATURES.md) is the source of truth.
 | SIMD | Done for the documented linux/amd64 baseline: SSSE3/SSE4.1 plus AVX/VEX.128. Core SIMD and deterministic relaxed SIMD opcodes through `0xfd 275` are decoded, validated, and lowered. |
 | Extended constant expressions | Done for the basic Release 3 extension: `i32`/`i64` add/sub/mul, earlier immutable globals, active offsets, strict AST/byte-backed validation, instantiate-time evaluation, and codec-v21 persistence. |
 | Threads and atomics | Planned. |
-| Tail calls | Active WebAssembly 3.0 work: decoded/validated, explicitly frontend-gated, not executable yet. |
+| Tail calls | Active WebAssembly 3.0 work: decoded/validated; amd64 local direct and private immutable-table int-only indirect forms have internal frame-reuse milestones, but public admission stays disabled until imports/general tables/`return_call_ref` and platform policy are complete. |
 | Typed function references | Syntax/type foundation exists; `call_ref` and non-basic typed refs remain frontend-gated. |
 | Multi-memory, memory64, table64 | Active WebAssembly 3.0 scope; validation foundations exist, runtime/backend execution remains gated. |
 | Exceptions and wasm GC | Active WebAssembly 3.0 scope; syntax/collector foundations exist, but native unwind, roots, safepoints, opcode lowering, and barriers remain. |
