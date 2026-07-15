@@ -886,7 +886,7 @@ func (f *fn) opReturn() error {
 // skipImmediates advances over a dead-code opcode's operands without emitting.
 func skipImmediates(r *wasm.Reader, op byte) error {
 	switch {
-	case op == 0x10: // call
+	case op == 0x10 || op == 0x12: // call / return_call
 		_, err := r.U32()
 		return err
 	case op == 0x11: // call_indirect

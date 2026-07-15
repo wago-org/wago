@@ -376,11 +376,12 @@ type scratch struct {
 	// arrays are retained and reused across every function in the module instead of
 	// being reallocated per function; reset() only rewinds their lengths. trapSites
 	// is indexed by trap code (a small dense enum), replacing a per-function map.
-	retSites     []int
-	brFoldSites  []int
-	trapSites    [trapStackFence + 1][]int
-	ctrl         []ctrlFrame // control-frame stack backing; reused across functions
-	pinnedLocals []int       // pinned-local index backing; reused across functions
+	retSites       []int
+	tailFrameSites []int // AddRsp imm32 sites emitted before tail jumps
+	brFoldSites    []int
+	trapSites      [trapStackFence + 1][]int
+	ctrl           []ctrlFrame // control-frame stack backing; reused across functions
+	pinnedLocals   []int       // pinned-local index backing; reused across functions
 	transient
 }
 
@@ -392,6 +393,7 @@ func (sc *scratch) reset() {
 	sc.stack.reset()
 	sc.asm.B = sc.asm.B[:0]
 	sc.retSites = sc.retSites[:0]
+	sc.tailFrameSites = sc.tailFrameSites[:0]
 	sc.brFoldSites = sc.brFoldSites[:0]
 	sc.ctrl = sc.ctrl[:0]
 	for i := range sc.trapSites {
@@ -1276,8 +1278,7 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, int
 	f.epilogue()
 	f.emitTrapStubs()
 	f.finalizeBranchFolds()
-	f.a.PatchU32(f.subRspAt, uint32(f.frameSize()))
-	f.a.PatchU32(f.addRspAt, uint32(f.frameSize()))
+	f.patchFrameSize()
 	f.emitV128ConstPool() // trailing rip-relative pool for v128 constants (after all code)
 	f.finalizeStats(len(f.a.B))
 	return f.a.B, f.relocs, 0, nil
@@ -1827,10 +1828,18 @@ func (f *fn) emitRegABI(c *wasm.Func) (int, error) {
 	f.finalizeBranchFolds()
 
 	f.elideRegisterOnlyFrame() // register-homed call-free leaf → frameSize 0
-	a.PatchU32(f.subRspAt, uint32(f.frameSize()))
-	a.PatchU32(f.addRspAt, uint32(f.frameSize()))
+	f.patchFrameSize()
 	a.PatchRel32(adapterCall, internalOff)
 	return internalOff, nil
+}
+
+func (f *fn) patchFrameSize() {
+	size := uint32(f.frameSize())
+	f.a.PatchU32(f.subRspAt, size)
+	f.a.PatchU32(f.addRspAt, size)
+	for _, site := range f.sc.tailFrameSites {
+		f.a.PatchU32(site, size)
+	}
 }
 
 // epilogue: copy results from their canonical slots to the results buffer, clear

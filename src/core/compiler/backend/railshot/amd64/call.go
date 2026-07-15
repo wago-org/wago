@@ -99,6 +99,18 @@ func sigFitsRegABI(ft *wasm.CompType) bool {
 	return true
 }
 
+func sameValTypes(a, b []wasm.ValType) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if !wasm.EqualValType(a[i], b[i]) {
+			return false
+		}
+	}
+	return true
+}
+
 func (f *fn) callOp(r *wasm.Reader) error {
 	idx, err := r.U32()
 	if err != nil {
@@ -155,6 +167,145 @@ func (f *fn) callOp(r *wasm.Reader) error {
 		}
 	}
 	return f.callInternal(int(idx)-imported, ft, hint)
+}
+
+// returnCall lowers the bounded direct-tail-call milestone. A validated local
+// target whose caller and callee fit the internal register ABI reuses the current
+// activation: arguments are staged in the callee's GP/XMM banks, the current
+// frame is released, and control jumps (rather than calls) to the callee's
+// internal entry. Imported targets and wrapper-only signatures remain explicit
+// backend rejections; the public tail-call feature gate therefore stays disabled.
+func (f *fn) returnCall(r *wasm.Reader) error {
+	idx, err := r.U32()
+	if err != nil {
+		return err
+	}
+	ft, ok := f.m.FuncSignature(idx)
+	if !ok {
+		return fmt.Errorf("return_call: unknown function %d", idx)
+	}
+	if !sameValTypes(f.ft.Results, ft.Results) {
+		return fmt.Errorf("return_call: target %d result shape differs from caller", idx)
+	}
+	imported := f.m.ImportedFuncCount()
+	if int(idx) < imported {
+		return fmt.Errorf("return_call: imported target %d requires unsupported host/cross-instance tail ABI", idx)
+	}
+	if !sigFitsRegABI(f.ft) || !sigFitsRegABI(ft) {
+		return fmt.Errorf("return_call: caller or target %d requires unsupported wrapper tail ABI", idx)
+	}
+	f.stats.call("tail-direct")
+	f.emitTailRegisterJump(ft, func() {
+		site := f.a.JmpPlaceholder()
+		f.relocs = append(f.relocs, callReloc{at: site, target: int(idx) - imported, internal: true})
+	})
+	f.unreachable = true
+	return nil
+}
+
+type tailDeferredArg struct {
+	target Reg
+	root   *elem
+	float  bool
+}
+
+// emitTailRegisterJump stages a register-ABI callee's arguments without
+// preserving any caller locals or operand values: a tail call has no continuation.
+// It then releases the current frame and emits the supplied direct/indirect jump.
+func (f *fn) emitTailRegisterJump(ft *wasm.CompType, emitJump func()) {
+	p := len(ft.Params)
+	f.storePinnedGlobals(false)
+
+	var roots [15]*elem // sigFitsRegABI caps params at 7 GP + 8 FP
+	cur := f.s.back()
+	for i := p - 1; i >= 0; i-- {
+		roots[i] = cur
+		if i > 0 {
+			cur = baseOfValentBlock(cur).prev
+		}
+	}
+
+	var gpMoves [7]regMove
+	var fpMoves [8]regMove
+	var deferred [15]tailDeferredArg
+	gpN, fpN, deferredN := 0, 0, 0
+	gp, fp := 0, 0
+	for i, typ := range ft.Params {
+		mt := mtOf(typ)
+		root := roots[i]
+		resident := root.isDeferred() || (root.kind == ekValue && (root.st.kind == stReg || root.st.kind == stLocalReg || root.st.kind == stGlobReg || root.st.kind == stMemRef))
+		if mt.isFloat() {
+			target := fpArgRegs[fp]
+			if resident {
+				src := f.materializeF(root)
+				f.fpinned = f.fpinned.add(src)
+				fpMoves[fpN] = regMove{dst: target, src: src}
+				fpN++
+			} else {
+				deferred[deferredN] = tailDeferredArg{target: target, root: root, float: true}
+				deferredN++
+			}
+			fp++
+			continue
+		}
+		target := intArgRegs[gp]
+		if resident {
+			src := f.materialize(root)
+			f.pinned = f.pinned.add(src)
+			gpMoves[gpN] = regMove{dst: target, src: src}
+			gpN++
+		} else {
+			deferred[deferredN] = tailDeferredArg{target: target, root: root}
+			deferredN++
+		}
+		gp++
+	}
+
+	for _, move := range gpMoves[:gpN] {
+		f.pinned = f.pinned.remove(move.src)
+	}
+	resolveRegMoves(gpMoves[:gpN], func(dst, src Reg) { f.a.MovReg64(dst, src) }, func(x, y Reg) { f.a.Xchg64(x, y) })
+	for _, move := range fpMoves[:fpN] {
+		f.fpinned = f.fpinned.remove(move.src)
+	}
+	fpSwapSlot := -1
+	resolveRegMoves(fpMoves[:fpN],
+		func(dst, src Reg) { f.a.FMov(dst, src, true) },
+		func(x, y Reg) {
+			if fpSwapSlot < 0 {
+				fpSwapSlot = f.allocSpillSlot()
+			}
+			off := f.spillOff(fpSwapSlot)
+			f.a.FStoreDisp(RSP, off, x, true)
+			f.a.FMov(x, y, true)
+			f.a.FLoadDisp(y, RSP, off, true)
+		})
+	for _, arg := range deferred[:deferredN] {
+		if arg.float {
+			switch arg.root.st.kind {
+			case stConst:
+				f.loadFConst(arg.target, arg.root.st)
+			case stSlot:
+				f.a.FLoadDisp(arg.target, RSP, f.spillOff(arg.root.st.slot), arg.root.st.typ == mtF64)
+			case stLocalRef:
+				f.a.FLoadDisp(arg.target, RSP, f.localOff(arg.root.st.idx), arg.root.st.typ == mtF64)
+			}
+			continue
+		}
+		switch arg.root.st.kind {
+		case stConst:
+			f.loadConst(arg.target, arg.root.st)
+		case stSlot:
+			f.a.Load64(arg.target, RSP, f.spillOff(arg.root.st.slot))
+		case stLocalRef:
+			f.a.Load64(arg.target, RSP, f.localOff(arg.root.st.idx))
+		}
+	}
+
+	frameSite := f.a.Len() + 3
+	f.a.AddRsp(0)
+	f.sc.tailFrameSites = append(f.sc.tailFrameSites, frameSite)
+	emitJump()
 }
 
 // callHost lowers a call to a VOID imported (host) function. Native wasm code
