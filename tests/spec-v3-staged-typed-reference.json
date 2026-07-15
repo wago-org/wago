@@ -5,32 +5,15 @@
     {
       "name": "br_on_non_null",
       "status": "accounted",
-      "gates": [
-        {
-          "family": "typed-function-references",
-          "reason": "abstract or indexed reference block types are not fully lowered",
-          "count": 1
-        },
-        {
-          "family": "typed-function-references",
-          "reason": "bottom function references remain outside this staged slice",
-          "count": 1
-        },
-        {
-          "family": "typed-function-references",
-          "reason": "br_on_non_null validation/lowering remains incomplete",
-          "count": 1
-        }
-      ],
       "counts": {
         "commands": 12,
-        "modules_passed": 0,
-        "assertions_passed": 0,
+        "modules_passed": 3,
+        "assertions_passed": 8,
         "expected_invalid": 1,
         "expected_unlinkable": 0,
         "expected_uninstantiable": 0,
-        "expected_feature_rejects": 3,
-        "blocked_commands": 8,
+        "expected_feature_rejects": 0,
+        "blocked_commands": 0,
         "unexpected_compile_rejects": 0,
         "unexpected_link_rejects": 0,
         "failures": 0
@@ -80,21 +63,14 @@
     {
       "name": "ref",
       "status": "accounted",
-      "gates": [
-        {
-          "family": "typed-function-references",
-          "reason": "non-null extern references remain outside this staged slice",
-          "count": 1
-        }
-      ],
       "counts": {
         "commands": 13,
-        "modules_passed": 0,
+        "modules_passed": 1,
         "assertions_passed": 0,
         "expected_invalid": 12,
         "expected_unlinkable": 0,
         "expected_uninstantiable": 0,
-        "expected_feature_rejects": 1,
+        "expected_feature_rejects": 0,
         "blocked_commands": 0,
         "unexpected_compile_rejects": 0,
         "unexpected_link_rejects": 0,
@@ -104,21 +80,14 @@
     {
       "name": "ref_as_non_null",
       "status": "accounted",
-      "gates": [
-        {
-          "family": "typed-function-references",
-          "reason": "non-null extern references remain outside this staged slice",
-          "count": 1
-        }
-      ],
       "counts": {
         "commands": 7,
-        "modules_passed": 1,
+        "modules_passed": 2,
         "assertions_passed": 4,
         "expected_invalid": 1,
         "expected_unlinkable": 0,
         "expected_uninstantiable": 0,
-        "expected_feature_rejects": 1,
+        "expected_feature_rejects": 0,
         "blocked_commands": 0,
         "unexpected_compile_rejects": 0,
         "unexpected_link_rejects": 0,
@@ -145,21 +114,14 @@
     {
       "name": "ref_is_null",
       "status": "accounted",
-      "gates": [
-        {
-          "family": "typed-function-references",
-          "reason": "non-null extern references remain outside this staged slice",
-          "count": 1
-        }
-      ],
       "counts": {
         "commands": 22,
-        "modules_passed": 1,
+        "modules_passed": 2,
         "assertions_passed": 18,
         "expected_invalid": 2,
         "expected_unlinkable": 0,
         "expected_uninstantiable": 0,
-        "expected_feature_rejects": 1,
+        "expected_feature_rejects": 0,
         "blocked_commands": 0,
         "unexpected_compile_rejects": 0,
         "unexpected_link_rejects": 0,
@@ -253,11 +215,6 @@
       "gates": [
         {
           "family": "typed-function-references",
-          "reason": "abstract or indexed reference block types are not fully lowered",
-          "count": 1
-        },
-        {
-          "family": "typed-function-references",
           "reason": "cross-instance structural function imports remain incomplete",
           "count": 6
         },
@@ -269,13 +226,13 @@
       ],
       "counts": {
         "commands": 53,
-        "modules_passed": 14,
-        "assertions_passed": 3,
+        "modules_passed": 15,
+        "assertions_passed": 4,
         "expected_invalid": 0,
         "expected_unlinkable": 0,
         "expected_uninstantiable": 0,
-        "expected_feature_rejects": 8,
-        "blocked_commands": 1,
+        "expected_feature_rejects": 7,
+        "blocked_commands": 0,
         "unexpected_compile_rejects": 0,
         "unexpected_link_rejects": 0,
         "failures": 0
@@ -318,21 +275,14 @@
     {
       "name": "unreached-valid",
       "status": "accounted",
-      "gates": [
-        {
-          "family": "typed-function-references",
-          "reason": "non-null extern references remain outside this staged slice",
-          "count": 1
-        }
-      ],
       "counts": {
         "commands": 13,
-        "modules_passed": 2,
+        "modules_passed": 3,
         "assertions_passed": 10,
         "expected_invalid": 0,
         "expected_unlinkable": 0,
         "expected_uninstantiable": 0,
-        "expected_feature_rejects": 1,
+        "expected_feature_rejects": 0,
         "blocked_commands": 0,
         "unexpected_compile_rejects": 0,
         "unexpected_link_rejects": 0,
@@ -358,28 +308,8 @@
     },
     {
       "family": "typed-function-references",
-      "reason": "abstract or indexed reference block types are not fully lowered",
-      "count": 2
-    },
-    {
-      "family": "typed-function-references",
-      "reason": "bottom function references remain outside this staged slice",
-      "count": 1
-    },
-    {
-      "family": "typed-function-references",
-      "reason": "br_on_non_null validation/lowering remains incomplete",
-      "count": 1
-    },
-    {
-      "family": "typed-function-references",
       "reason": "cross-instance structural function imports remain incomplete",
       "count": 6
-    },
-    {
-      "family": "typed-function-references",
-      "reason": "non-null extern references remain outside this staged slice",
-      "count": 4
     },
     {
       "family": "typed-function-references",
@@ -394,14 +324,14 @@
   ],
   "totals": {
     "commands": 422,
-    "modules_passed": 35,
-    "assertions_passed": 202,
+    "modules_passed": 43,
+    "assertions_passed": 211,
     "expected_invalid": 59,
     "expected_malformed": 2,
     "expected_unlinkable": 1,
     "expected_uninstantiable": 0,
-    "expected_feature_rejects": 33,
-    "blocked_commands": 45,
+    "expected_feature_rejects": 25,
+    "blocked_commands": 36,
     "unexpected_compile_rejects": 0,
     "unexpected_link_rejects": 0,
     "failures": 0

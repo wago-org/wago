@@ -101,6 +101,46 @@ func typedLocalCallRefModule() []byte {
 	)
 }
 
+func typedNullControlModule() []byte {
+	typedControl := []byte{0x60}
+	typedControl = append(typedControl, wasmtest.Vec(encodedNullableIndexedRef(0))...)
+	typedControl = append(typedControl, wasmtest.Vec([]byte{0x7f})...)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType(nil, nil),
+			typedControl,
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
+			0x02, 0x64, 0x00, // block (result (ref type 0))
+			0x20, 0x00, // local.get 0
+			0xd6, 0x00, // br_on_non_null 0
+			0x41, 0x01, 0x0f, // null fallthrough consumes the reference
+			0x0b,
+			0x1a,       // drop the taken non-null branch result
+			0x41, 0x02, // non-null result
+			0x0b,
+		}))),
+	)
+}
+
+func BenchmarkStagedTypedNullControl(b *testing.B) {
+	compiled := stagedTypedStorageCompile(b, typedNullControlModule())
+	in, err := instantiateCore(compiled, InstantiateOptions{})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer in.Close()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if got, err := in.Invoke("run", 0); err != nil || len(got) != 1 || uint32(got[0]) != 1 {
+			b.Fatalf("null control result=%v err=%v", got, err)
+		}
+	}
+}
+
 func BenchmarkStagedTypedCrossInstanceCallRef(b *testing.B) {
 	producerCompiled := stagedTypedStorageCompile(b, typedCrossInstanceProducerModule())
 	producer, err := instantiateCore(producerCompiled, InstantiateOptions{})
@@ -128,24 +168,37 @@ func BenchmarkStagedTypedCrossInstanceCallRef(b *testing.B) {
 }
 
 func TestStagedTypedSnapshotPolicyRejectsCodecRoundTrip(t *testing.T) {
-	compiled := stagedTypedStorageCompile(t, typedLocalCallRefModule())
-	blob, err := compiled.MarshalBinary()
-	if err != nil {
-		t.Fatalf("marshal typed call_ref module: %v", err)
-	}
-	if _, err := Load(blob); err == nil || !strings.Contains(err.Error(), "required feature") {
-		t.Fatalf("public load of staged typed artifact = %v, want fail-closed required-feature error", err)
-	}
-	var loaded Compiled
-	if err := unmarshalCompiled(&loaded, blob[5:]); err != nil {
-		t.Fatalf("reload typed call_ref module: %v", err)
-	}
-	defer loaded.Close()
+	for name, module := range map[string][]byte{
+		"call_ref":     typedLocalCallRefModule(),
+		"null_control": typedNullControlModule(),
+	} {
+		t.Run(name, func(t *testing.T) {
+			compiled := stagedTypedStorageCompile(t, module)
+			if compiled.requiredFeatures&CoreFeatureTypedFunctionReferences == 0 {
+				t.Fatal("typed control/call artifact omitted its required feature bit")
+			}
+			blob, err := compiled.MarshalBinary()
+			if err != nil {
+				t.Fatalf("marshal typed module: %v", err)
+			}
+			if _, err := Load(blob); err == nil || !strings.Contains(err.Error(), "required feature") {
+				t.Fatalf("public load of staged typed artifact = %v, want fail-closed required-feature error", err)
+			}
+			var loaded Compiled
+			if err := unmarshalCompiled(&loaded, blob[5:]); err != nil {
+				t.Fatalf("reload typed module: %v", err)
+			}
+			defer loaded.Close()
+			if loaded.requiredFeatures&CoreFeatureTypedFunctionReferences == 0 {
+				t.Fatal("codec reload lost typed required feature bit")
+			}
 
-	for _, c := range []*Compiled{compiled, &loaded} {
-		_, err := Capture(c, SnapshotOptions{})
-		if err == nil || !strings.Contains(err.Error(), "typed function references") {
-			t.Fatalf("Capture typed call_ref module = %v, want explicit descriptor snapshot rejection", err)
-		}
+			for _, c := range []*Compiled{compiled, &loaded} {
+				_, err := Capture(c, SnapshotOptions{})
+				if err == nil || !strings.Contains(err.Error(), "typed function references") {
+					t.Fatalf("Capture typed module = %v, want explicit descriptor snapshot rejection", err)
+				}
+			}
+		})
 	}
 }
