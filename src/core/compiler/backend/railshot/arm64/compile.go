@@ -149,7 +149,7 @@ type fn struct {
 	// immutableLocalTable proves every non-null table-0 entry targets this module,
 	// so call_indirect can enter it directly through the internal register ABI.
 	immutableLocalTable bool
-	immutableTableType  uint32
+	immutableTableType  uint64
 	immutableTableTyped bool
 	monomorphicTarget   int
 	// preserveCallerPins marks a simple register-ABI leaf whose internal entry
@@ -982,11 +982,11 @@ func moduleExportsTable(m *wasm.Module) bool {
 	return false
 }
 
-func immutableLocalTableType(m *wasm.Module) (uint32, bool) {
+func immutableLocalTableType(m *wasm.Module) (uint64, bool) {
 	if !immutableTableTypeEnabled || len(m.Tables) != 1 || m.Tables[0].Init != nil {
 		return 0, false
 	}
-	var want uint32
+	var want uint64
 	found := false
 	for i := range m.Elements {
 		e := &m.Elements[i]
@@ -1001,10 +1001,13 @@ func immutableLocalTableType(m *wasm.Module) (uint32, bool) {
 			if !ok {
 				return 0, false
 			}
-			id := m.StructuralTypeID(typeIdx.Index)
+			key, ok := m.StructuralTypeKeyChecked(typeIdx.Index)
+			if !ok {
+				return 0, false
+			}
 			if !found {
-				want, found = id, true
-			} else if id != want {
+				want, found = key, true
+			} else if key != want {
 				return 0, false
 			}
 		}

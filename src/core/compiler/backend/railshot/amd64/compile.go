@@ -199,7 +199,7 @@ type fn struct {
 	// so no home/tag fork is needed; immutableTableTyped+immutableTableType elide
 	// the type check; monomorphicTarget is the sole target (or -1) for a direct call.
 	immutableLocalTable bool
-	immutableTableType  uint32
+	immutableTableType  uint64
 	immutableTableTyped bool
 	monomorphicTarget   int
 
@@ -948,14 +948,14 @@ func moduleExportsTable(m *wasm.Module) bool {
 	return false
 }
 
-// immutableLocalTableType returns the shared structural type id of every table-0
+// immutableLocalTableType returns the shared structural type key of every table-0
 // entry (and true) when the whole immutable table is uniformly typed, so the
 // call_indirect type check can be elided. Returns (0, false) otherwise.
-func immutableLocalTableType(m *wasm.Module) (uint32, bool) {
+func immutableLocalTableType(m *wasm.Module) (uint64, bool) {
 	if !immutableTableTypeEnabled || len(m.Tables) != 1 || m.Tables[0].Init != nil {
 		return 0, false
 	}
-	var want uint32
+	var want uint64
 	found := false
 	for i := range m.Elements {
 		e := &m.Elements[i]
@@ -970,10 +970,13 @@ func immutableLocalTableType(m *wasm.Module) (uint32, bool) {
 			if !ok {
 				return 0, false
 			}
-			id := m.StructuralTypeID(typeIdx.Index)
+			key, ok := m.StructuralTypeKeyChecked(typeIdx.Index)
+			if !ok {
+				return 0, false
+			}
 			if !found {
-				want, found = id, true
-			} else if id != want {
+				want, found = key, true
+			} else if key != want {
 				return 0, false
 			}
 		}

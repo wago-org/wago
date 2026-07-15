@@ -309,7 +309,7 @@ func TestHostFuncRefDescriptorLookup(t *testing.T) {
 		c: &Compiled{
 			NumImports: 1,
 			Imports:    []string{key},
-			FuncTypeID: []uint32{1, 1},
+			FuncTypeID: []uint64{1, 1},
 		},
 		imports:      Imports{key: owner},
 		funcRefDescs: make([]byte, 3*coreruntime.FuncRefDescBytes),

@@ -376,7 +376,7 @@ func TestCompiledValidateRejectsMalformedMetadata(t *testing.T) {
 			Entry:      []int{0},
 			Funcs:      []FuncSig{{Results: []ValType{ValI32}}},
 			Exports:    map[string]int{"f": 0},
-			FuncTypeID: []uint32{1},
+			FuncTypeID: []uint64{1},
 			Globals:    []GlobalDef{{Type: ValI32}},
 		}
 	}
@@ -449,7 +449,7 @@ func TestCompiledValidateRejectsMalformedMetadata(t *testing.T) {
 }
 
 func TestInstantiateRejectsMalformedCompiledBeforeMapping(t *testing.T) {
-	c := &Compiled{Entry: []int{0}, FuncTypeID: []uint32{1}, GlobalExports: map[string]int{"g": 0}}
+	c := &Compiled{Entry: []int{0}, FuncTypeID: []uint64{1}, GlobalExports: map[string]int{"g": 0}}
 	_, err := Instantiate(c, InstantiateOptions{Imports: Imports{}})
 	if err == nil || !bytes.Contains([]byte(err.Error()), []byte("Entry length 1 != Funcs length 0")) {
 		t.Fatalf("InstantiateWithImports malformed metadata error = %v, want validate error", err)

@@ -62,15 +62,15 @@ func TestCompiledCodecRoundTripsReferenceSignatures(t *testing.T) {
 		Code:       []byte{0xc3},
 		Entry:      []int{0},
 		Funcs:      []FuncSig{{Params: []ValType{ValFuncRef, ValExternRef}, Results: []ValType{ValExternRef, ValFuncRef}}},
-		FuncTypeID: []uint32{0},
+		FuncTypeID: []uint64{0},
 		Exports:    map[string]int{"refs": 0},
 	}
 	blob, err := input.MarshalBinary()
 	if err != nil {
 		t.Fatalf("MarshalBinary: %v", err)
 	}
-	if blob[4] != wagoVersion || wagoVersion != 24 {
-		t.Fatalf("compiled codec version = %d, want indexed-data version 24", blob[4])
+	if blob[4] != wagoVersion || wagoVersion != 25 {
+		t.Fatalf("compiled codec version = %d, want native-type-key version 25", blob[4])
 	}
 	for _, version := range []byte{19, 20} {
 		oldVersion := append([]byte(nil), blob...)
@@ -114,7 +114,7 @@ func TestCompiledCodecV22CarriesIndexedFunctionSignatures(t *testing.T) {
 			TypeIndex:    1,
 			HasTypeIndex: true,
 		}},
-		FuncTypeID: []uint32{7},
+		FuncTypeID: []uint64{7},
 		Exports:    map[string]int{"call": 0},
 		Globals: []GlobalDef{{
 			Type: ValFuncRef, ValueTypeIndex: 0, HasValueType: true,

@@ -32,7 +32,7 @@ const (
 const PassiveElemDescBytes = 16
 
 // TableEntryBytes is the size of one indirect-call table descriptor entry:
-// {codePtr u64, sigID u32, pad u32, homeLinMem u64, refSlot u64}. homeLinMem lets
+// {codePtr u64, sigKey u64, homeLinMem u64, refSlot u64}. homeLinMem lets
 // call_indirect run each funcref in its home instance's context (cross-instance
 // linking), and refSlot carries the nullable descriptor-pointer funcref handle
 // returned by table.get.
@@ -41,7 +41,7 @@ const PassiveElemDescBytes = 16
 // must use this size and these offsets.
 const (
 	TableEntryCodePtrOffset    = 0
-	TableEntrySigIDOffset      = 8
+	TableEntrySigKeyOffset     = 8
 	TableEntryHomeLinMemOffset = 16
 	TableEntryRefSlotOffset    = 24
 	TableEntryBytes            = 32

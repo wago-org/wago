@@ -586,6 +586,13 @@ type memoryDef struct {
 	Shared    bool
 }
 
+func (c *Compiled) funcTypeKey(index int) uint64 {
+	if c != nil && index >= 0 && index < len(c.FuncTypeID) {
+		return c.FuncTypeID[index]
+	}
+	return 0
+}
+
 type compiledMemoryDirectory struct {
 	defs         []memoryDef
 	exports      map[string]int
@@ -658,7 +665,7 @@ type Compiled struct {
 	TableHasMax         bool       // local table-0 declaration has an explicit maximum
 	TableInitFunc       uint32     // wasm function index used to prefill table 0 when HasTableInitFunc
 	extraTables         []tableDef // table indexes 1..N; imported positions carry indexed import metadata
-	FuncTypeID          []uint32   // canonical signature id per global function index
+	FuncTypeID          []uint64   // collision-resistant native signature key; legacy field name
 	NeedsFuncRefDescs   bool       // true when instantiation requires the canonical per-function descriptor arena
 	Elems               []ElemInit // active element segments
 

@@ -415,7 +415,7 @@ func TestCompiledReaderRejectsMaliciousCountsBeforeAllocation(t *testing.T) {
 			},
 		},
 		{
-			name: "function type IDs",
+			name: "native function type keys",
 			write: func(w *compiledWriter) {
 				writeCompiledCodecPrefixAfterGlobalExports(t, w)
 				w.uvar(0) // tables.

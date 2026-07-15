@@ -1,4 +1,4 @@
-//go:build linux && amd64 && !tinygo
+//go:build linux && amd64 && !tinygo && !wago_guardpage
 
 package wago
 
@@ -140,11 +140,11 @@ func TestStagedMultiMemoryBulkDataAndAliasLifecycle(t *testing.T) {
 		}
 		blob, err := compiled.MarshalBinary()
 		if err != nil {
-			t.Fatalf("marshal codec v24: %v", err)
+			t.Fatalf("marshal codec v25: %v", err)
 		}
 		var loaded Compiled
 		if err := unmarshalCompiled(&loaded, blob[5:]); err != nil {
-			t.Fatalf("decode codec v24 payload: %v", err)
+			t.Fatalf("decode codec v25 payload: %v", err)
 		}
 		if len(loaded.Data) != 1 || loaded.Data[0].MemoryIndex != 1 {
 			t.Fatalf("loaded active data metadata = %#v, want memory index 1", loaded.Data)

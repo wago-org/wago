@@ -53,7 +53,7 @@ type funcHints struct {
 	// same-module function and can use the internal register ABI without a
 	// run-time home-tag fork.
 	immutableLocalTable bool
-	immutableTableType  uint32
+	immutableTableType  uint64
 	immutableTableTyped bool
 	monomorphicTarget   int // local function index when every non-null entry is identical; -1 otherwise
 

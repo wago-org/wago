@@ -23,6 +23,9 @@ func TestStructuralTypeIDIncludesIndexedReferenceStructure(t *testing.T) {
 	if got, want := a.StructuralTypeID(1), b.StructuralTypeID(2); got != want {
 		t.Fatalf("equivalent indexed signatures have ids %#x and %#x", got, want)
 	}
+	if got, want := a.StructuralTypeKey(1), b.StructuralTypeKey(2); got != want {
+		t.Fatalf("equivalent indexed signatures have keys %#x and %#x", got, want)
+	}
 
 	mismatch := *b
 	mismatch.Types = append([]RecType(nil), b.Types...)
@@ -30,6 +33,9 @@ func TestStructuralTypeIDIncludesIndexedReferenceStructure(t *testing.T) {
 	mismatch.Types[1].SubTypes[0].Comp.Params = []ValType{I64}
 	if got, bad := a.StructuralTypeID(1), mismatch.StructuralTypeID(2); got == bad {
 		t.Fatalf("different indexed signatures collapsed to id %#x", got)
+	}
+	if got, bad := a.StructuralTypeKey(1), mismatch.StructuralTypeKey(2); got == bad {
+		t.Fatalf("different indexed signatures collapsed to key %#x", got)
 	}
 }
 
@@ -47,6 +53,9 @@ func TestStructuralTypeIDCanonicalizesRecursiveAndDuplicateGraphs(t *testing.T) 
 	if got, want := a.StructuralTypeID(0), b.StructuralTypeID(1); got != want {
 		t.Fatalf("equivalent recursive signatures have ids %#x and %#x", got, want)
 	}
+	if got, want := a.StructuralTypeKey(0), b.StructuralTypeKey(1); got != want {
+		t.Fatalf("equivalent recursive signatures have keys %#x and %#x", got, want)
+	}
 
 	leaf := SubType{Final: true, Comp: CompType{Kind: CompFunc, Results: []ValType{I32}}}
 	shared := &Module{Types: []RecType{
@@ -60,5 +69,58 @@ func TestStructuralTypeIDCanonicalizesRecursiveAndDuplicateGraphs(t *testing.T) 
 	}}
 	if got, want := shared.StructuralTypeID(1), duplicated.StructuralTypeID(2); got != want {
 		t.Fatalf("shared and duplicated equivalent graphs have ids %#x and %#x", got, want)
+	}
+	if got, want := shared.StructuralTypeKey(1), duplicated.StructuralTypeKey(2); got != want {
+		t.Fatalf("shared and duplicated equivalent graphs have keys %#x and %#x", got, want)
+	}
+}
+
+func TestStructuralTypeKeyUsesBoundedPerCallCanonicalization(t *testing.T) {
+	graph := func(depth int) *Module {
+		m := &Module{Types: make([]RecType, depth)}
+		m.Types[0].SubTypes = []SubType{{Final: true, Comp: CompType{Kind: CompFunc}}}
+		for i := 1; i < depth; i++ {
+			child := indexedRef(uint32(i-1), true)
+			m.Types[i].SubTypes = []SubType{{Final: true, Comp: CompType{Kind: CompFunc, Params: []ValType{child, child}}}}
+		}
+		return m
+	}
+
+	small := graph(10)
+	first, ok := small.StructuralTypeKeyChecked(9)
+	if !ok {
+		t.Fatal("bounded canonicalization rejected small graph")
+	}
+	second, ok := small.StructuralTypeKeyChecked(9)
+	if !ok || second != first {
+		t.Fatalf("per-call canonicalization = %#x,%v then %#x,%v", first, true, second, ok)
+	}
+
+	large := graph(20) // duplicated expansion exceeds the fixed 1 MiB work budget.
+	if key, ok := large.StructuralTypeKeyChecked(19); ok {
+		t.Fatalf("over-budget canonicalization returned key %#x", key)
+	}
+	if key, ok := large.StructuralTypeKeyChecked(19); ok || key != 0 {
+		t.Fatalf("repeated over-budget canonicalization = %#x,%v, want fail-closed zero,false", key, ok)
+	}
+}
+
+func TestStructuralTypeKeySeparatesDeliberateLegacyCollision(t *testing.T) {
+	// These two valid signatures deliberately collide under the historical
+	// 32-bit FNV-1a discriminator (0xed3a07d1). Native descriptors must use the
+	// independently derived structural key instead.
+	a := &CompType{Kind: CompFunc,
+		Params:  []ValType{ExternRef, V128, V128, F64, FuncRef},
+		Results: []ValType{F32},
+	}
+	b := &CompType{Kind: CompFunc,
+		Params:  []ValType{ExternRef, I64, V128, F64, F32, I64},
+		Results: []ValType{F64, ExternRef, I32, ExternRef},
+	}
+	if gotA, gotB := StructuralFuncTypeID(a), StructuralFuncTypeID(b); gotA != gotB || gotA != 0xed3a07d1 {
+		t.Fatalf("deliberate legacy collision = %#x/%#x, want %#x", gotA, gotB, uint32(0xed3a07d1))
+	}
+	if gotA, gotB := StructuralFuncTypeKey(a), StructuralFuncTypeKey(b); gotA == gotB {
+		t.Fatalf("collision-safe keys collapsed to %#x", gotA)
 	}
 }

@@ -1021,9 +1021,9 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 }
 
 // callIndirect lowers call_indirect: bounds-check the table index, verify the
-// entry's canonical type id, reject a null entry, then call the entry's code
-// pointer via the wrapper ABI. Table layout matches the runtime (16-byte slots;
-// +8 code ptr, +16 type id) with the descriptor pointer at [linMem-offTablePtr].
+// entry's canonical type key, reject a null entry, then call the entry's code
+// pointer via the wrapper ABI. Table layout matches the runtime (32-byte entries;
+// +8 code ptr, +16 type key) with the descriptor pointer at [linMem-offTablePtr].
 func (f *fn) callIndirect(r *wasm.Reader) error {
 	f.stats.call(callKindIndirect)
 	typeIdx, err := r.U32()
@@ -1038,7 +1038,10 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 	if !ok {
 		return fmt.Errorf("call_indirect: bad type %d", typeIdx)
 	}
-	canon := int32(f.m.StructuralTypeID(typeIdx))
+	canon, ok := f.m.StructuralTypeKeyChecked(typeIdx)
+	if !ok {
+		return fmt.Errorf("call_indirect: type %d exceeds bounded native identity", typeIdx)
+	}
 
 	idxReg := f.materialize(f.popValue()) // table index (i32)
 	f.pinned = f.pinned.add(idxReg)
@@ -1058,7 +1061,7 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 	f.pinned = f.pinned.remove(tbl)
 	f.release(tbl)
 
-	// Entry fields (folding the 8-byte descriptor header): +8 code, +16 sig id,
+	// Entry fields (folding the 8-byte descriptor header): +8 code, +16 type key,
 	// +24 home linMem. Check null (uninitialized element) BEFORE the signature so a
 	// zero-initialized entry traps as an empty slot, not a type mismatch.
 	code := f.allocReg(0)
@@ -1066,20 +1069,16 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 	f.cmpImm(code, 0, true)
 	f.trapIf(condE, trapIndirectOOB) // null entry
 
-	if tableIdx == 0 && f.immutableTableTyped && f.immutableTableType == uint32(canon) {
+	if tableIdx == 0 && f.immutableTableTyped && f.immutableTableType == canon {
 		f.stats.peep("immutable-table-type-check-elide")
 	} else {
-		tid := f.allocReg(maskOf(code))
-		f.ld32(tid, idxReg, 16) // entry type id
-		if fitsAddSubImm12(int64(canon)) {
-			f.cmpImmS(tid, int64(canon), false)
-		} else {
-			want := f.allocReg(maskOf(code).add(tid))
-			f.a.MovImm32(want, canon)
-			f.cmpRR(tid, want, false)
-			f.release(want)
-		}
-		f.release(tid)
+		got := f.allocReg(maskOf(code))
+		f.ld64(got, idxReg, 16) // entry structural type key
+		want := f.allocReg(maskOf(code).add(got))
+		f.a.MovImm64(want, canon)
+		f.cmpRR(got, want, true)
+		f.release(want)
+		f.release(got)
 		f.trapIf(condNE, trapIndirectSig)
 	}
 

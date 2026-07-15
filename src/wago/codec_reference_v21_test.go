@@ -8,16 +8,16 @@ import (
 	"testing"
 )
 
-func TestCompiledCodecV24VersionContract(t *testing.T) {
+func TestCompiledCodecV25VersionContract(t *testing.T) {
 	blob, err := (&Compiled{}).MarshalBinary()
 	if err != nil {
 		t.Fatalf("MarshalBinary: %v", err)
 	}
-	if got := blob[4]; got != 24 {
-		t.Fatalf("compiled codec version = %d, want 24", got)
+	if got := blob[4]; got != 25 {
+		t.Fatalf("compiled codec version = %d, want 25", got)
 	}
 
-	for _, version := range []byte{23, 22} {
+	for _, version := range []byte{24, 23, 22} {
 		old := append([]byte(nil), blob...)
 		old[4] = version
 		var got Compiled
@@ -247,7 +247,7 @@ func structuralReferenceCodecFixture() *Compiled {
 		Code:       []byte{0xc3},
 		Entry:      []int{0},
 		Funcs:      []FuncSig{{Params: []ValType{ValFuncRef, ValExternRef}, Results: []ValType{ValExternRef, ValFuncRef}}},
-		FuncTypeID: []uint32{7},
+		FuncTypeID: []uint64{7},
 		Exports:    map[string]int{"refs": 0},
 
 		GlobalImports: []GlobalImportDef{{Module: "env", Name: "external", Type: ValExternRef}},

@@ -105,7 +105,7 @@ func TestCompiledCodecRoundTripsEmptyStrings(t *testing.T) {
 		Imports:        []string{""},
 		importFuncSigs: []FuncSig{{}},
 		Funcs:          []FuncSig{{}},
-		FuncTypeID:     []uint32{0, 0},
+		FuncTypeID:     []uint64{0, 0},
 		Exports:        map[string]int{"": 1},
 	}
 

@@ -34,7 +34,7 @@ func callRefModule(t *testing.T) *wasm.Module {
 	return m
 }
 
-func runCallRefRaw(t *testing.T, m *wasm.Module, value uint64, descriptor bool, sigID uint32) ([]byte, error) {
+func runCallRefRaw(t *testing.T, m *wasm.Module, value uint64, descriptor bool, sigKey uint64) ([]byte, error) {
 	t.Helper()
 	if err := wasm.ValidateModule(m); err != nil {
 		t.Fatalf("validate: %v", err)
@@ -68,7 +68,7 @@ func runCallRefRaw(t *testing.T, m *wasm.Module, value uint64, descriptor bool, 
 	if descriptor {
 		desc := arena.Alloc(coreruntime.TableEntryBytes)
 		binary.LittleEndian.PutUint64(desc[coreruntime.TableEntryCodePtrOffset:], uint64(base)+uint64(cm.InternalEntry[1]))
-		binary.LittleEndian.PutUint32(desc[coreruntime.TableEntrySigIDOffset:], sigID)
+		binary.LittleEndian.PutUint64(desc[coreruntime.TableEntrySigKeyOffset:], sigKey)
 		binary.LittleEndian.PutUint64(desc[coreruntime.TableEntryHomeLinMemOffset:], uint64(jm.LinMemBase())|uint64(1)<<63)
 		ref = uint64(uintptr(unsafe.Pointer(&desc[0])))
 	}
@@ -112,7 +112,7 @@ func returnCallRefModule(t *testing.T, null bool) *wasm.Module {
 	return m
 }
 
-func runReturnCallRefRaw(t *testing.T, m *wasm.Module, n uint64, sigID uint32, internal bool) ([]byte, error) {
+func runReturnCallRefRaw(t *testing.T, m *wasm.Module, n uint64, sigKey uint64, internal bool) ([]byte, error) {
 	t.Helper()
 	if err := wasm.ValidateModule(m); err != nil {
 		t.Fatalf("validate: %v", err)
@@ -151,7 +151,7 @@ func runReturnCallRefRaw(t *testing.T, m *wasm.Module, n uint64, sigID uint32, i
 		home |= uint64(1) << 63
 	}
 	binary.LittleEndian.PutUint64(entry[coreruntime.TableEntryCodePtrOffset:], uint64(base)+uint64(entryOff))
-	binary.LittleEndian.PutUint32(entry[coreruntime.TableEntrySigIDOffset:], sigID)
+	binary.LittleEndian.PutUint64(entry[coreruntime.TableEntrySigKeyOffset:], sigKey)
 	binary.LittleEndian.PutUint64(entry[coreruntime.TableEntryHomeLinMemOffset:], home)
 	jm.SetFuncRefDesc(uintptr(unsafe.Pointer(&descs[0])))
 
@@ -166,7 +166,7 @@ func runReturnCallRefRaw(t *testing.T, m *wasm.Module, n uint64, sigID uint32, i
 func TestCallRefInvokesIndexedTypedDescriptor(t *testing.T) {
 	m := callRefModule(t)
 	m.Types[1].SubTypes[0].Comp.Params[1] = wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: 0}), false))
-	wantSig := m.StructuralTypeID(0)
+	wantSig := m.StructuralTypeKey(0)
 	out, err := runCallRefRaw(t, m, 73, true, wantSig)
 	if err != nil {
 		t.Fatal(err)
@@ -178,7 +178,7 @@ func TestCallRefInvokesIndexedTypedDescriptor(t *testing.T) {
 
 func TestCallRefInvokesLocalDescriptorAndMatchesTraps(t *testing.T) {
 	m := callRefModule(t)
-	wantSig := m.StructuralTypeID(0)
+	wantSig := m.StructuralTypeKey(0)
 	out, err := runCallRefRaw(t, m, 42, true, wantSig)
 	if err != nil {
 		t.Fatal(err)
@@ -197,7 +197,7 @@ func TestCallRefInvokesLocalDescriptorAndMatchesTraps(t *testing.T) {
 
 func TestReturnCallRefReusesFrameAndFailsClosed(t *testing.T) {
 	m := returnCallRefModule(t, false)
-	wantSig := m.StructuralTypeID(0)
+	wantSig := m.StructuralTypeKey(0)
 	out, err := runReturnCallRefRaw(t, m, 1_000_000, wantSig, true)
 	if err != nil {
 		t.Fatalf("million-deep return_call_ref recursion trapped: %v", err)
@@ -214,7 +214,7 @@ func TestReturnCallRefReusesFrameAndFailsClosed(t *testing.T) {
 	}
 
 	nullModule := returnCallRefModule(t, true)
-	if _, err := runReturnCallRefRaw(t, nullModule, 1, nullModule.StructuralTypeID(0), true); err == nil || !strings.Contains(err.Error(), "indirect call out of bounds") {
+	if _, err := runReturnCallRefRaw(t, nullModule, 1, nullModule.StructuralTypeKey(0), true); err == nil || !strings.Contains(err.Error(), "indirect call out of bounds") {
 		t.Fatalf("null return_call_ref trap = %v", err)
 	}
 }

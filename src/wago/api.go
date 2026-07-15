@@ -399,11 +399,21 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 	// direct runtime slot; later table indexes use the bounded directory.
 	for i := range m.Imports {
 		if m.Imports[i].Type.Kind == wasm.ExternFunc {
-			c.FuncTypeID = append(c.FuncTypeID, m.StructuralTypeID(m.Imports[i].Type.Type.Index))
+			typeIndex := m.Imports[i].Type.Type.Index
+			key, ok := m.StructuralTypeKeyChecked(typeIndex)
+			if !ok {
+				return nil, fmt.Errorf("import function type %d exceeds bounded native identity", typeIndex)
+			}
+			c.FuncTypeID = append(c.FuncTypeID, key)
 		}
 	}
 	for li := range m.FuncTypes {
-		c.FuncTypeID = append(c.FuncTypeID, m.StructuralTypeID(m.FuncTypes[li].Index))
+		typeIndex := m.FuncTypes[li].Index
+		key, ok := m.StructuralTypeKeyChecked(typeIndex)
+		if !ok {
+			return nil, fmt.Errorf("function type %d exceeds bounded native identity", typeIndex)
+		}
+		c.FuncTypeID = append(c.FuncTypeID, key)
 	}
 	elemStateCount, dataStateCount := moduleSegmentStateCounts(m)
 	if elemStateCount > 0 {
@@ -1899,12 +1909,12 @@ func (c *Compiled) validateDeferredOffsetGlobal(kind string, seg, idx int) error
 
 const wagoMagic = "WAGO"
 
-// Version 24 adds exact active-data memory indexes to the indexed memory
-// declarations/imports/exports, binding-independent import dispatch, structural
-// types, tables, elements, extended constant expressions, and feature metadata.
+// Version 25 adds collision-resistant 64-bit native function type keys to the
+// indexed-memory, binding-independent import dispatch, structural type, table,
+// element, extended constant expression, and feature metadata from version 24.
 // It never serializes live owners, mappings, tokens, targets, thunk addresses,
 // or store identity.
-const wagoVersion = 24
+const wagoVersion = 25
 
 // MarshalBinary serializes the precompiled module to a ".wago" blob.
 //

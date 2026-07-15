@@ -1172,6 +1172,17 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 // descriptors may carry a tagged internal register-ABI entry; every other
 // descriptor uses the existing wrapper/cross-instance context path shared with
 // call_indirect.
+func (f *fn) checkCallType(entry Reg, offset int32, key uint64, avoid regMask) {
+	got := f.allocReg(avoid)
+	f.a.Load64(got, entry, offset)
+	want := f.allocReg(avoid.add(got))
+	f.a.MovImm64(want, key)
+	f.a.Cmp64(got, want)
+	f.release(want)
+	f.release(got)
+	f.trapIf(condNE, trapIndirectSig)
+}
+
 func (f *fn) callRef(r *wasm.Reader) error {
 	f.stats.call("ref")
 	typeIdx, err := r.U32()
@@ -1182,7 +1193,10 @@ func (f *fn) callRef(r *wasm.Reader) error {
 	if !ok {
 		return fmt.Errorf("call_ref: bad type %d", typeIdx)
 	}
-	canon := int32(f.m.StructuralTypeID(typeIdx))
+	canon, ok := f.m.StructuralTypeKeyChecked(typeIdx)
+	if !ok {
+		return fmt.Errorf("call_ref: type %d exceeds bounded native identity", typeIdx)
+	}
 
 	ref := f.materialize(f.popValue())
 	f.pinned = f.pinned.add(ref)
@@ -1193,11 +1207,7 @@ func (f *fn) callRef(r *wasm.Reader) error {
 	f.a.Load64(code, ref, runtime.TableEntryCodePtrOffset)
 	f.a.TestSelf(code, true)
 	f.trapIf(condE, trapIndirectOOB)
-	tid := f.allocReg(maskOf(code))
-	f.a.Load32(tid, ref, runtime.TableEntrySigIDOffset)
-	f.a.AluRI(cmpDigit, tid, canon, false)
-	f.release(tid)
-	f.trapIf(condNE, trapIndirectSig)
+	f.checkCallType(ref, runtime.TableEntrySigKeyOffset, canon, maskOf(ref, code))
 	home := f.allocReg(maskOf(ref, code))
 	f.a.Load64(home, ref, runtime.TableEntryHomeLinMemOffset)
 	targetContext := f.allocReg(maskOf(ref, code, home))
@@ -1274,7 +1284,10 @@ func (f *fn) returnCallRef(r *wasm.Reader) error {
 		return fmt.Errorf("return_call_ref: caller or type %d requires unsupported reference tail ABI", typeIdx)
 	}
 	f.stats.call("tail-ref")
-	canon := int32(f.m.StructuralTypeID(typeIdx))
+	canon, ok := f.m.StructuralTypeKeyChecked(typeIdx)
+	if !ok {
+		return fmt.Errorf("return_call_ref: type %d exceeds bounded native identity", typeIdx)
+	}
 
 	ref := f.materialize(f.popValue())
 	f.pinned = f.pinned.add(ref)
@@ -1284,11 +1297,7 @@ func (f *fn) returnCallRef(r *wasm.Reader) error {
 	f.a.Load64(code, ref, runtime.TableEntryCodePtrOffset)
 	f.a.TestSelf(code, true)
 	f.trapIf(condE, trapIndirectOOB)
-	tid := f.allocReg(maskOf(code))
-	f.a.Load32(tid, ref, runtime.TableEntrySigIDOffset)
-	f.a.AluRI(cmpDigit, tid, canon, false)
-	f.release(tid)
-	f.trapIf(condNE, trapIndirectSig)
+	f.checkCallType(ref, runtime.TableEntrySigKeyOffset, canon, maskOf(ref, code))
 	home := f.allocReg(maskOf(ref, code))
 	f.a.Load64(home, ref, runtime.TableEntryHomeLinMemOffset)
 	f.pinned = f.pinned.remove(ref)
@@ -1347,7 +1356,10 @@ func (f *fn) returnCallIndirect(r *wasm.Reader) error {
 		return fmt.Errorf("return_call_indirect: table %d is not a private immutable local funcref table", tableIdx)
 	}
 	f.stats.call("tail-indirect")
-	canon := int32(f.m.StructuralTypeID(typeIdx))
+	canon, ok := f.m.StructuralTypeKeyChecked(typeIdx)
+	if !ok {
+		return fmt.Errorf("return_call_indirect: type %d exceeds bounded native identity", typeIdx)
+	}
 
 	idxReg := f.materialize(f.popValue())
 	f.pinned = f.pinned.add(idxReg)
@@ -1368,14 +1380,10 @@ func (f *fn) returnCallIndirect(r *wasm.Reader) error {
 	f.a.Load64(code, idxReg, 8)
 	f.a.TestSelf(code, true)
 	f.trapIf(condE, trapIndirectOOB)
-	if f.immutableTableTyped && f.immutableTableType == uint32(canon) {
+	if f.immutableTableTyped && f.immutableTableType == canon {
 		f.stats.peep("immutable-table-type-check-elide")
 	} else {
-		tid := f.allocReg(maskOf(code))
-		f.a.Load32(tid, idxReg, 16)
-		f.a.AluRI(cmpDigit, tid, canon, false)
-		f.release(tid)
-		f.trapIf(condNE, trapIndirectSig)
+		f.checkCallType(idxReg, 8+runtime.TableEntrySigKeyOffset, canon, maskOf(idxReg, code))
 	}
 	f.pinned = f.pinned.remove(idxReg)
 	f.release(idxReg)
@@ -1394,9 +1402,9 @@ func (f *fn) returnCallIndirect(r *wasm.Reader) error {
 }
 
 // callIndirect lowers call_indirect: bounds-check the table index, verify the
-// entry's canonical type id, reject a null entry, then call the entry's code
+// entry's canonical type key, reject a null entry, then call the entry's code
 // pointer via the wrapper ABI. Table layout matches the runtime (32-byte entries;
-// +8 code ptr, +16 type id) with the descriptor pointer at [linMem-offTablePtr].
+// +8 code ptr, +16 type key) with the descriptor pointer at [linMem-offTablePtr].
 func (f *fn) callIndirect(r *wasm.Reader) error {
 	f.stats.call(callKindIndirect)
 	typeIdx, err := r.U32()
@@ -1411,7 +1419,10 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 	if !ok {
 		return fmt.Errorf("call_indirect: bad type %d", typeIdx)
 	}
-	canon := int32(f.m.StructuralTypeID(typeIdx))
+	canon, ok := f.m.StructuralTypeKeyChecked(typeIdx)
+	if !ok {
+		return fmt.Errorf("call_indirect: type %d exceeds bounded native identity", typeIdx)
+	}
 
 	idxReg := f.materialize(f.popValue()) // table index (i32)
 	f.pinned = f.pinned.add(idxReg)
@@ -1431,7 +1442,7 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 	f.pinned = f.pinned.remove(tbl)
 	f.release(tbl)
 
-	// Entry fields (folding the 8-byte descriptor header): +8 code, +16 sig id,
+	// Entry fields (folding the 8-byte descriptor header): +8 code, +16 type key,
 	// +24 home linMem. Check null (uninitialized element) BEFORE the signature so a
 	// zero-initialized entry traps as an empty slot, not a type mismatch.
 	code := f.allocReg(0)
@@ -1439,15 +1450,11 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 	f.a.TestSelf(code, true)
 	f.trapIf(condE, trapIndirectOOB) // null entry
 
-	if tableIdx == 0 && f.immutableTableTyped && f.immutableTableType == uint32(canon) {
+	if tableIdx == 0 && f.immutableTableTyped && f.immutableTableType == canon {
 		// A uniformly-typed immutable table cannot hold a mismatched signature.
 		f.stats.peep("immutable-table-type-check-elide")
 	} else {
-		tid := f.allocReg(maskOf(code))
-		f.a.Load32(tid, idxReg, 16) // entry type id
-		f.a.AluRI(cmpDigit, tid, canon, false)
-		f.release(tid)
-		f.trapIf(condNE, trapIndirectSig)
+		f.checkCallType(idxReg, 8+runtime.TableEntrySigKeyOffset, canon, maskOf(idxReg, code))
 	}
 
 	// With one private local immutable table and no function imports, every non-null

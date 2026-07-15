@@ -3,12 +3,14 @@
 package wago
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/testutil/wasmtest"
 )
 
@@ -408,15 +410,33 @@ func TestFuncrefTableInitializerExpressionCanTargetCrossInstanceImport(t *testin
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(tableTestBody(tableTestI32Const(123))))),
 	)
-	prodInst := tableTestInstantiate(t, producer)
+	producerCompiled := compileExplicitArtifact(t, producer)
+	if len(producerCompiled.FuncTypeID) != 1 {
+		t.Fatalf("producer native type keys = %d, want 1", len(producerCompiled.FuncTypeID))
+	}
+	blob, err := producerCompiled.MarshalBinary()
+	if err != nil {
+		t.Fatalf("MarshalBinary producer: %v", err)
+	}
+	var reloaded Compiled
+	if err := reloaded.UnmarshalBinary(blob); err != nil {
+		t.Fatalf("UnmarshalBinary producer: %v", err)
+	}
+	if got, want := reloaded.FuncTypeID, producerCompiled.FuncTypeID; len(got) != 1 || got[0] != want[0] {
+		t.Fatalf("reloaded native type keys = %#v, want %#v", got, want)
+	}
+	prodInst, err := Instantiate(&reloaded, Imports{})
+	if err != nil {
+		t.Fatalf("Instantiate producer: %v", err)
+	}
 	defer prodInst.Close()
 	export, err := prodInst.ExportedFunc("f")
 	if err != nil {
 		t.Fatalf("export f: %v", err)
 	}
-	consumer, err := Compile(nil, tableInitializerImportModule())
-	if err != nil {
-		t.Fatalf("Compile consumer: %v", err)
+	consumer := compileExplicitArtifact(t, tableInitializerImportModule())
+	if len(consumer.FuncTypeID) == 0 || consumer.FuncTypeID[0] != reloaded.FuncTypeID[0] {
+		t.Fatalf("cross-module equivalent keys = %#v / %#v", consumer.FuncTypeID, reloaded.FuncTypeID)
 	}
 	consInst, err := Instantiate(consumer, Imports{"env.f": export})
 	if err != nil {
@@ -425,6 +445,18 @@ func TestFuncrefTableInitializerExpressionCanTargetCrossInstanceImport(t *testin
 	defer consInst.Close()
 	if got := tableTestCallI32(t, consInst, "callAt", I32(0)); got != 123 {
 		t.Fatalf("cross-instance table initializer call = %d, want 123", got)
+	}
+	table := consInst.tableDescriptor(0)
+	keyOffset := 8 + coreruntime.TableEntrySigKeyOffset
+	if got, want := binary.LittleEndian.Uint64(table[keyOffset:]), consumer.FuncTypeID[0]; got != want {
+		t.Fatalf("cross-instance table descriptor key = %#x, want %#x", got, want)
+	}
+	binary.LittleEndian.PutUint64(table[keyOffset:], consumer.FuncTypeID[0]^1)
+	_, err = consInst.Invoke("callAt", I32(0))
+	tableTestExpectTrap(t, err, TrapIndirectWrongSig)
+	binary.LittleEndian.PutUint64(table[keyOffset:], consumer.FuncTypeID[0])
+	if got := tableTestCallI32(t, consInst, "callAt", I32(0)); got != 123 {
+		t.Fatalf("cross-instance call after restoring key = %d, want 123", got)
 	}
 }
 
@@ -486,7 +518,7 @@ func TestCompiledValidationRejectsInvalidTableInitializerFunction(t *testing.T) 
 		{name: "large uint32", idx: ^uint32(0)},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			c := &Compiled{Code: []byte{0}, Entry: []int{0}, Funcs: []FuncSig{{}}, HasTable: true, TableSize: 1, TableMax: 1, HasTableInitFunc: true, TableInitFunc: tc.idx, FuncTypeID: []uint32{0}}
+			c := &Compiled{Code: []byte{0}, Entry: []int{0}, Funcs: []FuncSig{{}}, HasTable: true, TableSize: 1, TableMax: 1, HasTableInitFunc: true, TableInitFunc: tc.idx, FuncTypeID: []uint64{0}}
 			want := fmt.Sprintf("table initializer function index %d out of range", tc.idx)
 			if err := c.validate(); err == nil || !strings.Contains(err.Error(), want) {
 				t.Fatalf("validate invalid table initializer = %v, want %q", err, want)
