@@ -25,6 +25,8 @@ type memoryState struct {
 	owner     *Instance // non-nil for an instance-owned exported memory
 	importers int32
 	shared    bool // true when multiple compatible instances may import this memory
+	addr64    bool // exact memory index/address form; host-created memories are memory32
+	addrKnown bool
 	closed    bool
 }
 
@@ -74,7 +76,7 @@ func newMemory(minPages, maxPages uint32, shared bool) (*Memory, error) {
 		return nil, err
 	}
 	m := &Memory{jm: jm}
-	m.state.Store(&memoryState{shared: shared})
+	m.state.Store(&memoryState{shared: shared, addrKnown: true})
 	return m, nil
 }
 
@@ -166,7 +168,7 @@ func (m *Memory) detachImporter() {
 	}
 }
 
-func (m *Memory) share(owner *Instance) error {
+func (m *Memory) share(owner *Instance, addr64 bool) error {
 	if m == nil {
 		return fmt.Errorf("memory is nil")
 	}
@@ -184,6 +186,10 @@ func (m *Memory) share(owner *Instance) error {
 	if s.closed || m.jm == nil {
 		return fmt.Errorf("memory owner is closed")
 	}
+	if s.addrKnown && s.addr64 != addr64 {
+		return fmt.Errorf("memory address form does not match prior export")
+	}
+	s.addr64, s.addrKnown = addr64, true
 	if owner != nil {
 		if s.owner != nil && s.owner != owner {
 			return fmt.Errorf("memory already has a different producer owner")
@@ -194,7 +200,24 @@ func (m *Memory) share(owner *Instance) error {
 	return nil
 }
 
-func (m *Memory) validateLimits(min, max uint64, hasMax bool) error {
+func (m *Memory) validateLimits(min, max uint64, hasMax, addr64 bool) error {
+	s := m.state.Load()
+	if s == nil {
+		return fmt.Errorf("memory has not been exported for import")
+	}
+	s.mu.Lock()
+	providerAddr64, addrKnown := s.addr64, s.addrKnown
+	s.mu.Unlock()
+	if addrKnown && providerAddr64 != addr64 {
+		providerBits, importBits := 32, 32
+		if providerAddr64 {
+			providerBits = 64
+		}
+		if addr64 {
+			importBits = 64
+		}
+		return fmt.Errorf("address form mismatch: provider is memory%d, import requires memory%d", providerBits, importBits)
+	}
 	jm := m.jobMemory()
 	if jm == nil {
 		return fmt.Errorf("memory owner is closed")
