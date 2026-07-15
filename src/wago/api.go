@@ -1872,7 +1872,11 @@ func (in *Instance) invoke(export string, args []uint64, cancel <-chan struct{})
 		return nil, fmt.Errorf("%s requires %d result slot(s), instance buffer has %d", export, ic.resultSlots, len(in.results)/8)
 	}
 	if ic.hasFuncRefParams {
-		if err := in.marshalPublicReferenceArgs(export, args, in.c.Funcs[li].Params); err != nil {
+		params, _, err := exactFuncSignatureView(in.c.Funcs[li], in.c.Types)
+		if err != nil {
+			return nil, fmt.Errorf("%s exact parameters: %w", export, err)
+		}
+		if err := in.marshalPublicReferenceArgs(export, args, in.c.Funcs[li].Params, params); err != nil {
 			return nil, err
 		}
 	} else {
@@ -1914,7 +1918,11 @@ func (in *Instance) invoke(export string, args []uint64, cancel <-chan struct{})
 		}
 	}
 	if ic.hasFuncRefResults {
-		if err := in.translatePublicReferenceResults(export, out, in.c.Funcs[li].Results); err != nil {
+		_, results, err := exactFuncSignatureView(in.c.Funcs[li], in.c.Types)
+		if err != nil {
+			return nil, fmt.Errorf("%s exact results: %w", export, err)
+		}
+		if err := in.translatePublicReferenceResults(export, out, in.c.Funcs[li].Results, results); err != nil {
 			return nil, err
 		}
 	}
@@ -1952,7 +1960,11 @@ func (in *Instance) invokeLocalContext(li int, args []uint64, cancel <-chan stru
 		return nil, fmt.Errorf("requires %d result slot(s), instance buffer has %d", resultSlots, len(in.results)/8)
 	}
 	if hasReferenceValType(sig.Params) {
-		if err := in.marshalPublicReferenceArgs("function", args, sig.Params); err != nil {
+		params, _, err := exactFuncSignatureView(sig, in.c.Types)
+		if err != nil {
+			return nil, fmt.Errorf("function exact parameters: %w", err)
+		}
+		if err := in.marshalPublicReferenceArgs("function", args, sig.Params, params); err != nil {
 			return nil, err
 		}
 	} else {
@@ -2007,7 +2019,11 @@ func (in *Instance) invokeLocalContext(li int, args []uint64, cancel <-chan stru
 		resSlot++
 	}
 	if hasReferenceValType(sig.Results) {
-		if err := in.translatePublicReferenceResults("function", out, sig.Results); err != nil {
+		_, results, err := exactFuncSignatureView(sig, in.c.Types)
+		if err != nil {
+			return nil, fmt.Errorf("function exact results: %w", err)
+		}
+		if err := in.translatePublicReferenceResults("function", out, sig.Results, results); err != nil {
 			return nil, err
 		}
 	}
@@ -2197,7 +2213,17 @@ func hasReferenceValType(types []ValType) bool {
 	return hasValType(types, ValFuncRef) || hasValType(types, ValExternRef)
 }
 
-func (in *Instance) marshalPublicReferenceArgs(subject string, values []uint64, types []ValType) error {
+func exactReferenceType(types []ValueTypeDescriptor, index int, legacy ValType) (ValueTypeDescriptor, bool) {
+	if index >= 0 && index < len(types) {
+		if types[index].Kind != ValueTypeReference {
+			return ValueTypeDescriptor{}, false
+		}
+		return types[index], true
+	}
+	return valueTypeDescriptorFromValType(legacy)
+}
+
+func (in *Instance) marshalPublicReferenceArgs(subject string, values []uint64, types []ValType, exact []ValueTypeDescriptor) error {
 	slot := 0
 	for i, typ := range types {
 		if typ == ValV128 {
@@ -2209,13 +2235,28 @@ func (in *Instance) marshalPublicReferenceArgs(subject string, values []uint64, 
 		bits := values[slot]
 		switch typ {
 		case ValFuncRef:
-			if bits != 0 {
+			required, ok := exactReferenceType(exact, i, typ)
+			if !ok {
+				return fmt.Errorf("%s: missing exact funcref type for argument %d", subject, i)
+			}
+			if bits == 0 {
+				if !required.Ref.Nullable {
+					return fmt.Errorf("%s: null funcref for non-null argument %d", subject, i)
+				}
+			} else {
 				if in.refStore == nil {
 					return fmt.Errorf("%s: invalid funcref token for argument %d", subject, i)
 				}
 				descriptor, ok := in.refStore.resolve(bits)
 				if !ok {
 					return fmt.Errorf("%s: invalid funcref token for argument %d", subject, i)
+				}
+				actual, actualTypes, valid := in.refStore.tokenFuncrefExactType(bits)
+				if !valid {
+					return fmt.Errorf("%s: invalid funcref token for argument %d", subject, i)
+				}
+				if !valueTypeSubtype(actual, actualTypes, required, in.c.Types) {
+					return fmt.Errorf("%s: funcref argument %d does not match its exact structural type", subject, i)
 				}
 				bits = descriptor
 			}
@@ -2233,21 +2274,42 @@ func (in *Instance) marshalPublicReferenceArgs(subject string, values []uint64, 
 	return nil
 }
 
-func (in *Instance) translatePublicReferenceResults(subject string, values []uint64, types []ValType) error {
+func (in *Instance) translatePublicReferenceResults(subject string, values []uint64, types []ValType, exact []ValueTypeDescriptor) error {
 	slot := 0
 	for i, typ := range types {
-		if typ == ValFuncRef && values[slot] != 0 {
-			store, err := in.funcrefStoreForEgress()
-			if err != nil {
+		if typ == ValFuncRef {
+			required, ok := exactReferenceType(exact, i, typ)
+			if !ok {
 				clear(values)
-				return fmt.Errorf("%s: invalid funcref result %d: %w", subject, i, err)
+				return fmt.Errorf("%s: missing exact funcref type for result %d", subject, i)
 			}
-			token, err := store.issue(in, values[slot])
-			if err != nil {
-				clear(values)
-				return fmt.Errorf("%s: invalid funcref result %d: %w", subject, i, err)
+			if values[slot] == 0 {
+				if !required.Ref.Nullable {
+					clear(values)
+					return fmt.Errorf("%s: null funcref for non-null result %d", subject, i)
+				}
+			} else {
+				store, err := in.funcrefStoreForEgress()
+				if err != nil {
+					clear(values)
+					return fmt.Errorf("%s: invalid funcref result %d: %w", subject, i, err)
+				}
+				actual, actualTypes, valid := store.descriptorFuncrefExactType(in, values[slot])
+				if !valid {
+					clear(values)
+					return fmt.Errorf("%s: invalid funcref result %d", subject, i)
+				}
+				if !valueTypeSubtype(actual, actualTypes, required, in.c.Types) {
+					clear(values)
+					return fmt.Errorf("%s: funcref result %d does not match its exact structural type", subject, i)
+				}
+				token, err := store.issue(in, values[slot])
+				if err != nil {
+					clear(values)
+					return fmt.Errorf("%s: invalid funcref result %d: %w", subject, i, err)
+				}
+				values[slot] = token
 			}
-			values[slot] = token
 		}
 		if typ == ValExternRef && values[slot] != 0 && !in.validExternrefToken(values[slot]) {
 			clear(values)
