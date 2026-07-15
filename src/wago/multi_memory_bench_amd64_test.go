@@ -38,7 +38,7 @@ func BenchmarkStagedMultiMemoryLoads(b *testing.B) {
 	}
 }
 
-func BenchmarkStagedMultiMemoryImportedBasedataSwitch(b *testing.B) {
+func BenchmarkStagedMultiMemoryImportedContextRebind(b *testing.B) {
 	producerCompiled := stagedMultiMemoryCompile(b, officialMultiMemoryProducerModule())
 	producer, err := instantiateCore(producerCompiled, InstantiateOptions{})
 	if err != nil {
@@ -65,6 +65,45 @@ func BenchmarkStagedMultiMemoryImportedBasedataSwitch(b *testing.B) {
 		if _, err := consumer.Invoke("size1"); err != nil {
 			b.Fatal(err)
 		}
+	}
+}
+
+func BenchmarkStagedMultiMemoryExecutableOwnerContextRebind(b *testing.B) {
+	producerCompiled := stagedMultiMemoryCompile(b, nativeMultiMemoryProducerModule())
+	defer producerCompiled.Close()
+	producer, err := instantiateCore(producerCompiled, InstantiateOptions{})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer producer.Close()
+	m1, err := producer.ExportedMemory("mem1")
+	if err != nil {
+		b.Fatal(err)
+	}
+	m2, err := producer.ExportedMemory("mem2")
+	if err != nil {
+		b.Fatal(err)
+	}
+	consumerCompiled := stagedMultiMemoryCompile(b, officialMultiMemoryConsumerModule())
+	defer consumerCompiled.Close()
+	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{"M.mem1": m1, "M.mem2": m2}})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer consumer.Close()
+	for _, tc := range []struct {
+		name   string
+		in     *Instance
+		export string
+	}{{"owner", producer, "f"}, {"tenant", consumer, "size1"}} {
+		b.Run(tc.name, func(b *testing.B) {
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				if _, err := tc.in.Invoke(tc.export); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
 	}
 }
 

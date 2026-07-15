@@ -4,6 +4,7 @@ package wago
 
 import (
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -198,16 +199,92 @@ func TestStagedMultiMemoryNativeProducerTenantRebindsContext(t *testing.T) {
 		t.Fatal(err)
 	}
 	consumerCompiled := stagedMultiMemoryCompile(t, officialMultiMemoryConsumerModule())
+	defer consumerCompiled.Close()
 	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{"M.mem1": m1, "M.mem2": m2}})
 	if err != nil {
 		t.Fatalf("instantiate against executable memory owner: %v", err)
 	}
 	defer consumer.Close()
+	if got := tableTestCallI32(t, producer, "f"); got != 0 {
+		t.Fatalf("producer call after tenant install = %d, want 0", got)
+	}
 	if got := tableTestCallI32(t, consumer, "size1"); got != 2 {
-		t.Fatalf("consumer size1 = %d, want 2", got)
+		t.Fatalf("consumer imported memory size = %d, want 2", got)
+	}
+	if got := tableTestCallI32(t, consumer, "size3"); got != 3 {
+		t.Fatalf("consumer private memory size = %d, want 3", got)
+	}
+
+	var wg sync.WaitGroup
+	errs := make(chan string, 2)
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 1000; i++ {
+			got, err := producer.Invoke("f")
+			if err != nil || len(got) != 1 || int32(got[0]) != 0 {
+				errs <- "producer result changed during native-context rebinding"
+				return
+			}
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 1000; i++ {
+			got, err := consumer.Invoke("size3")
+			if err != nil || len(got) != 1 || int32(got[0]) != 3 {
+				errs <- "consumer private directory changed during native-context rebinding"
+				return
+			}
+		}
+	}()
+	wg.Wait()
+	close(errs)
+	for msg := range errs {
+		t.Fatal(msg)
+	}
+}
+
+func importedCallMultiMemoryModule() []byte {
+	funcImport := append(append(wasmtest.Name("M"), wasmtest.Name("f")...), 0x00, 0x00)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(2, wasmtest.Vec(funcImport, memoryImportEntry("M", "mem1", 0x01, 0x01, 0x05))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x01, 0x01, 0x02})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("call", 0, 1))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x10, 0x00, 0x0b}))),
+	)
+}
+
+func TestStagedMultiMemoryNativeImportedCallRebindsContext(t *testing.T) {
+	producerCompiled := stagedMultiMemoryCompile(t, nativeMultiMemoryProducerModule())
+	defer producerCompiled.Close()
+	producer, err := instantiateCore(producerCompiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer producer.Close()
+	memory, err := producer.ExportedMemory("mem1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fn, err := producer.ExportedFunc("f")
+	if err != nil {
+		t.Fatal(err)
+	}
+	consumerCompiled := stagedMultiMemoryCompile(t, importedCallMultiMemoryModule())
+	defer consumerCompiled.Close()
+	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{"M.f": fn, "M.mem1": memory}})
+	if err != nil {
+		t.Fatalf("instantiate native imported-call consumer: %v", err)
+	}
+	defer consumer.Close()
+	if got := tableTestCallI32(t, consumer, "call"); got != 0 {
+		t.Fatalf("native imported call = %d, want 0", got)
 	}
 	if got := tableTestCallI32(t, producer, "f"); got != 0 {
-		t.Fatalf("producer context after consumer call = %d, want 0", got)
+		t.Fatalf("producer context after imported call = %d, want 0", got)
 	}
 }
 

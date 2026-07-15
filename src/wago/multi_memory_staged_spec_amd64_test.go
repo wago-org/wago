@@ -12,15 +12,14 @@ import (
 	"path/filepath"
 	"sort"
 	"strconv"
-	"strings"
 	"testing"
 )
 
 // stagedMultiMemorySpecFiles is the complete pinned Release 3 multi-memory
 // family plus its main-core SIMD indexed-memory companion. Exact JSON command
 // streams are replayed with only the internal compact-import + multi-memory gate.
-// Three unsafe shared-basedata consumers remain explicit file gates: their exact
-// rejecting module and every dependent command are accounted rather than omitted.
+// Every pinned consumer is executed; unexpected compile, link, or assertion gaps
+// remain fatal rather than being omitted or reclassified.
 type stagedSpecFile struct {
 	Family string
 	Name   string
@@ -108,30 +107,6 @@ type stagedSpecFileDelta struct {
 	Status string           `json:"status"`
 	Gate   string           `json:"gate,omitempty"`
 	Counts stagedSpecCounts `json:"counts"`
-}
-
-type stagedSpecGate struct {
-	ModuleLine   int
-	Reason       string
-	BlockedLines map[int]bool
-}
-
-var stagedMultiMemoryGates = map[string]stagedSpecGate{
-	"linking1": {
-		ModuleLine:   14,
-		Reason:       "general shared-basedata consumer context",
-		BlockedLines: map[int]bool{28: true, 29: true, 41: true, 42: true},
-	},
-	"load1": {
-		ModuleLine:   10,
-		Reason:       "executable-owner shared-basedata consumer context",
-		BlockedLines: map[int]bool{25: true, 26: true, 27: true, 28: true, 29: true, 31: true, 32: true, 33: true, 34: true, 35: true, 37: true, 38: true, 39: true, 40: true, 41: true},
-	},
-	"store1": {
-		ModuleLine:   30,
-		Reason:       "mixed private/shared basedata consumer context",
-		BlockedLines: map[int]bool{49: true, 50: true, 51: true, 52: true},
-	},
 }
 
 type stagedMultiMemoryDelta struct {
@@ -301,13 +276,8 @@ func replayStagedMultiMemoryScript(t *testing.T, base, tmp string, script staged
 		return m, nil
 	}
 
-	gate, hasGate := stagedMultiMemoryGates[base]
 	for _, cmd := range script.Commands {
 		counts.Commands++
-		if hasGate && gate.BlockedLines[cmd.Line] {
-			counts.BlockedCommands++
-			continue
-		}
 		switch cmd.Type {
 		case "module":
 			data, err := os.ReadFile(filepath.Join(tmp, cmd.Filename))
@@ -319,11 +289,6 @@ func replayStagedMultiMemoryScript(t *testing.T, base, tmp string, script staged
 			}
 			m, err := instantiate(data, cmd)
 			if err != nil {
-				if hasGate && cmd.Line == gate.ModuleLine && strings.Contains(err.Error(), "may not install per-instance basedata state") {
-					counts.ExpectedFeatureRejects++
-					current = stagedSpecModule{}
-					continue
-				}
 				if bytes.Contains([]byte(err.Error()), []byte("compile:")) {
 					counts.UnexpectedCompileRejects++
 				} else {
@@ -467,10 +432,6 @@ func TestStagedOfficialMultiMemoryFamilyMatrix(t *testing.T) {
 			tmp := stagedOfficialCoreJSON(t, family, file.Name, &script)
 			counts := replayStagedMultiMemoryScript(t, file.Name, tmp, script)
 			entry := stagedSpecFileDelta{Name: family + "/" + file.Name, Status: "green", Counts: counts}
-			if gate, ok := stagedMultiMemoryGates[file.Name]; ok {
-				entry.Status = "gated"
-				entry.Gate = gate.Reason
-			}
 			delta.Files = append(delta.Files, entry)
 			delta.Totals.add(counts)
 		})
