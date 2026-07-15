@@ -515,7 +515,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			targetContext := uint64(nativeContextPtr)
 			if li := fidx - c.NumImports; li >= 0 && li < len(c.Entry) {
 				code, home := uint64(base)+uint64(c.Entry[li]), selfLinMem
-				stagedTailRegABI := c.stagedFeatures().IsEnabled(CoreFeatureTailCall) && funcSigLocalRegABI(c.Funcs[li])
+				stagedTailRegABI := c.stagedFeatures().IsEnabled(CoreFeatureTailCall) && (funcSigLocalRegABI(c.Funcs[li]) || funcSigReferenceResultRegABI(c.Funcs[li]))
 				if li < len(c.InternalEntry) && c.InternalEntry[li] != c.Entry[li] && (funcSigIntRegABI(c.Funcs[li]) || stagedTailRegABI) {
 					code = uint64(base) + uint64(c.InternalEntry[li])
 					home |= abi.FuncRefInternalHomeTag
@@ -1131,6 +1131,24 @@ func funcSigLocalRegABI(sig FuncSig) bool {
 		}
 	}
 	return true
+}
+
+func funcSigReferenceResultRegABI(sig FuncSig) bool {
+	if len(sig.Results) != 1 || sig.Results[0] != ValFuncRef {
+		return false
+	}
+	gp, fp := 0, 0
+	for _, t := range sig.Params {
+		switch t {
+		case ValI32, ValI64:
+			gp++
+		case ValF32, ValF64:
+			fp++
+		default:
+			return false
+		}
+	}
+	return gp <= 7 && fp <= 8
 }
 
 func funcSigIntRegABI(sig FuncSig) bool {
