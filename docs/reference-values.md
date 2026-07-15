@@ -54,6 +54,14 @@ descriptor returned by `table.get` follows the same registered-range path.
 Existing tokens remain usable after logical close because their complete
 retention chain remains rooted until store teardown.
 
+Iteration 12 extends the same lifetime rule below the token surface. Each distinct
+`InstanceExport` producer used by a consumer is retained transactionally before
+link-time recompilation and released on consumer close or any failed instantiate
+path. A shifted typed `call_ref` therefore remains valid after producer logical
+close without depending on token issuance. The retained set is bounded by the
+consumer's finite function-import set and lives only in the existing lazy instance
+sidecar; ordinary `Instance` and 32-byte descriptor layouts do not grow.
+
 The store never dereferences public bits or an unvalidated `refSlot`. Corrupted
 canonical metadata, cross-runtime/private-store imports, and unowned host-import
 funcrefs remain fail-closed and issue no token. Local and imported/shared
@@ -936,11 +944,14 @@ and remains a noise watchpoint rather than evidence of a regression.
 ## Snapshots, inspection, and linked teardown
 
 Snapshot products share one fail-closed validator. `Capture`, snapshot marshal,
-`LoadSnapshot` and `Instantiate(*Snapshot)` reject
-every table and every reference global until a resolver/state format exists. This
-also rejects forged in-memory snapshots and raw snapshot blobs embedding a valid
-codec-v25 reference module; callers cannot bypass `Capture` to admit unsupported
-live state.
+`LoadSnapshot` and `Instantiate(*Snapshot)` reject every table and every reference
+global until a resolver/state format exists. Iteration 12 additionally rejects any
+artifact whose code or metadata requires typed function references or tail calls,
+before imports are retained, start runs, or memory/global state mutates. Typed/tail
+opcode requirements are now recorded in the full-width codec-v25 feature word;
+compile-only staged admission is kept in a non-serialized code-cache sidecar, so a
+public load of the same artifact remains fail-closed. Forged in-memory snapshots
+and raw snapshot blobs cannot bypass these checks.
 
 `ModuleMetadata` now contains deterministic Wasm-index-ordered `Functions`,
 `Globals`, and `Tables`. Function entries carry exact parameter/result reference
@@ -973,9 +984,9 @@ at 976 B/5 and 2,424 B/36. The inspection and pool checks are off ordinary
 compile/invoke/instantiate hot paths, and the local-table explicit-maximum bit
 occupied existing struct padding in codec v20. These are historical v20 codec measurements; v21 added extended-expression
 metadata and v22 adds recursive/indexed type graphs, a deduplicated storage-type
-pool, and a full-width feature word. Version 23 adds exact indexed-memory
-metadata. Re-benchmark v23 before using the old blob/
-allocation numbers for capacity planning.
+pool, and a full-width feature word. Version 23 added exact indexed-memory metadata, version 24 active-data memory
+indexes, and version 25 collision-resistant native signature keys. Re-benchmark
+v25 before using the old blob/allocation numbers for capacity planning.
 
 ## Staged indexed-reference storage compatibility
 
@@ -1009,17 +1020,16 @@ reject every table/reference-global module.
 
 ## `.wago` compatibility
 
-Compiled-module codec version 23 stores flattened recursive type definitions,
+Compiled-module codec version 25 stores flattened recursive type definitions,
 exact reference nullability/exactness/heap identity, declared function type indexes,
-a deduplicated global/table/element value-type pool, exact indexed memory
-imports/definitions/exports, the direct memory-0 execution cache, and the full
-64-bit optional feature mask. Version 22 and older blobs are rejected by the
-version-23 loader;
-unknown, truncated, out-of-range, ABI-inconsistent, or structurally missing feature
-metadata fails closed. SIMD blobs additionally reject on hosts without the
-documented CPU baseline.
+a deduplicated global/table/element value-type pool, exact indexed memory/data
+metadata, the direct memory-0 execution cache, collision-resistant 64-bit native
+signature keys, and the full optional feature mask. Version 24 and older blobs are
+rejected by the version-25 loader; unknown, truncated, out-of-range,
+ABI-inconsistent, or structurally missing feature metadata fails closed. SIMD
+blobs additionally reject on hosts without the documented CPU baseline.
 
-Version 23 serializes reference globals as structure only: exact import/type/
+Codec v25 serializes reference globals as structure only: exact import/type/
 mutability/export metadata plus literal null, earlier immutable `global.get`, or
 structural `ref.func` initializers. It retains validated scalar extended-expression
 programs for numeric globals and active offsets, and serializes all compiled tables
@@ -1043,8 +1053,8 @@ serializable before binding; instantiation creates fresh dispatch cells and host
 thunks in the target runtime. Decoding uses a fresh `Compiled` value, so reused
 receivers cannot retain stale tables, exports, globals, passive state, or runtime
 caches. Snapshots remain deliberately stricter: every table, every reference
-global, and every multiple-memory module is rejected until a complete
-state/resolver format exists.
+global, every multiple-memory module, and every typed-reference/tail-call artifact
+is rejected until a complete state/resolver format exists.
 
 ### Imported-call/context cleanup measurements (July 22, 2026)
 

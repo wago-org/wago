@@ -6,7 +6,7 @@
 
 Status date: 2026-07-15
 Branch: `wasm3`
-Code head before this report: `89314785` (`amd64: execute staged indexed memory access`)
+Code head before this report: `f2ccb21f` (`wago: retain cross-instance typed descriptors`)
 Base lineage: originally `origin/main` at `2aac98e5`; completed WebAssembly 3.0 iteration commits are retained.
 Scope: the primary repository plus the independently pinned Release 3 submodule inventory.
 
@@ -36,7 +36,7 @@ The most important qualification is platform scope. Linux/amd64 remains the matu
 - Source TODO/FIXME/XXX markers outside submodules, graph output, and the planning ledger: 5.
 - No release tag was shown in the current checkout; installation documentation still describes `v0.1.0` as the future public-prebuilt transition.
 
-Recent development has concentrated on WebAssembly 3.0 indexed scalar/bulk multi-memory execution, duplicate imported-memory lifecycle, bounded collision-resistant native type keys, codec v25, and the pinned Release 3 oracle while preserving the completed WebAssembly 2.0 product surface.
+Recent development has concentrated on WebAssembly 3.0 indexed scalar/SIMD/bulk multi-memory execution, bounded registered-memory basedata tenancy, retained cross-instance typed descriptors, fail-closed typed/tail snapshot metadata, codec v25, and the pinned Release 3 oracle while preserving the completed WebAssembly 2.0 product surface.
 
 ## Knowledge graph
 
@@ -92,8 +92,8 @@ Important architectural properties:
 ### Partial
 
 - WebAssembly 3.0 tail calls: amd64 local register/wrapper direct, private-table indirect, and same-instance typed-reference milestones; public admission remains disabled.
-- Typed function references: exact structural metadata/storage matching, `call_ref`, null-control lowering, exact public/host/global boundaries, harness identity, dynamic table lifecycle, and bounded 64-bit native structural keys are staged internally. Deliberate legacy 32-bit collisions separate; recursive/cross-instance keys agree; over-budget canonicalization fails closed without a global cache. Typed tails, snapshots, public admission, remaining GC/reference instructions, and arm64 completion remain.
-- Multi-memory has strict staged AST/byte-backed validation, exact declaration/import/export directories, deterministic metadata, codec v25, declaration-based policy accounting, and duplicate alias deduplication. The internal linux/amd64 explicit-bounds path executes local/imported/re-exported indexed `memory.size/grow`, every scalar load/store width, and active/passive `memory.init/copy/fill`/drop lifecycle. Indexed SIMD, snapshots, guard mode, public admission, and arm64 remain fail-closed. memory64/table64, exception handling, and WasmGC retain validation or runtime foundations without executable product claims.
+- Typed function references: exact structural metadata/storage matching, `call_ref`, null-control lowering, exact public/host/global boundaries, harness identity, dynamic table lifecycle, and bounded 64-bit native structural keys are staged internally. Deliberate legacy 32-bit collisions separate; recursive/cross-instance keys agree; over-budget canonicalization fails closed without a global cache. Distinct `InstanceExport` producers are now retained through consumer close, typed/tail opcodes persist required-feature bits, and snapshots reject unresolved contexts before mutation. Typed tail jumps, live reference snapshot state, public admission, remaining GC/reference instructions, and arm64 completion remain.
+- Multi-memory has strict staged AST/byte-backed validation, exact declaration/import/export directories, deterministic metadata, codec v25, declaration-based policy accounting, and duplicate alias deduplication. The internal linux/amd64 explicit-bounds path executes local/imported/re-exported indexed `memory.size/grow`, every scalar and SIMD memory form, and active/passive `memory.init/copy/fill`/drop lifecycle. Registered memory-0 co-tenants with non-executable producers use allocation-free serialized basedata images and synchronized growth; executable owners and function/host-import contexts remain fail-closed. Compact-import decoding, snapshots, guard mode, public admission, and arm64 remain gated. memory64/table64, exception handling, and WasmGC retain validation or runtime foundations without executable product claims.
 
 ### Planned
 

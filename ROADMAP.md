@@ -115,17 +115,23 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   shifted-type imports/re-exports, producer replacement, close order, and trap
   atomicity; local table-owner overwrites release closed consumers. amd64 executes
   `ref.as_non_null` and both null branches; local wrapper direct tails use a fixed
-  16-slot bank; and the reached `select` funcref assertion is green. Public
-  admission, imported/cross-instance tail contexts, snapshots, remaining
-  GC/reference instructions, and arm64 execution parity remain gated.
+  16-slot bank; and the reached `select` funcref assertion is green. Cross-instance
+  `InstanceExport` imports now retain each distinct producer through consumer close,
+  so shifted typed `call_ref` descriptors remain valid after producer logical close.
+  Typed/tail opcodes persist required-feature bits and snapshots reject unresolved
+  descriptor/tail contexts before mutation. Public admission, imported/cross-instance
+  tail jumps, live typed snapshot state, remaining GC/reference instructions, and
+  arm64 execution parity remain gated.
 - 🚧 Multi-memory now has an explicit internal AST/byte-backed gate, exact
   compiled/product declaration/import/export directories, declaration-based
   policy accounting, duplicate imported-memory alias deduplication, and codec v25
   persistence. A linux/amd64 explicit-bounds staged path executes local/imported/
-  re-exported indexed `memory.size/grow`, every scalar load/store width, active and
-  passive data lifecycle, and `memory.init/copy/fill` with exact cross-memory,
-  overlap, bounds, and drop behavior. Indexed SIMD memory operations, snapshots,
-  guard mode, public admission, and arm64 remain.
+  re-exported indexed `memory.size/grow`, every scalar and SIMD memory form, active
+  and passive data lifecycle, and `memory.init/copy/fill` with exact cross-memory,
+  overlap, bounds, and drop behavior. Registered memory-0 co-tenants with no native
+  producer or function/host imports serialize fixed 256-byte basedata images,
+  synchronize monotonic growth, and remain allocation-free per call. Standardized
+  compact-import decoding, snapshots, guard mode, public admission, and arm64 remain.
 - [ ] memory64/table64, exception handling, and GC end to end.
 - [ ] Reach zero unexplained failures/skips in the official Release 3 core suite.
 
@@ -208,11 +214,14 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   and non-null harness result matching are now proven.
   Mutable global host/public boundaries now enforce exact indexed types and
   nullability, and shared table/global producer roots release on successful final
-  overwrite without violating trap atomicity. Typed tail contexts, snapshots,
-  public admission, remaining reference/GC instructions, and arm64 remain gated.
-  Multi-memory now executes all indexed scalar and bulk/data operations internally
-  on linux/amd64 explicit bounds, but not indexed SIMD, snapshots, guard mode, or
-  public admission; memory64/table64, exception
+  overwrite without violating trap atomicity. Cross-instance typed descriptors now
+  retain their producer through consumer close, and typed/tail opcode requirements
+  survive codec metadata while snapshots reject unresolved contexts before mutation.
+  Typed tail jumps, persisted live reference state, public admission, remaining
+  reference/GC instructions, and arm64 remain gated. Multi-memory now executes all
+  indexed scalar, SIMD, and bulk/data operations internally on linux/amd64 explicit
+  bounds and stages bounded registered-memory co-tenants, but compact-import decoding,
+  snapshots, guard mode, and public admission remain; memory64/table64, exception
   handling, and WasmGC remain active Core 3.0 scope;
   see `docs/wasm3.md` for exact boundaries.
 - [x] Reference-types product completion: signatures, locals, control,
