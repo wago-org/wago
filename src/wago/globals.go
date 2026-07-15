@@ -336,6 +336,7 @@ func (g *Global) GetValue() (Value, error) {
 	o := g.owner
 	o.mu.Lock()
 	typ, store, source, closed := o.typ, o.store, o.instance, o.closed
+	exact, exactTypes, hasExact := o.valueType, o.types, o.hasValueType
 	consistent := g.Type == typ && g.Mutable == o.mutable
 	o.mu.Unlock()
 	if closed || !consistent || !isReferenceValType(typ) {
@@ -343,6 +344,9 @@ func (g *Global) GetValue() (Value, error) {
 	}
 	bits := readGlobalObject(g, typ)
 	if bits == 0 {
+		if hasExact && exact.Kind == ValueTypeReference && !exact.Ref.Nullable {
+			return Value{}, fmt.Errorf("global contains null for a non-null reference type")
+		}
 		return Value{typ: typ}, nil
 	}
 	if store == nil {
@@ -353,6 +357,12 @@ func (g *Global) GetValue() (Value, error) {
 			return Value{}, fmt.Errorf("global contains an invalid externref value")
 		}
 		return Value{typ: ValExternRef, bits: bits}, nil
+	}
+	if hasExact {
+		actual, actualTypes, ok := store.descriptorFuncrefExactType(source, bits)
+		if !ok || !valueTypeSubtype(actual, actualTypes, exact, exactTypes) {
+			return Value{}, fmt.Errorf("global contains a funcref with an incompatible exact structural type")
+		}
 	}
 	token, err := store.issue(source, bits)
 	if err != nil {
@@ -372,6 +382,7 @@ func (g *Global) SetValue(v Value) error {
 	o := g.owner
 	o.mu.Lock()
 	typ, mutable, store, closed := o.typ, o.mutable, o.store, o.closed
+	exact, exactTypes, hasExact := o.valueType, o.types, o.hasValueType
 	consistent := g.Type == typ && g.Mutable == mutable
 	o.mu.Unlock()
 	if closed || !consistent || !isReferenceValType(typ) {
@@ -384,6 +395,9 @@ func (g *Global) SetValue(v Value) error {
 		return fmt.Errorf("global is immutable")
 	}
 	bits := v.bits
+	if bits == 0 && hasExact && exact.Kind == ValueTypeReference && !exact.Ref.Nullable {
+		return fmt.Errorf("global requires a non-null reference value")
+	}
 	if bits != 0 {
 		if store == nil {
 			return fmt.Errorf("global has no compatible reference store")
@@ -393,6 +407,15 @@ func (g *Global) SetValue(v Value) error {
 				return fmt.Errorf("invalid externref token")
 			}
 		} else {
+			if hasExact {
+				actual, actualTypes, ok := store.tokenFuncrefExactType(bits)
+				if !ok {
+					return fmt.Errorf("invalid funcref token")
+				}
+				if !valueTypeSubtype(actual, actualTypes, exact, exactTypes) {
+					return fmt.Errorf("funcref token does not match the global's exact structural type")
+				}
+			}
 			descriptor, ok := store.resolve(bits)
 			if !ok {
 				return fmt.Errorf("invalid funcref token")
