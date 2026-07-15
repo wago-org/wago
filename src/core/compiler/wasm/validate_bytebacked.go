@@ -1193,7 +1193,9 @@ func (v *funcValidator) directStartTryTable(bt BlockType, catches []Catch) error
 			payload = append(payload, ft.Params...)
 		}
 		if c.Kind == CatchRef || c.Kind == CatchAllRef {
-			payload = append(payload, RefVal(AbsRef(HeapExn)))
+			// Reference catches materialize a non-null exception reference. The
+			// target label may widen it to nullable exnref, but not vice versa.
+			payload = append(payload, RefVal(Ref(false, AbsHeap(HeapExn), false)))
 		}
 		if c.Kind == CatchAll && len(lt) != 0 {
 			return v.verr(ErrTypeMismatch, "catch_all label must expect no values")

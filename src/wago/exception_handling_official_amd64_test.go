@@ -63,8 +63,7 @@ const (
 
 var stagedExceptionHandlingKnownGates = map[string]map[string]bool{
 	stagedEHBoundaryDecoderValidator: {
-		"throw instruction validation is incomplete":            true,
-		"general try_table catch validation remains incomplete": true,
+		"throw instruction validation is incomplete": true,
 	},
 	stagedEHBoundaryProduct: {
 		"tag imports, exports, and cross-module link identity are outside the bounded local product slice": true,
@@ -108,9 +107,6 @@ func stagedExceptionHandlingModuleGate(base string, data []byte) (boundary, reas
 	}
 	if err := corewasm.ValidateModule(m); err != nil {
 		var verr *corewasm.ValidationError
-		if base == "exceptions/try_table" && errors.As(err, &verr) && verr.Code == corewasm.ErrTypeMismatch && strings.Contains(verr.Detail, "catch payload") {
-			return stagedEHBoundaryDecoderValidator, "general try_table catch validation remains incomplete", nil
-		}
 		if !errors.As(err, &verr) || verr.Code != corewasm.ErrUnsupportedValidationOpcode {
 			return "", "", fmt.Errorf("validate: %w", err)
 		}
