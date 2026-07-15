@@ -39,30 +39,81 @@ The execution harness is intentionally red until support is real:
 - Release 3, like Release 2, is required to finish with zero skipped modules and
   zero skipped assertions before a conformance claim is made.
 
-Iteration 2 pins WABT `wast2json` 1.0.41 and bootstraps checksum-verified official
-release archives through `scripts/bootstrap-wabt.sh` on linux/amd64,
-linux/arm64, and darwin/arm64. `make spec3` uses only that pinned binary and checks
-its exact reported version. `scripts/spec3-baseline.sh` refreshes the committed
-machine-readable inventory at `tests/spec-v3-baseline.json`; it deliberately
-returns the failing suite status rather than turning a red baseline green.
+Iteration 2 pinned WABT `wast2json` 1.0.41 and bootstrapped checksum-verified
+official release archives through `scripts/bootstrap-wabt.sh` on linux/amd64,
+linux/arm64, and darwin/arm64. Its first complete pass established the historical
+red baseline: WABT converted 230 files, failed on 28, and exposed 1,656 passing
+modules plus 51,678 passing assertions.
 
-The first complete 258-file pass produced this red baseline:
+Iteration 3 closes that text-oracle blocker without exclusions. It bootstraps the
+official WebAssembly/spec 3.0.0 reference interpreter directly from the pinned
+`wg-3.0` submodule revision through `scripts/bootstrap-spec-interpreter.sh`.
+Admission checks require all of the following:
 
-- 230 files converted by WABT and 28 failed text conversion;
-- 1,656 modules passed, 370 were compile/instantiate gaps, and none reached the
-  harness's module-failed bucket;
-- 51,678 assertions passed, 38 failed, and 5,543 were skipped because their module
-  or action was unavailable;
-- gap counts were 373 compile rejections, 13 instantiate rejections, and 5,527
+- the suite checkout is exactly `9d36019973201a19f9c9ebb0f10828b2fe2374aa`;
+- the installed tool carries the same source-revision stamp;
+- the binary identifies itself as `wasm 3.0.0 reference interpreter`;
+- WABT still reports exactly 1.0.41 and remains the primary converter.
+
+For each file, `make spec3` first runs WABT. Only when WABT rejects the text does
+the official interpreter run in dry mode and emit a binary script. The strict
+`scripts/spec-interpreter-json.py` converter parses that documented binary-script
+subset, writes exact embedded Wasm bytes, and preserves module definitions,
+repeated instances, registrations, actions, assertion kinds, scalar/reference
+values, and alternative result patterns for the Go execution harness. Unknown
+commands, malformed strings, unsupported values, missing definitions, tool
+identity mismatches, and failures from either converter remain hard errors.
+Generated command line numbers refer to the canonical binary script rather than
+the original source; this affects diagnostics only, not module bytes or command
+order.
+
+The current schema-2 inventory at `tests/spec-v3-baseline.json` processes all 258
+files and reports:
+
+- 230 files converted directly by WABT and 28 through the official interpreter;
+- zero parser/tool failures and no excluded files;
+- 1,691 modules passed, 535 were compile/instantiate feature gaps, and none reached
+  the harness's module-failed bucket;
+- 51,764 assertions passed, 6 failed, and 6,268 were unavailable behind feature
+  gaps;
+- gap counts are 536 compile rejections, 15 instantiate rejections, and 6,252
   module-unavailable assertions;
-- 136 files were green and 122 files had a parser, execution, or feature gap.
+- 143 files are green and 115 retain an execution or feature gap.
 
-The 28 parser failures remain hard failures. Nineteen are grouped under GC by the
-inventory, with additional typed-reference, exception, memory64/table64, and
-cross-cutting text forms that WABT 1.0.41 cannot consume from the official
-`wg-3.0` tree. This proves that WABT alone cannot be the final zero-gap Release 3
-oracle; the next tool slice must add a pinned converter/interpreter that accepts
-the official Release 3 text language rather than excluding those files.
+The six reached-but-failing assertions are no longer relaxed-SIMD oracle noise:
+two are in `linking`, three are in `multi-memory/linking0` or
+`multi-memory/linking3`, and one is the typed-funcref identity result in `select`.
+The linking failures expose memory/table import-state gaps around currently
+unsupported Release 3 forms; the `select` failure requires exact non-null
+funcref-pattern identity support in the harness/product path. They remain red and
+must be explained or fixed before conformance completion.
+
+`scripts/spec3-baseline.sh` refreshes this inventory and deliberately returns the
+failing suite status. Parser failures may reappear only as hard red entries if
+both pinned conversion paths fail; they can never be reclassified as skips.
+
+### Text-oracle footprint measurement
+
+A temporary local measurement converted the fixed 28-file fallback set with the
+cached official interpreter and the committed Python converter:
+
+| Measurement | Result |
+|---|---:|
+| Official interpreter executable | 7,265,760 bytes |
+| Committed converter source | 12,253 bytes |
+| 28-file fallback elapsed time | 1.017 seconds |
+| Maximum child-process RSS | 15,100 KiB |
+| Canonical binary-script output | 193,337 bytes |
+| JSON command output | 320,667 bytes |
+| Extracted module files / bytes | 358 / 35,010 bytes |
+
+Elapsed time used Python `time.perf_counter`; RSS used
+`resource.getrusage(RUSAGE_CHILDREN)` on the current linux/amd64 host. These are
+development-tool measurements, not runtime throughput or product-footprint
+claims. The 7.3 MB interpreter and temporary conversion artifacts live under
+`.tools`/test temporary directories and are not linked into wago. Normal WABT-
+convertible files do not invoke the fallback. Building the interpreter requires
+OCaml, dune, and menhir; cached verification does not rebuild it.
 
 ## Feature model
 
@@ -95,7 +146,7 @@ handling, multi-memory, memory64, and table64.
 | Area | Decode / validate | Frontend / codegen / runtime | Product status |
 |---|---|---|---|
 | Extended constant expressions | Basic Release 3 numeric extension is complete on AST and byte-backed paths: `i32`/`i64` add, sub, mul, imported globals, and earlier immutable local globals. Forward, mutable, mixed-type, stack-shape, unsupported-opcode, and local-global offset forms are rejected strictly. | Complete for the basic extended-const proposal. Literal arithmetic folds at compile time. Global-dependent scalar programs are persisted and evaluated during instantiation for globals and active data/element offsets. | ✅ Executable and enabled as `CoreFeatureExtendedConstExpressions`. GC-added constant instructions remain part of the GC row, not this completed basic proposal. |
-| Relaxed SIMD | Complete through `0xfd 275`, with reserved holes rejected. | Deterministic lowering is present on the documented linux/amd64 SIMD baseline. | ✅ Existing completed support, represented by `CoreFeatureSIMD`. |
+| Relaxed SIMD | Complete through `0xfd 275`, with reserved holes rejected. | Deterministic lowering is present on the documented linux/amd64 SIMD baseline. The Release 3 harness now honors official `either` result patterns; all 8 converted modules and 69 assertions pass with zero failures/skips. | ✅ Existing completed support, represented by `CoreFeatureSIMD`. |
 | Tail calls | Decoder and validator understand direct, indirect, and reference tail-call forms. | linux/amd64 has internal frame-reuse milestones for local `return_call` targets that fit the register ABI and `return_call_indirect` through private immutable table 0 with int-only signatures. Public frontend admission remains disabled; imported/wrapper direct targets, mutable/imported/exported/nonzero indirect tables, mixed indirect signatures, and `return_call_ref` remain unsupported. | 🚧 Backend milestone only; not a public product claim. |
 | Typed function references | Substantial type/ref/call syntax and validation exists. | Non-basic typed-reference instructions and `call_ref` remain frontend-rejected; runtime representation and call lowering are incomplete. | 🚧 Syntax/validation foundation only. |
 | GC | Recursive types, instructions, descriptor lowering, and a collector foundation exist. | Native frame roots, safepoint maps, opcode lowering, allocation calls, and write-barrier emission are not connected. | 🚧 Runtime foundation only; see `docs/gc.md`. |
@@ -231,7 +282,7 @@ Iteration 1 contained:
    including `.wago` v21 persistence.
 4. `ad4bbe79` — record the first implementation ledger.
 
-Iteration 2 contains exactly three code/test commits and this documentation
+Iteration 2 contained exactly three code/test commits and one documentation
 commit:
 
 1. `69ea811a` — bootstrap checksum-pinned WABT 1.0.41 and commit the 258-file
@@ -239,6 +290,16 @@ commit:
 2. `1a1dcec9` — implement local direct `return_call` frame reuse on amd64.
 3. `0603ab8c` — implement private-local-table `return_call_indirect` frame reuse,
    trap parity, and explicit arm64 rejection coverage.
+4. `fa8f1b1a` — record the second implementation iteration.
+
+Iteration 3 contains exactly three code/test commits and this documentation
+commit:
+
+1. `ce608c61` — pin and bootstrap the official Release 3 reference interpreter.
+2. `3453490d` — convert all 28 WABT-rejected files through the official binary
+   script path and refresh the zero-parser-failure inventory.
+3. `8fbab308` — implement official alternative result matching and close all 32
+   relaxed-SIMD harness failures.
 
 ## Validation performed
 
@@ -247,20 +308,20 @@ Commands were run from the repository root on linux/amd64.
 | Command | Result |
 |---|---|
 | `scripts/bootstrap-wabt.sh --verify` | PASS: checksum-pinned `wast2json 1.0.41` at `.tools/wabt-1.0.41-linux-x64/bin/wast2json`. |
-| `go test ./internal/spectest ./src/wago -run 'TestCommittedRelease3Baseline\|TestResolveWast2JSON\|TestResolveSpecPlanRelease3' -count=1` | PASS. The committed pin, complete file accounting, configured path, and exact WABT version are locked. |
-| `go test ./src/core/compiler/backend/railshot/amd64 -run 'TestReturnCallDirect' -count=1 -v` | PASS: million-step recursion, two-result, float, trap, stats, and wrapper-rejection cases. |
-| `go test ./src/core/compiler/backend/railshot/amd64 -run 'TestReturnCallIndirect' -count=1 -v` | PASS: million-step table recursion, OOB/null/signature traps, stats, and externally mutable table rejection. |
-| `go test ./src/core/compiler/backend/railshot/amd64 ./src/core/compiler/frontend ./src/wago -run 'ReturnCall\|TailCall\|RejectUnsupportedProposalFeaturesDecodedByWasm3' -count=1` | PASS; backend milestones execute while the public/frontend family remains fail-closed. |
+| `scripts/bootstrap-spec-interpreter.sh --verify` | PASS: official `wasm 3.0.0 reference interpreter` built from `9d36019973201a19f9c9ebb0f10828b2fe2374aa`. |
+| `go test ./internal/spectest ./src/wago -run 'TestCommittedRelease3Baseline\|TestRelease3Interpreter\|TestResolveSpecInterpreter\|TestResolveWast2JSON\|TestResolveSpecPlanRelease3\|TestSpecInterpreterModuleDefinitionInstances\|TestMatchEitherResult\|TestSpecValueV128StructuredJSON' -count=1` | PASS: both tool pins, strict binary-script conversion, definition/instance replay, baseline accounting, and scalar/vector alternative results are covered. |
+| `go test ./src/core/compiler/backend/railshot/amd64 -run 'TestReturnCallDirect\|TestReturnCallIndirect' -count=1` | PASS: the previous direct/indirect million-step tail milestones and trap/rejection boundaries remain green. |
 | `go test ./... -count=1` | PASS on final code HEAD. |
 | `go test -tags wago_guardpage ./src/core/runtime ./src/wago -count=1` | PASS. |
-| `GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go test -c -o .validation/wago-arm64.test ./src/wago` | PASS; artifact removed. The arm64-only test asserts that `CoreFeatureTailCall` is not advertised and returns platform-specific unsupported metadata. This is build evidence, not native arm64 execution. |
-| `make spec3` | FAIL as required: WABT converted 230/258 files; 28 parser failures; modules pass=1,656/skip=370; assertions pass=51,678/fail=38/skip=5,543. |
-| `python3 scripts/spec3-baseline.py .validation/spec3-final.log .validation/spec-v3-baseline.json --exit-code 2 && cmp tests/spec-v3-baseline.json .validation/spec-v3-baseline.json` | PASS: the committed baseline reproduces byte-for-byte. |
+| `GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go test -c -o .validation/wago-arm64.test ./src/wago` | PASS; artifact removed. This is build evidence only; arm64 remains explicitly fail-closed for unsupported 3.0 families. |
+| `make spec3` | FAIL as required with zero parser failures and 28 official-interpreter fallbacks: modules pass=1,691/skip=535; assertions pass=51,764/fail=6/skip=6,268. Relaxed SIMD is green at 8 modules/69 assertions. |
+| `python3 scripts/spec3-baseline.py .validation/spec3-iteration3-final.log .validation/spec3-iteration3-final.json --exit-code 2 && cmp tests/spec-v3-baseline.json .validation/spec3-iteration3-final.json` | PASS: the schema-2 committed inventory reproduces byte-for-byte. |
 
-The Release 3 totals do not improve from the backend milestones because public
-frontend tail-call admission intentionally remains disabled until every claimed
-form is tail-safe. Existing 1.0/2.0 external corpora were not rerun separately;
-the repository-wide and guard-page suites passed.
+The larger skipped totals relative to the historical WABT-only baseline are
+intentional: 28 previously unparsed files now contribute their real feature gaps.
+The 32 removed failures were harness-oracle errors for valid relaxed-SIMD
+alternative results, not backend changes. Existing 1.0/2.0 external corpora were
+not rerun separately; repository-wide and guard-page suites passed.
 
 ## Architecture policy
 
@@ -293,9 +354,10 @@ Recommended dependency order:
 
 Major risks:
 
-- WABT 1.0.41 cannot parse 28 official Release 3 files, so a second pinned
-  Release-3-capable text converter/interpreter is required; parser errors must not
-  become exclusions;
+- the zero-parser-failure oracle now depends on development hosts having OCaml,
+  dune, and menhir available for the pinned official interpreter build; the cached
+  tool is revision-stamped, and any future binary-script grammar change must fail
+  the strict converter rather than silently dropping commands;
 - codec v21 intentionally invalidates v20 caches;
 - multi-memory changes instance metadata, import/export APIs, snapshots, and every
   memory opcode hot path;
@@ -314,19 +376,19 @@ Major risks:
 The next recursive iteration should again make exactly three atomic code/test
 commits followed by one documentation commit:
 
-1. **Release 3 text-oracle closeout.** Pin/bootstrap the official spec
-   interpreter or another Release-3-capable converter, require its exact revision,
-   process all 28 WABT parser failures without exclusions, and update the
-   machine-readable inventory. Keep parser/tool failures hard.
-2. **General direct/indirect tail ABI.** Extend `return_call` to wrapper-only,
-   imported, and cross-instance targets and extend `return_call_indirect` to
-   mutable/imported/exported/nonzero tables and mixed register-ABI signatures.
-   Prove bounded stack use across same-instance and cross-instance cycles; keep
-   the public family disabled if any form remains.
+1. **General direct tail ABI.** Extend `return_call` beyond local internal entries
+   to wrapper-only, imported, and cross-instance targets. Preserve module/global
+   context, host re-entry, traps, and results while proving bounded native-stack
+   use across same-instance and cross-instance cycles.
+2. **General indirect tail ABI.** Extend `return_call_indirect` to nonzero,
+   mutable, imported, and exported tables plus mixed GP/XMM register-ABI
+   signatures. Preserve OOB/null/canonical-signature traps and reject host or
+   cross-instance descriptors until their context-switch path is demonstrably
+   tail-safe.
 3. **Typed-reference call beachhead.** Execute typed non-null funcref values and
    `call_ref`, then add `return_call_ref` only when it shares the proven tail ABI.
-   Preserve null/signature traps and strict subtype validation; enable
-   `CoreFeatureTailCall` only if all three tail instructions are complete.
+   Preserve null/signature traps and strict subtype validation. Keep
+   `CoreFeatureTailCall` disabled unless all three tail instructions are complete.
 4. **Documentation commit.** Refresh exact suite/parser totals, tail ABI coverage,
    typed-reference state, measurements, product/platform gates, and the following
    bounded slice.

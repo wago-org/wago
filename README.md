@@ -511,6 +511,7 @@ for the listed subset. [FEATURES.md](FEATURES.md) is the source of truth.
 | Feature | Status |
 |---|---|
 | WebAssembly 1.0 MVP scalar semantics | Done. The pinned MVP spec suite reports 629 modules and 16,026 assertions passing with zero failures or skips. |
+| WebAssembly 3.0 conformance work | The independently pinned 258-file core suite is fully text-convertible with zero parser failures using checksum-pinned WABT 1.0.41 plus the exact official 3.0.0 reference interpreter revision. Current inventory: 143 green/115 red files; 1,691 modules pass and 535 remain feature gaps; 51,764 assertions pass, 6 fail, and 6,268 remain unavailable. |
 | Numeric types | `i32`, `i64`, `f32`, `f64`, and `v128`. |
 | Integer ops | Arithmetic, bitwise, shifts/rotates, div/rem traps, clz/ctz/popcnt, comparisons. |
 | Float ops | Add/sub/mul/div/sqrt/abs/neg/min/max, comparisons, rounding ops, conversions, reinterprets, NaN/overflow trunc traps. |
@@ -526,7 +527,7 @@ for the listed subset. [FEATURES.md](FEATURES.md) is the source of truth.
 | Bulk memory | Linear memory plus funcref and externref tables are complete for copy/fill/init/drop, passive data/elements, overlap, bounds, and already-dropped active/declarative segment state. |
 | Multi-value | Done semantically for functions, blocks, branches, calls, public invocation, and compiled metadata; a wider optimized result ABI remains a performance task. |
 | Reference types | Done for WebAssembly 2.0: nullable/non-null `funcref`, `externref`, structural `ref.func`, typed `select`, signatures, locals/control flow, local/imported/shared globals, reflection-free host calls, explicit host funcref ownership, typed 8-byte externref tables/elements, multiple local/imported tables, indexed operations and `call_indirect`, duplicate aliases, and exact exports/re-exports execute. Codec v21 persists safe structural metadata, dynamic-import shape, and exact required features/limits. Snapshot isolation, deterministic all-table/reference inspection, and cross-link teardown are audited. The Release 2 execution corpus is zero-skip at 1,600 modules / 48,248 assertions. |
-| SIMD | Done for the documented linux/amd64 baseline: SSSE3/SSE4.1 plus AVX/VEX.128. Core SIMD and deterministic relaxed SIMD opcodes through `0xfd 275` are decoded, validated, and lowered. |
+| SIMD | Done for the documented linux/amd64 baseline: SSSE3/SSE4.1 plus AVX/VEX.128. Core SIMD and deterministic relaxed SIMD opcodes through `0xfd 275` are decoded, validated, and lowered. All 8 modules and 69 assertions in the pinned Release 3 relaxed-SIMD family pass, including official alternative result patterns. |
 | Extended constant expressions | Done for the basic Release 3 extension: `i32`/`i64` add/sub/mul, earlier immutable globals, active offsets, strict AST/byte-backed validation, instantiate-time evaluation, and codec-v21 persistence. |
 | Threads and atomics | Planned. |
 | Tail calls | Active WebAssembly 3.0 work: decoded/validated; amd64 local direct and private immutable-table int-only indirect forms have internal frame-reuse milestones, but public admission stays disabled until imports/general tables/`return_call_ref` and platform policy are complete. |

@@ -8,11 +8,14 @@
   feature skips.
 - WebAssembly 3.0 is independently pinned at `tests/spec-v3` from
   `WebAssembly/spec` tag `wg-3.0`, commit
-  `9d36019973201a19f9c9ebb0f10828b2fe2374aa`. `make spec3` discovers 258 official
-  core `.wast` files, bootstraps checksum-pinned WABT 1.0.41, and requires zero
-  parser failures or feature skips. The first red baseline converted 230 files;
-  28 text files failed parsing. Converted totals are modules pass=1,656/skip=370
-  and assertions pass=51,678/fail=38/skip=5,543. The machine-readable inventory is
+  `9d36019973201a19f9c9ebb0f10828b2fe2374aa`. `make spec3` discovers all 258
+  official core `.wast` files. WABT 1.0.41 remains the primary converter; the
+  official WebAssembly/spec 3.0.0 reference interpreter from the same exact pin
+  converts the 28 text files WABT cannot parse. Parser/tool failures remain hard.
+  The current red inventory has zero parser failures, 143 green and 115 red files,
+  modules pass=1,691/skip=535, and assertions pass=51,764/fail=6/skip=6,268.
+  All 69 Release 3 relaxed-SIMD assertions pass after honoring official `either`
+  result patterns. The machine-readable schema-2 inventory is
   `tests/spec-v3-baseline.json`; see `docs/wasm3.md` for family grouping and caveats.
 
 ## WebAssembly 1.0 (MVP)

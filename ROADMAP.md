@@ -92,10 +92,13 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   explicit `GOOS/GOARCH` unsupported-feature errors.
 - [x] Execute the basic extended-constant-expression proposal and persist deferred
   scalar initializers/offsets in `.wago` codec v21.
-- [x] Bootstrap checksum-pinned WABT 1.0.41 and record the first full 258-file
-  red inventory: 28 parser failures, 370 skipped modules, 38 failed and 5,543
-  skipped assertions. Add a Release-3-capable text oracle for the 28 files WABT
-  cannot parse; parser failures remain hard.
+- [x] Bootstrap checksum-pinned WABT 1.0.41, then pin the official
+  WebAssembly/spec 3.0.0 interpreter at the suite revision for the 28 files WABT
+  cannot parse. The schema-2 258-file inventory now has zero parser failures,
+  143 green/115 red files, 535 skipped modules, 6 failed and 6,268 skipped
+  assertions; tool/parser failures remain hard.
+- [x] Honor official Release 3 relaxed-SIMD `either` result patterns: all 8
+  converted modules and 69 assertions pass with zero failures/skips.
 - 🚧 Tail calls: amd64 local direct and private-immutable-table int-only indirect
   frame-reuse milestones are executable internally; general/imported/cross-instance
   forms and `return_call_ref` remain gated. Typed function references follow.

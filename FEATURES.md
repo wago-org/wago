@@ -12,7 +12,9 @@ describes the mandatory WebAssembly Core 3.0 scope, while `SupportedFeatures()`
 reports what this build can execute. The current default is WebAssembly 2.0 plus
 completed basic extended constant expressions; it omits SIMD when the CPU lacks
 the documented baseline. Other 3.0 families remain explicit, disabled gates.
-See [docs/wasm3.md](docs/wasm3.md) for the implementation ledger.
+See [docs/wasm3.md](docs/wasm3.md) for the implementation ledger. The pinned
+Release 3 core inventory currently processes all 258 files with zero parser
+failures: 143 are green and 115 retain execution/feature gaps.
 
 ## WebAssembly 1.0 (MVP)
 
@@ -58,7 +60,7 @@ Later proposals and engine/platform capabilities beyond the MVP.
 | table64 | ✓ | 🚧 limit/index validation exists; frontend/runtime/backend remain 32-bit and reject execution. |
 | Exception handling | ✓ | 🚧 tag/throw/try-table syntax and validation foundation; no runtime unwind ABI or codegen, so tags and exception instructions are rejected. |
 | Garbage collection (WasmGC) | ✓ | 🚧 recursive types, descriptor lowering, and collector foundation exist; native roots, safepoints, opcode lowering, allocation calls, and barriers are not wired. |
-| SIMD (`v128`) | ✓ | ✅ done for the documented linux/amd64 baseline. All decoded core SIMD and deterministic relaxed SIMD `0xfd` opcodes through 275 are validated, frontend-admitted, and lowered by railshot; 20 reserved proposal-table holes are invalid-decode tests. The documented baseline is SSSE3/SSE4.1 plus AVX/VEX.128 only; AVX2/FMA/VNNI remain future feature-gated fast paths. Public `v128` representation is `[16]byte` (`wago.V128`); locals, params/results, control flow, globals, cross-instance imports, and host imports/results are supported. The official SIMD proposal corpus passes via WABT `wast2json` (24,325 assertions, 0 skipped modules/assertions), and relaxed SIMD coverage is locked by opcode parity and focused deterministic-lowering tests. See `docs/simd-relaxed-plan.md` and `docs/simd-performance-2026-07.md`. |
+| SIMD (`v128`) | ✓ | ✅ done for the documented linux/amd64 baseline. All decoded core SIMD and deterministic relaxed SIMD `0xfd` opcodes through 275 are validated, frontend-admitted, and lowered by railshot; 20 reserved proposal-table holes are invalid-decode tests. The documented baseline is SSSE3/SSE4.1 plus AVX/VEX.128 only; AVX2/FMA/VNNI remain future feature-gated fast paths. Public `v128` representation is `[16]byte` (`wago.V128`); locals, params/results, control flow, globals, cross-instance imports, and host imports/results are supported. The official SIMD proposal corpus passes via WABT `wast2json` (24,325 assertions, 0 skipped modules/assertions). The pinned Release 3 relaxed-SIMD family also passes all 8 modules and 69 assertions, including official `either` result alternatives. See `docs/simd-relaxed-plan.md` and `docs/simd-performance-2026-07.md`. |
 | Branch hinting (`metadata.code.branch_hint`) | ✓ | ✅ done: the current code-metadata wire format is decoded strictly (unique/pre-code section, ordered function/offset vectors, one-byte payload, and only `if`/`br_if` targets). ARM64 railshot uses `if` likelihood to weight local/global pinning and defers non-empty unlikely `br_if` reconciliation into cold target fragments. |
 | Threads & atomics | ✓ | ⬜ planned |
 | Synchronous host-import results | ✓ | ✅ done |
