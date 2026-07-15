@@ -208,7 +208,7 @@ func TestValidatorProposalCoverageArrayNewForms(t *testing.T) {
 	})
 	t.Run("default rejects non-nullable reference element", func(t *testing.T) {
 		m := &Module{
-			Types:     []RecType{arrayType(field(refToType(0, false), Var)), ft(nil, nil)},
+			Types:     []RecType{arrayType(field(RefVal(Ref(false, IndexedHeap(TypeIdx{Index: 0, Rec: true}), false)), Var)), ft(nil, nil)},
 			FuncTypes: []TypeIdx{{Index: 1}},
 			Code:      []Func{{Body: Expr{Instrs: []Instruction{{Kind: InstrI32Const}, {Kind: InstrArrayNewDefault, Index: 0}, {Kind: InstrDrop}}}}},
 		}
@@ -1038,7 +1038,7 @@ func TestValidatorCoverageGCAndSIMDNegativeBranches(t *testing.T) {
 		}
 	})
 	t.Run("struct and array constructor failures", func(t *testing.T) {
-		expectValidateErr(t, &Module{Types: []RecType{structType([]FieldType{field(refToType(0, false), Var)}, TypeMetadata{}), ft(nil, nil)}, FuncTypes: []TypeIdx{{Index: 1}}, Code: []Func{{Body: Expr{Instrs: []Instruction{{Kind: InstrStructNewDefault, Index: 0}, {Kind: InstrDrop}}}}}}, ErrTypeMismatch)
+		expectValidateErr(t, &Module{Types: []RecType{structType([]FieldType{field(RefVal(Ref(false, IndexedHeap(TypeIdx{Index: 0, Rec: true}), false)), Var)}, TypeMetadata{}), ft(nil, nil)}, FuncTypes: []TypeIdx{{Index: 1}}, Code: []Func{{Body: Expr{Instrs: []Instruction{{Kind: InstrStructNewDefault, Index: 0}, {Kind: InstrDrop}}}}}}, ErrTypeMismatch)
 		expectValidateErr(t, &Module{Types: []RecType{structType([]FieldType{field(I32, Var)}, TypeMetadata{}), ft(nil, nil)}, FuncTypes: []TypeIdx{{Index: 1}}, Code: []Func{{Body: Expr{Instrs: []Instruction{{Kind: InstrStructNew, Index: 0}, {Kind: InstrDrop}}}}}}, ErrTypeMismatch)
 		expectValidateErr(t, &Module{Types: []RecType{arrayType(field(I32, Var)), ft(nil, nil)}, FuncTypes: []TypeIdx{{Index: 1}}, Code: []Func{{Body: Expr{Instrs: []Instruction{{Kind: InstrArrayNewFixed, Index: 0, Index2: 1}, {Kind: InstrDrop}}}}}}, ErrTypeMismatch)
 	})

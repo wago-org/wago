@@ -34,6 +34,19 @@ func (v *moduleValidator) validTypeIdx(idx TypeIdx) bool {
 
 func (v *moduleValidator) subtypeByTypeIdxInRecGroup(idx TypeIdx, recGroup int) (*SubType, bool) {
 	if !idx.Rec {
+		if recGroup >= 0 {
+			// An absolute index inside a type definition may only name a type
+			// declared before the current recursive group. References to members
+			// of the current group are decoded as Rec indexes; later groups are
+			// out of scope even though they exist in the flattened type section.
+			base := 0
+			for gi := 0; gi < recGroup && gi < len(v.m.Types); gi++ {
+				base += len(v.m.Types[gi].SubTypes)
+			}
+			if int(idx.Index) >= base {
+				return nil, false
+			}
+		}
 		return v.subtypeByTypeIdx(idx)
 	}
 	if recGroup < 0 || recGroup >= len(v.m.Types) || idx.Index >= uint32(len(v.m.Types[recGroup].SubTypes)) {
@@ -400,9 +413,28 @@ func (v *moduleValidator) typeIdxEquivalent(a, b TypeIdx) bool {
 	eqField := func(x, y FieldType, xGroup, yGroup int) bool {
 		return x.Mut == y.Mut && eqStorage(x.Storage, y.Storage, xGroup, yGroup)
 	}
+	groupLocation := func(flat int) (group, local, base int, ok bool) {
+		if flat < 0 {
+			return 0, 0, 0, false
+		}
+		base = 0
+		for gi := range v.m.Types {
+			n := len(v.m.Types[gi].SubTypes)
+			if flat < base+n {
+				return gi, flat - base, base, true
+			}
+			base += n
+		}
+		return 0, 0, 0, false
+	}
 	eqType = func(x, y int) bool {
 		if x == y {
 			return true
+		}
+		xGroupLoc, xLocal, xBase, xLocOK := groupLocation(x)
+		yGroupLoc, yLocal, yBase, yLocOK := groupLocation(y)
+		if !xLocOK || !yLocOK || xLocal != yLocal || len(v.m.Types[xGroupLoc].SubTypes) != len(v.m.Types[yGroupLoc].SubTypes) {
+			return false
 		}
 		p := pair{x, y}
 		switch state[p] {
@@ -415,6 +447,18 @@ func (v *moduleValidator) typeIdxEquivalent(a, b TypeIdx) bool {
 		xs, xGroup, xok := v.subtypeByFlatTypeIdx(x)
 		ys, yGroup, yok := v.subtypeByFlatTypeIdx(y)
 		ok := xok && yok && xs.Final == ys.Final && len(xs.Supers) == len(ys.Supers) && xs.Comp.Kind == ys.Comp.Kind
+		// Recursive type equivalence is defined over whole groups, not only
+		// the graph reachable from one projection. A projected type from a
+		// two-member group is therefore not equivalent to an identical
+		// singleton implicit function type.
+		if ok {
+			for i := range v.m.Types[xGroupLoc].SubTypes {
+				if !eqType(xBase+i, yBase+i) {
+					ok = false
+					break
+				}
+			}
+		}
 		eqOptionalType := func(x, y *TypeIdx) bool {
 			if x == nil || y == nil {
 				return x == nil && y == nil

@@ -5,6 +5,7 @@ package wago
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -14,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/internal/spectest"
+	corewasm "github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
 const stagedTypedReferenceDeltaPath = "tests/spec-v3-staged-typed-reference.json"
@@ -79,15 +81,17 @@ func stagedTypedReferenceKnownGate(err error) (family, reason string, ok bool) {
 	return "", "", false
 }
 
-func stagedTypedReferenceKnownInvalidGap(base string, line int) (family, reason string, ok bool) {
-	known := map[string]map[int]bool{
-		"type-equivalence": {46: true},
-		"type-rec":         {9: true, 16: true, 37: true, 46: true},
-	}
-	if known[base][line] {
-		return "typed-function-references", "validator still accepts a pinned invalid indexed/recursive reference module", true
-	}
-	return "", "", false
+var stagedTypedReferencePinnedInvalidCodes = map[string]map[int]corewasm.ValidationErrorCode{
+	"type-equivalence": {46: corewasm.ErrUnknownType},
+	"type-rec": {
+		9: corewasm.ErrUnknownType, 16: corewasm.ErrUnknownType,
+		37: corewasm.ErrTypeMismatch, 46: corewasm.ErrTypeMismatch,
+	},
+}
+
+func stagedTypedReferencePinnedInvalidCode(base string, line int) (corewasm.ValidationErrorCode, bool) {
+	code, ok := stagedTypedReferencePinnedInvalidCodes[base][line]
+	return code, ok
 }
 
 func stagedTypedReferenceGateList(counts map[string]int) []stagedTypedReferenceGateCount {
@@ -200,6 +204,7 @@ func replayStagedTypedReferenceScript(t *testing.T, base, tmp string, script sta
 	definitions := map[string][]byte{}
 	var latestDefinition []byte
 	externrefs := map[*Instance]map[string]ExternRef{}
+	pinnedInvalidSeen := 0
 
 	recordGate := func(err error) bool {
 		family, reason, ok := stagedTypedReferenceKnownGate(err)
@@ -323,19 +328,23 @@ func replayStagedTypedReferenceScript(t *testing.T, base, tmp string, script sta
 				t.Errorf("%s.wast:%d read invalid module: %v", base, cmd.Line, err)
 				continue
 			}
-			if c, err := compileStagedTypedReference(data); err == nil {
+			c, compileErr := compileStagedTypedReference(data)
+			if compileErr == nil {
 				_ = c.Close()
-				family, reason, ok := stagedTypedReferenceKnownInvalidGap(base, cmd.Line)
-				if !ok {
+				counts.Failures++
+				t.Errorf("%s.wast:%d invalid module compiled: %s", base, cmd.Line, cmd.Text)
+				continue
+			}
+			if wantCode, pinned := stagedTypedReferencePinnedInvalidCode(base, cmd.Line); pinned {
+				pinnedInvalidSeen++
+				var verr *corewasm.ValidationError
+				if !errors.As(compileErr, &verr) || verr.Code != wantCode {
 					counts.Failures++
-					t.Errorf("%s.wast:%d invalid module compiled: %s", base, cmd.Line, cmd.Text)
+					t.Errorf("%s.wast:%d validation error = %v, want exact %v", base, cmd.Line, compileErr, wantCode)
 					continue
 				}
-				counts.ExpectedFeatureRejects++
-				gates[family+"\x00"+reason]++
-			} else {
-				counts.ExpectedInvalid++
 			}
+			counts.ExpectedInvalid++
 		case "assert_malformed":
 			counts.ExpectedMalformed++
 		case "assert_unlinkable", "assert_uninstantiable":
@@ -423,6 +432,10 @@ func replayStagedTypedReferenceScript(t *testing.T, base, tmp string, script sta
 			counts.Failures++
 			t.Errorf("%s.wast:%d unhandled command %q", base, cmd.Line, cmd.Type)
 		}
+	}
+	if want := len(stagedTypedReferencePinnedInvalidCodes[base]); pinnedInvalidSeen != want {
+		counts.Failures++
+		t.Errorf("%s.wast pinned invalid coverage = %d, want %d", base, pinnedInvalidSeen, want)
 	}
 	return counts, gates
 }

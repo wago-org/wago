@@ -46,10 +46,10 @@ func TestValidateGCSubtypeMetadata(t *testing.T) {
 	})
 
 	t.Run("cyclic super chain is rejected", func(t *testing.T) {
-		m := &Module{Types: []RecType{
-			{SubTypes: []SubType{{Final: false, Supers: []TypeIdx{{Index: 1}}, Comp: CompType{Kind: CompStruct}}}},
-			{SubTypes: []SubType{{Final: false, Supers: []TypeIdx{{Index: 0}}, Comp: CompType{Kind: CompStruct}}}},
-		}}
+		m := &Module{Types: []RecType{{SubTypes: []SubType{
+			{Final: false, Supers: []TypeIdx{{Index: 1, Rec: true}}, Comp: CompType{Kind: CompStruct}},
+			{Final: false, Supers: []TypeIdx{{Index: 0, Rec: true}}, Comp: CompType{Kind: CompStruct}},
+		}}}}
 		expectValidateErr(t, m, ErrTypeMismatch)
 	})
 }
