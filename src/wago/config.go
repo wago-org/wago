@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"runtime"
 	"strings"
 
 	"github.com/wago-org/wago/src/core/compiler/frontend"
@@ -33,10 +34,27 @@ const (
 	CoreFeatureReferenceTypes
 	// CoreFeatureSignExtensionOps: i32/i64.extend{8,16,32}_s.
 	CoreFeatureSignExtensionOps
-	// CoreFeatureSIMD: the v128 vector instructions.
+	// CoreFeatureSIMD: core and relaxed v128 vector instructions. This remains
+	// one admission bit for compatibility with the existing executable SIMD
+	// surface; relaxed SIMD is therefore represented by this bit in CoreFeaturesV3.
 	CoreFeatureSIMD
-	// CoreFeatureTailCall: return_call / return_call_indirect.
+	// CoreFeatureTailCall: return_call / return_call_indirect / return_call_ref.
 	CoreFeatureTailCall
+	// CoreFeatureExtendedConstExpressions: integer add/sub/mul and references to
+	// previously declared immutable globals in constant expressions.
+	CoreFeatureExtendedConstExpressions
+	// CoreFeatureTypedFunctionReferences: typed refs, call_ref, and related casts.
+	CoreFeatureTypedFunctionReferences
+	// CoreFeatureGC: struct, array, i31, and GC-managed reference instructions.
+	CoreFeatureGC
+	// CoreFeatureExceptionHandling: tags, throw/throw_ref, and try_table.
+	CoreFeatureExceptionHandling
+	// CoreFeatureMultiMemory: multiple memories and indexed memory operations.
+	CoreFeatureMultiMemory
+	// CoreFeatureMemory64: 64-bit linear-memory limits and addresses.
+	CoreFeatureMemory64
+	// CoreFeatureTable64: 64-bit table limits and indexes.
+	CoreFeatureTable64
 )
 
 // Feature groups mirroring wazero's CoreFeaturesV1 / CoreFeaturesV2.
@@ -51,6 +69,20 @@ const (
 		CoreFeatureReferenceTypes |
 		CoreFeatureSignExtensionOps |
 		CoreFeatureSIMD
+
+	// CoreFeaturesV3 is the mandatory WebAssembly Core 3.0 release feature set.
+	// CoreFeatureSIMD represents both core and relaxed SIMD in wago's existing
+	// admission model. The set describes release scope, not current executability;
+	// intersect it with SupportedFeatures before configuring a runtime.
+	CoreFeaturesV3 = CoreFeaturesV2 |
+		CoreFeatureTailCall |
+		CoreFeatureExtendedConstExpressions |
+		CoreFeatureTypedFunctionReferences |
+		CoreFeatureGC |
+		CoreFeatureExceptionHandling |
+		CoreFeatureMultiMemory |
+		CoreFeatureMemory64 |
+		CoreFeatureTable64
 
 	// coreFeaturesWago is the optional set wago's single-pass backend lowers
 	// today; it is the default and the ceiling WithCoreFeatures is validated
@@ -101,6 +133,13 @@ var featureNames = []struct {
 	{CoreFeatureSignExtensionOps, "sign-extension-ops"},
 	{CoreFeatureSIMD, "simd"},
 	{CoreFeatureTailCall, "tail-call"},
+	{CoreFeatureExtendedConstExpressions, "extended-const-expressions"},
+	{CoreFeatureTypedFunctionReferences, "typed-function-references"},
+	{CoreFeatureGC, "gc"},
+	{CoreFeatureExceptionHandling, "exception-handling"},
+	{CoreFeatureMultiMemory, "multi-memory"},
+	{CoreFeatureMemory64, "memory64"},
+	{CoreFeatureTable64, "table64"},
 }
 
 // BoundsCheckMode selects how out-of-bounds linear-memory accesses are caught.
@@ -322,10 +361,15 @@ func IsGuardPageUnavailable(err error) bool {
 type UnsupportedFeatureError struct {
 	Requested CoreFeatures // the specific unsupported features
 	Supported CoreFeatures // what this build does support
+	Platform  string       // GOOS/GOARCH admission target
 }
 
 func (e *UnsupportedFeatureError) Error() string {
-	return fmt.Sprintf("wago: unsupported feature(s) %s; this build supports %s", e.Requested, e.Supported)
+	platform := e.Platform
+	if platform == "" {
+		platform = "unknown platform"
+	}
+	return fmt.Sprintf("wago: unsupported feature(s) %s; this %s build supports %s", e.Requested, platform, e.Supported)
 }
 
 // frontendFeatures maps the config's feature set onto the frontend support
@@ -358,7 +402,11 @@ func (c *RuntimeConfig) Validate() error {
 		return fmt.Errorf("wago: function workers must be non-negative, got %d", c.functionWorkers)
 	}
 	if unsupported := c.features &^ coreFeaturesWago; unsupported != 0 {
-		return &UnsupportedFeatureError{Requested: unsupported, Supported: coreFeaturesWago}
+		return &UnsupportedFeatureError{
+			Requested: unsupported,
+			Supported: coreFeaturesWago,
+			Platform:  runtime.GOOS + "/" + runtime.GOARCH,
+		}
 	}
 	if c.boundsChecks == BoundsChecksSignalsBased && !guardPageBuilt {
 		return &GuardPageUnavailableError{}

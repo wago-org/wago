@@ -261,6 +261,56 @@ func TestCoreFeaturesV2ReleaseScope(t *testing.T) {
 	}
 }
 
+func TestCoreFeaturesV3ReleaseScopeAndAdmission(t *testing.T) {
+	wasm3Only := CoreFeatureTailCall |
+		CoreFeatureExtendedConstExpressions |
+		CoreFeatureTypedFunctionReferences |
+		CoreFeatureGC |
+		CoreFeatureExceptionHandling |
+		CoreFeatureMultiMemory |
+		CoreFeatureMemory64 |
+		CoreFeatureTable64
+	if want := CoreFeaturesV2 | wasm3Only; CoreFeaturesV3 != want {
+		t.Fatalf("CoreFeaturesV3 = %s, want mandatory WebAssembly 3.0 scope %s", CoreFeaturesV3, want)
+	}
+	if !CoreFeaturesV3.IsEnabled(CoreFeatureSIMD) {
+		t.Fatal("CoreFeaturesV3 must include the existing SIMD admission bit that also gates relaxed SIMD")
+	}
+	for _, tc := range []struct {
+		bit  CoreFeatures
+		name string
+	}{
+		{CoreFeatureTailCall, "tail-call"},
+		{CoreFeatureExtendedConstExpressions, "extended-const-expressions"},
+		{CoreFeatureTypedFunctionReferences, "typed-function-references"},
+		{CoreFeatureGC, "gc"},
+		{CoreFeatureExceptionHandling, "exception-handling"},
+		{CoreFeatureMultiMemory, "multi-memory"},
+		{CoreFeatureMemory64, "memory64"},
+		{CoreFeatureTable64, "table64"},
+	} {
+		if SupportedFeatures().IsEnabled(tc.bit) {
+			t.Errorf("SupportedFeatures unexpectedly admits %s", tc.name)
+		}
+		if got := tc.bit.String(); got != tc.name {
+			t.Errorf("%#x String() = %q, want %q", uint64(tc.bit), got, tc.name)
+		}
+	}
+
+	err := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).Validate()
+	var unsupported *UnsupportedFeatureError
+	if !errors.As(err, &unsupported) {
+		t.Fatalf("CoreFeaturesV3 Validate error = %T %v, want *UnsupportedFeatureError", err, err)
+	}
+	if unsupported.Requested != wasm3Only {
+		t.Fatalf("unsupported requested = %s, want exact not-yet-executable set %s", unsupported.Requested, wasm3Only)
+	}
+	wantPlatform := runtime.GOOS + "/" + runtime.GOARCH
+	if unsupported.Platform != wantPlatform || !strings.Contains(err.Error(), wantPlatform) {
+		t.Fatalf("unsupported platform = %q error=%q, want explicit %q gate", unsupported.Platform, err, wantPlatform)
+	}
+}
+
 func TestCoreFeaturesBitset(t *testing.T) {
 	if !CoreFeaturesV2.IsEnabled(CoreFeatureSignExtensionOps) {
 		t.Fatal("V2 should include sign-extension")

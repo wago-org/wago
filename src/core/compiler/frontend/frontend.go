@@ -316,7 +316,7 @@ func (p supportPass) run() error {
 		return err
 	}
 	if len(p.m.Tags) != 0 {
-		return p.unsupported("tag", "section", "tag section")
+		return p.unsupported("exception handling", "tag section (exception-handling disabled)", "tag section")
 	}
 	if len(p.m.StringRefs) != 0 {
 		return p.unsupported("stringref", "section", "stringrefs section")
@@ -344,14 +344,14 @@ func (p supportPass) run() error {
 func (p supportPass) types() error {
 	for gi, rt := range p.m.Types {
 		if len(rt.SubTypes) != 1 {
-			return p.unsupported("gc type", "recursive group", fmt.Sprintf("type %d", gi))
+			return p.unsupported("gc type", "recursive group (gc disabled)", fmt.Sprintf("type %d", gi))
 		}
 		st := rt.SubTypes[0]
 		if st.HasPrefix || len(st.Supers) != 0 || st.Metadata.Describes != nil || st.Metadata.Descriptor != nil {
-			return p.unsupported("gc type", "subtyping metadata", fmt.Sprintf("type %d", gi))
+			return p.unsupported("gc type", "subtyping metadata (gc disabled)", fmt.Sprintf("type %d", gi))
 		}
 		if st.Comp.Kind != wasm.CompFunc {
-			return p.unsupported("gc type", compTypeName(st.Comp.Kind), fmt.Sprintf("type %d", gi))
+			return p.unsupported("gc type", compTypeName(st.Comp.Kind)+" (gc disabled)", fmt.Sprintf("type %d", gi))
 		}
 		if !p.supportedValTypes(st.Comp.Params) {
 			if err := p.valTypes(st.Comp.Params, fmt.Sprintf("type %d params", gi)); err != nil {
@@ -419,14 +419,14 @@ func (p supportPass) imports() error {
 				return p.unsupported("import", "externref table (reference-types disabled)", ctx)
 			}
 			if im.Type.Table.Limits.Addr64 {
-				return p.unsupported("import", "64-bit table", ctx)
+				return p.unsupported("import", "64-bit table (table64 disabled)", ctx)
 			}
 		case wasm.ExternMem:
 			if err := p.checkMemType(im.Type.Mem, ctx); err != nil {
 				return err
 			}
 		case wasm.ExternTag:
-			return p.unsupported("import", "tag", ctx)
+			return p.unsupported("import", "tag (exception-handling disabled)", ctx)
 		default:
 			return p.unsupported("import", "unknown external kind", ctx)
 		}
@@ -450,7 +450,7 @@ func (p supportPass) tables() error {
 			return p.unsupported("reference type", "externref (reference-types disabled)", ctx)
 		}
 		if t.Type.Limits.Addr64 {
-			return p.unsupported("table", "64-bit limits", ctx)
+			return p.unsupported("table", "64-bit limits (table64 disabled)", ctx)
 		}
 		if t.Init != nil {
 			if !p.feat.ReferenceTypes {
@@ -466,7 +466,7 @@ func (p supportPass) tables() error {
 
 func (p supportPass) memories() error {
 	if p.m.ImportedMemCount()+len(p.m.Memories) > 1 {
-		return p.unsupported("memory", "multiple memories", "module")
+		return p.unsupported("memory", "multiple memories (multi-memory disabled)", "module")
 	}
 	for i, mem := range p.m.Memories {
 		if err := p.checkMemType(mem, fmt.Sprintf("memory %d", i)); err != nil {
@@ -484,7 +484,7 @@ func (p supportPass) checkMemType(mem wasm.MemType, ctx string) error {
 		return p.unsupported("memory", "shared", ctx)
 	}
 	if mem.Limits.Addr64 {
-		return p.unsupported("memory", "memory64", ctx)
+		return p.unsupported("memory", "memory64 (memory64 disabled)", ctx)
 	}
 	if mem.Limits.Min > 65535 {
 		return p.unsupported("memory", fmt.Sprintf("minimum %d pages exceeds 65535", mem.Limits.Min), ctx)
@@ -525,7 +525,7 @@ func (p supportPass) exports() error {
 			// linear memory directly, and preserving this keeps current MVP modules
 			// that export memory runnable.
 		case wasm.ExternTag:
-			return p.unsupported("export", "tag", fmt.Sprintf("export %d %q", i, ex.Name))
+			return p.unsupported("export", "tag (exception-handling disabled)", fmt.Sprintf("export %d %q", i, ex.Name))
 		default:
 			return p.unsupported("export", "unknown external kind", fmt.Sprintf("export %d %q", i, ex.Name))
 		}
@@ -888,6 +888,18 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 			return false, p.unsupported("table", fmt.Sprintf("call_indirect table %d (reference-types disabled)", imm.Index2), ctx())
 		}
 		return false, nil
+	case 0x12, 0x13, 0x14, 0x15:
+		if err := wasm.SkipInstructionImmediate(r, op); err != nil {
+			return false, err
+		}
+		switch op {
+		case 0x12, 0x13:
+			return false, p.unsupported("instruction", "tail-call disabled", ctx())
+		case 0x14:
+			return false, p.unsupported("instruction", "typed-function-references disabled", ctx())
+		default:
+			return false, p.unsupported("instruction", "tail-call and typed-function-references disabled", ctx())
+		}
 	case 0x1c:
 		n, err := r.U32()
 		if err != nil {
@@ -1299,6 +1311,18 @@ func (p supportPass) instr(in wasm.Instruction, context string) error {
 }
 
 func (p supportPass) instructionKind(k wasm.InstrKind, context string) error {
+	// WebAssembly 3.0 families remain explicit frontend admission failures until
+	// their runtime/backend lowering is complete. Do not let decoder support imply
+	// executable support.
+	switch k {
+	case wasm.InstrReturnCall, wasm.InstrReturnCallIndirect:
+		return p.unsupported("instruction", k.String()+" (tail-call disabled)", context)
+	case wasm.InstrCallRef:
+		return p.unsupported("instruction", k.String()+" (typed-function-references disabled)", context)
+	case wasm.InstrReturnCallRef:
+		return p.unsupported("instruction", k.String()+" (tail-call and typed-function-references disabled)", context)
+	}
+
 	// Proposals gated by the configured feature set.
 	switch k {
 	case wasm.InstrI32Extend8S, wasm.InstrI32Extend16S, wasm.InstrI64Extend8S, wasm.InstrI64Extend16S, wasm.InstrI64Extend32S:
@@ -1360,7 +1384,7 @@ func (p supportPass) instructionKind(k wasm.InstrKind, context string) error {
 		return nil
 	}
 	if isGCInstruction(k) {
-		return p.unsupported("gc instruction", k.String(), context)
+		return p.unsupported("gc instruction", k.String()+" (gc disabled)", context)
 	}
 	if isReferenceInstruction(k) {
 		return p.unsupported("reference instruction", k.String(), context)
