@@ -1,6 +1,12 @@
 # Wasm GC runtime foundation
 
-This document describes wago's native Wasm GC runtime direction. The current implementation is an initial foundation under `src/core/runtime/gc`; it establishes reference encoding, object metadata, typed descriptors, a byte-slice heap skeleton, exact scanning, roots, barriers, stress knobs, and tests. It is intentionally not yet wired into amd64 WasmGC opcode code generation.
+This document describes wago's native Wasm GC runtime direction. WasmGC is now
+active mandatory WebAssembly 3.0 scope, tracked in [wasm3.md](wasm3.md), rather
+than a non-goal. The current implementation is an initial foundation under
+`src/core/runtime/gc`; it establishes reference encoding, object metadata, typed
+descriptors, a byte-slice heap skeleton, exact scanning, roots, barriers, stress
+knobs, and tests. It is intentionally not yet wired into amd64 WasmGC opcode code
+generation and must not be presented as executable WasmGC support.
 
 ## Why a wago-native collector
 
