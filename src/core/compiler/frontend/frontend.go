@@ -519,9 +519,10 @@ func (p supportPass) memories() error {
 }
 
 // checkMemType rejects memory shapes outside wago's non-shared model. The staged
-// memory64 path deliberately retains the existing 65535-page reservation ceiling
-// and requires an explicit maximum; import/platform restrictions are enforced by
-// the product compile boundary before allocation.
+// memory64 path deliberately retains the existing 65535-page implementation
+// reservation ceiling. A declaration without a maximum keeps its exact Wasm type
+// and may fail growth at that finite resource ceiling; import/platform restrictions
+// are enforced by the product compile boundary before allocation.
 func (p supportPass) checkMemType(mem wasm.MemType, ctx string) error {
 	if mem.Shared {
 		return p.unsupported("memory", "shared", ctx)
@@ -530,10 +531,7 @@ func (p supportPass) checkMemType(mem wasm.MemType, ctx string) error {
 		if !p.feat.Memory64 {
 			return p.unsupported("memory", "memory64 (memory64 disabled)", ctx)
 		}
-		if mem.Limits.Max == nil {
-			return p.unsupported("memory", "memory64 requires an explicit bounded maximum", ctx)
-		}
-		if *mem.Limits.Max > 65535 {
+		if mem.Limits.Max != nil && *mem.Limits.Max > 65535 {
 			return p.unsupported("memory", fmt.Sprintf("memory64 maximum %d pages exceeds staged ceiling 65535", *mem.Limits.Max), ctx)
 		}
 	}

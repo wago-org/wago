@@ -31,9 +31,8 @@ func stagedMemory64KnownGate(err error) bool {
 	}
 	text := err.Error()
 	for _, gate := range []string{
-		"memory64 requires an explicit bounded maximum",
 		"exceeds staged ceiling 65535",
-		"requires an explicit maximum no greater than 65535 pages",
+		"requires a declared maximum no greater than 65535 pages",
 		"outside staged scalar family",
 		"requires exactly one local memory",
 	} {
