@@ -1773,6 +1773,157 @@ func TestStagedTable64MixedExternrefFillWidthsAtomicityAndCodecRoundTrip(t *test
 	}
 }
 
+func soleExternrefTable64GrowModule(t testing.TB) []byte {
+	return watToWasm(t, `(module
+		(table $t i64 0 externref)
+		(func (export "get") (param i64) (result externref) (table.get $t (local.get 0)))
+		(func (export "set") (param i64 externref) (table.set $t (local.get 0) (local.get 1)))
+		(func (export "grow") (param i64 externref) (result i64)
+			(table.grow $t (local.get 1) (local.get 0)))
+		(func (export "size") (result i64) (table.size $t))
+	)`)
+}
+
+func fourLocalExternrefTable64SizeGrowModule(t testing.TB) []byte {
+	return watToWasm(t, `(module
+		(table $t0 i64 0 externref)
+		(table $t1 i64 1 externref)
+		(table $t2 i64 0 2 externref)
+		(table $t3 i64 3 8 externref)
+		(func (export "size0") (result i64) (table.size $t0))
+		(func (export "size1") (result i64) (table.size $t1))
+		(func (export "size2") (result i64) (table.size $t2))
+		(func (export "size3") (result i64) (table.size $t3))
+		(func (export "grow0") (param i64) (result i64) (table.grow $t0 (ref.null extern) (local.get 0)))
+		(func (export "grow1") (param i64) (result i64) (table.grow $t1 (ref.null extern) (local.get 0)))
+		(func (export "grow2") (param i64) (result i64) (table.grow $t2 (ref.null extern) (local.get 0)))
+		(func (export "grow3") (param i64) (result i64) (table.grow $t3 (ref.null extern) (local.get 0)))
+	)`)
+}
+
+func TestStagedTable64ExternrefGrowAndFourLocalSizeDirectoryCodecRoundTrip(t *testing.T) {
+	sole, err := compileStagedTable64(soleExternrefTable64GrowModule(t))
+	if err != nil {
+		t.Fatalf("compile sole externref table64 grow: %v", err)
+	}
+	defer sole.Close()
+	four, err := compileStagedTable64(fourLocalExternrefTable64SizeGrowModule(t))
+	if err != nil {
+		t.Fatalf("compile four-local externref table64 size/grow: %v", err)
+	}
+	defer four.Close()
+	fourMeta := (&Module{c: four}).Metadata()
+	if len(fourMeta.Tables) != 4 || fourMeta.Tables[0].Min != 0 || fourMeta.Tables[0].HasMax || fourMeta.Tables[1].Min != 1 || fourMeta.Tables[1].HasMax || fourMeta.Tables[2].Min != 0 || !fourMeta.Tables[2].HasMax || fourMeta.Tables[2].Max != 2 || fourMeta.Tables[3].Min != 3 || !fourMeta.Tables[3].HasMax || fourMeta.Tables[3].Max != 8 {
+		t.Fatalf("four-local externref table64 metadata = %#v", fourMeta.Tables)
+	}
+	for i := range fourMeta.Tables {
+		if fourMeta.Tables[i].Type != ValExternRef || !fourMeta.Tables[i].Addr64 {
+			t.Fatalf("four-local externref table64 metadata[%d] = %#v", i, fourMeta.Tables[i])
+		}
+	}
+
+	reload := func(name string, c *Compiled) *Compiled {
+		t.Helper()
+		blob, err := c.MarshalBinary()
+		if err != nil {
+			t.Fatalf("marshal %s externref table64: %v", name, err)
+		}
+		loaded := new(Compiled)
+		if err := unmarshalCompiled(loaded, blob[5:]); err != nil {
+			t.Fatalf("reload %s externref table64: %v", name, err)
+		}
+		loaded.stagedTable64 = true
+		loaded.hasTableExportMetadata = true
+		return loaded
+	}
+	soleLoaded := reload("sole", sole)
+	defer soleLoaded.Close()
+	fourLoaded := reload("four-local", four)
+	defer fourLoaded.Close()
+	if !reflect.DeepEqual((&Module{c: fourLoaded}).Metadata().Tables, fourMeta.Tables) {
+		t.Fatalf("four-local externref table64 codec metadata = %#v, want %#v", (&Module{c: fourLoaded}).Metadata().Tables, fourMeta.Tables)
+	}
+
+	for name, c := range map[string]*Compiled{"source": sole, "codec": soleLoaded} {
+		in, err := instantiateCore(c, InstantiateOptions{})
+		if err != nil {
+			t.Fatalf("instantiate %s sole externref table64 grow: %v", name, err)
+		}
+		refA := issueExternref(t, in, name+"-grow-a")
+		refB := issueExternref(t, in, name+"-grow-b")
+		if got, err := in.Call(context.Background(), "grow", ValueI64(1), ValueExternRef(refA)); err != nil || len(got) != 1 || got[0].I64() != 0 {
+			in.Close()
+			t.Fatalf("%s sole externref table64 grow(1) = %v, err=%v", name, got, err)
+		}
+		if got, err := in.Call(context.Background(), "get", ValueI64(0)); err != nil || got[0].ExternRef() != refA {
+			in.Close()
+			t.Fatalf("%s sole externref table64 grown token = %v, err=%v", name, got, err)
+		}
+		if got, err := in.Call(context.Background(), "grow", ValueI64(4), ValueExternRef(refB)); err != nil || got[0].I64() != 1 {
+			in.Close()
+			t.Fatalf("%s sole externref table64 grow(4) = %v, err=%v", name, got, err)
+		}
+		if got, err := in.Call(context.Background(), "get", ValueI64(4)); err != nil || got[0].ExternRef() != refB {
+			in.Close()
+			t.Fatalf("%s sole externref table64 grown range token = %v, err=%v", name, got, err)
+		}
+		for _, delta := range []uint64{1 << 32, ^uint64(0)} {
+			if got, err := in.Call(context.Background(), "grow", ValueI64(int64(delta)), ValueExternRef(refA)); err != nil || len(got) != 1 || got[0].Bits() != ^uint64(0) {
+				in.Close()
+				t.Fatalf("%s sole externref table64 grow(%d) = %v, err=%v, want -1", name, delta, got, err)
+			}
+			if got, err := in.Invoke("size"); err != nil || got[0] != 5 {
+				in.Close()
+				t.Fatalf("%s failed sole externref table64 grow changed size = %v, err=%v", name, got, err)
+			}
+		}
+		if got, want := len(in.tableDescriptor(0)), 8+1024*8; got != want {
+			in.Close()
+			t.Fatalf("%s sole externref table64 descriptor = %d bytes, want bounded %d", name, got, want)
+		}
+		if err := in.Close(); err != nil {
+			t.Fatalf("close %s sole externref table64 grow: %v", name, err)
+		}
+	}
+
+	for name, c := range map[string]*Compiled{"source": four, "codec": fourLoaded} {
+		in, err := instantiateCore(c, InstantiateOptions{})
+		if err != nil {
+			t.Fatalf("instantiate %s four-local externref table64: %v", name, err)
+		}
+		for i, want := range []uint64{0, 1, 0, 3} {
+			if got, err := in.Invoke("size" + string(rune('0'+i))); err != nil || len(got) != 1 || got[0] != want {
+				in.Close()
+				t.Fatalf("%s four-local table%d size = %v, err=%v, want %d", name, i, got, err, want)
+			}
+		}
+		for _, tc := range []struct {
+			name             string
+			delta, old, size uint64
+		}{{"grow0", 5, 0, 5}, {"grow1", 5, 1, 6}, {"grow2", 3, ^uint64(0), 0}, {"grow2", 2, 0, 2}, {"grow3", 4, 3, 7}, {"grow3", 2, ^uint64(0), 7}, {"grow3", 1, 7, 8}} {
+			got, err := in.Invoke(tc.name, tc.delta)
+			if err != nil || len(got) != 1 || got[0] != tc.old {
+				in.Close()
+				t.Fatalf("%s %s(%d) = %v, err=%v, want old %d", name, tc.name, tc.delta, got, err, tc.old)
+			}
+			tableIndex := int(tc.name[len(tc.name)-1] - '0')
+			if got, err := in.Invoke("size" + string(rune('0'+tableIndex))); err != nil || got[0] != tc.size {
+				in.Close()
+				t.Fatalf("%s table%d size after %s = %v, err=%v, want %d", name, tableIndex, tc.name, got, err, tc.size)
+			}
+		}
+		for i, capacity := range []int{1024, 1024, 2, 8} {
+			if got, want := len(in.tableDescriptor(i)), 8+capacity*8; got != want {
+				in.Close()
+				t.Fatalf("%s four-local table%d descriptor = %d bytes, want %d", name, i, got, want)
+			}
+		}
+		if err := in.Close(); err != nil {
+			t.Fatalf("close %s four-local externref table64: %v", name, err)
+		}
+	}
+}
+
 func TestStagedTable64InstanceExportImportLifecycle(t *testing.T) {
 	max4 := uint64(4)
 	ownerCompiled, err := compileStagedTable64(table64LifecycleModule(&max4))
@@ -2133,6 +2284,26 @@ func TestStagedTable64GatesAndTable32CodeStability(t *testing.T) {
 	defer stagedIndirect.Close()
 	if !bytes.Equal(baseIndirect.Code, stagedIndirect.Code) {
 		t.Fatal("enabling staged table64 changed table32 call_indirect code bytes")
+	}
+}
+
+func BenchmarkStagedTable64ExternrefGrowZero(b *testing.B) {
+	compiled, err := compileStagedTable64(soleExternrefTable64GrowModule(b))
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer compiled.Close()
+	in, err := instantiateCore(compiled, InstantiateOptions{})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer in.Close()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if got, err := in.Invoke("grow", 0, 0); err != nil || len(got) != 1 || got[0] != 0 {
+			b.Fatalf("table64 externref grow(0) = %v, err=%v", got, err)
+		}
 	}
 }
 
