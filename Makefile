@@ -125,14 +125,13 @@ regression-stress: ## Repeat lifecycle tests, optimizer and guard modes, and fuz
 
 # Run the WebAssembly spec suites as native execution oracles for the x64
 # backend. The preserved MVP baseline is WebAssembly/testsuite at tests/spec;
-# Release 2.0 is independently pinned from WebAssembly/spec at tests/spec-v2,
-# whose official core corpus lives under test/core. Release 3.0 remains the
-# proposal aggregate in the legacy testsuite until it gets its own release pin.
-# Needs wast2json (wabt) on PATH; env paths are absolute because `go test` runs
+# Release 2.0 and Release 3.0 are independently pinned from WebAssembly/spec at
+# tests/spec-v2 and tests/spec-v3; both official core corpora live under
+# test/core. Needs wast2json (wabt) on PATH; env paths are absolute because `go test` runs
 # in the package directory.
 SPEC1_DIR = $(CURDIR)/tests/spec
 SPEC2_DIR = $(CURDIR)/tests/spec-v2
-SPEC3_DIR = $(SPEC1_DIR)
+SPEC3_DIR = $(CURDIR)/tests/spec-v3
 define run-spec
 	@command -v wast2json >/dev/null 2>&1 || { echo "wast2json (wabt) not on PATH; install wabt (e.g. apt-get install wabt)"; exit 1; }
 	@test -f $(2)/$(3) || git submodule update --init $(4)
@@ -151,8 +150,8 @@ spec2: ## Run the pinned official WebAssembly 2.0 core suite against x64 (needs 
 	go test -count=1 -run '^TestCoreV2SpecExecution$$' -v ./src/wago/
 
 .PHONY: spec3
-spec3: ## Run the WebAssembly 3.0 proposal spec tests against x64 (needs wast2json)
-	$(call run-spec,3.0,$(SPEC3_DIR),i32.wast,tests/spec)
+spec3: ## Run the pinned official WebAssembly 3.0 core suite against x64 (needs wast2json)
+	$(call run-spec,3.0,$(SPEC3_DIR),test/core/i32.wast,tests/spec-v3)
 
 .PHONY: simd
 simd: ## Run the official SIMD proposal execution suite (needs wast2json)
