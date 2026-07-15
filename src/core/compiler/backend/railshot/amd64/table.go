@@ -110,13 +110,27 @@ func (f *fn) tableInit(r *wasm.Reader) error {
 	f.flush()
 	d := f.depth()
 	f.a.Load64(RDI, RSP, f.spillOff(d-3)) // dst table offset
-	f.a.Load64(RSI, RSP, f.spillOff(d-2)) // src element offset
-	f.a.Load64(RCX, RSP, f.spillOff(d-1)) // n entries
+	f.a.Load64(RSI, RSP, f.spillOff(d-2)) // src element offset (i32)
+	f.a.Load64(RCX, RSP, f.spillOff(d-1)) // n entries (i32)
+	// Element-segment source and length operands are i32 even when the
+	// destination is table64. Canonicalize them before full-width arithmetic so
+	// stale high register bits cannot widen the segment range.
+	f.a.MovRegReg32(RSI, RSI)
+	f.a.MovRegReg32(RCX, RCX)
 
 	f.loadTableDescriptor(R8, tableIdx)
 	f.a.Load32(RAX, R8, 0)
-	f.a.LeaScaled(RDX, RDI, RCX, 0, 0)
-	f.trapUnlessLE(RDX, RAX)
+	if f.tableAddr64(tableIdx) {
+		f.a.MovReg64(RDX, RDI)
+		f.a.Add64(RDX, RCX)
+		f.trapIf(condB, trapIndirectOOB)
+		f.a.Cmp64(RDX, RAX)
+		f.trapIf(condA, trapIndirectOOB)
+	} else {
+		f.a.MovRegReg32(RDI, RDI)
+		f.a.LeaScaled(RDX, RDI, RCX, 0, 0)
+		f.trapUnlessLE(RDX, RAX)
+	}
 	// The destination entry stride is fixed by the table's type, and validation
 	// requires the element segment's type to be a subtype of the table's (same
 	// reference family, so identical entry size). Keying the source stride and
