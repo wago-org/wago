@@ -984,7 +984,8 @@ func TestValidatorCoverageMoreCoreStepBranches(t *testing.T) {
 		if err := ValidateModule(m); err != nil {
 			t.Fatalf("br_on_null success: %v", err)
 		}
-		m = modWithFunc(nil, nil, Instruction{Kind: InstrRefNull, ext: &instrExt{RefType: AbsRef(HeapEq)}}, Instruction{Kind: InstrBrOnNonNull, Index: 0}, Instruction{Kind: InstrDrop})
+		nonNullEq := RefVal(Ref(false, AbsHeap(HeapEq), false))
+		m = modWithFunc(nil, []ValType{nonNullEq}, Instruction{Kind: InstrRefNull, ext: &instrExt{RefType: AbsRef(HeapEq)}}, Instruction{Kind: InstrBrOnNonNull, Index: 0}, Instruction{Kind: InstrUnreachable})
 		if err := ValidateModule(m); err != nil {
 			t.Fatalf("br_on_non_null success: %v", err)
 		}

@@ -1371,7 +1371,7 @@ func (p supportPass) constExpr(e wasm.Expr, context string) error {
 			if !p.feat.ReferenceTypes {
 				return p.unsupported("const expression", "ref.null (reference-types disabled)", instructionContext(context, i))
 			}
-			if !isNullableAbsRef(in.RefType()) && !p.supportedTypedFuncRef(in.RefType()) {
+			if !isNullableAbsRef(in.RefType()) && !p.supportedTypedFuncRef(in.RefType()) && !p.supportedStagedExternRef(in.RefType()) {
 				return p.unsupported("const expression", "ref.null "+refTypeName(in.RefType()), instructionContext(context, i))
 			}
 		case wasm.InstrRefFunc:
@@ -1589,7 +1589,7 @@ func (p supportPass) instr(in wasm.Instruction, context string) error {
 			return p.unsupported("table64 instruction", in.Kind.String()+" on imported table64 remains outside the staged boundary", context)
 		}
 	case wasm.InstrRefNull:
-		if !isNullableAbsRef(in.RefType()) && !p.supportedTypedFuncRef(in.RefType()) {
+		if !isNullableAbsRef(in.RefType()) && !p.supportedTypedFuncRef(in.RefType()) && !p.supportedStagedExternRef(in.RefType()) {
 			return p.unsupported("reference instruction", "ref.null "+refTypeName(in.RefType()), context)
 		}
 	case wasm.InstrCallIndirect:
@@ -1781,7 +1781,7 @@ func (p supportPass) supportedValType(v wasm.ValType) bool {
 	if p.feat.SIMD && v.Kind == wasm.ValVec && wasm.EqualValType(v, wasm.V128) {
 		return true
 	}
-	return p.feat.ReferenceTypes && v.Kind == wasm.ValRef && (isFuncRef(v.Ref) || isExternRef(v.Ref) || p.supportedTypedFuncRef(v.Ref))
+	return p.feat.ReferenceTypes && v.Kind == wasm.ValRef && (isFuncRef(v.Ref) || isExternRef(v.Ref) || p.supportedTypedFuncRef(v.Ref) || p.supportedStagedExternRef(v.Ref))
 }
 
 func (p supportPass) valType(v wasm.ValType, context string) error {
@@ -1805,7 +1805,7 @@ func (p supportPass) valType(v wasm.ValType, context string) error {
 
 func (p supportPass) globalType(v wasm.ValType, context string) error {
 	if v.Kind == wasm.ValRef {
-		if p.feat.ReferenceTypes && (isFuncRef(v.Ref) || isExternRef(v.Ref) || p.supportedTypedFuncRef(v.Ref)) {
+		if p.feat.ReferenceTypes && (isFuncRef(v.Ref) || isExternRef(v.Ref) || p.supportedTypedFuncRef(v.Ref) || p.supportedStagedExternRef(v.Ref)) {
 			return nil
 		}
 		feature := valTypeName(v)
@@ -2029,7 +2029,7 @@ func (p supportPass) supportedTypedFuncRef(rt wasm.RefType) bool {
 }
 
 func (p supportPass) supportedTypedFuncHeap(heap int64) bool {
-	if heap == -16 || heap == -13 { // func / nofunc
+	if heap == -17 || heap == -16 || heap == -14 || heap == -13 { // extern / func / noextern / nofunc
 		return true
 	}
 	if heap < 0 || uint64(heap) > uint64(^uint32(0)) {
@@ -2037,6 +2037,13 @@ func (p supportPass) supportedTypedFuncHeap(heap int64) bool {
 	}
 	_, ok := p.m.TypeFunc(uint32(heap))
 	return ok
+}
+
+func (p supportPass) supportedStagedExternRef(rt wasm.RefType) bool {
+	if !p.feat.TypedFunctionReferences || rt.Exact || rt.Heap.Kind != wasm.HeapAbs {
+		return false
+	}
+	return rt.Heap.Abs == wasm.HeapExtern || rt.Heap.Abs == wasm.HeapNoExtern
 }
 
 func (p supportPass) isTypedFuncRef(rt wasm.RefType) bool {

@@ -389,17 +389,23 @@ func (v *funcValidator) step(in *Instruction) error {
 		if err != nil {
 			return err
 		}
-		if !x.unknown && x.t.Kind != ValRef {
+		if len(lt) == 0 || lt[len(lt)-1].Kind != ValRef || (!x.unknown && x.t.Kind != ValRef) {
 			return v.verr(ErrTypeMismatch, "br_on_non_null")
 		}
 		if !x.unknown {
 			x.t.Ref.Nullable = false
+			if !v.subtype(x.t, lt[len(lt)-1]) {
+				return v.verr(ErrTypeMismatch, x.t.String()+" is not "+lt[len(lt)-1].String())
+			}
 		}
-		v.vals = append(v.vals, x)
-		if err := v.popAll(lt); err != nil {
+		prefix := lt[:len(lt)-1]
+		if err := v.popAll(prefix); err != nil {
 			return err
 		}
-		v.pushAll(lt)
+		// A taken branch appends the non-null reference to the label payload.
+		// The null fallthrough consumes the reference and retains only the
+		// payload values that precede it.
+		v.pushAll(prefix)
 	case InstrMemoryInit:
 		if err := v.checkDataIndex(in.Index, "memory.init"); err != nil {
 			return err

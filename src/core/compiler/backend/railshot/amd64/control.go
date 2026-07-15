@@ -238,10 +238,10 @@ func (f *fn) moveSlots(fromBase, toBase, n int) {
 
 func isValByte(b byte) bool {
 	switch b {
-	case 0x7F, 0x7E, 0x7D, 0x7C, 0x7B, 0x70, 0x6F:
+	case 0x7F, 0x7E, 0x7D, 0x7C, 0x7B:
 		return true
 	}
-	return false
+	return b >= 0x69 && b <= 0x74
 }
 
 // valByteMT maps a value-type byte to its machine type.
@@ -257,7 +257,7 @@ func valByteMT(b byte) machineType {
 		return mtF64
 	case 0x7B:
 		return mtV128
-	case 0x70, 0x6F:
+	case 0x69, 0x6A, 0x6B, 0x6C, 0x6D, 0x6E, 0x6F, 0x70, 0x71, 0x72, 0x73, 0x74:
 		return mtI64
 	}
 	return mtNone
@@ -278,6 +278,16 @@ func (f *fn) blockType(r *wasm.Reader) (params, results []machineType, res0 mach
 		_, _ = r.Byte()
 		mt := valByteMT(b)
 		return nil, []machineType{mt}, mt, nil
+	}
+	if b == 0x63 || b == 0x64 { // ref null <heaptype> / ref <heaptype>
+		_, _ = r.Byte()
+		if next, ok := r.Peek(); ok && next == 0x62 { // exact indexed heap prefix
+			_, _ = r.Byte()
+		}
+		if _, e := r.S33(); e != nil {
+			return nil, nil, mtNone, e
+		}
+		return nil, []machineType{mtI64}, mtI64, nil
 	}
 	x, e := r.I64()
 	if e != nil {
@@ -777,6 +787,9 @@ func (f *fn) brOnNonNull(r *wasm.Reader) error {
 	}
 	f.branchJump(fr)
 	f.a.PatchRel32(over, f.a.Len())
+	// The reference is appended only to the taken branch payload. A null
+	// fallthrough consumes it and retains any preceding label arguments.
+	_ = f.popValue()
 	return nil
 }
 

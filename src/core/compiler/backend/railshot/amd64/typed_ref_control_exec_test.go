@@ -86,12 +86,12 @@ func TestTypedRefControlNullBranches(t *testing.T) {
 	}
 
 	brOnNonNull := typedRefControlModule([]byte{
-		0x02, 0x40, // block
+		0x02, 0x64, 0x00, // block (result (ref type 0))
 		0x20, 0x00, // local.get 0
 		0xd6, 0x00, // br_on_non_null 0
-		0x1a,             // drop the null fallthrough reference
-		0x41, 0x01, 0x0f, // null fallthrough returns 1
+		0x41, 0x01, 0x0f, // null fallthrough consumes the reference and returns 1
 		0x0b,
+		0x1a,       // drop the taken branch's non-null reference
 		0x41, 0x02, // non-null branch returns 2
 		0x0b,
 	}, wasm.I32)
@@ -103,6 +103,30 @@ func TestTypedRefControlNullBranches(t *testing.T) {
 		if err != nil || uint32(got) != uint32(tc.want) {
 			t.Fatalf("br_on_non_null(%#x) = %#x, %v; want %d", tc.ref, got, err, tc.want)
 		}
+	}
+}
+
+func TestTypedRefBrOnNonNullCarriesLabelPrefixOnlyOnFallthrough(t *testing.T) {
+	indexedNullable := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: 0}), false))
+	m := &wasm.Module{
+		Types: []wasm.RecType{
+			{SubTypes: []wasm.SubType{{Final: true, Comp: wasm.CompType{Kind: wasm.CompFunc, Results: []wasm.ValType{wasm.I32, wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: 0}), false))}}}}},
+			{SubTypes: []wasm.SubType{{Final: true, Comp: wasm.CompType{Kind: wasm.CompFunc, Params: []wasm.ValType{wasm.I32, indexedNullable}, Results: []wasm.ValType{wasm.I32}}}}},
+		},
+		FuncTypes: []wasm.TypeIdx{{Index: 1}},
+		Code: []wasm.Func{{BodyBytes: []byte{
+			0x02, 0x00, // block (type 0): (i32) -> (i32)
+			0x20, 0x00, // local.get prefix
+			0x20, 0x01, // local.get reference
+			0xd6, 0x00, // br_on_non_null 0
+			0x0f, // null fallthrough returns the i32 prefix only
+			0x0b,
+			0x1a, // taken branch produced the non-null reference
+			0x0b,
+		}}},
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatalf("validate br_on_non_null prefix: %v", err)
 	}
 }
 
