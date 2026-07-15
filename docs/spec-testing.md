@@ -53,14 +53,18 @@ current schema-2 inventory processes all 258 files with zero parser failures:
 144 green/114 red, modules pass=1,691/skip=535, assertions
 pass=51,765/fail=5/skip=6,268. The five reached failures are two in `linking`, one
 in `multi-memory/linking0`, and two in `multi-memory/linking3`; the former
-`select` funcref wildcard failure is green. Iteration 12 completes every staged
-indexed SIMD memory form on linux/amd64 explicit bounds, updates the harness to
-resolve all registered memory imports, and proves allocation-free serialized
-basedata switching for the reached imported grow/size shape. It also retains
-cross-instance typed descriptor producers and persists typed/tail opcode feature
-requirements while snapshot preflight rejects unresolved contexts. Public gates
-and standardized compact-import decoding remain closed, so the schema-2 inventory
-remains byte-for-byte unchanged.
+`select` funcref wildcard failure is green. Iteration 13 decodes bounded Core 3
+`0x7f` mixed-kind and `0x7e` shared-kind compact import groups on both decoder
+paths, with malformed count/kind/type/index rejection and default Release 2
+fail-closed validation. A focused runner converts the actual pinned
+`memory_grow`, `memory_size_import`, and `linking0`-`3` files with WABT 1.0.41 and
+executes every safe admitted command under staged compilation. It proves exact
+import order/codec reload, unknown-import atomicity, prior segment/start store
+modification, producer growth limits, and explicit executable-owner/function/
+private-basedata failures. The same iteration adds retained root cross-instance
+`return_call_ref` with nested/host/null/wrong-key traps. Public gates remain
+closed, so the schema-2 inventory remains byte-for-byte unchanged; compact forms
+now diagnose an explicit feature gate rather than a parser failure.
 Refresh the machine-readable red inventory with `scripts/spec3-baseline.sh`; the
 command remains nonzero until the zero-gap completion gate is met.
 

@@ -62,6 +62,21 @@ close without depending on token issuance. The retained set is bounded by the
 consumer's finite function-import set and lives only in the existing lazy instance
 sidecar; ordinary `Instance` and 32-byte descriptor layouts do not grow.
 
+Iteration 13 gives one subset of those retained descriptors a bounded tail
+context without changing their 32-byte representation. An int-register
+`InstanceExport` wrapper carries a second immutable home-pointer tag distinct
+from the same-instance internal-entry tag. At root `return_call_ref`, amd64 proves
+that the current return address is the function's own root adapter continuation,
+copies arguments to the producer's fixed basedata tail bank, copies trap/fence
+control words, removes the current frame and adapter continuation, and jumps to
+the producer wrapper. The wrapper returns directly to the original native caller.
+A shifted type remains callable after producer logical close and one cross transfer
+followed by 1,000,000 producer-local tail steps stays fixed-frame. Nested callers,
+wrapper-only signatures, host funcrefs, untagged foreign descriptors, nulls, wrong
+keys, snapshots, public admission, and arm64 remain explicit failures. The transfer
+reuses two slots inside the existing 256-byte bank; `Instance`, basedata, and
+native descriptor sizes do not grow.
+
 The store never dereferences public bits or an unvalidated `refSlot`. Corrupted
 canonical metadata, cross-runtime/private-store imports, and unowned host-import
 funcrefs remain fail-closed and issue no token. Local and imported/shared
@@ -950,7 +965,10 @@ artifact whose code or metadata requires typed function references or tail calls
 before imports are retained, start runs, or memory/global state mutates. Typed/tail
 opcode requirements are now recorded in the full-width codec-v25 feature word;
 compile-only staged admission is kept in a non-serialized code-cache sidecar, so a
-public load of the same artifact remains fail-closed. Forged in-memory snapshots
+public load of the same artifact remains fail-closed. Iteration 13 keeps that rule
+for the compile-only typed-tail gate and additionally makes multi-memory snapshot
+errors shape-specific: owned-local modules require all images/grown sizes to be
+captured together, while imported/shared shapes reject before attachment. Forged in-memory snapshots
 and raw snapshot blobs cannot bypass these checks.
 
 `ModuleMetadata` now contains deterministic Wasm-index-ordered `Functions`,
