@@ -399,7 +399,7 @@ type scratch struct {
 	retSites       []int
 	tailFrameSites []int // AddRsp imm32 sites emitted before tail jumps
 	brFoldSites    []int
-	trapSites      [trapTableOOB + 1][]trapSite
+	trapSites      [trapMax + 1][]trapSite
 	ctrl           []ctrlFrame // control-frame stack backing; reused across functions
 	pinnedLocals   []int       // pinned-local index backing; reused across functions
 	transient

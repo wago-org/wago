@@ -17,16 +17,18 @@ import (
 // Trap codes — must match jit.TrapCode / the values the engine reads (identical
 // to src/core/encoder/amd64's table).
 const (
-	trapUnreachable   = 1
-	trapMemOOB        = 3
-	trapIndirectOOB   = 5
-	trapIndirectSig   = 6
-	trapDivZero       = 9
-	trapDivOverflow   = 10
-	trapTruncOverflow = 11
-	trapInterrupted   = 12
-	trapStackFence    = 13
-	trapTableOOB      = 15
+	trapUnreachable     = 1
+	trapMemOOB          = 3
+	trapIndirectOOB     = 5
+	trapIndirectSig     = 6
+	trapDivZero         = 9
+	trapDivOverflow     = 10
+	trapTruncOverflow   = 11
+	trapInterrupted     = 12
+	trapStackFence      = 13
+	trapTableOOB        = 15
+	trapTailUnsupported = 16
+	trapMax             = trapTailUnsupported
 )
 
 // Basedata fields at negative offsets from the linMem base (runtime/basedata.go).
@@ -118,7 +120,7 @@ func (f *fn) trapSite(branch int) trapSite {
 // emitTrapStubs emits one trap stub per trap code used by this function and
 // patches every recorded site to it. Called once, after the epilogue.
 func (f *fn) emitTrapStubs() {
-	for code := uint32(1); code <= trapTableOOB; code++ { // deterministic order
+	for code := uint32(1); code <= trapMax; code++ { // deterministic order
 		sites := f.sc.trapSites[code]
 		if len(sites) == 0 {
 			continue

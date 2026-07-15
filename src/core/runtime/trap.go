@@ -29,6 +29,7 @@ const (
 	TrapStackFenceBreached   TrapCode = 13
 	TrapCalledFnNotLinked    TrapCode = 14
 	TrapTableOutOfBounds     TrapCode = 15
+	TrapUnsupportedTailCall  TrapCode = 16
 )
 
 var trapMessages = map[TrapCode]string{
@@ -48,6 +49,7 @@ var trapMessages = map[TrapCode]string{
 	TrapStackFenceBreached:   "stack fence breached",
 	TrapCalledFnNotLinked:    "called function not linked",
 	TrapTableOutOfBounds:     "table access out of bounds",
+	TrapUnsupportedTailCall:  "tail call target requires an unsupported context switch",
 }
 
 func (c TrapCode) String() string {
