@@ -174,6 +174,29 @@ func memory64FloatScalarModule() []byte {
 	)
 }
 
+func memory64SIMDMemOp(sub uint32, align byte, offset uint64, lane ...byte) []byte {
+	op := []byte{0xfd}
+	op = append(op, wasmtest.ULEB(sub)...)
+	op = append(op, align)
+	op = append(op, uleb64(offset)...)
+	return append(op, lane...)
+}
+
+func memory64SIMDModule(params, results []wasm.ValType, body []byte) []byte {
+	memory := append([]byte{0x05}, uleb64(1)...)
+	memory = append(memory, uleb64(2)...)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(params, results))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec(memory)),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("run", 0, 0),
+			wasmtest.ExportEntry("memory", 2, 0),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+}
+
 func memory64ActiveDataModule(offset int64, payload []byte) []byte {
 	memory := append([]byte{0x05}, uleb64(1)...)
 	memory = append(memory, uleb64(2)...)
@@ -470,6 +493,132 @@ func TestStagedMemory64FloatScalarFamily(t *testing.T) {
 	t.Logf("memory64 float scalar family: wasm=%d code=%d operations=4", len(memory64FloatScalarModule()), len(compiled.Code))
 }
 
+func TestStagedMemory64SIMDMemoryFamily(t *testing.T) {
+	if !hostSupportsSIMD() {
+		t.Skip("host SIMD unavailable")
+	}
+	compile := func(t *testing.T, params, results []wasm.ValType, body []byte) (*Compiled, *Instance, *Memory) {
+		t.Helper()
+		compiled, err := compileStagedMemory64(memory64SIMDModule(params, results, body))
+		if err != nil {
+			t.Fatalf("compile memory64 SIMD: %v", err)
+		}
+		t.Cleanup(func() { _ = compiled.Close() })
+		in, err := instantiateCore(compiled, InstantiateOptions{})
+		if err != nil {
+			t.Fatalf("instantiate memory64 SIMD: %v", err)
+		}
+		t.Cleanup(func() { _ = in.Close() })
+		memory, err := in.ExportedMemory("memory")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return compiled, in, memory
+	}
+
+	t.Run("v128 load store and u64 carry", func(t *testing.T) {
+		body := append([]byte{0x20, 0x00, 0x20, 0x01}, memory64SIMDMemOp(11, 4, 5)...)
+		body = append(body, 0x20, 0x00)
+		body = append(body, memory64SIMDMemOp(0, 4, 5)...)
+		body = append(body, 0x0b)
+		_, in, memory := compile(t, []wasm.ValType{wasm.I64, wasm.V128}, []wasm.ValType{wasm.V128}, body)
+		want := V128{0xde, 0xad, 0xbe, 0xef, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}
+		lo, hi := v128RawSlots(want)
+		if got := invokeV128(t, in, "run", 3, lo, hi); got != want {
+			t.Fatalf("memory64 v128 round trip = % x, want % x", got, want)
+		}
+		if got := V128(memory.Bytes()[8:24]); got != want {
+			t.Fatalf("memory64 v128 bytes = % x, want % x", got, want)
+		}
+		if _, err := in.Invoke("run", uint64(len(memory.Bytes())-20), lo, hi); err == nil || !strings.Contains(err.Error(), "out of bounds") {
+			t.Fatalf("memory64 v128 end trap = %v", err)
+		}
+
+		overflowBody := append([]byte{0x20, 0x00}, memory64SIMDMemOp(0, 4, ^uint64(0))...)
+		overflowBody = append(overflowBody, 0x0b)
+		_, overflow, _ := compile(t, []wasm.ValType{wasm.I64}, []wasm.ValType{wasm.V128}, overflowBody)
+		if _, err := overflow.Invoke("run", 1); err == nil || !strings.Contains(err.Error(), "out of bounds") {
+			t.Fatalf("memory64 SIMD offset carry error = %v", err)
+		}
+	})
+
+	loads := []struct {
+		name        string
+		sub         uint32
+		align       byte
+		size        int
+		input, want V128
+	}{
+		{name: "v128.load8x8_s", sub: 1, align: 3, size: 8, input: V128{0, 1, 0x7f, 0x80, 0xff, 0xa5, 0x34, 0xfe}, want: V128{0, 0, 1, 0, 0x7f, 0, 0x80, 0xff, 0xff, 0xff, 0xa5, 0xff, 0x34, 0, 0xfe, 0xff}},
+		{name: "v128.load8x8_u", sub: 2, align: 3, size: 8, input: V128{0, 1, 0x7f, 0x80, 0xff, 0xa5, 0x34, 0xfe}, want: V128{0, 0, 1, 0, 0x7f, 0, 0x80, 0, 0xff, 0, 0xa5, 0, 0x34, 0, 0xfe, 0}},
+		{name: "v128.load16x4_s", sub: 3, align: 3, size: 8, input: V128{0, 0, 0xff, 0x7f, 0, 0x80, 0x34, 0xff}, want: V128{0, 0, 0, 0, 0xff, 0x7f, 0, 0, 0, 0x80, 0xff, 0xff, 0x34, 0xff, 0xff, 0xff}},
+		{name: "v128.load16x4_u", sub: 4, align: 3, size: 8, input: V128{0, 0, 0xff, 0x7f, 0, 0x80, 0x34, 0xff}, want: V128{0, 0, 0, 0, 0xff, 0x7f, 0, 0, 0, 0x80, 0, 0, 0x34, 0xff, 0, 0}},
+		{name: "v128.load32x2_s", sub: 5, align: 3, size: 8, input: V128{0xff, 0xff, 0xff, 0x7f, 0, 0, 0, 0x80}, want: V128{0xff, 0xff, 0xff, 0x7f, 0, 0, 0, 0, 0, 0, 0, 0x80, 0xff, 0xff, 0xff, 0xff}},
+		{name: "v128.load32x2_u", sub: 6, align: 3, size: 8, input: V128{0xff, 0xff, 0xff, 0x7f, 0, 0, 0, 0x80}, want: V128{0xff, 0xff, 0xff, 0x7f, 0, 0, 0, 0, 0, 0, 0, 0x80, 0, 0, 0, 0}},
+		{name: "v128.load8_splat", sub: 7, size: 1, input: V128{0xa5}, want: V128{0xa5, 0xa5, 0xa5, 0xa5, 0xa5, 0xa5, 0xa5, 0xa5, 0xa5, 0xa5, 0xa5, 0xa5, 0xa5, 0xa5, 0xa5, 0xa5}},
+		{name: "v128.load16_splat", sub: 8, align: 1, size: 2, input: V128{0x34, 0x12}, want: V128{0x34, 0x12, 0x34, 0x12, 0x34, 0x12, 0x34, 0x12, 0x34, 0x12, 0x34, 0x12, 0x34, 0x12, 0x34, 0x12}},
+		{name: "v128.load32_splat", sub: 9, align: 2, size: 4, input: V128{0x78, 0x56, 0x34, 0x12}, want: V128{0x78, 0x56, 0x34, 0x12, 0x78, 0x56, 0x34, 0x12, 0x78, 0x56, 0x34, 0x12, 0x78, 0x56, 0x34, 0x12}},
+		{name: "v128.load64_splat", sub: 10, align: 3, size: 8, input: V128{0x88, 0x77, 0x66, 0x55, 0x44, 0x33, 0x22, 0x11}, want: V128{0x88, 0x77, 0x66, 0x55, 0x44, 0x33, 0x22, 0x11, 0x88, 0x77, 0x66, 0x55, 0x44, 0x33, 0x22, 0x11}},
+		{name: "v128.load32_zero", sub: 92, align: 2, size: 4, input: V128{0xef, 0xcd, 0xab, 0x89}, want: V128{0xef, 0xcd, 0xab, 0x89}},
+		{name: "v128.load64_zero", sub: 93, align: 3, size: 8, input: V128{0x88, 0x77, 0x66, 0x55, 0x44, 0x33, 0x22, 0x11}, want: V128{0x88, 0x77, 0x66, 0x55, 0x44, 0x33, 0x22, 0x11}},
+	}
+	for _, tc := range loads {
+		t.Run(tc.name, func(t *testing.T) {
+			body := append([]byte{0x20, 0x00}, memory64SIMDMemOp(tc.sub, tc.align, 5)...)
+			body = append(body, 0x0b)
+			_, in, memory := compile(t, []wasm.ValType{wasm.I64}, []wasm.ValType{wasm.V128}, body)
+			copy(memory.Bytes()[8:], tc.input[:tc.size])
+			if got := invokeV128(t, in, "run", 3); got != tc.want {
+				t.Fatalf("%s = % x, want % x", tc.name, got, tc.want)
+			}
+			if _, err := in.Invoke("run", uint64(len(memory.Bytes())-5-tc.size+1)); err == nil || !strings.Contains(err.Error(), "out of bounds") {
+				t.Fatalf("%s exact-width end trap = %v", tc.name, err)
+			}
+		})
+	}
+
+	lanes := []struct {
+		name              string
+		loadSub, storeSub uint32
+		align, size, lane byte
+	}{{"8", 84, 88, 0, 1, 13}, {"16", 85, 89, 1, 2, 6}, {"32", 86, 90, 2, 4, 2}, {"64", 87, 91, 3, 8, 1}}
+	for _, tc := range lanes {
+		t.Run("lane"+tc.name, func(t *testing.T) {
+			initial := V128{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}
+			lo, hi := v128RawSlots(initial)
+			loadBody := append([]byte{0x20, 0x00, 0x20, 0x01}, memory64SIMDMemOp(tc.loadSub, tc.align, 5, tc.lane)...)
+			loadBody = append(loadBody, 0x0b)
+			_, loadIn, loadMemory := compile(t, []wasm.ValType{wasm.I64, wasm.V128}, []wasm.ValType{wasm.V128}, loadBody)
+			for i := byte(0); i < tc.size; i++ {
+				loadMemory.Bytes()[8+int(i)] = 0xa0 + i
+			}
+			want := initial
+			copy(want[int(tc.lane)*int(tc.size):], loadMemory.Bytes()[8:8+int(tc.size)])
+			if got := invokeV128(t, loadIn, "run", 3, lo, hi); got != want {
+				t.Fatalf("load lane = % x, want % x", got, want)
+			}
+
+			storeBody := append([]byte{0x20, 0x00, 0x20, 0x01}, memory64SIMDMemOp(tc.storeSub, tc.align, 5, tc.lane)...)
+			storeBody = append(storeBody, 0x0b)
+			_, storeIn, storeMemory := compile(t, []wasm.ValType{wasm.I64, wasm.V128}, nil, storeBody)
+			if _, err := storeIn.Invoke("run", 3, lo, hi); err != nil {
+				t.Fatal(err)
+			}
+			laneStart := int(tc.lane) * int(tc.size)
+			if got, wantBytes := storeMemory.Bytes()[8:8+int(tc.size)], initial[laneStart:laneStart+int(tc.size)]; !bytes.Equal(got, wantBytes) {
+				t.Fatalf("stored lane = % x, want % x", got, wantBytes)
+			}
+			before := append([]byte(nil), storeMemory.Bytes()[8:8+int(tc.size)]...)
+			if _, err := storeIn.Invoke("run", uint64(len(storeMemory.Bytes())-5-int(tc.size)+1), lo, hi); err == nil || !strings.Contains(err.Error(), "out of bounds") {
+				t.Fatalf("store lane end trap = %v", err)
+			}
+			if got := storeMemory.Bytes()[8 : 8+int(tc.size)]; !bytes.Equal(got, before) {
+				t.Fatalf("trapping lane store changed memory: % x", got)
+			}
+		})
+	}
+}
+
 func TestStagedMemory64AdmissionGatesAndMemory32CodeStability(t *testing.T) {
 	if _, err := compileStagedMemory64(boundedMemory64Module(65536)); err == nil || !strings.Contains(err.Error(), "65535") {
 		t.Fatalf("oversized memory64 maximum error = %v", err)
@@ -539,6 +688,52 @@ func TestStagedMemory64AdmissionGatesAndMemory32CodeStability(t *testing.T) {
 	defer stagedFloat.Close()
 	if !bytes.Equal(baseFloat.Code, stagedFloat.Code) {
 		t.Fatal("enabling staged memory64 changed memory32 float code bytes")
+	}
+
+	ordinarySIMD := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.V128}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x01, 0x01, 0x02})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, 0xfd, 0x00, 0x04, 0x00, 0x0b}))),
+	)
+	baseSIMD, err := Compile(nil, ordinarySIMD)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer baseSIMD.Close()
+	stagedSIMD, err := compileWithFrontendFeatures(stageCfg, ordinarySIMD, stageFeatures)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stagedSIMD.Close()
+	if !bytes.Equal(baseSIMD.Code, stagedSIMD.Code) {
+		t.Fatal("enabling staged memory64 changed memory32 SIMD code bytes")
+	}
+}
+
+func BenchmarkStagedMemory64SIMDLoad(b *testing.B) {
+	if !hostSupportsSIMD() {
+		b.Skip("host SIMD unavailable")
+	}
+	body := append([]byte{0x20, 0x00}, memory64SIMDMemOp(0, 4, 0)...)
+	body = append(body, 0x0b)
+	compiled, err := compileStagedMemory64(memory64SIMDModule([]wasm.ValType{wasm.I64}, []wasm.ValType{wasm.V128}, body))
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer compiled.Close()
+	in, err := instantiateCore(compiled, InstantiateOptions{})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer in.Close()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := in.Invoke("run", 64); err != nil {
+			b.Fatal(err)
+		}
 	}
 }
 
