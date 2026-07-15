@@ -1127,11 +1127,59 @@ func TestSpecSuiteExec(t *testing.T) {
 		version = "1.0"
 	}
 	dir, files := resolveSpecPlan(t, dir, version)
-	wast2json, err := exec.LookPath("wast2json")
+	wast2json, err := resolveWast2JSON()
 	if err != nil {
-		t.Skip("wast2json (wabt) not on PATH")
+		if version == "3.0" || os.Getenv("WAGO_WAST2JSON") != "" {
+			t.Fatal(err)
+		}
+		t.Skip(err)
 	}
 	runSpecExec(t, wast2json, dir, version, files)
+}
+
+func resolveWast2JSON() (string, error) {
+	path := os.Getenv("WAGO_WAST2JSON")
+	if path == "" {
+		var err error
+		path, err = exec.LookPath("wast2json")
+		if err != nil {
+			return "", fmt.Errorf("wast2json (wabt) not on PATH")
+		}
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return "", fmt.Errorf("configured wast2json %q is unavailable: %w", path, err)
+	}
+	if info.IsDir() || info.Mode()&0o111 == 0 {
+		return "", fmt.Errorf("configured wast2json %q is not executable", path)
+	}
+	if want := os.Getenv("WAGO_WABT_VERSION"); want != "" {
+		out, err := exec.Command(path, "--version").CombinedOutput()
+		if err != nil {
+			return "", fmt.Errorf("configured wast2json %q version check failed: %w: %s", path, err, firstLine(out))
+		}
+		if got := strings.TrimSpace(string(out)); got != want {
+			return "", fmt.Errorf("configured wast2json %q version = %q, want pinned %q", path, got, want)
+		}
+	}
+	return path, nil
+}
+
+func TestResolveWast2JSONChecksPinnedVersion(t *testing.T) {
+	t.Setenv("PATH", "")
+	tool := filepath.Join(t.TempDir(), "wast2json")
+	if err := os.WriteFile(tool, []byte("#!/bin/sh\nprintf '1.0.41\\n'\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("WAGO_WAST2JSON", tool)
+	t.Setenv("WAGO_WABT_VERSION", "1.0.41")
+	if got, err := resolveWast2JSON(); err != nil || got != tool {
+		t.Fatalf("resolve pinned tool = %q, %v; want %q, nil", got, err, tool)
+	}
+	t.Setenv("WAGO_WABT_VERSION", "1.0.40")
+	if _, err := resolveWast2JSON(); err == nil || !strings.Contains(err.Error(), `version = "1.0.41", want pinned "1.0.40"`) {
+		t.Fatalf("version mismatch error = %v", err)
+	}
 }
 
 func resolveSpecPlan(t *testing.T, checkout, version string) (dir string, files []string) {

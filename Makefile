@@ -109,8 +109,9 @@ test-corpus: ## Corpus pipeline + differential execution in parent/child process
 # backend. The preserved MVP baseline is WebAssembly/testsuite at tests/spec;
 # Release 2.0 and Release 3.0 are independently pinned from WebAssembly/spec at
 # tests/spec-v2 and tests/spec-v3; both official core corpora live under
-# test/core. Needs wast2json (wabt) on PATH; env paths are absolute because `go test` runs
-# in the package directory.
+# test/core. Release 3 bootstraps the checksum-pinned WABT tool below; older
+# suites retain their existing PATH behavior. Env paths are absolute because
+# `go test` runs in the package directory.
 SPEC1_DIR = $(CURDIR)/tests/spec
 SPEC2_DIR = $(CURDIR)/tests/spec-v2
 SPEC3_DIR = $(CURDIR)/tests/spec-v3
@@ -128,9 +129,20 @@ spec1: ## Run the WebAssembly 1.0 (MVP core) spec suite against x64 (needs wast2
 spec2: ## Run the pinned official WebAssembly 2.0 core suite against x64 (needs wast2json)
 	$(call run-spec,2.0,$(SPEC2_DIR),test/core/i32.wast,tests/spec-v2)
 
+.PHONY: wabt
+wabt: ## Bootstrap and verify the checksum-pinned WABT used by Release 3
+	@scripts/bootstrap-wabt.sh --verify
+
 .PHONY: spec3
-spec3: ## Run the pinned official WebAssembly 3.0 core suite against x64 (needs wast2json)
-	$(call run-spec,3.0,$(SPEC3_DIR),test/core/i32.wast,tests/spec-v3)
+spec3: wabt ## Run the pinned official WebAssembly 3.0 core suite against x64
+	@wast2json="$$(scripts/bootstrap-wabt.sh --print-path)"; \
+		test -f $(SPEC3_DIR)/test/core/i32.wast || git submodule update --init tests/spec-v3; \
+		WAGO_WAST2JSON="$$wast2json" WAGO_WABT_VERSION=1.0.41 WAGO_SPECTEST_DIR=$(SPEC3_DIR) WAGO_SPEC_VERSION=3.0 \
+		go test -count=1 -run TestSpecSuiteExec -v ./src/wago/
+
+.PHONY: spec3-baseline
+spec3-baseline: ## Refresh tests/spec-v3-baseline.json; remains red while gaps exist
+	@scripts/spec3-baseline.sh
 
 .PHONY: simd
 simd: ## Run the official SIMD proposal execution suite (needs wast2json)
