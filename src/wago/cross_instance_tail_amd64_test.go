@@ -353,6 +353,35 @@ func floatParamIntegerResultCrossTailModule(imported bool) []byte {
 	if imported {
 		sections = append(sections,
 			wasmtest.Section(2, wasmtest.Vec(funcImportEntry("env", "f", 0))),
+			wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0))),
+			wasmtest.Section(7, wasmtest.Vec(
+				wasmtest.ExportEntry("run", 0, 1),
+				wasmtest.ExportEntry("nested", 0, 2),
+			)),
+			wasmtest.Section(10, wasmtest.Vec(
+				wasmtest.Code([]byte{0x20, 0x00, 0x12, 0x00, 0x0b}),
+				wasmtest.Code([]byte{0x20, 0x00, 0x10, 0x01, 0x41, 0x05, 0x6a, 0x0b}),
+			)),
+		)
+	} else {
+		minusOne := make([]byte, 8)
+		binary.LittleEndian.PutUint64(minusOne, math.Float64bits(-1))
+		body := append([]byte{0x20, 0x00, 0x44}, minusOne...)
+		body = append(body, 0x61, 0x04, 0x40, 0x00, 0x0b, 0x41, 0x07, 0x0b)
+		sections = append(sections,
+			wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+			wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
+			wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+		)
+	}
+	return wasmtest.Module(sections...)
+}
+
+func unprovenFloatResultCrossTailModule(imported bool) []byte {
+	sections := [][]byte{wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.F64}, []wasm.ValType{wasm.F64})))}
+	if imported {
+		sections = append(sections,
+			wasmtest.Section(2, wasmtest.Vec(funcImportEntry("env", "f", 0))),
 			wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
 			wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 1))),
 			wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, 0x12, 0x00, 0x0b}))),
@@ -361,14 +390,92 @@ func floatParamIntegerResultCrossTailModule(imported bool) []byte {
 		sections = append(sections,
 			wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
 			wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
-			wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x41, 0x07, 0x0b}))),
+			wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, 0x0b}))),
 		)
 	}
 	return wasmtest.Module(sections...)
 }
 
-func TestStagedDirectCrossInstanceReturnCallKeepsOtherFloatShapesGated(t *testing.T) {
+func TestStagedDirectCrossInstanceReturnCallFloatParamIntegerResult(t *testing.T) {
+	if _, err := Compile(nil, floatParamIntegerResultCrossTailModule(true)); err == nil || !strings.Contains(err.Error(), "tail-call disabled") {
+		t.Fatalf("public float-param direct-tail compile error = %v", err)
+	}
 	producerCompiled, err := compileStagedTail(floatParamIntegerResultCrossTailModule(false))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer producerCompiled.Close()
+	producer, err := instantiateCore(producerCompiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	export, err := producer.ExportedFunc("f")
+	if err != nil {
+		producer.Close()
+		t.Fatal(err)
+	}
+	consumerCompiled, err := compileStagedTail(floatParamIntegerResultCrossTailModule(true))
+	if err != nil {
+		producer.Close()
+		t.Fatal(err)
+	}
+	defer consumerCompiled.Close()
+	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{"env.f": export}})
+	if err != nil {
+		producer.Close()
+		t.Fatal(err)
+	}
+	defer consumer.Close()
+	defer producer.Close()
+	value := math.Float64bits(3.25)
+	for _, tc := range []struct {
+		name string
+		want int32
+	}{{"run", 7}, {"nested", 12}} {
+		got, err := consumer.Invoke(tc.name, value)
+		if err != nil || len(got) != 1 || AsI32(got[0]) != tc.want {
+			t.Fatalf("%s float-param direct tail = %v, err=%v, want %d", tc.name, got, err, tc.want)
+		}
+	}
+	for i := 0; i < 10_000; i++ {
+		if got, err := consumer.Invoke("run", value); err != nil || len(got) != 1 || AsI32(got[0]) != 7 {
+			t.Fatalf("repeated float-param direct tail %d = %v, err=%v", i, got, err)
+		}
+	}
+	trap := math.Float64bits(-1)
+	for _, name := range []string{"run", "nested"} {
+		if _, err := consumer.Invoke(name, trap); err == nil || !strings.Contains(err.Error(), "unreachable") {
+			t.Fatalf("%s float-param direct-tail trap = %v", name, err)
+		}
+	}
+	if got, err := consumer.Invoke("nested", value); err != nil || len(got) != 1 || AsI32(got[0]) != 12 {
+		t.Fatalf("float-param direct tail did not recover = %v, err=%v", got, err)
+	}
+	if err := producer.Close(); err != nil {
+		t.Fatalf("logical float-param producer close: %v", err)
+	}
+	producer.lifeMu.Lock()
+	released := producer.resourcesClosed
+	producer.lifeMu.Unlock()
+	if released {
+		t.Fatal("float-param direct-tail consumer did not retain producer")
+	}
+	if got, err := consumer.Invoke("run", value); err != nil || len(got) != 1 || AsI32(got[0]) != 7 {
+		t.Fatalf("float-param direct tail after producer close = %v, err=%v", got, err)
+	}
+	if err := consumer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	producer.lifeMu.Lock()
+	released = producer.resourcesClosed
+	producer.lifeMu.Unlock()
+	if !released {
+		t.Fatal("float-param producer remained retained after consumer close")
+	}
+}
+
+func TestStagedDirectCrossInstanceReturnCallKeepsOtherFloatShapesGated(t *testing.T) {
+	producerCompiled, err := compileStagedTail(unprovenFloatResultCrossTailModule(false))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -382,7 +489,7 @@ func TestStagedDirectCrossInstanceReturnCallKeepsOtherFloatShapesGated(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	consumerCompiled, err := compileStagedTail(floatParamIntegerResultCrossTailModule(true))
+	consumerCompiled, err := compileStagedTail(unprovenFloatResultCrossTailModule(true))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -443,6 +550,41 @@ func TestStagedDirectCrossInstanceReturnCallRejectsOversizedSignature(t *testing
 	}
 	if err := producer.Close(); err != nil {
 		t.Fatalf("failed link retained producer: %v", err)
+	}
+}
+
+func BenchmarkStagedDirectCrossInstanceReturnCallFloatParamIntegerResult(b *testing.B) {
+	producerCompiled, err := compileStagedTail(floatParamIntegerResultCrossTailModule(false))
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer producerCompiled.Close()
+	producer, err := instantiateCore(producerCompiled, InstantiateOptions{})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer producer.Close()
+	export, err := producer.ExportedFunc("f")
+	if err != nil {
+		b.Fatal(err)
+	}
+	consumerCompiled, err := compileStagedTail(floatParamIntegerResultCrossTailModule(true))
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer consumerCompiled.Close()
+	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{"env.f": export}})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer consumer.Close()
+	value := math.Float64bits(3.25)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := consumer.Invoke("run", value); err != nil {
+			b.Fatal(err)
+		}
 	}
 }
 
