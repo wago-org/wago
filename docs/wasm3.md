@@ -148,7 +148,7 @@ handling, multi-memory, memory64, and table64.
 | Extended constant expressions | Basic Release 3 numeric extension is complete on AST and byte-backed paths: `i32`/`i64` add, sub, mul, imported globals, and earlier immutable local globals. Forward, mutable, mixed-type, stack-shape, unsupported-opcode, and local-global offset forms are rejected strictly. | Complete for the basic extended-const proposal. Literal arithmetic folds at compile time. Global-dependent scalar programs are persisted and evaluated during instantiation for globals and active data/element offsets. | ✅ Executable and enabled as `CoreFeatureExtendedConstExpressions`. GC-added constant instructions remain part of the GC row, not this completed basic proposal. |
 | Relaxed SIMD | Complete through `0xfd 275`, with reserved holes rejected. | Deterministic lowering is present on the documented linux/amd64 SIMD baseline. The Release 3 harness now honors official `either` result patterns; all 8 converted modules and 69 assertions pass with zero failures/skips. | ✅ Existing completed support, represented by `CoreFeatureSIMD`. |
 | Tail calls | Decoder and validator understand direct, indirect, and reference tail-call forms. | linux/amd64 has internal frame-reuse milestones for local `return_call` targets that fit the register ABI, mixed GP/XMM `return_call_indirect` through private immutable table 0, and same-instance int-register `return_call_ref` descriptors. Public frontend admission remains disabled; imported/wrapper direct targets, mutable/imported/exported/nonzero indirect tables, wrapper/host/cross-instance reference descriptors, and arm64 remain unsupported. | 🚧 Backend milestones only; not a public product claim. |
-| Typed function references | `ref.func` now has the declared non-null indexed function type. Indexed references match by bounded coinductive structural equivalence across duplicate and recursive groups, including function/struct/array shapes, supers, and descriptor metadata. | A separate internal frontend gate admits resolved indexed/non-null function signatures, recursive function-only groups, typed block immediates, `ref.null`, and `call_ref`; an indexed descriptor executes through the existing amd64 null/signature-checked lowering. Typed globals, tables/elements, imports/exports, public metadata/codec, and remaining reference instructions are still gated. | 🚧 Validator and internal call path advanced; no public product claim. |
+| Typed function references | `ref.func` has the declared non-null indexed function type. Indexed references match by bounded coinductive structural equivalence across duplicate and recursive groups, including function/struct/array shapes, supers, and descriptor metadata. | A separate internal frontend gate admits resolved indexed/non-null function signatures, recursive function-only groups, typed block immediates, `ref.null`, and `call_ref`; an indexed descriptor executes through the existing amd64 null/signature-checked lowering. Public structural descriptors and codec v22 now preserve exact signatures, globals, tables, elements, imports/exports, nullability, exactness, and recursive group structure. Typed storage/import execution, remaining reference instructions, harness identity, lifecycle/host boundaries, and arm64 remain gated. | 🚧 Validator, product representation, and internal call path advanced; no public execution claim. |
 | GC | Recursive types, instructions, descriptor lowering, and a collector foundation exist. | Native frame roots, safepoint maps, opcode lowering, allocation calls, and write-barrier emission are not connected. | 🚧 Runtime foundation only; see `docs/gc.md`. |
 | Exception handling | Tags, `throw`, `throw_ref`, and `try_table` syntax/validation foundations exist. | Tag imports/exports/sections and exception instructions are frontend-rejected; no unwind/runtime ABI exists. | 🚧 Syntax/validation foundation only. |
 | Multi-memory | Indexed immediates and substantial syntax support exist. | Module validation still rejects multiple memories, and frontend/runtime/metadata are single-memory. | ⬜ Not executable. |
@@ -179,18 +179,28 @@ path and avoids introducing a general interpreter tier.
 
 ### `.wago` codec impact
 
-The compiled codec is now version 21. Version 21 adds:
+The compiled codec is now version 22. Version 21 introduced deferred scalar
+initializer/offset programs and strict extended-constant-expression validation.
+Version 22 retains those records and adds:
 
-- deferred scalar initializer programs on `GlobalDef`;
-- deferred scalar offset programs on `OffsetInit`;
-- strict load/marshal validation of expression opcodes, types, global visibility,
-  mutability, stack shape, termination, and mutually exclusive initializer forms.
+- flattened public `DefinedTypeDescriptor` graphs with recursive-group boundaries,
+  supers, descriptor metadata, function signatures, struct fields, and arrays;
+- exact `ValueTypeDescriptor` records for nullability, exactness, abstract heaps,
+  and indexed heaps;
+- function signature references into the type graph;
+- a deduplicated value-type pool referenced by globals, tables, and element
+  segments, including imported declarations and inspection metadata;
+- a full-width `CoreFeatures` required-feature word, so post-bit-7 families such
+  as typed function references cannot be truncated; and
+- strict bounds/kind/ABI consistency validation for type indexes, pool indexes,
+  recursive layouts, and malformed old/new records.
 
-Version 20 blobs are rejected explicitly. This is an intentional format break:
-loading old metadata under an extended initializer layout would be unsafe and
-ambiguous. Extended-const source syntax is not added to the byte-sized runtime
-required-feature mask because the source feature is compiled into v21 initializer
-metadata; the loaded artifact does not re-decode the original Wasm expression.
+Version 21 and older blobs are rejected explicitly. This intentional format break
+prevents the old generic `ValFuncRef`/`ValExternRef` records from being mistaken
+for exact indexed identity. Extended-const source syntax remains compiled into
+initializer metadata rather than re-decoded from the original Wasm expression.
+Typed-reference artifacts still fail public load because the executable feature
+bit is not advertised; codec support is representation work, not admission.
 
 ### Footprint and allocation measurement
 
@@ -202,9 +212,9 @@ committed) reported:
 | Measurement | Result |
 |---|---:|
 | Wasm module size | 106 bytes |
-| `.wago` v21 blob size | 434 bytes |
+| Historical `.wago` v21 blob size | 434 bytes |
 | Deferred expression payload | 18 bytes |
-| `unsafe.Sizeof(GlobalDef{})` | 80 bytes |
+| Historical `unsafe.Sizeof(GlobalDef{})` | 80 bytes |
 | `unsafe.Sizeof(OffsetInit{})` | 40 bytes |
 | Instantiate allocations, extended form | 12 allocations/run |
 | Instantiate allocations, equivalent literal metadata | 11 allocations/run |
@@ -305,12 +315,12 @@ Iteration 5 closes three prerequisites without widening the public product claim
    ordinary `Compile` remains fail-closed.
 
 The staged gate intentionally does **not** admit typed globals, typed tables or
-segments, imports/exports as a product promise, remaining reference instructions
-such as `ref.as_non_null`/`br_on_null`, or `.wago` persistence. The current public
-`ValType` and codec-v21 records still collapse reference families to
-`ValFuncRef`/`ValExternRef`; enabling the family now would therefore lose indexed
-identity. This is the next product blocker, not an acceptable compatibility
-shortcut.
+segments as executable product behavior, remaining reference instructions such as
+`ref.as_non_null`/`br_on_null`, or public feature admission. Iteration 6 removes
+one representation blocker: public structural descriptors and codec v22 no longer
+collapse indexed/non-null identity. The runtime storage, import-compatibility,
+host/lifecycle, and harness result paths still consume the legacy ABI category and
+must be proven against the exact descriptor before admission.
 
 The official aggregate totals remain unchanged because the public gate is still
 disabled. Diagnostics did move materially: the leading `call_ref`, `ref_*`,
@@ -356,6 +366,50 @@ by the reachable Cartesian set of module-defined type pairs and are discarded at
 validation completion. Equal raw indexes and all invocation/runtime hot paths do
 not enter this walk. The staged indexed `call_ref` execution test uses the same
 machine code path and descriptor layout measured in iteration 4.
+
+### Iteration 6 product representation and measurements
+
+Iteration 6 introduces a public type model independent of internal decoder
+packages. `DefinedTypeDescriptor` flattens module type definitions while retaining
+recursive-group membership, supers, descriptor metadata, function/struct/array
+shape, field storage, and mutability. `ValueTypeDescriptor` retains nullability,
+exactness, abstract heap kinds, and indexed heap identity. Function metadata
+references a declared type definition; globals, tables, and elements reference a
+deduplicated compiled value-type pool. Public inspection returns descriptors by
+value rather than exposing pool indexes.
+
+Codec v22 serializes that graph and pool, rejects v21 and older layouts, and stores
+the complete 64-bit feature mask. Indexed function references now derive the
+legacy runtime category as `ValFuncRef`; they no longer fall through the one-byte
+value-code conversion and appear as `i32`. Malformed recursive indexes, pool
+indexes, non-function signature indexes, invalid heap kinds, and ABI/category
+mismatches fail closed. A codec-v22 artifact that requires typed references still
+fails public load because `SupportedFeatures()` omits that bit.
+
+Temporary tests removed after measurement reported:
+
+| Measurement | Result |
+|---|---:|
+| `unsafe.Sizeof(Compiled{})` | 696 bytes |
+| `unsafe.Sizeof(FuncSig{})` | 56 bytes |
+| `unsafe.Sizeof(GlobalDef{})` | 88 bytes |
+| `unsafe.Sizeof(GlobalImportDef{})` | 48 bytes |
+| `unsafe.Sizeof(tableDef{})` | 48 bytes |
+| `unsafe.Sizeof(ElemInit{})` | 80 bytes |
+| `unsafe.Sizeof(HostFuncRef{})` | 120 bytes |
+| Scalar add codec-v22 blob / type counts | 193 bytes / 1 defined / 0 pooled |
+| Reference-global codec-v22 blob / type counts | 659 bytes / 2 defined / 1 pooled |
+| Two-table codec-v22 blob / type counts | 1,218 bytes / 1 defined / 1 pooled |
+
+The previous committed layout assertions were 632 bytes for `Compiled`, 48 bytes
+for `FuncSig`, 80 bytes for `GlobalDef`, 40 bytes for `tableDef`, and 112 bytes for
+`HostFuncRef`. The increases are fixed struct metadata: one module type slice, one
+value-type-pool slice, compact type indexes/flags, and a widened feature word.
+Runtime table entries, global cells, native descriptors, instance arena sizing,
+and invocation machine code are unchanged. The pool is deduplicated by a bounded
+linear compile-time scan and is bounded by distinct declared storage types; no
+process-global cache or invocation-path allocation was added. Blob measurements
+are representative fixtures, not before/after throughput claims.
 
 ## Iteration commits
 
@@ -410,30 +464,40 @@ commit:
 3. `c7995373` — add a staged typed-reference frontend gate and route indexed
    signatures to the existing amd64 `call_ref` lowering without public admission.
 
+Iteration 6 contains exactly three code/test commits and this documentation
+commit:
+
+1. `3ebc2315` — add public structural value/heap/defined-type descriptors and
+   strict recursive-index conversion tests.
+2. `cae9b440` — persist declared function-type identity and the recursive type
+   graph in codec v22, widen feature bits, and expose exact signature metadata.
+3. `4a285b2c` — add the deduplicated exact storage-type pool for globals, tables,
+   elements, imports/exports, inspection, and generated facade API.
+
 ## Validation performed
 
 Commands were run from the repository root on linux/amd64.
 
 | Command | Result |
 |---|---|
-| `go test ./src/core/compiler/wasm -run 'TestValidateRefFunc\|TestTypeMetadataHelpers' -count=1` | PASS: both validation paths preserve the declared indexed `ref.func` type and existing declaration checks. |
-| `go test ./src/core/compiler/wasm -count=1` | PASS: recursive equivalence, GC subtype metadata, byte-backed validation, and negative type mismatches are green. |
-| `go test ./src/core/compiler/frontend ./src/core/compiler/backend/railshot/amd64 ./src/wago -count=1` | PASS: staged frontend admission, indexed descriptor `call_ref`, default fail-closed gates, and public config behavior are green. |
-| `go test ./... -count=1` | PASS on final code HEAD. |
-| `go test -tags wago_guardpage ./src/core/runtime ./src/wago -count=1` | PASS. |
+| `go test ./src/wago -run 'TestTypeDescriptors\|TestValueTypeDescriptor' -count=1` | PASS: recursive structural conversion, malformed recursive indexes, and current-ABI classification are covered. |
+| `go test ./src/wago -count=1` | PASS: codec-v22 graph/pool round trips, malformed metadata rejection, inspection, legacy reference execution, and layout assertions are green. |
+| `go test ./src/core/compiler/wasm ./src/core/compiler/frontend ./src/core/compiler/backend/railshot/amd64 ./src/wago -count=1` | PASS: validator equivalence, staged admission/call_ref, and product metadata coexist. |
+| `go generate ./...` | PASS: regenerated `wago.go` for the new public descriptor and metadata API. |
+| `go test ./... -count=1` | PASS on final code HEAD; log `.validation/iteration6-go-test.log`. |
+| `go test -tags wago_guardpage ./src/core/runtime ./src/wago -count=1` | PASS; log `.validation/iteration6-guard.log`. |
 | `GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go test -c -o .validation/wago-arm64.test ./src/wago && rm -f .validation/wago-arm64.test` | PASS. This is build evidence only; arm64 still does not advertise typed references or tail calls. |
 | `scripts/bootstrap-wabt.sh --verify` | PASS: checksum-pinned `wast2json 1.0.41`. |
 | `scripts/bootstrap-spec-interpreter.sh --verify` | PASS: official `wasm 3.0.0 reference interpreter` at `9d36019973201a19f9c9ebb0f10828b2fe2374aa`. |
-| temporary `TestIteration5Measure` followed by file removal | PASS: duplicate and separate self-recursive indexed-type validation each measured 12 allocations per `ValidateModule` over 100 runs. |
-| `make spec3` | FAIL as required with zero parser failures and 28 official-interpreter fallbacks: modules pass=1,691/skip=535; assertions pass=51,764/fail=6/skip=6,268. Validator mismatch diagnostics moved to explicit typed-reference/product gates; aggregate totals remain unchanged because public admission stays disabled. |
-| `python3 scripts/spec3-baseline.py .validation/spec3-iteration5.log .validation/spec3-iteration5.json --exit-code 2 && cmp tests/spec-v3-baseline.json .validation/spec3-iteration5.json` | PASS: the schema-2 committed inventory reproduces byte-for-byte. |
+| temporary `TestIteration6Sizes` and `TestIteration6Measure`, then file removal | PASS: exact struct/blob/type-count measurements are recorded above; logs `.validation/iteration6-size.log` and `.validation/iteration6-measure.log`. |
+| `make spec3` | FAIL as required with zero parser failures and 28 official-interpreter fallbacks: modules pass=1,691/skip=535; assertions pass=51,764/fail=6/skip=6,268. Aggregate totals remain unchanged because typed-reference public execution stays disabled. |
+| `python3 scripts/spec3-baseline.py .validation/spec3-iteration6.log .validation/spec3-iteration6.json --exit-code 2 && cmp tests/spec-v3-baseline.json .validation/spec3-iteration6.json` | PASS: the schema-2 committed inventory reproduces byte-for-byte. |
 
 The larger skipped totals relative to the historical WABT-only baseline remain
 intentional: 28 previously unparsed files contribute their real feature gaps.
-Iteration 5 changes validator precision and an internal admission path hidden
-behind the unsupported public family bit, so its official schema-2 inventory is
-byte-for-byte identical to iteration 4 even though the first rejecting layer and
-diagnostics changed. The existing 1.0/2.0 external corpora were not rerun as
+Iteration 6 changes product representation and serialization behind the
+unsupported public family bit, so its official schema-2 inventory is byte-for-byte
+identical to iteration 5. The existing 1.0/2.0 external corpora were not rerun as
 separate commands; repository-wide and guard-page suites passed.
 
 ## Architecture policy
@@ -443,9 +507,10 @@ before backend execution with an error that includes the current `GOOS/GOARCH`.
 This prevents arm64 from silently accepting tail calls, typed function references,
 GC, exceptions, multi-memory, memory64, or table64.
 
-Extended constant expressions and the iteration-5 type-equivalence validator are
-architecture-neutral. The staged typed-reference frontend gate is also shared,
-but executable `call_ref` and tail-call lowering remain amd64-only and hidden
+Extended constant expressions, type-equivalence validation, and the iteration-6
+public/codec descriptor model are architecture-neutral. The staged typed-reference
+frontend gate is also shared, but executable `call_ref` and tail-call lowering
+remain amd64-only and hidden
 behind public unsupported family gates. The unsupported-tail-context trap is an
 internal fail-closed boundary, not an advertised Wasm semantic or arm64 feature.
 The arm64 cross-compiled test binary includes an architecture-specific assertion
@@ -473,7 +538,9 @@ Major risks:
   dune, and menhir available for the pinned official interpreter build; the cached
   tool is revision-stamped, and any future binary-script grammar change must fail
   the strict converter rather than silently dropping commands;
-- codec v21 intentionally invalidates v20 caches;
+- codec v22 intentionally invalidates v21 and older caches; its structural graph
+  and value-type pool are bounded by decoded module declarations, but cache-size
+  planning must use v22 measurements rather than historical v20/v21 numbers;
 - multi-memory changes instance metadata, import/export APIs, snapshots, and every
   memory opcode hot path;
 - memory64 can turn existing 32-bit arithmetic assumptions into overflow or
@@ -483,9 +550,10 @@ Major risks:
   adapters; the iteration-4 unsupported-context trap must disappear from every
   publicly admitted valid path before the tail-call feature can be enabled;
 - typed refs, exceptions, and GC all interact with native frame roots and call
-  boundaries; validator equivalence is now precise, but public `ValType`, codec
-  v21, globals, tables/elements, and import/export metadata still collapse or
-  reject indexed identity and must be redesigned before admission;
+  boundaries; validator and codec identity are now precise, but runtime globals,
+  tables/elements, import compatibility, host/store ownership, snapshots, and the
+  spectest result path still operate on legacy ABI categories and must consume the
+  exact descriptor before admission;
 - GC collector code is meaningful but must not be mistaken for executable WasmGC
   until safepoint maps and barriers are connected;
 - arm64 must remain fail-closed for every family that lacks native execution tests.
@@ -495,27 +563,25 @@ Major risks:
 The next recursive iteration should again make exactly three atomic code/test
 commits followed by one documentation commit:
 
-1. **Typed-reference product type and codec.** Introduce a self-contained public
-   structural reference-type descriptor so signatures, globals, tables,
-   elements, imports/exports, inspection metadata, and required-feature scans do
-   not collapse indexed/non-null function refs to `ValFuncRef`. Deliberately bump
-   the `.wago` codec if necessary, reject older layouts strictly, and add malformed
-   metadata tests before enabling any family bit.
-2. **Typed-reference storage and execution.** Carry that descriptor through local
-   and imported globals, typed tables/elements, `ref.func`/`ref.null`, and the
-   remaining non-GC reference control instructions needed by official `call_ref`,
-   `ref*`, `table`, `type-equivalence`, and `type-rec` modules. Exercise the
-   existing amd64 descriptor lowering through normal compile/instantiate paths;
-   keep the public bit disabled until lifecycle, host-boundary, and harness result
-   identity are complete.
+1. **Typed-reference storage compatibility.** Make local/imported globals,
+   tables, and elements validate and instantiate against exact descriptors rather
+   than only `ValFuncRef`; preserve structural subtype/equivalence rules, store
+   ownership, null/default initialization, table copy/init compatibility, and
+   snapshot rejection. Exercise staged normal compile/instantiate without
+   enabling the public bit.
+2. **Typed-reference control and harness identity.** Lower `ref.as_non_null`,
+   `br_on_null`, and `br_on_non_null` on amd64, carry typed `ref.null`/`ref.func`
+   through those paths, and teach the Release 3 harness to compare exact typed
+   funcref results so the remaining `select` failure is not token-number based.
+   Keep GC-only casts/tests separately gated.
 3. **General tail context entry.** Add a bounded tail-safe wrapper/context entry
    for imported, wrapper-only, and cross-instance `return_call`, then reuse it for
    general table/descriptor tail calls as the slice permits. Preserve module/global
    context, host re-entry, results, traps, and remove the unsupported-context trap
    from every newly admitted valid path. Keep arm64 fail-closed.
-4. **Documentation commit.** Refresh exact suite/parser totals, codec/API shape,
-   typed-reference execution coverage, tail context-switch measurements/caveats,
-   product/platform gates, and the following bounded slice.
+4. **Documentation commit.** Refresh exact suite/parser totals, typed storage and
+   control coverage, tail context-switch measurements/caveats, product/platform
+   gates, and the following bounded slice.
 
 ## Completion gate
 
