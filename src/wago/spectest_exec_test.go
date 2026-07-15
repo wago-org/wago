@@ -39,28 +39,10 @@ var coreFiles1_0 = []string{
 	"memory", "float_memory", "memory_trap", "traps", "const",
 }
 
-// proposalDirs records proposal lineage in the preserved legacy testsuite. The
-// independently pinned Release 2.0 corpus bypasses this map; Release 3.0 still
-// uses it to exclude files already introduced by 2.0 proposals.
-var proposalDirs = map[string][]string{
-	"2.0": {"bulk-memory-operations", "reference-types", "simd"},
-	"3.0": {"tail-call", "exception-handling", "function-references", "memory64"},
-}
-
-// versionOrder lists the post-1.0 versions from oldest to newest, so each new
-// test file is attributed to the earliest version that introduced it.
-var versionOrder = []string{"2.0", "3.0"}
-
 // specFilesForVersion returns paths in the preserved legacy testsuite (relative
-// to its root and without the .wast extension). 1.0 is the curated MVP core list,
-// 3.0 is the proposal delta. WAGO_SPEC_VERSION=simd and bulk-memory are focused
-// proposal shortcuts.
-// Release 2.0 uses spectest.DiscoverRelease2 instead.
-//
-// Each proposal directory is a full testsuite snapshot (the 1.0 core plus the
-// proposal's new tests, and it also inherits earlier proposals' files), so a file
-// is only counted once — for the earliest version that introduced it — by
-// excluding every basename already claimed by the suite root or a lower version.
+// to its root and without the .wast extension). 1.0 is the curated MVP core list;
+// WAGO_SPEC_VERSION=simd and bulk-memory are focused proposal shortcuts.
+// Release 2.0 and 3.0 use spectest.DiscoverRelease2/3 instead.
 func specFilesForVersion(version, dir string) []string {
 	if version == "1.0" {
 		return coreFiles1_0
@@ -81,29 +63,7 @@ func specFilesForVersion(version, dir string) []string {
 		sort.Strings(out)
 		return out
 	}
-	claimed := map[string]bool{} // .wast basenames already attributed
-	for _, name := range wastNames(dir) {
-		claimed[name] = true // the full 1.0 core at the suite root
-	}
-	var out []string
-	for _, v := range versionOrder {
-		for _, p := range proposalDirs[v] {
-			for _, name := range wastNames(filepath.Join(dir, "proposals", p)) {
-				if claimed[name] {
-					continue
-				}
-				claimed[name] = true
-				if v == version {
-					out = append(out, filepath.Join("proposals", p, strings.TrimSuffix(name, ".wast")))
-				}
-			}
-		}
-		if v == version {
-			break
-		}
-	}
-	sort.Strings(out)
-	return out
+	return nil
 }
 
 // wastNames returns the .wast file names directly in dir (empty if dir is absent).
@@ -190,24 +150,17 @@ const (
 	specGapReferenceArgument
 	specGapReferenceResult
 	specGapReferenceGlobal
-	// specGapToolchainUnparseable: the host wast2json (wabt) could not compile the
-	// .wast at all — stale experimental-proposal syntax (get_local/anyfunc/let/
-	// func.bind, old call_ref) that current wabt rejects, or a wabt crash. This is
-	// a toolchain/corpus-version gap, not a wago gap; only the experimental 3.0
-	// proposal aggregate hits it (1.0/2.0 must always parse — see runSpecExec).
-	specGapToolchainUnparseable
 	specExecGapReasonCount
 )
 
 var specExecGapNames = [...]string{
-	specGapCompileRejected:      "compile-rejected",
-	specGapInstantiateRejected:  "instantiate-rejected",
-	specGapModuleUnavailable:    "module-unavailable",
-	specGapAbsentExport:         "absent-export",
-	specGapReferenceArgument:    "reference-argument",
-	specGapReferenceResult:      "reference-result",
-	specGapReferenceGlobal:      "reference-global",
-	specGapToolchainUnparseable: "toolchain-unparseable",
+	specGapCompileRejected:     "compile-rejected",
+	specGapInstantiateRejected: "instantiate-rejected",
+	specGapModuleUnavailable:   "module-unavailable",
+	specGapAbsentExport:        "absent-export",
+	specGapReferenceArgument:   "reference-argument",
+	specGapReferenceResult:     "reference-result",
+	specGapReferenceGlobal:     "reference-global",
 }
 
 func (r specExecGapReason) String() string {
@@ -1156,13 +1109,12 @@ func TestSpecValueV128StructuredJSON(t *testing.T) {
 // TestSpecSuiteExec runs the official WebAssembly testsuite as a native
 // execution oracle: it compiles each module with the selected backend,
 // instantiates it, and replays every assert_return / assert_trap, comparing the
-// compiled code's results against the spec's expected values. Known incomplete
-// Release 2 behavior remains skipped while support is under construction, but
-// every skip is assigned a fixed reason so no feature gap is hidden in a generic
-// module or assertion bucket. A failure therefore means a real execution or
+// compiled code's results against the spec's expected values. Release 2 and
+// Release 3 use independent official WebAssembly/spec pins, and neither release
+// is allowed feature skips. A failure therefore means a real execution or
 // harness error.
 //
-// Gated on WAGO_SPECTEST_DIR (a checked-out WebAssembly/testsuite) and wast2json
+// Gated on WAGO_SPECTEST_DIR (a checked-out WebAssembly testsuite) and wast2json
 // (wabt) on PATH; skipped otherwise. This is the authoritative correctness oracle
 // for the native code generators.
 func TestSpecSuiteExec(t *testing.T) {
@@ -1191,8 +1143,44 @@ func resolveSpecPlan(t *testing.T, checkout, version string) (dir string, files 
 		}
 		return suite.CoreDir, suite.Files
 	}
+	if version == "3.0" {
+		suite, err := spectest.DiscoverRelease3(checkout)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return suite.CoreDir, suite.Files
+	}
 	dir = resolveSpecDir(t, checkout)
 	return dir, specFilesForVersion(version, dir)
+}
+
+func TestResolveSpecPlanRelease3UsesOfficialCoreLayout(t *testing.T) {
+	checkout := t.TempDir()
+	core := filepath.Join(checkout, "test", "core")
+	for _, name := range []string{
+		"i32.wast", "const.wast", "return_call.wast", "call_ref.wast",
+		"gc/struct.wast", "exceptions/throw.wast", "multi-memory/memory-multi.wast",
+		"memory64/memory64.wast", "memory64/table64.wast",
+		"relaxed-simd/relaxed_laneselect.wast",
+	} {
+		path := filepath.Join(core, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	dir, files := resolveSpecPlan(t, checkout, "3.0")
+	if dir != core {
+		t.Fatalf("Release 3 dir = %q, want official core dir %q", dir, core)
+	}
+	want := filepath.Join("gc", "struct")
+	i := sort.SearchStrings(files, want)
+	if len(files) != 10 || i >= len(files) || files[i] != want {
+		t.Fatalf("Release 3 files = %v, want official mandatory-family sentinels", files)
+	}
 }
 
 func resolveSpecDir(t *testing.T, dir string) string {
@@ -1254,26 +1242,13 @@ func runSpecExec(t *testing.T, wast2json, dir, version string, files []string) {
 		args := []string{wast, "-o", jsonPath}
 		// Current WABT --enable-all also enables experimental binary encodings
 		// (notably compact imports) that rewrite otherwise-canonical MVP, SIMD,
-		// bulk-memory, and Release 2 modules. Those standardized features are on
-		// by default; only the experimental 3.0 proposal aggregate needs all flags.
+		// bulk-memory, and Release 2 modules. Release 3 needs its standardized
+		// feature parsers enabled until the host WABT defaults advance.
 		if version == "3.0" {
 			args = append([]string{"--enable-all"}, args...)
 		}
 		if out, err := exec.Command(wast2json, args...).CombinedOutput(); err != nil {
-			// The experimental 3.0 aggregate pins proposal .wast files whose stale
-			// syntax the current host wabt can no longer parse (and one crashes wabt).
-			// That is a toolchain/corpus-version gap, not a wago failure, so record it
-			// as a skip rather than failing the run. 1.0/2.0 corpora are canonical and
-			// must always parse, so there a wast2json failure stays a hard error.
-			if version == "3.0" {
-				var s specExecStats
-				s.modulesSkipped++
-				s.gaps[specGapToolchainUnparseable]++
-				total.add(s)
-				t.Logf("%-40s SKIP: wast2json could not parse (host wabt / stale proposal syntax): %s", base, firstLine(out))
-				continue
-			}
-			t.Errorf("%s: wast2json failed (%v): %s", base, err, out)
+			t.Errorf("%s: wast2json failed (%v): %s", base, err, firstLine(out))
 			continue
 		}
 		raw, err := os.ReadFile(jsonPath)
@@ -1300,9 +1275,9 @@ func runSpecExec(t *testing.T, wast2json, dir, version string, files []string) {
 	if total.assertionsPassed+total.assertionsSkipped+total.assertionsFailed == 0 {
 		t.Errorf("no execution assertions were accounted — harness or corpus misconfigured")
 	}
-	if version == "2.0" && (total.modulesSkipped != 0 || total.assertionsSkipped != 0) {
-		t.Errorf("WebAssembly 2.0 execution must have zero feature-related skips: modules=%d assertions=%d gaps %s",
-			total.modulesSkipped, total.assertionsSkipped, total.gapSummary())
+	if (version == "2.0" || version == "3.0") && (total.modulesSkipped != 0 || total.assertionsSkipped != 0) {
+		t.Errorf("WebAssembly %s execution must have zero feature-related skips: modules=%d assertions=%d gaps %s",
+			version, total.modulesSkipped, total.assertionsSkipped, total.gapSummary())
 	}
 }
 
