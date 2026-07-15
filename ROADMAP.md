@@ -135,7 +135,10 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   the staged RAX return path with exact descriptor ownership. Retained cross-instance
   direct `return_call` uses a separate fixed four-word root/nested transition, preserves
   producer lifetime and trap recovery, repeats without allocation, and now admits exactly
-  `(i32, f64) -> f64` and `(f64) -> i32` in addition to the integer shapes. Public admission, other float/
+  `(i32, f64) -> f64` and `(f64) -> i32` in addition to the integer shapes. A complete
+  14-file typed-reference/structural matrix now accounts 422 commands with 50 modules and
+  211 assertions passing; `call_ref` and null control are gap-free, while 11 GC, 1 EH, and
+  5 validator gates remain explicit. Public admission, other float/
   oversized direct tails, general-table/
   foreign-float/general reference-result tails, live typed snapshot state, remaining
   GC/reference instructions, and arm64 parity remain gated.
@@ -286,8 +289,15 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   retain their producer through consumer close, and typed/tail opcode requirements
   survive codec metadata while snapshots reject unresolved contexts before mutation.
   Root and nested cross-instance typed tails now execute with explicit host and
-  unsupported-shape failures; persisted live reference state, broader tails, public
-  admission, remaining reference/GC instructions, and arm64 remain gated. Multi-
+  unsupported-shape failures. Iteration 30 pins a 14-file schema-2 typed-reference/
+  structural matrix at 422 commands / 50 modules / 211 assertions / 60 invalid /
+  2 malformed / 1 unlinkable, with 17 exact gates and 36 blocked commands. The
+  null-control surface and official `call_ref` file are green under staged admission;
+  shifted and recursive cross-instance signatures now match structurally, retain their
+  producers, and preserve codec-v26 metadata across empty recursive groups. The remaining
+  matrix gates are 11 GC, 1 exception-reference, and 5 strict-validator gaps. Persisted
+  live reference state, broader tails, public admission, remaining reference/GC/EH
+  instructions, and arm64 remain gated. Multi-
   memory now executes all indexed scalar, SIMD, and bulk/data operations internally
   on linux/amd64 explicit bounds, decodes compact import groups, accounts for all
   913 commands in the complete 42-file family matrix, snapshots owned local memory
