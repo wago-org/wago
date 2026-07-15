@@ -159,6 +159,12 @@ func requiredFeaturesForBodyBytes(body []byte) CoreFeatures {
 		case wasm.InstrTableGet, wasm.InstrTableSet, wasm.InstrTableGrow, wasm.InstrTableSize, wasm.InstrTableFill,
 			wasm.InstrRefNull, wasm.InstrRefIsNull, wasm.InstrRefFunc, wasm.InstrRefEq:
 			out |= CoreFeatureReferenceTypes
+		case wasm.InstrCallRef, wasm.InstrRefAsNonNull, wasm.InstrBrOnNull, wasm.InstrBrOnNonNull:
+			out |= CoreFeatureReferenceTypes | CoreFeatureTypedFunctionReferences
+		case wasm.InstrReturnCall, wasm.InstrReturnCallIndirect:
+			out |= CoreFeatureTailCall
+		case wasm.InstrReturnCallRef:
+			out |= CoreFeatureReferenceTypes | CoreFeatureTypedFunctionReferences | CoreFeatureTailCall
 		case wasm.InstrI32TruncSatF32S, wasm.InstrI32TruncSatF32U, wasm.InstrI32TruncSatF64S, wasm.InstrI32TruncSatF64U,
 			wasm.InstrI64TruncSatF32S, wasm.InstrI64TruncSatF32U, wasm.InstrI64TruncSatF64S, wasm.InstrI64TruncSatF64U:
 			out |= CoreFeatureNonTrappingFloatToIntConversion

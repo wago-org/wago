@@ -205,6 +205,9 @@ func validateSnapshotModule(c *Compiled) error {
 	if c == nil {
 		return errors.New("wago: snapshot has no bound module")
 	}
+	if (c.requiredFeatures|compiledStructuralRequiredFeatures(c))&(CoreFeatureTypedFunctionReferences|CoreFeatureTailCall) != 0 {
+		return errors.New("wago: typed function references and tail-call contexts cannot be snapshotted until descriptor owners and tail frames have a persisted resolver")
+	}
 	if err := c.validateSnapshotReferenceGlobals(); err != nil {
 		return err
 	}

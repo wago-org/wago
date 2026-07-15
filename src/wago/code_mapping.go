@@ -9,11 +9,12 @@ import (
 )
 
 type compiledCodeCache struct {
-	mu     sync.Mutex
-	mem    []byte
-	base   uintptr
-	refs   int
-	closed bool
+	mu             sync.Mutex
+	mem            []byte
+	base           uintptr
+	refs           int
+	closed         bool
+	stagedFeatures CoreFeatures // compile-only admission; never serialized or publicly loaded
 }
 
 func installCompiledFinalizer(c *Compiled) *Compiled {
@@ -26,6 +27,13 @@ func installCompiledFinalizer(c *Compiled) *Compiled {
 		_ = c.Close()
 	})
 	return c
+}
+
+func (c *Compiled) stagedFeatures() CoreFeatures {
+	if c == nil || c.codeCache == nil {
+		return 0
+	}
+	return c.codeCache.stagedFeatures
 }
 
 func (c *Compiled) ensureCodeCache() {
