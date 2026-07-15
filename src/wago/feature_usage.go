@@ -17,6 +17,9 @@ func moduleRequiredFeatures(m *wasm.Module) CoreFeatures {
 	if frontend.ModuleRequiresSIMD(m) {
 		out |= CoreFeatureSIMD
 	}
+	if m.TagCount() != 0 {
+		out |= CoreFeatureExceptionHandling
+	}
 
 	for _, rec := range m.Types {
 		for _, sub := range rec.SubTypes {
@@ -171,6 +174,8 @@ func requiredFeaturesForBodyBytes(body []byte) CoreFeatures {
 			out |= CoreFeatureTailCall
 		case wasm.InstrReturnCallRef:
 			out |= CoreFeatureReferenceTypes | CoreFeatureTypedFunctionReferences | CoreFeatureTailCall
+		case wasm.InstrThrow, wasm.InstrThrowRef, wasm.InstrTryTable:
+			out |= CoreFeatureExceptionHandling
 		case wasm.InstrI32TruncSatF32S, wasm.InstrI32TruncSatF32U, wasm.InstrI32TruncSatF64S, wasm.InstrI32TruncSatF64U,
 			wasm.InstrI64TruncSatF32S, wasm.InstrI64TruncSatF32U, wasm.InstrI64TruncSatF64S, wasm.InstrI64TruncSatF64U:
 			out |= CoreFeatureNonTrappingFloatToIntConversion

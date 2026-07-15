@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"github.com/wago-org/wago/src/core/runtime/abi"
 )
 
 // Control flow: block / loop / if / else / end / br / br_if / br_table / return /
@@ -25,6 +26,7 @@ const (
 	cfBlock
 	cfLoop
 	cfIf
+	cfTry
 )
 
 // ctrlFrame is one open control construct (or the implicit function frame).
@@ -59,6 +61,12 @@ type ctrlFrame struct {
 	// state for an if without else.
 	branchState []locState
 	entryState  []locState
+
+	// cfTry only: one fixed six-slot native-stack handler record.
+	ehTargetSite  int
+	ehCatchFrame  int
+	ehPayloadN    int
+	ehPayloadType [2]machineType
 }
 
 // --- operand-stack canonicalization ---
@@ -525,6 +533,130 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 	return nil
 }
 
+const (
+	ehRecordSlots   = 6
+	ehPrevOff       = 0
+	ehSavedRSPOff   = 8
+	ehTagOff        = 16
+	ehPayload0Off   = 24
+	ehPayload1Off   = 32
+	ehTargetOff     = 40
+	offEHHandlerPtr = abi.EHHandlerPtrOffset
+)
+
+func (f *fn) opTryTable(r *wasm.Reader) error {
+	paramTypes, resultTypes, res0, err := f.blockType(r)
+	if err != nil {
+		return err
+	}
+	n, err := r.U32()
+	if err != nil {
+		return err
+	}
+	if n != 1 {
+		return fmt.Errorf("bounded exception handling requires exactly one catch")
+	}
+	kind, err := r.Byte()
+	if err != nil {
+		return err
+	}
+	if kind != byte(wasm.CatchTag) {
+		return fmt.Errorf("bounded exception handling requires catch, not exception references")
+	}
+	tag, err := r.U32()
+	if err != nil {
+		return err
+	}
+	label, err := r.U32()
+	if err != nil {
+		return err
+	}
+	if tag != 0 || len(f.m.Tags) != 1 {
+		return fmt.Errorf("bounded exception handling requires local tag 0")
+	}
+	fi := len(f.ctrl) - 1 - int(label)
+	if fi < 0 {
+		return errBadLabel
+	}
+	ft, ok := f.m.ResolvedTypeFunc(f.m.Tags[0].Type.Index)
+	if !ok || len(ft.Params) > 2 {
+		return fmt.Errorf("bounded exception handling requires at most two scalar payloads")
+	}
+	fr := ctrlFrame{kind: cfTry, paramN: len(paramTypes), resultN: len(resultTypes), branchN: len(resultTypes), elseSite: -1, entryUnreach: f.unreachable, res0: res0, paramTypes: paramTypes, resultTypes: resultTypes, ehCatchFrame: fi, ehPayloadN: len(ft.Params)}
+	for i, typ := range ft.Params {
+		mt := mtOf(typ)
+		if mt != mtI32 && mt != mtI64 {
+			return fmt.Errorf("bounded exception handling requires integer scalar payloads")
+		}
+		fr.ehPayloadType[i] = mt
+	}
+	target := &f.ctrl[fi]
+	if target.branchN != fr.ehPayloadN {
+		return fmt.Errorf("bounded exception handler payload arity mismatch")
+	}
+	fr.height = f.depth() - fr.paramN
+	fr.baseTypes = append([]machineType(nil), f.currentLogicalTypes()[:fr.height]...)
+	if f.unreachable {
+		f.ctrl = append(f.ctrl, fr)
+		return nil
+	}
+	f.flush()
+	f.a.LeaRsp(R11, f.ehRecordOff())
+	f.a.Load64(RAX, RBX, -int32(offEHHandlerPtr))
+	f.a.Store64(R11, ehPrevOff, RAX)
+	f.a.Store64(R11, ehSavedRSPOff, RSP)
+	f.a.StoreImm32Mem(R11, ehTagOff, int32(tag))
+	fr.ehTargetSite = f.a.LeaRipPlaceholder(RAX)
+	f.a.Store64(R11, ehTargetOff, RAX)
+	f.a.Store64(RBX, -int32(offEHHandlerPtr), R11)
+	f.ctrl = append(f.ctrl, fr)
+	return nil
+}
+
+func (f *fn) opThrow(r *wasm.Reader) error {
+	tag, err := r.U32()
+	if err != nil {
+		return err
+	}
+	if tag != 0 || len(f.m.Tags) != 1 {
+		return fmt.Errorf("bounded exception handling requires local tag 0")
+	}
+	ft, ok := f.m.ResolvedTypeFunc(f.m.Tags[0].Type.Index)
+	if !ok || len(ft.Params) > 2 {
+		return fmt.Errorf("bounded exception handling tag signature unavailable")
+	}
+	types := f.currentLogicalTypes()
+	if len(types) < len(ft.Params) {
+		return fmt.Errorf("bounded exception handling payload stack underflow")
+	}
+	f.flush()
+	f.a.Load64(R11, RBX, -int32(offEHHandlerPtr))
+	f.a.TestSelf(R11, true)
+	noHandler := f.a.JccPlaceholder(condE)
+	f.a.Load32(RAX, R11, ehTagOff)
+	f.a.AluRI(cmpDigit, RAX, int32(tag), false)
+	wrongTag := f.a.JccPlaceholder(condNE)
+	base := len(types) - len(ft.Params)
+	for i := range ft.Params {
+		slot := slotOfLogicalTypes(types, base+i)
+		f.a.Load64(RAX, RSP, f.spillOff(slot))
+		off := int32(ehPayload0Off)
+		if i == 1 {
+			off = ehPayload1Off
+		}
+		f.a.Store64(R11, off, RAX)
+	}
+	f.a.Load64(RSP, R11, ehSavedRSPOff)
+	f.a.Load64(RAX, R11, ehTargetOff)
+	f.a.JmpReg(RAX)
+	trapPos := f.a.Len()
+	f.a.PatchRel32(noHandler, trapPos)
+	f.a.PatchRel32(wrongTag, trapPos)
+	f.emitTrap(trapUnhandledException)
+	f.unreachable = true
+	return nil
+}
+
 func (f *fn) opElse() error {
 	fr := &f.ctrl[len(f.ctrl)-1]
 	if fr.entryUnreach {
@@ -643,6 +775,35 @@ func (f *fn) opEnd() error {
 			}
 		} else {
 			f.setDepthTypes(f.frameDepthTypes(fr.baseTypes, fr.resultTypes))
+		}
+	}
+	if fr.kind == cfTry && !fr.entryUnreach {
+		if fallthroughReachable {
+			f.a.Load64(RAX, RSP, f.ehRecordOff()+ehPrevOff)
+			f.a.Store64(RBX, -int32(offEHHandlerPtr), RAX)
+		}
+		skip := -1
+		if fallthroughReachable {
+			skip = f.a.JmpPlaceholder()
+		}
+		handlerPos := f.a.Len()
+		f.a.PatchRel32(fr.ehTargetSite, handlerPos)
+		f.a.Load64(RAX, RSP, f.ehRecordOff()+ehPrevOff)
+		f.a.Store64(RBX, -int32(offEHHandlerPtr), RAX)
+		target := &f.ctrl[fr.ehCatchFrame]
+		toSlot := slotsOfTypes(target.baseTypes)
+		for i := 0; i < fr.ehPayloadN; i++ {
+			off := int32(ehPayload0Off)
+			if i == 1 {
+				off = ehPayload1Off
+			}
+			f.a.Load64(RAX, RSP, f.ehRecordOff()+off)
+			f.a.Store64(RSP, f.spillOff(toSlot+i), RAX)
+		}
+		f.frameAddEnd(target, f.a.JmpPlaceholder())
+		target.endReachable = true
+		if skip != -1 {
+			f.a.PatchRel32(skip, f.a.Len())
 		}
 	}
 	// The frame is popped and its buffers are dead — recycle them for the next
@@ -963,6 +1124,11 @@ func (f *fn) opReturn() error {
 // skipImmediates advances over a dead-code opcode's operands without emitting.
 func skipImmediates(r *wasm.Reader, op byte) error {
 	switch {
+	case op == 0x08: // throw
+		_, err := r.U32()
+		return err
+	case op == 0x0a: // throw_ref
+		return nil
 	case op == 0x10 || op == 0x12: // call / return_call
 		_, err := r.U32()
 		return err

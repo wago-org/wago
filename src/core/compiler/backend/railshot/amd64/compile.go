@@ -437,7 +437,16 @@ const (
 )
 
 func (f *fn) localOff(i int) int32 { return int32(frameHdrBytes + 8*f.localSlot[i]) }
-func (f *fn) spillOff(k int) int32 { return int32(frameHdrBytes + 8*f.nLocalSlots + 8*k) }
+func (f *fn) ehFrameBytes() int {
+	if len(f.m.Tags) != 0 {
+		return ehRecordSlots * 8
+	}
+	return 0
+}
+func (f *fn) ehRecordOff() int32 { return int32(frameHdrBytes + 8*f.nLocalSlots) }
+func (f *fn) spillOff(k int) int32 {
+	return int32(frameHdrBytes + 8*f.nLocalSlots + f.ehFrameBytes() + 8*k)
+}
 
 func (f *fn) immutableTable(tableIdx uint32) (immutableTableHint, bool) {
 	if int(tableIdx) >= len(f.immutableTables) || !f.immutableTables[tableIdx].local {
@@ -454,7 +463,7 @@ func (f *fn) frameSize() int {
 	if f.frameElided {
 		return 0 // frame never touched (all locals register-homed, no spills, no calls)
 	}
-	return align16(frameHdrBytes+8*f.nLocalSlots+8*f.maxSpill) + 8
+	return align16(frameHdrBytes+8*f.nLocalSlots+f.ehFrameBytes()+8*f.maxSpill) + 8
 }
 
 // elideRegisterOnlyFrame drops the whole frame for a register-homed call-free
@@ -1141,7 +1150,14 @@ var errRegExhausted = errors.New("amd64: no register available to spill")
 // first (pinned) attempt exhausts the register file. Pinning is a pure speed
 // optimization, so the unpinned recompile is always correct.
 func compileFunc(m *wasm.Module, funcIdx int, guardMode, boundsFacts, interruptible bool, modGlobals []moduleGlobalPin, hints funcHints, importBindings []ImportBinding, syncHostCalls bool, stats *CodegenStats, inlineTargets map[int]*inlineTarget, sc *scratch) (code []byte, relocs []callReloc, internalOff int, err error) {
-	code, relocs, internalOff, err = compileFuncAttempt(m, funcIdx, guardMode, boundsFacts, interruptible, modGlobals, hints, importBindings, syncHostCalls, stats, true, inlineTargets, sc)
+	pinLocals := len(m.Tags) == 0
+	if !pinLocals {
+		// The bounded EH handler restores an older native frame directly. Keep
+		// locals/globals canonical in memory until handler-state convergence is
+		// generalized to pinned registers.
+		modGlobals = nil
+	}
+	code, relocs, internalOff, err = compileFuncAttempt(m, funcIdx, guardMode, boundsFacts, interruptible, modGlobals, hints, importBindings, syncHostCalls, stats, pinLocals, inlineTargets, sc)
 	if errors.Is(err, errRegExhausted) {
 		resetFuncStats(stats)
 		code, relocs, internalOff, err = compileFuncAttempt(m, funcIdx, guardMode, boundsFacts, interruptible, modGlobals, hints, importBindings, syncHostCalls, stats, false, inlineTargets, sc)

@@ -599,8 +599,9 @@ type compiledMemoryDirectory struct {
 	defs           []memoryDef
 	exports        map[string]int
 	exactExports   bool
-	staged         bool // internal multi-memory execution gate; never serialized
-	stagedMemory64 bool // internal bounded memory64 execution gate; never serialized
+	staged         bool             // internal multi-memory execution gate; never serialized
+	stagedMemory64 bool             // internal bounded memory64 execution gate; never serialized
+	ehTags         []compiledTagDef // staged local EH product metadata; never serialized
 }
 
 // GlobalDef is the compact instantiate-time metadata for one wasm global.
@@ -634,6 +635,10 @@ type GlobalImportDef struct {
 	ValueTypeIndex uint32
 	HasValueType   bool
 	Mutable        bool
+}
+
+type compiledTagDef struct {
+	TypeIndex uint32
 }
 
 // Compiled is emitted machine code plus instantiate-time metadata.

@@ -39,6 +39,8 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 		case 0x01: // nop
 		case 0x02, 0x03, 0x04: // block / loop / if
 			err = f.opBlock(r, op)
+		case 0x1f: // try_table
+			err = f.opTryTable(r)
 		case 0x05: // else
 			err = f.opElse()
 		case 0x0b: // end
@@ -82,6 +84,10 @@ func (f *fn) fcmpMaybeDefer(r *wasm.Reader, op wOp, f64 bool) {
 // conversions). Called only when reachable; dead code is skipped by the body loop.
 func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 	switch op {
+	case 0x08: // throw
+		return f.opThrow(r)
+	case 0x0a: // throw_ref
+		return fmt.Errorf("amd64: throw_ref remains outside bounded exception handling")
 	case 0x10: // call
 		return f.callOp(r)
 	case 0x11: // call_indirect

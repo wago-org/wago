@@ -430,6 +430,80 @@ func stagedTwoLocalTableShape(m *wasm.Module) error {
 	return stagedExactTableOperationShape(m, "exact two-local-table slice", allowed)
 }
 
+func stagedExceptionHandlingShape(m *wasm.Module) error {
+	if m.ImportedTagCount() != 0 || len(m.Tags) != 1 {
+		return fmt.Errorf("bounded exception handling requires exactly one local tag and no tag imports")
+	}
+	for _, ex := range m.Exports {
+		if ex.Index.Kind == wasm.ExternTag {
+			return fmt.Errorf("bounded exception handling rejects tag exports")
+		}
+	}
+	if m.ImportedFuncCount() != 0 || m.TableCount() != 0 || m.MemCount() != 0 || m.GlobalCount() != 0 || len(m.Elements) != 0 || len(m.Data) != 0 {
+		return fmt.Errorf("bounded exception handling requires local functions without imported calls, tables, memories, globals, elements, or data")
+	}
+	ft, ok := m.ResolvedTypeFunc(m.Tags[0].Type.Index)
+	if !ok || len(ft.Results) != 0 || len(ft.Params) == 0 || len(ft.Params) > 2 {
+		return fmt.Errorf("bounded exception handling requires one tag with one or two integer scalar payloads")
+	}
+	for _, typ := range ft.Params {
+		if !wasm.EqualValType(typ, wasm.I32) && !wasm.EqualValType(typ, wasm.I64) {
+			return fmt.Errorf("bounded exception handling tag payloads must be i32/i64")
+		}
+	}
+	tryCount, throwCount := 0, 0
+	for i := range m.Code {
+		r := wasm.NewReader(m.Code[i].BodyBytes)
+		for r.HasNext() {
+			op, err := r.Byte()
+			if err != nil {
+				return err
+			}
+			switch op {
+			case 0x08:
+				tag, err := r.U32()
+				if err != nil || tag != 0 {
+					return fmt.Errorf("bounded exception handling throw must target local tag 0")
+				}
+				throwCount++
+			case 0x0a:
+				return fmt.Errorf("bounded exception handling rejects throw_ref")
+			case 0x1f:
+				tryCount++
+				if tryCount > 1 {
+					return fmt.Errorf("bounded exception handling admits at most one try_table per module")
+				}
+				if _, err := r.S33(); err != nil {
+					return err
+				}
+				n, err := r.U32()
+				if err != nil || n != 1 {
+					return fmt.Errorf("bounded exception handling requires exactly one catch")
+				}
+				kind, err := r.Byte()
+				if err != nil || kind != byte(wasm.CatchTag) {
+					return fmt.Errorf("bounded exception handling requires catch without exception references")
+				}
+				tag, err := r.U32()
+				if err != nil || tag != 0 {
+					return fmt.Errorf("bounded exception handling catch must target local tag 0")
+				}
+				if _, err := r.U32(); err != nil {
+					return err
+				}
+			default:
+				if _, err := wasm.ClassifyInstructionImmediate(r, op); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	if throwCount == 0 {
+		return fmt.Errorf("bounded exception handling requires at least one throw")
+	}
+	return nil
+}
+
 // compileWithFrontendFeatures is the internal staged path used to prove an
 // implementation family before SupportedFeatures admits its public bit. Public
 // entry points always validate RuntimeConfig first and pass its exact mapping.
@@ -453,6 +527,17 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 	}
 	if features.TailCalls && moduleRequiredFeatures(m).IsEnabled(CoreFeatureTailCall) && (goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64") {
 		return nil, fmt.Errorf("compile: unsupported instruction tail-call staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
+	}
+	if features.ExceptionHandling {
+		if goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64" {
+			return nil, fmt.Errorf("compile: unsupported exception handling staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
+		}
+		if cfg.boundsChecks == BoundsChecksSignalsBased {
+			return nil, fmt.Errorf("compile: unsupported exception handling with signals-based bounds checks")
+		}
+		if err := stagedExceptionHandlingShape(m); err != nil {
+			return nil, fmt.Errorf("compile: staged exception handling: %w", err)
+		}
 	}
 	usesMemory64 := false
 	for i := uint32(0); i < uint32(m.MemCount()); i++ {
@@ -587,6 +672,9 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 		return nil, fmt.Errorf("type metadata: %w", err)
 	}
 	c := &Compiled{Code: code, Entry: entry, InternalEntry: internalEntry, NumImports: importedFuncs, Types: types, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, memoryDir: &compiledMemoryDirectory{exports: map[string]int{}, exactExports: true, staged: features.MultiMemory && m.MemCount() > 1, stagedMemory64: features.Memory64 && usesMemory64}, boundsMode: boundsMode, stagedTable64: features.Table64 && usesTable64, GCTypeDescs: gcDescs, requiredFeatures: moduleRequiredFeatures(m), dynamicImports: importedFuncs > 0}
+	if features.ExceptionHandling {
+		c.memoryDir.ehTags = []compiledTagDef{{TypeIndex: m.Tags[0].Type.Index}}
+	}
 	if importedFuncs > 0 {
 		c.importFuncSigs = make([]FuncSig, importedFuncs)
 		for i := 0; i < importedFuncs; i++ {
@@ -1564,6 +1652,12 @@ func (c *Compiled) validate() error {
 	if c.stagedTable64 {
 		staged |= CoreFeatureTable64
 	}
+	if c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 {
+		staged |= CoreFeatureExceptionHandling
+		if len(c.memoryDir.ehTags) != 1 || int(c.memoryDir.ehTags[0].TypeIndex) >= len(c.Types) || c.Types[c.memoryDir.ehTags[0].TypeIndex].Kind != CompositeTypeFunction {
+			return fmt.Errorf("compiled metadata invalid: staged exception tag directory")
+		}
+	}
 	staged |= c.stagedFeatures()
 	if unsupported&^staged != 0 {
 		return fmt.Errorf("compiled metadata invalid: unknown required feature bits 0x%x", uint64(unsupported&^staged))
@@ -2475,6 +2569,9 @@ const wagoVersion = 26
 // which a loaded blob has no way to record. Recompile from wasm with the desired
 // config at load time instead.
 func (c *Compiled) MarshalBinary() ([]byte, error) {
+	if c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 {
+		return nil, errors.New("wago: staged exception-handling tag metadata is not persisted by codec v26")
+	}
 	if c.boundsMode == BoundsChecksSignalsBased {
 		return nil, errors.New("wago: signals-based compiled modules cannot be serialized; recompile from wasm at load time")
 	}

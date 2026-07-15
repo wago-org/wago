@@ -54,6 +54,7 @@ type Features struct {
 	MultiMemory             bool // internal staged gate for bounded indexed memory execution
 	Memory64                bool // internal staged gate for bounded local 64-bit-address memory execution
 	Table64                 bool // internal staged gate for bounded local 64-bit-index table execution
+	ExceptionHandling       bool // internal staged gate for bounded local scalar tag/throw/try_table execution
 	SIMD                    bool // supported 0xfd v128 SIMD and relaxed-SIMD instructions
 	ExtendedConst           bool // i32/i64 add/sub/mul and prior immutable global.get in const expressions
 }
@@ -347,7 +348,7 @@ func (p supportPass) run() error {
 	if err := p.memories(); err != nil {
 		return err
 	}
-	if len(p.m.Tags) != 0 {
+	if len(p.m.Tags) != 0 && !p.feat.ExceptionHandling {
 		return p.unsupported("exception handling", "tag section (exception-handling disabled)", "tag section")
 	}
 	if len(p.m.StringRefs) != 0 {
@@ -966,6 +967,52 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 		return true, nil
 	case 0x02, 0x03, 0x04:
 		return false, skipBlockType()
+	case 0x08: // throw tagidx
+		if _, err := r.U32(); err != nil {
+			return false, err
+		}
+		if !p.feat.ExceptionHandling {
+			return false, p.unsupported("exception handling instruction", "Throw (exception-handling disabled)", ctx())
+		}
+		return false, nil
+	case 0x0a: // throw_ref
+		return false, p.unsupported("exception handling instruction", "ThrowRef (exception references disabled)", ctx())
+	case 0x1f: // try_table blocktype vec(catch)
+		if err := skipBlockType(); err != nil {
+			return false, err
+		}
+		n, err := r.U32()
+		if err != nil {
+			return false, err
+		}
+		for i := uint32(0); i < n; i++ {
+			kind, err := r.Byte()
+			if err != nil {
+				return false, err
+			}
+			switch kind {
+			case 0, 1:
+				if _, err := r.U32(); err != nil {
+					return false, err
+				}
+				if _, err := r.U32(); err != nil {
+					return false, err
+				}
+			case 2, 3:
+				if _, err := r.U32(); err != nil {
+					return false, err
+				}
+			default:
+				return false, p.unsupported("exception handling instruction", fmt.Sprintf("unknown catch kind %d", kind), ctx())
+			}
+			if kind == 1 || kind == 3 {
+				return false, p.unsupported("exception handling instruction", "exception-reference catch (exception references disabled)", ctx())
+			}
+		}
+		if !p.feat.ExceptionHandling {
+			return false, p.unsupported("exception handling instruction", "TryTable (exception-handling disabled)", ctx())
+		}
+		return false, nil
 	case 0x0c, 0x0d, 0x10, 0x20, 0x21, 0x22, 0x23, 0x24, 0x0e:
 		err := wasm.SkipInstructionImmediate(r, op)
 		return false, err
@@ -1538,7 +1585,7 @@ func (p supportPass) instr(in wasm.Instruction, context string) error {
 		return err
 	}
 	switch in.Kind {
-	case wasm.InstrBlock, wasm.InstrLoop:
+	case wasm.InstrBlock, wasm.InstrLoop, wasm.InstrTryTable:
 		return p.expr(in.Body(), context+" body")
 	case wasm.InstrIf:
 		if err := p.expr(wasm.Expr{Instrs: in.Then()}, context+" then"); err != nil {
@@ -1623,6 +1670,13 @@ func (p supportPass) instructionKind(k wasm.InstrKind, context string) error {
 			return p.unsupported("instruction", k.String()+" (typed reference tail calls disabled)", context)
 		}
 		return nil
+	case wasm.InstrThrow, wasm.InstrTryTable:
+		if !p.feat.ExceptionHandling {
+			return p.unsupported("exception handling instruction", k.String()+" (exception-handling disabled)", context)
+		}
+		return nil
+	case wasm.InstrThrowRef:
+		return p.unsupported("exception handling instruction", "ThrowRef (exception references disabled)", context)
 	}
 
 	if stagedMemory64SIMDInstruction(k) {

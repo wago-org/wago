@@ -209,6 +209,25 @@ func TestTypecheckSIMDLaneBounds(t *testing.T) {
 	}
 }
 
+func TestValidateThrowAndTryTableReachability(t *testing.T) {
+	m := modWithFunc(nil, nil, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrThrow, Index: 0})
+	m.Types = []RecType{ft([]ValType{I32}, nil), ft(nil, nil)}
+	m.Tags = []TagType{{Type: TypeIdx{Index: 0}}}
+	m.FuncTypes = []TypeIdx{{Index: 1}}
+	if err := ValidateModule(m); err != nil {
+		t.Fatalf("ValidateModule throw: %v", err)
+	}
+
+	bad := modWithFunc(nil, nil, Instruction{Kind: InstrThrow, Index: 0})
+	bad.Types = []RecType{ft([]ValType{I32}, nil), ft(nil, nil)}
+	bad.Tags = []TagType{{Type: TypeIdx{Index: 0}}}
+	bad.FuncTypes = []TypeIdx{{Index: 1}}
+	expectValidateErr(t, bad, ErrTypeMismatch)
+
+	unknown := modWithFunc(nil, nil, Instruction{Kind: InstrThrow, Index: 0})
+	expectValidateErr(t, unknown, ErrUnknownTag)
+}
+
 func TestTypecheckNegativeControlTailAndCast(t *testing.T) {
 	t.Run("return_call_indirect result mismatch and table type", func(t *testing.T) {
 		m := &Module{

@@ -361,6 +361,11 @@ func (j *JobMemory) BindInstanceContextBytes(src []byte) {
 	})
 }
 
+// ClearEHHandler removes any native-stack handler left behind when a non-EH
+// trap unwound across an active staged try_table. It is called only on the cold
+// prepared-call error path; successful calls restore their prior handler.
+func (j *JobMemory) ClearEHHandler() { j.putU64(abi.EHHandlerPtrOffset, 0) }
+
 // SetCustomCtx writes the V2 host-import context pointer ([linMem - 40]).
 func (j *JobMemory) SetCustomCtx(v uintptr) { j.putU64(offCustomCtx, uint64(v)) }
 

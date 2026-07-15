@@ -58,6 +58,11 @@ const (
 	TailCrossHomeOffset    = 160
 	TailCrossContextOffset = 168
 
+	// EHHandlerPtrOffset holds the active bounded exception-handler record for
+	// staged local scalar try_table execution. It occupies one otherwise-unused
+	// wrapper-tail slot; staged admission rejects tail-call/EH combinations.
+	EHHandlerPtrOffset = 152
+
 	// FuncRefInternalHomeTag marks a descriptor whose code pointer is an internal
 	// register-ABI entry in the same instance. FuncRefCrossInstanceHomeTag marks a
 	// retained InstanceExport wrapper descriptor admitted by the bounded root or
