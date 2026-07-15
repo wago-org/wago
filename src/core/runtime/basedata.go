@@ -294,10 +294,11 @@ type InstanceContext struct {
 	GlobalsPtr     uintptr
 	PassiveDataPtr uintptr
 	TableDirPtr    uintptr
+	MemoryDirPtr   uintptr
 	ImportDispatch uintptr
 }
 
-const InstanceContextBytes = 8 * 8
+const InstanceContextBytes = 9 * 8
 
 // CaptureInstanceContext snapshots the per-instance pointer fields currently
 // installed in basedata.
@@ -310,6 +311,7 @@ func (j *JobMemory) CaptureInstanceContext() InstanceContext {
 		GlobalsPtr:     uintptr(j.getU64(offGlobalsPtr)),
 		PassiveDataPtr: uintptr(j.getU64(offPassiveDataPtr)),
 		TableDirPtr:    uintptr(j.getU64(offTableDirPtr)),
+		MemoryDirPtr:   uintptr(j.getU64(offMemoryDirPtr)),
 		ImportDispatch: uintptr(j.getU64(offImportDispatchPtr)),
 	}
 }
@@ -324,6 +326,7 @@ func (j *JobMemory) BindInstanceContext(ctx InstanceContext) {
 	j.putU64(offGlobalsPtr, uint64(ctx.GlobalsPtr))
 	j.putU64(offPassiveDataPtr, uint64(ctx.PassiveDataPtr))
 	j.putU64(offTableDirPtr, uint64(ctx.TableDirPtr))
+	j.putU64(offMemoryDirPtr, uint64(ctx.MemoryDirPtr))
 	j.putU64(offImportDispatchPtr, uint64(ctx.ImportDispatch))
 }
 
@@ -334,7 +337,7 @@ func (j *JobMemory) CaptureInstanceContextBytes(dst []byte) {
 		panic("runtime: short instance context buffer")
 	}
 	ctx := j.CaptureInstanceContext()
-	for i, value := range [...]uintptr{ctx.CustomCtx, ctx.TablePtr, ctx.FuncRefDescPtr, ctx.PassiveElemPtr, ctx.GlobalsPtr, ctx.PassiveDataPtr, ctx.TableDirPtr, ctx.ImportDispatch} {
+	for i, value := range [...]uintptr{ctx.CustomCtx, ctx.TablePtr, ctx.FuncRefDescPtr, ctx.PassiveElemPtr, ctx.GlobalsPtr, ctx.PassiveDataPtr, ctx.TableDirPtr, ctx.MemoryDirPtr, ctx.ImportDispatch} {
 		binary.LittleEndian.PutUint64(dst[i*8:], uint64(value))
 	}
 }
@@ -353,7 +356,8 @@ func (j *JobMemory) BindInstanceContextBytes(src []byte) {
 		GlobalsPtr:     uintptr(binary.LittleEndian.Uint64(src[32:])),
 		PassiveDataPtr: uintptr(binary.LittleEndian.Uint64(src[40:])),
 		TableDirPtr:    uintptr(binary.LittleEndian.Uint64(src[48:])),
-		ImportDispatch: uintptr(binary.LittleEndian.Uint64(src[56:])),
+		MemoryDirPtr:   uintptr(binary.LittleEndian.Uint64(src[56:])),
+		ImportDispatch: uintptr(binary.LittleEndian.Uint64(src[64:])),
 	})
 }
 
