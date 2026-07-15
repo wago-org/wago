@@ -59,9 +59,13 @@
   Iteration 19 adds every bounded memory64 SIMD memory form without changing the
   six-file totals, retained int-register cross-instance direct tails with root/nested
   continuation and trap recovery, and one bounded imported funcref-table tenant
-  composition. Broader direct/typed-tail results, bulk/passive memory64, wider table/
+  composition. Iteration 20 adds bounded memory64 `memory.copy`/`memory.fill`, opens
+  one local explicit-max table64 `size/get/set` execution/product slice with codec v26,
+  and admits exactly `(i32, f64) -> f64` through the separate direct cross-instance
+  tail record. The complete staged multi-memory/tail matrices and the six-file memory64
+  totals remain unchanged. Passive memory64 lifecycle, broader table64/direct-tail/
   native-import contexts, and unsupported product/platform paths remain explicit.
-  Public typed-reference, multi-memory, compact-import, memory64, and tail-call
+  Public typed-reference, multi-memory, compact-import, memory64, table64, and tail-call
   execution remain disabled; the schema-2 totals remain byte-for-byte unchanged.
   The machine-readable schema-2 inventory is `tests/spec-v3-baseline.json`; see
   `docs/wasm3.md` for family grouping and caveats.

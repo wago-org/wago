@@ -90,9 +90,11 @@ cases are recorded. Iteration 19 adds every SIMD memory load/store/extend/splat/
 lane form to the same bounded memory64 policy; the pinned six files contain no newly
 admitted module, so their exact totals remain unchanged. The same iteration proves a
 separate retained int-register cross-instance direct-tail transition and a sole bounded
-imported funcref-table basedata tenant. Snapshot-v3 owned-local restore, nested tail
-continuations, bounded local memory64 scalar/SIMD/data execution, and finite imported-
-owner tenants are supplementary evidence; public gates remain closed, so the public
+imported funcref-table basedata tenant. Iteration 20 adds bounded memory64 copy/fill,
+local table64 size/get/set with codec-v26 metadata, and exactly `(i32, f64) -> f64`
+through the direct cross-tail record. Snapshot-v3 owned-local restore, nested tail
+continuations, bounded local memory64 scalar/SIMD/data/bulk execution, table64 execution,
+and finite imported-owner tenants are supplementary evidence; public memory64/table64/tail/reference gates remain closed, so the public
 schema-2 inventory remains byte-for-byte unchanged.
 Refresh the machine-readable red inventory with `scripts/spec3-baseline.sh`; the
 command remains nonzero until the zero-gap completion gate is met.
@@ -623,7 +625,7 @@ accepted-invalid or accepted-malformed sites. The execution run is green at
 1,600 passed / 0 failed / 0 skipped modules and 48,248 passed / 0 failed / 0
 skipped assertions; every bounded gap reason is zero. `imports.wast` is fully
 green at 54 / 34 modules/assertions, `data.wast` at 25 / 14, and `linking.wast`
-at 21 / 90. `.wago` codec v25 persists structural reference globals, indexed typed
+at 21 / 90. `.wago` codec v26 persists structural reference globals, indexed typed
 tables/exports/elements, exact declared table/memory-limit forms, and required-feature
 bits while rejecting live runtime identity. The remaining product gates are also
 closed locally: snapshot fail-closed admission,

@@ -91,7 +91,7 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
 - [x] Add `CoreFeaturesV3`, separate admission bits for mandatory families, and
   explicit `GOOS/GOARCH` unsupported-feature errors.
 - [x] Execute the basic extended-constant-expression proposal and persist deferred
-  scalar initializers/offsets in `.wago` codec v25 (initializer records introduced in codec v21).
+  scalar initializers/offsets in `.wago` codec v26 (initializer records introduced in codec v21).
 - [x] Bootstrap checksum-pinned WABT 1.0.41, then pin the official
   WebAssembly/spec 3.0.0 interpreter at the suite revision for the 28 files WABT
   cannot parse. The schema-2 258-file inventory now has zero parser failures,
@@ -105,7 +105,7 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   checks. `ref.func` now preserves its indexed type, recursive structural type
   equivalence validates, and a staged frontend gate routes indexed signatures to
   `call_ref`. Public structural type descriptors, exact signature/global/table/
-  element inspection, and codec-v25 persistence are now present. Staged runtime
+  element inspection, and codec-v26 persistence are now present. Staged runtime
   storage/import matching uses cross-module structural subtype/equivalence;
   native descriptors use bounded 64-bit SHA-256-derived structural keys that
   separate deliberate legacy 32-bit collisions and fail closed above a fixed
@@ -132,15 +132,16 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   `return_call_indirect` commands green: 3 modules, 49 assertions, 16 invalid, and
   11 malformed. The pinned `return_call_ref` runner is now gap-free at 51 commands,
   5 modules, 35 assertions, and 11 invalid modules; one canonical funcref result uses
-  the staged RAX return path with exact descriptor ownership. Retained int-register
-  cross-instance direct `return_call` now uses a separate fixed four-word root/nested
-  transition, preserves producer lifetime and trap recovery, and repeats without
-  allocation. Public admission, foreign-float/oversized direct tails, general-table/
+  the staged RAX return path with exact descriptor ownership. Retained cross-instance
+  direct `return_call` uses a separate fixed four-word root/nested transition, preserves
+  producer lifetime and trap recovery, repeats without allocation, and now admits exactly
+  `(i32, f64) -> f64` in addition to the integer shapes. Public admission, other float/
+  oversized direct tails, general-table/
   foreign-float/general reference-result tails, live typed snapshot state, remaining
   GC/reference instructions, and arm64 parity remain gated.
 - 🚧 Multi-memory now has an explicit internal AST/byte-backed gate, exact
   compiled/product declaration/import/export directories, declaration-based
-  policy accounting, duplicate imported-memory alias deduplication, and codec v25
+  policy accounting, duplicate imported-memory alias deduplication, and codec v26
   persistence. A linux/amd64 explicit-bounds staged path executes local/imported/
   re-exported indexed `memory.size/grow`, every scalar and SIMD memory form, active
   and passive data lifecycle, and `memory.init/copy/fill` with exact cross-memory,
@@ -162,16 +163,18 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
 - 🚧 memory64 has one bounded linux/amd64 local execution slice: exact 64-bit
   metadata/codec limits, explicit maximum <=65,535 pages, checked u64 address/offset
   arithmetic, `memory.size/grow`, all 19 integer scalar operations, all four float
-  scalar operations, every SIMD memory load/store/extend/splat/zero/lane form, and
-  active data initialization. Validated i64 offset programs round-trip through codec
-  v25; scalar/SIMD/data paths check full-width carry and exact end bounds, and
-  trapping lane stores are atomic. Passive data and snapshots remain explicit gates.
+  scalar operations, every SIMD memory load/store/extend/splat/zero/lane form, active
+  data initialization, and `memory.copy`/`memory.fill`. Validated i64 offset programs
+  round-trip through codec v26; scalar/SIMD/data/bulk paths check full-width carry and
+  exact end bounds, copy preserves overlap, and trapping writes are atomic. Passive
+  `memory.init`/`data.drop` and snapshots remain explicit gates.
   A six-file official
   accounting matrix records 807 commands, 7 admitted modules, 92 assertions, 36
   explicit gates, 530 blocked dependents, 83 invalid, and 59 malformed cases with
-  zero hidden gaps. Imports, shared/multi-memory, bulk/passive, unbounded/excessive
-  reservations, guard mode, public admission, snapshots, and arm64 remain. Table64,
-  exception handling, and GC remain end-to-end work.
+  zero hidden gaps. Imports, shared/multi-memory, passive lifecycle, unbounded/excessive
+  reservations, guard mode, public admission, snapshots, and arm64 remain. Table64 now
+  has one local explicit-max `size/get/set` beachhead; broader table64, exception
+  handling, and GC remain end-to-end work.
 - [ ] Reach zero unexplained failures/skips in the official Release 3 core suite.
 
 **Engine & performance** (no-ir-plan P1–P7, measured against P1's stats)
@@ -208,7 +211,7 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   amd64 native polling remains planned. The checkpoints also bound ARM64 Go-GC
   stalls during long native loops.
 - [ ] Wasm-level stack traces on trap (trap site → func idx → wasm pc)
-- [x] WebAssembly 2.0 product closeout: `.wago` codec v25 persists structural
+- [x] WebAssembly 2.0 product closeout: `.wago` codec v26 persists structural
   reference globals, indexed typed tables/exports/elements, exact local/imported
   table/memory-limit forms, indexed memory imports/exports, and required-feature
   bits without serializing live runtime
@@ -242,16 +245,16 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   commands / 3 modules / 33 assertions / 11 invalid. The 79-command indirect file
   is fully green at 3 modules / 49 assertions / 16 invalid / 11 malformed. `return_call_ref`
   is gap-free at 51 commands / 5 modules / 35 assertions / 11 invalid, including one
-  canonical funcref result. Retained int-register cross-instance direct tails now
-  have a separate fixed root/nested return transition. Public admission, foreign-
-  float/oversized direct tails, general-table/foreign-float/general reference-result
+  canonical funcref result. Retained integer and exact `(i32, f64) -> f64` cross-
+  instance direct tails use a separate fixed root/nested return transition. Public
+  admission, other float/oversized direct tails, general-table/foreign-float/general reference-result
   tails, snapshots, and arm64 execution remain.
 - [x] Basic extended constant expressions: integer add/sub/mul, prior immutable
-  globals, active offsets, strict validation, and codec-v25 persistence.
+  globals, active offsets, strict validation, and codec-v26 persistence.
 - 🚧 Typed function references: typed `ref.func`, recursive structural equivalence,
   and staged indexed-signature frontend admission now reach amd64 descriptor
   `call_ref` with null/signature checks and wrapper/context-aware non-tail calls.
-  Public structural descriptors and codec-v25 exact metadata cover signatures,
+  Public structural descriptors and codec-v26 exact metadata cover signatures,
   globals, tables, elements, imports/exports, and inspection without enabling the
   feature. Staged exact storage/import compatibility, indexed/recursive runtime
   signature identity, bounded collision-resistant native type keys,
@@ -271,15 +274,17 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   sets through snapshot v3, and stages bounded registered-memory co-tenants. The
   serializer now admits imported numeric globals and one bounded imported funcref
   table; native imported calls and broader table/reference state remain explicit
-  gates. Memory64 now has one bounded local size/grow/scalar/SIMD-memory/data slice
-  with exact metadata/codec limits and checked u64 arithmetic. Imported/shared/
-  private snapshots, guard mode, public admission,
-  broader memory64/table64, exception handling, and WasmGC remain active scope;
+  gates. Memory64 now has one bounded local size/grow/scalar/SIMD-memory/data/copy/fill
+  slice with exact metadata/codec limits, checked u64 arithmetic, overlap, and trap
+  atomicity. A first local explicit-max table64 slice executes `size/get/set` with i64
+  indexes and codec-v26 address-form metadata. Imported/shared/private snapshots,
+  passive memory64, wider table64, guard mode, public admission, exception handling,
+  and WasmGC remain active scope;
   see `docs/wasm3.md` for exact boundaries.
 - [x] Reference-types product completion: signatures, locals, control,
   local/imported/shared globals, host ABI, explicit host funcref ownership/egress,
   typed 8-byte externref tables/elements, every `table.*` operation, multiple
-  local/imported tables, exact exports/re-exports, codec-v25 structural metadata,
+  local/imported tables, exact exports/re-exports, codec-v26 structural metadata,
   snapshot isolation, complete inspection, cross-link teardown, and the
   zero-skip Release 2 execution corpus are done.
 - 🚧 Additional targets: native **linux/arm64** and **darwin/arm64** backends and
