@@ -518,6 +518,8 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 				if li < len(c.InternalEntry) && c.InternalEntry[li] != c.Entry[li] && funcSigIntRegABI(c.Funcs[li]) {
 					code = uint64(base) + uint64(c.InternalEntry[li])
 					home |= abi.FuncRefInternalHomeTag
+				} else {
+					home |= abi.FuncRefLocalWrapperHomeTag
 				}
 				binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntryCodePtrOffset:], code)
 				binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntryHomeLinMemOffset:], home)

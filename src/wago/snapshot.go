@@ -148,7 +148,11 @@ func captureInstanceSnapshot(in *Instance, opts SnapshotOptions) *Snapshot {
 		gc:      opts.GC,
 		kind:    opts.Kind,
 	}
-	if in.memoryDir == nil {
+	if in.c.memoryCount() == 0 {
+		// The runtime keeps one legacy scratch page even for memory-free modules;
+		// it is not a declared Wasm memory and must not enter snapshot-v3 records.
+		s.memories = nil
+	} else if in.memoryDir == nil {
 		live := in.memory.Bytes()
 		s.memory = append([]byte(nil), live...)
 		s.memPages = uint32(len(live) / 65536)

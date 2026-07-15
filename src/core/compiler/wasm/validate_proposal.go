@@ -44,7 +44,7 @@ func (v *funcValidator) stepCallRef(in Instruction) error {
 		return err
 	}
 	if in.Kind == InstrReturnCallRef {
-		if !v.sameValTypes(ft.Results, v.ctrls[0].out) {
+		if !v.matchValTypes(ft.Results, v.ctrls[0].out) {
 			return v.verr(ErrTypeMismatch, "return_call_ref")
 		}
 		v.unreachable()
