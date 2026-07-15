@@ -78,6 +78,52 @@ Each `Instance` owns its own `gc.Collector` when descriptor metadata is present.
 
 GC roots are not wired to native frames yet, and no WasmGC opcode/codegen support is enabled by this metadata plumbing. Later PRs will connect exact safepoint maps, runtime allocation calls, and barrier emission to the instance-owned collector.
 
+## Native exception-root map contract
+
+Iteration 34 adds a deliberately metadata-only bridge between amd64 exception frames and
+the collector/lifecycle layers. `src/core/nativeabi` owns dependency-neutral
+`FunctionRootMap` and `RootSlot` records; `src/core/runtime/gc` aliases and validates them
+at the collector boundary. A map names one local function, the minimum post-prologue frame
+prefix containing its roots, and strictly ordered 8-byte-aligned offsets relative to that
+function's post-prologue RSP. Validation rejects out-of-range functions, duplicate or
+unordered maps/slots, unknown ownership kinds, unaligned offsets, and slots outside the
+announced frame prefix before a scanner may trust metadata.
+
+The current staged EH frame reserves four seven-word handler records followed by four
+three-word exception-root records. This is a fixed 320-byte EH region per EH function:
+224 bytes of handler state plus 96 bytes of roots. Including the 16-byte native frame
+header and no locals/spills, the minimum mapped frame prefix is 336 bytes. In each root,
+word zero is native exception identity and payload words one and two retain the tag's two
+bounded payload values. The amd64 map builder derives offsets from the same backend
+constants used by lowering; the exact single-funcref fixture maps payload word one at
+offset 248 and rejects a fifth reference catch before producing metadata.
+
+Two root kinds are intentionally distinct:
+
+- `RootGCRef` / `NativeRootGCRef` is a compact `gc.Ref`. A collector may scan it and a
+  future representation may rewrite it through the root-map interface.
+- `RootFuncRef` / `NativeRootFuncRef` is a canonical funcref descriptor identity, not a
+  `gc.Ref`. The producer/reference lifecycle must retain the descriptor owner while the
+  slot is live, and the collector must never reinterpret those bits as a heap handle.
+
+This contract does **not** open the final official `exceptions/try_table` module. Before
+reference payload execution can be admitted, codegen/runtime must prove all of the
+following as one coherent product:
+
+1. zero every mapped root slot before any safepoint can observe the frame;
+2. publish and withdraw the active native frame chain at exact collector safepoints;
+3. copy `gc.Ref` payloads with the required allocation/store barriers and Tiny remark
+   semantics, including catch, rethrow, tail-frame discard, trap recovery, and teardown;
+4. retain/release every funcref producer across local and cross-instance exception
+   lifetime, including close order and rollback;
+5. scan only live records, never stale slots belonging to discarded try scopes;
+6. serialize or explicitly reject every snapshot/codec/live-handler context; and
+7. prove bounded no-cgo behavior under stress collection and concurrent consumers.
+
+Until those obligations are executable and tested, the root maps are strict descriptive
+metadata only. WasmGC opcodes, GC-managed EH payloads, exported exception references, and
+public/guard/arm64 admission remain fail-closed.
+
 ## Collector lifetime
 
 `Collector.Close` is idempotent and releases heap backing storage plus root/card/mark metadata so an instance shutdown does not retain guest refs. After close, operations that need a live heap return `gc: collector closed`: allocation, collection, verification, object access/mutation, promotion, and checked root-slot creation/access/mutation. `Step` follows the same rule for both profiles; on Throughput it routes through `CollectMinor`, and on Tiny it rejects the closed collector before advancing incremental state.
