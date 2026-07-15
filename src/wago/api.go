@@ -464,7 +464,7 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 		if err != nil {
 			return nil, fmt.Errorf("data %d offset: %w", i, err)
 		}
-		init := DataInit{Bytes: d.Init}
+		init := DataInit{MemoryIndex: uint32(d.Mode.Mem), Bytes: d.Init}
 		applyDataOffset(&init, off.Init())
 		c.Data = append(c.Data, init)
 	}
@@ -1370,6 +1370,11 @@ func (c *Compiled) validate() error {
 		}
 	}
 	for seg, d := range c.Data {
+		if count := c.memoryCount(); d.MemoryIndex != 0 || count != 0 {
+			if uint64(d.MemoryIndex) >= uint64(count) {
+				return fmt.Errorf("compiled metadata invalid: active data %d memory index %d out of range", seg, d.MemoryIndex)
+			}
+		}
 		if err := validateOffset("data", seg, d.Offset); err != nil {
 			return err
 		}
@@ -1894,12 +1899,12 @@ func (c *Compiled) validateDeferredOffsetGlobal(kind string, seg, idx int) error
 
 const wagoMagic = "WAGO"
 
-// Version 23 adds exact indexed memory declarations/imports/exports and the
-// direct memory-0 execution cache to binding-independent imported-call dispatch,
-// structural function/reference types, globals, tables, elements, extended
-// constant expressions, and required-feature metadata. It never serializes live
-// owners, mappings, tokens, targets, thunk addresses, or store identity.
-const wagoVersion = 23
+// Version 24 adds exact active-data memory indexes to the indexed memory
+// declarations/imports/exports, binding-independent import dispatch, structural
+// types, tables, elements, extended constant expressions, and feature metadata.
+// It never serializes live owners, mappings, tokens, targets, thunk addresses,
+// or store identity.
+const wagoVersion = 24
 
 // MarshalBinary serializes the precompiled module to a ".wago" blob.
 //

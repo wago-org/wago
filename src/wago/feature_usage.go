@@ -6,7 +6,7 @@ import (
 )
 
 // moduleRequiredFeatures records optional core features that remain execution
-// dependencies of the compiled artifact. Codec v23 stores the full public
+// dependencies of the compiled artifact. Codec v24 stores the full public
 // CoreFeatures mask and rejects unknown bits. Compile-time-only features such as
 // extended constant expressions are folded into initializer metadata.
 func moduleRequiredFeatures(m *wasm.Module) CoreFeatures {

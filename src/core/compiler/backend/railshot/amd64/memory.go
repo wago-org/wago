@@ -538,6 +538,30 @@ func (f *fn) trapUnlessLE(t, mb Reg) {
 	f.trapIf(condA, trapMemOOB)
 }
 
+// absoluteBulkAddr checks offset+n against one exact memory and turns offset
+// into an absolute native pointer. Callers flush first and reserve RDI/RSI/RCX
+// for operands; this helper uses only the fixed RDX/R8 scratch pair.
+func (f *fn) absoluteBulkAddr(memoryIndex uint32, offset, n Reg) {
+	f.a.LeaScaled(RDX, offset, n, 0, 0)
+	if memoryIndex == 0 {
+		if f.memSizeReg != regNone {
+			f.trapUnlessLE(RDX, f.memSizeReg)
+		} else {
+			f.a.Load32(R8, RBX, -bdCurBytes)
+			f.trapUnlessLE(RDX, R8)
+		}
+		f.a.Add64(offset, RBX)
+		return
+	}
+	entry := int32(memoryIndex) * 16
+	f.a.Load64(R8, RBX, -offMemoryDirPtr)
+	f.a.Load32(R8, R8, entry+8)
+	f.trapUnlessLE(RDX, R8)
+	f.a.Load64(R8, RBX, -offMemoryDirPtr)
+	f.a.Load64(R8, R8, entry)
+	f.a.Add64(offset, R8)
+}
+
 // memoryInit lowers memory.init. The three i32 operands (dst, src, n) are read
 // from canonical slots into the fixed rep registers RDI/RSI/RCX. The source is
 // immutable passive data, so forward rep movsb is sufficient.
@@ -546,7 +570,8 @@ func (f *fn) memoryInit(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
-	if _, err := r.U32(); err != nil { // memidx, validated == 0
+	memoryIndex, err := r.U32()
+	if err != nil {
 		return err
 	}
 	f.materializePendingLoads()
@@ -556,13 +581,7 @@ func (f *fn) memoryInit(r *wasm.Reader) error {
 	f.a.Load64(RSI, RSP, f.spillOff(d-2)) // src offset in passive segment
 	f.a.Load64(RCX, RSP, f.spillOff(d-1)) // n
 
-	mb := f.memSizeReg
-	if mb == regNone {
-		mb = R8
-		f.a.Load32(R8, RBX, -bdCurBytes) // memBytes
-	}
-	f.a.LeaScaled(RDX, RDI, RCX, 0, 0) // dst + n
-	f.trapUnlessLE(RDX, mb)
+	f.absoluteBulkAddr(memoryIndex, RDI, RCX)
 
 	disp := int32(dataIdx) * 16
 	f.a.Load64(R8, RBX, -offPassiveDataPtr) // descriptor array
@@ -571,8 +590,7 @@ func (f *fn) memoryInit(r *wasm.Reader) error {
 	f.trapUnlessLE(RDX, RAX)
 	f.a.Load64(R8, R8, disp) // segment base pointer
 
-	f.a.Add64(RDI, RBX) // absolute dst
-	f.a.Add64(RSI, R8)  // absolute src
+	f.a.Add64(RSI, R8) // absolute src
 	f.a.RepMovsb()
 
 	f.setDepth(d - 3)
@@ -599,17 +617,21 @@ func (f *fn) dataDrop(r *wasm.Reader) error {
 // The three i32 operands (dst, src, n) are read from canonical slots into the
 // fixed rep registers RDI/RSI/RCX; RDX/R8 are the free scratch after the flush.
 func (f *fn) memoryCopy(r *wasm.Reader) error {
-	if _, err := r.U32(); err != nil { // dst memidx
+	dstMemory, err := r.U32()
+	if err != nil {
 		return err
 	}
-	if _, err := r.U32(); err != nil { // src memidx
+	srcMemory, err := r.U32()
+	if err != nil {
 		return err
 	}
-	if top := f.s.back(); top != nil && top.kind == ekValue && top.st.kind == stConst {
-		if n := uint64(uint32(top.st.cval)); n <= 64 {
-			f.stats.peep("memcopy-unroll")
-			f.memoryCopyConst(int(n))
-			return nil
+	if dstMemory == 0 && srcMemory == 0 {
+		if top := f.s.back(); top != nil && top.kind == ekValue && top.st.kind == stConst {
+			if n := uint64(uint32(top.st.cval)); n <= 64 {
+				f.stats.peep("memcopy-unroll")
+				f.memoryCopyConst(int(n))
+				return nil
+			}
 		}
 	}
 	f.materializePendingLoads()
@@ -620,18 +642,8 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 	f.a.Load64(RCX, RSP, f.spillOff(d-1)) // n
 
 	// Scratch in RDX/R8 only (never pinnable); R9 may hold a pinned local.
-	mb := f.memSizeReg
-	if mb == regNone {
-		mb = R8
-		f.a.Load32(R8, RBX, -bdCurBytes) // memBytes
-	}
-	f.a.LeaScaled(RDX, RDI, RCX, 0, 0) // dst + n
-	f.trapUnlessLE(RDX, mb)
-	f.a.LeaScaled(RDX, RSI, RCX, 0, 0) // src + n
-	f.trapUnlessLE(RDX, mb)
-
-	f.a.Add64(RDI, RBX) // absolute dst
-	f.a.Add64(RSI, RBX) // absolute src
+	f.absoluteBulkAddr(dstMemory, RDI, RCX)
+	f.absoluteBulkAddr(srcMemory, RSI, RCX)
 
 	// Hybrid dispatch: small dynamic copies take an inline 8-byte-chunk memmove
 	// loop (WARP emitMemcpyNoBoundsCheck) — `rep movsb`'s ~30-cycle startup
@@ -715,13 +727,16 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 
 // memoryFill lowers memory.fill (memset of the low byte of val) via rep stosb.
 func (f *fn) memoryFill(r *wasm.Reader) error {
-	if _, err := r.U32(); err != nil { // memidx
+	memoryIndex, err := r.U32()
+	if err != nil {
 		return err
 	}
-	if top := f.s.back(); top != nil && top.kind == ekValue && top.st.kind == stConst {
-		if n := uint64(uint32(top.st.cval)); n <= 64 {
-			f.memoryFillConst(int(n))
-			return nil
+	if memoryIndex == 0 {
+		if top := f.s.back(); top != nil && top.kind == ekValue && top.st.kind == stConst {
+			if n := uint64(uint32(top.st.cval)); n <= 64 {
+				f.memoryFillConst(int(n))
+				return nil
+			}
 		}
 	}
 	f.materializePendingLoads()
@@ -732,15 +747,7 @@ func (f *fn) memoryFill(r *wasm.Reader) error {
 	f.a.Load64(RCX, RSP, f.spillOff(d-1)) // n
 
 	// Scratch in RDX/R8 only (never pinnable); R9 may hold a pinned local.
-	mb := f.memSizeReg
-	if mb == regNone {
-		mb = R8
-		f.a.Load32(R8, RBX, -bdCurBytes)
-	}
-	f.a.LeaScaled(RDX, RDI, RCX, 0, 0) // dst + n
-	f.trapUnlessLE(RDX, mb)
-
-	f.a.Add64(RDI, RBX) // absolute dst
+	f.absoluteBulkAddr(memoryIndex, RDI, RCX)
 
 	// Byte-replicate the fill value once (rep stosb only reads AL, so the
 	// pattern's low byte keeps the big path compatible).

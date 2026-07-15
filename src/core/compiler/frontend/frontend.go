@@ -621,8 +621,8 @@ func (p supportPass) data() error {
 	for i, d := range p.m.Data {
 		switch d.Mode.Kind {
 		case wasm.DataActive:
-			if d.Mode.Mem != 0 {
-				ctx := fmt.Sprintf("data %d", i)
+			ctx := fmt.Sprintf("data %d", i)
+			if d.Mode.Mem != 0 && !p.feat.MultiMemory {
 				return p.unsupported("data", fmt.Sprintf("memory index %d", d.Mode.Mem), ctx)
 			}
 			if err := p.constExpr(d.Mode.Offset, ""); err != nil {
@@ -1152,7 +1152,7 @@ func (p supportPass) fcInstrByte(r *wasm.Reader, context func() string) error {
 		if !p.feat.BulkMemory {
 			return p.unsupported("instruction", "memory.init (bulk-memory-operations disabled)", context())
 		}
-		if imm.Index2 != 0 {
+		if imm.Index2 != 0 && !p.feat.MultiMemory {
 			return p.unsupported("memory", fmt.Sprintf("init memory index %d", imm.Index2), context())
 		}
 		return nil
@@ -1204,7 +1204,7 @@ func (p supportPass) fcInstrByte(r *wasm.Reader, context func() string) error {
 		if !p.feat.BulkMemory {
 			return p.unsupported("instruction", "memory.copy (bulk-memory-operations disabled)", context())
 		}
-		if imm.Index != 0 || imm.Index2 != 0 {
+		if (imm.Index != 0 || imm.Index2 != 0) && !p.feat.MultiMemory {
 			return p.unsupported("memory", fmt.Sprintf("copy indexes %d,%d", imm.Index, imm.Index2), context())
 		}
 		return nil
@@ -1212,7 +1212,7 @@ func (p supportPass) fcInstrByte(r *wasm.Reader, context func() string) error {
 		if !p.feat.BulkMemory {
 			return p.unsupported("instruction", "memory.fill (bulk-memory-operations disabled)", context())
 		}
-		if imm.Index != 0 {
+		if imm.Index != 0 && !p.feat.MultiMemory {
 			return p.unsupported("memory", fmt.Sprintf("fill index %d", imm.Index), context())
 		}
 		return nil
@@ -1376,15 +1376,15 @@ func (p supportPass) instr(in wasm.Instruction, context string) error {
 		}
 		return p.expr(wasm.Expr{Instrs: in.Else()}, context+" else")
 	case wasm.InstrMemoryInit:
-		if in.Index2 != 0 {
+		if in.Index2 != 0 && !p.feat.MultiMemory {
 			return p.unsupported("memory", fmt.Sprintf("init memory index %d", in.Index2), context)
 		}
 	case wasm.InstrMemoryCopy:
-		if in.Index != 0 || in.Index2 != 0 {
+		if (in.Index != 0 || in.Index2 != 0) && !p.feat.MultiMemory {
 			return p.unsupported("memory", fmt.Sprintf("copy indexes %d,%d", in.Index, in.Index2), context)
 		}
 	case wasm.InstrMemoryFill:
-		if in.Index != 0 {
+		if in.Index != 0 && !p.feat.MultiMemory {
 			return p.unsupported("memory", fmt.Sprintf("fill index %d", in.Index), context)
 		}
 	case wasm.InstrRefNull:

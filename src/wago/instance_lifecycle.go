@@ -139,6 +139,7 @@ func (in *Instance) releaseResources() {
 	}
 	in.c.releaseCode()
 	runtime.ReleaseArena(in.ar)
+	var detachedMemories importDedup[*Memory]
 	if in.memoryDir != nil {
 		for i := len(in.memoryDir.memories) - 1; i >= 1; i-- {
 			memory := in.memoryDir.memories[i]
@@ -149,7 +150,7 @@ func (in *Instance) releaseResources() {
 				memoryJM := memory.jobMemory()
 				memory.ownerClosed()
 				runtime.ReleaseJobMemory(memoryJM)
-			} else {
+			} else if detachedMemories.add(memory) {
 				memory.detachImporter()
 			}
 		}
@@ -159,7 +160,7 @@ func (in *Instance) releaseResources() {
 			in.memory.ownerClosed()
 		}
 		runtime.ReleaseJobMemory(in.jm)
-	} else if in.memory != nil {
+	} else if in.memory != nil && detachedMemories.add(in.memory) {
 		in.memory.detachImporter()
 	}
 	runtime.ReleaseEngine(in.eng)

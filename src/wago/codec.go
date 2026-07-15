@@ -353,6 +353,7 @@ func (w *compiledWriter) elems(v []ElemInit, c *Compiled) error {
 func (w *compiledWriter) data(v []DataInit) {
 	w.uvar(uint64(len(v)))
 	for _, d := range v {
+		w.u32(d.MemoryIndex)
 		w.offset(d.Offset)
 		w.bytes(d.Bytes)
 	}
@@ -591,7 +592,7 @@ const (
 	minFieldTypeBytes    = 3
 	minOffsetInitBytes   = minU32Bytes + 1 + minVarintBytes + minStringBytes
 	minElemInitBytes     = minU32Bytes + 1 + 1 + minOffsetInitBytes + minVarintBytes
-	minDataInitBytes     = minOffsetInitBytes + minStringBytes
+	minDataInitBytes     = minU32Bytes + minOffsetInitBytes + minStringBytes
 	minPassiveDataBytes  = minStringBytes
 	minGlobalBytes       = 1 + 1 + 1
 	minTableBytes        = 1 + 1 + minVarintBytes + minVarintBytes + 1
@@ -1229,6 +1230,10 @@ func (r *compiledReader) dataInits() ([]DataInit, error) {
 	}
 	out := make([]DataInit, n)
 	for i := range out {
+		out[i].MemoryIndex, err = r.u32()
+		if err != nil {
+			return nil, err
+		}
 		out[i].Offset, err = r.offset()
 		if err != nil {
 			return nil, err

@@ -562,8 +562,9 @@ type tableImportDef struct {
 
 // DataInit is active data-segment metadata.
 type DataInit struct {
-	Offset OffsetInit
-	Bytes  []byte
+	MemoryIndex uint32
+	Offset      OffsetInit
+	Bytes       []byte
 }
 
 // PassiveDataInit is data-segment state metadata for memory.init/data.drop.

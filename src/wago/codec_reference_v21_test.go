@@ -2,25 +2,28 @@ package wago
 
 import (
 	"encoding/binary"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
 )
 
-func TestCompiledCodecV23VersionContract(t *testing.T) {
+func TestCompiledCodecV24VersionContract(t *testing.T) {
 	blob, err := (&Compiled{}).MarshalBinary()
 	if err != nil {
 		t.Fatalf("MarshalBinary: %v", err)
 	}
-	if got := blob[4]; got != 23 {
-		t.Fatalf("compiled codec version = %d, want 23", got)
+	if got := blob[4]; got != 24 {
+		t.Fatalf("compiled codec version = %d, want 24", got)
 	}
 
-	v22 := append([]byte(nil), blob...)
-	v22[4] = 22
-	var got Compiled
-	if err := got.UnmarshalBinary(v22); err == nil || !strings.Contains(err.Error(), "version 22 unsupported") {
-		t.Fatalf("UnmarshalBinary v22 error = %v, want explicit incompatibility rejection", err)
+	for _, version := range []byte{23, 22} {
+		old := append([]byte(nil), blob...)
+		old[4] = version
+		var got Compiled
+		if err := got.UnmarshalBinary(old); err == nil || !strings.Contains(err.Error(), fmt.Sprintf("version %d unsupported", version)) {
+			t.Fatalf("UnmarshalBinary v%d error = %v, want explicit incompatibility rejection", version, err)
+		}
 	}
 }
 
