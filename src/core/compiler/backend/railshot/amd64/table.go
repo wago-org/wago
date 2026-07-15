@@ -166,11 +166,27 @@ func (f *fn) tableCopy(r *wasm.Reader) error {
 	f.loadTableDescriptor(R8, dstTableIdx)
 	f.loadTableDescriptor(R9, srcTableIdx)
 	f.a.Load32(RAX, R8, 0)
-	f.a.LeaScaled(RDX, RDI, RCX, 0, 0)
-	f.trapUnlessLE(RDX, RAX)
+	if f.tableAddr64(dstTableIdx) {
+		f.a.MovReg64(RDX, RDI)
+		f.a.Add64(RDX, RCX)
+		f.trapIf(condB, trapIndirectOOB)
+		f.a.Cmp64(RDX, RAX)
+		f.trapIf(condA, trapIndirectOOB)
+	} else {
+		f.a.LeaScaled(RDX, RDI, RCX, 0, 0)
+		f.trapUnlessLE(RDX, RAX)
+	}
 	f.a.Load32(RAX, R9, 0)
-	f.a.LeaScaled(RDX, RSI, RCX, 0, 0)
-	f.trapUnlessLE(RDX, RAX)
+	if f.tableAddr64(srcTableIdx) {
+		f.a.MovReg64(RDX, RSI)
+		f.a.Add64(RDX, RCX)
+		f.trapIf(condB, trapIndirectOOB)
+		f.a.Cmp64(RDX, RAX)
+		f.trapIf(condA, trapIndirectOOB)
+	} else {
+		f.a.LeaScaled(RDX, RSI, RCX, 0, 0)
+		f.trapUnlessLE(RDX, RAX)
+	}
 	externref := f.tableIsExternref(dstTableIdx)
 	f.typedTableEntryAddr(RDI, R8, dstTableIdx)
 	f.typedTableEntryAddr(RSI, R9, srcTableIdx)

@@ -189,6 +189,39 @@ func table64ImportLifecycleModule(min uint64, max *uint64) []byte {
 	)
 }
 
+func table64CopyModule() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+			wasmtest.FuncType([]wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I32}),
+			wasmtest.FuncType([]wasm.ValType{wasm.I64, wasm.I64, wasm.I64}, nil),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1), wasmtest.ULEB(2))),
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x05, 0x04, 0x04})),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("is_null", 0, 1),
+			wasmtest.ExportEntry("copy", 0, 2),
+		)),
+		wasmtest.Section(9, wasmtest.Vec(table64ActiveElemExpr(
+			[]byte{0x42, 0x00}, tableTestRefFuncExpr(0), tableTestRefNullFuncExpr(), tableTestRefNullFuncExpr(), tableTestRefFuncExpr(0),
+		))),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x41, 0x2a, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0x00, 0x25, 0x00, 0xd1, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0x00, 0x20, 0x01, 0x20, 0x02, 0xfc, 0x0e, 0x00, 0x00, 0x0b}),
+		)),
+	)
+}
+
+func table32CopyModule() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32, wasm.I32}, nil))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x01, 0x04, 0x04})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, 0x20, 0x01, 0x20, 0x02, 0xfc, 0x0e, 0x00, 0x00, 0x0b}))),
+	)
+}
+
 func compileStagedTable64(data []byte) (*Compiled, error) {
 	cfg := NewRuntimeConfig()
 	features := cfg.frontendFeatures()
@@ -437,6 +470,102 @@ func TestStagedTable64CallIndirectFullWidthAndCodecRoundTrip(t *testing.T) {
 	}
 }
 
+func TestStagedTable64CopyFullWidthOverlapAtomicityAndCodecRoundTrip(t *testing.T) {
+	module := table64CopyModule()
+	compiled, err := compileStagedTable64(module)
+	if err != nil {
+		t.Fatalf("compile table64.copy: %v", err)
+	}
+	defer compiled.Close()
+	blob, err := compiled.MarshalBinary()
+	if err != nil {
+		t.Fatalf("marshal table64.copy: %v", err)
+	}
+	var loaded Compiled
+	if err := unmarshalCompiled(&loaded, blob[5:]); err != nil {
+		t.Fatalf("reload table64.copy: %v", err)
+	}
+	defer loaded.Close()
+	loaded.stagedTable64 = true
+
+	for name, c := range map[string]*Compiled{"source": compiled, "codec": &loaded} {
+		in, err := instantiateCore(c, InstantiateOptions{})
+		if err != nil {
+			t.Fatalf("instantiate %s table64.copy: %v", name, err)
+		}
+		state := func() [4]uint64 {
+			var out [4]uint64
+			for i := range out {
+				got, err := in.Invoke("is_null", uint64(i))
+				if err != nil || len(got) != 1 {
+					in.Close()
+					t.Fatalf("%s table64.copy state[%d] = %v, err=%v", name, i, got, err)
+				}
+				out[i] = got[0]
+			}
+			return out
+		}
+		if got := state(); got != [4]uint64{0, 1, 1, 0} {
+			in.Close()
+			t.Fatalf("%s initial table64.copy state = %v", name, got)
+		}
+		if _, err := in.Invoke("copy", 1, 0, 3); err != nil {
+			in.Close()
+			t.Fatalf("%s overlapping forward table64.copy: %v", name, err)
+		}
+		if got := state(); got != [4]uint64{0, 0, 1, 1} {
+			in.Close()
+			t.Fatalf("%s forward table64.copy state = %v", name, got)
+		}
+		if _, err := in.Invoke("copy", 0, 1, 3); err != nil {
+			in.Close()
+			t.Fatalf("%s overlapping backward table64.copy: %v", name, err)
+		}
+		if got := state(); got != [4]uint64{0, 1, 1, 1} {
+			in.Close()
+			t.Fatalf("%s backward table64.copy state = %v", name, got)
+		}
+		if _, err := in.Invoke("copy", 4, 4, 0); err != nil {
+			in.Close()
+			t.Fatalf("%s zero-length boundary table64.copy: %v", name, err)
+		}
+		before := state()
+		for _, args := range [][3]uint64{
+			{^uint64(0), 0, 2}, {0, ^uint64(0), 2}, {0, 0, 5},
+			{1 << 32, 0, 0}, {0, 1 << 32, 0}, {0, 0, 1 << 32},
+		} {
+			if _, err := in.Invoke("copy", args[0], args[1], args[2]); err == nil || !strings.Contains(err.Error(), "indirect call out of bounds") {
+				in.Close()
+				t.Fatalf("%s table64.copy(%d,%d,%d) = %v", name, args[0], args[1], args[2], err)
+			}
+			if got := state(); got != before {
+				in.Close()
+				t.Fatalf("%s trapping table64.copy changed state: got %v want %v", name, got, before)
+			}
+		}
+		if err := in.Close(); err != nil {
+			t.Fatalf("close %s table64.copy: %v", name, err)
+		}
+	}
+
+	ordinary, err := Compile(nil, table32CopyModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ordinary.Close()
+	cfg := NewRuntimeConfig()
+	features := cfg.frontendFeatures()
+	features.Table64 = true
+	staged, err := compileWithFrontendFeatures(cfg, table32CopyModule(), features)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer staged.Close()
+	if !bytes.Equal(ordinary.Code, staged.Code) {
+		t.Fatal("enabling staged table64.copy changed table32 code bytes")
+	}
+}
+
 func TestStagedTable64InstanceExportImportLifecycle(t *testing.T) {
 	max4 := uint64(4)
 	ownerCompiled, err := compileStagedTable64(table64LifecycleModule(&max4))
@@ -676,6 +805,17 @@ func TestStagedTable64GatesAndTable32CodeStability(t *testing.T) {
 		t.Fatalf("bounded table64 import compile: %v", err)
 	}
 	imported.Close()
+	importedCopyEntry := append(wasmtest.Name("env"), wasmtest.Name("table")...)
+	importedCopyEntry = append(importedCopyEntry, byte(wasm.ExternTable), 0x70, 0x05, 0x01, 0x04)
+	importedCopy := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I64, wasm.I64, wasm.I64}, nil))),
+		wasmtest.Section(2, wasmtest.Vec(importedCopyEntry)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, 0x20, 0x01, 0x20, 0x02, 0xfc, 0x0e, 0x00, 0x00, 0x0b}))),
+	)
+	if _, err := compileStagedTable64(importedCopy); err == nil || !strings.Contains(err.Error(), "imported table64") {
+		t.Fatalf("imported table64.copy gate = %v", err)
+	}
 	producerCompiled, err := compileStagedTable64(boundedTable64Module(4))
 	if err != nil {
 		t.Fatal(err)
@@ -753,6 +893,26 @@ func TestStagedTable64GatesAndTable32CodeStability(t *testing.T) {
 	defer stagedIndirect.Close()
 	if !bytes.Equal(baseIndirect.Code, stagedIndirect.Code) {
 		t.Fatal("enabling staged table64 changed table32 call_indirect code bytes")
+	}
+}
+
+func BenchmarkStagedTable64CopyZero(b *testing.B) {
+	compiled, err := compileStagedTable64(table64CopyModule())
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer compiled.Close()
+	in, err := instantiateCore(compiled, InstantiateOptions{})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer in.Close()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := in.Invoke("copy", 4, 4, 0); err != nil {
+			b.Fatal(err)
+		}
 	}
 }
 
