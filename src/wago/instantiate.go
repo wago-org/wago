@@ -887,28 +887,38 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 				initErr = fmt.Errorf("active data segment %d memory %d host access: %w", seg, d.MemoryIndex, hostErr)
 				break
 			}
-			off := d.Offset.Base
+			memory64 := c.memoryDef(int(d.MemoryIndex)).Addr64
+			off := uint64(d.Offset.Base)
 			if d.Offset.HasGlobal {
 				if d.Offset.Global < 0 || d.Offset.Global >= len(c.Globals) || d.Offset.Global >= len(globalCells) || globalCells[d.Offset.Global] == nil {
 					initErr = fmt.Errorf("data offset global %d out of range", d.Offset.Global)
 					break
 				}
-				off = uint32(readGlobalObject(globalCells[d.Offset.Global], c.Globals[d.Offset.Global].Type))
+				off = uint64(uint32(readGlobalObject(globalCells[d.Offset.Global], c.Globals[d.Offset.Global].Type)))
 			}
 			if len(d.Offset.Expr) != 0 {
-				value, err := evalCompiledScalarConstExpr(d.Offset.Expr, ValI32, globalCells, c.Globals, len(importGlobals))
+				want := ValI32
+				if memory64 {
+					want = ValI64
+				}
+				value, err := evalCompiledScalarConstExpr(d.Offset.Expr, want, globalCells, c.Globals, len(importGlobals))
 				if err != nil {
 					initErr = fmt.Errorf("data offset extended expression: %w", err)
 					break
 				}
-				off = uint32(value)
+				off = value
 			}
-			end := uint64(off) + uint64(len(d.Bytes))
+			length := uint64(len(d.Bytes))
+			if off > ^uint64(0)-length {
+				initErr = fmt.Errorf("active data segment %d out of bounds on memory %d: offset %d + length %d overflows u64", seg, d.MemoryIndex, off, len(d.Bytes))
+				break
+			}
+			end := off + length
 			if end > uint64(len(lin)) {
 				initErr = fmt.Errorf("active data segment %d out of bounds on memory %d: offset %d + length %d > memory size %d", seg, d.MemoryIndex, off, len(d.Bytes), len(lin))
 				break
 			}
-			copy(lin[off:end], d.Bytes)
+			copy(lin[int(off):int(end)], d.Bytes)
 		}
 	}
 

@@ -174,6 +174,21 @@ func memory64FloatScalarModule() []byte {
 	)
 }
 
+func memory64ActiveDataModule(offset int64, payload []byte) []byte {
+	memory := append([]byte{0x05}, uleb64(1)...)
+	memory = append(memory, uleb64(2)...)
+	segment := []byte{0x00, 0x42}
+	segment = append(segment, wasmtest.SLEB64(offset)...)
+	segment = append(segment, 0x0b)
+	segment = append(segment, wasmtest.ULEB(uint32(len(payload)))...)
+	segment = append(segment, payload...)
+	return wasmtest.Module(
+		wasmtest.Section(5, wasmtest.Vec(memory)),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("memory", 2, 0))),
+		wasmtest.Section(11, wasmtest.Vec(segment)),
+	)
+}
+
 func compileStagedMemory64(data []byte) (*Compiled, error) {
 	cfg := NewRuntimeConfig()
 	features := cfg.frontendFeatures()
@@ -262,6 +277,62 @@ func TestStagedMemory64LocalExecutionAndProductRoundTrip(t *testing.T) {
 	}
 	if _, err := in.Invoke("offset_load", 1); err == nil || !strings.Contains(err.Error(), "out of bounds") {
 		t.Fatalf("memory64 offset overflow error = %v", err)
+	}
+}
+
+func TestStagedMemory64ActiveDataLifecycle(t *testing.T) {
+	module := memory64ActiveDataModule(65532, []byte{1, 2, 3, 4})
+	compiled, err := compileStagedMemory64(module)
+	if err != nil {
+		t.Fatalf("compile memory64 active data: %v", err)
+	}
+	defer compiled.Close()
+	if len(compiled.Data) != 1 || len(compiled.Data[0].Offset.Expr) == 0 || compiled.Data[0].Offset.Base != 0 || compiled.Data[0].Offset.HasGlobal {
+		t.Fatalf("memory64 data offset metadata = %#v, want exact i64 expression", compiled.Data)
+	}
+	blob, err := compiled.MarshalBinary()
+	if err != nil {
+		t.Fatalf("marshal memory64 data metadata: %v", err)
+	}
+	var loaded Compiled
+	if err := unmarshalCompiled(&loaded, blob[5:]); err != nil {
+		t.Fatalf("unmarshal memory64 data metadata: %v", err)
+	}
+	defer loaded.Close()
+	if !reflect.DeepEqual(loaded.Data, compiled.Data) {
+		t.Fatalf("memory64 data metadata changed across codec: got %#v want %#v", loaded.Data, compiled.Data)
+	}
+	if _, err := Capture(compiled, SnapshotOptions{}); err == nil || !strings.Contains(err.Error(), "memory64 modules cannot be snapshotted") {
+		t.Fatalf("memory64 snapshot error = %v, want fail-closed lifecycle rejection", err)
+	}
+	in, err := instantiateCore(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatalf("instantiate memory64 active data: %v", err)
+	}
+	defer in.Close()
+	memory, err := in.ExportedMemory("memory")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := memory.Bytes()[65532:65536]; !bytes.Equal(got, []byte{1, 2, 3, 4}) {
+		t.Fatalf("memory64 active data bytes = %v, want [1 2 3 4]", got)
+	}
+
+	overflow, err := compileStagedMemory64(memory64ActiveDataModule(-1, []byte{1, 2}))
+	if err != nil {
+		t.Fatalf("compile overflowing memory64 data offset: %v", err)
+	}
+	defer overflow.Close()
+	if _, err := instantiateCore(overflow, InstantiateOptions{}); err == nil || !strings.Contains(err.Error(), "overflows u64") {
+		t.Fatalf("memory64 data offset+length overflow error = %v", err)
+	}
+
+	passive := wasmtest.Module(
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x05, 0x01, 0x02})),
+		wasmtest.Section(11, wasmtest.Vec([]byte{0x01, 0x01, 0xaa})),
+	)
+	if _, err := compileStagedMemory64(passive); err == nil || !strings.Contains(err.Error(), "rejects passive data segments") {
+		t.Fatalf("passive memory64 data error = %v", err)
 	}
 }
 

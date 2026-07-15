@@ -282,6 +282,9 @@ func validateSnapshotModule(c *Compiled) error {
 	}
 	for i := 0; i < c.memoryCount(); i++ {
 		def := c.memoryDef(i)
+		if def.Addr64 {
+			return errors.New("wago: memory64 modules cannot be snapshotted until 64-bit address-form lifecycle metadata is admitted")
+		}
 		if def.ImportKey != "" || def.Shared {
 			if c.memoryCount() > 1 {
 				return errors.New("wago: modules with multiple memories that are imported or shared cannot be snapshotted; reject before retaining imports or mutating store state")
