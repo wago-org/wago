@@ -200,7 +200,7 @@ func (b *instanceBuilder) rollbackPreparedState() {
 	b.globalAttachments.detachAll()
 	b.tableAttachments.detachAll()
 	if b.registeredInstance != nil && b.registeredInstance.refStore != nil {
-		b.registeredInstance.refStore.abortRegisteredInstance(b.registeredInstance)
+		b.registeredInstance.refStore.instanceClosed(b.registeredInstance)
 	}
 	if b.collector != nil {
 		b.collector.Close()
@@ -233,9 +233,11 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	// instance-owned mapping (guard-page-backed for signals-based modules, so the
 	// fault handler catches OOB accesses through the normal Invoke path).
 	var (
-		jm      *runtime.JobMemory
-		memObj  *Memory
-		ownsMem bool
+		jm         *runtime.JobMemory
+		memObj     *Memory
+		ownsMem    bool
+		memoryObjs []*Memory
+		memoryOwns []bool
 	)
 	if c.memoryImport != "" {
 		m, ok := imports.memory(c.memoryImport)
@@ -243,14 +245,11 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			runtime.ReleaseEngine(eng)
 			return nil, fmt.Errorf("missing imported memory %q", c.memoryImport)
 		}
-		actualMin, actualMax, actualHasMax, limitsOK := m.importLimits()
-		if !limitsOK {
-			runtime.ReleaseEngine(eng)
-			return nil, fmt.Errorf("imported memory %q is unavailable", c.memoryImport)
-		}
-		if actualMin < c.MemMinPages || (c.MemHasMax && (!actualHasMax || actualMax > c.MemMaxPages)) {
-			runtime.ReleaseEngine(eng)
-			return nil, fmt.Errorf("imported memory %q has incompatible limits min=%d max=%s; want min>=%d max<=%s", c.memoryImport, actualMin, formatMemoryMaximum(actualMax, actualHasMax), c.MemMinPages, formatMemoryMaximum(c.MemMaxPages, c.MemHasMax))
+		if def, ok := c.memoryImportAt(0); ok {
+			if err := m.validateLimits(def.Min, def.Max, def.HasMax); err != nil {
+				runtime.ReleaseEngine(eng)
+				return nil, fmt.Errorf("imported memory %q limits: %w", c.memoryImport, err)
+			}
 		}
 		// A signals-based module elides inline bounds checks and relies on the
 		// guard-page fault, so the imported memory must be guard-page backed. Host
@@ -291,14 +290,69 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		}
 		memObj, ownsMem = &Memory{jm: jm}, true
 	}
-	// Release the memory only if this instance owns it; an imported *Memory is the
-	// host's, so just release the in-use claim.
+	memoryCount := c.memoryCount()
+	if memoryCount > 1 {
+		memoryObjs = make([]*Memory, memoryCount)
+		memoryOwns = make([]bool, memoryCount)
+		memoryObjs[0], memoryOwns[0] = memObj, ownsMem
+	}
+	// Release every memory only if this instance owns it; imported memories keep
+	// their host mapping and release only the importer claim.
 	closeMem := func() {
-		if ownsMem {
-			runtime.ReleaseJobMemory(jm)
-		} else {
-			memObj.detachImporter()
+		if memoryCount <= 1 {
+			if ownsMem {
+				runtime.ReleaseJobMemory(jm)
+			} else if memObj != nil {
+				memObj.detachImporter()
+			}
+			return
 		}
+		for i := memoryCount - 1; i >= 0; i-- {
+			memory := memoryObjs[i]
+			if memory == nil {
+				continue
+			}
+			if memoryOwns[i] {
+				runtime.ReleaseJobMemory(memory.jobMemory())
+			} else {
+				memory.detachImporter()
+			}
+		}
+	}
+	for i := 1; i < memoryCount; i++ {
+		def := c.memoryDef(i)
+		if def.ImportKey != "" {
+			memory, ok := imports.memory(def.ImportKey)
+			if !ok {
+				closeMem()
+				runtime.ReleaseEngine(eng)
+				return nil, fmt.Errorf("missing imported memory %q", def.ImportKey)
+			}
+			if err := memory.validateLimits(def.Min, def.Max, def.HasMax); err != nil {
+				closeMem()
+				runtime.ReleaseEngine(eng)
+				return nil, fmt.Errorf("imported memory %q limits: %w", def.ImportKey, err)
+			}
+			if err := memory.attachImporter(); err != nil {
+				closeMem()
+				runtime.ReleaseEngine(eng)
+				return nil, fmt.Errorf("imported memory %q: %w", def.ImportKey, err)
+			}
+			memoryObjs[i] = memory
+			continue
+		}
+		maxPages := uint64(65535)
+		if def.HasMax {
+			maxPages = def.Max
+		}
+		secondaryJM, allocErr := runtime.AcquireJobMemoryGrowable(int(def.Min)*65536, int(maxPages)*65536)
+		if allocErr != nil {
+			closeMem()
+			runtime.ReleaseEngine(eng)
+			return nil, fmt.Errorf("memory %d: %w", i, allocErr)
+		}
+		memoryObjs[i] = &Memory{jm: secondaryJM}
+		memoryOwns[i] = true
 	}
 	ar, err := runtime.AcquireArena(c.arenaNeedForImports(imports, syncMode))
 	if err != nil {
@@ -308,6 +362,23 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	}
 	nativeContext := ar.AllocNoZero(runtime.InstanceContextBytes)
 	nativeContextPtr := uintptr(unsafe.Pointer(&nativeContext[0]))
+	if memoryCount > 1 {
+		nativeDir := ar.Alloc(memoryCount * 16)
+		for i, memory := range memoryObjs {
+			memoryJM := memory.jobMemory()
+			if memoryJM == nil {
+				runtime.ReleaseArena(ar)
+				closeMem()
+				runtime.ReleaseEngine(eng)
+				return nil, fmt.Errorf("memory %d owner closed during instantiation", i)
+			}
+			entry := nativeDir[i*16:]
+			binary.LittleEndian.PutUint64(entry, uint64(memoryJM.LinMemBase()))
+			binary.LittleEndian.PutUint32(entry[8:], uint32(len(memoryJM.HostBytes())))
+			binary.LittleEndian.PutUint32(entry[12:], memoryJM.CurrentPages())
+		}
+		jm.SetMemoryDirPtr(uintptr(unsafe.Pointer(&nativeDir[0])))
+	}
 	base, err := c.acquireCode()
 	if err != nil {
 		runtime.ReleaseArena(ar)
@@ -464,31 +535,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			copy(entry, funcRefDescs[off:off+runtime.TableEntryBytes])
 		}
 	}
-	var globalCells []*Global
 	writeElemEntry := func(entry []byte, refType ValType, value RefInit) error {
-		if value.HasGlobal {
-			if int(value.GlobalIndex) >= len(globalCells) || globalCells[value.GlobalIndex] == nil {
-				return fmt.Errorf("element global initializer index %d out of range", value.GlobalIndex)
-			}
-			global := globalCells[value.GlobalIndex]
-			if global.Type != normalizedElemRefType(refType) {
-				return fmt.Errorf("element global initializer type %s does not match %s", global.Type, refType)
-			}
-			bits := readGlobalObject(global, global.Type)
-			switch normalizedElemRefType(refType) {
-			case ValExternRef:
-				binary.LittleEndian.PutUint64(entry, bits)
-				return nil
-			case ValFuncRef:
-				if bits == 0 {
-					clear(entry)
-					return nil
-				}
-				desc := unsafe.Slice((*byte)(offHeapPtr(uintptr(bits))), runtime.TableEntryBytes)
-				copy(entry, desc)
-				return nil
-			}
-		}
 		switch normalizedElemRefType(refType) {
 		case ValExternRef:
 			if !value.Null {
@@ -497,14 +544,14 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			clear(entry)
 			return nil
 		case ValFuncRef:
-			if value.Null {
-				clear(entry)
-				return nil
-			}
 			if writeTableEntry == nil {
 				return fmt.Errorf("funcref element has no descriptor arena")
 			}
-			writeTableEntry(entry, value.FuncIndex)
+			if value.Null {
+				writeTableEntry(entry, nullFuncRefIndex)
+			} else {
+				writeTableEntry(entry, value.FuncIndex)
+			}
 			return nil
 		default:
 			return fmt.Errorf("unsupported element reference type %s", refType)
@@ -512,7 +559,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	}
 
 	var globals []byte
-	globalCells = make([]*Global, len(c.Globals))
+	globalCells := make([]*Global, len(c.Globals))
 	if len(c.Globals) > 0 {
 		globals = ar.Alloc(8 * len(c.Globals))
 		// One heap allocation backs every module-local global cell (a *Global into
@@ -521,7 +568,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		localCells := make([]Global, len(c.Globals))
 		// Wasm global indexes are stored in order in a pointer table: imported
 		// global objects first, followed by module-local cells initialized from
-		// literal bits or by copying an earlier imported immutable global's value.
+		// literal bits, earlier immutable globals, or extended const expressions.
 		for i, g := range c.Globals {
 			var cell *Global
 			if i < len(importGlobals) {
@@ -547,10 +594,11 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 					vec = readGlobalObjectV128(globalCells[g.InitGlobal])
 				}
 				if len(g.InitExpr) != 0 {
-					bits, err = evalConstExprWithGlobalCells(g.InitExpr, g.Type, globalCells, c.Globals)
+					value, err := evalCompiledScalarConstExpr(g.InitExpr, g.Type, globalCells, c.Globals, i)
 					if err != nil {
 						return nil, fmt.Errorf("global %d extended initializer: %w", i, err)
 					}
+					bits = value
 				}
 				cell = &localCells[i]
 				cell.Type, cell.Mutable, cell.cell = g.Type, g.Mutable, ar.Alloc(globalCellSize(g.Type))
@@ -684,12 +732,12 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 				elemBase = uint32(readGlobalObject(globalCells[el.Offset.Global], c.Globals[el.Offset.Global].Type))
 			}
 			if len(el.Offset.Expr) != 0 {
-				bits, err := evalConstExprWithGlobalCells(el.Offset.Expr, ValI32, globalCells, c.Globals)
+				value, err := evalCompiledScalarConstExpr(el.Offset.Expr, ValI32, globalCells, c.Globals, len(importGlobals))
 				if err != nil {
-					initErr = fmt.Errorf("element %d extended offset: %w", seg, err)
+					initErr = fmt.Errorf("element offset extended expression: %w", err)
 					break
 				}
-				elemBase = uint32(bits)
+				elemBase = uint32(value)
 			}
 			end := uint64(elemBase) + uint64(len(el.Values))
 			if end > uint64(size) {
@@ -703,16 +751,6 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 				if err := writeElemEntry(desc[off:off+entryBytes], el.RefType, value); err != nil {
 					initErr = fmt.Errorf("active element segment %d value %d: %w", seg, k, err)
 					break
-				}
-				if value.HasGlobal && normalizedElemRefType(el.RefType) == ValFuncRef {
-					if tableImport, imported := c.tableImportAt(int(el.TableIndex)); imported {
-						if table, ok := imports.table(tableImport.Key); ok && table != nil {
-							global := globalCells[value.GlobalIndex]
-							for _, producer := range global.funcrefProducerRoots() {
-								table.retainProducerInstance(producer)
-							}
-						}
-					}
 				}
 			}
 			if initErr != nil {
@@ -811,12 +849,12 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 				off = uint32(readGlobalObject(globalCells[d.Offset.Global], c.Globals[d.Offset.Global].Type))
 			}
 			if len(d.Offset.Expr) != 0 {
-				bits, err := evalConstExprWithGlobalCells(d.Offset.Expr, ValI32, globalCells, c.Globals)
+				value, err := evalCompiledScalarConstExpr(d.Offset.Expr, ValI32, globalCells, c.Globals, len(importGlobals))
 				if err != nil {
-					initErr = fmt.Errorf("data %d extended offset: %w", seg, err)
+					initErr = fmt.Errorf("data offset extended expression: %w", err)
 					break
 				}
-				off = uint32(bits)
+				off = uint32(value)
 			}
 			end := uint64(off) + uint64(len(d.Bytes))
 			if end > uint64(len(lin)) {
@@ -862,6 +900,9 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 				unregisterHostControl(in)
 			}
 		}()
+	}
+	if memoryCount > 1 {
+		in.memoryDir = &instanceMemoryDirectory{memories: memoryObjs, owns: memoryOwns}
 	}
 	if opts.origin != InstantiateDirect || opts.pluginGC != nil {
 		state := in.ensurePluginState()

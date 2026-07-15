@@ -112,27 +112,40 @@ func compileWithConfigAndInstructions(cfg *RuntimeConfig, wasmBytes []byte, inst
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
-	return compileWithFrontendFeatures(cfg, wasmBytes, cfg.frontendFeatures())
+	return compileWithFrontendFeaturesAndInstructions(cfg, wasmBytes, cfg.frontendFeatures(), instructions)
 }
 
 // compileWithFrontendFeatures is the internal staged path used to prove an
 // implementation family before SupportedFeatures admits its public bit. Public
 // entry points always validate RuntimeConfig first and pass its exact mapping.
 func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features frontend.Features) (*Compiled, error) {
+	return compileWithFrontendFeaturesAndInstructions(cfg, wasmBytes, features, nil)
+}
+
+func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []byte, features frontend.Features, instructions map[string]*registeredInstruction) (*Compiled, error) {
 	m, err := wasm.DecodeModule(wasmBytes)
 	if err != nil {
 		return nil, fmt.Errorf("decode: %w", err)
 	}
 	workers := functionWorkersForModule(m, cfg.functionWorkers)
-	if err := wasm.ValidateModuleWithWorkers(m, workers); err != nil {
+	validationFeatures := wasm.ValidationFeatures{MultiMemory: features.MultiMemory}
+	if err := wasm.ValidateModuleWithFeaturesAndWorkers(m, validationFeatures, workers); err != nil {
 		// Proposal-aware decoding can expose a structurally unsupported module to
 		// validation before the validator has complete proposal subtyping rules.
 		// Compile must still fail clearly as unsupported rather than mislabeling a
 		// valid proposal module as an ordinary core type error.
-		if unsupported := frontend.RejectUnsupportedWithFeatures(m, cfg.frontendFeatures()); unsupported != nil && isUnsupportedProposalError(unsupported) {
+		if unsupported := frontend.RejectUnsupportedWithFeatures(m, features); unsupported != nil && isUnsupportedProposalError(unsupported) {
 			return nil, fmt.Errorf("compile: %w", unsupported)
 		}
 		return nil, fmt.Errorf("validate: %w", err)
+	}
+	if features.MultiMemory && m.MemCount() > 1 {
+		if goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64" {
+			return nil, fmt.Errorf("compile: unsupported memory multi-memory staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
+		}
+		if cfg.boundsChecks == BoundsChecksSignalsBased {
+			return nil, fmt.Errorf("compile: unsupported memory multi-memory with signals-based bounds checks")
+		}
 	}
 	gcDescs, err := frontend.BuildGCTypeDescs(m)
 	if err != nil {
@@ -180,7 +193,7 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 	if err != nil {
 		return nil, fmt.Errorf("type metadata: %w", err)
 	}
-	c := &Compiled{Code: code, Entry: entry, InternalEntry: internalEntry, NumImports: importedFuncs, Types: types, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, memoryDir: &compiledMemoryDirectory{exports: map[string]int{}, exactExports: true}, boundsMode: boundsMode, GCTypeDescs: gcDescs, requiredFeatures: moduleRequiredFeatures(m), dynamicImports: importedFuncs > 0, customInstructions: customInstructions, requiresAVX2: cm.RequiresAVX2, requiresAVX512: cm.RequiresAVX512}
+	c := &Compiled{Code: code, Entry: entry, InternalEntry: internalEntry, NumImports: importedFuncs, Types: types, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, memoryDir: &compiledMemoryDirectory{exports: map[string]int{}, exactExports: true, staged: features.MultiMemory && m.MemCount() > 1}, boundsMode: boundsMode, GCTypeDescs: gcDescs, requiredFeatures: moduleRequiredFeatures(m), dynamicImports: importedFuncs > 0, customInstructions: customInstructions, requiresAVX2: cm.RequiresAVX2, requiresAVX512: cm.RequiresAVX512}
 	if importedFuncs > 0 {
 		c.importFuncSigs = make([]FuncSig, importedFuncs)
 		for i := 0; i < importedFuncs; i++ {
@@ -1079,8 +1092,9 @@ func (c *Compiled) validate() error {
 		return err
 	}
 	required := c.requiredFeatures
-	if required&^coreFeaturesWago != 0 {
-		return fmt.Errorf("compiled metadata invalid: unknown required feature bits 0x%x", uint64(required&^coreFeaturesWago))
+	unsupported := required &^ coreFeaturesWago
+	if unsupported != 0 && !(unsupported == CoreFeatureMultiMemory && c.memoryDir != nil && c.memoryDir.staged) {
+		return fmt.Errorf("compiled metadata invalid: unknown required feature bits 0x%x", uint64(unsupported))
 	}
 	if err := c.validateMemoryMetadata(required); err != nil {
 		return err
@@ -1852,6 +1866,7 @@ func (c *Compiled) validateArenaFootprint() error {
 		HostCallBytes:      hostCallBytes,
 		FuncRefCount:       funcRefCount,
 		GlobalCount:        len(c.Globals),
+		MemoryCount:        c.memoryCount(),
 		HasTable:           c.HasTable,
 		TableSize:          tableSize,
 		TableCapacity:      tableCapacity,

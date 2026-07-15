@@ -4,6 +4,11 @@ package abi
 
 // Basedata offsets are byte distances below the linear-memory base.
 const (
+	// MemoryDirPtrOffset points at 16-byte indexed-memory entries
+	// {base u64, current-bytes u32, current-pages u32}. Memory 0 keeps the direct
+	// RBX/basedata hot path; native code consults this directory only for nonzero
+	// indexes. Offset 64 was the unused WARP memory-helper slot.
+	MemoryDirPtrOffset = 64
 	// FuncRefDescPtrOffset is the basedata slot holding the per-instance canonical
 	// funcref descriptor array used by table.set/fill/grow/ref.func lowering.
 	FuncRefDescPtrOffset = 88
