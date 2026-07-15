@@ -2,7 +2,11 @@
 
 package wago
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+)
 
 func BenchmarkStagedMultiMemoryLoads(b *testing.B) {
 	b.Setenv("WAGO_BOUNDS", "explicit")
@@ -31,5 +35,31 @@ func BenchmarkStagedMultiMemoryLoads(b *testing.B) {
 				}
 			}
 		})
+	}
+}
+
+func BenchmarkStagedMultiMemorySIMDLoad(b *testing.B) {
+	if !hostSupportsSIMD() {
+		b.Skip("host SIMD unavailable")
+	}
+	body := append([]byte{0x20, 0x00}, indexedSIMDMemOp(0, 4, 0)...)
+	body = append(body, 0x0b)
+	compiled := stagedMultiMemoryCompile(b, indexedSIMDModule([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.V128}, body))
+	in, err := instantiateCore(compiled, InstantiateOptions{})
+	if err != nil {
+		b.Fatalf("instantiate: %v", err)
+	}
+	defer in.Close()
+	m1, err := in.ExportedMemory("m1")
+	if err != nil {
+		b.Fatalf("export memory 1: %v", err)
+	}
+	copy(m1.Bytes()[32:], []byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15})
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := in.Invoke("run", I32(32)); err != nil {
+			b.Fatal(err)
+		}
 	}
 }

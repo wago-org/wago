@@ -73,7 +73,7 @@ func importedMultiMemoryExecModule() []byte {
 	)
 }
 
-func stagedMultiMemoryCompile(t *testing.T, module []byte) *Compiled {
+func stagedMultiMemoryCompile(t testing.TB, module []byte) *Compiled {
 	t.Helper()
 	t.Setenv("WAGO_BOUNDS", "explicit")
 	cfg := NewRuntimeConfig()
