@@ -369,6 +369,11 @@ func (m *Module) StructuralTypeID(typeIdx uint32) uint32 {
 	if !ok {
 		return typeIdx
 	}
+	if compTypeHasIndexedReferences(ft) {
+		if id, ok := m.structuralIndexedFuncTypeID(typeIdx); ok {
+			return id
+		}
+	}
 	return StructuralFuncTypeID(ft)
 }
 
