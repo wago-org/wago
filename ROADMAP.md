@@ -135,7 +135,7 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   the staged RAX return path with exact descriptor ownership. Retained cross-instance
   direct `return_call` uses a separate fixed four-word root/nested transition, preserves
   producer lifetime and trap recovery, repeats without allocation, and now admits exactly
-  `(i32, f64) -> f64` in addition to the integer shapes. Public admission, other float/
+  `(i32, f64) -> f64` and `(f64) -> i32` in addition to the integer shapes. Public admission, other float/
   oversized direct tails, general-table/
   foreign-float/general reference-result tails, live typed snapshot state, remaining
   GC/reference instructions, and arm64 parity remain gated.
@@ -164,22 +164,24 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   imported/shared/registered-tenant snapshots, guard mode, public admission, and
   arm64 remain.
 - 🚧 memory64 has one bounded linux/amd64 local execution slice: exact 64-bit
-  metadata/codec limits, explicit maximum <=65,535 pages, checked u64 address/offset
+  metadata/codec limits, declared maxima <=65,535 pages or an exact no-maximum type
+  backed by a finite 65,535-page implementation reservation, checked u64 address/offset
   arithmetic, `memory.size/grow`, all 19 integer scalar operations, all four float
   scalar operations, every SIMD memory load/store/extend/splat/zero/lane form, active
   and passive data lifecycle, and `memory.copy`/`memory.fill`. Validated i64
   offset programs round-trip through codec v26; scalar/SIMD/data/bulk paths check full-
   width carry and exact end bounds, passive source/length remain zero-extended i32,
   copy preserves overlap, dropped-state semantics are exact, and trapping writes are
-  atomic. Snapshots remain an explicit gate.
-  A six-file official
-  accounting matrix records 807 commands, 7 admitted modules, 92 assertions, 36
-  explicit gates, 530 blocked dependents, 83 invalid, and 59 malformed cases with
-  zero hidden gaps. Imports, shared/multi-memory, unbounded/excessive reservations,
-  guard mode, public admission, snapshots, and arm64 remain. Table64 now
-  has one local explicit-max `size/get/set/grow` slice plus exact nine-file accounting
-  at 2,802 commands / 68 modules / 2,330 assertions / 39 gates / 270 blocked / 81 invalid;
-  fill/copy/init/indirect, exception handling, and GC remain end-to-end work.
+  atomic. No-maximum policy and managed-instance accounting charge the finite reserve,
+  while growth beyond it returns `-1`. Snapshots remain an explicit gate.
+  The six-file official matrix is now gap-free at 807 commands, 43 admitted modules,
+  622 assertions, 83 invalid, and 59 malformed cases, with zero gates or blocked
+  dependents. Imports, shared/multi-memory, excessive declared limits, the remaining
+  unaccounted memory64 files, guard mode, public admission, snapshots, and arm64 remain.
+  Table64 now has one local explicit-max `size/get/set/grow/fill` slice plus exact
+  nine-file accounting at 2,802 commands / 68 modules / 2,330 assertions / 39 gates /
+  270 blocked / 81 invalid; elements/initializers, copy/init/indirect, exception handling,
+  and GC remain end-to-end work.
 - [ ] Reach zero unexplained failures/skips in the official Release 3 core suite.
 
 **Engine & performance** (no-ir-plan P1–P7, measured against P1's stats)
@@ -250,8 +252,8 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   commands / 3 modules / 33 assertions / 11 invalid. The 79-command indirect file
   is fully green at 3 modules / 49 assertions / 16 invalid / 11 malformed. `return_call_ref`
   is gap-free at 51 commands / 5 modules / 35 assertions / 11 invalid, including one
-  canonical funcref result. Retained integer and exact `(i32, f64) -> f64` cross-
-  instance direct tails use a separate fixed root/nested return transition. Public
+  canonical funcref result. Retained integer plus exact `(i32, f64) -> f64` and
+  `(f64) -> i32` cross-instance direct tails use a separate fixed root/nested return transition. Public
   admission, other float/oversized direct tails, general-table/foreign-float/general reference-result
   tails, snapshots, and arm64 execution remain.
 - [x] Basic extended constant expressions: integer add/sub/mul, prior immutable
@@ -282,8 +284,9 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   stable-image transitions; host/foreign/tail imports and broader reference state remain
   explicit gates. Memory64 now has one bounded local size/grow/scalar/SIMD-memory/
   active+passive-data/copy/fill slice with exact metadata/codec limits, checked u64
-  arithmetic, overlap, drop state, and trap atomicity. A local explicit-max table64
-  slice executes `size/get/set/grow` with i64 indexes/deltas and codec-v26 address-form
+  arithmetic, overlap, drop state, trap atomicity, and finite no-maximum reservations.
+  A local explicit-max table64 slice executes `size/get/set/grow/fill` with i64
+  indexes/deltas/start/length and codec-v26 address-form
   metadata; its nine-file official accounting is pinned. Imported/shared snapshots,
   wider table64, guard mode, public admission, exception handling,
   and WasmGC remain active scope;

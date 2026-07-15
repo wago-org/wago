@@ -160,13 +160,13 @@ handling, multi-memory, memory64, and table64.
 |---|---|---|---|
 | Extended constant expressions | Basic Release 3 numeric extension is complete on AST and byte-backed paths: `i32`/`i64` add, sub, mul, imported globals, and earlier immutable local globals. Forward, mutable, mixed-type, stack-shape, unsupported-opcode, and local-global offset forms are rejected strictly. | Complete for the basic extended-const proposal. Literal arithmetic folds at compile time. Global-dependent scalar programs are persisted and evaluated during instantiation for globals and active data/element offsets. | ✅ Executable and enabled as `CoreFeatureExtendedConstExpressions`. GC-added constant instructions remain part of the GC row, not this completed basic proposal. |
 | Relaxed SIMD | Complete through `0xfd 275`, with reserved holes rejected. | Deterministic lowering is present on the documented linux/amd64 SIMD baseline. The Release 3 harness now honors official `either` result patterns; all 8 converted modules and 69 assertions pass with zero failures/skips. | ✅ Existing completed support, represented by `CoreFeatureSIMD`. |
-| Tail calls | Decoder and validator understand direct, indirect, and reference tail-call forms. Tail results use covariant reference matching, while invalid narrowing remains rejected. Separate compile-only frontend bits admit bounded direct/indirect and typed-tail slices. | linux/amd64 has local register/wrapper `return_call`, tail-position host imports, retained integer cross-instance direct tails plus exactly `(i32, f64) -> f64` with a separate fixed four-word root/nested record, per-table finite immutable-local `return_call_indirect` proofs, tagged same-instance internal/scalar-wrapper `return_call_ref`, retained typed cross-instance root/nested transfers, and one canonical funcref result returned in RAX. Exact pinned accounting is gap-free for all three files: `return_call` 47 commands / 3 modules / 33 assertions / 11 invalid; `return_call_indirect` 79 / 3 / 49 / 16 invalid / 11 malformed; `return_call_ref` 51 / 5 / 35 / 11 invalid. Other float/oversized direct signatures, mutable/imported/exported/host-descriptor indirect tables, foreign-float/general reference-result tails, snapshots, public admission, and arm64 remain fail-closed. | 🚧 All staged official tail files are gap-free; not a public product claim. |
+| Tail calls | Decoder and validator understand direct, indirect, and reference tail-call forms. Tail results use covariant reference matching, while invalid narrowing remains rejected. Separate compile-only frontend bits admit bounded direct/indirect and typed-tail slices. | linux/amd64 has local register/wrapper `return_call`, tail-position host imports, retained integer cross-instance direct tails plus exactly `(i32, f64) -> f64` and `(f64) -> i32` with a separate fixed four-word root/nested record, per-table finite immutable-local `return_call_indirect` proofs, tagged same-instance internal/scalar-wrapper `return_call_ref`, retained typed cross-instance root/nested transfers, and one canonical funcref result returned in RAX. Exact pinned accounting is gap-free for all three files: `return_call` 47 commands / 3 modules / 33 assertions / 11 invalid; `return_call_indirect` 79 / 3 / 49 / 16 invalid / 11 malformed; `return_call_ref` 51 / 5 / 35 / 11 invalid. Other float/oversized direct signatures, mutable/imported/exported/host-descriptor indirect tables, foreign-float/general reference-result tails, snapshots, public admission, and arm64 remain fail-closed. | 🚧 All staged official tail files are gap-free; not a public product claim. |
 | Typed function references | `ref.func` has the declared non-null indexed function type. Indexed references match by bounded coinductive structural equivalence across duplicate and recursive groups, including function/struct/array shapes, supers, and descriptor metadata. Typed/tail opcodes contribute exact required-feature bits. | The internal gate admits indexed signatures/storage, typed block immediates, `ref.null`, `call_ref`, null control, and bounded typed-tail contexts. Exact cross-module subtype/equivalence governs staged storage/imports; public/host/global boundaries enforce exact type/nullability. Native descriptors use bounded 64-bit SHA-256-derived structural keys. Distinct cross-instance `InstanceExport` producers are retained transactionally; their int-register wrapper descriptors carry a separate immutable context tag used by root or nested `return_call_ref`. Shifted types survive producer logical close. Null/wrong-key/host contexts trap without corrupting later calls. Typed/tail snapshots still reject before imports or state mutation. Persisted live reference state, broader tail contexts, remaining GC/reference instructions, public admission, and arm64 execution parity remain gated. | 🚧 Validator, staged storage/control/table execution, exact boundaries, bounded lifecycle, product representation, retained cross-instance calls, and root/nested typed-tail transfers are proven; no public execution claim. |
 | GC | Recursive types, instructions, descriptor lowering, and a collector foundation exist. | Native frame roots, safepoint maps, opcode lowering, allocation calls, and write-barrier emission are not connected. | 🚧 Runtime foundation only; see `docs/gc.md`. |
 | Exception handling | Tags, `throw`, `throw_ref`, and `try_table` syntax/validation foundations exist. | Tag imports/exports/sections and exception instructions are frontend-rejected; no unwind/runtime ABI exists. | 🚧 Syntax/validation foundation only. |
 | Multi-memory | Indexed immediates and compact imports decode/validate strictly on AST and byte-backed paths; default Release 2 admission still rejects them explicitly. | Exact product directories, policy accounting, duplicate aliases, codec v26, every indexed scalar/SIMD/bulk/data operation, snapshot-v3 owned-local state, and bounded shared-memory co-tenants are staged on linux/amd64 explicit bounds. A finite proof admits exact native directories plus optional imported scalar-global pointers and exactly one bounded imported funcref table under a numeric-signature, no-element, no-ref.func/indirect-call, null/get/set/size-only scan. Retained scalar direct imports may re-enter producers that use the exact same memory-0 mapping: each eligible instance owns one stable 256-byte arena image, native calls save/install/restore images recursively, and trap recovery saves the image named by the active basedata slot. Root/nested calls, shared `memory.grow`, concurrency, and producer close ordering are proven allocation-free. Host callbacks, foreign-memory bindings, imported tail calls, broader reference/table/passive state, codec serialization of live bindings, imported/shared snapshots, guard mode, public admission, and arm64 remain fail-closed. The complete 42-file matrix remains gap-free at 913 commands, 79 modules, 771 assertions, 4 invalid, 22 unlinkable, and 20 uninstantiable cases. | 🚧 Complete official family accounting and bounded internal execution; not a public product claim. |
-| memory64 | Limits, i64 address typing, 64-bit memarg offsets, and operation validation are present. The staged support pass admits size/grow, integer/float scalar memory operations, every SIMD memory load/store/extend/splat/zero/lane form, active and passive data lifecycle, and `memory.copy`/`memory.fill`. | One linux/amd64 explicit-bounds local path accepts exactly one non-shared memory with an explicit max <=65,535 pages. Exact 64-bit metadata/codec limits and policy accounting round-trip; scalar and SIMD operations check address+offset+width carry, exact lane/end bounds, and trapping-store atomicity. Active data preserves validated i64 offset programs in the existing codec-v26 expression field. Passive `memory.init` keeps its source and length as zero-extended i32 operands while the destination stays i64; full u64 destination carry/end checks, source bounds, drop state, zero-length-after-drop, trap atomicity, and codec reload are proven. Bulk copy/fill checks full u64 offset+length carry before bounds, preserves overlap, and performs no write on traps. Exact supplementary accounting remains 807 commands across six pinned files: 7 modules / 92 assertions green, 36 gates / 530 blocked dependents / 83 invalid / 59 malformed, with zero hidden gaps. Imports, shared/multi-memory, unbounded/excessive reservations, guard mode, public admission, snapshots, and arm64 reject before unsupported execution. | 🚧 Bounded scalar/SIMD/active+passive-data/copy/fill execution and exact official-family accounting; broader lifecycle remains. |
-| table64 | Limits and i64 index/result typing have AST and byte-backed validator coverage. | One linux/amd64 explicit-bounds staged path accepts exactly one local funcref table with an explicit maximum <=16,384 entries and executes `table.size/get/set/grow`. `table.grow` consumes an i64 delta, checks the full u64 delta/addition and declared maximum, returns the prior size as i64 or `-1`, and leaves size unchanged on failure. Native get/set bounds comparisons are full-width, so indexes above 2^32 trap rather than truncate; table32 code bytes remain unchanged. Codec-v26 private reload executes. Externref, imports, multiple tables, elements/initializers, fill/copy/init/indirect calls, guard mode, public admission, snapshots, and arm64 remain fail-closed. The pinned nine-file accounting is 2,802 commands / 68 modules / 2,330 assertions / 39 gates / 270 blocked / 81 invalid / 0 malformed with zero hidden gaps. | 🚧 Exact address form/limits persist in codec v26 and `ModuleMetadata`; bounded size/get/set/grow execution plus official accounting. |
+| memory64 | Limits, i64 address typing, 64-bit memarg offsets, and operation validation are present. The staged support pass admits size/grow, integer/float scalar memory operations, every SIMD memory load/store/extend/splat/zero/lane form, active and passive data lifecycle, and `memory.copy`/`memory.fill`. | One linux/amd64 explicit-bounds local path accepts exactly one non-shared memory with either a declared max <=65,535 pages or no declared maximum. No-maximum declarations preserve their exact Wasm metadata and codec-v26 type while using a finite 65,535-page implementation reservation; policy and managed-instance accounting charge that reserve, and unavailable growth returns `-1` atomically. Scalar and SIMD operations check address+offset+width carry, exact lane/end bounds, and trapping-store atomicity. Active data preserves validated i64 offset programs in the existing codec-v26 expression field. Passive `memory.init` keeps its source and length as zero-extended i32 operands while the destination stays i64; full u64 destination carry/end checks, source bounds, drop state, zero-length-after-drop, trap atomicity, and codec reload are proven. Bulk copy/fill checks full u64 offset+length carry before bounds, preserves overlap, and performs no write on traps. The six-file supplementary matrix is gap-free at 807 commands / 43 modules / 622 assertions / 83 invalid / 59 malformed, with zero feature gates, blocked dependents, or hidden failures. Imports, shared/multi-memory, excessive declared limits, the remaining unaccounted memory64 files, guard mode, public admission, snapshots, and arm64 reject before unsupported execution. | 🚧 Bounded scalar/SIMD/active+passive-data/copy/fill execution and a gap-free six-file official matrix; broader family accounting and lifecycle remain. |
+| table64 | Limits and i64 index/result typing have AST and byte-backed validator coverage. | One linux/amd64 explicit-bounds staged path accepts exactly one local funcref table with an explicit maximum <=16,384 entries and executes `table.size/get/set/grow/fill`. `table.grow` consumes an i64 delta, checks the full u64 delta/addition and declared maximum, returns the prior size as i64 or `-1`, and leaves size unchanged on failure. `table.fill` consumes i64 start/length, rejects full-u64 addition carry or end overflow before descriptor snapshot/write, and is trap-atomic. Native get/set bounds comparisons are full-width, so indexes above 2^32 trap rather than truncate; table32 code bytes remain unchanged. Codec-v26 private reload executes. Externref, imports, multiple tables, elements/initializers, copy/init/indirect calls, guard mode, public admission, snapshots, and arm64 remain fail-closed. The pinned nine-file accounting remains 2,802 commands / 68 modules / 2,330 assertions / 39 gates / 270 blocked / 81 invalid / 0 malformed because reached official fill modules first require still-gated elements/initializers or other table shapes. | 🚧 Exact address form/limits persist in codec v26 and `ModuleMetadata`; bounded size/get/set/grow/fill execution plus official accounting. |
 | Text annotations | Text-format concern; no native execution semantics are required. | No runtime work planned unless tooling integration exposes a concrete need. | Not a native runtime feature. |
 | Deterministic profile | Separate optional profile, not part of the current Core 3.0 product claim. | No profile claim is made by this document. Deterministic relaxed-SIMD lowering does not by itself implement the full optional deterministic profile. | Optional/separate. |
 
@@ -220,7 +220,10 @@ inherit either staged execution gate. Iteration 21 keeps codec v26 unchanged and
 explicitly refuses to serialize retained same-memory native bindings because their
 linked code contains live instance addresses and stable basedata-image pointers;
 private memory64 passive-data and table64 products continue to round-trip under their
-existing staged test loaders.
+existing staged test loaders. Iteration 22 also keeps codec v26 unchanged: no-maximum
+memory64 declarations already persist exact `HasMax=false` metadata separately from the
+finite execution reservation, table64 fill adds no product field, and the new direct-tail
+shape remains a compile-only live binding.
 
 ### Footprint and allocation measurement
 
@@ -1181,6 +1184,52 @@ assertions, memory64 remains exactly 807 / 7 / 92 with its pinned gates, and the
 nine-file table64 matrix remains exactly 2,802 / 68 / 2,330 with 39 gates and zero
 hidden failures. Release 1 and Release 2 remain zero-gap.
 
+### Iteration 22 no-maximum memory64, table64 fill, and a mixed direct tail
+
+Iteration 22 advances three bounded policy/execution/ABI areas without opening a
+public Core 3 gate:
+
+1. The one-local non-shared memory64 path now accepts a declaration without an
+   explicit maximum. Exact `HasMax=false` limits survive metadata and codec-v26
+   reload; the implementation reserves at most 65,535 pages, policy and managed-
+   instance budgets charge that finite reservation, and `memory.grow` beyond the
+   available reserve returns `-1` without changing size. This is permitted resource
+   failure, not a synthetic declared maximum. The change removes all 36 measured
+   gates and unblocks all 530 dependents in the six-file matrix: 807 commands now
+   report 43 modules / 622 assertions / 83 invalid / 59 malformed with zero feature
+   gates, blocked commands, or hidden failures. The delta is +36 modules and +530
+   assertions. Declared maxima above 65,535 pages, excessive minima, imports, shared/
+   multi-memory, snapshots, guard mode, public admission, arm64, and the ten remaining
+   memory64 files outside this matrix remain fail-closed or unaccounted.
+2. The bounded local funcref table64 path now executes `table.fill`. Start and
+   length are i64; amd64 checks full-u64 addition carry and exact end bounds before
+   snapshotting the source descriptor or writing any entry. Successful non-null
+   fills, zero-length-at-boundary behavior, high operands, trap atomicity, codec-v26
+   private reload, AST/byte-backed admission, and byte-identical table32 code are
+   proven. The nine-file matrix remains exactly 2,802 commands / 68 modules / 2,330
+   assertions / 39 gates / 270 blocked / 81 invalid because the official fill
+   modules first encounter still-gated elements/initializers or other table shapes.
+3. The retained direct cross-instance `return_call` transition now admits exactly
+   `(f64) -> i32` in addition to integer shapes and `(i32, f64) -> f64`. Raw f64
+   arguments continue through the fixed tail bank; nested callers restore the one
+   integer result from the fixed four-word record into RAX. Root and nested calls,
+   10,000 repetitions, foreign traps and recovery, producer logical close, public
+   admission failure, and continued rejection of `(f64) -> f64` and oversized shapes
+   are proven. The pinned `return_call` file remains gap-free at 47 commands / 3
+   modules / 33 assertions / 11 invalid.
+
+No codec, snapshot, fixed runtime, basedata, descriptor, or product-layout version
+changes. Five benchmark samples measured no-maximum memory64 `memory.size` at
+34.57-35.87 ns/op, table64 zero-length fill at 37.53-38.22 ns/op, and the exact
+`(f64) -> i32` retained direct tail at 115.7-139.4 ns/op; every sample reported
+0 B/op and 0 allocations/op.
+
+The public Release 3 schema-2 inventory remains byte-for-byte unchanged at 1,691
+passed / 535 skipped modules and 51,765 passed / 5 failed / 6,268 skipped assertions.
+Release 1 and Release 2 remain zero-gap. The six-file memory64 matrix is now gap-free,
+while complete memory64 family accounting, table64 elements/copy/init/indirect,
+exceptions, GC, public admission, and arm64 execution remain incomplete.
+
 ## Iteration commits
 
 Iteration 1 contained:
@@ -1409,12 +1458,36 @@ commit:
    arena-backed basedata images with nested/trap/grow/concurrency/lifecycle proof and
    zero-allocation steady-state calls.
 
+Iteration 22 contains exactly three code/test commits and this documentation
+commit:
+
+1. `7f77b4ad` — admit exact no-maximum memory64 declarations under a finite
+   65,535-page implementation reservation, preserve codec/policy metadata, and make
+   the six-file matrix gap-free.
+2. `56d16bb7` — execute bounded local funcref table64 `table.fill` with full-u64
+   carry/end checks, trap atomicity, codec reload, and unchanged table32 code.
+3. `10d7e5df` — tail-call exact `(f64) -> i32` retained instance exports through
+   the fixed root/nested direct-return transition with lifecycle and trap proof.
+
 ## Validation performed
 
 Commands were run from the repository root on linux/amd64.
 
 | Command | Result |
 |---|---|
+| iteration 22 focused code/test proof | PASS: no-maximum memory64 exact metadata/codec reload, finite reservation policy, successful bounded grow, atomic resource failure, and public/platform gates; table64 fill AST/byte-backed admission, non-null writes, zero-length boundary, u64 carry/end traps, trap atomicity, codec reload, and table32 code stability; exact `(f64) -> i32` retained direct tails at root/nested callers, 10,000 repeats, trap recovery, producer close order, and wider-shape/public gates. Logs `.validation/iteration22-commit1-official.log`, `.validation/iteration22-commit2-official.log`, and `.validation/iteration22-commit3-focused.log`. |
+| iteration 22 staged family runners | PASS: multi-memory 42 files / 913 commands / 79 modules / 771 assertions / 4 invalid / 22 unlinkable / 20 uninstantiable / zero feature gates or blocked commands; memory64 6 files / 807 commands / 43 modules / 622 assertions / 83 invalid / 59 malformed / zero gates or blocked; table64 9 files / 2,802 commands / 68 modules / 2,330 assertions / 39 gates / 270 blocked / 81 invalid / 0 malformed; `return_call` 47 / 3 / 33 / 11 invalid; `return_call_indirect` 79 / 3 / 49 / 16 invalid / 11 malformed; `return_call_ref` 51 / 5 / 35 / 11 invalid. All hidden-failure counters are zero. Log `.validation/iteration22-staged-final.log`. |
+| `go test ./... -count=1` | PASS on final iteration-22 code HEAD. Log `.validation/iteration22-all.log`. |
+| `CGO_ENABLED=0 go test ./... -count=1` | PASS; full no-cgo suite. Log `.validation/iteration22-no-cgo.log`. |
+| `go test -race ./src/wago -run '^TestStagedMultiMemoryNativeSameMemoryReentryLifecycle$' -count=1` | PASS; retained same-memory trap/grow/concurrency/lifecycle proof remains race-clean. Log `.validation/iteration22-race.log`. |
+| `go test -tags wago_guardpage ./src/core/runtime ./src/wago -count=1` | PASS; memory64, table64, and direct-tail staged execution remain fail-closed under guard mode. Log `.validation/iteration22-guard.log`. |
+| linux/arm64 `go test -c` for `./src/wago` and `./src/core/compiler/backend/railshot/arm64` | PASS compile/link evidence only; no arm64 execution claim. Log `.validation/iteration22-arm64-build.log`. |
+| `go vet ./...` | PASS. Log `.validation/iteration22-vet.log`. |
+| `go generate ./...` plus generated diff check | PASS; generated facade unchanged. Log `.validation/iteration22-go-generate.log`. |
+| `scripts/bootstrap-wabt.sh --verify` and `scripts/bootstrap-spec-interpreter.sh --verify` | PASS: WABT 1.0.41 and interpreter revision `9d36019973201a19f9c9ebb0f10828b2fe2374aa`. Logs `.validation/iteration22-wabt.log` and `.validation/iteration22-spec-interpreter.log`. |
+| `make spec1` and `make spec2` | PASS: Release 1 reports 629 modules / 16,026 assertions and Release 2 reports 1,600 modules / 48,248 assertions; zero gaps. Logs `.validation/iteration22-spec1.log` and `.validation/iteration22-spec2.log`. |
+| `make spec3` plus baseline extraction/`cmp` | Expected FAIL at unchanged public baseline: modules pass=1,691/skip=535; assertions pass=51,765/fail=5/skip=6,268; committed schema-2 JSON reproduced byte-for-byte. Logs `.validation/spec3-iteration22.log` and `.validation/iteration22-spec3-baseline.log`. |
+| iteration 22 benchmarks | PASS: no-maximum memory64 size 34.57-35.87 ns/op; table64 fill-by-zero 37.53-38.22 ns/op; exact `(f64) -> i32` retained direct tail 115.7-139.4 ns/op; all 0 B/op and 0 allocs/op. Logs `.validation/iteration22-commit1-bench.log`, `.validation/iteration22-commit2-bench.log`, and `.validation/iteration22-commit3-bench2.log`. |
 | iteration 21 focused code/test proof | PASS: memory64 passive init/drop mixed operand typing, destination carry/source/end traps, drop and zero-length semantics, codec reload, snapshot/public/platform gates, and unchanged memory32 code; table64 grow u64 delta/add/max checks, i64 old-size/`-1`, atomic failure, codec reload, table32 stability, and fail-closed externref/import/multiple/element/guard/public/arm64 gates; same-memory native root/nested calls, shared grow visibility, trap recovery, concurrency, close order, codec/snapshot/public/host/foreign-memory/tail gates, and exact +256-byte arena accounting. |
 | iteration 21 staged family runners | PASS: multi-memory 42 files / 913 commands / 79 modules / 771 assertions / 4 invalid / 22 unlinkable / 20 uninstantiable / zero feature gates or blocked commands; memory64 6 files / 807 commands / 7 modules / 92 assertions / 36 feature gates / 530 blocked / 83 invalid / 59 malformed; table64 9 files / 2,802 commands / 68 modules / 2,330 assertions / 39 feature gates / 270 blocked / 81 invalid / 0 malformed; all hidden-failure counters zero. The table64 command used both pinned WABT 1.0.41 and the revision-stamped official interpreter fallback. |
 | `go test ./... -count=1` | PASS on final iteration-21 code HEAD. |
@@ -1574,7 +1647,7 @@ indexed-memory directory, all indexed scalar/SIMD loads/stores/grow, bulk/data
 lowering, owned-local multi-memory restore, registered-memory basedata serializer,
 root/nested cross-instance typed-tail and direct-tail transfers, the bounded local
 memory64 size/grow/23-scalar/SIMD-memory/active+passive-data/copy/fill path, local
-table64 size/get/set/grow, and re-entrant same-memory basedata-image transitions are
+table64 size/get/set/grow/fill, and re-entrant same-memory basedata-image transitions are
 linux/amd64 explicit-bounds only; neither shared
 metadata nor the internal frontend bits advertise execution on arm64. Snapshot-v3
 record decoding is architecture-neutral, but admission rejects
@@ -1601,6 +1674,9 @@ execution, table64 i64 lowering, exact mixed-float direct-tail restoration, and 
 iteration-21 native same-memory image serializer have linux/amd64 explicit-bounds
 evidence only. Iteration 21 also keeps its ImportBinding fields present but inert in
 the arm64 backend so cross-compilation remains type-consistent without admission.
+Iteration 22 changes architecture-neutral memory64 policy/metadata admission, but its
+no-maximum execution reservation, table64 fill lowering, and `(f64) -> i32` direct-tail
+transition retain linux/amd64 explicit-bounds evidence only.
 `call_ref`, typed null control, indexed multi-memory operations, memory64/table64
 execution, and every tail-call lowering remain amd64-only and hidden behind
 unsupported family gates. The two
@@ -1656,18 +1732,21 @@ Major risks:
 - memory64 now checks u64 address+offset+width or length carry for all 19 integer,
   4 float, every SIMD memory operation, `memory.copy`, and `memory.fill`; preserves
   float payload bits and memmove overlap; initializes active data from exact i64
-  expression metadata; and caps the staged reservation at 65,535 pages. Trapping
-  writes are atomic. Passive init/drop now preserves the i64 destination plus zero-
-  extended i32 source/length contract and dropped-state semantics. The six-file accounting
-  remains unchanged because those files contain no newly bounded passive module. Remaining
-  modules still require unbounded/excessive-memory policy, imports/shared/multi-memory, and
-  broader allocation-before-validation work rather than silent omission;
-- table64 now has one finite local `size/get/set/grow` execution/product slice with
-  full-width indexes/deltas and codec-v26 address metadata. The 16,384-entry ceiling
-  keeps funcref storage within the fixed instantiate-arena policy. Exact nine-file
-  accounting is pinned, including the official-interpreter fallback. Externref, imports,
-  elements/initializers, fill/copy/init/indirect calls, snapshots, guard mode, public
-  admission, and arm64 remain work;
+  expression metadata; and caps the staged implementation reservation at 65,535 pages.
+  Trapping writes are atomic. Passive init/drop preserves the i64 destination plus zero-
+  extended i32 source/length contract and dropped-state semantics. A no-maximum Wasm
+  declaration retains `HasMax=false` metadata while policy/managed budgets charge the
+  finite reserve and unavailable growth returns `-1`. This makes the six-file matrix
+  gap-free at 807 commands / 43 modules / 622 assertions, but ten additional memory64
+  files still need complete accounting and may expose imports, shared/multi-memory,
+  call-indirect, or product-lifecycle gates rather than silent omission;
+- table64 now has one finite local `size/get/set/grow/fill` execution/product slice
+  with full-width indexes/deltas/start/length and codec-v26 address metadata. The
+  16,384-entry ceiling keeps funcref storage within the fixed instantiate-arena policy.
+  Exact nine-file accounting is pinned, including the official-interpreter fallback;
+  it does not improve from fill alone because official fill modules encounter earlier
+  element/initializer or table-shape gates. Externref, imports, elements/initializers,
+  copy/init/indirect calls, snapshots, guard mode, public admission, and arm64 remain work;
 - runtime call descriptors now use bounded 64-bit SHA-256-derived structural keys
   and reject canonicalization above a fixed 1 MiB work budget. This removes the
   demonstrated compact 32-bit collision class without a global cache or entry-size
@@ -1682,7 +1761,7 @@ Major risks:
   identity. Per-table immutable-local indirect tails are complete for the pinned file,
   while imported/mutable/exported/host-descriptor tables remain rejected. A separate
   fixed record covers retained integer cross-instance direct tails and exactly
-  `(i32, f64) -> f64`; other float/oversized direct signatures, foreign-float/general
+  `(i32, f64) -> f64` plus `(f64) -> i32`; other float/oversized direct signatures, foreign-float/general
   reference-result contexts, snapshots, and arm64 still need proof. The unsupported-
   context trap must disappear from every publicly admitted valid path before the tail-call feature can be enabled;
 - typed refs, exceptions, and GC all interact with native frame roots and call
@@ -1698,26 +1777,30 @@ Major risks:
 ## Next bounded implementation slice
 
 The next recursive iteration should again make exactly three atomic code/test
-commits followed by one documentation commit. Recommended iteration 22:
+commits followed by one documentation commit. Recommended iteration 23:
 
-1. **Reduce one measured memory64 policy gate.** Inspect the 36 pinned gates and
-   choose the smallest bounded shape that changes official accounting—prefer a local
-   no-explicit-maximum or larger-initial-limit policy only if WebAssembly semantics can
-   remain exact with a finite implementation reservation. Record the exact command and
-   blocked-dependent delta; otherwise choose the next official memory64 operation family.
-2. **Widen table64 by one exact operation family.** Prefer bounded local funcref
-   `table.fill`, with i64 start/length, full u64 carry/end checks, trap atomicity,
-   codec-v26 reload, unchanged table32 code, and updated nine-file accounting. Keep
-   externref/imports/elements/indirect calls/snapshots/public/guard/arm64 closed.
-3. **Compose or widen one call/lifecycle boundary.** Prefer proving retained
-   same-memory native calls together with the already admitted imported numeric-global
-   or sole imported-table tenant state, including nested traps, grow visibility,
-   independent owner close order, concurrency, and zero allocations. If that composition
-   is already complete without code change, instead admit one measured remaining direct-
-   tail float/result shape under the existing bounded transition.
-4. **Documentation commit.** Record exact command deltas, ABI/lifecycle evidence,
-   measurements, broad validation, public-suite baseline, remaining gates, and the next
-   recursive slice.
+1. **Complete memory64 family accounting.** Expand the supplementary runner from the
+   current six files to all sixteen non-table files under `test/core/memory64`, including
+   `binary_leb128_64`, `bulk64`, `call_indirect64`, `endianness64`, copy/fill/init,
+   redundancy, imports, and `memory64`. Record exact commands, admitted modules,
+   assertions, invalid/malformed cases, and every remaining gate. Do not call the family
+   complete until the expanded matrix has zero omitted commands or hidden failures.
+2. **Unlock one measured table64 prerequisite.** Prefer bounded local funcref active
+   elements/table initializer expressions with i64 offsets, exact initialization bounds,
+   trap/store ordering, codec-v26 reload, and unchanged table32 behavior, because the
+   current official fill modules remain blocked before reaching `table.fill`. If the
+   measured gate analysis identifies a smaller prerequisite, choose it and record the
+   exact nine-file delta. Keep externref/imports/snapshots/public/guard/arm64 closed.
+3. **Compose retained same-memory state.** Prove native same-memory re-entry together
+   with either imported numeric-global pointers or the sole imported funcref table,
+   including nested traps, shared grow visibility, independent memory/global/table/
+   function owner close order, concurrency, codec/snapshot/public/host/foreign/tail
+   gates, and zero-allocation steady state. Make the smallest implementation change
+   needed; if the composition is already correct, commit the bounded lifecycle proof
+   and tighten any missing eligibility or rollback invariant it exposes.
+4. **Documentation commit.** Record expanded accounting, command deltas, lifecycle/ABI
+   evidence, measurements, broad validation, public-suite baseline, remaining gates,
+   and the next recursive slice.
 
 ## Completion gate
 
