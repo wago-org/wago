@@ -181,8 +181,8 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 		if mt.Shared {
 			return nil, fmt.Errorf("compile: staged memory64 rejects shared memory")
 		}
-		if mt.Limits.Max == nil || *mt.Limits.Max > 65535 {
-			return nil, fmt.Errorf("compile: staged memory64 requires an explicit maximum no greater than 65535 pages")
+		if mt.Limits.Max != nil && *mt.Limits.Max > 65535 {
+			return nil, fmt.Errorf("compile: staged memory64 requires a declared maximum no greater than 65535 pages")
 		}
 	}
 	gcDescs, err := frontend.BuildGCTypeDescs(m)
@@ -1849,9 +1849,9 @@ func (c *Compiled) declaredMemoryMaxBytes() (uint64, error) {
 		def := c.memoryDef(i)
 		pages := def.Max
 		if !def.HasMax {
-			if def.Addr64 {
-				return 0, fmt.Errorf("memory %d has unbounded 64-bit limits", i)
-			}
+			// The exact Wasm type remains unbounded in metadata. Policy and managed-
+			// instance accounting charge the finite implementation reservation used
+			// by instantiation, matching the existing memory32 resource model.
 			pages = 65535
 		}
 		if pages > ^uint64(0)/pageBytes {

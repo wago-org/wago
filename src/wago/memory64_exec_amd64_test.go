@@ -29,9 +29,15 @@ func uleb64(v uint64) []byte {
 	}
 }
 
-func boundedMemory64Module(max uint64) []byte {
-	mem := append([]byte{0x05}, uleb64(1)...)
-	mem = append(mem, uleb64(max)...)
+func memory64LimitsModule(max *uint64) []byte {
+	flags := byte(0x04)
+	if max != nil {
+		flags = 0x05
+	}
+	mem := append([]byte{flags}, uleb64(1)...)
+	if max != nil {
+		mem = append(mem, uleb64(*max)...)
+	}
 	memarg := func(op byte, offset uint64) []byte {
 		out := []byte{op, 0x02}
 		return append(out, uleb64(offset)...)
@@ -67,6 +73,14 @@ func boundedMemory64Module(max uint64) []byte {
 			wasmtest.Code(offsetLoad),
 		)),
 	)
+}
+
+func boundedMemory64Module(max uint64) []byte {
+	return memory64LimitsModule(&max)
+}
+
+func unboundedMemory64Module() []byte {
+	return memory64LimitsModule(nil)
 }
 
 type memory64ScalarOp struct {
@@ -326,6 +340,63 @@ func TestStagedMemory64LocalExecutionAndProductRoundTrip(t *testing.T) {
 	}
 	if _, err := in.Invoke("offset_load", 1); err == nil || !strings.Contains(err.Error(), "out of bounds") {
 		t.Fatalf("memory64 offset overflow error = %v", err)
+	}
+}
+
+func TestStagedMemory64NoMaximumUsesFiniteReservation(t *testing.T) {
+	module := unboundedMemory64Module()
+	compiled, err := compileStagedMemory64(module)
+	if err != nil {
+		t.Fatalf("compile no-max memory64: %v", err)
+	}
+	defer compiled.Close()
+	if compiled.MemMinPages != 1 || compiled.MemMaxPages != 65535 {
+		t.Fatalf("no-max memory64 execution reservation = %d/%d, want 1/65535 pages", compiled.MemMinPages, compiled.MemMaxPages)
+	}
+	meta := (&Module{c: compiled}).Metadata()
+	if len(meta.Memories) != 1 || !meta.Memories[0].Addr64 || meta.Memories[0].HasMax || meta.Memories[0].Max != 0 {
+		t.Fatalf("no-max memory64 metadata = %#v", meta.Memories)
+	}
+	const reserveBytes = uint64(65535) * 65536
+	if err := applyPolicy(&Module{c: compiled}, Policy{MaxMemoryBytes: reserveBytes}); err != nil {
+		t.Fatalf("finite no-max memory64 reservation policy: %v", err)
+	}
+	if err := applyPolicy(&Module{c: compiled}, Policy{MaxMemoryBytes: reserveBytes - 1}); err == nil {
+		t.Fatal("no-max memory64 reservation below policy limit was accepted")
+	}
+	blob, err := compiled.MarshalBinary()
+	if err != nil {
+		t.Fatalf("marshal no-max memory64: %v", err)
+	}
+	var loaded Compiled
+	if err := unmarshalCompiled(&loaded, blob[5:]); err != nil {
+		t.Fatalf("unmarshal no-max memory64: %v", err)
+	}
+	defer loaded.Close()
+	loaded.memoryDir.stagedMemory64 = true
+	loaded.memoryDir.exactExports = true
+	loadedMeta := (&Module{c: &loaded}).Metadata()
+	if !reflect.DeepEqual(loadedMeta.Memories, meta.Memories) || loaded.MemMaxPages != 65535 {
+		t.Fatalf("no-max memory64 codec metadata/reservation = %#v/%d, want %#v/65535", loadedMeta.Memories, loaded.MemMaxPages, meta.Memories)
+	}
+
+	for name, c := range map[string]*Compiled{"compiled": compiled, "codec": &loaded} {
+		t.Run(name, func(t *testing.T) {
+			in, err := instantiateCore(c, InstantiateOptions{})
+			if err != nil {
+				t.Fatalf("instantiate no-max memory64: %v", err)
+			}
+			defer in.Close()
+			if got, err := in.Invoke("grow", 1); err != nil || len(got) != 1 || got[0] != 1 {
+				t.Fatalf("no-max memory64.grow(1) = %v, err=%v", got, err)
+			}
+			if got, err := in.Invoke("grow", 65534); err != nil || len(got) != 1 || got[0] != ^uint64(0) {
+				t.Fatalf("no-max memory64 growth past implementation reserve = %v, err=%v", got, err)
+			}
+			if got, err := in.Invoke("size"); err != nil || len(got) != 1 || got[0] != 2 {
+				t.Fatalf("failed no-max memory64 grow changed size = %v, err=%v", got, err)
+			}
+		})
 	}
 }
 
@@ -933,6 +1004,26 @@ func TestStagedMemory64AdmissionGatesAndMemory32CodeStability(t *testing.T) {
 	defer stagedInit.Close()
 	if !bytes.Equal(baseInit.Code, stagedInit.Code) {
 		t.Fatal("enabling staged memory64 changed memory32 memory.init/data.drop code bytes")
+	}
+}
+
+func BenchmarkStagedMemory64NoMaximumSize(b *testing.B) {
+	compiled, err := compileStagedMemory64(unboundedMemory64Module())
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer compiled.Close()
+	in, err := instantiateCore(compiled, InstantiateOptions{})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer in.Close()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if got, err := in.Invoke("size"); err != nil || len(got) != 1 || got[0] != 1 {
+			b.Fatalf("no-max memory64.size = %v, err=%v", got, err)
+		}
 	}
 }
 
