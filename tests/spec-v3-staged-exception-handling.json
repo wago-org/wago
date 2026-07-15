@@ -1,0 +1,172 @@
+{
+  "schema": 2,
+  "suite_revision": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+  "files": [
+    {
+      "name": "exceptions/tag",
+      "status": "accounted",
+      "gates": [
+        {
+          "boundary": "product-lifecycle",
+          "reason": "tag declarations, imports, exports, and link identity are not represented in compiled products",
+          "count": 6
+        }
+      ],
+      "counts": {
+        "commands": 16,
+        "modules_passed": 0,
+        "assertions_passed": 0,
+        "expected_invalid": 2,
+        "expected_unlinkable": 0,
+        "expected_uninstantiable": 0,
+        "expected_feature_rejects": 6,
+        "blocked_commands": 2,
+        "unexpected_compile_rejects": 0,
+        "unexpected_link_rejects": 0,
+        "failures": 0
+      }
+    },
+    {
+      "name": "exceptions/throw",
+      "status": "accounted",
+      "gates": [
+        {
+          "boundary": "decoder-validator",
+          "reason": "throw instruction validation is incomplete",
+          "count": 1
+        }
+      ],
+      "counts": {
+        "commands": 13,
+        "modules_passed": 0,
+        "assertions_passed": 0,
+        "expected_invalid": 3,
+        "expected_unlinkable": 0,
+        "expected_uninstantiable": 0,
+        "expected_feature_rejects": 1,
+        "blocked_commands": 9,
+        "unexpected_compile_rejects": 0,
+        "unexpected_link_rejects": 0,
+        "failures": 0
+      }
+    },
+    {
+      "name": "exceptions/throw_ref",
+      "status": "accounted",
+      "gates": [
+        {
+          "boundary": "exception-reference-roots",
+          "reason": "throw_ref, catch_ref, catch_all_ref, exn, and noexn require rooted exception values",
+          "count": 1
+        }
+      ],
+      "counts": {
+        "commands": 15,
+        "modules_passed": 0,
+        "assertions_passed": 0,
+        "expected_invalid": 2,
+        "expected_unlinkable": 0,
+        "expected_uninstantiable": 0,
+        "expected_feature_rejects": 1,
+        "blocked_commands": 12,
+        "unexpected_compile_rejects": 0,
+        "unexpected_link_rejects": 0,
+        "failures": 0
+      }
+    },
+    {
+      "name": "exceptions/try_table",
+      "status": "accounted",
+      "source_only_malformed": [
+        339,
+        344
+      ],
+      "gates": [
+        {
+          "boundary": "decoder-validator",
+          "reason": "throw instruction validation is incomplete",
+          "count": 3
+        },
+        {
+          "boundary": "native-unwind-abi",
+          "reason": "try_table catch dispatch has no native unwind ABI",
+          "count": 2
+        }
+      ],
+      "counts": {
+        "commands": 67,
+        "modules_passed": 0,
+        "assertions_passed": 0,
+        "expected_invalid": 9,
+        "expected_malformed": 2,
+        "expected_unlinkable": 0,
+        "expected_uninstantiable": 0,
+        "expected_feature_rejects": 5,
+        "blocked_commands": 46,
+        "unexpected_compile_rejects": 0,
+        "unexpected_link_rejects": 0,
+        "failures": 0
+      }
+    },
+    {
+      "name": "ref_null",
+      "status": "accounted",
+      "gates": [
+        {
+          "boundary": "exception-reference-roots",
+          "reason": "throw_ref, catch_ref, catch_all_ref, exn, and noexn require rooted exception values",
+          "count": 2
+        }
+      ],
+      "counts": {
+        "commands": 36,
+        "modules_passed": 0,
+        "assertions_passed": 0,
+        "expected_invalid": 0,
+        "expected_unlinkable": 0,
+        "expected_uninstantiable": 0,
+        "expected_feature_rejects": 2,
+        "blocked_commands": 32,
+        "unexpected_compile_rejects": 0,
+        "unexpected_link_rejects": 0,
+        "failures": 0
+      }
+    }
+  ],
+  "gates": [
+    {
+      "boundary": "decoder-validator",
+      "reason": "throw instruction validation is incomplete",
+      "count": 4
+    },
+    {
+      "boundary": "exception-reference-roots",
+      "reason": "throw_ref, catch_ref, catch_all_ref, exn, and noexn require rooted exception values",
+      "count": 3
+    },
+    {
+      "boundary": "native-unwind-abi",
+      "reason": "try_table catch dispatch has no native unwind ABI",
+      "count": 2
+    },
+    {
+      "boundary": "product-lifecycle",
+      "reason": "tag declarations, imports, exports, and link identity are not represented in compiled products",
+      "count": 6
+    }
+  ],
+  "totals": {
+    "commands": 147,
+    "modules_passed": 0,
+    "assertions_passed": 0,
+    "expected_invalid": 16,
+    "expected_malformed": 2,
+    "expected_unlinkable": 0,
+    "expected_uninstantiable": 0,
+    "expected_feature_rejects": 15,
+    "blocked_commands": 101,
+    "unexpected_compile_rejects": 0,
+    "unexpected_link_rejects": 0,
+    "failures": 0
+  }
+}

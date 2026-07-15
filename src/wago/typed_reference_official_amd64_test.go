@@ -125,14 +125,14 @@ func stagedOfficialTypedReferenceJSON(t *testing.T, base string, dst any) string
 		t.Fatalf("wast2json version = %q, %v; want pinned 1.0.41", strings.TrimSpace(string(out)), err)
 	}
 	tmp := t.TempDir()
-	jsonPath := filepath.Join(tmp, base+".json")
+	jsonPath := filepath.Join(tmp, filepath.Base(base)+".json")
 	wast := filepath.Join(suite.CoreDir, base+".wast")
 	if out, err := exec.Command(wast2json, "--enable-all", wast, "-o", jsonPath).CombinedOutput(); err != nil {
 		interpreter, resolveErr := resolveStagedTable64Interpreter()
 		if resolveErr != nil {
 			t.Fatalf("convert pinned %s.wast with WABT (%v: %s), interpreter unavailable: %v", base, err, stagedTable64FirstLine(out), resolveErr)
 		}
-		binaryScript := filepath.Join(tmp, base+".bin.wast")
+		binaryScript := filepath.Join(tmp, filepath.Base(base)+".bin.wast")
 		if interpOut, interpErr := exec.Command(interpreter, "-d", wast, "-o", binaryScript).CombinedOutput(); interpErr != nil {
 			t.Fatalf("convert pinned %s.wast: WABT %v: %s; interpreter %v: %s", base, err, stagedTable64FirstLine(out), interpErr, stagedTable64FirstLine(interpOut))
 		}

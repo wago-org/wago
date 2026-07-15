@@ -334,6 +334,18 @@ func (v *moduleValidator) refSubtype(a, b RefType) bool {
 	if a.Heap.Kind == HeapTypeIndex && b.Heap.Kind == HeapTypeIndex {
 		return !b.Exact && v.typeIdxSuperSubtype(a.Heap.Type, b.Heap.Type)
 	}
+	if a.Heap.Kind == HeapAbs && b.Heap.Kind == HeapTypeIndex {
+		ct, ok := v.compTypeFromTypeIdx(b.Heap.Type)
+		if !ok {
+			return false
+		}
+		switch ct.Kind {
+		case CompFunc:
+			return a.Heap.Abs == HeapNoFunc
+		case CompStruct, CompArray:
+			return a.Heap.Abs == HeapNone
+		}
+	}
 	if a.Heap.Kind == HeapTypeIndex && b.Heap.Kind == HeapAbs {
 		ct, ok := v.compTypeFromTypeIdx(a.Heap.Type)
 		if !ok {
