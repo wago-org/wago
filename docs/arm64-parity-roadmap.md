@@ -167,12 +167,14 @@ dynamic table/global storage, overwrite/close order under native execution, or
 typed tail contexts. Iteration 12 retains cross-instance function producers and
 persists typed/tail feature requirements in architecture-neutral product code.
 Iteration 13 adds an amd64-only root `return_call_ref` transfer for retained
-int-register `InstanceExport` wrappers. It reuses two slots in the existing
-256-byte tail bank; ARM64 keeps the identical offsets but emits no consumer code
-and continues to reject the feature. Exact multi-memory product/codec directories,
-compact import decoding, and storage preflight are shared, while every indexed
-scalar/SIMD/bulk native path, registered-memory basedata tenant, official staged
-link execution, and typed-tail transfer remains linux/amd64 explicit-bounds only.
+int-register `InstanceExport` wrappers. Iteration 14 adds an amd64-only fixed
+32-byte nested return record and trampoline without changing the 256-byte basedata
+or descriptor layouts. ARM64 keeps the identical two scratch-slot offsets but emits
+no root/nested consumer code and continues to reject the feature. Exact multi-
+memory product/codec directories, compact import decoding, storage preflight, and
+snapshot-v3 record parsing are shared, while every indexed scalar/SIMD/bulk native
+path, owned-local multi-memory restore, registered-memory basedata tenant, official
+staged execution, and typed-tail transfer remains linux/amd64 explicit-bounds only.
 The linux/arm64 cross-build is evidence that these fail-closed product/layout
 boundaries compile, not evidence of native execution support.
 

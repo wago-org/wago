@@ -120,12 +120,13 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   so shifted typed `call_ref` descriptors remain valid after producer logical close.
   Typed/tail opcodes persist required-feature bits and snapshots reject unresolved
   descriptor/tail contexts before mutation. A compile-only typed-tail gate now lets
-  retained int-register `InstanceExport` descriptors root-transfer through a foreign
-  wrapper on amd64: the current frame and adapter continuation are removed, one
-  million target-local tail steps stay bounded, and null/wrong-key/nested/host
-  contexts fail closed. Public admission, general nested/imported-direct/table tails,
-  live typed snapshot state, remaining GC/reference instructions, and arm64 parity
-  remain gated.
+  retained int-register `InstanceExport` descriptors transfer through a foreign
+  wrapper on amd64 from root or nested internal callers. Nested callers reuse one
+  fixed 32-byte return record, restore caller context/results through a trampoline,
+  and resume after one million target-local tail steps; null/wrong-key/host contexts
+  remain fail closed. Public admission, imported-direct/general-table/wrapper tails,
+  broader results, live typed snapshot state, remaining GC/reference instructions,
+  and arm64 parity remain gated.
 - 🚧 Multi-memory now has an explicit internal AST/byte-backed gate, exact
   compiled/product declaration/import/export directories, declaration-based
   policy accounting, duplicate imported-memory alias deduplication, and codec v25
@@ -135,10 +136,14 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   overlap, bounds, and drop behavior. Registered memory-0 co-tenants with no native
   producer or function/host imports serialize fixed 256-byte basedata images,
   synchronize monotonic growth, and remain allocation-free per call. Core 3 compact
-  import groups now decode strictly, and bounded official-file tests execute
-  `memory_grow`, `memory_size_import`, and safe `linking0`-`3` state ordering.
-  Executable-owner/function/private-basedata contexts, owned-local snapshots, guard
-  mode, public admission, and arm64 remain.
+  import groups now decode strictly. A committed machine-readable staged delta
+  replays 767 exact commands across 28 safe pinned files: 38 modules, 709 execution
+  assertions, 2 expected-invalid, and 14 expected-uninstantiable cases, with zero
+  hidden compile/link/assertion gaps. Snapshot v3 captures and restores every owned
+  local memory image/grown size plus passive-data drop state, rebuilding native
+  directory entries on restore. Executable-owner/function/private-basedata contexts,
+  imported/shared/registered-tenant snapshots, guard mode, public admission, and
+  arm64 remain.
 - [ ] memory64/table64, exception handling, and GC end to end.
 - [ ] Reach zero unexplained failures/skips in the official Release 3 core suite.
 
@@ -225,12 +230,13 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   overwrite without violating trap atomicity. Cross-instance typed descriptors now
   retain their producer through consumer close, and typed/tail opcode requirements
   survive codec metadata while snapshots reject unresolved contexts before mutation.
-  Root cross-instance typed tails now execute with explicit nested/host failures;
-  persisted live reference state, broader tails, public admission, remaining
-  reference/GC instructions, and arm64 remain gated. Multi-memory now executes all
-  indexed scalar, SIMD, and bulk/data operations internally on linux/amd64 explicit
-  bounds, decodes compact import groups, runs reached official grow/size/linking
-  files, and stages bounded registered-memory co-tenants, but owned-local snapshots,
+  Root and nested cross-instance typed tails now execute with explicit host and
+  unsupported-shape failures; persisted live reference state, broader tails, public
+  admission, remaining reference/GC instructions, and arm64 remain gated. Multi-
+  memory now executes all indexed scalar, SIMD, and bulk/data operations internally
+  on linux/amd64 explicit bounds, decodes compact import groups, replays a 767-command
+  safe official delta, snapshots owned local memory sets through snapshot v3, and
+  stages bounded registered-memory co-tenants. Imported/shared/private snapshots,
   guard mode, and public admission remain; memory64/table64, exception
   handling, and WasmGC remain active Core 3.0 scope;
   see `docs/wasm3.md` for exact boundaries.
