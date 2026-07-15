@@ -91,6 +91,7 @@ type (
 	LoweringContext           = impl.LoweringContext
 	ManagedInstance           = impl.ManagedInstance
 	Memory                    = impl.Memory
+	MemoryMetadata            = impl.MemoryMetadata
 	Module                    = impl.Module
 	ModuleMetadata            = impl.ModuleMetadata
 	OffsetInit                = impl.OffsetInit

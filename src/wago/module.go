@@ -1,7 +1,5 @@
 package wago
 
-import "sort"
-
 // Module is the runtime-aware wrapper over a *Compiled: it carries the compiled
 // code plus the extension-derived view of the module (its imports, the
 // capabilities it requires, and lightweight metadata). rt.Compile returns one;
@@ -49,13 +47,19 @@ type ImportSpec struct {
 	Index         int
 	Params        []ValType
 	Results       []ValType
+	ParamTypes    []ValueTypeDescriptor
+	ResultTypes   []ValueTypeDescriptor
 	Type          ValType
 	ValueType     ValueTypeDescriptor
 	HasValueType  bool
 	Mutable       bool
 	Min           int
 	Max           int
+	MemoryMin     uint64
+	MemoryMax     uint64
 	HasMax        bool
+	Addr64        bool
+	Shared        bool
 	Capability    Capability
 	HasCapability bool
 	Docs          string
@@ -70,6 +74,8 @@ type FunctionMetadata struct {
 	Index        int
 	Params       []ValType
 	Results      []ValType
+	ParamTypes   []ValueTypeDescriptor
+	ResultTypes  []ValueTypeDescriptor
 	ImportModule string
 	ImportName   string
 	Exports      []string
@@ -104,16 +110,33 @@ type TableMetadata struct {
 	Exports      []string
 }
 
+// MemoryMetadata describes one memory in Wasm memory-index order. Min and Max
+// are declared page counts, not implementation reservation sizes.
+type MemoryMetadata struct {
+	Index        int
+	Min          uint64
+	Max          uint64
+	HasMax       bool
+	Addr64       bool
+	Shared       bool
+	ImportModule string
+	ImportName   string
+	Exports      []string
+}
+
 // ModuleMetadata is a deterministic, inspectable structural summary of a module.
 type ModuleMetadata struct {
 	ExportedFuncs        []string
+	Types                []DefinedTypeDescriptor
 	ExportedGlobals      []string
 	ExportedTables       []string
+	ExportedMemories     []string
 	FuncImportCount      int
 	RequiredCapabilities []Capability
 	Functions            []FunctionMetadata
 	Globals              []GlobalMetadata
 	Tables               []TableMetadata
+	Memories             []MemoryMetadata
 }
 
 // buildModule wraps a freshly compiled module, resolving each import against the
@@ -131,6 +154,7 @@ func (rt *Runtime) buildModule(c *Compiled) *Module {
 		if i < len(c.importFuncSigs) {
 			spec.Params = append([]ValType(nil), c.importFuncSigs[i].Params...)
 			spec.Results = append([]ValType(nil), c.importFuncSigs[i].Results...)
+			spec.ParamTypes, spec.ResultTypes, _ = exactFuncSignature(c.importFuncSigs[i], c.Types)
 		}
 		if _, ok := rt.imports[key]; ok {
 			spec.Provided = true
@@ -153,9 +177,14 @@ func (rt *Runtime) buildModule(c *Compiled) *Module {
 			Type: gi.Type, ValueType: exact, HasValueType: exactErr == nil, Mutable: gi.Mutable, Provided: rt.imports[key] != nil,
 		})
 	}
-	if key, ok := c.MemoryImport(); ok {
-		mod, name := splitImportKey(key)
-		m.imports = append(m.imports, ImportSpec{Module: mod, Name: name, Kind: ImportMemory, Provided: rt.imports[key] != nil})
+	for i := 0; i < c.memoryImportCount(); i++ {
+		def, _ := c.memoryImportAt(i)
+		mod, name := splitImportKey(def.ImportKey)
+		m.imports = append(m.imports, ImportSpec{
+			Module: mod, Name: name, Kind: ImportMemory, Index: i,
+			MemoryMin: def.Min, MemoryMax: def.Max, HasMax: def.HasMax, Addr64: def.Addr64, Shared: def.Shared,
+			Provided: rt.imports[def.ImportKey] != nil,
+		})
 	}
 	for i := 0; i < c.tableImportCount(); i++ {
 		def, _ := c.tableImportAt(i)
@@ -200,6 +229,7 @@ func (m *Module) Metadata() ModuleMetadata {
 			if i < len(c.importFuncSigs) {
 				functions[i].Params = append([]ValType(nil), c.importFuncSigs[i].Params...)
 				functions[i].Results = append([]ValType(nil), c.importFuncSigs[i].Results...)
+				functions[i].ParamTypes, functions[i].ResultTypes, _ = exactFuncSignature(c.importFuncSigs[i], c.Types)
 			}
 			if i < len(c.Imports) {
 				functions[i].ImportModule, functions[i].ImportName = splitImportKey(c.Imports[i])
@@ -209,6 +239,7 @@ func (m *Module) Metadata() ModuleMetadata {
 		sig := c.Funcs[i-c.NumImports]
 		functions[i].Params = append([]ValType(nil), sig.Params...)
 		functions[i].Results = append([]ValType(nil), sig.Results...)
+		functions[i].ParamTypes, functions[i].ResultTypes, _ = exactFuncSignature(sig, c.Types)
 	}
 
 	globalExports := exportsByIndex(c.GlobalExports, len(c.Globals))
@@ -240,22 +271,28 @@ func (m *Module) Metadata() ModuleMetadata {
 		}
 	}
 
-	exportedTables := make([]string, 0, len(c.tableExports))
-	for name, index := range c.tableExports {
-		if index != memoryExportSentinel {
-			exportedTables = append(exportedTables, name)
+	memoryExports := exportsByIndex(c.memoryExportMap(), c.memoryCount())
+	memories := make([]MemoryMetadata, c.memoryCount())
+	for i := range memories {
+		def := c.memoryDef(i)
+		memories[i] = MemoryMetadata{Index: i, Min: def.Min, Max: def.Max, HasMax: def.HasMax, Addr64: def.Addr64, Shared: def.Shared, Exports: memoryExports[i]}
+		if def.ImportKey != "" {
+			memories[i].ImportModule, memories[i].ImportName = splitImportKey(def.ImportKey)
 		}
 	}
-	sort.Strings(exportedTables)
+
 	return ModuleMetadata{
 		ExportedFuncs:        c.ExportedFunctions(),
+		Types:                cloneDefinedTypeDescriptors(c.Types),
 		ExportedGlobals:      c.ExportedGlobals(),
-		ExportedTables:       exportedTables,
+		ExportedTables:       sortedKeys(c.tableExports),
+		ExportedMemories:     sortedKeys(c.memoryExportMap()),
 		FuncImportCount:      len(c.Imports),
 		RequiredCapabilities: m.RequiredCapabilities(),
 		Functions:            functions,
 		Globals:              globals,
 		Tables:               tables,
+		Memories:             memories,
 	}
 }
 

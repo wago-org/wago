@@ -433,26 +433,42 @@ func (in *Instance) ExportedTable(name string) (*Table, error) {
 	return table, nil
 }
 
-// ExportedMemory returns this instance's linear memory as a shared *Memory that
-// another instance can import (cross-instance memory linking): the two instances
-// then use the same underlying mapping, so stores and memory.grow are mutually
-// visible. An imported-memory export forwards the exact original *Memory owner;
-// it does not copy storage or create a relay lifetime. Because importers share one
-// basedata region, they may not declare private globals, tables, or passive data
-// state. Consumer attachments retain the original producer until the final
-// importer closes. `name` is advisory (WebAssembly 2.0 modules have one memory).
+// ExportedMemory returns the named linear memory as a shared *Memory that
+// another instance can import. Imported-memory exports forward the original
+// owner; local exports retain this producer until the final importer closes.
+// Compiler- and codec-produced modules resolve names exactly. Legacy hand-built
+// Compiled values retain the historical advisory memory-0 fallback.
 func (in *Instance) ExportedMemory(name string) (*Memory, error) {
-	if in == nil || in.memory == nil {
+	if in == nil || in.c == nil {
 		return nil, fmt.Errorf("instance has no memory to export")
 	}
+	memoryIndex := 0
+	if in.c.hasExactMemoryExports() {
+		var ok bool
+		memoryIndex, ok = in.c.memoryExportMap()[name]
+		if !ok {
+			return nil, fmt.Errorf("no exported memory %q", name)
+		}
+	}
+	var memory *Memory
+	owns := false
+	if memoryIndex == 0 {
+		memory, owns = in.memory, in.ownsMem
+	} else if in.memoryDir != nil && memoryIndex < len(in.memoryDir.memories) {
+		memory = in.memoryDir.memories[memoryIndex]
+		owns = memoryIndex < len(in.memoryDir.owns) && in.memoryDir.owns[memoryIndex]
+	}
+	if memory == nil {
+		return nil, fmt.Errorf("exported memory %q index %d is unavailable", name, memoryIndex)
+	}
 	var owner *Instance
-	if in.ownsMem {
+	if owns {
 		owner = in
 	}
-	if err := in.memory.share(owner); err != nil {
+	if err := memory.share(owner); err != nil {
 		return nil, fmt.Errorf("export memory %q: %w", name, err)
 	}
-	return in.memory, nil
+	return memory, nil
 }
 
 // ExportedGlobalObject returns this instance's exported global `name` as a

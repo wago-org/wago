@@ -15,11 +15,11 @@ func TestCompiledCodecV23VersionContract(t *testing.T) {
 		t.Fatalf("compiled codec version = %d, want 23", got)
 	}
 
-	v21 := append([]byte(nil), blob...)
-	v21[4] = 21
+	v22 := append([]byte(nil), blob...)
+	v22[4] = 22
 	var got Compiled
-	if err := got.UnmarshalBinary(v21); err == nil || !strings.Contains(err.Error(), "version 21 unsupported") {
-		t.Fatalf("UnmarshalBinary v21 error = %v, want explicit incompatibility rejection", err)
+	if err := got.UnmarshalBinary(v22); err == nil || !strings.Contains(err.Error(), "version 22 unsupported") {
+		t.Fatalf("UnmarshalBinary v22 error = %v, want explicit incompatibility rejection", err)
 	}
 }
 

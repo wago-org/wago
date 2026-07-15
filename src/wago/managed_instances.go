@@ -109,9 +109,15 @@ func (m *InstanceManager) Instantiate(ctx context.Context, mod *Module, opts ...
 		m.mu.Unlock()
 		return nil, fmt.Errorf("wago: plugin %s managed-instance limit %d reached: %w", m.owner, m.budget.MaxInstances, ErrPermissionDenied)
 	}
-	if m.budget.MaxMemoryBytes != 0 && mod != nil && mod.c != nil && mod.c.HasMemory && uint64(mod.c.MemMaxPages)*65536 > m.budget.MaxMemoryBytes {
-		m.mu.Unlock()
-		return nil, fmt.Errorf("wago: plugin %s module memory exceeds managed budget %d: %w", m.owner, m.budget.MaxMemoryBytes, ErrPermissionDenied)
+	if m.budget.MaxMemoryBytes != 0 && mod != nil && mod.c != nil && mod.c.memoryCount() != 0 {
+		maxBytes, limitErr := mod.c.declaredMemoryMaxBytes()
+		if limitErr != nil || maxBytes > m.budget.MaxMemoryBytes {
+			m.mu.Unlock()
+			if limitErr != nil {
+				return nil, fmt.Errorf("wago: plugin %s module memory limits: %v: %w", m.owner, limitErr, ErrPermissionDenied)
+			}
+			return nil, fmt.Errorf("wago: plugin %s module memory total %d exceeds managed budget %d: %w", m.owner, maxBytes, m.budget.MaxMemoryBytes, ErrPermissionDenied)
+		}
 	}
 	m.live++
 	m.pending.Add(1)

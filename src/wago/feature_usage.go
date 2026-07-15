@@ -5,10 +5,10 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
-// moduleRequiredFeatures records the optional core features that the compiled
-// module actually uses. Codec v23's byte-sized mask covers every currently
-// supported serializable feature; unsupported higher public bits (such as tail
-// calls) are rejected by RuntimeConfig before compilation.
+// moduleRequiredFeatures records optional core features that remain execution
+// dependencies of the compiled artifact. Codec v23 stores the full public
+// CoreFeatures mask and rejects unknown bits. Compile-time-only features such as
+// extended constant expressions are folded into initializer metadata.
 func moduleRequiredFeatures(m *wasm.Module) CoreFeatures {
 	if m == nil {
 		return 0
@@ -45,7 +45,6 @@ func moduleRequiredFeatures(m *wasm.Module) CoreFeatures {
 	}
 	for _, g := range m.Globals {
 		out |= requiredFeaturesForValType(g.Type.Type)
-		out |= requiredFeaturesForConstExpr(g.Init)
 	}
 	for _, ex := range m.Exports {
 		if ex.Index.Kind == wasm.ExternGlobal {
@@ -57,32 +56,35 @@ func moduleRequiredFeatures(m *wasm.Module) CoreFeatures {
 	if m.TableCount() > 1 {
 		out |= CoreFeatureReferenceTypes
 	}
+	if m.ImportedMemCount()+len(m.Memories) > 1 {
+		out |= CoreFeatureMultiMemory
+	}
+	for _, im := range m.Imports {
+		if im.Type.Kind == wasm.ExternMem && im.Type.Mem.Limits.Addr64 {
+			out |= CoreFeatureMemory64
+		}
+	}
+	for _, memory := range m.Memories {
+		if memory.Limits.Addr64 {
+			out |= CoreFeatureMemory64
+		}
+	}
 	for _, table := range m.Tables {
 		if wasm.EqualValType(wasm.RefVal(table.Type.Ref), wasm.ExternRef) || table.Init != nil {
 			out |= CoreFeatureReferenceTypes
-		}
-		if table.Init != nil {
-			out |= requiredFeaturesForConstExpr(*table.Init)
 		}
 	}
 	for _, elem := range m.Elements {
 		if elem.Mode.Kind != wasm.ElemActive {
 			out |= CoreFeatureBulkMemoryOperations
-		} else {
-			out |= requiredFeaturesForConstExpr(elem.Mode.Offset)
 		}
 		if elem.Kind.Kind != wasm.ElemFuncs {
 			out |= CoreFeatureReferenceTypes
-		}
-		for _, expr := range elem.Kind.Exprs {
-			out |= requiredFeaturesForConstExpr(expr)
 		}
 	}
 	for _, data := range m.Data {
 		if data.Mode.Kind == wasm.DataPassive {
 			out |= CoreFeatureBulkMemoryOperations
-		} else {
-			out |= requiredFeaturesForConstExpr(data.Mode.Offset)
 		}
 	}
 	for _, fn := range m.Code {
@@ -92,31 +94,6 @@ func moduleRequiredFeatures(m *wasm.Module) CoreFeatures {
 		out |= requiredFeaturesForBodyBytes(fn.BodyBytes)
 	}
 	return out
-}
-
-func requiredFeaturesForConstExpr(expr wasm.Expr) CoreFeatures {
-	for _, in := range expr.Instrs {
-		switch in.Kind {
-		case wasm.InstrI32Add, wasm.InstrI32Sub, wasm.InstrI32Mul, wasm.InstrI64Add, wasm.InstrI64Sub, wasm.InstrI64Mul:
-			return CoreFeatureExtendedConst
-		}
-	}
-	r := wasm.NewReader(expr.BodyBytes)
-	for r.HasNext() {
-		op, err := r.Byte()
-		if err != nil {
-			break
-		}
-		imm, err := wasm.ClassifyInstructionImmediate(r, op)
-		if err != nil {
-			break
-		}
-		switch imm.Kind {
-		case wasm.InstrI32Add, wasm.InstrI32Sub, wasm.InstrI32Mul, wasm.InstrI64Add, wasm.InstrI64Sub, wasm.InstrI64Mul:
-			return CoreFeatureExtendedConst
-		}
-	}
-	return 0
 }
 
 func requiredFeaturesForValTypes(types []wasm.ValType) CoreFeatures {
@@ -197,7 +174,7 @@ func compiledStructuralRequiredFeatures(c *Compiled) CoreFeatures {
 	if c == nil {
 		return 0
 	}
-	out := CoreFeatures(c.requiredFeatures)
+	out := c.requiredFeatures
 	if compiledMetadataUsesSIMD(c) {
 		out |= CoreFeatureSIMD
 	}
@@ -208,6 +185,10 @@ func compiledStructuralRequiredFeatures(c *Compiled) CoreFeatures {
 		}
 		out |= requiredFeaturesForPublicValTypes(sig.Params)
 		out |= requiredFeaturesForPublicValTypes(sig.Results)
+		if sig.HasTypeIndex && int(sig.TypeIndex) < len(c.Types) && c.Types[sig.TypeIndex].Kind == CompositeTypeFunction {
+			out |= requiredFeaturesForTypeDescriptors(c.Types[sig.TypeIndex].Params)
+			out |= requiredFeaturesForTypeDescriptors(c.Types[sig.TypeIndex].Results)
+		}
 	}
 	for _, sig := range c.Funcs {
 		if len(sig.Results) > 1 {
@@ -215,6 +196,10 @@ func compiledStructuralRequiredFeatures(c *Compiled) CoreFeatures {
 		}
 		out |= requiredFeaturesForPublicValTypes(sig.Params)
 		out |= requiredFeaturesForPublicValTypes(sig.Results)
+		if sig.HasTypeIndex && int(sig.TypeIndex) < len(c.Types) && c.Types[sig.TypeIndex].Kind == CompositeTypeFunction {
+			out |= requiredFeaturesForTypeDescriptors(c.Types[sig.TypeIndex].Params)
+			out |= requiredFeaturesForTypeDescriptors(c.Types[sig.TypeIndex].Results)
+		}
 	}
 	for _, g := range c.GlobalImports {
 		if isReferenceValType(g.Type) {
@@ -228,13 +213,18 @@ func compiledStructuralRequiredFeatures(c *Compiled) CoreFeatures {
 		if isReferenceValType(g.Type) {
 			out |= CoreFeatureReferenceTypes
 		}
-		if requiredFeaturesForConstExprBytes(g.InitExpr) != 0 {
-			out |= CoreFeatureExtendedConst
-		}
 	}
 	for _, index := range c.GlobalExports {
 		if index >= 0 && index < len(c.Globals) && c.Globals[index].Mutable {
 			out |= CoreFeatureMutableGlobal
+		}
+	}
+	if c.memoryCount() > 1 {
+		out |= CoreFeatureMultiMemory
+	}
+	for i := 0; i < c.memoryCount(); i++ {
+		if c.memoryDef(i).Addr64 {
+			out |= CoreFeatureMemory64
 		}
 	}
 	if c.hasExternrefTable() || c.tableCount() > 1 || c.NeedsFuncRefDescs {
@@ -244,9 +234,6 @@ func compiledStructuralRequiredFeatures(c *Compiled) CoreFeatures {
 		if elem.RefType == ValExternRef || elem.TableIndex != 0 {
 			out |= CoreFeatureReferenceTypes
 		}
-		if requiredFeaturesForConstExprBytes(elem.Offset.Expr) != 0 {
-			out |= CoreFeatureExtendedConst
-		}
 	}
 	for _, elem := range c.passiveElems {
 		if elem.RefType == ValExternRef {
@@ -255,20 +242,25 @@ func compiledStructuralRequiredFeatures(c *Compiled) CoreFeatures {
 		if elem.Mode != ElemModeActive {
 			out |= CoreFeatureBulkMemoryOperations
 		}
-		if requiredFeaturesForConstExprBytes(elem.Offset.Expr) != 0 {
-			out |= CoreFeatureExtendedConst
-		}
-	}
-	for _, data := range c.Data {
-		if requiredFeaturesForConstExprBytes(data.Offset.Expr) != 0 {
-			out |= CoreFeatureExtendedConst
-		}
 	}
 	return out
 }
 
-func requiredFeaturesForConstExprBytes(body []byte) CoreFeatures {
-	return requiredFeaturesForConstExpr(wasm.Expr{BodyBytes: body})
+func requiredFeaturesForTypeDescriptors(types []ValueTypeDescriptor) CoreFeatures {
+	var out CoreFeatures
+	for _, typ := range types {
+		if typ.Kind == ValueTypeV128 {
+			out |= CoreFeatureSIMD
+		}
+		if typ.Kind != ValueTypeReference {
+			continue
+		}
+		out |= CoreFeatureReferenceTypes
+		if typ.Ref.Heap.Defined || !typ.Ref.Nullable || typ.Ref.Exact {
+			out |= CoreFeatureTypedFunctionReferences
+		}
+	}
+	return out
 }
 
 func requiredFeaturesForPublicValTypes(types []ValType) CoreFeatures {
