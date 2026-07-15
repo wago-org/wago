@@ -69,9 +69,24 @@
       ],
       "gates": [
         {
-          "boundary": "native-unwind-abi",
-          "reason": "general try_table catch dispatch remains outside the bounded native unwind ABI",
-          "count": 5
+          "boundary": "exception-reference-roots",
+          "reason": "throw_ref, catch_ref, catch_all_ref, exn, and noexn require rooted exception values",
+          "count": 2
+        },
+        {
+          "boundary": "gc-interaction",
+          "reason": "GC-managed tag payloads require collector roots and barriers",
+          "count": 1
+        },
+        {
+          "boundary": "product-lifecycle",
+          "reason": "native throw/catch across imported functions and tags requires basedata handler transfer",
+          "count": 1
+        },
+        {
+          "boundary": "product-lifecycle",
+          "reason": "tag imports, exports, and cross-module link identity are outside the bounded local product slice",
+          "count": 1
         }
       ],
       "counts": {
@@ -94,8 +109,8 @@
       "status": "accounted",
       "gates": [
         {
-          "boundary": "exception-reference-roots",
-          "reason": "throw_ref, catch_ref, catch_all_ref, exn, and noexn require rooted exception values",
+          "boundary": "gc-interaction",
+          "reason": "mixed any/none and exn/noexn reference products require executable GC roots",
           "count": 2
         }
       ],
@@ -121,9 +136,24 @@
       "count": 3
     },
     {
-      "boundary": "native-unwind-abi",
-      "reason": "general try_table catch dispatch remains outside the bounded native unwind ABI",
-      "count": 5
+      "boundary": "gc-interaction",
+      "reason": "GC-managed tag payloads require collector roots and barriers",
+      "count": 1
+    },
+    {
+      "boundary": "gc-interaction",
+      "reason": "mixed any/none and exn/noexn reference products require executable GC roots",
+      "count": 2
+    },
+    {
+      "boundary": "product-lifecycle",
+      "reason": "native throw/catch across imported functions and tags requires basedata handler transfer",
+      "count": 1
+    },
+    {
+      "boundary": "product-lifecycle",
+      "reason": "tag imports, exports, and cross-module link identity are outside the bounded local product slice",
+      "count": 1
     }
   ],
   "totals": {

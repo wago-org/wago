@@ -55,7 +55,6 @@ type stagedExceptionHandlingDelta struct {
 const (
 	stagedEHBoundaryDecoderValidator = "decoder-validator"
 	stagedEHBoundaryProduct          = "product-lifecycle"
-	stagedEHBoundaryUnwind           = "native-unwind-abi"
 	stagedEHBoundaryExceptionRef     = "exception-reference-roots"
 	stagedEHBoundaryGC               = "gc-interaction"
 	stagedEHBoundaryPlatform         = "platform"
@@ -67,15 +66,14 @@ var stagedExceptionHandlingKnownGates = map[string]map[string]bool{
 	},
 	stagedEHBoundaryProduct: {
 		"tag imports, exports, and cross-module link identity are outside the bounded local product slice": true,
-	},
-	stagedEHBoundaryUnwind: {
-		"general try_table catch dispatch remains outside the bounded native unwind ABI": true,
+		"native throw/catch across imported functions and tags requires basedata handler transfer":         true,
 	},
 	stagedEHBoundaryExceptionRef: {
 		"throw_ref, catch_ref, catch_all_ref, exn, and noexn require rooted exception values": true,
 	},
 	stagedEHBoundaryGC: {
-		"GC-managed tag payloads require collector roots and barriers": true,
+		"GC-managed tag payloads require collector roots and barriers":                true,
+		"mixed any/none and exn/noexn reference products require executable GC roots": true,
 	},
 	stagedEHBoundaryPlatform: {
 		"exception handling has no native backend on this platform": true,
@@ -98,6 +96,74 @@ func stagedExceptionHandlingGateList(counts map[string]int) []stagedExceptionHan
 		return out[i].Reason < out[j].Reason
 	})
 	return out
+}
+
+func stagedTryTableModuleGate(m *corewasm.Module) (boundary, reason string, err error) {
+	for i := uint32(0); i < uint32(m.TagCount()); i++ {
+		ft, ok := stagedTagFuncType(m, i)
+		if !ok {
+			return "", "", fmt.Errorf("tag %d type unavailable", i)
+		}
+		for _, typ := range ft.Params {
+			if !corewasm.EqualValType(typ, corewasm.I32) && !corewasm.EqualValType(typ, corewasm.I64) && !corewasm.EqualValType(typ, corewasm.F32) && !corewasm.EqualValType(typ, corewasm.F64) {
+				return stagedEHBoundaryGC, "GC-managed tag payloads require collector roots and barriers", nil
+			}
+		}
+	}
+
+	hasReferenceCatch := false
+	for i := range m.Code {
+		r := corewasm.NewReader(m.Code[i].BodyBytes)
+		for r.HasNext() {
+			op, err := r.Byte()
+			if err != nil {
+				return "", "", err
+			}
+			if op != 0x1f {
+				if _, err := corewasm.ClassifyInstructionImmediate(r, op); err != nil {
+					return "", "", err
+				}
+				continue
+			}
+			if _, err := r.S33(); err != nil {
+				return "", "", err
+			}
+			n, err := r.U32()
+			if err != nil {
+				return "", "", err
+			}
+			for j := uint32(0); j < n; j++ {
+				kindByte, err := r.Byte()
+				if err != nil {
+					return "", "", err
+				}
+				kind := corewasm.CatchKind(kindByte)
+				if kind == corewasm.CatchTag || kind == corewasm.CatchRef {
+					if _, err := r.U32(); err != nil {
+						return "", "", err
+					}
+				}
+				if _, err := r.U32(); err != nil {
+					return "", "", err
+				}
+				if kind == corewasm.CatchRef || kind == corewasm.CatchAllRef {
+					hasReferenceCatch = true
+				}
+			}
+		}
+	}
+	if hasReferenceCatch {
+		return stagedEHBoundaryExceptionRef, "throw_ref, catch_ref, catch_all_ref, exn, and noexn require rooted exception values", nil
+	}
+	if m.ImportedFuncCount() != 0 || m.ImportedTagCount() != 0 {
+		return stagedEHBoundaryProduct, "native throw/catch across imported functions and tags requires basedata handler transfer", nil
+	}
+	for _, ex := range m.Exports {
+		if ex.Index.Kind == corewasm.ExternTag {
+			return stagedEHBoundaryProduct, "tag imports, exports, and cross-module link identity are outside the bounded local product slice", nil
+		}
+	}
+	return "", "", fmt.Errorf("scalar try_table module has no remaining classified boundary")
 }
 
 func stagedExceptionHandlingModuleGate(base string, data []byte) (boundary, reason string, err error) {
@@ -126,13 +192,13 @@ func stagedExceptionHandlingModuleGate(base string, data []byte) (boundary, reas
 	case "exceptions/tag":
 		return stagedEHBoundaryProduct, "tag imports, exports, and cross-module link identity are outside the bounded local product slice", nil
 	case "exceptions/try_table":
-		return stagedEHBoundaryUnwind, "general try_table catch dispatch remains outside the bounded native unwind ABI", nil
+		return stagedTryTableModuleGate(m)
 	case "ref_null":
-		return stagedEHBoundaryExceptionRef, "throw_ref, catch_ref, catch_all_ref, exn, and noexn require rooted exception values", nil
+		return stagedEHBoundaryGC, "mixed any/none and exn/noexn reference products require executable GC roots", nil
 	case "exceptions/throw_ref":
 		return stagedEHBoundaryExceptionRef, "throw_ref, catch_ref, catch_all_ref, exn, and noexn require rooted exception values", nil
 	case "exceptions/throw":
-		return stagedEHBoundaryUnwind, "general try_table catch dispatch remains outside the bounded native unwind ABI", nil
+		return "", "", fmt.Errorf("throw module should execute through its dedicated staged runner")
 	default:
 		return "", "", fmt.Errorf("unclassified exception-handling file %q", base)
 	}
