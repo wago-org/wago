@@ -206,9 +206,6 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		if mt.Shared {
 			return nil, fmt.Errorf("compile: staged memory64 rejects shared memory")
 		}
-		if mt.Limits.Max != nil && *mt.Limits.Max > 65535 {
-			return nil, fmt.Errorf("compile: staged memory64 requires a declared maximum no greater than 65535 pages")
-		}
 	}
 	gcDescs, err := frontend.BuildGCTypeDescs(m)
 	if err != nil {
@@ -474,7 +471,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 			c.MemMinPages = uint32(memory0.Min)
 		}
 		c.MemMaxPages = 65535 // default memory-0 reservation ceiling
-		if memory0.HasMax && memory0.Max <= uint64(^uint32(0)) {
+		if memory0.HasMax && memory0.Max < uint64(c.MemMaxPages) {
 			c.MemMaxPages = uint32(memory0.Max)
 		}
 		// Pin a local memory-0 reservation to its initial size only when this

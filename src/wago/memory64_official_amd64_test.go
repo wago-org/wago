@@ -55,8 +55,6 @@ func stagedMemory64KnownGate(err error) (string, bool) {
 		contains string
 		reason   string
 	}{
-		{"exceeds staged ceiling 65535", "declared memory64 limit exceeds the 65,535-page execution ceiling"},
-		{"requires a declared maximum no greater than 65535 pages", "memory64 declaration is outside the bounded local reservation policy"},
 		{"outside staged scalar family", "memory64 instruction family is not yet staged"},
 		{"requires exactly one local memory", "memory64 imports or multi-memory combinations are not yet staged"},
 		{"64-bit memory imports remain outside the staged memory64 boundary", "memory64 imports are not yet staged"},

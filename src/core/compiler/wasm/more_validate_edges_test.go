@@ -18,10 +18,11 @@ func TestMoreValidateLimitsAndStartTopology(t *testing.T) {
 		m := &Module{Memories: []MemType{{Limits: Limits{Min: 2, Max: &max}}}}
 		expectValidateErr(t, m, ErrInvalidLimitRange)
 	})
-	// The decoder stores table/memory proposal limits as uint64, but non-64-bit
-	// limits must still obey their original 32-bit/page-count bounds.
-	// Otherwise invalid MVP modules could pass validation and fail only later.
+	// The decoder stores table/memory proposal limits as uint64, but each address
+	// form must still obey its proposal bound. Otherwise invalid modules could pass
+	// validation and fail only later.
 	boundsMax := uint64(maxMemory32Pages + 1)
+	memory64MaxPlusOne := uint64(maxMemory64Pages + 1)
 	uint32MaxPlusOne := uint64(maxTable32Limit + 1)
 	t.Run("table32 limit over u32 range", func(t *testing.T) {
 		m := &Module{Tables: []Table{{Type: TableType{Ref: AbsRef(HeapFunc), Limits: Limits{Min: uint32MaxPlusOne}}}}}
@@ -33,6 +34,14 @@ func TestMoreValidateLimitsAndStartTopology(t *testing.T) {
 	})
 	t.Run("memory32 max over page range", func(t *testing.T) {
 		m := &Module{Memories: []MemType{{Limits: Limits{Min: 0, Max: &boundsMax}}}}
+		expectValidateErr(t, m, ErrInvalidLimitRange)
+	})
+	t.Run("memory64 min over page range", func(t *testing.T) {
+		m := &Module{Memories: []MemType{{Limits: Limits{Addr64: true, Min: memory64MaxPlusOne}}}}
+		expectValidateErr(t, m, ErrInvalidLimitRange)
+	})
+	t.Run("memory64 max over page range", func(t *testing.T) {
+		m := &Module{Memories: []MemType{{Limits: Limits{Addr64: true, Max: &memory64MaxPlusOne}}}}
 		expectValidateErr(t, m, ErrInvalidLimitRange)
 	})
 	t.Run("imported shared memory64 without max", func(t *testing.T) {

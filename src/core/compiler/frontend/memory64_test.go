@@ -6,6 +6,21 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
+func TestStagedMemory64ASTAdmitsOversizedDeclaredMaximum(t *testing.T) {
+	max := uint64(1) << 48
+	m := wasm.Module{Memories: []wasm.MemType{{Limits: wasm.Limits{Min: 1, Max: &max, Addr64: true}}}}
+	feat := AllFeatures()
+	feat.Memory64 = true
+	if err := RejectUnsupportedWithFeatures(&m, feat); err != nil {
+		t.Fatalf("oversized declared memory64 maximum: %v", err)
+	}
+
+	m.Memories[0].Limits.Min = 65536
+	if err := RejectUnsupportedWithFeatures(&m, feat); err == nil {
+		t.Fatal("unallocatable memory64 minimum unexpectedly admitted")
+	}
+}
+
 func TestStagedMemory64ASTAdmitsScalarSIMDAndBoundedBulk(t *testing.T) {
 	max := uint64(2)
 	base := wasm.Module{
