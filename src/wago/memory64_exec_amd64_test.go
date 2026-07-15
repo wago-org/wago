@@ -4,6 +4,7 @@ package wago
 
 import (
 	"bytes"
+	"encoding/binary"
 	"reflect"
 	"strings"
 	"testing"
@@ -65,6 +66,85 @@ func boundedMemory64Module(max uint64) []byte {
 			wasmtest.Code(storeLoad),
 			wasmtest.Code(offsetLoad),
 		)),
+	)
+}
+
+type memory64ScalarOp struct {
+	name      string
+	opcode    byte
+	align     byte
+	width     int
+	resultI64 bool
+	store     bool
+}
+
+var memory64IntegerScalarOps = []memory64ScalarOp{
+	{name: "i32.load", opcode: 0x28, align: 2, width: 4},
+	{name: "i64.load", opcode: 0x29, align: 3, width: 8, resultI64: true},
+	{name: "i32.load8_s", opcode: 0x2c, width: 1},
+	{name: "i32.load8_u", opcode: 0x2d, width: 1},
+	{name: "i32.load16_s", opcode: 0x2e, align: 1, width: 2},
+	{name: "i32.load16_u", opcode: 0x2f, align: 1, width: 2},
+	{name: "i64.load8_s", opcode: 0x30, width: 1, resultI64: true},
+	{name: "i64.load8_u", opcode: 0x31, width: 1, resultI64: true},
+	{name: "i64.load16_s", opcode: 0x32, align: 1, width: 2, resultI64: true},
+	{name: "i64.load16_u", opcode: 0x33, align: 1, width: 2, resultI64: true},
+	{name: "i64.load32_s", opcode: 0x34, align: 2, width: 4, resultI64: true},
+	{name: "i64.load32_u", opcode: 0x35, align: 2, width: 4, resultI64: true},
+	{name: "i32.store", opcode: 0x36, align: 2, width: 4, store: true},
+	{name: "i64.store", opcode: 0x37, align: 3, width: 8, resultI64: true, store: true},
+	{name: "i32.store8", opcode: 0x3a, width: 1, store: true},
+	{name: "i32.store16", opcode: 0x3b, align: 1, width: 2, store: true},
+	{name: "i64.store8", opcode: 0x3c, width: 1, resultI64: true, store: true},
+	{name: "i64.store16", opcode: 0x3d, align: 1, width: 2, resultI64: true, store: true},
+	{name: "i64.store32", opcode: 0x3e, align: 2, width: 4, resultI64: true, store: true},
+}
+
+func memory64IntegerScalarModule() []byte {
+	types := wasmtest.Vec(
+		wasmtest.FuncType([]wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I32}),
+		wasmtest.FuncType([]wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I64}),
+		wasmtest.FuncType([]wasm.ValType{wasm.I64, wasm.I32}, nil),
+		wasmtest.FuncType([]wasm.ValType{wasm.I64, wasm.I64}, nil),
+	)
+	funcs := make([][]byte, 0, len(memory64IntegerScalarOps))
+	exports := make([][]byte, 0, len(memory64IntegerScalarOps)+1)
+	codes := make([][]byte, 0, len(memory64IntegerScalarOps))
+	for i, op := range memory64IntegerScalarOps {
+		typeIndex := uint32(0)
+		if op.resultI64 {
+			typeIndex = 1
+		}
+		body := []byte{0x20, 0x00}
+		if op.store {
+			typeIndex += 2
+			body = append(body, 0x20, 0x01)
+		}
+		body = append(body, op.opcode, op.align, 0x00, 0x0b)
+		funcs = append(funcs, wasmtest.ULEB(typeIndex))
+		exports = append(exports, wasmtest.ExportEntry(op.name, 0, uint32(i)))
+		codes = append(codes, wasmtest.Code(body))
+	}
+	memory := append([]byte{0x05}, uleb64(1)...)
+	memory = append(memory, uleb64(2)...)
+	exports = append(exports, wasmtest.ExportEntry("memory", 2, 0))
+	return wasmtest.Module(
+		wasmtest.Section(1, types),
+		wasmtest.Section(3, wasmtest.Vec(funcs...)),
+		wasmtest.Section(5, wasmtest.Vec(memory)),
+		wasmtest.Section(7, wasmtest.Vec(exports...)),
+		wasmtest.Section(10, wasmtest.Vec(codes...)),
+	)
+}
+
+func memory64FloatLoadModule() []byte {
+	memory := append([]byte{0x05}, uleb64(1)...)
+	memory = append(memory, uleb64(2)...)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I64}, []wasm.ValType{wasm.F32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec(memory)),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, 0x2a, 0x02, 0x00, 0x0b}))),
 	)
 }
 
@@ -159,9 +239,87 @@ func TestStagedMemory64LocalExecutionAndProductRoundTrip(t *testing.T) {
 	}
 }
 
+func TestStagedMemory64IntegerScalarFamily(t *testing.T) {
+	module := memory64IntegerScalarModule()
+	compiled, err := compileStagedMemory64(module)
+	if err != nil {
+		t.Fatalf("compile memory64 integer scalar family: %v", err)
+	}
+	defer compiled.Close()
+	t.Logf("memory64 integer scalar family: wasm=%d code=%d operations=%d", len(module), len(compiled.Code), len(memory64IntegerScalarOps))
+	in, err := instantiateCore(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatalf("instantiate memory64 integer scalar family: %v", err)
+	}
+	defer in.Close()
+	memory, err := in.ExportedMemory("memory")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mem := memory.Bytes()
+	const addr = 64
+	loadCases := map[string]struct {
+		bits uint64
+		want uint64
+	}{
+		"i32.load":     {bits: 0x89abcdef, want: 0x89abcdef},
+		"i64.load":     {bits: 0x0123456789abcdef, want: 0x0123456789abcdef},
+		"i32.load8_s":  {bits: 0x80, want: uint64(uint32(0xffffff80))},
+		"i32.load8_u":  {bits: 0x80, want: 0x80},
+		"i32.load16_s": {bits: 0x8000, want: uint64(uint32(0xffff8000))},
+		"i32.load16_u": {bits: 0x8000, want: 0x8000},
+		"i64.load8_s":  {bits: 0x80, want: 0xffffffffffffff80},
+		"i64.load8_u":  {bits: 0x80, want: 0x80},
+		"i64.load16_s": {bits: 0x8000, want: 0xffffffffffff8000},
+		"i64.load16_u": {bits: 0x8000, want: 0x8000},
+		"i64.load32_s": {bits: 0x80000000, want: 0xffffffff80000000},
+		"i64.load32_u": {bits: 0x80000000, want: 0x80000000},
+	}
+	for _, op := range memory64IntegerScalarOps {
+		op := op
+		t.Run(op.name, func(t *testing.T) {
+			if op.store {
+				for i := 0; i < 9; i++ {
+					mem[addr+i] = 0xa5
+				}
+				value := uint64(0x1122334455667788)
+				if !op.resultI64 {
+					value = uint64(uint32(value))
+				}
+				if _, err := in.Invoke(op.name, addr, value); err != nil {
+					t.Fatalf("store: %v", err)
+				}
+				var encoded [8]byte
+				binary.LittleEndian.PutUint64(encoded[:], value)
+				if !bytes.Equal(mem[addr:addr+op.width], encoded[:op.width]) || mem[addr+op.width] != 0xa5 {
+					t.Fatalf("stored bytes = %x sentinel=%x, want %x/a5", mem[addr:addr+op.width], mem[addr+op.width], encoded[:op.width])
+				}
+				if _, err := in.Invoke(op.name, uint64(len(mem)-op.width+1), value); err == nil || !strings.Contains(err.Error(), "out of bounds") {
+					t.Fatalf("end-of-memory store error = %v", err)
+				}
+				return
+			}
+			tc := loadCases[op.name]
+			var encoded [8]byte
+			binary.LittleEndian.PutUint64(encoded[:], tc.bits)
+			copy(mem[addr:addr+op.width], encoded[:op.width])
+			got, err := in.Invoke(op.name, addr)
+			if err != nil || len(got) != 1 || got[0] != tc.want {
+				t.Fatalf("load = %v, err=%v, want [%#x]", got, err, tc.want)
+			}
+			if _, err := in.Invoke(op.name, uint64(len(mem)-op.width+1)); err == nil || !strings.Contains(err.Error(), "out of bounds") {
+				t.Fatalf("end-of-memory load error = %v", err)
+			}
+		})
+	}
+}
+
 func TestStagedMemory64AdmissionGatesAndMemory32CodeStability(t *testing.T) {
 	if _, err := compileStagedMemory64(boundedMemory64Module(65536)); err == nil || !strings.Contains(err.Error(), "65535") {
 		t.Fatalf("oversized memory64 maximum error = %v", err)
+	}
+	if _, err := compileStagedMemory64(memory64FloatLoadModule()); err == nil || !strings.Contains(err.Error(), "outside staged integer scalar family") {
+		t.Fatalf("floating-point memory64 gate error = %v", err)
 	}
 
 	shared := append([]byte{0x07}, uleb64(1)...)
