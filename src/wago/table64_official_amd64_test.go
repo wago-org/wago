@@ -14,6 +14,8 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/internal/spectest"
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"github.com/wago-org/wago/testutil/wasmtest"
 )
 
 const stagedTable64DeltaPath = "tests/spec-v3-staged-table64.json"
@@ -219,6 +221,25 @@ func replayStagedTable64Script(t *testing.T, base, tmp string, script stagedSpec
 		t.Fatal(err)
 	}
 	defer standardMemory.Close()
+	standardTable64Module := wasmtest.Module(
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x04, 0x00})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("table64", byte(wasm.ExternTable), 0))),
+	)
+	standardTable64Compiled, err := compileStagedTable64Official(standardTable64Module)
+	if err != nil {
+		t.Fatalf("compile standard table64 owner: %v", err)
+	}
+	defer standardTable64Compiled.Close()
+	standardTable64Owner, err := instantiateCore(standardTable64Compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatalf("instantiate standard table64 owner: %v", err)
+	}
+	defer standardTable64Owner.Close()
+	standardTable64, err := standardTable64Owner.ExportedTable("table64")
+	if err != nil {
+		t.Fatalf("export standard table64: %v", err)
+	}
+	defer standardTable64.Close()
 	noop := HostFunc(func(HostModule, []uint64, []uint64) {})
 	standard := Imports{
 		"spectest.print": noop, "spectest.print_i32": noop, "spectest.print_i64": noop,
@@ -229,6 +250,7 @@ func replayStagedTable64Script(t *testing.T, base, tmp string, script stagedSpec
 		"spectest.global_f32": GlobalImport{Type: ValF32, Bits: F32(666)},
 		"spectest.global_f64": GlobalImport{Type: ValF64, Bits: F64(666)},
 		"spectest.memory":     standardMemory, "spectest.table": standardTable,
+		"spectest.table64": standardTable64,
 	}
 	var current stagedSpecModule
 	var live []stagedSpecModule

@@ -825,6 +825,27 @@ func TestMinOnlyFuncrefTableWithoutGrowthKeepsMinimumCapacity(t *testing.T) {
 	}
 }
 
+func TestInertOversizedTable32DeclarationKeepsExactMaxAndMinimumStorage(t *testing.T) {
+	table := []byte{0x70, 0x01, 0x00}
+	table = append(table, wasmtest.ULEB(65536)...)
+	compiled, err := Compile(nil, wasmtest.Module(wasmtest.Section(4, wasmtest.Vec(table))))
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	defer compiled.Close()
+	if compiled.TableMax != 65536 || compiled.tableRuntimeCapacity(0) != 0 {
+		t.Fatalf("inert table32 max/capacity = %d/%d, want 65536/0", compiled.TableMax, compiled.tableRuntimeCapacity(0))
+	}
+	in, err := Instantiate(compiled)
+	if err != nil {
+		t.Fatalf("Instantiate: %v", err)
+	}
+	defer in.Close()
+	if got := len(in.tableDescriptor(0)); got != 8 {
+		t.Fatalf("inert table32 descriptor bytes = %d, want 8", got)
+	}
+}
+
 func TestTableGrowWithNonNullRefFuncPopulatesNewSlots(t *testing.T) {
 	mod := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(
