@@ -131,6 +131,9 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 			return nil, fmt.Errorf("compile: unsupported memory multi-memory with signals-based bounds checks")
 		}
 	}
+	if features.TailCalls && moduleRequiredFeatures(m).IsEnabled(CoreFeatureTailCall) && (goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64") {
+		return nil, fmt.Errorf("compile: unsupported instruction tail-call staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
+	}
 	usesMemory64 := false
 	for i := uint32(0); i < uint32(m.MemCount()); i++ {
 		if mt, ok := m.MemoryType(i); ok && mt.Limits.Addr64 {
@@ -509,7 +512,7 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 	if features.TypedFunctionReferences {
 		compiled.codeCache.stagedFeatures |= CoreFeatureTypedFunctionReferences
 	}
-	if features.TypedTailCalls {
+	if features.TailCalls || features.TypedTailCalls {
 		compiled.codeCache.stagedFeatures |= CoreFeatureTailCall
 	}
 	return compiled, nil

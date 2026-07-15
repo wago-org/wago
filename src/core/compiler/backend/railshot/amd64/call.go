@@ -174,8 +174,9 @@ func (f *fn) callOp(r *wasm.Reader) error {
 // target whose caller and callee fit the internal register ABI reuses the current
 // activation: arguments are staged in the callee's GP/XMM banks, the current
 // frame is released, and control jumps (rather than calls) to the callee's
-// internal entry. Imported targets and wrapper-only signatures remain explicit
-// backend rejections; the public tail-call feature gate therefore stays disabled.
+// internal entry. A host import executes through the ordinary bounded host-call
+// bridge and immediately returns from the current function; cross-instance imports
+// remain explicit backend rejections. The public tail-call feature gate stays disabled.
 func (f *fn) returnCall(r *wasm.Reader) error {
 	idx, err := r.U32()
 	if err != nil {
@@ -190,7 +191,19 @@ func (f *fn) returnCall(r *wasm.Reader) error {
 	}
 	imported := f.m.ImportedFuncCount()
 	if int(idx) < imported {
-		return fmt.Errorf("return_call: imported target %d requires unsupported host/cross-instance tail ABI", idx)
+		if f.importBindings != nil && int(idx) < len(f.importBindings) && f.importBindings[idx].CrossInstance {
+			return fmt.Errorf("return_call: imported target %d requires unsupported cross-instance tail ABI", idx)
+		}
+		var err error
+		if f.syncHostCalls || len(ft.Results) != 0 {
+			err = f.callHostSync(int(idx), ft)
+		} else {
+			err = f.callHost(int(idx), ft)
+		}
+		if err != nil {
+			return err
+		}
+		return f.opReturn()
 	}
 	if regABIEnabled && sigFitsRegABI(f.ft) && sigFitsRegABI(ft) {
 		f.stats.call("tail-direct")
