@@ -607,6 +607,12 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 		return f.refFunc(r)
 	case 0xd3: // ref.eq
 		f.refEq()
+	case 0xd4: // ref.as_non_null
+		f.refAsNonNull()
+	case 0xd5: // br_on_null
+		return f.brOnNull(r)
+	case 0xd6: // br_on_non_null
+		return f.brOnNonNull(r)
 	case 0xfc: // misc (multi-byte) opcodes
 		return f.emitFC(r)
 	case 0xfd: // SIMD

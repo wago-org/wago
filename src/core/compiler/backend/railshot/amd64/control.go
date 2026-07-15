@@ -716,6 +716,70 @@ func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
 	return nil
 }
 
+func (f *fn) brOnNull(r *wasm.Reader) error {
+	ref := f.materialize(f.popValue())
+	idx, err := r.U32()
+	if err != nil {
+		return err
+	}
+	fi := len(f.ctrl) - 1 - int(idx)
+	if fi < 0 {
+		return errBadLabel
+	}
+	fr := &f.ctrl[fi]
+	f.convergeBranchLocals(fr)
+	d := f.depth()
+	f.flush()
+	refSlot := f.allocSpillSlot()
+	f.a.Store64(RSP, f.spillOff(refSlot), ref)
+	f.a.TestSelf(ref, true)
+	f.release(ref)
+	over := f.a.JccPlaceholder(condNE)
+	if fr.regMerge1 {
+		f.branchEdgeToMerge1(fr, d)
+	} else {
+		f.moveBranchValues(fr, d, fr.branchN)
+	}
+	f.branchJump(fr)
+	f.a.PatchRel32(over, f.a.Len())
+	fallthroughRef := f.allocReg(0)
+	f.a.Load64(fallthroughRef, RSP, f.spillOff(refSlot))
+	f.pushReg(fallthroughRef, mtI64)
+	return nil
+}
+
+func (f *fn) brOnNonNull(r *wasm.Reader) error {
+	ref := f.materialize(f.popValue())
+	f.pushReg(ref, mtI64)
+	idx, err := r.U32()
+	if err != nil {
+		return err
+	}
+	fi := len(f.ctrl) - 1 - int(idx)
+	if fi < 0 {
+		return errBadLabel
+	}
+	fr := &f.ctrl[fi]
+	f.convergeBranchLocals(fr)
+	allTypes := append([]machineType(nil), f.currentLogicalTypes()...)
+	d := len(allTypes)
+	refSlot := slotsOfTypes(allTypes) - 1
+	f.flush()
+	condition := f.allocReg(0)
+	f.a.Load64(condition, RSP, f.spillOff(refSlot))
+	f.a.TestSelf(condition, true)
+	f.release(condition)
+	over := f.a.JccPlaceholder(condE)
+	if fr.regMerge1 {
+		f.branchEdgeToMerge1(fr, d)
+	} else {
+		f.moveBranchValues(fr, d, fr.branchN)
+	}
+	f.branchJump(fr)
+	f.a.PatchRel32(over, f.a.Len())
+	return nil
+}
+
 func (f *fn) opBrTable(r *wasm.Reader) error {
 	if f.unreachable {
 		n, err := r.U32()

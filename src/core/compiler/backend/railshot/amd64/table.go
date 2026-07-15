@@ -420,6 +420,13 @@ func (f *fn) refEq() {
 	f.pushReg(left, mtI32)
 }
 
+func (f *fn) refAsNonNull() {
+	ref := f.materialize(f.popValue())
+	f.a.TestSelf(ref, true)
+	f.trapIf(condE, trapNullReference)
+	f.pushReg(ref, mtI64)
+}
+
 func (f *fn) snapshotFuncrefDescriptor(ref Reg, slot int) {
 	f.a.TestSelf(ref, true)
 	null := f.a.JccPlaceholder(condE)

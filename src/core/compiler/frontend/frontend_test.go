@@ -1342,6 +1342,26 @@ func TestTypedFunctionReferenceGateRoutesCallRef(t *testing.T) {
 	if err := RejectUnsupportedWithFeatures(recursive, feat); err != nil {
 		t.Fatalf("staged recursive function types: %v", err)
 	}
+
+	controls := &wasm.Module{
+		Types:     []wasm.RecType{{SubTypes: []wasm.SubType{{Final: true, Comp: wasm.CompType{Kind: wasm.CompFunc, Params: []wasm.ValType{wasm.FuncRef}}}}}},
+		FuncTypes: []wasm.TypeIdx{{Index: 0}},
+		Code: []wasm.Func{{BodyBytes: []byte{
+			0x20, 0x00, 0xd4, 0x1a,
+			0x02, 0x40, 0x20, 0x00, 0xd5, 0x00, 0x1a, 0x0b,
+			0x02, 0x40, 0x20, 0x00, 0xd6, 0x00, 0x1a, 0x0b,
+			0x0b,
+		}}},
+	}
+	if err := wasm.ValidateModule(controls); err != nil {
+		t.Fatalf("ValidateModule typed controls: %v", err)
+	}
+	if err := RejectUnsupportedWithFeatures(controls, AllFeatures()); err == nil || !strings.Contains(err.Error(), "typed-function-references disabled") {
+		t.Fatalf("default typed-control gate error = %v", err)
+	}
+	if err := RejectUnsupportedWithFeatures(controls, feat); err != nil {
+		t.Fatalf("staged typed-control support: %v", err)
+	}
 }
 
 func TestRejectUnsupportedProposalFeaturesDecodedByWasm3(t *testing.T) {

@@ -487,6 +487,33 @@ func (in *Instance) funcrefStoreForEgress() (*referenceStore, error) {
 	return in.referenceStoreForBoundary()
 }
 
+// FuncRefMatchesFunction reports whether ref has the canonical identity of the
+// function at index in this instance's Wasm function index space. It compares
+// descriptor identity rather than opaque public token bits, so imported aliases
+// and cross-instance references remain stable across store tokenization.
+func (in *Instance) FuncRefMatchesFunction(ref FuncRef, index uint32) bool {
+	if in == nil || ref.token == 0 {
+		return false
+	}
+	in.lifeMu.Lock()
+	defer in.lifeMu.Unlock()
+	if in.closed || in.resourcesClosed || in.refStore == nil || int(index) >= len(in.c.FuncTypeID) {
+		return false
+	}
+	descriptor, ok := in.refStore.resolve(ref.token)
+	if !ok || descriptor == 0 {
+		return false
+	}
+	actual := unsafe.Slice((*byte)(offHeapPtr(uintptr(descriptor))), coreruntime.TableEntryBytes)
+	identity := binary.LittleEndian.Uint64(actual[coreruntime.TableEntryRefSlotOffset:])
+	off := (int(index) + 1) * coreruntime.TableEntryBytes
+	if identity == 0 || off < coreruntime.TableEntryBytes || off+coreruntime.TableEntryBytes > len(in.funcRefDescs) {
+		return false
+	}
+	expected := binary.LittleEndian.Uint64(in.funcRefDescs[off+coreruntime.TableEntryRefSlotOffset:])
+	return expected != 0 && identity == expected
+}
+
 func (in *Instance) referenceStoreForBoundary() (*referenceStore, error) {
 	in.lifeMu.Lock()
 	defer in.lifeMu.Unlock()

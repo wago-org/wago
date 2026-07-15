@@ -27,7 +27,8 @@ const (
 	trapInterrupted     = 12
 	trapStackFence      = 13
 	trapTailUnsupported = 15
-	trapMax             = trapTailUnsupported
+	trapNullReference   = 16
+	trapMax             = trapNullReference
 )
 
 // Basedata fields at negative offsets from the linMem base (runtime/basedata.go).

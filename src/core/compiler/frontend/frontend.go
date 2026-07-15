@@ -1016,6 +1016,23 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 			return false, p.unsupported("reference instruction", name, ctx())
 		}
 		return false, nil
+	case 0xd4:
+		if !p.feat.ReferenceTypes || !p.feat.TypedFunctionReferences {
+			return false, p.unsupported("reference instruction", "ref.as_non_null (typed-function-references disabled)", ctx())
+		}
+		return false, nil
+	case 0xd5, 0xd6:
+		if _, err := r.U32(); err != nil {
+			return false, err
+		}
+		if !p.feat.ReferenceTypes || !p.feat.TypedFunctionReferences {
+			name := "br_on_null"
+			if op == 0xd6 {
+				name = "br_on_non_null"
+			}
+			return false, p.unsupported("reference instruction", name+" (typed-function-references disabled)", ctx())
+		}
+		return false, nil
 	case 0xfd:
 		var imm wasm.InstructionImmediate
 		err := wasm.ClassifyInstructionImmediateInto(r, op, &imm)
@@ -1407,6 +1424,11 @@ func (p supportPass) instructionKind(k wasm.InstrKind, context string) error {
 		wasm.InstrRefNull, wasm.InstrRefIsNull, wasm.InstrRefFunc, wasm.InstrRefEq:
 		if !p.feat.ReferenceTypes {
 			return p.unsupported("instruction", k.String()+" (reference-types disabled)", context)
+		}
+		return nil
+	case wasm.InstrRefAsNonNull, wasm.InstrBrOnNull, wasm.InstrBrOnNonNull:
+		if !p.feat.ReferenceTypes || !p.feat.TypedFunctionReferences {
+			return p.unsupported("instruction", k.String()+" (typed-function-references disabled)", context)
 		}
 		return nil
 	case wasm.InstrI32TruncSatF32S, wasm.InstrI32TruncSatF32U, wasm.InstrI32TruncSatF64S, wasm.InstrI32TruncSatF64U,
