@@ -67,6 +67,19 @@ func sigIsIntOnly(ft *wasm.CompType) bool {
 	return true
 }
 
+// sigFitsDirectCrossTailABI is the bounded direct InstanceExport tail surface.
+// The original shape is integer-only with up to two integer results. The first
+// mixed-bank extension admits exactly (i32, f64) -> f64; the fixed nested
+// record already has one result slot and restores it into XMM0. Other float
+// shapes remain gated until they receive their own exact ABI proof.
+func sigFitsDirectCrossTailABI(ft *wasm.CompType) bool {
+	if sigIsIntOnly(ft) {
+		return true
+	}
+	return len(ft.Params) == 2 && wasm.EqualValType(ft.Params[0], wasm.I32) && wasm.EqualValType(ft.Params[1], wasm.F64) &&
+		len(ft.Results) == 1 && wasm.EqualValType(ft.Results[0], wasm.F64)
+}
+
 // sigFitsRegABI reports whether a signature can use the register ABI: integer-
 // and float params are assigned to separate GP/XMM banks; one result returns in
 // RAX or XMM0, and the deliberately limited two-result form uses RAX/RDX for
@@ -231,7 +244,7 @@ func (f *fn) returnCall(r *wasm.Reader) error {
 	imported := f.m.ImportedFuncCount()
 	if int(idx) < imported {
 		if f.importBindings != nil && int(idx) < len(f.importBindings) && f.importBindings[idx].CrossInstance {
-			if !sigFitsRegABI(f.ft) || !sigFitsRegABI(ft) || !sigIsIntOnly(ft) {
+			if !sigFitsRegABI(f.ft) || !sigFitsRegABI(ft) || !sigFitsDirectCrossTailABI(ft) {
 				return fmt.Errorf("return_call: imported target %d requires unsupported cross-instance tail ABI", idx)
 			}
 			f.stats.call("tail-direct-cross")
@@ -289,7 +302,8 @@ func (f *fn) emitTailWrapperJump(ft *wasm.CompType, target int) {
 // The link-time binding supplies immutable wrapper/home addresses. Root adapters
 // discard their own continuation; nested register-ABI callers receive a fixed
 // four-word return record whose local trampoline restores the caller context and
-// up to two integer results. No frame or record accumulates with repeated tails.
+// either up to two integer results or one float result. No frame or record
+// accumulates with repeated tails.
 func (f *fn) emitTailCrossDirectJump(ft *wasm.CompType, b ImportBinding) {
 	p := len(ft.Params)
 	roots := f.rootsBottomToTop()
@@ -355,7 +369,11 @@ func (f *fn) emitTailCrossDirectJump(ft *wasm.CompType, b ImportBinding) {
 	}
 	f.deriveModuleGlobals()
 	if len(ft.Results) > 0 {
-		f.a.Load64(RAX, RSP, 8)
+		if isFloatValType(ft.Results[0]) {
+			f.a.FLoadDisp(0, RSP, 8, wasm.EqualValType(ft.Results[0], wasm.F64))
+		} else {
+			f.a.Load64(RAX, RSP, 8)
+		}
 	}
 	if len(ft.Results) > 1 {
 		f.a.Load64(RDX, RSP, 16)
