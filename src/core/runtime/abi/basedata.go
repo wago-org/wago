@@ -61,10 +61,13 @@ const (
 	// FuncRefInternalHomeTag marks a descriptor whose code pointer is an internal
 	// register-ABI entry in the same instance. FuncRefCrossInstanceHomeTag marks a
 	// retained InstanceExport wrapper descriptor admitted by the bounded root or
-	// nested-tail context transfer. The low 62 bits remain the canonical home linear-memory
-	// pointer on supported linux/amd64 hosts.
+	// nested-tail context transfer. FuncRefLocalWrapperHomeTag distinguishes a
+	// same-instance wrapper descriptor from a host thunk that shares the caller's
+	// basedata. The low 61 bits remain the canonical home linear-memory pointer on
+	// supported linux/amd64 hosts.
 	FuncRefInternalHomeTag      uint64 = 1 << 63
 	FuncRefCrossInstanceHomeTag uint64 = 1 << 62
+	FuncRefLocalWrapperHomeTag  uint64 = 1 << 61
 
 	// BasedataSize keeps the linear-memory base 16-byte aligned after the wago
 	// extension fields and the bounded wrapper-tail argument bank.

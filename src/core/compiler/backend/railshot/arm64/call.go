@@ -51,7 +51,10 @@ type callReloc struct {
 var intArgRegs = []Reg{X0, X1, X2, X3, X4, X5, X6, X7}
 var fpArgRegs = []Reg{0, 1, 2, 3, 4, 5, 6, 7} // V0..V7; single float result returns in V0.
 
-const internalEntryHomeTag uint64 = 1 << 63
+const (
+	internalEntryHomeTag uint64 = 1 << 63
+	descriptorHomeTags   uint64 = 7 << 61
+)
 
 func isIntValType(t wasm.ValType) bool {
 	return wasm.EqualValType(t, wasm.I32) || wasm.EqualValType(t, wasm.I64)
@@ -1161,7 +1164,7 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 		f.st64(linMemReg, -int32(offSpillRegion), code)
 		f.pinned = f.pinned.remove(code)
 		f.release(code)
-		f.a.AndImm64(home, home, ^internalEntryHomeTag)
+		f.a.AndImm64(home, home, ^descriptorHomeTags)
 		f.emitIndirectCallHomeAware(ft, home, targetContext)
 		f.a.PatchBranch26(done, f.a.Len())
 		return nil
@@ -1170,6 +1173,7 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 	// Stash the code ptr in linMem scratch so it survives the call staging.
 	f.st64(linMemReg, -int32(offSpillRegion), code)
 	f.release(code)
+	f.a.AndImm64(home, home, ^descriptorHomeTags)
 
 	f.emitIndirectCallHomeAware(ft, home, targetContext)
 	return nil

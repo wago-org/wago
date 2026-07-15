@@ -12,13 +12,17 @@ import (
 	"github.com/wago-org/wago/testutil/wasmtest"
 )
 
-func stagedTypedTailCompile(t testing.TB, module []byte) *Compiled {
-	t.Helper()
+func compileStagedTypedTail(module []byte) (*Compiled, error) {
 	cfg := NewRuntimeConfig()
 	features := cfg.frontendFeatures()
 	features.TypedFunctionReferences = true
 	features.TypedTailCalls = true
-	compiled, err := compileWithFrontendFeatures(cfg, module, features)
+	return compileWithFrontendFeatures(cfg, module, features)
+}
+
+func stagedTypedTailCompile(t testing.TB, module []byte) *Compiled {
+	t.Helper()
+	compiled, err := compileStagedTypedTail(module)
 	if err != nil {
 		t.Fatalf("staged typed-tail compile: %v", err)
 	}
@@ -59,17 +63,27 @@ func typedCrossTailConsumerModule() []byte {
 			wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}),
 		)),
 		wasmtest.Section(2, wasmtest.Vec(importEntry)),
-		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1), wasmtest.ULEB(1), wasmtest.ULEB(1))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1), wasmtest.ULEB(1), wasmtest.ULEB(1), wasmtest.ULEB(1))),
 		wasmtest.Section(7, wasmtest.Vec(
 			wasmtest.ExportEntry("run", 0, 1),
 			wasmtest.ExportEntry("nested", 0, 2),
 			wasmtest.ExportEntry("null", 0, 3),
+			wasmtest.ExportEntry("repeat", 0, 4),
 		)),
 		wasmtest.Section(9, wasmtest.Vec(declared)),
 		wasmtest.Section(10, wasmtest.Vec(
 			wasmtest.Code([]byte{0x20, 0x00, 0xd2, 0x00, 0x15, 0x01, 0x0b}),
 			wasmtest.Code([]byte{0x20, 0x00, 0x10, 0x01, 0x41, 0x05, 0x6a, 0x0b}),
 			wasmtest.Code([]byte{0x20, 0x00, 0xd0, 0x01, 0x15, 0x01, 0x0b}),
+			wasmtest.Code([]byte{
+				0x02, 0x40, // block
+				0x03, 0x40, // loop
+				0x20, 0x00, 0x45, 0x0d, 0x01, // break when n == 0
+				0x41, 0x00, 0x10, 0x01, 0x1a, // cross-tail through run, then drop 7
+				0x20, 0x00, 0x41, 0x01, 0x6b, 0x21, 0x00, // n--
+				0x0c, 0x00, 0x0b, 0x0b, // continue; end loop/block
+				0x41, 0x07, 0x0b,
+			}),
 		)),
 	)
 }
@@ -93,6 +107,36 @@ func instantiateTypedCrossTail(t testing.TB) (*Instance, *Instance) {
 		t.Fatalf("instantiate typed-tail consumer: %v", err)
 	}
 	return producer, consumer
+}
+
+func typedCrossTailPairProducerModule() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32, wasm.I64}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("pair", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x41, 0x07, 0x42, 0x09, 0x0b}))),
+	)
+}
+
+func typedCrossTailPairConsumerModule() []byte {
+	imp := append(wasmtest.Name("env"), wasmtest.Name("pair")...)
+	imp = append(imp, byte(wasm.ExternFunc))
+	imp = append(imp, wasmtest.ULEB(0)...)
+	declared := append([]byte{0x03, 0x00}, wasmtest.Vec(wasmtest.ULEB(0))...)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32, wasm.I64}))),
+		wasmtest.Section(2, wasmtest.Vec(imp)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("run", 0, 1),
+			wasmtest.ExportEntry("nested", 0, 2),
+		)),
+		wasmtest.Section(9, wasmtest.Vec(declared)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x20, 0x00, 0xd2, 0x00, 0x15, 0x00, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0x00, 0x10, 0x01, 0x42, 0x05, 0x7c, 0x0b}),
+		)),
+	)
 }
 
 func TestStagedTypedCrossInstanceReturnCallRefRootTransfer(t *testing.T) {
@@ -119,6 +163,9 @@ func TestStagedTypedCrossInstanceReturnCallRefRootTransfer(t *testing.T) {
 
 	if _, err := consumer.Invoke("nested", I32(1)); err == nil || !strings.Contains(err.Error(), "unsupported context switch") {
 		t.Fatalf("nested cross-tail context error = %v", err)
+	}
+	if _, err := consumer.Invoke("repeat", I32(1)); err == nil || !strings.Contains(err.Error(), "unsupported context switch") {
+		t.Fatalf("repeated cross-tail context error = %v", err)
 	}
 	if _, err := consumer.Invoke("null", I32(1)); err == nil || !strings.Contains(err.Error(), "indirect call out of bounds") {
 		t.Fatalf("null cross-tail error = %v", err)
@@ -168,5 +215,36 @@ func TestStagedTypedCrossInstanceReturnCallRefRootTransfer(t *testing.T) {
 	producer.lifeMu.Unlock()
 	if !producerReleased {
 		t.Fatal("producer resources remained retained after cross-tail consumer close")
+	}
+}
+
+func TestStagedTypedCrossInstanceReturnCallRefTwoResults(t *testing.T) {
+	producerCompiled := stagedTypedTailCompile(t, typedCrossTailPairProducerModule())
+	producer, err := instantiateCore(producerCompiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatalf("instantiate pair producer: %v", err)
+	}
+	export, err := producer.ExportedFunc("pair")
+	if err != nil {
+		producer.Close()
+		t.Fatal(err)
+	}
+	consumerCompiled := stagedTypedTailCompile(t, typedCrossTailPairConsumerModule())
+	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{"env.pair": export}})
+	if err != nil {
+		producer.Close()
+		t.Fatalf("instantiate pair consumer: %v", err)
+	}
+	defer consumer.Close()
+	defer producer.Close()
+
+	if _, err := consumer.Invoke("nested", I32(1)); err == nil || !strings.Contains(err.Error(), "unsupported context switch") {
+		t.Fatalf("nested pair cross-tail context error = %v", err)
+	}
+	if err := producer.Close(); err != nil {
+		t.Fatalf("logical producer close: %v", err)
+	}
+	if _, err := consumer.Invoke("run", I32(0)); err == nil || !strings.Contains(err.Error(), "unsupported context switch") {
+		t.Fatalf("pair cross-tail after producer close error = %v", err)
 	}
 }

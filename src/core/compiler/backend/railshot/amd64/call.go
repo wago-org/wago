@@ -1250,8 +1250,8 @@ func (f *fn) callRef(r *wasm.Reader) error {
 		f.a.Store64(RBX, -int32(offSpillRegion), code)
 		f.pinned = f.pinned.remove(code)
 		f.release(code)
-		f.a.ShiftImm(4, home, 2, true)
-		f.a.ShiftImm(5, home, 2, true)
+		f.a.ShiftImm(4, home, 3, true)
+		f.a.ShiftImm(5, home, 3, true)
 		f.emitIndirectCallHomeAware(ft, home, targetContext)
 		f.a.PatchRel32(done, f.a.Len())
 		return nil
@@ -1259,6 +1259,8 @@ func (f *fn) callRef(r *wasm.Reader) error {
 
 	f.a.Store64(RBX, -int32(offSpillRegion), code)
 	f.release(code)
+	f.a.ShiftImm(4, home, 3, true)
+	f.a.ShiftImm(5, home, 3, true)
 	f.emitIndirectCallHomeAware(ft, home, targetContext)
 	return nil
 }
@@ -1282,7 +1284,7 @@ func (f *fn) returnCallRef(r *wasm.Reader) error {
 	if !sameValTypes(f.ft.Results, ft.Results) {
 		return fmt.Errorf("return_call_ref: type %d result shape differs from caller", typeIdx)
 	}
-	if !sigFitsRegABI(f.ft) || !sigFitsRegABI(ft) || !sigIsIntOnly(ft) {
+	if !sigFitsRegABI(f.ft) || !sigFitsRegABI(ft) {
 		return fmt.Errorf("return_call_ref: caller or type %d requires unsupported reference tail ABI", typeIdx)
 	}
 	f.stats.call("tail-ref")
@@ -1325,6 +1327,10 @@ func (f *fn) returnCallRef(r *wasm.Reader) error {
 		types[i] = rootMachineType(root)
 	}
 	savedLocals := append([]localDef(nil), f.locals...)
+	// Both descriptor branches need the same canonical argument image. Flush once
+	// before the runtime tag fork so a wrapper branch never inherits slot-only
+	// compiler state from code that the machine skipped in the internal branch.
+	f.flush()
 
 	// Bit 63 marks the existing same-instance internal-entry descriptor.
 	f.a.Load64(RAX, RBX, -int32(abi.TailCrossHomeOffset))
@@ -1332,8 +1338,8 @@ func (f *fn) returnCallRef(r *wasm.Reader) error {
 	f.a.ShiftImm(5, RDX, 63, true)
 	f.a.TestSelf(RDX, true)
 	cross := f.a.JccPlaceholder(condE)
-	f.a.ShiftImm(4, RAX, 2, true)
-	f.a.ShiftImm(5, RAX, 2, true)
+	f.a.ShiftImm(4, RAX, 3, true)
+	f.a.ShiftImm(5, RAX, 3, true)
 	f.a.Cmp64(RAX, RBX)
 	f.trapIf(condNE, trapTailUnsupported)
 	f.emitTailRegisterJump(ft, func() {
@@ -1341,14 +1347,24 @@ func (f *fn) returnCallRef(r *wasm.Reader) error {
 		f.a.JmpReg(RSI)
 	})
 
-	// Cross-instance wrapper tail transfer is intentionally fail-closed. The
-	// process-wide native execution lease now rebinds per-instance pointer context
-	// at every entry; bypassing that entry/return boundary would leave ownership
-	// restoration and the foreign-stack return protocol unauditable.
+	// Cross-instance wrapper tail transfer remains fail-closed under the process-
+	// wide native execution lease. A tagged same-instance wrapper (for example a
+	// ref.func stored in an exact typed global) may use the bounded wrapper transfer
+	// without crossing an ownership or context-restoration boundary.
 	f.a.PatchRel32(cross, f.a.Len())
 	f.locals = savedLocals
 	f.setDepthTypes(types)
-	f.trapAlways(trapTailUnsupported)
+	f.a.Load64(RAX, RBX, -int32(abi.TailCrossHomeOffset))
+	f.a.MovReg64(RDX, RAX)
+	f.a.ShiftImm(5, RDX, 61, true)
+	f.a.TestSelf(RDX, true)
+	f.trapIf(condE, trapTailUnsupported)
+	f.a.ShiftImm(4, RAX, 3, true)
+	f.a.ShiftImm(5, RAX, 3, true)
+	f.a.Cmp64(RAX, RBX)
+	f.trapIf(condNE, trapTailUnsupported)
+	f.emitTailCrossWrapperJump(ft)
+
 	f.unreachable = true
 	return nil
 }
@@ -1372,8 +1388,8 @@ func (f *fn) emitTailCrossWrapperJump(ft *wasm.CompType) {
 	f.storeModuleGlobals(RDX)
 
 	f.a.Load64(R11, RBX, -int32(abi.TailCrossHomeOffset))
-	f.a.ShiftImm(4, R11, 2, true)
-	f.a.ShiftImm(5, R11, 2, true)
+	f.a.ShiftImm(4, R11, 3, true)
+	f.a.ShiftImm(5, R11, 3, true)
 	f.a.MovReg64(RDI, R11)
 	f.a.LeaDisp(RDI, RDI, -int32(abi.TailArgsOffset))
 	argBase := len(types) - p
@@ -1437,7 +1453,12 @@ func (f *fn) emitTailCrossWrapperJump(ft *wasm.CompType) {
 	}
 	f.deriveModuleGlobals()
 	if len(ft.Results) > 0 {
-		f.a.Load64(RAX, RSP, 8)
+		if mtOf(ft.Results[0]).isFloat() {
+			f.a.Load64(RAX, RSP, 8)
+			f.a.MovGprToXmm(0, RAX, true)
+		} else {
+			f.a.Load64(RAX, RSP, 8)
+		}
 	}
 	if len(ft.Results) > 1 {
 		f.a.Load64(RDX, RSP, 16)
@@ -1648,10 +1669,10 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 		f.a.Store64(RBX, -int32(offSpillRegion), code)
 		f.pinned = f.pinned.remove(code)
 		f.release(code)
-		// Clear the two descriptor context tags while retaining the canonical
+		// Clear the three descriptor context tags while retaining the canonical
 		// pointer without spending an immediate-mask register.
-		f.a.ShiftImm(4, home, 2, true)
-		f.a.ShiftImm(5, home, 2, true)
+		f.a.ShiftImm(4, home, 3, true)
+		f.a.ShiftImm(5, home, 3, true)
 		f.emitIndirectCallHomeAware(ft, home, targetContext)
 		f.a.PatchRel32(done, f.a.Len())
 		return nil
@@ -1660,6 +1681,8 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 	// Stash the code ptr in linMem scratch so it survives the call staging.
 	f.a.Store64(RBX, -int32(offSpillRegion), code)
 	f.release(code)
+	f.a.ShiftImm(4, home, 3, true)
+	f.a.ShiftImm(5, home, 3, true)
 
 	f.emitIndirectCallHomeAware(ft, home, targetContext)
 	return nil

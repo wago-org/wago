@@ -9,6 +9,7 @@ import (
 	"unsafe"
 
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
+	"github.com/wago-org/wago/src/core/runtime/abi"
 )
 
 // referenceStore owns public reference tokens. Runtime-created instances share
@@ -398,9 +399,11 @@ func (s *referenceStore) canonicalFuncrefOwnerLocked(source *Instance, descripto
 			}
 			entry := source.funcRefDescs[off : off+coreruntime.FuncRefDescBytes]
 			expectedCode := uint64(ex.inst.base) + uint64(ex.inst.c.Entry[ex.localIdx])
+			home := binary.LittleEndian.Uint64(entry[coreruntime.TableEntryHomeLinMemOffset:])
+			home &^= abi.FuncRefInternalHomeTag | abi.FuncRefCrossInstanceHomeTag | abi.FuncRefLocalWrapperHomeTag
 			if binary.LittleEndian.Uint64(entry[coreruntime.TableEntryCodePtrOffset:]) != expectedCode ||
-				binary.LittleEndian.Uint64(entry[coreruntime.TableEntryHomeLinMemOffset:]) != uint64(ex.inst.jm.LinMemBase()) ||
-				binary.LittleEndian.Uint64(entry[coreruntime.TableEntrySigKeyOffset:]) != source.c.FuncTypeID[fidx] ||
+				home != uint64(ex.inst.jm.LinMemBase()) ||
+				binary.LittleEndian.Uint64(entry[coreruntime.TableEntrySigKeyOffset:]) != source.c.funcTypeKey(fidx) ||
 				binary.LittleEndian.Uint64(entry[coreruntime.FuncRefContextOffset:]) != uint64(ex.inst.nativeContext) {
 				return nil, 0, false
 			}
@@ -430,8 +433,10 @@ func (s *referenceStore) canonicalFuncrefOwnerLocked(source *Instance, descripto
 			return nil, 0, false
 		}
 		entry := source.funcRefDescs[off : off+coreruntime.TableEntryBytes]
+		home := binary.LittleEndian.Uint64(entry[coreruntime.TableEntryHomeLinMemOffset:])
+		home &^= abi.FuncRefInternalHomeTag | abi.FuncRefCrossInstanceHomeTag | abi.FuncRefLocalWrapperHomeTag
 		if binary.LittleEndian.Uint64(entry[coreruntime.TableEntryCodePtrOffset:]) == 0 ||
-			binary.LittleEndian.Uint64(entry[coreruntime.TableEntryHomeLinMemOffset:]) != uint64(source.jm.LinMemBase()) ||
+			home != uint64(source.jm.LinMemBase()) ||
 			binary.LittleEndian.Uint64(entry[coreruntime.TableEntrySigKeyOffset:]) != source.c.funcTypeKey(fidx) {
 			return nil, 0, false
 		}

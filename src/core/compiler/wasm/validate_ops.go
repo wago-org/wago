@@ -166,7 +166,7 @@ func (v *funcValidator) step(in *Instruction) error {
 			return err
 		}
 		if in.Kind == InstrReturnCall {
-			if !v.sameValTypes(ft.Results, v.ctrls[0].out) {
+			if !v.matchValTypes(ft.Results, v.ctrls[0].out) {
 				return v.verr(ErrTypeMismatch, "return_call")
 			}
 			v.unreachable()
@@ -196,7 +196,7 @@ func (v *funcValidator) step(in *Instruction) error {
 			return err
 		}
 		if in.Kind == InstrReturnCallIndirect {
-			if !v.sameValTypes(ft.Results, v.ctrls[0].out) {
+			if !v.matchValTypes(ft.Results, v.ctrls[0].out) {
 				return v.verr(ErrTypeMismatch, "return_call_indirect")
 			}
 			v.unreachable()
@@ -546,6 +546,21 @@ func isConstInstruction(k InstrKind) bool {
 }
 func isImplicitSelectType(t ValType) bool {
 	return t.Kind == ValNum || t.Kind == ValVec
+}
+
+// matchValTypes reports whether actual values may flow to expected result
+// positions. Tail calls use this covariant relation: a non-null/indexed reference
+// result may satisfy a nullable/abstract caller result without requiring equality.
+func (v *funcValidator) matchValTypes(actual, expected []ValType) bool {
+	if len(actual) != len(expected) {
+		return false
+	}
+	for i := range actual {
+		if !v.subtype(actual[i], expected[i]) {
+			return false
+		}
+	}
+	return true
 }
 
 func (v *funcValidator) sameValTypes(a, b []ValType) bool {
