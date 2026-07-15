@@ -4,11 +4,11 @@
 > current branch. Consult `ARCHITECTURE.md`, `FEATURES.md`, and `ROADMAP.md` for
 > current repository state.
 
-Status date: 2026-07-10
-Branch: `jairus/arm64-runtime-perf`
-Commit: `9ac253b` (`docs: refresh arm64 acceptance status`)
-Upstream: local branch is 14 commits ahead of `origin/jairus/simd-perf` before publication under its new name.
-Scope: the primary repository only. Submodule contents and submodule working-tree state are excluded.
+Status date: 2026-07-15
+Branch: `wasm3`
+Code head before this report: `92b28c12` (`amd64: tail-enter local wrapper contexts`)
+Base lineage: originally `origin/main` at `2aac98e5`; completed WebAssembly 3.0 iteration commits are retained.
+Scope: the primary repository plus the independently pinned Release 3 submodule inventory.
 
 ## Executive summary
 
@@ -20,7 +20,8 @@ The repository is at a strong semantic milestone:
 - WebAssembly 2.0 runtime/product support is recorded as complete on the supported target, including reference types, multiple tables, bulk memory, multi-value, SIMD, reference-safe host APIs, compiled-artifact metadata, inspection, and snapshot restrictions.
 - The official Release 2 execution corpus is reported green at 1,600 modules and 48,248 assertions with zero gaps.
 - The core project remains dependency-light: the root module is standard-library-only at runtime.
-- Near-term work has shifted from semantic completion toward measurement-driven railshot optimization, interruption, stack traces, artifact productization, and additional targets.
+- WebAssembly 3.0 is an active bounded-recursion track. The pinned 258-file suite is at 144 green/114 red files, 1,691 passing/535 skipped modules, and 51,765 passing/5 failing/6,268 skipped assertions.
+- Near-term work combines mandatory WebAssembly 3.0 completion with measurement-driven railshot optimization, interruption, stack traces, artifact productization, and additional targets.
 
 The most important qualification is platform scope. Linux/amd64 remains the mature baseline, while this branch adds native Linux/arm64 and Darwin/arm64 execution, guard-page support, runtime/API coverage, corpus gates, reference globals, indexed tables, optimized calls, and cooperative cancellation. Some legacy amd64-only test tags still need to be made architecture-neutral before `go test ./...` is a universal ARM64 gate.
 
@@ -90,10 +91,13 @@ Important architectural properties:
 
 ### Partial
 
+- WebAssembly 3.0 tail calls: amd64 local register/wrapper direct, private-table indirect, and same-instance typed-reference milestones; public admission remains disabled.
+- Typed function references: exact structural metadata/storage matching, `call_ref`, null-control lowering, and harness identity are staged internally; lifecycle/host/snapshot and arm64 completion remain.
+- Multi-memory, memory64/table64, exception handling, and WasmGC have decode/validation or runtime foundations but are not executable product claims.
 
 ### Planned
 
-- Tail calls.
+- Complete every mandatory WebAssembly Core 3.0 family and reach zero unexplained Release 3 failures/skips.
 - Threads and atomics.
 - Cooperative cancellation is implemented on ARM64 at function entries and loop headers; amd64 polling remains planned.
 - Wasm-level stack traces.
@@ -103,9 +107,6 @@ Important architectural properties:
 
 ### Explicit non-goals
 
-- Multi-memory.
-- Wasm exception handling.
-- Wasm GC.
 - An interpreter tier.
 - A separate SSA/IR execution tier.
 

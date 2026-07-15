@@ -95,7 +95,7 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
 - [x] Bootstrap checksum-pinned WABT 1.0.41, then pin the official
   WebAssembly/spec 3.0.0 interpreter at the suite revision for the 28 files WABT
   cannot parse. The schema-2 258-file inventory now has zero parser failures,
-  143 green/115 red files, 535 skipped modules, 6 failed and 6,268 skipped
+  144 green/114 red files, 535 skipped modules, 5 failed and 6,268 skipped
   assertions; tool/parser failures remain hard.
 - [x] Honor official Release 3 relaxed-SIMD `either` result patterns: all 8
   converted modules and 69 assertions pass with zero failures/skips.
@@ -105,9 +105,12 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   checks. `ref.func` now preserves its indexed type, recursive structural type
   equivalence validates, and a staged frontend gate routes indexed signatures to
   `call_ref`. Public structural type descriptors, exact signature/global/table/
-  element inspection, and codec-v22 persistence are now present; typed storage
-  execution/import compatibility, remaining reference instructions, general tail
-  context switching, public admission, and arm64 remain gated.
+  element inspection, and codec-v22 persistence are now present. Staged runtime
+  storage/import matching uses cross-module structural subtype/equivalence;
+  amd64 executes `ref.as_non_null` and both null branches; local wrapper direct
+  tails use a fixed 16-slot bank; and the reached `select` funcref assertion is
+  green. Public admission, imported/cross-instance tail contexts, remaining typed
+  lifecycle/host paths, and arm64 remain gated.
 - [ ] Multi-memory, memory64/table64, exception handling, and GC end to end.
 - [ ] Reach zero unexplained failures/skips in the official Release 3 core suite.
 
@@ -171,19 +174,22 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
 - [x] SIMD (`v128`) — complete for the documented linux/amd64 SSSE3/SSE4.1 + AVX/VEX.128 baseline: every decoded core SIMD opcode and deterministic relaxed SIMD opcode through 0xfd 275 is frontend-admitted, validator-admitted, and lowered by railshot; reserved proposal-table holes are invalid-decode tests. Public `[16]byte` (`wago.V128`) plumbing covers locals, params/results, control flow, globals, cross-instance imports, and host imports/results. The official SIMD proposal corpus passes via WABT `wast2json` (24,325 assertions, 0 skipped modules/assertions). Keep AVX2/FMA/VNNI optimizations behind future CPU gates. Current metrics: [`docs/simd-performance-2026-07.md`](docs/simd-performance-2026-07.md).
 - [ ] Threads & atomics
 - 🚧 Tail calls (`return_call` / `return_call_indirect` / `return_call_ref`):
-  decoder/validator foundation plus amd64 local direct, private immutable-table
-  mixed indirect, and same-instance local typed-reference frame-reuse milestones
-  exist. Public frontend admission, wrapper/import/general-table context switching,
-  and arm64 execution remain.
+  decoder/validator foundation plus amd64 local register- and wrapper-ABI direct,
+  private-immutable-table mixed indirect, and same-instance local typed-reference
+  frame-reuse milestones exist. Wrapper direct recursion uses a fixed 16-slot
+  basedata bank. Public frontend admission, imported/cross-instance/general-table
+  context switching, oversized wrapper signatures, and arm64 execution remain.
 - [x] Basic extended constant expressions: integer add/sub/mul, prior immutable
   globals, active offsets, strict validation, and codec-v22 persistence.
 - 🚧 Typed function references: typed `ref.func`, recursive structural equivalence,
   and staged indexed-signature frontend admission now reach amd64 descriptor
   `call_ref` with null/signature checks and wrapper/context-aware non-tail calls.
-  Public structural descriptors and codec-v22 exact metadata now cover signatures,
+  Public structural descriptors and codec-v22 exact metadata cover signatures,
   globals, tables, elements, imports/exports, and inspection without enabling the
-  feature. Typed storage execution, remaining reference instructions, lifecycle/
-  host boundaries, harness identity, and public admission remain gated. Multi-memory,
+  feature. Staged exact storage/import compatibility, `ref.as_non_null`, both null
+  branches, and non-null harness result matching are now proven. Remaining typed
+  instructions, lifecycle/host boundaries, snapshots, public admission, and arm64
+  remain gated. Multi-memory,
   memory64/table64, exception handling, and WasmGC remain active Core 3.0 scope;
   see `docs/wasm3.md` for exact boundaries.
 - [x] Reference-types product completion: signatures, locals, control,

@@ -11,6 +11,7 @@ support is completed.
 |---|---|---|---|
 | WebAssembly 1.0 baseline | `WebAssembly/testsuite` at `a8bcbafe6d2fb191ce0188de0e18fdc107fa2598` | `tests/spec` | checkout root |
 | WebAssembly 2.0 | `WebAssembly/spec` tag `v2.0.0`, commit `05ca4182176763112561ae20153975c12bd689e4` | `tests/spec-v2` | `test/core` |
+| WebAssembly 3.0 | `WebAssembly/spec` tag `wg-3.0`, commit `9d36019973201a19f9c9ebb0f10828b2fe2374aa` | `tests/spec-v3` | `test/core` |
 
 The Release 2 source is the specification repository because that tagged tree
 contains the official release's complete core tests, including the nested
@@ -23,6 +24,7 @@ Initialize only the suite needed for a focused run:
 ```sh
 git submodule update --init tests/spec       # WebAssembly 1.0
 git submodule update --init tests/spec-v2    # WebAssembly 2.0
+git submodule update --init tests/spec-v3    # WebAssembly 3.0
 ```
 
 ## Commands
@@ -32,6 +34,7 @@ Install WABT so `wast2json` is on `PATH`, then run:
 ```sh
 make spec1
 make spec2
+make spec3
 make simd
 ```
 
@@ -42,6 +45,17 @@ informational CI card. `make simd` is the required native execution gate for the
 focused official SIMD proposal corpus on each supported runtime target; broader
 spec-suite gaps remain visible in the card without failing the aggregate CI
 check.
+
+`make spec3` verifies checksum-pinned WABT 1.0.41 and the official 3.0.0
+reference interpreter built from the exact Release 3 pin. WABT remains primary;
+28 unsupported text files fall back to the strict binary-script converter. The
+current schema-2 inventory processes all 258 files with zero parser failures:
+144 green/114 red, modules pass=1,691/skip=535, assertions
+pass=51,765/fail=5/skip=6,268. The five reached failures are two in `linking`, one
+in `multi-memory/linking0`, and two in `multi-memory/linking3`; the former
+`select` funcref wildcard failure is green. Refresh the machine-readable red
+inventory with `scripts/spec3-baseline.sh`; the command remains nonzero until the
+zero-gap completion gate is met.
 
 The validation harness uses the same release discovery and can be run directly:
 

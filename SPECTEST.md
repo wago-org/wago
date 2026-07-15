@@ -12,14 +12,17 @@
   official core `.wast` files. WABT 1.0.41 remains the primary converter; the
   official WebAssembly/spec 3.0.0 reference interpreter from the same exact pin
   converts the 28 text files WABT cannot parse. Parser/tool failures remain hard.
-  The current red inventory has zero parser failures, 143 green and 115 red files,
-  modules pass=1,691/skip=535, and assertions pass=51,764/fail=6/skip=6,268.
+  The current red inventory has zero parser failures, 144 green and 114 red files,
+  modules pass=1,691/skip=535, and assertions pass=51,765/fail=5/skip=6,268.
   All 69 Release 3 relaxed-SIMD assertions pass after honoring official `either`
   result patterns. Iteration 5 moved `ref.func` and recursive type-equivalence
   failures from validator mismatches to explicit typed-reference frontend gates.
   Iteration 6 added structural public/codec metadata for indexed signatures,
-  globals, tables, and elements, but public execution remains disabled; therefore
-  the schema-2 totals are intentionally unchanged and reproduce byte-for-byte.
+  globals, tables, and elements. Iteration 7 enforces exact staged storage/import
+  matching, lowers the null-control instructions internally, and fixes WABT's
+  value-`"0"` non-null funcref wildcard interpretation; `select` is now fully green.
+  Public typed-reference and tail-call execution remain disabled, so module/skip
+  totals are unchanged while one reached assertion moved from failed to passed.
   The machine-readable schema-2 inventory is `tests/spec-v3-baseline.json`; see
   `docs/wasm3.md` for family grouping and caveats.
 

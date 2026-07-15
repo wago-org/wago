@@ -5,8 +5,8 @@
     "by_family": {
       "core-and-cross-cutting": {
         "assertions": {
-          "failed": 3,
-          "passed": 1790,
+          "failed": 2,
+          "passed": 1667,
           "skipped": 1598
         },
         "gaps": {
@@ -20,11 +20,11 @@
         },
         "modules": {
           "failed": 0,
-          "passed": 250,
+          "passed": 247,
           "skipped": 86
         },
         "parser_failures": 0,
-        "red_files": 15
+        "red_files": 14
       },
       "exception-handling": {
         "assertions": {
@@ -2813,30 +2813,6 @@
       },
       {
         "assertions": {
-          "failed": 1,
-          "passed": 123,
-          "skipped": 0
-        },
-        "family": "core-and-cross-cutting",
-        "file": "select",
-        "gaps": {
-          "absent-export": 0,
-          "compile-rejected": 0,
-          "instantiate-rejected": 0,
-          "module-unavailable": 0,
-          "reference-argument": 0,
-          "reference-global": 0,
-          "reference-result": 0
-        },
-        "modules": {
-          "failed": 0,
-          "passed": 3,
-          "skipped": 0
-        },
-        "status": "runtime-gap"
-      },
-      {
-        "assertions": {
           "failed": 0,
           "passed": 0,
           "skipped": 0
@@ -2980,10 +2956,10 @@
         "status": "runtime-gap"
       }
     ],
-    "green_files": 143,
+    "green_files": 144,
     "interpreter_fallbacks": 28,
     "parser_failures": 0,
-    "red_files": 115
+    "red_files": 114
   },
   "result": "fail",
   "schema": 2,
@@ -3009,8 +2985,8 @@
   },
   "totals_excluding_parser_failures": {
     "assertions": {
-      "failed": 6,
-      "passed": 51764,
+      "failed": 5,
+      "passed": 51765,
       "skipped": 6268
     },
     "gaps": {

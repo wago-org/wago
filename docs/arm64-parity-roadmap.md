@@ -149,6 +149,14 @@ Complete indexed table lowering for every admitted table index and reference ele
 
 Retain the internal-entry fast path only when immutability, locality, signature, and ownership are proven. All other cases must use the safe wrapper/context-switch path.
 
+Iteration 7 adds amd64-only `ref.as_non_null`, `br_on_null`, and
+`br_on_non_null` lowering plus a local wrapper-tail bank. ARM64 must not inherit
+those feature claims merely because the shared validator or exact storage model
+accepts them. The canonical basedata layout is now 256 bytes on both targets,
+with `[linMem-256, linMem-128)` reserved as a 16-slot wrapper-tail argument bank;
+ARM64 offset tests must retain this layout even while tail execution remains
+explicitly unsupported.
+
 ### Owned host funcrefs
 
 Finish and prove the ARM64 active-caller control-frame thunk for explicitly owned host funcrefs. Cover same-store cross-instance invocation, returning results, traps, owner teardown, descriptor retention, and rejection across stores.
