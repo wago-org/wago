@@ -70,6 +70,47 @@ func sameMemoryNativeTenantModule(importModule string, privatePages byte) []byte
 	)
 }
 
+func sameMemoryNativeTableTenantModule(importModule string, privatePages byte) []byte {
+	tableImport := append(wasmtest.Name("env"), wasmtest.Name("table")...)
+	tableImport = append(tableImport, byte(wasm.ExternTable), 0x70, 0x01, 0x01, 0x01)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}),
+			wasmtest.FuncType(nil, nil),
+			wasmtest.FuncType([]wasm.ValType{wasm.I32}, nil),
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(2, wasmtest.Vec(
+			sameMemoryNativeFuncImport(importModule, "step", 0),
+			sameMemoryNativeFuncImport(importModule, "boom", 1),
+			sameMemoryNativeFuncImport(importModule, "grow", 0),
+			memoryImportEntry("A", "mem", 0x01, 0x01, 0x03),
+			tableImport,
+		)),
+		wasmtest.Section(3, wasmtest.Vec(
+			wasmtest.ULEB(0), wasmtest.ULEB(1), wasmtest.ULEB(0),
+			wasmtest.ULEB(0), wasmtest.ULEB(2), wasmtest.ULEB(3),
+		)),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x01, privatePages, privatePages})),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("step", 0, 3),
+			wasmtest.ExportEntry("boom", 0, 4),
+			wasmtest.ExportEntry("grow", 0, 5),
+			wasmtest.ExportEntry("is_null", 0, 6),
+			wasmtest.ExportEntry("clear", 0, 7),
+			wasmtest.ExportEntry("table_size", 0, 8),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x20, 0x00, 0x3f, 0x01, 0x6a, 0xfc, 0x10, 0x00, 0x6a, 0x10, 0x00, 0x0b}),
+			wasmtest.Code([]byte{0x10, 0x01, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0x00, 0x10, 0x02, 0x1a, 0x3f, 0x00, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0x00, 0x25, 0x00, 0xd1, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0x00, 0xd0, 0x70, 0x26, 0x00, 0x0b}),
+			wasmtest.Code([]byte{0xfc, 0x10, 0x00, 0x0b}),
+		)),
+	)
+}
+
 func sameMemoryNativeGlobalTenantModule(importModule string, privatePages byte) []byte {
 	return wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(
@@ -208,6 +249,80 @@ func instantiateSameMemoryNativeGlobalChain(tb testing.TB) *sameMemoryNativeChai
 	}
 }
 
+type sameMemoryNativeTableChain struct {
+	*sameMemoryNativeChain
+	tableOwner    *Instance
+	tableCompiled *Compiled
+	table         *Table
+}
+
+func instantiateSameMemoryNativeTableChain(tb testing.TB) *sameMemoryNativeTableChain {
+	tb.Helper()
+	ownerCompiled := stagedMultiMemoryCompile(tb, sameMemoryNativeOwnerModule())
+	owner, err := instantiateCore(ownerCompiled, InstantiateOptions{})
+	if err != nil {
+		tb.Fatalf("instantiate table-composition owner: %v", err)
+	}
+	memory, err := owner.ExportedMemory("mem")
+	if err != nil {
+		tb.Fatalf("export table-composition owner memory: %v", err)
+	}
+	ownerStep, _ := owner.ExportedFunc("step")
+	ownerBoom, _ := owner.ExportedFunc("boom")
+	ownerGrow, _ := owner.ExportedFunc("grow")
+
+	tableCompiled, err := Compile(nil, soleImportedTableProducerModule())
+	if err != nil {
+		tb.Fatalf("compile table-composition table owner: %v", err)
+	}
+	tableOwner, err := instantiateCore(tableCompiled, InstantiateOptions{})
+	if err != nil {
+		tb.Fatalf("instantiate table-composition table owner: %v", err)
+	}
+	table, err := tableOwner.ExportedTable("table")
+	if err != nil {
+		tb.Fatalf("export table-composition table: %v", err)
+	}
+
+	middleCompiled := stagedMultiMemoryCompile(tb, sameMemoryNativeTableTenantModule("A", 20))
+	middle, err := instantiateCore(middleCompiled, InstantiateOptions{Imports: Imports{
+		"A.step": ownerStep, "A.boom": ownerBoom, "A.grow": ownerGrow,
+		"A.mem": memory, "env.table": table,
+	}})
+	if err != nil {
+		tb.Fatalf("instantiate table-composition middle: %v", err)
+	}
+	middleStep, _ := middle.ExportedFunc("step")
+	middleBoom, _ := middle.ExportedFunc("boom")
+	middleGrow, _ := middle.ExportedFunc("grow")
+
+	rootCompiled := stagedMultiMemoryCompile(tb, sameMemoryNativeTableTenantModule("B", 30))
+	root, err := instantiateCore(rootCompiled, InstantiateOptions{Imports: Imports{
+		"B.step": middleStep, "B.boom": middleBoom, "B.grow": middleGrow,
+		"A.mem": memory, "env.table": table,
+	}})
+	if err != nil {
+		tb.Fatalf("instantiate table-composition root: %v", err)
+	}
+	return &sameMemoryNativeTableChain{
+		sameMemoryNativeChain: &sameMemoryNativeChain{
+			owner: owner, middle: middle, root: root,
+			ownerCompiled: ownerCompiled, middleCompiled: middleCompiled, rootCompiled: rootCompiled,
+			memory: memory,
+		},
+		tableOwner: tableOwner, tableCompiled: tableCompiled, table: table,
+	}
+}
+
+func (c *sameMemoryNativeTableChain) close() {
+	if c == nil {
+		return
+	}
+	c.sameMemoryNativeChain.close()
+	_ = c.tableOwner.Close()
+	_ = c.tableCompiled.Close()
+}
+
 func (c *sameMemoryNativeChain) close() {
 	if c == nil {
 		return
@@ -303,6 +418,162 @@ func TestStagedMultiMemoryNativeSameMemoryReentryLifecycle(t *testing.T) {
 		in.lifeMu.Unlock()
 		if !closed {
 			t.Fatalf("%s resources remained after final close", name)
+		}
+	}
+}
+
+func TestStagedMultiMemoryNativeSameMemoryImportedTableComposition(t *testing.T) {
+	chain := instantiateSameMemoryNativeTableChain(t)
+	defer chain.close()
+
+	for name, compiled := range map[string]*Compiled{"middle": chain.middleCompiled, "root": chain.rootCompiled} {
+		if !compiled.memoryDir.stagedSharedBasedataSafe || !compiled.memoryDir.stagedSharedBasedataNativeCalls {
+			t.Fatalf("%s did not retain combined imported-table/native-call proof", name)
+		}
+	}
+	if got := tableTestCallI32(t, chain.middle, "step", I32(1)); got != 32 {
+		t.Fatalf("imported-table middle re-entry = %d, want 32", got)
+	}
+	if got := tableTestCallI32(t, chain.root, "step", I32(1)); got != 63 {
+		t.Fatalf("imported-table nested re-entry = %d, want 63", got)
+	}
+	if got := tableTestCallI32(t, chain.root, "table_size"); got != 1 {
+		t.Fatalf("composed imported table size = %d, want 1", got)
+	}
+	if got := tableTestCallI32(t, chain.root, "is_null", I32(0)); got != 0 {
+		t.Fatalf("composed imported table entry null = %d, want 0", got)
+	}
+	if _, err := chain.root.Invoke("clear", I32(1)); err == nil || !strings.Contains(err.Error(), "out of bounds") {
+		t.Fatalf("composed imported table OOB set = %v", err)
+	}
+	if got := tableTestCallI32(t, chain.root, "is_null", I32(0)); got != 0 {
+		t.Fatalf("trapping composed table.set changed entry: %d", got)
+	}
+	if got := tableTestCallI32(t, chain.root, "grow", I32(1)); got != 2 {
+		t.Fatalf("composed nested shared memory.grow = %d, want 2", got)
+	}
+	if got := tableTestCallI32(t, chain.owner, "grow", I32(0)); got != 2 {
+		t.Fatalf("composed imported-table owner grow visibility = %d, want 2", got)
+	}
+	if _, err := chain.root.Invoke("boom"); err == nil || !strings.Contains(err.Error(), "unreachable") {
+		t.Fatalf("composed imported-table nested trap = %v", err)
+	}
+	if got := tableTestCallI32(t, chain.root, "step", I32(2)); got != 64 {
+		t.Fatalf("composed imported-table post-trap call = %d, want 64", got)
+	}
+
+	var wg sync.WaitGroup
+	errs := make(chan string, 2)
+	for _, tc := range []struct {
+		in   *Instance
+		name string
+		want int32
+	}{{chain.middle, "step", 38}, {chain.root, "step", 69}} {
+		wg.Add(1)
+		go func(in *Instance, name string, want int32) {
+			defer wg.Done()
+			for i := 0; i < 200; i++ {
+				out, err := in.Invoke(name, I32(7))
+				if err != nil || len(out) != 1 || AsI32(out[0]) != want {
+					errs <- strings.TrimSpace(strings.Join([]string{"table-composed call", errorString(err)}, ": "))
+					return
+				}
+			}
+		}(tc.in, tc.name, tc.want)
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		t.Fatalf("concurrent imported-table re-entry: %s", err)
+	}
+
+	if _, err := chain.middle.c.MarshalBinary(); err == nil || !strings.Contains(err.Error(), "codec v26 cannot serialize") {
+		t.Fatalf("table-composed codec binding = %v, want explicit rejection", err)
+	}
+	if _, err := Capture(chain.middleCompiled, SnapshotOptions{}); err == nil || !strings.Contains(err.Error(), "tables cannot be snapshotted") {
+		t.Fatalf("table-composed snapshot = %v, want table rejection", err)
+	}
+	if _, err := Compile(nil, sameMemoryNativeTableTenantModule("A", 20)); err == nil {
+		t.Fatal("public compile admitted imported-table same-memory native composition")
+	}
+	ownerStep, _ := chain.owner.ExportedFunc("step")
+	ownerBoom, _ := chain.owner.ExportedFunc("boom")
+	ownerGrow, _ := chain.owner.ExportedFunc("grow")
+	consumerCompiled := stagedMultiMemoryCompile(t, sameMemoryNativeTableTenantModule("A", 20))
+	defer consumerCompiled.Close()
+	if _, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{
+		"A.step": HostFunc(func(HostModule, []uint64, []uint64) {}), "A.boom": ownerBoom, "A.grow": ownerGrow,
+		"A.mem": chain.memory, "env.table": chain.table,
+	}}); err == nil || !strings.Contains(err.Error(), "retained same-memory InstanceExport") {
+		t.Fatalf("table-composed host callback = %v, want retained-native rejection", err)
+	}
+	foreignCompiled := stagedMultiMemoryCompile(t, sameMemoryNativeOwnerModule())
+	defer foreignCompiled.Close()
+	foreign, err := instantiateCore(foreignCompiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer foreign.Close()
+	foreignMemory, err := foreign.ExportedMemory("mem")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{
+		"A.step": ownerStep, "A.boom": ownerBoom, "A.grow": ownerGrow,
+		"A.mem": foreignMemory, "env.table": chain.table,
+	}}); err == nil || !strings.Contains(err.Error(), "exact imported memory 0") {
+		t.Fatalf("table-composed foreign-memory binding = %v", err)
+	}
+	returnCall := sameMemoryNativeTableTenantModule("A", 20)
+	for i := range returnCall {
+		if i+2 < len(returnCall) && returnCall[i] == 0x10 && returnCall[i+1] == 0x00 && returnCall[i+2] == 0x0b {
+			returnCall[i] = 0x12
+			break
+		}
+	}
+	returnModule, err := wasm.DecodeModule(returnCall)
+	if err != nil {
+		t.Fatalf("decode table-composed return_call gate module: %v", err)
+	}
+	if safe, _ := stagedSharedBasedataSafety(returnModule); safe {
+		t.Fatal("imported-table return_call incorrectly entered the same-memory serializer")
+	}
+
+	if err := chain.tableOwner.Close(); err != nil {
+		t.Fatalf("logical composed table owner close: %v", err)
+	}
+	if err := chain.owner.Close(); err != nil {
+		t.Fatalf("logical composed memory owner close: %v", err)
+	}
+	if err := chain.middle.Close(); err != nil {
+		t.Fatalf("logical composed function owner close: %v", err)
+	}
+	if got := tableTestCallI32(t, chain.root, "step", I32(3)); got != 65 {
+		t.Fatalf("table-composed call after independent owner closes = %d, want 65", got)
+	}
+	for name, in := range map[string]*Instance{"memory": chain.owner, "function": chain.middle, "table": chain.tableOwner} {
+		in.lifeMu.Lock()
+		closed := in.resourcesClosed
+		in.lifeMu.Unlock()
+		if closed {
+			t.Fatalf("table-composed %s resources closed before root release", name)
+		}
+	}
+	if _, err := chain.root.Invoke("clear", I32(0)); err != nil {
+		t.Fatalf("clear composed imported table: %v", err)
+	}
+	if got := tableTestCallI32(t, chain.root, "is_null", I32(0)); got != 1 {
+		t.Fatalf("cleared composed imported table entry = %d, want null", got)
+	}
+	if err := chain.root.Close(); err != nil {
+		t.Fatalf("close table-composed root: %v", err)
+	}
+	for name, in := range map[string]*Instance{"memory": chain.owner, "function": chain.middle, "table": chain.tableOwner, "root": chain.root} {
+		in.lifeMu.Lock()
+		closed := in.resourcesClosed
+		in.lifeMu.Unlock()
+		if !closed {
+			t.Fatalf("table-composed %s resources remained after root close", name)
 		}
 	}
 }
@@ -558,6 +829,21 @@ func TestStagedMultiMemoryNativeContextAccounting(t *testing.T) {
 	}
 	if abi.BasedataSize != 272 {
 		t.Fatalf("basedata = %d bytes, want 272", abi.BasedataSize)
+	}
+}
+
+func BenchmarkStagedMultiMemoryNativeSameMemoryImportedTableNestedCall(b *testing.B) {
+	chain := instantiateSameMemoryNativeTableChain(b)
+	defer chain.close()
+	if _, err := chain.root.Invoke("step", I32(1)); err != nil {
+		b.Fatal(err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := chain.root.Invoke("step", I32(1)); err != nil {
+			b.Fatal(err)
+		}
 	}
 }
 
