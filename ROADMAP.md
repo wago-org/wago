@@ -181,18 +181,21 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   commands. Mixed memory32/memory64 imports reject before attachment. Host memory64,
   shared/multi-memory execution, unallocatable minima, guard mode, public admission,
   snapshots, and arm64 remain.
-  Table64 retains its local-or-instance-import single-table operations:
+  Table64 retains its local-or-instance-import single-funcref-table operations:
   `size/get/set/grow/fill/call_indirect`, plus sole-local copy/initializer/active/passive
-  element lifecycle. An exact second slice now executes two finite local funcref tables
-  across `size/get/set/grow/fill/copy/init/drop`, including mixed table32/table64 forms.
-  Per-index width, minimum-width copy length, i64-init destination versus zero-extended
-  i32 segment operands, full-u64 carry/end/max checks, atomic `-1` grow failure,
-  descriptor writes/snapshotting, segment identity, native-directory updates, codec-v26
-  reload, and unchanged table32 bytes are proven. Nine-file accounting remains 2,802
-  commands / 93 modules / 2,352 assertions / 14 gates / 248 blocked / 81 invalid: all
-  iteration-27 official deltas are zero because externref, no-maximum, or wider three/four-
-  table shapes still lead. Imported copy/init, broader table counts/indirect contexts,
-  snapshots, guard mode, public admission, exception handling, and GC remain end-to-end work.
+  lifecycle and exact two-local finite-funcref `size/get/set/grow/fill/copy/init/drop`.
+  Iteration 28 adds exact local externref forms: no-maximum table64 externref/funcref
+  get/set, mixed table32/table64 externref get/fill, sole-table externref table64
+  size/get/set/grow, and four-local externref table64 size/grow. Opaque token identity,
+  null/value snapshotting, per-table operand width, full-u64 carry/end/max checks, i64
+  `-1` growth failure, 1,024-entry no-maximum externref reservations, native-directory
+  updates, exact metadata, codec-v26 reload, and ordinary-path stability are proven.
+  The nine-file matrix is now 2,802 commands / 98 modules / 2,507 assertions / 9 gates /
+  93 blocked / 81 invalid. Get, set, fill, grow, and size files are gap-free; only six
+  declaration/product gates in `table64` and three wider three-table init/copy/indirect
+  gates in `table_init64` remain. Imported copy/init, broader imported/mixed table64
+  lifecycle, snapshots, guard mode, public admission, exception handling, and GC remain
+  end-to-end work.
 - [ ] Reach zero unexplained failures/skips in the official Release 3 core suite.
 
 **Engine & performance** (no-ir-plan P1–P7, measured against P1's stats)
@@ -300,13 +303,15 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   drop state, trap atomicity, finite execution reservations, exact address/max-form
   import rejection, and gap-free complete sixteen-file accounting. Valid declared maxima
   through 2^48 persist exactly while only executable reserve is capped. A local-or-
-  instance-import table64 slice executes `size/get/set/grow/fill/call_indirect`, sole-local
-  initializer/active/passive lifecycle, and sole-local `table.copy`; an exact two-local-
-  table slice additionally executes `size/get/set/grow/fill/copy/init/drop` for table64/
-  table64 and mixed table32/table64 funcref forms through the native table directory with
-  codec-v26 metadata and lifecycle state. Imported/shared snapshots, externref and wider
-  table counts/indirect contexts, imported copy/init, guard mode, public admission,
-  exception handling, and WasmGC remain active scope;
+  instance-import funcref table64 slice executes `size/get/set/grow/fill/call_indirect`,
+  sole-local initializer/active/passive lifecycle and copy, while an exact two-local
+  funcref slice executes `size/get/set/grow/fill/copy/init/drop`. Exact local externref
+  slices now execute no-maximum two-table read/write, mixed table32/table64 fill/get,
+  sole-table grow/read/write/size, and four-table size/grow through the same native
+  directory with full-u64 checks and codec-v26 metadata. Imported/shared snapshots,
+  wider three-table init/copy/indirect contexts, declaration-only oversized/mixed-import
+  product shapes, imported copy/init, guard mode, public admission, exception handling,
+  and WasmGC remain active scope;
   see `docs/wasm3.md` for exact boundaries.
 - [x] Reference-types product completion: signatures, locals, control,
   local/imported/shared globals, host ABI, explicit host funcref ownership/egress,
