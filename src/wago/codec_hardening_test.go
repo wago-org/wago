@@ -69,8 +69,8 @@ func TestCompiledCodecRoundTripsReferenceSignatures(t *testing.T) {
 	if err != nil {
 		t.Fatalf("MarshalBinary: %v", err)
 	}
-	if blob[4] != wagoVersion || wagoVersion != 21 {
-		t.Fatalf("compiled codec version = %d, want version 21", blob[4])
+	if blob[4] != wagoVersion || wagoVersion != 22 {
+		t.Fatalf("compiled codec version = %d, want structural-type version 22", blob[4])
 	}
 	for _, version := range []byte{19, 20} {
 		oldVersion := append([]byte(nil), blob...)
@@ -93,6 +93,48 @@ func TestCompiledCodecRoundTripsReferenceSignatures(t *testing.T) {
 	}
 	if want := []ValType{ValExternRef, ValFuncRef}; !reflect.DeepEqual(results, want) {
 		t.Fatalf("results = %v, want %v", results, want)
+	}
+}
+
+func TestCompiledCodecV22CarriesIndexedFunctionSignatures(t *testing.T) {
+	indexed := ValueTypeDescriptor{Kind: ValueTypeReference, Ref: ReferenceTypeDescriptor{Heap: HeapTypeDescriptor{Defined: true, TypeIndex: 0}}}
+	input := &Compiled{
+		Code:  []byte{0xc3},
+		Entry: []int{0},
+		Types: []DefinedTypeDescriptor{
+			{RecGroup: 0, Final: true, Kind: CompositeTypeFunction, Params: []ValueTypeDescriptor{{Kind: ValueTypeI32}}, Results: []ValueTypeDescriptor{{Kind: ValueTypeI32}}},
+			{RecGroup: 1, Final: true, Kind: CompositeTypeFunction, Params: []ValueTypeDescriptor{{Kind: ValueTypeI32}, indexed}, Results: []ValueTypeDescriptor{{Kind: ValueTypeI32}}},
+		},
+		Funcs: []FuncSig{{
+			Params:       []ValType{ValI32, ValFuncRef},
+			Results:      []ValType{ValI32},
+			TypeIndex:    1,
+			HasTypeIndex: true,
+		}},
+		FuncTypeID:       []uint32{7},
+		Exports:          map[string]int{"call": 0},
+		requiredFeatures: CoreFeatureReferenceTypes | CoreFeatureTypedFunctionReferences,
+	}
+	blob, err := marshalCompiled(input)
+	if err != nil {
+		t.Fatalf("marshalCompiled indexed signature: %v", err)
+	}
+	var got Compiled
+	if err := unmarshalCompiled(&got, blob[5:]); err != nil {
+		t.Fatalf("unmarshalCompiled indexed signature: %v", err)
+	}
+	if !reflect.DeepEqual(got.Types, input.Types) || !reflect.DeepEqual(got.Funcs, input.Funcs) {
+		t.Fatalf("indexed metadata changed: types=%#v funcs=%#v", got.Types, got.Funcs)
+	}
+	if err := got.UnmarshalBinary(blob); err == nil || !strings.Contains(err.Error(), "unknown required feature bits") {
+		t.Fatalf("public typed-reference load error = %v, want fail-closed unsupported feature", err)
+	}
+
+	bad := *input
+	bad.Types = cloneDefinedTypeDescriptors(input.Types)
+	bad.Types[1].Params[1].Ref.Heap.TypeIndex = 9
+	if _, err := marshalCompiled(&bad); err == nil || !strings.Contains(err.Error(), "type index") {
+		t.Fatalf("malformed indexed signature error = %v", err)
 	}
 }
 

@@ -85,8 +85,8 @@ func valTypesFromWasm(ts []wasm.ValType) []ValType {
 }
 
 // code is the wasm value-type byte used by the current compiled-module codec.
-// Codec version 21 defines the reference type codes as structural metadata;
-// live reference values remain outside the serialized format.
+// Codec version 22 preserves this legacy ABI category alongside exact structural
+// descriptors; live reference values remain outside the serialized format.
 func (t ValType) code() (byte, bool) {
 	switch t {
 	case ValI32:

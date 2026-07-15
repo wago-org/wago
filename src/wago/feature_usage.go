@@ -6,10 +6,9 @@ import (
 )
 
 // moduleRequiredFeatures records optional core features that remain execution
-// dependencies of the compiled artifact. The byte-sized on-disk mask is narrower
-// than CoreFeatures: codec v21 rejects unknown/high bits rather than silently
-// loading code produced for an unidentified feature. Compile-time-only features
-// such as extended constant expressions are folded into initializer metadata.
+// dependencies of the compiled artifact. Codec v22 stores the full public
+// CoreFeatures mask and rejects unknown bits. Compile-time-only features such as
+// extended constant expressions are folded into initializer metadata.
 func moduleRequiredFeatures(m *wasm.Module) CoreFeatures {
 	if m == nil {
 		return 0
@@ -162,7 +161,7 @@ func compiledStructuralRequiredFeatures(c *Compiled) CoreFeatures {
 	if c == nil {
 		return 0
 	}
-	out := CoreFeatures(c.requiredFeatures)
+	out := c.requiredFeatures
 	if compiledMetadataUsesSIMD(c) {
 		out |= CoreFeatureSIMD
 	}
@@ -172,6 +171,10 @@ func compiledStructuralRequiredFeatures(c *Compiled) CoreFeatures {
 		}
 		out |= requiredFeaturesForPublicValTypes(sig.Params)
 		out |= requiredFeaturesForPublicValTypes(sig.Results)
+		if sig.HasTypeIndex && int(sig.TypeIndex) < len(c.Types) && c.Types[sig.TypeIndex].Kind == CompositeTypeFunction {
+			out |= requiredFeaturesForTypeDescriptors(c.Types[sig.TypeIndex].Params)
+			out |= requiredFeaturesForTypeDescriptors(c.Types[sig.TypeIndex].Results)
+		}
 	}
 	for _, sig := range c.Funcs {
 		if len(sig.Results) > 1 {
@@ -179,6 +182,10 @@ func compiledStructuralRequiredFeatures(c *Compiled) CoreFeatures {
 		}
 		out |= requiredFeaturesForPublicValTypes(sig.Params)
 		out |= requiredFeaturesForPublicValTypes(sig.Results)
+		if sig.HasTypeIndex && int(sig.TypeIndex) < len(c.Types) && c.Types[sig.TypeIndex].Kind == CompositeTypeFunction {
+			out |= requiredFeaturesForTypeDescriptors(c.Types[sig.TypeIndex].Params)
+			out |= requiredFeaturesForTypeDescriptors(c.Types[sig.TypeIndex].Results)
+		}
 	}
 	for _, g := range c.GlobalImports {
 		if isReferenceValType(g.Type) {
@@ -212,6 +219,23 @@ func compiledStructuralRequiredFeatures(c *Compiled) CoreFeatures {
 		}
 		if elem.Mode != ElemModeActive {
 			out |= CoreFeatureBulkMemoryOperations
+		}
+	}
+	return out
+}
+
+func requiredFeaturesForTypeDescriptors(types []ValueTypeDescriptor) CoreFeatures {
+	var out CoreFeatures
+	for _, typ := range types {
+		if typ.Kind == ValueTypeV128 {
+			out |= CoreFeatureSIMD
+		}
+		if typ.Kind != ValueTypeReference {
+			continue
+		}
+		out |= CoreFeatureReferenceTypes
+		if typ.Ref.Heap.Defined || !typ.Ref.Nullable || typ.Ref.Exact {
+			out |= CoreFeatureTypedFunctionReferences
 		}
 	}
 	return out

@@ -184,15 +184,116 @@ func valueTypeDescriptorFromWasm(t wasm.ValType) (ValueTypeDescriptor, error) {
 }
 
 func valueTypeDescriptorsFromWasm(ts []wasm.ValType) ([]ValueTypeDescriptor, error) {
-	out := make([]ValueTypeDescriptor, len(ts))
-	for i := range ts {
-		var err error
-		out[i], err = valueTypeDescriptorFromWasm(ts[i])
-		if err != nil {
-			return nil, fmt.Errorf("value %d: %w", i, err)
+	return valueTypeDescriptorsInModule(nil, ts)
+}
+
+func valueTypeDescriptorsInModule(m *wasm.Module, ts []wasm.ValType) ([]ValueTypeDescriptor, error) {
+	c := wasmTypeDescriptorConverter{m: m}
+	if m != nil {
+		c.groupAt = make([]uint32, len(m.Types)+1)
+		for i := range m.Types {
+			c.groupAt[i+1] = c.groupAt[i] + uint32(len(m.Types[i].SubTypes))
 		}
 	}
+	return c.valueTypes(ts, -1)
+}
+
+func valueTypeDescriptorFromValType(t ValType) (ValueTypeDescriptor, bool) {
+	switch t {
+	case ValI32:
+		return ValueTypeDescriptor{Kind: ValueTypeI32}, true
+	case ValI64:
+		return ValueTypeDescriptor{Kind: ValueTypeI64}, true
+	case ValF32:
+		return ValueTypeDescriptor{Kind: ValueTypeF32}, true
+	case ValF64:
+		return ValueTypeDescriptor{Kind: ValueTypeF64}, true
+	case ValV128:
+		return ValueTypeDescriptor{Kind: ValueTypeV128}, true
+	case ValFuncRef:
+		return ValueTypeDescriptor{Kind: ValueTypeReference, Ref: ReferenceTypeDescriptor{Nullable: true, Heap: HeapTypeDescriptor{Abstract: AbstractHeapFunc}}}, true
+	case ValExternRef:
+		return ValueTypeDescriptor{Kind: ValueTypeReference, Ref: ReferenceTypeDescriptor{Nullable: true, Heap: HeapTypeDescriptor{Abstract: AbstractHeapExtern}}}, true
+	default:
+		return ValueTypeDescriptor{}, false
+	}
+}
+
+func valueTypeDescriptorsFromValTypes(ts []ValType) ([]ValueTypeDescriptor, error) {
+	out := make([]ValueTypeDescriptor, len(ts))
+	for i, t := range ts {
+		v, ok := valueTypeDescriptorFromValType(t)
+		if !ok {
+			return nil, fmt.Errorf("value %d: unsupported ABI value type %s", i, t)
+		}
+		out[i] = v
+	}
 	return out, nil
+}
+
+func valTypesFromDescriptors(ts []ValueTypeDescriptor, types []DefinedTypeDescriptor) ([]ValType, error) {
+	out := make([]ValType, len(ts))
+	for i, t := range ts {
+		v, ok := t.ABIType(types)
+		if !ok {
+			return nil, fmt.Errorf("value %d: structural type is outside the current public ABI", i)
+		}
+		out[i] = v
+	}
+	return out, nil
+}
+
+func equalValTypes(a, b []ValType) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func exactFuncSignature(sig FuncSig, types []DefinedTypeDescriptor) (params, results []ValueTypeDescriptor, err error) {
+	if !sig.HasTypeIndex {
+		params, err = valueTypeDescriptorsFromValTypes(sig.Params)
+		if err != nil {
+			return nil, nil, err
+		}
+		results, err = valueTypeDescriptorsFromValTypes(sig.Results)
+		return params, results, err
+	}
+	if int(sig.TypeIndex) >= len(types) {
+		return nil, nil, fmt.Errorf("type index %d out of range", sig.TypeIndex)
+	}
+	d := types[sig.TypeIndex]
+	if d.Kind != CompositeTypeFunction {
+		return nil, nil, fmt.Errorf("type index %d is not a function", sig.TypeIndex)
+	}
+	params = append([]ValueTypeDescriptor(nil), d.Params...)
+	results = append([]ValueTypeDescriptor(nil), d.Results...)
+	legacyParams, e := valTypesFromDescriptors(params, types)
+	if e != nil || !equalValTypes(legacyParams, sig.Params) {
+		return nil, nil, fmt.Errorf("structural params do not match ABI params")
+	}
+	legacyResults, e := valTypesFromDescriptors(results, types)
+	if e != nil || !equalValTypes(legacyResults, sig.Results) {
+		return nil, nil, fmt.Errorf("structural results do not match ABI results")
+	}
+	return params, results, nil
+}
+
+func cloneDefinedTypeDescriptors(in []DefinedTypeDescriptor) []DefinedTypeDescriptor {
+	out := make([]DefinedTypeDescriptor, len(in))
+	for i := range in {
+		out[i] = in[i]
+		out[i].Supers = append([]uint32(nil), in[i].Supers...)
+		out[i].Params = append([]ValueTypeDescriptor(nil), in[i].Params...)
+		out[i].Results = append([]ValueTypeDescriptor(nil), in[i].Results...)
+		out[i].Fields = append([]FieldTypeDescriptor(nil), in[i].Fields...)
+	}
+	return out
 }
 
 func (c wasmTypeDescriptorConverter) definedType(st *wasm.SubType, group int) (DefinedTypeDescriptor, error) {
@@ -328,7 +429,7 @@ func (c wasmTypeDescriptorConverter) refType(t wasm.RefType, group int) (Referen
 		}
 		out.Heap.Defined, out.Heap.TypeIndex = true, x
 	case wasm.HeapDefType:
-		if t.Heap.Def == nil || int(t.Heap.Def.GroupIndex) >= len(c.groupAt)-1 || t.Heap.Def.Index >= uint32(len(c.m.Types[t.Heap.Def.GroupIndex].SubTypes)) {
+		if c.m == nil || t.Heap.Def == nil || int(t.Heap.Def.GroupIndex) >= len(c.groupAt)-1 || t.Heap.Def.Index >= uint32(len(c.m.Types[t.Heap.Def.GroupIndex].SubTypes)) {
 			return out, fmt.Errorf("unknown defined heap type")
 		}
 		out.Heap.Defined = true
@@ -350,6 +451,105 @@ func (c wasmTypeDescriptorConverter) typeIndex(idx wasm.TypeIdx, group int) (uin
 		return 0, fmt.Errorf("recursive type index %d out of range", idx.Index)
 	}
 	return c.groupAt[group] + idx.Index, nil
+}
+
+func validateDefinedTypeDescriptors(types []DefinedTypeDescriptor) error {
+	if len(types) == 0 {
+		return nil
+	}
+	group := uint32(0)
+	validateValue := func(context string, t ValueTypeDescriptor) error {
+		if t.Kind > ValueTypeReference {
+			return fmt.Errorf("compiled metadata invalid: %s has value type kind %d", context, t.Kind)
+		}
+		if t.Kind != ValueTypeReference {
+			if t.Ref != (ReferenceTypeDescriptor{}) {
+				return fmt.Errorf("compiled metadata invalid: %s non-reference type carries reference metadata", context)
+			}
+			return nil
+		}
+		if t.Ref.Heap.Defined {
+			if int(t.Ref.Heap.TypeIndex) >= len(types) {
+				return fmt.Errorf("compiled metadata invalid: %s type index %d out of range", context, t.Ref.Heap.TypeIndex)
+			}
+		} else {
+			if t.Ref.Heap.Abstract > AbstractHeapNoExn {
+				return fmt.Errorf("compiled metadata invalid: %s abstract heap type %d invalid", context, t.Ref.Heap.Abstract)
+			}
+			if t.Ref.Exact {
+				return fmt.Errorf("compiled metadata invalid: %s exact abstract heap type is invalid", context)
+			}
+		}
+		return nil
+	}
+	validateField := func(context string, f FieldTypeDescriptor) error {
+		if f.Storage.Packed {
+			if f.Storage.PackedType > PackedTypeI16 {
+				return fmt.Errorf("compiled metadata invalid: %s packed type %d invalid", context, f.Storage.PackedType)
+			}
+			if f.Storage.Value != (ValueTypeDescriptor{}) {
+				return fmt.Errorf("compiled metadata invalid: %s packed field carries value metadata", context)
+			}
+			return nil
+		}
+		return validateValue(context, f.Storage.Value)
+	}
+	for i, d := range types {
+		if i == 0 {
+			if d.RecGroup != 0 {
+				return fmt.Errorf("compiled metadata invalid: type 0 recursive group %d, want 0", d.RecGroup)
+			}
+		} else if d.RecGroup < group || d.RecGroup > group+1 {
+			return fmt.Errorf("compiled metadata invalid: type %d recursive group %d does not follow %d", i, d.RecGroup, group)
+		}
+		group = d.RecGroup
+		for _, x := range d.Supers {
+			if int(x) >= len(types) {
+				return fmt.Errorf("compiled metadata invalid: type %d supertype %d out of range", i, x)
+			}
+		}
+		if d.HasDescribes && int(d.Describes) >= len(types) {
+			return fmt.Errorf("compiled metadata invalid: type %d describes index %d out of range", i, d.Describes)
+		}
+		if d.HasDescriptor && int(d.Descriptor) >= len(types) {
+			return fmt.Errorf("compiled metadata invalid: type %d descriptor index %d out of range", i, d.Descriptor)
+		}
+		switch d.Kind {
+		case CompositeTypeFunction:
+			if len(d.Fields) != 0 || d.Array != (FieldTypeDescriptor{}) {
+				return fmt.Errorf("compiled metadata invalid: function type %d carries field metadata", i)
+			}
+			for j, t := range d.Params {
+				if err := validateValue(fmt.Sprintf("type %d param %d", i, j), t); err != nil {
+					return err
+				}
+			}
+			for j, t := range d.Results {
+				if err := validateValue(fmt.Sprintf("type %d result %d", i, j), t); err != nil {
+					return err
+				}
+			}
+		case CompositeTypeStruct:
+			if len(d.Params) != 0 || len(d.Results) != 0 || d.Array != (FieldTypeDescriptor{}) {
+				return fmt.Errorf("compiled metadata invalid: struct type %d carries non-field metadata", i)
+			}
+			for j, f := range d.Fields {
+				if err := validateField(fmt.Sprintf("type %d field %d", i, j), f); err != nil {
+					return err
+				}
+			}
+		case CompositeTypeArray:
+			if len(d.Params) != 0 || len(d.Results) != 0 || len(d.Fields) != 0 {
+				return fmt.Errorf("compiled metadata invalid: array type %d carries non-array metadata", i)
+			}
+			if err := validateField(fmt.Sprintf("type %d array field", i), d.Array); err != nil {
+				return err
+			}
+		default:
+			return fmt.Errorf("compiled metadata invalid: type %d composite kind %d invalid", i, d.Kind)
+		}
+	}
+	return nil
 }
 
 func abstractHeapTypeFromWasm(t wasm.AbsHeapType) (AbstractHeapType, bool) {

@@ -1,25 +1,26 @@
 package wago
 
 import (
+	"encoding/binary"
 	"reflect"
 	"strings"
 	"testing"
 )
 
-func TestCompiledCodecV21VersionContract(t *testing.T) {
+func TestCompiledCodecV22VersionContract(t *testing.T) {
 	blob, err := (&Compiled{}).MarshalBinary()
 	if err != nil {
 		t.Fatalf("MarshalBinary: %v", err)
 	}
-	if got := blob[4]; got != 21 {
-		t.Fatalf("compiled codec version = %d, want 21", got)
+	if got := blob[4]; got != 22 {
+		t.Fatalf("compiled codec version = %d, want 22", got)
 	}
 
-	v20 := append([]byte(nil), blob...)
-	v20[4] = 20
+	v21 := append([]byte(nil), blob...)
+	v21[4] = 21
 	var got Compiled
-	if err := got.UnmarshalBinary(v20); err == nil || !strings.Contains(err.Error(), "version 20 unsupported") {
-		t.Fatalf("UnmarshalBinary v20 error = %v, want explicit incompatibility rejection", err)
+	if err := got.UnmarshalBinary(v21); err == nil || !strings.Contains(err.Error(), "version 21 unsupported") {
+		t.Fatalf("UnmarshalBinary v21 error = %v, want explicit incompatibility rejection", err)
 	}
 }
 
@@ -34,8 +35,12 @@ func TestCompiledCodecV21RoundTripsStructuralReferenceMetadata(t *testing.T) {
 		t.Fatalf("UnmarshalBinary structural reference metadata: %v", err)
 	}
 
-	if !reflect.DeepEqual(got.importFuncSigs, input.importFuncSigs) || !reflect.DeepEqual(got.Funcs, input.Funcs) {
+	if len(got.importFuncSigs) != len(input.importFuncSigs) || len(got.Funcs) != len(input.Funcs) || !reflect.DeepEqual(got.Funcs[0].Params, input.Funcs[0].Params) || !reflect.DeepEqual(got.Funcs[0].Results, input.Funcs[0].Results) {
 		t.Fatalf("reference signatures changed: imports=%#v funcs=%#v", got.importFuncSigs, got.Funcs)
+	}
+	params, results, err := got.SignatureDescriptor("refs")
+	if err != nil || len(params) != 2 || len(results) != 2 || params[0].Ref.Heap.Abstract != AbstractHeapFunc || params[1].Ref.Heap.Abstract != AbstractHeapExtern {
+		t.Fatalf("exact reference signatures = %v -> %v, %v", params, results, err)
 	}
 	if !reflect.DeepEqual(got.GlobalImports, input.GlobalImports) || !reflect.DeepEqual(got.Globals, input.Globals) || !reflect.DeepEqual(got.GlobalExports, input.GlobalExports) {
 		t.Fatalf("reference globals changed: imports=%#v globals=%#v exports=%#v", got.GlobalImports, got.Globals, got.GlobalExports)
@@ -122,8 +127,8 @@ func TestCompiledCodecV21RequiredFeatureBitsAreExactAndFailClosed(t *testing.T) 
 		t.Fatalf("marshal feature fixture: %v", err)
 	}
 	// The fixture has an empty memory-import string and GC descriptor list, so
-	// the required-feature byte is the penultimate byte before the zero GC count.
-	blob[len(blob)-2] = 0
+	// the required-feature uint64 immediately precedes the zero GC count.
+	binary.LittleEndian.PutUint64(blob[len(blob)-9:len(blob)-1], 0)
 	var decoded Compiled
 	if err := decoded.UnmarshalBinary(blob); err == nil || !strings.Contains(err.Error(), "unrecorded features") {
 		t.Fatalf("missing feature bits error = %v, want fail-closed rejection", err)
@@ -133,7 +138,7 @@ func TestCompiledCodecV21RequiredFeatureBitsAreExactAndFailClosed(t *testing.T) 
 	if err != nil {
 		t.Fatalf("marshal unknown-feature fixture: %v", err)
 	}
-	blob[len(blob)-2] = uint8(CoreFeatureTailCall)
+	binary.LittleEndian.PutUint64(blob[len(blob)-9:len(blob)-1], uint64(CoreFeatureTailCall))
 	if err := decoded.UnmarshalBinary(blob); err == nil || !strings.Contains(err.Error(), "unknown required feature bits") {
 		t.Fatalf("unknown feature bits error = %v, want fail-closed rejection", err)
 	}

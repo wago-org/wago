@@ -138,13 +138,23 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 	}
 	code, entry, internalEntry := cm.Code, cm.Entry, cm.InternalEntry
 
-	c := &Compiled{Code: code, Entry: entry, InternalEntry: internalEntry, NumImports: importedFuncs, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, boundsMode: boundsMode, GCTypeDescs: gcDescs, requiredFeatures: uint8(moduleRequiredFeatures(m)), dynamicImports: importedFuncs > 0}
+	types, err := typeDescriptorsFromWasm(m)
+	if err != nil {
+		return nil, fmt.Errorf("type metadata: %w", err)
+	}
+	c := &Compiled{Code: code, Entry: entry, InternalEntry: internalEntry, NumImports: importedFuncs, Types: types, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, boundsMode: boundsMode, GCTypeDescs: gcDescs, requiredFeatures: moduleRequiredFeatures(m), dynamicImports: importedFuncs > 0}
 	if importedFuncs > 0 {
 		c.importFuncSigs = make([]FuncSig, importedFuncs)
 		for i := 0; i < importedFuncs; i++ {
-			if ft, ok := m.FuncSignature(uint32(i)); ok {
-				c.importFuncSigs[i] = FuncSig{valTypesFromWasm(ft.Params), valTypesFromWasm(ft.Results)}
+			typeIdx, ok := m.FuncTypeIndex(uint32(i))
+			if !ok {
+				continue
 			}
+			ft, ok := m.ResolvedTypeFunc(typeIdx.Index)
+			if !ok {
+				continue
+			}
+			c.importFuncSigs[i] = FuncSig{Params: valTypesFromWasm(ft.Params), Results: valTypesFromWasm(ft.Results), TypeIndex: typeIdx.Index, HasTypeIndex: true}
 		}
 	}
 	importedTables := m.ImportedTableCount()
@@ -191,11 +201,11 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 		}
 	}
 	for li := range m.FuncTypes {
-		ft, ok := m.LocalFuncType(li)
+		ft, ok := m.ResolvedLocalFuncType(li)
 		if !ok {
 			return nil, fmt.Errorf("function %d: unknown type", li)
 		}
-		c.Funcs = append(c.Funcs, FuncSig{valTypesFromWasm(ft.Params), valTypesFromWasm(ft.Results)})
+		c.Funcs = append(c.Funcs, FuncSig{Params: valTypesFromWasm(ft.Params), Results: valTypesFromWasm(ft.Results), TypeIndex: m.FuncTypes[li].Index, HasTypeIndex: true})
 	}
 	for i := range m.Globals {
 		v, err := evalConstExprWithModule(m.Globals[i].Init, m.Globals[i].Type.Type, m)
@@ -795,6 +805,47 @@ func (c *Compiled) Signature(export string) (params, results []ValType, err erro
 	return c.Funcs[li].Params, c.Funcs[li].Results, nil
 }
 
+// SignatureDescriptor returns the exact structural parameter and result types
+// of an exported function. Indexed references resolve against TypeDefinitions.
+func (c *Compiled) SignatureDescriptor(export string) (params, results []ValueTypeDescriptor, err error) {
+	if c == nil {
+		return nil, nil, fmt.Errorf("compiled module is nil")
+	}
+	gfi, ok := c.Exports[export]
+	if !ok {
+		return nil, nil, fmt.Errorf("no exported function %q", export)
+	}
+	var sig FuncSig
+	if gfi < 0 {
+		return nil, nil, fmt.Errorf("export %q function index %d out of range", export, gfi)
+	} else if gfi < c.NumImports {
+		if gfi >= len(c.importFuncSigs) {
+			return nil, nil, fmt.Errorf("export %q imported function index %d has no signature", export, gfi)
+		}
+		sig = c.importFuncSigs[gfi]
+	} else {
+		li := gfi - c.NumImports
+		if li < 0 || li >= len(c.Funcs) {
+			return nil, nil, fmt.Errorf("export %q function index %d out of range", export, gfi)
+		}
+		sig = c.Funcs[li]
+	}
+	params, results, err = exactFuncSignature(sig, c.Types)
+	if err != nil {
+		return nil, nil, fmt.Errorf("export %q signature: %w", export, err)
+	}
+	return params, results, nil
+}
+
+// TypeDefinitions returns a copy of the compiled module's flattened structural
+// type graph.
+func (c *Compiled) TypeDefinitions() []DefinedTypeDescriptor {
+	if c == nil {
+		return nil
+	}
+	return cloneDefinedTypeDescriptors(c.Types)
+}
+
 // FuncName returns the name-section name for a global function index.
 func (c *Compiled) FuncName(funcIdx uint32) (string, bool) {
 	if c == nil || c.Names == nil {
@@ -853,7 +904,24 @@ func (c *Compiled) validate() error {
 	if c.NumImports > maxInt()-len(c.Funcs) {
 		return fmt.Errorf("compiled metadata invalid: function count overflows int")
 	}
-	required := CoreFeatures(c.requiredFeatures)
+	if err := validateDefinedTypeDescriptors(c.Types); err != nil {
+		return err
+	}
+	validateSigs := func(kind string, sigs []FuncSig) error {
+		for i, sig := range sigs {
+			if _, _, err := exactFuncSignature(sig, c.Types); err != nil {
+				return fmt.Errorf("compiled metadata invalid: %s function %d signature: %w", kind, i, err)
+			}
+		}
+		return nil
+	}
+	if err := validateSigs("imported", c.importFuncSigs); err != nil {
+		return err
+	}
+	if err := validateSigs("local", c.Funcs); err != nil {
+		return err
+	}
+	required := c.requiredFeatures
 	if required&^coreFeaturesWago != 0 {
 		return fmt.Errorf("compiled metadata invalid: unknown required feature bits 0x%x", uint64(required&^coreFeaturesWago))
 	}
@@ -1149,7 +1217,20 @@ func (c *Compiled) validateRuntimeReferenceGlobalMetadata() error {
 	return nil
 }
 
-func (c *Compiled) validateCodecV21Metadata() error {
+func (c *Compiled) validateCodecMetadata() error {
+	if err := validateDefinedTypeDescriptors(c.Types); err != nil {
+		return err
+	}
+	for _, set := range []struct {
+		kind string
+		sigs []FuncSig
+	}{{"imported", c.importFuncSigs}, {"local", c.Funcs}} {
+		for i, sig := range set.sigs {
+			if _, _, err := exactFuncSignature(sig, c.Types); err != nil {
+				return fmt.Errorf("compiled metadata invalid: %s function %d signature: %w", set.kind, i, err)
+			}
+		}
+	}
 	if unsupported := compiledStructuralRequiredFeatures(c) &^ coreFeaturesWago; unsupported != 0 {
 		return fmt.Errorf("compiled metadata invalid: unknown required feature bits 0x%x", uint64(unsupported))
 	}
@@ -1470,11 +1551,12 @@ func (c *Compiled) validateDeferredOffsetGlobal(kind string, seg, idx int) error
 
 const wagoMagic = "WAGO"
 
-// Version 21 records binding-independent imported-call dispatch metadata plus
-// exact structural reference-global, indexed-table, typed-element, extended
-// constant-expression, and required-feature metadata. It never serializes live
-// reference tokens, target addresses, thunk addresses, owners, or store identity.
-const wagoVersion = 21
+// Version 22 records binding-independent imported-call dispatch metadata plus
+// exact structural function/reference types, reference globals, indexed tables,
+// typed elements, extended constant expressions, and required features. It never
+// serializes live reference tokens, target addresses, thunk addresses, owners,
+// or store identity.
+const wagoVersion = 22
 
 // MarshalBinary serializes the precompiled module to a ".wago" blob.
 //
@@ -1492,7 +1574,7 @@ func (c *Compiled) MarshalBinary() ([]byte, error) {
 	if c.NumImports > 0 && !c.dynamicImports {
 		return nil, errors.New("wago: imported-function code lacks dynamic dispatch metadata")
 	}
-	if err := c.validateCodecV21Metadata(); err != nil {
+	if err := c.validateCodecMetadata(); err != nil {
 		return nil, err
 	}
 	return marshalCompiled(c)
@@ -1514,13 +1596,13 @@ func (c *Compiled) UnmarshalBinary(data []byte) error {
 		decoded.tableExports = nil
 	}
 	decoded.hasTableExportMetadata = true
-	if inferred := compiledStructuralRequiredFeatures(&decoded); inferred&^CoreFeatures(decoded.requiredFeatures) != 0 {
-		return fmt.Errorf("compiled metadata invalid: structural metadata requires unrecorded features %s", inferred&^CoreFeatures(decoded.requiredFeatures))
+	if inferred := compiledStructuralRequiredFeatures(&decoded); inferred&^decoded.requiredFeatures != 0 {
+		return fmt.Errorf("compiled metadata invalid: structural metadata requires unrecorded features %s", inferred&^decoded.requiredFeatures)
 	}
 	if err := decoded.validate(); err != nil {
 		return err
 	}
-	if CoreFeatures(decoded.requiredFeatures).IsEnabled(CoreFeatureSIMD) && !hostSupportsSIMD() {
+	if decoded.requiredFeatures.IsEnabled(CoreFeatureSIMD) && !hostSupportsSIMD() {
 		return fmt.Errorf("wago: compiled module requires SIMD CPU features unavailable on this host")
 	}
 	*c = decoded

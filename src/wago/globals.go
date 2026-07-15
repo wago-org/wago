@@ -428,7 +428,11 @@ type GlobalImport struct {
 	Global  *Global
 }
 
-type FuncSig struct{ Params, Results []ValType }
+type FuncSig struct {
+	Params, Results []ValType
+	TypeIndex       uint32
+	HasTypeIndex    bool
+}
 
 // OffsetInit is active data/element offset metadata. Base is the literal i32
 // offset. When HasGlobal is true, Global names an imported immutable i32 global
@@ -546,9 +550,10 @@ type Compiled struct {
 	// entry offset (== Entry[i] when none): indirect calls to compatible
 	// signatures bypass the wrapper adapter via the table's delta field.
 	InternalEntry []int
-	Funcs         []FuncSig      // signature per local function
-	Imports       []string       // "module.name" per imported function
-	Exports       map[string]int // exported function name -> global function index
+	Funcs         []FuncSig               // signature per local function
+	Types         []DefinedTypeDescriptor // flattened structural type graph for indexed references
+	Imports       []string                // "module.name" per imported function
+	Exports       map[string]int          // exported function name -> global function index
 	NumImports    int
 	Names         *wasm.NameSec // parsed debug names from the wasm name custom section
 
@@ -596,7 +601,7 @@ type Compiled struct {
 	memoryImport string
 
 	// tableImport preserves the direct table-0 API/runtime metadata. Additional
-	// imported tables occupy the leading extraTables entries, and codec v21 writes
+	// imported tables occupy the leading extraTables entries, and codec v22 writes
 	// every declaration in exact Wasm index order.
 	tableImport       string
 	tableImportMin    int
@@ -607,7 +612,7 @@ type Compiled struct {
 	// code image is therefore complete at Compile time and independent of concrete
 	// host or cross-instance bindings.
 	dynamicImports   bool
-	requiredFeatures uint8
+	requiredFeatures CoreFeatures
 	importFuncSigs   []FuncSig
 
 	GCTypeDescs []gc.TypeDesc // immutable Wasm GC descriptor metadata; per-instance heaps own collection state

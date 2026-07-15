@@ -269,6 +269,17 @@ func TestCompiledReaderRejectsMaliciousCountsBeforeAllocation(t *testing.T) {
 			},
 		},
 		{
+			name: "defined types",
+			write: func(w *compiledWriter) {
+				w.bytes(nil)
+				w.intSlice(nil) // Entry.
+				w.intSlice(nil) // InternalEntry.
+				w.uvar(0)       // NumImports.
+				w.stringSlice(nil)
+				w.uvar(huge)
+			},
+		},
+		{
 			name: "import function signatures",
 			write: func(w *compiledWriter) {
 				w.bytes(nil)
@@ -276,6 +287,7 @@ func TestCompiledReaderRejectsMaliciousCountsBeforeAllocation(t *testing.T) {
 				w.intSlice(nil) // InternalEntry.
 				w.uvar(0)       // NumImports.
 				w.stringSlice(nil)
+				_ = w.typeDescriptors(nil)
 				w.uvar(huge)
 			},
 		},
@@ -287,7 +299,9 @@ func TestCompiledReaderRejectsMaliciousCountsBeforeAllocation(t *testing.T) {
 				w.intSlice(nil) // InternalEntry.
 				w.uvar(0)       // NumImports.
 				w.stringSlice(nil)
+				_ = w.typeDescriptors(nil)
 				w.uvar(1)
+				w.bool(false)
 				w.uvar(huge)
 			},
 		},
@@ -299,7 +313,9 @@ func TestCompiledReaderRejectsMaliciousCountsBeforeAllocation(t *testing.T) {
 				w.intSlice(nil) // InternalEntry.
 				w.uvar(0)       // NumImports.
 				w.stringSlice(nil)
+				_ = w.typeDescriptors(nil)
 				w.uvar(1)
+				w.bool(false)
 				w.uvar(0)
 				w.uvar(huge)
 			},
@@ -312,7 +328,8 @@ func TestCompiledReaderRejectsMaliciousCountsBeforeAllocation(t *testing.T) {
 				w.intSlice(nil) // InternalEntry.
 				w.uvar(0)       // NumImports.
 				w.stringSlice(nil)
-				if err := w.funcSigs(nil); err != nil {
+				_ = w.typeDescriptors(nil)
+				if err := w.funcSigs(nil, nil); err != nil {
 					t.Fatalf("write import funcs: %v", err)
 				}
 				w.uvar(huge)
@@ -326,10 +343,12 @@ func TestCompiledReaderRejectsMaliciousCountsBeforeAllocation(t *testing.T) {
 				w.intSlice(nil) // InternalEntry.
 				w.uvar(0)       // NumImports.
 				w.stringSlice(nil)
-				if err := w.funcSigs(nil); err != nil {
+				_ = w.typeDescriptors(nil)
+				if err := w.funcSigs(nil, nil); err != nil {
 					t.Fatalf("write import funcs: %v", err)
 				}
 				w.uvar(1)
+				w.bool(false)
 				w.uvar(huge)
 			},
 		},
@@ -341,10 +360,12 @@ func TestCompiledReaderRejectsMaliciousCountsBeforeAllocation(t *testing.T) {
 				w.intSlice(nil) // InternalEntry.
 				w.uvar(0)       // NumImports.
 				w.stringSlice(nil)
-				if err := w.funcSigs(nil); err != nil {
+				_ = w.typeDescriptors(nil)
+				if err := w.funcSigs(nil, nil); err != nil {
 					t.Fatalf("write import funcs: %v", err)
 				}
 				w.uvar(1)
+				w.bool(false)
 				w.uvar(0)
 				w.uvar(huge)
 			},

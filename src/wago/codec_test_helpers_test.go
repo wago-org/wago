@@ -9,10 +9,13 @@ func writeCompiledCodecPrefixAfterFuncs(t testing.TB, w *compiledWriter) {
 	w.intSlice(nil) // InternalEntry.
 	w.uvar(0)       // NumImports.
 	w.stringSlice(nil)
-	if err := w.funcSigs(nil); err != nil {
+	if err := w.typeDescriptors(nil); err != nil {
+		t.Fatalf("write types: %v", err)
+	}
+	if err := w.funcSigs(nil, nil); err != nil {
 		t.Fatalf("write import funcs: %v", err)
 	}
-	if err := w.funcSigs(nil); err != nil {
+	if err := w.funcSigs(nil, nil); err != nil {
 		t.Fatalf("write funcs: %v", err)
 	}
 }
@@ -62,7 +65,7 @@ func writeCompiledCodecPrefixAfterMemoryImport(t testing.TB, w *compiledWriter) 
 	w.passiveData(nil)
 	w.str("")     // memoryImport.
 	w.bool(false) // dynamicImports.
-	w.u8(0)       // requiredFeatures.
+	w.u64(0)      // requiredFeatures.
 }
 
 // compileExplicitArtifact keeps serialization fixtures independent of the

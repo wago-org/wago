@@ -1150,6 +1150,10 @@ func (f *fn) callRef(r *wasm.Reader) error {
 	f.trapIf(condNE, trapIndirectSig)
 	home := f.allocReg(maskOf(ref, code))
 	f.a.Load64(home, ref, runtime.TableEntryHomeLinMemOffset)
+	targetContext := f.allocReg(maskOf(ref, code, home))
+	f.a.Load64(targetContext, ref, runtime.FuncRefContextOffset)
+	f.a.TestSelf(targetContext, true)
+	f.trapIf(condE, trapIndirectOOB)
 	f.pinned = f.pinned.remove(ref)
 	f.release(ref)
 
@@ -1164,16 +1168,17 @@ func (f *fn) callRef(r *wasm.Reader) error {
 				types[i] = root.typ
 			}
 		}
-		f.pinned = f.pinned.add(code).add(home)
+		f.pinned = f.pinned.add(code).add(home).add(targetContext)
 		f.flush()
 		savedLocals := append([]localDef(nil), f.locals...)
-		tag := f.allocReg(maskOf(code, home))
+		tag := f.allocReg(maskOf(code, home, targetContext))
 		f.a.MovReg64(tag, home)
 		f.a.ShiftImm(5, tag, 63, true)
 		f.a.TestSelf(tag, true)
 		f.release(tag)
 		wrapper := f.a.JccPlaceholder(condE)
-		f.pinned = f.pinned.remove(home)
+		f.pinned = f.pinned.remove(home).remove(targetContext)
+		f.release(targetContext)
 		f.emitRegisterCallVia(ft, -1, -1, code)
 		f.pinned = f.pinned.remove(code)
 		f.release(code)
@@ -1187,14 +1192,14 @@ func (f *fn) callRef(r *wasm.Reader) error {
 		f.release(code)
 		f.a.ShiftImm(4, home, 1, true)
 		f.a.ShiftImm(5, home, 1, true)
-		f.emitIndirectCallHomeAware(ft, home)
+		f.emitIndirectCallHomeAware(ft, home, targetContext)
 		f.a.PatchRel32(done, f.a.Len())
 		return nil
 	}
 
 	f.a.Store64(RBX, -int32(offSpillRegion), code)
 	f.release(code)
-	f.emitIndirectCallHomeAware(ft, home)
+	f.emitIndirectCallHomeAware(ft, home, targetContext)
 	return nil
 }
 

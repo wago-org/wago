@@ -47,6 +47,8 @@ type ImportSpec struct {
 	Index         int
 	Params        []ValType
 	Results       []ValType
+	ParamTypes    []ValueTypeDescriptor
+	ResultTypes   []ValueTypeDescriptor
 	Type          ValType
 	Mutable       bool
 	Min           int
@@ -66,6 +68,8 @@ type FunctionMetadata struct {
 	Index        int
 	Params       []ValType
 	Results      []ValType
+	ParamTypes   []ValueTypeDescriptor
+	ResultTypes  []ValueTypeDescriptor
 	ImportModule string
 	ImportName   string
 	Exports      []string
@@ -99,6 +103,7 @@ type TableMetadata struct {
 // ModuleMetadata is a deterministic, inspectable structural summary of a module.
 type ModuleMetadata struct {
 	ExportedFuncs        []string
+	Types                []DefinedTypeDescriptor
 	ExportedGlobals      []string
 	ExportedTables       []string
 	FuncImportCount      int
@@ -123,6 +128,7 @@ func (rt *Runtime) buildModule(c *Compiled) *Module {
 		if i < len(c.importFuncSigs) {
 			spec.Params = append([]ValType(nil), c.importFuncSigs[i].Params...)
 			spec.Results = append([]ValType(nil), c.importFuncSigs[i].Results...)
+			spec.ParamTypes, spec.ResultTypes, _ = exactFuncSignature(c.importFuncSigs[i], c.Types)
 		}
 		if _, ok := rt.imports[key]; ok {
 			spec.Provided = true
@@ -190,6 +196,7 @@ func (m *Module) Metadata() ModuleMetadata {
 			if i < len(c.importFuncSigs) {
 				functions[i].Params = append([]ValType(nil), c.importFuncSigs[i].Params...)
 				functions[i].Results = append([]ValType(nil), c.importFuncSigs[i].Results...)
+				functions[i].ParamTypes, functions[i].ResultTypes, _ = exactFuncSignature(c.importFuncSigs[i], c.Types)
 			}
 			if i < len(c.Imports) {
 				functions[i].ImportModule, functions[i].ImportName = splitImportKey(c.Imports[i])
@@ -199,6 +206,7 @@ func (m *Module) Metadata() ModuleMetadata {
 		sig := c.Funcs[i-c.NumImports]
 		functions[i].Params = append([]ValType(nil), sig.Params...)
 		functions[i].Results = append([]ValType(nil), sig.Results...)
+		functions[i].ParamTypes, functions[i].ResultTypes, _ = exactFuncSignature(sig, c.Types)
 	}
 
 	globalExports := exportsByIndex(c.GlobalExports, len(c.Globals))
@@ -229,6 +237,7 @@ func (m *Module) Metadata() ModuleMetadata {
 
 	return ModuleMetadata{
 		ExportedFuncs:        c.ExportedFunctions(),
+		Types:                cloneDefinedTypeDescriptors(c.Types),
 		ExportedGlobals:      c.ExportedGlobals(),
 		ExportedTables:       sortedKeys(c.tableExports),
 		FuncImportCount:      len(c.Imports),
