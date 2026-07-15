@@ -1139,7 +1139,7 @@ func (f *fn) returnCallIndirect(r *wasm.Reader) error {
 	if !sameValTypes(f.ft.Results, ft.Results) {
 		return fmt.Errorf("return_call_indirect: type %d result shape differs from caller", typeIdx)
 	}
-	if !sigFitsRegABI(f.ft) || !sigFitsRegABI(ft) || !sigIsIntOnly(ft) {
+	if !sigFitsRegABI(f.ft) || !sigFitsRegABI(ft) {
 		return fmt.Errorf("return_call_indirect: caller or type %d requires unsupported indirect tail ABI", typeIdx)
 	}
 	if tableIdx != 0 || !f.immutableLocalTable {

@@ -4,6 +4,7 @@ package amd64
 
 import (
 	"encoding/binary"
+	"math"
 	"strings"
 	"testing"
 	"unsafe"
@@ -134,6 +135,48 @@ func TestReturnCallIndirectReusesFrameAndMatchesTraps(t *testing.T) {
 	}
 	if got := stats.Funcs[0].Calls["tail-indirect"]; got != 1 {
 		t.Fatalf("tail-indirect count = %d, want 1", got)
+	}
+}
+
+func TestReturnCallIndirectStagesMixedRegisterBanks(t *testing.T) {
+	// (func (param i32 f64 i32) (result f64)
+	//   local.get 0; i32.eqz
+	//   if (result f64) local.get 1
+	//   else
+	//     local.get 0; i32.const 1; i32.sub
+	//     local.get 1
+	//     local.get 2
+	//     local.get 2
+	//     return_call_indirect (type 0) (table 0)
+	//   end)
+	params := []wasm.ValType{wasm.I32, wasm.F64, wasm.I32}
+	mod := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(params, []wasm.ValType{wasm.F64}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x00, 0x01})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
+		wasmtest.Section(9, wasmtest.Vec([]byte{0x00, 0x41, 0x00, 0x0b, 0x01, 0x00})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
+			0x20, 0x00, 0x45, 0x04, 0x7c, 0x20, 0x01, 0x05,
+			0x20, 0x00, 0x41, 0x01, 0x6b,
+			0x20, 0x01,
+			0x20, 0x02,
+			0x20, 0x02,
+			0x13, 0x00, 0x00,
+			0x0b, 0x0b,
+		}))),
+	)
+	m, err := wasm.DecodeModule(mod)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := math.Float64bits(6.25)
+	out, err := runIndirectTail(t, m, []int{0}, 1_000_000, want, 0)
+	if err != nil {
+		t.Fatalf("million-deep mixed indirect tail recursion trapped: %v", err)
+	}
+	if got := binary.LittleEndian.Uint64(out); got != want {
+		t.Fatalf("f64 bits = %#x, want %#x", got, want)
 	}
 }
 
