@@ -518,6 +518,7 @@ var instanceContextOffsets = [...]int32{
 	offGlobalsPtr,
 	offPassiveDataPtr,
 	offTableDirPtr,
+	offMemoryDirPtr,
 	offImportDispatchPtr,
 }
 
