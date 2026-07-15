@@ -21,36 +21,40 @@ func boundedTable64Module(max uint64) []byte {
 			wasmtest.FuncType(nil, []wasm.ValType{wasm.I64}),
 			wasmtest.FuncType([]wasm.ValType{wasm.I64}, nil),
 			wasmtest.FuncType([]wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I32}),
+			wasmtest.FuncType([]wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I64}),
 		)),
-		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1), wasmtest.ULEB(2))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1), wasmtest.ULEB(2), wasmtest.ULEB(3))),
 		wasmtest.Section(4, wasmtest.Vec(table)),
 		wasmtest.Section(7, wasmtest.Vec(
 			wasmtest.ExportEntry("size", 0, 0),
 			wasmtest.ExportEntry("clear", 0, 1),
 			wasmtest.ExportEntry("is_null", 0, 2),
+			wasmtest.ExportEntry("grow", 0, 3),
 			wasmtest.ExportEntry("table", 1, 0),
 		)),
 		wasmtest.Section(10, wasmtest.Vec(
 			wasmtest.Code([]byte{0xfc, 0x10, 0x00, 0x0b}),
 			wasmtest.Code([]byte{0x20, 0x00, 0xd0, 0x70, 0x26, 0x00, 0x0b}),
 			wasmtest.Code([]byte{0x20, 0x00, 0x25, 0x00, 0xd1, 0x0b}),
+			wasmtest.Code([]byte{0xd0, 0x70, 0x20, 0x00, 0xfc, 0x0f, 0x00, 0x0b}),
 		)),
 	)
 }
 
-func table32GetSetSizeModule() []byte {
+func table32GetSetGrowSizeModule() []byte {
 	return wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(
 			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
 			wasmtest.FuncType([]wasm.ValType{wasm.I32}, nil),
 			wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}),
 		)),
-		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1), wasmtest.ULEB(2))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1), wasmtest.ULEB(2), wasmtest.ULEB(2))),
 		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x01, 0x02, 0x04})),
 		wasmtest.Section(10, wasmtest.Vec(
 			wasmtest.Code([]byte{0xfc, 0x10, 0x00, 0x0b}),
 			wasmtest.Code([]byte{0x20, 0x00, 0xd0, 0x70, 0x26, 0x00, 0x0b}),
 			wasmtest.Code([]byte{0x20, 0x00, 0x25, 0x00, 0xd1, 0x0b}),
+			wasmtest.Code([]byte{0xd0, 0x70, 0x20, 0x00, 0xfc, 0x0f, 0x00, 0x0b}),
 		)),
 	)
 }
@@ -98,6 +102,8 @@ func TestStagedTable64LocalGetSetSizeAndProductRoundTrip(t *testing.T) {
 		t.Fatalf("decode table64 metadata: %v", err)
 	}
 	defer loaded.Close()
+	loaded.stagedTable64 = true // private execution proof; codec never serializes admission
+	loaded.hasTableExportMetadata = true
 	if !loaded.requiredFeatures.IsEnabled(CoreFeatureTable64) || !loaded.TableAddr64 || !reflect.DeepEqual((&Module{c: &loaded}).Metadata().Tables, meta.Tables) {
 		t.Fatalf("table64 codec metadata = %#v, want %#v", (&Module{c: &loaded}).Metadata().Tables, meta.Tables)
 	}
@@ -132,6 +138,41 @@ func TestStagedTable64LocalGetSetSizeAndProductRoundTrip(t *testing.T) {
 	if got, err := in.Invoke("is_null", 1); err != nil || got[0] != 1 {
 		t.Fatalf("table64 state changed after traps = %v, err=%v", got, err)
 	}
+	if got, err := in.Invoke("grow", 1); err != nil || len(got) != 1 || got[0] != 2 {
+		t.Fatalf("table64.grow(1) = %v, err=%v, want [2]", got, err)
+	}
+	if got, err := in.Invoke("size"); err != nil || got[0] != 3 {
+		t.Fatalf("table64 size after grow = %v, err=%v", got, err)
+	}
+	if got, err := in.Invoke("is_null", 2); err != nil || got[0] != 1 {
+		t.Fatalf("grown table64 entry = %v, err=%v", got, err)
+	}
+	if got, err := in.Invoke("grow", 0); err != nil || got[0] != 3 {
+		t.Fatalf("table64.grow(0) = %v, err=%v", got, err)
+	}
+	if got, err := in.Invoke("grow", 1); err != nil || got[0] != 3 {
+		t.Fatalf("table64 grow to maximum = %v, err=%v", got, err)
+	}
+	for _, delta := range []uint64{1, 1 << 32, ^uint64(0)} {
+		if got, err := in.Invoke("grow", delta); err != nil || len(got) != 1 || got[0] != ^uint64(0) {
+			t.Fatalf("table64.grow(%d) = %v, err=%v, want [-1]", delta, got, err)
+		}
+		if got, err := in.Invoke("size"); err != nil || got[0] != 4 {
+			t.Fatalf("failed table64 grow changed size = %v, err=%v", got, err)
+		}
+	}
+
+	loadedIn, err := instantiateCore(&loaded, InstantiateOptions{})
+	if err != nil {
+		t.Fatalf("instantiate codec-reloaded table64: %v", err)
+	}
+	defer loadedIn.Close()
+	if got, err := loadedIn.Invoke("grow", 2); err != nil || len(got) != 1 || got[0] != 2 {
+		t.Fatalf("codec-reloaded table64.grow = %v, err=%v", got, err)
+	}
+	if got, err := loadedIn.Invoke("grow", 1<<32); err != nil || len(got) != 1 || got[0] != ^uint64(0) {
+		t.Fatalf("codec-reloaded high-delta table64.grow = %v, err=%v", got, err)
+	}
 }
 
 func TestStagedTable64GatesAndTable32CodeStability(t *testing.T) {
@@ -151,6 +192,10 @@ func TestStagedTable64GatesAndTable32CodeStability(t *testing.T) {
 	if _, err := compileStagedTable64(wasmtest.Module(wasmtest.Section(4, wasmtest.Vec(table, table)))); err == nil || !strings.Contains(err.Error(), "exactly one local table") {
 		t.Fatalf("multiple table64 error = %v", err)
 	}
+	externref := []byte{0x6f, 0x05, 0x01, 0x02}
+	if _, err := compileStagedTable64(wasmtest.Module(wasmtest.Section(4, wasmtest.Vec(externref)))); err == nil || !strings.Contains(err.Error(), "funcref") {
+		t.Fatalf("externref table64 error = %v", err)
+	}
 	cfg := NewRuntimeConfig()
 	cfg.boundsChecks = BoundsChecksSignalsBased
 	features := cfg.frontendFeatures()
@@ -159,7 +204,7 @@ func TestStagedTable64GatesAndTable32CodeStability(t *testing.T) {
 		t.Fatalf("guard table64 error = %v", err)
 	}
 
-	ordinary := table32GetSetSizeModule()
+	ordinary := table32GetSetGrowSizeModule()
 	base, err := Compile(nil, ordinary)
 	if err != nil {
 		t.Fatal(err)
@@ -175,6 +220,26 @@ func TestStagedTable64GatesAndTable32CodeStability(t *testing.T) {
 	defer staged.Close()
 	if !bytes.Equal(base.Code, staged.Code) {
 		t.Fatal("enabling staged table64 changed table32 code bytes")
+	}
+}
+
+func BenchmarkStagedTable64GrowZero(b *testing.B) {
+	compiled, err := compileStagedTable64(boundedTable64Module(4))
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer compiled.Close()
+	in, err := instantiateCore(compiled, InstantiateOptions{})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer in.Close()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if got, err := in.Invoke("grow", 0); err != nil || len(got) != 1 || got[0] != 2 {
+			b.Fatalf("table64.grow(0) = %v, err=%v", got, err)
+		}
 	}
 }
 
