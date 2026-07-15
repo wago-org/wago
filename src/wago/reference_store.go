@@ -554,8 +554,8 @@ func (in *Instance) FuncRefMatchesFunction(ref FuncRef, index uint32) bool {
 	}
 	actual := unsafe.Slice((*byte)(offHeapPtr(uintptr(descriptor))), coreruntime.TableEntryBytes)
 	identity := binary.LittleEndian.Uint64(actual[coreruntime.TableEntryRefSlotOffset:])
-	off := (int(index) + 1) * coreruntime.TableEntryBytes
-	if identity == 0 || off < coreruntime.TableEntryBytes || off+coreruntime.TableEntryBytes > len(in.funcRefDescs) {
+	off := (int(index) + 1) * coreruntime.FuncRefDescBytes
+	if identity == 0 || off < coreruntime.FuncRefDescBytes || off+coreruntime.FuncRefDescBytes > len(in.funcRefDescs) {
 		return false
 	}
 	expected := binary.LittleEndian.Uint64(in.funcRefDescs[off+coreruntime.TableEntryRefSlotOffset:])

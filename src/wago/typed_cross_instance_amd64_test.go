@@ -84,6 +84,78 @@ func TestStagedTypedCrossInstanceCallRefRetainsProducer(t *testing.T) {
 	}
 }
 
+func typedNestedReferenceProducerModule() []byte {
+	nested := []byte{0x60}
+	nested = append(nested, wasmtest.Vec(append([]byte{0x64}, wasmtest.ULEB(0)...))...)
+	nested = append(nested, wasmtest.Vec()...)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType([]wasm.ValType{wasm.I32}, nil),
+			nested,
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x0b}))),
+	)
+}
+
+func typedNestedReferenceConsumerModule() []byte {
+	nested := []byte{0x60}
+	nested = append(nested, wasmtest.Vec(append([]byte{0x64}, wasmtest.ULEB(1)...))...)
+	nested = append(nested, wasmtest.Vec()...)
+	importEntry := append(wasmtest.Name("env"), wasmtest.Name("f")...)
+	importEntry = append(importEntry, byte(wasm.ExternFunc))
+	importEntry = append(importEntry, wasmtest.ULEB(2)...)
+	declared := append([]byte{0x03, 0x00}, wasmtest.Vec(wasmtest.ULEB(1))...)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType(nil, nil),
+			wasmtest.FuncType([]wasm.ValType{wasm.I32}, nil),
+			nested,
+		)),
+		wasmtest.Section(2, wasmtest.Vec(importEntry)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1), wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 2))),
+		wasmtest.Section(9, wasmtest.Vec(declared)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x0b}),
+			wasmtest.Code([]byte{0xd2, 0x01, 0x10, 0x00, 0x0b}),
+		)),
+	)
+}
+
+func TestStagedTypedNestedStructuralImportRetainsProducer(t *testing.T) {
+	producerCompiled := stagedTypedStorageCompile(t, typedNestedReferenceProducerModule())
+	producer, err := instantiateCore(producerCompiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatalf("instantiate nested producer: %v", err)
+	}
+	export, err := producer.ExportedFunc("f")
+	if err != nil {
+		t.Fatalf("export nested producer: %v", err)
+	}
+	consumerCompiled := stagedTypedStorageCompile(t, typedNestedReferenceConsumerModule())
+	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{"env.f": export}})
+	if err != nil {
+		t.Fatalf("instantiate shifted nested consumer: %v", err)
+	}
+	if err := producer.Close(); err != nil {
+		t.Fatalf("logical producer close: %v", err)
+	}
+	if _, err := consumer.Invoke("run"); err != nil {
+		t.Fatalf("nested structural import after producer close: %v", err)
+	}
+	if err := consumer.Close(); err != nil {
+		t.Fatalf("consumer close: %v", err)
+	}
+	producer.lifeMu.Lock()
+	released := producer.resourcesClosed
+	producer.lifeMu.Unlock()
+	if !released {
+		t.Fatal("nested structural producer remained retained after consumer close")
+	}
+}
+
 func typedLocalCallRefModule() []byte {
 	declared := append([]byte{0x03, 0x00}, wasmtest.Vec(wasmtest.ULEB(0))...)
 	return wasmtest.Module(

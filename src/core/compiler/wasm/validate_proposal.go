@@ -36,8 +36,11 @@ func (v *funcValidator) stepCallRef(in Instruction) error {
 	if err != nil {
 		return err
 	}
-	wantTyped := RefVal(Ref(false, IndexedHeap(TypeIdx{Index: in.Index}), false))
-	if !callee.unknown && !v.subtype(callee.t, wantTyped) && !v.subtype(callee.t, FuncRef) {
+	wantTyped := RefVal(Ref(true, IndexedHeap(TypeIdx{Index: in.Index}), false))
+	if !callee.unknown && !v.subtype(callee.t, wantTyped) {
+		// call_ref requires a reference to the selected function type. Nullable
+		// typed references remain valid and trap dynamically when null; abstract
+		// funcref has no exact callable signature.
 		return v.verr(ErrTypeMismatch, "call_ref callee")
 	}
 	if err := v.popAll(ft.Params); err != nil {

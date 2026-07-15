@@ -67,6 +67,25 @@ func TestTypeDescriptorsPreserveRecursiveReferenceStructure(t *testing.T) {
 	}
 }
 
+func TestTypeDescriptorsCompactEmptyRecursiveGroups(t *testing.T) {
+	m := &wasm.Module{Types: []wasm.RecType{
+		{SubTypes: []wasm.SubType{{Final: true, Comp: wasm.CompType{Kind: wasm.CompFunc}}}},
+		{},
+		{},
+		{SubTypes: []wasm.SubType{{Final: true, Comp: wasm.CompType{Kind: wasm.CompFunc}}}},
+	}}
+	got, err := typeDescriptorsFromWasm(m)
+	if err != nil {
+		t.Fatalf("typeDescriptorsFromWasm: %v", err)
+	}
+	if len(got) != 2 || got[0].RecGroup != 0 || got[1].RecGroup != 1 {
+		t.Fatalf("compacted recursive groups = %#v", got)
+	}
+	if err := validateDefinedTypeDescriptors(got); err != nil {
+		t.Fatalf("compacted recursive groups rejected: %v", err)
+	}
+}
+
 func TestTypeDescriptorsRejectMalformedRecursiveIndex(t *testing.T) {
 	m := &wasm.Module{Types: []wasm.RecType{{SubTypes: []wasm.SubType{{
 		Comp: wasm.CompType{Kind: wasm.CompFunc, Params: []wasm.ValType{

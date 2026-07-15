@@ -98,7 +98,7 @@ func returnCallRefModule(t *testing.T, null bool) *wasm.Module {
 	}
 	var elem []byte
 	if null {
-		body = []byte{0x20, 0x00, 0xd0, 0x70, 0x15, 0x00, 0x0b}
+		body = []byte{0x20, 0x00, 0xd0, 0x00, 0x15, 0x00, 0x0b}
 	} else {
 		elem = wasmtest.Section(9, wasmtest.Vec(append([]byte{0x03, 0x00}, wasmtest.Vec(wasmtest.ULEB(0))...)))
 	}
@@ -188,6 +188,7 @@ func TestCallRefInvokesIndexedTypedDescriptor(t *testing.T) {
 
 func TestCallRefInvokesLocalDescriptorAndMatchesTraps(t *testing.T) {
 	m := callRefModule(t)
+	m.Types[1].SubTypes[0].Comp.Params[1] = wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: 0}), false))
 	wantSig := m.StructuralTypeKey(0)
 	out, err := runCallRefRaw(t, m, 42, true, wantSig)
 	if err != nil {
