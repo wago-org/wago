@@ -155,8 +155,8 @@ func TestStagedMultiMemoryBulkDataAndAliasLifecycle(t *testing.T) {
 		}
 		defer in.Close()
 		exerciseIndexedBulkMemory(t, in)
-		if err := validateSnapshotModule(compiled); err == nil || !strings.Contains(err.Error(), "multiple memories") {
-			t.Fatalf("snapshot policy error = %v", err)
+		if err := validateSnapshotModule(compiled); err != nil {
+			t.Fatalf("owned local multi-memory snapshot admission = %v", err)
 		}
 	})
 

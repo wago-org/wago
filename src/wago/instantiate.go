@@ -113,6 +113,7 @@ type instanceBuilder struct {
 	hostAttachments     hostFuncRefAttachments
 	tableAttachments    tableImportAttachments
 	globalAttachments   globalImportAttachments
+	restoreMemories     []memorySnap
 }
 
 // instantiateCore maps code and applies explicit instance options. It is the
@@ -121,10 +122,16 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 	if c == nil {
 		return nil, errors.New("wago: instantiate: nil compiled module")
 	}
+	restoreMemories := snapshotMemories(opts.restore)
+	if opts.restore != nil {
+		if err := validateSnapshotMemories(c, restoreMemories); err != nil {
+			return nil, fmt.Errorf("snapshot memories: %w", err)
+		}
+	}
 	if err := c.preflightImportBindings(opts.Imports); err != nil {
 		return nil, err
 	}
-	b := instanceBuilder{c: c, opts: opts, imports: opts.Imports}
+	b := instanceBuilder{c: c, opts: opts, imports: opts.Imports, restoreMemories: restoreMemories}
 	return b.instantiate()
 }
 
@@ -222,6 +229,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		return nil, err
 	}
 	c, opts, imports := b.c, b.opts, b.imports
+	restoreMemories := b.restoreMemories
 	syncMode := c.importsRequireSync(imports, opts.forceSyncHost)
 	defer func() {
 		if !b.success {
@@ -289,8 +297,8 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		// Restoring from a snapshot: size the fresh mapping to the snapshot's
 		// (possibly grown) linear-memory size so the saved bytes fit and memory.size
 		// reports the captured value, not the module's declared minimum.
-		if opts.restore != nil {
-			if rb := int(opts.restore.memPages) * 65536; rb > initialBytes {
+		if len(restoreMemories) != 0 {
+			if rb := int(restoreMemories[0].pages) * 65536; rb > initialBytes {
 				initialBytes = rb
 				if initialBytes > maxBytes {
 					maxBytes = initialBytes
@@ -358,7 +366,11 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		if def.HasMax {
 			maxPages = def.Max
 		}
-		secondaryJM, allocErr := runtime.AcquireJobMemoryGrowable(int(def.Min)*65536, int(maxPages)*65536)
+		initialPages := def.Min
+		if i < len(restoreMemories) && uint64(restoreMemories[i].pages) > initialPages {
+			initialPages = uint64(restoreMemories[i].pages)
+		}
+		secondaryJM, allocErr := runtime.AcquireJobMemoryGrowable(int(initialPages)*65536, int(maxPages)*65536)
 		if allocErr != nil {
 			closeMem()
 			runtime.ReleaseEngine(eng)
@@ -837,17 +849,23 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	}
 
 	if opts.restore != nil {
-		// The snapshot's linear-memory bytes already reflect post-data-init state
-		// plus every mutation up to the capture point, so copy them wholesale and
-		// skip the module's active data segments below.
-		dst, hostErr := jm.HostBytesChecked()
-		if hostErr != nil {
-			return nil, fmt.Errorf("snapshot memory host access: %w", hostErr)
+		// Snapshot memory images already reflect post-data-init state plus every
+		// mutation up to capture. Blob-loaded images may trim zero tails; fresh
+		// mappings are zeroed, so copying the stored prefixes restores them exactly.
+		for i, memory := range restoreMemories {
+			memoryJM := jm
+			if i != 0 {
+				memoryJM = memoryObjs[i].jobMemory()
+			}
+			dst, hostErr := memoryJM.HostBytesChecked()
+			if hostErr != nil {
+				return nil, fmt.Errorf("snapshot memory %d host access: %w", i, hostErr)
+			}
+			if len(memory.image) > len(dst) {
+				return nil, fmt.Errorf("snapshot memory %d image (%d bytes) exceeds instance memory (%d bytes)", i, len(memory.image), len(dst))
+			}
+			copy(dst, memory.image)
 		}
-		if len(opts.restore.memory) > len(dst) {
-			return nil, fmt.Errorf("snapshot memory (%d bytes) exceeds instance memory (%d bytes)", len(opts.restore.memory), len(dst))
-		}
-		copy(dst, opts.restore.memory)
 	}
 	if initErr == nil && len(c.Data) > 0 && opts.restore == nil {
 		for seg, d := range c.Data {
