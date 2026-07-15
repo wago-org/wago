@@ -18,8 +18,10 @@ func refToType(idx uint32, nullable bool) ValType {
 func descriptorModule(body ...Instruction) *Module {
 	return &Module{
 		Types: []RecType{
-			structType(nil, TypeMetadata{Descriptor: ptr(TypeIdx{Index: 1})}),
-			structType(nil, TypeMetadata{Describes: ptr(TypeIdx{Index: 0})}),
+			{SubTypes: []SubType{
+				{Final: true, Metadata: TypeMetadata{Descriptor: ptr(TypeIdx{Index: 1, Rec: true})}, Comp: CompType{Kind: CompStruct}},
+				{Final: true, Metadata: TypeMetadata{Describes: ptr(TypeIdx{Index: 0, Rec: true})}, Comp: CompType{Kind: CompStruct}},
+			}},
 			ft(nil, nil),
 		},
 		FuncTypes: []TypeIdx{{Index: 2}},
