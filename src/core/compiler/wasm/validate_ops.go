@@ -318,13 +318,17 @@ func (v *funcValidator) step(in *Instruction) error {
 		}
 		v.push(RefVal(in.RefType()))
 	case InstrRefFunc:
-		if int(in.Index) >= v.m.FuncCount() {
+		typeIdx, ok := v.m.FuncTypeIndex(in.Index)
+		if !ok {
 			return v.verr(ErrUnknownFunc, "ref.func")
 		}
 		if !v.isDeclaredFunc(in.Index) {
 			return v.verr(ErrUnknownFunc, "undeclared function reference")
 		}
-		v.push(FuncRef)
+		// Core 3.0 gives ref.func the exact declared function type rather than
+		// collapsing it to the abstract funcref supertype. The reference is
+		// non-null and remains a subtype of funcref for Release 2 consumers.
+		v.push(RefVal(Ref(false, IndexedHeap(typeIdx), false)))
 	case InstrRefIsNull:
 		_, err := v.pop()
 		if err != nil {
