@@ -360,6 +360,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		memoryObjs[i] = &Memory{jm: secondaryJM}
 		memoryOwns[i] = true
 	}
+	var nativeMemoryDir []byte
 	ar, err := runtime.AcquireArena(c.arenaNeedForImports(imports, syncMode))
 	if err != nil {
 		closeMem()
@@ -369,7 +370,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	nativeContext := ar.AllocNoZero(runtime.InstanceContextBytes)
 	nativeContextPtr := uintptr(unsafe.Pointer(&nativeContext[0]))
 	if memoryCount > 1 {
-		nativeDir := ar.Alloc(memoryCount * 16)
+		nativeMemoryDir = ar.Alloc(memoryCount * 16)
 		for i, memory := range memoryObjs {
 			memoryJM := memory.jobMemory()
 			if memoryJM == nil {
@@ -378,12 +379,12 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 				runtime.ReleaseEngine(eng)
 				return nil, fmt.Errorf("memory %d owner closed during instantiation", i)
 			}
-			entry := nativeDir[i*16:]
+			entry := nativeMemoryDir[i*16:]
 			binary.LittleEndian.PutUint64(entry, uint64(memoryJM.LinMemBase()))
 			binary.LittleEndian.PutUint32(entry[8:], uint32(len(memoryJM.HostBytes())))
 			binary.LittleEndian.PutUint32(entry[12:], memoryJM.CurrentPages())
 		}
-		jm.SetMemoryDirPtr(uintptr(unsafe.Pointer(&nativeDir[0])))
+		jm.SetMemoryDirPtr(uintptr(unsafe.Pointer(&nativeMemoryDir[0])))
 	}
 	base, err := c.acquireCode()
 	if err != nil {
@@ -916,7 +917,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		}()
 	}
 	if memoryCount > 1 {
-		in.memoryDir = &instanceMemoryDirectory{memories: memoryObjs, owns: memoryOwns}
+		in.memoryDir = &instanceMemoryDirectory{memories: memoryObjs, owns: memoryOwns, native: nativeMemoryDir}
 	}
 	if opts.origin != InstantiateDirect || opts.pluginGC != nil {
 		state := in.ensurePluginState()

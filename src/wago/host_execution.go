@@ -73,7 +73,9 @@ func (root *Instance) dispatchSynchronousHostCall(ctrl uintptr, importIdx uint32
 		// stack, the parked callee's basedata is still installed. Avoid rewriting
 		// all eight context words on this overwhelmingly common return path.
 		if nativeExecutionEpoch != epoch {
-			active.bindNativeContext()
+			if err := active.bindNativeContext(); err != nil {
+				panic(invalidHostReference{err: err})
+			}
 		}
 	}()
 	active.hostCall(ctrl, importIdx, args, results)
