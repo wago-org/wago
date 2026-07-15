@@ -150,8 +150,9 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   admits executable owners, finite imported numeric-global pointer arrays, and one
   bounded imported funcref table under a null/get/set/size-only scan. Retained scalar
   direct imports may now re-enter producers sharing the exact memory-0 mapping through
-  stable 256-byte arena images; nested calls, traps, shared growth, concurrency, and
-  close ordering are proven allocation-free. Host callbacks, foreign-memory/imported-
+  stable 256-byte arena images; nested calls compose with imported numeric-global
+  pointers while traps, shared growth, concurrency, and independent memory/global/
+  function close ordering remain allocation-free. Host callbacks, foreign-memory/imported-
   tail bindings, local/multiple/unbounded or wider-operation tables, local/reference/
   vector globals, passive/reference tenant state, and live-binding codec persistence
   remain rejected.
@@ -174,14 +175,19 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   copy preserves overlap, dropped-state semantics are exact, and trapping writes are
   atomic. No-maximum policy and managed-instance accounting charge the finite reserve,
   while growth beyond it returns `-1`. Snapshots remain an explicit gate.
-  The six-file official matrix is now gap-free at 807 commands, 43 admitted modules,
-  622 assertions, 83 invalid, and 59 malformed cases, with zero gates or blocked
-  dependents. Imports, shared/multi-memory, excessive declared limits, the remaining
-  unaccounted memory64 files, guard mode, public admission, snapshots, and arm64 remain.
+  The complete sixteen-file non-table matrix accounts 5,904 commands: 132 modules,
+  5,334 assertions, 292 invalid, 60 malformed, and 4 unlinkable cases pass; 63 exact
+  feature gates leave 3 commands blocked. Those gates are 34 memory64 import/multi-
+  memory shapes, 27 table64 call-indirect/import shapes, and 2 declarations outside
+  the bounded reservation policy. Mixed memory32/memory64 imports now reject on exact
+  address-form mismatch before attachment. Imports, shared/multi-memory execution,
+  excessive declared limits, guard mode, public admission, snapshots, and arm64 remain.
   Table64 now has one local explicit-max `size/get/set/grow/fill` slice plus exact
-  nine-file accounting at 2,802 commands / 68 modules / 2,330 assertions / 39 gates /
-  270 blocked / 81 invalid; elements/initializers, copy/init/indirect, exception handling,
-  and GC remain end-to-end work.
+  initializer-expression/active-element execution with i64 offsets and codec-v26 reload.
+  Nine-file accounting remains 2,802 commands / 68 modules / 2,330 assertions / 39
+  gates / 270 blocked / 81 invalid because wider operations, externref, and multiple-
+  table shapes still dominate; passive/declarative elements, copy/init/indirect,
+  exception handling, and GC remain end-to-end work.
 - [ ] Reach zero unexplained failures/skips in the official Release 3 core suite.
 
 **Engine & performance** (no-ir-plan P1–P7, measured against P1's stats)
@@ -281,12 +287,14 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   sets through snapshot v3, and stages bounded registered-memory co-tenants. The
   serializer now admits imported numeric globals, one bounded imported funcref table,
   and retained scalar direct calls to exact same-memory producers through recursive
-  stable-image transitions; host/foreign/tail imports and broader reference state remain
-  explicit gates. Memory64 now has one bounded local size/grow/scalar/SIMD-memory/
-  active+passive-data/copy/fill slice with exact metadata/codec limits, checked u64
-  arithmetic, overlap, drop state, trap atomicity, and finite no-maximum reservations.
-  A local explicit-max table64 slice executes `size/get/set/grow/fill` with i64
-  indexes/deltas/start/length and codec-v26 address-form
+  stable-image transitions; numeric-global pointers and native re-entry are jointly
+  proven at root/nested calls, while host/foreign/tail imports and broader reference
+  state remain explicit gates. Memory64 now has one bounded local size/grow/scalar/
+  SIMD-memory/active+passive-data/copy/fill slice with exact metadata/codec limits,
+  checked u64 arithmetic, overlap, drop state, trap atomicity, finite no-maximum
+  reservations, complete sixteen-file non-table accounting, and exact address-form
+  import rejection. A local explicit-max table64 slice executes `size/get/set/grow/fill`,
+  initializer expressions, and active elements with i64 indexes/offsets and codec-v26
   metadata; its nine-file official accounting is pinned. Imported/shared snapshots,
   wider table64, guard mode, public admission, exception handling,
   and WasmGC remain active scope;
