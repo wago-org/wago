@@ -215,7 +215,13 @@ func validateSnapshotModule(c *Compiled) error {
 		return errors.New("wago: modules with tables cannot be snapshotted yet")
 	}
 	if c.memoryCount() > 1 {
-		return errors.New("wago: modules with multiple memories cannot be snapshotted yet")
+		for i := 0; i < c.memoryCount(); i++ {
+			def := c.memoryDef(i)
+			if def.ImportKey != "" || def.Shared {
+				return errors.New("wago: modules with multiple memories that are imported or shared cannot be snapshotted; reject before retaining imports or mutating store state")
+			}
+		}
+		return errors.New("wago: owned local modules with multiple memories cannot be snapshotted until all memory images and grown sizes are captured together")
 	}
 	return nil
 }
