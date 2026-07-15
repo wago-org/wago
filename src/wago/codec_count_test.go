@@ -471,6 +471,7 @@ func TestCompiledReaderRejectsMaliciousCountsBeforeAllocation(t *testing.T) {
 				_ = w.elems(nil, &Compiled{})
 				_ = w.elems(nil, &Compiled{})
 				w.uvar(1)
+				w.u32(0) // memory index.
 				w.offset(OffsetInit{})
 				w.uvar(huge)
 			},

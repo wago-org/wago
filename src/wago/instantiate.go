@@ -239,6 +239,17 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		memoryObjs []*Memory
 		memoryOwns []bool
 	)
+	var memoryAttachments importDedup[*Memory]
+	attachMemory := func(memory *Memory) error {
+		if memoryAttachments.contains(memory) {
+			return nil
+		}
+		if err := memory.attachImporter(); err != nil {
+			return err
+		}
+		memoryAttachments.push(memory)
+		return nil
+	}
 	if c.memoryImport != "" {
 		m, ok := imports.memory(c.memoryImport)
 		if !ok {
@@ -261,7 +272,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			runtime.ReleaseEngine(eng)
 			return nil, fmt.Errorf("imported memory %q is not guard-page backed; signals-based bounds checks require a guard-page memory (build with -tags wago_guardpage)", c.memoryImport)
 		}
-		if err := m.attachImporter(); err != nil {
+		if err := attachMemory(m); err != nil {
 			runtime.ReleaseEngine(eng)
 			return nil, fmt.Errorf("imported memory %q: %w", c.memoryImport, err)
 		}
@@ -296,28 +307,23 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		memoryOwns = make([]bool, memoryCount)
 		memoryObjs[0], memoryOwns[0] = memObj, ownsMem
 	}
-	// Release every memory only if this instance owns it; imported memories keep
-	// their host mapping and release only the importer claim.
+	// Release every owned mapping once and detach every distinct imported memory
+	// once. Multiple import declarations may deliberately alias one host Memory.
 	closeMem := func() {
 		if memoryCount <= 1 {
 			if ownsMem {
 				runtime.ReleaseJobMemory(jm)
-			} else if memObj != nil {
-				memObj.detachImporter()
 			}
+			memoryAttachments.each((*Memory).detachImporter)
 			return
 		}
 		for i := memoryCount - 1; i >= 0; i-- {
 			memory := memoryObjs[i]
-			if memory == nil {
-				continue
-			}
-			if memoryOwns[i] {
+			if memory != nil && memoryOwns[i] {
 				runtime.ReleaseJobMemory(memory.jobMemory())
-			} else {
-				memory.detachImporter()
 			}
 		}
+		memoryAttachments.each((*Memory).detachImporter)
 	}
 	for i := 1; i < memoryCount; i++ {
 		def := c.memoryDef(i)
@@ -333,7 +339,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 				runtime.ReleaseEngine(eng)
 				return nil, fmt.Errorf("imported memory %q limits: %w", def.ImportKey, err)
 			}
-			if err := memory.attachImporter(); err != nil {
+			if err := attachMemory(memory); err != nil {
 				closeMem()
 				runtime.ReleaseEngine(eng)
 				return nil, fmt.Errorf("imported memory %q: %w", def.ImportKey, err)
@@ -832,14 +838,22 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		copy(dst, opts.restore.memory)
 	}
 	if initErr == nil && len(c.Data) > 0 && opts.restore == nil {
-		// Imported guarded memory may already have grown beyond its initial committed
-		// Go slice. HostBytes re-slices the stable reservation to the current logical
-		// size; for fresh owned memory that size is still the declared initial size.
-		lin, hostErr := jm.HostBytesChecked()
-		if hostErr != nil {
-			return nil, fmt.Errorf("active data host access: %w", hostErr)
-		}
 		for seg, d := range c.Data {
+			dataJM := jm
+			if d.MemoryIndex != 0 {
+				if int(d.MemoryIndex) >= len(memoryObjs) || memoryObjs[d.MemoryIndex] == nil {
+					initErr = fmt.Errorf("active data segment %d memory index %d is unavailable", seg, d.MemoryIndex)
+					break
+				}
+				dataJM = memoryObjs[d.MemoryIndex].jobMemory()
+			}
+			// Imported guarded memory may have grown beyond its initial committed Go
+			// slice. Re-slice the stable reservation to the current logical size.
+			lin, hostErr := dataJM.HostBytesChecked()
+			if hostErr != nil {
+				initErr = fmt.Errorf("active data segment %d memory %d host access: %w", seg, d.MemoryIndex, hostErr)
+				break
+			}
 			off := d.Offset.Base
 			if d.Offset.HasGlobal {
 				if d.Offset.Global < 0 || d.Offset.Global >= len(c.Globals) || d.Offset.Global >= len(globalCells) || globalCells[d.Offset.Global] == nil {
@@ -858,7 +872,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			}
 			end := uint64(off) + uint64(len(d.Bytes))
 			if end > uint64(len(lin)) {
-				initErr = fmt.Errorf("active data segment %d out of bounds: offset %d + length %d > memory size %d", seg, off, len(d.Bytes), len(lin))
+				initErr = fmt.Errorf("active data segment %d out of bounds on memory %d: offset %d + length %d > memory size %d", seg, d.MemoryIndex, off, len(d.Bytes), len(lin))
 				break
 			}
 			copy(lin[off:end], d.Bytes)
