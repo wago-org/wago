@@ -9,7 +9,8 @@ import (
 // them part of the default product claim. A feature may validate here while the
 // frontend/runtime still reject execution explicitly.
 type ValidationFeatures struct {
-	MultiMemory bool
+	CompactImports bool
+	MultiMemory    bool
 }
 
 // ValidateModule validates module-level indexes and typechecks function bodies.
@@ -182,6 +183,9 @@ func (v *moduleValidator) err(c ValidationErrorCode, d string) error {
 }
 
 func (v *moduleValidator) validateModule() error {
+	if v.m.UsesCompactImports && !v.features.CompactImports {
+		return v.err(ErrUnsupportedFeature, "compact imports")
+	}
 	v.collectDeclaredFuncs()
 	for gi, rt := range v.m.Types {
 		for _, st := range rt.SubTypes {

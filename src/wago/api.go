@@ -128,7 +128,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		return nil, fmt.Errorf("decode: %w", err)
 	}
 	workers := functionWorkersForModule(m, cfg.functionWorkers)
-	validationFeatures := wasm.ValidationFeatures{MultiMemory: features.MultiMemory}
+	validationFeatures := wasm.ValidationFeatures{CompactImports: features.MultiMemory, MultiMemory: features.MultiMemory}
 	if err := wasm.ValidateModuleWithFeaturesAndWorkers(m, validationFeatures, workers); err != nil {
 		// Proposal-aware decoding can expose a structurally unsupported module to
 		// validation before the validator has complete proposal subtyping rules.

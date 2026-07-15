@@ -475,6 +475,9 @@ type Module struct {
 	DataCount         *uint32
 	Code              []Func
 	Data              []Data
+
+	UsesCompactImports bool
+
 	// BranchHints is the validated metadata.code.branch_hint custom section.
 	// Nil means that the module did not contain the section.
 	BranchHints []FuncBranchHints
