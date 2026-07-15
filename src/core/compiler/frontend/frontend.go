@@ -55,6 +55,7 @@ type Features struct {
 	Memory64                bool // internal staged gate for bounded local 64-bit-address memory execution
 	Table64                 bool // internal staged gate for bounded local 64-bit-index table execution
 	ExceptionHandling       bool // internal staged gate for bounded local scalar tag/throw/try_table execution
+	ExceptionReferences     bool // internal staged gate for fixed rooted exn values and throw_ref/reference catches
 	SIMD                    bool // supported 0xfd v128 SIMD and relaxed-SIMD instructions
 	ExtendedConst           bool // i32/i64 add/sub/mul and prior immutable global.get in const expressions
 }
@@ -980,7 +981,10 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 		}
 		return false, nil
 	case 0x0a: // throw_ref
-		return false, p.unsupported("exception handling instruction", "ThrowRef (exception references disabled)", ctx())
+		if !p.feat.ExceptionHandling || !p.feat.ExceptionReferences {
+			return false, p.unsupported("exception handling instruction", "ThrowRef (exception references disabled)", ctx())
+		}
+		return false, nil
 	case 0x1f: // try_table blocktype vec(catch)
 		if err := skipBlockType(); err != nil {
 			return false, err
@@ -1009,7 +1013,7 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 			default:
 				return false, p.unsupported("exception handling instruction", fmt.Sprintf("unknown catch kind %d", kind), ctx())
 			}
-			if kind == 1 || kind == 3 {
+			if (kind == 1 || kind == 3) && !p.feat.ExceptionReferences {
 				return false, p.unsupported("exception handling instruction", "exception-reference catch (exception references disabled)", ctx())
 			}
 		}
@@ -1140,7 +1144,8 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 		if !p.feat.ReferenceTypes {
 			return false, p.unsupported("reference instruction", "RefNull", ctx())
 		}
-		if heap != -17 && heap != -14 && heap != -16 && heap != -13 && (!p.feat.TypedFunctionReferences || !p.supportedTypedFuncHeap(heap)) {
+		exceptionHeap := heap == -23 || heap == -12
+		if heap != -17 && heap != -14 && heap != -16 && heap != -13 && !(p.feat.ExceptionReferences && exceptionHeap) && (!p.feat.TypedFunctionReferences || !p.supportedTypedFuncHeap(heap)) {
 			return false, p.unsupported("reference instruction", fmt.Sprintf("ref.null heap %d", heap), ctx())
 		}
 		return false, nil
@@ -1680,7 +1685,10 @@ func (p supportPass) instructionKind(k wasm.InstrKind, context string) error {
 		}
 		return nil
 	case wasm.InstrThrowRef:
-		return p.unsupported("exception handling instruction", "ThrowRef (exception references disabled)", context)
+		if !p.feat.ExceptionHandling || !p.feat.ExceptionReferences {
+			return p.unsupported("exception handling instruction", "ThrowRef (exception references disabled)", context)
+		}
+		return nil
 	}
 
 	if stagedMemory64SIMDInstruction(k) {
@@ -1839,7 +1847,11 @@ func (p supportPass) supportedValType(v wasm.ValType) bool {
 	if p.feat.SIMD && v.Kind == wasm.ValVec && wasm.EqualValType(v, wasm.V128) {
 		return true
 	}
-	return p.feat.ReferenceTypes && v.Kind == wasm.ValRef && (isFuncRef(v.Ref) || isExternRef(v.Ref) || p.supportedTypedFuncRef(v.Ref) || p.supportedStagedExternRef(v.Ref))
+	return p.feat.ReferenceTypes && v.Kind == wasm.ValRef && (isFuncRef(v.Ref) || isExternRef(v.Ref) || p.supportedTypedFuncRef(v.Ref) || p.supportedStagedExternRef(v.Ref) || p.supportedExceptionRef(v.Ref))
+}
+
+func (p supportPass) supportedExceptionRef(rt wasm.RefType) bool {
+	return p.feat.ExceptionReferences && rt.Heap.Kind == wasm.HeapAbs && (rt.Heap.Abs == wasm.HeapExn || rt.Heap.Abs == wasm.HeapNoExn)
 }
 
 func (p supportPass) valType(v wasm.ValType, context string) error {

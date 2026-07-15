@@ -39,22 +39,15 @@
     {
       "name": "exceptions/throw_ref",
       "status": "accounted",
-      "gates": [
-        {
-          "boundary": "exception-reference-roots",
-          "reason": "throw_ref, catch_ref, catch_all_ref, exn, and noexn require rooted exception values",
-          "count": 1
-        }
-      ],
       "counts": {
         "commands": 15,
-        "modules_passed": 0,
-        "assertions_passed": 0,
+        "modules_passed": 1,
+        "assertions_passed": 12,
         "expected_invalid": 2,
         "expected_unlinkable": 0,
         "expected_uninstantiable": 0,
-        "expected_feature_rejects": 1,
-        "blocked_commands": 12,
+        "expected_feature_rejects": 0,
+        "blocked_commands": 0,
         "unexpected_compile_rejects": 0,
         "unexpected_link_rejects": 0,
         "failures": 0
@@ -133,7 +126,7 @@
     {
       "boundary": "exception-reference-roots",
       "reason": "throw_ref, catch_ref, catch_all_ref, exn, and noexn require rooted exception values",
-      "count": 3
+      "count": 2
     },
     {
       "boundary": "gc-interaction",
@@ -158,14 +151,14 @@
   ],
   "totals": {
     "commands": 147,
-    "modules_passed": 5,
-    "assertions_passed": 9,
+    "modules_passed": 6,
+    "assertions_passed": 21,
     "expected_invalid": 16,
     "expected_malformed": 2,
     "expected_unlinkable": 2,
     "expected_uninstantiable": 0,
-    "expected_feature_rejects": 8,
-    "blocked_commands": 90,
+    "expected_feature_rejects": 7,
+    "blocked_commands": 78,
     "unexpected_compile_rejects": 0,
     "unexpected_link_rejects": 0,
     "failures": 0

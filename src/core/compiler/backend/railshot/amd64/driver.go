@@ -87,7 +87,7 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 	case 0x08: // throw
 		return f.opThrow(r)
 	case 0x0a: // throw_ref
-		return fmt.Errorf("amd64: throw_ref remains outside bounded exception handling")
+		return f.opThrowRef()
 	case 0x10: // call
 		return f.callOp(r)
 	case 0x11: // call_indirect

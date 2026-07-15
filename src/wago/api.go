@@ -449,7 +449,7 @@ func stagedTagFuncType(m *wasm.Module, index uint32) (*wasm.CompType, bool) {
 	return ft, ok
 }
 
-func stagedExceptionHandlingShape(m *wasm.Module) error {
+func stagedExceptionHandlingShape(m *wasm.Module, exceptionReferences bool) error {
 	const maxLocalTags = 8
 	const maxTryTables = 16
 	const maxCatches = 8
@@ -478,6 +478,7 @@ func stagedExceptionHandlingShape(m *wasm.Module) error {
 	}
 	tryCount, throwCount := 0, 0
 	for i := range m.Code {
+		rootCount := 0
 		r := wasm.NewReader(m.Code[i].BodyBytes)
 		for r.HasNext() {
 			op, err := r.Byte()
@@ -492,7 +493,9 @@ func stagedExceptionHandlingShape(m *wasm.Module) error {
 				}
 				throwCount++
 			case 0x0a:
-				return fmt.Errorf("bounded exception handling rejects throw_ref")
+				if !exceptionReferences {
+					return fmt.Errorf("bounded exception handling rejects throw_ref")
+				}
 			case 0x12, 0x13, 0x15:
 				return fmt.Errorf("bounded exception handling rejects tail calls before handler transfer is proven")
 			case 0x1f:
@@ -513,14 +516,28 @@ func stagedExceptionHandlingShape(m *wasm.Module) error {
 						return err
 					}
 					switch wasm.CatchKind(kind) {
-					case wasm.CatchTag:
+					case wasm.CatchTag, wasm.CatchRef:
 						tag, err := r.U32()
 						if err != nil || int(tag) >= m.TagCount() {
 							return fmt.Errorf("bounded exception handling catch must target a declared tag")
 						}
+						if wasm.CatchKind(kind) == wasm.CatchRef {
+							if !exceptionReferences {
+								return fmt.Errorf("bounded exception handling rejects exception-reference catches")
+							}
+							rootCount++
+						}
 					case wasm.CatchAll:
+					case wasm.CatchAllRef:
+						if !exceptionReferences {
+							return fmt.Errorf("bounded exception handling rejects exception-reference catches")
+						}
+						rootCount++
 					default:
-						return fmt.Errorf("bounded exception handling rejects exception-reference catches")
+						return fmt.Errorf("bounded exception handling rejects unknown catch kind %d", kind)
+					}
+					if rootCount > 4 {
+						return fmt.Errorf("bounded exception handling admits at most 4 rooted exception values per function")
 					}
 					if _, err := r.U32(); err != nil {
 						return err
@@ -570,7 +587,7 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 		if cfg.boundsChecks == BoundsChecksSignalsBased {
 			return nil, fmt.Errorf("compile: unsupported exception handling with signals-based bounds checks")
 		}
-		if err := stagedExceptionHandlingShape(m); err != nil {
+		if err := stagedExceptionHandlingShape(m, features.ExceptionReferences); err != nil {
 			return nil, fmt.Errorf("compile: staged exception handling: %w", err)
 		}
 	}

@@ -251,6 +251,7 @@ type fn struct {
 	ctrl        []ctrlFrame // open block/loop/if/try frames; ctrl[0] is the function frame
 	unreachable bool        // in dead code after an unconditional branch/trap
 	ehTryDepth  int         // live reachable try_table records; bounded by maxEHTryRecords
+	ehRootCount int         // compile-time assigned fixed exception roots; bounded by maxEHRootRecords
 
 	// sc holds per-function scratch whose backing is reused across the module:
 	// retSites, brFoldSites and trapSites live there so each function rewinds their
@@ -440,12 +441,15 @@ const (
 func (f *fn) localOff(i int) int32 { return int32(frameHdrBytes + 8*f.localSlot[i]) }
 func (f *fn) ehFrameBytes() int {
 	if len(f.m.Tags) != 0 {
-		return maxEHTryRecords * ehRecordSlots * 8
+		return (maxEHTryRecords*ehRecordSlots + maxEHRootRecords*ehRootSlots) * 8
 	}
 	return 0
 }
 func (f *fn) ehRecordOff(index int) int32 {
 	return int32(frameHdrBytes + 8*f.nLocalSlots + index*ehRecordSlots*8)
+}
+func (f *fn) ehRootOff(index int) int32 {
+	return int32(frameHdrBytes + 8*f.nLocalSlots + maxEHTryRecords*ehRecordSlots*8 + index*ehRootSlots*8)
 }
 func (f *fn) spillOff(k int) int32 {
 	return int32(frameHdrBytes + 8*f.nLocalSlots + f.ehFrameBytes() + 8*k)

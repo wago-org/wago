@@ -63,8 +63,9 @@ type ctrlFrame struct {
 	entryState  []locState
 
 	// cfTry only: one of a bounded set of fixed six-slot native-stack records
-	// plus an ordered compile-time catch dispatch table. Exception references are
-	// excluded, so each catch carries at most two scalar payload words.
+	// plus an ordered compile-time catch dispatch table. Scalar exceptions carry
+	// at most two payload words; reference catches copy those words into a fixed
+	// rooted exception slot before exposing its stable frame-relative address.
 	ehTargetSite  int
 	ehRecordIndex int
 	ehCatches     []ehCatchClause
@@ -74,8 +75,10 @@ type ehCatchClause struct {
 	kind        wasm.CatchKind
 	tag         uint32
 	frame       int
+	scalarN     int
 	payloadN    int
-	payloadType [2]machineType
+	payloadType [3]machineType
+	rootIndex   int
 	matchSite   int
 }
 
@@ -544,16 +547,18 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 }
 
 const (
-	ehRecordSlots   = 6
-	maxEHTryRecords = 4
-	maxEHCatches    = 8
-	ehPrevOff       = 0
-	ehSavedRSPOff   = 8
-	ehTagOff        = 16
-	ehPayload0Off   = 24
-	ehPayload1Off   = 32
-	ehTargetOff     = 40
-	offEHHandlerPtr = abi.EHHandlerPtrOffset
+	ehRecordSlots    = 6
+	ehRootSlots      = 3
+	maxEHTryRecords  = 4
+	maxEHRootRecords = 4
+	maxEHCatches     = 8
+	ehPrevOff        = 0
+	ehSavedRSPOff    = 8
+	ehTagOff         = 16
+	ehPayload0Off    = 24
+	ehPayload1Off    = 32
+	ehTargetOff      = 40
+	offEHHandlerPtr  = abi.EHHandlerPtrOffset
 )
 
 func (f *fn) opTryTable(r *wasm.Reader) error {
@@ -577,7 +582,7 @@ func (f *fn) opTryTable(r *wasm.Reader) error {
 		kind := wasm.CatchKind(kindByte)
 		clause := ehCatchClause{kind: kind}
 		switch kind {
-		case wasm.CatchTag:
+		case wasm.CatchTag, wasm.CatchRef:
 			clause.tag, err = r.U32()
 			if err != nil {
 				return err
@@ -589,7 +594,8 @@ func (f *fn) opTryTable(r *wasm.Reader) error {
 			if !ok || len(ft.Params) > 2 {
 				return fmt.Errorf("bounded exception handling catch tag %d signature unavailable", clause.tag)
 			}
-			clause.payloadN = len(ft.Params)
+			clause.scalarN = len(ft.Params)
+			clause.payloadN = clause.scalarN
 			for j, typ := range ft.Params {
 				mt := mtOf(typ)
 				if mt != mtI32 && mt != mtI64 && mt != mtF32 && mt != mtF64 {
@@ -597,9 +603,26 @@ func (f *fn) opTryTable(r *wasm.Reader) error {
 				}
 				clause.payloadType[j] = mt
 			}
+			if kind == wasm.CatchRef {
+				if f.ehRootCount >= maxEHRootRecords {
+					return fmt.Errorf("bounded exception handling supports at most %d rooted exception values per function", maxEHRootRecords)
+				}
+				clause.rootIndex = f.ehRootCount
+				f.ehRootCount++
+				clause.payloadType[clause.payloadN] = mtI64
+				clause.payloadN++
+			}
 		case wasm.CatchAll:
+		case wasm.CatchAllRef:
+			if f.ehRootCount >= maxEHRootRecords {
+				return fmt.Errorf("bounded exception handling supports at most %d rooted exception values per function", maxEHRootRecords)
+			}
+			clause.rootIndex = f.ehRootCount
+			f.ehRootCount++
+			clause.payloadType[0] = mtI64
+			clause.payloadN = 1
 		default:
-			return fmt.Errorf("bounded exception handling rejects exception-reference catches")
+			return fmt.Errorf("bounded exception handling rejects unknown catch kind %d", kind)
 		}
 		label, err := r.U32()
 		if err != nil {
@@ -684,26 +707,71 @@ func (f *fn) opThrow(r *wasm.Reader) error {
 	return nil
 }
 
+func (f *fn) opThrowRef() error {
+	types := f.currentLogicalTypes()
+	if len(types) == 0 || types[len(types)-1] != mtI64 {
+		return fmt.Errorf("bounded exception handling throw_ref requires an exception reference")
+	}
+	refSlot := slotOfLogicalTypes(types, len(types)-1)
+	f.reconcileLocals()
+	f.flush()
+	f.a.Load64(R10, RSP, f.spillOff(refSlot))
+	f.a.TestSelf(R10, true)
+	f.trapIf(condE, trapNullReference)
+	f.a.Load64(R11, RBX, -int32(offEHHandlerPtr))
+	f.a.TestSelf(R11, true)
+	noHandler := f.a.JccPlaceholder(condE)
+	for _, off := range [...]int32{0, 8, 16} {
+		f.a.Load64(RAX, R10, off)
+		f.a.Store64(R11, ehTagOff+off, RAX)
+	}
+	f.a.Load64(RSP, R11, ehSavedRSPOff)
+	f.a.Load64(RAX, R11, ehTargetOff)
+	f.a.JmpReg(RAX)
+	f.a.PatchRel32(noHandler, f.a.Len())
+	f.emitTrap(trapUnhandledException)
+	f.unreachable = true
+	return nil
+}
+
 func (f *fn) emitEHCatchRoute(fr *ctrlFrame, clause *ehCatchClause, recordOff int32) {
 	target := &f.ctrl[clause.frame]
 	f.a.Load64(RAX, RSP, recordOff+ehPrevOff)
 	f.a.Store64(RBX, -int32(offEHHandlerPtr), RAX)
 
-	if target.regMerge1 && clause.payloadN == 1 {
+	rootOff := int32(0)
+	if clause.kind == wasm.CatchRef || clause.kind == wasm.CatchAllRef {
+		rootOff = f.ehRootOff(clause.rootIndex)
+		for _, off := range [...]int32{ehTagOff, ehPayload0Off, ehPayload1Off} {
+			f.a.Load64(RAX, RSP, recordOff+off)
+			f.a.Store64(RSP, rootOff+off-ehTagOff, RAX)
+		}
+	}
+
+	loadPayload := func(reg Reg, i int) {
+		if i == clause.scalarN {
+			f.a.LeaRsp(reg, rootOff)
+			return
+		}
 		off := recordOff + ehPayload0Off
-		if clause.payloadType[0].isFloat() {
+		if i == 1 {
+			off = recordOff + ehPayload1Off
+		}
+		f.a.Load64(reg, RSP, off)
+	}
+	if target.regMerge1 && clause.payloadN == 1 {
+		if clause.scalarN == 0 {
+			f.a.LeaRsp(mergeReg, rootOff)
+		} else if clause.payloadType[0].isFloat() {
+			off := recordOff + ehPayload0Off
 			f.a.FLoadDisp(mergeFReg, RSP, off, clause.payloadType[0] == mtF64)
 		} else {
-			f.a.Load64(mergeReg, RSP, off)
+			loadPayload(mergeReg, 0)
 		}
 	} else {
 		toSlot := slotsOfTypes(target.baseTypes)
 		for i := 0; i < clause.payloadN; i++ {
-			off := recordOff + ehPayload0Off
-			if i == 1 {
-				off = recordOff + ehPayload1Off
-			}
-			f.a.Load64(RAX, RSP, off)
+			loadPayload(RAX, i)
 			f.a.Store64(RSP, f.spillOff(toSlot+i), RAX)
 		}
 	}
