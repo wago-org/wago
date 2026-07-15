@@ -619,8 +619,8 @@ func TestStagedTable64LocalGetSetSizeAndProductRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal table64: %v", err)
 	}
-	if blob[4] != 26 {
-		t.Fatalf("table64 codec version = %d, want 26", blob[4])
+	if blob[4] != 27 {
+		t.Fatalf("table64 codec version = %d, want 27", blob[4])
 	}
 	var public Compiled
 	if err := public.UnmarshalBinary(blob); err == nil || !strings.Contains(err.Error(), "unknown required feature bits") {

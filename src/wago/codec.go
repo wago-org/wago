@@ -96,6 +96,7 @@ func marshalCompiled(c *Compiled) ([]byte, error) {
 	w.memories(c)
 	w.stringIntMap(c.memoryExportMap())
 	w.bool(c.dynamicImports)
+	w.tags(c)
 	w.u64(uint64(compiledStructuralRequiredFeatures(c)))
 	w.gcTypeDescs(c.GCTypeDescs)
 	return w.buf, nil
@@ -160,6 +161,20 @@ func (w *compiledWriter) u64Slice(v []uint64) {
 		w.u64(x)
 	}
 }
+func (w *compiledWriter) tags(c *Compiled) {
+	if c.memoryDir == nil {
+		w.uvar(0)
+		w.stringIntMap(nil)
+		return
+	}
+	w.uvar(uint64(len(c.memoryDir.ehTags)))
+	for _, tag := range c.memoryDir.ehTags {
+		w.str(tag.ImportKey)
+		w.u32(tag.TypeIndex)
+	}
+	w.stringIntMap(c.memoryDir.ehTagExports)
+}
+
 func (w *compiledWriter) memories(c *Compiled) {
 	w.uvar(uint64(c.memoryCount()))
 	for i := 0; i < c.memoryCount(); i++ {
@@ -571,6 +586,9 @@ func unmarshalCompiled(c *Compiled, data []byte) error {
 	if err != nil {
 		return err
 	}
+	if err := r.tags(c); err != nil {
+		return err
+	}
 	required, err := r.u64()
 	if err != nil {
 		return err
@@ -604,6 +622,7 @@ const (
 	minGlobalBytes       = 1 + 1 + 1
 	minTableBytes        = 1 + 1 + minVarintBytes + minVarintBytes + 1
 	minGlobalImportBytes = minStringBytes + minStringBytes + 1 + 1
+	minTagBytes          = minStringBytes + minU32Bytes
 	minGCDescTailBytes   = 20
 	minGCDescBytes       = minU32Bytes + 1 + 1 + minVarintBytes + minGCDescTailBytes
 	minGCFieldBytes      = 1 + minU32Bytes
@@ -769,6 +788,44 @@ func (r *compiledReader) u64Slice() ([]uint64, error) {
 	}
 	return out, nil
 }
+func (r *compiledReader) tags(c *Compiled) error {
+	n, err := r.countElements("exception tags", minTagBytes)
+	if err != nil {
+		return err
+	}
+	if n > 8 {
+		return fmt.Errorf("exception tag count %d exceeds staged bound 8", n)
+	}
+	if c.memoryDir == nil {
+		c.memoryDir = &compiledMemoryDirectory{}
+	}
+	if n != 0 {
+		c.memoryDir.ehTags = make([]compiledTagDef, n)
+	}
+	importEnded := false
+	for i := range c.memoryDir.ehTags {
+		tag := &c.memoryDir.ehTags[i]
+		tag.ImportKey, err = r.str()
+		if err != nil {
+			return fmt.Errorf("exception tag %d import: %w", i, err)
+		}
+		tag.TypeIndex, err = r.u32()
+		if err != nil {
+			return fmt.Errorf("exception tag %d type: %w", i, err)
+		}
+		if tag.ImportKey == "" {
+			importEnded = true
+		} else if importEnded {
+			return fmt.Errorf("exception tag %d import follows local declaration", i)
+		}
+	}
+	c.memoryDir.ehTagExports, err = r.stringIntMap()
+	if err != nil {
+		return fmt.Errorf("exception tag exports: %w", err)
+	}
+	return nil
+}
+
 func (r *compiledReader) memories(c *Compiled) error {
 	n, err := r.countElements("memories", 6)
 	if err != nil {

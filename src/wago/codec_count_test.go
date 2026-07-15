@@ -509,6 +509,21 @@ func TestCompiledReaderRejectsMaliciousCountsBeforeAllocation(t *testing.T) {
 			},
 		},
 		{
+			name: "exception tags",
+			write: func(w *compiledWriter) {
+				writeCompiledCodecPrefixAfterMemoryExports(t, w)
+				w.uvar(huge)
+			},
+		},
+		{
+			name: "exception tag import string",
+			write: func(w *compiledWriter) {
+				writeCompiledCodecPrefixAfterMemoryExports(t, w)
+				w.uvar(1)
+				w.uvar(huge)
+			},
+		},
+		{
 			name: "GC type descriptors",
 			write: func(w *compiledWriter) {
 				writeCompiledCodecPrefixAfterMemoryImport(t, w)

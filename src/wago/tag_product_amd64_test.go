@@ -74,11 +74,39 @@ func TestStagedTagProductMetadataIdentityLifecycle(t *testing.T) {
 	if err := applyPolicy(&Module{c: producerCompiled}, Policy{MaxTags: 1}); !errors.Is(err, ErrPermissionDenied) {
 		t.Fatalf("tag policy error = %v, want ErrPermissionDenied", err)
 	}
-	if _, err := producerCompiled.MarshalBinary(); err == nil || !strings.Contains(err.Error(), "not persisted") {
-		t.Fatalf("tag product codec = %v, want explicit rejection", err)
+	blob, err := producerCompiled.MarshalBinary()
+	if err != nil {
+		t.Fatalf("marshal tag product: %v", err)
 	}
-	if _, err := Capture(producerCompiled, SnapshotOptions{}); err == nil || !strings.Contains(err.Error(), "exception-handling") {
-		t.Fatalf("tag product snapshot = %v, want explicit rejection", err)
+	var loaded Compiled
+	if err := loaded.UnmarshalBinary(blob); err != nil {
+		t.Fatalf("unmarshal tag product: %v", err)
+	}
+	defer loaded.Close()
+	if got := (&Module{c: &loaded}).Metadata().Tags; !reflect.DeepEqual(got, producerMeta.Tags) {
+		t.Fatalf("reloaded tag metadata = %#v, want %#v", got, producerMeta.Tags)
+	}
+	loadedProducer, err := instantiateCore(&loaded, InstantiateOptions{})
+	if err != nil {
+		t.Fatalf("instantiate reloaded tag producer: %v", err)
+	}
+	loadedPrimary, err := loadedProducer.ExportedTag("primary")
+	if err != nil {
+		t.Fatal(err)
+	}
+	loadedAlias, err := loadedProducer.ExportedTag("alias")
+	if err != nil || loadedAlias != loadedPrimary {
+		t.Fatalf("reloaded duplicate alias = %p, %v; want %p", loadedAlias, err, loadedPrimary)
+	}
+	if err := loadedProducer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := Capture(producerCompiled, SnapshotOptions{})
+	if err != nil {
+		t.Fatalf("capture declaration-only local tags: %v", err)
+	}
+	if _, err := snapshot.MarshalBinary(); err != nil {
+		t.Fatalf("marshal declaration-only tag snapshot: %v", err)
 	}
 
 	producer, err := instantiateCore(producerCompiled, InstantiateOptions{})
@@ -100,6 +128,26 @@ func TestStagedTagProductMetadataIdentityLifecycle(t *testing.T) {
 
 	consumerCompiled := compileStagedExceptionHandling(t, stagedTagProductConsumerModule(0, 0))
 	defer consumerCompiled.Close()
+	consumerBlob, err := consumerCompiled.MarshalBinary()
+	if err != nil {
+		t.Fatalf("marshal imported tag product: %v", err)
+	}
+	var loadedConsumer Compiled
+	if err := loadedConsumer.UnmarshalBinary(consumerBlob); err != nil {
+		t.Fatalf("unmarshal imported tag product: %v", err)
+	}
+	defer loadedConsumer.Close()
+	loadedConsumerInstance, err := instantiateCore(&loadedConsumer, InstantiateOptions{Imports: Imports{"env.first": primary, "env.second": primary}})
+	if err != nil {
+		t.Fatalf("instantiate reloaded imported tags: %v", err)
+	}
+	loadedReexport, err := loadedConsumerInstance.ExportedTag("reexport")
+	if err != nil || loadedReexport != primary {
+		t.Fatalf("reloaded tag re-export = %p, %v; want %p", loadedReexport, err, primary)
+	}
+	if err := loadedConsumerInstance.Close(); err != nil {
+		t.Fatal(err)
+	}
 	rt := NewRuntime()
 	defer rt.Close()
 	rt.imports = Imports{"env.first": primary, "env.second": primary}
@@ -107,6 +155,9 @@ func TestStagedTagProductMetadataIdentityLifecycle(t *testing.T) {
 	imports := consumerModule.Imports()
 	if len(imports) != 2 || imports[0].Kind != ImportTag || imports[0].Index != 0 || imports[1].Index != 1 || !reflect.DeepEqual(imports[0].Params, []ValType{ValI32, ValF64}) {
 		t.Fatalf("tag import inspection = %#v", imports)
+	}
+	if _, err := Capture(consumerCompiled, SnapshotOptions{Imports: Imports{"env.first": primary, "env.second": primary}}); err == nil || !strings.Contains(err.Error(), "declaration-only local tags") {
+		t.Fatalf("imported tag snapshot = %v, want local-only rejection", err)
 	}
 	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{"env.first": primary, "env.second": primary}})
 	if err != nil {
