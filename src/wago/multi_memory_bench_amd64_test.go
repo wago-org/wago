@@ -139,6 +139,50 @@ func BenchmarkStagedMultiMemoryImportedGlobalContextRebind(b *testing.B) {
 	}
 }
 
+func BenchmarkStagedMultiMemoryImportedTableContextRebind(b *testing.B) {
+	memoryCompiled := stagedMultiMemoryCompile(b, nativeMultiMemoryProducerModule())
+	defer memoryCompiled.Close()
+	memoryOwner, err := instantiateCore(memoryCompiled, InstantiateOptions{})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer memoryOwner.Close()
+	memory, err := memoryOwner.ExportedMemory("mem1")
+	if err != nil {
+		b.Fatal(err)
+	}
+	tableCompiled, err := Compile(nil, soleImportedTableProducerModule())
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer tableCompiled.Close()
+	tableOwner, err := instantiateCore(tableCompiled, InstantiateOptions{})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer tableOwner.Close()
+	table, err := tableOwner.ExportedTable("table")
+	if err != nil {
+		b.Fatal(err)
+	}
+	consumerCompiled := stagedMultiMemoryCompile(b, soleImportedTableMultiMemoryModule())
+	defer consumerCompiled.Close()
+	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{
+		"M.mem1": memory, "env.table": table,
+	}})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer consumer.Close()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := consumer.Invoke("is_null", I32(0)); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
 func BenchmarkStagedMultiMemorySIMDLoad(b *testing.B) {
 	if !hostSupportsSIMD() {
 		b.Skip("host SIMD unavailable")
