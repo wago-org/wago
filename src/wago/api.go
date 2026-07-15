@@ -517,6 +517,9 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	if features.TypedFunctionReferences {
 		compiled.codeCache.stagedFeatures |= CoreFeatureTypedFunctionReferences
 	}
+	if features.TypedTailCalls {
+		compiled.codeCache.stagedFeatures |= CoreFeatureTailCall
+	}
 	return compiled, nil
 }
 
