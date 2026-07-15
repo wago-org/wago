@@ -150,8 +150,8 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   admits executable owners, finite imported numeric-global pointer arrays, and one
   bounded imported funcref table under a null/get/set/size-only scan. Retained scalar
   direct imports may now re-enter producers sharing the exact memory-0 mapping through
-  stable 256-byte arena images; nested calls compose independently with imported
-  numeric-global pointers or the sole imported funcref table while traps, shared
+  stable 256-byte arena images; nested calls compose with imported numeric-global
+  pointers and the sole imported funcref table simultaneously while traps, shared
   growth, table state, concurrency, and independent memory/global/table/function
   close ordering remain allocation-free. Host callbacks, foreign-memory/imported-
   tail bindings, local/multiple/unbounded or wider-operation tables, local/reference/
@@ -179,21 +179,23 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   preserves provider max/no-max type across re-export, shares growth, and retains or
   rolls back the producer transactionally without growing the memory lifecycle sidecar.
   Snapshots remain an explicit gate.
-  The complete sixteen-file non-table matrix accounts 5,904 commands: 150 modules,
-  5,335 assertions, 292 invalid, 60 malformed, and 24 unlinkable cases pass; 25 exact
-  feature gates leave 1 command blocked. Those gates are 23 table64 import shapes and
-  2 declarations outside the bounded reservation policy. Mixed memory32/memory64
-  imports reject before attachment. Host memory64, shared/multi-memory execution,
-  excessive declared limits, guard mode, public admission, snapshots, and arm64 remain.
-  Table64 now has one local `size/get/set/grow/fill/call_indirect` slice plus exact
-  initializer-expression/active-element execution with i64 offsets and codec-v26 reload.
-  A no-maximum table is admitted only when private and non-growing; full-u64 indirect
-  indexes retain null and 64-bit structural-signature traps. Table handles reject
-  table32/table64 import-form mismatches. Nine-file accounting is 2,802 commands / 70
-  modules / 2,330 assertions / 37 gates / 270 blocked / 81 invalid; the separately
-  accounted `call_indirect64` module and assertion are green. Wider operations,
-  externref, imports, multiple tables, passive/declarative elements, copy/init,
-  exception handling, and GC remain end-to-end work.
+  The complete sixteen-file non-table matrix accounts 5,904 commands: 167 modules,
+  5,335 assertions, 292 invalid, 60 malformed, and 30 unlinkable cases pass; only 2
+  declarations outside the bounded reservation policy remain gated, with zero blocked
+  commands. All 23 prior table64 import gates are closed. Mixed memory32/memory64 imports
+  reject before attachment. Host memory64, shared/multi-memory execution, excessive
+  declared limits, guard mode, public admission, snapshots, and arm64 remain.
+  Table64 now has one local-or-instance-import `size/get/set/grow/fill/call_indirect`
+  slice plus sole-local `table.copy` and exact initializer-expression/active-element
+  execution with i64 offsets and codec-v26 reload. Exported or growing no-maximum
+  tables preserve exact `HasMax=false` metadata under a finite 16,384-entry reservation;
+  import matching, re-export, shared growth, retention/rollback, inspection, and policy
+  accounting are exact. Full-u64 indirect/copy operands retain carry/end, null, and
+  64-bit structural-signature traps. Table handles reject table32/table64 import-form
+  mismatches. Nine-file accounting remains 2,802 commands / 70 modules / 2,330 assertions /
+  37 gates / 270 blocked / 81 invalid; `table_copy64` has a zero accounting delta because
+  multiple-table shapes still lead. Externref, multiple tables, passive/declarative
+  elements, `table.init`, imported copy, exception handling, and GC remain end-to-end work.
 - [ ] Reach zero unexplained failures/skips in the official Release 3 core suite.
 
 **Engine & performance** (no-ir-plan P1–P7, measured against P1's stats)
@@ -294,16 +296,17 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   serializer now admits imported numeric globals, one bounded imported funcref table,
   and retained scalar direct calls to exact same-memory producers through recursive
   stable-image transitions; numeric-global pointers and the sole imported table are
-  each jointly proven with native re-entry at root/nested calls, while host/foreign/tail
+  jointly proven in the same root/nested native re-entry chain, while host/foreign/tail
   imports and broader reference state remain explicit gates. Memory64 now has one
   bounded local-or-instance-import size/grow/scalar/SIMD-memory/active+passive-data/
   copy/fill slice with exact metadata/codec limits, checked u64 arithmetic, overlap,
   drop state, trap atomicity, finite no-maximum reservations, complete sixteen-file
-  non-table accounting, and exact address/max-form import rejection. A local table64
-  slice executes `size/get/set/grow/fill/call_indirect`, initializer expressions, and
-  active elements with i64 indexes/offsets and codec-v26 metadata; private non-growing
-  no-maximum tables are finite, and its nine-file official accounting is pinned. Imported/shared snapshots,
-  wider table64, guard mode, public admission, exception handling,
+  non-table accounting, exact address/max-form import rejection, and only two excessive-
+  declaration gates. A local-or-instance-import table64 slice executes
+  `size/get/set/grow/fill/call_indirect`, sole-local `table.copy`, initializer expressions,
+  and active elements with i64 indexes/offsets and codec-v26 metadata; exported/growing
+  no-maximum tables use a finite reservation without changing exact type. Imported/shared
+  snapshots, wider table64 shapes and `table.init`, guard mode, public admission, exception handling,
   and WasmGC remain active scope;
   see `docs/wasm3.md` for exact boundaries.
 - [x] Reference-types product completion: signatures, locals, control,
