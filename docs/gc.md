@@ -63,10 +63,13 @@ provider/expected-unlinkable pair. Complete recursive-group comparison preserves
 bound references from equivalent-looking external references, so the provider's second group cannot flatten into the
 consumer's self-recursive requirement. The provider owns 64 descriptor bytes; the attempted consumer has the same bounded
 requirement but rejects before retention or publication. Their wasm/code/codec sizes are 82/77/403 and 51/0/236 bytes,
-and provider `g` measures 36.78–37.82 ns/op with zero allocations. All thirty-four admitted leaders instantiate, or fail
-before consumer publication, without allocating a collector. Eleven leaders remain gated and 14 dependent commands remain
-blocked. General native frame publication, object-valued mutable/reference globals, broader struct-defined linking
-ownership, public ownership, and snapshots remain incomplete. These bounded products must not be presented as general executable WasmGC support.
+and provider `g` measures 36.78–37.82 ns/op with zero allocations. Iteration 70 adds only the M6 provider/consumer pair.
+Its two independent self-recursive function/struct groups remain distinct while `g <: f1` links exactly. Both products own
+64 descriptor bytes, retain one producer transactionally across both close orders, and keep `Instance.gc` nil. Their
+wasm/code/codec sizes are 82/77/403 and 63/0/326 bytes, and provider `g` measures 37.44–42.95 ns/op with zero allocations.
+All thirty-six admitted leaders instantiate, or fail before consumer publication, without allocating a collector. Nine
+leaders remain gated and 13 dependent commands remain blocked. General native frame publication, object-valued mutable/
+reference globals, broader struct-defined linking ownership, public ownership, and snapshots remain incomplete. These bounded products must not be presented as general executable WasmGC support.
 
 ## Why a wago-native collector
 
@@ -1218,6 +1221,31 @@ platforms, and public GC admission remain fail-closed. Strict accounting is now 
 23 passed assertions / 11 gates / 14 blocked commands / 24 invalid / 6 executed expected unlinkables / 2 blocked
 unlinkables / zero validator gaps, unexpected compile/link failures, or hidden failures. The source-lines-614–621 M6
 provider/consumer pair is next and must remain separate from source line 628.
+
+### Iteration 70 M6 independent struct-defined linking pair
+
+The source-lines-614–621 pair is pinned independently from M5. The command-line-496 provider is 82 bytes with SHA-256
+`7c8af0765c2e2d43a07e7a6a75a85d396531827c1b2cb4402a24277308781dff`; the command-line-504 consumer is 63 bytes
+with SHA-256 `a593d0db0e5f173aaac2d6007b84a4b268d7ad2047a4e8cd8fe3a275ef9b0820`. Both contain three two-member
+recursive groups. The first two groups pair open `() -> ()` functions with final structs whose immutable non-null fields
+refer to their own recursive function member. The last group contains `g <: f1` and an empty final struct. Exact AST and
+byte-backed validation prove all members, both independent self references, the flat super edge, empty provider body/export,
+consumer `M6.g` import as type `f1`, registration order, and the compatible provider-source to consumer-required relation.
+
+Struct definitions remain metadata-only. No struct/array instruction or value executes, no compact `gc.Ref`, checked
+collector root, barrier, card, remembered set, or collector object appears, and both instances keep `Instance.gc == nil`.
+Provider and consumer each own a 64-byte arena containing null plus one ordinary 32-byte function descriptor. The consumer
+copies the provider's nonzero code pointer and canonical identity, retains one distinct producer transactionally, rolls
+that owner back before publication on invalid export, and releases it under both provider-first and consumer-first close
+orders. Hosts, M5 and earlier providers, widened namespaces/self-reference forms, and unpinned structural lookalikes reject.
+
+Provider/consumer wasm/code/codec sizes are 82/77/403 and 63/0/326 bytes. Empty `g` measures 37.44–42.95 ns/op,
+0 B/op, and 0 allocs/op. Unlinked codec v27 preserves exact recursive metadata but no admission marker; linked
+serialization, private/public reload admission, snapshots, signal-backed bounds, host/cross-product substitution, arm64,
+unsupported platforms, and public GC admission remain fail-closed. Strict accounting is now 170 commands / 36 passed
+modules / 23 passed assertions / 9 gates / 13 blocked commands / 24 invalid / 6 executed expected unlinkables / 2 blocked
+unlinkables / zero validator gaps, unexpected compile/link failures, or hidden failures. The source-lines-628–639 M7 pair
+is next and must remain separate from source line 652.
 
 ## Collector lifetime
 
