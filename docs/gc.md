@@ -1611,12 +1611,15 @@ Tests exercise tiny nurseries, collect-every-alloc, exact scanning, cycles, root
   collector-free i31 operations, dynamic tests/casts, identity-preserving cast branches, extern conversion,
   and compact null/i31/object equality. Array fill/copy plus both `array.init_data` and the exact local-
   funcref `array.init_elem` product are staged and gap-free. Complete `gc/type-subtyping` accounting is pinned
-  at 170 commands; iterations 57-64 execute twenty-six collector-free leaders, including six immutable local `ref.func`
-  globals, nine function-only tests, recursive call/cast/finality products, and the exact typed-table call product. The
-  runtime products keep ordinary descriptors in fixed local tables and perform direct identity/subtype checks without
-  the compact-GC classifier. Repeated invocation allocates zero bytes, leaving 19 exact gates and 25 blocked dependents
-  with zero validator gaps or hidden failures. Reference struct fields, non-local/reference-owning array products,
-  broader GC constant expressions, linking products, and non-flat exports remain.
+  at 170 commands; iterations 57-65 execute twenty-eight collector-free leaders, including six immutable local `ref.func`
+  globals, nine function-only tests, recursive call/cast/finality products, the exact typed-table call product, and the
+  first exact cross-instance linking provider/consumer pair. The 103-byte provider and 86-byte six-import consumer keep
+  ordinary canonical descriptor identity in bounded 128/224-byte arenas; duplicate imports retain one provider,
+  partial failure rolls back, both close orders release exactly once, and three 51-byte narrowing imports unlink without
+  creating a collector or compact reference. Repeated provider invocation allocates zero bytes, leaving 17 exact gates
+  and 21 blocked commands with zero validator gaps, unexpected compile/link failures, or hidden failures. Live linked
+  codec state, snapshots, hosts, guard mode, arm64, the later finality/struct-defined linking clusters, reference struct
+  fields, non-local/reference-owning array products, broader GC constant expressions, and non-flat exports remain.
 - The parked-Go runtime-call ABI is proven for exact empty-frame-root numeric/packed
   allocations, non-collecting numeric access/mutation/data initialization, exact local-funcref element
   initialization, ordered immutable collector-rooted globals, per-instance passive descriptors, and one
