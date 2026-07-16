@@ -729,3 +729,7 @@ globals additionally remain coherent at public return.
 ## Iteration 72 M8 link ABI boundary
 
 The exact source-lines-652–659 M8 pair reuses the canonical function descriptor ABI with the current trailing instance-context pointer. The provider owns null plus two 40-byte descriptors (120 bytes); the consumer owns null plus four imported copies (200 bytes). Exact and shifted duplicate recursive views copy the corresponding provider code pointer and canonical identity, while producer retention deduplicates to one owner. Both close orders release exactly. No collector, compact `gc.Ref`, root/barrier, helper, basedata slot, frame record, or public ABI is added. Binding-independent compiled serialization carries no live producer binding. Host and cross-product substitution, private/public reload admission, snapshots, guard mode, arm64, and unsupported platforms remain closed.
+
+## Iteration 73 final type-subtyping ABI boundary
+
+M9 extends the same 40-byte canonical descriptor ABI to null plus two provider descriptors (120 bytes) and null plus eight consumer copies (360 bytes). Eight imports preserve the two provider identities while retention deduplicates to one owner; rollback and both close orders are exact. M10/M11 mismatches retain no owner. The non-flat f32 exports require no descriptor, collector, helper, basedata slot, root/barrier, frame record, or public ABI change. Type-subtyping now has zero official gates.
