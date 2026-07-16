@@ -223,6 +223,27 @@ passive segment pair already owned by collector slots; non-null ingress, mutable
 hosts, general calls with live refs, snapshots, guard mode, and arm64 remain closed. These exact
 struct/array proofs must not be treated as the general `codegen.Emitter` publication protocol.
 
+Iteration 44 adds a separate non-allocating i31 ABI. Generated amd64 code keeps the existing
+32-bit compact encoding in the low half of a native reference slot: zero is null and
+`(low31 << 1) | 1` is an i31 immediate. Encoding and signed/unsigned extraction use direct 32-bit
+shift/tag instructions; extraction traps before shifting a zero reference. Exact i31 casts test
+the low tag bit and never dereference the value. No parked-Go helper, collector, safepoint, root,
+barrier, or payload pointer participates.
+
+Local i31 and pinned anyref tables use the same 8-byte scalar entry stride as externref storage,
+but their values are not store-owned externref tokens. Element metadata stores tagged i31 bits in
+the existing u32 payload field; active/passive copy, grow, fill, and init move only scalar words.
+The exact imported-global table initializer is an 8-byte compile-only record naming table/global
+indexes and is absent after codec reload. Literal/global-expression metadata and exact table/
+element types persist in codec v27, but loaded artifacts have no staged execution admission and
+fail before instantiation mutation.
+
+The public high-level ABI uses the distinct `ValI31Ref`/`I31Ref` category. It must never route
+through `ValAnyRef` token ownership or `GCRef` release. The low-level untyped `Invoke` slot remains
+signature-defined and carries the compact word, while `Call` exposes signed/unsigned i31 accessors.
+The official slice has result-only i31 egress and no i31-reference parameters, host calls,
+cross-instance reference transfer, snapshots, guard execution, or arm64 execution.
+
 ## Global coherence invariant
 
 The global cell is the sole host- and cross-instance-visible storage for a

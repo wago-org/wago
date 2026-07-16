@@ -230,15 +230,18 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   0 gates / 0 blocked. Its bounded opaque `GCRef` retains exact producer/type/root lifetime
   without exposing compact handles. Iterations 41-43 complete the independently pinned
   `gc/array.wast` path at 61 commands / 7 modules / 41 assertions / 6 invalid / 0 gates /
-  0 blocked, with zero hidden failures. The reference leader allocates two inner i8 arrays
-  transactionally, roots them in two checked collector table slots, and withdraws both roots
-  with `elem.drop`. `array.new_elem` preflights widened u32 ranges, supplies a fixed two-entry
-  non-empty `RootSet`, supports exact non-null/nullable/any widening, and copies through object,
-  card, and post-bulk barriers. Public results retain the one-live-token exact dynamic type and
-  close-order contract; codec v27 and snapshots inherit no live segment/root/helper state.
-  Reference nested get measures 6.309–11.634 us/op with 0 allocs/op and 4–8 amortized B/op on
-  the measured host. General frame roots, mutable/reference globals, the remaining GC files,
-  snapshots, guard mode, public admission, and arm64 remain.
+  0 blocked, with zero hidden failures. The reference leader roots passive inner arrays,
+  publishes a fixed two-entry allocation `RootSet`, applies object/card/post-bulk barriers,
+  and preserves exact one-live-token ownership. Iteration 44 additionally closes all 80
+  `gc/i31.wast` commands: 7 modules and 65 actions execute with no gates or blocked commands.
+  i31 values use direct low-bit-tagged arithmetic, literal/imported-global initialization,
+  mutable globals, compact 8-byte i31/anyref table lifecycle, and exact casts without creating
+  a collector. `ValI31Ref`/`I31Ref` keeps the public immediate category separate from opaque
+  `GCRef` object tokens. Codec v27 retains exact type/global/element metadata but inherits no
+  staged product or imported-global table-initializer sidecar; snapshots, guard mode, and arm64
+  remain fail-closed. Core i31 get and anyref-table get measure 34.63–35.78 ns/op with 0 B/op
+  and 0 allocs/op. General frame roots, object-valued mutable/reference globals, the remaining
+  GC files, public family admission, and broader platform products remain.
 - [ ] Reach zero unexplained failures/skips in the official Release 3 core suite.
 
 **Engine & performance** (no-ir-plan P1–P7, measured against P1's stats)
