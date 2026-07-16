@@ -269,10 +269,27 @@ slots; the official concrete leader uses twenty slots and retains eight live obj
 `Instance=792`, `compiledCodeCache=64`, `compiledMemoryDirectory=136`, and `gc.Collector=640`
 remain unchanged.
 
-The official concrete leader now executes all subtype/canonicalization tests. The 626-byte abstract
-leader still needs mixed anyref/funcref/externref table ownership, extern conversions, funcref
-identity, mutation, and array/struct/i31 coexistence. Codec v27 serializes no `ref.test` product,
-canonical map, checked roots, or live discriminator state, and signal bounds plus arm64 remain closed.
+The official concrete leader executes all subtype/canonicalization tests. Iteration 47 adds a
+separate exact ABI for the 626-byte abstract leader. Its anyref table remains eight-byte words, but
+only low-32-bit null/i31/object values may enter collector slots. A high-word foreign-any identity is
+resolved by the bounded conversion sidecar and leaves its collector slot null. Funcref table entries
+remain 32-byte lifecycle descriptors and are never scanned as `gc.Ref`. Externref table entries remain
+eight-byte public store tokens or internal conversion identities and are likewise never scanned.
+
+Parked `any.convert_extern` and `extern.convert_any` helpers receive one copied 64-bit word and return
+one word. The fixed eight-entry owner distinguishes foreign-extern-to-any identities from data-to-
+extern identities. Converted heap objects own checked collector table slots; i31 conversions own no
+collector state. Parked table stores validate bounds and ownership before writing arena state, and
+extern-table replacement withdraws the old conversion root before committing the new word. Repeated
+initialization reuses entries rather than growing a process-global map. The sidecars are
+`gcRefTestTableState=200` and `gcExternConversionState=352`; lazy `instancePluginState` remains 144
+bytes and fixed runtime layouts do not grow.
+
+This remains an exact no-frame-publication proof. Every allocation is stored in a checked anyref slot
+or converted/rooted before another may-collect helper. Arbitrary live local/operand refs, mutable GC
+globals, reference fields, hosts, snapshots, signal bounds, public admission, and arm64 remain closed.
+Codec v27 serializes no `ref.test` product, canonical map, conversion identity, checked root, local
+funcref ownership, or live discriminator state.
 
 ## Global coherence invariant
 

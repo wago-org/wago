@@ -16,9 +16,10 @@ lifecycle, and bounded public array results. Iteration 44 adds the complete coll
 Iteration 45 pins the complete official `gc/ref_test` obligation, corrects sibling-type dynamic-
 test validation, and adds one exact collector-free null+i31 execution product. Iteration 46 adds
 collector-owned dynamic type lookup, checked compact object-table roots, and executes the official
-concrete subtype/canonicalization leader; the mixed abstract extern/funcref leader remains gated.
-General native frame publication, object-valued mutable/reference globals, broad public ownership,
-and snapshots remain incomplete. These bounded products must not be presented as general executable
+concrete subtype/canonicalization leader. Iteration 47 adds bounded extern conversion ownership,
+separate anyref/funcref/externref table contracts, and executes the complete abstract leader, making
+`gc/ref_test` gap-free. General native frame publication, object-valued mutable/reference globals,
+broad public ownership, and snapshots remain incomplete. These bounded products must not be presented as general executable
 WasmGC support.
 
 ## Why a wago-native collector
@@ -532,11 +533,38 @@ instructions satisfy subtype and canonicalization behavior. The official product
 canonical map, checked slots, collector, or helper admission; loaded artifacts fail required-feature
 validation. Snapshots, guard mode, public admission, and arm64 execution remain fail-closed.
 
-Strict `gc/ref_test.wast` accounting is now 73 commands / 1 passed module / 2 passed assertions /
-1 explicit gate / 67 blocked actions / 0 invalid / 0 malformed / 0 hidden failures. The remaining
-626-byte abstract leader is deliberately not decomposed: it combines anyref, funcref, and externref
-tables; i31, struct, and array values; extern conversions; funcref identity; mutation; and 66 actions.
-Its mixed ownership/conversion lifecycle must be proven independently before admission.
+### Iteration 47 mixed table ownership and extern conversion
+
+The exact 626-byte abstract leader uses a finite ownership split instead of a universal reference
+word. Its ten-entry anyref table pairs eight-byte arena words with checked collector slots; i31 and
+null values remain immediate/non-owning, heap objects occupy slots, and opaque foreign-any words
+leave the corresponding collector slot null. Its funcref table uses existing 32-byte native local
+descriptors and never enters the collector. Its externref table stores either validated public store
+tokens or internal conversion identities and never reuses public `GCRef` bits.
+
+`gcExternConversionState` is fixed at eight entries. `any.convert_extern` maps a valid foreign public
+externref to a stable opaque internal any word and reverses internal i31/object conversions.
+`extern.convert_any` maps a foreign-any word back to its original public token or creates a stable
+opaque internal extern word for i31/object data. Converted objects receive checked table roots.
+Extern-table replacement withdraws the final old conversion root and reuses the fixed entry; forged,
+foreign-store, stale, closed, and capacity-exhausted operations reject explicitly. Null remains zero.
+Stable object round trips measure 19.70–21.04 ns/op, 0 B/op, and 0 allocs/op.
+
+A 96-byte Tiny heap executes 100 repeated `init` calls. The anyref struct and zero-length array plus
+the converted struct remain as exactly three live objects after full collection. The state remains
+at three conversion records: one foreign extern, one i31, and one current object. Parked anyref and
+externref stores preflight bounds/ownership before mutation, so forged and out-of-bounds writes leave
+both native words and roots unchanged. Instance close releases private-store membership, then resource
+teardown nulls all checked roots, closes conversion ownership, zeros all three tables, and closes the
+collector. The product measures 626 Wasm / 7,416 linked code / 8,087 codec bytes; `gcRefTestTableState=200`, `gcExternConversionState=352`, and lazy
+`instancePluginState=144` bytes. Foreign-any `ref.test` measures 171.7–172.5 ns/op, 0 B/op, and
+0 allocs/op.
+
+Strict `gc/ref_test.wast` accounting is gap-free at 73 commands / 2 passed modules / 68 passed
+assertions / 0 invalid / 0 malformed / 0 gates / 0 blocked / 0 hidden failures. Codec v27 persists
+none of the conversion entries, roots, local descriptor ownership, helper state, or exact admission.
+Public compile/load, snapshots, guard mode, and arm64 remain fail-closed. No native frame chain is
+published: every allocated object is stored or converted before the next may-collect helper.
 
 Before broader live `gc.Ref` payloads or funcref lifetimes can be admitted, codegen/runtime
 must still prove all of the following as one coherent product:
