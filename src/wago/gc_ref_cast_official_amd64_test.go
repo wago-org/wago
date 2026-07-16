@@ -19,7 +19,7 @@ import (
 
 const (
 	stagedGCRefCastDeltaPath         = "tests/spec-v3-staged-gc-ref-cast.json"
-	stagedGCRefCastOfficialExecution = false
+	stagedGCRefCastOfficialExecution = true
 )
 
 type stagedGCRefCastClass uint8
@@ -153,8 +153,10 @@ func compileStagedGCRefCastAccounting(data []byte) (*Compiled, error) {
 	features.TypedFunctionReferences = true
 	if stagedGCRefCastOfficialExecution {
 		features.GCStructProducts = true
-		features.GCArrayProducts = true
 		features.GCI31Products = true
+		if product, ok := stagedGCStructExecutionProduct(data); ok && product == stagedGCStructRefCastAbstract {
+			features.GCArrayProducts = true
+		}
 	}
 	return compileWithFrontendFeatures(cfg, data, features)
 }
@@ -335,7 +337,7 @@ func TestStagedOfficialGCRefCastAccounting(t *testing.T) {
 	var script stagedSpecScript
 	tmp := stagedOfficialTypedReferenceJSON(t, "gc/ref_cast", &script)
 	counts, leaders, gateCounts := replayStagedGCRefCastScript(t, tmp, script)
-	if counts.Commands != 47 || counts.ModulesPassed != 0 || counts.AssertionsPassed != 0 || counts.ExpectedFeatureRejects != 2 || counts.BlockedCommands != 43 || counts.ExpectedInvalid != 0 || counts.ExpectedMalformed != 0 || counts.Failures != 0 || counts.UnexpectedCompileRejects != 0 || counts.UnexpectedLinkRejects != 0 {
+	if counts.Commands != 47 || counts.ModulesPassed != 2 || counts.AssertionsPassed != 40 || counts.ExpectedFeatureRejects != 0 || counts.BlockedCommands != 0 || counts.ExpectedInvalid != 0 || counts.ExpectedMalformed != 0 || counts.Failures != 0 || counts.UnexpectedCompileRejects != 0 || counts.UnexpectedLinkRejects != 0 {
 		t.Fatalf("staged gc/ref_cast accounting has hidden or changed gaps: %+v", counts)
 	}
 	gateNames := make([]string, 0, len(gateCounts))

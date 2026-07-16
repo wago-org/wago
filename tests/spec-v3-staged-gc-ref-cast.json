@@ -10,7 +10,7 @@
       "size": 380,
       "sha256": "c85556089bf1a39cb3082f7de916c00eaa2482253cf126d8a9fc09ab970eed4b",
       "class": "abstract",
-      "gate": "abstract null/i31/struct/array/foreign-any reference-cast product",
+      "gate": "",
       "type_graph": "rec[func()-\u003e()]|rec[struct{}]|rec[array{i8}]|rec[func(externref)-\u003e()]|rec[func(i32)-\u003e()]",
       "state_graph": "imports=0 funcs=7 globals=[] tables=1 memories=0 tags=0 elements=1 data=0 exports=[init=0:1,ref_cast_non_null=0:2,ref_cast_null=0:3,ref_cast_i31=0:4,ref_cast_struct=0:5,ref_cast_array=0:6]",
       "opcodes": [
@@ -114,7 +114,7 @@
       "size": 512,
       "sha256": "65f1f33b335ca62d90ad089a74f8a29ea3163f9a3a2f53096bdeac9e4b86f4a6",
       "class": "concrete",
-      "gate": "concrete declared-super/canonical reference-cast product",
+      "gate": "",
       "type_graph": "rec[sub(final=false,supers=[],struct{})]|rec[sub(final=false,supers=[{0 false}],struct{i32})]|rec[sub(final=false,supers=[{0 false}],struct{i32})]|rec[sub(final=false,supers=[{1 false}],struct{i32,i32})]|rec[sub(final=false,supers=[{2 false}],struct{i32,i32})]|rec[sub(final=false,supers=[{0 false}],struct{i32,i32})]|rec[sub(final=false,supers=[{0 false}],struct{})]|rec[sub(final=false,supers=[{6 false}],struct{i32,i32})]|rec[func()-\u003e()]",
       "state_graph": "imports=0 funcs=3 globals=[] tables=1 memories=0 tags=0 elements=0 data=0 exports=[test-sub=0:1,test-canon=0:2]",
       "opcodes": [
@@ -157,27 +157,16 @@
       ]
     }
   ],
-  "gates": [
-    {
-      "family": "gc",
-      "reason": "abstract null/i31/struct/array/foreign-any reference-cast product",
-      "count": 1
-    },
-    {
-      "family": "gc",
-      "reason": "concrete declared-super/canonical reference-cast product",
-      "count": 1
-    }
-  ],
+  "gates": [],
   "counts": {
     "commands": 47,
-    "modules_passed": 0,
-    "assertions_passed": 0,
+    "modules_passed": 2,
+    "assertions_passed": 40,
     "expected_invalid": 0,
     "expected_unlinkable": 0,
     "expected_uninstantiable": 0,
-    "expected_feature_rejects": 2,
-    "blocked_commands": 43,
+    "expected_feature_rejects": 0,
+    "blocked_commands": 0,
     "unexpected_compile_rejects": 0,
     "unexpected_link_rejects": 0,
     "failures": 0
