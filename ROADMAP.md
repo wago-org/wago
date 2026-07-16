@@ -359,11 +359,15 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   external references, so the provider's second struct reference cannot flatten into the consumer's self-recursive group.
   The 82-byte provider owns 64 descriptor bytes; the 51-byte attempted consumer has the same bounded requirement but rejects
   before retention or publication. Wasm/code/codec sizes are 82/77/403 and 51/0/236 bytes, and empty provider `g` measures
-  36.78–37.82 ns/op at 0 B/op / 0 allocs/op. All thirty-four admitted leaders leave `Instance.gc` nil. Codec reload inherits
-  no product marker; snapshots and guard/public/arm64/host admission remain closed. Accounting is 34 passed modules /
-  23 passed assertions / 11 gates / 14 blocked dependents / 24 invalid / 6 executed plus 2 blocked unlinkable obligations.
-  General frame roots, object-valued mutable/reference globals, the later struct-defined linking clusters, the non-flat
-  export, broader typed-table ownership, public family admission, and broader platforms remain.
+  36.78–37.82 ns/op at 0 B/op / 0 allocs/op. Iteration 70 adds only the source-lines-614–621 M6 provider/consumer pair.
+  Two independent self-recursive function/struct groups remain distinct, while the final `g <: f1` edge links exactly.
+  The 82-byte provider and 63-byte consumer each own 64 descriptor bytes, retain one producer transactionally across both
+  close orders, and have wasm/code/codec sizes 82/77/403 and 63/0/326 bytes. Empty `g` measures 37.44–42.95 ns/op at
+  0 B/op / 0 allocs/op. All thirty-six admitted leaders leave `Instance.gc` nil. Codec reload inherits no product marker;
+  snapshots and guard/public/arm64/host admission remain closed. Accounting is 36 passed modules / 23 passed assertions /
+  9 gates / 13 blocked dependents / 24 invalid / 6 executed plus 2 blocked unlinkable obligations. General frame roots,
+  object-valued mutable/reference globals, the later struct-defined linking clusters, the non-flat export, broader
+  typed-table ownership, public family admission, and broader platforms remain.
 - [ ] Reach zero unexplained failures/skips in the official Release 3 core suite.
 
 **Engine & performance** (no-ir-plan P1–P7, measured against P1's stats)
