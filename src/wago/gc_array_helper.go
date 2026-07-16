@@ -16,6 +16,7 @@ const (
 	gcArraySet          uint32 = 20
 	gcArrayLen          uint32 = 21
 	gcArrayAllocFixed   uint32 = 22
+	gcArrayAllocUniform uint32 = 23
 )
 
 func (in *Instance) dispatchGCHelper(helper uint32, args, results []uint64) {
@@ -62,6 +63,22 @@ func (in *Instance) dispatchGCArrayHelper(helper uint32, args, results []uint64)
 	}
 
 	switch helper {
+	case gcArrayAllocUniform:
+		if len(args) != 3 || len(results) < 1 {
+			panic(gcStructHelperError{err: fmt.Errorf("gc array alloc-uniform helper arity = %d/%d, want 3/at-least-1", len(args), len(results))})
+		}
+		typeID, length := uint32(args[2]), uint32(args[1])
+		value := arrayValue(typeID, args[0])
+		ref, err := in.gc.NewArrayDefaultWithRoots(gc.TypeID(typeID), length, gc.EmptyRoots{})
+		if err != nil {
+			panic(gcStructHelperError{err: err})
+		}
+		for i := uint32(0); i < length; i++ {
+			if err := in.gc.ArraySet(ref, i, value); err != nil {
+				panic(gcStructHelperError{err: err})
+			}
+		}
+		results[0] = uint64(ref)
 	case gcArrayAllocFixed:
 		if len(args) < 2 || len(results) < 1 {
 			panic(gcStructHelperError{err: fmt.Errorf("gc array alloc-fixed helper arity = %d/%d, want at-least-2/at-least-1", len(args), len(results))})
