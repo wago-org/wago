@@ -189,10 +189,22 @@ mutex.
 
 This result-token root is not a native frame root and does not justify widening `gc.EmptyRoots`.
 It exists only after the Wasm activation has returned, carries no cached payload pointer, and
-is compile-only exact-product state absent from codec v27. Non-null ingress, reference fields,
-general calls with live GC refs, mutable globals, tables, arrays, host boundaries, snapshots,
-guard mode, and arm64 remain closed. These exact proofs must not be treated as the general
-`codegen.Emitter` publication protocol.
+is compile-only exact-product state absent from codec v27.
+
+Iteration 41 gives pointer-free arrays a separate compile-only helper/product path. Exact
+`array.new_default` and bounded `array.new_fixed` producers perform one allocation with a
+proven empty live-frame-ref set, then helper-side `array.get`, numeric `array.set`, and
+`array.len` discard every transient Go-derived address before native resume. The fixed
+leader's one immutable global installs a checked collector slot immediately after numeric
+initialization. Numeric array stores need no barrier. Public fixed-array results are tokenized
+only after native return and use the same one-live-token root/lifetime policy with an exact
+dynamic array-type check.
+
+Neither array path permits a second allocation while a transient ref is live. Numeric-default
+products with multiple globals, packed data segments, reference elements, object/bulk
+barriers, non-null ingress, mutable globals, hosts, snapshots, guard mode, and arm64 remain
+closed. These exact struct/array proofs must not be treated as the general `codegen.Emitter`
+publication protocol.
 
 ## Global coherence invariant
 

@@ -226,21 +226,19 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   catch is 135.1–145.7 ns/op, and bottom-null `global.get` is 52.24–53.58 ns/op; all are
   0 B/op and 0 allocs/op.
 - 🚧 WasmGC's complete official `gc/struct.wast` file is gap-free under exact staged
-  product admission. Strict schema-2 accounting pins all 36 commands by source/command line,
-  binary hash/size, decoded type/storage graph, module state, opcodes, and ordered actions.
-  Iteration 39's immutable collector-rooted globals, packed fields, numeric get/set actions,
-  and no-may-collect internal-call proof remain intact. Iteration 40 adds one bounded
-  store-owned public `GCRef` for the basic leader's exported `new`: the opaque token retains
-  its producer/collector, carries exact dynamic struct identity, uses one reusable checked
-  collector root slot, rejects stale/cross-producer/second-live values, supports both close
-  orders, and never exposes compact handles. Accounting is 36 commands / 6 modules / 19
-  assertions / 4 invalid / 1 malformed / 0 gates / 0 blocked, with zero hidden failures.
-  Public token issue/release measures 371.6–386.5 ns/op at 0 B/op and 0 allocs/op after
-  warmup. The next complete family is also pinned: `gc/array.wast` has 61 commands, 7 exact
-  module gates, 41 blocked actions, and 6 invalid modules, split across numeric default/fixed,
-  packed-data, reference-element/barrier, lifecycle, null-trap, and public-result obligations.
-  Non-null ingress, mutable/reference GC globals, general native frame roots, executable
-  arrays, reference barriers, snapshots, guard mode, and arm64 remain.
+  product admission at 36 commands / 6 modules / 19 assertions / 4 invalid / 1 malformed /
+  0 gates / 0 blocked. Its bounded opaque `GCRef` retains exact producer/type/root lifetime
+  without exposing compact handles. Iteration 41 opens an independently pinned array path:
+  one synthetic pointer-free `array.new_default`/get/set/len helper product, the official
+  declaration/binding and null-trap leaders, and the complete numeric-fixed leader now execute.
+  `array.new_fixed` uses one allocation with an empty-live-ref proof, the official immutable
+  global installs one checked collector root, numeric stores require no barrier, and both
+  public array results reuse the one-live-token exact dynamic type/lifetime contract. Complete
+  `gc/array.wast` accounting improves to 61 commands / 4 modules / 9 assertions / 3 gates /
+  32 blocked / 6 invalid, with zero hidden failures. Fixed set/get measures 379.4–381.5 ns/op
+  and fixed result issue/release 462.8–488.2 ns/op, all 0 B/op and 0 allocs/op. Numeric-default
+  globals/results, packed data/drop lifecycle, reference elements/object+bulk barriers,
+  non-empty frame roots, mutable/reference globals, snapshots, guard mode, and arm64 remain.
 - [ ] Reach zero unexplained failures/skips in the official Release 3 core suite.
 
 **Engine & performance** (no-ir-plan P1–P7, measured against P1's stats)

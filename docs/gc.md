@@ -9,9 +9,12 @@ knobs, and tests. Iteration 38 wires one exact linux/amd64 numeric-local helper 
 iteration 39 adds exact immutable GC-global roots, packed fields, and the numeric portion
 of the official basic struct leader. Iteration 40 closes the final struct action through one
 bounded store-owned public result token and pins the complete array family obligations.
-General native frame publication, mutable/reference stores, executable arrays, broad public
-ownership, and snapshots remain incomplete. These bounded products must not be presented as
-general executable WasmGC support.
+Iteration 41 adds a separate exact pointer-free array helper/product boundary, the official
+array declaration/binding and null products, and the complete numeric-fixed leader with one
+immutable collector-rooted global and bounded public array results. General native frame
+publication, mutable/reference stores, numeric-default/data/reference array families, broad
+public ownership, and snapshots remain incomplete. These bounded products must not be
+presented as general executable WasmGC support.
 
 ## Why a wago-native collector
 
@@ -278,19 +281,62 @@ with zero hidden failures. Public token issue plus release measures 371.6-386.5 
 five 500 ms samples and remains 0 B/op / 0 allocs/op after one warmup token initializes the
 bounded map/root slot.
 
-The next family is now classified without implementation overclaim. Complete
-`gc/array.wast` schema-2 accounting covers 61 commands: seven exact module gates, 41 blocked
-actions, and six invalid modules. The leaders separate declaration/binding metadata,
-numeric `array.new`/`array.new_default`, numeric `array.new_fixed`, packed `array.new_data`
-and data-drop lifecycle, reference `array.new_elem` plus barriers/element-drop lifecycle,
-null get/set traps, array length/bounds, and public array result ownership. No array opcode is
-admitted by this accounting commit.
+At the iteration-40 boundary, complete `gc/array.wast` schema-2 accounting covered 61
+commands with seven exact module gates, 41 blocked actions, and six invalid modules. The
+leaders separate declaration/binding metadata, numeric `array.new`/`array.new_default`,
+numeric `array.new_fixed`, packed `array.new_data` and data-drop lifecycle, reference
+`array.new_elem` plus barriers/element-drop lifecycle, null get/set traps, array length/bounds,
+and public array result ownership. Iteration 41 executes a strict subset below without
+weakening the remaining classifications.
 
 The fixed measured layouts are `Compiled=712`, `Instance=792`, `compiledCodeCache=64`,
 `instancePluginState=128`, `referenceStore=96`, `gcPublicState=24`, `gcRefTokenEntry=40`,
 `GCRef=8`, `Value=16`, and `gc.Collector=640` bytes. Relative to iteration 39, the runtime
 store and lazy plugin state each grow by one pointer; ordinary instances still allocate
 neither lazy public GC state nor a collector.
+
+### Iteration 41 exact pointer-free arrays
+
+Iteration 41 gives arrays their own compile-only product enum, helper bit, and metadata-only
+sidecar; it does not reuse `stagedGCStructProduct` or `collectorFreeStructuralMetadata`.
+The admitted surface is deliberately finite:
+
+- a 146-byte synthetic local product executes `array.new_default`, plain numeric
+  `array.get`, mutable numeric `array.set`, and `array.len`;
+- the official declaration and recursive-binding leaders instantiate without a collector
+  through their own exact hash-pinned no-object proof;
+- the official null leader executes `array.get`/`array.set` null traps; and
+- the 268-byte numeric-fixed leader executes all seven actions, including bounds traps and
+  two public non-null array results.
+
+Allocation helpers still park through the 328-byte synchronous control frame and pass only
+compact refs, numeric values, type indexes, and lengths. Each producer performs exactly one
+allocation with no prior live frame ref and supplies non-nil `gc.EmptyRoots{}`. Access,
+length, and numeric stores do not collect; numeric stores require no object barrier. Native
+code never receives or retains a Go-slice-derived payload pointer.
+
+The fixed leader's sole immutable `(ref $vec)` global is initialized from two exact f32
+constants. Instantiation allocates the 24-byte array, writes both numeric elements, and
+installs one checked collector `GlobalSlot` before any invocation. The global cell and slot
+carry the same stable compact handle. Codec v27 serializes neither the array product enum,
+helper admission, initializer bits, root mapping, nor live collector state.
+
+Public `new` results reuse the existing one-live-token policy without exposing raw handles.
+The store checks that the dynamic object is exactly the declared array type, retains the
+producer/collector, and roots it through the same reusable checked slot contract. This is
+result-only ownership: non-null array parameters, globals, hosts, cross-instance values,
+multiple simultaneous results, and snapshots remain closed.
+
+Strict `gc/array.wast` accounting is now 61 commands / 4 modules / 9 assertions / 6 invalid /
+3 exact gates / 32 blocked commands, with zero hidden failures. The remaining leaders are
+numeric-default (including two globals and `array.new`), packed-data/drop lifecycle, and
+reference-element/element-drop/barrier lifecycle. Fixed set/get measures 379.4-381.5 ns/op;
+fixed result issue/release measures 462.8-488.2 ns/op; all samples are 0 B/op and
+0 allocs/op. The fixed product is 268 Wasm bytes / 2,113 linked code bytes / 2,712 codec
+bytes; the synthetic product is 146 / 1,247 / 1,527 bytes. Both fixed and synthetic i32/f32
+length-two arrays occupy 24 bytes including the 16-byte header. Fixed layouts remain
+`Compiled=712`, `Instance=792`, `compiledCodeCache=64`, `gcArrayGlobalInit=48`,
+`compiledMemoryDirectory=120`, and `gc.Collector=640` bytes.
 
 Before broader live `gc.Ref` payloads or funcref lifetimes can be admitted, codegen/runtime
 must still prove all of the following as one coherent product:
@@ -828,10 +874,10 @@ Tests exercise tiny nurseries, collect-every-alloc, exact scanning, cycles, root
 
 ## Current limitations
 
-- WasmGC opcode validation is not complete. Exact staged numeric `struct.new`/
-  `struct.new_default`, ordinary and packed `struct.get`, numeric `struct.set`, immutable
-  GC constants/globals, null traps, and one owned public struct result are wired to amd64.
-  The complete array family is inventoried but no array opcode is executable; casts/tests,
+- WasmGC opcode validation is not complete. Exact staged numeric structs plus pointer-free
+  `array.new_default`/`array.new_fixed`, numeric array get/set/len, immutable fixed-array
+  constants/globals, null traps, and bounded public struct/array results are wired to amd64.
+  Numeric-default `array.new`, packed data arrays, reference-element arrays, casts/tests,
   reference fields, and general GC constant expressions remain.
 - The parked-Go runtime-call ABI is proven for exact empty-frame-root numeric allocations,
   non-collecting numeric access/mutation, immutable collector-rooted globals, and one
@@ -846,10 +892,10 @@ Tests exercise tiny nurseries, collect-every-alloc, exact scanning, cycles, root
   future work.
 - The Throughput heap currently uses growable Go byte slices, so native code
   must not cache raw heap payload pointers; see `docs/runtime-abi.md`.
-- Tiny and Throughput profiles are connected to the exact staged numeric-struct helper
-  paths, including two rooted globals, packed fields, bounded public-token rooting, stress
-  collection, and deterministic Tiny exhaustion, but arrays and broader WasmGC opcode/
-  backend lowering are not connected to either profile yet.
+- Tiny and Throughput profiles are connected to the exact staged numeric-struct and
+  pointer-free array helper paths, including immutable rooted globals, packed struct fields,
+  bounded public-token rooting, stress collection, and deterministic Tiny exhaustion.
+  Packed/reference array families and broader WasmGC opcode/backend lowering remain closed.
 
 These limitations are intentional for this commit series: the runtime foundation
 is small, exact, typed, and no-cgo, giving later codegen work stable contracts.
