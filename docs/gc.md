@@ -33,8 +33,10 @@ numeric `array.init_data`; iteration 54 closes exact local-funcref `array.init_e
 pins the complete 170-command `gc/type-subtyping.wast` graph before admission. Its 45 valid leaders carry only
 metadata or function identities and allocate no struct/array object. Iteration 56 closes the two valid recursive-
 projection rejects and all fourteen invalid subtype/finality/storage/variance acceptances on both validator paths.
-Every leader remains product-gated and no collector-free exception is widened. General native frame publication,
-broader object-valued mutable/reference globals, broad public ownership, and snapshots remain incomplete. These bounded products must not be presented as general executable WasmGC support.
+Iteration 57 admits only the first six declaration graphs and two recursive-function-body leaders through a new
+exact SHA-pinned no-object product, separate from iteration 37. All eight instantiate with `Instance.gc == nil`;
+37 leaders remain gated and all 48 dependent commands remain blocked. General native frame publication, broader
+object-valued mutable/reference globals, broad public ownership, and snapshots remain incomplete. These bounded products must not be presented as general executable WasmGC support.
 
 ## Why a wago-native collector
 
@@ -895,6 +897,23 @@ accepted invalid modules. This is validation-only work: all 45 valid products an
 collector is created, no roots or barriers are added, and codec v27, snapshots, guard mode, public admission,
 and arm64 inherit no executable state.
 
+### Iteration 57 exact no-object type-subtyping products
+
+A separate `stagedGCTypeSubtypingProduct` marker admits the first eight official leaders without reusing
+iteration 37's generic structural marker. Six modules contain only declared array/struct/function super graphs.
+Two contain three recursive local functions each, but no exports or state; their bodies are restricted to
+`local.get` and direct `call`. The classifier rejects imports, globals, tables, elements, memories, data, tags,
+start, exports, descriptor metadata, heap-object types in the function-body class, and any other opcode before
+the SHA-256 pin is checked.
+
+The declaration products retain exact `gc.TypeDesc` metadata but instantiate without a collector because no
+object can be created or observed. The recursive-function products have function sentinels only and likewise
+leave `Instance.gc` nil. No helper, root, barrier, frame publication, public token, conversion owner, or mutable
+cell/slot coherence rule is added. The six declarations emit no code; the two function products emit 632 and
+592 linked bytes. Codec v27 preserves their type graph/code but not the marker, so reload cannot inherit the
+nil-collector exception. Strict accounting becomes 8 passed modules / 37 gates / 48 blocked dependents / 24
+invalid / 8 unlinkable obligations / zero validator gaps or hidden failures.
+
 ## Collector lifetime
 
 `Collector.Close` is idempotent and releases heap backing storage plus root/card/mark metadata so an instance shutdown does not retain guest refs. After close, operations that need a live heap return `gc: collector closed`: allocation, collection, verification, object access/mutation, promotion, and checked root-slot creation/access/mutation. `Step` follows the same rule for both profiles; on Throughput it routes through `CollectMinor`, and on Tiny it rejects the closed collector before advancing incremental state.
@@ -1418,9 +1437,10 @@ Tests exercise tiny nurseries, collect-every-alloc, exact scanning, cycles, root
   collector-free i31 operations, dynamic tests/casts, identity-preserving cast branches, extern conversion,
   and compact null/i31/object equality. Array fill/copy plus both `array.init_data` and the exact local-
   funcref `array.init_elem` product are staged and gap-free. Complete `gc/type-subtyping` accounting is pinned
-  at 170 commands with 45 exact gates and 48 blocked dependents. Iteration 56 leaves zero validator gaps and
-  zero hidden failures while keeping every product gated. Reference struct fields, non-local/reference-owning
-  array products, broader GC constant expressions, and executable type-subtyping products remain.
+  at 170 commands; iteration 57 executes the first eight no-object leaders, leaving 37 exact gates and all 48
+  blocked dependents with zero validator gaps or hidden failures. Reference struct fields, non-local/reference-
+  owning array products, broader GC constant expressions, and the remaining type-subtyping identity/action/link
+  products remain.
 - The parked-Go runtime-call ABI is proven for exact empty-frame-root numeric/packed
   allocations, non-collecting numeric access/mutation/data initialization, exact local-funcref element
   initialization, ordered immutable collector-rooted globals, per-instance passive descriptors, and one

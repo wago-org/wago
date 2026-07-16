@@ -457,6 +457,14 @@ no fixed ABI, helper, sidecar, codec, snapshot, root, barrier, collector, guard,
 The inventory therefore remains insufficient as an ABI admission argument until exact collector-free product
 ownership is closed separately.
 
+Iteration 57 closes that ownership proof only for the first eight leaders. Six declaration modules emit no native
+code. Two recursive-function modules use the existing typed-reference slot/call ABI but have no exports and contain
+only `local.get` plus direct `call`; no helper or host/native boundary is introduced. A separate compile-only product
+enum authorizes nil-collector instantiation and is absent after codec reload. The marker consumes no new fixed space:
+GC helper admission is derived from existing exact product enums, preserving `compiledCodeCache=64` bytes. No
+basedata offset, control frame, descriptor entry, helper ID, root, barrier, collector sidecar, snapshot field, or
+public/guard/arm64 ABI changes.
+
 ## Global coherence invariant
 
 The global cell is the sole host- and cross-instance-visible storage for a
