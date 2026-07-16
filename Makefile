@@ -22,6 +22,11 @@ BENCHTIME ?= 1s
 COUNT     ?= 1
 BENCH_RUN ?= bench/.bench-run.txt
 BENCH_ISA ?= 0
+STARSHINE_WASM ?=
+MOONBIT ?= moon
+MOONBIT_JSON_DIR := $(CURDIR)/testdata/moonbit-json-smoke
+MOONBIT_JSON_WASM := $(MOONBIT_JSON_DIR)/_build/wasm-gc/release/build/cmd/main/main.wasm
+MOONBIT_JSON_COMPILER := moon 0.1.20260703 (6fbf8c3 2026-07-03)
 # Per-engine -bench filters. wago = the stage suite + the _wago comparisons;
 # wazero = every benchmark carrying "azero" (BenchmarkWazero* and *_wazero).
 WAGO_BENCH_RE   ?= ^Benchmark(Decode|Validate|Compile|CompileFull|Instantiate|Exec)$$|_wago$$
@@ -88,6 +93,35 @@ lint-staticcheck:
 test: ## Build and run the test suite (host)
 	go build ./...
 	go test -count=1 ./...
+
+.PHONY: test-starshine
+test-starshine: ## Compile/link/instantiate a MoonBit Starshine wasm-gc artifact (STARSHINE_WASM=/path/cmd.wasm)
+	@test -n "$(STARSHINE_WASM)" || { echo "set STARSHINE_WASM=/path/to/cmd.wasm"; exit 1; }
+	WAGO_STARSHINE_SMOKE_WASM="$(STARSHINE_WASM)" go test ./src/wago -run '^TestMoonBitStarshineWasmGCSmoke(Compile|Instantiate)$$' -count=1 -v
+
+.PHONY: bench-starshine
+bench-starshine: ## Benchmark Starshine compile, cold link/JIT, compile+link, and instantiate (STARSHINE_WASM=/path/cmd.wasm)
+	@test -n "$(STARSHINE_WASM)" || { echo "set STARSHINE_WASM=/path/to/cmd.wasm"; exit 1; }
+	WAGO_STARSHINE_SMOKE_WASM="$(STARSHINE_WASM)" go test ./src/wago -run '^$$' -bench '^BenchmarkMoonBitStarshineWasmGC' -benchmem -count $(COUNT) -benchtime $(BENCHTIME)
+
+.PHONY: build-moonbit-json
+build-moonbit-json: ## Build the pinned deterministic MoonBit JSON wasm-gc workload
+	@command -v "$(MOONBIT)" >/dev/null 2>&1 || { echo "$(MOONBIT) not found"; exit 1; }
+	@actual="$$($(MOONBIT) version | head -n 1)"; \
+		test "$$actual" = "$(MOONBIT_JSON_COMPILER)" || { \
+			echo "MoonBit compiler mismatch: got '$$actual'"; \
+			echo "want '$(MOONBIT_JSON_COMPILER)'"; \
+			exit 1; \
+		}
+	cd $(MOONBIT_JSON_DIR) && $(MOONBIT) check --target wasm-gc -d && $(MOONBIT) build --target wasm-gc --release
+
+.PHONY: test-moonbit-json
+test-moonbit-json: build-moonbit-json ## Build and execute the deterministic MoonBit JSON WasmGC smoke workload
+	WAGO_MOONBIT_JSON_SMOKE_WASM="$(MOONBIT_JSON_WASM)" go test ./src/wago -run '^TestMoonBitJSONWasmGCSmoke$$' -count=1 -v
+
+.PHONY: bench-moonbit-json
+bench-moonbit-json: build-moonbit-json ## Benchmark MoonBit JSON decode, validation, JIT compile, instantiate, and execution
+	WAGO_MOONBIT_JSON_SMOKE_WASM="$(MOONBIT_JSON_WASM)" go test ./src/wago -run '^$$' -bench '^BenchmarkMoonBitJSONWasmGC' -benchmem -count $(COUNT) -benchtime $(BENCHTIME)
 
 .PHONY: test-guard
 test-guard: ## Guard-page (signals-based) tests: full public-API suite (incl. the SIGSEGV fault->trap path) + in-bounds differential
@@ -229,6 +263,11 @@ bench-noguard: ## Run the full suite under explicit bounds and write the capture
 .PHONY: bench-wago
 bench-wago: ## Run only the wago benchmarks
 	cd bench && go test -run '^$$' -bench '$(WAGO_BENCH_RE)' -benchmem -count $(COUNT) -benchtime $(BENCHTIME) -timeout 0 $(BENCH_ISA_GO_FLAG) .
+
+.PHONY: bench-jit
+bench-jit: ## Benchmark railshot JIT edge cases and corpus raw/end-to-end compilation
+	go test ./src/core/compiler/backend/railshot/amd64 -run '^$$' -bench '^BenchmarkRailshotCompile' -benchmem -count $(COUNT) -benchtime $(BENCHTIME)
+	cd bench && go test -run '^$$' -bench '^BenchmarkCompile(Full)?$$' -benchmem -count $(COUNT) -benchtime $(BENCHTIME) -timeout 0 .
 
 .PHONY: bench-wazero
 bench-wazero: ## Run only the wazero benchmarks
