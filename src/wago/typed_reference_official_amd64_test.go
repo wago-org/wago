@@ -55,6 +55,7 @@ func compileStagedTypedReference(data []byte) (*Compiled, error) {
 	cfg := NewRuntimeConfig()
 	features := cfg.frontendFeatures()
 	features.TypedFunctionReferences = true
+	features.StructuralTypeProducts = true
 	return compileWithFrontendFeatures(cfg, data, features)
 }
 
@@ -63,7 +64,7 @@ func stagedTypedReferenceKnownGate(base string, data []byte, line int, err error
 		return "", "", false
 	}
 	text := err.Error()
-	if base == "type-rec" && strings.Contains(text, "gc type") {
+	if base == "type-rec" && (strings.Contains(text, "gc type") || strings.Contains(text, "call_indirect matching remains gated")) {
 		pin, pinned := stagedTypeRecLeaderPinFor(data, line)
 		if !pinned {
 			return "", "", false

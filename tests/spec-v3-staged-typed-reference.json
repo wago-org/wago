@@ -213,29 +213,19 @@
       "gates": [
         {
           "family": "gc",
-          "reason": "recursive struct metadata in cross-instance function link matching",
-          "count": 3
-        },
-        {
-          "family": "gc",
           "reason": "recursive struct metadata in ordinary funcref call_indirect matching",
           "count": 3
-        },
-        {
-          "family": "gc",
-          "reason": "recursive struct metadata with an immutable local ref.func global",
-          "count": 4
         }
       ],
       "counts": {
         "commands": 40,
-        "modules_passed": 2,
+        "modules_passed": 8,
         "assertions_passed": 0,
         "expected_invalid": 10,
-        "expected_unlinkable": 1,
+        "expected_unlinkable": 2,
         "expected_uninstantiable": 0,
-        "expected_feature_rejects": 10,
-        "blocked_commands": 4,
+        "expected_feature_rejects": 3,
+        "blocked_commands": 3,
         "unexpected_compile_rejects": 0,
         "unexpected_link_rejects": 0,
         "failures": 0
@@ -262,30 +252,20 @@
   "gates": [
     {
       "family": "gc",
-      "reason": "recursive struct metadata in cross-instance function link matching",
-      "count": 3
-    },
-    {
-      "family": "gc",
       "reason": "recursive struct metadata in ordinary funcref call_indirect matching",
       "count": 3
-    },
-    {
-      "family": "gc",
-      "reason": "recursive struct metadata with an immutable local ref.func global",
-      "count": 4
     }
   ],
   "totals": {
     "commands": 422,
-    "modules_passed": 52,
+    "modules_passed": 58,
     "assertions_passed": 243,
     "expected_invalid": 65,
     "expected_malformed": 2,
-    "expected_unlinkable": 1,
+    "expected_unlinkable": 2,
     "expected_uninstantiable": 0,
-    "expected_feature_rejects": 10,
-    "blocked_commands": 4,
+    "expected_feature_rejects": 3,
+    "blocked_commands": 3,
     "unexpected_compile_rejects": 0,
     "unexpected_link_rejects": 0,
     "failures": 0

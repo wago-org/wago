@@ -103,8 +103,11 @@ func TestValueTypeDescriptorABITypeKeepsReferenceCategories(t *testing.T) {
 	if got, ok := indexed.ABIType(types); !ok || got != ValFuncRef {
 		t.Fatalf("indexed ABI type = %v, %v; want funcref,true", got, ok)
 	}
-	if got, ok := indexed.ABIType([]DefinedTypeDescriptor{{Kind: CompositeTypeStruct}}); ok {
-		t.Fatalf("indexed struct ABI type = %v, true; want unsupported", got)
+	if got, ok := indexed.ABIType([]DefinedTypeDescriptor{{Kind: CompositeTypeStruct}}); !ok || got != ValAnyRef {
+		t.Fatalf("indexed struct ABI type = %v, %v; want anyref,true", got, ok)
+	}
+	if got, ok := indexed.ABIType([]DefinedTypeDescriptor{{Kind: CompositeTypeArray}}); !ok || got != ValAnyRef {
+		t.Fatalf("indexed array ABI type = %v, %v; want anyref,true", got, ok)
 	}
 	any := ValueTypeDescriptor{Kind: ValueTypeReference, Ref: ReferenceTypeDescriptor{Nullable: true, Heap: HeapTypeDescriptor{Abstract: AbstractHeapAny}}}
 	if got, ok := any.ABIType(nil); !ok || got != ValAnyRef {

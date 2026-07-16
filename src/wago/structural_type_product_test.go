@@ -4,6 +4,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	goruntime "runtime"
+	"strings"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -65,11 +67,55 @@ func TestStagedTypeRecLeaderInventory(t *testing.T) {
 		if err != nil || got != pin.Product {
 			t.Fatalf("%s product = %v, %v; want %v", pin.Filename, got, err, pin.Product)
 		}
+		if !stagedStructuralTypeProductPinned(data, got) {
+			t.Fatalf("%s is not in the production pin set", pin.Filename)
+		}
 		seen[got]++
 	}
 	if seen[stagedStructuralRefFuncGlobal] != 4 || seen[stagedStructuralFunctionLink] != 3 || seen[stagedStructuralCallIndirect] != 3 {
 		t.Fatalf("leader classes = %#v, want ref.func/link/call_indirect = 4/3/3", seen)
 	}
+}
+
+func compileStagedStructuralTypeProductForTest(data []byte) (*Compiled, error) {
+	cfg := NewRuntimeConfig()
+	features := cfg.frontendFeatures()
+	features.TypedFunctionReferences = true
+	features.StructuralTypeProducts = true
+	return compileWithFrontendFeatures(cfg, data, features)
+}
+
+func TestStagedStructuralTypeProductPlatformAndBoundsGate(t *testing.T) {
+	data, err := hex.DecodeString(stagedTypeRecLeaderPins[0].Hex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := NewRuntimeConfig()
+	if guardPageBuilt {
+		cfg = cfg.WithBoundsChecks(BoundsChecksSignalsBased)
+	} else {
+		cfg = cfg.WithBoundsChecks(BoundsChecksExplicit)
+	}
+	features := cfg.frontendFeatures()
+	features.TypedFunctionReferences = true
+	features.StructuralTypeProducts = true
+	c, err := compileWithFrontendFeatures(cfg, data, features)
+	if goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64" {
+		if err == nil || !strings.Contains(err.Error(), "unsupported collector-free structural product staged execution on") {
+			t.Fatalf("platform compile = %v, want explicit platform rejection", err)
+		}
+		return
+	}
+	if guardPageBuilt {
+		if err == nil || !strings.Contains(err.Error(), "signals-based bounds checks") {
+			t.Fatalf("guard compile = %v, want explicit bounds rejection", err)
+		}
+		return
+	}
+	if err != nil {
+		t.Fatalf("linux/amd64 explicit compile: %v", err)
+	}
+	_ = c.Close()
 }
 
 func TestStagedStructuralTypeProductRejectsWidening(t *testing.T) {
