@@ -176,6 +176,42 @@ var stagedGCTypeSubtypingDuplicateRecursiveLinkConsumerPin = stagedGCTypeSubtypi
 	Hex:      "0061736d0100000001a380808000024e025000600001647050010060000164004e0250006000016470500102600001640202a58080800004024d38036631310000024d38036631310002024d38036631320001024d38036631320003",
 }
 
+var stagedGCTypeSubtypingExtendedRecursiveLinkProviderPin = stagedGCTypeSubtypingProductPin{
+	Filename: "type-subtyping.49.wasm", Line: 558, Size: 136,
+	SHA256: "ba251b0325c3f0c4aab80aeacf9faf0dd960e48b48b6b7a41d2f07e03f37d379", Class: stagedGCTypeSubtypingExtendedRecursiveLinkProvider,
+	Hex: "0061736d0100000001c780808000044e025000600001647050010060000164004e025000600001647050010260000164024e02500100600001647050010460000164044e0250010260000164705001066000016406038380808000020405078d80808000020367313100000367313200010a918080800002838080800000000b838080800000000b",
+}
+var stagedGCTypeSubtypingExtendedRecursiveLinkConsumerPin = stagedGCTypeSubtypingProductPin{
+	Filename: "type-subtyping.50.wasm", Line: 573, Size: 164,
+	SHA256: "b0e14a301bd440e1550be35f09d9b0ecb0476b09e467b965b02b6935dcac0fd2", Class: stagedGCTypeSubtypingExtendedRecursiveLinkConsumer,
+	Hex: "0061736d0100000001c780808000044e025000600001647050010060000164004e025000600001647050010260000164024e02500100600001647050010460000164044e025001026000016470500106600001640602c98080800008024d39036731310000024d39036731310002024d39036731320000024d39036731320002024d39036731310004024d39036731310006024d39036731320005024d39036731320007",
+}
+var stagedGCTypeSubtypingCrossGroupMismatchLinkProviderPin = stagedGCTypeSubtypingProductPin{
+	Filename: "type-subtyping.51.wasm", Line: 581, Size: 74,
+	SHA256: "db07a8de5025cd215a20a1e118183a220354a1aa93ea154daad3f4cd75c0dff9", Class: stagedGCTypeSubtypingCrossGroupMismatchLinkProvider,
+	Hex: "0061736d01000000019b80808000024e0250006000005001006000004e025000600000500100600000038280808000010207858080800001016600000a8880808000018280808000000b",
+}
+var stagedGCTypeSubtypingCrossGroupMismatchLinkConsumerPin = stagedGCTypeSubtypingProductPin{
+	Filename: "type-subtyping.52.wasm", Line: 588, Size: 43,
+	SHA256: "3362e5e87944fe7f1a90cc31d6fd4bacf6430673bc9419042d1fc0e487e84a7b", Class: stagedGCTypeSubtypingCrossGroupMismatchLinkConsumer,
+	Hex: "0061736d01000000018e80808000014e02500060000050010060000002898080800001034d313001660000",
+}
+var stagedGCTypeSubtypingTransitiveMismatchLinkProviderPin = stagedGCTypeSubtypingProductPin{
+	Filename: "type-subtyping.53.wasm", Line: 597, Size: 87,
+	SHA256: "af07e7f6586db57d5a927c9c7f025b121657f04237dcee0344e7db263798cfea", Class: stagedGCTypeSubtypingTransitiveMismatchLinkProvider,
+	Hex: "0061736d0100000001a880808000034e0250006000005001006000004e0250006000005001006000004e025000600000500102600000038280808000010407858080800001016600000a8880808000018280808000000b",
+}
+var stagedGCTypeSubtypingTransitiveMismatchLinkConsumerPin = stagedGCTypeSubtypingProductPin{
+	Filename: "type-subtyping.54.wasm", Line: 605, Size: 56,
+	SHA256: "9e703dc0addc7ec35bc25d91903131c815c512736eda1ae0f1678ef8a7a40144", Class: stagedGCTypeSubtypingTransitiveMismatchLinkConsumer,
+	Hex: "0061736d01000000019b80808000024e0250006000005001006000004e02500060000050010060000002898080800001034d313101660002",
+}
+var stagedGCTypeSubtypingNonFlatExportPin = stagedGCTypeSubtypingProductPin{
+	Filename: "type-subtyping.76.wasm", Line: 767, Size: 183,
+	SHA256: "0c14108cfe323e2dd39fd8bfe333bd925e2f19324e90cd1c3ee1615fdad2bb60", Class: stagedGCTypeSubtypingNonFlatExport,
+	Hex: "0061736d0100000001a8808080000450006000017d5001006000017d4f01016000017d4e036000017d50006000017d5001046000017d03878080800006000102030405079f80808000060266310000026632000102663300020266340003026635000402663600050ac9808080000687808080000043000000000b87808080000043000000000b87808080000043000000000b87808080000043000000000b87808080000043000000000b87808080000043000000000b",
+}
+
 var stagedGCTypeSubtypingProductPins = []stagedGCTypeSubtypingProductPin{
 	{Filename: "type-subtyping.0.wasm", Line: 7, Size: 54, SHA256: "aa9754e0665bda5f10ec77a3261759da4b462e813ecf9d0e12ec912acff996d6", Class: stagedGCTypeSubtypingDeclarations, Hex: "0061736d0100000001a8808080000750005e7f005001005e7f0050005e6e0050005e63000050005e64010050005e7f015001055e7f01"},
 	{Filename: "type-subtyping.1.wasm", Line: 15, Size: 65, SHA256: "ddca4046060c72d14ed416806860b0512b8e34ae2d11555ed88ff8676f6d1871", Class: stagedGCTypeSubtypingDeclarations, Hex: "0061736d0100000001b3808080000650005f005001005f005001015f017f005001025f027f006300005001035f037f006400007e015001045f037f006401007e01"},
@@ -218,6 +254,13 @@ var stagedGCTypeSubtypingProductPins = []stagedGCTypeSubtypingProductPin{
 	stagedGCTypeSubtypingExtendedProjectionLinkConsumerPin,
 	stagedGCTypeSubtypingDuplicateRecursiveLinkProviderPin,
 	stagedGCTypeSubtypingDuplicateRecursiveLinkConsumerPin,
+	stagedGCTypeSubtypingExtendedRecursiveLinkProviderPin,
+	stagedGCTypeSubtypingExtendedRecursiveLinkConsumerPin,
+	stagedGCTypeSubtypingCrossGroupMismatchLinkProviderPin,
+	stagedGCTypeSubtypingCrossGroupMismatchLinkConsumerPin,
+	stagedGCTypeSubtypingTransitiveMismatchLinkProviderPin,
+	stagedGCTypeSubtypingTransitiveMismatchLinkConsumerPin,
+	stagedGCTypeSubtypingNonFlatExportPin,
 }
 
 func stagedGCTypeSubtypingProductData(t testing.TB, pin stagedGCTypeSubtypingProductPin) []byte {
@@ -270,8 +313,8 @@ func TestStagedGCTypeSubtypingProductInventory(t *testing.T) {
 		}
 		seen[pin.Class]++
 	}
-	if seen[stagedGCTypeSubtypingDeclarations] != 6 || seen[stagedGCTypeSubtypingRecursiveFunctions] != 2 || seen[stagedGCTypeSubtypingRefFuncGlobals] != 6 || seen[stagedGCTypeSubtypingRefTestSingle] != 4 || seen[stagedGCTypeSubtypingRefTestMulti] != 3 || seen[stagedGCTypeSubtypingRefTestDirectionFalse] != 2 || seen[stagedGCTypeSubtypingRuntimeCallCast] != 1 || seen[stagedGCTypeSubtypingRuntimeFinalityCallCast] != 1 || seen[stagedGCTypeSubtypingRuntimeTypedTableCall] != 1 || seen[stagedGCTypeSubtypingLinkProvider] != 1 || seen[stagedGCTypeSubtypingLinkConsumer] != 1 || seen[stagedGCTypeSubtypingFinalityLinkProvider] != 1 || seen[stagedGCTypeSubtypingStructLinkProvider] != 1 || seen[stagedGCTypeSubtypingStructLinkConsumer] != 1 || seen[stagedGCTypeSubtypingStructProjectionLinkProvider] != 1 || seen[stagedGCTypeSubtypingStructProjectionLinkConsumer] != 1 || seen[stagedGCTypeSubtypingStructMismatchLinkProvider] != 1 || seen[stagedGCTypeSubtypingStructMismatchLinkConsumer] != 1 || seen[stagedGCTypeSubtypingIndependentStructLinkProvider] != 1 || seen[stagedGCTypeSubtypingIndependentStructLinkConsumer] != 1 || seen[stagedGCTypeSubtypingExtendedProjectionLinkProvider] != 1 || seen[stagedGCTypeSubtypingExtendedProjectionLinkConsumer] != 1 || seen[stagedGCTypeSubtypingDuplicateRecursiveLinkProvider] != 1 || seen[stagedGCTypeSubtypingDuplicateRecursiveLinkConsumer] != 1 {
-		t.Fatalf("product classes = %#v, want declarations/recursive-functions/ref.func-globals/single-ref.test/multi-ref.test/direction-false-ref.test/runtime-call-cast/runtime-finality-call-cast/runtime-typed-table-call/link-provider/link-consumer/finality-link-provider/struct-link-provider/struct-link-consumer/struct-projection-provider/struct-projection-consumer/struct-mismatch-provider/struct-mismatch-consumer/independent-struct-provider/independent-struct-consumer/extended-projection-provider/extended-projection-consumer/duplicate-recursive-provider/duplicate-recursive-consumer = 6/2/6/4/3/2/1/1/1/1/1/1/1/1/1/1/1/1/1/1/1/1/1/1", seen)
+	if seen[stagedGCTypeSubtypingDeclarations] != 6 || seen[stagedGCTypeSubtypingRecursiveFunctions] != 2 || seen[stagedGCTypeSubtypingRefFuncGlobals] != 6 || seen[stagedGCTypeSubtypingRefTestSingle] != 4 || seen[stagedGCTypeSubtypingRefTestMulti] != 3 || seen[stagedGCTypeSubtypingRefTestDirectionFalse] != 2 || seen[stagedGCTypeSubtypingRuntimeCallCast] != 1 || seen[stagedGCTypeSubtypingRuntimeFinalityCallCast] != 1 || seen[stagedGCTypeSubtypingRuntimeTypedTableCall] != 1 || seen[stagedGCTypeSubtypingLinkProvider] != 1 || seen[stagedGCTypeSubtypingLinkConsumer] != 1 || seen[stagedGCTypeSubtypingFinalityLinkProvider] != 1 || seen[stagedGCTypeSubtypingStructLinkProvider] != 1 || seen[stagedGCTypeSubtypingStructLinkConsumer] != 1 || seen[stagedGCTypeSubtypingStructProjectionLinkProvider] != 1 || seen[stagedGCTypeSubtypingStructProjectionLinkConsumer] != 1 || seen[stagedGCTypeSubtypingStructMismatchLinkProvider] != 1 || seen[stagedGCTypeSubtypingStructMismatchLinkConsumer] != 1 || seen[stagedGCTypeSubtypingIndependentStructLinkProvider] != 1 || seen[stagedGCTypeSubtypingIndependentStructLinkConsumer] != 1 || seen[stagedGCTypeSubtypingExtendedProjectionLinkProvider] != 1 || seen[stagedGCTypeSubtypingExtendedProjectionLinkConsumer] != 1 || seen[stagedGCTypeSubtypingDuplicateRecursiveLinkProvider] != 1 || seen[stagedGCTypeSubtypingDuplicateRecursiveLinkConsumer] != 1 || seen[stagedGCTypeSubtypingExtendedRecursiveLinkProvider] != 1 || seen[stagedGCTypeSubtypingExtendedRecursiveLinkConsumer] != 1 || seen[stagedGCTypeSubtypingCrossGroupMismatchLinkProvider] != 1 || seen[stagedGCTypeSubtypingCrossGroupMismatchLinkConsumer] != 1 || seen[stagedGCTypeSubtypingTransitiveMismatchLinkProvider] != 1 || seen[stagedGCTypeSubtypingTransitiveMismatchLinkConsumer] != 1 || seen[stagedGCTypeSubtypingNonFlatExport] != 1 {
+		t.Fatalf("product classes = %#v, want declarations/recursive-functions/ref.func-globals/single-ref.test/multi-ref.test/direction-false-ref.test/runtime-call-cast/runtime-finality-call-cast/runtime-typed-table-call/link-provider/link-consumer/finality-link-provider/struct-link-provider/struct-link-consumer/struct-projection-provider/struct-projection-consumer/struct-mismatch-provider/struct-mismatch-consumer/independent-struct-provider/independent-struct-consumer/extended-projection-provider/extended-projection-consumer/duplicate-recursive-provider/duplicate-recursive-consumer/extended-recursive-provider/extended-recursive-consumer/cross-group-mismatch-provider/cross-group-mismatch-consumer/transitive-mismatch-provider/transitive-mismatch-consumer/non-flat-export = 6/2/6/4/3/2/1/1/1/1/1/1/1/1/1/1/1/1/1/1/1/1/1/1/1/1/1/1/1/1/1", seen)
 	}
 }
 
