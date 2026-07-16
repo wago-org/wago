@@ -195,23 +195,18 @@
       "family": "gc",
       "reason": "basic struct allocation/access/mutation with non-null globals and public ref.struct egress",
       "count": 1
-    },
-    {
-      "family": "gc",
-      "reason": "packed struct globals/get/set product",
-      "count": 1
     }
   ],
   "counts": {
     "commands": 36,
-    "modules_passed": 4,
-    "assertions_passed": 2,
+    "modules_passed": 5,
+    "assertions_passed": 12,
     "expected_invalid": 4,
     "expected_malformed": 1,
     "expected_unlinkable": 0,
     "expected_uninstantiable": 0,
-    "expected_feature_rejects": 2,
-    "blocked_commands": 17,
+    "expected_feature_rejects": 1,
+    "blocked_commands": 7,
     "unexpected_compile_rejects": 0,
     "unexpected_link_rejects": 0,
     "failures": 0

@@ -17,6 +17,8 @@ const (
 	gcStructAllocDefault        = 1
 	gcStructGet                 = 2
 	gcStructSet                 = 3
+	gcStructGetS                = 4
+	gcStructGetU                = 5
 )
 
 func (f *fn) emitFB(r *wasm.Reader) error {
@@ -39,7 +41,7 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
 		return f.callGCStructHelper(gcStructAllocDefault, []wasm.ValType{wasm.I32}, []wasm.ValType{result})
-	case 2: // struct.get typeidx fieldidx
+	case 2, 3, 4: // struct.get / struct.get_s / struct.get_u typeidx fieldidx
 		typeIndex, err := r.U32()
 		if err != nil {
 			return err
@@ -52,13 +54,25 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		if !ok {
 			return fmt.Errorf("amd64: struct.get type %d field %d is unavailable", typeIndex, fieldIndex)
 		}
-		if field.Storage.Packed {
-			return fmt.Errorf("amd64: packed struct.get remains outside the staged helper slice")
+		helper := uint32(gcStructGet)
+		resultType := field.Storage.Val
+		if sub == 3 || sub == 4 {
+			if !field.Storage.Packed {
+				return fmt.Errorf("amd64: struct.get_s/u type %d field %d is not packed", typeIndex, fieldIndex)
+			}
+			resultType = wasm.I32
+			if sub == 3 {
+				helper = gcStructGetS
+			} else {
+				helper = gcStructGetU
+			}
+		} else if field.Storage.Packed {
+			return fmt.Errorf("amd64: plain struct.get cannot access packed type %d field %d", typeIndex, fieldIndex)
 		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(fieldIndex)})
 		object := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
-		return f.callGCStructHelper(gcStructGet, []wasm.ValType{object, wasm.I32, wasm.I32}, []wasm.ValType{field.Storage.Val})
+		return f.callGCStructHelper(helper, []wasm.ValType{object, wasm.I32, wasm.I32}, []wasm.ValType{resultType})
 	case 5: // struct.set typeidx fieldidx
 		typeIndex, err := r.U32()
 		if err != nil {
@@ -75,13 +89,17 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		if field.Mut != wasm.Var {
 			return fmt.Errorf("amd64: struct.set type %d field %d is immutable", typeIndex, fieldIndex)
 		}
-		if field.Storage.Packed || field.Storage.Val.Kind == wasm.ValRef {
-			return fmt.Errorf("amd64: packed/reference struct.set remains outside the staged helper slice")
+		if field.Storage.Val.Kind == wasm.ValRef {
+			return fmt.Errorf("amd64: reference struct.set remains outside the staged helper slice")
+		}
+		valueType := field.Storage.Val
+		if field.Storage.Packed {
+			valueType = wasm.I32
 		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(fieldIndex)})
 		object := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
-		return f.callGCStructHelper(gcStructSet, []wasm.ValType{object, field.Storage.Val, wasm.I32, wasm.I32}, nil)
+		return f.callGCStructHelper(gcStructSet, []wasm.ValType{object, valueType, wasm.I32, wasm.I32}, nil)
 	default:
 		return fmt.Errorf("amd64: unsupported staged 0xfb opcode %d", sub)
 	}

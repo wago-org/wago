@@ -130,7 +130,7 @@ func stagedGCStructExecutionProduct(data []byte) (stagedGCStructProduct, bool) {
 			continue
 		}
 		switch pin.Product {
-		case stagedGCStructDeclarations, stagedGCStructBindings, stagedGCStructNamedGets, stagedGCStructNullDereference:
+		case stagedGCStructDeclarations, stagedGCStructBindings, stagedGCStructNamedGets, stagedGCStructNullDereference, stagedGCStructPacked:
 			return pin.Product, true
 		default:
 			return pin.Product, false
@@ -140,7 +140,7 @@ func stagedGCStructExecutionProduct(data []byte) (stagedGCStructProduct, bool) {
 }
 
 func (p stagedGCStructProduct) requiresHelpers() bool {
-	return p == stagedGCStructNamedGets || p == stagedGCStructNumericLocal || p == stagedGCStructNullDereference
+	return p == stagedGCStructNamedGets || p == stagedGCStructNumericLocal || p == stagedGCStructNullDereference || p == stagedGCStructPacked
 }
 
 func stagedGCStructTypeGraph(m *wasm.Module) string {
