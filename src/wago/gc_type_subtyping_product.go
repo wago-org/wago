@@ -44,7 +44,7 @@ func (p stagedGCTypeSubtypingProduct) usesRuntimeFunctionIdentity() bool {
 }
 
 func (p stagedGCTypeSubtypingProduct) usesLinkFunctionIdentity() bool {
-	return p == stagedGCTypeSubtypingLinkProvider || p == stagedGCTypeSubtypingLinkConsumer || p == stagedGCTypeSubtypingFinalityLinkProvider || p == stagedGCTypeSubtypingFinalityLinkConsumer || p == stagedGCTypeSubtypingStructLinkProvider || p == stagedGCTypeSubtypingStructLinkConsumer || p == stagedGCTypeSubtypingStructProjectionLinkProvider || p == stagedGCTypeSubtypingStructProjectionLinkConsumer
+	return p == stagedGCTypeSubtypingLinkProvider || p == stagedGCTypeSubtypingLinkConsumer || p == stagedGCTypeSubtypingFinalityLinkProvider || p == stagedGCTypeSubtypingFinalityLinkConsumer || p == stagedGCTypeSubtypingStructLinkProvider || p == stagedGCTypeSubtypingStructLinkConsumer || p == stagedGCTypeSubtypingStructProjectionLinkProvider || p == stagedGCTypeSubtypingStructProjectionLinkConsumer || p == stagedGCTypeSubtypingStructMismatchLinkProvider || p == stagedGCTypeSubtypingStructMismatchLinkConsumer
 }
 
 func (p stagedGCTypeSubtypingProduct) linkProviderProduct() stagedGCTypeSubtypingProduct {
@@ -57,6 +57,8 @@ func (p stagedGCTypeSubtypingProduct) linkProviderProduct() stagedGCTypeSubtypin
 		return stagedGCTypeSubtypingStructLinkProvider
 	case stagedGCTypeSubtypingStructProjectionLinkConsumer:
 		return stagedGCTypeSubtypingStructProjectionLinkProvider
+	case stagedGCTypeSubtypingStructMismatchLinkConsumer:
+		return stagedGCTypeSubtypingStructMismatchLinkProvider
 	default:
 		return 0
 	}
@@ -125,6 +127,10 @@ func stagedGCTypeSubtypingProductPinned(data []byte, product stagedGCTypeSubtypi
 		pinned = stagedGCTypeSubtypingStructProjectionLinkProvider
 	case "a5d3e6060f52fa0becf68e6e4dd06623df6ecf7bf22bfe5430b484f2adbdf0a2":
 		pinned = stagedGCTypeSubtypingStructProjectionLinkConsumer
+	case "0494d7c95b50e151ac8e0f9eb8a1c935a016db45b1969378ed95d40369fda062":
+		pinned = stagedGCTypeSubtypingStructMismatchLinkProvider
+	case "bb598cc89f2d73720190e6c7e115bec104013bf8ebead4c417d17e701598c7a1":
+		pinned = stagedGCTypeSubtypingStructMismatchLinkConsumer
 	}
 	return pinned == product
 }
@@ -138,9 +144,15 @@ func stagedGCTypeSubtypingProductShape(m *wasm.Module) (stagedGCTypeSubtypingPro
 			return stagedGCTypeSubtypingLinkShape(m)
 		}
 		if len(m.Types) == 2 && len(m.Types[0].SubTypes) == 2 && len(m.Types[1].SubTypes) == 2 && (m.ImportedFuncCount() != 0 || len(m.Exports) == 1) {
+			if len(m.Imports) == 1 && m.Imports[0].Module == "M5" {
+				return stagedGCTypeSubtypingStructMismatchLinkShape(m)
+			}
 			return stagedGCTypeSubtypingStructLinkShape(m)
 		}
 		if len(m.Types) == 3 && len(m.Types[0].SubTypes) == 2 && len(m.Types[1].SubTypes) == 2 && len(m.Types[2].SubTypes) == 2 && (m.ImportedFuncCount() != 0 || len(m.Exports) == 1) {
+			if m.Types[0].SubTypes[1].Final {
+				return stagedGCTypeSubtypingStructMismatchLinkShape(m)
+			}
 			return stagedGCTypeSubtypingStructProjectionLinkShape(m)
 		}
 		if len(m.Types) == 2 && (m.ImportedFuncCount() != 0 || len(m.Exports) == 2) {
@@ -468,6 +480,75 @@ func stagedGCTypeSubtypingStructProjectionLinkShape(m *wasm.Module) (stagedGCTyp
 		return 0, fmt.Errorf("struct projection link consumer import is outside the exact M4.g product")
 	}
 	return stagedGCTypeSubtypingStructProjectionLinkConsumer, nil
+}
+
+func stagedGCTypeSubtypingStructMismatchLinkShape(m *wasm.Module) (stagedGCTypeSubtypingProduct, error) {
+	provider := len(m.Imports) == 0
+	wantGroups := 3
+	if !provider {
+		wantGroups = 2
+	}
+	if len(m.Types) != wantGroups || m.TableCount() != 0 || m.MemCount() != 0 || len(m.Globals) != 0 || len(m.Elements) != 0 || len(m.Data) != 0 || m.TagCount() != 0 || m.Start != nil {
+		return 0, fmt.Errorf("struct mismatch link product requires exactly %d type groups and no non-function state", wantGroups)
+	}
+	for groupIndex := range m.Types {
+		group := &m.Types[groupIndex]
+		if len(group.SubTypes) != 2 {
+			return 0, fmt.Errorf("struct mismatch link group %d must contain two members", groupIndex)
+		}
+		f := &group.SubTypes[0]
+		if f.Final || !f.HasPrefix || f.Metadata.Describes != nil || f.Metadata.Descriptor != nil || f.Comp.Kind != wasm.CompFunc || len(f.Comp.Params) != 0 || len(f.Comp.Results) != 0 {
+			return 0, fmt.Errorf("struct mismatch link group %d function must be an open metadata-free () -> () subtype", groupIndex)
+		}
+		s := &group.SubTypes[1]
+		if !s.Final || s.HasPrefix || s.Metadata.Describes != nil || s.Metadata.Descriptor != nil || len(s.Supers) != 0 || s.Comp.Kind != wasm.CompStruct {
+			return 0, fmt.Errorf("struct mismatch link group %d companion must be a final metadata-free struct without supers", groupIndex)
+		}
+		if groupIndex == wantGroups-1 {
+			wantSuper := wasm.TypeIdx{Index: uint32(2 * (groupIndex - 1))}
+			if len(f.Supers) != 1 || f.Supers[0] != wantSuper || len(s.Comp.Fields) != 0 {
+				return 0, fmt.Errorf("struct mismatch link final group must extend flat type %d and carry an empty struct", wantSuper.Index)
+			}
+			continue
+		}
+		if len(f.Supers) != 0 || len(s.Comp.Fields) != 1 {
+			return 0, fmt.Errorf("struct mismatch link root group %d must have no function super and one struct field", groupIndex)
+		}
+		field := s.Comp.Fields[0]
+		ref := field.Storage.Val
+		want := wasm.TypeIdx{Index: 0, Rec: groupIndex == 0}
+		if field.Mut != wasm.Const || field.Storage.Packed || ref.Kind != wasm.ValRef || ref.Ref.Nullable || ref.Ref.Exact || ref.Ref.Heap.Kind != wasm.HeapTypeIndex || ref.Ref.Heap.Type != want {
+			return 0, fmt.Errorf("struct mismatch link root group %d field is outside the exact recursive projection", groupIndex)
+		}
+	}
+	gIndex := uint32(2 * (wantGroups - 1))
+	fIndex := gIndex - 2
+	gRef := wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: gIndex}), false)
+	fRef := wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: fIndex}), false)
+	if !m.ReferenceTypeSubtype(gRef, fRef) || m.ReferenceTypeSubtype(fRef, gRef) {
+		return 0, fmt.Errorf("struct mismatch link function relation must be exactly g <: f")
+	}
+	if provider {
+		if len(m.FuncTypes) != 1 || len(m.Code) != 1 || len(m.Exports) != 1 {
+			return 0, fmt.Errorf("struct mismatch link provider requires one local function and one export")
+		}
+		if m.FuncTypes[0].Rec || m.FuncTypes[0].Index != 4 || len(m.Code[0].Locals.Runs) != 0 || !isExactEndBody(m.Code[0].BodyBytes) {
+			return 0, fmt.Errorf("struct mismatch link provider function is outside the exact type/body product")
+		}
+		ex := m.Exports[0]
+		if ex.Name != "g" || ex.Index.Kind != wasm.ExternFunc || ex.Index.Index != 0 {
+			return 0, fmt.Errorf("struct mismatch link provider export is outside the exact g product")
+		}
+		return stagedGCTypeSubtypingStructMismatchLinkProvider, nil
+	}
+	if len(m.FuncTypes) != 0 || len(m.Code) != 0 || len(m.Exports) != 0 || len(m.Imports) != 1 || m.ImportedFuncCount() != 1 {
+		return 0, fmt.Errorf("struct mismatch link consumer requires exactly one function import")
+	}
+	imp := m.Imports[0]
+	if imp.Module != "M5" || imp.Name != "g" || imp.Type.Kind != wasm.ExternFunc || imp.Type.Type.Rec || imp.Type.Type.Index != 2 {
+		return 0, fmt.Errorf("struct mismatch link consumer import is outside the exact M5.g product")
+	}
+	return stagedGCTypeSubtypingStructMismatchLinkConsumer, nil
 }
 
 func stagedGCTypeSubtypingRefFuncGlobalShape(m *wasm.Module) (stagedGCTypeSubtypingProduct, error) {

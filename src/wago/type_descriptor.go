@@ -461,41 +461,96 @@ func heapTypeEquivalent(a HeapTypeDescriptor, aTypes []DefinedTypeDescriptor, b 
 func definedTypeEquivalent(a uint32, aTypes []DefinedTypeDescriptor, b uint32, bTypes []DefinedTypeDescriptor) bool {
 	type pair struct{ a, b uint32 }
 	state := make(map[pair]uint8)
+	groupBounds := func(types []DefinedTypeDescriptor, index uint32) (start, end uint32, ok bool) {
+		if int(index) >= len(types) {
+			return 0, 0, false
+		}
+		group := types[index].RecGroup
+		start, end = index, index+1
+		for start > 0 && types[start-1].RecGroup == group {
+			start--
+		}
+		for int(end) < len(types) && types[end].RecGroup == group {
+			end++
+		}
+		return start, end, true
+	}
 	var eqType func(uint32, uint32) bool
-	var eqValue func(ValueTypeDescriptor, ValueTypeDescriptor) bool
-	var eqHeap func(HeapTypeDescriptor, HeapTypeDescriptor) bool
-	eqHeap = func(x, y HeapTypeDescriptor) bool {
+	var eqTypeBody func(uint32, uint32) bool
+	eqTypeRef := func(ownerX, x, ownerY, y uint32) bool {
+		if int(ownerX) >= len(aTypes) || int(x) >= len(aTypes) || int(ownerY) >= len(bTypes) || int(y) >= len(bTypes) {
+			return false
+		}
+		xBound := aTypes[ownerX].RecGroup == aTypes[x].RecGroup
+		yBound := bTypes[ownerY].RecGroup == bTypes[y].RecGroup
+		return xBound == yBound && eqType(x, y)
+	}
+	eqHeap := func(ownerX, ownerY uint32, x, y HeapTypeDescriptor) bool {
 		if x.Defined != y.Defined {
 			return false
 		}
 		if !x.Defined {
 			return x.Abstract == y.Abstract
 		}
-		return eqType(x.TypeIndex, y.TypeIndex)
+		return eqTypeRef(ownerX, x.TypeIndex, ownerY, y.TypeIndex)
 	}
-	eqValue = func(x, y ValueTypeDescriptor) bool {
+	eqValue := func(ownerX, ownerY uint32, x, y ValueTypeDescriptor) bool {
 		if x.Kind != y.Kind {
 			return false
 		}
 		if x.Kind != ValueTypeReference {
 			return true
 		}
-		return x.Ref.Nullable == y.Ref.Nullable && x.Ref.Exact == y.Ref.Exact && eqHeap(x.Ref.Heap, y.Ref.Heap)
+		return x.Ref.Nullable == y.Ref.Nullable && x.Ref.Exact == y.Ref.Exact && eqHeap(ownerX, ownerY, x.Ref.Heap, y.Ref.Heap)
 	}
-	eqStorage := func(x, y StorageTypeDescriptor) bool {
-		return x.Packed == y.Packed && x.PackedType == y.PackedType && (x.Packed || eqValue(x.Value, y.Value))
+	eqStorage := func(ownerX, ownerY uint32, x, y StorageTypeDescriptor) bool {
+		return x.Packed == y.Packed && x.PackedType == y.PackedType && (x.Packed || eqValue(ownerX, ownerY, x.Value, y.Value))
 	}
-	eqField := func(x, y FieldTypeDescriptor) bool {
-		return x.Mutable == y.Mutable && eqStorage(x.Storage, y.Storage)
+	eqField := func(ownerX, ownerY uint32, x, y FieldTypeDescriptor) bool {
+		return x.Mutable == y.Mutable && eqStorage(ownerX, ownerY, x.Storage, y.Storage)
 	}
-	eqOptional := func(xHas bool, x uint32, yHas bool, y uint32) bool {
-		return xHas == yHas && (!xHas || eqType(x, y))
+	eqOptional := func(ownerX uint32, xHas bool, x uint32, ownerY uint32, yHas bool, y uint32) bool {
+		return xHas == yHas && (!xHas || eqTypeRef(ownerX, x, ownerY, y))
 	}
-	eqType = func(x, y uint32) bool {
-		if int(x) >= len(aTypes) || int(y) >= len(bTypes) {
+	eqTypeBody = func(x, y uint32) bool {
+		xd, yd := aTypes[x], bTypes[y]
+		ok := xd.Final == yd.Final && xd.Kind == yd.Kind && len(xd.Supers) == len(yd.Supers) &&
+			eqOptional(x, xd.HasDescribes, xd.Describes, y, yd.HasDescribes, yd.Describes) &&
+			eqOptional(x, xd.HasDescriptor, xd.Descriptor, y, yd.HasDescriptor, yd.Descriptor)
+		for i := 0; ok && i < len(xd.Supers); i++ {
+			ok = eqTypeRef(x, xd.Supers[i], y, yd.Supers[i])
+		}
+		if !ok {
 			return false
 		}
-		p := pair{x, y}
+		switch xd.Kind {
+		case CompositeTypeFunction:
+			ok = len(xd.Params) == len(yd.Params) && len(xd.Results) == len(yd.Results)
+			for i := 0; ok && i < len(xd.Params); i++ {
+				ok = eqValue(x, y, xd.Params[i], yd.Params[i])
+			}
+			for i := 0; ok && i < len(xd.Results); i++ {
+				ok = eqValue(x, y, xd.Results[i], yd.Results[i])
+			}
+		case CompositeTypeStruct:
+			ok = len(xd.Fields) == len(yd.Fields)
+			for i := 0; ok && i < len(xd.Fields); i++ {
+				ok = eqField(x, y, xd.Fields[i], yd.Fields[i])
+			}
+		case CompositeTypeArray:
+			ok = eqField(x, y, xd.Array, yd.Array)
+		default:
+			ok = false
+		}
+		return ok
+	}
+	eqType = func(x, y uint32) bool {
+		xStart, xEnd, xOK := groupBounds(aTypes, x)
+		yStart, yEnd, yOK := groupBounds(bTypes, y)
+		if !xOK || !yOK || x-xStart != y-yStart || xEnd-xStart != yEnd-yStart {
+			return false
+		}
+		p := pair{xStart, yStart}
 		switch state[p] {
 		case 1, 2:
 			return true
@@ -503,33 +558,9 @@ func definedTypeEquivalent(a uint32, aTypes []DefinedTypeDescriptor, b uint32, b
 			return false
 		}
 		state[p] = 1
-		xd, yd := aTypes[x], bTypes[y]
-		ok := xd.Final == yd.Final && xd.Kind == yd.Kind && len(xd.Supers) == len(yd.Supers) &&
-			eqOptional(xd.HasDescribes, xd.Describes, yd.HasDescribes, yd.Describes) &&
-			eqOptional(xd.HasDescriptor, xd.Descriptor, yd.HasDescriptor, yd.Descriptor)
-		for i := 0; ok && i < len(xd.Supers); i++ {
-			ok = eqType(xd.Supers[i], yd.Supers[i])
-		}
-		if ok {
-			switch xd.Kind {
-			case CompositeTypeFunction:
-				ok = len(xd.Params) == len(yd.Params) && len(xd.Results) == len(yd.Results)
-				for i := 0; ok && i < len(xd.Params); i++ {
-					ok = eqValue(xd.Params[i], yd.Params[i])
-				}
-				for i := 0; ok && i < len(xd.Results); i++ {
-					ok = eqValue(xd.Results[i], yd.Results[i])
-				}
-			case CompositeTypeStruct:
-				ok = len(xd.Fields) == len(yd.Fields)
-				for i := 0; ok && i < len(xd.Fields); i++ {
-					ok = eqField(xd.Fields[i], yd.Fields[i])
-				}
-			case CompositeTypeArray:
-				ok = eqField(xd.Array, yd.Array)
-			default:
-				ok = false
-			}
+		ok := true
+		for i := uint32(0); ok && i < xEnd-xStart; i++ {
+			ok = eqTypeBody(xStart+i, yStart+i)
 		}
 		if ok {
 			state[p] = 2
