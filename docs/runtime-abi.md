@@ -544,6 +544,21 @@ No descriptor pointer is scanned, rooted, converted, serialized as live state, o
 type/function/table/element/code metadata but not admission. `compiledCodeCache` remains 64 bytes; no basedata offset,
 helper ID, descriptor field, root, barrier, collector sidecar, frame record, result adapter, or public ABI changes.
 
+Iteration 64 reuses the same finite identity-check ABI for one exact typed-table product. Its table declaration and active
+element both carry nullable indexed type `$t1`; the two entries hold canonical local descriptors at exact `$t1` and subtype
+`$t2`, with `$t2 <: $t1 <: $t0`. The classifier proves source-to-storage compatibility and rejects wider `$t0` storage
+before codegen. At each `call_indirect`, the ordinary 32-byte entry still supplies code pointer, structural key, home memory,
+and canonical identity; the product-specific signature check tests that identity against the finite local descriptors whose
+validated type subtypes the requested `$t0`, `$t1`, `$t2`, or unrelated final runner type.
+
+The local descriptor arena is 192 bytes (null plus five local descriptors), and the immutable table image is 72 bytes
+(eight-byte length header plus two 32-byte entries). Both entries retain nonzero code pointers and self-owned canonical
+identity slots. Five widening/exact calls succeed; narrowing `$t1` to `$t2` and requesting the unrelated final runner type
+trap without mutating the table. Recovery and steady-state invocation allocate zero bytes. Codec v27 retains exact indexed
+table/element metadata but not admission. `compiledCodeCache` remains 64 bytes; no basedata offset, helper ID, descriptor
+field, root, barrier, collector sidecar, frame record, result adapter, or public ABI changes. This proof does not authorize
+mutable/imported/exported/host/cross-instance typed-table descriptors or their retention and rollback rules.
+
 ## Global coherence invariant
 
 The global cell is the sole host- and cross-instance-visible storage for a
