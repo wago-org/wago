@@ -50,12 +50,14 @@ valid widening/exact indirect calls, and preserves two narrowing/unrelated signa
 exact cross-instance subtype link pair with bounded descriptor ownership, duplicate-owner deduplication, rollback, and
 both close orders. Iteration 66 adds only the separate finality-sensitive link provider and its two inverse unlinkable
 consumers; open and final `() -> ()` identities remain incompatible in both directions and failed imports retain nothing.
-All twenty-nine admitted leaders instantiate, or fail before consumer publication, without allocating a collector. The
-finality provider owns 96 descriptor bytes, emits 157 code bytes, produces a 323-byte codec artifact, and measures
-36.50–37.43 ns/op with zero allocations; each 38-byte consumer has a bounded 64-byte descriptor requirement and a
-144-byte unlinked codec artifact. Sixteen leaders remain gated and 18 dependent commands remain blocked. General native
-frame publication, object-valued mutable/reference globals, broader struct-defined linking ownership, public ownership,
-and snapshots remain incomplete. These bounded products must not be presented as general executable WasmGC support.
+Iteration 67 adds only the M3 struct-defined provider/consumer pair. Its immutable recursive struct field and empty
+companion structs participate in function identity, while instances retain ordinary canonical descriptors and allocate no
+collector or GC object. The provider and consumer each own 64 descriptor bytes; the one compatible import retains one
+producer transactionally and both close orders release exactly once. Their wasm/code/codec sizes are 70/77/313 and
+51/0/236 bytes, and empty `g` measures 38.46–51.80 ns/op with zero allocations. All thirty-one admitted leaders
+instantiate, or fail before consumer publication, without allocating a collector. Fourteen leaders remain gated and 17
+dependent commands remain blocked. General native frame publication, object-valued mutable/reference globals, broader
+struct-defined linking ownership, public ownership, and snapshots remain incomplete. These bounded products must not be presented as general executable WasmGC support.
 
 ## Why a wago-native collector
 
@@ -1126,6 +1128,32 @@ substitution, cross-product substitution, arm64, unsupported platforms, and publ
 Strict accounting is 170 commands / 29 passed modules / 23 passed assertions / 16 gates / 18 blocked commands /
 24 invalid / 5 executed expected unlinkables / 3 blocked unlinkables / zero validator gaps, unexpected compile/link
 failures, or hidden failures. The source-lines-566–572 M3 struct-defined pair is the next separate exact obligation.
+
+### Iteration 67 M3 struct-defined linking pair
+
+The source-lines-566–572 pair is pinned independently from iterations 65–66. The command-line-442 provider is 70 bytes
+with SHA-256 `ac63802e3827e33389d92ff8a8bd25b6231f1dde96bab5cb77a0e1d094f80e6f`; the command-line-450
+consumer is 51 bytes with SHA-256 `5f090989edc62437b56b36c69a316cdcfddec4a63d451bd9443ad59da75af0a3`.
+Both contain two two-member recursive groups. The first group is an open `() -> ()` function paired with a final struct
+whose sole immutable field is a non-null reference to that function; the second is an open function subtype paired with
+a final empty struct. Exact AST and byte-backed validation prove the complete graphs and the compatible provider `g` to
+consumer `M3.g` relation before classification and pin checks.
+
+Struct definitions remain metadata-only. No struct/array instruction or value executes, no compact `gc.Ref`, checked
+collector root, barrier, card, remembered set, or collector object appears, and both instances keep `Instance.gc == nil`.
+The provider and consumer each own a 64-byte arena containing null plus one ordinary 32-byte function descriptor. The
+consumer copies the provider's nonzero code pointer and canonical identity word, retains the one distinct producer exactly
+once, rolls that owner back on failed instantiation, and releases it correctly in both provider-first and consumer-first
+close orders. Hosts, iterations 65–66, widened namespaces/fields, and structurally similar unpinned products reject.
+
+Provider/consumer wasm/code/codec sizes are 70/77/313 and 51/0/236 bytes. Empty `g` measures 38.46–51.80 ns/op,
+0 B/op, and 0 allocs/op across three samples. Unlinked codec v27 preserves exact type/function/import/export metadata but
+no admission marker; a live linked consumer cannot serialize. Private/public reload, snapshots, signal-backed bounds,
+host and cross-product substitution, arm64, unsupported platforms, and public GC admission remain fail-closed. Strict
+accounting is now 170 commands / 31 passed modules / 23 passed assertions / 14 gates / 17 blocked commands / 24 invalid /
+5 executed expected unlinkables / 3 blocked unlinkables / zero validator gaps, unexpected compile/link failures, or hidden
+failures. The source-lines-578–588 M4 provider/consumer pair is next and must remain separate from source-line 598 and the
+source-line-605 unlinkable.
 
 ## Collector lifetime
 
