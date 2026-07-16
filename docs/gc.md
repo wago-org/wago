@@ -383,6 +383,40 @@ the packed-data product is 351 / 2,863 / 3,585 bytes. Three-element f32 and i8 a
 `compiledMemoryDirectory=120`, and `gc.Collector=640` bytes. Codec v27 is unchanged and reload
 inherits no helper/product/global-root/data-lifecycle/token admission.
 
+### Iteration 43 passive reference elements and complete `gc/array`
+
+Iteration 43 closes the reference-element leader without generalizing native frame scanning.
+The exact 396-byte/SHA-pinned product has one passive segment containing two allocated i8
+arrays. Compilation retains a separate 96-byte non-serialized constructor record; instantiation
+allocates the 24-byte inner objects in order and installs each in a checked collector table slot
+before the next allocation. A 48-byte Tiny heap fits the pair exactly, while a 24-byte heap fails
+on the second allocation and withdraws the first root. The per-instance 56-byte segment state is
+separate from immutable-global mappings and carries only compact refs, slot indexes, one
+arena-owned 16-byte descriptor, and a reusable two-root allocation record.
+
+`array.new_elem` checks current descriptor length and widened u32 source+length before allocation.
+For non-empty copies it publishes the selected segment values through the fixed mutable
+`gcArrayElementRoots`; the collector rereads the first root after allocation before initializing
+non-null reference arrays. The helper then writes every selected ref with `ArraySet` (object and
+card barriers) and invokes the post-write bulk barrier. Nullable `$nvec` and mutable-any `$avec`
+widening are checked against the exact dynamic inner-array type. Zero-length construction remains
+valid after drop even for non-defaultable destination element types. No Go pointer enters native
+state, and the reusable root record removes per-call root-interface allocations.
+
+`elem.drop` parks through the same serialized helper boundary, zeros descriptor length, and nulls
+both collector table slots through slot barriers. Non-empty and overflowing post-drop construction
+trap before collector allocation. Reference get/set, nested packed reads, length, bounds traps,
+public type-1 array tokens, one-live-token enforcement, producer-before-token close order,
+Throughput/Tiny mark/remark stress, codec-sidecar loss, snapshot rejection, guard rejection, and
+arm64 compile-only gates are covered. Complete `gc/array.wast` accounting is now 61 commands /
+7 modules / 41 assertions / 6 invalid / zero gates / zero blocked commands.
+
+The product is 396 Wasm bytes / 3,507 linked code bytes / 4,478 codec bytes. Both inner arrays and
+the two-element outer reference array occupy 24 bytes including the header. Fixed layouts remain
+`Compiled=712`, `Instance=792`, and `gc.Collector=640`; `compiledMemoryDirectory` is now 128 bytes
+and the lazy `instancePluginState` is 136 bytes. Five 500 ms nested-get samples measured
+6.309-11.634 us/op, 0 allocs/op, and 4-8 amortized B/op from collector backing growth.
+
 Before broader live `gc.Ref` payloads or funcref lifetimes can be admitted, codegen/runtime
 must still prove all of the following as one coherent product:
 
@@ -919,11 +953,12 @@ Tests exercise tiny nurseries, collect-every-alloc, exact scanning, cycles, root
 
 ## Current limitations
 
-- WasmGC opcode validation is not complete. Exact staged numeric structs plus all pointer-free
-  official array leaders are wired to amd64: bounded `array.new`/default/fixed, packed-i8
-  `array.new_data`, numeric/packed get/set/len, immutable numeric array constants/globals,
-  null/bounds/data-drop traps, and bounded public struct/array results. Reference-element
-  arrays, casts/tests, reference fields, and general GC constant expressions remain.
+- WasmGC opcode validation is not complete. Exact staged numeric structs plus complete official
+  `gc/array.wast` execution are wired to amd64: bounded numeric/default/fixed/data/element
+  constructors, numeric/packed/reference get/set/len, immutable numeric globals, passive GC
+  element roots, null/bounds/drop traps, object/bulk barriers, and bounded public results.
+  `i31`, casts/tests, array fill/copy/init, extern conversion, reference fields, and general GC
+  constant expressions remain.
 - The parked-Go runtime-call ABI is proven for exact empty-frame-root numeric/packed
   allocations, non-collecting numeric access/mutation, ordered immutable collector-rooted
   globals, per-instance passive data descriptors, and one result-token root installed only

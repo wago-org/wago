@@ -162,7 +162,7 @@ handling, multi-memory, memory64, and table64.
 | Relaxed SIMD | Complete through `0xfd 275`, with reserved holes rejected. | Deterministic lowering is present on the documented linux/amd64 SIMD baseline. The Release 3 harness now honors official `either` result patterns; all 8 converted modules and 69 assertions pass with zero failures/skips. | ✅ Existing completed support, represented by `CoreFeatureSIMD`. |
 | Tail calls | Decoder and validator understand direct, indirect, and reference tail-call forms. Tail results use covariant reference matching, while invalid narrowing remains rejected. Separate compile-only frontend bits admit bounded direct/indirect and typed-tail slices. | linux/amd64 has local register/wrapper `return_call`, tail-position host imports, retained integer cross-instance direct tails plus exactly `(i32, f64) -> f64` and `(f64) -> i32` with a separate fixed four-word root/nested record, per-table finite immutable-local `return_call_indirect` proofs, tagged same-instance internal/scalar-wrapper `return_call_ref`, retained typed cross-instance root/nested transfers, and one canonical funcref result returned in RAX. Exact pinned accounting is gap-free for all three files: `return_call` 47 commands / 3 modules / 33 assertions / 11 invalid; `return_call_indirect` 79 / 3 / 49 / 16 invalid / 11 malformed; `return_call_ref` 51 / 5 / 35 / 11 invalid. Other float/oversized direct signatures, mutable/imported/exported/host-descriptor indirect tables, foreign-float/general reference-result tails, snapshots, public admission, and arm64 remain fail-closed. | 🚧 All staged official tail files are gap-free; not a public product claim. |
 | Typed function references | `ref.func` has the declared non-null indexed function type. Indexed references match by bounded coinductive structural equivalence across duplicate and recursive groups, including function/struct/array shapes, supers, and descriptor metadata. `call_ref` rejects abstract funcref while accepting nullable indexed references for dynamic null traps. `br_on_non_null` validates a label prefix plus non-null reference branch payload and consumes the reference on null fallthrough. Typed/tail opcodes contribute exact required-feature bits. Iteration 31 enforces recursive-group scope for relative indices and compares whole recursive groups, closing the five pinned invalid recursive/indexed gaps. Iteration 37 additionally makes native structural keys include every member and the selected position of non-singleton recursive groups. | The internal gate admits indexed signatures/storage, explicit func/extern block types, `ref.null`, `ref.is_null`, `ref.as_non_null`, both null branches, `select`, `call_ref`, bounded typed-tail contexts, both exact null-only `ref_null` products, and all valid `type-rec` products. The 14-file schema-2 matrix is gap-free at 422 commands / 61 modules / 246 assertions / 65 invalid / 2 malformed / 2 unlinkable / 0 gates / 0 blocked, with zero hidden failures. The ten former struct-defined leaders are pinned exact collector-free products: four immutable local `ref.func` globals, three cross-instance function-link checks, and three ordinary funcref-table `call_indirect` actions. Their struct descriptors survive codec v27, but no struct/array value or opcode executes and instantiation creates no collector. Typed/tail snapshots, public admission, broader tails, actual GC execution, and arm64 remain fail-closed. | 🚧 Complete measured typed-reference/null/structural-function-identity accounting; no public or WasmGC heap execution claim. |
-| GC | Recursive types, instructions, descriptor lowering, collector profiles, exact `RootSet` scanning, and a validated target-neutral native root-map metadata contract exist. Complete `gc/struct.wast` and `gc/array.wast` schema-2 accounting pin every leader, invalid/malformed command, type/state graph, opcode, and action. Staged validation admits only exact numeric struct constants and exact bounded numeric array constants without widening default/public validation. | The complete struct file remains gap-free at 36 commands / 6 modules / 19 assertions / 4 invalid / 1 malformed. Iterations 41-42 add an independent exact array product/helper sidecar: the synthetic pointer-free helper product plus official declaration/binding, null, numeric-fixed, numeric-default, and packed-data leaders execute. Three immutable checked global roots are installed in initializer order across the numeric leaders; packed i8 `array.new_data` preflights current passive length and widened source end before allocation, honors `data.drop`, and preserves zero-length semantics. Get/set/len/bounds and exact dynamic-array one-live tokens execute. `gc/array` is 61 commands / 6 modules / 29 assertions / 6 invalid / 1 gate / 12 blocked, with zero hidden failures. Codec reload drops helper/product/initializer/root/data/token admission. | 🚧 Complete measured struct execution and all pointer-free official array leaders. The remaining reference-element leader needs passive-element GC roots, non-empty allocation roots, object/bulk barriers, and `elem.drop`; general frame roots, mutable/reference globals, non-null ingress, snapshots, guard mode, public feature admission, and arm64 remain incomplete. See `docs/gc.md`. |
+| GC | Recursive types, instructions, descriptor lowering, collector profiles, exact `RootSet` scanning, and a validated target-neutral native root-map metadata contract exist. Complete `gc/struct.wast` and `gc/array.wast` schema-2 accounting pin every leader, invalid/malformed command, type/state graph, opcode, and action. Staged validation admits only exact bounded struct/array products without widening default/public validation. | The complete struct file remains gap-free at 36 commands / 6 modules / 19 assertions / 4 invalid / 1 malformed. Iterations 41-43 complete the exact array product: numeric/default/fixed/data/element constructors, numeric/packed/reference get/set/len, three immutable global roots, two passive-element table-slot roots, a fixed two-entry non-empty allocation `RootSet`, exact nullable/any widening, object/card/post-bulk barriers, data/element drop, traps, and one-live tokens execute. `gc/array` is gap-free at 61 commands / 7 modules / 41 assertions / 6 invalid / 0 gates / 0 blocked, with zero hidden failures. Codec reload drops helper/product/initializer/root/segment/token admission. | 🚧 Complete measured `gc/struct` and `gc/array` execution. Remaining GC files include i31, casts/tests, extern conversion, array bulk operations, and type-subtyping; general frame roots, mutable/reference globals, non-null ingress, snapshots, guard mode, public feature admission, and arm64 remain incomplete. See `docs/gc.md`. |
 | Exception handling | Tags, `throw`, `throw_ref`, and `try_table` decode and validate strictly across AST and byte-backed paths; non-empty tag results reject, `noexn <: exn`, bottom heaps remain beneath indexed function heaps, and throw operands are exact. Catch payload/depth typing is complete for `catch`, `catch_ref`, `catch_all`, and `catch_all_ref`: reference catches produce non-null `(ref exn)` and may widen to nullable labels. The intentional source-only malformed `try_table` lines 339/344 remain rejected. | The complete five-file schema-2 matrix for `exceptions/{tag,throw,throw_ref,try_table}` plus `ref_null` is gap-free under staged admission: 147 commands / 13 modules / 98 assertions / 16 invalid / 2 malformed / 2 unlinkable / 0 gates / 0 blocked, with zero hidden failures. The official `exceptions/try_table` file remains gap-free at 5 modules / 45 assertions / 9 invalid / 2 malformed. linux/amd64 explicit bounds admits at most 9 tags, 24 `try_table`s/module, 8 ordered clauses/table, 4 nested seven-word handlers, and 4 fixed three-word exception roots/function. Exact retained `() -> ()` cross-instance calls carry the handler in RBP and true tails discard dead scopes. One exact local-only tag payload may carry a non-null indexed `() -> ()` funcref from one declarative local descriptor. The two `ref_null` modules execute only zero-valued any/none/exn/noexn references and immutable globals; they allocate no collector and admit no non-null exception/GC ABI. Non-null GC/exn values, allocation/cast/test opcodes, foreign/mutable/imported null products, broader roots, host, snapshot, public, guard, and arm64 variants remain closed. | 🚧 Complete official family accounting and bounded internal execution; not a public product or WasmGC claim. |
 | Multi-memory | Indexed immediates and compact imports decode/validate strictly on AST and byte-backed paths; default Release 2 admission still rejects them explicitly. | Exact product directories, policy accounting, duplicate aliases, codec v27, every indexed scalar/SIMD/bulk/data operation, snapshot-v3 owned-local state, and bounded shared-memory co-tenants are staged on linux/amd64 explicit bounds. A finite proof admits exact native directories plus optional imported scalar-global pointers and exactly one bounded imported funcref table under a numeric-signature, no-element, no-ref.func/indirect-call, null/get/set/size-only scan. Retained scalar direct imports may re-enter producers that use the exact same memory-0 mapping: each eligible instance owns one stable 256-byte arena image, native calls save/install/restore images recursively, and trap recovery saves the image named by the active basedata slot. Root/nested calls now compose with imported numeric-global pointers and the sole imported funcref table simultaneously while shared `memory.grow`, global updates, table state, nested traps, concurrency, independent memory/global/table/function close ordering, and steady-state allocation freedom remain proven. Host callbacks, foreign-memory bindings, imported tail calls, broader reference/table/passive state, codec serialization of live bindings, imported/shared snapshots, guard mode, public admission, and arm64 remain fail-closed. The complete 42-file matrix remains gap-free at 913 commands, 79 modules, 771 assertions, 4 invalid, 22 unlinkable, and 20 uninstantiable cases. | 🚧 Complete official family accounting and bounded internal execution; not a public product claim. |
 | memory64 | Limits, i64 address typing, 64-bit memarg offsets, and operation validation are present. The staged support pass admits size/grow, integer/float scalar memory operations, every SIMD memory load/store/extend/splat/zero/lane form, active and passive data lifecycle, and `memory.copy`/`memory.fill`. Core validation rejects limits above 2^48 pages and accepts the exact maximum. | One linux/amd64 explicit-bounds path accepts exactly one non-shared local or instance-exported imported memory. Valid declared maxima through 2^48 pages persist exactly in memory directories, codec v27, inspection, imports/re-exports, policy, and managed accounting whenever the minimum remains allocatable; only the direct memory-0 execution reservation is capped at 65,535 pages. No-maximum declarations preserve `HasMax=false` under that finite reserve. Unavailable growth returns `-1` without changing size, and arithmetic/policy/managed-budget overflow rejects fail-closed. Import matching preserves provider max/no-max identity across re-export, shared grow visibility is exact, and producer roots attach/roll back transactionally without increasing the 40-byte lifecycle sidecar. Scalar/SIMD operations check address+offset+width carry, exact lane/end bounds, and trapping-store atomicity. Active data preserves validated i64 programs in the codec expression field. Passive `memory.init` keeps zero-extended i32 source/length with an i64 destination; full-u64 carry/end, source bounds, drop state, zero-length-after-drop, trap atomicity, and reload are proven. Bulk copy/fill checks both full-u64 ranges before writes and preserves overlap. The complete sixteen-file non-table matrix is gap-free at 5,904 commands / 169 modules / 5,335 assertions / 292 invalid / 60 malformed / 30 unlinkable / 0 gates / 0 blocked, with zero hidden failures. Mixed memory32/memory64 imports reject before attachment. Host memory64 construction, shared/multi-memory execution, unallocatable minima, guard mode, public admission, snapshots, and arm64 remain gated. | 🚧 Bounded local/imported scalar/SIMD/active+passive-data/copy/fill execution and complete gap-free non-table family accounting; product/platform admission remains staged. |
@@ -2347,6 +2347,31 @@ mandatory families remain staged, and reference arrays/barriers, non-empty nativ
 publication, mutable/reference globals, snapshots, guard execution, arm64 execution, broad
 non-null ingress, and official zero-gap admission remain incomplete.
 
+### Iteration 43 passive reference elements and gap-free `gc/array`
+
+Iteration 43 closes the final official array leader under the same exact linux/amd64 explicit-
+bounds product gate. The 396-byte binary is pinned by SHA-256. Its two passive element constant
+expressions allocate 24-byte i8 arrays transactionally and install checked collector table slots
+before later allocation. A separate 96-byte compile-only constructor record and 56-byte lazy
+instance segment state keep this lifecycle distinct from immutable-global roots. Tiny48 fits both
+roots; Tiny24 fails the second allocation and withdraws the first.
+
+`array.new_elem` preflights widened u32 source+length against current descriptor state, publishes
+at most two selected refs through a reusable non-empty mutable `RootSet`, initializes non-null,
+nullable, and anyref destinations with exact dynamic subtype checks, performs object/card stores,
+and applies the post-write bulk barrier. `elem.drop` zeros descriptor length and nulls both slots.
+Zero-length construction remains valid after drop; non-empty and overflowing ranges trap before
+allocation. Reference get/set/len, nested packed reads, public exact type-1 tokens, one-live-token
+and close-order rules, Throughput/Tiny stress, codec/snapshot loss, guard rejection, and arm64
+compile-only gates are covered.
+
+Complete `gc/array.wast` accounting is now gap-free at 61 commands / 7 modules / 41 assertions /
+6 invalid / 0 gates / 0 blocked. The product measures 396 Wasm / 3,507 code / 4,478 codec bytes;
+inner and outer arrays are 24 bytes each. Fixed `Compiled=712`, `Instance=792`, and
+`gc.Collector=640` layouts remain; `compiledMemoryDirectory=128` and lazy
+`instancePluginState=136`. Nested get measured 6.309-11.634 us/op, 0 allocs/op, and 4-8
+amortized B/op across five 500 ms samples.
+
 ## Iteration commits
 
 Iteration 1 contained:
@@ -2839,12 +2864,25 @@ Iteration 42 contains exactly three code/test commits and this documentation com
    trap-atomic proof, bounded public results, and accounting at six modules / twenty-nine
    assertions / one gate.
 
+Iteration 43 contains exactly three code/test commits and this documentation commit:
+
+1. `f6b6601c` — decode the exact passive GC element constructors, allocate the two inner arrays
+   transactionally, publish checked table-slot roots, and prove Tiny rollback/drop withdrawal.
+2. `c08a00f9` — admit the hash-pinned reference product and execute `array.new_elem`, reference
+   get/set, exact widening, fixed non-empty roots, object/card/post-bulk barriers, and helper drop.
+3. `e47c8538` — close public/lifecycle actions, remove per-call root allocations, and make strict
+   `gc/array` accounting gap-free at seven modules and forty-one assertions.
+
 ## Validation performed
 
 Commands were run from the repository root on linux/amd64.
 
 | Command | Result |
 |---|---|
+| iteration 43 focused/WABT package proof | PASS: pinned WABT plus the official interpreter fallback executes every `gc/array` leader. Accounting is gap-free at 61 commands / 7 modules / 41 assertions / 6 invalid / 0 gates / 0 blocked, zero hidden failures. Log `.validation/iteration43-wabt-package.log`. |
+| iteration 43 broad/no-cgo/race/platform proof | PASS: `go test ./...`, full no-cgo, focused race, guard runtime/wago rejection, linux/arm64 compile/link, vet, generate, and clean generated diff. Logs `.validation/iteration43-all.log`, `iteration43-no-cgo.log`, `iteration43-race.log`, `iteration43-guard.log`, `iteration43-arm64-build.log`, `iteration43-vet.log`, and `iteration43-generate*.log`. |
+| iteration 43 conformance and baseline | PASS: Release 1 remains 629 modules / 16,026 assertions; Release 2 remains 1,600 / 48,248. Public `make spec3` still exits 2 at 1,691 pass / 535 skip modules and 51,765 pass / 5 fail / 6,268 skip assertions; extracted JSON matches the committed baseline. Logs `.validation/iteration43-spec{1,2,3}*.log`. |
+| iteration 43 measurement/benchmark | PASS: reference product Wasm/code/codec=396/3,507/4,478; all three objects=24 bytes; sidecars=96/56/128/136; nested get=6.309-11.634 us/op, 0 allocs/op, 4-8 B/op. Logs `.validation/iteration43-measurements.log` and `.validation/iteration43-bench.log`. |
 | iteration 42 focused/WABT package proof | PASS: pinned WABT plus the official interpreter fallback executes the numeric-default two-root product and complete packed-data leader under strict accounting. `gc/array` is 61 commands / 6 modules / 29 assertions / 6 invalid / 1 gate / 12 blocked, zero hidden failures; all previously gap-free staged families remain green. Log `.validation/iteration42-wabt-package.log`. |
 | `go test ./... -count=1` and `CGO_ENABLED=0 go test ./... -count=1` | PASS on final iteration-42 code HEAD. Logs `.validation/iteration42-all.log` and `.validation/iteration42-no-cgo.log`. |
 | iteration 42 race/guard/arm64 | PASS: numeric-default roots, packed descriptor/drop/token/Tiny paths are race-clean; guard runtime/wago rejects staged array products; linux/arm64 frontend/railshot/runtime/wago cross-compiles with no array execution claim. Logs `.validation/iteration42-race.log`, `.validation/iteration42-guard.log`, and `.validation/iteration42-arm64-build.log`. |
@@ -3497,40 +3535,32 @@ Major risks:
 
 ## Next bounded implementation slice
 
-The next recursive iteration should again make exactly three atomic code/test commits
-followed by one documentation commit. Recommended iteration 43:
+The next recursive iteration should again make exactly three atomic code/test commits followed by
+one documentation commit. Recommended iteration 44:
 
-1. **Root the exact passive GC element segment.** Decode only the pinned reference leader's two
-   element constant expressions, allocate their inner i8 arrays transactionally, and publish a
-   bounded pair of checked segment roots before any later allocation. Keep this state separate
-   from immutable globals and ordinary funcref/externref element descriptors; prove Tiny
-   rollback, close order, `elem.drop` withdrawal, codec/snapshot loss, and no raw Go pointers.
-2. **Add bounded `array.new_elem` with non-empty roots and barriers.** Preflight u32 source/
-   length against current element state before allocation, then pass the live segment refs as
-   an exact non-empty `RootSet` while allocating the outer array. Copy refs through object/card
-   and bulk barrier rules, support the exact nullable/any widening used by `$sub1`/`$sub2`, and
-   prove Tiny mark/remark behavior plus trap atomicity. Do not generalize native frame scanning.
-3. **Close the reference-element leader.** Execute reference get/set/len, nested packed reads,
-   public results, overflow/bounds traps, and post-`elem.drop` behavior under Throughput/Tiny.
-   Preserve one-live-token ownership and exact product/platform gates. If all 12 actions close,
-   `gc/array.wast` should become gap-free at 7 modules / 41 assertions / 0 gates / 0 blocked.
-4. **Documentation commit.** Record exact root/barrier/segment/token boundaries, object/sidecar
-   footprint, broad validation, public baseline, and the next mandatory Core 3 blocker.
+1. Pin complete schema-2 accounting for `gc/i31.wast`, including every valid leader, invalid case,
+   opcode/action inventory, and exact interactions with typed-reference/public result categories.
+2. Implement the smallest exact i31 encode/decode/test/get slice without allocating collector
+   objects, preserving 31-bit signed/unsigned semantics, null/type traps, codec metadata, and
+   linux/amd64 explicit-bounds product gates.
+3. Execute all admitted i31 actions through public result/argument rules only where raw immediate
+   bits cannot be confused with GC object handles; keep hosts, snapshots, guard, arm64, and broader
+   cast/extern products fail-closed. Update strict family accounting with zero hidden failures.
+4. Record validation, measurements, completion failure, and recurse to the next mandatory GC or
+   public-admission blocker.
 
 ## Completion gate
 
-WebAssembly 3.0 is not complete. Iteration 42 fails the gate concretely: the public Release 3
+WebAssembly 3.0 is not complete. Iteration 43 fails the gate concretely: the public Release 3
 run still has 535 skipped modules, 5 reached assertion failures, and 6,268 skipped assertions;
 `make spec3` exits 2 and reproduces the committed baseline byte-for-byte. Typed-reference
 staged accounting is gap-free, as are EH, multi-memory, memory64, table64, all three tail
 files, and the complete `gc/struct` file at 36 commands / 6 modules / 19 assertions / 4 invalid /
-1 malformed / zero gates or blocked actions. These mandatory families remain private rather
-than admitted through `SupportedFeatures()`. Bounded public GC ownership covers exact struct
-and pointer-free array products, but remains result-only, one-live-token, and without non-null
-ingress, host/global values, frame roots, or snapshot state. `gc/array` is improved but still
-red at 6 modules / 29 assertions / 1 module gate / 12 blocked actions. The reference-element
-leader, passive-element roots, object/bulk barriers, non-empty allocation/native safepoint
-publication, mutable/reference GC globals, broader public ownership, live-state snapshots,
+1 malformed / zero gates or blocked actions. `gc/array` is also gap-free at 61 commands / 7
+modules / 41 assertions / 6 invalid / zero gates or blocked actions. These mandatory families
+remain private rather than admitted through `SupportedFeatures()`. Bounded public GC ownership
+remains result-only and one-live-token. The remaining GC files, general native frame publication,
+mutable/reference GC globals, non-null ingress, broader public ownership, live-state snapshots,
 guard mode, and arm64 execution remain incomplete. Codec-v27 progress covers declarations and
 exact metadata, not live collector admission/state. Completion still requires every mandatory
 area to decode, validate, compile, instantiate, execute, and round-trip through product

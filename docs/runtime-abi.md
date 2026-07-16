@@ -208,10 +208,20 @@ slots. `data.drop` mutates only the descriptor length. Thus non-empty post-drop 
 ranges trap before collector state changes, while source zero/length zero remains valid; no
 Go-slice pointer enters native state or survives helper return.
 
-None of these paths permits a second allocation while a transient ref is live. Reference
-elements, passive-element GC roots, object/bulk barriers, non-null ingress, mutable globals,
-hosts, snapshots, guard mode, and arm64 remain closed. These exact struct/array proofs must not
-be treated as the general `codegen.Emitter` publication protocol.
+Iteration 43 adds one separate, bounded exception to the empty-root rule for the exact reference-
+element leader. Its two passive i8-array values live in checked collector table slots, not Wasm
+globals or native frames. `array.new_elem` copies at most two selected refs into one reusable
+mutable `RootSet` stored in the per-instance segment sidecar, preflights the descriptor range,
+allocates the outer array, rereads rewritten roots, performs reference stores with object/card
+barriers, and invokes the post-write bulk barrier. `elem.drop` zeros descriptor length and nulls
+both slots through the collector slot barrier. The descriptor is arena-owned and contains no Go
+pointer; native code still receives only compact refs and scalar indexes. Codec v27 and snapshots
+inherit no constructor, root, descriptor-lifecycle, or helper admission state.
+
+This does not publish a native frame chain. The only live refs across allocation are the exact
+passive segment pair already owned by collector slots; non-null ingress, mutable/reference globals,
+hosts, general calls with live refs, snapshots, guard mode, and arm64 remain closed. These exact
+struct/array proofs must not be treated as the general `codegen.Emitter` publication protocol.
 
 ## Global coherence invariant
 
