@@ -26,8 +26,11 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
-	if sub >= 6 && sub <= 20 {
+	if sub >= 6 && sub <= 19 {
 		return f.emitGCArray(sub, r)
+	}
+	if sub == 20 || sub == 21 {
+		return f.emitGCI31Test(sub, r)
 	}
 	if sub == 22 || sub == 23 {
 		return f.emitGCI31Cast(sub, r)
@@ -112,6 +115,40 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 	default:
 		return fmt.Errorf("amd64: unsupported staged 0xfb opcode %d", sub)
 	}
+}
+
+func (f *fn) emitGCI31Test(sub uint32, r *wasm.Reader) error {
+	heap, err := r.S33()
+	if err != nil {
+		return err
+	}
+	value := f.materialize(f.popValue())
+	nullable := sub == 21
+	switch heap {
+	case -20, -19, -18: // i31, eq, any: this exact product contains only null or tagged i31 values.
+		tag := f.allocReg(maskOf(value))
+		f.a.MovRegReg32(tag, value)
+		f.a.AluRI(4, tag, 1, false)
+		if nullable {
+			f.a.TestSelf(value, true)
+			f.a.SetccReg(condE, value)
+			f.a.AluRR(aluTable[opOr].rr, value, tag, false)
+		} else {
+			f.a.MovRegReg32(value, tag)
+		}
+		f.release(tag)
+	case -21, -22, -15: // struct, array, none: null matches only the nullable form; i31 never matches.
+		if nullable {
+			f.a.TestSelf(value, true)
+			f.a.SetccReg(condE, value)
+		} else {
+			f.a.AluRR(aluTable[opXor].rr, value, value, false)
+		}
+	default:
+		return fmt.Errorf("amd64: staged ref.test heap %d is outside the null/i31 slice", heap)
+	}
+	f.pushReg(value, mtI32)
+	return nil
 }
 
 func (f *fn) emitGCI31Cast(sub uint32, r *wasm.Reader) error {

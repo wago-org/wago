@@ -19,6 +19,7 @@ const (
 	stagedGCI31ProductGlobalInitializer
 	stagedGCI31ProductAnyGlobal
 	stagedGCI31ProductAnyTable
+	stagedGCI31ProductRefTest
 )
 
 func (p stagedGCI31Product) String() string {
@@ -35,6 +36,8 @@ func (p stagedGCI31Product) String() string {
 		return "anyref-global"
 	case stagedGCI31ProductAnyTable:
 		return "anyref-table"
+	case stagedGCI31ProductRefTest:
+		return "ref-test"
 	default:
 		return "unknown"
 	}
@@ -55,6 +58,8 @@ func stagedGCI31PinnedProduct(data []byte) (stagedGCI31Product, bool) {
 		return stagedGCI31ProductAnyGlobal, true
 	case len(data) == 262 && digest == "572387a2c9d7ea9112f3940025b7c57041cd9478185ed7e32bb93a01fbfa5a69":
 		return stagedGCI31ProductAnyTable, true
+	case len(data) == 255 && digest == "15ae51eb557db91694fc8cb2e2ca148792eec4ae2b524c610edf8005a04837ec":
+		return stagedGCI31ProductRefTest, true
 	default:
 		return 0, false
 	}
