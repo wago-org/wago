@@ -632,7 +632,15 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 	internalEntry := make([]int, n)
 	importedFuncs := m.ImportedFuncCount()
 	nGlobals := m.GlobalCount()
-	allHints, globalScores, err := computeModuleHints(m, nGlobals, importedFuncs)
+	hintGlobals := nGlobals
+	// Dense per-function global scoring costs O(functions*globals) memory even
+	// when each function touches only a handful of globals. Above one million
+	// cells, disable the optional global-pinning heuristic while retaining every
+	// semantic/call/local hint; this bounds compile memory for generated modules.
+	if uint64(n)*uint64(nGlobals) > 1<<20 {
+		hintGlobals = 0
+	}
+	allHints, globalScores, err := computeModuleHints(m, hintGlobals, importedFuncs)
 	if err != nil {
 		return nil, fmt.Errorf("arm64: %w", err)
 	}

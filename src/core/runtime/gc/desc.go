@@ -25,6 +25,12 @@ const (
 	StorageF64
 	StorageRef
 	StorageRefNull
+	// Function and extern references use stable 64-bit runtime tokens and are
+	// deliberately not traced as compact collector object handles.
+	StorageFuncRef
+	StorageFuncRefNull
+	StorageExternRef
+	StorageExternRefNull
 )
 
 type FieldDesc struct {
@@ -111,7 +117,7 @@ func storageLayout(k StorageKind) (alignBytes, size uint32, err error) {
 		return 2, 2, nil
 	case StorageI32, StorageF32, StorageRef, StorageRefNull:
 		return 4, 4, nil
-	case StorageI64, StorageF64:
+	case StorageI64, StorageF64, StorageFuncRef, StorageFuncRefNull, StorageExternRef, StorageExternRefNull:
 		return 8, 8, nil
 	default:
 		return 0, 0, fmt.Errorf("gc: unknown storage kind %d", k)

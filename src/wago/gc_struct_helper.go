@@ -32,6 +32,45 @@ type gcStructHelperTrap struct{ code coreruntime.TrapCode }
 
 func (e gcStructHelperError) Error() string { return e.err.Error() }
 
+func (in *Instance) gcObjectTypeMatches(actual gc.TypeID, want uint32) bool {
+	if uint32(actual) == want {
+		return true
+	}
+	if in == nil || in.c == nil || int(actual) >= len(in.c.Types) || int(want) >= len(in.c.Types) {
+		return false
+	}
+	// Collector type IDs and helper immediates name the same validated module
+	// graph, so runtime compatibility is declared-index reachability. Avoid the
+	// general cross-module structural-equivalence machinery (and its maps) on this
+	// hot path.
+	var visit func(uint32, int) bool
+	visit = func(index uint32, depth int) bool {
+		if index == want {
+			return true
+		}
+		if int(index) >= len(in.c.Types) || depth >= len(in.c.Types) {
+			return false
+		}
+		for _, super := range in.c.Types[index].Supers {
+			if visit(super, depth+1) {
+				return true
+			}
+		}
+		return false
+	}
+	if visit(uint32(actual), 0) {
+		return true
+	}
+	actualType := ValueTypeDescriptor{Kind: ValueTypeReference, Ref: ReferenceTypeDescriptor{
+		Exact: true,
+		Heap:  HeapTypeDescriptor{Defined: true, TypeIndex: uint32(actual)},
+	}}
+	wantType := ValueTypeDescriptor{Kind: ValueTypeReference, Ref: ReferenceTypeDescriptor{
+		Heap: HeapTypeDescriptor{Defined: true, TypeIndex: want},
+	}}
+	return valueTypeSubtype(actualType, in.c.Types, wantType, in.c.Types)
+}
+
 func (in *Instance) dispatchGCStructHelper(helper uint32, args, results []uint64) {
 	if in == nil || in.gc == nil {
 		panic(gcStructHelperError{err: fmt.Errorf("gc struct helper %d has no live collector", helper)})
@@ -39,6 +78,60 @@ func (in *Instance) dispatchGCStructHelper(helper uint32, args, results []uint64
 	state := in.publicGCState()
 	state.mu.Lock()
 	defer state.mu.Unlock()
+	structValue := func(typeID, fieldID uint32, bits uint64) gc.Value {
+		if int(typeID) >= len(in.c.GCTypeDescs) || int(fieldID) >= len(in.c.GCTypeDescs[typeID].Fields) || int(typeID) >= len(in.c.Types) || in.c.Types[typeID].Kind != CompositeTypeStruct || int(fieldID) >= len(in.c.Types[typeID].Fields) {
+			panic(gcStructHelperError{err: fmt.Errorf("gc struct field %d:%d is unavailable", typeID, fieldID)})
+		}
+		kind := in.c.GCTypeDescs[typeID].Fields[fieldID].Kind
+		want := in.c.Types[typeID].Fields[fieldID].Storage.Value
+		if kind == gc.StorageFuncRef || kind == gc.StorageFuncRefNull {
+			if bits == 0 {
+				if kind == gc.StorageFuncRef {
+					panic(gcStructHelperError{err: fmt.Errorf("gc struct field %d:%d rejects null funcref", typeID, fieldID)})
+				}
+				return gc.Value{Kind: kind}
+			}
+			actual, actualTypes, ok := instanceFuncrefExactType(in, bits)
+			if !ok || !valueTypeSubtype(actual, actualTypes, want, in.c.Types) {
+				panic(gcStructHelperError{err: fmt.Errorf("gc struct funcref type does not match field %d:%d", typeID, fieldID)})
+			}
+			return gc.Value{Kind: kind, Bits: bits}
+		}
+		if kind == gc.StorageExternRef || kind == gc.StorageExternRefNull {
+			if bits == 0 && kind == gc.StorageExternRef {
+				panic(gcStructHelperError{err: fmt.Errorf("gc struct field %d:%d rejects null externref", typeID, fieldID)})
+			}
+			return gc.Value{Kind: kind, Bits: bits}
+		}
+		if kind != gc.StorageRef && kind != gc.StorageRefNull {
+			valueKind := kind
+			if kind == gc.StorageI8 || kind == gc.StorageI16 {
+				valueKind = gc.StorageI32
+			}
+			return gc.Value{Kind: valueKind, Bits: bits}
+		}
+		ref := gc.Ref(uint32(bits))
+		if ref.IsNull() {
+			if !want.Ref.Nullable {
+				panic(gcStructHelperError{err: fmt.Errorf("gc struct field %d:%d rejects null", typeID, fieldID)})
+			}
+			return gc.RefValue(ref)
+		}
+		var actual ValueTypeDescriptor
+		if ref.IsI31() {
+			actual = ValueTypeDescriptor{Kind: ValueTypeReference, Ref: ReferenceTypeDescriptor{Exact: true, Heap: HeapTypeDescriptor{Abstract: AbstractHeapI31}}}
+		} else {
+			actualType, err := in.gc.ObjectType(ref)
+			if err != nil || int(actualType) >= len(in.c.Types) {
+				panic(gcStructHelperError{err: fmt.Errorf("gc struct reference field %d:%d bits %#x is invalid for %+v: %v", typeID, fieldID, bits, want.Ref, err)})
+			}
+			actual = ValueTypeDescriptor{Kind: ValueTypeReference, Ref: ReferenceTypeDescriptor{Exact: true, Heap: HeapTypeDescriptor{Defined: true, TypeIndex: uint32(actualType)}}}
+		}
+		if !valueTypeSubtype(actual, in.c.Types, want, in.c.Types) {
+			panic(gcStructHelperError{err: fmt.Errorf("gc struct reference type does not match field %d:%d", typeID, fieldID)})
+		}
+		return gc.RefValue(ref)
+	}
 	switch helper {
 	case gcStructAllocDefault:
 		if len(args) != 1 || len(results) < 1 {
@@ -54,25 +147,21 @@ func (in *Instance) dispatchGCStructHelper(helper uint32, args, results []uint64
 		}
 		results[0] = uint64(ref)
 	case gcStructAllocOne:
-		if len(args) != 2 || len(results) < 1 {
-			panic(gcStructHelperError{err: fmt.Errorf("gc one-field struct alloc helper arity = %d/%d, want 2/at-least-1", len(args), len(results))})
+		if len(args) < 1 || len(results) < 1 {
+			panic(gcStructHelperError{err: fmt.Errorf("gc struct alloc helper arity = %d/%d, want at-least-1/at-least-1", len(args), len(results))})
 		}
-		typeID := uint32(args[1])
-		if int(typeID) >= len(in.c.GCTypeDescs) || len(in.c.GCTypeDescs[typeID].Fields) != 1 {
-			panic(gcStructHelperError{err: fmt.Errorf("gc one-field struct type %d is unavailable", typeID)})
+		typeID := uint32(args[len(args)-1])
+		if int(typeID) >= len(in.c.GCTypeDescs) || len(in.c.GCTypeDescs[typeID].Fields) != len(args)-1 {
+			panic(gcStructHelperError{err: fmt.Errorf("gc struct type %d field count does not match %d initializer values", typeID, len(args)-1)})
 		}
-		kind := in.c.GCTypeDescs[typeID].Fields[0].Kind
-		if kind == gc.StorageRef || kind == gc.StorageRefNull {
-			panic(gcStructHelperError{err: fmt.Errorf("gc one-field reference struct remains outside the staged helper slice")})
+		if len(args)-1 > 63 {
+			panic(gcStructHelperError{err: fmt.Errorf("gc struct type %d exceeds 63 helper initializer values", typeID)})
 		}
-		ref, err := in.gc.NewStructDefaultWithRoots(gc.TypeID(typeID), gc.EmptyRoots{})
-		if err == nil {
-			valueKind := kind
-			if kind == gc.StorageI8 || kind == gc.StorageI16 {
-				valueKind = gc.StorageI32
-			}
-			err = in.gc.StructSet(ref, 0, gc.Value{Kind: valueKind, Bits: args[0]})
+		values := state.values[:len(args)-1]
+		for i := range values {
+			values[i] = structValue(typeID, uint32(i), args[i])
 		}
+		ref, err := in.gc.NewStructWithRoots(gc.TypeID(typeID), values, gc.EmptyRoots{})
 		if err != nil {
 			panic(gcStructHelperError{err: err})
 		}
@@ -89,9 +178,9 @@ func (in *Instance) dispatchGCStructHelper(helper uint32, args, results []uint64
 		if err != nil {
 			panic(gcStructHelperError{err: err})
 		}
-		want := gc.TypeID(uint32(args[1]))
-		if actual != want {
-			panic(gcStructHelperError{err: fmt.Errorf("gc struct get type = %d, want %d", actual, want)})
+		want := uint32(args[1])
+		if !in.gcObjectTypeMatches(actual, want) {
+			panic(gcStructHelperError{err: fmt.Errorf("gc struct get type = %d, want subtype of %d", actual, want)})
 		}
 		value, err := in.gc.StructGet(ref, uint32(args[2]))
 		if err != nil {
@@ -216,21 +305,13 @@ func (in *Instance) dispatchGCStructHelper(helper uint32, args, results []uint64
 		if err != nil {
 			panic(gcStructHelperError{err: err})
 		}
-		if actual != gc.TypeID(typeID) {
-			panic(gcStructHelperError{err: fmt.Errorf("gc struct set type = %d, want %d", actual, typeID)})
+		if !in.gcObjectTypeMatches(actual, typeID) {
+			panic(gcStructHelperError{err: fmt.Errorf("gc struct set type = %d, want subtype of %d", actual, typeID)})
 		}
 		if int(typeID) >= len(in.c.GCTypeDescs) || int(fieldID) >= len(in.c.GCTypeDescs[typeID].Fields) {
 			panic(gcStructHelperError{err: fmt.Errorf("gc struct set field %d:%d is unavailable", typeID, fieldID)})
 		}
-		kind := in.c.GCTypeDescs[typeID].Fields[fieldID].Kind
-		if kind == gc.StorageRef || kind == gc.StorageRefNull {
-			panic(gcStructHelperError{err: fmt.Errorf("gc struct reference-field set remains outside the staged helper slice")})
-		}
-		valueKind := kind
-		if kind == gc.StorageI8 || kind == gc.StorageI16 {
-			valueKind = gc.StorageI32
-		}
-		if err := in.gc.StructSet(ref, fieldID, gc.Value{Kind: valueKind, Bits: args[1]}); err != nil {
+		if err := in.gc.StructSet(ref, fieldID, structValue(typeID, fieldID, args[1])); err != nil {
 			panic(gcStructHelperError{err: err})
 		}
 	default:

@@ -138,3 +138,23 @@ func TestValueTypeDescriptorABITypeKeepsReferenceCategories(t *testing.T) {
 		t.Fatalf("anyref ABI type = %v, %v; want anyref,true", got, ok)
 	}
 }
+
+func TestWasmTypeDescriptorConverterReusesFlattenedIndex(t *testing.T) {
+	m := &wasm.Module{Types: make([]wasm.RecType, 4096)}
+	converter := newWasmTypeDescriptorConverter(m)
+	values := []wasm.ValType{wasm.I32, wasm.I64, wasm.F32, wasm.F64}
+	var sink []ValType
+	allocs := testing.AllocsPerRun(100, func() {
+		var err error
+		sink, err = converter.abiTypes(values, nil)
+		if err != nil {
+			panic(err)
+		}
+	})
+	if len(sink) != len(values) {
+		t.Fatalf("ABI values = %v", sink)
+	}
+	if allocs > 2 {
+		t.Fatalf("reused converter allocations = %.2f, want at most 2 result slices", allocs)
+	}
+}

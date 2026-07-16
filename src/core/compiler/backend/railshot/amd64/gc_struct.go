@@ -67,20 +67,21 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 			return err
 		}
 		st, ok := stagedStructType(f.m, typeIndex)
-		if !ok || len(st.Comp.Fields) != 1 {
-			return fmt.Errorf("amd64: staged struct.new type %d requires exactly one field", typeIndex)
+		if !ok {
+			return fmt.Errorf("amd64: struct.new type %d is unavailable", typeIndex)
 		}
-		field := st.Comp.Fields[0]
-		valueType := field.Storage.Val
-		if field.Storage.Packed {
-			valueType = wasm.I32
-		}
-		if valueType.Kind == wasm.ValRef {
-			return fmt.Errorf("amd64: reference struct.new remains outside the staged helper slice")
+		params := make([]wasm.ValType, 0, len(st.Comp.Fields)+1)
+		for _, field := range st.Comp.Fields {
+			valueType := field.Storage.Val
+			if field.Storage.Packed {
+				valueType = wasm.I32
+			}
+			params = append(params, valueType)
 		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
+		params = append(params, wasm.I32)
 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
-		return f.callGCStructHelper(gcStructAllocOne, []wasm.ValType{valueType, wasm.I32}, []wasm.ValType{result})
+		return f.callGCStructHelper(gcStructAllocOne, params, []wasm.ValType{result})
 	case 1: // struct.new_default typeidx
 		typeIndex, err := r.U32()
 		if err != nil {
@@ -139,9 +140,6 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		}
 		if field.Mut != wasm.Var {
 			return fmt.Errorf("amd64: struct.set type %d field %d is immutable", typeIndex, fieldIndex)
-		}
-		if field.Storage.Val.Kind == wasm.ValRef {
-			return fmt.Errorf("amd64: reference struct.set remains outside the staged helper slice")
 		}
 		valueType := field.Storage.Val
 		if field.Storage.Packed {

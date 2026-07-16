@@ -17,6 +17,10 @@ import (
 
 const stagedGCArrayReferenceHex = "0061736d0100000001cd808080000f5e78005e6400005e6400015e6300005e6e0160000164016000016403600001640460037f7f6401017f60027f7f017f60047f7f64027f017f60037f7f7f017f6001646a017f6000017f600000038c808080000b0505060708090a0b0c0d0e07b88080800006036e657700000c6e65772d6f766572666c6f770001036765740005077365745f6765740007036c656e00090964726f705f73656773000a099680808000010564000241074103fb06000b41014102fb0800020b0abf818080000b8a808080000041004102fb0a01000b928080800000418080808078418080808078fb0a01000b8a808080000041004102fb0a03000b8a808080000041004102fb0a04000b8e808080000020022000fb0b012001fb0d000b8a808080000020002001100010040b9c80808000002002200020022003fb0b02fb0e0220022000fb0b022001fb0d000b9280808000002000200141004102fb0a0200200210060b8680808000002000fb0f0b868080800000100010080b858080800000fc0d000b"
 
+// Core 3 gc/array_new_elem module covering passive i31ref segment values in a
+// generic array product (array.new_elem + array.get + i31.get_u).
+const stagedGCArrayI31ElemHex = "0061736d01000000018980808000025e6c006000027f7f0382808080000101079b80808000011761727261792d6e65772d656c656d2d636f6e74656e74730000099c8080800001056c0441aa01fb1c0b41bb01fb1c0b41cc01fb1c0b41dd01fb1c0b0aa78080800001a1808080000101640041014102fb0a0000210020004100fb0b00fb1e20004101fb0b00fb1e0b"
+
 func stagedGCArrayReferenceBytes(t testing.TB) []byte {
 	t.Helper()
 	data, err := hex.DecodeString(stagedGCArrayReferenceHex)
@@ -24,6 +28,33 @@ func stagedGCArrayReferenceBytes(t testing.TB) []byte {
 		t.Fatal(err)
 	}
 	return data
+}
+
+func TestGenericGCArrayNewElemPreservesI31Values(t *testing.T) {
+	data, err := hex.DecodeString(stagedGCArrayI31ElemHex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithBoundsChecks(BoundsChecksExplicit), data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	if c.stagedGCArrayProduct() != stagedGCArrayProductGeneric {
+		t.Fatalf("array product = %s, want generic", c.stagedGCArrayProduct())
+	}
+	in, err := Instantiate(c, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	got, err := in.Call(context.Background(), "array-new-elem-contents")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0].I32() != 187 || got[1].I32() != 204 {
+		t.Fatalf("array-new-elem-contents = %v, want [i32(187) i32(204)]", got)
+	}
 }
 
 func TestStagedGCArrayReferenceElementSegmentRoots(t *testing.T) {
@@ -340,7 +371,7 @@ func TestStagedGCArrayReferenceFootprint(t *testing.T) {
 		"compiledMemoryDirectory": unsafe.Sizeof(compiledMemoryDirectory{}),
 		"instancePluginState":     unsafe.Sizeof(instancePluginState{}),
 	} {
-		want := map[string]uintptr{"gcArrayElementInit": 96, "gcArrayElementState": 56, "compiledMemoryDirectory": 136, "instancePluginState": 152}[name]
+		want := map[string]uintptr{"gcArrayElementInit": 96, "gcArrayElementState": 56, "compiledMemoryDirectory": 136, "instancePluginState": 120}[name]
 		if got != want {
 			t.Fatalf("%s size = %d, want %d", name, got, want)
 		}

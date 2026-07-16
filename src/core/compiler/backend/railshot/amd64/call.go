@@ -613,10 +613,11 @@ func funcTypeSlots(ts []wasm.ValType) int {
 // onto the operand stack.
 //
 // hostCallStub saves and resumeNative restores the callee-saved registers
-// (RBX/RBP/R12..R15), so pinned locals and linMem survive the round trip and need
-// no spilling — unlike a wasm→wasm call, whose callee reuses those registers.
-// Value-pinned and module-pinned globals ARE synced around the call: the host may
-// read or write the instance's globals through their cells.
+// (RBX/RBP/R12..R15), but the extended local-pin pool also uses caller-saved
+// R9..R11. Pinned locals are therefore homed before the transition and, under
+// the old non-STACK_REG model, restored after it. Value-pinned and module-pinned
+// globals are also synced around the call: the host may read or write the
+// instance's globals through their cells.
 func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	f.stats.call(callKindHostSync)
 	p, rN := len(ft.Params), len(ft.Results)
@@ -685,12 +686,13 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	f.spillLocalsForCall()
 	f.a.StoreImm32Mem(R8, hcImportIdx, int32(importIdx))
 	// hcNArgs packs param slots (low 16) and result slots (high 16) so the Go
-	// re-entry loop copies back only the real result count. Both are <= 16.
+	// re-entry loop copies back only the real result count. Both are <= 64.
 	f.a.StoreImm32Mem(R8, hcNArgs, int32(paramSlots|resultSlots<<16))
 
 	// Park at the host call. Like the wrapper path, no post-call trap check: a
 	// trap unwinds the whole native tree in one jump (it never returns here).
 	f.a.CallMem(R8, hcTrampoline)
+	f.reloadLocalsForCall() // old model: restore caller-saved R9..R11 local pins
 
 	f.deriveModuleGlobals() // the host may have written global cells
 	f.derivePinnedGlobals()
@@ -842,14 +844,14 @@ const (
 // Control-frame field offsets for the synchronous host-call protocol. A
 // returning host import needs no async log, so it reuses the customCtx slot
 // (offCustomCtx) for its control frame. These MUST match
-// src/core/runtime/hostcall_amd64.go (hcSavedRSP..hcResults, maxHostArity=16).
+// src/core/runtime/hostcall_amd64.go (hcSavedRSP..hcResults, maxHostArity=64).
 const (
 	hcTrampoline     = 56  // u64: hostCallStub address (published per-instance by CallWithHost)
 	hcImportIdx      = 64  // u32: native -> Go
 	hcNArgs          = 68  // u32: low 16 bits = param slots, high 16 bits = result slots
-	hcArgs           = 72  // [16]u64: native -> Go
-	hcResults        = 200 // [16]u64: Go -> native (== hcArgs + 16*8)
-	maxSyncHostSlots = 16  // must match runtime.MaxHostArity / maxHostArity
+	hcArgs           = 72  // [64]u64: native -> Go
+	hcResults        = 584 // [64]u64: Go -> native (== hcArgs + 64*8)
+	maxSyncHostSlots = 64  // must match runtime.MaxHostArity / maxHostArity
 )
 
 var instanceContextOffsets = [...]int32{

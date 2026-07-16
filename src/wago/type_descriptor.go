@@ -172,14 +172,50 @@ type wasmTypeDescriptorConverter struct {
 	groupAt []uint32
 }
 
+func newWasmTypeDescriptorConverter(m *wasm.Module) wasmTypeDescriptorConverter {
+	c := wasmTypeDescriptorConverter{m: m}
+	if m != nil {
+		c.groupAt = make([]uint32, len(m.Types)+1)
+		for i := range m.Types {
+			c.groupAt[i+1] = c.groupAt[i] + uint32(len(m.Types[i].SubTypes))
+		}
+	}
+	return c
+}
+
+func (c wasmTypeDescriptorConverter) abiType(t wasm.ValType, types []DefinedTypeDescriptor) (ValType, error) {
+	exact, err := c.valueType(t, -1)
+	if err != nil {
+		return 0, err
+	}
+	abi, ok := exact.ABIType(types)
+	if !ok {
+		return 0, fmt.Errorf("structural type is outside the current public ABI")
+	}
+	return abi, nil
+}
+
+func (c wasmTypeDescriptorConverter) abiTypes(ts []wasm.ValType, types []DefinedTypeDescriptor) ([]ValType, error) {
+	exact, err := c.valueTypes(ts, -1)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ValType, len(exact))
+	for i := range exact {
+		abi, ok := exact[i].ABIType(types)
+		if !ok {
+			return nil, fmt.Errorf("value %d: structural type is outside the current public ABI", i)
+		}
+		out[i] = abi
+	}
+	return out, nil
+}
+
 func typeDescriptorsFromWasm(m *wasm.Module) ([]DefinedTypeDescriptor, error) {
 	if m == nil {
 		return nil, fmt.Errorf("nil wasm module")
 	}
-	c := wasmTypeDescriptorConverter{m: m, groupAt: make([]uint32, len(m.Types)+1)}
-	for i := range m.Types {
-		c.groupAt[i+1] = c.groupAt[i] + uint32(len(m.Types[i].SubTypes))
-	}
+	c := newWasmTypeDescriptorConverter(m)
 	out := make([]DefinedTypeDescriptor, 0, c.groupAt[len(m.Types)])
 	descriptorGroup := uint32(0)
 	for gi := range m.Types {
@@ -215,38 +251,15 @@ func valueTypeDescriptorInModule(m *wasm.Module, t wasm.ValType) (ValueTypeDescr
 }
 
 func valueTypeDescriptorsInModule(m *wasm.Module, ts []wasm.ValType) ([]ValueTypeDescriptor, error) {
-	c := wasmTypeDescriptorConverter{m: m}
-	if m != nil {
-		c.groupAt = make([]uint32, len(m.Types)+1)
-		for i := range m.Types {
-			c.groupAt[i+1] = c.groupAt[i] + uint32(len(m.Types[i].SubTypes))
-		}
-	}
-	return c.valueTypes(ts, -1)
+	return newWasmTypeDescriptorConverter(m).valueTypes(ts, -1)
 }
 
 func valTypeFromWasmInModule(m *wasm.Module, t wasm.ValType, types []DefinedTypeDescriptor) (ValType, error) {
-	exact, err := valueTypeDescriptorInModule(m, t)
-	if err != nil {
-		return 0, err
-	}
-	abi, ok := exact.ABIType(types)
-	if !ok {
-		return 0, fmt.Errorf("structural type is outside the current public ABI")
-	}
-	return abi, nil
+	return newWasmTypeDescriptorConverter(m).abiType(t, types)
 }
 
 func valTypesFromWasmInModule(m *wasm.Module, ts []wasm.ValType, types []DefinedTypeDescriptor) ([]ValType, error) {
-	out := make([]ValType, len(ts))
-	for i, t := range ts {
-		v, err := valTypeFromWasmInModule(m, t, types)
-		if err != nil {
-			return nil, fmt.Errorf("value %d: %w", i, err)
-		}
-		out[i] = v
-	}
-	return out, nil
+	return newWasmTypeDescriptorConverter(m).abiTypes(ts, types)
 }
 
 func valueTypeDescriptorFromValType(t ValType) (ValueTypeDescriptor, bool) {

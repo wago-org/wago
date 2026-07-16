@@ -208,9 +208,11 @@ func TestStagedGCRefTestTableProductClosure(t *testing.T) {
 	features = cfg.frontendFeatures()
 	features.TypedFunctionReferences = true
 	features.GCStructProducts = true
-	if _, err := compileWithFrontendFeatures(cfg, unknown, features); err == nil {
-		t.Fatal("unsupported widened object ref.test shape unexpectedly compiled")
+	widened, err := compileWithFrontendFeatures(cfg, unknown, features)
+	if err != nil {
+		t.Fatalf("shape-independent object ref.test compile: %v", err)
 	}
+	_ = widened.Close()
 
 	t.Logf("object ref.test product: wasm=%d code=%d codec=%d state=%d plugin=%d", len(data), len(c.Code), len(blob), unsafe.Sizeof(gcRefTestTableState{}), unsafe.Sizeof(instancePluginState{}))
 }

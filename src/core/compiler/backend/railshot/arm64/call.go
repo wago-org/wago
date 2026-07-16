@@ -258,10 +258,12 @@ func funcTypeSlots(ts []wasm.ValType) int {
 // onto the operand stack.
 //
 // hostCallStub saves and resumeNative restores the callee-saved registers
-// (X19..linMemReg, low 64 bits of V8..V15), so pinned locals and linMem survive the
-// round trip and need no spilling — unlike a wasm→wasm call, whose callee reuses
-// those registers. Value-pinned and module-pinned globals ARE synced around the
-// call: the host may read or write the instance's globals through their cells.
+// (X19..linMemReg, low 64 bits of V8..V15), but the extended local-pin pool also
+// uses caller-saved X8..X11 and vector values may occupy the full 128 bits.
+// Pinned locals are therefore homed before the transition and restored under the
+// old non-STACK_REG model. Value-pinned and module-pinned globals are also synced
+// around the call: the host may read or write the instance's globals through
+// their cells.
 func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	f.stats.call(callKindHostSync)
 	p, rN := len(ft.Params), len(ft.Results)
@@ -323,10 +325,11 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 		argSlot += mt.stackSlots()
 		ctrlSlot += mt.stackSlots()
 	}
+	f.spillLocalsForCall()
 	f.a.MovImm64(X16, uint64(uint32(importIdx)))
 	f.st32(X11, hcImportIdx, X16)
 	// hcNArgs packs param slots (low 16) and result slots (high 16) so the Go
-	// re-entry loop copies back only the real result count. Both are <= 16.
+	// re-entry loop copies back only the real result count. Both are <= 64.
 	f.a.MovImm64(X16, uint64(uint32(paramSlots)|uint32(resultSlots)<<16))
 	f.st32(X11, hcNArgs, X16)
 
@@ -334,6 +337,7 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	// trap unwinds the whole native tree in one jump (it never returns here).
 	f.ld64(X16, X11, hcTrampoline)
 	f.a.Blr(X16)
+	f.reloadLocalsForCall()
 
 	f.deriveModuleGlobals() // the host may have written global cells
 	f.derivePinnedGlobals()
@@ -493,14 +497,14 @@ const (
 // Control-frame field offsets for the synchronous host-call protocol. A
 // returning host import needs no async log, so it reuses the customCtx slot
 // (offCustomCtx) for its control frame. These MUST match
-// src/core/runtime/hostcall_arm64.go (hcSavedSP..hcResults, maxHostArity=16).
+// src/core/runtime/hostcall_arm64.go (hcSavedSP..hcResults, maxHostArity=64).
 const (
 	hcTrampoline     = 176 // u64: hostCallStub address (published per-instance by CallWithHost)
 	hcImportIdx      = 184 // u32: native -> Go
 	hcNArgs          = 188 // u32: low 16 bits = param slots, high 16 bits = result slots
-	hcArgs           = 192 // [16]u64: native -> Go
-	hcResults        = 320 // [16]u64: Go -> native (== hcArgs + 16*8)
-	maxSyncHostSlots = 16  // must match runtime.MaxHostArity / maxHostArity
+	hcArgs           = 192 // [64]u64: native -> Go
+	hcResults        = 704 // [64]u64: Go -> native (== hcArgs + 64*8)
+	maxSyncHostSlots = 64  // must match runtime.MaxHostArity / maxHostArity
 )
 
 var instanceContextOffsets = [...]int32{

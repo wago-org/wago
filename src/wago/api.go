@@ -892,7 +892,11 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 		}
 	}
 	if features.GCStructProducts {
-		if product, ok := stagedGCStructExecutionProduct(wasmBytes); ok {
+		product, ok := stagedGCStructExecutionProduct(wasmBytes)
+		if !ok && moduleUsesGenericGCStructHelpers(m) {
+			product, ok = stagedGCStructGeneric, true
+		}
+		if ok {
 			if goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64" {
 				return nil, fmt.Errorf("compile: unsupported collector-backed struct product staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
 			}
@@ -1094,6 +1098,7 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 		return nil, fmt.Errorf("type metadata: %w", err)
 	}
 	c := &Compiled{Code: code, Entry: entry, InternalEntry: internalEntry, NumImports: importedFuncs, Types: types, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, memoryDir: &compiledMemoryDirectory{exports: map[string]int{}, exactExports: true, staged: features.MultiMemory && (m.MemCount() > 1 || m.ImportedMemCount() > 0), stagedMemory64: features.Memory64 && usesMemory64}, boundsMode: boundsMode, stagedTable64: features.Table64 && usesTable64, GCTypeDescs: gcDescs, requiredFeatures: moduleRequiredFeatures(m), dynamicImports: importedFuncs > 0}
+	typeConverter := newWasmTypeDescriptorConverter(m)
 	if gcI31Product == stagedGCI31ProductTableGlobalInitializer {
 		init, err := stagedGCI31TableInitializer(m)
 		if err != nil {
@@ -1101,7 +1106,7 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 		}
 		c.memoryDir.gcI31TableInit = init
 	}
-	if gcStructProduct != 0 {
+	if gcStructProduct != 0 && gcStructProduct != stagedGCStructGeneric {
 		gcGlobals, err := stagedGCStructGlobalInitializers(m)
 		if err != nil {
 			return nil, fmt.Errorf("compile: staged GC struct globals: %w", err)
@@ -1109,11 +1114,13 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 		c.memoryDir.gcStructGlobals = gcGlobals
 	}
 	if gcArrayProduct != 0 {
-		gcGlobals, err := stagedGCArrayGlobalInitializers(m, gcArrayProduct)
-		if err != nil {
-			return nil, fmt.Errorf("compile: staged GC array globals: %w", err)
+		if gcArrayProduct != stagedGCArrayProductNewData && gcArrayProduct != stagedGCArrayProductNewElem && gcArrayProduct != stagedGCArrayProductGeneric {
+			gcGlobals, err := stagedGCArrayGlobalInitializers(m, gcArrayProduct)
+			if err != nil {
+				return nil, fmt.Errorf("compile: staged GC array globals: %w", err)
+			}
+			c.memoryDir.gcArrayGlobals = gcGlobals
 		}
-		c.memoryDir.gcArrayGlobals = gcGlobals
 		if gcArrayProduct == stagedGCArrayProductReferenceElements {
 			init, err := stagedGCArrayElementInitializer(m)
 			if err != nil {
@@ -1133,11 +1140,11 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 			if !ok {
 				continue
 			}
-			params, err := valTypesFromWasmInModule(m, ft.Params, c.Types)
+			params, err := typeConverter.abiTypes(ft.Params, c.Types)
 			if err != nil {
 				return nil, fmt.Errorf("imported function %d params: %w", i, err)
 			}
-			results, err := valTypesFromWasmInModule(m, ft.Results, c.Types)
+			results, err := typeConverter.abiTypes(ft.Results, c.Types)
 			if err != nil {
 				return nil, fmt.Errorf("imported function %d results: %w", i, err)
 			}
@@ -1156,12 +1163,12 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 		case wasm.ExternFunc:
 			c.Imports = append(c.Imports, im.Module+"."+im.Name)
 		case wasm.ExternGlobal:
-			exact, err := valueTypeDescriptorInModule(m, im.Type.Global.Type)
+			exact, err := typeConverter.valueType(im.Type.Global.Type, -1)
 			if err != nil {
 				return nil, fmt.Errorf("global import %q.%q type: %w", im.Module, im.Name, err)
 			}
 			typeIndex := internValueType(&c.ValueTypes, exact)
-			abiType, err := valTypeFromWasmInModule(m, im.Type.Global.Type, c.Types)
+			abiType, err := typeConverter.abiType(im.Type.Global.Type, c.Types)
 			if err != nil {
 				return nil, fmt.Errorf("global import %q.%q ABI type: %w", im.Module, im.Name, err)
 			}
@@ -1176,11 +1183,11 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 				c.memoryImport = def.ImportKey
 			}
 		case wasm.ExternTable:
-			exact, err := valueTypeDescriptorInModule(m, wasm.RefVal(im.Type.Table.Ref))
+			exact, err := typeConverter.valueType(wasm.RefVal(im.Type.Table.Ref), -1)
 			if err != nil {
 				return nil, fmt.Errorf("table import %q.%q type: %w", im.Module, im.Name, err)
 			}
-			abiType, err := valTypeFromWasmInModule(m, wasm.RefVal(im.Type.Table.Ref), c.Types)
+			abiType, err := typeConverter.abiType(wasm.RefVal(im.Type.Table.Ref), c.Types)
 			if err != nil {
 				return nil, fmt.Errorf("table import %q.%q ABI type: %w", im.Module, im.Name, err)
 			}
@@ -1222,11 +1229,11 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 		if !ok {
 			return nil, fmt.Errorf("function %d: unknown type", li)
 		}
-		params, err := valTypesFromWasmInModule(m, ft.Params, c.Types)
+		params, err := typeConverter.abiTypes(ft.Params, c.Types)
 		if err != nil {
 			return nil, fmt.Errorf("function %d params: %w", li, err)
 		}
-		results, err := valTypesFromWasmInModule(m, ft.Results, c.Types)
+		results, err := typeConverter.abiTypes(ft.Results, c.Types)
 		if err != nil {
 			return nil, fmt.Errorf("function %d results: %w", li, err)
 		}
@@ -1245,11 +1252,11 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 				return nil, fmt.Errorf("global %d initializer: %w", i, err)
 			}
 		}
-		exact, err := valueTypeDescriptorInModule(m, m.Globals[i].Type.Type)
+		exact, err := typeConverter.valueType(m.Globals[i].Type.Type, -1)
 		if err != nil {
 			return nil, fmt.Errorf("global %d type: %w", i, err)
 		}
-		abiType, err := valTypeFromWasmInModule(m, m.Globals[i].Type.Type, c.Types)
+		abiType, err := typeConverter.abiType(m.Globals[i].Type.Type, c.Types)
 		if err != nil {
 			return nil, fmt.Errorf("global %d ABI type: %w", i, err)
 		}
@@ -1291,11 +1298,11 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 		if !ok {
 			return nil, fmt.Errorf("table 0 type unavailable")
 		}
-		c.TableType, err = valTypeFromWasmInModule(m, wasm.RefVal(tt.Ref), c.Types)
+		c.TableType, err = typeConverter.abiType(wasm.RefVal(tt.Ref), c.Types)
 		if err != nil {
 			return nil, fmt.Errorf("table 0 ABI type: %w", err)
 		}
-		exact, err := valueTypeDescriptorInModule(m, wasm.RefVal(tt.Ref))
+		exact, err := typeConverter.valueType(wasm.RefVal(tt.Ref), -1)
 		if err != nil {
 			return nil, fmt.Errorf("table 0 type: %w", err)
 		}
@@ -1317,11 +1324,11 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 			if !ok {
 				return nil, fmt.Errorf("table %d type unavailable", i)
 			}
-			exact, err := valueTypeDescriptorInModule(m, wasm.RefVal(tt.Ref))
+			exact, err := typeConverter.valueType(wasm.RefVal(tt.Ref), -1)
 			if err != nil {
 				return nil, fmt.Errorf("table %d type: %w", i, err)
 			}
-			abiType, err := valTypeFromWasmInModule(m, wasm.RefVal(tt.Ref), c.Types)
+			abiType, err := typeConverter.abiType(wasm.RefVal(tt.Ref), c.Types)
 			if err != nil {
 				return nil, fmt.Errorf("table %d ABI type: %w", i, err)
 			}
@@ -1440,11 +1447,11 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 		var values []RefInit
 		if gcArrayProduct == stagedGCArrayProductReferenceElements && c.memoryDir.gcArrayElement != nil && uint32(i) == c.memoryDir.gcArrayElement.SegmentIndex {
 			var err error
-			exactType, err = valueTypeDescriptorInModule(m, wasm.RefVal(e.Kind.Ref))
+			exactType, err = typeConverter.valueType(wasm.RefVal(e.Kind.Ref), -1)
 			if err != nil {
 				return nil, fmt.Errorf("element %d type: %w", i, err)
 			}
-			refType, err = valTypeFromWasmInModule(m, wasm.RefVal(e.Kind.Ref), c.Types)
+			refType, err = typeConverter.abiType(wasm.RefVal(e.Kind.Ref), c.Types)
 			if err != nil {
 				return nil, fmt.Errorf("element %d ABI type: %w", i, err)
 			}
@@ -1924,7 +1931,7 @@ func bodyBytesSegmentStateCounts(body []byte, elemCount, dataCount *int) bool {
 		if err != nil {
 			return false
 		}
-		segmentStateCount(imm.Kind, imm.Index, elemCount, dataCount)
+		segmentStateCount(imm.Kind, imm.Index, imm.Index2, elemCount, dataCount)
 	}
 	return true
 }
@@ -1932,21 +1939,31 @@ func bodyBytesSegmentStateCounts(body []byte, elemCount, dataCount *int) bool {
 func instrsSegmentStateCounts(instrs []wasm.Instruction, elemCount, dataCount *int) {
 	for i := range instrs {
 		in := &instrs[i]
-		segmentStateCount(in.Kind, in.Index, elemCount, dataCount)
+		segmentStateCount(in.Kind, in.Index, in.Index2, elemCount, dataCount)
 		instrsSegmentStateCounts(in.Body().Instrs, elemCount, dataCount)
 		instrsSegmentStateCounts(in.Then(), elemCount, dataCount)
 		instrsSegmentStateCounts(in.Else(), elemCount, dataCount)
 	}
 }
 
-func segmentStateCount(kind wasm.InstrKind, index uint32, elemCount, dataCount *int) {
+func segmentStateCount(kind wasm.InstrKind, index, index2 uint32, elemCount, dataCount *int) {
 	count := int(index) + 1
 	switch kind {
 	case wasm.InstrTableInit, wasm.InstrElemDrop:
 		if count > *elemCount {
 			*elemCount = count
 		}
+	case wasm.InstrArrayNewElem, wasm.InstrArrayInitElem:
+		count = int(index2) + 1
+		if count > *elemCount {
+			*elemCount = count
+		}
 	case wasm.InstrMemoryInit, wasm.InstrDataDrop:
+		if count > *dataCount {
+			*dataCount = count
+		}
+	case wasm.InstrArrayNewData, wasm.InstrArrayInitData:
+		count = int(index2) + 1
 		if count > *dataCount {
 			*dataCount = count
 		}
@@ -2505,10 +2522,8 @@ func (c *Compiled) validate() error {
 				return fmt.Errorf("compiled metadata invalid: global %d initializer structural type mismatch with source global %d", i, g.InitGlobal)
 			}
 		}
-		if len(g.InitExpr) != 0 {
-			if err := validateCompiledScalarConstExpr(g.InitExpr, g.Type, c.Globals, i); err != nil {
-				return fmt.Errorf("compiled metadata invalid: global %d extended initializer: %w", i, err)
-			}
+		if err := c.validateGlobalInitExpr(i, g); err != nil {
+			return err
 		}
 		if g.HasInitFunc {
 			if g.Type != ValFuncRef {
@@ -2765,10 +2780,8 @@ func (c *Compiled) validateCodecMetadata() error {
 		if initKinds > 1 {
 			return fmt.Errorf("compiled metadata invalid: global %d has multiple initializer forms", i)
 		}
-		if len(g.InitExpr) != 0 {
-			if err := validateCompiledScalarConstExpr(g.InitExpr, g.Type, c.Globals, i); err != nil {
-				return fmt.Errorf("compiled metadata invalid: global %d extended initializer: %w", i, err)
-			}
+		if err := c.validateGlobalInitExpr(i, g); err != nil {
+			return err
 		}
 		if g.HasInitFunc && g.Type != ValFuncRef {
 			return fmt.Errorf("compiled metadata invalid: global %d ref.func initializer has type %s", i, g.Type)
@@ -3208,6 +3221,22 @@ func (c *Compiled) maxCallSlots() (params, results int, err error) {
 		}
 	}
 	return params, results, nil
+}
+
+func (c *Compiled) validateGlobalInitExpr(index int, g GlobalDef) error {
+	if len(g.InitExpr) == 0 {
+		return nil
+	}
+	if c.usesGenericGCExecution() && (g.Type == ValAnyRef || g.Type == ValI31Ref) {
+		if g.InitExpr[len(g.InitExpr)-1] != 0x0b {
+			return fmt.Errorf("compiled metadata invalid: global %d GC initializer missing end", index)
+		}
+		return nil
+	}
+	if err := validateCompiledScalarConstExpr(g.InitExpr, g.Type, c.Globals, index); err != nil {
+		return fmt.Errorf("compiled metadata invalid: global %d extended initializer: %w", index, err)
+	}
+	return nil
 }
 
 func (c *Compiled) validateDeferredOffsetGlobal(kind string, seg, idx int) error {

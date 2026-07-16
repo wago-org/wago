@@ -35,19 +35,23 @@ const (
 type Config struct {
 	// Profile selects the heap profile. The zero value preserves the default
 	// throughput collector behavior.
-	Profile               Profile
-	Allocator             AllocatorKind
-	Runtime               RuntimeKind
-	NurseryBytes          uint32
-	OldBlockBytes         uint32
-	LargeObjectBytes      uint32
-	CollectEveryAlloc     bool
-	StressNurseryBytes    uint32
-	ForceMajorEveryMinor  bool
-	VerifyAfterCollect    bool
-	PoisonFreed           bool
-	StressBarriers        bool
-	DisableMovingNursery  bool
+	Profile              Profile
+	Allocator            AllocatorKind
+	Runtime              RuntimeKind
+	NurseryBytes         uint32
+	OldBlockBytes        uint32
+	LargeObjectBytes     uint32
+	CollectEveryAlloc    bool
+	StressNurseryBytes   uint32
+	ForceMajorEveryMinor bool
+	VerifyAfterCollect   bool
+	PoisonFreed          bool
+	StressBarriers       bool
+	DisableMovingNursery bool
+	// DisableCollection keeps every object in the bounded throughput heap and
+	// returns an allocation error on exhaustion. It is used by general WasmGC
+	// code until native frame roots can be published at every safepoint.
+	DisableCollection     bool
 	TinyHeapBytes         uint32
 	TinyBlockBytes        uint32
 	TinyStepBudget        uint32

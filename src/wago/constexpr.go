@@ -82,6 +82,9 @@ func evalConstExprBytesWithModule(b []byte, want wasm.ValType, m *wasm.Module) (
 			return constExprResult{}, fmt.Errorf("unsupported i31 const expression")
 		}
 	}
+	if want.Kind == wasm.ValRef && m != nil && len(b) != 0 && b[0] == 0xfb {
+		return constExprResult{vtype: want, GlobalIndex: -1, FuncIndex: -1, Expr: append([]byte(nil), b...)}, nil
+	}
 	r := wasm.NewReader(b)
 	op, err := r.Byte()
 	if err != nil {
@@ -153,7 +156,11 @@ func evalConstExprBytesWithModule(b []byte, want wasm.ValType, m *wasm.Module) (
 			if heap < 0 || m == nil {
 				return constExprResult{}, fmt.Errorf("unsupported ref.null heap type %d", heap)
 			}
-			if _, ok := m.TypeFunc(uint32(heap)); !ok {
+			typeCount := 0
+			for i := range m.Types {
+				typeCount += len(m.Types[i].SubTypes)
+			}
+			if uint64(heap) >= uint64(typeCount) {
 				return constExprResult{}, fmt.Errorf("unsupported ref.null heap type %d", heap)
 			}
 			got.vtype = wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: uint32(heap)}), false))
@@ -193,6 +200,12 @@ func evalConstExprBytesWithModule(b []byte, want wasm.ValType, m *wasm.Module) (
 		return constExprResult{}, fmt.Errorf("const expression missing end: %w", err)
 	}
 	if end != 0x0B {
+		if want.Kind == wasm.ValRef && m != nil {
+			// Validation has already type-checked the complete Core 3 constant
+			// expression. Preserve object-building programs for collector-backed
+			// evaluation after preceding globals and function descriptors exist.
+			return constExprResult{vtype: want, GlobalIndex: -1, FuncIndex: -1, Expr: append([]byte(nil), b...)}, nil
+		}
 		bits, usesGlobal, err := evalScalarConstExprProgram(b, want, moduleConstExprGlobalResolver(m))
 		if err != nil {
 			return constExprResult{}, err

@@ -159,7 +159,7 @@ func TestCompiledAPIHelpers(t *testing.T) {
 		{Kind: wasm.InstrMemoryInit, Index: 4},
 		{Kind: wasm.InstrDataDrop, Index: 3},
 	} {
-		segmentStateCount(in.Kind, in.Index, &elem, &data)
+		segmentStateCount(in.Kind, in.Index, in.Index2, &elem, &data)
 	}
 	if elem != 3 || data != 5 {
 		t.Fatalf("segment state counts = %d, %d", elem, data)

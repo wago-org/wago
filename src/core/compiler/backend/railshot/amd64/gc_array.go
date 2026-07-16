@@ -44,9 +44,6 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		if field.Storage.Packed {
 			valueType = wasm.I32
 		}
-		if valueType.Kind == wasm.ValRef {
-			return fmt.Errorf("amd64: reference array.new remains outside the staged helper slice")
-		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
 		return f.callGCStructHelper(gcArrayAllocUniform, []wasm.ValType{valueType, wasm.I32, wasm.I32}, []wasm.ValType{result})
@@ -100,15 +97,12 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		if !ok {
 			return fmt.Errorf("amd64: array.new_fixed type %d is unavailable", typeIndex)
 		}
-		if count > 4 {
-			return fmt.Errorf("amd64: array.new_fixed count %d exceeds staged bound 4", count)
+		if count > maxSyncHostSlots-2 {
+			return fmt.Errorf("amd64: array.new_fixed count %d exceeds helper slot bound %d", count, maxSyncHostSlots-2)
 		}
 		valueType := field.Storage.Val
 		if field.Storage.Packed {
 			valueType = wasm.I32
-		}
-		if valueType.Kind == wasm.ValRef {
-			return fmt.Errorf("amd64: reference array.new_fixed remains outside the staged helper slice")
 		}
 		params := make([]wasm.ValType, 0, int(count)+2)
 		for i := uint32(0); i < count; i++ {

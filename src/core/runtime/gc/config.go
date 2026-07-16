@@ -24,6 +24,9 @@ func normalizeConfig(cfg Config) (Config, error) {
 		return cfg, fmt.Errorf("gc: unsupported profile %d", cfg.Profile)
 	}
 	if cfg.Profile == ProfileTiny {
+		if cfg.DisableCollection {
+			return cfg, fmt.Errorf("gc: collection-disabled mode requires the throughput profile")
+		}
 		if cfg.Allocator != AllocatorTinyFixedBlock || cfg.Runtime != RuntimeIncrementalMarkSweep {
 			return cfg, fmt.Errorf("gc: profile tiny requires fixed-block allocator and incremental mark/sweep runtime")
 		}

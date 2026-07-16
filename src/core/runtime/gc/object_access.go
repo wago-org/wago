@@ -9,6 +9,50 @@ func (c *Collector) NewStruct(typeID TypeID) (Ref, error) { return c.NewStructDe
 func (c *Collector) NewStructDefault(typeID TypeID) (Ref, error) {
 	return c.NewStructDefaultWithRoots(typeID, nil)
 }
+
+// NewStructWithRoots allocates and initializes every field atomically from the
+// caller's values. Reference operands are published as temporary mutable roots
+// across a collection-triggering allocation and reread before object stores.
+func (c *Collector) NewStructWithRoots(typeID TypeID, values []Value, roots RootSet) (Ref, error) {
+	d, err := c.desc(typeID)
+	if err != nil {
+		return Null(), err
+	}
+	if d.Kind != KindStruct || len(values) != len(d.Fields) {
+		return Null(), errors.New("gc: struct initializer shape mismatch")
+	}
+	hasRefs := false
+	for i, field := range d.Fields {
+		if err := checkValueCompatible(field.Kind, values[i]); err != nil {
+			return Null(), err
+		}
+		if isRefKind(field.Kind) {
+			if err := c.validateStoredRef(values[i].Ref, field.Kind == StorageRefNull); err != nil {
+				return Null(), err
+			}
+			hasRefs = true
+		}
+	}
+	if hasRefs {
+		roots = combineRootSets(roots, valueRootSet{values: values, fields: d.Fields})
+	}
+	sz, err := StructSize(d)
+	if err != nil {
+		return Null(), err
+	}
+	r, err := c.alloc(d, sz, 0, roots)
+	if err != nil {
+		return Null(), err
+	}
+	c.zeroObjectPayload(r)
+	for i, field := range d.Fields {
+		if err := c.storeValue(r, d, uint64(PayloadOffset+field.Offset), field.Kind, values[i]); err != nil {
+			return Null(), err
+		}
+	}
+	return r, nil
+}
+
 func (c *Collector) NewStructDefaultWithRoots(typeID TypeID, roots RootSet) (Ref, error) {
 	d, err := c.desc(typeID)
 	if err != nil {
@@ -30,6 +74,42 @@ func (c *Collector) NewStructDefaultWithRoots(typeID TypeID, roots RootSet) (Ref
 }
 func (c *Collector) NewArray(typeID TypeID, length uint32, init Value) (Ref, error) {
 	return c.NewArrayWithRoots(typeID, length, init, nil)
+}
+
+// NewArrayFixedWithRoots allocates an array initialized from one value per
+// element. Reference operands are rooted across allocation and reread before
+// stores, matching the atomic operand lifetime required by array.new_fixed.
+func (c *Collector) NewArrayFixedWithRoots(typeID TypeID, values []Value, roots RootSet) (Ref, error) {
+	d, err := c.desc(typeID)
+	if err != nil {
+		return Null(), err
+	}
+	if d.Kind != KindArray {
+		return Null(), errors.New("gc: not array")
+	}
+	for i := range values {
+		if err := c.validateArrayStore(d, values[i]); err != nil {
+			return Null(), err
+		}
+	}
+	if isRefKind(d.Elem) && len(values) != 0 {
+		roots = combineRootSets(roots, valueRootSet{values: values, all: true})
+	}
+	sz, err := ArraySize(d, uint32(len(values)))
+	if err != nil {
+		return Null(), err
+	}
+	r, err := c.alloc(d, sz, uint32(len(values)), roots)
+	if err != nil {
+		return Null(), err
+	}
+	c.zeroObjectPayload(r)
+	for i := range values {
+		if err := c.storeArrayValue(r, d, uint32(i), values[i]); err != nil {
+			return Null(), err
+		}
+	}
+	return r, nil
 }
 func (c *Collector) NewArrayWithRoots(typeID TypeID, length uint32, init Value, roots RootSet) (Ref, error) {
 	d, err := c.desc(typeID)
