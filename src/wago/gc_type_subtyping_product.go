@@ -42,7 +42,7 @@ func (p stagedGCTypeSubtypingProduct) usesRuntimeFunctionIdentity() bool {
 }
 
 func (p stagedGCTypeSubtypingProduct) usesLinkFunctionIdentity() bool {
-	return p == stagedGCTypeSubtypingLinkProvider || p == stagedGCTypeSubtypingLinkConsumer || p == stagedGCTypeSubtypingFinalityLinkProvider || p == stagedGCTypeSubtypingFinalityLinkConsumer || p == stagedGCTypeSubtypingStructLinkProvider || p == stagedGCTypeSubtypingStructLinkConsumer
+	return p == stagedGCTypeSubtypingLinkProvider || p == stagedGCTypeSubtypingLinkConsumer || p == stagedGCTypeSubtypingFinalityLinkProvider || p == stagedGCTypeSubtypingFinalityLinkConsumer || p == stagedGCTypeSubtypingStructLinkProvider || p == stagedGCTypeSubtypingStructLinkConsumer || p == stagedGCTypeSubtypingStructProjectionLinkProvider || p == stagedGCTypeSubtypingStructProjectionLinkConsumer
 }
 
 func (p stagedGCTypeSubtypingProduct) linkProviderProduct() stagedGCTypeSubtypingProduct {
@@ -53,6 +53,8 @@ func (p stagedGCTypeSubtypingProduct) linkProviderProduct() stagedGCTypeSubtypin
 		return stagedGCTypeSubtypingFinalityLinkProvider
 	case stagedGCTypeSubtypingStructLinkConsumer:
 		return stagedGCTypeSubtypingStructLinkProvider
+	case stagedGCTypeSubtypingStructProjectionLinkConsumer:
+		return stagedGCTypeSubtypingStructProjectionLinkProvider
 	default:
 		return 0
 	}
@@ -117,6 +119,10 @@ func stagedGCTypeSubtypingProductPinned(data []byte, product stagedGCTypeSubtypi
 		pinned = stagedGCTypeSubtypingStructLinkProvider
 	case "5f090989edc62437b56b36c69a316cdcfddec4a63d451bd9443ad59da75af0a3":
 		pinned = stagedGCTypeSubtypingStructLinkConsumer
+	case "8de41fdb1e1b4ef57639e5a6344eed6c13bfb5ada5ea56433bb221f403c56d8e":
+		pinned = stagedGCTypeSubtypingStructProjectionLinkProvider
+	case "a5d3e6060f52fa0becf68e6e4dd06623df6ecf7bf22bfe5430b484f2adbdf0a2":
+		pinned = stagedGCTypeSubtypingStructProjectionLinkConsumer
 	}
 	return pinned == product
 }
@@ -126,11 +132,14 @@ func stagedGCTypeSubtypingProductShape(m *wasm.Module) (stagedGCTypeSubtypingPro
 		return 0, fmt.Errorf("nil module")
 	}
 	if m.TableCount() == 0 && m.MemCount() == 0 && len(m.Globals) == 0 && len(m.Elements) == 0 && len(m.Data) == 0 && m.TagCount() == 0 && m.Start == nil {
-		if len(m.Types) == 3 && (m.ImportedFuncCount() != 0 || len(m.Exports) == 3) {
+		if len(m.Types) == 3 && len(m.Types[0].SubTypes) == 1 && len(m.Types[1].SubTypes) == 1 && len(m.Types[2].SubTypes) == 1 && (m.ImportedFuncCount() != 0 || len(m.Exports) == 3) {
 			return stagedGCTypeSubtypingLinkShape(m)
 		}
 		if len(m.Types) == 2 && len(m.Types[0].SubTypes) == 2 && len(m.Types[1].SubTypes) == 2 && (m.ImportedFuncCount() != 0 || len(m.Exports) == 1) {
 			return stagedGCTypeSubtypingStructLinkShape(m)
+		}
+		if len(m.Types) == 3 && len(m.Types[0].SubTypes) == 2 && len(m.Types[1].SubTypes) == 2 && len(m.Types[2].SubTypes) == 2 && (m.ImportedFuncCount() != 0 || len(m.Exports) == 1) {
+			return stagedGCTypeSubtypingStructProjectionLinkShape(m)
 		}
 		if len(m.Types) == 2 && (m.ImportedFuncCount() != 0 || len(m.Exports) == 2) {
 			return stagedGCTypeSubtypingFinalityLinkShape(m)
@@ -371,6 +380,92 @@ func stagedGCTypeSubtypingStructLinkShape(m *wasm.Module) (stagedGCTypeSubtyping
 		return 0, fmt.Errorf("struct link consumer import is outside the exact M3.g product")
 	}
 	return stagedGCTypeSubtypingStructLinkConsumer, nil
+}
+
+func stagedGCTypeSubtypingStructProjectionLinkShape(m *wasm.Module) (stagedGCTypeSubtypingProduct, error) {
+	if len(m.Types) != 3 || m.TableCount() != 0 || m.MemCount() != 0 || len(m.Globals) != 0 || len(m.Elements) != 0 || len(m.Data) != 0 || m.TagCount() != 0 || m.Start != nil {
+		return 0, fmt.Errorf("struct projection link product requires exactly three type groups and no non-function state")
+	}
+	for groupIndex := range m.Types {
+		group := &m.Types[groupIndex]
+		if len(group.SubTypes) != 2 {
+			return 0, fmt.Errorf("struct projection link group %d must contain two members", groupIndex)
+		}
+		for memberIndex := range group.SubTypes {
+			st := &group.SubTypes[memberIndex]
+			if st.Final || !st.HasPrefix || st.Metadata.Describes != nil || st.Metadata.Descriptor != nil {
+				return 0, fmt.Errorf("struct projection link group/member %d/%d must be an open metadata-free subtype", groupIndex, memberIndex)
+			}
+		}
+		f := &group.SubTypes[0]
+		if f.Comp.Kind != wasm.CompFunc || len(f.Comp.Params) != 0 || len(f.Comp.Results) != 0 {
+			return 0, fmt.Errorf("struct projection link group %d function must be () -> ()", groupIndex)
+		}
+		s := &group.SubTypes[1]
+		wantFields := 1
+		if groupIndex == 2 {
+			wantFields = 5
+		}
+		if s.Comp.Kind != wasm.CompStruct || len(s.Comp.Fields) != wantFields {
+			return 0, fmt.Errorf("struct projection link group %d struct must contain %d fields", groupIndex, wantFields)
+		}
+	}
+	for groupIndex := 0; groupIndex < 2; groupIndex++ {
+		for memberIndex := 0; memberIndex < 2; memberIndex++ {
+			if len(m.Types[groupIndex].SubTypes[memberIndex].Supers) != 0 {
+				return 0, fmt.Errorf("struct projection link root group/member %d/%d must have no super", groupIndex, memberIndex)
+			}
+		}
+		field := m.Types[groupIndex].SubTypes[1].Comp.Fields[0]
+		ref := field.Storage.Val
+		if field.Mut != wasm.Const || field.Storage.Packed || ref.Kind != wasm.ValRef || ref.Ref.Nullable || ref.Ref.Exact || ref.Ref.Heap.Kind != wasm.HeapTypeIndex || !ref.Ref.Heap.Type.Rec || ref.Ref.Heap.Type.Index != 0 {
+			return 0, fmt.Errorf("struct projection link root group %d field must be an immutable non-null reference to recursive member 0", groupIndex)
+		}
+	}
+	provider := len(m.Imports) == 0
+	wantFuncSuper := uint32(2)
+	wantStructSuper := uint32(3)
+	wantFields := []wasm.TypeIdx{{Index: 0}, {Index: 2}, {Index: 0}, {Index: 2}, {Index: 0, Rec: true}}
+	if !provider {
+		wantFuncSuper = 0
+		wantStructSuper = 1
+		wantFields = []wasm.TypeIdx{{Index: 0}, {Index: 0}, {Index: 2}, {Index: 2}, {Index: 0, Rec: true}}
+	}
+	last := &m.Types[2]
+	if supers := last.SubTypes[0].Supers; len(supers) != 1 || supers[0].Rec || supers[0].Index != wantFuncSuper {
+		return 0, fmt.Errorf("struct projection link final function must extend flat type %d", wantFuncSuper)
+	}
+	if supers := last.SubTypes[1].Supers; len(supers) != 1 || supers[0].Rec || supers[0].Index != wantStructSuper {
+		return 0, fmt.Errorf("struct projection link final struct must extend flat type %d", wantStructSuper)
+	}
+	for fieldIndex, want := range wantFields {
+		field := last.SubTypes[1].Comp.Fields[fieldIndex]
+		ref := field.Storage.Val
+		if field.Mut != wasm.Const || field.Storage.Packed || ref.Kind != wasm.ValRef || ref.Ref.Nullable || ref.Ref.Exact || ref.Ref.Heap.Kind != wasm.HeapTypeIndex || ref.Ref.Heap.Type != want {
+			return 0, fmt.Errorf("struct projection link final struct field %d is outside the exact ordered projection", fieldIndex)
+		}
+	}
+	if provider {
+		if len(m.FuncTypes) != 1 || len(m.Code) != 1 || len(m.Exports) != 1 {
+			return 0, fmt.Errorf("struct projection link provider requires one local function and one export")
+		}
+		if m.FuncTypes[0].Rec || m.FuncTypes[0].Index != 4 || len(m.Code[0].Locals.Runs) != 0 || !isExactEndBody(m.Code[0].BodyBytes) {
+			return 0, fmt.Errorf("struct projection link provider function is outside the exact type/body product")
+		}
+		ex := m.Exports[0]
+		if ex.Name != "g" || ex.Index.Kind != wasm.ExternFunc || ex.Index.Index != 0 {
+			return 0, fmt.Errorf("struct projection link provider export is outside the exact g product")
+		}
+		return stagedGCTypeSubtypingStructProjectionLinkProvider, nil
+	}
+	if len(m.FuncTypes) != 0 || len(m.Code) != 0 || len(m.Exports) != 0 || len(m.Imports) != 1 || m.ImportedFuncCount() != 1 {
+		return 0, fmt.Errorf("struct projection link consumer requires exactly one function import")
+	}
+	imp := m.Imports[0]
+	if imp.Module != "M4" || imp.Name != "g" || imp.Type.Kind != wasm.ExternFunc || imp.Type.Type.Rec || imp.Type.Type.Index != 4 {
+		return 0, fmt.Errorf("struct projection link consumer import is outside the exact M4.g product")
+	}
+	return stagedGCTypeSubtypingStructProjectionLinkConsumer, nil
 }
 
 func stagedGCTypeSubtypingRefFuncGlobalShape(m *wasm.Module) (stagedGCTypeSubtypingProduct, error) {
