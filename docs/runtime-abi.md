@@ -643,6 +643,26 @@ cross-product substitution remain fail-closed. `compiledCodeCache` stays 64 byte
 basedata slot, helper ID, collector root/barrier, frame record, result adapter, or public ABI change. This proof does not
 authorize the source-lines-598–605 M5 pair, later link clusters, or arbitrary struct-defined function matching.
 
+Iteration 69 adds a fifth separately pinned link contract for the source-lines-598–605 M5 provider and expected-unlinkable
+consumer. The provider has three two-member groups: a bound self-referential `f1`/struct pair, an `f2`/struct pair whose
+field refers externally to the earlier `f1`, and `g2 <: f2` paired with an empty struct. The consumer requires the M3-like
+bound self-referential `f1` group followed by `g1 <: f1` and an empty struct. Complete recursive-group comparison now
+preserves selected-member position and bound-versus-external reference form, so the external provider projection cannot be
+flattened into the consumer's bound requirement.
+
+The provider uses the unchanged 64-byte descriptor arena: null plus one ordinary canonical function entry. The attempted
+consumer also has a finite 64-byte descriptor requirement, but signature comparison rejects before owner retention,
+consumer allocation/publication, code binding, or canonical identity copying. Consequently no live consumer descriptor or
+close-order retention relationship exists. The provider identity remains an ordinary 64-bit instance-owned word, not a
+compact `gc.Ref`, collector root, public token, or GC object. No descriptor layout, basedata slot, helper ID, root/barrier,
+collector sidecar, frame record, result adapter, or public ABI changes.
+
+Provider/consumer wasm/code/codec sizes are 82/77/403 and 51/0/236 bytes. Empty provider `g` measures 36.78–37.82 ns/op,
+0 B/op, and 0 allocs/op. A failed link leaves the unlinked consumer codec artifact unchanged and retains zero producer
+owners. Private/public reload admission, snapshots, signal-backed bounds, arm64, unsupported platforms, host substitution,
+cross-product substitution, and public GC admission remain fail-closed. This proof does not authorize the source-lines-
+614–621 M6 pair, source line 628, later link clusters, or arbitrary struct-defined function matching.
+
 ## Global coherence invariant
 
 The global cell is the sole host- and cross-instance-visible storage for a
