@@ -31,6 +31,9 @@ jobs:
       - uses: dorny/paths-filter@v3
         id: filter
         with:
+          # Avoid a separate PR-files API call; compare the checked-out merge
+          # ref with the base SHA from the pull_request event instead.
+          token: ''
           filters: |
             docs:
               - '**/*.md'

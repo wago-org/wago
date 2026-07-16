@@ -1,6 +1,7 @@
 package wago
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"reflect"
@@ -13,6 +14,28 @@ type planTestExtension struct {
 	before   []string
 	after    []string
 	register func(*Registry) error
+}
+
+type lifecyclePlanExtension struct {
+	planTestExtension
+	started *bool
+	stopped *bool
+}
+
+func (e *lifecyclePlanExtension) Start(ctx context.Context, host *PluginHost) error {
+	if ctx == nil || host == nil || host.Runtime == nil || host.Plugin != e.name {
+		return errors.New("invalid plugin start context")
+	}
+	*e.started = true
+	return nil
+}
+
+func (e *lifecyclePlanExtension) Stop(ctx context.Context) error {
+	if ctx == nil {
+		return errors.New("nil plugin stop context")
+	}
+	*e.stopped = true
+	return nil
 }
 
 func TestRegistryConfigAndHostEnvironmentAreCapabilityScoped(t *testing.T) {
@@ -104,5 +127,53 @@ func TestLoadPluginsRejectsCycle(t *testing.T) {
 	err := NewRuntime().LoadPlugins([]PluginConfig{{Name: "plan-cycle-a"}, {Name: "plan-cycle-b"}})
 	if err == nil {
 		t.Fatal("LoadPlugins accepted a cycle")
+	}
+}
+
+func TestInspectPluginPlanReportsResolvedPlugin(t *testing.T) {
+	registerPlanTestPlugin(t, "plan-inspect", func() Extension {
+		return &planTestExtension{name: "plan-inspect"}
+	})
+	budget := CapabilityBudget{MaxInstances: 3}
+	plan, err := InspectPluginPlan([]PluginConfig{{
+		Name:         "plan-inspect",
+		Capabilities: []PluginCapability{PluginManagedInstances, PluginHostImports},
+		Budgets:      map[PluginCapability]CapabilityBudget{PluginManagedInstances: budget},
+	}})
+	if err != nil {
+		t.Fatalf("InspectPluginPlan: %v", err)
+	}
+	if len(plan.Plugins) != 1 {
+		t.Fatalf("plugins = %#v", plan.Plugins)
+	}
+	got := plan.Plugins[0]
+	if got.Name != "plan-inspect" || got.ID != "plan-inspect" {
+		t.Fatalf("plugin = %#v", got)
+	}
+	if !reflect.DeepEqual(got.Capabilities, []PluginCapability{PluginHostImports, PluginManagedInstances}) {
+		t.Fatalf("capabilities = %v", got.Capabilities)
+	}
+	if got.Budgets[PluginManagedInstances] != budget {
+		t.Fatalf("budget = %#v", got.Budgets)
+	}
+}
+
+func TestLoadPluginsStartsAndStopsLifecycleExtension(t *testing.T) {
+	var started, stopped bool
+	registerPlanTestPlugin(t, "plan-lifecycle", func() Extension {
+		return &lifecyclePlanExtension{planTestExtension: planTestExtension{name: "plan-lifecycle"}, started: &started, stopped: &stopped}
+	})
+	rt := NewRuntime()
+	if err := rt.LoadPlugins([]PluginConfig{{Name: "plan-lifecycle"}}); err != nil {
+		t.Fatalf("LoadPlugins: %v", err)
+	}
+	if !started {
+		t.Fatal("plugin was not started")
+	}
+	if err := rt.Close(); err != nil {
+		t.Fatalf("Runtime.Close: %v", err)
+	}
+	if !stopped {
+		t.Fatal("plugin was not stopped")
 	}
 }

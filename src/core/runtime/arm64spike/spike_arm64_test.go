@@ -3,11 +3,29 @@
 package arm64spike
 
 import (
+	"syscall"
 	"testing"
 	"unsafe"
 
 	enc "github.com/wago-org/wago/src/core/encoder/arm64"
 )
+
+func TestPublicMappings(t *testing.T) {
+	rw, err := MapRW(0)
+	if err != nil || len(rw) != 4096 {
+		t.Fatalf("MapRW(0) = %d bytes, %v", len(rw), err)
+	}
+	if err := syscall.Munmap(rw); err != nil {
+		t.Fatal(err)
+	}
+	code, err := MapExec([]byte{0xc0, 0x03, 0x5f, 0xd6})
+	if err != nil || len(code) != 4096 {
+		t.Fatalf("MapExec = %d bytes, %v", len(code), err)
+	}
+	if err := syscall.Munmap(code); err != nil {
+		t.Fatal(err)
+	}
+}
 
 // TestSpikeAddExec is the P1 go/no-go: encode `X0 = X0 + X1; ret` with the arm64
 // encoder, map it executable, and call it through the foreign-stack trampoline
@@ -73,5 +91,41 @@ func TestSpikeGSurvives(t *testing.T) {
 	}
 	if sum != 49995000 {
 		t.Fatalf("post-call Go work wrong: %d", sum)
+	}
+}
+
+func TestPublicCall3SetsLinearMemoryRegister(t *testing.T) {
+	var a enc.Asm
+	a.MovReg64(enc.X0, enc.X26) // return the ABI-pinned linear-memory base
+	a.Ret()
+	code, err := MapExec(a.B)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer syscall.Munmap(code)
+	mem, err := MapRW(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer syscall.Munmap(mem)
+	entry := uintptr(unsafe.Pointer(&code[0]))
+	base := uintptr(unsafe.Pointer(&mem[0]))
+	if got := Call3(entry, 0, 0, base); got != base {
+		t.Fatalf("Call3 linear-memory base = %#x, want %#x", got, base)
+	}
+}
+
+func TestPublicCall2ExecutesMappedCode(t *testing.T) {
+	var a enc.Asm
+	a.Add64(enc.X0, enc.X0, enc.X1)
+	a.Ret()
+	code, err := MapExec(a.B)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer syscall.Munmap(code)
+	entry := uintptr(unsafe.Pointer(&code[0]))
+	if got := Call2(entry, 19, 23); got != 42 {
+		t.Fatalf("Call2 = %d, want 42", got)
 	}
 }

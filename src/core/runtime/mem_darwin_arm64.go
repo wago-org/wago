@@ -45,7 +45,10 @@ func mmapExec(code []byte) ([]byte, error) {
 		_ = syscall.Munmap(mem)
 		return nil, err
 	}
-	return mem[:len(code):len(code)], nil
+	// Keep the full page-rounded mapping extent. syscall.Munmap requires the
+	// original mapping length; callers use this slice as the opaque handle passed
+	// back to Unmap, just like the Linux implementation does.
+	return mem, nil
 }
 
 func munmap(b []byte) error {

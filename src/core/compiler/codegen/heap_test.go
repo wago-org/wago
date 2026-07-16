@@ -3,6 +3,7 @@ package codegen
 import (
 	"errors"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -91,6 +92,34 @@ func TestNoopHeapRejectsHeapOpsButAllowsBarriers(t *testing.T) {
 	}
 	if err := fh.Safepoint(&fakeEmitter{}, SafepointRequest{}); err != nil {
 		t.Fatalf("Safepoint noop err = %v", err)
+	}
+}
+
+func TestHeapPolicyMetadataAndRuntimeFunctionDefaults(t *testing.T) {
+	custom := RefLayout{Bits: 17}
+	if got := (HelperHeap{}).Name(); got != "helper-heap" || (HelperHeap{}).RefLayout() != GCRefLayout {
+		t.Fatalf("default helper heap metadata = %q, %#v", got, (HelperHeap{}).RefLayout())
+	}
+	if got := (HelperHeap{PolicyName: "helpers", Layout: custom}).Name(); got != "helpers" {
+		t.Fatalf("HelperHeap.Name = %q", got)
+	}
+	if got := (HelperHeap{Layout: custom}).RefLayout(); got != custom {
+		t.Fatalf("HelperHeap.RefLayout = %#v", got)
+	}
+	if got := (NoopHeap{PolicyName: "none", Layout: custom}).Name(); got != "none" {
+		t.Fatalf("NoopHeap.Name = %q", got)
+	}
+	if got := (NoopHeap{Layout: custom}).RefLayout(); got != custom {
+		t.Fatalf("NoopHeap.RefLayout = %#v", got)
+	}
+	if got := (NoopHeap{}).RefLayout(); got != GCRefLayout {
+		t.Fatalf("default NoopHeap.RefLayout = %#v", got)
+	}
+	if _, ok := (RuntimeFuncs{}).RuntimeFunc(RuntimeArrayLen); ok {
+		t.Fatal("non-nil empty RuntimeFuncs resolved a function")
+	}
+	if fn, ok := RuntimeFuncs(nil).RuntimeFunc(RuntimeArrayLen); !ok || fn.ID != RuntimeArrayLen || fn.Name != "gc.array_len" {
+		t.Fatalf("nil RuntimeFuncs default = %#v, %v", fn, ok)
 	}
 }
 
@@ -236,6 +265,32 @@ func TestHelperHeapAllocArrayPublishesInitAndExtraLiveRefs(t *testing.T) {
 	}
 	if emit.published != 1 || emit.unpublished != 1 {
 		t.Fatalf("publish/unpublish = %d/%d, want 1/1", emit.published, emit.unpublished)
+	}
+}
+
+func TestHelperHeapNilEmitterGuards(t *testing.T) {
+	mh, err := (HelperHeap{}).BeginModule(ModuleInfo{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fh, err := mh.BeginFunc(FuncInfo{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fh.AllocObject(nil, AllocObjectRequest{}); err == nil {
+		t.Fatal("AllocObject accepted nil emitter")
+	}
+	if _, err := fh.AllocArray(nil, AllocArrayRequest{}); err == nil {
+		t.Fatal("AllocArray accepted nil emitter")
+	}
+	if _, err := fh.LoadField(nil, FieldLoadRequest{}); err == nil {
+		t.Fatal("LoadField accepted nil emitter")
+	}
+	if _, err := fh.LoadArrayElem(nil, ArrayLoadRequest{}); err == nil {
+		t.Fatal("LoadArrayElem accepted nil emitter")
+	}
+	if _, err := fh.ArrayLen(nil, ArrayLenRequest{}); err == nil {
+		t.Fatal("ArrayLen accepted nil emitter")
 	}
 }
 
@@ -487,5 +542,95 @@ func TestHelperHeapMissingRuntimeHelperIsUnsupported(t *testing.T) {
 	_, err = fh.ArrayLen(&fakeEmitter{}, ArrayLenRequest{Array: Value{Opaque: "array", Type: wasm.AnyRef}})
 	if !errors.Is(err, ErrUnsupportedHeapOp) {
 		t.Fatalf("ArrayLen err = %v, want ErrUnsupportedHeapOp", err)
+	}
+}
+
+func TestNoopHeapRejectsEveryHeapAccessAndReportsPolicy(t *testing.T) {
+	h := NoopHeap{PolicyName: "disabled"}
+	mh, err := h.BeginModule(ModuleInfo{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fh, err := mh.BeginFunc(FuncInfo{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, err := range []error{
+		func() error { _, err := fh.AllocArray(nil, AllocArrayRequest{}); return err }(),
+		func() error { _, err := fh.LoadField(nil, FieldLoadRequest{}); return err }(),
+		fh.StoreField(nil, FieldStoreRequest{}),
+		func() error { _, err := fh.LoadArrayElem(nil, ArrayLoadRequest{}); return err }(),
+		fh.StoreArrayElem(nil, ArrayStoreRequest{}),
+		func() error { _, err := fh.ArrayLen(nil, ArrayLenRequest{}); return err }(),
+	} {
+		if !errors.Is(err, ErrUnsupportedHeapOp) || err == nil || !strings.Contains(err.Error(), "disabled") {
+			t.Fatalf("unsupported heap error = %v", err)
+		}
+	}
+	if err := fh.BulkWriteBarrier(nil, BulkWriteBarrierRequest{}); err != nil {
+		t.Fatalf("BulkWriteBarrier: %v", err)
+	}
+	if err := fh.EndFunc(nil); err != nil {
+		t.Fatalf("EndFunc: %v", err)
+	}
+	if got := (&UnsupportedHeapOpError{Op: "array len"}).Error(); !strings.Contains(got, "array len") {
+		t.Fatalf("error text = %q", got)
+	}
+}
+
+func TestHeapHelperDefaultsNilEmittersAndRuntimeNames(t *testing.T) {
+	if got := (NoopHeap{}).RefLayout(); got != GCRefLayout {
+		t.Fatalf("NoopHeap layout = %#v, want GC layout", got)
+	}
+	customLayout := RefLayout{Bits: 64}
+	h := HelperHeap{Layout: customLayout}
+	if got := h.RefLayout(); got != customLayout {
+		t.Fatalf("HelperHeap layout = %#v, want %#v", got, customLayout)
+	}
+	if got := (HelperHeap{}).RefLayout(); got != GCRefLayout {
+		t.Fatalf("default HelperHeap layout = %#v, want GC layout", got)
+	}
+
+	fh, err := helperModuleHeap{heap: HelperHeap{Runtime: RuntimeFuncs(nil)}}.BeginFunc(FuncInfo{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name string
+		call func() error
+	}{
+		{"alloc_object", func() error { _, err := fh.AllocObject(nil, AllocObjectRequest{}); return err }},
+		{"alloc_array", func() error { _, err := fh.AllocArray(nil, AllocArrayRequest{}); return err }},
+		{"load_field", func() error { _, err := fh.LoadField(nil, FieldLoadRequest{}); return err }},
+		{"store_field", func() error { return fh.StoreField(nil, FieldStoreRequest{}) }},
+		{"load_array", func() error { _, err := fh.LoadArrayElem(nil, ArrayLoadRequest{}); return err }},
+		{"store_array", func() error { return fh.StoreArrayElem(nil, ArrayStoreRequest{}) }},
+		{"array_len", func() error { _, err := fh.ArrayLen(nil, ArrayLenRequest{}); return err }},
+		{"barrier", func() error { return fh.WriteBarrier(nil, WriteBarrierRequest{}) }},
+		{"bulk_barrier", func() error { return fh.BulkWriteBarrier(nil, BulkWriteBarrierRequest{}) }},
+		{"safepoint", func() error { return fh.Safepoint(nil, SafepointRequest{}) }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := tc.call(); err == nil || !strings.Contains(err.Error(), "nil emitter") {
+				t.Fatalf("error = %v, want nil emitter error", err)
+			}
+		})
+	}
+	if err := fh.EndFunc(nil); err != nil {
+		t.Fatalf("EndFunc: %v", err)
+	}
+	if _, err := singleRuntimeResult(RuntimeAllocObject, nil); err == nil {
+		t.Fatal("singleRuntimeResult accepted no results")
+	}
+	if _, err := singleRuntimeResult(RuntimeAllocObject, []Value{{}, {}}); err == nil {
+		t.Fatal("singleRuntimeResult accepted multiple results")
+	}
+	for id := RuntimeAllocObject; id <= RuntimeSafepoint; id++ {
+		if got := id.String(); !strings.HasPrefix(got, "gc.") {
+			t.Fatalf("runtime function %d name = %q", id, got)
+		}
+	}
+	if got := RuntimeFuncID(99).String(); got != "runtime_func(99)" {
+		t.Fatalf("unknown runtime function name = %q", got)
 	}
 }

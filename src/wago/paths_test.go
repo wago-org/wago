@@ -33,6 +33,9 @@ func TestDirsWagoHome(t *testing.T) {
 	if got := d.CachePath("abc"); got != "/opt/wagohome/cache/1.2.3/abc.wago" {
 		t.Fatalf("CachePath = %q", got)
 	}
+	if got := d.ConfigFile("wago.json"); got != "/opt/wagohome/config/wago.json" {
+		t.Fatalf("ConfigFile = %q", got)
+	}
 }
 
 func TestDirsXDG(t *testing.T) {

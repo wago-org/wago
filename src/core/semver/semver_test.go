@@ -65,6 +65,26 @@ func TestCompare(t *testing.T) {
 	}
 }
 
+func TestVersionFormattingAndParserEdges(t *testing.T) {
+	if got := MustParse("v1.2.3-alpha+build.7").String(); got != "1.2.3-alpha+build.7" {
+		t.Fatalf("String = %q", got)
+	}
+	if got := MustParse("V1.2.3").String(); got != "1.2.3" {
+		t.Fatalf("uppercase v = %q", got)
+	}
+	for _, in := range []string{"1.2.3+", "1.2.3+a..b", "1.2.3+a_", "1.2.3-", "1.2.3-a..b", "1.2.3-a_"} {
+		if _, err := Parse(in); err == nil {
+			t.Errorf("Parse(%q) accepted malformed identifier", in)
+		}
+	}
+	defer func() {
+		if recover() == nil {
+			t.Fatal("MustParse did not panic")
+		}
+	}()
+	_ = MustParse("not-a-version")
+}
+
 func join(ids []string) string {
 	out := ""
 	for i, s := range ids {

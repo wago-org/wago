@@ -87,14 +87,14 @@ func NewJobMemoryGrowable(initialBytes, maxBytes int) (*JobMemory, error) {
 func normalizeMemorySizes(initialBytes, maxBytes int) (int, int, int) {
 	// 65536 pages is 4 GiB, whose byte size (2^32) does not fit the u32 size
 	// cache, so cap the logical size at 65535 pages (0xFFFF0000 bytes).
+	if initialBytes > maxClassicLinMemBytes {
+		initialBytes = maxClassicLinMemBytes
+	}
 	if maxBytes > maxClassicLinMemBytes {
 		maxBytes = maxClassicLinMemBytes
 	}
 	if maxBytes < initialBytes {
 		maxBytes = initialBytes
-	}
-	if initialBytes > maxClassicLinMemBytes {
-		initialBytes = maxClassicLinMemBytes
 	}
 	// The mapping is floored at one page so the linear-memory base is always a
 	// valid address even for a zero-page logical memory; the logical max (which may
