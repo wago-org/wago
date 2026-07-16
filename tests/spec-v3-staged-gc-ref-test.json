@@ -10,7 +10,7 @@
       "size": 626,
       "sha256": "526d5c1b457f847daf51141a7d63aba11d20415b7ef2a13f593e06f680a41403",
       "class": "abstract",
-      "gate": "abstract null/i31/struct/array/func/extern dynamic reference-test product",
+      "gate": "",
       "type_graph": "rec[func()-\u003e()]|rec[struct{}]|rec[array{i8}]|rec[func(externref)-\u003e()]|rec[func(i32)-\u003e(i32)]",
       "state_graph": "imports=0 funcs=12 globals=[] tables=3 memories=0 tags=0 elements=1 data=0 exports=[init=0:1,ref_test_null_data=0:2,ref_test_any=0:3,ref_test_eq=0:4,ref_test_i31=0:5,ref_test_struct=0:6,ref_test_array=0:7,ref_test_null_func=0:8,ref_test_func=0:9,ref_test_null_extern=0:10,ref_test_extern=0:11]",
       "opcodes": [
@@ -207,22 +207,16 @@
       ]
     }
   ],
-  "gates": [
-    {
-      "family": "gc",
-      "reason": "abstract null/i31/struct/array/func/extern dynamic reference-test product",
-      "count": 1
-    }
-  ],
+  "gates": [],
   "counts": {
     "commands": 73,
-    "modules_passed": 1,
-    "assertions_passed": 2,
+    "modules_passed": 2,
+    "assertions_passed": 68,
     "expected_invalid": 0,
     "expected_unlinkable": 0,
     "expected_uninstantiable": 0,
-    "expected_feature_rejects": 1,
-    "blocked_commands": 67,
+    "expected_feature_rejects": 0,
+    "blocked_commands": 0,
     "unexpected_compile_rejects": 0,
     "unexpected_link_rejects": 0,
     "failures": 0

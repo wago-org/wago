@@ -139,7 +139,7 @@ func stagedGCRefTestLeaderDeltaFor(data []byte, line int) (stagedGCRefTestLeader
 		return stagedGCRefTestLeaderDelta{}, stagedGCRefTestLeaderPin{}, err
 	}
 	gate := pin.Class.gateReason()
-	if product, ok := stagedGCStructExecutionProduct(data); ok && product == stagedGCStructRefTestConcrete {
+	if product, ok := stagedGCStructExecutionProduct(data); ok && (product == stagedGCStructRefTestConcrete || product == stagedGCStructRefTestAbstract) {
 		gate = ""
 	}
 	return stagedGCRefTestLeaderDelta{
@@ -171,6 +171,7 @@ func replayStagedGCRefTestScript(t *testing.T, tmp string, script stagedSpecScri
 	var latest []byte
 	var current *stagedGCRefTestLeaderPin
 	var currentInstance *Instance
+	var currentExtern uint64
 	seenPins := map[string]bool{}
 	seenActions := map[string][]string{}
 	leaders := make([]stagedGCRefTestLeaderDelta, 0, len(stagedGCRefTestLeaderPins))
@@ -191,6 +192,7 @@ func replayStagedGCRefTestScript(t *testing.T, tmp string, script stagedSpecScri
 			if currentInstance != nil {
 				_ = currentInstance.Close()
 				currentInstance = nil
+				currentExtern = 0
 			}
 			leader, pin, err := stagedGCRefTestLeaderDeltaFor(latest, cmd.Line)
 			if err != nil {
@@ -208,25 +210,27 @@ func replayStagedGCRefTestScript(t *testing.T, tmp string, script stagedSpecScri
 			current = &pin
 			c, compileErr := compileStagedGCRefTestAccounting(latest)
 			if compileErr == nil {
-				if pin.Class != stagedGCRefTestConcrete {
+				if pin.Class != stagedGCRefTestConcrete && pin.Class != stagedGCRefTestAbstract {
 					_ = c.Close()
 					counts.Failures++
-					t.Errorf("gc/ref_test.wast:%d unexpectedly compiled gated %s", cmd.Line, pin.Filename)
+					t.Errorf("gc/ref_test.wast:%d unexpectedly compiled unknown %s", cmd.Line, pin.Filename)
 					continue
 				}
 				if blob, marshalErr := marshalCompiled(c); marshalErr == nil {
-					t.Logf("gc/ref_test concrete product: wasm=%d code=%d codec=%d", len(latest), len(c.Code), len(blob))
+					t.Logf("gc/ref_test %s product: wasm=%d code=%d codec=%d", pin.Class, len(latest), len(c.Code), len(blob))
 				} else {
 					counts.Failures++
-					t.Errorf("gc/ref_test.wast:%d concrete codec measurement: %v", cmd.Line, marshalErr)
+					t.Errorf("gc/ref_test.wast:%d %s codec measurement: %v", cmd.Line, pin.Class, marshalErr)
 					_ = c.Close()
 					continue
 				}
-				if proofErr := verifyStagedGCRefTestConcreteProduct(c); proofErr != nil {
-					_ = c.Close()
-					counts.Failures++
-					t.Errorf("gc/ref_test.wast:%d concrete lifecycle proof: %v", cmd.Line, proofErr)
-					continue
+				if pin.Class == stagedGCRefTestConcrete {
+					if proofErr := verifyStagedGCRefTestConcreteProduct(c); proofErr != nil {
+						_ = c.Close()
+						counts.Failures++
+						t.Errorf("gc/ref_test.wast:%d concrete lifecycle proof: %v", cmd.Line, proofErr)
+						continue
+					}
 				}
 				in, instantiateErr := instantiateCore(c, InstantiateOptions{})
 				_ = c.Close()
@@ -234,6 +238,16 @@ func replayStagedGCRefTestScript(t *testing.T, tmp string, script stagedSpecScri
 					counts.Failures++
 					t.Errorf("gc/ref_test.wast:%d instantiate %s: %v", cmd.Line, pin.Filename, instantiateErr)
 					continue
+				}
+				if pin.Class == stagedGCRefTestAbstract {
+					ref, refErr := in.NewExternRef("0")
+					if refErr != nil {
+						_ = in.Close()
+						counts.Failures++
+						t.Errorf("gc/ref_test.wast:%d create extern fixture: %v", cmd.Line, refErr)
+						continue
+					}
+					currentExtern = ValueExternRef(ref).Bits()
 				}
 				currentInstance = in
 				counts.ModulesPassed++
@@ -262,15 +276,54 @@ func replayStagedGCRefTestScript(t *testing.T, tmp string, script stagedSpecScri
 			}
 			seenActions[current.Filename] = append(seenActions[current.Filename], kind+":"+cmd.Action.Field)
 			if currentInstance != nil {
-				if cmd.Type != "assert_return" || len(cmd.Expected) != 0 {
+				args := make([]uint64, len(cmd.Action.Args))
+				validArgs := true
+				for i, arg := range cmd.Action.Args {
+					switch arg.Type {
+					case "i32":
+						args[i], validArgs = stagedSpecScalar(arg)
+					case "externref":
+						args[i] = currentExtern
+					default:
+						validArgs = false
+					}
+					if !validArgs {
+						break
+					}
+				}
+				if !validArgs {
 					counts.Failures++
-					t.Errorf("gc/ref_test.wast:%d executable concrete action has unsupported shape %s/%d results", cmd.Line, cmd.Type, len(cmd.Expected))
+					t.Errorf("gc/ref_test.wast:%d has unsupported arguments %+v", cmd.Line, cmd.Action.Args)
 					continue
 				}
-				got, callErr := currentInstance.Invoke(cmd.Action.Field)
-				if callErr != nil || len(got) != 0 {
+				got, callErr := currentInstance.Invoke(cmd.Action.Field, args...)
+				if callErr != nil {
 					counts.Failures++
-					t.Errorf("gc/ref_test.wast:%d %s = %v, %v; want empty return", cmd.Line, cmd.Action.Field, got, callErr)
+					t.Errorf("gc/ref_test.wast:%d %s = %v, %v", cmd.Line, cmd.Action.Field, got, callErr)
+					continue
+				}
+				if cmd.Type == "action" {
+					if len(got) != 0 {
+						counts.Failures++
+						t.Errorf("gc/ref_test.wast:%d %s = %v, want empty action return", cmd.Line, cmd.Action.Field, got)
+					}
+					continue
+				}
+				if cmd.Type != "assert_return" || len(got) != len(cmd.Expected) {
+					counts.Failures++
+					t.Errorf("gc/ref_test.wast:%d executable action has unsupported shape %s got=%v expected=%v", cmd.Line, cmd.Type, got, cmd.Expected)
+					continue
+				}
+				matched := true
+				for i := range got {
+					if !stagedSpecMatch(got[i], cmd.Expected[i]) {
+						matched = false
+						break
+					}
+				}
+				if !matched {
+					counts.Failures++
+					t.Errorf("gc/ref_test.wast:%d %s = %v, want %v", cmd.Line, cmd.Action.Field, got, cmd.Expected)
 					continue
 				}
 				counts.AssertionsPassed++
@@ -357,7 +410,7 @@ func TestStagedOfficialGCRefTestAccounting(t *testing.T) {
 	var script stagedSpecScript
 	tmp := stagedOfficialTypedReferenceJSON(t, "gc/ref_test", &script)
 	counts, leaders, gateCounts := replayStagedGCRefTestScript(t, tmp, script)
-	if counts.Commands != 73 || counts.ModulesPassed != 1 || counts.AssertionsPassed != 2 || counts.ExpectedFeatureRejects != 1 || counts.BlockedCommands != 67 || counts.ExpectedInvalid != 0 || counts.ExpectedMalformed != 0 || counts.Failures != 0 || counts.UnexpectedCompileRejects != 0 || counts.UnexpectedLinkRejects != 0 {
+	if counts.Commands != 73 || counts.ModulesPassed != 2 || counts.AssertionsPassed != 68 || counts.ExpectedFeatureRejects != 0 || counts.BlockedCommands != 0 || counts.ExpectedInvalid != 0 || counts.ExpectedMalformed != 0 || counts.Failures != 0 || counts.UnexpectedCompileRejects != 0 || counts.UnexpectedLinkRejects != 0 {
 		t.Fatalf("staged gc/ref_test accounting has hidden or changed gaps: %+v", counts)
 	}
 	gateNames := make([]string, 0, len(gateCounts))
