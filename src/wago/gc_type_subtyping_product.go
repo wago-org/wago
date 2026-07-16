@@ -33,6 +33,8 @@ const (
 	stagedGCTypeSubtypingStructProjectionLinkConsumer
 	stagedGCTypeSubtypingStructMismatchLinkProvider
 	stagedGCTypeSubtypingStructMismatchLinkConsumer
+	stagedGCTypeSubtypingIndependentStructLinkProvider
+	stagedGCTypeSubtypingIndependentStructLinkConsumer
 )
 
 func (p stagedGCTypeSubtypingProduct) usesRefTest() bool {
