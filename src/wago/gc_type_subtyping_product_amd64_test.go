@@ -42,12 +42,33 @@ func BenchmarkStagedGCTypeSubtypingRuntimeCallCast(b *testing.B) {
 	}
 }
 
+func BenchmarkStagedGCTypeSubtypingRuntimeFinalityRecovery(b *testing.B) {
+	pin := stagedGCTypeSubtypingProductPins[24]
+	c, err := compileStagedGCTypeSubtypingProductForTest(stagedGCTypeSubtypingProductData(b, pin))
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer c.Close()
+	in, err := instantiateCore(c, InstantiateOptions{})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer in.Close()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := in.invokeLocal(0, nil); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
 func TestStagedGCTypeSubtypingProductsCompile(t *testing.T) {
 	if got := unsafe.Sizeof(compiledCodeCache{}); got != 64 {
 		t.Fatalf("compiledCodeCache size = %d, want 64 bytes", got)
 	}
-	wantCodeBytes := []int{0, 0, 0, 0, 0, 0, 632, 592, 77, 77, 77, 77, 253, 253, 178, 178, 178, 178, 215, 448, 560, 178, 178, 7834}
-	wantCodecBytes := []int{349, 385, 347, 219, 238, 386, 1019, 1128, 499, 657, 420, 755, 598, 852, 648, 806, 648, 569, 923, 786, 1096, 470, 550, 8330}
+	wantCodeBytes := []int{0, 0, 0, 0, 0, 0, 632, 592, 77, 77, 77, 77, 253, 253, 178, 178, 178, 178, 215, 448, 560, 178, 178, 7834, 1257}
+	wantCodecBytes := []int{349, 385, 347, 219, 238, 386, 1019, 1128, 499, 657, 420, 755, 598, 852, 648, 806, 648, 569, 923, 786, 1096, 470, 550, 8330, 1556}
 	for i, pin := range stagedGCTypeSubtypingProductPins {
 		t.Run(pin.Filename, func(t *testing.T) {
 			data := stagedGCTypeSubtypingProductData(t, pin)
@@ -92,7 +113,7 @@ func TestStagedGCTypeSubtypingProductsCompile(t *testing.T) {
 					t.Fatalf("steady run = %v, %v, allocs=%v; want %v, nil, 0", got, invokeErr, allocs, pin.Results)
 				}
 			}
-			if pin.Class.usesRuntimeFunctionIdentity() {
+			if pin.Class == stagedGCTypeSubtypingRuntimeCallCast {
 				if got, want := len(in.funcRefDescs), 11*coreruntime.FuncRefDescBytes; got != want {
 					t.Fatalf("runtime descriptor arena = %d bytes, want %d", got, want)
 				}
@@ -118,6 +139,34 @@ func TestStagedGCTypeSubtypingProductsCompile(t *testing.T) {
 				})
 				if invokeErr != nil || allocs != 0 {
 					t.Fatalf("steady run = %v, allocs=%v; want nil, 0", invokeErr, allocs)
+				}
+			}
+			if pin.Class == stagedGCTypeSubtypingRuntimeFinalityCallCast {
+				if got, want := len(in.funcRefDescs), 7*coreruntime.FuncRefDescBytes; got != want {
+					t.Fatalf("runtime finality descriptor arena = %d bytes, want %d", got, want)
+				}
+				if got, want := in.tableDescLen, 8+2*coreruntime.TableEntryBytes; got != want {
+					t.Fatalf("runtime finality table descriptor = %d bytes, want %d", got, want)
+				}
+				for i, name := range []string{"fail1", "fail2", "fail3", "fail4"} {
+					_, err := in.Invoke(name)
+					want := "wrong signature"
+					if i >= 2 {
+						want = "cast failure"
+					}
+					if err == nil || !strings.Contains(err.Error(), want) {
+						t.Fatalf("%s = %v, want %s trap", name, err, want)
+					}
+				}
+				if got, err := in.invokeLocal(0, nil); err != nil || len(got) != 0 {
+					t.Fatalf("post-trap local recovery = %v, %v; want empty success", got, err)
+				}
+				var invokeErr error
+				allocs := testing.AllocsPerRun(1000, func() {
+					_, invokeErr = in.invokeLocal(0, nil)
+				})
+				if invokeErr != nil || allocs != 0 {
+					t.Fatalf("steady finality recovery = %v, allocs=%v; want nil, 0", invokeErr, allocs)
 				}
 			}
 			if pin.Class == stagedGCTypeSubtypingRefFuncGlobals {

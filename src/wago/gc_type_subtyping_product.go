@@ -29,7 +29,7 @@ func (p stagedGCTypeSubtypingProduct) usesRefTest() bool {
 }
 
 func (p stagedGCTypeSubtypingProduct) usesRuntimeFunctionIdentity() bool {
-	return p == stagedGCTypeSubtypingRuntimeCallCast
+	return p == stagedGCTypeSubtypingRuntimeCallCast || p == stagedGCTypeSubtypingRuntimeFinalityCallCast
 }
 
 func stagedGCTypeSubtypingProductPinned(data []byte, product stagedGCTypeSubtypingProduct) bool {
@@ -170,6 +170,9 @@ func stagedGCTypeSubtypingRuntimeCallCastShape(m *wasm.Module) (stagedGCTypeSubt
 	if len(m.Imports) != 0 || len(m.Globals) != 0 || m.TableCount() != 1 || m.MemCount() != 0 || len(m.Data) != 0 || m.TagCount() != 0 || m.Start != nil {
 		return 0, fmt.Errorf("runtime call/cast product requires one local table and rejects imports, globals, memories, data, tags, and start")
 	}
+	if len(m.Types) == 2 && len(m.FuncTypes) == 6 && len(m.Code) == 6 && len(m.Elements) == 1 && len(m.Exports) == 4 {
+		return stagedGCTypeSubtypingRuntimeFinalityCallCastShape(m)
+	}
 	if len(m.Types) != 4 || len(m.FuncTypes) != 10 || len(m.Code) != 10 || len(m.Elements) != 1 || len(m.Exports) != 7 {
 		return 0, fmt.Errorf("runtime call/cast product requires 4 type groups, 10 functions, 1 element, and 7 exports")
 	}
@@ -234,6 +237,71 @@ func stagedGCTypeSubtypingRuntimeCallCastShape(m *wasm.Module) (stagedGCTypeSubt
 		}
 	}
 	return stagedGCTypeSubtypingRuntimeCallCast, nil
+}
+
+func stagedGCTypeSubtypingRuntimeFinalityCallCastShape(m *wasm.Module) (stagedGCTypeSubtypingProduct, error) {
+	open := &m.Types[0]
+	if len(open.SubTypes) != 1 {
+		return 0, fmt.Errorf("runtime finality call/cast open group must contain one member")
+	}
+	openType := &open.SubTypes[0]
+	if openType.Final || !openType.HasPrefix || len(openType.Supers) != 0 || openType.Comp.Kind != wasm.CompFunc || len(openType.Comp.Params) != 0 || len(openType.Comp.Results) != 0 {
+		return 0, fmt.Errorf("runtime finality call/cast type 0 must be open () -> ()")
+	}
+	final := &m.Types[1]
+	if len(final.SubTypes) != 1 {
+		return 0, fmt.Errorf("runtime finality call/cast final group must contain one member")
+	}
+	finalType := &final.SubTypes[0]
+	if !finalType.Final || finalType.HasPrefix || len(finalType.Supers) != 0 || finalType.Comp.Kind != wasm.CompFunc || len(finalType.Comp.Params) != 0 || len(finalType.Comp.Results) != 0 {
+		return 0, fmt.Errorf("runtime finality call/cast type 1 must be final () -> ()")
+	}
+	for source := uint32(0); source < 2; source++ {
+		for target := uint32(0); target < 2; target++ {
+			actual := wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: source}), false)
+			required := wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: target}), false)
+			if m.ReferenceTypeSubtype(actual, required) != (source == target) {
+				return 0, fmt.Errorf("runtime finality call/cast relation %d <: %d is not identity-only", source, target)
+			}
+		}
+	}
+	wantTypes := []uint32{0, 1, 1, 1, 1, 1}
+	for i, want := range wantTypes {
+		if m.FuncTypes[i].Rec || m.FuncTypes[i].Index != want || len(m.Code[i].Locals.Runs) != 0 {
+			return 0, fmt.Errorf("runtime finality call/cast function %d has unexpected type or locals", i)
+		}
+	}
+	t := m.Tables[0].Type
+	if !wasm.EqualValType(wasm.RefVal(t.Ref), wasm.FuncRef) || t.Limits.Addr64 || t.Limits.Min != 2 || t.Limits.Max == nil || *t.Limits.Max != 2 || m.Tables[0].Init != nil {
+		return 0, fmt.Errorf("runtime finality call/cast table must be exact table 2 2 funcref")
+	}
+	e := &m.Elements[0]
+	if e.Mode.Kind != wasm.ElemActive || e.Mode.Table != 0 || !isExactI32ConstZeroBody(e.Mode.Offset.BodyBytes) || e.Kind.Kind != wasm.ElemFuncExprs || len(e.Kind.Exprs) != 2 {
+		return 0, fmt.Errorf("runtime finality call/cast element must initialize two local descriptors at table offset zero")
+	}
+	for i := range e.Kind.Exprs {
+		if !isExactRefFuncBody(e.Kind.Exprs[i].BodyBytes, uint32(i)) {
+			return 0, fmt.Errorf("runtime finality call/cast element %d must name local function %d", i, i)
+		}
+	}
+	wantExports := []string{"fail1", "fail2", "fail3", "fail4"}
+	for i, want := range wantExports {
+		ex := m.Exports[i]
+		if ex.Name != want || ex.Index.Kind != wasm.ExternFunc || ex.Index.Index != uint32(i+2) {
+			return 0, fmt.Errorf("runtime finality call/cast export %d is outside the exact action surface", i)
+		}
+	}
+	wantBodies := []string{
+		"0b", "0b",
+		"024041011100000b0b", "024041001101000b0b",
+		"41012500fb16001a0b", "41002500fb16011a0b",
+	}
+	for i, want := range wantBodies {
+		if fmt.Sprintf("%x", m.Code[i].BodyBytes) != want {
+			return 0, fmt.Errorf("runtime finality call/cast function %d body is outside the exact product", i)
+		}
+	}
+	return stagedGCTypeSubtypingRuntimeFinalityCallCast, nil
 }
 
 func stagedGCTypeSubtypingRefTestShape(m *wasm.Module) (stagedGCTypeSubtypingProduct, error) {
