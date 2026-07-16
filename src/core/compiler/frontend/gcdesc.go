@@ -27,7 +27,7 @@ func LowerGCTypeDescs(types []wasm.RecType) ([]gc.TypeDesc, error) {
 	for i, ft := range flat {
 		st := ft.SubType
 		id := gc.TypeID(i)
-		resolver := gcTypeResolver{total: len(flat), recBase: ft.RecBase, recLen: ft.RecLen}
+		resolver := gcTypeResolver{total: len(flat), recBase: ft.RecBase, recLen: ft.RecLen, flat: flat}
 		var d gc.TypeDesc
 		var err error
 		switch st.Comp.Kind {
@@ -88,6 +88,7 @@ type gcTypeResolver struct {
 	total   int
 	recBase int
 	recLen  int
+	flat    []flattenedGCType
 }
 
 func (r gcTypeResolver) resolve(idx wasm.TypeIdx) (uint32, error) {
@@ -146,17 +147,37 @@ func lowerGCValType(v wasm.ValType, resolver gcTypeResolver) (gc.StorageKind, er
 	case wasm.ValVec:
 		return 0, fmt.Errorf("unsupported v128 storage")
 	case wasm.ValRef:
+		opaque := gc.StorageKind(0)
 		if v.Ref.Heap.Kind == wasm.HeapTypeIndex {
-			if _, err := resolver.resolve(v.Ref.Heap.Type); err != nil {
+			idx, err := resolver.resolve(v.Ref.Heap.Type)
+			if err != nil {
 				return 0, fmt.Errorf("invalid referenced type index %d", v.Ref.Heap.Type.Index)
 			}
+			if int(idx) < len(resolver.flat) && resolver.flat[idx].Comp.Kind == wasm.CompFunc {
+				opaque = gc.StorageFuncRef
+			}
+		} else {
+			switch v.Ref.Heap.Abs {
+			case wasm.HeapFunc, wasm.HeapNoFunc:
+				opaque = gc.StorageFuncRef
+			case wasm.HeapExtern, wasm.HeapNoExtern:
+				opaque = gc.StorageExternRef
+			}
+		}
+		if opaque != 0 {
+			if v.Ref.Nullable {
+				if opaque == gc.StorageFuncRef {
+					return gc.StorageFuncRefNull, nil
+				}
+				return gc.StorageExternRefNull, nil
+			}
+			return opaque, nil
 		}
 		if v.Ref.Nullable {
 			return gc.StorageRefNull, nil
 		}
-		// All Wasm ref fields use one compact Ref slot. Even i31-only refs are
-		// safe to scan because the collector ignores i31 immediates and nulls;
-		// eq/any/concrete refs need scanning because they may contain heap refs.
+		// GC-category references use compact collector handles. i31 immediates and
+		// null are ignored by scanning; struct/array/eq/any refs are traced.
 		return gc.StorageRef, nil
 	case wasm.ValBot:
 		return 0, fmt.Errorf("unsupported bottom storage")

@@ -17,6 +17,43 @@ func TestProfileNormalization(t *testing.T) {
 	if _, err := NewCollector(Config{Profile: ProfileThroughput, Allocator: AllocatorTinyFixedBlock, Runtime: RuntimeGenerational}, testTypes(t)); err == nil {
 		t.Fatal("expected invalid throughput allocator/runtime combination rejection")
 	}
+	if _, err := NewCollector(Config{Profile: ProfileTiny, DisableCollection: true}, testTypes(t)); err == nil {
+		t.Fatal("expected collection-disabled tiny profile rejection")
+	}
+}
+
+func TestCollectionDisabledHeapIsBoundedAndStable(t *testing.T) {
+	c := newTestCollector(t, Config{
+		DisableCollection:    true,
+		ThroughputHeapBytes:  4096,
+		ThroughputPageBytes:  4096,
+		ThroughputClassLimit: 4096,
+	})
+	first, err := c.NewStructDefault(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.StructSet(first, 0, I32Value(77)); err != nil {
+		t.Fatal(err)
+	}
+	allocations := 1
+	for {
+		_, err = c.NewStructDefault(0)
+		if err != nil {
+			break
+		}
+		allocations++
+	}
+	if allocations == 0 || err == nil {
+		t.Fatalf("collection-disabled allocations=%d err=%v", allocations, err)
+	}
+	if got, getErr := c.StructGet(first, 0); getErr != nil || got.I32() != 77 {
+		t.Fatalf("first object after exhaustion = %v, %v; want 77, nil", got, getErr)
+	}
+	stats := c.Stats()
+	if stats.MinorCollections != 0 || stats.FullCollections != 0 {
+		t.Fatalf("collection-disabled collector ran minor/full collections %d/%d", stats.MinorCollections, stats.FullCollections)
+	}
 }
 
 func TestThroughputOldSpaceReuseAfterFullGC(t *testing.T) {

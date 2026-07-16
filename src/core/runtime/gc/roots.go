@@ -43,6 +43,57 @@ type extraRootSet struct {
 	extra RootSlot
 }
 
+type combinedRootSet struct {
+	first  RootSet
+	second RootSet
+}
+
+type valueRootSet struct {
+	values []Value
+	fields []FieldDesc
+	all    bool
+}
+
+type valueRootSlot struct {
+	values []Value
+	idx    int
+}
+
+func (s valueRootSlot) GetRef() Ref  { return s.values[s.idx].Ref }
+func (s valueRootSlot) SetRef(r Ref) { s.values[s.idx].Ref = r }
+
+func (s valueRootSet) RangeRoots(fn func(RootSlot) bool) {
+	for i := range s.values {
+		if !s.all && (i >= len(s.fields) || !isRefKind(s.fields[i].Kind)) {
+			continue
+		}
+		if !fn(valueRootSlot{values: s.values, idx: i}) {
+			return
+		}
+	}
+}
+
+func combineRootSets(first, second RootSet) RootSet {
+	if first == nil {
+		return second
+	}
+	if second == nil {
+		return first
+	}
+	return combinedRootSet{first: first, second: second}
+}
+
+func (s combinedRootSet) RangeRoots(fn func(RootSlot) bool) {
+	keepGoing := true
+	s.first.RangeRoots(func(slot RootSlot) bool {
+		keepGoing = fn(slot)
+		return keepGoing
+	})
+	if keepGoing {
+		s.second.RangeRoots(fn)
+	}
+}
+
 func (s extraRootSet) RangeRoots(fn func(RootSlot) bool) {
 	keepGoing := true
 	if s.roots != nil {

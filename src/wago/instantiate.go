@@ -170,7 +170,15 @@ func (b *instanceBuilder) prepareCollector() error {
 	if !gc.HasHeapObjectTypes(b.c.GCTypeDescs) || b.c.collectorFreeStructuralMetadata() || b.c.stagedGCTypeSubtypingProduct() != 0 || b.c.collectorFreeGCArrayMetadata() {
 		return nil
 	}
-	collector, err := gc.NewCollector(b.opts.GC, b.c.GCTypeDescs)
+	gcConfig := b.opts.GC
+	if b.c.usesGenericGCExecution() {
+		// General generated WasmGC functions do not yet publish native frame
+		// roots at every helper safepoint. Keep execution sound and bounded by
+		// allocating from the fixed throughput heap without collection.
+		gcConfig.Profile = gc.ProfileThroughput
+		gcConfig.DisableCollection = true
+	}
+	collector, err := gc.NewCollector(gcConfig, b.c.GCTypeDescs)
 	if err != nil {
 		return err
 	}
@@ -725,7 +733,13 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 					vec = readGlobalObjectV128(globalCells[g.InitGlobal])
 				}
 				if len(g.InitExpr) != 0 {
-					value, err := evalCompiledScalarConstExpr(g.InitExpr, g.Type, globalCells, c.Globals, i)
+					var value uint64
+					var err error
+					if g.Type == ValAnyRef || g.Type == ValI31Ref {
+						value, err = evalCompiledGCConstExpr(g.InitExpr, b.collector, c, globalCells, i, funcRefDescs)
+					} else {
+						value, err = evalCompiledScalarConstExpr(g.InitExpr, g.Type, globalCells, c.Globals, i)
+					}
 					if err != nil {
 						return nil, fmt.Errorf("global %d extended initializer: %w", i, err)
 					}

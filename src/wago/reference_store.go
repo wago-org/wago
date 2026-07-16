@@ -62,6 +62,10 @@ type gcPublicState struct {
 	token       uint64
 	slot        uint32
 	slotCreated bool
+	// values is the bounded synchronous-helper constructor scratch. Collector
+	// access is serialized by mu, so struct.new and array.new_fixed reuse it
+	// without per-allocation Go heap traffic.
+	values [63]gc.Value
 }
 
 type externrefSlot struct {

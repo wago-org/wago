@@ -13,6 +13,21 @@ func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, err
 	if err := c.errIfClosed(); err != nil {
 		return Null(), err
 	}
+	if c.cfg.DisableCollection {
+		e, err := c.throughput.alloc(size, spaceLarge)
+		if err != nil {
+			return Null(), fmt.Errorf("gc: collection-disabled heap exhausted: %w", err)
+		}
+		h := c.newHandle(e)
+		r := makeObjRef(h)
+		flags := uint32(FlagLarge)
+		if !d.HasRefs {
+			flags |= FlagPointerFree
+		}
+		c.writeHeader(r, ObjHeader{TypeID: uint32(d.ID), Size: size, Aux: aux, Flags: flags})
+		c.stats.Allocations++
+		return r, nil
+	}
 	if c.cfg.CollectEveryAlloc {
 		if roots == nil {
 			return Null(), errors.New("gc: allocation-triggered collection requires roots")

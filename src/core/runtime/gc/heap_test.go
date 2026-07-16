@@ -109,6 +109,80 @@ func TestArrayInitializerRefSurvivesAllocationCollection(t *testing.T) {
 	}
 }
 
+func TestAtomicConstructorRefsSurviveAllocationCollection(t *testing.T) {
+	c := newTestCollector(t, Config{})
+	left, err := c.NewStructDefault(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	right, err := c.NewStructDefault(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.StructSet(left, 0, I32Value(11)); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.StructSet(right, 0, I32Value(22)); err != nil {
+		t.Fatal(err)
+	}
+	c.cfg.CollectEveryAlloc = true
+	values := []Value{RefValue(left), RefValue(right)}
+	pair, err := c.NewStructWithRoots(1, values, Slots{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, want := range []int32{11, 22} {
+		stored, err := c.StructGet(pair, uint32(i))
+		if err != nil {
+			t.Fatal(err)
+		}
+		field, err := c.StructGet(stored.Ref, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if field.I32() != want {
+			t.Fatalf("struct field %d child = %d, want %d", i, field.I32(), want)
+		}
+	}
+
+	pairRoot := Root(pair)
+	first, err := c.NewStructDefaultWithRoots(0, Slots{&pairRoot})
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstRoot := Root(first)
+	second, err := c.NewStructDefaultWithRoots(0, Slots{&pairRoot, &firstRoot})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pair, first = Ref(pairRoot), Ref(firstRoot)
+	if err := c.StructSet(first, 0, I32Value(33)); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.StructSet(second, 0, I32Value(44)); err != nil {
+		t.Fatal(err)
+	}
+	arrayValues := []Value{RefValue(first), RefValue(second)}
+	pairRoot = Root(pair)
+	array, err := c.NewArrayFixedWithRoots(3, arrayValues, Slots{&pairRoot})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, want := range []int32{33, 44} {
+		stored, err := c.ArrayGet(array, uint32(i))
+		if err != nil {
+			t.Fatal(err)
+		}
+		field, err := c.StructGet(stored.Ref, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if field.I32() != want {
+			t.Fatalf("array element %d child = %d, want %d", i, field.I32(), want)
+		}
+	}
+}
+
 func TestFullCollectionRootsChainsAndCycles(t *testing.T) {
 	c := newTestCollector(t, Config{PoisonFreed: true})
 	a, _ := c.NewStructDefault(1)

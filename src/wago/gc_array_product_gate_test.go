@@ -54,7 +54,9 @@ func TestStagedGCArrayProductPlatformBoundsAndIdentityGate(t *testing.T) {
 			break
 		}
 	}
-	if _, err := compileWithFrontendFeatures(cfg, unknown, features); err == nil {
-		t.Fatal("unsupported widened array opcode shape unexpectedly compiled")
+	widened, err := compileWithFrontendFeatures(cfg, unknown, features)
+	if err != nil {
+		t.Fatalf("shape-independent array compile: %v", err)
 	}
+	_ = widened.Close()
 }

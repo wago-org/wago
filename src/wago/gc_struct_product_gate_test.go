@@ -70,14 +70,18 @@ func TestStagedGCStructProductPlatformAndBoundsGate(t *testing.T) {
 			break
 		}
 	}
-	if _, err := compileWithFrontendFeatures(cfg, unknown, features); err == nil {
-		t.Fatal("unsupported widened struct opcode shape unexpectedly compiled")
+	widened, err := compileWithFrontendFeatures(cfg, unknown, features)
+	if err != nil {
+		t.Fatalf("shape-independent struct compile: %v", err)
 	}
+	_ = widened.Close()
 	refField, err := hex.DecodeString(stagedGCStructRefFieldHex)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := compileWithFrontendFeatures(cfg, refField, features); err == nil {
-		t.Fatal("unsupported reference-field product unexpectedly compiled without barrier helpers")
+	referenceCompiled, err := compileWithFrontendFeatures(cfg, refField, features)
+	if err != nil {
+		t.Fatalf("reference-field struct compile: %v", err)
 	}
+	_ = referenceCompiled.Close()
 }

@@ -87,6 +87,14 @@ func (c *Compiled) stagedGCArrayProduct() stagedGCArrayProduct {
 	return c.codeCache.gcArrayProduct
 }
 
+func (c *Compiled) usesGenericGCExecution() bool {
+	if c == nil {
+		return false
+	}
+	arrayProduct := c.stagedGCArrayProduct()
+	return c.stagedGCStructProduct() == stagedGCStructGeneric || arrayProduct == stagedGCArrayProductNewData || arrayProduct == stagedGCArrayProductNewElem || arrayProduct == stagedGCArrayProductGeneric
+}
+
 func (c *Compiled) stagedGCI31Product() stagedGCI31Product {
 	if c == nil || c.codeCache == nil {
 		return 0

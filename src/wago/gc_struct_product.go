@@ -38,6 +38,7 @@ const (
 	stagedGCStructBrOnCastFailAbstract
 	stagedGCStructBrOnCastFailConcrete
 	stagedGCStructBrOnCastFailNullability
+	stagedGCStructGeneric
 )
 
 type stagedGCStructOpcodeCount struct {
@@ -66,6 +67,8 @@ var stagedGCStructLeaderPins = []stagedGCStructLeaderPin{
 
 func (p stagedGCStructProduct) String() string {
 	switch p {
+	case stagedGCStructGeneric:
+		return "generic"
 	case stagedGCStructDeclarations:
 		return "declarations"
 	case stagedGCStructBindings:
@@ -115,6 +118,8 @@ func (p stagedGCStructProduct) String() string {
 
 func (p stagedGCStructProduct) gateReason() string {
 	switch p {
+	case stagedGCStructGeneric:
+		return "general validated GC struct helpers"
 	case stagedGCStructDeclarations:
 		return "declaration-only struct type metadata"
 	case stagedGCStructBindings:
@@ -195,6 +200,49 @@ const (
 // whose runtime/helper obligations are implemented. The synthetic numeric-local
 // product has one mutable i32 field, one allocation per invocation, no GC-valued
 // public boundary or global/table state, and returns only numeric values.
+func moduleUsesGenericGCStructHelpers(m *wasm.Module) bool {
+	if m == nil {
+		return false
+	}
+	hasStructType := false
+	for i := range m.Types {
+		for j := range m.Types[i].SubTypes {
+			if m.Types[i].SubTypes[j].Comp.Kind == wasm.CompStruct {
+				hasStructType = true
+				break
+			}
+		}
+		if hasStructType {
+			break
+		}
+	}
+	for i := range m.Code {
+		r := wasm.NewReader(m.Code[i].BodyBytes)
+		for r.HasNext() {
+			op, err := r.Byte()
+			if err != nil {
+				return false
+			}
+			imm, err := wasm.ClassifyInstructionImmediate(r, op)
+			if err != nil {
+				return false
+			}
+			switch imm.Kind {
+			case wasm.InstrStructNew, wasm.InstrStructNewDefault,
+				wasm.InstrStructGet, wasm.InstrStructGetS, wasm.InstrStructGetU, wasm.InstrStructSet:
+				return true
+			case wasm.InstrRefTest, wasm.InstrRefCast,
+				wasm.InstrBrOnCast, wasm.InstrBrOnCastFail,
+				wasm.InstrAnyConvertExtern, wasm.InstrExternConvertAny:
+				if hasStructType {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
 func stagedGCStructExecutionProduct(data []byte) (stagedGCStructProduct, bool) {
 	digest := fmt.Sprintf("%x", sha256.Sum256(data))
 	if (digest == stagedGCStructNumericLocalSHA256 && len(data) == 65) ||
@@ -258,7 +306,7 @@ func stagedGCStructExecutionProduct(data []byte) (stagedGCStructProduct, bool) {
 }
 
 func (p stagedGCStructProduct) requiresHelpers() bool {
-	return p == stagedGCStructNamedGets || p == stagedGCStructNumericLocal || p == stagedGCStructNullDereference || p == stagedGCStructPacked || p == stagedGCStructBasic || p == stagedGCStructRefTestTable || p == stagedGCStructRefTestConcrete || p == stagedGCStructRefTestAbstract || p == stagedGCStructExtern || p == stagedGCStructRefEq || p == stagedGCStructRefCastAbstract || p == stagedGCStructRefCastConcrete || p == stagedGCStructBrOnCastAbstract || p == stagedGCStructBrOnCastConcrete || p == stagedGCStructBrOnCastNullability || p == stagedGCStructBrOnCastFailAbstract || p == stagedGCStructBrOnCastFailConcrete || p == stagedGCStructBrOnCastFailNullability
+	return p == stagedGCStructGeneric || p == stagedGCStructNamedGets || p == stagedGCStructNumericLocal || p == stagedGCStructNullDereference || p == stagedGCStructPacked || p == stagedGCStructBasic || p == stagedGCStructRefTestTable || p == stagedGCStructRefTestConcrete || p == stagedGCStructRefTestAbstract || p == stagedGCStructExtern || p == stagedGCStructRefEq || p == stagedGCStructRefCastAbstract || p == stagedGCStructRefCastConcrete || p == stagedGCStructBrOnCastAbstract || p == stagedGCStructBrOnCastConcrete || p == stagedGCStructBrOnCastNullability || p == stagedGCStructBrOnCastFailAbstract || p == stagedGCStructBrOnCastFailConcrete || p == stagedGCStructBrOnCastFailNullability
 }
 
 func (p stagedGCStructProduct) requiresArrayHelpers() bool {

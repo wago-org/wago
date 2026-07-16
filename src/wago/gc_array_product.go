@@ -28,6 +28,7 @@ const (
 	stagedGCArrayProductInitElem
 	stagedGCArrayProductNewData
 	stagedGCArrayProductNewElem
+	stagedGCArrayProductGeneric
 )
 
 const stagedGCArrayNumericLocalSHA256 = "cfa515e66b094db434e59a3bbd21b66e99f391aaa52614e2fa1a5fec4f0e7b3b"
@@ -62,13 +63,15 @@ func (p stagedGCArrayProduct) String() string {
 		return "new-data"
 	case stagedGCArrayProductNewElem:
 		return "new-elem"
+	case stagedGCArrayProductGeneric:
+		return "generic"
 	default:
 		return "unknown"
 	}
 }
 
 func (p stagedGCArrayProduct) requiresHelpers() bool {
-	return p == stagedGCArrayProductNumericLocal || p == stagedGCArrayProductNumericDefault || p == stagedGCArrayProductNumericFixed || p == stagedGCArrayProductPackedData || p == stagedGCArrayProductReferenceElements || p == stagedGCArrayProductNullDereference || p == stagedGCArrayProductBulkFill || p == stagedGCArrayProductBulkCopy || p == stagedGCArrayProductInitData || p == stagedGCArrayProductInitElem || p == stagedGCArrayProductNewData || p == stagedGCArrayProductNewElem
+	return p == stagedGCArrayProductNumericLocal || p == stagedGCArrayProductNumericDefault || p == stagedGCArrayProductNumericFixed || p == stagedGCArrayProductPackedData || p == stagedGCArrayProductReferenceElements || p == stagedGCArrayProductNullDereference || p == stagedGCArrayProductBulkFill || p == stagedGCArrayProductBulkCopy || p == stagedGCArrayProductInitData || p == stagedGCArrayProductInitElem || p == stagedGCArrayProductNewData || p == stagedGCArrayProductNewElem || p == stagedGCArrayProductGeneric
 }
 
 func (p stagedGCArrayProduct) metadataOnly() bool {
@@ -77,19 +80,11 @@ func (p stagedGCArrayProduct) metadataOnly() bool {
 
 func configureStagedGCArrayTypeDescs(product stagedGCArrayProduct, descs []gc.TypeDesc) error {
 	if product == stagedGCArrayProductNewElem {
-		for typeID := range descs {
-			if descs[typeID].Kind != gc.KindArray || (descs[typeID].Elem != gc.StorageRef && descs[typeID].Elem != gc.StorageRefNull) {
-				continue
-			}
-			old := descs[typeID]
-			d, err := gc.NewArrayDesc(gc.TypeID(typeID), gc.StorageI64)
-			if err != nil {
-				return err
-			}
-			d.Final, d.Super, d.HasSuper = old.Final, old.Super, old.HasSuper
-			descs[typeID] = d
-		}
-		return gc.ValidateTypeDescs(descs)
+		// Preserve the decoded reference storage kind. Compact GC/i31 references
+		// are traced as StorageRef{Null}, while function/extern references use
+		// opaque non-scanned token kinds. Rewriting every reference array to i64
+		// loses both nullability and collector/barrier semantics.
+		return nil
 	}
 	if product != stagedGCArrayProductInitElem {
 		return nil
@@ -111,6 +106,7 @@ func configureStagedGCArrayTypeDescs(product stagedGCArrayProduct, descs []gc.Ty
 
 func stagedGCArrayOpcodeProduct(m *wasm.Module) (stagedGCArrayProduct, bool) {
 	var found stagedGCArrayProduct
+	generic := false
 	for i := range m.Code {
 		r := wasm.NewReader(m.Code[i].BodyBytes)
 		for r.HasNext() {
@@ -128,14 +124,23 @@ func stagedGCArrayOpcodeProduct(m *wasm.Module) (stagedGCArrayProduct, bool) {
 				product = stagedGCArrayProductNewData
 			case wasm.InstrArrayNewElem:
 				product = stagedGCArrayProductNewElem
+			case wasm.InstrArrayNew, wasm.InstrArrayNewDefault, wasm.InstrArrayNewFixed,
+				wasm.InstrArrayGet, wasm.InstrArrayGetS, wasm.InstrArrayGetU,
+				wasm.InstrArraySet, wasm.InstrArrayLen, wasm.InstrArrayFill,
+				wasm.InstrArrayCopy, wasm.InstrArrayInitData, wasm.InstrArrayInitElem:
+				generic = true
+				continue
 			default:
 				continue
 			}
 			if found != 0 && found != product {
-				return 0, false
+				generic = true
 			}
 			found = product
 		}
+	}
+	if generic {
+		return stagedGCArrayProductGeneric, true
 	}
 	return found, found != 0
 }
