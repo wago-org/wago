@@ -15,6 +15,7 @@ const (
 	stagedGCArrayProductBindings
 	stagedGCArrayProductNumericDefault
 	stagedGCArrayProductNumericFixed
+	stagedGCArrayProductPackedData
 	stagedGCArrayProductNullDereference
 	stagedGCArrayProductNumericLocal
 )
@@ -31,6 +32,8 @@ func (p stagedGCArrayProduct) String() string {
 		return "numeric-default"
 	case stagedGCArrayProductNumericFixed:
 		return "numeric-fixed"
+	case stagedGCArrayProductPackedData:
+		return "packed-data"
 	case stagedGCArrayProductNullDereference:
 		return "null-dereference"
 	case stagedGCArrayProductNumericLocal:
@@ -41,7 +44,7 @@ func (p stagedGCArrayProduct) String() string {
 }
 
 func (p stagedGCArrayProduct) requiresHelpers() bool {
-	return p == stagedGCArrayProductNumericLocal || p == stagedGCArrayProductNumericDefault || p == stagedGCArrayProductNumericFixed || p == stagedGCArrayProductNullDereference
+	return p == stagedGCArrayProductNumericLocal || p == stagedGCArrayProductNumericDefault || p == stagedGCArrayProductNumericFixed || p == stagedGCArrayProductPackedData || p == stagedGCArrayProductNullDereference
 }
 
 func (p stagedGCArrayProduct) metadataOnly() bool {
@@ -63,6 +66,8 @@ func stagedGCArrayExecutionProduct(data []byte) (stagedGCArrayProduct, bool) {
 		return stagedGCArrayProductNumericDefault, true
 	case len(data) == 268 && digest == "6ff5956b84b5035df8d3419edc8c67348cffd06d5a4cad86cfba56c415acbf25":
 		return stagedGCArrayProductNumericFixed, true
+	case len(data) == 351 && digest == "7fc4afb6a2e3b2f6b1562b4d0185b6d5d4426c579bcda44cce3b3a1401247bce":
+		return stagedGCArrayProductPackedData, true
 	default:
 		return 0, false
 	}

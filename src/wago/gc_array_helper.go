@@ -1,6 +1,7 @@
 package wago
 
 import (
+	"encoding/binary"
 	"fmt"
 	"strings"
 
@@ -17,6 +18,7 @@ const (
 	gcArrayLen          uint32 = 21
 	gcArrayAllocFixed   uint32 = 22
 	gcArrayAllocUniform uint32 = 23
+	gcArrayAllocData    uint32 = 24
 )
 
 func (in *Instance) dispatchGCHelper(helper uint32, args, results []uint64) {
@@ -63,6 +65,41 @@ func (in *Instance) dispatchGCArrayHelper(helper uint32, args, results []uint64)
 	}
 
 	switch helper {
+	case gcArrayAllocData:
+		if len(args) != 4 || len(results) < 1 {
+			panic(gcStructHelperError{err: fmt.Errorf("gc array alloc-data helper arity = %d/%d, want 4/at-least-1", len(args), len(results))})
+		}
+		source, length := uint32(args[0]), uint32(args[1])
+		typeID, dataIndex := uint32(args[2]), uint32(args[3])
+		if int(typeID) >= len(in.c.GCTypeDescs) || in.c.GCTypeDescs[typeID].Kind != gc.KindArray || in.c.GCTypeDescs[typeID].Elem != gc.StorageI8 {
+			panic(gcStructHelperError{err: fmt.Errorf("gc array.new_data type %d is not an admitted i8 array", typeID)})
+		}
+		if int(dataIndex) >= len(in.c.PassiveData) {
+			panic(gcStructHelperError{err: fmt.Errorf("gc array.new_data segment %d is unavailable", dataIndex)})
+		}
+		descOff := int(dataIndex) * coreruntime.PassiveDataDescBytes
+		if descOff < 0 || descOff+coreruntime.PassiveDataDescBytes > len(in.passiveDataDesc) {
+			panic(gcStructHelperError{err: fmt.Errorf("gc array.new_data segment %d has no instance descriptor", dataIndex)})
+		}
+		segmentLen := binary.LittleEndian.Uint32(in.passiveDataDesc[descOff+8:])
+		end := uint64(source) + uint64(length)
+		if end > uint64(segmentLen) {
+			panic(gcStructHelperTrap{code: coreruntime.TrapLinMemOutOfBounds})
+		}
+		data := in.c.PassiveData[dataIndex].Bytes
+		if end > uint64(len(data)) {
+			panic(gcStructHelperError{err: fmt.Errorf("gc array.new_data segment %d descriptor length %d exceeds retained bytes %d", dataIndex, segmentLen, len(data))})
+		}
+		ref, err := in.gc.NewArrayDefaultWithRoots(gc.TypeID(typeID), length, gc.EmptyRoots{})
+		if err != nil {
+			panic(gcStructHelperError{err: err})
+		}
+		for i := uint32(0); i < length; i++ {
+			if err := in.gc.ArraySet(ref, i, gc.I32Value(int32(data[uint64(source)+uint64(i)]))); err != nil {
+				panic(gcStructHelperError{err: err})
+			}
+		}
+		results[0] = uint64(ref)
 	case gcArrayAllocUniform:
 		if len(args) != 3 || len(results) < 1 {
 			panic(gcStructHelperError{err: fmt.Errorf("gc array alloc-uniform helper arity = %d/%d, want 3/at-least-1", len(args), len(results))})
