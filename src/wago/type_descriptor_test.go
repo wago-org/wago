@@ -86,6 +86,30 @@ func TestTypeDescriptorsCompactEmptyRecursiveGroups(t *testing.T) {
 	}
 }
 
+func TestDefinedTypeEquivalentDistinguishesBoundAndExternalRecursiveReferences(t *testing.T) {
+	provider, err := wasm.DecodeModule(stagedGCTypeSubtypingProductData(t, stagedGCTypeSubtypingStructMismatchLinkProviderPin))
+	if err != nil {
+		t.Fatalf("decode provider: %v", err)
+	}
+	consumer, err := wasm.DecodeModule(stagedGCTypeSubtypingProductData(t, stagedGCTypeSubtypingStructMismatchLinkConsumerPin))
+	if err != nil {
+		t.Fatalf("decode consumer: %v", err)
+	}
+	providerTypes, err := typeDescriptorsFromWasm(provider)
+	if err != nil {
+		t.Fatalf("provider descriptors: %v", err)
+	}
+	consumerTypes, err := typeDescriptorsFromWasm(consumer)
+	if err != nil {
+		t.Fatalf("consumer descriptors: %v", err)
+	}
+	actual := ReferenceTypeDescriptor{Heap: HeapTypeDescriptor{Defined: true, TypeIndex: 4}}
+	required := ReferenceTypeDescriptor{Heap: HeapTypeDescriptor{Defined: true, TypeIndex: 2}}
+	if referenceTypeSubtype(actual, providerTypes, required, consumerTypes) {
+		t.Fatal("external first-group reference unexpectedly matched the consumer's bound self-reference")
+	}
+}
+
 func TestTypeDescriptorsRejectMalformedRecursiveIndex(t *testing.T) {
 	m := &wasm.Module{Types: []wasm.RecType{{SubTypes: []wasm.SubType{{
 		Comp: wasm.CompType{Kind: wasm.CompFunc, Params: []wasm.ValType{
