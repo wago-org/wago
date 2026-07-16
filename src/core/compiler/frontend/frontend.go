@@ -1862,7 +1862,7 @@ func (p supportPass) supportedNullReference(rt wasm.RefType) bool {
 		return false
 	}
 	switch rt.Heap.Abs {
-	case wasm.HeapAny, wasm.HeapExn:
+	case wasm.HeapAny, wasm.HeapNone, wasm.HeapExn, wasm.HeapNoExn, wasm.HeapNoFunc, wasm.HeapNoExtern:
 		return true
 	default:
 		return false
@@ -1870,7 +1870,7 @@ func (p supportPass) supportedNullReference(rt wasm.RefType) bool {
 }
 
 func (p supportPass) supportedNullReferenceHeap(heap int64) bool {
-	return p.feat.NullReferenceProducts && (heap == -18 || heap == -23) // any / exn
+	return p.feat.NullReferenceProducts && (heap == -18 || heap == -15 || heap == -23 || heap == -12 || heap == -13 || heap == -14) // any / none / exn / noexn / nofunc / noextern
 }
 
 func (p supportPass) valType(v wasm.ValType, context string) error {

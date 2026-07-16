@@ -96,7 +96,7 @@ func (t ValueTypeDescriptor) ABIType(types []DefinedTypeDescriptor) (ValType, bo
 			return ValExternRef, true
 		case AbstractHeapExn, AbstractHeapNoExn:
 			return ValExnRef, true
-		case AbstractHeapAny:
+		case AbstractHeapAny, AbstractHeapNone:
 			return ValAnyRef, true
 		default:
 			return 0, false
@@ -378,7 +378,18 @@ func referenceTypeSubtype(actual ReferenceTypeDescriptor, actualTypes []DefinedT
 		return abstractHeapSubtype(family, required.Heap.Abstract)
 	}
 	if required.Heap.Defined {
-		return false
+		if int(required.Heap.TypeIndex) >= len(requiredTypes) {
+			return false
+		}
+		switch actual.Heap.Abstract {
+		case AbstractHeapNoFunc:
+			return requiredTypes[required.Heap.TypeIndex].Kind == CompositeTypeFunction
+		case AbstractHeapNone:
+			kind := requiredTypes[required.Heap.TypeIndex].Kind
+			return kind == CompositeTypeStruct || kind == CompositeTypeArray
+		default:
+			return false
+		}
 	}
 	return abstractHeapSubtype(actual.Heap.Abstract, required.Heap.Abstract)
 }

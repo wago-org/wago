@@ -687,14 +687,21 @@ type stagedNullReferenceProduct uint8
 
 const (
 	stagedNullReferenceProductFirst stagedNullReferenceProduct = iota + 1
+	stagedNullReferenceProductBottomGlobals
 )
 
 func stagedNullReferenceProductShape(m *wasm.Module) (stagedNullReferenceProduct, error) {
 	if m == nil || len(m.Imports) != 0 || m.Start != nil || m.TagCount() != 0 || m.MemCount() != 0 || m.TableCount() != 0 || len(m.Elements) != 0 || len(m.Data) != 0 {
 		return 0, fmt.Errorf("null-reference product requires only local functions and immutable local globals")
 	}
+	if len(m.Types) == 10 && m.FuncCount() == 9 && len(m.Code) == 9 && len(m.Globals) == 18 && len(m.Exports) == 9 {
+		if err := stagedBottomNullReferenceProductShape(m); err != nil {
+			return 0, err
+		}
+		return stagedNullReferenceProductBottomGlobals, nil
+	}
 	if len(m.Types) != 6 || m.FuncCount() != 5 || len(m.Code) != 5 || len(m.Globals) != 5 || len(m.Exports) != 5 {
-		return 0, fmt.Errorf("first null-reference product requires 6 types, 5 functions, 5 globals, and 5 function exports")
+		return 0, fmt.Errorf("null-reference product is not one of the two exact pinned module shapes")
 	}
 	base, ok := m.ResolvedTypeFunc(0)
 	if !ok || len(base.Params) != 0 || len(base.Results) != 0 {
@@ -731,6 +738,50 @@ func stagedNullReferenceProductShape(m *wasm.Module) (stagedNullReferenceProduct
 	return stagedNullReferenceProductFirst, nil
 }
 
+func stagedBottomNullReferenceProductShape(m *wasm.Module) error {
+	base, ok := m.ResolvedTypeFunc(0)
+	if !ok || len(base.Params) != 0 || len(base.Results) != 0 {
+		return fmt.Errorf("bottom-global null-reference product type 0 must be () -> ()")
+	}
+	anyref := wasm.RefVal(wasm.AbsRef(wasm.HeapAny))
+	nullref := wasm.RefVal(wasm.AbsRef(wasm.HeapNone))
+	exnref := wasm.RefVal(wasm.AbsRef(wasm.HeapExn))
+	nullexnref := wasm.RefVal(wasm.AbsRef(wasm.HeapNoExn))
+	nullfuncref := wasm.RefVal(wasm.AbsRef(wasm.HeapNoFunc))
+	nullexternref := wasm.RefVal(wasm.AbsRef(wasm.HeapNoExtern))
+	indexed := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: 0}), false))
+	results := []wasm.ValType{anyref, nullref, wasm.FuncRef, nullfuncref, exnref, nullexnref, wasm.ExternRef, nullexternref, indexed}
+	globalGets := []uint32{0, 0, 1, 1, 2, 2, 3, 3, 1}
+	exports := []string{"anyref", "nullref", "funcref", "nullfuncref", "exnref", "nullexnref", "externref", "nullexternref", "ref"}
+	for i := range results {
+		ft, found := m.FuncSignature(uint32(i))
+		if !found || len(ft.Params) != 0 || len(ft.Results) != 1 || !wasm.EqualValType(ft.Results[0], results[i]) {
+			return fmt.Errorf("bottom-global null-reference product function %d has an unexpected signature", i)
+		}
+		if len(m.Code[i].Locals.Runs) != 0 || !isExactGlobalGetBody(m.Code[i].BodyBytes, globalGets[i]) {
+			return fmt.Errorf("bottom-global null-reference product function %d must return one exact immutable global", i)
+		}
+	}
+	globalTypes := []wasm.ValType{
+		nullref, nullfuncref, nullexnref, nullexternref,
+		anyref, anyref, wasm.FuncRef, wasm.FuncRef, exnref, exnref, wasm.ExternRef, wasm.ExternRef,
+		nullref, nullfuncref, nullexnref, nullexternref, indexed, indexed,
+	}
+	globalHeaps := []int64{-15, -13, -12, -14, -18, -15, -16, -13, -23, -12, -17, -14, -15, -13, -12, -14, 0, -13}
+	for i := range globalTypes {
+		g := &m.Globals[i]
+		if g.Type.Mutable || !wasm.EqualValType(g.Type.Type, globalTypes[i]) || !isExactRefNullBody(g.Init.BodyBytes, globalHeaps[i]) {
+			return fmt.Errorf("bottom-global null-reference product global %d must be an immutable exact null", i)
+		}
+	}
+	for i, ex := range m.Exports {
+		if ex.Name != exports[i] || ex.Index.Kind != wasm.ExternFunc || int(ex.Index.Index) != i {
+			return fmt.Errorf("bottom-global null-reference product export %d is outside the exact function export set", i)
+		}
+	}
+	return nil
+}
+
 func isExactRefNullBody(body []byte, heap int64) bool {
 	r := wasm.NewReader(body)
 	op, err := r.Byte()
@@ -739,6 +790,20 @@ func isExactRefNullBody(body []byte, heap int64) bool {
 	}
 	got, err := r.S33()
 	if err != nil || got != heap {
+		return false
+	}
+	end, err := r.Byte()
+	return err == nil && end == 0x0b && r.BytesLeft() == 0
+}
+
+func isExactGlobalGetBody(body []byte, index uint32) bool {
+	r := wasm.NewReader(body)
+	op, err := r.Byte()
+	if err != nil || op != 0x23 {
+		return false
+	}
+	got, err := r.U32()
+	if err != nil || got != index {
 		return false
 	}
 	end, err := r.Byte()
