@@ -571,6 +571,10 @@ type CompileOptions struct {
 	MemoryPressureAt int
 	MemoryPressure   func()
 
+	// GCTypeSubtypingRefTest is present for cross-target option parity. Staged
+	// admission rejects it before arm64 code generation.
+	GCTypeSubtypingRefTest bool
+
 	// GCStructHelpers is present for cross-target option parity. Staged admission
 	// rejects it before arm64 code generation.
 	GCStructHelpers bool

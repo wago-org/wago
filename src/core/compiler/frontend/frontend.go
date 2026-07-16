@@ -1256,6 +1256,9 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 				return false, nil
 			}
 		}
+		if p.feat.GCTypeSubtypingProducts && imm.Kind == wasm.InstrRefTest {
+			return false, nil
+		}
 		return false, p.unsupported("gc instruction", imm.Kind.String()+" (gc disabled)", ctx())
 	case 0xfe:
 		if err := wasm.SkipInstructionImmediate(r, op); err != nil {
@@ -1796,8 +1799,13 @@ func (p supportPass) instructionKind(k wasm.InstrKind, context string) error {
 			return p.unsupported("instruction", k.String()+" (typed-function-references disabled)", context)
 		}
 		return nil
-	case wasm.InstrRefI31, wasm.InstrI31GetS, wasm.InstrI31GetU, wasm.InstrRefTest, wasm.InstrRefCast:
+	case wasm.InstrRefI31, wasm.InstrI31GetS, wasm.InstrI31GetU, wasm.InstrRefCast:
 		if !p.feat.GCI31Products {
+			return p.unsupported("reference instruction", k.String()+" (gc disabled)", context)
+		}
+		return nil
+	case wasm.InstrRefTest:
+		if !p.feat.GCI31Products && !p.feat.GCTypeSubtypingProducts {
 			return p.unsupported("reference instruction", k.String()+" (gc disabled)", context)
 		}
 		return nil
