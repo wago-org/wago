@@ -894,7 +894,7 @@ func (f *fn) opEnd() error {
 	// hinted false path therefore falls through at its source; only the unlikely
 	// true edge reaches these fragments. Each fragment branches to the target
 	// below along with ordinary forward edges.
-	if len(fr.coldEdges) != 0 {
+	if fr.kind != cfLoop && len(fr.coldEdges) != 0 {
 		// A normal fall-through must not execute a cold reconciliation fragment.
 		// Its skip and every cold-edge jump converge at the target below.
 		skip := -1
