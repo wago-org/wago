@@ -58,6 +58,7 @@ type Features struct {
 	ExceptionReferences     bool // internal staged gate for fixed rooted exn values and throw_ref/reference catches
 	NullReferenceProducts   bool // internal staged gate for exact null-only any/exn reference products
 	StructuralTypeProducts  bool // internal staged gate for collector-free struct metadata in exact function products
+	GCTypeSubtypingProducts bool // internal staged gate for exact collector-free gc/type-subtyping products
 	GCStructProducts        bool // internal staged gate for exact collector-backed numeric struct helper products
 	GCArrayProducts         bool // internal staged gate for exact collector-backed numeric array helper products
 	GCI31Products           bool // internal staged gate for exact non-allocating i31 products
@@ -393,11 +394,11 @@ func (p supportPass) types() error {
 			flat++
 			hasSubtypeMetadata := st.HasPrefix || len(st.Supers) != 0
 			hasDescriptorMetadata := st.Metadata.Describes != nil || st.Metadata.Descriptor != nil
-			if hasDescriptorMetadata || (hasSubtypeMetadata && !(p.feat.GCStructProducts && st.Comp.Kind == wasm.CompStruct)) {
+			if hasDescriptorMetadata || (hasSubtypeMetadata && !p.feat.GCTypeSubtypingProducts && !(p.feat.GCStructProducts && st.Comp.Kind == wasm.CompStruct)) {
 				return p.unsupported("gc type", "subtyping metadata (gc disabled)", ctx)
 			}
 			if st.Comp.Kind != wasm.CompFunc {
-				if p.feat.StructuralTypeProducts && (st.Comp.Kind == wasm.CompStruct || st.Comp.Kind == wasm.CompArray) {
+				if (p.feat.StructuralTypeProducts || p.feat.GCTypeSubtypingProducts) && (st.Comp.Kind == wasm.CompStruct || st.Comp.Kind == wasm.CompArray) {
 					continue
 				}
 				if p.feat.GCStructProducts && st.Comp.Kind == wasm.CompStruct {
@@ -1961,11 +1962,11 @@ func (p supportPass) supportedGCReference(rt wasm.RefType) bool {
 	if p.feat.GCI31Products && (rt.Heap.Abs == wasm.HeapI31 || rt.Heap.Abs == wasm.HeapAny || rt.Heap.Abs == wasm.HeapNone) {
 		return true
 	}
-	return (p.feat.GCStructProducts || p.feat.GCArrayProducts) && (rt.Heap.Abs == wasm.HeapAny || rt.Heap.Abs == wasm.HeapEq || rt.Heap.Abs == wasm.HeapNone || rt.Heap.Abs == wasm.HeapStruct || rt.Heap.Abs == wasm.HeapArray)
+	return (p.feat.GCTypeSubtypingProducts || p.feat.GCStructProducts || p.feat.GCArrayProducts) && (rt.Heap.Abs == wasm.HeapAny || rt.Heap.Abs == wasm.HeapEq || rt.Heap.Abs == wasm.HeapNone || rt.Heap.Abs == wasm.HeapStruct || rt.Heap.Abs == wasm.HeapArray)
 }
 
 func (p supportPass) supportedStructuralTypeRef(rt wasm.RefType) bool {
-	if (!p.feat.StructuralTypeProducts && !p.feat.GCStructProducts && !p.feat.GCArrayProducts) || rt.Exact || rt.Heap.Kind != wasm.HeapTypeIndex {
+	if (!p.feat.StructuralTypeProducts && !p.feat.GCTypeSubtypingProducts && !p.feat.GCStructProducts && !p.feat.GCArrayProducts) || rt.Exact || rt.Heap.Kind != wasm.HeapTypeIndex {
 		return false
 	}
 	index := rt.Heap.Type.Index
