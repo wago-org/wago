@@ -30,6 +30,8 @@ const (
 	stagedGCStructRefTestAbstract
 	stagedGCStructExtern
 	stagedGCStructRefEq
+	stagedGCStructRefCastAbstract
+	stagedGCStructRefCastConcrete
 )
 
 type stagedGCStructOpcodeCount struct {
@@ -84,6 +86,10 @@ func (p stagedGCStructProduct) String() string {
 		return "official-extern-conversion"
 	case stagedGCStructRefEq:
 		return "official-reference-equality"
+	case stagedGCStructRefCastAbstract:
+		return "official-abstract-reference-cast"
+	case stagedGCStructRefCastConcrete:
+		return "official-concrete-reference-cast"
 	default:
 		return "unknown"
 	}
@@ -117,6 +123,10 @@ func (p stagedGCStructProduct) gateReason() string {
 		return "official extern conversion globals/table and bounded public boundary"
 	case stagedGCStructRefEq:
 		return "official eqref table identity with rooted struct/array allocation"
+	case stagedGCStructRefCastAbstract:
+		return "official mixed anyref reference casts and exact traps"
+	case stagedGCStructRefCastConcrete:
+		return "official concrete declared-super/canonical reference casts"
 	default:
 		return "unknown gc/struct product"
 	}
