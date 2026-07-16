@@ -4,6 +4,7 @@ package wago
 
 import (
 	"encoding/binary"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -63,6 +64,27 @@ func BenchmarkStagedGCTypeSubtypingRuntimeTypedTable(b *testing.B) {
 	}
 }
 
+func BenchmarkStagedGCTypeSubtypingLinkProviderNullResult(b *testing.B) {
+	c, err := compileStagedGCTypeSubtypingProductForTest(stagedGCTypeSubtypingProductData(b, stagedGCTypeSubtypingLinkProviderPin))
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer c.Close()
+	in, err := instantiateCore(c, InstantiateOptions{})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer in.Close()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		got, err := in.Invoke("f2")
+		if err != nil || len(got) != 1 || got[0] != 0 {
+			b.Fatalf("f2 = %v, %v; want one null result", got, err)
+		}
+	}
+}
+
 func BenchmarkStagedGCTypeSubtypingRuntimeFinalityRecovery(b *testing.B) {
 	pin := stagedGCTypeSubtypingProductPins[24]
 	c, err := compileStagedGCTypeSubtypingProductForTest(stagedGCTypeSubtypingProductData(b, pin))
@@ -109,6 +131,12 @@ func TestStagedGCTypeSubtypingProductsCompile(t *testing.T) {
 			}
 			if pin.Class == stagedGCTypeSubtypingDeclarations && !gc.HasHeapObjectTypes(c.GCTypeDescs) {
 				t.Fatalf("declaration product lost heap-object descriptors: %#v", c.GCTypeDescs)
+			}
+			if pin.Class.usesLinkFunctionIdentity() {
+				if !c.NeedsFuncRefDescs {
+					t.Fatal("link product did not request canonical function descriptors")
+				}
+				return
 			}
 			in, err := instantiateCore(c, InstantiateOptions{})
 			if err != nil {
@@ -282,5 +310,199 @@ func TestStagedGCTypeSubtypingProductsCompile(t *testing.T) {
 				t.Fatalf("snapshot capture = %v, want explicit GC state gate", err)
 			}
 		})
+	}
+}
+
+func TestStagedGCTypeSubtypingFirstLinkingClusterLifecycle(t *testing.T) {
+	providerData := stagedGCTypeSubtypingProductData(t, stagedGCTypeSubtypingLinkProviderPin)
+	consumerData := stagedGCTypeSubtypingProductData(t, stagedGCTypeSubtypingLinkConsumerPin)
+	providerCompiled, err := compileStagedGCTypeSubtypingProductForTest(providerData)
+	if err != nil {
+		t.Fatalf("compile provider: %v", err)
+	}
+	defer providerCompiled.Close()
+	consumerCompiled, err := compileStagedGCTypeSubtypingProductForTest(consumerData)
+	if err != nil {
+		t.Fatalf("compile consumer: %v", err)
+	}
+	defer consumerCompiled.Close()
+	if providerCompiled.stagedGCTypeSubtypingProduct() != stagedGCTypeSubtypingLinkProvider || consumerCompiled.stagedGCTypeSubtypingProduct() != stagedGCTypeSubtypingLinkConsumer {
+		t.Fatalf("provider/consumer products = %v/%v", providerCompiled.stagedGCTypeSubtypingProduct(), consumerCompiled.stagedGCTypeSubtypingProduct())
+	}
+	if !providerCompiled.NeedsFuncRefDescs || !consumerCompiled.NeedsFuncRefDescs {
+		t.Fatal("link provider/consumer must own canonical descriptor arenas")
+	}
+	providerBlob, err := marshalCompiled(providerCompiled)
+	if err != nil {
+		t.Fatalf("marshal provider: %v", err)
+	}
+	consumerBlob, err := marshalCompiled(consumerCompiled)
+	if err != nil {
+		t.Fatalf("marshal unlinked consumer: %v", err)
+	}
+	if got := [6]int{len(providerData), len(providerCompiled.Code), len(providerBlob), len(consumerData), len(consumerCompiled.Code), len(consumerBlob)}; got != [6]int{103, 369, 624, 86, 0, 301} {
+		t.Fatalf("link product wasm/code/codec sizes = %v, want [103 369 624 86 0 301]", got)
+	}
+
+	instantiateProvider := func() (*Instance, map[string]*InstanceExport) {
+		in, err := instantiateCore(providerCompiled, InstantiateOptions{})
+		if err != nil {
+			t.Fatalf("instantiate provider: %v", err)
+		}
+		if in.gc != nil {
+			t.Fatal("link provider allocated a collector")
+		}
+		exports := make(map[string]*InstanceExport, 3)
+		for i := 0; i < 3; i++ {
+			name := fmt.Sprintf("f%d", i)
+			exports[name], err = in.ExportedFunc(name)
+			if err != nil {
+				t.Fatalf("export %s: %v", name, err)
+			}
+		}
+		return in, exports
+	}
+	positiveImports := func(exports map[string]*InstanceExport) Imports {
+		return Imports{"M.f0": exports["f0"], "M.f1": exports["f1"], "M.f2": exports["f2"]}
+	}
+	resourceState := func(in *Instance) (refs int, closed bool) {
+		in.lifeMu.Lock()
+		refs, closed = in.resourceRefs, in.resourcesClosed
+		in.lifeMu.Unlock()
+		return
+	}
+
+	provider, exports := instantiateProvider()
+	if got, err := provider.Invoke("f2"); err != nil || len(got) != 1 || got[0] != 0 {
+		t.Fatalf("provider f2 = %v, %v; want one null result", got, err)
+	}
+	var invokeErr error
+	allocs := testing.AllocsPerRun(1000, func() {
+		_, invokeErr = provider.Invoke("f2")
+	})
+	if invokeErr != nil || allocs != 0 {
+		t.Fatalf("provider f2 steady state = %v, allocs=%v; want nil, 0", invokeErr, allocs)
+	}
+	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: positiveImports(exports)})
+	if err != nil {
+		t.Fatalf("instantiate subtype-compatible duplicate imports: %v", err)
+	}
+	if consumer.gc != nil {
+		t.Fatal("link consumer allocated a collector")
+	}
+	if got, want := len(provider.funcRefDescs), 4*coreruntime.FuncRefDescBytes; got != want {
+		t.Fatalf("provider descriptor arena = %d bytes, want %d", got, want)
+	}
+	if got, want := len(consumer.funcRefDescs), 7*coreruntime.FuncRefDescBytes; got != want {
+		t.Fatalf("consumer descriptor arena = %d bytes, want %d", got, want)
+	}
+	wantProviderFunctions := []int{0, 1, 1, 2, 2, 2}
+	for importIndex, providerFunction := range wantProviderFunctions {
+		consumerOff := (importIndex + 1) * coreruntime.FuncRefDescBytes
+		providerOff := (providerFunction + 1) * coreruntime.FuncRefDescBytes
+		if got := binary.LittleEndian.Uint64(consumer.funcRefDescs[consumerOff+coreruntime.TableEntryCodePtrOffset:]); got == 0 {
+			t.Fatalf("consumer import %d has a null code pointer", importIndex)
+		}
+		got := binary.LittleEndian.Uint64(consumer.funcRefDescs[consumerOff+coreruntime.TableEntryRefSlotOffset:])
+		want := binary.LittleEndian.Uint64(provider.funcRefDescs[providerOff+coreruntime.TableEntryRefSlotOffset:])
+		if got == 0 || got != want {
+			t.Fatalf("consumer import %d identity = %#x, want provider function %d canonical %#x", importIndex, got, providerFunction, want)
+		}
+	}
+	if refs, closed := resourceState(provider); refs != 1 || closed {
+		t.Fatalf("duplicate imports retained provider refs/closed = %d/%v, want 1/false", refs, closed)
+	}
+	if err := provider.Close(); err != nil {
+		t.Fatalf("logical provider close: %v", err)
+	}
+	if refs, closed := resourceState(provider); refs != 1 || closed {
+		t.Fatalf("logically closed provider refs/resourcesClosed = %d/%v, want 1/false", refs, closed)
+	}
+	for importIndex, providerFunction := range wantProviderFunctions {
+		consumerOff := (importIndex + 1) * coreruntime.FuncRefDescBytes
+		providerOff := (providerFunction + 1) * coreruntime.FuncRefDescBytes
+		if got, want := binary.LittleEndian.Uint64(consumer.funcRefDescs[consumerOff+coreruntime.TableEntryRefSlotOffset:]), binary.LittleEndian.Uint64(provider.funcRefDescs[providerOff+coreruntime.TableEntryRefSlotOffset:]); got != want {
+			t.Fatalf("post-close consumer import %d identity = %#x, want retained %#x", importIndex, got, want)
+		}
+	}
+	if _, err := marshalCompiled(consumer.c); err != nil {
+		t.Fatalf("binding-independent consumer codec: %v", err)
+	}
+	if err := consumer.Close(); err != nil {
+		t.Fatalf("consumer close: %v", err)
+	}
+	if refs, closed := resourceState(provider); refs != 0 || !closed {
+		t.Fatalf("provider after consumer close refs/resourcesClosed = %d/%v, want 0/true", refs, closed)
+	}
+
+	provider2, exports2 := instantiateProvider()
+	rollbackImports := positiveImports(exports2)
+	rollbackImports["M.f2"] = exports2["f1"]
+	if _, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: rollbackImports}); err == nil || !strings.Contains(err.Error(), "signature mismatch") {
+		t.Fatalf("later subtype mismatch = %v, want signature mismatch", err)
+	}
+	if refs, closed := resourceState(provider2); refs != 0 || closed {
+		t.Fatalf("failed later import retained refs/resourcesClosed = %d/%v, want 0/false", refs, closed)
+	}
+	for i, pin := range stagedGCTypeSubtypingLinkUnlinkablePins {
+		c, err := compileStagedGCTypeSubtypingProductForTest(stagedGCTypeSubtypingProductData(t, pin))
+		if err != nil {
+			t.Fatalf("compile %s: %v", pin.Filename, err)
+		}
+		name := "f0"
+		if i == 2 {
+			name = "f1"
+		}
+		_, linkErr := instantiateCore(c, InstantiateOptions{Imports: Imports{"M." + name: exports2[name]}})
+		_ = c.Close()
+		if linkErr == nil || !strings.Contains(linkErr.Error(), "signature mismatch") {
+			t.Fatalf("%s link = %v, want incompatible signature", pin.Filename, linkErr)
+		}
+		if refs, closed := resourceState(provider2); refs != 0 || closed {
+			t.Fatalf("%s retained refs/resourcesClosed = %d/%v, want 0/false", pin.Filename, refs, closed)
+		}
+	}
+	consumer2, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: positiveImports(exports2)})
+	if err != nil {
+		t.Fatalf("instantiate close-order consumer: %v", err)
+	}
+	if err := consumer2.Close(); err != nil {
+		t.Fatalf("consumer-first close: %v", err)
+	}
+	if refs, closed := resourceState(provider2); refs != 0 || closed {
+		t.Fatalf("consumer-first close provider refs/resourcesClosed = %d/%v, want 0/false", refs, closed)
+	}
+	if err := provider2.Close(); err != nil {
+		t.Fatalf("provider-final close: %v", err)
+	}
+	if refs, closed := resourceState(provider2); refs != 0 || !closed {
+		t.Fatalf("provider-final refs/resourcesClosed = %d/%v, want 0/true", refs, closed)
+	}
+
+	host := HostFunc(func(HostModule, []uint64, []uint64) {})
+	if _, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{"M.f0": host, "M.f1": host, "M.f2": host}}); err == nil || !strings.Contains(err.Error(), "exact gc/type-subtyping link provider") {
+		t.Fatalf("host link = %v, want exact provider rejection", err)
+	}
+	for name, blob := range map[string][]byte{"provider": providerBlob, "consumer": consumerBlob} {
+		var loaded Compiled
+		if err := unmarshalCompiled(&loaded, blob[5:]); err != nil {
+			t.Fatalf("private %s reload: %v", name, err)
+		}
+		if loaded.stagedGCTypeSubtypingProduct() != 0 || loaded.stagedFeatures().IsEnabled(CoreFeatureGC) {
+			t.Fatalf("private %s reload inherited admission: product=%v features=%v", name, loaded.stagedGCTypeSubtypingProduct(), loaded.stagedFeatures())
+		}
+		if _, err := instantiateCore(&loaded, InstantiateOptions{}); err == nil || !strings.Contains(err.Error(), "required feature") {
+			t.Fatalf("private %s reload instantiate = %v, want required-feature rejection", name, err)
+		}
+		_ = loaded.Close()
+		var public Compiled
+		if err := public.UnmarshalBinary(blob); err == nil || !strings.Contains(err.Error(), "unknown required feature bits") {
+			t.Fatalf("public %s reload = %v, want unsupported GC rejection", name, err)
+		}
+	}
+	for name, c := range map[string]*Compiled{"provider": providerCompiled, "consumer": consumerCompiled} {
+		if _, err := Capture(c, SnapshotOptions{}); err == nil || !strings.Contains(err.Error(), "WasmGC reference products") {
+			t.Fatalf("%s snapshot = %v, want GC reference-product rejection", name, err)
+		}
 	}
 }
