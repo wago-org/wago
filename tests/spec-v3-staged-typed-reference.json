@@ -210,22 +210,15 @@
     {
       "name": "type-rec",
       "status": "accounted",
-      "gates": [
-        {
-          "family": "gc",
-          "reason": "recursive struct metadata in ordinary funcref call_indirect matching",
-          "count": 3
-        }
-      ],
       "counts": {
         "commands": 40,
-        "modules_passed": 8,
-        "assertions_passed": 0,
+        "modules_passed": 11,
+        "assertions_passed": 3,
         "expected_invalid": 10,
         "expected_unlinkable": 2,
         "expected_uninstantiable": 0,
-        "expected_feature_rejects": 3,
-        "blocked_commands": 3,
+        "expected_feature_rejects": 0,
+        "blocked_commands": 0,
         "unexpected_compile_rejects": 0,
         "unexpected_link_rejects": 0,
         "failures": 0
@@ -249,23 +242,16 @@
       }
     }
   ],
-  "gates": [
-    {
-      "family": "gc",
-      "reason": "recursive struct metadata in ordinary funcref call_indirect matching",
-      "count": 3
-    }
-  ],
   "totals": {
     "commands": 422,
-    "modules_passed": 58,
-    "assertions_passed": 243,
+    "modules_passed": 61,
+    "assertions_passed": 246,
     "expected_invalid": 65,
     "expected_malformed": 2,
     "expected_unlinkable": 2,
     "expected_uninstantiable": 0,
-    "expected_feature_rejects": 3,
-    "blocked_commands": 3,
+    "expected_feature_rejects": 0,
+    "blocked_commands": 0,
     "unexpected_compile_rejects": 0,
     "unexpected_link_rejects": 0,
     "failures": 0

@@ -7,15 +7,19 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"unsafe"
 
 	"github.com/wago-org/wago/src/core/runtime/gc"
 )
 
+func TestStagedStructuralProductSidecarFootprint(t *testing.T) {
+	if got := unsafe.Sizeof(compiledCodeCache{}); got != 64 {
+		t.Fatalf("compiledCodeCache size = %d, want 64 bytes", got)
+	}
+}
+
 func TestStagedStructuralMetadataProducts(t *testing.T) {
 	for _, pin := range stagedTypeRecLeaderPins {
-		if pin.Product == stagedStructuralCallIndirect {
-			continue
-		}
 		t.Run(pin.Filename, func(t *testing.T) {
 			data, err := hex.DecodeString(pin.Hex)
 			if err != nil {
@@ -146,14 +150,62 @@ func TestStagedStructuralFunctionLinkLifecycle(t *testing.T) {
 	}
 }
 
-func TestStagedStructuralCallIndirectRemainsGated(t *testing.T) {
+func TestStagedStructuralCallIndirectExecution(t *testing.T) {
 	for _, pin := range stagedTypeRecLeaderPins {
 		if pin.Product != stagedStructuralCallIndirect {
 			continue
 		}
 		data, _ := hex.DecodeString(pin.Hex)
-		if _, err := compileStagedStructuralTypeProductForTest(data); err == nil || !strings.Contains(err.Error(), "call_indirect matching remains gated") {
-			t.Fatalf("%s compile = %v, want dynamic structural-call gate", pin.Filename, err)
+		c, err := compileStagedStructuralTypeProductForTest(data)
+		if err != nil {
+			t.Fatalf("%s compile: %v", pin.Filename, err)
+		}
+		in, err := instantiateCore(c, InstantiateOptions{})
+		if err != nil {
+			_ = c.Close()
+			t.Fatalf("%s instantiate: %v", pin.Filename, err)
+		}
+		if in.gc != nil {
+			t.Fatalf("%s allocated a collector for ordinary funcref call_indirect", pin.Filename)
+		}
+		_, callErr := in.Invoke("run")
+		if pin.Filename == "type-rec.17.wasm" {
+			if callErr != nil {
+				t.Fatalf("%s matching call_indirect: %v", pin.Filename, callErr)
+			}
+			allocs := testing.AllocsPerRun(1000, func() {
+				if _, err := in.Invoke("run"); err != nil {
+					panic(err)
+				}
+			})
+			if allocs != 0 {
+				t.Fatalf("%s steady-state allocations = %v, want 0", pin.Filename, allocs)
+			}
+		} else if callErr == nil || !strings.Contains(callErr.Error(), "wrong signature") {
+			t.Fatalf("%s mismatch call = %v, want indirect signature trap", pin.Filename, callErr)
+		}
+		_ = in.Close()
+		_ = c.Close()
+	}
+}
+
+func BenchmarkStagedStructuralCallIndirect(b *testing.B) {
+	data, _ := hex.DecodeString(stagedTypeRecLeaderPins[6].Hex)
+	c, err := compileStagedStructuralTypeProductForTest(data)
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer c.Close()
+	in, err := instantiateCore(c, InstantiateOptions{})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer in.Close()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := in.Invoke("run"); err != nil {
+			b.Fatal(err)
 		}
 	}
 }

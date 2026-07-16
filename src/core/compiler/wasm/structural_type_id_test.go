@@ -75,6 +75,37 @@ func TestStructuralTypeIDCanonicalizesRecursiveAndDuplicateGraphs(t *testing.T) 
 	}
 }
 
+func TestStructuralTypeKeyIncludesWholeRecursiveGroup(t *testing.T) {
+	emptyFunc := SubType{Final: true, Comp: CompType{Kind: CompFunc}}
+	emptyStruct := SubType{Final: true, Comp: CompType{Kind: CompStruct}}
+	a := &Module{Types: []RecType{{SubTypes: []SubType{emptyFunc, emptyStruct}}}}
+	b := &Module{Types: []RecType{
+		{SubTypes: []SubType{{Final: true, Comp: CompType{Kind: CompStruct}}}},
+		{SubTypes: []SubType{emptyFunc, emptyStruct}},
+	}}
+	if got, want := a.StructuralTypeKey(0), b.StructuralTypeKey(1); got != want {
+		t.Fatalf("equivalent whole recursive groups have keys %#x and %#x", got, want)
+	}
+
+	reordered := &Module{Types: []RecType{{SubTypes: []SubType{emptyStruct, emptyFunc}}}}
+	if got, bad := a.StructuralTypeKey(0), reordered.StructuralTypeKey(1); got == bad {
+		t.Fatalf("recursive group order/member position collapsed to key %#x", got)
+	}
+	singleton := &Module{Types: []RecType{{SubTypes: []SubType{emptyFunc}}}}
+	if got, bad := a.StructuralTypeKey(0), singleton.StructuralTypeKey(0); got == bad {
+		t.Fatalf("non-singleton recursive group collapsed to singleton key %#x", got)
+	}
+
+	selfField := FieldType{Storage: StorageType{Val: RefVal(Ref(false, IndexedHeap(TypeIdx{Index: 0, Rec: true}), false))}}
+	selfGroup := RecType{SubTypes: []SubType{emptyFunc, {Final: true, Comp: CompType{Kind: CompStruct, Fields: []FieldType{selfField}}}}}
+	externalField := FieldType{Storage: StorageType{Val: indexedRef(0, false)}}
+	externalGroup := RecType{SubTypes: []SubType{emptyFunc, {Final: true, Comp: CompType{Kind: CompStruct, Fields: []FieldType{externalField}}}}}
+	linked := &Module{Types: []RecType{selfGroup, externalGroup}}
+	if got, bad := linked.StructuralTypeKey(0), linked.StructuralTypeKey(2); got == bad {
+		t.Fatalf("self-recursive and externally linked groups collapsed to key %#x", got)
+	}
+}
+
 func TestStructuralTypeKeyUsesBoundedPerCallCanonicalization(t *testing.T) {
 	graph := func(depth int) *Module {
 		m := &Module{Types: make([]RecType, depth)}
