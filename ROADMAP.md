@@ -275,8 +275,17 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   Tiny48 repeats the abstract initializer 100 times with exactly two live objects; Tiny256 retains the
   concrete leader's eight objects. Accounting is gap-free at 47 commands / 2 modules / 40 assertions /
   3 actions / 0 gates / 0 blocked. Stable parked i31 casting measures 177.9–183.8 ns/op, 0 B/op, and
-  0 allocs/op. General frame roots, object-valued mutable/reference globals, cast branches, bulk arrays,
-  type-subtyping, public family admission, and broader platform products remain.
+  0 allocs/op. Iteration 51 pins and closes both branch-cast files. Each is gap-free at 40 commands /
+  3 modules / 25 assertions / 6 invalid / 0 malformed / 0 gates / 0 blocked. The lowering copies the
+  operand only for the non-collecting classification helper, keeps the original 64-bit word on the
+  operand stack, and carries that exact identity on the selected edge or fallthrough with correct label
+  prefixes, nested ordering, and nullable-target non-null refinement. The abstract products reuse one
+  ten-slot checked anyref table and conversion owner, allocate a one-field i16 struct plus a length-three
+  i8 array, and repeat in Tiny72 with exactly two live objects. Concrete products reuse the twenty-slot
+  table and canonical representatives; nullability-only leaders instantiate separately. Stable parked
+  i31 branching measures 124.2–127.0 ns/op, 0 B/op, and 0 allocs/op. General frame roots, object-valued
+  mutable/reference globals, bulk arrays, type-subtyping, public family admission, and broader platform
+  products remain.
 - [ ] Reach zero unexplained failures/skips in the official Release 3 core suite.
 
 **Engine & performance** (no-ir-plan P1–P7, measured against P1's stats)

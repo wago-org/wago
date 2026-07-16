@@ -340,6 +340,35 @@ Consequently no live local ref crosses allocation and no native frame chain is p
 `instancePluginState=144`; fixed runtime layouts do not grow. Codec v27 serializes no cast admission,
 canonical map, conversion identity, checked root, compact table identity, or live collector state.
 
+Iteration 51 reuses the classification half of that ABI for branch casts but changes the native control
+contract. Generated code keeps the original 64-bit reference word as the top logical operand and passes a
+copied word, signed target heap, and nullable bit through the parked `ref.test` helper. The one-word i32
+result is consumed only as a branch condition. `br_on_cast` branches when it is non-zero;
+`br_on_cast_fail` branches when it is zero. Both the branch payload and fallthrough retain the original
+reference word byte-for-byte, while validation assigns the refined target or failed-source type to the
+appropriate path. A nullable target makes the failed source non-null because null necessarily matches.
+
+This is not implemented as `ref.cast` plus `br`: a mismatch never raises trap code 18, label-prefix values
+move independently of the appended reference, and nested block result slots use the ordinary canonical
+branch merge. The helper is non-allocating and non-collecting. The original reference is live in a canonical
+native stack slot across parked Go, but no collector frame is published because the helper cannot collect,
+mutate roots, or retain the word. Forged/stale/closed/wrong-owner values remain helper errors rather than
+branch false values.
+
+The abstract branch products add one exact two-input/one-output allocation helper for their single packed
+i16 struct field. It receives only the scalar field and type index, allocates with `gc.EmptyRoots{}`,
+initializes field zero before returning, and exposes no payload pointer. Native code stores that returned
+reference into the checked anyref table before the later `array.new` helper may collect. The array result is
+also stored before conversion. Tiny72 therefore retains two 24-byte objects plus one bounded replacement
+allocation. Concrete products reuse Tiny256, twenty checked slots, and the immutable canonical map.
+Nullability-only products allocate no object or table state.
+
+No fixed ABI layout grows: `Compiled=712`, `Instance=792`, `compiledCodeCache=64`,
+`compiledMemoryDirectory=136`, `gc.Collector=640`, `gcRefTestTableState=200`,
+`gcExternConversionState=480`, and lazy `instancePluginState=144`. Codec v27 serializes neither the six
+exact branch-product enums nor helper admission, roots, canonical maps, conversions, or live identities.
+Snapshots, signal bounds, public admission, and arm64 execution remain closed.
+
 ## Global coherence invariant
 
 The global cell is the sole host- and cross-instance-visible storage for a

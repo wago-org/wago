@@ -23,9 +23,11 @@ strict null conversion constants, and executes the complete `gc/extern` family. 
 checked compact-table owner for the exact official eqref product and executes the complete null/i31/object
 identity matrix without adding native frame publication. Iteration 50 adds identity-preserving ordinary
 reference casts for the two exact official leaders, with a dedicated cast-failure trap, canonical defined-type
-matching, and the same bounded table/conversion ownership. General native frame publication, object-valued
-mutable/reference globals, broad public ownership, and snapshots remain incomplete. These bounded products must not be presented as general executable
-WasmGC support.
+matching, and the same bounded table/conversion ownership. Iteration 51 closes both official branch-cast
+families with exact label-prefix/result refinement, nested control ordering, and identity-preserving selected
+edges/fallthrough over the same bounded owners. General native frame publication, object-valued mutable/
+reference globals, broad public ownership, and snapshots remain incomplete. These bounded products must not
+be presented as general executable WasmGC support.
 
 ## Why a wago-native collector
 
@@ -678,6 +680,52 @@ metadata and trap-bearing native code but no exact product enum, canonical map, 
 checked root, compact table value, or collector state. Private reload therefore loses admission; snapshots,
 guard mode, public GC admission, and arm64 execution remain fail-closed.
 
+### Iteration 51 exact `gc/br_on_cast` and `gc/br_on_cast_fail` products
+
+Both official files contain three valid leaders and six invalid modules. Complete schema-2 accounting is
+gap-free for each file at 40 commands / 3 modules / 25 assertions / 6 invalid / 0 malformed / 0 gates /
+0 blocked / 0 hidden failures. The abstract leaders each own one ten-entry anyref table and initialize null,
+i31, a one-field i16 struct, a length-three i8 array filled with 5, and one foreign-any conversion. The
+concrete leaders reuse the eight declared-super/canonical struct values and twenty checked table slots.
+The third leader in each file has no actions and exists to prove source/target nullability and outer-label
+result typing. All twelve invalid modules remain exact `type mismatch` obligations.
+
+Validation now models a nullable target precisely: null takes the successful cast edge, so the failed edge is
+non-null even when the declared source is nullable. A non-null target leaves null in the failed source type.
+For `br_on_cast`, the refined target travels on the branch and the failed source falls through. For
+`br_on_cast_fail`, the failed source travels on the branch and the refined target falls through. Label-prefix
+operands are transferred independently of the appended reference, including the nested struct/array blocks.
+
+amd64 decodes the flags, depth, source heap, and target heap directly. It keeps the original 64-bit reference
+word on the logical operand stack and passes only a copied word to the existing parked `ref.test`
+classification helper. The helper does not allocate, collect, mutate roots, or expose payload pointers. Its
+i32 result selects the edge; both paths retain the original compact object/i31/null or internal foreign-any
+identity byte-for-byte. Branch mismatch is ordinary control flow and never raises trap code 18. Forged,
+stale, closed, or wrong-owner words remain helper errors rather than false matches.
+
+The abstract initializer uses a new exact one-field numeric allocation helper: allocation receives
+`gc.EmptyRoots{}`, initializes the packed i16 field before returning, and the returned object is stored in its
+checked table slot before the later array allocation. The array is likewise stored before conversion or any
+later helper. A 72-byte Tiny heap repeats initialization 100 times and retains exactly the two current 24-byte
+objects while permitting one replacement allocation. The concrete products use Tiny256 and retain exactly
+eight table-rooted objects. The nullability-only products instantiate with a collector for their defined
+struct descriptor but create no table state or object.
+
+Measured product sizes are 385 Wasm / 3,663 linked code / 4,226 codec bytes for abstract `br_on_cast`,
+403 / 3,663 / 4,242 for abstract `br_on_cast_fail`, 772 / 11,409 / 11,989 for concrete `br_on_cast`,
+876 / 14,367 / 14,948 for concrete `br_on_cast_fail`, 111 / 948 / 1,237 for the `br_on_cast` nullability
+leader, and 103 / 862 / 1,094 for the fail variant. Five 500 ms stable i31 branch samples measure
+124.2–127.0 ns/op, all 0 B/op and 0 allocs/op. Sidecars remain `gcRefTestTableState=200`,
+`gcExternConversionState=480`, and lazy `instancePluginState=144`; fixed layouts remain `Compiled=712`,
+`Instance=792`, `compiledCodeCache=64`, `compiledMemoryDirectory=136`, and `gc.Collector=640`.
+
+Codec v27 persists the type/table/code/control metadata but no exact branch product, helper admission,
+canonical representatives, conversion identity, checked roots, compact/internal table values, or collector
+state. Private reload therefore loses admission. Snapshots, guard mode, public GC admission, and arm64
+execution remain fail-closed. No native frame chain is published: the only live reference across the parked
+classification call is the original branch operand, and that helper is proven non-collecting; every allocation
+is stored before the next may-collect helper.
+
 Before broader live `gc.Ref` payloads or funcref lifetimes can be admitted, codegen/runtime
 must still prove all of the following as one coherent product:
 
@@ -1215,10 +1263,11 @@ Tests exercise tiny nurseries, collect-every-alloc, exact scanning, cycles, root
 ## Current limitations
 
 - WasmGC opcode/product execution is not complete. Exact staged `gc/struct`, `gc/array`, `gc/i31`,
-  `gc/ref_test`, `gc/extern`, `gc/ref_eq`, and `gc/ref_cast` families are wired to amd64, including
-  bounded array constructors/access/barriers, collector-free i31 operations, dynamic tests and casts,
-  extern conversion, and compact null/i31/object equality. Cast branches, array fill/copy/init,
-  reference struct fields, broader GC constant expressions, and type-subtyping remain.
+  `gc/ref_test`, `gc/extern`, `gc/ref_eq`, `gc/ref_cast`, `gc/br_on_cast`, and
+  `gc/br_on_cast_fail` families are wired to amd64, including bounded array constructors/access/barriers,
+  collector-free i31 operations, dynamic tests/casts, identity-preserving cast branches, extern conversion,
+  and compact null/i31/object equality. Array fill/copy/init, reference struct fields, broader GC constant
+  expressions, and type-subtyping remain.
 - The parked-Go runtime-call ABI is proven for exact empty-frame-root numeric/packed
   allocations, non-collecting numeric access/mutation, ordered immutable collector-rooted
   globals, per-instance passive data descriptors, and one result-token root installed only
