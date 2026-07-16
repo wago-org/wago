@@ -20,7 +20,7 @@ import (
 
 const (
 	stagedGCBrOnCastDeltaPath         = "tests/spec-v3-staged-gc-br-on-cast.json"
-	stagedGCBrOnCastOfficialExecution = false
+	stagedGCBrOnCastOfficialExecution = true
 )
 
 type stagedGCBrOnCastClass uint8
@@ -274,6 +274,8 @@ func replayStagedGCBrOnCastScript(t *testing.T, base, tmp string, script stagedS
 	gates := map[string]int{}
 	var latest []byte
 	var current *stagedGCBrOnCastLeaderPin
+	var currentInstance *Instance
+	var currentExtern uint64
 	seenLeaders := map[string]bool{}
 	seenInvalids := map[string]bool{}
 	seenActions := map[string][]string{}
@@ -283,6 +285,11 @@ func replayStagedGCBrOnCastScript(t *testing.T, base, tmp string, script stagedS
 		counts.Commands++
 		switch cmd.Type {
 		case "module_definition":
+			if currentInstance != nil {
+				_ = currentInstance.Close()
+				currentInstance = nil
+				currentExtern = 0
+			}
 			data, err := os.ReadFile(filepath.Join(tmp, cmd.Filename))
 			if err != nil {
 				counts.Failures++
@@ -307,20 +314,39 @@ func replayStagedGCBrOnCastScript(t *testing.T, base, tmp string, script stagedS
 			leaders = append(leaders, leader)
 			current = &pin
 			c, compileErr := compileStagedGCBrOnCastAccounting(latest)
-			if compileErr == nil {
-				_ = c.Close()
-				counts.Failures++
-				t.Errorf("%s.wast:%d branch product compiled before execution admission", base, cmd.Line)
-				continue
-			}
-			if bytes.Contains([]byte(compileErr.Error()), []byte("validate:")) {
+			if compileErr != nil {
 				counts.Failures++
 				counts.UnexpectedCompileRejects++
-				t.Errorf("%s.wast:%d valid leader failed validation: %v", base, cmd.Line, compileErr)
+				t.Errorf("%s.wast:%d valid leader compile: %v", base, cmd.Line, compileErr)
 				continue
 			}
-			counts.ExpectedFeatureRejects++
-			gates[leader.Gate]++
+			wantProduct := stagedGCBrOnCastProductFor(base, pin.Class)
+			if c.stagedGCStructProduct() != wantProduct {
+				_ = c.Close()
+				counts.Failures++
+				t.Errorf("%s.wast:%d product=%s, want %s", base, cmd.Line, c.stagedGCStructProduct(), wantProduct)
+				continue
+			}
+			in, instantiateErr := instantiateCore(c, InstantiateOptions{})
+			_ = c.Close()
+			if instantiateErr != nil {
+				counts.Failures++
+				counts.UnexpectedLinkRejects++
+				t.Errorf("%s.wast:%d instantiate: %v", base, cmd.Line, instantiateErr)
+				continue
+			}
+			if pin.Class == stagedGCBrOnCastAbstract {
+				ref, err := in.NewExternRef("0")
+				if err != nil {
+					_ = in.Close()
+					counts.Failures++
+					t.Errorf("%s.wast:%d create extern fixture: %v", base, cmd.Line, err)
+					continue
+				}
+				currentExtern = ValueExternRef(ref).Bits()
+			}
+			currentInstance = in
+			counts.ModulesPassed++
 		case "action", "assert_return":
 			if current == nil {
 				counts.Failures++
@@ -328,7 +354,49 @@ func replayStagedGCBrOnCastScript(t *testing.T, base, tmp string, script stagedS
 				continue
 			}
 			seenActions[current.Filename] = append(seenActions[current.Filename], stagedGCBrOnCastActionKey(cmd))
-			counts.BlockedCommands++
+			if currentInstance == nil {
+				counts.BlockedCommands++
+				continue
+			}
+			args := make([]uint64, len(cmd.Action.Args))
+			valid := true
+			for i, arg := range cmd.Action.Args {
+				switch arg.Type {
+				case "i32":
+					args[i], valid = stagedSpecScalar(arg)
+				case "externref":
+					args[i] = currentExtern
+				default:
+					valid = false
+				}
+				if !valid {
+					break
+				}
+			}
+			if !valid {
+				counts.Failures++
+				t.Errorf("%s.wast:%d unsupported arguments %+v", base, cmd.Line, cmd.Action.Args)
+				continue
+			}
+			got, callErr := currentInstance.Invoke(cmd.Action.Field, args...)
+			if callErr != nil {
+				counts.Failures++
+				t.Errorf("%s.wast:%d %s = %v, %v", base, cmd.Line, cmd.Action.Field, got, callErr)
+				continue
+			}
+			if cmd.Type == "action" {
+				if len(got) != 0 {
+					counts.Failures++
+					t.Errorf("%s.wast:%d %s = %v, want empty action result", base, cmd.Line, cmd.Action.Field, got)
+				}
+				continue
+			}
+			if len(got) != len(cmd.Expected) || len(got) != 1 || !stagedSpecMatch(got[0], cmd.Expected[0]) {
+				counts.Failures++
+				t.Errorf("%s.wast:%d %s = %v, want %v", base, cmd.Line, cmd.Action.Field, got, cmd.Expected)
+				continue
+			}
+			counts.AssertionsPassed++
 		case "assert_invalid":
 			data, err := os.ReadFile(filepath.Join(tmp, cmd.Filename))
 			if err != nil {
@@ -362,6 +430,9 @@ func replayStagedGCBrOnCastScript(t *testing.T, base, tmp string, script stagedS
 			t.Errorf("%s.wast:%d unhandled command %q", base, cmd.Line, cmd.Type)
 		}
 	}
+	if currentInstance != nil {
+		_ = currentInstance.Close()
+	}
 	if len(seenLeaders) != 3 {
 		counts.Failures++
 		t.Errorf("%s leader coverage=%d, want 3", base, len(seenLeaders))
@@ -387,7 +458,7 @@ func TestStagedOfficialGCBrOnCastAccounting(t *testing.T) {
 		var script stagedSpecScript
 		tmp := stagedOfficialTypedReferenceJSON(t, base, &script)
 		counts, leaders, gateCounts := replayStagedGCBrOnCastScript(t, base, tmp, script)
-		if counts.Commands != 40 || counts.ModulesPassed != 0 || counts.AssertionsPassed != 0 || counts.ExpectedFeatureRejects != 3 || counts.BlockedCommands != 28 || counts.ExpectedInvalid != 6 || counts.ExpectedMalformed != 0 || counts.Failures != 0 || counts.UnexpectedCompileRejects != 0 || counts.UnexpectedLinkRejects != 0 {
+		if counts.Commands != 40 || counts.ModulesPassed != 3 || counts.AssertionsPassed != 25 || counts.ExpectedFeatureRejects != 0 || counts.BlockedCommands != 0 || counts.ExpectedInvalid != 6 || counts.ExpectedMalformed != 0 || counts.Failures != 0 || counts.UnexpectedCompileRejects != 0 || counts.UnexpectedLinkRejects != 0 {
 			t.Fatalf("staged %s accounting has hidden or changed gaps: %+v", base, counts)
 		}
 		var gates []stagedTypedReferenceGateCount
