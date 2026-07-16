@@ -340,7 +340,7 @@ func TestStagedGCArrayReferenceFootprint(t *testing.T) {
 		"compiledMemoryDirectory": unsafe.Sizeof(compiledMemoryDirectory{}),
 		"instancePluginState":     unsafe.Sizeof(instancePluginState{}),
 	} {
-		want := map[string]uintptr{"gcArrayElementInit": 96, "gcArrayElementState": 56, "compiledMemoryDirectory": 136, "instancePluginState": 144}[name]
+		want := map[string]uintptr{"gcArrayElementInit": 96, "gcArrayElementState": 56, "compiledMemoryDirectory": 136, "instancePluginState": 152}[name]
 		if got != want {
 			t.Fatalf("%s size = %d, want %d", name, got, want)
 		}

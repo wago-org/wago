@@ -22,7 +22,7 @@ import (
 const stagedGCArrayInitDeltaPath = "tests/spec-v3-staged-gc-array-init.json"
 
 var stagedGCArrayInitOfficialExecution = map[string]bool{
-	"gc/array_init_data": false,
+	"gc/array_init_data": true,
 	"gc/array_init_elem": false,
 }
 

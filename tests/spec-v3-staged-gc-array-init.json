@@ -12,7 +12,6 @@
           "size": 335,
           "sha256": "c17da56ed5c65083ee20023738cc5d9a36d1e301d2f06f23e2645d6ec8a9ca77",
           "class": "packed-i8-i16-data-init",
-          "gate": "array init segment/root helper product",
           "type_graph": "rec[array{i8}]|rec[array{mut i8}]|rec[array{mut i16}]|rec[func(i32)-\u003e(i32)]|rec[func()-\u003e()]|rec[func(i32,i32,i32)-\u003e()]",
           "state_graph": "imports=0 funcs=6 globals=[const ref type 0,mut ref type 1,const ref type 2] tables=0 memories=0 tags=0 elements=0 data=1 exports=[array_get_nth=0:0,array_get_nth_i16=0:1,array_init_data-null=0:2,array_init_data=0:3,array_init_data_i16=0:4,drop_segs=0:5]",
           "control_graph": "preflight null, destination element range, and source byte range before mutation; i8 consumes one byte per element, i16 consumes two little-endian bytes; drop preserves zero-length success",
@@ -94,7 +93,6 @@
           "size": 435,
           "sha256": "05827a01cec2e9f3623e9d00b54aff258bbc7b497f47b76ffd31452bbcb9b31f",
           "class": "i32-i64-data-width",
-          "gate": "array init segment/root helper product",
           "type_graph": "rec[array{mut i32}]|rec[array{mut i64}]|rec[func()-\u003e()]",
           "state_graph": "imports=0 funcs=12 globals=[] tables=0 memories=0 tags=0 elements=0 data=7 exports=[f0=0:0,f1=0:1,f2=0:2,f3=0:3,f4=0:4,f9=0:5,g0=0:6,g1=0:7,g4=0:8,g7=0:9,g8=0:10,g9=0:11]",
           "control_graph": "array.init_data source bounds are measured in bytes: one i32 element requires four bytes and one i64 element requires eight bytes before any destination write",
@@ -146,22 +144,16 @@
           "error": "array type is not numeric or vector"
         }
       ],
-      "gates": [
-        {
-          "family": "gc",
-          "reason": "array init segment/root helper product",
-          "count": 2
-        }
-      ],
+      "gates": null,
       "counts": {
         "commands": 48,
-        "modules_passed": 0,
-        "assertions_passed": 0,
+        "modules_passed": 2,
+        "assertions_passed": 42,
         "expected_invalid": 2,
         "expected_unlinkable": 0,
         "expected_uninstantiable": 0,
-        "expected_feature_rejects": 2,
-        "blocked_commands": 42,
+        "expected_feature_rejects": 0,
+        "blocked_commands": 0,
         "unexpected_compile_rejects": 0,
         "unexpected_link_rejects": 0,
         "failures": 0
@@ -304,13 +296,13 @@
   ],
   "totals": {
     "commands": 72,
-    "modules_passed": 0,
-    "assertions_passed": 0,
+    "modules_passed": 2,
+    "assertions_passed": 42,
     "expected_invalid": 5,
     "expected_unlinkable": 0,
     "expected_uninstantiable": 0,
-    "expected_feature_rejects": 3,
-    "blocked_commands": 61,
+    "expected_feature_rejects": 1,
+    "blocked_commands": 19,
     "unexpected_compile_rejects": 0,
     "unexpected_link_rejects": 0,
     "failures": 0
