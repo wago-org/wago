@@ -597,7 +597,7 @@
       "size": 103,
       "sha256": "8e9bdbeb27a496328eb9529e0ea629d14a01124b657c4eb0aad74a8bd0f426db",
       "class": "link-provider",
-      "gate": "collector-free recursive function subtype link provider",
+      "admitted": true,
       "validator_gap": false,
       "type_graph": "rec[sub(final=false,supers=[],func()-\u003e(funcref))]|rec[sub(final=false,supers=[{0 false}],func()-\u003e(ref null type 0))]|rec[sub(final=false,supers=[{1 false}],func()-\u003e(ref null type 0))]",
       "state_graph": "imports=0 funcs=3 globals=[] tables=0 memories=0 tags=0 elements=0 data=0 exports=[f0=0:0,f1=0:1,f2=0:2]",
@@ -615,7 +615,7 @@
       "size": 86,
       "sha256": "ea4d5aaf13a9744bd319a1b33d1ee2303cfaecc84dae73a4179351a6fb91a760",
       "class": "link-consumer",
-      "gate": "collector-free recursive function subtype link consumer",
+      "admitted": true,
       "validator_gap": false,
       "type_graph": "rec[sub(final=false,supers=[],func()-\u003e(funcref))]|rec[sub(final=false,supers=[{0 false}],func()-\u003e(ref null type 0))]|rec[sub(final=false,supers=[{1 false}],func()-\u003e(ref null type 0))]",
       "state_graph": "imports=6 funcs=0 globals=[] tables=0 memories=0 tags=0 elements=0 data=0 exports=[]"
@@ -1077,6 +1077,7 @@
       "size": 51,
       "sha256": "634f7caa3c4e26b757fca7a9a9f8367f99e33304c87f7b2cf6ec7d1e31566535",
       "text": "incompatible import type",
+      "admitted": true,
       "type_graph": "rec[sub(final=false,supers=[],func()-\u003e(funcref))]|rec[sub(final=false,supers=[{0 false}],func()-\u003e(ref null type 0))]|rec[sub(final=false,supers=[{1 false}],func()-\u003e(ref null type 0))]",
       "state_graph": "imports=1 funcs=0 globals=[] tables=0 memories=0 tags=0 elements=0 data=0 exports=[]"
     },
@@ -1087,6 +1088,7 @@
       "size": 51,
       "sha256": "fe07228154a27a9de4702afb12187709536e894495e8fa2e34a710e2dd7c0b88",
       "text": "incompatible import type",
+      "admitted": true,
       "type_graph": "rec[sub(final=false,supers=[],func()-\u003e(funcref))]|rec[sub(final=false,supers=[{0 false}],func()-\u003e(ref null type 0))]|rec[sub(final=false,supers=[{1 false}],func()-\u003e(ref null type 0))]",
       "state_graph": "imports=1 funcs=0 globals=[] tables=0 memories=0 tags=0 elements=0 data=0 exports=[]"
     },
@@ -1097,6 +1099,7 @@
       "size": 51,
       "sha256": "24ce2b2eec631ee2946c641e0545d06dc1179e2e9ba646ae59c5d37974111649",
       "text": "incompatible import type",
+      "admitted": true,
       "type_graph": "rec[sub(final=false,supers=[],func()-\u003e(funcref))]|rec[sub(final=false,supers=[{0 false}],func()-\u003e(ref null type 0))]|rec[sub(final=false,supers=[{1 false}],func()-\u003e(ref null type 0))]",
       "state_graph": "imports=1 funcs=0 globals=[] tables=0 memories=0 tags=0 elements=0 data=0 exports=[]"
     },
@@ -1155,12 +1158,12 @@
     {
       "family": "gc",
       "reason": "collector-free recursive function subtype link consumer",
-      "count": 7
+      "count": 6
     },
     {
       "family": "gc",
       "reason": "collector-free recursive function subtype link provider",
-      "count": 11
+      "count": 10
     },
     {
       "family": "gc",
@@ -1170,13 +1173,13 @@
   ],
   "counts": {
     "commands": 170,
-    "modules_passed": 26,
+    "modules_passed": 28,
     "assertions_passed": 23,
     "expected_invalid": 24,
-    "expected_unlinkable": 0,
+    "expected_unlinkable": 3,
     "expected_uninstantiable": 0,
-    "expected_feature_rejects": 19,
-    "blocked_commands": 25,
+    "expected_feature_rejects": 17,
+    "blocked_commands": 21,
     "unexpected_compile_rejects": 0,
     "unexpected_link_rejects": 0,
     "failures": 0
