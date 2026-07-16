@@ -723,7 +723,7 @@
       "size": 114,
       "sha256": "4b62738d11270b2ac5b43e5de7c8105ddac449d9f23de09ce44160996f302d62",
       "class": "link-provider",
-      "gate": "collector-free recursive function subtype link provider",
+      "admitted": true,
       "validator_gap": false,
       "type_graph": "rec[sub(final=false,supers=[],func()-\u003e());sub(final=false,supers=[],struct{ref type 0})]|rec[sub(final=false,supers=[],func()-\u003e());sub(final=false,supers=[],struct{ref type 0})]|rec[sub(final=false,supers=[{2 false}],func()-\u003e());sub(final=false,supers=[{3 false}],struct{ref type 0,ref type 2,ref type 0,ref type 2,ref type 0})]|rec[sub(final=false,supers=[{4 false}],func()-\u003e());struct{}]",
       "state_graph": "imports=0 funcs=1 globals=[] tables=0 memories=0 tags=0 elements=0 data=0 exports=[h=0:0]"
@@ -735,7 +735,7 @@
       "size": 102,
       "sha256": "5992b926a2f2ed28c4e6d5149d97ff075c0e6fdbcc9fb8ec8194fa96271405db",
       "class": "link-consumer",
-      "gate": "collector-free recursive function subtype link consumer",
+      "admitted": true,
       "validator_gap": false,
       "type_graph": "rec[sub(final=false,supers=[],func()-\u003e());sub(final=false,supers=[],struct{ref type 0})]|rec[sub(final=false,supers=[],func()-\u003e());sub(final=false,supers=[],struct{ref type 0})]|rec[sub(final=false,supers=[{0 false}],func()-\u003e());sub(final=false,supers=[{1 false}],struct{ref type 0,ref type 0,ref type 2,ref type 2,ref type 0})]|rec[sub(final=false,supers=[{4 false}],func()-\u003e());struct{}]",
       "state_graph": "imports=2 funcs=0 globals=[] tables=0 memories=0 tags=0 elements=0 data=0 exports=[]"
@@ -1161,12 +1161,12 @@
     {
       "family": "gc",
       "reason": "collector-free recursive function subtype link consumer",
-      "count": 3
+      "count": 2
     },
     {
       "family": "gc",
       "reason": "collector-free recursive function subtype link provider",
-      "count": 5
+      "count": 4
     },
     {
       "family": "gc",
@@ -1176,13 +1176,13 @@
   ],
   "counts": {
     "commands": 170,
-    "modules_passed": 36,
+    "modules_passed": 38,
     "assertions_passed": 23,
     "expected_invalid": 24,
     "expected_unlinkable": 6,
     "expected_uninstantiable": 0,
-    "expected_feature_rejects": 9,
-    "blocked_commands": 13,
+    "expected_feature_rejects": 7,
+    "blocked_commands": 12,
     "unexpected_compile_rejects": 0,
     "unexpected_link_rejects": 0,
     "failures": 0
