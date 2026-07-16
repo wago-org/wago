@@ -323,6 +323,8 @@ func replayStagedGCTypeSubtypingScript(t *testing.T, tmp string, script stagedSp
 				wantAs = "M"
 			case stagedGCTypeSubtypingFinalityLinkProvider:
 				wantAs = "M2"
+			case stagedGCTypeSubtypingStructLinkProvider:
+				wantAs = "M3"
 			}
 			if wantAs == "" || currentInstance == nil || currentCompiled == nil || cmd.As != wantAs {
 				delta.Counts.Failures++
@@ -526,7 +528,7 @@ func TestStagedOfficialGCTypeSubtypingAccounting(t *testing.T) {
 	tmp := stagedOfficialTypedReferenceJSON(t, "gc/type-subtyping", &script)
 	delta := replayStagedGCTypeSubtypingScript(t, tmp, script)
 	counts := delta.Counts
-	if counts.Commands != 170 || counts.ModulesPassed != 29 || counts.AssertionsPassed != 23 || counts.ExpectedInvalid != 24 || counts.ExpectedMalformed != 0 || counts.ExpectedUnlinkable != 5 || counts.ExpectedUninstantiable != 0 || counts.ExpectedFeatureRejects != 16 || counts.BlockedCommands != 18 || counts.UnexpectedCompileRejects != 0 || counts.UnexpectedLinkRejects != 0 || counts.Failures != 0 {
+	if counts.Commands != 170 || counts.ModulesPassed != 31 || counts.AssertionsPassed != 23 || counts.ExpectedInvalid != 24 || counts.ExpectedMalformed != 0 || counts.ExpectedUnlinkable != 5 || counts.ExpectedUninstantiable != 0 || counts.ExpectedFeatureRejects != 14 || counts.BlockedCommands != 17 || counts.UnexpectedCompileRejects != 0 || counts.UnexpectedLinkRejects != 0 || counts.Failures != 0 {
 		t.Fatalf("staged gc/type-subtyping accounting has hidden or changed gaps: %+v", counts)
 	}
 	admitted := 0
@@ -535,7 +537,7 @@ func TestStagedOfficialGCTypeSubtypingAccounting(t *testing.T) {
 			admitted++
 		}
 	}
-	if len(delta.Leaders) != 45 || admitted != 29 || len(delta.Invalids) != 24 || len(delta.Unlinkables) != 8 || len(stagedGCTypeSubtypingValidValidatorGapLines) != 0 || len(stagedGCTypeSubtypingInvalidValidatorGapLines) != 0 {
+	if len(delta.Leaders) != 45 || admitted != 31 || len(delta.Invalids) != 24 || len(delta.Unlinkables) != 8 || len(stagedGCTypeSubtypingValidValidatorGapLines) != 0 || len(stagedGCTypeSubtypingInvalidValidatorGapLines) != 0 {
 		t.Fatalf("staged gc/type-subtyping inventory changed: leaders=%d admitted=%d invalids=%d unlinkables=%d valid-validator-gaps=%d invalid-validator-gaps=%d", len(delta.Leaders), admitted, len(delta.Invalids), len(delta.Unlinkables), len(stagedGCTypeSubtypingValidValidatorGapLines), len(stagedGCTypeSubtypingInvalidValidatorGapLines))
 	}
 	got, err := json.MarshalIndent(delta, "", "  ")
