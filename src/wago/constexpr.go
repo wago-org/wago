@@ -121,14 +121,22 @@ func evalConstExprBytesWithModule(b []byte, want wasm.ValType, m *wasm.Module) (
 			return constExprResult{}, err
 		}
 		switch heap {
-		case -16, -13: // func (0x70) / nofunc (0x73): null funcref
+		case -16: // func (0x70): null funcref
 			got.vtype = wasm.FuncRef
-		case -17, -14: // extern (0x6f) / noextern (0x72): null externref
+		case -13: // nofunc (0x73): bottom null funcref
+			got.vtype = wasm.RefVal(wasm.AbsRef(wasm.HeapNoFunc))
+		case -17: // extern (0x6f): null externref
 			got.vtype = wasm.ExternRef
+		case -14: // noextern (0x72): bottom null externref
+			got.vtype = wasm.RefVal(wasm.AbsRef(wasm.HeapNoExtern))
 		case -18: // any (0x6e): null GC-category reference
 			got.vtype = wasm.RefVal(wasm.AbsRef(wasm.HeapAny))
+		case -15: // none (0x71): bottom null GC-category reference
+			got.vtype = wasm.RefVal(wasm.AbsRef(wasm.HeapNone))
 		case -23: // exn (0x69): null exception reference
 			got.vtype = wasm.RefVal(wasm.AbsRef(wasm.HeapExn))
+		case -12: // noexn (0x74): bottom null exception reference
+			got.vtype = wasm.RefVal(wasm.AbsRef(wasm.HeapNoExn))
 		default:
 			if heap < 0 || m == nil {
 				return constExprResult{}, fmt.Errorf("unsupported ref.null heap type %d", heap)
