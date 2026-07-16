@@ -213,8 +213,18 @@
       "gates": [
         {
           "family": "gc",
-          "reason": "GC-defined struct/array types are not executable",
-          "count": 10
+          "reason": "recursive struct metadata in cross-instance function link matching",
+          "count": 3
+        },
+        {
+          "family": "gc",
+          "reason": "recursive struct metadata in ordinary funcref call_indirect matching",
+          "count": 3
+        },
+        {
+          "family": "gc",
+          "reason": "recursive struct metadata with an immutable local ref.func global",
+          "count": 4
         }
       ],
       "counts": {
@@ -252,8 +262,18 @@
   "gates": [
     {
       "family": "gc",
-      "reason": "GC-defined struct/array types are not executable",
-      "count": 10
+      "reason": "recursive struct metadata in cross-instance function link matching",
+      "count": 3
+    },
+    {
+      "family": "gc",
+      "reason": "recursive struct metadata in ordinary funcref call_indirect matching",
+      "count": 3
+    },
+    {
+      "family": "gc",
+      "reason": "recursive struct metadata with an immutable local ref.func global",
+      "count": 4
     }
   ],
   "totals": {

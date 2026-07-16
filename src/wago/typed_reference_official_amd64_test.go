@@ -58,17 +58,31 @@ func compileStagedTypedReference(data []byte) (*Compiled, error) {
 	return compileWithFrontendFeatures(cfg, data, features)
 }
 
-func stagedTypedReferenceKnownGate(err error) (family, reason string, ok bool) {
+func stagedTypedReferenceKnownGate(base string, data []byte, line int, err error) (family, reason string, ok bool) {
 	if err == nil {
 		return "", "", false
 	}
 	text := err.Error()
+	if base == "type-rec" && strings.Contains(text, "gc type") {
+		pin, pinned := stagedTypeRecLeaderPinFor(data, line)
+		if !pinned {
+			return "", "", false
+		}
+		m, decodeErr := corewasm.DecodeModule(data)
+		if decodeErr != nil {
+			return "", "", false
+		}
+		product, shapeErr := stagedStructuralTypeProductShape(m)
+		if shapeErr != nil || product != pin.Product {
+			return "", "", false
+		}
+		return "gc", product.gateReason(), true
+	}
 	for _, gate := range []struct {
 		contains string
 		family   string
 		reason   string
 	}{
-		{"gc type", "gc", "GC-defined struct/array types are not executable"},
 		{"ref null any", "gc", "GC abstract any/eq/i31/null references are not executable"},
 		{"ref null none", "gc", "GC abstract any/eq/i31/null references are not executable"},
 		{"noexn", "exception-handling", "exception references are not executable"},
@@ -209,8 +223,8 @@ func replayStagedTypedReferenceScript(t *testing.T, base, tmp string, script sta
 	externrefs := map[*Instance]map[string]ExternRef{}
 	pinnedInvalidSeen := 0
 
-	recordGate := func(err error) bool {
-		family, reason, ok := stagedTypedReferenceKnownGate(err)
+	recordGate := func(data []byte, cmd stagedSpecCommand, err error) bool {
+		family, reason, ok := stagedTypedReferenceKnownGate(base, data, cmd.Line, err)
 		if ok {
 			counts.ExpectedFeatureRejects++
 			gates[family+"\x00"+reason]++
@@ -267,7 +281,7 @@ func replayStagedTypedReferenceScript(t *testing.T, base, tmp string, script sta
 			}
 			m, err := instantiate(data, cmd)
 			if err != nil {
-				if recordGate(err) {
+				if recordGate(data, cmd, err) {
 					current = stagedSpecModule{}
 					continue
 				}
@@ -293,7 +307,7 @@ func replayStagedTypedReferenceScript(t *testing.T, base, tmp string, script sta
 			}
 			m, err := instantiate(data, cmd)
 			if err != nil {
-				if recordGate(err) {
+				if recordGate(data, cmd, err) {
 					current = stagedSpecModule{}
 					continue
 				}
@@ -373,7 +387,7 @@ func replayStagedTypedReferenceScript(t *testing.T, base, tmp string, script sta
 				t.Errorf("%s.wast:%d expected instantiation rejection: %s", base, cmd.Line, cmd.Text)
 				continue
 			}
-			if recordGate(err) {
+			if recordGate(data, cmd, err) {
 				continue
 			}
 			if cmd.Type == "assert_unlinkable" {
