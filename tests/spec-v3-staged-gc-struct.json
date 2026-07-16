@@ -1,0 +1,239 @@
+{
+  "schema": 2,
+  "suite_revision": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+  "file": "gc/struct",
+  "source_only_malformed": [
+    15
+  ],
+  "leaders": [
+    {
+      "filename": "struct.0.wasm",
+      "command_line": 9,
+      "source_line": 3,
+      "size": 85,
+      "sha256": "2f160a99abe79417039118146d28294b053e538438b0e1fb63a0113680be9b79",
+      "class": "declarations",
+      "gate": "declaration-only struct type metadata",
+      "type_graph": "rec[struct{}]|rec[struct{}]|rec[struct{i8}]|rec[struct{i8,i8,i8,i8}]|rec[struct{i32,i32}]|rec[struct{i8,i16,i32,i64,f32,f64,ref null any,funcref,ref type 0,ref null type 1}]|rec[struct{i32,i64,i8,ref null i31,ref null any}]|rec[struct{i32,f32,f64,i32}]",
+      "state_graph": "imports=0 funcs=0 globals=[] tables=0 memories=0 tags=0 elements=0 data=0 exports=[]"
+    },
+    {
+      "filename": "struct.1.wasm",
+      "command_line": 17,
+      "source_line": 25,
+      "size": 74,
+      "sha256": "ef40a050a65b4dd40008b858556a66b412a654caa418326ac74fabb57a1f19fd",
+      "class": "bindings",
+      "gate": "recursive struct binding and type-index metadata",
+      "type_graph": "rec[struct{ref type 0,ref type 1,ref type 0,ref type 1};struct{ref type 0,ref type 1,ref type 0,ref type 1}]|rec[struct{}]|rec[func(ref type 2)-\u003e()]",
+      "state_graph": "imports=0 funcs=1 globals=[] tables=0 memories=0 tags=0 elements=0 data=0 exports=[]"
+    },
+    {
+      "filename": "struct.4.wasm",
+      "command_line": 41,
+      "source_line": 48,
+      "size": 107,
+      "sha256": "180f5b9ca1a7ea70c079439c6cdc1d94b0eadb60aba5df82912107c39eaf60ff",
+      "class": "named-field-get",
+      "gate": "numeric struct.get field-name products",
+      "type_graph": "rec[struct{i32}]|rec[struct{i32,f32}]|rec[struct{i32,i32,i64}]|rec[func(ref type 0)-\u003e(i32)]|rec[func(ref type 1)-\u003e(f32)]|rec[func(ref type 2)-\u003e(i64)]",
+      "state_graph": "imports=0 funcs=3 globals=[] tables=0 memories=0 tags=0 elements=0 data=0 exports=[]",
+      "opcodes": [
+        {
+          "opcode": "LocalGet",
+          "count": 3
+        },
+        {
+          "opcode": "StructGet",
+          "count": 3
+        }
+      ]
+    },
+    {
+      "filename": "struct.6.wasm",
+      "command_line": 77,
+      "source_line": 70,
+      "size": 373,
+      "sha256": "a469ba81d14ddf21100f100cb67d75942bc0045b9eb09e6c4fc9052ac5ab6c83",
+      "class": "basic-new-get-set",
+      "gate": "basic struct allocation/access/mutation with non-null globals and public ref.struct egress",
+      "type_graph": "rec[struct{f32,mut f32,f32}]|rec[func()-\u003e(ref null any)]|rec[func(ref type 0)-\u003e(f32)]|rec[func()-\u003e(f32)]|rec[func(ref type 0,f32)-\u003e(f32)]|rec[func(f32)-\u003e(f32)]",
+      "state_graph": "imports=0 funcs=13 globals=[const ref type 0,const ref type 0] tables=0 memories=0 tags=0 elements=0 data=0 exports=[new=0:0,get_0_0=0:2,get_vec_0=0:4,get_0_y=0:6,get_vec_y=0:8,set_get_y=0:10,set_get_1=0:12]",
+      "opcodes": [
+        {
+          "opcode": "Call",
+          "count": 6
+        },
+        {
+          "opcode": "F32Const",
+          "count": 3
+        },
+        {
+          "opcode": "LocalGet",
+          "count": 12
+        },
+        {
+          "opcode": "StructGet",
+          "count": 6
+        },
+        {
+          "opcode": "StructNew",
+          "count": 1
+        },
+        {
+          "opcode": "StructNewDefault",
+          "count": 8
+        },
+        {
+          "opcode": "StructSet",
+          "count": 2
+        }
+      ],
+      "actions": [
+        "return:new",
+        "return:get_0_0",
+        "return:get_vec_0",
+        "return:get_0_y",
+        "return:get_vec_y",
+        "return:set_get_y",
+        "return:set_get_1"
+      ]
+    },
+    {
+      "filename": "struct.8.wasm",
+      "command_line": 106,
+      "source_line": 145,
+      "size": 118,
+      "sha256": "b01911990bd0678f484afae1a28dec4b44c37308db5f5fdce7aa30b00275fd31",
+      "class": "null-dereference",
+      "gate": "null struct.get/struct.set trap product",
+      "type_graph": "rec[struct{i32,mut i32}]|rec[func()-\u003e()]",
+      "state_graph": "imports=0 funcs=2 globals=[] tables=0 memories=0 tags=0 elements=0 data=0 exports=[struct.get-null=0:0,struct.set-null=0:1]",
+      "opcodes": [
+        {
+          "opcode": "Drop",
+          "count": 1
+        },
+        {
+          "opcode": "I32Const",
+          "count": 1
+        },
+        {
+          "opcode": "LocalGet",
+          "count": 2
+        },
+        {
+          "opcode": "StructGet",
+          "count": 1
+        },
+        {
+          "opcode": "StructSet",
+          "count": 1
+        }
+      ],
+      "actions": [
+        "trap:struct.get-null",
+        "trap:struct.set-null"
+      ]
+    },
+    {
+      "filename": "struct.9.wasm",
+      "command_line": 144,
+      "source_line": 160,
+      "size": 514,
+      "sha256": "96a47580d9d86053fdc3306a59b2213fd581b9ba1987da0c240fccb7be1f6e58",
+      "class": "packed-fields",
+      "gate": "packed struct globals/get/set product",
+      "type_graph": "rec[struct{i8,mut i8,i16,mut i16}]|rec[func()-\u003e(i32,i32)]|rec[func(i32)-\u003e(i32,i32)]",
+      "state_graph": "imports=0 funcs=10 globals=[const ref type 0,const ref type 0] tables=0 memories=0 tags=0 elements=0 data=0 exports=[g0=3:0,g1=3:1,get_packed_g0_0=0:0,get_packed_g1_0=0:1,get_packed_g0_1=0:2,get_packed_g1_1=0:3,get_packed_g0_2=0:4,get_packed_g1_2=0:5,get_packed_g0_3=0:6,get_packed_g1_3=0:7,set_get_packed_g0_1=0:8,set_get_packed_g0_3=0:9]",
+      "opcodes": [
+        {
+          "opcode": "GlobalGet",
+          "count": 22
+        },
+        {
+          "opcode": "I32Const",
+          "count": 8
+        },
+        {
+          "opcode": "LocalGet",
+          "count": 2
+        },
+        {
+          "opcode": "StructGetS",
+          "count": 10
+        },
+        {
+          "opcode": "StructGetU",
+          "count": 10
+        },
+        {
+          "opcode": "StructNew",
+          "count": 2
+        },
+        {
+          "opcode": "StructSet",
+          "count": 2
+        }
+      ],
+      "actions": [
+        "return:get_packed_g0_0",
+        "return:get_packed_g1_0",
+        "return:get_packed_g0_1",
+        "return:get_packed_g1_1",
+        "return:get_packed_g0_2",
+        "return:get_packed_g1_2",
+        "return:get_packed_g0_3",
+        "return:get_packed_g1_3",
+        "return:set_get_packed_g0_1",
+        "return:set_get_packed_g0_3"
+      ]
+    }
+  ],
+  "gates": [
+    {
+      "family": "gc",
+      "reason": "basic struct allocation/access/mutation with non-null globals and public ref.struct egress",
+      "count": 1
+    },
+    {
+      "family": "gc",
+      "reason": "declaration-only struct type metadata",
+      "count": 1
+    },
+    {
+      "family": "gc",
+      "reason": "null struct.get/struct.set trap product",
+      "count": 1
+    },
+    {
+      "family": "gc",
+      "reason": "numeric struct.get field-name products",
+      "count": 1
+    },
+    {
+      "family": "gc",
+      "reason": "packed struct globals/get/set product",
+      "count": 1
+    },
+    {
+      "family": "gc",
+      "reason": "recursive struct binding and type-index metadata",
+      "count": 1
+    }
+  ],
+  "counts": {
+    "commands": 36,
+    "modules_passed": 0,
+    "assertions_passed": 0,
+    "expected_invalid": 4,
+    "expected_malformed": 1,
+    "expected_unlinkable": 0,
+    "expected_uninstantiable": 0,
+    "expected_feature_rejects": 6,
+    "blocked_commands": 19,
+    "unexpected_compile_rejects": 0,
+    "unexpected_link_rejects": 0,
+    "failures": 0
+  }
+}
