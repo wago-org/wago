@@ -59,6 +59,7 @@ type Features struct {
 	NullReferenceProducts   bool // internal staged gate for exact null-only any/exn reference products
 	StructuralTypeProducts  bool // internal staged gate for collector-free struct metadata in exact function products
 	GCStructProducts        bool // internal staged gate for exact collector-backed numeric struct helper products
+	GCArrayProducts         bool // internal staged gate for exact collector-backed numeric array helper products
 	SIMD                    bool // supported 0xfd v128 SIMD and relaxed-SIMD instructions
 	ExtendedConst           bool // i32/i64 add/sub/mul and prior immutable global.get in const expressions
 }
@@ -397,6 +398,9 @@ func (p supportPass) types() error {
 					continue
 				}
 				if p.feat.GCStructProducts && st.Comp.Kind == wasm.CompStruct {
+					continue
+				}
+				if p.feat.GCArrayProducts && st.Comp.Kind == wasm.CompArray {
 					continue
 				}
 				return p.unsupported("gc type", compTypeName(st.Comp.Kind)+" (gc disabled)", ctx)
@@ -1233,6 +1237,12 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 				return false, nil
 			}
 		}
+		if p.feat.GCArrayProducts {
+			switch imm.Kind {
+			case wasm.InstrArrayNew, wasm.InstrArrayNewDefault, wasm.InstrArrayNewFixed, wasm.InstrArrayGet, wasm.InstrArrayGetS, wasm.InstrArrayGetU, wasm.InstrArraySet, wasm.InstrArrayLen:
+				return false, nil
+			}
+		}
 		return false, p.unsupported("gc instruction", imm.Kind.String()+" (gc disabled)", ctx())
 	case 0xfe:
 		if err := wasm.SkipInstructionImmediate(r, op); err != nil {
@@ -1461,6 +1471,10 @@ func (p supportPass) constExpr(e wasm.Expr, context string) error {
 			if !p.feat.GCStructProducts {
 				return p.unsupported("const expression", in.Kind.String()+" (gc disabled)", instructionContext(context, i))
 			}
+		case wasm.InstrArrayNew, wasm.InstrArrayNewDefault, wasm.InstrArrayNewFixed:
+			if !p.feat.GCArrayProducts {
+				return p.unsupported("const expression", in.Kind.String()+" (gc disabled)", instructionContext(context, i))
+			}
 		default:
 			return p.unsupported("const expression", in.Kind.String(), instructionContext(context, i))
 		}
@@ -1541,7 +1555,9 @@ func (p supportPass) constExprBytes(body []byte, context string) error {
 			if err != nil {
 				return err
 			}
-			if !p.feat.GCStructProducts || (imm.Kind != wasm.InstrStructNew && imm.Kind != wasm.InstrStructNewDefault) {
+			structConst := p.feat.GCStructProducts && (imm.Kind == wasm.InstrStructNew || imm.Kind == wasm.InstrStructNewDefault)
+			arrayConst := p.feat.GCArrayProducts && (imm.Kind == wasm.InstrArrayNew || imm.Kind == wasm.InstrArrayNewDefault || imm.Kind == wasm.InstrArrayNewFixed)
+			if !structConst && !arrayConst {
 				return p.unsupported("const expression", imm.Kind.String()+" (gc disabled)", ctx)
 			}
 		case 0xfd:
@@ -1805,6 +1821,12 @@ func (p supportPass) instructionKind(k wasm.InstrKind, context string) error {
 				return nil
 			}
 		}
+		if p.feat.GCArrayProducts {
+			switch k {
+			case wasm.InstrArrayNew, wasm.InstrArrayNewDefault, wasm.InstrArrayNewFixed, wasm.InstrArrayGet, wasm.InstrArrayGetS, wasm.InstrArrayGetU, wasm.InstrArraySet, wasm.InstrArrayLen:
+				return nil
+			}
+		}
 		return p.unsupported("gc instruction", k.String()+" (gc disabled)", context)
 	}
 	if isReferenceInstruction(k) {
@@ -1896,11 +1918,11 @@ func (p supportPass) supportedExceptionRef(rt wasm.RefType) bool {
 }
 
 func (p supportPass) supportedGCReference(rt wasm.RefType) bool {
-	return p.feat.GCStructProducts && !rt.Exact && rt.Heap.Kind == wasm.HeapAbs && (rt.Heap.Abs == wasm.HeapAny || rt.Heap.Abs == wasm.HeapNone)
+	return (p.feat.GCStructProducts || p.feat.GCArrayProducts) && !rt.Exact && rt.Heap.Kind == wasm.HeapAbs && (rt.Heap.Abs == wasm.HeapAny || rt.Heap.Abs == wasm.HeapNone || rt.Heap.Abs == wasm.HeapArray)
 }
 
 func (p supportPass) supportedStructuralTypeRef(rt wasm.RefType) bool {
-	if (!p.feat.StructuralTypeProducts && !p.feat.GCStructProducts) || rt.Exact || rt.Heap.Kind != wasm.HeapTypeIndex {
+	if (!p.feat.StructuralTypeProducts && !p.feat.GCStructProducts && !p.feat.GCArrayProducts) || rt.Exact || rt.Heap.Kind != wasm.HeapTypeIndex {
 		return false
 	}
 	index := rt.Heap.Type.Index

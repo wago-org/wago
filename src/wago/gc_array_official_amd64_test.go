@@ -159,7 +159,7 @@ func compileStagedGCArray(data []byte) (*Compiled, error) {
 	cfg := NewRuntimeConfig()
 	features := cfg.frontendFeatures()
 	features.TypedFunctionReferences = true
-	features.GCStructProducts = true
+	features.GCArrayProducts = true
 	return compileWithFrontendFeatures(cfg, data, features)
 }
 

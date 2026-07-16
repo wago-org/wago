@@ -26,6 +26,9 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
+	if sub >= 6 && sub <= 20 {
+		return f.emitGCArray(sub, r)
+	}
 	if !f.gcStructHelpers {
 		return fmt.Errorf("amd64: unsupported 0xfb opcode %d without staged GC struct helpers", sub)
 	}

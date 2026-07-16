@@ -431,7 +431,7 @@ func TestAmd64HostImportSyncFloatLocalSurvives(t *testing.T) {
 	sig := wasmtest.FuncType([]wasm.ValType{wasm.F32}, []wasm.ValType{wasm.F32})
 	body := []byte{0x00, 0x20, 0x00, 0x10, 0x00, 0x1a, 0x20, 0x00, 0x0b}
 	m := hostSyncModule(sig, body)
-	host := func(imp uint32, args, res []uint64) { res[0] = uint64(math.Float32bits(99)) }
+	host := func(_ uintptr, imp uint32, args, res []uint64) { res[0] = uint64(math.Float32bits(99)) }
 	want := math.Float32bits(7)
 	for i := 0; i < 100; i++ {
 		if got := runHostSync(t, m, host, int32(want)); got != want {
