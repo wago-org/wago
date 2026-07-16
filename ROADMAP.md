@@ -228,19 +228,17 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
 - 🚧 WasmGC's complete official `gc/struct.wast` file is gap-free under exact staged
   product admission at 36 commands / 6 modules / 19 assertions / 4 invalid / 1 malformed /
   0 gates / 0 blocked. Its bounded opaque `GCRef` retains exact producer/type/root lifetime
-  without exposing compact handles. Iterations 41-42 open an independently pinned array path:
-  the synthetic pointer-free helper product plus the official declaration/binding, null-trap,
-  numeric-fixed, numeric-default, and packed-data leaders execute. The default leader installs
-  two checked immutable roots in initializer order; the packed leader preflights current passive
-  data length and u32 source arithmetic before allocation, honors `data.drop`, and permits the
-  spec-required zero-length construction at source zero after drop. Numeric/packed stores need
-  no object barrier, and public results preserve the one-live-token exact dynamic type/lifetime
-  contract. Complete `gc/array.wast` accounting is 61 commands / 6 modules / 29 assertions /
-  1 gate / 12 blocked / 6 invalid, with zero hidden failures. Packed data get measures
-  311.6–315.9 ns/op at 0 B/op and 0 allocs/op. The sole remaining official leader is
-  reference-element `array.new_elem` with rooted passive elements, object/bulk barriers, and
-  `elem.drop`; general non-empty frame roots, mutable/reference globals, snapshots, guard mode,
-  and arm64 also remain.
+  without exposing compact handles. Iterations 41-43 complete the independently pinned
+  `gc/array.wast` path at 61 commands / 7 modules / 41 assertions / 6 invalid / 0 gates /
+  0 blocked, with zero hidden failures. The reference leader allocates two inner i8 arrays
+  transactionally, roots them in two checked collector table slots, and withdraws both roots
+  with `elem.drop`. `array.new_elem` preflights widened u32 ranges, supplies a fixed two-entry
+  non-empty `RootSet`, supports exact non-null/nullable/any widening, and copies through object,
+  card, and post-bulk barriers. Public results retain the one-live-token exact dynamic type and
+  close-order contract; codec v27 and snapshots inherit no live segment/root/helper state.
+  Reference nested get measures 6.309–11.634 us/op with 0 allocs/op and 4–8 amortized B/op on
+  the measured host. General frame roots, mutable/reference globals, the remaining GC files,
+  snapshots, guard mode, public admission, and arm64 remain.
 - [ ] Reach zero unexplained failures/skips in the official Release 3 core suite.
 
 **Engine & performance** (no-ir-plan P1–P7, measured against P1's stats)
