@@ -160,18 +160,39 @@ root protocol is all-or-nothing: `SpillLiveRefs` prepares storage,
 and successful publication must be followed by exactly one `UnpublishRoots` even
 if the runtime helper fails.
 
-Iteration 38 has one narrower executable helper ABI while general native root-map
-publication remains incomplete. Exact linux/amd64 explicit-bounds numeric-struct
-products park through the existing 328-byte synchronous control frame with dispatch
-bit 30 reserved for internal GC helpers. The helpers receive compact `gc.Ref` values,
-type indexes, and field indexes in copied scalar slots; they never expose or retain a
-Go-slice payload address in native code. The admitted allocation shape performs one
-`struct.new_default` with no prior live ref, so it passes the non-nil zero-sized
-`gc.EmptyRoots` set and remains allocation-free at the root-publication boundary.
-`struct.get` and numeric `struct.set` do not collect. No second allocation may occur
-while the returned ref is live, and reference fields, calls with live GC refs, global/
-table roots, public GC values, and snapshots remain rejected. This exact proof must
-not be treated as the general `codegen.Emitter` publication protocol.
+Iterations 38-39 have a narrower executable helper ABI while general native root-map
+publication remains incomplete. Exact linux/amd64 explicit-bounds numeric-struct products
+park through the existing 328-byte synchronous control frame with dispatch bit 30 reserved
+for internal GC helpers. The helpers receive compact `gc.Ref` values, type/field indexes,
+and numeric bits in copied scalar slots; they never expose or retain a Go-slice payload
+address in native code.
+
+Allocation-local products pass the non-nil zero-sized `gc.EmptyRoots` set only when no prior
+frame/local ref is live. Iteration 39 separately admits at most two immutable numeric GC
+globals. Instantiation allocates one object, initializes it, installs a checked collector
+`GlobalSlot`, and only then begins the next initializer. The native 8-byte global cell and
+the collector slot contain the same compact stable handle; a fixed two-entry lazy instance
+sidecar records their index mapping. Because these globals are immutable, no cell/slot write
+coherence or barrier is required. Any mutable GC global must update both transactionally and
+call the collector slot barrier, so it remains rejected.
+
+Ordinary/packed `struct.get` and numeric `struct.set` do not collect. The official basic
+numeric actions cross only exact internal callees whose reachable instructions cannot
+allocate. Iteration 40 owns that product's sole exported non-null `ref.struct` result only
+after native return: the compact 32-bit handle is checked against the declared result and
+exact dynamic struct type, replaced with a random opaque store token whose upper 32 bits are
+non-zero, and rooted in one reusable checked collector global slot. A second live token per
+producer rejects. Release nulls the slot through the collector barrier contract; the token
+retains the producer collector across logical instance close and supports both close orders.
+Helper calls, token root mutation, and collector close serialize through one lazy per-instance
+mutex.
+
+This result-token root is not a native frame root and does not justify widening `gc.EmptyRoots`.
+It exists only after the Wasm activation has returned, carries no cached payload pointer, and
+is compile-only exact-product state absent from codec v27. Non-null ingress, reference fields,
+general calls with live GC refs, mutable globals, tables, arrays, host boundaries, snapshots,
+guard mode, and arm64 remain closed. These exact proofs must not be treated as the general
+`codegen.Emitter` publication protocol.
 
 ## Global coherence invariant
 

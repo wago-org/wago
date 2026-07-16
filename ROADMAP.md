@@ -225,24 +225,22 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   remain fail-closed. The scalar catch benchmark is 41.48–41.91 ns/op, the typed-funcref
   catch is 135.1–145.7 ns/op, and bottom-null `global.get` is 52.24–53.58 ns/op; all are
   0 B/op and 0 allocs/op.
-- 🚧 WasmGC now executes every official `gc/struct.wast` module under exact staged
-  product admission while retaining one public-result action gate. Strict schema-2
-  accounting covers all 36 commands and remains pinned by source/command line, binary
-  hash/size, decoded type/storage graph, module state, opcodes, and ordered actions.
-  Iteration 39 adds staged `struct.new`/`struct.new_default` constant initialization for
-  exact numeric globals and a bounded two-entry per-instance mapping to collector
-  `GlobalSlot`s; each slot is installed before the next initializer may collect. The packed
-  leader executes all ten signed/unsigned i8/i16 get and truncating-set assertions. The
-  basic leader executes six numeric/f32 get/set assertions across exact internal calls that
-  cannot reach allocation; its exported `new` action still fails closed at non-null
-  `ref.struct` public egress. A discovered parked-Go ABI bug is fixed by spilling pinned
-  float locals after helper/host arguments are copied, because XMM registers are
-  caller-saved. Final accounting is 36 commands / 6 modules / 18 assertions / 4 invalid /
-  1 malformed / 0 module gates / 1 blocked action, with zero hidden failures. Packed get
-  measures 196.7–200.0 ns/op and packed set/get 256.0–258.1 ns/op; basic get measures
-  211.5–237.7 ns/op and basic set/get 281.3–318.9 ns/op; all report 0 B/op and 0 allocs/op.
-  Mutable/reference GC globals, general non-empty native frame roots, reference fields and
-  barriers, arrays, public ownership tokens, snapshots, guard mode, and arm64 remain.
+- 🚧 WasmGC's complete official `gc/struct.wast` file is gap-free under exact staged
+  product admission. Strict schema-2 accounting pins all 36 commands by source/command line,
+  binary hash/size, decoded type/storage graph, module state, opcodes, and ordered actions.
+  Iteration 39's immutable collector-rooted globals, packed fields, numeric get/set actions,
+  and no-may-collect internal-call proof remain intact. Iteration 40 adds one bounded
+  store-owned public `GCRef` for the basic leader's exported `new`: the opaque token retains
+  its producer/collector, carries exact dynamic struct identity, uses one reusable checked
+  collector root slot, rejects stale/cross-producer/second-live values, supports both close
+  orders, and never exposes compact handles. Accounting is 36 commands / 6 modules / 19
+  assertions / 4 invalid / 1 malformed / 0 gates / 0 blocked, with zero hidden failures.
+  Public token issue/release measures 371.6–386.5 ns/op at 0 B/op and 0 allocs/op after
+  warmup. The next complete family is also pinned: `gc/array.wast` has 61 commands, 7 exact
+  module gates, 41 blocked actions, and 6 invalid modules, split across numeric default/fixed,
+  packed-data, reference-element/barrier, lifecycle, null-trap, and public-result obligations.
+  Non-null ingress, mutable/reference GC globals, general native frame roots, executable
+  arrays, reference barriers, snapshots, guard mode, and arm64 remain.
 - [ ] Reach zero unexplained failures/skips in the official Release 3 core suite.
 
 **Engine & performance** (no-ir-plan P1–P7, measured against P1's stats)

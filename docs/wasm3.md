@@ -162,7 +162,7 @@ handling, multi-memory, memory64, and table64.
 | Relaxed SIMD | Complete through `0xfd 275`, with reserved holes rejected. | Deterministic lowering is present on the documented linux/amd64 SIMD baseline. The Release 3 harness now honors official `either` result patterns; all 8 converted modules and 69 assertions pass with zero failures/skips. | ✅ Existing completed support, represented by `CoreFeatureSIMD`. |
 | Tail calls | Decoder and validator understand direct, indirect, and reference tail-call forms. Tail results use covariant reference matching, while invalid narrowing remains rejected. Separate compile-only frontend bits admit bounded direct/indirect and typed-tail slices. | linux/amd64 has local register/wrapper `return_call`, tail-position host imports, retained integer cross-instance direct tails plus exactly `(i32, f64) -> f64` and `(f64) -> i32` with a separate fixed four-word root/nested record, per-table finite immutable-local `return_call_indirect` proofs, tagged same-instance internal/scalar-wrapper `return_call_ref`, retained typed cross-instance root/nested transfers, and one canonical funcref result returned in RAX. Exact pinned accounting is gap-free for all three files: `return_call` 47 commands / 3 modules / 33 assertions / 11 invalid; `return_call_indirect` 79 / 3 / 49 / 16 invalid / 11 malformed; `return_call_ref` 51 / 5 / 35 / 11 invalid. Other float/oversized direct signatures, mutable/imported/exported/host-descriptor indirect tables, foreign-float/general reference-result tails, snapshots, public admission, and arm64 remain fail-closed. | 🚧 All staged official tail files are gap-free; not a public product claim. |
 | Typed function references | `ref.func` has the declared non-null indexed function type. Indexed references match by bounded coinductive structural equivalence across duplicate and recursive groups, including function/struct/array shapes, supers, and descriptor metadata. `call_ref` rejects abstract funcref while accepting nullable indexed references for dynamic null traps. `br_on_non_null` validates a label prefix plus non-null reference branch payload and consumes the reference on null fallthrough. Typed/tail opcodes contribute exact required-feature bits. Iteration 31 enforces recursive-group scope for relative indices and compares whole recursive groups, closing the five pinned invalid recursive/indexed gaps. Iteration 37 additionally makes native structural keys include every member and the selected position of non-singleton recursive groups. | The internal gate admits indexed signatures/storage, explicit func/extern block types, `ref.null`, `ref.is_null`, `ref.as_non_null`, both null branches, `select`, `call_ref`, bounded typed-tail contexts, both exact null-only `ref_null` products, and all valid `type-rec` products. The 14-file schema-2 matrix is gap-free at 422 commands / 61 modules / 246 assertions / 65 invalid / 2 malformed / 2 unlinkable / 0 gates / 0 blocked, with zero hidden failures. The ten former struct-defined leaders are pinned exact collector-free products: four immutable local `ref.func` globals, three cross-instance function-link checks, and three ordinary funcref-table `call_indirect` actions. Their struct descriptors survive codec v27, but no struct/array value or opcode executes and instantiation creates no collector. Typed/tail snapshots, public admission, broader tails, actual GC execution, and arm64 remain fail-closed. | 🚧 Complete measured typed-reference/null/structural-function-identity accounting; no public or WasmGC heap execution claim. |
-| GC | Recursive types, instructions, descriptor lowering, collector profiles, exact `RootSet` scanning, and a validated target-neutral native root-map metadata contract exist. Complete `gc/struct.wast` schema-2 accounting pins every valid/invalid/malformed leader by line, hash, decoded type/storage graph, state, opcodes, and actions. Staged validation admits exact numeric `struct.new`/`struct.new_default` constants without widening default/public validation. | Iterations 36-38 retain their null-only, collector-free, and numeric-local proofs. Iteration 39 adds a bounded two-entry per-instance mapping from immutable Wasm GC globals to collector `GlobalSlot`s; each object is initialized and rooted before a later initializer can collect. The packed leader executes all ten i8/i16 signed/unsigned get and truncating-set assertions. The basic leader executes six numeric/f32 actions across exact internal callees that cannot reach allocation; synchronous parked-Go calls now spill XMM-pinned locals after argument copying. The exported `new` action reaches an explicit non-null-anyref public-result rejection and remains blocked. Official `gc/struct` is 36 commands / 6 modules / 18 assertions / 4 invalid / 1 malformed / 0 module gates / 1 blocked action, with zero hidden failures. Codec reload drops live initializer/root admission, snapshots and exported non-null GC globals/results stay closed, and reference fields/barriers remain gated. | 🚧 Every official struct module executes under exact staged admission, but public non-null GC ownership, general frame roots, mutable/reference globals, arrays, snapshots, guard mode, and arm64 remain incomplete. See `docs/gc.md`. |
+| GC | Recursive types, instructions, descriptor lowering, collector profiles, exact `RootSet` scanning, and a validated target-neutral native root-map metadata contract exist. Complete `gc/struct.wast` schema-2 accounting pins every valid/invalid/malformed leader by line, hash, decoded type/storage graph, state, opcodes, and actions. Staged validation admits exact numeric `struct.new`/`struct.new_default` constants without widening default/public validation. Complete `gc/array.wast` accounting now pins seven exact leaders, all six invalid modules, and every action by the same strict identity/shape rules. | Iterations 36-39 retain their null-only, collector-free, numeric-local, immutable-global, packed-field, and no-may-collect internal-call proofs. Iteration 40 adds one bounded store-owned `GCRef` for the exact basic leader's exported `new`: the token retains the producer collector, records exact dynamic struct identity, roots through one reusable checked `GlobalSlot`, rejects stale/cross-producer/second-live values, supports both close orders, and never exposes compact `gc.Ref` bits. Official `gc/struct` is gap-free at 36 commands / 6 modules / 19 assertions / 4 invalid / 1 malformed / 0 gates / 0 blocked. Codec reload drops helper/product/token/root admission; snapshots, non-null ingress/globals/hosts, reference fields/barriers, and arrays stay closed. `gc/array` is 61 commands / 7 exact gates / 41 blocked actions / 6 invalid, with zero hidden failures. | 🚧 Complete measured struct execution including one bounded public result token; complete array obligation accounting but no executable array opcode. General frame roots, mutable/reference globals, non-null ingress, reference barriers, snapshots, guard mode, public feature admission, and arm64 remain incomplete. See `docs/gc.md`. |
 | Exception handling | Tags, `throw`, `throw_ref`, and `try_table` decode and validate strictly across AST and byte-backed paths; non-empty tag results reject, `noexn <: exn`, bottom heaps remain beneath indexed function heaps, and throw operands are exact. Catch payload/depth typing is complete for `catch`, `catch_ref`, `catch_all`, and `catch_all_ref`: reference catches produce non-null `(ref exn)` and may widen to nullable labels. The intentional source-only malformed `try_table` lines 339/344 remain rejected. | The complete five-file schema-2 matrix for `exceptions/{tag,throw,throw_ref,try_table}` plus `ref_null` is gap-free under staged admission: 147 commands / 13 modules / 98 assertions / 16 invalid / 2 malformed / 2 unlinkable / 0 gates / 0 blocked, with zero hidden failures. The official `exceptions/try_table` file remains gap-free at 5 modules / 45 assertions / 9 invalid / 2 malformed. linux/amd64 explicit bounds admits at most 9 tags, 24 `try_table`s/module, 8 ordered clauses/table, 4 nested seven-word handlers, and 4 fixed three-word exception roots/function. Exact retained `() -> ()` cross-instance calls carry the handler in RBP and true tails discard dead scopes. One exact local-only tag payload may carry a non-null indexed `() -> ()` funcref from one declarative local descriptor. The two `ref_null` modules execute only zero-valued any/none/exn/noexn references and immutable globals; they allocate no collector and admit no non-null exception/GC ABI. Non-null GC/exn values, allocation/cast/test opcodes, foreign/mutable/imported null products, broader roots, host, snapshot, public, guard, and arm64 variants remain closed. | 🚧 Complete official family accounting and bounded internal execution; not a public product or WasmGC claim. |
 | Multi-memory | Indexed immediates and compact imports decode/validate strictly on AST and byte-backed paths; default Release 2 admission still rejects them explicitly. | Exact product directories, policy accounting, duplicate aliases, codec v27, every indexed scalar/SIMD/bulk/data operation, snapshot-v3 owned-local state, and bounded shared-memory co-tenants are staged on linux/amd64 explicit bounds. A finite proof admits exact native directories plus optional imported scalar-global pointers and exactly one bounded imported funcref table under a numeric-signature, no-element, no-ref.func/indirect-call, null/get/set/size-only scan. Retained scalar direct imports may re-enter producers that use the exact same memory-0 mapping: each eligible instance owns one stable 256-byte arena image, native calls save/install/restore images recursively, and trap recovery saves the image named by the active basedata slot. Root/nested calls now compose with imported numeric-global pointers and the sole imported funcref table simultaneously while shared `memory.grow`, global updates, table state, nested traps, concurrency, independent memory/global/table/function close ordering, and steady-state allocation freedom remain proven. Host callbacks, foreign-memory bindings, imported tail calls, broader reference/table/passive state, codec serialization of live bindings, imported/shared snapshots, guard mode, public admission, and arm64 remain fail-closed. The complete 42-file matrix remains gap-free at 913 commands, 79 modules, 771 assertions, 4 invalid, 22 unlinkable, and 20 uninstantiable cases. | 🚧 Complete official family accounting and bounded internal execution; not a public product claim. |
 | memory64 | Limits, i64 address typing, 64-bit memarg offsets, and operation validation are present. The staged support pass admits size/grow, integer/float scalar memory operations, every SIMD memory load/store/extend/splat/zero/lane form, active and passive data lifecycle, and `memory.copy`/`memory.fill`. Core validation rejects limits above 2^48 pages and accepts the exact maximum. | One linux/amd64 explicit-bounds path accepts exactly one non-shared local or instance-exported imported memory. Valid declared maxima through 2^48 pages persist exactly in memory directories, codec v27, inspection, imports/re-exports, policy, and managed accounting whenever the minimum remains allocatable; only the direct memory-0 execution reservation is capped at 65,535 pages. No-maximum declarations preserve `HasMax=false` under that finite reserve. Unavailable growth returns `-1` without changing size, and arithmetic/policy/managed-budget overflow rejects fail-closed. Import matching preserves provider max/no-max identity across re-export, shared grow visibility is exact, and producer roots attach/roll back transactionally without increasing the 40-byte lifecycle sidecar. Scalar/SIMD operations check address+offset+width carry, exact lane/end bounds, and trapping-store atomicity. Active data preserves validated i64 programs in the codec expression field. Passive `memory.init` keeps zero-extended i32 source/length with an i64 destination; full-u64 carry/end, source bounds, drop state, zero-length-after-drop, trap atomicity, and reload are proven. Bulk copy/fill checks both full-u64 ranges before writes and preserves overlap. The complete sixteen-file non-table matrix is gap-free at 5,904 commands / 169 modules / 5,335 assertions / 292 invalid / 60 malformed / 30 unlinkable / 0 gates / 0 blocked, with zero hidden failures. Mixed memory32/memory64 imports reject before attachment. Host memory64 construction, shared/multi-memory execution, unallocatable minima, guard mode, public admission, snapshots, and arm64 remain gated. | 🚧 Bounded local/imported scalar/SIMD/active+passive-data/copy/fill execution and complete gap-free non-table family accounting; product/platform admission remains staged. |
@@ -229,7 +229,7 @@ finite execution reservation, table64 fill adds no product field, and the new di
 shape remains a compile-only live binding. Iteration 23 again keeps v26 unchanged:
 memory64 handles consume the already-persisted address-form bit at import matching,
 table64 i64 active offsets reuse the existing initializer-expression field, and the
-combined imported-global/native-call proof adds no serialized live-binding state. Iteration 24 also keeps v26 unchanged: imported memory64 declarations already persist exact address/max forms, private no-maximum table64 uses the existing `HasMax=false` record, `call_indirect` adds no metadata, and imported-table/native-call composition remains an unserializable live binding. Iteration 25 again keeps v26 unchanged: table records already separate exact `HasMax`/`Addr64` type metadata from finite runtime capacity, `table.copy` adds no product field, and the simultaneous imported-global/table/native-call binding remains intentionally unserializable. Iteration 26 also keeps v26 unchanged: exact u64 memory maxima already fit memory-directory records, passive/declarative table segment state already persists in the existing element records, and two-local mixed-address table metadata already uses the per-table `Addr64` bit plus export directory. Iteration 27 again keeps v26 unchanged: indexed size/get/set/grow/fill consume the existing per-table descriptor directory, while passive/declarative init/drop reuses the persisted element records and original segment indexes. Iteration 28 also keeps v26 unchanged: exact externref element types, no-maximum declarations, per-table address forms, limits, and directories were already persisted; the 1,024-entry externref growth reservation is runtime policy rather than Wasm type metadata; and official host-token replay remains test-only live state. Iteration 29 again keeps v26 unchanged: table records already encode limits as u64, so local `TableMax`, additional-table maxima, and public `TableMetadata.Min/Max` now retain exact table64 declarations through `2^64-1` without changing the wire record. Runtime capacity is derived separately and collapses only exact inert, unexported, operation-free declarations to their allocatable minimum; a focused Release 2 regression proves the same split still admits oversized inert table32 declarations. The three-table init/call-indirect shape and declaration-only imported/local directory add no persisted field or serializable live binding. No fixed runtime, descriptor, basedata, or lifecycle-sidecar layout grows. Iteration 30 also keeps v26 unchanged. Empty source recursive groups now map to dense `DefinedTypeDescriptor.RecGroup` values while every absolute type index and recursive reference still uses the original flattened type space; this corrects metadata validation without a wire field or version change. Exact cross-instance signature matching consumes the already-persisted type graph. Typed null-control required-feature bits survive private reload, public load remains rejected, and snapshots still reject unresolved descriptor state. No fixed runtime, native descriptor, basedata, or lifecycle layout changes. Iteration 33 advances to v27: local and imported declaration-only tag products now round-trip exact structural/member identity, aliases, and re-exports through ordinary transactional instantiation. Function-free local declaration tags may also enter snapshot-v3 products because each restored instance creates fresh local identity while preserving aliases; imported tags and every module with executable EH functions remain rejected. Retained same-memory native bindings continue to reject serialization explicitly, now naming codec v27. Iteration 37 keeps codec v27 unchanged: the recursive type graph already stores every group/member, and native structural keys are regenerated from that graph. The exact collector-free admission marker is deliberately compile-only and non-serialized, so private metadata reload preserves descriptors but does not silently inherit no-collector execution admission. Iteration 38 also keeps v27 unchanged: struct descriptors and required GC bits were already persisted, while the executable helper marker, live collector, control frame, handles, roots, and heap bytes remain deliberately non-serialized. A private reload preserves metadata/code but fails instantiation without fresh staged admission; public load rejects the unsupported GC feature bit. Iteration 39 again keeps v27 unchanged. Exact GC-global initializer values, Wasm-global-to-collector-slot mappings, and live compact refs are compile/instance sidecars only. Reloaded packed/basic artifacts retain structural metadata and code bytes but inherit neither helper admission nor initializer/root state, so instantiation fails at the required-feature boundary before a non-null global can be represented as null.
+combined imported-global/native-call proof adds no serialized live-binding state. Iteration 24 also keeps v26 unchanged: imported memory64 declarations already persist exact address/max forms, private no-maximum table64 uses the existing `HasMax=false` record, `call_indirect` adds no metadata, and imported-table/native-call composition remains an unserializable live binding. Iteration 25 again keeps v26 unchanged: table records already separate exact `HasMax`/`Addr64` type metadata from finite runtime capacity, `table.copy` adds no product field, and the simultaneous imported-global/table/native-call binding remains intentionally unserializable. Iteration 26 also keeps v26 unchanged: exact u64 memory maxima already fit memory-directory records, passive/declarative table segment state already persists in the existing element records, and two-local mixed-address table metadata already uses the per-table `Addr64` bit plus export directory. Iteration 27 again keeps v26 unchanged: indexed size/get/set/grow/fill consume the existing per-table descriptor directory, while passive/declarative init/drop reuses the persisted element records and original segment indexes. Iteration 28 also keeps v26 unchanged: exact externref element types, no-maximum declarations, per-table address forms, limits, and directories were already persisted; the 1,024-entry externref growth reservation is runtime policy rather than Wasm type metadata; and official host-token replay remains test-only live state. Iteration 29 again keeps v26 unchanged: table records already encode limits as u64, so local `TableMax`, additional-table maxima, and public `TableMetadata.Min/Max` now retain exact table64 declarations through `2^64-1` without changing the wire record. Runtime capacity is derived separately and collapses only exact inert, unexported, operation-free declarations to their allocatable minimum; a focused Release 2 regression proves the same split still admits oversized inert table32 declarations. The three-table init/call-indirect shape and declaration-only imported/local directory add no persisted field or serializable live binding. No fixed runtime, descriptor, basedata, or lifecycle-sidecar layout grows. Iteration 30 also keeps v26 unchanged. Empty source recursive groups now map to dense `DefinedTypeDescriptor.RecGroup` values while every absolute type index and recursive reference still uses the original flattened type space; this corrects metadata validation without a wire field or version change. Exact cross-instance signature matching consumes the already-persisted type graph. Typed null-control required-feature bits survive private reload, public load remains rejected, and snapshots still reject unresolved descriptor state. No fixed runtime, native descriptor, basedata, or lifecycle layout changes. Iteration 33 advances to v27: local and imported declaration-only tag products now round-trip exact structural/member identity, aliases, and re-exports through ordinary transactional instantiation. Function-free local declaration tags may also enter snapshot-v3 products because each restored instance creates fresh local identity while preserving aliases; imported tags and every module with executable EH functions remain rejected. Retained same-memory native bindings continue to reject serialization explicitly, now naming codec v27. Iteration 37 keeps codec v27 unchanged: the recursive type graph already stores every group/member, and native structural keys are regenerated from that graph. The exact collector-free admission marker is deliberately compile-only and non-serialized, so private metadata reload preserves descriptors but does not silently inherit no-collector execution admission. Iteration 38 also keeps v27 unchanged: struct descriptors and required GC bits were already persisted, while the executable helper marker, live collector, control frame, handles, roots, and heap bytes remain deliberately non-serialized. A private reload preserves metadata/code but fails instantiation without fresh staged admission; public load rejects the unsupported GC feature bit. Iteration 39 again keeps v27 unchanged. Exact GC-global initializer values, Wasm-global-to-collector-slot mappings, and live compact refs are compile/instance sidecars only. Reloaded packed/basic artifacts retain structural metadata and code bytes but inherit neither helper admission nor initializer/root state, so instantiation fails at the required-feature boundary before a non-null global can be represented as null. Iteration 40 also keeps v27 unchanged: the exact GC product enum, opaque public token, dynamic type record, producer retention, reusable collector slot, and live token map are runtime-only state. Private reload inherits none of them, public load still rejects the unsupported GC feature bit, and the new array matrix is accounting metadata rather than a serialized execution product.
 
 ### Footprint and allocation measurement
 
@@ -2207,6 +2207,53 @@ safepoint publication, mutable/reference GC globals, reference field barriers, a
 public GC ownership tokens, snapshots, guard mode, arm64 execution, and public mandatory-
 family admission remain incomplete.
 
+### Iteration 40 bounded public struct results and complete array accounting
+
+Iteration 40 closes the final `gc/struct` action without widening non-null GC ingress or
+exposing collector handles, then pins the next complete WasmGC family:
+
+1. The shared reference store now owns exact GC result tokens separately from funcref and
+   externref values. Only the exact staged basic-struct product may issue one live token per
+   producer. The entry retains the producer instance/collector, compact ref, exact dynamic
+   defined struct type, and one checked collector slot. Token bits have a non-zero upper
+   32-bit half, so they cannot be the compact 32-bit handle by construction. A second live
+   token, stale release, foreign store, cross-producer release, wrong product/type, or closed
+   producer rejects explicitly.
+2. The producer allocates at most one public-token root slot and reuses it after release.
+   `SetGlobalSlot(null)` performs the collector slot barrier/pruning contract before the
+   token entry and resource root disappear. One lazy mutex serializes GC helpers, token root
+   mutation, and collector close. Token-before-producer and producer-before-token close order
+   both release physical resources exactly once; a logically closed producer remains alive
+   while its token is rooted. Tiny repeats 100 issue/release/collect cycles in the same slot.
+3. Public result translation replaces only the basic leader's non-null `ValAnyRef` compact
+   ref after native return. Low-level `Invoke` receives opaque token bits; high-level `Call`
+   exposes `Value.GCRef`; `Instance.ReleaseGCRef` is the explicit lifetime boundary. Non-null
+   parameters, globals, host calls, snapshots, public GC feature admission, guard mode, arm64,
+   and all other products remain closed. Codec v27 serializes none of the product enum, token,
+   dynamic type/lifetime entry, root slot, or collector state.
+4. `gc/struct.wast` is now gap-free: 36 commands / 6 modules / 19 assertions / 4 invalid /
+   1 source-only malformed / 0 gates / 0 blocked, with zero hidden failures. The public token
+   issue/release benchmark measures 371.6-386.5 ns/op over five 500 ms samples at 0 B/op and
+   0 allocs/op after warmup.
+5. `gc/array.wast` now has complete strict schema-2 accounting: 61 commands / 7 exact module
+   gates / 41 blocked actions / 6 invalid modules / zero hidden failures. Seven pinned leaders
+   separate declaration metadata, recursive bindings, numeric new/default, numeric fixed,
+   packed data/drop lifecycle, reference element/barrier/drop lifecycle, and null get/set
+   traps. No array opcode is admitted. The WABT-enabled full package path also now reads both
+   signed and unsigned reflected metadata fields exactly instead of panicking on u64 table
+   limits.
+
+Measured fixed layouts are `Compiled=712`, `Instance=792`, `compiledCodeCache=64`, lazy
+`instancePluginState=128`, `referenceStore=96`, `gcPublicState=24`, `gcRefTokenEntry=40`,
+`GCRef=8`, `Value=16`, and `gc.Collector=640` bytes. Relative to iteration 39, the shared
+store and lazy plugin sidecar each grow by one pointer; scalar/null-only instances still
+allocate neither public-GC state nor a collector.
+
+Iteration 40 is not a public Core 3 or general WasmGC completion claim. The array matrix is
+red by design, mandatory families remain private staged products, and general non-empty
+native roots, mutable/reference globals, reference barriers, snapshots, guard execution,
+arm64 execution, and broad non-null GC boundaries remain incomplete.
+
 ## Iteration commits
 
 Iteration 1 contained:
@@ -2663,12 +2710,33 @@ Iteration 39 contains exactly three code/test commits and this documentation com
    basic numeric/f32 actions under an exact no-may-collect call graph, and retain one explicit
    public `ref.struct` result action gate.
 
+Iteration 40 contains exactly three code/test commits and this documentation commit:
+
+1. `7c6b5126` — add one bounded exact store-owned GC result token, retain its producer,
+   reuse one checked collector root slot, reject stale/foreign/second-live values, serialize
+   collector access, and prove Tiny repetition plus both close orders.
+2. `ba204aad` — translate the exact basic leader's public non-null result into that opaque
+   token, expose `GCRef`/`ReleaseGCRef` through the generated facade, make `gc/struct` fully
+   gap-free, and benchmark allocation-free issue/release.
+3. `97a24436` — pin complete strict `gc/array` accounting and repair signed/unsigned metadata
+   reflection so the full pinned-WABT package mode runs without its former u64 panic.
+
 ## Validation performed
 
 Commands were run from the repository root on linux/amd64.
 
 | Command | Result |
 |---|---|
+| iteration 40 focused code/test proof | PASS: one exact store-owned GC result token retains the producer/collector and dynamic struct type, reuses one checked slot, rejects stale/foreign/second-live values, and supports token-before-producer plus producer-before-token close order. The official basic `new` returns only the opaque token and releases explicitly; compact handle bits never egress. Logs `.validation/iteration40-commit1-focused.log`, `.validation/iteration40-commit1-packages.log`, `.validation/iteration40-commit1-race.log`, `.validation/iteration40-commit2-focused.log`, `.validation/iteration40-commit2-packages-final.log`, and `.validation/iteration40-commit2-race.log`. |
+| iteration 40 staged family runners | PASS: `gc/struct` is gap-free at 36 commands / 6 modules / 19 assertions / 4 invalid / 1 malformed / 0 gates / 0 blocked. New `gc/array` accounting is exact at 61 commands / 0 modules / 0 assertions / 7 gates / 41 blocked / 6 invalid. Typed references remain 422 / 61 / 246 / 65 invalid / 2 malformed / 2 unlinkable; EH remains 147 / 13 / 98 / 16 invalid / 2 malformed / 2 unlinkable; multi-memory 913 / 79 / 771; memory64 5,904 / 169 / 5,335; table64 2,802 / 107 / 2,600; all three tail files remain gap-free. Hidden-failure counters are zero. Log `.validation/iteration40-staged.log`. |
+| `go test ./... -count=1` and `CGO_ENABLED=0 go test ./... -count=1` | PASS on final iteration-40 code HEAD. Logs `.validation/iteration40-all.log` and `.validation/iteration40-no-cgo.log`. |
+| iteration 40 pinned-WABT package/race/guard/arm64 | PASS: the complete `./src/wago` package runs with pinned WABT/interpreter after the unsigned metadata-helper fix; focused GC token/helper/Tiny paths are race-clean; guard runtime/wago rejects staged products; linux/arm64 frontend/railshot/runtime/wago cross-compiles with no execution claim. Logs `.validation/iteration40-commit3-wabt-package.log`, `.validation/iteration40-race.log`, `.validation/iteration40-guard.log`, and `.validation/iteration40-arm64-build.log`. |
+| `go vet ./...`, `go generate ./...`, generated diff | PASS; generated facade exposes `GCRef`, `NullGCRef`, and `Instance.ReleaseGCRef` and regeneration is byte-stable. Logs `.validation/iteration40-vet.log`, `.validation/iteration40-generate.log`, and `.validation/iteration40-generate-diff.log`. |
+| iteration 40 footprint/codec evidence | PASS: `Compiled=712`, `Instance=792`, `compiledCodeCache=64`, lazy `instancePluginState=128`, `referenceStore=96`, `gcPublicState=24`, `gcRefTokenEntry=40`, `GCRef=8`, `Value=16`, `gc.Collector=640`. Codec v27 inherits no exact product/token/root admission. Log `.validation/iteration40-measurements.log`. |
+| pinned tool verification | PASS: WABT 1.0.41 and interpreter revision `9d36019973201a19f9c9ebb0f10828b2fe2374aa`. Logs `.validation/iteration40-wabt.log` and `.validation/iteration40-spec-interpreter.log`. |
+| `make spec1` and `make spec2` | PASS zero-gap: Release 1 reports 629 modules / 16,026 assertions and Release 2 reports 1,600 modules / 48,248 assertions. Logs `.validation/iteration40-spec1.log` and `.validation/iteration40-spec2.log`. |
+| `make spec3` plus baseline extraction/`cmp` | Expected FAIL at unchanged public baseline: modules pass=1,691/skip=535; assertions pass=51,765/fail=5/skip=6,268; committed schema-2 JSON reproduced byte-for-byte. Logs `.validation/iteration40-spec3.log`, `.validation/iteration40-spec3-status.log`, and `.validation/iteration40-spec3-baseline.log`. |
+| iteration 40 benchmark | PASS: exact public GC token issue/release measures 371.6-386.5 ns/op across five 500 ms samples, all 0 B/op and 0 allocs/op after warmup. Log `.validation/iteration40-commit2-bench.log`. |
 | iteration 39 focused code/test proof | PASS: exact staged GC constants create two immutable collector-rooted globals; packed i8/i16 signed/unsigned get and truncating set execute; all six basic numeric/f32 actions execute across exact non-allocating internal callees; public non-null anyref result and exported GC-global egress remain explicit errors. The synchronous-host f32-local regression repeats 100 times. Logs `.validation/iteration39-commit1-packages.log`, `.validation/iteration39-commit2-packages.log`, `.validation/iteration39-commit3-packages.log`, `.validation/iteration39-commit3-no-cgo.log`, and `.validation/iteration39-commit3-race.log`. |
 | iteration 39 staged family runners | PASS: `gc/struct` is 36 commands / 6 modules / 18 assertions / 4 invalid / 1 malformed / 0 module gates / 1 blocked public-result action. Typed references remain 422 / 61 / 246 / 65 invalid / 2 malformed / 2 unlinkable; EH remains 147 / 13 / 98 / 16 invalid / 2 malformed / 2 unlinkable; multi-memory 913 / 79 / 771; memory64 5,904 / 169 / 5,335; table64 2,802 / 107 / 2,600; all three tail files remain gap-free. Hidden-failure counters are zero. Log `.validation/iteration39-staged.log`. |
 | `go test ./... -count=1` and `CGO_ENABLED=0 go test ./... -count=1` | PASS on final iteration-39 code HEAD. Logs `.validation/iteration39-all.log` and `.validation/iteration39-no-cgo.log`. |
@@ -3143,9 +3211,12 @@ helper lowering, allocation/access/mutation, and null-trap execution have linux/
 bounds evidence only. Iteration 39 adds architecture-neutral staged GC-constant validation,
 bounded initializer records, and public non-null-anyref rejection. Collector-global-slot
 installation, packed helper semantics, basic internal-call execution, and XMM-local parked-Go
-spill/reload have linux/amd64 explicit-bounds evidence only. Guard mode rejects before codegen,
-arm64 retains option-structure parity without consuming the helper bit, and codec/snapshot/
-public admission do not inherit either helper or GC-global initializer/root sidecars.
+spill/reload have linux/amd64 explicit-bounds evidence only. Iteration 40's opaque token type,
+store bookkeeping, exact dynamic type check, and lifecycle retention are architecture-neutral,
+but issuance is reachable only from the same exact linux/amd64 explicit-bounds basic product.
+The array work is accounting-only and adds no backend claim. Guard mode rejects before codegen,
+arm64 retains option-structure parity without consuming the helper/product bits, and codec/
+snapshot/public feature admission inherit neither helper, initializer/root, nor token sidecars.
 `call_ref`, typed null control, indexed multi-memory operations, memory64/table64
 execution, and every tail-call lowering remain amd64-only and hidden behind
 unsupported family gates. The two
@@ -3269,53 +3340,59 @@ Major risks:
   must not be generalized. Allocation-local helpers have empty frame-root proofs; the two
   admitted globals are immutable and installed into checked collector slots before later
   allocation; numeric access/mutation do not collect or barrier; and the basic internal
-  callees are proven unable to allocate while their ref argument is live. The exported
-  non-null result is still rejected. General support still requires safepoint maps, non-empty
-  frame roots, mutable cell/slot synchronization, reference barriers, tables, arrays, public
-  ownership tokens, and snapshots;
+  callees are proven unable to allocate while their ref argument is live. The one exported
+  non-null result is owned only after native return by a single reusable collector slot and
+  explicit opaque-token release. It is not a frame root, ingress model, global/host token, or
+  permission to issue multiple live values. Complete array accounting exposes the next exact
+  obligations but admits no array opcode. General support still requires safepoint maps,
+  non-empty frame roots, mutable cell/slot synchronization, reference barriers, arrays,
+  broader public ownership, and snapshots;
 - arm64 must remain fail-closed for every family that lacks native execution tests.
 
 ## Next bounded implementation slice
 
 The next recursive iteration should again make exactly three atomic code/test commits
-followed by one documentation commit. Recommended iteration 40:
+followed by one documentation commit. Recommended iteration 41:
 
-1. **Design the first public non-null GC value owner without exposing compact handles.** Add
-   an exact runtime/store token model for one local `ref.struct` result, or prove why the
-   existing reference store cannot safely own collector refs. The token must retain its
-   producer instance/collector, carry exact structural type identity, reject cross-store and
-   stale values, and release in both close orders. Raw `gc.Ref` bits must never leave the
-   instance. Keep function parameters, globals, hosts, snapshots, and arrays closed unless the
-   same ownership proof covers them.
-2. **Close the final `gc/struct` action only if ownership is coherent.** Route the basic
-   leader's exported `new` result through the new token boundary and make the 36-command matrix
-   gap-free. Add repeated allocation/token release, producer-before-token and token-before-
-   producer close order, Tiny exhaustion/recovery, invalid token/type/null tests, codec/public
-   feature gates, and footprint measurements. If the token proof is not ready, keep the action
-   blocked and use this commit for a non-empty native root-publication prototype instead.
-3. **Inventory the next complete WasmGC family before widening.** Prefer `gc/array.wast` or
-   the smallest family with numeric-only fields/elements. Pin every valid/invalid/malformed
-   leader, split allocation/access/bulk/reference/public obligations, and admit only a bounded
-   numeric slice whose allocation roots are exact. Do not add reference stores or a second
-   allocation while a ref is live without non-empty root publication.
-4. **Documentation commit.** Record exact ownership/root/accounting deltas, code/codec/heap
-   footprint, broad validation, unchanged or improved public baseline, and the next family.
+1. **Open an exact numeric-local array helper beachhead.** Add separate compile-only array
+   product admission and parked-Go dispatch for a synthetic local pointer-free array using
+   bounded `array.new_default` or `array.new_fixed`, `array.get`, numeric `array.set`, and
+   `array.len`. Permit one allocation with a proven empty live-ref set; preserve exact length,
+   element bounds, packed conversion where included, Tiny exhaustion/recovery, no-cgo, and no
+   cached payload pointers. Do not reuse or generalize the struct product marker.
+2. **Execute the smallest official array products.** Prefer the exact null get/set leader plus
+   declaration/binding products only if their collector/no-collector shape is independently
+   proven. Keep `collectorFreeStructuralMetadata` untouched; array metadata-only admission
+   requires its own exact sidecar. Update the 61-command matrix with measured deltas and zero
+   hidden failures.
+3. **Attempt one complete numeric official leader without weakening roots.** The fixed leader
+   is the likely next target: classify its `array.new_fixed` constant/global initialization,
+   immutable root, get/set/len calls, bounds traps, and two public array result assertions.
+   Extend the bounded token to dynamic arrays only if exact type/owner/slot/lifetime checks are
+   unchanged and one-live-token policy remains sufficient. If an initializer or second
+   allocation leaves a prior transient ref live, stop and use this commit for the first exact
+   non-empty native root-publication prototype instead of using `gc.EmptyRoots`.
+4. **Documentation commit.** Record exact array accounting/execution deltas, root/barrier/token
+   boundaries, code/codec/object footprint, broad validation, unchanged or improved public
+   baseline, and the next family.
 
 ## Completion gate
 
-WebAssembly 3.0 is not complete. Iteration 39 fails the gate concretely: the public Release 3
+WebAssembly 3.0 is not complete. Iteration 40 fails the gate concretely: the public Release 3
 run still has 535 skipped modules, 5 reached assertion failures, and 6,268 skipped assertions;
 `make spec3` exits 2 and reproduces the committed baseline byte-for-byte. Typed-reference
-staged accounting is gap-free, as are EH, multi-memory, memory64, table64, and all three tail
-files, but these mandatory families remain private rather than admitted through
-`SupportedFeatures()`. Every official `gc/struct` module now instantiates and its numeric
-behavior executes, but one exported non-null `ref.struct` result action remains blocked; the
-matrix is 36 commands / 6 modules / 18 assertions / 0 module gates / 1 blocked action.
-Non-empty native safepoint publication, mutable/reference GC globals, reference barriers/
-remark, arrays, public collector ownership tokens, live-state snapshots, guard mode, and arm64
-execution remain incomplete. Codec-v27 progress covers declarations and exact metadata, not
-live collector admission/state. Completion still requires every mandatory area to decode,
-validate, compile, instantiate, execute, round-trip through product metadata/lifecycle rules,
-and pass the pinned official Release 3 suite with zero unexplained failures or feature skips
-on linux/amd64, while preserving Release 1/2, no-cgo operation, bounded memory, and hot-path
+staged accounting is gap-free, as are EH, multi-memory, memory64, table64, all three tail
+files, and now the complete `gc/struct` file at 36 commands / 6 modules / 19 assertions /
+4 invalid / 1 malformed / zero gates or blocked actions. These mandatory families remain
+private rather than admitted through `SupportedFeatures()`. The first bounded public GC result
+owner is exact to one struct product and does not provide non-null ingress, global/host values,
+multiple simultaneous tokens, frame roots, or snapshot state. `gc/array` is fully inventoried
+but intentionally red at 7 module gates and 41 blocked actions. Non-empty native safepoint
+publication, mutable/reference GC globals, reference barriers/remark, executable arrays,
+broader public collector ownership, live-state snapshots, guard mode, and arm64 execution
+remain incomplete. Codec-v27 progress covers declarations and exact metadata, not live
+collector admission/state. Completion still requires every mandatory area to decode, validate,
+compile, instantiate, execute, round-trip through product metadata/lifecycle rules, and pass
+the pinned official Release 3 suite with zero unexplained failures or feature skips on
+linux/amd64, while preserving Release 1/2, no-cgo operation, bounded memory, and hot-path
 performance. Arm64 must either reach parity or remain explicitly gated and documented.
