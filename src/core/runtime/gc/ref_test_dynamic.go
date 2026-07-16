@@ -13,6 +13,7 @@ const (
 	RefTestI31
 	RefTestStruct
 	RefTestArray
+	RefTestNone
 	RefTestDefined
 )
 
@@ -56,7 +57,7 @@ func (c *Collector) RefTest(r Ref, target RefTestTarget) (bool, error) {
 	switch target.Kind {
 	case RefTestAny, RefTestEq:
 		return true, nil
-	case RefTestI31:
+	case RefTestI31, RefTestNone:
 		return false, nil
 	case RefTestStruct:
 		return dynamic.Kind == KindStruct, nil
@@ -82,7 +83,7 @@ func (c *Collector) RefTest(r Ref, target RefTestTarget) (bool, error) {
 
 func (c *Collector) refTestTargetDesc(target RefTestTarget) (TypeDesc, error) {
 	switch target.Kind {
-	case RefTestAny, RefTestEq, RefTestI31, RefTestStruct, RefTestArray:
+	case RefTestAny, RefTestEq, RefTestI31, RefTestStruct, RefTestArray, RefTestNone:
 		return TypeDesc{}, nil
 	case RefTestDefined:
 		d, err := c.desc(target.Type)

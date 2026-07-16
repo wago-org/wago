@@ -391,7 +391,9 @@ func (p supportPass) types() error {
 			typeIndex := flat
 			ctx := fmt.Sprintf("type %d", typeIndex)
 			flat++
-			if st.HasPrefix || len(st.Supers) != 0 || st.Metadata.Describes != nil || st.Metadata.Descriptor != nil {
+			hasSubtypeMetadata := st.HasPrefix || len(st.Supers) != 0
+			hasDescriptorMetadata := st.Metadata.Describes != nil || st.Metadata.Descriptor != nil
+			if hasDescriptorMetadata || (hasSubtypeMetadata && !(p.feat.GCStructProducts && st.Comp.Kind == wasm.CompStruct)) {
 				return p.unsupported("gc type", "subtyping metadata (gc disabled)", ctx)
 			}
 			if st.Comp.Kind != wasm.CompFunc {
@@ -1237,7 +1239,7 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 		}
 		if p.feat.GCStructProducts {
 			switch imm.Kind {
-			case wasm.InstrStructNew, wasm.InstrStructNewDefault, wasm.InstrStructGet, wasm.InstrStructGetS, wasm.InstrStructGetU, wasm.InstrStructSet:
+			case wasm.InstrStructNew, wasm.InstrStructNewDefault, wasm.InstrStructGet, wasm.InstrStructGetS, wasm.InstrStructGetU, wasm.InstrStructSet, wasm.InstrRefTest:
 				return false, nil
 			}
 		}
@@ -1944,7 +1946,7 @@ func (p supportPass) supportedGCReference(rt wasm.RefType) bool {
 	if p.feat.GCI31Products && (rt.Heap.Abs == wasm.HeapI31 || rt.Heap.Abs == wasm.HeapAny || rt.Heap.Abs == wasm.HeapNone) {
 		return true
 	}
-	return (p.feat.GCStructProducts || p.feat.GCArrayProducts) && (rt.Heap.Abs == wasm.HeapAny || rt.Heap.Abs == wasm.HeapNone || rt.Heap.Abs == wasm.HeapArray)
+	return (p.feat.GCStructProducts || p.feat.GCArrayProducts) && (rt.Heap.Abs == wasm.HeapAny || rt.Heap.Abs == wasm.HeapEq || rt.Heap.Abs == wasm.HeapNone || rt.Heap.Abs == wasm.HeapStruct || rt.Heap.Abs == wasm.HeapArray)
 }
 
 func (p supportPass) supportedStructuralTypeRef(rt wasm.RefType) bool {
@@ -2268,7 +2270,7 @@ func compactRefTableType(rt wasm.RefType) bool {
 		return isExternRef(rt)
 	}
 	switch rt.Heap.Abs {
-	case wasm.HeapAny, wasm.HeapEq, wasm.HeapI31, wasm.HeapNone:
+	case wasm.HeapAny, wasm.HeapEq, wasm.HeapI31, wasm.HeapStruct, wasm.HeapArray, wasm.HeapNone:
 		return true
 	default:
 		return false

@@ -735,6 +735,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		}
 	}
 
+	var gcRefTestTable *gcRefTestTableState
 	// Table descriptors are [len u32][max u32][entry...]. Funcref entries retain
 	// their direct 32-byte call descriptor; externref entries are opaque 8-byte
 	// handles. Table 0 remains in the direct basedata slot. Multiple local tables
@@ -880,6 +881,13 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			}
 			if initErr != nil {
 				break
+			}
+		}
+		if initErr == nil && c.stagedGCStructProduct() == stagedGCStructRefTestTable {
+			if c.tableCount() != 1 || c.tableEntryBytes(0) != 8 {
+				initErr = fmt.Errorf("GC ref.test product requires one compact local table")
+			} else {
+				gcRefTestTable, initErr = newGCRefTestTableState(b.collector, tableDesc)
 			}
 		}
 		jm.SetTablePtr(uintptr(unsafe.Pointer(&tableDesc[0])))
@@ -1067,6 +1075,9 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	}
 	if gcArrayElements != nil {
 		in.ensurePluginState().gcArrayElements.Store(gcArrayElements)
+	}
+	if gcRefTestTable != nil {
+		in.ensurePluginState().gcRefTestTable.Store(gcRefTestTable)
 	}
 	if len(nativeTagIDs) != 0 {
 		in.ensurePluginState().tagIdentityBase = uintptr(unsafe.Pointer(&nativeTagIDs[0]))

@@ -24,6 +24,7 @@ const (
 	stagedGCStructPacked
 	stagedGCStructNumericLocal
 	stagedGCStructNumericGlobals
+	stagedGCStructRefTestTable
 )
 
 type stagedGCStructOpcodeCount struct {
@@ -68,6 +69,8 @@ func (p stagedGCStructProduct) String() string {
 		return "numeric-local-helper"
 	case stagedGCStructNumericGlobals:
 		return "numeric-global-roots"
+	case stagedGCStructRefTestTable:
+		return "struct-table-ref-test"
 	default:
 		return "unknown"
 	}
@@ -91,6 +94,8 @@ func (p stagedGCStructProduct) gateReason() string {
 		return "one numeric local struct allocation/access helper product"
 	case stagedGCStructNumericGlobals:
 		return "two immutable numeric struct globals with collector roots"
+	case stagedGCStructRefTestTable:
+		return "bounded collector-rooted struct table with dynamic ref.test"
 	default:
 		return "unknown gc/struct product"
 	}
@@ -110,6 +115,7 @@ const (
 	stagedGCStructNumericLocalSHA256    = "f5fc57a9a6b959a1a689385cb79050b6998c867c61eafd65ff03b2d57d128fcf"
 	stagedGCStructNumericMutationSHA256 = "e9f7a7ec88c56684ad5b96e2a5471765ab2835ddea14069006da51a96ed5e891"
 	stagedGCStructNumericGlobalsSHA256  = "0387e519fa921b905d0657a6fafb630ab7acaa3a6282e354b3f0f2e45adbfeee"
+	stagedGCStructRefTestTableSHA256    = "ab93f46c271d3e1a71c21da7257e29b2363e9188725378005705b33a056a8cbd"
 )
 
 // stagedGCStructExecutionProduct admits only the exact collector-backed products
@@ -124,6 +130,9 @@ func stagedGCStructExecutionProduct(data []byte) (stagedGCStructProduct, bool) {
 	}
 	if digest == stagedGCStructNumericGlobalsSHA256 && len(data) == 67 {
 		return stagedGCStructNumericGlobals, true
+	}
+	if digest == stagedGCStructRefTestTableSHA256 && len(data) == 168 {
+		return stagedGCStructRefTestTable, true
 	}
 	for _, pin := range stagedGCStructLeaderPins {
 		if pin.SHA256 != digest || pin.Size != len(data) {
@@ -140,7 +149,7 @@ func stagedGCStructExecutionProduct(data []byte) (stagedGCStructProduct, bool) {
 }
 
 func (p stagedGCStructProduct) requiresHelpers() bool {
-	return p == stagedGCStructNamedGets || p == stagedGCStructNumericLocal || p == stagedGCStructNullDereference || p == stagedGCStructPacked || p == stagedGCStructBasic
+	return p == stagedGCStructNamedGets || p == stagedGCStructNumericLocal || p == stagedGCStructNullDereference || p == stagedGCStructPacked || p == stagedGCStructBasic || p == stagedGCStructRefTestTable
 }
 
 func stagedGCStructTypeGraph(m *wasm.Module) string {

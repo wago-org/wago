@@ -3,6 +3,8 @@
 package amd64
 
 import (
+	"fmt"
+
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/src/core/runtime/abi"
@@ -53,11 +55,38 @@ func (f *fn) tableEntryAddr(dst, tbl Reg) {
 // descriptors remain 32 bytes.
 func (f *fn) tableIsExternref(tableIdx uint32) bool {
 	tt, ok := f.m.TableType(tableIdx)
-	if !ok || tt.Ref.Exact || tt.Ref.Heap.Kind != wasm.HeapAbs {
+	if !ok || tt.Ref.Exact {
 		return ok && wasm.EqualValType(wasm.RefVal(tt.Ref), wasm.ExternRef)
 	}
+	if tt.Ref.Heap.Kind == wasm.HeapTypeIndex {
+		sub, ok := stagedStructType(f.m, tt.Ref.Heap.Type.Index)
+		return ok && (sub.Comp.Kind == wasm.CompStruct || sub.Comp.Kind == wasm.CompArray)
+	}
+	if tt.Ref.Heap.Kind != wasm.HeapAbs {
+		return false
+	}
 	switch tt.Ref.Heap.Abs {
-	case wasm.HeapExtern, wasm.HeapAny, wasm.HeapEq, wasm.HeapI31, wasm.HeapNone:
+	case wasm.HeapExtern, wasm.HeapAny, wasm.HeapEq, wasm.HeapI31, wasm.HeapStruct, wasm.HeapArray, wasm.HeapNone:
+		return true
+	default:
+		return false
+	}
+}
+
+func (f *fn) tableIsGCObjectRef(tableIdx uint32) bool {
+	tt, ok := f.m.TableType(tableIdx)
+	if !ok || tt.Ref.Exact {
+		return false
+	}
+	if tt.Ref.Heap.Kind == wasm.HeapTypeIndex {
+		sub, ok := stagedStructType(f.m, tt.Ref.Heap.Type.Index)
+		return ok && (sub.Comp.Kind == wasm.CompStruct || sub.Comp.Kind == wasm.CompArray)
+	}
+	if tt.Ref.Heap.Kind != wasm.HeapAbs {
+		return false
+	}
+	switch tt.Ref.Heap.Abs {
+	case wasm.HeapAny, wasm.HeapEq, wasm.HeapStruct, wasm.HeapArray, wasm.HeapNone:
 		return true
 	default:
 		return false
@@ -485,6 +514,18 @@ func (f *fn) tableSet(r *wasm.Reader) error {
 	tableIdx, err := readSingleTableIndex(r)
 	if err != nil {
 		return err
+	}
+	if f.gcStructHelpers && f.tableIsGCObjectRef(tableIdx) {
+		tt, ok := f.m.TableType(tableIdx)
+		if !ok {
+			return fmt.Errorf("amd64: GC table.set table %d type is unavailable", tableIdx)
+		}
+		indexType := wasm.I32
+		if tt.Limits.Addr64 {
+			indexType = wasm.I64
+		}
+		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(tableIdx)})
+		return f.callGCStructHelper(gcStructTableSet, []wasm.ValType{indexType, wasm.RefVal(tt.Ref), wasm.I32}, nil)
 	}
 	ref := f.materialize(f.popValue())
 	f.pinned = f.pinned.add(ref)
