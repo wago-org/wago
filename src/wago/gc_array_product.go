@@ -50,8 +50,16 @@ func (p stagedGCArrayProduct) metadataOnly() bool {
 
 func stagedGCArrayExecutionProduct(data []byte) (stagedGCArrayProduct, bool) {
 	digest := fmt.Sprintf("%x", sha256.Sum256(data))
-	if len(data) == 146 && digest == stagedGCArrayNumericLocalSHA256 {
+	switch {
+	case len(data) == 146 && digest == stagedGCArrayNumericLocalSHA256:
 		return stagedGCArrayProductNumericLocal, true
+	case len(data) == 80 && digest == "995b6f4472185333316f224edf99518254df392aa1592239c2d9a0d81e2c052a":
+		return stagedGCArrayProductDeclarations, true
+	case len(data) == 55 && digest == "a812822a7372385725cb75c70f0c3cfa7b9cca83a2bb8306a752adc44dc546bd":
+		return stagedGCArrayProductBindings, true
+	case len(data) == 115 && digest == "b6446904a92663c6dc462e8c7f4b1a2077c7b942ce7be0fa053c32ecb990b96a":
+		return stagedGCArrayProductNullDereference, true
+	default:
+		return 0, false
 	}
-	return 0, false
 }
