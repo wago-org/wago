@@ -34,13 +34,9 @@ var stagedGCTypeSubtypingInvalidSourceLines = []int{
 
 var stagedGCTypeSubtypingUnlinkableSourceLines = []int{510, 520, 530, 548, 556, 605, 698, 713}
 
-var stagedGCTypeSubtypingValidValidatorGapLines = map[int]bool{119: true, 143: true}
+var stagedGCTypeSubtypingValidValidatorGapLines = map[int]bool{}
 
-var stagedGCTypeSubtypingInvalidValidatorGapLines = map[int]bool{
-	87: true, 144: true, 154: true,
-	676: true, 683: true, 690: true, 697: true, 704: true, 711: true,
-	718: true, 725: true, 732: true, 739: true, 746: true,
-}
+var stagedGCTypeSubtypingInvalidValidatorGapLines = map[int]bool{}
 
 type stagedGCTypeSubtypingLeaderDelta struct {
 	Filename     string                      `json:"filename"`
@@ -337,7 +333,7 @@ func TestStagedOfficialGCTypeSubtypingAccounting(t *testing.T) {
 	if counts.Commands != 170 || counts.ModulesPassed != 0 || counts.AssertionsPassed != 0 || counts.ExpectedInvalid != 24 || counts.ExpectedMalformed != 0 || counts.ExpectedUnlinkable != 0 || counts.ExpectedUninstantiable != 0 || counts.ExpectedFeatureRejects != 45 || counts.BlockedCommands != 48 || counts.UnexpectedCompileRejects != 0 || counts.UnexpectedLinkRejects != 0 || counts.Failures != 0 {
 		t.Fatalf("staged gc/type-subtyping accounting has hidden or changed gaps: %+v", counts)
 	}
-	if len(delta.Leaders) != 45 || len(delta.Invalids) != 24 || len(delta.Unlinkables) != 8 || len(stagedGCTypeSubtypingValidValidatorGapLines) != 2 || len(stagedGCTypeSubtypingInvalidValidatorGapLines) != 14 {
+	if len(delta.Leaders) != 45 || len(delta.Invalids) != 24 || len(delta.Unlinkables) != 8 || len(stagedGCTypeSubtypingValidValidatorGapLines) != 0 || len(stagedGCTypeSubtypingInvalidValidatorGapLines) != 0 {
 		t.Fatalf("staged gc/type-subtyping inventory changed: leaders=%d invalids=%d unlinkables=%d valid-validator-gaps=%d invalid-validator-gaps=%d", len(delta.Leaders), len(delta.Invalids), len(delta.Unlinkables), len(stagedGCTypeSubtypingValidValidatorGapLines), len(stagedGCTypeSubtypingInvalidValidatorGapLines))
 	}
 	got, err := json.MarshalIndent(delta, "", "  ")

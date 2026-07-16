@@ -96,7 +96,11 @@ func (v *moduleValidator) validateSubtypeMetadata() error {
 	flat := v.flattenedSubTypeRefs()
 	for _, cur := range flat {
 		for _, supIdx := range cur.st.Supers {
-			sup, ok := v.subtypeByTypeIdxInRecGroup(supIdx, cur.recGroup)
+			supFlat, ok := v.flatTypeIdxInRecGroup(supIdx, cur.recGroup)
+			if !ok {
+				return v.err(ErrUnknownType, "supertype")
+			}
+			sup, supGroup, ok := v.subtypeByFlatTypeIdx(supFlat)
 			if !ok {
 				return v.err(ErrUnknownType, "supertype")
 			}
@@ -105,6 +109,9 @@ func (v *moduleValidator) validateSubtypeMetadata() error {
 			}
 			if cur.st.Comp.Kind != sup.Comp.Kind {
 				return v.err(ErrTypeMismatch, "supertype kind")
+			}
+			if !v.compTypeSubtype(cur.st.Comp, cur.recGroup, sup.Comp, supGroup) {
+				return v.err(ErrTypeMismatch, "subtype does not match supertype")
 			}
 		}
 	}
@@ -136,6 +143,69 @@ func (v *moduleValidator) validateSubtypeMetadata() error {
 		}
 	}
 	return nil
+}
+
+func (v *moduleValidator) compTypeSubtype(sub CompType, subGroup int, sup CompType, supGroup int) bool {
+	if sub.Kind != sup.Kind {
+		return false
+	}
+	subVal := func(a ValType, aGroup int, b ValType, bGroup int) bool {
+		a = v.resolveValTypeRecIndexes(a, aGroup)
+		b = v.resolveValTypeRecIndexes(b, bGroup)
+		if a.Kind == ValBot {
+			return true
+		}
+		if a.Kind != b.Kind || a.Num != b.Num {
+			return false
+		}
+		return a.Kind != ValRef || v.refSubtype(a.Ref, b.Ref)
+	}
+	storageSubtype := func(a StorageType, aGroup int, b StorageType, bGroup int) bool {
+		if a.Packed || b.Packed {
+			return a.Packed == b.Packed && a.Pack == b.Pack
+		}
+		return subVal(a.Val, aGroup, b.Val, bGroup)
+	}
+	fieldSubtype := func(a FieldType, aGroup int, b FieldType, bGroup int) bool {
+		if a.Mut != b.Mut {
+			return false
+		}
+		if !storageSubtype(a.Storage, aGroup, b.Storage, bGroup) {
+			return false
+		}
+		return a.Mut == Const || storageSubtype(b.Storage, bGroup, a.Storage, aGroup)
+	}
+	switch sub.Kind {
+	case CompFunc:
+		if len(sub.Params) != len(sup.Params) || len(sub.Results) != len(sup.Results) {
+			return false
+		}
+		for i := range sub.Params {
+			if !subVal(sup.Params[i], supGroup, sub.Params[i], subGroup) {
+				return false
+			}
+		}
+		for i := range sub.Results {
+			if !subVal(sub.Results[i], subGroup, sup.Results[i], supGroup) {
+				return false
+			}
+		}
+		return true
+	case CompStruct:
+		if len(sub.Fields) < len(sup.Fields) {
+			return false
+		}
+		for i := range sup.Fields {
+			if !fieldSubtype(sub.Fields[i], subGroup, sup.Fields[i], supGroup) {
+				return false
+			}
+		}
+		return true
+	case CompArray:
+		return fieldSubtype(sub.Array, subGroup, sup.Array, supGroup)
+	default:
+		return false
+	}
 }
 
 func (v *moduleValidator) funcTypeFromTypeIdx(idx TypeIdx) *CompType {
@@ -289,7 +359,7 @@ func (v *moduleValidator) typeIdxSuperSubtype(a, b TypeIdx) bool {
 	seen := map[int]bool{}
 	var visit func(int) bool
 	visit = func(cur int) bool {
-		if cur == bFlat {
+		if cur == bFlat || v.typeIdxEquivalent(TypeIdx{Index: uint32(cur)}, TypeIdx{Index: uint32(bFlat)}) {
 			return true
 		}
 		if seen[cur] {
@@ -458,6 +528,9 @@ func (v *moduleValidator) typeIdxEquivalent(a, b TypeIdx) bool {
 		case HeapAbs:
 			return x.Abs == y.Abs
 		case HeapTypeIndex:
+			if x.Type.Rec != y.Type.Rec {
+				return false
+			}
 			xi, xok := v.flatTypeIdxInRecGroup(x.Type, xGroup)
 			yi, yok := v.flatTypeIdxInRecGroup(y.Type, yGroup)
 			return xok && yok && eqType(xi, yi)
@@ -538,6 +611,9 @@ func (v *moduleValidator) typeIdxEquivalent(a, b TypeIdx) bool {
 			if x == nil || y == nil {
 				return x == nil && y == nil
 			}
+			if x.Rec != y.Rec {
+				return false
+			}
 			xi, xok := v.flatTypeIdxInRecGroup(*x, xGroup)
 			yi, yok := v.flatTypeIdxInRecGroup(*y, yGroup)
 			return xok && yok && eqType(xi, yi)
@@ -547,6 +623,10 @@ func (v *moduleValidator) typeIdxEquivalent(a, b TypeIdx) bool {
 		}
 		if ok {
 			for i := range xs.Supers {
+				if xs.Supers[i].Rec != ys.Supers[i].Rec {
+					ok = false
+					break
+				}
 				xi, xok := v.flatTypeIdxInRecGroup(xs.Supers[i], xGroup)
 				yi, yok := v.flatTypeIdxInRecGroup(ys.Supers[i], yGroup)
 				if !xok || !yok || !eqType(xi, yi) {

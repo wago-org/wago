@@ -181,7 +181,7 @@
       "sha256": "6d3373700cb5c07d5c8c30f3c926d20c1cba29b1a0e512db06c7e406d7f71d1b",
       "class": "ref-func-global-subsumption",
       "gate": "collector-free local ref.func global subsumption",
-      "validator_gap": true,
+      "validator_gap": false,
       "type_graph": "rec[sub(final=false,supers=[],func()-\u003e());sub(final=false,supers=[],struct{ref type 0})]|rec[sub(final=false,supers=[],func()-\u003e());sub(final=false,supers=[],struct{ref type 0})]|rec[sub(final=false,supers=[{0 false}],func()-\u003e());sub(final=false,supers=[{1 false}],struct{ref type 0,ref type 0,ref type 2,ref type 2,ref type 0})]|rec[sub(final=false,supers=[{2 false}],func()-\u003e());sub(final=false,supers=[{3 false}],struct{ref type 0,ref type 2,ref type 0,ref type 2,ref type 0})]|rec[sub(final=false,supers=[{6 false}],func()-\u003e());struct{}]",
       "state_graph": "imports=0 funcs=1 globals=[const ref type 0,const ref type 4] tables=0 memories=0 tags=0 elements=0 data=0 exports=[]",
       "opcodes": [
@@ -221,7 +221,7 @@
       "sha256": "a0ba3c1005b6cb73edc08222b5d896276945b0bf1f3b3ff7ef9cdb489341fe08",
       "class": "ref-func-global-subsumption",
       "gate": "collector-free local ref.func global subsumption",
-      "validator_gap": true,
+      "validator_gap": false,
       "type_graph": "rec[sub(final=false,supers=[],func()-\u003e(ref func));sub(final=false,supers=[{0 true}],func()-\u003e(ref type 0))]|rec[sub(final=false,supers=[],func()-\u003e(ref func));sub(final=false,supers=[{0 true}],func()-\u003e(ref type 0))]|rec[sub(final=false,supers=[{0 false}],func()-\u003e(ref func));sub(final=false,supers=[{0 true}],func()-\u003e(ref type 0))]|rec[sub(final=false,supers=[{2 false}],func()-\u003e(ref func));sub(final=false,supers=[{0 true}],func()-\u003e(ref type 0))]",
       "state_graph": "imports=0 funcs=2 globals=[const ref type 0,const ref type 2,const ref type 0,const ref type 2,const ref type 4,const ref type 6,const ref type 5,const ref type 7] tables=0 memories=0 tags=0 elements=0 data=0 exports=[]",
       "opcodes": [
@@ -859,7 +859,7 @@
       "size": 94,
       "sha256": "32c03c631dc2a36933a5f205d48216fd520028e7747191feea2a4fde0c556350",
       "text": "type mismatch",
-      "validator_gap": true
+      "validator_gap": false
     },
     {
       "filename": "type-subtyping.15.wasm",
@@ -868,7 +868,7 @@
       "size": 76,
       "sha256": "321f347edec7cbd7a38575cb6f35fefc083fb7408f654449347d4db7401e9ee4",
       "text": "type mismatch",
-      "validator_gap": true
+      "validator_gap": false
     },
     {
       "filename": "type-subtyping.16.wasm",
@@ -877,7 +877,7 @@
       "size": 89,
       "sha256": "e020d9ea6528e9c8f68002c1b043e22cd18839d65a56f33757eb4d9c56e8e58c",
       "text": "type mismatch",
-      "validator_gap": true
+      "validator_gap": false
     },
     {
       "filename": "type-subtyping.55.wasm",
@@ -976,7 +976,7 @@
       "size": 26,
       "sha256": "de3509821433585c48bfadb7c3357ccf12740bba9abc1286ca19e8b4942422db",
       "text": "sub type",
-      "validator_gap": true
+      "validator_gap": false
     },
     {
       "filename": "type-subtyping.66.wasm",
@@ -985,7 +985,7 @@
       "size": 28,
       "sha256": "d30413fef9549d45ac8f15ac572bf6c0dd073bd82a2d7e3e3714c284ece635af",
       "text": "sub type",
-      "validator_gap": true
+      "validator_gap": false
     },
     {
       "filename": "type-subtyping.67.wasm",
@@ -994,7 +994,7 @@
       "size": 28,
       "sha256": "d36c0648b5280a01497164c37187e97fc84d86938bf22932ae4261f0141f18da",
       "text": "sub type 1 does not match super type",
-      "validator_gap": true
+      "validator_gap": false
     },
     {
       "filename": "type-subtyping.68.wasm",
@@ -1003,7 +1003,7 @@
       "size": 28,
       "sha256": "97bd48c4ea0bbba6c4fa6f74fc79c7b3d3b0d3026c0b193c7fb8ab380161c8ed",
       "text": "sub type 1 does not match super type",
-      "validator_gap": true
+      "validator_gap": false
     },
     {
       "filename": "type-subtyping.69.wasm",
@@ -1012,7 +1012,7 @@
       "size": 28,
       "sha256": "faa4fab88ed08dc693261ff1d16979a499b606395ad73b26268f639845766791",
       "text": "sub type 1 does not match super type",
-      "validator_gap": true
+      "validator_gap": false
     },
     {
       "filename": "type-subtyping.70.wasm",
@@ -1021,7 +1021,7 @@
       "size": 28,
       "sha256": "b9f6fb592c4f2a9a0a8fd108606a04d29cd3108480d2e3c0fd4bc7f0fa77a401",
       "text": "sub type 1 does not match super type",
-      "validator_gap": true
+      "validator_gap": false
     },
     {
       "filename": "type-subtyping.71.wasm",
@@ -1030,7 +1030,7 @@
       "size": 30,
       "sha256": "1c8fcb0819e6d71c144028840fa55dfaadab456b1de6220de09ca3b72b5519f2",
       "text": "sub type 1 does not match super type",
-      "validator_gap": true
+      "validator_gap": false
     },
     {
       "filename": "type-subtyping.72.wasm",
@@ -1039,7 +1039,7 @@
       "size": 30,
       "sha256": "8aa6220e3a9c861938ae0157109b9fb76a718b4e315b2ff7921d33693922de7a",
       "text": "sub type 1 does not match super type",
-      "validator_gap": true
+      "validator_gap": false
     },
     {
       "filename": "type-subtyping.73.wasm",
@@ -1048,7 +1048,7 @@
       "size": 30,
       "sha256": "848c8243e5eb479c227697ea33a9472de7da26d31251b42e2d6d1b3bc2be56c5",
       "text": "sub type 1 does not match super type",
-      "validator_gap": true
+      "validator_gap": false
     },
     {
       "filename": "type-subtyping.74.wasm",
@@ -1057,7 +1057,7 @@
       "size": 30,
       "sha256": "99458746df36775d83b18cf6483dc2e6e42f157590e2f6ce8b341745043c0d11",
       "text": "sub type 1 does not match super type",
-      "validator_gap": true
+      "validator_gap": false
     },
     {
       "filename": "type-subtyping.75.wasm",
@@ -1066,7 +1066,7 @@
       "size": 27,
       "sha256": "8e7c79ad6e9a0d454ddcefe59de60b0cd78b2432a04f8a66d82e20672efc1975",
       "text": "sub type",
-      "validator_gap": true
+      "validator_gap": false
     }
   ],
   "unlinkables": [
