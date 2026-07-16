@@ -45,6 +45,7 @@ var stagedGCTypeSubtypingProductPins = []stagedGCTypeSubtypingProductPin{
 	{Filename: "type-subtyping.26.wasm", Line: 338, Size: 204, SHA256: "893dcf058c5b28436567028ab41bfb409c5f1acc737e764a3dfcc51f6be8200e", Class: stagedGCTypeSubtypingRefTestMulti, Results: []uint64{1, 1, 1, 1, 1, 1, 1, 1}, Hex: "0061736d0100000001d280808000054e025000600001647050010060000164004e025000600001647050010260000164024e02500100600001647050010460000164044e02500102600001647050010660000164066000087f7f7f7f7f7f7f7f03848080800003040508078780808000010372756e00020989808080000203000100030001010ac08080800003838080800000000b838080800000000baa8080800000d200fb1400d200fb1402d201fb1400d201fb1402d200fb1404d200fb1406d201fb1405d201fb14070b"},
 	{Filename: "type-subtyping.27.wasm", Line: 359, Size: 104, SHA256: "2841d098dfca125ccd9c577cf55762744c8a3911a1986f857be48ebc0d51f735", Class: stagedGCTypeSubtypingRefTestDirectionFalse, Results: []uint64{0}, Hex: "0061736d01000000019f80808000034e0250006000005001006000004e0250006000005001006000006000017f038380808000020204078780808000010372756e000109858080800001030001000a9480808000028280808000000b878080800000d200fb14000b"},
 	{Filename: "type-subtyping.28.wasm", Line: 371, Size: 117, SHA256: "b0797a1825d04be467e336f7f236637184aab41a13de20ff7a06eb1bb7885613", Class: stagedGCTypeSubtypingRefTestDirectionFalse, Results: []uint64{0}, Hex: "0061736d0100000001ac80808000044e0250006000005001006000004e0250006000005001006000004e0250006000005001026000006000017f038380808000020406078780808000010372756e000109858080800001030001000a9480808000028280808000000b878080800000d200fb14020b"},
+	{Filename: "type-subtyping.17.wasm", Line: 193, Size: 412, SHA256: "505e94dbd66fc2e3b5d2d4af76341618b19571074c7b42a551392fd58aa692f3", Class: stagedGCTypeSubtypingRuntimeCallCast, Hex: "0061736d01000000019a808080000450006000017050010060000163015001016000016302600000038b808080000a00010203030303030303048580808000017001030307b780808000070372756e0003056661696c310004056661696c320005056661696c330006056661696c340007056661696c350008056661696c360009098f80808000010441000b03d2000bd2010bd2020b0a80828080000a848080800000d0700b848080800000d0010b848080800000d0020bf98080800000027041001100000b027041011100000b027041021100000b02630141011101000b02630141021101000b02630241021102000b02630041002500fb16000b02630041012500fb16000b02630041022500fb16000b02630141012500fb16010b02630141022500fb16010b02630241022500fb16020b0c000b8d808080000002630141001101000b0c000b8d808080000002630141001102000b0c000b8d808080000002630141011102000b0c000b8b808080000041002500fb16010c000b8b808080000041002500fb16020c000b8b808080000041012500fb16020c000b"},
 }
 
 func stagedGCTypeSubtypingProductData(t testing.TB, pin stagedGCTypeSubtypingProductPin) []byte {
@@ -97,8 +98,8 @@ func TestStagedGCTypeSubtypingProductInventory(t *testing.T) {
 		}
 		seen[pin.Class]++
 	}
-	if seen[stagedGCTypeSubtypingDeclarations] != 6 || seen[stagedGCTypeSubtypingRecursiveFunctions] != 2 || seen[stagedGCTypeSubtypingRefFuncGlobals] != 6 || seen[stagedGCTypeSubtypingRefTestSingle] != 4 || seen[stagedGCTypeSubtypingRefTestMulti] != 3 || seen[stagedGCTypeSubtypingRefTestDirectionFalse] != 2 {
-		t.Fatalf("product classes = %#v, want declarations/recursive-functions/ref.func-globals/single-ref.test/multi-ref.test/direction-false-ref.test = 6/2/6/4/3/2", seen)
+	if seen[stagedGCTypeSubtypingDeclarations] != 6 || seen[stagedGCTypeSubtypingRecursiveFunctions] != 2 || seen[stagedGCTypeSubtypingRefFuncGlobals] != 6 || seen[stagedGCTypeSubtypingRefTestSingle] != 4 || seen[stagedGCTypeSubtypingRefTestMulti] != 3 || seen[stagedGCTypeSubtypingRefTestDirectionFalse] != 2 || seen[stagedGCTypeSubtypingRuntimeCallCast] != 1 {
+		t.Fatalf("product classes = %#v, want declarations/recursive-functions/ref.func-globals/single-ref.test/multi-ref.test/direction-false-ref.test/runtime-call-cast = 6/2/6/4/3/2/1", seen)
 	}
 }
 
@@ -151,7 +152,7 @@ func TestStagedGCTypeSubtypingDirectionFalseRefTestInventory(t *testing.T) {
 	wantTargets := []uint32{0, 2}
 	wantTargetSecondSupers := []wasm.TypeIdx{{Index: 0, Rec: true}, {Index: 0}}
 	wantBodies := []string{"d200fb14000b", "d200fb14020b"}
-	for i, pin := range stagedGCTypeSubtypingProductPins[21:] {
+	for i, pin := range stagedGCTypeSubtypingProductPins[21:23] {
 		m, err := wasm.DecodeModule(stagedGCTypeSubtypingProductData(t, pin))
 		if err != nil {
 			t.Fatalf("%s decode: %v", pin.Filename, err)
@@ -200,8 +201,73 @@ func TestStagedGCTypeSubtypingDirectionFalseRefTestInventory(t *testing.T) {
 	}
 }
 
+func TestStagedGCTypeSubtypingRuntimeCallCastInventory(t *testing.T) {
+	pin := stagedGCTypeSubtypingProductPins[23]
+	m, err := wasm.DecodeModule(stagedGCTypeSubtypingProductData(t, pin))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(m.Types) != 4 || len(m.FuncTypes) != 10 || len(m.Code) != 10 || len(m.Tables) != 1 || len(m.Elements) != 1 || len(m.Exports) != 7 {
+		t.Fatalf("runtime call/cast shape types/functions/code/tables/elements/exports = %d/%d/%d/%d/%d/%d, want 4/10/10/1/1/7", len(m.Types), len(m.FuncTypes), len(m.Code), len(m.Tables), len(m.Elements), len(m.Exports))
+	}
+	for i := 0; i < 3; i++ {
+		st := m.Types[i].SubTypes[0]
+		if st.Final || !st.HasPrefix || st.Comp.Kind != wasm.CompFunc || len(st.Comp.Params) != 0 || len(st.Comp.Results) != 1 {
+			t.Fatalf("type %d = %+v, want open zero-parameter single-reference-result function", i, st)
+		}
+		if i == 0 && len(st.Supers) != 0 || i > 0 && (len(st.Supers) != 1 || st.Supers[0].Rec || st.Supers[0].Index != uint32(i-1)) {
+			t.Fatalf("type %d supers = %v, want exact chain", i, st.Supers)
+		}
+	}
+	for source := uint32(0); source < 3; source++ {
+		for target := uint32(0); target < 3; target++ {
+			actual := wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: source}), false)
+			required := wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: target}), false)
+			if got, want := m.ReferenceTypeSubtype(actual, required), source >= target; got != want {
+				t.Fatalf("function subtype %d <: %d = %v, want %v", source, target, got, want)
+			}
+		}
+	}
+	table := m.Tables[0].Type
+	if !wasm.EqualValType(wasm.RefVal(table.Ref), wasm.FuncRef) || table.Limits.Min != 3 || table.Limits.Max == nil || *table.Limits.Max != 3 || table.Limits.Addr64 {
+		t.Fatalf("table = %+v, want exact table 3 3 funcref", table)
+	}
+	elem := m.Elements[0]
+	if elem.Mode.Kind != wasm.ElemActive || elem.Mode.Table != 0 || !isExactI32ConstZeroBody(elem.Mode.Offset.BodyBytes) || elem.Kind.Kind != wasm.ElemFuncExprs || len(elem.Kind.Exprs) != 3 {
+		t.Fatalf("element = %+v, want active table-0 offset-0 three-function expressions", elem)
+	}
+	for i := range elem.Kind.Exprs {
+		if !isExactRefFuncBody(elem.Kind.Exprs[i].BodyBytes, uint32(i)) {
+			t.Fatalf("element expression %d = %x, want ref.func %d", i, elem.Kind.Exprs[i].BodyBytes, i)
+		}
+	}
+	wantTypes := []uint32{0, 1, 2, 3, 3, 3, 3, 3, 3, 3}
+	wantExports := []string{"run", "fail1", "fail2", "fail3", "fail4", "fail5", "fail6"}
+	for i := range m.FuncTypes {
+		if m.FuncTypes[i].Rec || m.FuncTypes[i].Index != wantTypes[i] {
+			t.Fatalf("function %d type = %v, want %d", i, m.FuncTypes[i], wantTypes[i])
+		}
+	}
+	for i := range m.Exports {
+		if m.Exports[i].Name != wantExports[i] || m.Exports[i].Index.Kind != wasm.ExternFunc || m.Exports[i].Index.Index != uint32(i+3) {
+			t.Fatalf("export %d = %+v, want %s function %d", i, m.Exports[i], wantExports[i], i+3)
+		}
+	}
+	wantBodies := []string{
+		"d0700b", "d0010b", "d0020b",
+		"027041001100000b027041011100000b027041021100000b02630141011101000b02630141021101000b02630241021102000b02630041002500fb16000b02630041012500fb16000b02630041022500fb16000b02630141012500fb16010b02630141022500fb16010b02630241022500fb16020b0c000b",
+		"02630141001101000b0c000b", "02630141001102000b0c000b", "02630141011102000b0c000b",
+		"41002500fb16010c000b", "41002500fb16020c000b", "41012500fb16020c000b",
+	}
+	for i := range m.Code {
+		if len(m.Code[i].Locals.Runs) != 0 || hex.EncodeToString(m.Code[i].BodyBytes) != wantBodies[i] {
+			t.Fatalf("function %d locals/body = %v/%x, want none/%s", i, m.Code[i].Locals.Runs, m.Code[i].BodyBytes, wantBodies[i])
+		}
+	}
+}
+
 func TestStagedGCTypeSubtypingProductPlatformAndBoundsGate(t *testing.T) {
-	for _, pinIndex := range []int{8, 14, 18, 21} {
+	for _, pinIndex := range []int{8, 14, 18, 21, 23} {
 		pin := stagedGCTypeSubtypingProductPins[pinIndex]
 		t.Run(pin.Filename, func(t *testing.T) {
 			data := stagedGCTypeSubtypingProductData(t, pin)
