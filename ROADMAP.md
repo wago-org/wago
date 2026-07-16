@@ -240,8 +240,16 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   `GCRef` object tokens. Codec v27 retains exact type/global/element metadata but inherits no
   staged product or imported-global table-initializer sidecar; snapshots, guard mode, and arm64
   remain fail-closed. Core i31 get and anyref-table get measure 34.63–35.78 ns/op with 0 B/op
-  and 0 allocs/op. General frame roots, object-valued mutable/reference globals, the remaining
-  GC files, public family admission, and broader platform products remain.
+  and 0 allocs/op. Iteration 45 pins both `gc/ref_test.wast` leaders at 73 commands with two
+  explicit product gates and 69 blocked actions, and removes the concrete leader's former
+  validator mismatch by accepting dynamic tests between sibling types inside one reference
+  hierarchy while preserving disjoint-hierarchy rejection. One separate 255-byte SHA-pinned
+  null+i31 product executes nullable/non-null `any`/`eq`/`i31` plus negative struct/array tests
+  directly from the compact tag, allocates no collector, loses staged admission on codec reload,
+  and measures 36.58–37.34 ns/op with 0 B/op / 0 allocs/op. The official abstract and concrete
+  leaders remain gated pending mixed object-table roots, extern conversion/funcref lifecycle,
+  and exact dynamic descriptor execution. General frame roots, object-valued mutable/reference
+  globals, the remaining GC files, public family admission, and broader platform products remain.
 - [ ] Reach zero unexplained failures/skips in the official Release 3 core suite.
 
 **Engine & performance** (no-ir-plan P1–P7, measured against P1's stats)
