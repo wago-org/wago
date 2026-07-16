@@ -23,6 +23,7 @@ const (
 	gcArrayFill         uint32 = 27
 	gcArrayCopy         uint32 = 28
 	gcArrayInitData     uint32 = 29
+	gcArrayInitElem     uint32 = 30
 )
 
 func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
@@ -211,6 +212,23 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(dataIndex)})
 		object := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
 		return f.callGCStructHelper(gcArrayInitData, []wasm.ValType{object, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32}, nil)
+	case 19: // array.init_elem typeidx elemidx
+		typeIndex, err := r.U32()
+		if err != nil {
+			return err
+		}
+		elemIndex, err := r.U32()
+		if err != nil {
+			return err
+		}
+		field, ok := stagedArrayType(f.m, typeIndex)
+		if !ok || field.Mut != wasm.Var || field.Storage.Val.Kind != wasm.ValRef {
+			return fmt.Errorf("amd64: array.init_elem type %d is unavailable", typeIndex)
+		}
+		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
+		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(elemIndex)})
+		object := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
+		return f.callGCStructHelper(gcArrayInitElem, []wasm.ValType{object, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32}, nil)
 	case 17: // array.copy dsttype srcType
 		dstType, err := r.U32()
 		if err != nil {

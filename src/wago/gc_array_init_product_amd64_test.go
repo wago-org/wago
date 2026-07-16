@@ -3,6 +3,7 @@
 package wago
 
 import (
+	"encoding/binary"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,6 +16,9 @@ import (
 func stagedGCArrayInitLeaderBytes(t testing.TB, filename string) []byte {
 	t.Helper()
 	base := "gc/array_init_data"
+	if strings.HasPrefix(filename, "array_init_elem.") {
+		base = "gc/array_init_elem"
+	}
 	var script stagedSpecScript
 	tmp := stagedOfficialTypedReferenceJSON(t, base, &script)
 	for _, cmd := range script.Commands {
@@ -126,6 +130,121 @@ func TestStagedGCArrayInitDataProductBoundary(t *testing.T) {
 	t.Logf("array-init layouts: Compiled=%d Instance=%d codeCache=%d memoryDir=%d arrayGlobal=%d plugin=%d collector=%d", unsafe.Sizeof(Compiled{}), unsafe.Sizeof(Instance{}), unsafe.Sizeof(compiledCodeCache{}), unsafe.Sizeof(compiledMemoryDirectory{}), unsafe.Sizeof(gcArrayGlobalInit{}), unsafe.Sizeof(instancePluginState{}), unsafe.Sizeof(corergc.Collector{}))
 }
 
+func TestStagedGCArrayInitElemProductBoundaryAndTinyLifecycle(t *testing.T) {
+	data := stagedGCArrayInitLeaderBytes(t, "array_init_elem.3.wasm")
+	if _, err := Compile(NewRuntimeConfig(), data); err == nil {
+		t.Fatal("public compile unexpectedly admitted array.init_elem")
+	}
+	guardCfg := NewRuntimeConfig()
+	guardCfg.boundsChecks = BoundsChecksSignalsBased
+	features := guardCfg.frontendFeatures()
+	features.TypedFunctionReferences = true
+	features.GCArrayProducts = true
+	if _, err := compileWithFrontendFeatures(guardCfg, data, features); err == nil || !strings.Contains(err.Error(), "signals-based") {
+		t.Fatalf("guard compile=%v, want explicit array-init rejection", err)
+	}
+
+	c, err := compileStagedGCArrayInit(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	if got := c.stagedGCArrayProduct(); got != stagedGCArrayProductInitElem || !c.usesGCArrayHelpers() {
+		t.Fatalf("product/helper=%s/%v, want init-elem/true", got, c.usesGCArrayHelpers())
+	}
+	if len(c.GCTypeDescs) < 3 || c.GCTypeDescs[1].Elem != corergc.StorageI64 || c.GCTypeDescs[2].Elem != corergc.StorageI64 || c.GCTypeDescs[1].HasRefs || c.GCTypeDescs[2].HasRefs {
+		t.Fatalf("funcref array layouts=%+v", c.GCTypeDescs)
+	}
+	if _, err := Capture(c, SnapshotOptions{}); err == nil || !strings.Contains(err.Error(), "WasmGC") {
+		t.Fatalf("snapshot capture=%v, want WasmGC rejection", err)
+	}
+	blob, err := marshalCompiled(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var loaded Compiled
+	if err := unmarshalCompiled(&loaded, blob[5:]); err != nil {
+		t.Fatal(err)
+	}
+	defer loaded.Close()
+	if loaded.stagedGCArrayProduct() != 0 || loaded.usesGCArrayHelpers() {
+		t.Fatal("codec reload inherited array-init element product/helper admission")
+	}
+	if in, err := instantiateCore(&loaded, InstantiateOptions{}); err == nil {
+		_ = in.Close()
+		t.Fatal("codec-loaded array-init element artifact instantiated")
+	}
+
+	for _, tc := range []struct {
+		name string
+		gc   GCConfig
+	}{
+		{name: "throughput", gc: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 224, ForceMajorEveryMinor: true, VerifyAfterCollect: true, StressBarriers: true}},
+		{name: "tiny", gc: GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 224, TinyBlockBytes: 8, TinyCollectEveryAlloc: true, TinyStepEveryAlloc: true, TinyStepBudget: 1, VerifyAfterCollect: true, StressBarriers: true}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			in, err := instantiateCore(c, InstantiateOptions{GC: tc.gc})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer in.Close()
+			state := in.pluginState.Load()
+			if state == nil || state.gcGlobalRootCount != 2 {
+				t.Fatalf("global roots=%#v, want two", state)
+			}
+			descPtr := in.jm.PassiveElemPtr()
+			if descPtr == 0 {
+				t.Fatal("passive element descriptor is unavailable")
+			}
+			desc := unsafe.Slice((*byte)(offHeapPtr(descPtr)), 16)
+			if got := binary.LittleEndian.Uint32(desc[8:]); got != 12 {
+				t.Fatalf("segment length=%d, want 12", got)
+			}
+			for i := 0; i < 100; i++ {
+				if _, err := in.Invoke("array_init_elem", 2, 3, 2); err != nil {
+					t.Fatalf("iteration %d init: %v", i, err)
+				}
+				if _, err := in.Invoke("array_call_nth", 2); err != nil {
+					t.Fatalf("iteration %d call: %v", i, err)
+				}
+			}
+			before, err := in.gc.ArrayGet(corergc.Ref(uint32(readGlobalObject(in.globalCells[1], in.c.Globals[1].Type))), 0)
+			if err != nil || before.Bits != 0 {
+				t.Fatalf("destination before trap=%+v,%v", before, err)
+			}
+			if _, err := in.Invoke("array_init_elem", 0, 11, 2); err == nil {
+				t.Fatal("short source returned normally")
+			}
+			after, err := in.gc.ArrayGet(corergc.Ref(uint32(readGlobalObject(in.globalCells[1], in.c.Globals[1].Type))), 0)
+			if err != nil || after.Bits != before.Bits {
+				t.Fatalf("trapping init changed destination: before=%+v after=%+v err=%v", before, after, err)
+			}
+			if err := in.gc.CollectFull(nil); err != nil {
+				t.Fatal(err)
+			}
+			if live := in.gc.Stats().LiveObjects; live != 2 {
+				t.Fatalf("live objects=%d, want two rooted arrays", live)
+			}
+			if _, err := in.Invoke("array_call_nth", 3); err != nil {
+				t.Fatalf("descriptor identity after collection: %v", err)
+			}
+			if _, err := in.Invoke("drop_segs"); err != nil {
+				t.Fatal(err)
+			}
+			if got := binary.LittleEndian.Uint32(desc[8:]); got != 0 {
+				t.Fatalf("dropped segment length=%d", got)
+			}
+			if _, err := in.Invoke("array_init_elem", 0, 0, 0); err != nil {
+				t.Fatalf("zero length after drop: %v", err)
+			}
+			if _, err := in.Invoke("array_init_elem", 0, 0, 1); err == nil {
+				t.Fatal("non-zero init after drop returned normally")
+			}
+		})
+	}
+	t.Logf("array-init elem product: wasm=%d code=%d codec=%d", len(data), len(c.Code), len(blob))
+}
+
 func TestStagedGCArrayInitDataTinyLifecycle(t *testing.T) {
 	data := stagedGCArrayInitLeaderBytes(t, "array_init_data.2.wasm")
 	c, err := compileStagedGCArrayInit(data)
@@ -204,6 +323,27 @@ func TestStagedGCArrayInitDataTransientTinyRootProof(t *testing.T) {
 	}
 	if _, err := in.Invoke("g8"); err != nil {
 		t.Fatalf("recovery after trap: %v", err)
+	}
+}
+
+func BenchmarkStagedGCArrayInitElem(b *testing.B) {
+	data := stagedGCArrayInitLeaderBytes(b, "array_init_elem.3.wasm")
+	c, err := compileStagedGCArrayInit(data)
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer c.Close()
+	in, err := instantiateCore(c, InstantiateOptions{})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer in.Close()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := in.Invoke("array_init_elem", 2, 3, 2); err != nil {
+			b.Fatal(err)
+		}
 	}
 }
 

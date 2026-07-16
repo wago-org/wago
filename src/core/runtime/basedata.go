@@ -382,6 +382,10 @@ func (j *JobMemory) SetFuncRefDesc(ptr uintptr) {
 // SetPassiveElemPtr writes the passive element descriptor pointer.
 func (j *JobMemory) SetPassiveElemPtr(v uintptr) { j.putU64(offPassiveElemPtr, uint64(v)) }
 
+// PassiveElemPtr returns the currently installed passive-element descriptor
+// array. Exact parked helpers use it only while the owning instance arena lives.
+func (j *JobMemory) PassiveElemPtr() uintptr { return uintptr(j.getU64(offPassiveElemPtr)) }
+
 // SetGlobalsPtr writes the globals pointer-table address at offGlobalsPtr.
 func (j *JobMemory) SetGlobalsPtr(v uintptr) { j.putU64(offGlobalsPtr, uint64(v)) }
 
