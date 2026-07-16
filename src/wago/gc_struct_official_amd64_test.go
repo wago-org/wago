@@ -54,7 +54,11 @@ type stagedGCStructDelta struct {
 }
 
 func compileStagedGCStruct(data []byte) (*Compiled, error) {
-	return Compile(NewRuntimeConfig(), data)
+	cfg := NewRuntimeConfig()
+	features := cfg.frontendFeatures()
+	features.TypedFunctionReferences = true
+	features.GCStructProducts = true
+	return compileWithFrontendFeatures(cfg, data, features)
 }
 
 func stagedGCStructLeaderDeltaFor(data []byte, line int) (stagedGCStructLeaderDelta, stagedGCStructLeaderPin, error) {
@@ -89,6 +93,14 @@ func replayStagedGCStructScript(t *testing.T, tmp string, script stagedSpecScrip
 	gates := map[string]int{}
 	var latestDefinition []byte
 	var current *stagedGCStructLeaderPin
+	var currentModule stagedSpecModule
+	var live []stagedSpecModule
+	defer func() {
+		for i := len(live) - 1; i >= 0; i-- {
+			_ = live[i].in.Close()
+			_ = live[i].c.Close()
+		}
+	}()
 	seenPins := map[string]bool{}
 	seenActions := map[string][]string{}
 	leaders := make([]stagedGCStructLeaderDelta, 0, len(stagedGCStructLeaderPins))
@@ -107,6 +119,7 @@ func replayStagedGCStructScript(t *testing.T, tmp string, script stagedSpecScrip
 			}
 			latestDefinition = data
 			current = nil
+			currentModule = stagedSpecModule{}
 		case "module_instance":
 			if latestDefinition == nil {
 				counts.Failures++
@@ -128,14 +141,28 @@ func replayStagedGCStructScript(t *testing.T, tmp string, script stagedSpecScrip
 			leaders = append(leaders, leader)
 			current = &pin
 			c, compileErr := compileStagedGCStruct(latestDefinition)
-			if compileErr == nil {
-				_ = c.Close()
-				counts.Failures++
-				t.Errorf("gc/struct.wast:%d staged leader %s unexpectedly compiled before its product gate", cmd.Line, pin.Filename)
+			if compileErr != nil {
+				if executable, ok := stagedGCStructExecutionProduct(latestDefinition); ok {
+					counts.Failures++
+					counts.UnexpectedCompileRejects++
+					t.Errorf("gc/struct.wast:%d executable leader %s (%s) rejected: %v", cmd.Line, pin.Filename, executable, compileErr)
+					continue
+				}
+				counts.ExpectedFeatureRejects++
+				gates[pin.Product.gateReason()]++
 				continue
 			}
-			counts.ExpectedFeatureRejects++
-			gates[pin.Product.gateReason()]++
+			in, instantiateErr := instantiateCore(c, InstantiateOptions{})
+			if instantiateErr != nil {
+				_ = c.Close()
+				counts.Failures++
+				counts.UnexpectedLinkRejects++
+				t.Errorf("gc/struct.wast:%d executable leader %s instantiate: %v", cmd.Line, pin.Filename, instantiateErr)
+				continue
+			}
+			currentModule = stagedSpecModule{in: in, c: c}
+			live = append(live, currentModule)
+			counts.ModulesPassed++
 		case "assert_invalid":
 			data, err := os.ReadFile(filepath.Join(tmp, cmd.Filename))
 			if err != nil {
@@ -178,7 +205,51 @@ func replayStagedGCStructScript(t *testing.T, tmp string, script stagedSpecScrip
 				kind = "trap"
 			}
 			seenActions[current.Filename] = append(seenActions[current.Filename], kind+":"+cmd.Action.Field)
-			counts.BlockedCommands++
+			if currentModule.in == nil {
+				counts.BlockedCommands++
+				continue
+			}
+			args := make([]uint64, len(cmd.Action.Args))
+			valid := cmd.Action.Type == "invoke"
+			for i, arg := range cmd.Action.Args {
+				args[i], valid = stagedTypedReferenceArgument(currentModule, nil, arg)
+				if !valid {
+					break
+				}
+			}
+			if !valid {
+				counts.Failures++
+				t.Errorf("gc/struct.wast:%d unsupported staged action", cmd.Line)
+				continue
+			}
+			got, callErr := currentModule.in.Invoke(cmd.Action.Field, args...)
+			if cmd.Type == "assert_trap" {
+				if callErr == nil {
+					counts.Failures++
+					t.Errorf("gc/struct.wast:%d expected trap: %s", cmd.Line, cmd.Text)
+				} else {
+					counts.AssertionsPassed++
+				}
+				continue
+			}
+			if callErr != nil || len(got) != len(cmd.Expected) {
+				counts.Failures++
+				t.Errorf("gc/struct.wast:%d result=%v err=%v want=%v", cmd.Line, got, callErr, cmd.Expected)
+				continue
+			}
+			matched := true
+			for i := range got {
+				if !stagedTypedReferenceMatch(currentModule, got[i], cmd.Expected[i]) {
+					matched = false
+					break
+				}
+			}
+			if !matched {
+				counts.Failures++
+				t.Errorf("gc/struct.wast:%d result=%v want=%v", cmd.Line, got, cmd.Expected)
+				continue
+			}
+			counts.AssertionsPassed++
 		default:
 			counts.Failures++
 			t.Errorf("gc/struct.wast:%d unhandled command %q", cmd.Line, cmd.Type)

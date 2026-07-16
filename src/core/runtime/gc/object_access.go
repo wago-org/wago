@@ -88,6 +88,16 @@ func (c *Collector) NewArrayDefaultWithRoots(typeID TypeID, length uint32, roots
 	return r, nil
 }
 
+// ObjectType returns the exact runtime descriptor id for a live object ref.
+// Null, i31, stale, forged, or closed-collector references reject.
+func (c *Collector) ObjectType(ref Ref) (TypeID, error) {
+	d, err := c.refDesc(ref)
+	if err != nil {
+		return 0, err
+	}
+	return d.ID, nil
+}
+
 func (c *Collector) ArrayLen(ref Ref) (uint32, error) {
 	d, e := c.refDesc(ref)
 	if e != nil {
