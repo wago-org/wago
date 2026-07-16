@@ -246,14 +246,15 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   super traversal, stale/forged/closed rejection, and immutable canonical representatives. One
   exact 168-byte two-slot product first proves checked table roots, repeated barriered overwrite,
   Tiny exhaustion, rejected-write atomicity, close teardown, and codec/snapshot/platform closure.
-  The official twenty-slot table then retains eight live objects across both exported calls and all
-  84 subtype/canonicalization tests. Strict accounting improves to 73 commands / 1 module / 2
-  assertions / 1 exact gate / 67 blocked actions. The remaining 626-byte abstract leader still
-  requires mixed anyref/funcref/externref table ownership, extern conversions, funcref identity,
-  mutation, i31, struct/array allocation, and 66 actions; it remains gated. Raw/canonical collector
-  tests measure 31.97–34.81 and 25.57–26.19 ns/op, while the parked two-slot helper path measures
-  146.9–148.5 ns/op; all are 0 B/op / 0 allocs/op. General frame roots, object-valued mutable/
-  reference globals, the remaining GC files, public family admission, and broader platform products remain.
+  Iteration 47 closes the 626-byte abstract leader with a finite three-owner table proof: ten checked
+  anyref collector slots, local funcref descriptors, and an eight-entry store/collector-bound extern
+  conversion bridge. Public extern tokens, internal foreign-any identities, converted i31s, and
+  converted heap objects remain disjoint; object conversion roots are replaced on repeated init and
+  all rejected/OOB writes are atomic. Strict `gc/ref_test` accounting is gap-free at 73 commands /
+  2 modules / 68 assertions / 0 gates / 0 blocked, with zero hidden failures. The raw conversion
+  round trip measures 19.70–21.04 ns/op and the parked foreign-any test 171.7–172.5 ns/op; all report
+  0 B/op / 0 allocs/op. General frame roots, object-valued mutable/reference globals, the remaining
+  GC files, public family admission, and broader platform products remain.
 - [ ] Reach zero unexplained failures/skips in the official Release 3 core suite.
 
 **Engine & performance** (no-ir-plan P1–P7, measured against P1's stats)
