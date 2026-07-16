@@ -3,10 +3,12 @@
 package wago
 
 import (
+	"context"
 	"encoding/binary"
 	"encoding/hex"
 	"strings"
 	"testing"
+	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/frontend"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -150,6 +152,15 @@ func TestStagedGCArrayReferenceElementAllocationAndDrop(t *testing.T) {
 				t.Fatalf("outer[1][0] = %+v, %v", got, err)
 			}
 
+			for _, widenedType := range []uint64{3, 4} {
+				in.dispatchGCArrayHelper(gcArrayAllocElem, []uint64{0, 2, widenedType, 0}, result[:])
+				widened := gc.Ref(uint32(result[0]))
+				got, err := in.gc.ArrayGet(widened, 1)
+				if err != nil || got.Ref != second.Ref {
+					t.Fatalf("widened array type %d element = %+v, %v; want %v", widenedType, got, err, second.Ref)
+				}
+			}
+
 			in.dispatchGCArrayHelper(gcArrayAllocElem, []uint64{0, 2, 2, 0}, result[:])
 			mutable := gc.Ref(uint32(result[0]))
 			in.dispatchGCArrayHelper(gcArraySet, []uint64{uint64(mutable), 0, uint64(second.Ref), 2}, nil)
@@ -193,6 +204,149 @@ func TestStagedGCArrayReferenceElementAllocationAndDrop(t *testing.T) {
 	}
 }
 
+func TestStagedGCArrayReferenceOfficialProduct(t *testing.T) {
+	data := stagedGCArrayReferenceBytes(t)
+	if _, err := Compile(NewRuntimeConfig(), data); err == nil {
+		t.Fatal("public compile unexpectedly admitted reference GC arrays")
+	}
+	c, err := compileStagedGCArray(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	if c.stagedGCArrayProduct() != stagedGCArrayProductReferenceElements || c.memoryDir == nil || c.memoryDir.gcArrayElement == nil {
+		t.Fatalf("reference product metadata = %v/%+v", c.stagedGCArrayProduct(), c.memoryDir)
+	}
+	if _, err := Capture(c, SnapshotOptions{}); err == nil || !strings.Contains(err.Error(), "GC") {
+		t.Fatalf("reference array snapshot = %v, want fail-closed GC rejection", err)
+	}
+	blob, err := marshalCompiled(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var loaded Compiled
+	if err := unmarshalCompiled(&loaded, blob[5:]); err != nil {
+		t.Fatal(err)
+	}
+	defer loaded.Close()
+	if loaded.usesGCArrayHelpers() || loaded.stagedGCArrayProduct() != 0 || (loaded.memoryDir != nil && loaded.memoryDir.gcArrayElement != nil) {
+		t.Fatal("codec reload inherited reference array helper/product/segment admission")
+	}
+
+	profiles := []struct {
+		name string
+		cfg  GCConfig
+	}{
+		{name: "throughput", cfg: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 96, ForceMajorEveryMinor: true, VerifyAfterCollect: true, StressBarriers: true}},
+		{name: "tiny", cfg: GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 96, TinyBlockBytes: 8, TinyCollectEveryAlloc: true, TinyStepEveryAlloc: true, TinyStepBudget: 1, VerifyAfterCollect: true, StressBarriers: true}},
+	}
+	for _, tc := range profiles {
+		t.Run(tc.name, func(t *testing.T) {
+			in, err := instantiateCore(c, InstantiateOptions{GC: tc.cfg})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer in.Close()
+
+			raw, err := in.Invoke("new")
+			if err != nil || len(raw) != 1 || raw[0] == 0 || raw[0]>>32 == 0 {
+				t.Fatalf("new = %v, %v; want opaque GC token", raw, err)
+			}
+			token := raw[0]
+			exact, owner, _, ok := in.refStore.gcRefExactType(token)
+			if !ok || owner != in || exact.Kind != ValueTypeReference || !exact.Ref.Exact || !exact.Ref.Heap.Defined || exact.Ref.Heap.TypeIndex != 1 {
+				t.Fatalf("reference exact token = %#v owner=%p ok=%v", exact, owner, ok)
+			}
+			if _, err := in.Invoke("new"); err == nil || !strings.Contains(err.Error(), "one live token") {
+				t.Fatalf("second live reference token = %v", err)
+			}
+			if err := in.ReleaseGCRef(ValueOf(ValAnyRef, token).GCRef()); err != nil {
+				t.Fatal(err)
+			}
+			values, err := in.Call(context.Background(), "new")
+			if err != nil || len(values) != 1 || values[0].GCRef().IsNull() {
+				t.Fatalf("Call new = %v, %v", values, err)
+			}
+			if err := in.ReleaseGCRef(values[0].GCRef()); err != nil {
+				t.Fatal(err)
+			}
+
+			for _, action := range []struct {
+				name string
+				args []uint64
+				want uint64
+			}{
+				{name: "get", args: []uint64{0, 0}, want: 7},
+				{name: "get", args: []uint64{1, 0}, want: 1},
+				{name: "set_get", args: []uint64{0, 1, 1}, want: 2},
+				{name: "len", want: 2},
+			} {
+				got, err := in.Invoke(action.name, action.args...)
+				if err != nil || len(got) != 1 || got[0] != action.want {
+					t.Fatalf("%s%v = %v, %v; want %d", action.name, action.args, got, err, action.want)
+				}
+			}
+			before := in.gc.Stats()
+			if _, err := in.Invoke("new-overflow"); err == nil {
+				t.Fatal("new-overflow succeeded")
+			}
+			after := in.gc.Stats()
+			if after.Allocations != before.Allocations || after.LiveObjects != before.LiveObjects {
+				t.Fatalf("overflowing array.new_elem changed collector state: before=%+v after=%+v", before, after)
+			}
+			for _, trap := range []struct {
+				name string
+				args []uint64
+			}{
+				{name: "get", args: []uint64{10, 0}},
+				{name: "set_get", args: []uint64{10, 0, 0}},
+			} {
+				if _, err := in.Invoke(trap.name, trap.args...); err == nil {
+					t.Fatalf("%s%v succeeded", trap.name, trap.args)
+				}
+			}
+			if _, err := in.Invoke("drop_segs"); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := in.Invoke("new"); err == nil {
+				t.Fatal("new after elem.drop succeeded")
+			}
+			if _, err := in.Invoke("new-overflow"); err == nil {
+				t.Fatal("new-overflow after elem.drop succeeded")
+			}
+		})
+	}
+
+	in, err := instantiateCore(c, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := in.Invoke("new")
+	if err != nil || len(raw) != 1 {
+		t.Fatalf("close-order new = %v, %v", raw, err)
+	}
+	if err := in.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := in.ReleaseGCRef(ValueOf(ValAnyRef, raw[0]).GCRef()); err != nil {
+		t.Fatalf("release token after producer close: %v", err)
+	}
+}
+
+func TestStagedGCArrayReferenceFootprint(t *testing.T) {
+	for name, got := range map[string]uintptr{
+		"gcArrayElementInit":      unsafe.Sizeof(gcArrayElementInit{}),
+		"gcArrayElementState":     unsafe.Sizeof(gcArrayElementState{}),
+		"compiledMemoryDirectory": unsafe.Sizeof(compiledMemoryDirectory{}),
+		"instancePluginState":     unsafe.Sizeof(instancePluginState{}),
+	} {
+		want := map[string]uintptr{"gcArrayElementInit": 96, "gcArrayElementState": 56, "compiledMemoryDirectory": 128, "instancePluginState": 136}[name]
+		if got != want {
+			t.Fatalf("%s size = %d, want %d", name, got, want)
+		}
+	}
+}
+
 func TestStagedGCArrayReferenceElementSegmentTinyRollback(t *testing.T) {
 	m, err := wasm.DecodeModule(stagedGCArrayReferenceBytes(t))
 	if err != nil {
@@ -223,5 +377,25 @@ func TestStagedGCArrayReferenceElementSegmentTinyRollback(t *testing.T) {
 	}
 	if collector.Stats().LiveObjects != 0 {
 		t.Fatalf("failed segment retained %d live objects", collector.Stats().LiveObjects)
+	}
+}
+
+func BenchmarkStagedGCArrayReferenceGet(b *testing.B) {
+	c, err := compileStagedGCArray(stagedGCArrayReferenceBytes(b))
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer c.Close()
+	in, err := instantiateCore(c, InstantiateOptions{})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer in.Close()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if got, err := in.Invoke("get", 0, 0); err != nil || len(got) != 1 || got[0] != 7 {
+			b.Fatalf("get = %v, %v", got, err)
+		}
 	}
 }

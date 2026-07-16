@@ -34,6 +34,7 @@ type gcArrayElementState struct {
 	Descriptor []byte
 	Refs       [maxGCArrayElementValues]gc.Ref
 	Slots      [maxGCArrayElementValues]uint32
+	AllocRoots gcArrayElementRoots
 	Count      uint8
 }
 
