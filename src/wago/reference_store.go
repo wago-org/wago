@@ -10,6 +10,7 @@ import (
 
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/src/core/runtime/abi"
+	"github.com/wago-org/wago/src/core/runtime/gc"
 )
 
 // referenceStore owns public reference tokens. Runtime-created instances share
@@ -27,6 +28,7 @@ type referenceStore struct {
 	instances     map[*Instance]struct{}
 	byIdentity    map[funcrefIdentity]*funcrefTokenEntry
 	byToken       map[uint64]*funcrefTokenEntry
+	gcByToken     map[uint64]gcRefTokenEntry
 	externKey     uint64
 	externSeed    uint32
 	externrefs    []externrefSlot
@@ -42,6 +44,24 @@ type funcrefTokenEntry struct {
 	token      uint64
 	descriptor uint64
 	owner      *Instance
+}
+
+type gcRefTokenEntry struct {
+	token uint64
+	ref   gc.Ref
+	slot  uint32
+	exact ValueTypeDescriptor
+	owner *Instance
+}
+
+// gcPublicState serializes collector access performed by the exact staged public
+// result owner. One reusable collector slot bounds each instance to one live
+// token while allowing release/reissue without growing root metadata.
+type gcPublicState struct {
+	mu          sync.Mutex
+	token       uint64
+	slot        uint32
+	slotCreated bool
 }
 
 type externrefSlot struct {
@@ -73,7 +93,7 @@ func (s *referenceStore) registerInstance(in *Instance) error {
 }
 
 func (s *referenceStore) instanceClosed(in *Instance) {
-	var release []*funcrefTokenEntry
+	var release referenceTokenEntries
 	hasRoots := in.hasResourceRoots()
 	s.mu.Lock()
 	if _, exists := s.instances[in]; exists {
@@ -82,11 +102,11 @@ func (s *referenceStore) instanceClosed(in *Instance) {
 		}
 		s.liveInstances--
 	}
-	if s.runtimeClosed && s.liveInstances == 0 && s.liveObjects == 0 {
+	if s.runtimeClosed && s.liveInstances == 0 && s.liveObjects == 0 && len(s.gcByToken) == 0 {
 		release = s.releaseEntriesLocked()
 	}
 	s.mu.Unlock()
-	releaseFuncrefEntries(release)
+	releaseReferenceEntries(release)
 }
 
 func (s *referenceStore) resourceOwnerReleased(in *Instance) {
@@ -139,7 +159,7 @@ func (s *referenceStore) hostFuncRef(dispatch uint32) *HostFuncRef {
 }
 
 func (s *referenceStore) storeObjectClosed() {
-	var release []*funcrefTokenEntry
+	var release referenceTokenEntries
 	s.mu.Lock()
 	if s.liveObjects > 0 {
 		s.liveObjects--
@@ -148,18 +168,18 @@ func (s *referenceStore) storeObjectClosed() {
 		release = s.releaseEntriesLocked()
 	}
 	s.mu.Unlock()
-	releaseFuncrefEntries(release)
+	releaseReferenceEntries(release)
 }
 
 func (s *referenceStore) closeRuntime() {
-	var release []*funcrefTokenEntry
+	var release referenceTokenEntries
 	s.mu.Lock()
 	s.runtimeClosed = true
 	if s.liveInstances == 0 && s.liveObjects == 0 {
 		release = s.releaseEntriesLocked()
 	}
 	s.mu.Unlock()
-	releaseFuncrefEntries(release)
+	releaseReferenceEntries(release)
 }
 
 func (s *referenceStore) issue(source *Instance, descriptor uint64) (uint64, error) {
@@ -215,6 +235,187 @@ func (s *referenceStore) issue(source *Instance, descriptor uint64) (uint64, err
 		return 0, fmt.Errorf("host funcref owner closed during token issue")
 	}
 	return token, nil
+}
+
+func (in *Instance) publicGCState() *gcPublicState {
+	plugin := in.ensurePluginState()
+	state := plugin.gcPublic.Load()
+	if state == nil {
+		candidate := &gcPublicState{}
+		if plugin.gcPublic.CompareAndSwap(nil, candidate) {
+			state = candidate
+		} else {
+			state = plugin.gcPublic.Load()
+		}
+	}
+	return state
+}
+
+func (in *Instance) existingPublicGCState() *gcPublicState {
+	if in == nil {
+		return nil
+	}
+	plugin := in.pluginState.Load()
+	if plugin == nil {
+		return nil
+	}
+	return plugin.gcPublic.Load()
+}
+
+func (s *referenceStore) issueGCRef(source *Instance, ref gc.Ref, required ValueTypeDescriptor) (uint64, error) {
+	if source == nil || ref.IsNull() || !ref.IsObj() {
+		return 0, fmt.Errorf("invalid non-null GC result")
+	}
+	if source.c == nil || source.c.stagedGCStructProduct() != stagedGCStructBasic {
+		return 0, fmt.Errorf("public GC result ownership is outside the exact basic struct product")
+	}
+	state := source.publicGCState()
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	if state.token != 0 {
+		return 0, fmt.Errorf("public GC result owner already has one live token")
+	}
+	if source.gc == nil {
+		return 0, fmt.Errorf("public GC result has no live collector")
+	}
+	typeID, err := source.gc.ObjectType(ref)
+	if err != nil {
+		return 0, fmt.Errorf("public GC result object: %w", err)
+	}
+	if int(typeID) >= len(source.c.Types) || source.c.Types[typeID].Kind != CompositeTypeStruct {
+		return 0, fmt.Errorf("public GC result type %d is not a struct", typeID)
+	}
+	exact := ValueTypeDescriptor{Kind: ValueTypeReference, Ref: ReferenceTypeDescriptor{
+		Exact: true, Heap: HeapTypeDescriptor{Defined: true, TypeIndex: uint32(typeID)},
+	}}
+	if required.Kind != ValueTypeReference || !valueTypeSubtype(exact, source.c.Types, required, source.c.Types) {
+		return 0, fmt.Errorf("public GC result type %d does not match its exact structural result type", typeID)
+	}
+
+	s.mu.Lock()
+	_, registered := s.instances[source]
+	s.mu.Unlock()
+	if !registered || !source.retainResourceRoot() {
+		return 0, fmt.Errorf("public GC result producer is closed")
+	}
+	rollbackRoot := true
+	defer func() {
+		if rollbackRoot {
+			source.releaseResourceRoot()
+		}
+	}()
+
+	if !state.slotCreated {
+		slot, slotErr := source.gc.NewCheckedGlobalSlot(ref)
+		if slotErr != nil {
+			return 0, fmt.Errorf("root public GC result: %w", slotErr)
+		}
+		state.slot, state.slotCreated = slot, true
+	} else if err := source.gc.SetGlobalSlot(state.slot, ref); err != nil {
+		return 0, fmt.Errorf("root public GC result: %w", err)
+	}
+
+	s.mu.Lock()
+	if _, registered = s.instances[source]; !registered {
+		s.mu.Unlock()
+		_ = source.gc.SetGlobalSlot(state.slot, gc.Null())
+		return 0, fmt.Errorf("public GC result producer is closed")
+	}
+	token, err := s.newTokenLocked()
+	if err == nil {
+		if s.gcByToken == nil {
+			s.gcByToken = make(map[uint64]gcRefTokenEntry)
+		}
+		s.gcByToken[token] = gcRefTokenEntry{token: token, ref: ref, slot: state.slot, exact: exact, owner: source}
+		state.token = token
+	}
+	s.mu.Unlock()
+	if err != nil {
+		_ = source.gc.SetGlobalSlot(state.slot, gc.Null())
+		return 0, err
+	}
+	rollbackRoot = false
+	return token, nil
+}
+
+func (s *referenceStore) releaseGCRef(source *Instance, token uint64) error {
+	if token == 0 {
+		return nil
+	}
+	s.mu.Lock()
+	entry, ok := s.gcByToken[token]
+	s.mu.Unlock()
+	if !ok {
+		return fmt.Errorf("invalid or stale GC reference token")
+	}
+	if source == nil || entry.owner != source {
+		return fmt.Errorf("GC reference token belongs to a different producer or store")
+	}
+	state := source.existingPublicGCState()
+	if state == nil {
+		return fmt.Errorf("GC reference token owner state is unavailable")
+	}
+	state.mu.Lock()
+	s.mu.Lock()
+	entry, ok = s.gcByToken[token]
+	if !ok || entry.owner != source || state.token != token || !state.slotCreated || state.slot != entry.slot {
+		s.mu.Unlock()
+		state.mu.Unlock()
+		return fmt.Errorf("invalid or stale GC reference token")
+	}
+	if source.gc == nil {
+		s.mu.Unlock()
+		state.mu.Unlock()
+		return fmt.Errorf("GC reference token collector is unavailable")
+	}
+	if err := source.gc.SetGlobalSlot(entry.slot, gc.Null()); err != nil {
+		s.mu.Unlock()
+		state.mu.Unlock()
+		return fmt.Errorf("release GC reference token: %w", err)
+	}
+	delete(s.gcByToken, token)
+	state.token = 0
+	s.mu.Unlock()
+	state.mu.Unlock()
+	source.releaseResourceRoot()
+	var release referenceTokenEntries
+	s.mu.Lock()
+	if s.runtimeClosed && s.liveInstances == 0 && s.liveObjects == 0 && len(s.gcByToken) == 0 {
+		release = s.releaseEntriesLocked()
+	}
+	s.mu.Unlock()
+	releaseReferenceEntries(release)
+	return nil
+}
+
+func (s *referenceStore) gcRefExactType(token uint64) (ValueTypeDescriptor, *Instance, uint32, bool) {
+	s.mu.Lock()
+	entry, ok := s.gcByToken[token]
+	s.mu.Unlock()
+	if !ok {
+		return ValueTypeDescriptor{}, nil, 0, false
+	}
+	return entry.exact, entry.owner, entry.slot, true
+}
+
+// ReleaseGCRef releases one non-null GC result token issued by this producer.
+// It is valid after Instance.Close while the token retains the producer's
+// collector; null releases are no-ops. Stale, foreign-store, and cross-producer
+// tokens reject without changing either owner.
+func (in *Instance) ReleaseGCRef(ref GCRef) error {
+	if ref.token == 0 {
+		return nil
+	}
+	if in == nil {
+		return fmt.Errorf("release GC reference token on nil instance")
+	}
+	in.lifeMu.Lock()
+	store := in.refStore
+	in.lifeMu.Unlock()
+	if store == nil {
+		return fmt.Errorf("instance has no GC reference token store")
+	}
+	return store.releaseGCRef(in, ref.token)
 }
 
 func (s *referenceStore) resolve(token uint64) (uint64, bool) {
@@ -335,9 +536,10 @@ func (s *referenceStore) newTokenLocked() (uint64, error) {
 	for {
 		token, err := randomNonzeroUint64()
 		if err != nil {
-			return 0, fmt.Errorf("create funcref token: %w", err)
+			return 0, fmt.Errorf("create reference token: %w", err)
 		}
-		if s.byToken[token] == nil {
+		_, gcExists := s.gcByToken[token]
+		if token>>32 != 0 && s.byToken[token] == nil && !gcExists {
 			return token, nil
 		}
 	}
@@ -355,16 +557,28 @@ func randomNonzeroUint64() (uint64, error) {
 	}
 }
 
-func (s *referenceStore) releaseEntriesLocked() []*funcrefTokenEntry {
-	var entries []*funcrefTokenEntry
+type referenceTokenEntries struct {
+	funcrefs []*funcrefTokenEntry
+	gcRefs   []gcRefTokenEntry
+}
+
+func (s *referenceStore) releaseEntriesLocked() referenceTokenEntries {
+	var entries referenceTokenEntries
 	if len(s.byToken) != 0 {
-		entries = make([]*funcrefTokenEntry, 0, len(s.byToken))
+		entries.funcrefs = make([]*funcrefTokenEntry, 0, len(s.byToken))
 		for _, entry := range s.byToken {
-			entries = append(entries, entry)
+			entries.funcrefs = append(entries.funcrefs, entry)
+		}
+	}
+	if len(s.gcByToken) != 0 {
+		entries.gcRefs = make([]gcRefTokenEntry, 0, len(s.gcByToken))
+		for _, entry := range s.gcByToken {
+			entries.gcRefs = append(entries.gcRefs, entry)
 		}
 	}
 	s.byIdentity = nil
 	s.byToken = nil
+	s.gcByToken = nil
 	clear(s.externrefs)
 	s.externrefs = nil
 	s.externKey = 0
@@ -372,10 +586,24 @@ func (s *referenceStore) releaseEntriesLocked() []*funcrefTokenEntry {
 	return entries
 }
 
-func releaseFuncrefEntries(entries []*funcrefTokenEntry) {
-	for _, entry := range entries {
+func releaseReferenceEntries(entries referenceTokenEntries) {
+	for _, entry := range entries.funcrefs {
 		if hostOwner := entry.owner.hostFuncRefForDescriptor(entry.descriptor); hostOwner != nil {
 			hostOwner.tokenReleased(entry.owner, entry.descriptor)
+		}
+		entry.owner.releaseResourceRoot()
+	}
+	for _, entry := range entries.gcRefs {
+		state := entry.owner.existingPublicGCState()
+		if state != nil {
+			state.mu.Lock()
+			if state.token == entry.token && state.slotCreated && state.slot == entry.slot {
+				if entry.owner.gc != nil {
+					_ = entry.owner.gc.SetGlobalSlot(entry.slot, gc.Null())
+				}
+				state.token = 0
+			}
+			state.mu.Unlock()
 		}
 		entry.owner.releaseResourceRoot()
 	}
