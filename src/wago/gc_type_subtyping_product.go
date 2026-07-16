@@ -22,6 +22,7 @@ const (
 	stagedGCTypeSubtypingRefTestDirectionFalse
 	stagedGCTypeSubtypingRuntimeCallCast
 	stagedGCTypeSubtypingRuntimeFinalityCallCast
+	stagedGCTypeSubtypingRuntimeTypedTableCall
 )
 
 func (p stagedGCTypeSubtypingProduct) usesRefTest() bool {
@@ -69,6 +70,8 @@ func stagedGCTypeSubtypingProductPinned(data []byte, product stagedGCTypeSubtypi
 		pinned = stagedGCTypeSubtypingRuntimeCallCast
 	case "375a327f8469d41d4f15f05109533a90127fc5287414364e227203d7d48e7662":
 		pinned = stagedGCTypeSubtypingRuntimeFinalityCallCast
+	case "2ad95457821ceb8211d5733fe308f031f1103755733bbf8b5db9c85db0eb6d9b":
+		pinned = stagedGCTypeSubtypingRuntimeTypedTableCall
 	}
 	return pinned == product
 }

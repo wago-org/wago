@@ -21,6 +21,15 @@ type stagedGCTypeSubtypingProductPin struct {
 	Hex      string
 }
 
+var stagedGCTypeSubtypingTypedTablePin = stagedGCTypeSubtypingProductPin{
+	Filename: "type-subtyping.19.wasm",
+	Line:     234,
+	Size:     186,
+	SHA256:   "2ad95457821ceb8211d5733fe308f031f1103755733bbf8b5db9c85db0eb6d9b",
+	Class:    stagedGCTypeSubtypingRuntimeTypedTableCall,
+	Hex:      "0061736d01000000019580808000045000600000500100600000500101600000600000038680808000050102030303048680808000016301010202079780808000030372756e0002056661696c310003056661696c320004098f8080800001060041000b630102d2000bd2010b0ac780808000058280808000000b8280808000000b9b8080800000410011000041011100004100110100410111010041011102000b87808080000041001102000b87808080000041001103000b",
+}
+
 var stagedGCTypeSubtypingProductPins = []stagedGCTypeSubtypingProductPin{
 	{Filename: "type-subtyping.0.wasm", Line: 7, Size: 54, SHA256: "aa9754e0665bda5f10ec77a3261759da4b462e813ecf9d0e12ec912acff996d6", Class: stagedGCTypeSubtypingDeclarations, Hex: "0061736d0100000001a8808080000750005e7f005001005e7f0050005e6e0050005e63000050005e64010050005e7f015001055e7f01"},
 	{Filename: "type-subtyping.1.wasm", Line: 15, Size: 65, SHA256: "ddca4046060c72d14ed416806860b0512b8e34ae2d11555ed88ff8676f6d1871", Class: stagedGCTypeSubtypingDeclarations, Hex: "0061736d0100000001b3808080000650005f005001005f005001015f017f005001025f027f006300005001035f037f006400007e015001045f037f006401007e01"},
@@ -327,6 +336,106 @@ func TestStagedGCTypeSubtypingRuntimeFinalityCallCastInventory(t *testing.T) {
 		if len(m.Code[i].Locals.Runs) != 0 || hex.EncodeToString(m.Code[i].BodyBytes) != wantBodies[i] {
 			t.Fatalf("function %d locals/body = %v/%x, want none/%s", i, m.Code[i].Locals.Runs, m.Code[i].BodyBytes, wantBodies[i])
 		}
+	}
+}
+
+func TestStagedGCTypeSubtypingRuntimeTypedTableInventory(t *testing.T) {
+	pin := stagedGCTypeSubtypingTypedTablePin
+	data := stagedGCTypeSubtypingProductData(t, pin)
+	if len(data) != pin.Size {
+		t.Fatalf("typed-table size = %d, want %d", len(data), pin.Size)
+	}
+	if got := fmt.Sprintf("%x", sha256.Sum256(data)); got != pin.SHA256 {
+		t.Fatalf("typed-table sha256 = %s, want %s", got, pin.SHA256)
+	}
+	m, err := wasm.DecodeModule(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatalf("AST validate: %v", err)
+	}
+	if err := wasm.ValidateByteBackedModule(data); err != nil {
+		t.Fatalf("byte-backed validate: %v", err)
+	}
+	if len(m.Types) != 4 || len(m.FuncTypes) != 5 || len(m.Code) != 5 || len(m.Tables) != 1 || len(m.Elements) != 1 || len(m.Exports) != 3 {
+		t.Fatalf("typed-table shape types/functions/code/tables/elements/exports = %d/%d/%d/%d/%d/%d, want 4/5/5/1/1/3", len(m.Types), len(m.FuncTypes), len(m.Code), len(m.Tables), len(m.Elements), len(m.Exports))
+	}
+	for i := 0; i < 3; i++ {
+		if len(m.Types[i].SubTypes) != 1 {
+			t.Fatalf("typed-table group %d members = %d, want 1", i, len(m.Types[i].SubTypes))
+		}
+		st := m.Types[i].SubTypes[0]
+		if st.Final || !st.HasPrefix || st.Comp.Kind != wasm.CompFunc || len(st.Comp.Params) != 0 || len(st.Comp.Results) != 0 {
+			t.Fatalf("typed-table type %d = %+v, want open () -> () subtype", i, st)
+		}
+		if i == 0 && len(st.Supers) != 0 || i > 0 && (len(st.Supers) != 1 || st.Supers[0].Rec || st.Supers[0].Index != uint32(i-1)) {
+			t.Fatalf("typed-table type %d supers = %v, want exact chain", i, st.Supers)
+		}
+	}
+	runner := m.Types[3].SubTypes[0]
+	if !runner.Final || runner.HasPrefix || len(runner.Supers) != 0 || runner.Comp.Kind != wasm.CompFunc || len(runner.Comp.Params) != 0 || len(runner.Comp.Results) != 0 {
+		t.Fatalf("typed-table runner type = %+v, want final () -> ()", runner)
+	}
+	for source := uint32(0); source < 3; source++ {
+		for target := uint32(0); target < 3; target++ {
+			actual := wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: source}), false)
+			required := wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: target}), false)
+			if got, want := m.ReferenceTypeSubtype(actual, required), source >= target; got != want {
+				t.Fatalf("typed-table function subtype %d <: %d = %v, want %v", source, target, got, want)
+			}
+		}
+	}
+	table := m.Tables[0].Type
+	wantTableType := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: 1}), false))
+	if !wasm.EqualValType(wasm.RefVal(table.Ref), wantTableType) || table.Limits.Addr64 || table.Limits.Min != 2 || table.Limits.Max == nil || *table.Limits.Max != 2 || m.Tables[0].Init != nil {
+		t.Fatalf("typed table = %+v, want exact table 2 2 (ref null type 1)", table)
+	}
+	for _, source := range []uint32{1, 2} {
+		actual := wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: source}), false)
+		if !m.ReferenceTypeSubtype(actual, table.Ref) {
+			t.Fatalf("typed-table element source type %d is not storable in table type 1", source)
+		}
+	}
+	if m.ReferenceTypeSubtype(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: 0}), false), table.Ref) {
+		t.Fatal("typed-table source type 0 unexpectedly storable in narrower table type 1")
+	}
+	elem := m.Elements[0]
+	if elem.Mode.Kind != wasm.ElemActive || elem.Mode.Table != 0 || !isExactI32ConstZeroBody(elem.Mode.Offset.BodyBytes) || elem.Kind.Kind != wasm.ElemTypedExprs || !wasm.EqualValType(wasm.RefVal(elem.Kind.Ref), wantTableType) || len(elem.Kind.Exprs) != 2 {
+		t.Fatalf("typed-table element = %+v, want active table-0 offset-0 two typed function expressions", elem)
+	}
+	for i := range elem.Kind.Exprs {
+		if !isExactRefFuncBody(elem.Kind.Exprs[i].BodyBytes, uint32(i)) {
+			t.Fatalf("typed-table element expression %d = %x, want ref.func %d", i, elem.Kind.Exprs[i].BodyBytes, i)
+		}
+	}
+	wantTypes := []uint32{1, 2, 3, 3, 3}
+	wantExports := []string{"run", "fail1", "fail2"}
+	for i, want := range wantTypes {
+		if m.FuncTypes[i].Rec || m.FuncTypes[i].Index != want || len(m.Code[i].Locals.Runs) != 0 {
+			t.Fatalf("typed-table function %d type/locals = %v/%v, want type %d/no locals", i, m.FuncTypes[i], m.Code[i].Locals.Runs, want)
+		}
+	}
+	for i, want := range wantExports {
+		if m.Exports[i].Name != want || m.Exports[i].Index.Kind != wasm.ExternFunc || m.Exports[i].Index.Index != uint32(i+2) {
+			t.Fatalf("typed-table export %d = %+v, want %s function %d", i, m.Exports[i], want, i+2)
+		}
+	}
+	wantBodies := []string{
+		"0b", "0b",
+		"410011000041011100004100110100410111010041011102000b",
+		"41001102000b", "41001103000b",
+	}
+	for i, want := range wantBodies {
+		if got := hex.EncodeToString(m.Code[i].BodyBytes); got != want {
+			t.Fatalf("typed-table function %d body = %s, want %s", i, got, want)
+		}
+	}
+	if !stagedGCTypeSubtypingProductPinned(data, pin.Class) {
+		t.Fatal("typed-table binary is not in the production SHA pin set")
+	}
+	if product, err := stagedGCTypeSubtypingProductShape(m); err != nil || product != pin.Class {
+		t.Fatalf("typed-table product = %v, %v; want %v", product, err, pin.Class)
 	}
 }
 
