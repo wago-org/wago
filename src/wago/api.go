@@ -3333,6 +3333,10 @@ func (in *Instance) invoke(export string, args []uint64, cancel context.Context)
 			return nil, err
 		}
 	}
+	if err := in.reconcileGCGlobalRoots(); err != nil {
+		stopCancel()
+		return nil, err
+	}
 	stopCancel()
 	goruntime.KeepAlive(in)
 	goruntime.KeepAlive(in.c)
@@ -3442,6 +3446,10 @@ func (in *Instance) invokeAttachedLocalContext(li int, args []uint64, cancel con
 			stopCancel()
 			return nil, err
 		}
+	}
+	if err := in.reconcileGCGlobalRoots(); err != nil {
+		stopCancel()
+		return nil, err
 	}
 	stopCancel()
 	goruntime.KeepAlive(in)

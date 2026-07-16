@@ -244,3 +244,36 @@ func instantiateGCArrayGlobal(collector *gc.Collector, descs []gc.TypeDesc, init
 	}
 	return ref, slot, nil
 }
+
+// reconcileGCGlobalRoots synchronizes the exact staged mutable GC global cells
+// with their checked collector slots after a successful native invocation. The
+// admitted bulk-copy product performs global.set only as its final operation, so
+// no allocating helper can observe the new cell before this bounded two-slot
+// reconciliation runs.
+func (in *Instance) reconcileGCGlobalRoots() error {
+	if in == nil || in.gc == nil || in.c == nil || in.c.stagedGCArrayProduct() != stagedGCArrayProductBulkCopy {
+		return nil
+	}
+	state := in.pluginState.Load()
+	if state == nil || state.gcGlobalRootCount == 0 {
+		return nil
+	}
+	public := in.publicGCState()
+	public.mu.Lock()
+	defer public.mu.Unlock()
+	for i := uint8(0); i < state.gcGlobalRootCount; i++ {
+		mapping := state.gcGlobalRoots[i]
+		if int(mapping.GlobalIndex) >= len(in.globalCells) || in.globalCells[mapping.GlobalIndex] == nil {
+			return fmt.Errorf("GC global root mapping %d names unavailable global %d", i, mapping.GlobalIndex)
+		}
+		bits := readGlobalObject(in.globalCells[mapping.GlobalIndex], ValAnyRef)
+		ref := gc.Ref(uint32(bits))
+		if bits != uint64(ref) {
+			return fmt.Errorf("GC global %d contains non-compact reference %#x", mapping.GlobalIndex, bits)
+		}
+		if err := in.gc.SetGlobalSlot(mapping.SlotIndex, ref); err != nil {
+			return fmt.Errorf("GC global %d root slot %d: %w", mapping.GlobalIndex, mapping.SlotIndex, err)
+		}
+	}
+	return nil
+}
