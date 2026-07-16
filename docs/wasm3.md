@@ -162,8 +162,8 @@ handling, multi-memory, memory64, and table64.
 | Relaxed SIMD | Complete through `0xfd 275`, with reserved holes rejected. | Deterministic lowering is present on the documented linux/amd64 SIMD baseline. The Release 3 harness now honors official `either` result patterns; all 8 converted modules and 69 assertions pass with zero failures/skips. | ✅ Existing completed support, represented by `CoreFeatureSIMD`. |
 | Tail calls | Decoder and validator understand direct, indirect, and reference tail-call forms. Tail results use covariant reference matching, while invalid narrowing remains rejected. Separate compile-only frontend bits admit bounded direct/indirect and typed-tail slices. | linux/amd64 has local register/wrapper `return_call`, tail-position host imports, retained integer cross-instance direct tails plus exactly `(i32, f64) -> f64` and `(f64) -> i32` with a separate fixed four-word root/nested record, per-table finite immutable-local `return_call_indirect` proofs, tagged same-instance internal/scalar-wrapper `return_call_ref`, retained typed cross-instance root/nested transfers, and one canonical funcref result returned in RAX. Exact pinned accounting is gap-free for all three files: `return_call` 47 commands / 3 modules / 33 assertions / 11 invalid; `return_call_indirect` 79 / 3 / 49 / 16 invalid / 11 malformed; `return_call_ref` 51 / 5 / 35 / 11 invalid. Other float/oversized direct signatures, mutable/imported/exported/host-descriptor indirect tables, foreign-float/general reference-result tails, snapshots, public admission, and arm64 remain fail-closed. | 🚧 All staged official tail files are gap-free; not a public product claim. |
 | Typed function references | `ref.func` has the declared non-null indexed function type. Indexed references match by bounded coinductive structural equivalence across duplicate and recursive groups, including function/struct/array shapes, supers, and descriptor metadata. `call_ref` rejects abstract funcref while accepting nullable indexed references for dynamic null traps. `br_on_non_null` validates a label prefix plus non-null reference branch payload and consumes the reference on null fallthrough. Typed/tail opcodes contribute exact required-feature bits. Iteration 31 enforces recursive-group scope for relative indices and compares whole recursive groups, closing the five pinned invalid recursive/indexed gaps with exact `ErrUnknownType`/`ErrTypeMismatch` results on AST and byte-backed paths. | The internal gate admits indexed signatures/storage, explicit func/extern block types, `ref.null`, `ref.is_null`, `ref.as_non_null`, both null branches, `select`, `call_ref`, and bounded typed-tail contexts. The 14-file schema-2 matrix accounts 422 commands: 50 modules, 211 assertions, 65 invalid, 2 malformed, and 1 unlinkable pass; 12 exact gates leave 36 dependents blocked, with zero hidden failures. `call_ref` is gap-free at 4 modules / 27 assertions / 4 invalid. Cross-instance function imports compare exact structural signatures across shifted and recursive graphs; nested-reference producers survive logical close and release on consumer teardown. Empty source recursive groups compact to dense product group IDs while preserving absolute indexes and codec v27. Remaining measured gates are 11 GC and 1 exception-reference. Typed/tail snapshots, public admission, broader tails, GC/EH integration, and arm64 remain fail-closed. | 🚧 Complete measured non-GC validator/execution accounting except official modules inseparably mixed with GC/EH; no public execution claim. |
-| GC | Recursive types, instructions, descriptor lowering, collector profiles, exact `RootSet` scanning, and a validated target-neutral native root-map metadata contract exist. | The compiler can describe the fixed EH payload slots by post-prologue frame offset and distinguish collector-owned compact `gc.Ref` handles from funcref producer-lifecycle roots. Runtime safepoint publication/consumption, frame zeroing, opcode lowering, allocation calls, barriers/remark, and teardown scanning are not connected, so no WasmGC or reference-payload EH execution claim follows from the metadata. | 🚧 Runtime and metadata foundation only; see `docs/gc.md`. |
-| Exception handling | Tags, `throw`, `throw_ref`, and `try_table` decode and validate strictly across AST and byte-backed paths; non-empty tag results reject, `noexn <: exn`, bottom heaps remain beneath indexed function heaps, and throw operands are exact. Catch payload/depth typing is complete for `catch`, `catch_ref`, `catch_all`, and `catch_all_ref`: reference catches produce non-null `(ref exn)` and may widen to nullable labels. The intentional source-only malformed `try_table` lines 339/344 remain rejected. | Strict schema-2 accounting covers `exceptions/{tag,throw,throw_ref,try_table}` plus mixed `ref_null`: 147 commands / 10 modules / 61 assertions / 16 invalid / 2 malformed / 2 unlinkable / 3 exact gates / 37 blocked, with zero hidden failures. linux/amd64 explicit bounds admits at most 9 tags, 24 `try_table`s/module, 8 ordered clauses/table, 4 nested seven-word handlers, and 4 fixed three-word exception roots/function. The large mixed official `try_table` module executes except its final typed-funcref payload leader; direct and indirect true tails discard dead handler scopes. Exact retained `() -> ()` cross-instance calls carry the active handler in RBP, restore catcher basedata, and match bounded producer tag identity. Codec v27 persists the nine-tag product and internal exnref category while public exnref ABI stays closed. The final reference-payload leader now has exact root-map metadata but remains gated pending runtime publication, initialization, retention, barrier/remark, and teardown proof. Public admission, guard mode, arm64, host tags, wider/chained transfer, imported/live-handler snapshots, exported exn ABI, and GC payloads remain fail-closed. | 🚧 Bounded scalar/rooted unwind, exact narrow cross-instance transfer, and most official EH execution are proven internally; not a public product claim. |
+| GC | Recursive types, instructions, descriptor lowering, collector profiles, exact `RootSet` scanning, and a validated target-neutral native root-map metadata contract exist. | The compiler describes fixed EH payload slots by post-prologue frame offset and distinguishes collector-owned compact `gc.Ref` handles from funcref producer-lifecycle roots. Catch-all maps derive uniform ownership from all bounded tags and reject scalar/reference or GC/funcref conflicts. The narrow local funcref EH product initializes and clears an un-published lifecycle root, but runtime safepoint publication/consumption, WasmGC opcode lowering, allocation calls, GC barriers/remark, tag-discriminated mixed maps, and teardown scanning remain unconnected. | 🚧 Runtime and metadata foundation plus one non-collector local lifecycle proof; no WasmGC execution claim. See `docs/gc.md`. |
+| Exception handling | Tags, `throw`, `throw_ref`, and `try_table` decode and validate strictly across AST and byte-backed paths; non-empty tag results reject, `noexn <: exn`, bottom heaps remain beneath indexed function heaps, and throw operands are exact. Catch payload/depth typing is complete for `catch`, `catch_ref`, `catch_all`, and `catch_all_ref`: reference catches produce non-null `(ref exn)` and may widen to nullable labels. The intentional source-only malformed `try_table` lines 339/344 remain rejected. | Strict schema-2 accounting covers `exceptions/{tag,throw,throw_ref,try_table}` plus mixed `ref_null`: 147 commands / 11 modules / 66 assertions / 16 invalid / 2 malformed / 2 unlinkable / 2 exact gates / 32 blocked, with zero hidden failures. The complete official `exceptions/try_table` file is gap-free under staged admission at 5 modules / 45 assertions / 9 invalid / 2 malformed. linux/amd64 explicit bounds admits at most 9 tags, 24 `try_table`s/module, 8 ordered clauses/table, 4 nested seven-word handlers, and 4 fixed three-word exception roots/function. Exact retained `() -> ()` cross-instance calls carry the handler in RBP and true tails discard dead scopes. One exact local-only tag payload may carry a non-null indexed `() -> ()` funcref from one declarative local descriptor: catch/catch_ref/catch-all preserve canonical identity, roots zero before handler publication and clear on immediate exn drop, teardown and codec-v27 metadata are bounded, and repetition is allocation-free. Nullable, extern/GC, foreign, wider, escaping-root, tail, host, snapshot, public, guard, and arm64 variants remain closed. | 🚧 All official EH modules except two mixed WasmGC `ref_null` leaders execute internally; not a public product claim. |
 | Multi-memory | Indexed immediates and compact imports decode/validate strictly on AST and byte-backed paths; default Release 2 admission still rejects them explicitly. | Exact product directories, policy accounting, duplicate aliases, codec v27, every indexed scalar/SIMD/bulk/data operation, snapshot-v3 owned-local state, and bounded shared-memory co-tenants are staged on linux/amd64 explicit bounds. A finite proof admits exact native directories plus optional imported scalar-global pointers and exactly one bounded imported funcref table under a numeric-signature, no-element, no-ref.func/indirect-call, null/get/set/size-only scan. Retained scalar direct imports may re-enter producers that use the exact same memory-0 mapping: each eligible instance owns one stable 256-byte arena image, native calls save/install/restore images recursively, and trap recovery saves the image named by the active basedata slot. Root/nested calls now compose with imported numeric-global pointers and the sole imported funcref table simultaneously while shared `memory.grow`, global updates, table state, nested traps, concurrency, independent memory/global/table/function close ordering, and steady-state allocation freedom remain proven. Host callbacks, foreign-memory bindings, imported tail calls, broader reference/table/passive state, codec serialization of live bindings, imported/shared snapshots, guard mode, public admission, and arm64 remain fail-closed. The complete 42-file matrix remains gap-free at 913 commands, 79 modules, 771 assertions, 4 invalid, 22 unlinkable, and 20 uninstantiable cases. | 🚧 Complete official family accounting and bounded internal execution; not a public product claim. |
 | memory64 | Limits, i64 address typing, 64-bit memarg offsets, and operation validation are present. The staged support pass admits size/grow, integer/float scalar memory operations, every SIMD memory load/store/extend/splat/zero/lane form, active and passive data lifecycle, and `memory.copy`/`memory.fill`. Core validation rejects limits above 2^48 pages and accepts the exact maximum. | One linux/amd64 explicit-bounds path accepts exactly one non-shared local or instance-exported imported memory. Valid declared maxima through 2^48 pages persist exactly in memory directories, codec v27, inspection, imports/re-exports, policy, and managed accounting whenever the minimum remains allocatable; only the direct memory-0 execution reservation is capped at 65,535 pages. No-maximum declarations preserve `HasMax=false` under that finite reserve. Unavailable growth returns `-1` without changing size, and arithmetic/policy/managed-budget overflow rejects fail-closed. Import matching preserves provider max/no-max identity across re-export, shared grow visibility is exact, and producer roots attach/roll back transactionally without increasing the 40-byte lifecycle sidecar. Scalar/SIMD operations check address+offset+width carry, exact lane/end bounds, and trapping-store atomicity. Active data preserves validated i64 programs in the codec expression field. Passive `memory.init` keeps zero-extended i32 source/length with an i64 destination; full-u64 carry/end, source bounds, drop state, zero-length-after-drop, trap atomicity, and reload are proven. Bulk copy/fill checks both full-u64 ranges before writes and preserves overlap. The complete sixteen-file non-table matrix is gap-free at 5,904 commands / 169 modules / 5,335 assertions / 292 invalid / 60 malformed / 30 unlinkable / 0 gates / 0 blocked, with zero hidden failures. Mixed memory32/memory64 imports reject before attachment. Host memory64 construction, shared/multi-memory execution, unallocatable minima, guard mode, public admission, snapshots, and arm64 remain gated. | 🚧 Bounded local/imported scalar/SIMD/active+passive-data/copy/fill execution and complete gap-free non-table family accounting; product/platform admission remains staged. |
 | table64 | Limits and i64 index/result typing have AST and byte-backed validator coverage, including table.init's i64 destination with i32 element source/length, table.copy's per-table/minimum-width operands, exact u64 declaration limits, and malformed-above-u64 LEB rejection. | The complete nine-file linux/amd64 explicit-bounds family is gap-free at 2,802 commands / 107 modules / 2,600 assertions / 81 invalid / 0 malformed / 0 gates / 0 blocked. Sole/local-or-instance-import funcref operations, two-table mixed-width operations, local externref slices, and exact table32/table32/table64 passive init/drop/copy/call-indirect modules execute with retained imported descriptors, full-u64 checks, exact traps, and transactional lifecycle. Inert table64 declarations retain exact maxima through `2^64-1` in u64 metadata and codec v27 while allocating only the minimum; declaration-only two-local and `spectest.table64` imported/local no-maximum products preserve index order, zero-minimum descriptors, no-max identity, policy accounting, rollback, and close-order release. Ordinary inert table32 maximum-only declarations use the same exact-declaration/minimum-storage split, preserving Release 2 conformance. The 16,384-entry funcref and 1,024-entry externref execution reservations remain explicit implementation bounds. Broader imported copy/init/grow/indirect, guard mode, public admission, snapshots, and arm64 remain fail-closed. | 🚧 Complete official table64 family accounting and exact bounded product representation are proven internally; product/platform admission remains staged. |
@@ -1931,6 +1931,59 @@ allocation-free repetition while retaining explicit GC/cross-instance gates. If 
 cannot be made coherent, the module must stay gated and the slice should wire/test map
 publication without widening admission.
 
+### Iteration 35 catch-all ownership and local typed-funcref payloads
+
+Iteration 35 closes the final non-GC official EH leader while preserving the boundary between
+funcref lifecycle identity and compact collector references. The public Core 3 feature bit
+remains disabled.
+
+1. Native root-map construction now describes `catch_all_ref` payload words rather than
+   treating an untyped catch as payload-free. For each of the two bounded payload positions,
+   the builder examines every tag that can reach the catch. A uniformly typed reference word
+   becomes either `RootFuncRef` or `RootGCRef`; absent payloads are harmless; a position that
+   mixes scalar and reference values or mixes funcref and GC ownership rejects before a
+   scanner can trust the map. The exact one-tag funcref catch-all slot remains offset 248 in
+   the 336-byte no-local/no-spill mapped prefix.
+2. amd64 now accepts scalar tag payloads plus one backend shape for a non-null indexed
+   function reference. Reference catches zero their selected three-word fixed root before
+   installing the handler. Branch-result metadata preserves the fact that an exn value is a
+   frame-relative root pointer, and `drop` clears all three words. The compiler-side storage
+   record remains 32 bytes. Externref, nullable, exact, non-function indexed, and abstract
+   reference payloads reject at the backend boundary.
+3. The product gate admits only one local tag with one non-null indexed `() -> ()` funcref
+   payload, one declarative local function descriptor of that exact type, one `ref.func` and
+   one `throw`, no imports/start/storage state, no calls through references, no tails, and
+   exactly one immediately dropped rooted exn value per reference-catching function. The
+   executing instance owns the descriptor for the whole native call, so this slice does not
+   publish a collector frame or retain a foreign producer. Public funcref results are matched
+   against canonical function identity rather than opaque token bits. Nullable, extern/GC,
+   foreign, wider, escaping-root, tail, host, snapshot, guard, public, and arm64 products
+   remain fail-closed. Codec v27 serializes the exact structural/tag metadata, while ordinary
+   public load continues to reject the unsupported typed/EH feature bits.
+
+The complete official `exceptions/try_table` file is now gap-free under staged admission:
+5 modules, 45 assertions, 9 invalid modules, and 2 source-only malformed commands. The
+five-file EH matrix improves from 10 modules / 61 assertions / 3 gates / 37 blocked to
+11 modules / 66 assertions / 2 gates / 32 blocked while preserving 147 commands, 16 invalid,
+2 malformed, 2 unlinkable, and zero hidden failures. The remaining leaders are exactly the
+two mixed any/none plus exn/noexn WasmGC products in `ref_null`; no ordinary EH module remains
+gated.
+
+The local typed-funcref catch benchmark measures 135.1-145.7 ns/op over five 500 ms samples,
+0 B/op, and 0 allocs/op. This includes public tokenization of the returned descriptor and is
+not compared as the same operation as the retained scalar catch's 41.48-41.91 ns/op. Fixed
+native EH storage remains 320 bytes/function, the mapped prefix remains 336 bytes, the first
+payload root remains offset 248, and `storage{}` remains 32 bytes.
+
+Iteration 35 is not a completion claim. `make spec3` still reproduces the unchanged public
+baseline byte-for-byte and exits nonzero: 1,691 passed / 535 skipped modules and 51,765 passed /
+5 failed / 6,268 skipped assertions. WasmGC opcodes and native safepoint publication are not
+wired; the two mixed `ref_null` leaders remain gated; mandatory families remain staged rather
+than publicly admitted; and guard/arm64/live-state product work remains. The next slice should
+classify the two remaining modules down to exact opcodes, object/root/barrier requirements,
+and public result actions, then implement the smallest collector-backed allocation/root/
+access path that removes a real leader without weakening Tiny/Throughput or fail-closed gates.
+
 ## Iteration commits
 
 Iteration 1 contained:
@@ -2327,12 +2380,37 @@ Iteration 34 contains exactly three code/test commits and this documentation com
    distinguish compact collector refs from funcref lifecycle roots, derive amd64 fixed
    offsets, and keep the final reference-payload product explicitly gated.
 
+Iteration 35 contains exactly three code/test commits and this documentation commit:
+
+1. `559be32f` — derive `catch_all_ref` payload ownership from every bounded tag, map exact
+   funcref slots, and reject scalar/reference or GC/funcref ownership conflicts.
+2. `eb1da7c8` — admit the backend's non-null indexed-function payload shape, initialize
+   fixed roots before handler publication, preserve rooted-exn branch provenance, clear all
+   three words on drop, keep compiler storage at 32 bytes, and reject non-function refs.
+3. `cb7727d7` — admit the exact local-only typed-funcref EH product, preserve canonical
+   public identity, close all five final official `try_table` actions, add strict negative
+   product gates, and improve EH accounting to 11 modules / 66 assertions / 2 gates /
+   32 blocked commands.
+
 ## Validation performed
 
 Commands were run from the repository root on linux/amd64.
 
 | Command | Result |
 |---|---|
+| iteration 35 focused code/test proof | PASS: catch-all root maps describe the exact funcref payload slot and reject scalar/reference plus GC/funcref ownership conflicts; amd64 initializes and clears fixed rooted exn records while retaining 32-byte compiler storage; the exact local-only non-null indexed `() -> ()` funcref product preserves canonical descriptor identity, codec-v27 metadata, public/snapshot/product gates, teardown, and zero-allocation repetition. Logs `.validation/iteration35-commit1-focused.log`, `.validation/iteration35-commit1-packages.log`, `.validation/iteration35-commit2-focused.log`, `.validation/iteration35-commit2-package.log`, `.validation/iteration35-commit2-wago.log`, `.validation/iteration35-commit3-focused.log`, and `.validation/iteration35-commit3-packages.log`. |
+| iteration 35 staged family runners | PASS: EH is now 5 files / 147 commands / 11 modules / 66 assertions / 16 invalid / 2 malformed / 2 unlinkable / 2 exact gates / 32 blocked; the complete official `exceptions/try_table` file is gap-free at 5 modules / 45 assertions / 9 invalid / 2 malformed. Typed references remain 14 files / 422 commands / 50 modules / 211 assertions / 65 invalid / 2 malformed / 1 unlinkable / 12 gates / 36 blocked; multi-memory remains 42 files / 913 commands / 79 modules / 771 assertions / zero gates or blocked; memory64 remains 16 files / 5,904 commands / 169 modules / 5,335 assertions / 292 invalid / 60 malformed / 30 unlinkable / zero gates or blocked; table64 remains 9 files / 2,802 commands / 107 modules / 2,600 assertions / 81 invalid / zero gates or blocked; all three tail files remain gap-free. Every hidden-failure counter is zero. Log `.validation/iteration35-staged.log`. |
+| `go test ./... -count=1` | PASS on final iteration-35 code HEAD. Log `.validation/iteration35-all.log`. |
+| `CGO_ENABLED=0 go test ./... -count=1` | PASS; full no-cgo suite. Log `.validation/iteration35-no-cgo.log`. |
+| focused race validation | PASS for native root maps, collector boundary, amd64 EH/root lifetime, tag products, and the local funcref product. Log `.validation/iteration35-race.log`. |
+| `go test -tags wago_guardpage ./src/core/runtime ./src/wago -count=1` | PASS; local typed-funcref EH execution remains explicitly unavailable in guard mode. Log `.validation/iteration35-commit3-guard.log`. |
+| linux/arm64 compile-only frontend/railshot/runtime/`src/wago` | PASS compile/link evidence only; no typed-funcref EH execution claim. Log `.validation/iteration35-commit3-arm64-build.log`. |
+| `go vet ./...`, `go generate ./...`, generated diff check | PASS. Logs `.validation/iteration35-vet.log`, `.validation/iteration35-generate.log`, and `.validation/iteration35-generate-diff.log`. |
+| fixed layout/root lifetime evidence | PASS: EH reserve remains 320 bytes/function, no-local/no-spill mapped prefix 336 bytes, first payload root offset 248, and compiler `storage{}` remains 32 bytes. Reference catches emit one root initialization and immediate exn drop emits one three-word clear in the focused fixture. Logs `.validation/iteration35-commit1-focused.log` and `.validation/iteration35-commit2-focused.log`. |
+| pinned tool verification | PASS: WABT 1.0.41 and interpreter revision `9d36019973201a19f9c9ebb0f10828b2fe2374aa`. Logs `.validation/iteration35-wabt.log` and `.validation/iteration35-spec-interpreter.log`. |
+| `make spec1` and `make spec2` | PASS zero-gap: Release 1 reports 629 modules / 16,026 assertions and Release 2 reports 1,600 modules / 48,248 assertions. Logs `.validation/iteration35-spec1.log` and `.validation/iteration35-spec2.log`. |
+| `make spec3` plus baseline extraction/`cmp` | Expected FAIL at unchanged public baseline: modules pass=1,691/skip=535; assertions pass=51,765/fail=5/skip=6,268; committed schema-2 JSON reproduced byte-for-byte. Logs `.validation/iteration35-spec3.log`, `.validation/iteration35-spec3-status.log`, and `.validation/iteration35-spec3-baseline.log`. |
+| iteration 35 benchmark | PASS: local typed-funcref catch 135.1-145.7 ns/op across five 500 ms samples, all 0 B/op and 0 allocs/op. The path includes public funcref tokenization. Log `.validation/iteration35-funcref-benchmark.log`. |
 | iteration 34 focused code/test proof | PASS: exact retained cross-instance handler/tag transfer covers aliases, same-index mismatch, uncaught/cold recovery, rollback, concurrency, and independent close order; the mixed official `try_table` slice, exact immutable tail table, true-tail handler discard, nine-tag codec bound, internal exnref category, and strict tenth-tag rejection pass; native root-map kind/order/alignment/frame validation, the typed-funcref offset-248 map, and fifth-root rejection pass. Logs `.validation/iteration34-commit1-focused.log`, `.validation/iteration34-commit1-packages.log`, `.validation/iteration34-commit2-focused.log`, `.validation/iteration34-commit2-packages.log`, `.validation/iteration34-commit3-packages.log`, and `.validation/iteration34-eh-rootmap.log`. |
 | iteration 34 staged family runners | PASS: EH improves to 5 files / 147 commands / 10 modules / 61 assertions / 16 invalid / 2 malformed / 2 unlinkable / 3 exact gates / 37 blocked; typed references remain 14 files / 422 commands / 50 modules / 211 assertions / 65 invalid / 2 malformed / 1 unlinkable / 12 gates / 36 blocked; multi-memory remains 42 files / 913 commands / 79 modules / 771 assertions / zero gates or blocked; memory64 remains 16 files / 5,904 commands / 169 modules / 5,335 assertions / 292 invalid / 60 malformed / 30 unlinkable / zero gates or blocked; table64 remains 9 files / 2,802 commands / 107 modules / 2,600 assertions / 81 invalid / zero gates or blocked; all three tail files remain gap-free. Every hidden-failure counter is zero. Log `.validation/iteration34-staged.log`. |
 | `go test ./... -count=1` | PASS on final iteration-34 code HEAD. Log `.validation/iteration34-all.log`. |
@@ -2733,7 +2811,11 @@ platform gate. Iterations 31-33 add architecture-neutral strict EH validation, e
 product metadata/lifecycle, codec-v27 tag records, and local-declaration snapshot policy.
 The fixed native handler/root layout, catch dispatch, and `throw_ref` pointer transfer have
 linux/amd64 explicit-bounds execution evidence only; guard mode and arm64 reject before
-backend execution.
+backend execution. Iterations 34-35 add architecture-neutral root ownership validation,
+including catch-all conflict rejection, while active-handler transfer, root initialization/
+clearing, and the exact local typed-funcref payload execute only on linux/amd64 explicit
+bounds. The shared frontend recognizes exn/noexn block value types only under the private
+exception-reference gate; no public or arm64 feature bit is widened.
 `call_ref`, typed null control, indexed multi-memory operations, memory64/table64
 execution, and every tail-call lowering remain amd64-only and hidden behind
 unsupported family gates. The two
@@ -2838,20 +2920,20 @@ Major risks:
   complete official `call_ref`, recursive cross-instance import equivalence, producer
   retention, codec group compaction, public/host/global/table boundaries, and allocation-
   free calls. Its remaining gates are 11 GC shapes and 1 exception-reference shape.
-  Iteration 32 closes EH catch validation, executes bounded scalar catches, and links exact
-  declaration-only tag identity. Iteration 33 adds four fixed local exception roots,
-  executes the complete official `throw_ref` file, and persists tag directories in codec
-  v27, but native cross-instance tag/handler transfer, GC/reference payloads, imported-tag
-  snapshots, broader typed-tail contexts, public admission, and arm64 still must consume
-  the same exact descriptors before admission;
+  Exception handling now executes every ordinary official EH module under staged admission,
+  including exact narrow cross-instance handler transfer and one local typed-funcref tag
+  payload. The remaining EH matrix gates are exactly two mixed WasmGC `ref_null` products.
+  Imported-tag snapshots, foreign reference payloads, collector publication, broader typed-
+  tail contexts, public admission, and arm64 still must consume the same exact descriptors;
 - exception unwind storage is bounded but currently conservative: every EH function frame
-  reserves 288 bytes for four six-word handlers plus four three-word exception roots, even
-  when fewer tables/references can be live. This keeps scalar catches and rooted rethrows
-  simple and allocation-free, but future reduction must be measured and must not
-  reintroduce dynamic handler/object storage. The former five generic unwind gates are now
-  classified exactly; two product leaders still require handler state to cross basedata
-  boundaries without losing tag identity or trap recovery, and three GC/mixed-reference
-  leaders require executable collector roots/barriers;
+  reserves 320 bytes for four seven-word handlers plus four three-word exception roots,
+  even when fewer tables/references can be live. This keeps scalar catches, rooted rethrows,
+  foreign basedata restoration, and the local funcref lifecycle simple and allocation-free.
+  Reference roots initialize before handler publication and the exact local product clears
+  them on immediate exn drop; roots are not generally published to a collector frame chain.
+  Catch-all maps reject mixed ownership because a function-level map has no tag discriminator.
+  Future reduction or broader scanning must be measured and must not reintroduce dynamic
+  handler/object storage or scan stale/dead records;
 - GC collector code is meaningful but must not be mistaken for executable WasmGC
   until safepoint maps and barriers are connected;
 - arm64 must remain fail-closed for every family that lacks native execution tests.
@@ -2859,41 +2941,43 @@ Major risks:
 ## Next bounded implementation slice
 
 The next recursive iteration should again make exactly three atomic code/test commits
-followed by one documentation commit. Recommended iteration 34:
+followed by one documentation commit. Recommended iteration 36:
 
-1. **Transfer one exact tag/handler context across an instance boundary.** Use codec-v27
-   identity plus existing transactional producer retention to admit the official exported
-   tag/provider and imported mismatch shapes under a finite local-function ABI. Save and
-   restore the caller's active handler pointer and basedata around the imported call, compare
-   the producer tag identity rather than module-local indexes, and prove aliases, mismatch
-   propagation, uncaught traps, rollback, close order, concurrency, and cold-trap recovery.
-   Keep host tags, chains, tail transfer, guard mode, public admission, and arm64 closed.
-2. **Compose rooted exception references with the mixed official `try_table` module.** After
-   cross-instance transfer is proven, admit its bounded scalar/reference functions without
-   weakening GC payload gates. Pin `catch_ref` payload/result order, catchless tries,
-   try parameters, deeper labels, nested imported throws, and sequential root reuse. If the
-   two tail-in-try functions still cannot preserve handler ownership, keep those exports
-   explicitly gated rather than silently treating a tail as an ordinary call.
-3. **Define the EH/GC root-map contract.** Connect the four fixed exception-root records to
-   the collector-facing native root description for reference payloads, beginning with the
-   exact single funcref tag payload in the final official `try_table` module. Prove producer
-   retention, moving/non-moving assumptions, barriers, trap/rethrow lifetime, and teardown;
-   otherwise land a strict root-map metadata test and keep GC payload execution closed.
-4. **Documentation commit.** Record exact matrix deltas, cross-instance/root-map invariants,
-   measurements, broad validation, public baseline, remaining product/platform work, and
-   the next recursive slice.
+1. **Open the first null-only abstract-reference module without claiming WasmGC heap
+   execution.** The first remaining `ref_null` module contains only `ref.null` for `any`,
+   `func`, `exn`, `extern`, and one indexed function type, plus immutable null globals and
+   five null-return actions. Extend the private support/product type categories so abstract
+   any/exn nulls remain zero in the one-slot ABI, preserve exact metadata/codec categories,
+   and keep every non-null GC object, cast/test, allocation, mutable/imported storage,
+   snapshot, public, guard, and arm64 path closed.
+2. **Admit the bottom-type global module as a separate exact product.** It uses immutable
+   `none`, `nofunc`, `noexn`, and `noextern` null globals, widens those nulls to their supertypes,
+   and returns only zero. Prove AST/byte-backed validation, frontend admission, global.get,
+   exact public result matching, codec-v27 metadata, no private heap/collector allocation,
+   and strict rejection of non-null/foreign/mutable/imported variants. Recheck whether the
+   same work removes the typed-reference matrix's remaining exception-reference gate.
+3. **Keep actual WasmGC work honest.** If both null-only modules become green, update EH and
+   typed-reference accounting but do not advertise GC execution. Then classify the next
+   real GC leader by exact opcodes/object shapes and choose the smallest collector-backed
+   allocation/access/root/barrier slice. If null-only type representation cannot remain
+   distinct without widening unsafe public ABI categories, land only the metadata/category
+   proof and retain the gates.
+4. **Documentation commit.** Record exact matrix deltas, zero/non-zero reference invariants,
+   codec and footprint evidence, broad validation, unchanged public baseline, remaining
+   product/platform work, and the next recursive slice.
 
 ## Completion gate
 
-WebAssembly 3.0 is not complete. Iteration 33 fails the gate concretely: the public
-Release 3 run still has 535 skipped modules, 5 reached assertion failures, and 6,268
-skipped assertions; GC is not executable; EH still has 7 exact gates and 78 blocked
-commands, lacks native cross-instance tag/handler transfer, GC payload roots, public
-admission, guard mode, and arm64; codec-v27/snapshot progress covers declaration products
-but not live handlers or imported snapshot identity; and the staged tail/reference/
-multi-memory/memory64/table64 surfaces are not public products. Completion still requires every
-mandatory area to decode, validate, compile, instantiate, execute, round-trip through
-product metadata/lifecycle rules, and pass the pinned official Release 3 suite with zero
-unexplained failures or feature skips on linux/amd64, while preserving 1.0/2.0, no-cgo
-operation, bounded memory, and hot-path performance. Arm64 must either reach parity or
+WebAssembly 3.0 is not complete. Iteration 35 fails the gate concretely: the public Release 3
+run still has 535 skipped modules, 5 reached assertion failures, and 6,268 skipped assertions;
+`make spec3` exits 2 and reproduces the committed baseline byte-for-byte. WasmGC opcodes,
+allocation, native safepoint publication, and barriers are not executable. EH has exactly two
+mixed null-only GC/reference gates and 32 blocked commands, and its staged execution is not a
+public/guard/arm64 product. Codec-v27/snapshot progress covers declarations and exact metadata,
+not live imported handlers or collector state. Tail/reference/multi-memory/memory64/table64
+surfaces remain staged rather than admitted through `SupportedFeatures()`. Completion still
+requires every mandatory area to decode, validate, compile, instantiate, execute, round-trip
+through product metadata/lifecycle rules, and pass the pinned official Release 3 suite with
+zero unexplained failures or feature skips on linux/amd64, while preserving Release 1/2,
+no-cgo operation, bounded memory, and hot-path performance. Arm64 must either reach parity or
 remain explicitly gated and documented.
