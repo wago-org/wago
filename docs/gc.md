@@ -14,10 +14,12 @@ leaders, immutable and passive-element checked roots, reference barriers, data/e
 lifecycle, and bounded public array results. Iteration 44 adds the complete collector-free
 `gc/i31` family: direct immediate operations, exact globals, compact tables, and i31 casts.
 Iteration 45 pins the complete official `gc/ref_test` obligation, corrects sibling-type dynamic-
-test validation, and adds one exact collector-free null+i31 execution product; both official
-mixed-object leaders remain gated. General native frame publication, object-valued mutable/
-reference stores and tables, broad public ownership, and snapshots remain incomplete. These
-bounded products must not be presented as general executable WasmGC support.
+test validation, and adds one exact collector-free null+i31 execution product. Iteration 46 adds
+collector-owned dynamic type lookup, checked compact object-table roots, and executes the official
+concrete subtype/canonicalization leader; the mixed abstract extern/funcref leader remains gated.
+General native frame publication, object-valued mutable/reference globals, broad public ownership,
+and snapshots remain incomplete. These bounded products must not be presented as general executable
+WasmGC support.
 
 ## Why a wago-native collector
 
@@ -494,6 +496,47 @@ bytes / 1,292 codec bytes. Five 500 ms samples measured the two-test i31 functio
 36.58-37.34 ns/op, 0 B/op, and 0 allocs/op. Fixed `Compiled=712`, `Instance=792`,
 `compiledCodeCache=64`, `compiledMemoryDirectory=136`, and `gc.Collector=640` layouts remain
 unchanged.
+
+### Iteration 46 rooted object tables and concrete dynamic tests
+
+Iteration 46 separates collector type semantics from product admission. `Collector.RefTest`
+classifies null, tagged i31 immediates, struct objects, array objects, and defined targets without
+consulting public token state. Defined tests walk only the validated declared-super chain. Invalid
+heap targets and closed, stale, or forged object refs return errors instead of becoming false
+matches. `TypeCanonicalization` is a collector-bound immutable representative map constructed once
+at instantiation; `RefTestCanonical` compares each visited declared type through that map, preserving
+ordinary super traversal while allowing the official duplicate structural types to share canonical
+identity. The raw and canonical paths measure 31.97–34.81 ns/op and 25.57–26.19 ns/op respectively,
+all at 0 B/op and 0 allocs/op.
+
+A separate 168-byte/SHA-pinned product proves the table lifecycle before official admission. Its
+single two-entry `(ref null struct)` table uses compact eight-byte native entries paired with two
+checked collector `TableSlot`s. Native `table.set` parks before mutation; the helper validates the
+index and compact ref, updates the collector slot through `SetTableSlot`, then writes the arena-owned
+native entry. Rejected forged or out-of-bounds writes leave both representations unchanged. The first
+allocation is stored and rooted before the next allocation, repeated `init` calls overwrite through
+slot barriers, and instance close nulls every slot before closing the collector. A 24-byte Tiny heap
+commits the first Wasm table store and then fails the second allocation deterministically, preserving
+normal Wasm trap-side-effect ordering. The product is 168 Wasm / 1,462 linked code / 1,832 codec
+bytes; `gcRefTestTableState=120` and lazy `instancePluginState=144` bytes. Its parked defined test
+measures 146.9–148.5 ns/op, 0 B/op, and 0 allocs/op.
+
+The same fixed sidecar admits the official 976-byte concrete leader. Twenty checked slots are created
+at instantiation; each exported call allocates and stores the same eight dynamic struct values into
+slots 0–4 and 10–12 before running its tests. Throughput and Tiny repeatedly execute both exports,
+and a full collection retains exactly those eight rooted objects. The immutable nine-entry canonical
+map covers the eight struct definitions plus the function sentinel; `$t1/$t1'` and `$t2/$t2'` share
+representatives while all other declared identities remain distinct. All 84 reached `ref.test`
+instructions satisfy subtype and canonicalization behavior. The official product is 976 Wasm /
+16,981 linked code / 17,563 codec bytes. Codec v27 persists descriptors/code but not the exact product,
+canonical map, checked slots, collector, or helper admission; loaded artifacts fail required-feature
+validation. Snapshots, guard mode, public admission, and arm64 execution remain fail-closed.
+
+Strict `gc/ref_test.wast` accounting is now 73 commands / 1 passed module / 2 passed assertions /
+1 explicit gate / 67 blocked actions / 0 invalid / 0 malformed / 0 hidden failures. The remaining
+626-byte abstract leader is deliberately not decomposed: it combines anyref, funcref, and externref
+tables; i31, struct, and array values; extern conversions; funcref identity; mutation; and 66 actions.
+Its mixed ownership/conversion lifecycle must be proven independently before admission.
 
 Before broader live `gc.Ref` payloads or funcref lifetimes can be admitted, codegen/runtime
 must still prove all of the following as one coherent product:
