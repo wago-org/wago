@@ -925,6 +925,23 @@ func TestStagedGCTypeSubtypingProductRejectsWidening(t *testing.T) {
 		t.Fatal("runtime finality call/cast product with a widened final type unexpectedly retained exact admission")
 	}
 
+	structProvider, err := wasm.DecodeModule(stagedGCTypeSubtypingProductData(t, stagedGCTypeSubtypingStructLinkProviderPin))
+	if err != nil {
+		t.Fatal(err)
+	}
+	structProvider.Types[0].SubTypes[1].Comp.Fields[0].Storage.Val.Ref.Nullable = true
+	if product, err := stagedGCTypeSubtypingProductShape(structProvider); err == nil && product == stagedGCTypeSubtypingStructLinkProvider {
+		t.Fatal("struct link provider with a nullable recursive field unexpectedly retained exact admission")
+	}
+	structConsumer, err := wasm.DecodeModule(stagedGCTypeSubtypingProductData(t, stagedGCTypeSubtypingStructLinkConsumerPin))
+	if err != nil {
+		t.Fatal(err)
+	}
+	structConsumer.Imports[0].Module = "M4"
+	if product, err := stagedGCTypeSubtypingProductShape(structConsumer); err == nil && product == stagedGCTypeSubtypingStructLinkConsumer {
+		t.Fatal("struct link consumer with a widened provider namespace unexpectedly retained exact admission")
+	}
+
 	typedTable, err := wasm.DecodeModule(stagedGCTypeSubtypingProductData(t, stagedGCTypeSubtypingTypedTablePin))
 	if err != nil {
 		t.Fatal(err)

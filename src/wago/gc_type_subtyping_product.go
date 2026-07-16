@@ -40,7 +40,7 @@ func (p stagedGCTypeSubtypingProduct) usesRuntimeFunctionIdentity() bool {
 }
 
 func (p stagedGCTypeSubtypingProduct) usesLinkFunctionIdentity() bool {
-	return p == stagedGCTypeSubtypingLinkProvider || p == stagedGCTypeSubtypingLinkConsumer || p == stagedGCTypeSubtypingFinalityLinkProvider || p == stagedGCTypeSubtypingFinalityLinkConsumer
+	return p == stagedGCTypeSubtypingLinkProvider || p == stagedGCTypeSubtypingLinkConsumer || p == stagedGCTypeSubtypingFinalityLinkProvider || p == stagedGCTypeSubtypingFinalityLinkConsumer || p == stagedGCTypeSubtypingStructLinkProvider || p == stagedGCTypeSubtypingStructLinkConsumer
 }
 
 func (p stagedGCTypeSubtypingProduct) linkProviderProduct() stagedGCTypeSubtypingProduct {
@@ -49,6 +49,8 @@ func (p stagedGCTypeSubtypingProduct) linkProviderProduct() stagedGCTypeSubtypin
 		return stagedGCTypeSubtypingLinkProvider
 	case stagedGCTypeSubtypingFinalityLinkConsumer:
 		return stagedGCTypeSubtypingFinalityLinkProvider
+	case stagedGCTypeSubtypingStructLinkConsumer:
+		return stagedGCTypeSubtypingStructLinkProvider
 	default:
 		return 0
 	}
@@ -109,6 +111,10 @@ func stagedGCTypeSubtypingProductPinned(data []byte, product stagedGCTypeSubtypi
 	case "ea960ddec4f24c952d26ee7a567309a41c5895cf84690ca120d4577bb4c26e08",
 		"7fc43bbbff42ca923db1604d0339cadd21458f5671ea7962d031786e93517996":
 		pinned = stagedGCTypeSubtypingFinalityLinkConsumer
+	case "ac63802e3827e33389d92ff8a8bd25b6231f1dde96bab5cb77a0e1d094f80e6f":
+		pinned = stagedGCTypeSubtypingStructLinkProvider
+	case "5f090989edc62437b56b36c69a316cdcfddec4a63d451bd9443ad59da75af0a3":
+		pinned = stagedGCTypeSubtypingStructLinkConsumer
 	}
 	return pinned == product
 }
@@ -120,6 +126,9 @@ func stagedGCTypeSubtypingProductShape(m *wasm.Module) (stagedGCTypeSubtypingPro
 	if m.TableCount() == 0 && m.MemCount() == 0 && len(m.Globals) == 0 && len(m.Elements) == 0 && len(m.Data) == 0 && m.TagCount() == 0 && m.Start == nil {
 		if len(m.Types) == 3 && (m.ImportedFuncCount() != 0 || len(m.Exports) == 3) {
 			return stagedGCTypeSubtypingLinkShape(m)
+		}
+		if len(m.Types) == 2 && len(m.Types[0].SubTypes) == 2 && len(m.Types[1].SubTypes) == 2 && (m.ImportedFuncCount() != 0 || len(m.Exports) == 1) {
+			return stagedGCTypeSubtypingStructLinkShape(m)
 		}
 		if len(m.Types) == 2 && (m.ImportedFuncCount() != 0 || len(m.Exports) == 2) {
 			return stagedGCTypeSubtypingFinalityLinkShape(m)
@@ -299,6 +308,67 @@ func stagedGCTypeSubtypingFinalityLinkShape(m *wasm.Module) (stagedGCTypeSubtypi
 		return stagedGCTypeSubtypingFinalityLinkConsumer, nil
 	}
 	return 0, fmt.Errorf("finality link consumer import direction is outside the exact inverse pair")
+}
+
+func stagedGCTypeSubtypingStructLinkShape(m *wasm.Module) (stagedGCTypeSubtypingProduct, error) {
+	if len(m.Types) != 2 || len(m.Types[0].SubTypes) != 2 || len(m.Types[1].SubTypes) != 2 || m.TableCount() != 0 || m.MemCount() != 0 || len(m.Globals) != 0 || len(m.Elements) != 0 || len(m.Data) != 0 || m.TagCount() != 0 || m.Start != nil {
+		return 0, fmt.Errorf("struct link product requires exactly two two-member recursive groups and no non-function state")
+	}
+	for gi := range m.Types {
+		for si := range m.Types[gi].SubTypes {
+			st := &m.Types[gi].SubTypes[si]
+			if st.Metadata.Describes != nil || st.Metadata.Descriptor != nil {
+				return 0, fmt.Errorf("struct link type group/member %d/%d carries descriptor metadata", gi, si)
+			}
+		}
+	}
+	f := &m.Types[0].SubTypes[0]
+	if f.Final || !f.HasPrefix || len(f.Supers) != 0 || f.Comp.Kind != wasm.CompFunc || len(f.Comp.Params) != 0 || len(f.Comp.Results) != 0 {
+		return 0, fmt.Errorf("struct link first-group function must be an open () -> () root")
+	}
+	s := &m.Types[0].SubTypes[1]
+	if !s.Final || s.HasPrefix || len(s.Supers) != 0 || s.Comp.Kind != wasm.CompStruct || len(s.Comp.Fields) != 1 {
+		return 0, fmt.Errorf("struct link first-group companion must be a final one-field struct")
+	}
+	field := s.Comp.Fields[0]
+	ref := field.Storage.Val
+	if field.Mut != wasm.Const || field.Storage.Packed || ref.Kind != wasm.ValRef || ref.Ref.Nullable || ref.Ref.Exact || ref.Ref.Heap.Kind != wasm.HeapTypeIndex || !ref.Ref.Heap.Type.Rec || ref.Ref.Heap.Type.Index != 0 {
+		return 0, fmt.Errorf("struct link first-group field must be an immutable non-null reference to recursive member 0")
+	}
+	g := &m.Types[1].SubTypes[0]
+	if g.Final || !g.HasPrefix || len(g.Supers) != 1 || g.Supers[0].Rec || g.Supers[0].Index != 0 || g.Comp.Kind != wasm.CompFunc || len(g.Comp.Params) != 0 || len(g.Comp.Results) != 0 {
+		return 0, fmt.Errorf("struct link second-group function must be an open () -> () subtype of flat type 0")
+	}
+	empty := &m.Types[1].SubTypes[1]
+	if !empty.Final || empty.HasPrefix || len(empty.Supers) != 0 || empty.Comp.Kind != wasm.CompStruct || len(empty.Comp.Fields) != 0 {
+		return 0, fmt.Errorf("struct link second-group companion must be a final empty struct")
+	}
+	gRef := wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: 2}), false)
+	fRef := wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: 0}), false)
+	if !m.ReferenceTypeSubtype(gRef, fRef) || m.ReferenceTypeSubtype(fRef, gRef) {
+		return 0, fmt.Errorf("struct link function relation must be exactly g <: f")
+	}
+	if len(m.Imports) == 0 {
+		if len(m.FuncTypes) != 1 || len(m.Code) != 1 || len(m.Exports) != 1 {
+			return 0, fmt.Errorf("struct link provider requires one local function and one export")
+		}
+		if m.FuncTypes[0].Rec || m.FuncTypes[0].Index != 2 || len(m.Code[0].Locals.Runs) != 0 || !isExactEndBody(m.Code[0].BodyBytes) {
+			return 0, fmt.Errorf("struct link provider function is outside the exact type/body product")
+		}
+		ex := m.Exports[0]
+		if ex.Name != "g" || ex.Index.Kind != wasm.ExternFunc || ex.Index.Index != 0 {
+			return 0, fmt.Errorf("struct link provider export is outside the exact g product")
+		}
+		return stagedGCTypeSubtypingStructLinkProvider, nil
+	}
+	if len(m.FuncTypes) != 0 || len(m.Code) != 0 || len(m.Exports) != 0 || len(m.Imports) != 1 || m.ImportedFuncCount() != 1 {
+		return 0, fmt.Errorf("struct link consumer requires exactly one function import")
+	}
+	imp := m.Imports[0]
+	if imp.Module != "M3" || imp.Name != "g" || imp.Type.Kind != wasm.ExternFunc || imp.Type.Type.Rec || imp.Type.Type.Index != 2 {
+		return 0, fmt.Errorf("struct link consumer import is outside the exact M3.g product")
+	}
+	return stagedGCTypeSubtypingStructLinkConsumer, nil
 }
 
 func stagedGCTypeSubtypingRefFuncGlobalShape(m *wasm.Module) (stagedGCTypeSubtypingProduct, error) {
