@@ -153,7 +153,7 @@ func stagedImportedTagThrowModule() []byte {
 	)
 }
 
-func TestStagedTagProductNineTagCodecBound(t *testing.T) {
+func TestExceptionTagDirectoryCodecGrowth(t *testing.T) {
 	c := compileStagedExceptionHandling(t, stagedTagDeclarationModule(9))
 	defer c.Close()
 	blob, err := c.MarshalBinary()
@@ -168,8 +168,22 @@ func TestStagedTagProductNineTagCodecBound(t *testing.T) {
 	if got := len((&Module{c: &loaded}).Metadata().Tags); got != 9 {
 		t.Fatalf("reloaded tag count = %d, want 9", got)
 	}
-	if _, err := compileStagedExceptionHandlingFeaturesForTest(stagedTagDeclarationModule(10), false); err == nil || !strings.Contains(err.Error(), "one to 9") {
-		t.Fatalf("ten-tag compile = %v, want bounded rejection", err)
+	ten, err := compileStagedExceptionHandlingFeaturesForTest(stagedTagDeclarationModule(10), false)
+	if err != nil {
+		t.Fatalf("ten-tag compile = %v", err)
+	}
+	defer ten.Close()
+	tenBlob, err := ten.MarshalBinary()
+	if err != nil {
+		t.Fatalf("marshal ten-tag product: %v", err)
+	}
+	var tenLoaded Compiled
+	if err := tenLoaded.UnmarshalBinary(tenBlob); err != nil {
+		t.Fatalf("unmarshal ten-tag product: %v", err)
+	}
+	defer tenLoaded.Close()
+	if got := len((&Module{c: &tenLoaded}).Metadata().Tags); got != 10 {
+		t.Fatalf("reloaded tag count = %d, want 10", got)
 	}
 }
 

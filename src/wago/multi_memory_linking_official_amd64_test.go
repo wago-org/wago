@@ -243,9 +243,9 @@ func TestStagedOfficialMultiMemoryLinkingStoreSemantics(t *testing.T) {
 
 		mem1.Bytes()[0] = 0
 		unsafeContextCompiled := stagedMultiMemoryCompile(t, modules[3])
-		if _, err := instantiateCore(unsafeContextCompiled, InstantiateOptions{Imports: Imports{"Mm.mem1": mem1}}); err == nil || !strings.Contains(err.Error(), "per-instance basedata state") {
+		if _, err := instantiateCore(unsafeContextCompiled, InstantiateOptions{Imports: Imports{"Mm.mem1": mem1}}); err == nil || !strings.Contains(err.Error(), "active element segment 0 out of bounds") {
 			unsafeContextCompiled.Close()
-			t.Fatalf("linking3 executable-owner/local-table gate = %v", err)
+			t.Fatalf("linking3 active-element instantiation failure = %v", err)
 		}
 		if err := unsafeContextCompiled.Close(); err != nil {
 			t.Fatal(err)

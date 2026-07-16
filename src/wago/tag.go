@@ -143,6 +143,21 @@ func (c *Compiled) tagImportCount() int {
 // ExportedTag returns the exact identity-bearing tag exported under name.
 // Duplicate aliases of one tag return the same handle. Re-exports forward the
 // original producer handle rather than manufacturing a consumer identity.
+// TagImports returns imported exception-tag keys in declaration order.
+func (c *Compiled) TagImports() []string {
+	if c == nil || c.memoryDir == nil {
+		return nil
+	}
+	out := make([]string, 0, len(c.memoryDir.ehTags))
+	for _, tag := range c.memoryDir.ehTags {
+		if tag.ImportKey == "" {
+			break
+		}
+		out = append(out, tag.ImportKey)
+	}
+	return out
+}
+
 func detachImportedTags(in *Instance) {
 	if in == nil || in.c == nil || in.c.memoryDir == nil {
 		return

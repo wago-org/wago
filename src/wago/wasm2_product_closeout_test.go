@@ -410,7 +410,10 @@ func TestWebAssembly2FeatureReportingCloseout(t *testing.T) {
 	if got := SupportedFeatures(); got != want {
 		t.Fatalf("SupportedFeatures = %s, want admitted WebAssembly 2.0 set %s", got, want)
 	}
-	if CoreFeaturesV2.IsEnabled(CoreFeatureTailCall) || SupportedFeatures().IsEnabled(CoreFeatureTailCall) {
-		t.Fatal("WebAssembly 2.0 reporting unexpectedly includes the post-release tail-call proposal")
+	if CoreFeaturesV2.IsEnabled(CoreFeatureTailCall) {
+		t.Fatal("WebAssembly 2.0 release scope unexpectedly includes tail calls")
+	}
+	if !SupportedFeatures().IsEnabled(CoreFeatureTailCall) || !CoreFeaturesV3.IsEnabled(CoreFeatureTailCall) {
+		t.Fatal("WebAssembly 3.0 support must independently advertise tail calls")
 	}
 }

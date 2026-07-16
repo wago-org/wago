@@ -378,7 +378,12 @@ func TestStagedMultiMemoryLocalAndImportedExecution(t *testing.T) {
 		t.Fatal("public multi-memory compile unexpectedly succeeded")
 	}
 	cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2 | CoreFeatureMultiMemory)
-	if err := cfg.Validate(); err == nil {
-		t.Fatal("public multi-memory feature bit unexpectedly admitted")
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("public multi-memory feature validation = %v", err)
 	}
+	public, err := Compile(cfg, localMultiMemoryExecModule())
+	if err != nil {
+		t.Fatalf("public opt-in multi-memory compile = %v", err)
+	}
+	_ = public.Close()
 }

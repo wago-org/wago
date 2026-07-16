@@ -240,8 +240,9 @@ func (in *Instance) dispatchGCArrayHelper(helper uint32, args, results []uint64)
 			state.drop(in.gc)
 			break
 		}
-		if in.c.stagedGCArrayProduct() == stagedGCArrayProductInitElem && elemIndex == 0 && in.jm.PassiveElemPtr() != 0 {
-			desc := unsafe.Slice((*byte)(offHeapPtr(in.jm.PassiveElemPtr())), coreruntime.PassiveElemDescBytes)
+		if (in.c.stagedGCArrayProduct() == stagedGCArrayProductInitElem || in.c.stagedGCArrayProduct() == stagedGCArrayProductNewElem) && int(elemIndex) < len(in.c.passiveElems) && in.jm.PassiveElemPtr() != 0 {
+			descOff := int(elemIndex) * coreruntime.PassiveElemDescBytes
+			desc := unsafe.Slice((*byte)(offHeapPtr(in.jm.PassiveElemPtr()+uintptr(descOff))), coreruntime.PassiveElemDescBytes)
 			binary.LittleEndian.PutUint32(desc[8:], 0)
 			break
 		}
@@ -252,6 +253,40 @@ func (in *Instance) dispatchGCArrayHelper(helper uint32, args, results []uint64)
 		}
 		source, length := uint32(args[0]), uint32(args[1])
 		typeID, elemIndex := uint32(args[2]), uint32(args[3])
+		if in.c.stagedGCArrayProduct() == stagedGCArrayProductNewElem {
+			if int(elemIndex) >= len(in.c.passiveElems) || in.jm.PassiveElemPtr() == 0 || int(typeID) >= len(in.c.GCTypeDescs) || in.c.GCTypeDescs[typeID].Kind != gc.KindArray || in.c.GCTypeDescs[typeID].Elem != gc.StorageI64 {
+				panic(gcStructHelperError{err: fmt.Errorf("gc array element segment/type %d/%d is unavailable", elemIndex, typeID)})
+			}
+			descOff := int(elemIndex) * coreruntime.PassiveElemDescBytes
+			desc := unsafe.Slice((*byte)(offHeapPtr(in.jm.PassiveElemPtr()+uintptr(descOff))), coreruntime.PassiveElemDescBytes)
+			segmentLen := binary.LittleEndian.Uint32(desc[8:])
+			if uint64(source)+uint64(length) > uint64(segmentLen) {
+				panic(gcStructHelperTrap{code: coreruntime.TrapIndirectOutOfBounds})
+			}
+			entryBytes := elemEntryBytes(in.c.passiveElems[elemIndex].RefType)
+			entriesPtr := uintptr(binary.LittleEndian.Uint64(desc))
+			if length != 0 && entriesPtr == 0 {
+				panic(gcStructHelperError{err: fmt.Errorf("gc array element segment %d has no entries", elemIndex)})
+			}
+			ref, err := in.gc.NewArrayDefaultWithRoots(gc.TypeID(typeID), length, gc.EmptyRoots{})
+			if err != nil {
+				panic(gcStructHelperError{err: err})
+			}
+			for i := uint32(0); i < length; i++ {
+				entry := unsafe.Slice((*byte)(offHeapPtr(entriesPtr+uintptr(source+i)*uintptr(entryBytes))), entryBytes)
+				var bits uint64
+				if entryBytes == coreruntime.TableEntryBytes {
+					bits = binary.LittleEndian.Uint64(entry[coreruntime.TableEntryRefSlotOffset:])
+				} else {
+					bits = binary.LittleEndian.Uint64(entry)
+				}
+				if err := in.gc.ArraySet(ref, i, gc.Value{Kind: gc.StorageI64, Bits: bits}); err != nil {
+					panic(gcStructHelperError{err: err})
+				}
+			}
+			results[0] = uint64(ref)
+			break
+		}
 		state := in.existingGCArrayElementState()
 		if state == nil || elemIndex != 0 || len(state.Descriptor) < 12 {
 			panic(gcStructHelperError{err: fmt.Errorf("gc array element segment %d is unavailable", elemIndex)})
@@ -302,8 +337,22 @@ func (in *Instance) dispatchGCArrayHelper(helper uint32, args, results []uint64)
 		}
 		source, length := uint32(args[0]), uint32(args[1])
 		typeID, dataIndex := uint32(args[2]), uint32(args[3])
-		if int(typeID) >= len(in.c.GCTypeDescs) || in.c.GCTypeDescs[typeID].Kind != gc.KindArray || in.c.GCTypeDescs[typeID].Elem != gc.StorageI8 {
-			panic(gcStructHelperError{err: fmt.Errorf("gc array.new_data type %d is not an admitted i8 array", typeID)})
+		if int(typeID) >= len(in.c.GCTypeDescs) || in.c.GCTypeDescs[typeID].Kind != gc.KindArray {
+			panic(gcStructHelperError{err: fmt.Errorf("gc array.new_data type %d is not an admitted array", typeID)})
+		}
+		storage := in.c.GCTypeDescs[typeID].Elem
+		width := uint64(0)
+		switch storage {
+		case gc.StorageI8:
+			width = 1
+		case gc.StorageI16:
+			width = 2
+		case gc.StorageI32, gc.StorageF32:
+			width = 4
+		case gc.StorageI64, gc.StorageF64:
+			width = 8
+		default:
+			panic(gcStructHelperError{err: fmt.Errorf("gc array.new_data type %d has unsupported storage %d", typeID, storage)})
 		}
 		if int(dataIndex) >= len(in.c.PassiveData) {
 			panic(gcStructHelperError{err: fmt.Errorf("gc array.new_data segment %d is unavailable", dataIndex)})
@@ -313,7 +362,7 @@ func (in *Instance) dispatchGCArrayHelper(helper uint32, args, results []uint64)
 			panic(gcStructHelperError{err: fmt.Errorf("gc array.new_data segment %d has no instance descriptor", dataIndex)})
 		}
 		segmentLen := binary.LittleEndian.Uint32(in.passiveDataDesc[descOff+8:])
-		end := uint64(source) + uint64(length)
+		end := uint64(source) + uint64(length)*width
 		if end > uint64(segmentLen) {
 			panic(gcStructHelperTrap{code: coreruntime.TrapLinMemOutOfBounds})
 		}
@@ -326,7 +375,19 @@ func (in *Instance) dispatchGCArrayHelper(helper uint32, args, results []uint64)
 			panic(gcStructHelperError{err: err})
 		}
 		for i := uint32(0); i < length; i++ {
-			if err := in.gc.ArraySet(ref, i, gc.I32Value(int32(data[uint64(source)+uint64(i)]))); err != nil {
+			off := uint64(source) + uint64(i)*width
+			var bits uint64
+			switch width {
+			case 1:
+				bits = uint64(data[off])
+			case 2:
+				bits = uint64(binary.LittleEndian.Uint16(data[off : off+2]))
+			case 4:
+				bits = uint64(binary.LittleEndian.Uint32(data[off : off+4]))
+			case 8:
+				bits = binary.LittleEndian.Uint64(data[off : off+8])
+			}
+			if err := in.gc.ArraySet(ref, i, gc.Value{Kind: storage, Bits: bits}); err != nil {
 				panic(gcStructHelperError{err: err})
 			}
 		}

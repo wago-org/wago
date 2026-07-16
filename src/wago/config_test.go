@@ -184,9 +184,9 @@ func TestConfigFeatureGatingRejects(t *testing.T) {
 }
 
 func TestConfigValidationRejectsUnsupported(t *testing.T) {
-	cfg := NewRuntimeConfig().WithFeature(CoreFeatureTailCall, true)
+	cfg := NewRuntimeConfig().WithFeature(CoreFeatures(uint64(1)<<63), true)
 	if _, err := Compile(cfg, signExtModule()); err == nil {
-		t.Fatal("enabling unsupported tail-call should error")
+		t.Fatal("enabling an unknown feature bit should error")
 	}
 }
 
@@ -255,8 +255,7 @@ func TestCoreFeaturesV2ReleaseScope(t *testing.T) {
 		CoreFeatureNonTrappingFloatToIntConversion |
 		CoreFeatureReferenceTypes |
 		CoreFeatureSignExtensionOps |
-		CoreFeatureSIMD |
-		CoreFeatureExtendedConst
+		CoreFeatureSIMD
 	if CoreFeaturesV2 != want {
 		t.Fatalf("CoreFeaturesV2 = %s, want WebAssembly 2.0 scope %s", CoreFeaturesV2, want)
 	}
@@ -278,37 +277,29 @@ func TestCoreFeaturesV3ReleaseScopeAndAdmission(t *testing.T) {
 		t.Fatal("CoreFeaturesV3 must include the existing SIMD admission bit that also gates relaxed SIMD")
 	}
 	for _, tc := range []struct {
-		bit  CoreFeatures
-		name string
+		bit       CoreFeatures
+		name      string
+		supported bool
 	}{
-		{CoreFeatureTailCall, "tail-call"},
-		{CoreFeatureExtendedConstExpressions, "extended-const-expressions"},
-		{CoreFeatureTypedFunctionReferences, "typed-function-references"},
-		{CoreFeatureGC, "gc"},
-		{CoreFeatureExceptionHandling, "exception-handling"},
-		{CoreFeatureMultiMemory, "multi-memory"},
-		{CoreFeatureMemory64, "memory64"},
-		{CoreFeatureTable64, "table64"},
+		{CoreFeatureTailCall, "tail-call", true},
+		{CoreFeatureExtendedConstExpressions, "extended-const-expressions", true},
+		{CoreFeatureTypedFunctionReferences, "typed-function-references", true},
+		{CoreFeatureGC, "gc", true},
+		{CoreFeatureExceptionHandling, "exception-handling", true},
+		{CoreFeatureMultiMemory, "multi-memory", true},
+		{CoreFeatureMemory64, "memory64", true},
+		{CoreFeatureTable64, "table64", true},
 	} {
-		if SupportedFeatures().IsEnabled(tc.bit) {
-			t.Errorf("SupportedFeatures unexpectedly admits %s", tc.name)
+		if got := SupportedFeatures().IsEnabled(tc.bit); got != tc.supported {
+			t.Errorf("SupportedFeatures admission for %s = %v, want %v", tc.name, got, tc.supported)
 		}
 		if got := tc.bit.String(); got != tc.name {
 			t.Errorf("%#x String() = %q, want %q", uint64(tc.bit), got, tc.name)
 		}
 	}
 
-	err := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).Validate()
-	var unsupported *UnsupportedFeatureError
-	if !errors.As(err, &unsupported) {
-		t.Fatalf("CoreFeaturesV3 Validate error = %T %v, want *UnsupportedFeatureError", err, err)
-	}
-	if unsupported.Requested != wasm3Only {
-		t.Fatalf("unsupported requested = %s, want exact not-yet-executable set %s", unsupported.Requested, wasm3Only)
-	}
-	wantPlatform := runtime.GOOS + "/" + runtime.GOARCH
-	if unsupported.Platform != wantPlatform || !strings.Contains(err.Error(), wantPlatform) {
-		t.Fatalf("unsupported platform = %q error=%q, want explicit %q gate", unsupported.Platform, err, wantPlatform)
+	if err := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).Validate(); err != nil {
+		t.Fatalf("CoreFeaturesV3 Validate = %v, want complete admission", err)
 	}
 }
 
@@ -330,13 +321,14 @@ func TestCoreFeaturesBitset(t *testing.T) {
 
 func TestConfigTypedErrors(t *testing.T) {
 	// Unsupported feature -> *UnsupportedFeatureError naming it.
-	_, err := NewRuntimeConfig().WithFeature(CoreFeatureTailCall, true).Compile(signExtModule())
+	unknown := CoreFeatures(uint64(1) << 63)
+	_, err := NewRuntimeConfig().WithFeature(unknown, true).Compile(signExtModule())
 	var ufe *UnsupportedFeatureError
 	if !errors.As(err, &ufe) {
 		t.Fatalf("want *UnsupportedFeatureError, got %T: %v", err, err)
 	}
-	if !ufe.Requested.IsEnabled(CoreFeatureTailCall) {
-		t.Fatalf("error should name tail-call, got %v", ufe.Requested)
+	if ufe.Requested != unknown {
+		t.Fatalf("error should preserve unknown feature bit, got %#x", uint64(ufe.Requested))
 	}
 	// Signals-based without the build tag -> GuardPageUnavailableError (default build).
 	if !guardPageBuilt {

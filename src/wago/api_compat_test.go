@@ -284,7 +284,7 @@ func TestRuntimeConfigPortableFluentSurface(t *testing.T) {
 	if got := (&UnsupportedFeatureError{Requested: CoreFeatureTailCall, Supported: CoreFeaturesV2}).Error(); !strings.Contains(got, "tail-call") {
 		t.Fatalf("UnsupportedFeatureError = %q", got)
 	}
-	err := NewRuntimeConfig().WithFeature(CoreFeatureTailCall, true).Validate()
+	err := NewRuntimeConfig().WithFeature(CoreFeatures(1)<<63, true).Validate()
 	var unsupported *UnsupportedFeatureError
 	if !errors.As(err, &unsupported) {
 		t.Fatalf("Validate unsupported = %v", err)

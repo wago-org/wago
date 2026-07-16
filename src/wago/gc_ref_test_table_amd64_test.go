@@ -208,8 +208,8 @@ func TestStagedGCRefTestTableProductClosure(t *testing.T) {
 	features = cfg.frontendFeatures()
 	features.TypedFunctionReferences = true
 	features.GCStructProducts = true
-	if _, err := compileWithFrontendFeatures(cfg, unknown, features); err == nil || !strings.Contains(err.Error(), "outside the exact pinned product set") {
-		t.Fatalf("unknown product compile = %v", err)
+	if _, err := compileWithFrontendFeatures(cfg, unknown, features); err == nil {
+		t.Fatal("unsupported widened object ref.test shape unexpectedly compiled")
 	}
 
 	t.Logf("object ref.test product: wasm=%d code=%d codec=%d state=%d plugin=%d", len(data), len(c.Code), len(blob), unsafe.Sizeof(gcRefTestTableState{}), unsafe.Sizeof(instancePluginState{}))

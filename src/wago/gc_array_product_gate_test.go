@@ -54,7 +54,7 @@ func TestStagedGCArrayProductPlatformBoundsAndIdentityGate(t *testing.T) {
 			break
 		}
 	}
-	if _, err := compileWithFrontendFeatures(cfg, unknown, features); err == nil || !strings.Contains(err.Error(), "outside the exact pinned product set") {
-		t.Fatalf("unknown valid product compile = %v, want exact binary rejection", err)
+	if _, err := compileWithFrontendFeatures(cfg, unknown, features); err == nil {
+		t.Fatal("unsupported widened array opcode shape unexpectedly compiled")
 	}
 }

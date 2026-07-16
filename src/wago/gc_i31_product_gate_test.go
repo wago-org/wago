@@ -54,7 +54,9 @@ func TestStagedGCI31ProductPlatformBoundsAndIdentityGate(t *testing.T) {
 			break
 		}
 	}
-	if _, err := compileWithFrontendFeatures(cfg, unknown, features); err == nil || !strings.Contains(err.Error(), "outside the exact executable product set") {
-		t.Fatalf("unknown valid product compile = %v, want exact binary rejection", err)
+	widened, err := compileWithFrontendFeatures(cfg, unknown, features)
+	if err != nil {
+		t.Fatalf("generic i31 product compile = %v", err)
 	}
+	_ = widened.Close()
 }
