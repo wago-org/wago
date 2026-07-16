@@ -109,7 +109,7 @@ func TestStagedGCArrayNumericDefaultGlobalRoots(t *testing.T) {
 		cfg  GCConfig
 	}{
 		{name: "throughput", cfg: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}},
-		{name: "tiny", cfg: GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 64, TinyBlockBytes: 16, TinyCollectEveryAlloc: true, VerifyAfterCollect: true}},
+		{name: "tiny", cfg: GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 128, TinyBlockBytes: 16, TinyCollectEveryAlloc: true, VerifyAfterCollect: true}},
 	}
 	for _, tc := range profiles {
 		t.Run(tc.name, func(t *testing.T) {
@@ -157,6 +157,50 @@ func TestStagedGCArrayNumericDefaultGlobalRoots(t *testing.T) {
 			if stats := in.gc.Stats(); stats.LiveObjects != 2 {
 				t.Fatalf("rooted default global stats = %+v", stats)
 			}
+			if got, err := in.Invoke("get", 0); err != nil || len(got) != 1 || got[0] != 0 {
+				t.Fatalf("get = %v, %v; want [0]", got, err)
+			}
+			seven := uint64(math.Float32bits(7))
+			if got, err := in.Invoke("set_get", 1, seven); err != nil || len(got) != 1 || got[0] != seven {
+				t.Fatalf("set_get = %v, %v; want [%#x]", got, err, seven)
+			}
+			if got, err := in.Invoke("len"); err != nil || len(got) != 1 || got[0] != 3 {
+				t.Fatalf("len = %v, %v; want [3]", got, err)
+			}
+			if _, err := in.Invoke("get", 10); err == nil {
+				t.Fatal("out-of-bounds default get succeeded")
+			}
+			if _, err := in.Invoke("set_get", 10, seven); err == nil {
+				t.Fatal("out-of-bounds default set succeeded")
+			}
+			raw, err := in.Invoke("new")
+			if err != nil || len(raw) != 1 || raw[0] == 0 || raw[0]>>32 == 0 {
+				t.Fatalf("new = %v, %v; want one public GC token", raw, err)
+			}
+			token := raw[0] // Invoke results are reused by the next call.
+			exact, owner, _, ok := in.refStore.gcRefExactType(token)
+			if !ok || owner != in || exact.Kind != ValueTypeReference || !exact.Ref.Exact || !exact.Ref.Heap.Defined || exact.Ref.Heap.TypeIndex != 0 {
+				t.Fatalf("new exact token = %#v owner=%p ok=%v", exact, owner, ok)
+			}
+			if _, err := in.Invoke("new"); err == nil || !strings.Contains(err.Error(), "one live token") {
+				t.Fatalf("second live default token = %v", err)
+			}
+			if err := in.ReleaseGCRef(ValueOf(ValAnyRef, token).GCRef()); err != nil {
+				t.Fatal(err)
+			}
+			values, err := in.Call(context.Background(), "new")
+			if err != nil || len(values) != 1 || values[0].GCRef().IsNull() {
+				t.Fatalf("Call new = %v, %v", values, err)
+			}
+			if err := in.ReleaseGCRef(values[0].GCRef()); err != nil {
+				t.Fatal(err)
+			}
+			if err := in.gc.CollectFull(gc.EmptyRoots{}); err != nil {
+				t.Fatal(err)
+			}
+			if stats := in.gc.Stats(); stats.LiveObjects != 2 {
+				t.Fatalf("post-action default global stats = %+v", stats)
+			}
 		})
 	}
 
@@ -173,6 +217,17 @@ func TestStagedGCArrayNumericDefaultGlobalRoots(t *testing.T) {
 			}
 			t.Fatalf("default rooted-global rollback %d = %v", i, err)
 		}
+	}
+	tiny, err := instantiateCore(c, InstantiateOptions{GC: GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 64, TinyBlockBytes: 16}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tiny.Invoke("new"); err == nil || !strings.Contains(err.Error(), "tiny heap exhausted") {
+		_ = tiny.Close()
+		t.Fatalf("default transient Tiny exhaustion = %v", err)
+	}
+	if err := tiny.Close(); err != nil {
+		t.Fatal(err)
 	}
 	blob, err := marshalCompiled(c)
 	if err != nil {
