@@ -46,11 +46,16 @@ aware `call_indirect`/`ref.cast` checks compare those identities directly instea
 Iteration 63 adds the separate finality-sensitive leader: structurally identical open and final `() -> ()` descriptors
 remain identity-distinct in both directions under the same finite checks. Iteration 64 adds a separate exact typed-table
 leader: a fixed nullable `$t1` table stores local `$t1` and `$t2` identities under `$t2 <: $t1 <: $t0`, executes five
-valid widening/exact indirect calls, and preserves two narrowing/unrelated signature traps. All twenty-six admitted
-leaders instantiate with `Instance.gc == nil`. The typed-table product owns a 192-byte descriptor arena and 72-byte table
-image, emits 1,431 code bytes, produces a 1,790-byte codec artifact, and measures 49.16–52.61 ns/op with zero allocations.
-Nineteen leaders remain gated and 25 dependent commands remain blocked. General native frame publication, object-valued
-mutable/reference globals, broad typed-table/linking ownership, public ownership, and snapshots remain incomplete. These bounded products must not be presented as general executable WasmGC support.
+valid widening/exact indirect calls, and preserves two narrowing/unrelated signature traps. Iteration 65 adds the first
+exact cross-instance subtype link pair with bounded descriptor ownership, duplicate-owner deduplication, rollback, and
+both close orders. Iteration 66 adds only the separate finality-sensitive link provider and its two inverse unlinkable
+consumers; open and final `() -> ()` identities remain incompatible in both directions and failed imports retain nothing.
+All twenty-nine admitted leaders instantiate, or fail before consumer publication, without allocating a collector. The
+finality provider owns 96 descriptor bytes, emits 157 code bytes, produces a 323-byte codec artifact, and measures
+36.50–37.43 ns/op with zero allocations; each 38-byte consumer has a bounded 64-byte descriptor requirement and a
+144-byte unlinked codec artifact. Sixteen leaders remain gated and 18 dependent commands remain blocked. General native
+frame publication, object-valued mutable/reference globals, broader struct-defined linking ownership, public ownership,
+and snapshots remain incomplete. These bounded products must not be presented as general executable WasmGC support.
 
 ## Why a wago-native collector
 
@@ -1088,6 +1093,40 @@ Codec reload retains exact type/function/table/element/export/code metadata but 
 snapshots, signal-backed bounds, arm64, and unsupported platforms remain fail-closed. Mutable/imported/exported/host or
 cross-instance typed tables, linking providers/consumers, and the non-flat export require separate ownership/ABI proofs.
 
+### Iteration 65 first cross-instance subtype linking cluster
+
+The source-lines-486–530 product uses a 103-byte provider over `$t2 <: $t1 <: $t0`, an 86-byte consumer with six
+exact/duplicate/widening imports, and three 51-byte narrowing consumers. Exact AST and byte-backed validation, SHA-256
+pins, provider bodies/exports, and import order precede separate provider/consumer classification. Cross-instance subtype
+matching is enabled only for that pinned pair. The provider owns 128 descriptor bytes; the successful consumer owns 224.
+Duplicate imports retain one provider, a later mismatch rolls earlier retention back, both close orders release once, and
+all narrowing attempts retain nothing. Provider/consumer wasm/code/codec sizes are 103/369/623 and 86/0/300 bytes; the
+null-result export measures 67.56–76.86 ns/op, 0 B/op, and 0 allocs/op.
+
+### Iteration 66 finality-sensitive linking cluster
+
+The source-lines-540–556 product remains separate even though both function signatures are `() -> ()`. The 70-byte
+provider, SHA-256 `dcf54459e9f39087c697c9d9edc0955aabc02eb28e40b65c84291cbe194a9562`, exports open `f1`
+and final `f2`. The two 38-byte consumers are pinned as
+`ea960ddec4f24c952d26ee7a567309a41c5895cf84690ca120d4577bb4c26e08` (`f1` required as final) and
+`7fc43bbbff42ca923db1604d0339cadd21458f5671ea7962d031786e93517996` (`f2` required as open).
+Both AST and byte-backed validation prove the identity-only relation before classification and pin checks.
+
+The provider owns a 96-byte canonical descriptor arena. Each consumer has one imported function and a bounded 64-byte
+descriptor requirement, but both official imports fail before a consumer instance, descriptor copy, or producer owner is
+published. Provider retention therefore remains exactly zero after either attempt. Hosts and the iteration-65 provider
+also reject before attachment. No compatible consumer exists in this cluster, so cross-instance close-order sharing is
+not claimed; ordinary provider close remains single-owner and exact. Descriptor words remain ordinary instance-owned
+64-bit function identities, never compact `gc.Ref`s, roots, public GC tokens, or collector objects.
+
+Provider wasm/code/codec size is 70/157/323 bytes; each consumer is 38/0/144 bytes. The final export measures
+36.50–37.43 ns/op across five samples, 0 B/op, and 0 allocs/op. Unlinked codec v27 preserves open/final metadata but no
+admission marker. Live linked serialization, private/public reload admission, snapshots, signal-backed bounds, host
+substitution, cross-product substitution, arm64, unsupported platforms, and public GC admission remain fail-closed.
+Strict accounting is 170 commands / 29 passed modules / 23 passed assertions / 16 gates / 18 blocked commands /
+24 invalid / 5 executed expected unlinkables / 3 blocked unlinkables / zero validator gaps, unexpected compile/link
+failures, or hidden failures. The source-lines-566–572 M3 struct-defined pair is the next separate exact obligation.
+
 ## Collector lifetime
 
 `Collector.Close` is idempotent and releases heap backing storage plus root/card/mark metadata so an instance shutdown does not retain guest refs. After close, operations that need a live heap return `gc: collector closed`: allocation, collection, verification, object access/mutation, promotion, and checked root-slot creation/access/mutation. `Step` follows the same rule for both profiles; on Throughput it routes through `CollectMinor`, and on Tiny it rejects the closed collector before advancing incremental state.
@@ -1611,14 +1650,14 @@ Tests exercise tiny nurseries, collect-every-alloc, exact scanning, cycles, root
   collector-free i31 operations, dynamic tests/casts, identity-preserving cast branches, extern conversion,
   and compact null/i31/object equality. Array fill/copy plus both `array.init_data` and the exact local-
   funcref `array.init_elem` product are staged and gap-free. Complete `gc/type-subtyping` accounting is pinned
-  at 170 commands; iterations 57-65 execute twenty-eight collector-free leaders, including six immutable local `ref.func`
-  globals, nine function-only tests, recursive call/cast/finality products, the exact typed-table call product, and the
-  first exact cross-instance linking provider/consumer pair. The 103-byte provider and 86-byte six-import consumer keep
-  ordinary canonical descriptor identity in bounded 128/224-byte arenas; duplicate imports retain one provider,
-  partial failure rolls back, both close orders release exactly once, and three 51-byte narrowing imports unlink without
-  creating a collector or compact reference. Repeated provider invocation allocates zero bytes, leaving 17 exact gates
-  and 21 blocked commands with zero validator gaps, unexpected compile/link failures, or hidden failures. Live linked
-  codec state, snapshots, hosts, guard mode, arm64, the later finality/struct-defined linking clusters, reference struct
+  at 170 commands; iterations 57-66 execute twenty-nine collector-free leaders, including six immutable local `ref.func`
+  globals, nine function-only tests, recursive call/cast/finality products, the exact typed-table call product, the first
+  cross-instance subtype pair, and the separate finality-link provider. The first pair keeps ordinary canonical descriptor
+  identity in bounded 128/224-byte arenas with deduplicated retention, rollback, both close orders, and three narrowing
+  unlinkables. The 70-byte finality provider owns 96 descriptor bytes; two 38-byte inverse consumers have bounded 64-byte
+  requirements, unlink in both directions, and retain nothing. Repeated provider invocations allocate zero bytes, leaving
+  16 exact gates and 18 blocked commands with zero validator gaps, unexpected compile/link failures, or hidden failures.
+  Live linked codec state, snapshots, hosts, guard mode, arm64, the later struct-defined linking clusters, reference struct
   fields, non-local/reference-owning array products, broader GC constant expressions, and non-flat exports remain.
 - The parked-Go runtime-call ABI is proven for exact empty-frame-root numeric/packed
   allocations, non-collecting numeric access/mutation/data initialization, exact local-funcref element
