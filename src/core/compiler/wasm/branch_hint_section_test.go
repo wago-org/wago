@@ -144,7 +144,7 @@ func BenchmarkDecodeModuleByteBackedBranchHint(b *testing.B) {
 	} {
 		b.Run(tc.name, func(b *testing.B) {
 			b.ReportAllocs()
-			for b.Loop() {
+			for i := 0; i < b.N; i++ {
 				if _, err := DecodeModuleByteBacked(tc.mod); err != nil {
 					b.Fatal(err)
 				}

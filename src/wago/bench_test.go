@@ -1,6 +1,7 @@
 package wago
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	goruntime "runtime"
@@ -306,7 +307,7 @@ func BenchmarkInvokeBranchHintLoop(b *testing.B) {
 	}
 	withoutHint := benchMustCompile(b, benchBranchHintExecModule(false))
 	withHint := benchMustCompile(b, benchBranchHintExecModule(true))
-	if len(withoutHint.Code) == 0 || (goruntime.GOARCH == "arm64" && string(withoutHint.Code) == string(withHint.Code)) {
+	if len(withoutHint.Code) == 0 || bytes.Equal(withoutHint.Code, withHint.Code) {
 		b.Fatal("unlikely br_if hint did not select deferred cold-edge layout")
 	}
 	for _, tc := range []struct {
