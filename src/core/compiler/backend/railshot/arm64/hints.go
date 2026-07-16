@@ -11,8 +11,10 @@ import "github.com/wago-org/wago/src/core/compiler/wasm"
 // instructions use the AST scanner.
 
 const (
-	loopWeightFactor   = 10
-	maxLoopWeightDepth = 6
+	loopWeightFactor    = 10
+	maxLoopWeightDepth  = 6
+	branchHintWeight    = 8
+	maxBranchPathWeight = int64(1 << 20)
 )
 
 func loopWeight(depth int) int64 {
@@ -24,6 +26,13 @@ func loopWeight(depth int) int64 {
 		w *= loopWeightFactor
 	}
 	return w
+}
+
+func weightedBranchPath(weight int64) int64 {
+	if weight >= maxBranchPathWeight/branchHintWeight {
+		return maxBranchPathWeight
+	}
+	return weight * branchHintWeight
 }
 
 // funcHints is everything scanFuncBody yields.
@@ -132,9 +141,9 @@ func (t *globalEligibilityTracker) pop(frame int) {
 
 // scanFuncBody chooses the byte-backed scanner used for decoded modules, falling
 // back to the AST scanner for tests or callers that construct Func.Body directly.
-func scanFuncBody(fn wasm.Func, nLocals, nGlobals int, selfIdx uint32) (funcHints, error) {
+func scanFuncBody(fn wasm.Func, nLocals, nGlobals int, selfIdx uint32, branchHints []wasm.BranchHint) (funcHints, error) {
 	if len(fn.BodyBytes) != 0 {
-		return scanBodyBytes(fn.BodyBytes, nLocals, nGlobals, selfIdx)
+		return scanBodyBytesWithHints(fn.BodyBytes, fn.LocalDeclBytes, nLocals, nGlobals, selfIdx, branchHints)
 	}
 	return scanBody(fn.Body, nLocals, nGlobals, selfIdx), nil
 }
@@ -365,8 +374,12 @@ func (s *globalScoreByteScanner) classifyInstructionInto(op byte, imm *wasm.Inst
 // allocating Instruction trees. body includes the terminating end opcode and
 // excludes local declarations.
 func scanBodyBytes(body []byte, nLocals int, nGlobals int, selfIdx uint32) (funcHints, error) {
-	s := byteBodyScanner{r: byteScanReader{Reader: wasm.NewReader(body)}, h: newFuncHints(nLocals, nGlobals), nLocals: nLocals, nGlobals: nGlobals, selfIdx: selfIdx, elig: newGlobalEligibilityTracker(nGlobals)}
-	called, term, err := s.scanExpr(0, 0, -1, false)
+	return scanBodyBytesWithHints(body, 0, nLocals, nGlobals, selfIdx, nil)
+}
+
+func scanBodyBytesWithHints(body []byte, localDeclBytes uint32, nLocals int, nGlobals int, selfIdx uint32, branchHints []wasm.BranchHint) (funcHints, error) {
+	s := byteBodyScanner{r: byteScanReader{Reader: wasm.NewReader(body)}, h: newFuncHints(nLocals, nGlobals), nLocals: nLocals, nGlobals: nGlobals, selfIdx: selfIdx, localDeclBytes: localDeclBytes, branchHints: branchHints, elig: newGlobalEligibilityTracker(nGlobals)}
+	called, term, err := s.scanExpr(0, 0, -1, false, 1)
 	if err != nil {
 		return s.h, err
 	}
@@ -380,15 +393,17 @@ func scanBodyBytes(body []byte, nLocals int, nGlobals int, selfIdx uint32) (func
 }
 
 type byteBodyScanner struct {
-	r        byteScanReader
-	h        funcHints
-	nLocals  int
-	nGlobals int
-	selfIdx  uint32
-	elig     globalEligibilityTracker
+	r              byteScanReader
+	h              funcHints
+	nLocals        int
+	nGlobals       int
+	selfIdx        uint32
+	localDeclBytes uint32
+	branchHints    []wasm.BranchHint
+	elig           globalEligibilityTracker
 }
 
-func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAtElse bool) (bool, byte, error) {
+func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAtElse bool, pathWeight int64) (bool, byte, error) {
 	if depth > 20000 {
 		return true, 0, s.r.err(wasm.ErrInstructionNestingLimitExceeded, s.r.off())
 	}
@@ -409,13 +424,14 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			}
 			return true, op, s.r.err(wasm.ErrInvalidInstruction, s.r.off()-1)
 		case 0x02, 0x03, 0x04: // block, loop, if
+			opOffset := s.localDeclBytes + uint32(s.r.off()-1)
 			s.h.stackArenaNodes += 2 // entry flush/rebuild allowance.
 			if err := wasm.SkipInstructionImmediate(s.r.Reader, op); err != nil {
 				return true, 0, err
 			}
 			switch op {
 			case 0x02: // block
-				calls, term, err := s.scanExpr(depth+1, loopDepth, curLoop, false)
+				calls, term, err := s.scanExpr(depth+1, loopDepth, curLoop, false, pathWeight)
 				if err != nil {
 					return true, 0, err
 				}
@@ -426,7 +442,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			case 0x03: // loop
 				s.h.hasLoop = true
 				loop := s.elig.push()
-				calls, term, err := s.scanExpr(depth+1, loopDepth+1, loop, false)
+				calls, term, err := s.scanExpr(depth+1, loopDepth+1, loop, false, pathWeight)
 				if err != nil {
 					return true, 0, err
 				}
@@ -442,13 +458,21 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				}
 				s.elig.pop(loop)
 			case 0x04: // if
-				callsThen, term, err := s.scanExpr(depth+1, loopDepth, curLoop, true)
+				thenWeight, elseWeight := pathWeight, pathWeight
+				if likely, ok := s.branchHintAt(opOffset); ok {
+					if likely {
+						thenWeight = weightedBranchPath(thenWeight)
+					} else {
+						elseWeight = weightedBranchPath(elseWeight)
+					}
+				}
+				callsThen, term, err := s.scanExpr(depth+1, loopDepth, curLoop, true, thenWeight)
 				if err != nil {
 					return true, 0, err
 				}
 				callsElse := false
 				if term == 0x05 {
-					callsElse, term, err = s.scanExpr(depth+1, loopDepth, curLoop, false)
+					callsElse, term, err = s.scanExpr(depth+1, loopDepth, curLoop, false, elseWeight)
 					if err != nil {
 						return true, 0, err
 					}
@@ -487,9 +511,9 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			idx := imm.Index
 			if int(idx) < s.nLocals {
 				if op == 0x20 {
-					s.h.localScore[idx] += loopWeight(loopDepth)
+					s.h.localScore[idx] += pathWeight * loopWeight(loopDepth)
 				} else {
-					s.h.localScore[idx] += 2 * loopWeight(loopDepth)
+					s.h.localScore[idx] += 2 * pathWeight * loopWeight(loopDepth)
 				}
 			}
 		case 0x23, 0x24: // global.get/set
@@ -502,9 +526,9 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			idx := imm.Index
 			if int(idx) < s.nGlobals {
 				if op == 0x24 {
-					s.h.globalScore[idx] += 2 * loopWeight(loopDepth)
+					s.h.globalScore[idx] += 2 * pathWeight * loopWeight(loopDepth)
 				} else {
-					s.h.globalScore[idx] += loopWeight(loopDepth)
+					s.h.globalScore[idx] += pathWeight * loopWeight(loopDepth)
 				}
 				s.elig.add(curLoop, idx)
 			}
@@ -527,7 +551,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			if err := wasm.SkipInstructionImmediate(s.r.Reader, op); err != nil {
 				return true, 0, err
 			}
-			calls, term, err := s.scanExpr(depth+1, loopDepth, curLoop, false)
+			calls, term, err := s.scanExpr(depth+1, loopDepth, curLoop, false, pathWeight)
 			if err != nil {
 				return true, 0, err
 			}
@@ -551,6 +575,18 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			}
 		}
 	}
+}
+
+func (s *byteBodyScanner) branchHintAt(offset uint32) (bool, bool) {
+	for i := range s.branchHints {
+		if s.branchHints[i].Offset == offset {
+			return s.branchHints[i].Likely, true
+		}
+		if s.branchHints[i].Offset > offset {
+			break
+		}
+	}
+	return false, false
 }
 
 func (s *byteBodyScanner) classifyInstructionInto(op byte, imm *wasm.InstructionImmediate) error {
