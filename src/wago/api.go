@@ -1718,7 +1718,9 @@ func (c *Compiled) importsRequireSync(imports Imports, force bool) bool {
 // concrete targets into the per-instance dispatch table.
 func (c *Compiled) validateImportBindings(imports Imports, store *referenceStore) error {
 	ehNativeCalls := c.stagedFeatures().IsEnabled(CoreFeatureExceptionHandling) && len(c.Imports) != 0
-	gcSubtypeLinkConsumer := c.stagedGCTypeSubtypingProduct() == stagedGCTypeSubtypingLinkConsumer
+	gcSubtypeLinkProduct := c.stagedGCTypeSubtypingProduct()
+	gcSubtypeLinkConsumer := gcSubtypeLinkProduct.isLinkConsumer()
+	gcSubtypeLinkProvider := gcSubtypeLinkProduct.linkProviderProduct()
 	for i, key := range c.Imports {
 		ex, ok := imports[key].(*InstanceExport)
 		if !ok {
@@ -1739,7 +1741,7 @@ func (c *Compiled) validateImportBindings(imports Imports, store *referenceStore
 		if i >= len(c.importFuncSigs) {
 			return fmt.Errorf("cross-instance import %q is missing its signature", key)
 		}
-		if gcSubtypeLinkConsumer && ex.inst.c.stagedGCTypeSubtypingProduct() != stagedGCTypeSubtypingLinkProvider {
+		if gcSubtypeLinkConsumer && ex.inst.c.stagedGCTypeSubtypingProduct() != gcSubtypeLinkProvider {
 			return fmt.Errorf("cross-instance import %q signature mismatch: producer is outside the exact gc/type-subtyping link product", key)
 		}
 		sig := c.importFuncSigs[i]
