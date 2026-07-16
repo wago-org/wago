@@ -114,6 +114,9 @@ func stagedGCRefEqLeaderDeltaFor(data []byte, line int) (stagedGCRefEqLeaderDelt
 		return stagedGCRefEqLeaderDelta{}, stagedGCRefEqLeaderPin{}, err
 	}
 	gate := stagedGCRefEqGate
+	if product, ok := stagedGCStructExecutionProduct(data); ok && product == stagedGCStructRefEq {
+		gate = ""
+	}
 	return stagedGCRefEqLeaderDelta{
 		Filename: pin.Filename, CommandLine: pin.CommandLine, SourceLine: pin.SourceLine,
 		Size: pin.Size, SHA256: pin.SHA256, Gate: gate,
@@ -126,6 +129,11 @@ func compileStagedGCRefEqAccounting(data []byte) (*Compiled, error) {
 	cfg := NewRuntimeConfig()
 	features := cfg.frontendFeatures()
 	features.TypedFunctionReferences = true
+	if product, ok := stagedGCStructExecutionProduct(data); ok && product == stagedGCStructRefEq {
+		features.GCStructProducts = true
+		features.GCArrayProducts = true
+		features.GCI31Products = true
+	}
 	return compileWithFrontendFeatures(cfg, data, features)
 }
 
@@ -167,6 +175,12 @@ func replayStagedGCRefEqScript(t *testing.T, tmp string, script stagedSpecScript
 			current = &pin
 			c, compileErr := compileStagedGCRefEqAccounting(latest)
 			if compileErr == nil {
+				if c.stagedGCStructProduct() != stagedGCStructRefEq {
+					_ = c.Close()
+					counts.Failures++
+					t.Errorf("gc/ref_eq.wast:%d compiled as product %s", cmd.Line, c.stagedGCStructProduct())
+					continue
+				}
 				in, instantiateErr := instantiateCore(c, InstantiateOptions{})
 				_ = c.Close()
 				if instantiateErr != nil {
@@ -289,7 +303,7 @@ func TestStagedOfficialGCRefEqAccounting(t *testing.T) {
 	var script stagedSpecScript
 	tmp := stagedOfficialTypedReferenceJSON(t, "gc/ref_eq", &script)
 	counts, leaders, gateCounts := replayStagedGCRefEqScript(t, tmp, script)
-	if counts.Commands != 90 || counts.ModulesPassed != 0 || counts.AssertionsPassed != 0 || counts.ExpectedFeatureRejects != 1 || counts.BlockedCommands != 82 || counts.ExpectedInvalid != 6 || counts.ExpectedMalformed != 0 || counts.Failures != 0 || counts.UnexpectedCompileRejects != 0 || counts.UnexpectedLinkRejects != 0 {
+	if counts.Commands != 90 || counts.ModulesPassed != 1 || counts.AssertionsPassed != 81 || counts.ExpectedFeatureRejects != 0 || counts.BlockedCommands != 0 || counts.ExpectedInvalid != 6 || counts.ExpectedMalformed != 0 || counts.Failures != 0 || counts.UnexpectedCompileRejects != 0 || counts.UnexpectedLinkRejects != 0 {
 		t.Fatalf("staged gc/ref_eq accounting has hidden or changed gaps: %+v", counts)
 	}
 	gateNames := make([]string, 0, len(gateCounts))
