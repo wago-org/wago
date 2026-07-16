@@ -10,7 +10,7 @@
       "size": 54,
       "sha256": "aa9754e0665bda5f10ec77a3261759da4b462e813ecf9d0e12ec912acff996d6",
       "class": "declaration-supertype-graph",
-      "gate": "metadata-only struct/array/function supertype declarations",
+      "admitted": true,
       "validator_gap": false,
       "type_graph": "rec[sub(final=false,supers=[],array{i32})]|rec[sub(final=false,supers=[{0 false}],array{i32})]|rec[sub(final=false,supers=[],array{ref null any})]|rec[sub(final=false,supers=[],array{ref null type 0})]|rec[sub(final=false,supers=[],array{ref type 1})]|rec[sub(final=false,supers=[],array{mut i32})]|rec[sub(final=false,supers=[{5 false}],array{mut i32})]",
       "state_graph": "imports=0 funcs=0 globals=[] tables=0 memories=0 tags=0 elements=0 data=0 exports=[]"
@@ -22,7 +22,7 @@
       "size": 65,
       "sha256": "ddca4046060c72d14ed416806860b0512b8e34ae2d11555ed88ff8676f6d1871",
       "class": "declaration-supertype-graph",
-      "gate": "metadata-only struct/array/function supertype declarations",
+      "admitted": true,
       "validator_gap": false,
       "type_graph": "rec[sub(final=false,supers=[],struct{})]|rec[sub(final=false,supers=[{0 false}],struct{})]|rec[sub(final=false,supers=[{1 false}],struct{i32})]|rec[sub(final=false,supers=[{2 false}],struct{i32,ref null type 0})]|rec[sub(final=false,supers=[{3 false}],struct{i32,ref type 0,mut i64})]|rec[sub(final=false,supers=[{4 false}],struct{i32,ref type 1,mut i64})]",
       "state_graph": "imports=0 funcs=0 globals=[] tables=0 memories=0 tags=0 elements=0 data=0 exports=[]"
@@ -34,7 +34,7 @@
       "size": 61,
       "sha256": "30ea9ab7a806640c081a4cd0bb68ecd9125f37524b6137f60af89a1c69df2839",
       "class": "declaration-supertype-graph",
-      "gate": "metadata-only struct/array/function supertype declarations",
+      "admitted": true,
       "validator_gap": false,
       "type_graph": "rec[sub(final=false,supers=[],struct{})]|rec[sub(final=false,supers=[{0 false}],struct{})]|rec[sub(final=false,supers=[],func(ref type 1)-\u003e(ref null any))]|rec[sub(final=false,supers=[{2 false}],func(ref type 0)-\u003e(ref any))]|rec[sub(final=false,supers=[{3 false}],func(ref null type 0)-\u003e(ref type 0))]|rec[sub(final=false,supers=[{4 false}],func(ref null struct)-\u003e(ref type 1))]",
       "state_graph": "imports=0 funcs=0 globals=[] tables=0 memories=0 tags=0 elements=0 data=0 exports=[]"
@@ -46,7 +46,7 @@
       "size": 39,
       "sha256": "76131bcda4dc51168d7c55feabbc7bfb3489dc399b2bb3d0a89a05c56964b5cd",
       "class": "recursive-definition-graph",
-      "gate": "metadata-only recursive struct supertype declarations",
+      "admitted": true,
       "validator_gap": false,
       "type_graph": "rec[sub(final=false,supers=[],struct{ref null any})]|rec[sub(final=false,supers=[{0 false}],struct{ref type 0})]|rec[sub(final=false,supers=[{1 false}],struct{ref type 1,i32})]",
       "state_graph": "imports=0 funcs=0 globals=[] tables=0 memories=0 tags=0 elements=0 data=0 exports=[]"
@@ -58,7 +58,7 @@
       "size": 46,
       "sha256": "2be8c2ca40f321f5ab956b191184d9b988e1f81963704f316f506bf18235bc9b",
       "class": "recursive-definition-graph",
-      "gate": "metadata-only recursive struct supertype declarations",
+      "admitted": true,
       "validator_gap": false,
       "type_graph": "rec[sub(final=false,supers=[],struct{i32,ref type 0})]|rec[sub(final=false,supers=[{0 false}],struct{i32,ref type 1});sub(final=false,supers=[{0 false}],struct{i32,ref type 0})]",
       "state_graph": "imports=0 funcs=0 globals=[] tables=0 memories=0 tags=0 elements=0 data=0 exports=[]"
@@ -70,7 +70,7 @@
       "size": 73,
       "sha256": "ad59582ba55bea406e6c3f6a473bb1fbef90e66275bec4848972483b302ac8c9",
       "class": "recursive-definition-graph",
-      "gate": "metadata-only recursive struct supertype declarations",
+      "admitted": true,
       "validator_gap": false,
       "type_graph": "rec[sub(final=false,supers=[],struct{i32,ref type 1});sub(final=false,supers=[],struct{i64,ref type 0})]|rec[sub(final=false,supers=[{1 false}],struct{i64,ref type 0,i32});sub(final=false,supers=[{0 false}],struct{i32,ref type 1,i32});sub(final=false,supers=[{1 false}],struct{i64,ref type 1,i32})]",
       "state_graph": "imports=0 funcs=0 globals=[] tables=0 memories=0 tags=0 elements=0 data=0 exports=[]"
@@ -82,7 +82,7 @@
       "size": 120,
       "sha256": "6c5162870907b88c444e61528fe907f280fb2b38b8877bbe98ed58bfebddd496",
       "class": "recursive-function-subsumption",
-      "gate": "collector-free recursive function subsumption bodies",
+      "admitted": true,
       "validator_gap": false,
       "type_graph": "rec[sub(final=false,supers=[],func(i32,ref type 2)-\u003e());sub(final=false,supers=[{0 true}],func(i32,ref type 1)-\u003e());sub(final=false,supers=[{1 true}],func(i32,ref type 0)-\u003e())]|rec[func(ref type 0)-\u003e()]|rec[func(ref type 1)-\u003e()]|rec[func(ref type 2)-\u003e()]",
       "state_graph": "imports=0 funcs=3 globals=[] tables=0 memories=0 tags=0 elements=0 data=0 exports=[]",
@@ -104,7 +104,7 @@
       "size": 144,
       "sha256": "7421ec51f0e574ac1248b32bc37a7cc0a93445ccf58879e757def2af49039e3a",
       "class": "recursive-function-subsumption",
-      "gate": "collector-free recursive function subsumption bodies",
+      "admitted": true,
       "validator_gap": false,
       "type_graph": "rec[sub(final=false,supers=[],func()-\u003e(i32,ref type 1));sub(final=false,supers=[],func()-\u003e(f32,ref type 0))]|rec[sub(final=false,supers=[{0 false}],func()-\u003e(i32,ref type 3));sub(final=false,supers=[{1 false}],func()-\u003e(f32,ref type 2));sub(final=false,supers=[{0 false}],func()-\u003e(i32,ref type 1));sub(final=false,supers=[{1 false}],func()-\u003e(f32,ref type 0))]|rec[func(ref type 0)-\u003e()]|rec[func(ref type 2)-\u003e()]|rec[func(ref type 4)-\u003e()]",
       "state_graph": "imports=0 funcs=3 globals=[] tables=0 memories=0 tags=0 elements=0 data=0 exports=[]",
@@ -1164,11 +1164,6 @@
     },
     {
       "family": "gc",
-      "reason": "collector-free recursive function subsumption bodies",
-      "count": 2
-    },
-    {
-      "family": "gc",
       "reason": "collector-free recursive function subtype link consumer",
       "count": 7
     },
@@ -1181,16 +1176,6 @@
       "family": "gc",
       "reason": "final function identity call_indirect and ref.cast runtime",
       "count": 1
-    },
-    {
-      "family": "gc",
-      "reason": "metadata-only recursive struct supertype declarations",
-      "count": 3
-    },
-    {
-      "family": "gc",
-      "reason": "metadata-only struct/array/function supertype declarations",
-      "count": 3
     },
     {
       "family": "gc",
@@ -1210,12 +1195,12 @@
   ],
   "counts": {
     "commands": 170,
-    "modules_passed": 0,
+    "modules_passed": 8,
     "assertions_passed": 0,
     "expected_invalid": 24,
     "expected_unlinkable": 0,
     "expected_uninstantiable": 0,
-    "expected_feature_rejects": 45,
+    "expected_feature_rejects": 37,
     "blocked_commands": 48,
     "unexpected_compile_rejects": 0,
     "unexpected_link_rejects": 0,
