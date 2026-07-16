@@ -364,7 +364,7 @@
       "size": 122,
       "sha256": "47a4b6080c4c63221e32dd452fd9bc6621c915b3f113e14e46e0f2ff907280d5",
       "class": "runtime-ref-test-function-identity",
-      "gate": "collector-free function ref.test over recursive structural identity",
+      "admitted": true,
       "validator_gap": false,
       "type_graph": "rec[sub(final=false,supers=[],func()-\u003e());struct{ref type 0}]|rec[sub(final=false,supers=[],func()-\u003e());struct{ref type 0}]|rec[sub(final=false,supers=[{0 false}],func()-\u003e());struct{}]|rec[sub(final=false,supers=[{2 false}],func()-\u003e());struct{}]|rec[func()-\u003e(i32)]",
       "state_graph": "imports=0 funcs=2 globals=[] tables=0 memories=0 tags=0 elements=1 data=0 exports=[run=0:1]",
@@ -389,7 +389,7 @@
       "size": 162,
       "sha256": "97afdb1a9ad042486b76ad816e78a43f933e79b985c6fd20d0658f3b69c6e022",
       "class": "runtime-ref-test-function-identity",
-      "gate": "collector-free function ref.test over recursive structural identity",
+      "admitted": true,
       "validator_gap": false,
       "type_graph": "rec[sub(final=false,supers=[],func()-\u003e());sub(final=false,supers=[],struct{ref type 0})]|rec[sub(final=false,supers=[],func()-\u003e());sub(final=false,supers=[],struct{ref type 0})]|rec[sub(final=false,supers=[{0 false}],func()-\u003e());sub(final=false,supers=[{1 false}],struct{ref type 0,ref type 0,ref type 2,ref type 2,ref type 0})]|rec[sub(final=false,supers=[{2 false}],func()-\u003e());sub(final=false,supers=[{3 false}],struct{ref type 0,ref type 2,ref type 0,ref type 2,ref type 0})]|rec[func()-\u003e(i32)]",
       "state_graph": "imports=0 funcs=2 globals=[] tables=0 memories=0 tags=0 elements=1 data=0 exports=[run=0:1]",
@@ -414,7 +414,7 @@
       "size": 122,
       "sha256": "9b8111ee2e3fb91cc7801a63b0a5a8e97eca7b5665f7e6fed5be8a8327534213",
       "class": "runtime-ref-test-function-identity",
-      "gate": "collector-free function ref.test over recursive structural identity",
+      "admitted": true,
       "validator_gap": false,
       "type_graph": "rec[sub(final=false,supers=[],func()-\u003e());struct{ref type 0}]|rec[sub(final=false,supers=[],func()-\u003e());struct{ref type 0}]|rec[sub(final=false,supers=[{0 false}],func()-\u003e());struct{}]|rec[sub(final=false,supers=[{2 false}],func()-\u003e());struct{}]|rec[func()-\u003e(i32)]",
       "state_graph": "imports=0 funcs=2 globals=[] tables=0 memories=0 tags=0 elements=1 data=0 exports=[run=0:1]",
@@ -439,7 +439,7 @@
       "size": 112,
       "sha256": "60adfeb1cae8b65d159f8c0729630c005f5b530e90d190189487ee241f30c523",
       "class": "runtime-ref-test-function-identity",
-      "gate": "collector-free function ref.test over recursive structural identity",
+      "admitted": true,
       "validator_gap": false,
       "type_graph": "rec[sub(final=false,supers=[],func()-\u003e());struct{ref type 0}]|rec[sub(final=false,supers=[],func()-\u003e());struct{ref type 0}]|rec[sub(final=false,supers=[{0 false}],func()-\u003e());struct{}]|rec[func()-\u003e(i32)]",
       "state_graph": "imports=0 funcs=2 globals=[] tables=0 memories=0 tags=0 elements=1 data=0 exports=[run=0:1]",
@@ -1155,7 +1155,7 @@
     {
       "family": "gc",
       "reason": "collector-free function ref.test over recursive structural identity",
-      "count": 9
+      "count": 5
     },
     {
       "family": "gc",
@@ -1190,13 +1190,13 @@
   ],
   "counts": {
     "commands": 170,
-    "modules_passed": 14,
-    "assertions_passed": 0,
+    "modules_passed": 18,
+    "assertions_passed": 4,
     "expected_invalid": 24,
     "expected_unlinkable": 0,
     "expected_uninstantiable": 0,
-    "expected_feature_rejects": 31,
-    "blocked_commands": 48,
+    "expected_feature_rejects": 27,
+    "blocked_commands": 44,
     "unexpected_compile_rejects": 0,
     "unexpected_link_rejects": 0,
     "failures": 0
