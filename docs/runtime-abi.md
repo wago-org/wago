@@ -601,6 +601,26 @@ snapshots, signal-backed bounds, arm64, unsupported platforms, host substitution
 `compiledCodeCache` remains 64 bytes, and no descriptor layout, basedata slot, helper, collector root/barrier, frame record,
 result adapter, or public ABI changes. Struct-defined linking products and arbitrary finality matching remain separate.
 
+Iteration 67 adds a third separately pinned link contract for the source-lines-566–572 M3 pair. Both provider and consumer
+carry two two-member recursive groups: an open `() -> ()` function paired with a final immutable self-referential struct,
+then an open function subtype paired with a final empty struct. Those structs affect only the bounded structural type key
+and source-to-required relation. They never appear in a runtime value, descriptor payload, basedata slot, root set, or
+collector object.
+
+The provider and consumer each use the unchanged 64-byte descriptor arena shape: one null 32-byte entry plus one ordinary
+canonical function entry. Linking copies the provider's nonzero code pointer and instance-owned identity word into the
+consumer entry; it does not convert that word to compact `gc.Ref`, scan it, expose it publicly, or allocate a collector.
+The one import retains one distinct provider transactionally. A failed later link stage rolls the owner back, provider-first
+logical close keeps code and descriptor storage live until consumer close, and consumer-first close releases ownership
+before final provider close. Hosts and iterations 65–66 reject before a live binding is published.
+
+Provider/consumer wasm/code/codec sizes are 70/77/313 and 51/0/236 bytes. Empty provider `g` measures 38.46–51.80 ns/op,
+0 B/op, and 0 allocs/op. Unlinked codec v27 preserves structural metadata but no product marker; linked serialization,
+private/public reload admission, snapshots, signal-backed bounds, arm64, unsupported platforms, host substitution, and
+cross-product substitution remain fail-closed. `compiledCodeCache` stays 64 bytes, and there is no descriptor layout,
+basedata slot, helper ID, collector root/barrier, frame record, result adapter, or public ABI change. This proof does not
+authorize the source-lines-578–588 M4 pair, source-line-605 unlinkable, or arbitrary struct-defined function matching.
+
 ## Global coherence invariant
 
 The global cell is the sole host- and cross-instance-visible storage for a
