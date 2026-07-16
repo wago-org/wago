@@ -311,6 +311,69 @@ func (v *moduleValidator) typeIdxSuperSubtype(a, b TypeIdx) bool {
 	return visit(aFlat)
 }
 
+type refTestFamily uint8
+
+const (
+	refTestFamilyData refTestFamily = iota + 1
+	refTestFamilyFunc
+	refTestFamilyExtern
+	refTestFamilyExn
+	refTestFamilyString
+)
+
+// refTestCompatible implements the cast-hierarchy match used by ref.test.
+// Defined siblings remain valid test operands even when neither is a subtype of
+// the other: the dynamic result is simply false. Disjoint top-level reference
+// hierarchies (for example func and i31/data) remain validation errors.
+func (v *moduleValidator) refTestCompatible(a, b RefType) bool {
+	af, aok := v.refTestHeapFamily(a.Heap)
+	bf, bok := v.refTestHeapFamily(b.Heap)
+	return aok && bok && af == bf
+}
+
+func (v *moduleValidator) refTestHeapFamily(h HeapType) (refTestFamily, bool) {
+	if h.Kind == HeapAbs {
+		switch h.Abs {
+		case HeapNone, HeapI31, HeapStruct, HeapArray, HeapEq, HeapAny:
+			return refTestFamilyData, true
+		case HeapNoFunc, HeapFunc:
+			return refTestFamilyFunc, true
+		case HeapNoExtern, HeapExtern:
+			return refTestFamilyExtern, true
+		case HeapNoExn, HeapExn:
+			return refTestFamilyExn, true
+		case HeapString:
+			return refTestFamilyString, true
+		default:
+			return 0, false
+		}
+	}
+	var kind CompTypeKind
+	switch h.Kind {
+	case HeapTypeIndex:
+		ct, ok := v.compTypeFromTypeIdx(h.Type)
+		if !ok {
+			return 0, false
+		}
+		kind = ct.Kind
+	case HeapDefType:
+		if h.Def == nil || h.Def.Index >= uint32(len(h.Def.Rec.SubTypes)) {
+			return 0, false
+		}
+		kind = h.Def.Rec.SubTypes[h.Def.Index].Comp.Kind
+	default:
+		return 0, false
+	}
+	switch kind {
+	case CompStruct, CompArray:
+		return refTestFamilyData, true
+	case CompFunc:
+		return refTestFamilyFunc, true
+	default:
+		return 0, false
+	}
+}
+
 func (v *moduleValidator) descriptorCompatible(a, b RefType) bool {
 	if a.Heap.Kind == HeapAbs && b.Heap.Kind == HeapAbs {
 		return absHeapSubtype(a.Heap.Abs, b.Heap.Abs) || absHeapSubtype(b.Heap.Abs, a.Heap.Abs)

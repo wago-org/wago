@@ -54,6 +54,51 @@ func TestValidateGCSubtypeMetadata(t *testing.T) {
 	})
 }
 
+func TestRefTestAcceptsDefinedSiblingTypes(t *testing.T) {
+	m := modWithFunc(
+		[]ValType{refToType(2, true)}, nil,
+		Instruction{Kind: InstrLocalGet, Index: 0},
+		Instruction{Kind: InstrRefTest, ext: &instrExt{HeapType: IndexedHeap(TypeIdx{Index: 1})}},
+		Instruction{Kind: InstrDrop},
+	)
+	m.Types = []RecType{
+		openStructType(nil),
+		{SubTypes: []SubType{{Final: true, Supers: []TypeIdx{{Index: 0}}, Comp: CompType{Kind: CompStruct}}}},
+		{SubTypes: []SubType{{Final: true, Supers: []TypeIdx{{Index: 0}}, Comp: CompType{Kind: CompStruct}}}},
+		ft([]ValType{refToType(2, true)}, nil),
+	}
+	m.FuncTypes = []TypeIdx{{Index: 3}}
+	if err := ValidateModule(m); err != nil {
+		t.Fatalf("ref.test between sibling defined struct types: %v", err)
+	}
+}
+
+func TestRefTestHierarchyCompatibility(t *testing.T) {
+	mv := &moduleValidator{m: &Module{Types: []RecType{
+		openStructType(nil),
+		openArrayType(field(I32, Var)),
+		ft(nil, nil),
+	}}}
+	for _, tc := range []struct {
+		name string
+		a, b RefType
+		ok   bool
+	}{
+		{name: "struct siblings", a: Ref(true, IndexedHeap(TypeIdx{Index: 0}), false), b: Ref(false, IndexedHeap(TypeIdx{Index: 0}), false), ok: true},
+		{name: "struct and array data", a: Ref(true, IndexedHeap(TypeIdx{Index: 0}), false), b: Ref(false, IndexedHeap(TypeIdx{Index: 1}), false), ok: true},
+		{name: "defined func and func", a: Ref(true, IndexedHeap(TypeIdx{Index: 2}), false), b: AbsRef(HeapFunc), ok: true},
+		{name: "func and data", a: AbsRef(HeapFunc), b: AbsRef(HeapI31), ok: false},
+		{name: "extern and data", a: AbsRef(HeapExtern), b: AbsRef(HeapAny), ok: false},
+		{name: "exn and func", a: AbsRef(HeapExn), b: AbsRef(HeapFunc), ok: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := mv.refTestCompatible(tc.a, tc.b); got != tc.ok {
+				t.Fatalf("refTestCompatible(%v, %v)=%t want %t", tc.a, tc.b, got, tc.ok)
+			}
+		})
+	}
+}
+
 func TestValidateGCRecursiveSubtypeMetadata(t *testing.T) {
 	t.Run("recursive same-kind non-final super validates", func(t *testing.T) {
 		m := &Module{Types: []RecType{{SubTypes: []SubType{
