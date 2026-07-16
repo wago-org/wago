@@ -227,6 +227,9 @@ func replayStagedGCStructScript(t *testing.T, tmp string, script stagedSpecScrip
 				if callErr == nil {
 					counts.Failures++
 					t.Errorf("gc/struct.wast:%d expected trap: %s", cmd.Line, cmd.Text)
+				} else if current.Product == stagedGCStructNullDereference && !strings.Contains(callErr.Error(), "null reference") {
+					counts.Failures++
+					t.Errorf("gc/struct.wast:%d trap = %v, want null-reference trap class", cmd.Line, callErr)
 				} else {
 					counts.AssertionsPassed++
 				}

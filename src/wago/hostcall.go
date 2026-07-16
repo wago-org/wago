@@ -669,6 +669,10 @@ func (in *Instance) callNativeSync(entry uintptr) (err error) {
 				err = invalid.err
 				return
 			}
+			if trap, ok := r.(gcStructHelperTrap); ok {
+				err = &runtime.TrapError{Code: trap.code}
+				return
+			}
 			if helper, ok := r.(gcStructHelperError); ok {
 				err = fmt.Errorf("wago: WasmGC struct helper: %w", helper.err)
 				return

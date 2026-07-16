@@ -101,7 +101,10 @@ func stagedGCStructLeaderPinFor(data []byte, commandLine int) (stagedGCStructLea
 	return stagedGCStructLeaderPin{}, false
 }
 
-const stagedGCStructNumericLocalSHA256 = "f5fc57a9a6b959a1a689385cb79050b6998c867c61eafd65ff03b2d57d128fcf"
+const (
+	stagedGCStructNumericLocalSHA256    = "f5fc57a9a6b959a1a689385cb79050b6998c867c61eafd65ff03b2d57d128fcf"
+	stagedGCStructNumericMutationSHA256 = "e9f7a7ec88c56684ad5b96e2a5471765ab2835ddea14069006da51a96ed5e891"
+)
 
 // stagedGCStructExecutionProduct admits only the exact collector-backed products
 // whose runtime/helper obligations are implemented. The synthetic numeric-local
@@ -109,7 +112,8 @@ const stagedGCStructNumericLocalSHA256 = "f5fc57a9a6b959a1a689385cb79050b6998c86
 // public boundary or global/table state, and returns only numeric values.
 func stagedGCStructExecutionProduct(data []byte) (stagedGCStructProduct, bool) {
 	digest := fmt.Sprintf("%x", sha256.Sum256(data))
-	if digest == stagedGCStructNumericLocalSHA256 && len(data) == 65 {
+	if (digest == stagedGCStructNumericLocalSHA256 && len(data) == 65) ||
+		(digest == stagedGCStructNumericMutationSHA256 && len(data) == 106) {
 		return stagedGCStructNumericLocal, true
 	}
 	for _, pin := range stagedGCStructLeaderPins {
@@ -117,7 +121,7 @@ func stagedGCStructExecutionProduct(data []byte) (stagedGCStructProduct, bool) {
 			continue
 		}
 		switch pin.Product {
-		case stagedGCStructDeclarations, stagedGCStructBindings, stagedGCStructNamedGets:
+		case stagedGCStructDeclarations, stagedGCStructBindings, stagedGCStructNamedGets, stagedGCStructNullDereference:
 			return pin.Product, true
 		default:
 			return pin.Product, false
