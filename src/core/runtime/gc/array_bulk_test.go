@@ -111,6 +111,37 @@ func TestArrayInitDataPreflightWidthsAndAtomicity(t *testing.T) {
 	}
 }
 
+func TestArrayInitWordsPreflightAndAtomicity(t *testing.T) {
+	i64, err := NewArrayDesc(0, StorageI64)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := newTestCollectorWithTypes(t, Config{}, []TypeDesc{i64})
+	arr, err := c.NewArrayDefault(0, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.ArrayInitWords(arr, 1, []uint64{0x11, 0x22}); err != nil {
+		t.Fatal(err)
+	}
+	for i, want := range []uint64{0, 0x11, 0x22, 0} {
+		got, err := c.ArrayGet(arr, uint32(i))
+		if err != nil || got.Bits != want {
+			t.Fatalf("word array[%d]=%#x,%v want %#x", i, got.Bits, err, want)
+		}
+	}
+	if err := c.ArrayInitWords(arr, 3, []uint64{0x33, 0x44}); err != errRange {
+		t.Fatalf("word range error=%v, want %v", err, errRange)
+	}
+	got, err := c.ArrayGet(arr, 3)
+	if err != nil || got.Bits != 0 {
+		t.Fatalf("trapping word init mutated tail=%#x,%v", got.Bits, err)
+	}
+	if err := c.ArrayInitWords(arr, 4, nil); err != nil {
+		t.Fatalf("zero length at end: %v", err)
+	}
+}
+
 func TestArrayCopyPreflightAndOverlap(t *testing.T) {
 	c := newTestCollectorWithTypes(t, Config{}, bulkTestTypes(t))
 	arr, err := c.NewArrayDefault(1, 6)

@@ -19,6 +19,7 @@ const (
 	gcArrayGlobalInitDefault gcArrayGlobalInitMode = iota + 1
 	gcArrayGlobalInitUniform
 	gcArrayGlobalInitFixed
+	gcArrayGlobalInitFuncUniform
 )
 
 // gcArrayGlobalInit is compile-only metadata for exact staged immutable array
@@ -49,7 +50,7 @@ func stagedGCArrayGlobalInitializers(m *wasm.Module, product stagedGCArrayProduc
 		if g.Type.Mutable && product != stagedGCArrayProductBulkFill && product != stagedGCArrayProductBulkCopy && product != stagedGCArrayProductInitData {
 			return nil, fmt.Errorf("global %d GC array initializer is mutable", imports+i)
 		}
-		init, err := decodeStagedGCArrayGlobalInit(m, uint32(imports+i), g)
+		init, err := decodeStagedGCArrayGlobalInit(m, product, uint32(imports+i), g)
 		if err != nil {
 			return nil, fmt.Errorf("global %d GC array initializer: %w", imports+i, err)
 		}
@@ -65,7 +66,7 @@ func stagedGCArrayGlobalInitializers(m *wasm.Module, product stagedGCArrayProduc
 	return out, nil
 }
 
-func decodeStagedGCArrayGlobalInit(m *wasm.Module, globalIndex uint32, g wasm.Global) (gcArrayGlobalInit, error) {
+func decodeStagedGCArrayGlobalInit(m *wasm.Module, product stagedGCArrayProduct, globalIndex uint32, g wasm.Global) (gcArrayGlobalInit, error) {
 	body := g.Init.BodyBytes
 	if len(body) == 0 {
 		encoded, err := wasm.EncodeExpr(g.Init)
@@ -106,6 +107,19 @@ func decodeStagedGCArrayGlobalInit(m *wasm.Module, globalIndex uint32, g wasm.Gl
 				return gcArrayGlobalInit{}, err
 			}
 			values = append(values, gcStructConstValue{typ: wasm.F64, bits: binary.LittleEndian.Uint64(b)})
+		case 0xd2: // ref.func
+			if product != stagedGCArrayProductInitElem {
+				return gcArrayGlobalInit{}, fmt.Errorf("reference array initializer remains unsupported")
+			}
+			fidx, err := r.U32()
+			if err != nil {
+				return gcArrayGlobalInit{}, err
+			}
+			typeIdx, ok := m.FuncTypeIndex(fidx)
+			if !ok {
+				return gcArrayGlobalInit{}, fmt.Errorf("ref.func index %d is unavailable", fidx)
+			}
+			values = append(values, gcStructConstValue{typ: wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(typeIdx), false)), bits: uint64(fidx)})
 		case 0xfb:
 			subopcode, err := r.U32()
 			if err != nil {
@@ -129,7 +143,7 @@ func decodeStagedGCArrayGlobalInit(m *wasm.Module, globalIndex uint32, g wasm.Gl
 			if sub.Comp.Array.Storage.Packed {
 				want = wasm.I32
 			}
-			if want.Kind == wasm.ValRef {
+			if want.Kind == wasm.ValRef && product != stagedGCArrayProductInitElem {
 				return gcArrayGlobalInit{}, fmt.Errorf("reference array initializer remains unsupported")
 			}
 			init := gcArrayGlobalInit{GlobalIndex: globalIndex, TypeID: typeID}
@@ -139,6 +153,9 @@ func decodeStagedGCArrayGlobalInit(m *wasm.Module, globalIndex uint32, g wasm.Gl
 					return gcArrayGlobalInit{}, fmt.Errorf("array.new operands do not match %s, i32", want)
 				}
 				init.Mode = gcArrayGlobalInitUniform
+				if want.Kind == wasm.ValRef {
+					init.Mode = gcArrayGlobalInitFuncUniform
+				}
 				init.Length = uint32(values[1].bits)
 				init.Bits[0] = values[0].bits
 			case 7: // array.new_default: length
@@ -165,7 +182,7 @@ func decodeStagedGCArrayGlobalInit(m *wasm.Module, globalIndex uint32, g wasm.Gl
 				}
 			}
 			limit := uint32(maxGCArrayFixedElements)
-			if init.Mode == gcArrayGlobalInitDefault || init.Mode == gcArrayGlobalInitUniform {
+			if init.Mode == gcArrayGlobalInitDefault || init.Mode == gcArrayGlobalInitUniform || init.Mode == gcArrayGlobalInitFuncUniform {
 				limit = maxGCArrayBulkGlobalLength
 			}
 			if init.Length > limit {
@@ -198,12 +215,12 @@ func (c *Compiled) gcArrayGlobalInit(globalIndex int) (gcArrayGlobalInit, bool) 
 	return gcArrayGlobalInit{}, false
 }
 
-func instantiateGCArrayGlobal(collector *gc.Collector, descs []gc.TypeDesc, init gcArrayGlobalInit) (gc.Ref, uint32, error) {
+func instantiateGCArrayGlobal(collector *gc.Collector, descs []gc.TypeDesc, init gcArrayGlobalInit, funcRefDescs []byte) (gc.Ref, uint32, error) {
 	if collector == nil || int(init.TypeID) >= len(descs) || descs[init.TypeID].Kind != gc.KindArray {
 		return gc.Null(), 0, fmt.Errorf("GC array global type %d is unavailable", init.TypeID)
 	}
 	limit := uint32(maxGCArrayFixedElements)
-	if init.Mode == gcArrayGlobalInitDefault || init.Mode == gcArrayGlobalInitUniform {
+	if init.Mode == gcArrayGlobalInitDefault || init.Mode == gcArrayGlobalInitUniform || init.Mode == gcArrayGlobalInitFuncUniform {
 		limit = maxGCArrayBulkGlobalLength
 	}
 	if init.Length > limit {
@@ -234,6 +251,21 @@ func instantiateGCArrayGlobal(collector *gc.Collector, descs []gc.TypeDesc, init
 	case gcArrayGlobalInitFixed:
 		for i := uint32(0); i < init.Length; i++ {
 			if err := collector.ArraySet(ref, i, gc.Value{Kind: valueKind, Bits: init.Bits[i]}); err != nil {
+				return gc.Null(), 0, err
+			}
+		}
+	case gcArrayGlobalInitFuncUniform:
+		fidx := int(init.Bits[0])
+		off := (fidx + 1) * 32
+		if valueKind != gc.StorageI64 || fidx < 0 || off < 32 || off+32 > len(funcRefDescs) {
+			return gc.Null(), 0, fmt.Errorf("GC array global function initializer %d is unavailable", fidx)
+		}
+		identity := binary.LittleEndian.Uint64(funcRefDescs[off+24:])
+		if identity == 0 {
+			return gc.Null(), 0, fmt.Errorf("GC array global function initializer %d has no identity", fidx)
+		}
+		for i := uint32(0); i < init.Length; i++ {
+			if err := collector.ArraySet(ref, i, gc.Value{Kind: gc.StorageI64, Bits: identity}); err != nil {
 				return gc.Null(), 0, err
 			}
 		}
