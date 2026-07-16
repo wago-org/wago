@@ -17,6 +17,7 @@ type stagedGCTypeSubtypingProductPin struct {
 	Size     int
 	SHA256   string
 	Class    stagedGCTypeSubtypingProduct
+	Results  []uint64
 	Hex      string
 }
 
@@ -35,10 +36,13 @@ var stagedGCTypeSubtypingProductPins = []stagedGCTypeSubtypingProductPin{
 	{Filename: "type-subtyping.12.wasm", Line: 119, Size: 150, SHA256: "6d3373700cb5c07d5c8c30f3c926d20c1cba29b1a0e512db06c7e406d7f71d1b", Class: stagedGCTypeSubtypingRefFuncGlobals, Hex: "0061736d0100000001df80808000054e02500060000050005f016400004e02500060000050005f016402004e025001006000005001015f056400006400006402006402006404004e025001026000005001035f056400006402006400006402006406004e025001066000005f000382808080000108068d8080800002640000d2000b640400d2000b0a8880808000018280808000000b"},
 	{Filename: "type-subtyping.13.wasm", Line: 129, Size: 112, SHA256: "befde5eb45b4a66d036acfc4f1b69a0b8aabea9df46aa1503b7e7ee73770dd32", Class: stagedGCTypeSubtypingRefFuncGlobals, Hex: "0061736d0100000001a380808000024e025000600001647050010060000164004e0250006000016470500102600001640203838080800002000106998080800004640000d2000b640200d2000b640100d2010b640300d2010b0a918080800002838080800000000b838080800000000b"},
 	{Filename: "type-subtyping.14.wasm", Line: 143, Size: 172, SHA256: "a0ba3c1005b6cb73edc08222b5d896276945b0bf1f3b3ff7ef9cdb489341fe08", Class: stagedGCTypeSubtypingRefFuncGlobals, Hex: "0061736d0100000001c780808000044e025000600001647050010060000164004e025000600001647050010260000164024e02500100600001647050010460000164044e025001026000016470500106600001640603838080800002040506b18080800008640000d2000b640200d2000b640000d2010b640200d2010b640400d2000b640600d2000b640500d2010b640700d2010b0a918080800002838080800000000b838080800000000b"},
-	{Filename: "type-subtyping.20.wasm", Line: 248, Size: 122, SHA256: "47a4b6080c4c63221e32dd452fd9bc6621c915b3f113e14e46e0f2ff907280d5", Class: stagedGCTypeSubtypingRefTestSingle, Hex: "0061736d0100000001b180808000054e0250006000005f016400004e0250006000005f016402004e025001006000005f004e025001026000005f006000017f038380808000020608078780808000010372756e000109858080800001030001000a9480808000028280808000000b878080800000d200fb14040b"},
-	{Filename: "type-subtyping.21.wasm", Line: 263, Size: 162, SHA256: "97afdb1a9ad042486b76ad816e78a43f933e79b985c6fd20d0658f3b69c6e022", Class: stagedGCTypeSubtypingRefTestSingle, Hex: "0061736d0100000001d980808000054e02500060000050005f016400004e02500060000050005f016402004e025001006000005001015f056400006400006402006402006404004e025001026000005001035f056400006402006400006402006406006000017f038380808000020608078780808000010372756e000109858080800001030001000a9480808000028280808000000b878080800000d200fb14040b"},
-	{Filename: "type-subtyping.22.wasm", Line: 275, Size: 122, SHA256: "9b8111ee2e3fb91cc7801a63b0a5a8e97eca7b5665f7e6fed5be8a8327534213", Class: stagedGCTypeSubtypingRefTestSingle, Hex: "0061736d0100000001b180808000054e0250006000005f016400004e0250006000005f016400004e025001006000005f004e025001026000005f006000017f038380808000020608078780808000010372756e000109858080800001030001000a9480808000028280808000000b878080800000d200fb14040b"},
-	{Filename: "type-subtyping.23.wasm", Line: 286, Size: 112, SHA256: "60adfeb1cae8b65d159f8c0729630c005f5b530e90d190189487ee241f30c523", Class: stagedGCTypeSubtypingRefTestSingle, Hex: "0061736d0100000001a780808000044e0250006000005f016400004e0250006000005f016402004e025001006000005f006000017f038380808000020406078780808000010372756e000109858080800001030001000a9480808000028280808000000b878080800000d200fb14000b"},
+	{Filename: "type-subtyping.20.wasm", Line: 248, Size: 122, SHA256: "47a4b6080c4c63221e32dd452fd9bc6621c915b3f113e14e46e0f2ff907280d5", Class: stagedGCTypeSubtypingRefTestSingle, Results: []uint64{1}, Hex: "0061736d0100000001b180808000054e0250006000005f016400004e0250006000005f016402004e025001006000005f004e025001026000005f006000017f038380808000020608078780808000010372756e000109858080800001030001000a9480808000028280808000000b878080800000d200fb14040b"},
+	{Filename: "type-subtyping.21.wasm", Line: 263, Size: 162, SHA256: "97afdb1a9ad042486b76ad816e78a43f933e79b985c6fd20d0658f3b69c6e022", Class: stagedGCTypeSubtypingRefTestSingle, Results: []uint64{1}, Hex: "0061736d0100000001d980808000054e02500060000050005f016400004e02500060000050005f016402004e025001006000005001015f056400006400006402006402006404004e025001026000005001035f056400006402006400006402006406006000017f038380808000020608078780808000010372756e000109858080800001030001000a9480808000028280808000000b878080800000d200fb14040b"},
+	{Filename: "type-subtyping.22.wasm", Line: 275, Size: 122, SHA256: "9b8111ee2e3fb91cc7801a63b0a5a8e97eca7b5665f7e6fed5be8a8327534213", Class: stagedGCTypeSubtypingRefTestSingle, Results: []uint64{0}, Hex: "0061736d0100000001b180808000054e0250006000005f016400004e0250006000005f016400004e025001006000005f004e025001026000005f006000017f038380808000020608078780808000010372756e000109858080800001030001000a9480808000028280808000000b878080800000d200fb14040b"},
+	{Filename: "type-subtyping.23.wasm", Line: 286, Size: 112, SHA256: "60adfeb1cae8b65d159f8c0729630c005f5b530e90d190189487ee241f30c523", Class: stagedGCTypeSubtypingRefTestSingle, Results: []uint64{1}, Hex: "0061736d0100000001a780808000044e0250006000005f016400004e0250006000005f016402004e025001006000005f006000017f038380808000020406078780808000010372756e000109858080800001030001000a9480808000028280808000000b878080800000d200fb14000b"},
+	{Filename: "type-subtyping.24.wasm", Line: 302, Size: 178, SHA256: "5f080674a00a73b3dba391bb1967aa22f4dd6f1b43b9b49aff08528c3305aa6b", Class: stagedGCTypeSubtypingRefTestMulti, Results: []uint64{1, 1}, Hex: "0061736d0100000001e480808000064e02500060000050005f016400004e02500060000050005f016402004e025001006000005001015f056400006400006402006402006404004e025001026000005001035f056400006402006400006402006406004e025001066000005f006000027f7f03838080800002080a078780808000010372756e000109858080800001030001000a9980808000028280808000000b8c8080800000d200fb1400d200fb14040b"},
+	{Filename: "type-subtyping.25.wasm", Line: 315, Size: 144, SHA256: "b561b7bcd131223f573b787ff002cec3ef83d1cb90fc440ec24d347cc789df1d", Class: stagedGCTypeSubtypingRefTestMulti, Results: []uint64{1, 1, 1, 1}, Hex: "0061736d0100000001aa80808000034e025000600001647050010060000164004e025000600001647050010260000164026000047f7f7f7f03848080800003000104078780808000010372756e00020989808080000203000100030001010aac8080800003838080800000000b838080800000000b968080800000d200fb1400d200fb1402d201fb1401d201fb14030b"},
+	{Filename: "type-subtyping.26.wasm", Line: 338, Size: 204, SHA256: "893dcf058c5b28436567028ab41bfb409c5f1acc737e764a3dfcc51f6be8200e", Class: stagedGCTypeSubtypingRefTestMulti, Results: []uint64{1, 1, 1, 1, 1, 1, 1, 1}, Hex: "0061736d0100000001d280808000054e025000600001647050010060000164004e025000600001647050010260000164024e02500100600001647050010460000164044e02500102600001647050010660000164066000087f7f7f7f7f7f7f7f03848080800003040508078780808000010372756e00020989808080000203000100030001010ac08080800003838080800000000b838080800000000baa8080800000d200fb1400d200fb1402d201fb1400d201fb1402d200fb1404d200fb1406d201fb1405d201fb14070b"},
 }
 
 func stagedGCTypeSubtypingProductData(t testing.TB, pin stagedGCTypeSubtypingProductPin) []byte {
@@ -77,10 +81,66 @@ func TestStagedGCTypeSubtypingProductInventory(t *testing.T) {
 		if !stagedGCTypeSubtypingProductPinned(data, product) {
 			t.Fatalf("%s is not in the production pin set", pin.Filename)
 		}
+		if len(pin.Results) != 0 {
+			runner := len(m.Code) - 1
+			ft, ok := m.ResolvedLocalFuncType(runner)
+			if !ok || len(ft.Results) != len(pin.Results) {
+				t.Fatalf("%s runner results = %v, want %d ordered i32 results", pin.Filename, ft.Results, len(pin.Results))
+			}
+			for _, result := range ft.Results {
+				if !wasm.EqualValType(result, wasm.I32) {
+					t.Fatalf("%s runner result = %v, want i32", pin.Filename, result)
+				}
+			}
+		}
 		seen[pin.Class]++
 	}
-	if seen[stagedGCTypeSubtypingDeclarations] != 6 || seen[stagedGCTypeSubtypingRecursiveFunctions] != 2 || seen[stagedGCTypeSubtypingRefFuncGlobals] != 6 || seen[stagedGCTypeSubtypingRefTestSingle] != 4 {
-		t.Fatalf("product classes = %#v, want declarations/recursive-functions/ref.func-globals/single-ref.test = 6/2/6/4", seen)
+	if seen[stagedGCTypeSubtypingDeclarations] != 6 || seen[stagedGCTypeSubtypingRecursiveFunctions] != 2 || seen[stagedGCTypeSubtypingRefFuncGlobals] != 6 || seen[stagedGCTypeSubtypingRefTestSingle] != 4 || seen[stagedGCTypeSubtypingRefTestMulti] != 3 {
+		t.Fatalf("product classes = %#v, want declarations/recursive-functions/ref.func-globals/single-ref.test/multi-ref.test = 6/2/6/4/3", seen)
+	}
+}
+
+func TestStagedGCTypeSubtypingMultiRefTestInventory(t *testing.T) {
+	wantFuncCounts := []int{2, 3, 3}
+	wantElemFuncs := [][][]uint32{{{0}}, {{0}, {1}}, {{0}, {1}}}
+	wantBodies := []string{
+		"d200fb1400d200fb14040b",
+		"d200fb1400d200fb1402d201fb1401d201fb14030b",
+		"d200fb1400d200fb1402d201fb1400d201fb1402d200fb1404d200fb1406d201fb1405d201fb14070b",
+	}
+	for i, pin := range stagedGCTypeSubtypingProductPins[18:] {
+		m, err := wasm.DecodeModule(stagedGCTypeSubtypingProductData(t, pin))
+		if err != nil {
+			t.Fatalf("%s decode: %v", pin.Filename, err)
+		}
+		if len(m.FuncTypes) != wantFuncCounts[i] || len(m.Code) != wantFuncCounts[i] {
+			t.Fatalf("%s functions/code = %d/%d, want %d/%d", pin.Filename, len(m.FuncTypes), len(m.Code), wantFuncCounts[i], wantFuncCounts[i])
+		}
+		if len(m.Elements) != len(wantElemFuncs[i]) {
+			t.Fatalf("%s elements = %d, want %d", pin.Filename, len(m.Elements), len(wantElemFuncs[i]))
+		}
+		for j, want := range wantElemFuncs[i] {
+			got := m.Elements[j]
+			matches := len(got.Kind.Funcs) == len(want)
+			for k := range got.Kind.Funcs {
+				matches = matches && uint32(got.Kind.Funcs[k]) == want[k]
+			}
+			if got.Mode.Kind != wasm.ElemDeclarative || got.Kind.Kind != wasm.ElemFuncs || !matches {
+				t.Fatalf("%s element %d = mode %v kind %v funcs %v, want declarative funcs %v", pin.Filename, j, got.Mode.Kind, got.Kind.Kind, got.Kind.Funcs, want)
+			}
+		}
+		for j := 0; j < len(m.Code)-1; j++ {
+			wantBody := "0b"
+			if len(m.Code) == 3 {
+				wantBody = "000b"
+			}
+			if got := hex.EncodeToString(m.Code[j].BodyBytes); got != wantBody {
+				t.Fatalf("%s function %d body = %s, want %s", pin.Filename, j, got, wantBody)
+			}
+		}
+		if got := hex.EncodeToString(m.Code[len(m.Code)-1].BodyBytes); got != wantBodies[i] {
+			t.Fatalf("%s runner body = %s, want %s", pin.Filename, got, wantBodies[i])
+		}
 	}
 }
 
