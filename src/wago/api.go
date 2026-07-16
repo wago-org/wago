@@ -683,6 +683,68 @@ func stagedExceptionHandlingShape(m *wasm.Module, exceptionReferences, tailCalls
 // compileWithFrontendFeatures is the internal staged path used to prove an
 // implementation family before SupportedFeatures admits its public bit. Public
 // entry points always validate RuntimeConfig first and pass its exact mapping.
+type stagedNullReferenceProduct uint8
+
+const (
+	stagedNullReferenceProductFirst stagedNullReferenceProduct = iota + 1
+)
+
+func stagedNullReferenceProductShape(m *wasm.Module) (stagedNullReferenceProduct, error) {
+	if m == nil || len(m.Imports) != 0 || m.Start != nil || m.TagCount() != 0 || m.MemCount() != 0 || m.TableCount() != 0 || len(m.Elements) != 0 || len(m.Data) != 0 {
+		return 0, fmt.Errorf("null-reference product requires only local functions and immutable local globals")
+	}
+	if len(m.Types) != 6 || m.FuncCount() != 5 || len(m.Code) != 5 || len(m.Globals) != 5 || len(m.Exports) != 5 {
+		return 0, fmt.Errorf("first null-reference product requires 6 types, 5 functions, 5 globals, and 5 function exports")
+	}
+	base, ok := m.ResolvedTypeFunc(0)
+	if !ok || len(base.Params) != 0 || len(base.Results) != 0 {
+		return 0, fmt.Errorf("first null-reference product type 0 must be () -> ()")
+	}
+	indexed := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: 0}), false))
+	results := []wasm.ValType{
+		wasm.RefVal(wasm.AbsRef(wasm.HeapAny)),
+		wasm.FuncRef,
+		wasm.RefVal(wasm.AbsRef(wasm.HeapExn)),
+		wasm.ExternRef,
+		indexed,
+	}
+	heaps := []int64{-18, -16, -23, -17, 0}
+	exports := []string{"anyref", "funcref", "exnref", "externref", "ref"}
+	for i := range results {
+		ft, found := m.FuncSignature(uint32(i))
+		if !found || len(ft.Params) != 0 || len(ft.Results) != 1 || !wasm.EqualValType(ft.Results[0], results[i]) {
+			return 0, fmt.Errorf("first null-reference product function %d has an unexpected signature", i)
+		}
+		if len(m.Code[i].Locals.Runs) != 0 || !isExactRefNullBody(m.Code[i].BodyBytes, heaps[i]) {
+			return 0, fmt.Errorf("first null-reference product function %d must return exactly one null", i)
+		}
+		g := &m.Globals[i]
+		if g.Type.Mutable || !wasm.EqualValType(g.Type.Type, results[i]) || !isExactRefNullBody(g.Init.BodyBytes, heaps[i]) {
+			return 0, fmt.Errorf("first null-reference product global %d must be an immutable exact null", i)
+		}
+	}
+	for i, ex := range m.Exports {
+		if ex.Name != exports[i] || ex.Index.Kind != wasm.ExternFunc || int(ex.Index.Index) != i {
+			return 0, fmt.Errorf("first null-reference product export %d is outside the exact function export set", i)
+		}
+	}
+	return stagedNullReferenceProductFirst, nil
+}
+
+func isExactRefNullBody(body []byte, heap int64) bool {
+	r := wasm.NewReader(body)
+	op, err := r.Byte()
+	if err != nil || op != 0xd0 {
+		return false
+	}
+	got, err := r.S33()
+	if err != nil || got != heap {
+		return false
+	}
+	end, err := r.Byte()
+	return err == nil && end == 0x0b && r.BytesLeft() == 0
+}
+
 func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features frontend.Features) (*Compiled, error) {
 	m, err := wasm.DecodeModule(wasmBytes)
 	if err != nil {
@@ -692,6 +754,17 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 	validationFeatures := wasm.ValidationFeatures{CompactImports: features.MultiMemory, MultiMemory: features.MultiMemory}
 	if err := wasm.ValidateModuleWithFeaturesAndWorkers(m, validationFeatures, workers); err != nil {
 		return nil, fmt.Errorf("validate: %w", err)
+	}
+	if features.NullReferenceProducts {
+		if goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64" {
+			return nil, fmt.Errorf("compile: unsupported null-reference product staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
+		}
+		if cfg.boundsChecks == BoundsChecksSignalsBased {
+			return nil, fmt.Errorf("compile: unsupported null-reference product with signals-based bounds checks")
+		}
+		if _, err := stagedNullReferenceProductShape(m); err != nil {
+			return nil, fmt.Errorf("compile: staged null-reference product: %w", err)
+		}
 	}
 	if features.MultiMemory && m.MemCount() > 1 {
 		if goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64" {
@@ -1235,6 +1308,9 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 	}
 	if features.TailCalls || features.TypedTailCalls {
 		compiled.codeCache.stagedFeatures |= CoreFeatureTailCall
+	}
+	if features.NullReferenceProducts {
+		compiled.codeCache.stagedFeatures |= CoreFeatureGC | CoreFeatureExceptionHandling
 	}
 	return compiled, nil
 }
@@ -2238,6 +2314,9 @@ func (c *Compiled) validateRuntimeReferenceGlobalMetadata() error {
 		}
 		if g.Type == ValFuncRef && g.Bits != 0 {
 			return fmt.Errorf("compiled metadata invalid: non-structural funcref global initializer at global %d is unsupported", i)
+		}
+		if (g.Type == ValAnyRef || g.Type == ValExnRef) && g.Bits != 0 {
+			return fmt.Errorf("compiled metadata invalid: non-null %s global initializer at global %d is unsupported", g.Type, i)
 		}
 	}
 	return nil
@@ -3330,6 +3409,17 @@ func (in *Instance) marshalPublicReferenceArgs(subject string, values []uint64, 
 			if bits != 0 && (in.refStore == nil || !in.validExternrefToken(bits)) {
 				return fmt.Errorf("%s: invalid externref token for argument %d", subject, i)
 			}
+		case ValAnyRef, ValExnRef:
+			required, ok := exactReferenceType(exact, i, typ)
+			if !ok {
+				return fmt.Errorf("%s: missing exact %s type for argument %d", subject, typ, i)
+			}
+			if bits != 0 {
+				return fmt.Errorf("%s: non-null %s argument %d is outside the null-only product", subject, typ, i)
+			}
+			if !required.Ref.Nullable {
+				return fmt.Errorf("%s: null %s for non-null argument %d", subject, typ, i)
+			}
 		}
 		if !isWideValType(typ) {
 			bits = uint64(uint32(bits))
@@ -3380,6 +3470,21 @@ func (in *Instance) translatePublicReferenceResults(subject string, values []uin
 		if typ == ValExternRef && values[slot] != 0 && !in.validExternrefToken(values[slot]) {
 			clear(values)
 			return fmt.Errorf("%s: invalid externref result %d", subject, i)
+		}
+		if typ == ValAnyRef || typ == ValExnRef {
+			required, ok := exactReferenceType(exact, i, typ)
+			if !ok {
+				clear(values)
+				return fmt.Errorf("%s: missing exact %s type for result %d", subject, typ, i)
+			}
+			if values[slot] != 0 {
+				clear(values)
+				return fmt.Errorf("%s: non-null %s result %d is outside the null-only product", subject, typ, i)
+			}
+			if !required.Ref.Nullable {
+				clear(values)
+				return fmt.Errorf("%s: null %s for non-null result %d", subject, typ, i)
+			}
 		}
 		if typ == ValV128 {
 			slot += 2

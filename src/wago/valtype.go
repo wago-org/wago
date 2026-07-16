@@ -27,6 +27,7 @@ const (
 	ValFuncRef
 	ValExternRef
 	ValExnRef // internal/product ABI category for rooted exception references
+	ValAnyRef // internal/product ABI category for null-only any/none references
 )
 
 // NullFuncRef and NullExternRef return the null reference of each public type.
@@ -55,12 +56,22 @@ func (t ValType) String() string {
 		return "externref"
 	case ValExnRef:
 		return "exnref"
+	case ValAnyRef:
+		return "anyref"
 	default:
 		return "unknown"
 	}
 }
 
 func valTypeFromWasm(t wasm.ValType) ValType {
+	if t.Kind == wasm.ValRef && t.Ref.Heap.Kind == wasm.HeapAbs {
+		switch t.Ref.Heap.Abs {
+		case wasm.HeapAny, wasm.HeapNone:
+			return ValAnyRef
+		case wasm.HeapExn, wasm.HeapNoExn:
+			return ValExnRef
+		}
+	}
 	switch valTypeCode(t) {
 	case 0x7e:
 		return ValI64
@@ -110,13 +121,15 @@ func (t ValType) code() (byte, bool) {
 		return 0x6f, true
 	case ValExnRef:
 		return 0x69, true
+	case ValAnyRef:
+		return 0x6e, true
 	default:
 		return 0, false
 	}
 }
 
 func isReferenceValType(t ValType) bool {
-	return t == ValFuncRef || t == ValExternRef || t == ValExnRef
+	return t == ValFuncRef || t == ValExternRef || t == ValExnRef || t == ValAnyRef
 }
 
 func isWideValType(t ValType) bool {
@@ -141,6 +154,8 @@ func valTypeFromCode(code byte) (ValType, bool) {
 		return ValExternRef, true
 	case 0x69:
 		return ValExnRef, true
+	case 0x6e:
+		return ValAnyRef, true
 	default:
 		return 0, false
 	}

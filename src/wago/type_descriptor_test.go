@@ -97,7 +97,7 @@ func TestTypeDescriptorsRejectMalformedRecursiveIndex(t *testing.T) {
 	}
 }
 
-func TestValueTypeDescriptorABITypeKeepsIndexedFunctionCategory(t *testing.T) {
+func TestValueTypeDescriptorABITypeKeepsReferenceCategories(t *testing.T) {
 	indexed := ValueTypeDescriptor{Kind: ValueTypeReference, Ref: ReferenceTypeDescriptor{Heap: HeapTypeDescriptor{Defined: true, TypeIndex: 0}}}
 	types := []DefinedTypeDescriptor{{Kind: CompositeTypeFunction}}
 	if got, ok := indexed.ABIType(types); !ok || got != ValFuncRef {
@@ -106,8 +106,8 @@ func TestValueTypeDescriptorABITypeKeepsIndexedFunctionCategory(t *testing.T) {
 	if got, ok := indexed.ABIType([]DefinedTypeDescriptor{{Kind: CompositeTypeStruct}}); ok {
 		t.Fatalf("indexed struct ABI type = %v, true; want unsupported", got)
 	}
-	any := ValueTypeDescriptor{Kind: ValueTypeReference, Ref: ReferenceTypeDescriptor{Heap: HeapTypeDescriptor{Abstract: AbstractHeapAny}}}
-	if got, ok := any.ABIType(nil); ok {
-		t.Fatalf("anyref ABI type = %v, true; want unsupported", got)
+	any := ValueTypeDescriptor{Kind: ValueTypeReference, Ref: ReferenceTypeDescriptor{Nullable: true, Heap: HeapTypeDescriptor{Abstract: AbstractHeapAny}}}
+	if got, ok := any.ABIType(nil); !ok || got != ValAnyRef {
+		t.Fatalf("anyref ABI type = %v, %v; want anyref,true", got, ok)
 	}
 }

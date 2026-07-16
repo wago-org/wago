@@ -271,13 +271,17 @@ func validateSnapshotModule(c *Compiled) error {
 	if c == nil {
 		return errors.New("wago: snapshot has no bound module")
 	}
-	if (c.requiredFeatures|compiledStructuralRequiredFeatures(c))&CoreFeatureExceptionHandling != 0 {
+	required := c.requiredFeatures | compiledStructuralRequiredFeatures(c)
+	if required&CoreFeatureGC != 0 {
+		return errors.New("wago: WasmGC reference products cannot be snapshotted until heap, root, and barrier state has a persisted resolver")
+	}
+	if required&CoreFeatureExceptionHandling != 0 {
 		declarationOnlyLocalTags := c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 && c.tagImportCount() == 0 && len(c.Funcs) == 0
 		if !declarationOnlyLocalTags {
 			return errors.New("wago: exception-handling snapshots require declaration-only local tags without functions, imports, or active native handlers")
 		}
 	}
-	if (c.requiredFeatures|compiledStructuralRequiredFeatures(c))&(CoreFeatureTypedFunctionReferences|CoreFeatureTailCall) != 0 {
+	if required&(CoreFeatureTypedFunctionReferences|CoreFeatureTailCall) != 0 {
 		return errors.New("wago: typed function references and tail-call contexts cannot be snapshotted until descriptor owners and tail frames have a persisted resolver")
 	}
 	if err := c.validateSnapshotReferenceGlobals(); err != nil {

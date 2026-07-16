@@ -125,6 +125,10 @@ func evalConstExprBytesWithModule(b []byte, want wasm.ValType, m *wasm.Module) (
 			got.vtype = wasm.FuncRef
 		case -17, -14: // extern (0x6f) / noextern (0x72): null externref
 			got.vtype = wasm.ExternRef
+		case -18: // any (0x6e): null GC-category reference
+			got.vtype = wasm.RefVal(wasm.AbsRef(wasm.HeapAny))
+		case -23: // exn (0x69): null exception reference
+			got.vtype = wasm.RefVal(wasm.AbsRef(wasm.HeapExn))
 		default:
 			if heap < 0 || m == nil {
 				return constExprResult{}, fmt.Errorf("unsupported ref.null heap type %d", heap)
