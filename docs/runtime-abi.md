@@ -369,6 +369,34 @@ No fixed ABI layout grows: `Compiled=712`, `Instance=792`, `compiledCodeCache=64
 exact branch-product enums nor helper admission, roots, canonical maps, conversions, or live identities.
 Snapshots, signal bounds, public admission, and arm64 execution remain closed.
 
+Iteration 52 adds two non-collecting bulk-array helper calls. `array.fill` copies five scalar words into the
+parked frame: destination compact ref, destination index, value bits, length, and exact type index.
+`array.copy` copies seven: destination ref/index, source ref/index, length, destination type, and source type.
+Both helpers preflight every null/type/range/value obligation before the first write and never allocate,
+collect, retain operands, or expose payload pointers. The original object refs may therefore remain ordinary
+canonical native operands across parked Go without publishing a collector frame. This rule is specific to
+these helpers and does not authorize `array.init_*` or any bulk helper that may allocate or collect.
+
+Reference fill/copy stores execute object and element-card barriers per destination element and invoke the
+post-write bulk barrier after the complete range is visible. Same-array copy selects forward/backward
+iteration for memmove semantics and allocates no temporary buffer. The official hash-pinned products use
+packed i8 arrays, but collector tests separately prove nullable/non-null storage compatibility, rejected-copy
+atomicity, Throughput remembered/card publication, and Tiny remark preservation.
+
+The exact copy product also contains a mutable GC array global. Its overlap functions allocate one array,
+run only the non-collecting copy helper while that local is live, and perform `global.set` as the final native
+operation. After successful return, `Instance.invoke` and `invokeLocalContext` call a reconciliation routine
+that is gated to `stagedGCArrayProductBulkCopy`: it reads at most two compact global cells, validates that the
+high word is zero, and updates the corresponding checked collector slots under the existing GC mutex. No
+later may-collect helper runs before this synchronization. A trap before the final `global.set` leaves both
+cell and slot unchanged. This post-return rule must not be generalized to a mutable GC global whose new value
+can cross another allocation, host/cross-instance call, tail transfer, or snapshot boundary.
+
+No fixed ABI layout grows: `Compiled=712`, `Instance=792`, `compiledCodeCache=64`,
+`compiledMemoryDirectory=136`, `gcArrayGlobalInit=48`, lazy `instancePluginState=144`, and
+`gc.Collector=640`. Codec v27 serializes neither the bulk product/helper bits nor the mutable cell/slot
+coherence rule or live refs; guard mode, public admission, snapshots, and arm64 execution remain closed.
+
 ## Global coherence invariant
 
 The global cell is the sole host- and cross-instance-visible storage for a

@@ -283,9 +283,15 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   ten-slot checked anyref table and conversion owner, allocate a one-field i16 struct plus a length-three
   i8 array, and repeat in Tiny72 with exactly two live objects. Concrete products reuse the twenty-slot
   table and canonical representatives; nullability-only leaders instantiate separately. Stable parked
-  i31 branching measures 124.2–127.0 ns/op, 0 B/op, and 0 allocs/op. General frame roots, object-valued
-  mutable/reference globals, bulk arrays, type-subtyping, public family admission, and broader platform
-  products remain.
+  i31 branching measures 124.2–127.0 ns/op, 0 B/op, and 0 allocs/op. Iteration 52 pins and closes
+  `gc/array_fill.wast` and `gc/array_copy.wast`: combined accounting is gap-free at 54 commands / 2
+  modules / 43 assertions / 7 invalid / 0 gates / 0 blocked. The exact parked helpers never allocate or
+  collect; they preflight complete ranges and reference compatibility before mutation, preserve packed-i8
+  truncation and memmove overlap, and use object/card/post-bulk barriers with Tiny remark proof. The copy
+  product's final `global.set` is followed by a product-gated two-slot cell/root reconciliation; Tiny96
+  repeats 100 overlap replacements and retains exactly two current arrays. Packed fill measures
+  170.2–173.1 ns/op, 0 B/op, and 0 allocs/op. General frame roots, broader object-valued mutable/reference
+  globals, array init operations, type-subtyping, public family admission, and broader platform products remain.
 - [ ] Reach zero unexplained failures/skips in the official Release 3 core suite.
 
 **Engine & performance** (no-ir-plan P1–P7, measured against P1's stats)

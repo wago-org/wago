@@ -25,9 +25,11 @@ identity matrix without adding native frame publication. Iteration 50 adds ident
 reference casts for the two exact official leaders, with a dedicated cast-failure trap, canonical defined-type
 matching, and the same bounded table/conversion ownership. Iteration 51 closes both official branch-cast
 families with exact label-prefix/result refinement, nested control ordering, and identity-preserving selected
-edges/fallthrough over the same bounded owners. General native frame publication, object-valued mutable/
-reference globals, broad public ownership, and snapshots remain incomplete. These bounded products must not
-be presented as general executable WasmGC support.
+edges/fallthrough over the same bounded owners. Iteration 52 closes the official packed `array.fill` and
+`array.copy` leaders through non-collecting bulk helpers with full preflight, overlap-safe copy, reference
+barrier/Tiny remark proof, and one exact post-return mutable-global root reconciliation. General native frame
+publication, broader object-valued mutable/reference globals, broad public ownership, and snapshots remain
+incomplete. These bounded products must not be presented as general executable WasmGC support.
 
 ## Why a wago-native collector
 
@@ -745,6 +747,44 @@ metadata outside the narrow local lifecycle product. WasmGC opcodes, GC-managed 
 payloads, exported exception references, and public/guard/arm64 admission remain fail-
 closed.
 
+### Iteration 52 exact bulk array fill/copy products
+
+The official `gc/array_fill.wast` and `gc/array_copy.wast` files are gap-free under staged admission.
+Combined schema-2 accounting is 54 commands / 2 modules / 43 assertions / 7 invalid / 0 malformed /
+0 gates / 0 blocked / 0 hidden failures. The 183-byte fill leader and 402-byte copy leader each own one
+immutable length-12 i8 array and one mutable length-12 i8 array. Validation now rejects immutable fill/copy
+destinations and requires packed storage equality or ordinary source-to-destination value subtyping before
+execution.
+
+`Collector.ArrayFill` and `Collector.ArrayCopy` are non-allocating and non-collecting. Both resolve and
+validate the complete object/range/value contract before the first write. Fill preserves packed truncation.
+Copy validates both arrays and all reference payloads before mutation, then uses forward or backward
+iteration for exact memmove overlap without allocating a temporary slice. Reference writes use the existing
+object and element-card barriers per store and invoke the post-write bulk barrier only after the destination
+range contains the new references. Throughput tests prove remembered/card publication; a Tiny test advances
+a rooted parent to remark/black, fills an otherwise unrooted child, and proves the child survives the cycle.
+The official products contain only packed i8 arrays, so the reference tests establish the helper contract
+without widening those exact product hashes.
+
+The two globals are created and installed in checked collector slots transactionally. `array.fill` mutates
+only the rooted object payload. The copy overlap functions allocate one replacement array with explicit
+empty roots, perform only the non-collecting copy helper while that local is live, and execute `global.set`
+as the final native operation. After successful return, only the exact bulk-copy product synchronizes the
+bounded two-entry global mapping from the compact native cells into checked collector slots. No later
+may-collect helper can observe the new cell before reconciliation. Tiny96 repeats 100 alternating overlap
+replacements and a full collection retains exactly the immutable array plus the current mutable array;
+trapping copies leave the cell and slot unchanged.
+
+The fill product measures 183 Wasm / 834 linked code / 1,220 codec bytes. The copy product measures
+402 / 2,331 / 2,863 bytes. Five 500 ms fill samples measure 170.2–173.1 ns/op, all 0 B/op and
+0 allocs/op. Fixed layouts remain `Compiled=712`, `Instance=792`, `compiledCodeCache=64`,
+`compiledMemoryDirectory=136`, `gcArrayGlobalInit=48`, lazy `instancePluginState=144`, and
+`gc.Collector=640`. Codec v27 persists type/global/data/code metadata but no bulk product/helper admission,
+mutable cell/slot synchronization rule, compact live value, or collector state. Private reload loses staged
+admission; snapshots, guard mode, public GC admission, and arm64 execution remain fail-closed. This exact
+post-return rule does not authorize a mutable GC global followed by another allocation, host/cross-instance
+transfer, or arbitrary non-null ingress.
+
 ## Collector lifetime
 
 `Collector.Close` is idempotent and releases heap backing storage plus root/card/mark metadata so an instance shutdown does not retain guest refs. After close, operations that need a live heap return `gc: collector closed`: allocation, collection, verification, object access/mutation, promotion, and checked root-slot creation/access/mutation. `Step` follows the same rule for both profiles; on Throughput it routes through `CollectMinor`, and on Tiny it rejects the closed collector before advancing incremental state.
@@ -1266,8 +1306,8 @@ Tests exercise tiny nurseries, collect-every-alloc, exact scanning, cycles, root
   `gc/ref_test`, `gc/extern`, `gc/ref_eq`, `gc/ref_cast`, `gc/br_on_cast`, and
   `gc/br_on_cast_fail` families are wired to amd64, including bounded array constructors/access/barriers,
   collector-free i31 operations, dynamic tests/casts, identity-preserving cast branches, extern conversion,
-  and compact null/i31/object equality. Array fill/copy/init, reference struct fields, broader GC constant
-  expressions, and type-subtyping remain.
+  and compact null/i31/object equality. Array fill/copy are exact staged products; array init operations,
+  reference struct fields, broader GC constant expressions, and type-subtyping remain.
 - The parked-Go runtime-call ABI is proven for exact empty-frame-root numeric/packed
   allocations, non-collecting numeric access/mutation, ordered immutable collector-rooted
   globals, per-instance passive data descriptors, and one result-token root installed only
