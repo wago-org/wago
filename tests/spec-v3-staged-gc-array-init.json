@@ -169,7 +169,6 @@
           "size": 268,
           "sha256": "77153cc9166a1b88e564a93e473e2d4d31979288ac4b82b9b0038911cd15983b",
           "class": "funcref-element-init",
-          "gate": "array init segment/root helper product",
           "type_graph": "rec[func()-\u003e()]|rec[array{ref type 0}]|rec[array{mut funcref}]|rec[func(i32)-\u003e()]|rec[func(i32,i32,i32)-\u003e()]",
           "state_graph": "imports=0 funcs=5 globals=[const ref type 1,const ref type 2] tables=1 memories=0 tags=0 elements=1 data=0 exports=[array_call_nth=0:1,array_init_elem-null=0:2,array_init_elem=0:3,drop_segs=0:4]",
           "control_graph": "preflight null, destination and passive-element ranges, and every selected reference subtype before writes; publish object/card/post-bulk barriers as applicable; drop preserves zero-length success",
@@ -272,22 +271,16 @@
           "error": "type mismatch"
         }
       ],
-      "gates": [
-        {
-          "family": "gc",
-          "reason": "array init segment/root helper product",
-          "count": 1
-        }
-      ],
+      "gates": null,
       "counts": {
         "commands": 24,
-        "modules_passed": 0,
-        "assertions_passed": 0,
+        "modules_passed": 1,
+        "assertions_passed": 19,
         "expected_invalid": 3,
         "expected_unlinkable": 0,
         "expected_uninstantiable": 0,
-        "expected_feature_rejects": 1,
-        "blocked_commands": 19,
+        "expected_feature_rejects": 0,
+        "blocked_commands": 0,
         "unexpected_compile_rejects": 0,
         "unexpected_link_rejects": 0,
         "failures": 0
@@ -296,13 +289,13 @@
   ],
   "totals": {
     "commands": 72,
-    "modules_passed": 2,
-    "assertions_passed": 42,
+    "modules_passed": 3,
+    "assertions_passed": 61,
     "expected_invalid": 5,
     "expected_unlinkable": 0,
     "expected_uninstantiable": 0,
-    "expected_feature_rejects": 1,
-    "blocked_commands": 19,
+    "expected_feature_rejects": 0,
+    "blocked_commands": 0,
     "unexpected_compile_rejects": 0,
     "unexpected_link_rejects": 0,
     "failures": 0
