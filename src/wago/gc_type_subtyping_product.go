@@ -22,7 +22,7 @@ const (
 )
 
 func (p stagedGCTypeSubtypingProduct) usesRefTest() bool {
-	return p == stagedGCTypeSubtypingRefTestSingle
+	return p == stagedGCTypeSubtypingRefTestSingle || p == stagedGCTypeSubtypingRefTestMulti
 }
 
 func stagedGCTypeSubtypingProductPinned(data []byte, product stagedGCTypeSubtypingProduct) bool {
@@ -51,6 +51,10 @@ func stagedGCTypeSubtypingProductPinned(data []byte, product stagedGCTypeSubtypi
 		"9b8111ee2e3fb91cc7801a63b0a5a8e97eca7b5665f7e6fed5be8a8327534213",
 		"60adfeb1cae8b65d159f8c0729630c005f5b530e90d190189487ee241f30c523":
 		pinned = stagedGCTypeSubtypingRefTestSingle
+	case "5f080674a00a73b3dba391bb1967aa22f4dd6f1b43b9b49aff08528c3305aa6b",
+		"b561b7bcd131223f573b787ff002cec3ef83d1cb90fc440ec24d347cc789df1d",
+		"893dcf058c5b28436567028ab41bfb409c5f1acc737e764a3dfcc51f6be8200e":
+		pinned = stagedGCTypeSubtypingRefTestMulti
 	}
 	return pinned == product
 }
@@ -60,7 +64,7 @@ func stagedGCTypeSubtypingProductShape(m *wasm.Module) (stagedGCTypeSubtypingPro
 		return 0, fmt.Errorf("nil module")
 	}
 	if len(m.Elements) != 0 || len(m.Exports) != 0 {
-		return stagedGCTypeSubtypingRefTestSingleShape(m)
+		return stagedGCTypeSubtypingRefTestShape(m)
 	}
 	if len(m.Imports) != 0 || m.TableCount() != 0 || m.MemCount() != 0 || len(m.Data) != 0 || m.TagCount() != 0 || m.Start != nil {
 		return 0, fmt.Errorf("type-subtyping products reject imports, tables, memories, data, tags, and start")
@@ -145,53 +149,105 @@ func stagedGCTypeSubtypingRefFuncGlobalShape(m *wasm.Module) (stagedGCTypeSubtyp
 	return stagedGCTypeSubtypingRefFuncGlobals, nil
 }
 
-func stagedGCTypeSubtypingRefTestSingleShape(m *wasm.Module) (stagedGCTypeSubtypingProduct, error) {
+func stagedGCTypeSubtypingRefTestShape(m *wasm.Module) (stagedGCTypeSubtypingProduct, error) {
 	if len(m.Imports) != 0 || len(m.Globals) != 0 || m.TableCount() != 0 || m.MemCount() != 0 || len(m.Data) != 0 || m.TagCount() != 0 || m.Start != nil {
-		return 0, fmt.Errorf("single ref.test product rejects imports, globals, tables, memories, data, tags, and start")
+		return 0, fmt.Errorf("function ref.test product rejects imports, globals, tables, memories, data, tags, and start")
 	}
-	if len(m.FuncTypes) != 2 || len(m.Code) != 2 || len(m.Code[0].Locals.Runs) != 0 || len(m.Code[1].Locals.Runs) != 0 || !isExactEndBody(m.Code[0].BodyBytes) {
-		return 0, fmt.Errorf("single ref.test product requires one empty local function and one local runner")
+	if len(m.FuncTypes) != len(m.Code) || (len(m.Code) != 2 && len(m.Code) != 3) {
+		return 0, fmt.Errorf("function ref.test product requires two or three local functions")
 	}
-	if len(m.Elements) != 1 || m.Elements[0].Mode.Kind != wasm.ElemDeclarative || m.Elements[0].Kind.Kind != wasm.ElemFuncs || len(m.Elements[0].Kind.Funcs) != 1 || m.Elements[0].Kind.Funcs[0] != 0 {
-		return 0, fmt.Errorf("single ref.test product requires one declarative element naming local function 0")
+	runner := len(m.Code) - 1
+	for i := range m.Code {
+		if len(m.Code[i].Locals.Runs) != 0 {
+			return 0, fmt.Errorf("function ref.test product function %d has locals", i)
+		}
 	}
-	if len(m.Exports) != 1 || m.Exports[0].Name != "run" || m.Exports[0].Index.Kind != wasm.ExternFunc || m.Exports[0].Index.Index != 1 {
-		return 0, fmt.Errorf("single ref.test product requires only the local runner export")
+	for i := 0; i < runner; i++ {
+		if runner == 1 && !isExactEndBody(m.Code[i].BodyBytes) {
+			return 0, fmt.Errorf("single-result function ref.test source must be empty")
+		}
+		if runner == 2 && !isExactUnreachableBody(m.Code[i].BodyBytes) {
+			return 0, fmt.Errorf("multi-result function ref.test sources must be exactly unreachable")
+		}
 	}
-	funcIndex, targetType, ok := exactRefFuncTestBody(m.Code[1].BodyBytes)
-	if !ok || funcIndex != 0 {
-		return 0, fmt.Errorf("single ref.test runner must test ref.func 0 exactly once")
+	if len(m.Elements) != runner {
+		return 0, fmt.Errorf("function ref.test product requires one declarative element per source function")
 	}
-	if _, ok := m.TypeFunc(targetType); !ok {
-		return 0, fmt.Errorf("single ref.test target type %d is not a function type", targetType)
+	for i := range m.Elements {
+		e := &m.Elements[i]
+		if e.Mode.Kind != wasm.ElemDeclarative || e.Kind.Kind != wasm.ElemFuncs || len(e.Kind.Funcs) != 1 || int(e.Kind.Funcs[0]) != i {
+			return 0, fmt.Errorf("function ref.test product element %d must name only local function %d", i, i)
+		}
 	}
-	return stagedGCTypeSubtypingRefTestSingle, nil
+	if len(m.Exports) != 1 || m.Exports[0].Name != "run" || m.Exports[0].Index.Kind != wasm.ExternFunc || int(m.Exports[0].Index.Index) != runner {
+		return 0, fmt.Errorf("function ref.test product requires only the local runner export")
+	}
+	pairs, ok := exactRefFuncTestBody(m.Code[runner].BodyBytes)
+	if !ok || len(pairs) == 0 {
+		return 0, fmt.Errorf("function ref.test runner must contain only ref.func/ref.test pairs")
+	}
+	ft, ok := m.ResolvedLocalFuncType(runner)
+	if !ok || len(ft.Results) != len(pairs) {
+		return 0, fmt.Errorf("function ref.test runner results do not match its test count")
+	}
+	for i, pair := range pairs {
+		if int(pair.funcIndex) >= runner {
+			return 0, fmt.Errorf("function ref.test pair %d names non-source function %d", i, pair.funcIndex)
+		}
+		if _, ok := m.TypeFunc(pair.targetType); !ok {
+			return 0, fmt.Errorf("function ref.test pair %d target type %d is not a function type", i, pair.targetType)
+		}
+		if !wasm.EqualValType(ft.Results[i], wasm.I32) {
+			return 0, fmt.Errorf("function ref.test runner result %d is not i32", i)
+		}
+	}
+	if len(pairs) == 1 && runner == 1 {
+		return stagedGCTypeSubtypingRefTestSingle, nil
+	}
+	if runner == 1 && len(pairs) == 2 || runner == 2 && (len(pairs) == 4 || len(pairs) == 8) {
+		return stagedGCTypeSubtypingRefTestMulti, nil
+	}
+	return 0, fmt.Errorf("function ref.test product has unsupported %d-source/%d-result shape", runner, len(pairs))
 }
 
-func exactRefFuncTestBody(body []byte) (funcIndex, targetType uint32, ok bool) {
+type exactRefFuncTestPair struct {
+	funcIndex  uint32
+	targetType uint32
+}
+
+func exactRefFuncTestBody(body []byte) ([]exactRefFuncTestPair, bool) {
 	r := wasm.NewReader(body)
-	op, err := r.Byte()
-	if err != nil || op != 0xd2 {
-		return 0, 0, false
+	var pairs []exactRefFuncTestPair
+	for r.HasNext() {
+		op, err := r.Byte()
+		if err != nil {
+			return nil, false
+		}
+		if op == 0x0b {
+			return pairs, r.BytesLeft() == 0
+		}
+		if op != 0xd2 {
+			return nil, false
+		}
+		funcIndex, err := r.U32()
+		if err != nil {
+			return nil, false
+		}
+		op, err = r.Byte()
+		if err != nil || op != 0xfb {
+			return nil, false
+		}
+		sub, err := r.U32()
+		if err != nil || sub != 20 {
+			return nil, false
+		}
+		target, err := r.S33()
+		if err != nil || target < 0 || uint64(target) > uint64(^uint32(0)) {
+			return nil, false
+		}
+		pairs = append(pairs, exactRefFuncTestPair{funcIndex: funcIndex, targetType: uint32(target)})
 	}
-	funcIndex, err = r.U32()
-	if err != nil {
-		return 0, 0, false
-	}
-	op, err = r.Byte()
-	if err != nil || op != 0xfb {
-		return 0, 0, false
-	}
-	sub, err := r.U32()
-	if err != nil || sub != 20 {
-		return 0, 0, false
-	}
-	target, err := r.S33()
-	if err != nil || target < 0 || uint64(target) > uint64(^uint32(0)) {
-		return 0, 0, false
-	}
-	end, err := r.Byte()
-	return funcIndex, uint32(target), err == nil && end == 0x0b && r.BytesLeft() == 0
+	return nil, false
 }
 
 func exactRefFuncBodyIndex(body []byte) (uint32, bool) {
