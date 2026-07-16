@@ -293,7 +293,7 @@
       "size": 185,
       "sha256": "375a327f8469d41d4f15f05109533a90127fc5287414364e227203d7d48e7662",
       "class": "runtime-finality-call-cast",
-      "gate": "final function identity call_indirect and ref.cast runtime",
+      "admitted": true,
       "validator_gap": false,
       "type_graph": "rec[sub(final=false,supers=[],func()-\u003e())]|rec[func()-\u003e()]",
       "state_graph": "imports=0 funcs=6 globals=[] tables=1 memories=0 tags=0 elements=1 data=0 exports=[fail1=0:2,fail2=0:3,fail3=0:4,fail4=0:5]",
@@ -1164,11 +1164,6 @@
     },
     {
       "family": "gc",
-      "reason": "final function identity call_indirect and ref.cast runtime",
-      "count": 1
-    },
-    {
-      "family": "gc",
       "reason": "non-flat declared subtype exported function invocation",
       "count": 1
     },
@@ -1180,13 +1175,13 @@
   ],
   "counts": {
     "commands": 170,
-    "modules_passed": 24,
-    "assertions_passed": 16,
+    "modules_passed": 25,
+    "assertions_passed": 20,
     "expected_invalid": 24,
     "expected_unlinkable": 0,
     "expected_uninstantiable": 0,
-    "expected_feature_rejects": 21,
-    "blocked_commands": 32,
+    "expected_feature_rejects": 20,
+    "blocked_commands": 28,
     "unexpected_compile_rejects": 0,
     "unexpected_link_rejects": 0,
     "failures": 0
