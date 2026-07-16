@@ -30,7 +30,7 @@ func (p stagedGCTypeSubtypingProduct) usesRefTest() bool {
 }
 
 func (p stagedGCTypeSubtypingProduct) usesRuntimeFunctionIdentity() bool {
-	return p == stagedGCTypeSubtypingRuntimeCallCast || p == stagedGCTypeSubtypingRuntimeFinalityCallCast
+	return p == stagedGCTypeSubtypingRuntimeCallCast || p == stagedGCTypeSubtypingRuntimeFinalityCallCast || p == stagedGCTypeSubtypingRuntimeTypedTableCall
 }
 
 func stagedGCTypeSubtypingProductPinned(data []byte, product stagedGCTypeSubtypingProduct) bool {
@@ -176,6 +176,9 @@ func stagedGCTypeSubtypingRuntimeCallCastShape(m *wasm.Module) (stagedGCTypeSubt
 	if len(m.Types) == 2 && len(m.FuncTypes) == 6 && len(m.Code) == 6 && len(m.Elements) == 1 && len(m.Exports) == 4 {
 		return stagedGCTypeSubtypingRuntimeFinalityCallCastShape(m)
 	}
+	if len(m.Types) == 4 && len(m.FuncTypes) == 5 && len(m.Code) == 5 && len(m.Elements) == 1 && len(m.Exports) == 3 {
+		return stagedGCTypeSubtypingRuntimeTypedTableCallShape(m)
+	}
 	if len(m.Types) != 4 || len(m.FuncTypes) != 10 || len(m.Code) != 10 || len(m.Elements) != 1 || len(m.Exports) != 7 {
 		return 0, fmt.Errorf("runtime call/cast product requires 4 type groups, 10 functions, 1 element, and 7 exports")
 	}
@@ -305,6 +308,85 @@ func stagedGCTypeSubtypingRuntimeFinalityCallCastShape(m *wasm.Module) (stagedGC
 		}
 	}
 	return stagedGCTypeSubtypingRuntimeFinalityCallCast, nil
+}
+
+func stagedGCTypeSubtypingRuntimeTypedTableCallShape(m *wasm.Module) (stagedGCTypeSubtypingProduct, error) {
+	for i := 0; i < 3; i++ {
+		if len(m.Types[i].SubTypes) != 1 {
+			return 0, fmt.Errorf("runtime typed-table group %d must contain one member", i)
+		}
+		st := &m.Types[i].SubTypes[0]
+		if st.Final || !st.HasPrefix || st.Comp.Kind != wasm.CompFunc || len(st.Comp.Params) != 0 || len(st.Comp.Results) != 0 {
+			return 0, fmt.Errorf("runtime typed-table type %d must be open () -> ()", i)
+		}
+		if i == 0 {
+			if len(st.Supers) != 0 {
+				return 0, fmt.Errorf("runtime typed-table root type must have no super")
+			}
+		} else if len(st.Supers) != 1 || st.Supers[0].Rec || st.Supers[0].Index != uint32(i-1) {
+			return 0, fmt.Errorf("runtime typed-table type %d must extend type %d", i, i-1)
+		}
+	}
+	runner := &m.Types[3]
+	if len(runner.SubTypes) != 1 || !runner.SubTypes[0].Final || runner.SubTypes[0].HasPrefix || len(runner.SubTypes[0].Supers) != 0 || runner.SubTypes[0].Comp.Kind != wasm.CompFunc || len(runner.SubTypes[0].Comp.Params) != 0 || len(runner.SubTypes[0].Comp.Results) != 0 {
+		return 0, fmt.Errorf("runtime typed-table runner type must be final () -> ()")
+	}
+	for source := uint32(0); source < 3; source++ {
+		for target := uint32(0); target < 3; target++ {
+			actual := wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: source}), false)
+			required := wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: target}), false)
+			if m.ReferenceTypeSubtype(actual, required) != (source >= target) {
+				return 0, fmt.Errorf("runtime typed-table relation %d <: %d is outside the exact chain", source, target)
+			}
+		}
+	}
+	wantTypes := []uint32{1, 2, 3, 3, 3}
+	for i, want := range wantTypes {
+		if m.FuncTypes[i].Rec || m.FuncTypes[i].Index != want || len(m.Code[i].Locals.Runs) != 0 {
+			return 0, fmt.Errorf("runtime typed-table function %d has unexpected type or locals", i)
+		}
+	}
+	t := m.Tables[0].Type
+	wantTableType := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: 1}), false))
+	if !wasm.EqualValType(wasm.RefVal(t.Ref), wantTableType) || t.Limits.Addr64 || t.Limits.Min != 2 || t.Limits.Max == nil || *t.Limits.Max != 2 || m.Tables[0].Init != nil {
+		return 0, fmt.Errorf("runtime typed table must be exact table 2 2 (ref null type 1)")
+	}
+	for _, source := range []uint32{1, 2} {
+		actual := wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: source}), false)
+		if !m.ReferenceTypeSubtype(actual, t.Ref) {
+			return 0, fmt.Errorf("runtime typed-table source type %d is not storable", source)
+		}
+	}
+	if m.ReferenceTypeSubtype(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: 0}), false), t.Ref) {
+		return 0, fmt.Errorf("runtime typed-table root type unexpectedly fits narrower storage")
+	}
+	e := &m.Elements[0]
+	if e.Mode.Kind != wasm.ElemActive || e.Mode.Table != 0 || !isExactI32ConstZeroBody(e.Mode.Offset.BodyBytes) || e.Kind.Kind != wasm.ElemTypedExprs || !wasm.EqualValType(wasm.RefVal(e.Kind.Ref), wantTableType) || len(e.Kind.Exprs) != 2 {
+		return 0, fmt.Errorf("runtime typed-table element must initialize two typed local descriptors at table offset zero")
+	}
+	for i := range e.Kind.Exprs {
+		if !isExactRefFuncBody(e.Kind.Exprs[i].BodyBytes, uint32(i)) {
+			return 0, fmt.Errorf("runtime typed-table element %d must name local function %d", i, i)
+		}
+	}
+	wantExports := []string{"run", "fail1", "fail2"}
+	for i, want := range wantExports {
+		ex := m.Exports[i]
+		if ex.Name != want || ex.Index.Kind != wasm.ExternFunc || ex.Index.Index != uint32(i+2) {
+			return 0, fmt.Errorf("runtime typed-table export %d is outside the exact action surface", i)
+		}
+	}
+	wantBodies := []string{
+		"0b", "0b",
+		"410011000041011100004100110100410111010041011102000b",
+		"41001102000b", "41001103000b",
+	}
+	for i, want := range wantBodies {
+		if fmt.Sprintf("%x", m.Code[i].BodyBytes) != want {
+			return 0, fmt.Errorf("runtime typed-table function %d body is outside the exact product", i)
+		}
+	}
+	return stagedGCTypeSubtypingRuntimeTypedTableCall, nil
 }
 
 func stagedGCTypeSubtypingRefTestShape(m *wasm.Module) (stagedGCTypeSubtypingProduct, error) {

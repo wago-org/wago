@@ -42,6 +42,27 @@ func BenchmarkStagedGCTypeSubtypingRuntimeCallCast(b *testing.B) {
 	}
 }
 
+func BenchmarkStagedGCTypeSubtypingRuntimeTypedTable(b *testing.B) {
+	pin := stagedGCTypeSubtypingTypedTablePin
+	c, err := compileStagedGCTypeSubtypingProductForTest(stagedGCTypeSubtypingProductData(b, pin))
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer c.Close()
+	in, err := instantiateCore(c, InstantiateOptions{})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer in.Close()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := in.Invoke("run"); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
 func BenchmarkStagedGCTypeSubtypingRuntimeFinalityRecovery(b *testing.B) {
 	pin := stagedGCTypeSubtypingProductPins[24]
 	c, err := compileStagedGCTypeSubtypingProductForTest(stagedGCTypeSubtypingProductData(b, pin))
@@ -67,8 +88,8 @@ func TestStagedGCTypeSubtypingProductsCompile(t *testing.T) {
 	if got := unsafe.Sizeof(compiledCodeCache{}); got != 64 {
 		t.Fatalf("compiledCodeCache size = %d, want 64 bytes", got)
 	}
-	wantCodeBytes := []int{0, 0, 0, 0, 0, 0, 632, 592, 77, 77, 77, 77, 253, 253, 178, 178, 178, 178, 215, 448, 560, 178, 178, 7834, 1257}
-	wantCodecBytes := []int{349, 385, 347, 219, 238, 386, 1019, 1128, 499, 657, 420, 755, 598, 852, 648, 806, 648, 569, 923, 786, 1096, 470, 550, 8330, 1556}
+	wantCodeBytes := []int{0, 0, 0, 0, 0, 0, 632, 592, 77, 77, 77, 77, 253, 253, 178, 178, 178, 178, 215, 448, 560, 178, 178, 7834, 1257, 1431}
+	wantCodecBytes := []int{349, 385, 347, 219, 238, 386, 1019, 1128, 499, 657, 420, 755, 598, 852, 648, 806, 648, 569, 923, 786, 1096, 470, 550, 8330, 1556, 1791}
 	for i, pin := range stagedGCTypeSubtypingProductPins {
 		t.Run(pin.Filename, func(t *testing.T) {
 			data := stagedGCTypeSubtypingProductData(t, pin)
@@ -169,6 +190,44 @@ func TestStagedGCTypeSubtypingProductsCompile(t *testing.T) {
 					t.Fatalf("steady finality recovery = %v, allocs=%v; want nil, 0", invokeErr, allocs)
 				}
 			}
+			if pin.Class == stagedGCTypeSubtypingRuntimeTypedTableCall {
+				if got, want := len(in.funcRefDescs), 6*coreruntime.FuncRefDescBytes; got != want {
+					t.Fatalf("runtime typed-table descriptor arena = %d bytes, want %d", got, want)
+				}
+				if got, want := in.tableDescLen, 8+2*coreruntime.TableEntryBytes; got != want {
+					t.Fatalf("runtime typed-table image = %d bytes, want %d", got, want)
+				}
+				tableImage := unsafe.Slice((*byte)(offHeapPtr(in.tableDescPtr)), in.tableDescLen)
+				for i := 0; i < 2; i++ {
+					tableOff := 8 + i*coreruntime.TableEntryBytes
+					canonicalOff := (i + 1) * coreruntime.FuncRefDescBytes
+					wantIdentity := uint64(uintptr(unsafe.Pointer(&in.funcRefDescs[canonicalOff])))
+					if got := binary.LittleEndian.Uint64(tableImage[tableOff+coreruntime.TableEntryCodePtrOffset:]); got == 0 {
+						t.Fatalf("runtime typed-table entry %d has null code pointer", i)
+					}
+					if got := binary.LittleEndian.Uint64(tableImage[tableOff+coreruntime.TableEntryRefSlotOffset:]); got != wantIdentity {
+						t.Fatalf("runtime typed-table entry %d identity = %#x, want canonical local %#x", i, got, wantIdentity)
+					}
+				}
+				if got, err := in.Invoke("run"); err != nil || len(got) != 0 {
+					t.Fatalf("typed-table run = %v, %v; want empty success", got, err)
+				}
+				for _, name := range []string{"fail1", "fail2"} {
+					if _, err := in.Invoke(name); err == nil || !strings.Contains(err.Error(), "wrong signature") {
+						t.Fatalf("%s = %v, want wrong-signature trap", name, err)
+					}
+				}
+				if got, err := in.Invoke("run"); err != nil || len(got) != 0 {
+					t.Fatalf("post-trap typed-table recovery = %v, %v; want empty success", got, err)
+				}
+				var invokeErr error
+				allocs := testing.AllocsPerRun(1000, func() {
+					_, invokeErr = in.Invoke("run")
+				})
+				if invokeErr != nil || allocs != 0 {
+					t.Fatalf("steady typed-table run = %v, allocs=%v; want nil, 0", invokeErr, allocs)
+				}
+			}
 			if pin.Class == stagedGCTypeSubtypingRefFuncGlobals {
 				wantDescBytes := (len(c.FuncTypeID) + 1) * coreruntime.FuncRefDescBytes
 				if len(in.funcRefDescs) != wantDescBytes {
@@ -209,7 +268,7 @@ func TestStagedGCTypeSubtypingProductsCompile(t *testing.T) {
 				t.Fatalf("codec inherited type-subtyping admission: product=%v features=%v", loaded.stagedGCTypeSubtypingProduct(), loaded.stagedFeatures())
 			}
 			loadedMeta := (&Module{c: &loaded}).Metadata()
-			if !reflect.DeepEqual(loadedMeta.Types, meta.Types) || !reflect.DeepEqual(loadedMeta.Functions, meta.Functions) || !reflect.DeepEqual(loadedMeta.Globals, meta.Globals) {
+			if !reflect.DeepEqual(loadedMeta.Types, meta.Types) || !reflect.DeepEqual(loadedMeta.Functions, meta.Functions) || !reflect.DeepEqual(loadedMeta.Globals, meta.Globals) || !reflect.DeepEqual(loadedMeta.Tables, meta.Tables) || !reflect.DeepEqual(loadedMeta.ExportedTables, meta.ExportedTables) {
 				t.Fatalf("codec metadata changed\n got: %#v\nwant: %#v", loadedMeta, meta)
 			}
 			if _, err := instantiateCore(&loaded, InstantiateOptions{}); err == nil || !strings.Contains(err.Error(), "required feature") {
