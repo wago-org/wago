@@ -9,19 +9,12 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
-type stagedGCTypeSubtypingProductClass uint8
-
-const (
-	stagedGCTypeSubtypingDeclarations stagedGCTypeSubtypingProductClass = iota + 1
-	stagedGCTypeSubtypingRecursiveFunctions
-)
-
 type stagedGCTypeSubtypingProductPin struct {
 	Filename string
 	Line     int
 	Size     int
 	SHA256   string
-	Class    stagedGCTypeSubtypingProductClass
+	Class    stagedGCTypeSubtypingProduct
 	Hex      string
 }
 
@@ -46,7 +39,7 @@ func stagedGCTypeSubtypingProductData(t testing.TB, pin stagedGCTypeSubtypingPro
 }
 
 func TestStagedGCTypeSubtypingProductInventory(t *testing.T) {
-	seen := map[stagedGCTypeSubtypingProductClass]int{}
+	seen := map[stagedGCTypeSubtypingProduct]int{}
 	for _, pin := range stagedGCTypeSubtypingProductPins {
 		data := stagedGCTypeSubtypingProductData(t, pin)
 		if len(data) != pin.Size {
@@ -62,9 +55,39 @@ func TestStagedGCTypeSubtypingProductInventory(t *testing.T) {
 		if err := wasm.ValidateModule(m); err != nil {
 			t.Fatalf("%s validate: %v", pin.Filename, err)
 		}
+		product, err := stagedGCTypeSubtypingProductShape(m)
+		if err != nil || product != pin.Class {
+			t.Fatalf("%s product = %v, %v; want %v", pin.Filename, product, err, pin.Class)
+		}
+		if !stagedGCTypeSubtypingProductPinned(data, product) {
+			t.Fatalf("%s is not in the production pin set", pin.Filename)
+		}
 		seen[pin.Class]++
 	}
 	if seen[stagedGCTypeSubtypingDeclarations] != 6 || seen[stagedGCTypeSubtypingRecursiveFunctions] != 2 {
 		t.Fatalf("product classes = %#v, want declarations/recursive-functions = 6/2", seen)
+	}
+}
+
+func TestStagedGCTypeSubtypingProductRejectsWidening(t *testing.T) {
+	declaration, err := wasm.DecodeModule(stagedGCTypeSubtypingProductData(t, stagedGCTypeSubtypingProductPins[0]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	declaration.Exports = append(declaration.Exports, wasm.Export{Name: "x"})
+	if _, err := stagedGCTypeSubtypingProductShape(declaration); err == nil {
+		t.Fatal("declaration product with an export unexpectedly admitted")
+	}
+
+	functions, err := wasm.DecodeModule(stagedGCTypeSubtypingProductData(t, stagedGCTypeSubtypingProductPins[6]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	functions.Code[0].BodyBytes = []byte{0x00, 0x0b}
+	if _, err := stagedGCTypeSubtypingProductShape(functions); err == nil {
+		t.Fatal("recursive-function product with unreachable unexpectedly admitted")
+	}
+	if stagedGCTypeSubtypingProductPinned(stagedGCTypeSubtypingProductData(t, stagedGCTypeSubtypingProductPins[0]), stagedGCTypeSubtypingRecursiveFunctions) {
+		t.Fatal("declaration binary matched the recursive-function product class")
 	}
 }

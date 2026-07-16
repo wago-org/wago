@@ -14,14 +14,13 @@ type compiledCodeCache struct {
 	base                            uintptr
 	refs                            int
 	closed                          bool
-	collectorFreeStructuralMetadata bool                  // exact staged products use struct descriptors only for function identity
-	collectorFreeGCArrayMetadata    bool                  // exact staged array declaration/binding products allocate no collector
-	gcStructHelpers                 bool                  // exact collector-backed products use the synchronous internal helper dispatcher
-	gcArrayHelpers                  bool                  // exact collector-backed array products use the same parked-Go dispatcher
-	gcStructProduct                 stagedGCStructProduct // exact compile-only public GC ownership boundary; never serialized
-	gcArrayProduct                  stagedGCArrayProduct  // exact compile-only array boundary; never serialized
-	gcI31Product                    stagedGCI31Product    // exact non-allocating i31 boundary; never serialized
-	stagedFeatures                  CoreFeatures          // compile-only admission; never serialized or publicly loaded
+	collectorFreeStructuralMetadata bool                         // exact staged products use struct descriptors only for function identity
+	collectorFreeGCArrayMetadata    bool                         // exact staged array declaration/binding products allocate no collector
+	gcTypeSubtypingProduct          stagedGCTypeSubtypingProduct // exact first gc/type-subtyping no-object product; never serialized
+	gcStructProduct                 stagedGCStructProduct        // exact compile-only public GC ownership boundary; never serialized
+	gcArrayProduct                  stagedGCArrayProduct         // exact compile-only array boundary; never serialized
+	gcI31Product                    stagedGCI31Product           // exact non-allocating i31 boundary; never serialized
+	stagedFeatures                  CoreFeatures                 // compile-only admission; never serialized or publicly loaded
 }
 
 func installCompiledFinalizer(c *Compiled) *Compiled {
@@ -47,12 +46,19 @@ func (c *Compiled) collectorFreeStructuralMetadata() bool {
 	return c != nil && c.codeCache != nil && c.codeCache.collectorFreeStructuralMetadata
 }
 
+func (c *Compiled) stagedGCTypeSubtypingProduct() stagedGCTypeSubtypingProduct {
+	if c == nil || c.codeCache == nil {
+		return 0
+	}
+	return c.codeCache.gcTypeSubtypingProduct
+}
+
 func (c *Compiled) usesGCStructHelpers() bool {
-	return c != nil && c.codeCache != nil && c.codeCache.gcStructHelpers
+	return c != nil && c.stagedGCStructProduct().requiresHelpers()
 }
 
 func (c *Compiled) usesGCArrayHelpers() bool {
-	return c != nil && c.codeCache != nil && c.codeCache.gcArrayHelpers
+	return c != nil && (c.stagedGCStructProduct().requiresArrayHelpers() || c.stagedGCArrayProduct().requiresHelpers())
 }
 
 func (c *Compiled) collectorFreeGCArrayMetadata() bool {

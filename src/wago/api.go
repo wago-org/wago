@@ -821,6 +821,7 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 		return nil, fmt.Errorf("validate: %w", err)
 	}
 	structuralProduct := stagedStructuralTypeProduct(0)
+	gcTypeSubtypingProduct := stagedGCTypeSubtypingProduct(0)
 	gcStructProduct := stagedGCStructProduct(0)
 	gcArrayProduct := stagedGCArrayProduct(0)
 	gcI31Product := stagedGCI31Product(0)
@@ -838,6 +839,22 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 		}
 		if !stagedStructuralTypeProductPinned(wasmBytes, structuralProduct) {
 			return nil, fmt.Errorf("compile: staged collector-free structural product: binary is outside the pinned type-rec product set")
+		}
+	}
+	if features.GCTypeSubtypingProducts {
+		if goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64" {
+			return nil, fmt.Errorf("compile: unsupported gc/type-subtyping product staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
+		}
+		if cfg.boundsChecks == BoundsChecksSignalsBased {
+			return nil, fmt.Errorf("compile: unsupported gc/type-subtyping product with signals-based bounds checks")
+		}
+		var err error
+		gcTypeSubtypingProduct, err = stagedGCTypeSubtypingProductShape(m)
+		if err != nil {
+			return nil, fmt.Errorf("compile: staged gc/type-subtyping product: %w", err)
+		}
+		if !stagedGCTypeSubtypingProductPinned(wasmBytes, gcTypeSubtypingProduct) {
+			return nil, fmt.Errorf("compile: staged gc/type-subtyping product: binary is outside the first eight pinned products")
 		}
 	}
 	if features.GCStructProducts {
@@ -1501,15 +1518,16 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 		compiled.codeCache.stagedFeatures |= CoreFeatureGC
 		compiled.codeCache.collectorFreeStructuralMetadata = true
 	}
+	if gcTypeSubtypingProduct != 0 {
+		compiled.codeCache.stagedFeatures |= CoreFeatureGC
+		compiled.codeCache.gcTypeSubtypingProduct = gcTypeSubtypingProduct
+	}
 	if gcStructProduct != 0 {
 		compiled.codeCache.stagedFeatures |= CoreFeatureGC
-		compiled.codeCache.gcStructHelpers = gcStructProduct.requiresHelpers()
-		compiled.codeCache.gcArrayHelpers = gcStructProduct.requiresArrayHelpers()
 		compiled.codeCache.gcStructProduct = gcStructProduct
 	}
 	if gcArrayProduct != 0 {
 		compiled.codeCache.stagedFeatures |= CoreFeatureGC
-		compiled.codeCache.gcArrayHelpers = gcArrayProduct.requiresHelpers()
 		compiled.codeCache.gcArrayProduct = gcArrayProduct
 		compiled.codeCache.collectorFreeGCArrayMetadata = gcArrayProduct.metadataOnly()
 	}

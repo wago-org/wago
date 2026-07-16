@@ -167,7 +167,7 @@ func (c *Compiled) arenaNeedForImports(imports Imports, syncMode bool) int {
 }
 
 func (b *instanceBuilder) prepareCollector() error {
-	if !gc.HasHeapObjectTypes(b.c.GCTypeDescs) || b.c.collectorFreeStructuralMetadata() || b.c.collectorFreeGCArrayMetadata() {
+	if !gc.HasHeapObjectTypes(b.c.GCTypeDescs) || b.c.collectorFreeStructuralMetadata() || b.c.stagedGCTypeSubtypingProduct() != 0 || b.c.collectorFreeGCArrayMetadata() {
 		return nil
 	}
 	collector, err := gc.NewCollector(b.opts.GC, b.c.GCTypeDescs)
