@@ -297,10 +297,16 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   write, decodes i8/i16/i32/i64 little-endian values, and never allocates or collects. The three-global leader
   repeats under Tiny96 with all roots retained; the transient width leader repeats under Tiny24. Dropped
   segments preserve exact zero-length success and nonzero traps; source traps are atomic. Stable i8 init measures
-  175.4–177.5 ns/op, 0 B/op, and 0 allocs/op. Combined init accounting is now 72 commands / 2 passed modules /
-  42 passed assertions / 5 invalid / 1 gate / 19 blocked. The remaining exact gate is
-  `gc/array_init_elem.wast`; general frame roots, broader object-valued mutable/reference globals, passive
-  reference-element ownership/barriers/drop lifecycle, public family admission, and broader platforms remain.
+  175.4–177.5 ns/op, 0 B/op, and 0 allocs/op. Iteration 54 closes the 268-byte
+  `gc/array_init_elem.wast` funcref leader and all 19 return/trap actions. Its non-allocating helper preflights
+  both ranges, all selected canonical local descriptor identities, and exact subtype compatibility before any
+  write. Two length-12 array globals are checked collector roots; their 64-bit function identities are local
+  instance-owned, non-scanned words, so collector object/card barriers are not applicable. Tiny224 repeats 100
+  initializations, preserves atomic traps, retains exactly the two arrays across full collection, and honors
+  drop plus zero-length-after-drop. Stable element init measures 213.4–219.2 ns/op, 0 B/op, and 0 allocs/op.
+  Combined init accounting is gap-free at 72 commands / 3 modules / 61 assertions / 5 invalid / 0 gates /
+  0 blocked. General frame roots, broader object-valued mutable/reference globals, non-local reference arrays,
+  type-subtyping/binary-GC obligations, public family admission, and broader platforms remain.
 - [ ] Reach zero unexplained failures/skips in the official Release 3 core suite.
 
 **Engine & performance** (no-ir-plan P1–P7, measured against P1's stats)

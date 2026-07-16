@@ -27,9 +27,11 @@ matching, and the same bounded table/conversion ownership. Iteration 51 closes b
 families with exact label-prefix/result refinement, nested control ordering, and identity-preserving selected
 edges/fallthrough over the same bounded owners. Iteration 52 closes the official packed `array.fill` and
 `array.copy` leaders through non-collecting bulk helpers with full preflight, overlap-safe copy, reference
-barrier/Tiny remark proof, and one exact post-return mutable-global root reconciliation. General native frame
-publication, broader object-valued mutable/reference globals, broad public ownership, and snapshots remain
-incomplete. These bounded products must not be presented as general executable WasmGC support.
+barrier/Tiny remark proof, and one exact post-return mutable-global root reconciliation. Iteration 53 closes
+numeric `array.init_data`; iteration 54 closes exact local-funcref `array.init_elem` through non-scanned
+64-bit descriptor identities, complete preflight, two rooted arrays, and Tiny224 lifecycle proof. General
+native frame publication, broader object-valued mutable/reference globals, broad public ownership, and
+snapshots remain incomplete. These bounded products must not be presented as general executable WasmGC support.
 
 ## Why a wago-native collector
 
@@ -835,6 +837,47 @@ the lazy `instancePluginState` from 144 to 152 bytes; instances without plugin s
 Codec v27 persists no init product/helper/root admission or live passive descriptor state. Private reload,
 snapshots, signal-backed bounds, public GC admission, and arm64 execution remain fail-closed.
 
+### Iteration 54 exact funcref array element initialization
+
+Iteration 54 closes the sole official `gc/array_init_elem.wast` leader without treating function
+references as compact collector handles. The 268-byte/SHA-pinned module has two immutable global
+arrays of length 12: one non-null indexed-function array initialized from local `ref.func`, and one
+mutable nullable `funcref` array initialized to null. Both arrays are ordinary collector objects and
+are installed in checked global slots before execution. Their payload values, however, are canonical
+64-bit local function-descriptor identities. For this exact product the two runtime array descriptors
+use non-scanned i64 storage, preserving the native funcref ABI and preventing the collector from
+misinterpreting descriptor pointers as `gc.Ref` values.
+
+Helper ID 30 copies six words in operand order: destination compact array ref, destination index,
+passive source index, element count, destination type index, and element-segment index. Before the
+first write it checks the exact product/type/segment, destination range, current descriptor length,
+every selected passive descriptor identity, local descriptor-arena ownership, and structural source-
+to-destination reference subtyping. A fixed twelve-word Go-stack buffer holds the preflighted
+identities; no cache, map, heap allocation, collector allocation, or native-frame publication is
+introduced. `Collector.ArrayInitWords` then stores the complete range only after preflight.
+
+Collector object/card/post-bulk barriers are deliberately not emitted for these payloads: they are
+function lifecycle identities owned by the executing instance, not guest heap references. The
+instance itself owns the local descriptor arena for the entire activation, and this exact module has
+no imports, cross-instance descriptors, host refs, mutable function storage outside the destination,
+or escaping funcref result. A future product containing compact GC refs must use the ordinary
+object/card/post-bulk contract instead; this exception must not be generalized by ABI category alone.
+
+`elem.drop` zeros the live passive descriptor length. Non-zero post-drop initialization traps before
+mutation, while zero length remains valid at the exact source/destination ends. Throughput and
+Tiny224 repeat 100 initialize-and-call cycles, survive a full collection with exactly the two rooted
+arrays, preserve local call identity after collection, and prove source-range trap atomicity. Strict
+combined array-init accounting is now gap-free at 72 commands / 3 modules / 61 assertions / 5 invalid /
+0 gates / 0 blocked / 0 hidden failures. The element product measures 268 Wasm / 1,683 linked code /
+2,229 codec bytes; five 500 ms samples measure 213.4–219.2 ns/op, 0 B/op, and 0 allocs/op.
+
+No fixed layout grows: `Compiled=712`, `Instance=792`, `compiledCodeCache=64`,
+`compiledMemoryDirectory=136`, `gcArrayGlobalInit=48`, lazy `instancePluginState=152`, and
+`gc.Collector=640` bytes remain unchanged. Codec v27 serializes structural types, globals, elements,
+and code but no exact product, i64 descriptor reinterpretation, live function identity, helper bit,
+checked roots, or dropped descriptor state. Private reload, snapshots, guard mode, public GC
+admission, and arm64 execution remain fail-closed.
+
 ## Collector lifetime
 
 `Collector.Close` is idempotent and releases heap backing storage plus root/card/mark metadata so an instance shutdown does not retain guest refs. After close, operations that need a live heap return `gc: collector closed`: allocation, collection, verification, object access/mutation, promotion, and checked root-slot creation/access/mutation. `Step` follows the same rule for both profiles; on Throughput it routes through `CollectMinor`, and on Tiny it rejects the closed collector before advancing incremental state.
@@ -1356,15 +1399,15 @@ Tests exercise tiny nurseries, collect-every-alloc, exact scanning, cycles, root
   `gc/ref_test`, `gc/extern`, `gc/ref_eq`, `gc/ref_cast`, `gc/br_on_cast`, and
   `gc/br_on_cast_fail` families are wired to amd64, including bounded array constructors/access/barriers,
   collector-free i31 operations, dynamic tests/casts, identity-preserving cast branches, extern conversion,
-  and compact null/i31/object equality. Array fill/copy and numeric `array.init_data` are exact staged
-  products; reference `array.init_elem`, reference struct fields, broader GC constant expressions, and
-  broader type-subtyping products remain.
+  and compact null/i31/object equality. Array fill/copy plus both `array.init_data` and the exact local-
+  funcref `array.init_elem` product are staged and gap-free; reference struct fields, non-local/reference-
+  owning array products, broader GC constant expressions, and broader type-subtyping products remain.
 - The parked-Go runtime-call ABI is proven for exact empty-frame-root numeric/packed
-  allocations, non-collecting numeric access/mutation/data initialization, ordered immutable collector-rooted
-  globals, per-instance passive data descriptors, and one result-token root installed only
-  after the native call returns. General allocation with live frame refs, passive-element GC
-  roots, field/element object+bulk barriers, and traps still need the backend-neutral root-
-  publication ABI before broader generated code can use objects.
+  allocations, non-collecting numeric access/mutation/data initialization, exact local-funcref element
+  initialization, ordered immutable collector-rooted globals, per-instance passive descriptors, and one
+  result-token root installed only after the native call returns. General allocation with live frame refs,
+  passive-element compact-GC roots, reference field/element object+bulk barriers, and traps still need the
+  backend-neutral root-publication ABI before broader generated code can use objects.
 - Exact native safepoint maps are not connected to compiled frames yet.
 - Minor collection currently promotes marked nursery survivors through handles
   rather than implementing a final copying nursery/root-update path.
