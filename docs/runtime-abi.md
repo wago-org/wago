@@ -491,6 +491,20 @@ Codec v27 preserves structural and code metadata but no admission class; private
 admission, while public load, snapshots, guard mode, and non-linux/amd64 execution stay closed. No helper ID,
 basedata slot, descriptor entry, root, barrier, collector sidecar, frame record, fixed layout, or public ABI changes.
 
+Iteration 60 extends only that compile-time provenance contract to three exact multi-result runners. The 178-byte
+two-source product returns two folded i32 ones through the existing RAX/RDX register-result adapter and owns a 96-byte
+descriptor arena. The 144- and 204-byte products each have two unreachable source functions, own 128-byte descriptor
+arenas, and return four or eight folded i32 ones through the ordinary canonical result slots and caller-provided result
+buffer. Native code sizes are 215, 448, and 560 bytes; codec-v27 sizes are 922, 785, and 1,095 bytes; repeated public
+invocation is allocation-free.
+
+The classifier admits no materialized function descriptor operand: each runner is solely an ordered sequence of
+`ref.func; ref.test` pairs. Descriptor arenas exist because normal instantiation creates canonical local identities,
+but generated runner code does not read them. Function descriptor addresses remain distinct from compact `gc.Ref`
+handles, collector roots, public tokens, and foreign producer identities. Codec reload, snapshots, guard mode, arm64,
+and unsupported platforms remain closed. No result ABI, helper ID, basedata slot, descriptor entry, root, barrier,
+collector sidecar, frame record, fixed layout, or public ABI changes.
+
 ## Global coherence invariant
 
 The global cell is the sole host- and cross-instance-visible storage for a
