@@ -9,7 +9,7 @@
       "source_line": 1,
       "size": 197,
       "sha256": "46b2bd3e4597ba5a871472aa14f5777df18b722b7f3283ba1fc946f4791a3adb",
-      "gate": "eqref table identity with rooted struct/array allocation",
+      "gate": "",
       "type_graph": "rec[sub(final=false,supers=[],struct{})]|rec[sub(final=false,supers=[],struct{i32})]|rec[array{i8}]|rec[sub(final=false,supers=[{0 false}],struct{})]|rec[sub(final=false,supers=[{0 false}],struct{})]|rec[sub(final=false,supers=[{1 false}],struct{i32})]|rec[sub(final=false,supers=[{1 false}],struct{i32})]|rec[func()-\u003e()]|rec[func(i32,i32)-\u003e(i32)]",
       "state_graph": "imports=0 funcs=2 globals=[] tables=1 memories=0 tags=0 elements=0 data=0 exports=[init=0:0,eq=0:1]",
       "opcodes": [
@@ -186,22 +186,16 @@
       "error": "type mismatch"
     }
   ],
-  "gates": [
-    {
-      "family": "gc",
-      "reason": "eqref table identity with rooted struct/array allocation",
-      "count": 1
-    }
-  ],
+  "gates": [],
   "counts": {
     "commands": 90,
-    "modules_passed": 0,
-    "assertions_passed": 0,
+    "modules_passed": 1,
+    "assertions_passed": 81,
     "expected_invalid": 6,
     "expected_unlinkable": 0,
     "expected_uninstantiable": 0,
-    "expected_feature_rejects": 1,
-    "blocked_commands": 82,
+    "expected_feature_rejects": 0,
+    "blocked_commands": 0,
     "unexpected_compile_rejects": 0,
     "unexpected_link_rejects": 0,
     "failures": 0
