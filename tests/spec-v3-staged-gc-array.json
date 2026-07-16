@@ -321,12 +321,12 @@
   "counts": {
     "commands": 61,
     "modules_passed": 5,
-    "assertions_passed": 9,
+    "assertions_passed": 16,
     "expected_invalid": 6,
     "expected_unlinkable": 0,
     "expected_uninstantiable": 0,
     "expected_feature_rejects": 2,
-    "blocked_commands": 32,
+    "blocked_commands": 25,
     "unexpected_compile_rejects": 0,
     "unexpected_link_rejects": 0,
     "failures": 0
