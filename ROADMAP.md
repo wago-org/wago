@@ -349,12 +349,17 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   two-member recursive groups use an immutable self-referential struct plus an empty companion struct only to determine
   function identity; no struct/array value or opcode executes. The 70-byte provider and 51-byte consumer own 64-byte
   descriptor arenas, retain one producer transactionally across both close orders, and have wasm/code/codec sizes
-  70/77/313 and 51/0/236 bytes. Empty `g` measures 38.46–51.80 ns/op at 0 B/op / 0 allocs/op. All thirty-one admitted
-  leaders leave `Instance.gc` nil. Codec reload inherits no product marker; linked codec state, snapshots,
-  guard/public/arm64/host admission remain closed. Accounting is 31 passed modules / 23 passed assertions / 14 gates /
-  17 blocked dependents / 24 invalid / 5 executed plus 3 blocked unlinkable obligations. General frame roots,
-  object-valued mutable/reference globals, the later struct-defined linking clusters, the non-flat export, broader
-  typed-table ownership, public family admission, and broader platforms remain.
+  70/77/313 and 51/0/236 bytes. Empty `g` measures 38.46–51.80 ns/op at 0 B/op / 0 allocs/op. Iteration 68 adds only
+  the source-lines-578–588 M4 struct-projection provider/consumer pair. Its three two-member recursive groups preserve
+  exact group/member identity while the final function/struct pair extends different earlier pairs and carries five
+  ordered immutable non-null reference fields. The 104-byte provider and 85-byte consumer each own 64 descriptor bytes,
+  retain one producer transactionally across both close orders, and have wasm/code/codec sizes 104/77/482 and 85/0/405
+  bytes. Empty `g` measures 37.05–39.08 ns/op at 0 B/op / 0 allocs/op. All thirty-three admitted leaders leave
+  `Instance.gc` nil. Codec reload inherits no product marker; linked codec state, snapshots, guard/public/arm64/host
+  admission remain closed. Accounting is 33 passed modules / 23 passed assertions / 12 gates / 16 blocked dependents /
+  24 invalid / 5 executed plus 3 blocked unlinkable obligations. General frame roots, object-valued mutable/reference
+  globals, the later struct-defined linking clusters, the non-flat export, broader typed-table ownership, public family
+  admission, and broader platforms remain.
 - [ ] Reach zero unexplained failures/skips in the official Release 3 core suite.
 
 **Engine & performance** (no-ir-plan P1–P7, measured against P1's stats)

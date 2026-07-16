@@ -621,6 +621,28 @@ cross-product substitution remain fail-closed. `compiledCodeCache` stays 64 byte
 basedata slot, helper ID, collector root/barrier, frame record, result adapter, or public ABI change. This proof does not
 authorize the source-lines-578–588 M4 pair, source-line-605 unlinkable, or arbitrary struct-defined function matching.
 
+Iteration 68 adds a fourth separately pinned link contract for the source-lines-578–588 M4 pair. Provider and consumer
+each carry three two-member recursive groups. Their first two groups pair open `() -> ()` functions with open immutable
+self-referential structs. Their final groups extend different earlier function/struct pairs and carry different ordered
+five-field projections, but the complete recursive source group is structurally compatible with the consumer requirement.
+Those struct members affect only the bounded structural type relation. They never appear in a runtime value, descriptor
+payload, basedata slot, root set, compact reference, or collector object.
+
+The provider and consumer again use the unchanged 64-byte descriptor arena: one null 32-byte entry plus one ordinary
+canonical function entry. Linking copies the provider's nonzero code pointer and instance-owned identity word into the
+consumer entry; the identity remains an ordinary 64-bit descriptor address, not a compact `gc.Ref`, root, public token, or
+GC object. The one import retains one distinct provider transactionally. Invalid exports roll ownership back before
+publication, provider-first logical close keeps code and descriptor storage live through consumer close, and consumer-first
+close releases ownership before final provider close. Hosts, M3 and earlier providers, and unpinned structural lookalikes
+reject before a live binding is published.
+
+Provider/consumer wasm/code/codec sizes are 104/77/482 and 85/0/405 bytes. Empty provider `g` measures 37.05–39.08 ns/op,
+0 B/op, and 0 allocs/op. Unlinked codec v27 preserves structural metadata but no product marker; linked serialization,
+private/public reload admission, snapshots, signal-backed bounds, arm64, unsupported platforms, host substitution, and
+cross-product substitution remain fail-closed. `compiledCodeCache` stays 64 bytes, and there is no descriptor layout,
+basedata slot, helper ID, collector root/barrier, frame record, result adapter, or public ABI change. This proof does not
+authorize the source-lines-598–605 M5 pair, later link clusters, or arbitrary struct-defined function matching.
+
 ## Global coherence invariant
 
 The global cell is the sole host- and cross-instance-visible storage for a
