@@ -149,7 +149,7 @@ spec3: wabt spec-interpreter ## Run the pinned official WebAssembly 3.0 core sui
 		go test -count=1 -run TestSpecSuiteExec -v ./src/wago/
 
 .PHONY: spec3-baseline
-spec3-baseline: ## Refresh tests/spec-v3-baseline.json; remains red while gaps exist
+spec3-baseline: ## Refresh tests/spec-v3-baseline.json and return the spec3 status
 	@scripts/spec3-baseline.sh
 
 .PHONY: simd

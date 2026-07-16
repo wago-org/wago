@@ -480,7 +480,7 @@ func TestSpectestPrintImportsAreExactNoOps(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer memory.Close()
-	imports := spectestImports(table, memory)
+	imports := spectestImports(table, table, memory)
 	want := map[string]wago.FuncSig{
 		"spectest.print":         {},
 		"spectest.print_i32":     {Params: []wago.ValType{wago.ValI32}},
@@ -935,6 +935,16 @@ func matchResult(got []uint64, want specValue) bool {
 	}
 	if isNonNullFuncrefSpecValue(want) {
 		return len(got) > 0 && got[0] != 0
+	}
+	if want.Type == "ref" {
+		if len(got) == 0 {
+			return false
+		}
+		s, _ := want.str()
+		if s == "null" {
+			return got[0] == 0
+		}
+		return got[0] != 0
 	}
 	if want.Type == "v128" {
 		return matchV128Result(got, want)
@@ -1472,10 +1482,6 @@ func runSpecExec(t *testing.T, wast2json, interpreter, dir, version string, file
 		name := strings.ReplaceAll(base, string(filepath.Separator), "_")
 		jsonPath := filepath.Join(tmp, name+".json")
 		args := []string{wast, "-o", jsonPath}
-		// Current WABT --enable-all also enables experimental binary encodings
-		// (notably compact imports) that rewrite otherwise-canonical MVP, SIMD,
-		// bulk-memory, and Release 2 modules. Release 3 needs its standardized
-		// feature parsers enabled until the host WABT defaults advance.
 		if version == "3.0" {
 			args = append([]string{"--enable-all"}, args...)
 		}
@@ -1535,7 +1541,7 @@ func runSpecExec(t *testing.T, wast2json, interpreter, dir, version string, file
 // module: exact no-op print functions, four immutable globals, shared memory 1/2,
 // and the shared 10/20 funcref table. Extra entries are ignored by modules that do
 // not import them, so the same map is safe for every instantiate in one file.
-func spectestImports(table *wago.Table, memory *wago.Memory) wago.Imports {
+func spectestImports(table, table64 *wago.Table, memory *wago.Memory) wago.Imports {
 	noop := wago.HostFunc(func(wago.HostModule, []uint64, []uint64) {})
 	return wago.Imports{
 		"spectest.print":         noop,
@@ -1547,10 +1553,11 @@ func spectestImports(table *wago.Table, memory *wago.Memory) wago.Imports {
 		"spectest.print_f64_f64": noop,
 		"spectest.global_i32":    wago.GlobalImport{Type: wago.ValI32, Bits: wago.I32(666)},
 		"spectest.global_i64":    wago.GlobalImport{Type: wago.ValI64, Bits: wago.I64(666)},
-		"spectest.global_f32":    wago.GlobalImport{Type: wago.ValF32, Bits: wago.F32(666)},
-		"spectest.global_f64":    wago.GlobalImport{Type: wago.ValF64, Bits: wago.F64(666)},
+		"spectest.global_f32":    wago.GlobalImport{Type: wago.ValF32, Bits: wago.F32(float32(666.6))},
+		"spectest.global_f64":    wago.GlobalImport{Type: wago.ValF64, Bits: wago.F64(666.6)},
 		"spectest.memory":        memory,
 		"spectest.table":         table,
+		"spectest.table64":       table64,
 	}
 }
 
@@ -1564,12 +1571,21 @@ func runSpecExecFile(t *testing.T, base, tmp string, sf specExecFile) (stats spe
 	if err != nil {
 		t.Fatalf("create spectest.table: %v", err)
 	}
+	standardTable64, err := wago.NewTable64(10, 20)
+	if err != nil {
+		_ = standardTable.Close()
+		t.Fatalf("create spectest.table64: %v", err)
+	}
 	standardMemory, err := wago.NewSharedMemory(1, 2)
 	if err != nil {
 		_ = standardTable.Close()
+		_ = standardTable64.Close()
 		t.Fatalf("create spectest.memory: %v", err)
 	}
 	cfg := wago.NewRuntimeConfig()
+	if os.Getenv("WAGO_SPEC_VERSION") == "3.0" {
+		cfg = cfg.WithCoreFeatures(wago.CoreFeaturesV3)
+	}
 	rt := wago.NewRuntime(wago.WithRuntimeConfig(cfg))
 	defer func() {
 		for i := range live {
@@ -1577,6 +1593,9 @@ func runSpecExecFile(t *testing.T, base, tmp string, sf specExecFile) (stats spe
 		}
 		if err := standardTable.Close(); err != nil {
 			t.Errorf("close spectest.table: %v", err)
+		}
+		if err := standardTable64.Close(); err != nil {
+			t.Errorf("close spectest.table64: %v", err)
 		}
 		if err := standardMemory.Close(); err != nil {
 			t.Errorf("close spectest.memory: %v", err)
@@ -1589,7 +1608,7 @@ func runSpecExecFile(t *testing.T, base, tmp string, sf specExecFile) (stats spe
 	registered := map[string]specModule{}
 	definitions := map[string][]byte{}
 	var latestDefinition []byte
-	standardImports := spectestImports(standardTable, standardMemory)
+	standardImports := spectestImports(standardTable, standardTable64, standardMemory)
 	instantiate := func(data []byte, c specExecCmd) {
 		cur = specModule{}
 		mod, err := rt.Compile(data)
@@ -1805,6 +1824,17 @@ func specImportsFor(compiled *wago.Compiled, registered map[string]specModule, s
 		}
 		imports[key] = global
 	}
+	for _, key := range compiled.TagImports() {
+		m, field, ok := resolve(key)
+		if !ok {
+			continue
+		}
+		tag, err := m.inst.ExportedTag(field)
+		if err != nil {
+			return nil, err
+		}
+		imports[key] = tag
+	}
 	return imports, nil
 }
 
@@ -1843,6 +1873,9 @@ func (m specModule) matchExternref(got uint64, want specValue) bool {
 	id, ok := want.str()
 	if !ok || got == 0 {
 		return false
+	}
+	if id == "0" {
+		return true // binary-script convention for an anonymous non-null externref
 	}
 	value, ok := m.inst.ExternRefValue(wago.ValueOf(wago.ValExternRef, got).ExternRef())
 	return ok && value == id
@@ -1889,7 +1922,36 @@ func invokeAction(c specExecCmd, m specModule, _ *testing.T) specActionOutcome {
 			m.externrefs = make(map[string]wago.ExternRef)
 		}
 		var args []uint64
+		var transientGCRefs []uint64
+		defer func() {
+			for _, token := range transientGCRefs {
+				_ = m.inst.ReleaseGCRef(wago.ValueOf(wago.ValAnyRef, token).GCRef())
+			}
+		}()
 		for _, a := range c.Action.Args {
+			if a.Type == "ref" {
+				id, ok := a.str()
+				if !ok {
+					return specActionOutcome{harnessErr: fmt.Errorf("cannot decode ref argument %s", a.Value)}
+				}
+				if id == "null" {
+					args = append(args, 0)
+					continue
+				}
+				ext := a
+				ext.Type = "externref"
+				extern, err := m.externrefArg(ext)
+				if err != nil {
+					return specActionOutcome{harnessErr: fmt.Errorf("cannot create host ref %s: %w", a.Value, err)}
+				}
+				internal, err := m.inst.Invoke("internalize", extern)
+				if err != nil || len(internal) != 1 || internal[0] == 0 {
+					return specActionOutcome{harnessErr: fmt.Errorf("cannot internalize host ref %s: %v", a.Value, err)}
+				}
+				args = append(args, internal[0])
+				transientGCRefs = append(transientGCRefs, internal[0])
+				continue
+			}
 			if a.Type == "externref" {
 				token, err := m.externrefArg(a)
 				if err != nil {
@@ -1977,6 +2039,9 @@ func runReturnAssert(t *testing.T, base string, c specExecCmd, m specModule) (sp
 		if !matched {
 			t.Errorf("%s.wast:%d %s(%v) result[%d]: got=%#x want=%s/%s:%s", base, c.Line, c.Action.Field, argValues(c.Action.Args), i, out.results[off:off+n], want.Type, want.LaneType, want.Value)
 			return specGapNone, false
+		}
+		if want.Type == "ref" && n == 1 && out.results[off] != 0 && out.results[off]>>32 != 0 {
+			_ = m.inst.ReleaseGCRef(wago.ValueOf(wago.ValAnyRef, out.results[off]).GCRef())
 		}
 		off += n
 	}
