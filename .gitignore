@@ -5,6 +5,7 @@
 # Reproducibly bootstrapped development tools and local validation captures.
 .tools/
 .validation/
+testdata/moonbit-json-smoke/_build/
 
 # Built CLI binaries (make build / build-release / tinygo-build) + release assets
 /wago

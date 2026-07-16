@@ -1,0 +1,12 @@
+import {
+  "moonbitlang/core/json",
+}
+
+options(
+  "is-main": true,
+  "link": {
+    "wasm-gc": {
+      "exports": ["run"],
+    },
+  },
+)
