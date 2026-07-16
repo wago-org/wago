@@ -25,9 +25,8 @@ func TestStagedGCTypeSubtypingProductsCompile(t *testing.T) {
 	if got := unsafe.Sizeof(compiledCodeCache{}); got != 64 {
 		t.Fatalf("compiledCodeCache size = %d, want 64 bytes", got)
 	}
-	wantCodeBytes := []int{0, 0, 0, 0, 0, 0, 632, 592, 77, 77, 77, 77, 253, 253, 178, 178, 178, 178}
-	wantCodecBytes := []int{349, 385, 347, 219, 238, 386, 1019, 1128, 499, 657, 420, 755, 598, 852, 648, 806, 648, 569}
-	wantRefTest := []uint64{1, 1, 0, 1}
+	wantCodeBytes := []int{0, 0, 0, 0, 0, 0, 632, 592, 77, 77, 77, 77, 253, 253, 178, 178, 178, 178, 215, 448, 560}
+	wantCodecBytes := []int{349, 385, 347, 219, 238, 386, 1019, 1128, 499, 657, 420, 755, 598, 852, 648, 806, 648, 569, 923, 786, 1096}
 	for i, pin := range stagedGCTypeSubtypingProductPins {
 		t.Run(pin.Filename, func(t *testing.T) {
 			data := stagedGCTypeSubtypingProductData(t, pin)
@@ -55,21 +54,21 @@ func TestStagedGCTypeSubtypingProductsCompile(t *testing.T) {
 			if in.gc != nil {
 				t.Fatal("no-object type-subtyping product allocated a collector")
 			}
-			if pin.Class == stagedGCTypeSubtypingRefTestSingle {
-				if len(in.funcRefDescs) != 3*coreruntime.FuncRefDescBytes {
-					t.Fatalf("single ref.test descriptor arena = %d bytes, want %d", len(in.funcRefDescs), 3*coreruntime.FuncRefDescBytes)
+			if pin.Class.usesRefTest() {
+				wantDescBytes := (len(c.FuncTypeID) + 1) * coreruntime.FuncRefDescBytes
+				if len(in.funcRefDescs) != wantDescBytes {
+					t.Fatalf("ref.test descriptor arena = %d bytes, want exact %d", len(in.funcRefDescs), wantDescBytes)
 				}
-				want := wantRefTest[i-14]
 				got, err := in.Invoke("run")
-				if err != nil || len(got) != 1 || got[0] != want {
-					t.Fatalf("run = %v, %v; want [%d]", got, err, want)
+				if err != nil || !reflect.DeepEqual(got, pin.Results) {
+					t.Fatalf("run = %v, %v; want %v", got, err, pin.Results)
 				}
 				var invokeErr error
 				allocs := testing.AllocsPerRun(1000, func() {
 					got, invokeErr = in.Invoke("run")
 				})
-				if invokeErr != nil || len(got) != 1 || got[0] != want || allocs != 0 {
-					t.Fatalf("steady run = %v, %v, allocs=%v; want [%d], nil, 0", got, invokeErr, allocs, want)
+				if invokeErr != nil || !reflect.DeepEqual(got, pin.Results) || allocs != 0 {
+					t.Fatalf("steady run = %v, %v, allocs=%v; want %v, nil, 0", got, invokeErr, allocs, pin.Results)
 				}
 			}
 			if pin.Class == stagedGCTypeSubtypingRefFuncGlobals {

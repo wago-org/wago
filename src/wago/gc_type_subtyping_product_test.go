@@ -145,7 +145,7 @@ func TestStagedGCTypeSubtypingMultiRefTestInventory(t *testing.T) {
 }
 
 func TestStagedGCTypeSubtypingProductPlatformAndBoundsGate(t *testing.T) {
-	for _, pinIndex := range []int{8, 14} {
+	for _, pinIndex := range []int{8, 14, 18} {
 		pin := stagedGCTypeSubtypingProductPins[pinIndex]
 		t.Run(pin.Filename, func(t *testing.T) {
 			data := stagedGCTypeSubtypingProductData(t, pin)
@@ -217,5 +217,14 @@ func TestStagedGCTypeSubtypingProductRejectsWidening(t *testing.T) {
 	refTest.Code[1].BodyBytes = []byte{0xd2, 0x00, 0x1a, 0x0b}
 	if _, err := stagedGCTypeSubtypingProductShape(refTest); err == nil {
 		t.Fatal("single ref.test product with drop instead of ref.test unexpectedly admitted")
+	}
+
+	multi, err := wasm.DecodeModule(stagedGCTypeSubtypingProductData(t, stagedGCTypeSubtypingProductPins[18]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	multi.Elements[0].Kind.Funcs[0] = 1
+	if _, err := stagedGCTypeSubtypingProductShape(multi); err == nil {
+		t.Fatal("multi-result ref.test product with widened element identity unexpectedly admitted")
 	}
 }
