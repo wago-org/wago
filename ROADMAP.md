@@ -363,11 +363,14 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   Two independent self-recursive function/struct groups remain distinct, while the final `g <: f1` edge links exactly.
   The 82-byte provider and 63-byte consumer each own 64 descriptor bytes, retain one producer transactionally across both
   close orders, and have wasm/code/codec sizes 82/77/403 and 63/0/326 bytes. Empty `g` measures 37.44–42.95 ns/op at
-  0 B/op / 0 allocs/op. All thirty-six admitted leaders leave `Instance.gc` nil. Codec reload inherits no product marker;
-  snapshots and guard/public/arm64/host admission remain closed. Accounting is 36 passed modules / 23 passed assertions /
-  9 gates / 13 blocked dependents / 24 invalid / 6 executed plus 2 blocked unlinkable obligations. General frame roots,
-  object-valued mutable/reference globals, the later struct-defined linking clusters, the non-flat export, broader
-  typed-table ownership, public family admission, and broader platforms remain.
+  0 B/op / 0 allocs/op. Iteration 71 adds only the source-lines-628–639 M7 provider/two-import consumer pair. The
+  fourth-group `h` extends the provider projection and satisfies both consumer `f1` and `g1` views. Provider/consumer
+  descriptor arenas are 64/96 bytes, duplicate imports retain one producer, wasm/code/codec sizes are 114/77/561 and
+  102/0/502 bytes, and empty `h` measures 36.65–38.72 ns/op at 0 B/op / 0 allocs/op. All thirty-eight admitted leaders
+  leave `Instance.gc` nil. Codec reload inherits no product marker; snapshots and guard/public/arm64/host admission remain
+  closed. Accounting is 38 passed modules / 23 passed assertions / 7 gates / 12 blocked dependents / 24 invalid / 6
+  executed plus 2 blocked unlinkable obligations. General frame roots, object-valued mutable/reference globals, later
+  linking clusters, the non-flat export, broader typed-table ownership, public family admission, and broader platforms remain.
 - [ ] Reach zero unexplained failures/skips in the official Release 3 core suite.
 
 **Engine & performance** (no-ir-plan P1–P7, measured against P1's stats)
