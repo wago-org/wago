@@ -136,11 +136,14 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   direct `return_call` uses a separate fixed four-word root/nested transition, preserves
   producer lifetime and trap recovery, repeats without allocation, and now admits exactly
   `(i32, f64) -> f64` and `(f64) -> i32` in addition to the integer shapes. A complete
-  14-file typed-reference/structural matrix now accounts 422 commands with 52 modules,
-  243 assertions, and all 65 invalid modules passing; `call_ref`, null control, and both
-  null-only `ref_null` modules are gap-free, the five recursive validator gaps are closed,
-  and only 10 struct/array-defined GC gates with 4 blocked commands remain explicit.
-  Public admission, other float/
+  14-file typed-reference/structural matrix is now gap-free at 422 commands with 61 modules,
+  246 assertions, all 65 invalid modules, 2 malformed, and 2 unlinkable cases passing.
+  `call_ref`, null control, both null-only `ref_null` modules, and every valid `type-rec`
+  product execute under staged admission. The ten former struct-defined leaders are exact
+  collector-free metadata/function-identity products: immutable local `ref.func` globals,
+  cross-instance link matching, and ordinary funcref `call_indirect`. Whole non-singleton
+  recursive groups now contribute group order and selected-member position to the bounded
+  64-bit structural key. No struct/array value is allocated or accessed. Public admission, other float/
   oversized direct tails, general-table/
   foreign-float/general reference-result tails, live typed snapshot state, remaining
   GC/reference instructions, and arm64 parity remain gated.
@@ -313,17 +316,19 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   retain their producer through consumer close, and typed/tail opcode requirements
   survive codec metadata while snapshots reject unresolved contexts before mutation.
   Root and nested cross-instance typed tails now execute with explicit host and
-  unsupported-shape failures. Iteration 30 pins a 14-file schema-2 typed-reference/
-  structural matrix at 422 commands / 52 modules / 243 assertions / 65 invalid /
-  2 malformed / 1 unlinkable, with 10 exact gates and 4 blocked commands. The
-  null-control surface and official `call_ref` file are green under staged admission;
-  shifted and recursive cross-instance signatures now match structurally, retain their
+  unsupported-shape failures. The 14-file schema-2 typed-reference/structural matrix is
+  gap-free at 422 commands / 61 modules / 246 assertions / 65 invalid / 2 malformed /
+  2 unlinkable, with zero gates or blocked commands. The null-control surface, official
+  `call_ref` file, and all valid `type-rec` products are green under staged admission;
+  shifted and recursive cross-instance signatures match structurally, retain their
   producers, and preserve codec-v27 metadata across empty recursive groups. Iteration 31
   closes all five strict recursive validator gaps by enforcing recursive-group scope and
   whole-group equivalence. Iteration 36 executes both null-only mixed GC/EH modules without
-  allocating heap objects; the remaining matrix gates are exactly 10 struct/array-defined
-  GC products in `type-rec`. Persisted
-  live reference state, broader tails, public admission, remaining reference/GC/EH
+  allocating heap objects. Iteration 37 makes the complete matrix gap-free by admitting ten
+  exact `type-rec` products where struct definitions affect only function identity. Struct
+  descriptors survive codec v27, but an exact compile-only product proof keeps the instance
+  collector nil; no struct/array opcode or value is admitted. Persisted live reference state,
+  broader tails, public admission, actual GC allocation/access, remaining reference/GC/EH
   instructions, and arm64 remain gated. Multi-
   memory now executes all indexed scalar, SIMD, and bulk/data operations internally
   on linux/amd64 explicit bounds, decodes compact import groups, accounts for all

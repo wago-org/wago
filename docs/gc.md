@@ -74,9 +74,11 @@ Payload begins at `PayloadOffset == HeaderSize`, currently 16 bytes. Object size
 
 Frontend lowering produces immutable descriptor metadata during compile. `Compiled.GCTypeDescs` stores the descriptor slice so `.wago` blobs can instantiate without re-decoding the Wasm type section. The descriptor slice index matches flattened `wasm.TypeIdx.Index`, including function sentinels used only to preserve indexes.
 
-Each `Instance` owns its own `gc.Collector` when descriptor metadata is present. Collectors are never shared across instances: nursery state, old-space state, roots, remembered sets, cards, and collection statistics are per-instance runtime state. MVP/non-GC modules keep `Instance.gc == nil` to avoid allocating an unused heap.
+Each `Instance` normally owns its own `gc.Collector` when its executable product can create or retain heap objects. Collectors are never shared across instances: nursery state, old-space state, roots, remembered sets, cards, and collection statistics are per-instance runtime state. MVP/non-GC modules keep `Instance.gc == nil` to avoid allocating an unused heap.
 
-GC roots are not wired to native frames yet, and no WasmGC opcode/codegen support is enabled by this metadata plumbing. Later PRs will connect exact safepoint maps, runtime allocation calls, and barrier emission to the instance-owned collector.
+Iteration 37 adds one deliberately narrower exception. Ten exact pinned `type-rec` products contain struct descriptors only because recursive struct definitions participate in function identity. Their functions, immutable globals, imports, and ordinary funcref tables carry only function descriptors; no struct/array value or GC opcode exists. A compile-only, non-serialized sidecar records that exact product proof and keeps `Instance.gc == nil` even though `gc.HasHeapObjectTypes` is true. Unknown binaries, arrays, mutable fields, additional state, public codec load, snapshots, guard mode, and arm64 remain closed. A codec-reloaded artifact does not inherit this live admission sidecar. This is metadata/function-identity execution, not WasmGC heap execution.
+
+GC roots are not wired to native frames yet, and no WasmGC allocation/access opcode codegen support is enabled by this metadata plumbing. Later PRs will connect exact safepoint maps, runtime allocation calls, and barrier emission to the instance-owned collector.
 
 ## Native exception-root map contract
 
@@ -134,6 +136,13 @@ allocation, or collector teardown is involved. The product is exact, linux/amd64
 bounds-only, and rejects imports, mutable or exported storage, additional instructions,
 snapshots, public feature admission, guard mode, and arm64 execution. It must not be called
 WasmGC heap execution merely because `any`/`none` are GC-family heap types.
+
+Iteration 37 also strengthens function identity for these metadata-only products. The bounded
+64-bit structural key now serializes every member of a non-singleton recursive group plus the
+selected member position. Equivalent shifted groups agree; reordered, singleton, and externally
+linked groups remain distinct. The three official ordinary-funcref `call_indirect` actions therefore
+preserve exact success/mismatch behavior at 36.20-36.97 ns/op with 0 B/op and 0 allocs/op. This key
+work does not scan, allocate, root, or barrier any struct value.
 
 Before any `gc.Ref` payload or broader funcref lifetime can be admitted, codegen/runtime
 must still prove all of the following as one coherent product:
