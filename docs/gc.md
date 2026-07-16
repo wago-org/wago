@@ -7,9 +7,11 @@ than a non-goal. The current implementation is an initial foundation under
 descriptors, a byte-slice heap skeleton, exact scanning, roots, barriers, stress
 knobs, and tests. Iteration 38 wires one exact linux/amd64 numeric-local helper product;
 iteration 39 adds exact immutable GC-global roots, packed fields, and the numeric portion
-of the official basic struct leader. General native frame publication, mutable/reference
-stores, arrays, public ownership values, and snapshots remain incomplete. These bounded
-products must not be presented as general executable WasmGC support.
+of the official basic struct leader. Iteration 40 closes the final struct action through one
+bounded store-owned public result token and pins the complete array family obligations.
+General native frame publication, mutable/reference stores, executable arrays, broad public
+ownership, and snapshots remain incomplete. These bounded products must not be presented as
+general executable WasmGC support.
 
 ## Why a wago-native collector
 
@@ -242,6 +244,53 @@ Final `gc/struct.wast` accounting is 36 commands / 6 modules / 18 assertions / 4
 failures. Packed get measures 196.7-200.0 ns/op and packed set/get 256.0-258.1 ns/op. Basic
 get measures 211.5-237.7 ns/op and basic set/get 281.3-318.9 ns/op. Every sample reports
 0 B/op and 0 allocs/op.
+
+### Iteration 40 bounded public struct result ownership
+
+Iteration 40 adds the first non-null public WasmGC value without exposing the compact
+collector representation or widening general GC ingress:
+
+- `GCRef` is an opaque eight-byte public token. Its zero value is null; non-null token bits
+  are random store identity with a non-zero upper half, never a raw 32-bit `gc.Ref` handle.
+- Only the exact staged basic `gc/struct` product may issue one live token per producer
+  instance. The store records the producer, compact ref, exact dynamic defined struct type,
+  and collector root slot. The result's declared `(ref null any)` supertype is checked against
+  that exact dynamic type before issue.
+- Each producer allocates at most one public-token root slot. Release overwrites that checked
+  collector `GlobalSlot` with null and reuses the same slot for the next token, so 100 repeated
+  issue/release/collect cycles do not grow collector root metadata. A second simultaneous
+  token rejects explicitly.
+- The token retains one producer resource root, keeping code, arena, and collector alive after
+  logical `Instance.Close`. Token-before-producer and producer-before-token close orders both
+  release exactly once. Stale, foreign-store, and cross-producer releases reject without
+  modifying either owner.
+- Collector helper operations, token root mutation, and collector close serialize through one
+  lazy per-instance mutex. Tiny's slot barrier/remark contract remains active because token
+  issue/release uses `NewCheckedGlobalSlot`/`SetGlobalSlot`; no unbarriered root mutation was
+  added.
+- Non-null function parameters, global ingress/egress, host boundaries, snapshots, codec load,
+  guard execution, arrays, and arm64 remain closed. The compile-only exact product enum and
+  live token/root state are not serialized by codec v27.
+
+The complete official `gc/struct.wast` matrix is consequently gap-free at 36 commands / 6
+modules / 19 assertions / 4 invalid / 1 source-only malformed / zero gates / zero blocked,
+with zero hidden failures. Public token issue plus release measures 371.6-386.5 ns/op over
+five 500 ms samples and remains 0 B/op / 0 allocs/op after one warmup token initializes the
+bounded map/root slot.
+
+The next family is now classified without implementation overclaim. Complete
+`gc/array.wast` schema-2 accounting covers 61 commands: seven exact module gates, 41 blocked
+actions, and six invalid modules. The leaders separate declaration/binding metadata,
+numeric `array.new`/`array.new_default`, numeric `array.new_fixed`, packed `array.new_data`
+and data-drop lifecycle, reference `array.new_elem` plus barriers/element-drop lifecycle,
+null get/set traps, array length/bounds, and public array result ownership. No array opcode is
+admitted by this accounting commit.
+
+The fixed measured layouts are `Compiled=712`, `Instance=792`, `compiledCodeCache=64`,
+`instancePluginState=128`, `referenceStore=96`, `gcPublicState=24`, `gcRefTokenEntry=40`,
+`GCRef=8`, `Value=16`, and `gc.Collector=640` bytes. Relative to iteration 39, the runtime
+store and lazy plugin state each grow by one pointer; ordinary instances still allocate
+neither lazy public GC state nor a collector.
 
 Before broader live `gc.Ref` payloads or funcref lifetimes can be admitted, codegen/runtime
 must still prove all of the following as one coherent product:
@@ -781,12 +830,14 @@ Tests exercise tiny nurseries, collect-every-alloc, exact scanning, cycles, root
 
 - WasmGC opcode validation is not complete. Exact staged numeric `struct.new`/
   `struct.new_default`, ordinary and packed `struct.get`, numeric `struct.set`, immutable
-  GC constants/globals, and null traps are wired to amd64; arrays, casts/tests, reference
-  fields, and general GC constant expressions remain.
+  GC constants/globals, null traps, and one owned public struct result are wired to amd64.
+  The complete array family is inventoried but no array opcode is executable; casts/tests,
+  reference fields, and general GC constant expressions remain.
 - The parked-Go runtime-call ABI is proven for exact empty-frame-root numeric allocations,
-  non-collecting numeric access/mutation, and immutable collector-rooted globals. General
-  allocation with live frame refs, field/element barriers, and traps still need the
-  backend-neutral root-publication ABI before broader generated code can use objects.
+  non-collecting numeric access/mutation, immutable collector-rooted globals, and one
+  result-token root installed only after the native call returns. General allocation with
+  live frame refs, field/element barriers, and traps still need the backend-neutral
+  root-publication ABI before broader generated code can use objects.
 - Exact native safepoint maps are not connected to compiled frames yet.
 - Minor collection currently promotes marked nursery survivors through handles
   rather than implementing a final copying nursery/root-update path.
@@ -796,9 +847,9 @@ Tests exercise tiny nurseries, collect-every-alloc, exact scanning, cycles, root
 - The Throughput heap currently uses growable Go byte slices, so native code
   must not cache raw heap payload pointers; see `docs/runtime-abi.md`.
 - Tiny and Throughput profiles are connected to the exact staged numeric-struct helper
-  paths, including two rooted globals, packed fields, stress collection, and deterministic
-  Tiny exhaustion, but broader WasmGC opcode/backend lowering is not connected to either
-  profile yet.
+  paths, including two rooted globals, packed fields, bounded public-token rooting, stress
+  collection, and deterministic Tiny exhaustion, but arrays and broader WasmGC opcode/
+  backend lowering are not connected to either profile yet.
 
 These limitations are intentional for this commit series: the runtime foundation
 is small, exact, typed, and no-cgo, giving later codegen work stable contracts.
