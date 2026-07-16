@@ -308,6 +308,20 @@ globals, reference fields, hosts, snapshots, signal bounds, public admission, an
 Codec v27 serializes no `ref.test` product, canonical map, conversion identity, checked root, local
 funcref ownership, or live discriminator state.
 
+Iteration 49 adds no new ABI word category. The exact `gc/ref_eq` product uses the same eight-byte compact
+eqref table entries and checked collector slots as the prior object-table products, but attaches no extern
+conversion owner and creates no public tokens. `table.get` yields the compact null/i31/object word, and the
+existing `ref.eq` lowering compares the two 64-bit words directly. This is semantic value equality for null
+and i31 plus handle identity for objects; it is not comparison of opaque public `GCRef`, public any/extern,
+store extern, or internal foreign/conversion token bits.
+
+The twenty-slot table roots each newly allocated struct/array before the next may-collect helper. Repeated
+initialization on an 80-byte Tiny heap retains four 16-byte objects and one bounded replacement allocation;
+no live local ref crosses allocation. `gcRefTestTableState` remains 200 bytes and lazy
+`instancePluginState` remains 144 bytes. Codec v27, snapshots, guard mode, public admission, and arm64
+inherit no equality product, checked roots, or live compact identities. This remains an exact scheduling
+proof, not general native frame publication.
+
 ## Global coherence invariant
 
 The global cell is the sole host- and cross-instance-visible storage for a
