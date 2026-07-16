@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"github.com/wago-org/wago/src/core/runtime"
 )
 
 // GC helpers reuse the synchronous parked-Go dispatcher. The high dispatch bit
@@ -238,6 +239,12 @@ func (f *fn) emitGCI31Cast(sub uint32, r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
+	if f.gcTypeSubtypingRefTest && heap >= 0 {
+		value := f.materialize(f.popValue())
+		f.emitLocalFunctionSubtypeIdentityCheck(value, uint32(heap), sub == 23, trapCastFailure)
+		f.pushReg(value, mtI64)
+		return nil
+	}
 	if f.gcStructHelpers {
 		value := f.materialize(f.popValue())
 		f.pushReg(value, mtI64)
@@ -273,6 +280,42 @@ func (f *fn) emitGCI31Cast(sub uint32, r *wasm.Reader) error {
 	}
 	f.pushReg(value, mtI64)
 	return nil
+}
+
+func (f *fn) emitLocalFunctionSubtypeIdentityCheck(value Reg, targetType uint32, nullable bool, trapCode uint32) {
+	var success [16]int
+	nsuccess := 0
+	if nullable {
+		f.a.TestSelf(value, true)
+		success[nsuccess] = f.a.JccPlaceholder(condE)
+		nsuccess++
+	}
+	base := f.allocReg(maskOf(value))
+	f.a.Load64(base, RBX, -int32(offFuncRefDescPtr))
+	candidate := f.allocReg(maskOf(value, base))
+	required := wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: targetType}), false)
+	for i, sourceType := range f.m.FuncTypes {
+		actual := wasm.Ref(false, wasm.IndexedHeap(sourceType), false)
+		if !f.m.ReferenceTypeSubtype(actual, required) {
+			continue
+		}
+		if nsuccess == len(success) {
+			f.trapAlways(trapCode)
+			break
+		}
+		f.a.MovReg64(candidate, base)
+		f.a.LeaDisp(candidate, candidate, int32((i+1)*runtime.FuncRefDescBytes))
+		f.cmpRR(value, candidate, true)
+		success[nsuccess] = f.a.JccPlaceholder(condE)
+		nsuccess++
+	}
+	f.release(candidate)
+	f.release(base)
+	f.trapAlways(trapCode)
+	done := f.a.Len()
+	for i := 0; i < nsuccess; i++ {
+		f.a.PatchRel32(success[i], done)
+	}
 }
 
 func (f *fn) emitGCBranchCast(sub uint32, r *wasm.Reader) error {

@@ -25,8 +25,8 @@ func TestStagedGCTypeSubtypingProductsCompile(t *testing.T) {
 	if got := unsafe.Sizeof(compiledCodeCache{}); got != 64 {
 		t.Fatalf("compiledCodeCache size = %d, want 64 bytes", got)
 	}
-	wantCodeBytes := []int{0, 0, 0, 0, 0, 0, 632, 592, 77, 77, 77, 77, 253, 253, 178, 178, 178, 178, 215, 448, 560, 178, 178}
-	wantCodecBytes := []int{349, 385, 347, 219, 238, 386, 1019, 1128, 499, 657, 420, 755, 598, 852, 648, 806, 648, 569, 923, 786, 1096, 470, 550}
+	wantCodeBytes := []int{0, 0, 0, 0, 0, 0, 632, 592, 77, 77, 77, 77, 253, 253, 178, 178, 178, 178, 215, 448, 560, 178, 178, 7834}
+	wantCodecBytes := []int{349, 385, 347, 219, 238, 386, 1019, 1128, 499, 657, 420, 755, 598, 852, 648, 806, 648, 569, 923, 786, 1096, 470, 550, 8330}
 	for i, pin := range stagedGCTypeSubtypingProductPins {
 		t.Run(pin.Filename, func(t *testing.T) {
 			data := stagedGCTypeSubtypingProductData(t, pin)
@@ -69,6 +69,34 @@ func TestStagedGCTypeSubtypingProductsCompile(t *testing.T) {
 				})
 				if invokeErr != nil || !reflect.DeepEqual(got, pin.Results) || allocs != 0 {
 					t.Fatalf("steady run = %v, %v, allocs=%v; want %v, nil, 0", got, invokeErr, allocs, pin.Results)
+				}
+			}
+			if pin.Class.usesRuntimeFunctionIdentity() {
+				if got, want := len(in.funcRefDescs), 11*coreruntime.FuncRefDescBytes; got != want {
+					t.Fatalf("runtime descriptor arena = %d bytes, want %d", got, want)
+				}
+				if got, want := in.tableDescLen, 8+3*coreruntime.TableEntryBytes; got != want {
+					t.Fatalf("runtime table descriptor = %d bytes, want %d", got, want)
+				}
+				if got, err := in.Invoke("run"); err != nil || len(got) != 0 {
+					t.Fatalf("run = %v, %v; want empty success", got, err)
+				}
+				for i, name := range []string{"fail1", "fail2", "fail3", "fail4", "fail5", "fail6"} {
+					_, err := in.Invoke(name)
+					want := "wrong signature"
+					if i >= 3 {
+						want = "cast failure"
+					}
+					if err == nil || !strings.Contains(err.Error(), want) {
+						t.Fatalf("%s = %v, want %s trap", name, err, want)
+					}
+				}
+				var invokeErr error
+				allocs := testing.AllocsPerRun(1000, func() {
+					_, invokeErr = in.Invoke("run")
+				})
+				if invokeErr != nil || allocs != 0 {
+					t.Fatalf("steady run = %v, allocs=%v; want nil, 0", invokeErr, allocs)
 				}
 			}
 			if pin.Class == stagedGCTypeSubtypingRefFuncGlobals {

@@ -54,7 +54,11 @@ func (c *Compiled) stagedGCTypeSubtypingProduct() stagedGCTypeSubtypingProduct {
 }
 
 func (c *Compiled) usesGCTypeSubtypingRefTest() bool {
-	return c != nil && c.stagedGCTypeSubtypingProduct().usesRefTest()
+	if c == nil {
+		return false
+	}
+	p := c.stagedGCTypeSubtypingProduct()
+	return p.usesRefTest() || p.usesRuntimeFunctionIdentity()
 }
 
 func (c *Compiled) usesGCStructHelpers() bool {
