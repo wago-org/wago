@@ -403,6 +403,10 @@ type Data struct {
 type Func struct {
 	Locals Locals
 	Body   Expr
+	// LocalDeclBytes is the length of the encoded local declarations. Branch-hint
+	// offsets are relative to the start of those declarations, rather than to
+	// BodyBytes (which starts immediately after them).
+	LocalDeclBytes uint32
 	// BodyBytes is the original expression bytecode, including the terminating
 	// end opcode and excluding local declarations. DecodeModule always populates
 	// this field for local function bodies.
@@ -411,6 +415,21 @@ type Func struct {
 type CustomSec struct {
 	Name string
 	Data []byte
+}
+
+// BranchHint describes the likelihood of the condition of an if or br_if.
+// Offset is relative to the beginning of the function's local declarations.
+// A false Likely value means the condition is unlikely to be true.
+type BranchHint struct {
+	Offset uint32
+	Likely bool
+}
+
+// FuncBranchHints groups the ordered branch hints for one defined function.
+// FuncIndex uses the module's (import-inclusive) function index space.
+type FuncBranchHints struct {
+	FuncIndex uint32
+	Hints     []BranchHint
 }
 
 type NameAssoc struct {
@@ -456,9 +475,27 @@ type Module struct {
 	DataCount         *uint32
 	Code              []Func
 	Data              []Data
+	// BranchHints is the validated metadata.code.branch_hint custom section.
+	// Nil means that the module did not contain the section.
+	BranchHints []FuncBranchHints
 }
 
-func (m *Module) ImportedFuncCount() int   { return m.importCount(ExternFunc) }
+func (m *Module) ImportedFuncCount() int { return m.importCount(ExternFunc) }
+
+// BranchHintsForFunc returns the ordered metadata hints for funcIndex. It does
+// not allocate; most modules have no branch-hint section, and the section's
+// function entries are already required to be sorted.
+func (m *Module) BranchHintsForFunc(funcIndex uint32) []BranchHint {
+	for i := range m.BranchHints {
+		if m.BranchHints[i].FuncIndex == funcIndex {
+			return m.BranchHints[i].Hints
+		}
+		if m.BranchHints[i].FuncIndex > funcIndex {
+			break
+		}
+	}
+	return nil
+}
 func (m *Module) ImportedTableCount() int  { return m.importCount(ExternTable) }
 func (m *Module) ImportedMemCount() int    { return m.importCount(ExternMem) }
 func (m *Module) ImportedGlobalCount() int { return m.importCount(ExternGlobal) }
