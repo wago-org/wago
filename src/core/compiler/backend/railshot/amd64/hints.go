@@ -733,7 +733,7 @@ func stackArenaOpAllocates(op byte, imm *wasm.InstructionImmediate) bool {
 		return imm.Subopcode <= 7 || imm.Subopcode == 15 || imm.Subopcode == 16 // trunc_sat/table.grow/table.size push.
 	case 0xfb:
 		switch imm.Kind {
-		case wasm.InstrStructNew, wasm.InstrStructNewDefault, wasm.InstrStructGet, wasm.InstrStructGetS, wasm.InstrStructGetU:
+		case wasm.InstrStructNew, wasm.InstrStructNewDefault, wasm.InstrStructGet, wasm.InstrStructGetS, wasm.InstrStructGetU, wasm.InstrRefTest:
 			return true
 		default:
 			return false

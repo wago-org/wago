@@ -1249,7 +1249,7 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 		}
 		if p.feat.GCI31Products {
 			switch imm.Kind {
-			case wasm.InstrRefI31, wasm.InstrI31GetS, wasm.InstrI31GetU, wasm.InstrRefCast:
+			case wasm.InstrRefI31, wasm.InstrI31GetS, wasm.InstrI31GetU, wasm.InstrRefTest, wasm.InstrRefCast:
 				return false, nil
 			}
 		}
@@ -1788,7 +1788,7 @@ func (p supportPass) instructionKind(k wasm.InstrKind, context string) error {
 			return p.unsupported("instruction", k.String()+" (typed-function-references disabled)", context)
 		}
 		return nil
-	case wasm.InstrRefI31, wasm.InstrI31GetS, wasm.InstrI31GetU, wasm.InstrRefCast:
+	case wasm.InstrRefI31, wasm.InstrI31GetS, wasm.InstrI31GetU, wasm.InstrRefTest, wasm.InstrRefCast:
 		if !p.feat.GCI31Products {
 			return p.unsupported("reference instruction", k.String()+" (gc disabled)", context)
 		}
@@ -1975,7 +1975,7 @@ func (p supportPass) supportedNullReference(rt wasm.RefType) bool {
 }
 
 func (p supportPass) supportedNullReferenceHeap(heap int64) bool {
-	if p.feat.GCI31Products && heap == -20 { // i31
+	if p.feat.GCI31Products && (heap == -20 || heap == -18 || heap == -15) { // i31 / any / none
 		return true
 	}
 	return p.feat.NullReferenceProducts && (heap == -18 || heap == -15 || heap == -23 || heap == -12 || heap == -13 || heap == -14) // any / none / exn / noexn / nofunc / noextern
