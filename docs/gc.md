@@ -5,10 +5,11 @@ active mandatory WebAssembly 3.0 scope, tracked in [wasm3.md](wasm3.md), rather
 than a non-goal. The current implementation is an initial foundation under
 `src/core/runtime/gc`; it establishes reference encoding, object metadata, typed
 descriptors, a byte-slice heap skeleton, exact scanning, roots, barriers, stress
-knobs, and tests. Iteration 38 wires one exact linux/amd64 numeric-struct helper
-product to this collector, but general WasmGC opcode code generation, native frame
-publication, reference stores, arrays, public values, and snapshots remain incomplete.
-The narrow product must not be presented as general executable WasmGC support.
+knobs, and tests. Iteration 38 wires one exact linux/amd64 numeric-local helper product;
+iteration 39 adds exact immutable GC-global roots, packed fields, and the numeric portion
+of the official basic struct leader. General native frame publication, mutable/reference
+stores, arrays, public ownership values, and snapshots remain incomplete. These bounded
+products must not be presented as general executable WasmGC support.
 
 ## Why a wago-native collector
 
@@ -81,10 +82,12 @@ Each `Instance` normally owns its own `gc.Collector` when its executable product
 Iteration 37 adds one deliberately narrower exception. Ten exact pinned `type-rec` products contain struct descriptors only because recursive struct definitions participate in function identity. Their functions, immutable globals, imports, and ordinary funcref tables carry only function descriptors; no struct/array value or GC opcode exists. A compile-only, non-serialized sidecar records that exact product proof and keeps `Instance.gc == nil` even though `gc.HasHeapObjectTypes` is true. Unknown binaries, arrays, mutable fields, additional state, public codec load, snapshots, guard mode, and arm64 remain closed. A codec-reloaded artifact does not inherit this live admission sidecar. This is metadata/function-identity execution, not WasmGC heap execution.
 
 General GC roots are not wired to native frames yet. Iteration 38 adds a separate exact
-numeric-local helper product described below; it has one allocation point with a proven
-empty live-ref set and therefore does not establish general frame scanning. Later slices
-must connect exact safepoint maps, runtime allocation calls with non-empty live roots, and
-barrier emission to the instance-owned collector.
+numeric-local helper product with one allocation point and a proven empty live-ref set.
+Iteration 39 adds two collector-owned immutable global slots, not frame roots: each slot is
+installed before a later initializer allocation. Neither establishes general frame scanning.
+Later slices must connect exact safepoint maps, runtime allocation calls with non-empty live
+frame roots, mutable slot synchronization, and barrier emission to the instance-owned
+collector.
 
 ## Native exception-root map contract
 
@@ -189,13 +192,56 @@ a 1,062-byte blob. Each object is 24 bytes including the 16-byte header. `Collec
 640 bytes on the measured host; fixed `Compiled=712`, `Instance=792`, and
 `compiledCodeCache=64` layouts remain unchanged.
 
-The complete pinned `gc/struct.wast` schema-2 matrix is now 36 commands / 4 modules /
+The iteration-38 pinned `gc/struct.wast` schema-2 matrix was 36 commands / 4 modules /
 2 assertions / 4 invalid / 1 source-only malformed / 2 gates / 17 blocked, with no hidden
-failures. The remaining basic leader combines GC constant-expression `struct.new`, two
-non-null GC globals, public `ref.struct` egress, calls, allocation, get, and set. The packed
-leader combines two non-null GC globals with packed signed/unsigned gets and mutation.
-Neither is admitted until ownership tokens, global roots, constant initialization, close
-order, snapshot policy, and packed semantics are coherent.
+failures. The remaining basic and packed leaders required GC constants, global roots,
+packed semantics, and a public-result boundary.
+
+### Iteration 39 exact GC-global roots and complete numeric struct actions
+
+Iteration 39 installs a bounded root bridge for the two remaining official leaders without
+claiming a general frame scanner or public GC value ABI:
+
+- a compile-only initializer record retains at most four numeric field values for each of at
+  most two exact immutable GC globals; codec v27 never serializes these live records;
+- instantiation allocates each object with explicit `gc.EmptyRoots{}`, initializes numeric
+  fields, then creates a checked collector `GlobalSlot` before any later initializer may
+  allocate or collect;
+- one fixed two-entry per-instance mapping records Wasm global index to collector slot index;
+  the ordinary 8-byte global cell carries the same compact `gc.Ref` for native `global.get`;
+- the globals are immutable and `gc.Ref` handles are stable, so this slice has no mutable
+  cell/slot synchronization problem. Mutable globals remain rejected until stores update the
+  cell and collector slot transactionally through `WriteBarrierSlot`;
+- a failed second Tiny allocation closes the collector and rolls back the whole instance;
+  no partially live root mapping escapes;
+- exported packed globals remain visible in metadata, but `Global` and `GlobalValue` reject
+  raw/non-null GC egress rather than exposing compact handles as host tokens.
+
+The packed leader uses helper-side descriptor kinds to preserve exact i8/i16 truncation and
+signed/unsigned extension. Its ten official actions execute under Throughput and Tiny. A
+64-byte Tiny heap holds the two rooted globals; a 32-byte heap deterministically fails the
+second allocation. Packed objects are 24 bytes including the 16-byte header (6-byte payload,
+2-byte alignment).
+
+The basic leader has two rooted globals plus one transient object per invocation. Its six
+numeric/f32 actions execute because the exact internal callees contain only non-collecting
+`struct.get`/numeric `struct.set`; no live ref crosses a may-collect point after allocation.
+The exported `new` action still reaches and verifies the public non-null-anyref rejection,
+then remains recorded as one blocked action. This is an exact finite call-graph proof, not a
+general Wasm-to-Wasm safepoint rule. Basic objects are 32 bytes including the header
+(12-byte payload, 4-byte alignment).
+
+This work exposed an independent parked-Go ABI bug: synchronous helper/host calls restored
+callee-saved GPRs but could leave pinned f32/f64 locals in caller-saved XMM registers. The
+backend now copies arguments first, spills every dirty pinned local, and lazily reloads it
+after resume. A dedicated non-GC synchronous-host regression repeats the float-local round
+trip 100 times.
+
+Final `gc/struct.wast` accounting is 36 commands / 6 modules / 18 assertions / 4 invalid /
+1 source-only malformed / 0 module gates / 1 blocked public-result action, with zero hidden
+failures. Packed get measures 196.7-200.0 ns/op and packed set/get 256.0-258.1 ns/op. Basic
+get measures 211.5-237.7 ns/op and basic set/get 281.3-318.9 ns/op. Every sample reports
+0 B/op and 0 allocs/op.
 
 Before broader live `gc.Ref` payloads or funcref lifetimes can be admitted, codegen/runtime
 must still prove all of the following as one coherent product:
@@ -328,8 +374,9 @@ with white children. This keeps `struct.set`, ref-array stores, `global.set`, an
 `table.set` safe without introducing C-style intrusive lists or pointer headers.
 
 Tiny manages WasmGC heap objects only. It is separate from Wasm linear memory
-allocation. Iteration 38 connects only the exact numeric-struct parked-Go helper
-product; broader WasmGC opcode lowering and backend integration remain incomplete.
+allocation. Iterations 38-39 connect exact numeric-struct parked-Go helper products,
+including rooted immutable globals and packed fields; broader WasmGC opcode lowering and
+backend integration remain incomplete.
 It is also not a replacement for the future GenImmix/default policy; it is a
 bounded, predictable option for constrained targets where a fixed maximum heap,
 stable object addresses, compact metadata, and deterministic allocation failure
@@ -341,8 +388,9 @@ Known Tiny limitations in this foundation:
 - collection is incremental by explicit `Step` calls or allocation-time stress
   knobs, not concurrent;
 - handle-table entries remain the stable ref indirection;
-- only the exact zero-live-root numeric-struct helper product is wired to the policy;
-  general opcode/backend root publication and reference barriers remain unwired.
+- only exact numeric struct products are wired: allocation-local empty-root shapes plus
+  two immutable collector-rooted globals. General frame publication, mutable root
+  synchronization, and reference barriers remain unwired.
 
 ## Allocator/GC codegen dependency contract
 
@@ -542,8 +590,9 @@ they must not cache Go-slice-derived object payload pointers across helper
 calls, allocations, safepoints, or collection points.
 
 The general codegen integration should therefore lower WasmGC heap operations to
-helper calls with exact roots. Iteration 38's hash-pinned zero-live-root numeric product
-reuses the parked-Go control frame as a narrower bootstrap and does not replace this
+helper calls with exact roots. Iterations 38-39's hash-pinned numeric products reuse the
+parked-Go control frame plus exact immutable collector global slots as narrower bootstraps;
+they do not replace this
 backend-neutral contract:
 
 1. collect all live refs required across the helper call;
@@ -730,12 +779,14 @@ Tests exercise tiny nurseries, collect-every-alloc, exact scanning, cycles, root
 
 ## Current limitations
 
-- WasmGC opcode validation is not complete. Only the exact staged numeric
-  `struct.new_default`/`struct.get`/`struct.set` helper product and null traps are
-  wired to amd64; general structs, arrays, casts/tests, and GC constant expressions remain.
-- The parked-Go runtime-call ABI is proven only for the exact zero-live-root numeric
-  product. General allocation, field/element access, barriers, and traps still need
-  the backend-neutral root-publication ABI before broader generated code can use objects.
+- WasmGC opcode validation is not complete. Exact staged numeric `struct.new`/
+  `struct.new_default`, ordinary and packed `struct.get`, numeric `struct.set`, immutable
+  GC constants/globals, and null traps are wired to amd64; arrays, casts/tests, reference
+  fields, and general GC constant expressions remain.
+- The parked-Go runtime-call ABI is proven for exact empty-frame-root numeric allocations,
+  non-collecting numeric access/mutation, and immutable collector-rooted globals. General
+  allocation with live frame refs, field/element barriers, and traps still need the
+  backend-neutral root-publication ABI before broader generated code can use objects.
 - Exact native safepoint maps are not connected to compiled frames yet.
 - Minor collection currently promotes marked nursery survivors through handles
   rather than implementing a final copying nursery/root-update path.
@@ -744,9 +795,10 @@ Tests exercise tiny nurseries, collect-every-alloc, exact scanning, cycles, root
   future work.
 - The Throughput heap currently uses growable Go byte slices, so native code
   must not cache raw heap payload pointers; see `docs/runtime-abi.md`.
-- Tiny and Throughput profiles are connected to the exact staged numeric-struct
-  helper path, including stress collection and deterministic Tiny exhaustion, but
-  broader WasmGC opcode/backend lowering is not connected to either profile yet.
+- Tiny and Throughput profiles are connected to the exact staged numeric-struct helper
+  paths, including two rooted globals, packed fields, stress collection, and deterministic
+  Tiny exhaustion, but broader WasmGC opcode/backend lowering is not connected to either
+  profile yet.
 
 These limitations are intentional for this commit series: the runtime foundation
 is small, exact, typed, and no-cgo, giving later codegen work stable contracts.

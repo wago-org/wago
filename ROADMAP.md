@@ -225,22 +225,24 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   remain fail-closed. The scalar catch benchmark is 41.48–41.91 ns/op, the typed-funcref
   catch is 135.1–145.7 ns/op, and bottom-null `global.get` is 52.24–53.58 ns/op; all are
   0 B/op and 0 allocs/op.
-- 🚧 WasmGC now has its first collector-backed execution boundary. Strict schema-2
-  accounting covers all 36 commands in `gc/struct.wast`, pinning six valid leaders by
-  source/command line, binary hash/size, decoded type/storage graph, module state, opcodes,
-  and actions. Four modules and two null-trap assertions execute: declaration/binding
-  products, named numeric `struct.get`, and the exact null `struct.get`/`struct.set` module.
-  One separate numeric-local fixture lowers `struct.new_default`, `struct.get`, and
-  `struct.set` through a 328-byte parked-Go helper frame into the instance-owned Throughput
-  or Tiny collector. Its sole may-collect point has a proven empty live-ref set represented
-  by allocation-free `gc.EmptyRoots`; access/mutation do not collect, and numeric stores do
-  not require barriers. Tiny/Throughput stress collection, deterministic Tiny exhaustion,
-  close/teardown, no-cgo, race, codec/snapshot/public, guard, and arm64 gates are proven.
-  New/default/get measures 206.8–216.0 ns/op and new/default/set/get 283.8–305.0 ns/op,
-  both 0 B/op and 0 allocs/op. The official basic module remains gated on GC constant
-  expressions, non-null globals/public `ref.struct` ownership, and global roots; the packed
-  module remains gated on packed access plus rooted globals. Reference fields, barriers,
-  arrays, general safepoints, public admission, snapshots, guard mode, and arm64 remain.
+- 🚧 WasmGC now executes every official `gc/struct.wast` module under exact staged
+  product admission while retaining one public-result action gate. Strict schema-2
+  accounting covers all 36 commands and remains pinned by source/command line, binary
+  hash/size, decoded type/storage graph, module state, opcodes, and ordered actions.
+  Iteration 39 adds staged `struct.new`/`struct.new_default` constant initialization for
+  exact numeric globals and a bounded two-entry per-instance mapping to collector
+  `GlobalSlot`s; each slot is installed before the next initializer may collect. The packed
+  leader executes all ten signed/unsigned i8/i16 get and truncating-set assertions. The
+  basic leader executes six numeric/f32 get/set assertions across exact internal calls that
+  cannot reach allocation; its exported `new` action still fails closed at non-null
+  `ref.struct` public egress. A discovered parked-Go ABI bug is fixed by spilling pinned
+  float locals after helper/host arguments are copied, because XMM registers are
+  caller-saved. Final accounting is 36 commands / 6 modules / 18 assertions / 4 invalid /
+  1 malformed / 0 module gates / 1 blocked action, with zero hidden failures. Packed get
+  measures 196.7–200.0 ns/op and packed set/get 256.0–258.1 ns/op; basic get measures
+  211.5–237.7 ns/op and basic set/get 281.3–318.9 ns/op; all report 0 B/op and 0 allocs/op.
+  Mutable/reference GC globals, general non-empty native frame roots, reference fields and
+  barriers, arrays, public ownership tokens, snapshots, guard mode, and arm64 remain.
 - [ ] Reach zero unexplained failures/skips in the official Release 3 core suite.
 
 **Engine & performance** (no-ir-plan P1–P7, measured against P1's stats)
