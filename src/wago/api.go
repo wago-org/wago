@@ -870,7 +870,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 			return nil, fmt.Errorf("compile: staged gc/type-subtyping product: %w", err)
 		}
 		if !stagedGCTypeSubtypingProductPinned(wasmBytes, gcTypeSubtypingProduct) {
-			return nil, fmt.Errorf("compile: staged gc/type-subtyping product: binary is outside the first eight pinned products")
+			return nil, fmt.Errorf("compile: staged gc/type-subtyping product: binary is outside the pinned product set")
 		}
 	}
 	if features.GCStructProducts {

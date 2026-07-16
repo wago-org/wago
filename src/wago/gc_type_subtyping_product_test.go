@@ -4,6 +4,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	goruntime "runtime"
+	"strings"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -73,6 +75,36 @@ func TestStagedGCTypeSubtypingProductInventory(t *testing.T) {
 	if seen[stagedGCTypeSubtypingDeclarations] != 6 || seen[stagedGCTypeSubtypingRecursiveFunctions] != 2 || seen[stagedGCTypeSubtypingRefFuncGlobals] != 6 {
 		t.Fatalf("product classes = %#v, want declarations/recursive-functions/ref.func-globals = 6/2/6", seen)
 	}
+}
+
+func TestStagedGCTypeSubtypingProductPlatformAndBoundsGate(t *testing.T) {
+	data := stagedGCTypeSubtypingProductData(t, stagedGCTypeSubtypingProductPins[8])
+	cfg := NewRuntimeConfig()
+	if guardPageBuilt {
+		cfg = cfg.WithBoundsChecks(BoundsChecksSignalsBased)
+	} else {
+		cfg = cfg.WithBoundsChecks(BoundsChecksExplicit)
+	}
+	features := cfg.frontendFeatures()
+	features.TypedFunctionReferences = true
+	features.GCTypeSubtypingProducts = true
+	c, err := compileWithFrontendFeatures(cfg, data, features)
+	if goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64" {
+		if err == nil || !strings.Contains(err.Error(), "unsupported gc/type-subtyping product staged execution on") {
+			t.Fatalf("platform compile = %v, want explicit platform rejection", err)
+		}
+		return
+	}
+	if guardPageBuilt {
+		if err == nil || !strings.Contains(err.Error(), "signals-based bounds checks") {
+			t.Fatalf("guard compile = %v, want explicit bounds rejection", err)
+		}
+		return
+	}
+	if err != nil {
+		t.Fatalf("linux/amd64 explicit compile: %v", err)
+	}
+	_ = c.Close()
 }
 
 func TestStagedGCTypeSubtypingProductRejectsWidening(t *testing.T) {
