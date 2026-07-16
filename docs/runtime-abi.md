@@ -476,6 +476,21 @@ foreign producer retention. Codec v27 retains initializer/type metadata but not 
 so reload fails before constructing either the arena or global cells. Code/codec sizes are pinned, and
 `compiledCodeCache` remains 64 bytes with no basedata or descriptor-layout change.
 
+Iteration 59 adds four single-result function-only `ref.test` products without adding a runtime reference category.
+Each exact module has two local functions and therefore owns the existing null-plus-two 96-byte descriptor arena,
+but generated code does not load or classify any descriptor word. The frontend/backend stack carries compile-only
+provenance for `ref.func 0`; the subsequent indexed-function `ref.test` consumes it and materializes the validator's
+structural/declaration-supertype answer as an i32 constant. The exact results are `1, 1, 0, 1`, every native body is
+178 bytes, and 1,000-call allocation checks report zero allocations per invocation.
+
+This is intentionally not the compact-GC `ref.test` ABI from iteration 45 and does not call its parked-Go helper.
+A function descriptor address remains an instance-owned identity, never a compact `gc.Ref`, checked collector slot,
+public token, or foreign producer handle. The exact classifier rejects imports, globals, tables, memories, data,
+tags, start, extra elements/exports, locals, arbitrary bodies, and non-indexed/non-function tests before the SHA pin.
+Codec v27 preserves structural and code metadata but no admission class; private reload fails required-feature
+admission, while public load, snapshots, guard mode, and non-linux/amd64 execution stay closed. No helper ID,
+basedata slot, descriptor entry, root, barrier, collector sidecar, frame record, fixed layout, or public ABI changes.
+
 ## Global coherence invariant
 
 The global cell is the sole host- and cross-instance-visible storage for a

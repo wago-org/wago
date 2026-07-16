@@ -35,8 +35,11 @@ metadata or function identities and allocate no struct/array object. Iteration 5
 projection rejects and all fourteen invalid subtype/finality/storage/variance acceptances on both validator paths.
 Iteration 57 admits the first six declaration graphs and two recursive-function-body leaders through a new exact
 SHA-pinned no-object product, separate from iteration 37. Iteration 58 adds the next six immutable local `ref.func`-
-global leaders under their own exact class and canonical descriptor-lifetime proof. All fourteen instantiate with
-`Instance.gc == nil`; 31 leaders remain gated and all 48 dependent commands remain blocked. General native frame
+global leaders under their own exact class and canonical descriptor-lifetime proof. Iteration 59 adds the first four
+single-result function-only `ref.test` leaders: local `ref.func` provenance and the validator's structural subtype
+relation fold to exact results `1, 1, 0, 1` without routing descriptor addresses through compact-GC classification.
+All eighteen instantiate with `Instance.gc == nil`; the four new descriptor arenas are 96 bytes and repeated calls
+allocate zero bytes. Twenty-seven leaders remain gated and 44 dependent commands remain blocked. General native frame
 publication, object-valued mutable/reference globals, broad public ownership, and snapshots remain incomplete. These bounded products must not be presented as general executable WasmGC support.
 
 ## Why a wago-native collector
@@ -936,6 +939,29 @@ modules / 31 gates / 48 blocked dependents / 24 invalid / 8 unlinkable obligatio
 failures. No helper, root, barrier, collector sidecar, frame publication, basedata offset, fixed descriptor layout,
 or public ABI changes.
 
+### Iteration 59 single-result function `ref.test`
+
+The next four official leaders are pinned at generated command lines 248, 263, 275, and 286. Their Wasm sizes are
+122, 162, 122, and 112 bytes, and their expected single `i32` results are exactly `1, 1, 0, 1`. A distinct
+`stagedGCTypeSubtypingRefTestSingle` class requires exactly two local functions, no imports/globals/tables/memories/
+data/tags/start, one declarative function element containing only function 0, one export `run` naming function 1,
+an empty function 0, and a function 1 body exactly `ref.func 0; ref.test <indexed function type>; end`. AST and
+direct byte-backed validation both remain authoritative; hashes are checked only after the complete product shape.
+
+The amd64 backend records compile-only local `ref.func` provenance in stack values. `ref.test` consumes that provenance
+and emits the validator's structural/declaration-supertype answer as a constant i32. No descriptor is dereferenced,
+no parked-Go helper is called, and no function descriptor pointer is interpreted as a compact `gc.Ref`. Instantiation
+uses the existing null-plus-two 96-byte canonical descriptor arena and leaves `Instance.gc == nil`; 1,000 repeated
+`run` calls measure 0 allocations per invocation. Every product emits 178 native code bytes, while codec-v27 sizes
+are 647, 805, 647, and 568 bytes.
+
+Codec reload preserves types, functions, elements, exports, and code but not the compile-only product class; private
+reload fails required-feature admission and public load rejects unknown GC feature bits. Public compile, snapshots,
+signal-backed guard mode, and non-linux/amd64 execution remain fail-closed. No helper, root, barrier, collector
+sidecar, basedata offset, descriptor entry, fixed runtime layout, or public ABI changes. Strict accounting becomes
+18 passed modules / 4 passed assertions / 27 gates / 44 blocked dependents / 24 invalid / 8 unlinkable obligations /
+zero validator gaps or hidden failures.
+
 ## Collector lifetime
 
 `Collector.Close` is idempotent and releases heap backing storage plus root/card/mark metadata so an instance shutdown does not retain guest refs. After close, operations that need a live heap return `gc: collector closed`: allocation, collection, verification, object access/mutation, promotion, and checked root-slot creation/access/mutation. `Step` follows the same rule for both profiles; on Throughput it routes through `CollectMinor`, and on Tiny it rejects the closed collector before advancing incremental state.
@@ -1459,10 +1485,12 @@ Tests exercise tiny nurseries, collect-every-alloc, exact scanning, cycles, root
   collector-free i31 operations, dynamic tests/casts, identity-preserving cast branches, extern conversion,
   and compact null/i31/object equality. Array fill/copy plus both `array.init_data` and the exact local-
   funcref `array.init_elem` product are staged and gap-free. Complete `gc/type-subtyping` accounting is pinned
-  at 170 commands; iterations 57-58 execute fourteen no-object leaders, including six immutable local `ref.func`
-  globals with bounded canonical descriptors, leaving 31 exact gates and all 48 blocked dependents with zero
-  validator gaps or hidden failures. Reference struct fields, non-local/reference-owning array products, broader
-  GC constant expressions, and the remaining type-subtyping action/link products remain.
+  at 170 commands; iterations 57-59 execute eighteen no-object leaders, including six immutable local `ref.func`
+  globals and four single-result function `ref.test` actions over bounded canonical descriptors. The new calls fold
+  structural subtype answers to `1, 1, 0, 1`, use 96-byte arenas, and allocate zero bytes per repeated invocation,
+  leaving 27 exact gates and 44 blocked dependents with zero validator gaps or hidden failures. Reference struct
+  fields, non-local/reference-owning array products, broader GC constant expressions, and the remaining multi-result/
+  finality `ref.test` plus type-subtyping action/link products remain.
 - The parked-Go runtime-call ABI is proven for exact empty-frame-root numeric/packed
   allocations, non-collecting numeric access/mutation/data initialization, exact local-funcref element
   initialization, ordered immutable collector-rooted globals, per-instance passive descriptors, and one
