@@ -169,6 +169,12 @@ func replayStagedGCArrayScript(t *testing.T, tmp string, script stagedSpecScript
 	gates := map[string]int{}
 	var latest []byte
 	var current *stagedGCArrayLeaderPin
+	var instance *Instance
+	defer func() {
+		if instance != nil {
+			_ = instance.Close()
+		}
+	}()
 	seenPins := map[string]bool{}
 	seenActions := map[string][]string{}
 	leaders := make([]stagedGCArrayLeaderDelta, 0, len(stagedGCArrayLeaderPins))
@@ -186,6 +192,10 @@ func replayStagedGCArrayScript(t *testing.T, tmp string, script stagedSpecScript
 			}
 			latest, current = data, nil
 		case "module_instance":
+			if instance != nil {
+				_ = instance.Close()
+				instance = nil
+			}
 			leader, pin, err := stagedGCArrayLeaderDeltaFor(latest, cmd.Line)
 			if err != nil {
 				counts.Failures++
@@ -200,15 +210,26 @@ func replayStagedGCArrayScript(t *testing.T, tmp string, script stagedSpecScript
 			seenPins[pin.Filename] = true
 			leaders = append(leaders, leader)
 			current = &pin
-			if c, compileErr := compileStagedGCArray(latest); compileErr == nil {
-				_ = c.Close()
-				counts.Failures++
-				counts.UnexpectedCompileRejects++
-				t.Errorf("gc/array.wast:%d unimplemented leader %s compiled outside an admitted array product", cmd.Line, pin.Filename)
-			} else {
+			c, compileErr := compileStagedGCArray(latest)
+			if compileErr != nil {
 				counts.ExpectedFeatureRejects++
 				gates[pin.Class.gateReason()]++
+				continue
 			}
+			instance, err = instantiateCore(c, InstantiateOptions{})
+			_ = c.Close()
+			if err != nil {
+				counts.Failures++
+				counts.UnexpectedLinkRejects++
+				t.Errorf("gc/array.wast:%d admitted leader %s instantiate: %v", cmd.Line, pin.Filename, err)
+				instance = nil
+				continue
+			}
+			if (pin.Class == stagedGCArrayDeclarations || pin.Class == stagedGCArrayBindings) && instance.gc != nil {
+				counts.Failures++
+				t.Errorf("gc/array.wast:%d metadata-only leader %s allocated a collector", cmd.Line, pin.Filename)
+			}
+			counts.ModulesPassed++
 		case "assert_invalid":
 			data, err := os.ReadFile(filepath.Join(tmp, cmd.Filename))
 			if err != nil {
@@ -251,7 +272,17 @@ func replayStagedGCArrayScript(t *testing.T, tmp string, script stagedSpecScript
 				kind = "trap"
 			}
 			seenActions[current.Filename] = append(seenActions[current.Filename], kind+":"+cmd.Action.Field)
-			counts.BlockedCommands++
+			if instance == nil {
+				counts.BlockedCommands++
+				continue
+			}
+			_, invokeErr := instance.Invoke(cmd.Action.Field)
+			if cmd.Type != "assert_trap" || invokeErr == nil {
+				counts.Failures++
+				t.Errorf("gc/array.wast:%d %s = %v, want trap", cmd.Line, cmd.Action.Field, invokeErr)
+				continue
+			}
+			counts.AssertionsPassed++
 		default:
 			counts.Failures++
 			t.Errorf("gc/array.wast:%d unhandled command %q", cmd.Line, cmd.Type)
@@ -282,7 +313,7 @@ func TestStagedOfficialGCArrayAccounting(t *testing.T) {
 	var script stagedSpecScript
 	tmp := stagedOfficialTypedReferenceJSON(t, "gc/array", &script)
 	counts, leaders, gateCounts := replayStagedGCArrayScript(t, tmp, script)
-	if counts.Commands != 61 || counts.ExpectedFeatureRejects != 7 || counts.BlockedCommands != 41 || counts.ExpectedInvalid != 6 || counts.Failures != 0 || counts.UnexpectedCompileRejects != 0 || counts.UnexpectedLinkRejects != 0 {
+	if counts.Commands != 61 || counts.ModulesPassed != 3 || counts.AssertionsPassed != 2 || counts.ExpectedFeatureRejects != 4 || counts.BlockedCommands != 39 || counts.ExpectedInvalid != 6 || counts.Failures != 0 || counts.UnexpectedCompileRejects != 0 || counts.UnexpectedLinkRejects != 0 {
 		t.Fatalf("staged gc/array accounting has hidden or changed gaps: %+v", counts)
 	}
 	gateNames := make([]string, 0, len(gateCounts))
