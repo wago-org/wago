@@ -465,6 +465,17 @@ GC helper admission is derived from existing exact product enums, preserving `co
 basedata offset, control frame, descriptor entry, helper ID, root, barrier, collector sidecar, snapshot field, or
 public/guard/arm64 ABI changes.
 
+Iteration 58 adds six immutable local `ref.func`-global products without changing the descriptor ABI. One-function
+modules allocate the existing null-plus-one 64-byte arena; two-function modules allocate 96 bytes. Each global's
+8-byte cell stores the address of its selected 32-byte local descriptor, and the descriptor identity word stores
+that same self address. The product classifier checks exact local `ref.func` syntax and declared source-to-storage
+subtyping before compilation; imports, exports, mutable globals, tables, elements, and broader bodies remain
+rejected. The arena is instance-owned for the entire lifetime of every cell and is torn down with the instance.
+These words are never scanned as compact `gc.Ref`s and create no collector, root, barrier, helper transition, or
+foreign producer retention. Codec v27 retains initializer/type metadata but not the compile-only admission class,
+so reload fails before constructing either the arena or global cells. Code/codec sizes are pinned, and
+`compiledCodeCache` remains 64 bytes with no basedata or descriptor-layout change.
+
 ## Global coherence invariant
 
 The global cell is the sole host- and cross-instance-visible storage for a
