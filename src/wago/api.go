@@ -1024,6 +1024,9 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 	if err != nil {
 		return nil, fmt.Errorf("gc descriptors: %w", err)
 	}
+	if err := configureStagedGCArrayTypeDescs(gcArrayProduct, gcDescs); err != nil {
+		return nil, fmt.Errorf("gc array descriptors: %w", err)
+	}
 	if err := frontend.RejectUnsupportedWithFeatures(m, features); err != nil {
 		return nil, fmt.Errorf("compile: %w", err)
 	}

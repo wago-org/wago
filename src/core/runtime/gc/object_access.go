@@ -301,6 +301,29 @@ func (c *Collector) ArrayInitData(dst Ref, dstStart uint32, data []byte, srcStar
 	return nil
 }
 
+// ArrayInitWords preflights an i64 array destination before storing the
+// caller-provided words. It does not allocate, collect, scan, or barrier: the
+// words are non-collector identities owned by the caller's exact product.
+func (c *Collector) ArrayInitWords(dst Ref, dstStart uint32, words []uint64) error {
+	d, err := c.refDesc(dst)
+	if err != nil {
+		return err
+	}
+	if d.Kind != KindArray || d.Elem != StorageI64 {
+		return errors.New("gc: array word destination is not i64")
+	}
+	dstLen := c.header(dst).Aux
+	if uint64(dstStart)+uint64(len(words)) > uint64(dstLen) {
+		return errRange
+	}
+	for i, bits := range words {
+		if err := c.storeValue(dst, d, uint64(PayloadOffset)+uint64(dstStart+uint32(i))*uint64(d.ElemSize), d.Elem, Value{Kind: StorageI64, Bits: bits}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (c *Collector) ArrayCopy(dst Ref, dstStart uint32, src Ref, srcStart uint32, length uint32) error {
 	dstDesc, err := c.refDesc(dst)
 	if err != nil {

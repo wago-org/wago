@@ -3,6 +3,8 @@ package wago
 import (
 	"crypto/sha256"
 	"fmt"
+
+	"github.com/wago-org/wago/src/core/runtime/gc"
 )
 
 // stagedGCArrayProduct identifies exact compile-only gc/array products. It is
@@ -22,6 +24,7 @@ const (
 	stagedGCArrayProductBulkFill
 	stagedGCArrayProductBulkCopy
 	stagedGCArrayProductInitData
+	stagedGCArrayProductInitElem
 )
 
 const stagedGCArrayNumericLocalSHA256 = "cfa515e66b094db434e59a3bbd21b66e99f391aaa52614e2fa1a5fec4f0e7b3b"
@@ -50,17 +53,38 @@ func (p stagedGCArrayProduct) String() string {
 		return "bulk-copy"
 	case stagedGCArrayProductInitData:
 		return "init-data"
+	case stagedGCArrayProductInitElem:
+		return "init-elem"
 	default:
 		return "unknown"
 	}
 }
 
 func (p stagedGCArrayProduct) requiresHelpers() bool {
-	return p == stagedGCArrayProductNumericLocal || p == stagedGCArrayProductNumericDefault || p == stagedGCArrayProductNumericFixed || p == stagedGCArrayProductPackedData || p == stagedGCArrayProductReferenceElements || p == stagedGCArrayProductNullDereference || p == stagedGCArrayProductBulkFill || p == stagedGCArrayProductBulkCopy || p == stagedGCArrayProductInitData
+	return p == stagedGCArrayProductNumericLocal || p == stagedGCArrayProductNumericDefault || p == stagedGCArrayProductNumericFixed || p == stagedGCArrayProductPackedData || p == stagedGCArrayProductReferenceElements || p == stagedGCArrayProductNullDereference || p == stagedGCArrayProductBulkFill || p == stagedGCArrayProductBulkCopy || p == stagedGCArrayProductInitData || p == stagedGCArrayProductInitElem
 }
 
 func (p stagedGCArrayProduct) metadataOnly() bool {
 	return p == stagedGCArrayProductDeclarations || p == stagedGCArrayProductBindings
+}
+
+func configureStagedGCArrayTypeDescs(product stagedGCArrayProduct, descs []gc.TypeDesc) error {
+	if product != stagedGCArrayProductInitElem {
+		return nil
+	}
+	for _, typeID := range []gc.TypeID{1, 2} {
+		if int(typeID) >= len(descs) || descs[typeID].Kind != gc.KindArray {
+			return fmt.Errorf("init-elem array type %d is unavailable", typeID)
+		}
+		old := descs[typeID]
+		d, err := gc.NewArrayDesc(typeID, gc.StorageI64)
+		if err != nil {
+			return err
+		}
+		d.Final, d.Super, d.HasSuper = old.Final, old.Super, old.HasSuper
+		descs[typeID] = d
+	}
+	return gc.ValidateTypeDescs(descs)
 }
 
 func stagedGCArrayExecutionProduct(data []byte) (stagedGCArrayProduct, bool) {
@@ -90,6 +114,8 @@ func stagedGCArrayExecutionProduct(data []byte) (stagedGCArrayProduct, bool) {
 		return stagedGCArrayProductInitData, true
 	case len(data) == 435 && digest == "05827a01cec2e9f3623e9d00b54aff258bbc7b497f47b76ffd31452bbcb9b31f":
 		return stagedGCArrayProductInitData, true
+	case len(data) == 268 && digest == "77153cc9166a1b88e564a93e473e2d4d31979288ac4b82b9b0038911cd15983b":
+		return stagedGCArrayProductInitElem, true
 	default:
 		return 0, false
 	}

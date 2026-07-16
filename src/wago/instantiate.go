@@ -675,7 +675,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 					if int(gcGlobalRootCount) >= len(gcGlobalRoots) {
 						return nil, fmt.Errorf("global %d exceeds staged GC root mapping bound", i)
 					}
-					ref, slot, err := instantiateGCArrayGlobal(b.collector, c.GCTypeDescs, gcInit)
+					ref, slot, err := instantiateGCArrayGlobal(b.collector, c.GCTypeDescs, gcInit, funcRefDescs)
 					if err != nil {
 						return nil, fmt.Errorf("global %d GC array initializer: %w", i, err)
 					}
