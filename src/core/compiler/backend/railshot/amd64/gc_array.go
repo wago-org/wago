@@ -20,6 +20,8 @@ const (
 	gcArrayAllocData    uint32 = 24
 	gcArrayAllocElem    uint32 = 25
 	gcArrayDropElem     uint32 = 26
+	gcArrayFill         uint32 = 27
+	gcArrayCopy         uint32 = 28
 )
 
 func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
@@ -175,6 +177,43 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 	case 15: // array.len
 		object := wasm.RefVal(wasm.Ref(true, wasm.AbsHeap(wasm.HeapArray), false))
 		return f.callGCStructHelper(gcArrayLen, []wasm.ValType{object}, []wasm.ValType{wasm.I32})
+	case 16: // array.fill typeidx
+		typeIndex, err := r.U32()
+		if err != nil {
+			return err
+		}
+		field, ok := stagedArrayType(f.m, typeIndex)
+		if !ok || field.Mut != wasm.Var {
+			return fmt.Errorf("amd64: array.fill type %d is unavailable or immutable", typeIndex)
+		}
+		valueType := field.Storage.Val
+		if field.Storage.Packed {
+			valueType = wasm.I32
+		}
+		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
+		object := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
+		return f.callGCStructHelper(gcArrayFill, []wasm.ValType{object, wasm.I32, valueType, wasm.I32, wasm.I32}, nil)
+	case 17: // array.copy dsttype srcType
+		dstType, err := r.U32()
+		if err != nil {
+			return err
+		}
+		srcType, err := r.U32()
+		if err != nil {
+			return err
+		}
+		dstField, ok := stagedArrayType(f.m, dstType)
+		if !ok || dstField.Mut != wasm.Var {
+			return fmt.Errorf("amd64: array.copy destination type %d is unavailable or immutable", dstType)
+		}
+		if _, ok := stagedArrayType(f.m, srcType); !ok {
+			return fmt.Errorf("amd64: array.copy source type %d is unavailable", srcType)
+		}
+		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(dstType)})
+		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(srcType)})
+		dst := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: dstType}), false))
+		src := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: srcType}), false))
+		return f.callGCStructHelper(gcArrayCopy, []wasm.ValType{dst, wasm.I32, src, wasm.I32, wasm.I32, wasm.I32, wasm.I32}, nil)
 	default:
 		return fmt.Errorf("amd64: unsupported staged array opcode %d", sub)
 	}

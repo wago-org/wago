@@ -1098,7 +1098,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		c.memoryDir.gcStructGlobals = gcGlobals
 	}
 	if gcArrayProduct != 0 {
-		gcGlobals, err := stagedGCArrayGlobalInitializers(m)
+		gcGlobals, err := stagedGCArrayGlobalInitializers(m, gcArrayProduct)
 		if err != nil {
 			return nil, fmt.Errorf("compile: staged GC array globals: %w", err)
 		}

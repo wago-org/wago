@@ -21,6 +21,8 @@ const (
 	gcArrayAllocData    uint32 = 24
 	gcArrayAllocElem    uint32 = 25
 	gcArrayDropElem     uint32 = 26
+	gcArrayFill         uint32 = 27
+	gcArrayCopy         uint32 = 28
 )
 
 func (in *Instance) dispatchGCHelper(helper uint32, args, results []uint64) {
@@ -89,6 +91,39 @@ func (in *Instance) dispatchGCArrayHelper(helper uint32, args, results []uint64)
 	}
 
 	switch helper {
+	case gcArrayFill:
+		if len(args) != 5 {
+			panic(gcStructHelperError{err: fmt.Errorf("gc array fill helper arity = %d, want 5", len(args))})
+		}
+		ref, start, typeID := gc.Ref(uint32(args[0])), uint32(args[1]), uint32(args[4])
+		checkArray(ref, typeID)
+		var value gc.Value
+		if int(typeID) < len(in.c.GCTypeDescs) && (in.c.GCTypeDescs[typeID].Elem == gc.StorageRef || in.c.GCTypeDescs[typeID].Elem == gc.StorageRefNull) {
+			value = arrayRefValue(typeID, args[2])
+		} else {
+			value = arrayValue(typeID, args[2])
+		}
+		if err := in.gc.ArrayFill(ref, start, value, uint32(args[3])); err != nil {
+			if strings.Contains(err.Error(), "index out of range") {
+				panic(gcStructHelperTrap{code: coreruntime.TrapBuiltin})
+			}
+			panic(gcStructHelperError{err: err})
+		}
+	case gcArrayCopy:
+		if len(args) != 7 {
+			panic(gcStructHelperError{err: fmt.Errorf("gc array copy helper arity = %d, want 7", len(args))})
+		}
+		dst, dstStart := gc.Ref(uint32(args[0])), uint32(args[1])
+		src, srcStart, length := gc.Ref(uint32(args[2])), uint32(args[3]), uint32(args[4])
+		dstType, srcType := uint32(args[5]), uint32(args[6])
+		checkArray(dst, dstType)
+		checkArray(src, srcType)
+		if err := in.gc.ArrayCopy(dst, dstStart, src, srcStart, length); err != nil {
+			if strings.Contains(err.Error(), "index out of range") {
+				panic(gcStructHelperTrap{code: coreruntime.TrapBuiltin})
+			}
+			panic(gcStructHelperError{err: err})
+		}
 	case gcArrayDropElem:
 		if len(args) != 1 {
 			panic(gcStructHelperError{err: fmt.Errorf("gc array elem-drop helper arity = %d, want 1", len(args))})
