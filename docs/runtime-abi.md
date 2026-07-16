@@ -422,6 +422,29 @@ not use iteration 52's post-return mutable-cell reconciliation: all three global
 instantiation. Codec v27 serializes neither helper/product admission nor checked roots or passive dropped
 state; codec reload, snapshots, signal bounds, public admission, and arm64 execution remain closed.
 
+Iteration 54 adds helper ID 30 for the exact local-funcref `array.init_elem` product. The parked
+call copies six scalar words: destination compact array ref, destination index, passive source index,
+element count, exact destination type index, and exact element-segment index. Go reads the current
+16-byte passive descriptor through the existing basedata pointer, checks both complete ranges, then
+preflights every selected 32-byte passive funcref entry. Each non-null identity must point into the
+instance's bounded canonical descriptor arena and structurally subtype the destination array element
+type before any payload write occurs.
+
+The two exact destination array descriptors use eight-byte non-scanned payload slots. Their stored
+words are canonical local funcref descriptor identities, not compact `gc.Ref` handles, public tokens,
+or collector roots. Consequently helper 30 performs no collector object/card/post-bulk barrier. The
+array objects themselves remain checked global roots, while the executing instance owns the local
+function descriptor arena for the whole activation. This is an exact local-only lifecycle proof; a
+foreign, imported, host, extern, or compact-GC reference array must not reuse it without separate
+producer retention and the applicable collector barriers.
+
+A fixed twelve-word stack buffer holds all preflighted identities. The helper allocates neither Go nor
+collector memory, cannot collect, retains no pointer after return, and never exposes a GC payload
+address to native code. `elem.drop` reuses helper ID 26 to zero only the passive descriptor length;
+zero-length post-drop initialization succeeds and non-zero initialization traps before mutation. The
+268-byte product uses two 112-byte rooted arrays and measures 213.4–219.2 ns/op with 0 B/op and
+0 allocs/op. No fixed runtime, basedata, descriptor, plugin-sidecar, or codec-v27 layout grows.
+
 ## Global coherence invariant
 
 The global cell is the sole host- and cross-instance-visible storage for a
