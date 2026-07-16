@@ -47,9 +47,21 @@ func (f *fn) tableEntryAddr(dst, tbl Reg) {
 	f.a.LeaDisp(dst, dst, 8)
 }
 
+// tableIsExternref retains its historical name but reports every exact staged
+// 8-byte compact-reference table. Externref tokens, i31 immediates, and the
+// hash-pinned anyref/i31 table product share the scalar entry path; funcref
+// descriptors remain 32 bytes.
 func (f *fn) tableIsExternref(tableIdx uint32) bool {
 	tt, ok := f.m.TableType(tableIdx)
-	return ok && wasm.EqualValType(wasm.RefVal(tt.Ref), wasm.ExternRef)
+	if !ok || tt.Ref.Exact || tt.Ref.Heap.Kind != wasm.HeapAbs {
+		return ok && wasm.EqualValType(wasm.RefVal(tt.Ref), wasm.ExternRef)
+	}
+	switch tt.Ref.Heap.Abs {
+	case wasm.HeapExtern, wasm.HeapAny, wasm.HeapEq, wasm.HeapI31, wasm.HeapNone:
+		return true
+	default:
+		return false
+	}
 }
 
 func (f *fn) tableAddr64(tableIdx uint32) bool {

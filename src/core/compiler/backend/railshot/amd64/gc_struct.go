@@ -29,6 +29,9 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 	if sub >= 6 && sub <= 20 {
 		return f.emitGCArray(sub, r)
 	}
+	if sub == 22 || sub == 23 {
+		return f.emitGCI31Cast(sub, r)
+	}
 	if sub >= 28 && sub <= 30 {
 		return f.emitGCI31(sub)
 	}
@@ -109,6 +112,36 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 	default:
 		return fmt.Errorf("amd64: unsupported staged 0xfb opcode %d", sub)
 	}
+}
+
+func (f *fn) emitGCI31Cast(sub uint32, r *wasm.Reader) error {
+	heap, err := r.S33()
+	if err != nil {
+		return err
+	}
+	if heap != -20 { // i31
+		return fmt.Errorf("amd64: staged ref.cast heap %d is not i31", heap)
+	}
+	value := f.materialize(f.popValue())
+	var nullableDone int
+	if sub == 23 {
+		f.a.TestSelf(value, true)
+		nullableDone = f.a.JccPlaceholder(condE)
+	} else {
+		f.a.TestSelf(value, true)
+		f.trapIf(condE, trapNullReference)
+	}
+	tag := f.allocReg(maskOf(value))
+	f.a.MovRegReg32(tag, value)
+	f.a.AluRI(4, tag, 1, false)
+	f.a.TestSelf(tag, false)
+	f.trapIf(condE, trapIndirectSig)
+	f.release(tag)
+	if sub == 23 {
+		f.a.PatchRel32(nullableDone, f.a.Len())
+	}
+	f.pushReg(value, mtI64)
+	return nil
 }
 
 func (f *fn) emitGCI31(sub uint32) error {

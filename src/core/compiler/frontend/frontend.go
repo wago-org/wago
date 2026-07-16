@@ -126,7 +126,7 @@ func RequiresFuncRefDescriptors(m *wasm.Module) bool {
 	}
 	for tableIndex := 0; tableIndex < m.TableCount(); tableIndex++ {
 		tt, ok := m.TableType(uint32(tableIndex))
-		if !ok || !isExternRef(tt.Ref) {
+		if !ok || !compactRefTableType(tt.Ref) {
 			return true
 		}
 	}
@@ -203,7 +203,7 @@ func SupportedTableRuntimeShapes(m *wasm.Module) ([]TableRuntimeShape, error) {
 			return nil, fmt.Errorf("table %d type unavailable", tableIndex)
 		}
 		entryBytes := runtime.TableEntryBytes
-		if isExternRef(tt.Ref) {
+		if compactRefTableType(tt.Ref) {
 			entryBytes = 8
 		}
 		shapes[tableIndex].EntryBytes = entryBytes
@@ -215,7 +215,7 @@ func SupportedTableRuntimeShapes(m *wasm.Module) ([]TableRuntimeShape, error) {
 			return nil, fmt.Errorf("table %d minimum %d overflows int", tableIndex, min)
 		}
 		entryBytes := runtime.TableEntryBytes
-		if isExternRef(m.Tables[i].Type.Ref) {
+		if compactRefTableType(m.Tables[i].Type.Ref) {
 			entryBytes = 8
 		}
 		max := min
@@ -231,8 +231,8 @@ func SupportedTableRuntimeShapes(m *wasm.Module) ([]TableRuntimeShape, error) {
 			}
 		} else if observableCapacity {
 			reserve := minOnlyTableGrowCapacity
-			if isExternRef(m.Tables[i].Type.Ref) {
-				// Externref entries are store-owned 8-byte tokens. A fixed 1,024-entry
+			if compactRefTableType(m.Tables[i].Type.Ref) {
+				// Compact reference entries are 8-byte values. A fixed 1,024-entry
 				// growth window is sufficient for the staged local table64 shapes and
 				// keeps wider table counts bounded independently of the funcref ceiling.
 				reserve = minOnlyExternrefTableGrowCapacity
@@ -470,7 +470,7 @@ func (p supportPass) imports() error {
 			// Imported tables carry their exact reference type into the shared
 			// runtime handle. Externref imports additionally require reference types
 			// and a compatible store-bound owner at instantiation.
-			if !isFuncRef(im.Type.Table.Ref) && !isExternRef(im.Type.Table.Ref) && !p.supportedTypedFuncRef(im.Type.Table.Ref) {
+			if !isFuncRef(im.Type.Table.Ref) && !isExternRef(im.Type.Table.Ref) && !p.supportedTypedFuncRef(im.Type.Table.Ref) && !p.supportedGCReference(im.Type.Table.Ref) {
 				return p.valType(wasm.RefVal(im.Type.Table.Ref), ctx+" table type")
 			}
 			if isExternRef(im.Type.Table.Ref) && !p.feat.ReferenceTypes {
@@ -511,7 +511,7 @@ func (p supportPass) tables() error {
 	for i, t := range p.m.Tables {
 		tableIndex := imported + i
 		ctx := fmt.Sprintf("table %d", tableIndex)
-		if !isFuncRef(t.Type.Ref) && !isExternRef(t.Type.Ref) && !p.supportedTypedFuncRef(t.Type.Ref) {
+		if !isFuncRef(t.Type.Ref) && !isExternRef(t.Type.Ref) && !p.supportedTypedFuncRef(t.Type.Ref) && !p.supportedGCReference(t.Type.Ref) {
 			return p.valType(wasm.RefVal(t.Type.Ref), ctx)
 		}
 		if isExternRef(t.Type.Ref) && !p.feat.ReferenceTypes {
@@ -646,7 +646,7 @@ func (p supportPass) elements() error {
 			if !p.feat.ReferenceTypes {
 				return p.unsupported("reference type", elemKindName(e.Kind.Kind), ctx)
 			}
-			if e.Kind.Kind == wasm.ElemTypedExprs && !isFuncRef(e.Kind.Ref) && !isExternRef(e.Kind.Ref) && !p.supportedTypedFuncRef(e.Kind.Ref) {
+			if e.Kind.Kind == wasm.ElemTypedExprs && !isFuncRef(e.Kind.Ref) && !isExternRef(e.Kind.Ref) && !p.supportedTypedFuncRef(e.Kind.Ref) && !p.supportedGCReference(e.Kind.Ref) {
 				return p.valType(wasm.RefVal(e.Kind.Ref), ctx)
 			}
 			for j, ex := range e.Kind.Exprs {
@@ -662,6 +662,9 @@ func (p supportPass) elements() error {
 }
 
 func (p supportPass) elementExpr(e wasm.Expr, context string) error {
+	if p.feat.GCI31Products && isGCI31ConstExpr(e) {
+		return p.constExpr(e, context)
+	}
 	if _, err := wasm.ParseElementExpr(e); err != nil {
 		return p.unsupported("element expression", err.Error(), context)
 	}
@@ -1246,7 +1249,7 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 		}
 		if p.feat.GCI31Products {
 			switch imm.Kind {
-			case wasm.InstrRefI31, wasm.InstrI31GetS, wasm.InstrI31GetU:
+			case wasm.InstrRefI31, wasm.InstrI31GetS, wasm.InstrI31GetU, wasm.InstrRefCast:
 				return false, nil
 			}
 		}
@@ -1785,7 +1788,7 @@ func (p supportPass) instructionKind(k wasm.InstrKind, context string) error {
 			return p.unsupported("instruction", k.String()+" (typed-function-references disabled)", context)
 		}
 		return nil
-	case wasm.InstrRefI31, wasm.InstrI31GetS, wasm.InstrI31GetU:
+	case wasm.InstrRefI31, wasm.InstrI31GetS, wasm.InstrI31GetU, wasm.InstrRefCast:
 		if !p.feat.GCI31Products {
 			return p.unsupported("reference instruction", k.String()+" (gc disabled)", context)
 		}
@@ -2258,6 +2261,55 @@ func isFuncRef(rt wasm.RefType) bool {
 
 func isExternRef(rt wasm.RefType) bool {
 	return rt.Nullable && rt.Bare && !rt.Exact && rt.Heap.Kind == wasm.HeapAbs && rt.Heap.Abs == wasm.HeapExtern
+}
+
+func compactRefTableType(rt wasm.RefType) bool {
+	if isExternRef(rt) || rt.Exact || rt.Heap.Kind != wasm.HeapAbs {
+		return isExternRef(rt)
+	}
+	switch rt.Heap.Abs {
+	case wasm.HeapAny, wasm.HeapEq, wasm.HeapI31, wasm.HeapNone:
+		return true
+	default:
+		return false
+	}
+}
+
+func isGCI31ConstExpr(e wasm.Expr) bool {
+	body := e.BodyBytes
+	if len(body) == 0 {
+		var err error
+		body, err = wasm.EncodeExpr(e)
+		if err != nil {
+			return false
+		}
+	}
+	r := wasm.NewReader(body)
+	op, err := r.Byte()
+	if err != nil {
+		return false
+	}
+	switch op {
+	case 0x41:
+		_, err = r.I32()
+	case 0x23:
+		_, err = r.U32()
+	default:
+		return false
+	}
+	if err != nil {
+		return false
+	}
+	prefix, err := r.Byte()
+	if err != nil || prefix != 0xfb {
+		return false
+	}
+	sub, err := r.U32()
+	if err != nil || sub != 28 {
+		return false
+	}
+	end, err := r.Byte()
+	return err == nil && end == 0x0b && r.BytesLeft() == 0
 }
 
 // isNullableAbsRef reports whether rt is a bare nullable reference to one of the

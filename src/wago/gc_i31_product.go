@@ -3,6 +3,8 @@ package wago
 import (
 	"crypto/sha256"
 	"fmt"
+
+	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
 // stagedGCI31Product identifies exact compile-only gc/i31 products. i31 values
@@ -59,6 +61,50 @@ func stagedGCI31PinnedProduct(data []byte) (stagedGCI31Product, bool) {
 }
 
 func stagedGCI31ExecutionProduct(data []byte) (stagedGCI31Product, bool) {
-	product, ok := stagedGCI31PinnedProduct(data)
-	return product, ok && product == stagedGCI31ProductCore
+	return stagedGCI31PinnedProduct(data)
+}
+
+type gcI31TableInitializer struct {
+	TableIndex  uint32
+	GlobalIndex uint32
+}
+
+func stagedGCI31TableInitializer(m *wasm.Module) (*gcI31TableInitializer, error) {
+	if m == nil || m.ImportedTableCount() != 0 || len(m.Tables) != 1 || m.Tables[0].Init == nil {
+		return nil, fmt.Errorf("expected one local table with an initializer")
+	}
+	body := m.Tables[0].Init.BodyBytes
+	if len(body) == 0 {
+		var err error
+		body, err = wasm.EncodeExpr(*m.Tables[0].Init)
+		if err != nil {
+			return nil, err
+		}
+	}
+	r := wasm.NewReader(body)
+	op, err := r.Byte()
+	if err != nil || op != 0x23 {
+		return nil, fmt.Errorf("table initializer requires global.get")
+	}
+	globalIndex, err := r.U32()
+	if err != nil {
+		return nil, err
+	}
+	gt, ok := m.GlobalTypeByIndex(globalIndex)
+	if !ok || gt.Mutable || !wasm.EqualValType(gt.Type, wasm.I32) {
+		return nil, fmt.Errorf("table initializer global %d is not immutable i32", globalIndex)
+	}
+	prefix, err := r.Byte()
+	if err != nil || prefix != 0xfb {
+		return nil, fmt.Errorf("table initializer requires ref.i31")
+	}
+	sub, err := r.U32()
+	if err != nil || sub != 28 {
+		return nil, fmt.Errorf("table initializer has unsupported 0xfb opcode %d", sub)
+	}
+	end, err := r.Byte()
+	if err != nil || end != 0x0b || r.BytesLeft() != 0 {
+		return nil, fmt.Errorf("table initializer has invalid end")
+	}
+	return &gcI31TableInitializer{TableIndex: 0, GlobalIndex: globalIndex}, nil
 }
