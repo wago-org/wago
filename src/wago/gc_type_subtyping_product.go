@@ -17,6 +17,7 @@ const (
 	stagedGCTypeSubtypingDeclarations stagedGCTypeSubtypingProduct = iota + 1
 	stagedGCTypeSubtypingRecursiveFunctions
 	stagedGCTypeSubtypingRefFuncGlobals
+	stagedGCTypeSubtypingRefTestSingle
 )
 
 func stagedGCTypeSubtypingProductPinned(data []byte, product stagedGCTypeSubtypingProduct) bool {
