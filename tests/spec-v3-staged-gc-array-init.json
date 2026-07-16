@@ -1,0 +1,318 @@
+{
+  "schema": 2,
+  "suite_revision": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+  "files": [
+    {
+      "name": "gc/array_init_data",
+      "leaders": [
+        {
+          "filename": "array_init_data.2.wasm",
+          "command_line": 48,
+          "source_line": 31,
+          "size": 335,
+          "sha256": "c17da56ed5c65083ee20023738cc5d9a36d1e301d2f06f23e2645d6ec8a9ca77",
+          "class": "packed-i8-i16-data-init",
+          "gate": "array init segment/root helper product",
+          "type_graph": "rec[array{i8}]|rec[array{mut i8}]|rec[array{mut i16}]|rec[func(i32)-\u003e(i32)]|rec[func()-\u003e()]|rec[func(i32,i32,i32)-\u003e()]",
+          "state_graph": "imports=0 funcs=6 globals=[const ref type 0,mut ref type 1,const ref type 2] tables=0 memories=0 tags=0 elements=0 data=1 exports=[array_get_nth=0:0,array_get_nth_i16=0:1,array_init_data-null=0:2,array_init_data=0:3,array_init_data_i16=0:4,drop_segs=0:5]",
+          "control_graph": "preflight null, destination element range, and source byte range before mutation; i8 consumes one byte per element, i16 consumes two little-endian bytes; drop preserves zero-length success",
+          "opcodes": [
+            {
+              "opcode": "ArrayGetU",
+              "count": 2
+            },
+            {
+              "opcode": "ArrayInitData",
+              "count": 3
+            },
+            {
+              "opcode": "ArrayNew",
+              "count": 1
+            },
+            {
+              "opcode": "ArrayNewDefault",
+              "count": 2
+            },
+            {
+              "opcode": "DataDrop",
+              "count": 1
+            },
+            {
+              "opcode": "GlobalGet",
+              "count": 4
+            },
+            {
+              "opcode": "I32Const",
+              "count": 7
+            },
+            {
+              "opcode": "LocalGet",
+              "count": 8
+            },
+            {
+              "opcode": "RefNull",
+              "count": 1
+            }
+          ],
+          "actions": [
+            "trap:array_init_data-null()",
+            "trap:array_init_data(13,0,0)",
+            "trap:array_init_data(0,13,0)",
+            "trap:array_init_data(0,0,13)",
+            "trap:array_init_data(0,0,13)",
+            "trap:array_init_data_i16(0,0,7)",
+            "return:array_init_data(12,0,0)-\u003e()",
+            "return:array_init_data(0,12,0)-\u003e()",
+            "return:array_init_data_i16(0,6,0)-\u003e()",
+            "return:array_get_nth(0)-\u003e(0)",
+            "return:array_get_nth(5)-\u003e(0)",
+            "return:array_get_nth(11)-\u003e(0)",
+            "trap:array_get_nth(12)",
+            "return:array_get_nth_i16(0)-\u003e(0)",
+            "return:array_get_nth_i16(2)-\u003e(0)",
+            "return:array_get_nth_i16(5)-\u003e(0)",
+            "trap:array_get_nth_i16(6)",
+            "return:array_init_data(4,2,2)-\u003e()",
+            "return:array_get_nth(3)-\u003e(0)",
+            "return:array_get_nth(4)-\u003e(99)",
+            "return:array_get_nth(5)-\u003e(100)",
+            "return:array_get_nth(6)-\u003e(0)",
+            "return:array_init_data_i16(2,5,2)-\u003e()",
+            "return:array_get_nth_i16(1)-\u003e(0)",
+            "return:array_get_nth_i16(2)-\u003e(26470)",
+            "return:array_get_nth_i16(3)-\u003e(26984)",
+            "return:array_get_nth_i16(4)-\u003e(0)",
+            "return:drop_segs()-\u003e()",
+            "return:array_init_data(0,0,0)-\u003e()",
+            "trap:array_init_data(0,0,1)"
+          ]
+        },
+        {
+          "filename": "array_init_data.3.wasm",
+          "command_line": 145,
+          "source_line": 113,
+          "size": 435,
+          "sha256": "05827a01cec2e9f3623e9d00b54aff258bbc7b497f47b76ffd31452bbcb9b31f",
+          "class": "i32-i64-data-width",
+          "gate": "array init segment/root helper product",
+          "type_graph": "rec[array{mut i32}]|rec[array{mut i64}]|rec[func()-\u003e()]",
+          "state_graph": "imports=0 funcs=12 globals=[] tables=0 memories=0 tags=0 elements=0 data=7 exports=[f0=0:0,f1=0:1,f2=0:2,f3=0:3,f4=0:4,f9=0:5,g0=0:6,g1=0:7,g4=0:8,g7=0:9,g8=0:10,g9=0:11]",
+          "control_graph": "array.init_data source bounds are measured in bytes: one i32 element requires four bytes and one i64 element requires eight bytes before any destination write",
+          "opcodes": [
+            {
+              "opcode": "ArrayInitData",
+              "count": 12
+            },
+            {
+              "opcode": "ArrayNewDefault",
+              "count": 12
+            },
+            {
+              "opcode": "I32Const",
+              "count": 48
+            }
+          ],
+          "actions": [
+            "trap:f0()",
+            "trap:f1()",
+            "trap:f2()",
+            "trap:f3()",
+            "return:f4()-\u003e()",
+            "trap:f9()",
+            "trap:g0()",
+            "trap:g1()",
+            "trap:g4()",
+            "trap:g7()",
+            "return:g8()-\u003e()",
+            "trap:g9()"
+          ]
+        }
+      ],
+      "invalids": [
+        {
+          "filename": "array_init_data.0.wasm",
+          "command_line": 1,
+          "source_line": 5,
+          "size": 109,
+          "sha256": "6a2af6c7db355d780d22795fae3dce2d841e4cccfa4b32ff320b829c60135dfe",
+          "error": "array is immutable"
+        },
+        {
+          "filename": "array_init_data.1.wasm",
+          "command_line": 13,
+          "source_line": 18,
+          "size": 109,
+          "sha256": "2a365d88470d3839add00990c53cc7d497ed521602e1fa91afcd4905d262fdd3",
+          "error": "array type is not numeric or vector"
+        }
+      ],
+      "gates": [
+        {
+          "family": "gc",
+          "reason": "array init segment/root helper product",
+          "count": 2
+        }
+      ],
+      "counts": {
+        "commands": 48,
+        "modules_passed": 0,
+        "assertions_passed": 0,
+        "expected_invalid": 2,
+        "expected_unlinkable": 0,
+        "expected_uninstantiable": 0,
+        "expected_feature_rejects": 2,
+        "blocked_commands": 42,
+        "unexpected_compile_rejects": 0,
+        "unexpected_link_rejects": 0,
+        "failures": 0
+      }
+    },
+    {
+      "name": "gc/array_init_elem",
+      "leaders": [
+        {
+          "filename": "array_init_elem.3.wasm",
+          "command_line": 56,
+          "source_line": 44,
+          "size": 268,
+          "sha256": "77153cc9166a1b88e564a93e473e2d4d31979288ac4b82b9b0038911cd15983b",
+          "class": "funcref-element-init",
+          "gate": "array init segment/root helper product",
+          "type_graph": "rec[func()-\u003e()]|rec[array{ref type 0}]|rec[array{mut funcref}]|rec[func(i32)-\u003e()]|rec[func(i32,i32,i32)-\u003e()]",
+          "state_graph": "imports=0 funcs=5 globals=[const ref type 1,const ref type 2] tables=1 memories=0 tags=0 elements=1 data=0 exports=[array_call_nth=0:1,array_init_elem-null=0:2,array_init_elem=0:3,drop_segs=0:4]",
+          "control_graph": "preflight null, destination and passive-element ranges, and every selected reference subtype before writes; publish object/card/post-bulk barriers as applicable; drop preserves zero-length success",
+          "opcodes": [
+            {
+              "opcode": "ArrayGet",
+              "count": 1
+            },
+            {
+              "opcode": "ArrayInitElem",
+              "count": 2
+            },
+            {
+              "opcode": "ArrayNew",
+              "count": 1
+            },
+            {
+              "opcode": "ArrayNewDefault",
+              "count": 1
+            },
+            {
+              "opcode": "CallIndirect",
+              "count": 1
+            },
+            {
+              "opcode": "ElemDrop",
+              "count": 1
+            },
+            {
+              "opcode": "GlobalGet",
+              "count": 2
+            },
+            {
+              "opcode": "I32Const",
+              "count": 7
+            },
+            {
+              "opcode": "LocalGet",
+              "count": 4
+            },
+            {
+              "opcode": "RefFunc",
+              "count": 1
+            },
+            {
+              "opcode": "RefNull",
+              "count": 1
+            },
+            {
+              "opcode": "TableSet",
+              "count": 1
+            }
+          ],
+          "actions": [
+            "trap:array_init_elem-null()",
+            "trap:array_init_elem(13,0,0)",
+            "trap:array_init_elem(0,13,0)",
+            "trap:array_init_elem(0,0,13)",
+            "trap:array_init_elem(0,0,13)",
+            "return:array_init_elem(12,0,0)-\u003e()",
+            "return:array_init_elem(0,12,0)-\u003e()",
+            "trap:array_call_nth(0)",
+            "trap:array_call_nth(5)",
+            "trap:array_call_nth(11)",
+            "trap:array_call_nth(12)",
+            "return:array_init_elem(2,3,2)-\u003e()",
+            "trap:array_call_nth(1)",
+            "return:array_call_nth(2)-\u003e()",
+            "return:array_call_nth(3)-\u003e()",
+            "trap:array_call_nth(4)",
+            "return:drop_segs()-\u003e()",
+            "return:array_init_elem(0,0,0)-\u003e()",
+            "trap:array_init_elem(0,0,1)"
+          ]
+        }
+      ],
+      "invalids": [
+        {
+          "filename": "array_init_elem.0.wasm",
+          "command_line": 1,
+          "source_line": 5,
+          "size": 102,
+          "sha256": "19a97cf39d38738e3ed003778bb2fefc11b311225b4e1d1ee9ecc8487f53fe3f",
+          "error": "array is immutable"
+        },
+        {
+          "filename": "array_init_elem.1.wasm",
+          "command_line": 13,
+          "source_line": 18,
+          "size": 102,
+          "sha256": "6dd5ba5468d0d7ea9593a96150f957c65ff4c048716a20756bed1ae8212c23eb",
+          "error": "type mismatch"
+        },
+        {
+          "filename": "array_init_elem.2.wasm",
+          "command_line": 25,
+          "source_line": 31,
+          "size": 102,
+          "sha256": "2990ab38c59da1014e4260c9699f4ba5d8a2c368baf175740aabe3fa60f847e8",
+          "error": "type mismatch"
+        }
+      ],
+      "gates": [
+        {
+          "family": "gc",
+          "reason": "array init segment/root helper product",
+          "count": 1
+        }
+      ],
+      "counts": {
+        "commands": 24,
+        "modules_passed": 0,
+        "assertions_passed": 0,
+        "expected_invalid": 3,
+        "expected_unlinkable": 0,
+        "expected_uninstantiable": 0,
+        "expected_feature_rejects": 1,
+        "blocked_commands": 19,
+        "unexpected_compile_rejects": 0,
+        "unexpected_link_rejects": 0,
+        "failures": 0
+      }
+    }
+  ],
+  "totals": {
+    "commands": 72,
+    "modules_passed": 0,
+    "assertions_passed": 0,
+    "expected_invalid": 5,
+    "expected_unlinkable": 0,
+    "expected_uninstantiable": 0,
+    "expected_feature_rejects": 3,
+    "blocked_commands": 61,
+    "unexpected_compile_rejects": 0,
+    "unexpected_link_rejects": 0,
+    "failures": 0
+  }
+}
