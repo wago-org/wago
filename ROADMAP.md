@@ -228,17 +228,19 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
 - 🚧 WasmGC's complete official `gc/struct.wast` file is gap-free under exact staged
   product admission at 36 commands / 6 modules / 19 assertions / 4 invalid / 1 malformed /
   0 gates / 0 blocked. Its bounded opaque `GCRef` retains exact producer/type/root lifetime
-  without exposing compact handles. Iteration 41 opens an independently pinned array path:
-  one synthetic pointer-free `array.new_default`/get/set/len helper product, the official
-  declaration/binding and null-trap leaders, and the complete numeric-fixed leader now execute.
-  `array.new_fixed` uses one allocation with an empty-live-ref proof, the official immutable
-  global installs one checked collector root, numeric stores require no barrier, and both
-  public array results reuse the one-live-token exact dynamic type/lifetime contract. Complete
-  `gc/array.wast` accounting improves to 61 commands / 4 modules / 9 assertions / 3 gates /
-  32 blocked / 6 invalid, with zero hidden failures. Fixed set/get measures 379.4–381.5 ns/op
-  and fixed result issue/release 462.8–488.2 ns/op, all 0 B/op and 0 allocs/op. Numeric-default
-  globals/results, packed data/drop lifecycle, reference elements/object+bulk barriers,
-  non-empty frame roots, mutable/reference globals, snapshots, guard mode, and arm64 remain.
+  without exposing compact handles. Iterations 41-42 open an independently pinned array path:
+  the synthetic pointer-free helper product plus the official declaration/binding, null-trap,
+  numeric-fixed, numeric-default, and packed-data leaders execute. The default leader installs
+  two checked immutable roots in initializer order; the packed leader preflights current passive
+  data length and u32 source arithmetic before allocation, honors `data.drop`, and permits the
+  spec-required zero-length construction at source zero after drop. Numeric/packed stores need
+  no object barrier, and public results preserve the one-live-token exact dynamic type/lifetime
+  contract. Complete `gc/array.wast` accounting is 61 commands / 6 modules / 29 assertions /
+  1 gate / 12 blocked / 6 invalid, with zero hidden failures. Packed data get measures
+  311.6–315.9 ns/op at 0 B/op and 0 allocs/op. The sole remaining official leader is
+  reference-element `array.new_elem` with rooted passive elements, object/bulk barriers, and
+  `elem.drop`; general non-empty frame roots, mutable/reference globals, snapshots, guard mode,
+  and arm64 also remain.
 - [ ] Reach zero unexplained failures/skips in the official Release 3 core suite.
 
 **Engine & performance** (no-ir-plan P1–P7, measured against P1's stats)

@@ -162,7 +162,7 @@ handling, multi-memory, memory64, and table64.
 | Relaxed SIMD | Complete through `0xfd 275`, with reserved holes rejected. | Deterministic lowering is present on the documented linux/amd64 SIMD baseline. The Release 3 harness now honors official `either` result patterns; all 8 converted modules and 69 assertions pass with zero failures/skips. | ✅ Existing completed support, represented by `CoreFeatureSIMD`. |
 | Tail calls | Decoder and validator understand direct, indirect, and reference tail-call forms. Tail results use covariant reference matching, while invalid narrowing remains rejected. Separate compile-only frontend bits admit bounded direct/indirect and typed-tail slices. | linux/amd64 has local register/wrapper `return_call`, tail-position host imports, retained integer cross-instance direct tails plus exactly `(i32, f64) -> f64` and `(f64) -> i32` with a separate fixed four-word root/nested record, per-table finite immutable-local `return_call_indirect` proofs, tagged same-instance internal/scalar-wrapper `return_call_ref`, retained typed cross-instance root/nested transfers, and one canonical funcref result returned in RAX. Exact pinned accounting is gap-free for all three files: `return_call` 47 commands / 3 modules / 33 assertions / 11 invalid; `return_call_indirect` 79 / 3 / 49 / 16 invalid / 11 malformed; `return_call_ref` 51 / 5 / 35 / 11 invalid. Other float/oversized direct signatures, mutable/imported/exported/host-descriptor indirect tables, foreign-float/general reference-result tails, snapshots, public admission, and arm64 remain fail-closed. | 🚧 All staged official tail files are gap-free; not a public product claim. |
 | Typed function references | `ref.func` has the declared non-null indexed function type. Indexed references match by bounded coinductive structural equivalence across duplicate and recursive groups, including function/struct/array shapes, supers, and descriptor metadata. `call_ref` rejects abstract funcref while accepting nullable indexed references for dynamic null traps. `br_on_non_null` validates a label prefix plus non-null reference branch payload and consumes the reference on null fallthrough. Typed/tail opcodes contribute exact required-feature bits. Iteration 31 enforces recursive-group scope for relative indices and compares whole recursive groups, closing the five pinned invalid recursive/indexed gaps. Iteration 37 additionally makes native structural keys include every member and the selected position of non-singleton recursive groups. | The internal gate admits indexed signatures/storage, explicit func/extern block types, `ref.null`, `ref.is_null`, `ref.as_non_null`, both null branches, `select`, `call_ref`, bounded typed-tail contexts, both exact null-only `ref_null` products, and all valid `type-rec` products. The 14-file schema-2 matrix is gap-free at 422 commands / 61 modules / 246 assertions / 65 invalid / 2 malformed / 2 unlinkable / 0 gates / 0 blocked, with zero hidden failures. The ten former struct-defined leaders are pinned exact collector-free products: four immutable local `ref.func` globals, three cross-instance function-link checks, and three ordinary funcref-table `call_indirect` actions. Their struct descriptors survive codec v27, but no struct/array value or opcode executes and instantiation creates no collector. Typed/tail snapshots, public admission, broader tails, actual GC execution, and arm64 remain fail-closed. | 🚧 Complete measured typed-reference/null/structural-function-identity accounting; no public or WasmGC heap execution claim. |
-| GC | Recursive types, instructions, descriptor lowering, collector profiles, exact `RootSet` scanning, and a validated target-neutral native root-map metadata contract exist. Complete `gc/struct.wast` and `gc/array.wast` schema-2 accounting pin every leader, invalid/malformed command, type/state graph, opcode, and action. Staged validation admits only exact numeric struct constants and exact fixed-array constants without widening default/public validation. | The complete struct file remains gap-free at 36 commands / 6 modules / 19 assertions / 4 invalid / 1 malformed. Iteration 41 adds an independent exact array product/helper sidecar: a synthetic pointer-free `array.new_default`/get/set/len product, official declaration/binding metadata without a collector, null get/set traps, and the complete numeric-fixed leader execute. The fixed leader installs one immutable checked collector root, executes get/set/len/bounds, and returns exact dynamic arrays through the existing one-live opaque-token policy. `gc/array` improves to 61 commands / 4 modules / 9 assertions / 6 invalid / 3 gates / 32 blocked, with zero hidden failures. Codec reload drops array helper/product/initializer/root/token admission. | 🚧 Complete measured struct execution and a bounded pointer-free array slice. Numeric-default globals/results, packed data lifecycle, reference-element/object+bulk barriers, general frame roots, mutable/reference globals, non-null ingress, snapshots, guard mode, public feature admission, and arm64 remain incomplete. See `docs/gc.md`. |
+| GC | Recursive types, instructions, descriptor lowering, collector profiles, exact `RootSet` scanning, and a validated target-neutral native root-map metadata contract exist. Complete `gc/struct.wast` and `gc/array.wast` schema-2 accounting pin every leader, invalid/malformed command, type/state graph, opcode, and action. Staged validation admits only exact numeric struct constants and exact bounded numeric array constants without widening default/public validation. | The complete struct file remains gap-free at 36 commands / 6 modules / 19 assertions / 4 invalid / 1 malformed. Iterations 41-42 add an independent exact array product/helper sidecar: the synthetic pointer-free helper product plus official declaration/binding, null, numeric-fixed, numeric-default, and packed-data leaders execute. Three immutable checked global roots are installed in initializer order across the numeric leaders; packed i8 `array.new_data` preflights current passive length and widened source end before allocation, honors `data.drop`, and preserves zero-length semantics. Get/set/len/bounds and exact dynamic-array one-live tokens execute. `gc/array` is 61 commands / 6 modules / 29 assertions / 6 invalid / 1 gate / 12 blocked, with zero hidden failures. Codec reload drops helper/product/initializer/root/data/token admission. | 🚧 Complete measured struct execution and all pointer-free official array leaders. The remaining reference-element leader needs passive-element GC roots, non-empty allocation roots, object/bulk barriers, and `elem.drop`; general frame roots, mutable/reference globals, non-null ingress, snapshots, guard mode, public feature admission, and arm64 remain incomplete. See `docs/gc.md`. |
 | Exception handling | Tags, `throw`, `throw_ref`, and `try_table` decode and validate strictly across AST and byte-backed paths; non-empty tag results reject, `noexn <: exn`, bottom heaps remain beneath indexed function heaps, and throw operands are exact. Catch payload/depth typing is complete for `catch`, `catch_ref`, `catch_all`, and `catch_all_ref`: reference catches produce non-null `(ref exn)` and may widen to nullable labels. The intentional source-only malformed `try_table` lines 339/344 remain rejected. | The complete five-file schema-2 matrix for `exceptions/{tag,throw,throw_ref,try_table}` plus `ref_null` is gap-free under staged admission: 147 commands / 13 modules / 98 assertions / 16 invalid / 2 malformed / 2 unlinkable / 0 gates / 0 blocked, with zero hidden failures. The official `exceptions/try_table` file remains gap-free at 5 modules / 45 assertions / 9 invalid / 2 malformed. linux/amd64 explicit bounds admits at most 9 tags, 24 `try_table`s/module, 8 ordered clauses/table, 4 nested seven-word handlers, and 4 fixed three-word exception roots/function. Exact retained `() -> ()` cross-instance calls carry the handler in RBP and true tails discard dead scopes. One exact local-only tag payload may carry a non-null indexed `() -> ()` funcref from one declarative local descriptor. The two `ref_null` modules execute only zero-valued any/none/exn/noexn references and immutable globals; they allocate no collector and admit no non-null exception/GC ABI. Non-null GC/exn values, allocation/cast/test opcodes, foreign/mutable/imported null products, broader roots, host, snapshot, public, guard, and arm64 variants remain closed. | 🚧 Complete official family accounting and bounded internal execution; not a public product or WasmGC claim. |
 | Multi-memory | Indexed immediates and compact imports decode/validate strictly on AST and byte-backed paths; default Release 2 admission still rejects them explicitly. | Exact product directories, policy accounting, duplicate aliases, codec v27, every indexed scalar/SIMD/bulk/data operation, snapshot-v3 owned-local state, and bounded shared-memory co-tenants are staged on linux/amd64 explicit bounds. A finite proof admits exact native directories plus optional imported scalar-global pointers and exactly one bounded imported funcref table under a numeric-signature, no-element, no-ref.func/indirect-call, null/get/set/size-only scan. Retained scalar direct imports may re-enter producers that use the exact same memory-0 mapping: each eligible instance owns one stable 256-byte arena image, native calls save/install/restore images recursively, and trap recovery saves the image named by the active basedata slot. Root/nested calls now compose with imported numeric-global pointers and the sole imported funcref table simultaneously while shared `memory.grow`, global updates, table state, nested traps, concurrency, independent memory/global/table/function close ordering, and steady-state allocation freedom remain proven. Host callbacks, foreign-memory bindings, imported tail calls, broader reference/table/passive state, codec serialization of live bindings, imported/shared snapshots, guard mode, public admission, and arm64 remain fail-closed. The complete 42-file matrix remains gap-free at 913 commands, 79 modules, 771 assertions, 4 invalid, 22 unlinkable, and 20 uninstantiable cases. | 🚧 Complete official family accounting and bounded internal execution; not a public product claim. |
 | memory64 | Limits, i64 address typing, 64-bit memarg offsets, and operation validation are present. The staged support pass admits size/grow, integer/float scalar memory operations, every SIMD memory load/store/extend/splat/zero/lane form, active and passive data lifecycle, and `memory.copy`/`memory.fill`. Core validation rejects limits above 2^48 pages and accepts the exact maximum. | One linux/amd64 explicit-bounds path accepts exactly one non-shared local or instance-exported imported memory. Valid declared maxima through 2^48 pages persist exactly in memory directories, codec v27, inspection, imports/re-exports, policy, and managed accounting whenever the minimum remains allocatable; only the direct memory-0 execution reservation is capped at 65,535 pages. No-maximum declarations preserve `HasMax=false` under that finite reserve. Unavailable growth returns `-1` without changing size, and arithmetic/policy/managed-budget overflow rejects fail-closed. Import matching preserves provider max/no-max identity across re-export, shared grow visibility is exact, and producer roots attach/roll back transactionally without increasing the 40-byte lifecycle sidecar. Scalar/SIMD operations check address+offset+width carry, exact lane/end bounds, and trapping-store atomicity. Active data preserves validated i64 programs in the codec expression field. Passive `memory.init` keeps zero-extended i32 source/length with an i64 destination; full-u64 carry/end, source bounds, drop state, zero-length-after-drop, trap atomicity, and reload are proven. Bulk copy/fill checks both full-u64 ranges before writes and preserves overlap. The complete sixteen-file non-table matrix is gap-free at 5,904 commands / 169 modules / 5,335 assertions / 292 invalid / 60 malformed / 30 unlinkable / 0 gates / 0 blocked, with zero hidden failures. Mixed memory32/memory64 imports reject before attachment. Host memory64 construction, shared/multi-memory execution, unallocatable minima, guard mode, public admission, snapshots, and arm64 remain gated. | 🚧 Bounded local/imported scalar/SIMD/active+passive-data/copy/fill execution and complete gap-free non-table family accounting; product/platform admission remains staged. |
@@ -2300,6 +2300,53 @@ mandatory families remain staged, and numeric-default/data/reference arrays, ref
 barriers, non-empty native roots, mutable/reference globals, snapshots, guard execution,
 arm64 execution, and broad non-null GC ingress remain incomplete.
 
+### Iteration 42 numeric-default roots and the packed-data leader
+
+Iteration 42 closes both remaining pointer-free official array leaders while preserving the
+same exact product, empty-frame-root, and public-token boundaries:
+
+1. The 250-byte numeric-default leader now validates and lowers exact GC constant-expression
+   `array.new` and `array.new_default`. Two 48-byte compile-only initializer records describe
+   one uniform f32 length-three array and one default f32 length-three array. Instantiation
+   initializes and roots the first 32-byte object before allocating the second. Throughput and
+   Tiny collection therefore see the earlier immutable root; 64 Tiny bytes fit both exactly,
+   while 32 bytes fail deterministically on the second allocation and roll back cleanly.
+2. All seven numeric-default actions execute: `array.new`, get/set/len, exact bounds traps, and
+   both public non-null results. Numeric stores do not barrier, internal callees remain exact
+   non-allocating paths while their argument is live, and result ownership still permits only
+   one opaque store token per producer after native return.
+3. The exact 351-byte packed-data leader admits only i8 `array.new_data`. The parked helper
+   reads the per-instance 16-byte passive descriptor, widens source plus length to u64, and
+   checks the current segment length and retained bytes before collector allocation. It then
+   creates one 24-byte array and copies scalar bytes without placing a Go pointer in native
+   state. Signed/unsigned access, mutation, bounds, u32 overflow, Tiny exhaustion, and trap
+   atomicity execute. `data.drop` zeroes only descriptor length: non-empty construction traps
+   before allocation, while source zero/length zero remains valid as required.
+
+These additions do not publish a native frame chain or admit reference payloads. The default
+objects become collector global roots only after their individual scalar initialization;
+packed data bytes are immutable non-GC source state. No object/card/bulk barrier is needed.
+Codec v27 remains unchanged and reload inherits none of the exact product/helper/initializer/
+root/data-lifecycle/token sidecars.
+
+Strict `gc/array.wast` accounting advances from 4 modules / 9 assertions / 3 gates / 32
+blocked commands to 6 modules / 29 assertions / 1 gate / 12 blocked commands, preserving all
+61 commands and six invalid modules with zero hidden failures. Only the reference-element
+leader remains, including two GC-valued passive element entries, `array.new_elem`, reference
+get/set, element-drop lifecycle, allocation roots, and object/bulk barriers.
+
+Measured numeric-default arrays are 250 Wasm bytes / 1,937 linked code bytes / 2,551 codec
+bytes; packed data is 351 / 2,863 / 3,585. Three-element f32 and i8 objects occupy 32 and 24
+bytes including the 16-byte header. Packed `get_u` measures 311.6-315.9 ns/op across five
+500 ms samples, all 0 B/op and 0 allocs/op. Fixed layouts remain `Compiled=712`,
+`Instance=792`, `compiledCodeCache=64`, `gcArrayGlobalInit=48`,
+`compiledMemoryDirectory=120`, and `gc.Collector=640` bytes.
+
+Iteration 42 is not a public Core 3 completion claim. Public Release 3 remains unchanged,
+mandatory families remain staged, and reference arrays/barriers, non-empty native root
+publication, mutable/reference globals, snapshots, guard execution, arm64 execution, broad
+non-null ingress, and official zero-gap admission remain incomplete.
+
 ## Iteration commits
 
 Iteration 1 contained:
@@ -2779,12 +2826,34 @@ Iteration 41 contains exactly three code/test commits and this documentation com
    extend exact one-live-token ownership to dynamic arrays, close all seven numeric-fixed
    actions, and improve accounting to four modules / nine assertions / three gates.
 
+Iteration 42 contains exactly three code/test commits and this documentation commit:
+
+1. `b9e1fd84` — admit the exact numeric-default product, lower numeric `array.new`, record two
+   bounded uniform/default immutable initializers, root each object before later allocation,
+   and prove Throughput/Tiny rollback plus codec sidecar loss while actions remain blocked.
+2. `0e077858` — execute all seven numeric-default actions, extend exact dynamic-array result
+   ownership without widening the one-live-token policy, and improve accounting to five
+   modules / sixteen assertions / two gates.
+3. `1997d46e` — execute the exact packed-i8 `array.new_data` leader with passive descriptor/
+   `data.drop` lifecycle, widened pre-allocation bounds checks, zero-length semantics, Tiny and
+   trap-atomic proof, bounded public results, and accounting at six modules / twenty-nine
+   assertions / one gate.
+
 ## Validation performed
 
 Commands were run from the repository root on linux/amd64.
 
 | Command | Result |
 |---|---|
+| iteration 42 focused/WABT package proof | PASS: pinned WABT plus the official interpreter fallback executes the numeric-default two-root product and complete packed-data leader under strict accounting. `gc/array` is 61 commands / 6 modules / 29 assertions / 6 invalid / 1 gate / 12 blocked, zero hidden failures; all previously gap-free staged families remain green. Log `.validation/iteration42-wabt-package.log`. |
+| `go test ./... -count=1` and `CGO_ENABLED=0 go test ./... -count=1` | PASS on final iteration-42 code HEAD. Logs `.validation/iteration42-all.log` and `.validation/iteration42-no-cgo.log`. |
+| iteration 42 race/guard/arm64 | PASS: numeric-default roots, packed descriptor/drop/token/Tiny paths are race-clean; guard runtime/wago rejects staged array products; linux/arm64 frontend/railshot/runtime/wago cross-compiles with no array execution claim. Logs `.validation/iteration42-race.log`, `.validation/iteration42-guard.log`, and `.validation/iteration42-arm64-build.log`. |
+| `go vet ./...`, `go generate ./...`, generated diff | PASS; generated facade remains byte-stable. Logs `.validation/iteration42-vet.log`, `.validation/iteration42-generate.log`, and `.validation/iteration42-generate-diff.log`. |
+| iteration 42 footprint/codec evidence | PASS: numeric-default Wasm/code/codec = 250/1,937/2,551 bytes; packed-data = 351/2,863/3,585; f32x3/i8x3 objects = 32/24 bytes; `Compiled=712`, `Instance=792`, `compiledCodeCache=64`, `gcArrayGlobalInit=48`, `compiledMemoryDirectory=120`, `gc.Collector=640`. Codec v27 inherits no array helper/product/initializer/root/data/token admission. Log `.validation/iteration42-measurements.log`. |
+| pinned tool verification | PASS: WABT 1.0.41 and interpreter revision `9d36019973201a19f9c9ebb0f10828b2fe2374aa`. Logs `.validation/iteration42-wabt.log` and `.validation/iteration42-spec-interpreter.log`. |
+| `make spec1` and `make spec2` | PASS zero-gap: Release 1 reports 629 modules / 16,026 assertions and Release 2 reports 1,600 modules / 48,248 assertions. Logs `.validation/iteration42-spec1.log` and `.validation/iteration42-spec2.log`. |
+| `make spec3` plus baseline extraction/`cmp` | Expected FAIL at unchanged public baseline: modules pass=1,691/skip=535; assertions pass=51,765/fail=5/skip=6,268; committed schema-2 JSON reproduced byte-for-byte. Logs `.validation/iteration42-spec3.log`, `.validation/iteration42-spec3-status.log`, and `.validation/iteration42-spec3-baseline.log`. |
+| iteration 42 benchmark | PASS: packed-data `get_u` measures 311.6-315.9 ns/op across five 500 ms samples, all 0 B/op and 0 allocs/op. Log `.validation/iteration42-bench.log`. |
 | iteration 41 focused array proof | PASS: separate array product/helper and metadata sidecars execute the synthetic default helper, official declaration/binding/null products, and complete numeric-fixed leader. Empty-root allocation, one immutable checked root, exact bounds/null traps, dynamic array tokens, Tiny exhaustion/recovery, codec-sidecar loss, guard/platform gates, and zero-allocation repetition pass. Logs `.validation/iteration41-wabt-package.log`, `.validation/iteration41-race.log`, and `.validation/iteration41-measurements.log`. |
 | iteration 41 staged family runners | PASS: `gc/array` is 61 commands / 4 modules / 9 assertions / 6 invalid / 3 gates / 32 blocked, zero hidden failures. `gc/struct`, typed references, EH, multi-memory, memory64, table64, and all three tail files retain their documented gap-free totals. Log `.validation/iteration41-wabt-package.log`. |
 | `go test ./... -count=1` and `CGO_ENABLED=0 go test ./... -count=1` | PASS on final iteration-41 code HEAD. Logs `.validation/iteration41-all.log` and `.validation/iteration41-no-cgo.log`. |
@@ -3283,11 +3352,14 @@ spill/reload have linux/amd64 explicit-bounds evidence only. Iteration 40's opaq
 store bookkeeping, exact dynamic type check, and lifecycle retention are architecture-neutral,
 but struct issuance is reachable only from the exact linux/amd64 explicit-bounds basic product.
 Iteration 41 adds architecture-neutral array product classification, exact fixed initializer
-metadata, abstract-array ABI categorization, and dynamic array token type checks. Parked-Go
-array allocation/access, immutable root installation, null/bounds traps, and token issuance
-have linux/amd64 explicit-bounds evidence only. Guard mode rejects before codegen, arm64 retains
+metadata, abstract-array ABI categorization, and dynamic array token type checks. Iteration 42
+extends architecture-neutral classification to numeric-default and packed-data identities plus
+bounded uniform/default initializer metadata. Parked-Go array allocation/access, ordered two-root
+installation, passive-descriptor/drop handling, null/bounds traps, and token issuance have
+linux/amd64 explicit-bounds evidence only. Guard mode rejects before codegen, arm64 retains
 option-structure parity without consuming the helper/product bits, and codec/snapshot/public
-feature admission inherit neither helper, initializer/root, metadata exemption, nor token sidecars.
+feature admission inherit neither helper, initializer/root/data-lifecycle, metadata exemption,
+nor token sidecars.
 `call_ref`, typed null control, indexed multi-memory operations, memory64/table64
 execution, and every tail-call lowering remain amd64-only and hidden behind
 unsupported family gates. The two
@@ -3414,56 +3486,55 @@ Major risks:
   callees are proven unable to allocate while their ref argument is live. The one exported
   non-null result is owned only after native return by a single reusable collector slot and
   explicit opaque-token release. It is not a frame root, ingress model, global/host token, or
-  permission to issue multiple live values. Iteration 41 extends the same exact policy to
-  pointer-free default/fixed arrays and one immutable fixed-array root; numeric array stores
-  do not barrier and every producer still allocates only once with an empty live-ref set.
-  Numeric-default globals/results, packed data arrays, reference elements, safepoint maps,
-  non-empty frame roots, mutable cell/slot synchronization, object/bulk barriers, broader
-  public ownership, and snapshots remain;
+  permission to issue multiple live values. Iterations 41-42 extend the same exact policy to
+  every pointer-free official array leader: fixed plus uniform/default initialization install
+  three immutable roots across their products, packed data checks descriptor/drop state before
+  allocation, numeric/packed stores do not barrier, and every producer still allocates only
+  once with an empty live-ref set. Reference elements, passive-element GC roots, safepoint maps,
+  non-empty allocation/frame roots, mutable cell/slot synchronization, object/bulk barriers,
+  broader public ownership, and snapshots remain;
 - arm64 must remain fail-closed for every family that lacks native execution tests.
 
 ## Next bounded implementation slice
 
 The next recursive iteration should again make exactly three atomic code/test commits
-followed by one documentation commit. Recommended iteration 42:
+followed by one documentation commit. Recommended iteration 43:
 
-1. **Complete exact numeric-default initialization.** Add bounded numeric `array.new` helper
-   support plus compile-only initializer records for the pinned default leader's one uniform-
-   initialized and one default-initialized immutable global. Install each checked collector
-   root before the next allocation. Preserve the two-root Tiny rollback/exhaustion proof,
-   codec-sidecar loss, and empty-live-frame-ref allocation rule.
-2. **Close the complete numeric-default leader.** Execute its get/set/len calls, exact bounds
-   traps, and both public result assertions through the existing dynamic-array token contract.
-   Keep one-live-token policy unchanged and prove no internal callee can allocate while its
-   array argument is live. Update the matrix; the expected target is one remaining packed-data
-   gate and one reference-element gate.
-3. **Open the pointer-free packed-data leader only if lifecycle is coherent.** Stage bounded
-   `array.new_data`, packed signed/unsigned access, numeric mutation, u32 source/length overflow,
-   data-drop state, zero-length semantics, trap atomicity, Tiny exhaustion, and codec/product
-   rejection. If segment state or a second allocation would require an unproven live root,
-   use this commit for the first exact non-empty native root-publication prototype instead of
-   widening `gc.EmptyRoots`.
-4. **Documentation commit.** Record exact deltas, root/data/barrier/token boundaries,
-   code/codec/object footprint, broad validation, unchanged or improved public baseline, and
-   the remaining reference-element family.
+1. **Root the exact passive GC element segment.** Decode only the pinned reference leader's two
+   element constant expressions, allocate their inner i8 arrays transactionally, and publish a
+   bounded pair of checked segment roots before any later allocation. Keep this state separate
+   from immutable globals and ordinary funcref/externref element descriptors; prove Tiny
+   rollback, close order, `elem.drop` withdrawal, codec/snapshot loss, and no raw Go pointers.
+2. **Add bounded `array.new_elem` with non-empty roots and barriers.** Preflight u32 source/
+   length against current element state before allocation, then pass the live segment refs as
+   an exact non-empty `RootSet` while allocating the outer array. Copy refs through object/card
+   and bulk barrier rules, support the exact nullable/any widening used by `$sub1`/`$sub2`, and
+   prove Tiny mark/remark behavior plus trap atomicity. Do not generalize native frame scanning.
+3. **Close the reference-element leader.** Execute reference get/set/len, nested packed reads,
+   public results, overflow/bounds traps, and post-`elem.drop` behavior under Throughput/Tiny.
+   Preserve one-live-token ownership and exact product/platform gates. If all 12 actions close,
+   `gc/array.wast` should become gap-free at 7 modules / 41 assertions / 0 gates / 0 blocked.
+4. **Documentation commit.** Record exact root/barrier/segment/token boundaries, object/sidecar
+   footprint, broad validation, public baseline, and the next mandatory Core 3 blocker.
 
 ## Completion gate
 
-WebAssembly 3.0 is not complete. Iteration 41 fails the gate concretely: the public Release 3
+WebAssembly 3.0 is not complete. Iteration 42 fails the gate concretely: the public Release 3
 run still has 535 skipped modules, 5 reached assertion failures, and 6,268 skipped assertions;
 `make spec3` exits 2 and reproduces the committed baseline byte-for-byte. Typed-reference
 staged accounting is gap-free, as are EH, multi-memory, memory64, table64, all three tail
 files, and the complete `gc/struct` file at 36 commands / 6 modules / 19 assertions / 4 invalid /
 1 malformed / zero gates or blocked actions. These mandatory families remain private rather
-than admitted through `SupportedFeatures()`. Bounded public GC ownership now covers one exact
-struct and one exact array product, but remains result-only, one-live-token, and without
-non-null ingress, host/global values, frame roots, or snapshot state. `gc/array` is improved but
-still red at 4 modules / 9 assertions / 3 module gates / 32 blocked actions. Numeric-default,
-packed data lifecycle, reference-element barriers, non-empty native safepoint publication,
-mutable/reference GC globals, broader public ownership, live-state snapshots, guard mode, and
-arm64 execution remain incomplete. Codec-v27 progress covers declarations and exact metadata,
-not live collector admission/state. Completion still requires every mandatory area to decode,
-validate, compile, instantiate, execute, round-trip through product metadata/lifecycle rules,
-and pass the pinned official Release 3 suite with zero unexplained failures or feature skips on
-linux/amd64, while preserving Release 1/2, no-cgo operation, bounded memory, and hot-path
+than admitted through `SupportedFeatures()`. Bounded public GC ownership covers exact struct
+and pointer-free array products, but remains result-only, one-live-token, and without non-null
+ingress, host/global values, frame roots, or snapshot state. `gc/array` is improved but still
+red at 6 modules / 29 assertions / 1 module gate / 12 blocked actions. The reference-element
+leader, passive-element roots, object/bulk barriers, non-empty allocation/native safepoint
+publication, mutable/reference GC globals, broader public ownership, live-state snapshots,
+guard mode, and arm64 execution remain incomplete. Codec-v27 progress covers declarations and
+exact metadata, not live collector admission/state. Completion still requires every mandatory
+area to decode, validate, compile, instantiate, execute, and round-trip through product
+metadata/lifecycle rules, and pass the pinned official Release 3 suite with zero unexplained
+failures or feature skips on linux/amd64, while preserving Release 1/2, no-cgo operation,
+bounded memory, and hot-path
 performance. Arm64 must either reach parity or remain explicitly gated and documented.
