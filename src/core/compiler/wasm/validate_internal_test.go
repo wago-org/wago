@@ -259,6 +259,28 @@ func TestValidatorProposalCoverageGCBranches(t *testing.T) {
 			t.Fatalf("ValidateModule: %v", err)
 		}
 	})
+	t.Run("array bulk mutability and storage compatibility", func(t *testing.T) {
+		immutableFill := &Module{
+			Types:     []RecType{arrayType(packedField(PackI8, Const)), ft([]ValType{refToType(0, true)}, nil)},
+			FuncTypes: []TypeIdx{{Index: 1}},
+			Code: []Func{{Body: Expr{Instrs: []Instruction{
+				{Kind: InstrLocalGet, Index: 0}, {Kind: InstrI32Const}, {Kind: InstrI32Const}, {Kind: InstrI32Const}, {Kind: InstrArrayFill, Index: 0},
+			}}}},
+		}
+		expectValidateErr(t, immutableFill, ErrTypeMismatch)
+
+		mismatchedCopy := &Module{
+			Types: []RecType{
+				arrayType(packedField(PackI8, Var)), arrayType(packedField(PackI16, Const)),
+				ft([]ValType{refToType(0, true), refToType(1, true)}, nil),
+			},
+			FuncTypes: []TypeIdx{{Index: 2}},
+			Code: []Func{{Body: Expr{Instrs: []Instruction{
+				{Kind: InstrLocalGet, Index: 0}, {Kind: InstrI32Const}, {Kind: InstrLocalGet, Index: 1}, {Kind: InstrI32Const}, {Kind: InstrI32Const}, {Kind: InstrArrayCopy, Index: 0, Index2: 1},
+			}}}},
+		}
+		expectValidateErr(t, mismatchedCopy, ErrTypeMismatch)
+	})
 	t.Run("array copy init data init elem", func(t *testing.T) {
 		m := &Module{
 			Types:     []RecType{arrayType(field(I32, Var)), arrayType(field(I32, Var)), ft([]ValType{refToType(0, true), refToType(1, true)}, nil)},

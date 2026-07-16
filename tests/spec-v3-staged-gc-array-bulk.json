@@ -1,0 +1,280 @@
+{
+  "schema": 2,
+  "suite_revision": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+  "files": [
+    {
+      "name": "gc/array_fill",
+      "leaders": [
+        {
+          "filename": "array_fill.3.wasm",
+          "command_line": 48,
+          "source_line": 38,
+          "size": 183,
+          "sha256": "0893caa7ae7ab2d870329da9697d405a51592cb3ecc1b4b833780ef9b2580169",
+          "class": "packed-i8-fill",
+          "gate": "bulk array fill/copy helper product",
+          "type_graph": "rec[array{i8}]|rec[array{mut i8}]|rec[func(i32)-\u003e(i32)]|rec[func()-\u003e()]|rec[func(i32,i32,i32)-\u003e()]",
+          "state_graph": "imports=0 funcs=3 globals=[const ref type 0,mut ref type 1] tables=0 memories=0 tags=0 elements=0 data=0 exports=[array_get_nth=0:0,array_fill-null=0:1,array_fill=0:2]",
+          "control_graph": "preflight null and dst+len before mutation; zero length at dst=12 succeeds; successful fill truncates i32 to i8",
+          "opcodes": [
+            {
+              "opcode": "ArrayFill",
+              "count": 2
+            },
+            {
+              "opcode": "ArrayGetU",
+              "count": 1
+            },
+            {
+              "opcode": "ArrayNew",
+              "count": 1
+            },
+            {
+              "opcode": "ArrayNewDefault",
+              "count": 1
+            },
+            {
+              "opcode": "GlobalGet",
+              "count": 2
+            },
+            {
+              "opcode": "I32Const",
+              "count": 6
+            },
+            {
+              "opcode": "LocalGet",
+              "count": 4
+            },
+            {
+              "opcode": "RefNull",
+              "count": 1
+            }
+          ],
+          "actions": [
+            "trap:array_fill-null()",
+            "trap:array_fill(13,0,0)",
+            "trap:array_fill(0,0,13)",
+            "return:array_fill(12,0,0)-\u003e()",
+            "return:array_get_nth(0)-\u003e(0)",
+            "return:array_get_nth(5)-\u003e(0)",
+            "return:array_get_nth(11)-\u003e(0)",
+            "trap:array_get_nth(12)",
+            "return:array_fill(2,11,2)-\u003e()",
+            "return:array_get_nth(1)-\u003e(0)",
+            "return:array_get_nth(2)-\u003e(11)",
+            "return:array_get_nth(3)-\u003e(11)",
+            "return:array_get_nth(4)-\u003e(0)"
+          ]
+        }
+      ],
+      "invalids": [
+        {
+          "filename": "array_fill.0.wasm",
+          "command_line": 1,
+          "source_line": 5,
+          "size": 87,
+          "sha256": "883e06140ac851a975af3b2e2bfd3bc756001a1fa829a8ca2ca1fe6e4fb63515",
+          "error": "array is immutable"
+        },
+        {
+          "filename": "array_fill.1.wasm",
+          "command_line": 12,
+          "source_line": 16,
+          "size": 87,
+          "sha256": "eea1a50d6ac59d524d141bb380aa04ffa10eb65f55e133a6fab505a92d2129d7",
+          "error": "type mismatch"
+        },
+        {
+          "filename": "array_fill.2.wasm",
+          "command_line": 23,
+          "source_line": 27,
+          "size": 87,
+          "sha256": "e218ec3b33cc8e8673b2e00d351de1369ab1e6181269d93c84edb63a7bbc0ab2",
+          "error": "type mismatch"
+        }
+      ],
+      "gates": [
+        {
+          "family": "gc",
+          "reason": "bulk array fill/copy helper product",
+          "count": 1
+        }
+      ],
+      "counts": {
+        "commands": 18,
+        "modules_passed": 0,
+        "assertions_passed": 0,
+        "expected_invalid": 3,
+        "expected_unlinkable": 0,
+        "expected_uninstantiable": 0,
+        "expected_feature_rejects": 1,
+        "blocked_commands": 13,
+        "unexpected_compile_rejects": 0,
+        "unexpected_link_rejects": 0,
+        "failures": 0
+      }
+    },
+    {
+      "name": "gc/array_copy",
+      "leaders": [
+        {
+          "filename": "array_copy.4.wasm",
+          "command_line": 76,
+          "source_line": 54,
+          "size": 402,
+          "sha256": "3ce0c22105571618832b6d97164a26e4b7dee035f540957422b887c4c04d4f35",
+          "class": "packed-i8-copy",
+          "gate": "bulk array fill/copy helper product",
+          "type_graph": "rec[array{i8}]|rec[array{mut i8}]|rec[func(i32)-\u003e(i32)]|rec[func()-\u003e()]|rec[func(i32,i32,i32)-\u003e()]",
+          "state_graph": "imports=0 funcs=6 globals=[const ref type 0,mut ref type 1] tables=0 memories=0 tags=0 elements=0 data=1 exports=[array_get_nth=0:0,array_copy-null-left=0:1,array_copy-null-right=0:2,array_copy=0:3,array_copy_overlap_test-1=0:4,array_copy_overlap_test-2=0:5]",
+          "control_graph": "preflight both nulls and both ranges before mutation; zero length accepts either end; same-array copies use memmove ordering in both overlap directions",
+          "opcodes": [
+            {
+              "opcode": "ArrayCopy",
+              "count": 5
+            },
+            {
+              "opcode": "ArrayGetU",
+              "count": 1
+            },
+            {
+              "opcode": "ArrayNew",
+              "count": 1
+            },
+            {
+              "opcode": "ArrayNewData",
+              "count": 2
+            },
+            {
+              "opcode": "ArrayNewDefault",
+              "count": 1
+            },
+            {
+              "opcode": "GlobalGet",
+              "count": 5
+            },
+            {
+              "opcode": "GlobalSet",
+              "count": 2
+            },
+            {
+              "opcode": "I32Const",
+              "count": 19
+            },
+            {
+              "opcode": "LocalGet",
+              "count": 10
+            },
+            {
+              "opcode": "LocalSet",
+              "count": 2
+            },
+            {
+              "opcode": "RefNull",
+              "count": 2
+            }
+          ],
+          "actions": [
+            "trap:array_copy-null-left()",
+            "trap:array_copy-null-right()",
+            "trap:array_copy(13,0,0)",
+            "trap:array_copy(0,13,0)",
+            "trap:array_copy(0,0,13)",
+            "trap:array_copy(0,0,13)",
+            "return:array_copy(12,0,0)-\u003e()",
+            "return:array_copy(0,12,0)-\u003e()",
+            "return:array_get_nth(0)-\u003e(0)",
+            "return:array_get_nth(5)-\u003e(0)",
+            "return:array_get_nth(11)-\u003e(0)",
+            "trap:array_get_nth(12)",
+            "return:array_copy(0,0,2)-\u003e()",
+            "return:array_get_nth(0)-\u003e(10)",
+            "return:array_get_nth(1)-\u003e(10)",
+            "return:array_get_nth(2)-\u003e(0)",
+            "return:array_copy_overlap_test-1()-\u003e()",
+            "return:array_get_nth(0)-\u003e(97)",
+            "return:array_get_nth(1)-\u003e(97)",
+            "return:array_get_nth(2)-\u003e(98)",
+            "return:array_get_nth(5)-\u003e(101)",
+            "return:array_get_nth(10)-\u003e(106)",
+            "return:array_get_nth(11)-\u003e(107)",
+            "return:array_copy_overlap_test-2()-\u003e()",
+            "return:array_get_nth(0)-\u003e(98)",
+            "return:array_get_nth(1)-\u003e(99)",
+            "return:array_get_nth(5)-\u003e(103)",
+            "return:array_get_nth(9)-\u003e(107)",
+            "return:array_get_nth(10)-\u003e(108)",
+            "return:array_get_nth(11)-\u003e(108)"
+          ]
+        }
+      ],
+      "invalids": [
+        {
+          "filename": "array_copy.0.wasm",
+          "command_line": 1,
+          "source_line": 5,
+          "size": 94,
+          "sha256": "294fb4f7458399853d96ac6201b3a7997f97ba7a8bebd3bcc52eb4ab32bfae35",
+          "error": "array is immutable"
+        },
+        {
+          "filename": "array_copy.1.wasm",
+          "command_line": 12,
+          "source_line": 17,
+          "size": 99,
+          "sha256": "03323c7ef08dd425b5c85e37eda0c9d8f35a37f34fc34e26a673e4d7b757faa2",
+          "error": "array types do not match"
+        },
+        {
+          "filename": "array_copy.2.wasm",
+          "command_line": 24,
+          "source_line": 29,
+          "size": 99,
+          "sha256": "b40d7390d19c24b71d17d4994ad27b725869fba12f74b6e3bddfd8ee8ecc0e9e",
+          "error": "array types do not match"
+        },
+        {
+          "filename": "array_copy.3.wasm",
+          "command_line": 36,
+          "source_line": 41,
+          "size": 103,
+          "sha256": "ab52af2b8f79bce4f327080bc022b0904daf551cc814ce84d226d6bc8a184753",
+          "error": "array types do not match"
+        }
+      ],
+      "gates": [
+        {
+          "family": "gc",
+          "reason": "bulk array fill/copy helper product",
+          "count": 1
+        }
+      ],
+      "counts": {
+        "commands": 36,
+        "modules_passed": 0,
+        "assertions_passed": 0,
+        "expected_invalid": 4,
+        "expected_unlinkable": 0,
+        "expected_uninstantiable": 0,
+        "expected_feature_rejects": 1,
+        "blocked_commands": 30,
+        "unexpected_compile_rejects": 0,
+        "unexpected_link_rejects": 0,
+        "failures": 0
+      }
+    }
+  ],
+  "totals": {
+    "commands": 54,
+    "modules_passed": 0,
+    "assertions_passed": 0,
+    "expected_invalid": 7,
+    "expected_unlinkable": 0,
+    "expected_uninstantiable": 0,
+    "expected_feature_rejects": 2,
+    "blocked_commands": 43,
+    "unexpected_compile_rejects": 0,
+    "unexpected_link_rejects": 0,
+    "failures": 0
+  }
+}

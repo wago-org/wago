@@ -459,6 +459,9 @@ func (v *funcValidator) stepGC(in Instruction) error {
 		if !ok {
 			return v.verr(ErrUnknownType, "array.fill")
 		}
+		if f.Mut != Var {
+			return v.verr(ErrTypeMismatch, "immutable array")
+		}
 		if err := v.popExpect(I32); err != nil {
 			return err
 		}
@@ -470,10 +473,22 @@ func (v *funcValidator) stepGC(in Instruction) error {
 		}
 		return v.popExpect(RefVal(Ref(true, IndexedHeap(TypeIdx{Index: in.Index}), false)))
 	case InstrArrayCopy:
-		_, _, okDst := v.arrayField(TypeIdx{Index: in.Index})
-		_, _, okSrc := v.arrayField(TypeIdx{Index: in.Index2})
+		dst, _, okDst := v.arrayField(TypeIdx{Index: in.Index})
+		src, _, okSrc := v.arrayField(TypeIdx{Index: in.Index2})
 		if !okDst || !okSrc {
 			return v.verr(ErrUnknownType, "array.copy")
+		}
+		if dst.Mut != Var {
+			return v.verr(ErrTypeMismatch, "immutable array")
+		}
+		storageMatches := false
+		if dst.Storage.Packed || src.Storage.Packed {
+			storageMatches = dst.Storage.Packed && src.Storage.Packed && dst.Storage.Pack == src.Storage.Pack
+		} else {
+			storageMatches = v.subtype(src.Storage.Val, dst.Storage.Val)
+		}
+		if !storageMatches {
+			return v.verr(ErrTypeMismatch, "array types do not match")
 		}
 		if err := v.popExpect(I32); err != nil {
 			return err
