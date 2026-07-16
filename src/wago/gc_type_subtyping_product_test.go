@@ -331,7 +331,7 @@ func TestStagedGCTypeSubtypingRuntimeFinalityCallCastInventory(t *testing.T) {
 }
 
 func TestStagedGCTypeSubtypingProductPlatformAndBoundsGate(t *testing.T) {
-	for _, pinIndex := range []int{8, 14, 18, 21, 23} {
+	for _, pinIndex := range []int{8, 14, 18, 21, 23, 24} {
 		pin := stagedGCTypeSubtypingProductPins[pinIndex]
 		t.Run(pin.Filename, func(t *testing.T) {
 			data := stagedGCTypeSubtypingProductData(t, pin)
@@ -431,5 +431,14 @@ func TestStagedGCTypeSubtypingProductRejectsWidening(t *testing.T) {
 	runtimeCallCast.Tables[0].Type.Limits.Max = &max
 	if product, err := stagedGCTypeSubtypingProductShape(runtimeCallCast); err == nil && product == stagedGCTypeSubtypingRuntimeCallCast {
 		t.Fatal("runtime call/cast product with widened table maximum unexpectedly retained exact admission")
+	}
+
+	finalityCallCast, err := wasm.DecodeModule(stagedGCTypeSubtypingProductData(t, stagedGCTypeSubtypingProductPins[24]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	finalityCallCast.Types[1].SubTypes[0].Final = false
+	if product, err := stagedGCTypeSubtypingProductShape(finalityCallCast); err == nil && product == stagedGCTypeSubtypingRuntimeFinalityCallCast {
+		t.Fatal("runtime finality call/cast product with a widened final type unexpectedly retained exact admission")
 	}
 }
