@@ -78,45 +78,31 @@
     {
       "name": "ref_null",
       "status": "accounted",
-      "gates": [
-        {
-          "boundary": "gc-interaction",
-          "reason": "mixed any/none and exn/noexn reference products require executable GC roots",
-          "count": 2
-        }
-      ],
       "counts": {
         "commands": 36,
-        "modules_passed": 0,
-        "assertions_passed": 0,
+        "modules_passed": 2,
+        "assertions_passed": 32,
         "expected_invalid": 0,
         "expected_unlinkable": 0,
         "expected_uninstantiable": 0,
-        "expected_feature_rejects": 2,
-        "blocked_commands": 32,
+        "expected_feature_rejects": 0,
+        "blocked_commands": 0,
         "unexpected_compile_rejects": 0,
         "unexpected_link_rejects": 0,
         "failures": 0
       }
     }
   ],
-  "gates": [
-    {
-      "boundary": "gc-interaction",
-      "reason": "mixed any/none and exn/noexn reference products require executable GC roots",
-      "count": 2
-    }
-  ],
   "totals": {
     "commands": 147,
-    "modules_passed": 11,
-    "assertions_passed": 66,
+    "modules_passed": 13,
+    "assertions_passed": 98,
     "expected_invalid": 16,
     "expected_malformed": 2,
     "expected_unlinkable": 2,
     "expected_uninstantiable": 0,
-    "expected_feature_rejects": 2,
-    "blocked_commands": 32,
+    "expected_feature_rejects": 0,
+    "blocked_commands": 0,
     "unexpected_compile_rejects": 0,
     "unexpected_link_rejects": 0,
     "failures": 0
