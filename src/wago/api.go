@@ -1309,7 +1309,7 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 			c.extraTables[i] = tableDef{ImportKey: def.Key, Size: def.Min, Max: uint64(def.Max), Type: def.Type, ValueTypeIndex: def.ValueTypeIndex, HasValueType: def.HasValueType, ImportHasMax: def.HasMax, Addr64: def.Addr64}
 		}
 	}
-	c.NeedsFuncRefDescs = frontend.RequiresFuncRefDescriptors(m)
+	c.NeedsFuncRefDescs = frontend.RequiresFuncRefDescriptors(m) || gcTypeSubtypingProduct.usesLinkFunctionIdentity()
 	for i := range m.Tables {
 		tableIndex := importedTables + i
 		if m.Tables[i].Init == nil {
@@ -1718,9 +1718,13 @@ func (c *Compiled) importsRequireSync(imports Imports, force bool) bool {
 // concrete targets into the per-instance dispatch table.
 func (c *Compiled) validateImportBindings(imports Imports, store *referenceStore) error {
 	ehNativeCalls := c.stagedFeatures().IsEnabled(CoreFeatureExceptionHandling) && len(c.Imports) != 0
+	gcSubtypeLinkConsumer := c.stagedGCTypeSubtypingProduct() == stagedGCTypeSubtypingLinkConsumer
 	for i, key := range c.Imports {
 		ex, ok := imports[key].(*InstanceExport)
 		if !ok {
+			if gcSubtypeLinkConsumer {
+				return fmt.Errorf("cross-instance import %q requires the exact gc/type-subtyping link provider", key)
+			}
 			if ehNativeCalls {
 				return fmt.Errorf("exception-handler transfer import %q requires a retained InstanceExport", key)
 			}
@@ -1735,8 +1739,11 @@ func (c *Compiled) validateImportBindings(imports Imports, store *referenceStore
 		if i >= len(c.importFuncSigs) {
 			return fmt.Errorf("cross-instance import %q is missing its signature", key)
 		}
+		if gcSubtypeLinkConsumer && ex.inst.c.stagedGCTypeSubtypingProduct() != stagedGCTypeSubtypingLinkProvider {
+			return fmt.Errorf("cross-instance import %q signature mismatch: producer is outside the exact gc/type-subtyping link product", key)
+		}
 		sig := c.importFuncSigs[i]
-		if !sigMatches(sig, c.Types, ex) {
+		if !sigMatches(sig, c.Types, ex, gcSubtypeLinkConsumer) {
 			return fmt.Errorf("cross-instance import %q signature mismatch", key)
 		}
 		if hasValType(sig.Params, ValExternRef) || hasValType(sig.Results, ValExternRef) {
@@ -1757,13 +1764,21 @@ func (c *Compiled) validateImportBindings(imports Imports, store *referenceStore
 
 }
 
-func sigMatches(required FuncSig, requiredTypes []DefinedTypeDescriptor, ex *InstanceExport) bool {
+func sigMatches(required FuncSig, requiredTypes []DefinedTypeDescriptor, ex *InstanceExport, allowSubtype bool) bool {
 	if ex == nil || ex.inst == nil || ex.localIdx < 0 || ex.localIdx >= len(ex.inst.c.Funcs) {
 		return false
 	}
 	actual := ex.inst.c.Funcs[ex.localIdx]
-	if required.HasTypeIndex && actual.HasTypeIndex && !tagTypeEquivalent(actual.TypeIndex, ex.inst.c.Types, required.TypeIndex, requiredTypes) {
-		return false
+	if required.HasTypeIndex && actual.HasTypeIndex {
+		if allowSubtype {
+			actualRef := ReferenceTypeDescriptor{Heap: HeapTypeDescriptor{Defined: true, TypeIndex: actual.TypeIndex}}
+			requiredRef := ReferenceTypeDescriptor{Heap: HeapTypeDescriptor{Defined: true, TypeIndex: required.TypeIndex}}
+			if !referenceTypeSubtype(actualRef, ex.inst.c.Types, requiredRef, requiredTypes) {
+				return false
+			}
+		} else if !tagTypeEquivalent(actual.TypeIndex, ex.inst.c.Types, required.TypeIndex, requiredTypes) {
+			return false
+		}
 	}
 	requiredParams, requiredResults, err := exactFuncSignature(required, requiredTypes)
 	if err != nil {
@@ -1774,12 +1789,20 @@ func sigMatches(required FuncSig, requiredTypes []DefinedTypeDescriptor, ex *Ins
 		return false
 	}
 	for i := range requiredParams {
-		if !valueTypeEquivalent(actualParams[i], ex.inst.c.Types, requiredParams[i], requiredTypes) {
+		if allowSubtype {
+			if !valueTypeSubtype(requiredParams[i], requiredTypes, actualParams[i], ex.inst.c.Types) {
+				return false
+			}
+		} else if !valueTypeEquivalent(actualParams[i], ex.inst.c.Types, requiredParams[i], requiredTypes) {
 			return false
 		}
 	}
 	for i := range requiredResults {
-		if !valueTypeEquivalent(actualResults[i], ex.inst.c.Types, requiredResults[i], requiredTypes) {
+		if allowSubtype {
+			if !valueTypeSubtype(actualResults[i], ex.inst.c.Types, requiredResults[i], requiredTypes) {
+				return false
+			}
+		} else if !valueTypeEquivalent(actualResults[i], ex.inst.c.Types, requiredResults[i], requiredTypes) {
 			return false
 		}
 	}

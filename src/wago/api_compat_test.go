@@ -122,9 +122,9 @@ func TestCompiledAPIHelpers(t *testing.T) {
 	export := func(sig FuncSig) *InstanceExport {
 		return &InstanceExport{inst: &Instance{c: &Compiled{Funcs: []FuncSig{sig}}}, localIdx: 0}
 	}
-	if !sigMatches(required, nil, export(FuncSig{Params: []ValType{ValI32}, Results: []ValType{ValI64}})) ||
-		sigMatches(required, nil, export(FuncSig{Params: []ValType{ValI64}, Results: []ValType{ValI64}})) ||
-		sigMatches(required, nil, export(FuncSig{Params: []ValType{ValI32}})) {
+	if !sigMatches(required, nil, export(FuncSig{Params: []ValType{ValI32}, Results: []ValType{ValI64}}), false) ||
+		sigMatches(required, nil, export(FuncSig{Params: []ValType{ValI64}, Results: []ValType{ValI64}}), false) ||
+		sigMatches(required, nil, export(FuncSig{Params: []ValType{ValI32}}), false) {
 		t.Fatal("cross-instance signature matching changed")
 	}
 	for _, tc := range []struct {

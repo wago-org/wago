@@ -35,6 +35,10 @@ func (p stagedGCTypeSubtypingProduct) usesRuntimeFunctionIdentity() bool {
 	return p == stagedGCTypeSubtypingRuntimeCallCast || p == stagedGCTypeSubtypingRuntimeFinalityCallCast || p == stagedGCTypeSubtypingRuntimeTypedTableCall
 }
 
+func (p stagedGCTypeSubtypingProduct) usesLinkFunctionIdentity() bool {
+	return p == stagedGCTypeSubtypingLinkProvider || p == stagedGCTypeSubtypingLinkConsumer
+}
+
 func stagedGCTypeSubtypingProductPinned(data []byte, product stagedGCTypeSubtypingProduct) bool {
 	digest := fmt.Sprintf("%x", sha256.Sum256(data))
 	var pinned stagedGCTypeSubtypingProduct
@@ -74,6 +78,13 @@ func stagedGCTypeSubtypingProductPinned(data []byte, product stagedGCTypeSubtypi
 		pinned = stagedGCTypeSubtypingRuntimeFinalityCallCast
 	case "2ad95457821ceb8211d5733fe308f031f1103755733bbf8b5db9c85db0eb6d9b":
 		pinned = stagedGCTypeSubtypingRuntimeTypedTableCall
+	case "8e9bdbeb27a496328eb9529e0ea629d14a01124b657c4eb0aad74a8bd0f426db":
+		pinned = stagedGCTypeSubtypingLinkProvider
+	case "ea4d5aaf13a9744bd319a1b33d1ee2303cfaecc84dae73a4179351a6fb91a760",
+		"634f7caa3c4e26b757fca7a9a9f8367f99e33304c87f7b2cf6ec7d1e31566535",
+		"fe07228154a27a9de4702afb12187709536e894495e8fa2e34a710e2dd7c0b88",
+		"24ce2b2eec631ee2946c641e0545d06dc1179e2e9ba646ae59c5d37974111649":
+		pinned = stagedGCTypeSubtypingLinkConsumer
 	}
 	return pinned == product
 }
@@ -81,6 +92,9 @@ func stagedGCTypeSubtypingProductPinned(data []byte, product stagedGCTypeSubtypi
 func stagedGCTypeSubtypingProductShape(m *wasm.Module) (stagedGCTypeSubtypingProduct, error) {
 	if m == nil {
 		return 0, fmt.Errorf("nil module")
+	}
+	if len(m.Types) == 3 && m.TableCount() == 0 && m.MemCount() == 0 && len(m.Globals) == 0 && len(m.Elements) == 0 && len(m.Data) == 0 && m.TagCount() == 0 && m.Start == nil && (m.ImportedFuncCount() != 0 || len(m.Exports) == 3) {
+		return stagedGCTypeSubtypingLinkShape(m)
 	}
 	if len(m.Elements) != 0 || len(m.Exports) != 0 {
 		if m.TableCount() != 0 {
@@ -129,6 +143,77 @@ func stagedGCTypeSubtypingProductShape(m *wasm.Module) (stagedGCTypeSubtypingPro
 		}
 	}
 	return stagedGCTypeSubtypingRecursiveFunctions, nil
+}
+
+func stagedGCTypeSubtypingLinkShape(m *wasm.Module) (stagedGCTypeSubtypingProduct, error) {
+	if len(m.Types) != 3 || m.TableCount() != 0 || m.MemCount() != 0 || len(m.Globals) != 0 || len(m.Elements) != 0 || len(m.Data) != 0 || m.TagCount() != 0 || m.Start != nil {
+		return 0, fmt.Errorf("link product requires exactly three type groups and no non-function state")
+	}
+	for i := 0; i < 3; i++ {
+		if len(m.Types[i].SubTypes) != 1 {
+			return 0, fmt.Errorf("link product type group %d must contain one member", i)
+		}
+		st := &m.Types[i].SubTypes[0]
+		if st.Metadata.Describes != nil || st.Metadata.Descriptor != nil || st.Final || !st.HasPrefix || st.Comp.Kind != wasm.CompFunc || len(st.Comp.Params) != 0 || len(st.Comp.Results) != 1 {
+			return 0, fmt.Errorf("link product type %d must be an open zero-parameter single-reference-result function subtype", i)
+		}
+		if i == 0 {
+			if len(st.Supers) != 0 || !wasm.EqualValType(st.Comp.Results[0], wasm.FuncRef) {
+				return 0, fmt.Errorf("link product root type must return nullable funcref without a super")
+			}
+		} else {
+			result := st.Comp.Results[0]
+			if len(st.Supers) != 1 || st.Supers[0].Rec || st.Supers[0].Index != uint32(i-1) || result.Kind != wasm.ValRef || !result.Ref.Nullable || result.Ref.Exact || result.Ref.Heap.Kind != wasm.HeapTypeIndex || !result.Ref.Heap.Type.Rec || result.Ref.Heap.Type.Index != 0 {
+				return 0, fmt.Errorf("link product type %d must extend type %d and return its own nullable reference", i, i-1)
+			}
+		}
+	}
+	for source := uint32(0); source < 3; source++ {
+		for target := uint32(0); target < 3; target++ {
+			actual := wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: source}), false)
+			required := wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: target}), false)
+			if m.ReferenceTypeSubtype(actual, required) != (source >= target) {
+				return 0, fmt.Errorf("link product relation %d <: %d is outside the exact chain", source, target)
+			}
+		}
+	}
+	if len(m.Imports) == 0 {
+		if len(m.FuncTypes) != 3 || len(m.Code) != 3 || len(m.Exports) != 3 {
+			return 0, fmt.Errorf("link provider requires three local functions and three exports")
+		}
+		wantBodies := []string{"d0700b", "d0010b", "d0020b"}
+		for i := 0; i < 3; i++ {
+			if m.FuncTypes[i].Rec || m.FuncTypes[i].Index != uint32(i) || len(m.Code[i].Locals.Runs) != 0 || fmt.Sprintf("%x", m.Code[i].BodyBytes) != wantBodies[i] {
+				return 0, fmt.Errorf("link provider function %d is outside the exact type/body product", i)
+			}
+			wantName := fmt.Sprintf("f%d", i)
+			ex := m.Exports[i]
+			if ex.Name != wantName || ex.Index.Kind != wasm.ExternFunc || ex.Index.Index != uint32(i) {
+				return 0, fmt.Errorf("link provider export %d is outside the exact product", i)
+			}
+		}
+		return stagedGCTypeSubtypingLinkProvider, nil
+	}
+	if len(m.FuncTypes) != 0 || len(m.Code) != 0 || len(m.Exports) != 0 || m.ImportedFuncCount() != len(m.Imports) {
+		return 0, fmt.Errorf("link consumer requires only function imports")
+	}
+	matches := func(wantNames []string, wantTypes []uint32) bool {
+		if len(m.Imports) != len(wantNames) || len(wantNames) != len(wantTypes) {
+			return false
+		}
+		for i := range wantNames {
+			imp := m.Imports[i]
+			if imp.Module != "M" || imp.Name != wantNames[i] || imp.Type.Kind != wasm.ExternFunc || imp.Type.Type.Rec || imp.Type.Type.Index != wantTypes[i] {
+				return false
+			}
+		}
+		return true
+	}
+	if matches([]string{"f0", "f1", "f1", "f2", "f2", "f2"}, []uint32{0, 0, 1, 0, 1, 2}) ||
+		matches([]string{"f0"}, []uint32{1}) || matches([]string{"f0"}, []uint32{2}) || matches([]string{"f1"}, []uint32{2}) {
+		return stagedGCTypeSubtypingLinkConsumer, nil
+	}
+	return 0, fmt.Errorf("link consumer import sequence is outside the exact first cluster")
 }
 
 func stagedGCTypeSubtypingRefFuncGlobalShape(m *wasm.Module) (stagedGCTypeSubtypingProduct, error) {
