@@ -136,10 +136,11 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   direct `return_call` uses a separate fixed four-word root/nested transition, preserves
   producer lifetime and trap recovery, repeats without allocation, and now admits exactly
   `(i32, f64) -> f64` and `(f64) -> i32` in addition to the integer shapes. A complete
-  14-file typed-reference/structural matrix now accounts 422 commands with 50 modules,
-  211 assertions, and all 65 invalid modules passing; `call_ref` and null control are
-  gap-free, the five recursive validator gaps are closed, and only 11 GC plus 1 EH gate
-  remain explicit. Public admission, other float/
+  14-file typed-reference/structural matrix now accounts 422 commands with 52 modules,
+  243 assertions, and all 65 invalid modules passing; `call_ref`, null control, and both
+  null-only `ref_null` modules are gap-free, the five recursive validator gaps are closed,
+  and only 10 struct/array-defined GC gates with 4 blocked commands remain explicit.
+  Public admission, other float/
   oversized direct tails, general-table/
   foreign-float/general reference-result tails, live typed snapshot state, remaining
   GC/reference instructions, and arm64 parity remain gated.
@@ -199,9 +200,9 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   paths remain bounded and allocation-free. Broader imported copy/init/grow/indirect,
   snapshots, guard mode, public admission, exception handling, GC, and arm64 remain
   end-to-end work.
-- 🚧 Exception handling has strict schema-2 accounting across five official/mixed
-  files: 147 commands, 11 modules, 66 assertions, 16 invalid, 2 malformed, 2 unlinkable,
-  2 exact gates, and 32 blocked dependents, with zero hidden failures. The complete
+- 🚧 Exception handling has gap-free strict schema-2 accounting across five official/mixed
+  files: 147 commands, 13 modules, 98 assertions, 16 invalid, 2 malformed, 2 unlinkable,
+  zero gates, and zero blocked dependents, with zero hidden failures. The complete
   official `exceptions/try_table` file is gap-free under staged admission at 5 modules,
   45 assertions, 9 invalid modules, and 2 source-only malformed commands. linux/amd64
   explicit bounds supports nine tags, twenty-four try tables/module, eight ordered catches/
@@ -213,10 +214,14 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   preserve canonical descriptor identity, initialize the root before handler publication,
   clear all three root words on the immediate exn drop, tear down cleanly, retain codec-v27
   metadata, and repeat without allocation. Catch-all root maps derive ownership from the
-  bounded tag set and reject mixed scalar/reference or GC/funcref words. Nullable, GC,
-  foreign, wider, escaping-root, tail, host, snapshot, public, guard, and arm64 products
-  remain fail-closed. The scalar catch benchmark is 41.48–41.91 ns/op and the typed-funcref
-  catch is 135.1–145.7 ns/op, both 0 B/op and 0 allocs/op.
+  bounded tag set and reject mixed scalar/reference or GC/funcref words. The two remaining
+  `ref_null` products now execute only null any/none/exn/noexn values and immutable local
+  globals through one zero slot; they allocate no collector and do not claim WasmGC heap
+  execution. Non-null GC/exn values, allocation/cast/test instructions, foreign, mutable/
+  imported, wider, escaping-root, tail, host, snapshot, public, guard, and arm64 products
+  remain fail-closed. The scalar catch benchmark is 41.48–41.91 ns/op, the typed-funcref
+  catch is 135.1–145.7 ns/op, and bottom-null `global.get` is 52.24–53.58 ns/op; all are
+  0 B/op and 0 allocs/op.
 - [ ] Reach zero unexplained failures/skips in the official Release 3 core suite.
 
 **Engine & performance** (no-ir-plan P1–P7, measured against P1's stats)
@@ -309,14 +314,15 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   survive codec metadata while snapshots reject unresolved contexts before mutation.
   Root and nested cross-instance typed tails now execute with explicit host and
   unsupported-shape failures. Iteration 30 pins a 14-file schema-2 typed-reference/
-  structural matrix at 422 commands / 50 modules / 211 assertions / 65 invalid /
-  2 malformed / 1 unlinkable, with 12 exact gates and 36 blocked commands. The
+  structural matrix at 422 commands / 52 modules / 243 assertions / 65 invalid /
+  2 malformed / 1 unlinkable, with 10 exact gates and 4 blocked commands. The
   null-control surface and official `call_ref` file are green under staged admission;
   shifted and recursive cross-instance signatures now match structurally, retain their
   producers, and preserve codec-v27 metadata across empty recursive groups. Iteration 31
   closes all five strict recursive validator gaps by enforcing recursive-group scope and
-  whole-group equivalence. The remaining matrix gates are 11 GC and 1 exception-reference.
-  Persisted
+  whole-group equivalence. Iteration 36 executes both null-only mixed GC/EH modules without
+  allocating heap objects; the remaining matrix gates are exactly 10 struct/array-defined
+  GC products in `type-rec`. Persisted
   live reference state, broader tails, public admission, remaining reference/GC/EH
   instructions, and arm64 remain gated. Multi-
   memory now executes all indexed scalar, SIMD, and bulk/data operations internally
