@@ -13,9 +13,11 @@ Iterations 41-43 add a separate exact array helper/product boundary, all officia
 leaders, immutable and passive-element checked roots, reference barriers, data/element-drop
 lifecycle, and bounded public array results. Iteration 44 adds the complete collector-free
 `gc/i31` family: direct immediate operations, exact globals, compact tables, and i31 casts.
-General native frame publication, object-valued mutable/reference stores, broad public
-ownership, and snapshots remain incomplete. These bounded products must not be presented as
-general executable WasmGC support.
+Iteration 45 pins the complete official `gc/ref_test` obligation, corrects sibling-type dynamic-
+test validation, and adds one exact collector-free null+i31 execution product; both official
+mixed-object leaders remain gated. General native frame publication, object-valued mutable/
+reference stores and tables, broad public ownership, and snapshots remain incomplete. These
+bounded products must not be presented as general executable WasmGC support.
 
 ## Why a wago-native collector
 
@@ -456,6 +458,42 @@ memory directory from 128 to 136 bytes; fixed `Compiled=712`, `Instance=792`,
 `compiledCodeCache=64`, and `gc.Collector=640` remain unchanged. Five 500 ms samples measured
 core `get_u` at 34.63-35.18 ns/op and anyref-table get/cast at 35.01-35.78 ns/op, all 0 B/op and
 0 allocs/op.
+
+### Iteration 45 bounded dynamic reference tests
+
+Iteration 45 adds strict schema-2 accounting for both official `gc/ref_test.wast` binaries. The
+inventory pins canonical source and command lines, byte sizes, SHA-256 identities, decoded type/
+state graphs, every opcode, and all ordered actions. It contains 73 commands: two valid module
+leaders are explicitly gated and their 69 actions remain blocked, with zero invalid/malformed
+commands and zero hidden failures. The 626-byte abstract leader combines null, i31, struct, array,
+funcref, externref, three tables, allocation, conversion, and mutation. The 976-byte concrete
+leader creates eight struct dynamic types and performs 84 subtype/canonicalization tests. Neither
+is admitted merely because a smaller primitive now executes.
+
+Validation now treats ordinary `ref.test` compatibility by top-level reference hierarchy. Defined
+struct siblings, and struct/array members of the data hierarchy, are legal dynamic tests even when
+neither type is a subtype of the other; the runtime answer may be false. Data, function, extern,
+exception, and string hierarchies remain disjoint, so cases such as funcref versus i31 still reject
+strictly. Descriptor-form tests retain their narrower descriptor compatibility rule.
+
+Execution is intentionally smaller than either official leader. One 255-byte/SHA-pinned product
+contains only `ref.null`, `ref.i31`, and `ref.test`, has numeric signatures, no tables/globals/
+imports/objects, and reaches amd64 only through the existing private i31 product gate. Nullable
+null tests return true, non-null null tests return false, tagged i31 values match `i31`, `eq`, and
+`any`, and do not match `struct` or `array`. The lowering checks the low tag; a low-bit-zero non-null
+word is never accepted as an i31 immediate. Because the product has no reference parameters,
+imports, storage, or object constructors, no host/raw non-null ingress can manufacture such a word
+on the admitted path.
+
+Throughput and Tiny instantiation both keep `Instance.gc == nil`. No helper transition, root,
+barrier, card, remembered set, descriptor sidecar, or heap allocation is added. Codec v27 remains
+unchanged: the exact type/code metadata persists, but private reload inherits no product bit and
+fails required-feature admission before mutation. Public compilation, snapshots, signal bounds,
+and arm64 execution remain fail-closed. The product measures 255 Wasm bytes / 996 linked code
+bytes / 1,292 codec bytes. Five 500 ms samples measured the two-test i31 function at
+36.58-37.34 ns/op, 0 B/op, and 0 allocs/op. Fixed `Compiled=712`, `Instance=792`,
+`compiledCodeCache=64`, `compiledMemoryDirectory=136`, and `gc.Collector=640` layouts remain
+unchanged.
 
 Before broader live `gc.Ref` payloads or funcref lifetimes can be admitted, codegen/runtime
 must still prove all of the following as one coherent product:

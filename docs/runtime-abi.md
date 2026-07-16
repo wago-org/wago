@@ -244,6 +244,21 @@ signature-defined and carries the compact word, while `Call` exposes signed/unsi
 The official slice has result-only i31 egress and no i31-reference parameters, host calls,
 cross-instance reference transfer, snapshots, guard execution, or arm64 execution.
 
+Iteration 45 reuses that compact word for one exact non-allocating `ref.test` product. Generated
+amd64 code never dereferences the operand and never parks in Go. For target `i31`, `eq`, or `any`,
+it isolates the low tag and combines it with the zero test only for nullable targets. For target
+`struct`, `array`, or `none`, the admitted null+i31 domain can match only nullable null; tagged i31
+values return false. A non-zero low-bit-zero word therefore cannot be mistaken for an immediate.
+The exact product has no reference parameters, imports, globals, tables, object constructors, or
+host/cross-instance boundary, so such an object-shaped word cannot enter the admitted activation.
+
+This is not general dynamic-type execution. The official abstract leader needs mixed anyref,
+funcref, and externref tables plus allocation/conversion lifecycle; the concrete leader needs
+collector object descriptors and subtype queries. Both remain gated until table roots, object
+ownership, dynamic descriptor lookup, barriers, close order, and trap/rollback are proven together.
+Codec v27 serializes no `ref.test` admission bit or live discriminator state, and signal bounds plus
+arm64 remain closed. No fixed runtime, basedata, descriptor, collector, or lifecycle layout changes.
+
 ## Global coherence invariant
 
 The global cell is the sole host- and cross-instance-visible storage for a
