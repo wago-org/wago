@@ -515,7 +515,7 @@ func (f *fn) tableSet(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
-	if f.gcStructHelpers && f.tableIsGCObjectRef(tableIdx) {
+	if f.gcStructHelpers && (f.tableIsGCObjectRef(tableIdx) || (f.m.TableCount() == 3 && tableIdx == 2 && f.tableIsExternref(tableIdx))) {
 		tt, ok := f.m.TableType(tableIdx)
 		if !ok {
 			return fmt.Errorf("amd64: GC table.set table %d type is unavailable", tableIdx)

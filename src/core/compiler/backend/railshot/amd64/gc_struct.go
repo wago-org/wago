@@ -21,6 +21,8 @@ const (
 	gcStructGetU                = 5
 	gcStructRefTest             = 6
 	gcStructTableSet            = 7
+	gcAnyConvertExtern          = 8
+	gcExternConvertAny          = 9
 )
 
 func (f *fn) emitFB(r *wasm.Reader) error {
@@ -39,6 +41,15 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 	}
 	if sub >= 28 && sub <= 30 {
 		return f.emitGCI31(sub)
+	}
+	if sub == 26 || sub == 27 {
+		if !f.gcStructHelpers {
+			return fmt.Errorf("amd64: unsupported staged extern conversion opcode %d without GC helpers", sub)
+		}
+		if sub == 26 {
+			return f.callGCStructHelper(gcAnyConvertExtern, []wasm.ValType{wasm.ExternRef}, []wasm.ValType{wasm.AnyRef})
+		}
+		return f.callGCStructHelper(gcExternConvertAny, []wasm.ValType{wasm.AnyRef}, []wasm.ValType{wasm.ExternRef})
 	}
 	if !f.gcStructHelpers {
 		return fmt.Errorf("amd64: unsupported 0xfb opcode %d without staged GC struct helpers", sub)
@@ -125,6 +136,24 @@ func (f *fn) emitGCI31Test(sub uint32, r *wasm.Reader) error {
 		return err
 	}
 	nullable := sub == 21
+	if heap == -16 || heap == -17 || heap == -13 || heap == -14 { // func, extern, nofunc, noextern
+		value := f.materialize(f.popValue())
+		if heap == -16 || heap == -17 {
+			if nullable {
+				f.a.MovImm32(value, 1)
+			} else {
+				f.a.TestSelf(value, true)
+				f.a.SetccReg(condNE, value)
+			}
+		} else if nullable {
+			f.a.TestSelf(value, true)
+			f.a.SetccReg(condE, value)
+		} else {
+			f.a.AluRR(aluTable[opXor].rr, value, value, false)
+		}
+		f.pushReg(value, mtI32)
+		return nil
+	}
 	if f.gcStructHelpers {
 		value := f.materialize(f.popValue())
 		f.pushReg(value, mtI64)

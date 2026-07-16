@@ -1,6 +1,7 @@
 package wago
 
 import (
+	"encoding/binary"
 	"fmt"
 
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
@@ -19,6 +20,8 @@ const (
 	gcStructGetU                = 5
 	gcStructRefTest             = 6
 	gcStructTableSet            = 7
+	gcAnyConvertExtern          = 8
+	gcExternConvertAny          = 9
 )
 
 type gcStructHelperError struct{ err error }
@@ -120,8 +123,8 @@ func (in *Instance) dispatchGCStructHelper(helper uint32, args, results []uint64
 		}
 		var matched bool
 		var err error
-		if state := in.existingGCRefTestTableState(); state != nil && state.CanonicalType != nil {
-			matched, err = in.gc.RefTestCanonical(gc.Ref(uint32(args[0])), target, state.CanonicalType)
+		if state := in.existingGCRefTestTableState(); state != nil {
+			matched, err = state.refTest(in.gc, args[0], target)
 		} else {
 			matched, err = in.gc.RefTest(gc.Ref(uint32(args[0])), target)
 		}
@@ -134,20 +137,39 @@ func (in *Instance) dispatchGCStructHelper(helper uint32, args, results []uint64
 			results[0] = 0
 		}
 	case gcStructTableSet:
-		if len(args) != 3 || args[2] != 0 {
-			panic(gcStructHelperError{err: fmt.Errorf("gc ref.test table-set helper args = %v, want index/ref/table-0", args)})
+		if len(args) != 3 {
+			panic(gcStructHelperError{err: fmt.Errorf("gc ref.test table-set helper args = %v, want index/ref/table", args)})
 		}
 		state := in.existingGCRefTestTableState()
 		if state == nil {
 			panic(gcStructHelperError{err: fmt.Errorf("gc ref.test table state is unavailable")})
 		}
-		index := args[0]
-		if index >= uint64(state.Count) {
+		table, index := args[2], args[0]
+		if table >= uint64(state.TableCount) || index >= uint64(binary.LittleEndian.Uint32(state.Descriptors[table])) {
 			panic(gcStructHelperTrap{code: coreruntime.TrapIndirectOutOfBounds})
 		}
-		if err := state.set(in.gc, index, gc.Ref(uint32(args[1]))); err != nil {
+		if err := state.setTable(in.gc, table, index, args[1]); err != nil {
 			panic(gcStructHelperError{err: err})
 		}
+	case gcAnyConvertExtern, gcExternConvertAny:
+		if len(args) != 1 || len(results) < 1 {
+			panic(gcStructHelperError{err: fmt.Errorf("gc extern conversion helper arity = %d/%d, want 1/at-least-1", len(args), len(results))})
+		}
+		state := in.existingGCRefTestTableState()
+		if state == nil || state.Conversion == nil {
+			panic(gcStructHelperError{err: fmt.Errorf("gc extern conversion state is unavailable")})
+		}
+		var value uint64
+		var err error
+		if helper == gcAnyConvertExtern {
+			value, err = state.Conversion.anyFromExtern(args[0])
+		} else {
+			value, err = state.Conversion.externFromAny(args[0])
+		}
+		if err != nil {
+			panic(gcStructHelperError{err: err})
+		}
+		results[0] = value
 	case gcStructSet:
 		if len(args) != 4 {
 			panic(gcStructHelperError{err: fmt.Errorf("gc struct set helper arity = %d, want 4", len(args))})
