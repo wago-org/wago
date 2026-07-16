@@ -56,6 +56,7 @@ var stagedGCTypeSubtypingProductPins = []stagedGCTypeSubtypingProductPin{
 	{Filename: "type-subtyping.28.wasm", Line: 371, Size: 117, SHA256: "b0797a1825d04be467e336f7f236637184aab41a13de20ff7a06eb1bb7885613", Class: stagedGCTypeSubtypingRefTestDirectionFalse, Results: []uint64{0}, Hex: "0061736d0100000001ac80808000044e0250006000005001006000004e0250006000005001006000004e0250006000005001026000006000017f038380808000020406078780808000010372756e000109858080800001030001000a9480808000028280808000000b878080800000d200fb14020b"},
 	{Filename: "type-subtyping.17.wasm", Line: 193, Size: 412, SHA256: "505e94dbd66fc2e3b5d2d4af76341618b19571074c7b42a551392fd58aa692f3", Class: stagedGCTypeSubtypingRuntimeCallCast, Hex: "0061736d01000000019a808080000450006000017050010060000163015001016000016302600000038b808080000a00010203030303030303048580808000017001030307b780808000070372756e0003056661696c310004056661696c320005056661696c330006056661696c340007056661696c350008056661696c360009098f80808000010441000b03d2000bd2010bd2020b0a80828080000a848080800000d0700b848080800000d0010b848080800000d0020bf98080800000027041001100000b027041011100000b027041021100000b02630141011101000b02630141021101000b02630241021102000b02630041002500fb16000b02630041012500fb16000b02630041022500fb16000b02630141012500fb16010b02630141022500fb16010b02630241022500fb16020b0c000b8d808080000002630141001101000b0c000b8d808080000002630141001102000b0c000b8d808080000002630141011102000b0c000b8b808080000041002500fb16010c000b8b808080000041002500fb16020c000b8b808080000041012500fb16020c000b"},
 	{Filename: "type-subtyping.18.wasm", Line: 215, Size: 185, SHA256: "375a327f8469d41d4f15f05109533a90127fc5287414364e227203d7d48e7662", Class: stagedGCTypeSubtypingRuntimeFinalityCallCast, Hex: "0061736d0100000001898080800002500060000060000003878080800006000101010101048580808000017001020207a18080800004056661696c310002056661696c320003056661696c330004056661696c340005098c80808000010441000b02d2000bd2010b0acb80808000068280808000000b8280808000000b8a8080800000024041011100000b0b8a8080800000024041001101000b0b8a808080000041012500fb16001a0b8a808080000041002500fb16011a0b"},
+	stagedGCTypeSubtypingTypedTablePin,
 }
 
 func stagedGCTypeSubtypingProductData(t testing.TB, pin stagedGCTypeSubtypingProductPin) []byte {
@@ -108,8 +109,8 @@ func TestStagedGCTypeSubtypingProductInventory(t *testing.T) {
 		}
 		seen[pin.Class]++
 	}
-	if seen[stagedGCTypeSubtypingDeclarations] != 6 || seen[stagedGCTypeSubtypingRecursiveFunctions] != 2 || seen[stagedGCTypeSubtypingRefFuncGlobals] != 6 || seen[stagedGCTypeSubtypingRefTestSingle] != 4 || seen[stagedGCTypeSubtypingRefTestMulti] != 3 || seen[stagedGCTypeSubtypingRefTestDirectionFalse] != 2 || seen[stagedGCTypeSubtypingRuntimeCallCast] != 1 || seen[stagedGCTypeSubtypingRuntimeFinalityCallCast] != 1 {
-		t.Fatalf("product classes = %#v, want declarations/recursive-functions/ref.func-globals/single-ref.test/multi-ref.test/direction-false-ref.test/runtime-call-cast/runtime-finality-call-cast = 6/2/6/4/3/2/1/1", seen)
+	if seen[stagedGCTypeSubtypingDeclarations] != 6 || seen[stagedGCTypeSubtypingRecursiveFunctions] != 2 || seen[stagedGCTypeSubtypingRefFuncGlobals] != 6 || seen[stagedGCTypeSubtypingRefTestSingle] != 4 || seen[stagedGCTypeSubtypingRefTestMulti] != 3 || seen[stagedGCTypeSubtypingRefTestDirectionFalse] != 2 || seen[stagedGCTypeSubtypingRuntimeCallCast] != 1 || seen[stagedGCTypeSubtypingRuntimeFinalityCallCast] != 1 || seen[stagedGCTypeSubtypingRuntimeTypedTableCall] != 1 {
+		t.Fatalf("product classes = %#v, want declarations/recursive-functions/ref.func-globals/single-ref.test/multi-ref.test/direction-false-ref.test/runtime-call-cast/runtime-finality-call-cast/runtime-typed-table-call = 6/2/6/4/3/2/1/1/1", seen)
 	}
 }
 
@@ -440,7 +441,7 @@ func TestStagedGCTypeSubtypingRuntimeTypedTableInventory(t *testing.T) {
 }
 
 func TestStagedGCTypeSubtypingProductPlatformAndBoundsGate(t *testing.T) {
-	for _, pinIndex := range []int{8, 14, 18, 21, 23, 24} {
+	for _, pinIndex := range []int{8, 14, 18, 21, 23, 24, 25} {
 		pin := stagedGCTypeSubtypingProductPins[pinIndex]
 		t.Run(pin.Filename, func(t *testing.T) {
 			data := stagedGCTypeSubtypingProductData(t, pin)
@@ -549,5 +550,14 @@ func TestStagedGCTypeSubtypingProductRejectsWidening(t *testing.T) {
 	finalityCallCast.Types[1].SubTypes[0].Final = false
 	if product, err := stagedGCTypeSubtypingProductShape(finalityCallCast); err == nil && product == stagedGCTypeSubtypingRuntimeFinalityCallCast {
 		t.Fatal("runtime finality call/cast product with a widened final type unexpectedly retained exact admission")
+	}
+
+	typedTable, err := wasm.DecodeModule(stagedGCTypeSubtypingProductData(t, stagedGCTypeSubtypingTypedTablePin))
+	if err != nil {
+		t.Fatal(err)
+	}
+	typedTable.Tables[0].Type.Ref = wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: 0}), false)
+	if product, err := stagedGCTypeSubtypingProductShape(typedTable); err == nil && product == stagedGCTypeSubtypingRuntimeTypedTableCall {
+		t.Fatal("runtime typed-table product with widened table storage unexpectedly retained exact admission")
 	}
 }
