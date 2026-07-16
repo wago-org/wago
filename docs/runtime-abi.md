@@ -445,6 +445,13 @@ zero-length post-drop initialization succeeds and non-zero initialization traps 
 268-byte product uses two 112-byte rooted arrays and measures 213.4–219.2 ns/op with 0 B/op and
 0 allocs/op. No fixed runtime, basedata, descriptor, plugin-sidecar, or codec-v27 layout grows.
 
+Iteration 55 adds accounting only for `gc/type-subtyping.wast`. The 45 valid leaders contain no
+struct/array constructor, access, storage, result, import, export, or snapshot state; their runtime values are
+function identities where values exist at all. No helper ID, basedata slot, descriptor representation, root,
+barrier, collector sidecar, native frame, or codec field is added. Two valid and fourteen invalid modules remain
+explicit validator gaps, and every leader remains product-gated, so this inventory must not be used as an ABI
+admission argument until validation and exact collector-free ownership are closed separately.
+
 ## Global coherence invariant
 
 The global cell is the sole host- and cross-instance-visible storage for a
