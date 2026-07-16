@@ -315,11 +315,15 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   a new exact SHA-pinned no-object product rather than widening iteration 37. Iteration 58 adds the next six immutable
   local `ref.func`-global leaders under their own exact class. Their one/two local functions and one/two/four/eight
   globals use bounded 64/96-byte descriptor arenas; every immutable cell holds its instance-owned canonical local
-  identity after exact declared-super assignment. All fourteen leave `Instance.gc` nil, codec reload inherits no
-  product marker, and guard/public/arm64/snapshot admission remains closed. Accounting is 14 passed modules / 31
-  gates / 48 blocked dependents / 24 invalid / 8 unlinkable obligations. General frame roots, object-valued mutable/
-  reference globals, the remaining function-only action/link products, public family admission, and broader platforms
-  remain.
+  identity after exact declared-super assignment. Iteration 59 executes the first four single-result function-only
+  `ref.test` leaders. Exact two-function products use one declarative local-function identity, one `run` export, and
+  a runner restricted to `ref.func 0; ref.test <indexed function type>; end`; compile-only provenance folds the
+  structural subtype relation to `1, 1, 0, 1` without treating descriptor addresses as compact GC references. All
+  eighteen leave `Instance.gc` nil; each new arena is 96 bytes and repeated invocation allocates zero bytes. Codec
+  reload inherits no product marker, and guard/public/arm64/snapshot admission remains closed. Accounting is 18 passed
+  modules / 4 passed assertions / 27 gates / 44 blocked dependents / 24 invalid / 8 unlinkable obligations. General
+  frame roots, object-valued mutable/reference globals, the remaining multi-result/finality `ref.test` and action/link
+  products, public family admission, and broader platforms remain.
 - [ ] Reach zero unexplained failures/skips in the official Release 3 core suite.
 
 **Engine & performance** (no-ir-plan P1–P7, measured against P1's stats)
