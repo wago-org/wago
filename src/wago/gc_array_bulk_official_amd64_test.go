@@ -21,7 +21,7 @@ import (
 
 const (
 	stagedGCArrayBulkDeltaPath         = "tests/spec-v3-staged-gc-array-bulk.json"
-	stagedGCArrayBulkOfficialExecution = false
+	stagedGCArrayBulkOfficialExecution = true
 )
 
 type stagedGCArrayBulkLeaderPin struct {

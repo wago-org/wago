@@ -12,7 +12,6 @@
           "size": 183,
           "sha256": "0893caa7ae7ab2d870329da9697d405a51592cb3ecc1b4b833780ef9b2580169",
           "class": "packed-i8-fill",
-          "gate": "bulk array fill/copy helper product",
           "type_graph": "rec[array{i8}]|rec[array{mut i8}]|rec[func(i32)-\u003e(i32)]|rec[func()-\u003e()]|rec[func(i32,i32,i32)-\u003e()]",
           "state_graph": "imports=0 funcs=3 globals=[const ref type 0,mut ref type 1] tables=0 memories=0 tags=0 elements=0 data=0 exports=[array_get_nth=0:0,array_fill-null=0:1,array_fill=0:2]",
           "control_graph": "preflight null and dst+len before mutation; zero length at dst=12 succeeds; successful fill truncates i32 to i8",
@@ -93,22 +92,16 @@
           "error": "type mismatch"
         }
       ],
-      "gates": [
-        {
-          "family": "gc",
-          "reason": "bulk array fill/copy helper product",
-          "count": 1
-        }
-      ],
+      "gates": null,
       "counts": {
         "commands": 18,
-        "modules_passed": 0,
-        "assertions_passed": 0,
+        "modules_passed": 1,
+        "assertions_passed": 13,
         "expected_invalid": 3,
         "expected_unlinkable": 0,
         "expected_uninstantiable": 0,
-        "expected_feature_rejects": 1,
-        "blocked_commands": 13,
+        "expected_feature_rejects": 0,
+        "blocked_commands": 0,
         "unexpected_compile_rejects": 0,
         "unexpected_link_rejects": 0,
         "failures": 0
@@ -124,7 +117,6 @@
           "size": 402,
           "sha256": "3ce0c22105571618832b6d97164a26e4b7dee035f540957422b887c4c04d4f35",
           "class": "packed-i8-copy",
-          "gate": "bulk array fill/copy helper product",
           "type_graph": "rec[array{i8}]|rec[array{mut i8}]|rec[func(i32)-\u003e(i32)]|rec[func()-\u003e()]|rec[func(i32,i32,i32)-\u003e()]",
           "state_graph": "imports=0 funcs=6 globals=[const ref type 0,mut ref type 1] tables=0 memories=0 tags=0 elements=0 data=1 exports=[array_get_nth=0:0,array_copy-null-left=0:1,array_copy-null-right=0:2,array_copy=0:3,array_copy_overlap_test-1=0:4,array_copy_overlap_test-2=0:5]",
           "control_graph": "preflight both nulls and both ranges before mutation; zero length accepts either end; same-array copies use memmove ordering in both overlap directions",
@@ -242,22 +234,16 @@
           "error": "array types do not match"
         }
       ],
-      "gates": [
-        {
-          "family": "gc",
-          "reason": "bulk array fill/copy helper product",
-          "count": 1
-        }
-      ],
+      "gates": null,
       "counts": {
         "commands": 36,
-        "modules_passed": 0,
-        "assertions_passed": 0,
+        "modules_passed": 1,
+        "assertions_passed": 30,
         "expected_invalid": 4,
         "expected_unlinkable": 0,
         "expected_uninstantiable": 0,
-        "expected_feature_rejects": 1,
-        "blocked_commands": 30,
+        "expected_feature_rejects": 0,
+        "blocked_commands": 0,
         "unexpected_compile_rejects": 0,
         "unexpected_link_rejects": 0,
         "failures": 0
@@ -266,13 +252,13 @@
   ],
   "totals": {
     "commands": 54,
-    "modules_passed": 0,
-    "assertions_passed": 0,
+    "modules_passed": 2,
+    "assertions_passed": 43,
     "expected_invalid": 7,
     "expected_unlinkable": 0,
     "expected_uninstantiable": 0,
-    "expected_feature_rejects": 2,
-    "blocked_commands": 43,
+    "expected_feature_rejects": 0,
+    "blocked_commands": 0,
     "unexpected_compile_rejects": 0,
     "unexpected_link_rejects": 0,
     "failures": 0

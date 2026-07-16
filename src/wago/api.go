@@ -3285,6 +3285,10 @@ func (in *Instance) invoke(export string, args []uint64, cancel <-chan struct{})
 			return nil, err
 		}
 	}
+	if err := in.reconcileGCGlobalRoots(); err != nil {
+		stopCancel()
+		return nil, err
+	}
 	stopCancel()
 	goruntime.KeepAlive(in)
 	goruntime.KeepAlive(in.c)
@@ -3375,6 +3379,10 @@ func (in *Instance) invokeLocalContext(li int, args []uint64, cancel <-chan stru
 			stopCancel()
 			return nil, err
 		}
+	}
+	if err := in.reconcileGCGlobalRoots(); err != nil {
+		stopCancel()
+		return nil, err
 	}
 	stopCancel()
 	goruntime.KeepAlive(in)
