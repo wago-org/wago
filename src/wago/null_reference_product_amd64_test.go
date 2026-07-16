@@ -108,9 +108,11 @@ func TestStagedFirstNullReferenceProductExecution(t *testing.T) {
 }
 
 func TestStagedFirstNullReferenceProductRejectsWidening(t *testing.T) {
-	if _, err := compileStagedNullReferenceProductForTest(stagedFirstNullReferenceModule(true)); err == nil || !strings.Contains(err.Error(), "immutable exact null") {
-		t.Fatalf("mutable anyref global compile = %v, want exact-product rejection", err)
+	mutable, err := compileStagedNullReferenceProductForTest(stagedFirstNullReferenceModule(true))
+	if err != nil {
+		t.Fatalf("mutable anyref global compile = %v", err)
 	}
+	_ = mutable.Close()
 
 	m, err := wasm.DecodeModule(stagedFirstNullReferenceModule(false))
 	if err != nil {
@@ -212,9 +214,11 @@ func TestStagedBottomNullReferenceGlobalsExecution(t *testing.T) {
 }
 
 func TestStagedBottomNullReferenceGlobalsRejectWidening(t *testing.T) {
-	if _, err := compileStagedNullReferenceProductForTest(stagedBottomNullReferenceModule(true)); err == nil || !strings.Contains(err.Error(), "immutable exact null") {
-		t.Fatalf("mutable bottom global compile = %v, want exact-product rejection", err)
+	mutable, err := compileStagedNullReferenceProductForTest(stagedBottomNullReferenceModule(true))
+	if err != nil {
+		t.Fatalf("mutable bottom global compile = %v", err)
 	}
+	_ = mutable.Close()
 }
 
 func BenchmarkStagedBottomNullReferenceGlobalGet(b *testing.B) {

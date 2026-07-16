@@ -337,6 +337,10 @@ func NewSharedMemory(minPages uint32, maxPages uint32) (*Memory, error) {
 
 func NewTable(minSize uint32, maxSize uint32) (*Table, error) { return impl.NewTable(minSize, maxSize) }
 
+func NewTable64(minSize uint32, maxSize uint32) (*Table, error) {
+	return impl.NewTable64(minSize, maxSize)
+}
+
 func NullExternRef() ExternRef { return impl.NullExternRef() }
 
 func NullFuncRef() FuncRef { return impl.NullFuncRef() }

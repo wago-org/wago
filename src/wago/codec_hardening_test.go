@@ -139,8 +139,8 @@ func TestCompiledCodecV22CarriesIndexedFunctionSignatures(t *testing.T) {
 	if !reflect.DeepEqual(got.Types, input.Types) || !reflect.DeepEqual(got.ValueTypes, input.ValueTypes) || !reflect.DeepEqual(got.Funcs, input.Funcs) || !reflect.DeepEqual(got.Globals, input.Globals) || !reflect.DeepEqual(got.Elems, input.Elems) || got.TableValueTypeIndex != 0 || !got.TableHasValueType {
 		t.Fatalf("indexed metadata changed: types=%#v values=%#v funcs=%#v globals=%#v elems=%#v", got.Types, got.ValueTypes, got.Funcs, got.Globals, got.Elems)
 	}
-	if err := got.UnmarshalBinary(blob); err == nil || !strings.Contains(err.Error(), "unknown required feature bits") {
-		t.Fatalf("public typed-reference load error = %v, want fail-closed unsupported feature", err)
+	if err := got.UnmarshalBinary(blob); err != nil {
+		t.Fatalf("public typed-reference load = %v", err)
 	}
 
 	bad := *input

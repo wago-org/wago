@@ -44,7 +44,7 @@ func ExampleSupportedFeatures() {
 	fmt.Println(features.IsEnabled(wago.CoreFeatureTailCall))
 	// Output:
 	// true
-	// false
+	// true
 }
 
 // A config is immutable; WithFeature returns a copy with one proposal toggled.

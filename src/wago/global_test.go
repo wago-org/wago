@@ -420,7 +420,10 @@ func TestCompiledValidateRejectsMalformedMetadata(t *testing.T) {
 		{name: "global init ref out of range", mut: func(c *Compiled) {
 			c.Globals = append(c.Globals, GlobalDef{Type: ValI32, HasInitGlobal: true, InitGlobal: 3})
 		}, want: "global 1 initializer references unavailable global 3"},
-		{name: "data offset ref not imported", mut: func(c *Compiled) { c.Data = []DataInit{{Offset: OffsetInit{HasGlobal: true, Global: 0}}} }, want: "data 0 offset global 0 must be imported immutable i32"},
+		{name: "data offset ref mutable", mut: func(c *Compiled) {
+			c.Globals[0].Mutable = true
+			c.Data = []DataInit{{Offset: OffsetInit{HasGlobal: true, Global: 0}}}
+		}, want: "data 0 offset global 0 must be immutable i32"},
 		{name: "arena footprint too large", mut: func(c *Compiled) { c.HasTable = true; c.TableSize = wruntime.InstantiateArenaSize }, want: "instantiate arena need"},
 		{name: "passive element footprint too large", mut: func(c *Compiled) {
 			c.HasTable = true

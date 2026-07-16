@@ -70,14 +70,14 @@ func TestStagedGCStructProductPlatformAndBoundsGate(t *testing.T) {
 			break
 		}
 	}
-	if _, err := compileWithFrontendFeatures(cfg, unknown, features); err == nil || !strings.Contains(err.Error(), "outside the exact pinned product set") {
-		t.Fatalf("unknown valid product compile = %v, want exact binary rejection", err)
+	if _, err := compileWithFrontendFeatures(cfg, unknown, features); err == nil {
+		t.Fatal("unsupported widened struct opcode shape unexpectedly compiled")
 	}
 	refField, err := hex.DecodeString(stagedGCStructRefFieldHex)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := compileWithFrontendFeatures(cfg, refField, features); err == nil || !strings.Contains(err.Error(), "outside the exact pinned product set") {
-		t.Fatalf("reference-field product compile = %v, want explicit exact-product/barrier gate", err)
+	if _, err := compileWithFrontendFeatures(cfg, refField, features); err == nil {
+		t.Fatal("unsupported reference-field product unexpectedly compiled without barrier helpers")
 	}
 }

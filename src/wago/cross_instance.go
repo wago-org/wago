@@ -103,6 +103,18 @@ func NewTable(minSize, maxSize uint32) (*Table, error) {
 	return newHostTable(minSize, maxSize, ValFuncRef, nil)
 }
 
+// NewTable64 creates a bounded host-owned funcref table with 64-bit Wasm
+// indices. Storage remains int-bounded and uses the same compact descriptor;
+// addr64 changes validation and index operands, not the host allocation model.
+func NewTable64(minSize, maxSize uint32) (*Table, error) {
+	t, err := newHostTable(minSize, maxSize, ValFuncRef, nil)
+	if err != nil {
+		return nil, err
+	}
+	t.owner.addr64 = true
+	return t, nil
+}
+
 // NewExternRefTable creates a runtime/store-owned externref table. The table's
 // 8-byte entries may be shared only by instances created by this Runtime. The
 // table itself keeps the reference store alive after Runtime.Close until every

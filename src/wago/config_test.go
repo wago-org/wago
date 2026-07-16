@@ -184,9 +184,9 @@ func TestConfigFeatureGatingRejects(t *testing.T) {
 }
 
 func TestConfigValidationRejectsUnsupported(t *testing.T) {
-	cfg := NewRuntimeConfig().WithFeature(CoreFeatureTailCall, true)
+	cfg := NewRuntimeConfig().WithFeature(CoreFeatures(uint64(1)<<63), true)
 	if _, err := Compile(cfg, signExtModule()); err == nil {
-		t.Fatal("enabling unsupported tail-call should error")
+		t.Fatal("enabling an unknown feature bit should error")
 	}
 }
 
@@ -281,14 +281,14 @@ func TestCoreFeaturesV3ReleaseScopeAndAdmission(t *testing.T) {
 		name      string
 		supported bool
 	}{
-		{CoreFeatureTailCall, "tail-call", false},
+		{CoreFeatureTailCall, "tail-call", true},
 		{CoreFeatureExtendedConstExpressions, "extended-const-expressions", true},
-		{CoreFeatureTypedFunctionReferences, "typed-function-references", false},
-		{CoreFeatureGC, "gc", false},
-		{CoreFeatureExceptionHandling, "exception-handling", false},
-		{CoreFeatureMultiMemory, "multi-memory", false},
-		{CoreFeatureMemory64, "memory64", false},
-		{CoreFeatureTable64, "table64", false},
+		{CoreFeatureTypedFunctionReferences, "typed-function-references", true},
+		{CoreFeatureGC, "gc", true},
+		{CoreFeatureExceptionHandling, "exception-handling", true},
+		{CoreFeatureMultiMemory, "multi-memory", true},
+		{CoreFeatureMemory64, "memory64", true},
+		{CoreFeatureTable64, "table64", true},
 	} {
 		if got := SupportedFeatures().IsEnabled(tc.bit); got != tc.supported {
 			t.Errorf("SupportedFeatures admission for %s = %v, want %v", tc.name, got, tc.supported)
@@ -298,18 +298,8 @@ func TestCoreFeaturesV3ReleaseScopeAndAdmission(t *testing.T) {
 		}
 	}
 
-	err := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).Validate()
-	var unsupported *UnsupportedFeatureError
-	if !errors.As(err, &unsupported) {
-		t.Fatalf("CoreFeaturesV3 Validate error = %T %v, want *UnsupportedFeatureError", err, err)
-	}
-	wasm3Unsupported := wasm3Only &^ CoreFeatureExtendedConstExpressions
-	if unsupported.Requested != wasm3Unsupported {
-		t.Fatalf("unsupported requested = %s, want exact not-yet-executable set %s", unsupported.Requested, wasm3Unsupported)
-	}
-	wantPlatform := runtime.GOOS + "/" + runtime.GOARCH
-	if unsupported.Platform != wantPlatform || !strings.Contains(err.Error(), wantPlatform) {
-		t.Fatalf("unsupported platform = %q error=%q, want explicit %q gate", unsupported.Platform, err, wantPlatform)
+	if err := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).Validate(); err != nil {
+		t.Fatalf("CoreFeaturesV3 Validate = %v, want complete admission", err)
 	}
 }
 
@@ -331,13 +321,14 @@ func TestCoreFeaturesBitset(t *testing.T) {
 
 func TestConfigTypedErrors(t *testing.T) {
 	// Unsupported feature -> *UnsupportedFeatureError naming it.
-	_, err := NewRuntimeConfig().WithFeature(CoreFeatureTailCall, true).Compile(signExtModule())
+	unknown := CoreFeatures(uint64(1) << 63)
+	_, err := NewRuntimeConfig().WithFeature(unknown, true).Compile(signExtModule())
 	var ufe *UnsupportedFeatureError
 	if !errors.As(err, &ufe) {
 		t.Fatalf("want *UnsupportedFeatureError, got %T: %v", err, err)
 	}
-	if !ufe.Requested.IsEnabled(CoreFeatureTailCall) {
-		t.Fatalf("error should name tail-call, got %v", ufe.Requested)
+	if ufe.Requested != unknown {
+		t.Fatalf("error should preserve unknown feature bit, got %#x", uint64(ufe.Requested))
 	}
 	// Signals-based without the build tag -> GuardPageUnavailableError (default build).
 	if !guardPageBuilt {

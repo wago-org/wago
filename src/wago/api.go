@@ -810,10 +810,53 @@ func isExactGlobalGetBody(body []byte, index uint32) bool {
 	return err == nil && end == 0x0b && r.BytesLeft() == 0
 }
 
+func moduleUsesTypedTableReferences(m *wasm.Module) bool {
+	if m == nil {
+		return false
+	}
+	for _, rec := range m.Types {
+		if len(rec.SubTypes) > 1 {
+			return true
+		}
+	}
+	check := func(ref wasm.RefType) bool {
+		return ref.Heap.Kind == wasm.HeapTypeIndex || !ref.Nullable || ref.Exact
+	}
+	for _, im := range m.Imports {
+		if im.Type.Kind == wasm.ExternTable && check(im.Type.Table.Ref) {
+			return true
+		}
+	}
+	for _, table := range m.Tables {
+		if check(table.Type.Ref) {
+			return true
+		}
+	}
+	for _, elem := range m.Elements {
+		if elem.Kind.Kind == wasm.ElemTypedExprs && check(elem.Kind.Ref) {
+			return true
+		}
+	}
+	return false
+}
+
 func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features frontend.Features) (*Compiled, error) {
 	m, err := wasm.DecodeModule(wasmBytes)
 	if err != nil {
 		return nil, fmt.Errorf("decode: %w", err)
+	}
+	requiredByModule := moduleRequiredFeatures(m)
+	if !requiredByModule.IsEnabled(CoreFeatureTypedFunctionReferences) && !requiredByModule.IsEnabled(CoreFeatureGC) && !moduleUsesTypedTableReferences(m) {
+		features.TypedFunctionReferences = false
+		features.TypedTailCalls = false
+	}
+	if !requiredByModule.IsEnabled(CoreFeatureTailCall) {
+		features.TailCalls = false
+		features.TypedTailCalls = false
+	}
+	if m.TagCount() == 0 {
+		features.ExceptionHandling = false
+		features.ExceptionReferences = false
 	}
 	workers := functionWorkersForModule(m, cfg.functionWorkers)
 	validationFeatures := wasm.ValidationFeatures{CompactImports: features.MultiMemory, MultiMemory: features.MultiMemory, GCConstExpr: features.GCStructProducts || features.GCArrayProducts || features.GCI31Products}
@@ -825,89 +868,75 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 	gcStructProduct := stagedGCStructProduct(0)
 	gcArrayProduct := stagedGCArrayProduct(0)
 	gcI31Product := stagedGCI31Product(0)
+	nullReferenceProduct := false
 	if features.StructuralTypeProducts && hasStructuralHeapTypes(m) {
-		if goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64" {
-			return nil, fmt.Errorf("compile: unsupported collector-free structural product staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
-		}
-		if cfg.boundsChecks == BoundsChecksSignalsBased {
-			return nil, fmt.Errorf("compile: unsupported collector-free structural product with signals-based bounds checks")
-		}
-		var err error
-		structuralProduct, err = stagedStructuralTypeProductShape(m)
-		if err != nil {
-			return nil, fmt.Errorf("compile: staged collector-free structural product: %w", err)
-		}
-		if !stagedStructuralTypeProductPinned(wasmBytes, structuralProduct) {
-			return nil, fmt.Errorf("compile: staged collector-free structural product: binary is outside the pinned type-rec product set")
+		if product, shapeErr := stagedStructuralTypeProductShape(m); shapeErr == nil && stagedStructuralTypeProductPinned(wasmBytes, product) {
+			if goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64" {
+				return nil, fmt.Errorf("compile: unsupported collector-free structural product staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
+			}
+			if cfg.boundsChecks == BoundsChecksSignalsBased {
+				return nil, fmt.Errorf("compile: unsupported collector-free structural product with signals-based bounds checks")
+			}
+			structuralProduct = product
 		}
 	}
 	if features.GCTypeSubtypingProducts {
-		if goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64" {
-			return nil, fmt.Errorf("compile: unsupported gc/type-subtyping product staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
-		}
-		if cfg.boundsChecks == BoundsChecksSignalsBased {
-			return nil, fmt.Errorf("compile: unsupported gc/type-subtyping product with signals-based bounds checks")
-		}
-		var err error
-		gcTypeSubtypingProduct, err = stagedGCTypeSubtypingProductShape(m)
-		if err != nil {
-			return nil, fmt.Errorf("compile: staged gc/type-subtyping product: %w", err)
-		}
-		if !stagedGCTypeSubtypingProductPinned(wasmBytes, gcTypeSubtypingProduct) {
-			return nil, fmt.Errorf("compile: staged gc/type-subtyping product: binary is outside the pinned product set")
+		if product, shapeErr := stagedGCTypeSubtypingProductShape(m); shapeErr == nil && stagedGCTypeSubtypingProductPinned(wasmBytes, product) {
+			if goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64" {
+				return nil, fmt.Errorf("compile: unsupported gc/type-subtyping product staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
+			}
+			if cfg.boundsChecks == BoundsChecksSignalsBased {
+				return nil, fmt.Errorf("compile: unsupported gc/type-subtyping product with signals-based bounds checks")
+			}
+			gcTypeSubtypingProduct = product
 		}
 	}
 	if features.GCStructProducts {
-		if goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64" {
-			return nil, fmt.Errorf("compile: unsupported collector-backed struct product staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
-		}
-		if cfg.boundsChecks == BoundsChecksSignalsBased {
-			return nil, fmt.Errorf("compile: unsupported collector-backed struct product with signals-based bounds checks")
-		}
-		var ok bool
-		gcStructProduct, ok = stagedGCStructExecutionProduct(wasmBytes)
-		if !ok {
-			if gcStructProduct != 0 {
-				return nil, fmt.Errorf("compile: staged collector-backed struct product %s remains outside the executable helper slice", gcStructProduct)
+		if product, ok := stagedGCStructExecutionProduct(wasmBytes); ok {
+			if goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64" {
+				return nil, fmt.Errorf("compile: unsupported collector-backed struct product staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
 			}
-			return nil, fmt.Errorf("compile: staged collector-backed struct product: binary is outside the exact pinned product set")
+			if cfg.boundsChecks == BoundsChecksSignalsBased {
+				return nil, fmt.Errorf("compile: unsupported collector-backed struct product with signals-based bounds checks")
+			}
+			gcStructProduct = product
 		}
 	}
 	if features.GCArrayProducts && gcStructProduct != stagedGCStructRefTestAbstract && gcStructProduct != stagedGCStructExtern && gcStructProduct != stagedGCStructRefEq && gcStructProduct != stagedGCStructRefCastAbstract && gcStructProduct != stagedGCStructBrOnCastAbstract && gcStructProduct != stagedGCStructBrOnCastFailAbstract {
-		if goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64" {
-			return nil, fmt.Errorf("compile: unsupported collector-backed array product staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
-		}
-		if cfg.boundsChecks == BoundsChecksSignalsBased {
-			return nil, fmt.Errorf("compile: unsupported collector-backed array product with signals-based bounds checks")
-		}
-		var ok bool
-		gcArrayProduct, ok = stagedGCArrayExecutionProduct(wasmBytes)
+		product, ok := stagedGCArrayExecutionProduct(wasmBytes)
 		if !ok {
-			return nil, fmt.Errorf("compile: staged collector-backed array product: binary is outside the exact pinned product set")
+			product, ok = stagedGCArrayOpcodeProduct(m)
+		}
+		if ok {
+			if goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64" {
+				return nil, fmt.Errorf("compile: unsupported collector-backed array product staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
+			}
+			if cfg.boundsChecks == BoundsChecksSignalsBased {
+				return nil, fmt.Errorf("compile: unsupported collector-backed array product with signals-based bounds checks")
+			}
+			gcArrayProduct = product
 		}
 	}
 	if features.GCI31Products && gcStructProduct != stagedGCStructRefTestAbstract && gcStructProduct != stagedGCStructExtern && gcStructProduct != stagedGCStructRefEq && gcStructProduct != stagedGCStructRefCastAbstract && gcStructProduct != stagedGCStructRefCastConcrete && gcStructProduct != stagedGCStructBrOnCastAbstract && gcStructProduct != stagedGCStructBrOnCastFailAbstract {
-		if goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64" {
-			return nil, fmt.Errorf("compile: unsupported i31 product staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
-		}
-		if cfg.boundsChecks == BoundsChecksSignalsBased {
-			return nil, fmt.Errorf("compile: unsupported i31 product with signals-based bounds checks")
-		}
-		var ok bool
-		gcI31Product, ok = stagedGCI31ExecutionProduct(wasmBytes)
-		if !ok {
-			return nil, fmt.Errorf("compile: staged i31 product: binary is outside the exact executable product set")
+		if product, ok := stagedGCI31ExecutionProduct(wasmBytes); ok {
+			if goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64" {
+				return nil, fmt.Errorf("compile: unsupported i31 product staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
+			}
+			if cfg.boundsChecks == BoundsChecksSignalsBased {
+				return nil, fmt.Errorf("compile: unsupported i31 product with signals-based bounds checks")
+			}
+			gcI31Product = product
 		}
 	}
 	if features.NullReferenceProducts {
-		if goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64" {
-			return nil, fmt.Errorf("compile: unsupported null-reference product staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
-		}
-		if cfg.boundsChecks == BoundsChecksSignalsBased {
-			return nil, fmt.Errorf("compile: unsupported null-reference product with signals-based bounds checks")
-		}
-		if _, err := stagedNullReferenceProductShape(m); err != nil {
-			return nil, fmt.Errorf("compile: staged null-reference product: %w", err)
+		if _, shapeErr := stagedNullReferenceProductShape(m); shapeErr == nil {
+			nullReferenceProduct = true
+			if goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64" {
+				return nil, fmt.Errorf("compile: unsupported null-reference product staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
+			}
+			if cfg.boundsChecks == BoundsChecksSignalsBased {
+				return nil, fmt.Errorf("compile: unsupported null-reference product with signals-based bounds checks")
+			}
 		}
 	}
 	if features.MultiMemory && m.MemCount() > 1 {
@@ -927,9 +956,6 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 		}
 		if cfg.boundsChecks == BoundsChecksSignalsBased {
 			return nil, fmt.Errorf("compile: unsupported exception handling with signals-based bounds checks")
-		}
-		if err := stagedExceptionHandlingShape(m, features.ExceptionReferences, features.TailCalls); err != nil {
-			return nil, fmt.Errorf("compile: staged exception handling: %w", err)
 		}
 	}
 	usesMemory64 := false
@@ -1067,7 +1093,7 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 	if err != nil {
 		return nil, fmt.Errorf("type metadata: %w", err)
 	}
-	c := &Compiled{Code: code, Entry: entry, InternalEntry: internalEntry, NumImports: importedFuncs, Types: types, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, memoryDir: &compiledMemoryDirectory{exports: map[string]int{}, exactExports: true, staged: features.MultiMemory && m.MemCount() > 1, stagedMemory64: features.Memory64 && usesMemory64}, boundsMode: boundsMode, stagedTable64: features.Table64 && usesTable64, GCTypeDescs: gcDescs, requiredFeatures: moduleRequiredFeatures(m), dynamicImports: importedFuncs > 0}
+	c := &Compiled{Code: code, Entry: entry, InternalEntry: internalEntry, NumImports: importedFuncs, Types: types, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, memoryDir: &compiledMemoryDirectory{exports: map[string]int{}, exactExports: true, staged: features.MultiMemory && (m.MemCount() > 1 || m.ImportedMemCount() > 0), stagedMemory64: features.Memory64 && usesMemory64}, boundsMode: boundsMode, stagedTable64: features.Table64 && usesTable64, GCTypeDescs: gcDescs, requiredFeatures: moduleRequiredFeatures(m), dynamicImports: importedFuncs > 0}
 	if gcI31Product == stagedGCI31ProductTableGlobalInitializer {
 		init, err := stagedGCI31TableInitializer(m)
 		if err != nil {
@@ -1320,7 +1346,24 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 		}
 		payload, err := funcrefExprPayload(*m.Tables[i].Init)
 		if err != nil {
-			return nil, fmt.Errorf("table %d initializer: %w", tableIndex, err)
+			body := m.Tables[i].Init.BodyBytes
+			if len(body) == 0 {
+				body, _ = wasm.EncodeExpr(*m.Tables[i].Init)
+			}
+			r := wasm.NewReader(body)
+			op, opErr := r.Byte()
+			globalIndex, indexErr := r.U32()
+			end, endErr := r.Byte()
+			if opErr != nil || op != 0x23 || indexErr != nil || endErr != nil || end != 0x0b || r.BytesLeft() != 0 {
+				return nil, fmt.Errorf("table %d initializer: %w", tableIndex, err)
+			}
+			def := c.tableDef(tableIndex)
+			values := make([]RefInit, def.Size)
+			for j := range values {
+				values[j] = RefInit{GlobalIndex: globalIndex, HasGlobal: true}
+			}
+			c.Elems = append(c.Elems, ElemInit{TableIndex: uint32(tableIndex), RefType: def.Type, ValueTypeIndex: def.ValueTypeIndex, HasValueType: def.HasValueType, Mode: ElemModeActive, Values: values})
+			continue
 		}
 		if payload == nullFuncRefIndex {
 			continue
@@ -1511,7 +1554,7 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 	if features.TailCalls || features.TypedTailCalls {
 		compiled.codeCache.stagedFeatures |= CoreFeatureTailCall
 	}
-	if features.NullReferenceProducts {
+	if nullReferenceProduct {
 		compiled.codeCache.stagedFeatures |= CoreFeatureGC | CoreFeatureExceptionHandling
 	}
 	if structuralProduct != 0 {
@@ -1593,7 +1636,10 @@ func elementPayloads(m *wasm.Module, types []DefinedTypeDescriptor, e *wasm.Elem
 		for i, fidx := range e.Kind.Funcs {
 			out[i] = RefInit{FuncIndex: uint32(fidx)}
 		}
-		exact, _ := valueTypeDescriptorFromValType(ValFuncRef)
+		exact, err := valueTypeDescriptorInModule(m, wasm.RefVal(wasm.Ref(false, wasm.AbsHeap(wasm.HeapFunc), false)))
+		if err != nil {
+			return 0, ValueTypeDescriptor{}, nil, err
+		}
 		return ValFuncRef, exact, out, nil
 	case wasm.ElemFuncExprs, wasm.ElemTypedExprs:
 		refType := ValFuncRef
@@ -1611,6 +1657,29 @@ func elementPayloads(m *wasm.Module, types []DefinedTypeDescriptor, e *wasm.Elem
 		}
 		out := make([]RefInit, len(e.Kind.Exprs))
 		for i, ex := range e.Kind.Exprs {
+			body := ex.BodyBytes
+			if len(body) == 0 {
+				var err error
+				body, err = wasm.EncodeExpr(ex)
+				if err != nil {
+					return 0, ValueTypeDescriptor{}, nil, fmt.Errorf("expression %d encode: %w", i, err)
+				}
+			}
+			r := wasm.NewReader(body)
+			if op, err := r.Byte(); err == nil && op == 0x23 {
+				globalIndex, readErr := r.U32()
+				end, endErr := r.Byte()
+				gt, ok := m.GlobalTypeByIndex(globalIndex)
+				if readErr != nil || endErr != nil || end != 0x0b || r.BytesLeft() != 0 || !ok || gt.Mutable {
+					return 0, ValueTypeDescriptor{}, nil, fmt.Errorf("expression %d has invalid global.get initializer", i)
+				}
+				globalType, err := valueTypeDescriptorInModule(m, gt.Type)
+				if err != nil || !valueTypeSubtype(globalType, types, exact, types) {
+					return 0, ValueTypeDescriptor{}, nil, fmt.Errorf("expression %d global type does not match segment type", i)
+				}
+				out[i] = RefInit{GlobalIndex: globalIndex, HasGlobal: true}
+				continue
+			}
 			if refType == ValI31Ref {
 				body := ex.BodyBytes
 				if len(body) == 0 {
@@ -2180,7 +2249,7 @@ func (c *Compiled) validate() error {
 		return err
 	}
 	required := c.requiredFeatures
-	unsupported := required &^ coreFeaturesWago
+	unsupported := required &^ defaultCoreFeatures
 	var staged CoreFeatures
 	if c.memoryDir != nil {
 		if c.memoryDir.staged {
@@ -2195,9 +2264,6 @@ func (c *Compiled) validate() error {
 	}
 	if c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 {
 		staged |= CoreFeatureExceptionHandling
-		if len(c.memoryDir.ehTags) > 9 {
-			return fmt.Errorf("compiled metadata invalid: staged exception tag directory")
-		}
 		importCount := 0
 		for i, tag := range c.memoryDir.ehTags {
 			if int(tag.TypeIndex) >= len(c.Types) || c.Types[tag.TypeIndex].Kind != CompositeTypeFunction || len(c.Types[tag.TypeIndex].Results) != 0 || len(c.Types[tag.TypeIndex].Params) > 2 {
@@ -2217,6 +2283,9 @@ func (c *Compiled) validate() error {
 		}
 	}
 	staged |= c.stagedFeatures()
+	if c.tableCount() != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 {
+		staged |= compiledStructuralRequiredFeatures(c) & CoreFeatureTypedFunctionReferences
+	}
 	if unsupported&^staged != 0 {
 		return fmt.Errorf("compiled metadata invalid: unknown required feature bits 0x%x", uint64(unsupported&^staged))
 	}
@@ -2485,6 +2554,16 @@ func (c *Compiled) validate() error {
 			return fmt.Errorf("compiled metadata invalid: %s element %d exact type: %w", kind, seg, err)
 		}
 		for k, value := range elem.Values {
+			if value.HasGlobal {
+				if int(value.GlobalIndex) >= len(c.Globals) || c.Globals[value.GlobalIndex].Mutable {
+					return fmt.Errorf("compiled metadata invalid: %s element %d value %d global %d is unavailable or mutable", kind, seg, k, value.GlobalIndex)
+				}
+				actual, actualErr := c.globalExactType(int(value.GlobalIndex))
+				if actualErr != nil || !valueTypeSubtype(actual, c.Types, required, c.Types) {
+					return fmt.Errorf("compiled metadata invalid: %s element %d value %d global type mismatch", kind, seg, k)
+				}
+				continue
+			}
 			if value.Null {
 				if required.Kind != ValueTypeReference || !required.Ref.Nullable {
 					return fmt.Errorf("compiled metadata invalid: %s element %d value %d is null for a non-null type", kind, seg, k)
@@ -2725,7 +2804,7 @@ func (c *Compiled) validateCodecMetadata() error {
 			}
 			refType := normalizedElemRefType(elem.RefType)
 			for j, value := range elem.Values {
-				if value.Null || refType == ValFuncRef {
+				if value.HasGlobal || value.Null || refType == ValFuncRef {
 					continue
 				}
 				if refType == ValI31Ref && value.FuncIndex&1 == 1 {
@@ -3136,8 +3215,8 @@ func (c *Compiled) validateDeferredOffsetGlobal(kind string, seg, idx int) error
 		return fmt.Errorf("compiled metadata invalid: %s %d offset global %d out of range", kind, seg, idx)
 	}
 	g := c.Globals[idx]
-	if idx >= len(c.GlobalImports) || g.Mutable || g.Type != ValI32 {
-		return fmt.Errorf("compiled metadata invalid: %s %d offset global %d must be imported immutable i32", kind, seg, idx)
+	if g.Mutable || g.Type != ValI32 {
+		return fmt.Errorf("compiled metadata invalid: %s %d offset global %d must be immutable i32", kind, seg, idx)
 	}
 	return nil
 }

@@ -2,7 +2,6 @@ package wasm
 
 import (
 	"errors"
-	"strings"
 	"testing"
 )
 
@@ -145,7 +144,7 @@ func TestExtendedConstValidationRejectsStrictly(t *testing.T) {
 		)))
 		validateBoth(t, data, ErrConstExprRequired)
 	})
-	t.Run("data offset cannot use local global", func(t *testing.T) {
+	t.Run("data offset may use prior immutable local global", func(t *testing.T) {
 		dataEntry := append([]byte{0x00, 0x23, 0x00, 0x0b}, extULEB(0)...)
 		data := extModule(
 			extSection(5, extVec([]byte{0x00, 0x01})),
@@ -159,9 +158,8 @@ func TestExtendedConstValidationRejectsStrictly(t *testing.T) {
 			}
 			return ValidateModule(m)
 		}, ValidateByteBackedModule} {
-			err := validate(data)
-			if err == nil || !strings.Contains(err.Error(), "constant expression required") {
-				t.Fatalf("error = %v, want strict local-global offset rejection", err)
+			if err := validate(data); err != nil {
+				t.Fatalf("prior immutable local-global offset validation = %v", err)
 			}
 		}
 	})

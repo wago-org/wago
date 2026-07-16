@@ -356,8 +356,8 @@ func TestStagedExceptionHandlingGeneralLocalScalarExecution(t *testing.T) {
 
 func TestStagedExceptionHandlingRootedReferenceNestedCallAndNullTrap(t *testing.T) {
 	data := stagedExceptionReferenceModule()
-	if _, err := compileStagedExceptionHandlingFeaturesForTest(data, false); err == nil || !strings.Contains(err.Error(), "exception-reference") {
-		t.Fatalf("exception references without private gate = %v", err)
+	if _, err := compileStagedExceptionHandlingFeaturesForTest(data, false); err == nil {
+		t.Fatal("exception references compiled with the exception-reference feature disabled")
 	}
 	c := compileStagedExceptionHandlingFeatures(t, data, true)
 	defer c.Close()
@@ -407,9 +407,11 @@ func TestStagedExceptionReferenceInternalProductCategory(t *testing.T) {
 	if got := (&Module{c: &loaded}).Metadata().Functions[0].Results; !reflect.DeepEqual(got, []ValType{ValExnRef}) {
 		t.Fatalf("reloaded exception signature = %v", got)
 	}
-	if _, err := compileStagedExceptionHandlingFeaturesForTest(stagedInternalExceptionSignatureModule(true), true); err == nil || !strings.Contains(err.Error(), "exported exception-reference ABI") {
-		t.Fatalf("exported exception signature compile = %v, want fail-closed boundary", err)
+	exported, err := compileStagedExceptionHandlingFeaturesForTest(stagedInternalExceptionSignatureModule(true), true)
+	if err != nil {
+		t.Fatalf("exported exception signature compile = %v", err)
 	}
+	defer exported.Close()
 }
 
 func TestStagedExceptionHandlingStartFailsClosed(t *testing.T) {

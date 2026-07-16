@@ -106,9 +106,11 @@ func TestStagedGCI31RefTestLifecycleClosure(t *testing.T) {
 	features := cfg.frontendFeatures()
 	features.TypedFunctionReferences = true
 	features.GCI31Products = true
-	if _, err := compileWithFrontendFeatures(cfg, unknown, features); err == nil || !strings.Contains(err.Error(), "outside the exact executable product set") {
-		t.Fatalf("unknown ref.test product compile = %v", err)
+	widened, err := compileWithFrontendFeatures(cfg, unknown, features)
+	if err != nil {
+		t.Fatalf("generic i31 ref.test compile = %v", err)
 	}
+	_ = widened.Close()
 }
 
 func BenchmarkStagedGCI31RefTest(b *testing.B) {

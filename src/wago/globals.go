@@ -516,8 +516,10 @@ const (
 // aliases an ordinary uint32 payload. Funcref segments interpret FuncIndex as a
 // function index; exact i31 segments interpret it as the tagged compact immediate.
 type RefInit struct {
-	FuncIndex uint32
-	Null      bool
+	FuncIndex   uint32
+	GlobalIndex uint32
+	Null        bool
+	HasGlobal   bool
 }
 
 // ElemInit is typed element-segment metadata. TableIndex names an active

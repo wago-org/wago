@@ -762,7 +762,7 @@ func readDirectFuncExprBytes(r *reader, stack []exprSkipFrame, memarg64, multiMe
 }
 
 func (v *moduleValidator) validateConstExprDirect(e directConstExpr, want ValType) error {
-	return v.validateConstExprDirectWithGlobalLimit(e, want, v.m.ImportedGlobalCount())
+	return v.validateConstExprDirectWithGlobalLimit(e, want, v.m.ImportedGlobalCount()+len(v.m.Globals))
 }
 
 func (v *moduleValidator) validateConstExprDirectWithGlobalLimit(e directConstExpr, want ValType, globalLimit int) error {
@@ -827,7 +827,7 @@ func (v *moduleValidator) validateDirectElemPayload(e directElem) (RefType, erro
 		if e.hasFuncs && int(e.maxFunc) >= v.m.FuncCount() {
 			return RefType{}, v.err(ErrUnknownFunc, "elem")
 		}
-		return FuncRef.Ref, nil
+		return Ref(false, AbsHeap(HeapFunc), false), nil
 	case ElemFuncExprs:
 		for _, ex := range e.exprs {
 			if err := v.validateConstExprDirect(ex, FuncRef); err != nil {

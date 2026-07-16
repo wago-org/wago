@@ -229,7 +229,7 @@ func TestCompiledCodecV21LoadedReferenceExecutionAndSnapshotBoundary(t *testing.
 				t.Fatalf("Load: %v", err)
 			}
 			defer loaded.Close()
-			if _, err := Capture(loaded, SnapshotOptions{}); err == nil || (!strings.Contains(err.Error(), "tables") && !strings.Contains(err.Error(), "reference global metadata")) {
+			if _, err := Capture(loaded, SnapshotOptions{}); err == nil || (!strings.Contains(err.Error(), "tables") && !strings.Contains(err.Error(), "reference global metadata") && !strings.Contains(err.Error(), "typed function references")) {
 				t.Fatalf("Capture loaded reference module = %v, want live-state rejection", err)
 			}
 			in, err := Instantiate(loaded)

@@ -80,8 +80,8 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		if !ok {
 			return fmt.Errorf("amd64: array.new_data type %d is unavailable", typeIndex)
 		}
-		if !field.Storage.Packed || field.Storage.Pack != wasm.PackI8 {
-			return fmt.Errorf("amd64: array.new_data requires an i8 array in the staged product")
+		if field.Storage.Val.Kind == wasm.ValRef || (field.Storage.Packed && field.Storage.Pack != wasm.PackI8 && field.Storage.Pack != wasm.PackI16) {
+			return fmt.Errorf("amd64: array.new_data type %d has unsupported storage", typeIndex)
 		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(dataIndex)})

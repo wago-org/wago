@@ -604,7 +604,34 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			copy(entry, funcRefDescs[off:off+runtime.TableEntryBytes])
 		}
 	}
+	var globalCells []*Global
 	writeElemEntry := func(entry []byte, refType ValType, value RefInit) error {
+		if value.HasGlobal {
+			if int(value.GlobalIndex) >= len(globalCells) || globalCells[value.GlobalIndex] == nil {
+				return fmt.Errorf("element global %d is unavailable", value.GlobalIndex)
+			}
+			bits := readGlobalObject(globalCells[value.GlobalIndex], normalizedElemRefType(refType))
+			switch normalizedElemRefType(refType) {
+			case ValFuncRef:
+				if bits == 0 {
+					clear(entry)
+					return nil
+				}
+				if len(entry) < runtime.TableEntryBytes {
+					return fmt.Errorf("funcref element global descriptor is truncated")
+				}
+				copy(entry, unsafe.Slice((*byte)(offHeapPtr(uintptr(bits))), runtime.TableEntryBytes))
+				return nil
+			case ValExternRef, ValAnyRef, ValI31Ref:
+				if len(entry) < 8 {
+					return fmt.Errorf("reference element global entry is truncated")
+				}
+				binary.LittleEndian.PutUint64(entry, bits)
+				return nil
+			default:
+				return fmt.Errorf("unsupported element global reference type %s", refType)
+			}
+		}
 		switch normalizedElemRefType(refType) {
 		case ValExternRef:
 			if !value.Null {
@@ -640,7 +667,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	var globals []byte
 	var gcGlobalRoots [3]gcGlobalRootMapping
 	var gcGlobalRootCount uint8
-	globalCells := make([]*Global, len(c.Globals))
+	globalCells = make([]*Global, len(c.Globals))
 	if len(c.Globals) > 0 {
 		globals = ar.Alloc(8 * len(c.Globals))
 		// One heap allocation backs every module-local global cell (a *Global into

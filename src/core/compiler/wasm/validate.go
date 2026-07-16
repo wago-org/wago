@@ -656,7 +656,7 @@ func (v *moduleValidator) validExternIdx(x ExternIdx) bool {
 }
 
 func (v *moduleValidator) validateConstExpr(e Expr, want ValType) error {
-	return v.validateConstExprWithGlobalLimit(e, want, v.m.ImportedGlobalCount())
+	return v.validateConstExprWithGlobalLimit(e, want, v.m.ImportedGlobalCount()+len(v.m.Globals))
 }
 
 func (v *moduleValidator) validateConstExprWithGlobalLimit(e Expr, want ValType, globalLimit int) error {
@@ -708,7 +708,7 @@ func (v *moduleValidator) validateElemPayload(e Elem) (RefType, error) {
 				return RefType{}, v.err(ErrUnknownFunc, "elem")
 			}
 		}
-		return FuncRef.Ref, nil
+		return Ref(false, AbsHeap(HeapFunc), false), nil
 	case ElemFuncExprs:
 		for _, ex := range e.Kind.Exprs {
 			if err := v.validateConstExpr(ex, FuncRef); err != nil {

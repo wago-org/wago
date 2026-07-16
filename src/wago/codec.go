@@ -361,9 +361,13 @@ func (w *compiledWriter) elems(v []ElemInit, c *Compiled) error {
 		w.offset(e.Offset)
 		w.uvar(uint64(len(e.Values)))
 		for _, value := range e.Values {
-			if value.Null {
+			switch {
+			case value.Null:
 				w.u8(0)
-			} else {
+			case value.HasGlobal:
+				w.u8(2)
+				w.u32(value.GlobalIndex)
+			default:
 				w.u8(1)
 				w.u32(value.FuncIndex)
 			}
@@ -792,9 +796,6 @@ func (r *compiledReader) tags(c *Compiled) error {
 	n, err := r.countElements("exception tags", minTagBytes)
 	if err != nil {
 		return err
-	}
-	if n > 9 {
-		return fmt.Errorf("exception tag count %d exceeds staged bound 9", n)
 	}
 	if c.memoryDir == nil {
 		c.memoryDir = &compiledMemoryDirectory{}
@@ -1294,6 +1295,12 @@ func (r *compiledReader) elems(pool []ValueTypeDescriptor, types []DefinedTypeDe
 				if err != nil {
 					return nil, err
 				}
+			case 2:
+				out[i].Values[j].GlobalIndex, err = r.u32()
+				if err != nil {
+					return nil, err
+				}
+				out[i].Values[j].HasGlobal = true
 			default:
 				return nil, fmt.Errorf("invalid element initializer tag %d", tag)
 			}

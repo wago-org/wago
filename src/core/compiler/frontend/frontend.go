@@ -668,6 +668,18 @@ func (p supportPass) elementExpr(e wasm.Expr, context string) error {
 	if p.feat.GCI31Products && isGCI31ConstExpr(e) {
 		return p.constExpr(e, context)
 	}
+	body := e.BodyBytes
+	if len(body) == 0 {
+		body, _ = wasm.EncodeExpr(e)
+	}
+	r := wasm.NewReader(body)
+	if op, err := r.Byte(); err == nil && op == 0x23 {
+		if _, err := r.U32(); err == nil {
+			if end, err := r.Byte(); err == nil && end == 0x0b && r.BytesLeft() == 0 {
+				return nil
+			}
+		}
+	}
 	if _, err := wasm.ParseElementExpr(e); err != nil {
 		return p.unsupported("element expression", err.Error(), context)
 	}

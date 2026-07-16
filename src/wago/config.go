@@ -84,11 +84,12 @@ const (
 		CoreFeatureMemory64 |
 		CoreFeatureTable64
 
-	// coreFeaturesWago is the optional set wago's single-pass backend lowers
-	// today; it is the default and the ceiling WithCoreFeatures is validated
-	// against. Reference-types covers the executable Release 2 funcref/externref
-	// surface; tail-call remains rejected up front rather than silently mis-running.
-	coreFeaturesWago = CoreFeatureMutableGlobal |
+	// coreFeaturesWago is the optional set wago's backend lowers and the ceiling
+	// validated by WithCoreFeatures. Core 3 features are opt-in so existing users
+	// retain the Release 2-compatible default behavior.
+	coreFeaturesWago = CoreFeaturesV3
+
+	defaultCoreFeatures = CoreFeatureMutableGlobal |
 		CoreFeatureSignExtensionOps |
 		CoreFeatureMultiValue |
 		CoreFeatureBulkMemoryOperations |
@@ -199,7 +200,7 @@ func NewRuntimeConfig() *RuntimeConfig {
 		bounds = BoundsChecksExplicit
 	}
 	return &RuntimeConfig{
-		features:        coreFeaturesWago,
+		features:        defaultCoreFeatures,
 		maxMemoryPages:  defaultMaxMemoryPages,
 		boundsChecks:    bounds,
 		functionWorkers: 1,
@@ -390,9 +391,19 @@ func (c *RuntimeConfig) frontendFeatures() frontend.Features {
 		SaturatingTrunc:         c.features.IsEnabled(CoreFeatureNonTrappingFloatToIntConversion),
 		ReferenceTypes:          c.features.IsEnabled(CoreFeatureReferenceTypes),
 		TypedFunctionReferences: c.features.IsEnabled(CoreFeatureTypedFunctionReferences),
+		TailCalls:               c.features.IsEnabled(CoreFeatureTailCall),
+		TypedTailCalls:          c.features.IsEnabled(CoreFeatureTailCall),
 		MultiMemory:             c.features.IsEnabled(CoreFeatureMultiMemory),
 		Memory64:                c.features.IsEnabled(CoreFeatureMemory64),
 		Table64:                 c.features.IsEnabled(CoreFeatureTable64),
+		ExceptionHandling:       c.features.IsEnabled(CoreFeatureExceptionHandling),
+		ExceptionReferences:     c.features.IsEnabled(CoreFeatureExceptionHandling),
+		NullReferenceProducts:   c.features.IsEnabled(CoreFeatureGC),
+		StructuralTypeProducts:  c.features.IsEnabled(CoreFeatureGC),
+		GCTypeSubtypingProducts: c.features.IsEnabled(CoreFeatureGC),
+		GCStructProducts:        c.features.IsEnabled(CoreFeatureGC),
+		GCArrayProducts:         c.features.IsEnabled(CoreFeatureGC),
+		GCI31Products:           c.features.IsEnabled(CoreFeatureGC),
 		SIMD:                    simd,
 		ExtendedConst:           c.features.IsEnabled(CoreFeatureExtendedConstExpressions),
 	}

@@ -413,7 +413,10 @@ func TestWebAssembly2FeatureReportingCloseout(t *testing.T) {
 	if !SupportedFeatures().IsEnabled(CoreFeatureExtendedConstExpressions) {
 		t.Fatal("post-2.0 extended constant expressions should remain independently admitted")
 	}
-	if CoreFeaturesV2.IsEnabled(CoreFeatureTailCall) || SupportedFeatures().IsEnabled(CoreFeatureTailCall) {
-		t.Fatal("WebAssembly 2.0 reporting unexpectedly includes the post-release tail-call proposal")
+	if CoreFeaturesV2.IsEnabled(CoreFeatureTailCall) {
+		t.Fatal("WebAssembly 2.0 release scope unexpectedly includes tail calls")
+	}
+	if !SupportedFeatures().IsEnabled(CoreFeatureTailCall) || !CoreFeaturesV3.IsEnabled(CoreFeatureTailCall) {
+		t.Fatal("WebAssembly 3.0 support must independently advertise tail calls")
 	}
 }
