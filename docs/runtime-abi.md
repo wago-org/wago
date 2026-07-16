@@ -285,6 +285,23 @@ initialization reuses entries rather than growing a process-global map. The side
 `gcRefTestTableState=200` and `gcExternConversionState=352`; lazy `instancePluginState` remains 144
 bytes and fixed runtime layouts do not grow.
 
+Iteration 48 reuses the same one-word parked helper ABI for the exact 286-byte `gc/extern` product,
+but adds a product-boundary translation on public invocation. Before native entry, an ordinary
+store-owned extern token or a bounded public conversion token is resolved to its internal extern/any
+word. After native return, an internal foreign/data word is translated to a stable high-word public
+identity. Data conversions keep separate public-any and public-extern words; neither is an internal
+extern word, compact `gc.Ref`, store extern token, funcref descriptor, or opaque public `GCRef` token.
+The public argument/result buffers therefore never expose compact object handles.
+
+The exact product has one ten-entry anyref table. Its checked slots scan only compact object words;
+foreign-any words leave roots null, and null/i31 remain non-owning. `init` stores the new struct before
+allocating the zero-length array, then stores the array before any later may-collect helper. The public
+result identities are created only after conversion ownership exists and are reused from the fixed
+entry. Forged public words fail translation before `serArgs` is committed to native execution.
+`gcExternConversionEntry` grows to 56 bytes and the fixed eight-entry `gcExternConversionState` to
+480 bytes; `gcRefTestTableState=200` and lazy `instancePluginState=144` remain unchanged. Codec v27
+serializes none of these words or ownership records.
+
 This remains an exact no-frame-publication proof. Every allocation is stored in a checked anyref slot
 or converted/rooted before another may-collect helper. Arbitrary live local/operand refs, mutable GC
 globals, reference fields, hosts, snapshots, signal bounds, public admission, and arm64 remain closed.

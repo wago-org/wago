@@ -18,7 +18,8 @@ test validation, and adds one exact collector-free null+i31 execution product. I
 collector-owned dynamic type lookup, checked compact object-table roots, and executes the official
 concrete subtype/canonicalization leader. Iteration 47 adds bounded extern conversion ownership,
 separate anyref/funcref/externref table contracts, and executes the complete abstract leader, making
-`gc/ref_test` gap-free. General native frame publication, object-valued mutable/reference globals,
+`gc/ref_test` gap-free. Iteration 48 extends that owner with distinct bounded public conversion tokens,
+strict null conversion constants, and executes the complete `gc/extern` family. General native frame publication, object-valued mutable/reference globals,
 broad public ownership, and snapshots remain incomplete. These bounded products must not be presented as general executable
 WasmGC support.
 
@@ -565,6 +566,40 @@ assertions / 0 invalid / 0 malformed / 0 gates / 0 blocked / 0 hidden failures. 
 none of the conversion entries, roots, local descriptor ownership, helper state, or exact admission.
 Public compile/load, snapshots, guard mode, and arm64 remain fail-closed. No native frame chain is
 published: every allocated object is stored or converted before the next may-collect helper.
+
+### Iteration 48 exact `gc/extern` product
+
+The sole official leader is pinned at 286 bytes and SHA-256
+`5ad921ebe511ca9e23c137aef6883113684896f15b8a9726d5d77524d562f823`. Its two immutable globals
+are `extern.convert_any (ref.null any)` and `any.convert_extern (ref.null extern)`. Validation accepts
+those conversion instructions in constant expressions only behind the staged GC constant-expression
+feature; the exact evaluator verifies the source heap, conversion opcode, result type, `end`, and no
+trailing bytes before folding null to zero. Default/public validation remains closed.
+
+The product has one ten-entry anyref table. Checked collector slots own only low-word object refs;
+null and i31 are immediate/non-owning, while a high-word foreign-any identity leaves its collector
+slot null. `init` allocates an empty struct and a zero-length i8 array and stores each returned ref
+before the next may-collect helper. A 48-byte Tiny heap repeats the action 100 times and full
+collection retains exactly those two table objects.
+
+The fixed conversion owner remains eight entries but each data entry now carries four distinct
+identities around its compact ref: an internal data-to-extern word, a bounded public any token, a
+bounded public extern token, and the compact null/i31/object word itself. Foreign entries carry an
+ordinary store extern token plus a distinct internal foreign-any word. Public data tokens are random
+high-word identities owned only by this exact instance conversion state; they are neither store
+extern tokens nor opaque `GCRef` object tokens. Stable public ingress maps them back to internal words
+before native execution, and egress maps internal words back to the stable public identity. Forged,
+foreign-store, stale, full, and closed cases reject before native mutation.
+
+All official host/null/i31/struct/array conversions execute. Strict accounting is 19 commands /
+1 module / 16 assertions / 0 gates / 0 blocked / 0 hidden failures. The product is 286 Wasm bytes /
+2,102 linked code bytes / 2,712 codec bytes. Sidecars are `gcRefTestTableState=200`,
+`gcExternConversionEntry=56`, `gcExternConversionState=480`, and lazy `instancePluginState=144`.
+Raw stable conversion measures 20.96–21.19 ns/op; the staged public round trip measures
+144.2–147.8 ns/op; all samples report 0 B/op and 0 allocs/op. Codec v27, snapshots, guard mode,
+public family admission, and arm64 inherit no product, conversion identity, root, or helper state.
+No native frame is published, so this proof does not authorize arbitrary live local refs or broader
+host/cross-instance GC ownership.
 
 Before broader live `gc.Ref` payloads or funcref lifetimes can be admitted, codegen/runtime
 must still prove all of the following as one coherent product:
