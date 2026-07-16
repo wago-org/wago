@@ -37,12 +37,15 @@ Iteration 57 admits the first six declaration graphs and two recursive-function-
 SHA-pinned no-object product, separate from iteration 37. Iteration 58 adds the next six immutable local `ref.func`-
 global leaders under their own exact class and canonical descriptor-lifetime proof. Iteration 59 adds four single-result
 function-only `ref.test` leaders. Iteration 60 adds three multi-result all-true leaders with ordered 2/4/8 i32 results.
-The same compile-only local `ref.func` provenance and validator structural subtype relation fold every answer without
-routing descriptor addresses through compact-GC classification. All twenty-one instantiate with `Instance.gc == nil`;
-the new products use bounded 96/128-byte descriptor arenas, emit 215/448/560 code bytes, produce 922/785/1,095-byte
-codec artifacts, and repeat with zero invocation allocations. Twenty-four leaders remain gated and 41 dependent
-commands remain blocked. General native frame publication, object-valued mutable/reference globals, broad public
-ownership, and snapshots remain incomplete. These bounded products must not be presented as general executable WasmGC support.
+Iteration 61 adds the final two function-only leaders, each returning zero, under a separate exact recursive-chain
+class that preserves the false source-to-target direction across sibling declared-super edges. The same compile-only
+local `ref.func` provenance and validator structural subtype relation fold every answer without routing descriptor
+addresses through compact-GC classification. All twenty-three instantiate with `Instance.gc == nil`; iteration 60
+uses bounded 96/128-byte descriptor arenas, emits 215/448/560 code bytes, and produces 922/785/1,095-byte codec
+artifacts, while iteration 61 uses 96-byte arenas, emits 178 bytes each, and produces 469/549-byte artifacts. Every
+runner repeats with zero invocation allocations. Twenty-two leaders remain gated and 39 dependent commands remain
+blocked. General native frame publication, object-valued mutable/reference globals, broad public ownership, and
+snapshots remain incomplete. These bounded products must not be presented as general executable WasmGC support.
 
 ## Why a wago-native collector
 
@@ -985,6 +988,34 @@ collector sidecar, basedata offset, descriptor entry, fixed layout, or public AB
 21 passed modules / 7 passed assertions / 24 gates / 41 blocked dependents / 24 invalid / 8 unlinkable obligations /
 zero validator gaps or hidden failures. The two finality/direction-false function-only leaders remain a separate slice.
 
+### Iteration 61 final direction-false function `ref.test`
+
+The final two function-only leaders are pinned at generated command lines 359 and 371. Their Wasm sizes and SHA-256
+identities are 104 bytes / `2841d098dfca125ccd9c577cf55762744c8a3911a1986f857be48ebc0d51f735` and
+117 bytes / `b0797a1825d04be467e336f7f236637184aab41a13de20ff7a06eb1bb7885613`. Each module has one
+empty source function, one declarative element naming only function 0, one `run` export naming function 1, no locals
+or state, and a runner exactly `ref.func 0; ref.test <indexed function type>; end`. Both return one i32 zero.
+
+A distinct `stagedGCTypeSubtypingRefTestDirectionFalse` class recognizes only the exact recursive graph. There are
+two or three two-member open-function groups before the final runner type. In group zero, member one names member zero
+as a recursive super; in every later group, member one names the preceding group's first member as an absolute super.
+The source function uses the first member of the last group and is tested against the first member of the preceding
+group. The classifier independently proves that source-to-target subtyping is false: the first member does not inherit
+its sibling's declared-super edge. Final/open flags, group/member order, absolute-versus-recursive indexes, source and
+target type indexes, and the false result are checked before the SHA pin.
+
+The backend reuses the existing compile-only local-function provenance and emits a constant zero through the ordinary
+one-result RAX path. It never reads the 96-byte canonical descriptor arena, invokes a runtime classifier, or treats a
+function descriptor as a compact `gc.Ref`. Each product emits 178 native bytes, produces a 469- or 549-byte codec-v27
+artifact, leaves `Instance.gc == nil`, and repeats 1,000 public invocations with zero allocations. Codec reload retains
+metadata/code but no product marker; public compile/load, snapshots, signal-backed guard mode, arm64, and unsupported
+platforms remain fail-closed. `compiledCodeCache` remains 64 bytes and no helper, root, barrier, sidecar, basedata,
+descriptor, frame, result, or public ABI layout changes.
+
+Strict accounting is now 23 passed modules / 9 passed assertions / 22 gates / 39 blocked dependents / 24 invalid /
+8 unlinkable obligations / zero validator gaps or hidden failures. All nine function-only `ref.test` leaders are now
+closed; runtime call/cast/table, linking, and non-flat exported-function products remain separate obligations.
+
 ## Collector lifetime
 
 `Collector.Close` is idempotent and releases heap backing storage plus root/card/mark metadata so an instance shutdown does not retain guest refs. After close, operations that need a live heap return `gc: collector closed`: allocation, collection, verification, object access/mutation, promotion, and checked root-slot creation/access/mutation. `Step` follows the same rule for both profiles; on Throughput it routes through `CollectMinor`, and on Tiny it rejects the closed collector before advancing incremental state.
@@ -1508,12 +1539,12 @@ Tests exercise tiny nurseries, collect-every-alloc, exact scanning, cycles, root
   collector-free i31 operations, dynamic tests/casts, identity-preserving cast branches, extern conversion,
   and compact null/i31/object equality. Array fill/copy plus both `array.init_data` and the exact local-
   funcref `array.init_elem` product are staged and gap-free. Complete `gc/type-subtyping` accounting is pinned
-  at 170 commands; iterations 57-60 execute twenty-one no-object leaders, including six immutable local `ref.func`
-  globals, four single-result function tests, and three 2/4/8-result all-true function tests over bounded canonical
-  descriptors. Compile-only folding uses 96/128-byte arenas and repeated invocation allocates zero bytes, leaving
-  24 exact gates and 41 blocked dependents with zero validator gaps or hidden failures. Reference struct fields,
-  non-local/reference-owning array products, broader GC constant expressions, the two finality/direction-false
-  `ref.test` leaders, and later type-subtyping action/link products remain.
+  at 170 commands; iterations 57-61 execute twenty-three no-object leaders, including six immutable local `ref.func`
+  globals, four earlier single-result function tests, three 2/4/8-result all-true function tests, and the final two
+  recursive-direction false tests over bounded canonical descriptors. Compile-only folding uses 96/128-byte arenas
+  and repeated invocation allocates zero bytes, leaving 22 exact gates and 39 blocked dependents with zero validator
+  gaps or hidden failures. Reference struct fields, non-local/reference-owning array products, broader GC constant
+  expressions, runtime call/cast/table products, linking, and non-flat exports remain.
 - The parked-Go runtime-call ABI is proven for exact empty-frame-root numeric/packed
   allocations, non-collecting numeric access/mutation/data initialization, exact local-funcref element
   initialization, ordered immutable collector-rooted globals, per-instance passive descriptors, and one

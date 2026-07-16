@@ -505,6 +505,19 @@ handles, collector roots, public tokens, and foreign producer identities. Codec 
 and unsupported platforms remain closed. No result ABI, helper ID, basedata slot, descriptor entry, root, barrier,
 collector sidecar, frame record, fixed layout, or public ABI changes.
 
+Iteration 61 extends the same compile-time-only ABI to two exact one-result false-direction runners. Each has one empty
+source function and a runner containing only `ref.func 0; ref.test <indexed function type>; end`. A separate product
+proof checks a two- or three-link recursive-group chain: each later group's second open-function member names the
+preceding group's first member as its super, while the tested first member itself has no super. The validator relation
+therefore proves source-to-target false and generated code returns i32 zero through the existing RAX adapter.
+
+Both products own the existing null-plus-two 96-byte descriptor arena but never load it. Each emits 178 native bytes,
+produces a 469- or 549-byte codec-v27 artifact, and repeats allocation-free with `Instance.gc == nil`. Function
+identity words remain instance-owned descriptors rather than compact collector handles. Codec reload, snapshots,
+guard mode, arm64, unsupported platforms, and public admission remain closed. No runtime classifier, result adapter,
+helper ID, basedata slot, descriptor entry, root, barrier, collector sidecar, frame record, fixed layout, or public ABI
+change is introduced.
+
 ## Global coherence invariant
 
 The global cell is the sole host- and cross-instance-visible storage for a
