@@ -1,0 +1,1224 @@
+{
+  "schema": 2,
+  "suite_revision": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+  "file": "gc/type-subtyping",
+  "leaders": [
+    {
+      "filename": "type-subtyping.0.wasm",
+      "command_line": 7,
+      "source_line": 3,
+      "size": 54,
+      "sha256": "aa9754e0665bda5f10ec77a3261759da4b462e813ecf9d0e12ec912acff996d6",
+      "class": "declaration-supertype-graph",
+      "gate": "metadata-only struct/array/function supertype declarations",
+      "validator_gap": false,
+      "type_graph": "rec[sub(final=false,supers=[],array{i32})]|rec[sub(final=false,supers=[{0 false}],array{i32})]|rec[sub(final=false,supers=[],array{ref null any})]|rec[sub(final=false,supers=[],array{ref null type 0})]|rec[sub(final=false,supers=[],array{ref type 1})]|rec[sub(final=false,supers=[],array{mut i32})]|rec[sub(final=false,supers=[{5 false}],array{mut i32})]",
+      "state_graph": "imports=0 funcs=0 globals=[] tables=0 memories=0 tags=0 elements=0 data=0 exports=[]"
+    },
+    {
+      "filename": "type-subtyping.1.wasm",
+      "command_line": 15,
+      "source_line": 15,
+      "size": 65,
+      "sha256": "ddca4046060c72d14ed416806860b0512b8e34ae2d11555ed88ff8676f6d1871",
+      "class": "declaration-supertype-graph",
+      "gate": "metadata-only struct/array/function supertype declarations",
+      "validator_gap": false,
+      "type_graph": "rec[sub(final=false,supers=[],struct{})]|rec[sub(final=false,supers=[{0 false}],struct{})]|rec[sub(final=false,supers=[{1 false}],struct{i32})]|rec[sub(final=false,supers=[{2 false}],struct{i32,ref null type 0})]|rec[sub(final=false,supers=[{3 false}],struct{i32,ref type 0,mut i64})]|rec[sub(final=false,supers=[{4 false}],struct{i32,ref type 1,mut i64})]",
+      "state_graph": "imports=0 funcs=0 globals=[] tables=0 memories=0 tags=0 elements=0 data=0 exports=[]"
+    },
+    {
+      "filename": "type-subtyping.2.wasm",
+      "command_line": 22,
+      "source_line": 24,
+      "size": 61,
+      "sha256": "30ea9ab7a806640c081a4cd0bb68ecd9125f37524b6137f60af89a1c69df2839",
+      "class": "declaration-supertype-graph",
+      "gate": "metadata-only struct/array/function supertype declarations",
+      "validator_gap": false,
+      "type_graph": "rec[sub(final=false,supers=[],struct{})]|rec[sub(final=false,supers=[{0 false}],struct{})]|rec[sub(final=false,supers=[],func(ref type 1)-\u003e(ref null any))]|rec[sub(final=false,supers=[{2 false}],func(ref type 0)-\u003e(ref any))]|rec[sub(final=false,supers=[{3 false}],func(ref null type 0)-\u003e(ref type 0))]|rec[sub(final=false,supers=[{4 false}],func(ref null struct)-\u003e(ref type 1))]",
+      "state_graph": "imports=0 funcs=0 globals=[] tables=0 memories=0 tags=0 elements=0 data=0 exports=[]"
+    },
+    {
+      "filename": "type-subtyping.3.wasm",
+      "command_line": 28,
+      "source_line": 37,
+      "size": 39,
+      "sha256": "76131bcda4dc51168d7c55feabbc7bfb3489dc399b2bb3d0a89a05c56964b5cd",
+      "class": "recursive-definition-graph",
+      "gate": "metadata-only recursive struct supertype declarations",
+      "validator_gap": false,
+      "type_graph": "rec[sub(final=false,supers=[],struct{ref null any})]|rec[sub(final=false,supers=[{0 false}],struct{ref type 0})]|rec[sub(final=false,supers=[{1 false}],struct{ref type 1,i32})]",
+      "state_graph": "imports=0 funcs=0 globals=[] tables=0 memories=0 tags=0 elements=0 data=0 exports=[]"
+    },
+    {
+      "filename": "type-subtyping.4.wasm",
+      "command_line": 34,
+      "source_line": 43,
+      "size": 46,
+      "sha256": "2be8c2ca40f321f5ab956b191184d9b988e1f81963704f316f506bf18235bc9b",
+      "class": "recursive-definition-graph",
+      "gate": "metadata-only recursive struct supertype declarations",
+      "validator_gap": false,
+      "type_graph": "rec[sub(final=false,supers=[],struct{i32,ref type 0})]|rec[sub(final=false,supers=[{0 false}],struct{i32,ref type 1});sub(final=false,supers=[{0 false}],struct{i32,ref type 0})]",
+      "state_graph": "imports=0 funcs=0 globals=[] tables=0 memories=0 tags=0 elements=0 data=0 exports=[]"
+    },
+    {
+      "filename": "type-subtyping.5.wasm",
+      "command_line": 42,
+      "source_line": 53,
+      "size": 73,
+      "sha256": "ad59582ba55bea406e6c3f6a473bb1fbef90e66275bec4848972483b302ac8c9",
+      "class": "recursive-definition-graph",
+      "gate": "metadata-only recursive struct supertype declarations",
+      "validator_gap": false,
+      "type_graph": "rec[sub(final=false,supers=[],struct{i32,ref type 1});sub(final=false,supers=[],struct{i64,ref type 0})]|rec[sub(final=false,supers=[{1 false}],struct{i64,ref type 0,i32});sub(final=false,supers=[{0 false}],struct{i32,ref type 1,i32});sub(final=false,supers=[{1 false}],struct{i64,ref type 1,i32})]",
+      "state_graph": "imports=0 funcs=0 globals=[] tables=0 memories=0 tags=0 elements=0 data=0 exports=[]"
+    },
+    {
+      "filename": "type-subtyping.6.wasm",
+      "command_line": 53,
+      "source_line": 68,
+      "size": 120,
+      "sha256": "6c5162870907b88c444e61528fe907f280fb2b38b8877bbe98ed58bfebddd496",
+      "class": "recursive-function-subsumption",
+      "gate": "collector-free recursive function subsumption bodies",
+      "validator_gap": false,
+      "type_graph": "rec[sub(final=false,supers=[],func(i32,ref type 2)-\u003e());sub(final=false,supers=[{0 true}],func(i32,ref type 1)-\u003e());sub(final=false,supers=[{1 true}],func(i32,ref type 0)-\u003e())]|rec[func(ref type 0)-\u003e()]|rec[func(ref type 1)-\u003e()]|rec[func(ref type 2)-\u003e()]",
+      "state_graph": "imports=0 funcs=3 globals=[] tables=0 memories=0 tags=0 elements=0 data=0 exports=[]",
+      "opcodes": [
+        {
+          "opcode": "Call",
+          "count": 6
+        },
+        {
+          "opcode": "LocalGet",
+          "count": 6
+        }
+      ]
+    },
+    {
+      "filename": "type-subtyping.7.wasm",
+      "command_line": 65,
+      "source_line": 89,
+      "size": 144,
+      "sha256": "7421ec51f0e574ac1248b32bc37a7cc0a93445ccf58879e757def2af49039e3a",
+      "class": "recursive-function-subsumption",
+      "gate": "collector-free recursive function subsumption bodies",
+      "validator_gap": false,
+      "type_graph": "rec[sub(final=false,supers=[],func()-\u003e(i32,ref type 1));sub(final=false,supers=[],func()-\u003e(f32,ref type 0))]|rec[sub(final=false,supers=[{0 false}],func()-\u003e(i32,ref type 3));sub(final=false,supers=[{1 false}],func()-\u003e(f32,ref type 2));sub(final=false,supers=[{0 false}],func()-\u003e(i32,ref type 1));sub(final=false,supers=[{1 false}],func()-\u003e(f32,ref type 0))]|rec[func(ref type 0)-\u003e()]|rec[func(ref type 2)-\u003e()]|rec[func(ref type 4)-\u003e()]",
+      "state_graph": "imports=0 funcs=3 globals=[] tables=0 memories=0 tags=0 elements=0 data=0 exports=[]",
+      "opcodes": [
+        {
+          "opcode": "Call",
+          "count": 5
+        },
+        {
+          "opcode": "LocalGet",
+          "count": 5
+        }
+      ]
+    },
+    {
+      "filename": "type-subtyping.8.wasm",
+      "command_line": 74,
+      "source_line": 115,
+      "size": 94,
+      "sha256": "be069a30cbb75e3ac64dffa08757e2790ab557bc3986faa3440a7de1f87a5171",
+      "class": "ref-func-global-subsumption",
+      "gate": "collector-free local ref.func global subsumption",
+      "validator_gap": false,
+      "type_graph": "rec[sub(final=false,supers=[],func()-\u003e());struct{ref type 0}]|rec[sub(final=false,supers=[],func()-\u003e());struct{ref type 0}]|rec[sub(final=false,supers=[{0 false}],func()-\u003e());struct{}]|rec[sub(final=false,supers=[{2 false}],func()-\u003e());struct{}]",
+      "state_graph": "imports=0 funcs=1 globals=[const ref type 4] tables=0 memories=0 tags=0 elements=0 data=0 exports=[]",
+      "opcodes": [
+        {
+          "opcode": "RefFunc",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "filename": "type-subtyping.9.wasm",
+      "command_line": 86,
+      "source_line": 124,
+      "size": 134,
+      "sha256": "ecfb84b0d9537fb3455ad6c0bf3c5763ba57de9167fa2e8e83f50ff15a51ac08",
+      "class": "ref-func-global-subsumption",
+      "gate": "collector-free local ref.func global subsumption",
+      "validator_gap": false,
+      "type_graph": "rec[sub(final=false,supers=[],func()-\u003e());sub(final=false,supers=[],struct{ref type 0})]|rec[sub(final=false,supers=[],func()-\u003e());sub(final=false,supers=[],struct{ref type 0})]|rec[sub(final=false,supers=[{0 false}],func()-\u003e());sub(final=false,supers=[{1 false}],struct{ref type 0,ref type 0,ref type 2,ref type 2,ref type 0})]|rec[sub(final=false,supers=[{2 false}],func()-\u003e());sub(final=false,supers=[{3 false}],struct{ref type 0,ref type 2,ref type 0,ref type 2,ref type 0})]",
+      "state_graph": "imports=0 funcs=1 globals=[const ref type 4] tables=0 memories=0 tags=0 elements=0 data=0 exports=[]",
+      "opcodes": [
+        {
+          "opcode": "RefFunc",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "filename": "type-subtyping.11.wasm",
+      "command_line": 106,
+      "source_line": 151,
+      "size": 84,
+      "sha256": "4155f7562f90dc7cfa7a1994e2511da5452045eeed10786720355c28fdf27903",
+      "class": "ref-func-global-subsumption",
+      "gate": "collector-free local ref.func global subsumption",
+      "validator_gap": false,
+      "type_graph": "rec[sub(final=false,supers=[],func()-\u003e());struct{ref type 0}]|rec[sub(final=false,supers=[],func()-\u003e());struct{ref type 0}]|rec[sub(final=false,supers=[{0 false}],func()-\u003e());struct{}]",
+      "state_graph": "imports=0 funcs=1 globals=[const ref type 0] tables=0 memories=0 tags=0 elements=0 data=0 exports=[]",
+      "opcodes": [
+        {
+          "opcode": "RefFunc",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "filename": "type-subtyping.12.wasm",
+      "command_line": 119,
+      "source_line": 159,
+      "size": 150,
+      "sha256": "6d3373700cb5c07d5c8c30f3c926d20c1cba29b1a0e512db06c7e406d7f71d1b",
+      "class": "ref-func-global-subsumption",
+      "gate": "collector-free local ref.func global subsumption",
+      "validator_gap": true,
+      "type_graph": "rec[sub(final=false,supers=[],func()-\u003e());sub(final=false,supers=[],struct{ref type 0})]|rec[sub(final=false,supers=[],func()-\u003e());sub(final=false,supers=[],struct{ref type 0})]|rec[sub(final=false,supers=[{0 false}],func()-\u003e());sub(final=false,supers=[{1 false}],struct{ref type 0,ref type 0,ref type 2,ref type 2,ref type 0})]|rec[sub(final=false,supers=[{2 false}],func()-\u003e());sub(final=false,supers=[{3 false}],struct{ref type 0,ref type 2,ref type 0,ref type 2,ref type 0})]|rec[sub(final=false,supers=[{6 false}],func()-\u003e());struct{}]",
+      "state_graph": "imports=0 funcs=1 globals=[const ref type 0,const ref type 4] tables=0 memories=0 tags=0 elements=0 data=0 exports=[]",
+      "opcodes": [
+        {
+          "opcode": "RefFunc",
+          "count": 2
+        }
+      ]
+    },
+    {
+      "filename": "type-subtyping.13.wasm",
+      "command_line": 129,
+      "source_line": 177,
+      "size": 112,
+      "sha256": "befde5eb45b4a66d036acfc4f1b69a0b8aabea9df46aa1503b7e7ee73770dd32",
+      "class": "ref-func-global-subsumption",
+      "gate": "collector-free local ref.func global subsumption",
+      "validator_gap": false,
+      "type_graph": "rec[sub(final=false,supers=[],func()-\u003e(ref func));sub(final=false,supers=[{0 true}],func()-\u003e(ref type 0))]|rec[sub(final=false,supers=[],func()-\u003e(ref func));sub(final=false,supers=[{0 true}],func()-\u003e(ref type 0))]",
+      "state_graph": "imports=0 funcs=2 globals=[const ref type 0,const ref type 2,const ref type 1,const ref type 3] tables=0 memories=0 tags=0 elements=0 data=0 exports=[]",
+      "opcodes": [
+        {
+          "opcode": "RefFunc",
+          "count": 4
+        },
+        {
+          "opcode": "Unreachable",
+          "count": 2
+        }
+      ]
+    },
+    {
+      "filename": "type-subtyping.14.wasm",
+      "command_line": 143,
+      "source_line": 188,
+      "size": 172,
+      "sha256": "a0ba3c1005b6cb73edc08222b5d896276945b0bf1f3b3ff7ef9cdb489341fe08",
+      "class": "ref-func-global-subsumption",
+      "gate": "collector-free local ref.func global subsumption",
+      "validator_gap": true,
+      "type_graph": "rec[sub(final=false,supers=[],func()-\u003e(ref func));sub(final=false,supers=[{0 true}],func()-\u003e(ref type 0))]|rec[sub(final=false,supers=[],func()-\u003e(ref func));sub(final=false,supers=[{0 true}],func()-\u003e(ref type 0))]|rec[sub(final=false,supers=[{0 false}],func()-\u003e(ref func));sub(final=false,supers=[{0 true}],func()-\u003e(ref type 0))]|rec[sub(final=false,supers=[{2 false}],func()-\u003e(ref func));sub(final=false,supers=[{0 true}],func()-\u003e(ref type 0))]",
+      "state_graph": "imports=0 funcs=2 globals=[const ref type 0,const ref type 2,const ref type 0,const ref type 2,const ref type 4,const ref type 6,const ref type 5,const ref type 7] tables=0 memories=0 tags=0 elements=0 data=0 exports=[]",
+      "opcodes": [
+        {
+          "opcode": "RefFunc",
+          "count": 8
+        },
+        {
+          "opcode": "Unreachable",
+          "count": 2
+        }
+      ]
+    },
+    {
+      "filename": "type-subtyping.17.wasm",
+      "command_line": 193,
+      "source_line": 229,
+      "size": 412,
+      "sha256": "505e94dbd66fc2e3b5d2d4af76341618b19571074c7b42a551392fd58aa692f3",
+      "class": "runtime-recursive-call-cast",
+      "gate": "recursive function subtype call_indirect and ref.cast runtime",
+      "validator_gap": false,
+      "type_graph": "rec[sub(final=false,supers=[],func()-\u003e(funcref))]|rec[sub(final=false,supers=[{0 false}],func()-\u003e(ref null type 0))]|rec[sub(final=false,supers=[{1 false}],func()-\u003e(ref null type 0))]|rec[func()-\u003e()]",
+      "state_graph": "imports=0 funcs=10 globals=[] tables=1 memories=0 tags=0 elements=1 data=0 exports=[run=0:3,fail1=0:4,fail2=0:5,fail3=0:6,fail4=0:7,fail5=0:8,fail6=0:9]",
+      "opcodes": [
+        {
+          "opcode": "Block",
+          "count": 15
+        },
+        {
+          "opcode": "Br",
+          "count": 7
+        },
+        {
+          "opcode": "CallIndirect",
+          "count": 9
+        },
+        {
+          "opcode": "I32Const",
+          "count": 18
+        },
+        {
+          "opcode": "RefCast",
+          "count": 9
+        },
+        {
+          "opcode": "RefNull",
+          "count": 3
+        },
+        {
+          "opcode": "TableGet",
+          "count": 9
+        }
+      ],
+      "actions": [
+        "assert_return:run()-\u003e()",
+        "assert_trap:fail1()!indirect call",
+        "assert_trap:fail2()!indirect call",
+        "assert_trap:fail3()!indirect call",
+        "assert_trap:fail4()!cast",
+        "assert_trap:fail5()!cast",
+        "assert_trap:fail6()!cast"
+      ]
+    },
+    {
+      "filename": "type-subtyping.18.wasm",
+      "command_line": 215,
+      "source_line": 290,
+      "size": 185,
+      "sha256": "375a327f8469d41d4f15f05109533a90127fc5287414364e227203d7d48e7662",
+      "class": "runtime-finality-call-cast",
+      "gate": "final function identity call_indirect and ref.cast runtime",
+      "validator_gap": false,
+      "type_graph": "rec[sub(final=false,supers=[],func()-\u003e())]|rec[func()-\u003e()]",
+      "state_graph": "imports=0 funcs=6 globals=[] tables=1 memories=0 tags=0 elements=1 data=0 exports=[fail1=0:2,fail2=0:3,fail3=0:4,fail4=0:5]",
+      "opcodes": [
+        {
+          "opcode": "Block",
+          "count": 2
+        },
+        {
+          "opcode": "CallIndirect",
+          "count": 2
+        },
+        {
+          "opcode": "Drop",
+          "count": 2
+        },
+        {
+          "opcode": "I32Const",
+          "count": 4
+        },
+        {
+          "opcode": "RefCast",
+          "count": 2
+        },
+        {
+          "opcode": "TableGet",
+          "count": 2
+        }
+      ],
+      "actions": [
+        "assert_trap:fail1()!indirect call",
+        "assert_trap:fail2()!indirect call",
+        "assert_trap:fail3()!cast",
+        "assert_trap:fail4()!cast"
+      ]
+    },
+    {
+      "filename": "type-subtyping.19.wasm",
+      "command_line": 234,
+      "source_line": 319,
+      "size": 186,
+      "sha256": "2ad95457821ceb8211d5733fe308f031f1103755733bbf8b5db9c85db0eb6d9b",
+      "class": "runtime-table-call-subtyping",
+      "gate": "typed function table call_indirect runtime",
+      "validator_gap": false,
+      "type_graph": "rec[sub(final=false,supers=[],func()-\u003e())]|rec[sub(final=false,supers=[{0 false}],func()-\u003e())]|rec[sub(final=false,supers=[{1 false}],func()-\u003e())]|rec[func()-\u003e()]",
+      "state_graph": "imports=0 funcs=5 globals=[] tables=1 memories=0 tags=0 elements=1 data=0 exports=[run=0:2,fail1=0:3,fail2=0:4]",
+      "opcodes": [
+        {
+          "opcode": "CallIndirect",
+          "count": 7
+        },
+        {
+          "opcode": "I32Const",
+          "count": 7
+        }
+      ],
+      "actions": [
+        "assert_return:run()-\u003e()",
+        "assert_trap:fail1()!indirect call",
+        "assert_trap:fail2()!indirect call"
+      ]
+    },
+    {
+      "filename": "type-subtyping.20.wasm",
+      "command_line": 248,
+      "source_line": 348,
+      "size": 122,
+      "sha256": "47a4b6080c4c63221e32dd452fd9bc6621c915b3f113e14e46e0f2ff907280d5",
+      "class": "runtime-ref-test-function-identity",
+      "gate": "collector-free function ref.test over recursive structural identity",
+      "validator_gap": false,
+      "type_graph": "rec[sub(final=false,supers=[],func()-\u003e());struct{ref type 0}]|rec[sub(final=false,supers=[],func()-\u003e());struct{ref type 0}]|rec[sub(final=false,supers=[{0 false}],func()-\u003e());struct{}]|rec[sub(final=false,supers=[{2 false}],func()-\u003e());struct{}]|rec[func()-\u003e(i32)]",
+      "state_graph": "imports=0 funcs=2 globals=[] tables=0 memories=0 tags=0 elements=1 data=0 exports=[run=0:1]",
+      "opcodes": [
+        {
+          "opcode": "RefFunc",
+          "count": 1
+        },
+        {
+          "opcode": "RefTest",
+          "count": 1
+        }
+      ],
+      "actions": [
+        "assert_return:run()-\u003e(i32=1)"
+      ]
+    },
+    {
+      "filename": "type-subtyping.21.wasm",
+      "command_line": 263,
+      "source_line": 360,
+      "size": 162,
+      "sha256": "97afdb1a9ad042486b76ad816e78a43f933e79b985c6fd20d0658f3b69c6e022",
+      "class": "runtime-ref-test-function-identity",
+      "gate": "collector-free function ref.test over recursive structural identity",
+      "validator_gap": false,
+      "type_graph": "rec[sub(final=false,supers=[],func()-\u003e());sub(final=false,supers=[],struct{ref type 0})]|rec[sub(final=false,supers=[],func()-\u003e());sub(final=false,supers=[],struct{ref type 0})]|rec[sub(final=false,supers=[{0 false}],func()-\u003e());sub(final=false,supers=[{1 false}],struct{ref type 0,ref type 0,ref type 2,ref type 2,ref type 0})]|rec[sub(final=false,supers=[{2 false}],func()-\u003e());sub(final=false,supers=[{3 false}],struct{ref type 0,ref type 2,ref type 0,ref type 2,ref type 0})]|rec[func()-\u003e(i32)]",
+      "state_graph": "imports=0 funcs=2 globals=[] tables=0 memories=0 tags=0 elements=1 data=0 exports=[run=0:1]",
+      "opcodes": [
+        {
+          "opcode": "RefFunc",
+          "count": 1
+        },
+        {
+          "opcode": "RefTest",
+          "count": 1
+        }
+      ],
+      "actions": [
+        "assert_return:run()-\u003e(i32=1)"
+      ]
+    },
+    {
+      "filename": "type-subtyping.22.wasm",
+      "command_line": 275,
+      "source_line": 378,
+      "size": 122,
+      "sha256": "9b8111ee2e3fb91cc7801a63b0a5a8e97eca7b5665f7e6fed5be8a8327534213",
+      "class": "runtime-ref-test-function-identity",
+      "gate": "collector-free function ref.test over recursive structural identity",
+      "validator_gap": false,
+      "type_graph": "rec[sub(final=false,supers=[],func()-\u003e());struct{ref type 0}]|rec[sub(final=false,supers=[],func()-\u003e());struct{ref type 0}]|rec[sub(final=false,supers=[{0 false}],func()-\u003e());struct{}]|rec[sub(final=false,supers=[{2 false}],func()-\u003e());struct{}]|rec[func()-\u003e(i32)]",
+      "state_graph": "imports=0 funcs=2 globals=[] tables=0 memories=0 tags=0 elements=1 data=0 exports=[run=0:1]",
+      "opcodes": [
+        {
+          "opcode": "RefFunc",
+          "count": 1
+        },
+        {
+          "opcode": "RefTest",
+          "count": 1
+        }
+      ],
+      "actions": [
+        "assert_return:run()-\u003e(i32=0)"
+      ]
+    },
+    {
+      "filename": "type-subtyping.23.wasm",
+      "command_line": 286,
+      "source_line": 390,
+      "size": 112,
+      "sha256": "60adfeb1cae8b65d159f8c0729630c005f5b530e90d190189487ee241f30c523",
+      "class": "runtime-ref-test-function-identity",
+      "gate": "collector-free function ref.test over recursive structural identity",
+      "validator_gap": false,
+      "type_graph": "rec[sub(final=false,supers=[],func()-\u003e());struct{ref type 0}]|rec[sub(final=false,supers=[],func()-\u003e());struct{ref type 0}]|rec[sub(final=false,supers=[{0 false}],func()-\u003e());struct{}]|rec[func()-\u003e(i32)]",
+      "state_graph": "imports=0 funcs=2 globals=[] tables=0 memories=0 tags=0 elements=1 data=0 exports=[run=0:1]",
+      "opcodes": [
+        {
+          "opcode": "RefFunc",
+          "count": 1
+        },
+        {
+          "opcode": "RefTest",
+          "count": 1
+        }
+      ],
+      "actions": [
+        "assert_return:run()-\u003e(i32=1)"
+      ]
+    },
+    {
+      "filename": "type-subtyping.24.wasm",
+      "command_line": 302,
+      "source_line": 401,
+      "size": 178,
+      "sha256": "5f080674a00a73b3dba391bb1967aa22f4dd6f1b43b9b49aff08528c3305aa6b",
+      "class": "runtime-ref-test-function-identity",
+      "gate": "collector-free function ref.test over recursive structural identity",
+      "validator_gap": false,
+      "type_graph": "rec[sub(final=false,supers=[],func()-\u003e());sub(final=false,supers=[],struct{ref type 0})]|rec[sub(final=false,supers=[],func()-\u003e());sub(final=false,supers=[],struct{ref type 0})]|rec[sub(final=false,supers=[{0 false}],func()-\u003e());sub(final=false,supers=[{1 false}],struct{ref type 0,ref type 0,ref type 2,ref type 2,ref type 0})]|rec[sub(final=false,supers=[{2 false}],func()-\u003e());sub(final=false,supers=[{3 false}],struct{ref type 0,ref type 2,ref type 0,ref type 2,ref type 0})]|rec[sub(final=false,supers=[{6 false}],func()-\u003e());struct{}]|rec[func()-\u003e(i32,i32)]",
+      "state_graph": "imports=0 funcs=2 globals=[] tables=0 memories=0 tags=0 elements=1 data=0 exports=[run=0:1]",
+      "opcodes": [
+        {
+          "opcode": "RefFunc",
+          "count": 2
+        },
+        {
+          "opcode": "RefTest",
+          "count": 2
+        }
+      ],
+      "actions": [
+        "assert_return:run()-\u003e(i32=1,i32=1)"
+      ]
+    },
+    {
+      "filename": "type-subtyping.25.wasm",
+      "command_line": 315,
+      "source_line": 422,
+      "size": 144,
+      "sha256": "b561b7bcd131223f573b787ff002cec3ef83d1cb90fc440ec24d347cc789df1d",
+      "class": "runtime-ref-test-function-identity",
+      "gate": "collector-free function ref.test over recursive structural identity",
+      "validator_gap": false,
+      "type_graph": "rec[sub(final=false,supers=[],func()-\u003e(ref func));sub(final=false,supers=[{0 true}],func()-\u003e(ref type 0))]|rec[sub(final=false,supers=[],func()-\u003e(ref func));sub(final=false,supers=[{0 true}],func()-\u003e(ref type 0))]|rec[func()-\u003e(i32,i32,i32,i32)]",
+      "state_graph": "imports=0 funcs=3 globals=[] tables=0 memories=0 tags=0 elements=2 data=0 exports=[run=0:2]",
+      "opcodes": [
+        {
+          "opcode": "RefFunc",
+          "count": 4
+        },
+        {
+          "opcode": "RefTest",
+          "count": 4
+        },
+        {
+          "opcode": "Unreachable",
+          "count": 2
+        }
+      ],
+      "actions": [
+        "assert_return:run()-\u003e(i32=1,i32=1,i32=1,i32=1)"
+      ]
+    },
+    {
+      "filename": "type-subtyping.26.wasm",
+      "command_line": 338,
+      "source_line": 438,
+      "size": 204,
+      "sha256": "893dcf058c5b28436567028ab41bfb409c5f1acc737e764a3dfcc51f6be8200e",
+      "class": "runtime-ref-test-function-identity",
+      "gate": "collector-free function ref.test over recursive structural identity",
+      "validator_gap": false,
+      "type_graph": "rec[sub(final=false,supers=[],func()-\u003e(ref func));sub(final=false,supers=[{0 true}],func()-\u003e(ref type 0))]|rec[sub(final=false,supers=[],func()-\u003e(ref func));sub(final=false,supers=[{0 true}],func()-\u003e(ref type 0))]|rec[sub(final=false,supers=[{0 false}],func()-\u003e(ref func));sub(final=false,supers=[{0 true}],func()-\u003e(ref type 0))]|rec[sub(final=false,supers=[{2 false}],func()-\u003e(ref func));sub(final=false,supers=[{0 true}],func()-\u003e(ref type 0))]|rec[func()-\u003e(i32,i32,i32,i32,i32,i32,i32,i32)]",
+      "state_graph": "imports=0 funcs=3 globals=[] tables=0 memories=0 tags=0 elements=2 data=0 exports=[run=0:2]",
+      "opcodes": [
+        {
+          "opcode": "RefFunc",
+          "count": 8
+        },
+        {
+          "opcode": "RefTest",
+          "count": 8
+        },
+        {
+          "opcode": "Unreachable",
+          "count": 2
+        }
+      ],
+      "actions": [
+        "assert_return:run()-\u003e(i32=1,i32=1,i32=1,i32=1,i32=1,i32=1,i32=1,i32=1)"
+      ]
+    },
+    {
+      "filename": "type-subtyping.27.wasm",
+      "command_line": 359,
+      "source_line": 461,
+      "size": 104,
+      "sha256": "2841d098dfca125ccd9c577cf55762744c8a3911a1986f857be48ebc0d51f735",
+      "class": "runtime-ref-test-function-identity",
+      "gate": "collector-free function ref.test over recursive structural identity",
+      "validator_gap": false,
+      "type_graph": "rec[sub(final=false,supers=[],func()-\u003e());sub(final=false,supers=[{0 true}],func()-\u003e())]|rec[sub(final=false,supers=[],func()-\u003e());sub(final=false,supers=[{0 false}],func()-\u003e())]|rec[func()-\u003e(i32)]",
+      "state_graph": "imports=0 funcs=2 globals=[] tables=0 memories=0 tags=0 elements=1 data=0 exports=[run=0:1]",
+      "opcodes": [
+        {
+          "opcode": "RefFunc",
+          "count": 1
+        },
+        {
+          "opcode": "RefTest",
+          "count": 1
+        }
+      ],
+      "actions": [
+        "assert_return:run()-\u003e(i32=0)"
+      ]
+    },
+    {
+      "filename": "type-subtyping.28.wasm",
+      "command_line": 371,
+      "source_line": 471,
+      "size": 117,
+      "sha256": "b0797a1825d04be467e336f7f236637184aab41a13de20ff7a06eb1bb7885613",
+      "class": "runtime-ref-test-function-identity",
+      "gate": "collector-free function ref.test over recursive structural identity",
+      "validator_gap": false,
+      "type_graph": "rec[sub(final=false,supers=[],func()-\u003e());sub(final=false,supers=[{0 true}],func()-\u003e())]|rec[sub(final=false,supers=[],func()-\u003e());sub(final=false,supers=[{0 false}],func()-\u003e())]|rec[sub(final=false,supers=[],func()-\u003e());sub(final=false,supers=[{2 false}],func()-\u003e())]|rec[func()-\u003e(i32)]",
+      "state_graph": "imports=0 funcs=2 globals=[] tables=0 memories=0 tags=0 elements=1 data=0 exports=[run=0:1]",
+      "opcodes": [
+        {
+          "opcode": "RefFunc",
+          "count": 1
+        },
+        {
+          "opcode": "RefTest",
+          "count": 1
+        }
+      ],
+      "actions": [
+        "assert_return:run()-\u003e(i32=0)"
+      ]
+    },
+    {
+      "filename": "type-subtyping.29.wasm",
+      "command_line": 382,
+      "source_line": 486,
+      "size": 103,
+      "sha256": "8e9bdbeb27a496328eb9529e0ea629d14a01124b657c4eb0aad74a8bd0f426db",
+      "class": "link-provider",
+      "gate": "collector-free recursive function subtype link provider",
+      "validator_gap": false,
+      "type_graph": "rec[sub(final=false,supers=[],func()-\u003e(funcref))]|rec[sub(final=false,supers=[{0 false}],func()-\u003e(ref null type 0))]|rec[sub(final=false,supers=[{1 false}],func()-\u003e(ref null type 0))]",
+      "state_graph": "imports=0 funcs=3 globals=[] tables=0 memories=0 tags=0 elements=0 data=0 exports=[f0=0:0,f1=0:1,f2=0:2]",
+      "opcodes": [
+        {
+          "opcode": "RefNull",
+          "count": 3
+        }
+      ]
+    },
+    {
+      "filename": "type-subtyping.30.wasm",
+      "command_line": 392,
+      "source_line": 497,
+      "size": 86,
+      "sha256": "ea4d5aaf13a9744bd319a1b33d1ee2303cfaecc84dae73a4179351a6fb91a760",
+      "class": "link-consumer",
+      "gate": "collector-free recursive function subtype link consumer",
+      "validator_gap": false,
+      "type_graph": "rec[sub(final=false,supers=[],func()-\u003e(funcref))]|rec[sub(final=false,supers=[{0 false}],func()-\u003e(ref null type 0))]|rec[sub(final=false,supers=[{1 false}],func()-\u003e(ref null type 0))]",
+      "state_graph": "imports=6 funcs=0 globals=[] tables=0 memories=0 tags=0 elements=0 data=0 exports=[]"
+    },
+    {
+      "filename": "type-subtyping.34.wasm",
+      "command_line": 421,
+      "source_line": 540,
+      "size": 70,
+      "sha256": "dcf54459e9f39087c697c9d9edc0955aabc02eb28e40b65c84291cbe194a9562",
+      "class": "link-provider",
+      "gate": "collector-free recursive function subtype link provider",
+      "validator_gap": false,
+      "type_graph": "rec[sub(final=false,supers=[],func()-\u003e())]|rec[func()-\u003e()]",
+      "state_graph": "imports=0 funcs=2 globals=[] tables=0 memories=0 tags=0 elements=0 data=0 exports=[f1=0:0,f2=0:1]"
+    },
+    {
+      "filename": "type-subtyping.37.wasm",
+      "command_line": 442,
+      "source_line": 566,
+      "size": 70,
+      "sha256": "ac63802e3827e33389d92ff8a8bd25b6231f1dde96bab5cb77a0e1d094f80e6f",
+      "class": "link-provider",
+      "gate": "collector-free recursive function subtype link provider",
+      "validator_gap": false,
+      "type_graph": "rec[sub(final=false,supers=[],func()-\u003e());struct{ref type 0}]|rec[sub(final=false,supers=[{0 false}],func()-\u003e());struct{}]",
+      "state_graph": "imports=0 funcs=1 globals=[] tables=0 memories=0 tags=0 elements=0 data=0 exports=[g=0:0]"
+    },
+    {
+      "filename": "type-subtyping.38.wasm",
+      "command_line": 450,
+      "source_line": 572,
+      "size": 51,
+      "sha256": "5f090989edc62437b56b36c69a316cdcfddec4a63d451bd9443ad59da75af0a3",
+      "class": "link-consumer",
+      "gate": "collector-free recursive function subtype link consumer",
+      "validator_gap": false,
+      "type_graph": "rec[sub(final=false,supers=[],func()-\u003e());struct{ref type 0}]|rec[sub(final=false,supers=[{0 false}],func()-\u003e());struct{}]",
+      "state_graph": "imports=1 funcs=0 globals=[] tables=0 memories=0 tags=0 elements=0 data=0 exports=[]"
+    },
+    {
+      "filename": "type-subtyping.39.wasm",
+      "command_line": 460,
+      "source_line": 578,
+      "size": 104,
+      "sha256": "8de41fdb1e1b4ef57639e5a6344eed6c13bfb5ada5ea56433bb221f403c56d8e",
+      "class": "link-provider",
+      "gate": "collector-free recursive function subtype link provider",
+      "validator_gap": false,
+      "type_graph": "rec[sub(final=false,supers=[],func()-\u003e());sub(final=false,supers=[],struct{ref type 0})]|rec[sub(final=false,supers=[],func()-\u003e());sub(final=false,supers=[],struct{ref type 0})]|rec[sub(final=false,supers=[{2 false}],func()-\u003e());sub(final=false,supers=[{3 false}],struct{ref type 0,ref type 2,ref type 0,ref type 2,ref type 0})]",
+      "state_graph": "imports=0 funcs=1 globals=[] tables=0 memories=0 tags=0 elements=0 data=0 exports=[g=0:0]"
+    },
+    {
+      "filename": "type-subtyping.40.wasm",
+      "command_line": 470,
+      "source_line": 588,
+      "size": 85,
+      "sha256": "a5d3e6060f52fa0becf68e6e4dd06623df6ecf7bf22bfe5430b484f2adbdf0a2",
+      "class": "link-consumer",
+      "gate": "collector-free recursive function subtype link consumer",
+      "validator_gap": false,
+      "type_graph": "rec[sub(final=false,supers=[],func()-\u003e());sub(final=false,supers=[],struct{ref type 0})]|rec[sub(final=false,supers=[],func()-\u003e());sub(final=false,supers=[],struct{ref type 0})]|rec[sub(final=false,supers=[{0 false}],func()-\u003e());sub(final=false,supers=[{1 false}],struct{ref type 0,ref type 0,ref type 2,ref type 2,ref type 0})]",
+      "state_graph": "imports=1 funcs=0 globals=[] tables=0 memories=0 tags=0 elements=0 data=0 exports=[]"
+    },
+    {
+      "filename": "type-subtyping.41.wasm",
+      "command_line": 479,
+      "source_line": 598,
+      "size": 82,
+      "sha256": "0494d7c95b50e151ac8e0f9eb8a1c935a016db45b1969378ed95d40369fda062",
+      "class": "link-provider",
+      "gate": "collector-free recursive function subtype link provider",
+      "validator_gap": false,
+      "type_graph": "rec[sub(final=false,supers=[],func()-\u003e());struct{ref type 0}]|rec[sub(final=false,supers=[],func()-\u003e());struct{ref type 0}]|rec[sub(final=false,supers=[{2 false}],func()-\u003e());struct{}]",
+      "state_graph": "imports=0 funcs=1 globals=[] tables=0 memories=0 tags=0 elements=0 data=0 exports=[g=0:0]"
+    },
+    {
+      "filename": "type-subtyping.43.wasm",
+      "command_line": 496,
+      "source_line": 614,
+      "size": 82,
+      "sha256": "7c8af0765c2e2d43a07e7a6a75a85d396531827c1b2cb4402a24277308781dff",
+      "class": "link-provider",
+      "gate": "collector-free recursive function subtype link provider",
+      "validator_gap": false,
+      "type_graph": "rec[sub(final=false,supers=[],func()-\u003e());struct{ref type 0}]|rec[sub(final=false,supers=[],func()-\u003e());struct{ref type 0}]|rec[sub(final=false,supers=[{0 false}],func()-\u003e());struct{}]",
+      "state_graph": "imports=0 funcs=1 globals=[] tables=0 memories=0 tags=0 elements=0 data=0 exports=[g=0:0]"
+    },
+    {
+      "filename": "type-subtyping.44.wasm",
+      "command_line": 504,
+      "source_line": 621,
+      "size": 63,
+      "sha256": "a593d0db0e5f173aaac2d6007b84a4b268d7ad2047a4e8cd8fe3a275ef9b0820",
+      "class": "link-consumer",
+      "gate": "collector-free recursive function subtype link consumer",
+      "validator_gap": false,
+      "type_graph": "rec[sub(final=false,supers=[],func()-\u003e());struct{ref type 0}]|rec[sub(final=false,supers=[],func()-\u003e());struct{ref type 0}]|rec[sub(final=false,supers=[{0 false}],func()-\u003e());struct{}]",
+      "state_graph": "imports=1 funcs=0 globals=[] tables=0 memories=0 tags=0 elements=0 data=0 exports=[]"
+    },
+    {
+      "filename": "type-subtyping.45.wasm",
+      "command_line": 515,
+      "source_line": 628,
+      "size": 114,
+      "sha256": "4b62738d11270b2ac5b43e5de7c8105ddac449d9f23de09ce44160996f302d62",
+      "class": "link-provider",
+      "gate": "collector-free recursive function subtype link provider",
+      "validator_gap": false,
+      "type_graph": "rec[sub(final=false,supers=[],func()-\u003e());sub(final=false,supers=[],struct{ref type 0})]|rec[sub(final=false,supers=[],func()-\u003e());sub(final=false,supers=[],struct{ref type 0})]|rec[sub(final=false,supers=[{2 false}],func()-\u003e());sub(final=false,supers=[{3 false}],struct{ref type 0,ref type 2,ref type 0,ref type 2,ref type 0})]|rec[sub(final=false,supers=[{4 false}],func()-\u003e());struct{}]",
+      "state_graph": "imports=0 funcs=1 globals=[] tables=0 memories=0 tags=0 elements=0 data=0 exports=[h=0:0]"
+    },
+    {
+      "filename": "type-subtyping.46.wasm",
+      "command_line": 526,
+      "source_line": 639,
+      "size": 102,
+      "sha256": "5992b926a2f2ed28c4e6d5149d97ff075c0e6fdbcc9fb8ec8194fa96271405db",
+      "class": "link-consumer",
+      "gate": "collector-free recursive function subtype link consumer",
+      "validator_gap": false,
+      "type_graph": "rec[sub(final=false,supers=[],func()-\u003e());sub(final=false,supers=[],struct{ref type 0})]|rec[sub(final=false,supers=[],func()-\u003e());sub(final=false,supers=[],struct{ref type 0})]|rec[sub(final=false,supers=[{0 false}],func()-\u003e());sub(final=false,supers=[{1 false}],struct{ref type 0,ref type 0,ref type 2,ref type 2,ref type 0})]|rec[sub(final=false,supers=[{4 false}],func()-\u003e());struct{}]",
+      "state_graph": "imports=2 funcs=0 globals=[] tables=0 memories=0 tags=0 elements=0 data=0 exports=[]"
+    },
+    {
+      "filename": "type-subtyping.47.wasm",
+      "command_line": 536,
+      "source_line": 652,
+      "size": 100,
+      "sha256": "cee53b6e420932faec8bf166a6ae79cfab88f7ca890cd39851d3f70b932471aa",
+      "class": "link-provider",
+      "gate": "collector-free recursive function subtype link provider",
+      "validator_gap": false,
+      "type_graph": "rec[sub(final=false,supers=[],func()-\u003e(ref func));sub(final=false,supers=[{0 true}],func()-\u003e(ref type 0))]|rec[sub(final=false,supers=[],func()-\u003e(ref func));sub(final=false,supers=[{0 true}],func()-\u003e(ref type 0))]",
+      "state_graph": "imports=0 funcs=2 globals=[] tables=0 memories=0 tags=0 elements=0 data=0 exports=[f11=0:0,f12=0:1]",
+      "opcodes": [
+        {
+          "opcode": "Unreachable",
+          "count": 2
+        }
+      ]
+    },
+    {
+      "filename": "type-subtyping.48.wasm",
+      "command_line": 546,
+      "source_line": 659,
+      "size": 92,
+      "sha256": "30ff7e3befab7405c63554526ecf2e61fc9ecf2b65e175414db07aa774e6a540",
+      "class": "link-consumer",
+      "gate": "collector-free recursive function subtype link consumer",
+      "validator_gap": false,
+      "type_graph": "rec[sub(final=false,supers=[],func()-\u003e(ref func));sub(final=false,supers=[{0 true}],func()-\u003e(ref type 0))]|rec[sub(final=false,supers=[],func()-\u003e(ref func));sub(final=false,supers=[{0 true}],func()-\u003e(ref type 0))]",
+      "state_graph": "imports=4 funcs=0 globals=[] tables=0 memories=0 tags=0 elements=0 data=0 exports=[]"
+    },
+    {
+      "filename": "type-subtyping.49.wasm",
+      "command_line": 558,
+      "source_line": 668,
+      "size": 136,
+      "sha256": "ba251b0325c3f0c4aab80aeacf9faf0dd960e48b48b6b7a41d2f07e03f37d379",
+      "class": "link-provider",
+      "gate": "collector-free recursive function subtype link provider",
+      "validator_gap": false,
+      "type_graph": "rec[sub(final=false,supers=[],func()-\u003e(ref func));sub(final=false,supers=[{0 true}],func()-\u003e(ref type 0))]|rec[sub(final=false,supers=[],func()-\u003e(ref func));sub(final=false,supers=[{0 true}],func()-\u003e(ref type 0))]|rec[sub(final=false,supers=[{0 false}],func()-\u003e(ref func));sub(final=false,supers=[{0 true}],func()-\u003e(ref type 0))]|rec[sub(final=false,supers=[{2 false}],func()-\u003e(ref func));sub(final=false,supers=[{0 true}],func()-\u003e(ref type 0))]",
+      "state_graph": "imports=0 funcs=2 globals=[] tables=0 memories=0 tags=0 elements=0 data=0 exports=[g11=0:0,g12=0:1]",
+      "opcodes": [
+        {
+          "opcode": "Unreachable",
+          "count": 2
+        }
+      ]
+    },
+    {
+      "filename": "type-subtyping.50.wasm",
+      "command_line": 573,
+      "source_line": 677,
+      "size": 164,
+      "sha256": "b0e14a301bd440e1550be35f09d9b0ecb0476b09e467b965b02b6935dcac0fd2",
+      "class": "link-consumer",
+      "gate": "collector-free recursive function subtype link consumer",
+      "validator_gap": false,
+      "type_graph": "rec[sub(final=false,supers=[],func()-\u003e(ref func));sub(final=false,supers=[{0 true}],func()-\u003e(ref type 0))]|rec[sub(final=false,supers=[],func()-\u003e(ref func));sub(final=false,supers=[{0 true}],func()-\u003e(ref type 0))]|rec[sub(final=false,supers=[{0 false}],func()-\u003e(ref func));sub(final=false,supers=[{0 true}],func()-\u003e(ref type 0))]|rec[sub(final=false,supers=[{2 false}],func()-\u003e(ref func));sub(final=false,supers=[{0 true}],func()-\u003e(ref type 0))]",
+      "state_graph": "imports=8 funcs=0 globals=[] tables=0 memories=0 tags=0 elements=0 data=0 exports=[]"
+    },
+    {
+      "filename": "type-subtyping.51.wasm",
+      "command_line": 581,
+      "source_line": 692,
+      "size": 74,
+      "sha256": "db07a8de5025cd215a20a1e118183a220354a1aa93ea154daad3f4cd75c0dff9",
+      "class": "link-provider",
+      "gate": "collector-free recursive function subtype link provider",
+      "validator_gap": false,
+      "type_graph": "rec[sub(final=false,supers=[],func()-\u003e());sub(final=false,supers=[{0 true}],func()-\u003e())]|rec[sub(final=false,supers=[],func()-\u003e());sub(final=false,supers=[{0 false}],func()-\u003e())]",
+      "state_graph": "imports=0 funcs=1 globals=[] tables=0 memories=0 tags=0 elements=0 data=0 exports=[f=0:0]"
+    },
+    {
+      "filename": "type-subtyping.53.wasm",
+      "command_line": 597,
+      "source_line": 706,
+      "size": 87,
+      "sha256": "af07e7f6586db57d5a927c9c7f025b121657f04237dcee0344e7db263798cfea",
+      "class": "link-provider",
+      "gate": "collector-free recursive function subtype link provider",
+      "validator_gap": false,
+      "type_graph": "rec[sub(final=false,supers=[],func()-\u003e());sub(final=false,supers=[{0 true}],func()-\u003e())]|rec[sub(final=false,supers=[],func()-\u003e());sub(final=false,supers=[{0 false}],func()-\u003e())]|rec[sub(final=false,supers=[],func()-\u003e());sub(final=false,supers=[{2 false}],func()-\u003e())]",
+      "state_graph": "imports=0 funcs=1 globals=[] tables=0 memories=0 tags=0 elements=0 data=0 exports=[f=0:0]"
+    },
+    {
+      "filename": "type-subtyping.76.wasm",
+      "command_line": 767,
+      "source_line": 901,
+      "size": 183,
+      "sha256": "0c14108cfe323e2dd39fd8bfe333bd925e2f19324e90cd1c3ee1615fdad2bb60",
+      "class": "non-flat-exported-function",
+      "gate": "non-flat declared subtype exported function invocation",
+      "validator_gap": false,
+      "type_graph": "rec[sub(final=false,supers=[],func()-\u003e(f32))]|rec[sub(final=false,supers=[{0 false}],func()-\u003e(f32))]|rec[sub(final=true,supers=[{1 false}],func()-\u003e(f32))]|rec[func()-\u003e(f32);sub(final=false,supers=[],func()-\u003e(f32));sub(final=false,supers=[{1 true}],func()-\u003e(f32))]",
+      "state_graph": "imports=0 funcs=6 globals=[] tables=0 memories=0 tags=0 elements=0 data=0 exports=[f1=0:0,f2=0:1,f3=0:2,f4=0:3,f5=0:4,f6=0:5]",
+      "opcodes": [
+        {
+          "opcode": "F32Const",
+          "count": 6
+        }
+      ],
+      "actions": [
+        "assert_return:f1()-\u003e(f32=0)",
+        "assert_return:f2()-\u003e(f32=0)",
+        "assert_return:f3()-\u003e(f32=0)",
+        "assert_return:f4()-\u003e(f32=0)",
+        "assert_return:f5()-\u003e(f32=0)",
+        "assert_return:f6()-\u003e(f32=0)"
+      ]
+    }
+  ],
+  "invalids": [
+    {
+      "filename": "type-subtyping.10.wasm",
+      "command_line": 87,
+      "source_line": 139,
+      "size": 94,
+      "sha256": "32c03c631dc2a36933a5f205d48216fd520028e7747191feea2a4fde0c556350",
+      "text": "type mismatch",
+      "validator_gap": true
+    },
+    {
+      "filename": "type-subtyping.15.wasm",
+      "command_line": 144,
+      "source_line": 205,
+      "size": 76,
+      "sha256": "321f347edec7cbd7a38575cb6f35fefc083fb7408f654449347d4db7401e9ee4",
+      "text": "type mismatch",
+      "validator_gap": true
+    },
+    {
+      "filename": "type-subtyping.16.wasm",
+      "command_line": 154,
+      "source_line": 215,
+      "size": 89,
+      "sha256": "e020d9ea6528e9c8f68002c1b043e22cd18839d65a56f33757eb4d9c56e8e58c",
+      "text": "type mismatch",
+      "validator_gap": true
+    },
+    {
+      "filename": "type-subtyping.55.wasm",
+      "command_line": 606,
+      "source_line": 726,
+      "size": 24,
+      "sha256": "dce441bf58e43582a52184ebd281c22aa470a593b05fbe0e411ea6cc0982485a",
+      "text": "sub type",
+      "validator_gap": false
+    },
+    {
+      "filename": "type-subtyping.56.wasm",
+      "command_line": 613,
+      "source_line": 734,
+      "size": 22,
+      "sha256": "a623fe81a38dcfd4b76ef1bf8bee62a671d470944f2cb401dbea6b94028153ae",
+      "text": "sub type",
+      "validator_gap": false
+    },
+    {
+      "filename": "type-subtyping.57.wasm",
+      "command_line": 620,
+      "source_line": 742,
+      "size": 24,
+      "sha256": "dce441bf58e43582a52184ebd281c22aa470a593b05fbe0e411ea6cc0982485a",
+      "text": "sub type",
+      "validator_gap": false
+    },
+    {
+      "filename": "type-subtyping.58.wasm",
+      "command_line": 627,
+      "source_line": 750,
+      "size": 32,
+      "sha256": "b1e090c36891e0587efa8d4e4567037148464d375be7d7130087a59280a3f242",
+      "text": "sub type",
+      "validator_gap": false
+    },
+    {
+      "filename": "type-subtyping.59.wasm",
+      "command_line": 634,
+      "source_line": 763,
+      "size": 25,
+      "sha256": "3b829ffa54f226c5f1e0ff4527b9bd5e1eb90a2404b89fd4e36e9cc3b7976b8c",
+      "text": "sub type",
+      "validator_gap": false
+    },
+    {
+      "filename": "type-subtyping.60.wasm",
+      "command_line": 641,
+      "source_line": 771,
+      "size": 27,
+      "sha256": "2c62432ca5cdce5734705d150f2c2dbe2bb5cc99d097dd9fe35328dac57314c0",
+      "text": "sub type",
+      "validator_gap": false
+    },
+    {
+      "filename": "type-subtyping.61.wasm",
+      "command_line": 648,
+      "source_line": 779,
+      "size": 25,
+      "sha256": "17587e542afc0df6821f791dd9dde601f577b3ba9f9c26bc91809b5c3ee87af6",
+      "text": "sub type",
+      "validator_gap": false
+    },
+    {
+      "filename": "type-subtyping.62.wasm",
+      "command_line": 655,
+      "source_line": 787,
+      "size": 28,
+      "sha256": "971296b4248aebf20951a6422f4c7457064b8616373f40823437a1bee1359046",
+      "text": "sub type",
+      "validator_gap": false
+    },
+    {
+      "filename": "type-subtyping.63.wasm",
+      "command_line": 662,
+      "source_line": 795,
+      "size": 27,
+      "sha256": "2f26f5a54b213f4f63c45c69be190979d90fd12534f0e60e782446eea61a8edd",
+      "text": "sub type",
+      "validator_gap": false
+    },
+    {
+      "filename": "type-subtyping.64.wasm",
+      "command_line": 669,
+      "source_line": 803,
+      "size": 28,
+      "sha256": "59366e946dced2334e4ace9c6942eac37ea2d624496e95b4e02457e89b0e6a80",
+      "text": "sub type",
+      "validator_gap": false
+    },
+    {
+      "filename": "type-subtyping.65.wasm",
+      "command_line": 676,
+      "source_line": 811,
+      "size": 26,
+      "sha256": "de3509821433585c48bfadb7c3357ccf12740bba9abc1286ca19e8b4942422db",
+      "text": "sub type",
+      "validator_gap": true
+    },
+    {
+      "filename": "type-subtyping.66.wasm",
+      "command_line": 683,
+      "source_line": 819,
+      "size": 28,
+      "sha256": "d30413fef9549d45ac8f15ac572bf6c0dd073bd82a2d7e3e3714c284ece635af",
+      "text": "sub type",
+      "validator_gap": true
+    },
+    {
+      "filename": "type-subtyping.67.wasm",
+      "command_line": 690,
+      "source_line": 827,
+      "size": 28,
+      "sha256": "d36c0648b5280a01497164c37187e97fc84d86938bf22932ae4261f0141f18da",
+      "text": "sub type 1 does not match super type",
+      "validator_gap": true
+    },
+    {
+      "filename": "type-subtyping.68.wasm",
+      "command_line": 697,
+      "source_line": 835,
+      "size": 28,
+      "sha256": "97bd48c4ea0bbba6c4fa6f74fc79c7b3d3b0d3026c0b193c7fb8ab380161c8ed",
+      "text": "sub type 1 does not match super type",
+      "validator_gap": true
+    },
+    {
+      "filename": "type-subtyping.69.wasm",
+      "command_line": 704,
+      "source_line": 843,
+      "size": 28,
+      "sha256": "faa4fab88ed08dc693261ff1d16979a499b606395ad73b26268f639845766791",
+      "text": "sub type 1 does not match super type",
+      "validator_gap": true
+    },
+    {
+      "filename": "type-subtyping.70.wasm",
+      "command_line": 711,
+      "source_line": 851,
+      "size": 28,
+      "sha256": "b9f6fb592c4f2a9a0a8fd108606a04d29cd3108480d2e3c0fd4bc7f0fa77a401",
+      "text": "sub type 1 does not match super type",
+      "validator_gap": true
+    },
+    {
+      "filename": "type-subtyping.71.wasm",
+      "command_line": 718,
+      "source_line": 859,
+      "size": 30,
+      "sha256": "1c8fcb0819e6d71c144028840fa55dfaadab456b1de6220de09ca3b72b5519f2",
+      "text": "sub type 1 does not match super type",
+      "validator_gap": true
+    },
+    {
+      "filename": "type-subtyping.72.wasm",
+      "command_line": 725,
+      "source_line": 867,
+      "size": 30,
+      "sha256": "8aa6220e3a9c861938ae0157109b9fb76a718b4e315b2ff7921d33693922de7a",
+      "text": "sub type 1 does not match super type",
+      "validator_gap": true
+    },
+    {
+      "filename": "type-subtyping.73.wasm",
+      "command_line": 732,
+      "source_line": 875,
+      "size": 30,
+      "sha256": "848c8243e5eb479c227697ea33a9472de7da26d31251b42e2d6d1b3bc2be56c5",
+      "text": "sub type 1 does not match super type",
+      "validator_gap": true
+    },
+    {
+      "filename": "type-subtyping.74.wasm",
+      "command_line": 739,
+      "source_line": 883,
+      "size": 30,
+      "sha256": "99458746df36775d83b18cf6483dc2e6e42f157590e2f6ce8b341745043c0d11",
+      "text": "sub type 1 does not match super type",
+      "validator_gap": true
+    },
+    {
+      "filename": "type-subtyping.75.wasm",
+      "command_line": 746,
+      "source_line": 891,
+      "size": 27,
+      "sha256": "8e7c79ad6e9a0d454ddcefe59de60b0cd78b2432a04f8a66d82e20672efc1975",
+      "text": "sub type",
+      "validator_gap": true
+    }
+  ],
+  "unlinkables": [
+    {
+      "filename": "type-subtyping.31.wasm",
+      "command_line": 399,
+      "source_line": 510,
+      "size": 51,
+      "sha256": "634f7caa3c4e26b757fca7a9a9f8367f99e33304c87f7b2cf6ec7d1e31566535",
+      "text": "incompatible import type",
+      "type_graph": "rec[sub(final=false,supers=[],func()-\u003e(funcref))]|rec[sub(final=false,supers=[{0 false}],func()-\u003e(ref null type 0))]|rec[sub(final=false,supers=[{1 false}],func()-\u003e(ref null type 0))]",
+      "state_graph": "imports=1 funcs=0 globals=[] tables=0 memories=0 tags=0 elements=0 data=0 exports=[]"
+    },
+    {
+      "filename": "type-subtyping.32.wasm",
+      "command_line": 406,
+      "source_line": 520,
+      "size": 51,
+      "sha256": "fe07228154a27a9de4702afb12187709536e894495e8fa2e34a710e2dd7c0b88",
+      "text": "incompatible import type",
+      "type_graph": "rec[sub(final=false,supers=[],func()-\u003e(funcref))]|rec[sub(final=false,supers=[{0 false}],func()-\u003e(ref null type 0))]|rec[sub(final=false,supers=[{1 false}],func()-\u003e(ref null type 0))]",
+      "state_graph": "imports=1 funcs=0 globals=[] tables=0 memories=0 tags=0 elements=0 data=0 exports=[]"
+    },
+    {
+      "filename": "type-subtyping.33.wasm",
+      "command_line": 413,
+      "source_line": 530,
+      "size": 51,
+      "sha256": "24ce2b2eec631ee2946c641e0545d06dc1179e2e9ba646ae59c5d37974111649",
+      "text": "incompatible import type",
+      "type_graph": "rec[sub(final=false,supers=[],func()-\u003e(funcref))]|rec[sub(final=false,supers=[{0 false}],func()-\u003e(ref null type 0))]|rec[sub(final=false,supers=[{1 false}],func()-\u003e(ref null type 0))]",
+      "state_graph": "imports=1 funcs=0 globals=[] tables=0 memories=0 tags=0 elements=0 data=0 exports=[]"
+    },
+    {
+      "filename": "type-subtyping.35.wasm",
+      "command_line": 428,
+      "source_line": 548,
+      "size": 38,
+      "sha256": "ea960ddec4f24c952d26ee7a567309a41c5895cf84690ca120d4577bb4c26e08",
+      "text": "incompatible import type",
+      "type_graph": "rec[sub(final=false,supers=[],func()-\u003e())]|rec[func()-\u003e()]",
+      "state_graph": "imports=1 funcs=0 globals=[] tables=0 memories=0 tags=0 elements=0 data=0 exports=[]"
+    },
+    {
+      "filename": "type-subtyping.36.wasm",
+      "command_line": 434,
+      "source_line": 556,
+      "size": 38,
+      "sha256": "7fc43bbbff42ca923db1604d0339cadd21458f5671ea7962d031786e93517996",
+      "text": "incompatible import type",
+      "type_graph": "rec[sub(final=false,supers=[],func()-\u003e())]|rec[func()-\u003e()]",
+      "state_graph": "imports=1 funcs=0 globals=[] tables=0 memories=0 tags=0 elements=0 data=0 exports=[]"
+    },
+    {
+      "filename": "type-subtyping.42.wasm",
+      "command_line": 487,
+      "source_line": 605,
+      "size": 51,
+      "sha256": "bb598cc89f2d73720190e6c7e115bec104013bf8ebead4c417d17e701598c7a1",
+      "text": "incompatible import",
+      "type_graph": "rec[sub(final=false,supers=[],func()-\u003e());struct{ref type 0}]|rec[sub(final=false,supers=[{0 false}],func()-\u003e());struct{}]",
+      "state_graph": "imports=1 funcs=0 globals=[] tables=0 memories=0 tags=0 elements=0 data=0 exports=[]"
+    },
+    {
+      "filename": "type-subtyping.52.wasm",
+      "command_line": 588,
+      "source_line": 698,
+      "size": 43,
+      "sha256": "3362e5e87944fe7f1a90cc31d6fd4bacf6430673bc9419042d1fc0e487e84a7b",
+      "text": "incompatible import",
+      "type_graph": "rec[sub(final=false,supers=[],func()-\u003e());sub(final=false,supers=[{0 true}],func()-\u003e())]",
+      "state_graph": "imports=1 funcs=0 globals=[] tables=0 memories=0 tags=0 elements=0 data=0 exports=[]"
+    },
+    {
+      "filename": "type-subtyping.54.wasm",
+      "command_line": 605,
+      "source_line": 713,
+      "size": 56,
+      "sha256": "9e703dc0addc7ec35bc25d91903131c815c512736eda1ae0f1678ef8a7a40144",
+      "text": "incompatible import",
+      "type_graph": "rec[sub(final=false,supers=[],func()-\u003e());sub(final=false,supers=[{0 true}],func()-\u003e())]|rec[sub(final=false,supers=[],func()-\u003e());sub(final=false,supers=[{0 false}],func()-\u003e())]",
+      "state_graph": "imports=1 funcs=0 globals=[] tables=0 memories=0 tags=0 elements=0 data=0 exports=[]"
+    }
+  ],
+  "gates": [
+    {
+      "family": "gc",
+      "reason": "collector-free function ref.test over recursive structural identity",
+      "count": 9
+    },
+    {
+      "family": "gc",
+      "reason": "collector-free local ref.func global subsumption",
+      "count": 6
+    },
+    {
+      "family": "gc",
+      "reason": "collector-free recursive function subsumption bodies",
+      "count": 2
+    },
+    {
+      "family": "gc",
+      "reason": "collector-free recursive function subtype link consumer",
+      "count": 7
+    },
+    {
+      "family": "gc",
+      "reason": "collector-free recursive function subtype link provider",
+      "count": 11
+    },
+    {
+      "family": "gc",
+      "reason": "final function identity call_indirect and ref.cast runtime",
+      "count": 1
+    },
+    {
+      "family": "gc",
+      "reason": "metadata-only recursive struct supertype declarations",
+      "count": 3
+    },
+    {
+      "family": "gc",
+      "reason": "metadata-only struct/array/function supertype declarations",
+      "count": 3
+    },
+    {
+      "family": "gc",
+      "reason": "non-flat declared subtype exported function invocation",
+      "count": 1
+    },
+    {
+      "family": "gc",
+      "reason": "recursive function subtype call_indirect and ref.cast runtime",
+      "count": 1
+    },
+    {
+      "family": "gc",
+      "reason": "typed function table call_indirect runtime",
+      "count": 1
+    }
+  ],
+  "counts": {
+    "commands": 170,
+    "modules_passed": 0,
+    "assertions_passed": 0,
+    "expected_invalid": 24,
+    "expected_unlinkable": 0,
+    "expected_uninstantiable": 0,
+    "expected_feature_rejects": 45,
+    "blocked_commands": 48,
+    "unexpected_compile_rejects": 0,
+    "unexpected_link_rejects": 0,
+    "failures": 0
+  }
+}
