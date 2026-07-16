@@ -21,8 +21,10 @@ separate anyref/funcref/externref table contracts, and executes the complete abs
 `gc/ref_test` gap-free. Iteration 48 extends that owner with distinct bounded public conversion tokens,
 strict null conversion constants, and executes the complete `gc/extern` family. Iteration 49 reuses the
 checked compact-table owner for the exact official eqref product and executes the complete null/i31/object
-identity matrix without adding native frame publication. General native frame publication, object-valued mutable/reference globals,
-broad public ownership, and snapshots remain incomplete. These bounded products must not be presented as general executable
+identity matrix without adding native frame publication. Iteration 50 adds identity-preserving ordinary
+reference casts for the two exact official leaders, with a dedicated cast-failure trap, canonical defined-type
+matching, and the same bounded table/conversion ownership. General native frame publication, object-valued
+mutable/reference globals, broad public ownership, and snapshots remain incomplete. These bounded products must not be presented as general executable
 WasmGC support.
 
 ## Why a wago-native collector
@@ -637,6 +639,45 @@ Fixed sidecars remain `gcRefTestTableState=200` and lazy `instancePluginState=14
 0 allocs/op. This proof adds no frame roots, public GC token ingress, conversion identity, canonical map,
 or serialized live state.
 
+### Iteration 50 exact `gc/ref_cast` products
+
+The complete official `gc/ref_cast.wast` file contains two valid leaders and no invalid or malformed
+commands. The 380-byte abstract leader owns one ten-entry anyref table and initializes null, i31, one
+empty struct, one zero-length i8 array, one foreign-any conversion, and three typed nulls. Its forty
+assertions distinguish `ref.as_non_null`'s `null reference` trap from ordinary nullable/non-null
+`ref.cast` success and the dedicated `cast failure` trap. The 512-byte concrete leader allocates the
+same eight declared-super/canonical struct values used by the concrete dynamic-test proof, then executes
+all raw-super and canonical casts in two actions. Strict schema-2 accounting is gap-free at 47 commands /
+2 modules / 40 assertions / 3 actions / 0 invalid / 0 malformed / 0 gates / 0 blocked / 0 hidden failures.
+
+`Collector.RefCast` and `RefCastCanonical` reuse the validated dynamic classification walk but return the
+original compact `gc.Ref` unchanged on success. A valid mismatch returns `gc.ErrCastFailure`; stale,
+forged, closed, unknown-target, and wrong-owner cases retain their specific errors and are never collapsed
+into a semantic cast mismatch. The mixed table owner extends that rule to its 64-bit internal domain:
+foreign-any identities may cast only to `any`, successful casts return the exact original high-word
+identity, and forged words fail ownership validation. Compact null/i31/object words, internal foreign-any
+identities, public any/extern tokens, store extern tokens, funcref descriptors, and opaque public `GCRef`
+tokens remain distinct categories.
+
+The amd64 helper receives one copied reference word, signed heap target, and nullable bit. It performs no
+allocation or collection. On success it returns the same word; on mismatch it raises runtime trap code 18,
+`cast failure`. The abstract initializer still stores the struct before allocating the array and stores the
+array before conversion, so no live local ref crosses a may-collect helper. A 48-byte Tiny heap repeats
+initialization 100 times and retains exactly the two current 16-byte objects. The concrete initializer
+stores each of eight allocations immediately; a 256-byte Tiny heap retains all eight, and all later cast
+helpers are non-collecting. Cast results are dropped before any later helper. Neither product publishes a
+native frame chain.
+
+The abstract product reuses `gcRefTestTableState=200`, `gcExternConversionState=480`, and lazy
+`instancePluginState=144`; the concrete product uses the same table/plugin sidecars without a conversion
+owner. Fixed layouts remain `Compiled=712`, `Instance=792`, `compiledCodeCache=64`,
+`compiledMemoryDirectory=136`, and `gc.Collector=640`. Product sizes are 380 Wasm / 4,445 linked code /
+4,916 codec bytes for abstract and 512 / 8,684 / 9,263 for concrete. Five 500 ms samples of the stable
+parked i31 cast measure 177.9–183.8 ns/op, all 0 B/op and 0 allocs/op. Codec v27 persists the type/table/code
+metadata and trap-bearing native code but no exact product enum, canonical map, conversion identity,
+checked root, compact table value, or collector state. Private reload therefore loses admission; snapshots,
+guard mode, public GC admission, and arm64 execution remain fail-closed.
+
 Before broader live `gc.Ref` payloads or funcref lifetimes can be admitted, codegen/runtime
 must still prove all of the following as one coherent product:
 
@@ -1174,9 +1215,9 @@ Tests exercise tiny nurseries, collect-every-alloc, exact scanning, cycles, root
 ## Current limitations
 
 - WasmGC opcode/product execution is not complete. Exact staged `gc/struct`, `gc/array`, `gc/i31`,
-  `gc/ref_test`, `gc/extern`, and `gc/ref_eq` families are wired to amd64, including bounded array
-  constructors/access/barriers, collector-free i31 operations, dynamic tests, extern conversion,
-  and compact null/i31/object equality. General `ref.cast`/cast branches, array fill/copy/init,
+  `gc/ref_test`, `gc/extern`, `gc/ref_eq`, and `gc/ref_cast` families are wired to amd64, including
+  bounded array constructors/access/barriers, collector-free i31 operations, dynamic tests and casts,
+  extern conversion, and compact null/i31/object equality. Cast branches, array fill/copy/init,
   reference struct fields, broader GC constant expressions, and type-subtyping remain.
 - The parked-Go runtime-call ABI is proven for exact empty-frame-root numeric/packed
   allocations, non-collecting numeric access/mutation, ordered immutable collector-rooted
