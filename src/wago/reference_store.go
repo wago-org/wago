@@ -266,8 +266,8 @@ func (s *referenceStore) issueGCRef(source *Instance, ref gc.Ref, required Value
 	if source == nil || ref.IsNull() || !ref.IsObj() {
 		return 0, fmt.Errorf("invalid non-null GC result")
 	}
-	if source.c == nil || source.c.stagedGCStructProduct() != stagedGCStructBasic {
-		return 0, fmt.Errorf("public GC result ownership is outside the exact basic struct product")
+	if source.c == nil || (source.c.stagedGCStructProduct() != stagedGCStructBasic && source.c.stagedGCArrayProduct() != stagedGCArrayProductNumericFixed) {
+		return 0, fmt.Errorf("public GC result ownership is outside an exact admitted struct/array product")
 	}
 	state := source.publicGCState()
 	state.mu.Lock()
@@ -282,8 +282,15 @@ func (s *referenceStore) issueGCRef(source *Instance, ref gc.Ref, required Value
 	if err != nil {
 		return 0, fmt.Errorf("public GC result object: %w", err)
 	}
-	if int(typeID) >= len(source.c.Types) || source.c.Types[typeID].Kind != CompositeTypeStruct {
+	if int(typeID) >= len(source.c.Types) {
+		return 0, fmt.Errorf("public GC result type %d is unavailable", typeID)
+	}
+	kind := source.c.Types[typeID].Kind
+	if source.c.stagedGCStructProduct() == stagedGCStructBasic && kind != CompositeTypeStruct {
 		return 0, fmt.Errorf("public GC result type %d is not a struct", typeID)
+	}
+	if source.c.stagedGCArrayProduct() == stagedGCArrayProductNumericFixed && kind != CompositeTypeArray {
+		return 0, fmt.Errorf("public GC result type %d is not an array", typeID)
 	}
 	exact := ValueTypeDescriptor{Kind: ValueTypeReference, Ref: ReferenceTypeDescriptor{
 		Exact: true, Heap: HeapTypeDescriptor{Defined: true, TypeIndex: uint32(typeID)},

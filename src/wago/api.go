@@ -1076,6 +1076,13 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		}
 		c.memoryDir.gcStructGlobals = gcGlobals
 	}
+	if gcArrayProduct != 0 {
+		gcGlobals, err := stagedGCArrayGlobalInitializers(m)
+		if err != nil {
+			return nil, fmt.Errorf("compile: staged GC array globals: %w", err)
+		}
+		c.memoryDir.gcArrayGlobals = gcGlobals
+	}
 	if importedFuncs > 0 {
 		c.importFuncSigs = make([]FuncSig, importedFuncs)
 		for i := 0; i < importedFuncs; i++ {
@@ -1188,7 +1195,9 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	}
 	for i := range m.Globals {
 		globalIndex := len(c.GlobalImports) + i
-		_, gcGlobal := c.gcStructGlobalInit(globalIndex)
+		_, gcStructGlobal := c.gcStructGlobalInit(globalIndex)
+		_, gcArrayGlobal := c.gcArrayGlobalInit(globalIndex)
+		gcGlobal := gcStructGlobal || gcArrayGlobal
 		v := constExprResult{GlobalIndex: -1, FuncIndex: -1}
 		if !gcGlobal {
 			var err error

@@ -15,6 +15,7 @@ const (
 	gcArrayGetU         uint32 = 19
 	gcArraySet          uint32 = 20
 	gcArrayLen          uint32 = 21
+	gcArrayAllocFixed   uint32 = 22
 )
 
 func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
@@ -22,6 +23,38 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		return fmt.Errorf("amd64: unsupported staged array opcode %d without GC array helpers", sub)
 	}
 	switch sub {
+	case 8: // array.new_fixed typeidx length
+		typeIndex, err := r.U32()
+		if err != nil {
+			return err
+		}
+		count, err := r.U32()
+		if err != nil {
+			return err
+		}
+		field, ok := stagedArrayType(f.m, typeIndex)
+		if !ok {
+			return fmt.Errorf("amd64: array.new_fixed type %d is unavailable", typeIndex)
+		}
+		if count > 4 {
+			return fmt.Errorf("amd64: array.new_fixed count %d exceeds staged bound 4", count)
+		}
+		valueType := field.Storage.Val
+		if field.Storage.Packed {
+			valueType = wasm.I32
+		}
+		if valueType.Kind == wasm.ValRef {
+			return fmt.Errorf("amd64: reference array.new_fixed remains outside the staged helper slice")
+		}
+		params := make([]wasm.ValType, 0, int(count)+2)
+		for i := uint32(0); i < count; i++ {
+			params = append(params, valueType)
+		}
+		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
+		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(count)})
+		params = append(params, wasm.I32, wasm.I32)
+		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
+		return f.callGCStructHelper(gcArrayAllocFixed, params, []wasm.ValType{result})
 	case 7: // array.new_default typeidx
 		typeIndex, err := r.U32()
 		if err != nil {
