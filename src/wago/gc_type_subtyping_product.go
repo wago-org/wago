@@ -18,6 +18,7 @@ const (
 	stagedGCTypeSubtypingRecursiveFunctions
 	stagedGCTypeSubtypingRefFuncGlobals
 	stagedGCTypeSubtypingRefTestSingle
+	stagedGCTypeSubtypingRefTestMulti
 )
 
 func (p stagedGCTypeSubtypingProduct) usesRefTest() bool {
