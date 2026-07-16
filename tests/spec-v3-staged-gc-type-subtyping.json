@@ -747,7 +747,7 @@
       "size": 100,
       "sha256": "cee53b6e420932faec8bf166a6ae79cfab88f7ca890cd39851d3f70b932471aa",
       "class": "link-provider",
-      "gate": "collector-free recursive function subtype link provider",
+      "admitted": true,
       "validator_gap": false,
       "type_graph": "rec[sub(final=false,supers=[],func()-\u003e(ref func));sub(final=false,supers=[{0 true}],func()-\u003e(ref type 0))]|rec[sub(final=false,supers=[],func()-\u003e(ref func));sub(final=false,supers=[{0 true}],func()-\u003e(ref type 0))]",
       "state_graph": "imports=0 funcs=2 globals=[] tables=0 memories=0 tags=0 elements=0 data=0 exports=[f11=0:0,f12=0:1]",
@@ -765,7 +765,7 @@
       "size": 92,
       "sha256": "30ff7e3befab7405c63554526ecf2e61fc9ecf2b65e175414db07aa774e6a540",
       "class": "link-consumer",
-      "gate": "collector-free recursive function subtype link consumer",
+      "admitted": true,
       "validator_gap": false,
       "type_graph": "rec[sub(final=false,supers=[],func()-\u003e(ref func));sub(final=false,supers=[{0 true}],func()-\u003e(ref type 0))]|rec[sub(final=false,supers=[],func()-\u003e(ref func));sub(final=false,supers=[{0 true}],func()-\u003e(ref type 0))]",
       "state_graph": "imports=4 funcs=0 globals=[] tables=0 memories=0 tags=0 elements=0 data=0 exports=[]"
@@ -1161,12 +1161,12 @@
     {
       "family": "gc",
       "reason": "collector-free recursive function subtype link consumer",
-      "count": 2
+      "count": 1
     },
     {
       "family": "gc",
       "reason": "collector-free recursive function subtype link provider",
-      "count": 4
+      "count": 3
     },
     {
       "family": "gc",
@@ -1176,13 +1176,13 @@
   ],
   "counts": {
     "commands": 170,
-    "modules_passed": 38,
+    "modules_passed": 40,
     "assertions_passed": 23,
     "expected_invalid": 24,
     "expected_unlinkable": 6,
     "expected_uninstantiable": 0,
-    "expected_feature_rejects": 7,
-    "blocked_commands": 12,
+    "expected_feature_rejects": 5,
+    "blocked_commands": 11,
     "unexpected_compile_rejects": 0,
     "unexpected_link_rejects": 0,
     "failures": 0
