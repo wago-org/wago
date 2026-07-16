@@ -19,6 +19,7 @@ const (
 	stagedGCTypeSubtypingRefFuncGlobals
 	stagedGCTypeSubtypingRefTestSingle
 	stagedGCTypeSubtypingRefTestMulti
+	stagedGCTypeSubtypingRefTestDirectionFalse
 )
 
 func (p stagedGCTypeSubtypingProduct) usesRefTest() bool {
