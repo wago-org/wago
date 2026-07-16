@@ -1,0 +1,209 @@
+{
+  "schema": 2,
+  "suite_revision": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+  "file": "gc/ref_eq",
+  "leaders": [
+    {
+      "filename": "ref_eq.0.wasm",
+      "command_line": 16,
+      "source_line": 1,
+      "size": 197,
+      "sha256": "46b2bd3e4597ba5a871472aa14f5777df18b722b7f3283ba1fc946f4791a3adb",
+      "gate": "eqref table identity with rooted struct/array allocation",
+      "type_graph": "rec[sub(final=false,supers=[],struct{})]|rec[sub(final=false,supers=[],struct{i32})]|rec[array{i8}]|rec[sub(final=false,supers=[{0 false}],struct{})]|rec[sub(final=false,supers=[{0 false}],struct{})]|rec[sub(final=false,supers=[{1 false}],struct{i32})]|rec[sub(final=false,supers=[{1 false}],struct{i32})]|rec[func()-\u003e()]|rec[func(i32,i32)-\u003e(i32)]",
+      "state_graph": "imports=0 funcs=2 globals=[] tables=1 memories=0 tags=0 elements=0 data=0 exports=[init=0:0,eq=0:1]",
+      "opcodes": [
+        {
+          "opcode": "ArrayNewDefault",
+          "count": 2
+        },
+        {
+          "opcode": "I32Const",
+          "count": 14
+        },
+        {
+          "opcode": "LocalGet",
+          "count": 2
+        },
+        {
+          "opcode": "RefEq",
+          "count": 1
+        },
+        {
+          "opcode": "RefI31",
+          "count": 3
+        },
+        {
+          "opcode": "RefNull",
+          "count": 2
+        },
+        {
+          "opcode": "StructNewDefault",
+          "count": 2
+        },
+        {
+          "opcode": "TableGet",
+          "count": 2
+        },
+        {
+          "opcode": "TableSet",
+          "count": 9
+        }
+      ],
+      "actions": [
+        "action:init",
+        "return:eq",
+        "return:eq",
+        "return:eq",
+        "return:eq",
+        "return:eq",
+        "return:eq",
+        "return:eq",
+        "return:eq",
+        "return:eq",
+        "return:eq",
+        "return:eq",
+        "return:eq",
+        "return:eq",
+        "return:eq",
+        "return:eq",
+        "return:eq",
+        "return:eq",
+        "return:eq",
+        "return:eq",
+        "return:eq",
+        "return:eq",
+        "return:eq",
+        "return:eq",
+        "return:eq",
+        "return:eq",
+        "return:eq",
+        "return:eq",
+        "return:eq",
+        "return:eq",
+        "return:eq",
+        "return:eq",
+        "return:eq",
+        "return:eq",
+        "return:eq",
+        "return:eq",
+        "return:eq",
+        "return:eq",
+        "return:eq",
+        "return:eq",
+        "return:eq",
+        "return:eq",
+        "return:eq",
+        "return:eq",
+        "return:eq",
+        "return:eq",
+        "return:eq",
+        "return:eq",
+        "return:eq",
+        "return:eq",
+        "return:eq",
+        "return:eq",
+        "return:eq",
+        "return:eq",
+        "return:eq",
+        "return:eq",
+        "return:eq",
+        "return:eq",
+        "return:eq",
+        "return:eq",
+        "return:eq",
+        "return:eq",
+        "return:eq",
+        "return:eq",
+        "return:eq",
+        "return:eq",
+        "return:eq",
+        "return:eq",
+        "return:eq",
+        "return:eq",
+        "return:eq",
+        "return:eq",
+        "return:eq",
+        "return:eq",
+        "return:eq",
+        "return:eq",
+        "return:eq",
+        "return:eq",
+        "return:eq",
+        "return:eq",
+        "return:eq",
+        "return:eq"
+      ]
+    }
+  ],
+  "invalids": [
+    {
+      "filename": "ref_eq.1.wasm",
+      "command_line": 99,
+      "source_line": 108,
+      "size": 60,
+      "sha256": "d138d4e6e67efbe1e34854caa92237179b715422ca0d44dee9671fdd2228a2f2",
+      "error": "type mismatch"
+    },
+    {
+      "filename": "ref_eq.2.wasm",
+      "command_line": 108,
+      "source_line": 117,
+      "size": 59,
+      "sha256": "7dc8d28783ffb9c99c53fe8410b065af6516a879704607b144fbc6bb658e05bf",
+      "error": "type mismatch"
+    },
+    {
+      "filename": "ref_eq.3.wasm",
+      "command_line": 117,
+      "source_line": 126,
+      "size": 60,
+      "sha256": "181c61bfdfba706e366b6611af8ec8bbc5a8a641f2fb705459eec8adb72e6afb",
+      "error": "type mismatch"
+    },
+    {
+      "filename": "ref_eq.4.wasm",
+      "command_line": 126,
+      "source_line": 135,
+      "size": 59,
+      "sha256": "bed8ec7cbae1c0636774739fedc20475d65b1894c37983b59db974f2a1b36f33",
+      "error": "type mismatch"
+    },
+    {
+      "filename": "ref_eq.5.wasm",
+      "command_line": 135,
+      "source_line": 144,
+      "size": 60,
+      "sha256": "cb1ccf86d2eb6e21ad47bdd564e375ea1ac2fffaf42515f19e22841ab3cd85b9",
+      "error": "type mismatch"
+    },
+    {
+      "filename": "ref_eq.6.wasm",
+      "command_line": 144,
+      "source_line": 153,
+      "size": 59,
+      "sha256": "62d029f5bdb1b77e1ccebb1c24322e22c28e07879219ed10934bad24de2d5ac3",
+      "error": "type mismatch"
+    }
+  ],
+  "gates": [
+    {
+      "family": "gc",
+      "reason": "eqref table identity with rooted struct/array allocation",
+      "count": 1
+    }
+  ],
+  "counts": {
+    "commands": 90,
+    "modules_passed": 0,
+    "assertions_passed": 0,
+    "expected_invalid": 6,
+    "expected_unlinkable": 0,
+    "expected_uninstantiable": 0,
+    "expected_feature_rejects": 1,
+    "blocked_commands": 82,
+    "unexpected_compile_rejects": 0,
+    "unexpected_link_rejects": 0,
+    "failures": 0
+  }
+}
