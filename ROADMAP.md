@@ -307,11 +307,13 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   Combined init accounting is gap-free at 72 commands / 3 modules / 61 assertions / 5 invalid / 0 gates /
   0 blocked. Iteration 55 adds complete strict `gc/type-subtyping.wast` accounting: 170 commands, 45 valid
   metadata/function-identity leaders, 24 invalid modules, 8 unlinkable obligations, 45 exact product gates,
-  and 48 blocked dependents. The inventory exposes two valid recursive-global validator rejects and fourteen
-  invalid subtype/finality/field-variance modules that still validate; these remain explicit red validator gaps.
-  No leader allocates a struct/array object, but none is admitted merely from that classification. General frame
-  roots, broader object-valued mutable/reference globals, validator closure, public family admission, and broader
-  platforms remain.
+  and 48 blocked dependents. Iteration 56 closes all sixteen validator gaps on AST and byte-backed paths.
+  Recursive-group equivalence now distinguishes bound from external references; super chains accept equivalent
+  recursive projections; function parameters/results enforce contra/co-variance; struct prefixes and array fields
+  enforce exact storage, immutable covariance, mutable invariance, and unchanged mutability. No validator allowlist
+  remains. All 45 leaders and 48 dependents stay gated: no leader allocates a struct/array object, but none is
+  admitted merely from that classification. General frame roots, broader object-valued mutable/reference globals,
+  executable type-subtyping products, public family admission, and broader platforms remain.
 - [ ] Reach zero unexplained failures/skips in the official Release 3 core suite.
 
 **Engine & performance** (no-ir-plan P1–P7, measured against P1's stats)

@@ -448,9 +448,14 @@ zero-length post-drop initialization succeeds and non-zero initialization traps 
 Iteration 55 adds accounting only for `gc/type-subtyping.wast`. The 45 valid leaders contain no
 struct/array constructor, access, storage, result, import, export, or snapshot state; their runtime values are
 function identities where values exist at all. No helper ID, basedata slot, descriptor representation, root,
-barrier, collector sidecar, native frame, or codec field is added. Two valid and fourteen invalid modules remain
-explicit validator gaps, and every leader remains product-gated, so this inventory must not be used as an ABI
-admission argument until validation and exact collector-free ownership are closed separately.
+barrier, collector sidecar, native frame, or codec field is added.
+
+Iteration 56 closes the accounting's two valid and fourteen invalid validator gaps by enforcing recursive
+projection identity plus function/struct/array component subtyping on both AST and byte-backed paths. This is
+still validation-only: every leader remains product-gated, no native instruction or runtime lookup is added, and
+no fixed ABI, helper, sidecar, codec, snapshot, root, barrier, collector, guard, public, or arm64 state changes.
+The inventory therefore remains insufficient as an ABI admission argument until exact collector-free product
+ownership is closed separately.
 
 ## Global coherence invariant
 
