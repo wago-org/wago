@@ -12,7 +12,7 @@
           "size": 385,
           "sha256": "4429db7587ba73adfc04c44a2369bab38343d7f582d1745372940ba96c04a263",
           "class": "abstract",
-          "gate": "br_on_cast abstract table/control product",
+          "gate": "",
           "type_graph": "rec[func()-\u003e(i32)]|rec[struct{i16}]|rec[array{i8}]|rec[func(externref)-\u003e()]|rec[func(i32)-\u003e(i32)]|rec[func(ref null struct)-\u003e(ref type 2)]|rec[func(ref null struct)-\u003e(ref type 1)]",
           "state_graph": "imports=0 funcs=7 globals=[] tables=1 memories=0 tags=0 elements=1 data=0 exports=[init=0:1,br_on_null=0:2,br_on_i31=0:3,br_on_struct=0:4,br_on_array=0:5,null-diff=0:6]",
           "control_graph": "br_on_null depth0; br_on_cast depth0 any?-\u003ei31; br_on_cast depth0 any?-\u003estruct then nested depth1 struct?-\u003e$st and depth0 any?-\u003e$at; br_on_cast depth0 any?-\u003earray; null-diff nested depth1 any?-\u003estruct?",
@@ -122,7 +122,7 @@
           "size": 772,
           "sha256": "4eabadd98e55bc0c83600f072a16bab75e3d74170d2f24bb6bdae4acf0b5491b",
           "class": "concrete",
-          "gate": "br_on_cast declared-super/canonical control product",
+          "gate": "",
           "type_graph": "rec[sub(final=false,supers=[],struct{})]|rec[sub(final=false,supers=[{0 false}],struct{i32})]|rec[sub(final=false,supers=[{0 false}],struct{i32})]|rec[sub(final=false,supers=[{1 false}],struct{i32,i32})]|rec[sub(final=false,supers=[{2 false}],struct{i32,i32})]|rec[sub(final=false,supers=[{0 false}],struct{i32,i32})]|rec[sub(final=false,supers=[{0 false}],struct{})]|rec[sub(final=false,supers=[{6 false}],struct{i32,i32})]|rec[func()-\u003e()]",
           "state_graph": "imports=0 funcs=3 globals=[] tables=1 memories=0 tags=0 elements=0 data=0 exports=[test-sub=0:1,test-canon=0:2]",
           "control_graph": "test-sub: 30 br_on_cast edges over one result label, including nested result blocks; test-canon: 14 canonical br_on_cast result edges; selected edges carry the original structref",
@@ -184,7 +184,7 @@
           "size": 111,
           "sha256": "cc5bdeb4b57409c6e194ae094f2a50ece4dce6afa66cd25ec07b4624ccb96632",
           "class": "nullability",
-          "gate": "br_on_cast nullability/control-shape product",
+          "gate": "",
           "type_graph": "rec[struct{}]|rec[func(ref any)-\u003e(ref type 0)]|rec[func(ref null any)-\u003e(ref type 0)]|rec[func(ref null any)-\u003e(ref null type 0)]",
           "state_graph": "imports=0 funcs=3 globals=[] tables=0 memories=0 tags=0 elements=0 data=0 exports=[]",
           "control_graph": "three depth1 branches: any-\u003et, any?-\u003et, any?-\u003et?; outer function result proves source/target nullability refinement",
@@ -258,32 +258,16 @@
           "error": "type mismatch"
         }
       ],
-      "gates": [
-        {
-          "family": "gc",
-          "reason": "br_on_cast abstract table/control product",
-          "count": 1
-        },
-        {
-          "family": "gc",
-          "reason": "br_on_cast declared-super/canonical control product",
-          "count": 1
-        },
-        {
-          "family": "gc",
-          "reason": "br_on_cast nullability/control-shape product",
-          "count": 1
-        }
-      ],
+      "gates": null,
       "counts": {
         "commands": 40,
-        "modules_passed": 0,
-        "assertions_passed": 0,
+        "modules_passed": 3,
+        "assertions_passed": 25,
         "expected_invalid": 6,
         "expected_unlinkable": 0,
         "expected_uninstantiable": 0,
-        "expected_feature_rejects": 3,
-        "blocked_commands": 28,
+        "expected_feature_rejects": 0,
+        "blocked_commands": 0,
         "unexpected_compile_rejects": 0,
         "unexpected_link_rejects": 0,
         "failures": 0
@@ -299,7 +283,7 @@
           "size": 403,
           "sha256": "a1d339dfb4ed4aa308f1a9eeb8293f0475d427b0d7aea7e8b99159c054fc6815",
           "class": "abstract",
-          "gate": "br_on_cast_fail abstract table/control product",
+          "gate": "",
           "type_graph": "rec[func()-\u003e(i32)]|rec[struct{i16}]|rec[array{i8}]|rec[func(externref)-\u003e()]|rec[func(i32)-\u003e(i32)]|rec[func(ref null struct)-\u003e(ref type 2)]|rec[func(ref null struct)-\u003e(ref type 1)]",
           "state_graph": "imports=0 funcs=7 globals=[] tables=1 memories=0 tags=0 elements=1 data=0 exports=[init=0:1,br_on_non_null=0:2,br_on_non_i31=0:3,br_on_non_struct=0:4,br_on_non_array=0:5,null-diff=0:6]",
           "control_graph": "br_on_non_null depth0; br_on_cast_fail depth0 any?-\u003ei31/struct/array; struct success falls through nested depth1/depth0 br_on_cast refinement; null-diff depth1 any?-\u003estruct?",
@@ -413,7 +397,7 @@
           "size": 876,
           "sha256": "88894127fabe14a42dc6d5af44027318078b702bcc67fc34e752d145a8164312",
           "class": "concrete",
-          "gate": "br_on_cast_fail declared-super/canonical control product",
+          "gate": "",
           "type_graph": "rec[sub(final=false,supers=[],struct{})]|rec[sub(final=false,supers=[{0 false}],struct{i32})]|rec[sub(final=false,supers=[{0 false}],struct{i32})]|rec[sub(final=false,supers=[{1 false}],struct{i32,i32})]|rec[sub(final=false,supers=[{2 false}],struct{i32,i32})]|rec[sub(final=false,supers=[{0 false}],struct{i32,i32})]|rec[sub(final=false,supers=[{0 false}],struct{})]|rec[sub(final=false,supers=[{6 false}],struct{i32,i32})]|rec[func()-\u003e()]",
           "state_graph": "imports=0 funcs=3 globals=[] tables=1 memories=0 tags=0 elements=0 data=0 exports=[test-sub=0:1,test-canon=0:2]",
           "control_graph": "test-sub: 46 br_on_cast_fail edges over one result label and nested result blocks; test-canon: 14 canonical fallthrough edges; failure branches carry the original source structref",
@@ -475,7 +459,7 @@
           "size": 103,
           "sha256": "6725d0fa741974c1214cdabc35fa962779f74abd711cc21b04d67d0c4073578e",
           "class": "nullability",
-          "gate": "br_on_cast_fail nullability/control-shape product",
+          "gate": "",
           "type_graph": "rec[struct{}]|rec[func(ref any)-\u003e(ref any)]|rec[func(ref null any)-\u003e(ref null any)]",
           "state_graph": "imports=0 funcs=3 globals=[] tables=0 memories=0 tags=0 elements=0 data=0 exports=[]",
           "control_graph": "three depth1 branches: any-\u003et, any?-\u003et, any?-\u003et?; branch carries source type and fallthrough carries refined target",
@@ -545,32 +529,16 @@
           "error": "type mismatch"
         }
       ],
-      "gates": [
-        {
-          "family": "gc",
-          "reason": "br_on_cast_fail abstract table/control product",
-          "count": 1
-        },
-        {
-          "family": "gc",
-          "reason": "br_on_cast_fail declared-super/canonical control product",
-          "count": 1
-        },
-        {
-          "family": "gc",
-          "reason": "br_on_cast_fail nullability/control-shape product",
-          "count": 1
-        }
-      ],
+      "gates": null,
       "counts": {
         "commands": 40,
-        "modules_passed": 0,
-        "assertions_passed": 0,
+        "modules_passed": 3,
+        "assertions_passed": 25,
         "expected_invalid": 6,
         "expected_unlinkable": 0,
         "expected_uninstantiable": 0,
-        "expected_feature_rejects": 3,
-        "blocked_commands": 28,
+        "expected_feature_rejects": 0,
+        "blocked_commands": 0,
         "unexpected_compile_rejects": 0,
         "unexpected_link_rejects": 0,
         "failures": 0
@@ -579,13 +547,13 @@
   ],
   "totals": {
     "commands": 80,
-    "modules_passed": 0,
-    "assertions_passed": 0,
+    "modules_passed": 6,
+    "assertions_passed": 50,
     "expected_invalid": 12,
     "expected_unlinkable": 0,
     "expected_uninstantiable": 0,
-    "expected_feature_rejects": 6,
-    "blocked_commands": 56,
+    "expected_feature_rejects": 0,
+    "blocked_commands": 0,
     "unexpected_compile_rejects": 0,
     "unexpected_link_rejects": 0,
     "failures": 0
