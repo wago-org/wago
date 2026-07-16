@@ -397,6 +397,31 @@ No fixed ABI layout grows: `Compiled=712`, `Instance=792`, `compiledCodeCache=64
 `gc.Collector=640`. Codec v27 serializes neither the bulk product/helper bits nor the mutable cell/slot
 coherence rule or live refs; guard mode, public admission, snapshots, and arm64 execution remain closed.
 
+Iteration 53 adds helper ID 29 for exact numeric `array.init_data`. The parked call copies six words in
+operand order: destination compact ref, destination element index, passive source byte index, element count,
+exact destination type index, and exact data-segment index. The helper first rechecks compact ownership and
+exact type. It then reads the live 12-byte passive-data descriptor, uses its current length as the authoritative
+post-`data.drop` bound, caps that length by the retained compile-time bytes, and calls the collector's width-
+aware initializer. Destination element bounds and the complete source byte interval are checked with u64
+arithmetic before the first write; one-, two-, four-, and eight-byte values are decoded little-endian.
+
+Helper 29 allocates neither Go nor collector memory, cannot collect, retains no native ref after return, and
+never exposes an arena pointer. A local destination ref may therefore remain an ordinary canonical native
+operand across this exact parked call without a frame root. This is safe for the 435-byte transient product
+because its only may-collect operation is the array allocation before the local exists; no later helper can
+move or reclaim it before return. The rule does not cover `array.init_elem`: that path must first prove passive
+reference-segment ownership, root publication, subtype-compatible stores, object/card/post-bulk barriers, and
+Tiny remark behavior.
+
+The 335-byte product initializes three immutable array globals transactionally. Its exact compile-time
+product gate raises the global-root directory cap from two to three mappings; no other product receives that
+admission. The fixed mapping array in lazy `instancePluginState` therefore grows by one 8-byte entry, from
+144 to 152 bytes. `Compiled=712`, `Instance=792`, `compiledCodeCache=64`,
+`compiledMemoryDirectory=136`, `gcArrayGlobalInit=48`, and `gc.Collector=640` do not grow. The helper does
+not use iteration 52's post-return mutable-cell reconciliation: all three globals are immutable and rooted at
+instantiation. Codec v27 serializes neither helper/product admission nor checked roots or passive dropped
+state; codec reload, snapshots, signal bounds, public admission, and arm64 execution remain closed.
+
 ## Global coherence invariant
 
 The global cell is the sole host- and cross-instance-visible storage for a

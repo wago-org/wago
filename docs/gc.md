@@ -785,6 +785,56 @@ admission; snapshots, guard mode, public GC admission, and arm64 execution remai
 post-return rule does not authorize a mutable GC global followed by another allocation, host/cross-instance
 transfer, or arbitrary non-null ingress.
 
+### Iteration 53 exact numeric array data initialization
+
+The official `gc/array_init_data.wast` file is gap-free under staged admission at 48 commands / 2 modules /
+42 assertions / 2 invalid / 0 malformed / 0 gates / 0 blocked / 0 hidden failures. The companion
+`gc/array_init_elem.wast` file is pinned and strictly validated but remains one explicit product gate with
+19 blocked commands and three expected invalid modules. Combined schema-2 accounting is therefore
+72 commands / 2 passed modules / 42 passed assertions / 5 invalid / 1 gate / 19 blocked, with no hidden
+compile, instantiate, invoke, or result failures.
+
+Validation consumes the array reference, destination index, source index, and element count for both init
+instructions. `array.init_data` requires a mutable numeric or vector-storage array and a valid passive data
+segment. `array.init_elem` requires a mutable reference array, a valid passive element segment, and source
+reference subtyping into the destination element type. Malformed operand order, immutable destinations,
+numeric/reference mismatches, bad segment indices, and incompatible element refs fail before lowering. The
+remaining element product is not admitted merely because its validator is complete.
+
+`Collector.ArrayInitData` is a non-allocating and non-collecting primitive. It resolves the exact destination
+descriptor, checks `dstStart + length` in element units, multiplies by the fixed element width with u64
+arithmetic, and checks `srcStart + byteLength` against the retained passive bytes before the first write.
+Only after both ranges pass does it decode one-, two-, four-, or eight-byte little-endian values and store
+them through the existing typed array setter. Packed i8/i16 storage returns canonical i32 values and preserves
+truncation. A short i16/i32/i64 tail therefore traps without changing even the first destination element.
+Zero length is accepted exactly at the destination/source end and rejected when either start is beyond its
+end.
+
+The parked amd64 helper copies six scalar words: destination compact ref, destination index, source byte
+index, element count, exact array type index, and exact data-segment index. It verifies the product/type,
+consults the live passive-data descriptor so `data.drop` is authoritative, bounds retained bytes by that
+descriptor length, and invokes the collector primitive. The helper allocates no Go or collector object,
+performs no collection, retains no ref or payload pointer, and needs no native frame publication. This proof
+is exact to numeric data initialization; it does not authorize `array.init_elem`, whose reference stores
+require segment-root ownership plus object/card/post-bulk and Tiny remark obligations.
+
+The 335-byte leader owns three immutable arrays: two length-12 i8 arrays and one length-6 i16 array. The
+compile-only global-root directory is deliberately capped at three entries only for the hash-pinned
+init-data product; each object is installed into a checked collector slot before the next allocation. Tiny96
+fits the three arrays exactly and repeats 100 i8/i16 initializations before full collection retains all three.
+After `data.drop`, zero-length initialization succeeds and nonzero initialization traps. The 435-byte leader
+allocates one temporary length-one i32 or i64 array per action. Tiny24 repeats 100 alternating width actions:
+the allocation may collect before the new ref exists, while the subsequent init helper cannot collect, so no
+live local ref crosses a safepoint. A trapping short source unwinds normally and the next action recovers.
+
+The products measure 335 Wasm / 1,567 linked code / 2,140 codec bytes and 435 / 4,606 / 5,055 bytes.
+Five 500 ms stable i8 samples measure 175.4–177.5 ns/op, all 0 B/op and 0 allocs/op. `Compiled=712`,
+`Instance=792`, `compiledCodeCache=64`, `compiledMemoryDirectory=136`, `gcArrayGlobalInit=48`, and
+`gc.Collector=640` remain unchanged. Enlarging the fixed global-root mapping from two to three entries grows
+the lazy `instancePluginState` from 144 to 152 bytes; instances without plugin state still pay nothing.
+Codec v27 persists no init product/helper/root admission or live passive descriptor state. Private reload,
+snapshots, signal-backed bounds, public GC admission, and arm64 execution remain fail-closed.
+
 ## Collector lifetime
 
 `Collector.Close` is idempotent and releases heap backing storage plus root/card/mark metadata so an instance shutdown does not retain guest refs. After close, operations that need a live heap return `gc: collector closed`: allocation, collection, verification, object access/mutation, promotion, and checked root-slot creation/access/mutation. `Step` follows the same rule for both profiles; on Throughput it routes through `CollectMinor`, and on Tiny it rejects the closed collector before advancing incremental state.
@@ -1306,10 +1356,11 @@ Tests exercise tiny nurseries, collect-every-alloc, exact scanning, cycles, root
   `gc/ref_test`, `gc/extern`, `gc/ref_eq`, `gc/ref_cast`, `gc/br_on_cast`, and
   `gc/br_on_cast_fail` families are wired to amd64, including bounded array constructors/access/barriers,
   collector-free i31 operations, dynamic tests/casts, identity-preserving cast branches, extern conversion,
-  and compact null/i31/object equality. Array fill/copy are exact staged products; array init operations,
-  reference struct fields, broader GC constant expressions, and type-subtyping remain.
+  and compact null/i31/object equality. Array fill/copy and numeric `array.init_data` are exact staged
+  products; reference `array.init_elem`, reference struct fields, broader GC constant expressions, and
+  broader type-subtyping products remain.
 - The parked-Go runtime-call ABI is proven for exact empty-frame-root numeric/packed
-  allocations, non-collecting numeric access/mutation, ordered immutable collector-rooted
+  allocations, non-collecting numeric access/mutation/data initialization, ordered immutable collector-rooted
   globals, per-instance passive data descriptors, and one result-token root installed only
   after the native call returns. General allocation with live frame refs, passive-element GC
   roots, field/element object+bulk barriers, and traps still need the backend-neutral root-
