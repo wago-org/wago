@@ -6,6 +6,9 @@ import (
 )
 
 func TestPreparedFunctionInvokeAndCacheIndependence(t *testing.T) {
+	if _, err := (*PreparedFunction)(nil).Invoke(); err == nil || !strings.Contains(err.Error(), "closed") {
+		t.Fatalf("nil prepared invoke error = %v", err)
+	}
 	in, err := Instantiate(MustCompile(benchAddOneModule()), InstantiateOptions{})
 	if err != nil {
 		t.Fatalf("instantiate: %v", err)

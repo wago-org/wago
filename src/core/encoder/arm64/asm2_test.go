@@ -191,6 +191,42 @@ func TestPortDispAddressing(t *testing.T) {
 	}
 }
 
+func TestIndexedMemoryAddressingFallbacks(t *testing.T) {
+	for _, dense := range []bool{false, true} {
+		for _, tc := range []struct {
+			name string
+			emit func(*Asm)
+		}{
+			{"load-plain", func(a *Asm) { a.LoadIdx(X0, X1, X2, 0, 1, false, false) }},
+			{"load-fold-or-small", func(a *Asm) { a.LoadIdx(X0, X1, X2, 8, 2, true, true) }},
+			{"load-large-negative", func(a *Asm) { a.LoadIdx(X0, X1, X2, -0x12345, 4, true, true) }},
+			{"load-large-positive", func(a *Asm) { a.LoadIdx(X0, X1, X2, 0x12345, 8, false, true) }},
+			{"store-plain", func(a *Asm) { a.StoreIdx(X1, X2, X0, 0, 1) }},
+			{"store-fold-or-small", func(a *Asm) { a.StoreIdx(X1, X2, X0, 8, 2) }},
+			{"store-large-negative", func(a *Asm) { a.StoreIdx(X1, X2, X0, -0x12345, 4) }},
+			{"store-large-positive", func(a *Asm) { a.StoreIdx(X1, X2, X0, 0x12345, 8) }},
+			{"load-f32-index", func(a *Asm) { a.LdrFIdx(X0, X1, X2, 0, false) }},
+			{"load-f64-fold", func(a *Asm) { a.LdrFIdx(X0, X1, X2, 8, true) }},
+			{"store-f32-index", func(a *Asm) { a.StrFIdx(X1, X2, X0, 0, false) }},
+			{"store-f64-large", func(a *Asm) { a.StrFIdx(X1, X2, X0, -0x12345, true) }},
+			{"load-q-index", func(a *Asm) { a.LdrQIdx(X0, X1, X2, 0) }},
+			{"load-q-fold", func(a *Asm) { a.LdrQIdx(X0, X1, X2, 16) }},
+			{"store-q-index", func(a *Asm) { a.StrQIdx(X1, X2, X0, 0) }},
+			{"store-q-large", func(a *Asm) { a.StrQIdx(X1, X2, X0, -0x12345) }},
+			{"q-spill-large", func(a *Asm) { a.LdrQ(X0, X1, 0x12345); a.StrQ(X1, 0x12345, X0) }},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				var a Asm
+				a.DenseIdxDisp = dense
+				tc.emit(&a)
+				if len(a.B) == 0 || len(a.B)%4 != 0 {
+					t.Fatalf("dense=%v emitted %d bytes", dense, len(a.B))
+				}
+			})
+		}
+	}
+}
+
 func TestPortNeon16bLogical(t *testing.T) {
 	cases := []struct {
 		name string
