@@ -221,8 +221,8 @@ func TestHostCreatedFuncRefGlobalPersistenceAndLayoutsStayFailClosed(t *testing.
 	if got := unsafe.Sizeof(HostFuncRef{}); got != 120 {
 		t.Fatalf("HostFuncRef size = %d, want 120", got)
 	}
-	if got := unsafe.Sizeof(referenceStore{}); got != 88 {
-		t.Fatalf("referenceStore size = %d, want 88", got)
+	if got := unsafe.Sizeof(referenceStore{}); got != 96 {
+		t.Fatalf("referenceStore size = %d, want 96", got)
 	}
 	compiled := MustCompile(importedReferenceGlobalModule(wasm.FuncRef, true))
 	defer compiled.Close()

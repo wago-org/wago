@@ -43,10 +43,11 @@ func (v Value) I64() int64   { return AsI64(v.bits) }
 func (v Value) F32() float32 { return AsF32(v.bits) }
 func (v Value) F64() float64 { return AsF64(v.bits) }
 
-// FuncRef and ExternRef return the value's opaque reference token. As with the
-// numeric accessors, the result is only meaningful when Type matches.
+// FuncRef, ExternRef, and GCRef return the value's opaque reference token. As
+// with the numeric accessors, the result is only meaningful when Type matches.
 func (v Value) FuncRef() FuncRef     { return FuncRef{token: v.bits} }
 func (v Value) ExternRef() ExternRef { return ExternRef{token: v.bits} }
+func (v Value) GCRef() GCRef         { return GCRef{token: v.bits} }
 
 func (v Value) String() string {
 	switch v.typ {
@@ -68,11 +69,16 @@ func (v Value) String() string {
 			return "externref(null)"
 		}
 		return "externref(opaque)"
-	case ValAnyRef, ValExnRef:
-		if v.bits == 0 {
-			return v.typ.String() + "(null)"
+	case ValAnyRef:
+		if v.GCRef().IsNull() {
+			return "anyref(null)"
 		}
-		return v.typ.String() + "(unsupported-non-null)"
+		return "anyref(opaque)"
+	case ValExnRef:
+		if v.bits == 0 {
+			return "exnref(null)"
+		}
+		return "exnref(unsupported-non-null)"
 	case ValI32:
 		return fmt.Sprintf("i32(%d)", v.I32())
 	default:

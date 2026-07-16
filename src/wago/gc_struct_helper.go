@@ -28,6 +28,9 @@ func (in *Instance) dispatchGCStructHelper(helper uint32, args, results []uint64
 	if in == nil || in.gc == nil {
 		panic(gcStructHelperError{err: fmt.Errorf("gc struct helper %d has no live collector", helper)})
 	}
+	state := in.publicGCState()
+	state.mu.Lock()
+	defer state.mu.Unlock()
 	switch helper {
 	case gcStructAllocDefault:
 		if len(args) != 1 || len(results) < 1 {

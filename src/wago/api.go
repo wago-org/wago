@@ -1431,6 +1431,7 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 	if gcStructProduct != 0 {
 		compiled.codeCache.stagedFeatures |= CoreFeatureGC
 		compiled.codeCache.gcStructHelpers = gcStructProduct.requiresHelpers()
+		compiled.codeCache.gcStructProduct = gcStructProduct
 	}
 	return compiled, nil
 }

@@ -12,11 +12,14 @@ type ValType uint8
 // Invoke ABI.
 type V128 [16]byte
 
-// FuncRef and ExternRef are opaque WebAssembly reference tokens. Their zero
-// values are null. The token is not a Go pointer or native code/data address and
-// callers must not interpret it as one.
+// FuncRef, ExternRef, and GCRef are opaque WebAssembly reference tokens. Their
+// zero values are null. Tokens are not Go pointers, native code/data addresses,
+// or compact collector handles and callers must not interpret them as such.
+// Non-null GCRef values are currently issued only for the exact staged local
+// ref.struct result product and must be released through Instance.ReleaseGCRef.
 type FuncRef struct{ token uint64 }
 type ExternRef struct{ token uint64 }
+type GCRef struct{ token uint64 }
 
 const (
 	ValI32 ValType = iota
@@ -30,13 +33,15 @@ const (
 	ValAnyRef // internal/product ABI category for null-only any/none references
 )
 
-// NullFuncRef and NullExternRef return the null reference of each public type.
+// NullFuncRef, NullExternRef, and NullGCRef return null reference values.
 func NullFuncRef() FuncRef     { return FuncRef{} }
 func NullExternRef() ExternRef { return ExternRef{} }
+func NullGCRef() GCRef         { return GCRef{} }
 
 // IsNull reports whether a reference is null.
 func (r FuncRef) IsNull() bool   { return r.token == 0 }
 func (r ExternRef) IsNull() bool { return r.token == 0 }
+func (r GCRef) IsNull() bool     { return r.token == 0 }
 
 func (t ValType) String() string {
 	switch t {

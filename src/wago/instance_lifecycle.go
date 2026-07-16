@@ -128,7 +128,13 @@ func (in *Instance) releaseResources() {
 	detachImportedTags(in)
 	transferredImportAttachments.Delete(in)
 	if in.gc != nil {
-		in.gc.Close()
+		if state := in.existingPublicGCState(); state != nil {
+			state.mu.Lock()
+			in.gc.Close()
+			state.mu.Unlock()
+		} else {
+			in.gc.Close()
+		}
 	}
 	for table := in.table; table != nil; table = table.next {
 		table.releaseRetainedInstances()

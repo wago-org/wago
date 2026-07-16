@@ -337,8 +337,8 @@ func TestReferenceGlobalPersistenceAndFootprintsStayBounded(t *testing.T) {
 	if got := unsafe.Sizeof(Compiled{}); got != 664 {
 		t.Fatalf("Compiled size = %d, want 664", got)
 	}
-	if got := unsafe.Sizeof(referenceStore{}); got != 88 {
-		t.Fatalf("referenceStore size = %d, want 88", got)
+	if got := unsafe.Sizeof(referenceStore{}); got != 96 {
+		t.Fatalf("referenceStore size = %d, want 96", got)
 	}
 	c := &Compiled{
 		GlobalImports: []GlobalImportDef{{Module: "env", Name: "ref", Type: ValExternRef}},

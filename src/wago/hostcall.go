@@ -90,6 +90,7 @@ type instancePluginState struct {
 	close             atomic.Pointer[instanceCloseState]
 	gcConfig          *GCConfig
 	origin            InstantiateOrigin
+	gcPublic          atomic.Pointer[gcPublicState]
 	gcGlobalRoots     [2]gcGlobalRootMapping
 	gcGlobalRootCount uint8
 	tagIdentityBase   uintptr      // arena-owned bounded native u64 directory for staged EH
@@ -220,7 +221,7 @@ func (h *HostFuncRef) Close() error {
 	if store == nil {
 		return nil
 	}
-	var release []*funcrefTokenEntry
+	var release referenceTokenEntries
 	store.mu.Lock()
 	h.mu.Lock()
 	if h.closed {
@@ -257,7 +258,7 @@ func (h *HostFuncRef) Close() error {
 	}
 	h.mu.Unlock()
 	store.mu.Unlock()
-	releaseFuncrefEntries(release)
+	releaseReferenceEntries(release)
 	return nil
 }
 
