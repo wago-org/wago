@@ -121,6 +121,20 @@ instead of being dropped, tails, hosts, snapshots, guard mode, public admission,
 remain rejected. This local lifecycle proof does not publish a collector frame and must not
 be described as general safepoint integration.
 
+Iteration 36 opens two different non-collector products from `ref_null.wast`. They contain
+only `ref.null`, immutable local null globals, `global.get`, and null results across
+`any`/`none`, `func`/`nofunc`, `exn`/`noexn`, `extern`/`noextern`, and one indexed function
+heap. The ABI uses one zero-valued 64-bit slot. `ValueTypeDescriptor` and codec v27 retain
+the exact abstract/bottom/indexed heap identity, while the internal `ValAnyRef`, `ValExnRef`,
+funcref, and externref categories keep result slots distinguishable. Every non-null
+`ValAnyRef`/`ValExnRef` ingress, result, and literal-global bit pattern rejects. Both modules
+have function-only type descriptors, so `gc.HasHeapObjectTypes` is false and instantiation
+leaves `Instance.gc == nil`; no nursery, old space, roots, safepoints, barriers, object
+allocation, or collector teardown is involved. The product is exact, linux/amd64 explicit-
+bounds-only, and rejects imports, mutable or exported storage, additional instructions,
+snapshots, public feature admission, guard mode, and arm64 execution. It must not be called
+WasmGC heap execution merely because `any`/`none` are GC-family heap types.
+
 Before any `gc.Ref` payload or broader funcref lifetime can be admitted, codegen/runtime
 must still prove all of the following as one coherent product:
 
