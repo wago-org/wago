@@ -31,7 +31,18 @@ func TestPluginBuildHelperParsingAndGitignore(t *testing.T) {
 	}
 
 	dir := t.TempDir()
-	t.Chdir(dir)
+	oldDir, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chdir(oldDir); err != nil {
+			t.Errorf("restore working directory: %v", err)
+		}
+	})
 	if err := os.Mkdir(".git", 0o700); err != nil {
 		t.Fatal(err)
 	}
