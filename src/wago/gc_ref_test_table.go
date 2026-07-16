@@ -13,12 +13,13 @@ const maxGCRefTestTableSlots = 20
 // collector roots. The descriptor is arena-owned; the fixed slot array contains
 // only collector indexes and grows neither with invocation count nor overwrites.
 type gcRefTestTableState struct {
-	Descriptor []byte
-	Slots      [maxGCRefTestTableSlots]uint32
-	Count      uint8
+	Descriptor    []byte
+	CanonicalType *gc.TypeCanonicalization
+	Slots         [maxGCRefTestTableSlots]uint32
+	Count         uint8
 }
 
-func newGCRefTestTableState(collector *gc.Collector, descriptor []byte) (*gcRefTestTableState, error) {
+func newGCRefTestTableState(collector *gc.Collector, descriptor []byte, canonicalTypes []gc.TypeID) (*gcRefTestTableState, error) {
 	if collector == nil || len(descriptor) < 8 {
 		return nil, fmt.Errorf("GC ref.test table descriptor is unavailable")
 	}
@@ -28,6 +29,13 @@ func newGCRefTestTableState(collector *gc.Collector, descriptor []byte) (*gcRefT
 		return nil, fmt.Errorf("GC ref.test table shape size=%d capacity=%d bytes=%d exceeds bound %d", size, capacity, len(descriptor), maxGCRefTestTableSlots)
 	}
 	state := &gcRefTestTableState{Descriptor: descriptor, Count: uint8(size)}
+	if canonicalTypes != nil {
+		canonical, err := collector.NewTypeCanonicalization(canonicalTypes)
+		if err != nil {
+			return nil, err
+		}
+		state.CanonicalType = canonical
+	}
 	for i := 0; i < size; i++ {
 		off := 8 + i*8
 		if binary.LittleEndian.Uint64(descriptor[off:off+8]) != 0 {

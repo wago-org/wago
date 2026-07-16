@@ -148,7 +148,7 @@
       "size": 976,
       "sha256": "7a71f9662207799b262ccbc7909f4e9492c04f7173f84f29be69905d925f6426",
       "class": "concrete",
-      "gate": "concrete struct-subtyping dynamic reference-test product",
+      "gate": "",
       "type_graph": "rec[sub(final=false,supers=[],struct{})]|rec[sub(final=false,supers=[{0 false}],struct{i32})]|rec[sub(final=false,supers=[{0 false}],struct{i32})]|rec[sub(final=false,supers=[{1 false}],struct{i32,i32})]|rec[sub(final=false,supers=[{2 false}],struct{i32,i32})]|rec[sub(final=false,supers=[{0 false}],struct{i32,i32})]|rec[sub(final=false,supers=[{0 false}],struct{})]|rec[sub(final=false,supers=[{6 false}],struct{i32,i32})]|rec[func()-\u003e()]",
       "state_graph": "imports=0 funcs=3 globals=[] tables=1 memories=0 tags=0 elements=0 data=0 exports=[test-sub=0:1,test-canon=0:2]",
       "opcodes": [
@@ -212,22 +212,17 @@
       "family": "gc",
       "reason": "abstract null/i31/struct/array/func/extern dynamic reference-test product",
       "count": 1
-    },
-    {
-      "family": "gc",
-      "reason": "concrete struct-subtyping dynamic reference-test product",
-      "count": 1
     }
   ],
   "counts": {
     "commands": 73,
-    "modules_passed": 0,
-    "assertions_passed": 0,
+    "modules_passed": 1,
+    "assertions_passed": 2,
     "expected_invalid": 0,
     "expected_unlinkable": 0,
     "expected_uninstantiable": 0,
-    "expected_feature_rejects": 2,
-    "blocked_commands": 69,
+    "expected_feature_rejects": 1,
+    "blocked_commands": 67,
     "unexpected_compile_rejects": 0,
     "unexpected_link_rejects": 0,
     "failures": 0

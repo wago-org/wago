@@ -38,9 +38,10 @@ func (in *Instance) dispatchGCStructHelper(helper uint32, args, results []uint64
 		if len(args) != 1 || len(results) < 1 {
 			panic(gcStructHelperError{err: fmt.Errorf("gc struct alloc helper arity = %d/%d, want 1/at-least-1", len(args), len(results))})
 		}
-		// The exact admitted product performs at most one allocation while no
-		// prior gc.Ref is live. A non-nil empty root set is nevertheless supplied
-		// so Throughput/Tiny stress collection remains explicit and fail-closed.
+		// Exact local products have no live frame ref across allocation. The
+		// ref.test table product may retain prior objects only in checked collector
+		// table slots, and stores each returned ref before the next allocation.
+		// A non-nil empty frame-root set keeps stress collection explicit.
 		ref, err := in.gc.NewStructDefaultWithRoots(gc.TypeID(uint32(args[0])), gc.EmptyRoots{})
 		if err != nil {
 			panic(gcStructHelperError{err: err})
@@ -117,7 +118,13 @@ func (in *Instance) dispatchGCStructHelper(helper uint32, args, results []uint64
 			}
 			target.Kind, target.Type = gc.RefTestDefined, gc.TypeID(heap)
 		}
-		matched, err := in.gc.RefTest(gc.Ref(uint32(args[0])), target)
+		var matched bool
+		var err error
+		if state := in.existingGCRefTestTableState(); state != nil && state.CanonicalType != nil {
+			matched, err = in.gc.RefTestCanonical(gc.Ref(uint32(args[0])), target, state.CanonicalType)
+		} else {
+			matched, err = in.gc.RefTest(gc.Ref(uint32(args[0])), target)
+		}
 		if err != nil {
 			panic(gcStructHelperError{err: err})
 		}
