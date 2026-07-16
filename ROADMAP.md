@@ -253,8 +253,16 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   all rejected/OOB writes are atomic. Strict `gc/ref_test` accounting is gap-free at 73 commands /
   2 modules / 68 assertions / 0 gates / 0 blocked, with zero hidden failures. The raw conversion
   round trip measures 19.70–21.04 ns/op and the parked foreign-any test 171.7–172.5 ns/op; all report
-  0 B/op / 0 allocs/op. General frame roots, object-valued mutable/reference globals, the remaining
-  GC files, public family admission, and broader platform products remain.
+  0 B/op / 0 allocs/op. Iteration 48 pins and closes the sole 286-byte `gc/extern.wast` leader at
+  19 commands / 1 module / 16 assertions / 0 gates / 0 blocked. GC conversion constant expressions
+  validate only behind the staged gate; the exact ten-entry anyref table roots a struct and zero-length
+  array; and the same fixed eight-entry owner now supplies separate bounded public any/extern identities
+  without exposing compact refs or reusing opaque `GCRef` tokens. A 48-byte Tiny heap survives 100
+  initializations with exactly two live objects, forged public ingress fails before mutation, codec/
+  snapshot/guard/arm64 admission stays closed, and all official host/null/i31/struct/array round trips
+  execute. Raw conversion measures 20.96–21.19 ns/op and the stable public round trip 144.2–147.8 ns/op,
+  all 0 B/op / 0 allocs/op. General frame roots, object-valued mutable/reference globals, `gc/ref_eq`,
+  casts/branches, bulk arrays, type-subtyping, public family admission, and broader platform products remain.
 - [ ] Reach zero unexplained failures/skips in the official Release 3 core suite.
 
 **Engine & performance** (no-ir-plan P1–P7, measured against P1's stats)
