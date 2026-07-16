@@ -543,3 +543,55 @@ initializers, generic `array.new_data`/`array.new_elem`, imported/exported tags,
 `spectest.table64`, shared-memory co-tenant serialization, and reference
 argument/result ownership. Release 1/2 defaults remain unchanged; Core 3 is an
 explicit opt-in outside the versioned spec harness.
+
+## Iteration 75 generated WasmGC smoke hardening
+
+A real MoonBit Starshine CLI artifact now compiles, links, and completes its start
+function under `CoreFeaturesV3` plus explicit bounds. The 3,225,249-byte payload
+has SHA-256 `3a92309ca48f80594c88ea6c3508982d6fc34953c018ce31786382e08a18d046`.
+Admission is derived from validated struct/array opcodes instead of export names
+or exact binary hashes; multi-field/reference constructors, reference stores,
+indexed `ref.null`, object-building constant expressions, declared-subtype
+struct/array access, and opaque 64-bit function/extern fields are supported.
+
+The amd64 synchronous helper path now homes and restores caller-saved pinned
+locals, and both native control frames carry 64 slots. General generated WasmGC
+execution remains sound without native frame maps by forcing a bounded
+collection-disabled Throughput heap; exhaustion fails explicitly instead of
+collecting from an incomplete root set. Constructor operands are rooted
+atomically, and one mutex-protected 63-value instance scratch removes per-helper
+Go allocations.
+
+Measured on the Ryzen 7 8845HS host, Starshine compile improved from about
+1.30 s / 1.85 GB allocated to roughly 1.03 s / 74.8 MB after reusing one
+flattened type converter. Compile+link improved from about 2.02 s / 2.38 GB to
+1.52 s / 241 MB after additionally bounding dense per-function global-hint
+scoring. A fresh isolated cold link/JIT is 0.602 s / 166.2 MB; linked
+instantiation/start is 31.7 ms / 3.13 MB. The synthetic subtype
+`struct.new`/`struct.set`/`struct.get` path measures 383-416 ns/op, 0 allocs/op.
+
+Next work is exact native safepoint publication and root updates across arbitrary
+calls/traps, followed by mutable GC global/table synchronization, public and
+cross-instance object ownership, persistence/snapshot semantics, guard-page GC,
+and non-amd64 native lowering. The Starshine smoke does not convert those items
+into a general-purpose WasmGC claim.
+
+## Iteration 76 deterministic MoonBit JSON smoke
+
+A checked-in source fixture under `testdata/moonbit-json-smoke` now supplies a
+small, reproducible semantic gate alongside the large Starshine startup test.
+MoonBit 0.1.20260703 builds it into a 44,023-byte import-free WasmGC module with
+SHA-256 `b4e33e0685aa5572516ab037be12a3ad1aee93ab9891ba4071c42c23a3e9ca2d`.
+The exported `run(i32) -> i64` parses, stringifies, reparses, compares, and
+checksums a nested JSON corpus; pinned results cover 1, 2, and 8 iterations.
+`make test-moonbit-json` checks the exact compiler version, rebuilds the module,
+verifies its canonical bytes, and executes it through Wago.
+
+The fixture found a shape-independent compiler bug before execution: dead-code
+lowering did not consume `0xfb` GC instruction immediates, so an unreachable
+`struct.new` desynchronized the remaining function body. Both amd64 and arm64
+now use the canonical bytecode classifier for GC-prefix immediates, with direct
+regression tests. Starshine remains the scale/startup benchmark; the JSON module
+is the deterministic execution gate. Its pinned production compile baseline is
+10.641 ms, with 0.276 ms decode, 1.380 ms validation, 0.170 ms instantiate, and
+4.733 ms for fresh instantiate plus one checked JSON run.

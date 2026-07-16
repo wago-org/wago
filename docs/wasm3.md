@@ -4954,3 +4954,70 @@ The source-lines-652–659 provider and four-import consumer are separately pinn
 ### Iteration 73: complete official type-subtyping
 
 The final M9 provider/consumer pins are 136 bytes (`ba251b0325c3f0c4aab80aeacf9faf0dd960e48b48b6b7a41d2f07e03f37d379`) and 164 bytes (`b0e14a301bd440e1550be35f09d9b0ecb0476b09e467b965b02b6935dcac0fd2`). Eight exact/shifted recursive import views use 96/288-byte descriptor arenas and one retained producer. M10 and M11 provider/consumer pins execute the two remaining expected unlinkables without retention. The 183-byte non-flat export (`0c14108cfe323e2dd39fd8bfe333bd925e2f19324e90cd1c3ee1615fdad2bb60`) executes six f32-zero assertions collector-free. Exact wasm/code/codec sizes are M9 136/253/725 and 164/0/589, M10 74/77/304 and 43/0/148, M11 87/77/384 and 56/0/228, and non-flat 183/753/1173. Official accounting is complete at 170 commands / 45 modules / 29 assertions / 24 invalid / 8 expected unlinkables / zero gates, blocked commands, validator gaps, unexpected compile/link failures, or hidden failures. Commits `560f9037` and `c6020940` contain admission and replay.
+
+### Iteration 75: generated MoonBit WasmGC smoke
+
+The zero-gap official suite remains the mandatory Core 3 claim; this iteration
+adds a separate real-world compatibility smoke rather than redefining that
+claim. A MoonBit Starshine CLI artifact built for `wasm-gc --release` is
+3,225,249 bytes with SHA-256
+`3a92309ca48f80594c88ea6c3508982d6fc34953c018ce31786382e08a18d046`.
+Under explicit `CoreFeaturesV3` and explicit bounds it now compiles, links, and
+completes its start function with more than 400 live startup objects.
+
+The behavior fixes are semantic rather than payload-hash admission: generic
+validated struct/array opcode scanning enables helpers; multi-field and
+reference constructors root operands atomically; function/extern object fields
+use opaque non-scanned 64-bit storage; GC object-building constant expressions
+run after collector/global setup; runtime struct/array access accepts declared
+subtypes; and synchronous helper calls preserve caller-saved pinned locals across
+control-flow merges. The helper control frame is bounded at 64 slots and a lazy
+63-value per-instance scratch removes constructor-side Go allocations.
+
+General native frame roots are still absent. Generic generated modules therefore
+force bounded collection-disabled Throughput allocation, fail explicitly on
+heap exhaustion, and remain closed for codec reconstruction, snapshots,
+signal-backed GC execution, non-amd64 lowering, and unrestricted host or
+cross-instance object ownership. Exact official products keep their existing
+collecting/stress behavior.
+
+On the Ryzen 7 8845HS measurement host, one-shot Starshine compile changed from
+about 1.30 s and 1.85 GB allocated to 1.027 s and 74.8 MB by reusing one
+flattened type converter. Compile+link changed from about 2.02 s and 2.38 GB to
+1.522 s and 241 MB after dense per-function global-hint scoring was bounded. An
+isolated cold link/JIT from a fresh unlinked product is 0.602 s and 166.2 MB;
+linked instantiation/start is 31.7 ms and 3.13 MB. A synthetic subtype
+construct/set/get benchmark is 383-416 ns/op with 0 allocs/op.
+
+### Iteration 76: deterministic MoonBit JSON execution
+
+The Starshine payload remains useful for compile memory, link/code size, and
+startup breadth, but successful startup alone is not a deterministic semantic
+oracle. `testdata/moonbit-json-smoke` therefore adds a source-controlled
+MoonBit workload that parses, stringifies, reparses, compares, and checksums a
+nested JSON corpus. MoonBit 0.1.20260703 (`6fbf8c3`, July 3, 2026) produces a
+44,023-byte import-free module with SHA-256
+`b4e33e0685aa5572516ab037be12a3ad1aee93ab9891ba4071c42c23a3e9ca2d`.
+The exact Node 26.3.0 reference results are `run(1) = 1808148174`,
+`run(2) = 1512327905`, and `run(8) = 828453439`.
+
+`make test-moonbit-json` rejects a different compiler version, rebuilds the
+release `wasm-gc` artifact, verifies its size and hash, compiles and instantiates
+it with explicit Core 3 features and explicit bounds, then checks all three
+results through Wago. The artifact itself remains ignored under `_build/`; only
+source and reproducibility metadata are committed.
+
+The first run exposed an allocation-independent backend decode defect. Once a
+branch made code unreachable, the railshot dead-code walker did not consume
+`0xfb` GC-prefix immediates. An unreachable `struct.new` therefore left its
+subopcode and type index to be interpreted as instructions and consumed the
+function end. The amd64 and arm64 walkers now route GC-prefix immediates through
+the canonical allocation-free bytecode classifier, and direct tests pin the
+cursor at the following `end` opcode.
+
+A July 16, 2026 single-CPU baseline on the Ryzen 7 8845HS with Go 1.24.4 measured
+0.276 ms decode, 1.380 ms validation, 10.641 ms production compile including
+native codegen, 0.170 ms instantiate, and 4.733 ms for a fresh instance plus
+`run(1)`. The production compile allocates 3.57 MB in 17,507 allocations. These
+numbers are pinned as a starting point for reducing generated-WasmGC compile
+allocation rather than as a claim that the path is already optimized.

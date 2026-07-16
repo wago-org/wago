@@ -15,8 +15,18 @@ full Release 3 surface with `WithCoreFeatures(CoreFeaturesV3)`. On the primary
 linux/amd64 explicit-bounds target, every Core 3 family is admitted and the
 pinned 258-file suite is green: **2,226 modules and 58,038 assertions passed,
 with zero failures, skips, or gap categories**. Release 1 and Release 2 defaults
-remain unchanged. See [docs/wasm3.md](docs/wasm3.md) for the implementation
-ledger.
+remain unchanged. This official-suite result is not an unrestricted WasmGC
+claim. Shape-independent struct/array helper admission now also compiles, links,
+and starts the 3,225,249-byte MoonBit Starshine CLI smoke payload (SHA-256
+`3a92309ca48f80594c88ea6c3508982d6fc34953c018ce31786382e08a18d046`). A
+separate checked-in MoonBit JSON source fixture builds a pinned 44,023-byte,
+import-free WasmGC module and verifies deterministic parse/stringify/reparse
+checksums through `make test-moonbit-json`. General generated code currently
+runs with collection disabled in a bounded Throughput heap until native
+frame-root publication is complete. Exhaustion is an explicit error; codec
+reload, snapshots, guard-page execution, non-amd64 GC lowering, and unrestricted
+host/cross-instance GC ownership remain fail-closed.
+See [docs/wasm3.md](docs/wasm3.md) for the implementation ledger.
 
 ## WebAssembly 1.0 (MVP)
 
@@ -61,7 +71,7 @@ Later proposals and engine/platform capabilities beyond the MVP.
 | memory64 | ✓ | ✅ done for the mandatory Core 3 suite on linux/amd64 explicit bounds, with exact u64 declaration metadata, full-width address checks, scalar/SIMD/bulk/data execution, imports/re-exports, and bounded reservations. |
 | table64 | ✓ | ✅ done for the mandatory Core 3 suite on linux/amd64 explicit bounds, including mixed-width tables, full-u64 declarations, all table operations, indirect calls, imports, codec metadata, and `spectest.table64`. |
 | Exception handling | ✓ | ✅ done for Core 3: arbitrary tag directories, imported/exported tags, `throw`, `throw_ref`, `try_table`, rooted exception references, tail interaction, linking, codec metadata, and official malformed/invalid cases are gap-free. |
-| Garbage collection (WasmGC) | ✓ | ✅ mandatory Core 3 suite complete on linux/amd64 explicit bounds: recursive/subtyped types, struct/array/i31 operations, conversions, casts/tests/branches, data/element array initialization, linking, roots/barriers, collector profiles, metadata, and all official invalid/unlinkable behavior pass. Bounded implementation and platform limits remain documented in `docs/gc.md`. |
+| Garbage collection (WasmGC) | ✓ | ✅ mandatory Core 3 suite complete on linux/amd64 explicit bounds. 🚧 General generated payloads now have semantic struct/array helper admission, subtype-aware access, reference constructors, GC constant expressions, and a passing MoonBit Starshine compile/link/start smoke test. Until exact native frame roots are published, this broader path uses a bounded collection-disabled Throughput heap and still rejects unsupported persistence, snapshot, guard, platform, host, and cross-instance ownership paths. See `docs/gc.md`. |
 | SIMD (`v128`) | ✓ | ✅ done for the documented linux/amd64 baseline. All decoded core SIMD and deterministic relaxed SIMD `0xfd` opcodes through 275 are validated, frontend-admitted, and lowered by railshot; 20 reserved proposal-table holes are invalid-decode tests. The documented baseline is SSSE3/SSE4.1 plus AVX/VEX.128 only; AVX2/FMA/VNNI remain future feature-gated fast paths. Public `v128` representation is `[16]byte` (`wago.V128`); locals, params/results, control flow, globals, cross-instance imports, and host imports/results are supported. The official SIMD proposal corpus passes via WABT `wast2json` (24,325 assertions, 0 skipped modules/assertions). The pinned Release 3 relaxed-SIMD family also passes all 8 modules and 69 assertions, including official `either` result alternatives. See `docs/simd-relaxed-plan.md` and `docs/simd-performance-2026-07.md`. |
 | Branch hinting (`metadata.code.branch_hint`) | ✓ | ✅ done: the current code-metadata wire format is decoded strictly (unique/pre-code section, ordered function/offset vectors, one-byte payload, and only `if`/`br_if` targets). ARM64 railshot uses `if` likelihood to weight local/global pinning and defers non-empty unlikely `br_if` reconciliation into cold target fragments. |
 | Threads & atomics | ✓ | ⬜ planned |

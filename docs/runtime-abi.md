@@ -755,3 +755,40 @@ comparison. These changes preserve no-cgo operation, transactional rollback,
 deduplicated producer retention, and fail-closed live snapshot/platform
 boundaries. The recorded conformance baseline is 2,226 modules and 58,038
 assertions passed with zero failures, skips, or gap counters.
+
+## Iteration 75 generated WasmGC helper ABI
+
+Validated generic struct/array operations reuse dispatch bit 30 and the parked
+synchronous helper protocol. The control frame now reserves 64 parameter slots
+and 64 result slots on amd64 and arm64. `struct.new` carries up to 63 field
+values plus its type index; `array.new_fixed` carries up to 62 element values
+plus count and type. The Go dispatcher reuses one 63-`gc.Value` scratch array in
+the lazy per-instance GC state under the existing collector mutex, so ordinary
+constructor dispatch adds no Go allocation.
+
+A parked transition preserves callee-saved registers, but the local pin pools
+also include caller-saved R9-R11 on amd64 and X8-X11 on arm64. Every synchronous
+helper/host call now homes pinned locals before parking. STACK_REG functions mark
+them memory-resident and recover lazily; the older model reloads all pins after
+resume. The Starshine regression fixture specifically performs one GC helper,
+a null-check/early-return control merge, and a later `array.new_data` using two
+parameters pinned across the first transition. Its exact source and length now
+survive the call.
+
+Function and extern references stored inside GC objects use distinct opaque
+64-bit storage kinds. They are never scanned as compact collector handles.
+GC-category references remain 32-bit `gc.Ref` words and constructor helpers
+validate/null-check/subtype-check each reference before allocation. The
+collector's atomic struct and fixed-array constructors expose those operand
+slots as mutable temporary roots and reread any moved handles before stores.
+Runtime struct/array access accepts the object's declared subtype of the static
+instruction type; same-module type-index reachability avoids cross-module
+structural-equivalence maps on the hot path.
+
+General generated modules still publish no complete native frame chain. Their
+collector is therefore forced into bounded collection-disabled Throughput mode:
+allocation never scans an incomplete frame, object handles remain stable, and
+exhaustion is an explicit error. No raw Go heap or object-payload pointer crosses
+back into native code. This ABI does not authorize live generic GC values across
+host/cross-instance calls, snapshots, codec reload, signal-backed execution, or
+non-amd64 GC lowering.
