@@ -358,4 +358,14 @@ func TestStagedGCTypeSubtypingProductRejectsWidening(t *testing.T) {
 	if product, err := stagedGCTypeSubtypingProductShape(directionFalse); err == nil && product == stagedGCTypeSubtypingRefTestDirectionFalse {
 		t.Fatal("direction-false ref.test product with a widened source-group super relation unexpectedly retained exact admission")
 	}
+
+	runtimeCallCast, err := wasm.DecodeModule(stagedGCTypeSubtypingProductData(t, stagedGCTypeSubtypingProductPins[23]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	max := uint64(4)
+	runtimeCallCast.Tables[0].Type.Limits.Max = &max
+	if product, err := stagedGCTypeSubtypingProductShape(runtimeCallCast); err == nil && product == stagedGCTypeSubtypingRuntimeCallCast {
+		t.Fatal("runtime call/cast product with widened table maximum unexpectedly retained exact admission")
+	}
 }
