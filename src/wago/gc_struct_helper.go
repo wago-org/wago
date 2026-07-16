@@ -15,6 +15,8 @@ const (
 	gcStructAllocDefault        = 1
 	gcStructGet                 = 2
 	gcStructSet                 = 3
+	gcStructGetS                = 4
+	gcStructGetU                = 5
 )
 
 type gcStructHelperError struct{ err error }
@@ -39,7 +41,7 @@ func (in *Instance) dispatchGCStructHelper(helper uint32, args, results []uint64
 			panic(gcStructHelperError{err: err})
 		}
 		results[0] = uint64(ref)
-	case gcStructGet:
+	case gcStructGet, gcStructGetS, gcStructGetU:
 		if len(args) != 3 || len(results) < 1 {
 			panic(gcStructHelperError{err: fmt.Errorf("gc struct get helper arity = %d/%d, want 3/at-least-1", len(args), len(results))})
 		}
@@ -61,7 +63,28 @@ func (in *Instance) dispatchGCStructHelper(helper uint32, args, results []uint64
 		}
 		if value.Kind == gc.StorageRef || value.Kind == gc.StorageRefNull {
 			results[0] = uint64(value.Ref)
-		} else {
+			break
+		}
+		switch helper {
+		case gcStructGetS:
+			switch value.Kind {
+			case gc.StorageI8:
+				results[0] = uint64(uint32(int32(int8(value.Bits))))
+			case gc.StorageI16:
+				results[0] = uint64(uint32(int32(int16(value.Bits))))
+			default:
+				panic(gcStructHelperError{err: fmt.Errorf("gc struct.get_s field kind %d is not packed", value.Kind)})
+			}
+		case gcStructGetU:
+			switch value.Kind {
+			case gc.StorageI8:
+				results[0] = uint64(uint32(uint8(value.Bits)))
+			case gc.StorageI16:
+				results[0] = uint64(uint32(uint16(value.Bits)))
+			default:
+				panic(gcStructHelperError{err: fmt.Errorf("gc struct.get_u field kind %d is not packed", value.Kind)})
+			}
+		default:
 			results[0] = value.Bits
 		}
 	case gcStructSet:
@@ -88,7 +111,11 @@ func (in *Instance) dispatchGCStructHelper(helper uint32, args, results []uint64
 		if kind == gc.StorageRef || kind == gc.StorageRefNull {
 			panic(gcStructHelperError{err: fmt.Errorf("gc struct reference-field set remains outside the staged helper slice")})
 		}
-		if err := in.gc.StructSet(ref, fieldID, gc.Value{Kind: kind, Bits: args[1]}); err != nil {
+		valueKind := kind
+		if kind == gc.StorageI8 || kind == gc.StorageI16 {
+			valueKind = gc.StorageI32
+		}
+		if err := in.gc.StructSet(ref, fieldID, gc.Value{Kind: valueKind, Bits: args[1]}); err != nil {
 			panic(gcStructHelperError{err: err})
 		}
 	default:
