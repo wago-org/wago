@@ -30,7 +30,7 @@ const (
 	ValFuncRef
 	ValExternRef
 	ValExnRef // internal/product ABI category for rooted exception references
-	ValAnyRef // internal/product ABI category for null-only any/none references
+	ValAnyRef // product ABI category for any/none and exact staged GC result tokens
 )
 
 // NullFuncRef, NullExternRef, and NullGCRef return null reference values.

@@ -82,7 +82,7 @@ func (p stagedGCStructProduct) gateReason() string {
 	case stagedGCStructNamedGets:
 		return "numeric struct.get field-name products"
 	case stagedGCStructBasic:
-		return "basic struct public ref.struct egress action"
+		return "basic struct owned public ref.struct result"
 	case stagedGCStructNullDereference:
 		return "null struct.get/struct.set trap product"
 	case stagedGCStructPacked:
