@@ -80,14 +80,17 @@ GC roots are not wired to native frames yet, and no WasmGC opcode/codegen suppor
 
 ## Native exception-root map contract
 
-Iteration 34 adds a deliberately metadata-only bridge between amd64 exception frames and
-the collector/lifecycle layers. `src/core/nativeabi` owns dependency-neutral
-`FunctionRootMap` and `RootSlot` records; `src/core/runtime/gc` aliases and validates them
-at the collector boundary. A map names one local function, the minimum post-prologue frame
-prefix containing its roots, and strictly ordered 8-byte-aligned offsets relative to that
-function's post-prologue RSP. Validation rejects out-of-range functions, duplicate or
-unordered maps/slots, unknown ownership kinds, unaligned offsets, and slots outside the
-announced frame prefix before a scanner may trust metadata.
+Iterations 34-35 define the bridge between amd64 exception frames and the collector/
+lifecycle layers. `src/core/nativeabi` owns dependency-neutral `FunctionRootMap` and
+`RootSlot` records; `src/core/runtime/gc` aliases and validates them at the collector
+boundary. A map names one local function, the minimum post-prologue frame prefix containing
+its roots, and strictly ordered 8-byte-aligned offsets relative to that function's post-
+prologue RSP. Validation rejects out-of-range functions, duplicate or unordered maps/slots,
+unknown ownership kinds, unaligned offsets, and slots outside the announced frame prefix
+before a scanner may trust metadata. `catch_all_ref` maps derive each payload word's
+ownership from every bounded tag that can reach the catch; a word that mixes scalar and
+reference values or mixes `gc.Ref` and funcref identity is rejected because a non-tag-
+discriminated scanner cannot interpret it safely.
 
 The current staged EH frame reserves four seven-word handler records followed by four
 three-word exception-root records. This is a fixed 320-byte EH region per EH function:
@@ -106,23 +109,36 @@ Two root kinds are intentionally distinct:
   `gc.Ref`. The producer/reference lifecycle must retain the descriptor owner while the
   slot is live, and the collector must never reinterpret those bits as a heap handle.
 
-This contract does **not** open the final official `exceptions/try_table` module. Before
-reference payload execution can be admitted, codegen/runtime must prove all of the
-following as one coherent product:
+Iteration 35 opens exactly one non-collector exception-payload product without weakening
+those collector obligations. A local tag may carry one non-null indexed `() -> ()` funcref
+created by one declarative local `ref.func`. The descriptor owner is the executing instance,
+which remains live for the native call. Each reference catch zeros its fixed three-word root
+before installing the handler; when the caught exn value is immediately dropped, generated
+code clears all three words. The official catch/catch_ref/catch_all_ref results are matched
+against canonical function identity rather than public token bits. Nullable payloads,
+extern/GC refs, imported or otherwise foreign descriptors, wider tags, roots that escape
+instead of being dropped, tails, hosts, snapshots, guard mode, public admission, and arm64
+remain rejected. This local lifecycle proof does not publish a collector frame and must not
+be described as general safepoint integration.
 
-1. zero every mapped root slot before any safepoint can observe the frame;
-2. publish and withdraw the active native frame chain at exact collector safepoints;
-3. copy `gc.Ref` payloads with the required allocation/store barriers and Tiny remark
+Before any `gc.Ref` payload or broader funcref lifetime can be admitted, codegen/runtime
+must still prove all of the following as one coherent product:
+
+1. publish and withdraw the active native frame chain at exact collector safepoints;
+2. copy `gc.Ref` payloads with the required allocation/store barriers and Tiny remark
    semantics, including catch, rethrow, tail-frame discard, trap recovery, and teardown;
-4. retain/release every funcref producer across local and cross-instance exception
-   lifetime, including close order and rollback;
-5. scan only live records, never stale slots belonging to discarded try scopes;
+3. retain/release foreign funcref producers across cross-instance exception lifetime,
+   including close order and rollback;
+4. scan only live records, never stale slots belonging to discarded try scopes;
+5. add tag-discriminated maps or reject catch-all products whose payload positions do not
+   have one uniform ownership kind;
 6. serialize or explicitly reject every snapshot/codec/live-handler context; and
 7. prove bounded no-cgo behavior under stress collection and concurrent consumers.
 
-Until those obligations are executable and tested, the root maps are strict descriptive
-metadata only. WasmGC opcodes, GC-managed EH payloads, exported exception references, and
-public/guard/arm64 admission remain fail-closed.
+Until those obligations are executable and tested, the maps remain descriptive collector
+metadata outside the narrow local lifecycle product. WasmGC opcodes, GC-managed EH
+payloads, exported exception references, and public/guard/arm64 admission remain fail-
+closed.
 
 ## Collector lifetime
 

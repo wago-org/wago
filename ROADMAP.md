@@ -200,21 +200,23 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   snapshots, guard mode, public admission, exception handling, GC, and arm64 remain
   end-to-end work.
 - 🚧 Exception handling has strict schema-2 accounting across five official/mixed
-  files: 147 commands, 10 modules, 61 assertions, 16 invalid, 2 malformed, 2 unlinkable,
-  3 exact gates, and 37 blocked dependents, with zero hidden failures. linux/amd64 explicit
-  bounds supports nine tags, twenty-four try tables/module, eight ordered catches/table,
-  four nested seven-word handlers, and four fixed three-word exception roots/function.
-  The large mixed official `try_table` slice executes, direct/indirect true tails discard
-  dead handlers, and exact retained `() -> ()` cross-instance calls transfer catcher
-  basedata plus producer-identity tag matching without shared mutable handler state.
-  Codec v27 retains the nine-tag product and internal exnref category while public exnref
-  ABI remains closed. A validated target-neutral root-map contract now describes exact
-  native EH payload slots and distinguishes collector-owned `gc.Ref` handles from funcref
-  producer-lifecycle roots. The final typed-funcref payload module remains gated until map
-  publication/consumption, zeroing, producer retention, barriers/remark, and teardown are
-  executable. Public admission, guard mode, arm64, host tags, wider/chained transfer,
-  imported/live-handler snapshots, exported exception references, and GC payloads remain
-  fail-closed. The scalar catch benchmark is 41.48–41.91 ns/op, 0 B/op, and 0 allocs/op.
+  files: 147 commands, 11 modules, 66 assertions, 16 invalid, 2 malformed, 2 unlinkable,
+  2 exact gates, and 32 blocked dependents, with zero hidden failures. The complete
+  official `exceptions/try_table` file is gap-free under staged admission at 5 modules,
+  45 assertions, 9 invalid modules, and 2 source-only malformed commands. linux/amd64
+  explicit bounds supports nine tags, twenty-four try tables/module, eight ordered catches/
+  table, four nested seven-word handlers, and four fixed three-word exception roots/function.
+  Direct/indirect true tails discard dead handlers, and exact retained `() -> ()` cross-
+  instance calls transfer catcher basedata plus producer-identity tag matching without
+  shared mutable handler state. One exact local-only tag payload may carry a non-null indexed
+  `() -> ()` funcref produced by one declarative local `ref.func`: catch/catch_ref/catch-all
+  preserve canonical descriptor identity, initialize the root before handler publication,
+  clear all three root words on the immediate exn drop, tear down cleanly, retain codec-v27
+  metadata, and repeat without allocation. Catch-all root maps derive ownership from the
+  bounded tag set and reject mixed scalar/reference or GC/funcref words. Nullable, GC,
+  foreign, wider, escaping-root, tail, host, snapshot, public, guard, and arm64 products
+  remain fail-closed. The scalar catch benchmark is 41.48–41.91 ns/op and the typed-funcref
+  catch is 135.1–145.7 ns/op, both 0 B/op and 0 allocs/op.
 - [ ] Reach zero unexplained failures/skips in the official Release 3 core suite.
 
 **Engine & performance** (no-ir-plan P1–P7, measured against P1's stats)
