@@ -67,6 +67,9 @@ func TestStagedGCTypeSubtypingProductInventory(t *testing.T) {
 		if err := wasm.ValidateModule(m); err != nil {
 			t.Fatalf("%s validate: %v", pin.Filename, err)
 		}
+		if err := wasm.ValidateByteBackedModule(data); err != nil {
+			t.Fatalf("%s byte-backed validate: %v", pin.Filename, err)
+		}
 		product, err := stagedGCTypeSubtypingProductShape(m)
 		if err != nil || product != pin.Class {
 			t.Fatalf("%s product = %v, %v; want %v", pin.Filename, product, err, pin.Class)
@@ -82,33 +85,38 @@ func TestStagedGCTypeSubtypingProductInventory(t *testing.T) {
 }
 
 func TestStagedGCTypeSubtypingProductPlatformAndBoundsGate(t *testing.T) {
-	data := stagedGCTypeSubtypingProductData(t, stagedGCTypeSubtypingProductPins[8])
-	cfg := NewRuntimeConfig()
-	if guardPageBuilt {
-		cfg = cfg.WithBoundsChecks(BoundsChecksSignalsBased)
-	} else {
-		cfg = cfg.WithBoundsChecks(BoundsChecksExplicit)
+	for _, pinIndex := range []int{8, 14} {
+		pin := stagedGCTypeSubtypingProductPins[pinIndex]
+		t.Run(pin.Filename, func(t *testing.T) {
+			data := stagedGCTypeSubtypingProductData(t, pin)
+			cfg := NewRuntimeConfig()
+			if guardPageBuilt {
+				cfg = cfg.WithBoundsChecks(BoundsChecksSignalsBased)
+			} else {
+				cfg = cfg.WithBoundsChecks(BoundsChecksExplicit)
+			}
+			features := cfg.frontendFeatures()
+			features.TypedFunctionReferences = true
+			features.GCTypeSubtypingProducts = true
+			c, err := compileWithFrontendFeatures(cfg, data, features)
+			if goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64" {
+				if err == nil || !strings.Contains(err.Error(), "unsupported gc/type-subtyping product staged execution on") {
+					t.Fatalf("platform compile = %v, want explicit platform rejection", err)
+				}
+				return
+			}
+			if guardPageBuilt {
+				if err == nil || !strings.Contains(err.Error(), "signals-based bounds checks") {
+					t.Fatalf("guard compile = %v, want explicit bounds rejection", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("linux/amd64 explicit compile: %v", err)
+			}
+			_ = c.Close()
+		})
 	}
-	features := cfg.frontendFeatures()
-	features.TypedFunctionReferences = true
-	features.GCTypeSubtypingProducts = true
-	c, err := compileWithFrontendFeatures(cfg, data, features)
-	if goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64" {
-		if err == nil || !strings.Contains(err.Error(), "unsupported gc/type-subtyping product staged execution on") {
-			t.Fatalf("platform compile = %v, want explicit platform rejection", err)
-		}
-		return
-	}
-	if guardPageBuilt {
-		if err == nil || !strings.Contains(err.Error(), "signals-based bounds checks") {
-			t.Fatalf("guard compile = %v, want explicit bounds rejection", err)
-		}
-		return
-	}
-	if err != nil {
-		t.Fatalf("linux/amd64 explicit compile: %v", err)
-	}
-	_ = c.Close()
 }
 
 func TestStagedGCTypeSubtypingProductRejectsWidening(t *testing.T) {
@@ -140,5 +148,14 @@ func TestStagedGCTypeSubtypingProductRejectsWidening(t *testing.T) {
 	globals.Globals[0].Type.Mutable = true
 	if _, err := stagedGCTypeSubtypingProductShape(globals); err == nil {
 		t.Fatal("mutable ref.func global unexpectedly admitted")
+	}
+
+	refTest, err := wasm.DecodeModule(stagedGCTypeSubtypingProductData(t, stagedGCTypeSubtypingProductPins[14]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	refTest.Code[1].BodyBytes = []byte{0xd2, 0x00, 0x1a, 0x0b}
+	if _, err := stagedGCTypeSubtypingProductShape(refTest); err == nil {
+		t.Fatal("single ref.test product with drop instead of ref.test unexpectedly admitted")
 	}
 }

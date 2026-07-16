@@ -258,6 +258,12 @@ func (m *Module) ResolvedTypeFunc(typeIdx uint32) (*CompType, bool) {
 	return m.resolvedTypeFunc(TypeIdx{Index: typeIdx})
 }
 
+// ReferenceTypeSubtype reports the validated Core reference subtyping relation
+// within this module, including structural equivalence and declared super chains.
+func (m *Module) ReferenceTypeSubtype(actual, required RefType) bool {
+	return (&moduleValidator{m: m}).refSubtype(actual, required)
+}
+
 func (m *Module) flatTypeIdxInRecGroup(idx TypeIdx, recGroup int) (int, bool) {
 	if !idx.Rec {
 		if _, ok := m.subtypeByTypeIdx(idx); !ok {

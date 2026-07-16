@@ -20,6 +20,10 @@ const (
 	stagedGCTypeSubtypingRefTestSingle
 )
 
+func (p stagedGCTypeSubtypingProduct) usesRefTest() bool {
+	return p == stagedGCTypeSubtypingRefTestSingle
+}
+
 func stagedGCTypeSubtypingProductPinned(data []byte, product stagedGCTypeSubtypingProduct) bool {
 	digest := fmt.Sprintf("%x", sha256.Sum256(data))
 	var pinned stagedGCTypeSubtypingProduct
@@ -41,6 +45,11 @@ func stagedGCTypeSubtypingProductPinned(data []byte, product stagedGCTypeSubtypi
 		"befde5eb45b4a66d036acfc4f1b69a0b8aabea9df46aa1503b7e7ee73770dd32",
 		"a0ba3c1005b6cb73edc08222b5d896276945b0bf1f3b3ff7ef9cdb489341fe08":
 		pinned = stagedGCTypeSubtypingRefFuncGlobals
+	case "47a4b6080c4c63221e32dd452fd9bc6621c915b3f113e14e46e0f2ff907280d5",
+		"97afdb1a9ad042486b76ad816e78a43f933e79b985c6fd20d0658f3b69c6e022",
+		"9b8111ee2e3fb91cc7801a63b0a5a8e97eca7b5665f7e6fed5be8a8327534213",
+		"60adfeb1cae8b65d159f8c0729630c005f5b530e90d190189487ee241f30c523":
+		pinned = stagedGCTypeSubtypingRefTestSingle
 	}
 	return pinned == product
 }
@@ -49,8 +58,11 @@ func stagedGCTypeSubtypingProductShape(m *wasm.Module) (stagedGCTypeSubtypingPro
 	if m == nil {
 		return 0, fmt.Errorf("nil module")
 	}
-	if len(m.Imports) != 0 || m.TableCount() != 0 || len(m.Elements) != 0 || m.MemCount() != 0 || len(m.Data) != 0 || m.TagCount() != 0 || m.Start != nil || len(m.Exports) != 0 {
-		return 0, fmt.Errorf("type-subtyping products reject imports, tables, elements, memories, data, tags, start, and exports")
+	if len(m.Elements) != 0 || len(m.Exports) != 0 {
+		return stagedGCTypeSubtypingRefTestSingleShape(m)
+	}
+	if len(m.Imports) != 0 || m.TableCount() != 0 || m.MemCount() != 0 || len(m.Data) != 0 || m.TagCount() != 0 || m.Start != nil {
+		return 0, fmt.Errorf("type-subtyping products reject imports, tables, memories, data, tags, and start")
 	}
 	hasHeapType, hasSubtypeMetadata := false, false
 	for gi := range m.Types {
@@ -130,6 +142,55 @@ func stagedGCTypeSubtypingRefFuncGlobalShape(m *wasm.Module) (stagedGCTypeSubtyp
 		}
 	}
 	return stagedGCTypeSubtypingRefFuncGlobals, nil
+}
+
+func stagedGCTypeSubtypingRefTestSingleShape(m *wasm.Module) (stagedGCTypeSubtypingProduct, error) {
+	if len(m.Imports) != 0 || len(m.Globals) != 0 || m.TableCount() != 0 || m.MemCount() != 0 || len(m.Data) != 0 || m.TagCount() != 0 || m.Start != nil {
+		return 0, fmt.Errorf("single ref.test product rejects imports, globals, tables, memories, data, tags, and start")
+	}
+	if len(m.FuncTypes) != 2 || len(m.Code) != 2 || len(m.Code[0].Locals.Runs) != 0 || len(m.Code[1].Locals.Runs) != 0 || !isExactEndBody(m.Code[0].BodyBytes) {
+		return 0, fmt.Errorf("single ref.test product requires one empty local function and one local runner")
+	}
+	if len(m.Elements) != 1 || m.Elements[0].Mode.Kind != wasm.ElemDeclarative || m.Elements[0].Kind.Kind != wasm.ElemFuncs || len(m.Elements[0].Kind.Funcs) != 1 || m.Elements[0].Kind.Funcs[0] != 0 {
+		return 0, fmt.Errorf("single ref.test product requires one declarative element naming local function 0")
+	}
+	if len(m.Exports) != 1 || m.Exports[0].Name != "run" || m.Exports[0].Index.Kind != wasm.ExternFunc || m.Exports[0].Index.Index != 1 {
+		return 0, fmt.Errorf("single ref.test product requires only the local runner export")
+	}
+	funcIndex, targetType, ok := exactRefFuncTestBody(m.Code[1].BodyBytes)
+	if !ok || funcIndex != 0 {
+		return 0, fmt.Errorf("single ref.test runner must test ref.func 0 exactly once")
+	}
+	if _, ok := m.TypeFunc(targetType); !ok {
+		return 0, fmt.Errorf("single ref.test target type %d is not a function type", targetType)
+	}
+	return stagedGCTypeSubtypingRefTestSingle, nil
+}
+
+func exactRefFuncTestBody(body []byte) (funcIndex, targetType uint32, ok bool) {
+	r := wasm.NewReader(body)
+	op, err := r.Byte()
+	if err != nil || op != 0xd2 {
+		return 0, 0, false
+	}
+	funcIndex, err = r.U32()
+	if err != nil {
+		return 0, 0, false
+	}
+	op, err = r.Byte()
+	if err != nil || op != 0xfb {
+		return 0, 0, false
+	}
+	sub, err := r.U32()
+	if err != nil || sub != 20 {
+		return 0, 0, false
+	}
+	target, err := r.S33()
+	if err != nil || target < 0 || uint64(target) > uint64(^uint32(0)) {
+		return 0, 0, false
+	}
+	end, err := r.Byte()
+	return funcIndex, uint32(target), err == nil && end == 0x0b && r.BytesLeft() == 0
 }
 
 func exactRefFuncBodyIndex(body []byte) (uint32, bool) {

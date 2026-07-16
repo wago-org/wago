@@ -161,6 +161,20 @@ func (f *fn) emitGCI31Test(sub uint32, r *wasm.Reader) error {
 		return err
 	}
 	nullable := sub == 21
+	if f.gcTypeSubtypingRefTest && heap >= 0 {
+		value := f.popValue()
+		if value.kind != ekValue || value.st.kind != stFuncRef || value.st.idx < 0 || value.st.idx >= len(f.m.FuncTypes) {
+			return fmt.Errorf("amd64: staged function ref.test lost exact local ref.func provenance")
+		}
+		actual := wasm.Ref(false, wasm.IndexedHeap(f.m.FuncTypes[value.st.idx]), false)
+		required := wasm.Ref(nullable, wasm.IndexedHeap(wasm.TypeIdx{Index: uint32(heap)}), false)
+		matched := int64(0)
+		if f.m.ReferenceTypeSubtype(actual, required) {
+			matched = 1
+		}
+		f.pushValue(storage{kind: stConst, typ: mtI32, cval: matched})
+		return nil
+	}
 	if heap == -16 || heap == -17 || heap == -13 || heap == -14 { // func, extern, nofunc, noextern
 		value := f.materialize(f.popValue())
 		if heap == -16 || heap == -17 {

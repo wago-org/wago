@@ -562,6 +562,10 @@ func (f *fn) refFunc(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
+	if f.gcTypeSubtypingRefTest {
+		f.pushValue(storage{kind: stFuncRef, typ: mtI64, idx: int(idx)})
+		return nil
+	}
 	ref := f.allocReg(0)
 	f.a.Load64(ref, RBX, -int32(offFuncRefDescPtr))
 	f.a.TestSelf(ref, true)
