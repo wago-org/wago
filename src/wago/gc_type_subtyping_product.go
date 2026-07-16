@@ -37,6 +37,8 @@ const (
 	stagedGCTypeSubtypingIndependentStructLinkConsumer
 	stagedGCTypeSubtypingExtendedProjectionLinkProvider
 	stagedGCTypeSubtypingExtendedProjectionLinkConsumer
+	stagedGCTypeSubtypingDuplicateRecursiveLinkProvider
+	stagedGCTypeSubtypingDuplicateRecursiveLinkConsumer
 )
 
 func (p stagedGCTypeSubtypingProduct) usesRefTest() bool {
