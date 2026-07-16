@@ -176,6 +176,8 @@ var stagedGCTypeSubtypingProductPins = []stagedGCTypeSubtypingProductPin{
 	stagedGCTypeSubtypingStructProjectionLinkConsumerPin,
 	stagedGCTypeSubtypingStructMismatchLinkProviderPin,
 	stagedGCTypeSubtypingStructMismatchLinkConsumerPin,
+	stagedGCTypeSubtypingIndependentStructLinkProviderPin,
+	stagedGCTypeSubtypingIndependentStructLinkConsumerPin,
 }
 
 func stagedGCTypeSubtypingProductData(t testing.TB, pin stagedGCTypeSubtypingProductPin) []byte {
@@ -228,8 +230,8 @@ func TestStagedGCTypeSubtypingProductInventory(t *testing.T) {
 		}
 		seen[pin.Class]++
 	}
-	if seen[stagedGCTypeSubtypingDeclarations] != 6 || seen[stagedGCTypeSubtypingRecursiveFunctions] != 2 || seen[stagedGCTypeSubtypingRefFuncGlobals] != 6 || seen[stagedGCTypeSubtypingRefTestSingle] != 4 || seen[stagedGCTypeSubtypingRefTestMulti] != 3 || seen[stagedGCTypeSubtypingRefTestDirectionFalse] != 2 || seen[stagedGCTypeSubtypingRuntimeCallCast] != 1 || seen[stagedGCTypeSubtypingRuntimeFinalityCallCast] != 1 || seen[stagedGCTypeSubtypingRuntimeTypedTableCall] != 1 || seen[stagedGCTypeSubtypingLinkProvider] != 1 || seen[stagedGCTypeSubtypingLinkConsumer] != 1 || seen[stagedGCTypeSubtypingFinalityLinkProvider] != 1 || seen[stagedGCTypeSubtypingStructLinkProvider] != 1 || seen[stagedGCTypeSubtypingStructLinkConsumer] != 1 || seen[stagedGCTypeSubtypingStructProjectionLinkProvider] != 1 || seen[stagedGCTypeSubtypingStructProjectionLinkConsumer] != 1 || seen[stagedGCTypeSubtypingStructMismatchLinkProvider] != 1 || seen[stagedGCTypeSubtypingStructMismatchLinkConsumer] != 1 {
-		t.Fatalf("product classes = %#v, want declarations/recursive-functions/ref.func-globals/single-ref.test/multi-ref.test/direction-false-ref.test/runtime-call-cast/runtime-finality-call-cast/runtime-typed-table-call/link-provider/link-consumer/finality-link-provider/struct-link-provider/struct-link-consumer/struct-projection-provider/struct-projection-consumer/struct-mismatch-provider/struct-mismatch-consumer = 6/2/6/4/3/2/1/1/1/1/1/1/1/1/1/1/1/1", seen)
+	if seen[stagedGCTypeSubtypingDeclarations] != 6 || seen[stagedGCTypeSubtypingRecursiveFunctions] != 2 || seen[stagedGCTypeSubtypingRefFuncGlobals] != 6 || seen[stagedGCTypeSubtypingRefTestSingle] != 4 || seen[stagedGCTypeSubtypingRefTestMulti] != 3 || seen[stagedGCTypeSubtypingRefTestDirectionFalse] != 2 || seen[stagedGCTypeSubtypingRuntimeCallCast] != 1 || seen[stagedGCTypeSubtypingRuntimeFinalityCallCast] != 1 || seen[stagedGCTypeSubtypingRuntimeTypedTableCall] != 1 || seen[stagedGCTypeSubtypingLinkProvider] != 1 || seen[stagedGCTypeSubtypingLinkConsumer] != 1 || seen[stagedGCTypeSubtypingFinalityLinkProvider] != 1 || seen[stagedGCTypeSubtypingStructLinkProvider] != 1 || seen[stagedGCTypeSubtypingStructLinkConsumer] != 1 || seen[stagedGCTypeSubtypingStructProjectionLinkProvider] != 1 || seen[stagedGCTypeSubtypingStructProjectionLinkConsumer] != 1 || seen[stagedGCTypeSubtypingStructMismatchLinkProvider] != 1 || seen[stagedGCTypeSubtypingStructMismatchLinkConsumer] != 1 || seen[stagedGCTypeSubtypingIndependentStructLinkProvider] != 1 || seen[stagedGCTypeSubtypingIndependentStructLinkConsumer] != 1 {
+		t.Fatalf("product classes = %#v, want declarations/recursive-functions/ref.func-globals/single-ref.test/multi-ref.test/direction-false-ref.test/runtime-call-cast/runtime-finality-call-cast/runtime-typed-table-call/link-provider/link-consumer/finality-link-provider/struct-link-provider/struct-link-consumer/struct-projection-provider/struct-projection-consumer/struct-mismatch-provider/struct-mismatch-consumer/independent-struct-provider/independent-struct-consumer = 6/2/6/4/3/2/1/1/1/1/1/1/1/1/1/1/1/1/1/1", seen)
 	}
 }
 
@@ -1227,6 +1229,7 @@ func TestStagedGCTypeSubtypingProductPlatformAndBoundsGate(t *testing.T) {
 	pins = append(pins, stagedGCTypeSubtypingStructLinkProviderPin, stagedGCTypeSubtypingStructLinkConsumerPin)
 	pins = append(pins, stagedGCTypeSubtypingStructProjectionLinkProviderPin, stagedGCTypeSubtypingStructProjectionLinkConsumerPin)
 	pins = append(pins, stagedGCTypeSubtypingStructMismatchLinkProviderPin, stagedGCTypeSubtypingStructMismatchLinkConsumerPin)
+	pins = append(pins, stagedGCTypeSubtypingIndependentStructLinkProviderPin, stagedGCTypeSubtypingIndependentStructLinkConsumerPin)
 	for _, pin := range pins {
 		t.Run(pin.Filename, func(t *testing.T) {
 			data := stagedGCTypeSubtypingProductData(t, pin)
@@ -1386,6 +1389,23 @@ func TestStagedGCTypeSubtypingProductRejectsWidening(t *testing.T) {
 	mismatchConsumer.Imports[0].Module = "M6"
 	if product, err := stagedGCTypeSubtypingProductShape(mismatchConsumer); err == nil && product == stagedGCTypeSubtypingStructMismatchLinkConsumer {
 		t.Fatal("struct mismatch consumer with a widened provider namespace unexpectedly retained exact admission")
+	}
+
+	independentProvider, err := wasm.DecodeModule(stagedGCTypeSubtypingProductData(t, stagedGCTypeSubtypingIndependentStructLinkProviderPin))
+	if err != nil {
+		t.Fatal(err)
+	}
+	independentProvider.Types[1].SubTypes[1].Comp.Fields[0].Storage.Val.Ref.Heap.Type.Rec = false
+	if product, err := stagedGCTypeSubtypingProductShape(independentProvider); err == nil && product == stagedGCTypeSubtypingIndependentStructLinkProvider {
+		t.Fatal("independent struct provider with an external second-group field unexpectedly retained exact admission")
+	}
+	independentConsumer, err := wasm.DecodeModule(stagedGCTypeSubtypingProductData(t, stagedGCTypeSubtypingIndependentStructLinkConsumerPin))
+	if err != nil {
+		t.Fatal(err)
+	}
+	independentConsumer.Imports[0].Module = "M7"
+	if product, err := stagedGCTypeSubtypingProductShape(independentConsumer); err == nil && product == stagedGCTypeSubtypingIndependentStructLinkConsumer {
+		t.Fatal("independent struct consumer with a widened provider namespace unexpectedly retained exact admission")
 	}
 
 	typedTable, err := wasm.DecodeModule(stagedGCTypeSubtypingProductData(t, stagedGCTypeSubtypingTypedTablePin))
