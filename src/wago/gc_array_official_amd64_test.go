@@ -309,7 +309,7 @@ func replayStagedGCArrayScript(t *testing.T, tmp string, script stagedSpecScript
 				continue
 			}
 			matched := true
-			publicArrayResult := (current.Class == stagedGCArrayNumericDefault || current.Class == stagedGCArrayNumericFixed) && cmd.Action.Field == "new"
+			publicArrayResult := (current.Class == stagedGCArrayNumericDefault || current.Class == stagedGCArrayNumericFixed || current.Class == stagedGCArrayPackedData) && cmd.Action.Field == "new"
 			for i := range got {
 				if publicArrayResult {
 					exact, owner, _, ok := instance.refStore.gcRefExactType(got[i])
@@ -367,7 +367,7 @@ func TestStagedOfficialGCArrayAccounting(t *testing.T) {
 	var script stagedSpecScript
 	tmp := stagedOfficialTypedReferenceJSON(t, "gc/array", &script)
 	counts, leaders, gateCounts := replayStagedGCArrayScript(t, tmp, script)
-	if counts.Commands != 61 || counts.ModulesPassed != 5 || counts.AssertionsPassed != 16 || counts.ExpectedFeatureRejects != 2 || counts.BlockedCommands != 25 || counts.ExpectedInvalid != 6 || counts.Failures != 0 || counts.UnexpectedCompileRejects != 0 || counts.UnexpectedLinkRejects != 0 {
+	if counts.Commands != 61 || counts.ModulesPassed != 6 || counts.AssertionsPassed != 29 || counts.ExpectedFeatureRejects != 1 || counts.BlockedCommands != 12 || counts.ExpectedInvalid != 6 || counts.Failures != 0 || counts.UnexpectedCompileRejects != 0 || counts.UnexpectedLinkRejects != 0 {
 		t.Fatalf("staged gc/array accounting has hidden or changed gaps: %+v", counts)
 	}
 	gateNames := make([]string, 0, len(gateCounts))

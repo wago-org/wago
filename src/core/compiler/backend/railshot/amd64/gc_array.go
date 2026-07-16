@@ -17,6 +17,7 @@ const (
 	gcArrayLen          uint32 = 21
 	gcArrayAllocFixed   uint32 = 22
 	gcArrayAllocUniform uint32 = 23
+	gcArrayAllocData    uint32 = 24
 )
 
 func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
@@ -43,6 +44,26 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
 		return f.callGCStructHelper(gcArrayAllocUniform, []wasm.ValType{valueType, wasm.I32, wasm.I32}, []wasm.ValType{result})
+	case 9: // array.new_data typeidx dataidx
+		typeIndex, err := r.U32()
+		if err != nil {
+			return err
+		}
+		dataIndex, err := r.U32()
+		if err != nil {
+			return err
+		}
+		field, ok := stagedArrayType(f.m, typeIndex)
+		if !ok {
+			return fmt.Errorf("amd64: array.new_data type %d is unavailable", typeIndex)
+		}
+		if !field.Storage.Packed || field.Storage.Pack != wasm.PackI8 {
+			return fmt.Errorf("amd64: array.new_data requires an i8 array in the staged product")
+		}
+		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
+		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(dataIndex)})
+		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
+		return f.callGCStructHelper(gcArrayAllocData, []wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32}, []wasm.ValType{result})
 	case 8: // array.new_fixed typeidx length
 		typeIndex, err := r.U32()
 		if err != nil {
