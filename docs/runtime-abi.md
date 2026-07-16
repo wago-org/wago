@@ -581,6 +581,26 @@ feature bit, and snapshots, signal-backed bounds, arm64, unsupported platforms, 
 frame record, result adapter, or public ABI changes. This proof does not authorize later finality/struct-defined linking
 clusters, arbitrary cross-instance subtype matching, or persisted live bindings.
 
+Iteration 66 adds a second, separately pinned link contract for the source-lines-540–556 finality pair. The 70-byte
+provider owns a 96-byte arena (null plus open and final local descriptors). Each 38-byte consumer has one imported
+function and therefore a bounded 64-byte descriptor requirement (null plus one import), but both official directions are
+incompatible: open cannot satisfy final, and final cannot satisfy open. Cross-instance matching first requires the exact
+finality provider/consumer product pair and then applies the identity-only structural relation, so the two equal `() -> ()`
+shapes remain distinct because finality is part of canonical type identity.
+
+Both failed imports return before a consumer instance or live descriptor copy is published and leave the provider's
+resource reference count at zero. Hosts and the iteration-65 provider reject before attachment. There is no compatible
+consumer in this cluster, so shared close-order retention is deliberately inapplicable rather than simulated; ordinary
+provider close destroys its resources once. The provider export path repeats at 36.50–37.43 ns/op with 0 B/op and
+0 allocs/op. Provider and consumer wasm/code/codec sizes are 70/157/323 and 38/0/144 bytes.
+
+Unlinked codec v27 retains exact open/final metadata but no product marker. The live-binding serialization check is keyed
+to erased retained source rather than the generic `needsLink` flag, so import-only consumers with no reachable call sites
+remain serializable only while genuinely unlinked; any future live linked state stays fail-closed. Private/public reload,
+snapshots, signal-backed bounds, arm64, unsupported platforms, host substitution, and cross-product substitution reject.
+`compiledCodeCache` remains 64 bytes, and no descriptor layout, basedata slot, helper, collector root/barrier, frame record,
+result adapter, or public ABI changes. Struct-defined linking products and arbitrary finality matching remain separate.
+
 ## Global coherence invariant
 
 The global cell is the sole host- and cross-instance-visible storage for a

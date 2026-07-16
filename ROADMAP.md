@@ -340,12 +340,16 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   three 51-byte narrowing imports execute as expected unlinkables. Provider/consumer wasm/code/codec sizes are
   103/369/623 and 86/0/300 bytes, descriptor arenas are 128/224 bytes, and the provider null-result path measures
   67.56–76.86 ns/op at 0 B/op / 0 allocs/op. Duplicate imports retain one distinct provider, failed later imports roll
-  back, and provider-first or consumer-first close releases exactly once. All twenty-eight admitted leaders leave
-  `Instance.gc` nil. Codec reload inherits no product marker; linked codec state, snapshots, guard/public/arm64/host
-  admission remain closed. Accounting is 28 passed modules / 23 passed assertions / 17 gates / 21 blocked dependents /
-  24 invalid / 3 executed plus 5 blocked unlinkable obligations. General frame roots, object-valued mutable/reference
-  globals, the later finality/struct-defined linking clusters, the non-flat export, broader typed-table ownership, public
-  family admission, and broader platforms remain.
+  back, and provider-first or consumer-first close releases exactly once. Iteration 66 adds only the source-lines-540–556
+  finality link cluster under another exact provider/consumer pair. Its 70-byte provider exports identity-distinct open and
+  final `() -> ()` functions; two 38-byte inverse imports unlink without retaining the provider. Provider wasm/code/codec
+  sizes are 70/157/323 bytes, each unlinked consumer is 38/0/144 bytes, the provider arena is 96 bytes, and each attempted
+  consumer has a bounded 64-byte descriptor requirement. The empty final export measures 36.50–37.43 ns/op at 0 B/op /
+  0 allocs/op. All twenty-nine admitted leaders leave `Instance.gc` nil. Codec reload inherits no product marker; linked
+  codec state, snapshots, guard/public/arm64/host admission remain closed. Accounting is 29 passed modules / 23 passed
+  assertions / 16 gates / 18 blocked dependents / 24 invalid / 5 executed plus 3 blocked unlinkable obligations. General
+  frame roots, object-valued mutable/reference globals, the later struct-defined linking clusters, the non-flat export,
+  broader typed-table ownership, public family admission, and broader platforms remain.
 - [ ] Reach zero unexplained failures/skips in the official Release 3 core suite.
 
 **Engine & performance** (no-ir-plan P1–P7, measured against P1's stats)
