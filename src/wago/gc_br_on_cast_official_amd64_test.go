@@ -18,7 +18,10 @@ import (
 	corewasm "github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
-const stagedGCBrOnCastDeltaPath = "tests/spec-v3-staged-gc-br-on-cast.json"
+const (
+	stagedGCBrOnCastDeltaPath         = "tests/spec-v3-staged-gc-br-on-cast.json"
+	stagedGCBrOnCastOfficialExecution = false
+)
 
 type stagedGCBrOnCastClass uint8
 
@@ -215,9 +218,13 @@ func stagedGCBrOnCastLeaderDeltaFor(base string, data []byte, line int) (stagedG
 	if base == "gc/br_on_cast_fail" {
 		op = "br_on_cast_fail"
 	}
+	gate := pin.Class.gateReason(op)
+	if stagedGCBrOnCastOfficialExecution {
+		gate = ""
+	}
 	return stagedGCBrOnCastLeaderDelta{
 		Filename: pin.Filename, CommandLine: pin.CommandLine, SourceLine: pin.SourceLine,
-		Size: pin.Size, SHA256: pin.SHA256, Class: pin.Class.String(), Gate: pin.Class.gateReason(op),
+		Size: pin.Size, SHA256: pin.SHA256, Class: pin.Class.String(), Gate: gate,
 		TypeGraph: stagedGCStructTypeGraph(m), StateGraph: stagedGCStructStateGraph(m), ControlGraph: pin.ControlGraph,
 		Opcodes: opcodes, Actions: append([]string(nil), pin.Actions...),
 	}, pin, nil
@@ -227,9 +234,13 @@ func compileStagedGCBrOnCastAccounting(data []byte) (*Compiled, error) {
 	cfg := NewRuntimeConfig()
 	features := cfg.frontendFeatures()
 	features.TypedFunctionReferences = true
-	features.GCStructProducts = true
-	features.GCArrayProducts = true
-	features.GCI31Products = true
+	if stagedGCBrOnCastOfficialExecution {
+		features.GCStructProducts = true
+		if product, ok := stagedGCStructExecutionProduct(data); ok && (product == stagedGCStructBrOnCastAbstract || product == stagedGCStructBrOnCastFailAbstract) {
+			features.GCArrayProducts = true
+			features.GCI31Products = true
+		}
+	}
 	return compileWithFrontendFeatures(cfg, data, features)
 }
 
