@@ -1229,7 +1229,7 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 		}
 		if p.feat.GCStructProducts {
 			switch imm.Kind {
-			case wasm.InstrStructNewDefault, wasm.InstrStructGet:
+			case wasm.InstrStructNewDefault, wasm.InstrStructGet, wasm.InstrStructSet:
 				return false, nil
 			}
 		}
@@ -1789,7 +1789,7 @@ func (p supportPass) instructionKind(k wasm.InstrKind, context string) error {
 	if isGCInstruction(k) {
 		if p.feat.GCStructProducts {
 			switch k {
-			case wasm.InstrStructNewDefault, wasm.InstrStructGet:
+			case wasm.InstrStructNewDefault, wasm.InstrStructGet, wasm.InstrStructSet:
 				return nil
 			}
 		}

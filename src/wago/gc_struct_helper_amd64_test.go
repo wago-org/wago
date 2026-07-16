@@ -61,6 +61,57 @@ func TestStagedGCStructGetDefaultCollectorProfiles(t *testing.T) {
 	}
 }
 
+func TestStagedGCStructNumericSetProfiles(t *testing.T) {
+	data := stagedGCStructMutationBytes(t)
+	profiles := []struct {
+		name string
+		cfg  GCConfig
+	}{
+		{name: "throughput", cfg: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true, StressBarriers: true}},
+		{name: "tiny", cfg: GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 64, TinyBlockBytes: 16, TinyCollectEveryAlloc: true, VerifyAfterCollect: true, StressBarriers: true}},
+	}
+	for _, tc := range profiles {
+		t.Run(tc.name, func(t *testing.T) {
+			c, err := compileStagedGCStruct(data)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer c.Close()
+			in, err := instantiateCore(c, InstantiateOptions{GC: tc.cfg})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer in.Close()
+			for i := 0; i < 1000; i++ {
+				want := uint64(uint32(i*17 - 33))
+				got, err := in.Invoke("set", want)
+				if err != nil || len(got) != 1 || got[0] != want {
+					t.Fatalf("set iteration %d = %v, %v; want [%d]", i, got, err, want)
+				}
+			}
+		})
+	}
+
+	c, err := compileStagedGCStruct(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	in, err := instantiateCore(c, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	allocs := testing.AllocsPerRun(1000, func() {
+		if got, err := in.Invoke("set", 7); err != nil || len(got) != 1 || got[0] != 7 {
+			panic("numeric struct.set failed")
+		}
+	})
+	if allocs != 0 {
+		t.Fatalf("numeric struct.set default steady-state allocations = %v, want 0", allocs)
+	}
+}
+
 func TestStagedGCStructGetAllocationFailureAndCodecGate(t *testing.T) {
 	data := stagedGCStructGetOnlyBytes(t)
 	c, err := compileStagedGCStruct(data)
@@ -110,6 +161,27 @@ func TestStagedGCStructHelperFootprint(t *testing.T) {
 		t.Fatalf("compiledCodeCache size = %d, want 64", got)
 	}
 	var _ gc.Ref = 0 // keep the compact reference representation explicit in this proof.
+}
+
+func BenchmarkStagedGCStructNewDefaultSetGet(b *testing.B) {
+	data := stagedGCStructMutationBytes(b)
+	c, err := compileStagedGCStruct(data)
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer c.Close()
+	in, err := instantiateCore(c, InstantiateOptions{})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer in.Close()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := in.Invoke("set", uint64(uint32(i))); err != nil {
+			b.Fatal(err)
+		}
+	}
 }
 
 func BenchmarkStagedGCStructNewDefaultGet(b *testing.B) {

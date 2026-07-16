@@ -59,8 +59,29 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(fieldIndex)})
 		object := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
 		return f.callGCStructHelper(gcStructGet, []wasm.ValType{object, wasm.I32, wasm.I32}, []wasm.ValType{field.Storage.Val})
-	case 5: // struct.set is wired in the next bounded mutation slice.
-		return fmt.Errorf("amd64: struct.set remains outside the staged GC helper slice")
+	case 5: // struct.set typeidx fieldidx
+		typeIndex, err := r.U32()
+		if err != nil {
+			return err
+		}
+		fieldIndex, err := r.U32()
+		if err != nil {
+			return err
+		}
+		field, ok := stagedStructField(f.m, typeIndex, fieldIndex)
+		if !ok {
+			return fmt.Errorf("amd64: struct.set type %d field %d is unavailable", typeIndex, fieldIndex)
+		}
+		if field.Mut != wasm.Var {
+			return fmt.Errorf("amd64: struct.set type %d field %d is immutable", typeIndex, fieldIndex)
+		}
+		if field.Storage.Packed || field.Storage.Val.Kind == wasm.ValRef {
+			return fmt.Errorf("amd64: packed/reference struct.set remains outside the staged helper slice")
+		}
+		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
+		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(fieldIndex)})
+		object := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
+		return f.callGCStructHelper(gcStructSet, []wasm.ValType{object, field.Storage.Val, wasm.I32, wasm.I32}, nil)
 	default:
 		return fmt.Errorf("amd64: unsupported staged 0xfb opcode %d", sub)
 	}

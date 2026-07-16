@@ -198,25 +198,20 @@
     },
     {
       "family": "gc",
-      "reason": "null struct.get/struct.set trap product",
-      "count": 1
-    },
-    {
-      "family": "gc",
       "reason": "packed struct globals/get/set product",
       "count": 1
     }
   ],
   "counts": {
     "commands": 36,
-    "modules_passed": 3,
-    "assertions_passed": 0,
+    "modules_passed": 4,
+    "assertions_passed": 2,
     "expected_invalid": 4,
     "expected_malformed": 1,
     "expected_unlinkable": 0,
     "expected_uninstantiable": 0,
-    "expected_feature_rejects": 3,
-    "blocked_commands": 19,
+    "expected_feature_rejects": 2,
+    "blocked_commands": 17,
     "unexpected_compile_rejects": 0,
     "unexpected_link_rejects": 0,
     "failures": 0
