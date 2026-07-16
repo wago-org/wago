@@ -409,8 +409,14 @@ func TestStagedGCTypeSubtypingProductsCompile(t *testing.T) {
 			if err != nil {
 				t.Fatalf("marshal codec-v27: %v", err)
 			}
-			if len(c.Code) != wantCodeBytes[i] || len(blob) != wantCodecBytes[i] {
-				t.Fatalf("product sizes code/codec = %d/%d, want %d/%d", len(c.Code), len(blob), wantCodeBytes[i], wantCodecBytes[i])
+			wantCode, wantCodec := 0, 0
+			if pin.Class == stagedGCTypeSubtypingNonFlatExport {
+				wantCode, wantCodec = 753, 1173
+			} else {
+				wantCode, wantCodec = wantCodeBytes[i], wantCodecBytes[i]
+			}
+			if len(c.Code) != wantCode || len(blob) != wantCodec {
+				t.Fatalf("product sizes code/codec = %d/%d, want %d/%d", len(c.Code), len(blob), wantCode, wantCodec)
 			}
 			t.Logf("product size: wasm=%d code=%d codec=%d types=%d gcdescs=%d", len(data), len(c.Code), len(blob), len(c.Types), len(c.GCTypeDescs))
 			var loaded Compiled
@@ -1016,6 +1022,180 @@ func TestStagedGCTypeSubtypingStructProjectionLinkingClusterLifecycle(t *testing
 		if _, err := Capture(item.compiled, SnapshotOptions{}); err == nil || !strings.Contains(err.Error(), "WasmGC reference products") {
 			t.Fatalf("%s snapshot = %v, want GC reference-product rejection", name, err)
 		}
+	}
+}
+
+func TestStagedGCTypeSubtypingRemainingProductsLifecycle(t *testing.T) {
+	compile := func(pin stagedGCTypeSubtypingProductPin) *Compiled {
+		c, err := compileStagedGCTypeSubtypingProductForTest(stagedGCTypeSubtypingProductData(t, pin))
+		if err != nil {
+			t.Fatalf("compile %s: %v", pin.Filename, err)
+		}
+		t.Cleanup(func() { _ = c.Close() })
+		return c
+	}
+	state := func(in *Instance) (int, bool) {
+		in.lifeMu.Lock()
+		defer in.lifeMu.Unlock()
+		return in.resourceRefs, in.resourcesClosed
+	}
+
+	m9ProviderCompiled := compile(stagedGCTypeSubtypingExtendedRecursiveLinkProviderPin)
+	m9ConsumerCompiled := compile(stagedGCTypeSubtypingExtendedRecursiveLinkConsumerPin)
+	for _, item := range []struct {
+		c          *Compiled
+		wasm, code int
+		codec      int
+	}{
+		{m9ProviderCompiled, 136, 253, 725},
+		{m9ConsumerCompiled, 164, 0, 589},
+	} {
+		blob, err := marshalCompiled(item.c)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(item.c.Code) != item.code || len(blob) != item.codec {
+			t.Fatalf("M9 code/codec = %d/%d, want %d/%d", len(item.c.Code), len(blob), item.code, item.codec)
+		}
+		var loaded Compiled
+		if err := unmarshalCompiled(&loaded, blob[5:]); err != nil {
+			t.Fatal(err)
+		}
+		if loaded.stagedGCTypeSubtypingProduct() != 0 || loaded.stagedFeatures().IsEnabled(CoreFeatureGC) {
+			t.Fatal("M9 private reload inherited admission")
+		}
+		_ = loaded.Close()
+		var public Compiled
+		if err := public.UnmarshalBinary(blob); err == nil || !strings.Contains(err.Error(), "unknown required feature bits") {
+			t.Fatalf("M9 public reload = %v", err)
+		}
+		if _, err := Capture(item.c, SnapshotOptions{}); err == nil || !strings.Contains(err.Error(), "WasmGC reference products") {
+			t.Fatalf("M9 snapshot = %v", err)
+		}
+	}
+	newM9Provider := func() (*Instance, map[string]*InstanceExport) {
+		in, err := instantiateCore(m9ProviderCompiled, InstantiateOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if in.gc != nil || len(in.funcRefDescs) != 3*coreruntime.TableEntryBytes {
+			t.Fatalf("M9 provider gc/arena = %v/%d", in.gc, len(in.funcRefDescs))
+		}
+		exports := map[string]*InstanceExport{}
+		for _, name := range []string{"g11", "g12"} {
+			exports[name], err = in.ExportedFunc(name)
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		return in, exports
+	}
+	provider, exports := newM9Provider()
+	consumer, err := instantiateCore(m9ConsumerCompiled, InstantiateOptions{Imports: Imports{"M9.g11": exports["g11"], "M9.g12": exports["g12"]}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if consumer.gc != nil || len(consumer.funcRefDescs) != 9*coreruntime.TableEntryBytes {
+		t.Fatalf("M9 consumer gc/arena = %v/%d", consumer.gc, len(consumer.funcRefDescs))
+	}
+	for i, providerFunc := range []int{0, 0, 1, 1, 0, 0, 1, 1} {
+		consumerOff := (i + 1) * coreruntime.TableEntryBytes
+		providerOff := (providerFunc + 1) * coreruntime.TableEntryBytes
+		got := binary.LittleEndian.Uint64(consumer.funcRefDescs[consumerOff+coreruntime.TableEntryRefSlotOffset:])
+		want := binary.LittleEndian.Uint64(provider.funcRefDescs[providerOff+coreruntime.TableEntryRefSlotOffset:])
+		if got == 0 || got != want {
+			t.Fatalf("M9 import %d identity = %#x, want %#x", i, got, want)
+		}
+	}
+	if refs, closed := state(provider); refs != 1 || closed {
+		t.Fatalf("M9 deduplicated retention = %d/%v", refs, closed)
+	}
+	if err := provider.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if refs, closed := state(provider); refs != 1 || closed {
+		t.Fatalf("M9 provider-first state = %d/%v", refs, closed)
+	}
+	if err := consumer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if refs, closed := state(provider); refs != 0 || !closed {
+		t.Fatalf("M9 final state = %d/%v", refs, closed)
+	}
+	provider2, exports2 := newM9Provider()
+	consumer2, err := instantiateCore(m9ConsumerCompiled, InstantiateOptions{Imports: Imports{"M9.g11": exports2["g11"], "M9.g12": exports2["g12"]}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := consumer2.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if refs, closed := state(provider2); refs != 0 || closed {
+		t.Fatalf("M9 consumer-first state = %d/%v", refs, closed)
+	}
+	_ = provider2.Close()
+	host := HostFunc(func(HostModule, []uint64, []uint64) {})
+	if _, err := instantiateCore(m9ConsumerCompiled, InstantiateOptions{Imports: Imports{"M9.g11": host, "M9.g12": host}}); err == nil || !strings.Contains(err.Error(), "exact gc/type-subtyping link provider") {
+		t.Fatalf("M9 host link = %v", err)
+	}
+
+	for _, tc := range []struct {
+		provider, consumer stagedGCTypeSubtypingProductPin
+		key                string
+		providerSizes      [3]int
+		consumerSizes      [3]int
+	}{
+		{stagedGCTypeSubtypingCrossGroupMismatchLinkProviderPin, stagedGCTypeSubtypingCrossGroupMismatchLinkConsumerPin, "M10.f", [3]int{74, 77, 304}, [3]int{43, 0, 148}},
+		{stagedGCTypeSubtypingTransitiveMismatchLinkProviderPin, stagedGCTypeSubtypingTransitiveMismatchLinkConsumerPin, "M11.f", [3]int{87, 77, 384}, [3]int{56, 0, 228}},
+	} {
+		pc, cc := compile(tc.provider), compile(tc.consumer)
+		for _, item := range []struct {
+			c     *Compiled
+			sizes [3]int
+		}{{pc, tc.providerSizes}, {cc, tc.consumerSizes}} {
+			blob, err := marshalCompiled(item.c)
+			if err != nil || len(item.c.Code) != item.sizes[1] || len(blob) != item.sizes[2] {
+				t.Fatalf("%s code/codec = %d/%d, %v", tc.key, len(item.c.Code), len(blob), err)
+			}
+		}
+		provider, err := instantiateCore(pc, InstantiateOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		exported, err := provider.ExportedFunc("f")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := instantiateCore(cc, InstantiateOptions{Imports: Imports{tc.key: exported}}); err == nil || (!strings.Contains(err.Error(), "incompatible import") && !strings.Contains(err.Error(), "signature mismatch")) {
+			t.Fatalf("%s mismatch = %v", tc.key, err)
+		}
+		if refs, closed := state(provider); refs != 0 || closed {
+			t.Fatalf("%s mismatch retained provider = %d/%v", tc.key, refs, closed)
+		}
+		_ = provider.Close()
+	}
+
+	nonFlatCompiled := compile(stagedGCTypeSubtypingNonFlatExportPin)
+	nonFlat, err := instantiateCore(nonFlatCompiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer nonFlat.Close()
+	if nonFlat.gc != nil {
+		t.Fatal("non-flat export allocated collector")
+	}
+	for i := 1; i <= 6; i++ {
+		got, err := nonFlat.Invoke(fmt.Sprintf("f%d", i))
+		if err != nil || len(got) != 1 || got[0] != 0 {
+			t.Fatalf("f%d = %v, %v", i, got, err)
+		}
+	}
+	var invokeErr error
+	allocs := testing.AllocsPerRun(1000, func() {
+		_, invokeErr = nonFlat.Invoke("f6")
+	})
+	if invokeErr != nil || allocs != 0 {
+		t.Fatalf("non-flat f6 steady state = %v, allocs=%v", invokeErr, allocs)
 	}
 }
 
