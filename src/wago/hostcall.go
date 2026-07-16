@@ -93,7 +93,7 @@ type instancePluginState struct {
 	gcPublic          atomic.Pointer[gcPublicState]
 	gcArrayElements   atomic.Pointer[gcArrayElementState]
 	gcRefTestTable    atomic.Pointer[gcRefTestTableState]
-	gcGlobalRoots     [2]gcGlobalRootMapping
+	gcGlobalRoots     [3]gcGlobalRootMapping
 	gcGlobalRootCount uint8
 	tagIdentityBase   uintptr      // arena-owned bounded native u64 directory for staged EH
 	tagExports        map[int]*Tag // lazy stable identity handles for exported local tags

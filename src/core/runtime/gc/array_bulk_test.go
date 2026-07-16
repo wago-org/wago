@@ -48,6 +48,69 @@ func TestArrayFillPreflightPackedTruncation(t *testing.T) {
 	}
 }
 
+func TestArrayInitDataPreflightWidthsAndAtomicity(t *testing.T) {
+	i8, err := NewArrayDesc(0, StorageI8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	i16, err := NewArrayDesc(1, StorageI16)
+	if err != nil {
+		t.Fatal(err)
+	}
+	i32, err := NewArrayDesc(2, StorageI32)
+	if err != nil {
+		t.Fatal(err)
+	}
+	i64, err := NewArrayDesc(3, StorageI64)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := newTestCollectorWithTypes(t, Config{}, []TypeDesc{i8, i16, i32, i64})
+	data := []byte("abcdefghijkl")
+	for _, tc := range []struct {
+		typeID TypeID
+		source uint32
+		want   uint64
+	}{
+		{typeID: 0, source: 2, want: 0x63},
+		{typeID: 1, source: 5, want: 0x6766},
+		{typeID: 2, source: 0, want: 0x64636261},
+		{typeID: 3, source: 0, want: 0x6867666564636261},
+	} {
+		arr, err := c.NewArrayDefault(tc.typeID, 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := c.ArrayInitData(arr, 0, data, tc.source, 1); err != nil {
+			t.Fatalf("type %d init: %v", tc.typeID, err)
+		}
+		got, err := c.ArrayGet(arr, 0)
+		if err != nil || got.Bits != tc.want {
+			t.Fatalf("type %d value=%#x,%v want %#x", tc.typeID, got.Bits, err, tc.want)
+		}
+	}
+	arr, err := c.NewArrayDefault(1, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.ArraySet(arr, 0, I32Value(0x1122)); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.ArrayInitData(arr, 1, data[:1], 0, 1); err == nil {
+		t.Fatal("short source initialized i16 array")
+	}
+	got, err := c.ArrayGet(arr, 0)
+	if err != nil || got.Bits != 0x1122 {
+		t.Fatalf("source trap changed prefix=%#x,%v", got.Bits, err)
+	}
+	if err := c.ArrayInitData(arr, 2, nil, 0, 0); err != nil {
+		t.Fatalf("zero length at end: %v", err)
+	}
+	if err := c.ArrayInitData(arr, 3, nil, 0, 0); err != errRange {
+		t.Fatalf("destination range error=%v, want %v", err, errRange)
+	}
+}
+
 func TestArrayCopyPreflightAndOverlap(t *testing.T) {
 	c := newTestCollectorWithTypes(t, Config{}, bulkTestTypes(t))
 	arr, err := c.NewArrayDefault(1, 6)

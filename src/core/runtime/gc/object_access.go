@@ -1,6 +1,9 @@
 package gc
 
-import "errors"
+import (
+	"encoding/binary"
+	"errors"
+)
 
 func (c *Collector) NewStruct(typeID TypeID) (Ref, error) { return c.NewStructDefault(typeID) }
 func (c *Collector) NewStructDefault(typeID TypeID) (Ref, error) {
@@ -252,6 +255,52 @@ func (c *Collector) ArrayFill(ref Ref, start uint32, value Value, length uint32)
 // ArrayCopy preflights both ranges and the complete reference payload before
 // mutation. Same-array overlap is copied in memmove order without allocating a
 // temporary buffer. It does not allocate or collect.
+// ArrayInitData preflights the complete destination element range and source
+// byte range before mutation. It does not allocate or collect. Source bytes are
+// decoded little-endian according to the destination element width.
+func (c *Collector) ArrayInitData(dst Ref, dstStart uint32, data []byte, srcStart uint32, length uint32) error {
+	d, err := c.refDesc(dst)
+	if err != nil {
+		return err
+	}
+	if d.Kind != KindArray || isRefKind(d.Elem) {
+		return errors.New("gc: array.init_data destination is not numeric")
+	}
+	dstLen := c.header(dst).Aux
+	if uint64(dstStart)+uint64(length) > uint64(dstLen) {
+		return errRange
+	}
+	byteLength := uint64(length) * uint64(d.ElemSize)
+	sourceEnd := uint64(srcStart) + byteLength
+	if sourceEnd > uint64(len(data)) {
+		return errors.New("gc: data source out of range")
+	}
+	valueKind := d.Elem
+	if valueKind == StorageI8 || valueKind == StorageI16 {
+		valueKind = StorageI32
+	}
+	for i := uint32(0); i < length; i++ {
+		off := uint64(srcStart) + uint64(i)*uint64(d.ElemSize)
+		var bits uint64
+		switch d.ElemSize {
+		case 1:
+			bits = uint64(data[off])
+		case 2:
+			bits = uint64(binary.LittleEndian.Uint16(data[off : off+2]))
+		case 4:
+			bits = uint64(binary.LittleEndian.Uint32(data[off : off+4]))
+		case 8:
+			bits = binary.LittleEndian.Uint64(data[off : off+8])
+		default:
+			return errors.New("gc: array.init_data element width is unsupported")
+		}
+		if err := c.storeArrayValue(dst, d, dstStart+i, Value{Kind: valueKind, Bits: bits}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (c *Collector) ArrayCopy(dst Ref, dstStart uint32, src Ref, srcStart uint32, length uint32) error {
 	dstDesc, err := c.refDesc(dst)
 	if err != nil {

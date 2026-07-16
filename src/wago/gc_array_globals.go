@@ -46,7 +46,7 @@ func stagedGCArrayGlobalInitializers(m *wasm.Module, product stagedGCArrayProduc
 		if !ok || sub.Comp.Kind != wasm.CompArray {
 			continue
 		}
-		if g.Type.Mutable && product != stagedGCArrayProductBulkFill && product != stagedGCArrayProductBulkCopy {
+		if g.Type.Mutable && product != stagedGCArrayProductBulkFill && product != stagedGCArrayProductBulkCopy && product != stagedGCArrayProductInitData {
 			return nil, fmt.Errorf("global %d GC array initializer is mutable", imports+i)
 		}
 		init, err := decodeStagedGCArrayGlobalInit(m, uint32(imports+i), g)
@@ -55,8 +55,12 @@ func stagedGCArrayGlobalInitializers(m *wasm.Module, product stagedGCArrayProduc
 		}
 		out = append(out, init)
 	}
-	if len(out) > 2 {
-		return nil, fmt.Errorf("GC array global count %d exceeds staged bound 2", len(out))
+	maxGlobals := 2
+	if product == stagedGCArrayProductInitData {
+		maxGlobals = 3
+	}
+	if len(out) > maxGlobals {
+		return nil, fmt.Errorf("GC array global count %d exceeds staged bound %d", len(out), maxGlobals)
 	}
 	return out, nil
 }

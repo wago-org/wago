@@ -21,6 +21,7 @@ const (
 	stagedGCArrayProductNumericLocal
 	stagedGCArrayProductBulkFill
 	stagedGCArrayProductBulkCopy
+	stagedGCArrayProductInitData
 )
 
 const stagedGCArrayNumericLocalSHA256 = "cfa515e66b094db434e59a3bbd21b66e99f391aaa52614e2fa1a5fec4f0e7b3b"
@@ -47,13 +48,15 @@ func (p stagedGCArrayProduct) String() string {
 		return "bulk-fill"
 	case stagedGCArrayProductBulkCopy:
 		return "bulk-copy"
+	case stagedGCArrayProductInitData:
+		return "init-data"
 	default:
 		return "unknown"
 	}
 }
 
 func (p stagedGCArrayProduct) requiresHelpers() bool {
-	return p == stagedGCArrayProductNumericLocal || p == stagedGCArrayProductNumericDefault || p == stagedGCArrayProductNumericFixed || p == stagedGCArrayProductPackedData || p == stagedGCArrayProductReferenceElements || p == stagedGCArrayProductNullDereference || p == stagedGCArrayProductBulkFill || p == stagedGCArrayProductBulkCopy
+	return p == stagedGCArrayProductNumericLocal || p == stagedGCArrayProductNumericDefault || p == stagedGCArrayProductNumericFixed || p == stagedGCArrayProductPackedData || p == stagedGCArrayProductReferenceElements || p == stagedGCArrayProductNullDereference || p == stagedGCArrayProductBulkFill || p == stagedGCArrayProductBulkCopy || p == stagedGCArrayProductInitData
 }
 
 func (p stagedGCArrayProduct) metadataOnly() bool {
@@ -83,6 +86,10 @@ func stagedGCArrayExecutionProduct(data []byte) (stagedGCArrayProduct, bool) {
 		return stagedGCArrayProductBulkFill, true
 	case len(data) == 402 && digest == "3ce0c22105571618832b6d97164a26e4b7dee035f540957422b887c4c04d4f35":
 		return stagedGCArrayProductBulkCopy, true
+	case len(data) == 335 && digest == "c17da56ed5c65083ee20023738cc5d9a36d1e301d2f06f23e2645d6ec8a9ca77":
+		return stagedGCArrayProductInitData, true
+	case len(data) == 435 && digest == "05827a01cec2e9f3623e9d00b54aff258bbc7b497f47b76ffd31452bbcb9b31f":
+		return stagedGCArrayProductInitData, true
 	default:
 		return 0, false
 	}
