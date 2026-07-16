@@ -684,6 +684,26 @@ no descriptor layout, basedata slot, helper ID, root/barrier, collector sidecar,
 ABI change. This proof does not authorize the source-lines-628–639 M7 pair, later link clusters, or arbitrary struct-defined
 function matching.
 
+Iteration 71 adds a seventh separately pinned link contract for the source-lines-628–639 M7 provider/two-import consumer.
+Both modules contain four two-member recursive groups. Their first two groups are self-referential function/struct roots;
+the third groups carry different ordered projections, and each fourth-group `h` extends its local projected function. The
+provider's `h` at type 6 structurally subtypes both consumer type-0 `f1` and type-4 projected `g1` requirements.
+
+The provider uses the unchanged 64-byte descriptor arena. The consumer uses 96 bytes for null plus two imported descriptor
+copies. Both copies retain the same provider code pointer and canonical 64-bit identity, while producer resource retention
+is deduplicated to one owner. Invalid export binding rolls back before publication, and provider-first plus consumer-first
+close orders release exactly. Descriptor words remain instance-owned function identities, not compact `gc.Ref`s, collector
+roots, public tokens, or GC objects. Hosts, M6 and earlier products, widened projections/import ordering, and unpinned
+lookalikes reject before attachment.
+
+Provider/consumer wasm/code/codec sizes are 114/77/561 and 102/0/502 bytes. Empty provider `h` measures
+36.65–38.72 ns/op, 0 B/op, and 0 allocs/op. Unlinked codec v27 preserves recursive metadata but no admission marker;
+linked serialization, private/public reload admission, snapshots, signal-backed bounds, arm64, unsupported platforms,
+host substitution, cross-product substitution, and public GC admission remain fail-closed. `compiledCodeCache` stays
+64 bytes, and there is no descriptor layout, basedata slot, helper ID, root/barrier, collector sidecar, frame record,
+result adapter, or public ABI change. This proof does not authorize the source-lines-652–659 M8 pair, later link clusters,
+or arbitrary function-subtyping matching.
+
 ## Global coherence invariant
 
 The global cell is the sole host- and cross-instance-visible storage for a
