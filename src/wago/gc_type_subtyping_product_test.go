@@ -30,6 +30,30 @@ var stagedGCTypeSubtypingTypedTablePin = stagedGCTypeSubtypingProductPin{
 	Hex:      "0061736d01000000019580808000045000600000500100600000500101600000600000038680808000050102030303048680808000016301010202079780808000030372756e0002056661696c310003056661696c320004098f8080800001060041000b630102d2000bd2010b0ac780808000058280808000000b8280808000000b9b8080800000410011000041011100004100110100410111010041011102000b87808080000041001102000b87808080000041001103000b",
 }
 
+var stagedGCTypeSubtypingLinkProviderPin = stagedGCTypeSubtypingProductPin{
+	Filename: "type-subtyping.29.wasm",
+	Line:     382,
+	Size:     103,
+	SHA256:   "8e9bdbeb27a496328eb9529e0ea629d14a01124b657c4eb0aad74a8bd0f426db",
+	Class:    stagedGCTypeSubtypingLinkProvider,
+	Hex:      "0061736d01000000019780808000035000600001705001006000016301500101600001630203848080800003000102079080808000030266300000026631000102663200020a9c8080800003848080800000d0700b848080800000d0010b848080800000d0020b",
+}
+
+var stagedGCTypeSubtypingLinkConsumerPin = stagedGCTypeSubtypingProductPin{
+	Filename: "type-subtyping.30.wasm",
+	Line:     392,
+	Size:     86,
+	SHA256:   "ea4d5aaf13a9744bd319a1b33d1ee2303cfaecc84dae73a4179351a6fb91a760",
+	Class:    stagedGCTypeSubtypingLinkConsumer,
+	Hex:      "0061736d01000000019780808000035000600001705001006000016301500101600001630202ab8080800006014d0266300000014d0266310000014d0266310001014d0266320000014d0266320001014d0266320002",
+}
+
+var stagedGCTypeSubtypingLinkUnlinkablePins = []stagedGCTypeSubtypingProductPin{
+	{Filename: "type-subtyping.31.wasm", Line: 399, Size: 51, SHA256: "634f7caa3c4e26b757fca7a9a9f8367f99e33304c87f7b2cf6ec7d1e31566535", Class: stagedGCTypeSubtypingLinkConsumer, Hex: "0061736d01000000019780808000035000600001705001006000016301500101600001630202888080800001014d0266300001"},
+	{Filename: "type-subtyping.32.wasm", Line: 406, Size: 51, SHA256: "fe07228154a27a9de4702afb12187709536e894495e8fa2e34a710e2dd7c0b88", Class: stagedGCTypeSubtypingLinkConsumer, Hex: "0061736d01000000019780808000035000600001705001006000016301500101600001630202888080800001014d0266300002"},
+	{Filename: "type-subtyping.33.wasm", Line: 413, Size: 51, SHA256: "24ce2b2eec631ee2946c641e0545d06dc1179e2e9ba646ae59c5d37974111649", Class: stagedGCTypeSubtypingLinkConsumer, Hex: "0061736d01000000019780808000035000600001705001006000016301500101600001630202888080800001014d0266310002"},
+}
+
 var stagedGCTypeSubtypingProductPins = []stagedGCTypeSubtypingProductPin{
 	{Filename: "type-subtyping.0.wasm", Line: 7, Size: 54, SHA256: "aa9754e0665bda5f10ec77a3261759da4b462e813ecf9d0e12ec912acff996d6", Class: stagedGCTypeSubtypingDeclarations, Hex: "0061736d0100000001a8808080000750005e7f005001005e7f0050005e6e0050005e63000050005e64010050005e7f015001055e7f01"},
 	{Filename: "type-subtyping.1.wasm", Line: 15, Size: 65, SHA256: "ddca4046060c72d14ed416806860b0512b8e34ae2d11555ed88ff8676f6d1871", Class: stagedGCTypeSubtypingDeclarations, Hex: "0061736d0100000001b3808080000650005f005001005f005001015f017f005001025f027f006300005001035f037f006400007e015001045f037f006401007e01"},
@@ -437,6 +461,119 @@ func TestStagedGCTypeSubtypingRuntimeTypedTableInventory(t *testing.T) {
 	}
 	if product, err := stagedGCTypeSubtypingProductShape(m); err != nil || product != pin.Class {
 		t.Fatalf("typed-table product = %v, %v; want %v", product, err, pin.Class)
+	}
+}
+
+func TestStagedGCTypeSubtypingFirstLinkingClusterInventory(t *testing.T) {
+	pins := append([]stagedGCTypeSubtypingProductPin{stagedGCTypeSubtypingLinkProviderPin, stagedGCTypeSubtypingLinkConsumerPin}, stagedGCTypeSubtypingLinkUnlinkablePins...)
+	modules := make([]*wasm.Module, len(pins))
+	for i, pin := range pins {
+		data := stagedGCTypeSubtypingProductData(t, pin)
+		if len(data) != pin.Size {
+			t.Fatalf("%s size = %d, want %d", pin.Filename, len(data), pin.Size)
+		}
+		if got := fmt.Sprintf("%x", sha256.Sum256(data)); got != pin.SHA256 {
+			t.Fatalf("%s sha256 = %s, want %s", pin.Filename, got, pin.SHA256)
+		}
+		m, err := wasm.DecodeModule(data)
+		if err != nil {
+			t.Fatalf("%s decode: %v", pin.Filename, err)
+		}
+		if err := wasm.ValidateModule(m); err != nil {
+			t.Fatalf("%s AST validate: %v", pin.Filename, err)
+		}
+		if err := wasm.ValidateByteBackedModule(data); err != nil {
+			t.Fatalf("%s byte-backed validate: %v", pin.Filename, err)
+		}
+		modules[i] = m
+		if len(m.Types) != 3 {
+			t.Fatalf("%s type groups = %d, want 3", pin.Filename, len(m.Types))
+		}
+		for typeIndex := 0; typeIndex < 3; typeIndex++ {
+			if len(m.Types[typeIndex].SubTypes) != 1 {
+				t.Fatalf("%s type group %d members = %d, want 1", pin.Filename, typeIndex, len(m.Types[typeIndex].SubTypes))
+			}
+			st := m.Types[typeIndex].SubTypes[0]
+			if st.Final || !st.HasPrefix || st.Comp.Kind != wasm.CompFunc || len(st.Comp.Params) != 0 || len(st.Comp.Results) != 1 {
+				t.Fatalf("%s type %d = %+v, want open zero-parameter single-reference-result function", pin.Filename, typeIndex, st)
+			}
+			if typeIndex == 0 {
+				if len(st.Supers) != 0 || !wasm.EqualValType(st.Comp.Results[0], wasm.FuncRef) {
+					t.Fatalf("%s root type = %+v, want () -> funcref without super", pin.Filename, st)
+				}
+			} else {
+				result := st.Comp.Results[0]
+				if len(st.Supers) != 1 || st.Supers[0].Rec || st.Supers[0].Index != uint32(typeIndex-1) || result.Kind != wasm.ValRef || !result.Ref.Nullable || result.Ref.Heap.Kind != wasm.HeapTypeIndex || !result.Ref.Heap.Type.Rec || result.Ref.Heap.Type.Index != 0 {
+					t.Fatalf("%s type %d = %+v, want exact recursive subtype/result chain", pin.Filename, typeIndex, st)
+				}
+			}
+		}
+		for source := uint32(0); source < 3; source++ {
+			for target := uint32(0); target < 3; target++ {
+				actual := wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: source}), false)
+				required := wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: target}), false)
+				if got, want := m.ReferenceTypeSubtype(actual, required), source >= target; got != want {
+					t.Fatalf("%s function subtype %d <: %d = %v, want %v", pin.Filename, source, target, got, want)
+				}
+			}
+		}
+	}
+
+	provider := modules[0]
+	if len(provider.Imports) != 0 || len(provider.FuncTypes) != 3 || len(provider.Code) != 3 || len(provider.Exports) != 3 || provider.TableCount() != 0 || provider.MemCount() != 0 || len(provider.Globals) != 0 || len(provider.Elements) != 0 || len(provider.Data) != 0 || provider.TagCount() != 0 || provider.Start != nil {
+		t.Fatalf("provider state imports/functions/code/exports = %d/%d/%d/%d, want 0/3/3/3 and no other state", len(provider.Imports), len(provider.FuncTypes), len(provider.Code), len(provider.Exports))
+	}
+	wantBodies := []string{"d0700b", "d0010b", "d0020b"}
+	for i := 0; i < 3; i++ {
+		if provider.FuncTypes[i].Rec || provider.FuncTypes[i].Index != uint32(i) || len(provider.Code[i].Locals.Runs) != 0 || hex.EncodeToString(provider.Code[i].BodyBytes) != wantBodies[i] {
+			t.Fatalf("provider function %d type/locals/body = %v/%v/%x, want type %d/no locals/%s", i, provider.FuncTypes[i], provider.Code[i].Locals.Runs, provider.Code[i].BodyBytes, i, wantBodies[i])
+		}
+		wantName := fmt.Sprintf("f%d", i)
+		if provider.Exports[i].Name != wantName || provider.Exports[i].Index.Kind != wasm.ExternFunc || provider.Exports[i].Index.Index != uint32(i) {
+			t.Fatalf("provider export %d = %+v, want %s function %d", i, provider.Exports[i], wantName, i)
+		}
+	}
+
+	consumer := modules[1]
+	wantImports := []struct {
+		name      string
+		typeIndex uint32
+	}{{"f0", 0}, {"f1", 0}, {"f1", 1}, {"f2", 0}, {"f2", 1}, {"f2", 2}}
+	if len(consumer.Imports) != len(wantImports) || consumer.ImportedFuncCount() != len(wantImports) || len(consumer.Code) != 0 || len(consumer.Exports) != 0 {
+		t.Fatalf("consumer imports/code/exports = %d/%d/%d, want 6/0/0", len(consumer.Imports), len(consumer.Code), len(consumer.Exports))
+	}
+	for i, want := range wantImports {
+		imp := consumer.Imports[i]
+		if imp.Module != "M" || imp.Name != want.name || imp.Type.Kind != wasm.ExternFunc || imp.Type.Type.Rec || imp.Type.Type.Index != want.typeIndex {
+			t.Fatalf("consumer import %d = %+v, want M.%s type %d", i, imp, want.name, want.typeIndex)
+		}
+	}
+
+	wantRejected := []struct {
+		name      string
+		typeIndex uint32
+	}{{"f0", 1}, {"f0", 2}, {"f1", 2}}
+	for i, want := range wantRejected {
+		m := modules[i+2]
+		if len(m.Imports) != 1 || m.ImportedFuncCount() != 1 || len(m.Code) != 0 || len(m.Exports) != 0 {
+			t.Fatalf("%s state imports/code/exports = %d/%d/%d, want 1/0/0", pins[i+2].Filename, len(m.Imports), len(m.Code), len(m.Exports))
+		}
+		imp := m.Imports[0]
+		if imp.Module != "M" || imp.Name != want.name || imp.Type.Kind != wasm.ExternFunc || imp.Type.Type.Rec || imp.Type.Type.Index != want.typeIndex {
+			t.Fatalf("%s import = %+v, want M.%s type %d", pins[i+2].Filename, imp, want.name, want.typeIndex)
+		}
+	}
+
+	for _, pin := range pins {
+		data := stagedGCTypeSubtypingProductData(t, pin)
+		m, _ := wasm.DecodeModule(data)
+		product, err := stagedGCTypeSubtypingProductShape(m)
+		if err != nil || product != pin.Class {
+			t.Fatalf("%s product = %v, %v; want %v", pin.Filename, product, err, pin.Class)
+		}
+		if !stagedGCTypeSubtypingProductPinned(data, product) {
+			t.Fatalf("%s is not in the production pin set", pin.Filename)
+		}
 	}
 }
 

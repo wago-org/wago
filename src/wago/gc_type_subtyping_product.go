@@ -23,6 +23,8 @@ const (
 	stagedGCTypeSubtypingRuntimeCallCast
 	stagedGCTypeSubtypingRuntimeFinalityCallCast
 	stagedGCTypeSubtypingRuntimeTypedTableCall
+	stagedGCTypeSubtypingLinkProvider
+	stagedGCTypeSubtypingLinkConsumer
 )
 
 func (p stagedGCTypeSubtypingProduct) usesRefTest() bool {
