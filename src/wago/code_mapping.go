@@ -20,6 +20,7 @@ type compiledCodeCache struct {
 	gcArrayHelpers                  bool                  // exact collector-backed array products use the same parked-Go dispatcher
 	gcStructProduct                 stagedGCStructProduct // exact compile-only public GC ownership boundary; never serialized
 	gcArrayProduct                  stagedGCArrayProduct  // exact compile-only array boundary; never serialized
+	gcI31Product                    stagedGCI31Product    // exact non-allocating i31 boundary; never serialized
 	stagedFeatures                  CoreFeatures          // compile-only admission; never serialized or publicly loaded
 }
 
@@ -70,6 +71,13 @@ func (c *Compiled) stagedGCArrayProduct() stagedGCArrayProduct {
 		return 0
 	}
 	return c.codeCache.gcArrayProduct
+}
+
+func (c *Compiled) stagedGCI31Product() stagedGCI31Product {
+	if c == nil || c.codeCache == nil {
+		return 0
+	}
+	return c.codeCache.gcI31Product
 }
 
 func (c *Compiled) ensureCodeCache() {

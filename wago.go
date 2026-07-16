@@ -61,6 +61,7 @@ type (
 	HostFuncRef               = impl.HostFuncRef
 	HostImportAccess          = impl.HostImportAccess
 	HostModule                = impl.HostModule
+	I31Ref                    = impl.I31Ref
 	ImportFuncBuilder         = impl.ImportFuncBuilder
 	ImportKind                = impl.ImportKind
 	ImportModuleBuilder       = impl.ImportModuleBuilder
@@ -239,6 +240,7 @@ const (
 	ValF32                                     = impl.ValF32
 	ValF64                                     = impl.ValF64
 	ValFuncRef                                 = impl.ValFuncRef
+	ValI31Ref                                  = impl.ValI31Ref
 	ValI32                                     = impl.ValI32
 	ValI64                                     = impl.ValI64
 	ValV128                                    = impl.ValV128
@@ -317,6 +319,8 @@ func NewGlobalV128(v V128, mutable bool) *Global { return impl.NewGlobalV128(v, 
 
 func NewHandleTable() *HandleTable { return impl.NewHandleTable() }
 
+func NewI31Ref(v int32) I31Ref { return impl.NewI31Ref(v) }
+
 func NewMemory(minPages uint32, maxPages uint32) (*Memory, error) {
 	return impl.NewMemory(minPages, maxPages)
 }
@@ -336,6 +340,8 @@ func NullExternRef() ExternRef { return impl.NullExternRef() }
 func NullFuncRef() FuncRef { return impl.NullFuncRef() }
 
 func NullGCRef() GCRef { return impl.NullGCRef() }
+
+func NullI31Ref() I31Ref { return impl.NullI31Ref() }
 
 func OptKnobs() []OptKnobInfo { return impl.OptKnobs() }
 
@@ -366,6 +372,8 @@ func ValueF32(v float32) Value { return impl.ValueF32(v) }
 func ValueF64(v float64) Value { return impl.ValueF64(v) }
 
 func ValueFuncRef(v FuncRef) Value { return impl.ValueFuncRef(v) }
+
+func ValueI31Ref(v I31Ref) Value { return impl.ValueI31Ref(v) }
 
 func ValueI32(v int32) Value { return impl.ValueI32(v) }
 

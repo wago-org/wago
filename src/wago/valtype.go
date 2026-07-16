@@ -15,11 +15,16 @@ type V128 [16]byte
 // FuncRef, ExternRef, and GCRef are opaque WebAssembly reference tokens. Their
 // zero values are null. Tokens are not Go pointers, native code/data addresses,
 // or compact collector handles and callers must not interpret them as such.
-// Non-null GCRef values are currently issued only for the exact staged local
-// ref.struct result product and must be released through Instance.ReleaseGCRef.
+// Non-null GCRef values are currently issued only for exact staged struct/array
+// result products and must be released through Instance.ReleaseGCRef.
+//
+// I31Ref is deliberately separate: it is an immediate value, not an opaque
+// object token. Its private bits use the WasmGC low-bit tag, but only the typed
+// Signed/Unsigned accessors expose its 31-bit payload.
 type FuncRef struct{ token uint64 }
 type ExternRef struct{ token uint64 }
 type GCRef struct{ token uint64 }
+type I31Ref struct{ bits uint32 }
 
 const (
 	ValI32 ValType = iota
@@ -31,17 +36,28 @@ const (
 	ValExternRef
 	ValExnRef // internal/product ABI category for rooted exception references
 	ValAnyRef // product ABI category for any/none and exact staged GC result tokens
+	ValI31Ref // exact i31 immediate category; never an opaque GCRef token
 )
 
-// NullFuncRef, NullExternRef, and NullGCRef return null reference values.
+// NullFuncRef, NullExternRef, NullGCRef, and NullI31Ref return null reference values.
 func NullFuncRef() FuncRef     { return FuncRef{} }
 func NullExternRef() ExternRef { return ExternRef{} }
 func NullGCRef() GCRef         { return GCRef{} }
+func NullI31Ref() I31Ref       { return I31Ref{} }
+
+// NewI31Ref packs the low 31 bits of v into a non-null i31 immediate.
+func NewI31Ref(v int32) I31Ref { return I31Ref{bits: uint32(v)<<1 | 1} }
 
 // IsNull reports whether a reference is null.
 func (r FuncRef) IsNull() bool   { return r.token == 0 }
 func (r ExternRef) IsNull() bool { return r.token == 0 }
 func (r GCRef) IsNull() bool     { return r.token == 0 }
+func (r I31Ref) IsNull() bool    { return r.bits == 0 }
+
+// Signed and Unsigned decode the i31 payload. The result is meaningful only for
+// a non-null I31Ref obtained from NewI31Ref or a typed wago result.
+func (r I31Ref) Signed() int32    { return int32(r.bits) >> 1 }
+func (r I31Ref) Unsigned() uint32 { return r.bits >> 1 }
 
 func (t ValType) String() string {
 	switch t {
@@ -63,6 +79,8 @@ func (t ValType) String() string {
 		return "exnref"
 	case ValAnyRef:
 		return "anyref"
+	case ValI31Ref:
+		return "i31ref"
 	default:
 		return "unknown"
 	}
@@ -73,6 +91,8 @@ func valTypeFromWasm(t wasm.ValType) ValType {
 		switch t.Ref.Heap.Abs {
 		case wasm.HeapAny, wasm.HeapNone:
 			return ValAnyRef
+		case wasm.HeapI31:
+			return ValI31Ref
 		case wasm.HeapExn, wasm.HeapNoExn:
 			return ValExnRef
 		}
@@ -128,13 +148,15 @@ func (t ValType) code() (byte, bool) {
 		return 0x69, true
 	case ValAnyRef:
 		return 0x6e, true
+	case ValI31Ref:
+		return 0x6c, true
 	default:
 		return 0, false
 	}
 }
 
 func isReferenceValType(t ValType) bool {
-	return t == ValFuncRef || t == ValExternRef || t == ValExnRef || t == ValAnyRef
+	return t == ValFuncRef || t == ValExternRef || t == ValExnRef || t == ValAnyRef || t == ValI31Ref
 }
 
 func isWideValType(t ValType) bool {
@@ -161,6 +183,8 @@ func valTypeFromCode(code byte) (ValType, bool) {
 		return ValExnRef, true
 	case 0x6e:
 		return ValAnyRef, true
+	case 0x6c:
+		return ValI31Ref, true
 	default:
 		return 0, false
 	}

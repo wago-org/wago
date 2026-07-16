@@ -348,11 +348,6 @@
     },
     {
       "family": "gc",
-      "reason": "i31 encode/get/null/mutable-global/public-result product",
-      "count": 1
-    },
-    {
-      "family": "gc",
       "reason": "i31 global initializer from imported numeric global",
       "count": 1
     },
@@ -369,13 +364,13 @@
   ],
   "counts": {
     "commands": 80,
-    "modules_passed": 1,
-    "assertions_passed": 0,
+    "modules_passed": 2,
+    "assertions_passed": 22,
     "expected_invalid": 0,
     "expected_unlinkable": 0,
     "expected_uninstantiable": 0,
-    "expected_feature_rejects": 6,
-    "blocked_commands": 65,
+    "expected_feature_rejects": 5,
+    "blocked_commands": 43,
     "unexpected_compile_rejects": 0,
     "unexpected_link_rejects": 0,
     "failures": 0

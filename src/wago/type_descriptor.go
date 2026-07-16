@@ -106,6 +106,8 @@ func (t ValueTypeDescriptor) ABIType(types []DefinedTypeDescriptor) (ValType, bo
 			return ValExnRef, true
 		case AbstractHeapAny, AbstractHeapNone, AbstractHeapArray:
 			return ValAnyRef, true
+		case AbstractHeapI31:
+			return ValI31Ref, true
 		default:
 			return 0, false
 		}
@@ -267,6 +269,8 @@ func valueTypeDescriptorFromValType(t ValType) (ValueTypeDescriptor, bool) {
 		return ValueTypeDescriptor{Kind: ValueTypeReference, Ref: ReferenceTypeDescriptor{Nullable: true, Heap: HeapTypeDescriptor{Abstract: AbstractHeapExn}}}, true
 	case ValAnyRef:
 		return ValueTypeDescriptor{Kind: ValueTypeReference, Ref: ReferenceTypeDescriptor{Nullable: true, Heap: HeapTypeDescriptor{Abstract: AbstractHeapAny}}}, true
+	case ValI31Ref:
+		return ValueTypeDescriptor{Kind: ValueTypeReference, Ref: ReferenceTypeDescriptor{Nullable: true, Heap: HeapTypeDescriptor{Abstract: AbstractHeapI31}}}, true
 	default:
 		return ValueTypeDescriptor{}, false
 	}
