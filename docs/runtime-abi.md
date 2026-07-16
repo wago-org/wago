@@ -252,12 +252,27 @@ values return false. A non-zero low-bit-zero word therefore cannot be mistaken f
 The exact product has no reference parameters, imports, globals, tables, object constructors, or
 host/cross-instance boundary, so such an object-shaped word cannot enter the admitted activation.
 
-This is not general dynamic-type execution. The official abstract leader needs mixed anyref,
-funcref, and externref tables plus allocation/conversion lifecycle; the concrete leader needs
-collector object descriptors and subtype queries. Both remain gated until table roots, object
-ownership, dynamic descriptor lookup, barriers, close order, and trap/rollback are proven together.
-Codec v27 serializes no `ref.test` admission bit or live discriminator state, and signal bounds plus
-arm64 remain closed. No fixed runtime, basedata, descriptor, collector, or lifecycle layout changes.
+This direct path is not general dynamic-type execution. Iteration 46 separately admits object
+classification through the parked-Go boundary. Generated code passes only the compact `gc.Ref`,
+the signed target heap/type ID, and nullability. Go resolves the exact collector descriptor, checks
+struct/array kind, walks validated declared supers, and optionally compares through one immutable
+collector-bound canonical representative map. No payload pointer, public `GCRef` token, or Go-slice
+address enters native state.
+
+One exact local compact struct table pairs each arena-owned eight-byte entry with a checked collector
+`TableSlot`. A parked table-store helper preflights bounds and ref validity, updates the slot through
+the collector barrier, and only then writes the native entry; rejected stores mutate neither. The
+first object is rooted before the next allocation, repeated initialization overwrites through the
+same fixed slots, and close nulls all slots before collector teardown. The synthetic table has two
+slots; the official concrete leader uses twenty slots and retains eight live objects. The sidecar is
+120 bytes and the lazy `instancePluginState` grows from 136 to 144 bytes; `Compiled=712`,
+`Instance=792`, `compiledCodeCache=64`, `compiledMemoryDirectory=136`, and `gc.Collector=640`
+remain unchanged.
+
+The official concrete leader now executes all subtype/canonicalization tests. The 626-byte abstract
+leader still needs mixed anyref/funcref/externref table ownership, extern conversions, funcref
+identity, mutation, and array/struct/i31 coexistence. Codec v27 serializes no `ref.test` product,
+canonical map, checked roots, or live discriminator state, and signal bounds plus arm64 remain closed.
 
 ## Global coherence invariant
 

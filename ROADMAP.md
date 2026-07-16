@@ -240,16 +240,20 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   `GCRef` object tokens. Codec v27 retains exact type/global/element metadata but inherits no
   staged product or imported-global table-initializer sidecar; snapshots, guard mode, and arm64
   remain fail-closed. Core i31 get and anyref-table get measure 34.63–35.78 ns/op with 0 B/op
-  and 0 allocs/op. Iteration 45 pins both `gc/ref_test.wast` leaders at 73 commands with two
-  explicit product gates and 69 blocked actions, and removes the concrete leader's former
-  validator mismatch by accepting dynamic tests between sibling types inside one reference
-  hierarchy while preserving disjoint-hierarchy rejection. One separate 255-byte SHA-pinned
-  null+i31 product executes nullable/non-null `any`/`eq`/`i31` plus negative struct/array tests
-  directly from the compact tag, allocates no collector, loses staged admission on codec reload,
-  and measures 36.58–37.34 ns/op with 0 B/op / 0 allocs/op. The official abstract and concrete
-  leaders remain gated pending mixed object-table roots, extern conversion/funcref lifecycle,
-  and exact dynamic descriptor execution. General frame roots, object-valued mutable/reference
-  globals, the remaining GC files, public family admission, and broader platform products remain.
+  and 0 allocs/op. Iteration 45 pins both `gc/ref_test.wast` leaders and opens a separate
+  collector-free null+i31 beachhead. Iteration 46 executes the official 976-byte concrete leader:
+  a collector primitive handles null/i31/object categories, struct/array kind checks, declared-
+  super traversal, stale/forged/closed rejection, and immutable canonical representatives. One
+  exact 168-byte two-slot product first proves checked table roots, repeated barriered overwrite,
+  Tiny exhaustion, rejected-write atomicity, close teardown, and codec/snapshot/platform closure.
+  The official twenty-slot table then retains eight live objects across both exported calls and all
+  84 subtype/canonicalization tests. Strict accounting improves to 73 commands / 1 module / 2
+  assertions / 1 exact gate / 67 blocked actions. The remaining 626-byte abstract leader still
+  requires mixed anyref/funcref/externref table ownership, extern conversions, funcref identity,
+  mutation, i31, struct/array allocation, and 66 actions; it remains gated. Raw/canonical collector
+  tests measure 31.97–34.81 and 25.57–26.19 ns/op, while the parked two-slot helper path measures
+  146.9–148.5 ns/op; all are 0 B/op / 0 allocs/op. General frame roots, object-valued mutable/
+  reference globals, the remaining GC files, public family admission, and broader platform products remain.
 - [ ] Reach zero unexplained failures/skips in the official Release 3 core suite.
 
 **Engine & performance** (no-ir-plan P1–P7, measured against P1's stats)
