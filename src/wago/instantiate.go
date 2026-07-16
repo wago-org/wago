@@ -149,7 +149,7 @@ func (c *Compiled) arenaNeedForImports(imports Imports, syncMode bool) int {
 		return need
 	}
 	baselineHostBytes := runtime.HostCallLogBytes
-	if c.needsPublicFuncrefHostReentry() || c.usesGCStructHelpers() {
+	if c.needsPublicFuncrefHostReentry() || c.usesGCStructHelpers() || c.usesGCArrayHelpers() {
 		baselineHostBytes = runtime.HostCtrlFrameBytes
 	}
 	actualHostBytes := 0
@@ -167,7 +167,7 @@ func (c *Compiled) arenaNeedForImports(imports Imports, syncMode bool) int {
 }
 
 func (b *instanceBuilder) prepareCollector() error {
-	if !gc.HasHeapObjectTypes(b.c.GCTypeDescs) || b.c.collectorFreeStructuralMetadata() {
+	if !gc.HasHeapObjectTypes(b.c.GCTypeDescs) || b.c.collectorFreeStructuralMetadata() || b.c.collectorFreeGCArrayMetadata() {
 		return nil
 	}
 	collector, err := gc.NewCollector(b.opts.GC, b.c.GCTypeDescs)

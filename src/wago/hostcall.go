@@ -494,7 +494,7 @@ func (in *Instance) newHostDispatch() runtime.HostCall {
 			if importIdx&hostFuncRefDispatchBit != 0 {
 				panic(gcStructHelperError{err: fmt.Errorf("invalid overlapping GC/host dispatch index %#x", importIdx)})
 			}
-			in.dispatchGCStructHelper(importIdx&^gcStructDispatchBit, args, results)
+			in.dispatchGCHelper(importIdx&^gcStructDispatchBit, args, results)
 			return
 		}
 		var fn HostFunc

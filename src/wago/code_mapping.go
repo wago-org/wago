@@ -15,8 +15,11 @@ type compiledCodeCache struct {
 	refs                            int
 	closed                          bool
 	collectorFreeStructuralMetadata bool                  // exact staged products use struct descriptors only for function identity
+	collectorFreeGCArrayMetadata    bool                  // exact staged array declaration/binding products allocate no collector
 	gcStructHelpers                 bool                  // exact collector-backed products use the synchronous internal helper dispatcher
+	gcArrayHelpers                  bool                  // exact collector-backed array products use the same parked-Go dispatcher
 	gcStructProduct                 stagedGCStructProduct // exact compile-only public GC ownership boundary; never serialized
+	gcArrayProduct                  stagedGCArrayProduct  // exact compile-only array boundary; never serialized
 	stagedFeatures                  CoreFeatures          // compile-only admission; never serialized or publicly loaded
 }
 
@@ -47,11 +50,26 @@ func (c *Compiled) usesGCStructHelpers() bool {
 	return c != nil && c.codeCache != nil && c.codeCache.gcStructHelpers
 }
 
+func (c *Compiled) usesGCArrayHelpers() bool {
+	return c != nil && c.codeCache != nil && c.codeCache.gcArrayHelpers
+}
+
+func (c *Compiled) collectorFreeGCArrayMetadata() bool {
+	return c != nil && c.codeCache != nil && c.codeCache.collectorFreeGCArrayMetadata
+}
+
 func (c *Compiled) stagedGCStructProduct() stagedGCStructProduct {
 	if c == nil || c.codeCache == nil {
 		return 0
 	}
 	return c.codeCache.gcStructProduct
+}
+
+func (c *Compiled) stagedGCArrayProduct() stagedGCArrayProduct {
+	if c == nil || c.codeCache == nil {
+		return 0
+	}
+	return c.codeCache.gcArrayProduct
 }
 
 func (c *Compiled) ensureCodeCache() {
