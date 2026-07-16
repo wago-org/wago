@@ -46,7 +46,7 @@ func (p stagedGCTypeSubtypingProduct) usesRuntimeFunctionIdentity() bool {
 }
 
 func (p stagedGCTypeSubtypingProduct) usesLinkFunctionIdentity() bool {
-	return p == stagedGCTypeSubtypingLinkProvider || p == stagedGCTypeSubtypingLinkConsumer || p == stagedGCTypeSubtypingFinalityLinkProvider || p == stagedGCTypeSubtypingFinalityLinkConsumer || p == stagedGCTypeSubtypingStructLinkProvider || p == stagedGCTypeSubtypingStructLinkConsumer || p == stagedGCTypeSubtypingStructProjectionLinkProvider || p == stagedGCTypeSubtypingStructProjectionLinkConsumer || p == stagedGCTypeSubtypingStructMismatchLinkProvider || p == stagedGCTypeSubtypingStructMismatchLinkConsumer
+	return p == stagedGCTypeSubtypingLinkProvider || p == stagedGCTypeSubtypingLinkConsumer || p == stagedGCTypeSubtypingFinalityLinkProvider || p == stagedGCTypeSubtypingFinalityLinkConsumer || p == stagedGCTypeSubtypingStructLinkProvider || p == stagedGCTypeSubtypingStructLinkConsumer || p == stagedGCTypeSubtypingStructProjectionLinkProvider || p == stagedGCTypeSubtypingStructProjectionLinkConsumer || p == stagedGCTypeSubtypingStructMismatchLinkProvider || p == stagedGCTypeSubtypingStructMismatchLinkConsumer || p == stagedGCTypeSubtypingIndependentStructLinkProvider || p == stagedGCTypeSubtypingIndependentStructLinkConsumer
 }
 
 func (p stagedGCTypeSubtypingProduct) linkProviderProduct() stagedGCTypeSubtypingProduct {
@@ -61,6 +61,8 @@ func (p stagedGCTypeSubtypingProduct) linkProviderProduct() stagedGCTypeSubtypin
 		return stagedGCTypeSubtypingStructProjectionLinkProvider
 	case stagedGCTypeSubtypingStructMismatchLinkConsumer:
 		return stagedGCTypeSubtypingStructMismatchLinkProvider
+	case stagedGCTypeSubtypingIndependentStructLinkConsumer:
+		return stagedGCTypeSubtypingIndependentStructLinkProvider
 	default:
 		return 0
 	}
@@ -133,6 +135,10 @@ func stagedGCTypeSubtypingProductPinned(data []byte, product stagedGCTypeSubtypi
 		pinned = stagedGCTypeSubtypingStructMismatchLinkProvider
 	case "bb598cc89f2d73720190e6c7e115bec104013bf8ebead4c417d17e701598c7a1":
 		pinned = stagedGCTypeSubtypingStructMismatchLinkConsumer
+	case "7c8af0765c2e2d43a07e7a6a75a85d396531827c1b2cb4402a24277308781dff":
+		pinned = stagedGCTypeSubtypingIndependentStructLinkProvider
+	case "a593d0db0e5f173aaac2d6007b84a4b268d7ad2047a4e8cd8fe3a275ef9b0820":
+		pinned = stagedGCTypeSubtypingIndependentStructLinkConsumer
 	}
 	return pinned == product
 }
@@ -153,6 +159,9 @@ func stagedGCTypeSubtypingProductShape(m *wasm.Module) (stagedGCTypeSubtypingPro
 		}
 		if len(m.Types) == 3 && len(m.Types[0].SubTypes) == 2 && len(m.Types[1].SubTypes) == 2 && len(m.Types[2].SubTypes) == 2 && (m.ImportedFuncCount() != 0 || len(m.Exports) == 1) {
 			if m.Types[0].SubTypes[1].Final {
+				if product, err := stagedGCTypeSubtypingIndependentStructLinkShape(m); err == nil {
+					return product, nil
+				}
 				return stagedGCTypeSubtypingStructMismatchLinkShape(m)
 			}
 			return stagedGCTypeSubtypingStructProjectionLinkShape(m)
@@ -551,6 +560,66 @@ func stagedGCTypeSubtypingStructMismatchLinkShape(m *wasm.Module) (stagedGCTypeS
 		return 0, fmt.Errorf("struct mismatch link consumer import is outside the exact M5.g product")
 	}
 	return stagedGCTypeSubtypingStructMismatchLinkConsumer, nil
+}
+
+func stagedGCTypeSubtypingIndependentStructLinkShape(m *wasm.Module) (stagedGCTypeSubtypingProduct, error) {
+	if len(m.Types) != 3 || m.TableCount() != 0 || m.MemCount() != 0 || len(m.Globals) != 0 || len(m.Elements) != 0 || len(m.Data) != 0 || m.TagCount() != 0 || m.Start != nil {
+		return 0, fmt.Errorf("independent struct link product requires exactly three type groups and no non-function state")
+	}
+	for groupIndex := range m.Types {
+		group := &m.Types[groupIndex]
+		if len(group.SubTypes) != 2 {
+			return 0, fmt.Errorf("independent struct link group %d must contain two members", groupIndex)
+		}
+		f := &group.SubTypes[0]
+		if f.Final || !f.HasPrefix || f.Metadata.Describes != nil || f.Metadata.Descriptor != nil || f.Comp.Kind != wasm.CompFunc || len(f.Comp.Params) != 0 || len(f.Comp.Results) != 0 {
+			return 0, fmt.Errorf("independent struct link group %d function must be an open metadata-free () -> () subtype", groupIndex)
+		}
+		s := &group.SubTypes[1]
+		if !s.Final || s.HasPrefix || s.Metadata.Describes != nil || s.Metadata.Descriptor != nil || len(s.Supers) != 0 || s.Comp.Kind != wasm.CompStruct {
+			return 0, fmt.Errorf("independent struct link group %d companion must be a final metadata-free struct without supers", groupIndex)
+		}
+		if groupIndex < 2 {
+			if len(f.Supers) != 0 || len(s.Comp.Fields) != 1 {
+				return 0, fmt.Errorf("independent struct link root group %d must have no function super and one struct field", groupIndex)
+			}
+			field := s.Comp.Fields[0]
+			ref := field.Storage.Val
+			if field.Mut != wasm.Const || field.Storage.Packed || ref.Kind != wasm.ValRef || ref.Ref.Nullable || ref.Ref.Exact || ref.Ref.Heap.Kind != wasm.HeapTypeIndex || !ref.Ref.Heap.Type.Rec || ref.Ref.Heap.Type.Index != 0 {
+				return 0, fmt.Errorf("independent struct link root group %d field must be an immutable non-null self reference", groupIndex)
+			}
+			continue
+		}
+		if len(f.Supers) != 1 || f.Supers[0].Rec || f.Supers[0].Index != 0 || len(s.Comp.Fields) != 0 {
+			return 0, fmt.Errorf("independent struct link final group must extend flat type 0 and carry an empty struct")
+		}
+	}
+	gRef := wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: 4}), false)
+	f1Ref := wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: 0}), false)
+	if !m.ReferenceTypeSubtype(gRef, f1Ref) || m.ReferenceTypeSubtype(f1Ref, gRef) {
+		return 0, fmt.Errorf("independent struct link function relation must be exactly g <: f1")
+	}
+	if len(m.Imports) == 0 {
+		if len(m.FuncTypes) != 1 || len(m.Code) != 1 || len(m.Exports) != 1 {
+			return 0, fmt.Errorf("independent struct link provider requires one local function and one export")
+		}
+		if m.FuncTypes[0].Rec || m.FuncTypes[0].Index != 4 || len(m.Code[0].Locals.Runs) != 0 || !isExactEndBody(m.Code[0].BodyBytes) {
+			return 0, fmt.Errorf("independent struct link provider function is outside the exact type/body product")
+		}
+		ex := m.Exports[0]
+		if ex.Name != "g" || ex.Index.Kind != wasm.ExternFunc || ex.Index.Index != 0 {
+			return 0, fmt.Errorf("independent struct link provider export is outside the exact g product")
+		}
+		return stagedGCTypeSubtypingIndependentStructLinkProvider, nil
+	}
+	if len(m.FuncTypes) != 0 || len(m.Code) != 0 || len(m.Exports) != 0 || len(m.Imports) != 1 || m.ImportedFuncCount() != 1 {
+		return 0, fmt.Errorf("independent struct link consumer requires exactly one function import")
+	}
+	imp := m.Imports[0]
+	if imp.Module != "M6" || imp.Name != "g" || imp.Type.Kind != wasm.ExternFunc || imp.Type.Type.Rec || imp.Type.Type.Index != 0 {
+		return 0, fmt.Errorf("independent struct link consumer import is outside the exact M6.g product")
+	}
+	return stagedGCTypeSubtypingIndependentStructLinkConsumer, nil
 }
 
 func stagedGCTypeSubtypingRefFuncGlobalShape(m *wasm.Module) (stagedGCTypeSubtypingProduct, error) {
