@@ -532,6 +532,18 @@ Its instance-owned arena is 352 bytes (null plus ten local descriptors), and the
 (eight-byte length header plus three 32-byte entries). `compiledCodeCache` remains 64 bytes; no basedata offset, helper
 ID, descriptor field, root, barrier, collector sidecar, frame record, result adapter, or public ABI changes.
 
+Iteration 63 reuses that ABI only for a separate exact finality product. Its local descriptor arena is 224 bytes (null
+plus six local descriptors), and its immutable table image is 72 bytes (eight-byte length header plus two 32-byte
+entries). The classifier first proves that the structurally identical open and final `() -> ()` declarations have an
+identity-only subtype relation. The generated indirect-signature and indexed-cast checks then compare the table entry's
+canonical identity against only the matching local descriptor. Final-to-open and open-to-final both fail, so finality is
+not erased by structural shape.
+
+The four official paths are traps; after them, a direct local invocation proves recovery and repeats allocation-free.
+No descriptor pointer is scanned, rooted, converted, serialized as live state, or exposed publicly. Codec v27 retains
+type/function/table/element/code metadata but not admission. `compiledCodeCache` remains 64 bytes; no basedata offset,
+helper ID, descriptor field, root, barrier, collector sidecar, frame record, result adapter, or public ABI changes.
+
 ## Global coherence invariant
 
 The global cell is the sole host- and cross-instance-visible storage for a

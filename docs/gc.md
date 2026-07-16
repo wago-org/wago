@@ -42,10 +42,12 @@ class that preserves the false source-to-target direction across sibling declare
 local `ref.func` provenance and validator structural subtype relation fold every answer without routing descriptor
 addresses through compact-GC classification. Iteration 62 adds the exact recursive runtime call/cast leader without
 changing that category boundary: its local funcref table stores ordinary canonical descriptors, and generated subtype-
-aware `call_indirect`/`ref.cast` checks compare those identities directly instead of invoking a compact-GC helper. All
-twenty-four admitted leaders instantiate with `Instance.gc == nil`. The runtime product owns a 352-byte descriptor arena
-and 104-byte table image, emits 4,938 code bytes, produces a 5,433-byte codec artifact, and measures 50.78–51.50 ns/op
-with zero allocations. Twenty-one leaders remain gated and 32 dependent commands remain blocked. General native frame
+aware `call_indirect`/`ref.cast` checks compare those identities directly instead of invoking a compact-GC helper.
+Iteration 63 adds the separate finality-sensitive leader: structurally identical open and final `() -> ()` descriptors
+remain identity-distinct in both directions under the same finite checks. All twenty-five admitted leaders instantiate
+with `Instance.gc == nil`. The finality product owns a 224-byte descriptor arena and 72-byte table image, emits 1,257 code
+bytes, produces a 1,555-byte codec artifact, and measures post-trap local recovery at 37.71–38.02 ns/op with zero
+allocations. Twenty leaders remain gated and 28 dependent commands remain blocked. General native frame
 publication, object-valued mutable/reference globals, broad public ownership, and snapshots remain incomplete. These bounded products must not be presented as general executable WasmGC support.
 
 ## Why a wago-native collector
@@ -1039,8 +1041,29 @@ owns 352 canonical descriptor bytes plus a 104-byte immutable table image, emits
 and 0 allocs/op.
 
 Codec reload retains the structural types, table, element, exports, and code but not the compile-only product marker.
-Public compile/load, snapshots, signal-backed bounds, arm64, and unsupported platforms remain fail-closed. The 185-byte
-finality leader, 186-byte typed-table leader, linking products, and non-flat export are separate obligations.
+Public compile/load, snapshots, signal-backed bounds, arm64, and unsupported platforms remain fail-closed.
+
+### Iteration 63 finality-sensitive runtime function identity
+
+The 185-byte/SHA-256-pinned source-line-290 product owns one open and one final `() -> ()` type with no declared super
+edge, two empty local functions at those exact identities, and a fixed two-entry funcref table initialized with both
+canonical descriptors. Four exports isolate final-to-open and open-to-final mismatches separately for indirect signatures
+and indexed-function casts.
+
+The classifier requires the validated dynamic relation to be identity-only before enabling iteration 62's finite local
+descriptor checks. `call_indirect` keeps ordinary bounds, null, code-pointer, and call ABI behavior; `table.get` returns
+the canonical descriptor identity; and `ref.cast` compares that identity directly and preserves it byte-for-byte only on
+success. No descriptor word enters `gc.Ref`, `Collector.RefCast`, checked collector roots, public GC tokens, or extern
+conversion ownership. The product contains no imports, mutable table operation, host/cross-instance descriptor, or public
+reference egress.
+
+All four official exports trap exactly: the two calls report `wrong signature` and the two casts report `cast failure`.
+A subsequent successful invocation of local function zero proves recovery, and 1,000 repetitions allocate zero bytes.
+The instance owns 224 descriptor bytes and a 72-byte table image, emits 1,257 native bytes, produces a 1,555-byte
+codec-v27 artifact, and keeps `Instance.gc == nil`. Five 500 ms local-recovery samples measure 37.71–38.02 ns/op,
+0 B/op, and 0 allocs/op. Codec reload retains exact open/final metadata and code but no product admission; public load,
+snapshots, guard mode, arm64, and unsupported platforms remain fail-closed. The 186-byte typed-table leader, linking
+products, and non-flat export remain separate obligations.
 
 ## Collector lifetime
 
@@ -1565,12 +1588,12 @@ Tests exercise tiny nurseries, collect-every-alloc, exact scanning, cycles, root
   collector-free i31 operations, dynamic tests/casts, identity-preserving cast branches, extern conversion,
   and compact null/i31/object equality. Array fill/copy plus both `array.init_data` and the exact local-
   funcref `array.init_elem` product are staged and gap-free. Complete `gc/type-subtyping` accounting is pinned
-  at 170 commands; iterations 57-62 execute twenty-four collector-free leaders, including six immutable local `ref.func`
+  at 170 commands; iterations 57-63 execute twenty-five collector-free leaders, including six immutable local `ref.func`
   globals, nine function-only tests, and the first recursive runtime call/cast product. The latter keeps ordinary
   descriptors in a fixed local table and performs direct identity/subtype checks without the compact-GC classifier.
-  Repeated invocation allocates zero bytes, leaving 21 exact gates and 32 blocked dependents with zero validator gaps
+  Repeated invocation allocates zero bytes, leaving 20 exact gates and 28 blocked dependents with zero validator gaps
   or hidden failures. Reference struct fields, non-local/reference-owning array products, broader GC constant
-  expressions, finality/typed-table/linking products, and non-flat exports remain.
+  expressions, typed-table/linking products, and non-flat exports remain.
 - The parked-Go runtime-call ABI is proven for exact empty-frame-root numeric/packed
   allocations, non-collecting numeric access/mutation/data initialization, exact local-funcref element
   initialization, ordered immutable collector-rooted globals, per-instance passive descriptors, and one
