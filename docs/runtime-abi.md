@@ -559,6 +559,28 @@ table/element metadata but not admission. `compiledCodeCache` remains 64 bytes; 
 field, root, barrier, collector sidecar, frame record, result adapter, or public ABI changes. This proof does not authorize
 mutable/imported/exported/host/cross-instance typed-table descriptors or their retention and rollback rules.
 
+Iteration 65 adds a separate exact cross-instance function-subtyping ownership contract without changing the 32-byte
+function descriptor. The 103-byte provider owns a 128-byte arena (null plus three local descriptors); the 86-byte
+consumer owns a 224-byte arena (null plus six imported descriptors). Each imported descriptor copy keeps the producer's
+nonzero code pointer and canonical identity word. Import type matching may use the validated source-to-required function
+subtype relation only when the consumer and producer carry the separately SHA-pinned first-link-cluster products; hosts,
+other staged products, and structurally similar unpinned modules reject before attachment.
+
+The six consumer imports name only three provider exports and therefore retain one distinct provider exactly once.
+Retention is transactional across the complete import list: if a later binding fails, every earlier owner acquired by
+that attempt is released before instantiation returns. Provider-first logical close leaves native code and descriptor
+storage live until consumer close releases the retained owner; consumer-first close releases ownership while the provider
+remains open, and final provider close destroys resources once. The three pinned narrowing consumers fail with signature
+mismatch and retain nothing. Descriptor words are not compact `gc.Ref`s, roots, public tokens, or collector objects, and
+neither instance allocates a collector.
+
+Unlinked codec v27 records exact structural metadata but no private product marker. A linked consumer with retained
+function bindings cannot be serialized; private reload rejects required-feature admission, public reload rejects the GC
+feature bit, and snapshots, signal-backed bounds, arm64, unsupported platforms, and host substitution remain fail-closed.
+`compiledCodeCache` remains 64 bytes; no descriptor field, basedata offset, helper ID, root/barrier, collector sidecar,
+frame record, result adapter, or public ABI changes. This proof does not authorize later finality/struct-defined linking
+clusters, arbitrary cross-instance subtype matching, or persisted live bindings.
+
 ## Global coherence invariant
 
 The global cell is the sole host- and cross-instance-visible storage for a
