@@ -290,8 +290,17 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   truncation and memmove overlap, and use object/card/post-bulk barriers with Tiny remark proof. The copy
   product's final `global.set` is followed by a product-gated two-slot cell/root reconciliation; Tiny96
   repeats 100 overlap replacements and retains exactly two current arrays. Packed fill measures
-  170.2–173.1 ns/op, 0 B/op, and 0 allocs/op. General frame roots, broader object-valued mutable/reference
-  globals, array init operations, type-subtyping, public family admission, and broader platform products remain.
+  170.2–173.1 ns/op, 0 B/op, and 0 allocs/op. Iteration 53 pins both array-init files, strengthens
+  validation to consume all four operands and require mutable numeric/reference destinations plus exact segment
+  compatibility, and closes `gc/array_init_data.wast` at 48 commands / 2 modules / 42 assertions / 2 invalid /
+  0 gates / 0 blocked. Its six-word helper preflights destination elements and passive source bytes before any
+  write, decodes i8/i16/i32/i64 little-endian values, and never allocates or collects. The three-global leader
+  repeats under Tiny96 with all roots retained; the transient width leader repeats under Tiny24. Dropped
+  segments preserve exact zero-length success and nonzero traps; source traps are atomic. Stable i8 init measures
+  175.4–177.5 ns/op, 0 B/op, and 0 allocs/op. Combined init accounting is now 72 commands / 2 passed modules /
+  42 passed assertions / 5 invalid / 1 gate / 19 blocked. The remaining exact gate is
+  `gc/array_init_elem.wast`; general frame roots, broader object-valued mutable/reference globals, passive
+  reference-element ownership/barriers/drop lifecycle, public family admission, and broader platforms remain.
 - [ ] Reach zero unexplained failures/skips in the official Release 3 core suite.
 
 **Engine & performance** (no-ir-plan P1–P7, measured against P1's stats)
