@@ -261,8 +261,14 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   initializations with exactly two live objects, forged public ingress fails before mutation, codec/
   snapshot/guard/arm64 admission stays closed, and all official host/null/i31/struct/array round trips
   execute. Raw conversion measures 20.96–21.19 ns/op and the stable public round trip 144.2–147.8 ns/op,
-  all 0 B/op / 0 allocs/op. General frame roots, object-valued mutable/reference globals, `gc/ref_eq`,
-  casts/branches, bulk arrays, type-subtyping, public family admission, and broader platform products remain.
+  all 0 B/op / 0 allocs/op. Iteration 49 pins and closes the sole 197-byte `gc/ref_eq.wast` leader plus
+  six invalid modules. One twenty-entry checked eqref table stores null/i31 values directly and roots four
+  distinct struct/array objects; every allocation is stored before the next may-collect helper. An 80-byte
+  Tiny heap repeats initialization 100 times, retains exactly four objects, rejects forged/OOB writes
+  atomically, and executes all 81 comparisons. Accounting is gap-free at 90 commands / 1 module / 81
+  assertions / 6 invalid / 0 gates / 0 blocked. Stable i31 equality measures 45.53–49.41 ns/op, 0 B/op,
+  0 allocs/op. General frame roots, object-valued mutable/reference globals, casts/branches, bulk arrays,
+  type-subtyping, public family admission, and broader platform products remain.
 - [ ] Reach zero unexplained failures/skips in the official Release 3 core suite.
 
 **Engine & performance** (no-ir-plan P1–P7, measured against P1's stats)

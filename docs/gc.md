@@ -19,7 +19,9 @@ collector-owned dynamic type lookup, checked compact object-table roots, and exe
 concrete subtype/canonicalization leader. Iteration 47 adds bounded extern conversion ownership,
 separate anyref/funcref/externref table contracts, and executes the complete abstract leader, making
 `gc/ref_test` gap-free. Iteration 48 extends that owner with distinct bounded public conversion tokens,
-strict null conversion constants, and executes the complete `gc/extern` family. General native frame publication, object-valued mutable/reference globals,
+strict null conversion constants, and executes the complete `gc/extern` family. Iteration 49 reuses the
+checked compact-table owner for the exact official eqref product and executes the complete null/i31/object
+identity matrix without adding native frame publication. General native frame publication, object-valued mutable/reference globals,
 broad public ownership, and snapshots remain incomplete. These bounded products must not be presented as general executable
 WasmGC support.
 
@@ -601,6 +603,40 @@ public family admission, and arm64 inherit no product, conversion identity, root
 No native frame is published, so this proof does not authorize arbitrary live local refs or broader
 host/cross-instance GC ownership.
 
+### Iteration 49 exact `gc/ref_eq` product
+
+The sole official leader is pinned at 197 bytes and SHA-256
+`46b2bd3e4597ba5a871472aa14f5777df18b722b7f3283ba1fc946f4791a3adb`. Its nine-member type graph
+contains two base structs, four declared struct subtypes, one i8 array, and two function types. The
+module owns one twenty-entry `(ref null eq)` table, `init`, and a two-index `eq` function. Six separate
+invalid binaries are pinned and continue to reject because `ref.eq` accepts only eqref operands, not
+anyref, funcref, or externref in nullable or non-null form.
+
+The product reuses `gcRefTestTableState` without a conversion owner. Null and i31 values occupy direct
+compact words. Struct and array values occupy low-bit-zero compact handles paired with checked collector
+`TableSlot`s. `init` creates two empty structs and two zero-length arrays; each returned handle is stored
+and rooted before the next allocation can collect. Equality itself is the existing direct 64-bit value
+comparison: nulls compare equal, equal i31 payloads compare equal, and objects compare only by stable
+handle identity. Distinct objects remain unequal even when their dynamic type and contents agree. The
+official file has no host/foreign-any operands, so this slice makes no claim about comparing public token
+bits or foreign conversion identities.
+
+An 80-byte Tiny heap repeats `init` 100 times with collect-every-allocation and retains exactly the four
+current table objects after a full collection. The extra 16 bytes above the four-object 64-byte live set
+allow one replacement allocation before its destination slot withdraws the old root. Forged object
+handles and out-of-bounds writes reject before table mutation. Close withdraws all checked roots before
+collector teardown. Codec v27 preserves type/table/code metadata but inherits no product, helper, table
+root, or live compact identity; snapshots, guard mode, public family admission, and arm64 execution remain
+closed.
+
+Strict schema-2 accounting is gap-free at 90 commands / 1 module / 81 assertions / 6 invalid / 0 gates /
+0 blocked / 0 hidden failures. The product is 197 Wasm bytes / 1,846 linked code bytes / 2,334 codec bytes.
+Fixed sidecars remain `gcRefTestTableState=200` and lazy `instancePluginState=144`; fixed layouts remain
+`Compiled=712`, `Instance=792`, `compiledCodeCache=64`, `compiledMemoryDirectory=136`, and
+`gc.Collector=640`. Five 500 ms samples of stable i31 equality measure 45.53–49.41 ns/op, all 0 B/op and
+0 allocs/op. This proof adds no frame roots, public GC token ingress, conversion identity, canonical map,
+or serialized live state.
+
 Before broader live `gc.Ref` payloads or funcref lifetimes can be admitted, codegen/runtime
 must still prove all of the following as one coherent product:
 
@@ -1137,11 +1173,11 @@ Tests exercise tiny nurseries, collect-every-alloc, exact scanning, cycles, root
 
 ## Current limitations
 
-- WasmGC opcode validation is not complete. Exact staged numeric structs plus complete official
-  `gc/array.wast` and `gc/i31.wast` execution are wired to amd64: bounded array constructors and
-  access, immutable/passive roots and barriers, plus collector-free i31 encode/get/cast,
-  global/initializer, and compact-table lifecycle. General casts/tests, array fill/copy/init,
-  extern conversion, reference struct fields, and broader GC constant expressions remain.
+- WasmGC opcode/product execution is not complete. Exact staged `gc/struct`, `gc/array`, `gc/i31`,
+  `gc/ref_test`, `gc/extern`, and `gc/ref_eq` families are wired to amd64, including bounded array
+  constructors/access/barriers, collector-free i31 operations, dynamic tests, extern conversion,
+  and compact null/i31/object equality. General `ref.cast`/cast branches, array fill/copy/init,
+  reference struct fields, broader GC constant expressions, and type-subtyping remain.
 - The parked-Go runtime-call ABI is proven for exact empty-frame-root numeric/packed
   allocations, non-collecting numeric access/mutation, ordered immutable collector-rooted
   globals, per-instance passive data descriptors, and one result-token root installed only
@@ -1156,11 +1192,10 @@ Tests exercise tiny nurseries, collect-every-alloc, exact scanning, cycles, root
   future work.
 - The Throughput heap currently uses growable Go byte slices, so native code
   must not cache raw heap payload pointers; see `docs/runtime-abi.md`.
-- Tiny and Throughput profiles are connected to the exact staged numeric-struct and
-  pointer-free array helper paths, including immutable rooted globals, packed struct fields,
-  packed data/drop lifecycle, bounded public-token rooting, stress collection, and
-  deterministic Tiny exhaustion. Reference arrays and broader WasmGC opcode/backend lowering
-  remain closed.
+- Tiny and Throughput profiles are connected to exact staged struct/array/table helper paths,
+  including immutable and passive roots, reference array barriers, packed data/drop lifecycle,
+  bounded public/conversion ownership, dynamic tests, and compact equality under stress collection
+  and deterministic Tiny exhaustion. Broader WasmGC opcode/backend lowering remains closed.
 
 These limitations are intentional for this commit series: the runtime foundation
 is small, exact, typed, and no-cgo, giving later codegen work stable contracts.
