@@ -32,6 +32,12 @@ const (
 	stagedGCStructRefEq
 	stagedGCStructRefCastAbstract
 	stagedGCStructRefCastConcrete
+	stagedGCStructBrOnCastAbstract
+	stagedGCStructBrOnCastConcrete
+	stagedGCStructBrOnCastNullability
+	stagedGCStructBrOnCastFailAbstract
+	stagedGCStructBrOnCastFailConcrete
+	stagedGCStructBrOnCastFailNullability
 )
 
 type stagedGCStructOpcodeCount struct {
@@ -90,6 +96,18 @@ func (p stagedGCStructProduct) String() string {
 		return "official-abstract-reference-cast"
 	case stagedGCStructRefCastConcrete:
 		return "official-concrete-reference-cast"
+	case stagedGCStructBrOnCastAbstract:
+		return "official-abstract-branch-on-cast"
+	case stagedGCStructBrOnCastConcrete:
+		return "official-concrete-branch-on-cast"
+	case stagedGCStructBrOnCastNullability:
+		return "official-nullability-branch-on-cast"
+	case stagedGCStructBrOnCastFailAbstract:
+		return "official-abstract-branch-on-cast-fail"
+	case stagedGCStructBrOnCastFailConcrete:
+		return "official-concrete-branch-on-cast-fail"
+	case stagedGCStructBrOnCastFailNullability:
+		return "official-nullability-branch-on-cast-fail"
 	default:
 		return "unknown"
 	}
@@ -127,6 +145,18 @@ func (p stagedGCStructProduct) gateReason() string {
 		return "official mixed anyref reference casts and exact traps"
 	case stagedGCStructRefCastConcrete:
 		return "official concrete declared-super/canonical reference casts"
+	case stagedGCStructBrOnCastAbstract:
+		return "official abstract branch-on-cast table and nested-control product"
+	case stagedGCStructBrOnCastConcrete:
+		return "official concrete branch-on-cast declared-super/canonical product"
+	case stagedGCStructBrOnCastNullability:
+		return "official branch-on-cast nullability/control-shape product"
+	case stagedGCStructBrOnCastFailAbstract:
+		return "official abstract branch-on-cast-fail table and nested-control product"
+	case stagedGCStructBrOnCastFailConcrete:
+		return "official concrete branch-on-cast-fail declared-super/canonical product"
+	case stagedGCStructBrOnCastFailNullability:
+		return "official branch-on-cast-fail nullability/control-shape product"
 	default:
 		return "unknown gc/struct product"
 	}
@@ -143,16 +173,22 @@ func stagedGCStructLeaderPinFor(data []byte, commandLine int) (stagedGCStructLea
 }
 
 const (
-	stagedGCStructNumericLocalSHA256    = "f5fc57a9a6b959a1a689385cb79050b6998c867c61eafd65ff03b2d57d128fcf"
-	stagedGCStructNumericMutationSHA256 = "e9f7a7ec88c56684ad5b96e2a5471765ab2835ddea14069006da51a96ed5e891"
-	stagedGCStructNumericGlobalsSHA256  = "0387e519fa921b905d0657a6fafb630ab7acaa3a6282e354b3f0f2e45adbfeee"
-	stagedGCStructRefTestTableSHA256    = "ab93f46c271d3e1a71c21da7257e29b2363e9188725378005705b33a056a8cbd"
-	stagedGCStructRefTestConcreteSHA256 = "7a71f9662207799b262ccbc7909f4e9492c04f7173f84f29be69905d925f6426"
-	stagedGCStructRefTestAbstractSHA256 = "526d5c1b457f847daf51141a7d63aba11d20415b7ef2a13f593e06f680a41403"
-	stagedGCStructExternSHA256          = "5ad921ebe511ca9e23c137aef6883113684896f15b8a9726d5d77524d562f823"
-	stagedGCStructRefEqSHA256           = "46b2bd3e4597ba5a871472aa14f5777df18b722b7f3283ba1fc946f4791a3adb"
-	stagedGCStructRefCastAbstractSHA256 = "c85556089bf1a39cb3082f7de916c00eaa2482253cf126d8a9fc09ab970eed4b"
-	stagedGCStructRefCastConcreteSHA256 = "65f1f33b335ca62d90ad089a74f8a29ea3163f9a3a2f53096bdeac9e4b86f4a6"
+	stagedGCStructNumericLocalSHA256            = "f5fc57a9a6b959a1a689385cb79050b6998c867c61eafd65ff03b2d57d128fcf"
+	stagedGCStructNumericMutationSHA256         = "e9f7a7ec88c56684ad5b96e2a5471765ab2835ddea14069006da51a96ed5e891"
+	stagedGCStructNumericGlobalsSHA256          = "0387e519fa921b905d0657a6fafb630ab7acaa3a6282e354b3f0f2e45adbfeee"
+	stagedGCStructRefTestTableSHA256            = "ab93f46c271d3e1a71c21da7257e29b2363e9188725378005705b33a056a8cbd"
+	stagedGCStructRefTestConcreteSHA256         = "7a71f9662207799b262ccbc7909f4e9492c04f7173f84f29be69905d925f6426"
+	stagedGCStructRefTestAbstractSHA256         = "526d5c1b457f847daf51141a7d63aba11d20415b7ef2a13f593e06f680a41403"
+	stagedGCStructExternSHA256                  = "5ad921ebe511ca9e23c137aef6883113684896f15b8a9726d5d77524d562f823"
+	stagedGCStructRefEqSHA256                   = "46b2bd3e4597ba5a871472aa14f5777df18b722b7f3283ba1fc946f4791a3adb"
+	stagedGCStructRefCastAbstractSHA256         = "c85556089bf1a39cb3082f7de916c00eaa2482253cf126d8a9fc09ab970eed4b"
+	stagedGCStructRefCastConcreteSHA256         = "65f1f33b335ca62d90ad089a74f8a29ea3163f9a3a2f53096bdeac9e4b86f4a6"
+	stagedGCStructBrOnCastAbstractSHA256        = "4429db7587ba73adfc04c44a2369bab38343d7f582d1745372940ba96c04a263"
+	stagedGCStructBrOnCastConcreteSHA256        = "4eabadd98e55bc0c83600f072a16bab75e3d74170d2f24bb6bdae4acf0b5491b"
+	stagedGCStructBrOnCastNullabilitySHA256     = "cc5bdeb4b57409c6e194ae094f2a50ece4dce6afa66cd25ec07b4624ccb96632"
+	stagedGCStructBrOnCastFailAbstractSHA256    = "a1d339dfb4ed4aa308f1a9eeb8293f0475d427b0d7aea7e8b99159c054fc6815"
+	stagedGCStructBrOnCastFailConcreteSHA256    = "88894127fabe14a42dc6d5af44027318078b702bcc67fc34e752d145a8164312"
+	stagedGCStructBrOnCastFailNullabilitySHA256 = "6725d0fa741974c1214cdabc35fa962779f74abd711cc21b04d67d0c4073578e"
 )
 
 // stagedGCStructExecutionProduct admits only the exact collector-backed products
@@ -189,6 +225,24 @@ func stagedGCStructExecutionProduct(data []byte) (stagedGCStructProduct, bool) {
 	if digest == stagedGCStructRefCastConcreteSHA256 && len(data) == 512 {
 		return stagedGCStructRefCastConcrete, true
 	}
+	if digest == stagedGCStructBrOnCastAbstractSHA256 && len(data) == 385 {
+		return stagedGCStructBrOnCastAbstract, true
+	}
+	if digest == stagedGCStructBrOnCastConcreteSHA256 && len(data) == 772 {
+		return stagedGCStructBrOnCastConcrete, true
+	}
+	if digest == stagedGCStructBrOnCastNullabilitySHA256 && len(data) == 111 {
+		return stagedGCStructBrOnCastNullability, true
+	}
+	if digest == stagedGCStructBrOnCastFailAbstractSHA256 && len(data) == 403 {
+		return stagedGCStructBrOnCastFailAbstract, true
+	}
+	if digest == stagedGCStructBrOnCastFailConcreteSHA256 && len(data) == 876 {
+		return stagedGCStructBrOnCastFailConcrete, true
+	}
+	if digest == stagedGCStructBrOnCastFailNullabilitySHA256 && len(data) == 103 {
+		return stagedGCStructBrOnCastFailNullability, true
+	}
 	for _, pin := range stagedGCStructLeaderPins {
 		if pin.SHA256 != digest || pin.Size != len(data) {
 			continue
@@ -204,22 +258,38 @@ func stagedGCStructExecutionProduct(data []byte) (stagedGCStructProduct, bool) {
 }
 
 func (p stagedGCStructProduct) requiresHelpers() bool {
-	return p == stagedGCStructNamedGets || p == stagedGCStructNumericLocal || p == stagedGCStructNullDereference || p == stagedGCStructPacked || p == stagedGCStructBasic || p == stagedGCStructRefTestTable || p == stagedGCStructRefTestConcrete || p == stagedGCStructRefTestAbstract || p == stagedGCStructExtern || p == stagedGCStructRefEq || p == stagedGCStructRefCastAbstract || p == stagedGCStructRefCastConcrete
+	return p == stagedGCStructNamedGets || p == stagedGCStructNumericLocal || p == stagedGCStructNullDereference || p == stagedGCStructPacked || p == stagedGCStructBasic || p == stagedGCStructRefTestTable || p == stagedGCStructRefTestConcrete || p == stagedGCStructRefTestAbstract || p == stagedGCStructExtern || p == stagedGCStructRefEq || p == stagedGCStructRefCastAbstract || p == stagedGCStructRefCastConcrete || p == stagedGCStructBrOnCastAbstract || p == stagedGCStructBrOnCastConcrete || p == stagedGCStructBrOnCastNullability || p == stagedGCStructBrOnCastFailAbstract || p == stagedGCStructBrOnCastFailConcrete || p == stagedGCStructBrOnCastFailNullability
 }
 
 func (p stagedGCStructProduct) requiresArrayHelpers() bool {
-	return p == stagedGCStructRefTestAbstract || p == stagedGCStructExtern || p == stagedGCStructRefEq || p == stagedGCStructRefCastAbstract
+	return p == stagedGCStructRefTestAbstract || p == stagedGCStructExtern || p == stagedGCStructRefEq || p == stagedGCStructRefCastAbstract || p == stagedGCStructBrOnCastAbstract || p == stagedGCStructBrOnCastFailAbstract
 }
 
 func (p stagedGCStructProduct) requiresI31Helpers() bool {
-	return p == stagedGCStructRefTestAbstract || p == stagedGCStructExtern || p == stagedGCStructRefEq || p == stagedGCStructRefCastAbstract
+	return p == stagedGCStructRefTestAbstract || p == stagedGCStructExtern || p == stagedGCStructRefEq || p == stagedGCStructRefCastAbstract || p == stagedGCStructBrOnCastAbstract || p == stagedGCStructBrOnCastFailAbstract
 }
 
 func (p stagedGCStructProduct) refTestCanonicalTypes() []gc.TypeID {
-	if p != stagedGCStructRefTestConcrete && p != stagedGCStructRefCastConcrete {
+	if p != stagedGCStructRefTestConcrete && p != stagedGCStructRefCastConcrete && p != stagedGCStructBrOnCastConcrete && p != stagedGCStructBrOnCastFailConcrete {
 		return nil
 	}
 	return []gc.TypeID{0, 1, 1, 3, 3, 5, 6, 7, 8}
+}
+
+func (p stagedGCStructProduct) requiresRefTableState() bool {
+	switch p {
+	case stagedGCStructRefTestTable, stagedGCStructRefTestConcrete, stagedGCStructRefTestAbstract,
+		stagedGCStructExtern, stagedGCStructRefEq, stagedGCStructRefCastAbstract, stagedGCStructRefCastConcrete,
+		stagedGCStructBrOnCastAbstract, stagedGCStructBrOnCastConcrete,
+		stagedGCStructBrOnCastFailAbstract, stagedGCStructBrOnCastFailConcrete:
+		return true
+	default:
+		return false
+	}
+}
+
+func (p stagedGCStructProduct) requiresExternConversion() bool {
+	return p == stagedGCStructRefTestAbstract || p == stagedGCStructExtern || p == stagedGCStructRefCastAbstract || p == stagedGCStructBrOnCastAbstract || p == stagedGCStructBrOnCastFailAbstract
 }
 
 func stagedGCStructTypeGraph(m *wasm.Module) string {

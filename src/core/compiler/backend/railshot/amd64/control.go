@@ -1189,6 +1189,43 @@ func (f *fn) brOnNonNull(r *wasm.Reader) error {
 	return nil
 }
 
+// brOnCastResult consumes the helper's i32 match result while leaving the
+// original reference at the top of the logical stack. Both the selected branch
+// edge and fallthrough therefore retain the exact same 64-bit identity; only the
+// validator-visible refinement differs.
+func (f *fn) brOnCastResult(idx uint32, branchOnMatch bool) error {
+	matched, owned := f.materializeRead(f.popValue())
+	fi := len(f.ctrl) - 1 - int(idx)
+	if fi < 0 {
+		if owned {
+			f.release(matched)
+		}
+		return errBadLabel
+	}
+	fr := &f.ctrl[fi]
+	f.convergeBranchLocals(fr)
+	d := f.depth()
+	f.flush()
+	f.a.TestSelf(matched, false)
+	if owned {
+		f.release(matched)
+	}
+	skipCond := condE
+	if !branchOnMatch {
+		skipCond = condNE
+	}
+	over := f.a.JccPlaceholder(skipCond)
+	if fr.regMerge1 {
+		f.branchEdgeToMerge1(fr, d)
+	} else {
+		f.moveBranchValues(fr, d, fr.branchN)
+	}
+	f.branchJump(fr)
+	f.a.PatchRel32(over, f.a.Len())
+	f.recordBrFold(over)
+	return nil
+}
+
 func (f *fn) opBrTable(r *wasm.Reader) error {
 	if f.unreachable {
 		n, err := r.U32()

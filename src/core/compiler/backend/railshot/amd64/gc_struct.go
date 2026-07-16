@@ -24,6 +24,7 @@ const (
 	gcAnyConvertExtern          = 8
 	gcExternConvertAny          = 9
 	gcStructRefCast             = 10
+	gcStructAllocOne            = 11
 )
 
 func (f *fn) emitFB(r *wasm.Reader) error {
@@ -39,6 +40,9 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 	}
 	if sub == 22 || sub == 23 {
 		return f.emitGCI31Cast(sub, r)
+	}
+	if sub == 24 || sub == 25 {
+		return f.emitGCBranchCast(sub, r)
 	}
 	if sub >= 28 && sub <= 30 {
 		return f.emitGCI31(sub)
@@ -56,6 +60,26 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		return fmt.Errorf("amd64: unsupported 0xfb opcode %d without staged GC struct helpers", sub)
 	}
 	switch sub {
+	case 0: // struct.new typeidx
+		typeIndex, err := r.U32()
+		if err != nil {
+			return err
+		}
+		st, ok := stagedStructType(f.m, typeIndex)
+		if !ok || len(st.Comp.Fields) != 1 {
+			return fmt.Errorf("amd64: staged struct.new type %d requires exactly one field", typeIndex)
+		}
+		field := st.Comp.Fields[0]
+		valueType := field.Storage.Val
+		if field.Storage.Packed {
+			valueType = wasm.I32
+		}
+		if valueType.Kind == wasm.ValRef {
+			return fmt.Errorf("amd64: reference struct.new remains outside the staged helper slice")
+		}
+		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
+		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
+		return f.callGCStructHelper(gcStructAllocOne, []wasm.ValType{valueType, wasm.I32}, []wasm.ValType{result})
 	case 1: // struct.new_default typeidx
 		typeIndex, err := r.U32()
 		if err != nil {
@@ -235,6 +259,46 @@ func (f *fn) emitGCI31Cast(sub uint32, r *wasm.Reader) error {
 	}
 	f.pushReg(value, mtI64)
 	return nil
+}
+
+func (f *fn) emitGCBranchCast(sub uint32, r *wasm.Reader) error {
+	if !f.gcStructHelpers {
+		return fmt.Errorf("amd64: unsupported staged branch cast without GC helpers")
+	}
+	flags, err := r.Byte()
+	if err != nil {
+		return err
+	}
+	if flags > 3 {
+		return fmt.Errorf("amd64: invalid staged branch-cast flags %d", flags)
+	}
+	depth, err := r.U32()
+	if err != nil {
+		return err
+	}
+	if _, err := r.S33(); err != nil { // validated source heap type
+		return err
+	}
+	target, err := r.S33()
+	if err != nil {
+		return err
+	}
+	value := f.materialize(f.popValue())
+	copyReg := f.allocReg(maskOf(value))
+	f.a.MovReg64(copyReg, value)
+	f.pushReg(value, mtI64)   // original identity for either selected edge
+	f.pushReg(copyReg, mtI64) // copied helper operand
+	f.pushValue(storage{kind: stConst, typ: mtI64, cval: target})
+	if flags&2 != 0 {
+		f.pushValue(storage{kind: stConst, typ: mtI32, cval: 1})
+	} else {
+		f.pushValue(storage{kind: stConst, typ: mtI32})
+	}
+	anyref := wasm.RefVal(wasm.Ref(true, wasm.AbsHeap(wasm.HeapAny), false))
+	if err := f.callGCStructHelper(gcStructRefTest, []wasm.ValType{anyref, wasm.I64, wasm.I32}, []wasm.ValType{wasm.I32}); err != nil {
+		return err
+	}
+	return f.brOnCastResult(depth, sub == 24)
 }
 
 func (f *fn) emitGCI31(sub uint32) error {

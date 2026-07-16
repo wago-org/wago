@@ -24,6 +24,7 @@ const (
 	gcAnyConvertExtern          = 8
 	gcExternConvertAny          = 9
 	gcStructRefCast             = 10
+	gcStructAllocOne            = 11
 )
 
 type gcStructHelperError struct{ err error }
@@ -48,6 +49,30 @@ func (in *Instance) dispatchGCStructHelper(helper uint32, args, results []uint64
 		// table slots, and stores each returned ref before the next allocation.
 		// A non-nil empty frame-root set keeps stress collection explicit.
 		ref, err := in.gc.NewStructDefaultWithRoots(gc.TypeID(uint32(args[0])), gc.EmptyRoots{})
+		if err != nil {
+			panic(gcStructHelperError{err: err})
+		}
+		results[0] = uint64(ref)
+	case gcStructAllocOne:
+		if len(args) != 2 || len(results) < 1 {
+			panic(gcStructHelperError{err: fmt.Errorf("gc one-field struct alloc helper arity = %d/%d, want 2/at-least-1", len(args), len(results))})
+		}
+		typeID := uint32(args[1])
+		if int(typeID) >= len(in.c.GCTypeDescs) || len(in.c.GCTypeDescs[typeID].Fields) != 1 {
+			panic(gcStructHelperError{err: fmt.Errorf("gc one-field struct type %d is unavailable", typeID)})
+		}
+		kind := in.c.GCTypeDescs[typeID].Fields[0].Kind
+		if kind == gc.StorageRef || kind == gc.StorageRefNull {
+			panic(gcStructHelperError{err: fmt.Errorf("gc one-field reference struct remains outside the staged helper slice")})
+		}
+		ref, err := in.gc.NewStructDefaultWithRoots(gc.TypeID(typeID), gc.EmptyRoots{})
+		if err == nil {
+			valueKind := kind
+			if kind == gc.StorageI8 || kind == gc.StorageI16 {
+				valueKind = gc.StorageI32
+			}
+			err = in.gc.StructSet(ref, 0, gc.Value{Kind: valueKind, Bits: args[0]})
+		}
 		if err != nil {
 			panic(gcStructHelperError{err: err})
 		}
