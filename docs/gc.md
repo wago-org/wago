@@ -9,12 +9,13 @@ knobs, and tests. Iteration 38 wires one exact linux/amd64 numeric-local helper 
 iteration 39 adds exact immutable GC-global roots, packed fields, and the numeric portion
 of the official basic struct leader. Iteration 40 closes the final struct action through one
 bounded store-owned public result token and pins the complete array family obligations.
-Iterations 41-42 add a separate exact pointer-free array helper/product boundary, the official
-array declaration/binding, null, numeric-fixed, numeric-default, and packed-data leaders,
-three immutable checked roots across those products, data-drop lifecycle, and bounded public
-array results. General native frame publication, mutable/reference stores, the reference-
-element array family, broad public ownership, and snapshots remain incomplete. These bounded
-products must not be presented as general executable WasmGC support.
+Iterations 41-43 add a separate exact array helper/product boundary, all official array
+leaders, immutable and passive-element checked roots, reference barriers, data/element-drop
+lifecycle, and bounded public array results. Iteration 44 adds the complete collector-free
+`gc/i31` family: direct immediate operations, exact globals, compact tables, and i31 casts.
+General native frame publication, object-valued mutable/reference stores, broad public
+ownership, and snapshots remain incomplete. These bounded products must not be presented as
+general executable WasmGC support.
 
 ## Why a wago-native collector
 
@@ -413,9 +414,48 @@ arm64 compile-only gates are covered. Complete `gc/array.wast` accounting is now
 
 The product is 396 Wasm bytes / 3,507 linked code bytes / 4,478 codec bytes. Both inner arrays and
 the two-element outer reference array occupy 24 bytes including the header. Fixed layouts remain
-`Compiled=712`, `Instance=792`, and `gc.Collector=640`; `compiledMemoryDirectory` is now 128 bytes
-and the lazy `instancePluginState` is 136 bytes. Five 500 ms nested-get samples measured
-6.309-11.634 us/op, 0 allocs/op, and 4-8 amortized B/op from collector backing growth.
+`Compiled=712`, `Instance=792`, and `gc.Collector=640`; at that iteration
+`compiledMemoryDirectory` was 128 bytes and the lazy `instancePluginState` was 136 bytes. Five
+500 ms nested-get samples measured 6.309-11.634 us/op, 0 allocs/op, and 4-8 amortized B/op from
+collector backing growth.
+
+### Iteration 44 collector-free i31 immediates
+
+Iteration 44 completes the official `gc/i31.wast` file without allocating or scanning heap
+objects. All seven exact binaries are pinned by size, SHA-256, decoded type/state graph, opcode
+inventory, and ordered action stream. Strict schema-2 accounting is gap-free at 80 commands /
+7 modules / 65 assertions / zero invalid or malformed commands / zero gates / zero blocked
+commands.
+
+The internal value remains the existing 32-bit `gc.Ref` word: `(low31 << 1) | 1`. amd64 lowers
+`ref.i31` to a 32-bit shift/tag pair, `i31.get_u` to a logical right shift, and `i31.get_s` to an
+arithmetic right shift. Both gets trap on zero before decoding. Exact `ref.cast i31ref` checks
+nullability and the low-bit tag; the admitted anyref products can contain only null or tagged
+i31 immediates, never low-bit-zero object handles.
+
+Literal i31 globals persist their tagged bits directly. One imported immutable i32 global is
+re-evaluated through a validated `global.get; ref.i31` program at instantiation. A separate
+8-byte compile-only table-initializer record names the sole imported global for the exact
+three-entry i31 table product; codec v27 deliberately does not serialize that live admission
+sidecar. i31 and the pinned anyref table use 8-byte entries and execute size/get/grow/fill/copy/
+init through the existing bounded table descriptor and passive-element lifecycle. No collector,
+root slot, remembered set, card, barrier, or heap arena is created, even under Throughput/Tiny
+stress configuration.
+
+The public product category is `ValI31Ref`/`I31Ref`, not `ValAnyRef`/`GCRef`. High-level `Call`
+returns typed signed/unsigned accessors; low-level `Invoke` retains the signature-defined compact
+slot. A raw tagged immediate cannot be released as an opaque `GCRef` token. Public feature
+admission remains disabled, and no official product accepts an i31 reference parameter or host
+boundary.
+
+Measured Wasm/code/codec sizes are 252/1,086/1,558 bytes for the core leader; 259/1,455/1,901
+for the i31 table; 96/206/360 for the imported-global table initializer; 88/154/309 for the
+imported-global global initializer; 131/414/635 for anyref globals; and 262/1,503/1,954 for the
+anyref table. `gcI31TableInitializer` is 8 bytes. Adding its pointer grows the lazy compiled
+memory directory from 128 to 136 bytes; fixed `Compiled=712`, `Instance=792`,
+`compiledCodeCache=64`, and `gc.Collector=640` remain unchanged. Five 500 ms samples measured
+core `get_u` at 34.63-35.18 ns/op and anyref-table get/cast at 35.01-35.78 ns/op, all 0 B/op and
+0 allocs/op.
 
 Before broader live `gc.Ref` payloads or funcref lifetimes can be admitted, codegen/runtime
 must still prove all of the following as one coherent product:
@@ -954,11 +994,10 @@ Tests exercise tiny nurseries, collect-every-alloc, exact scanning, cycles, root
 ## Current limitations
 
 - WasmGC opcode validation is not complete. Exact staged numeric structs plus complete official
-  `gc/array.wast` execution are wired to amd64: bounded numeric/default/fixed/data/element
-  constructors, numeric/packed/reference get/set/len, immutable numeric globals, passive GC
-  element roots, null/bounds/drop traps, object/bulk barriers, and bounded public results.
-  `i31`, casts/tests, array fill/copy/init, extern conversion, reference fields, and general GC
-  constant expressions remain.
+  `gc/array.wast` and `gc/i31.wast` execution are wired to amd64: bounded array constructors and
+  access, immutable/passive roots and barriers, plus collector-free i31 encode/get/cast,
+  global/initializer, and compact-table lifecycle. General casts/tests, array fill/copy/init,
+  extern conversion, reference struct fields, and broader GC constant expressions remain.
 - The parked-Go runtime-call ABI is proven for exact empty-frame-root numeric/packed
   allocations, non-collecting numeric access/mutation, ordered immutable collector-rooted
   globals, per-instance passive data descriptors, and one result-token root installed only
