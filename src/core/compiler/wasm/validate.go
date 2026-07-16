@@ -11,6 +11,7 @@ import (
 type ValidationFeatures struct {
 	CompactImports bool
 	MultiMemory    bool
+	GCConstExpr    bool // internal staged admission for struct.new in GC constant expressions
 }
 
 // ValidateModule validates module-level indexes and typechecks function bodies.

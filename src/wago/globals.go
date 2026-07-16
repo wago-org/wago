@@ -601,9 +601,10 @@ type compiledMemoryDirectory struct {
 	exactExports bool
 	staged       bool // internal multi-memory execution gate; never serialized
 
-	stagedMemory64 bool             // internal bounded memory64 execution gate; never serialized
-	ehTags         []compiledTagDef // staged EH product metadata in tag-index order; never serialized
-	ehTagExports   map[string]int   // exact tag export name -> tag index; never serialized
+	stagedMemory64  bool                 // internal bounded memory64 execution gate; never serialized
+	gcStructGlobals []gcStructGlobalInit // exact staged GC constant initializers; never serialized
+	ehTags          []compiledTagDef     // staged EH product metadata in tag-index order; never serialized
+	ehTagExports    map[string]int       // exact tag export name -> tag index; never serialized
 }
 
 // GlobalDef is the compact instantiate-time metadata for one wasm global.

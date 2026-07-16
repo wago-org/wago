@@ -121,6 +121,9 @@ func (in *Instance) GlobalValue(name string) (Value, error) {
 		return value, nil
 	}
 	bits := readGlobalObject(cell, g.Type)
+	if (g.Type == ValAnyRef || g.Type == ValExnRef) && bits != 0 {
+		return Value{}, fmt.Errorf("global %q contains a non-null %s value; public GC/exception reference egress is unsupported", name, g.Type)
+	}
 	if g.Type == ValFuncRef {
 		exact, err := in.c.globalExactType(idx)
 		if err != nil {
@@ -176,6 +179,9 @@ func (in *Instance) SetGlobalValue(name string, v Value) error {
 		return nil
 	}
 	bits := v.bits
+	if (g.Type == ValAnyRef || g.Type == ValExnRef) && bits != 0 {
+		return fmt.Errorf("global %q: non-null %s ingress is unsupported", name, g.Type)
+	}
 	if g.Type == ValFuncRef {
 		exact, err := in.c.globalExactType(idx)
 		if err != nil {

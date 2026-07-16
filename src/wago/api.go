@@ -816,7 +816,7 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 		return nil, fmt.Errorf("decode: %w", err)
 	}
 	workers := functionWorkersForModule(m, cfg.functionWorkers)
-	validationFeatures := wasm.ValidationFeatures{CompactImports: features.MultiMemory, MultiMemory: features.MultiMemory}
+	validationFeatures := wasm.ValidationFeatures{CompactImports: features.MultiMemory, MultiMemory: features.MultiMemory, GCConstExpr: features.GCStructProducts}
 	if err := wasm.ValidateModuleWithFeaturesAndWorkers(m, validationFeatures, workers); err != nil {
 		return nil, fmt.Errorf("validate: %w", err)
 	}
@@ -1020,6 +1020,13 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 		return nil, fmt.Errorf("type metadata: %w", err)
 	}
 	c := &Compiled{Code: code, Entry: entry, InternalEntry: internalEntry, NumImports: importedFuncs, Types: types, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, memoryDir: &compiledMemoryDirectory{exports: map[string]int{}, exactExports: true, staged: features.MultiMemory && m.MemCount() > 1, stagedMemory64: features.Memory64 && usesMemory64}, boundsMode: boundsMode, stagedTable64: features.Table64 && usesTable64, GCTypeDescs: gcDescs, requiredFeatures: moduleRequiredFeatures(m), dynamicImports: importedFuncs > 0}
+	if gcStructProduct != 0 {
+		gcGlobals, err := stagedGCStructGlobalInitializers(m)
+		if err != nil {
+			return nil, fmt.Errorf("compile: staged GC struct globals: %w", err)
+		}
+		c.memoryDir.gcStructGlobals = gcGlobals
+	}
 	if importedFuncs > 0 {
 		c.importFuncSigs = make([]FuncSig, importedFuncs)
 		for i := 0; i < importedFuncs; i++ {
@@ -1131,9 +1138,15 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 		c.Funcs = append(c.Funcs, FuncSig{Params: params, Results: results, TypeIndex: m.FuncTypes[li].Index, HasTypeIndex: true})
 	}
 	for i := range m.Globals {
-		v, err := evalConstExprWithModule(m.Globals[i].Init, m.Globals[i].Type.Type, m)
-		if err != nil {
-			return nil, fmt.Errorf("global %d initializer: %w", i, err)
+		globalIndex := len(c.GlobalImports) + i
+		_, gcGlobal := c.gcStructGlobalInit(globalIndex)
+		v := constExprResult{GlobalIndex: -1, FuncIndex: -1}
+		if !gcGlobal {
+			var err error
+			v, err = evalConstExprWithModule(m.Globals[i].Init, m.Globals[i].Type.Type, m)
+			if err != nil {
+				return nil, fmt.Errorf("global %d initializer: %w", i, err)
+			}
 		}
 		exact, err := valueTypeDescriptorInModule(m, m.Globals[i].Type.Type)
 		if err != nil {
