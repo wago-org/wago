@@ -337,7 +337,7 @@
       "size": 186,
       "sha256": "2ad95457821ceb8211d5733fe308f031f1103755733bbf8b5db9c85db0eb6d9b",
       "class": "runtime-table-call-subtyping",
-      "gate": "typed function table call_indirect runtime",
+      "admitted": true,
       "validator_gap": false,
       "type_graph": "rec[sub(final=false,supers=[],func()-\u003e())]|rec[sub(final=false,supers=[{0 false}],func()-\u003e())]|rec[sub(final=false,supers=[{1 false}],func()-\u003e())]|rec[func()-\u003e()]",
       "state_graph": "imports=0 funcs=5 globals=[] tables=1 memories=0 tags=0 elements=1 data=0 exports=[run=0:2,fail1=0:3,fail2=0:4]",
@@ -1166,22 +1166,17 @@
       "family": "gc",
       "reason": "non-flat declared subtype exported function invocation",
       "count": 1
-    },
-    {
-      "family": "gc",
-      "reason": "typed function table call_indirect runtime",
-      "count": 1
     }
   ],
   "counts": {
     "commands": 170,
-    "modules_passed": 25,
-    "assertions_passed": 20,
+    "modules_passed": 26,
+    "assertions_passed": 23,
     "expected_invalid": 24,
     "expected_unlinkable": 0,
     "expected_uninstantiable": 0,
-    "expected_feature_rejects": 20,
-    "blocked_commands": 28,
+    "expected_feature_rejects": 19,
+    "blocked_commands": 25,
     "unexpected_compile_rejects": 0,
     "unexpected_link_rejects": 0,
     "failures": 0
