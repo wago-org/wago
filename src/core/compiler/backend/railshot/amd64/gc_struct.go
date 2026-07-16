@@ -19,6 +19,8 @@ const (
 	gcStructSet                 = 3
 	gcStructGetS                = 4
 	gcStructGetU                = 5
+	gcStructRefTest             = 6
+	gcStructTableSet            = 7
 )
 
 func (f *fn) emitFB(r *wasm.Reader) error {
@@ -122,8 +124,20 @@ func (f *fn) emitGCI31Test(sub uint32, r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
-	value := f.materialize(f.popValue())
 	nullable := sub == 21
+	if f.gcStructHelpers {
+		value := f.materialize(f.popValue())
+		f.pushReg(value, mtI64)
+		f.pushValue(storage{kind: stConst, typ: mtI64, cval: heap})
+		if nullable {
+			f.pushValue(storage{kind: stConst, typ: mtI32, cval: 1})
+		} else {
+			f.pushValue(storage{kind: stConst, typ: mtI32})
+		}
+		anyref := wasm.RefVal(wasm.Ref(true, wasm.AbsHeap(wasm.HeapAny), false))
+		return f.callGCStructHelper(gcStructRefTest, []wasm.ValType{anyref, wasm.I64, wasm.I32}, []wasm.ValType{wasm.I32})
+	}
+	value := f.materialize(f.popValue())
 	switch heap {
 	case -20, -19, -18: // i31, eq, any: this exact product contains only null or tagged i31 values.
 		tag := f.allocReg(maskOf(value))

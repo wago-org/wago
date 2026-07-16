@@ -104,7 +104,7 @@ func (t ValueTypeDescriptor) ABIType(types []DefinedTypeDescriptor) (ValType, bo
 			return ValExternRef, true
 		case AbstractHeapExn, AbstractHeapNoExn:
 			return ValExnRef, true
-		case AbstractHeapAny, AbstractHeapNone, AbstractHeapArray:
+		case AbstractHeapAny, AbstractHeapEq, AbstractHeapNone, AbstractHeapStruct, AbstractHeapArray:
 			return ValAnyRef, true
 		case AbstractHeapI31:
 			return ValI31Ref, true

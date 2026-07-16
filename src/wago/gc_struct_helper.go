@@ -17,6 +17,8 @@ const (
 	gcStructSet                 = 3
 	gcStructGetS                = 4
 	gcStructGetU                = 5
+	gcStructRefTest             = 6
+	gcStructTableSet            = 7
 )
 
 type gcStructHelperError struct{ err error }
@@ -89,6 +91,55 @@ func (in *Instance) dispatchGCStructHelper(helper uint32, args, results []uint64
 			}
 		default:
 			results[0] = value.Bits
+		}
+	case gcStructRefTest:
+		if len(args) != 3 || len(results) < 1 {
+			panic(gcStructHelperError{err: fmt.Errorf("gc ref.test helper arity = %d/%d, want 3/at-least-1", len(args), len(results))})
+		}
+		heap := int64(args[1])
+		target := gc.RefTestTarget{Nullable: args[2] != 0}
+		switch heap {
+		case -15:
+			target.Kind = gc.RefTestNone
+		case -18:
+			target.Kind = gc.RefTestAny
+		case -19:
+			target.Kind = gc.RefTestEq
+		case -20:
+			target.Kind = gc.RefTestI31
+		case -21:
+			target.Kind = gc.RefTestStruct
+		case -22:
+			target.Kind = gc.RefTestArray
+		default:
+			if heap < 0 || uint64(heap) > uint64(^uint32(0)) {
+				panic(gcStructHelperError{err: fmt.Errorf("gc ref.test heap type %d is unavailable", heap)})
+			}
+			target.Kind, target.Type = gc.RefTestDefined, gc.TypeID(heap)
+		}
+		matched, err := in.gc.RefTest(gc.Ref(uint32(args[0])), target)
+		if err != nil {
+			panic(gcStructHelperError{err: err})
+		}
+		if matched {
+			results[0] = 1
+		} else {
+			results[0] = 0
+		}
+	case gcStructTableSet:
+		if len(args) != 3 || args[2] != 0 {
+			panic(gcStructHelperError{err: fmt.Errorf("gc ref.test table-set helper args = %v, want index/ref/table-0", args)})
+		}
+		state := in.existingGCRefTestTableState()
+		if state == nil {
+			panic(gcStructHelperError{err: fmt.Errorf("gc ref.test table state is unavailable")})
+		}
+		index := args[0]
+		if index >= uint64(state.Count) {
+			panic(gcStructHelperTrap{code: coreruntime.TrapIndirectOutOfBounds})
+		}
+		if err := state.set(in.gc, index, gc.Ref(uint32(args[1]))); err != nil {
+			panic(gcStructHelperError{err: err})
 		}
 	case gcStructSet:
 		if len(args) != 4 {
