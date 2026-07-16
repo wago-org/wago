@@ -324,8 +324,14 @@ func (v *funcValidator) stepGC(in Instruction) error {
 		if !ok {
 			return v.verr(ErrUnknownType, "invalid descriptor target reftype")
 		}
-		if !x.unknown && !v.descriptorCompatible(x.t.Ref, target.Ref) {
-			return v.verr(ErrTypeMismatch, "target does not match operand type")
+		if !x.unknown {
+			compatible := v.refTestCompatible(x.t.Ref, target.Ref)
+			if in.Kind == InstrRefTestDesc {
+				compatible = v.descriptorCompatible(x.t.Ref, target.Ref)
+			}
+			if !compatible {
+				return v.verr(ErrTypeMismatch, "target does not match operand type")
+			}
 		}
 		v.push(I32)
 		return nil

@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"sort"
+	"strings"
 	"testing"
 
 	corewasm "github.com/wago-org/wago/src/core/compiler/wasm"
@@ -194,6 +195,12 @@ func replayStagedGCRefTestScript(t *testing.T, tmp string, script stagedSpecScri
 				_ = c.Close()
 				counts.Failures++
 				t.Errorf("gc/ref_test.wast:%d unexpectedly compiled gated %s", cmd.Line, pin.Filename)
+				continue
+			}
+			if strings.Contains(compileErr.Error(), "validate:") {
+				counts.Failures++
+				counts.UnexpectedCompileRejects++
+				t.Errorf("gc/ref_test.wast:%d valid leader failed validation: %v", cmd.Line, compileErr)
 				continue
 			}
 			counts.ExpectedFeatureRejects++
