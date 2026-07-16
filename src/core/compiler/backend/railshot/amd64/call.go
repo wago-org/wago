@@ -678,6 +678,11 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 		argSlot += mt.stackSlots()
 		ctrlSlot += mt.stackSlots()
 	}
+	// The parked-Go transition restores callee-saved GPRs, but System V XMM
+	// registers are caller-saved. After copying arguments out, store every dirty
+	// pinned local and mark it for lazy reload so float locals cannot retain
+	// clobbered values across the synchronous helper/host call.
+	f.spillLocalsForCall()
 	f.a.StoreImm32Mem(R8, hcImportIdx, int32(importIdx))
 	// hcNArgs packs param slots (low 16) and result slots (high 16) so the Go
 	// re-entry loop copies back only the real result count. Both are <= 16.

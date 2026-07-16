@@ -82,7 +82,7 @@ func (p stagedGCStructProduct) gateReason() string {
 	case stagedGCStructNamedGets:
 		return "numeric struct.get field-name products"
 	case stagedGCStructBasic:
-		return "basic struct allocation/access/mutation with non-null globals and public ref.struct egress"
+		return "basic struct public ref.struct egress action"
 	case stagedGCStructNullDereference:
 		return "null struct.get/struct.set trap product"
 	case stagedGCStructPacked:
@@ -130,7 +130,7 @@ func stagedGCStructExecutionProduct(data []byte) (stagedGCStructProduct, bool) {
 			continue
 		}
 		switch pin.Product {
-		case stagedGCStructDeclarations, stagedGCStructBindings, stagedGCStructNamedGets, stagedGCStructNullDereference, stagedGCStructPacked:
+		case stagedGCStructDeclarations, stagedGCStructBindings, stagedGCStructNamedGets, stagedGCStructBasic, stagedGCStructNullDereference, stagedGCStructPacked:
 			return pin.Product, true
 		default:
 			return pin.Product, false
@@ -140,7 +140,7 @@ func stagedGCStructExecutionProduct(data []byte) (stagedGCStructProduct, bool) {
 }
 
 func (p stagedGCStructProduct) requiresHelpers() bool {
-	return p == stagedGCStructNamedGets || p == stagedGCStructNumericLocal || p == stagedGCStructNullDereference || p == stagedGCStructPacked
+	return p == stagedGCStructNamedGets || p == stagedGCStructNumericLocal || p == stagedGCStructNullDereference || p == stagedGCStructPacked || p == stagedGCStructBasic
 }
 
 func stagedGCStructTypeGraph(m *wasm.Module) string {

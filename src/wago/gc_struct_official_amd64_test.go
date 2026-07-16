@@ -209,6 +209,16 @@ func replayStagedGCStructScript(t *testing.T, tmp string, script stagedSpecScrip
 				counts.BlockedCommands++
 				continue
 			}
+			if current.Product == stagedGCStructBasic && cmd.Action.Field == "new" {
+				if _, err := currentModule.in.Invoke("new"); err == nil || !strings.Contains(err.Error(), "non-null anyref result") {
+					counts.Failures++
+					t.Errorf("gc/struct.wast:%d public ref.struct egress = %v, want explicit non-null anyref result rejection", cmd.Line, err)
+					continue
+				}
+				gates[current.Product.gateReason()]++
+				counts.BlockedCommands++
+				continue
+			}
 			args := make([]uint64, len(cmd.Action.Args))
 			valid := cmd.Action.Type == "invoke"
 			for i, arg := range cmd.Action.Args {

@@ -4,6 +4,7 @@ package wago
 
 import (
 	"encoding/hex"
+	"math"
 	"strings"
 	"testing"
 	"unsafe"
@@ -201,6 +202,70 @@ func TestStagedGCStructPackedGlobalExecution(t *testing.T) {
 	}
 }
 
+func TestStagedGCStructBasicNumericActionsAndPublicResultGate(t *testing.T) {
+	data, err := hex.DecodeString(stagedGCStructBasicHex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	profiles := []struct {
+		name string
+		cfg  GCConfig
+	}{
+		{name: "throughput", cfg: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 96, VerifyAfterCollect: true}},
+		{name: "tiny", cfg: GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 128, TinyBlockBytes: 16, TinyCollectEveryAlloc: true, VerifyAfterCollect: true}},
+	}
+	for _, tc := range profiles {
+		t.Run(tc.name, func(t *testing.T) {
+			c, err := compileStagedGCStruct(data)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer c.Close()
+			in, err := instantiateCore(c, InstantiateOptions{GC: tc.cfg})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer in.Close()
+			if state := in.pluginState.Load(); state == nil || state.gcGlobalRootCount != 2 {
+				t.Fatalf("basic GC root mapping = %#v", state)
+			}
+			for _, name := range []string{"get_0_0", "get_vec_0", "get_0_y", "get_vec_y"} {
+				got, err := in.Invoke(name)
+				if err != nil || len(got) != 1 || got[0] != 0 {
+					t.Fatalf("%s = %v, %v; want [0]", name, got, err)
+				}
+			}
+			seven := uint64(math.Float32bits(7))
+			for _, name := range []string{"set_get_y", "set_get_1"} {
+				got, err := in.Invoke(name, seven)
+				if err != nil || len(got) != 1 || got[0] != seven {
+					t.Fatalf("%s = %v, %v; want [%#x]", name, got, err, seven)
+				}
+			}
+			if _, err := in.Invoke("new"); err == nil || !strings.Contains(err.Error(), "non-null anyref result") {
+				t.Fatalf("new public result = %v, want explicit non-null anyref result rejection", err)
+			}
+			if stats := in.gc.Stats(); stats.LiveObjects > 3 {
+				t.Fatalf("basic collector stats = %+v, want two globals plus at most one transient object", stats)
+			}
+		})
+	}
+
+	c, err := compileStagedGCStruct(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	in, err := instantiateCore(c, InstantiateOptions{GC: GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 64, TinyBlockBytes: 16}})
+	if err != nil {
+		t.Fatalf("instantiate two-root Tiny product: %v", err)
+	}
+	defer in.Close()
+	if _, err := in.Invoke("get_0_0"); err == nil || !strings.Contains(err.Error(), "tiny heap exhausted") {
+		t.Fatalf("basic Tiny transient allocation = %v, want deterministic rooted exhaustion", err)
+	}
+}
+
 func TestStagedGCStructGetAllocationFailureAndCodecGate(t *testing.T) {
 	data := stagedGCStructGetOnlyBytes(t)
 	c, err := compileStagedGCStruct(data)
@@ -250,6 +315,55 @@ func TestStagedGCStructHelperFootprint(t *testing.T) {
 		t.Fatalf("compiledCodeCache size = %d, want 64", got)
 	}
 	var _ gc.Ref = 0 // keep the compact reference representation explicit in this proof.
+}
+
+func BenchmarkStagedGCStructBasicSetGet(b *testing.B) {
+	data, err := hex.DecodeString(stagedGCStructBasicHex)
+	if err != nil {
+		b.Fatal(err)
+	}
+	c, err := compileStagedGCStruct(data)
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer c.Close()
+	in, err := instantiateCore(c, InstantiateOptions{})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer in.Close()
+	seven := uint64(math.Float32bits(7))
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := in.Invoke("set_get_y", seven); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkStagedGCStructBasicGet(b *testing.B) {
+	data, err := hex.DecodeString(stagedGCStructBasicHex)
+	if err != nil {
+		b.Fatal(err)
+	}
+	c, err := compileStagedGCStruct(data)
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer c.Close()
+	in, err := instantiateCore(c, InstantiateOptions{})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer in.Close()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := in.Invoke("get_0_0"); err != nil {
+			b.Fatal(err)
+		}
+	}
 }
 
 func BenchmarkStagedGCStructPackedSetGet(b *testing.B) {
