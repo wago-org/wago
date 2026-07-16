@@ -91,6 +91,7 @@ type instancePluginState struct {
 	gcConfig          *GCConfig
 	origin            InstantiateOrigin
 	gcPublic          atomic.Pointer[gcPublicState]
+	gcArrayElements   atomic.Pointer[gcArrayElementState]
 	gcGlobalRoots     [2]gcGlobalRootMapping
 	gcGlobalRootCount uint8
 	tagIdentityBase   uintptr      // arena-owned bounded native u64 directory for staged EH

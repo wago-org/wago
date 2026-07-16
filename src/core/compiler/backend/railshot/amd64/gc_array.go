@@ -18,6 +18,8 @@ const (
 	gcArrayAllocFixed   uint32 = 22
 	gcArrayAllocUniform uint32 = 23
 	gcArrayAllocData    uint32 = 24
+	gcArrayAllocElem    uint32 = 25
+	gcArrayDropElem     uint32 = 26
 )
 
 func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
@@ -44,6 +46,23 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
 		return f.callGCStructHelper(gcArrayAllocUniform, []wasm.ValType{valueType, wasm.I32, wasm.I32}, []wasm.ValType{result})
+	case 10: // array.new_elem typeidx elemidx
+		typeIndex, err := r.U32()
+		if err != nil {
+			return err
+		}
+		elemIndex, err := r.U32()
+		if err != nil {
+			return err
+		}
+		field, ok := stagedArrayType(f.m, typeIndex)
+		if !ok || field.Storage.Val.Kind != wasm.ValRef {
+			return fmt.Errorf("amd64: array.new_elem type %d is not a reference array", typeIndex)
+		}
+		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
+		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(elemIndex)})
+		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
+		return f.callGCStructHelper(gcArrayAllocElem, []wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32}, []wasm.ValType{result})
 	case 9: // array.new_data typeidx dataidx
 		typeIndex, err := r.U32()
 		if err != nil {
@@ -145,9 +164,6 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		}
 		if field.Mut != wasm.Var {
 			return fmt.Errorf("amd64: array.set type %d is immutable", typeIndex)
-		}
-		if field.Storage.Val.Kind == wasm.ValRef {
-			return fmt.Errorf("amd64: reference array.set remains outside the staged helper slice")
 		}
 		valueType := field.Storage.Val
 		if field.Storage.Packed {

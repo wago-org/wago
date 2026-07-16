@@ -73,8 +73,10 @@ func (c *Collector) NewArrayDefaultWithRoots(typeID TypeID, length uint32, roots
 	if err != nil {
 		return Null(), err
 	}
-	if err := checkDefaultable(d); err != nil {
-		return Null(), err
+	if length != 0 {
+		if err := checkDefaultable(d); err != nil {
+			return Null(), err
+		}
 	}
 	sz, err := ArraySize(d, length)
 	if err != nil {

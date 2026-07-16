@@ -1082,6 +1082,13 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 			return nil, fmt.Errorf("compile: staged GC array globals: %w", err)
 		}
 		c.memoryDir.gcArrayGlobals = gcGlobals
+		if gcArrayProduct == stagedGCArrayProductReferenceElements {
+			init, err := stagedGCArrayElementInitializer(m)
+			if err != nil {
+				return nil, fmt.Errorf("compile: staged GC array element segment: %w", err)
+			}
+			c.memoryDir.gcArrayElement = init
+		}
 	}
 	if importedFuncs > 0 {
 		c.importFuncSigs = make([]FuncSig, importedFuncs)
@@ -1376,9 +1383,25 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	}
 	for i := range m.Elements {
 		e := &m.Elements[i]
-		refType, exactType, values, err := elementPayloads(m, c.Types, e)
-		if err != nil {
-			return nil, fmt.Errorf("element %d: %w", i, err)
+		var refType ValType
+		var exactType ValueTypeDescriptor
+		var values []RefInit
+		if gcArrayProduct == stagedGCArrayProductReferenceElements && c.memoryDir.gcArrayElement != nil && uint32(i) == c.memoryDir.gcArrayElement.SegmentIndex {
+			var err error
+			exactType, err = valueTypeDescriptorInModule(m, wasm.RefVal(e.Kind.Ref))
+			if err != nil {
+				return nil, fmt.Errorf("element %d type: %w", i, err)
+			}
+			refType, err = valTypeFromWasmInModule(m, wasm.RefVal(e.Kind.Ref), c.Types)
+			if err != nil {
+				return nil, fmt.Errorf("element %d ABI type: %w", i, err)
+			}
+		} else {
+			var err error
+			refType, exactType, values, err = elementPayloads(m, c.Types, e)
+			if err != nil {
+				return nil, fmt.Errorf("element %d: %w", i, err)
+			}
 		}
 		init := ElemInit{TableIndex: uint32(e.Mode.Table), RefType: refType, ValueTypeIndex: internValueType(&c.ValueTypes, exactType), HasValueType: true, Mode: elemModeFromWasm(e.Mode.Kind), Values: values}
 		if i < len(c.passiveElems) {
@@ -2398,7 +2421,7 @@ func (c *Compiled) validate() error {
 	}
 	validateElementValues := func(kind string, seg int, elem ElemInit) error {
 		refType := normalizedElemRefType(elem.RefType)
-		if refType != ValFuncRef && refType != ValExternRef {
+		if refType != ValFuncRef && refType != ValExternRef && !(refType == ValAnyRef && len(elem.Values) == 0) {
 			return fmt.Errorf("compiled metadata invalid: %s element %d has unsupported reference type %s", kind, seg, refType)
 		}
 		required, err := c.elemExactType(elem)
@@ -2699,8 +2722,8 @@ func (c *Compiled) needsFuncRefDescs() bool {
 }
 
 func normalizedElemRefType(t ValType) ValType {
-	if t == ValExternRef {
-		return ValExternRef
+	if t == ValExternRef || t == ValAnyRef {
+		return t
 	}
 	return ValFuncRef
 }

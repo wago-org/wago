@@ -189,6 +189,35 @@ func instantiateGCArrayElementSegment(collector *gc.Collector, descs []gc.TypeDe
 	return state, nil
 }
 
+type gcArrayElementRoots struct {
+	Values [maxGCArrayElementValues]gc.Root
+	Count  uint8
+}
+
+func (r *gcArrayElementRoots) RangeRoots(fn func(gc.RootSlot) bool) {
+	if r == nil {
+		return
+	}
+	for i := uint8(0); i < r.Count; i++ {
+		if !fn(&r.Values[i]) {
+			return
+		}
+	}
+}
+
+func (r *gcArrayElementRoots) ref(i uint8) gc.Ref { return gc.Ref(r.Values[i]) }
+
+func (in *Instance) existingGCArrayElementState() *gcArrayElementState {
+	if in == nil {
+		return nil
+	}
+	plugin := in.pluginState.Load()
+	if plugin == nil {
+		return nil
+	}
+	return plugin.gcArrayElements.Load()
+}
+
 func (s *gcArrayElementState) drop(collector *gc.Collector) {
 	if s == nil || collector == nil {
 		return
