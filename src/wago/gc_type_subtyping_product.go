@@ -50,7 +50,7 @@ func (p stagedGCTypeSubtypingProduct) usesRuntimeFunctionIdentity() bool {
 }
 
 func (p stagedGCTypeSubtypingProduct) usesLinkFunctionIdentity() bool {
-	return p == stagedGCTypeSubtypingLinkProvider || p == stagedGCTypeSubtypingLinkConsumer || p == stagedGCTypeSubtypingFinalityLinkProvider || p == stagedGCTypeSubtypingFinalityLinkConsumer || p == stagedGCTypeSubtypingStructLinkProvider || p == stagedGCTypeSubtypingStructLinkConsumer || p == stagedGCTypeSubtypingStructProjectionLinkProvider || p == stagedGCTypeSubtypingStructProjectionLinkConsumer || p == stagedGCTypeSubtypingStructMismatchLinkProvider || p == stagedGCTypeSubtypingStructMismatchLinkConsumer || p == stagedGCTypeSubtypingIndependentStructLinkProvider || p == stagedGCTypeSubtypingIndependentStructLinkConsumer || p == stagedGCTypeSubtypingExtendedProjectionLinkProvider || p == stagedGCTypeSubtypingExtendedProjectionLinkConsumer
+	return p == stagedGCTypeSubtypingLinkProvider || p == stagedGCTypeSubtypingLinkConsumer || p == stagedGCTypeSubtypingFinalityLinkProvider || p == stagedGCTypeSubtypingFinalityLinkConsumer || p == stagedGCTypeSubtypingStructLinkProvider || p == stagedGCTypeSubtypingStructLinkConsumer || p == stagedGCTypeSubtypingStructProjectionLinkProvider || p == stagedGCTypeSubtypingStructProjectionLinkConsumer || p == stagedGCTypeSubtypingStructMismatchLinkProvider || p == stagedGCTypeSubtypingStructMismatchLinkConsumer || p == stagedGCTypeSubtypingIndependentStructLinkProvider || p == stagedGCTypeSubtypingIndependentStructLinkConsumer || p == stagedGCTypeSubtypingExtendedProjectionLinkProvider || p == stagedGCTypeSubtypingExtendedProjectionLinkConsumer || p == stagedGCTypeSubtypingDuplicateRecursiveLinkProvider || p == stagedGCTypeSubtypingDuplicateRecursiveLinkConsumer
 }
 
 func (p stagedGCTypeSubtypingProduct) linkProviderProduct() stagedGCTypeSubtypingProduct {
@@ -69,6 +69,8 @@ func (p stagedGCTypeSubtypingProduct) linkProviderProduct() stagedGCTypeSubtypin
 		return stagedGCTypeSubtypingIndependentStructLinkProvider
 	case stagedGCTypeSubtypingExtendedProjectionLinkConsumer:
 		return stagedGCTypeSubtypingExtendedProjectionLinkProvider
+	case stagedGCTypeSubtypingDuplicateRecursiveLinkConsumer:
+		return stagedGCTypeSubtypingDuplicateRecursiveLinkProvider
 	default:
 		return 0
 	}
@@ -149,6 +151,10 @@ func stagedGCTypeSubtypingProductPinned(data []byte, product stagedGCTypeSubtypi
 		pinned = stagedGCTypeSubtypingExtendedProjectionLinkProvider
 	case "5992b926a2f2ed28c4e6d5149d97ff075c0e6fdbcc9fb8ec8194fa96271405db":
 		pinned = stagedGCTypeSubtypingExtendedProjectionLinkConsumer
+	case "cee53b6e420932faec8bf166a6ae79cfab88f7ca890cd39851d3f70b932471aa":
+		pinned = stagedGCTypeSubtypingDuplicateRecursiveLinkProvider
+	case "30ff7e3befab7405c63554526ecf2e61fc9ecf2b65e175414db07aa774e6a540":
+		pinned = stagedGCTypeSubtypingDuplicateRecursiveLinkConsumer
 	}
 	return pinned == product
 }
@@ -162,6 +168,9 @@ func stagedGCTypeSubtypingProductShape(m *wasm.Module) (stagedGCTypeSubtypingPro
 			return stagedGCTypeSubtypingLinkShape(m)
 		}
 		if len(m.Types) == 2 && len(m.Types[0].SubTypes) == 2 && len(m.Types[1].SubTypes) == 2 && (m.ImportedFuncCount() != 0 || len(m.Exports) == 1) {
+			if m.Types[0].SubTypes[1].Comp.Kind == wasm.CompFunc {
+				return stagedGCTypeSubtypingDuplicateRecursiveLinkShape(m)
+			}
 			if len(m.Imports) == 1 && m.Imports[0].Module == "M5" {
 				return stagedGCTypeSubtypingStructMismatchLinkShape(m)
 			}
@@ -177,6 +186,9 @@ func stagedGCTypeSubtypingProductShape(m *wasm.Module) (stagedGCTypeSubtypingPro
 			return stagedGCTypeSubtypingStructProjectionLinkShape(m)
 		}
 		if len(m.Types) == 2 && (m.ImportedFuncCount() != 0 || len(m.Exports) == 2) {
+			if len(m.Types[0].SubTypes) == 2 && len(m.Types[1].SubTypes) == 2 {
+				return stagedGCTypeSubtypingDuplicateRecursiveLinkShape(m)
+			}
 			return stagedGCTypeSubtypingFinalityLinkShape(m)
 		}
 		if len(m.Types) == 4 && len(m.Types[0].SubTypes) == 2 && len(m.Types[1].SubTypes) == 2 && len(m.Types[2].SubTypes) == 2 && len(m.Types[3].SubTypes) == 2 && (m.ImportedFuncCount() != 0 || len(m.Exports) == 1) {
@@ -301,6 +313,53 @@ func stagedGCTypeSubtypingLinkShape(m *wasm.Module) (stagedGCTypeSubtypingProduc
 		return stagedGCTypeSubtypingLinkConsumer, nil
 	}
 	return 0, fmt.Errorf("link consumer import sequence is outside the exact first cluster")
+}
+
+func stagedGCTypeSubtypingDuplicateRecursiveLinkShape(m *wasm.Module) (stagedGCTypeSubtypingProduct, error) {
+	if len(m.Types) != 2 || m.TableCount() != 0 || m.MemCount() != 0 || len(m.Globals) != 0 || len(m.Elements) != 0 || len(m.Data) != 0 || m.TagCount() != 0 || m.Start != nil {
+		return 0, fmt.Errorf("duplicate recursive link product requires exactly two type groups and no non-function state")
+	}
+	for groupIndex := range m.Types {
+		group := &m.Types[groupIndex]
+		if len(group.SubTypes) != 2 {
+			return 0, fmt.Errorf("duplicate recursive link group %d must contain two members", groupIndex)
+		}
+		root, child := &group.SubTypes[0], &group.SubTypes[1]
+		if root.Final || !root.HasPrefix || len(root.Supers) != 0 || root.Comp.Kind != wasm.CompFunc || len(root.Comp.Params) != 0 || len(root.Comp.Results) != 1 || root.Comp.Results[0] != wasm.RefVal(wasm.Ref(false, wasm.AbsHeap(wasm.HeapFunc), false)) {
+			return 0, fmt.Errorf("duplicate recursive link group %d root must be open () -> (ref func)", groupIndex)
+		}
+		result := child.Comp.Results
+		if child.Final || !child.HasPrefix || len(child.Supers) != 1 || !child.Supers[0].Rec || child.Supers[0].Index != 0 || child.Comp.Kind != wasm.CompFunc || len(child.Comp.Params) != 0 || len(result) != 1 || result[0].Kind != wasm.ValRef || result[0].Ref.Nullable || result[0].Ref.Exact || result[0].Ref.Heap.Kind != wasm.HeapTypeIndex || !result[0].Ref.Heap.Type.Rec || result[0].Ref.Heap.Type.Index != 0 {
+			return 0, fmt.Errorf("duplicate recursive link group %d child must extend and return recursive member 0", groupIndex)
+		}
+	}
+	if len(m.Imports) == 0 {
+		if len(m.FuncTypes) != 2 || len(m.Code) != 2 || len(m.Exports) != 2 {
+			return 0, fmt.Errorf("duplicate recursive link provider requires two functions and exports")
+		}
+		for i, wantName := range []string{"f11", "f12"} {
+			if m.FuncTypes[i].Rec || m.FuncTypes[i].Index != uint32(i) || len(m.Code[i].Locals.Runs) != 0 || !isExactUnreachableBody(m.Code[i].BodyBytes) {
+				return 0, fmt.Errorf("duplicate recursive link provider function %d is outside the exact product", i)
+			}
+			ex := m.Exports[i]
+			if ex.Name != wantName || ex.Index.Kind != wasm.ExternFunc || ex.Index.Index != uint32(i) {
+				return 0, fmt.Errorf("duplicate recursive link provider export %d is outside the exact product", i)
+			}
+		}
+		return stagedGCTypeSubtypingDuplicateRecursiveLinkProvider, nil
+	}
+	if len(m.FuncTypes) != 0 || len(m.Code) != 0 || len(m.Exports) != 0 || len(m.Imports) != 4 || m.ImportedFuncCount() != 4 {
+		return 0, fmt.Errorf("duplicate recursive link consumer requires exactly four function imports")
+	}
+	wantNames := []string{"f11", "f11", "f12", "f12"}
+	wantTypes := []uint32{0, 2, 1, 3}
+	for i := range wantNames {
+		imp := m.Imports[i]
+		if imp.Module != "M8" || imp.Name != wantNames[i] || imp.Type.Kind != wasm.ExternFunc || imp.Type.Type.Rec || imp.Type.Type.Index != wantTypes[i] {
+			return 0, fmt.Errorf("duplicate recursive link consumer import %d is outside the exact M8 product", i)
+		}
+	}
+	return stagedGCTypeSubtypingDuplicateRecursiveLinkConsumer, nil
 }
 
 func stagedGCTypeSubtypingFinalityLinkShape(m *wasm.Module) (stagedGCTypeSubtypingProduct, error) {
