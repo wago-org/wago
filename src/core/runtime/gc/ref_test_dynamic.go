@@ -1,6 +1,9 @@
 package gc
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+)
 
 // RefTestKind identifies the bounded runtime heap categories accepted by
 // Collector.RefTest. Defined targets use RefTestTarget.Type; abstract targets
@@ -25,6 +28,11 @@ type RefTestTarget struct {
 	Kind     RefTestKind
 	Nullable bool
 }
+
+// ErrCastFailure reports a valid reference whose dynamic type does not match
+// the requested cast target. Invalid, stale, forged, and closed references keep
+// their more specific collector errors.
+var ErrCastFailure = errors.New("gc: cast failure")
 
 // TypeCanonicalization is a collector-bound, immutable map from declared type
 // IDs to canonical representatives. It is built once at product instantiation
@@ -69,6 +77,32 @@ func (c *Collector) RefTestCanonical(r Ref, target RefTestTarget, canonical *Typ
 		return false, fmt.Errorf("gc: ref.test canonicalization does not belong to collector")
 	}
 	return c.refTest(r, target, canonical)
+}
+
+// RefCast returns the original compact reference when its dynamic type matches
+// target. It never rewrites object identity or converts public token bits.
+func (c *Collector) RefCast(r Ref, target RefTestTarget) (Ref, error) {
+	return c.refCast(r, target, nil)
+}
+
+// RefCastCanonical applies the same cast through a collector-bound canonical
+// representative map and still returns the original compact reference.
+func (c *Collector) RefCastCanonical(r Ref, target RefTestTarget, canonical *TypeCanonicalization) (Ref, error) {
+	if canonical == nil || canonical.collector != c {
+		return Null(), fmt.Errorf("gc: ref.cast canonicalization does not belong to collector")
+	}
+	return c.refCast(r, target, canonical)
+}
+
+func (c *Collector) refCast(r Ref, target RefTestTarget, canonical *TypeCanonicalization) (Ref, error) {
+	matched, err := c.refTest(r, target, canonical)
+	if err != nil {
+		return Null(), err
+	}
+	if !matched {
+		return Null(), ErrCastFailure
+	}
+	return r, nil
 }
 
 func (c *Collector) refTest(r Ref, target RefTestTarget, canonical *TypeCanonicalization) (bool, error) {

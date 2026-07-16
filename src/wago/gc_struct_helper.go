@@ -2,6 +2,7 @@ package wago
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
@@ -22,6 +23,7 @@ const (
 	gcStructTableSet            = 7
 	gcAnyConvertExtern          = 8
 	gcExternConvertAny          = 9
+	gcStructRefCast             = 10
 )
 
 type gcStructHelperError struct{ err error }
@@ -100,29 +102,11 @@ func (in *Instance) dispatchGCStructHelper(helper uint32, args, results []uint64
 		if len(args) != 3 || len(results) < 1 {
 			panic(gcStructHelperError{err: fmt.Errorf("gc ref.test helper arity = %d/%d, want 3/at-least-1", len(args), len(results))})
 		}
-		heap := int64(args[1])
-		target := gc.RefTestTarget{Nullable: args[2] != 0}
-		switch heap {
-		case -15:
-			target.Kind = gc.RefTestNone
-		case -18:
-			target.Kind = gc.RefTestAny
-		case -19:
-			target.Kind = gc.RefTestEq
-		case -20:
-			target.Kind = gc.RefTestI31
-		case -21:
-			target.Kind = gc.RefTestStruct
-		case -22:
-			target.Kind = gc.RefTestArray
-		default:
-			if heap < 0 || uint64(heap) > uint64(^uint32(0)) {
-				panic(gcStructHelperError{err: fmt.Errorf("gc ref.test heap type %d is unavailable", heap)})
-			}
-			target.Kind, target.Type = gc.RefTestDefined, gc.TypeID(heap)
+		target, err := gcDynamicRefTarget(int64(args[1]), args[2] != 0)
+		if err != nil {
+			panic(gcStructHelperError{err: err})
 		}
 		var matched bool
-		var err error
 		if state := in.existingGCRefTestTableState(); state != nil {
 			matched, err = state.refTest(in.gc, args[0], target)
 		} else {
@@ -136,6 +120,29 @@ func (in *Instance) dispatchGCStructHelper(helper uint32, args, results []uint64
 		} else {
 			results[0] = 0
 		}
+	case gcStructRefCast:
+		if len(args) != 3 || len(results) < 1 {
+			panic(gcStructHelperError{err: fmt.Errorf("gc ref.cast helper arity = %d/%d, want 3/at-least-1", len(args), len(results))})
+		}
+		target, err := gcDynamicRefTarget(int64(args[1]), args[2] != 0)
+		if err != nil {
+			panic(gcStructHelperError{err: err})
+		}
+		var value uint64
+		if state := in.existingGCRefTestTableState(); state != nil {
+			value, err = state.refCast(in.gc, args[0], target)
+		} else {
+			var ref gc.Ref
+			ref, err = in.gc.RefCast(gc.Ref(uint32(args[0])), target)
+			value = uint64(ref)
+		}
+		if errors.Is(err, gc.ErrCastFailure) {
+			panic(gcStructHelperTrap{code: coreruntime.TrapCastFailure})
+		}
+		if err != nil {
+			panic(gcStructHelperError{err: err})
+		}
+		results[0] = value
 	case gcStructTableSet:
 		if len(args) != 3 {
 			panic(gcStructHelperError{err: fmt.Errorf("gc ref.test table-set helper args = %v, want index/ref/table", args)})
@@ -204,4 +211,28 @@ func (in *Instance) dispatchGCStructHelper(helper uint32, args, results []uint64
 	default:
 		panic(gcStructHelperError{err: fmt.Errorf("unknown gc struct helper %d", helper)})
 	}
+}
+
+func gcDynamicRefTarget(heap int64, nullable bool) (gc.RefTestTarget, error) {
+	target := gc.RefTestTarget{Nullable: nullable}
+	switch heap {
+	case -15:
+		target.Kind = gc.RefTestNone
+	case -18:
+		target.Kind = gc.RefTestAny
+	case -19:
+		target.Kind = gc.RefTestEq
+	case -20:
+		target.Kind = gc.RefTestI31
+	case -21:
+		target.Kind = gc.RefTestStruct
+	case -22:
+		target.Kind = gc.RefTestArray
+	default:
+		if heap < 0 || uint64(heap) > uint64(^uint32(0)) {
+			return gc.RefTestTarget{}, fmt.Errorf("gc dynamic reference heap type %d is unavailable", heap)
+		}
+		target.Kind, target.Type = gc.RefTestDefined, gc.TypeID(heap)
+	}
+	return target, nil
 }

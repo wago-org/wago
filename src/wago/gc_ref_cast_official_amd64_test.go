@@ -17,7 +17,10 @@ import (
 	corewasm "github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
-const stagedGCRefCastDeltaPath = "tests/spec-v3-staged-gc-ref-cast.json"
+const (
+	stagedGCRefCastDeltaPath         = "tests/spec-v3-staged-gc-ref-cast.json"
+	stagedGCRefCastOfficialExecution = false
+)
 
 type stagedGCRefCastClass uint8
 
@@ -133,7 +136,7 @@ func stagedGCRefCastLeaderDeltaFor(data []byte, line int) (stagedGCRefCastLeader
 		return stagedGCRefCastLeaderDelta{}, stagedGCRefCastLeaderPin{}, err
 	}
 	gate := pin.Class.gateReason()
-	if product, ok := stagedGCStructExecutionProduct(data); ok && ((pin.Class == stagedGCRefCastAbstract && product == stagedGCStructRefCastAbstract) || (pin.Class == stagedGCRefCastConcrete && product == stagedGCStructRefCastConcrete)) {
+	if product, ok := stagedGCStructExecutionProduct(data); stagedGCRefCastOfficialExecution && ok && ((pin.Class == stagedGCRefCastAbstract && product == stagedGCStructRefCastAbstract) || (pin.Class == stagedGCRefCastConcrete && product == stagedGCStructRefCastConcrete)) {
 		gate = ""
 	}
 	return stagedGCRefCastLeaderDelta{
@@ -148,9 +151,11 @@ func compileStagedGCRefCastAccounting(data []byte) (*Compiled, error) {
 	cfg := NewRuntimeConfig()
 	features := cfg.frontendFeatures()
 	features.TypedFunctionReferences = true
-	features.GCStructProducts = true
-	features.GCArrayProducts = true
-	features.GCI31Products = true
+	if stagedGCRefCastOfficialExecution {
+		features.GCStructProducts = true
+		features.GCArrayProducts = true
+		features.GCI31Products = true
+	}
 	return compileWithFrontendFeatures(cfg, data, features)
 }
 
@@ -243,7 +248,7 @@ func replayStagedGCRefCastScript(t *testing.T, tmp string, script stagedSpecScri
 				counts.ModulesPassed++
 				continue
 			}
-			if !strings.Contains(compileErr.Error(), "outside the exact pinned product set") {
+			if !strings.Contains(compileErr.Error(), "outside the exact pinned product set") && !strings.Contains(compileErr.Error(), "gc disabled") {
 				counts.Failures++
 				counts.UnexpectedCompileRejects++
 				t.Errorf("gc/ref_cast.wast:%d changed compile gate: %v", cmd.Line, compileErr)

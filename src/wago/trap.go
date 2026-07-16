@@ -30,4 +30,6 @@ const (
 	TrapInterrupted          = wruntime.TrapInterrupted
 	TrapStackFenceBreached   = wruntime.TrapStackFenceBreached
 	TrapCalledFnNotLinked    = wruntime.TrapCalledFnNotLinked
+	TrapNullReference        = wruntime.TrapNullReference
+	TrapCastFailure          = wruntime.TrapCastFailure
 )

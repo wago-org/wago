@@ -23,6 +23,7 @@ const (
 	gcStructTableSet            = 7
 	gcAnyConvertExtern          = 8
 	gcExternConvertAny          = 9
+	gcStructRefCast             = 10
 )
 
 func (f *fn) emitFB(r *wasm.Reader) error {
@@ -199,6 +200,18 @@ func (f *fn) emitGCI31Cast(sub uint32, r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
+	if f.gcStructHelpers {
+		value := f.materialize(f.popValue())
+		f.pushReg(value, mtI64)
+		f.pushValue(storage{kind: stConst, typ: mtI64, cval: heap})
+		if sub == 23 {
+			f.pushValue(storage{kind: stConst, typ: mtI32, cval: 1})
+		} else {
+			f.pushValue(storage{kind: stConst, typ: mtI32})
+		}
+		anyref := wasm.RefVal(wasm.Ref(true, wasm.AbsHeap(wasm.HeapAny), false))
+		return f.callGCStructHelper(gcStructRefCast, []wasm.ValType{anyref, wasm.I64, wasm.I32}, []wasm.ValType{anyref})
+	}
 	if heap != -20 { // i31
 		return fmt.Errorf("amd64: staged ref.cast heap %d is not i31", heap)
 	}
@@ -209,13 +222,13 @@ func (f *fn) emitGCI31Cast(sub uint32, r *wasm.Reader) error {
 		nullableDone = f.a.JccPlaceholder(condE)
 	} else {
 		f.a.TestSelf(value, true)
-		f.trapIf(condE, trapNullReference)
+		f.trapIf(condE, trapCastFailure)
 	}
 	tag := f.allocReg(maskOf(value))
 	f.a.MovRegReg32(tag, value)
 	f.a.AluRI(4, tag, 1, false)
 	f.a.TestSelf(tag, false)
-	f.trapIf(condE, trapIndirectSig)
+	f.trapIf(condE, trapCastFailure)
 	f.release(tag)
 	if sub == 23 {
 		f.a.PatchRel32(nullableDone, f.a.Len())

@@ -26,6 +26,7 @@ const (
 	TrapUnsupportedTailCall  TrapCode = 15
 	TrapNullReference        TrapCode = 16
 	TrapUnhandledException   TrapCode = 17
+	TrapCastFailure          TrapCode = 18
 )
 
 var trapMessages = map[TrapCode]string{
@@ -47,6 +48,7 @@ var trapMessages = map[TrapCode]string{
 	TrapUnsupportedTailCall:  "tail call target requires an unsupported context switch",
 	TrapNullReference:        "null reference",
 	TrapUnhandledException:   "unhandled WebAssembly exception",
+	TrapCastFailure:          "cast failure",
 }
 
 func (c TrapCode) String() string {
