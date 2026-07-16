@@ -97,6 +97,7 @@ var stagedGCTypeSubtypingProductPins = []stagedGCTypeSubtypingProductPin{
 	stagedGCTypeSubtypingTypedTablePin,
 	stagedGCTypeSubtypingLinkProviderPin,
 	stagedGCTypeSubtypingLinkConsumerPin,
+	stagedGCTypeSubtypingFinalityLinkProviderPin,
 }
 
 func stagedGCTypeSubtypingProductData(t testing.TB, pin stagedGCTypeSubtypingProductPin) []byte {
@@ -149,8 +150,8 @@ func TestStagedGCTypeSubtypingProductInventory(t *testing.T) {
 		}
 		seen[pin.Class]++
 	}
-	if seen[stagedGCTypeSubtypingDeclarations] != 6 || seen[stagedGCTypeSubtypingRecursiveFunctions] != 2 || seen[stagedGCTypeSubtypingRefFuncGlobals] != 6 || seen[stagedGCTypeSubtypingRefTestSingle] != 4 || seen[stagedGCTypeSubtypingRefTestMulti] != 3 || seen[stagedGCTypeSubtypingRefTestDirectionFalse] != 2 || seen[stagedGCTypeSubtypingRuntimeCallCast] != 1 || seen[stagedGCTypeSubtypingRuntimeFinalityCallCast] != 1 || seen[stagedGCTypeSubtypingRuntimeTypedTableCall] != 1 || seen[stagedGCTypeSubtypingLinkProvider] != 1 || seen[stagedGCTypeSubtypingLinkConsumer] != 1 {
-		t.Fatalf("product classes = %#v, want declarations/recursive-functions/ref.func-globals/single-ref.test/multi-ref.test/direction-false-ref.test/runtime-call-cast/runtime-finality-call-cast/runtime-typed-table-call/link-provider/link-consumer = 6/2/6/4/3/2/1/1/1/1/1", seen)
+	if seen[stagedGCTypeSubtypingDeclarations] != 6 || seen[stagedGCTypeSubtypingRecursiveFunctions] != 2 || seen[stagedGCTypeSubtypingRefFuncGlobals] != 6 || seen[stagedGCTypeSubtypingRefTestSingle] != 4 || seen[stagedGCTypeSubtypingRefTestMulti] != 3 || seen[stagedGCTypeSubtypingRefTestDirectionFalse] != 2 || seen[stagedGCTypeSubtypingRuntimeCallCast] != 1 || seen[stagedGCTypeSubtypingRuntimeFinalityCallCast] != 1 || seen[stagedGCTypeSubtypingRuntimeTypedTableCall] != 1 || seen[stagedGCTypeSubtypingLinkProvider] != 1 || seen[stagedGCTypeSubtypingLinkConsumer] != 1 || seen[stagedGCTypeSubtypingFinalityLinkProvider] != 1 {
+		t.Fatalf("product classes = %#v, want declarations/recursive-functions/ref.func-globals/single-ref.test/multi-ref.test/direction-false-ref.test/runtime-call-cast/runtime-finality-call-cast/runtime-typed-table-call/link-provider/link-consumer/finality-link-provider = 6/2/6/4/3/2/1/1/1/1/1/1", seen)
 	}
 }
 
@@ -684,6 +685,8 @@ func TestStagedGCTypeSubtypingProductPlatformAndBoundsGate(t *testing.T) {
 		pins = append(pins, stagedGCTypeSubtypingProductPins[pinIndex])
 	}
 	pins = append(pins, stagedGCTypeSubtypingLinkUnlinkablePins...)
+	pins = append(pins, stagedGCTypeSubtypingFinalityLinkProviderPin)
+	pins = append(pins, stagedGCTypeSubtypingFinalityLinkUnlinkablePins...)
 	for _, pin := range pins {
 		t.Run(pin.Filename, func(t *testing.T) {
 			data := stagedGCTypeSubtypingProductData(t, pin)
@@ -801,5 +804,14 @@ func TestStagedGCTypeSubtypingProductRejectsWidening(t *testing.T) {
 	typedTable.Tables[0].Type.Ref = wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: 0}), false)
 	if product, err := stagedGCTypeSubtypingProductShape(typedTable); err == nil && product == stagedGCTypeSubtypingRuntimeTypedTableCall {
 		t.Fatal("runtime typed-table product with widened table storage unexpectedly retained exact admission")
+	}
+
+	finalityProvider, err := wasm.DecodeModule(stagedGCTypeSubtypingProductData(t, stagedGCTypeSubtypingFinalityLinkProviderPin))
+	if err != nil {
+		t.Fatal(err)
+	}
+	finalityProvider.Types[1].SubTypes[0].Final = false
+	if product, err := stagedGCTypeSubtypingProductShape(finalityProvider); err == nil && product == stagedGCTypeSubtypingFinalityLinkProvider {
+		t.Fatal("finality link provider with widened final type unexpectedly retained exact admission")
 	}
 }

@@ -85,6 +85,27 @@ func BenchmarkStagedGCTypeSubtypingLinkProviderNullResult(b *testing.B) {
 	}
 }
 
+func BenchmarkStagedGCTypeSubtypingFinalityLinkProviderEmpty(b *testing.B) {
+	c, err := compileStagedGCTypeSubtypingProductForTest(stagedGCTypeSubtypingProductData(b, stagedGCTypeSubtypingFinalityLinkProviderPin))
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer c.Close()
+	in, err := instantiateCore(c, InstantiateOptions{})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer in.Close()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		got, err := in.Invoke("f2")
+		if err != nil || len(got) != 0 {
+			b.Fatalf("f2 = %v, %v; want empty success", got, err)
+		}
+	}
+}
+
 func BenchmarkStagedGCTypeSubtypingRuntimeFinalityRecovery(b *testing.B) {
 	pin := stagedGCTypeSubtypingProductPins[24]
 	c, err := compileStagedGCTypeSubtypingProductForTest(stagedGCTypeSubtypingProductData(b, pin))
@@ -503,6 +524,151 @@ func TestStagedGCTypeSubtypingFirstLinkingClusterLifecycle(t *testing.T) {
 	for name, c := range map[string]*Compiled{"provider": providerCompiled, "consumer": consumerCompiled} {
 		if _, err := Capture(c, SnapshotOptions{}); err == nil || !strings.Contains(err.Error(), "WasmGC reference products") {
 			t.Fatalf("%s snapshot = %v, want GC reference-product rejection", name, err)
+		}
+	}
+}
+
+func TestStagedGCTypeSubtypingFinalityLinkingClusterLifecycle(t *testing.T) {
+	providerData := stagedGCTypeSubtypingProductData(t, stagedGCTypeSubtypingFinalityLinkProviderPin)
+	providerCompiled, err := compileStagedGCTypeSubtypingProductForTest(providerData)
+	if err != nil {
+		t.Fatalf("compile provider: %v", err)
+	}
+	defer providerCompiled.Close()
+	consumerCompiled := make([]*Compiled, len(stagedGCTypeSubtypingFinalityLinkUnlinkablePins))
+	consumerBlobs := make([][]byte, len(consumerCompiled))
+	for i, pin := range stagedGCTypeSubtypingFinalityLinkUnlinkablePins {
+		consumerCompiled[i], err = compileStagedGCTypeSubtypingProductForTest(stagedGCTypeSubtypingProductData(t, pin))
+		if err != nil {
+			t.Fatalf("compile %s: %v", pin.Filename, err)
+		}
+		defer consumerCompiled[i].Close()
+		if consumerCompiled[i].stagedGCTypeSubtypingProduct() != stagedGCTypeSubtypingFinalityLinkConsumer || !consumerCompiled[i].NeedsFuncRefDescs {
+			t.Fatalf("%s product/descriptors = %v/%v, want exact finality consumer/true", pin.Filename, consumerCompiled[i].stagedGCTypeSubtypingProduct(), consumerCompiled[i].NeedsFuncRefDescs)
+		}
+		consumerBlobs[i], err = marshalCompiled(consumerCompiled[i])
+		if err != nil {
+			t.Fatalf("marshal unlinked %s: %v", pin.Filename, err)
+		}
+		if got := [3]int{pin.Size, len(consumerCompiled[i].Code), len(consumerBlobs[i])}; got != [3]int{38, 0, 145} {
+			t.Fatalf("%s wasm/code/codec sizes = %v, want [38 0 145]", pin.Filename, got)
+		}
+	}
+	if providerCompiled.stagedGCTypeSubtypingProduct() != stagedGCTypeSubtypingFinalityLinkProvider || !providerCompiled.NeedsFuncRefDescs {
+		t.Fatalf("provider product/descriptors = %v/%v, want exact finality provider/true", providerCompiled.stagedGCTypeSubtypingProduct(), providerCompiled.NeedsFuncRefDescs)
+	}
+	providerBlob, err := marshalCompiled(providerCompiled)
+	if err != nil {
+		t.Fatalf("marshal provider: %v", err)
+	}
+	if got := [3]int{len(providerData), len(providerCompiled.Code), len(providerBlob)}; got != [3]int{70, 157, 324} {
+		t.Fatalf("provider wasm/code/codec sizes = %v, want [70 157 324]", got)
+	}
+
+	provider, err := instantiateCore(providerCompiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatalf("instantiate provider: %v", err)
+	}
+	defer provider.Close()
+	if provider.gc != nil {
+		t.Fatal("finality link provider allocated a collector")
+	}
+	if got, want := len(provider.funcRefDescs), 3*coreruntime.FuncRefDescBytes; got != want {
+		t.Fatalf("provider descriptor arena = %d bytes, want %d", got, want)
+	}
+	for i := 0; i < 2; i++ {
+		off := (i + 1) * coreruntime.FuncRefDescBytes
+		wantIdentity := uint64(uintptr(unsafe.Pointer(&provider.funcRefDescs[off])))
+		if got := binary.LittleEndian.Uint64(provider.funcRefDescs[off+coreruntime.TableEntryCodePtrOffset:]); got == 0 {
+			t.Fatalf("provider descriptor %d has a null code pointer", i)
+		}
+		if got := binary.LittleEndian.Uint64(provider.funcRefDescs[off+coreruntime.TableEntryRefSlotOffset:]); got != wantIdentity {
+			t.Fatalf("provider descriptor %d identity = %#x, want self-owned %#x", i, got, wantIdentity)
+		}
+	}
+	if got, err := provider.Invoke("f2"); err != nil || len(got) != 0 {
+		t.Fatalf("provider f2 = %v, %v; want empty success", got, err)
+	}
+	var invokeErr error
+	allocs := testing.AllocsPerRun(1000, func() {
+		_, invokeErr = provider.Invoke("f2")
+	})
+	if invokeErr != nil || allocs != 0 {
+		t.Fatalf("provider f2 steady state = %v, allocs=%v; want nil, 0", invokeErr, allocs)
+	}
+	exports := make(map[string]*InstanceExport, 2)
+	for _, name := range []string{"f1", "f2"} {
+		exports[name], err = provider.ExportedFunc(name)
+		if err != nil {
+			t.Fatalf("export %s: %v", name, err)
+		}
+	}
+	resourceState := func(in *Instance) (refs int, closed bool) {
+		in.lifeMu.Lock()
+		refs, closed = in.resourceRefs, in.resourcesClosed
+		in.lifeMu.Unlock()
+		return
+	}
+	for i, pin := range stagedGCTypeSubtypingFinalityLinkUnlinkablePins {
+		name := "f1"
+		if i == 1 {
+			name = "f2"
+		}
+		if _, linkErr := instantiateCore(consumerCompiled[i], InstantiateOptions{Imports: Imports{"M2." + name: exports[name]}}); linkErr == nil || !strings.Contains(linkErr.Error(), "signature mismatch") {
+			t.Fatalf("%s link = %v, want incompatible finality signature", pin.Filename, linkErr)
+		}
+		if refs, closed := resourceState(provider); refs != 0 || closed {
+			t.Fatalf("%s retained refs/resourcesClosed = %d/%v, want 0/false", pin.Filename, refs, closed)
+		}
+		host := HostFunc(func(HostModule, []uint64, []uint64) {})
+		if _, hostErr := instantiateCore(consumerCompiled[i], InstantiateOptions{Imports: Imports{"M2." + name: host}}); hostErr == nil || !strings.Contains(hostErr.Error(), "exact gc/type-subtyping link provider") {
+			t.Fatalf("%s host link = %v, want exact provider rejection", pin.Filename, hostErr)
+		}
+	}
+
+	oldProviderCompiled, err := compileStagedGCTypeSubtypingProductForTest(stagedGCTypeSubtypingProductData(t, stagedGCTypeSubtypingLinkProviderPin))
+	if err != nil {
+		t.Fatalf("compile old provider: %v", err)
+	}
+	defer oldProviderCompiled.Close()
+	oldProvider, err := instantiateCore(oldProviderCompiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatalf("instantiate old provider: %v", err)
+	}
+	defer oldProvider.Close()
+	oldExport, err := oldProvider.ExportedFunc("f0")
+	if err != nil {
+		t.Fatalf("old provider export: %v", err)
+	}
+	if _, err := instantiateCore(consumerCompiled[0], InstantiateOptions{Imports: Imports{"M2.f1": oldExport}}); err == nil || !strings.Contains(err.Error(), "outside the exact gc/type-subtyping link product") {
+		t.Fatalf("cross-product provider link = %v, want exact pair rejection", err)
+	}
+
+	allBlobs := append([][]byte{providerBlob}, consumerBlobs...)
+	allCompiled := append([]*Compiled{providerCompiled}, consumerCompiled...)
+	for i, blob := range allBlobs {
+		meta := (&Module{c: allCompiled[i]}).Metadata()
+		var loaded Compiled
+		if err := unmarshalCompiled(&loaded, blob[5:]); err != nil {
+			t.Fatalf("private reload %d: %v", i, err)
+		}
+		if loaded.stagedGCTypeSubtypingProduct() != 0 || loaded.stagedFeatures().IsEnabled(CoreFeatureGC) {
+			t.Fatalf("private reload %d inherited admission: product=%v features=%v", i, loaded.stagedGCTypeSubtypingProduct(), loaded.stagedFeatures())
+		}
+		loadedMeta := (&Module{c: &loaded}).Metadata()
+		if !reflect.DeepEqual(loadedMeta.Types, meta.Types) || !reflect.DeepEqual(loadedMeta.Functions, meta.Functions) {
+			t.Fatalf("private reload %d changed type/function metadata", i)
+		}
+		if _, err := instantiateCore(&loaded, InstantiateOptions{}); err == nil || !strings.Contains(err.Error(), "required feature") {
+			t.Fatalf("private reload %d instantiate = %v, want required-feature rejection", i, err)
+		}
+		_ = loaded.Close()
+		var public Compiled
+		if err := public.UnmarshalBinary(blob); err == nil || !strings.Contains(err.Error(), "unknown required feature bits") {
+			t.Fatalf("public reload %d = %v, want unsupported GC rejection", i, err)
+		}
+		if _, err := Capture(allCompiled[i], SnapshotOptions{}); err == nil || !strings.Contains(err.Error(), "WasmGC reference products") {
+			t.Fatalf("snapshot %d = %v, want GC reference-product rejection", i, err)
 		}
 	}
 }
