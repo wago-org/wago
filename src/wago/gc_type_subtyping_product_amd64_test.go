@@ -3,10 +3,13 @@
 package wago
 
 import (
+	"encoding/binary"
+	"reflect"
 	"strings"
 	"testing"
 	"unsafe"
 
+	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/src/core/runtime/gc"
 )
 
@@ -22,8 +25,8 @@ func TestStagedGCTypeSubtypingProductsCompile(t *testing.T) {
 	if got := unsafe.Sizeof(compiledCodeCache{}); got != 64 {
 		t.Fatalf("compiledCodeCache size = %d, want 64 bytes", got)
 	}
-	wantCodeBytes := []int{0, 0, 0, 0, 0, 0, 632, 592}
-	wantCodecBytes := []int{348, 384, 346, 218, 237, 385, 1018, 1127}
+	wantCodeBytes := []int{0, 0, 0, 0, 0, 0, 632, 592, 77, 77, 77, 77, 253, 253}
+	wantCodecBytes := []int{348, 384, 346, 218, 237, 385, 1018, 1127, 498, 656, 419, 754, 597, 851}
 	for i, pin := range stagedGCTypeSubtypingProductPins {
 		t.Run(pin.Filename, func(t *testing.T) {
 			data := stagedGCTypeSubtypingProductData(t, pin)
@@ -51,6 +54,26 @@ func TestStagedGCTypeSubtypingProductsCompile(t *testing.T) {
 			if in.gc != nil {
 				t.Fatal("no-object type-subtyping product allocated a collector")
 			}
+			if pin.Class == stagedGCTypeSubtypingRefFuncGlobals {
+				wantDescBytes := (len(c.FuncTypeID) + 1) * coreruntime.TableEntryBytes
+				if len(in.funcRefDescs) != wantDescBytes {
+					t.Fatalf("descriptor arena = %d bytes, want exact %d", len(in.funcRefDescs), wantDescBytes)
+				}
+				for globalIndex, global := range c.Globals {
+					if global.Mutable || !global.HasInitFunc {
+						t.Fatalf("global %d = %+v, want immutable ref.func initializer", globalIndex, global)
+					}
+					off := (int(global.InitFunc) + 1) * coreruntime.TableEntryBytes
+					want := uint64(uintptr(unsafe.Pointer(&in.funcRefDescs[off])))
+					if got := readGlobalObject(in.globalCells[globalIndex], ValFuncRef); got != want {
+						t.Fatalf("global %d descriptor = %#x, want local canonical %#x", globalIndex, got, want)
+					}
+					if got := binary.LittleEndian.Uint64(in.funcRefDescs[off+coreruntime.TableEntryRefSlotOffset:]); got != want {
+						t.Fatalf("global %d descriptor identity = %#x, want self-owned %#x", globalIndex, got, want)
+					}
+				}
+			}
+			meta := (&Module{c: c}).Metadata()
 			if err := in.Close(); err != nil {
 				t.Fatal(err)
 			}
@@ -69,6 +92,10 @@ func TestStagedGCTypeSubtypingProductsCompile(t *testing.T) {
 			defer loaded.Close()
 			if loaded.stagedGCTypeSubtypingProduct() != 0 || loaded.stagedFeatures().IsEnabled(CoreFeatureGC) {
 				t.Fatalf("codec inherited type-subtyping admission: product=%v features=%v", loaded.stagedGCTypeSubtypingProduct(), loaded.stagedFeatures())
+			}
+			loadedMeta := (&Module{c: &loaded}).Metadata()
+			if !reflect.DeepEqual(loadedMeta.Types, meta.Types) || !reflect.DeepEqual(loadedMeta.Functions, meta.Functions) || !reflect.DeepEqual(loadedMeta.Globals, meta.Globals) {
+				t.Fatalf("codec metadata changed\n got: %#v\nwant: %#v", loadedMeta, meta)
 			}
 			if _, err := instantiateCore(&loaded, InstantiateOptions{}); err == nil || !strings.Contains(err.Error(), "required feature") {
 				t.Fatalf("codec-loaded instantiate = %v, want required-feature rejection", err)
