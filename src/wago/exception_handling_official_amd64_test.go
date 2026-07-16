@@ -72,9 +72,8 @@ var stagedExceptionHandlingKnownGates = map[string]map[string]bool{
 		"throw_ref, catch_ref, catch_all_ref, exn, and noexn require rooted exception values": true,
 	},
 	stagedEHBoundaryGC: {
-		"reference tag payloads require native root maps and producer retention":      true,
-		"GC-managed tag payloads require collector roots and barriers":                true,
-		"mixed any/none and exn/noexn reference products require executable GC roots": true,
+		"reference tag payloads require native root maps and producer retention": true,
+		"GC-managed tag payloads require collector roots and barriers":           true,
 	},
 	stagedEHBoundaryPlatform: {
 		"exception handling has no native backend on this platform": true,
@@ -212,8 +211,6 @@ func stagedExceptionHandlingModuleGate(base string, data []byte) (boundary, reas
 		return stagedEHBoundaryProduct, "tag imports, exports, and cross-module link identity are outside the bounded local product slice", nil
 	case "exceptions/try_table":
 		return stagedTryTableModuleGate(m)
-	case "ref_null":
-		return stagedEHBoundaryGC, "mixed any/none and exn/noexn reference products require executable GC roots", nil
 	case "exceptions/throw_ref":
 		return stagedEHBoundaryExceptionRef, "throw_ref, catch_ref, catch_all_ref, exn, and noexn require rooted exception values", nil
 	case "exceptions/throw":
@@ -770,6 +767,9 @@ func replayStagedExceptionTryTableScript(t *testing.T, tmp string, script staged
 
 func replayStagedExceptionHandlingScript(t *testing.T, base, tmp string, script stagedSpecScript) (counts stagedSpecCounts, gates map[string]int) {
 	t.Helper()
+	if base == "ref_null" {
+		return replayStagedNullReferenceScript(t, base, tmp, script)
+	}
 	if base == "exceptions/tag" {
 		return replayStagedExceptionTagScript(t, tmp, script)
 	}

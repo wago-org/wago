@@ -232,6 +232,7 @@ const (
 	TrapStackFenceBreached                     = impl.TrapStackFenceBreached
 	TrapTruncOverflow                          = impl.TrapTruncOverflow
 	TrapUnreachable                            = impl.TrapUnreachable
+	ValAnyRef                                  = impl.ValAnyRef
 	ValExnRef                                  = impl.ValExnRef
 	ValExternRef                               = impl.ValExternRef
 	ValF32                                     = impl.ValF32

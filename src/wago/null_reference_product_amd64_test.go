@@ -4,6 +4,9 @@ package wago
 
 import (
 	"context"
+	"fmt"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -11,57 +14,13 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/frontend"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/runtime/gc"
-	"github.com/wago-org/wago/testutil/wasmtest"
 )
-
-func stagedFirstNullReferenceModule(mutableAnyGlobal bool) []byte {
-	anyref := wasm.RefVal(wasm.AbsRef(wasm.HeapAny))
-	exnref := wasm.RefVal(wasm.AbsRef(wasm.HeapExn))
-	indexed := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: 0}), false))
-	results := []wasm.ValType{anyref, wasm.FuncRef, exnref, wasm.ExternRef, indexed}
-	encodings := [][]byte{{byte(wasm.HeapAny)}, {byte(wasm.HeapFunc)}, {byte(wasm.HeapExn)}, {byte(wasm.HeapExtern)}, {0x63, 0x00}}
-	heaps := []byte{byte(wasm.HeapAny), byte(wasm.HeapFunc), byte(wasm.HeapExn), byte(wasm.HeapExtern), 0}
-	names := []string{"anyref", "funcref", "exnref", "externref", "ref"}
-
-	types := [][]byte{wasmtest.FuncType(nil, nil)}
-	funcs := make([][]byte, len(results))
-	globals := make([][]byte, len(results))
-	exports := make([][]byte, len(results))
-	codes := make([][]byte, len(results))
-	for i := range results {
-		funcType := []byte{0x60, 0x00, 0x01}
-		funcType = append(funcType, encodings[i]...)
-		types = append(types, funcType)
-		funcs[i] = wasmtest.ULEB(uint32(i + 1))
-		mutable := byte(0)
-		if i == 0 && mutableAnyGlobal {
-			mutable = 1
-		}
-		global := append([]byte(nil), encodings[i]...)
-		global = append(global, mutable, 0xd0, heaps[i], 0x0b)
-		globals[i] = global
-		exports[i] = wasmtest.ExportEntry(names[i], 0, uint32(i))
-		codes[i] = wasmtest.Code([]byte{0xd0, heaps[i], 0x0b})
-	}
-	return wasmtest.Module(
-		wasmtest.Section(1, wasmtest.Vec(types...)),
-		wasmtest.Section(3, wasmtest.Vec(funcs...)),
-		wasmtest.Section(6, wasmtest.Vec(globals...)),
-		wasmtest.Section(7, wasmtest.Vec(exports...)),
-		wasmtest.Section(10, wasmtest.Vec(codes...)),
-	)
-}
-
-func compileStagedNullReferenceProductForTest(data []byte) (*Compiled, error) {
-	cfg := NewRuntimeConfig()
-	features := cfg.frontendFeatures()
-	features.TypedFunctionReferences = true
-	features.NullReferenceProducts = true
-	return compileWithFrontendFeatures(cfg, data, features)
-}
 
 func TestStagedFirstNullReferenceProductExecution(t *testing.T) {
 	data := stagedFirstNullReferenceModule(false)
+	if len(data) != 149 {
+		t.Fatalf("first synthetic null-reference fixture size = %d, want 149 bytes", len(data))
+	}
 	if _, err := Compile(NewRuntimeConfig(), data); err == nil || !strings.Contains(err.Error(), "ref null any") {
 		t.Fatalf("public compile = %v, want closed any-reference gate", err)
 	}
@@ -102,6 +61,7 @@ func TestStagedFirstNullReferenceProductExecution(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal staged null-reference product: %v", err)
 	}
+	t.Logf("first null-reference product: wasm=%d codec-v27=%d", len(data), len(blob))
 	var loaded Compiled
 	if err := unmarshalCompiled(&loaded, blob[5:]); err != nil {
 		t.Fatalf("private reload staged null-reference product: %v", err)
@@ -164,65 +124,11 @@ func TestStagedFirstNullReferenceProductRejectsWidening(t *testing.T) {
 	}
 }
 
-func stagedBottomNullReferenceModule(mutableBottomGlobal bool) []byte {
-	encAny := []byte{byte(wasm.HeapAny)}
-	encNone := []byte{byte(wasm.HeapNone)}
-	encFunc := []byte{byte(wasm.HeapFunc)}
-	encNoFunc := []byte{byte(wasm.HeapNoFunc)}
-	encExn := []byte{byte(wasm.HeapExn)}
-	encNoExn := []byte{byte(wasm.HeapNoExn)}
-	encExtern := []byte{byte(wasm.HeapExtern)}
-	encNoExtern := []byte{byte(wasm.HeapNoExtern)}
-	encIndexed := []byte{0x63, 0x00}
-	resultEncodings := [][]byte{encAny, encNone, encFunc, encNoFunc, encExn, encNoExn, encExtern, encNoExtern, encIndexed}
-	names := []string{"anyref", "nullref", "funcref", "nullfuncref", "exnref", "nullexnref", "externref", "nullexternref", "ref"}
-	globalGets := []byte{0, 0, 1, 1, 2, 2, 3, 3, 1}
-
-	types := [][]byte{wasmtest.FuncType(nil, nil)}
-	funcs := make([][]byte, len(resultEncodings))
-	exports := make([][]byte, len(resultEncodings))
-	codes := make([][]byte, len(resultEncodings))
-	for i, enc := range resultEncodings {
-		ft := []byte{0x60, 0x00, 0x01}
-		ft = append(ft, enc...)
-		types = append(types, ft)
-		funcs[i] = wasmtest.ULEB(uint32(i + 1))
-		exports[i] = wasmtest.ExportEntry(names[i], 0, uint32(i))
-		codes[i] = wasmtest.Code([]byte{0x23, globalGets[i], 0x0b})
-	}
-
-	globalTypeEncodings := [][]byte{
-		encNone, encNoFunc, encNoExn, encNoExtern,
-		encAny, encAny, encFunc, encFunc, encExn, encExn, encExtern, encExtern,
-		encNone, encNoFunc, encNoExn, encNoExtern, encIndexed, encIndexed,
-	}
-	globalHeaps := []byte{
-		byte(wasm.HeapNone), byte(wasm.HeapNoFunc), byte(wasm.HeapNoExn), byte(wasm.HeapNoExtern),
-		byte(wasm.HeapAny), byte(wasm.HeapNone), byte(wasm.HeapFunc), byte(wasm.HeapNoFunc),
-		byte(wasm.HeapExn), byte(wasm.HeapNoExn), byte(wasm.HeapExtern), byte(wasm.HeapNoExtern),
-		byte(wasm.HeapNone), byte(wasm.HeapNoFunc), byte(wasm.HeapNoExn), byte(wasm.HeapNoExtern), 0, byte(wasm.HeapNoFunc),
-	}
-	globals := make([][]byte, len(globalTypeEncodings))
-	for i, enc := range globalTypeEncodings {
-		g := append([]byte(nil), enc...)
-		mutable := byte(0)
-		if i == 0 && mutableBottomGlobal {
-			mutable = 1
-		}
-		g = append(g, mutable, 0xd0, globalHeaps[i], 0x0b)
-		globals[i] = g
-	}
-	return wasmtest.Module(
-		wasmtest.Section(1, wasmtest.Vec(types...)),
-		wasmtest.Section(3, wasmtest.Vec(funcs...)),
-		wasmtest.Section(6, wasmtest.Vec(globals...)),
-		wasmtest.Section(7, wasmtest.Vec(exports...)),
-		wasmtest.Section(10, wasmtest.Vec(codes...)),
-	)
-}
-
 func TestStagedBottomNullReferenceGlobalsExecution(t *testing.T) {
 	data := stagedBottomNullReferenceModule(false)
+	if len(data) != 308 {
+		t.Fatalf("bottom-global synthetic null fixture size = %d, want 308 bytes", len(data))
+	}
 	if _, err := Compile(NewRuntimeConfig(), data); err == nil || !strings.Contains(err.Error(), "ref null any") {
 		t.Fatalf("public compile = %v, want closed abstract-reference gate", err)
 	}
@@ -261,6 +167,7 @@ func TestStagedBottomNullReferenceGlobalsExecution(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal bottom-global null product: %v", err)
 	}
+	t.Logf("bottom-global null-reference product: wasm=%d codec-v27=%d", len(data), len(blob))
 	var loaded Compiled
 	if err := unmarshalCompiled(&loaded, blob[5:]); err != nil {
 		t.Fatalf("private reload bottom-global null product: %v", err)
@@ -304,12 +211,170 @@ func TestStagedBottomNullReferenceGlobalsExecution(t *testing.T) {
 	}
 }
 
-func namesForBottomNullReferenceProduct() []string {
-	return []string{"anyref", "nullref", "funcref", "nullfuncref", "exnref", "nullexnref", "externref", "nullexternref", "ref"}
-}
-
 func TestStagedBottomNullReferenceGlobalsRejectWidening(t *testing.T) {
 	if _, err := compileStagedNullReferenceProductForTest(stagedBottomNullReferenceModule(true)); err == nil || !strings.Contains(err.Error(), "immutable exact null") {
 		t.Fatalf("mutable bottom global compile = %v, want exact-product rejection", err)
 	}
+}
+
+func BenchmarkStagedBottomNullReferenceGlobalGet(b *testing.B) {
+	c, err := compileStagedNullReferenceProductForTest(stagedBottomNullReferenceModule(false))
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer c.Close()
+	in, err := instantiateCore(c, InstantiateOptions{})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer in.Close()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		got, err := in.Invoke("nullexnref")
+		if err != nil || len(got) != 1 || got[0] != 0 {
+			b.Fatalf("Invoke = %v, %v", got, err)
+		}
+	}
+}
+
+func replayStagedNullReferenceScript(t *testing.T, base, tmp string, script stagedSpecScript) (counts stagedSpecCounts, gates map[string]int) {
+	t.Helper()
+	gates = map[string]int{}
+	definitions := map[string][]byte{}
+	var latestDefinition []byte
+	var current stagedSpecModule
+	named := map[string]stagedSpecModule{}
+	var live []stagedSpecModule
+	defer func() {
+		for i := len(live) - 1; i >= 0; i-- {
+			_ = live[i].in.Close()
+			_ = live[i].c.Close()
+		}
+	}()
+	instantiate := func(data []byte, cmd stagedSpecCommand) (stagedSpecModule, error) {
+		decoded, err := wasm.DecodeModule(data)
+		if err != nil {
+			return stagedSpecModule{}, fmt.Errorf("decode: %w", err)
+		}
+		kind, err := stagedNullReferenceProductShape(decoded)
+		if err != nil {
+			return stagedSpecModule{}, fmt.Errorf("shape: %w", err)
+		}
+		wantBytes := 189
+		if kind == stagedNullReferenceProductBottomGlobals {
+			wantBytes = 364
+		}
+		if len(data) != wantBytes {
+			return stagedSpecModule{}, fmt.Errorf("pinned module size %d, want %d", len(data), wantBytes)
+		}
+		c, err := compileStagedNullReferenceProductForTest(data)
+		if err != nil {
+			return stagedSpecModule{}, fmt.Errorf("compile: %w", err)
+		}
+		in, err := instantiateCore(c, InstantiateOptions{})
+		if err != nil {
+			_ = c.Close()
+			return stagedSpecModule{}, fmt.Errorf("instantiate: %w", err)
+		}
+		if in.gc != nil {
+			_ = in.Close()
+			_ = c.Close()
+			return stagedSpecModule{}, fmt.Errorf("null-only product allocated a collector")
+		}
+		m := stagedSpecModule{in: in, c: c}
+		live = append(live, m)
+		if cmd.Name != "" {
+			named[cmd.Name] = m
+		}
+		return m, nil
+	}
+	for _, cmd := range script.Commands {
+		counts.Commands++
+		switch cmd.Type {
+		case "module_definition":
+			data, err := os.ReadFile(filepath.Join(tmp, cmd.Filename))
+			if err != nil {
+				counts.Failures++
+				t.Errorf("%s.wast:%d read module definition: %v", base, cmd.Line, err)
+				continue
+			}
+			latestDefinition = data
+			if cmd.Name != "" {
+				definitions[cmd.Name] = data
+			}
+		case "module_instance", "module":
+			var data []byte
+			var err error
+			if cmd.Type == "module" {
+				data, err = os.ReadFile(filepath.Join(tmp, cmd.Filename))
+			} else if cmd.Module != "" {
+				data = definitions[cmd.Module]
+			} else {
+				data = latestDefinition
+			}
+			if err != nil || data == nil {
+				counts.Failures++
+				t.Errorf("%s.wast:%d read module: %v", base, cmd.Line, err)
+				continue
+			}
+			current, err = instantiate(data, cmd)
+			if err != nil {
+				if strings.Contains(err.Error(), "compile:") {
+					counts.UnexpectedCompileRejects++
+				} else {
+					counts.UnexpectedLinkRejects++
+				}
+				counts.Failures++
+				t.Errorf("%s.wast:%d module rejected: %v", base, cmd.Line, err)
+				continue
+			}
+			counts.ModulesPassed++
+		case "assert_return":
+			m := current
+			if cmd.Action.Module != "" {
+				m = named[cmd.Action.Module]
+			}
+			if m.in == nil || cmd.Action.Type != "invoke" || len(cmd.Action.Args) != 0 {
+				counts.Failures++
+				t.Errorf("%s.wast:%d unavailable or unsupported null action", base, cmd.Line)
+				continue
+			}
+			got, err := m.in.Invoke(cmd.Action.Field)
+			if err != nil || len(got) != len(cmd.Expected) {
+				counts.Failures++
+				t.Errorf("%s.wast:%d result=%v err=%v want=%v", base, cmd.Line, got, err, cmd.Expected)
+				continue
+			}
+			matched := true
+			for i := range got {
+				if !stagedTypedReferenceMatch(m, got[i], cmd.Expected[i]) {
+					matched = false
+					break
+				}
+			}
+			if !matched {
+				counts.Failures++
+				t.Errorf("%s.wast:%d result=%v want=%v", base, cmd.Line, got, cmd.Expected)
+				continue
+			}
+			counts.AssertionsPassed++
+		default:
+			counts.Failures++
+			t.Errorf("%s.wast:%d unhandled command %q", base, cmd.Line, cmd.Type)
+		}
+	}
+	if current.in != nil {
+		allocs := testing.AllocsPerRun(1000, func() {
+			got, err := current.in.Invoke("nullexnref")
+			if err != nil || len(got) != 1 || got[0] != 0 {
+				panic("official bottom null-reference replay failed")
+			}
+		})
+		if allocs != 0 {
+			counts.Failures++
+			t.Errorf("%s official null-reference allocations = %v, want 0", base, allocs)
+		}
+	}
+	return counts, gates
 }

@@ -169,6 +169,9 @@ func stagedTypedReferenceMatch(m stagedSpecModule, got uint64, want stagedSpecVa
 
 func replayStagedTypedReferenceScript(t *testing.T, base, tmp string, script stagedSpecScript) (counts stagedSpecCounts, gates map[string]int) {
 	t.Helper()
+	if base == "ref_null" {
+		return replayStagedNullReferenceScript(t, base, tmp, script)
+	}
 	gates = map[string]int{}
 	standardTable, err := NewTable(10, 20)
 	if err != nil {

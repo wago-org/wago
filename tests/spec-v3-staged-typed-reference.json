@@ -124,22 +124,15 @@
     {
       "name": "ref_null",
       "status": "accounted",
-      "gates": [
-        {
-          "family": "gc",
-          "reason": "GC abstract any/eq/i31/null references are not executable",
-          "count": 2
-        }
-      ],
       "counts": {
         "commands": 36,
-        "modules_passed": 0,
-        "assertions_passed": 0,
+        "modules_passed": 2,
+        "assertions_passed": 32,
         "expected_invalid": 0,
         "expected_unlinkable": 0,
         "expected_uninstantiable": 0,
-        "expected_feature_rejects": 2,
-        "blocked_commands": 32,
+        "expected_feature_rejects": 0,
+        "blocked_commands": 0,
         "unexpected_compile_rejects": 0,
         "unexpected_link_rejects": 0,
         "failures": 0
@@ -259,25 +252,20 @@
   "gates": [
     {
       "family": "gc",
-      "reason": "GC abstract any/eq/i31/null references are not executable",
-      "count": 2
-    },
-    {
-      "family": "gc",
       "reason": "GC-defined struct/array types are not executable",
       "count": 10
     }
   ],
   "totals": {
     "commands": 422,
-    "modules_passed": 50,
-    "assertions_passed": 211,
+    "modules_passed": 52,
+    "assertions_passed": 243,
     "expected_invalid": 65,
     "expected_malformed": 2,
     "expected_unlinkable": 1,
     "expected_uninstantiable": 0,
-    "expected_feature_rejects": 12,
-    "blocked_commands": 36,
+    "expected_feature_rejects": 10,
+    "blocked_commands": 4,
     "unexpected_compile_rejects": 0,
     "unexpected_link_rejects": 0,
     "failures": 0
