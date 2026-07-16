@@ -58,9 +58,14 @@ producer transactionally and both close orders release exactly once. Their wasm/
 struct-projection provider/consumer pair. Three exact two-member recursive groups and five ordered immutable fields affect
 function identity without producing a struct value; the provider and consumer again own 64 descriptor bytes, retain one
 producer transactionally, and release it in both close orders. Their wasm/code/codec sizes are 104/77/482 and 85/0/405
-bytes, and empty `g` measures 37.05–39.08 ns/op with zero allocations. All thirty-three admitted leaders instantiate, or
-fail before consumer publication, without allocating a collector. Twelve leaders remain gated and 16 dependent commands
-remain blocked. General native frame publication, object-valued mutable/reference globals, broader struct-defined linking
+bytes, and empty `g` measures 37.05–39.08 ns/op with zero allocations. Iteration 69 adds only the M5
+provider/expected-unlinkable pair. Complete recursive-group comparison preserves selected-member position and distinguishes
+bound references from equivalent-looking external references, so the provider's second group cannot flatten into the
+consumer's self-recursive requirement. The provider owns 64 descriptor bytes; the attempted consumer has the same bounded
+requirement but rejects before retention or publication. Their wasm/code/codec sizes are 82/77/403 and 51/0/236 bytes,
+and provider `g` measures 36.78–37.82 ns/op with zero allocations. All thirty-four admitted leaders instantiate, or fail
+before consumer publication, without allocating a collector. Eleven leaders remain gated and 14 dependent commands remain
+blocked. General native frame publication, object-valued mutable/reference globals, broader struct-defined linking
 ownership, public ownership, and snapshots remain incomplete. These bounded products must not be presented as general executable WasmGC support.
 
 ## Why a wago-native collector
@@ -1185,6 +1190,34 @@ host and cross-product substitution, arm64, unsupported platforms, and public GC
 accounting is now 170 commands / 33 passed modules / 23 passed assertions / 12 gates / 16 blocked commands / 24 invalid /
 5 executed expected unlinkables / 3 blocked unlinkables / zero validator gaps, unexpected compile/link failures, or hidden
 failures. The source-lines-598–605 M5 provider/unlinkable pair is next and must remain separate from source line 614.
+
+### Iteration 69 M5 bound/external recursive-group mismatch
+
+The source-lines-598–605 pair is pinned independently from M3/M4. The command-line-479 provider is 82 bytes with SHA-256
+`0494d7c95b50e151ac8e0f9eb8a1c935a016db45b1969378ed95d40369fda062`; the command-line-487 expected-unlinkable
+consumer is 51 bytes with SHA-256 `bb598cc89f2d73720190e6c7e115bec104013bf8ebead4c417d17e701598c7a1`.
+The provider contains three complete two-member groups. The first pairs root `f1` with a final struct holding a bound
+non-null reference to `f1`; the second pairs root `f2` with a final struct whose field refers externally to `f1`; the final
+pair is `g2 <: f2` plus an empty final struct. The consumer contains the M3-like two-group requirement: root `f1` and its
+bound self-referential struct, then `g1 <: f1` and an empty final struct. Exact AST and byte-backed validation prove every
+member, field, super edge, empty provider body/export, `M5.g` import, and registration order.
+
+Cross-module descriptor equivalence now compares each complete recursive group at the selected member position and checks
+whether every defined reference is bound to the current group or external to it before following structural equivalence.
+The provider's external `f1` reference therefore cannot satisfy the consumer's bound self-reference. Instantiation rejects
+with signature mismatch before owner retention or consumer publication. No live consumer binding exists, and no close-order
+retention claim is made. The provider owns a 64-byte arena containing null plus one ordinary canonical descriptor; the
+attempted consumer's finite requirement is also 64 bytes. Both products contain no struct/array opcode or value, compact
+`gc.Ref`, collector root, barrier, card, remembered set, or object, and `Instance.gc` remains nil.
+
+Provider/consumer wasm/code/codec sizes are 82/77/403 and 51/0/236 bytes. Empty provider `g` measures 36.78–37.82 ns/op,
+0 B/op, and 0 allocs/op across five samples. Failed linking leaves the original unlinked consumer serializable and retains
+zero provider owners. Private codec reload inherits no product marker, public reload rejects unknown GC bits, snapshots
+reject WasmGC reference products, and signal-backed bounds, host and cross-product substitution, arm64, unsupported
+platforms, and public GC admission remain fail-closed. Strict accounting is now 170 commands / 34 passed modules /
+23 passed assertions / 11 gates / 14 blocked commands / 24 invalid / 6 executed expected unlinkables / 2 blocked
+unlinkables / zero validator gaps, unexpected compile/link failures, or hidden failures. The source-lines-614–621 M6
+provider/consumer pair is next and must remain separate from source line 628.
 
 ## Collector lifetime
 
