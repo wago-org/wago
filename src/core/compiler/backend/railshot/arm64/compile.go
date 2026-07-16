@@ -571,6 +571,10 @@ type CompileOptions struct {
 	MemoryPressureAt int
 	MemoryPressure   func()
 
+	// GCStructHelpers is present for cross-target option parity. Staged admission
+	// rejects it before arm64 code generation.
+	GCStructHelpers bool
+
 	// Codegen carries injectable runtime/heap dependencies for future WasmGC
 	// lowering. The current direct backend does not lower WasmGC opcodes yet, but
 	// threading the option here lets that work use the same HeapABI as the IR

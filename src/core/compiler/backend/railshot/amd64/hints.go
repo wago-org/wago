@@ -606,6 +606,12 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				return true, 0, err
 			}
 			s.noteStackArenaOp(op, &imm)
+			if op == 0xfb {
+				switch imm.Kind {
+				case wasm.InstrStructNewDefault, wasm.InstrStructGet, wasm.InstrStructSet:
+					s.h.hasCall, subHasCall = true, true
+				}
+			}
 			if imm.TouchesMemory {
 				s.h.touchesMemory = true
 			}
@@ -725,6 +731,13 @@ func stackArenaOpAllocates(op byte, imm *wasm.InstructionImmediate) bool {
 		return true
 	case 0xfc:
 		return imm.Subopcode <= 7 || imm.Subopcode == 15 || imm.Subopcode == 16 // trunc_sat/table.grow/table.size push.
+	case 0xfb:
+		switch imm.Kind {
+		case wasm.InstrStructNewDefault, wasm.InstrStructGet:
+			return true
+		default:
+			return false
+		}
 	case 0xfd:
 		switch imm.Subopcode {
 		case 11, 88, 89, 90, 91: // v128.store and v128.store{8,16,32,64}_lane push no result.

@@ -15,6 +15,7 @@ type compiledCodeCache struct {
 	refs                            int
 	closed                          bool
 	collectorFreeStructuralMetadata bool         // exact staged products use struct descriptors only for function identity
+	gcStructHelpers                 bool         // exact collector-backed products use the synchronous internal helper dispatcher
 	stagedFeatures                  CoreFeatures // compile-only admission; never serialized or publicly loaded
 }
 
@@ -39,6 +40,10 @@ func (c *Compiled) stagedFeatures() CoreFeatures {
 
 func (c *Compiled) collectorFreeStructuralMetadata() bool {
 	return c != nil && c.codeCache != nil && c.codeCache.collectorFreeStructuralMetadata
+}
+
+func (c *Compiled) usesGCStructHelpers() bool {
+	return c != nil && c.codeCache != nil && c.codeCache.gcStructHelpers
 }
 
 func (c *Compiled) ensureCodeCache() {

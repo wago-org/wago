@@ -487,6 +487,13 @@ type invalidHostReference struct{ err error }
 // paths do not allocate a fresh closure per call.
 func (in *Instance) newHostDispatch() runtime.HostCall {
 	return func(_ uintptr, importIdx uint32, args, results []uint64) {
+		if importIdx&gcStructDispatchBit != 0 {
+			if importIdx&hostFuncRefDispatchBit != 0 {
+				panic(gcStructHelperError{err: fmt.Errorf("invalid overlapping GC/host dispatch index %#x", importIdx)})
+			}
+			in.dispatchGCStructHelper(importIdx&^gcStructDispatchBit, args, results)
+			return
+		}
 		var fn HostFunc
 		var sig FuncSig
 		if importIdx&hostFuncRefDispatchBit != 0 {
@@ -660,6 +667,10 @@ func (in *Instance) callNativeSync(entry uintptr) (err error) {
 			}
 			if invalid, ok := r.(invalidHostReference); ok {
 				err = invalid.err
+				return
+			}
+			if helper, ok := r.(gcStructHelperError); ok {
+				err = fmt.Errorf("wago: WasmGC struct helper: %w", helper.err)
 				return
 			}
 			panic(r)

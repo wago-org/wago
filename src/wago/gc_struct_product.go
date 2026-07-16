@@ -22,6 +22,7 @@ const (
 	stagedGCStructBasic
 	stagedGCStructNullDereference
 	stagedGCStructPacked
+	stagedGCStructNumericLocal
 )
 
 type stagedGCStructOpcodeCount struct {
@@ -62,6 +63,8 @@ func (p stagedGCStructProduct) String() string {
 		return "null-dereference"
 	case stagedGCStructPacked:
 		return "packed-fields"
+	case stagedGCStructNumericLocal:
+		return "numeric-local-helper"
 	default:
 		return "unknown"
 	}
@@ -81,6 +84,8 @@ func (p stagedGCStructProduct) gateReason() string {
 		return "null struct.get/struct.set trap product"
 	case stagedGCStructPacked:
 		return "packed struct globals/get/set product"
+	case stagedGCStructNumericLocal:
+		return "one numeric local struct allocation/access helper product"
 	default:
 		return "unknown gc/struct product"
 	}
@@ -94,6 +99,35 @@ func stagedGCStructLeaderPinFor(data []byte, commandLine int) (stagedGCStructLea
 		}
 	}
 	return stagedGCStructLeaderPin{}, false
+}
+
+const stagedGCStructNumericLocalSHA256 = "f5fc57a9a6b959a1a689385cb79050b6998c867c61eafd65ff03b2d57d128fcf"
+
+// stagedGCStructExecutionProduct admits only the exact collector-backed products
+// whose runtime/helper obligations are implemented. The synthetic numeric-local
+// product has one mutable i32 field, one allocation per invocation, no GC-valued
+// public boundary or global/table state, and returns only numeric values.
+func stagedGCStructExecutionProduct(data []byte) (stagedGCStructProduct, bool) {
+	digest := fmt.Sprintf("%x", sha256.Sum256(data))
+	if digest == stagedGCStructNumericLocalSHA256 && len(data) == 65 {
+		return stagedGCStructNumericLocal, true
+	}
+	for _, pin := range stagedGCStructLeaderPins {
+		if pin.SHA256 != digest || pin.Size != len(data) {
+			continue
+		}
+		switch pin.Product {
+		case stagedGCStructDeclarations, stagedGCStructBindings, stagedGCStructNamedGets:
+			return pin.Product, true
+		default:
+			return pin.Product, false
+		}
+	}
+	return 0, false
+}
+
+func (p stagedGCStructProduct) requiresHelpers() bool {
+	return p == stagedGCStructNamedGets || p == stagedGCStructNumericLocal || p == stagedGCStructNullDereference
 }
 
 func stagedGCStructTypeGraph(m *wasm.Module) string {

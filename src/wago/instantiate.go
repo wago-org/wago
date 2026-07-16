@@ -149,7 +149,7 @@ func (c *Compiled) arenaNeedForImports(imports Imports, syncMode bool) int {
 		return need
 	}
 	baselineHostBytes := runtime.HostCallLogBytes
-	if c.needsPublicFuncrefHostReentry() {
+	if c.needsPublicFuncrefHostReentry() || c.usesGCStructHelpers() {
 		baselineHostBytes = runtime.HostCtrlFrameBytes
 	}
 	actualHostBytes := 0

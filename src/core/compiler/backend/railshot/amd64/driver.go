@@ -633,6 +633,8 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 		return f.brOnNull(r)
 	case 0xd6: // br_on_non_null
 		return f.brOnNonNull(r)
+	case 0xfb: // GC/reference proposal opcodes
+		return f.emitFB(r)
 	case 0xfc: // misc (multi-byte) opcodes
 		return f.emitFC(r)
 	case 0xfd: // SIMD

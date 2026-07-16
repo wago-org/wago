@@ -198,39 +198,24 @@
     },
     {
       "family": "gc",
-      "reason": "declaration-only struct type metadata",
-      "count": 1
-    },
-    {
-      "family": "gc",
       "reason": "null struct.get/struct.set trap product",
-      "count": 1
-    },
-    {
-      "family": "gc",
-      "reason": "numeric struct.get field-name products",
       "count": 1
     },
     {
       "family": "gc",
       "reason": "packed struct globals/get/set product",
       "count": 1
-    },
-    {
-      "family": "gc",
-      "reason": "recursive struct binding and type-index metadata",
-      "count": 1
     }
   ],
   "counts": {
     "commands": 36,
-    "modules_passed": 0,
+    "modules_passed": 3,
     "assertions_passed": 0,
     "expected_invalid": 4,
     "expected_malformed": 1,
     "expected_unlinkable": 0,
     "expected_uninstantiable": 0,
-    "expected_feature_rejects": 6,
+    "expected_feature_rejects": 3,
     "blocked_commands": 19,
     "unexpected_compile_rejects": 0,
     "unexpected_link_rejects": 0,

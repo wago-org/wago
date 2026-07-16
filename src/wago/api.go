@@ -821,6 +821,7 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 		return nil, fmt.Errorf("validate: %w", err)
 	}
 	structuralProduct := stagedStructuralTypeProduct(0)
+	gcStructProduct := stagedGCStructProduct(0)
 	if features.StructuralTypeProducts && hasStructuralHeapTypes(m) {
 		if goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64" {
 			return nil, fmt.Errorf("compile: unsupported collector-free structural product staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
@@ -835,6 +836,22 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 		}
 		if !stagedStructuralTypeProductPinned(wasmBytes, structuralProduct) {
 			return nil, fmt.Errorf("compile: staged collector-free structural product: binary is outside the pinned type-rec product set")
+		}
+	}
+	if features.GCStructProducts {
+		if goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64" {
+			return nil, fmt.Errorf("compile: unsupported collector-backed struct product staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
+		}
+		if cfg.boundsChecks == BoundsChecksSignalsBased {
+			return nil, fmt.Errorf("compile: unsupported collector-backed struct product with signals-based bounds checks")
+		}
+		var ok bool
+		gcStructProduct, ok = stagedGCStructExecutionProduct(wasmBytes)
+		if !ok {
+			if gcStructProduct != 0 {
+				return nil, fmt.Errorf("compile: staged collector-backed struct product %s remains outside the executable helper slice", gcStructProduct)
+			}
+			return nil, fmt.Errorf("compile: staged collector-backed struct product: binary is outside the exact pinned product set")
 		}
 	}
 	if features.NullReferenceProducts {
@@ -992,7 +1009,7 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 		dynamicBindings[i] = railshotImportBinding{Dynamic: true, ImportIndex: uint32(i), EHTransfer: features.ExceptionHandling}
 	}
 	pressureAt, pressure := compileMemoryPressure(len(wasmBytes))
-	cm, err := railshotCompileModuleWith(m, railshotCompileOptions{Workers: workers, ElideBoundsChecks: elide, NoBoundsFacts: cfg.noDeferBounds, ImportBindings: dynamicBindings, Interruptible: true, MemoryPressureAt: pressureAt, MemoryPressure: pressure})
+	cm, err := railshotCompileModuleWith(m, railshotCompileOptions{Workers: workers, ElideBoundsChecks: elide, NoBoundsFacts: cfg.noDeferBounds, ImportBindings: dynamicBindings, GCStructHelpers: gcStructProduct.requiresHelpers(), Interruptible: true, MemoryPressureAt: pressureAt, MemoryPressure: pressure})
 	if err != nil {
 		return nil, fmt.Errorf("compile: %w", err)
 	}
@@ -1398,6 +1415,10 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 		compiled.codeCache.stagedFeatures |= CoreFeatureGC
 		compiled.codeCache.collectorFreeStructuralMetadata = true
 	}
+	if gcStructProduct != 0 {
+		compiled.codeCache.stagedFeatures |= CoreFeatureGC
+		compiled.codeCache.gcStructHelpers = gcStructProduct.requiresHelpers()
+	}
 	return compiled, nil
 }
 
@@ -1531,7 +1552,7 @@ func asyncReplayable(sig FuncSig) bool {
 }
 
 func (c *Compiled) importsRequireSync(imports Imports, force bool) bool {
-	if force || forceSyncHostImports || c.needsPublicFuncrefHostReentry() {
+	if force || forceSyncHostImports || c.needsPublicFuncrefHostReentry() || c.usesGCStructHelpers() {
 		return true
 	}
 	for _, key := range c.Imports {
@@ -2870,7 +2891,7 @@ func (c *Compiled) validateArenaFootprint() error {
 		passiveElemBytes += len(elem.Values) * stride
 	}
 	hostCallBytes := 0
-	if c.needsPublicFuncrefHostReentry() {
+	if c.needsPublicFuncrefHostReentry() || c.usesGCStructHelpers() {
 		hostCallBytes = wruntime.HostCtrlFrameBytes
 	}
 	need, err := wruntime.InstantiateArenaNeed(wruntime.InstantiateFootprint{

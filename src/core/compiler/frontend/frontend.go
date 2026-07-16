@@ -58,6 +58,7 @@ type Features struct {
 	ExceptionReferences     bool // internal staged gate for fixed rooted exn values and throw_ref/reference catches
 	NullReferenceProducts   bool // internal staged gate for exact null-only any/exn reference products
 	StructuralTypeProducts  bool // internal staged gate for collector-free struct metadata in exact function products
+	GCStructProducts        bool // internal staged gate for exact collector-backed numeric struct helper products
 	SIMD                    bool // supported 0xfd v128 SIMD and relaxed-SIMD instructions
 	ExtendedConst           bool // i32/i64 add/sub/mul and prior immutable global.get in const expressions
 }
@@ -393,6 +394,9 @@ func (p supportPass) types() error {
 			}
 			if st.Comp.Kind != wasm.CompFunc {
 				if p.feat.StructuralTypeProducts && (st.Comp.Kind == wasm.CompStruct || st.Comp.Kind == wasm.CompArray) {
+					continue
+				}
+				if p.feat.GCStructProducts && st.Comp.Kind == wasm.CompStruct {
 					continue
 				}
 				return p.unsupported("gc type", compTypeName(st.Comp.Kind)+" (gc disabled)", ctx)
@@ -1218,7 +1222,19 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 			return false, p.unsupported("instruction", simdUnsupportedName(imm), ctx())
 		}
 		return false, nil
-	case 0xfb, 0xfe:
+	case 0xfb:
+		imm, err := wasm.ClassifyInstructionImmediate(r, op)
+		if err != nil {
+			return false, err
+		}
+		if p.feat.GCStructProducts {
+			switch imm.Kind {
+			case wasm.InstrStructNewDefault, wasm.InstrStructGet:
+				return false, nil
+			}
+		}
+		return false, p.unsupported("gc instruction", imm.Kind.String()+" (gc disabled)", ctx())
+	case 0xfe:
 		if err := wasm.SkipInstructionImmediate(r, op); err != nil {
 			return false, err
 		}
@@ -1771,6 +1787,12 @@ func (p supportPass) instructionKind(k wasm.InstrKind, context string) error {
 		return nil
 	}
 	if isGCInstruction(k) {
+		if p.feat.GCStructProducts {
+			switch k {
+			case wasm.InstrStructNewDefault, wasm.InstrStructGet:
+				return nil
+			}
+		}
 		return p.unsupported("gc instruction", k.String()+" (gc disabled)", context)
 	}
 	if isReferenceInstruction(k) {
@@ -1862,7 +1884,7 @@ func (p supportPass) supportedExceptionRef(rt wasm.RefType) bool {
 }
 
 func (p supportPass) supportedStructuralTypeRef(rt wasm.RefType) bool {
-	if !p.feat.StructuralTypeProducts || rt.Exact || rt.Heap.Kind != wasm.HeapTypeIndex {
+	if (!p.feat.StructuralTypeProducts && !p.feat.GCStructProducts) || rt.Exact || rt.Heap.Kind != wasm.HeapTypeIndex {
 		return false
 	}
 	index := rt.Heap.Type.Index

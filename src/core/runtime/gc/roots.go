@@ -10,6 +10,13 @@ type RootSlot interface {
 
 type RootSet interface{ RangeRoots(func(RootSlot) bool) }
 
+// EmptyRoots is an explicit non-nil root set for may-collect operations that
+// have proven no live refs. Its zero-sized value avoids allocating a slice
+// header merely to distinguish an exact empty set from a missing root set.
+type EmptyRoots struct{}
+
+func (EmptyRoots) RangeRoots(func(RootSlot) bool) {}
+
 type Root Ref
 
 func (r *Root) GetRef() Ref  { return Ref(*r) }
