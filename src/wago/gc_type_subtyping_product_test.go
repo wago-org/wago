@@ -46,6 +46,7 @@ var stagedGCTypeSubtypingProductPins = []stagedGCTypeSubtypingProductPin{
 	{Filename: "type-subtyping.27.wasm", Line: 359, Size: 104, SHA256: "2841d098dfca125ccd9c577cf55762744c8a3911a1986f857be48ebc0d51f735", Class: stagedGCTypeSubtypingRefTestDirectionFalse, Results: []uint64{0}, Hex: "0061736d01000000019f80808000034e0250006000005001006000004e0250006000005001006000006000017f038380808000020204078780808000010372756e000109858080800001030001000a9480808000028280808000000b878080800000d200fb14000b"},
 	{Filename: "type-subtyping.28.wasm", Line: 371, Size: 117, SHA256: "b0797a1825d04be467e336f7f236637184aab41a13de20ff7a06eb1bb7885613", Class: stagedGCTypeSubtypingRefTestDirectionFalse, Results: []uint64{0}, Hex: "0061736d0100000001ac80808000044e0250006000005001006000004e0250006000005001006000004e0250006000005001026000006000017f038380808000020406078780808000010372756e000109858080800001030001000a9480808000028280808000000b878080800000d200fb14020b"},
 	{Filename: "type-subtyping.17.wasm", Line: 193, Size: 412, SHA256: "505e94dbd66fc2e3b5d2d4af76341618b19571074c7b42a551392fd58aa692f3", Class: stagedGCTypeSubtypingRuntimeCallCast, Hex: "0061736d01000000019a808080000450006000017050010060000163015001016000016302600000038b808080000a00010203030303030303048580808000017001030307b780808000070372756e0003056661696c310004056661696c320005056661696c330006056661696c340007056661696c350008056661696c360009098f80808000010441000b03d2000bd2010bd2020b0a80828080000a848080800000d0700b848080800000d0010b848080800000d0020bf98080800000027041001100000b027041011100000b027041021100000b02630141011101000b02630141021101000b02630241021102000b02630041002500fb16000b02630041012500fb16000b02630041022500fb16000b02630141012500fb16010b02630141022500fb16010b02630241022500fb16020b0c000b8d808080000002630141001101000b0c000b8d808080000002630141001102000b0c000b8d808080000002630141011102000b0c000b8b808080000041002500fb16010c000b8b808080000041002500fb16020c000b8b808080000041012500fb16020c000b"},
+	{Filename: "type-subtyping.18.wasm", Line: 215, Size: 185, SHA256: "375a327f8469d41d4f15f05109533a90127fc5287414364e227203d7d48e7662", Class: stagedGCTypeSubtypingRuntimeFinalityCallCast, Hex: "0061736d0100000001898080800002500060000060000003878080800006000101010101048580808000017001020207a18080800004056661696c310002056661696c320003056661696c330004056661696c340005098c80808000010441000b02d2000bd2010b0acb80808000068280808000000b8280808000000b8a8080800000024041011100000b0b8a8080800000024041001101000b0b8a808080000041012500fb16001a0b8a808080000041002500fb16011a0b"},
 }
 
 func stagedGCTypeSubtypingProductData(t testing.TB, pin stagedGCTypeSubtypingProductPin) []byte {
@@ -98,8 +99,8 @@ func TestStagedGCTypeSubtypingProductInventory(t *testing.T) {
 		}
 		seen[pin.Class]++
 	}
-	if seen[stagedGCTypeSubtypingDeclarations] != 6 || seen[stagedGCTypeSubtypingRecursiveFunctions] != 2 || seen[stagedGCTypeSubtypingRefFuncGlobals] != 6 || seen[stagedGCTypeSubtypingRefTestSingle] != 4 || seen[stagedGCTypeSubtypingRefTestMulti] != 3 || seen[stagedGCTypeSubtypingRefTestDirectionFalse] != 2 || seen[stagedGCTypeSubtypingRuntimeCallCast] != 1 {
-		t.Fatalf("product classes = %#v, want declarations/recursive-functions/ref.func-globals/single-ref.test/multi-ref.test/direction-false-ref.test/runtime-call-cast = 6/2/6/4/3/2/1", seen)
+	if seen[stagedGCTypeSubtypingDeclarations] != 6 || seen[stagedGCTypeSubtypingRecursiveFunctions] != 2 || seen[stagedGCTypeSubtypingRefFuncGlobals] != 6 || seen[stagedGCTypeSubtypingRefTestSingle] != 4 || seen[stagedGCTypeSubtypingRefTestMulti] != 3 || seen[stagedGCTypeSubtypingRefTestDirectionFalse] != 2 || seen[stagedGCTypeSubtypingRuntimeCallCast] != 1 || seen[stagedGCTypeSubtypingRuntimeFinalityCallCast] != 1 {
+		t.Fatalf("product classes = %#v, want declarations/recursive-functions/ref.func-globals/single-ref.test/multi-ref.test/direction-false-ref.test/runtime-call-cast/runtime-finality-call-cast = 6/2/6/4/3/2/1/1", seen)
 	}
 }
 
@@ -258,6 +259,69 @@ func TestStagedGCTypeSubtypingRuntimeCallCastInventory(t *testing.T) {
 		"027041001100000b027041011100000b027041021100000b02630141011101000b02630141021101000b02630241021102000b02630041002500fb16000b02630041012500fb16000b02630041022500fb16000b02630141012500fb16010b02630141022500fb16010b02630241022500fb16020b0c000b",
 		"02630141001101000b0c000b", "02630141001102000b0c000b", "02630141011102000b0c000b",
 		"41002500fb16010c000b", "41002500fb16020c000b", "41012500fb16020c000b",
+	}
+	for i := range m.Code {
+		if len(m.Code[i].Locals.Runs) != 0 || hex.EncodeToString(m.Code[i].BodyBytes) != wantBodies[i] {
+			t.Fatalf("function %d locals/body = %v/%x, want none/%s", i, m.Code[i].Locals.Runs, m.Code[i].BodyBytes, wantBodies[i])
+		}
+	}
+}
+
+func TestStagedGCTypeSubtypingRuntimeFinalityCallCastInventory(t *testing.T) {
+	pin := stagedGCTypeSubtypingProductPins[24]
+	m, err := wasm.DecodeModule(stagedGCTypeSubtypingProductData(t, pin))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(m.Types) != 2 || len(m.FuncTypes) != 6 || len(m.Code) != 6 || len(m.Tables) != 1 || len(m.Elements) != 1 || len(m.Exports) != 4 {
+		t.Fatalf("runtime finality shape types/functions/code/tables/elements/exports = %d/%d/%d/%d/%d/%d, want 2/6/6/1/1/4", len(m.Types), len(m.FuncTypes), len(m.Code), len(m.Tables), len(m.Elements), len(m.Exports))
+	}
+	open := m.Types[0].SubTypes[0]
+	if open.Final || !open.HasPrefix || len(open.Supers) != 0 || open.Comp.Kind != wasm.CompFunc || len(open.Comp.Params) != 0 || len(open.Comp.Results) != 0 {
+		t.Fatalf("open type = %+v, want open () -> () subtype", open)
+	}
+	final := m.Types[1].SubTypes[0]
+	if !final.Final || final.HasPrefix || len(final.Supers) != 0 || final.Comp.Kind != wasm.CompFunc || len(final.Comp.Params) != 0 || len(final.Comp.Results) != 0 {
+		t.Fatalf("final type = %+v, want final () -> () type", final)
+	}
+	for source := uint32(0); source < 2; source++ {
+		for target := uint32(0); target < 2; target++ {
+			actual := wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: source}), false)
+			required := wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: target}), false)
+			if got, want := m.ReferenceTypeSubtype(actual, required), source == target; got != want {
+				t.Fatalf("finality-sensitive function subtype %d <: %d = %v, want %v", source, target, got, want)
+			}
+		}
+	}
+	table := m.Tables[0].Type
+	if !wasm.EqualValType(wasm.RefVal(table.Ref), wasm.FuncRef) || table.Limits.Min != 2 || table.Limits.Max == nil || *table.Limits.Max != 2 || table.Limits.Addr64 {
+		t.Fatalf("table = %+v, want exact table 2 2 funcref", table)
+	}
+	elem := m.Elements[0]
+	if elem.Mode.Kind != wasm.ElemActive || elem.Mode.Table != 0 || !isExactI32ConstZeroBody(elem.Mode.Offset.BodyBytes) || elem.Kind.Kind != wasm.ElemFuncExprs || len(elem.Kind.Exprs) != 2 {
+		t.Fatalf("element = %+v, want active table-0 offset-0 two-function expressions", elem)
+	}
+	for i := range elem.Kind.Exprs {
+		if !isExactRefFuncBody(elem.Kind.Exprs[i].BodyBytes, uint32(i)) {
+			t.Fatalf("element expression %d = %x, want ref.func %d", i, elem.Kind.Exprs[i].BodyBytes, i)
+		}
+	}
+	wantTypes := []uint32{0, 1, 1, 1, 1, 1}
+	wantExports := []string{"fail1", "fail2", "fail3", "fail4"}
+	for i := range m.FuncTypes {
+		if m.FuncTypes[i].Rec || m.FuncTypes[i].Index != wantTypes[i] {
+			t.Fatalf("function %d type = %v, want %d", i, m.FuncTypes[i], wantTypes[i])
+		}
+	}
+	for i := range m.Exports {
+		if m.Exports[i].Name != wantExports[i] || m.Exports[i].Index.Kind != wasm.ExternFunc || m.Exports[i].Index.Index != uint32(i+2) {
+			t.Fatalf("export %d = %+v, want %s function %d", i, m.Exports[i], wantExports[i], i+2)
+		}
+	}
+	wantBodies := []string{
+		"0b", "0b",
+		"024041011100000b0b", "024041001101000b0b",
+		"41012500fb16001a0b", "41002500fb16011a0b",
 	}
 	for i := range m.Code {
 		if len(m.Code[i].Locals.Runs) != 0 || hex.EncodeToString(m.Code[i].BodyBytes) != wantBodies[i] {
