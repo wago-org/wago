@@ -66,10 +66,11 @@ type ValueTypeDescriptor struct {
 	Ref  ReferenceTypeDescriptor
 }
 
-// ABIType reports the existing public ABI category for values that the current
-// runtime can carry. types is the containing module's flattened type graph and
-// is consulted for indexed references. GC-managed references deliberately
-// return false until the public value/store boundary supports them.
+// ABIType reports the one-slot public/product ABI category for values that the
+// current runtime can describe. types is the containing module's flattened type
+// graph and is consulted for indexed references. Struct/array references use
+// ValAnyRef metadata slots, but non-null ingress/egress remains fail-closed until
+// the collector-backed public value/store boundary is implemented.
 func (t ValueTypeDescriptor) ABIType(types []DefinedTypeDescriptor) (ValType, bool) {
 	switch t.Kind {
 	case ValueTypeI32:
@@ -84,10 +85,17 @@ func (t ValueTypeDescriptor) ABIType(types []DefinedTypeDescriptor) (ValType, bo
 		return ValV128, true
 	case ValueTypeReference:
 		if t.Ref.Heap.Defined {
-			if int(t.Ref.Heap.TypeIndex) >= len(types) || types[t.Ref.Heap.TypeIndex].Kind != CompositeTypeFunction {
+			if int(t.Ref.Heap.TypeIndex) >= len(types) {
 				return 0, false
 			}
-			return ValFuncRef, true
+			switch types[t.Ref.Heap.TypeIndex].Kind {
+			case CompositeTypeFunction:
+				return ValFuncRef, true
+			case CompositeTypeStruct, CompositeTypeArray:
+				return ValAnyRef, true
+			default:
+				return 0, false
+			}
 		}
 		switch t.Ref.Heap.Abstract {
 		case AbstractHeapFunc, AbstractHeapNoFunc:

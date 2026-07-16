@@ -1,6 +1,7 @@
 package wago
 
 import (
+	"crypto/sha256"
 	"fmt"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -17,6 +18,27 @@ const (
 	stagedStructuralCallIndirect
 )
 
+func stagedStructuralTypeProductPinned(data []byte, product stagedStructuralTypeProduct) bool {
+	digest := fmt.Sprintf("%x", sha256.Sum256(data))
+	var pinned stagedStructuralTypeProduct
+	switch digest {
+	case "537a62d99f8643a7b0dcc1fb73514b847e1ff9b19bbc0a6c70ef9f63569e914f",
+		"20f1e69dfad585cb943f18cff49bfdeee48a141aa85186ce12cb07d286894d39",
+		"86770dc27154217df11c4e7dcbbce07e592c7f1915c71fa2987496821169846f",
+		"aaa094e7f9c9510fc710e7710ac1972ebd727e29ae8f506e6a8b2634c0eb9729":
+		pinned = stagedStructuralRefFuncGlobal
+	case "06b03a6d32fb8f85b7d9f89d73c6e4d02a556faefdbe8875cdd30d2c839db327",
+		"8880e1366eedcb1bbff51008184f9c619c50a442c897e861139b4f5e9e8c5948",
+		"efd00ff8bd9cf9f29eafd3b8bbeefd83d2fa48e7e9efc6821ad55f028cdd93f8":
+		pinned = stagedStructuralFunctionLink
+	case "1f64997e12f4531cdc52825acd5d7964ebf962117127b8ceeb55faefdf0a82be",
+		"51eea44e5eb322b92f16cc9fb27c856c16e6459c89aef172e981092f5561037b",
+		"06e932f89a548c23e504276ab4892e468dc0c188ec7d0b80e2185eb79b50b898":
+		pinned = stagedStructuralCallIndirect
+	}
+	return pinned == product
+}
+
 func (p stagedStructuralTypeProduct) gateReason() string {
 	switch p {
 	case stagedStructuralRefFuncGlobal:
@@ -28,6 +50,21 @@ func (p stagedStructuralTypeProduct) gateReason() string {
 	default:
 		return "unknown collector-free structural product"
 	}
+}
+
+func hasStructuralHeapTypes(m *wasm.Module) bool {
+	if m == nil {
+		return false
+	}
+	for gi := range m.Types {
+		for si := range m.Types[gi].SubTypes {
+			kind := m.Types[gi].SubTypes[si].Comp.Kind
+			if kind == wasm.CompStruct || kind == wasm.CompArray {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func stagedStructuralTypeProductShape(m *wasm.Module) (stagedStructuralTypeProduct, error) {
@@ -91,6 +128,10 @@ func stagedStructuralRefFuncGlobalShape(m *wasm.Module) (stagedStructuralTypePro
 	}
 	g := &m.Globals[0]
 	if g.Type.Mutable || !isNonNullIndexedFunctionRef(m, g.Type.Type) || !isExactRefFuncBody(g.Init.BodyBytes, 0) {
+		return 0, false
+	}
+	types, err := typeDescriptorsFromWasm(m)
+	if err != nil || !tagTypeEquivalent(m.FuncTypes[0].Index, types, g.Type.Type.Ref.Heap.Type.Index, types) {
 		return 0, false
 	}
 	return stagedStructuralRefFuncGlobal, true

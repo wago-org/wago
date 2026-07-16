@@ -57,6 +57,7 @@ type Features struct {
 	ExceptionHandling       bool // internal staged gate for bounded local scalar tag/throw/try_table execution
 	ExceptionReferences     bool // internal staged gate for fixed rooted exn values and throw_ref/reference catches
 	NullReferenceProducts   bool // internal staged gate for exact null-only any/exn reference products
+	StructuralTypeProducts  bool // internal staged gate for collector-free struct metadata in exact function products
 	SIMD                    bool // supported 0xfd v128 SIMD and relaxed-SIMD instructions
 	ExtendedConst           bool // i32/i64 add/sub/mul and prior immutable global.get in const expressions
 }
@@ -391,6 +392,9 @@ func (p supportPass) types() error {
 				return p.unsupported("gc type", "subtyping metadata (gc disabled)", ctx)
 			}
 			if st.Comp.Kind != wasm.CompFunc {
+				if p.feat.StructuralTypeProducts && (st.Comp.Kind == wasm.CompStruct || st.Comp.Kind == wasm.CompArray) {
+					continue
+				}
 				return p.unsupported("gc type", compTypeName(st.Comp.Kind)+" (gc disabled)", ctx)
 			}
 			comp, ok := p.m.ResolvedTypeFunc(uint32(typeIndex))
@@ -1850,11 +1854,26 @@ func (p supportPass) supportedValType(v wasm.ValType) bool {
 	if p.feat.SIMD && v.Kind == wasm.ValVec && wasm.EqualValType(v, wasm.V128) {
 		return true
 	}
-	return p.feat.ReferenceTypes && v.Kind == wasm.ValRef && (isFuncRef(v.Ref) || isExternRef(v.Ref) || p.supportedTypedFuncRef(v.Ref) || p.supportedStagedExternRef(v.Ref) || p.supportedExceptionRef(v.Ref) || p.supportedNullReference(v.Ref))
+	return p.feat.ReferenceTypes && v.Kind == wasm.ValRef && (isFuncRef(v.Ref) || isExternRef(v.Ref) || p.supportedTypedFuncRef(v.Ref) || p.supportedStagedExternRef(v.Ref) || p.supportedExceptionRef(v.Ref) || p.supportedNullReference(v.Ref) || p.supportedStructuralTypeRef(v.Ref))
 }
 
 func (p supportPass) supportedExceptionRef(rt wasm.RefType) bool {
 	return p.feat.ExceptionReferences && rt.Heap.Kind == wasm.HeapAbs && (rt.Heap.Abs == wasm.HeapExn || rt.Heap.Abs == wasm.HeapNoExn)
+}
+
+func (p supportPass) supportedStructuralTypeRef(rt wasm.RefType) bool {
+	if !p.feat.StructuralTypeProducts || rt.Exact || rt.Heap.Kind != wasm.HeapTypeIndex {
+		return false
+	}
+	index := rt.Heap.Type.Index
+	for gi := range p.m.Types {
+		if index < uint32(len(p.m.Types[gi].SubTypes)) {
+			kind := p.m.Types[gi].SubTypes[index].Comp.Kind
+			return kind == wasm.CompStruct || kind == wasm.CompArray
+		}
+		index -= uint32(len(p.m.Types[gi].SubTypes))
+	}
+	return false
 }
 
 func (p supportPass) supportedNullReference(rt wasm.RefType) bool {

@@ -820,6 +820,26 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 	if err := wasm.ValidateModuleWithFeaturesAndWorkers(m, validationFeatures, workers); err != nil {
 		return nil, fmt.Errorf("validate: %w", err)
 	}
+	structuralProduct := stagedStructuralTypeProduct(0)
+	if features.StructuralTypeProducts && hasStructuralHeapTypes(m) {
+		if goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64" {
+			return nil, fmt.Errorf("compile: unsupported collector-free structural product staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
+		}
+		if cfg.boundsChecks == BoundsChecksSignalsBased {
+			return nil, fmt.Errorf("compile: unsupported collector-free structural product with signals-based bounds checks")
+		}
+		var err error
+		structuralProduct, err = stagedStructuralTypeProductShape(m)
+		if err != nil {
+			return nil, fmt.Errorf("compile: staged collector-free structural product: %w", err)
+		}
+		if !stagedStructuralTypeProductPinned(wasmBytes, structuralProduct) {
+			return nil, fmt.Errorf("compile: staged collector-free structural product: binary is outside the pinned type-rec product set")
+		}
+		if structuralProduct == stagedStructuralCallIndirect {
+			return nil, fmt.Errorf("compile: staged collector-free structural product: ordinary funcref call_indirect matching remains gated")
+		}
+	}
 	if features.NullReferenceProducts {
 		if goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64" {
 			return nil, fmt.Errorf("compile: unsupported null-reference product staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
@@ -1377,6 +1397,10 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 	if features.NullReferenceProducts {
 		compiled.codeCache.stagedFeatures |= CoreFeatureGC | CoreFeatureExceptionHandling
 	}
+	if structuralProduct != 0 {
+		compiled.codeCache.stagedFeatures |= CoreFeatureGC
+		compiled.codeCache.collectorFreeStructuralMetadata = true
+	}
 	return compiled, nil
 }
 
@@ -1585,6 +1609,10 @@ func (c *Compiled) validateImportBindings(imports Imports, store *referenceStore
 
 func sigMatches(required FuncSig, requiredTypes []DefinedTypeDescriptor, ex *InstanceExport) bool {
 	if ex == nil || ex.inst == nil || ex.localIdx < 0 || ex.localIdx >= len(ex.inst.c.Funcs) {
+		return false
+	}
+	actual := ex.inst.c.Funcs[ex.localIdx]
+	if required.HasTypeIndex && actual.HasTypeIndex && !tagTypeEquivalent(actual.TypeIndex, ex.inst.c.Types, required.TypeIndex, requiredTypes) {
 		return false
 	}
 	requiredParams, requiredResults, err := exactFuncSignature(required, requiredTypes)

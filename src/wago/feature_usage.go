@@ -24,6 +24,7 @@ func moduleRequiredFeatures(m *wasm.Module) CoreFeatures {
 	for _, rec := range m.Types {
 		for _, sub := range rec.SubTypes {
 			if sub.Comp.Kind != wasm.CompFunc {
+				out |= CoreFeatureGC
 				continue
 			}
 			if len(sub.Comp.Results) > 1 {
@@ -241,6 +242,11 @@ func compiledStructuralRequiredFeatures(c *Compiled) CoreFeatures {
 		out |= CoreFeatureSIMD
 	}
 	out |= requiredFeaturesForTypeDescriptors(c.ValueTypes)
+	for _, typ := range c.Types {
+		if typ.Kind == CompositeTypeStruct || typ.Kind == CompositeTypeArray {
+			out |= CoreFeatureGC
+		}
+	}
 	for _, sig := range c.importFuncSigs {
 		if len(sig.Results) > 1 {
 			out |= CoreFeatureMultiValue
