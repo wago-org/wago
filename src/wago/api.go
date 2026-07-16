@@ -836,9 +836,6 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 		if !stagedStructuralTypeProductPinned(wasmBytes, structuralProduct) {
 			return nil, fmt.Errorf("compile: staged collector-free structural product: binary is outside the pinned type-rec product set")
 		}
-		if structuralProduct == stagedStructuralCallIndirect {
-			return nil, fmt.Errorf("compile: staged collector-free structural product: ordinary funcref call_indirect matching remains gated")
-		}
 	}
 	if features.NullReferenceProducts {
 		if goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64" {

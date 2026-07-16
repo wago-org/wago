@@ -57,8 +57,16 @@ func (m *Module) writeStructuralIndexedFuncType(typeIdx uint32, mix func(byte)) 
 		rawMix(b)
 	}
 
-	st, _, ok := m.subtypeByTypeIdxWithRecGroup(TypeIdx{Index: typeIdx})
+	st, rootGroup, ok := m.subtypeByTypeIdxWithRecGroup(TypeIdx{Index: typeIdx})
 	if !ok || st.Comp.Kind != CompFunc {
+		return false
+	}
+	rootStart := uint32(0)
+	for gi := 0; gi < rootGroup; gi++ {
+		rootStart += uint32(len(m.Types[gi].SubTypes))
+	}
+	rootCount := uint32(len(m.Types[rootGroup].SubTypes))
+	if typeIdx < rootStart || typeIdx >= rootStart+rootCount {
 		return false
 	}
 
@@ -74,6 +82,7 @@ func (m *Module) writeStructuralIndexedFuncType(typeIdx uint32, mix func(byte)) 
 	var writeValue func(ValType, int) bool
 	var writeField func(FieldType, int) bool
 	var writeType func(uint32) bool
+	var writeTypeDefinition func(uint32) bool
 	var flatIndex = func(idx TypeIdx, recGroup int) (uint32, bool) {
 		flat, ok := m.flatTypeIdxInRecGroup(idx, recGroup)
 		return uint32(flat), ok
@@ -149,6 +158,18 @@ func (m *Module) writeStructuralIndexedFuncType(typeIdx uint32, mix func(byte)) 
 	}
 
 	writeType = func(index uint32) bool {
+		if overflow {
+			return false
+		}
+		if rootCount > 1 && index >= rootStart && index < rootStart+rootCount {
+			mix(0xf2)
+			mixU32(index - rootStart)
+			return true
+		}
+		return writeTypeDefinition(index)
+	}
+
+	writeTypeDefinition = func(index uint32) bool {
 		if overflow {
 			return false
 		}
@@ -232,7 +253,18 @@ func (m *Module) writeStructuralIndexedFuncType(typeIdx uint32, mix func(byte)) 
 		return true
 	}
 
-	return writeType(typeIdx) && !overflow
+	if rootCount == 1 {
+		return writeType(typeIdx) && !overflow
+	}
+	mix(0xf3)
+	mixU32(rootCount)
+	mixU32(typeIdx - rootStart)
+	for i := uint32(0); i < rootCount; i++ {
+		if !writeTypeDefinition(rootStart + i) {
+			return false
+		}
+	}
+	return !overflow
 }
 
 func compTypeHasIndexedReferences(ft *CompType) bool {

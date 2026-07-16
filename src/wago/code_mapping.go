@@ -14,8 +14,8 @@ type compiledCodeCache struct {
 	base                            uintptr
 	refs                            int
 	closed                          bool
-	stagedFeatures                  CoreFeatures // compile-only admission; never serialized or publicly loaded
 	collectorFreeStructuralMetadata bool         // exact staged products use struct descriptors only for function identity
+	stagedFeatures                  CoreFeatures // compile-only admission; never serialized or publicly loaded
 }
 
 func installCompiledFinalizer(c *Compiled) *Compiled {

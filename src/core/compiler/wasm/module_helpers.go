@@ -400,7 +400,7 @@ func (m *Module) StructuralTypeID(typeIdx uint32) uint32 {
 	if !ok {
 		return typeIdx
 	}
-	if compTypeHasIndexedReferences(ft) {
+	if compTypeHasIndexedReferences(ft) || m.typeInNonSingletonRecGroup(typeIdx) {
 		if id, ok := m.structuralIndexedFuncTypeID(typeIdx); ok {
 			return id
 		}
@@ -425,10 +425,15 @@ func (m *Module) StructuralTypeKeyChecked(typeIdx uint32) (uint64, bool) {
 	if !ok {
 		return 0, false
 	}
-	if compTypeHasIndexedReferences(ft) {
+	if compTypeHasIndexedReferences(ft) || m.typeInNonSingletonRecGroup(typeIdx) {
 		return m.structuralIndexedFuncTypeKey(typeIdx)
 	}
 	return StructuralFuncTypeKey(ft), true
+}
+
+func (m *Module) typeInNonSingletonRecGroup(typeIdx uint32) bool {
+	_, group, ok := m.subtypeByTypeIdxWithRecGroup(TypeIdx{Index: typeIdx})
+	return ok && len(m.Types[group].SubTypes) > 1
 }
 
 // StructuralFuncTypeID hashes a function type's encoded params/results (FNV-1a)
