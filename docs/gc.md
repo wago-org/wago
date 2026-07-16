@@ -5,7 +5,74 @@ active mandatory WebAssembly 3.0 scope, tracked in [wasm3.md](wasm3.md), rather
 than a non-goal. The current implementation is an initial foundation under
 `src/core/runtime/gc`; it establishes reference encoding, object metadata, typed
 descriptors, a byte-slice heap skeleton, exact scanning, roots, barriers, stress
-knobs, and tests. Iteration 38 wires one exact linux/amd64 numeric-local helper product;
+knobs, and tests.
+
+## Current generated-payload boundary
+
+The mandatory pinned Core 3 corpus is complete, but that result is narrower than
+unrestricted compiler-generated WasmGC. The current linux/amd64 explicit-bounds
+path now admits struct and array helpers from validated opcode/type semantics
+rather than requiring an exact binary hash or export spelling. It supports
+multi-field and reference-bearing `struct.new`, reference `struct.set`, numeric
+and reference `array.new`/`array.new_fixed`, object-building global constant
+expressions, indexed `ref.null`, opaque non-scanned 64-bit function/extern
+reference fields, and declared-subtype struct/array access. Constructor operands
+are mutable temporary roots across allocation.
+
+This path compiles, links, and completes the start function of the 3,225,249-byte
+MoonBit Starshine CLI payload with SHA-256
+`3a92309ca48f80594c88ea6c3508982d6fc34953c018ce31786382e08a18d046`.
+The smoke is environment-gated through `WAGO_STARSHINE_SMOKE_WASM`, or via
+`make test-starshine STARSHINE_WASM=/path/to/cmd.wasm`, so the external payload
+is not vendored into this repository.
+
+A smaller deterministic execution fixture lives in
+`testdata/moonbit-json-smoke`. With the pinned MoonBit 0.1.20260703 compiler it
+produces a 44,023-byte import-free WasmGC module with SHA-256
+`b4e33e0685aa5572516ab037be12a3ad1aee93ab9891ba4071c42c23a3e9ca2d`.
+Its exported `run(i32) -> i64` parses, stringifies, reparses, compares, and
+checksums a nested JSON corpus; `make test-moonbit-json` verifies the compiler,
+canonical artifact, and Node-derived results for 1, 2, and 8 iterations. Unlike
+the Starshine startup smoke, this fixture has deterministic semantic output.
+It also exposed a backend bug where dead-code scanning failed to consume
+`0xfb` GC immediates; amd64 and arm64 now delegate those immediates to the
+canonical bytecode classifier.
+
+Exact native frame-root publication is still incomplete. General generated
+modules therefore force `ProfileThroughput` with collection disabled: objects
+remain stable in the configured bounded throughput heap, no incomplete root set
+is scanned, and heap exhaustion returns `gc: collection-disabled heap exhausted`
+instead of attempting an unsafe collection. `ThroughputHeapBytes` remains the
+hard bound (16 MiB by default and caller-configurable). This safety mode means
+Tiny/stress collection settings do not apply to the general path. Exact staged
+official products retain their existing collectors, roots, barriers, and stress
+coverage.
+
+The synchronous helper boundary is capped at 64 parameter/result slots. A lazy
+per-instance `gcPublicState` now includes one mutex-protected 63-value
+constructor scratch (1,032 bytes total on amd64), avoiding a per-constructor Go
+allocation. The synthetic declared-subtype construct/set/get benchmark measures
+383-416 ns/op with 0 allocs/op on the Ryzen 7 8845HS host; amortized B/op comes
+from bounded throughput backing growth.
+
+A pinned single-CPU benchmark pass on July 16, 2026 (Ryzen 7 8845HS, Go 1.24.4)
+measured the 44,023-byte MoonBit JSON module at 0.276 ms decode, 1.380 ms
+validation, 10.641 ms production compile including native codegen, 0.170 ms
+instantiate, and 4.733 ms for fresh instantiate plus `run(1)`. Starshine measured
+1.027 s for the pre-link compile/classification stage, 0.602 s for an isolated
+cold link/JIT from a fresh unlinked product, 1.522 s for end-to-end compile+link,
+and 31.7 ms for linked instantiate/start. The cold Starshine link/JIT allocated
+166.2 MB in 565,697 allocations; this and the 74.8 MB/448,851-allocation compile
+front half are explicit optimization targets rather than footprint claims.
+
+This is still not a general ownership or persistence claim. `.wago` reload does
+not reconstruct live generic helper admission/ownership, snapshots reject live
+WasmGC state, guard-page GC execution and non-amd64 native lowering remain
+closed, and arbitrary non-null GC values cannot cross host or cross-instance
+boundaries. Exact safepoint maps, frame-root updates, mutable global/table root
+coherence, and those lifecycle boundaries remain required.
+
+Iteration 38 wires one exact linux/amd64 numeric-local helper product;
 iteration 39 adds exact immutable GC-global roots, packed fields, and the numeric portion
 of the official basic struct leader. Iteration 40 closes the final struct action through one
 bounded store-owned public result token and pins the complete array family obligations.
