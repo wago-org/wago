@@ -165,10 +165,7 @@ func TestCaptureInstanceSnapshotCopiesLiveState(t *testing.T) {
 }
 
 func TestCaptureLocalMemorySnapshot(t *testing.T) {
-	c, err := Compile(nil, wasmtest.Module(wasmtest.Section(5, wasmtest.Vec([]byte{0, 1}))))
-	if err != nil {
-		t.Fatal(err)
-	}
+	c := compileExplicitArtifact(t, wasmtest.Module(wasmtest.Section(5, wasmtest.Vec([]byte{0, 1}))))
 	defer c.Close()
 	s, err := Capture(c, SnapshotOptions{})
 	if err != nil {
@@ -188,16 +185,13 @@ func TestCaptureLocalMemorySnapshot(t *testing.T) {
 }
 
 func TestCaptureWarmLocalMemorySnapshot(t *testing.T) {
-	c, err := Compile(nil, wasmtest.Module(
+	c := compileExplicitArtifact(t, wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
 		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
 		wasmtest.Section(5, wasmtest.Vec([]byte{0, 1})),
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("_start", 0, 0))),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x0b}))),
 	))
-	if err != nil {
-		t.Fatal(err)
-	}
 	defer c.Close()
 	if s, err := Capture(c, SnapshotOptions{Kind: SnapshotWarm}); err != nil || s.Kind() != SnapshotWarm {
 		t.Fatalf("warm Capture = %#v, %v", s, err)
@@ -207,10 +201,7 @@ func TestCaptureWarmLocalMemorySnapshot(t *testing.T) {
 func TestCaptureRejectsImportedMemory(t *testing.T) {
 	entry := append(wasmtest.Name("env"), wasmtest.Name("mem")...)
 	entry = append(entry, 2, 0, 1) // memory import, min one wasm page
-	c, err := Compile(nil, wasmtest.Module(wasmtest.Section(2, wasmtest.Vec(entry))))
-	if err != nil {
-		t.Fatal(err)
-	}
+	c := compileExplicitArtifact(t, wasmtest.Module(wasmtest.Section(2, wasmtest.Vec(entry))))
 	defer c.Close()
 	mem, err := NewMemory(1, 0)
 	if err != nil {
@@ -223,10 +214,7 @@ func TestCaptureRejectsImportedMemory(t *testing.T) {
 }
 
 func TestSnapshotPortableBinaryAndFileRoundTrip(t *testing.T) {
-	c, err := Compile(nil, wasmtest.Module())
-	if err != nil {
-		t.Fatal(err)
-	}
+	c := compileExplicitArtifact(t, wasmtest.Module())
 	s := &Snapshot{
 		c:        c,
 		kind:     SnapshotWarm,
