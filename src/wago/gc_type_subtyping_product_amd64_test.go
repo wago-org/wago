@@ -22,7 +22,9 @@ func TestStagedGCTypeSubtypingProductsCompile(t *testing.T) {
 	if got := unsafe.Sizeof(compiledCodeCache{}); got != 64 {
 		t.Fatalf("compiledCodeCache size = %d, want 64 bytes", got)
 	}
-	for _, pin := range stagedGCTypeSubtypingProductPins {
+	wantCodeBytes := []int{0, 0, 0, 0, 0, 0, 632, 592}
+	wantCodecBytes := []int{348, 384, 346, 218, 237, 385, 1018, 1127}
+	for i, pin := range stagedGCTypeSubtypingProductPins {
 		t.Run(pin.Filename, func(t *testing.T) {
 			data := stagedGCTypeSubtypingProductData(t, pin)
 			if _, err := Compile(NewRuntimeConfig(), data); err == nil || !strings.Contains(err.Error(), "gc type") {
@@ -56,6 +58,10 @@ func TestStagedGCTypeSubtypingProductsCompile(t *testing.T) {
 			if err != nil {
 				t.Fatalf("marshal codec-v27: %v", err)
 			}
+			if len(c.Code) != wantCodeBytes[i] || len(blob) != wantCodecBytes[i] {
+				t.Fatalf("product sizes code/codec = %d/%d, want %d/%d", len(c.Code), len(blob), wantCodeBytes[i], wantCodecBytes[i])
+			}
+			t.Logf("product size: wasm=%d code=%d codec=%d types=%d gcdescs=%d", len(data), len(c.Code), len(blob), len(c.Types), len(c.GCTypeDescs))
 			var loaded Compiled
 			if err := unmarshalCompiled(&loaded, blob[5:]); err != nil {
 				t.Fatalf("private codec-v27 reload: %v", err)

@@ -45,7 +45,8 @@ type stagedGCTypeSubtypingLeaderDelta struct {
 	Size         int                         `json:"size"`
 	SHA256       string                      `json:"sha256"`
 	Class        string                      `json:"class"`
-	Gate         string                      `json:"gate"`
+	Gate         string                      `json:"gate,omitempty"`
+	Admitted     bool                        `json:"admitted,omitempty"`
 	ValidatorGap bool                        `json:"validator_gap"`
 	TypeGraph    string                      `json:"type_graph"`
 	StateGraph   string                      `json:"state_graph"`
@@ -202,6 +203,7 @@ func replayStagedGCTypeSubtypingScript(t *testing.T, tmp string, script stagedSp
 	var latestData []byte
 	leaderIndex, invalidIndex, unlinkableIndex := 0, 0, 0
 	currentLeader := -1
+	currentAdmitted := false
 
 	for _, cmd := range script.Commands {
 		delta.Counts.Commands++
@@ -215,6 +217,7 @@ func replayStagedGCTypeSubtypingScript(t *testing.T, tmp string, script stagedSp
 			}
 			latest, latestData = cmd.Filename, data
 			currentLeader = -1
+			currentAdmitted = false
 		case "module_instance":
 			if leaderIndex >= len(stagedGCTypeSubtypingLeaderSourceLines) {
 				delta.Counts.Failures++
@@ -231,12 +234,48 @@ func replayStagedGCTypeSubtypingScript(t *testing.T, tmp string, script stagedSp
 			currentLeader = len(delta.Leaders) - 1
 			currentFilename = latest
 			leaderIndex++
-			delta.Counts.ExpectedFeatureRejects++
-			gates[leader.Gate]++
+			m, decodeErr := corewasm.DecodeModule(latestData)
+			product, productErr := stagedGCTypeSubtypingProductShape(m)
+			admitted := decodeErr == nil && productErr == nil && stagedGCTypeSubtypingProductPinned(latestData, product)
+			if !admitted {
+				delta.Counts.ExpectedFeatureRejects++
+				gates[leader.Gate]++
+				continue
+			}
+			c, compileErr := compileStagedGCTypeSubtypingProductForTest(latestData)
+			if compileErr != nil {
+				delta.Counts.Failures++
+				delta.Counts.UnexpectedCompileRejects++
+				t.Errorf("gc/type-subtyping.wast:%d admitted leader %s compile: %v", cmd.Line, latest, compileErr)
+				continue
+			}
+			in, instantiateErr := instantiateCore(c, InstantiateOptions{})
+			if instantiateErr != nil {
+				_ = c.Close()
+				delta.Counts.Failures++
+				delta.Counts.UnexpectedLinkRejects++
+				t.Errorf("gc/type-subtyping.wast:%d admitted leader %s instantiate: %v", cmd.Line, latest, instantiateErr)
+				continue
+			}
+			if in.gc != nil {
+				delta.Counts.Failures++
+				t.Errorf("gc/type-subtyping.wast:%d admitted leader %s allocated a collector", cmd.Line, latest)
+			}
+			_ = in.Close()
+			_ = c.Close()
+			delta.Leaders[currentLeader].Gate = ""
+			delta.Leaders[currentLeader].Admitted = true
+			currentAdmitted = true
+			delta.Counts.ModulesPassed++
 		case "register":
 			if currentLeader < 0 {
 				delta.Counts.Failures++
 				t.Errorf("gc/type-subtyping.wast:%d register has no classified leader", cmd.Line)
+				continue
+			}
+			if currentAdmitted {
+				delta.Counts.Failures++
+				t.Errorf("gc/type-subtyping.wast:%d admitted declaration/body product unexpectedly has a register", cmd.Line)
 				continue
 			}
 			delta.Counts.BlockedCommands++
@@ -247,6 +286,11 @@ func replayStagedGCTypeSubtypingScript(t *testing.T, tmp string, script stagedSp
 				continue
 			}
 			delta.Leaders[currentLeader].Actions = append(delta.Leaders[currentLeader].Actions, stagedGCTypeSubtypingActionKey(cmd))
+			if currentAdmitted {
+				delta.Counts.Failures++
+				t.Errorf("gc/type-subtyping.wast:%d admitted declaration/body product unexpectedly has an action", cmd.Line)
+				continue
+			}
 			delta.Counts.BlockedCommands++
 		case "assert_invalid":
 			if invalidIndex >= len(stagedGCTypeSubtypingInvalidSourceLines) {
@@ -330,11 +374,17 @@ func TestStagedOfficialGCTypeSubtypingAccounting(t *testing.T) {
 	tmp := stagedOfficialTypedReferenceJSON(t, "gc/type-subtyping", &script)
 	delta := replayStagedGCTypeSubtypingScript(t, tmp, script)
 	counts := delta.Counts
-	if counts.Commands != 170 || counts.ModulesPassed != 0 || counts.AssertionsPassed != 0 || counts.ExpectedInvalid != 24 || counts.ExpectedMalformed != 0 || counts.ExpectedUnlinkable != 0 || counts.ExpectedUninstantiable != 0 || counts.ExpectedFeatureRejects != 45 || counts.BlockedCommands != 48 || counts.UnexpectedCompileRejects != 0 || counts.UnexpectedLinkRejects != 0 || counts.Failures != 0 {
+	if counts.Commands != 170 || counts.ModulesPassed != 8 || counts.AssertionsPassed != 0 || counts.ExpectedInvalid != 24 || counts.ExpectedMalformed != 0 || counts.ExpectedUnlinkable != 0 || counts.ExpectedUninstantiable != 0 || counts.ExpectedFeatureRejects != 37 || counts.BlockedCommands != 48 || counts.UnexpectedCompileRejects != 0 || counts.UnexpectedLinkRejects != 0 || counts.Failures != 0 {
 		t.Fatalf("staged gc/type-subtyping accounting has hidden or changed gaps: %+v", counts)
 	}
-	if len(delta.Leaders) != 45 || len(delta.Invalids) != 24 || len(delta.Unlinkables) != 8 || len(stagedGCTypeSubtypingValidValidatorGapLines) != 0 || len(stagedGCTypeSubtypingInvalidValidatorGapLines) != 0 {
-		t.Fatalf("staged gc/type-subtyping inventory changed: leaders=%d invalids=%d unlinkables=%d valid-validator-gaps=%d invalid-validator-gaps=%d", len(delta.Leaders), len(delta.Invalids), len(delta.Unlinkables), len(stagedGCTypeSubtypingValidValidatorGapLines), len(stagedGCTypeSubtypingInvalidValidatorGapLines))
+	admitted := 0
+	for _, leader := range delta.Leaders {
+		if leader.Admitted {
+			admitted++
+		}
+	}
+	if len(delta.Leaders) != 45 || admitted != 8 || len(delta.Invalids) != 24 || len(delta.Unlinkables) != 8 || len(stagedGCTypeSubtypingValidValidatorGapLines) != 0 || len(stagedGCTypeSubtypingInvalidValidatorGapLines) != 0 {
+		t.Fatalf("staged gc/type-subtyping inventory changed: leaders=%d admitted=%d invalids=%d unlinkables=%d valid-validator-gaps=%d invalid-validator-gaps=%d", len(delta.Leaders), admitted, len(delta.Invalids), len(delta.Unlinkables), len(stagedGCTypeSubtypingValidValidatorGapLines), len(stagedGCTypeSubtypingInvalidValidatorGapLines))
 	}
 	got, err := json.MarshalIndent(delta, "", "  ")
 	if err != nil {
