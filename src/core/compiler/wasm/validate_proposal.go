@@ -504,31 +504,63 @@ func (v *funcValidator) stepGC(in Instruction) error {
 		}
 		return v.popExpect(RefVal(Ref(true, IndexedHeap(TypeIdx{Index: in.Index}), false)))
 	case InstrArrayInitData:
-		if _, _, ok := v.arrayField(TypeIdx{Index: in.Index}); !ok {
+		field, _, ok := v.arrayField(TypeIdx{Index: in.Index})
+		if !ok {
 			return v.verr(ErrUnknownType, "array.init_data")
+		}
+		if field.Mut != Var {
+			return v.verr(ErrTypeMismatch, "immutable array")
+		}
+		if !field.Storage.Packed && field.Storage.Val.Kind == ValRef {
+			return v.verr(ErrTypeMismatch, "array type is not numeric or vector")
 		}
 		if int(in.Index2) >= len(v.m.Data) {
 			return v.verr(ErrInvalidDataCount, "array.init_data")
 		}
-		if err := v.popExpect(I32); err != nil {
-			return err
-		}
-		if err := v.popExpect(I32); err != nil {
-			return err
+		for range 3 {
+			if err := v.popExpect(I32); err != nil {
+				return err
+			}
 		}
 		return v.popExpect(RefVal(Ref(true, IndexedHeap(TypeIdx{Index: in.Index}), false)))
 	case InstrArrayInitElem:
-		if _, _, ok := v.arrayField(TypeIdx{Index: in.Index}); !ok {
+		field, _, ok := v.arrayField(TypeIdx{Index: in.Index})
+		if !ok {
 			return v.verr(ErrUnknownType, "array.init_elem")
 		}
-		if int(in.Index2) >= len(v.m.Elements) {
-			return v.verr(ErrUnknownTable, "array.init_elem")
+		if field.Mut != Var {
+			return v.verr(ErrTypeMismatch, "immutable array")
 		}
-		if err := v.popExpect(I32); err != nil {
-			return err
+		if field.Storage.Packed || field.Storage.Val.Kind != ValRef {
+			return v.verr(ErrTypeMismatch, "array.init_elem destination is not a reference array")
 		}
-		if err := v.popExpect(I32); err != nil {
-			return err
+		var elemRef RefType
+		if v.direct != nil {
+			if int(in.Index2) >= len(v.direct.elements) {
+				return v.verr(ErrUnknownTable, "array.init_elem")
+			}
+			var err error
+			elemRef, err = v.validateDirectElemPayload(v.direct.elements[in.Index2])
+			if err != nil {
+				return err
+			}
+		} else {
+			if int(in.Index2) >= len(v.m.Elements) {
+				return v.verr(ErrUnknownTable, "array.init_elem")
+			}
+			var err error
+			elemRef, err = v.validateElemPayload(v.m.Elements[in.Index2])
+			if err != nil {
+				return err
+			}
+		}
+		if !v.refSubtype(elemRef, field.Storage.Val.Ref) {
+			return v.verr(ErrTypeMismatch, "array.init_elem element type")
+		}
+		for range 3 {
+			if err := v.popExpect(I32); err != nil {
+				return err
+			}
 		}
 		return v.popExpect(RefVal(Ref(true, IndexedHeap(TypeIdx{Index: in.Index}), false)))
 	}
