@@ -687,7 +687,7 @@
       "size": 82,
       "sha256": "0494d7c95b50e151ac8e0f9eb8a1c935a016db45b1969378ed95d40369fda062",
       "class": "link-provider",
-      "gate": "collector-free recursive function subtype link provider",
+      "admitted": true,
       "validator_gap": false,
       "type_graph": "rec[sub(final=false,supers=[],func()-\u003e());struct{ref type 0}]|rec[sub(final=false,supers=[],func()-\u003e());struct{ref type 0}]|rec[sub(final=false,supers=[{2 false}],func()-\u003e());struct{}]",
       "state_graph": "imports=0 funcs=1 globals=[] tables=0 memories=0 tags=0 elements=0 data=0 exports=[g=0:0]"
@@ -1132,6 +1132,7 @@
       "size": 51,
       "sha256": "bb598cc89f2d73720190e6c7e115bec104013bf8ebead4c417d17e701598c7a1",
       "text": "incompatible import",
+      "admitted": true,
       "type_graph": "rec[sub(final=false,supers=[],func()-\u003e());struct{ref type 0}]|rec[sub(final=false,supers=[{0 false}],func()-\u003e());struct{}]",
       "state_graph": "imports=1 funcs=0 globals=[] tables=0 memories=0 tags=0 elements=0 data=0 exports=[]"
     },
@@ -1165,7 +1166,7 @@
     {
       "family": "gc",
       "reason": "collector-free recursive function subtype link provider",
-      "count": 7
+      "count": 6
     },
     {
       "family": "gc",
@@ -1175,13 +1176,13 @@
   ],
   "counts": {
     "commands": 170,
-    "modules_passed": 33,
+    "modules_passed": 34,
     "assertions_passed": 23,
     "expected_invalid": 24,
-    "expected_unlinkable": 5,
+    "expected_unlinkable": 6,
     "expected_uninstantiable": 0,
-    "expected_feature_rejects": 12,
-    "blocked_commands": 16,
+    "expected_feature_rejects": 11,
+    "blocked_commands": 14,
     "unexpected_compile_rejects": 0,
     "unexpected_link_rejects": 0,
     "failures": 0
