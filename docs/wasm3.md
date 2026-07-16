@@ -2762,6 +2762,36 @@ identity, checked roots, dropped state, or helper admission. Fixed layouts remai
 `instancePluginState=152`, and `gc.Collector=640`. Snapshots, guard mode, public family admission, and arm64
 execution remain fail-closed.
 
+### Iteration 55 strict type-subtyping accounting
+
+Iteration 55 pins every command in `gc/type-subtyping.wast` before widening admission. The revision-stamped
+official interpreter emits 170 commands: 53 module definitions, 45 module instances, 24 invalid modules,
+17 return assertions, 12 trap assertions, 11 registrations, and 8 unlinkable assertions. The committed
+schema-2 inventory records every binary's command/source line, size, SHA-256, recursive type/super graph,
+state graph, opcode inventory, ordered result/trap actions, exact product class, and blocked dependency.
+
+All 45 valid leaders are metadata/function-identity products. Struct and array definitions participate in
+recursive subtype identity, but no leader creates, stores, imports, exports, returns, or snapshots a
+struct/array value. The leaders partition into declaration graphs, recursive function subsumption bodies,
+immutable local `ref.func` globals, recursive `call_indirect`/`ref.cast`, typed-table calls, function-only
+`ref.test`, cross-instance function-link providers/consumers, and non-flat exported numeric functions. That
+classification does not itself reopen iteration 37's collector-free exception: every leader remains one of
+45 explicit gates and all 29 actions, 11 registrations, and 8 unlinkable dependents remain blocked, for 48
+blocked commands total.
+
+The accounting exposes validation debt rather than hiding it. Two valid recursive `ref.func`-global leaders
+currently reject with `ErrTypeMismatch`. Fourteen invalid modules currently validate: three recursive-group
+subsumption mismatches, two array/struct storage mismatches, eight mutable/covariant field-variance violations,
+and one function-parameter widening violation. The other ten invalid modules reject with exact
+`ErrTypeMismatch`. These sixteen validator gaps are pinned explicitly and must be removed, not allowlisted
+into execution or softened into best-effort validation.
+
+This accounting-only slice adds no helper, product bit, collector/root/barrier state, native ABI field, codec
+field, snapshot state, guard admission, public feature, or arm64 execution path. Focused package, no-cgo, and
+race runs pass. The measured initial boundary is 170 commands / 0 passed modules / 0 passed assertions /
+24 expected invalid / 45 exact gates / 48 blocked dependents / 8 pinned unlinkable obligations / zero hidden
+failures.
+
 ## Iteration commits
 
 Iteration 1 contained:
@@ -3386,11 +3416,18 @@ Iteration 54 contains exactly three code/test commits and this documentation com
 3. `bb29a3b3` — execute all nineteen official return/trap actions and refresh combined strict accounting to
    72 commands / 3 modules / 61 assertions / 5 invalid / zero gates / zero blocked / zero hidden failures.
 
-Core 3 remains incomplete after this bounded slice. The next recursive handoff should inventory and attack
-`gc/type-subtyping.wast` (plus any binary-GC cross-cutting leaders it exposes) under the same exact product
-rules. It must distinguish collector-free metadata/function identity from real object values, preserve full
-recursive subtype validation, and refuse any leader whose live references, barriers, public ownership,
-snapshot state, or platform path are not coherently bounded.
+Iteration 55 is a deliberately bounded accounting slice with one code/test commit and this documentation
+commit:
+
+1. `61f56033` — pin all 170 `gc/type-subtyping` commands, 45 valid leaders, 24 invalid modules, 8 unlinkable
+   obligations, exact recursive type/state/opcode/action inventories, 45 product gates, 48 blocked dependents,
+   two valid-module validator gaps, and fourteen invalid modules currently accepted.
+
+Core 3 remains incomplete after this bounded slice. The next recursive handoff must close the sixteen exact
+validator gaps first, preserving strict finality, recursive-group subsumption, array/struct storage variance,
+and function parameter contravariance. It should then admit the smallest declaration/function-identity-only
+products under an exact no-object proof, without generalizing iteration 37 or opening runtime call/cast/link
+leaders before their structural identity and lifecycle behavior is executable.
 
 ## Validation performed
 
@@ -3398,6 +3435,7 @@ Commands were run from the repository root on linux/amd64.
 
 | Command | Result |
 |---|---|
+| iteration 55 strict type-subtyping accounting | PASS: pinned WABT 1.0.41 falls back to interpreter revision `9d36019973201a19f9c9ebb0f10828b2fe2374aa`; all 170 commands are accounted at 45 exact gates / 48 blocked dependents / 24 invalid / 8 pinned unlinkable obligations / 0 hidden failures. Two valid and fourteen invalid validator gaps are explicit. Focused package/no-cgo/race, full broad/no-cgo, guard, arm64 compile/link, vet, and generate gates pass. Release 1 remains 629 / 16,026 and Release 2 remains 1,600 / 48,248. Public Release 3 remains byte-identical at 1,691 pass / 535 skip modules and 51,765 pass / 5 fail / 6,268 skip assertions. Logs `.validation/iteration55-*.log`. |
 | iteration 54 focused/interpreter package proof | PASS: pinned WABT 1.0.41 falls back to interpreter revision `9d36019973201a19f9c9ebb0f10828b2fe2374aa`. `array_init_elem` is gap-free at 24 commands / 1 module / 19 assertions / 3 invalid / 0 gates / 0 blocked; combined init accounting is 72 / 3 / 61 / 5 invalid with zero hidden failures. Exact product/type/segment identity, complete range and subtype preflight, Tiny224 repetition, full-collection call survival, drop/zero-length behavior, trap atomicity, codec/snapshot/guard closure, and fixed footprints pass. Logs `.validation/iteration54-focused.log`, `iteration54-collector.log`, `iteration54-accounting-{update,final}.log`, and `iteration54-race.log`. |
 | iteration 54 broad/no-cgo/race/platform proof | PASS: `go test ./...`, full `CGO_ENABLED=0` tests, focused race, guard runtime/wago tests, linux/arm64 backend/runtime/wago compile/link with `-exec=/bin/true`, vet, `make lint-generate`, and a clean generated diff. Logs `.validation/iteration54-all.log`, `iteration54-no-cgo.log`, `iteration54-race.log`, `iteration54-guard.log`, `iteration54-arm64-build.log`, `iteration54-vet.log`, and `iteration54-generate*.log`. |
 | iteration 54 conformance and baseline | PASS for Release 1 at 629 modules / 16,026 assertions and Release 2 at 1,600 / 48,248. Public `make spec3` still exits 2 at the unchanged 1,691 pass / 535 skip modules and 51,765 pass / 5 fail / 6,268 skip assertions; committed schema-2 baseline is byte-for-byte unchanged. Logs `.validation/iteration54-spec{1,2,3}.log`, `iteration54-spec3.status`, and `iteration54-spec3-baseline.log`. |
@@ -4163,26 +4201,25 @@ Major risks:
 ## Next bounded implementation slice
 
 The next recursive iteration should again prefer exactly three atomic code/test commits followed by one
-documentation commit. Recommended iteration 55:
+documentation commit. Recommended iteration 56:
 
-1. Pin strict schema-2 accounting for `gc/type-subtyping.wast` and identify any binary-GC cross-cutting
-   leaders required to make its command graph honest. Record exact source/command lines, hashes, recursive
-   type/super graphs, object/storage state, opcodes, action order, invalid/malformed obligations, gate reasons,
-   and every dependent blocked command before changing admission.
-2. Separate metadata/function-identity-only products from leaders that allocate or retain struct/array values.
-   Reuse the iteration-37 collector-free exemption only when no GC value can be created, stored, returned,
-   imported, exported, or snapshotted. Real object leaders must preserve declared-super/canonical behavior,
-   exact dynamic type identity, bounded roots, barriers, Tiny remark behavior, and trap atomicity.
-3. Execute the smallest coherent official leader set. Any helper that may allocate or collect while a reference
-   is live must publish exact roots; any public, host, cross-instance, mutable-global/table, snapshot, guard, or
-   arm64 path without a complete ownership proof must remain explicitly gated.
-4. Measure code/codec/object/sidecar sizes and allocation/throughput, run broad/no-cgo/race/spec/platform gates,
-   update this ledger and the GC/ABI docs, then recurse to the next measured Core 3 blocker if the public gate
-   remains nonzero.
+1. Close the two valid-module and fourteen invalid-module validator gaps pinned by iteration 55. Preserve exact
+   recursive-group projection/subsumption, final-super rejection, struct/array field prefix and storage rules,
+   immutable covariance, mutable invariance, and function parameter contravariance on both AST and byte-backed
+   validation paths. Remove gap pins only when exact official binaries reject or accept for the specified reason.
+2. Admit the declaration-only and recursive-function-body leaders first under a hash-pinned no-object proof.
+   Reuse iteration 37 only when no GC value can be created, stored, returned, imported, exported, or snapshotted;
+   codec reload, snapshots, guard mode, public admission, and arm64 must not inherit the compile-only marker.
+3. Then admit the smallest coherent local function-identity action set, likely the non-flat numeric exports or
+   local `ref.func`/`ref.test` leaders. Keep recursive `call_indirect`/`ref.cast` and cross-instance linking gated
+   until structural keys, declared-super direction, trap identity, producer retention, and close order are exact.
+4. Measure code/codec/sidecar sizes and allocation/throughput, run broad/no-cgo/race/spec/platform gates, update
+   this ledger and the GC/ABI docs, then recurse to the next measured Core 3 blocker if the public gate remains
+   nonzero.
 
 ## Completion gate
 
-WebAssembly 3.0 is not complete. Iteration 54 fails the gate concretely: the public Release 3 run still
+WebAssembly 3.0 is not complete. Iteration 55 fails the unchanged public gate concretely: the verified Release 3 run
 reports 1,691 pass / 535 skip modules and 51,765 pass / 5 fail / 6,268 skip assertions; `make spec3`
 exits 2 and the extracted schema-2 JSON reproduces the committed baseline byte-for-byte. Release 1 remains
 629 modules / 16,026 assertions and Release 2 remains 1,600 modules / 48,248 assertions with zero failures
@@ -4192,13 +4229,16 @@ three tail files, `gc/struct` at 36 commands / 6 modules / 19 assertions / 4 inv
 `gc/extern` at 19 / 1 / 16, `gc/ref_eq` at 90 / 1 / 81 / 6 invalid, `gc/ref_cast` at 47 / 2 /
 40 assertions plus 3 actions, both branch files at 40 / 3 / 25 / 6 invalid each, the bulk fill/copy pair
 at 54 / 2 / 43 / 7 invalid, and the combined array-init family at 72 / 3 / 61 / 5 invalid. All of those
-matrices have zero gates or blocked actions, but the mandatory families remain private rather than admitted
+matrices have zero gates or blocked actions. `gc/type-subtyping` is now completely accounted but deliberately
+red at 170 commands / 45 gates / 48 blocked dependents / 24 invalid / 8 pinned unlinkable obligations, with
+two valid and fourteen invalid validator gaps. The mandatory families remain private rather than admitted
 through `SupportedFeatures()`.
 
 Bounded public object ownership remains result-only and one-live-token; compact table roots, local funcref
 identities, and extern conversion roots are distinct exact lifecycles, and i31 immediates remain non-owning.
-Remaining work includes `gc/type-subtyping.wast` and binary-GC cross-cutting obligations, general native
-frame publication, broader object-valued mutable/reference globals and tables, non-null object ingress,
+Remaining work includes closing the sixteen pinned `gc/type-subtyping.wast` validator gaps, admitting its
+bounded metadata/function-identity products, and then addressing later binary-GC cross-cutting obligations;
+general native frame publication, broader object-valued mutable/reference globals and tables, non-null object ingress,
 broader public/host/cross-instance ownership, live-state snapshots, guard mode, public family admission, and
 arm64 execution or explicit final platform restrictions. Codec-v27 progress covers declarations, exact
 metadata, and deferred scalar initializer programs, not staged product bits or live collector/function state.
