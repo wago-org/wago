@@ -90,13 +90,23 @@ func TestCollectorRefTestDynamicTypes(t *testing.T) {
 		})
 	}
 
+	canonical, err := c.NewTypeCanonicalization([]TypeID{0, 1, 1, 3, 4, 5})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := c.RefTestCanonical(object, RefTestTarget{Kind: RefTestDefined, Type: 2}, canonical); err != nil || !got {
+		t.Fatalf("canonical sibling RefTest = %v, %v; want true", got, err)
+	}
+	if got, err := c.RefTest(object, RefTestTarget{Kind: RefTestDefined, Type: 2}); err != nil || got {
+		t.Fatalf("raw sibling RefTest = %v, %v; want false", got, err)
+	}
 	if allocs := testing.AllocsPerRun(1000, func() {
-		got, err := c.RefTest(object, RefTestTarget{Kind: RefTestDefined, Type: 0})
+		got, err := c.RefTestCanonical(object, RefTestTarget{Kind: RefTestDefined, Type: 0}, canonical)
 		if err != nil || !got {
 			panic("ref.test failed")
 		}
 	}); allocs != 0 {
-		t.Fatalf("defined RefTest allocations = %v, want 0", allocs)
+		t.Fatalf("canonical defined RefTest allocations = %v, want 0", allocs)
 	}
 }
 
@@ -118,6 +128,16 @@ func TestCollectorRefTestRejectsInvalidState(t *testing.T) {
 	}
 	if err := c.CollectFull(nil); err != nil {
 		t.Fatal(err)
+	}
+
+	if _, err := c.NewTypeCanonicalization([]TypeID{0}); err == nil {
+		t.Fatal("short canonical type map succeeded")
+	}
+	if _, err := c.NewTypeCanonicalization([]TypeID{0, 1, 2, 3, 4, 99}); err == nil {
+		t.Fatal("out-of-range canonical representative succeeded")
+	}
+	if _, err := c.NewTypeCanonicalization([]TypeID{5, 1, 2, 3, 4, 5}); err == nil {
+		t.Fatal("cross-kind canonical representative succeeded")
 	}
 
 	for _, tc := range []struct {
@@ -160,6 +180,30 @@ func BenchmarkCollectorRefTestDefined(b *testing.B) {
 		got, err := c.RefTest(object, target)
 		if err != nil || !got {
 			b.Fatalf("RefTest = %v, %v", got, err)
+		}
+	}
+}
+
+func BenchmarkCollectorRefTestCanonical(b *testing.B) {
+	c, err := NewCollector(Config{}, refTestTypes(b))
+	if err != nil {
+		b.Fatal(err)
+	}
+	object, err := c.NewStructDefaultWithRoots(1, EmptyRoots{})
+	if err != nil {
+		b.Fatal(err)
+	}
+	canonical, err := c.NewTypeCanonicalization([]TypeID{0, 1, 1, 3, 4, 5})
+	if err != nil {
+		b.Fatal(err)
+	}
+	target := RefTestTarget{Kind: RefTestDefined, Type: 2}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		got, err := c.RefTestCanonical(object, target, canonical)
+		if err != nil || !got {
+			b.Fatalf("RefTestCanonical = %v, %v", got, err)
 		}
 	}
 }

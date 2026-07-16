@@ -138,9 +138,13 @@ func stagedGCRefTestLeaderDeltaFor(data []byte, line int) (stagedGCRefTestLeader
 	if err != nil {
 		return stagedGCRefTestLeaderDelta{}, stagedGCRefTestLeaderPin{}, err
 	}
+	gate := pin.Class.gateReason()
+	if product, ok := stagedGCStructExecutionProduct(data); ok && product == stagedGCStructRefTestConcrete {
+		gate = ""
+	}
 	return stagedGCRefTestLeaderDelta{
 		Filename: pin.Filename, CommandLine: pin.CommandLine, SourceLine: pin.SourceLine,
-		Size: pin.Size, SHA256: pin.SHA256, Class: pin.Class.String(), Gate: pin.Class.gateReason(),
+		Size: pin.Size, SHA256: pin.SHA256, Class: pin.Class.String(), Gate: gate,
 		TypeGraph: stagedGCStructTypeGraph(m), StateGraph: stagedGCStructStateGraph(m), Opcodes: opcodes,
 		Actions: append([]string(nil), pin.Actions...),
 	}, pin, nil
@@ -150,6 +154,9 @@ func compileStagedGCRefTestAccounting(data []byte) (*Compiled, error) {
 	cfg := NewRuntimeConfig()
 	features := cfg.frontendFeatures()
 	features.TypedFunctionReferences = true
+	if product, ok := stagedGCStructExecutionProduct(data); ok && product == stagedGCStructRefTestConcrete {
+		features.GCStructProducts = true
+	}
 	return compileWithFrontendFeatures(cfg, data, features)
 }
 
@@ -159,6 +166,7 @@ func replayStagedGCRefTestScript(t *testing.T, tmp string, script stagedSpecScri
 	gates := map[string]int{}
 	var latest []byte
 	var current *stagedGCRefTestLeaderPin
+	var currentInstance *Instance
 	seenPins := map[string]bool{}
 	seenActions := map[string][]string{}
 	leaders := make([]stagedGCRefTestLeaderDelta, 0, len(stagedGCRefTestLeaderPins))
@@ -176,6 +184,10 @@ func replayStagedGCRefTestScript(t *testing.T, tmp string, script stagedSpecScri
 			}
 			latest, current = data, nil
 		case "module_instance":
+			if currentInstance != nil {
+				_ = currentInstance.Close()
+				currentInstance = nil
+			}
 			leader, pin, err := stagedGCRefTestLeaderDeltaFor(latest, cmd.Line)
 			if err != nil {
 				counts.Failures++
@@ -192,9 +204,35 @@ func replayStagedGCRefTestScript(t *testing.T, tmp string, script stagedSpecScri
 			current = &pin
 			c, compileErr := compileStagedGCRefTestAccounting(latest)
 			if compileErr == nil {
+				if pin.Class != stagedGCRefTestConcrete {
+					_ = c.Close()
+					counts.Failures++
+					t.Errorf("gc/ref_test.wast:%d unexpectedly compiled gated %s", cmd.Line, pin.Filename)
+					continue
+				}
+				if blob, marshalErr := marshalCompiled(c); marshalErr == nil {
+					t.Logf("gc/ref_test concrete product: wasm=%d code=%d codec=%d", len(latest), len(c.Code), len(blob))
+				} else {
+					counts.Failures++
+					t.Errorf("gc/ref_test.wast:%d concrete codec measurement: %v", cmd.Line, marshalErr)
+					_ = c.Close()
+					continue
+				}
+				if proofErr := verifyStagedGCRefTestConcreteProduct(c); proofErr != nil {
+					_ = c.Close()
+					counts.Failures++
+					t.Errorf("gc/ref_test.wast:%d concrete lifecycle proof: %v", cmd.Line, proofErr)
+					continue
+				}
+				in, instantiateErr := instantiateCore(c, InstantiateOptions{})
 				_ = c.Close()
-				counts.Failures++
-				t.Errorf("gc/ref_test.wast:%d unexpectedly compiled gated %s", cmd.Line, pin.Filename)
+				if instantiateErr != nil {
+					counts.Failures++
+					t.Errorf("gc/ref_test.wast:%d instantiate %s: %v", cmd.Line, pin.Filename, instantiateErr)
+					continue
+				}
+				currentInstance = in
+				counts.ModulesPassed++
 				continue
 			}
 			if strings.Contains(compileErr.Error(), "validate:") {
@@ -219,11 +257,29 @@ func replayStagedGCRefTestScript(t *testing.T, tmp string, script stagedSpecScri
 				kind = "trap"
 			}
 			seenActions[current.Filename] = append(seenActions[current.Filename], kind+":"+cmd.Action.Field)
+			if currentInstance != nil {
+				if cmd.Type != "assert_return" || len(cmd.Expected) != 0 {
+					counts.Failures++
+					t.Errorf("gc/ref_test.wast:%d executable concrete action has unsupported shape %s/%d results", cmd.Line, cmd.Type, len(cmd.Expected))
+					continue
+				}
+				got, callErr := currentInstance.Invoke(cmd.Action.Field)
+				if callErr != nil || len(got) != 0 {
+					counts.Failures++
+					t.Errorf("gc/ref_test.wast:%d %s = %v, %v; want empty return", cmd.Line, cmd.Action.Field, got, callErr)
+					continue
+				}
+				counts.AssertionsPassed++
+				continue
+			}
 			counts.BlockedCommands++
 		default:
 			counts.Failures++
 			t.Errorf("gc/ref_test.wast:%d unhandled command %q", cmd.Line, cmd.Type)
 		}
+	}
+	if currentInstance != nil {
+		_ = currentInstance.Close()
 	}
 	if len(seenPins) != len(stagedGCRefTestLeaderPins) {
 		counts.Failures++
@@ -239,6 +295,57 @@ func replayStagedGCRefTestScript(t *testing.T, tmp string, script stagedSpecScri
 	return counts, leaders, gates
 }
 
+func verifyStagedGCRefTestConcreteProduct(c *Compiled) error {
+	in, err := instantiateCore(c, InstantiateOptions{GC: GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 256, TinyBlockBytes: 8, TinyCollectEveryAlloc: true, VerifyAfterCollect: true, StressBarriers: true}})
+	if err != nil {
+		return err
+	}
+	state := in.existingGCRefTestTableState()
+	if state == nil || state.Count != 20 || state.CanonicalType == nil {
+		_ = in.Close()
+		return fmt.Errorf("table state = %+v, want 20 slots and canonical types", state)
+	}
+	for i := 0; i < 10; i++ {
+		for _, name := range []string{"test-sub", "test-canon"} {
+			got, callErr := in.Invoke(name)
+			if callErr != nil || len(got) != 0 {
+				_ = in.Close()
+				return fmt.Errorf("Tiny %s iteration %d = %v, %v", name, i, got, callErr)
+			}
+		}
+	}
+	if err := in.gc.CollectFull(nil); err != nil {
+		_ = in.Close()
+		return err
+	}
+	if live := in.gc.Stats().LiveObjects; live != 8 {
+		_ = in.Close()
+		return fmt.Errorf("Tiny live objects after full collection = %d, want 8 table roots", live)
+	}
+	if err := in.Close(); err != nil {
+		return err
+	}
+	blob, err := marshalCompiled(c)
+	if err != nil {
+		return err
+	}
+	var loaded Compiled
+	if err := unmarshalCompiled(&loaded, blob[5:]); err != nil {
+		return err
+	}
+	defer loaded.Close()
+	if loaded.stagedGCStructProduct() != 0 || loaded.usesGCStructHelpers() || loaded.stagedFeatures().IsEnabled(CoreFeatureGC) {
+		return fmt.Errorf("codec inherited concrete ref.test admission")
+	}
+	if _, err := instantiateCore(&loaded, InstantiateOptions{}); err == nil || !strings.Contains(err.Error(), "required feature") {
+		return fmt.Errorf("codec-loaded concrete instantiate = %v", err)
+	}
+	if _, err := Capture(c, SnapshotOptions{}); err == nil {
+		return fmt.Errorf("snapshot admitted concrete ref.test product")
+	}
+	return nil
+}
+
 func TestStagedOfficialGCRefTestAccounting(t *testing.T) {
 	if _, err := exec.LookPath("wast2json"); err != nil {
 		t.Skip("wast2json (WABT 1.0.41) not on PATH")
@@ -246,7 +353,7 @@ func TestStagedOfficialGCRefTestAccounting(t *testing.T) {
 	var script stagedSpecScript
 	tmp := stagedOfficialTypedReferenceJSON(t, "gc/ref_test", &script)
 	counts, leaders, gateCounts := replayStagedGCRefTestScript(t, tmp, script)
-	if counts.Commands != 73 || counts.ModulesPassed != 0 || counts.AssertionsPassed != 0 || counts.ExpectedFeatureRejects != 2 || counts.BlockedCommands != 69 || counts.ExpectedInvalid != 0 || counts.ExpectedMalformed != 0 || counts.Failures != 0 || counts.UnexpectedCompileRejects != 0 || counts.UnexpectedLinkRejects != 0 {
+	if counts.Commands != 73 || counts.ModulesPassed != 1 || counts.AssertionsPassed != 2 || counts.ExpectedFeatureRejects != 1 || counts.BlockedCommands != 67 || counts.ExpectedInvalid != 0 || counts.ExpectedMalformed != 0 || counts.Failures != 0 || counts.UnexpectedCompileRejects != 0 || counts.UnexpectedLinkRejects != 0 {
 		t.Fatalf("staged gc/ref_test accounting has hidden or changed gaps: %+v", counts)
 	}
 	gateNames := make([]string, 0, len(gateCounts))

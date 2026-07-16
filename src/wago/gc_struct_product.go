@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"github.com/wago-org/wago/src/core/runtime/gc"
 )
 
 // stagedGCStructProduct identifies the exact product boundary of each valid
@@ -25,6 +26,7 @@ const (
 	stagedGCStructNumericLocal
 	stagedGCStructNumericGlobals
 	stagedGCStructRefTestTable
+	stagedGCStructRefTestConcrete
 )
 
 type stagedGCStructOpcodeCount struct {
@@ -71,6 +73,8 @@ func (p stagedGCStructProduct) String() string {
 		return "numeric-global-roots"
 	case stagedGCStructRefTestTable:
 		return "struct-table-ref-test"
+	case stagedGCStructRefTestConcrete:
+		return "official-concrete-ref-test"
 	default:
 		return "unknown"
 	}
@@ -96,6 +100,8 @@ func (p stagedGCStructProduct) gateReason() string {
 		return "two immutable numeric struct globals with collector roots"
 	case stagedGCStructRefTestTable:
 		return "bounded collector-rooted struct table with dynamic ref.test"
+	case stagedGCStructRefTestConcrete:
+		return "official concrete struct table dynamic ref.test"
 	default:
 		return "unknown gc/struct product"
 	}
@@ -116,6 +122,7 @@ const (
 	stagedGCStructNumericMutationSHA256 = "e9f7a7ec88c56684ad5b96e2a5471765ab2835ddea14069006da51a96ed5e891"
 	stagedGCStructNumericGlobalsSHA256  = "0387e519fa921b905d0657a6fafb630ab7acaa3a6282e354b3f0f2e45adbfeee"
 	stagedGCStructRefTestTableSHA256    = "ab93f46c271d3e1a71c21da7257e29b2363e9188725378005705b33a056a8cbd"
+	stagedGCStructRefTestConcreteSHA256 = "7a71f9662207799b262ccbc7909f4e9492c04f7173f84f29be69905d925f6426"
 )
 
 // stagedGCStructExecutionProduct admits only the exact collector-backed products
@@ -134,6 +141,9 @@ func stagedGCStructExecutionProduct(data []byte) (stagedGCStructProduct, bool) {
 	if digest == stagedGCStructRefTestTableSHA256 && len(data) == 168 {
 		return stagedGCStructRefTestTable, true
 	}
+	if digest == stagedGCStructRefTestConcreteSHA256 && len(data) == 976 {
+		return stagedGCStructRefTestConcrete, true
+	}
 	for _, pin := range stagedGCStructLeaderPins {
 		if pin.SHA256 != digest || pin.Size != len(data) {
 			continue
@@ -149,7 +159,14 @@ func stagedGCStructExecutionProduct(data []byte) (stagedGCStructProduct, bool) {
 }
 
 func (p stagedGCStructProduct) requiresHelpers() bool {
-	return p == stagedGCStructNamedGets || p == stagedGCStructNumericLocal || p == stagedGCStructNullDereference || p == stagedGCStructPacked || p == stagedGCStructBasic || p == stagedGCStructRefTestTable
+	return p == stagedGCStructNamedGets || p == stagedGCStructNumericLocal || p == stagedGCStructNullDereference || p == stagedGCStructPacked || p == stagedGCStructBasic || p == stagedGCStructRefTestTable || p == stagedGCStructRefTestConcrete
+}
+
+func (p stagedGCStructProduct) refTestCanonicalTypes() []gc.TypeID {
+	if p != stagedGCStructRefTestConcrete {
+		return nil
+	}
+	return []gc.TypeID{0, 1, 1, 3, 3, 5, 6, 7, 8}
 }
 
 func stagedGCStructTypeGraph(m *wasm.Module) string {

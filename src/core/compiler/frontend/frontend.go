@@ -924,7 +924,7 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 					return err
 				}
 				exceptionHeap := heap == -23 || heap == -12
-				if !p.feat.ReferenceTypes || !((p.feat.ExceptionReferences && exceptionHeap) || p.supportedNullReferenceHeap(heap) || (p.feat.TypedFunctionReferences && p.supportedTypedFuncHeap(heap))) {
+				if !p.feat.ReferenceTypes || !((p.feat.ExceptionReferences && exceptionHeap) || p.supportedNullReferenceHeap(heap) || p.supportedGCHeap(heap) || (p.feat.TypedFunctionReferences && p.supportedTypedFuncHeap(heap))) {
 					return p.unsupported("value type", fmt.Sprintf("ref heap %d (typed-function-references/exception-references disabled or unsupported)", heap), ctx())
 				}
 				return nil
@@ -966,7 +966,7 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 					return err
 				}
 				exceptionHeap := heap == -23 || heap == -12
-				if !((p.feat.ExceptionReferences && exceptionHeap) || p.supportedNullReferenceHeap(heap) || (p.feat.TypedFunctionReferences && p.supportedTypedFuncHeap(heap))) {
+				if !((p.feat.ExceptionReferences && exceptionHeap) || p.supportedNullReferenceHeap(heap) || p.supportedGCHeap(heap) || (p.feat.TypedFunctionReferences && p.supportedTypedFuncHeap(heap))) {
 					return p.unsupported("value type", fmt.Sprintf("ref heap %d (typed-function-references/exception-references disabled or unsupported)", heap), ctx())
 				}
 			}
@@ -1166,7 +1166,7 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 			return false, p.unsupported("reference instruction", "RefNull", ctx())
 		}
 		exceptionHeap := heap == -23 || heap == -12
-		if heap != -17 && heap != -14 && heap != -16 && heap != -13 && !(p.feat.ExceptionReferences && exceptionHeap) && !p.supportedNullReferenceHeap(heap) && (!p.feat.TypedFunctionReferences || !p.supportedTypedFuncHeap(heap)) {
+		if heap != -17 && heap != -14 && heap != -16 && heap != -13 && !(p.feat.ExceptionReferences && exceptionHeap) && !p.supportedNullReferenceHeap(heap) && !p.supportedGCHeap(heap) && (!p.feat.TypedFunctionReferences || !p.supportedTypedFuncHeap(heap)) {
 			return false, p.unsupported("reference instruction", fmt.Sprintf("ref.null heap %d", heap), ctx())
 		}
 		return false, nil
@@ -1555,7 +1555,7 @@ func (p supportPass) constExprBytes(body []byte, context string) error {
 			switch heap {
 			case -16, -17, -13, -14:
 			default:
-				if !p.supportedNullReferenceHeap(heap) && (!p.feat.TypedFunctionReferences || !p.supportedTypedFuncHeap(heap)) {
+				if !p.supportedNullReferenceHeap(heap) && !p.supportedGCHeap(heap) && (!p.feat.TypedFunctionReferences || !p.supportedTypedFuncHeap(heap)) {
 					return p.unsupported("const expression", fmt.Sprintf("ref.null heap type %d", heap), ctx)
 				}
 			}
@@ -1974,6 +1974,27 @@ func (p supportPass) supportedNullReference(rt wasm.RefType) bool {
 	default:
 		return false
 	}
+}
+
+func (p supportPass) supportedGCHeap(heap int64) bool {
+	if heap < 0 {
+		if p.feat.GCStructProducts && (heap == -21 || heap == -19 || heap == -18 || heap == -15) { // struct / eq / any / none
+			return true
+		}
+		return p.feat.GCArrayProducts && (heap == -22 || heap == -19 || heap == -18 || heap == -15) // array / eq / any / none
+	}
+	if uint64(heap) > uint64(^uint32(0)) || p.m == nil {
+		return false
+	}
+	index := uint32(heap)
+	for _, group := range p.m.Types {
+		if index < uint32(len(group.SubTypes)) {
+			kind := group.SubTypes[index].Comp.Kind
+			return (p.feat.GCStructProducts && kind == wasm.CompStruct) || (p.feat.GCArrayProducts && kind == wasm.CompArray)
+		}
+		index -= uint32(len(group.SubTypes))
+	}
+	return false
 }
 
 func (p supportPass) supportedNullReferenceHeap(heap int64) bool {

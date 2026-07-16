@@ -883,11 +883,11 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 				break
 			}
 		}
-		if initErr == nil && c.stagedGCStructProduct() == stagedGCStructRefTestTable {
+		if product := c.stagedGCStructProduct(); initErr == nil && (product == stagedGCStructRefTestTable || product == stagedGCStructRefTestConcrete) {
 			if c.tableCount() != 1 || c.tableEntryBytes(0) != 8 {
 				initErr = fmt.Errorf("GC ref.test product requires one compact local table")
 			} else {
-				gcRefTestTable, initErr = newGCRefTestTableState(b.collector, tableDesc)
+				gcRefTestTable, initErr = newGCRefTestTableState(b.collector, tableDesc, product.refTestCanonicalTypes())
 			}
 		}
 		jm.SetTablePtr(uintptr(unsafe.Pointer(&tableDesc[0])))
