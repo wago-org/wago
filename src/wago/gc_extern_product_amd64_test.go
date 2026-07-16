@@ -219,10 +219,11 @@ func BenchmarkStagedGCExternStableRoundTrip(b *testing.B) {
 	if err != nil || len(ext) != 1 {
 		b.Fatalf("warm externalize-i = %v, %v", ext, err)
 	}
+	externWord := ext[0]
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		got, err := in.Invoke("internalize", ext[0])
+		got, err := in.Invoke("internalize", externWord)
 		if err != nil || len(got) != 1 || got[0] == 0 {
 			b.Fatalf("internalize = %v, %v", got, err)
 		}

@@ -45,8 +45,9 @@ const (
 )
 
 type stagedSpecValue struct {
-	Type  string          `json:"type"`
-	Value json.RawMessage `json:"value"`
+	Type     string          `json:"type"`
+	Value    json.RawMessage `json:"value"`
+	HeapType string          `json:"heap_type,omitempty"`
 }
 
 type stagedSpecAction struct {
