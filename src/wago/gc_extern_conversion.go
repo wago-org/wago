@@ -17,21 +17,23 @@ const (
 )
 
 type gcExternConversionEntry struct {
-	kind       gcExternConversionKind
-	anyWord    uint64
-	externWord uint64
-	ref        gc.Ref
-	rootSlot   uint32
-	uses       uint8
-	hasRoot    bool
+	kind             gcExternConversionKind
+	anyWord          uint64
+	externWord       uint64
+	publicAnyWord    uint64
+	publicExternWord uint64
+	ref              gc.Ref
+	rootSlot         uint32
+	uses             uint8
+	hasRoot          bool
 }
 
 // gcExternConversionState owns the finite identity bridge used by exact staged
 // any.convert_extern/extern.convert_any products. Public externref tokens remain
 // reference-store values. Converted data refs receive separate internal opaque
-// extern words, and foreign externrefs receive separate internal any words; the
-// two representations are never exposed as public GCRef tokens or scanned as
-// compact collector refs.
+// extern words plus separate public any/extern tokens; foreign externrefs receive
+// separate internal any words. None of those categories is exposed as a compact
+// collector ref or confused with an opaque public GCRef token.
 type gcExternConversionState struct {
 	mu        sync.Mutex
 	store     *referenceStore
@@ -60,6 +62,10 @@ func (s *gcExternConversionState) anyFromExtern(extern uint64) (uint64, error) {
 	if s.closed {
 		return 0, fmt.Errorf("GC extern conversion state is closed")
 	}
+	return s.anyFromExternLocked(extern)
+}
+
+func (s *gcExternConversionState) anyFromExternLocked(extern uint64) (uint64, error) {
 	if extern == 0 {
 		return 0, nil
 	}
@@ -67,7 +73,7 @@ func (s *gcExternConversionState) anyFromExtern(extern uint64) (uint64, error) {
 		entry := &s.entries[i]
 		switch entry.kind {
 		case gcExternConversionData:
-			if entry.externWord == extern {
+			if entry.externWord == extern || entry.publicExternWord == extern {
 				return uint64(entry.ref), nil
 			}
 		case gcExternConversionForeign:
@@ -105,12 +111,19 @@ func (s *gcExternConversionState) externFromAny(anyWord uint64) (uint64, error) 
 	if s.closed {
 		return 0, fmt.Errorf("GC extern conversion state is closed")
 	}
+	return s.externFromAnyLocked(anyWord)
+}
+
+func (s *gcExternConversionState) externFromAnyLocked(anyWord uint64) (uint64, error) {
 	if anyWord == 0 {
 		return 0, nil
 	}
 	for i := range s.entries {
 		entry := &s.entries[i]
 		if entry.kind == gcExternConversionForeign && entry.anyWord == anyWord {
+			return entry.externWord, nil
+		}
+		if entry.kind == gcExternConversionData && entry.publicAnyWord == anyWord {
 			return entry.externWord, nil
 		}
 	}
@@ -139,7 +152,18 @@ func (s *gcExternConversionState) externFromAny(anyWord uint64) (uint64, error) 
 	if err != nil {
 		return 0, err
 	}
-	entry := gcExternConversionEntry{kind: gcExternConversionData, externWord: externWord, ref: ref}
+	publicAnyWord, err := s.newOpaqueWordLocked(anyWord, externWord)
+	if err != nil {
+		return 0, err
+	}
+	publicExternWord, err := s.newOpaqueWordLocked(anyWord, externWord, publicAnyWord)
+	if err != nil {
+		return 0, err
+	}
+	entry := gcExternConversionEntry{
+		kind: gcExternConversionData, externWord: externWord,
+		publicAnyWord: publicAnyWord, publicExternWord: publicExternWord, ref: ref,
+	}
 	if ref.IsObj() {
 		slot, err := s.collector.NewCheckedTableSlot(ref)
 		if err != nil {
@@ -158,6 +182,108 @@ func (s *gcExternConversionState) externFromAny(anyWord uint64) (uint64, error) 
 		_ = s.collector.SetTableSlot(entry.rootSlot, gc.Null())
 	}
 	return 0, fmt.Errorf("GC extern conversion capacity %d exhausted", maxGCExternConversions)
+}
+
+func (s *gcExternConversionState) internalAnyFromPublic(word uint64) (uint64, error) {
+	if s == nil {
+		return 0, fmt.Errorf("GC extern conversion state is unavailable")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return 0, fmt.Errorf("GC extern conversion state is closed")
+	}
+	if word == 0 {
+		return 0, nil
+	}
+	for i := range s.entries {
+		entry := &s.entries[i]
+		if entry.kind == gcExternConversionData && entry.publicAnyWord == word {
+			return uint64(entry.ref), nil
+		}
+	}
+	return s.anyFromExternLocked(word)
+}
+
+func (s *gcExternConversionState) publicAnyFromInternal(word uint64) (uint64, error) {
+	if s == nil {
+		return 0, fmt.Errorf("GC extern conversion state is unavailable")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return 0, fmt.Errorf("GC extern conversion state is closed")
+	}
+	if word == 0 {
+		return 0, nil
+	}
+	for i := range s.entries {
+		entry := &s.entries[i]
+		if entry.kind == gcExternConversionForeign && entry.anyWord == word {
+			return entry.externWord, nil
+		}
+		if entry.kind == gcExternConversionData && uint64(entry.ref) == word {
+			return entry.publicAnyWord, nil
+		}
+	}
+	if _, err := s.externFromAnyLocked(word); err != nil {
+		return 0, err
+	}
+	for i := range s.entries {
+		entry := &s.entries[i]
+		if entry.kind == gcExternConversionData && uint64(entry.ref) == word {
+			return entry.publicAnyWord, nil
+		}
+	}
+	return 0, fmt.Errorf("GC public anyref conversion identity is unavailable")
+}
+
+func (s *gcExternConversionState) internalExternFromPublic(word uint64) (uint64, error) {
+	if s == nil {
+		return 0, fmt.Errorf("GC extern conversion state is unavailable")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return 0, fmt.Errorf("GC extern conversion state is closed")
+	}
+	if word == 0 {
+		return 0, nil
+	}
+	for i := range s.entries {
+		entry := &s.entries[i]
+		if entry.kind == gcExternConversionData && entry.publicExternWord == word {
+			return entry.externWord, nil
+		}
+	}
+	if _, ok := s.store.resolveExternref(word); !ok {
+		return 0, fmt.Errorf("invalid or foreign externref token")
+	}
+	return word, nil
+}
+
+func (s *gcExternConversionState) publicExternFromInternal(word uint64) (uint64, error) {
+	if s == nil {
+		return 0, fmt.Errorf("GC extern conversion state is unavailable")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return 0, fmt.Errorf("GC extern conversion state is closed")
+	}
+	if word == 0 {
+		return 0, nil
+	}
+	for i := range s.entries {
+		entry := &s.entries[i]
+		if entry.kind == gcExternConversionData && entry.externWord == word {
+			return entry.publicExternWord, nil
+		}
+	}
+	if _, ok := s.store.resolveExternref(word); !ok {
+		return 0, fmt.Errorf("invalid internal externref word")
+	}
+	return word, nil
 }
 
 func (s *gcExternConversionState) isForeignAny(anyWord uint64) (bool, error) {
@@ -247,19 +373,32 @@ func (s *gcExternConversionState) dataEntryForExternLocked(word uint64) (*gcExte
 	return nil, nil
 }
 
-func (s *gcExternConversionState) newOpaqueWordLocked(disallow uint64) (uint64, error) {
+func (s *gcExternConversionState) newOpaqueWordLocked(disallow ...uint64) (uint64, error) {
 	for {
 		word, err := randomNonzeroUint64()
 		if err != nil {
 			return 0, fmt.Errorf("create GC extern conversion identity: %w", err)
 		}
-		if word>>32 == 0 || word == disallow {
+		if word>>32 == 0 {
+			continue
+		}
+		blocked := false
+		for _, other := range disallow {
+			if word == other {
+				blocked = true
+				break
+			}
+		}
+		if blocked {
+			continue
+		}
+		if _, ok := s.store.resolveExternref(word); ok {
 			continue
 		}
 		collision := false
 		for i := range s.entries {
 			entry := &s.entries[i]
-			if word == entry.anyWord || word == entry.externWord {
+			if word == entry.anyWord || word == entry.externWord || word == entry.publicAnyWord || word == entry.publicExternWord {
 				collision = true
 				break
 			}

@@ -28,6 +28,7 @@ const (
 	stagedGCStructRefTestTable
 	stagedGCStructRefTestConcrete
 	stagedGCStructRefTestAbstract
+	stagedGCStructExtern
 )
 
 type stagedGCStructOpcodeCount struct {
@@ -78,6 +79,8 @@ func (p stagedGCStructProduct) String() string {
 		return "official-concrete-ref-test"
 	case stagedGCStructRefTestAbstract:
 		return "official-abstract-ref-test"
+	case stagedGCStructExtern:
+		return "official-extern-conversion"
 	default:
 		return "unknown"
 	}
@@ -107,6 +110,8 @@ func (p stagedGCStructProduct) gateReason() string {
 		return "official concrete struct table dynamic ref.test"
 	case stagedGCStructRefTestAbstract:
 		return "official mixed anyref/funcref/externref dynamic ref.test"
+	case stagedGCStructExtern:
+		return "official extern conversion globals/table and bounded public boundary"
 	default:
 		return "unknown gc/struct product"
 	}
@@ -129,6 +134,7 @@ const (
 	stagedGCStructRefTestTableSHA256    = "ab93f46c271d3e1a71c21da7257e29b2363e9188725378005705b33a056a8cbd"
 	stagedGCStructRefTestConcreteSHA256 = "7a71f9662207799b262ccbc7909f4e9492c04f7173f84f29be69905d925f6426"
 	stagedGCStructRefTestAbstractSHA256 = "526d5c1b457f847daf51141a7d63aba11d20415b7ef2a13f593e06f680a41403"
+	stagedGCStructExternSHA256          = "5ad921ebe511ca9e23c137aef6883113684896f15b8a9726d5d77524d562f823"
 )
 
 // stagedGCStructExecutionProduct admits only the exact collector-backed products
@@ -153,6 +159,9 @@ func stagedGCStructExecutionProduct(data []byte) (stagedGCStructProduct, bool) {
 	if digest == stagedGCStructRefTestAbstractSHA256 && len(data) == 626 {
 		return stagedGCStructRefTestAbstract, true
 	}
+	if digest == stagedGCStructExternSHA256 && len(data) == 286 {
+		return stagedGCStructExtern, true
+	}
 	for _, pin := range stagedGCStructLeaderPins {
 		if pin.SHA256 != digest || pin.Size != len(data) {
 			continue
@@ -168,15 +177,15 @@ func stagedGCStructExecutionProduct(data []byte) (stagedGCStructProduct, bool) {
 }
 
 func (p stagedGCStructProduct) requiresHelpers() bool {
-	return p == stagedGCStructNamedGets || p == stagedGCStructNumericLocal || p == stagedGCStructNullDereference || p == stagedGCStructPacked || p == stagedGCStructBasic || p == stagedGCStructRefTestTable || p == stagedGCStructRefTestConcrete || p == stagedGCStructRefTestAbstract
+	return p == stagedGCStructNamedGets || p == stagedGCStructNumericLocal || p == stagedGCStructNullDereference || p == stagedGCStructPacked || p == stagedGCStructBasic || p == stagedGCStructRefTestTable || p == stagedGCStructRefTestConcrete || p == stagedGCStructRefTestAbstract || p == stagedGCStructExtern
 }
 
 func (p stagedGCStructProduct) requiresArrayHelpers() bool {
-	return p == stagedGCStructRefTestAbstract
+	return p == stagedGCStructRefTestAbstract || p == stagedGCStructExtern
 }
 
 func (p stagedGCStructProduct) requiresI31Helpers() bool {
-	return p == stagedGCStructRefTestAbstract
+	return p == stagedGCStructRefTestAbstract || p == stagedGCStructExtern
 }
 
 func (p stagedGCStructProduct) refTestCanonicalTypes() []gc.TypeID {

@@ -84,9 +84,13 @@ func stagedGCExternLeaderDeltaFor(data []byte, line int) (stagedGCExternLeaderDe
 	if err != nil {
 		return stagedGCExternLeaderDelta{}, stagedGCExternLeaderPin{}, err
 	}
+	gate := stagedGCExternGate
+	if product, ok := stagedGCStructExecutionProduct(data); ok && product == stagedGCStructExtern {
+		gate = ""
+	}
 	return stagedGCExternLeaderDelta{
 		Filename: pin.Filename, CommandLine: pin.CommandLine, SourceLine: pin.SourceLine,
-		Size: pin.Size, SHA256: pin.SHA256, Gate: stagedGCExternGate,
+		Size: pin.Size, SHA256: pin.SHA256, Gate: gate,
 		TypeGraph: stagedGCStructTypeGraph(m), StateGraph: stagedGCStructStateGraph(m), Opcodes: opcodes,
 		Actions: append([]string(nil), pin.Actions...),
 	}, pin, nil
@@ -134,9 +138,21 @@ func replayStagedGCExternScript(t *testing.T, tmp string, script stagedSpecScrip
 			current = &pin
 			c, compileErr := compileStagedGCExternAccounting(latest)
 			if compileErr == nil {
+				if c.stagedGCStructProduct() != stagedGCStructExtern {
+					_ = c.Close()
+					counts.Failures++
+					t.Errorf("gc/extern.wast:%d compiled as product %s", cmd.Line, c.stagedGCStructProduct())
+					continue
+				}
+				in, instantiateErr := instantiateCore(c, InstantiateOptions{})
 				_ = c.Close()
-				counts.Failures++
-				t.Errorf("gc/extern.wast:%d unexpectedly compiled before the exact product boundary was proven", cmd.Line)
+				if instantiateErr != nil {
+					counts.Failures++
+					t.Errorf("gc/extern.wast:%d instantiate exact product: %v", cmd.Line, instantiateErr)
+					continue
+				}
+				_ = in.Close()
+				counts.ModulesPassed++
 				continue
 			}
 			if !strings.Contains(compileErr.Error(), "constant expression required: ExternConvertAny") && !strings.Contains(compileErr.Error(), "outside the exact pinned product set") {
@@ -180,7 +196,7 @@ func TestStagedOfficialGCExternAccounting(t *testing.T) {
 	var script stagedSpecScript
 	tmp := stagedOfficialTypedReferenceJSON(t, "gc/extern", &script)
 	counts, leaders, gateCounts := replayStagedGCExternScript(t, tmp, script)
-	if counts.Commands != 19 || counts.ModulesPassed != 0 || counts.AssertionsPassed != 0 || counts.ExpectedFeatureRejects != 1 || counts.BlockedCommands != 17 || counts.ExpectedInvalid != 0 || counts.ExpectedMalformed != 0 || counts.Failures != 0 || counts.UnexpectedCompileRejects != 0 || counts.UnexpectedLinkRejects != 0 {
+	if counts.Commands != 19 || counts.ModulesPassed != 1 || counts.AssertionsPassed != 0 || counts.ExpectedFeatureRejects != 0 || counts.BlockedCommands != 17 || counts.ExpectedInvalid != 0 || counts.ExpectedMalformed != 0 || counts.Failures != 0 || counts.UnexpectedCompileRejects != 0 || counts.UnexpectedLinkRejects != 0 {
 		t.Fatalf("staged gc/extern accounting has hidden or changed gaps: %+v", counts)
 	}
 	gateNames := make([]string, 0, len(gateCounts))

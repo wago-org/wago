@@ -1491,6 +1491,10 @@ func (p supportPass) constExpr(e wasm.Expr, context string) error {
 			if !p.feat.GCI31Products {
 				return p.unsupported("const expression", in.Kind.String()+" (gc disabled)", instructionContext(context, i))
 			}
+		case wasm.InstrAnyConvertExtern, wasm.InstrExternConvertAny:
+			if !p.feat.GCStructProducts {
+				return p.unsupported("const expression", in.Kind.String()+" (gc conversion disabled)", instructionContext(context, i))
+			}
 		default:
 			return p.unsupported("const expression", in.Kind.String(), instructionContext(context, i))
 		}
@@ -1574,7 +1578,8 @@ func (p supportPass) constExprBytes(body []byte, context string) error {
 			structConst := p.feat.GCStructProducts && (imm.Kind == wasm.InstrStructNew || imm.Kind == wasm.InstrStructNewDefault)
 			arrayConst := p.feat.GCArrayProducts && (imm.Kind == wasm.InstrArrayNew || imm.Kind == wasm.InstrArrayNewDefault || imm.Kind == wasm.InstrArrayNewFixed)
 			i31Const := p.feat.GCI31Products && imm.Kind == wasm.InstrRefI31
-			if !structConst && !arrayConst && !i31Const {
+			conversionConst := p.feat.GCStructProducts && (imm.Kind == wasm.InstrAnyConvertExtern || imm.Kind == wasm.InstrExternConvertAny)
+			if !structConst && !arrayConst && !i31Const && !conversionConst {
 				return p.unsupported("const expression", imm.Kind.String()+" (gc disabled)", ctx)
 			}
 		case 0xfd:

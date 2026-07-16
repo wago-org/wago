@@ -70,6 +70,9 @@ func evalConstExprBytes(b []byte, want wasm.ValType) (constExprResult, error) {
 }
 
 func evalConstExprBytesWithModule(b []byte, want wasm.ValType, m *wasm.Module) (constExprResult, error) {
+	if got, matched, err := evalNullExternConversionConstExpr(b, want); matched {
+		return got, err
+	}
 	if isI31RefType(want) || isAnyRefType(want) {
 		got, matched, err := evalI31ConstExprBytes(b, want, m)
 		if matched {
@@ -208,6 +211,52 @@ func evalConstExprBytesWithModule(b []byte, want wasm.ValType, m *wasm.Module) (
 		return constExprResult{}, fmt.Errorf("const expression type %s, want %s", got.vtype, want)
 	}
 	return got, nil
+}
+
+func evalNullExternConversionConstExpr(b []byte, want wasm.ValType) (constExprResult, bool, error) {
+	r := wasm.NewReader(b)
+	op, err := r.Byte()
+	if err != nil || op != 0xd0 {
+		return constExprResult{}, false, nil
+	}
+	heap, err := r.S33()
+	if err != nil {
+		return constExprResult{}, true, err
+	}
+	prefix, err := r.Byte()
+	if err != nil || prefix != 0xfb {
+		return constExprResult{}, false, nil
+	}
+	sub, err := r.U32()
+	if err != nil {
+		return constExprResult{}, true, err
+	}
+	end, err := r.Byte()
+	if err != nil {
+		return constExprResult{}, true, fmt.Errorf("GC conversion constant expression missing end: %w", err)
+	}
+	if end != 0x0b || r.BytesLeft() != 0 {
+		return constExprResult{}, true, fmt.Errorf("GC conversion constant expression has trailing instructions")
+	}
+	got := constExprResult{GlobalIndex: -1, FuncIndex: -1}
+	switch sub {
+	case 26: // any.convert_extern
+		if heap != -17 {
+			return constExprResult{}, true, fmt.Errorf("any.convert_extern constant source heap %d is not extern", heap)
+		}
+		got.vtype = wasm.AnyRef
+	case 27: // extern.convert_any
+		if heap != -18 {
+			return constExprResult{}, true, fmt.Errorf("extern.convert_any constant source heap %d is not any", heap)
+		}
+		got.vtype = wasm.ExternRef
+	default:
+		return constExprResult{}, false, nil
+	}
+	if !constExprTypeMatches(got.vtype, want, nil) {
+		return constExprResult{}, true, fmt.Errorf("const expression type %s, want %s", got.vtype, want)
+	}
+	return got, true, nil
 }
 
 func isI31RefType(t wasm.ValType) bool {

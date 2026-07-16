@@ -9,7 +9,7 @@
       "source_line": 1,
       "size": 286,
       "sha256": "5ad921ebe511ca9e23c137aef6883113684896f15b8a9726d5d77524d562f823",
-      "gate": "extern conversion constant globals/table with bounded anyref ingress and result ownership",
+      "gate": "",
       "type_graph": "rec[func()-\u003e()]|rec[struct{}]|rec[array{i8}]|rec[func(externref)-\u003e()]|rec[func(externref)-\u003e(ref null any)]|rec[func(ref null any)-\u003e(externref)]|rec[func(i32)-\u003e(externref)]|rec[func(i32)-\u003e(ref null any)]",
       "state_graph": "imports=0 funcs=6 globals=[const externref,const ref null any] tables=1 memories=0 tags=0 elements=1 data=0 exports=[init=0:1,internalize=0:2,externalize=0:3,externalize-i=0:4,externalize-ii=0:5]",
       "opcodes": [
@@ -75,21 +75,15 @@
       ]
     }
   ],
-  "gates": [
-    {
-      "family": "gc",
-      "reason": "extern conversion constant globals/table with bounded anyref ingress and result ownership",
-      "count": 1
-    }
-  ],
+  "gates": [],
   "counts": {
     "commands": 19,
-    "modules_passed": 0,
+    "modules_passed": 1,
     "assertions_passed": 0,
     "expected_invalid": 0,
     "expected_unlinkable": 0,
     "expected_uninstantiable": 0,
-    "expected_feature_rejects": 1,
+    "expected_feature_rejects": 0,
     "blocked_commands": 17,
     "unexpected_compile_rejects": 0,
     "unexpected_link_rejects": 0,

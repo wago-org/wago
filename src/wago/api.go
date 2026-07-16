@@ -856,7 +856,7 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 			return nil, fmt.Errorf("compile: staged collector-backed struct product: binary is outside the exact pinned product set")
 		}
 	}
-	if features.GCArrayProducts && gcStructProduct != stagedGCStructRefTestAbstract {
+	if features.GCArrayProducts && gcStructProduct != stagedGCStructRefTestAbstract && gcStructProduct != stagedGCStructExtern {
 		if goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64" {
 			return nil, fmt.Errorf("compile: unsupported collector-backed array product staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
 		}
@@ -869,7 +869,7 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 			return nil, fmt.Errorf("compile: staged collector-backed array product: binary is outside the exact pinned product set")
 		}
 	}
-	if features.GCI31Products && gcStructProduct != stagedGCStructRefTestAbstract {
+	if features.GCI31Products && gcStructProduct != stagedGCStructRefTestAbstract && gcStructProduct != stagedGCStructExtern {
 		if goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64" {
 			return nil, fmt.Errorf("compile: unsupported i31 product staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
 		}
@@ -3652,7 +3652,17 @@ func (in *Instance) marshalPublicReferenceArgs(subject string, values []uint64, 
 				bits = descriptor
 			}
 		case ValExternRef:
-			if bits != 0 && (in.refStore == nil || !in.validExternrefToken(bits)) {
+			if in.c != nil && in.c.stagedGCStructProduct() == stagedGCStructExtern {
+				conversion := in.existingGCExternConversionState()
+				if conversion == nil {
+					return fmt.Errorf("%s: extern conversion state is unavailable for argument %d", subject, i)
+				}
+				internal, err := conversion.internalExternFromPublic(bits)
+				if err != nil {
+					return fmt.Errorf("%s: invalid externref token for argument %d: %w", subject, i, err)
+				}
+				bits = internal
+			} else if bits != 0 && (in.refStore == nil || !in.validExternrefToken(bits)) {
 				return fmt.Errorf("%s: invalid externref token for argument %d", subject, i)
 			}
 		case ValAnyRef, ValExnRef:
@@ -3660,10 +3670,20 @@ func (in *Instance) marshalPublicReferenceArgs(subject string, values []uint64, 
 			if !ok {
 				return fmt.Errorf("%s: missing exact %s type for argument %d", subject, typ, i)
 			}
-			if bits != 0 {
+			if typ == ValAnyRef && in.c != nil && in.c.stagedGCStructProduct() == stagedGCStructExtern {
+				conversion := in.existingGCExternConversionState()
+				if conversion == nil {
+					return fmt.Errorf("%s: anyref conversion state is unavailable for argument %d", subject, i)
+				}
+				internal, err := conversion.internalAnyFromPublic(bits)
+				if err != nil {
+					return fmt.Errorf("%s: invalid anyref token for argument %d: %w", subject, i, err)
+				}
+				bits = internal
+			} else if bits != 0 {
 				return fmt.Errorf("%s: non-null %s argument %d is outside the null-only product", subject, typ, i)
 			}
-			if !required.Ref.Nullable {
+			if bits == 0 && !required.Ref.Nullable {
 				return fmt.Errorf("%s: null %s for non-null argument %d", subject, typ, i)
 			}
 		case ValI31Ref:
@@ -3725,9 +3745,23 @@ func (in *Instance) translatePublicReferenceResults(subject string, values []uin
 				values[slot] = token
 			}
 		}
-		if typ == ValExternRef && values[slot] != 0 && !in.validExternrefToken(values[slot]) {
-			clear(values)
-			return fmt.Errorf("%s: invalid externref result %d", subject, i)
+		if typ == ValExternRef {
+			if in.c != nil && in.c.stagedGCStructProduct() == stagedGCStructExtern {
+				conversion := in.existingGCExternConversionState()
+				if conversion == nil {
+					clear(values)
+					return fmt.Errorf("%s: extern conversion state is unavailable for result %d", subject, i)
+				}
+				public, err := conversion.publicExternFromInternal(values[slot])
+				if err != nil {
+					clear(values)
+					return fmt.Errorf("%s: invalid externref result %d: %w", subject, i, err)
+				}
+				values[slot] = public
+			} else if values[slot] != 0 && !in.validExternrefToken(values[slot]) {
+				clear(values)
+				return fmt.Errorf("%s: invalid externref result %d", subject, i)
+			}
 		}
 		if typ == ValAnyRef {
 			required, ok := exactReferenceType(exact, i, typ)
@@ -3740,6 +3774,18 @@ func (in *Instance) translatePublicReferenceResults(subject string, values []uin
 					clear(values)
 					return fmt.Errorf("%s: null anyref for non-null result %d", subject, i)
 				}
+			} else if in.c != nil && in.c.stagedGCStructProduct() == stagedGCStructExtern {
+				conversion := in.existingGCExternConversionState()
+				if conversion == nil {
+					clear(values)
+					return fmt.Errorf("%s: anyref conversion state is unavailable for result %d", subject, i)
+				}
+				public, err := conversion.publicAnyFromInternal(values[slot])
+				if err != nil {
+					clear(values)
+					return fmt.Errorf("%s: own non-null anyref result %d: %w", subject, i, err)
+				}
+				values[slot] = public
 			} else {
 				if values[slot] != uint64(uint32(values[slot])) {
 					clear(values)
