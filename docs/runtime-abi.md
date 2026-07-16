@@ -87,6 +87,13 @@ synchronous because the table may be mutated to contain a host descriptor. The
 old async log format remains an internal compatibility path but is not selected
 for these compositions.
 
+The synchronous parked-Go transition restores callee-saved GPRs, but System V XMM
+registers are caller-saved. Before any synchronous host or internal GC helper
+call, amd64 copies all arguments to the 328-byte control frame and then spills
+dirty pinned locals to their canonical frame slots. Float locals reload lazily
+after resume. Codegen must not assume an XMM-pinned local survives parked Go
+merely because RBX/RBP/R12-R15 do.
+
 ## Guarded host memory access
 
 In guard-page mode, `memory.grow` raises the logical size before newly in-bounds
