@@ -1794,21 +1794,15 @@ Tests exercise tiny nurseries, collect-every-alloc, exact scanning, cycles, root
 
 ## Current limitations
 
-- WasmGC opcode/product execution is not complete. Exact staged `gc/struct`, `gc/array`, `gc/i31`,
-  `gc/ref_test`, `gc/extern`, `gc/ref_eq`, `gc/ref_cast`, `gc/br_on_cast`, and
-  `gc/br_on_cast_fail` families are wired to amd64, including bounded array constructors/access/barriers,
-  collector-free i31 operations, dynamic tests/casts, identity-preserving cast branches, extern conversion,
-  and compact null/i31/object equality. Array fill/copy plus both `array.init_data` and the exact local-
-  funcref `array.init_elem` product are staged and gap-free. Complete `gc/type-subtyping` accounting is pinned
-  at 170 commands; iterations 57-66 execute twenty-nine collector-free leaders, including six immutable local `ref.func`
-  globals, nine function-only tests, recursive call/cast/finality products, the exact typed-table call product, the first
-  cross-instance subtype pair, and the separate finality-link provider. The first pair keeps ordinary canonical descriptor
-  identity in bounded 128/224-byte arenas with deduplicated retention, rollback, both close orders, and three narrowing
-  unlinkables. The 70-byte finality provider owns 96 descriptor bytes; two 38-byte inverse consumers have bounded 64-byte
-  requirements, unlink in both directions, and retain nothing. Repeated provider invocations allocate zero bytes, leaving
-  16 exact gates and 18 blocked commands with zero validator gaps, unexpected compile/link failures, or hidden failures.
-  Live linked codec state, snapshots, hosts, guard mode, arm64, the later struct-defined linking clusters, reference struct
-  fields, non-local/reference-owning array products, broader GC constant expressions, and non-flat exports remain.
+- The mandatory Core 3 WasmGC corpus is complete on linux/amd64 explicit bounds.
+  Recursive/subtyped type graphs, structs, arrays, i31, extern conversion,
+  equality, casts/tests/branches, fill/copy, data/element initialization,
+  constant expressions, linking, non-flat exports, and all invalid/unlinkable
+  cases execute or reject exactly. `gc/type-subtyping.wast` remains pinned at
+  170 commands / 45 modules / 29 assertions / 24 invalid / 8 unlinkable with
+  zero gates, and the full Release 3 suite is 2,226 modules / 58,038 assertions
+  with zero gaps. The implementation retains bounded arenas, transactional owner
+  retention, exact roots/barriers, and Tiny/Throughput collector stress proofs.
 - The parked-Go runtime-call ABI is proven for exact empty-frame-root numeric/packed
   allocations, non-collecting numeric access/mutation/data initialization, exact local-funcref element
   initialization, ordered immutable collector-rooted globals, per-instance passive descriptors, and one
@@ -1823,10 +1817,13 @@ Tests exercise tiny nurseries, collect-every-alloc, exact scanning, cycles, root
   future work.
 - The Throughput heap currently uses growable Go byte slices, so native code
   must not cache raw heap payload pointers; see `docs/runtime-abi.md`.
-- Tiny and Throughput profiles are connected to exact staged struct/array/table helper paths,
-  including immutable and passive roots, reference array barriers, packed data/drop lifecycle,
-  bounded public/conversion ownership, dynamic tests, and compact equality under stress collection
-  and deterministic Tiny exhaustion. Broader WasmGC opcode/backend lowering remains closed.
+- Tiny and Throughput profiles are connected to the Core 3 struct/array/table
+  helper paths, including immutable and passive roots, reference array barriers,
+  packed data/drop lifecycle, bounded public/conversion ownership, dynamic tests,
+  and compact equality under stress collection and deterministic Tiny
+  exhaustion. Snapshotting live collector/function ownership, guard-page GC
+  execution, and non-amd64 native lowering remain explicit fail-closed platform
+  boundaries rather than official linux/amd64 conformance gaps.
 
 These limitations are intentional for this commit series: the runtime foundation
 is small, exact, typed, and no-cgo, giving later codegen work stable contracts.
@@ -1838,3 +1835,15 @@ The source-lines-652–659 provider/consumer pair is pinned at 100 bytes (`cee53
 ## Iteration 73 complete type-subtyping accounting
 
 M9, M10, M11, and the non-flat export finish the official type-subtyping file. M9 provider/consumer wasm/code/codec sizes are 136/253/725 and 164/0/589 bytes with 96/288-byte descriptor arenas and one deduplicated producer owner. M10 sizes are 74/77/304 and 43/0/148; M11 sizes are 87/77/384 and 56/0/228; both consumers reject incompatible imports before retention. The 183-byte non-flat module has 753 code bytes and a 1,173-byte codec and executes all six f32-zero exports allocation-free with `Instance.gc` nil. Accounting is 170/45/29/24/8 with zero gates, blocked commands, validator gaps, unexpected failures, or hidden failures.
+
+## Iteration 74 Core 3 GC integration
+
+Explicit `CoreFeaturesV3` admission now integrates the complete GC surface with
+typed references, exceptions, multi-memory, memory64, and table64. Exact staged
+classifiers remain as audit and footprint proofs, but unrelated valid Core 3
+products are no longer rejected merely for missing a pinned identity. Generic
+`array.new_data` and `array.new_elem` helpers validate segment liveness, source
+ranges, destination element type, and allocation bounds before publishing a
+collector reference. Reference argument/result conversion uses store-owned
+extern/any tokens and releases transient ownership after matching. The pinned
+full suite passes 2,226 modules and 58,038 assertions with zero gaps.

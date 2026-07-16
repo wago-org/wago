@@ -733,3 +733,25 @@ The exact source-lines-652–659 M8 pair reuses the canonical function descripto
 ## Iteration 73 final type-subtyping ABI boundary
 
 M9 extends the same 40-byte canonical descriptor ABI to null plus two provider descriptors (120 bytes) and null plus eight consumer copies (360 bytes). Eight imports preserve the two provider identities while retention deduplicates to one owner; rollback and both close orders are exact. M10/M11 mismatches retain no owner. The non-flat f32 exports require no descriptor, collector, helper, basedata slot, root/barrier, frame record, or public ABI change. Type-subtyping now has zero official gates.
+
+## Iteration 74 integrated Core 3 ABI
+
+The complete Release 3 harness uses the same bounded native ABI rather than a
+parallel conformance-only executor. `CoreFeaturesV3` is an explicit admission
+choice; the Release 2-compatible default remains unchanged. Typed element
+initializers persist either a canonical local function identity or a validated
+immutable-global source. Imported/exported tags carry store identity through the
+existing tag directory, whose codec count is bounded by the artifact reader
+rather than the former nine-tag product limit. Generic GC array data/element
+construction uses the parked helper ABI and publishes a compact result only after
+source/destination preflight and successful allocation.
+
+Shared-memory and cross-instance execution use per-instance native contexts,
+including the memory directory pointer, under the process-wide native execution
+lease. Calls bind the target context and restore the caller context rather than
+copying or serializing basedata images. Reference harness arguments/results
+externalize through exact store-owned tokens and release transient roots after
+comparison. These changes preserve no-cgo operation, transactional rollback,
+deduplicated producer retention, and fail-closed live snapshot/platform
+boundaries. The recorded conformance baseline is 2,226 modules and 58,038
+assertions passed with zero failures, skips, or gap counters.

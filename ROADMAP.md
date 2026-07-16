@@ -371,7 +371,13 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   closed. Accounting is 38 passed modules / 23 passed assertions / 7 gates / 12 blocked dependents / 24 invalid / 6
   executed plus 2 blocked unlinkable obligations. General frame roots, object-valued mutable/reference globals, later
   linking clusters, the non-flat export, broader typed-table ownership, public family admission, and broader platforms remain.
-- [ ] Reach zero unexplained failures/skips in the official Release 3 core suite.
+- [x] Reach zero unexplained failures/skips in the official Release 3 core suite.
+  The pinned `wg-3.0` corpus now passes all 2,226 modules and 58,038 assertions
+  with zero failed/skipped modules or assertions and zero compile, instantiate,
+  unavailable-module, missing-export, reference-argument, reference-result, or
+  reference-global gaps. `CoreFeaturesV3` is the implementation ceiling while
+  the default configuration remains Release 2-compatible; the spec harness opts
+  into Release 3 explicitly.
 
 **Engine & performance** (no-ir-plan P1–P7, measured against P1's stats)
 <!-- roadmap:P1 status=done -->
@@ -525,4 +531,15 @@ M8 source lines 652–659 are now admitted as a separate exact product: two dupl
 
 ### Iteration 73 boundary
 
-Official `gc/type-subtyping.wast` is complete: 45 modules, 29 assertions, 24 invalid modules, and 8 expected unlinkables all execute or reject exactly, with zero gates or hidden failures. M9 uses bounded 96/288-byte provider/consumer descriptor arenas and one retained producer across eight imports; M10/M11 reject before retention; the six non-flat f32 exports execute collector-free. Remaining Core 3 work is outside type-subtyping and remains fail-closed.
+Official `gc/type-subtyping.wast` is complete: 45 modules, 29 assertions, 24 invalid modules, and 8 expected unlinkables all execute or reject exactly, with zero gates or hidden failures. M9 uses bounded 96/288-byte provider/consumer descriptor arenas and one retained producer across eight imports; M10/M11 reject before retention; the six non-flat f32 exports execute collector-free.
+
+## Iteration 74 Core 3 completion
+
+The remaining feature families are integrated under explicit `CoreFeaturesV3`
+admission. The pinned official Release 3 suite completes at 2,226 passing modules
+and 58,038 passing assertions with zero failures, skips, or gap categories. The
+final integration includes prior-local-global constant offsets, typed element
+initializers, generic `array.new_data`/`array.new_elem`, imported/exported tags,
+`spectest.table64`, shared-memory co-tenant serialization, and reference
+argument/result ownership. Release 1/2 defaults remain unchanged; Core 3 is an
+explicit opt-in outside the versioned spec harness.
