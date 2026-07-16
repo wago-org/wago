@@ -225,6 +225,22 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   remain fail-closed. The scalar catch benchmark is 41.48–41.91 ns/op, the typed-funcref
   catch is 135.1–145.7 ns/op, and bottom-null `global.get` is 52.24–53.58 ns/op; all are
   0 B/op and 0 allocs/op.
+- 🚧 WasmGC now has its first collector-backed execution boundary. Strict schema-2
+  accounting covers all 36 commands in `gc/struct.wast`, pinning six valid leaders by
+  source/command line, binary hash/size, decoded type/storage graph, module state, opcodes,
+  and actions. Four modules and two null-trap assertions execute: declaration/binding
+  products, named numeric `struct.get`, and the exact null `struct.get`/`struct.set` module.
+  One separate numeric-local fixture lowers `struct.new_default`, `struct.get`, and
+  `struct.set` through a 328-byte parked-Go helper frame into the instance-owned Throughput
+  or Tiny collector. Its sole may-collect point has a proven empty live-ref set represented
+  by allocation-free `gc.EmptyRoots`; access/mutation do not collect, and numeric stores do
+  not require barriers. Tiny/Throughput stress collection, deterministic Tiny exhaustion,
+  close/teardown, no-cgo, race, codec/snapshot/public, guard, and arm64 gates are proven.
+  New/default/get measures 206.8–216.0 ns/op and new/default/set/get 283.8–305.0 ns/op,
+  both 0 B/op and 0 allocs/op. The official basic module remains gated on GC constant
+  expressions, non-null globals/public `ref.struct` ownership, and global roots; the packed
+  module remains gated on packed access plus rooted globals. Reference fields, barriers,
+  arrays, general safepoints, public admission, snapshots, guard mode, and arm64 remain.
 - [ ] Reach zero unexplained failures/skips in the official Release 3 core suite.
 
 **Engine & performance** (no-ir-plan P1–P7, measured against P1's stats)

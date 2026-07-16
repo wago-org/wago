@@ -5,8 +5,10 @@ active mandatory WebAssembly 3.0 scope, tracked in [wasm3.md](wasm3.md), rather
 than a non-goal. The current implementation is an initial foundation under
 `src/core/runtime/gc`; it establishes reference encoding, object metadata, typed
 descriptors, a byte-slice heap skeleton, exact scanning, roots, barriers, stress
-knobs, and tests. It is intentionally not yet wired into amd64 WasmGC opcode code
-generation and must not be presented as executable WasmGC support.
+knobs, and tests. Iteration 38 wires one exact linux/amd64 numeric-struct helper
+product to this collector, but general WasmGC opcode code generation, native frame
+publication, reference stores, arrays, public values, and snapshots remain incomplete.
+The narrow product must not be presented as general executable WasmGC support.
 
 ## Why a wago-native collector
 
@@ -78,7 +80,11 @@ Each `Instance` normally owns its own `gc.Collector` when its executable product
 
 Iteration 37 adds one deliberately narrower exception. Ten exact pinned `type-rec` products contain struct descriptors only because recursive struct definitions participate in function identity. Their functions, immutable globals, imports, and ordinary funcref tables carry only function descriptors; no struct/array value or GC opcode exists. A compile-only, non-serialized sidecar records that exact product proof and keeps `Instance.gc == nil` even though `gc.HasHeapObjectTypes` is true. Unknown binaries, arrays, mutable fields, additional state, public codec load, snapshots, guard mode, and arm64 remain closed. A codec-reloaded artifact does not inherit this live admission sidecar. This is metadata/function-identity execution, not WasmGC heap execution.
 
-GC roots are not wired to native frames yet, and no WasmGC allocation/access opcode codegen support is enabled by this metadata plumbing. Later PRs will connect exact safepoint maps, runtime allocation calls, and barrier emission to the instance-owned collector.
+General GC roots are not wired to native frames yet. Iteration 38 adds a separate exact
+numeric-local helper product described below; it has one allocation point with a proven
+empty live-ref set and therefore does not establish general frame scanning. Later slices
+must connect exact safepoint maps, runtime allocation calls with non-empty live roots, and
+barrier emission to the instance-owned collector.
 
 ## Native exception-root map contract
 
@@ -144,7 +150,54 @@ linked groups remain distinct. The three official ordinary-funcref `call_indirec
 preserve exact success/mismatch behavior at 36.20-36.97 ns/op with 0 B/op and 0 allocs/op. This key
 work does not scan, allocate, root, or barrier any struct value.
 
-Before any `gc.Ref` payload or broader funcref lifetime can be admitted, codegen/runtime
+### Iteration 38 exact collector-backed numeric structs
+
+Iteration 38 is the first slice in which generated Wasm code creates and accesses a real
+collector-owned object. The boundary is deliberately exact and compile-only:
+
+- linux/amd64 with explicit bounds only;
+- one pinned synthetic numeric-local product with one mutable `i32` field;
+- `struct.new_default`, numeric `struct.get`, and numeric `struct.set` only;
+- no imports, GC globals/tables, host/cross-instance/tail calls, reference fields, arrays,
+  exported GC result, snapshot state, guard mode, or arm64 execution;
+- plus four exact official `gc/struct.wast` products for declarations/bindings, named
+  numeric gets, and null get/set traps.
+
+The amd64 lowering parks through the existing 328-byte synchronous control frame. Dispatch
+bit 30 names internal GC helpers independently of ordinary imports and public host-funcref
+dispatch. Go receives compact `gc.Ref`, type index, field index, and numeric value slots,
+uses `Collector.NewStructDefaultWithRoots`, `StructGet`, or `StructSet`, and returns only a
+compact ref or numeric bits. No Go-slice-derived object pointer enters generated code or
+survives the helper call.
+
+The admitted allocation point has an exact empty live-root proof: each invocation performs
+at most one allocation, no prior `gc.Ref` is live, and no later may-collect helper runs while
+the returned ref remains live. It nevertheless supplies non-nil `gc.EmptyRoots{}` so stress
+collection never falls back to an implicit nil root set. The zero-sized root provider avoids
+the former 24-byte interface/slice allocation; steady-state new/default/get and
+new/default/set/get both report 0 B/op and 0 allocs/op. `struct.get` and numeric `struct.set`
+do not collect. Numeric stores need no write barrier; reference-field binaries are rejected
+at the exact product gate, while the collector's existing Tiny remark/barrier tests remain
+green.
+
+Throughput and Tiny stress modes execute 1,000 repeated allocations with at most one live
+object after collection. A 16-byte Tiny heap deterministically returns `gc: tiny heap
+exhausted` and recovers for the next invocation. Instance close closes the collector and
+later allocations return `gc: collector closed`. The 65-byte get fixture emits 341 code
+bytes and a 495-byte codec-v27 blob; the 106-byte mutation fixture emits 846 code bytes and
+a 1,062-byte blob. Each object is 24 bytes including the 16-byte header. `Collector` is
+640 bytes on the measured host; fixed `Compiled=712`, `Instance=792`, and
+`compiledCodeCache=64` layouts remain unchanged.
+
+The complete pinned `gc/struct.wast` schema-2 matrix is now 36 commands / 4 modules /
+2 assertions / 4 invalid / 1 source-only malformed / 2 gates / 17 blocked, with no hidden
+failures. The remaining basic leader combines GC constant-expression `struct.new`, two
+non-null GC globals, public `ref.struct` egress, calls, allocation, get, and set. The packed
+leader combines two non-null GC globals with packed signed/unsigned gets and mutation.
+Neither is admitted until ownership tokens, global roots, constant initialization, close
+order, snapshot policy, and packed semantics are coherent.
+
+Before broader live `gc.Ref` payloads or funcref lifetimes can be admitted, codegen/runtime
 must still prove all of the following as one coherent product:
 
 1. publish and withdraw the active native frame chain at exact collector safepoints;
@@ -275,7 +328,8 @@ with white children. This keeps `struct.set`, ref-array stores, `global.set`, an
 `table.set` safe without introducing C-style intrusive lists or pointer headers.
 
 Tiny manages WasmGC heap objects only. It is separate from Wasm linear memory
-allocation and does not implement WasmGC opcode lowering or backend integration.
+allocation. Iteration 38 connects only the exact numeric-struct parked-Go helper
+product; broader WasmGC opcode lowering and backend integration remain incomplete.
 It is also not a replacement for the future GenImmix/default policy; it is a
 bounded, predictable option for constrained targets where a fixed maximum heap,
 stable object addresses, compact metadata, and deterministic allocation failure
@@ -287,7 +341,8 @@ Known Tiny limitations in this foundation:
 - collection is incremental by explicit `Step` calls or allocation-time stress
   knobs, not concurrent;
 - handle-table entries remain the stable ref indirection;
-- no WasmGC opcode/backend lowering is wired to the policy yet.
+- only the exact zero-live-root numeric-struct helper product is wired to the policy;
+  general opcode/backend root publication and reference barriers remain unwired.
 
 ## Allocator/GC codegen dependency contract
 
@@ -486,8 +541,10 @@ and array element access. Heap policies may emit inline ref tests, null checks,
 they must not cache Go-slice-derived object payload pointers across helper
 calls, allocations, safepoints, or collection points.
 
-The first codegen integration should therefore lower WasmGC heap operations to
-helper calls with exact roots:
+The general codegen integration should therefore lower WasmGC heap operations to
+helper calls with exact roots. Iteration 38's hash-pinned zero-live-root numeric product
+reuses the parked-Go control frame as a narrower bootstrap and does not replace this
+backend-neutral contract:
 
 1. collect all live refs required across the helper call;
 2. pass caller-known live refs in the request `LiveRefs` field while leaving the
@@ -673,11 +730,12 @@ Tests exercise tiny nurseries, collect-every-alloc, exact scanning, cycles, root
 
 ## Current limitations
 
-- WasmGC opcode validation is not complete and the opcode/backend lowering is
-  not wired to this runtime yet.
-- The runtime-call ABI for allocation, field/element access, barriers, and
-  traps still needs to be finalized before generated code can use WasmGC
-  objects.
+- WasmGC opcode validation is not complete. Only the exact staged numeric
+  `struct.new_default`/`struct.get`/`struct.set` helper product and null traps are
+  wired to amd64; general structs, arrays, casts/tests, and GC constant expressions remain.
+- The parked-Go runtime-call ABI is proven only for the exact zero-live-root numeric
+  product. General allocation, field/element access, barriers, and traps still need
+  the backend-neutral root-publication ABI before broader generated code can use objects.
 - Exact native safepoint maps are not connected to compiled frames yet.
 - Minor collection currently promotes marked nursery survivors through handles
   rather than implementing a final copying nursery/root-update path.
@@ -686,8 +744,9 @@ Tests exercise tiny nurseries, collect-every-alloc, exact scanning, cycles, root
   future work.
 - The Throughput heap currently uses growable Go byte slices, so native code
   must not cache raw heap payload pointers; see `docs/runtime-abi.md`.
-- Tiny and Throughput profiles are available at the runtime/API level, but
-  WasmGC opcode/backend lowering is not connected to either profile yet.
+- Tiny and Throughput profiles are connected to the exact staged numeric-struct
+  helper path, including stress collection and deterministic Tiny exhaustion, but
+  broader WasmGC opcode/backend lowering is not connected to either profile yet.
 
 These limitations are intentional for this commit series: the runtime foundation
 is small, exact, typed, and no-cgo, giving later codegen work stable contracts.

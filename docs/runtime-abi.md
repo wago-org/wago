@@ -153,6 +153,19 @@ root protocol is all-or-nothing: `SpillLiveRefs` prepares storage,
 and successful publication must be followed by exactly one `UnpublishRoots` even
 if the runtime helper fails.
 
+Iteration 38 has one narrower executable helper ABI while general native root-map
+publication remains incomplete. Exact linux/amd64 explicit-bounds numeric-struct
+products park through the existing 328-byte synchronous control frame with dispatch
+bit 30 reserved for internal GC helpers. The helpers receive compact `gc.Ref` values,
+type indexes, and field indexes in copied scalar slots; they never expose or retain a
+Go-slice payload address in native code. The admitted allocation shape performs one
+`struct.new_default` with no prior live ref, so it passes the non-nil zero-sized
+`gc.EmptyRoots` set and remains allocation-free at the root-publication boundary.
+`struct.get` and numeric `struct.set` do not collect. No second allocation may occur
+while the returned ref is live, and reference fields, calls with live GC refs, global/
+table roots, public GC values, and snapshots remain rejected. This exact proof must
+not be treated as the general `codegen.Emitter` publication protocol.
+
 ## Global coherence invariant
 
 The global cell is the sole host- and cross-instance-visible storage for a
