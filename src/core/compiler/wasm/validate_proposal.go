@@ -630,12 +630,20 @@ func (v *funcValidator) stepBrOnCast(in Instruction) error {
 	if !x.unknown && (x.t.Kind != ValRef || !v.refSubtype(x.t.Ref, rt1)) {
 		return v.verr(ErrTypeMismatch, "br_on_cast operand")
 	}
+	// A nullable target consumes null on the successful cast edge. The failed
+	// edge is therefore known non-null even when the declared source is nullable.
+	// When the target is non-null, null remains a possible failed value and the
+	// source nullability is preserved.
+	failed := rt1
+	if rt2.Nullable {
+		failed.Nullable = false
+	}
 	branchTypes := append([]ValType(nil), lt...)
 	if in.Kind == InstrBrOnCastFail {
-		if !v.subtype(RefVal(rt1), labelRef) {
-			return v.verr(ErrTypeMismatch, "rt1 does not match label rt")
+		if !v.subtype(RefVal(failed), labelRef) {
+			return v.verr(ErrTypeMismatch, "failed source does not match label rt")
 		}
-		branchTypes[len(branchTypes)-1] = RefVal(rt1)
+		branchTypes[len(branchTypes)-1] = RefVal(failed)
 		if err := v.popAll(branchTypes[:len(branchTypes)-1]); err != nil {
 			return err
 		}
@@ -649,7 +657,7 @@ func (v *funcValidator) stepBrOnCast(in Instruction) error {
 	if err := v.popAll(branchTypes[:len(branchTypes)-1]); err != nil {
 		return err
 	}
-	v.push(RefVal(rt1))
+	v.push(RefVal(failed))
 	return nil
 }
 

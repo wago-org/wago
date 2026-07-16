@@ -546,6 +546,44 @@ func TestValidatorCoverageTryTableAndCastBranches(t *testing.T) {
 			t.Fatalf("ValidateModule br_on_cast_fail: %v", err)
 		}
 	})
+	t.Run("br_on_cast nullable target refines failed edge non-null", func(t *testing.T) {
+		nonNullAny := RefVal(Ref(false, AbsHeap(HeapAny), false))
+		nullableStruct := RefVal(Ref(true, AbsHeap(HeapStruct), false))
+		inner := Instruction{Kind: InstrBlock, ext: &instrExt{
+			BlockType: BlockType{Kind: BlockVal, Val: nonNullAny},
+			Body: Expr{Instrs: []Instruction{
+				{Kind: InstrLocalGet, Index: 0},
+				{Kind: InstrBrOnCast, Index: 1, Cast: CastOp{SourceNullable: true, TargetNullable: true}, ext: &instrExt{HeapType: AbsHeap(HeapAny), HeapType2: AbsHeap(HeapStruct)}},
+			}},
+		}}
+		outer := Instruction{Kind: InstrBlock, ext: &instrExt{
+			BlockType: BlockType{Kind: BlockVal, Val: nullableStruct},
+			Body:      Expr{Instrs: []Instruction{inner, {Kind: InstrUnreachable}}},
+		}}
+		m := modWithFunc([]ValType{AnyRef}, nil, outer, Instruction{Kind: InstrDrop})
+		if err := ValidateModule(m); err != nil {
+			t.Fatalf("ValidateModule nullable br_on_cast refinement: %v", err)
+		}
+	})
+	t.Run("br_on_cast_fail nullable target refines branch edge non-null", func(t *testing.T) {
+		nonNullAny := RefVal(Ref(false, AbsHeap(HeapAny), false))
+		nullableStruct := RefVal(Ref(true, AbsHeap(HeapStruct), false))
+		inner := Instruction{Kind: InstrBlock, ext: &instrExt{
+			BlockType: BlockType{Kind: BlockVal, Val: nullableStruct},
+			Body: Expr{Instrs: []Instruction{
+				{Kind: InstrLocalGet, Index: 0},
+				{Kind: InstrBrOnCastFail, Index: 1, Cast: CastOp{SourceNullable: true, TargetNullable: true}, ext: &instrExt{HeapType: AbsHeap(HeapAny), HeapType2: AbsHeap(HeapStruct)}},
+			}},
+		}}
+		outer := Instruction{Kind: InstrBlock, ext: &instrExt{
+			BlockType: BlockType{Kind: BlockVal, Val: nonNullAny},
+			Body:      Expr{Instrs: []Instruction{inner, {Kind: InstrUnreachable}}},
+		}}
+		m := modWithFunc([]ValType{AnyRef}, nil, outer, Instruction{Kind: InstrDrop})
+		if err := ValidateModule(m); err != nil {
+			t.Fatalf("ValidateModule nullable br_on_cast_fail refinement: %v", err)
+		}
+	})
 }
 
 func TestValidatorCoverageSubtypeHelpers(t *testing.T) {

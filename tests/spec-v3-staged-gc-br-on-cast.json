@@ -1,0 +1,593 @@
+{
+  "schema": 2,
+  "suite_revision": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+  "files": [
+    {
+      "name": "gc/br_on_cast",
+      "leaders": [
+        {
+          "filename": "br_on_cast.0.wasm",
+          "command_line": 28,
+          "source_line": 3,
+          "size": 385,
+          "sha256": "4429db7587ba73adfc04c44a2369bab38343d7f582d1745372940ba96c04a263",
+          "class": "abstract",
+          "gate": "br_on_cast abstract table/control product",
+          "type_graph": "rec[func()-\u003e(i32)]|rec[struct{i16}]|rec[array{i8}]|rec[func(externref)-\u003e()]|rec[func(i32)-\u003e(i32)]|rec[func(ref null struct)-\u003e(ref type 2)]|rec[func(ref null struct)-\u003e(ref type 1)]",
+          "state_graph": "imports=0 funcs=7 globals=[] tables=1 memories=0 tags=0 elements=1 data=0 exports=[init=0:1,br_on_null=0:2,br_on_i31=0:3,br_on_struct=0:4,br_on_array=0:5,null-diff=0:6]",
+          "control_graph": "br_on_null depth0; br_on_cast depth0 any?-\u003ei31; br_on_cast depth0 any?-\u003estruct then nested depth1 struct?-\u003e$st and depth0 any?-\u003e$at; br_on_cast depth0 any?-\u003earray; null-diff nested depth1 any?-\u003estruct?",
+          "opcodes": [
+            {
+              "opcode": "AnyConvertExtern",
+              "count": 1
+            },
+            {
+              "opcode": "ArrayGetU",
+              "count": 1
+            },
+            {
+              "opcode": "ArrayLen",
+              "count": 1
+            },
+            {
+              "opcode": "ArrayNew",
+              "count": 1
+            },
+            {
+              "opcode": "Block",
+              "count": 8
+            },
+            {
+              "opcode": "BrOnCast",
+              "count": 6
+            },
+            {
+              "opcode": "BrOnNull",
+              "count": 1
+            },
+            {
+              "opcode": "I31GetU",
+              "count": 1
+            },
+            {
+              "opcode": "I32Const",
+              "count": 19
+            },
+            {
+              "opcode": "LocalGet",
+              "count": 6
+            },
+            {
+              "opcode": "RefI31",
+              "count": 1
+            },
+            {
+              "opcode": "RefNull",
+              "count": 1
+            },
+            {
+              "opcode": "Return",
+              "count": 8
+            },
+            {
+              "opcode": "StructGetS",
+              "count": 1
+            },
+            {
+              "opcode": "StructNew",
+              "count": 1
+            },
+            {
+              "opcode": "TableGet",
+              "count": 5
+            },
+            {
+              "opcode": "TableSet",
+              "count": 5
+            }
+          ],
+          "actions": [
+            "action:init",
+            "return:br_on_null:0",
+            "return:br_on_null:4294967295",
+            "return:br_on_null:4294967295",
+            "return:br_on_null:4294967295",
+            "return:br_on_null:4294967295",
+            "return:br_on_i31:4294967295",
+            "return:br_on_i31:7",
+            "return:br_on_i31:4294967295",
+            "return:br_on_i31:4294967295",
+            "return:br_on_i31:4294967295",
+            "return:br_on_struct:4294967295",
+            "return:br_on_struct:4294967295",
+            "return:br_on_struct:6",
+            "return:br_on_struct:4294967295",
+            "return:br_on_struct:4294967295",
+            "return:br_on_array:4294967295",
+            "return:br_on_array:4294967295",
+            "return:br_on_array:4294967295",
+            "return:br_on_array:3",
+            "return:br_on_array:4294967295",
+            "return:null-diff:1",
+            "return:null-diff:0",
+            "return:null-diff:1",
+            "return:null-diff:0",
+            "return:null-diff:0"
+          ]
+        },
+        {
+          "filename": "br_on_cast.1.wasm",
+          "command_line": 106,
+          "source_line": 104,
+          "size": 772,
+          "sha256": "4eabadd98e55bc0c83600f072a16bab75e3d74170d2f24bb6bdae4acf0b5491b",
+          "class": "concrete",
+          "gate": "br_on_cast declared-super/canonical control product",
+          "type_graph": "rec[sub(final=false,supers=[],struct{})]|rec[sub(final=false,supers=[{0 false}],struct{i32})]|rec[sub(final=false,supers=[{0 false}],struct{i32})]|rec[sub(final=false,supers=[{1 false}],struct{i32,i32})]|rec[sub(final=false,supers=[{2 false}],struct{i32,i32})]|rec[sub(final=false,supers=[{0 false}],struct{i32,i32})]|rec[sub(final=false,supers=[{0 false}],struct{})]|rec[sub(final=false,supers=[{6 false}],struct{i32,i32})]|rec[func()-\u003e()]",
+          "state_graph": "imports=0 funcs=3 globals=[] tables=1 memories=0 tags=0 elements=0 data=0 exports=[test-sub=0:1,test-canon=0:2]",
+          "control_graph": "test-sub: 30 br_on_cast edges over one result label, including nested result blocks; test-canon: 14 canonical br_on_cast result edges; selected edges carry the original structref",
+          "opcodes": [
+            {
+              "opcode": "Block",
+              "count": 31
+            },
+            {
+              "opcode": "BrOnCast",
+              "count": 44
+            },
+            {
+              "opcode": "Call",
+              "count": 2
+            },
+            {
+              "opcode": "Drop",
+              "count": 29
+            },
+            {
+              "opcode": "I32Const",
+              "count": 47
+            },
+            {
+              "opcode": "RefNull",
+              "count": 5
+            },
+            {
+              "opcode": "Return",
+              "count": 2
+            },
+            {
+              "opcode": "StructNewDefault",
+              "count": 8
+            },
+            {
+              "opcode": "TableGet",
+              "count": 39
+            },
+            {
+              "opcode": "TableSet",
+              "count": 8
+            },
+            {
+              "opcode": "Unreachable",
+              "count": 2
+            }
+          ],
+          "actions": [
+            "action:test-sub",
+            "action:test-canon"
+          ]
+        },
+        {
+          "filename": "br_on_cast.2.wasm",
+          "command_line": 118,
+          "source_line": 211,
+          "size": 111,
+          "sha256": "cc5bdeb4b57409c6e194ae094f2a50ece4dce6afa66cd25ec07b4624ccb96632",
+          "class": "nullability",
+          "gate": "br_on_cast nullability/control-shape product",
+          "type_graph": "rec[struct{}]|rec[func(ref any)-\u003e(ref type 0)]|rec[func(ref null any)-\u003e(ref type 0)]|rec[func(ref null any)-\u003e(ref null type 0)]",
+          "state_graph": "imports=0 funcs=3 globals=[] tables=0 memories=0 tags=0 elements=0 data=0 exports=[]",
+          "control_graph": "three depth1 branches: any-\u003et, any?-\u003et, any?-\u003et?; outer function result proves source/target nullability refinement",
+          "opcodes": [
+            {
+              "opcode": "Block",
+              "count": 3
+            },
+            {
+              "opcode": "BrOnCast",
+              "count": 3
+            },
+            {
+              "opcode": "LocalGet",
+              "count": 3
+            },
+            {
+              "opcode": "Unreachable",
+              "count": 3
+            }
+          ]
+        }
+      ],
+      "invalids": [
+        {
+          "filename": "br_on_cast.3.wasm",
+          "command_line": 119,
+          "source_line": 225,
+          "size": 59,
+          "sha256": "6d2f0c34d7e7cee07ba5ef16a724d7790efb6efa4c4446c80e602d4b9045c9df",
+          "error": "type mismatch"
+        },
+        {
+          "filename": "br_on_cast.4.wasm",
+          "command_line": 128,
+          "source_line": 234,
+          "size": 59,
+          "sha256": "726611afbf86d03231f8a7a32f7c86aef4009e98faba16eacf5dc49ffd3cb2be",
+          "error": "type mismatch"
+        },
+        {
+          "filename": "br_on_cast.5.wasm",
+          "command_line": 137,
+          "source_line": 243,
+          "size": 58,
+          "sha256": "e5af9bca584b387208156e89db27bbb6614553ebac3d1b25800d8ad4fd766c6f",
+          "error": "type mismatch"
+        },
+        {
+          "filename": "br_on_cast.6.wasm",
+          "command_line": 146,
+          "source_line": 252,
+          "size": 48,
+          "sha256": "d200c57c66d9e670d53408c247cd10c6e3b54ea5a5e3c16dbfdf06cbc3a730c5",
+          "error": "type mismatch"
+        },
+        {
+          "filename": "br_on_cast.7.wasm",
+          "command_line": 154,
+          "source_line": 260,
+          "size": 48,
+          "sha256": "1801ed1526c95fb0e2ff4a3a079cf0b4cddfb345d7a0c1b1d5981418d892c7f0",
+          "error": "type mismatch"
+        },
+        {
+          "filename": "br_on_cast.8.wasm",
+          "command_line": 162,
+          "source_line": 271,
+          "size": 77,
+          "sha256": "bc70dfea9c8b9c2b07df8fd5549473a5979f6a1eb90cb210073e6e0df34de461",
+          "error": "type mismatch"
+        }
+      ],
+      "gates": [
+        {
+          "family": "gc",
+          "reason": "br_on_cast abstract table/control product",
+          "count": 1
+        },
+        {
+          "family": "gc",
+          "reason": "br_on_cast declared-super/canonical control product",
+          "count": 1
+        },
+        {
+          "family": "gc",
+          "reason": "br_on_cast nullability/control-shape product",
+          "count": 1
+        }
+      ],
+      "counts": {
+        "commands": 40,
+        "modules_passed": 0,
+        "assertions_passed": 0,
+        "expected_invalid": 6,
+        "expected_unlinkable": 0,
+        "expected_uninstantiable": 0,
+        "expected_feature_rejects": 3,
+        "blocked_commands": 28,
+        "unexpected_compile_rejects": 0,
+        "unexpected_link_rejects": 0,
+        "failures": 0
+      }
+    },
+    {
+      "name": "gc/br_on_cast_fail",
+      "leaders": [
+        {
+          "filename": "br_on_cast_fail.0.wasm",
+          "command_line": 29,
+          "source_line": 3,
+          "size": 403,
+          "sha256": "a1d339dfb4ed4aa308f1a9eeb8293f0475d427b0d7aea7e8b99159c054fc6815",
+          "class": "abstract",
+          "gate": "br_on_cast_fail abstract table/control product",
+          "type_graph": "rec[func()-\u003e(i32)]|rec[struct{i16}]|rec[array{i8}]|rec[func(externref)-\u003e()]|rec[func(i32)-\u003e(i32)]|rec[func(ref null struct)-\u003e(ref type 2)]|rec[func(ref null struct)-\u003e(ref type 1)]",
+          "state_graph": "imports=0 funcs=7 globals=[] tables=1 memories=0 tags=0 elements=1 data=0 exports=[init=0:1,br_on_non_null=0:2,br_on_non_i31=0:3,br_on_non_struct=0:4,br_on_non_array=0:5,null-diff=0:6]",
+          "control_graph": "br_on_non_null depth0; br_on_cast_fail depth0 any?-\u003ei31/struct/array; struct success falls through nested depth1/depth0 br_on_cast refinement; null-diff depth1 any?-\u003estruct?",
+          "opcodes": [
+            {
+              "opcode": "AnyConvertExtern",
+              "count": 1
+            },
+            {
+              "opcode": "ArrayGetU",
+              "count": 1
+            },
+            {
+              "opcode": "ArrayLen",
+              "count": 1
+            },
+            {
+              "opcode": "ArrayNew",
+              "count": 1
+            },
+            {
+              "opcode": "Block",
+              "count": 8
+            },
+            {
+              "opcode": "BrOnCast",
+              "count": 2
+            },
+            {
+              "opcode": "BrOnCastFail",
+              "count": 4
+            },
+            {
+              "opcode": "BrOnNonNull",
+              "count": 1
+            },
+            {
+              "opcode": "I31GetU",
+              "count": 1
+            },
+            {
+              "opcode": "I32Const",
+              "count": 19
+            },
+            {
+              "opcode": "LocalGet",
+              "count": 6
+            },
+            {
+              "opcode": "RefI31",
+              "count": 1
+            },
+            {
+              "opcode": "RefNull",
+              "count": 1
+            },
+            {
+              "opcode": "Return",
+              "count": 12
+            },
+            {
+              "opcode": "StructGetS",
+              "count": 1
+            },
+            {
+              "opcode": "StructNew",
+              "count": 1
+            },
+            {
+              "opcode": "TableGet",
+              "count": 5
+            },
+            {
+              "opcode": "TableSet",
+              "count": 5
+            }
+          ],
+          "actions": [
+            "action:init",
+            "return:br_on_non_null:0",
+            "return:br_on_non_null:4294967295",
+            "return:br_on_non_null:4294967295",
+            "return:br_on_non_null:4294967295",
+            "return:br_on_non_null:4294967295",
+            "return:br_on_non_i31:4294967295",
+            "return:br_on_non_i31:7",
+            "return:br_on_non_i31:4294967295",
+            "return:br_on_non_i31:4294967295",
+            "return:br_on_non_i31:4294967295",
+            "return:br_on_non_struct:4294967295",
+            "return:br_on_non_struct:4294967295",
+            "return:br_on_non_struct:6",
+            "return:br_on_non_struct:4294967295",
+            "return:br_on_non_struct:4294967295",
+            "return:br_on_non_array:4294967295",
+            "return:br_on_non_array:4294967295",
+            "return:br_on_non_array:4294967295",
+            "return:br_on_non_array:3",
+            "return:br_on_non_array:4294967295",
+            "return:null-diff:1",
+            "return:null-diff:0",
+            "return:null-diff:1",
+            "return:null-diff:0",
+            "return:null-diff:0"
+          ]
+        },
+        {
+          "filename": "br_on_cast_fail.1.wasm",
+          "command_line": 149,
+          "source_line": 104,
+          "size": 876,
+          "sha256": "88894127fabe14a42dc6d5af44027318078b702bcc67fc34e752d145a8164312",
+          "class": "concrete",
+          "gate": "br_on_cast_fail declared-super/canonical control product",
+          "type_graph": "rec[sub(final=false,supers=[],struct{})]|rec[sub(final=false,supers=[{0 false}],struct{i32})]|rec[sub(final=false,supers=[{0 false}],struct{i32})]|rec[sub(final=false,supers=[{1 false}],struct{i32,i32})]|rec[sub(final=false,supers=[{2 false}],struct{i32,i32})]|rec[sub(final=false,supers=[{0 false}],struct{i32,i32})]|rec[sub(final=false,supers=[{0 false}],struct{})]|rec[sub(final=false,supers=[{6 false}],struct{i32,i32})]|rec[func()-\u003e()]",
+          "state_graph": "imports=0 funcs=3 globals=[] tables=1 memories=0 tags=0 elements=0 data=0 exports=[test-sub=0:1,test-canon=0:2]",
+          "control_graph": "test-sub: 46 br_on_cast_fail edges over one result label and nested result blocks; test-canon: 14 canonical fallthrough edges; failure branches carry the original source structref",
+          "opcodes": [
+            {
+              "opcode": "Block",
+              "count": 22
+            },
+            {
+              "opcode": "BrOnCastFail",
+              "count": 59
+            },
+            {
+              "opcode": "Call",
+              "count": 2
+            },
+            {
+              "opcode": "Drop",
+              "count": 20
+            },
+            {
+              "opcode": "I32Const",
+              "count": 57
+            },
+            {
+              "opcode": "RefNull",
+              "count": 10
+            },
+            {
+              "opcode": "Return",
+              "count": 2
+            },
+            {
+              "opcode": "StructNewDefault",
+              "count": 8
+            },
+            {
+              "opcode": "TableGet",
+              "count": 49
+            },
+            {
+              "opcode": "TableSet",
+              "count": 8
+            },
+            {
+              "opcode": "Unreachable",
+              "count": 2
+            }
+          ],
+          "actions": [
+            "action:test-sub",
+            "action:test-canon"
+          ]
+        },
+        {
+          "filename": "br_on_cast_fail.2.wasm",
+          "command_line": 161,
+          "source_line": 226,
+          "size": 103,
+          "sha256": "6725d0fa741974c1214cdabc35fa962779f74abd711cc21b04d67d0c4073578e",
+          "class": "nullability",
+          "gate": "br_on_cast_fail nullability/control-shape product",
+          "type_graph": "rec[struct{}]|rec[func(ref any)-\u003e(ref any)]|rec[func(ref null any)-\u003e(ref null any)]",
+          "state_graph": "imports=0 funcs=3 globals=[] tables=0 memories=0 tags=0 elements=0 data=0 exports=[]",
+          "control_graph": "three depth1 branches: any-\u003et, any?-\u003et, any?-\u003et?; branch carries source type and fallthrough carries refined target",
+          "opcodes": [
+            {
+              "opcode": "Block",
+              "count": 3
+            },
+            {
+              "opcode": "BrOnCastFail",
+              "count": 3
+            },
+            {
+              "opcode": "LocalGet",
+              "count": 3
+            }
+          ]
+        }
+      ],
+      "invalids": [
+        {
+          "filename": "br_on_cast_fail.3.wasm",
+          "command_line": 162,
+          "source_line": 240,
+          "size": 58,
+          "sha256": "81559387a89755aee960ee3a677f1512296848d81fa87479ae433359bdbe70d7",
+          "error": "type mismatch"
+        },
+        {
+          "filename": "br_on_cast_fail.4.wasm",
+          "command_line": 171,
+          "source_line": 249,
+          "size": 59,
+          "sha256": "42d52b162474632c324576ba8eee4bd3692b7cfd91ee350dfa84475f5a718355",
+          "error": "type mismatch"
+        },
+        {
+          "filename": "br_on_cast_fail.5.wasm",
+          "command_line": 180,
+          "source_line": 258,
+          "size": 57,
+          "sha256": "7dff22ba04cd1a6785e7a0a64a5e2e5873718d58233c28e9003ec0dc988e13c2",
+          "error": "type mismatch"
+        },
+        {
+          "filename": "br_on_cast_fail.6.wasm",
+          "command_line": 189,
+          "source_line": 267,
+          "size": 48,
+          "sha256": "4b4fc5e668b8a4dd8ced6fcc80954547349e0f0b4e507c09df810adba53f72b7",
+          "error": "type mismatch"
+        },
+        {
+          "filename": "br_on_cast_fail.7.wasm",
+          "command_line": 197,
+          "source_line": 275,
+          "size": 48,
+          "sha256": "f458e7b957c5ce2ea1ab56efb2e768023689b546376e429ba4d6d027924d8ac0",
+          "error": "type mismatch"
+        },
+        {
+          "filename": "br_on_cast_fail.8.wasm",
+          "command_line": 205,
+          "source_line": 286,
+          "size": 77,
+          "sha256": "52ed5e8210cd8324606e95a0df6862ccade946e983dd1b2e0fbd3e9065b94992",
+          "error": "type mismatch"
+        }
+      ],
+      "gates": [
+        {
+          "family": "gc",
+          "reason": "br_on_cast_fail abstract table/control product",
+          "count": 1
+        },
+        {
+          "family": "gc",
+          "reason": "br_on_cast_fail declared-super/canonical control product",
+          "count": 1
+        },
+        {
+          "family": "gc",
+          "reason": "br_on_cast_fail nullability/control-shape product",
+          "count": 1
+        }
+      ],
+      "counts": {
+        "commands": 40,
+        "modules_passed": 0,
+        "assertions_passed": 0,
+        "expected_invalid": 6,
+        "expected_unlinkable": 0,
+        "expected_uninstantiable": 0,
+        "expected_feature_rejects": 3,
+        "blocked_commands": 28,
+        "unexpected_compile_rejects": 0,
+        "unexpected_link_rejects": 0,
+        "failures": 0
+      }
+    }
+  ],
+  "totals": {
+    "commands": 80,
+    "modules_passed": 0,
+    "assertions_passed": 0,
+    "expected_invalid": 12,
+    "expected_unlinkable": 0,
+    "expected_uninstantiable": 0,
+    "expected_feature_rejects": 6,
+    "blocked_commands": 56,
+    "unexpected_compile_rejects": 0,
+    "unexpected_link_rejects": 0,
+    "failures": 0
+  }
+}
