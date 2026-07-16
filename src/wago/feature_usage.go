@@ -116,7 +116,19 @@ func requiredFeaturesForValTypes(types []wasm.ValType) CoreFeatures {
 func requiredFeaturesForValType(typ wasm.ValType) CoreFeatures {
 	switch typ.Kind {
 	case wasm.ValRef:
-		return CoreFeatureReferenceTypes
+		out := CoreFeatureReferenceTypes
+		if typ.Ref.Heap.Kind == wasm.HeapAbs {
+			switch typ.Ref.Heap.Abs {
+			case wasm.HeapAny, wasm.HeapEq, wasm.HeapI31, wasm.HeapStruct, wasm.HeapArray, wasm.HeapNone:
+				out |= CoreFeatureGC
+			case wasm.HeapExn, wasm.HeapNoExn:
+				out |= CoreFeatureExceptionHandling
+			}
+		}
+		if typ.Ref.Heap.Kind == wasm.HeapTypeIndex || !typ.Ref.Nullable || typ.Ref.Exact {
+			out |= CoreFeatureTypedFunctionReferences
+		}
+		return out
 	case wasm.ValVec:
 		if wasm.EqualValType(typ, wasm.V128) {
 			return CoreFeatureSIMD
@@ -144,6 +156,16 @@ func requiredFeaturesForBodyBytes(body []byte) CoreFeatures {
 				out |= CoreFeatureSIMD
 			case 0x70, 0x6f:
 				out |= CoreFeatureReferenceTypes
+			case 0x6e, 0x71:
+				out |= CoreFeatureReferenceTypes | CoreFeatureGC
+			case 0x69, 0x74:
+				out |= CoreFeatureReferenceTypes | CoreFeatureExceptionHandling
+			case 0x63, 0x64:
+				heap, readErr := r.S33()
+				if readErr != nil {
+					break
+				}
+				out |= requiredFeaturesForHeapImmediate(heap)
 			default:
 				out |= CoreFeatureMultiValue
 				for first&0x80 != 0 {
@@ -153,6 +175,14 @@ func requiredFeaturesForBodyBytes(body []byte) CoreFeatures {
 					}
 				}
 			}
+			continue
+		}
+		if op == 0xd0 {
+			heap, readErr := r.S33()
+			if readErr != nil {
+				break
+			}
+			out |= requiredFeaturesForHeapImmediate(heap)
 			continue
 		}
 		imm, err := wasm.ClassifyInstructionImmediate(r, op)
@@ -182,6 +212,21 @@ func requiredFeaturesForBodyBytes(body []byte) CoreFeatures {
 		}
 		if imm.Kind == wasm.InstrCallIndirect && imm.Index2 != 0 {
 			out |= CoreFeatureReferenceTypes
+		}
+	}
+	return out
+}
+
+func requiredFeaturesForHeapImmediate(heap int64) CoreFeatures {
+	out := CoreFeatureReferenceTypes
+	switch heap {
+	case -18, -15: // any / none
+		out |= CoreFeatureGC
+	case -23, -12: // exn / noexn
+		out |= CoreFeatureExceptionHandling
+	default:
+		if heap >= 0 {
+			out |= CoreFeatureTypedFunctionReferences
 		}
 	}
 	return out
@@ -281,6 +326,14 @@ func requiredFeaturesForTypeDescriptors(types []ValueTypeDescriptor) CoreFeature
 		if typ.Ref.Heap.Defined || !typ.Ref.Nullable || typ.Ref.Exact {
 			out |= CoreFeatureTypedFunctionReferences
 		}
+		if !typ.Ref.Heap.Defined {
+			switch typ.Ref.Heap.Abstract {
+			case AbstractHeapAny, AbstractHeapEq, AbstractHeapI31, AbstractHeapStruct, AbstractHeapArray, AbstractHeapNone:
+				out |= CoreFeatureGC
+			case AbstractHeapExn, AbstractHeapNoExn:
+				out |= CoreFeatureExceptionHandling
+			}
+		}
 	}
 	return out
 }
@@ -290,6 +343,12 @@ func requiredFeaturesForPublicValTypes(types []ValType) CoreFeatures {
 	for _, typ := range types {
 		if isReferenceValType(typ) {
 			out |= CoreFeatureReferenceTypes
+		}
+		if typ == ValAnyRef {
+			out |= CoreFeatureGC
+		}
+		if typ == ValExnRef {
+			out |= CoreFeatureExceptionHandling
 		}
 		if typ == ValV128 {
 			out |= CoreFeatureSIMD

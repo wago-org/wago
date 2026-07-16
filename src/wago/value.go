@@ -68,6 +68,11 @@ func (v Value) String() string {
 			return "externref(null)"
 		}
 		return "externref(opaque)"
+	case ValAnyRef, ValExnRef:
+		if v.bits == 0 {
+			return v.typ.String() + "(null)"
+		}
+		return v.typ.String() + "(unsupported-non-null)"
 	case ValI32:
 		return fmt.Sprintf("i32(%d)", v.I32())
 	default:
