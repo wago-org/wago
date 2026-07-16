@@ -331,11 +331,15 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   0 allocs/op. Iteration 63 executes the separate 185-byte finality leader. Its open and final `() -> ()` descriptors
   remain identity-distinct in both directions for `call_indirect` and `ref.cast`, closing two signature and two cast traps.
   The product owns 224 descriptor bytes and a 72-byte table image, emits 1,257 code bytes, produces a 1,555-byte codec
-  artifact, and measures allocation-free post-trap local recovery at 37.71–38.02 ns/op. All twenty-five admitted leaders
-  leave `Instance.gc` nil. Codec reload inherits no product
-  marker, and guard/public/arm64/snapshot admission remains closed. Accounting is 25 passed modules / 20 passed assertions /
-  20 gates / 28 blocked dependents / 24 invalid / 8 unlinkable obligations. General frame roots, object-valued mutable/
-  reference globals, typed-table/linking/non-flat-export products, public family admission, and broader platforms remain.
+  artifact, and measures allocation-free post-trap local recovery at 37.71–38.02 ns/op. Iteration 64 executes the separate
+  186-byte typed-table leader. Its fixed nullable `$t1` table accepts exact `$t1` and subtype `$t2` descriptors under
+  `$t2 <: $t1 <: $t0`, executes five widening/exact indirect calls, and preserves two narrowing/unrelated signature traps.
+  It owns 192 descriptor bytes and a 72-byte table image, emits 1,431 code bytes, produces a 1,790-byte codec artifact,
+  and measures 49.16–52.61 ns/op at 0 B/op / 0 allocs/op. All twenty-six admitted leaders leave `Instance.gc` nil.
+  Codec reload inherits no product marker, and guard/public/arm64/snapshot admission remains closed. Accounting is
+  26 passed modules / 23 passed assertions / 19 gates / 25 blocked dependents / 24 invalid / 8 unlinkable obligations.
+  General frame roots, object-valued mutable/reference globals, linking/non-flat-export products, broader typed-table
+  ownership, public family admission, and broader platforms remain.
 - [ ] Reach zero unexplained failures/skips in the official Release 3 core suite.
 
 **Engine & performance** (no-ir-plan P1–P7, measured against P1's stats)
