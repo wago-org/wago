@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strings"
 	"testing"
@@ -309,25 +310,36 @@ func replayStagedGCTypeSubtypingScript(t *testing.T, tmp string, script stagedSp
 				delta.Counts.BlockedCommands++
 				continue
 			}
-			if currentInstance == nil || cmd.Type != "assert_return" || len(cmd.Action.Args) != 0 || len(cmd.Expected) != 1 || cmd.Expected[0].Type != "i32" {
+			if currentInstance == nil || cmd.Type != "assert_return" || len(cmd.Action.Args) != 0 || len(cmd.Expected) == 0 || len(cmd.Expected) > 8 {
 				delta.Counts.Failures++
-				t.Errorf("gc/type-subtyping.wast:%d admitted action is outside the exact single-result ref.test contract", cmd.Line)
+				t.Errorf("gc/type-subtyping.wast:%d admitted action is outside the exact bounded function ref.test contract", cmd.Line)
 				continue
 			}
-			var want string
-			if err := json.Unmarshal(cmd.Expected[0].Value, &want); err != nil || (want != "0" && want != "1") {
-				delta.Counts.Failures++
-				t.Errorf("gc/type-subtyping.wast:%d expected result = %s, %v", cmd.Line, cmd.Expected[0].Value, err)
-				continue
+			wantBits := make([]uint64, len(cmd.Expected))
+			valid := true
+			for i, expected := range cmd.Expected {
+				var want string
+				if expected.Type != "i32" {
+					valid = false
+					break
+				}
+				if err := json.Unmarshal(expected.Value, &want); err != nil || (want != "0" && want != "1") {
+					valid = false
+					break
+				}
+				if want == "1" {
+					wantBits[i] = 1
+				}
 			}
-			wantBits := uint64(0)
-			if want == "1" {
-				wantBits = 1
+			if !valid {
+				delta.Counts.Failures++
+				t.Errorf("gc/type-subtyping.wast:%d expected results are outside the exact i32 boolean contract: %+v", cmd.Line, cmd.Expected)
+				continue
 			}
 			got, err := currentInstance.Invoke(cmd.Action.Field)
-			if err != nil || len(got) != 1 || got[0] != wantBits {
+			if err != nil || !reflect.DeepEqual(got, wantBits) {
 				delta.Counts.Failures++
-				t.Errorf("gc/type-subtyping.wast:%d invoke %s = %v, %v; want %s", cmd.Line, cmd.Action.Field, got, err, want)
+				t.Errorf("gc/type-subtyping.wast:%d invoke %s = %v, %v; want %v", cmd.Line, cmd.Action.Field, got, err, wantBits)
 				continue
 			}
 			delta.Counts.AssertionsPassed++
@@ -413,7 +425,7 @@ func TestStagedOfficialGCTypeSubtypingAccounting(t *testing.T) {
 	tmp := stagedOfficialTypedReferenceJSON(t, "gc/type-subtyping", &script)
 	delta := replayStagedGCTypeSubtypingScript(t, tmp, script)
 	counts := delta.Counts
-	if counts.Commands != 170 || counts.ModulesPassed != 18 || counts.AssertionsPassed != 4 || counts.ExpectedInvalid != 24 || counts.ExpectedMalformed != 0 || counts.ExpectedUnlinkable != 0 || counts.ExpectedUninstantiable != 0 || counts.ExpectedFeatureRejects != 27 || counts.BlockedCommands != 44 || counts.UnexpectedCompileRejects != 0 || counts.UnexpectedLinkRejects != 0 || counts.Failures != 0 {
+	if counts.Commands != 170 || counts.ModulesPassed != 21 || counts.AssertionsPassed != 7 || counts.ExpectedInvalid != 24 || counts.ExpectedMalformed != 0 || counts.ExpectedUnlinkable != 0 || counts.ExpectedUninstantiable != 0 || counts.ExpectedFeatureRejects != 24 || counts.BlockedCommands != 41 || counts.UnexpectedCompileRejects != 0 || counts.UnexpectedLinkRejects != 0 || counts.Failures != 0 {
 		t.Fatalf("staged gc/type-subtyping accounting has hidden or changed gaps: %+v", counts)
 	}
 	admitted := 0
@@ -422,7 +434,7 @@ func TestStagedOfficialGCTypeSubtypingAccounting(t *testing.T) {
 			admitted++
 		}
 	}
-	if len(delta.Leaders) != 45 || admitted != 18 || len(delta.Invalids) != 24 || len(delta.Unlinkables) != 8 || len(stagedGCTypeSubtypingValidValidatorGapLines) != 0 || len(stagedGCTypeSubtypingInvalidValidatorGapLines) != 0 {
+	if len(delta.Leaders) != 45 || admitted != 21 || len(delta.Invalids) != 24 || len(delta.Unlinkables) != 8 || len(stagedGCTypeSubtypingValidValidatorGapLines) != 0 || len(stagedGCTypeSubtypingInvalidValidatorGapLines) != 0 {
 		t.Fatalf("staged gc/type-subtyping inventory changed: leaders=%d admitted=%d invalids=%d unlinkables=%d valid-validator-gaps=%d invalid-validator-gaps=%d", len(delta.Leaders), admitted, len(delta.Invalids), len(delta.Unlinkables), len(stagedGCTypeSubtypingValidValidatorGapLines), len(stagedGCTypeSubtypingInvalidValidatorGapLines))
 	}
 	got, err := json.MarshalIndent(delta, "", "  ")
