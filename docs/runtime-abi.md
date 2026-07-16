@@ -322,6 +322,24 @@ no live local ref crosses allocation. `gcRefTestTableState` remains 200 bytes an
 inherit no equality product, checked roots, or live compact identities. This remains an exact scheduling
 proof, not general native frame publication.
 
+Iteration 50 adds one non-allocating parked reference-cast helper. Its copied ABI is three input words —
+the original 64-bit internal reference word, signed heap target, and nullable flag — plus one output word.
+Successful casts return the input word byte-for-byte. A valid dynamic mismatch raises trap code 18
+(`cast failure`); `ref.as_non_null` remains trap code 16 (`null reference`). Stale/forged/closed compact
+objects and forged foreign-any words remain helper errors, not semantic cast traps. The helper consumes
+collector classification and optional canonical representatives but does not allocate, collect, mutate a
+root, or expose a payload pointer.
+
+The abstract official product reuses one ten-slot checked anyref table and the fixed eight-entry extern
+conversion owner. Null/i31/object compact words and the high-word foreign-any identity retain their
+separate ownership categories through casts. The concrete product reuses the twenty-slot object table and
+collector-bound canonical representative map. In both products every allocation is stored before another
+may-collect helper; all subsequent casts are non-collecting and their results are immediately dropped.
+Consequently no live local ref crosses allocation and no native frame chain is published. Sidecars remain
+`gcRefTestTableState=200`, `gcExternConversionState=480` for the abstract product, and lazy
+`instancePluginState=144`; fixed runtime layouts do not grow. Codec v27 serializes no cast admission,
+canonical map, conversion identity, checked root, compact table identity, or live collector state.
+
 ## Global coherence invariant
 
 The global cell is the sole host- and cross-instance-visible storage for a

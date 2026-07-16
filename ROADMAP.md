@@ -267,7 +267,15 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   Tiny heap repeats initialization 100 times, retains exactly four objects, rejects forged/OOB writes
   atomically, and executes all 81 comparisons. Accounting is gap-free at 90 commands / 1 module / 81
   assertions / 6 invalid / 0 gates / 0 blocked. Stable i31 equality measures 45.53–49.41 ns/op, 0 B/op,
-  0 allocs/op. General frame roots, object-valued mutable/reference globals, casts/branches, bulk arrays,
+  0 allocs/op. Iteration 50 pins and closes both `gc/ref_cast.wast` leaders at 380 and 512 bytes. A new
+  allocation-free collector cast primitive reuses dynamic classification, preserves the original compact
+  identity on success, and distinguishes the exact `cast failure` trap from null-reference traps and
+  stale/forged ownership errors. The abstract leader reuses the ten-slot anyref table plus fixed extern
+  conversion owner; the concrete leader reuses the twenty-slot rooted table plus canonical representatives.
+  Tiny48 repeats the abstract initializer 100 times with exactly two live objects; Tiny256 retains the
+  concrete leader's eight objects. Accounting is gap-free at 47 commands / 2 modules / 40 assertions /
+  3 actions / 0 gates / 0 blocked. Stable parked i31 casting measures 177.9–183.8 ns/op, 0 B/op, and
+  0 allocs/op. General frame roots, object-valued mutable/reference globals, cast branches, bulk arrays,
   type-subtyping, public family admission, and broader platform products remain.
 - [ ] Reach zero unexplained failures/skips in the official Release 3 core suite.
 
