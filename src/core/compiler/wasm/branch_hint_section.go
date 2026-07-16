@@ -83,10 +83,10 @@ func validateBranchHints(m *Module) error {
 			for r.Offset() < want {
 				op, err := r.Byte()
 				if err != nil {
-					return err
+					return &DecodeError{Code: ErrInvalidSection}
 				}
 				if err := SkipInstructionImmediate(r, op); err != nil {
-					return err
+					return &DecodeError{Code: ErrInvalidSection}
 				}
 			}
 			if r.Offset() != want {
@@ -100,7 +100,7 @@ func validateBranchHints(m *Module) error {
 				return &DecodeError{Code: ErrInvalidSection}
 			}
 			if err := SkipInstructionImmediate(r, op); err != nil {
-				return err
+				return &DecodeError{Code: ErrInvalidSection}
 			}
 		}
 	}

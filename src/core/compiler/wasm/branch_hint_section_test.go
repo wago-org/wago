@@ -104,6 +104,34 @@ func TestDecodeBranchHintSectionRejectsMalformedMetadata(t *testing.T) {
 	}
 }
 
+func TestValidateBranchHintsReportsMalformedOffsetsAsInvalidSection(t *testing.T) {
+	cases := []struct {
+		name   string
+		body   []byte
+		offset uint32
+	}{
+		{"past body", []byte{0x0b}, 2},
+		{"truncated skipped immediate", []byte{0x41}, 2},
+		{"truncated target immediate", []byte{0x0d}, 0},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := Module{
+				Code: []Func{{BodyBytes: tc.body}},
+				BranchHints: []FuncBranchHints{{
+					FuncIndex: 0,
+					Hints:     []BranchHint{{Offset: tc.offset}},
+				}},
+			}
+			err := validateBranchHints(&m)
+			var de *DecodeError
+			if !errors.As(err, &de) || de.Code != ErrInvalidSection {
+				t.Fatalf("validateBranchHints error = %v, want invalid section", err)
+			}
+		})
+	}
+}
+
 func BenchmarkDecodeModuleByteBackedBranchHint(b *testing.B) {
 	withoutHint := branchHintModule(section(secCustom, 0x01, 'x'))
 	withHint := branchHintModule(branchHintCustom(branchHintPayload(0, 3, 1)))
