@@ -12,7 +12,7 @@ import (
 // the public compile/instantiate/invoke API. The backend corpus test covers
 // lowering breadth; these cases also cover the runtime handoff and native call
 // paths with pinned, independently useful results.
-func TestCorpusExecutionCoverage(t *testing.T) {
+func TestCorpusExecution(t *testing.T) {
 	cases := []struct {
 		file, init, export string
 		args               []uint64

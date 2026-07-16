@@ -1,9 +1,10 @@
 package wago
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
 
-// Register a test plugin once for the whole package test binary (init runs once,
-// so this is safe under -count=N).
 func init() {
 	RegisterExtension("test.triple.plugin", func() Extension { return tripleExt{} })
 }
@@ -65,5 +66,14 @@ func TestUsePluginAndHostImports(t *testing.T) {
 	hi["env.f"] = nil
 	if rt.HostImports()["env.f"] == nil {
 		t.Fatal("HostImports returned a live reference, not a copy")
+	}
+}
+
+func TestHostEnvironmentGuestArgsHelpers(t *testing.T) {
+	before := GuestArgs()
+	t.Cleanup(func() { SetGuestArgs(before) })
+	SetGuestArgs([]string{"module.wasm", "one", "two"})
+	if got := (&HostEnvironment{}).GuestArgs(); !slices.Equal(got, []string{"module.wasm", "one", "two"}) {
+		t.Fatalf("HostEnvironment.GuestArgs = %v", got)
 	}
 }
