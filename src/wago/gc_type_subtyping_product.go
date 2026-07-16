@@ -29,6 +29,8 @@ const (
 	stagedGCTypeSubtypingFinalityLinkConsumer
 	stagedGCTypeSubtypingStructLinkProvider
 	stagedGCTypeSubtypingStructLinkConsumer
+	stagedGCTypeSubtypingStructProjectionLinkProvider
+	stagedGCTypeSubtypingStructProjectionLinkConsumer
 )
 
 func (p stagedGCTypeSubtypingProduct) usesRefTest() bool {
