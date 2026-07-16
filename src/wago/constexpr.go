@@ -70,8 +70,14 @@ func evalConstExprBytes(b []byte, want wasm.ValType) (constExprResult, error) {
 }
 
 func evalConstExprBytesWithModule(b []byte, want wasm.ValType, m *wasm.Module) (constExprResult, error) {
-	if isI31RefType(want) {
-		return evalI31ConstExprBytes(b, want)
+	if isI31RefType(want) || isAnyRefType(want) {
+		got, matched, err := evalI31ConstExprBytes(b, want, m)
+		if matched {
+			return got, err
+		}
+		if isI31RefType(want) {
+			return constExprResult{}, fmt.Errorf("unsupported i31 const expression")
+		}
 	}
 	r := wasm.NewReader(b)
 	op, err := r.Byte()
@@ -208,41 +214,66 @@ func isI31RefType(t wasm.ValType) bool {
 	return t.Kind == wasm.ValRef && t.Ref.Heap.Kind == wasm.HeapAbs && t.Ref.Heap.Abs == wasm.HeapI31
 }
 
-func evalI31ConstExprBytes(b []byte, want wasm.ValType) (constExprResult, error) {
+func isAnyRefType(t wasm.ValType) bool {
+	return t.Kind == wasm.ValRef && t.Ref.Heap.Kind == wasm.HeapAbs && t.Ref.Heap.Abs == wasm.HeapAny
+}
+
+func evalI31ConstExprBytes(b []byte, want wasm.ValType, m *wasm.Module) (constExprResult, bool, error) {
 	r := wasm.NewReader(b)
 	op, err := r.Byte()
 	if err != nil {
-		return constExprResult{}, err
+		return constExprResult{}, false, err
 	}
-	if op != 0x41 {
-		return constExprResult{}, fmt.Errorf("unsupported i31 const expression opcode 0x%02x", op)
-	}
-	v, err := r.I32()
-	if err != nil {
-		return constExprResult{}, err
+	got := constExprResult{GlobalIndex: -1, FuncIndex: -1}
+	switch op {
+	case 0x41:
+		v, err := r.I32()
+		if err != nil {
+			return constExprResult{}, true, err
+		}
+		got.bits = uint64(uint32(v)<<1 | 1)
+	case 0x23:
+		index, err := r.U32()
+		if err != nil {
+			return constExprResult{}, true, err
+		}
+		if m == nil {
+			return constExprResult{}, true, fmt.Errorf("unsupported i31 const expression global.get %d", index)
+		}
+		gt, ok := m.GlobalTypeByIndex(index)
+		if !ok || gt.Mutable || !wasm.EqualValType(gt.Type, wasm.I32) {
+			return constExprResult{}, true, fmt.Errorf("unsupported i31 const expression global.get %d", index)
+		}
+		got.Expr = append([]byte(nil), b...)
+	default:
+		return constExprResult{}, false, nil
 	}
 	prefix, err := r.Byte()
 	if err != nil {
-		return constExprResult{}, err
+		return constExprResult{}, true, err
 	}
 	if prefix != 0xfb {
-		return constExprResult{}, fmt.Errorf("unsupported i31 const expression opcode 0x%02x", prefix)
+		return constExprResult{}, false, nil
 	}
 	sub, err := r.U32()
 	if err != nil {
-		return constExprResult{}, err
+		return constExprResult{}, true, err
 	}
 	if sub != 28 {
-		return constExprResult{}, fmt.Errorf("unsupported i31 const expression 0xfb %d", sub)
+		return constExprResult{}, false, nil
 	}
 	end, err := r.Byte()
 	if err != nil {
-		return constExprResult{}, fmt.Errorf("i31 const expression missing end: %w", err)
+		return constExprResult{}, true, fmt.Errorf("i31 const expression missing end: %w", err)
 	}
 	if end != 0x0b || r.BytesLeft() != 0 {
-		return constExprResult{}, fmt.Errorf("i31 const expression has trailing bytes")
+		return constExprResult{}, true, fmt.Errorf("i31 const expression has trailing bytes")
 	}
-	return constExprResult{bits: uint64(uint32(v)<<1 | 1), vtype: want, GlobalIndex: -1, FuncIndex: -1}, nil
+	got.vtype = wasm.RefVal(wasm.Ref(false, wasm.AbsHeap(wasm.HeapI31), false))
+	if !constExprTypeMatches(got.vtype, want, m) {
+		return constExprResult{}, true, fmt.Errorf("const expression type %s, want %s", got.vtype, want)
+	}
+	return got, true, nil
 }
 
 func constExprTypeMatches(actual, required wasm.ValType, m *wasm.Module) bool {
@@ -476,6 +507,10 @@ func wasmScalarValType(t ValType) (wasm.ValType, bool) {
 }
 
 func validateCompiledScalarConstExpr(b []byte, want ValType, defs []GlobalDef, globalLimit int) error {
+	if want == ValI31Ref {
+		_, err := evalCompiledI31ConstExpr(b, nil, defs, globalLimit)
+		return err
+	}
 	wasmWant, ok := wasmScalarValType(want)
 	if !ok {
 		return fmt.Errorf("extended const expression has unsupported result type %s", want)
@@ -496,6 +531,9 @@ func validateCompiledScalarConstExpr(b []byte, want ValType, defs []GlobalDef, g
 }
 
 func evalCompiledScalarConstExpr(b []byte, want ValType, globals []*Global, defs []GlobalDef, globalLimit int) (uint64, error) {
+	if want == ValI31Ref {
+		return evalCompiledI31ConstExpr(b, globals, defs, globalLimit)
+	}
 	wasmWant, ok := wasmScalarValType(want)
 	if !ok {
 		return 0, fmt.Errorf("extended const expression has unsupported result type %s", want)
@@ -513,4 +551,39 @@ func evalCompiledScalarConstExpr(b []byte, want ValType, globals []*Global, defs
 	}
 	bits, _, err := evalScalarConstExprProgram(b, wasmWant, resolve)
 	return bits, err
+}
+
+func evalCompiledI31ConstExpr(b []byte, globals []*Global, defs []GlobalDef, globalLimit int) (uint64, error) {
+	r := wasm.NewReader(b)
+	op, err := r.Byte()
+	if err != nil || op != 0x23 {
+		return 0, fmt.Errorf("i31 initializer requires imported immutable i32 global.get")
+	}
+	index, err := r.U32()
+	if err != nil {
+		return 0, err
+	}
+	i := int(index)
+	if i < 0 || i >= globalLimit || i >= len(defs) || defs[i].Mutable || defs[i].Type != ValI32 {
+		return 0, fmt.Errorf("i31 initializer global.get %d is unavailable or not immutable i32", index)
+	}
+	prefix, err := r.Byte()
+	if err != nil || prefix != 0xfb {
+		return 0, fmt.Errorf("i31 initializer missing ref.i31")
+	}
+	sub, err := r.U32()
+	if err != nil || sub != 28 {
+		return 0, fmt.Errorf("i31 initializer has unsupported 0xfb opcode %d", sub)
+	}
+	end, err := r.Byte()
+	if err != nil || end != 0x0b || r.BytesLeft() != 0 {
+		return 0, fmt.Errorf("i31 initializer has invalid end")
+	}
+	if globals == nil {
+		return 0, nil
+	}
+	if i >= len(globals) || globals[i] == nil {
+		return 0, fmt.Errorf("i31 initializer global.get %d has no runtime cell", index)
+	}
+	return uint64(uint32(readGlobalObject(globals[i], ValI32))<<1 | 1), nil
 }

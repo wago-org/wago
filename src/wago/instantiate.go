@@ -612,6 +612,16 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			}
 			clear(entry)
 			return nil
+		case ValI31Ref:
+			if value.Null {
+				clear(entry)
+				return nil
+			}
+			if value.FuncIndex&1 == 0 || len(entry) < 8 {
+				return fmt.Errorf("i31 element contains an invalid immediate")
+			}
+			binary.LittleEndian.PutUint64(entry, uint64(value.FuncIndex))
+			return nil
 		case ValFuncRef:
 			if writeTableEntry == nil {
 				return fmt.Errorf("funcref element has no descriptor arena")
@@ -790,11 +800,21 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			}
 			if def.HasInitFunc {
 				if entryBytes != runtime.TableEntryBytes || writeTableEntry == nil {
-					return nil, fmt.Errorf("table %d has a funcref initializer with externref storage", tableIndex)
+					return nil, fmt.Errorf("table %d has a funcref initializer with compact-reference storage", tableIndex)
 				}
 				for slot := 0; slot < size; slot++ {
 					off := 8 + slot*entryBytes
 					writeTableEntry(desc[off:off+entryBytes], def.InitFunc)
+				}
+			}
+			if init := c.memoryDir.gcI31TableInit; init != nil && int(init.TableIndex) == tableIndex {
+				if entryBytes != 8 || int(init.GlobalIndex) >= len(globalCells) || int(init.GlobalIndex) >= len(c.Globals) || globalCells[init.GlobalIndex] == nil || c.Globals[init.GlobalIndex].Type != ValI32 {
+					return nil, fmt.Errorf("table %d has an invalid staged i31 initializer", tableIndex)
+				}
+				bits := uint64(uint32(readGlobalObject(globalCells[init.GlobalIndex], ValI32))<<1 | 1)
+				for slot := 0; slot < size; slot++ {
+					off := 8 + slot*entryBytes
+					binary.LittleEndian.PutUint64(desc[off:off+entryBytes], bits)
 				}
 			}
 			if tableIndex == 0 {
@@ -875,10 +895,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			if len(el.Values) == 0 {
 				continue
 			}
-			entryBytes := runtime.TableEntryBytes
-			if normalizedElemRefType(el.RefType) == ValExternRef {
-				entryBytes = 8
-			}
+			entryBytes := elemEntryBytes(el.RefType)
 			entries := ar.Alloc(entryBytes * len(el.Values))
 			for k, value := range el.Values {
 				if err := writeElemEntry(entries[k*entryBytes:(k+1)*entryBytes], el.RefType, value); err != nil {

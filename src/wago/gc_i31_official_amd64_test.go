@@ -236,6 +236,10 @@ func replayStagedGCI31Script(t *testing.T, tmp string, script stagedSpecScript) 
 			}
 			currentModule = stagedSpecModule{in: in, c: c}
 			live = append(live, currentModule)
+			if pin.Class != stagedGCI31Env && in.gc != nil {
+				counts.Failures++
+				t.Errorf("gc/i31.wast:%d product %s allocated a collector", cmd.Line, pin.Filename)
+			}
 			if cmd.Name != "" {
 				named[cmd.Name] = currentModule
 			}
@@ -343,7 +347,7 @@ func TestStagedOfficialGCI31Accounting(t *testing.T) {
 	var script stagedSpecScript
 	tmp := stagedOfficialTypedReferenceJSON(t, "gc/i31", &script)
 	counts, leaders, gateCounts := replayStagedGCI31Script(t, tmp, script)
-	if counts.Commands != 80 || counts.ModulesPassed != 2 || counts.AssertionsPassed != 22 || counts.ExpectedFeatureRejects != 5 || counts.BlockedCommands != 43 || counts.ExpectedInvalid != 0 || counts.ExpectedMalformed != 0 || counts.Failures != 0 || counts.UnexpectedCompileRejects != 0 || counts.UnexpectedLinkRejects != 0 {
+	if counts.Commands != 80 || counts.ModulesPassed != 7 || counts.AssertionsPassed != 65 || counts.ExpectedFeatureRejects != 0 || counts.BlockedCommands != 0 || counts.ExpectedInvalid != 0 || counts.ExpectedMalformed != 0 || counts.Failures != 0 || counts.UnexpectedCompileRejects != 0 || counts.UnexpectedLinkRejects != 0 {
 		t.Fatalf("staged gc/i31 accounting has hidden or changed gaps: %+v", counts)
 	}
 	gateNames := make([]string, 0, len(gateCounts))

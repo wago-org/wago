@@ -513,8 +513,8 @@ const (
 )
 
 // RefInit is one typed element initializer. Null is explicit so ref.null never
-// aliases an ordinary uint32 function index. Non-null initializers are ref.func
-// and therefore valid only for a funcref segment.
+// aliases an ordinary uint32 payload. Funcref segments interpret FuncIndex as a
+// function index; exact i31 segments interpret it as the tagged compact immediate.
 type RefInit struct {
 	FuncIndex uint32
 	Null      bool
@@ -601,12 +601,13 @@ type compiledMemoryDirectory struct {
 	exactExports bool
 	staged       bool // internal multi-memory execution gate; never serialized
 
-	stagedMemory64  bool                 // internal bounded memory64 execution gate; never serialized
-	gcStructGlobals []gcStructGlobalInit // exact staged GC constant initializers; never serialized
-	gcArrayGlobals  []gcArrayGlobalInit  // exact staged bounded numeric array globals; never serialized
-	gcArrayElement  *gcArrayElementInit  // exact passive GC element constructors; never serialized
-	ehTags          []compiledTagDef     // staged EH product metadata in tag-index order; never serialized
-	ehTagExports    map[string]int       // exact tag export name -> tag index; never serialized
+	stagedMemory64  bool                   // internal bounded memory64 execution gate; never serialized
+	gcStructGlobals []gcStructGlobalInit   // exact staged GC constant initializers; never serialized
+	gcArrayGlobals  []gcArrayGlobalInit    // exact staged bounded numeric array globals; never serialized
+	gcArrayElement  *gcArrayElementInit    // exact passive GC element constructors; never serialized
+	gcI31TableInit  *gcI31TableInitializer // exact imported-global i31 table initializer; never serialized
+	ehTags          []compiledTagDef       // staged EH product metadata in tag-index order; never serialized
+	ehTagExports    map[string]int         // exact tag export name -> tag index; never serialized
 }
 
 // GlobalDef is the compact instantiate-time metadata for one wasm global.

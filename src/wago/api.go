@@ -1048,6 +1048,13 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 		return nil, fmt.Errorf("type metadata: %w", err)
 	}
 	c := &Compiled{Code: code, Entry: entry, InternalEntry: internalEntry, NumImports: importedFuncs, Types: types, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, memoryDir: &compiledMemoryDirectory{exports: map[string]int{}, exactExports: true, staged: features.MultiMemory && m.MemCount() > 1, stagedMemory64: features.Memory64 && usesMemory64}, boundsMode: boundsMode, stagedTable64: features.Table64 && usesTable64, GCTypeDescs: gcDescs, requiredFeatures: moduleRequiredFeatures(m), dynamicImports: importedFuncs > 0}
+	if gcI31Product == stagedGCI31ProductTableGlobalInitializer {
+		init, err := stagedGCI31TableInitializer(m)
+		if err != nil {
+			return nil, fmt.Errorf("compile: staged i31 table initializer: %w", err)
+		}
+		c.memoryDir.gcI31TableInit = init
+	}
 	if gcStructProduct != 0 {
 		gcGlobals, err := stagedGCStructGlobalInitializers(m)
 		if err != nil {
@@ -1286,6 +1293,9 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 	for i := range m.Tables {
 		tableIndex := importedTables + i
 		if m.Tables[i].Init == nil {
+			continue
+		}
+		if c.memoryDir.gcI31TableInit != nil && c.memoryDir.gcI31TableInit.TableIndex == uint32(tableIndex) {
 			continue
 		}
 		payload, err := funcrefExprPayload(*m.Tables[i].Init)
@@ -1579,6 +1589,22 @@ func elementPayloads(m *wasm.Module, types []DefinedTypeDescriptor, e *wasm.Elem
 		}
 		out := make([]RefInit, len(e.Kind.Exprs))
 		for i, ex := range e.Kind.Exprs {
+			if refType == ValI31Ref {
+				body := ex.BodyBytes
+				if len(body) == 0 {
+					var err error
+					body, err = wasm.EncodeExpr(ex)
+					if err != nil {
+						return 0, ValueTypeDescriptor{}, nil, fmt.Errorf("expression %d encode: %w", i, err)
+					}
+				}
+				result, matched, err := evalI31ConstExprBytes(body, wasm.RefVal(e.Kind.Ref), m)
+				if err != nil || !matched || result.bits == 0 || result.bits>>32 != 0 || uint32(result.bits)&1 == 0 {
+					return 0, ValueTypeDescriptor{}, nil, fmt.Errorf("expression %d is not an exact i31 initializer: %v", i, err)
+				}
+				out[i] = RefInit{FuncIndex: uint32(result.bits)}
+				continue
+			}
 			payload, err := wasm.ParseElementExpr(ex)
 			if err != nil {
 				return 0, ValueTypeDescriptor{}, nil, fmt.Errorf("expression %d: %w", i, err)
@@ -2165,7 +2191,7 @@ func (c *Compiled) validate() error {
 	if len(c.extraTables) > 0 && !c.HasTable {
 		return fmt.Errorf("compiled metadata invalid: %d extra table(s) without table 0", len(c.extraTables))
 	}
-	if c.HasTable && c.TableType != 0 && c.TableType != ValFuncRef && c.TableType != ValExternRef {
+	if c.HasTable && c.TableType != 0 && c.TableType != ValFuncRef && c.TableType != ValExternRef && c.TableType != ValI31Ref && c.TableType != ValAnyRef {
 		return fmt.Errorf("compiled metadata invalid: table 0 element type %s is unsupported", c.TableType)
 	}
 	for i, table := range c.extraTables {
@@ -2175,7 +2201,7 @@ func (c *Compiled) validate() error {
 		if table.Max != 0 && table.Max < uint64(table.Size) {
 			return fmt.Errorf("compiled metadata invalid: table %d maximum %d < size %d", i+1, table.Max, table.Size)
 		}
-		if table.Type != 0 && table.Type != ValFuncRef && table.Type != ValExternRef {
+		if table.Type != 0 && table.Type != ValFuncRef && table.Type != ValExternRef && table.Type != ValI31Ref && table.Type != ValAnyRef {
 			return fmt.Errorf("compiled metadata invalid: table %d element type %s is unsupported", i+1, table.Type)
 		}
 		if table.Addr64 && !required.IsEnabled(CoreFeatureTable64) {
@@ -2404,7 +2430,7 @@ func (c *Compiled) validate() error {
 	}
 	validateElementValues := func(kind string, seg int, elem ElemInit) error {
 		refType := normalizedElemRefType(elem.RefType)
-		if refType != ValFuncRef && refType != ValExternRef && !(refType == ValAnyRef && len(elem.Values) == 0) {
+		if refType != ValFuncRef && refType != ValExternRef && refType != ValI31Ref && !(refType == ValAnyRef && len(elem.Values) == 0) {
 			return fmt.Errorf("compiled metadata invalid: %s element %d has unsupported reference type %s", kind, seg, refType)
 		}
 		required, err := c.elemExactType(elem)
@@ -2415,6 +2441,12 @@ func (c *Compiled) validate() error {
 			if value.Null {
 				if required.Kind != ValueTypeReference || !required.Ref.Nullable {
 					return fmt.Errorf("compiled metadata invalid: %s element %d value %d is null for a non-null type", kind, seg, k)
+				}
+				continue
+			}
+			if refType == ValI31Ref {
+				if value.FuncIndex&1 == 0 {
+					return fmt.Errorf("compiled metadata invalid: %s element %d value %d has invalid i31 immediate", kind, seg, k)
 				}
 				continue
 			}
@@ -2439,8 +2471,8 @@ func (c *Compiled) validate() error {
 		if uint64(el.TableIndex) >= uint64(c.tableCount()) {
 			return fmt.Errorf("compiled metadata invalid: active element %d table index %d out of range", seg, el.TableIndex)
 		}
-		if c.tableElementType(int(el.TableIndex)) != refType {
-			return fmt.Errorf("compiled metadata invalid: active element %d type %s does not match table %d type %s", seg, refType, el.TableIndex, c.tableElementType(int(el.TableIndex)))
+		if c.tableEntryBytes(int(el.TableIndex)) != elemEntryBytes(refType) {
+			return fmt.Errorf("compiled metadata invalid: active element %d type %s has incompatible table %d storage %s", seg, refType, el.TableIndex, c.tableElementType(int(el.TableIndex)))
 		}
 		elemExact, elemErr := c.elemExactType(el)
 		tableExact, tableErr := c.tableExactType(int(el.TableIndex))
@@ -2510,8 +2542,11 @@ func (c *Compiled) validateRuntimeReferenceGlobalMetadata() error {
 		if g.Type == ValFuncRef && g.Bits != 0 {
 			return fmt.Errorf("compiled metadata invalid: non-structural funcref global initializer at global %d is unsupported", i)
 		}
-		if (g.Type == ValAnyRef || g.Type == ValExnRef) && g.Bits != 0 {
+		if g.Type == ValExnRef && g.Bits != 0 {
 			return fmt.Errorf("compiled metadata invalid: non-null %s global initializer at global %d is unsupported", g.Type, i)
+		}
+		if g.Type == ValAnyRef && g.Bits != 0 && (g.Bits>>32 != 0 || uint32(g.Bits)&1 == 0) {
+			return fmt.Errorf("compiled metadata invalid: non-i31 anyref global initializer at global %d is unsupported", i)
 		}
 		if g.Type == ValI31Ref && g.Bits != 0 && (g.Bits>>32 != 0 || uint32(g.Bits)&1 == 0) {
 			return fmt.Errorf("compiled metadata invalid: invalid i31 global initializer at global %d", i)
@@ -2643,9 +2678,13 @@ func (c *Compiled) validateCodecMetadata() error {
 			}
 			refType := normalizedElemRefType(elem.RefType)
 			for j, value := range elem.Values {
-				if !value.Null && refType != ValFuncRef {
-					return fmt.Errorf("compiled metadata invalid: %s element %d value %d is non-null %s", kind, i, j, refType)
+				if value.Null || refType == ValFuncRef {
+					continue
 				}
+				if refType == ValI31Ref && value.FuncIndex&1 == 1 {
+					continue
+				}
+				return fmt.Errorf("compiled metadata invalid: %s element %d value %d is non-null %s", kind, i, j, refType)
 			}
 		}
 		return nil
@@ -2708,17 +2747,19 @@ func (c *Compiled) needsFuncRefDescs() bool {
 }
 
 func normalizedElemRefType(t ValType) ValType {
-	if t == ValExternRef || t == ValAnyRef {
+	if t == ValExternRef || t == ValAnyRef || t == ValI31Ref {
 		return t
 	}
 	return ValFuncRef
 }
 
 func normalizedTableElementType(t ValType) ValType {
-	if t == ValExternRef {
-		return ValExternRef
+	switch t {
+	case ValExternRef, ValAnyRef, ValI31Ref:
+		return t
+	default:
+		return ValFuncRef
 	}
-	return ValFuncRef
 }
 
 func (c *Compiled) tableElementType(index int) ValType {
@@ -2728,11 +2769,17 @@ func (c *Compiled) tableElementType(index int) ValType {
 	return normalizedTableElementType(c.extraTables[index-1].Type)
 }
 
-func (c *Compiled) tableEntryBytes(index int) int {
-	if c.tableElementType(index) == ValExternRef {
+func elemEntryBytes(t ValType) int {
+	switch normalizedElemRefType(t) {
+	case ValExternRef, ValAnyRef, ValI31Ref:
 		return 8
+	default:
+		return wruntime.TableEntryBytes
 	}
-	return wruntime.TableEntryBytes
+}
+
+func (c *Compiled) tableEntryBytes(index int) int {
+	return elemEntryBytes(c.tableElementType(index))
 }
 
 func (c *Compiled) hasFuncrefTable() bool {
