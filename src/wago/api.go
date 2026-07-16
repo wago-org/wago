@@ -856,7 +856,7 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 			return nil, fmt.Errorf("compile: staged collector-backed struct product: binary is outside the exact pinned product set")
 		}
 	}
-	if features.GCArrayProducts && gcStructProduct != stagedGCStructRefTestAbstract && gcStructProduct != stagedGCStructExtern {
+	if features.GCArrayProducts && gcStructProduct != stagedGCStructRefTestAbstract && gcStructProduct != stagedGCStructExtern && gcStructProduct != stagedGCStructRefEq {
 		if goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64" {
 			return nil, fmt.Errorf("compile: unsupported collector-backed array product staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
 		}
@@ -869,7 +869,7 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 			return nil, fmt.Errorf("compile: staged collector-backed array product: binary is outside the exact pinned product set")
 		}
 	}
-	if features.GCI31Products && gcStructProduct != stagedGCStructRefTestAbstract && gcStructProduct != stagedGCStructExtern {
+	if features.GCI31Products && gcStructProduct != stagedGCStructRefTestAbstract && gcStructProduct != stagedGCStructExtern && gcStructProduct != stagedGCStructRefEq {
 		if goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64" {
 			return nil, fmt.Errorf("compile: unsupported i31 product staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
 		}

@@ -822,7 +822,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			if tableIndex == 0 {
 				tableDesc = desc
 			}
-			if product := c.stagedGCStructProduct(); (product == stagedGCStructRefTestTable || product == stagedGCStructRefTestConcrete || product == stagedGCStructRefTestAbstract || product == stagedGCStructExtern) && tableIndex < len(gcRefTestDescriptors) {
+			if product := c.stagedGCStructProduct(); (product == stagedGCStructRefTestTable || product == stagedGCStructRefTestConcrete || product == stagedGCStructRefTestAbstract || product == stagedGCStructExtern || product == stagedGCStructRefEq) && tableIndex < len(gcRefTestDescriptors) {
 				gcRefTestDescriptors[tableIndex] = desc
 			}
 			if tableCount > 1 {
@@ -887,7 +887,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 				break
 			}
 		}
-		if product := c.stagedGCStructProduct(); initErr == nil && (product == stagedGCStructRefTestTable || product == stagedGCStructRefTestConcrete || product == stagedGCStructRefTestAbstract || product == stagedGCStructExtern) {
+		if product := c.stagedGCStructProduct(); initErr == nil && (product == stagedGCStructRefTestTable || product == stagedGCStructRefTestConcrete || product == stagedGCStructRefTestAbstract || product == stagedGCStructExtern || product == stagedGCStructRefEq) {
 			tableCount := c.tableCount()
 			valid := tableCount == 1 && c.tableEntryBytes(0) == 8
 			if product == stagedGCStructRefTestAbstract {
