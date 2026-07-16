@@ -154,8 +154,12 @@ func compileStagedGCRefTestAccounting(data []byte) (*Compiled, error) {
 	cfg := NewRuntimeConfig()
 	features := cfg.frontendFeatures()
 	features.TypedFunctionReferences = true
-	if product, ok := stagedGCStructExecutionProduct(data); ok && product == stagedGCStructRefTestConcrete {
+	if product, ok := stagedGCStructExecutionProduct(data); ok && (product == stagedGCStructRefTestConcrete || product == stagedGCStructRefTestAbstract) {
 		features.GCStructProducts = true
+		if product == stagedGCStructRefTestAbstract {
+			features.GCArrayProducts = true
+			features.GCI31Products = true
+		}
 	}
 	return compileWithFrontendFeatures(cfg, data, features)
 }

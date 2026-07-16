@@ -124,7 +124,7 @@ func stagedTypedReferenceGateList(counts map[string]int) []stagedTypedReferenceG
 	return out
 }
 
-func stagedOfficialTypedReferenceJSON(t *testing.T, base string, dst any) string {
+func stagedOfficialTypedReferenceJSON(t testing.TB, base string, dst any) string {
 	t.Helper()
 	checkout := filepath.Clean("../../tests/spec-v3")
 	suite, err := spectest.DiscoverRelease3(checkout)

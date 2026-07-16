@@ -22,6 +22,7 @@ type gcExternConversionEntry struct {
 	externWord uint64
 	ref        gc.Ref
 	rootSlot   uint32
+	uses       uint8
 	hasRoot    bool
 }
 
@@ -62,7 +63,7 @@ func (s *gcExternConversionState) anyFromExtern(extern uint64) (uint64, error) {
 	if extern == 0 {
 		return 0, nil
 	}
-	for i := uint8(0); i < s.count; i++ {
+	for i := range s.entries {
 		entry := &s.entries[i]
 		switch entry.kind {
 		case gcExternConversionData:
@@ -85,9 +86,14 @@ func (s *gcExternConversionState) anyFromExtern(extern uint64) (uint64, error) {
 	if err != nil {
 		return 0, err
 	}
-	s.entries[s.count] = gcExternConversionEntry{kind: gcExternConversionForeign, anyWord: anyWord, externWord: extern}
-	s.count++
-	return anyWord, nil
+	for i := range s.entries {
+		if s.entries[i].kind == 0 {
+			s.entries[i] = gcExternConversionEntry{kind: gcExternConversionForeign, anyWord: anyWord, externWord: extern}
+			s.count++
+			return anyWord, nil
+		}
+	}
+	return 0, fmt.Errorf("GC extern conversion capacity %d exhausted", maxGCExternConversions)
 }
 
 func (s *gcExternConversionState) externFromAny(anyWord uint64) (uint64, error) {
@@ -102,7 +108,7 @@ func (s *gcExternConversionState) externFromAny(anyWord uint64) (uint64, error) 
 	if anyWord == 0 {
 		return 0, nil
 	}
-	for i := uint8(0); i < s.count; i++ {
+	for i := range s.entries {
 		entry := &s.entries[i]
 		if entry.kind == gcExternConversionForeign && entry.anyWord == anyWord {
 			return entry.externWord, nil
@@ -120,7 +126,7 @@ func (s *gcExternConversionState) externFromAny(anyWord uint64) (uint64, error) 
 			return 0, fmt.Errorf("convert internal anyref: %w", err)
 		}
 	}
-	for i := uint8(0); i < s.count; i++ {
+	for i := range s.entries {
 		entry := &s.entries[i]
 		if entry.kind == gcExternConversionData && entry.ref == ref {
 			return entry.externWord, nil
@@ -141,9 +147,17 @@ func (s *gcExternConversionState) externFromAny(anyWord uint64) (uint64, error) 
 		}
 		entry.rootSlot, entry.hasRoot = slot, true
 	}
-	s.entries[s.count] = entry
-	s.count++
-	return externWord, nil
+	for i := range s.entries {
+		if s.entries[i].kind == 0 {
+			s.entries[i] = entry
+			s.count++
+			return externWord, nil
+		}
+	}
+	if entry.hasRoot {
+		_ = s.collector.SetTableSlot(entry.rootSlot, gc.Null())
+	}
+	return 0, fmt.Errorf("GC extern conversion capacity %d exhausted", maxGCExternConversions)
 }
 
 func (s *gcExternConversionState) isForeignAny(anyWord uint64) (bool, error) {
@@ -155,13 +169,82 @@ func (s *gcExternConversionState) isForeignAny(anyWord uint64) (bool, error) {
 	if s.closed {
 		return false, fmt.Errorf("GC extern conversion state is closed")
 	}
-	for i := uint8(0); i < s.count; i++ {
+	for i := range s.entries {
 		entry := &s.entries[i]
 		if entry.kind == gcExternConversionForeign && entry.anyWord == anyWord {
 			return true, nil
 		}
 	}
 	return false, nil
+}
+
+// replaceExtern transfers one extern-table slot from oldWord to newWord. Public
+// store tokens require no collector root. Internal data-conversion words retain
+// one bounded checked root per distinct live table value and are reclaimed when
+// their final slot is overwritten.
+func (s *gcExternConversionState) replaceExtern(oldWord, newWord uint64) error {
+	if s == nil {
+		return fmt.Errorf("GC extern conversion state is unavailable")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return fmt.Errorf("GC extern conversion state is closed")
+	}
+	if oldWord == newWord {
+		return s.validateExternWordLocked(newWord)
+	}
+	newEntry, err := s.dataEntryForExternLocked(newWord)
+	if err != nil {
+		return err
+	}
+	oldEntry, err := s.dataEntryForExternLocked(oldWord)
+	if err != nil {
+		return err
+	}
+	if oldEntry != nil && oldEntry.uses == 0 {
+		return fmt.Errorf("GC extern conversion ownership underflow")
+	}
+	if oldEntry != nil && oldEntry.uses == 1 && oldEntry.hasRoot {
+		if err := s.collector.SetTableSlot(oldEntry.rootSlot, gc.Null()); err != nil {
+			return err
+		}
+	}
+	if newEntry != nil {
+		if newEntry.uses == ^uint8(0) {
+			return fmt.Errorf("GC extern conversion ownership overflow")
+		}
+		newEntry.uses++
+	}
+	if oldEntry != nil {
+		oldEntry.uses--
+		if oldEntry.uses == 0 {
+			*oldEntry = gcExternConversionEntry{}
+			s.count--
+		}
+	}
+	return nil
+}
+
+func (s *gcExternConversionState) validateExternWordLocked(word uint64) error {
+	_, err := s.dataEntryForExternLocked(word)
+	return err
+}
+
+func (s *gcExternConversionState) dataEntryForExternLocked(word uint64) (*gcExternConversionEntry, error) {
+	if word == 0 {
+		return nil, nil
+	}
+	for i := range s.entries {
+		entry := &s.entries[i]
+		if entry.kind == gcExternConversionData && entry.externWord == word {
+			return entry, nil
+		}
+	}
+	if _, ok := s.store.resolveExternref(word); !ok {
+		return nil, fmt.Errorf("invalid or foreign externref token")
+	}
+	return nil, nil
 }
 
 func (s *gcExternConversionState) newOpaqueWordLocked(disallow uint64) (uint64, error) {
@@ -174,7 +257,7 @@ func (s *gcExternConversionState) newOpaqueWordLocked(disallow uint64) (uint64, 
 			continue
 		}
 		collision := false
-		for i := uint8(0); i < s.count; i++ {
+		for i := range s.entries {
 			entry := &s.entries[i]
 			if word == entry.anyWord || word == entry.externWord {
 				collision = true
@@ -198,7 +281,7 @@ func (s *gcExternConversionState) close() error {
 	}
 	s.closed = true
 	var first error
-	for i := uint8(0); i < s.count; i++ {
+	for i := range s.entries {
 		entry := &s.entries[i]
 		if entry.hasRoot {
 			if err := s.collector.SetTableSlot(entry.rootSlot, gc.Null()); err != nil && first == nil {

@@ -1239,7 +1239,7 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 		}
 		if p.feat.GCStructProducts {
 			switch imm.Kind {
-			case wasm.InstrStructNew, wasm.InstrStructNewDefault, wasm.InstrStructGet, wasm.InstrStructGetS, wasm.InstrStructGetU, wasm.InstrStructSet, wasm.InstrRefTest:
+			case wasm.InstrStructNew, wasm.InstrStructNewDefault, wasm.InstrStructGet, wasm.InstrStructGetS, wasm.InstrStructGetU, wasm.InstrStructSet, wasm.InstrRefTest, wasm.InstrAnyConvertExtern, wasm.InstrExternConvertAny:
 				return false, nil
 			}
 		}
@@ -1793,6 +1793,11 @@ func (p supportPass) instructionKind(k wasm.InstrKind, context string) error {
 	case wasm.InstrRefI31, wasm.InstrI31GetS, wasm.InstrI31GetU, wasm.InstrRefTest, wasm.InstrRefCast:
 		if !p.feat.GCI31Products {
 			return p.unsupported("reference instruction", k.String()+" (gc disabled)", context)
+		}
+		return nil
+	case wasm.InstrAnyConvertExtern, wasm.InstrExternConvertAny:
+		if !p.feat.GCStructProducts {
+			return p.unsupported("reference instruction", k.String()+" (gc extern conversion disabled)", context)
 		}
 		return nil
 	case wasm.InstrI32TruncSatF32S, wasm.InstrI32TruncSatF32U, wasm.InstrI32TruncSatF64S, wasm.InstrI32TruncSatF64U,

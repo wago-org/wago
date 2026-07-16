@@ -736,6 +736,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	}
 
 	var gcRefTestTable *gcRefTestTableState
+	var gcRefTestDescriptors [maxGCRefTestTables][]byte
 	// Table descriptors are [len u32][max u32][entry...]. Funcref entries retain
 	// their direct 32-byte call descriptor; externref entries are opaque 8-byte
 	// handles. Table 0 remains in the direct basedata slot. Multiple local tables
@@ -821,6 +822,9 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			if tableIndex == 0 {
 				tableDesc = desc
 			}
+			if product := c.stagedGCStructProduct(); (product == stagedGCStructRefTestTable || product == stagedGCStructRefTestConcrete || product == stagedGCStructRefTestAbstract) && tableIndex < len(gcRefTestDescriptors) {
+				gcRefTestDescriptors[tableIndex] = desc
+			}
 			if tableCount > 1 {
 				binary.LittleEndian.PutUint64(tableDir[tableIndex*8:], uint64(uintptr(unsafe.Pointer(&desc[0]))))
 			}
@@ -883,11 +887,16 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 				break
 			}
 		}
-		if product := c.stagedGCStructProduct(); initErr == nil && (product == stagedGCStructRefTestTable || product == stagedGCStructRefTestConcrete) {
-			if c.tableCount() != 1 || c.tableEntryBytes(0) != 8 {
-				initErr = fmt.Errorf("GC ref.test product requires one compact local table")
+		if product := c.stagedGCStructProduct(); initErr == nil && (product == stagedGCStructRefTestTable || product == stagedGCStructRefTestConcrete || product == stagedGCStructRefTestAbstract) {
+			tableCount := c.tableCount()
+			valid := tableCount == 1 && c.tableEntryBytes(0) == 8
+			if product == stagedGCStructRefTestAbstract {
+				valid = tableCount == 3 && c.tableEntryBytes(0) == 8 && c.tableEntryBytes(1) == runtime.TableEntryBytes && c.tableEntryBytes(2) == 8
+			}
+			if !valid {
+				initErr = fmt.Errorf("GC ref.test product has an invalid mixed-table layout")
 			} else {
-				gcRefTestTable, initErr = newGCRefTestTableState(b.collector, tableDesc, product.refTestCanonicalTypes())
+				gcRefTestTable, initErr = newGCRefTestTableState(b.collector, gcRefTestDescriptors[:tableCount], 0, product.refTestCanonicalTypes())
 			}
 		}
 		jm.SetTablePtr(uintptr(unsafe.Pointer(&tableDesc[0])))
@@ -1114,6 +1123,23 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			return nil, err
 		}
 		in.refStore = opts.store
+	}
+	if c.stagedGCStructProduct() == stagedGCStructRefTestAbstract {
+		if in.refStore == nil {
+			store := newReferenceStore(true)
+			if err := store.registerInstance(in); err != nil {
+				return nil, err
+			}
+			in.refStore = store
+		}
+		conversion, err := newGCExternConversionState(in.refStore, b.collector)
+		if err != nil {
+			return nil, err
+		}
+		if err := gcRefTestTable.attachConversion(conversion); err != nil {
+			_ = conversion.close()
+			return nil, err
+		}
 	}
 	if in.syncMode {
 		in.hostCall = in.newHostDispatch()
