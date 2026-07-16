@@ -819,7 +819,7 @@ func (f *fn) directCalleePreservesPins(localIdx int, ft *wasm.CompType) bool {
 	if err != nil {
 		return false
 	}
-	h, err := scanFuncBody(f.m.Code[localIdx], nLocals, f.m.GlobalCount(), uint32(f.m.ImportedFuncCount()+localIdx))
+	h, err := scanFuncBody(f.m.Code[localIdx], nLocals, f.m.GlobalCount(), uint32(f.m.ImportedFuncCount()+localIdx), f.m.BranchHintsForFunc(uint32(f.m.ImportedFuncCount()+localIdx)))
 	return err == nil && preservesCallerPins(ft, nLocals, h)
 }
 

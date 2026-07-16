@@ -1,6 +1,7 @@
 package wago
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	goruntime "runtime"
@@ -33,6 +34,38 @@ func benchAddOneModule() []byte {
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, 0x41, 0x01, 0x6a, 0x0b}))), // local.get 0; i32.const 1; i32.add; end
 	)
+}
+
+// benchBranchHintExecModule counts down its argument in native wasm code. The
+// br_if exits the loop only once, so its condition is overwhelmingly unlikely
+// to be true. The optional metadata section describes exactly that branch.
+func benchBranchHintExecModule(withHint bool) []byte {
+	body := []byte{
+		0x01, 0x01, 0x7f, // one i32 local
+		0x20, 0x00, 0x21, 0x01, // local 1 = param 0
+		0x02, 0x7f, // block (result i32)
+		0x03, 0x40, // loop
+		0x41, 0x00, 0x20, 0x01, 0x45, 0x0d, 0x01, // branch value; local.get 1; i32.eqz; br_if 1
+		0x1a,                                     // drop the branch value on the loop's fall-through path
+		0x20, 0x01, 0x41, 0x01, 0x6b, 0x21, 0x01, // local 1--
+		0x0c, 0x00, // br 0
+		0x0b, 0x41, 0x00, 0x0b, // end loop; fallback result; end block
+		0x0b, // end function
+	}
+	sections := [][]byte{
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
+	}
+	if withHint {
+		name := wasmtest.Name("metadata.code.branch_hint")
+		payload := append(name, 0x01, 0x00, 0x01, 0x10, 0x01, 0x00) // func 0, br_if at body offset 16, unlikely
+		sections = append(sections, wasmtest.Section(0, payload))
+	}
+	// body already includes the local declarations, unlike wasmtest.Code.
+	code := append(wasmtest.ULEB(uint32(len(body))), body...)
+	sections = append(sections, wasmtest.Section(10, wasmtest.Vec(code)))
+	return wasmtest.Module(sections...)
 }
 
 func benchReturningImportModule() []byte {
@@ -265,6 +298,44 @@ func BenchmarkInvokeAddOne(b *testing.B) {
 			b.Fatal(err)
 		}
 		benchResultSink = res
+	}
+}
+
+func BenchmarkInvokeBranchHintLoop(b *testing.B) {
+	if goruntime.GOARCH != "arm64" {
+		b.Skip("branch-hint code generation is ARM64-only")
+	}
+	withoutHint := benchMustCompile(b, benchBranchHintExecModule(false))
+	withHint := benchMustCompile(b, benchBranchHintExecModule(true))
+	if len(withoutHint.Code) == 0 || bytes.Equal(withoutHint.Code, withHint.Code) {
+		b.Fatal("unlikely br_if hint did not select deferred cold-edge layout")
+	}
+	for _, tc := range []struct {
+		name string
+		c    *Compiled
+	}{
+		{"none", withoutHint},
+		{"unlikely_exit", withHint},
+	} {
+		b.Run(tc.name, func(b *testing.B) {
+			in, err := Instantiate(tc.c, InstantiateOptions{})
+			if err != nil {
+				b.Fatalf("Instantiate: %v", err)
+			}
+			defer in.Close()
+			if got, err := in.Invoke("f", I32(10_000)); err != nil || len(got) != 1 || got[0] != 0 {
+				b.Fatalf("warm Invoke = %v, %v", got, err)
+			}
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				result, err := in.Invoke("f", I32(10_000))
+				if err != nil {
+					b.Fatal(err)
+				}
+				benchResultSink = result
+			}
+		})
 	}
 }
 

@@ -37,6 +37,8 @@ type directModule struct {
 	m                  Module
 	direct             directValidationEnv
 	seenName           bool
+	seenBranchHints    bool
+	seenCode           bool
 	usesDataCountInstr bool
 }
 
@@ -70,6 +72,9 @@ func DecodeModuleByteBacked(data []byte) (*DecodedByteBackedModule, error) {
 		return nil, err
 	}
 	dm.populateCodeBodies()
+	if err := validateBranchHints(&dm.m); err != nil {
+		return nil, err
+	}
 	return &DecodedByteBackedModule{Module: &dm.m, direct: dm.direct}, nil
 }
 
@@ -212,6 +217,7 @@ func decodeDirectModule(data []byte) (*directModule, error) {
 			err = decodeDirectElementSection(dm, &sub)
 		case secCode:
 			dm.m.Code, dm.usesDataCountInstr, err = decodeDirectCodeSection(&sub, moduleMemargOffset64(&dm.m))
+			dm.seenCode = true
 		case secData:
 			err = decodeDirectDataSection(dm, &sub)
 		default:
@@ -265,6 +271,17 @@ func (dm *directModule) decodeDirectCustomSection(r *reader) error {
 		dm.m.NameSec = ns
 		dm.m.RawNameSecPayload = append([]byte(nil), payload...)
 		dm.seenName = true
+	}
+	if name == branchHintSectionName {
+		if dm.seenBranchHints || dm.seenCode {
+			return &DecodeError{Code: ErrInvalidSection, Offset: r.off()}
+		}
+		hints, err := decodeBranchHintSection(payload)
+		if err != nil {
+			return err
+		}
+		dm.m.BranchHints = hints
+		dm.seenBranchHints = true
 	}
 	dm.m.Customs = append(dm.m.Customs, CustomSec{Name: name, Data: append([]byte(nil), payload...)})
 	return nil
@@ -675,7 +692,7 @@ func decodeDirectCodeSection(r *reader, memarg64 bool) ([]Func, bool, error) {
 		if sub.has() {
 			return nil, false, &DecodeError{Code: ErrSectionSizeMismatch, Offset: sub.off()}
 		}
-		out = append(out, Func{Locals: locals, BodyBytes: exprBytes})
+		out = append(out, Func{Locals: locals, LocalDeclBytes: uint32(sub.off() - len(exprBytes)), BodyBytes: exprBytes})
 	}
 	return out, usesDataCountInstr, nil
 }

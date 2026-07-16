@@ -264,6 +264,16 @@ func (f *fn) brIfFusedSet(top *elem, labelIdx uint32, setDst Reg) error {
 		f.a.PatchBranch19(over, f.a.Len())
 		return nil
 	}
+	if f.branchHintUnlikely && fr.kind != cfLoop {
+		// The compare already produced NZCV. Keep the hinted false path as the
+		// fall-through and defer only the true-edge reconciliation to the target
+		// frame, preserving the flags window at the source branch.
+		edge := append([]byte(nil), f.a.B[mark:]...)
+		f.a.B = f.a.B[:mark]
+		site := f.a.Bcond(cc)
+		fr.coldEdges = append(fr.coldEdges, coldEdge{site: site, code: edge})
+		return nil
+	}
 	// Non-empty edge: insert the skip guard right after the CMP (keeping the flag
 	// window tight) by relocating the edge bytes up one word.
 	f.edgeScratch = append(f.edgeScratch[:0], f.a.B[mark:]...)
