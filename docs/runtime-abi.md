@@ -518,6 +518,20 @@ guard mode, arm64, unsupported platforms, and public admission remain closed. No
 helper ID, basedata slot, descriptor entry, root, barrier, collector sidecar, frame record, fixed layout, or public ABI
 change is introduced.
 
+Iteration 62 adds a separate runtime function-identity ABI without changing the 32-byte descriptor layout. The exact
+three-entry local table stores ordinary descriptor copies whose word at `TableEntryRefSlotOffset` points back to the
+instance-owned canonical descriptor. `call_indirect` keeps its table bounds, null-entry, code-pointer, and call ABI, but
+replaces exact-key equality only for this pinned product with a finite identity-membership check derived from the
+validated function subtype relation. The check never reads descriptor addresses as compact collector handles.
+
+`table.get` returns the canonical descriptor identity unchanged. Indexed-function `ref.cast` compares that word against
+the same finite accepted local descriptor set, returns it byte-for-byte on success, and branches to the existing cast-
+failure stub on mismatch. It does not call helper ID 10, publish roots, park in Go, allocate, collect, or access a GC
+payload. The product has no descriptor ingress/egress, mutable table operation, import, host, or cross-instance value.
+Its instance-owned arena is 352 bytes (null plus ten local descriptors), and the immutable table image is 104 bytes
+(eight-byte length header plus three 32-byte entries). `compiledCodeCache` remains 64 bytes; no basedata offset, helper
+ID, descriptor field, root, barrier, collector sidecar, frame record, result adapter, or public ABI changes.
+
 ## Global coherence invariant
 
 The global cell is the sole host- and cross-instance-visible storage for a

@@ -322,13 +322,16 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   under a separate exact recursive-chain class. It requires two or three two-member open-function groups whose second
   members point to the preceding group's first member and proves that the tested first member does not inherit that
   sibling super edge in the reverse direction. Compile-only provenance folds every result without treating descriptor
-  addresses as compact GC references. All twenty-three leave `Instance.gc` nil. Iteration 60 uses 96/128-byte arenas,
-  emits 215/448/560 code bytes, and produces 922/785/1,095-byte codec artifacts; iteration 61 uses 96-byte arenas,
-  emits 178 bytes each, and produces 469/549-byte artifacts. Invocation remains allocation-free. Codec reload inherits
-  no product marker, and guard/public/arm64/snapshot admission remains closed. Accounting is 23 passed modules /
-  9 passed assertions / 22 gates / 39 blocked dependents / 24 invalid / 8 unlinkable obligations. General frame roots,
-  object-valued mutable/reference globals, runtime call/cast/table products, linking/non-flat exports, public family
-  admission, and broader platforms remain.
+  addresses as compact GC references. Iteration 62 executes the separate 412-byte recursive runtime call/cast leader.
+  Its exact immutable three-entry local table carries ordinary canonical descriptor identities; generated
+  `call_indirect` and `ref.cast` checks compare those identities against the validated local subtype relation, preserving
+  six successful call/cast directions plus three signature and three cast traps without the compact-GC helper. All
+  twenty-four admitted leaders leave `Instance.gc` nil. The runtime product owns 352 descriptor bytes and a 104-byte
+  table image, emits 4,938 code bytes, produces a 5,433-byte codec artifact, and measures 50.78–51.50 ns/op at 0 B/op /
+  0 allocs/op. Codec reload inherits no product marker, and guard/public/arm64/snapshot admission remains closed.
+  Accounting is 24 passed modules / 16 passed assertions / 21 gates / 32 blocked dependents / 24 invalid / 8 unlinkable
+  obligations. General frame roots, object-valued mutable/reference globals, finality/typed-table/linking/non-flat-export
+  products, public family admission, and broader platforms remain.
 - [ ] Reach zero unexplained failures/skips in the official Release 3 core suite.
 
 **Engine & performance** (no-ir-plan P1–P7, measured against P1's stats)
