@@ -70,6 +70,9 @@ func evalConstExprBytes(b []byte, want wasm.ValType) (constExprResult, error) {
 }
 
 func evalConstExprBytesWithModule(b []byte, want wasm.ValType, m *wasm.Module) (constExprResult, error) {
+	if isI31RefType(want) {
+		return evalI31ConstExprBytes(b, want)
+	}
 	r := wasm.NewReader(b)
 	op, err := r.Byte()
 	if err != nil {
@@ -199,6 +202,47 @@ func evalConstExprBytesWithModule(b []byte, want wasm.ValType, m *wasm.Module) (
 		return constExprResult{}, fmt.Errorf("const expression type %s, want %s", got.vtype, want)
 	}
 	return got, nil
+}
+
+func isI31RefType(t wasm.ValType) bool {
+	return t.Kind == wasm.ValRef && t.Ref.Heap.Kind == wasm.HeapAbs && t.Ref.Heap.Abs == wasm.HeapI31
+}
+
+func evalI31ConstExprBytes(b []byte, want wasm.ValType) (constExprResult, error) {
+	r := wasm.NewReader(b)
+	op, err := r.Byte()
+	if err != nil {
+		return constExprResult{}, err
+	}
+	if op != 0x41 {
+		return constExprResult{}, fmt.Errorf("unsupported i31 const expression opcode 0x%02x", op)
+	}
+	v, err := r.I32()
+	if err != nil {
+		return constExprResult{}, err
+	}
+	prefix, err := r.Byte()
+	if err != nil {
+		return constExprResult{}, err
+	}
+	if prefix != 0xfb {
+		return constExprResult{}, fmt.Errorf("unsupported i31 const expression opcode 0x%02x", prefix)
+	}
+	sub, err := r.U32()
+	if err != nil {
+		return constExprResult{}, err
+	}
+	if sub != 28 {
+		return constExprResult{}, fmt.Errorf("unsupported i31 const expression 0xfb %d", sub)
+	}
+	end, err := r.Byte()
+	if err != nil {
+		return constExprResult{}, fmt.Errorf("i31 const expression missing end: %w", err)
+	}
+	if end != 0x0b || r.BytesLeft() != 0 {
+		return constExprResult{}, fmt.Errorf("i31 const expression has trailing bytes")
+	}
+	return constExprResult{bits: uint64(uint32(v)<<1 | 1), vtype: want, GlobalIndex: -1, FuncIndex: -1}, nil
 }
 
 func constExprTypeMatches(actual, required wasm.ValType, m *wasm.Module) bool {

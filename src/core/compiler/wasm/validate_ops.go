@@ -4,7 +4,7 @@ package wasm
 // Instruction struct is ~56 bytes and this is the validator's innermost hot path,
 // so passing a value here shows up as runtime.duffcopy under profiling.
 func (v *funcValidator) step(in *Instruction) error {
-	if v.constOnly && !isConstInstruction(in.Kind) && !(v.features.GCConstExpr && (in.Kind == InstrStructNew || in.Kind == InstrArrayNew || in.Kind == InstrArrayNewDefault)) {
+	if v.constOnly && !isConstInstruction(in.Kind) && !(v.features.GCConstExpr && (in.Kind == InstrStructNew || in.Kind == InstrArrayNew || in.Kind == InstrArrayNewDefault || in.Kind == InstrRefI31)) {
 		return v.verr(ErrConstExprRequired, in.Kind.String())
 	}
 	for _, t := range in.ValTypes() {

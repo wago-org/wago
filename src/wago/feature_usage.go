@@ -350,7 +350,7 @@ func requiredFeaturesForPublicValTypes(types []ValType) CoreFeatures {
 		if isReferenceValType(typ) {
 			out |= CoreFeatureReferenceTypes
 		}
-		if typ == ValAnyRef {
+		if typ == ValAnyRef || typ == ValI31Ref {
 			out |= CoreFeatureGC
 		}
 		if typ == ValExnRef {

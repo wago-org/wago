@@ -29,6 +29,9 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 	if sub >= 6 && sub <= 20 {
 		return f.emitGCArray(sub, r)
 	}
+	if sub >= 28 && sub <= 30 {
+		return f.emitGCI31(sub)
+	}
 	if !f.gcStructHelpers {
 		return fmt.Errorf("amd64: unsupported 0xfb opcode %d without staged GC struct helpers", sub)
 	}
@@ -106,6 +109,29 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 	default:
 		return fmt.Errorf("amd64: unsupported staged 0xfb opcode %d", sub)
 	}
+}
+
+func (f *fn) emitGCI31(sub uint32) error {
+	value := f.materialize(f.popValue())
+	switch sub {
+	case 28: // ref.i31
+		f.a.ShiftImm(4, value, 1, false) // low 31 bits << 1; 32-bit write clears the upper half
+		f.a.AluRI(1, value, 1, false)    // tag immediate with low bit 1
+		f.pushReg(value, mtI64)
+	case 29: // i31.get_s
+		f.a.TestSelf(value, true)
+		f.trapIf(condE, trapNullReference)
+		f.a.ShiftImm(7, value, 1, false) // arithmetic shift sign-extends bit 30
+		f.pushReg(value, mtI32)
+	case 30: // i31.get_u
+		f.a.TestSelf(value, true)
+		f.trapIf(condE, trapNullReference)
+		f.a.ShiftImm(5, value, 1, false)
+		f.pushReg(value, mtI32)
+	default:
+		return fmt.Errorf("amd64: unsupported staged i31 opcode %d", sub)
+	}
+	return nil
 }
 
 func (f *fn) callGCStructHelper(helper uint32, params, results []wasm.ValType) error {

@@ -151,6 +151,9 @@ func compileStagedGCI31(data []byte) (*Compiled, error) {
 	cfg := NewRuntimeConfig()
 	features := cfg.frontendFeatures()
 	features.TypedFunctionReferences = true
+	if _, ok := stagedGCI31PinnedProduct(data); ok {
+		features.GCI31Products = true
+	}
 	return compileWithFrontendFeatures(cfg, data, features)
 }
 
@@ -212,6 +215,7 @@ func replayStagedGCI31Script(t *testing.T, tmp string, script stagedSpecScript) 
 				}
 				counts.ExpectedFeatureRejects++
 				gates[pin.Class.gateReason()]++
+				t.Logf("gc/i31.wast:%d gated %s: %v", cmd.Line, pin.Filename, compileErr)
 				continue
 			}
 			imports, err := stagedSpecImports(c, registered, nil)
@@ -298,8 +302,12 @@ func replayStagedGCI31Script(t *testing.T, tmp string, script stagedSpecScript) 
 			}
 			matched := true
 			for i := range got {
-				if !stagedTypedReferenceMatch(currentModule, got[i], cmd.Expected[i]) {
-					matched = false
+				if current.Class == stagedGCI31Core && cmd.Action.Field == "new" && cmd.Expected[i].Type == "ref" {
+					matched = got[i]>>32 == 0 && uint32(got[i])&1 == 1
+				} else {
+					matched = stagedTypedReferenceMatch(currentModule, got[i], cmd.Expected[i])
+				}
+				if !matched {
 					break
 				}
 			}
@@ -335,7 +343,7 @@ func TestStagedOfficialGCI31Accounting(t *testing.T) {
 	var script stagedSpecScript
 	tmp := stagedOfficialTypedReferenceJSON(t, "gc/i31", &script)
 	counts, leaders, gateCounts := replayStagedGCI31Script(t, tmp, script)
-	if counts.Commands != 80 || counts.ModulesPassed != 1 || counts.AssertionsPassed != 0 || counts.ExpectedFeatureRejects != 6 || counts.BlockedCommands != 65 || counts.ExpectedInvalid != 0 || counts.ExpectedMalformed != 0 || counts.Failures != 0 || counts.UnexpectedCompileRejects != 0 || counts.UnexpectedLinkRejects != 0 {
+	if counts.Commands != 80 || counts.ModulesPassed != 2 || counts.AssertionsPassed != 22 || counts.ExpectedFeatureRejects != 5 || counts.BlockedCommands != 43 || counts.ExpectedInvalid != 0 || counts.ExpectedMalformed != 0 || counts.Failures != 0 || counts.UnexpectedCompileRejects != 0 || counts.UnexpectedLinkRejects != 0 {
 		t.Fatalf("staged gc/i31 accounting has hidden or changed gaps: %+v", counts)
 	}
 	gateNames := make([]string, 0, len(gateCounts))

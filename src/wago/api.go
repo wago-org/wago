@@ -825,7 +825,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		return nil, fmt.Errorf("decode: %w", err)
 	}
 	workers := functionWorkersForModule(m, cfg.functionWorkers)
-	validationFeatures := wasm.ValidationFeatures{CompactImports: features.MultiMemory, MultiMemory: features.MultiMemory, GCConstExpr: features.GCStructProducts || features.GCArrayProducts}
+	validationFeatures := wasm.ValidationFeatures{CompactImports: features.MultiMemory, MultiMemory: features.MultiMemory, GCConstExpr: features.GCStructProducts || features.GCArrayProducts || features.GCI31Products}
 	if err := wasm.ValidateModuleWithFeaturesAndWorkers(m, validationFeatures, workers); err != nil {
 		// Proposal-aware decoding can expose a structurally unsupported module to
 		// validation before the validator has complete proposal subtyping rules.
@@ -839,6 +839,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	structuralProduct := stagedStructuralTypeProduct(0)
 	gcStructProduct := stagedGCStructProduct(0)
 	gcArrayProduct := stagedGCArrayProduct(0)
+	gcI31Product := stagedGCI31Product(0)
 	if features.StructuralTypeProducts && hasStructuralHeapTypes(m) {
 		if goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64" {
 			return nil, fmt.Errorf("compile: unsupported collector-free structural product staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
@@ -882,6 +883,19 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		gcArrayProduct, ok = stagedGCArrayExecutionProduct(wasmBytes)
 		if !ok {
 			return nil, fmt.Errorf("compile: staged collector-backed array product: binary is outside the exact pinned product set")
+		}
+	}
+	if features.GCI31Products {
+		if goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64" {
+			return nil, fmt.Errorf("compile: unsupported i31 product staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
+		}
+		if cfg.boundsChecks == BoundsChecksSignalsBased {
+			return nil, fmt.Errorf("compile: unsupported i31 product with signals-based bounds checks")
+		}
+		var ok bool
+		gcI31Product, ok = stagedGCI31ExecutionProduct(wasmBytes)
+		if !ok {
+			return nil, fmt.Errorf("compile: staged i31 product: binary is outside the exact executable product set")
 		}
 	}
 	if features.NullReferenceProducts {
@@ -1519,6 +1533,10 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		compiled.codeCache.gcArrayHelpers = gcArrayProduct.requiresHelpers()
 		compiled.codeCache.gcArrayProduct = gcArrayProduct
 		compiled.codeCache.collectorFreeGCArrayMetadata = gcArrayProduct.metadataOnly()
+	}
+	if gcI31Product != 0 {
+		compiled.codeCache.stagedFeatures |= CoreFeatureGC
+		compiled.codeCache.gcI31Product = gcI31Product
 	}
 	return compiled, nil
 }
@@ -2529,6 +2547,9 @@ func (c *Compiled) validateRuntimeReferenceGlobalMetadata() error {
 		}
 		if (g.Type == ValAnyRef || g.Type == ValExnRef) && g.Bits != 0 {
 			return fmt.Errorf("compiled metadata invalid: non-null %s global initializer at global %d is unsupported", g.Type, i)
+		}
+		if g.Type == ValI31Ref && g.Bits != 0 && (g.Bits>>32 != 0 || uint32(g.Bits)&1 == 0) {
+			return fmt.Errorf("compiled metadata invalid: invalid i31 global initializer at global %d", i)
 		}
 	}
 	return nil
@@ -3667,6 +3688,18 @@ func (in *Instance) marshalPublicReferenceArgs(subject string, values []uint64, 
 			if !required.Ref.Nullable {
 				return fmt.Errorf("%s: null %s for non-null argument %d", subject, typ, i)
 			}
+		case ValI31Ref:
+			required, ok := exactReferenceType(exact, i, typ)
+			if !ok || required.Ref.Heap.Defined || required.Ref.Heap.Abstract != AbstractHeapI31 {
+				return fmt.Errorf("%s: missing exact i31 type for argument %d", subject, i)
+			}
+			if bits == 0 {
+				if !required.Ref.Nullable {
+					return fmt.Errorf("%s: null i31ref for non-null argument %d", subject, i)
+				}
+			} else if bits>>32 != 0 || uint32(bits)&1 == 0 {
+				return fmt.Errorf("%s: invalid i31ref argument %d", subject, i)
+			}
 		}
 		if !isWideValType(typ) {
 			bits = uint64(uint32(bits))
@@ -3760,6 +3793,22 @@ func (in *Instance) translatePublicReferenceResultsMode(subject string, values [
 					return fmt.Errorf("%s: own non-null anyref result %d: %w", subject, i, err)
 				}
 				values[slot] = token
+			}
+		}
+		if typ == ValI31Ref {
+			required, ok := exactReferenceType(exact, i, typ)
+			if !ok || required.Ref.Heap.Defined || required.Ref.Heap.Abstract != AbstractHeapI31 {
+				clear(values)
+				return fmt.Errorf("%s: missing exact i31 type for result %d", subject, i)
+			}
+			if values[slot] == 0 {
+				if !required.Ref.Nullable {
+					clear(values)
+					return fmt.Errorf("%s: null i31ref for non-null result %d", subject, i)
+				}
+			} else if values[slot]>>32 != 0 || uint32(values[slot])&1 == 0 {
+				clear(values)
+				return fmt.Errorf("%s: invalid i31ref result %d", subject, i)
 			}
 		}
 		if typ == ValExnRef {
