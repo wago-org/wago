@@ -201,7 +201,7 @@ func TestStagedGCTypeSubtypingDirectionFalseRefTestInventory(t *testing.T) {
 }
 
 func TestStagedGCTypeSubtypingProductPlatformAndBoundsGate(t *testing.T) {
-	for _, pinIndex := range []int{8, 14, 18} {
+	for _, pinIndex := range []int{8, 14, 18, 21} {
 		pin := stagedGCTypeSubtypingProductPins[pinIndex]
 		t.Run(pin.Filename, func(t *testing.T) {
 			data := stagedGCTypeSubtypingProductData(t, pin)
@@ -282,5 +282,14 @@ func TestStagedGCTypeSubtypingProductRejectsWidening(t *testing.T) {
 	multi.Elements[0].Kind.Funcs[0] = 1
 	if _, err := stagedGCTypeSubtypingProductShape(multi); err == nil {
 		t.Fatal("multi-result ref.test product with widened element identity unexpectedly admitted")
+	}
+
+	directionFalse, err := wasm.DecodeModule(stagedGCTypeSubtypingProductData(t, stagedGCTypeSubtypingProductPins[21]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	directionFalse.Types[1].SubTypes[1].Supers[0] = wasm.TypeIdx{Index: 2, Rec: true}
+	if product, err := stagedGCTypeSubtypingProductShape(directionFalse); err == nil && product == stagedGCTypeSubtypingRefTestDirectionFalse {
+		t.Fatal("direction-false ref.test product with a widened source-group super relation unexpectedly retained exact admission")
 	}
 }

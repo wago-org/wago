@@ -23,7 +23,7 @@ const (
 )
 
 func (p stagedGCTypeSubtypingProduct) usesRefTest() bool {
-	return p == stagedGCTypeSubtypingRefTestSingle || p == stagedGCTypeSubtypingRefTestMulti
+	return p == stagedGCTypeSubtypingRefTestSingle || p == stagedGCTypeSubtypingRefTestMulti || p == stagedGCTypeSubtypingRefTestDirectionFalse
 }
 
 func stagedGCTypeSubtypingProductPinned(data []byte, product stagedGCTypeSubtypingProduct) bool {
@@ -56,6 +56,9 @@ func stagedGCTypeSubtypingProductPinned(data []byte, product stagedGCTypeSubtypi
 		"b561b7bcd131223f573b787ff002cec3ef83d1cb90fc440ec24d347cc789df1d",
 		"893dcf058c5b28436567028ab41bfb409c5f1acc737e764a3dfcc51f6be8200e":
 		pinned = stagedGCTypeSubtypingRefTestMulti
+	case "2841d098dfca125ccd9c577cf55762744c8a3911a1986f857be48ebc0d51f735",
+		"b0797a1825d04be467e336f7f236637184aab41a13de20ff7a06eb1bb7885613":
+		pinned = stagedGCTypeSubtypingRefTestDirectionFalse
 	}
 	return pinned == product
 }
@@ -203,12 +206,65 @@ func stagedGCTypeSubtypingRefTestShape(m *wasm.Module) (stagedGCTypeSubtypingPro
 		}
 	}
 	if len(pairs) == 1 && runner == 1 {
+		if stagedGCTypeSubtypingDirectionFalseShape(m, pairs[0]) {
+			return stagedGCTypeSubtypingRefTestDirectionFalse, nil
+		}
 		return stagedGCTypeSubtypingRefTestSingle, nil
 	}
 	if runner == 1 && len(pairs) == 2 || runner == 2 && (len(pairs) == 4 || len(pairs) == 8) {
 		return stagedGCTypeSubtypingRefTestMulti, nil
 	}
 	return 0, fmt.Errorf("function ref.test product has unsupported %d-source/%d-result shape", runner, len(pairs))
+}
+
+// stagedGCTypeSubtypingDirectionFalseShape recognizes the exact open-function
+// recursive chain where each later group's second member names the preceding
+// group's first member as its super. The tested first member does not inherit
+// that sibling edge, so testing it in the reverse target direction must be false.
+func stagedGCTypeSubtypingDirectionFalseShape(m *wasm.Module, pair exactRefFuncTestPair) bool {
+	graphGroups := len(m.Types) - 1
+	if (graphGroups != 2 && graphGroups != 3) || pair.funcIndex != 0 {
+		return false
+	}
+	for groupIndex := 0; groupIndex < graphGroups; groupIndex++ {
+		group := &m.Types[groupIndex]
+		if len(group.SubTypes) != 2 {
+			return false
+		}
+		for memberIndex := range group.SubTypes {
+			st := &group.SubTypes[memberIndex]
+			if st.Final || !st.HasPrefix || st.Comp.Kind != wasm.CompFunc || len(st.Comp.Params) != 0 || len(st.Comp.Results) != 0 {
+				return false
+			}
+		}
+		if len(group.SubTypes[0].Supers) != 0 || len(group.SubTypes[1].Supers) != 1 {
+			return false
+		}
+		super := group.SubTypes[1].Supers[0]
+		if groupIndex == 0 {
+			if !super.Rec || super.Index != 0 {
+				return false
+			}
+		} else if super.Rec || super.Index != uint32(2*(groupIndex-1)) {
+			return false
+		}
+	}
+	runnerGroup := &m.Types[graphGroups]
+	if len(runnerGroup.SubTypes) != 1 {
+		return false
+	}
+	runnerType := &runnerGroup.SubTypes[0]
+	if !runnerType.Final || runnerType.HasPrefix || len(runnerType.Supers) != 0 || runnerType.Comp.Kind != wasm.CompFunc || len(runnerType.Comp.Params) != 0 || len(runnerType.Comp.Results) != 1 || !wasm.EqualValType(runnerType.Comp.Results[0], wasm.I32) {
+		return false
+	}
+	sourceType := uint32(2 * (graphGroups - 1))
+	targetType := uint32(2 * (graphGroups - 2))
+	if len(m.FuncTypes) != 2 || m.FuncTypes[0].Rec || m.FuncTypes[0].Index != sourceType || m.FuncTypes[1].Rec || m.FuncTypes[1].Index != uint32(2*graphGroups) || pair.targetType != targetType {
+		return false
+	}
+	actual := wasm.Ref(false, wasm.IndexedHeap(m.FuncTypes[0]), false)
+	required := wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: targetType}), false)
+	return !m.ReferenceTypeSubtype(actual, required)
 }
 
 type exactRefFuncTestPair struct {
