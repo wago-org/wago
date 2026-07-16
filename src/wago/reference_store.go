@@ -270,7 +270,7 @@ func (s *referenceStore) issueGCRef(source *Instance, ref gc.Ref, required Value
 		return 0, fmt.Errorf("public GC result ownership is outside an exact admitted struct/array product")
 	}
 	arrayProduct := source.c.stagedGCArrayProduct()
-	admittedArray := arrayProduct == stagedGCArrayProductNumericDefault || arrayProduct == stagedGCArrayProductNumericFixed || arrayProduct == stagedGCArrayProductPackedData
+	admittedArray := arrayProduct == stagedGCArrayProductNumericDefault || arrayProduct == stagedGCArrayProductNumericFixed || arrayProduct == stagedGCArrayProductPackedData || arrayProduct == stagedGCArrayProductReferenceElements
 	if source.c.stagedGCStructProduct() != stagedGCStructBasic && !admittedArray {
 		return 0, fmt.Errorf("public GC result ownership is outside an exact admitted struct/array product")
 	}

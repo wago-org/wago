@@ -103,6 +103,96 @@ func TestStagedGCArrayReferenceElementSegmentRoots(t *testing.T) {
 	}
 }
 
+func TestStagedGCArrayReferenceElementAllocationAndDrop(t *testing.T) {
+	data := stagedGCArrayReferenceBytes(t)
+	c, err := compileStagedGCArray(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	if c.stagedGCArrayProduct() != stagedGCArrayProductReferenceElements || !c.usesGCArrayHelpers() || c.memoryDir == nil || c.memoryDir.gcArrayElement == nil || len(c.passiveElems) != 1 {
+		t.Fatalf("reference product/helper/segment = %v/%v/%+v/%d", c.stagedGCArrayProduct(), c.usesGCArrayHelpers(), c.memoryDir, len(c.passiveElems))
+	}
+	profiles := []struct {
+		name string
+		cfg  GCConfig
+	}{
+		{name: "throughput", cfg: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 80, VerifyAfterCollect: true}},
+		{name: "tiny", cfg: GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 80, TinyBlockBytes: 8, TinyCollectEveryAlloc: true, VerifyAfterCollect: true}},
+	}
+	for _, tc := range profiles {
+		t.Run(tc.name, func(t *testing.T) {
+			in, err := instantiateCore(c, InstantiateOptions{GC: tc.cfg})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer in.Close()
+			state := in.existingGCArrayElementState()
+			if state == nil || state.Count != 2 || binary.LittleEndian.Uint32(state.Descriptor[8:]) != 2 {
+				t.Fatalf("instance element state = %+v", state)
+			}
+
+			var result [1]uint64
+			in.dispatchGCArrayHelper(gcArrayAllocElem, []uint64{0, 2, 1, 0}, result[:])
+			outer := gc.Ref(uint32(result[0]))
+			first, err := in.gc.ArrayGet(outer, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			second, err := in.gc.ArrayGet(outer, 1)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got, err := in.gc.ArrayGet(first.Ref, 0); err != nil || got.Bits != 7 {
+				t.Fatalf("outer[0][0] = %+v, %v", got, err)
+			}
+			if got, err := in.gc.ArrayGet(second.Ref, 0); err != nil || got.Bits != 1 {
+				t.Fatalf("outer[1][0] = %+v, %v", got, err)
+			}
+
+			in.dispatchGCArrayHelper(gcArrayAllocElem, []uint64{0, 2, 2, 0}, result[:])
+			mutable := gc.Ref(uint32(result[0]))
+			in.dispatchGCArrayHelper(gcArraySet, []uint64{uint64(mutable), 0, uint64(second.Ref), 2}, nil)
+			gotRef, err := in.gc.ArrayGet(mutable, 0)
+			if err != nil || gotRef.Ref != second.Ref {
+				t.Fatalf("reference array.set = %+v, %v; want %v", gotRef, err, second.Ref)
+			}
+
+			before := in.gc.Stats()
+			if _, err := in.Invoke("new-overflow"); err == nil {
+				t.Fatal("overflowing array.new_elem succeeded")
+			}
+			after := in.gc.Stats()
+			if after.Allocations != before.Allocations || after.LiveObjects != before.LiveObjects {
+				t.Fatalf("overflowing array.new_elem changed collector state: before=%+v after=%+v", before, after)
+			}
+			if _, err := in.Invoke("drop_segs"); err != nil {
+				t.Fatal(err)
+			}
+			if binary.LittleEndian.Uint32(state.Descriptor[8:]) != 0 {
+				t.Fatalf("dropped instance descriptor = %x", state.Descriptor)
+			}
+			for i := uint8(0); i < state.Count; i++ {
+				if rooted, err := in.gc.CheckedTableSlot(state.Slots[i]); err != nil || !rooted.IsNull() {
+					t.Fatalf("dropped instance root %d = %v, %v", i, rooted, err)
+				}
+			}
+			before = in.gc.Stats()
+			if _, err := in.Invoke("new"); err == nil {
+				t.Fatal("array.new_elem after elem.drop succeeded")
+			}
+			after = in.gc.Stats()
+			if after.Allocations != before.Allocations || after.LiveObjects != before.LiveObjects {
+				t.Fatalf("post-drop array.new_elem changed collector state: before=%+v after=%+v", before, after)
+			}
+			in.dispatchGCArrayHelper(gcArrayAllocElem, []uint64{0, 0, 1, 0}, result[:])
+			if length, err := in.gc.ArrayLen(gc.Ref(uint32(result[0]))); err != nil || length != 0 {
+				t.Fatalf("zero-length array.new_elem after drop = %d, %v", length, err)
+			}
+		})
+	}
+}
+
 func TestStagedGCArrayReferenceElementSegmentTinyRollback(t *testing.T) {
 	m, err := wasm.DecodeModule(stagedGCArrayReferenceBytes(t))
 	if err != nil {

@@ -868,6 +868,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		}
 	}
 
+	var gcArrayElements *gcArrayElementState
 	if initErr == nil && len(c.passiveElems) > 0 {
 		edesc := ar.Alloc(runtime.PassiveElemDescBytes * len(c.passiveElems))
 		for i, el := range c.passiveElems {
@@ -891,6 +892,15 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			off := i * runtime.PassiveElemDescBytes
 			binary.LittleEndian.PutUint64(edesc[off:], uint64(uintptr(unsafe.Pointer(&entries[0]))))
 			binary.LittleEndian.PutUint32(edesc[off+8:], uint32(len(el.Values)))
+		}
+		if initErr == nil && c.memoryDir != nil && c.memoryDir.gcArrayElement != nil {
+			seg := int(c.memoryDir.gcArrayElement.SegmentIndex)
+			if seg < 0 || seg >= len(c.passiveElems) {
+				initErr = fmt.Errorf("GC array element segment %d has no descriptor", seg)
+			} else {
+				desc := edesc[seg*runtime.PassiveElemDescBytes : (seg+1)*runtime.PassiveElemDescBytes]
+				gcArrayElements, initErr = instantiateGCArrayElementSegment(b.collector, c.GCTypeDescs, c.memoryDir.gcArrayElement, desc)
+			}
 		}
 		jm.SetPassiveElemPtr(uintptr(unsafe.Pointer(&edesc[0])))
 	}
@@ -1037,6 +1047,9 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		state := in.ensurePluginState()
 		state.gcGlobalRoots = gcGlobalRoots
 		state.gcGlobalRootCount = gcGlobalRootCount
+	}
+	if gcArrayElements != nil {
+		in.ensurePluginState().gcArrayElements.Store(gcArrayElements)
 	}
 	if len(nativeTagIDs) != 0 {
 		in.ensurePluginState().tagIdentityBase = uintptr(unsafe.Pointer(&nativeTagIDs[0]))
