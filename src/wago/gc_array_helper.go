@@ -116,8 +116,13 @@ func (in *Instance) dispatchGCArrayHelper(helper uint32, args, results []uint64)
 		if int(typeID) >= len(in.c.GCTypeDescs) || in.c.GCTypeDescs[typeID].Kind != gc.KindArray || (in.c.GCTypeDescs[typeID].Elem != gc.StorageRef && in.c.GCTypeDescs[typeID].Elem != gc.StorageRefNull) {
 			panic(gcStructHelperError{err: fmt.Errorf("gc array.new_elem type %d is not an admitted reference array", typeID)})
 		}
-		var roots gcArrayElementRoots
+		roots := &state.AllocRoots
+		clear(roots.Values[:])
 		roots.Count = uint8(length)
+		defer func() {
+			clear(roots.Values[:])
+			roots.Count = 0
+		}()
 		for i := uint8(0); i < roots.Count; i++ {
 			rooted, err := in.gc.CheckedTableSlot(state.Slots[uint8(source)+i])
 			if err != nil || rooted.IsNull() {
@@ -129,9 +134,9 @@ func (in *Instance) dispatchGCArrayHelper(helper uint32, args, results []uint64)
 		var ref gc.Ref
 		var err error
 		if length == 0 {
-			ref, err = in.gc.NewArrayDefaultWithRoots(gc.TypeID(typeID), 0, &roots)
+			ref, err = in.gc.NewArrayDefaultWithRoots(gc.TypeID(typeID), 0, roots)
 		} else {
-			ref, err = in.gc.NewArrayWithRoots(gc.TypeID(typeID), length, arrayRefValue(typeID, uint64(roots.ref(0))), &roots)
+			ref, err = in.gc.NewRefArrayWithRoots(gc.TypeID(typeID), length, &roots.Values[0], roots)
 		}
 		if err != nil {
 			panic(gcStructHelperError{err: err})
@@ -255,7 +260,11 @@ func (in *Instance) dispatchGCArrayHelper(helper uint32, args, results []uint64)
 				panic(gcStructHelperError{err: fmt.Errorf("gc array.get_u element kind %d is not packed", value.Kind)})
 			}
 		default:
-			results[0] = value.Bits
+			if value.Kind == gc.StorageRef || value.Kind == gc.StorageRefNull {
+				results[0] = uint64(value.Ref)
+			} else {
+				results[0] = value.Bits
+			}
 		}
 	case gcArraySet:
 		if len(args) != 4 {

@@ -306,22 +306,16 @@
     "24": 52,
     "9": 27
   },
-  "gates": [
-    {
-      "family": "gc",
-      "reason": "reference array.new_elem/get/set/len barriers and element lifecycle",
-      "count": 1
-    }
-  ],
+  "gates": [],
   "counts": {
     "commands": 61,
-    "modules_passed": 6,
-    "assertions_passed": 29,
+    "modules_passed": 7,
+    "assertions_passed": 41,
     "expected_invalid": 6,
     "expected_unlinkable": 0,
     "expected_uninstantiable": 0,
-    "expected_feature_rejects": 1,
-    "blocked_commands": 12,
+    "expected_feature_rejects": 0,
+    "blocked_commands": 0,
     "unexpected_compile_rejects": 0,
     "unexpected_link_rejects": 0,
     "failures": 0

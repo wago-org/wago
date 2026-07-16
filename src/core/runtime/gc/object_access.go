@@ -65,6 +65,39 @@ func (c *Collector) NewArrayWithRoots(typeID TypeID, length uint32, init Value, 
 	}
 	return r, nil
 }
+
+// NewRefArrayWithRoots allocates a reference array initialized from a caller-
+// owned mutable root slot. The slot must also be present in roots when allocation
+// may collect; it is reread after allocation so moving collectors can rewrite it.
+func (c *Collector) NewRefArrayWithRoots(typeID TypeID, length uint32, init RootSlot, roots RootSet) (Ref, error) {
+	d, err := c.desc(typeID)
+	if err != nil {
+		return Null(), err
+	}
+	if !isRefKind(d.Elem) || init == nil {
+		return Null(), errors.New("gc: reference array initializer root required")
+	}
+	value := RefValue(init.GetRef())
+	if err := c.validateStoredRef(value.Ref, d.Elem == StorageRefNull); err != nil {
+		return Null(), err
+	}
+	sz, err := ArraySize(d, length)
+	if err != nil {
+		return Null(), err
+	}
+	r, err := c.alloc(d, sz, length, roots)
+	if err != nil {
+		return Null(), err
+	}
+	value.Ref = init.GetRef()
+	for i := uint32(0); i < length; i++ {
+		if err := c.storeValue(r, d, uint64(PayloadOffset)+uint64(i)*uint64(d.ElemSize), d.Elem, value); err != nil {
+			return Null(), err
+		}
+	}
+	return r, nil
+}
+
 func (c *Collector) NewArrayDefault(typeID TypeID, length uint32) (Ref, error) {
 	return c.NewArrayDefaultWithRoots(typeID, length, nil)
 }
