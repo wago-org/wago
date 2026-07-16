@@ -78,8 +78,8 @@ func newGCRefTestTableState(collector *gc.Collector, descriptors [][]byte, rootT
 }
 
 func (s *gcRefTestTableState) attachConversion(conversion *gcExternConversionState) error {
-	if s == nil || conversion == nil || s.TableCount != 3 {
-		return fmt.Errorf("GC ref.test mixed-table conversion state is unavailable")
+	if s == nil || conversion == nil || (s.TableCount != 1 && s.TableCount != 3) {
+		return fmt.Errorf("GC conversion table state is unavailable")
 	}
 	if s.Conversion != nil {
 		return fmt.Errorf("GC ref.test mixed-table conversion state is already attached")
@@ -196,6 +196,14 @@ func (s *gcRefTestTableState) drop(collector *gc.Collector) {
 		size := int(binary.LittleEndian.Uint32(descriptor))
 		clear(descriptor[8 : 8+size*entryBytes])
 	}
+}
+
+func (in *Instance) existingGCExternConversionState() *gcExternConversionState {
+	state := in.existingGCRefTestTableState()
+	if state == nil {
+		return nil
+	}
+	return state.Conversion
 }
 
 func (in *Instance) existingGCRefTestTableState() *gcRefTestTableState {
