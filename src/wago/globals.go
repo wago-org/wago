@@ -603,7 +603,7 @@ type compiledMemoryDirectory struct {
 
 	stagedMemory64  bool                 // internal bounded memory64 execution gate; never serialized
 	gcStructGlobals []gcStructGlobalInit // exact staged GC constant initializers; never serialized
-	gcArrayGlobals  []gcArrayGlobalInit  // exact staged array.new_fixed globals; never serialized
+	gcArrayGlobals  []gcArrayGlobalInit  // exact staged bounded numeric array globals; never serialized
 	ehTags          []compiledTagDef     // staged EH product metadata in tag-index order; never serialized
 	ehTagExports    map[string]int       // exact tag export name -> tag index; never serialized
 }

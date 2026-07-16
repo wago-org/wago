@@ -59,6 +59,8 @@ func stagedGCArrayExecutionProduct(data []byte) (stagedGCArrayProduct, bool) {
 		return stagedGCArrayProductBindings, true
 	case len(data) == 115 && digest == "b6446904a92663c6dc462e8c7f4b1a2077c7b942ce7be0fa053c32ecb990b96a":
 		return stagedGCArrayProductNullDereference, true
+	case len(data) == 250 && digest == "dff18bcf6b1ed6fdb6ae63692baa8e649e22794de7f4dbf3bc76e0f2b0f28898":
+		return stagedGCArrayProductNumericDefault, true
 	case len(data) == 268 && digest == "6ff5956b84b5035df8d3419edc8c67348cffd06d5a4cad86cfba56c415acbf25":
 		return stagedGCArrayProductNumericFixed, true
 	default:

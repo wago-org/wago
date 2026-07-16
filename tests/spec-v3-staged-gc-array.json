@@ -309,11 +309,6 @@
   "gates": [
     {
       "family": "gc",
-      "reason": "numeric array.new/default/get/set/len globals and public results",
-      "count": 1
-    },
-    {
-      "family": "gc",
       "reason": "packed array.new_data/get/set/len and data-segment lifecycle",
       "count": 1
     },
@@ -325,12 +320,12 @@
   ],
   "counts": {
     "commands": 61,
-    "modules_passed": 4,
+    "modules_passed": 5,
     "assertions_passed": 9,
     "expected_invalid": 6,
     "expected_unlinkable": 0,
     "expected_uninstantiable": 0,
-    "expected_feature_rejects": 3,
+    "expected_feature_rejects": 2,
     "blocked_commands": 32,
     "unexpected_compile_rejects": 0,
     "unexpected_link_rejects": 0,
