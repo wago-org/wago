@@ -108,6 +108,49 @@ func TestCollectorRefTestDynamicTypes(t *testing.T) {
 	}); allocs != 0 {
 		t.Fatalf("canonical defined RefTest allocations = %v, want 0", allocs)
 	}
+
+	for _, tc := range []struct {
+		name      string
+		ref       Ref
+		target    RefTestTarget
+		canonical bool
+		want      Ref
+		fail      bool
+	}{
+		{"nullable null", Null(), RefTestTarget{Kind: RefTestAny, Nullable: true}, false, Null(), false},
+		{"non-null null", Null(), RefTestTarget{Kind: RefTestAny}, false, Null(), true},
+		{"i31 identity", I31New(7), RefTestTarget{Kind: RefTestI31}, false, I31New(7), false},
+		{"object identity", object, RefTestTarget{Kind: RefTestDefined, Type: 0}, false, object, false},
+		{"object mismatch", object, RefTestTarget{Kind: RefTestArray}, false, Null(), true},
+		{"canonical sibling identity", object, RefTestTarget{Kind: RefTestDefined, Type: 2}, true, object, false},
+	} {
+		t.Run("cast "+tc.name, func(t *testing.T) {
+			var got Ref
+			var err error
+			if tc.canonical {
+				got, err = c.RefCastCanonical(tc.ref, tc.target, canonical)
+			} else {
+				got, err = c.RefCast(tc.ref, tc.target)
+			}
+			if tc.fail {
+				if !errors.Is(err, ErrCastFailure) {
+					t.Fatalf("RefCast(%#x, %+v) = %#x, %v; want cast failure", tc.ref, tc.target, got, err)
+				}
+				return
+			}
+			if err != nil || got != tc.want {
+				t.Fatalf("RefCast(%#x, %+v) = %#x, %v; want %#x", tc.ref, tc.target, got, err, tc.want)
+			}
+		})
+	}
+	if allocs := testing.AllocsPerRun(1000, func() {
+		got, err := c.RefCastCanonical(object, RefTestTarget{Kind: RefTestDefined, Type: 2}, canonical)
+		if err != nil || got != object {
+			panic("ref.cast failed")
+		}
+	}); allocs != 0 {
+		t.Fatalf("canonical defined RefCast allocations = %v, want 0", allocs)
+	}
 }
 
 func TestCollectorRefTestRejectsInvalidState(t *testing.T) {
@@ -158,9 +201,19 @@ func TestCollectorRefTestRejectsInvalidState(t *testing.T) {
 		})
 	}
 
+	if _, err := c.RefCast(stale, RefTestTarget{Kind: RefTestStruct}); errors.Is(err, ErrCastFailure) || err == nil {
+		t.Fatalf("stale RefCast error = %v, want specific stale-reference rejection", err)
+	}
+	if _, err := c.RefCast(Ref(0xfffe), RefTestTarget{Kind: RefTestAny}); errors.Is(err, ErrCastFailure) || err == nil {
+		t.Fatalf("forged RefCast error = %v, want specific forged-reference rejection", err)
+	}
+
 	c.Close()
 	if _, err := c.RefTest(Null(), RefTestTarget{Kind: RefTestAny, Nullable: true}); !errors.Is(err, errCollectorClosed) {
 		t.Fatalf("closed RefTest error = %v, want collector closed", err)
+	}
+	if _, err := c.RefCast(Null(), RefTestTarget{Kind: RefTestAny, Nullable: true}); !errors.Is(err, errCollectorClosed) {
+		t.Fatalf("closed RefCast error = %v, want collector closed", err)
 	}
 }
 

@@ -151,6 +151,8 @@ const (
 	stagedGCStructRefTestAbstractSHA256 = "526d5c1b457f847daf51141a7d63aba11d20415b7ef2a13f593e06f680a41403"
 	stagedGCStructExternSHA256          = "5ad921ebe511ca9e23c137aef6883113684896f15b8a9726d5d77524d562f823"
 	stagedGCStructRefEqSHA256           = "46b2bd3e4597ba5a871472aa14f5777df18b722b7f3283ba1fc946f4791a3adb"
+	stagedGCStructRefCastAbstractSHA256 = "c85556089bf1a39cb3082f7de916c00eaa2482253cf126d8a9fc09ab970eed4b"
+	stagedGCStructRefCastConcreteSHA256 = "65f1f33b335ca62d90ad089a74f8a29ea3163f9a3a2f53096bdeac9e4b86f4a6"
 )
 
 // stagedGCStructExecutionProduct admits only the exact collector-backed products
@@ -181,6 +183,12 @@ func stagedGCStructExecutionProduct(data []byte) (stagedGCStructProduct, bool) {
 	if digest == stagedGCStructRefEqSHA256 && len(data) == 197 {
 		return stagedGCStructRefEq, true
 	}
+	if digest == stagedGCStructRefCastAbstractSHA256 && len(data) == 380 {
+		return stagedGCStructRefCastAbstract, true
+	}
+	if digest == stagedGCStructRefCastConcreteSHA256 && len(data) == 512 {
+		return stagedGCStructRefCastConcrete, true
+	}
 	for _, pin := range stagedGCStructLeaderPins {
 		if pin.SHA256 != digest || pin.Size != len(data) {
 			continue
@@ -196,19 +204,19 @@ func stagedGCStructExecutionProduct(data []byte) (stagedGCStructProduct, bool) {
 }
 
 func (p stagedGCStructProduct) requiresHelpers() bool {
-	return p == stagedGCStructNamedGets || p == stagedGCStructNumericLocal || p == stagedGCStructNullDereference || p == stagedGCStructPacked || p == stagedGCStructBasic || p == stagedGCStructRefTestTable || p == stagedGCStructRefTestConcrete || p == stagedGCStructRefTestAbstract || p == stagedGCStructExtern || p == stagedGCStructRefEq
+	return p == stagedGCStructNamedGets || p == stagedGCStructNumericLocal || p == stagedGCStructNullDereference || p == stagedGCStructPacked || p == stagedGCStructBasic || p == stagedGCStructRefTestTable || p == stagedGCStructRefTestConcrete || p == stagedGCStructRefTestAbstract || p == stagedGCStructExtern || p == stagedGCStructRefEq || p == stagedGCStructRefCastAbstract || p == stagedGCStructRefCastConcrete
 }
 
 func (p stagedGCStructProduct) requiresArrayHelpers() bool {
-	return p == stagedGCStructRefTestAbstract || p == stagedGCStructExtern || p == stagedGCStructRefEq
+	return p == stagedGCStructRefTestAbstract || p == stagedGCStructExtern || p == stagedGCStructRefEq || p == stagedGCStructRefCastAbstract
 }
 
 func (p stagedGCStructProduct) requiresI31Helpers() bool {
-	return p == stagedGCStructRefTestAbstract || p == stagedGCStructExtern || p == stagedGCStructRefEq
+	return p == stagedGCStructRefTestAbstract || p == stagedGCStructExtern || p == stagedGCStructRefEq || p == stagedGCStructRefCastAbstract
 }
 
 func (p stagedGCStructProduct) refTestCanonicalTypes() []gc.TypeID {
-	if p != stagedGCStructRefTestConcrete {
+	if p != stagedGCStructRefTestConcrete && p != stagedGCStructRefCastConcrete {
 		return nil
 	}
 	return []gc.TypeID{0, 1, 1, 3, 3, 5, 6, 7, 8}

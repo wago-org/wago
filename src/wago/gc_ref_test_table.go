@@ -142,6 +142,17 @@ func (s *gcRefTestTableState) setTable(collector *gc.Collector, table, index, wo
 	return nil
 }
 
+func (s *gcRefTestTableState) refCast(collector *gc.Collector, word uint64, target gc.RefTestTarget) (uint64, error) {
+	matched, err := s.refTest(collector, word, target)
+	if err != nil {
+		return 0, err
+	}
+	if !matched {
+		return 0, gc.ErrCastFailure
+	}
+	return word, nil
+}
+
 func (s *gcRefTestTableState) refTest(collector *gc.Collector, word uint64, target gc.RefTestTarget) (bool, error) {
 	if word>>32 != 0 {
 		if s == nil || s.Conversion == nil {

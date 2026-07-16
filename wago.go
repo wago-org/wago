@@ -235,6 +235,7 @@ const (
 	Stable                                     = impl.Stable
 	TrapBuiltin                                = impl.TrapBuiltin
 	TrapCalledFnNotLinked                      = impl.TrapCalledFnNotLinked
+	TrapCastFailure                            = impl.TrapCastFailure
 	TrapDivOverflow                            = impl.TrapDivOverflow
 	TrapDivZero                                = impl.TrapDivZero
 	TrapIndirectOutOfBounds                    = impl.TrapIndirectOutOfBounds
@@ -245,6 +246,7 @@ const (
 	TrapLinkedMemNotLinked                     = impl.TrapLinkedMemNotLinked
 	TrapLinkedMemOutOfBounds                   = impl.TrapLinkedMemOutOfBounds
 	TrapNone                                   = impl.TrapNone
+	TrapNullReference                          = impl.TrapNullReference
 	TrapStackFenceBreached                     = impl.TrapStackFenceBreached
 	TrapTableOutOfBounds                       = impl.TrapTableOutOfBounds
 	TrapTruncOverflow                          = impl.TrapTruncOverflow
