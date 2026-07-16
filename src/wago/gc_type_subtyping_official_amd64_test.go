@@ -205,6 +205,7 @@ func replayStagedGCTypeSubtypingScript(t *testing.T, tmp string, script stagedSp
 	leaderIndex, invalidIndex, unlinkableIndex := 0, 0, 0
 	currentLeader := -1
 	currentAdmitted := false
+	currentProduct := stagedGCTypeSubtypingProduct(0)
 	var currentInstance *Instance
 	var currentCompiled *Compiled
 	closeCurrent := func() {
@@ -233,6 +234,7 @@ func replayStagedGCTypeSubtypingScript(t *testing.T, tmp string, script stagedSp
 			latest, latestData = cmd.Filename, data
 			currentLeader = -1
 			currentAdmitted = false
+			currentProduct = 0
 		case "module_instance":
 			if leaderIndex >= len(stagedGCTypeSubtypingLeaderSourceLines) {
 				delta.Counts.Failures++
@@ -276,7 +278,7 @@ func replayStagedGCTypeSubtypingScript(t *testing.T, tmp string, script stagedSp
 				delta.Counts.Failures++
 				t.Errorf("gc/type-subtyping.wast:%d admitted leader %s allocated a collector", cmd.Line, latest)
 			}
-			if product.usesRefTest() {
+			if product.usesRefTest() || product.usesRuntimeFunctionIdentity() {
 				currentInstance = in
 				currentCompiled = c
 			} else {
@@ -286,6 +288,7 @@ func replayStagedGCTypeSubtypingScript(t *testing.T, tmp string, script stagedSp
 			delta.Leaders[currentLeader].Gate = ""
 			delta.Leaders[currentLeader].Admitted = true
 			currentAdmitted = true
+			currentProduct = product
 			delta.Counts.ModulesPassed++
 		case "register":
 			if currentLeader < 0 {
@@ -310,7 +313,39 @@ func replayStagedGCTypeSubtypingScript(t *testing.T, tmp string, script stagedSp
 				delta.Counts.BlockedCommands++
 				continue
 			}
-			if currentInstance == nil || cmd.Type != "assert_return" || len(cmd.Action.Args) != 0 || len(cmd.Expected) == 0 || len(cmd.Expected) > 8 {
+			if currentInstance == nil || len(cmd.Action.Args) != 0 {
+				delta.Counts.Failures++
+				t.Errorf("gc/type-subtyping.wast:%d admitted action is outside the exact bounded product contract", cmd.Line)
+				continue
+			}
+			if currentProduct.usesRuntimeFunctionIdentity() {
+				_, err := currentInstance.Invoke(cmd.Action.Field)
+				switch cmd.Type {
+				case "assert_return":
+					if len(cmd.Expected) != 0 || err != nil {
+						delta.Counts.Failures++
+						t.Errorf("gc/type-subtyping.wast:%d invoke %s = %v; want empty success", cmd.Line, cmd.Action.Field, err)
+						continue
+					}
+				case "assert_trap":
+					want := "wrong signature"
+					if cmd.Text == "cast" {
+						want = "cast failure"
+					}
+					if err == nil || !strings.Contains(err.Error(), want) {
+						delta.Counts.Failures++
+						t.Errorf("gc/type-subtyping.wast:%d invoke %s = %v; want %s trap", cmd.Line, cmd.Action.Field, err, want)
+						continue
+					}
+				default:
+					delta.Counts.Failures++
+					t.Errorf("gc/type-subtyping.wast:%d runtime function-identity action kind %s is unsupported", cmd.Line, cmd.Type)
+					continue
+				}
+				delta.Counts.AssertionsPassed++
+				continue
+			}
+			if cmd.Type != "assert_return" || len(cmd.Expected) == 0 || len(cmd.Expected) > 8 {
 				delta.Counts.Failures++
 				t.Errorf("gc/type-subtyping.wast:%d admitted action is outside the exact bounded function ref.test contract", cmd.Line)
 				continue
@@ -425,7 +460,7 @@ func TestStagedOfficialGCTypeSubtypingAccounting(t *testing.T) {
 	tmp := stagedOfficialTypedReferenceJSON(t, "gc/type-subtyping", &script)
 	delta := replayStagedGCTypeSubtypingScript(t, tmp, script)
 	counts := delta.Counts
-	if counts.Commands != 170 || counts.ModulesPassed != 23 || counts.AssertionsPassed != 9 || counts.ExpectedInvalid != 24 || counts.ExpectedMalformed != 0 || counts.ExpectedUnlinkable != 0 || counts.ExpectedUninstantiable != 0 || counts.ExpectedFeatureRejects != 22 || counts.BlockedCommands != 39 || counts.UnexpectedCompileRejects != 0 || counts.UnexpectedLinkRejects != 0 || counts.Failures != 0 {
+	if counts.Commands != 170 || counts.ModulesPassed != 24 || counts.AssertionsPassed != 16 || counts.ExpectedInvalid != 24 || counts.ExpectedMalformed != 0 || counts.ExpectedUnlinkable != 0 || counts.ExpectedUninstantiable != 0 || counts.ExpectedFeatureRejects != 21 || counts.BlockedCommands != 32 || counts.UnexpectedCompileRejects != 0 || counts.UnexpectedLinkRejects != 0 || counts.Failures != 0 {
 		t.Fatalf("staged gc/type-subtyping accounting has hidden or changed gaps: %+v", counts)
 	}
 	admitted := 0
@@ -434,7 +469,7 @@ func TestStagedOfficialGCTypeSubtypingAccounting(t *testing.T) {
 			admitted++
 		}
 	}
-	if len(delta.Leaders) != 45 || admitted != 23 || len(delta.Invalids) != 24 || len(delta.Unlinkables) != 8 || len(stagedGCTypeSubtypingValidValidatorGapLines) != 0 || len(stagedGCTypeSubtypingInvalidValidatorGapLines) != 0 {
+	if len(delta.Leaders) != 45 || admitted != 24 || len(delta.Invalids) != 24 || len(delta.Unlinkables) != 8 || len(stagedGCTypeSubtypingValidValidatorGapLines) != 0 || len(stagedGCTypeSubtypingInvalidValidatorGapLines) != 0 {
 		t.Fatalf("staged gc/type-subtyping inventory changed: leaders=%d admitted=%d invalids=%d unlinkables=%d valid-validator-gaps=%d invalid-validator-gaps=%d", len(delta.Leaders), admitted, len(delta.Invalids), len(delta.Unlinkables), len(stagedGCTypeSubtypingValidValidatorGapLines), len(stagedGCTypeSubtypingInvalidValidatorGapLines))
 	}
 	got, err := json.MarshalIndent(delta, "", "  ")

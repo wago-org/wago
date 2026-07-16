@@ -242,7 +242,7 @@
       "size": 412,
       "sha256": "505e94dbd66fc2e3b5d2d4af76341618b19571074c7b42a551392fd58aa692f3",
       "class": "runtime-recursive-call-cast",
-      "gate": "recursive function subtype call_indirect and ref.cast runtime",
+      "admitted": true,
       "validator_gap": false,
       "type_graph": "rec[sub(final=false,supers=[],func()-\u003e(funcref))]|rec[sub(final=false,supers=[{0 false}],func()-\u003e(ref null type 0))]|rec[sub(final=false,supers=[{1 false}],func()-\u003e(ref null type 0))]|rec[func()-\u003e()]",
       "state_graph": "imports=0 funcs=10 globals=[] tables=1 memories=0 tags=0 elements=1 data=0 exports=[run=0:3,fail1=0:4,fail2=0:5,fail3=0:6,fail4=0:7,fail5=0:8,fail6=0:9]",
@@ -1174,24 +1174,19 @@
     },
     {
       "family": "gc",
-      "reason": "recursive function subtype call_indirect and ref.cast runtime",
-      "count": 1
-    },
-    {
-      "family": "gc",
       "reason": "typed function table call_indirect runtime",
       "count": 1
     }
   ],
   "counts": {
     "commands": 170,
-    "modules_passed": 23,
-    "assertions_passed": 9,
+    "modules_passed": 24,
+    "assertions_passed": 16,
     "expected_invalid": 24,
     "expected_unlinkable": 0,
     "expected_uninstantiable": 0,
-    "expected_feature_rejects": 22,
-    "blocked_commands": 39,
+    "expected_feature_rejects": 21,
+    "blocked_commands": 32,
     "unexpected_compile_rejects": 0,
     "unexpected_link_rejects": 0,
     "failures": 0
