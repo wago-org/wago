@@ -318,13 +318,17 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   identity after exact declared-super assignment. Iteration 59 executes four single-result function-only `ref.test`
   leaders. Iteration 60 executes the next three multi-result all-true leaders with 2/4/8 ordered i32 results. One exact
   classifier permits only two or three local functions, one declarative element per tested function, and a runner made
-  solely of `ref.func; ref.test` pairs. Compile-only provenance folds structural subtyping without treating descriptor
-  addresses as compact GC references. All twenty-one leave `Instance.gc` nil; the new products use 96/128-byte arenas,
-  emit 215/448/560 code bytes, produce 922/785/1,095-byte codec artifacts, and invoke allocation-free. Codec reload
-  inherits no product marker, and guard/public/arm64/snapshot admission remains closed. Accounting is 21 passed modules /
-  7 passed assertions / 24 gates / 41 blocked dependents / 24 invalid / 8 unlinkable obligations. General frame roots,
-  object-valued mutable/reference globals, the two finality/direction-false `ref.test` leaders and action/link products,
-  public family admission, and broader platforms remain.
+  solely of `ref.func; ref.test` pairs. Iteration 61 executes the final two function-only leaders, each returning zero,
+  under a separate exact recursive-chain class. It requires two or three two-member open-function groups whose second
+  members point to the preceding group's first member and proves that the tested first member does not inherit that
+  sibling super edge in the reverse direction. Compile-only provenance folds every result without treating descriptor
+  addresses as compact GC references. All twenty-three leave `Instance.gc` nil. Iteration 60 uses 96/128-byte arenas,
+  emits 215/448/560 code bytes, and produces 922/785/1,095-byte codec artifacts; iteration 61 uses 96-byte arenas,
+  emits 178 bytes each, and produces 469/549-byte artifacts. Invocation remains allocation-free. Codec reload inherits
+  no product marker, and guard/public/arm64/snapshot admission remains closed. Accounting is 23 passed modules /
+  9 passed assertions / 22 gates / 39 blocked dependents / 24 invalid / 8 unlinkable obligations. General frame roots,
+  object-valued mutable/reference globals, runtime call/cast/table products, linking/non-flat exports, public family
+  admission, and broader platforms remain.
 - [ ] Reach zero unexplained failures/skips in the official Release 3 core suite.
 
 **Engine & performance** (no-ir-plan P1–P7, measured against P1's stats)
