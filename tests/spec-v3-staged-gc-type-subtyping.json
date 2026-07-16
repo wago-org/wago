@@ -547,7 +547,7 @@
       "size": 104,
       "sha256": "2841d098dfca125ccd9c577cf55762744c8a3911a1986f857be48ebc0d51f735",
       "class": "runtime-ref-test-function-identity",
-      "gate": "collector-free function ref.test over recursive structural identity",
+      "admitted": true,
       "validator_gap": false,
       "type_graph": "rec[sub(final=false,supers=[],func()-\u003e());sub(final=false,supers=[{0 true}],func()-\u003e())]|rec[sub(final=false,supers=[],func()-\u003e());sub(final=false,supers=[{0 false}],func()-\u003e())]|rec[func()-\u003e(i32)]",
       "state_graph": "imports=0 funcs=2 globals=[] tables=0 memories=0 tags=0 elements=1 data=0 exports=[run=0:1]",
@@ -572,7 +572,7 @@
       "size": 117,
       "sha256": "b0797a1825d04be467e336f7f236637184aab41a13de20ff7a06eb1bb7885613",
       "class": "runtime-ref-test-function-identity",
-      "gate": "collector-free function ref.test over recursive structural identity",
+      "admitted": true,
       "validator_gap": false,
       "type_graph": "rec[sub(final=false,supers=[],func()-\u003e());sub(final=false,supers=[{0 true}],func()-\u003e())]|rec[sub(final=false,supers=[],func()-\u003e());sub(final=false,supers=[{0 false}],func()-\u003e())]|rec[sub(final=false,supers=[],func()-\u003e());sub(final=false,supers=[{2 false}],func()-\u003e())]|rec[func()-\u003e(i32)]",
       "state_graph": "imports=0 funcs=2 globals=[] tables=0 memories=0 tags=0 elements=1 data=0 exports=[run=0:1]",
@@ -1154,11 +1154,6 @@
   "gates": [
     {
       "family": "gc",
-      "reason": "collector-free function ref.test over recursive structural identity",
-      "count": 2
-    },
-    {
-      "family": "gc",
       "reason": "collector-free recursive function subtype link consumer",
       "count": 7
     },
@@ -1190,13 +1185,13 @@
   ],
   "counts": {
     "commands": 170,
-    "modules_passed": 21,
-    "assertions_passed": 7,
+    "modules_passed": 23,
+    "assertions_passed": 9,
     "expected_invalid": 24,
     "expected_unlinkable": 0,
     "expected_uninstantiable": 0,
-    "expected_feature_rejects": 24,
-    "blocked_commands": 41,
+    "expected_feature_rejects": 22,
+    "blocked_commands": 39,
     "unexpected_compile_rejects": 0,
     "unexpected_link_rejects": 0,
     "failures": 0
