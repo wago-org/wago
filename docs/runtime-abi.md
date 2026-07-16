@@ -725,3 +725,7 @@ one public invocation. Generated code must therefore spill caller-cached globals
 before either boundary and reload afterward. Non-exported, non-imported globals
 need the same call-boundary discipline for host re-entry; exported and imported
 globals additionally remain coherent at public return.
+
+## Iteration 72 M8 link ABI boundary
+
+The exact source-lines-652–659 M8 pair reuses the canonical function descriptor ABI with the current trailing instance-context pointer. The provider owns null plus two 40-byte descriptors (120 bytes); the consumer owns null plus four imported copies (200 bytes). Exact and shifted duplicate recursive views copy the corresponding provider code pointer and canonical identity, while producer retention deduplicates to one owner. Both close orders release exactly. No collector, compact `gc.Ref`, root/barrier, helper, basedata slot, frame record, or public ABI is added. Binding-independent compiled serialization carries no live producer binding. Host and cross-product substitution, private/public reload admission, snapshots, guard mode, arm64, and unsupported platforms remain closed.

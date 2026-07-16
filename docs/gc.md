@@ -1830,3 +1830,7 @@ Tests exercise tiny nurseries, collect-every-alloc, exact scanning, cycles, root
 
 These limitations are intentional for this commit series: the runtime foundation
 is small, exact, typed, and no-cgo, giving later codegen work stable contracts.
+
+## Iteration 72 M8 duplicate recursive function linking
+
+The source-lines-652–659 provider/consumer pair is pinned at 100 bytes (`cee53b6e420932faec8bf166a6ae79cfab88f7ca890cd39851d3f70b932471aa`) and 92 bytes (`30ff7e3befab7405c63554526ecf2e61fc9ecf2b65e175414db07aa774e6a540`). Each has two complete two-member recursive function groups. Provider `f11` and `f12` satisfy exact and shifted duplicate consumer views in the ordered four-import sequence. Provider/consumer descriptor arenas are 96/160 bytes; all four imports retain one producer transactionally; both close orders release exactly; hosts and other products reject; `Instance.gc` stays nil. Wasm/code/codec sizes are 100/253/531 and 92/0/315 bytes. Codec reload, snapshots, guard mode, public admission, arm64, and unsupported platforms remain fail-closed. Accounting is 170 commands / 40 passed modules / 23 passed assertions / 5 gates / 11 blocked commands / 24 invalid / 6 executed plus 2 blocked unlinkables / zero validator gaps, unexpected failures, or hidden failures. Source line 668 is next.
