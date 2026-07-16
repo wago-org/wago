@@ -56,7 +56,7 @@
       "size": 373,
       "sha256": "a469ba81d14ddf21100f100cb67d75942bc0045b9eb09e6c4fc9052ac5ab6c83",
       "class": "basic-new-get-set",
-      "gate": "basic struct public ref.struct egress action",
+      "gate": "basic struct owned public ref.struct result",
       "type_graph": "rec[struct{f32,mut f32,f32}]|rec[func()-\u003e(ref null any)]|rec[func(ref type 0)-\u003e(f32)]|rec[func()-\u003e(f32)]|rec[func(ref type 0,f32)-\u003e(f32)]|rec[func(f32)-\u003e(f32)]",
       "state_graph": "imports=0 funcs=13 globals=[const ref type 0,const ref type 0] tables=0 memories=0 tags=0 elements=0 data=0 exports=[new=0:0,get_0_0=0:2,get_vec_0=0:4,get_0_y=0:6,get_vec_y=0:8,set_get_y=0:10,set_get_1=0:12]",
       "opcodes": [
@@ -190,23 +190,17 @@
       ]
     }
   ],
-  "gates": [
-    {
-      "family": "gc",
-      "reason": "basic struct public ref.struct egress action",
-      "count": 1
-    }
-  ],
+  "gates": [],
   "counts": {
     "commands": 36,
     "modules_passed": 6,
-    "assertions_passed": 18,
+    "assertions_passed": 19,
     "expected_invalid": 4,
     "expected_malformed": 1,
     "expected_unlinkable": 0,
     "expected_uninstantiable": 0,
     "expected_feature_rejects": 0,
-    "blocked_commands": 1,
+    "blocked_commands": 0,
     "unexpected_compile_rejects": 0,
     "unexpected_link_rejects": 0,
     "failures": 0

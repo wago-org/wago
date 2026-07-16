@@ -43,6 +43,7 @@ type (
 	GCAllocatorKind           = impl.GCAllocatorKind
 	GCConfig                  = impl.GCConfig
 	GCProfile                 = impl.GCProfile
+	GCRef                     = impl.GCRef
 	GCRuntimeKind             = impl.GCRuntimeKind
 	Global                    = impl.Global
 	GlobalDef                 = impl.GlobalDef
@@ -333,6 +334,8 @@ func NewTable(minSize uint32, maxSize uint32) (*Table, error) { return impl.NewT
 func NullExternRef() ExternRef { return impl.NullExternRef() }
 
 func NullFuncRef() FuncRef { return impl.NullFuncRef() }
+
+func NullGCRef() GCRef { return impl.NullGCRef() }
 
 func OptKnobs() []OptKnobInfo { return impl.OptKnobs() }
 

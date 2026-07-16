@@ -3,6 +3,7 @@
 package wago
 
 import (
+	"context"
 	"encoding/hex"
 	"math"
 	"strings"
@@ -202,7 +203,7 @@ func TestStagedGCStructPackedGlobalExecution(t *testing.T) {
 	}
 }
 
-func TestStagedGCStructBasicNumericActionsAndPublicResultGate(t *testing.T) {
+func TestStagedGCStructBasicNumericActionsAndPublicResultToken(t *testing.T) {
 	data, err := hex.DecodeString(stagedGCStructBasicHex)
 	if err != nil {
 		t.Fatal(err)
@@ -242,8 +243,20 @@ func TestStagedGCStructBasicNumericActionsAndPublicResultGate(t *testing.T) {
 					t.Fatalf("%s = %v, %v; want [%#x]", name, got, err, seven)
 				}
 			}
-			if _, err := in.Invoke("new"); err == nil || !strings.Contains(err.Error(), "non-null anyref result") {
-				t.Fatalf("new public result = %v, want explicit non-null anyref result rejection", err)
+			raw, err := in.Invoke("new")
+			if err != nil || len(raw) != 1 || raw[0] == 0 || raw[0]>>32 == 0 {
+				t.Fatalf("new public result = %v, %v; want one opaque non-null token", raw, err)
+			}
+			ref := ValueOf(ValAnyRef, raw[0]).GCRef()
+			if err := in.ReleaseGCRef(ref); err != nil {
+				t.Fatalf("release new public result: %v", err)
+			}
+			values, err := in.Call(context.Background(), "new")
+			if err != nil || len(values) != 1 || values[0].Type() != ValAnyRef || values[0].GCRef().IsNull() || values[0].Bits()>>32 == 0 {
+				t.Fatalf("Call new public result = %v, %v; want typed opaque GCRef", values, err)
+			}
+			if err := in.ReleaseGCRef(values[0].GCRef()); err != nil {
+				t.Fatalf("release typed new public result: %v", err)
 			}
 			if stats := in.gc.Stats(); stats.LiveObjects > 3 {
 				t.Fatalf("basic collector stats = %+v, want two globals plus at most one transient object", stats)
@@ -298,8 +311,8 @@ func TestStagedGCStructGetAllocationFailureAndCodecGate(t *testing.T) {
 		t.Fatalf("private codec reload: %v", err)
 	}
 	defer loaded.Close()
-	if loaded.usesGCStructHelpers() {
-		t.Fatal("codec reload inherited live GC helper admission")
+	if loaded.usesGCStructHelpers() || loaded.stagedGCStructProduct() != 0 {
+		t.Fatal("codec reload inherited live GC helper or public-token admission")
 	}
 	if _, err := instantiateCore(&loaded, InstantiateOptions{}); err == nil || !strings.Contains(err.Error(), "required feature") {
 		t.Fatalf("codec-loaded staged helper instantiate = %v, want fail-closed feature error", err)
@@ -315,6 +328,41 @@ func TestStagedGCStructHelperFootprint(t *testing.T) {
 		t.Fatalf("compiledCodeCache size = %d, want 64", got)
 	}
 	var _ gc.Ref = 0 // keep the compact reference representation explicit in this proof.
+}
+
+func BenchmarkStagedGCStructBasicPublicToken(b *testing.B) {
+	data, err := hex.DecodeString(stagedGCStructBasicHex)
+	if err != nil {
+		b.Fatal(err)
+	}
+	c, err := compileStagedGCStruct(data)
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer c.Close()
+	in, err := instantiateCore(c, InstantiateOptions{})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer in.Close()
+	warm, err := in.Invoke("new")
+	if err != nil || len(warm) != 1 {
+		b.Fatalf("warm new = %v, %v", warm, err)
+	}
+	if err := in.ReleaseGCRef(ValueOf(ValAnyRef, warm[0]).GCRef()); err != nil {
+		b.Fatal(err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		got, err := in.Invoke("new")
+		if err != nil || len(got) != 1 || got[0] == 0 {
+			b.Fatalf("new = %v, %v", got, err)
+		}
+		if err := in.ReleaseGCRef(ValueOf(ValAnyRef, got[0]).GCRef()); err != nil {
+			b.Fatal(err)
+		}
+	}
 }
 
 func BenchmarkStagedGCStructBasicSetGet(b *testing.B) {

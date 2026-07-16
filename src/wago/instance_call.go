@@ -15,8 +15,10 @@ import (
 // begins. When the instance was created through a Runtime, its BeforeInvoke and
 // AfterInvoke hooks fire around the call. Reference Values carry one opaque
 // uint64 token slot; non-null funcrefs are valid only in the Runtime store (or
-// standalone private store) that issued them. Accepting a reference-typed module
-// remains controlled by compiler feature support. v128
+// standalone private store) that issued them. The exact staged basic-struct
+// result may also return one bounded GCRef token that must be released through
+// its producer Instance. Accepting a reference-typed module remains controlled
+// by compiler feature support. v128
 // parameters/results are not expressible as a Value; use Invoke for those.
 func (in *Instance) Call(ctx context.Context, export string, args ...Value) ([]Value, error) {
 	if ctx != nil {

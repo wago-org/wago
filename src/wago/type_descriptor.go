@@ -69,8 +69,8 @@ type ValueTypeDescriptor struct {
 // ABIType reports the one-slot public/product ABI category for values that the
 // current runtime can describe. types is the containing module's flattened type
 // graph and is consulted for indexed references. Struct/array references use
-// ValAnyRef metadata slots, but non-null ingress/egress remains fail-closed until
-// the collector-backed public value/store boundary is implemented.
+// ValAnyRef metadata slots. Non-null ingress remains fail-closed; the exact
+// staged basic-struct result may egress only through a bounded store-owned token.
 func (t ValueTypeDescriptor) ABIType(types []DefinedTypeDescriptor) (ValType, bool) {
 	switch t.Kind {
 	case ValueTypeI32:

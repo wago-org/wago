@@ -209,16 +209,6 @@ func replayStagedGCStructScript(t *testing.T, tmp string, script stagedSpecScrip
 				counts.BlockedCommands++
 				continue
 			}
-			if current.Product == stagedGCStructBasic && cmd.Action.Field == "new" {
-				if _, err := currentModule.in.Invoke("new"); err == nil || !strings.Contains(err.Error(), "non-null anyref result") {
-					counts.Failures++
-					t.Errorf("gc/struct.wast:%d public ref.struct egress = %v, want explicit non-null anyref result rejection", cmd.Line, err)
-					continue
-				}
-				gates[current.Product.gateReason()]++
-				counts.BlockedCommands++
-				continue
-			}
 			args := make([]uint64, len(cmd.Action.Args))
 			valid := cmd.Action.Type == "invoke"
 			for i, arg := range cmd.Action.Args {
@@ -251,10 +241,26 @@ func replayStagedGCStructScript(t *testing.T, tmp string, script stagedSpecScrip
 				continue
 			}
 			matched := true
+			publicGCResult := current.Product == stagedGCStructBasic && cmd.Action.Field == "new"
 			for i := range got {
+				if publicGCResult {
+					exact, owner, _, ok := currentModule.in.refStore.gcRefExactType(got[i])
+					if !ok || got[i] == 0 || got[i]>>32 == 0 || owner != currentModule.in || exact.Kind != ValueTypeReference || !exact.Ref.Exact || !exact.Ref.Heap.Defined || exact.Ref.Heap.TypeIndex != 0 {
+						matched = false
+						break
+					}
+					continue
+				}
 				if !stagedTypedReferenceMatch(currentModule, got[i], cmd.Expected[i]) {
 					matched = false
 					break
+				}
+			}
+			if publicGCResult && len(got) == 1 {
+				if releaseErr := currentModule.in.ReleaseGCRef(ValueOf(ValAnyRef, got[0]).GCRef()); releaseErr != nil {
+					counts.Failures++
+					t.Errorf("gc/struct.wast:%d release public GC result: %v", cmd.Line, releaseErr)
+					continue
 				}
 			}
 			if !matched {

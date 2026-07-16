@@ -3596,19 +3596,48 @@ func (in *Instance) translatePublicReferenceResults(subject string, values []uin
 			clear(values)
 			return fmt.Errorf("%s: invalid externref result %d", subject, i)
 		}
-		if typ == ValAnyRef || typ == ValExnRef {
+		if typ == ValAnyRef {
 			required, ok := exactReferenceType(exact, i, typ)
 			if !ok {
 				clear(values)
-				return fmt.Errorf("%s: missing exact %s type for result %d", subject, typ, i)
+				return fmt.Errorf("%s: missing exact anyref type for result %d", subject, i)
+			}
+			if values[slot] == 0 {
+				if !required.Ref.Nullable {
+					clear(values)
+					return fmt.Errorf("%s: null anyref for non-null result %d", subject, i)
+				}
+			} else {
+				if values[slot] != uint64(uint32(values[slot])) {
+					clear(values)
+					return fmt.Errorf("%s: invalid non-null anyref result %d", subject, i)
+				}
+				store, err := in.referenceStoreForBoundary()
+				if err != nil {
+					clear(values)
+					return fmt.Errorf("%s: own non-null anyref result %d: %w", subject, i, err)
+				}
+				token, err := store.issueGCRef(in, gc.Ref(uint32(values[slot])), required)
+				if err != nil {
+					clear(values)
+					return fmt.Errorf("%s: own non-null anyref result %d: %w", subject, i, err)
+				}
+				values[slot] = token
+			}
+		}
+		if typ == ValExnRef {
+			required, ok := exactReferenceType(exact, i, typ)
+			if !ok {
+				clear(values)
+				return fmt.Errorf("%s: missing exact exnref type for result %d", subject, i)
 			}
 			if values[slot] != 0 {
 				clear(values)
-				return fmt.Errorf("%s: non-null %s result %d is outside the null-only product", subject, typ, i)
+				return fmt.Errorf("%s: non-null exnref result %d is outside the null-only product", subject, i)
 			}
 			if !required.Ref.Nullable {
 				clear(values)
-				return fmt.Errorf("%s: null %s for non-null result %d", subject, typ, i)
+				return fmt.Errorf("%s: null exnref for non-null result %d", subject, i)
 			}
 		}
 		if typ == ValV128 {
