@@ -21,6 +21,27 @@ func compileStagedGCTypeSubtypingProductForTest(data []byte) (*Compiled, error) 
 	return compileWithFrontendFeatures(cfg, data, features)
 }
 
+func BenchmarkStagedGCTypeSubtypingRuntimeCallCast(b *testing.B) {
+	pin := stagedGCTypeSubtypingProductPins[23]
+	c, err := compileStagedGCTypeSubtypingProductForTest(stagedGCTypeSubtypingProductData(b, pin))
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer c.Close()
+	in, err := instantiateCore(c, InstantiateOptions{})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer in.Close()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := in.Invoke("run"); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
 func TestStagedGCTypeSubtypingProductsCompile(t *testing.T) {
 	if got := unsafe.Sizeof(compiledCodeCache{}); got != 64 {
 		t.Fatalf("compiledCodeCache size = %d, want 64 bytes", got)
