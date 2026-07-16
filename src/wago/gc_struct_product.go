@@ -23,6 +23,7 @@ const (
 	stagedGCStructNullDereference
 	stagedGCStructPacked
 	stagedGCStructNumericLocal
+	stagedGCStructNumericGlobals
 )
 
 type stagedGCStructOpcodeCount struct {
@@ -65,6 +66,8 @@ func (p stagedGCStructProduct) String() string {
 		return "packed-fields"
 	case stagedGCStructNumericLocal:
 		return "numeric-local-helper"
+	case stagedGCStructNumericGlobals:
+		return "numeric-global-roots"
 	default:
 		return "unknown"
 	}
@@ -86,6 +89,8 @@ func (p stagedGCStructProduct) gateReason() string {
 		return "packed struct globals/get/set product"
 	case stagedGCStructNumericLocal:
 		return "one numeric local struct allocation/access helper product"
+	case stagedGCStructNumericGlobals:
+		return "two immutable numeric struct globals with collector roots"
 	default:
 		return "unknown gc/struct product"
 	}
@@ -104,6 +109,7 @@ func stagedGCStructLeaderPinFor(data []byte, commandLine int) (stagedGCStructLea
 const (
 	stagedGCStructNumericLocalSHA256    = "f5fc57a9a6b959a1a689385cb79050b6998c867c61eafd65ff03b2d57d128fcf"
 	stagedGCStructNumericMutationSHA256 = "e9f7a7ec88c56684ad5b96e2a5471765ab2835ddea14069006da51a96ed5e891"
+	stagedGCStructNumericGlobalsSHA256  = "0387e519fa921b905d0657a6fafb630ab7acaa3a6282e354b3f0f2e45adbfeee"
 )
 
 // stagedGCStructExecutionProduct admits only the exact collector-backed products
@@ -115,6 +121,9 @@ func stagedGCStructExecutionProduct(data []byte) (stagedGCStructProduct, bool) {
 	if (digest == stagedGCStructNumericLocalSHA256 && len(data) == 65) ||
 		(digest == stagedGCStructNumericMutationSHA256 && len(data) == 106) {
 		return stagedGCStructNumericLocal, true
+	}
+	if digest == stagedGCStructNumericGlobalsSHA256 && len(data) == 67 {
+		return stagedGCStructNumericGlobals, true
 	}
 	for _, pin := range stagedGCStructLeaderPins {
 		if pin.SHA256 != digest || pin.Size != len(data) {

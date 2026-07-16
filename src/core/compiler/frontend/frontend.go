@@ -1229,7 +1229,7 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 		}
 		if p.feat.GCStructProducts {
 			switch imm.Kind {
-			case wasm.InstrStructNewDefault, wasm.InstrStructGet, wasm.InstrStructSet:
+			case wasm.InstrStructNew, wasm.InstrStructNewDefault, wasm.InstrStructGet, wasm.InstrStructGetS, wasm.InstrStructGetU, wasm.InstrStructSet:
 				return false, nil
 			}
 		}
@@ -1457,6 +1457,10 @@ func (p supportPass) constExpr(e wasm.Expr, context string) error {
 			if !p.feat.ReferenceTypes {
 				return p.unsupported("const expression", "ref.func (reference-types disabled)", instructionContext(context, i))
 			}
+		case wasm.InstrStructNew, wasm.InstrStructNewDefault:
+			if !p.feat.GCStructProducts {
+				return p.unsupported("const expression", in.Kind.String()+" (gc disabled)", instructionContext(context, i))
+			}
 		default:
 			return p.unsupported("const expression", in.Kind.String(), instructionContext(context, i))
 		}
@@ -1531,6 +1535,14 @@ func (p supportPass) constExprBytes(body []byte, context string) error {
 			}
 			if !p.feat.ReferenceTypes {
 				return p.unsupported("const expression", "ref.func (reference-types disabled)", ctx)
+			}
+		case 0xfb:
+			imm, err := wasm.ClassifyInstructionImmediate(&r, op)
+			if err != nil {
+				return err
+			}
+			if !p.feat.GCStructProducts || (imm.Kind != wasm.InstrStructNew && imm.Kind != wasm.InstrStructNewDefault) {
+				return p.unsupported("const expression", imm.Kind.String()+" (gc disabled)", ctx)
 			}
 		case 0xfd:
 			var imm wasm.InstructionImmediate
@@ -1789,7 +1801,7 @@ func (p supportPass) instructionKind(k wasm.InstrKind, context string) error {
 	if isGCInstruction(k) {
 		if p.feat.GCStructProducts {
 			switch k {
-			case wasm.InstrStructNewDefault, wasm.InstrStructGet, wasm.InstrStructSet:
+			case wasm.InstrStructNew, wasm.InstrStructNewDefault, wasm.InstrStructGet, wasm.InstrStructGetS, wasm.InstrStructGetU, wasm.InstrStructSet:
 				return nil
 			}
 		}
@@ -1935,7 +1947,7 @@ func (p supportPass) valType(v wasm.ValType, context string) error {
 
 func (p supportPass) globalType(v wasm.ValType, context string) error {
 	if v.Kind == wasm.ValRef {
-		if p.feat.ReferenceTypes && (isFuncRef(v.Ref) || isExternRef(v.Ref) || p.supportedTypedFuncRef(v.Ref) || p.supportedStagedExternRef(v.Ref) || p.supportedNullReference(v.Ref)) {
+		if p.feat.ReferenceTypes && (isFuncRef(v.Ref) || isExternRef(v.Ref) || p.supportedTypedFuncRef(v.Ref) || p.supportedStagedExternRef(v.Ref) || p.supportedNullReference(v.Ref) || p.supportedStructuralTypeRef(v.Ref)) {
 			return nil
 		}
 		feature := valTypeName(v)

@@ -84,8 +84,11 @@ func TestModuleMetadataHelpers(t *testing.T) {
 			t.Fatalf("function signature %d = %#v, %v", idx, ft, ok)
 		}
 	}
-	if _, ok := m.FuncSignature(2); ok || m.CanonicalTypeID(2) != 0 || m.StructuralTypeID(2) != m.StructuralTypeID(0) {
+	if _, ok := m.FuncSignature(2); ok || m.CanonicalTypeID(2) != 0 {
 		t.Fatal("function signature IDs changed")
+	}
+	if m.StructuralTypeID(2) == m.StructuralTypeID(0) {
+		t.Fatal("structural signature ID collapsed distinct recursive-group membership")
 	}
 	if _, ok := m.LocalFuncType(-1); ok {
 		t.Fatal("negative local function index accepted")

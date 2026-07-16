@@ -628,6 +628,8 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	}
 
 	var globals []byte
+	var gcGlobalRoots [2]gcGlobalRootMapping
+	var gcGlobalRootCount uint8
 	globalCells := make([]*Global, len(c.Globals))
 	if len(c.Globals) > 0 {
 		globals = ar.Alloc(8 * len(c.Globals))
@@ -648,6 +650,18 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 				cell = imp.global
 			} else {
 				bits, vec := g.Bits, g.V128
+				if gcInit, ok := c.gcStructGlobalInit(i); ok {
+					if int(gcGlobalRootCount) >= len(gcGlobalRoots) {
+						return nil, fmt.Errorf("global %d exceeds staged GC root mapping bound", i)
+					}
+					ref, slot, err := instantiateGCStructGlobal(b.collector, c.GCTypeDescs, gcInit)
+					if err != nil {
+						return nil, fmt.Errorf("global %d GC struct initializer: %w", i, err)
+					}
+					bits = uint64(ref)
+					gcGlobalRoots[gcGlobalRootCount] = gcGlobalRootMapping{GlobalIndex: uint32(i), SlotIndex: slot}
+					gcGlobalRootCount++
+				}
 				if g.HasInitFunc {
 					off := (int(g.InitFunc) + 1) * runtime.FuncRefDescBytes
 					if off < runtime.FuncRefDescBytes || off+runtime.FuncRefDescBytes > len(funcRefDescs) {
@@ -1007,6 +1021,11 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	}
 	if memoryCount > 1 {
 		in.memoryDir = &instanceMemoryDirectory{memories: memoryObjs, owns: memoryOwns, native: nativeMemoryDir}
+	}
+	if gcGlobalRootCount != 0 {
+		state := in.ensurePluginState()
+		state.gcGlobalRoots = gcGlobalRoots
+		state.gcGlobalRootCount = gcGlobalRootCount
 	}
 	if len(nativeTagIDs) != 0 {
 		in.ensurePluginState().tagIdentityBase = uintptr(unsafe.Pointer(&nativeTagIDs[0]))
