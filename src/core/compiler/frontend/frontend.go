@@ -1888,11 +1888,15 @@ func (p supportPass) supportedValType(v wasm.ValType) bool {
 	if p.feat.SIMD && v.Kind == wasm.ValVec && wasm.EqualValType(v, wasm.V128) {
 		return true
 	}
-	return p.feat.ReferenceTypes && v.Kind == wasm.ValRef && (isFuncRef(v.Ref) || isExternRef(v.Ref) || p.supportedTypedFuncRef(v.Ref) || p.supportedStagedExternRef(v.Ref) || p.supportedExceptionRef(v.Ref) || p.supportedNullReference(v.Ref) || p.supportedStructuralTypeRef(v.Ref))
+	return p.feat.ReferenceTypes && v.Kind == wasm.ValRef && (isFuncRef(v.Ref) || isExternRef(v.Ref) || p.supportedTypedFuncRef(v.Ref) || p.supportedStagedExternRef(v.Ref) || p.supportedExceptionRef(v.Ref) || p.supportedNullReference(v.Ref) || p.supportedGCReference(v.Ref) || p.supportedStructuralTypeRef(v.Ref))
 }
 
 func (p supportPass) supportedExceptionRef(rt wasm.RefType) bool {
 	return p.feat.ExceptionReferences && rt.Heap.Kind == wasm.HeapAbs && (rt.Heap.Abs == wasm.HeapExn || rt.Heap.Abs == wasm.HeapNoExn)
+}
+
+func (p supportPass) supportedGCReference(rt wasm.RefType) bool {
+	return p.feat.GCStructProducts && !rt.Exact && rt.Heap.Kind == wasm.HeapAbs && (rt.Heap.Abs == wasm.HeapAny || rt.Heap.Abs == wasm.HeapNone)
 }
 
 func (p supportPass) supportedStructuralTypeRef(rt wasm.RefType) bool {
