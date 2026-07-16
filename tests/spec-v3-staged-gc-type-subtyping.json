@@ -699,7 +699,7 @@
       "size": 82,
       "sha256": "7c8af0765c2e2d43a07e7a6a75a85d396531827c1b2cb4402a24277308781dff",
       "class": "link-provider",
-      "gate": "collector-free recursive function subtype link provider",
+      "admitted": true,
       "validator_gap": false,
       "type_graph": "rec[sub(final=false,supers=[],func()-\u003e());struct{ref type 0}]|rec[sub(final=false,supers=[],func()-\u003e());struct{ref type 0}]|rec[sub(final=false,supers=[{0 false}],func()-\u003e());struct{}]",
       "state_graph": "imports=0 funcs=1 globals=[] tables=0 memories=0 tags=0 elements=0 data=0 exports=[g=0:0]"
@@ -711,7 +711,7 @@
       "size": 63,
       "sha256": "a593d0db0e5f173aaac2d6007b84a4b268d7ad2047a4e8cd8fe3a275ef9b0820",
       "class": "link-consumer",
-      "gate": "collector-free recursive function subtype link consumer",
+      "admitted": true,
       "validator_gap": false,
       "type_graph": "rec[sub(final=false,supers=[],func()-\u003e());struct{ref type 0}]|rec[sub(final=false,supers=[],func()-\u003e());struct{ref type 0}]|rec[sub(final=false,supers=[{0 false}],func()-\u003e());struct{}]",
       "state_graph": "imports=1 funcs=0 globals=[] tables=0 memories=0 tags=0 elements=0 data=0 exports=[]"
@@ -1161,12 +1161,12 @@
     {
       "family": "gc",
       "reason": "collector-free recursive function subtype link consumer",
-      "count": 4
+      "count": 3
     },
     {
       "family": "gc",
       "reason": "collector-free recursive function subtype link provider",
-      "count": 6
+      "count": 5
     },
     {
       "family": "gc",
@@ -1176,13 +1176,13 @@
   ],
   "counts": {
     "commands": 170,
-    "modules_passed": 34,
+    "modules_passed": 36,
     "assertions_passed": 23,
     "expected_invalid": 24,
     "expected_unlinkable": 6,
     "expected_uninstantiable": 0,
-    "expected_feature_rejects": 11,
-    "blocked_commands": 14,
+    "expected_feature_rejects": 9,
+    "blocked_commands": 13,
     "unexpected_compile_rejects": 0,
     "unexpected_link_rejects": 0,
     "failures": 0
