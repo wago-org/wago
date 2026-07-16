@@ -23,6 +23,7 @@ const (
 	gcArrayDropElem     uint32 = 26
 	gcArrayFill         uint32 = 27
 	gcArrayCopy         uint32 = 28
+	gcArrayInitData     uint32 = 29
 )
 
 func (in *Instance) dispatchGCHelper(helper uint32, args, results []uint64) {
@@ -91,6 +92,35 @@ func (in *Instance) dispatchGCArrayHelper(helper uint32, args, results []uint64)
 	}
 
 	switch helper {
+	case gcArrayInitData:
+		if len(args) != 6 {
+			panic(gcStructHelperError{err: fmt.Errorf("gc array init-data helper arity = %d, want 6", len(args))})
+		}
+		ref, dstStart := gc.Ref(uint32(args[0])), uint32(args[1])
+		srcStart, length := uint32(args[2]), uint32(args[3])
+		typeID, dataIndex := uint32(args[4]), uint32(args[5])
+		checkArray(ref, typeID)
+		if int(dataIndex) >= len(in.c.PassiveData) {
+			panic(gcStructHelperError{err: fmt.Errorf("gc array.init_data segment %d is unavailable", dataIndex)})
+		}
+		descOff := int(dataIndex) * coreruntime.PassiveDataDescBytes
+		if descOff < 0 || descOff+coreruntime.PassiveDataDescBytes > len(in.passiveDataDesc) {
+			panic(gcStructHelperError{err: fmt.Errorf("gc array.init_data segment %d has no instance descriptor", dataIndex)})
+		}
+		segmentLen := binary.LittleEndian.Uint32(in.passiveDataDesc[descOff+8:])
+		data := in.c.PassiveData[dataIndex].Bytes
+		if segmentLen > uint32(len(data)) {
+			panic(gcStructHelperError{err: fmt.Errorf("gc array.init_data segment %d descriptor length %d exceeds retained bytes %d", dataIndex, segmentLen, len(data))})
+		}
+		if err := in.gc.ArrayInitData(ref, dstStart, data[:segmentLen], srcStart, length); err != nil {
+			if strings.Contains(err.Error(), "data source out of range") {
+				panic(gcStructHelperTrap{code: coreruntime.TrapLinMemOutOfBounds})
+			}
+			if strings.Contains(err.Error(), "index out of range") {
+				panic(gcStructHelperTrap{code: coreruntime.TrapBuiltin})
+			}
+			panic(gcStructHelperError{err: err})
+		}
 	case gcArrayFill:
 		if len(args) != 5 {
 			panic(gcStructHelperError{err: fmt.Errorf("gc array fill helper arity = %d, want 5", len(args))})

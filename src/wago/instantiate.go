@@ -638,7 +638,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	}
 
 	var globals []byte
-	var gcGlobalRoots [2]gcGlobalRootMapping
+	var gcGlobalRoots [3]gcGlobalRootMapping
 	var gcGlobalRootCount uint8
 	globalCells := make([]*Global, len(c.Globals))
 	if len(c.Globals) > 0 {
