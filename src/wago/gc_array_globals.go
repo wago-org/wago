@@ -8,7 +8,10 @@ import (
 	"github.com/wago-org/wago/src/core/runtime/gc"
 )
 
-const maxGCArrayFixedElements = 4
+const (
+	maxGCArrayFixedElements    = 4
+	maxGCArrayBulkGlobalLength = 12
+)
 
 type gcArrayGlobalInitMode uint8
 
@@ -29,7 +32,7 @@ type gcArrayGlobalInit struct {
 	Bits        [maxGCArrayFixedElements]uint64
 }
 
-func stagedGCArrayGlobalInitializers(m *wasm.Module) ([]gcArrayGlobalInit, error) {
+func stagedGCArrayGlobalInitializers(m *wasm.Module, product stagedGCArrayProduct) ([]gcArrayGlobalInit, error) {
 	if m == nil {
 		return nil, fmt.Errorf("nil module")
 	}
@@ -43,7 +46,7 @@ func stagedGCArrayGlobalInitializers(m *wasm.Module) ([]gcArrayGlobalInit, error
 		if !ok || sub.Comp.Kind != wasm.CompArray {
 			continue
 		}
-		if g.Type.Mutable {
+		if g.Type.Mutable && product != stagedGCArrayProductBulkFill && product != stagedGCArrayProductBulkCopy {
 			return nil, fmt.Errorf("global %d GC array initializer is mutable", imports+i)
 		}
 		init, err := decodeStagedGCArrayGlobalInit(m, uint32(imports+i), g)
@@ -157,8 +160,12 @@ func decodeStagedGCArrayGlobalInit(m *wasm.Module, globalIndex uint32, g wasm.Gl
 					init.Bits[i] = values[i].bits
 				}
 			}
-			if init.Length > maxGCArrayFixedElements {
-				return gcArrayGlobalInit{}, fmt.Errorf("array global length %d exceeds staged bound %d", init.Length, maxGCArrayFixedElements)
+			limit := uint32(maxGCArrayFixedElements)
+			if init.Mode == gcArrayGlobalInitDefault || init.Mode == gcArrayGlobalInitUniform {
+				limit = maxGCArrayBulkGlobalLength
+			}
+			if init.Length > limit {
+				return gcArrayGlobalInit{}, fmt.Errorf("array global length %d exceeds staged bound %d", init.Length, limit)
 			}
 			end, err := r.Byte()
 			if err != nil || end != 0x0b || r.BytesLeft() != 0 {
@@ -191,8 +198,12 @@ func instantiateGCArrayGlobal(collector *gc.Collector, descs []gc.TypeDesc, init
 	if collector == nil || int(init.TypeID) >= len(descs) || descs[init.TypeID].Kind != gc.KindArray {
 		return gc.Null(), 0, fmt.Errorf("GC array global type %d is unavailable", init.TypeID)
 	}
-	if init.Length > maxGCArrayFixedElements {
-		return gc.Null(), 0, fmt.Errorf("GC array global length %d exceeds staged bound %d", init.Length, maxGCArrayFixedElements)
+	limit := uint32(maxGCArrayFixedElements)
+	if init.Mode == gcArrayGlobalInitDefault || init.Mode == gcArrayGlobalInitUniform {
+		limit = maxGCArrayBulkGlobalLength
+	}
+	if init.Length > limit {
+		return gc.Null(), 0, fmt.Errorf("GC array global length %d exceeds staged bound %d", init.Length, limit)
 	}
 	desc := descs[init.TypeID]
 	kind := desc.Elem

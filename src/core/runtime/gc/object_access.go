@@ -214,13 +214,112 @@ func (c *Collector) ArraySet(ref Ref, index uint32, value Value) error {
 	if index >= ln {
 		return errors.New("gc: index out of range")
 	}
+	if err := c.validateArrayStore(d, value); err != nil {
+		return err
+	}
+	return c.storeArrayValue(ref, d, index, value)
+}
+
+// ArrayFill preflights the complete destination range and value before making
+// any write. It does not allocate or collect. Reference writes use the ordinary
+// object/card barrier per element and the post-write bulk barrier for the range.
+func (c *Collector) ArrayFill(ref Ref, start uint32, value Value, length uint32) error {
+	d, err := c.refDesc(ref)
+	if err != nil {
+		return err
+	}
+	if d.Kind != KindArray {
+		return errors.New("gc: not array")
+	}
+	arrayLen := c.header(ref).Aux
+	if uint64(start)+uint64(length) > uint64(arrayLen) {
+		return errRange
+	}
+	if err := c.validateArrayStore(d, value); err != nil {
+		return err
+	}
+	for i := uint32(0); i < length; i++ {
+		if err := c.storeArrayValue(ref, d, start+i, value); err != nil {
+			return err
+		}
+	}
+	if isRefKind(d.Elem) {
+		c.PostBulkWriteBarrier(ref, start, length)
+	}
+	return nil
+}
+
+// ArrayCopy preflights both ranges and the complete reference payload before
+// mutation. Same-array overlap is copied in memmove order without allocating a
+// temporary buffer. It does not allocate or collect.
+func (c *Collector) ArrayCopy(dst Ref, dstStart uint32, src Ref, srcStart uint32, length uint32) error {
+	dstDesc, err := c.refDesc(dst)
+	if err != nil {
+		return err
+	}
+	srcDesc, err := c.refDesc(src)
+	if err != nil {
+		return err
+	}
+	if dstDesc.Kind != KindArray || srcDesc.Kind != KindArray {
+		return errors.New("gc: not array")
+	}
+	if !arrayStorageCopyCompatible(dstDesc.Elem, srcDesc.Elem) {
+		return errors.New("gc: array element types do not match")
+	}
+	dstLen, srcLen := c.header(dst).Aux, c.header(src).Aux
+	if uint64(dstStart)+uint64(length) > uint64(dstLen) || uint64(srcStart)+uint64(length) > uint64(srcLen) {
+		return errRange
+	}
+	if isRefKind(dstDesc.Elem) {
+		for i := uint32(0); i < length; i++ {
+			value, err := c.loadValue(src, uint64(PayloadOffset)+uint64(srcStart+i)*uint64(srcDesc.ElemSize), srcDesc.Elem)
+			if err != nil {
+				return err
+			}
+			if err := c.validateArrayStore(dstDesc, value); err != nil {
+				return err
+			}
+		}
+	}
+	copyOne := func(dstIndex, srcIndex uint32) error {
+		value, err := c.loadValue(src, uint64(PayloadOffset)+uint64(srcIndex)*uint64(srcDesc.ElemSize), srcDesc.Elem)
+		if err != nil {
+			return err
+		}
+		return c.storeArrayValue(dst, dstDesc, dstIndex, value)
+	}
+	if dst == src && dstStart > srcStart && uint64(dstStart) < uint64(srcStart)+uint64(length) {
+		for i := length; i > 0; i-- {
+			if err := copyOne(dstStart+i-1, srcStart+i-1); err != nil {
+				return err
+			}
+		}
+	} else {
+		for i := uint32(0); i < length; i++ {
+			if err := copyOne(dstStart+i, srcStart+i); err != nil {
+				return err
+			}
+		}
+	}
+	if isRefKind(dstDesc.Elem) {
+		c.PostBulkWriteBarrier(dst, dstStart, length)
+	}
+	return nil
+}
+
+func (c *Collector) validateArrayStore(d TypeDesc, value Value) error {
 	if err := checkValueCompatible(d.Elem, value); err != nil {
 		return err
 	}
 	if isRefKind(d.Elem) {
-		if err := c.validateStoredRef(value.Ref, d.Elem == StorageRefNull); err != nil {
-			return err
-		}
+		return c.validateStoredRef(value.Ref, d.Elem == StorageRefNull)
+	}
+	return nil
+}
+
+func (c *Collector) storeArrayValue(ref Ref, d TypeDesc, index uint32, value Value) error {
+	if isRefKind(d.Elem) {
 		childIsNursery := c.isNurseryRef(value.Ref)
 		c.WriteBarrierObject(ref, value.Ref)
 		c.CardMarkArray(ref, index)
@@ -233,4 +332,11 @@ func (c *Collector) ArraySet(ref Ref, index uint32, value Value) error {
 		return nil
 	}
 	return c.storeValue(ref, d, uint64(PayloadOffset)+uint64(index)*uint64(d.ElemSize), d.Elem, value)
+}
+
+func arrayStorageCopyCompatible(dst, src StorageKind) bool {
+	if dst == src {
+		return true
+	}
+	return dst == StorageRefNull && src == StorageRef
 }
