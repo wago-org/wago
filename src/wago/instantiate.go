@@ -661,6 +661,17 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 					bits = uint64(ref)
 					gcGlobalRoots[gcGlobalRootCount] = gcGlobalRootMapping{GlobalIndex: uint32(i), SlotIndex: slot}
 					gcGlobalRootCount++
+				} else if gcInit, ok := c.gcArrayGlobalInit(i); ok {
+					if int(gcGlobalRootCount) >= len(gcGlobalRoots) {
+						return nil, fmt.Errorf("global %d exceeds staged GC root mapping bound", i)
+					}
+					ref, slot, err := instantiateGCArrayGlobal(b.collector, c.GCTypeDescs, gcInit)
+					if err != nil {
+						return nil, fmt.Errorf("global %d GC array initializer: %w", i, err)
+					}
+					bits = uint64(ref)
+					gcGlobalRoots[gcGlobalRootCount] = gcGlobalRootMapping{GlobalIndex: uint32(i), SlotIndex: slot}
+					gcGlobalRootCount++
 				}
 				if g.HasInitFunc {
 					off := (int(g.InitFunc) + 1) * runtime.FuncRefDescBytes

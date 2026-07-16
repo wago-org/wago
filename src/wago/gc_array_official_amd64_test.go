@@ -170,6 +170,7 @@ func replayStagedGCArrayScript(t *testing.T, tmp string, script stagedSpecScript
 	var latest []byte
 	var current *stagedGCArrayLeaderPin
 	var instance *Instance
+	var currentCompiled *Compiled
 	defer func() {
 		if instance != nil {
 			_ = instance.Close()
@@ -196,6 +197,7 @@ func replayStagedGCArrayScript(t *testing.T, tmp string, script stagedSpecScript
 				_ = instance.Close()
 				instance = nil
 			}
+			currentCompiled = nil
 			leader, pin, err := stagedGCArrayLeaderDeltaFor(latest, cmd.Line)
 			if err != nil {
 				counts.Failures++
@@ -217,6 +219,7 @@ func replayStagedGCArrayScript(t *testing.T, tmp string, script stagedSpecScript
 				continue
 			}
 			instance, err = instantiateCore(c, InstantiateOptions{})
+			currentCompiled = c
 			_ = c.Close()
 			if err != nil {
 				counts.Failures++
@@ -276,10 +279,61 @@ func replayStagedGCArrayScript(t *testing.T, tmp string, script stagedSpecScript
 				counts.BlockedCommands++
 				continue
 			}
-			_, invokeErr := instance.Invoke(cmd.Action.Field)
-			if cmd.Type != "assert_trap" || invokeErr == nil {
+			module := stagedSpecModule{in: instance, c: currentCompiled}
+			args := make([]uint64, len(cmd.Action.Args))
+			valid := cmd.Action.Type == "invoke"
+			for i, arg := range cmd.Action.Args {
+				args[i], valid = stagedTypedReferenceArgument(module, nil, arg)
+				if !valid {
+					break
+				}
+			}
+			if !valid {
 				counts.Failures++
-				t.Errorf("gc/array.wast:%d %s = %v, want trap", cmd.Line, cmd.Action.Field, invokeErr)
+				t.Errorf("gc/array.wast:%d unsupported staged action", cmd.Line)
+				continue
+			}
+			got, invokeErr := instance.Invoke(cmd.Action.Field, args...)
+			if cmd.Type == "assert_trap" {
+				if invokeErr == nil {
+					counts.Failures++
+					t.Errorf("gc/array.wast:%d %s returned normally, want trap", cmd.Line, cmd.Action.Field)
+				} else {
+					counts.AssertionsPassed++
+				}
+				continue
+			}
+			if invokeErr != nil || len(got) != len(cmd.Expected) {
+				counts.Failures++
+				t.Errorf("gc/array.wast:%d result=%v err=%v want=%v", cmd.Line, got, invokeErr, cmd.Expected)
+				continue
+			}
+			matched := true
+			publicArrayResult := current.Class == stagedGCArrayNumericFixed && cmd.Action.Field == "new"
+			for i := range got {
+				if publicArrayResult {
+					exact, owner, _, ok := instance.refStore.gcRefExactType(got[i])
+					if !ok || got[i] == 0 || got[i]>>32 == 0 || owner != instance || exact.Kind != ValueTypeReference || !exact.Ref.Exact || !exact.Ref.Heap.Defined || exact.Ref.Heap.TypeIndex != 0 {
+						matched = false
+						break
+					}
+					continue
+				}
+				if !stagedTypedReferenceMatch(module, got[i], cmd.Expected[i]) {
+					matched = false
+					break
+				}
+			}
+			if publicArrayResult && len(got) == 1 {
+				if err := instance.ReleaseGCRef(ValueOf(ValAnyRef, got[0]).GCRef()); err != nil {
+					counts.Failures++
+					t.Errorf("gc/array.wast:%d release public GC result: %v", cmd.Line, err)
+					continue
+				}
+			}
+			if !matched {
+				counts.Failures++
+				t.Errorf("gc/array.wast:%d result=%v want=%v", cmd.Line, got, cmd.Expected)
 				continue
 			}
 			counts.AssertionsPassed++
@@ -313,7 +367,7 @@ func TestStagedOfficialGCArrayAccounting(t *testing.T) {
 	var script stagedSpecScript
 	tmp := stagedOfficialTypedReferenceJSON(t, "gc/array", &script)
 	counts, leaders, gateCounts := replayStagedGCArrayScript(t, tmp, script)
-	if counts.Commands != 61 || counts.ModulesPassed != 3 || counts.AssertionsPassed != 2 || counts.ExpectedFeatureRejects != 4 || counts.BlockedCommands != 39 || counts.ExpectedInvalid != 6 || counts.Failures != 0 || counts.UnexpectedCompileRejects != 0 || counts.UnexpectedLinkRejects != 0 {
+	if counts.Commands != 61 || counts.ModulesPassed != 4 || counts.AssertionsPassed != 9 || counts.ExpectedFeatureRejects != 3 || counts.BlockedCommands != 32 || counts.ExpectedInvalid != 6 || counts.Failures != 0 || counts.UnexpectedCompileRejects != 0 || counts.UnexpectedLinkRejects != 0 {
 		t.Fatalf("staged gc/array accounting has hidden or changed gaps: %+v", counts)
 	}
 	gateNames := make([]string, 0, len(gateCounts))
