@@ -9,12 +9,12 @@ knobs, and tests. Iteration 38 wires one exact linux/amd64 numeric-local helper 
 iteration 39 adds exact immutable GC-global roots, packed fields, and the numeric portion
 of the official basic struct leader. Iteration 40 closes the final struct action through one
 bounded store-owned public result token and pins the complete array family obligations.
-Iteration 41 adds a separate exact pointer-free array helper/product boundary, the official
-array declaration/binding and null products, and the complete numeric-fixed leader with one
-immutable collector-rooted global and bounded public array results. General native frame
-publication, mutable/reference stores, numeric-default/data/reference array families, broad
-public ownership, and snapshots remain incomplete. These bounded products must not be
-presented as general executable WasmGC support.
+Iterations 41-42 add a separate exact pointer-free array helper/product boundary, the official
+array declaration/binding, null, numeric-fixed, numeric-default, and packed-data leaders,
+three immutable checked roots across those products, data-drop lifecycle, and bounded public
+array results. General native frame publication, mutable/reference stores, the reference-
+element array family, broad public ownership, and snapshots remain incomplete. These bounded
+products must not be presented as general executable WasmGC support.
 
 ## Why a wago-native collector
 
@@ -327,8 +327,9 @@ producer/collector, and roots it through the same reusable checked slot contract
 result-only ownership: non-null array parameters, globals, hosts, cross-instance values,
 multiple simultaneous results, and snapshots remain closed.
 
-Strict `gc/array.wast` accounting is now 61 commands / 4 modules / 9 assertions / 6 invalid /
-3 exact gates / 32 blocked commands, with zero hidden failures. The remaining leaders are
+At the iteration-41 boundary, strict `gc/array.wast` accounting was 61 commands / 4 modules /
+9 assertions / 6 invalid / 3 exact gates / 32 blocked commands, with zero hidden failures. The
+remaining leaders were
 numeric-default (including two globals and `array.new`), packed-data/drop lifecycle, and
 reference-element/element-drop/barrier lifecycle. Fixed set/get measures 379.4-381.5 ns/op;
 fixed result issue/release measures 462.8-488.2 ns/op; all samples are 0 B/op and
@@ -337,6 +338,50 @@ bytes; the synthetic product is 146 / 1,247 / 1,527 bytes. Both fixed and synthe
 length-two arrays occupy 24 bytes including the 16-byte header. Fixed layouts remain
 `Compiled=712`, `Instance=792`, `compiledCodeCache=64`, `gcArrayGlobalInit=48`,
 `compiledMemoryDirectory=120`, and `gc.Collector=640` bytes.
+
+### Iteration 42 numeric-default roots and packed data
+
+Iteration 42 closes two more exact official leaders without introducing a general reference-
+array path:
+
+- the 250-byte numeric-default leader records one uniform f32 initializer and one default f32
+  initializer in two bounded 48-byte compile-only records. Each three-element array is 32
+  bytes. Instantiation installs the first checked global slot before allocating the second,
+  so Throughput/Tiny collection sees the earlier immutable root; a 64-byte Tiny heap fits the
+  pair exactly, while a 32-byte heap fails deterministically on the second allocation and
+  rolls the instance back;
+- native `array.new` passes one numeric fill value plus length through the parked helper. It
+  allocates once with `gc.EmptyRoots{}` and performs only non-collecting scalar stores. The
+  complete get/set/len and bounds action set executes, and both non-null public results use
+  the unchanged exact dynamic-array/one-live-token contract; and
+- the 351-byte packed-data leader admits only i8 `array.new_data`. Before allocation, the
+  helper reads the per-instance passive descriptor's current length, widens source plus length
+  to u64, rejects overflow/out-of-range with a linear-memory trap, and verifies the retained
+  immutable bytes. Only then does it allocate one 24-byte array and copy scalar bytes. Native
+  code carries no Go pointer. `data.drop` sets the descriptor length to zero; non-empty reads
+  trap without allocation, while source zero/length zero still creates the required empty
+  array. Signed/unsigned packed loads, truncating scalar stores, bounds traps, Tiny exhaustion,
+  trap atomicity, and codec sidecar loss are covered.
+
+These are still empty-live-frame-ref allocations. The two default arrays are collector global
+roots only after their individual initialization, and packed passive bytes are not GC roots.
+No object or bulk reference barrier is needed for f32/i8 storage. Public result tokens are
+created only after native return, reuse one checked slot, and never authorize non-null ingress,
+multiple live results, globals/hosts, cross-instance values, or snapshot persistence.
+
+Strict `gc/array.wast` accounting is now 61 commands / 6 modules / 29 assertions / 6 invalid /
+1 exact gate / 12 blocked commands, with zero hidden failures. Only the reference-element
+leader remains: its element segment contains two allocated i8 arrays, `array.new_elem` must
+keep those refs live while allocating/copying the outer array, mutable reference stores need
+object/card barriers, and `elem.drop` must withdraw segment roots coherently.
+
+The numeric-default product is 250 Wasm bytes / 1,937 linked code bytes / 2,551 codec bytes;
+the packed-data product is 351 / 2,863 / 3,585 bytes. Three-element f32 and i8 arrays occupy
+32 and 24 bytes respectively, including the 16-byte header. Packed `get_u` measures
+311.6-315.9 ns/op across five 500 ms samples, all 0 B/op and 0 allocs/op. Fixed layouts remain
+`Compiled=712`, `Instance=792`, `compiledCodeCache=64`, `gcArrayGlobalInit=48`,
+`compiledMemoryDirectory=120`, and `gc.Collector=640` bytes. Codec v27 is unchanged and reload
+inherits no helper/product/global-root/data-lifecycle/token admission.
 
 Before broader live `gc.Ref` payloads or funcref lifetimes can be admitted, codegen/runtime
 must still prove all of the following as one coherent product:
@@ -874,16 +919,17 @@ Tests exercise tiny nurseries, collect-every-alloc, exact scanning, cycles, root
 
 ## Current limitations
 
-- WasmGC opcode validation is not complete. Exact staged numeric structs plus pointer-free
-  `array.new_default`/`array.new_fixed`, numeric array get/set/len, immutable fixed-array
-  constants/globals, null traps, and bounded public struct/array results are wired to amd64.
-  Numeric-default `array.new`, packed data arrays, reference-element arrays, casts/tests,
-  reference fields, and general GC constant expressions remain.
-- The parked-Go runtime-call ABI is proven for exact empty-frame-root numeric allocations,
-  non-collecting numeric access/mutation, immutable collector-rooted globals, and one
-  result-token root installed only after the native call returns. General allocation with
-  live frame refs, field/element barriers, and traps still need the backend-neutral
-  root-publication ABI before broader generated code can use objects.
+- WasmGC opcode validation is not complete. Exact staged numeric structs plus all pointer-free
+  official array leaders are wired to amd64: bounded `array.new`/default/fixed, packed-i8
+  `array.new_data`, numeric/packed get/set/len, immutable numeric array constants/globals,
+  null/bounds/data-drop traps, and bounded public struct/array results. Reference-element
+  arrays, casts/tests, reference fields, and general GC constant expressions remain.
+- The parked-Go runtime-call ABI is proven for exact empty-frame-root numeric/packed
+  allocations, non-collecting numeric access/mutation, ordered immutable collector-rooted
+  globals, per-instance passive data descriptors, and one result-token root installed only
+  after the native call returns. General allocation with live frame refs, passive-element GC
+  roots, field/element object+bulk barriers, and traps still need the backend-neutral root-
+  publication ABI before broader generated code can use objects.
 - Exact native safepoint maps are not connected to compiled frames yet.
 - Minor collection currently promotes marked nursery survivors through handles
   rather than implementing a final copying nursery/root-update path.
@@ -894,8 +940,9 @@ Tests exercise tiny nurseries, collect-every-alloc, exact scanning, cycles, root
   must not cache raw heap payload pointers; see `docs/runtime-abi.md`.
 - Tiny and Throughput profiles are connected to the exact staged numeric-struct and
   pointer-free array helper paths, including immutable rooted globals, packed struct fields,
-  bounded public-token rooting, stress collection, and deterministic Tiny exhaustion.
-  Packed/reference array families and broader WasmGC opcode/backend lowering remain closed.
+  packed data/drop lifecycle, bounded public-token rooting, stress collection, and
+  deterministic Tiny exhaustion. Reference arrays and broader WasmGC opcode/backend lowering
+  remain closed.
 
 These limitations are intentional for this commit series: the runtime foundation
 is small, exact, typed, and no-cgo, giving later codegen work stable contracts.

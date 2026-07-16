@@ -191,20 +191,27 @@ This result-token root is not a native frame root and does not justify widening 
 It exists only after the Wasm activation has returned, carries no cached payload pointer, and
 is compile-only exact-product state absent from codec v27.
 
-Iteration 41 gives pointer-free arrays a separate compile-only helper/product path. Exact
-`array.new_default` and bounded `array.new_fixed` producers perform one allocation with a
-proven empty live-frame-ref set, then helper-side `array.get`, numeric `array.set`, and
-`array.len` discard every transient Go-derived address before native resume. The fixed
-leader's one immutable global installs a checked collector slot immediately after numeric
-initialization. Numeric array stores need no barrier. Public fixed-array results are tokenized
-only after native return and use the same one-live-token root/lifetime policy with an exact
-dynamic array-type check.
+Iterations 41-42 give pointer-free arrays a separate compile-only helper/product path. Exact
+`array.new`, `array.new_default`, bounded `array.new_fixed`, and i8 `array.new_data` producers
+perform one allocation with a proven empty live-frame-ref set. Helper-side `array.get`, numeric
+or packed `array.set`, and `array.len` discard every transient Go-derived address before native
+resume. The fixed leader's one immutable global and the default leader's two immutable globals
+install checked collector slots immediately after each object's scalar initialization; the first
+default root is visible before the second allocation can collect. Numeric/packed array stores
+need no barrier. Public results are tokenized only after native return and use the same one-live-
+token root/lifetime policy with an exact dynamic array-type check.
 
-Neither array path permits a second allocation while a transient ref is live. Numeric-default
-products with multiple globals, packed data segments, reference elements, object/bulk
-barriers, non-null ingress, mutable globals, hosts, snapshots, guard mode, and arm64 remain
-closed. These exact struct/array proofs must not be treated as the general `codegen.Emitter`
-publication protocol.
+`array.new_data` reads only the copied scalar source/length/type/segment arguments plus the
+per-instance 16-byte passive descriptor. Parked Go checks the current descriptor length and
+u64-widened source end before allocating, then copies retained immutable bytes into i8 payload
+slots. `data.drop` mutates only the descriptor length. Thus non-empty post-drop and overflowing
+ranges trap before collector state changes, while source zero/length zero remains valid; no
+Go-slice pointer enters native state or survives helper return.
+
+None of these paths permits a second allocation while a transient ref is live. Reference
+elements, passive-element GC roots, object/bulk barriers, non-null ingress, mutable globals,
+hosts, snapshots, guard mode, and arm64 remain closed. These exact struct/array proofs must not
+be treated as the general `codegen.Emitter` publication protocol.
 
 ## Global coherence invariant
 
