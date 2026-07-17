@@ -63,7 +63,7 @@ func ValidateTypeDescs(descs []TypeDesc) error {
 				if f.Offset+sz > maxEnd {
 					maxEnd = f.Offset + sz
 				}
-				if isRefKind(f.Kind) {
+				if isCollectorRefKind(f.Kind) {
 					seenRefs = true
 				}
 			}
@@ -84,7 +84,7 @@ func ValidateTypeDescs(descs []TypeDesc) error {
 			if d.Align != a || d.ElemSize != sz {
 				return fmt.Errorf("gc: array descriptor %d elem layout mismatch", i)
 			}
-			if d.HasRefs != isRefKind(d.Elem) {
+			if d.HasRefs != isCollectorRefKind(d.Elem) {
 				return fmt.Errorf("gc: array descriptor %d HasRefs mismatch", i)
 			}
 		default:

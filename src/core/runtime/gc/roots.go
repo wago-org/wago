@@ -64,7 +64,7 @@ func (s valueRootSlot) SetRef(r Ref) { s.values[s.idx].Ref = r }
 
 func (s valueRootSet) RangeRoots(fn func(RootSlot) bool) {
 	for i := range s.values {
-		if !s.all && (i >= len(s.fields) || !isRefKind(s.fields[i].Kind)) {
+		if !s.all && (i >= len(s.fields) || !isCollectorRefKind(s.fields[i].Kind)) {
 			continue
 		}
 		if !fn(valueRootSlot{values: s.values, idx: i}) {

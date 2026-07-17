@@ -177,7 +177,7 @@ func (c *Collector) verifyEdges(r Ref, d TypeDesc) error {
 	hdr := c.header(r)
 	if d.Kind == KindStruct {
 		for _, f := range d.Fields {
-			if isRefKind(f.Kind) {
+			if isCollectorRefKind(f.Kind) {
 				if err := check(Ref(binary.LittleEndian.Uint32(b[PayloadOffset+f.Offset:]))); err != nil {
 					return err
 				}
