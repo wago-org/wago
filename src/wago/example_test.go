@@ -41,7 +41,7 @@ func Example_compileAndInvoke() {
 func ExampleSupportedFeatures() {
 	features := wago.SupportedFeatures()
 	fmt.Println(features.IsEnabled(wago.CoreFeatureMutableGlobal))
-	fmt.Println(features.IsEnabled(wago.CoreFeatureTailCall))
+	fmt.Println(features.IsEnabled(wago.CoreFeatureExtendedConstExpressions))
 	// Output:
 	// true
 	// true

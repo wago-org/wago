@@ -331,11 +331,30 @@ func (c *RuntimeConfig) String() string {
 // compile. Intersect a desired set with it to stay portable:
 //
 //	feats := want & wago.SupportedFeatures()
-func SupportedFeatures() CoreFeatures {
-	if !hostSupportsSIMD() {
-		return coreFeaturesWago &^ CoreFeatureSIMD
+func platformCoreFeatures() CoreFeatures {
+	supported := coreFeaturesWago
+	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
+		// These Core 3 families currently have complete native lowering only in
+		// the linux/amd64 backend. Other runtime targets retain the portable
+		// Release 2 surface plus extended constant expressions and reject the
+		// incomplete families at configuration time.
+		supported &^= CoreFeatureTailCall |
+			CoreFeatureTypedFunctionReferences |
+			CoreFeatureGC |
+			CoreFeatureExceptionHandling |
+			CoreFeatureMultiMemory |
+			CoreFeatureMemory64 |
+			CoreFeatureTable64
 	}
-	return coreFeaturesWago
+	return supported
+}
+
+func SupportedFeatures() CoreFeatures {
+	supported := platformCoreFeatures()
+	if !hostSupportsSIMD() {
+		supported &^= CoreFeatureSIMD
+	}
+	return supported
 }
 
 // GuardPageSupported reports whether this binary was built with guard-page
@@ -418,10 +437,15 @@ func (c *RuntimeConfig) Validate() error {
 	if c.functionWorkers < 0 {
 		return fmt.Errorf("wago: function workers must be non-negative, got %d", c.functionWorkers)
 	}
-	if unsupported := c.features &^ coreFeaturesWago; unsupported != 0 {
+	// SIMD remains configurable on builds whose host CPU cannot execute it so
+	// scalar modules still compile under the default config; the frontend clears
+	// SIMD admission for those modules. Architecture-incomplete Core 3 families,
+	// in contrast, fail here before decoding or lowering.
+	supported := platformCoreFeatures()
+	if unsupported := c.features &^ supported; unsupported != 0 {
 		return &UnsupportedFeatureError{
 			Requested: unsupported,
-			Supported: coreFeaturesWago,
+			Supported: supported,
 			Platform:  runtime.GOOS + "/" + runtime.GOARCH,
 		}
 	}
