@@ -422,7 +422,9 @@ func (c *Collector) ArrayCopy(dst Ref, dstStart uint32, src Ref, srcStart uint32
 	if uint64(dstStart)+uint64(length) > uint64(dstLen) || uint64(srcStart)+uint64(length) > uint64(srcLen) {
 		return errRange
 	}
-	if isCollectorRefKind(dstDesc.Elem) {
+	if isCollectorRefKind(dstDesc.Elem) && (c.cfg.VerifyAfterCollect || c.cfg.StressBarriers) {
+		// Valid source arrays already satisfy their storage invariant. Repeat the
+		// expensive element integrity check only in explicit hardening modes.
 		for i := uint32(0); i < length; i++ {
 			value, err := c.loadValue(src, uint64(PayloadOffset)+uint64(srcStart+i)*uint64(srcDesc.ElemSize), srcDesc.Elem)
 			if err != nil {

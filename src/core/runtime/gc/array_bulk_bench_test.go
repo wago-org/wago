@@ -72,6 +72,49 @@ func BenchmarkArrayBulk(b *testing.B) {
 				}
 			}
 		})
+		b.Run("reference-copy-"+benchmarkLength(n), func(b *testing.B) {
+			c := newBulkBenchmarkCollector(b)
+			child, _ := c.NewStructDefault(0)
+			src, _ := c.NewArray(2, n, RefValue(child))
+			dst, _ := c.NewArray(2, n, RefValue(child))
+			b.ReportAllocs()
+			b.SetBytes(int64(n * 4))
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				if err := c.ArrayCopy(dst, 0, src, 0, n); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+		b.Run("reference-widen-"+benchmarkLength(n), func(b *testing.B) {
+			c := newBulkBenchmarkCollector(b)
+			child, _ := c.NewStructDefault(0)
+			src, _ := c.NewArray(2, n, RefValue(child))
+			dst, _ := c.NewArrayDefault(3, n)
+			b.ReportAllocs()
+			b.SetBytes(int64(n * 4))
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				if err := c.ArrayCopy(dst, 0, src, 0, n); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+		if n > 1 {
+			b.Run("reference-overlap-"+benchmarkLength(n), func(b *testing.B) {
+				c := newBulkBenchmarkCollector(b)
+				child, _ := c.NewStructDefault(0)
+				array, _ := c.NewArray(2, n, RefValue(child))
+				b.ReportAllocs()
+				b.SetBytes(int64((n - 1) * 4))
+				b.ResetTimer()
+				for i := 0; i < b.N; i++ {
+					if err := c.ArrayCopy(array, 1, array, 0, n-1); err != nil {
+						b.Fatal(err)
+					}
+				}
+			})
+		}
 	}
 }
 
