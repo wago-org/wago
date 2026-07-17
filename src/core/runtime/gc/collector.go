@@ -66,10 +66,12 @@ type Config struct {
 }
 
 type Stats struct {
-	Allocations      uint64
-	MinorCollections uint64
-	FullCollections  uint64
-	LiveObjects      uint32
+	Allocations            uint64
+	MinorCollections       uint64
+	FullCollections        uint64
+	MinorObjectsScanned    uint64
+	MinorRememberedScanned uint64
+	LiveObjects            uint32
 }
 
 type spaceKind uint8
@@ -102,6 +104,7 @@ type Collector struct {
 	throughput       throughputHeap
 	handles          []handleEntry // index 0 is never used; Ref stores index<<1.
 	freeHandles      []uint32
+	nurseryHandles   []uint32 // dense live nursery set; minor collection never scans all old handles
 	mark             []bool
 	markStack        []uint32
 	promotionScratch []plannedPromotion
@@ -161,6 +164,7 @@ func (c *Collector) Close() {
 	c.throughput.Close()
 	c.handles = nil
 	c.freeHandles = nil
+	c.nurseryHandles = nil
 	c.mark = nil
 	c.markStack = nil
 	c.promotionScratch = nil

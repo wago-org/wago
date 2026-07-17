@@ -1387,6 +1387,15 @@ unsupported below-minimum, above-maximum, or between-class values such as `4097`
 are rejected at collector construction rather than rounded. Larger objects use a
 coalescing free-span list.
 
+Throughput minor collection maintains a dense nursery-handle set and traces only nursery roots, remembered old/large
+objects, and transitive nursery children. It does not mark or scan the complete old live graph. Global/table slots are
+checked directly; old/large object roots depend on the invariant that every direct old/large-to-nursery edge is in the
+remembered set. Promotion and nursery sweep iterate the dense nursery set rather than the complete handle table.
+`Stats.MinorObjectsScanned` and `Stats.MinorRememberedScanned` expose cumulative cold-path scan counts for complexity
+tests. Fresh large struct initialization performs all validated field stores first, then records one remembered entry
+when the finished payload contains a nursery child; reference arrays use the corresponding post-bulk reconciliation.
+The additional nursery slice and scan counters bring the fixed `Collector` to 712 bytes on linux/amd64 with Go 1.24.4.
+
 Minor promotion plans use collector-owned reusable scratch in ascending handle order. Every success or rollback clears the used entries and resets the slice length, so no stale allocation record survives a collection. Allocation failure frees planned old-space entries in reverse order before publishing any move. A repeated allocate/promote/full-collect benchmark on linux/amd64 drops from 188.8–200.8 ns/op, 96–100 B/op, and 3 allocs/op to 178.8–189.1 ns/op, 72–81 B/op, and 2 allocs/op; the removed allocation is the per-minor promotion plan.
 
 Throughput heap growth is intentionally checked before touching the backing
@@ -1820,7 +1829,7 @@ The barriers have two responsibilities:
 1. Generational remembered-set/card marking: old-to-young object edges and root/table/global slots containing young refs must be discoverable by minor collection.
 2. Incremental tri-color marking: future concurrent/incremental marking must preserve the no-black-to-white invariant.
 
-Generated code must call object barriers for `struct.set` and ref array stores, slot barriers for `global.set` and `table.set`, and bulk barriers for array initialization/copy/fill paths that write refs. `SlotFrame` barriers remain unsupported until exact frame-root maps exist; frame roots must be supplied through explicit root publication/safepoint machinery instead of recorded as slot cards. `BulkWriteBarrier` is a post-write barrier: generated helpers must store or copy refs into the destination array range before invoking `BulkWriteBarrier`/`PostBulkWriteBarrier`. A pre-write bulk barrier cannot observe newly written nursery refs and is not a safe substitute.
+Generated code must call object barriers for `struct.set` and ref array stores, slot barriers for `global.set` and `table.set`, and bulk barriers for array initialization/copy/fill paths that write refs. Fresh old/large objects are not exempt: constructors must reconcile the completed payload once before publication so direct nursery children are remembered. `SlotFrame` barriers remain unsupported until exact frame-root maps exist; frame roots must be supplied through explicit root publication/safepoint machinery instead of recorded as slot cards. `BulkWriteBarrier` is a post-write barrier: generated helpers must store or copy refs into the destination array range before invoking `BulkWriteBarrier`/`PostBulkWriteBarrier`. A pre-write bulk barrier cannot observe newly written nursery refs and is not a safe substitute.
 
 Remembered-set and card metadata is deliberately conservative and has bounded membership cost. Each handle stores a remembered bit, so repeated `remember` is O(1) without a linear membership scan. Sweeping clears the bit immediately and compacts the dense remembered list once on the collection cold path instead of removing each dead handle with a quadratic sequence of scans; handle reuse therefore cannot inherit stale membership. Verification checks the bit/list bijection and rejects duplicates. Ordinary old-object stores never rescan the complete parent merely because the new value is old or null. They retain the remembered bit conservatively until minor/full collection performs exact cold-path pruning.
 

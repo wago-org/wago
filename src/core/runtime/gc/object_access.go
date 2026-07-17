@@ -50,6 +50,15 @@ func (c *Collector) NewStructWithRoots(typeID TypeID, values []Value, roots Root
 			return Null(), err
 		}
 	}
+	// Initialization publishes the complete payload at once. A large allocation
+	// is born outside the nursery, so reconcile one remembered-set entry after all
+	// direct stores instead of paying a barrier per field.
+	if hasRefs && c.cfg.Profile != ProfileTiny {
+		h := handleOf(r)
+		if (c.handles[h].space == spaceOld || c.handles[h].space == spaceLarge) && c.handleContainsNurseryRef(h) {
+			c.remember(h)
+		}
+	}
 	return r, nil
 }
 
