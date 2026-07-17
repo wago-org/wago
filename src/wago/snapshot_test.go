@@ -161,7 +161,7 @@ func TestCaptureInstanceSnapshotCopiesLiveState(t *testing.T) {
 	}
 	defer mem.Close()
 	mem.Bytes()[0] = 9
-	c := &Compiled{PassiveData: []PassiveDataInit{{Bytes: []byte("abc")}}}
+	c := &Compiled{HasMemory: true, MemMinPages: 1, MemMaxPages: 1, PassiveData: []PassiveDataInit{{Bytes: []byte("abc")}}}
 	g := &Global{Type: ValI32, cell: make([]byte, 8)}
 	binary.LittleEndian.PutUint64(g.cell, 17)
 	desc := make([]byte, runtime.PassiveDataDescBytes)

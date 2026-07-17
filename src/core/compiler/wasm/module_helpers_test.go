@@ -84,7 +84,7 @@ func TestModuleMetadataHelpers(t *testing.T) {
 			t.Fatalf("function signature %d = %#v, %v", idx, ft, ok)
 		}
 	}
-	if _, ok := m.FuncSignature(2); ok || m.CanonicalTypeID(2) != 0 {
+	if _, ok := m.FuncSignature(2); ok || m.CanonicalTypeID(2) != 0 || m.StructuralTypeID(2) == 0 || m.StructuralTypeID(2) == m.StructuralTypeID(0) {
 		t.Fatal("function signature IDs changed")
 	}
 	if m.StructuralTypeID(2) == m.StructuralTypeID(0) {
@@ -436,16 +436,16 @@ func TestDecodeSignedTypeIndex(t *testing.T) {
 }
 
 func TestDecodeReferenceTypeEncodings(t *testing.T) {
-	if got, err := decodeRefType(newReader([]byte{0x63, 0x70})); err != nil || got != AbsRef(HeapFunc) {
+	if got, err := decodeRefType(newReader([]byte{0x63, 0x70})); err != nil || !EqualValType(RefVal(got), FuncRef) || got.Bare {
 		t.Fatalf("decodeRefType(nullable funcref) = %#v, %v", got, err)
 	}
-	if got, err := decodeRefType(newReader([]byte{0x64, 0x70})); err != nil || got.Nullable || got.Heap.Abs != HeapFunc {
+	if got, err := decodeRefType(newReader([]byte{0x64, 0x70})); err != nil || got.Nullable || got.Bare || got.Heap.Abs != HeapFunc {
 		t.Fatalf("decodeRefType(non-null funcref) = %#v, %v", got, err)
 	}
-	if got, err := decodeRefType(newReader([]byte{0x63, 0x62, 4})); err != nil || !got.Nullable || !got.Exact || got.Heap.Type != (TypeIdx{Index: 4}) {
+	if got, err := decodeRefType(newReader([]byte{0x63, 0x62, 4})); err != nil || !got.Nullable || !got.Exact || got.Bare || got.Heap.Type != (TypeIdx{Index: 4}) {
 		t.Fatalf("decodeRefType(exact index) = %#v, %v", got, err)
 	}
-	if got, err := decodeRefType(newReader([]byte{0x6f})); err != nil || got != AbsRef(HeapExtern) {
+	if got, err := decodeRefType(newReader([]byte{0x6f})); err != nil || !EqualValType(RefVal(got), ExternRef) || !got.Bare {
 		t.Fatalf("decodeRefType(shorthand externref) = %#v, %v", got, err)
 	}
 	for _, data := range [][]byte{nil, {0x63}, {0xff}} {
