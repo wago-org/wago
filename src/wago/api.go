@@ -1287,7 +1287,11 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 		}
 	}
 
-	tableShapes, err := frontend.SupportedTableRuntimeShapes(m)
+	moduleFacts, err := frontend.AnalyzeModuleFacts(m)
+	if err != nil {
+		return nil, fmt.Errorf("compile module facts: %w", err)
+	}
+	tableShapes, err := frontend.SupportedTableRuntimeShapesFromFacts(m, moduleFacts)
 	if err != nil {
 		return nil, fmt.Errorf("compile: %w", err)
 	}
@@ -1342,7 +1346,7 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 			c.extraTables[i] = tableDef{ImportKey: def.Key, Size: int(def.Min), Max: def.Max, Type: def.Type, ValueTypeIndex: def.ValueTypeIndex, HasValueType: def.HasValueType, ImportHasMax: def.HasMax, Addr64: def.Addr64}
 		}
 	}
-	c.NeedsFuncRefDescs = frontend.RequiresFuncRefDescriptors(m) || gcTypeSubtypingProduct.usesLinkFunctionIdentity()
+	c.NeedsFuncRefDescs = frontend.RequiresFuncRefDescriptorsFromFacts(m, moduleFacts) || gcTypeSubtypingProduct.usesLinkFunctionIdentity()
 	for i := range m.Tables {
 		tableIndex := importedTables + i
 		if m.Tables[i].Init == nil {
