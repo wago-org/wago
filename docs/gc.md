@@ -1832,7 +1832,9 @@ The bounded metadata adds one remembered bit plus one object-card index to each 
 
 Collector references (`StorageRef`/`StorageRefNull`) are compact traced handles and are the only storage kinds that participate in object scanning, rooting, remembered sets, or write barriers. Function and external references use separate non-null/nullable opaque 64-bit token classes; they receive semantic nullability and copy validation but are never interpreted as collector handles. Numeric and packed storage is a fourth, non-reference class.
 
-Array copy accepts exact storage kinds plus the three non-null-to-nullable widenings: collector ref, function ref, and external ref. Nullable-to-non-null and cross-class copies reject before mutation. `array.init_data` accepts only numeric/packed storage and rejects every collector or opaque reference destination before reading source bytes or changing payload state.
+Array copy accepts exact storage kinds plus the three non-null-to-nullable widenings: collector ref, function ref, and external ref. Nullable-to-non-null and cross-class copies reject before mutation. Once descriptors, ranges, and storage compatibility pass, production Throughput copy trusts the valid source array invariant and performs direct memmove-compatible payload copy; per-element collector-ref integrity checks remain enabled under `VerifyAfterCollect` or `StressBarriers`. `array.init_data` accepts only numeric/packed storage and rejects every collector or opaque reference destination before reading source bytes or changing payload state.
+
+On linux/amd64 (Go 1.24.4, Ryzen 7 8845HS), removing redundant production validation reduces 4,096-element compact-ref copy from 37.1–38.2 µs to 213–218 ns, nullable widening from 37.5–38.2 µs to 200–201 ns, and same-array overlap from 36.6–40.4 µs to 157–159 ns. The 256-element forms fall from roughly 2.3–2.5 µs to 45–52 ns. All remain 0 B/op and 0 allocs/op.
 
 ## Exact scanning
 

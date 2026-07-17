@@ -1,6 +1,7 @@
 package gc
 
 import (
+	"encoding/binary"
 	"fmt"
 	"testing"
 )
@@ -228,6 +229,28 @@ func TestArrayCopyPreflightAndOverlap(t *testing.T) {
 	got, _ := c.ArrayGet(arr, 0)
 	if got.Bits != 1 {
 		t.Fatalf("trapping copy mutated prefix: %d", got.Bits)
+	}
+}
+
+func TestArrayCopyHardeningModesValidateCollectorPayloads(t *testing.T) {
+	for _, cfg := range []Config{{VerifyAfterCollect: true}, {StressBarriers: true}} {
+		c := newTestCollectorWithTypes(t, cfg, bulkTestTypes(t))
+		src, err := c.NewArrayDefault(3, 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		dst, err := c.NewArrayDefault(3, 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		binary.LittleEndian.PutUint32(c.bytes(src)[PayloadOffset:], uint32(makeObjRef(0xffff)))
+		if err := c.ArrayCopy(dst, 0, src, 0, 1); err == nil {
+			t.Fatalf("hardening config %+v accepted forged source payload", cfg)
+		}
+		got, err := c.ArrayGet(dst, 0)
+		if err != nil || !got.Ref.IsNull() {
+			t.Fatalf("hardening rejection mutated destination: %+v, %v", got, err)
+		}
 	}
 }
 
