@@ -209,6 +209,10 @@ func SupportedTableRuntimeShapes(m *wasm.Module) ([]TableRuntimeShape, error) {
 		}
 		shapes[tableIndex].EntryBytes = entryBytes
 	}
+	tableGrowUsed, err := tableGrowUsage(m)
+	if err != nil {
+		return nil, err
+	}
 	for i := range m.Tables {
 		tableIndex := imported + i
 		min := m.Tables[i].Type.Limits.Min
@@ -220,7 +224,7 @@ func SupportedTableRuntimeShapes(m *wasm.Module) ([]TableRuntimeShape, error) {
 			entryBytes = 8
 		}
 		max := min
-		observableCapacity := moduleUsesTableGrow(m) || moduleExportsTable(m, uint32(tableIndex))
+		observableCapacity := tableGrowUsed[tableIndex] || moduleExportsTable(m, uint32(tableIndex))
 		if m.Tables[i].Type.Limits.Max != nil {
 			max = *m.Tables[i].Type.Limits.Max
 			// Preserve ordinary declared-capacity allocation. Only inert tables whose
@@ -272,51 +276,72 @@ func SupportedTableRuntimeShape(m *wasm.Module) (hasTable bool, tableSize int, t
 	return true, shapes[0].Size, shapes[0].Capacity, nil
 }
 
-func moduleUsesTableGrow(m *wasm.Module) bool {
+// tableGrowUsage records observability by exact table index in one body scan.
+// Malformed or out-of-range immediates fail closed instead of conservatively
+// inflating every local table's executable capacity.
+func tableGrowUsage(m *wasm.Module) ([]bool, error) {
+	used := make([]bool, m.TableCount())
+	if len(used) == 0 {
+		return used, nil
+	}
 	for i := range m.Code {
 		fn := &m.Code[i]
 		if len(fn.BodyBytes) != 0 {
-			if bodyBytesUseTableGrow(fn.BodyBytes) {
-				return true
+			r := wasm.NewReader(fn.BodyBytes)
+			for r.HasNext() {
+				op, err := r.Byte()
+				if err != nil {
+					for j := range used {
+						used[j] = true
+					}
+					break
+				}
+				in, err := wasm.ClassifyInstructionImmediate(r, op)
+				if err != nil {
+					// Some staged bytecode forms require the feature-aware frontend
+					// decoder. Validation will reject malformed code; until the shared
+					// decoder prepass supplies facts, conservatively preserve capacity.
+					for j := range used {
+						used[j] = true
+					}
+					break
+				}
+				if in.Kind == wasm.InstrTableGrow {
+					if int(in.Index) >= len(used) {
+						return nil, fmt.Errorf("function %d table.grow index %d out of range", i, in.Index)
+					}
+					used[in.Index] = true
+				}
 			}
 			continue
 		}
-		if instrsUseTableGrow(fn.Body.Instrs) {
-			return true
+		if err := recordTableGrowInstrs(fn.Body.Instrs, used); err != nil {
+			return nil, fmt.Errorf("function %d table facts: %w", i, err)
 		}
 	}
-	return false
+	return used, nil
 }
 
-func bodyBytesUseTableGrow(body []byte) bool {
-	r := wasm.NewReader(body)
-	for r.HasNext() {
-		op, err := r.Byte()
-		if err != nil {
-			return true
-		}
-		imm, err := wasm.ClassifyInstructionImmediate(r, op)
-		if err != nil {
-			return true
-		}
-		if imm.Kind == wasm.InstrTableGrow {
-			return true
-		}
-	}
-	return false
-}
-
-func instrsUseTableGrow(instrs []wasm.Instruction) bool {
+func recordTableGrowInstrs(instrs []wasm.Instruction, used []bool) error {
 	for i := range instrs {
 		in := &instrs[i]
 		if in.Kind == wasm.InstrTableGrow {
-			return true
+			if int(in.Index) >= len(used) {
+				return fmt.Errorf("table.grow index %d out of range", in.Index)
+			}
+			used[in.Index] = true
 		}
-		if instrsUseTableGrow(in.Body().Instrs) || instrsUseTableGrow(in.Then()) || instrsUseTableGrow(in.Else()) {
-			return true
+		if err := recordTableGrowInstrs(in.Body().Instrs, used); err != nil {
+			return err
+		}
+		if err := recordTableGrowInstrs(in.Then(), used); err != nil {
+			return err
+		}
+		if err := recordTableGrowInstrs(in.Else(), used); err != nil {
+			return err
 		}
 	}
-	return false
+	return nil
 }
 
 func moduleExportsTable(m *wasm.Module, tableIndex uint32) bool {
