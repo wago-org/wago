@@ -568,9 +568,22 @@ func wasmScalarValType(t ValType) (wasm.ValType, bool) {
 	}
 }
 
-func validateCompiledScalarConstExpr(b []byte, want ValType, defs []GlobalDef, globalLimit int) error {
+type constExprContext uint8
+
+const (
+	constExprGlobalInitializer constExprContext = iota
+	constExprDataOffset
+	constExprElementOffset
+)
+
+type constExprGlobalScope struct {
+	context constExprContext
+	limit   int // exclusive absolute global index visible in this expression context
+}
+
+func validateCompiledScalarConstExpr(b []byte, want ValType, defs []GlobalDef, scope constExprGlobalScope) error {
 	if want == ValI31Ref {
-		_, err := evalCompiledI31ConstExpr(b, nil, defs, globalLimit)
+		_, err := evalCompiledI31ConstExpr(b, nil, defs, scope)
 		return err
 	}
 	wasmWant, ok := wasmScalarValType(want)
@@ -579,7 +592,7 @@ func validateCompiledScalarConstExpr(b []byte, want ValType, defs []GlobalDef, g
 	}
 	resolve := func(index uint32) (uint64, wasm.ValType, bool, bool) {
 		i := int(index)
-		if i < 0 || i >= globalLimit || i >= len(defs) {
+		if i < 0 || i >= scope.limit || i >= len(defs) {
 			return 0, wasm.ValType{}, false, false
 		}
 		typ, ok := wasmScalarValType(defs[i].Type)
@@ -592,9 +605,9 @@ func validateCompiledScalarConstExpr(b []byte, want ValType, defs []GlobalDef, g
 	return err
 }
 
-func evalCompiledScalarConstExpr(b []byte, want ValType, globals []*Global, defs []GlobalDef, globalLimit int) (uint64, error) {
+func evalCompiledScalarConstExpr(b []byte, want ValType, globals []*Global, defs []GlobalDef, scope constExprGlobalScope) (uint64, error) {
 	if want == ValI31Ref {
-		return evalCompiledI31ConstExpr(b, globals, defs, globalLimit)
+		return evalCompiledI31ConstExpr(b, globals, defs, scope)
 	}
 	wasmWant, ok := wasmScalarValType(want)
 	if !ok {
@@ -602,7 +615,7 @@ func evalCompiledScalarConstExpr(b []byte, want ValType, globals []*Global, defs
 	}
 	resolve := func(index uint32) (uint64, wasm.ValType, bool, bool) {
 		i := int(index)
-		if i < 0 || i >= globalLimit || i >= len(globals) || i >= len(defs) || globals[i] == nil {
+		if i < 0 || i >= scope.limit || i >= len(globals) || i >= len(defs) || globals[i] == nil {
 			return 0, wasm.ValType{}, false, false
 		}
 		typ, ok := wasmScalarValType(defs[i].Type)
@@ -615,7 +628,7 @@ func evalCompiledScalarConstExpr(b []byte, want ValType, globals []*Global, defs
 	return bits, err
 }
 
-func evalCompiledI31ConstExpr(b []byte, globals []*Global, defs []GlobalDef, globalLimit int) (uint64, error) {
+func evalCompiledI31ConstExpr(b []byte, globals []*Global, defs []GlobalDef, scope constExprGlobalScope) (uint64, error) {
 	r := wasm.NewReader(b)
 	op, err := r.Byte()
 	if err != nil || op != 0x23 {
@@ -626,7 +639,7 @@ func evalCompiledI31ConstExpr(b []byte, globals []*Global, defs []GlobalDef, glo
 		return 0, err
 	}
 	i := int(index)
-	if i < 0 || i >= globalLimit || i >= len(defs) || defs[i].Mutable || defs[i].Type != ValI32 {
+	if i < 0 || i >= scope.limit || i >= len(defs) || defs[i].Mutable || defs[i].Type != ValI32 {
 		return 0, fmt.Errorf("i31 initializer global.get %d is unavailable or not immutable i32", index)
 	}
 	prefix, err := r.Byte()

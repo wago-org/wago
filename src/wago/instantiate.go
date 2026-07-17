@@ -738,7 +738,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 					if g.Type == ValAnyRef || g.Type == ValI31Ref {
 						value, err = evalCompiledGCConstExpr(g.InitExpr, b.collector, c, globalCells, i, funcRefDescs)
 					} else {
-						value, err = evalCompiledScalarConstExpr(g.InitExpr, g.Type, globalCells, c.Globals, i)
+						value, err = evalCompiledScalarConstExpr(g.InitExpr, g.Type, globalCells, c.Globals, constExprGlobalScope{context: constExprGlobalInitializer, limit: i})
 					}
 					if err != nil {
 						return nil, fmt.Errorf("global %d extended initializer: %w", i, err)
@@ -899,7 +899,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 				if table64 {
 					offsetType = ValI64
 				}
-				value, err := evalCompiledScalarConstExpr(el.Offset.Expr, offsetType, globalCells, c.Globals, len(importGlobals))
+				value, err := evalCompiledScalarConstExpr(el.Offset.Expr, offsetType, globalCells, c.Globals, constExprGlobalScope{context: constExprElementOffset, limit: len(c.Globals)})
 				if err != nil {
 					initErr = fmt.Errorf("element offset extended expression: %w", err)
 					break
@@ -1058,7 +1058,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 				if memory64 {
 					want = ValI64
 				}
-				value, err := evalCompiledScalarConstExpr(d.Offset.Expr, want, globalCells, c.Globals, len(importGlobals))
+				value, err := evalCompiledScalarConstExpr(d.Offset.Expr, want, globalCells, c.Globals, constExprGlobalScope{context: constExprDataOffset, limit: len(c.Globals)})
 				if err != nil {
 					initErr = fmt.Errorf("data offset extended expression: %w", err)
 					break
