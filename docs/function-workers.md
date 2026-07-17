@@ -66,14 +66,19 @@ improving end-to-end or multi-module throughput.
 
 Module declarations are validated serially before workers start. This includes
 types, imports, tables, memories, globals, constant expressions, exports,
-elements, data segments, and the start declaration. Only function bodies fan
-out.
+elements, data segments, and the start declaration. Element initializer
+expressions are fully validated in this phase. A later function-body `table.init`
+check reads only the already-validated element segment reference type; it does
+not re-run those expressions. Only function bodies fan out.
 
 Each validation worker owns its operand/control stacks, byte reader, and decoded
-immediate scratch. The module's resolved type cache is populated and frozen
-before parallel validation, so workers only read shared state. If multiple
-functions are invalid, Wago reports the lowest function index, matching serial
-validation regardless of completion order.
+immediate scratch. Shared module and byte-backed metadata plus the declared-
+function set are immutable by worker startup. The resolved type cache is
+populated and frozen before parallel validation, and workers cannot reach the
+serial module-level constant-expression validator. Consequently every state
+accessed by workers is worker-local, immutable, or frozen. If multiple functions
+are invalid, Wago reports the lowest function index, matching serial validation
+regardless of completion order.
 
 Code generation follows the same bounded-worker policy. Module-wide analyses
 finish first; workers compile functions into private arenas; final machine code

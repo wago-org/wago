@@ -62,11 +62,29 @@ any worker starts. Function bodies then use a bounded worker pool:
 - the parallel helper is separate from the serial path, so goroutine closure and
   worker bookkeeping do not escape into serial validation.
 
-The module validator's resolved component-type cache was the one shared mutable
-object on the body-validation path. Before workers start, every valid flat type
-index is resolved and the cache is frozen. Workers then perform concurrent
-read-only lookups. A malformed body that names an invalid type index computes the
-miss without inserting it, keeping invalid-module validation race-free.
+A shared-state audit classifies the worker-visible module context as follows:
+
+- decoded module metadata, direct byte-backed metadata, and declared-function
+  bits are immutable after serial module validation;
+- each worker's operand/control stacks, byte reader, result slot, locals, and
+  decoded-immediate scratch are worker-local;
+- the resolved component-type cache is the one lookup structure that is mutable
+  while module validation runs, so every valid flat index is resolved and the
+  cache is frozen before workers start; malformed misses are computed without
+  insertion;
+- `moduleValidator.constFV` is mutable serial scratch for module-level constant
+  expressions and is not reachable from function-body validation.
+
+The final point required a correction during review. `table.init` originally
+called the full element-payload validator from each function body. For expression-
+based segments that redundantly revalidated initializer bytes through the shared
+`constFV`, racing its stacks, reader, result slot, and decode scratch; the race
+reproduced under `go test -race` and could panic in `popCtrl`. Element expressions
+already validate serially before body workers start, so `table.init` now performs
+a read-only element reference-type lookup: `ElemFuncs` and `ElemFuncExprs` map to
+`funcref`, while `ElemTypedExprs` uses its declared reference type. The direct
+byte-backed path performs the equivalent lookup from `directElem`. Defensive
+index and unknown-kind errors remain, without revisiting initializer expressions.
 
 The low-level worker-aware entry points are:
 
@@ -108,6 +126,33 @@ needed by the functions each worker encounters. It is a good latency trade for
 explicit/adaptive compile-once workloads, but it reinforces keeping serial as
 the library default and four workers as the adaptive cap.
 
+### `table.init` race-fix regression check
+
+The required p1/p4 matrix was repeated immediately before and after the read-only
+element-type fix with `GOMAXPROCS=8`, `-benchtime=500ms`, `-count=5`, and
+`-benchmem`. Values below are medians. Latency changes are within run noise (the
+pre-fix Ruby p1 samples ranged from 228.5-255.4 ms); serial B/op and allocs/op are
+exactly unchanged on every module. Parallel allocation counts are also unchanged;
+minor p4 B/op variation reflects worker scheduling and retained stack capacity.
+
+| module | workers | before | after | latency delta | B/op before / after | allocs/op before / after |
+|---|---:|---:|---:|---:|---:|---:|
+| many_funcs | 1 | 47.018 us | 46.376 us | -1.4% | 1,777 / 1,777 | 11 / 11 |
+| many_funcs | 4 | 30.375 us | 30.860 us | +1.6% | 9,680 / 9,680 | 21 / 21 |
+| json-as | 1 | 0.309 ms | 0.312 ms | +0.9% | 10,208 / 10,208 | 50 / 50 |
+| json-as | 4 | 0.122 ms | 0.123 ms | +0.9% | 20,834 / 20,828 | 75 / 75 |
+| lua | 1 | 4.714 ms | 4.701 ms | -0.3% | 78,944 / 78,944 | 382 / 382 |
+| lua | 4 | 1.453 ms | 1.456 ms | +0.2% | 114,413 / 114,448 | 415 / 415 |
+| sqlite3 | 1 | 17.709 ms | 17.648 ms | -0.3% | 189,072 / 189,072 | 649 / 649 |
+| sqlite3 | 4 | 4.909 ms | 4.857 ms | -1.1% | 317,118 / 317,372 | 687 / 687 |
+| ruby | 1 | 244.858 ms | 222.880 ms | -9.0% | 447,248 / 447,248 | 3,938 / 3,938 |
+| ruby | 4 | 62.955 ms | 62.612 ms | -0.5% | 994,412 / 994,412 | 3,982 / 3,982 |
+| esbuild | 1 | 152.559 ms | 150.263 ms | -1.5% | 2,080,360 / 2,080,360 | 4,117 / 4,117 |
+| esbuild | 4 | 46.893 ms | 45.659 ms | -2.6% | 4,109,376 / 4,154,165 | 4,173 / 4,173 |
+
+No meaningful regression was observed, and removing repeated element-expression
+validation makes `table.init` body checking strictly less work.
+
 ## Full public compile pipeline
 
 `BenchmarkCompileFullWorkers` includes decode, validation, frontend support
@@ -137,10 +182,21 @@ Targeted tests cover:
   interpreter, database, Ruby, and esbuild corpus modules;
 - worker counts above the function count;
 - deterministic lowest-function-index errors over repeated parallel runs;
+- concurrent `table.init` validation over raw `ref.null` / `ref.func`
+  expression-based elements in both materialized and direct byte-backed forms;
+- exact serial/p2/p4/p8 parity for valid and table/element-type-invalid modules;
+- module-phase initializer rejection plus structural checks that the function
+  phase does not revisit initializer expressions;
 - the explicit decoded-byte-backed validation API;
 - public config plus `wago run`/`wago validate` CLI plumbing using the same
   worker policy for validation and codegen;
 - race testing of the wasm validator and public compile packages.
+
+The `table.init` correction was verified with the focused tests at race-detector
+count 20, the complete validator/config/CLI race set, `make test`, both explicit
+and guard-page `make test-corpus` runs, `go vet ./...`, Go 1.22 Staticcheck
+2024.1.1 through mise, and 20 repetitions of the existing worker-validation test
+set. All completed successfully.
 
 ## Reproduction
 
@@ -166,5 +222,7 @@ Correctness and race checks:
 
 ```sh
 go test ./src/core/compiler/wasm ./src/wago ./cli/wagocli
+go test -race ./src/core/compiler/wasm \
+  -run 'TestValidate.*TableInit.*' -count=20
 go test -race ./src/core/compiler/wasm ./src/wago
 ```

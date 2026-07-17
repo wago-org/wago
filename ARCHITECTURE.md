@@ -108,10 +108,12 @@ so the public package stays clean.
 - `validate.go` / `validate_ops.go` enforce the wasm type rules: a structured
   operand-stack/control-frame validator that type-checks every opcode and
   rejects malformed or ill-typed modules before any code is emitted.
-- Module declarations and constant expressions validate serially. With function
-  workers enabled, independent bodies use worker-local stacks/readers while
-  sharing a frozen read-only type cache; errors are selected by lowest function
-  index so diagnostics match serial validation.
+- Module declarations and constant expressions, including element initializers,
+  validate serially. With function workers enabled, independent bodies use
+  worker-local stacks/readers. Shared module/element metadata is immutable, the
+  type cache is frozen, and `table.init` reads only the validated element type;
+  errors are selected by lowest function index so diagnostics match serial
+  validation.
 - Unsupported value types and opcodes are rejected explicitly rather than
   silently accepted — correctness and explicit failure come first.
 

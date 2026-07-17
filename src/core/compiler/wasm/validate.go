@@ -14,10 +14,11 @@ func ValidateModule(m *Module) error {
 }
 
 // ValidateModuleWithWorkers is ValidateModule with bounded function-body
-// parallelism. Module-level declarations and constant expressions are validated
-// serially first. workers <= 1 retains the allocation-minimal serial path; larger
-// values are capped by the local-function count. If multiple functions are
-// invalid, the lowest function index wins regardless of completion order.
+// parallelism. Module-level declarations, element initializer expressions, and
+// other constant expressions are validated serially first. workers <= 1 retains
+// the allocation-minimal serial path; larger values are capped by the local-
+// function count. If multiple functions are invalid, the lowest function index
+// wins regardless of completion order.
 func ValidateModuleWithWorkers(m *Module, workers int) error {
 	return validateModuleWithWorkers(m, nil, workers)
 }
@@ -72,8 +73,9 @@ func (v *moduleValidator) validateFunction(fv *funcValidator, localIndex, import
 
 // validateFunctionsParallel is split from the serial path so its goroutine
 // closure and worker bookkeeping cannot escape into or allocate on serial
-// validation. Each worker owns one funcValidator; the module context and its
-// frozen component-type cache are read-only after module validation completes.
+// validation. Each worker owns one funcValidator. The module/direct metadata and
+// declared-function bits are immutable, the component-type cache is frozen, and
+// the serial const-expression validator is no longer reachable from body checks.
 func (v *moduleValidator) validateFunctionsParallel(workers int) error {
 	importedFuncs := v.m.ImportedFuncCount()
 	memarg64 := moduleMemargOffset64(v.m)
@@ -134,9 +136,9 @@ type moduleValidator struct {
 	compCache       map[uint32]compCacheEntry
 	compCacheFrozen bool
 
-	// constFV is reused across the module's const-expression checks (global/table/
-	// data offsets, element expressions) to avoid a fresh validator + reader per
-	// expression.
+	// constFV is serial module-validation scratch for global/table/data offsets
+	// and element initializer expressions. Function-body validation never reaches
+	// it: table.init reads the element type metadata validated in this phase.
 	constFV *funcValidator
 }
 
@@ -680,6 +682,9 @@ func (v *moduleValidator) validateElemPayload(e Elem) (RefType, error) {
 	}
 }
 
+// elemRefType returns previously validated element metadata for table.init.
+// It deliberately does not revisit initializer expressions: those are checked
+// serially by validateElem before any function worker can start.
 func (v *funcValidator) elemRefType(index uint32) (RefType, error) {
 	if v.direct != nil {
 		return v.directElemRefType(index)

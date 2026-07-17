@@ -444,6 +444,8 @@ func (v *funcValidator) step(in *Instruction) error {
 			return err
 		}
 	case InstrTableInit:
+		// Element expressions were validated during the serial module phase. The
+		// body check needs only their immutable declared/result reference type.
 		elemRef, err := v.elemRefType(in.Index)
 		if err != nil {
 			return err

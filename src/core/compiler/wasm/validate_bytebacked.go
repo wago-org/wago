@@ -825,6 +825,8 @@ func (v *moduleValidator) validateDirectElemPayload(e directElem) (RefType, erro
 	}
 }
 
+// directElemRefType is the byte-backed table.init metadata lookup. Direct
+// initializer bytes were already validated serially by validateDirectElem.
 func (v *funcValidator) directElemRefType(index uint32) (RefType, error) {
 	if uint64(index) >= uint64(len(v.direct.elements)) {
 		return RefType{}, v.verr(ErrUnknownTable, "table.init elem")
