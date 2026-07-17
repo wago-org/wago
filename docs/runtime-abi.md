@@ -383,7 +383,10 @@ retain their prior-global-only scope. The compiled validator, codec loader, and 
 constant-expression scope.
 
 Module declarations and bodies feed one indexed facts prepass for per-table/per-memory grow and export
-observability plus `ref.func` descriptor demand. A grow on one table does not reserve another table's declared
+observability plus `ref.func` descriptor demand. Production compilation passes that same immutable result through
+feature admission and runtime-shape construction rather than rescanning bodies. A 256-table/4,096-instruction
+facts pass measures 24.8–50.1 µs, 628–633 B, and 3 allocations on linux/amd64 (Go 1.24.4, Ryzen 7 8845HS), all
+of which are now paid once rather than twice. A grow on one table does not reserve another table's declared
 maximum. Wrapper sizing counts ABI slots rather than source values: `v128` consumes two 64-bit slots.
 
 Reference shorthand is encoding metadata, not semantic identity. `funcref` and `(ref null func)` are equal,

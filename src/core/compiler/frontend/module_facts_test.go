@@ -45,6 +45,22 @@ func TestAnalyzeModuleFactsMatchesByteAndInstructionForms(t *testing.T) {
 	}
 }
 
+func TestRejectUnsupportedWithFeaturesAndFactsUsesCallerAnalysis(t *testing.T) {
+	m := &wasm.Module{Tables: []wasm.Table{{Type: wasm.TableType{Ref: wasm.FuncRef.Ref, Limits: wasm.Limits{Min: 1}}}}}
+	facts, err := AnalyzeModuleFacts(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := RejectUnsupportedWithFeaturesAndFacts(m, Features{ReferenceTypes: true}, facts); err != nil {
+		t.Fatalf("valid supplied facts: %v", err)
+	}
+	bad := *facts
+	bad.TableGrowUsed = nil
+	if err := RejectUnsupportedWithFeaturesAndFacts(m, Features{ReferenceTypes: true}, &bad); err == nil {
+		t.Fatal("support pass ignored malformed caller-supplied facts and rescanned the module")
+	}
+}
+
 func BenchmarkAnalyzeModuleFactsManyTables(b *testing.B) {
 	m := &wasm.Module{Tables: make([]wasm.Table, 256)}
 	instrs := make([]wasm.Instruction, 4096)
