@@ -95,7 +95,11 @@ type plannedPromotion struct {
 }
 
 func (c *Collector) promoteMarkedNursery() error {
-	plans := make([]plannedPromotion, 0)
+	plans := c.promotionScratch[:0]
+	finish := func() {
+		clear(plans)
+		c.promotionScratch = plans[:0]
+	}
 	for h := uint32(1); int(h) < len(c.handles); h++ {
 		if c.handles[h].space == spaceNursery && c.mark[h] {
 			e, err := c.throughput.alloc(c.handles[h].size, spaceOld)
@@ -103,6 +107,7 @@ func (c *Collector) promoteMarkedNursery() error {
 				for i := len(plans) - 1; i >= 0; i-- {
 					_ = c.throughput.free(plans[i].entry)
 				}
+				finish()
 				return err
 			}
 			plans = append(plans, plannedPromotion{handle: h, entry: e})
@@ -111,6 +116,7 @@ func (c *Collector) promoteMarkedNursery() error {
 	for _, p := range plans {
 		c.promoteHandleTo(p.handle, p.entry)
 	}
+	finish()
 	return nil
 }
 func (c *Collector) promoteHandle(h uint32) error {

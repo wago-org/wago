@@ -409,8 +409,10 @@ correctness. Numeric fill/copy/init operations mutate the already-validated litt
 Same-array copy preserves memmove semantics and allocates no temporary buffer. Throughput remembered membership
 uses a handle-owned bit plus one cold-path dense-list compaction, and cards are non-collecting scaffolding coalesced to one dirty interval per
 old/large array. Nursery writes create no cards; bulk barriers inspect only the overwritten range and leave exact
-removal to collection-time pruning. Collector tests separately prove nullable/non-null storage compatibility,
-rejected-copy atomicity, bounded metadata growth, Throughput remembered/card publication, and Tiny remark preservation.
+removal to collection-time pruning. Collector-owned promotion-plan scratch is cleared and reused after success or rollback;
+together these metadata changes make the current fixed `gc.Collector` 672 bytes and `handleEntry` 20 bytes. Collector tests
+separately prove nullable/non-null storage compatibility, rejected-copy atomicity, bounded metadata growth, Throughput
+remembered/card publication, promotion rollback, and Tiny remark preservation.
 
 The exact copy product also contains a mutable GC array global. Its overlap functions allocate one array,
 run only the non-collecting copy helper while that local is live, and perform `global.set` as the final native

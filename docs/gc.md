@@ -1387,6 +1387,8 @@ unsupported below-minimum, above-maximum, or between-class values such as `4097`
 are rejected at collector construction rather than rounded. Larger objects use a
 coalescing free-span list.
 
+Minor promotion plans use collector-owned reusable scratch in ascending handle order. Every success or rollback clears the used entries and resets the slice length, so no stale allocation record survives a collection. Allocation failure frees planned old-space entries in reverse order before publishing any move. A repeated allocate/promote/full-collect benchmark on linux/amd64 drops from 188.8–200.8 ns/op, 96–100 B/op, and 3 allocs/op to 178.8–189.1 ns/op, 72–81 B/op, and 2 allocs/op; the removed allocation is the per-minor promotion plan.
+
 Throughput heap growth is intentionally checked before touching the backing
 slice. Bump offsets, allocation ends, and page-rounded reservation lengths are
 computed wider than `uint32`; configurations or object sizes that would wrap the
@@ -1824,7 +1826,7 @@ Remembered-set and card metadata is deliberately conservative and has bounded me
 
 Cards are currently verification/scaffolding metadata, not collection inputs. Throughput arrays keep at most one coalesced inclusive dirty interval per old/large object, global/table slots use a lazily allocated indexed dense list, and nursery destinations create no generational cards. Bulk writes inspect only the overwritten reference range to decide whether to remember the destination; they do not scan unrelated elements or remove an existing remembered bit. Collection clears card scaffolding after remembered-set processing, object freeing removes its interval in O(1), and checked slot overwrites remove their slot card in O(1). Verification enforces both directions of every membership/index relation and rejects stale ranges or owners.
 
-The bounded metadata adds one remembered bit plus one object-card index to each handle: `handleEntry` grows from 16 to 20 bytes. The lazy slot-card index adds one map word to the fixed collector, growing `Collector` from 640 to 648 bytes without allocating a map until a global/table nursery edge is recorded. On linux/amd64 (Go 1.24.4, Ryzen 7 8845HS), 4,096 repeated old-array writes improve from 935.7–963.2 ns/op with 4,096 retained cards to 36.4–37.4 ns/op with one interval; both remain 0 B/op and 0 allocs/op. Tiny remains card-free at 32.7–33.1 ns/op.
+The bounded metadata adds one remembered bit plus one object-card index to each handle: `handleEntry` grows from 16 to 20 bytes. The lazy slot-card index adds one map word to the fixed collector, growing `Collector` from 640 to 648 bytes without allocating a map until a global/table nursery edge is recorded. The reusable promotion-plan slice described above brings the current fixed `Collector` size to 672 bytes. On linux/amd64 (Go 1.24.4, Ryzen 7 8845HS), 4,096 repeated old-array writes improve from 935.7–963.2 ns/op with 4,096 retained cards to 36.4–37.4 ns/op with one interval; both remain 0 B/op and 0 allocs/op. Tiny remains card-free at 32.7–33.1 ns/op.
 
 ## Exact scanning
 

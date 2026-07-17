@@ -36,6 +36,14 @@ func TestCollectMinorPromotionFailureLeavesNurserySurvivorsUnmoved(t *testing.T)
 	if c.nurseryBump != bumpBefore {
 		t.Fatalf("nursery bump changed after failed promotion: got %d want %d", c.nurseryBump, bumpBefore)
 	}
+	if len(c.promotionScratch) != 0 || cap(c.promotionScratch) == 0 {
+		t.Fatalf("promotion scratch after rollback len/cap=%d/%d", len(c.promotionScratch), cap(c.promotionScratch))
+	}
+	for i, plan := range c.promotionScratch[:cap(c.promotionScratch)] {
+		if plan != (plannedPromotion{}) {
+			t.Fatalf("promotion scratch %d retained stale plan %+v", i, plan)
+		}
+	}
 	for i, root := range roots {
 		if !Ref(root).IsObj() || !c.validObjectRef(Ref(root)) {
 			t.Fatalf("root %d no longer points to a valid object: %v", i, root)
@@ -68,6 +76,9 @@ func TestCollectMinorPromotionFailureLeavesNurserySurvivorsUnmoved(t *testing.T)
 	}
 	if got := c.entry(Ref(roots[0])).space; got != spaceOld {
 		t.Fatalf("remaining survivor space=%v, want old", got)
+	}
+	if len(c.promotionScratch) != 0 {
+		t.Fatalf("promotion scratch retained live length %d", len(c.promotionScratch))
 	}
 	if err := c.Verify(slots); err != nil {
 		t.Fatalf("heap inconsistent after recovery minor collection: %v", err)
