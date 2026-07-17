@@ -406,6 +406,11 @@ choosing an ABI. Internal entries are invoked only through register staging; loc
 offset-zero wrapper ABI and home-aware context path. Multiple tags or an unsupported tail combination trap before
 the code pointer is invoked. Clearing tags therefore never converts an internal pointer into a wrapper.
 
+Validated tail calls use one native result-compatibility rule in direct, indirect, and reference forms. Numeric and
+vector results must match exactly. Reference results may differ only after validation has proved covariance; native
+transfer then preserves the single descriptor/reference slot unchanged. This admits non-null-to-nullable and defined-
+type-to-supertype results without admitting the reverse direction.
+
 The descriptor's 64-bit structural key is a fast native discriminator, not an unchecked proof. Before an
 instance publishes descriptors, its reference store compares every equal key using complete cross-module
 structural descriptors. A distinct collision rejects transactionally; equivalent modules share the live key.
