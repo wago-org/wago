@@ -149,12 +149,6 @@ func (w *compiledWriter) intSlice(v []int) {
 		w.ivar(x)
 	}
 }
-func (w *compiledWriter) u32Slice(v []uint32) {
-	w.uvar(uint64(len(v)))
-	for _, x := range v {
-		w.u32(x)
-	}
-}
 func (w *compiledWriter) u64Slice(v []uint64) {
 	w.uvar(uint64(len(v)))
 	for _, x := range v {
@@ -758,20 +752,6 @@ func (r *compiledReader) intSlice() ([]int, error) {
 	out := make([]int, n)
 	for i := range out {
 		out[i], err = r.ivar()
-		if err != nil {
-			return nil, err
-		}
-	}
-	return out, nil
-}
-func (r *compiledReader) u32Slice() ([]uint32, error) {
-	n, err := r.countElements("u32 slice", minU32Bytes)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]uint32, n)
-	for i := range out {
-		out[i], err = r.u32()
 		if err != nil {
 			return nil, err
 		}

@@ -168,13 +168,6 @@ func stagedTableBodyAllowed(body wasm.Expr, allowed func(wasm.InstrKind) bool) (
 	return found, nil
 }
 
-func stagedTwoLocalTableBody(body wasm.Expr) (bool, error) {
-	return stagedTableBodyAllowed(body, func(k wasm.InstrKind) bool {
-		allowed, _ := stagedTwoLocalTableOperation(k)
-		return allowed
-	})
-}
-
 func stagedTwoLocalExternrefReadWriteShape(m *wasm.Module) bool {
 	return m.ImportedTableCount() == 0 && len(m.Tables) == 2 &&
 		m.Tables[0].Type.Limits.Addr64 && m.Tables[1].Type.Limits.Addr64 &&
