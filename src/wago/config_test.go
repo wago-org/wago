@@ -299,8 +299,18 @@ func TestConfigValidateAndIntrospection(t *testing.T) {
 }
 
 func TestCompileWorkersLinkPathAndSerialization(t *testing.T) {
+	producer, err := Instantiate(MustCompile(benchAddOneModule()), InstantiateOptions{})
+	if err != nil {
+		t.Fatalf("instantiate link producer: %v", err)
+	}
+	defer producer.Close()
+	f, err := producer.ExportedFunc("f")
+	if err != nil {
+		t.Fatalf("export link producer function: %v", err)
+	}
+
 	mod := benchParallelLinkModule(64, 16)
-	imports := Imports{"env.f": HostFunc(func(_ HostModule, params, results []uint64) { results[0] = params[0] })}
+	imports := Imports{"env.f": f}
 	compileLinked := func(workers int) (*Compiled, *Compiled) {
 		t.Helper()
 		cfg := NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit).WithCompileWorkers(workers)
@@ -308,24 +318,26 @@ func TestCompileWorkersLinkPathAndSerialization(t *testing.T) {
 		if err != nil {
 			t.Fatalf("workers=%d compile: %v", workers, err)
 		}
-		if int(c.compileWorkers) != workers || !c.needsLink {
-			t.Fatalf("workers=%d metadata policy=%d needsLink=%v", workers, c.compileWorkers, c.needsLink)
+		if int(c.compileWorkers) != workers || len(c.wasmBytes) == 0 {
+			t.Fatalf("workers=%d metadata policy=%d retainedSource=%d", workers, c.compileWorkers, len(c.wasmBytes))
 		}
 		linked, err := c.linkModule(imports, nil)
 		if err != nil {
 			_ = c.Close()
 			t.Fatalf("workers=%d link: %v", workers, err)
 		}
-		if int(linked.compileWorkers) != workers {
+		if linked == c || int(linked.compileWorkers) != workers {
 			_ = c.Close()
-			t.Fatalf("workers=%d linked policy=%d", workers, linked.compileWorkers)
+			t.Fatalf("workers=%d linked=%p owner=%p policy=%d", workers, linked, c, linked.compileWorkers)
 		}
 		return c, linked
 	}
 	serialOwner, serial := compileLinked(1)
 	defer serialOwner.Close()
+	defer serial.Close()
 	parallelOwner, parallel := compileLinked(8)
 	defer parallelOwner.Close()
+	defer parallel.Close()
 	if !bytes.Equal(parallel.Code, serial.Code) || !bytes.Equal(intSliceBytes(parallel.Entry), intSliceBytes(serial.Entry)) || !bytes.Equal(intSliceBytes(parallel.InternalEntry), intSliceBytes(serial.InternalEntry)) {
 		t.Fatal("link-time parallel codegen differs from serial output")
 	}
