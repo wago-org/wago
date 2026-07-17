@@ -556,31 +556,38 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		binary.LittleEndian.PutUint64(funcRefDescs[runtime.FuncRefContextOffset:], uint64(nativeContextPtr))
 		for fidx := 0; fidx < len(c.FuncTypeID); fidx++ {
 			off := (fidx + 1) * runtime.FuncRefDescBytes
+			var code, home uint64
 			targetContext := uint64(nativeContextPtr)
+			kind := abi.FuncRefEntryInvalid
 			if li := fidx - c.NumImports; li >= 0 && li < len(c.Entry) {
-				code, home := uint64(base)+uint64(c.Entry[li]), selfLinMem
+				code, home = uint64(base)+uint64(c.Entry[li]), selfLinMem
+				kind = abi.FuncRefEntryLocalWrapper
 				stagedTailRegABI := c.stagedFeatures().IsEnabled(CoreFeatureTailCall) && (funcSigLocalRegABI(c.Funcs[li]) || funcSigReferenceResultRegABI(c.Funcs[li]))
 				if li < len(c.InternalEntry) && c.InternalEntry[li] != c.Entry[li] && (funcSigIntRegABI(c.Funcs[li]) || stagedTailRegABI) {
 					code = uint64(base) + uint64(c.InternalEntry[li])
-					home |= abi.FuncRefInternalHomeTag
-				} else {
-					home |= abi.FuncRefLocalWrapperHomeTag
+					kind = abi.FuncRefEntryInternal
 				}
-				binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntryCodePtrOffset:], code)
-				binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntryHomeLinMemOffset:], home)
 			} else if fidx < c.NumImports {
 				if ex, ok := imports[c.Imports[fidx]].(*InstanceExport); ok && ex != nil && ex.inst != nil && ex.localIdx < len(ex.inst.c.Entry) {
-					binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntryCodePtrOffset:], uint64(ex.inst.base)+uint64(ex.inst.c.Entry[ex.localIdx]))
-					home := uint64(ex.inst.jm.LinMemBase())
-					if fidx < len(c.importFuncSigs) && funcSigIntRegABI(c.importFuncSigs[fidx]) {
-						home |= abi.FuncRefCrossInstanceHomeTag
-					}
-					binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntryHomeLinMemOffset:], home)
+					code = uint64(ex.inst.base) + uint64(ex.inst.c.Entry[ex.localIdx])
+					home = uint64(ex.inst.jm.LinMemBase())
 					targetContext = uint64(ex.inst.nativeContext)
+					kind = abi.FuncRefEntryCrossInstanceWrapper
 				} else if addr, ok := thunkAddr[uint32(fidx)]; ok {
-					binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntryCodePtrOffset:], addr)
-					binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntryHomeLinMemOffset:], selfLinMem)
+					code, home = addr, selfLinMem
+					kind = abi.FuncRefEntryHostThunk
 				}
+			}
+			if kind != abi.FuncRefEntryInvalid {
+				if code == 0 {
+					return nil, fmt.Errorf("instantiate: function %d has a zero %v entry", fidx, kind)
+				}
+				taggedHome, ok := abi.TagFuncRefHome(home, kind)
+				if !ok {
+					return nil, fmt.Errorf("instantiate: function %d home pointer collides with descriptor entry tags", fidx)
+				}
+				binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntryCodePtrOffset:], code)
+				binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntryHomeLinMemOffset:], taggedHome)
 			}
 			binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntrySigKeyOffset:], c.funcTypeKey(fidx))
 			binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntryRefSlotOffset:], uint64(uintptr(unsafe.Pointer(&funcRefDescs[off]))))

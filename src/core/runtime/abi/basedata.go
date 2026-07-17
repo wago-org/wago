@@ -2,6 +2,19 @@
 // and the runtime implementation.
 package abi
 
+// FuncRefEntryKind is the native calling convention accepted by a funcref
+// descriptor's code pointer. The kind is encoded in the high bits of the home
+// word; the low bits remain the canonical home linear-memory pointer.
+type FuncRefEntryKind uint8
+
+const (
+	FuncRefEntryInvalid FuncRefEntryKind = iota
+	FuncRefEntryInternal
+	FuncRefEntryLocalWrapper
+	FuncRefEntryCrossInstanceWrapper
+	FuncRefEntryHostThunk
+)
+
 // Basedata offsets are byte distances below the linear-memory base.
 const (
 	// MemoryDirPtrOffset points at 16-byte indexed-memory entries
@@ -75,11 +88,56 @@ const (
 	// same-instance wrapper descriptor from a host thunk that shares the caller's
 	// basedata. The low 61 bits remain the canonical home linear-memory pointer on
 	// supported linux/amd64 hosts.
-	FuncRefInternalHomeTag      uint64 = 1 << 63
-	FuncRefCrossInstanceHomeTag uint64 = 1 << 62
-	FuncRefLocalWrapperHomeTag  uint64 = 1 << 61
+	FuncRefEntryTagShift                = 61
+	FuncRefInternalHomeTag       uint64 = 1 << 63
+	FuncRefCrossInstanceHomeTag  uint64 = 1 << 62
+	FuncRefLocalWrapperHomeTag   uint64 = 1 << 61
+	FuncRefHomeTagMask                  = FuncRefInternalHomeTag | FuncRefCrossInstanceHomeTag | FuncRefLocalWrapperHomeTag
+	FuncRefInternalTagValue             = FuncRefInternalHomeTag >> FuncRefEntryTagShift
+	FuncRefCrossInstanceTagValue        = FuncRefCrossInstanceHomeTag >> FuncRefEntryTagShift
+	FuncRefLocalWrapperTagValue         = FuncRefLocalWrapperHomeTag >> FuncRefEntryTagShift
+	FuncRefHostThunkTagValue            = 0
 
 	// BasedataSize keeps the linear-memory base 16-byte aligned after the wago
 	// extension fields and the bounded wrapper-tail argument bank.
 	BasedataSize = TailArgsOffset
 )
+
+// TagFuncRefHome combines a canonical home pointer with one authoritative entry
+// kind. It rejects pointers that collide with the reserved tag bits.
+func TagFuncRefHome(home uint64, kind FuncRefEntryKind) (uint64, bool) {
+	if home&FuncRefHomeTagMask != 0 {
+		return 0, false
+	}
+	switch kind {
+	case FuncRefEntryInternal:
+		return home | FuncRefInternalHomeTag, true
+	case FuncRefEntryLocalWrapper:
+		return home | FuncRefLocalWrapperHomeTag, true
+	case FuncRefEntryCrossInstanceWrapper:
+		return home | FuncRefCrossInstanceHomeTag, true
+	case FuncRefEntryHostThunk:
+		return home, true
+	default:
+		return 0, false
+	}
+}
+
+// DecodeFuncRefHome returns the exact entry kind and canonical home pointer.
+// Multiple simultaneous kind tags are invalid rather than being interpreted by
+// bit priority.
+func DecodeFuncRefHome(tagged uint64) (FuncRefEntryKind, uint64) {
+	home := tagged &^ FuncRefHomeTagMask
+	switch tagged & FuncRefHomeTagMask {
+	case FuncRefInternalHomeTag:
+		return FuncRefEntryInternal, home
+	case FuncRefLocalWrapperHomeTag:
+		return FuncRefEntryLocalWrapper, home
+	case FuncRefCrossInstanceHomeTag:
+		return FuncRefEntryCrossInstanceWrapper, home
+	case 0:
+		return FuncRefEntryHostThunk, home
+	default:
+		return FuncRefEntryInvalid, home
+	}
+}
