@@ -6,6 +6,10 @@ Branch: `parallel-func-comp`
 
 Baseline commit: `e774b93849df0fd66d0c4ad8def0c73a8ed7ec82`
 
+Follow-up: [Parallel function validation experiment](parallel-function-validation-report.md)
+extends the same opt-in worker policy to validation and records the additional
+end-to-end latency improvement.
+
 ## Decision
 
 **Ship the bounded worker implementation and public configuration, but keep the

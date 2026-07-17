@@ -100,12 +100,13 @@ func storedCompileWorkers(policy int) uint16 {
 }
 
 // compileWorkersForModule resolves a public compile-worker policy to a forced
-// backend worker count. Positive policies are explicit maxima. Auto mode uses a
-// measured work score that distinguishes hundreds of tiny functions from a few
-// substantial bodies while retaining the exact serial fast path below 16 KiB.
-// Four workers won consistently from that crossover. Eight improved backend-only
-// latency on the largest modules, but not end-to-end latency enough to justify its
-// additional allocation and peak-RSS cost, so auto mode deliberately caps at four.
+// function-pipeline worker count used by validation and backend codegen. Positive
+// policies are explicit maxima. Auto mode uses a measured work score that
+// distinguishes hundreds of tiny functions from a few substantial bodies while
+// retaining the exact serial fast path below 16 KiB. Four workers won consistently
+// from that crossover. Eight improved the largest modules, but not end-to-end
+// latency enough to justify its additional allocation and peak-RSS cost, so auto
+// mode deliberately caps at four.
 func compileWorkersForModule(m *wasm.Module, policy int) int {
 	workers := policy
 	if workers == 0 {
@@ -146,7 +147,8 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 	if err != nil {
 		return nil, fmt.Errorf("decode: %w", err)
 	}
-	if err := wasm.ValidateModule(m); err != nil {
+	workers := compileWorkersForModule(m, cfg.compileWorkers)
+	if err := wasm.ValidateModuleWithWorkers(m, workers); err != nil {
 		return nil, fmt.Errorf("validate: %w", err)
 	}
 	gcDescs, err := frontend.BuildGCTypeDescs(m)
@@ -166,7 +168,7 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 	var entry, internalEntry []int
 	if !needsLink {
 		pressureAt, pressure := compileMemoryPressure(len(wasmBytes))
-		cm, err := railshotCompileModuleWith(m, railshotCompileOptions{Workers: compileWorkersForModule(m, cfg.compileWorkers), ElideBoundsChecks: elide, NoBoundsFacts: cfg.noDeferBounds, SyncHostCalls: syncHostInitial, Interruptible: true, MemoryPressureAt: pressureAt, MemoryPressure: pressure})
+		cm, err := railshotCompileModuleWith(m, railshotCompileOptions{Workers: workers, ElideBoundsChecks: elide, NoBoundsFacts: cfg.noDeferBounds, SyncHostCalls: syncHostInitial, Interruptible: true, MemoryPressureAt: pressureAt, MemoryPressure: pressure})
 		if err != nil {
 			return nil, fmt.Errorf("compile: %w", err)
 		}

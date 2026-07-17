@@ -55,11 +55,17 @@ type DecodedByteBackedModule struct {
 // path. It is a convenience for benchmarks and internal tests that need a
 // single call around explicit decode then validate phases.
 func ValidateByteBackedModule(data []byte) error {
+	return ValidateByteBackedModuleWithWorkers(data, 1)
+}
+
+// ValidateByteBackedModuleWithWorkers is ValidateByteBackedModule with bounded
+// parallel function-body validation. workers <= 1 retains serial behavior.
+func ValidateByteBackedModuleWithWorkers(data []byte, workers int) error {
 	dm, err := DecodeModuleByteBacked(data)
 	if err != nil {
 		return err
 	}
-	return ValidateDecodedByteBackedModule(dm)
+	return ValidateDecodedByteBackedModuleWithWorkers(dm, workers)
 }
 
 // DecodeModuleByteBacked decodes data without materializing the structured
@@ -82,32 +88,17 @@ func DecodeModuleByteBacked(data []byte) (*DecodedByteBackedModule, error) {
 // DecodeModuleByteBacked without requiring a structured function-body
 // instruction tree.
 func ValidateDecodedByteBackedModule(dm *DecodedByteBackedModule) error {
+	return ValidateDecodedByteBackedModuleWithWorkers(dm, 1)
+}
+
+// ValidateDecodedByteBackedModuleWithWorkers is
+// ValidateDecodedByteBackedModule with bounded parallel function-body
+// validation. Errors remain ordered by function index.
+func ValidateDecodedByteBackedModuleWithWorkers(dm *DecodedByteBackedModule, workers int) error {
 	if dm == nil || dm.Module == nil {
 		return &ValidationError{Code: ErrTypeMismatch, Func: -1, Detail: "nil byte-backed module"}
 	}
-	v := &moduleValidator{m: dm.Module, funcIndex: -1, direct: &dm.direct}
-	if err := v.validateModule(); err != nil {
-		return err
-	}
-	importedFuncs := dm.Module.ImportedFuncCount()
-	memarg64 := moduleMemargOffset64(dm.Module)
-	fv := &funcValidator{moduleValidator: v}
-	for i, fn := range dm.Module.Code {
-		abs := importedFuncs + i
-		if i >= len(dm.Module.FuncTypes) {
-			return v.err(ErrUnknownFunc, "code without function type")
-		}
-		ft, ok := v.funcType(uint32(abs))
-		if !ok {
-			return v.err(ErrUnknownType, "function type")
-		}
-		fv.beginFunc(abs)
-		body := directCodeBody{locals: fn.Locals, body: fn.BodyBytes}
-		if err := fv.validateFuncDirect(body, ft, memarg64); err != nil {
-			return err
-		}
-	}
-	return nil
+	return validateModuleWithWorkers(dm.Module, &dm.direct, workers)
 }
 
 func (dm *directModule) populateCodeBodies() {

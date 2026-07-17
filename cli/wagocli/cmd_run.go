@@ -18,7 +18,7 @@ func runCommand() *Cmd {
 		{Name: "invoke", Short: "e", Arg: "<name>", Help: "exported function to call"},
 		{Name: "plugin", Arg: "<names>", Help: "comma-separated extra plugins to enable, on top of wago.json (see: wago plugin list)"},
 		{Name: "bounds", Arg: "<mode>", Help: "bounds checks: defer (default) | all"},
-		{Name: "parallel", Short: "p", Arg: "[workers]", Help: "parallel function compilation; omit workers for adaptive mode"},
+		{Name: "parallel", Short: "p", Arg: "[workers]", Help: "parallel function validation and compilation; omit workers for adaptive mode"},
 	}, optKnobFlags()...)
 	return &Cmd{
 		Name:        "run",
@@ -31,7 +31,7 @@ func runCommand() *Cmd {
 		Flags: flags,
 		Long: "<file> is raw .wasm or a precompiled .wago. Args after the file are typed by the\n" +
 			"signature; override per-arg with a suffix:  42   7:i64   3.5:f64\n" +
-			"Use -p for adaptive compile parallelism, or -p8 / -p 8 / --parallel=8 to\n" +
+			"Use -p for adaptive validation/compile parallelism, or -p8 / -p 8 / --parallel=8 to\n" +
 			"force a worker maximum. Optimization knobs: see `wago opts`.",
 		Run: runExec,
 	}

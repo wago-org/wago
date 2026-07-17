@@ -138,13 +138,13 @@ type RuntimeConfig struct {
 	maxMemoryPages uint32
 	boundsChecks   BoundsCheckMode
 	noDeferBounds  bool // disable skipping of provably-redundant bounds checks (default: enabled)
-	compileWorkers int  // 0 adaptive; 1 serial; >1 forced maximum
+	compileWorkers int  // function validation/codegen: 0 adaptive; 1 serial; >1 forced maximum
 }
 
 const defaultMaxMemoryPages = 1 << 16 // 4 GiB worth of 64 KiB wasm pages
 
 // NewRuntimeConfig returns the default configuration: wago's supported feature
-// set, serial function compilation, and the fastest available bounds-check mode —
+// set, serial function validation/codegen, and the fastest available bounds-check mode —
 // signals-based (guard-page) when the binary was built with -tags wago_guardpage,
 // explicit otherwise. WAGO_BOUNDS overrides either way ("explicit" / "signals").
 func NewRuntimeConfig() *RuntimeConfig {
@@ -225,10 +225,10 @@ func (c *RuntimeConfig) WithDeferBoundsChecks(enabled bool) *RuntimeConfig {
 	return &n
 }
 
-// WithCompileWorkers sets the per-module function-codegen policy. Zero selects
-// the measured adaptive policy, one forces the serial fast path, and N > 1
-// forces at most N workers (still capped by GOMAXPROCS and local-function count).
-// Negative values are rejected by Validate.
+// WithCompileWorkers sets the per-module function validation/codegen policy.
+// Zero selects the measured adaptive policy, one forces the serial fast path,
+// and N > 1 forces at most N workers (still capped by GOMAXPROCS and local-
+// function count). Negative values are rejected by Validate.
 func (c *RuntimeConfig) WithCompileWorkers(workers int) *RuntimeConfig {
 	n := *c
 	n.compileWorkers = workers
@@ -248,8 +248,8 @@ func (c *RuntimeConfig) DeferBoundsChecks() bool { return !c.noDeferBounds }
 // MemoryLimitPages reports the configured maximum linear-memory size in pages.
 func (c *RuntimeConfig) MemoryLimitPages() uint32 { return c.maxMemoryPages }
 
-// CompileWorkers reports the configured compile-worker policy: zero adaptive,
-// one serial, or a positive forced maximum.
+// CompileWorkers reports the configured function-pipeline worker policy: zero
+// adaptive, one serial, or a positive forced maximum.
 func (c *RuntimeConfig) CompileWorkers() int { return c.compileWorkers }
 
 // Compile decodes, validates, and compiles wasmBytes under this config. On

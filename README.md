@@ -644,8 +644,8 @@ using TinyGo; see the TinyGo doc for the foreign-stack and GC rationale.
 | `WAGO_NO_BOUNDS_FACTS=1` | Disable deferred bounds-check facts globally. |
 | `RuntimeConfig.WithFeature` | Accept or reject individual wasm feature families. |
 | `RuntimeConfig.WithMemoryLimitPages` | Cap declared linear memory in 64 KiB wasm pages. |
-| `RuntimeConfig.WithCompileWorkers` | Select serial (`1`), adaptive (`0`), or a forced worker maximum. |
-| `wago run -p[workers]` | Enable adaptive compile parallelism (`-p`) or force a maximum (`-p8`, `-p 8`). |
+| `RuntimeConfig.WithCompileWorkers` | Select serial (`1`), adaptive (`0`), or a forced worker maximum for function validation and codegen. |
+| `wago run -p[workers]` | Enable adaptive validation/compile parallelism (`-p`) or force a maximum (`-p8`, `-p 8`). |
 
 Guard-page mode is faster on memory-heavy modules but installs process-wide signal
 handlers and must be selected deliberately in builds that include it.
