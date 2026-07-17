@@ -170,13 +170,13 @@ func TestConfigDefaultAcceptsSupportedFeatures(t *testing.T) {
 }
 
 func TestConfigFeatureGatingRejects(t *testing.T) {
-	cfg := NewRuntimeConfig().WithCoreFeatures(coreFeaturesWago &^ CoreFeatureSignExtensionOps)
+	cfg := NewRuntimeConfig().WithCoreFeatures(platformCoreFeatures() &^ CoreFeatureSignExtensionOps)
 	_, err := Compile(cfg, signExtModule())
 	if err == nil || !strings.Contains(err.Error(), "sign-extension") {
 		t.Fatalf("disabling sign-extension should reject the module, got %v", err)
 	}
 
-	cfg = NewRuntimeConfig().WithCoreFeatures(coreFeaturesWago &^ CoreFeatureSIMD)
+	cfg = NewRuntimeConfig().WithCoreFeatures(platformCoreFeatures() &^ CoreFeatureSIMD)
 	_, err = Compile(cfg, simdModule())
 	if err == nil || !strings.Contains(err.Error(), "simd disabled") {
 		t.Fatalf("disabling SIMD should reject the module, got %v", err)
@@ -276,19 +276,20 @@ func TestCoreFeaturesV3ReleaseScopeAndAdmission(t *testing.T) {
 	if !CoreFeaturesV3.IsEnabled(CoreFeatureSIMD) {
 		t.Fatal("CoreFeaturesV3 must include the existing SIMD admission bit that also gates relaxed SIMD")
 	}
+	completeCore3Backend := runtime.GOOS == "linux" && runtime.GOARCH == "amd64"
 	for _, tc := range []struct {
 		bit       CoreFeatures
 		name      string
 		supported bool
 	}{
-		{CoreFeatureTailCall, "tail-call", true},
+		{CoreFeatureTailCall, "tail-call", completeCore3Backend},
 		{CoreFeatureExtendedConstExpressions, "extended-const-expressions", true},
-		{CoreFeatureTypedFunctionReferences, "typed-function-references", true},
-		{CoreFeatureGC, "gc", true},
-		{CoreFeatureExceptionHandling, "exception-handling", true},
-		{CoreFeatureMultiMemory, "multi-memory", true},
-		{CoreFeatureMemory64, "memory64", true},
-		{CoreFeatureTable64, "table64", true},
+		{CoreFeatureTypedFunctionReferences, "typed-function-references", completeCore3Backend},
+		{CoreFeatureGC, "gc", completeCore3Backend},
+		{CoreFeatureExceptionHandling, "exception-handling", completeCore3Backend},
+		{CoreFeatureMultiMemory, "multi-memory", completeCore3Backend},
+		{CoreFeatureMemory64, "memory64", completeCore3Backend},
+		{CoreFeatureTable64, "table64", completeCore3Backend},
 	} {
 		if got := SupportedFeatures().IsEnabled(tc.bit); got != tc.supported {
 			t.Errorf("SupportedFeatures admission for %s = %v, want %v", tc.name, got, tc.supported)
@@ -298,8 +299,19 @@ func TestCoreFeaturesV3ReleaseScopeAndAdmission(t *testing.T) {
 		}
 	}
 
-	if err := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).Validate(); err != nil {
-		t.Fatalf("CoreFeaturesV3 Validate = %v, want complete admission", err)
+	err := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).Validate()
+	if completeCore3Backend {
+		if err != nil {
+			t.Fatalf("CoreFeaturesV3 Validate = %v, want complete admission", err)
+		}
+	} else {
+		var unsupported *UnsupportedFeatureError
+		if !errors.As(err, &unsupported) {
+			t.Fatalf("CoreFeaturesV3 Validate = %v, want platform UnsupportedFeatureError", err)
+		}
+		if unsupported.Requested != CoreFeaturesV3&^SupportedFeatures() {
+			t.Fatalf("unsupported Core 3 features = %s, want %s", unsupported.Requested, CoreFeaturesV3&^SupportedFeatures())
+		}
 	}
 }
 
@@ -354,6 +366,15 @@ func TestConfigValidateAndIntrospection(t *testing.T) {
 		t.Fatal("deprecated compile-worker aliases must preserve the function-worker policy")
 	}
 	wantFeatures := coreFeaturesWago
+	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
+		wantFeatures &^= CoreFeatureTailCall |
+			CoreFeatureTypedFunctionReferences |
+			CoreFeatureGC |
+			CoreFeatureExceptionHandling |
+			CoreFeatureMultiMemory |
+			CoreFeatureMemory64 |
+			CoreFeatureTable64
+	}
 	if !hostSupportsSIMD() {
 		wantFeatures &^= CoreFeatureSIMD
 	}
