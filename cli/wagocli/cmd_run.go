@@ -26,7 +26,7 @@ func runCommand() *Cmd {
 		Args:        "<file> [args...]",
 		PassThrough: true,
 		Normalize: func(args []string) ([]string, error) {
-			return normalizeParallelArgs(args, flags)
+			return normalizeParallelArgs(args, flags, true)
 		},
 		Flags: flags,
 		Long: "<file> is raw .wasm or a precompiled .wago. Args after the file are typed by the\n" +
@@ -42,11 +42,12 @@ func parallelFlag() Flag {
 }
 
 // normalizeParallelArgs accepts -p, -p8, -p 8, -p=8, --parallel, and
-// --parallel=8. Bare -p/--parallel means adaptive mode. Parsing stops at the
-// first positional so run can pass later flags to the guest and validate can
-// treat the module path as the end of options. Values belonging to earlier
-// value-taking flags are skipped according to the same Flag table used by parse.
-func normalizeParallelArgs(args []string, flags []Flag) ([]string, error) {
+// --parallel=8. Bare -p/--parallel means adaptive mode. Run stops at the first
+// positional so later flags reach the guest; validate scans after its module
+// path because ordinary command flags may follow positionals. A -- terminator
+// always stops normalization. Values belonging to earlier value-taking flags
+// are skipped according to the same Flag table used by parse.
+func normalizeParallelArgs(args []string, flags []Flag, stopAtPositional bool) ([]string, error) {
 	valueFlags := make(map[string]struct{}, len(flags)*2)
 	for _, flag := range flags {
 		if flag.Bool || flag.Name == "parallel" {
@@ -61,9 +62,17 @@ func normalizeParallelArgs(args []string, flags []Flag) ([]string, error) {
 	out := make([]string, 0, len(args)+1)
 	for i := 0; i < len(args); i++ {
 		a := args[i]
-		if a == "--" || a == "-" || a == "" || a[0] != '-' {
+		if a == "--" {
 			out = append(out, args[i:]...)
 			return out, nil
+		}
+		if a == "-" || a == "" || a[0] != '-' {
+			out = append(out, a)
+			if stopAtPositional {
+				out = append(out, args[i+1:]...)
+				return out, nil
+			}
+			continue
 		}
 		switch a {
 		case "-p", "--parallel":

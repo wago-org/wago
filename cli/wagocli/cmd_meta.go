@@ -42,7 +42,7 @@ func validateCommand() *Cmd {
 		Summary:   "decode and validate a module",
 		Args:      "<file>",
 		Flags:     flags,
-		Normalize: func(args []string) ([]string, error) { return normalizeParallelArgs(args, flags) },
+		Normalize: func(args []string) ([]string, error) { return normalizeParallelArgs(args, flags, false) },
 		Long:      "Use -p for adaptive parallel function validation, or -p8 / -p 8 / --parallel=8 to force a worker maximum.",
 		Run: func(c *Ctx) {
 			file := singleFileArg("validate", c.Args)
