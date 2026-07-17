@@ -161,7 +161,7 @@ func (m *Module) writeStructuralIndexedFuncTypeLinear(typeIdx uint32, mix func(b
 		case ValVec, ValBot:
 			return true
 		case ValRef:
-			for _, flag := range []bool{value.Ref.Nullable, value.Ref.Exact, value.Ref.Bare} {
+			for _, flag := range []bool{value.Ref.Nullable, value.Ref.Exact} {
 				b := byte(0)
 				if flag {
 					b = 1
@@ -395,11 +395,6 @@ func (m *Module) writeStructuralIndexedFuncTypeExpanded(typeIdx uint32, mix func
 				mix(0)
 			}
 			if v.Ref.Exact {
-				mix(1)
-			} else {
-				mix(0)
-			}
-			if v.Ref.Bare {
 				mix(1)
 			} else {
 				mix(0)

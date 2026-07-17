@@ -124,11 +124,9 @@ func appendInstr(out *[]byte, in Instruction) error {
 		*out = append(*out, 0x1c)
 		appendU32(out, uint32(len(in.ValTypes())))
 		for _, vt := range in.ValTypes() {
-			b, ok := EncodeValType(vt)
-			if !ok {
-				return fmt.Errorf("wasm encode: unsupported select value type %s", vt)
+			if err := appendValType(out, vt); err != nil {
+				return fmt.Errorf("wasm encode: select value type %s: %w", vt, err)
 			}
-			*out = append(*out, b)
 		}
 	case InstrLocalGet:
 		*out = append(*out, 0x20)
@@ -187,11 +185,9 @@ func appendBlockType(out *[]byte, bt BlockType) error {
 	case BlockVoid:
 		*out = append(*out, 0x40)
 	case BlockVal:
-		b, ok := EncodeValType(bt.Val)
-		if !ok {
-			return fmt.Errorf("wasm encode: unsupported block value type %s", bt.Val)
+		if err := appendValType(out, bt.Val); err != nil {
+			return fmt.Errorf("wasm encode: block value type %s: %w", bt.Val, err)
 		}
-		*out = append(*out, b)
 	case BlockTypeIndex:
 		if bt.Type.Rec {
 			return fmt.Errorf("wasm encode: recursive block type %d", bt.Type.Index)
@@ -199,6 +195,38 @@ func appendBlockType(out *[]byte, bt BlockType) error {
 		appendS64(out, int64(bt.Type.Index))
 	default:
 		return fmt.Errorf("wasm encode: invalid block type")
+	}
+	return nil
+}
+
+func appendValType(out *[]byte, t ValType) error {
+	if b, ok := EncodeValType(t); ok {
+		*out = append(*out, b)
+		return nil
+	}
+	if t.Kind != ValRef || t.Ref.Bare {
+		return fmt.Errorf("unsupported value type")
+	}
+	if t.Ref.Nullable {
+		*out = append(*out, 0x63)
+	} else {
+		*out = append(*out, 0x64)
+	}
+	if t.Ref.Exact {
+		*out = append(*out, 0x62)
+	}
+	switch t.Ref.Heap.Kind {
+	case HeapAbs:
+		*out = append(*out, byte(t.Ref.Heap.Abs))
+	case HeapTypeIndex:
+		if t.Ref.Heap.Type.Rec {
+			return fmt.Errorf("recursive-local heap type %d", t.Ref.Heap.Type.Index)
+		}
+		appendS64(out, int64(t.Ref.Heap.Type.Index))
+	case HeapDefType:
+		return fmt.Errorf("defined heap type requires module index context")
+	default:
+		return fmt.Errorf("invalid heap type")
 	}
 	return nil
 }

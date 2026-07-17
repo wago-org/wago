@@ -383,6 +383,11 @@ Module declarations and bodies feed one indexed facts prepass for per-table/per-
 observability plus `ref.func` descriptor demand. A grow on one table does not reserve another table's declared
 maximum. Wrapper sizing counts ABI slots rather than source values: `v128` consumes two 64-bit slots.
 
+Reference shorthand is encoding metadata, not semantic identity. `funcref` and `(ref null func)` are equal,
+as are `externref` and `(ref null extern)`, for validation, imports, storage compatibility, structural keys,
+and typed native calls. The decoder retains the shorthand/explicit distinction only so expression encoding and
+feature admission can preserve the original binary form; neither fast nor exact canonical call identity includes it.
+
 The descriptor's 64-bit structural key is a fast native discriminator, not an unchecked proof. Before an
 instance publishes descriptors, its reference store compares every equal key using complete cross-module
 structural descriptors. A distinct collision rejects transactionally; equivalent modules share the live key.

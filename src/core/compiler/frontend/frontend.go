@@ -2407,7 +2407,7 @@ func (p supportPass) supportedStagedExternRef(rt wasm.RefType) bool {
 func (p supportPass) isTypedFuncRef(rt wasm.RefType) bool {
 	switch rt.Heap.Kind {
 	case wasm.HeapAbs:
-		return !rt.Bare && (rt.Heap.Abs == wasm.HeapFunc || rt.Heap.Abs == wasm.HeapNoFunc)
+		return !isFuncRef(rt) && (rt.Heap.Abs == wasm.HeapFunc || rt.Heap.Abs == wasm.HeapNoFunc)
 	case wasm.HeapTypeIndex:
 		_, ok := p.m.TypeFunc(rt.Heap.Type.Index)
 		return ok
@@ -2417,11 +2417,11 @@ func (p supportPass) isTypedFuncRef(rt wasm.RefType) bool {
 }
 
 func isFuncRef(rt wasm.RefType) bool {
-	return rt.Nullable && rt.Bare && !rt.Exact && rt.Heap.Kind == wasm.HeapAbs && rt.Heap.Abs == wasm.HeapFunc
+	return rt.Nullable && !rt.Exact && rt.Heap.Kind == wasm.HeapAbs && rt.Heap.Abs == wasm.HeapFunc
 }
 
 func isExternRef(rt wasm.RefType) bool {
-	return rt.Nullable && rt.Bare && !rt.Exact && rt.Heap.Kind == wasm.HeapAbs && rt.Heap.Abs == wasm.HeapExtern
+	return rt.Nullable && !rt.Exact && rt.Heap.Kind == wasm.HeapAbs && rt.Heap.Abs == wasm.HeapExtern
 }
 
 func compactRefTableType(rt wasm.RefType) bool {
@@ -2473,13 +2473,13 @@ func isGCI31ConstExpr(e wasm.Expr) bool {
 	return err == nil && end == 0x0b && r.BytesLeft() == 0
 }
 
-// isNullableAbsRef reports whether rt is a bare nullable reference to one of the
+// isNullableAbsRef reports whether rt is a nullable reference to one of the
 // abstract heap types wago can lower as a null const value: the func and extern
 // families, including their nofunc/noextern bottoms. Validation accepts a bottom
 // null (e.g. ref.null nofunc) as a subtype of func/extern, so the const-expr
 // support pass must accept it too or it rejects valid WebAssembly 2.0 modules.
 func isNullableAbsRef(rt wasm.RefType) bool {
-	if !(rt.Nullable && rt.Bare && !rt.Exact && rt.Heap.Kind == wasm.HeapAbs) {
+	if !(rt.Nullable && !rt.Exact && rt.Heap.Kind == wasm.HeapAbs) {
 		return false
 	}
 	switch rt.Heap.Abs {
