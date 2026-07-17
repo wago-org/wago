@@ -243,7 +243,7 @@ func (f *fn) returnCall(r *wasm.Reader) error {
 	if !ok {
 		return fmt.Errorf("return_call: unknown function %d", idx)
 	}
-	if !sameValTypes(f.ft.Results, ft.Results) {
+	if !tailResultABICompatible(f.ft.Results, ft.Results) {
 		return fmt.Errorf("return_call: target %d result shape differs from caller", idx)
 	}
 	imported := f.m.ImportedFuncCount()
@@ -268,7 +268,9 @@ func (f *fn) returnCall(r *wasm.Reader) error {
 		}
 		return f.opReturn()
 	}
-	if regABIEnabled && sigFitsRegABI(f.ft) && sigFitsRegABI(ft) {
+	callerRegisterABI := sigFitsRegABI(f.ft) || (f.stagedTailDescriptors && sigFitsReferenceResultRegABI(f.ft))
+	targetRegisterABI := sigFitsRegABI(ft) || (f.stagedTailDescriptors && sigFitsReferenceResultRegABI(ft))
+	if regABIEnabled && callerRegisterABI && targetRegisterABI {
 		f.stats.call("tail-direct")
 		f.emitTailRegisterJump(ft, func() {
 			site := f.a.JmpPlaceholder()
@@ -277,7 +279,7 @@ func (f *fn) returnCall(r *wasm.Reader) error {
 		f.unreachable = true
 		return nil
 	}
-	if !regABIEnabled || !sigFitsRegABI(f.ft) {
+	if !regABIEnabled || !callerRegisterABI {
 		if slots := funcTypeSlots(ft.Params); slots > abi.TailArgsSlots {
 			return fmt.Errorf("return_call: target %d requires %d wrapper argument slots, limit %d", idx, slots, abi.TailArgsSlots)
 		}
@@ -1704,7 +1706,7 @@ func (f *fn) returnCallIndirect(r *wasm.Reader) error {
 	if !ok {
 		return fmt.Errorf("return_call_indirect: bad type %d", typeIdx)
 	}
-	if !sameValTypes(f.ft.Results, ft.Results) {
+	if !tailResultABICompatible(f.ft.Results, ft.Results) {
 		return fmt.Errorf("return_call_indirect: type %d result shape differs from caller", typeIdx)
 	}
 	callerRegisterTail := sigFitsRegABI(f.ft) || (f.stagedTailDescriptors && sigFitsReferenceResultRegABI(f.ft))
