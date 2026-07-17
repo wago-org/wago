@@ -34,9 +34,10 @@ const (
 	memoryStateDeclaredHasMax
 	memoryStateClosed
 
-	memoryStateImporterShift = 32
-	memoryStateImporterMask  = uint64(1<<26 - 1)
-	memoryStateFlagsShift    = 58
+	memoryStateDeclaredMaxMask = uint64(1<<49 - 1)
+	memoryStateImporterShift   = 49
+	memoryStateImporterMask    = uint64(1<<9 - 1)
+	memoryStateFlagsShift      = 58
 )
 
 func (s *memoryState) has(flag uint8) bool {
@@ -61,10 +62,12 @@ func (s *memoryState) setImporterCount(count uint32) {
 		(uint64(count)&memoryStateImporterMask)<<memoryStateImporterShift
 }
 
-func (s *memoryState) declaredMaximum() uint32 { return uint32(s.meta) }
+func (s *memoryState) declaredMaximum() uint64 {
+	return s.meta & memoryStateDeclaredMaxMask
+}
 
-func (s *memoryState) setDeclaredMaximum(max uint32) {
-	s.meta = s.meta&^uint64(^uint32(0)) | uint64(max)
+func (s *memoryState) setDeclaredMaximum(max uint64) {
+	s.meta = s.meta&^memoryStateDeclaredMaxMask | max&memoryStateDeclaredMaxMask
 }
 
 // NewMemory creates a host-owned linear memory. minPages/maxPages are in 64 KiB
@@ -117,7 +120,8 @@ func newMemory(minPages, maxPages uint32, shared bool) (*Memory, error) {
 	if maxPages == 0 {
 		declaredMax = minPages
 	}
-	state := &memoryState{meta: uint64(declaredMax)}
+	state := &memoryState{}
+	state.setDeclaredMaximum(uint64(declaredMax))
 	state.set(memoryStateAddrKnown|memoryStateLimitsKnown|memoryStateDeclaredHasMax, true)
 	state.set(memoryStateShared, shared)
 	m.state.Store(state)
@@ -244,7 +248,7 @@ func (m *Memory) share(owner *Instance, def memoryDef) error {
 	if !s.has(memoryStateLimitsKnown) {
 		s.set(memoryStateLimitsKnown, true)
 		s.set(memoryStateDeclaredHasMax, def.HasMax)
-		s.setDeclaredMaximum(uint32(def.Max))
+		s.setDeclaredMaximum(def.Max)
 	}
 	if owner != nil {
 		if s.owner != nil && s.owner != owner {
@@ -263,7 +267,7 @@ func (m *Memory) validateLimits(min, max uint64, hasMax, addr64 bool) error {
 	}
 	s.mu.Lock()
 	providerAddr64, addrKnown := s.has(memoryStateAddr64), s.has(memoryStateAddrKnown)
-	limitsKnown, providerHasMax, providerMax := s.has(memoryStateLimitsKnown), s.has(memoryStateDeclaredHasMax), uint64(s.declaredMaximum())
+	limitsKnown, providerHasMax, providerMax := s.has(memoryStateLimitsKnown), s.has(memoryStateDeclaredHasMax), s.declaredMaximum()
 	s.mu.Unlock()
 	if addrKnown && providerAddr64 != addr64 {
 		providerBits, importBits := 32, 32
