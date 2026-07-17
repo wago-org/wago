@@ -398,6 +398,14 @@ as are `externref` and `(ref null extern)`, for validation, imports, storage com
 and typed native calls. The decoder retains the shorthand/explicit distinction only so expression encoding and
 feature admission can preserve the original binary form; neither fast nor exact canonical call identity includes it.
 
+A funcref descriptor's tagged home word is the authority for the code pointer's calling convention. The four valid
+kinds are same-instance internal register entry, same-instance offset-zero wrapper, retained cross-instance wrapper,
+and host thunk. Instantiation publishes the code pointer and exact kind together; amd64 `call_ref`, `call_indirect`,
+`return_call_ref`, and `return_call_indirect`, plus arm64 `call_indirect`, decode the complete three-bit kind before
+choosing an ABI. Internal entries are invoked only through register staging; local/cross/host wrapper entries use the
+offset-zero wrapper ABI and home-aware context path. Multiple tags or an unsupported tail combination trap before
+the code pointer is invoked. Clearing tags therefore never converts an internal pointer into a wrapper.
+
 The descriptor's 64-bit structural key is a fast native discriminator, not an unchecked proof. Before an
 instance publishes descriptors, its reference store compares every equal key using complete cross-module
 structural descriptors. A distinct collision rejects transactionally; equivalent modules share the live key.

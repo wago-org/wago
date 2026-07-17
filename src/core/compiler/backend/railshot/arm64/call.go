@@ -52,11 +52,6 @@ type callReloc struct {
 var intArgRegs = []Reg{X0, X1, X2, X3, X4, X5, X6, X7}
 var fpArgRegs = []Reg{0, 1, 2, 3, 4, 5, 6, 7} // V0..V7; single float result returns in V0.
 
-const (
-	internalEntryHomeTag uint64 = 1 << 63
-	descriptorHomeTags   uint64 = 7 << 61
-)
-
 func isIntValType(t wasm.ValType) bool {
 	return wasm.EqualValType(t, wasm.I32) || wasm.EqualValType(t, wasm.I64)
 }
@@ -1030,6 +1025,24 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 	}
 }
 
+func (f *fn) descriptorEntryKind(home Reg, avoid regMask) Reg {
+	kind := f.allocReg(avoid)
+	f.a.LsrImm(kind, home, abi.FuncRefEntryTagShift, true)
+	return kind
+}
+
+func (f *fn) stripDescriptorHomeTags(home Reg) {
+	f.a.AndImm64(home, home, ^uint64(abi.FuncRefHomeTagMask))
+}
+
+func (f *fn) validateWrapperDescriptor(kind, home Reg) {
+	// Valid wrapper tags are host=0, local=1, and cross=2. A retained local
+	// wrapper may appear in another instance; home-aware dispatch decides whether
+	// to switch contexts.
+	f.cmpImm(kind, uint32(abi.FuncRefCrossInstanceTagValue), true)
+	f.trapIf(condA, trapIndirectSig)
+}
+
 // callIndirect lowers call_indirect: bounds-check the table index, verify the
 // entry's canonical type key, reject a null entry, then call the entry's code
 // pointer via the wrapper ABI. Table layout matches the runtime (32-byte entries;
@@ -1120,6 +1133,16 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 	// (including the stack fence). Verified: spec1 passes and spec2/3 no longer
 	// crash. Re-enable only with an entry pointer that preserves the fence.
 	if immutableLocalPolyFastPath && tableIdx == 0 && f.immutableLocalTable && sigFitsRegABI(ft) && sigIsIntOnly(ft) {
+		home := f.allocReg(maskOf(idxReg, code))
+		f.ld64(home, idxReg, 24)
+		kind := f.descriptorEntryKind(home, maskOf(idxReg, code, home))
+		f.stripDescriptorHomeTags(home)
+		f.cmpImm(kind, uint32(abi.FuncRefInternalTagValue), true)
+		f.trapIf(condNE, trapIndirectSig)
+		f.cmpRR(home, linMemReg, true)
+		f.trapIf(condNE, trapIndirectSig)
+		f.release(kind)
+		f.release(home)
 		f.pinned = f.pinned.remove(idxReg).add(code)
 		f.release(idxReg)
 		f.stats.peep("immutable-local-call-indirect")
@@ -1157,13 +1180,11 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 		f.pinned = f.pinned.add(code).add(home).add(targetContext)
 		f.flush()
 		savedLocals := append([]localDef(nil), f.locals...)
-		tag := f.allocReg(maskOf(code, home))
-		f.a.AndImm64(tag, home, internalEntryHomeTag)
-		f.cmpImm(tag, 0, true)
-		f.release(tag)
-		wrapper := f.a.Bcond(condE)
-		f.pinned = f.pinned.remove(home).remove(targetContext)
-		f.release(targetContext)
+		kind := f.descriptorEntryKind(home, maskOf(code, home, targetContext))
+		f.cmpImm(kind, uint32(abi.FuncRefInternalTagValue), true)
+		wrapper := f.a.Bcond(condNE)
+		f.stripDescriptorHomeTags(home)
+		f.pinned = f.pinned.remove(home)
 		f.emitRegisterCallVia(ft, -1, false, -1, code)
 		done := f.a.Branch()
 		f.a.PatchBranch19(wrapper, f.a.Len())
@@ -1172,16 +1193,21 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 		f.st64(linMemReg, -int32(offSpillRegion), code)
 		f.pinned = f.pinned.remove(code)
 		f.release(code)
-		f.a.AndImm64(home, home, ^descriptorHomeTags)
+		f.stripDescriptorHomeTags(home)
+		f.validateWrapperDescriptor(kind, home)
+		f.release(kind)
 		f.emitIndirectCallHomeAware(ft, home, targetContext)
 		f.a.PatchBranch26(done, f.a.Len())
 		return nil
 	}
 
 	// Stash the code ptr in linMem scratch so it survives the call staging.
+	kind := f.descriptorEntryKind(home, maskOf(code, home, targetContext))
+	f.stripDescriptorHomeTags(home)
+	f.validateWrapperDescriptor(kind, home)
+	f.release(kind)
 	f.st64(linMemReg, -int32(offSpillRegion), code)
 	f.release(code)
-	f.a.AndImm64(home, home, ^descriptorHomeTags)
 
 	f.emitIndirectCallHomeAware(ft, home, targetContext)
 	return nil

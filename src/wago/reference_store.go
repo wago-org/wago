@@ -768,7 +768,7 @@ func (s *referenceStore) canonicalFuncrefOwnerLocked(source *Instance, descripto
 		}
 		entry := source.funcRefDescs[off : off+coreruntime.TableEntryBytes]
 		home := binary.LittleEndian.Uint64(entry[coreruntime.TableEntryHomeLinMemOffset:])
-		home &^= abi.FuncRefInternalHomeTag | abi.FuncRefCrossInstanceHomeTag | abi.FuncRefLocalWrapperHomeTag
+		home &^= abi.FuncRefHomeTagMask
 		if binary.LittleEndian.Uint64(entry[coreruntime.TableEntryCodePtrOffset:]) == 0 ||
 			home != uint64(source.jm.LinMemBase()) ||
 			binary.LittleEndian.Uint64(entry[coreruntime.TableEntrySigKeyOffset:]) != source.c.funcTypeKey(fidx) {

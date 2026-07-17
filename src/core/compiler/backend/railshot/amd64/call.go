@@ -1368,6 +1368,31 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 // descriptors may carry a tagged internal register-ABI entry; every other
 // descriptor uses the existing wrapper/cross-instance context path shared with
 // call_indirect.
+func (f *fn) descriptorEntryKind(home Reg, avoid regMask) Reg {
+	kind := f.allocReg(avoid)
+	f.a.MovReg64(kind, home)
+	f.a.ShiftImm(5, kind, abi.FuncRefEntryTagShift, true)
+	return kind
+}
+
+func (f *fn) stripDescriptorHomeTags(home Reg) {
+	f.a.ShiftImm(4, home, 3, true)
+	f.a.ShiftImm(5, home, 3, true)
+}
+
+// validateWrapperDescriptor rejects invalid/multi-tagged descriptors and checks
+// that the tagged wrapper ownership agrees with its home pointer. Host thunks
+// and local wrappers must stay in the caller instance; cross-instance wrappers
+// must name a different retained instance.
+func (f *fn) validateWrapperDescriptor(kind, home Reg) {
+	// Valid wrapper tags are the contiguous values host=0, local=1, cross=2.
+	// Local wrapper descriptors may leave their producer through a retained
+	// table/token, so the home-aware call path (not the tag alone) decides whether
+	// a context switch is required. Values 3..7 are invalid or internal.
+	f.a.AluRI(cmpDigit, kind, int32(abi.FuncRefCrossInstanceTagValue), true)
+	f.trapIf(condA, trapTailUnsupported)
+}
+
 func (f *fn) checkCallType(entry Reg, offset int32, key uint64, avoid regMask) {
 	got := f.allocReg(avoid)
 	f.a.Load64(got, entry, offset)
@@ -1413,7 +1438,8 @@ func (f *fn) callRef(r *wasm.Reader) error {
 	f.pinned = f.pinned.remove(ref)
 	f.release(ref)
 
-	if sigFitsRegABI(ft) && sigIsIntOnly(ft) {
+	targetRegABI := (sigFitsRegABI(ft) && sigIsIntOnly(ft)) || (f.stagedTailDescriptors && (sigFitsRegABI(ft) || sigFitsReferenceResultRegABI(ft)))
+	if targetRegABI {
 		// A tagged descriptor points at a same-instance internal entry. Untagged
 		// descriptors name wrapper entries and retain their real home linMem.
 		roots := f.rootsBottomToTop()
@@ -1427,14 +1453,11 @@ func (f *fn) callRef(r *wasm.Reader) error {
 		f.pinned = f.pinned.add(code).add(home).add(targetContext)
 		f.flush()
 		savedLocals := append([]localDef(nil), f.locals...)
-		tag := f.allocReg(maskOf(code, home, targetContext))
-		f.a.MovReg64(tag, home)
-		f.a.ShiftImm(5, tag, 63, true)
-		f.a.TestSelf(tag, true)
-		f.release(tag)
-		wrapper := f.a.JccPlaceholder(condE)
-		f.pinned = f.pinned.remove(home).remove(targetContext)
-		f.release(targetContext)
+		kind := f.descriptorEntryKind(home, maskOf(code, home, targetContext))
+		f.a.AluRI(cmpDigit, kind, int32(abi.FuncRefInternalTagValue), true)
+		wrapper := f.a.JccPlaceholder(condNE)
+		f.stripDescriptorHomeTags(home)
+		f.pinned = f.pinned.remove(home)
 		f.emitRegisterCallVia(ft, -1, -1, code)
 		f.pinned = f.pinned.remove(code)
 		f.release(code)
@@ -1443,20 +1466,23 @@ func (f *fn) callRef(r *wasm.Reader) error {
 		f.a.PatchRel32(wrapper, f.a.Len())
 		f.locals = savedLocals
 		f.setDepthTypes(types)
+		f.stripDescriptorHomeTags(home)
+		f.validateWrapperDescriptor(kind, home)
+		f.release(kind)
 		f.a.Store64(RBX, -int32(offSpillRegion), code)
 		f.pinned = f.pinned.remove(code)
 		f.release(code)
-		f.a.ShiftImm(4, home, 3, true)
-		f.a.ShiftImm(5, home, 3, true)
 		f.emitIndirectCallHomeAware(ft, home, targetContext)
 		f.a.PatchRel32(done, f.a.Len())
 		return nil
 	}
 
+	kind := f.descriptorEntryKind(home, maskOf(code, home, targetContext))
+	f.stripDescriptorHomeTags(home)
+	f.validateWrapperDescriptor(kind, home)
+	f.release(kind)
 	f.a.Store64(RBX, -int32(offSpillRegion), code)
 	f.release(code)
-	f.a.ShiftImm(4, home, 3, true)
-	f.a.ShiftImm(5, home, 3, true)
 	f.emitIndirectCallHomeAware(ft, home, targetContext)
 	return nil
 }
@@ -1530,14 +1556,14 @@ func (f *fn) returnCallRef(r *wasm.Reader) error {
 	// compiler state from code that the machine skipped in the internal branch.
 	f.flush()
 
-	// Bit 63 marks the existing same-instance internal-entry descriptor.
+	// Decode the complete three-bit kind, never one bit at a time: multi-tagged
+	// descriptors are invalid and must not inherit the ABI of the first set bit.
 	f.a.Load64(RAX, RBX, -int32(abi.TailCrossHomeOffset))
 	f.a.MovReg64(RDX, RAX)
-	f.a.ShiftImm(5, RDX, 63, true)
-	f.a.TestSelf(RDX, true)
-	cross := f.a.JccPlaceholder(condE)
-	f.a.ShiftImm(4, RAX, 3, true)
-	f.a.ShiftImm(5, RAX, 3, true)
+	f.a.ShiftImm(5, RDX, abi.FuncRefEntryTagShift, true)
+	f.stripDescriptorHomeTags(RAX)
+	f.a.AluRI(cmpDigit, RDX, int32(abi.FuncRefInternalTagValue), true)
+	notInternal := f.a.JccPlaceholder(condNE)
 	f.a.Cmp64(RAX, RBX)
 	f.trapIf(condNE, trapTailUnsupported)
 	f.emitTailRegisterJump(ft, func() {
@@ -1545,20 +1571,14 @@ func (f *fn) returnCallRef(r *wasm.Reader) error {
 		f.a.JmpReg(RSI)
 	})
 
-	// Cross-instance wrapper tail transfer remains fail-closed under the process-
-	// wide native execution lease. A tagged same-instance wrapper (for example a
-	// ref.func stored in an exact typed global) may use the bounded wrapper transfer
-	// without crossing an ownership or context-restoration boundary.
-	f.a.PatchRel32(cross, f.a.Len())
+	// Cross-instance wrapper tail transfer remains fail-closed under the
+	// process-wide native execution lease. Only a same-instance local wrapper may
+	// use the bounded wrapper transfer.
+	f.a.PatchRel32(notInternal, f.a.Len())
 	f.locals = savedLocals
 	f.setDepthTypes(types)
-	f.a.Load64(RAX, RBX, -int32(abi.TailCrossHomeOffset))
-	f.a.MovReg64(RDX, RAX)
-	f.a.ShiftImm(5, RDX, 61, true)
-	f.a.TestSelf(RDX, true)
-	f.trapIf(condE, trapTailUnsupported)
-	f.a.ShiftImm(4, RAX, 3, true)
-	f.a.ShiftImm(5, RAX, 3, true)
+	f.a.AluRI(cmpDigit, RDX, int32(abi.FuncRefLocalWrapperTagValue), true)
+	f.trapIf(condNE, trapTailUnsupported) // cross-instance, host, and invalid tags
 	f.a.Cmp64(RAX, RBX)
 	f.trapIf(condNE, trapTailUnsupported)
 	f.emitTailCrossWrapperJump(ft)
@@ -1687,8 +1707,10 @@ func (f *fn) returnCallIndirect(r *wasm.Reader) error {
 	if !sameValTypes(f.ft.Results, ft.Results) {
 		return fmt.Errorf("return_call_indirect: type %d result shape differs from caller", typeIdx)
 	}
-	registerTail := sigFitsRegABI(f.ft) && sigFitsRegABI(ft)
-	wrapperTail := !sigFitsRegABI(f.ft) && funcTypeSlots(ft.Params) <= abi.TailArgsSlots
+	callerRegisterTail := sigFitsRegABI(f.ft) || (f.stagedTailDescriptors && sigFitsReferenceResultRegABI(f.ft))
+	targetRegisterTail := sigFitsRegABI(ft) || (f.stagedTailDescriptors && sigFitsReferenceResultRegABI(ft))
+	registerTail := callerRegisterTail && targetRegisterTail
+	wrapperTail := !callerRegisterTail && funcTypeSlots(ft.Params) <= abi.TailArgsSlots
 	if !registerTail && !wrapperTail {
 		return fmt.Errorf("return_call_indirect: caller or type %d requires unsupported indirect tail ABI", typeIdx)
 	}
@@ -1727,6 +1749,20 @@ func (f *fn) returnCallIndirect(r *wasm.Reader) error {
 	} else {
 		f.checkCallType(idxReg, 8+runtime.TableEntrySigKeyOffset, canon, maskOf(idxReg, code))
 	}
+	home := f.allocReg(maskOf(idxReg, code))
+	f.a.Load64(home, idxReg, 8+runtime.TableEntryHomeLinMemOffset)
+	kind := f.descriptorEntryKind(home, maskOf(idxReg, code, home))
+	f.stripDescriptorHomeTags(home)
+	if registerTail {
+		f.a.AluRI(cmpDigit, kind, int32(abi.FuncRefInternalTagValue), true)
+	} else {
+		f.a.AluRI(cmpDigit, kind, int32(abi.FuncRefLocalWrapperTagValue), true)
+	}
+	f.trapIf(condNE, trapTailUnsupported)
+	f.a.Cmp64(home, RBX)
+	f.trapIf(condNE, trapTailUnsupported)
+	f.release(kind)
+	f.release(home)
 	f.pinned = f.pinned.remove(idxReg)
 	f.release(idxReg)
 
@@ -1826,8 +1862,9 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 	// pointer, testing the internal-entry tag, and emitting the wrapper/cross-instance
 	// fork; the OOB/null/type checks above are still required and remain on the hot
 	// path. A monomorphic table (single target) collapses to a direct call.
-	immutableRegisterCall := sigFitsRegABI(ft) && (sigIsIntOnly(ft) || f.stagedTailDescriptors)
-	if immutableTable && tableHint.monomorphicTarget >= 0 && immutableRegisterCall {
+	directRegisterCall := sigFitsRegABI(ft) || (f.stagedTailDescriptors && sigFitsReferenceResultRegABI(ft))
+	descriptorRegisterCall := (sigFitsRegABI(ft) && sigIsIntOnly(ft)) || (f.stagedTailDescriptors && (sigFitsRegABI(ft) || sigFitsReferenceResultRegABI(ft)))
+	if immutableTable && tableHint.monomorphicTarget >= 0 && directRegisterCall {
 		f.pinned = f.pinned.remove(idxReg)
 		f.release(idxReg)
 		f.release(code)
@@ -1835,7 +1872,17 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 		f.emitRegisterCall(tableHint.monomorphicTarget, ft, -1)
 		return nil
 	}
-	if immutableTable && immutableRegisterCall {
+	if immutableTable && descriptorRegisterCall {
+		home := f.allocReg(maskOf(idxReg, code))
+		f.a.Load64(home, idxReg, 8+runtime.TableEntryHomeLinMemOffset)
+		kind := f.descriptorEntryKind(home, maskOf(idxReg, code, home))
+		f.stripDescriptorHomeTags(home)
+		f.a.AluRI(cmpDigit, kind, int32(abi.FuncRefInternalTagValue), true)
+		f.trapIf(condNE, trapTailUnsupported)
+		f.a.Cmp64(home, RBX)
+		f.trapIf(condNE, trapTailUnsupported)
+		f.release(kind)
+		f.release(home)
 		f.pinned = f.pinned.remove(idxReg)
 		f.release(idxReg)
 		f.pinned = f.pinned.add(code)
@@ -1859,7 +1906,7 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 	f.release(canonical)
 	f.pinned = f.pinned.remove(idxReg)
 	f.release(idxReg)
-	if sigFitsRegABI(ft) && (sigIsIntOnly(ft) || f.stagedTailDescriptors) {
+	if descriptorRegisterCall {
 		// Local function descriptors may point directly at the internal register-
 		// ABI entry and tag bit 63 of homeLinMem. Split that fast path before the
 		// wrapper/cross-instance lowering; treating the tagged value as a real
@@ -1875,14 +1922,11 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 		f.pinned = f.pinned.add(code).add(home).add(targetContext)
 		f.flush()
 		savedLocals := append([]localDef(nil), f.locals...)
-		tag := f.allocReg(maskOf(code, home))
-		f.a.MovReg64(tag, home)
-		f.a.ShiftImm(5, tag, 63, true) // logical high-bit extract
-		f.a.TestSelf(tag, true)
-		f.release(tag)
-		wrapper := f.a.JccPlaceholder(condE)
-		f.pinned = f.pinned.remove(home).remove(targetContext)
-		f.release(targetContext)
+		kind := f.descriptorEntryKind(home, maskOf(code, home, targetContext))
+		f.a.AluRI(cmpDigit, kind, int32(abi.FuncRefInternalTagValue), true)
+		wrapper := f.a.JccPlaceholder(condNE)
+		f.stripDescriptorHomeTags(home)
+		f.pinned = f.pinned.remove(home)
 		f.emitRegisterCallVia(ft, -1, -1, code)
 		f.pinned = f.pinned.remove(code)
 		f.release(code)
@@ -1894,20 +1938,21 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 		f.a.Store64(RBX, -int32(offSpillRegion), code)
 		f.pinned = f.pinned.remove(code)
 		f.release(code)
-		// Clear the three descriptor context tags while retaining the canonical
-		// pointer without spending an immediate-mask register.
-		f.a.ShiftImm(4, home, 3, true)
-		f.a.ShiftImm(5, home, 3, true)
+		f.stripDescriptorHomeTags(home)
+		f.validateWrapperDescriptor(kind, home)
+		f.release(kind)
 		f.emitIndirectCallHomeAware(ft, home, targetContext)
 		f.a.PatchRel32(done, f.a.Len())
 		return nil
 	}
 
 	// Stash the code ptr in linMem scratch so it survives the call staging.
+	kind := f.descriptorEntryKind(home, maskOf(code, home, targetContext))
+	f.stripDescriptorHomeTags(home)
+	f.validateWrapperDescriptor(kind, home)
+	f.release(kind)
 	f.a.Store64(RBX, -int32(offSpillRegion), code)
 	f.release(code)
-	f.a.ShiftImm(4, home, 3, true)
-	f.a.ShiftImm(5, home, 3, true)
 
 	f.emitIndirectCallHomeAware(ft, home, targetContext)
 	return nil
