@@ -2542,7 +2542,7 @@ func (c *Compiled) validate() error {
 			}
 		}
 	}
-	validateOffset := func(kind string, seg int, offset OffsetInit, want ValType) error {
+	validateOffset := func(kind string, seg int, offset OffsetInit, want ValType, context constExprContext) error {
 		if offset.HasGlobal && len(offset.Expr) != 0 {
 			return fmt.Errorf("compiled metadata invalid: %s %d has multiple offset initializer forms", kind, seg)
 		}
@@ -2553,7 +2553,7 @@ func (c *Compiled) validate() error {
 			return c.validateDeferredOffsetGlobal(kind, seg, offset.Global)
 		}
 		if len(offset.Expr) != 0 {
-			if err := validateCompiledScalarConstExpr(offset.Expr, want, c.Globals, len(c.GlobalImports)); err != nil {
+			if err := validateCompiledScalarConstExpr(offset.Expr, want, c.Globals, constExprGlobalScope{context: context, limit: len(c.Globals)}); err != nil {
 				return fmt.Errorf("compiled metadata invalid: %s %d extended %s offset: %w", kind, seg, want, err)
 			}
 		}
@@ -2624,7 +2624,7 @@ func (c *Compiled) validate() error {
 		if c.tableDef(int(el.TableIndex)).Addr64 {
 			offsetType = ValI64
 		}
-		if err := validateOffset("element", seg, el.Offset, offsetType); err != nil {
+		if err := validateOffset("element", seg, el.Offset, offsetType, constExprElementOffset); err != nil {
 			return err
 		}
 		if err := validateElementValues("active", seg, el); err != nil {
@@ -2657,7 +2657,7 @@ func (c *Compiled) validate() error {
 		if count := c.memoryCount(); count != 0 && c.memoryDef(int(d.MemoryIndex)).Addr64 {
 			want = ValI64
 		}
-		if err := validateOffset("data", seg, d.Offset, want); err != nil {
+		if err := validateOffset("data", seg, d.Offset, want, constExprDataOffset); err != nil {
 			return err
 		}
 	}
@@ -2792,7 +2792,7 @@ func (c *Compiled) validateCodecMetadata() error {
 			return fmt.Errorf("compiled metadata invalid: table export %q index %d out of range", name, tableIndex)
 		}
 	}
-	checkOffset := func(kind string, i int, offset OffsetInit, want ValType) error {
+	checkOffset := func(kind string, i int, offset OffsetInit, want ValType, context constExprContext) error {
 		if offset.HasGlobal && len(offset.Expr) != 0 {
 			return fmt.Errorf("compiled metadata invalid: %s %d has multiple offset initializer forms", kind, i)
 		}
@@ -2800,7 +2800,7 @@ func (c *Compiled) validateCodecMetadata() error {
 			return fmt.Errorf("compiled metadata invalid: %s %d uses compact i32 global offset for %s address", kind, i, want)
 		}
 		if len(offset.Expr) != 0 {
-			if err := validateCompiledScalarConstExpr(offset.Expr, want, c.Globals, len(c.GlobalImports)); err != nil {
+			if err := validateCompiledScalarConstExpr(offset.Expr, want, c.Globals, constExprGlobalScope{context: context, limit: len(c.Globals)}); err != nil {
 				return fmt.Errorf("compiled metadata invalid: %s %d extended %s offset: %w", kind, i, want, err)
 			}
 		}
@@ -2812,7 +2812,7 @@ func (c *Compiled) validateCodecMetadata() error {
 			if active && int(elem.TableIndex) < c.tableCount() && c.tableDef(int(elem.TableIndex)).Addr64 {
 				offsetType = ValI64
 			}
-			if err := checkOffset(kind, i, elem.Offset, offsetType); err != nil {
+			if err := checkOffset(kind, i, elem.Offset, offsetType, constExprElementOffset); err != nil {
 				return err
 			}
 			refType := normalizedElemRefType(elem.RefType)
@@ -2839,7 +2839,7 @@ func (c *Compiled) validateCodecMetadata() error {
 		if c.memoryCount() != 0 && c.memoryDef(int(data.MemoryIndex)).Addr64 {
 			want = ValI64
 		}
-		if err := checkOffset("data", i, data.Offset, want); err != nil {
+		if err := checkOffset("data", i, data.Offset, want, constExprDataOffset); err != nil {
 			return err
 		}
 	}
@@ -3233,7 +3233,7 @@ func (c *Compiled) validateGlobalInitExpr(index int, g GlobalDef) error {
 		}
 		return nil
 	}
-	if err := validateCompiledScalarConstExpr(g.InitExpr, g.Type, c.Globals, index); err != nil {
+	if err := validateCompiledScalarConstExpr(g.InitExpr, g.Type, c.Globals, constExprGlobalScope{context: constExprGlobalInitializer, limit: index}); err != nil {
 		return fmt.Errorf("compiled metadata invalid: global %d extended initializer: %w", index, err)
 	}
 	return nil
