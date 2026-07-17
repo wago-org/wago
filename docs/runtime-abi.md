@@ -406,9 +406,11 @@ Reference fill/copy preflight every payload, then Throughput collectors mutate t
 with a direct fill or memmove-equivalent copy and invoke one post-write bulk barrier after the complete range
 is visible. Tiny deliberately retains scalar edge barriers while marking or sweeping to preserve tri-color
 correctness. Numeric fill/copy/init operations mutate the already-validated little-endian payload directly.
-Same-array copy preserves memmove semantics and allocates no temporary buffer. Collector tests separately
-prove nullable/non-null storage compatibility, rejected-copy atomicity, Throughput remembered/card
-publication, and Tiny remark preservation.
+Same-array copy preserves memmove semantics and allocates no temporary buffer. Throughput remembered membership
+uses a handle-owned bit plus one cold-path dense-list compaction, and cards are non-collecting scaffolding coalesced to one dirty interval per
+old/large array. Nursery writes create no cards; bulk barriers inspect only the overwritten range and leave exact
+removal to collection-time pruning. Collector tests separately prove nullable/non-null storage compatibility,
+rejected-copy atomicity, bounded metadata growth, Throughput remembered/card publication, and Tiny remark preservation.
 
 The exact copy product also contains a mutable GC array global. Its overlap functions allocate one array,
 run only the non-collecting copy helper while that local is live, and perform `global.set` as the final native

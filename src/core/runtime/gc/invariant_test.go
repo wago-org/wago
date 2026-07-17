@@ -154,11 +154,14 @@ func TestRememberedSetPrunedAfterOverwrite(t *testing.T) {
 		if err := c.StructSet(old, 1, RefValue(Null())); err != nil {
 			t.Fatal(err)
 		}
-		if c.RememberedCount() != 0 {
-			t.Fatalf("stale remembered entry after null overwrite: %d", c.RememberedCount())
+		if c.RememberedCount() != 1 {
+			t.Fatalf("conservative remembered entry was pruned on the store hot path: %d", c.RememberedCount())
 		}
 		if err := c.CollectMinor(nil); err != nil {
 			t.Fatal(err)
+		}
+		if c.RememberedCount() != 0 {
+			t.Fatalf("stale remembered entry survived collection pruning: %d", c.RememberedCount())
 		}
 		if c.entry(young0).space != spaceFree || c.entry(young1).space != spaceFree {
 			t.Fatalf("overwritten young refs survived minor collection: %v %v", c.entry(young0).space, c.entry(young1).space)
@@ -207,11 +210,14 @@ func TestRememberedSetPrunedAfterOverwrite(t *testing.T) {
 		if err := c.ArraySet(arr, 1, RefValue(oldTarget)); err != nil {
 			t.Fatal(err)
 		}
-		if c.RememberedCount() != 0 {
-			t.Fatalf("stale remembered entry after old overwrite: %d", c.RememberedCount())
+		if c.RememberedCount() != 1 {
+			t.Fatalf("conservative remembered entry was pruned on the store hot path: %d", c.RememberedCount())
 		}
 		if err := c.CollectMinor(nil); err != nil {
 			t.Fatal(err)
+		}
+		if c.RememberedCount() != 0 {
+			t.Fatalf("stale remembered entry survived collection pruning: %d", c.RememberedCount())
 		}
 		if c.entry(young0).space != spaceFree || c.entry(young1).space != spaceFree {
 			t.Fatalf("overwritten young refs survived minor collection: %v %v", c.entry(young0).space, c.entry(young1).space)
@@ -253,13 +259,18 @@ func TestVerifyRejectsInvalidCardMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := c.ForcePromote(arr); err != nil {
+		t.Fatal(err)
+	}
 	young, err := c.NewStructDefault(0)
 	if err != nil {
 		t.Fatal(err)
 	}
 	g := c.NewGlobalSlot(Null())
 	tab := c.NewTableSlot(Null())
-	c.CardMarkArray(arr, 1)
+	if err := c.ArraySet(arr, 1, RefValue(young)); err != nil {
+		t.Fatal(err)
+	}
 	if err := c.SetGlobalSlot(g, young); err != nil {
 		t.Fatal(err)
 	}
@@ -269,6 +280,26 @@ func TestVerifyRejectsInvalidCardMetadata(t *testing.T) {
 	if err := c.Verify(nil); err != nil {
 		t.Fatalf("valid card metadata failed verify: %v", err)
 	}
+
+	h := handleOf(arr)
+	c.handles[h].remembered = false
+	if err := c.Verify(nil); err == nil {
+		t.Fatal("Verify accepted inconsistent remembered membership")
+	}
+	c.handles[h].remembered = true
+	cardSlot := c.handles[h].cardSlot
+	c.handles[h].cardSlot = 0
+	if err := c.Verify(nil); err == nil {
+		t.Fatal("Verify accepted inconsistent object-card membership")
+	}
+	c.handles[h].cardSlot = cardSlot
+	globalCardKey := slotCardKey(SlotGlobal, g)
+	globalCardSlot := c.slotCardSlot[globalCardKey]
+	delete(c.slotCardSlot, globalCardKey)
+	if err := c.Verify(nil); err == nil {
+		t.Fatal("Verify accepted inconsistent slot-card membership")
+	}
+	c.slotCardSlot[globalCardKey] = globalCardSlot
 
 	validObjectCards := append([]objectCard(nil), c.objectCards...)
 	validSlotCards := append([]slotCard(nil), c.slotCards...)
@@ -364,8 +395,8 @@ func TestRememberedCardMetadataIsBoundedAndPruned(t *testing.T) {
 		for i := 0; i < 4; i++ {
 			c.BulkWriteBarrier(arr, 1, 3)
 		}
-		if got, want := c.CardCount(), beforeCards+3; got != want {
-			t.Fatalf("bulk card duplicates retained: got %d want %d", got, want)
+		if got, want := c.CardCount(), beforeCards+1; got != want {
+			t.Fatalf("bulk card range was not coalesced: got %d want %d", got, want)
 		}
 
 		g := c.NewGlobalSlot(Null())
@@ -417,8 +448,8 @@ func TestRememberedCardMetadataIsBoundedAndPruned(t *testing.T) {
 		if err := c.ArraySet(arr, 2, RefValue(Null())); err != nil {
 			t.Fatal(err)
 		}
-		if got, want := c.CardCount(), beforeCards+3; got != want {
-			t.Fatalf("object cards should stay conservative and deduplicated: got %d want %d", got, want)
+		if got, want := c.CardCount(), beforeCards+1; got != want {
+			t.Fatalf("object card range should stay conservative and coalesced: got %d want %d", got, want)
 		}
 		if err := c.CollectMinor(nil); err != nil {
 			t.Fatal(err)
@@ -458,6 +489,100 @@ func TestRememberedCardMetadataIsBoundedAndPruned(t *testing.T) {
 			t.Fatal(err)
 		}
 	})
+}
+
+func TestRememberedAndCardMetadataScaleWithObjectsNotWrites(t *testing.T) {
+	c := newTestCollector(t, Config{StressNurseryBytes: 1 << 20, VerifyAfterCollect: true})
+	young, err := c.NewStructDefault(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	one, err := c.NewArrayDefault(3, 4096)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.ForcePromote(one); err != nil {
+		t.Fatal(err)
+	}
+	for i := uint32(0); i < 4096; i++ {
+		if err := c.ArraySet(one, i, RefValue(young)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if c.RememberedCount() != 1 || len(c.objectCards) != 1 {
+		t.Fatalf("one-array metadata = remembered %d cards %d, want 1/1", c.RememberedCount(), len(c.objectCards))
+	}
+	if card := c.objectCards[0]; card.index != 0 || card.end != 4095 {
+		t.Fatalf("one-array dirty interval = %d..%d, want 0..4095", card.index, card.end)
+	}
+
+	const objectCount = 256
+	arrays := make(RefSliceRoots, objectCount)
+	for i := range arrays {
+		arrays[i], err = c.NewArrayDefault(3, 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := c.ForcePromote(arrays[i]); err != nil {
+			t.Fatal(err)
+		}
+		for repeat := 0; repeat < 16; repeat++ {
+			if err := c.ArraySet(arrays[i], 0, RefValue(young)); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if got, want := c.RememberedCount(), objectCount+1; got != want {
+		t.Fatalf("many-array remembered=%d, want %d", got, want)
+	}
+	if got, want := len(c.objectCards), objectCount+1; got != want {
+		t.Fatalf("many-array cards=%d, want %d", got, want)
+	}
+	roots := append(arrays, one)
+	if err := c.CollectMinor(roots); err != nil {
+		t.Fatal(err)
+	}
+	if c.RememberedCount() != 0 || c.CardCount() != 0 {
+		t.Fatalf("minor collection retained metadata: remembered=%d cards=%d", c.RememberedCount(), c.CardCount())
+	}
+
+	young, err = c.NewStructDefault(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, array := range arrays {
+		value := RefValue(Null())
+		if i&1 == 0 {
+			value = RefValue(young)
+		}
+		if err := c.ArraySet(array, 0, value); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got, want := c.RememberedCount(), objectCount/2; got != want {
+		t.Fatalf("alternating writes remembered=%d, want %d", got, want)
+	}
+	if err := c.CollectFull(roots); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := c.RememberedCount(), objectCount/2; got != want {
+		t.Fatalf("full collection exact remembered=%d, want %d", got, want)
+	}
+	if c.CardCount() != 0 {
+		t.Fatalf("full collection retained scaffold cards=%d", c.CardCount())
+	}
+	for _, array := range arrays {
+		if err := c.ArraySet(array, 0, RefValue(Null())); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := c.CollectMinor(roots); err != nil {
+		t.Fatal(err)
+	}
+	if c.RememberedCount() != 0 || c.CardCount() != 0 {
+		t.Fatalf("final pruning retained metadata: remembered=%d cards=%d", c.RememberedCount(), c.CardCount())
+	}
 }
 
 func TestObjectCardsForFreedObjectsArePruned(t *testing.T) {

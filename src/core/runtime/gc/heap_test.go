@@ -499,6 +499,13 @@ func TestCardMetadataRetainsFullIndexes(t *testing.T) {
 
 	const elementIndex = uint32(0x1_0001)
 	c.CardMarkArray(arr, elementIndex)
+	if len(c.objectCards) != 0 {
+		t.Fatalf("nursery array recorded generational cards: %d", len(c.objectCards))
+	}
+	if err := c.ForcePromote(arr); err != nil {
+		t.Fatal(err)
+	}
+	c.CardMarkArray(arr, elementIndex)
 	if len(c.objectCards) != 1 {
 		t.Fatalf("object cards=%d, want 1", len(c.objectCards))
 	}
@@ -507,14 +514,14 @@ func TestCardMetadataRetainsFullIndexes(t *testing.T) {
 	}
 
 	c.BulkWriteBarrier(arr, ^uint32(0)-1, 4)
-	if len(c.objectCards) != 3 {
-		t.Fatalf("object cards=%d, want 3", len(c.objectCards))
+	if len(c.objectCards) != 1 {
+		t.Fatalf("object card ranges=%d, want 1", len(c.objectCards))
 	}
-	if got := c.objectCards[1].index; got != ^uint32(0)-1 {
-		t.Fatalf("bulk start index=%#x, want %#x", got, ^uint32(0)-1)
+	if got := c.objectCards[0].index; got != elementIndex {
+		t.Fatalf("coalesced start index=%#x, want %#x", got, elementIndex)
 	}
-	if got := c.objectCards[2].index; got != ^uint32(0) {
-		t.Fatalf("bulk end index=%#x, want saturated %#x", got, ^uint32(0))
+	if got := c.objectCards[0].end; got != ^uint32(0) {
+		t.Fatalf("coalesced end index=%#x, want saturated %#x", got, ^uint32(0))
 	}
 }
 
@@ -543,8 +550,15 @@ func TestSlotCardsAreNotRemovedAsObjectCards(t *testing.T) {
 		t.Fatalf("slot card removed as object card; remaining=%d", len(c.slotCards))
 	}
 
-	c.objectCards = append(c.objectCards, objectCard{handle: 7, index: 0})
-	c.removeCardsForHandle(7)
+	arr, err := c.NewArrayDefault(3, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.ForcePromote(arr); err != nil {
+		t.Fatal(err)
+	}
+	c.CardMarkArray(arr, 0)
+	c.removeCardsForHandle(handleOf(arr))
 	if len(c.objectCards) != 0 {
 		t.Fatalf("object card for freed handle remained: %v", c.objectCards)
 	}

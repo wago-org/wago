@@ -259,15 +259,8 @@ func (c *Collector) StructSet(ref Ref, field uint32, value Value) error {
 		if err := c.validateStoredRef(value.Ref, f.Kind == StorageRefNull); err != nil {
 			return err
 		}
-		childIsNursery := c.isNurseryRef(value.Ref)
 		c.WriteBarrierObject(ref, value.Ref)
-		if err := c.storeValue(ref, d, uint64(PayloadOffset+f.Offset), f.Kind, value); err != nil {
-			return err
-		}
-		if !childIsNursery {
-			c.pruneRememberedHandleUnlessNursery(handleOf(ref))
-		}
-		return nil
+		return c.storeValue(ref, d, uint64(PayloadOffset+f.Offset), f.Kind, value)
 	}
 	return c.storeValue(ref, d, uint64(PayloadOffset+f.Offset), f.Kind, value)
 }
@@ -489,16 +482,9 @@ func (c *Collector) validateArrayStore(d TypeDesc, value Value) error {
 
 func (c *Collector) storeArrayValue(ref Ref, d TypeDesc, index uint32, value Value) error {
 	if isRefKind(d.Elem) {
-		childIsNursery := c.isNurseryRef(value.Ref)
 		c.WriteBarrierObject(ref, value.Ref)
 		c.CardMarkArray(ref, index)
-		if err := c.storeValue(ref, d, uint64(PayloadOffset)+uint64(index)*uint64(d.ElemSize), d.Elem, value); err != nil {
-			return err
-		}
-		if !childIsNursery {
-			c.pruneRememberedHandleUnlessNursery(handleOf(ref))
-		}
-		return nil
+		return c.storeValue(ref, d, uint64(PayloadOffset)+uint64(index)*uint64(d.ElemSize), d.Elem, value)
 	}
 	return c.storeValue(ref, d, uint64(PayloadOffset)+uint64(index)*uint64(d.ElemSize), d.Elem, value)
 }
