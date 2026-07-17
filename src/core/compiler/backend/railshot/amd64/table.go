@@ -98,6 +98,16 @@ func (f *fn) tableAddr64(tableIdx uint32) bool {
 	return ok && tt.Limits.Addr64
 }
 
+// canonicalizeTableOperand establishes the consuming-side table32 invariant:
+// every logical i32 is zero-extended before native-width address arithmetic,
+// scaling, comparisons, or loop counts. Producers (notably host result slots)
+// are allowed to leave arbitrary bits above bit 31.
+func (f *fn) canonicalizeTableOperand(reg Reg, tableIdx uint32) {
+	if !f.tableAddr64(tableIdx) {
+		f.a.MovRegReg32(reg, reg)
+	}
+}
+
 func (f *fn) typedTableEntryAddr(dst, tbl Reg, tableIdx uint32) {
 	if !f.tableIsExternref(tableIdx) {
 		f.tableEntryAddr(dst, tbl)
@@ -297,6 +307,8 @@ func (f *fn) tableFill(r *wasm.Reader) error {
 	f.a.Load64(RDI, RSP, f.spillOff(d-3))
 	f.a.Load64(RAX, RSP, f.spillOff(d-2))
 	f.a.Load64(RCX, RSP, f.spillOff(d-1))
+	f.canonicalizeTableOperand(RDI, tableIdx)
+	f.canonicalizeTableOperand(RCX, tableIdx)
 	f.loadTableDescriptor(R8, tableIdx)
 	f.a.Load32(RDX, R8, 0)
 	if f.tableAddr64(tableIdx) {
@@ -312,6 +324,7 @@ func (f *fn) tableFill(r *wasm.Reader) error {
 		f.trapUnlessLE(RDI, RDX)
 	}
 	f.a.Load64(RDI, RSP, f.spillOff(d-3))
+	f.canonicalizeTableOperand(RDI, tableIdx)
 	f.tableEntryAddr(RDI, R8)
 	// snapshotFuncrefDescriptor uses the register allocator internally. Keep the
 	// fixed destination/count registers live across it so descriptor snapshotting
@@ -331,6 +344,8 @@ func (f *fn) externrefTableFill(tableIdx uint32) error {
 	f.a.Load64(RDI, RSP, f.spillOff(d-3))
 	f.a.Load64(RAX, RSP, f.spillOff(d-2))
 	f.a.Load64(RCX, RSP, f.spillOff(d-1))
+	f.canonicalizeTableOperand(RDI, tableIdx)
+	f.canonicalizeTableOperand(RCX, tableIdx)
 	f.loadTableDescriptor(R8, tableIdx)
 	f.a.Load32(RDX, R8, 0)
 	addr64 := f.tableAddr64(tableIdx)
@@ -367,6 +382,7 @@ func (f *fn) tableGrow(r *wasm.Reader) error {
 	f.materializePendingLoads()
 	f.flush()
 	delta := f.materialize(f.popValue())
+	f.canonicalizeTableOperand(delta, tableIdx)
 	f.pinned = f.pinned.add(delta)
 	ref := f.materialize(f.popValue())
 	f.pinned = f.pinned.add(ref)
@@ -434,6 +450,7 @@ func (f *fn) externrefTableGrow(tableIdx uint32) error {
 	f.materializePendingLoads()
 	f.flush()
 	delta := f.materialize(f.popValue())
+	f.canonicalizeTableOperand(delta, tableIdx)
 	f.pinned = f.pinned.add(delta)
 	ref := f.materialize(f.popValue())
 	f.pinned = f.pinned.add(ref)
@@ -661,6 +678,7 @@ func (f *fn) copyFuncrefToEntry(ref, entry Reg) {
 }
 
 func (f *fn) checkedTableEntryAddr(idxReg Reg, tableIdx uint32) (entry Reg, table Reg) {
+	f.canonicalizeTableOperand(idxReg, tableIdx)
 	f.pinned = f.pinned.add(idxReg)
 	tbl := f.allocReg(0)
 	f.loadTableDescriptor(tbl, tableIdx)

@@ -46,15 +46,11 @@ func TestMoonBitStarshineWasmGCSmokeCompile(t *testing.T) {
 	if len(compiled.FuncTypeID) < 10_000 || len(compiled.Imports) == 0 {
 		t.Fatalf("decoded Starshine footprint = functions %d imports %d", len(compiled.FuncTypeID), len(compiled.Imports))
 	}
-	linked, err := compiled.linkModuleMode(starshineSmokeImports(compiled), nil, true)
-	if err != nil {
-		t.Fatalf("link/codegen MoonBit Starshine wasm-gc payload: %v", err)
+	if err := compiled.validateImportBindings(starshineSmokeImports(compiled), nil); err != nil {
+		t.Fatalf("validate MoonBit Starshine wasm-gc imports: %v", err)
 	}
-	if linked != compiled {
-		defer linked.Close()
-	}
-	if len(linked.Code) == 0 || len(linked.Entry) < 10_000 {
-		t.Fatalf("linked Starshine footprint = code %d entries %d", len(linked.Code), len(linked.Entry))
+	if len(compiled.Code) == 0 || len(compiled.Entry) < 10_000 {
+		t.Fatalf("compiled Starshine footprint = code %d entries %d", len(compiled.Code), len(compiled.Entry))
 	}
 }
 
@@ -105,16 +101,9 @@ func BenchmarkMoonBitStarshineWasmGCCompileLink(b *testing.B) {
 		if err != nil {
 			b.Fatal(err)
 		}
-		linked, err := compiled.linkModuleMode(starshineSmokeImports(compiled), nil, true)
-		if err != nil {
+		if err := compiled.validateImportBindings(starshineSmokeImports(compiled), nil); err != nil {
 			_ = compiled.Close()
 			b.Fatal(err)
-		}
-		if linked != compiled {
-			if err := linked.Close(); err != nil {
-				_ = compiled.Close()
-				b.Fatal(err)
-			}
 		}
 		if err := compiled.Close(); err != nil {
 			b.Fatal(err)
@@ -135,17 +124,9 @@ func BenchmarkMoonBitStarshineWasmGCLinkCold(b *testing.B) {
 		}
 		imports := starshineSmokeImports(compiled)
 		b.StartTimer()
-		linked, err := compiled.linkModuleMode(imports, nil, true)
+		err = compiled.validateImportBindings(imports, nil)
 		b.StopTimer()
 		if err != nil {
-			_ = compiled.Close()
-			b.Fatal(err)
-		}
-		if linked == compiled {
-			_ = compiled.Close()
-			b.Fatal("deferred Starshine link unexpectedly reused unlinked input")
-		}
-		if err := linked.Close(); err != nil {
 			_ = compiled.Close()
 			b.Fatal(err)
 		}
@@ -164,17 +145,13 @@ func BenchmarkMoonBitStarshineWasmGCInstantiate(b *testing.B) {
 	}
 	defer compiled.Close()
 	imports := starshineSmokeImports(compiled)
-	linked, err := compiled.linkModuleMode(imports, nil, true)
-	if err != nil {
+	if err := compiled.validateImportBindings(imports, nil); err != nil {
 		b.Fatal(err)
-	}
-	if linked != compiled {
-		defer linked.Close()
 	}
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		instance, err := Instantiate(linked, InstantiateOptions{Imports: imports})
+		instance, err := Instantiate(compiled, InstantiateOptions{Imports: imports})
 		if err != nil {
 			b.Fatal(err)
 		}
