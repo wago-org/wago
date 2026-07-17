@@ -10,6 +10,7 @@ bin="$root/wasm"
 stamp="$root/source-revision"
 
 actual_revision() {
+	[ -e "$suite/.git" ] || return 0
 	git -C "$suite" rev-parse HEAD 2>/dev/null || true
 }
 
@@ -61,10 +62,10 @@ build() {
 	}
 }
 
-require_source
-
 case "${1:-}" in
 	--print-revision)
+		# Reporting the declared source pin must not require an initialized
+		# submodule; callers use this mode to decide what to initialize.
 		printf '%s\n' "$revision"
 		exit 0
 		;;
@@ -75,6 +76,8 @@ case "${1:-}" in
 		exit 2
 		;;
 esac
+
+require_source
 
 if ! verify; then
 	mkdir -p "$repo/.tools"

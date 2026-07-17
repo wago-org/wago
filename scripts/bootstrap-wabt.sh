@@ -39,7 +39,11 @@ if ! verify; then
 	trap 'rm -rf "$tmp"' EXIT HUP INT TERM
 	archive="$tmp/$asset"
 	curl -fsSL "$base_url/$asset" -o "$archive"
-	printf '%s  %s\n' "$sha256" "$archive" | sha256sum -c - >/dev/null
+	if command -v sha256sum >/dev/null 2>&1; then
+		printf '%s  %s\n' "$sha256" "$archive" | sha256sum -c - >/dev/null
+	else
+		printf '%s  %s\n' "$sha256" "$archive" | shasum -a 256 -c - >/dev/null
+	fi
 	tar -xzf "$archive" -C "$tmp"
 	extracted="$tmp/wabt-$version"
 	[ -x "$extracted/bin/wast2json" ] || {

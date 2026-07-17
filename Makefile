@@ -61,7 +61,7 @@ lint: lint-fmt lint-generate lint-vet lint-staticcheck ## Run all lint checks (h
 
 .PHONY: lint-fmt
 lint-fmt:
-	@unformatted="$$(gofmt -l . | grep -vE '^(tests/spec|\.claude)/' || true)"; \
+	@unformatted="$$(git ls-files -z -- '*.go' | xargs -0 gofmt -l)"; \
 	if [ -n "$$unformatted" ]; then \
 		echo "::error::These files are not gofmt-ed:"; echo "$$unformatted"; exit 1; \
 	fi
@@ -262,7 +262,7 @@ tinygo-build: ## Build the Minimal runtime with TinyGo (no cgo, debug) -> ./wago
 
 .PHONY: tinygo-test
 tinygo-test: ## Run the runtime + public-API suites under TinyGo
-	$(TINYGO) test -scheduler=$(TINYGO_SCHEDULER) ./src/core/runtime/ ./src/wago/
+	$(TINYGO) test -v -scheduler=$(TINYGO_SCHEDULER) ./src/core/runtime/ ./src/wago/
 
 .PHONY: cover
 cover: ## Run all five public gates with merged cross-package coverage
