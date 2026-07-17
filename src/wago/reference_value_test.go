@@ -286,6 +286,10 @@ func TestHostReferenceTranslationSlotAndTokenValidation(t *testing.T) {
 	if err := in.translateHostReferenceResults(nil, []ValType{ValV128}, nil); err != nil {
 		t.Fatalf("v128 result slots: %v", err)
 	}
+	funcrefType := []ValueTypeDescriptor{{
+		Kind: ValueTypeReference,
+		Ref:  ReferenceTypeDescriptor{Nullable: true, Heap: HeapTypeDescriptor{Abstract: AbstractHeapFunc}},
+	}}
 	for _, tc := range []struct {
 		name string
 		fn   func() error
@@ -293,7 +297,7 @@ func TestHostReferenceTranslationSlotAndTokenValidation(t *testing.T) {
 		{"missing argument", func() error { return in.translateHostReferenceArgs(nil, []ValType{ValI32}, nil) }},
 		{"invalid externref argument", func() error { return in.translateHostReferenceArgs([]uint64{1}, []ValType{ValExternRef}, nil) }},
 		{"missing result", func() error { return in.translateHostReferenceResults(nil, []ValType{ValI64}, nil) }},
-		{"invalid funcref result", func() error { return in.translateHostReferenceResults([]uint64{1}, []ValType{ValFuncRef}, nil) }},
+		{"invalid funcref result", func() error { return in.translateHostReferenceResults([]uint64{1}, []ValType{ValFuncRef}, funcrefType) }},
 		{"invalid externref result", func() error { return in.translateHostReferenceResults([]uint64{1}, []ValType{ValExternRef}, nil) }},
 	} {
 		if err := tc.fn(); err == nil {

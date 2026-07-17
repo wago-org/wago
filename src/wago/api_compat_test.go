@@ -142,13 +142,23 @@ func TestCompiledAPIHelpers(t *testing.T) {
 			t.Errorf("asyncReplayable(%+v) = %v, want %v", tc.sig, got, tc.want)
 		}
 	}
-	growFacts, err := frontend.AnalyzeModuleFacts(&wasm.Module{Memories: []wasm.MemType{{}}, Code: []wasm.Func{{BodyBytes: []byte{0x40, 0x00, 0x0b}}}})
-	if err != nil || len(growFacts.MemoryGrowUsed) != 1 || !growFacts.MemoryGrowUsed[0] {
-		t.Fatalf("module memory.grow facts = %#v, %v", growFacts, err)
+	memoryGrowFact := func(m *wasm.Module) bool {
+		t.Helper()
+		facts, err := frontend.AnalyzeModuleFacts(m)
+		if err != nil {
+			t.Fatalf("analyze memory.grow facts: %v", err)
+		}
+		return facts.MemoryGrowUsed[0]
 	}
-	plainFacts, err := frontend.AnalyzeModuleFacts(&wasm.Module{Memories: []wasm.MemType{{}}, Code: []wasm.Func{{Body: wasm.Expr{Instrs: []wasm.Instruction{{Kind: wasm.InstrI32Add}}}}}})
-	if err != nil || len(plainFacts.MemoryGrowUsed) != 1 || plainFacts.MemoryGrowUsed[0] {
-		t.Fatalf("plain module memory.grow facts = %#v, %v", plainFacts, err)
+	withMemory := func(fn wasm.Func) *wasm.Module {
+		return &wasm.Module{Memories: []wasm.MemType{{}}, Code: []wasm.Func{fn}}
+	}
+	if memoryGrowFact(withMemory(wasm.Func{BodyBytes: []byte{0x0b}})) ||
+		!memoryGrowFact(withMemory(wasm.Func{BodyBytes: []byte{0x40, 0x00, 0x0b}})) ||
+		!memoryGrowFact(withMemory(wasm.Func{BodyBytes: []byte{0xff}})) ||
+		memoryGrowFact(withMemory(wasm.Func{Body: wasm.Expr{Instrs: []wasm.Instruction{{Kind: wasm.InstrI32Add}}}})) ||
+		!memoryGrowFact(withMemory(wasm.Func{Body: wasm.Expr{Instrs: []wasm.Instruction{{Kind: wasm.InstrMemoryGrow}}}})) {
+		t.Fatal("memory.grow module facts changed")
 	}
 
 	elem, data := 0, 0
@@ -283,7 +293,7 @@ func TestRuntimeConfigPortableFluentSurface(t *testing.T) {
 	if got := (&UnsupportedFeatureError{Requested: CoreFeatureTailCall, Supported: CoreFeaturesV2}).Error(); !strings.Contains(got, "tail-call") {
 		t.Fatalf("UnsupportedFeatureError = %q", got)
 	}
-	err := NewRuntimeConfig().WithFeature(CoreFeatures(1)<<63, true).Validate()
+	err := NewRuntimeConfig().WithFeature(CoreFeatures(1<<63), true).Validate()
 	var unsupported *UnsupportedFeatureError
 	if !errors.As(err, &unsupported) {
 		t.Fatalf("Validate unsupported = %v", err)
@@ -426,7 +436,7 @@ func TestRuntimeReferenceAndErrorPortableSurface(t *testing.T) {
 	if _, err := (*Instance)(nil).NewExternRef("x"); err == nil {
 		t.Fatal("nil instance accepted an externref")
 	}
-	private := &Instance{}
+	private := &Instance{c: &Compiled{}}
 	privateRef, err := private.NewExternRef("private")
 	if err != nil {
 		t.Fatalf("private NewExternRef: %v", err)

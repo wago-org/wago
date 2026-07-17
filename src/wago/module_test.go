@@ -225,7 +225,7 @@ func TestConstExpressionModuleGlobalAndInstructionForms(t *testing.T) {
 	for _, bad := range []*wasm.Module{
 		nil,
 		{Imports: []wasm.Import{{Type: wasm.ExternType{Kind: wasm.ExternGlobal, Global: wasm.GlobalType{Type: wasm.I64, Mutable: true}}}}},
-		{Globals: []wasm.Global{{Type: wasm.GlobalType{Type: wasm.I64}}}},
+		{Globals: []wasm.Global{{Type: wasm.GlobalType{Type: wasm.I64, Mutable: true}}}},
 	} {
 		if _, err := evalConstExprBytesWithModule([]byte{0x23, 0x00, 0x0b}, wasm.I64, bad); err == nil {
 			t.Fatal("invalid global.get constant expression accepted")
