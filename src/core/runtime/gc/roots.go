@@ -73,48 +73,71 @@ func (s valueRootSet) RangeRoots(fn func(RootSlot) bool) {
 	}
 }
 
-func rangeRootRefs(roots RootSet, fn func(Ref) bool) {
+func rangeRootRefs(roots RootSet, fn func(Ref) bool) bool {
 	if roots == nil {
-		return
+		return true
+	}
+	visitFallback := func(set RootSet) bool {
+		keepGoing := true
+		set.RangeRoots(func(slot RootSlot) bool {
+			keepGoing = fn(slot.GetRef())
+			return keepGoing
+		})
+		return keepGoing
 	}
 	switch s := roots.(type) {
 	case EmptyRoots:
-		return
+		return true
+	case Slots:
+		for _, slot := range s {
+			if !fn(slot.GetRef()) {
+				return true
+			}
+		}
+		return true
 	case valueRootSet:
 		for i := range s.values {
 			if !s.all && (i >= len(s.fields) || !isCollectorRefKind(s.fields[i].Kind)) {
 				continue
 			}
 			if !fn(s.values[i].Ref) {
-				return
+				return true
 			}
 		}
+		return true
 	case combinedRootSet:
 		keepGoing := true
-		rangeRootRefs(s.first, func(r Ref) bool {
+		if !rangeRootRefs(s.first, func(r Ref) bool {
 			keepGoing = fn(r)
 			return keepGoing
-		})
-		if keepGoing {
-			rangeRootRefs(s.second, fn)
+		}) {
+			keepGoing = visitFallback(s.first)
 		}
+		if keepGoing && !rangeRootRefs(s.second, fn) {
+			visitFallback(s.second)
+		}
+		return true
 	case extraRootSet:
 		keepGoing := true
-		rangeRootRefs(s.roots, func(r Ref) bool {
+		if !rangeRootRefs(s.roots, func(r Ref) bool {
 			keepGoing = fn(r)
 			return keepGoing
-		})
+		}) {
+			keepGoing = visitFallback(s.roots)
+		}
 		if keepGoing && s.extra != nil {
 			fn(s.extra.GetRef())
 		}
+		return true
 	case RefSliceRoots:
 		for i := range s {
 			if !fn(s[i]) {
-				return
+				return true
 			}
 		}
+		return true
 	default:
-		roots.RangeRoots(func(slot RootSlot) bool { return fn(slot.GetRef()) })
+		return false
 	}
 }
 

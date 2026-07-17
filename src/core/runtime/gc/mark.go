@@ -10,7 +10,9 @@ func (c *Collector) clearMarks() {
 	c.markStack = c.markStack[:0]
 }
 func (c *Collector) markRoots(roots RootSet) {
-	rangeRootRefs(roots, func(r Ref) bool { c.markRef(r); return true })
+	if roots != nil && !rangeRootRefs(roots, func(r Ref) bool { c.markRef(r); return true }) {
+		roots.RangeRoots(func(s RootSlot) bool { c.markRef(s.GetRef()); return true })
+	}
 	for _, r := range c.globalSlots {
 		c.markRef(r)
 	}
