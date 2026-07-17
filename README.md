@@ -86,13 +86,13 @@ downloads.
 ### Toolchain channels
 
 The CLI can install stable versions and the moving release channels. Each
-nightly and canary is an immutable prerelease; the channel name resolves to its
-newest published release at install time:
+nightly and canary has a unique, never-retargeted prerelease tag; the channel
+name resolves to its newest published release at install time:
 
 ```bash
 wago version install 0.1.0
 wago version install nightly  # latest successful nightly release
-wago version install canary   # most recent build of main
+wago version install canary   # most recent successful-CI build of main
 ```
 
 `wago version update` refreshes the active version, while a version argument or

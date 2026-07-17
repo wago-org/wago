@@ -1,6 +1,6 @@
 name: Publish nightly
 
-# Builds the CLI once a day from main and publishes an immutable nightly
+# Builds the CLI once a day from main and publishes a uniquely tagged nightly
 # prerelease. The CLI resolves the newest nightly-* release tag at install time.
 on:
   schedule:
@@ -193,9 +193,9 @@ jobs:
             sha256sum --check "$asset.sha256"
           done
 
-      # Immutable release rules forbid retargeting a rolling tag. Each nightly
-      # gets a unique tag; the CLI resolves the newest nightly-* prerelease.
-      - name: Publish immutable nightly release
+      # Each nightly gets a unique, never-retargeted tag; the CLI resolves the
+      # newest nightly-* prerelease.
+      - name: Publish uniquely tagged nightly release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
