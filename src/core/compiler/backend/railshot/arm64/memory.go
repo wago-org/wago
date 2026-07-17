@@ -28,7 +28,6 @@ const (
 	trapTruncOverflow = 11
 	trapInterrupted   = 12
 	trapStackFence    = 13
-	trapTableOOB      = 15
 )
 
 // Basedata fields at negative offsets from the linMem base (runtime/basedata.go).
@@ -138,7 +137,7 @@ func (f *fn) trapSite(branch int) trapSite {
 // emitTrapStubs emits one trap stub per trap code used by this function and
 // patches every recorded site to it. Called once, after the epilogue.
 func (f *fn) emitTrapStubs() {
-	for code := uint32(1); code <= trapTableOOB; code++ { // deterministic order
+	for code := uint32(1); code <= trapStackFence; code++ { // deterministic order
 		sites := f.scratchState().trapSites[code]
 		if len(sites) == 0 {
 			continue
@@ -228,18 +227,8 @@ func (f *fn) memAddr(off uint32, size int, aliasPinned bool) (ea Reg, eaOwned bo
 	} else {
 		ea, eaOwned = f.materialize(e), true
 	}
-	// Wasm memory addresses are unsigned i32 values. Operations such as
-	// i8x16.extract_lane_s may leave a sign-extended X-register value, so using
-	// it directly in 64-bit effective-address arithmetic can wrap 0xffffffff+1
-	// to zero instead of trapping at 2^32. Preserve borrowed pinned locals by
-	// zero-extending into a private address register.
-	if !eaOwned {
-		zeroExtended := f.allocReg(maskOf(ea))
-		f.a.MovReg32(zeroExtended, ea)
-		ea, eaOwned, borrow = zeroExtended, true, -1
-	} else {
-		f.a.MovReg32(ea, ea)
-	}
+	// ABI slots are 64-bit words; memory32 consumes only the low i32 bits.
+	f.a.MovReg32(ea, ea)
 	if int64(off)+int64(size) <= 0x7FFFFFFF {
 		disp = int32(off)
 		leaDisp = int32(off) + int32(size)
@@ -370,17 +359,12 @@ func (f *fn) memLoad(r *wasm.Reader, size int, signed, wide bool) error {
 	// liftToRegInPlace): the deferred load records the borrow so a local.set of
 	// that local realizes the load first, and consumers neither write nor
 	// release the register.
-	addrLocal, addrOK := localAddressKey(f.s.back())
-	aliasLocal := -1
-	if addrOK {
-		aliasLocal = addrLocal
-	}
 	ea, eaOwned, borrow, disp := f.memAddr(off, size, true)
 	// Defer the load: push a bounds-checked memory reference (the LDR is emitted
 	// when the value is materialized — arm64 has no memory operand to fold into,
 	// so unlike x86 there is no r/m consumer, but deferring still lets the consumer
 	// pick the destination register and elide dead loads).
-	e := f.pushValue(memRefStorage(ea, disp, size, signed, wide, borrow, aliasLocal))
+	e := f.pushValue(memRefStorage(ea, disp, size, signed, wide, borrow))
 	if eaOwned {
 		f.regUser[ea] = e // an owned address register belongs to the deferred load
 	}
@@ -406,10 +390,9 @@ func (f *fn) memStore(r *wasm.Reader, size int) error {
 		f.stats.peep("store-imm")
 		v := top.st.cval
 		f.erase(top)
-		addrLocal, addrOK := localAddressKey(f.s.back())
 		ea, eaOwned, _, disp := f.memAddr(off, size, true)
 		f.pinned = f.pinned.add(ea)
-		f.materializePendingLoadsBeforeStore(ea, addrLocal, addrOK, disp, size)
+		f.materializePendingLoadsBeforeStore(ea, disp, size)
 		if size == 8 {
 			f.a.StoreImmIdx(linMemReg, ea, disp, int32(v), 4)
 			f.a.StoreImmIdx(linMemReg, ea, disp+4, int32(v>>32), 4)
@@ -432,7 +415,7 @@ func (f *fn) memStore(r *wasm.Reader, size int) error {
 	addrLocal, addrOK := localAddressKey(f.s.back())
 	ea, eaOwned, _, disp := f.memAddr(off, size, true)
 	f.pinned = f.pinned.add(ea)
-	f.materializePendingLoadsBeforeStore(ea, addrLocal, addrOK, disp, size)
+	f.materializePendingLoadsBeforeStore(ea, disp, size)
 	f.a.StoreIdx(linMemReg, ea, vreg, disp, size)
 	f.pinned = f.pinned.remove(ea)
 	f.pinned = f.pinned.remove(vreg)
@@ -767,10 +750,14 @@ func (f *fn) memoryInit(r *wasm.Reader) error {
 		return err
 	}
 	f.materializePendingLoads()
-	types, argsSlot := f.flushSuffix(3)
-	f.ld64(X9, SP, f.spillOff(argsSlot))    // dst offset
-	f.ld64(X10, SP, f.spillOff(argsSlot+1)) // src offset in passive segment
-	f.ld64(X11, SP, f.spillOff(argsSlot+2)) // n
+	f.flush()
+	d := f.depth()
+	f.ld64(X9, SP, f.spillOff(d-3))  // dst offset
+	f.ld64(X10, SP, f.spillOff(d-2)) // src offset in passive segment
+	f.ld64(X11, SP, f.spillOff(d-1)) // n
+	f.a.MovReg32(X9, X9)
+	f.a.MovReg32(X10, X10)
+	f.a.MovReg32(X11, X11)
 
 	mb := f.memSizeReg
 	if mb == regNone {
@@ -791,7 +778,7 @@ func (f *fn) memoryInit(r *wasm.Reader) error {
 	f.a.Add64(X10, X10, X13)     // absolute src
 	f.copyFwdLoop(X9, X10, X11)
 
-	f.dropFlushedSuffix(types, 3)
+	f.setDepth(d - 3)
 	return nil
 }
 
@@ -829,10 +816,14 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 		}
 	}
 	f.materializePendingLoads()
-	types, argsSlot := f.flushSuffix(3)
-	f.ld64(X9, SP, f.spillOff(argsSlot))    // dst offset
-	f.ld64(X10, SP, f.spillOff(argsSlot+1)) // src offset
-	f.ld64(X11, SP, f.spillOff(argsSlot+2)) // n
+	f.flush()
+	d := f.depth()
+	f.ld64(X9, SP, f.spillOff(d-3))  // dst offset
+	f.ld64(X10, SP, f.spillOff(d-2)) // src offset
+	f.ld64(X11, SP, f.spillOff(d-1)) // n
+	f.a.MovReg32(X9, X9)
+	f.a.MovReg32(X10, X10)
+	f.a.MovReg32(X11, X11)
 
 	// Scratch in X12/X13 only (never pinnable); X9-X11 hold dst/src/n.
 	mb := f.memSizeReg
@@ -921,7 +912,7 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 		f.a.PatchBranch19(j, f.a.Len())
 	}
 
-	f.dropFlushedSuffix(types, 3)
+	f.setDepth(d - 3)
 	return nil
 }
 
@@ -938,10 +929,13 @@ func (f *fn) memoryFill(r *wasm.Reader) error {
 		}
 	}
 	f.materializePendingLoads()
-	types, argsSlot := f.flushSuffix(3)
-	f.ld64(X9, SP, f.spillOff(argsSlot))    // dst offset
-	f.ld64(X14, SP, f.spillOff(argsSlot+1)) // fill byte (low 8 bits)
-	f.ld64(X11, SP, f.spillOff(argsSlot+2)) // n
+	f.flush()
+	d := f.depth()
+	f.ld64(X9, SP, f.spillOff(d-3))  // dst offset
+	f.ld64(X14, SP, f.spillOff(d-2)) // fill byte (low 8 bits)
+	f.ld64(X11, SP, f.spillOff(d-1)) // n
+	f.a.MovReg32(X9, X9)
+	f.a.MovReg32(X11, X11)
 
 	// Scratch in X12/X13 only (never pinnable).
 	mb := f.memSizeReg
@@ -982,7 +976,7 @@ func (f *fn) memoryFill(r *wasm.Reader) error {
 	f.a.PatchBranch26(skipFill, f.a.Len())
 	f.a.PatchBranch19(fillDone, f.a.Len())
 
-	f.dropFlushedSuffix(types, 3)
+	f.setDepth(d - 3)
 	return nil
 }
 
