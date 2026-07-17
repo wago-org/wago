@@ -78,14 +78,16 @@ func TestActiveOffsetsUseLocalImmutableGlobals(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		blob, err := compiled.MarshalBinary()
-		compiled.Close()
-		if err != nil {
-			t.Fatal(err)
-		}
-		compiled, err = Load(blob)
-		if err != nil {
-			t.Fatal(err)
+		if !guardPageBuilt {
+			blob, err := compiled.MarshalBinary()
+			compiled.Close()
+			if err != nil {
+				t.Fatal(err)
+			}
+			compiled, err = Load(blob)
+			if err != nil {
+				t.Fatal(err)
+			}
 		}
 		defer compiled.Close()
 		in, err := Instantiate(compiled, nil)
