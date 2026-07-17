@@ -64,6 +64,97 @@ func TestLoadModuleAndResolveExport(t *testing.T) {
 	}
 }
 
+func TestRunParallelFlagForms(t *testing.T) {
+	cmd := runCommand()
+	for _, tc := range []struct {
+		name         string
+		args         []string
+		wantParallel string
+		wantInvoke   string
+		wantBounds   string
+		wantPlugin   string
+	}{
+		{name: "bare short", args: []string{"-p", "module.wasm"}, wantParallel: "auto"},
+		{name: "joined short", args: []string{"-p8", "module.wasm"}, wantParallel: "8"},
+		{name: "separated short", args: []string{"-p", "8", "module.wasm"}, wantParallel: "8"},
+		{name: "equal short", args: []string{"-p=8", "module.wasm"}, wantParallel: "8"},
+		{name: "bare long", args: []string{"--parallel", "module.wasm"}, wantParallel: "auto"},
+		{name: "equal long", args: []string{"--parallel=8", "module.wasm"}, wantParallel: "8"},
+		{name: "after separated invoke", args: []string{"-e", "add", "-p8", "module.wasm"}, wantParallel: "8", wantInvoke: "add"},
+		{name: "after separated bounds", args: []string{"--bounds", "all", "-p", "module.wasm"}, wantParallel: "auto", wantBounds: "all"},
+		{name: "after separated plugin", args: []string{"--plugin", "wasi", "--parallel=4", "module.wasm"}, wantParallel: "4", wantPlugin: "wasi"},
+		{name: "parallel-looking invoke value", args: []string{"-e", "-p8", "module.wasm"}, wantInvoke: "-p8"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			args, err := cmd.Normalize(tc.args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			ctx, err := cmd.parse("wago run", args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := ctx.Str("parallel"); got != tc.wantParallel {
+				t.Fatalf("parallel = %q, want %q (normalized %v)", got, tc.wantParallel, args)
+			}
+			if got := ctx.Str("invoke"); got != tc.wantInvoke {
+				t.Fatalf("invoke = %q, want %q (normalized %v)", got, tc.wantInvoke, args)
+			}
+			if got := ctx.Str("bounds"); got != tc.wantBounds {
+				t.Fatalf("bounds = %q, want %q (normalized %v)", got, tc.wantBounds, args)
+			}
+			if got := ctx.Str("plugin"); got != tc.wantPlugin {
+				t.Fatalf("plugin = %q, want %q (normalized %v)", got, tc.wantPlugin, args)
+			}
+			if len(ctx.Args) != 1 || ctx.Args[0] != "module.wasm" {
+				t.Fatalf("positionals = %v", ctx.Args)
+			}
+		})
+	}
+
+	args, err := cmd.Normalize([]string{"module.wasm", "-p8"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, err := cmd.parse("wago run", args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ctx.Str("parallel") != "" || len(ctx.Args) != 2 || ctx.Args[1] != "-p8" {
+		t.Fatalf("guest -p8 was consumed: parallel=%q args=%v", ctx.Str("parallel"), ctx.Args)
+	}
+}
+
+func TestRunConfigParallelism(t *testing.T) {
+	for _, tc := range []struct {
+		parallel string
+		want     int
+	}{
+		{"", 1},
+		{"auto", 0},
+		{"0", 0},
+		{"1", 1},
+		{"8", 8},
+	} {
+		cfg, err := runConfig("", tc.parallel)
+		if err != nil {
+			t.Fatalf("parallel %q: %v", tc.parallel, err)
+		}
+		if got := cfg.CompileWorkers(); got != tc.want {
+			t.Fatalf("parallel %q workers = %d, want %d", tc.parallel, got, tc.want)
+		}
+	}
+	for _, value := range []string{"-1", "many"} {
+		if _, err := runConfig("", value); err == nil {
+			t.Fatalf("parallel %q accepted", value)
+		}
+	}
+	cfg, err := runConfig("all", "8")
+	if err != nil || cfg.DeferBoundsChecks() {
+		t.Fatalf("combined config = %v, %v", cfg, err)
+	}
+}
+
 func TestRunExecValueMode(t *testing.T) {
 	t.Setenv("WAGO_BARE", "1") // exercise the CLI execution path without project/global plugin handoff.
 	wasm := []byte{'\x00', 'a', 's', 'm', 1, 0, 0, 0,

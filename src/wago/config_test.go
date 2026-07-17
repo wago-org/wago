@@ -3,8 +3,10 @@
 package wago
 
 import (
+	"bytes"
 	"encoding/binary"
 	"errors"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -272,6 +274,13 @@ func TestConfigValidateAndIntrospection(t *testing.T) {
 	if err := NewRuntimeConfig().Validate(); err != nil {
 		t.Fatalf("default config should validate: %v", err)
 	}
+	if err := NewRuntimeConfig().WithCompileWorkers(-1).Validate(); err == nil || !strings.Contains(err.Error(), "non-negative") {
+		t.Fatalf("negative compile workers should fail validation, got %v", err)
+	}
+	workers := NewRuntimeConfig().WithCompileWorkers(4)
+	if workers.CompileWorkers() != 4 || NewRuntimeConfig().CompileWorkers() != 1 {
+		t.Fatal("WithCompileWorkers must be immutable and observable; default must remain serial")
+	}
 	wantFeatures := coreFeaturesWago
 	if !hostSupportsSIMD() {
 		wantFeatures &^= CoreFeatureSIMD
@@ -284,8 +293,133 @@ func TestConfigValidateAndIntrospection(t *testing.T) {
 	}
 	// String is non-empty / informative. The default bounds mode depends on the
 	// build tag (explicit normally, signals-based under wago_guardpage).
-	if s := NewRuntimeConfig().String(); !strings.Contains(s, "explicit") && !strings.Contains(s, "signals-based") {
-		t.Fatalf("config String missing bounds mode: %q", s)
+	if s := NewRuntimeConfig().String(); (!strings.Contains(s, "explicit") && !strings.Contains(s, "signals-based")) || !strings.Contains(s, "compileWorkers: 1") {
+		t.Fatalf("config String missing bounds mode or serial default policy: %q", s)
+	}
+}
+
+func TestCompileWorkersLinkPathAndSerialization(t *testing.T) {
+	producer, err := Instantiate(MustCompile(benchAddOneModule()), InstantiateOptions{})
+	if err != nil {
+		t.Fatalf("instantiate link producer: %v", err)
+	}
+	defer producer.Close()
+	f, err := producer.ExportedFunc("f")
+	if err != nil {
+		t.Fatalf("export link producer function: %v", err)
+	}
+
+	mod := benchParallelLinkModule(64, 16)
+	imports := Imports{"env.f": f}
+	compileLinked := func(workers int) (*Compiled, *Compiled) {
+		t.Helper()
+		cfg := NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit).WithCompileWorkers(workers)
+		c, err := Compile(cfg, mod)
+		if err != nil {
+			t.Fatalf("workers=%d compile: %v", workers, err)
+		}
+		if int(c.compileWorkers) != workers || len(c.wasmBytes) == 0 {
+			t.Fatalf("workers=%d metadata policy=%d retainedSource=%d", workers, c.compileWorkers, len(c.wasmBytes))
+		}
+		linked, err := c.linkModule(imports, nil)
+		if err != nil {
+			_ = c.Close()
+			t.Fatalf("workers=%d link: %v", workers, err)
+		}
+		if linked == c || int(linked.compileWorkers) != workers {
+			_ = c.Close()
+			t.Fatalf("workers=%d linked=%p owner=%p policy=%d", workers, linked, c, linked.compileWorkers)
+		}
+		return c, linked
+	}
+	serialOwner, serial := compileLinked(1)
+	defer serialOwner.Close()
+	defer serial.Close()
+	parallelOwner, parallel := compileLinked(8)
+	defer parallelOwner.Close()
+	defer parallel.Close()
+	if !bytes.Equal(parallel.Code, serial.Code) || !bytes.Equal(intSliceBytes(parallel.Entry), intSliceBytes(serial.Entry)) || !bytes.Equal(intSliceBytes(parallel.InternalEntry), intSliceBytes(serial.InternalEntry)) {
+		t.Fatal("link-time parallel codegen differs from serial output")
+	}
+
+	serialArtifact, err := NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit).WithCompileWorkers(1).Compile(benchAddOneModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer serialArtifact.Close()
+	parallelArtifact, err := NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit).WithCompileWorkers(8).Compile(benchAddOneModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer parallelArtifact.Close()
+	serialBlob, err := serialArtifact.MarshalBinary()
+	if err != nil {
+		t.Fatal(err)
+	}
+	parallelBlob, err := parallelArtifact.MarshalBinary()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(parallelBlob, serialBlob) {
+		t.Fatal("compile-worker policy changed serialized output")
+	}
+	var loaded Compiled
+	if err := loaded.UnmarshalBinary(parallelBlob); err != nil {
+		t.Fatal(err)
+	}
+	if loaded.compileWorkers != 0 {
+		t.Fatalf("deserialized compile policy = %d, want zero/non-serialized", loaded.compileWorkers)
+	}
+}
+
+func intSliceBytes(v []int) []byte {
+	out := make([]byte, 8*len(v))
+	for i, x := range v {
+		binary.LittleEndian.PutUint64(out[8*i:], uint64(x))
+	}
+	return out
+}
+
+func TestCompileWorkersForModulePolicy(t *testing.T) {
+	module := func(funcs, bodyBytes int) *wasm.Module {
+		m := &wasm.Module{Code: make([]wasm.Func, funcs)}
+		remaining := bodyBytes
+		for i := range m.Code {
+			n := 0
+			if left := funcs - i; left > 0 {
+				n = remaining / left
+			}
+			m.Code[i].BodyBytes = make([]byte, n)
+			remaining -= n
+		}
+		return m
+	}
+	capWant := func(w, funcs int) int {
+		if w > runtime.GOMAXPROCS(0) {
+			w = runtime.GOMAXPROCS(0)
+		}
+		if w > funcs {
+			w = funcs
+		}
+		if w <= 1 {
+			return 1
+		}
+		return w
+	}
+	if got := compileWorkersForModule(module(2, 9), 0); got != 1 {
+		t.Fatalf("tiny auto workers = %d, want serial", got)
+	}
+	if got, want := compileWorkersForModule(module(301, 2053), 0), capWant(4, 301); got != want {
+		t.Fatalf("many-functions auto workers = %d, want %d", got, want)
+	}
+	if got, want := compileWorkersForModule(module(658, 234408), 0), capWant(4, 658); got != want {
+		t.Fatalf("lua-tier auto workers = %d, want %d", got, want)
+	}
+	if got, want := compileWorkersForModule(module(2831, 798392), 0), capWant(4, 2831); got != want {
+		t.Fatalf("sqlite-tier auto workers = %d, want %d", got, want)
+	}
+	if got, want := compileWorkersForModule(module(10, 10), 3), capWant(3, 10); got != want {
+		t.Fatalf("forced maximum workers = %d, want %d", got, want)
 	}
 }
 

@@ -7,8 +7,11 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"runtime"
 	"slices"
 	"sort"
+	"sync"
+	"sync/atomic"
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/codegen"
@@ -396,6 +399,26 @@ func (sc *scratch) reset() {
 	}
 }
 
+// workerState owns every mutable buffer used by one parallel compiler worker.
+// arena is append-only until all workers join. Results retain offsets into it,
+// never slices, because a later append may reallocate the arena.
+type workerState struct {
+	scratch *scratch
+	arena   []byte
+}
+
+// funcResult is one independently compiled local function. worker/start/end
+// identify its owned bytes after the worker pool joins; relocs is independently
+// owned by the fn compiler state (it is not backed by scratch).
+type funcResult struct {
+	worker      int
+	start       int
+	end         int
+	internalOff int
+	relocs      []callReloc
+	err         error
+}
+
 // Frameless layout (WARP-style, RSP-relative). RBP is NOT a frame pointer — it is
 // a general allocatable register — so the frame is a single `sub rsp,frameSize`
 // with everything addressed at non-negative offsets from RSP, which stays put for
@@ -467,6 +490,11 @@ type ImportBinding = shared.ImportBinding
 
 // CompileOptions configures direct wasm-to-amd64 compilation.
 type CompileOptions struct {
+	// Workers forces the maximum number of per-function compiler workers.
+	// Values <= 1 retain the exact serial fast path. Values > 1 are capped by
+	// runtime.GOMAXPROCS(0) and the module's local-function count.
+	Workers int
+
 	// ElideBoundsChecks omits inline linear-memory bounds checks, relying on
 	// a guard-page mapping + SIGSEGV handler (see runtime/sigtrap_linux_amd64.go).
 	// EXPERIMENTAL: only sound when the memory is backed by runtime guard pages.
@@ -582,7 +610,6 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	// Auto-inlining (WAGO_INLINE): the straight-line leaf callees to splice at their
 	// call sites, keyed by global func index. nil when inlining is disabled.
 	inlineTargets := buildInlineTargets(m, allHints)
-	sc := newScratch()
 	// Pre-size the module code buffer to roughly the final machine-code size
 	// (lowering emits ~4-5 native bytes per wasm body byte, matching asmCapForBody).
 	// Without this the buffer grows geometrically, and each reallocation copies the
@@ -592,38 +619,146 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	for i := range m.Code {
 		totalBody += len(m.Code[i].BodyBytes)
 	}
-	code := make([]byte, 0, shared.TaperedModuleCodeCapacity(totalBody, n, 40, 37, 1<<20))
-	pressureDone := false
+	codeCap := shared.TaperedModuleCodeCapacity(totalBody, n, 40, 37, 1<<20)
+	workers := opts.Workers
+	if workers > 1 {
+		if max := runtime.GOMAXPROCS(0); workers > max {
+			workers = max
+		}
+		if workers > n {
+			workers = n
+		}
+	}
+	if workers <= 1 {
+		// Keep the serial compiler as a distinct fast path: one reusable scratch,
+		// no goroutines, channels, atomics, worker metadata, or intermediate arena.
+		sc := newScratch()
+		code := make([]byte, 0, codeCap)
+		pressureDone := false
+		pressureAt := opts.MemoryPressureAt
+		if opts.MemoryPressure != nil && pressureAt <= 0 {
+			pressureAt = cap(code) * 7 / 8
+		}
+		for i := range m.Code {
+			hints := allHints[i]
+			var st *CodegenStats
+			if ms != nil {
+				st = &CodegenStats{FuncIdx: i, Name: funcDisplayName(m, i, importedFuncs)}
+				ms.Funcs[i] = st
+			}
+			fnCode, rl, internalOff, err := compileFunc(m, i, guardMode, boundsFacts, opts.Interruptible, modGlobals, hints, opts.ImportBindings, opts.SyncHostCalls, st, inlineTargets, sc)
+			allHints[i] = funcHints{}
+			if err != nil {
+				return nil, fmt.Errorf("amd64: function %d: %w", i, err)
+			}
+			// 16-byte align each function (append zeros without a temp allocation).
+			if pad := (16 - len(code)%16) % 16; pad != 0 {
+				code = append(code, alignPad[:pad]...)
+			}
+			entry[i] = len(code)
+			internalEntry[i] = len(code) + internalOff
+			relocs[i] = rl
+			code = append(code, fnCode...)
+			if !pressureDone && opts.MemoryPressure != nil && len(code) >= pressureAt {
+				pressureDone = true
+				opts.MemoryPressure()
+			}
+		}
+		// Patch call sites now that every function's entry offsets are known.
+		for i := 0; i < n; i++ {
+			for _, rl := range relocs[i] {
+				site := entry[i] + rl.at
+				target := entry[rl.target]
+				if rl.internal {
+					target = internalEntry[rl.target]
+				}
+				binary.LittleEndian.PutUint32(code[site:], uint32(int32(target-(site+4))))
+			}
+		}
+		if explainEnabled && ms != nil {
+			fmt.Fprint(os.Stderr, ms.String())
+		}
+		return &amd64.CompiledModule{Code: code, Entry: entry, InternalEntry: internalEntry}, nil
+	}
+
+	return compileModuleParallel(m, opts, workers, codeCap, entry, internalEntry, relocs, allHints, modGlobals, inlineTargets, ms, guardMode, boundsFacts, importedFuncs)
+}
+
+// compileModuleParallel is split from CompileModuleWith so the goroutine closure
+// and its captured state cannot escape into or add allocations to the serial path.
+func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap int, entry, internalEntry []int, relocs [][]callReloc, allHints []funcHints, modGlobals []moduleGlobalPin, inlineTargets map[int]*inlineTarget, ms *ModuleStats, guardMode, boundsFacts bool, importedFuncs int) (*amd64.CompiledModule, error) {
+	n := len(m.Code)
+	// Parallel codegen starts only after every module-wide decision is complete.
+	// Each function has a deterministic stats destination, and each worker owns all
+	// mutable compiler state plus an append-only arena for completed function code.
+	if ms != nil {
+		for i := range m.Code {
+			ms.Funcs[i] = &CodegenStats{FuncIdx: i, Name: funcDisplayName(m, i, importedFuncs)}
+		}
+	}
+	states := make([]workerState, workers)
+	arenaCap := (codeCap + workers - 1) / workers
 	pressureAt := opts.MemoryPressureAt
 	if opts.MemoryPressure != nil && pressureAt <= 0 {
-		pressureAt = cap(code) * 7 / 8
+		pressureAt = codeCap * 7 / 8
 	}
-	for i := range m.Code {
-		hints := allHints[i]
-		var st *CodegenStats
-		if ms != nil {
-			st = &CodegenStats{FuncIdx: i, Name: funcDisplayName(m, i, importedFuncs)}
-			ms.Funcs[i] = st
-		}
-		fnCode, rl, internalOff, err := compileFunc(m, i, guardMode, boundsFacts, opts.Interruptible, modGlobals, hints, opts.ImportBindings, opts.SyncHostCalls, st, inlineTargets, sc)
-		allHints[i] = funcHints{}
-		if err != nil {
-			return nil, fmt.Errorf("amd64: function %d: %w", i, err)
-		}
-		// 16-byte align each function (append zeros without a temp allocation).
+	var pressureBytes atomic.Int64
+	var pressureOnce sync.Once
+	for i := range states {
+		states[i] = workerState{scratch: newScratch(), arena: make([]byte, 0, arenaCap)}
+	}
+	results := make([]funcResult, n)
+	var next atomic.Int64
+	var wg sync.WaitGroup
+	wg.Add(workers)
+	for workerID := range states {
+		go func(workerID int) {
+			defer wg.Done()
+			ws := &states[workerID]
+			for {
+				i := int(next.Add(1) - 1)
+				if i >= n {
+					return
+				}
+				var st *CodegenStats
+				if ms != nil {
+					st = ms.Funcs[i]
+				}
+				fnCode, rl, internalOff, err := compileFunc(m, i, guardMode, boundsFacts, opts.Interruptible, modGlobals, allHints[i], opts.ImportBindings, opts.SyncHostCalls, st, inlineTargets, ws.scratch)
+				allHints[i] = funcHints{}
+				if err != nil {
+					results[i].err = err
+					continue
+				}
+				start := len(ws.arena)
+				ws.arena = append(ws.arena, fnCode...)
+				results[i] = funcResult{worker: workerID, start: start, end: len(ws.arena), internalOff: internalOff, relocs: rl}
+				if opts.MemoryPressure != nil && pressureBytes.Add(int64(len(fnCode))) >= int64(pressureAt) {
+					pressureOnce.Do(opts.MemoryPressure)
+				}
+			}
+		}(workerID)
+	}
+	wg.Wait()
+
+	// Error selection is by function index, never by wall-clock completion order.
+	if i, err := firstFuncError(results); err != nil {
+		return nil, fmt.Errorf("amd64: function %d: %w", i, err)
+	}
+
+	// Join in original function order so layout, alignment, entry metadata, and
+	// relocation patching are byte-for-byte identical to the serial compiler.
+	code := make([]byte, 0, codeCap)
+	for i := range results {
+		r := &results[i]
 		if pad := (16 - len(code)%16) % 16; pad != 0 {
 			code = append(code, alignPad[:pad]...)
 		}
 		entry[i] = len(code)
-		internalEntry[i] = len(code) + internalOff
-		relocs[i] = rl
-		code = append(code, fnCode...)
-		if !pressureDone && opts.MemoryPressure != nil && len(code) >= pressureAt {
-			pressureDone = true
-			opts.MemoryPressure()
-		}
+		internalEntry[i] = len(code) + r.internalOff
+		relocs[i] = r.relocs
+		code = append(code, states[r.worker].arena[r.start:r.end]...)
 	}
-	// Patch call sites now that every function's entry offsets are known.
 	for i := 0; i < n; i++ {
 		for _, rl := range relocs[i] {
 			site := entry[i] + rl.at
@@ -638,6 +773,15 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		fmt.Fprint(os.Stderr, ms.String())
 	}
 	return &amd64.CompiledModule{Code: code, Entry: entry, InternalEntry: internalEntry}, nil
+}
+
+func firstFuncError(results []funcResult) (int, error) {
+	for i := range results {
+		if results[i].err != nil {
+			return i, results[i].err
+		}
+	}
+	return 0, nil
 }
 
 // moduleGlobalPinInfos converts the internal module-global pin assignments to the

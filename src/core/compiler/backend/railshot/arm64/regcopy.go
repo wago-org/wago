@@ -17,6 +17,11 @@ type regMove struct{ dst, src Reg }
 // resolveRegMoves emits the moves in a safe order via emitMove (dst = src) and
 // emitSwap (exchange). The move set must be a function from dst to src (each
 // register written at most once), which holds for ABI argument placement.
+//
+// The pending graph is held as a fixed src[dst] array plus a `pending` bitmask.
+// Besides avoiding a hot-path map allocation, walking destinations by increasing
+// register number keeps emitted code independent of Go map iteration order and
+// therefore identical between serial and parallel function compilation.
 func resolveRegMoves(moves []regMove, emitMove func(dst, src Reg), emitSwap func(a, b Reg)) {
 	var src [64]Reg
 	var pending regMask
@@ -48,7 +53,7 @@ func resolveRegMoves(moves []regMove, emitMove func(dst, src Reg), emitSwap func
 		if moved {
 			continue
 		}
-		// Residual graph is pure cycles; break one with a swap.
+		// Residual graph is pure cycles; break the lowest-destination cycle.
 		dst := Reg(bits.TrailingZeros64(uint64(pending)))
 		s := src[dst]
 		emitSwap(dst, s)

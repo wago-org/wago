@@ -3,7 +3,9 @@
 package arm64
 
 import (
+	"cmp"
 	"os"
+	"slices"
 	"strconv"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -153,6 +155,9 @@ scan:
 			elidable += acc[b]
 		}
 	}
+	// Map iteration order must not choose precheck/register order. Keep output
+	// deterministic when different functions are compiled by different workers.
+	slices.SortFunc(cands, func(a, b hoistCand) int { return cmp.Compare(a.base, b.base) })
 	return cands, elidable, hasGrow
 }
 

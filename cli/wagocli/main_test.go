@@ -168,8 +168,12 @@ func TestRunHelpCollapsesBooleanPairs(t *testing.T) {
 	runCommand().printHelp(f, "wago run")
 	f.Close()
 	b, _ := os.ReadFile(f.Name())
-	if !strings.Contains(string(b), "--<no->st-flags") || strings.Contains(string(b), "enable: keep comparison results") {
+	text := string(b)
+	if !strings.Contains(text, "--<no->st-flags") || strings.Contains(text, "enable: keep comparison results") {
 		t.Fatalf("run help did not collapse optimization pair:\n%s", b)
+	}
+	if !strings.Contains(text, "--parallel, -p [workers]") || !strings.Contains(text, "-p8 / -p 8 / --parallel=8") {
+		t.Fatalf("run help did not document compile parallelism:\n%s", b)
 	}
 }
 
@@ -202,11 +206,22 @@ func TestCmdParseAndHelpRecognition(t *testing.T) {
 		t.Fatal("boolean inline value accepted")
 	}
 
-	if wantsHelp([]string{"module.wasm", "--help"}, true) {
+	if wantsHelp([]string{"module.wasm", "--help"}, true, leaf.Flags) {
 		t.Fatal("guest --help treated as command help")
 	}
-	if !wantsHelp([]string{"--help", "module.wasm"}, true) || wantsHelp([]string{"--", "--help"}, false) {
+	if !wantsHelp([]string{"--help", "module.wasm"}, true, leaf.Flags) || wantsHelp([]string{"--", "--help"}, false, leaf.Flags) {
 		t.Fatal("help recognition mismatch")
+	}
+	if !wantsHelp([]string{"-o", "result", "--help"}, true, leaf.Flags) {
+		t.Fatal("help after a separated flag value was missed")
+	}
+	if wantsHelp([]string{"-o", "--help", "module.wasm"}, true, leaf.Flags) {
+		t.Fatal("a value equal to --help was treated as command help")
+	}
+	run := runCommand()
+	normalized, err := run.Normalize([]string{"-p", "8", "--help"})
+	if err != nil || !wantsHelp(normalized, run.PassThrough, run.Flags) {
+		t.Fatalf("help after separated parallelism was missed: normalized=%v err=%v", normalized, err)
 	}
 	group := &Cmd{Name: "root", Children: []*Cmd{{Name: "child", Aliases: []string{"c"}}}}
 	if group.child("child") == nil || group.child("c") == nil || group.child("missing") != nil {
