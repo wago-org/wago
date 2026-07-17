@@ -21,6 +21,23 @@ type constExprInit struct {
 func (i constExprInit) GlobalRef() (int, bool) { return i.GlobalIndex, i.GlobalIndex >= 0 }
 func (i constExprInit) FuncRef() (int, bool)   { return i.FuncIndex, i.FuncIndex >= 0 }
 
+type constExprCompileContext struct {
+	module    *wasm.Module
+	types     []DefinedTypeDescriptor
+	converter wasmTypeDescriptorConverter
+}
+
+func newConstExprCompileContext(m *wasm.Module) (*constExprCompileContext, error) {
+	if m == nil {
+		return nil, nil
+	}
+	types, err := typeDescriptorsFromWasm(m)
+	if err != nil {
+		return nil, err
+	}
+	return &constExprCompileContext{module: m, types: types, converter: newWasmTypeDescriptorConverter(m)}, nil
+}
+
 type constExprResult struct {
 	bits        uint64
 	v128        V128
@@ -70,11 +87,23 @@ func evalConstExprBytes(b []byte, want wasm.ValType) (constExprResult, error) {
 }
 
 func evalConstExprBytesWithModule(b []byte, want wasm.ValType, m *wasm.Module) (constExprResult, error) {
+	ctx, err := newConstExprCompileContext(m)
+	if err != nil {
+		return constExprResult{}, err
+	}
+	return evalConstExprBytesWithContext(b, want, ctx)
+}
+
+func evalConstExprBytesWithContext(b []byte, want wasm.ValType, ctx *constExprCompileContext) (constExprResult, error) {
+	var m *wasm.Module
+	if ctx != nil {
+		m = ctx.module
+	}
 	if got, matched, err := evalNullExternConversionConstExpr(b, want); matched {
 		return got, err
 	}
 	if isI31RefType(want) || isAnyRefType(want) {
-		got, matched, err := evalI31ConstExprBytes(b, want, m)
+		got, matched, err := evalI31ConstExprBytes(b, want, ctx)
 		if matched {
 			return got, err
 		}
@@ -220,7 +249,7 @@ func evalConstExprBytesWithModule(b []byte, want wasm.ValType, m *wasm.Module) (
 	if r.BytesLeft() != 0 {
 		return constExprResult{}, fmt.Errorf("const expression has trailing bytes")
 	}
-	if !constExprTypeMatches(got.vtype, want, m) {
+	if !constExprTypeMatches(got.vtype, want, ctx) {
 		return constExprResult{}, fmt.Errorf("const expression type %s, want %s", got.vtype, want)
 	}
 	return got, nil
@@ -280,7 +309,11 @@ func isAnyRefType(t wasm.ValType) bool {
 	return t.Kind == wasm.ValRef && t.Ref.Heap.Kind == wasm.HeapAbs && t.Ref.Heap.Abs == wasm.HeapAny
 }
 
-func evalI31ConstExprBytes(b []byte, want wasm.ValType, m *wasm.Module) (constExprResult, bool, error) {
+func evalI31ConstExprBytes(b []byte, want wasm.ValType, ctx *constExprCompileContext) (constExprResult, bool, error) {
+	var m *wasm.Module
+	if ctx != nil {
+		m = ctx.module
+	}
 	r := wasm.NewReader(b)
 	op, err := r.Byte()
 	if err != nil {
@@ -332,29 +365,25 @@ func evalI31ConstExprBytes(b []byte, want wasm.ValType, m *wasm.Module) (constEx
 		return constExprResult{}, true, fmt.Errorf("i31 const expression has trailing bytes")
 	}
 	got.vtype = wasm.RefVal(wasm.Ref(false, wasm.AbsHeap(wasm.HeapI31), false))
-	if !constExprTypeMatches(got.vtype, want, m) {
+	if !constExprTypeMatches(got.vtype, want, ctx) {
 		return constExprResult{}, true, fmt.Errorf("const expression type %s, want %s", got.vtype, want)
 	}
 	return got, true, nil
 }
 
-func constExprTypeMatches(actual, required wasm.ValType, m *wasm.Module) bool {
+func constExprTypeMatches(actual, required wasm.ValType, ctx *constExprCompileContext) bool {
 	if valTypeEqual(actual, required) {
 		return true
 	}
-	if m == nil || actual.Kind != wasm.ValRef || required.Kind != wasm.ValRef {
+	if ctx == nil || actual.Kind != wasm.ValRef || required.Kind != wasm.ValRef {
 		return false
 	}
-	types, err := typeDescriptorsFromWasm(m)
+	a, err := ctx.converter.valueType(actual, -1)
 	if err != nil {
 		return false
 	}
-	a, err := valueTypeDescriptorInModule(m, actual)
-	if err != nil {
-		return false
-	}
-	b, err := valueTypeDescriptorInModule(m, required)
-	return err == nil && valueTypeSubtype(a, types, b, types)
+	b, err := ctx.converter.valueType(required, -1)
+	return err == nil && valueTypeSubtype(a, ctx.types, b, ctx.types)
 }
 
 // evalConstExprWithModule intentionally stays narrower than full wasm validation:
@@ -362,15 +391,27 @@ func constExprTypeMatches(actual, required wasm.ValType, m *wasm.Module) bool {
 // reaches here, while this helper converts the supported MVP operators into
 // instantiate-time bits or deferred imported-global references.
 func evalConstExprWithModule(e wasm.Expr, want wasm.ValType, m *wasm.Module) (constExprResult, error) {
+	ctx, err := newConstExprCompileContext(m)
+	if err != nil {
+		return constExprResult{}, err
+	}
+	return evalConstExprWithContext(e, want, ctx)
+}
+
+func evalConstExprWithContext(e wasm.Expr, want wasm.ValType, ctx *constExprCompileContext) (constExprResult, error) {
+	var m *wasm.Module
+	if ctx != nil {
+		m = ctx.module
+	}
 	if len(e.Instrs) == 0 && len(e.BodyBytes) != 0 {
-		return evalConstExprBytesWithModule(e.BodyBytes, want, m)
+		return evalConstExprBytesWithContext(e.BodyBytes, want, ctx)
 	}
 	if len(e.Instrs) != 1 {
 		encoded, err := wasm.EncodeExpr(e)
 		if err != nil {
 			return constExprResult{}, fmt.Errorf("encode const expression: %w", err)
 		}
-		return evalConstExprBytesWithModule(encoded, want, m)
+		return evalConstExprBytesWithContext(encoded, want, ctx)
 	}
 	in := e.Instrs[0]
 	got := constExprResult{GlobalIndex: -1, FuncIndex: -1}
@@ -391,13 +432,17 @@ func evalConstExprWithModule(e wasm.Expr, want wasm.ValType, m *wasm.Module) (co
 		got.vtype = wasm.V128
 	case wasm.InstrRefNull:
 		refType := wasm.RefVal(in.RefType())
-		exact, err := valueTypeDescriptorInModule(m, refType)
+		var exact ValueTypeDescriptor
+		var types []DefinedTypeDescriptor
+		var err error
+		if ctx != nil {
+			exact, types = ValueTypeDescriptor{}, ctx.types
+			exact, err = ctx.converter.valueType(refType, -1)
+		} else {
+			exact, err = valueTypeDescriptorInModule(nil, refType)
+		}
 		if err != nil {
 			return constExprResult{}, fmt.Errorf("unsupported ref.null type %s", refType)
-		}
-		var types []DefinedTypeDescriptor
-		if m != nil {
-			types, err = typeDescriptorsFromWasm(m)
 		}
 		if _, ok := exact.ABIType(types); err != nil || !ok {
 			return constExprResult{}, fmt.Errorf("unsupported ref.null type %s", refType)
@@ -423,7 +468,7 @@ func evalConstExprWithModule(e wasm.Expr, want wasm.ValType, m *wasm.Module) (co
 	default:
 		return constExprResult{}, fmt.Errorf("unsupported const expression opcode %s", in.Kind)
 	}
-	if !constExprTypeMatches(got.vtype, want, m) {
+	if !constExprTypeMatches(got.vtype, want, ctx) {
 		return constExprResult{}, fmt.Errorf("const expression type %s, want %s", got.vtype, want)
 	}
 	return got, nil
