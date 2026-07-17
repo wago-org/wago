@@ -386,6 +386,11 @@ local global initialization and may read any available immutable global of the a
 retain their prior-global-only scope. The compiled validator, codec loader, and instantiator use the same explicit
 constant-expression scope.
 
+Constant-expression lowering uses one compile-scoped type context containing the decoded module, the already-built
+`[]DefinedTypeDescriptor`, and one flattened-index converter. Global initializers, indexed `ref.null`, element/table
+initializers, and active data/element offsets reuse that context; they do not rebuild the public recursive type graph per
+expression. The cache is compilation-owned and never process-global.
+
 Module declarations and bodies feed one indexed facts prepass for per-table/per-memory grow and export
 observability plus `ref.func` descriptor demand. Production compilation passes that same immutable result through
 feature admission and runtime-shape construction rather than rescanning bodies. A 256-table/4,096-instruction

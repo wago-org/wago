@@ -1096,6 +1096,7 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 	}
 	c := &Compiled{Code: code, Entry: entry, InternalEntry: internalEntry, NumImports: importedFuncs, Types: types, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, memoryDir: &compiledMemoryDirectory{exports: map[string]int{}, exactExports: true, staged: features.MultiMemory && (m.MemCount() > 1 || m.ImportedMemCount() > 0), stagedMemory64: features.Memory64 && usesMemory64}, boundsMode: boundsMode, stagedTable64: features.Table64 && usesTable64, GCTypeDescs: gcDescs, requiredFeatures: moduleRequiredFeatures(m), dynamicImports: importedFuncs > 0}
 	typeConverter := newWasmTypeDescriptorConverter(m)
+	constExprCtx := &constExprCompileContext{module: m, types: c.Types, converter: typeConverter}
 	if gcI31Product == stagedGCI31ProductTableGlobalInitializer {
 		init, err := stagedGCI31TableInitializer(m)
 		if err != nil {
@@ -1244,7 +1245,7 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 		v := constExprResult{GlobalIndex: -1, FuncIndex: -1}
 		if !gcGlobal {
 			var err error
-			v, err = evalConstExprWithModule(m.Globals[i].Init, m.Globals[i].Type.Type, m)
+			v, err = evalConstExprWithContext(m.Globals[i].Init, m.Globals[i].Type.Type, constExprCtx)
 			if err != nil {
 				return nil, fmt.Errorf("global %d initializer: %w", i, err)
 			}
@@ -1453,7 +1454,7 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 			}
 		} else {
 			var err error
-			refType, exactType, values, err = elementPayloads(m, c.Types, e)
+			refType, exactType, values, err = elementPayloads(m, c.Types, constExprCtx, e)
 			if err != nil {
 				return nil, fmt.Errorf("element %d: %w", i, err)
 			}
@@ -1476,7 +1477,7 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 				want = wasm.I64
 				table64 = true
 			}
-			base, err := evalConstExprWithModule(e.Mode.Offset, want, m)
+			base, err := evalConstExprWithContext(e.Mode.Offset, want, constExprCtx)
 			if err != nil {
 				return nil, fmt.Errorf("element %d offset: %w", i, err)
 			}
@@ -1527,7 +1528,7 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 			want = wasm.I64
 			memory64 = true
 		}
-		off, err := evalConstExprWithModule(d.Mode.Offset, want, m)
+		off, err := evalConstExprWithContext(d.Mode.Offset, want, constExprCtx)
 		if err != nil {
 			return nil, fmt.Errorf("data %d offset: %w", i, err)
 		}
@@ -1632,7 +1633,7 @@ func elemModeFromWasm(mode wasm.ElemModeKind) ElemMode {
 	}
 }
 
-func elementPayloads(m *wasm.Module, types []DefinedTypeDescriptor, e *wasm.Elem) (ValType, ValueTypeDescriptor, []RefInit, error) {
+func elementPayloads(m *wasm.Module, types []DefinedTypeDescriptor, constExprCtx *constExprCompileContext, e *wasm.Elem) (ValType, ValueTypeDescriptor, []RefInit, error) {
 	switch e.Kind.Kind {
 	case wasm.ElemFuncs:
 		out := make([]RefInit, len(e.Kind.Funcs))
@@ -1692,7 +1693,7 @@ func elementPayloads(m *wasm.Module, types []DefinedTypeDescriptor, e *wasm.Elem
 						return 0, ValueTypeDescriptor{}, nil, fmt.Errorf("expression %d encode: %w", i, err)
 					}
 				}
-				result, matched, err := evalI31ConstExprBytes(body, wasm.RefVal(e.Kind.Ref), m)
+				result, matched, err := evalI31ConstExprBytes(body, wasm.RefVal(e.Kind.Ref), constExprCtx)
 				if err != nil || !matched || result.bits == 0 || result.bits>>32 != 0 || uint32(result.bits)&1 == 0 {
 					return 0, ValueTypeDescriptor{}, nil, fmt.Errorf("expression %d is not an exact i31 initializer: %v", i, err)
 				}
