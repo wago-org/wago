@@ -267,7 +267,7 @@ func TestModuleGlobalScoreScanMatchesFullHints(t *testing.T) {
 					t.Fatalf("full scan body %x: %v", body, err)
 				}
 				for g, score := range h.globalScore {
-					want[g] += score
+					want[g] += int64(score)
 				}
 			}
 			if len(got) != len(want) {
@@ -303,7 +303,7 @@ func TestModuleGlobalScoreScanSupportsASTBodies(t *testing.T) {
 		t.Fatalf("compute module global scores for ast body: %v", err)
 	}
 	want := scanBody(m.Code[0].Body, 0, 1, 0).globalScore
-	if len(got) != 1 || got[0] != want[0] || got[0] != 30 {
+	if len(got) != 1 || got[0] != int64(want[0]) || got[0] != 30 {
 		t.Fatalf("AST aggregate scores = %v, want %v", got, want)
 	}
 	pins := pickModuleGlobals(m, m.GlobalCount(), got)

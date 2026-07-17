@@ -236,8 +236,10 @@ func (c *RuntimeConfig) DeferBoundsChecks() bool { return !c.noDeferBounds }
 // MemoryLimitPages reports the configured maximum linear-memory size in pages.
 func (c *RuntimeConfig) MemoryLimitPages() uint32 { return c.maxMemoryPages }
 
-// Compile decodes, validates, and compiles wasmBytes under this config. It is the
-// fluent form of Compile(c, wasmBytes):
+// Compile decodes, validates, and compiles wasmBytes under this config. On
+// success the returned Compiled owns the byte slice and the caller must not
+// mutate or reuse its backing array. It is the fluent form of Compile(c,
+// wasmBytes):
 //
 //	mod, err := wago.NewRuntimeConfig().WithBoundsChecks(wago.BoundsChecksSignalsBased).Compile(b)
 func (c *RuntimeConfig) Compile(wasmBytes []byte) (*Compiled, error) {

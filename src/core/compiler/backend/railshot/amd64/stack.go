@@ -2,6 +2,8 @@
 
 package amd64
 
+import "github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
+
 // The operand stack and its element model — ported from WARP's Stack /
 // StackElement / StackType / VariableStorage (warp/src/core/compiler/common/).
 //
@@ -177,9 +179,9 @@ func (e *elem) isDeferred() bool { return e.kind == ekDeferred }
 // allocates nothing further. Nodes are never freed mid-function — that matches
 // single-pass usage.
 type stack struct {
-	chunks [][]elem // each chunk fixed-cap, never moved; chunks[cur] is being filled
-	cur    int      // index of the chunk alloc currently appends to
-	head   *elem    // sentinel (chunks[0][0]); head.next is the bottom, back() is the top
+	chunks [][]elem
+	cur    int
+	head   *elem
 }
 
 const (
@@ -202,9 +204,9 @@ func newStackWithCap(capHint int) *stack {
 // initSentinel rewinds to the first chunk and installs the sentinel node.
 func (s *stack) initSentinel() {
 	s.cur = 0
-	c := &s.chunks[0]
-	*c = append((*c)[:0], elem{}) // sentinel (cap already reserved, never reallocates)
-	s.head = &(*c)[0]
+	chunk := &s.chunks[0]
+	*chunk = append((*chunk)[:0], elem{})
+	s.head = &(*chunk)[0]
 	s.head.prev, s.head.next = s.head, s.head
 }
 
@@ -225,18 +227,7 @@ func stackArenaCapForHints(bodyLen, nLocals, nodeHint int) int {
 	// opcode-based estimate avoids reserving nodes for long immediates (notably
 	// 16-byte SIMD constants). The chunked arena grows past any underestimate while
 	// preserving pointer stability, so this is a hint, not a bound.
-	legacy := bodyLen + nLocals/4 + 1
-	if nodeHint <= 0 {
-		return legacy
-	}
-	precise := nodeHint + nodeHint/2 + nLocals/4 + 1
-	if floor := bodyLen/4 + nLocals/4 + 1; precise < floor {
-		precise = floor
-	}
-	if precise > legacy {
-		precise = legacy
-	}
-	return precise
+	return shared.StackArenaCapacity(bodyLen, nLocals, nodeHint)
 }
 
 // alloc returns a fresh zeroed node from the arena. The returned pointer is
@@ -244,21 +235,21 @@ func stackArenaCapForHints(bodyLen, nLocals, nodeHint int) int {
 // current chunk is full alloc advances to (or grows) the next one rather than
 // growing the current backing array in place.
 func (s *stack) alloc() *elem {
-	c := &s.chunks[s.cur]
-	if len(*c) == cap(*c) {
+	chunk := &s.chunks[s.cur]
+	if len(*chunk) == cap(*chunk) {
 		s.cur++
 		if s.cur == len(s.chunks) {
-			nextCap := cap(*c) * 2
+			nextCap := cap(*chunk) * 2
 			if nextCap > maxStackChunkCap {
 				nextCap = maxStackChunkCap
 			}
 			s.chunks = append(s.chunks, make([]elem, 0, nextCap))
 		}
-		c = &s.chunks[s.cur]
-		*c = (*c)[:0] // reuse a retained chunk from a previous function
+		chunk = &s.chunks[s.cur]
+		*chunk = (*chunk)[:0]
 	}
-	*c = append(*c, elem{})
-	return &(*c)[len(*c)-1]
+	*chunk = append(*chunk, elem{})
+	return &(*chunk)[len(*chunk)-1]
 }
 
 // push appends e as the new top of the stack and returns it.

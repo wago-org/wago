@@ -757,7 +757,8 @@ func (v *moduleValidator) validateConstExprDirect(e directConstExpr, want ValTyp
 		v.constFV = fv
 	}
 	fv.resetStacks()
-	fv.pushCtrl(ctrlFunc, nil, []ValType{want})
+	fv.constResult[0] = want
+	fv.pushCtrl(ctrlFunc, nil, fv.constResult[:])
 	fv.rd.reset(e.body)
 	r := &fv.rd
 	var op directOp // reused across the loop; decodeDirectOp overwrites it each step

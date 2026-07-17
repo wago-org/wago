@@ -28,6 +28,7 @@ func loopWeight(depth int) int64 {
 
 // funcHints is everything scanFuncBody yields.
 type funcHints struct {
+	nLocals       int
 	hasCall       bool // any direct or indirect call
 	callsSelf     bool // a direct call to the function's own index
 	touchesMemory bool // any linear-memory op
@@ -54,8 +55,8 @@ type funcHints struct {
 
 	// Loop-weighted hotness: local.get/global.get = 1×, set/tee = 2×, ×loopWeight
 	// per enclosing loop level.
-	localScore  []int64
-	globalScore []int64
+	localScore  []uint32
+	globalScore []uint32
 
 	// globalElig[g]: global g is accessed inside a loop whose subtree contains NO
 	// call. Value-pinning such a global in a call-making function is a win: the
@@ -73,10 +74,24 @@ type funcHints struct {
 }
 
 func newFuncHints(nLocals, nGlobals int) funcHints {
-	return funcHints{
-		localScore:  make([]int64, nLocals),
-		globalScore: make([]int64, nGlobals),
-		globalElig:  make([]bool, nGlobals),
+	h := funcHintsWithStorage(make([]uint32, nLocals), make([]uint32, nGlobals), make([]bool, nGlobals))
+	h.nLocals = nLocals
+	return h
+}
+
+func funcHintsWithStorage(localScore, globalScore []uint32, globalElig []bool) funcHints {
+	return funcHints{localScore: localScore, globalScore: globalScore, globalElig: globalElig}
+}
+
+func addHotness(scores []uint32, idx uint32, delta int64) {
+	if int(idx) >= len(scores) || delta <= 0 {
+		return
+	}
+	const max = ^uint32(0)
+	if uint64(scores[idx])+uint64(delta) >= uint64(max) {
+		scores[idx] = max
+	} else {
+		scores[idx] += uint32(delta)
 	}
 }
 
@@ -94,6 +109,11 @@ type globalEligibilityFrame struct {
 
 func newGlobalEligibilityTracker(nGlobals int) globalEligibilityTracker {
 	return globalEligibilityTracker{marks: make([]uint32, nGlobals)}
+}
+
+func (t *globalEligibilityTracker) reset() {
+	t.globals = t.globals[:0]
+	t.frames = t.frames[:0]
 }
 
 func (t *globalEligibilityTracker) push() int {
@@ -139,10 +159,16 @@ func (t *globalEligibilityTracker) pop(frame int) {
 // scanFuncBody chooses the byte-backed scanner used for decoded modules, falling
 // back to the AST scanner for tests or callers that construct Func.Body directly.
 func scanFuncBody(fn wasm.Func, nLocals, nGlobals int, selfIdx uint32) (funcHints, error) {
+	h := newFuncHints(nLocals, nGlobals)
+	elig := newGlobalEligibilityTracker(nGlobals)
+	return scanFuncBodyInto(fn, nLocals, nGlobals, selfIdx, h, &elig)
+}
+
+func scanFuncBodyInto(fn wasm.Func, nLocals, nGlobals int, selfIdx uint32, h funcHints, elig *globalEligibilityTracker) (funcHints, error) {
 	if len(fn.BodyBytes) != 0 {
-		return scanBodyBytes(fn.BodyBytes, nLocals, nGlobals, selfIdx)
+		return scanBodyBytesInto(fn.BodyBytes, nLocals, nGlobals, selfIdx, h, elig)
 	}
-	return scanBody(fn.Body, nLocals, nGlobals, selfIdx), nil
+	return scanBodyInto(fn.Body, nLocals, nGlobals, selfIdx, h, elig), nil
 }
 
 // scanBody performs the AST pre-scan walk. selfIdx is the function's global
@@ -150,6 +176,11 @@ func scanFuncBody(fn wasm.Func, nLocals, nGlobals int, selfIdx uint32) (funcHint
 func scanBody(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32) funcHints {
 	h := newFuncHints(nLocals, nGlobals)
 	elig := newGlobalEligibilityTracker(nGlobals)
+	return scanBodyInto(body, nLocals, nGlobals, selfIdx, h, &elig)
+}
+
+func scanBodyInto(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32, h funcHints, elig *globalEligibilityTracker) funcHints {
+	elig.reset()
 	// walk returns whether the subtree contains a call. curLoop identifies the
 	// innermost enclosing loop whose globals are being considered for eligibility.
 	var walk func(instrs []wasm.Instruction, depth int, curLoop int) bool
@@ -177,18 +208,18 @@ func scanBody(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32) funcHints {
 				sub, h.hasCall = true, true
 			case wasm.InstrLocalGet:
 				if int(in.Index) < nLocals {
-					h.localScore[in.Index] += w
+					addHotness(h.localScore, in.Index, w)
 				}
 			case wasm.InstrLocalSet, wasm.InstrLocalTee:
 				if int(in.Index) < nLocals {
-					h.localScore[in.Index] += 2 * w
+					addHotness(h.localScore, in.Index, 2*w)
 				}
 			case wasm.InstrGlobalGet, wasm.InstrGlobalSet:
 				if int(in.Index) < nGlobals {
 					if in.Kind == wasm.InstrGlobalSet {
-						h.globalScore[in.Index] += 2 * w
+						addHotness(h.globalScore, in.Index, 2*w)
 					} else {
-						h.globalScore[in.Index] += w
+						addHotness(h.globalScore, in.Index, w)
 					}
 					elig.add(curLoop, in.Index)
 				}
@@ -267,7 +298,8 @@ func scanBodyGlobalScores(body wasm.Expr, nGlobals int, add func(g uint32, score
 }
 
 func scanBodyBytesGlobalScores(body []byte, nGlobals int, add func(g uint32, score int64)) error {
-	s := globalScoreByteScanner{r: byteScanReader{Reader: wasm.NewReader(body)}, nGlobals: nGlobals, add: add}
+	r := wasm.ReaderFrom(body)
+	s := globalScoreByteScanner{r: byteScanReader{Reader: &r}, nGlobals: nGlobals, add: add}
 	term, err := s.scanExpr(0, 0, false)
 	if err != nil {
 		return err
@@ -378,7 +410,15 @@ func (s *globalScoreByteScanner) classifyInstructionInto(op byte, imm *wasm.Inst
 // allocating Instruction trees. body includes the terminating end opcode and
 // excludes local declarations.
 func scanBodyBytes(body []byte, nLocals int, nGlobals int, selfIdx uint32) (funcHints, error) {
-	s := byteBodyScanner{r: byteScanReader{Reader: wasm.NewReader(body)}, h: newFuncHints(nLocals, nGlobals), nLocals: nLocals, nGlobals: nGlobals, selfIdx: selfIdx, elig: newGlobalEligibilityTracker(nGlobals)}
+	h := newFuncHints(nLocals, nGlobals)
+	elig := newGlobalEligibilityTracker(nGlobals)
+	return scanBodyBytesInto(body, nLocals, nGlobals, selfIdx, h, &elig)
+}
+
+func scanBodyBytesInto(body []byte, nLocals int, nGlobals int, selfIdx uint32, h funcHints, elig *globalEligibilityTracker) (funcHints, error) {
+	elig.reset()
+	r := wasm.ReaderFrom(body)
+	s := byteBodyScanner{r: byteScanReader{Reader: &r}, h: h, nLocals: nLocals, nGlobals: nGlobals, selfIdx: selfIdx, elig: elig}
 	called, term, err := s.scanExpr(0, 0, -1, false)
 	if err != nil {
 		return s.h, err
@@ -398,7 +438,7 @@ type byteBodyScanner struct {
 	nLocals  int
 	nGlobals int
 	selfIdx  uint32
-	elig     globalEligibilityTracker
+	elig     *globalEligibilityTracker
 }
 
 func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAtElse bool) (bool, byte, error) {
@@ -509,9 +549,9 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			idx := imm.Index
 			if int(idx) < s.nLocals {
 				if op == 0x20 {
-					s.h.localScore[idx] += loopWeight(loopDepth)
+					addHotness(s.h.localScore, idx, loopWeight(loopDepth))
 				} else {
-					s.h.localScore[idx] += 2 * loopWeight(loopDepth)
+					addHotness(s.h.localScore, idx, 2*loopWeight(loopDepth))
 				}
 			}
 		case 0x23, 0x24: // global.get/set
@@ -524,9 +564,9 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			idx := imm.Index
 			if int(idx) < s.nGlobals {
 				if op == 0x24 {
-					s.h.globalScore[idx] += 2 * loopWeight(loopDepth)
+					addHotness(s.h.globalScore, idx, 2*loopWeight(loopDepth))
 				} else {
-					s.h.globalScore[idx] += loopWeight(loopDepth)
+					addHotness(s.h.globalScore, idx, loopWeight(loopDepth))
 				}
 				s.elig.add(curLoop, idx)
 			}
