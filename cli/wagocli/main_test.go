@@ -206,11 +206,22 @@ func TestCmdParseAndHelpRecognition(t *testing.T) {
 		t.Fatal("boolean inline value accepted")
 	}
 
-	if wantsHelp([]string{"module.wasm", "--help"}, true) {
+	if wantsHelp([]string{"module.wasm", "--help"}, true, leaf.Flags) {
 		t.Fatal("guest --help treated as command help")
 	}
-	if !wantsHelp([]string{"--help", "module.wasm"}, true) || wantsHelp([]string{"--", "--help"}, false) {
+	if !wantsHelp([]string{"--help", "module.wasm"}, true, leaf.Flags) || wantsHelp([]string{"--", "--help"}, false, leaf.Flags) {
 		t.Fatal("help recognition mismatch")
+	}
+	if !wantsHelp([]string{"-o", "result", "--help"}, true, leaf.Flags) {
+		t.Fatal("help after a separated flag value was missed")
+	}
+	if wantsHelp([]string{"-o", "--help", "module.wasm"}, true, leaf.Flags) {
+		t.Fatal("a value equal to --help was treated as command help")
+	}
+	run := runCommand()
+	normalized, err := run.Normalize([]string{"-p", "8", "--help"})
+	if err != nil || !wantsHelp(normalized, run.PassThrough, run.Flags) {
+		t.Fatalf("help after separated parallelism was missed: normalized=%v err=%v", normalized, err)
 	}
 	group := &Cmd{Name: "root", Children: []*Cmd{{Name: "child", Aliases: []string{"c"}}}}
 	if group.child("child") == nil || group.child("c") == nil || group.child("missing") != nil {
