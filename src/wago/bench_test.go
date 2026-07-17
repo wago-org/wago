@@ -72,6 +72,31 @@ func benchReturningImportModule() []byte {
 	return returningImportModule(returningI32Sig(), []byte{0x00, 0x20, 0x00, 0x10, 0x00, 0x0b}) // local.get 0; call 0; end
 }
 
+// benchParallelLinkModule builds a link-deferred module with enough independent
+// local functions to measure worker policy propagation through link-time codegen.
+func benchParallelLinkModule(funcs, adds int) []byte {
+	sig := wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32})
+	imp := append(append(wasmtest.Name("env"), wasmtest.Name("f")...), 0x00, 0x00) // func, type 0
+	funcTypes := make([][]byte, funcs)
+	codes := make([][]byte, funcs)
+	for i := range funcTypes {
+		funcTypes[i] = wasmtest.ULEB(0)
+		body := []byte{0x20, 0x00, 0x10, 0x00} // local.get 0; call import 0
+		for j := 0; j < adds; j++ {
+			body = append(body, 0x41, 0x01, 0x6a) // i32.const 1; i32.add
+		}
+		body = append(body, 0x0b)
+		codes[i] = wasmtest.Code(body)
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(sig)),
+		wasmtest.Section(2, wasmtest.Vec(imp)),
+		wasmtest.Section(3, wasmtest.Vec(funcTypes...)),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f0", 0, 1))),
+		wasmtest.Section(10, wasmtest.Vec(codes...)),
+	)
+}
+
 func benchTableReturningImportModule() []byte {
 	return tableHostImportModule(returningI32Sig(), []byte{0x20, 0x00, 0x41, 0x00, 0x11, 0x00, 0x00, 0x0b}) // local.get 0; i32.const 0; call_indirect type 0 table 0; end
 }
@@ -277,6 +302,38 @@ func BenchmarkCompileSmallScalar(b *testing.B) {
 			b.Fatal(err)
 		}
 		benchCompiledSink = c
+	}
+}
+
+// BenchmarkCompileLinkWorkers measures the public decode+validate plus deferred
+// host-link codegen path. A fresh Compiled is used per iteration so the host-link
+// cache cannot hide recompilation.
+func BenchmarkCompileLinkWorkers(b *testing.B) {
+	mod := benchParallelLinkModule(1600, 128)
+	imports := Imports{"env.f": HostFunc(func(_ HostModule, params, results []uint64) { results[0] = params[0] })}
+	for _, mode := range []struct {
+		name    string
+		workers int
+	}{{"p1", 1}, {"p2", 2}, {"p4", 4}, {"p8", 8}, {"auto", 0}} {
+		b.Run(mode.name, func(b *testing.B) {
+			cfg := NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit).WithCompileWorkers(mode.workers)
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				c, err := Compile(cfg, mod)
+				if err != nil {
+					b.Fatal(err)
+				}
+				linked, err := c.linkModule(imports, nil)
+				if err != nil {
+					_ = c.Close()
+					b.Fatal(err)
+				}
+				benchCompiledSink = linked
+				if err := c.Close(); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
 	}
 }
 

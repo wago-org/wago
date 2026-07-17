@@ -24,14 +24,15 @@ type Flag struct {
 // a leaf has a Run. buildRoot() wires the whole tree.
 type Cmd struct {
 	Name        string
-	Aliases     []string   // alternate names, e.g. {"ls"} for list
-	Summary     string     // one line for the parent's command list
-	Args        string     // positional synopsis for help, e.g. "<file> [args...]"
-	Long        string     // optional extra prose appended to per-command help
-	Flags       []Flag     // options this leaf accepts
-	PassThrough bool       // run: stop flag parsing at the first positional (guest argv)
-	Run         func(*Ctx) // leaf action; nil for a pure group
-	Children    []*Cmd     // subcommands; non-empty makes this a group
+	Aliases     []string                         // alternate names, e.g. {"ls"} for list
+	Summary     string                           // one line for the parent's command list
+	Args        string                           // positional synopsis for help, e.g. "<file> [args...]"
+	Long        string                           // optional extra prose appended to per-command help
+	Flags       []Flag                           // options this leaf accepts
+	PassThrough bool                             // run: stop flag parsing at the first positional (guest argv)
+	Normalize   func([]string) ([]string, error) // optional pre-parse argument normalization
+	Run         func(*Ctx)                       // leaf action; nil for a pure group
+	Children    []*Cmd                           // subcommands; non-empty makes this a group
 }
 
 // Ctx is a parsed invocation handed to a leaf's Run.
@@ -114,6 +115,13 @@ func (c *Cmd) Dispatch(path string, args []string) {
 		fmt.Fprintf(os.Stderr, "%s %s: unknown subcommand %q\n\n", red("wago:"), c.label(path), args[0])
 		c.printHelp(os.Stderr, path)
 		os.Exit(2)
+	}
+	if c.Normalize != nil {
+		var err error
+		args, err = c.Normalize(args)
+		if err != nil {
+			fatal("%s: %v", c.label(path), err)
+		}
 	}
 	ctx, err := c.parse(path, args)
 	if err != nil {

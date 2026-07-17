@@ -168,8 +168,12 @@ func TestRunHelpCollapsesBooleanPairs(t *testing.T) {
 	runCommand().printHelp(f, "wago run")
 	f.Close()
 	b, _ := os.ReadFile(f.Name())
-	if !strings.Contains(string(b), "--<no->st-flags") || strings.Contains(string(b), "enable: keep comparison results") {
+	text := string(b)
+	if !strings.Contains(text, "--<no->st-flags") || strings.Contains(text, "enable: keep comparison results") {
 		t.Fatalf("run help did not collapse optimization pair:\n%s", b)
+	}
+	if !strings.Contains(text, "--parallel, -p [workers]") || !strings.Contains(text, "-p8 / -p 8 / --parallel=8") {
+		t.Fatalf("run help did not document compile parallelism:\n%s", b)
 	}
 }
 

@@ -610,9 +610,10 @@ type Compiled struct {
 	// function at Instantiate; its Code/Entry are empty until then.
 	wasmBytes        []byte
 	needsLink        bool
-	boundsElide      bool  // cached ElideBoundsChecks decision, for the link-time recompile
-	noDeferBounds    bool  // cached DeferBoundsChecks=false decision, for the link-time recompile
-	requiredFeatures uint8 // exact optional core-feature bits required by code/metadata
+	boundsElide      bool   // cached ElideBoundsChecks decision, for the link-time recompile
+	noDeferBounds    bool   // cached DeferBoundsChecks=false decision, for the link-time recompile
+	compileWorkers   uint16 // capped compile policy for link-time recompilation; never serialized
+	requiredFeatures uint8  // exact optional core-feature bits required by code/metadata
 
 	// hostLink caches the host-only link recompile. A needsLink module (returning
 	// import) defers codegen to Instantiate; when every import binds to a host

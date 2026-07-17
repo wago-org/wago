@@ -64,6 +64,81 @@ func TestLoadModuleAndResolveExport(t *testing.T) {
 	}
 }
 
+func TestRunParallelFlagForms(t *testing.T) {
+	cmd := runCommand()
+	for _, tc := range []struct {
+		name string
+		args []string
+		want string
+	}{
+		{"bare short", []string{"-p", "module.wasm"}, "auto"},
+		{"joined short", []string{"-p8", "module.wasm"}, "8"},
+		{"separated short", []string{"-p", "8", "module.wasm"}, "8"},
+		{"equal short", []string{"-p=8", "module.wasm"}, "8"},
+		{"bare long", []string{"--parallel", "module.wasm"}, "auto"},
+		{"equal long", []string{"--parallel=8", "module.wasm"}, "8"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			args, err := cmd.Normalize(tc.args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			ctx, err := cmd.parse("wago run", args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := ctx.Str("parallel"); got != tc.want {
+				t.Fatalf("parallel = %q, want %q (normalized %v)", got, tc.want, args)
+			}
+			if len(ctx.Args) != 1 || ctx.Args[0] != "module.wasm" {
+				t.Fatalf("positionals = %v", ctx.Args)
+			}
+		})
+	}
+
+	args, err := cmd.Normalize([]string{"module.wasm", "-p8"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, err := cmd.parse("wago run", args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ctx.Str("parallel") != "" || len(ctx.Args) != 2 || ctx.Args[1] != "-p8" {
+		t.Fatalf("guest -p8 was consumed: parallel=%q args=%v", ctx.Str("parallel"), ctx.Args)
+	}
+}
+
+func TestRunConfigParallelism(t *testing.T) {
+	for _, tc := range []struct {
+		parallel string
+		want     int
+	}{
+		{"", 1},
+		{"auto", 0},
+		{"0", 0},
+		{"1", 1},
+		{"8", 8},
+	} {
+		cfg, err := runConfig("", tc.parallel)
+		if err != nil {
+			t.Fatalf("parallel %q: %v", tc.parallel, err)
+		}
+		if got := cfg.CompileWorkers(); got != tc.want {
+			t.Fatalf("parallel %q workers = %d, want %d", tc.parallel, got, tc.want)
+		}
+	}
+	for _, value := range []string{"-1", "many"} {
+		if _, err := runConfig("", value); err == nil {
+			t.Fatalf("parallel %q accepted", value)
+		}
+	}
+	cfg, err := runConfig("all", "8")
+	if err != nil || cfg.DeferBoundsChecks() {
+		t.Fatalf("combined config = %v, %v", cfg, err)
+	}
+}
+
 func TestRunExecValueMode(t *testing.T) {
 	t.Setenv("WAGO_BARE", "1") // exercise the CLI execution path without project/global plugin handoff.
 	wasm := []byte{'\x00', 'a', 's', 'm', 1, 0, 0, 0,

@@ -19,16 +19,77 @@ func runCommand() *Cmd {
 		Summary:     "compile and execute an export   (default)",
 		Args:        "<file> [args...]",
 		PassThrough: true,
+		Normalize:   normalizeRunParallelArgs,
 		Flags: append([]Flag{
 			{Name: "invoke", Short: "e", Arg: "<name>", Help: "exported function to call"},
 			{Name: "plugin", Arg: "<names>", Help: "comma-separated extra plugins to enable, on top of wago.json (see: wago plugin list)"},
 			{Name: "bounds", Arg: "<mode>", Help: "bounds checks: defer (default) | all"},
+			{Name: "parallel", Short: "p", Arg: "[workers]", Help: "parallel function compilation; omit workers for adaptive mode"},
 		}, optKnobFlags()...),
 		Long: "<file> is raw .wasm or a precompiled .wago. Args after the file are typed by the\n" +
 			"signature; override per-arg with a suffix:  42   7:i64   3.5:f64\n" +
-			"Optimization knobs (--<knob> / --no-<knob>): see `wago opts`.",
+			"Use -p for adaptive compile parallelism, or -p8 / -p 8 / --parallel=8 to\n" +
+			"force a worker maximum. Optimization knobs: see `wago opts`.",
 		Run: runExec,
 	}
+}
+
+// normalizeRunParallelArgs accepts the standard separated/equal forms plus the
+// convenient joined form requested by the CLI: -p, -p8, -p 8, -p=8,
+// --parallel, and --parallel=8. Bare -p/--parallel means adaptive mode. Parsing
+// stops at the wasm file so a guest's own -p argument remains untouched.
+func normalizeRunParallelArgs(args []string) ([]string, error) {
+	out := make([]string, 0, len(args)+1)
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		if a == "--" || a == "-" || a == "" || a[0] != '-' {
+			out = append(out, args[i:]...)
+			return out, nil
+		}
+		switch a {
+		case "-p", "--parallel":
+			value := "auto"
+			if i+1 < len(args) {
+				if _, err := strconv.Atoi(args[i+1]); err == nil {
+					value = args[i+1]
+					i++
+				}
+			}
+			out = append(out, "--parallel="+value)
+			continue
+		}
+		if strings.HasPrefix(a, "-p") && !strings.HasPrefix(a, "-p=") && len(a) > 2 {
+			if _, err := strconv.Atoi(a[2:]); err == nil {
+				out = append(out, "--parallel="+a[2:])
+				continue
+			}
+		}
+		out = append(out, a)
+	}
+	return out, nil
+}
+
+func runConfig(bounds, parallel string) (*wago.RuntimeConfig, error) {
+	cfg := wago.NewRuntimeConfig()
+	switch bounds {
+	case "", "defer": // default: skip a bounds check a prior one already proved safe
+	case "all": // bounds-check every access
+		cfg = cfg.WithDeferBoundsChecks(false)
+	default:
+		return nil, fmt.Errorf("unknown --bounds %q (want: defer, all)", bounds)
+	}
+	switch parallel {
+	case "": // default remains serial
+	case "auto":
+		cfg = cfg.WithCompileWorkers(0)
+	default:
+		workers, err := strconv.Atoi(parallel)
+		if err != nil || workers < 0 {
+			return nil, fmt.Errorf("invalid parallelism %q (want: -p, or a non-negative worker count)", parallel)
+		}
+		cfg = cfg.WithCompileWorkers(workers)
+	}
+	return cfg, nil
 }
 
 func runExec(c *Ctx) {
@@ -46,13 +107,9 @@ func runExec(c *Ctx) {
 	}
 	// Publish the guest argv so host-import plugins can read it.
 	wago.SetGuestArgs(pos)
-	cfg := wago.NewRuntimeConfig()
-	switch bounds {
-	case "", "defer": // default: skip a bounds check a prior one already proved safe
-	case "all": // bounds-check every access
-		cfg = cfg.WithDeferBoundsChecks(false)
-	default:
-		fatal("run: unknown --bounds %q (want: defer, all)", bounds)
+	cfg, err := runConfig(bounds, c.Str("parallel"))
+	if err != nil {
+		fatal("run: %v", err)
 	}
 	rt := loadPluginRuntime(cfg, plugins)
 	defer rt.Close()

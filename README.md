@@ -138,6 +138,17 @@ suffix when the default parser is not enough:
 wago run -e hypot tests/testdata/fprog.wasm 3:f64 4:f64
 ```
 
+Compilation is serial by default. Use `-p` for adaptive per-function compile
+parallelism, or specify a worker maximum with the standard separated form or the
+short joined form:
+
+```bash
+wago run -p app.wasm          # adaptive policy
+wago run -p 8 app.wasm        # at most 8 workers
+wago run -p8 app.wasm         # equivalent shorthand
+wago run --parallel=8 app.wasm
+```
+
 Validate without executing:
 
 ```bash
@@ -633,6 +644,8 @@ using TinyGo; see the TinyGo doc for the foreign-stack and GC rationale.
 | `WAGO_NO_BOUNDS_FACTS=1` | Disable deferred bounds-check facts globally. |
 | `RuntimeConfig.WithFeature` | Accept or reject individual wasm feature families. |
 | `RuntimeConfig.WithMemoryLimitPages` | Cap declared linear memory in 64 KiB wasm pages. |
+| `RuntimeConfig.WithCompileWorkers` | Select serial (`1`), adaptive (`0`), or a forced worker maximum. |
+| `wago run -p[workers]` | Enable adaptive compile parallelism (`-p`) or force a maximum (`-p8`, `-p 8`). |
 
 Guard-page mode is faster on memory-heavy modules but installs process-wide signal
 handlers and must be selected deliberately in builds that include it.

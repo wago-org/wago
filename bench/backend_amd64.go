@@ -8,7 +8,11 @@ import (
 )
 
 func benchCompileModule(m *wasm.Module) (*benchCompiledModule, error) {
-	cm, err := railshot.CompileModule(m)
+	return benchCompileModuleWorkers(m, 1)
+}
+
+func benchCompileModuleWorkers(m *wasm.Module, workers int) (*benchCompiledModule, error) {
+	cm, err := railshot.CompileModuleWith(m, railshot.CompileOptions{Workers: workers})
 	if err != nil {
 		return nil, err
 	}
