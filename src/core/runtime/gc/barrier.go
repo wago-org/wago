@@ -1,9 +1,6 @@
 package gc
 
-import (
-	"encoding/binary"
-	"errors"
-)
+import "errors"
 
 var errRange = errors.New("gc: index out of range")
 
@@ -117,10 +114,13 @@ func (c *Collector) PostBulkWriteBarrier(dst Ref, start, length uint32) {
 		}
 		c.addObjectCard(h, uint32(end))
 	}
-	c.rememberBulkArrayRange(h, start, length)
+	c.reconcileRememberedArray(h)
 }
 
-func (c *Collector) rememberBulkArrayRange(h, start, length uint32) {
+// reconcileRememberedArray performs the one post-bulk object scan needed to
+// derive final remembered-set state. Scanning only the overwritten range cannot
+// safely remove an object that still has a nursery edge elsewhere.
+func (c *Collector) reconcileRememberedArray(h uint32) {
 	if h == 0 || int(h) >= len(c.handles) {
 		return
 	}
@@ -128,26 +128,10 @@ func (c *Collector) rememberBulkArrayRange(h, start, length uint32) {
 	if sp != spaceOld && sp != spaceLarge {
 		return
 	}
-	dst := makeObjRef(h)
-	hdr := c.header(dst)
-	d, err := c.desc(TypeID(hdr.TypeID))
-	if err != nil || !d.ArrayElementsAreRefs() || start >= hdr.Aux {
-		return
-	}
-	end := uint64(start) + uint64(length)
-	if end > uint64(hdr.Aux) {
-		end = uint64(hdr.Aux)
-	}
-	b := c.bytes(dst)
-	for i := start; uint64(i) < end; i++ {
-		off := PayloadOffset + i*d.ElemSize
-		if uint64(off)+4 > uint64(len(b)) {
-			return
-		}
-		if c.isNurseryRef(Ref(binary.LittleEndian.Uint32(b[off:]))) {
-			c.remember(h)
-			return
-		}
+	if c.handleContainsNurseryRef(h) {
+		c.remember(h)
+	} else {
+		c.removeRemembered(h)
 	}
 }
 func (c *Collector) addObjectCard(h, index uint32) {

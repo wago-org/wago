@@ -349,7 +349,6 @@ func (c *Collector) ArrayFill(ref Ref, start uint32, value Value, length uint32)
 	}
 	if isRefKind(d.Elem) {
 		c.PostBulkWriteBarrier(ref, start, length)
-		c.pruneRememberedHandleUnlessNursery(handleOf(ref))
 	}
 	return nil
 }
@@ -474,7 +473,6 @@ func (c *Collector) ArrayCopy(dst Ref, dstStart uint32, src Ref, srcStart uint32
 	copy(c.bytes(dst)[dstOff:dstOff+byteLen], c.bytes(src)[srcOff:srcOff+byteLen])
 	if isRefKind(dstDesc.Elem) {
 		c.PostBulkWriteBarrier(dst, dstStart, length)
-		c.pruneRememberedHandleUnlessNursery(handleOf(dst))
 	}
 	return nil
 }
