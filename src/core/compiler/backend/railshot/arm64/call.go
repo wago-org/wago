@@ -1027,7 +1027,7 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 
 func (f *fn) descriptorEntryKind(home Reg, avoid regMask) Reg {
 	kind := f.allocReg(avoid)
-	f.a.LsrImm(kind, home, abi.FuncRefEntryTagShift, true)
+	f.a.LsrImm(kind, home, abi.FuncRefEntryTagShift, false)
 	return kind
 }
 
