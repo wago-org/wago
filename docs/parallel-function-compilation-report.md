@@ -11,8 +11,8 @@ Baseline commit: `e774b93849df0fd66d0c4ad8def0c73a8ed7ec82`
 **Ship the bounded worker implementation and public configuration, but keep the
 default serial.** Applications that prioritize one-module compile latency can opt
 into the measured adaptive policy with `WithCompileWorkers(0)` or force a maximum
-with `WithCompileWorkers(N)`. `NewRuntimeConfig`, `Compile(nil, ...)`, and `Load`
-of wasm remain serial by default.
+with `WithCompileWorkers(N)`. The defaults used by `NewRuntimeConfig`,
+`Compile(nil, ...)`, and `Load` when given raw wasm remain serial.
 
 Enabling parallel compilation globally by default is not justified:
 
@@ -49,8 +49,9 @@ Function count alone is insufficient: `many_funcs` has 301 functions but only
   `/tmp/wago-parallel-func-comp-20260717T151140Z/`
 
 Generated logs and profiles remain under `/tmp`, consistent with
-`docs/codegen-benchmarks.md`. The important final files are listed in
-[Raw data](#raw-data).
+`docs/codegen-benchmarks.md`. These paths are author-local and are not committed;
+the reproduction commands below regenerate equivalent data. The important final
+files are listed in [Raw data](#raw-data).
 
 ## Implementation
 
@@ -217,8 +218,9 @@ Completed gates:
 - arm64 backend and public-package cross-compilation before CI;
 - WebAssembly 1.0: 629 modules and 16,026 assertions passed;
 - WebAssembly 2.0: 1,600 modules and 48,248 assertions passed;
-- WebAssembly 3.0 proposal run completed with only the repository's documented
-  unsupported/toolchain gaps (62 modules and 742 assertions skipped, zero failures).
+- WebAssembly 3.0 proposal run completed with zero failures; only the repository's
+  documented unsupported/toolchain gaps were skipped. Exact skip counts vary with
+  the proposal corpus/toolchain snapshot, so the hosted CI summary is authoritative.
 
 The first `make test` run caught a 16-byte `Compiled` footprint increase from an
 `int` policy field. The field was changed to a capped `uint16` placed in existing
