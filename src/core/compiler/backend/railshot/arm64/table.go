@@ -297,17 +297,19 @@ func (f *fn) tableGrow(r *wasm.Reader) error {
 	old := f.allocReg(maskOf(delta).add(ref).add(tbl))
 	f.ld32(old, tbl, 0)
 	nw := f.allocReg(maskOf(delta).add(ref).add(tbl).add(old))
-	f.a.MovReg32(nw, old) // zero-extend old into nw (was MovRegReg32)
-	// nw = old + delta, checking for 32-bit unsigned overflow. On arm64 the add
-	// must be the flag-setting ADDS form, and the carry-out condition is CondCS
-	// (carry set) — the opposite of the compare-borrow CondCC that condB maps to:
-	// after an ADD, C=1 means unsigned overflow, whereas after a SUB/CMP, C=1 means
-	// no-borrow. So this branch uses a64.CondCS explicitly, not condB.
-	f.a.Adds32(nw, nw, delta)
+	addr64 := f.tableAddr64(tableIdx)
+	if addr64 {
+		f.a.MovReg64(nw, old)
+		f.a.Adds64(nw, nw, delta)
+	} else {
+		f.a.MovReg32(nw, old)
+		f.a.Adds32(nw, nw, delta)
+	}
+	// ADDS carry set is unsigned overflow at either operand width.
 	failOverflow := f.a.Bcond(a64.CondCS)
 	max := f.allocReg(maskOf(delta).add(ref).add(tbl).add(old).add(nw))
 	f.ld32(max, tbl, 4)
-	f.cmpRR(nw, max, false)
+	f.cmpRR(nw, max, addr64)
 	failMax := f.a.Bcond(condA)
 	f.release(max)
 	// table.grow keeps the descriptor pointer, old length, and new length live
@@ -325,7 +327,11 @@ func (f *fn) tableGrow(r *wasm.Reader) error {
 	done := f.a.Branch()
 	f.a.PatchBranch19(failOverflow, f.a.Len())
 	f.a.PatchBranch19(failMax, f.a.Len())
-	f.a.MovImm64(old, 0xFFFFFFFF) // -1 as i32 (was MovImm32(old,-1))
+	if addr64 {
+		f.a.MovImm64(old, ^uint64(0))
+	} else {
+		f.a.MovImm64(old, 0xFFFFFFFF)
+	}
 	f.a.PatchBranch26(done, f.a.Len())
 	f.pinned = f.pinned.remove(delta)
 	f.pinned = f.pinned.remove(ref)
@@ -334,7 +340,11 @@ func (f *fn) tableGrow(r *wasm.Reader) error {
 	f.release(tbl)
 	f.release(nw)
 	f.release(dst)
-	f.pushReg(old, mtI32)
+	if addr64 {
+		f.pushReg(old, mtI64)
+	} else {
+		f.pushReg(old, mtI32)
+	}
 	return nil
 }
 
@@ -351,12 +361,18 @@ func (f *fn) externrefTableGrow(tableIdx uint32) error {
 	old := f.allocReg(maskOf(delta).add(ref).add(tbl))
 	f.ld32(old, tbl, 0)
 	nw := f.allocReg(maskOf(delta).add(ref).add(tbl).add(old))
-	f.a.MovReg32(nw, old)
-	f.a.Adds32(nw, nw, delta)
+	addr64 := f.tableAddr64(tableIdx)
+	if addr64 {
+		f.a.MovReg64(nw, old)
+		f.a.Adds64(nw, nw, delta)
+	} else {
+		f.a.MovReg32(nw, old)
+		f.a.Adds32(nw, nw, delta)
+	}
 	failOverflow := f.a.Bcond(a64.CondCS)
 	max := f.allocReg(maskOf(delta).add(ref).add(tbl).add(old).add(nw))
 	f.ld32(max, tbl, 4)
-	f.cmpRR(nw, max, false)
+	f.cmpRR(nw, max, addr64)
 	failMax := f.a.Bcond(condA)
 	f.release(max)
 	f.pinned = f.pinned.add(tbl).add(old).add(nw)
@@ -369,7 +385,11 @@ func (f *fn) externrefTableGrow(tableIdx uint32) error {
 	done := f.a.Branch()
 	f.a.PatchBranch19(failOverflow, f.a.Len())
 	f.a.PatchBranch19(failMax, f.a.Len())
-	f.a.MovImm64(old, 0xFFFFFFFF)
+	if addr64 {
+		f.a.MovImm64(old, ^uint64(0))
+	} else {
+		f.a.MovImm64(old, 0xFFFFFFFF)
+	}
 	f.a.PatchBranch26(done, f.a.Len())
 	f.pinned = f.pinned.remove(delta).remove(ref)
 	f.release(delta)
@@ -377,7 +397,11 @@ func (f *fn) externrefTableGrow(tableIdx uint32) error {
 	f.release(tbl)
 	f.release(nw)
 	f.release(dst)
-	f.pushReg(old, mtI32)
+	if addr64 {
+		f.pushReg(old, mtI64)
+	} else {
+		f.pushReg(old, mtI32)
+	}
 	return nil
 }
 
