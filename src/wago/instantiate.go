@@ -818,7 +818,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 				if capacity < size || 8+capacity*entryBytes > len(desc) {
 					return nil, fmt.Errorf("imported table %q descriptor maximum %d < size %d or exceeds storage", importDef.Key, capacity, size)
 				}
-				if size < importDef.Min {
+				if uint64(size) < importDef.Min {
 					return nil, fmt.Errorf("imported table %q size %d < required minimum %d", importDef.Key, size, importDef.Min)
 				}
 				if importDef.HasMax {
@@ -830,7 +830,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 					if t.owner == nil || !t.owner.declaredHasMax {
 						return nil, fmt.Errorf("imported table %q has no declared maximum but a maximum of %d is required", importDef.Key, importDef.Max)
 					}
-					if capacity > importDef.Max {
+					if uint64(capacity) > importDef.Max {
 						return nil, fmt.Errorf("imported table %q maximum %d > required maximum %d", importDef.Key, capacity, importDef.Max)
 					}
 				}
