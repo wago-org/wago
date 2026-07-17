@@ -83,8 +83,22 @@ func RejectUnsupported(m *wasm.Module) error {
 // is deliberately conservative: a construct must be listed here before it can
 // reach code generation.
 func RejectUnsupportedWithFeatures(m *wasm.Module, f Features) error {
-	p := supportPass{m: m, feat: f}
-	return p.run()
+	facts, err := AnalyzeModuleFacts(m)
+	if err != nil {
+		return err
+	}
+	return RejectUnsupportedWithFeaturesAndFacts(m, f, facts)
+}
+
+// RejectUnsupportedWithFeaturesAndFacts runs the feature/product admission pass
+// using the caller's immutable module analysis. Production compilation computes
+// this once and reuses it for admission and runtime footprint construction.
+func RejectUnsupportedWithFeaturesAndFacts(m *wasm.Module, f Features, facts *ModuleFacts) error {
+	if m == nil || facts == nil {
+		return fmt.Errorf("nil module or module facts")
+	}
+	p := supportPass{m: m, feat: f, facts: facts}
+	return p.runWithFacts()
 }
 
 type supportPass struct {
@@ -422,12 +436,10 @@ func (p supportPass) unsupported(category, feature, context string) error {
 	return &UnsupportedError{Category: category, Feature: feature, Context: context}
 }
 
-func (p supportPass) run() error {
-	facts, err := AnalyzeModuleFacts(p.m)
-	if err != nil {
-		return err
+func (p supportPass) runWithFacts() error {
+	if p.facts == nil {
+		return fmt.Errorf("nil module facts")
 	}
-	p.facts = facts
 	if err := p.types(); err != nil {
 		return err
 	}
