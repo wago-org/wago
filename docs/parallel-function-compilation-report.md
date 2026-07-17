@@ -213,7 +213,8 @@ Completed gates:
 - targeted race runs for backend corpus parity and public/link paths;
 - `make test`;
 - `make test-corpus` in explicit and guard-page builds;
-- arm64 backend cross-compilation;
+- native Linux/arm64 and Darwin/arm64 CI, including TinyGo on both hosts;
+- arm64 backend and public-package cross-compilation before CI;
 - WebAssembly 1.0: 629 modules and 16,026 assertions passed;
 - WebAssembly 2.0: 1,600 modules and 48,248 assertions passed;
 - WebAssembly 3.0 proposal run completed with only the repository's documented
