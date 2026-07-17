@@ -99,6 +99,42 @@ func TestTable32OperationsCanonicalizeDirtySynchronousHostResult(t *testing.T) {
 	}
 }
 
+func dirtyReturnCallIndirectModule() []byte {
+	sig := wasmtest.FuncType(nil, []wasm.ValType{wasm.I32})
+	imp := append(append(wasmtest.Name("env"), wasmtest.Name("index")...), 0x00, 0x00)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(sig)),
+		wasmtest.Section(2, wasmtest.Vec(imp)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0))),
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x01, 0x02, 0x02})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("tail", 0, 2))),
+		wasmtest.Section(9, wasmtest.Vec([]byte{0x00, 0x41, 0x01, 0x0b, 0x01, 0x01})),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x41, 0x2a, 0x0b}),
+			wasmtest.Code([]byte{0x10, 0x00, 0x13, 0x00, 0x00, 0x0b}),
+		)),
+	)
+}
+
+func TestReturnCallIndirectCanonicalizesDirtySynchronousHostResult(t *testing.T) {
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithBoundsChecks(BoundsChecksExplicit), dirtyReturnCallIndirectModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	in, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{"env.index": HostFunc(func(_ HostModule, _, results []uint64) {
+		results[0] = 0xdead_beef_0000_0001
+	})}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	got, err := in.Invoke("tail")
+	if err != nil || AsI32(got[0]) != 42 {
+		t.Fatalf("tail() = %v, %v; want 42", got, err)
+	}
+}
+
 func TestTable32GrowCanonicalizesDirtySynchronousHostResult(t *testing.T) {
 	c := MustCompile(dirtyTableGrowModule())
 	for _, tc := range []struct {
