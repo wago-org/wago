@@ -1703,6 +1703,7 @@ func (f *fn) returnCallIndirect(r *wasm.Reader) error {
 	}
 
 	idxReg := f.materialize(f.popValue())
+	f.canonicalizeTableOperand(idxReg, tableIdx)
 	f.pinned = f.pinned.add(idxReg)
 	tbl := f.allocReg(0)
 	f.loadTableDescriptor(tbl, tableIdx)
@@ -1779,6 +1780,7 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 	table64 := tt.Limits.Addr64
 
 	idxReg := f.materialize(f.popValue()) // table32 uses i32; table64 uses full i64
+	f.canonicalizeTableOperand(idxReg, tableIdx)
 	f.pinned = f.pinned.add(idxReg)
 	tbl := f.allocReg(0)
 	f.loadTableDescriptor(tbl, tableIdx)

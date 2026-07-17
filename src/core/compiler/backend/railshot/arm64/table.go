@@ -70,6 +70,20 @@ func (f *fn) tableIsExternref(tableIdx uint32) bool {
 	return ok && wasm.EqualValType(wasm.RefVal(tt.Ref), wasm.ExternRef)
 }
 
+func (f *fn) tableAddr64(tableIdx uint32) bool {
+	tt, ok := f.m.TableType(tableIdx)
+	return ok && tt.Limits.Addr64
+}
+
+// canonicalizeTableOperand zero-extends table32 operands through a W-register
+// write before any X-width address arithmetic or loop use. Host-produced i32
+// values may have arbitrary upper bits in their 64-bit ABI slots.
+func (f *fn) canonicalizeTableOperand(reg Reg, tableIdx uint32) {
+	if !f.tableAddr64(tableIdx) {
+		f.a.MovReg32(reg, reg)
+	}
+}
+
 func (f *fn) typedTableEntryAddr(dst, tbl Reg, tableIdx uint32) {
 	shift := byte(5)
 	if f.tableIsExternref(tableIdx) {
@@ -100,7 +114,11 @@ func (f *fn) tableSize(r *wasm.Reader) error {
 	tbl := f.allocReg(0)
 	f.loadTableDescriptor(tbl, tableIdx)
 	f.ld32(tbl, tbl, 0)
-	f.pushReg(tbl, mtI32)
+	if f.tableAddr64(tableIdx) {
+		f.pushReg(tbl, mtI64)
+	} else {
+		f.pushReg(tbl, mtI32)
+	}
 	return nil
 }
 
@@ -119,6 +137,10 @@ func (f *fn) tableInit(r *wasm.Reader) error {
 	f.ld64(X9, SP, f.spillOff(d-3))  // dst table offset
 	f.ld64(X10, SP, f.spillOff(d-2)) // src element offset
 	f.ld64(X11, SP, f.spillOff(d-1)) // n entries
+	f.canonicalizeTableOperand(X9, tableIdx)
+	// Element segment source indexes and lengths are always i32.
+	f.a.MovReg32(X10, X10)
+	f.a.MovReg32(X11, X11)
 
 	f.loadTableDescriptor(X14, tableIdx)
 	f.ld32(X12, X14, 0)
@@ -164,6 +186,11 @@ func (f *fn) tableCopy(r *wasm.Reader) error {
 	f.ld64(X9, SP, f.spillOff(d-3))
 	f.ld64(X10, SP, f.spillOff(d-2))
 	f.ld64(X11, SP, f.spillOff(d-1))
+	f.canonicalizeTableOperand(X9, dstTableIdx)
+	f.canonicalizeTableOperand(X10, srcTableIdx)
+	if !f.tableAddr64(dstTableIdx) || !f.tableAddr64(srcTableIdx) {
+		f.a.MovReg32(X11, X11)
+	}
 	f.loadTableDescriptor(X14, dstTableIdx)
 	f.ld32(X12, X14, 0)
 	f.leaScaled(X13, X9, X11, 0, 0, true)
@@ -209,11 +236,14 @@ func (f *fn) tableFill(r *wasm.Reader) error {
 	f.ld64(X9, SP, f.spillOff(d-3))
 	f.ld64(X12, SP, f.spillOff(d-2))
 	f.ld64(X11, SP, f.spillOff(d-1))
+	f.canonicalizeTableOperand(X9, tableIdx)
+	f.canonicalizeTableOperand(X11, tableIdx)
 	f.loadTableDescriptor(X14, tableIdx)
 	f.ld32(X13, X14, 0)
 	f.leaScaled(X9, X9, X11, 0, 0, true)
 	f.trapUnlessLE(X9, X13)
 	f.ld64(X9, SP, f.spillOff(d-3))
+	f.canonicalizeTableOperand(X9, tableIdx)
 	f.tableEntryAddr(X9, X14)
 	// snapshotFuncrefDescriptor uses the register allocator internally. Keep the
 	// fixed destination/count registers live across it so descriptor snapshotting
@@ -233,6 +263,8 @@ func (f *fn) externrefTableFill(tableIdx uint32) error {
 	f.ld64(X9, SP, f.spillOff(d-3))
 	f.ld64(X12, SP, f.spillOff(d-2))
 	f.ld64(X11, SP, f.spillOff(d-1))
+	f.canonicalizeTableOperand(X9, tableIdx)
+	f.canonicalizeTableOperand(X11, tableIdx)
 	f.loadTableDescriptor(X14, tableIdx)
 	f.ld32(X13, X14, 0)
 	f.leaScaled(X9, X9, X11, 0, 0, true)
@@ -255,6 +287,7 @@ func (f *fn) tableGrow(r *wasm.Reader) error {
 	f.materializePendingLoads()
 	f.flush()
 	delta := f.materialize(f.popValue())
+	f.canonicalizeTableOperand(delta, tableIdx)
 	f.pinned = f.pinned.add(delta)
 	ref := f.materialize(f.popValue())
 	f.pinned = f.pinned.add(ref)
@@ -309,6 +342,7 @@ func (f *fn) externrefTableGrow(tableIdx uint32) error {
 	f.materializePendingLoads()
 	f.flush()
 	delta := f.materialize(f.popValue())
+	f.canonicalizeTableOperand(delta, tableIdx)
 	f.pinned = f.pinned.add(delta)
 	ref := f.materialize(f.popValue())
 	f.pinned = f.pinned.add(ref)
@@ -495,13 +529,14 @@ func (f *fn) copyFuncrefToEntry(ref, entry Reg) {
 }
 
 func (f *fn) checkedTableEntryAddr(idxReg Reg, tableIdx uint32) (entry Reg, table Reg) {
+	f.canonicalizeTableOperand(idxReg, tableIdx)
 	f.pinned = f.pinned.add(idxReg)
 	tbl := f.allocReg(0)
 	f.loadTableDescriptor(tbl, tableIdx)
 	f.pinned = f.pinned.add(tbl)
 	ln := f.allocReg(0)
 	f.ld32(ln, tbl, 0)
-	f.cmpRR(idxReg, ln, false) // was AluRR(0x39,…) — CMP idx,len (32-bit)
+	f.cmpRR(idxReg, ln, f.tableAddr64(tableIdx))
 	f.release(ln)
 	f.trapIf(condAE, trapIndirectOOB)
 	f.typedTableEntryAddr(idxReg, tbl, tableIdx)
