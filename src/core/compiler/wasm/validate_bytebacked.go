@@ -825,6 +825,21 @@ func (v *moduleValidator) validateDirectElemPayload(e directElem) (RefType, erro
 	}
 }
 
+func (v *funcValidator) directElemRefType(index uint32) (RefType, error) {
+	if uint64(index) >= uint64(len(v.direct.elements)) {
+		return RefType{}, v.verr(ErrUnknownTable, "table.init elem")
+	}
+	e := &v.direct.elements[index]
+	switch e.kind {
+	case ElemFuncs, ElemFuncExprs:
+		return FuncRef.Ref, nil
+	case ElemTypedExprs:
+		return e.ref, nil
+	default:
+		return RefType{}, v.verr(ErrTypeMismatch, "unknown element kind")
+	}
+}
+
 func (v *funcValidator) validateFuncDirect(body directCodeBody, ft *CompType, memarg64 bool) error {
 	v.localParams = ft.Params
 	v.localRuns = body.locals.Runs

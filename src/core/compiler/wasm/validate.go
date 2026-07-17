@@ -680,6 +680,24 @@ func (v *moduleValidator) validateElemPayload(e Elem) (RefType, error) {
 	}
 }
 
+func (v *funcValidator) elemRefType(index uint32) (RefType, error) {
+	if v.direct != nil {
+		return v.directElemRefType(index)
+	}
+	if uint64(index) >= uint64(len(v.m.Elements)) {
+		return RefType{}, v.verr(ErrUnknownTable, "table.init elem")
+	}
+	e := &v.m.Elements[index]
+	switch e.Kind.Kind {
+	case ElemFuncs, ElemFuncExprs:
+		return FuncRef.Ref, nil
+	case ElemTypedExprs:
+		return e.Kind.Ref, nil
+	default:
+		return RefType{}, v.verr(ErrTypeMismatch, "unknown element kind")
+	}
+}
+
 type val struct {
 	t       ValType
 	unknown bool
