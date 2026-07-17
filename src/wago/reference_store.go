@@ -26,12 +26,20 @@ type referenceStore struct {
 	liveInstances uint32
 	liveObjects   uint32
 	instances     map[*Instance]struct{}
+	typeKeys      map[uint64]structuralTypeRegistration
+	instanceTypes map[*Instance][]uint64
 	byIdentity    map[funcrefIdentity]*funcrefTokenEntry
 	byToken       map[uint64]*funcrefTokenEntry
 	gcByToken     map[uint64]gcRefTokenEntry
 	externKey     uint64
 	externSeed    uint32
 	externrefs    []externrefSlot
+}
+
+type structuralTypeRegistration struct {
+	exact ValueTypeDescriptor
+	types []DefinedTypeDescriptor
+	refs  uint32
 }
 
 type funcrefIdentity struct {
@@ -83,16 +91,62 @@ func (s *referenceStore) registerInstance(in *Instance) error {
 	if s.runtimeClosed && !s.private {
 		return fmt.Errorf("wago: reference store is closed")
 	}
+	if in == nil || in.c == nil {
+		return fmt.Errorf("wago: reference store instance has no compiled metadata")
+	}
 	if s.instances == nil {
 		s.instances = make(map[*Instance]struct{})
 	}
-	if _, exists := s.instances[in]; !exists {
-		if s.liveInstances == ^uint32(0) {
-			return fmt.Errorf("wago: reference store has too many live instances")
-		}
-		s.instances[in] = struct{}{}
-		s.liveInstances++
+	if _, exists := s.instances[in]; exists {
+		return nil
 	}
+	if s.liveInstances == ^uint32(0) {
+		return fmt.Errorf("wago: reference store has too many live instances")
+	}
+
+	// Resolve every fast-key equality against exact structural descriptors before
+	// publishing any descriptor from this instance. Native calls may then compare
+	// the compact key authoritatively: the store invariant guarantees that one key
+	// never denotes two distinct live structural types.
+	candidate := make(map[uint64]ValueTypeDescriptor)
+	keys := make([]uint64, 0, len(in.c.FuncTypeID))
+	for i, key := range in.c.FuncTypeID {
+		exact, err := in.c.functionRefExactType(uint32(i))
+		if err != nil {
+			return fmt.Errorf("wago: function %d exact type: %w", i, err)
+		}
+		if prior, ok := candidate[key]; ok {
+			if !valueTypeEquivalent(prior, in.c.Types, exact, in.c.Types) {
+				return fmt.Errorf("wago: native structural type key %#x collides within module", key)
+			}
+			continue
+		}
+		candidate[key] = exact
+		keys = append(keys, key)
+		if registered, ok := s.typeKeys[key]; ok && !valueTypeEquivalent(registered.exact, registered.types, exact, in.c.Types) {
+			return fmt.Errorf("wago: native structural type key %#x collides with a distinct store type", key)
+		}
+	}
+	for _, key := range keys {
+		if registered, ok := s.typeKeys[key]; ok && registered.refs == ^uint32(0) {
+			return fmt.Errorf("wago: native structural type key %#x has too many owners", key)
+		}
+	}
+	if s.typeKeys == nil {
+		s.typeKeys = make(map[uint64]structuralTypeRegistration)
+		s.instanceTypes = make(map[*Instance][]uint64)
+	}
+	for _, key := range keys {
+		registered, ok := s.typeKeys[key]
+		if !ok {
+			registered = structuralTypeRegistration{exact: candidate[key], types: in.c.Types}
+		}
+		registered.refs++
+		s.typeKeys[key] = registered
+	}
+	s.instanceTypes[in] = keys
+	s.instances[in] = struct{}{}
+	s.liveInstances++
 	return nil
 }
 
@@ -102,6 +156,7 @@ func (s *referenceStore) instanceClosed(in *Instance) {
 	s.mu.Lock()
 	if _, exists := s.instances[in]; exists {
 		if !hasRoots {
+			s.unregisterInstanceTypesLocked(in)
 			delete(s.instances, in)
 		}
 		s.liveInstances--
@@ -115,8 +170,25 @@ func (s *referenceStore) instanceClosed(in *Instance) {
 
 func (s *referenceStore) resourceOwnerReleased(in *Instance) {
 	s.mu.Lock()
+	s.unregisterInstanceTypesLocked(in)
 	delete(s.instances, in)
 	s.mu.Unlock()
+}
+
+func (s *referenceStore) unregisterInstanceTypesLocked(in *Instance) {
+	for _, key := range s.instanceTypes[in] {
+		registered, ok := s.typeKeys[key]
+		if !ok {
+			continue
+		}
+		if registered.refs <= 1 {
+			delete(s.typeKeys, key)
+		} else {
+			registered.refs--
+			s.typeKeys[key] = registered
+		}
+	}
+	delete(s.instanceTypes, in)
 }
 
 func (s *referenceStore) registerStoreObject() error {

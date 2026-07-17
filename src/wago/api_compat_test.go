@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/wago-org/wago/src/core/compiler/frontend"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/testutil/wasmtest"
 )
@@ -141,15 +142,13 @@ func TestCompiledAPIHelpers(t *testing.T) {
 			t.Errorf("asyncReplayable(%+v) = %v, want %v", tc.sig, got, tc.want)
 		}
 	}
-	if bodyBytesUseMemoryGrow([]byte{0x0b}) || !bodyBytesUseMemoryGrow([]byte{0x40, 0x00, 0x0b}) || !bodyBytesUseMemoryGrow([]byte{0xff}) {
-		t.Fatal("memory.grow byte scanner changed")
+	growFacts, err := frontend.AnalyzeModuleFacts(&wasm.Module{Memories: []wasm.MemType{{}}, Code: []wasm.Func{{BodyBytes: []byte{0x40, 0x00, 0x0b}}}})
+	if err != nil || len(growFacts.MemoryGrowUsed) != 1 || !growFacts.MemoryGrowUsed[0] {
+		t.Fatalf("module memory.grow facts = %#v, %v", growFacts, err)
 	}
-	if instrsUseMemoryGrow([]wasm.Instruction{{Kind: wasm.InstrI32Add}}) || !instrsUseMemoryGrow([]wasm.Instruction{{Kind: wasm.InstrMemoryGrow}}) {
-		t.Fatal("programmatic memory.grow scanner changed")
-	}
-	if !moduleUsesMemoryGrow(&wasm.Module{Code: []wasm.Func{{BodyBytes: []byte{0x40, 0x00, 0x0b}}}}) ||
-		moduleUsesMemoryGrow(&wasm.Module{Code: []wasm.Func{{Body: wasm.Expr{Instrs: []wasm.Instruction{{Kind: wasm.InstrI32Add}}}}}}) {
-		t.Fatal("module memory.grow detection changed")
+	plainFacts, err := frontend.AnalyzeModuleFacts(&wasm.Module{Memories: []wasm.MemType{{}}, Code: []wasm.Func{{Body: wasm.Expr{Instrs: []wasm.Instruction{{Kind: wasm.InstrI32Add}}}}}})
+	if err != nil || len(plainFacts.MemoryGrowUsed) != 1 || plainFacts.MemoryGrowUsed[0] {
+		t.Fatalf("plain module memory.grow facts = %#v, %v", plainFacts, err)
 	}
 
 	elem, data := 0, 0
