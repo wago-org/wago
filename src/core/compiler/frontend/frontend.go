@@ -88,8 +88,19 @@ func RejectUnsupportedWithFeatures(m *wasm.Module, f Features) error {
 }
 
 type supportPass struct {
-	m    *wasm.Module
-	feat Features
+	m     *wasm.Module
+	feat  Features
+	facts *ModuleFacts
+}
+
+// ModuleFacts is the allocation-bounded declaration/body prepass shared by
+// frontend admission and compile-time footprint decisions.
+type ModuleFacts struct {
+	TableGrowUsed  []bool
+	TableExported  []bool
+	MemoryGrowUsed []bool
+	MemoryExported []bool
+	UsesRefFunc    bool
 }
 
 const (
@@ -122,7 +133,15 @@ func StagedTable64Max() uint64 { return stagedTable64Max }
 // not. Table-free modules pay for it only when a global initializer or executable
 // body contains ref.func.
 func RequiresFuncRefDescriptors(m *wasm.Module) bool {
-	if m == nil {
+	facts, err := AnalyzeModuleFacts(m)
+	if err != nil {
+		return true
+	}
+	return RequiresFuncRefDescriptorsFromFacts(m, facts)
+}
+
+func RequiresFuncRefDescriptorsFromFacts(m *wasm.Module, facts *ModuleFacts) bool {
+	if m == nil || facts == nil {
 		return false
 	}
 	for tableIndex := 0; tableIndex < m.TableCount(); tableIndex++ {
@@ -131,29 +150,7 @@ func RequiresFuncRefDescriptors(m *wasm.Module) bool {
 			return true
 		}
 	}
-	for i := range m.Globals {
-		if exprUsesRefFunc(m.Globals[i].Init) {
-			return true
-		}
-	}
-	for i := range m.Elements {
-		e := &m.Elements[i]
-		if e.Kind.Kind == wasm.ElemFuncs && len(e.Kind.Funcs) != 0 {
-			return true
-		}
-		for j := range e.Kind.Exprs {
-			if exprUsesRefFunc(e.Kind.Exprs[j]) {
-				return true
-			}
-		}
-	}
-	for i := range m.Code {
-		body := wasm.Expr{Instrs: m.Code[i].Body.Instrs, BodyBytes: m.Code[i].BodyBytes}
-		if exprUsesRefFunc(body) {
-			return true
-		}
-	}
-	return false
+	return facts.UsesRefFunc
 }
 
 func exprUsesRefFunc(e wasm.Expr) bool {
@@ -190,8 +187,16 @@ func instrsUseRefFunc(instrs []wasm.Instruction) bool {
 }
 
 func SupportedTableRuntimeShapes(m *wasm.Module) ([]TableRuntimeShape, error) {
-	if m == nil {
-		return nil, fmt.Errorf("nil module")
+	facts, err := AnalyzeModuleFacts(m)
+	if err != nil {
+		return nil, err
+	}
+	return SupportedTableRuntimeShapesFromFacts(m, facts)
+}
+
+func SupportedTableRuntimeShapesFromFacts(m *wasm.Module, facts *ModuleFacts) ([]TableRuntimeShape, error) {
+	if m == nil || facts == nil {
+		return nil, fmt.Errorf("nil module or module facts")
 	}
 	imported := m.ImportedTableCount()
 	// Imports precede definitions in the Wasm table index space. Imported
@@ -209,9 +214,8 @@ func SupportedTableRuntimeShapes(m *wasm.Module) ([]TableRuntimeShape, error) {
 		}
 		shapes[tableIndex].EntryBytes = entryBytes
 	}
-	tableGrowUsed, err := tableGrowUsage(m)
-	if err != nil {
-		return nil, err
+	if len(facts.TableGrowUsed) != m.TableCount() || len(facts.TableExported) != m.TableCount() {
+		return nil, fmt.Errorf("module table facts length mismatch")
 	}
 	for i := range m.Tables {
 		tableIndex := imported + i
@@ -224,7 +228,7 @@ func SupportedTableRuntimeShapes(m *wasm.Module) ([]TableRuntimeShape, error) {
 			entryBytes = 8
 		}
 		max := min
-		observableCapacity := tableGrowUsed[tableIndex] || moduleExportsTable(m, uint32(tableIndex))
+		observableCapacity := facts.TableGrowUsed[tableIndex] || facts.TableExported[tableIndex]
 		if m.Tables[i].Type.Limits.Max != nil {
 			max = *m.Tables[i].Type.Limits.Max
 			// Preserve ordinary declared-capacity allocation. Only inert tables whose
@@ -276,72 +280,123 @@ func SupportedTableRuntimeShape(m *wasm.Module) (hasTable bool, tableSize int, t
 	return true, shapes[0].Size, shapes[0].Capacity, nil
 }
 
-// tableGrowUsage records observability by exact table index in one body scan.
-// Malformed or out-of-range immediates fail closed instead of conservatively
-// inflating every local table's executable capacity.
-func tableGrowUsage(m *wasm.Module) ([]bool, error) {
-	used := make([]bool, m.TableCount())
-	if len(used) == 0 {
-		return used, nil
+// AnalyzeModuleFacts scans declarations and each function body once. Validated
+// bytecode supplies exact immediates; an unavailable staged decoder falls back
+// conservatively so footprint decisions never under-reserve executable state.
+func AnalyzeModuleFacts(m *wasm.Module) (*ModuleFacts, error) {
+	if m == nil {
+		return nil, fmt.Errorf("nil module")
 	}
-	for i := range m.Code {
-		fn := &m.Code[i]
-		if len(fn.BodyBytes) != 0 {
-			r := wasm.NewReader(fn.BodyBytes)
-			for r.HasNext() {
-				op, err := r.Byte()
-				if err != nil {
-					for j := range used {
-						used[j] = true
-					}
-					break
-				}
-				in, err := wasm.ClassifyInstructionImmediate(r, op)
-				if err != nil {
-					// Some staged bytecode forms require the feature-aware frontend
-					// decoder. Validation will reject malformed code; until the shared
-					// decoder prepass supplies facts, conservatively preserve capacity.
-					for j := range used {
-						used[j] = true
-					}
-					break
-				}
-				if in.Kind == wasm.InstrTableGrow {
-					if int(in.Index) >= len(used) {
-						return nil, fmt.Errorf("function %d table.grow index %d out of range", i, in.Index)
-					}
-					used[in.Index] = true
-				}
+	facts := &ModuleFacts{
+		TableGrowUsed:  make([]bool, m.TableCount()),
+		TableExported:  make([]bool, m.TableCount()),
+		MemoryGrowUsed: make([]bool, m.MemCount()),
+		MemoryExported: make([]bool, m.MemCount()),
+	}
+	for i := range m.Exports {
+		ex := m.Exports[i].Index
+		switch ex.Kind {
+		case wasm.ExternTable:
+			if int(ex.Index) >= len(facts.TableExported) {
+				return nil, fmt.Errorf("table export index %d out of range", ex.Index)
+			}
+			facts.TableExported[ex.Index] = true
+		case wasm.ExternMem:
+			if int(ex.Index) >= len(facts.MemoryExported) {
+				return nil, fmt.Errorf("memory export index %d out of range", ex.Index)
+			}
+			facts.MemoryExported[ex.Index] = true
+		}
+	}
+	for i := range m.Globals {
+		facts.UsesRefFunc = facts.UsesRefFunc || exprUsesRefFunc(m.Globals[i].Init)
+	}
+	for i := range m.Elements {
+		e := &m.Elements[i]
+		facts.UsesRefFunc = facts.UsesRefFunc || (e.Kind.Kind == wasm.ElemFuncs && len(e.Kind.Funcs) != 0)
+		for j := range e.Kind.Exprs {
+			facts.UsesRefFunc = facts.UsesRefFunc || exprUsesRefFunc(e.Kind.Exprs[j])
+		}
+	}
+	for functionIndex := range m.Code {
+		fn := &m.Code[functionIndex]
+		if len(fn.BodyBytes) == 0 {
+			if err := recordModuleFactsInstrs(fn.Body.Instrs, facts); err != nil {
+				return nil, fmt.Errorf("function %d facts: %w", functionIndex, err)
 			}
 			continue
 		}
-		if err := recordTableGrowInstrs(fn.Body.Instrs, used); err != nil {
-			return nil, fmt.Errorf("function %d table facts: %w", i, err)
+		r := wasm.NewReader(fn.BodyBytes)
+		for r.HasNext() {
+			op, err := r.Byte()
+			if err != nil {
+				return nil, fmt.Errorf("function %d facts: %w", functionIndex, err)
+			}
+			in, err := wasm.ClassifyInstructionImmediate(r, op)
+			if err != nil {
+				// The feature-aware support pass will validate/reject this body. Facts
+				// conservatively preserve every indexed growth capacity meanwhile.
+				for i := range facts.TableGrowUsed {
+					facts.TableGrowUsed[i] = true
+				}
+				for i := range facts.MemoryGrowUsed {
+					facts.MemoryGrowUsed[i] = true
+				}
+				facts.UsesRefFunc = true
+				break
+			}
+			if err := recordModuleFact(in.Kind, in.Index, facts); err != nil {
+				return nil, fmt.Errorf("function %d facts: %w", functionIndex, err)
+			}
 		}
 	}
-	return used, nil
+	return facts, nil
 }
 
-func recordTableGrowInstrs(instrs []wasm.Instruction, used []bool) error {
+func recordModuleFact(kind wasm.InstrKind, index uint32, facts *ModuleFacts) error {
+	switch kind {
+	case wasm.InstrTableGrow:
+		if int(index) >= len(facts.TableGrowUsed) {
+			return fmt.Errorf("table.grow index %d out of range", index)
+		}
+		facts.TableGrowUsed[index] = true
+	case wasm.InstrMemoryGrow:
+		if int(index) >= len(facts.MemoryGrowUsed) {
+			return fmt.Errorf("memory.grow index %d out of range", index)
+		}
+		facts.MemoryGrowUsed[index] = true
+	case wasm.InstrRefFunc:
+		facts.UsesRefFunc = true
+	}
+	return nil
+}
+
+func recordModuleFactsInstrs(instrs []wasm.Instruction, facts *ModuleFacts) error {
 	for i := range instrs {
 		in := &instrs[i]
-		if in.Kind == wasm.InstrTableGrow {
-			if int(in.Index) >= len(used) {
-				return fmt.Errorf("table.grow index %d out of range", in.Index)
-			}
-			used[in.Index] = true
-		}
-		if err := recordTableGrowInstrs(in.Body().Instrs, used); err != nil {
+		if err := recordModuleFact(in.Kind, in.Index, facts); err != nil {
 			return err
 		}
-		if err := recordTableGrowInstrs(in.Then(), used); err != nil {
+		if err := recordModuleFactsInstrs(in.Body().Instrs, facts); err != nil {
 			return err
 		}
-		if err := recordTableGrowInstrs(in.Else(), used); err != nil {
+		if err := recordModuleFactsInstrs(in.Then(), facts); err != nil {
+			return err
+		}
+		if err := recordModuleFactsInstrs(in.Else(), facts); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// tableGrowUsage preserves the older internal helper for focused tests/callers.
+func tableGrowUsage(m *wasm.Module) ([]bool, error) {
+	facts, err := AnalyzeModuleFacts(m)
+	if err != nil {
+		return nil, err
+	}
+	return facts.TableGrowUsed, nil
 }
 
 func moduleExportsTable(m *wasm.Module, tableIndex uint32) bool {
@@ -368,6 +423,11 @@ func (p supportPass) unsupported(category, feature, context string) error {
 }
 
 func (p supportPass) run() error {
+	facts, err := AnalyzeModuleFacts(p.m)
+	if err != nil {
+		return err
+	}
+	p.facts = facts
 	if err := p.types(); err != nil {
 		return err
 	}
@@ -767,13 +827,13 @@ func (p supportPass) data() error {
 }
 
 func (p supportPass) runtimeFootprint() error {
-	tables, err := SupportedTableRuntimeShapes(p.m)
+	tables, err := SupportedTableRuntimeShapesFromFacts(p.m, p.facts)
 	if err != nil {
 		return p.unsupported("runtime footprint", err.Error(), "instantiate arena")
 	}
 	maxParams, maxResults := p.maxLocalFuncSlots()
 	funcRefCount := 0
-	if RequiresFuncRefDescriptors(p.m) {
+	if RequiresFuncRefDescriptorsFromFacts(p.m, p.facts) {
 		funcRefCount = p.m.FuncCount() + 1
 	}
 	tableCaps := make([]int, len(tables))
