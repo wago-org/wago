@@ -128,9 +128,7 @@ func (m *Module) writeStructuralIndexedFuncTypeLinear(typeIdx uint32, mix func(b
 	var memberDigest func(uint32) ([32]byte, bool)
 	var writeValue func(*[]byte, ValType, int) bool
 	var writeField func(*[]byte, FieldType, int) bool
-	var writeRef func(*[]byte, TypeIdx, int) bool
-
-	writeRef = func(dst *[]byte, idx TypeIdx, currentGroup int) bool {
+	writeRef := func(dst *[]byte, idx TypeIdx, currentGroup int) bool {
 		resolved, ok := m.flatTypeIdxInRecGroup(idx, currentGroup)
 		if !ok || resolved < 0 || resolved >= flatCount {
 			return false

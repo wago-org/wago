@@ -519,8 +519,7 @@ func (v *moduleValidator) typeIdxEquivalent(a, b TypeIdx) bool {
 	state := make(map[pair]uint8)
 	var eqType func(int, int) bool
 	var eqVal func(ValType, ValType, int, int) bool
-	var eqHeap func(HeapType, HeapType, int, int) bool
-	eqHeap = func(x, y HeapType, xGroup, yGroup int) bool {
+	eqHeap := func(x, y HeapType, xGroup, yGroup int) bool {
 		if x.Kind != y.Kind {
 			return false
 		}

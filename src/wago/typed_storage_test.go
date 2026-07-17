@@ -8,10 +8,6 @@ import (
 	"github.com/wago-org/wago/testutil/wasmtest"
 )
 
-func indexedFuncRef(typeIndex uint32, nullable bool) wasm.ValType {
-	return wasm.RefVal(wasm.Ref(nullable, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
-}
-
 func stagedTypedStorageCompile(t testing.TB, module []byte) *Compiled {
 	t.Helper()
 	cfg := NewRuntimeConfig()

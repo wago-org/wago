@@ -1,3 +1,5 @@
+//go:build amd64
+
 package amd64
 
 import (

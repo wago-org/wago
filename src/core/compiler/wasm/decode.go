@@ -574,18 +574,6 @@ func decodeImports(r *reader) ([]Import, bool, error) {
 	return imports, compact, nil
 }
 
-func decodeImport(r *reader) (Import, error) {
-	mod, err := r.name()
-	if err != nil {
-		return Import{}, err
-	}
-	nm, err := r.name()
-	if err != nil {
-		return Import{}, err
-	}
-	et, err := decodeExternType(r)
-	return Import{Module: mod, Name: nm, Type: et}, err
-}
 func decodeExternIdx(r *reader) (ExternIdx, error) {
 	k, err := r.byte()
 	if err != nil {

@@ -404,15 +404,6 @@ func recordModuleFactsInstrs(instrs []wasm.Instruction, facts *ModuleFacts) erro
 	return nil
 }
 
-// tableGrowUsage preserves the older internal helper for focused tests/callers.
-func tableGrowUsage(m *wasm.Module) ([]bool, error) {
-	facts, err := AnalyzeModuleFacts(m)
-	if err != nil {
-		return nil, err
-	}
-	return facts.TableGrowUsed, nil
-}
-
 func moduleExportsTable(m *wasm.Module, tableIndex uint32) bool {
 	for i := range m.Exports {
 		if m.Exports[i].Index.Kind == wasm.ExternTable && uint32(m.Exports[i].Index.Index) == tableIndex {

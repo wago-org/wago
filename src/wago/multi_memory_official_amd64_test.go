@@ -55,13 +55,6 @@ func stagedOfficialCoreJSON(t *testing.T, family, base string, dst any) string {
 	return tmp
 }
 
-func stagedOfficialMultiMemoryScript(t *testing.T, base string) (string, stagedSpecScript) {
-	t.Helper()
-	var script stagedSpecScript
-	tmp := stagedOfficialMultiMemoryJSON(t, base, &script)
-	return tmp, script
-}
-
 func stagedOfficialMultiMemoryModules(t *testing.T, base string) [][]byte {
 	t.Helper()
 	var sf stagedOfficialSpecFile

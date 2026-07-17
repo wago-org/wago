@@ -234,14 +234,6 @@ func typeDescriptorsFromWasm(m *wasm.Module) ([]DefinedTypeDescriptor, error) {
 	return out, nil
 }
 
-func valueTypeDescriptorFromWasm(t wasm.ValType) (ValueTypeDescriptor, error) {
-	return (wasmTypeDescriptorConverter{}).valueType(t, -1)
-}
-
-func valueTypeDescriptorsFromWasm(ts []wasm.ValType) ([]ValueTypeDescriptor, error) {
-	return valueTypeDescriptorsInModule(nil, ts)
-}
-
 func valueTypeDescriptorInModule(m *wasm.Module, t wasm.ValType) (ValueTypeDescriptor, error) {
 	v, err := valueTypeDescriptorsInModule(m, []wasm.ValType{t})
 	if err != nil {
@@ -256,10 +248,6 @@ func valueTypeDescriptorsInModule(m *wasm.Module, ts []wasm.ValType) ([]ValueTyp
 
 func valTypeFromWasmInModule(m *wasm.Module, t wasm.ValType, types []DefinedTypeDescriptor) (ValType, error) {
 	return newWasmTypeDescriptorConverter(m).abiType(t, types)
-}
-
-func valTypesFromWasmInModule(m *wasm.Module, ts []wasm.ValType, types []DefinedTypeDescriptor) ([]ValType, error) {
-	return newWasmTypeDescriptorConverter(m).abiTypes(ts, types)
 }
 
 func valueTypeDescriptorFromValType(t ValType) (ValueTypeDescriptor, bool) {
