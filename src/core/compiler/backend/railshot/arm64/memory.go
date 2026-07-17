@@ -991,24 +991,24 @@ func (f *fn) memoryGrow(r *wasm.Reader) error {
 // bulkChunks returns the (offset, size) store/load plan for a small constant
 // bulk-memory op: 8-byte blocks with an overlapping tail (memmove's small-size
 // technique), so n bytes are covered by at most 8 chunks for n <= 64.
-func bulkChunks(n int) [][2]int {
+func bulkChunks(n int, buf *[8][2]int) [][2]int {
+	chunks := buf[:0]
 	switch {
 	case n == 0:
-		return nil
+		return chunks
 	case n == 1 || n == 2 || n == 4 || n == 8:
-		return [][2]int{{0, n}}
+		return append(chunks, [2]int{0, n})
 	case n < 4:
-		return [][2]int{{0, 2}, {n - 2, 2}} // n == 3
+		return append(chunks, [2]int{0, 2}, [2]int{n - 2, 2}) // n == 3
 	case n < 8:
-		return [][2]int{{0, 4}, {n - 4, 4}}
+		return append(chunks, [2]int{0, 4}, [2]int{n - 4, 4})
 	case n <= 16:
-		return [][2]int{{0, 8}, {n - 8, 8}}
+		return append(chunks, [2]int{0, 8}, [2]int{n - 8, 8})
 	case n <= 24:
-		return [][2]int{{0, 8}, {8, 8}, {n - 8, 8}}
+		return append(chunks, [2]int{0, 8}, [2]int{8, 8}, [2]int{n - 8, 8})
 	case n <= 32:
-		return [][2]int{{0, 8}, {8, 8}, {16, 8}, {n - 8, 8}}
+		return append(chunks, [2]int{0, 8}, [2]int{8, 8}, [2]int{16, 8}, [2]int{n - 8, 8})
 	default:
-		chunks := make([][2]int, 0, (n+7)/8)
 		for off := 0; off+8 < n; off += 8 {
 			chunks = append(chunks, [2]int{off, 8})
 		}
@@ -1076,7 +1076,8 @@ func (f *fn) memoryFillConst(n int, memoryIndex uint32) {
 		f.a.MovReg32(dst, dst)
 	}
 	f.bulkBoundsCheck(dst, n, memoryIndex)
-	for _, c := range bulkChunks(n) {
+	var chunkBuf [8][2]int
+	for _, c := range bulkChunks(n, &chunkBuf) {
 		f.a.StoreIdx(linMemReg, dst, pat, int32(c[0]), c[1])
 	}
 	if pat != regNone {
@@ -1105,8 +1106,10 @@ func (f *fn) memoryCopyConst(n int, dstMemory, srcMemory uint32) {
 	}
 	f.bulkBoundsCheck(dst, n, dstMemory)
 	f.bulkBoundsCheck(src, n, srcMemory)
-	chunks := bulkChunks(n)
-	regs := make([]Reg, len(chunks))
+	var chunkBuf [8][2]int
+	chunks := bulkChunks(n, &chunkBuf)
+	var regBuf [8]Reg
+	regs := regBuf[:len(chunks)]
 	avoid := maskOf(src, dst)
 	for i, c := range chunks {
 		r := f.allocReg(avoid)

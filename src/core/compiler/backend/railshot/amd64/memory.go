@@ -1008,18 +1008,18 @@ func (f *fn) memoryGrow(r *wasm.Reader) error {
 // overlapping {n-8,8} tail, which reproduces the earlier fixed cases for n <= 32
 // and extends cleanly to 64 (used by fill, whose single pattern register makes
 // the chunk count irrelevant to register pressure; copy uses bulkChunks16 past 32).
-func bulkChunks(n int) [][2]int {
+func bulkChunks(n int, buf *[8][2]int) [][2]int {
+	chunks := buf[:0]
 	switch {
 	case n == 0:
-		return nil
+		return chunks
 	case n == 1 || n == 2 || n == 4 || n == 8:
-		return [][2]int{{0, n}}
+		return append(chunks, [2]int{0, n})
 	case n < 4:
-		return [][2]int{{0, 2}, {n - 2, 2}} // n == 3
+		return append(chunks, [2]int{0, 2}, [2]int{n - 2, 2}) // n == 3
 	case n < 8:
-		return [][2]int{{0, 4}, {n - 4, 4}}
+		return append(chunks, [2]int{0, 4}, [2]int{n - 4, 4})
 	}
-	var chunks [][2]int
 	for off := 0; off+8 < n; off += 8 {
 		chunks = append(chunks, [2]int{off, 8})
 	}
@@ -1030,8 +1030,8 @@ func bulkChunks(n int) [][2]int {
 // copies: at most four SSE loads/stores instead of five-to-eight GP ones, which
 // keeps the load-all-then-store-all register footprint within the XMM pool. The
 // final {n-16,16} tail overlaps the previous block, so no access exceeds n bytes.
-func bulkChunks16(n int) [][2]int {
-	var chunks [][2]int
+func bulkChunks16(n int, buf *[4][2]int) [][2]int {
+	chunks := buf[:0]
 	for off := 0; off+16 < n; off += 16 {
 		chunks = append(chunks, [2]int{off, 16})
 	}
@@ -1100,7 +1100,8 @@ func (f *fn) memoryFillConst(n int, memoryIndex uint32) {
 		f.a.MovRegReg32(dst, dst)
 	}
 	f.bulkBoundsCheck(dst, n, memoryIndex)
-	for _, c := range bulkChunks(n) {
+	var chunkBuf [8][2]int
+	for _, c := range bulkChunks(n, &chunkBuf) {
 		f.a.StoreIdx(RBX, dst, pat, int32(c[0]), c[1])
 	}
 	if pat != regNone {
@@ -1134,8 +1135,10 @@ func (f *fn) memoryCopyConst(n int, dstMemory, srcMemory uint32) {
 		// registers, so the load-all footprint stays in the float pool (the GP
 		// 8-byte form would need five-to-eight registers). Overlap-safe (memmove
 		// semantics) because every load precedes every store.
-		chunks := bulkChunks16(n)
-		xregs := make([]Reg, len(chunks))
+		var chunkBuf [4][2]int
+		chunks := bulkChunks16(n, &chunkBuf)
+		var xregBuf [4]Reg
+		xregs := xregBuf[:len(chunks)]
 		var favoid regMask
 		for i, c := range chunks {
 			x := f.allocFReg(favoid)
@@ -1157,8 +1160,10 @@ func (f *fn) memoryCopyConst(n int, dstMemory, srcMemory uint32) {
 		}
 		return
 	}
-	chunks := bulkChunks(n)
-	regs := make([]Reg, len(chunks))
+	var chunkBuf [8][2]int
+	chunks := bulkChunks(n, &chunkBuf)
+	var regBuf [8]Reg
+	regs := regBuf[:len(chunks)]
 	avoid := maskOf(src, dst)
 	for i, c := range chunks {
 		r := f.allocReg(avoid)
