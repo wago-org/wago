@@ -13,15 +13,16 @@ the complete native platform matrix:
 | `windows-2025` | Windows | amd64 | yes | yes | yes | yes |
 | `windows-11-arm` | Windows | arm64 | yes | yes | yes | yes |
 
-Each matrix cell asserts `go env GOOS` and `GOARCH` before testing. Runtime and
-coverage jobs initialize the pinned `tests/spec-v3` submodule before ordinary Go
-tests because Core 3 accounting verifies its exact revision. Linux and Darwin
-runtime hosts bootstrap the checksum-pinned WABT release, add its complete `bin`
-directory to `PATH`, and build the official interpreter from that Release 3
-checkout. The interpreter is the authoritative fallback for exception-handling
-source forms that WABT 1.0.41 cannot parse. Windows downloads the checksum-pinned
-official WABT archive because the project does not publish a Chocolatey package;
-Windows 11 ARM runs that x64 tool through its application emulation layer.
+Each matrix cell asserts `go env GOOS` and `GOARCH` before testing. Unix runtime
+jobs bootstrap the checksum-pinned WABT release and add its complete `bin`
+directory to `PATH`, so `wast2json` and `wat2wasm` do not depend on older runner
+packages. Windows downloads the checksum-pinned official WABT archive because
+the project does not publish a Chocolatey package; Windows 11 ARM runs that x64
+tool through its application emulation layer. Linux/amd64 and coverage
+additionally initialize the pinned `tests/spec-v3` submodule, build the
+interpreter from that exact checkout, and export its path and revision. This is
+the authoritative fallback for exception-handling source forms that WABT 1.0.41
+cannot parse; other matrix cells avoid the large OCaml setup.
 
 The six supported runtime targets build and test every Go package, including the
 integrated regression corpus, followed by the corpus matrix with a bounded

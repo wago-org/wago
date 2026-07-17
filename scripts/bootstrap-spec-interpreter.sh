@@ -43,7 +43,9 @@ build() {
 		echo "bootstrap-spec-interpreter: menhir is required to build the official Release 3 interpreter" >&2
 		exit 1
 	}
-	make -C "$source_dir" wasm
+	# --print-path is consumed by command substitution in CI; keep build chatter
+	# on stderr so stdout remains the single machine-readable path.
+	make -C "$source_dir" wasm >&2
 	[ -x "$source_dir/wasm" ] || {
 		echo "bootstrap-spec-interpreter: build did not produce $source_dir/wasm" >&2
 		exit 1
