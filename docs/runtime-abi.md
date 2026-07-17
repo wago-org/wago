@@ -369,6 +369,13 @@ No fixed ABI layout grows: `Compiled=712`, `Instance=792`, `compiledCodeCache=64
 exact branch-product enums nor helper admission, roots, canonical maps, conversions, or live identities.
 Snapshots, signal bounds, public admission, and arm64 execution remain closed.
 
+Native table lowering has a consuming-side width invariant: every table32 index, start, delta, and length is
+zero-extended before native-width comparison, scaling, pointer arithmetic, byte-count construction, or loop
+use. This applies even when validation or a producer normally yields clean i32 bits; synchronous host result
+slots explicitly permit arbitrary upper bits. Table64 operands retain all 64 bits. Exact memory/table declared
+limits remain separate from bounded executable capacities; memory64 lifecycle metadata stores declared maxima
+as uint64 and never substitutes the finite reservation.
+
 Iteration 52 adds two non-collecting bulk-array helper calls. `array.fill` copies five scalar words into the
 parked frame: destination compact ref, destination index, value bits, length, and exact type index.
 `array.copy` copies seven: destination ref/index, source ref/index, length, destination type, and source type.
@@ -377,11 +384,13 @@ collect, retain operands, or expose payload pointers. The original object refs m
 canonical native operands across parked Go without publishing a collector frame. This rule is specific to
 these helpers and does not authorize `array.init_*` or any bulk helper that may allocate or collect.
 
-Reference fill/copy stores execute object and element-card barriers per destination element and invoke the
-post-write bulk barrier after the complete range is visible. Same-array copy selects forward/backward
-iteration for memmove semantics and allocates no temporary buffer. The official hash-pinned products use
-packed i8 arrays, but collector tests separately prove nullable/non-null storage compatibility, rejected-copy
-atomicity, Throughput remembered/card publication, and Tiny remark preservation.
+Reference fill/copy preflight every payload, then Throughput collectors mutate the compact reference range
+with a direct fill or memmove-equivalent copy and invoke one post-write bulk barrier after the complete range
+is visible. Tiny deliberately retains scalar edge barriers while marking or sweeping to preserve tri-color
+correctness. Numeric fill/copy/init operations mutate the already-validated little-endian payload directly.
+Same-array copy preserves memmove semantics and allocates no temporary buffer. Collector tests separately
+prove nullable/non-null storage compatibility, rejected-copy atomicity, Throughput remembered/card
+publication, and Tiny remark preservation.
 
 The exact copy product also contains a mutable GC array global. Its overlap functions allocate one array,
 run only the non-collecting copy helper while that local is live, and perform `global.set` as the final native
