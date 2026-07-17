@@ -180,10 +180,8 @@ func TestExecBrTableComputedIndexArm64(t *testing.T) {
 }
 
 // TestStackArenaOverflowKeepsExistingPointersStableArm64 checks the operand-stack
-// arena: growing past its fixed capacity must keep already-handed-out element
-// pointers valid and linked (they must not move when the arena "overflows" to
-// heap-allocated elems). Ported from amd64's identically-named test; the stack is
-// architecture-neutral.
+// arena: growing past its first chunk must keep already-handed-out element
+// pointers valid and linked. Ported from amd64's identically-named test.
 func TestStackArenaOverflowKeepsExistingPointersStableArm64(t *testing.T) {
 	s := newStack()
 	first := s.pushValue(storage{kind: stConst, typ: mtI32, cval: 1})
@@ -196,7 +194,7 @@ func TestStackArenaOverflowKeepsExistingPointersStableArm64(t *testing.T) {
 	if s.head.next != first {
 		t.Fatal("first elem is no longer linked after arena overflow")
 	}
-	if cap(s.arena) != defaultStackArenaCap {
-		t.Fatalf("arena cap = %d, want fixed cap %d", cap(s.arena), defaultStackArenaCap)
+	if len(s.chunks) < 2 {
+		t.Fatalf("arena did not grow past its first chunk: %d", len(s.chunks))
 	}
 }

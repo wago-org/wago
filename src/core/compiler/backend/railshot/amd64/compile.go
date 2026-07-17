@@ -10,6 +10,7 @@ import (
 	"slices"
 	"sort"
 
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/codegen"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/encoder/amd64"
@@ -122,6 +123,7 @@ type fn struct {
 	s  *stack     // the valent-block operand stack
 	m  *wasm.Module
 	ft *wasm.CompType // this function's signature
+	transient
 
 	nParams     int
 	nLocals     int           // params + declared locals
@@ -247,20 +249,10 @@ type fn struct {
 	ctrl        []ctrlFrame // open block/loop/if frames; ctrl[0] is the function frame
 	unreachable bool        // in dead code after an unconditional branch/trap
 
-	// lsPool recycles []locState merge buffers (length nLocals) whose lifetime is a
-	// control frame's: convergeEdgeTo grabs one, opEnd returns both of a frame's on
-	// pop. Frames are LIFO, so the live-buffer count is bounded by nesting depth
-	// rather than total frame count — collapsing what was one heap slice per frame.
-	lsPool [][]locState
-
 	// sc holds per-function scratch whose backing is reused across the module:
 	// retSites, brFoldSites and trapSites live there so each function rewinds their
 	// lengths (sc.reset) rather than reallocating. See scratch.
 	sc *scratch
-
-	// endsPool recycles frame end-patch []int buffers (frameAddEnd/freeEndsBuf),
-	// bounded by nesting depth like lsPool.
-	endsPool [][]int
 
 	// Loop bounds-check hoisting (WAGO_LOOP_PRECHECK, boundshoist.go). elideBases
 	// holds the loop-invariant address-source locals whose inline bounds check is
@@ -305,9 +297,11 @@ type fn struct {
 	// unless the caller requested collection, in which case every counter method
 	// is a no-op — the hot compile path is unaffected. See stats.go.
 	stats *CodegenStats
+}
 
-	// Reused compile-time scratch for short-lived stack/type/register/label lists.
-	// These slices must not be stored in ctrlFrame or other persistent metadata.
+type transient struct {
+	lsPool      [][]locState
+	endsPool    [][]int
 	tmpRoots    []*elem
 	tmpTypes    []machineType
 	tmpTypes2   []machineType
@@ -316,8 +310,9 @@ type fn struct {
 	tmpMoves    []regMove
 	tmpLabels   []uint32
 	tmpDeferred []deferredArg
-	tmpBelow    []*elem  // flushBelow scratch (distinct from tmpRoots, which is live as call argRoots)
-	tmpGpCand   []gpCand // assignPinnedLocals GP pin-candidate scratch
+	tmpBelow    []*elem
+	tmpGpCand   []gpCand
+	tmpInts     []int
 }
 
 // gpCand is a hot int local or global competing for a GP pin register, ranked by
@@ -325,7 +320,7 @@ type fn struct {
 type gpCand struct {
 	global bool
 	idx    int
-	score  int64
+	score  uint32
 }
 
 // deferredArg is a call argument (const/slot/localRef) staged into its target
@@ -333,6 +328,12 @@ type gpCand struct {
 type deferredArg struct {
 	target Reg
 	root   *elem
+}
+
+type deferredMixedArg struct {
+	target Reg
+	root   *elem
+	float  bool
 }
 
 // alignPad is a shared zero source for inter-function 16-byte alignment padding,
@@ -377,6 +378,7 @@ type scratch struct {
 	trapSites    [trapStackFence + 1][]int
 	ctrl         []ctrlFrame // control-frame stack backing; reused across functions
 	pinnedLocals []int       // pinned-local index backing; reused across functions
+	transient
 }
 
 func newScratch() *scratch {
@@ -460,16 +462,8 @@ func (f *fn) allLocalsRegisterHomed() bool {
 	return true
 }
 
-// ImportBinding tells the compiler how an imported function is bound at link
-// time, so a cross-instance call can be lowered to a native context-swap into
-// the callee instance. The zero value (CrossInstance false) selects the default
-// host-import log-and-replay lowering. When ImportBindings is supplied it is
-// indexed by imported-function index.
-type ImportBinding struct {
-	CrossInstance bool
-	CalleeLinMem  uint64 // callee instance's linear-memory base pointer
-	CalleeEntry   uint64 // callee function's offset-0 (wrapper-ABI) entry pointer
-}
+// ImportBinding is shared by both Railshot architectures.
+type ImportBinding = shared.ImportBinding
 
 // CompileOptions configures direct wasm-to-amd64 compilation.
 type CompileOptions struct {
@@ -500,6 +494,14 @@ type CompileOptions struct {
 	// cell; the poll observes it and takes the cold trap path, unwinding the whole
 	// native call tree so a running wasm loop is cancelled within one iteration.
 	Interruptible bool
+
+	// MemoryPressure is called once after retained native output reaches
+	// MemoryPressureAt bytes. With a zero threshold it runs at seven-eighths of
+	// the reserved output capacity. Public compilation uses that late checkpoint
+	// for large modules to reclaim dead per-function state without changing global
+	// GC configuration. A nil callback disables it.
+	MemoryPressureAt int
+	MemoryPressure   func()
 
 	// Codegen carries injectable runtime/heap dependencies for future WasmGC
 	// lowering. The current direct backend does not lower WasmGC opcodes yet, but
@@ -590,7 +592,12 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	for i := range m.Code {
 		totalBody += len(m.Code[i].BodyBytes)
 	}
-	code := make([]byte, 0, totalBody*5+n*16+64)
+	code := make([]byte, 0, shared.TaperedModuleCodeCapacity(totalBody, n, 40, 37, 1<<20))
+	pressureDone := false
+	pressureAt := opts.MemoryPressureAt
+	if opts.MemoryPressure != nil && pressureAt <= 0 {
+		pressureAt = cap(code) * 7 / 8
+	}
 	for i := range m.Code {
 		hints := allHints[i]
 		var st *CodegenStats
@@ -599,6 +606,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 			ms.Funcs[i] = st
 		}
 		fnCode, rl, internalOff, err := compileFunc(m, i, guardMode, boundsFacts, opts.Interruptible, modGlobals, hints, opts.ImportBindings, opts.SyncHostCalls, st, inlineTargets, sc)
+		allHints[i] = funcHints{}
 		if err != nil {
 			return nil, fmt.Errorf("amd64: function %d: %w", i, err)
 		}
@@ -610,6 +618,10 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		internalEntry[i] = len(code) + internalOff
 		relocs[i] = rl
 		code = append(code, fnCode...)
+		if !pressureDone && opts.MemoryPressure != nil && len(code) >= pressureAt {
+			pressureDone = true
+			opts.MemoryPressure()
+		}
 	}
 	// Patch call sites now that every function's entry offsets are known.
 	for i := 0; i < n; i++ {
@@ -679,19 +691,51 @@ func computeFuncHints(m *wasm.Module, funcIdx int, nGlobals int, importedFuncs i
 // immediate-decoding pass per function (the standalone global-scores scan). The
 // standalone computeModuleGlobalScores is retained as the parity oracle in tests.
 func computeModuleHints(m *wasm.Module, nGlobals, importedFuncs int) ([]funcHints, []int64, error) {
-	allHints := make([]funcHints, len(m.Code))
-	var agg []int64
-	if nGlobals > 0 && len(m.Code) > 0 {
-		agg = make([]int64, nGlobals)
-	}
+	n := len(m.Code)
+	allHints := make([]funcHints, n)
+	localCounts := make([]int, n)
+	totalLocals := 0
 	for i := range m.Code {
-		h, err := computeFuncHints(m, i, nGlobals, importedFuncs)
+		ft, ok := m.LocalFuncType(i)
+		if !ok {
+			return nil, nil, fmt.Errorf("function %d hints: unknown function type", i)
+		}
+		count, err := countLocals(ft.Params, m.Code[i].Locals)
 		if err != nil {
 			return nil, nil, fmt.Errorf("function %d hints: %w", i, err)
 		}
+		if count > int(^uint(0)>>1)-totalLocals {
+			return nil, nil, fmt.Errorf("function hint locals overflow")
+		}
+		localCounts[i] = count
+		totalLocals += count
+	}
+	if nGlobals > 0 && n > int(^uint(0)>>1)/nGlobals {
+		return nil, nil, fmt.Errorf("function hint globals overflow")
+	}
+	localScores := make([]uint32, totalLocals)
+	globalScores := make([]uint32, n*nGlobals)
+	globalEligibility := make([]bool, n*nGlobals)
+	eligibilityTracker := newGlobalEligibilityTracker(nGlobals)
+	var agg []int64
+	if nGlobals > 0 && n > 0 {
+		agg = make([]int64, nGlobals)
+	}
+	localAt := 0
+	for i := range m.Code {
+		nLocals := localCounts[i]
+		globalAt := i * nGlobals
+		h := funcHintsWithStorage(localScores[localAt:localAt+nLocals], globalScores[globalAt:globalAt+nGlobals], globalEligibility[globalAt:globalAt+nGlobals])
+		h.nLocals = nLocals
+		var err error
+		h, err = scanFuncBodyInto(m.Code[i], nLocals, nGlobals, uint32(importedFuncs+i), h, &eligibilityTracker)
+		if err != nil {
+			return nil, nil, fmt.Errorf("function %d hints: %w", i, err)
+		}
+		localAt += nLocals
 		allHints[i] = h
-		for g := 0; g < nGlobals && g < len(h.globalScore); g++ {
-			agg[g] += h.globalScore[g]
+		for g := 0; g < nGlobals; g++ {
+			agg[g] += int64(h.globalScore[g])
 		}
 	}
 	// Immutable local-table specialization for call_indirect (mirrors arm64):
@@ -932,9 +976,12 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, int
 
 	sc.reset()
 	sc.asm.Grow(asmCapForBody(len(c.BodyBytes)))
-	f := &fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, nParams: len(ft.Params), nLocals: nLocals, guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, regMerge: regMergeEnabled, globalCellReg: regNone, memSizeReg: regNone, immutableLocalTable: hints.immutableLocalTable, immutableTableType: hints.immutableTableType, immutableTableTyped: hints.immutableTableTyped, monomorphicTarget: hints.monomorphicTarget, importBindings: importBindings, stats: stats}
+	f := &fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, transient: sc.transient, nParams: len(ft.Params), nLocals: nLocals, guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, regMerge: regMergeEnabled, globalCellReg: regNone, memSizeReg: regNone, immutableLocalTable: hints.immutableLocalTable, immutableTableType: hints.immutableTableType, immutableTableTyped: hints.immutableTableTyped, monomorphicTarget: hints.monomorphicTarget, importBindings: importBindings, stats: stats}
 	// Retain the (possibly grown) control-frame backing for the next function.
-	defer func() { sc.ctrl = f.ctrl }()
+	defer func() {
+		sc.ctrl = f.ctrl
+		sc.transient = f.transient
+	}()
 	f.syncHostCalls = syncHostCalls || moduleUsesSyncHostCalls(m, importBindings)
 	if !guardMode && len(m.Memories) > 0 {
 		f.memSizeReg = R15 // explicit bounds: R15 = memBytes for the whole module
@@ -1029,7 +1076,7 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, int
 	// loop do — the spill/reload keeping the cell coherent then lands on the sparse
 	// out-of-loop calls, not per iteration. Non-eligible globals use the per-run
 	// cell-pointer cache (globalCellPtr).
-	var globalScores []int64
+	var globalScores []uint32
 	var globalElig []bool
 	if regABI {
 		globalScores = hints.globalScore
@@ -1199,7 +1246,7 @@ func withoutReg(pool []Reg, r Reg) []Reg {
 	return out
 }
 
-func (f *fn) assignPinnedLocals(scores, globalScores []int64, globalElig []bool, gpPool []Reg, fpPinLimit int, pinV128 bool) {
+func (f *fn) assignPinnedLocals(scores, globalScores []uint32, globalElig []bool, gpPool []Reg, fpPinLimit int, pinV128 bool) {
 	f.locals = make([]localDef, f.nLocals)
 	for i := range f.locals {
 		f.locals[i] = localDef{reg: regNone, typ: f.localType[i], state: lsReg}
@@ -1228,7 +1275,7 @@ func (f *fn) assignPinnedLocals(scores, globalScores []int64, globalElig []bool,
 			gp = append(gp, gpCand{idx: i, score: scores[i]})
 		}
 	}
-	loopMin := loopWeight(1)
+	loopMin := uint32(loopWeight(1))
 	for g := 0; g < len(globalScores); g++ {
 		if globalScores[g] < loopMin || f.isModuleGlobal(g) {
 			continue
@@ -1285,18 +1332,22 @@ func (f *fn) assignPinnedLocals(scores, globalScores []int64, globalElig []bool,
 	// Float locals use the separate XMM pin pool. Call-free functions also pin hot
 	// v128 locals here (same pool, full 128-bit): every XMM is caller-saved, so a
 	// v128 pin is confined to the call-free class (pinV128).
-	var fc []int
+	fc := f.tmpInts[:0]
 	for i := 0; i < f.nLocals; i++ {
 		if f.localType[i].isFloat() || (pinV128 && f.localType[i] == mtV128) {
 			fc = append(fc, i)
 		}
 	}
-	sort.SliceStable(fc, func(a, b int) bool {
-		if scores[fc[a]] != scores[fc[b]] {
-			return scores[fc[a]] > scores[fc[b]]
+	slices.SortFunc(fc, func(a, b int) int {
+		if scores[a] != scores[b] {
+			if scores[a] > scores[b] {
+				return -1
+			}
+			return 1
 		}
-		return fc[a] < fc[b]
+		return a - b
 	})
+	f.tmpInts = fc
 	if fpPinLimit > len(pinnedFLocalRegs) {
 		fpPinLimit = len(pinnedFLocalRegs)
 	}

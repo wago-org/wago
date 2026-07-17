@@ -31,16 +31,18 @@ func (f *fn) finalizePeepholes() {
 	if n < 8 {
 		return
 	}
-	var targets map[int]bool
+	sc := f.scratchState()
+	targets := sc.branchTargets
+	if targets == nil {
+		targets = make(map[int]bool, 16)
+		sc.branchTargets = targets
+	}
 	for pc := 0; pc < n; pc += 4 {
 		w := rdWord(b, pc)
 		if isIndirectBranch(w) {
 			return
 		}
 		if t, ok := branchTarget(pc, w); ok {
-			if targets == nil {
-				targets = make(map[int]bool, 16)
-			}
 			targets[t] = true
 		}
 	}

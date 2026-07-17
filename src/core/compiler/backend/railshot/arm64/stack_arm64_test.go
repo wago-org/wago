@@ -11,12 +11,12 @@ import "testing"
 
 func TestNewStackArenaDefaultCapacityArm64(t *testing.T) {
 	s := newStack()
-	if cap(s.arena) != defaultStackArenaCap {
-		t.Fatalf("stack arena cap = %d, want %d", cap(s.arena), defaultStackArenaCap)
+	if cap(s.chunks[0]) != defaultStackArenaCap {
+		t.Fatalf("stack arena cap = %d, want %d", cap(s.chunks[0]), defaultStackArenaCap)
 	}
 }
 
-func TestNewStackWithCapClampsArm64(t *testing.T) {
+func TestNewStackWithCapSizesFirstChunkArm64(t *testing.T) {
 	for _, tc := range []struct {
 		hint int
 		want int
@@ -24,11 +24,11 @@ func TestNewStackWithCapClampsArm64(t *testing.T) {
 		{0, minStackArenaCap},
 		{minStackArenaCap - 1, minStackArenaCap},
 		{minStackArenaCap + 7, minStackArenaCap + 7},
-		{defaultStackArenaCap + 1, defaultStackArenaCap},
+		{defaultStackArenaCap + 1, defaultStackArenaCap + 1},
 	} {
 		s := newStackWithCap(tc.hint)
-		if cap(s.arena) != tc.want {
-			t.Fatalf("newStackWithCap(%d) cap = %d, want %d", tc.hint, cap(s.arena), tc.want)
+		if cap(s.chunks[0]) != tc.want {
+			t.Fatalf("newStackWithCap(%d) cap = %d, want %d", tc.hint, cap(s.chunks[0]), tc.want)
 		}
 		if s.head == nil || s.head.next != s.head || s.head.prev != s.head {
 			t.Fatalf("newStackWithCap(%d) did not initialize sentinel links", tc.hint)
@@ -38,8 +38,8 @@ func TestNewStackWithCapClampsArm64(t *testing.T) {
 
 func TestStackArenaCapForBodyTinyFunctionArm64(t *testing.T) {
 	s := newStackWithCap(stackArenaCapForBody(0, 0))
-	if cap(s.arena) != minStackArenaCap {
-		t.Fatalf("tiny stack arena cap = %d, want %d", cap(s.arena), minStackArenaCap)
+	if cap(s.chunks[0]) != minStackArenaCap {
+		t.Fatalf("tiny stack arena cap = %d, want %d", cap(s.chunks[0]), minStackArenaCap)
 	}
 }
 
@@ -48,15 +48,16 @@ func TestStackArenaCapForBodyMediumFunctionArm64(t *testing.T) {
 	const locals = 12
 	want := bodyLen + locals/4 + 1
 	s := newStackWithCap(stackArenaCapForBody(bodyLen, locals))
-	if cap(s.arena) != want {
-		t.Fatalf("medium stack arena cap = %d, want %d", cap(s.arena), want)
+	if cap(s.chunks[0]) != want {
+		t.Fatalf("medium stack arena cap = %d, want %d", cap(s.chunks[0]), want)
 	}
 }
 
-func TestStackArenaCapForBodyLargeFunctionClampArm64(t *testing.T) {
+func TestStackArenaCapForBodyLargeFunctionArm64(t *testing.T) {
 	s := newStackWithCap(stackArenaCapForBody(1024, 128))
-	if cap(s.arena) != defaultStackArenaCap {
-		t.Fatalf("large stack arena cap = %d, want clamp %d", cap(s.arena), defaultStackArenaCap)
+	want := stackArenaCapForBody(1024, 128)
+	if cap(s.chunks[0]) != want {
+		t.Fatalf("large stack arena cap = %d, want %d", cap(s.chunks[0]), want)
 	}
 }
 

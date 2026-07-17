@@ -458,9 +458,10 @@ func (f *fn) branchJump(fr *ctrlFrame) {
 				f.ld64(X0, SP, f.spillOff(0))
 			}
 		}
-		f.retSites = append(f.retSites, f.a.Branch())
+		sc := f.scratchState()
+		sc.retSites = append(sc.retSites, f.a.Branch())
 	default:
-		fr.ends = append(fr.ends, f.a.Branch())
+		f.appendEndSite(&fr.ends, f.a.Branch())
 		fr.endReachable = true
 	}
 }
@@ -483,7 +484,7 @@ func (f *fn) condBranchJump(fr *ctrlFrame, cc Cond) bool {
 		}
 		return true
 	case cfBlock, cfIf:
-		fr.condEnds = append(fr.condEnds, f.a.Bcond(cc)) // patched to the block end (imm19)
+		f.appendEndSite(&fr.condEnds, f.a.Bcond(cc)) // patched to the block end (imm19)
 		fr.endReachable = true
 		return true
 	}
@@ -777,7 +778,7 @@ func (f *fn) opElse() error {
 		} else {
 			f.flush()
 		}
-		fr.ends = append(fr.ends, f.a.Branch())
+		f.appendEndSite(&fr.ends, f.a.Branch())
 		fr.endReachable = true
 	}
 	f.a.PatchBranch19(fr.elseSite, f.a.Len()) // the false edge is a B.cond (imm19)
@@ -791,7 +792,11 @@ func (f *fn) opElse() error {
 }
 
 func (f *fn) opEnd() error {
-	fr := f.ctrl[len(f.ctrl)-1]
+	last := len(f.ctrl) - 1
+	fr := f.ctrl[last]
+	// ctrl backing is reused across functions. Clear the popped slot so its
+	// variable-sized type and loop-analysis slices do not stay live in scratch.
+	f.ctrl[last] = ctrlFrame{}
 	f.ctrl = f.ctrl[:len(f.ctrl)-1]
 	if len(fr.loopPins) != 0 {
 		f.activeLoopPins = nil // this frame's pins leave scope with the pop
@@ -936,6 +941,12 @@ func (f *fn) opEnd() error {
 			f.setDepthTypes(f.frameDepthTypes(fr.baseTypes, fr.resultTypes))
 		}
 	}
+	// The popped frame no longer owns these temporary buffers. Recycle them for
+	// later frames at the same or a shallower nesting depth.
+	f.freeLocStateBuf(fr.branchState)
+	f.freeLocStateBuf(fr.entryState)
+	f.freeEndsBuf(fr.ends)
+	f.freeEndsBuf(fr.condEnds)
 	return nil
 }
 
@@ -1195,7 +1206,8 @@ func (f *fn) opReturn() error {
 	}
 	if f.singleRegResult {
 		f.placeSingleResult() // result straight to X0/V0; epilogue does not reload
-		f.retSites = append(f.retSites, f.a.Branch())
+		sc := f.scratchState()
+		sc.retSites = append(sc.retSites, f.a.Branch())
 		f.unreachable = true
 		return nil
 	}
@@ -1203,7 +1215,8 @@ func (f *fn) opReturn() error {
 	a, d := fr.resultN, f.depth()
 	f.flush()
 	f.moveBranchValues(fr, d, a)
-	f.retSites = append(f.retSites, f.a.Branch())
+	sc := f.scratchState()
+	sc.retSites = append(sc.retSites, f.a.Branch())
 	f.unreachable = true
 	return nil
 }

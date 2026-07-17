@@ -1,8 +1,14 @@
 # Streaming and bounded-memory single-pass pipeline
 
-Status: proposed design plan.
+Status: superseded; retained as design history.
 
-## Goal
+Wago does not plan to stream decode, validation, or Railshot compilation. The
+current direction keeps the complete decoded module and function bodies
+available to code generation, while reducing compile memory through reusable
+per-function scratch, compact metadata, and pre-sized retained output. This
+preserves unrestricted lookahead for current and future whole-module analyses.
+
+## Historical goal
 
 Make Wago's direct ("single-pass") compiler pipeline consume WebAssembly in
 chunks and bound its *transient* memory use. The target is not constant total

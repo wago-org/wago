@@ -546,7 +546,9 @@ func (f *fn) opElse() error {
 }
 
 func (f *fn) opEnd() error {
-	fr := f.ctrl[len(f.ctrl)-1]
+	last := len(f.ctrl) - 1
+	fr := f.ctrl[last]
+	f.ctrl[last] = ctrlFrame{}
 	f.ctrl = f.ctrl[:len(f.ctrl)-1]
 
 	if fr.kind == cfFunc {

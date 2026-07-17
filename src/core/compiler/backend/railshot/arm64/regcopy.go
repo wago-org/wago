@@ -2,6 +2,8 @@
 
 package arm64
 
+import "math/bits"
+
 // Parallel register-move resolution (WARP's RegisterCopyResolver): placing N
 // values, each already live in some register, into their target registers is a
 // *parallel* move — a target may still hold a value another move needs — and the
@@ -16,26 +18,29 @@ type regMove struct{ dst, src Reg }
 // emitSwap (exchange). The move set must be a function from dst to src (each
 // register written at most once), which holds for ABI argument placement.
 func resolveRegMoves(moves []regMove, emitMove func(dst, src Reg), emitSwap func(a, b Reg)) {
-	pending := make(map[Reg]Reg, len(moves))
+	var src [64]Reg
+	var pending regMask
 	for _, m := range moves {
 		if m.dst != m.src {
-			pending[m.dst] = m.src
+			src[m.dst] = m.src
+			pending = pending.add(m.dst)
 		}
 	}
 	isSource := func(r Reg) bool {
-		for _, s := range pending {
-			if s == r {
+		for d := uint64(pending); d != 0; d &= d - 1 {
+			if src[bits.TrailingZeros64(d)] == r {
 				return true
 			}
 		}
 		return false
 	}
-	for len(pending) > 0 {
+	for pending != 0 {
 		moved := false
-		for dst, src := range pending {
+		for d := uint64(pending); d != 0; d &= d - 1 {
+			dst := Reg(bits.TrailingZeros64(d))
 			if !isSource(dst) {
-				emitMove(dst, src)
-				delete(pending, dst)
+				emitMove(dst, src[dst])
+				pending = pending.remove(dst)
 				moved = true
 				break
 			}
@@ -44,19 +49,17 @@ func resolveRegMoves(moves []regMove, emitMove func(dst, src Reg), emitSwap func
 			continue
 		}
 		// Residual graph is pure cycles; break one with a swap.
-		var dst, src Reg
-		for d, s := range pending {
-			dst, src = d, s
-			break
-		}
-		emitSwap(dst, src)
-		delete(pending, dst)
-		for d, s := range pending {
-			if s == dst {
-				if d == src {
-					delete(pending, d)
+		dst := Reg(bits.TrailingZeros64(uint64(pending)))
+		s := src[dst]
+		emitSwap(dst, s)
+		pending = pending.remove(dst)
+		for d := uint64(pending); d != 0; d &= d - 1 {
+			dd := Reg(bits.TrailingZeros64(d))
+			if src[dd] == dst {
+				if dd == s {
+					pending = pending.remove(dd)
 				} else {
-					pending[d] = src
+					src[dd] = s
 				}
 			}
 		}

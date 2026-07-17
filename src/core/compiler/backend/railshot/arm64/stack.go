@@ -2,6 +2,8 @@
 
 package arm64
 
+import "github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
+
 // The operand stack and its element model — ported from WARP's Stack /
 // StackElement / StackType / VariableStorage (warp/src/core/compiler/common/).
 //
@@ -175,13 +177,15 @@ func (e *elem) isDeferred() bool { return e.kind == ekDeferred }
 // bump arena of elems (never freed mid-function; that matches single-pass usage
 // and keeps *elem pointers stable).
 type stack struct {
-	arena []elem
-	head  *elem // sentinel (arena[0]); head.next is the bottom, back() is the top
+	chunks [][]elem
+	cur    int
+	head   *elem
 }
 
 const (
 	defaultStackArenaCap = 256
 	minStackArenaCap     = 16
+	maxStackChunkCap     = 8192
 )
 
 func newStack() *stack { return newStackWithCap(defaultStackArenaCap) }
@@ -190,27 +194,26 @@ func newStackWithCap(capHint int) *stack {
 	if capHint < minStackArenaCap {
 		capHint = minStackArenaCap
 	}
-	if capHint > defaultStackArenaCap {
-		capHint = defaultStackArenaCap
-	}
-	s := &stack{arena: make([]elem, 0, capHint)}
-	s.arena = append(s.arena, elem{}) // sentinel
-	s.head = &s.arena[0]
-	s.head.prev, s.head.next = s.head, s.head
+	s := &stack{chunks: [][]elem{make([]elem, 0, capHint)}}
+	s.initSentinel()
 	return s
+}
+
+func (s *stack) initSentinel() {
+	s.cur = 0
+	chunk := &s.chunks[0]
+	*chunk = append((*chunk)[:0], elem{})
+	s.head = &(*chunk)[0]
+	s.head.prev, s.head.next = s.head, s.head
 }
 
 // reset rewinds the stack to empty for reuse by the next function in a module
 // compile, preserving the arena's backing capacity so the common case allocates
 // nothing per function. The prior function's nodes are dead by the time this is
-// called (its code is already emitted), so dropping them is safe; standalone
-// spill nodes are simply released to the GC. alloc rezeroes every reused arena
-// slot, so no stale fields survive.
+// called (its code is already emitted). alloc rezeroes every reused chunk slot,
+// so no stale fields survive.
 func (s *stack) reset() {
-	s.arena = s.arena[:0]
-	s.arena = append(s.arena, elem{}) // sentinel
-	s.head = &s.arena[0]
-	s.head.prev, s.head.next = s.head, s.head
+	s.initSentinel()
 }
 
 func stackArenaCapForBody(bodyLen, nLocals int) int {
@@ -222,32 +225,28 @@ func stackArenaCapForHints(bodyLen, nLocals, nodeHint int) int {
 	// walking the bytecode. Historically the hint was one node per body byte; keep
 	// that as a ceiling, but let the pre-scan's opcode-based estimate avoid
 	// reserving nodes for long immediates (notably 16-byte SIMD constants). The
-	// stack still falls back to standalone heap nodes if the estimate is low, so
+	// chunked arena grows past an underestimate without moving prior nodes, so
 	// pointer stability is preserved.
-	legacy := bodyLen + nLocals/4 + 1
-	if nodeHint <= 0 {
-		return legacy
-	}
-	precise := nodeHint + nodeHint/2 + nLocals/4 + 1
-	if floor := bodyLen/4 + nLocals/4 + 1; precise < floor {
-		precise = floor
-	}
-	if precise > legacy {
-		precise = legacy
-	}
-	return precise
+	return shared.StackArenaCapacity(bodyLen, nLocals, nodeHint)
 }
 
 // alloc returns a fresh zeroed node from the arena.
 func (s *stack) alloc() *elem {
-	// Growing the arena may move earlier elems, invalidating pointers — so we
-	// never let it reallocate: reserve generously and, if exceeded, spill to
-	// individually-heap-allocated nodes (still pointer-stable).
-	if len(s.arena) < cap(s.arena) {
-		s.arena = append(s.arena, elem{})
-		return &s.arena[len(s.arena)-1]
+	chunk := &s.chunks[s.cur]
+	if len(*chunk) == cap(*chunk) {
+		s.cur++
+		if s.cur == len(s.chunks) {
+			nextCap := cap(*chunk) * 2
+			if nextCap > maxStackChunkCap {
+				nextCap = maxStackChunkCap
+			}
+			s.chunks = append(s.chunks, make([]elem, 0, nextCap))
+		}
+		chunk = &s.chunks[s.cur]
+		*chunk = (*chunk)[:0]
 	}
-	return &elem{}
+	*chunk = append(*chunk, elem{})
+	return &(*chunk)[len(*chunk)-1]
 }
 
 // push appends e as the new top of the stack and returns it.

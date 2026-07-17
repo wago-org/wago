@@ -32,6 +32,11 @@ const (
 
 // Compile decodes, validates, and compiles a wasm module to native code.
 //
+// On success ownership of wasmBytes transfers to the returned Compiled. The
+// caller must not mutate or reuse its backing array: active segment metadata and
+// link-time recompilation deliberately retain slices into that storage. This
+// avoids an input-sized copy for modules with function imports.
+//
 // It accepts both the current explicit form:
 //
 //	Compile(cfg, wasmBytes)
@@ -49,8 +54,9 @@ func Compile(args ...any) (*Compiled, error) {
 	return compileWithConfig(cfg, wasmBytes)
 }
 
-// CompileWithConfig is the named compatibility form of Compile(cfg, wasmBytes):
-// the config's feature set gates which modules are accepted and its bounds-check
+// CompileWithConfig is the named compatibility form of Compile(cfg, wasmBytes).
+// It has the same successful-call ownership transfer for wasmBytes. The
+// config's feature set gates which modules are accepted and its bounds-check
 // mode selects the code-generation strategy.
 func CompileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) {
 	return compileWithConfig(cfg, wasmBytes)
@@ -113,7 +119,8 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 	var code []byte
 	var entry, internalEntry []int
 	if !needsLink {
-		cm, err := railshotCompileModuleWith(m, railshotCompileOptions{ElideBoundsChecks: elide, NoBoundsFacts: cfg.noDeferBounds, SyncHostCalls: syncHostInitial, Interruptible: true})
+		pressureAt, pressure := compileMemoryPressure(len(wasmBytes))
+		cm, err := railshotCompileModuleWith(m, railshotCompileOptions{ElideBoundsChecks: elide, NoBoundsFacts: cfg.noDeferBounds, SyncHostCalls: syncHostInitial, Interruptible: true, MemoryPressureAt: pressureAt, MemoryPressure: pressure})
 		if err != nil {
 			return nil, fmt.Errorf("compile: %w", err)
 		}
@@ -132,7 +139,7 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 	// Retain the raw module for the link-time recompile whenever an import could be
 	// bound cross-instance (any function import), or codegen was deferred.
 	if needsLink || importedFuncs > 0 {
-		c.wasmBytes = append([]byte(nil), wasmBytes...)
+		c.wasmBytes = wasmBytes
 	}
 	// Any module with function imports may need a host-only sync recompile at
 	// Instantiate (deferred returning/v128 imports, or non-legacy host bindings),
@@ -342,6 +349,16 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 		// index space. Active slots remain zero-length (dropped).
 		c.PassiveData = make([]PassiveDataInit, dataStateCount)
 	}
+	// Active data dominates metadata in Go-produced modules (esbuild has tens of
+	// thousands of segments). Reserve once instead of geometrically copying the
+	// growing descriptor slice.
+	activeData := 0
+	for i := range m.Data {
+		if m.Data[i].Mode.Kind != wasm.DataPassive {
+			activeData++
+		}
+	}
+	c.Data = make([]DataInit, 0, activeData)
 	for i := range m.Data {
 		d := &m.Data[i]
 		if d.Mode.Kind == wasm.DataPassive {
@@ -357,6 +374,16 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 		c.Data = append(c.Data, init)
 	}
 	return installCompiledFinalizer(c), nil
+}
+
+func compileMemoryPressure(sourceBytes int) (int, func()) {
+	// One checkpoint is enough to prevent dead per-function state from riding the
+	// GC growth curve to the end of real-world modules. Small modules stay on the
+	// zero-overhead path. runtime.GC does not modify GOGC or GOMEMLIMIT.
+	if sourceBytes < 8<<20 {
+		return 0, nil
+	}
+	return 0, goruntime.GC
 }
 
 // moduleNeedsLink reports whether the module has a returning function import,
@@ -568,7 +595,8 @@ func (c *Compiled) recompileLinked(imports Imports, bindings []railshotImportBin
 			syncHost = true
 		}
 	}
-	cm, err := railshotCompileModuleWith(m, railshotCompileOptions{ElideBoundsChecks: c.boundsElide, NoBoundsFacts: c.noDeferBounds, ImportBindings: bindings, SyncHostCalls: syncHost, Interruptible: true})
+	pressureAt, pressure := compileMemoryPressure(len(c.wasmBytes))
+	cm, err := railshotCompileModuleWith(m, railshotCompileOptions{ElideBoundsChecks: c.boundsElide, NoBoundsFacts: c.noDeferBounds, ImportBindings: bindings, SyncHostCalls: syncHost, Interruptible: true, MemoryPressureAt: pressureAt, MemoryPressure: pressure})
 	if err != nil {
 		return nil, fmt.Errorf("link: %w", err)
 	}

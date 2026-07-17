@@ -12,6 +12,11 @@ type Reader struct {
 
 func NewReader(bytecode []byte) *Reader { return &Reader{data: bytecode} }
 
+// ReaderFrom returns a cursor value for allocation-sensitive callers that keep
+// it on their own stack. NewReader remains convenient when an immediate pointer
+// is required by a decoder helper.
+func ReaderFrom(bytecode []byte) Reader { return Reader{data: bytecode} }
+
 func (r *Reader) Offset() int    { return r.pos }
 func (r *Reader) BytesLeft() int { return len(r.data) - r.pos }
 func (r *Reader) HasNext() bool  { return r.BytesLeft() > 0 }

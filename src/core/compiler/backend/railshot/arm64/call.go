@@ -642,7 +642,7 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 func (f *fn) callInternal(localIdx int, ft *wasm.CompType, resHint int) error {
 	if regABIEnabled && sigFitsRegABI(ft) && sigIsIntOnly(ft) {
 		f.stats.call("regabi")
-		f.emitRegisterCall(localIdx, ft, resHint, f.directCalleePreservesPins(localIdx, ft))
+		f.emitRegisterCall(localIdx, ft, resHint, f.directCalleePreservesPins(localIdx))
 		return nil
 	}
 	f.stats.call("wrapper")
@@ -659,15 +659,12 @@ func (f *fn) callInternal(localIdx int, ft *wasm.CompType, resHint int) error {
 // resHint >= 0 fuses a following `local.set resHint`: X0 moves straight into
 // the pinned local's register instead of an allocated result register.
 func (f *fn) emitRegisterCall(localIdx int, ft *wasm.CompType, resHint int, preservesPins bool) {
-	f.emitRegisterCallVia(ft, resHint, preservesPins, func() {
-		site := f.a.Bl()
-		f.relocs = append(f.relocs, callReloc{at: site, target: localIdx, internal: true})
-	})
+	f.emitRegisterCallVia(ft, resHint, preservesPins, localIdx, regNone)
 }
 
-// emitRegisterCallVia is emitRegisterCall with a pluggable call emitter
-// (direct BL or an indirect BLR for call_indirect).
-func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins bool, emitCall func()) {
+// emitRegisterCallVia emits either a direct internal BL (localIdx >= 0) or an
+// indirect BLR. Explicit operands avoid allocating a closure at every wasm call.
+func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins bool, localIdx int, indirect Reg) {
 	p, rN := len(ft.Params), len(ft.Results)
 	d := f.depth()
 	if !preservesPins {
@@ -693,11 +690,7 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins b
 	// owned, pinned registers now (protected from the flush below); const/memory
 	// args are loaded straight into their target register afterward.
 	moves := f.tmpMoves[:0]
-	type deferredArg struct {
-		target Reg
-		root   *elem
-	}
-	var deferred []deferredArg
+	deferred := f.tmpDeferred[:0]
 	for i := 0; i < p; i++ {
 		root := argRoots[i]
 		if root.isDeferred() || (root.kind == ekValue && (root.st.kind == stReg || root.st.kind == stLocalReg || root.st.kind == stGlobReg || root.st.kind == stMemRef)) {
@@ -746,13 +739,19 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins b
 			f.ld64(da.target, SP, f.localOff(da.root.st.idx))
 		}
 	}
+	f.tmpDeferred = deferred[:0]
 
 	// Consume the args; the operand model is now the k below-operands in slots.
 	f.setDepth(d - p)
 
 	// No environment passing: linMemReg (linMem) is a whole-module invariant and the
 	// trap cell pointer lives in basedata — the callee inherits both (WARP model).
-	emitCall()
+	if localIdx >= 0 {
+		site := f.a.Bl()
+		f.relocs = append(f.relocs, callReloc{at: site, target: localIdx, internal: true})
+	} else {
+		f.a.Blr(indirect)
+	}
 
 	// A pin-preserving callee leaves the caller state untouched, so its result can
 	// remain allocator-owned in X0. Calls that reload state still copy it out first
@@ -809,18 +808,13 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins b
 	}
 }
 
-// directCalleePreservesPins recomputes the small, validated leaf classification
+// directCalleePreservesPins returns the module-precomputed leaf classification
 // for one direct target. This is compile-time only; execution stays a plain BL.
-func (f *fn) directCalleePreservesPins(localIdx int, ft *wasm.CompType) bool {
-	if localIdx < 0 || localIdx >= len(f.m.Code) {
+func (f *fn) directCalleePreservesPins(localIdx int) bool {
+	if localIdx < 0 || localIdx >= len(f.calleePreservesPins) {
 		return false
 	}
-	nLocals, err := countLocals(ft.Params, f.m.Code[localIdx].Locals)
-	if err != nil {
-		return false
-	}
-	h, err := scanFuncBody(f.m.Code[localIdx], nLocals, f.m.GlobalCount(), uint32(f.m.ImportedFuncCount()+localIdx), f.m.BranchHintsForFunc(uint32(f.m.ImportedFuncCount()+localIdx)))
-	return err == nil && preservesCallerPins(ft, nLocals, h)
+	return f.calleePreservesPins[localIdx]
 }
 
 // emitMixedRegisterCall uses the register ABI for signatures containing floats.
@@ -1052,7 +1046,7 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 		f.pinned = f.pinned.remove(code)
 		f.release(code)
 		f.stats.peep("monomorphic-call-indirect")
-		f.emitRegisterCall(f.monomorphicTarget, ft, -1, f.directCalleePreservesPins(f.monomorphicTarget, ft))
+		f.emitRegisterCall(f.monomorphicTarget, ft, -1, f.directCalleePreservesPins(f.monomorphicTarget))
 		return nil
 	}
 	// NOTE: the polymorphic immutable-local fast path (register-ABI Blr of the
@@ -1071,7 +1065,7 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 		f.pinned = f.pinned.remove(idxReg).add(code)
 		f.release(idxReg)
 		f.stats.peep("immutable-local-call-indirect")
-		f.emitRegisterCallVia(ft, -1, false, func() { f.a.Blr(code) })
+		f.emitRegisterCallVia(ft, -1, false, -1, code)
 		f.pinned = f.pinned.remove(code)
 		f.release(code)
 		return nil
@@ -1102,7 +1096,7 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 		f.release(tag)
 		wrapper := f.a.Bcond(condE)
 		f.pinned = f.pinned.remove(home)
-		f.emitRegisterCallVia(ft, -1, false, func() { f.a.Blr(code) })
+		f.emitRegisterCallVia(ft, -1, false, -1, code)
 		done := f.a.Branch()
 		f.a.PatchBranch19(wrapper, f.a.Len())
 		f.locals = savedLocals

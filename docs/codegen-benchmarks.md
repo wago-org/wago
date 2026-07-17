@@ -9,21 +9,65 @@ clutter the repository root.
 
 ## Stable benchmark runs
 
-Use repeated runs when comparing performance:
+The corpus suite is a separate Go module. Use repeated stage-specific runs when
+comparing performance:
 
 ```sh
-go test ./src/core/compiler/backend/railshot -bench=. -benchmem -count=10 > /tmp/railshot-before.txt
-go test ./src/core/compiler/frontend -bench=. -benchmem -count=10 > /tmp/frontend-before.txt
-go test ./src/core/compiler/wasm -bench=. -benchmem -count=10 > /tmp/wasm-before.txt
+cd bench
+go test . -run '^$' -bench 'BenchmarkCompile/(sqlite3|ruby|esbuild)$' \
+  -benchmem -benchtime=1x -count=5
+go test . -run '^$' -bench 'BenchmarkValidate/(sqlite3|ruby|esbuild)$' \
+  -benchmem -benchtime=1x -count=5
 ```
 
 Optional `benchstat` workflow:
 
 ```sh
-go test ./src/core/compiler/backend/railshot -bench=. -benchmem -count=10 > /tmp/railshot-before.txt
+cd bench
+go test . -run '^$' -bench 'BenchmarkCompile/(sqlite3|ruby|esbuild)$' \
+  -benchmem -benchtime=1x -count=10 > /tmp/railshot-before.txt
 # make changes
-go test ./src/core/compiler/backend/railshot -bench=. -benchmem -count=10 > /tmp/railshot-after.txt
+go test . -run '^$' -bench 'BenchmarkCompile/(sqlite3|ruby|esbuild)$' \
+  -benchmem -benchtime=1x -count=10 > /tmp/railshot-after.txt
 benchstat /tmp/railshot-before.txt /tmp/railshot-after.txt
+```
+
+## Compile-memory reference (2026-07-17)
+
+Apple M4 Max, darwin/arm64, explicit bounds. `main` and the compile-memory
+refactor were measured from prebuilt benchmark binaries with `-benchtime=1x`.
+`B/op` is cumulative allocation; RSS includes the benchmark process and corpus
+loader, so it is a deliberately conservative whole-process measurement.
+
+| stage/corpus | main B/op | refactor B/op | reduction |
+|---|---:|---:|---:|
+| Railshot / sqlite3 | 45,528,608 | 8,042,024 | 82.3% |
+| Railshot / ruby | 558,089,848 | 70,789,544 | 87.3% |
+| Railshot / esbuild | 522,828,072 | 61,481,080 | 88.2% |
+| full compile / sqlite3 | 50,363,176 | 13,972,520 | 72.3% |
+| full compile / ruby | 587,471,976 | 80,459,008 | 86.3% |
+| full compile / esbuild | 572,585,912 | 77,350,592 | 86.5% |
+
+Ruby Railshot peak RSS initially fell from 209,780,736 to 130,400,256 bytes;
+esbuild fell from 190,447,616 to 123,043,840 bytes. The completed refactor's
+standalone public-Compile harness measured median peak RSS of 101,941,248 bytes
+for Ruby and 93,913,088 bytes for esbuild. Median wall time was 1.11 s and
+0.75 s respectively. The public path uses one late GC checkpoint for sources at
+least 8 MiB; it does not alter process-wide GOGC or GOMEMLIMIT. Adjacent compile
+samples were faster rather than slower; longer execution checks remained
+zero-allocation and within normal run-to-run variation of main.
+
+For compile-memory work, report both cumulative allocation (`B/op`) and peak
+process RSS. They measure different things: reusable scratch can sharply reduce
+allocation traffic while retained corpus bytes and native output still set a
+larger live-memory floor. Build the benchmark binary once before an RSS run so
+the Go build is outside the measurement:
+
+```sh
+cd bench
+go test -c -o /tmp/wago-bench.test .
+/usr/bin/time -l /tmp/wago-bench.test -test.run '^$' \
+  -test.bench '^BenchmarkCompile$/^ruby$' -test.benchtime=1x -test.benchmem
 ```
 
 ## Backend toggles
@@ -48,8 +92,9 @@ candidates.
 Backend railshot compile profiles:
 
 ```sh
-go test ./src/core/compiler/backend/railshot -bench=BenchmarkRailshotCompile -benchmem \
-  -memprofile /tmp/railshot_mem.out -cpuprofile /tmp/railshot_cpu.out
+cd bench
+go test . -run '^$' -bench '^BenchmarkCompile$/^ruby$' -benchtime=1x \
+  -benchmem -memprofile /tmp/railshot_mem.out -cpuprofile /tmp/railshot_cpu.out
 go tool pprof -top /tmp/railshot_mem.out
 go tool pprof -top /tmp/railshot_cpu.out
 ```
