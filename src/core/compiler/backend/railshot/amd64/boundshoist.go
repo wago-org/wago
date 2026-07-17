@@ -3,7 +3,9 @@
 package amd64
 
 import (
+	"cmp"
 	"os"
+	"slices"
 	"strconv"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -153,6 +155,10 @@ scan:
 			elidable += acc[b]
 		}
 	}
+	// Map iteration order must not choose precheck/register order: parallel
+	// function compilation creates these maps on different goroutines and exposed
+	// the latent nondeterminism as byte-different code for the same function.
+	slices.SortFunc(cands, func(a, b hoistCand) int { return cmp.Compare(a.base, b.base) })
 	return cands, elidable, hasGrow
 }
 

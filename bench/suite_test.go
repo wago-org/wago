@@ -8,6 +8,7 @@ package wagobench
 import (
 	"encoding/json"
 	"flag"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
@@ -195,6 +196,47 @@ func BenchmarkCompile(b *testing.B) {
 	})
 }
 
+// BenchmarkCompileWorkers measures the latency of one backend module compile at
+// forced worker counts. Decode and validation happen outside the timed loop.
+// This intentionally does not use b.RunParallel: that would measure independent
+// multi-module throughput rather than intra-module compile latency.
+func BenchmarkCompileWorkers(b *testing.B) {
+	wanted := map[string]bool{
+		"tiny": true, "fib_rec": true, "many_funcs": true,
+		"json-as": true, "blake-as": true, "lua": true,
+		"sqlite3": true, "ruby": true, "esbuild": true,
+	}
+	for _, m := range loadCorpus(b) {
+		if !m.supports("Compile") || !wanted[m.name()] {
+			continue
+		}
+		mod := m.decoded(b)
+		if err := wasm.ValidateModule(mod); err != nil {
+			b.Fatalf("%s validate: %v", m.name(), err)
+		}
+		b.Run(m.name(), func(b *testing.B) {
+			for _, workers := range []int{1, 2, 4, 8} {
+				b.Run(fmt.Sprintf("p%d", workers), func(b *testing.B) {
+					b.ReportAllocs()
+					var cm *benchCompiledModule
+					b.ResetTimer()
+					for i := 0; i < b.N; i++ {
+						var err error
+						cm, err = benchCompileModuleWorkers(mod, workers)
+						if err != nil {
+							b.Fatal(err)
+						}
+					}
+					b.StopTimer()
+					if cm != nil {
+						b.ReportMetric(float64(len(cm.Code)), "code-B")
+					}
+				})
+			}
+		})
+	}
+}
+
 // BenchmarkCompileFull times the end-to-end decode+validate+compile entry point.
 func BenchmarkCompileFull(b *testing.B) {
 	eachModule(b, "CompileFull", func(b *testing.B, m corpusModule) {
@@ -204,6 +246,74 @@ func BenchmarkCompileFull(b *testing.B) {
 			}
 		}
 	})
+}
+
+// BenchmarkCompileFullWorkers measures the real public compile pipeline at
+// forced worker maxima and in adaptive mode, including decode, validation,
+// frontend checks, and backend codegen when the module is not link-deferred.
+func BenchmarkCompileFullWorkers(b *testing.B) {
+	wanted := map[string]bool{
+		"tiny": true, "fib_rec": true, "many_funcs": true,
+		"json-as": true, "blake-as": true, "lua": true,
+		"sqlite3": true, "ruby": true, "esbuild": true,
+	}
+	for _, m := range loadCorpus(b) {
+		if !m.supports("CompileFull") || !wanted[m.name()] {
+			continue
+		}
+		b.Run(m.name(), func(b *testing.B) {
+			for _, mode := range []struct {
+				name    string
+				workers int
+			}{{"p1", 1}, {"p2", 2}, {"p4", 4}, {"p8", 8}, {"auto", 0}} {
+				b.Run(mode.name, func(b *testing.B) {
+					b.ReportAllocs()
+					cfg := wago.NewRuntimeConfig().WithCompileWorkers(mode.workers)
+					var cm *wago.Compiled
+					for i := 0; i < b.N; i++ {
+						var err error
+						cm, err = wago.Compile(cfg, m.bytes)
+						if err != nil {
+							b.Fatal(err)
+						}
+					}
+					if cm != nil {
+						b.ReportMetric(float64(len(cm.Code)), "code-B")
+					}
+				})
+			}
+		})
+	}
+}
+
+// BenchmarkCompileMultiModuleThroughput explicitly measures several independent
+// full module compilations in parallel. Unlike BenchmarkCompileWorkers, this is
+// a server-throughput/oversubscription benchmark, not single-module latency.
+func BenchmarkCompileMultiModuleThroughput(b *testing.B) {
+	wanted := map[string]bool{"many_funcs": true, "json-as": true, "esbuild": true}
+	for _, m := range loadCorpus(b) {
+		if !m.supports("CompileFull") || !wanted[m.name()] {
+			continue
+		}
+		b.Run(m.name(), func(b *testing.B) {
+			for _, mode := range []struct {
+				name    string
+				workers int
+			}{{"p1", 1}, {"auto", 0}} {
+				b.Run(mode.name, func(b *testing.B) {
+					b.ReportAllocs()
+					cfg := wago.NewRuntimeConfig().WithCompileWorkers(mode.workers)
+					b.RunParallel(func(pb *testing.PB) {
+						for pb.Next() {
+							if _, err := wago.Compile(cfg, m.bytes); err != nil {
+								b.Fatal(err)
+							}
+						}
+					})
+				})
+			}
+		})
+	}
 }
 
 // BenchmarkInstantiate times instance setup for an already-compiled module.

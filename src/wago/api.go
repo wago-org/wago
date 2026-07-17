@@ -89,6 +89,52 @@ func compileArgs(args []any) (*RuntimeConfig, []byte, error) {
 	}
 }
 
+// storedCompileWorkers keeps link-time policy in existing Compiled padding.
+// Values above uint16 still mean "at least every practical GOMAXPROCS" and are
+// therefore equivalent after the backend cap.
+func storedCompileWorkers(policy int) uint16 {
+	if policy > int(^uint16(0)) {
+		return ^uint16(0)
+	}
+	return uint16(policy)
+}
+
+// compileWorkersForModule resolves a public compile-worker policy to a forced
+// backend worker count. Positive policies are explicit maxima. Auto mode uses a
+// measured work score that distinguishes hundreds of tiny functions from a few
+// substantial bodies while retaining the exact serial fast path below 16 KiB.
+// Four workers won consistently from that crossover. Eight improved backend-only
+// latency on the largest modules, but not end-to-end latency enough to justify its
+// additional allocation and peak-RSS cost, so auto mode deliberately caps at four.
+func compileWorkersForModule(m *wasm.Module, policy int) int {
+	workers := policy
+	if workers == 0 {
+		const (
+			perFunctionWeight = 64
+			parallelThreshold = 16 << 10
+		)
+		totalBody := 0
+		for i := range m.Code {
+			totalBody += len(m.Code[i].BodyBytes)
+		}
+		if score := totalBody + perFunctionWeight*len(m.Code); score < parallelThreshold {
+			workers = 1
+		} else {
+			workers = 4
+		}
+	}
+	if max := goruntime.GOMAXPROCS(0); workers > max {
+		workers = max
+	}
+	if workers > len(m.Code) {
+		workers = len(m.Code)
+	}
+	if workers <= 1 {
+		return 1
+	}
+	return workers
+}
+
 func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) {
 	if cfg == nil {
 		cfg = NewRuntimeConfig()
@@ -120,14 +166,14 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 	var entry, internalEntry []int
 	if !needsLink {
 		pressureAt, pressure := compileMemoryPressure(len(wasmBytes))
-		cm, err := railshotCompileModuleWith(m, railshotCompileOptions{ElideBoundsChecks: elide, NoBoundsFacts: cfg.noDeferBounds, SyncHostCalls: syncHostInitial, Interruptible: true, MemoryPressureAt: pressureAt, MemoryPressure: pressure})
+		cm, err := railshotCompileModuleWith(m, railshotCompileOptions{Workers: compileWorkersForModule(m, cfg.compileWorkers), ElideBoundsChecks: elide, NoBoundsFacts: cfg.noDeferBounds, SyncHostCalls: syncHostInitial, Interruptible: true, MemoryPressureAt: pressureAt, MemoryPressure: pressure})
 		if err != nil {
 			return nil, fmt.Errorf("compile: %w", err)
 		}
 		code, entry, internalEntry = cm.Code, cm.Entry, cm.InternalEntry
 	}
 
-	c := &Compiled{Code: code, Entry: entry, InternalEntry: internalEntry, NumImports: importedFuncs, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, boundsMode: cfg.boundsChecks, GCTypeDescs: gcDescs, needsLink: needsLink, boundsElide: elide, noDeferBounds: cfg.noDeferBounds, requiredFeatures: uint8(moduleRequiredFeatures(m)), syncHostImports: syncHostInitial}
+	c := &Compiled{Code: code, Entry: entry, InternalEntry: internalEntry, NumImports: importedFuncs, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, boundsMode: cfg.boundsChecks, GCTypeDescs: gcDescs, needsLink: needsLink, boundsElide: elide, noDeferBounds: cfg.noDeferBounds, compileWorkers: storedCompileWorkers(cfg.compileWorkers), requiredFeatures: uint8(moduleRequiredFeatures(m)), syncHostImports: syncHostInitial}
 	if importedFuncs > 0 {
 		c.importFuncSigs = make([]FuncSig, importedFuncs)
 		for i := 0; i < importedFuncs; i++ {
@@ -596,7 +642,7 @@ func (c *Compiled) recompileLinked(imports Imports, bindings []railshotImportBin
 		}
 	}
 	pressureAt, pressure := compileMemoryPressure(len(c.wasmBytes))
-	cm, err := railshotCompileModuleWith(m, railshotCompileOptions{ElideBoundsChecks: c.boundsElide, NoBoundsFacts: c.noDeferBounds, ImportBindings: bindings, SyncHostCalls: syncHost, Interruptible: true, MemoryPressureAt: pressureAt, MemoryPressure: pressure})
+	cm, err := railshotCompileModuleWith(m, railshotCompileOptions{Workers: compileWorkersForModule(m, int(c.compileWorkers)), ElideBoundsChecks: c.boundsElide, NoBoundsFacts: c.noDeferBounds, ImportBindings: bindings, SyncHostCalls: syncHost, Interruptible: true, MemoryPressureAt: pressureAt, MemoryPressure: pressure})
 	if err != nil {
 		return nil, fmt.Errorf("link: %w", err)
 	}
