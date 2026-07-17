@@ -304,8 +304,9 @@ func (c *Collector) ArraySet(ref Ref, index uint32, value Value) error {
 }
 
 // ArrayFill preflights the complete destination range and value before making
-// any write. It does not allocate or collect. Reference writes use the ordinary
-// object/card barrier per element and the post-write bulk barrier for the range.
+// any write. Throughput collectors mutate the compact payload directly and run
+// one post-write range barrier. Tiny retains the scalar barrier while marking or
+// sweeping because its incremental tri-color invariant is per published edge.
 func (c *Collector) ArrayFill(ref Ref, start uint32, value Value, length uint32) error {
 	d, err := c.refDesc(ref)
 	if err != nil {
@@ -321,13 +322,34 @@ func (c *Collector) ArrayFill(ref Ref, start uint32, value Value, length uint32)
 	if err := c.validateArrayStore(d, value); err != nil {
 		return err
 	}
-	for i := uint32(0); i < length; i++ {
-		if err := c.storeArrayValue(ref, d, start+i, value); err != nil {
-			return err
+	if length == 0 {
+		return nil
+	}
+	if isRefKind(d.Elem) && c.cfg.Profile == ProfileTiny {
+		for i := uint32(0); i < length; i++ {
+			if err := c.storeArrayValue(ref, d, start+i, value); err != nil {
+				return err
+			}
 		}
+		return nil
+	}
+	payload := c.bytes(ref)[PayloadOffset:]
+	lo := uint64(start) * uint64(d.ElemSize)
+	hi := lo + uint64(length)*uint64(d.ElemSize)
+	rangeBytes := payload[lo:hi]
+	var pattern [8]byte
+	binary.LittleEndian.PutUint64(pattern[:], value.Bits)
+	if isRefKind(d.Elem) {
+		binary.LittleEndian.PutUint32(pattern[:4], uint32(value.Ref))
+	}
+	copy(rangeBytes, pattern[:d.ElemSize])
+	for filled := int(d.ElemSize); filled < len(rangeBytes); {
+		n := copy(rangeBytes[filled:], rangeBytes[:filled])
+		filled += n
 	}
 	if isRefKind(d.Elem) {
 		c.PostBulkWriteBarrier(ref, start, length)
+		c.pruneRememberedHandleUnlessNursery(handleOf(ref))
 	}
 	return nil
 }
@@ -355,29 +377,13 @@ func (c *Collector) ArrayInitData(dst Ref, dstStart uint32, data []byte, srcStar
 	if sourceEnd > uint64(len(data)) {
 		return errors.New("gc: data source out of range")
 	}
-	valueKind := d.Elem
-	if valueKind == StorageI8 || valueKind == StorageI16 {
-		valueKind = StorageI32
+	switch d.ElemSize {
+	case 1, 2, 4, 8:
+	default:
+		return errors.New("gc: array.init_data element width is unsupported")
 	}
-	for i := uint32(0); i < length; i++ {
-		off := uint64(srcStart) + uint64(i)*uint64(d.ElemSize)
-		var bits uint64
-		switch d.ElemSize {
-		case 1:
-			bits = uint64(data[off])
-		case 2:
-			bits = uint64(binary.LittleEndian.Uint16(data[off : off+2]))
-		case 4:
-			bits = uint64(binary.LittleEndian.Uint32(data[off : off+4]))
-		case 8:
-			bits = binary.LittleEndian.Uint64(data[off : off+8])
-		default:
-			return errors.New("gc: array.init_data element width is unsupported")
-		}
-		if err := c.storeArrayValue(dst, d, dstStart+i, Value{Kind: valueKind, Bits: bits}); err != nil {
-			return err
-		}
-	}
+	dstOffset := uint64(PayloadOffset) + uint64(dstStart)*uint64(d.ElemSize)
+	copy(c.bytes(dst)[dstOffset:dstOffset+byteLength], data[uint64(srcStart):sourceEnd])
 	return nil
 }
 
@@ -396,10 +402,11 @@ func (c *Collector) ArrayInitWords(dst Ref, dstStart uint32, words []uint64) err
 	if uint64(dstStart)+uint64(len(words)) > uint64(dstLen) {
 		return errRange
 	}
-	for i, bits := range words {
-		if err := c.storeValue(dst, d, uint64(PayloadOffset)+uint64(dstStart+uint32(i))*uint64(d.ElemSize), d.Elem, Value{Kind: StorageI64, Bits: bits}); err != nil {
-			return err
-		}
+	b := c.bytes(dst)
+	off := uint64(PayloadOffset) + uint64(dstStart)*8
+	for _, bits := range words {
+		binary.LittleEndian.PutUint64(b[off:off+8], bits)
+		off += 8
 	}
 	return nil
 }
@@ -434,28 +441,40 @@ func (c *Collector) ArrayCopy(dst Ref, dstStart uint32, src Ref, srcStart uint32
 			}
 		}
 	}
-	copyOne := func(dstIndex, srcIndex uint32) error {
-		value, err := c.loadValue(src, uint64(PayloadOffset)+uint64(srcIndex)*uint64(srcDesc.ElemSize), srcDesc.Elem)
-		if err != nil {
-			return err
-		}
-		return c.storeArrayValue(dst, dstDesc, dstIndex, value)
+	if length == 0 {
+		return nil
 	}
-	if dst == src && dstStart > srcStart && uint64(dstStart) < uint64(srcStart)+uint64(length) {
-		for i := length; i > 0; i-- {
-			if err := copyOne(dstStart+i-1, srcStart+i-1); err != nil {
+	if isRefKind(dstDesc.Elem) && c.cfg.Profile == ProfileTiny {
+		copyOne := func(dstIndex, srcIndex uint32) error {
+			value, err := c.loadValue(src, uint64(PayloadOffset)+uint64(srcIndex)*uint64(srcDesc.ElemSize), srcDesc.Elem)
+			if err != nil {
 				return err
 			}
+			return c.storeArrayValue(dst, dstDesc, dstIndex, value)
 		}
-	} else {
-		for i := uint32(0); i < length; i++ {
-			if err := copyOne(dstStart+i, srcStart+i); err != nil {
-				return err
+		if dst == src && dstStart > srcStart && uint64(dstStart) < uint64(srcStart)+uint64(length) {
+			for i := length; i > 0; i-- {
+				if err := copyOne(dstStart+i-1, srcStart+i-1); err != nil {
+					return err
+				}
+			}
+		} else {
+			for i := uint32(0); i < length; i++ {
+				if err := copyOne(dstStart+i, srcStart+i); err != nil {
+					return err
+				}
 			}
 		}
+		return nil
 	}
+	width := uint64(dstDesc.ElemSize)
+	dstOff := uint64(PayloadOffset) + uint64(dstStart)*width
+	srcOff := uint64(PayloadOffset) + uint64(srcStart)*uint64(srcDesc.ElemSize)
+	byteLen := uint64(length) * width
+	copy(c.bytes(dst)[dstOff:dstOff+byteLen], c.bytes(src)[srcOff:srcOff+byteLen])
 	if isRefKind(dstDesc.Elem) {
 		c.PostBulkWriteBarrier(dst, dstStart, length)
+		c.pruneRememberedHandleUnlessNursery(handleOf(dst))
 	}
 	return nil
 }
