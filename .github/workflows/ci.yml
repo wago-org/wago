@@ -120,14 +120,31 @@ jobs:
           # No go.sum (stdlib-only module) -> nothing to cache; avoids a warning.
           cache: false
 
-      # Codegen and corpus tests use wat2wasm. Install it on every platform so
-      # missing tooling cannot turn coverage into a silent skip.
-      - name: Install wabt (Linux)
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y wabt
-      - name: Install wabt (macOS)
-        if: runner.os == 'macOS'
-        run: brew install wabt
+      # Runtime tests execute pinned Release 3 fixtures. Initialize only that
+      # Go-test dependency rather than every optional/C++ submodule.
+      - name: Initialize Release 3 suite
+        if: matrix.runtime
+        run: git submodule update --init --depth=1 tests/spec-v3
+
+      # WABT 1.0.41 handles most Core 3 source, while the official interpreter
+      # remains the authoritative fallback for exception-handling forms that
+      # WABT cannot parse. Build the pinned interpreter on every runtime host.
+      - name: Install Release 3 interpreter toolchain (Linux)
+        if: matrix.runtime && runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y ocaml-nox dune menhir
+      - name: Install Release 3 interpreter toolchain (macOS)
+        if: matrix.runtime && runner.os == 'macOS'
+        run: brew install ocaml dune menhir
+
+      - name: Bootstrap pinned Core 3 tools
+        if: matrix.runtime
+        run: |
+          scripts/bootstrap-wabt.sh --verify
+          echo "$(dirname "$(scripts/bootstrap-wabt.sh --print-path)")" >> "$GITHUB_PATH"
+          interpreter="$(scripts/bootstrap-spec-interpreter.sh --print-path)"
+          scripts/bootstrap-spec-interpreter.sh --verify
+          echo "WAGO_SPEC_INTERPRETER=$interpreter" >> "$GITHUB_ENV"
+          echo "WAGO_SPEC_INTERPRETER_REVISION=$(scripts/bootstrap-spec-interpreter.sh --print-revision)" >> "$GITHUB_ENV"
 
       - name: Verify native runner
         run: |
@@ -258,10 +275,22 @@ jobs:
           # No go.sum (stdlib-only module) -> nothing to cache; avoids a warning.
           cache: false
 
-      # wabt provides wast2json for the WebAssembly spec-suite card producer (and
-      # wat2wasm for the codegen tests that feed coverage).
-      - name: Install wabt (wast2json / wat2wasm)
-        run: sudo apt-get update && sudo apt-get install -y wabt
+      - name: Initialize Release 3 suite
+        run: git submodule update --init --depth=1 tests/spec-v3
+
+      # Coverage executes the same Core 3 tests as the native matrix, including
+      # source forms that require the official interpreter fallback.
+      - name: Install Release 3 interpreter toolchain
+        run: sudo apt-get update && sudo apt-get install -y ocaml-nox dune menhir
+
+      - name: Bootstrap pinned Core 3 tools
+        run: |
+          scripts/bootstrap-wabt.sh --verify
+          echo "$(dirname "$(scripts/bootstrap-wabt.sh --print-path)")" >> "$GITHUB_PATH"
+          interpreter="$(scripts/bootstrap-spec-interpreter.sh --print-path)"
+          scripts/bootstrap-spec-interpreter.sh --verify
+          echo "WAGO_SPEC_INTERPRETER=$interpreter" >> "$GITHUB_ENV"
+          echo "WAGO_SPEC_INTERPRETER_REVISION=$(scripts/bootstrap-spec-interpreter.sh --print-revision)" >> "$GITHUB_ENV"
 
       # Produce the coverage/tests/spec fragments. On PRs, CARD_BASELINE_REF
       # measures main in a worktree for the "Δ vs main" columns, so fetch main.
