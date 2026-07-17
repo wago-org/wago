@@ -374,7 +374,20 @@ zero-extended before native-width comparison, scaling, pointer arithmetic, byte-
 use. This applies even when validation or a producer normally yields clean i32 bits; synchronous host result
 slots explicitly permit arbitrary upper bits. Table64 operands retain all 64 bits. Exact memory/table declared
 limits remain separate from bounded executable capacities; memory64 lifecycle metadata stores declared maxima
-as uint64 and never substitutes the finite reservation.
+as uint64 and never substitutes the finite reservation. Active data and element offsets are evaluated after
+local global initialization and may read any available immutable global of the address type; global initializers
+retain their prior-global-only scope. The compiled validator, codec loader, and instantiator use the same explicit
+constant-expression scope.
+
+Module declarations and bodies feed one indexed facts prepass for per-table/per-memory grow and export
+observability plus `ref.func` descriptor demand. A grow on one table does not reserve another table's declared
+maximum. Wrapper sizing counts ABI slots rather than source values: `v128` consumes two 64-bit slots.
+
+The descriptor's 64-bit structural key is a fast native discriminator, not an unchecked proof. Before an
+instance publishes descriptors, its reference store compares every equal key using complete cross-module
+structural descriptors. A distinct collision rejects transactionally; equivalent modules share the live key.
+Registrations remain until the last descriptor-owning resource root closes, so a colliding module cannot enter
+while retained cross-instance references are still callable.
 
 Iteration 52 adds two non-collecting bulk-array helper calls. `array.fill` copies five scalar words into the
 parked frame: destination compact ref, destination index, value bits, length, and exact type index.
