@@ -1196,19 +1196,19 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 			if min > uint64(maxInt()) {
 				return nil, fmt.Errorf("table import %q.%q minimum %d overflows int", im.Module, im.Name, min)
 			}
-			def.Min = int(min)
+			def.Min = min
 			if im.Type.Table.Limits.Max != nil {
 				max := *im.Type.Table.Limits.Max
 				if max > uint64(maxInt()) {
 					return nil, fmt.Errorf("table import %q.%q maximum %d overflows int", im.Module, im.Name, max)
 				}
-				def.Max = int(max)
+				def.Max = max
 				def.HasMax = true
 			}
 			if tableImportIndex == 0 {
 				c.tableImport = def.Key
-				c.tableImportMin = def.Min
-				c.tableImportMax = def.Max
+				c.tableImportMin = int(def.Min)
+				c.tableImportMax = int(def.Max)
 				c.tableImportHasMax = def.HasMax
 				c.TableAddr64 = def.Addr64
 			} else {
@@ -1339,7 +1339,7 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 			c.extraTables[i-1] = tableDef{Size: tableShapes[i].Size, Max: persistedMax, Type: abiType, ValueTypeIndex: internValueType(&c.ValueTypes, exact), HasValueType: true, HasMax: tt.Limits.Max != nil, Addr64: tt.Limits.Addr64}
 		}
 		for i, def := range additionalTableImports {
-			c.extraTables[i] = tableDef{ImportKey: def.Key, Size: def.Min, Max: uint64(def.Max), Type: def.Type, ValueTypeIndex: def.ValueTypeIndex, HasValueType: def.HasValueType, ImportHasMax: def.HasMax, Addr64: def.Addr64}
+			c.extraTables[i] = tableDef{ImportKey: def.Key, Size: int(def.Min), Max: def.Max, Type: def.Type, ValueTypeIndex: def.ValueTypeIndex, HasValueType: def.HasValueType, ImportHasMax: def.HasMax, Addr64: def.Addr64}
 		}
 	}
 	c.NeedsFuncRefDescs = frontend.RequiresFuncRefDescriptors(m) || gcTypeSubtypingProduct.usesLinkFunctionIdentity()
@@ -3074,12 +3074,12 @@ func (c *Compiled) tableImportAt(index int) (tableImportDef, bool) {
 		return tableImportDef{}, false
 	}
 	if index == 0 && c.tableImport != "" {
-		return tableImportDef{Key: c.tableImport, Min: c.tableImportMin, Max: c.tableImportMax, Type: c.tableElementType(0), ValueTypeIndex: c.TableValueTypeIndex, HasValueType: c.TableHasValueType, HasMax: c.tableImportHasMax, Addr64: c.TableAddr64}, true
+		return tableImportDef{Key: c.tableImport, Min: uint64(c.tableImportMin), Max: uint64(c.tableImportMax), Type: c.tableElementType(0), ValueTypeIndex: c.TableValueTypeIndex, HasValueType: c.TableHasValueType, HasMax: c.tableImportHasMax, Addr64: c.TableAddr64}, true
 	}
 	if index > 0 && index-1 < len(c.extraTables) {
 		table := c.extraTables[index-1]
 		if table.ImportKey != "" {
-			return tableImportDef{Key: table.ImportKey, Min: table.Size, Max: int(table.Max), Type: c.tableElementType(index), ValueTypeIndex: table.ValueTypeIndex, HasValueType: table.HasValueType, HasMax: table.ImportHasMax, Addr64: table.Addr64}, true
+			return tableImportDef{Key: table.ImportKey, Min: uint64(table.Size), Max: table.Max, Type: c.tableElementType(index), ValueTypeIndex: table.ValueTypeIndex, HasValueType: table.HasValueType, HasMax: table.ImportHasMax, Addr64: table.Addr64}, true
 		}
 	}
 	return tableImportDef{}, false
@@ -3118,7 +3118,9 @@ func (c *Compiled) tableRuntimeCapacity(index int) int {
 
 func (c *Compiled) tableMinimum(index int) int {
 	if def, ok := c.tableImportAt(index); ok {
-		return def.Min
+		// Import admission and codec validation prove the executable minimum fits int;
+		// tableImportDef retains the exact uint64 declaration for metadata/linking.
+		return int(def.Min)
 	}
 	return c.tableDef(index).Size
 }

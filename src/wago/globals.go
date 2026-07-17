@@ -554,9 +554,10 @@ type tableDef struct {
 }
 
 type tableImportDef struct {
-	Key            string
-	Min            int
-	Max            int
+	Key string
+	Min uint64 // exact declared minimum; executable sizing uses checked int conversion
+	Max uint64 // exact declared maximum when HasMax
+
 	Type           ValType
 	ValueTypeIndex uint32
 	HasValueType   bool
