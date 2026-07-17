@@ -110,8 +110,8 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   native descriptors use bounded 64-bit structural keys as fast discriminators.
   A bounded runtime/reference-store registry resolves every equal key against the
   complete cross-module structural descriptors before publishing native targets,
-  rejecting distinct collisions transactionally. Linear recursive-group/DAG
-  canonicalization is module-cached and fails closed above a fixed budget; public invocation,
+  rejecting distinct collisions transactionally. Recursive-group canonicalization
+  is module-cached and fails closed above a fixed expansion budget; public invocation,
   synchronous host boundaries, and mutable global ingress/egress enforce exact
   types/nullability. Dynamic typed `table.get/set/grow/fill/copy/init` now prove
   shifted-type imports/re-exports, producer replacement, close order, and trap

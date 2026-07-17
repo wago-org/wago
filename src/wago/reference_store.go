@@ -1,6 +1,7 @@
 package wago
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/binary"
 	"fmt"
@@ -37,9 +38,8 @@ type referenceStore struct {
 }
 
 type structuralTypeRegistration struct {
-	exact ValueTypeDescriptor
-	types []DefinedTypeDescriptor
-	refs  uint32
+	canonical []byte
+	refs      uint32
 }
 
 type funcrefIdentity struct {
@@ -108,22 +108,23 @@ func (s *referenceStore) registerInstance(in *Instance) error {
 	// publishing any descriptor from this instance. Native calls may then compare
 	// the compact key authoritatively: the store invariant guarantees that one key
 	// never denotes two distinct live structural types.
-	candidate := make(map[uint64]ValueTypeDescriptor)
+	candidate := make(map[uint64]structuralTypeRegistration)
 	keys := make([]uint64, 0, len(in.c.FuncTypeID))
 	for i, key := range in.c.FuncTypeID {
-		exact, err := in.c.functionRefExactType(uint32(i))
+		canonical, err := compiledStructuralCallIdentity(in.c, i)
 		if err != nil {
 			return fmt.Errorf("wago: function %d exact type: %w", i, err)
 		}
+		exact := structuralTypeRegistration{canonical: canonical}
 		if prior, ok := candidate[key]; ok {
-			if !valueTypeEquivalent(prior, in.c.Types, exact, in.c.Types) {
+			if !bytes.Equal(prior.canonical, exact.canonical) {
 				return fmt.Errorf("wago: native structural type key %#x collides within module", key)
 			}
 			continue
 		}
 		candidate[key] = exact
 		keys = append(keys, key)
-		if registered, ok := s.typeKeys[key]; ok && !valueTypeEquivalent(registered.exact, registered.types, exact, in.c.Types) {
+		if registered, ok := s.typeKeys[key]; ok && !bytes.Equal(registered.canonical, exact.canonical) {
 			return fmt.Errorf("wago: native structural type key %#x collides with a distinct store type", key)
 		}
 	}
@@ -139,7 +140,7 @@ func (s *referenceStore) registerInstance(in *Instance) error {
 	for _, key := range keys {
 		registered, ok := s.typeKeys[key]
 		if !ok {
-			registered = structuralTypeRegistration{exact: candidate[key], types: in.c.Types}
+			registered = candidate[key]
 		}
 		registered.refs++
 		s.typeKeys[key] = registered
@@ -148,6 +149,23 @@ func (s *referenceStore) registerInstance(in *Instance) error {
 	s.instances[in] = struct{}{}
 	s.liveInstances++
 	return nil
+}
+
+func compiledFunctionSignature(c *Compiled, index int) (FuncSig, bool) {
+	if c == nil || index < 0 {
+		return FuncSig{}, false
+	}
+	if index < c.NumImports {
+		if index >= len(c.importFuncSigs) {
+			return FuncSig{}, false
+		}
+		return c.importFuncSigs[index], true
+	}
+	local := index - c.NumImports
+	if local < 0 || local >= len(c.Funcs) {
+		return FuncSig{}, false
+	}
+	return c.Funcs[local], true
 }
 
 func (s *referenceStore) instanceClosed(in *Instance) {

@@ -10,8 +10,12 @@ import (
 )
 
 func compiledStoreType(key uint64, param ValueTypeKind) *Compiled {
+	abi := ValI32
+	if param == ValueTypeI64 {
+		abi = ValI64
+	}
 	return &Compiled{
-		Funcs:      []FuncSig{{HasTypeIndex: true, TypeIndex: 0}},
+		Funcs:      []FuncSig{{Params: []ValType{abi}, HasTypeIndex: true, TypeIndex: 0}},
 		FuncTypeID: []uint64{key},
 		Types: []DefinedTypeDescriptor{{
 			Final:  true,
@@ -100,8 +104,8 @@ func TestRuntimeRejectsForcedHashEqualDistinctNativeTarget(t *testing.T) {
 func TestReferenceStoreRejectsStructuralKeyCollisionWithinModule(t *testing.T) {
 	c := &Compiled{
 		Funcs: []FuncSig{
-			{HasTypeIndex: true, TypeIndex: 0},
-			{HasTypeIndex: true, TypeIndex: 1},
+			{Params: []ValType{ValI32}, HasTypeIndex: true, TypeIndex: 0},
+			{Params: []ValType{ValI64}, HasTypeIndex: true, TypeIndex: 1},
 		},
 		FuncTypeID: []uint64{7, 7},
 		Types: []DefinedTypeDescriptor{
