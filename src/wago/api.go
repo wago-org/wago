@@ -1264,7 +1264,6 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 		applyGlobalInit(&g, v.Init())
 		c.Globals = append(c.Globals, g)
 	}
-	memoryExported := false
 	for i := range m.Exports {
 		switch m.Exports[i].Index.Kind {
 		case wasm.ExternFunc:
@@ -1277,7 +1276,6 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 			}
 			c.tableExports[m.Exports[i].Name] = int(m.Exports[i].Index.Index)
 		case wasm.ExternMem:
-			memoryExported = true
 			c.memoryDir.exports[m.Exports[i].Name] = int(m.Exports[i].Index.Index)
 		case wasm.ExternTag:
 			if c.memoryDir.ehTagExports == nil {
@@ -1403,7 +1401,8 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 		// Pin a local memory-0 reservation to its initial size only when this
 		// module never grows or exports it. Exact declared limits remain in the
 		// directory for inspection, policy, linking, and codec round trips.
-		if memory0.ImportKey == "" && !moduleUsesMemoryGrow(m) && !memoryExported {
+		memory0Observable := len(moduleFacts.MemoryGrowUsed) != 0 && (moduleFacts.MemoryGrowUsed[0] || moduleFacts.MemoryExported[0])
+		if memory0.ImportKey == "" && !memory0Observable {
 			c.MemMaxPages = c.MemMinPages
 		}
 	}
@@ -1972,60 +1971,6 @@ func segmentStateCount(kind wasm.InstrKind, index, index2 uint32, elemCount, dat
 			*dataCount = count
 		}
 	}
-}
-
-func moduleUsesMemoryGrow(m *wasm.Module) bool {
-	for i := range m.Code {
-		fn := &m.Code[i]
-		// Byte-backed decode keeps function bodies as raw bytecode and leaves
-		// Body.Instrs empty, so walk the encoded stream when present and only fall
-		// back to the instruction tree for programmatically built bodies.
-		if len(fn.BodyBytes) != 0 {
-			if bodyBytesUseMemoryGrow(fn.BodyBytes) {
-				return true
-			}
-			continue
-		}
-		if instrsUseMemoryGrow(fn.Body.Instrs) {
-			return true
-		}
-	}
-	return false
-}
-
-// bodyBytesUseMemoryGrow reports whether a validated, byte-backed function body
-// contains a memory.grow. The body is already validated, so a decode hiccup is
-// not expected; if one occurs it conservatively returns true so the caller does
-// not pin the memory reservation to its minimum size and break memory.grow.
-func bodyBytesUseMemoryGrow(body []byte) bool {
-	r := wasm.NewReader(body)
-	for r.HasNext() {
-		op, err := r.Byte()
-		if err != nil {
-			return true
-		}
-		imm, err := wasm.ClassifyInstructionImmediate(r, op)
-		if err != nil {
-			return true
-		}
-		if imm.Kind == wasm.InstrMemoryGrow {
-			return true
-		}
-	}
-	return false
-}
-
-func instrsUseMemoryGrow(instrs []wasm.Instruction) bool {
-	for i := range instrs {
-		in := &instrs[i]
-		if in.Kind == wasm.InstrMemoryGrow {
-			return true
-		}
-		if instrsUseMemoryGrow(in.Body().Instrs) || instrsUseMemoryGrow(in.Then()) || instrsUseMemoryGrow(in.Else()) {
-			return true
-		}
-	}
-	return false
 }
 
 // MustCompile is like Compile with the default config but panics on error, for
