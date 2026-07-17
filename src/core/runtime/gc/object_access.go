@@ -26,8 +26,8 @@ func (c *Collector) NewStructWithRoots(typeID TypeID, values []Value, roots Root
 		if err := checkValueCompatible(field.Kind, values[i]); err != nil {
 			return Null(), err
 		}
-		if isRefKind(field.Kind) {
-			if err := c.validateStoredRef(values[i].Ref, field.Kind == StorageRefNull); err != nil {
+		if isCollectorRefKind(field.Kind) {
+			if err := c.validateStoredRef(values[i].Ref, isNullableReferenceStorage(field.Kind)); err != nil {
 				return Null(), err
 			}
 			hasRefs = true
@@ -92,7 +92,7 @@ func (c *Collector) NewArrayFixedWithRoots(typeID TypeID, values []Value, roots 
 			return Null(), err
 		}
 	}
-	if isRefKind(d.Elem) && len(values) != 0 {
+	if isCollectorRefKind(d.Elem) && len(values) != 0 {
 		roots = combineRootSets(roots, valueRootSet{values: values, all: true})
 	}
 	sz, err := ArraySize(d, uint32(len(values)))
@@ -119,8 +119,8 @@ func (c *Collector) NewArrayWithRoots(typeID TypeID, length uint32, init Value, 
 	if err := checkValueCompatible(d.Elem, init); err != nil {
 		return Null(), err
 	}
-	if isRefKind(d.Elem) {
-		if err := c.validateStoredRef(init.Ref, d.Elem == StorageRefNull); err != nil {
+	if isCollectorRefKind(d.Elem) {
+		if err := c.validateStoredRef(init.Ref, isNullableReferenceStorage(d.Elem)); err != nil {
 			return Null(), err
 		}
 	}
@@ -129,7 +129,7 @@ func (c *Collector) NewArrayWithRoots(typeID TypeID, length uint32, init Value, 
 		return Null(), err
 	}
 	var initRoot *Root
-	if isRefKind(d.Elem) && init.Ref.IsObj() {
+	if isCollectorRefKind(d.Elem) && init.Ref.IsObj() {
 		root := Root(init.Ref)
 		initRoot = &root
 		roots = withExtraRoot(roots, initRoot)
@@ -157,11 +157,11 @@ func (c *Collector) NewRefArrayWithRoots(typeID TypeID, length uint32, init Root
 	if err != nil {
 		return Null(), err
 	}
-	if !isRefKind(d.Elem) || init == nil {
+	if !isCollectorRefKind(d.Elem) || init == nil {
 		return Null(), errors.New("gc: reference array initializer root required")
 	}
 	value := RefValue(init.GetRef())
-	if err := c.validateStoredRef(value.Ref, d.Elem == StorageRefNull); err != nil {
+	if err := c.validateStoredRef(value.Ref, isNullableReferenceStorage(d.Elem)); err != nil {
 		return Null(), err
 	}
 	sz, err := ArraySize(d, length)
@@ -255,8 +255,8 @@ func (c *Collector) StructSet(ref Ref, field uint32, value Value) error {
 	if err := checkValueCompatible(f.Kind, value); err != nil {
 		return err
 	}
-	if isRefKind(f.Kind) {
-		if err := c.validateStoredRef(value.Ref, f.Kind == StorageRefNull); err != nil {
+	if isCollectorRefKind(f.Kind) {
+		if err := c.validateStoredRef(value.Ref, isNullableReferenceStorage(f.Kind)); err != nil {
 			return err
 		}
 		c.WriteBarrierObject(ref, value.Ref)
@@ -318,7 +318,7 @@ func (c *Collector) ArrayFill(ref Ref, start uint32, value Value, length uint32)
 	if length == 0 {
 		return nil
 	}
-	if isRefKind(d.Elem) && c.cfg.Profile == ProfileTiny {
+	if isCollectorRefKind(d.Elem) && c.cfg.Profile == ProfileTiny {
 		for i := uint32(0); i < length; i++ {
 			if err := c.storeArrayValue(ref, d, start+i, value); err != nil {
 				return err
@@ -332,7 +332,7 @@ func (c *Collector) ArrayFill(ref Ref, start uint32, value Value, length uint32)
 	rangeBytes := payload[lo:hi]
 	var pattern [8]byte
 	binary.LittleEndian.PutUint64(pattern[:], value.Bits)
-	if isRefKind(d.Elem) {
+	if isCollectorRefKind(d.Elem) {
 		binary.LittleEndian.PutUint32(pattern[:4], uint32(value.Ref))
 	}
 	copy(rangeBytes, pattern[:d.ElemSize])
@@ -340,7 +340,7 @@ func (c *Collector) ArrayFill(ref Ref, start uint32, value Value, length uint32)
 		n := copy(rangeBytes[filled:], rangeBytes[:filled])
 		filled += n
 	}
-	if isRefKind(d.Elem) {
+	if isCollectorRefKind(d.Elem) {
 		c.PostBulkWriteBarrier(ref, start, length)
 	}
 	return nil
@@ -357,7 +357,7 @@ func (c *Collector) ArrayInitData(dst Ref, dstStart uint32, data []byte, srcStar
 	if err != nil {
 		return err
 	}
-	if d.Kind != KindArray || isRefKind(d.Elem) {
+	if d.Kind != KindArray || !isNumericStorage(d.Elem) {
 		return errors.New("gc: array.init_data destination is not numeric")
 	}
 	dstLen := c.header(dst).Aux
@@ -422,7 +422,7 @@ func (c *Collector) ArrayCopy(dst Ref, dstStart uint32, src Ref, srcStart uint32
 	if uint64(dstStart)+uint64(length) > uint64(dstLen) || uint64(srcStart)+uint64(length) > uint64(srcLen) {
 		return errRange
 	}
-	if isRefKind(dstDesc.Elem) {
+	if isCollectorRefKind(dstDesc.Elem) {
 		for i := uint32(0); i < length; i++ {
 			value, err := c.loadValue(src, uint64(PayloadOffset)+uint64(srcStart+i)*uint64(srcDesc.ElemSize), srcDesc.Elem)
 			if err != nil {
@@ -436,7 +436,7 @@ func (c *Collector) ArrayCopy(dst Ref, dstStart uint32, src Ref, srcStart uint32
 	if length == 0 {
 		return nil
 	}
-	if isRefKind(dstDesc.Elem) && c.cfg.Profile == ProfileTiny {
+	if isCollectorRefKind(dstDesc.Elem) && c.cfg.Profile == ProfileTiny {
 		copyOne := func(dstIndex, srcIndex uint32) error {
 			value, err := c.loadValue(src, uint64(PayloadOffset)+uint64(srcIndex)*uint64(srcDesc.ElemSize), srcDesc.Elem)
 			if err != nil {
@@ -464,7 +464,7 @@ func (c *Collector) ArrayCopy(dst Ref, dstStart uint32, src Ref, srcStart uint32
 	srcOff := uint64(PayloadOffset) + uint64(srcStart)*uint64(srcDesc.ElemSize)
 	byteLen := uint64(length) * width
 	copy(c.bytes(dst)[dstOff:dstOff+byteLen], c.bytes(src)[srcOff:srcOff+byteLen])
-	if isRefKind(dstDesc.Elem) {
+	if isCollectorRefKind(dstDesc.Elem) {
 		c.PostBulkWriteBarrier(dst, dstStart, length)
 	}
 	return nil
@@ -474,14 +474,14 @@ func (c *Collector) validateArrayStore(d TypeDesc, value Value) error {
 	if err := checkValueCompatible(d.Elem, value); err != nil {
 		return err
 	}
-	if isRefKind(d.Elem) {
-		return c.validateStoredRef(value.Ref, d.Elem == StorageRefNull)
+	if isCollectorRefKind(d.Elem) {
+		return c.validateStoredRef(value.Ref, isNullableReferenceStorage(d.Elem))
 	}
 	return nil
 }
 
 func (c *Collector) storeArrayValue(ref Ref, d TypeDesc, index uint32, value Value) error {
-	if isRefKind(d.Elem) {
+	if isCollectorRefKind(d.Elem) {
 		c.WriteBarrierObject(ref, value.Ref)
 		c.CardMarkArray(ref, index)
 		return c.storeValue(ref, d, uint64(PayloadOffset)+uint64(index)*uint64(d.ElemSize), d.Elem, value)
@@ -490,8 +490,8 @@ func (c *Collector) storeArrayValue(ref Ref, d TypeDesc, index uint32, value Val
 }
 
 func arrayStorageCopyCompatible(dst, src StorageKind) bool {
-	if dst == src {
-		return true
+	if isAnyReferenceStorage(dst) || isAnyReferenceStorage(src) {
+		return referenceStorageCompatible(dst, src)
 	}
-	return dst == StorageRefNull && src == StorageRef
+	return dst == src && isNumericStorage(dst)
 }

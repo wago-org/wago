@@ -1828,6 +1828,12 @@ Cards are currently verification/scaffolding metadata, not collection inputs. Th
 
 The bounded metadata adds one remembered bit plus one object-card index to each handle: `handleEntry` grows from 16 to 20 bytes. The lazy slot-card index adds one map word to the fixed collector, growing `Collector` from 640 to 648 bytes without allocating a map until a global/table nursery edge is recorded. The reusable promotion-plan slice described above brings the current fixed `Collector` size to 672 bytes. On linux/amd64 (Go 1.24.4, Ryzen 7 8845HS), 4,096 repeated old-array writes improve from 935.7–963.2 ns/op with 4,096 retained cards to 36.4–37.4 ns/op with one interval; both remain 0 B/op and 0 allocs/op. Tiny remains card-free at 32.7–33.1 ns/op.
 
+## Reference storage classes
+
+Collector references (`StorageRef`/`StorageRefNull`) are compact traced handles and are the only storage kinds that participate in object scanning, rooting, remembered sets, or write barriers. Function and external references use separate non-null/nullable opaque 64-bit token classes; they receive semantic nullability and copy validation but are never interpreted as collector handles. Numeric and packed storage is a fourth, non-reference class.
+
+Array copy accepts exact storage kinds plus the three non-null-to-nullable widenings: collector ref, function ref, and external ref. Nullable-to-non-null and cross-class copies reject before mutation. `array.init_data` accepts only numeric/packed storage and rejects every collector or opaque reference destination before reading source bytes or changing payload state.
+
 ## Exact scanning
 
 Scanning is descriptor-driven:

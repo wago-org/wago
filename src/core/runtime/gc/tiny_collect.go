@@ -198,7 +198,7 @@ func (c *Collector) scanObjectRefs(h uint32, visit func(Ref)) {
 	b := c.bytes(r)
 	if d.Kind == KindStruct {
 		for _, f := range d.Fields {
-			if isRefKind(f.Kind) {
+			if isCollectorRefKind(f.Kind) {
 				visit(Ref(binary.LittleEndian.Uint32(b[PayloadOffset+f.Offset:])))
 			}
 		}

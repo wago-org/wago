@@ -98,14 +98,14 @@ func checkValueCompatible(k StorageKind, v Value) error {
 			return fmt.Errorf("gc: value kind %d incompatible with nullable externref storage", v.Kind)
 		}
 	case StorageRef:
-		if !isRefKind(v.Kind) {
+		if !isCollectorRefKind(v.Kind) {
 			return fmt.Errorf("gc: value kind %d incompatible with non-null ref storage", v.Kind)
 		}
 		if v.Ref.IsNull() {
 			return errors.New("gc: cannot store null in non-null ref slot")
 		}
 	case StorageRefNull:
-		if !isRefKind(v.Kind) {
+		if !isCollectorRefKind(v.Kind) {
 			return fmt.Errorf("gc: value kind %d incompatible with nullable ref storage", v.Kind)
 		}
 	default:
