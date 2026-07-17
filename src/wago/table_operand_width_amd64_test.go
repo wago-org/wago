@@ -148,6 +148,61 @@ func TestReturnCallIndirectCanonicalizesDirtySynchronousHostResult(t *testing.T)
 	}
 }
 
+func table64ReturnCallIndirectWidthModule(index uint64) []byte {
+	sig := wasmtest.FuncType(nil, []wasm.ValType{wasm.I32})
+	table := wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x05, 0x02, 0x02}))
+	elem := wasmtest.Section(9, wasmtest.Vec([]byte{0x00, 0x42, 0x01, 0x0b, 0x01, 0x00}))
+	indexConst := append([]byte{0x42}, wasmtest.SLEB64(int64(index))...)
+	tail := append(indexConst, 0x13, 0x00, 0x00, 0x0b)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(sig)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0))),
+		table,
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("tail", 0, 1))),
+		elem,
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x41, 0x2a, 0x0b}),
+			wasmtest.Code(tail),
+		)),
+	)
+}
+
+func TestTable64ReturnCallIndirectPreservesFullIndexWidth(t *testing.T) {
+	cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithBoundsChecks(BoundsChecksExplicit)
+	for _, tc := range []struct {
+		name  string
+		index uint64
+		trap  bool
+	}{
+		{name: "in-range", index: 1},
+		{name: "high-word-set", index: 0x1_0000_0001, trap: true},
+		{name: "all-ones", index: ^uint64(0), trap: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			compiled, err := Compile(cfg, table64ReturnCallIndirectWidthModule(tc.index))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer compiled.Close()
+			in, err := Instantiate(compiled, InstantiateOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer in.Close()
+			got, err := in.Invoke("tail")
+			if tc.trap {
+				if err == nil {
+					t.Fatalf("tail index %#x returned %v", tc.index, got)
+				}
+				return
+			}
+			if err != nil || len(got) != 1 || AsI32(got[0]) != 42 {
+				t.Fatalf("tail index %#x = %v, %v; want 42", tc.index, got, err)
+			}
+		})
+	}
+}
+
 func TestTable32GrowCanonicalizesDirtySynchronousHostResult(t *testing.T) {
 	c := MustCompile(dirtyTableGrowModule())
 	for _, tc := range []struct {

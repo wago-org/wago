@@ -1710,7 +1710,7 @@ func (f *fn) returnCallIndirect(r *wasm.Reader) error {
 	f.pinned = f.pinned.add(tbl)
 	ln := f.allocReg(0)
 	f.a.Load32(ln, tbl, 0)
-	f.a.AluRR(0x39, idxReg, ln, false)
+	f.a.AluRR(0x39, idxReg, ln, f.tableAddr64(tableIdx))
 	f.release(ln)
 	f.trapIf(condAE, trapIndirectOOB)
 
