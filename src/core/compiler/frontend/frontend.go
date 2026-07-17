@@ -615,7 +615,7 @@ func (p supportPass) data() error {
 			if err := p.constExpr(d.Mode.Offset, ""); err != nil {
 				if unsupported, ok := err.(*UnsupportedError); ok {
 					copy := *unsupported
-					copy.Context = fmt.Sprintf("data %d offset", i)
+					copy.Context = fmt.Sprintf("data %d offset%s", i, unsupported.Context)
 					return &copy
 				}
 				return fmt.Errorf("data %d offset: %w", i, err)
