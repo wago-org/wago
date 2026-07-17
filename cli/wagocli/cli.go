@@ -94,14 +94,14 @@ func (c *Cmd) label(path string) string { return strings.TrimPrefix(path, "wago 
 // Dispatch resolves args against c and runs (or delegates to) the right command.
 // It is the single entry point from main() for every command.
 func (c *Cmd) Dispatch(path string, args []string) {
-	// A group's own -h/--help must precede the subcommand token, so `token create
-	// --help` descends to create rather than printing the group's help. That's the
-	// same "stop at the first positional" rule PassThrough uses.
-	if wantsHelp(args, c.PassThrough || len(c.Children) > 0) {
-		c.printHelp(os.Stdout, path)
-		return
-	}
 	if len(c.Children) > 0 {
+		// A group's own -h/--help must precede the subcommand token, so `token create
+		// --help` descends to create rather than printing the group's help. That's the
+		// same "stop at the first positional" rule PassThrough uses.
+		if wantsHelp(args, true, c.Flags) {
+			c.printHelp(os.Stdout, path)
+			return
+		}
 		if len(args) == 0 {
 			// A bare group invocation (e.g. `wago plugin`) shows its help — every
 			// group behaves the same, so there's always a discoverable menu.
@@ -123,6 +123,10 @@ func (c *Cmd) Dispatch(path string, args []string) {
 			fatal("%s: %v", c.label(path), err)
 		}
 	}
+	if wantsHelp(args, c.PassThrough, c.Flags) {
+		c.printHelp(os.Stdout, path)
+		return
+	}
 	ctx, err := c.parse(path, args)
 	if err != nil {
 		fatal("%s: %v", c.label(path), err)
@@ -130,11 +134,21 @@ func (c *Cmd) Dispatch(path string, args []string) {
 	c.Run(ctx)
 }
 
-// wantsHelp reports whether -h/--help appears among the flag tokens. For a
-// PassThrough command it only scans up to the first positional (the .wasm file),
-// so a guest program's own --help is not mistaken for wago's.
-func wantsHelp(args []string, passThrough bool) bool {
-	for _, a := range args {
+// wantsHelp reports whether -h/--help appears among the flag tokens. Values of
+// known value-taking flags are skipped, matching parse: a value such as
+// `--output --help` is not command help. For a PassThrough command scanning stops
+// at the first positional (the .wasm file), so a guest's own --help is untouched.
+func wantsHelp(args []string, passThrough bool, flags []Flag) bool {
+	lookup := make(map[string]*Flag, len(flags)*2)
+	for i := range flags {
+		f := &flags[i]
+		lookup["--"+f.Name] = f
+		if f.Short != "" {
+			lookup["-"+f.Short] = f
+		}
+	}
+	for i := 0; i < len(args); i++ {
+		a := args[i]
 		if a == "--" {
 			return false
 		}
@@ -143,6 +157,13 @@ func wantsHelp(args []string, passThrough bool) bool {
 		}
 		if passThrough && (a == "" || a[0] != '-') {
 			return false
+		}
+		name, hasInline := a, false
+		if eq := strings.IndexByte(a, '='); eq >= 0 {
+			name, hasInline = a[:eq], true
+		}
+		if f := lookup[name]; f != nil && !f.Bool && !hasInline && i+1 < len(args) {
+			i++
 		}
 	}
 	return false
