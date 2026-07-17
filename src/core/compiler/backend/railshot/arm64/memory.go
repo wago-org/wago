@@ -176,8 +176,10 @@ func (f *fn) memAddr(off uint32, size int, aliasPinned bool) (ea Reg, eaOwned bo
 			borrow = e.st.idx
 		}
 	} else {
-		ea, eaOwned = f.materialize(e), true // ea = addr (u32, zero-extended)
+		ea, eaOwned = f.materialize(e), true
 	}
+	// ABI slots are 64-bit words; memory32 consumes only the low i32 bits.
+	f.a.MovReg32(ea, ea)
 	if int64(off)+int64(size) <= 0x7FFFFFFF {
 		disp = int32(off)
 		leaDisp = int32(off) + int32(size)
@@ -704,6 +706,9 @@ func (f *fn) memoryInit(r *wasm.Reader) error {
 	f.ld64(X9, SP, f.spillOff(d-3))  // dst offset
 	f.ld64(X10, SP, f.spillOff(d-2)) // src offset in passive segment
 	f.ld64(X11, SP, f.spillOff(d-1)) // n
+	f.a.MovReg32(X9, X9)
+	f.a.MovReg32(X10, X10)
+	f.a.MovReg32(X11, X11)
 
 	mb := f.memSizeReg
 	if mb == regNone {
@@ -767,6 +772,9 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 	f.ld64(X9, SP, f.spillOff(d-3))  // dst offset
 	f.ld64(X10, SP, f.spillOff(d-2)) // src offset
 	f.ld64(X11, SP, f.spillOff(d-1)) // n
+	f.a.MovReg32(X9, X9)
+	f.a.MovReg32(X10, X10)
+	f.a.MovReg32(X11, X11)
 
 	// Scratch in X12/X13 only (never pinnable); X9-X11 hold dst/src/n.
 	mb := f.memSizeReg
@@ -877,6 +885,8 @@ func (f *fn) memoryFill(r *wasm.Reader) error {
 	f.ld64(X9, SP, f.spillOff(d-3))  // dst offset
 	f.ld64(X14, SP, f.spillOff(d-2)) // fill byte (low 8 bits)
 	f.ld64(X11, SP, f.spillOff(d-1)) // n
+	f.a.MovReg32(X9, X9)
+	f.a.MovReg32(X11, X11)
 
 	// Scratch in X12/X13 only (never pinnable).
 	mb := f.memSizeReg

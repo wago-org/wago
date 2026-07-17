@@ -365,14 +365,16 @@ Nullability-only products allocate no object or table state.
 
 No fixed ABI layout grows: `Compiled=712`, `Instance=792`, `compiledCodeCache=64`,
 `compiledMemoryDirectory=136`, `gc.Collector=640`, `gcRefTestTableState=200`,
-`gcExternConversionState=480`, and lazy `instancePluginState=144`. Codec v27 serializes neither the six
+`gcExternConversionState=480`, and lazy `instancePluginState=144`. The standalone collector now occupies 672 bytes after bounded remembered/card indexes and reusable promotion scratch; staged instance layouts that do not embed a collector remain unchanged. Codec v27 serializes neither the six
 exact branch-product enums nor helper admission, roots, canonical maps, conversions, or live identities.
 Snapshots, signal bounds, public admission, and arm64 execution remain closed.
 
-Native table lowering has a consuming-side width invariant: every table32 index, start, delta, and length is
-zero-extended before native-width comparison, scaling, pointer arithmetic, byte-count construction, or loop
-use. This applies even when validation or a producer normally yields clean i32 bits; synchronous host result
-slots explicitly permit arbitrary upper bits. Table64 operands retain all 64 bits. Exact memory/table declared
+Native memory and table lowering have a consuming-side width invariant: every memory32/table32 address,
+index, start, delta, source offset, and length is zero-extended before native-width comparison, scaling,
+pointer arithmetic, byte-count construction, or loop use. Scalar memory addresses and all bulk memory/table
+operands establish the invariant after spill/local reload, including mixed-width copy lengths. This applies even
+when validation or a producer normally yields clean i32 bits; synchronous host result slots explicitly permit
+arbitrary upper bits. Memory64/table64 operands retain all 64 bits. Exact memory/table declared
 limits remain separate from bounded executable capacities; memory64 lifecycle metadata stores declared maxima
 as uint64 and never substitutes the finite reservation. Active data and element offsets are evaluated after
 local global initialization and may read any available immutable global of the address type; global initializers

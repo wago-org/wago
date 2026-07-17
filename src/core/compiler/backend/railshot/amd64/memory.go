@@ -162,8 +162,11 @@ func (f *fn) memAddr(off uint32, size int, aliasPinned bool) (ea Reg, eaOwned bo
 			borrow = e.st.idx
 		}
 	} else {
-		ea, eaOwned = f.materialize(e), true // ea = addr (u32, zero-extended)
+		ea, eaOwned = f.materialize(e), true
 	}
+	// Host results and canonical spill slots are 64-bit ABI words. Establish the
+	// memory32 consuming-side invariant before any native-width arithmetic.
+	f.a.MovRegReg32(ea, ea)
 	if int64(off)+int64(size) <= 0x7FFFFFFF {
 		disp = int32(off)
 		leaDisp = int32(off) + int32(size)
@@ -339,6 +342,9 @@ func (f *fn) readMemArg(r *wasm.Reader) (memoryIndex uint32, off uint64, err err
 func (f *fn) indexedMemAddr(memoryIndex, off uint32, size int) (base, ea Reg, disp int32) {
 	e := f.popValue()
 	ea = f.materialize(e)
+	if !f.memoryAddr64(memoryIndex) {
+		f.a.MovRegReg32(ea, ea)
+	}
 	disp = int32(off)
 	if int64(off)+int64(size) > 0x7fffffff {
 		t := f.allocReg(maskOf(ea))
@@ -668,6 +674,9 @@ func (f *fn) memoryInit(r *wasm.Reader) error {
 	} else {
 		f.a.Load64(RSI, RSP, f.spillOff(d-2))
 		f.a.Load64(RCX, RSP, f.spillOff(d-1))
+		f.a.MovRegReg32(RDI, RDI)
+		f.a.MovRegReg32(RSI, RSI)
+		f.a.MovRegReg32(RCX, RCX)
 	}
 
 	f.absoluteBulkAddr(memoryIndex, RDI, RCX)
@@ -729,6 +738,15 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 	f.a.Load64(RDI, RSP, f.spillOff(d-3)) // dst offset
 	f.a.Load64(RSI, RSP, f.spillOff(d-2)) // src offset
 	f.a.Load64(RCX, RSP, f.spillOff(d-1)) // n
+	if !f.memoryAddr64(dstMemory) {
+		f.a.MovRegReg32(RDI, RDI)
+	}
+	if !f.memoryAddr64(srcMemory) {
+		f.a.MovRegReg32(RSI, RSI)
+	}
+	if !f.memoryAddr64(dstMemory) || !f.memoryAddr64(srcMemory) {
+		f.a.MovRegReg32(RCX, RCX)
+	}
 
 	// Scratch in RDX/R8 only (never pinnable); R9 may hold a pinned local.
 	f.absoluteBulkAddr(dstMemory, RDI, RCX)
@@ -834,6 +852,10 @@ func (f *fn) memoryFill(r *wasm.Reader) error {
 	f.a.Load64(RDI, RSP, f.spillOff(d-3)) // dst offset
 	f.a.Load64(RAX, RSP, f.spillOff(d-2)) // AL = fill byte
 	f.a.Load64(RCX, RSP, f.spillOff(d-1)) // n
+	if !f.memoryAddr64(memoryIndex) {
+		f.a.MovRegReg32(RDI, RDI)
+		f.a.MovRegReg32(RCX, RCX)
+	}
 
 	// Scratch in RDX/R8 only (never pinnable); R9 may hold a pinned local.
 	f.absoluteBulkAddr(memoryIndex, RDI, RCX)
