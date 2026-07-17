@@ -45,17 +45,18 @@ func (c *Collector) CollectMinor(roots RootSet) error {
 		}
 		return nil
 	}
-	// This first pass implements minor as exact marking of nursery reachability
-	// plus promotion of survivors into old space. Remembered old objects and
-	// global/table slots are treated as additional roots for young objects.
-	c.clearMarks()
-	c.markRoots(roots)
+	// Minor collection traces nursery reachability only. Old/large roots are not
+	// recursively scanned; every direct old/large-to-nursery edge is represented
+	// by the remembered set, while global/table slots are scanned as roots.
+	c.clearNurseryMarks()
+	c.markNurseryRoots(roots)
 	for _, h := range c.remembered {
 		if int(h) < len(c.handles) && (c.handles[h].space == spaceOld || c.handles[h].space == spaceLarge) {
-			c.scanObject(h)
+			c.stats.MinorRememberedScanned++
+			c.scanObjectRefs(h, c.markNurseryRef)
 		}
 	}
-	c.drainMarkStack()
+	c.drainNurseryMarkStack()
 	if err := c.promoteMarkedNursery(); err != nil {
 		return err
 	}
@@ -78,14 +79,16 @@ func (c *Collector) sweepAll() {
 			c.free(h)
 		}
 	}
+	c.compactNurseryHandles()
 	c.compactNurseryBump()
 }
 func (c *Collector) sweepNurseryDead() {
-	for h := uint32(1); int(h) < len(c.handles); h++ {
-		if c.handles[h].space == spaceNursery && !c.mark[h] {
+	for _, h := range c.nurseryHandles {
+		if h != 0 && int(h) < len(c.handles) && c.handles[h].space == spaceNursery && !c.mark[h] {
 			c.free(h)
 		}
 	}
+	c.compactNurseryHandles()
 	c.compactNurseryBump()
 }
 
@@ -100,8 +103,8 @@ func (c *Collector) promoteMarkedNursery() error {
 		clear(plans)
 		c.promotionScratch = plans[:0]
 	}
-	for h := uint32(1); int(h) < len(c.handles); h++ {
-		if c.handles[h].space == spaceNursery && c.mark[h] {
+	for _, h := range c.nurseryHandles {
+		if h != 0 && int(h) < len(c.handles) && c.handles[h].space == spaceNursery && c.mark[h] {
 			e, err := c.throughput.alloc(c.handles[h].size, spaceOld)
 			if err != nil {
 				for i := len(plans) - 1; i >= 0; i-- {
@@ -182,6 +185,17 @@ func (c *Collector) free(h uint32) {
 	*e = handleEntry{}
 	c.freeHandles = append(c.freeHandles, h)
 }
+func (c *Collector) compactNurseryHandles() {
+	out := c.nurseryHandles[:0]
+	for _, h := range c.nurseryHandles {
+		if h != 0 && int(h) < len(c.handles) && c.handles[h].space == spaceNursery {
+			out = append(out, h)
+		}
+	}
+	clear(c.nurseryHandles[len(out):])
+	c.nurseryHandles = out
+}
+
 func (c *Collector) compactNurseryBump() {
 	var max uint32
 	for _, e := range c.handles {

@@ -75,6 +75,9 @@ func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, err
 		e = handleEntry{off: off, size: size, allocSize: size, space: sp}
 	}
 	h := c.newHandle(e)
+	if sp == spaceNursery {
+		c.nurseryHandles = append(c.nurseryHandles, h)
+	}
 	r := makeObjRef(h)
 	flags := uint32(0)
 	if !d.HasRefs {
