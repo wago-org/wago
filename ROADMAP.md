@@ -107,9 +107,11 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   `call_ref`. Public structural type descriptors, exact signature/global/table/
   element inspection, and codec-v27 persistence are now present. Staged runtime
   storage/import matching uses cross-module structural subtype/equivalence;
-  native descriptors use bounded 64-bit SHA-256-derived structural keys that
-  separate deliberate legacy 32-bit collisions and fail closed above a fixed
-  canonicalization budget; public invocation,
+  native descriptors use bounded 64-bit structural keys as fast discriminators.
+  A bounded runtime/reference-store registry resolves every equal key against the
+  complete cross-module structural descriptors before publishing native targets,
+  rejecting distinct collisions transactionally. Linear recursive-group/DAG
+  canonicalization is module-cached and fails closed above a fixed budget; public invocation,
   synchronous host boundaries, and mutable global ingress/egress enforce exact
   types/nullability. Dynamic typed `table.get/set/grow/fill/copy/init` now prove
   shifted-type imports/re-exports, producer replacement, close order, and trap
@@ -143,7 +145,8 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   collector-free metadata/function-identity products: immutable local `ref.func` globals,
   cross-instance link matching, and ordinary funcref `call_indirect`. Whole non-singleton
   recursive groups now contribute group order and selected-member position to the bounded
-  64-bit structural key. No struct/array value is allocated or accessed. Public admission, other float/
+  64-bit discriminator, while exact store admission prevents hash equality from being the
+  sole native type authority. No struct/array value is allocated or accessed. Public admission, other float/
   oversized direct tails, general-table/
   foreign-float/general reference-result tails, live typed snapshot state, remaining
   GC/reference instructions, and arm64 parity remain gated.
