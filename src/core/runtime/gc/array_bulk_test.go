@@ -225,6 +225,83 @@ func TestArrayCopyReferenceCompatibilityAndBarriers(t *testing.T) {
 	}
 }
 
+func TestArrayFillReferenceBulkLengthsAndRememberedReconcile(t *testing.T) {
+	for _, length := range []uint32{0, 1, 16, 256, 4096} {
+		t.Run(benchmarkLength(length), func(t *testing.T) {
+			c := newTestCollectorWithTypes(t, Config{StressNurseryBytes: 1 << 20}, bulkTestTypes(t))
+			dst, err := c.NewArrayDefault(3, length)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := c.ForcePromote(dst); err != nil {
+				t.Fatal(err)
+			}
+			child, err := c.NewStructDefault(0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := c.ArrayFill(dst, 0, RefValue(child), length); err != nil {
+				t.Fatal(err)
+			}
+			if length == 0 {
+				if c.RememberedCount() != 0 || c.CardCount() != 0 {
+					t.Fatalf("zero fill remembered/cards = %d/%d", c.RememberedCount(), c.CardCount())
+				}
+				return
+			}
+			if c.RememberedCount() != 1 || c.CardCount() > 2 {
+				t.Fatalf("length %d remembered/cards = %d/%d, want 1/<=2", length, c.RememberedCount(), c.CardCount())
+			}
+			for _, index := range []uint32{0, length - 1} {
+				got, err := c.ArrayGet(dst, index)
+				if err != nil || got.Ref != child {
+					t.Fatalf("length %d index %d = %v, %v; want child", length, index, got.Ref, err)
+				}
+			}
+			if err := c.ArrayFill(dst, 0, Value{Kind: StorageRefNull}, length); err != nil {
+				t.Fatal(err)
+			}
+			if c.RememberedCount() != 0 {
+				t.Fatalf("length %d null replacement retained remembered object", length)
+			}
+		})
+	}
+}
+
+func TestArrayCopyBulkReconcilePreservesNurseryEdgesOutsideRange(t *testing.T) {
+	c := newTestCollectorWithTypes(t, Config{StressNurseryBytes: 1 << 20}, bulkTestTypes(t))
+	dst, err := c.NewArrayDefault(3, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.ForcePromote(dst); err != nil {
+		t.Fatal(err)
+	}
+	child, err := c.NewStructDefault(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.ArraySet(dst, 0, RefValue(child)); err != nil {
+		t.Fatal(err)
+	}
+	nulls, err := c.NewArrayDefault(3, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.ArrayCopy(dst, 1, nulls, 1, 1); err != nil {
+		t.Fatal(err)
+	}
+	if c.RememberedCount() != 1 {
+		t.Fatal("bulk copy removed remembered object with nursery edge outside destination range")
+	}
+	if err := c.ArrayCopy(dst, 0, nulls, 0, 1); err != nil {
+		t.Fatal(err)
+	}
+	if c.RememberedCount() != 0 {
+		t.Fatal("bulk copy retained remembered object after final nursery edge was removed")
+	}
+}
+
 func TestArrayFillTinyRemarkBarrier(t *testing.T) {
 	c := newTestCollectorWithTypes(t, Config{Profile: ProfileTiny, TinyHeapBytes: 128, TinyBlockBytes: 8, TinyStepBudget: 1}, bulkTestTypes(t))
 	parent, err := c.NewArrayDefault(3, 1)

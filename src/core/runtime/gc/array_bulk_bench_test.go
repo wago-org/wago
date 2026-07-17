@@ -1,6 +1,9 @@
 package gc
 
-import "testing"
+import (
+	"strconv"
+	"testing"
+)
 
 func newBulkBenchmarkCollector(b *testing.B) *Collector {
 	obj, _ := NewStructDesc(0, nil)
@@ -45,13 +48,4 @@ func BenchmarkArrayBulk(b *testing.B) {
 	}
 }
 
-func benchmarkLength(n uint32) string {
-	switch n {
-	case 16:
-		return "16"
-	case 256:
-		return "256"
-	default:
-		return "4096"
-	}
-}
+func benchmarkLength(n uint32) string { return strconv.FormatUint(uint64(n), 10) }
