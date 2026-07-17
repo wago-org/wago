@@ -120,27 +120,29 @@ jobs:
           # No go.sum (stdlib-only module) -> nothing to cache; avoids a warning.
           cache: false
 
-      # Runtime tests execute pinned Release 3 fixtures. Initialize only that
-      # Go-test dependency rather than every optional/C++ submodule.
-      - name: Initialize Release 3 suite
-        if: matrix.runtime
-        run: git submodule update --init --depth=1 tests/spec-v3
-
-      # WABT 1.0.41 handles most Core 3 source, while the official interpreter
-      # remains the authoritative fallback for exception-handling forms that
-      # WABT cannot parse. Build the pinned interpreter on every runtime host.
-      - name: Install Release 3 interpreter toolchain (Linux)
-        if: matrix.runtime && runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y ocaml-nox dune menhir
-      - name: Install Release 3 interpreter toolchain (macOS)
-        if: matrix.runtime && runner.os == 'macOS'
-        run: brew install ocaml dune menhir
-
-      - name: Bootstrap pinned Core 3 tools
+      # Runtime codegen uses syntax unavailable in distro WABT releases. Publish
+      # the checksum-pinned tool directory on every supported runtime host.
+      - name: Bootstrap pinned WABT
         if: matrix.runtime
         run: |
           scripts/bootstrap-wabt.sh --verify
           echo "$(dirname "$(scripts/bootstrap-wabt.sh --print-path)")" >> "$GITHUB_PATH"
+
+      # Only linux/amd64 builds the supplementary official Core 3 tests during
+      # ordinary package testing. Initialize and build their authoritative
+      # interpreter fallback there; other runtime cells avoid the large OCaml
+      # toolchain and verify the portable/backend surface directly.
+      - name: Initialize Release 3 suite
+        if: matrix.goos == 'linux' && matrix.goarch == 'amd64'
+        run: git submodule update --init --depth=1 tests/spec-v3
+
+      - name: Install Release 3 interpreter toolchain
+        if: matrix.goos == 'linux' && matrix.goarch == 'amd64'
+        run: sudo apt-get update && sudo apt-get install -y ocaml-nox ocaml-dune menhir
+
+      - name: Bootstrap pinned Release 3 interpreter
+        if: matrix.goos == 'linux' && matrix.goarch == 'amd64'
+        run: |
           interpreter="$(scripts/bootstrap-spec-interpreter.sh --print-path)"
           scripts/bootstrap-spec-interpreter.sh --verify
           echo "WAGO_SPEC_INTERPRETER=$interpreter" >> "$GITHUB_ENV"
@@ -281,7 +283,7 @@ jobs:
       # Coverage executes the same Core 3 tests as the native matrix, including
       # source forms that require the official interpreter fallback.
       - name: Install Release 3 interpreter toolchain
-        run: sudo apt-get update && sudo apt-get install -y ocaml-nox dune menhir
+        run: sudo apt-get update && sudo apt-get install -y ocaml-nox ocaml-dune menhir
 
       - name: Bootstrap pinned Core 3 tools
         run: |

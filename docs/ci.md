@@ -11,14 +11,14 @@ the complete native platform matrix:
 | `macos-15-intel` | Darwin | amd64 | portable compiler/encoder | no | no | no |
 | `macos-15` | Darwin | arm64 | yes | yes | yes | yes |
 
-Each matrix cell asserts `go env GOOS` and `GOARCH` before testing. Runtime and
-coverage jobs initialize the pinned `tests/spec-v3` submodule before ordinary Go
-tests, because Core 3 accounting tests verify its exact revision. They bootstrap
-the checksum-pinned WABT release and add its complete `bin` directory to `PATH`,
-so `wast2json` and `wat2wasm` do not depend on older runner packages. They also
-build the interpreter from that exact Release 3 checkout and export its path and
-revision; this is the authoritative fallback for exception-handling source forms
-that WABT 1.0.41 cannot parse.
+Each matrix cell asserts `go env GOOS` and `GOARCH` before testing. Every runtime
+job bootstraps the checksum-pinned WABT release and adds its complete `bin`
+directory to `PATH`, so `wast2json` and `wat2wasm` do not depend on older runner
+packages. Linux/amd64 and coverage additionally initialize the pinned
+`tests/spec-v3` submodule, build the interpreter from that exact checkout, and
+export its path and revision. This is the authoritative fallback for
+exception-handling source forms that WABT 1.0.41 cannot parse; ARM64 does not
+compile those amd64-only supplementary fixture tests and avoids the OCaml setup.
 
 The three supported runtime targets run `make test`, which builds and tests every
 Go package, followed by `make test-corpus` with a bounded per-case timeout and
