@@ -14,18 +14,21 @@ import (
 // runCommand is `wago run <file> [args...]`: compile and execute an export. It's
 // PassThrough so everything after the .wasm file is handed to the guest verbatim.
 func runCommand() *Cmd {
+	flags := append([]Flag{
+		{Name: "invoke", Short: "e", Arg: "<name>", Help: "exported function to call"},
+		{Name: "plugin", Arg: "<names>", Help: "comma-separated extra plugins to enable, on top of wago.json (see: wago plugin list)"},
+		{Name: "bounds", Arg: "<mode>", Help: "bounds checks: defer (default) | all"},
+		{Name: "parallel", Short: "p", Arg: "[workers]", Help: "parallel function compilation; omit workers for adaptive mode"},
+	}, optKnobFlags()...)
 	return &Cmd{
 		Name:        "run",
 		Summary:     "compile and execute an export   (default)",
 		Args:        "<file> [args...]",
 		PassThrough: true,
-		Normalize:   normalizeRunParallelArgs,
-		Flags: append([]Flag{
-			{Name: "invoke", Short: "e", Arg: "<name>", Help: "exported function to call"},
-			{Name: "plugin", Arg: "<names>", Help: "comma-separated extra plugins to enable, on top of wago.json (see: wago plugin list)"},
-			{Name: "bounds", Arg: "<mode>", Help: "bounds checks: defer (default) | all"},
-			{Name: "parallel", Short: "p", Arg: "[workers]", Help: "parallel function compilation; omit workers for adaptive mode"},
-		}, optKnobFlags()...),
+		Normalize: func(args []string) ([]string, error) {
+			return normalizeRunParallelArgs(args, flags)
+		},
+		Flags: flags,
 		Long: "<file> is raw .wasm or a precompiled .wago. Args after the file are typed by the\n" +
 			"signature; override per-arg with a suffix:  42   7:i64   3.5:f64\n" +
 			"Use -p for adaptive compile parallelism, or -p8 / -p 8 / --parallel=8 to\n" +
@@ -37,8 +40,21 @@ func runCommand() *Cmd {
 // normalizeRunParallelArgs accepts the standard separated/equal forms plus the
 // convenient joined form requested by the CLI: -p, -p8, -p 8, -p=8,
 // --parallel, and --parallel=8. Bare -p/--parallel means adaptive mode. Parsing
-// stops at the wasm file so a guest's own -p argument remains untouched.
-func normalizeRunParallelArgs(args []string) ([]string, error) {
+// stops at the wasm file so a guest's own -p argument remains untouched. Values
+// belonging to earlier value-taking flags are skipped according to the same Flag
+// table used by parse, so they cannot be mistaken for the file boundary.
+func normalizeRunParallelArgs(args []string, flags []Flag) ([]string, error) {
+	valueFlags := make(map[string]struct{}, len(flags)*2)
+	for _, flag := range flags {
+		if flag.Bool || flag.Name == "parallel" {
+			continue
+		}
+		valueFlags["--"+flag.Name] = struct{}{}
+		if flag.Short != "" {
+			valueFlags["-"+flag.Short] = struct{}{}
+		}
+	}
+
 	out := make([]string, 0, len(args)+1)
 	for i := 0; i < len(args); i++ {
 		a := args[i]
@@ -64,7 +80,16 @@ func normalizeRunParallelArgs(args []string) ([]string, error) {
 				continue
 			}
 		}
+
+		name, inline := a, false
+		if eq := strings.IndexByte(a, '='); eq >= 0 {
+			name, inline = a[:eq], true
+		}
 		out = append(out, a)
+		if _, ok := valueFlags[name]; ok && !inline && i+1 < len(args) {
+			i++
+			out = append(out, args[i])
+		}
 	}
 	return out, nil
 }
