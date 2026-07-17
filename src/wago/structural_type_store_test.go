@@ -1,8 +1,12 @@
 package wago
 
 import (
+	"context"
 	"strings"
 	"testing"
+
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"github.com/wago-org/wago/testutil/wasmtest"
 )
 
 func compiledStoreType(key uint64, param ValueTypeKind) *Compiled {
@@ -47,6 +51,50 @@ func TestReferenceStoreResolvesNativeStructuralKeyCollisionsExactly(t *testing.T
 		t.Fatalf("type key was not released with final live owner: %v", err)
 	}
 	store.instanceClosed(distinct)
+}
+
+func scalarFunctionModule(param wasm.ValType) []byte {
+	body := []byte{0x41, 0x00, 0x0b}
+	result := []wasm.ValType{wasm.I32}
+	if param == wasm.I64 {
+		body = []byte{0x20, 0x00, 0xa7, 0x0b} // local.get 0; i32.wrap_i64
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(func() []wasm.ValType {
+			if param == (wasm.ValType{}) {
+				return nil
+			}
+			return []wasm.ValType{param}
+		}(), result))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+}
+
+func TestRuntimeRejectsForcedHashEqualDistinctNativeTarget(t *testing.T) {
+	rt := NewRuntime()
+	defer rt.Close()
+	first, err := rt.Compile(scalarFunctionModule(wasm.ValType{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := rt.Compile(scalarFunctionModule(wasm.I64))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer first.Compiled().Close()
+	defer second.Compiled().Close()
+	second.c.FuncTypeID[0] = first.c.FuncTypeID[0] // deterministic collision injection seam
+
+	in, err := rt.Instantiate(context.Background(), first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	if _, err := rt.Instantiate(context.Background(), second); err == nil || !strings.Contains(err.Error(), "collides with a distinct store type") {
+		t.Fatalf("forced collision instantiate error = %v", err)
+	}
 }
 
 func TestReferenceStoreRejectsStructuralKeyCollisionWithinModule(t *testing.T) {
