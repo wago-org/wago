@@ -80,7 +80,11 @@ truncation + trunc_sat, start function, multi-value, imported/mutable globals.
 `scanBody` instruction walk is used only for programmatically constructed modules that
 provide decoded instructions; normal decoded modules use BodyBytes and first-N pinning.
 Validation is byte-backed and no-body too (#96: type-cache + validator/reader reuse,
-validation allocs −90%).
+validation allocs −90%). The opt-in [function-worker policy](docs/function-workers.md)
+now applies to both validation and codegen: module-wide work remains serial, function
+bodies fan out with worker-local state, and results/errors rejoin deterministically.
+At p4, validation improved 58–72% on the representative medium/large corpus while
+keeping serial allocation counts unchanged.
 
 **Landed since the #87/#88 sweep (2026-07-02 → 07-03)**
 - **Borrowed reads for value-pinned globals** (`stGlobReg`, #93) and

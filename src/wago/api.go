@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 	"unsafe"
 
+	"github.com/wago-org/wago/internal/functionworkers"
 	"github.com/wago-org/wago/src/core/compiler/frontend"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	wruntime "github.com/wago-org/wago/src/core/runtime"
@@ -89,51 +90,24 @@ func compileArgs(args []any) (*RuntimeConfig, []byte, error) {
 	}
 }
 
-// storedCompileWorkers keeps link-time policy in existing Compiled padding.
+// storedFunctionWorkers keeps link-time policy in existing Compiled padding.
 // Values above uint16 still mean "at least every practical GOMAXPROCS" and are
-// therefore equivalent after the backend cap.
-func storedCompileWorkers(policy int) uint16 {
+// therefore equivalent after the worker cap.
+func storedFunctionWorkers(policy int) uint16 {
 	if policy > int(^uint16(0)) {
 		return ^uint16(0)
 	}
 	return uint16(policy)
 }
 
-// compileWorkersForModule resolves a public compile-worker policy to a forced
-// function-pipeline worker count used by validation and backend codegen. Positive
-// policies are explicit maxima. Auto mode uses a measured work score that
-// distinguishes hundreds of tiny functions from a few substantial bodies while
-// retaining the exact serial fast path below 16 KiB. Four workers won consistently
-// from that crossover. Eight improved the largest modules, but not end-to-end
-// latency enough to justify its additional allocation and peak-RSS cost, so auto
-// mode deliberately caps at four.
-func compileWorkersForModule(m *wasm.Module, policy int) int {
-	workers := policy
-	if workers == 0 {
-		const (
-			perFunctionWeight = 64
-			parallelThreshold = 16 << 10
-		)
-		totalBody := 0
-		for i := range m.Code {
-			totalBody += len(m.Code[i].BodyBytes)
-		}
-		if score := totalBody + perFunctionWeight*len(m.Code); score < parallelThreshold {
-			workers = 1
-		} else {
-			workers = 4
-		}
+// functionWorkersForModule resolves the configured policy once so validation
+// and codegen use the same bounded worker count for a module.
+func functionWorkersForModule(m *wasm.Module, policy int) int {
+	totalBody := 0
+	for i := range m.Code {
+		totalBody += len(m.Code[i].BodyBytes)
 	}
-	if max := goruntime.GOMAXPROCS(0); workers > max {
-		workers = max
-	}
-	if workers > len(m.Code) {
-		workers = len(m.Code)
-	}
-	if workers <= 1 {
-		return 1
-	}
-	return workers
+	return functionworkers.Resolve(policy, len(m.Code), totalBody)
 }
 
 func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) {
@@ -147,7 +121,7 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 	if err != nil {
 		return nil, fmt.Errorf("decode: %w", err)
 	}
-	workers := compileWorkersForModule(m, cfg.compileWorkers)
+	workers := functionWorkersForModule(m, cfg.functionWorkers)
 	if err := wasm.ValidateModuleWithWorkers(m, workers); err != nil {
 		return nil, fmt.Errorf("validate: %w", err)
 	}
@@ -175,7 +149,7 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 		code, entry, internalEntry = cm.Code, cm.Entry, cm.InternalEntry
 	}
 
-	c := &Compiled{Code: code, Entry: entry, InternalEntry: internalEntry, NumImports: importedFuncs, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, boundsMode: cfg.boundsChecks, GCTypeDescs: gcDescs, needsLink: needsLink, boundsElide: elide, noDeferBounds: cfg.noDeferBounds, compileWorkers: storedCompileWorkers(cfg.compileWorkers), requiredFeatures: uint8(moduleRequiredFeatures(m)), syncHostImports: syncHostInitial}
+	c := &Compiled{Code: code, Entry: entry, InternalEntry: internalEntry, NumImports: importedFuncs, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, boundsMode: cfg.boundsChecks, GCTypeDescs: gcDescs, needsLink: needsLink, boundsElide: elide, noDeferBounds: cfg.noDeferBounds, functionWorkers: storedFunctionWorkers(cfg.functionWorkers), requiredFeatures: uint8(moduleRequiredFeatures(m)), syncHostImports: syncHostInitial}
 	if importedFuncs > 0 {
 		c.importFuncSigs = make([]FuncSig, importedFuncs)
 		for i := 0; i < importedFuncs; i++ {
@@ -644,7 +618,7 @@ func (c *Compiled) recompileLinked(imports Imports, bindings []railshotImportBin
 		}
 	}
 	pressureAt, pressure := compileMemoryPressure(len(c.wasmBytes))
-	cm, err := railshotCompileModuleWith(m, railshotCompileOptions{Workers: compileWorkersForModule(m, int(c.compileWorkers)), ElideBoundsChecks: c.boundsElide, NoBoundsFacts: c.noDeferBounds, ImportBindings: bindings, SyncHostCalls: syncHost, Interruptible: true, MemoryPressureAt: pressureAt, MemoryPressure: pressure})
+	cm, err := railshotCompileModuleWith(m, railshotCompileOptions{Workers: functionWorkersForModule(m, int(c.functionWorkers)), ElideBoundsChecks: c.boundsElide, NoBoundsFacts: c.noDeferBounds, ImportBindings: bindings, SyncHostCalls: syncHost, Interruptible: true, MemoryPressureAt: pressureAt, MemoryPressure: pressure})
 	if err != nil {
 		return nil, fmt.Errorf("link: %w", err)
 	}

@@ -24,11 +24,11 @@ func main() {
 	// function count.
 	cfg := wago.NewRuntimeConfig().
 		WithDeferBoundsChecks(false).
-		WithCompileWorkers(0)
+		WithFunctionWorkers(0)
 
 	fmt.Println("features:", cfg.CoreFeatures())
 	fmt.Println("bounds checks:", cfg.BoundsChecks())
-	fmt.Println("compile workers:", cfg.CompileWorkers())
+	fmt.Println("function workers:", cfg.FunctionWorkers())
 
 	rt := wago.NewRuntime(wago.WithRuntimeConfig(cfg))
 	defer rt.Close()

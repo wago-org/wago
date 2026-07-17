@@ -2,6 +2,8 @@ package wasm
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -20,6 +22,36 @@ func TestValidateModuleWithWorkersParity(t *testing.T) {
 				t.Fatalf("workers=%d run=%d: %v", workers, run, err)
 			}
 		}
+	}
+}
+
+func TestValidateModuleWithWorkersCorpusParity(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping large validation corpus parity in short mode")
+	}
+	corpus := filepath.Join("..", "..", "..", "..", "bench", "corpus")
+	for _, name := range []string{
+		"tiny.wasm", "many_funcs.wasm", "json-as.wasm", "json-as-simd.wasm",
+		"lua.wasm", "sqlite3.wasm", "ruby.wasm", "esbuild.wasm",
+	} {
+		t.Run(name, func(t *testing.T) {
+			data, err := os.ReadFile(filepath.Join(corpus, name))
+			if err != nil {
+				t.Fatal(err)
+			}
+			m, err := DecodeModule(data)
+			if err != nil {
+				t.Fatalf("decode: %v", err)
+			}
+			if err := ValidateModule(m); err != nil {
+				t.Fatalf("serial: %v", err)
+			}
+			for _, workers := range []int{2, 4, 8} {
+				if err := ValidateModuleWithWorkers(m, workers); err != nil {
+					t.Fatalf("p%d: %v", workers, err)
+				}
+			}
+		})
 	}
 }
 

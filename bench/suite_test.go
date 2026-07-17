@@ -298,7 +298,7 @@ func BenchmarkCompileFullWorkers(b *testing.B) {
 			}{{"p1", 1}, {"p2", 2}, {"p4", 4}, {"p8", 8}, {"auto", 0}} {
 				b.Run(mode.name, func(b *testing.B) {
 					b.ReportAllocs()
-					cfg := wago.NewRuntimeConfig().WithCompileWorkers(mode.workers)
+					cfg := wago.NewRuntimeConfig().WithFunctionWorkers(mode.workers)
 					var cm *wago.Compiled
 					for i := 0; i < b.N; i++ {
 						var err error
@@ -332,7 +332,7 @@ func BenchmarkCompileMultiModuleThroughput(b *testing.B) {
 			}{{"p1", 1}, {"auto", 0}} {
 				b.Run(mode.name, func(b *testing.B) {
 					b.ReportAllocs()
-					cfg := wago.NewRuntimeConfig().WithCompileWorkers(mode.workers)
+					cfg := wago.NewRuntimeConfig().WithFunctionWorkers(mode.workers)
 					b.RunParallel(func(pb *testing.PB) {
 						for pb.Next() {
 							if _, err := wago.Compile(cfg, m.bytes); err != nil {

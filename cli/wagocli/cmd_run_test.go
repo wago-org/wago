@@ -125,6 +125,35 @@ func TestRunParallelFlagForms(t *testing.T) {
 	}
 }
 
+func TestValidateParallelFlagForms(t *testing.T) {
+	cmd := validateCommand()
+	for _, tc := range []struct {
+		args []string
+		want string
+	}{
+		{args: []string{"module.wasm"}},
+		{args: []string{"-p", "module.wasm"}, want: "auto"},
+		{args: []string{"-p8", "module.wasm"}, want: "8"},
+		{args: []string{"-p", "8", "module.wasm"}, want: "8"},
+		{args: []string{"--parallel=4", "module.wasm"}, want: "4"},
+	} {
+		args, err := cmd.Normalize(tc.args)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ctx, err := cmd.parse("wago validate", args)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := ctx.Str("parallel"); got != tc.want {
+			t.Fatalf("args=%v parallel=%q, want %q", tc.args, got, tc.want)
+		}
+		if len(ctx.Args) != 1 || ctx.Args[0] != "module.wasm" {
+			t.Fatalf("args=%v positionals=%v", tc.args, ctx.Args)
+		}
+	}
+}
+
 func TestRunConfigParallelism(t *testing.T) {
 	for _, tc := range []struct {
 		parallel string
@@ -140,7 +169,7 @@ func TestRunConfigParallelism(t *testing.T) {
 		if err != nil {
 			t.Fatalf("parallel %q: %v", tc.parallel, err)
 		}
-		if got := cfg.CompileWorkers(); got != tc.want {
+		if got := cfg.FunctionWorkers(); got != tc.want {
 			t.Fatalf("parallel %q workers = %d, want %d", tc.parallel, got, tc.want)
 		}
 	}

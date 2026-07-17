@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/wago-org/wago"
+	"github.com/wago-org/wago/internal/functionworkers"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
@@ -35,18 +36,26 @@ func buildCommand() *Cmd {
 
 // validateCommand decodes and validates a module without running it.
 func validateCommand() *Cmd {
+	flags := []Flag{parallelFlag()}
 	return &Cmd{
-		Name:    "validate",
-		Summary: "decode and validate a module",
-		Args:    "<file>",
+		Name:      "validate",
+		Summary:   "decode and validate a module",
+		Args:      "<file>",
+		Flags:     flags,
+		Normalize: func(args []string) ([]string, error) { return normalizeParallelArgs(args, flags) },
+		Long:      "Use -p for adaptive parallel function validation, or -p8 / -p 8 / --parallel=8 to force a worker maximum.",
 		Run: func(c *Ctx) {
 			file := singleFileArg("validate", c.Args)
 			src, err := os.ReadFile(file)
 			if err != nil {
 				fatal("%v", err)
 			}
-			if err := validateModuleBytes(src); err != nil {
+			policy, err := parallelPolicy(c.Str("parallel"))
+			if err != nil {
 				fatal("validate: %v", err)
+			}
+			if err := validateModuleBytesWithPolicy(src, policy); err != nil {
+				fatal("%v", err)
 			}
 		},
 	}
@@ -61,11 +70,20 @@ func singleFileArg(cmd string, args []string) string {
 }
 
 func validateModuleBytes(src []byte) error {
+	return validateModuleBytesWithPolicy(src, 1)
+}
+
+func validateModuleBytesWithPolicy(src []byte, policy int) error {
 	m, err := wasm.DecodeModule(src)
 	if err != nil {
 		return fmt.Errorf("decode: %w", err)
 	}
-	if err := wasm.ValidateModule(m); err != nil {
+	bodyBytes := 0
+	for i := range m.Code {
+		bodyBytes += len(m.Code[i].BodyBytes)
+	}
+	workers := functionworkers.Resolve(policy, len(m.Code), bodyBytes)
+	if err := wasm.ValidateModuleWithWorkers(m, workers); err != nil {
 		return fmt.Errorf("validate: %w", err)
 	}
 	return nil

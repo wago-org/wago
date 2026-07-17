@@ -9,10 +9,11 @@ Baseline commit: `145aec3471792d8307a7f91288b38f86dd9ed730`
 ## Decision
 
 Use the existing opt-in function-worker policy for validation as well as native
-code generation. `WithCompileWorkers(1)` and the default configuration retain the
-serial validator. `WithCompileWorkers(0)` / `wago run -p` use the existing
-adaptive module-size policy, and forced values such as `-p4` or `-p8` apply the
-same bounded worker maximum to validation and codegen.
+code generation. `WithFunctionWorkers(1)` and the default configuration retain
+the serial validator. `WithFunctionWorkers(0)` / `wago run -p` use the adaptive
+module-size policy, and forced values such as `-p4` or `-p8` apply the same
+bounded worker maximum to validation and codegen. The earlier
+`WithCompileWorkers` name remains as a deprecated source-compatible alias.
 
 The existing adaptive threshold remains appropriate:
 
@@ -67,7 +68,7 @@ index is resolved and the cache is frozen. Workers then perform concurrent
 read-only lookups. A malformed body that names an invalid type index computes the
 miss without inserting it, keeping invalid-module validation race-free.
 
-The worker-aware entry points are:
+The low-level worker-aware entry points are:
 
 - `wasm.ValidateModuleWithWorkers`;
 - `wasm.ValidateByteBackedModuleWithWorkers`;
@@ -132,10 +133,13 @@ now reduces their public compile latency without changing link behavior.
 Targeted tests cover:
 
 - successful serial/p2/p4/p8 parity on a 256-function byte-backed module;
+- serial/p2/p4/p8 parity across tiny, many-functions, scalar/SIMD real-world,
+  interpreter, database, Ruby, and esbuild corpus modules;
 - worker counts above the function count;
 - deterministic lowest-function-index errors over repeated parallel runs;
 - the explicit decoded-byte-backed validation API;
-- public config/CLI tests using the same worker policy for validation and codegen;
+- public config plus `wago run`/`wago validate` CLI plumbing using the same
+  worker policy for validation and codegen;
 - race testing of the wasm validator and public compile packages.
 
 ## Reproduction
