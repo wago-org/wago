@@ -59,13 +59,16 @@ func (c *Collector) Verify(roots RootSet) error {
 		}
 	}
 	var rootErr error
-	rangeRootRefs(roots, func(r Ref) bool {
+	checkRoot := func(r Ref) bool {
 		if !validRootRef(c, r) {
 			rootErr = errors.New("gc: invalid root ref")
 			return false
 		}
 		return true
-	})
+	}
+	if roots != nil && !rangeRootRefs(roots, checkRoot) {
+		roots.RangeRoots(func(slot RootSlot) bool { return checkRoot(slot.GetRef()) })
+	}
 	if rootErr != nil {
 		return rootErr
 	}

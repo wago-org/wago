@@ -2,10 +2,6 @@ package gc
 
 import "testing"
 
-type benchmarkSingleRoot struct{ slot RootSlot }
-
-func (r benchmarkSingleRoot) RangeRoots(fn func(RootSlot) bool) { fn(r.slot) }
-
 func BenchmarkMinorPromotionScratch(b *testing.B) {
 	obj, err := NewStructDesc(0, nil)
 	if err != nil {
@@ -22,7 +18,7 @@ func BenchmarkMinorPromotionScratch(b *testing.B) {
 	b.Cleanup(c.Close)
 
 	var root Root
-	roots := benchmarkSingleRoot{slot: &root}
+	roots := Slots{&root}
 	cycle := func() {
 		r, err := c.NewStructDefault(0)
 		if err != nil {

@@ -120,7 +120,9 @@ func (c *Collector) tinyStartMark(roots RootSet) {
 }
 
 func (c *Collector) tinyMarkRoots(roots RootSet) {
-	rangeRootRefs(roots, func(r Ref) bool { c.tinyMarkRef(r); return true })
+	if roots != nil && !rangeRootRefs(roots, func(r Ref) bool { c.tinyMarkRef(r); return true }) {
+		roots.RangeRoots(func(s RootSlot) bool { c.tinyMarkRef(s.GetRef()); return true })
+	}
 	for _, r := range c.globalSlots {
 		c.tinyMarkRef(r)
 	}
