@@ -302,6 +302,10 @@ type fn struct {
 	// is a no-op — the hot compile path is unaffected. See stats.go.
 	stats *CodegenStats
 
+	// calleePreservesPins is computed once from module hints. Direct calls consult
+	// it instead of rescanning and reallocating the callee's hint state per site.
+	calleePreservesPins []bool
+
 	// One-entry linear-memory store forwarding window. The value register is
 	// protected in f.pinned until an exact load consumes it or any non-local.get
 	// opcode invalidates it; address identity is deliberately limited to a local.
@@ -530,6 +534,14 @@ type CompileOptions struct {
 	// callers may leave it off for the smallest standalone code.
 	Interruptible bool
 
+	// MemoryPressure is called once after retained native output reaches
+	// MemoryPressureAt bytes. With a zero threshold it runs at seven-eighths of
+	// the reserved output capacity. Public compilation uses that late checkpoint
+	// for large modules to reclaim dead per-function state without changing global
+	// GC configuration. A nil callback disables it.
+	MemoryPressureAt int
+	MemoryPressure   func()
+
 	// Codegen carries injectable runtime/heap dependencies for future WasmGC
 	// lowering. The current direct backend does not lower WasmGC opcodes yet, but
 	// threading the option here lets that work use the same HeapABI as the IR
@@ -609,6 +621,13 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 	// Auto-inlining (WAGO_INLINE): the straight-line leaf callees to splice at their
 	// call sites, keyed by global func index. nil when inlining is disabled.
 	inlineTargets := buildInlineTargets(m, allHints)
+	calleePreservesPins := make([]bool, n)
+	for i := range allHints {
+		ft, ok := m.LocalFuncType(i)
+		if ok {
+			calleePreservesPins[i] = preservesCallerPins(ft, allHints[i].nLocals, allHints[i])
+		}
+	}
 	sc := newScratch()
 	// AArch64 lowering is close to four native bytes per Wasm opcode plus
 	// adapters/alignment. Reserve once so large modules do not repeatedly copy the
@@ -617,8 +636,13 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 	for i := range m.Code {
 		totalBody += len(m.Code[i].BodyBytes)
 	}
-	code := make([]byte, 0, shared.ModuleCodeCapacity(totalBody, n, 4))
+	code := make([]byte, 0, shared.TaperedModuleCodeCapacity(totalBody, n, 32, 28, 768<<10))
 	var alignPad [16]byte
+	pressureDone := false
+	pressureAt := opts.MemoryPressureAt
+	if opts.MemoryPressure != nil && pressureAt <= 0 {
+		pressureAt = cap(code) * 7 / 8
+	}
 	for i := range m.Code {
 		hints := allHints[i]
 		var st *CodegenStats
@@ -626,7 +650,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 			st = &CodegenStats{FuncIdx: i, Name: funcDisplayName(m, i, importedFuncs)}
 			ms.Funcs[i] = st
 		}
-		fnCode, rl, internalOff, err := compileFunc(m, i, guardMode, boundsFacts, opts.Interruptible, modGlobals, hints, opts.ImportBindings, opts.SyncHostCalls, st, inlineTargets, sc)
+		fnCode, rl, internalOff, err := compileFunc(m, i, guardMode, boundsFacts, opts.Interruptible, modGlobals, hints, opts.ImportBindings, opts.SyncHostCalls, st, inlineTargets, calleePreservesPins, sc)
 		allHints[i] = funcHints{}
 		if err != nil {
 			return nil, fmt.Errorf("arm64: function %d: %w", i, err)
@@ -639,6 +663,10 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 		internalEntry[i] = len(code) + internalOff
 		relocs[i] = rl
 		code = append(code, fnCode...)
+		if !pressureDone && opts.MemoryPressure != nil && len(code) >= pressureAt {
+			pressureDone = true
+			opts.MemoryPressure()
+		}
 	}
 	// Patch call sites now that every function's entry offsets are known. Direct
 	// wasm→wasm calls are BL placeholders (imm26, ±128 MiB); wrap the finished code
@@ -713,18 +741,50 @@ func computeFuncHints(m *wasm.Module, funcIdx int, nGlobals int, importedFuncs i
 // immediate-decoding pass per function (the standalone global-scores scan). The
 // standalone computeModuleGlobalScores is retained as the parity oracle in tests.
 func computeModuleHints(m *wasm.Module, nGlobals, importedFuncs int) ([]funcHints, []int64, error) {
-	allHints := make([]funcHints, len(m.Code))
-	var agg []int64
-	if nGlobals > 0 && len(m.Code) > 0 {
-		agg = make([]int64, nGlobals)
-	}
+	n := len(m.Code)
+	allHints := make([]funcHints, n)
+	localCounts := make([]int, n)
+	totalLocals := 0
 	for i := range m.Code {
-		h, err := computeFuncHints(m, i, nGlobals, importedFuncs)
+		ft, ok := m.LocalFuncType(i)
+		if !ok {
+			return nil, nil, fmt.Errorf("function %d hints: unknown function type", i)
+		}
+		count, err := countLocals(ft.Params, m.Code[i].Locals)
 		if err != nil {
 			return nil, nil, fmt.Errorf("function %d hints: %w", i, err)
 		}
+		if count > int(^uint(0)>>1)-totalLocals {
+			return nil, nil, fmt.Errorf("function hint locals overflow")
+		}
+		localCounts[i] = count
+		totalLocals += count
+	}
+	if nGlobals > 0 && n > int(^uint(0)>>1)/nGlobals {
+		return nil, nil, fmt.Errorf("function hint globals overflow")
+	}
+	localScores := make([]uint32, totalLocals)
+	globalScores := make([]uint32, n*nGlobals)
+	globalEligibility := make([]bool, n*nGlobals)
+	eligibilityTracker := newGlobalEligibilityTracker(nGlobals)
+	var agg []int64
+	if nGlobals > 0 && n > 0 {
+		agg = make([]int64, nGlobals)
+	}
+	localAt := 0
+	for i := range m.Code {
+		nLocals := localCounts[i]
+		globalAt := i * nGlobals
+		h := funcHintsWithStorage(localScores[localAt:localAt+nLocals], globalScores[globalAt:globalAt+nGlobals], globalEligibility[globalAt:globalAt+nGlobals])
+		h.nLocals = nLocals
+		var err error
+		h, err = scanFuncBodyInto(m.Code[i], nLocals, nGlobals, uint32(importedFuncs+i), m.BranchHintsForFunc(uint32(importedFuncs+i)), h, &eligibilityTracker)
+		if err != nil {
+			return nil, nil, fmt.Errorf("function %d hints: %w", i, err)
+		}
+		localAt += nLocals
 		allHints[i] = h
-		for g := 0; g < nGlobals && g < len(h.globalScore); g++ {
+		for g := 0; g < nGlobals; g++ {
 			agg[g] += int64(h.globalScore[g])
 		}
 	}
@@ -927,11 +987,11 @@ var errRegExhausted = errors.New("arm64: no register available to spill")
 // compileFunc compiles one function, retrying with local pinning disabled if the
 // first (pinned) attempt exhausts the register file. Pinning is a pure speed
 // optimization, so the unpinned recompile is always correct.
-func compileFunc(m *wasm.Module, funcIdx int, guardMode, boundsFacts, interruptible bool, modGlobals []moduleGlobalPin, hints funcHints, importBindings []ImportBinding, syncHostCalls bool, stats *CodegenStats, inlineTargets map[int]*inlineTarget, sc *scratch) (code []byte, relocs []callReloc, internalOff int, err error) {
-	code, relocs, internalOff, err = compileFuncAttempt(m, funcIdx, guardMode, boundsFacts, interruptible, modGlobals, hints, importBindings, syncHostCalls, stats, true, inlineTargets, sc)
+func compileFunc(m *wasm.Module, funcIdx int, guardMode, boundsFacts, interruptible bool, modGlobals []moduleGlobalPin, hints funcHints, importBindings []ImportBinding, syncHostCalls bool, stats *CodegenStats, inlineTargets map[int]*inlineTarget, calleePreservesPins []bool, sc *scratch) (code []byte, relocs []callReloc, internalOff int, err error) {
+	code, relocs, internalOff, err = compileFuncAttempt(m, funcIdx, guardMode, boundsFacts, interruptible, modGlobals, hints, importBindings, syncHostCalls, stats, true, inlineTargets, calleePreservesPins, sc)
 	if errors.Is(err, errRegExhausted) {
 		resetFuncStats(stats)
-		code, relocs, internalOff, err = compileFuncAttempt(m, funcIdx, guardMode, boundsFacts, interruptible, modGlobals, hints, importBindings, syncHostCalls, stats, false, inlineTargets, sc)
+		code, relocs, internalOff, err = compileFuncAttempt(m, funcIdx, guardMode, boundsFacts, interruptible, modGlobals, hints, importBindings, syncHostCalls, stats, false, inlineTargets, calleePreservesPins, sc)
 		if err == nil {
 			stats.setUnpinnedRetry()
 		}
@@ -939,7 +999,7 @@ func compileFunc(m *wasm.Module, funcIdx int, guardMode, boundsFacts, interrupti
 	return
 }
 
-func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, interruptible bool, modGlobals []moduleGlobalPin, hints funcHints, importBindings []ImportBinding, syncHostCalls bool, stats *CodegenStats, pinLocals bool, inlineTargets map[int]*inlineTarget, sc *scratch) (code []byte, relocs []callReloc, internalOff int, err error) {
+func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, interruptible bool, modGlobals []moduleGlobalPin, hints funcHints, importBindings []ImportBinding, syncHostCalls bool, stats *CodegenStats, pinLocals bool, inlineTargets map[int]*inlineTarget, calleePreservesPins []bool, sc *scratch) (code []byte, relocs []callReloc, internalOff int, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			if _, ok := r.(regExhausted); ok {
@@ -966,7 +1026,7 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, int
 	sc.reset()
 	sc.asm.DenseIdxDisp = hints.memOps >= 8
 	sc.asm.Grow(asmCapForBody(len(c.BodyBytes)))
-	f := &fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, transient: sc.transient, nParams: len(ft.Params), nLocals: nLocals, guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, regMerge: regMergeEnabled, globalCellReg: regNone, memSizeReg: regNone, immutableLocalTable: hints.immutableLocalTable, immutableTableType: hints.immutableTableType, immutableTableTyped: hints.immutableTableTyped, monomorphicTarget: hints.monomorphicTarget, importBindings: importBindings, stats: stats, branchHints: m.BranchHintsForFunc(uint32(m.ImportedFuncCount() + funcIdx)), branchHintLocalDecl: c.LocalDeclBytes}
+	f := &fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, transient: sc.transient, nParams: len(ft.Params), nLocals: nLocals, guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, regMerge: regMergeEnabled, globalCellReg: regNone, memSizeReg: regNone, immutableLocalTable: hints.immutableLocalTable, immutableTableType: hints.immutableTableType, immutableTableTyped: hints.immutableTableTyped, monomorphicTarget: hints.monomorphicTarget, importBindings: importBindings, stats: stats, branchHints: m.BranchHintsForFunc(uint32(m.ImportedFuncCount() + funcIdx)), branchHintLocalDecl: c.LocalDeclBytes, calleePreservesPins: calleePreservesPins}
 	defer func() {
 		sc.ctrl = f.ctrl
 		sc.transient = f.transient

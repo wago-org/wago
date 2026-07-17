@@ -642,7 +642,7 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 func (f *fn) callInternal(localIdx int, ft *wasm.CompType, resHint int) error {
 	if regABIEnabled && sigFitsRegABI(ft) && sigIsIntOnly(ft) {
 		f.stats.call("regabi")
-		f.emitRegisterCall(localIdx, ft, resHint, f.directCalleePreservesPins(localIdx, ft))
+		f.emitRegisterCall(localIdx, ft, resHint, f.directCalleePreservesPins(localIdx))
 		return nil
 	}
 	f.stats.call("wrapper")
@@ -808,18 +808,13 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins b
 	}
 }
 
-// directCalleePreservesPins recomputes the small, validated leaf classification
+// directCalleePreservesPins returns the module-precomputed leaf classification
 // for one direct target. This is compile-time only; execution stays a plain BL.
-func (f *fn) directCalleePreservesPins(localIdx int, ft *wasm.CompType) bool {
-	if localIdx < 0 || localIdx >= len(f.m.Code) {
+func (f *fn) directCalleePreservesPins(localIdx int) bool {
+	if localIdx < 0 || localIdx >= len(f.calleePreservesPins) {
 		return false
 	}
-	nLocals, err := countLocals(ft.Params, f.m.Code[localIdx].Locals)
-	if err != nil {
-		return false
-	}
-	h, err := scanFuncBody(f.m.Code[localIdx], nLocals, f.m.GlobalCount(), uint32(f.m.ImportedFuncCount()+localIdx), f.m.BranchHintsForFunc(uint32(f.m.ImportedFuncCount()+localIdx)))
-	return err == nil && preservesCallerPins(ft, nLocals, h)
+	return f.calleePreservesPins[localIdx]
 }
 
 // emitMixedRegisterCall uses the register ABI for signatures containing floats.
@@ -1051,7 +1046,7 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 		f.pinned = f.pinned.remove(code)
 		f.release(code)
 		f.stats.peep("monomorphic-call-indirect")
-		f.emitRegisterCall(f.monomorphicTarget, ft, -1, f.directCalleePreservesPins(f.monomorphicTarget, ft))
+		f.emitRegisterCall(f.monomorphicTarget, ft, -1, f.directCalleePreservesPins(f.monomorphicTarget))
 		return nil
 	}
 	// NOTE: the polymorphic immutable-local fast path (register-ABI Blr of the

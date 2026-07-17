@@ -330,6 +330,12 @@ type deferredArg struct {
 	root   *elem
 }
 
+type deferredMixedArg struct {
+	target Reg
+	root   *elem
+	float  bool
+}
+
 // alignPad is a shared zero source for inter-function 16-byte alignment padding,
 // appended via alignPad[:pad] to avoid allocating a temporary per function.
 var alignPad [16]byte
@@ -489,6 +495,14 @@ type CompileOptions struct {
 	// native call tree so a running wasm loop is cancelled within one iteration.
 	Interruptible bool
 
+	// MemoryPressure is called once after retained native output reaches
+	// MemoryPressureAt bytes. With a zero threshold it runs at seven-eighths of
+	// the reserved output capacity. Public compilation uses that late checkpoint
+	// for large modules to reclaim dead per-function state without changing global
+	// GC configuration. A nil callback disables it.
+	MemoryPressureAt int
+	MemoryPressure   func()
+
 	// Codegen carries injectable runtime/heap dependencies for future WasmGC
 	// lowering. The current direct backend does not lower WasmGC opcodes yet, but
 	// threading the option here lets that work use the same HeapABI as the IR
@@ -578,7 +592,12 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	for i := range m.Code {
 		totalBody += len(m.Code[i].BodyBytes)
 	}
-	code := make([]byte, 0, shared.ModuleCodeCapacity(totalBody, n, 5))
+	code := make([]byte, 0, shared.TaperedModuleCodeCapacity(totalBody, n, 40, 37, 1<<20))
+	pressureDone := false
+	pressureAt := opts.MemoryPressureAt
+	if opts.MemoryPressure != nil && pressureAt <= 0 {
+		pressureAt = cap(code) * 7 / 8
+	}
 	for i := range m.Code {
 		hints := allHints[i]
 		var st *CodegenStats
@@ -599,6 +618,10 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		internalEntry[i] = len(code) + internalOff
 		relocs[i] = rl
 		code = append(code, fnCode...)
+		if !pressureDone && opts.MemoryPressure != nil && len(code) >= pressureAt {
+			pressureDone = true
+			opts.MemoryPressure()
+		}
 	}
 	// Patch call sites now that every function's entry offsets are known.
 	for i := 0; i < n; i++ {
@@ -668,18 +691,50 @@ func computeFuncHints(m *wasm.Module, funcIdx int, nGlobals int, importedFuncs i
 // immediate-decoding pass per function (the standalone global-scores scan). The
 // standalone computeModuleGlobalScores is retained as the parity oracle in tests.
 func computeModuleHints(m *wasm.Module, nGlobals, importedFuncs int) ([]funcHints, []int64, error) {
-	allHints := make([]funcHints, len(m.Code))
-	var agg []int64
-	if nGlobals > 0 && len(m.Code) > 0 {
-		agg = make([]int64, nGlobals)
-	}
+	n := len(m.Code)
+	allHints := make([]funcHints, n)
+	localCounts := make([]int, n)
+	totalLocals := 0
 	for i := range m.Code {
-		h, err := computeFuncHints(m, i, nGlobals, importedFuncs)
+		ft, ok := m.LocalFuncType(i)
+		if !ok {
+			return nil, nil, fmt.Errorf("function %d hints: unknown function type", i)
+		}
+		count, err := countLocals(ft.Params, m.Code[i].Locals)
 		if err != nil {
 			return nil, nil, fmt.Errorf("function %d hints: %w", i, err)
 		}
+		if count > int(^uint(0)>>1)-totalLocals {
+			return nil, nil, fmt.Errorf("function hint locals overflow")
+		}
+		localCounts[i] = count
+		totalLocals += count
+	}
+	if nGlobals > 0 && n > int(^uint(0)>>1)/nGlobals {
+		return nil, nil, fmt.Errorf("function hint globals overflow")
+	}
+	localScores := make([]uint32, totalLocals)
+	globalScores := make([]uint32, n*nGlobals)
+	globalEligibility := make([]bool, n*nGlobals)
+	eligibilityTracker := newGlobalEligibilityTracker(nGlobals)
+	var agg []int64
+	if nGlobals > 0 && n > 0 {
+		agg = make([]int64, nGlobals)
+	}
+	localAt := 0
+	for i := range m.Code {
+		nLocals := localCounts[i]
+		globalAt := i * nGlobals
+		h := funcHintsWithStorage(localScores[localAt:localAt+nLocals], globalScores[globalAt:globalAt+nGlobals], globalEligibility[globalAt:globalAt+nGlobals])
+		h.nLocals = nLocals
+		var err error
+		h, err = scanFuncBodyInto(m.Code[i], nLocals, nGlobals, uint32(importedFuncs+i), h, &eligibilityTracker)
+		if err != nil {
+			return nil, nil, fmt.Errorf("function %d hints: %w", i, err)
+		}
+		localAt += nLocals
 		allHints[i] = h
-		for g := 0; g < nGlobals && g < len(h.globalScore); g++ {
+		for g := 0; g < nGlobals; g++ {
 			agg[g] += int64(h.globalScore[g])
 		}
 	}

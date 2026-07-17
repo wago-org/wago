@@ -22,3 +22,16 @@ func TestModuleCodeCapacity(t *testing.T) {
 		t.Fatalf("zero expansion capacity = %d, want 0", got)
 	}
 }
+
+func TestTaperedModuleCodeCapacity(t *testing.T) {
+	if got := TaperedModuleCodeCapacity(100, 3, 32, 28, 1<<20); got != 512 {
+		t.Fatalf("small capacity = %d, want 512", got)
+	}
+	wantLarge := (28 << 20) + (512 << 10) + 112
+	if got := TaperedModuleCodeCapacity(8<<20, 3, 32, 28, 512<<10); got != wantLarge {
+		t.Fatalf("large capacity = %d, want %d", got, wantLarge)
+	}
+	if got := TaperedModuleCodeCapacity(100, 3, 27, 28, 1); got != 0 {
+		t.Fatalf("inverted expansion capacity = %d, want 0", got)
+	}
+}

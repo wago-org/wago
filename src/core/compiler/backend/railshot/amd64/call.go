@@ -790,13 +790,10 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 	// Register-resident args are materialized into owned, pinned registers now
 	// (per bank), so the flush below cannot spill them; const/slot/local-ref args
 	// are deferred and loaded straight into their target register afterward.
-	type deferredMixedArg struct {
-		target Reg
-		root   *elem
-		float  bool
-	}
-	var gpMoves, fpMoves []regMove
-	var deferred []deferredMixedArg
+	var gpBuf, fpBuf [8]regMove
+	var deferredBuf [16]deferredMixedArg
+	gpMoves, fpMoves := gpBuf[:0], fpBuf[:0]
+	deferred := deferredBuf[:0]
 	gp, fp := 0, 0
 	for i, t := range ft.Params {
 		mt := mtOf(t)

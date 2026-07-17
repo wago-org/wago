@@ -28,6 +28,7 @@ func loopWeight(depth int) int64 {
 
 // funcHints is everything scanFuncBody yields.
 type funcHints struct {
+	nLocals       int
 	hasCall       bool // any direct or indirect call
 	callsSelf     bool // a direct call to the function's own index
 	touchesMemory bool // any linear-memory op
@@ -73,11 +74,11 @@ type funcHints struct {
 }
 
 func newFuncHints(nLocals, nGlobals int) funcHints {
-	return funcHints{
-		localScore:  make([]uint32, nLocals),
-		globalScore: make([]uint32, nGlobals),
-		globalElig:  make([]bool, nGlobals),
-	}
+	return funcHintsWithStorage(make([]uint32, nLocals), make([]uint32, nGlobals), make([]bool, nGlobals))
+}
+
+func funcHintsWithStorage(localScore, globalScore []uint32, globalElig []bool) funcHints {
+	return funcHints{localScore: localScore, globalScore: globalScore, globalElig: globalElig}
 }
 
 func addHotness(scores []uint32, idx uint32, delta int64) {
@@ -106,6 +107,11 @@ type globalEligibilityFrame struct {
 
 func newGlobalEligibilityTracker(nGlobals int) globalEligibilityTracker {
 	return globalEligibilityTracker{marks: make([]uint32, nGlobals)}
+}
+
+func (t *globalEligibilityTracker) reset() {
+	t.globals = t.globals[:0]
+	t.frames = t.frames[:0]
 }
 
 func (t *globalEligibilityTracker) push() int {
@@ -151,10 +157,16 @@ func (t *globalEligibilityTracker) pop(frame int) {
 // scanFuncBody chooses the byte-backed scanner used for decoded modules, falling
 // back to the AST scanner for tests or callers that construct Func.Body directly.
 func scanFuncBody(fn wasm.Func, nLocals, nGlobals int, selfIdx uint32) (funcHints, error) {
+	h := newFuncHints(nLocals, nGlobals)
+	elig := newGlobalEligibilityTracker(nGlobals)
+	return scanFuncBodyInto(fn, nLocals, nGlobals, selfIdx, h, &elig)
+}
+
+func scanFuncBodyInto(fn wasm.Func, nLocals, nGlobals int, selfIdx uint32, h funcHints, elig *globalEligibilityTracker) (funcHints, error) {
 	if len(fn.BodyBytes) != 0 {
-		return scanBodyBytes(fn.BodyBytes, nLocals, nGlobals, selfIdx)
+		return scanBodyBytesInto(fn.BodyBytes, nLocals, nGlobals, selfIdx, h, elig)
 	}
-	return scanBody(fn.Body, nLocals, nGlobals, selfIdx), nil
+	return scanBodyInto(fn.Body, nLocals, nGlobals, selfIdx, h, elig), nil
 }
 
 // scanBody performs the AST pre-scan walk. selfIdx is the function's global
@@ -162,6 +174,11 @@ func scanFuncBody(fn wasm.Func, nLocals, nGlobals int, selfIdx uint32) (funcHint
 func scanBody(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32) funcHints {
 	h := newFuncHints(nLocals, nGlobals)
 	elig := newGlobalEligibilityTracker(nGlobals)
+	return scanBodyInto(body, nLocals, nGlobals, selfIdx, h, &elig)
+}
+
+func scanBodyInto(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32, h funcHints, elig *globalEligibilityTracker) funcHints {
+	elig.reset()
 	// walk returns whether the subtree contains a call. curLoop identifies the
 	// innermost enclosing loop whose globals are being considered for eligibility.
 	var walk func(instrs []wasm.Instruction, depth int, curLoop int) bool
@@ -391,8 +408,15 @@ func (s *globalScoreByteScanner) classifyInstructionInto(op byte, imm *wasm.Inst
 // allocating Instruction trees. body includes the terminating end opcode and
 // excludes local declarations.
 func scanBodyBytes(body []byte, nLocals int, nGlobals int, selfIdx uint32) (funcHints, error) {
+	h := newFuncHints(nLocals, nGlobals)
+	elig := newGlobalEligibilityTracker(nGlobals)
+	return scanBodyBytesInto(body, nLocals, nGlobals, selfIdx, h, &elig)
+}
+
+func scanBodyBytesInto(body []byte, nLocals int, nGlobals int, selfIdx uint32, h funcHints, elig *globalEligibilityTracker) (funcHints, error) {
+	elig.reset()
 	r := wasm.ReaderFrom(body)
-	s := byteBodyScanner{r: byteScanReader{Reader: &r}, h: newFuncHints(nLocals, nGlobals), nLocals: nLocals, nGlobals: nGlobals, selfIdx: selfIdx, elig: newGlobalEligibilityTracker(nGlobals)}
+	s := byteBodyScanner{r: byteScanReader{Reader: &r}, h: h, nLocals: nLocals, nGlobals: nGlobals, selfIdx: selfIdx, elig: elig}
 	called, term, err := s.scanExpr(0, 0, -1, false)
 	if err != nil {
 		return s.h, err
@@ -412,7 +436,7 @@ type byteBodyScanner struct {
 	nLocals  int
 	nGlobals int
 	selfIdx  uint32
-	elig     globalEligibilityTracker
+	elig     *globalEligibilityTracker
 }
 
 func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAtElse bool) (bool, byte, error) {

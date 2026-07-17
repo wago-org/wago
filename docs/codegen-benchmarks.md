@@ -41,15 +41,19 @@ loader, so it is a deliberately conservative whole-process measurement.
 
 | stage/corpus | main B/op | refactor B/op | reduction |
 |---|---:|---:|---:|
-| Railshot / sqlite3 | 45,528,608 | 9,177,056 | 79.8% |
-| Railshot / ruby | 558,089,848 | 88,589,296 | 84.1% |
-| Railshot / esbuild | 522,828,072 | 73,553,168 | 85.9% |
-| full compile / sqlite3 | 50,363,176 | 16,049,616 | 68.1% |
-| full compile / ruby | 587,471,976 | 114,503,176 | 80.5% |
-| full compile / esbuild | 572,585,912 | 101,079,816 | 82.3% |
+| Railshot / sqlite3 | 45,528,608 | 8,042,024 | 82.3% |
+| Railshot / ruby | 558,089,848 | 70,789,544 | 87.3% |
+| Railshot / esbuild | 522,828,072 | 61,481,080 | 88.2% |
+| full compile / sqlite3 | 50,363,176 | 13,972,520 | 72.3% |
+| full compile / ruby | 587,471,976 | 80,459,008 | 86.3% |
+| full compile / esbuild | 572,585,912 | 77,350,592 | 86.5% |
 
-Ruby Railshot peak RSS fell from 209,780,736 to 130,400,256 bytes (37.8%);
-esbuild fell from 190,447,616 to 123,043,840 bytes (35.4%). Adjacent compile
+Ruby Railshot peak RSS initially fell from 209,780,736 to 130,400,256 bytes;
+esbuild fell from 190,447,616 to 123,043,840 bytes. The completed refactor's
+standalone public-Compile harness measured median peak RSS of 101,941,248 bytes
+for Ruby and 93,913,088 bytes for esbuild. Median wall time was 1.11 s and
+0.75 s respectively. The public path uses one late GC checkpoint for sources at
+least 8 MiB; it does not alter process-wide GOGC or GOMEMLIMIT. Adjacent compile
 samples were faster rather than slower; longer execution checks remained
 zero-allocation and within normal run-to-run variation of main.
 
