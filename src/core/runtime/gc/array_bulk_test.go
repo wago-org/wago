@@ -1,6 +1,9 @@
 package gc
 
-import "testing"
+import (
+	"fmt"
+	"testing"
+)
 
 func bulkTestTypes(t *testing.T) []TypeDesc {
 	t.Helper()
@@ -139,6 +142,54 @@ func TestArrayInitWordsPreflightAndAtomicity(t *testing.T) {
 	}
 	if err := c.ArrayInitWords(arr, 4, nil); err != nil {
 		t.Fatalf("zero length at end: %v", err)
+	}
+}
+
+func TestArrayCopyNumericStorageWidthsAndBitPatterns(t *testing.T) {
+	kinds := []StorageKind{StorageI8, StorageI16, StorageI32, StorageI64, StorageF32, StorageF64}
+	types := make([]TypeDesc, len(kinds))
+	for i, kind := range kinds {
+		var err error
+		types[i], err = NewArrayDesc(TypeID(i), kind)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	c := newTestCollectorWithTypes(t, Config{}, types)
+	values := []Value{
+		I32Value(0xab), I32Value(0xabcd), I32Value(int32(0x76543210)),
+		{Kind: StorageI64, Bits: 0xfedcba9876543210},
+		{Kind: StorageF32, Bits: 0x7fc12345},
+		{Kind: StorageF64, Bits: 0x7ff8123456789abc},
+	}
+	masks := []uint64{0xff, 0xffff, 0xffffffff, ^uint64(0), 0xffffffff, ^uint64(0)}
+	for i, kind := range kinds {
+		t.Run(fmt.Sprintf("kind-%d", kind), func(t *testing.T) {
+			src, err := c.NewArrayDefault(TypeID(i), 4)
+			if err != nil {
+				t.Fatal(err)
+			}
+			dst, err := c.NewArrayDefault(TypeID(i), 4)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := c.ArraySet(src, 3, values[i]); err != nil {
+				t.Fatal(err)
+			}
+			if err := c.ArrayCopy(dst, 3, src, 3, 1); err != nil {
+				t.Fatal(err)
+			}
+			got, err := c.ArrayGet(dst, 3)
+			if err != nil || got.Bits != values[i].Bits&masks[i] {
+				t.Fatalf("kind %d copied bits = %#x, %v; want %#x", kind, got.Bits, err, values[i].Bits&masks[i])
+			}
+			if err := c.ArrayCopy(dst, 4, src, 4, 0); err != nil {
+				t.Fatalf("kind %d zero-length end copy: %v", kind, err)
+			}
+			if err := c.ArrayCopy(dst, ^uint32(0), src, 0, 2); err != errRange {
+				t.Fatalf("kind %d overflowing range error = %v", kind, err)
+			}
+		})
 	}
 }
 
