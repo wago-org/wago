@@ -374,7 +374,8 @@ index, start, delta, source offset, and length is zero-extended before native-wi
 pointer arithmetic, byte-count construction, or loop use. Scalar memory addresses and all bulk memory/table
 operands establish the invariant after spill/local reload, including mixed-width copy lengths. This applies even
 when validation or a producer normally yields clean i32 bits; synchronous host result slots explicitly permit
-arbitrary upper bits. Memory64/table64 operands retain all 64 bits. Exact memory/table declared
+arbitrary upper bits. Memory64/table64 operands retain all 64 bits; `return_call_indirect` uses a full-width
+unsigned table64 bounds comparison before entry scaling and frame teardown. Exact memory/table declared
 limits remain separate from bounded executable capacities; memory64 lifecycle metadata stores declared maxima
 as uint64 and never substitutes the finite reservation. Active data and element offsets are evaluated after
 local global initialization and may read any available immutable global of the address type; global initializers
