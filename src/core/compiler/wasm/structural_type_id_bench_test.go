@@ -29,6 +29,16 @@ func TestStructuralTypeKeyRepeatedQueryUsesCache(t *testing.T) {
 }
 
 func BenchmarkStructuralTypeKey(b *testing.B) {
+	b.Run("expanded-baseline", func(b *testing.B) {
+		m := structuralBenchmarkDAG(12)
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			var sink byte
+			if !m.writeStructuralIndexedFuncTypeExpanded(11, func(v byte) { sink ^= v }) {
+				b.Fatal("expanded canonicalization failed")
+			}
+		}
+	})
 	b.Run("first-wide-shared-DAG", func(b *testing.B) {
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {

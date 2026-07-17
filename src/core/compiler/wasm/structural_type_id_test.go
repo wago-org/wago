@@ -106,7 +106,7 @@ func TestStructuralTypeKeyIncludesWholeRecursiveGroup(t *testing.T) {
 	}
 }
 
-func TestStructuralTypeKeyCanonicalizationCachesAndRemainsBounded(t *testing.T) {
+func TestStructuralTypeKeyCanonicalizationScalesAndRemainsBounded(t *testing.T) {
 	graph := func(depth int) *Module {
 		m := &Module{Types: make([]RecType, depth)}
 		m.Types[0].SubTypes = []SubType{{Final: true, Comp: CompType{Kind: CompFunc}}}
@@ -127,12 +127,26 @@ func TestStructuralTypeKeyCanonicalizationCachesAndRemainsBounded(t *testing.T) 
 		t.Fatalf("per-call canonicalization = %#x,%v then %#x,%v", first, true, second, ok)
 	}
 
-	large := graph(20) // Recursive expansion exceeds the fixed 1 MiB work budget.
-	if key, ok := large.StructuralTypeKeyChecked(19); ok || key != 0 {
-		t.Fatalf("over-budget canonicalization = %#x,%v, want zero,false", key, ok)
+	large := graph(20) // Former recursive expansion exceeded 1 MiB for this shared DAG.
+	first, ok = large.StructuralTypeKeyChecked(19)
+	if !ok || first == 0 {
+		t.Fatalf("linear DAG canonicalization = %#x,%v, want success", first, ok)
 	}
-	if key, ok := large.StructuralTypeKeyChecked(19); ok || key != 0 {
-		t.Fatalf("cached over-budget canonicalization = %#x,%v, want zero,false", key, ok)
+	if key, ok := large.StructuralTypeKeyChecked(19); !ok || key != first {
+		t.Fatalf("cached large canonicalization = %#x,%v, want %#x,true", key, ok, first)
+	}
+
+	leaf := SubType{Final: true, Comp: CompType{Kind: CompFunc}}
+	params := make([]ValType, 30_000)
+	for i := range params {
+		params[i] = indexedRef(0, true)
+	}
+	adversarial := &Module{Types: []RecType{
+		{SubTypes: []SubType{leaf}},
+		{SubTypes: []SubType{{Final: true, Comp: CompType{Kind: CompFunc, Params: params}}}},
+	}}
+	if key, ok := adversarial.StructuralTypeKeyChecked(1); ok || key != 0 {
+		t.Fatalf("truly over-budget canonicalization = %#x,%v, want zero,false", key, ok)
 	}
 }
 
