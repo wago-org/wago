@@ -213,6 +213,8 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	// A successful Compile takes ownership of src. Keep it immutable and do not
+	// reuse its backing array while mod is alive.
 	inst, err := wago.Instantiate(mod, nil)
 	if err != nil {
 		panic(err)

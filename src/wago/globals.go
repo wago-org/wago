@@ -602,9 +602,10 @@ type Compiled struct {
 	tableImportMax    int
 	tableImportHasMax bool
 
-	// wasmBytes retains the raw module for the link-time recompile that lowers
-	// cross-instance calls (set only when the module has function imports, the
-	// recompile candidates). needsLink marks a module whose codegen was deferred
+	// wasmBytes retains the caller-transferred raw module for the link-time
+	// recompile that lowers cross-instance calls (set only when the module has
+	// function imports, the recompile candidates). needsLink marks a module whose
+	// codegen was deferred
 	// because it has a returning import that must be bound to another instance's
 	// function at Instantiate; its Code/Entry are empty until then.
 	wasmBytes        []byte

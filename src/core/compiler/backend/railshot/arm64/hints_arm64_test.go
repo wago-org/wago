@@ -123,7 +123,7 @@ func TestBranchHintWeightsIfArmLocalScores(t *testing.T) {
 	if err != nil {
 		t.Fatalf("scan likely-then: %v", err)
 	}
-	if got, want := likelyThen.localScore[0], int64(branchHintWeight); got != want {
+	if got, want := likelyThen.localScore[0], uint32(branchHintWeight); got != want {
 		t.Fatalf("likely then local score = %d, want %d", got, want)
 	}
 	if got := likelyThen.localScore[1]; got != 1 {
@@ -133,7 +133,7 @@ func TestBranchHintWeightsIfArmLocalScores(t *testing.T) {
 	if err != nil {
 		t.Fatalf("scan likely-else: %v", err)
 	}
-	if got, want := likelyElse.localScore[1], int64(branchHintWeight); got != want {
+	if got, want := likelyElse.localScore[1], uint32(branchHintWeight); got != want {
 		t.Fatalf("likely else local score = %d, want %d", got, want)
 	}
 }

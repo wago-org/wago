@@ -606,20 +606,27 @@ func elemKindName(k wasm.ElemKindKind) string {
 
 func (p supportPass) data() error {
 	for i, d := range p.m.Data {
-		ctx := fmt.Sprintf("data %d", i)
 		switch d.Mode.Kind {
 		case wasm.DataActive:
 			if d.Mode.Mem != 0 {
+				ctx := fmt.Sprintf("data %d", i)
 				return p.unsupported("data", fmt.Sprintf("memory index %d", d.Mode.Mem), ctx)
 			}
-			if err := p.constExpr(d.Mode.Offset, ctx+" offset"); err != nil {
-				return err
+			if err := p.constExpr(d.Mode.Offset, ""); err != nil {
+				if unsupported, ok := err.(*UnsupportedError); ok {
+					copy := *unsupported
+					copy.Context = fmt.Sprintf("data %d offset%s", i, unsupported.Context)
+					return &copy
+				}
+				return fmt.Errorf("data %d offset: %w", i, err)
 			}
 		case wasm.DataPassive:
 			if !p.feat.BulkMemory {
+				ctx := fmt.Sprintf("data %d", i)
 				return p.unsupported("data", "passive segment (bulk-memory-operations disabled)", ctx)
 			}
 		default:
+			ctx := fmt.Sprintf("data %d", i)
 			return p.unsupported("data", "unknown segment mode", ctx)
 		}
 	}
@@ -1166,7 +1173,7 @@ func (p supportPass) constExpr(e wasm.Expr, context string) error {
 }
 
 func (p supportPass) constExprBytes(body []byte, context string) error {
-	r := wasm.NewReader(body)
+	r := wasm.ReaderFrom(body)
 	op, err := r.Byte()
 	if err != nil {
 		return err
@@ -1218,7 +1225,7 @@ func (p supportPass) constExprBytes(body []byte, context string) error {
 		}
 	case 0xfd:
 		var imm wasm.InstructionImmediate
-		err := wasm.ClassifyInstructionImmediateInto(r, op, &imm)
+		err := wasm.ClassifyInstructionImmediateInto(&r, op, &imm)
 		if err != nil {
 			return err
 		}

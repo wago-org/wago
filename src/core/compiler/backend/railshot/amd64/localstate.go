@@ -211,11 +211,20 @@ func (f *fn) reconcileLocals() {
 // convergeEdgeTo callers do), so the buffer is not zeroed. freeLocStateBuf
 // returns one to the pool when its owning frame is popped.
 func (f *fn) newLocStateBuf() []locState {
-	if n := len(f.lsPool); n > 0 {
-		b := f.lsPool[n-1]
-		f.lsPool[n-1] = nil
-		f.lsPool = f.lsPool[:n-1]
+	for i := len(f.lsPool) - 1; i >= 0; i-- {
+		b := f.lsPool[i]
+		if cap(b) < f.nLocals {
+			continue
+		}
+		last := len(f.lsPool) - 1
+		f.lsPool[i] = f.lsPool[last]
+		f.lsPool[last] = nil
+		f.lsPool = f.lsPool[:last]
 		return b[:f.nLocals]
+	}
+	if last := len(f.lsPool) - 1; last >= 0 {
+		f.lsPool[last] = nil
+		f.lsPool = f.lsPool[:last]
 	}
 	return make([]locState, f.nLocals)
 }

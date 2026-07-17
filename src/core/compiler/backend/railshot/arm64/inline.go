@@ -177,6 +177,19 @@ func inlineClass(f inlineFacts) (bool, string) {
 	}
 }
 
+func inlineOK(f inlineFacts) bool {
+	switch {
+	case f.hasControlCall, f.calleeCount > 0, !f.regABIIntOnly:
+		return false
+	case f.hasLoop && !inlineLoopCallees:
+		return false
+	case f.bodyBytes > inlineMaxBytes:
+		return false
+	default:
+		return true
+	}
+}
+
 // inlineDecision layers the call-site gate on inlineClass for the report (a
 // class member with no call sites is unused, not inlinable).
 func inlineDecision(f inlineFacts, callSites int) (bool, string) {
@@ -391,7 +404,7 @@ type inlineTarget struct {
 // GLOBAL function index, or nil when inlining is disabled. Candidacy here is a
 // property of the callee alone (the call-site count only mattered for the report),
 // so a call to one of these can be spliced wherever it appears.
-func buildInlineTargets(m *wasm.Module) map[int]*inlineTarget {
+func buildInlineTargets(m *wasm.Module, allHints []funcHints) map[int]*inlineTarget {
 	if !inlineEnabled {
 		return nil
 	}
@@ -402,9 +415,30 @@ func buildInlineTargets(m *wasm.Module) map[int]*inlineTarget {
 		if len(body) == 0 {
 			continue // AST-only bodies are not spliced (the byte body drives the splice)
 		}
-		facts, err := scanInlineFacts(m, m.Code[i], i, importedFuncs)
-		if err != nil {
+		ft, ok := m.LocalFuncType(i)
+		if !ok || ft == nil {
 			continue
+		}
+		h := allHints[i]
+		touchesGlobal := false
+		for _, score := range h.globalScore {
+			if score != 0 {
+				touchesGlobal = true
+				break
+			}
+		}
+		facts := inlineFacts{
+			bodyBytes:      len(body),
+			hasLoop:        h.hasLoop,
+			hasControlFlow: h.hasControlFlow,
+			touchesGlobal:  touchesGlobal,
+			touchesMem:     h.touchesMemory || h.usesBulkMem,
+			params:         len(ft.Params),
+			results:        len(ft.Results),
+			regABIIntOnly:  sigFitsRegABI(ft) && sigIsIntOnly(ft),
+		}
+		if h.hasCall {
+			facts.calleeCount = 1
 		}
 		// The transform class: a leaf (no calls, so non-recursive/acyclic) with an
 		// int-only reg-ABI signature and a small body. Memory/global ops and
@@ -413,14 +447,13 @@ func buildInlineTargets(m *wasm.Module) map[int]*inlineTarget {
 		// stands in for its function boundary (its `return`/`end` merge there), so
 		// the existing block/br/convergence machinery lowers it. A straight-line
 		// callee skips the frame entirely (the cheaper fast path).
-		if ok, _ := inlineClass(facts); !ok {
+		if !inlineOK(facts) {
 			continue
 		}
 		lt := calleeLocalTypes(m, i)
 		if lt == nil {
 			continue
 		}
-		ft, _ := m.LocalFuncType(i)
 		var rt []machineType
 		res0 := mtNone
 		if ft != nil {

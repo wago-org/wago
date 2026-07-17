@@ -48,8 +48,8 @@ backend codegen.
      │
      ▼
  ┌─────────┐   ┌──────────┐   ┌─────────────────────┐   ┌──────────┐
- │ decode  │──▶│ validate │──▶│ compile (Valent-    │──▶│ Compiled │
- │         │   │          │   │ Block x86-64 codegen)│   │ metadata │
+ │ decode  │──▶│ validate │──▶│ compile (Valent-     │──▶│ Compiled │
+ │         │   │          │   │ Block native codegen)│   │ metadata │
  └─────────┘   └──────────┘   └─────────────────────┘   └────┬─────┘
  src/core/compiler/wasm        src/core/compiler/backend/railshot│
                                                               │  (optional: MarshalBinary → .wago blob)
@@ -81,7 +81,10 @@ wago.go                           generated root facade (re-exports src/wago)
 internal/genfacade/               generator for wago.go (+ up-to-date test)
 cli/wago/                         CLI: run; compile/profile/validate are stubs
 src/core/compiler/wasm/           decoder + validator (front end)
-src/core/compiler/backend/railshot/  single-pass x86-64 codegen (Valent-Block)
+src/core/compiler/backend/railshot/  direct native codegen (Valent-Block)
+  amd64/                            x86-64 selection, registers, ABI, encoding
+  arm64/                            AArch64 selection, registers, ABI, encoding
+  shared/                           architecture-neutral policy and metadata
 src/core/runtime/                 mmap, foreign stack, JobMemory, traps
 src/core/runtime/abi/             layout constants shared by codegen + runtime
 tests/spec/                       WebAssembly spec testsuite (submodule, MVP-pinned)
@@ -132,6 +135,11 @@ side-effecting instruction appears (`local.set`, `global.set`, `br_if`, a call,
 a control-flow join), are the deferred operands *condensed* — materialized into
 registers just in time. At control-flow joins the machine state is flushed to
 deterministic frame slots so every incoming edge agrees on register/stack state.
+
+The decoded module and complete function bodies remain available throughout
+compilation. Railshot reuses module-scoped scratch arenas between functions and
+pre-sizes retained output, reducing transient heap growth without imposing a
+streaming or borrowed-buffer lifetime on analysis and optimization code.
 
 The net effect: straight-line code emits essentially no per-operation stack
 traffic. `valent_test.go`'s `TestRegisterResident` disassembles a straight-line
