@@ -866,17 +866,29 @@ func passiveDataDescriptorCount(m *wasm.Module) int {
 	return maxIdx + 1
 }
 
+func wrapperABISlots(types []wasm.ValType) int {
+	slots := 0
+	for _, typ := range types {
+		if wasm.EqualValType(typ, wasm.V128) {
+			slots += 2
+		} else {
+			slots++
+		}
+	}
+	return slots
+}
+
 func (p supportPass) maxLocalFuncSlots() (params, results int) {
 	for li := range p.m.FuncTypes {
 		ft, ok := p.m.LocalFuncType(li)
 		if !ok {
 			continue
 		}
-		if len(ft.Params) > params {
-			params = len(ft.Params)
+		if slots := wrapperABISlots(ft.Params); slots > params {
+			params = slots
 		}
-		if len(ft.Results) > results {
-			results = len(ft.Results)
+		if slots := wrapperABISlots(ft.Results); slots > results {
+			results = slots
 		}
 	}
 	return params, results

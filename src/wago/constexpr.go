@@ -458,7 +458,10 @@ func evalScalarConstExprProgram(b []byte, want wasm.ValType, resolve constExprGl
 		return 0, false, fmt.Errorf("extended const expression type %s is not scalar integer", want)
 	}
 	r := wasm.NewReader(b)
-	stack := make([]scalarConstValue, 0, 4)
+	// Validated expressions are normally shallow. Keep the common operand stack
+	// inline; append provides a bounded spill path for deeper valid programs.
+	var inline [8]scalarConstValue
+	stack := inline[:0]
 	push := func(v scalarConstValue) { stack = append(stack, v) }
 	pop2 := func(typ wasm.ValType) (scalarConstValue, scalarConstValue, error) {
 		if len(stack) < 2 {
