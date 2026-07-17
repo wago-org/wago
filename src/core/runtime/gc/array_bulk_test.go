@@ -27,6 +27,49 @@ func bulkTestTypes(t *testing.T) []TypeDesc {
 	return []TypeDesc{obj, i8, refs, nullable}
 }
 
+func TestBulkArrayConstructorsReconcileLargeReferenceParents(t *testing.T) {
+	for _, fixed := range []bool{false, true} {
+		c := newTestCollectorWithTypes(t, Config{
+			ThroughputHeapBytes:  1 << 20,
+			ThroughputPageBytes:  4096,
+			ThroughputClassLimit: 256,
+			LargeObjectBytes:     256,
+		}, bulkTestTypes(t))
+		child, err := c.NewStructDefault(0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		childRoot := Root(child)
+		const length = 128
+		var array Ref
+		if fixed {
+			values := make([]Value, length)
+			for i := range values {
+				values[i] = RefValue(child)
+			}
+			array, err = c.NewArrayFixedWithRoots(2, values, Slots{&childRoot})
+		} else {
+			array, err = c.NewRefArrayWithRoots(2, length, &childRoot, Slots{&childRoot})
+		}
+		if err != nil {
+			t.Fatalf("fixed=%v construct: %v", fixed, err)
+		}
+		if c.entry(array).space != spaceLarge || !c.entry(array).remembered || len(c.objectCards) != 1 {
+			t.Fatalf("fixed=%v metadata: space=%d remembered=%v cards=%v", fixed, c.entry(array).space, c.entry(array).remembered, c.objectCards)
+		}
+		arrayRoot := Root(array)
+		if err := c.CollectMinor(Slots{&arrayRoot}); err != nil {
+			t.Fatalf("fixed=%v minor collection: %v", fixed, err)
+		}
+		for _, index := range []uint32{0, length / 2, length - 1} {
+			got, err := c.ArrayGet(Ref(arrayRoot), index)
+			if err != nil || !got.Ref.IsObj() || !c.validObjectRef(got.Ref) {
+				t.Fatalf("fixed=%v array[%d]=%v,%v after minor collection", fixed, index, got.Ref, err)
+			}
+		}
+	}
+}
+
 func TestArrayFillPreflightPackedTruncation(t *testing.T) {
 	c := newTestCollectorWithTypes(t, Config{}, bulkTestTypes(t))
 	arr, err := c.NewArrayDefault(1, 4)

@@ -102,10 +102,21 @@ func (c *Collector) BulkWriteBarrier(dst Ref, start, length uint32) {
 // write. Callers must invoke it only after the destination range contains the
 // new refs so the remembered-set scan can observe old/large-to-nursery edges.
 func (c *Collector) PostBulkWriteBarrier(dst Ref, start, length uint32) {
-	if c.cfg.Profile == ProfileTiny {
+	if !dst.IsObj() || !c.validObjectRef(dst) || length == 0 {
 		return
 	}
-	if !dst.IsObj() || !c.validObjectRef(dst) || length == 0 {
+	if c.cfg.Profile == ProfileTiny {
+		d, err := c.refDesc(dst)
+		if err != nil || d.Kind != KindArray || !isCollectorRefKind(d.Elem) {
+			return
+		}
+		for i := uint32(0); i < length; i++ {
+			value, err := c.loadValue(dst, uint64(PayloadOffset)+uint64(start+i)*uint64(d.ElemSize), d.Elem)
+			if err != nil {
+				return
+			}
+			c.tinyWriteBarrierObject(dst, value.Ref)
+		}
 		return
 	}
 	h := handleOf(dst)
