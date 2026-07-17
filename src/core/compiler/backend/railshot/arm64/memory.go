@@ -753,16 +753,18 @@ func (f *fn) dataDrop(r *wasm.Reader) error {
 // i32 operands (dst, src, n) are read from canonical slots into the scratch
 // registers X9/X10/X11; X12/X13 are free scratch after the flush.
 func (f *fn) memoryCopy(r *wasm.Reader) error {
-	if _, err := r.U32(); err != nil { // dst memidx
+	dstMemory, err := r.U32()
+	if err != nil {
 		return err
 	}
-	if _, err := r.U32(); err != nil { // src memidx
+	srcMemory, err := r.U32()
+	if err != nil {
 		return err
 	}
 	if top := f.s.back(); top != nil && top.kind == ekValue && top.st.kind == stConst {
 		if n := uint64(uint32(top.st.cval)); n <= 64 {
 			f.stats.peep("memcopy-unroll")
-			f.memoryCopyConst(int(n))
+			f.memoryCopyConst(int(n), dstMemory, srcMemory)
 			return nil
 		}
 	}
@@ -870,12 +872,13 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 // memoryFill lowers memory.fill (memset of the low byte of val) via a byte-fill
 // loop.
 func (f *fn) memoryFill(r *wasm.Reader) error {
-	if _, err := r.U32(); err != nil { // memidx
+	memoryIndex, err := r.U32()
+	if err != nil {
 		return err
 	}
 	if top := f.s.back(); top != nil && top.kind == ekValue && top.st.kind == stConst {
 		if n := uint64(uint32(top.st.cval)); n <= 64 {
-			f.memoryFillConst(int(n))
+			f.memoryFillConst(int(n), memoryIndex)
 			return nil
 		}
 	}
@@ -1013,15 +1016,25 @@ func bulkChunks(n int) [][2]int {
 	}
 }
 
+func (f *fn) memoryAddr64(memoryIndex uint32) bool {
+	mt, ok := f.m.MemoryType(memoryIndex)
+	return ok && mt.Limits.Addr64
+}
+
 // bulkBoundsCheck emits `trap unless base+n <= memBytes` for an unrolled bulk
-// op (skipped in guard mode: the stores/loads fault like scalar accesses).
-func (f *fn) bulkBoundsCheck(base Reg, n int) {
-	if f.guardMode {
-		return
-	}
+// op. Constant paths always check, including signals-based mode: a zero-length
+// operation has no later load/store to fault and must still reject base > size.
+func (f *fn) bulkBoundsCheck(base Reg, n int, memoryIndex uint32) {
 	f.pinned = f.pinned.add(base)
 	t := f.allocReg(0)
-	f.leaDisp(t, base, int32(n), true)
+	if f.memoryAddr64(memoryIndex) {
+		f.a.MovReg64(t, base)
+		f.a.MovImm64(X16, uint64(n))
+		f.a.Adds64(t, t, X16)
+		f.trapIf(a64.CondCS, trapMemOOB)
+	} else {
+		f.leaDisp(t, base, int32(n), true)
+	}
 	if f.memSizeReg != regNone {
 		f.cmpRR(t, f.memSizeReg, true)
 	} else {
@@ -1037,7 +1050,7 @@ func (f *fn) bulkBoundsCheck(base Reg, n int) {
 
 // memoryFillConst lowers memory.fill with a small constant length as unrolled
 // stores of a byte-replicated pattern — no flush, no fill-loop startup.
-func (f *fn) memoryFillConst(n int) {
+func (f *fn) memoryFillConst(n int, memoryIndex uint32) {
 	f.stats.peep("memfill-unroll")
 	f.materializePendingLoads() // pending loads must read pre-fill memory
 	f.erase(f.s.back())         // n (const)
@@ -1059,7 +1072,10 @@ func (f *fn) memoryFillConst(n int) {
 		f.pinned = f.pinned.add(pat)
 	}
 	dst, dstOwned := f.materializeRead(f.popValue())
-	f.bulkBoundsCheck(dst, n)
+	if !f.memoryAddr64(memoryIndex) {
+		f.a.MovReg32(dst, dst)
+	}
+	f.bulkBoundsCheck(dst, n, memoryIndex)
 	for _, c := range bulkChunks(n) {
 		f.a.StoreIdx(linMemReg, dst, pat, int32(c[0]), c[1])
 	}
@@ -1074,15 +1090,21 @@ func (f *fn) memoryFillConst(n int) {
 
 // memoryCopyConst lowers memory.copy with a small constant length as
 // load-all-then-store-all chunks — inherently overlap-safe (memmove semantics).
-func (f *fn) memoryCopyConst(n int) {
+func (f *fn) memoryCopyConst(n int, dstMemory, srcMemory uint32) {
 	f.materializePendingLoads()
 	f.erase(f.s.back()) // n (const)
 	src, srcOwned := f.materializeRead(f.popValue())
 	f.pinned = f.pinned.add(src)
 	dst, dstOwned := f.materializeRead(f.popValue())
 	f.pinned = f.pinned.add(dst)
-	f.bulkBoundsCheck(dst, n)
-	f.bulkBoundsCheck(src, n)
+	if !f.memoryAddr64(dstMemory) {
+		f.a.MovReg32(dst, dst)
+	}
+	if !f.memoryAddr64(srcMemory) {
+		f.a.MovReg32(src, src)
+	}
+	f.bulkBoundsCheck(dst, n, dstMemory)
+	f.bulkBoundsCheck(src, n, srcMemory)
 	chunks := bulkChunks(n)
 	regs := make([]Reg, len(chunks))
 	avoid := maskOf(src, dst)

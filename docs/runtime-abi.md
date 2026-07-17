@@ -372,9 +372,13 @@ Snapshots, signal bounds, public admission, and arm64 execution remain closed.
 Native memory and table lowering have a consuming-side width invariant: every memory32/table32 address,
 index, start, delta, source offset, and length is zero-extended before native-width comparison, scaling,
 pointer arithmetic, byte-count construction, or loop use. Scalar memory addresses and all bulk memory/table
-operands establish the invariant after spill/local reload, including mixed-width copy lengths. This applies even
-when validation or a producer normally yields clean i32 bits; synchronous host result slots explicitly permit
-arbitrary upper bits. Memory64/table64 operands retain all 64 bits; `return_call_indirect` uses a full-width
+operands establish the invariant after spill/local reload, including mixed-width copy lengths and constant-length
+`memory.copy`/`memory.fill` specializations. Constant bulk lowering receives the selected memory indexes explicitly,
+canonicalizes each memory32 base at the consumer, and performs an end check even in signals-based mode. The check
+is mandatory for zero length because no later native load or store exists to fault: offset equal to the current size
+succeeds, while any larger offset traps. This applies even when validation or a producer normally yields clean i32
+bits; synchronous host result slots explicitly permit arbitrary upper bits. Memory64/table64 operands retain all 64
+bits; `return_call_indirect` uses a full-width
 unsigned table64 bounds comparison before entry scaling and frame teardown. Exact memory/table declared
 limits remain separate from bounded executable capacities; memory64 lifecycle metadata stores declared maxima
 as uint64 and never substitutes the finite reservation. Active data and element offsets are evaluated after

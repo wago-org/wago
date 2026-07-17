@@ -727,7 +727,7 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 		if top := f.s.back(); top != nil && top.kind == ekValue && top.st.kind == stConst {
 			if n := uint64(uint32(top.st.cval)); n <= 64 {
 				f.stats.peep("memcopy-unroll")
-				f.memoryCopyConst(int(n))
+				f.memoryCopyConst(int(n), dstMemory, srcMemory)
 				return nil
 			}
 		}
@@ -841,7 +841,7 @@ func (f *fn) memoryFill(r *wasm.Reader) error {
 	if memoryIndex == 0 && !f.memoryAddr64(0) {
 		if top := f.s.back(); top != nil && top.kind == ekValue && top.st.kind == stConst {
 			if n := uint64(uint32(top.st.cval)); n <= 64 {
-				f.memoryFillConst(int(n))
+				f.memoryFillConst(int(n), memoryIndex)
 				return nil
 			}
 		}
@@ -1039,19 +1039,31 @@ func bulkChunks16(n int) [][2]int {
 }
 
 // bulkBoundsCheck emits `trap unless base+n <= memBytes` for an unrolled bulk
-// op (skipped in guard mode: the stores/loads fault like scalar accesses).
-func (f *fn) bulkBoundsCheck(base Reg, n int) {
-	if f.guardMode {
-		return
-	}
+// op. Constant paths always check, including signals-based mode: a zero-length
+// operation has no later load/store to fault and must still reject base > size.
+func (f *fn) bulkBoundsCheck(base Reg, n int, memoryIndex uint32) {
 	f.pinned = f.pinned.add(base)
 	t := f.allocReg(0)
-	f.a.LeaDisp(t, base, int32(n))
-	if f.memSizeReg != regNone {
-		f.a.Cmp64(t, f.memSizeReg)
+	if f.memoryAddr64(memoryIndex) {
+		f.a.MovReg64(t, base)
+		f.a.AluRI(0, t, int32(n), true)
+		f.trapIf(condB, trapMemOOB)
+	} else {
+		f.a.LeaDisp(t, base, int32(n))
+	}
+	if memoryIndex == 0 {
+		if f.memSizeReg != regNone {
+			f.a.Cmp64(t, f.memSizeReg)
+		} else {
+			mb := f.allocReg(maskOf(t))
+			f.a.Load32(mb, RBX, -bdCurBytes)
+			f.a.Cmp64(t, mb)
+			f.release(mb)
+		}
 	} else {
 		mb := f.allocReg(maskOf(t))
-		f.a.Load32(mb, RBX, -bdCurBytes)
+		f.a.Load64(mb, RBX, -offMemoryDirPtr)
+		f.a.Load32(mb, mb, int32(memoryIndex)*16+8)
 		f.a.Cmp64(t, mb)
 		f.release(mb)
 	}
@@ -1062,7 +1074,7 @@ func (f *fn) bulkBoundsCheck(base Reg, n int) {
 
 // memoryFillConst lowers memory.fill with a small constant length as unrolled
 // stores of a byte-replicated pattern — no flush, no rep-stos microcode startup.
-func (f *fn) memoryFillConst(n int) {
+func (f *fn) memoryFillConst(n int, memoryIndex uint32) {
 	f.stats.peep("memfill-unroll")
 	f.materializePendingLoads() // pending loads must read pre-fill memory
 	f.erase(f.s.back())         // n (const)
@@ -1084,7 +1096,10 @@ func (f *fn) memoryFillConst(n int) {
 		f.pinned = f.pinned.add(pat)
 	}
 	dst, dstOwned := f.materializeRead(f.popValue())
-	f.bulkBoundsCheck(dst, n)
+	if !f.memoryAddr64(memoryIndex) {
+		f.a.MovRegReg32(dst, dst)
+	}
+	f.bulkBoundsCheck(dst, n, memoryIndex)
 	for _, c := range bulkChunks(n) {
 		f.a.StoreIdx(RBX, dst, pat, int32(c[0]), c[1])
 	}
@@ -1099,15 +1114,21 @@ func (f *fn) memoryFillConst(n int) {
 
 // memoryCopyConst lowers memory.copy with a small constant length as
 // load-all-then-store-all chunks — inherently overlap-safe (memmove semantics).
-func (f *fn) memoryCopyConst(n int) {
+func (f *fn) memoryCopyConst(n int, dstMemory, srcMemory uint32) {
 	f.materializePendingLoads()
 	f.erase(f.s.back()) // n (const)
 	src, srcOwned := f.materializeRead(f.popValue())
 	f.pinned = f.pinned.add(src)
 	dst, dstOwned := f.materializeRead(f.popValue())
 	f.pinned = f.pinned.add(dst)
-	f.bulkBoundsCheck(dst, n)
-	f.bulkBoundsCheck(src, n)
+	if !f.memoryAddr64(dstMemory) {
+		f.a.MovRegReg32(dst, dst)
+	}
+	if !f.memoryAddr64(srcMemory) {
+		f.a.MovRegReg32(src, src)
+	}
+	f.bulkBoundsCheck(dst, n, dstMemory)
+	f.bulkBoundsCheck(src, n, srcMemory)
 	if n > 32 {
 		// 33..64 bytes: SSE 16-byte load-all-then-store-all. At most four XMM
 		// registers, so the load-all footprint stays in the float pool (the GP
