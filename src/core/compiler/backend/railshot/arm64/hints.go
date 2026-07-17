@@ -78,7 +78,9 @@ type funcHints struct {
 }
 
 func newFuncHints(nLocals, nGlobals int) funcHints {
-	return funcHintsWithStorage(make([]uint32, nLocals), make([]uint32, nGlobals), make([]bool, nGlobals))
+	h := funcHintsWithStorage(make([]uint32, nLocals), make([]uint32, nGlobals), make([]bool, nGlobals))
+	h.nLocals = nLocals
+	return h
 }
 
 func funcHintsWithStorage(localScore, globalScore []uint32, globalElig []bool) funcHints {
