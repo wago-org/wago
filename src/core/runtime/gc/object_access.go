@@ -103,11 +103,12 @@ func (c *Collector) NewArrayFixedWithRoots(typeID TypeID, values []Value, roots 
 	if err != nil {
 		return Null(), err
 	}
-	c.zeroObjectPayload(r)
+	payload := c.bytes(r)[PayloadOffset:]
 	for i := range values {
-		if err := c.storeArrayValue(r, d, uint32(i), values[i]); err != nil {
-			return Null(), err
-		}
+		storeValueUnchecked(payload, uint64(i)*uint64(d.ElemSize), d.Elem, values[i])
+	}
+	if isCollectorRefKind(d.Elem) {
+		c.PostBulkWriteBarrier(r, 0, uint32(len(values)))
 	}
 	return r, nil
 }
@@ -141,10 +142,11 @@ func (c *Collector) NewArrayWithRoots(typeID TypeID, length uint32, init Value, 
 	if initRoot != nil {
 		init.Ref = Ref(*initRoot)
 	}
-	for i := uint32(0); i < length; i++ {
-		if err := c.storeValue(r, d, uint64(PayloadOffset)+uint64(i)*uint64(d.ElemSize), d.Elem, init); err != nil {
-			return Null(), err
-		}
+	if err := c.fillArrayPayload(r, d, 0, init, length); err != nil {
+		return Null(), err
+	}
+	if isCollectorRefKind(d.Elem) {
+		c.PostBulkWriteBarrier(r, 0, length)
 	}
 	return r, nil
 }
@@ -173,11 +175,10 @@ func (c *Collector) NewRefArrayWithRoots(typeID TypeID, length uint32, init Root
 		return Null(), err
 	}
 	value.Ref = init.GetRef()
-	for i := uint32(0); i < length; i++ {
-		if err := c.storeValue(r, d, uint64(PayloadOffset)+uint64(i)*uint64(d.ElemSize), d.Elem, value); err != nil {
-			return Null(), err
-		}
+	if err := c.fillArrayPayload(r, d, 0, value, length); err != nil {
+		return Null(), err
 	}
+	c.PostBulkWriteBarrier(r, 0, length)
 	return r, nil
 }
 
@@ -318,17 +319,25 @@ func (c *Collector) ArrayFill(ref Ref, start uint32, value Value, length uint32)
 	if length == 0 {
 		return nil
 	}
-	if isCollectorRefKind(d.Elem) && c.cfg.Profile == ProfileTiny {
-		for i := uint32(0); i < length; i++ {
-			if err := c.storeArrayValue(ref, d, start+i, value); err != nil {
-				return err
-			}
-		}
+	if err := c.fillArrayPayload(ref, d, start, value, length); err != nil {
+		return err
+	}
+	if isCollectorRefKind(d.Elem) {
+		c.PostBulkWriteBarrier(ref, start, length)
+	}
+	return nil
+}
+
+func (c *Collector) fillArrayPayload(ref Ref, d TypeDesc, start uint32, value Value, length uint32) error {
+	if length == 0 {
 		return nil
 	}
 	payload := c.bytes(ref)[PayloadOffset:]
 	lo := uint64(start) * uint64(d.ElemSize)
 	hi := lo + uint64(length)*uint64(d.ElemSize)
+	if lo > uint64(len(payload)) || hi > uint64(len(payload)) || hi < lo {
+		return errRange
+	}
 	rangeBytes := payload[lo:hi]
 	var pattern [8]byte
 	binary.LittleEndian.PutUint64(pattern[:], value.Bits)
@@ -337,11 +346,7 @@ func (c *Collector) ArrayFill(ref Ref, start uint32, value Value, length uint32)
 	}
 	copy(rangeBytes, pattern[:d.ElemSize])
 	for filled := int(d.ElemSize); filled < len(rangeBytes); {
-		n := copy(rangeBytes[filled:], rangeBytes[:filled])
-		filled += n
-	}
-	if isCollectorRefKind(d.Elem) {
-		c.PostBulkWriteBarrier(ref, start, length)
+		filled += copy(rangeBytes[filled:], rangeBytes[:filled])
 	}
 	return nil
 }

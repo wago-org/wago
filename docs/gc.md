@@ -1836,6 +1836,10 @@ Array copy accepts exact storage kinds plus the three non-null-to-nullable widen
 
 On linux/amd64 (Go 1.24.4, Ryzen 7 8845HS), removing redundant production validation reduces 4,096-element compact-ref copy from 37.1–38.2 µs to 213–218 ns, nullable widening from 37.5–38.2 µs to 200–201 ns, and same-array overlap from 36.6–40.4 µs to 157–159 ns. The 256-element forms fall from roughly 2.3–2.5 µs to 45–52 ns. All remain 0 B/op and 0 allocs/op.
 
+Array constructors preflight every value and root before allocation, then initialize the compact payload in bulk. Uniform constructors use one doubling fill; fixed constructors use unchecked width-specialized stores after complete validation. Collector-reference arrays perform one post-construction barrier reconciliation rather than one barrier/card operation per element. Tiny scans the final range once to maintain its incremental mark invariant; Throughput records at most one card interval and one remembered membership. Internal value-root sets are traversed directly during mark and verification, avoiding one escaping `RootSlot` interface value per fixed-array element.
+
+On the same machine, 4,096-element uniform i32 construction improves from 25.6–25.7 µs to 96 ns and uniform compact-ref construction from 27.4–27.5 µs to 263 ns. Fixed compact-ref construction improves from 96.5–97.4 µs, 43,851–43,858 B/op, and 1,371 allocs/op to 25.4–25.9 µs, 172 B/op, and 6 allocs/op. The remaining allocations are collection/constructor control metadata, not per-element growth.
+
 ## Exact scanning
 
 Scanning is descriptor-driven:

@@ -58,18 +58,16 @@ func (c *Collector) Verify(roots RootSet) error {
 			return err
 		}
 	}
-	if roots != nil {
-		var err error
-		roots.RangeRoots(func(s RootSlot) bool {
-			if !validRootRef(c, s.GetRef()) {
-				err = errors.New("gc: invalid root ref")
-				return false
-			}
-			return true
-		})
-		if err != nil {
-			return err
+	var rootErr error
+	rangeRootRefs(roots, func(r Ref) bool {
+		if !validRootRef(c, r) {
+			rootErr = errors.New("gc: invalid root ref")
+			return false
 		}
+		return true
+	})
+	if rootErr != nil {
+		return rootErr
 	}
 	for _, r := range c.globalSlots {
 		if !validRootRef(c, r) {

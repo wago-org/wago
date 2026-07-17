@@ -59,6 +59,23 @@ func (c *Collector) storeValue(r Ref, d TypeDesc, off uint64, k StorageKind, v V
 	return nil
 }
 
+func storeValueUnchecked(dst []byte, off uint64, k StorageKind, v Value) {
+	switch k {
+	case StorageI8:
+		dst[off] = byte(v.Bits)
+	case StorageI16:
+		binary.LittleEndian.PutUint16(dst[off:], uint16(v.Bits))
+	case StorageI32, StorageF32:
+		binary.LittleEndian.PutUint32(dst[off:], uint32(v.Bits))
+	case StorageI64, StorageF64, StorageFuncRef, StorageFuncRefNull, StorageExternRef, StorageExternRefNull:
+		binary.LittleEndian.PutUint64(dst[off:], v.Bits)
+	case StorageRef, StorageRefNull:
+		binary.LittleEndian.PutUint32(dst[off:], uint32(v.Ref))
+	default:
+		panic("gc: unchecked store with bad storage kind")
+	}
+}
+
 func checkDefaultable(d TypeDesc) error {
 	switch d.Kind {
 	case KindStruct:

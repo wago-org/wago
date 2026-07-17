@@ -73,6 +73,51 @@ func (s valueRootSet) RangeRoots(fn func(RootSlot) bool) {
 	}
 }
 
+func rangeRootRefs(roots RootSet, fn func(Ref) bool) {
+	if roots == nil {
+		return
+	}
+	switch s := roots.(type) {
+	case EmptyRoots:
+		return
+	case valueRootSet:
+		for i := range s.values {
+			if !s.all && (i >= len(s.fields) || !isCollectorRefKind(s.fields[i].Kind)) {
+				continue
+			}
+			if !fn(s.values[i].Ref) {
+				return
+			}
+		}
+	case combinedRootSet:
+		keepGoing := true
+		rangeRootRefs(s.first, func(r Ref) bool {
+			keepGoing = fn(r)
+			return keepGoing
+		})
+		if keepGoing {
+			rangeRootRefs(s.second, fn)
+		}
+	case extraRootSet:
+		keepGoing := true
+		rangeRootRefs(s.roots, func(r Ref) bool {
+			keepGoing = fn(r)
+			return keepGoing
+		})
+		if keepGoing && s.extra != nil {
+			fn(s.extra.GetRef())
+		}
+	case RefSliceRoots:
+		for i := range s {
+			if !fn(s[i]) {
+				return
+			}
+		}
+	default:
+		roots.RangeRoots(func(slot RootSlot) bool { return fn(slot.GetRef()) })
+	}
+}
+
 func combineRootSets(first, second RootSet) RootSet {
 	if first == nil {
 		return second
