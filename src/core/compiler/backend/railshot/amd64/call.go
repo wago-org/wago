@@ -636,15 +636,12 @@ func (f *fn) callInternal(localIdx int, ft *wasm.CompType, resHint int) error {
 // resHint >= 0 fuses a following `local.set resHint`: RAX moves straight into
 // the pinned local's register instead of an allocated result register.
 func (f *fn) emitRegisterCall(localIdx int, ft *wasm.CompType, resHint int) {
-	f.emitRegisterCallVia(ft, resHint, func() {
-		site := f.a.CallRel32()
-		f.relocs = append(f.relocs, callReloc{at: site, target: localIdx, internal: true})
-	})
+	f.emitRegisterCallVia(ft, resHint, localIdx, regNone)
 }
 
-// emitRegisterCallVia is emitRegisterCall with a pluggable call emitter
-// (direct rel32 or an indirect `call [mem]` for call_indirect).
-func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, emitCall func()) {
+// emitRegisterCallVia emits either a direct internal rel32 call (localIdx >= 0)
+// or an indirect register call. Explicit operands avoid a closure per wasm call.
+func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, indirect Reg) {
 	p, rN := len(ft.Params), len(ft.Results)
 	d := f.depth()
 	f.storePinnedGlobals(false) // spill value-pinned globals to their cells before the call (scratch is free here)
@@ -714,7 +711,12 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, emitCall func()
 
 	// No environment passing: RBX (linMem) is a whole-module invariant and the
 	// trap cell pointer lives in basedata — the callee inherits both (WARP model).
-	emitCall()
+	if localIdx >= 0 {
+		site := f.a.CallRel32()
+		f.relocs = append(f.relocs, callReloc{at: site, target: localIdx, internal: true})
+	} else {
+		f.a.CallReg(indirect)
+	}
 
 	// Capture the result(s) out of the return registers before the reload
 	// sequence below reuses RAX/RDX as scratch. Single int → RAX; two ints →
@@ -992,7 +994,7 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 		f.release(idxReg)
 		f.pinned = f.pinned.add(code)
 		f.stats.peep("immutable-local-call-indirect")
-		f.emitRegisterCallVia(ft, -1, func() { f.a.CallReg(code) })
+		f.emitRegisterCallVia(ft, -1, -1, code)
 		f.pinned = f.pinned.remove(code)
 		f.release(code)
 		return nil
@@ -1025,7 +1027,7 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 		f.release(tag)
 		wrapper := f.a.JccPlaceholder(condE)
 		f.pinned = f.pinned.remove(home)
-		f.emitRegisterCallVia(ft, -1, func() { f.a.CallReg(code) })
+		f.emitRegisterCallVia(ft, -1, -1, code)
 		f.pinned = f.pinned.remove(code)
 		f.release(code)
 		done := f.a.JmpPlaceholder()

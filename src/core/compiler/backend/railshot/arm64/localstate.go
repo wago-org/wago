@@ -236,6 +236,51 @@ func (f *fn) reconcileLocals() {
 // recorded) — always safe: the merge assumes only the target. The merge point
 // itself must then install the recorded target as the tracked state
 // (setLocalsState).
+func (f *fn) newLocStateBuf() []locState {
+	for i := len(f.lsPool) - 1; i >= 0; i-- {
+		b := f.lsPool[i]
+		if cap(b) < f.nLocals {
+			continue
+		}
+		last := len(f.lsPool) - 1
+		f.lsPool[i] = f.lsPool[last]
+		f.lsPool[last] = nil
+		f.lsPool = f.lsPool[:last]
+		return b[:f.nLocals]
+	}
+	// No retained buffer is large enough. Drop one undersized entry before
+	// replacing it so the module-wide pool is bounded by maximum simultaneous
+	// control depth, not by the number of different local counts encountered.
+	if last := len(f.lsPool) - 1; last >= 0 {
+		f.lsPool[last] = nil
+		f.lsPool = f.lsPool[:last]
+	}
+	return make([]locState, f.nLocals)
+}
+
+func (f *fn) freeLocStateBuf(b []locState) {
+	if cap(b) >= f.nLocals && f.nLocals > 0 {
+		f.lsPool = append(f.lsPool, b[:cap(b)])
+	}
+}
+
+func (f *fn) appendEndSite(sites *[]int, site int) {
+	if *sites == nil {
+		if n := len(f.endsPool); n > 0 {
+			*sites = f.endsPool[n-1][:0]
+			f.endsPool[n-1] = nil
+			f.endsPool = f.endsPool[:n-1]
+		}
+	}
+	*sites = append(*sites, site)
+}
+
+func (f *fn) freeEndsBuf(b []int) {
+	if cap(b) > 0 {
+		f.endsPool = append(f.endsPool, b[:0])
+	}
+}
+
 func (f *fn) convergeEdgeTo(target *[]locState) {
 	// Dirty registers and lazy zeros always materialize to the slot: every
 	// target guarantees at least "slot is current".
@@ -260,7 +305,7 @@ func (f *fn) convergeEdgeTo(target *[]locState) {
 		return
 	}
 	if *target == nil { // first edge fixes the frame's merge state
-		t := make([]locState, f.nLocals)
+		t := f.newLocStateBuf()
 		for x := range t {
 			t[x] = f.locals[x].state
 		}

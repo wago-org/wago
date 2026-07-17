@@ -342,6 +342,16 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 		// index space. Active slots remain zero-length (dropped).
 		c.PassiveData = make([]PassiveDataInit, dataStateCount)
 	}
+	// Active data dominates metadata in Go-produced modules (esbuild has tens of
+	// thousands of segments). Reserve once instead of geometrically copying the
+	// growing descriptor slice.
+	activeData := 0
+	for i := range m.Data {
+		if m.Data[i].Mode.Kind != wasm.DataPassive {
+			activeData++
+		}
+	}
+	c.Data = make([]DataInit, 0, activeData)
 	for i := range m.Data {
 		d := &m.Data[i]
 		if d.Mode.Kind == wasm.DataPassive {

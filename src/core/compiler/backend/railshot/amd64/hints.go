@@ -54,8 +54,8 @@ type funcHints struct {
 
 	// Loop-weighted hotness: local.get/global.get = 1×, set/tee = 2×, ×loopWeight
 	// per enclosing loop level.
-	localScore  []int64
-	globalScore []int64
+	localScore  []uint32
+	globalScore []uint32
 
 	// globalElig[g]: global g is accessed inside a loop whose subtree contains NO
 	// call. Value-pinning such a global in a call-making function is a win: the
@@ -74,9 +74,21 @@ type funcHints struct {
 
 func newFuncHints(nLocals, nGlobals int) funcHints {
 	return funcHints{
-		localScore:  make([]int64, nLocals),
-		globalScore: make([]int64, nGlobals),
+		localScore:  make([]uint32, nLocals),
+		globalScore: make([]uint32, nGlobals),
 		globalElig:  make([]bool, nGlobals),
+	}
+}
+
+func addHotness(scores []uint32, idx uint32, delta int64) {
+	if int(idx) >= len(scores) || delta <= 0 {
+		return
+	}
+	const max = ^uint32(0)
+	if uint64(scores[idx])+uint64(delta) >= uint64(max) {
+		scores[idx] = max
+	} else {
+		scores[idx] += uint32(delta)
 	}
 }
 
@@ -177,18 +189,18 @@ func scanBody(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32) funcHints {
 				sub, h.hasCall = true, true
 			case wasm.InstrLocalGet:
 				if int(in.Index) < nLocals {
-					h.localScore[in.Index] += w
+					addHotness(h.localScore, in.Index, w)
 				}
 			case wasm.InstrLocalSet, wasm.InstrLocalTee:
 				if int(in.Index) < nLocals {
-					h.localScore[in.Index] += 2 * w
+					addHotness(h.localScore, in.Index, 2*w)
 				}
 			case wasm.InstrGlobalGet, wasm.InstrGlobalSet:
 				if int(in.Index) < nGlobals {
 					if in.Kind == wasm.InstrGlobalSet {
-						h.globalScore[in.Index] += 2 * w
+						addHotness(h.globalScore, in.Index, 2*w)
 					} else {
-						h.globalScore[in.Index] += w
+						addHotness(h.globalScore, in.Index, w)
 					}
 					elig.add(curLoop, in.Index)
 				}
@@ -267,7 +279,8 @@ func scanBodyGlobalScores(body wasm.Expr, nGlobals int, add func(g uint32, score
 }
 
 func scanBodyBytesGlobalScores(body []byte, nGlobals int, add func(g uint32, score int64)) error {
-	s := globalScoreByteScanner{r: byteScanReader{Reader: wasm.NewReader(body)}, nGlobals: nGlobals, add: add}
+	r := wasm.ReaderFrom(body)
+	s := globalScoreByteScanner{r: byteScanReader{Reader: &r}, nGlobals: nGlobals, add: add}
 	term, err := s.scanExpr(0, 0, false)
 	if err != nil {
 		return err
@@ -378,7 +391,8 @@ func (s *globalScoreByteScanner) classifyInstructionInto(op byte, imm *wasm.Inst
 // allocating Instruction trees. body includes the terminating end opcode and
 // excludes local declarations.
 func scanBodyBytes(body []byte, nLocals int, nGlobals int, selfIdx uint32) (funcHints, error) {
-	s := byteBodyScanner{r: byteScanReader{Reader: wasm.NewReader(body)}, h: newFuncHints(nLocals, nGlobals), nLocals: nLocals, nGlobals: nGlobals, selfIdx: selfIdx, elig: newGlobalEligibilityTracker(nGlobals)}
+	r := wasm.ReaderFrom(body)
+	s := byteBodyScanner{r: byteScanReader{Reader: &r}, h: newFuncHints(nLocals, nGlobals), nLocals: nLocals, nGlobals: nGlobals, selfIdx: selfIdx, elig: newGlobalEligibilityTracker(nGlobals)}
 	called, term, err := s.scanExpr(0, 0, -1, false)
 	if err != nil {
 		return s.h, err
@@ -509,9 +523,9 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			idx := imm.Index
 			if int(idx) < s.nLocals {
 				if op == 0x20 {
-					s.h.localScore[idx] += loopWeight(loopDepth)
+					addHotness(s.h.localScore, idx, loopWeight(loopDepth))
 				} else {
-					s.h.localScore[idx] += 2 * loopWeight(loopDepth)
+					addHotness(s.h.localScore, idx, 2*loopWeight(loopDepth))
 				}
 			}
 		case 0x23, 0x24: // global.get/set
@@ -524,9 +538,9 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			idx := imm.Index
 			if int(idx) < s.nGlobals {
 				if op == 0x24 {
-					s.h.globalScore[idx] += 2 * loopWeight(loopDepth)
+					addHotness(s.h.globalScore, idx, 2*loopWeight(loopDepth))
 				} else {
-					s.h.globalScore[idx] += loopWeight(loopDepth)
+					addHotness(s.h.globalScore, idx, loopWeight(loopDepth))
 				}
 				s.elig.add(curLoop, idx)
 			}
