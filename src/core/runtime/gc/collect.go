@@ -23,6 +23,7 @@ func (c *Collector) CollectFull(roots RootSet) error {
 	c.markRoots(roots)
 	c.sweepAll()
 	c.pruneRemembered()
+	c.clearCardMetadata() // cards are verification scaffolding, not collection inputs
 	if c.cfg.VerifyAfterCollect {
 		return c.Verify(roots)
 	}
@@ -60,6 +61,7 @@ func (c *Collector) CollectMinor(roots RootSet) error {
 	}
 	c.sweepNurseryDead()
 	c.pruneRemembered()
+	c.clearCardMetadata() // cards are verification scaffolding, not collection inputs
 	if c.cfg.ForceMajorEveryMinor {
 		if err := c.CollectFull(roots); err != nil {
 			return err

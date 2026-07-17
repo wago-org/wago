@@ -300,8 +300,8 @@ func TestArrayFillReferenceBulkLengthsAndRememberedReconcile(t *testing.T) {
 				}
 				return
 			}
-			if c.RememberedCount() != 1 || c.CardCount() > 2 {
-				t.Fatalf("length %d remembered/cards = %d/%d, want 1/<=2", length, c.RememberedCount(), c.CardCount())
+			if c.RememberedCount() != 1 || c.CardCount() != 1 {
+				t.Fatalf("length %d remembered/cards = %d/%d, want 1/1", length, c.RememberedCount(), c.CardCount())
 			}
 			for _, index := range []uint32{0, length - 1} {
 				got, err := c.ArrayGet(dst, index)
@@ -312,8 +312,14 @@ func TestArrayFillReferenceBulkLengthsAndRememberedReconcile(t *testing.T) {
 			if err := c.ArrayFill(dst, 0, Value{Kind: StorageRefNull}, length); err != nil {
 				t.Fatal(err)
 			}
-			if c.RememberedCount() != 0 {
-				t.Fatalf("length %d null replacement retained remembered object", length)
+			if c.RememberedCount() != 1 {
+				t.Fatalf("length %d null replacement pruned remembered object on the bulk hot path", length)
+			}
+			if err := c.CollectMinor(nil); err != nil {
+				t.Fatal(err)
+			}
+			if c.RememberedCount() != 0 || c.CardCount() != 0 {
+				t.Fatalf("length %d collection retained remembered/card metadata: %d/%d", length, c.RememberedCount(), c.CardCount())
 			}
 		})
 	}
@@ -348,8 +354,14 @@ func TestArrayCopyBulkReconcilePreservesNurseryEdgesOutsideRange(t *testing.T) {
 	if err := c.ArrayCopy(dst, 0, nulls, 0, 1); err != nil {
 		t.Fatal(err)
 	}
-	if c.RememberedCount() != 0 {
-		t.Fatal("bulk copy retained remembered object after final nursery edge was removed")
+	if c.RememberedCount() != 1 {
+		t.Fatal("bulk copy pruned remembered object on the hot path")
+	}
+	if err := c.CollectMinor(nil); err != nil {
+		t.Fatal(err)
+	}
+	if c.RememberedCount() != 0 || c.CardCount() != 0 {
+		t.Fatal("collection retained remembered/card metadata after final nursery edge was removed")
 	}
 }
 

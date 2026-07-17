@@ -83,32 +83,35 @@ const (
 )
 
 type handleEntry struct {
-	off, size uint32
-	allocSize uint32
-	class     uint16
-	space     spaceKind
+	off, size  uint32
+	allocSize  uint32
+	cardSlot   uint32 // one-based index in Collector.objectCards
+	class      uint16
+	space      spaceKind
+	remembered bool
 }
 
 type Collector struct {
-	cfg         Config
-	types       []TypeDesc
-	typeIndex   []int
-	nursery     []byte
-	nurseryBump uint32
-	tiny        tinyHeap
-	tinyGC      tinyGC
-	throughput  throughputHeap
-	handles     []handleEntry // index 0 is never used; Ref stores index<<1.
-	freeHandles []uint32
-	mark        []bool
-	markStack   []uint32
-	remembered  []uint32
-	objectCards []objectCard
-	slotCards   []slotCard
-	globalSlots []Ref
-	tableSlots  []Ref
-	stats       Stats
-	closed      bool
+	cfg          Config
+	types        []TypeDesc
+	typeIndex    []int
+	nursery      []byte
+	nurseryBump  uint32
+	tiny         tinyHeap
+	tinyGC       tinyGC
+	throughput   throughputHeap
+	handles      []handleEntry // index 0 is never used; Ref stores index<<1.
+	freeHandles  []uint32
+	mark         []bool
+	markStack    []uint32
+	remembered   []uint32
+	objectCards  []objectCard
+	slotCards    []slotCard
+	slotCardSlot map[uint64]uint32 // one-based indexes in slotCards, allocated lazily
+	globalSlots  []Ref
+	tableSlots   []Ref
+	stats        Stats
+	closed       bool
 }
 
 const defaultNursery = 64 << 10
@@ -162,6 +165,7 @@ func (c *Collector) Close() {
 	c.remembered = nil
 	c.objectCards = nil
 	c.slotCards = nil
+	c.slotCardSlot = nil
 	c.globalSlots = nil
 	c.tableSlots = nil
 	c.tinyGC.color = nil
