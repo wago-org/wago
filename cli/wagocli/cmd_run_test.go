@@ -67,16 +67,23 @@ func TestLoadModuleAndResolveExport(t *testing.T) {
 func TestRunParallelFlagForms(t *testing.T) {
 	cmd := runCommand()
 	for _, tc := range []struct {
-		name string
-		args []string
-		want string
+		name         string
+		args         []string
+		wantParallel string
+		wantInvoke   string
+		wantBounds   string
+		wantPlugin   string
 	}{
-		{"bare short", []string{"-p", "module.wasm"}, "auto"},
-		{"joined short", []string{"-p8", "module.wasm"}, "8"},
-		{"separated short", []string{"-p", "8", "module.wasm"}, "8"},
-		{"equal short", []string{"-p=8", "module.wasm"}, "8"},
-		{"bare long", []string{"--parallel", "module.wasm"}, "auto"},
-		{"equal long", []string{"--parallel=8", "module.wasm"}, "8"},
+		{name: "bare short", args: []string{"-p", "module.wasm"}, wantParallel: "auto"},
+		{name: "joined short", args: []string{"-p8", "module.wasm"}, wantParallel: "8"},
+		{name: "separated short", args: []string{"-p", "8", "module.wasm"}, wantParallel: "8"},
+		{name: "equal short", args: []string{"-p=8", "module.wasm"}, wantParallel: "8"},
+		{name: "bare long", args: []string{"--parallel", "module.wasm"}, wantParallel: "auto"},
+		{name: "equal long", args: []string{"--parallel=8", "module.wasm"}, wantParallel: "8"},
+		{name: "after separated invoke", args: []string{"-e", "add", "-p8", "module.wasm"}, wantParallel: "8", wantInvoke: "add"},
+		{name: "after separated bounds", args: []string{"--bounds", "all", "-p", "module.wasm"}, wantParallel: "auto", wantBounds: "all"},
+		{name: "after separated plugin", args: []string{"--plugin", "wasi", "--parallel=4", "module.wasm"}, wantParallel: "4", wantPlugin: "wasi"},
+		{name: "parallel-looking invoke value", args: []string{"-e", "-p8", "module.wasm"}, wantInvoke: "-p8"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			args, err := cmd.Normalize(tc.args)
@@ -87,8 +94,17 @@ func TestRunParallelFlagForms(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if got := ctx.Str("parallel"); got != tc.want {
-				t.Fatalf("parallel = %q, want %q (normalized %v)", got, tc.want, args)
+			if got := ctx.Str("parallel"); got != tc.wantParallel {
+				t.Fatalf("parallel = %q, want %q (normalized %v)", got, tc.wantParallel, args)
+			}
+			if got := ctx.Str("invoke"); got != tc.wantInvoke {
+				t.Fatalf("invoke = %q, want %q (normalized %v)", got, tc.wantInvoke, args)
+			}
+			if got := ctx.Str("bounds"); got != tc.wantBounds {
+				t.Fatalf("bounds = %q, want %q (normalized %v)", got, tc.wantBounds, args)
+			}
+			if got := ctx.Str("plugin"); got != tc.wantPlugin {
+				t.Fatalf("plugin = %q, want %q (normalized %v)", got, tc.wantPlugin, args)
 			}
 			if len(ctx.Args) != 1 || ctx.Args[0] != "module.wasm" {
 				t.Fatalf("positionals = %v", ctx.Args)
