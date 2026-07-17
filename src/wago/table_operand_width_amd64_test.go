@@ -49,10 +49,12 @@ func dirtyTableOperationsModule() []byte {
 	for i := range bodies {
 		codes[i] = wasmtest.Code(bodies[i])
 	}
+	localBody := []byte{0x01, 0x01, 0x7f, 0x10, 0x00, 0x21, 0x00, 0x20, 0x00, 0x25, 0x00, 0xd1, 0x0b}
+	codes = append(codes, append(wasmtest.ULEB(uint32(len(localBody))), localBody...))
 	return wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(sig)),
 		wasmtest.Section(2, wasmtest.Vec(imp)),
-		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0), wasmtest.ULEB(0), wasmtest.ULEB(0), wasmtest.ULEB(0), wasmtest.ULEB(0), wasmtest.ULEB(0))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0), wasmtest.ULEB(0), wasmtest.ULEB(0), wasmtest.ULEB(0), wasmtest.ULEB(0), wasmtest.ULEB(0), wasmtest.ULEB(0))),
 		table,
 		wasmtest.Section(7, wasmtest.Vec(
 			wasmtest.ExportEntry("get", 0, 2),
@@ -61,6 +63,7 @@ func dirtyTableOperationsModule() []byte {
 			wasmtest.ExportEntry("indirect", 0, 5),
 			wasmtest.ExportEntry("copy", 0, 6),
 			wasmtest.ExportEntry("init", 0, 7),
+			wasmtest.ExportEntry("local", 0, 8),
 		)),
 		elem,
 		wasmtest.Section(10, wasmtest.Vec(codes...)),
@@ -80,6 +83,7 @@ func TestTable32OperationsCanonicalizeDirtySynchronousHostResult(t *testing.T) {
 		{name: "indirect", want: 42},
 		{name: "copy", want: 0},
 		{name: "init", want: 0},
+		{name: "local", want: 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			in, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{"env.index": HostFunc(func(_ HostModule, _, results []uint64) {
