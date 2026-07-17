@@ -184,9 +184,8 @@ func decodeRefType(r *reader) (RefType, error) {
 		if err != nil {
 			return RefType{}, err
 		}
-		if !exact && ht.Kind == HeapAbs {
-			return AbsRef(ht.Abs), nil
-		}
+		// Preserve the explicit (ref null ...) encoding form. Bare is retained
+		// only for binary round trips and must not affect semantic type identity.
 		return Ref(true, ht, exact), nil
 	case 0x64:
 		exact, ht, err := decodeRefHeapType(r)

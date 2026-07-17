@@ -115,28 +115,25 @@ func IsNumericGlobalType(t ValType) bool {
 	return equalValType(t, I32) || equalValType(t, I64) || equalValType(t, F32) || equalValType(t, F64)
 }
 
-// EncodeValType returns the canonical one-byte encoding for MVP numeric/vector
-// value types and bare nullable reference aliases used by the current tests and
-// wasm builders.
+// EncodeValType returns the one-byte encoding for MVP numeric/vector value
+// types and bare nullable reference aliases. Unlike semantic equality, this
+// helper intentionally observes RefType.Bare so an explicit (ref null ...)
+// value type is not silently rewritten as shorthand during a binary round trip.
 func EncodeValType(t ValType) (byte, bool) {
-	switch {
-	case equalValType(t, I32):
-		return 0x7f, true
-	case equalValType(t, I64):
-		return 0x7e, true
-	case equalValType(t, F32):
-		return 0x7d, true
-	case equalValType(t, F64):
-		return 0x7c, true
-	case equalValType(t, V128):
+	switch t.Kind {
+	case ValNum:
+		switch t.Num {
+		case NumI32, NumI64, NumF32, NumF64:
+			return byte(t.Num), true
+		}
+	case ValVec:
 		return 0x7b, true
-	case equalValType(t, FuncRef):
-		return 0x70, true
-	case equalValType(t, ExternRef):
-		return 0x6f, true
-	default:
-		return 0, false
+	case ValRef:
+		if t.Ref.Bare && t.Ref.Nullable && !t.Ref.Exact && t.Ref.Heap.Kind == HeapAbs {
+			return byte(t.Ref.Heap.Abs), true
+		}
 	}
+	return 0, false
 }
 
 // MustEncodeValType is EncodeValType for test/build helpers where unsupported
@@ -451,14 +448,12 @@ func StructuralFuncTypeID(ft *CompType) uint32 {
 	mix := func(b byte) { h ^= uint32(b); h *= prime32 }
 	mix(byte(len(ft.Params)))
 	for _, t := range ft.Params {
-		c, _ := EncodeValType(t)
-		mix(c)
+		mix(structuralLegacyValTypeByte(t))
 	}
 	mix(0xfe) // params/results separator
 	mix(byte(len(ft.Results)))
 	for _, t := range ft.Results {
-		c, _ := EncodeValType(t)
-		mix(c)
+		mix(structuralLegacyValTypeByte(t))
 	}
 	return h
 }
@@ -468,6 +463,22 @@ func StructuralFuncTypeID(ft *CompType) uint32 {
 // remains authoritative at public/storage boundaries; this wider independent
 // key prevents collisions in the legacy 32-bit FNV discriminator from admitting
 // a wrong native target.
+func structuralLegacyValTypeByte(t ValType) byte {
+	switch t.Kind {
+	case ValNum:
+		return byte(t.Num)
+	case ValVec:
+		return 0x7b
+	case ValRef:
+		// Canonicalize shorthand and explicit nullable abstract references to
+		// the same legacy byte. Wider identity is provided by StructuralTypeKey.
+		if t.Ref.Nullable && !t.Ref.Exact && t.Ref.Heap.Kind == HeapAbs {
+			return byte(t.Ref.Heap.Abs)
+		}
+	}
+	return 0
+}
+
 func StructuralFuncTypeKey(ft *CompType) uint64 {
 	encoded := make([]byte, 0, 16+8*(len(ft.Params)+len(ft.Results)))
 	mixU32 := func(v uint32) {
@@ -485,9 +496,6 @@ func StructuralFuncTypeKey(ft *CompType) uint64 {
 			}
 			if t.Ref.Exact {
 				flags |= 2
-			}
-			if t.Ref.Bare {
-				flags |= 4
 			}
 			encoded = append(encoded, flags, byte(t.Ref.Heap.Kind), byte(t.Ref.Heap.Abs))
 		}

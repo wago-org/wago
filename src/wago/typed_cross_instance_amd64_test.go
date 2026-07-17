@@ -10,6 +10,111 @@ import (
 	"github.com/wago-org/wago/testutil/wasmtest"
 )
 
+func referenceEncodingFuncType(refType []byte) []byte {
+	out := []byte{0x60, 0x00, 0x01}
+	return append(out, refType...)
+}
+
+func referenceEncodingProducerModule() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(referenceEncodingFuncType([]byte{0x70}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0xd0, 0x70, 0x0b}))),
+	)
+}
+
+func referenceEncodingConsumerModule() []byte {
+	importEntry := append(wasmtest.Name("env"), wasmtest.Name("f")...)
+	importEntry = append(importEntry, byte(wasm.ExternFunc))
+	importEntry = append(importEntry, wasmtest.ULEB(0)...)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(referenceEncodingFuncType([]byte{0x63, 0x70}))),
+		wasmtest.Section(2, wasmtest.Vec(importEntry)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 1))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x10, 0x00, 0x0b}))),
+	)
+}
+
+func referenceEncodingTypedCallsModule() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			referenceEncodingFuncType([]byte{0x70}),
+			referenceEncodingFuncType([]byte{0x63, 0x70}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(
+			wasmtest.ULEB(0), wasmtest.ULEB(1), wasmtest.ULEB(1), wasmtest.ULEB(1),
+		)),
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x01, 0x01, 0x01})),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("indirect", 0, 1),
+			wasmtest.ExportEntry("call_ref", 0, 2),
+			wasmtest.ExportEntry("return_call_ref", 0, 3),
+		)),
+		wasmtest.Section(9, wasmtest.Vec(tableTestActiveElem(0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0xd0, 0x70, 0x0b}),
+			wasmtest.Code([]byte{0x41, 0x00, 0x11, 0x01, 0x00, 0x0b}),
+			wasmtest.Code([]byte{0xd2, 0x00, 0x14, 0x01, 0x0b}),
+			wasmtest.Code([]byte{0xd2, 0x00, 0x15, 0x01, 0x0b}),
+		)),
+	)
+}
+
+func TestReferenceEncodingFormDoesNotAffectTypedCalls(t *testing.T) {
+	producerCompiled := stagedTypedStorageCompile(t, referenceEncodingProducerModule())
+	consumerCompiled := stagedTypedStorageCompile(t, referenceEncodingConsumerModule())
+	if got, want := producerCompiled.FuncTypeID[0], consumerCompiled.FuncTypeID[0]; got != want {
+		t.Fatalf("shorthand/explicit native type keys = %#x/%#x", got, want)
+	}
+	blob, err := producerCompiled.MarshalBinary()
+	if err != nil {
+		t.Fatalf("marshal shorthand producer: %v", err)
+	}
+	var reloaded Compiled
+	if err := reloaded.UnmarshalBinary(blob); err != nil {
+		t.Fatalf("reload shorthand producer: %v", err)
+	}
+	defer reloaded.Close()
+	if got, want := reloaded.FuncTypeID[0], consumerCompiled.FuncTypeID[0]; got != want {
+		t.Fatalf("reloaded shorthand/explicit native type keys = %#x/%#x", got, want)
+	}
+	producer, err := instantiateCore(&reloaded, InstantiateOptions{})
+	if err != nil {
+		t.Fatalf("instantiate reloaded shorthand producer: %v", err)
+	}
+	defer producer.Close()
+	export, err := producer.ExportedFunc("f")
+	if err != nil {
+		t.Fatalf("export shorthand function: %v", err)
+	}
+	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{"env.f": export}})
+	if err != nil {
+		t.Fatalf("link explicit function import: %v", err)
+	}
+	defer consumer.Close()
+	if got, err := consumer.Invoke("run"); err != nil || len(got) != 1 || got[0] != 0 {
+		t.Fatalf("cross-instance shorthand/explicit call = %v, %v", got, err)
+	}
+
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), referenceEncodingTypedCallsModule())
+	if err != nil {
+		t.Fatalf("compile typed shorthand/explicit calls: %v", err)
+	}
+	defer compiled.Close()
+	in, err := instantiateCore(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatalf("instantiate typed shorthand/explicit calls: %v", err)
+	}
+	defer in.Close()
+	for _, name := range []string{"indirect", "call_ref", "return_call_ref"} {
+		if got, err := in.Invoke(name); err != nil || len(got) != 1 || got[0] != 0 {
+			t.Fatalf("%s shorthand/explicit call = %v, %v", name, got, err)
+		}
+	}
+}
+
 func typedCrossInstanceProducerModule() []byte {
 	return wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),

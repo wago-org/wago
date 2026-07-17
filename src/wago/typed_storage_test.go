@@ -72,6 +72,82 @@ func typedGlobalModule(typeDefs [][]byte, typeIndex uint32, importGlobal, export
 	return wasmtest.Module(sections...)
 }
 
+func abstractFuncRefStorageModule(refType []byte, table, imported bool) []byte {
+	if table {
+		if imported {
+			entry := append(wasmtest.Name("env"), wasmtest.Name("table")...)
+			entry = append(entry, byte(wasm.ExternTable))
+			entry = append(entry, refType...)
+			entry = append(entry, 0x01, 0x01, 0x01) // min=1, max=1
+			return wasmtest.Module(wasmtest.Section(2, wasmtest.Vec(entry)))
+		}
+		entry := append([]byte(nil), refType...)
+		entry = append(entry, 0x01, 0x01, 0x01)
+		return wasmtest.Module(
+			wasmtest.Section(4, wasmtest.Vec(entry)),
+			wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("table", byte(wasm.ExternTable), 0))),
+		)
+	}
+	if imported {
+		entry := append(wasmtest.Name("env"), wasmtest.Name("global")...)
+		entry = append(entry, byte(wasm.ExternGlobal))
+		entry = append(entry, refType...)
+		entry = append(entry, 0x00) // immutable
+		return wasmtest.Module(wasmtest.Section(2, wasmtest.Vec(entry)))
+	}
+	entry := append([]byte(nil), refType...)
+	entry = append(entry, 0x00, 0xd0, 0x70, 0x0b) // immutable; ref.null func
+	return wasmtest.Module(
+		wasmtest.Section(6, wasmtest.Vec(entry)),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("global", byte(wasm.ExternGlobal), 0))),
+	)
+}
+
+func TestReferenceEncodingFormDoesNotAffectStorageImports(t *testing.T) {
+	bare := []byte{0x70}
+	explicit := []byte{0x63, 0x70}
+
+	t.Run("table", func(t *testing.T) {
+		producer := stagedTypedStorageCompile(t, abstractFuncRefStorageModule(bare, true, false))
+		consumer := stagedTypedStorageCompile(t, abstractFuncRefStorageModule(explicit, true, true))
+		store := newReferenceStore(false)
+		producerInstance, err := instantiateCore(producer, InstantiateOptions{store: store})
+		if err != nil {
+			t.Fatalf("instantiate shorthand table producer: %v", err)
+		}
+		defer producerInstance.Close()
+		table, err := producerInstance.ExportedTable("table")
+		if err != nil {
+			t.Fatalf("export shorthand table: %v", err)
+		}
+		consumerInstance, err := instantiateCore(consumer, InstantiateOptions{Imports: Imports{"env.table": table}, store: store})
+		if err != nil {
+			t.Fatalf("import shorthand table as explicit reference type: %v", err)
+		}
+		defer consumerInstance.Close()
+	})
+
+	t.Run("global", func(t *testing.T) {
+		producer := stagedTypedStorageCompile(t, abstractFuncRefStorageModule(bare, false, false))
+		consumer := stagedTypedStorageCompile(t, abstractFuncRefStorageModule(explicit, false, true))
+		store := newReferenceStore(false)
+		producerInstance, err := instantiateCore(producer, InstantiateOptions{store: store})
+		if err != nil {
+			t.Fatalf("instantiate shorthand global producer: %v", err)
+		}
+		defer producerInstance.Close()
+		global, err := producerInstance.ExportedGlobalObject("global")
+		if err != nil {
+			t.Fatalf("export shorthand global: %v", err)
+		}
+		consumerInstance, err := instantiateCore(consumer, InstantiateOptions{Imports: Imports{"env.global": global}, store: store})
+		if err != nil {
+			t.Fatalf("import shorthand global as explicit reference type: %v", err)
+		}
+		defer consumerInstance.Close()
+	})
+}
+
 func TestStagedTypedStorageExactImports(t *testing.T) {
 	equivalent := wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I64})
 	dummy := wasmtest.FuncType(nil, nil)
