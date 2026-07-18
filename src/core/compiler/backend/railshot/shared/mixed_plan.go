@@ -426,6 +426,7 @@ func BuildMixedPlanWithBlockResolver(ft *wasm.CompType, locals []wasm.LocalRun, 
 	}
 	terminated := false
 	terminalUnreachable := false
+	branchTerminated := false
 	for r.HasNext() {
 		op, err := r.Byte()
 		if err != nil {
@@ -433,6 +434,9 @@ func BuildMixedPlanWithBlockResolver(ft *wasm.CompType, locals []wasm.LocalRun, 
 		}
 		if terminated && op != 0x0b {
 			return nil, fmt.Errorf("mixed function currently requires terminal unreachable")
+		}
+		if branchTerminated && op != 0x05 && op != 0x0b {
+			return nil, fmt.Errorf("mixed unconditional branch currently requires an immediate else or end")
 		}
 		switch op {
 		case 0x00: // unreachable
@@ -487,6 +491,7 @@ func BuildMixedPlanWithBlockResolver(ft *wasm.CompType, locals []wasm.LocalRun, 
 			control.elseSeen = true
 			stack = append(stack[:0], control.start...)
 			operandSlots = control.startSlots
+			branchTerminated = false
 		case 0x0b: // end
 			if len(controls) != 0 {
 				control := controls[len(controls)-1]
@@ -519,6 +524,7 @@ func BuildMixedPlanWithBlockResolver(ft *wasm.CompType, locals []wasm.LocalRun, 
 					p.Ops[branch].Label = target
 				}
 				controls = controls[:len(controls)-1]
+				branchTerminated = false
 				continue
 			}
 			if r.HasNext() {
@@ -540,7 +546,23 @@ func BuildMixedPlanWithBlockResolver(ft *wasm.CompType, locals []wasm.LocalRun, 
 				p.ResultSlots += uint16(width)
 			}
 			return p, nil
-		case 0x0d: // br_if to a void label
+		case 0x0c: // br to the innermost non-loop label
+			depth, err := r.U32()
+			if err != nil || depth != 0 || len(controls) == 0 {
+				return nil, fmt.Errorf("mixed br currently supports only depth zero")
+			}
+			target := &controls[len(controls)-1]
+			if target.kind == 0x03 {
+				return nil, fmt.Errorf("mixed unconditional loop backedge is not yet supported")
+			}
+			if _, ok := controlMatches(target); !ok {
+				return nil, fmt.Errorf("mixed br values do not match the target label")
+			}
+			branch := len(p.Ops)
+			target.pending = append(target.pending, branch)
+			p.Ops = append(p.Ops, MixedOp{Kind: MixedJump, Label: -1})
+			branchTerminated = true
+		case 0x0d: // br_if to a typed label
 			depth, err := r.U32()
 			if err != nil || int(depth) >= len(controls) {
 				return nil, fmt.Errorf("mixed br_if depth %d is invalid", depth)
