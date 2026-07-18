@@ -487,6 +487,12 @@ see `docs/amd64-arm64-backend-status.md` for parity status. Landed, in rough ord
   The widening matcher proves its overwritten temporary dead before rewriting; the
   multiply matcher requires the final function `end`. `WAGO_NO_SWAR_IDIOMS=1` disables
   both for correctness and performance A/B checks.
+- **Bounded SIMD superops** — the same offline-discovery/online-selection split now
+  covers exact adjacent Wasm SIMD operations without retaining a SIMD IR. The first
+  selectors fold `v128.not; v128.and` to one `VPANDN`/`BIC`, and fold
+  `v128.and; v128.any_true` to `VPTEST; SETNE` on AMD64 or a directly owned NEON
+  AND/reduction on ARM64. Lookahead is two bytecode operations, allocation-free, and
+  restored on every near miss. `WAGO_NO_SIMD_SUPEROPT=1` is the differential A/B oracle.
 - **Scaled-index LEA fusion** — `add(x, shl(y, k≤3))` → `lea [x + y*2ᵏ]` (the
   AssemblyScript array-address shape).
 - **`br_table` jump tables** (old P7) — n≥5 dispatches through a RIP-relative offset
@@ -658,6 +664,25 @@ they shrink 119→78 B and 256→219 B. The matcher
 also runs when AssemblyScript removes the final `i32.wrap_i64`, preserving the exact
 zero-extended i64 result. Native AMD64 measurements are recorded from the Ryzen host
 alongside the other AMD64 broadword numbers above.
+
+### Native SIMD superop A/B (2026-07-18)
+
+The checked-in utf-as SIMD entrypoint now exercises both length and validation paths.
+Five compile samples and seven validation-execution samples were taken on the Ryzen
+7 7800X3D host; medians are shown. The M4 Max uses the same matcher and passes the
+same differential tests, but its AND + ANY_TRUE NEON instruction sequence is already
+minimal, so its validation runtime remains flat (361.1 vs 361.7 us).
+
+| workload | superops off | superops on | change | memory |
+|---|---:|---:|---:|---:|
+| AMD64 utf-as SIMD backend compile | 397.24 us | 396.96 us | −0.1% (flat) | 262,267 B / 523 allocs (same) |
+| AMD64 utf-as SIMD full compile | 957.88 us | 956.91 us | −0.1% (flat) | 433,980 B / 953 allocs (same) |
+| AMD64 utf-as SIMD `validateN(200)` | 187.34 us | 183.61 us | **−2.0%** | 0 B / 0 allocs |
+
+Five real utf-as SIMD sites select. AMD64 generated code shrinks by 138 B across the
+three hit functions (8056→8014 B, 4444→4380 B, 2628→2596 B). Focused exact-pattern
+tests shrink AND + ANY_TRUE by 21 B (124→103 B) and NOT + AND by 10 B (152→142 B),
+with arbitrary-bit inputs, non-adjacent near misses, and kill-switch equivalence covered.
 
 ---
 
