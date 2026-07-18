@@ -173,14 +173,17 @@ locals, and atomic `local.get`, `local.set`, and `local.tee`. Local homes use
 callee-saved register pairs whose incoming values are preserved in aligned
 frames. QEMU executes a parameter/local/tee/multiply fixture on both targets.
 
-The i64 compiler now has a bounded 64-byte operand-spill area after its local-
-home save region. When register pressure exhausts the pool, it stores and
-releases a complete pair, then reloads both words together when the value is
-consumed. QEMU fixtures force spill/reload after reserving local homes and verify
-the same result on RV32 and Thumb-2. Spill selection cannot target local homes
-or expose half of a pair.
+The i64 compiler has a bounded 64-byte operand-spill area after its local-home
+save region. The v128 compiler now applies the same design with a bounded
+128-byte quad-spill area. Both paths support parameters, zero-initialized locals,
+and atomic `local.get`, `local.set`, and `local.tee`; occupied callee-saved homes
+are preserved in aligned frames. When pressure exhausts the pool, the compiler
+stores and releases a complete pair or quad, then reloads every word together
+when consumed. QEMU fixtures force pair and quad spill/reload after reserving
+local homes and verify identical results on RV32 and Thumb-2. Spill selection
+cannot target local homes or expose a partial value.
 
-This is still not public backend admission. Quad spills, pair/quad control
-merges and calls in the full module compiler, calls/globals/tables/references,
-the bare-metal executable and linear-memory arenas, firmware linking, and Pico 2
-hardware qualification remain to be implemented and measured.
+This is still not public backend admission. Pair/quad control merges and calls
+in the full module compiler, calls/globals/tables/references, the bare-metal
+executable and linear-memory arenas, firmware linking, and Pico 2 hardware
+qualification remain to be implemented and measured.

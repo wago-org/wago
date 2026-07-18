@@ -137,19 +137,74 @@ func (c *wideCompiler) spillOne() bool {
 }
 func quad(v wideValue) rv.Quad { return rv.Quad{v.regs[0], v.regs[1], v.regs[2], v.regs[3]} }
 
-// CompileV128Beachhead lowers a strict straight-line v128 expression. It is the
-// direct four-GPR SWAR beachhead used to measure which operations should stay
-// inline instead of using the complete embedded32 helper fallback. The result
-// returns in A0..A3 as little-endian words.
-func CompileV128Beachhead(body []byte) ([]byte, error) {
+var v128LocalHomes = [][4]rv.Reg{{rv.S0, rv.S1, rv.S2, rv.S3}, {rv.S4, rv.S5, rv.S6, rv.S7}}
+
+// CompileV128Beachhead lowers a no-parameter direct v128 function.
+func CompileV128Beachhead(body []byte) ([]byte, error) { return CompileV128Function(0, body) }
+
+// CompileV128Function adds atomic quad parameters, locals, and bounded spills
+// to the direct SWAR subset. The result returns in A0..A3.
+func CompileV128Function(numParams int, body []byte) ([]byte, error) {
 	c := newWideCompiler()
 	r := wasm.NewReader(body)
 	groups, err := r.U32()
 	if err != nil {
 		return nil, err
 	}
-	if groups != 0 {
-		return nil, fmt.Errorf("riscv32: v128 beachhead does not support locals")
+	declared := 0
+	for i := uint32(0); i < groups; i++ {
+		n, e := r.U32()
+		if e != nil {
+			return nil, e
+		}
+		typ, e := r.Byte()
+		if e != nil {
+			return nil, e
+		}
+		if typ != 0x7b {
+			return nil, fmt.Errorf("riscv32: v128 function local type %#x", typ)
+		}
+		declared += int(n)
+	}
+	if numParams < 0 || numParams > 2 {
+		return nil, fmt.Errorf("riscv32: v128 function supports 0..2 parameters")
+	}
+	total := numParams + declared
+	if total > len(v128LocalHomes) {
+		return nil, fmt.Errorf("riscv32: v128 function supports %d quad locals", len(v128LocalHomes))
+	}
+	locals := make([]wideValue, total)
+	saveBytes := int32(total * 16)
+	frame := (saveBytes + 128 + 15) &^ 15
+	c.a.Addi(rv.SP, rv.SP, -frame)
+	c.enableSpills(saveBytes, 128)
+	for i := 0; i < total; i++ {
+		home := v128LocalHomes[i]
+		for j := 0; j < 4; j++ {
+			c.a.Sw(home[j], rv.SP, int32(i*16+j*4))
+		}
+		g, ok := c.groups.Acquire([4]uint8{uint8(home[0]), uint8(home[1]), uint8(home[2]), uint8(home[3])}, 4)
+		if !ok {
+			panic("riscv32: v128 local acquire")
+		}
+		locals[i] = wideValue{n: 4, regs: home, groups: [4]shared.RegGroup{g}, groupN: 1}
+		for j := 0; j < 4; j++ {
+			if i < numParams {
+				c.a.MovReg(home[j], rv.A0+rv.Reg(i*4+j))
+			} else {
+				c.a.MovImm32(home[j], 0)
+			}
+		}
+	}
+	epilogue := func() {
+		for i := 0; i < total; i++ {
+			home := v128LocalHomes[i]
+			for j := 0; j < 4; j++ {
+				c.a.Lw(home[j], rv.SP, int32(i*16+j*4))
+			}
+		}
+		c.a.Addi(rv.SP, rv.SP, frame)
+		c.a.Ret()
 	}
 	for r.HasNext() {
 		op, err := r.Byte()
@@ -160,16 +215,55 @@ func CompileV128Beachhead(body []byte) ([]byte, error) {
 			if len(c.stack) != 1 {
 				return nil, fmt.Errorf("riscv32: v128 result stack has %d values", len(c.stack))
 			}
-			v, _ := c.pop(4)
+			v, e := c.pop(4)
+			if e != nil {
+				return nil, e
+			}
 			want := [4]rv.Reg{rv.A0, rv.A1, rv.A2, rv.A3}
 			if v.regs != want {
-				return nil, fmt.Errorf("riscv32: non-canonical v128 result registers")
+				for i := 0; i < 4; i++ {
+					c.a.MovReg(want[i], v.regs[i])
+				}
 			}
-			c.a.Ret()
+			epilogue()
 			return c.a.B, nil
 		}
+		if op == 0x20 || op == 0x21 || op == 0x22 {
+			idx, e := r.U32()
+			if e != nil {
+				return nil, e
+			}
+			if int(idx) >= len(locals) {
+				return nil, fmt.Errorf("riscv32: v128 local index %d", idx)
+			}
+			home := locals[idx]
+			if op == 0x20 {
+				v, e := c.alloc(4)
+				if e != nil {
+					return nil, e
+				}
+				for i := 0; i < 4; i++ {
+					c.a.MovReg(v.regs[i], home.regs[i])
+				}
+				c.push(v)
+			} else {
+				v, e := c.pop(4)
+				if e != nil {
+					return nil, e
+				}
+				for i := 0; i < 4; i++ {
+					c.a.MovReg(home.regs[i], v.regs[i])
+				}
+				if op == 0x22 {
+					c.push(v)
+				} else {
+					c.release(v)
+				}
+			}
+			continue
+		}
 		if op != 0xfd {
-			return nil, fmt.Errorf("riscv32: v128 beachhead unsupported opcode %#x", op)
+			return nil, fmt.Errorf("riscv32: v128 function unsupported opcode %#x", op)
 		}
 		sub, err := r.U32()
 		if err != nil {
