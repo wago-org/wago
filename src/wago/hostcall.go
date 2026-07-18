@@ -618,11 +618,14 @@ func (in *Instance) callNativeSync(entry uintptr) (err error) {
 			panic(r)
 		}
 	}()
+	if err = refreshNativeControl(in.nativeControlShared, in.eng, in.jm, in.trap); err != nil {
+		return err
+	}
 	in.jm.SetStackFence(in.eng.StackLimit())
 	if in.hostCall == nil {
 		in.hostCall = in.newHostDispatch()
 	}
-	err = in.eng.CallWithHost(entry, in.serArgs, in.jm.LinearMemory(), in.trap, in.results, in.ctrl, in.hostCall)
+	err = in.eng.CallWithHostPrepared(entry, in.serArgs, in.jm.LinMemBase(), in.trap, in.results, in.ctrl, in.hostCall)
 	goruntime.KeepAlive(in)
 	goruntime.KeepAlive(in.c)
 	return err
