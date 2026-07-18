@@ -34,6 +34,7 @@ const (
 type localDef struct {
 	typ     machineType
 	reg     Reg
+	reg2    Reg // high half of a pinned SWAR v128; regNone for scalar/FP locals
 	isFloat bool
 	state   locState
 }
@@ -52,10 +53,21 @@ func (f *fn) pinReg(x int) (reg Reg, isFloat, ok bool) {
 		return regNone, false, false
 	}
 	d := f.locals[x]
-	if d.reg == regNone {
+	if d.reg == regNone || d.typ == mtV128 {
 		return regNone, false, false
 	}
 	return d.reg, d.isFloat, true
+}
+
+func (f *fn) pinV128Pair(x int) (v128Pair, bool) {
+	if x < 0 || x >= len(f.locals) {
+		return v128Pair{}, false
+	}
+	d := f.locals[x]
+	if d.typ != mtV128 || d.reg == regNone || d.reg2 == regNone {
+		return v128Pair{}, false
+	}
+	return v128Pair{lo: d.reg, hi: d.reg2}, true
 }
 
 func zeroStorage(typ machineType) storage {
@@ -71,10 +83,12 @@ func (f *fn) markDeclaredLocalZero(x int) {
 }
 
 func (f *fn) storeLocalReg(x int, reg Reg, isFloat bool) {
-	// SWAR v128 locals are deliberately not register-pinned: a pin requires a
-	// GPR pair, while localDef currently represents one physical register.
 	if f.localType[x] == mtV128 {
-		panic("riscv64: SWAR v128 local pinning is disabled")
+		p, ok := f.pinV128Pair(x)
+		if !ok || p.lo != reg {
+			panic("riscv64: invalid pinned v128 local store")
+		}
+		f.stV128(SP, f.localOff(x), p)
 	} else if isFloat {
 		f.fst(SP, f.localOff(x), reg, f.localType[x] == mtF64)
 	} else {
@@ -84,7 +98,12 @@ func (f *fn) storeLocalReg(x int, reg Reg, isFloat bool) {
 
 func (f *fn) loadLocalReg(x int, reg Reg, isFloat bool) {
 	if f.localType[x] == mtV128 {
-		panic("riscv64: SWAR v128 local pinning is disabled")
+		p, ok := f.pinV128Pair(x)
+		if !ok || p.lo != reg {
+			panic("riscv64: invalid pinned v128 local load")
+		}
+		f.ld64(p.lo, SP, f.localOff(x))
+		f.ld64(p.hi, SP, f.localOff(x)+8)
 	} else if isFloat {
 		f.fld(reg, SP, f.localOff(x), f.localType[x] == mtF64)
 	} else {
@@ -93,6 +112,17 @@ func (f *fn) loadLocalReg(x int, reg Reg, isFloat bool) {
 }
 
 func (f *fn) materializeZeroLocal(x int, needSlot bool) {
+	if p, ok := f.pinV128Pair(x); ok {
+		f.a.MovImm64(p.lo, 0)
+		f.a.MovImm64(p.hi, 0)
+		if needSlot {
+			f.stV128(SP, f.localOff(x), p)
+			f.locals[x].state = lsStackReg
+		} else {
+			f.locals[x].state = lsReg
+		}
+		return
+	}
 	reg, isFloat, ok := f.pinReg(x)
 	if ok {
 		if isFloat {
@@ -125,6 +155,16 @@ func (f *fn) materializeZeroLocal(x int, needSlot bool) {
 // recoverLocal ensures pinned local x's value is in its register before a read.
 // It materializes lazy declared-zero locals even in call-free functions.
 func (f *fn) recoverLocal(x int) {
+	if p, ok := f.pinV128Pair(x); ok {
+		if f.locals[x].state == lsConstZero {
+			f.materializeZeroLocal(x, false)
+		} else if f.locals[x].state == lsMem {
+			f.ld64(p.lo, SP, f.localOff(x))
+			f.ld64(p.hi, SP, f.localOff(x)+8)
+			f.locals[x].state = lsStackReg
+		}
+		return
+	}
 	reg, isFloat, ok := f.pinReg(x)
 	if !ok {
 		return

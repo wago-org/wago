@@ -21,18 +21,108 @@ type v128Pair struct {
 
 func (p v128Pair) mask() regMask { return maskOf(p.lo, p.hi) }
 
-// v128ConstReg remains in fn's shared layout while constant-pair pinning is
-// disabled. Keeping the shape architecture-local avoids perturbing sibling
-// backends while the SWAR allocator is brought up.
+// v128ConstReg holds a repeated SWAR constant in a reserved GPR pair.
 type v128ConstReg struct {
 	lo, hi uint64
 	regs   v128Pair
 }
 
-func (f *fn) v128ConstMask() regMask                       { return 0 }
-func (f *fn) pinnedV128LocalCount() int                    { return 0 }
-func (f *fn) preloadV128Consts(_ []byte)                   {}
-func (f *fn) v128ConstCached(_, _ uint64) (v128Pair, bool) { return v128Pair{}, false }
+func (f *fn) v128ConstMask() regMask {
+	var m regMask
+	for _, c := range f.vconsts {
+		m = m.union(c.regs.mask())
+	}
+	return m
+}
+func (f *fn) pinnedV128LocalCount() int {
+	n := 0
+	for i := range f.locals {
+		if _, ok := f.pinV128Pair(i); ok {
+			n++
+		}
+	}
+	return n
+}
+func (f *fn) preloadV128Consts(code []byte) {
+	if f.usesCalls || !v128ConstCacheEnabled || f.pinnedV128LocalCount() != 0 {
+		return
+	}
+	var cand [8]struct {
+		lo, hi uint64
+		n      int
+	}
+	nCand := 0
+	r := wasm.NewReader(code)
+	for r.HasNext() {
+		op, err := r.Byte()
+		if err != nil {
+			return
+		}
+		if op != 0xfd {
+			if err := wasm.SkipInstructionImmediate(r, op); err != nil {
+				return
+			}
+			continue
+		}
+		afterPrefix := r.Offset()
+		sub, err := r.U32()
+		if err != nil {
+			return
+		}
+		if sub == 12 {
+			lo, err := r.LEU64()
+			if err != nil {
+				return
+			}
+			hi, err := r.LEU64()
+			if err != nil {
+				return
+			}
+			found := false
+			for i := 0; i < nCand; i++ {
+				if cand[i].lo == lo && cand[i].hi == hi {
+					cand[i].n++
+					found = true
+					break
+				}
+			}
+			if !found && nCand < len(cand) {
+				cand[nCand].lo, cand[nCand].hi, cand[nCand].n = lo, hi, 1
+				nCand++
+			}
+			continue
+		}
+		if err := r.JumpTo(afterPrefix); err != nil {
+			return
+		}
+		if err := wasm.SkipInstructionImmediate(r, op); err != nil {
+			return
+		}
+	}
+	// Two reserved GPRs are expensive on RV64, so cache only one constant that is
+	// present at least three times in the static body. This reduces each later
+	// materialization to two moves while retaining ample SWAR scratch capacity.
+	for i := 0; i < nCand; i++ {
+		if cand[i].n < 3 || (cand[i].lo == 0 && cand[i].hi == 0) {
+			continue
+		}
+		p := f.allocV128Pair(0)
+		f.a.MovImm64(p.lo, cand[i].lo)
+		f.a.MovImm64(p.hi, cand[i].hi)
+		f.reserved = f.reserved.union(p.mask())
+		f.vconsts = append(f.vconsts, v128ConstReg{lo: cand[i].lo, hi: cand[i].hi, regs: p})
+		break
+	}
+}
+
+func (f *fn) v128ConstCached(lo, hi uint64) (v128Pair, bool) {
+	for _, c := range f.vconsts {
+		if c.lo == lo && c.hi == hi {
+			return c.regs, true
+		}
+	}
+	return v128Pair{}, false
+}
 
 func (f *fn) allocV128Pair(avoid regMask) v128Pair {
 	lo := f.allocReg(avoid)
@@ -100,7 +190,12 @@ func (f *fn) materializeV128(e *elem) v128Pair {
 		f.occupyV128(e, p)
 		return p
 	case stLocalReg:
-		panic("riscv64: SWAR v128 local pinning is disabled")
+		src := v128Pair{lo: e.st.reg, hi: e.st.reg2}
+		p := f.allocV128Pair(src.mask())
+		f.a.MovReg64(p.lo, src.lo)
+		f.a.MovReg64(p.hi, src.hi)
+		f.occupyV128(e, p)
+		return p
 	}
 	panic("riscv64: cannot materialize v128 storage")
 }
@@ -112,8 +207,13 @@ func (f *fn) stV128(base Reg, disp int32, p v128Pair) {
 
 func (f *fn) v128Const(lo, hi uint64) {
 	p := f.allocV128Pair(0)
-	f.a.MovImm64(p.lo, lo)
-	f.a.MovImm64(p.hi, hi)
+	if c, ok := f.v128ConstCached(lo, hi); ok {
+		f.a.MovReg64(p.lo, c.lo)
+		f.a.MovReg64(p.hi, c.hi)
+	} else {
+		f.a.MovImm64(p.lo, lo)
+		f.a.MovImm64(p.hi, hi)
+	}
 	f.pushV128Pair(p)
 }
 

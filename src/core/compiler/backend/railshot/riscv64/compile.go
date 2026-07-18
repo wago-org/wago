@@ -75,9 +75,8 @@ var (
 	entryArgPinsEnabled     = os.Getenv("WAGO_RISCV64_NO_ENTRY_ARG_PINS") != "1"
 	unaryLocalSinkEnabled   = os.Getenv("WAGO_RISCV64_NOUNARYSINK") != "1"
 	teeLocalSinkEnabled     = os.Getenv("WAGO_RISCV64_NOTEESINK") != "1"
-	v128LocalSinkEnabled    = false
-	v128LocalPinsEnabled    = false
-	v128ConstCacheEnabled   = false
+	v128LocalPinsEnabled    = os.Getenv("WAGO_RISCV64_NO_V128PINS") != "1"
+	v128ConstCacheEnabled   = os.Getenv("WAGO_RISCV64_NO_V128_CONST_CACHE") != "1"
 )
 
 // mergeReg is the canonical register a single-int-result block's value is
@@ -143,11 +142,8 @@ type fn struct {
 	fregUser [32]*elem
 	fpinned  regMask
 	fconsts  []floatConstReg
-	// vconsts caches repeated 128-bit v128.const values in reserved V registers
-	// (like fconsts for scalar floats). A const that appears more than once in a
-	// straight-line-reachable body — e.g. the loop-invariant constant reduced 16×
-	// in the isa_simd_reduce corpus — is materialized once at entry, then each use
-	// copies it with a single MOV.16b instead of rebuilding it (MovImm×2/FMOV/INS).
+	// vconsts caches one sufficiently repeated v128.const in a reserved GPR pair.
+	// Each use copies two registers instead of rebuilding both 64-bit immediates.
 	vconsts []v128ConstReg
 
 	maxSpill      int  // high-water number of operand spill slots used
@@ -1461,7 +1457,7 @@ func withoutReg(pool []Reg, r Reg) []Reg {
 func (f *fn) assignPinnedLocals(scores, globalScores []uint32, globalElig []bool, gpPool []Reg, hasCall bool) {
 	f.locals = make([]localDef, f.nLocals)
 	for i := range f.locals {
-		f.locals[i] = localDef{reg: regNone, typ: f.localType[i], state: lsReg}
+		f.locals[i] = localDef{reg: regNone, reg2: regNone, typ: f.localType[i], state: lsReg}
 	}
 	// Module-pinned globals (installModuleGlobals) already occupy globalReg
 	// entries; keep them and size for whichever view is larger.
@@ -1538,13 +1534,42 @@ func (f *fn) assignPinnedLocals(scores, globalScores []uint32, globalElig []bool
 		}
 		f.pinnedLocalMask = f.pinnedLocalMask.add(gpPool[k])
 	}
-	// Float locals use the separate V pin pool. Call-free functions also pin hot
-	// v128 locals here (same V registers, full 128-bit): a wasm→wasm call would only
-	// preserve the low 64 bits, so a v128 pin is confined to the call-free class.
-	pinV128 := v128LocalPinsEnabled && !hasCall
+	// A hot call-free v128 local may occupy an atomic pair from the remaining GP
+	// pin pool. Keep this deliberately conservative: one loop-hot pair removes the
+	// repeated two-load/two-store traffic without starving broad SWAR expressions
+	// of transient registers. The pair mechanism itself supports every local path;
+	// only the profitability policy is capped here.
+	if v128LocalPinsEnabled && !hasCall {
+		vc := f.tmpInts[:0]
+		for i := 0; i < f.nLocals; i++ {
+			if f.localType[i] == mtV128 && scores[i] >= loopMin {
+				vc = append(vc, i)
+			}
+		}
+		slices.SortFunc(vc, func(a, b int) int {
+			if scores[a] != scores[b] {
+				return cmp.Compare(scores[b], scores[a])
+			}
+			return a - b
+		})
+		var freeBuf [32]Reg
+		free := freeBuf[:0]
+		for _, r := range gpPool {
+			if !f.pinnedLocalMask.has(r) {
+				free = append(free, r)
+			}
+		}
+		if len(vc) != 0 && len(free) >= 2 {
+			i := vc[0]
+			f.locals[i].reg, f.locals[i].reg2 = free[0], free[1]
+			f.pinnedLocalMask = f.pinnedLocalMask.add(free[0]).add(free[1])
+			f.stats.addPinnedLocal()
+		}
+	}
+	// Float locals use the separate FP pin pool.
 	fc := f.tmpInts[:0]
 	for i := 0; i < f.nLocals; i++ {
-		if f.localType[i].isFloat() || (pinV128 && f.localType[i] == mtV128) {
+		if f.localType[i].isFloat() {
 			fc = append(fc, i)
 		}
 	}
@@ -1753,19 +1778,21 @@ func (f *fn) prologue() {
 	}
 	f.emitStackFenceCheck(linMemReg, X16)
 	f.emitInterruptCheck()
-	// Copy serialized v128 params as two little-endian uint64 words. SWAR v128
-	// local pinning is deliberately disabled, so every pair starts frame-resident.
-	// X0 remains the serialized-argument base for all later parameter copies.
+	// Copy serialized v128 params as two little-endian uint64 words, directly into
+	// an assigned pair when this call-free function pinned the parameter. X0 remains
+	// the serialized-argument base for all later parameter copies.
 	paramOff := int32(0)
 	for i, pt := range f.ft.Params {
 		if f.localType[i] == mtV128 {
-			if _, _, ok := f.pinReg(i); ok {
-				panic("riscv64: SWAR v128 parameter pinning is disabled")
+			if p, ok := f.pinV128Pair(i); ok {
+				f.ld64(p.lo, X0, paramOff)
+				f.ld64(p.hi, X0, paramOff+8)
+			} else {
+				f.ld64(X16, X0, paramOff)
+				f.st64(SP, f.localOff(i), X16)
+				f.ld64(X16, X0, paramOff+8)
+				f.st64(SP, f.localOff(i)+8, X16)
 			}
-			f.ld64(X16, X0, paramOff)
-			f.st64(SP, f.localOff(i), X16)
-			f.ld64(X16, X0, paramOff+8)
-			f.st64(SP, f.localOff(i)+8, X16)
 		}
 		paramOff += abiValSize(pt)
 	}
@@ -1811,8 +1838,9 @@ func (f *fn) zeroDeclaredLocals() {
 		a := f.a
 		// RV64 has a zero register (XZR): store it directly, no scratch to clear.
 		for i := f.nParams; i < f.nLocals; i++ {
-			if pr, _, ok := f.pinReg(i); ok && f.localType[i] == mtV128 {
-				a.NeonEor16b(pr, pr, pr) // zero the whole 128-bit pin register
+			if p, ok := f.pinV128Pair(i); ok {
+				a.MovImm64(p.lo, 0)
+				a.MovImm64(p.hi, 0)
 			} else if pr, isFloat, ok := f.pinReg(i); ok && !isFloat {
 				a.MovImm64(pr, 0)
 			} else if ok && isFloat {

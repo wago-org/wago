@@ -166,12 +166,18 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 		}
 		x := uint32(int(x32) + f.localBase) // localBase remaps an inlined callee's locals; 0 otherwise
 		if f.localConstZero(int(x)) {
-			if pr, _, ok := f.pinReg(int(x)); ok {
+			if p, ok := f.pinV128Pair(int(x)); ok {
+				f.recoverLocal(int(x))
+				f.pushValue(storage{kind: stLocalReg, typ: mtV128, reg: p.lo, reg2: p.hi, idx: int(x)})
+			} else if pr, _, ok := f.pinReg(int(x)); ok {
 				f.recoverLocal(int(x)) // materialize the lazy zero into the pinned register
 				f.pushValue(storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: int(x)})
 			} else {
 				f.pushValue(zeroStorage(f.localType[x]))
 			}
+		} else if p, ok := f.pinV128Pair(int(x)); ok {
+			f.recoverLocal(int(x))
+			f.pushValue(storage{kind: stLocalReg, typ: mtV128, reg: p.lo, reg2: p.hi, idx: int(x)})
 		} else if pr, _, ok := f.pinReg(int(x)); ok {
 			f.recoverLocal(int(x)) // reload lazily if it was spilled around a call
 			f.pushValue(storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: int(x)})
@@ -1120,6 +1126,19 @@ func (f *fn) setLocal(x int, tee bool) {
 		}
 	}
 	f.realizeLocalRefs(x, skipFrom)
+	if pp, ok := f.pinV128Pair(x); ok {
+		p := f.materializeV128(e)
+		f.a.MovReg64(pp.lo, p.lo)
+		f.a.MovReg64(pp.hi, p.hi)
+		f.releaseV128(p)
+		f.markLocalDirty(x)
+		if tee {
+			f.replaceStorage(e, storage{kind: stLocalReg, typ: mtV128, reg: pp.lo, reg2: pp.hi, idx: x})
+		} else {
+			f.erase(e)
+		}
+		return
+	}
 	if pr, isFloat, ok := f.pinReg(x); ok && !isFloat {
 		// Register-pinned local: compute/load directly into the local's register.
 		// condenseInto may temporarily mark pr as an owned result for deferred
@@ -1134,9 +1153,6 @@ func (f *fn) setLocal(x int, tee bool) {
 			f.erase(e)
 		}
 		return
-	}
-	if _, _, ok := f.pinReg(x); ok && f.localType[x] == mtV128 {
-		panic("riscv64: SWAR v128 local pinning is disabled")
 	}
 	if pr, isFloat, ok := f.pinReg(x); ok && isFloat {
 		// Register-pinned float local: move the value into its V register.

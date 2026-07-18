@@ -1088,16 +1088,4 @@ func (a *machine) Strb(src, base Reg, off uint32) bool { a.Store8(src, base, int
 func (a *machine) Ldrh(dst, base Reg, off uint32) bool { a.Load16(dst, base, int32(off)); return true }
 func (a *machine) Strh(src, base Reg, off uint32) bool { a.Store16(src, base, int32(off)); return true }
 
-func (a *machine) VMovdquLoadDisp(_, _ Reg, _ int32) {
-	panic("riscv64: SIMD reached scalar backend")
-}
-func (a *machine) VMovdquStoreDisp(_ Reg, _ int32, _ Reg) {
-	panic("riscv64: SIMD reached scalar backend")
-}
-func (a *machine) LdrQ(_ Reg, _ Reg, _ int32) { panic("riscv64: SIMD reached scalar backend") }
-func (a *machine) StrQ(_ Reg, _ int32, _ Reg) { panic("riscv64: SIMD reached scalar backend") }
-func (a *machine) NeonEor16b(_, _, _ Reg)     { panic("riscv64: SIMD reached scalar backend") }
-func (a *machine) NeonMov16b(_, _ Reg)        { panic("riscv64: SIMD reached scalar backend") }
-func (a *machine) NeonInsD(_, _ Reg, _ byte)  { panic("riscv64: SIMD reached scalar backend") }
-
 func (a *machine) String() string { return fmt.Sprintf("rv64 machine: %d bytes", len(a.B)) }

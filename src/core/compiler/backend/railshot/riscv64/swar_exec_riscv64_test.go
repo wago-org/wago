@@ -28,6 +28,12 @@ func swarV128Const(lo, hi uint64) []byte {
 
 func runProductionSWARWrapper(t *testing.T, m *wasm.Module, serializedArgs ...uint64) uint64 {
 	t.Helper()
+	lo, _ := runProductionSWARWrapperV128(t, m, serializedArgs...)
+	return lo
+}
+
+func runProductionSWARWrapperV128(t *testing.T, m *wasm.Module, serializedArgs ...uint64) (uint64, uint64) {
+	t.Helper()
 	cm, err := CompileModuleWith(m, CompileOptions{})
 	if err != nil {
 		t.Fatalf("compile SWAR: %v", err)
@@ -59,7 +65,7 @@ func runProductionSWARWrapper(t *testing.T, m *wasm.Module, serializedArgs ...ui
 	if err := eng.Call(entry+uintptr(cm.Entry[0]), args, jm.LinearMemory(), trap, results); err != nil {
 		t.Fatal(err)
 	}
-	return binary.LittleEndian.Uint64(results)
+	return binary.LittleEndian.Uint64(results), binary.LittleEndian.Uint64(results[8:])
 }
 
 func runProductionSWARMemory(t *testing.T, m *wasm.Module, init func([]byte)) (uint64, []byte, error) {
@@ -105,6 +111,113 @@ func swarScalarModule(t *testing.T, result wasm.ValType, instructions ...[]byte)
 	}
 	body = append(body, 0x0b)
 	return productionModule1(t, nil, []wasm.ValType{result}, body)
+}
+
+func TestSWARV128PinnedLocalPair(t *testing.T) {
+	const (
+		lo   = uint64(0x0123456789abcdef)
+		hi   = uint64(0xfedcba9876543210)
+		xlo  = uint64(0x1111111111111111)
+		xhi  = uint64(0x8080808080808080)
+		loop = byte(3)
+	)
+	body := []byte{1, 1, 0x7b, 0x20, 0x00, 0x21, 0x02, 0x03, 0x40}
+	body = append(body, 0x20, 0x02)
+	body = append(body, swarV128Const(xlo, xhi)...)
+	body = append(body, swarFD(81)...)
+	body = append(body,
+		0x21, 0x02, // local.set v128 local
+		0x20, 0x01, // local.get loop count
+		0x41, 0x01, // i32.const 1
+		0x6b,       // i32.sub
+		0x22, 0x01, // local.tee loop count
+		0x0d, 0x00, // br_if loop
+		0x0b,       // end loop
+		0x20, 0x02, // local.get v128 local
+		0x0b,
+	)
+	m := productionModuleFuncs(t, productionFuncDef{
+		params:  []wasm.ValType{wasm.V128, wasm.I32},
+		results: []wasm.ValType{wasm.V128},
+		body:    body,
+	})
+	old := v128LocalPinsEnabled
+	defer func() { v128LocalPinsEnabled = old }()
+	v128LocalPinsEnabled = true
+	var stats ModuleStats
+	on, err := CompileModuleWith(m, CompileOptions{Stats: &stats})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stats.Funcs) != 1 || stats.Funcs[0] == nil || stats.Funcs[0].PinnedLocals == 0 {
+		t.Fatalf("v128 local was not pair-pinned: %+v", stats.Funcs)
+	}
+	v128LocalPinsEnabled = false
+	off, err := CompileModule(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	countMemory := func(code []byte) int {
+		n := 0
+		for i := 0; i+4 <= len(code); i += 4 {
+			opcode := binary.LittleEndian.Uint32(code[i:]) & 0x7f
+			if opcode == 0x03 || opcode == 0x23 {
+				n++
+			}
+		}
+		return n
+	}
+	onMem, offMem := countMemory(on.Code), countMemory(off.Code)
+	if len(on.Code) > len(off.Code) || onMem >= offMem {
+		t.Fatalf("v128 local pair pin code/memory ops = %d/%d, unpinned = %d/%d", len(on.Code), onMem, len(off.Code), offMem)
+	}
+	t.Logf("v128 local pair pin: code %d -> %d bytes, static load/store words %d -> %d", len(off.Code), len(on.Code), offMem, onMem)
+	v128LocalPinsEnabled = true
+	gotLo, gotHi := runProductionSWARWrapperV128(t, m, lo, hi, uint64(loop))
+	if wantLo, wantHi := lo^xlo, hi^xhi; gotLo != wantLo || gotHi != wantHi {
+		t.Fatalf("pinned v128 local = {%#x, %#x}, want {%#x, %#x}", gotLo, gotHi, wantLo, wantHi)
+	}
+}
+
+func TestSWARV128RepeatedConstCache(t *testing.T) {
+	const (
+		lo  = uint64(0x0123456789abcdef)
+		hi  = uint64(0xfedcba9876543210)
+		xlo = uint64(0x1122334455667788)
+		xhi = uint64(0x8877665544332211)
+	)
+	body := []byte{0, 0x20, 0x00}
+	for range 3 {
+		body = append(body, swarV128Const(xlo, xhi)...)
+		body = append(body, swarFD(81)...)
+	}
+	body = append(body, 0x0b)
+	m := productionModuleFuncs(t, productionFuncDef{
+		params:  []wasm.ValType{wasm.V128},
+		results: []wasm.ValType{wasm.V128},
+		body:    body,
+	})
+	old := v128ConstCacheEnabled
+	defer func() { v128ConstCacheEnabled = old }()
+	v128ConstCacheEnabled = true
+	on, err := CompileModule(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	v128ConstCacheEnabled = false
+	off, err := CompileModule(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(on.Code) >= len(off.Code) {
+		t.Fatalf("repeated-const cache code size = %d, uncached = %d", len(on.Code), len(off.Code))
+	}
+	t.Logf("repeated v128 const cache: %d -> %d code bytes", len(off.Code), len(on.Code))
+	v128ConstCacheEnabled = true
+	gotLo, gotHi := runProductionSWARWrapperV128(t, m, lo, hi)
+	if wantLo, wantHi := lo^xlo, hi^xhi; gotLo != wantLo || gotHi != wantHi {
+		t.Fatalf("cached v128 const result = {%#x, %#x}, want {%#x, %#x}", gotLo, gotHi, wantLo, wantHi)
+	}
 }
 
 func TestSWARV128BitwiseAndI64x2Exec(t *testing.T) {
