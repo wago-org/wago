@@ -26,12 +26,20 @@ type EmbeddedGlobal struct {
 	Value   uint32
 }
 
+type EmbeddedExport struct {
+	Name  string
+	Kind  wasm.ExternKind
+	Index uint32
+}
+
 type EmbeddedModule struct {
 	Code              []byte
 	Entry             []int
 	Functions         []EmbeddedFunctionMetadata
 	Data              []EmbeddedDataSegment
 	Globals           []EmbeddedGlobal
+	Exports           []EmbeddedExport
+	Start             *uint32
 	RequiredCodeBytes uint32
 }
 
@@ -88,6 +96,8 @@ type PublishedEmbeddedModule struct {
 	Functions []EmbeddedFunctionMetadata
 	Data      []EmbeddedDataSegment
 	Globals   []EmbeddedGlobal
+	Exports   []EmbeddedExport
+	Start     *uint32
 }
 
 func PublishEmbeddedModule(arena *embedded32.CodeArena, module *EmbeddedModule, publish embedded32.CodePublisher) (*PublishedEmbeddedModule, error) {
@@ -107,7 +117,7 @@ func PublishEmbeddedModule(arena *embedded32.CodeArena, module *EmbeddedModule, 
 	if err := tx.Commit(publish); err != nil {
 		return nil, err
 	}
-	out := &PublishedEmbeddedModule{Block: block, Entry: make([]uint32, len(module.Entry)), Functions: make([]EmbeddedFunctionMetadata, len(module.Functions)), Data: module.Data, Globals: module.Globals}
+	out := &PublishedEmbeddedModule{Block: block, Entry: make([]uint32, len(module.Entry)), Functions: make([]EmbeddedFunctionMetadata, len(module.Functions)), Data: module.Data, Globals: module.Globals, Exports: module.Exports, Start: module.Start}
 	for i, entry := range module.Entry {
 		out.Entry[i] = block.Offset + uint32(entry)
 	}
@@ -140,7 +150,7 @@ func CompileEmbeddedModule(m *wasm.Module, opts EmbeddedModuleOptions, target st
 	if len(m.Imports) != 0 {
 		return nil, fmt.Errorf("%s: module imports are not supported", target)
 	}
-	if len(m.Tables) != 0 || len(m.Memories) > 1 || len(m.Elements) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.Start != nil {
+	if len(m.Tables) != 0 || len(m.Memories) > 1 || len(m.Elements) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 {
 		return nil, fmt.Errorf("%s: module contains unsupported runtime state", target)
 	}
 	if len(m.Memories) == 1 && (m.Memories[0].Limits.Addr64 || m.Memories[0].Shared) {
@@ -191,7 +201,19 @@ func CompileEmbeddedModule(m *wasm.Module, opts EmbeddedModuleOptions, target st
 	if err != nil {
 		return nil, err
 	}
-	out := &EmbeddedModule{Code: make([]byte, 0, required), Entry: make([]int, len(bodies)), Functions: make([]EmbeddedFunctionMetadata, len(bodies)), Data: data, Globals: globals, RequiredCodeBytes: uint32(required)}
+	exports := make([]EmbeddedExport, len(m.Exports))
+	for i := range m.Exports {
+		exports[i] = EmbeddedExport{Name: m.Exports[i].Name, Kind: m.Exports[i].Index.Kind, Index: m.Exports[i].Index.Index}
+	}
+	var start *uint32
+	if m.Start != nil {
+		index := uint32(*m.Start)
+		if int(index) >= len(bodies) {
+			return nil, fmt.Errorf("%s: start function %d is not local", target, index)
+		}
+		start = &index
+	}
+	out := &EmbeddedModule{Code: make([]byte, 0, required), Entry: make([]int, len(bodies)), Functions: make([]EmbeddedFunctionMetadata, len(bodies)), Data: data, Globals: globals, Exports: exports, Start: start, RequiredCodeBytes: uint32(required)}
 	for i, body := range bodies {
 		pad := (16 - len(out.Code)%16) % 16
 		if pad%len(alignmentPad) != 0 {

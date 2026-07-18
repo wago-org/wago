@@ -276,7 +276,9 @@ values. Return
 addresses are held in fixed frame slots, so nested and recursive mixed calls use
 the same bounded native-stack checks as scalar calls. Calls into legacy
 homogeneous beachheads remain rejected until those bodies use the final module
-ABI. It
+ABI. It retains validated exports and a local start-function index through
+transactional publication so firmware instantiation can resolve public entries
+and invoke start after state initialization. It
 reconstructs validated local declarations, records bounded per-function
 offset/size plus serialized parameter/result slot metadata,
 performs conservative code-arena capacity preflight before code generation, and
@@ -327,6 +329,7 @@ and starts active segments dropped. `ContextABI` now publishes a stable array of
 `memory.init` plus idempotent `data.drop` directly against those descriptors.
 
 This is still not public backend admission. Unconditional and table-driven
-structured-control transfers, wide globals/tables/references, generated-
+structured-control transfers, wide globals/tables/references, start invocation,
+generated-
 code entry trampolines, firmware linking and transport, and Pico 2 hardware
 qualification remain to be implemented and measured.

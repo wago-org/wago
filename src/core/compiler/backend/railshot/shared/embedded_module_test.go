@@ -59,6 +59,32 @@ func TestCompileEmbeddedI32ModuleLayoutAndPreflight(t *testing.T) {
 	}
 }
 
+func TestEmbeddedModuleRetainsExportsAndStart(t *testing.T) {
+	m := embeddedTestModule(t,
+		[][]byte{wasmtest.FuncType(nil, nil)},
+		[][]byte{{0}},
+		[][]byte{wasmtest.Code([]byte{0x0b})},
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(8, wasmtest.ULEB(0)),
+	)
+	cm, err := CompileEmbeddedModule(m, EmbeddedModuleOptions{}, "test32", 8, []byte{0, 0, 0, 0}, func(int, *wasm.CompType, []wasm.LocalRun, []byte) ([]byte, error) {
+		return []byte{0, 0, 0, 0}, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cm.Start == nil || *cm.Start != 0 || len(cm.Exports) != 1 || cm.Exports[0] != (EmbeddedExport{Name: "run", Kind: wasm.ExternFunc, Index: 0}) {
+		t.Fatalf("start=%v exports=%+v", cm.Start, cm.Exports)
+	}
+	published, err := PublishEmbeddedModule(embedded32.NewCodeArena(make([]byte, 32)), cm, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if published.Start == nil || *published.Start != 0 || len(published.Exports) != 1 {
+		t.Fatalf("published start=%v exports=%+v", published.Start, published.Exports)
+	}
+}
+
 func TestPublishEmbeddedModuleIsTransactional(t *testing.T) {
 	module := &EmbeddedModule{
 		Code:      []byte{1, 2, 3, 4},
