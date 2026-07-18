@@ -239,6 +239,30 @@ func funcTypeSlots(ts []wasm.ValType) int {
 	return n
 }
 
+// pushSerializedResult restores one wrapper/control-frame result from adjacent
+// little-endian uint64 slots. Pushing each result immediately lets ordinary
+// stack spilling protect it while later mixed results are loaded.
+func (f *fn) pushSerializedResult(rt machineType, base Reg, off int32) {
+	switch {
+	case rt.isV128():
+		p := f.allocV128Pair(0)
+		f.ld64(p.lo, base, off)
+		f.ld64(p.hi, base, off+8)
+		f.pushV128Pair(p)
+	case rt.isFloat():
+		tmp := f.allocReg(0)
+		f.ld64(tmp, base, off)
+		fr := f.allocFReg(0)
+		f.a.FmovFromGpr(fr, tmp, rt == mtF64)
+		f.release(tmp)
+		f.pushFReg(fr, rt)
+	default:
+		r := f.allocReg(0)
+		f.ld64(r, base, off)
+		f.pushReg(r, rt)
+	}
+}
+
 // callHostSync lowers a call to a RETURNING imported (host) function via the
 // synchronous re-entry protocol (see src/core/runtime/hostcall_riscv64.go). The p
 // params are marshaled into the off-heap control frame (at [linMem-offCustomCtx]);
@@ -299,10 +323,10 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	for i := 0; i < p; i++ {
 		mt := mtOf(ft.Params[i])
 		if mt.isV128() {
-			x := f.allocFReg(0)
-			f.a.VMovdquLoadDisp(x, SP, f.spillOff(argSlot))
-			f.a.VMovdquStoreDisp(X11, hcArgs+int32(ctrlSlot)*8, x)
-			f.releaseF(x)
+			f.ld64(X9, SP, f.spillOff(argSlot))
+			f.st64(X11, hcArgs+int32(ctrlSlot)*8, X9)
+			f.ld64(X9, SP, f.spillOff(argSlot+1))
+			f.st64(X11, hcArgs+int32(ctrlSlot+1)*8, X9)
 		} else if mt.is64() {
 			f.ld64(X9, SP, f.spillOff(argSlot))
 			f.st64(X11, hcArgs+int32(ctrlSlot)*8, X9)
@@ -332,53 +356,11 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	// Read results out of the control frame onto the operand stack, honoring
 	// slot-width result layout for v128 and mixed scalar/vector signatures.
 	f.ld64(X11, linMemReg, -int32(offCustomCtx)) // reload ctrl (clobbered by the round trip)
-	res := f.tmpRegs[:0]
-	if cap(res) < rN {
-		res = make([]Reg, 0, rN)
-	}
-	res = res[:rN]
-	f.tmpRegs = res
-	resTypes := f.tmpTypes[:0]
-	if cap(resTypes) < rN {
-		resTypes = make([]machineType, 0, rN)
-	}
-	resTypes = resTypes[:rN]
-	f.tmpTypes = resTypes
 	ctrlSlot = 0
 	for j := 0; j < rN; j++ {
 		rt := mtOf(ft.Results[j])
-		resTypes[j] = rt
-		switch {
-		case rt.isV128():
-			res[j] = f.allocFReg(0)
-			f.a.VMovdquLoadDisp(res[j], X11, hcResults+int32(ctrlSlot)*8)
-			f.fpinned = f.fpinned.add(res[j]) // keep across the remaining loads
-		case rt.isFloat():
-			tmp := f.allocReg(0)
-			f.ld64(tmp, X11, hcResults+int32(ctrlSlot)*8)
-			res[j] = f.allocFReg(0)
-			f.a.FmovFromGpr(res[j], tmp, rt == mtF64)
-			f.release(tmp)
-			f.fpinned = f.fpinned.add(res[j])
-		default:
-			res[j] = f.allocReg(0)
-			f.ld64(res[j], X11, hcResults+int32(ctrlSlot)*8)
-			f.pinned = f.pinned.add(res[j]) // keep across the remaining loads
-		}
+		f.pushSerializedResult(rt, X11, hcResults+int32(ctrlSlot)*8)
 		ctrlSlot += rt.stackSlots()
-	}
-	for j := 0; j < rN; j++ {
-		switch rt := resTypes[j]; {
-		case rt.isV128():
-			f.fpinned = f.fpinned.remove(res[j])
-			f.pushVReg(res[j])
-		case rt.isFloat():
-			f.fpinned = f.fpinned.remove(res[j])
-			f.pushFReg(res[j], rt)
-		default:
-			f.pinned = f.pinned.remove(res[j])
-			f.pushReg(res[j], rt)
-		}
 	}
 	return nil
 }
@@ -580,53 +562,11 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 
 	// Pop the args; load results out of their slot-width ABI area.
 	f.setDepthTypes(belowTypes)
-	res := f.tmpRegs[:0]
-	if cap(res) < rN {
-		res = make([]Reg, 0, rN)
-	}
-	res = res[:rN]
-	f.tmpRegs = res
-	resTypes := f.tmpTypes[:0]
-	if cap(resTypes) < rN {
-		resTypes = make([]machineType, 0, rN)
-	}
-	resTypes = resTypes[:rN]
-	f.tmpTypes = resTypes
 	resSlot := resultSlot
 	for i := 0; i < rN; i++ {
 		rt := mtOf(ft.Results[i])
-		resTypes[i] = rt
-		switch {
-		case rt.isV128():
-			res[i] = f.allocFReg(0)
-			f.a.VMovdquLoadDisp(res[i], SP, f.spillOff(resSlot))
-			f.fpinned = f.fpinned.add(res[i])
-		case rt.isFloat():
-			tmp := f.allocReg(0)
-			f.ld64(tmp, SP, f.spillOff(resSlot))
-			res[i] = f.allocFReg(0)
-			f.a.FmovFromGpr(res[i], tmp, rt == mtF64)
-			f.release(tmp)
-			f.fpinned = f.fpinned.add(res[i])
-		default:
-			res[i] = f.allocReg(0)
-			f.ld64(res[i], SP, f.spillOff(resSlot))
-			f.pinned = f.pinned.add(res[i])
-		}
+		f.pushSerializedResult(rt, SP, f.spillOff(resSlot))
 		resSlot += rt.stackSlots()
-	}
-	for i := 0; i < rN; i++ {
-		switch rt := resTypes[i]; {
-		case rt.isV128():
-			f.fpinned = f.fpinned.remove(res[i])
-			f.pushVReg(res[i])
-		case rt.isFloat():
-			f.fpinned = f.fpinned.remove(res[i])
-			f.pushFReg(res[i], rt)
-		default:
-			f.pinned = f.pinned.remove(res[i])
-			f.pushReg(res[i], rt)
-		}
 	}
 	return nil
 }
@@ -1206,56 +1146,13 @@ func (f *fn) emitIndirectCallHomeAware(ft *wasm.CompType, homeReg Reg) {
 	f.reloadLocalsForCall()
 	f.derivePinnedGlobals()
 
-	// Pop the args; load results out of their slot-width ABI area into fresh registers.
+	// Pop the args; load results out of their slot-width ABI area.
 	f.setDepthTypes(belowTypes)
-	res := f.tmpRegs[:0]
-	if cap(res) < rN {
-		res = make([]Reg, 0, rN)
-	}
-	res = res[:rN]
-	f.tmpRegs = res
-	resTypes := f.tmpTypes[:0]
-	if cap(resTypes) < rN {
-		resTypes = make([]machineType, 0, rN)
-	}
-	resTypes = resTypes[:rN]
-	f.tmpTypes = resTypes
 	resSlot := resultSlot
 	for i := 0; i < rN; i++ {
 		rt := mtOf(ft.Results[i])
-		resTypes[i] = rt
-		switch {
-		case rt.isV128():
-			res[i] = f.allocFReg(0)
-			f.a.VMovdquLoadDisp(res[i], SP, f.spillOff(resSlot))
-			f.fpinned = f.fpinned.add(res[i])
-		case rt.isFloat():
-			tmp := f.allocReg(0)
-			f.ld64(tmp, SP, f.spillOff(resSlot))
-			res[i] = f.allocFReg(0)
-			f.a.FmovFromGpr(res[i], tmp, rt == mtF64)
-			f.release(tmp)
-			f.fpinned = f.fpinned.add(res[i])
-		default:
-			res[i] = f.allocReg(0)
-			f.ld64(res[i], SP, f.spillOff(resSlot))
-			f.pinned = f.pinned.add(res[i])
-		}
+		f.pushSerializedResult(rt, SP, f.spillOff(resSlot))
 		resSlot += rt.stackSlots()
-	}
-	for i := 0; i < rN; i++ {
-		rt := resTypes[i]
-		switch {
-		case rt.isV128():
-			f.fpinned = f.fpinned.remove(res[i])
-			f.pushVReg(res[i])
-		case rt.isFloat():
-			f.fpinned = f.fpinned.remove(res[i])
-			f.pushFReg(res[i], rt)
-		default:
-			f.pinned = f.pinned.remove(res[i])
-			f.pushReg(res[i], rt)
-		}
 	}
 }
 
@@ -1324,57 +1221,12 @@ func (f *fn) emitWrapperCall(ft *wasm.CompType, emitCall func()) {
 	f.reloadLocalsForCall() // non-STACK_REG model only
 	f.derivePinnedGlobals() // reload value-pinned globals: the callee may have changed the shared cell
 
-	// Pop the args; load results out of their slot-width ABI area into fresh registers.
+	// Pop the args; load results out of their slot-width ABI area.
 	f.setDepthTypes(belowTypes)
-	res := f.tmpRegs[:0]
-	if cap(res) < rN {
-		res = make([]Reg, 0, rN)
-	}
-	res = res[:rN]
-	f.tmpRegs = res
-	resTypes := f.tmpTypes[:0]
-	if cap(resTypes) < rN {
-		resTypes = make([]machineType, 0, rN)
-	}
-	resTypes = resTypes[:rN]
-	f.tmpTypes = resTypes
 	resSlot := resultSlot
 	for i := 0; i < rN; i++ {
 		rt := mtOf(ft.Results[i])
-		resTypes[i] = rt
-		switch {
-		case rt.isV128():
-			res[i] = f.allocFReg(0)
-			f.a.VMovdquLoadDisp(res[i], SP, f.spillOff(resSlot))
-			f.fpinned = f.fpinned.add(res[i]) // keep across the remaining loads
-		case rt.isFloat():
-			// Load the serialized result word and restore the declared scalar
-			// width so f32 values are NaN-boxed in the RV64 floating register.
-			tmp := f.allocReg(0)
-			f.ld64(tmp, SP, f.spillOff(resSlot))
-			res[i] = f.allocFReg(0)
-			f.a.FmovFromGpr(res[i], tmp, rt == mtF64)
-			f.release(tmp)
-			f.fpinned = f.fpinned.add(res[i]) // keep across the remaining loads
-		default:
-			res[i] = f.allocReg(0)
-			f.ld64(res[i], SP, f.spillOff(resSlot))
-			f.pinned = f.pinned.add(res[i]) // keep across the remaining loads
-		}
+		f.pushSerializedResult(rt, SP, f.spillOff(resSlot))
 		resSlot += rt.stackSlots()
-	}
-	for i := 0; i < rN; i++ {
-		rt := resTypes[i]
-		switch {
-		case rt.isV128():
-			f.fpinned = f.fpinned.remove(res[i])
-			f.pushVReg(res[i])
-		case rt.isFloat():
-			f.fpinned = f.fpinned.remove(res[i])
-			f.pushFReg(res[i], rt)
-		default:
-			f.pinned = f.pinned.remove(res[i])
-			f.pushReg(res[i], rt)
-		}
 	}
 }

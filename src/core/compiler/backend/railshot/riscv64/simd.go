@@ -55,13 +55,6 @@ func (f *fn) pushV128Pair(p v128Pair) *elem {
 	return e
 }
 
-// pushVReg keeps legacy unreachable call-result paths type-correct while v128
-// call ABI conversion is staged. Public compilation still rejects SIMD, and the
-// SWAR development gate only exercises signatures without v128 params/results.
-func (f *fn) pushVReg(_ Reg) *elem {
-	panic("riscv64: SWAR v128 call result ABI not implemented")
-}
-
 func (f *fn) releaseV128(p v128Pair) {
 	f.release(p.lo)
 	f.release(p.hi)

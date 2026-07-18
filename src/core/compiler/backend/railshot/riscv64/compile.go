@@ -1762,19 +1762,19 @@ func (f *fn) prologue() {
 	}
 	f.emitStackFenceCheck(linMemReg, X16)
 	f.emitInterruptCheck()
-	// Copy v128 params through V0 before loading any pinned scalar float params.
-	// V0 is only a prologue scratch here; keeping these copies first prevents a
-	// future pin-pool change from letting a later v128 copy clobber an already-live
-	// scalar param register. X0 is the serArgs base (wrapper-ABI arg 0).
+	// Copy serialized v128 params as two little-endian uint64 words. SWAR v128
+	// local pinning is deliberately disabled, so every pair starts frame-resident.
+	// X0 remains the serialized-argument base for all later parameter copies.
 	paramOff := int32(0)
 	for i, pt := range f.ft.Params {
 		if f.localType[i] == mtV128 {
-			if pr, _, ok := f.pinReg(i); ok {
-				a.VMovdquLoadDisp(pr, X0, paramOff) // pinned v128 param → its V register
-			} else {
-				a.VMovdquLoadDisp(0, X0, paramOff)
-				a.VMovdquStoreDisp(SP, f.localOff(i), 0)
+			if _, _, ok := f.pinReg(i); ok {
+				panic("riscv64: SWAR v128 parameter pinning is disabled")
 			}
+			f.ld64(X16, X0, paramOff)
+			f.st64(SP, f.localOff(i), X16)
+			f.ld64(X16, X0, paramOff+8)
+			f.st64(SP, f.localOff(i)+8, X16)
 		}
 		paramOff += abiValSize(pt)
 	}
@@ -2007,8 +2007,10 @@ func (f *fn) epilogue() {
 	out := int32(0)
 	for _, rt := range f.ft.Results {
 		if mtOf(rt) == mtV128 {
-			a.VMovdquLoadDisp(0, SP, f.spillOff(resSlot))
-			a.VMovdquStoreDisp(X1, out, 0)
+			f.ld64(X0, SP, f.spillOff(resSlot))
+			f.st64(X1, out, X0)
+			f.ld64(X0, SP, f.spillOff(resSlot+1))
+			f.st64(X1, out+8, X0)
 			resSlot += 2
 		} else {
 			f.ld64(X0, SP, f.spillOff(resSlot))

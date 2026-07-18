@@ -26,7 +26,7 @@ func swarV128Const(lo, hi uint64) []byte {
 	return append(out, bits[:]...)
 }
 
-func runProductionSWARWrapper(t *testing.T, m *wasm.Module) uint64 {
+func runProductionSWARWrapper(t *testing.T, m *wasm.Module, serializedArgs ...uint64) uint64 {
 	t.Helper()
 	cm, err := CompileModuleWith(m, CompileOptions{allowIncompleteSWAR: true})
 	if err != nil {
@@ -53,6 +53,9 @@ func runProductionSWARWrapper(t *testing.T, m *wasm.Module) uint64 {
 	}
 	defer coreruntime.Unmap(code)
 	args, results, trap := arena.Alloc(32), arena.Alloc(32), arena.Alloc(8)
+	for i, value := range serializedArgs {
+		binary.LittleEndian.PutUint64(args[i*8:], value)
+	}
 	if err := eng.Call(entry+uintptr(cm.Entry[0]), args, jm.LinearMemory(), trap, results); err != nil {
 		t.Fatal(err)
 	}
@@ -1028,6 +1031,50 @@ func TestSWARFloatConversionsAndRelaxedMaddExec(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestSWARV128SerializedCallABIExec(t *testing.T) {
+	const lo, hi = uint64(0x0123456789abcdef), uint64(0xfedcba9876543210)
+	t.Run("exported-wrapper", func(t *testing.T) {
+		m := productionModule1(t, []wasm.ValType{wasm.V128}, []wasm.ValType{wasm.V128}, []byte{0, 0x20, 0x00, 0x0b})
+		if got := runProductionSWARWrapper(t, m, lo, hi); got != lo {
+			t.Fatalf("got %#x, want %#x", got, lo)
+		}
+	})
+
+	t.Run("param-result", func(t *testing.T) {
+		caller := []byte{0}
+		caller = append(caller, swarV128Const(lo, hi)...)
+		caller = append(caller, 0x10, 0x01) // call function 1
+		caller = append(caller, swarFD(29, 1)...)
+		caller = append(caller, 0x0b)
+		callee := []byte{0, 0x20, 0x00}
+		callee = append(callee, swarFD(77)...)
+		callee = append(callee, 0x0b)
+		m := productionModuleFuncs(t,
+			productionFuncDef{results: []wasm.ValType{wasm.I64}, body: caller},
+			productionFuncDef{params: []wasm.ValType{wasm.V128}, results: []wasm.ValType{wasm.V128}, body: callee},
+		)
+		if got := runProductionSWARWrapper(t, m); got != ^hi {
+			t.Fatalf("got %#x, want %#x", got, ^hi)
+		}
+	})
+
+	t.Run("mixed-multivalue", func(t *testing.T) {
+		caller := []byte{0}
+		caller = append(caller, swarV128Const(lo, hi)...)
+		caller = append(caller, 0x10, 0x01, 0x1a) // call; drop trailing i64
+		caller = append(caller, swarFD(29, 0)...)
+		caller = append(caller, 0x0b)
+		callee := []byte{0, 0x20, 0x00, 0x42, 0x2a, 0x0b}
+		m := productionModuleFuncs(t,
+			productionFuncDef{results: []wasm.ValType{wasm.I64}, body: caller},
+			productionFuncDef{params: []wasm.ValType{wasm.V128}, results: []wasm.ValType{wasm.V128, wasm.I64}, body: callee},
+		)
+		if got := runProductionSWARWrapper(t, m); got != lo {
+			t.Fatalf("got %#x, want %#x", got, lo)
+		}
+	})
 }
 
 func TestSWARV128LocalControlAndSelectExec(t *testing.T) {
