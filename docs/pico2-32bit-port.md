@@ -152,7 +152,10 @@ i64 semantic frame. The helper package builds and tests with standard Go and
 TinyGo.
 
 Both compiler packages now also consume real Wasm function bodies for direct
-wide-value execution beachheads:
+wide-value execution beachheads. Homogeneous f32 functions have a raw-bit
+baseline for constants, locals, `abs`, `neg`, `copysign`, `nop`, and `drop` by
+translation to the qualified one-word integer allocator; unsupported arithmetic
+still rejects explicitly pending helper integration:
 
 - `i64.const` plus modular add/sub/multiply and bitwise operations over atomic
   two-GPR values;

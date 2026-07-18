@@ -54,6 +54,9 @@ func compileModuleFunction(ft *wasm.CompType, locals []wasm.LocalRun, body []byt
 	if homogeneousFunction(ft, locals, wasm.I32, true) {
 		return nil, fmt.Errorf("internal i32 module compiler dispatch")
 	}
+	if homogeneousFunction(ft, locals, wasm.F32, false) {
+		return CompileF32BitFunction(len(ft.Params), body)
+	}
 	if homogeneousFunction(ft, locals, wasm.I64, false) {
 		return CompileI64Function(len(ft.Params), body)
 	}
