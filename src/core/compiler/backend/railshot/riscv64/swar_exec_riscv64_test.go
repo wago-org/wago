@@ -58,6 +58,41 @@ func runProductionSWARWrapper(t *testing.T, m *wasm.Module) uint64 {
 	return binary.LittleEndian.Uint64(results)
 }
 
+func runProductionSWARMemory(t *testing.T, m *wasm.Module, init func([]byte)) (uint64, []byte, error) {
+	t.Helper()
+	cm, err := CompileModuleWith(m, CompileOptions{allowIncompleteSWAR: true})
+	if err != nil {
+		t.Fatalf("compile SWAR memory: %v", err)
+	}
+	eng, err := coreruntime.NewEngine()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer eng.Close()
+	jm, err := coreruntime.NewJobMemory(65536)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer jm.Close()
+	if init != nil {
+		init(jm.CurrentBytes())
+	}
+	arena, err := coreruntime.NewArena(4096)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer arena.Close()
+	code, entry, err := coreruntime.MapCode(cm.Code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer coreruntime.Unmap(code)
+	args, results, trap := arena.Alloc(32), arena.Alloc(32), arena.Alloc(8)
+	err = eng.Call(entry+uintptr(cm.Entry[0]), args, jm.LinearMemory(), trap, results)
+	memory := append([]byte(nil), jm.CurrentBytes()...)
+	return binary.LittleEndian.Uint64(results), memory, err
+}
+
 func swarScalarModule(t *testing.T, result wasm.ValType, instructions ...[]byte) *wasm.Module {
 	t.Helper()
 	body := []byte{0} // no declared locals
@@ -593,6 +628,153 @@ func TestSWARShuffleSwizzleAndRelaxedIntegerExec(t *testing.T) {
 	if got := runProductionSWARWrapper(t, m); uint32(got) != 94 { // 100 + 1*3 + 2*4 - 1*5 - 2*6
 		t.Fatalf("relaxed dot-add got %d", got)
 	}
+}
+
+func swarMem(sub, align, offset uint32, lane ...byte) []byte {
+	out := swarFD(sub)
+	out = append(out, wasmtest.ULEB(align)...)
+	out = append(out, wasmtest.ULEB(offset)...)
+	return append(out, lane...)
+}
+
+func TestSWARV128MemoryExec(t *testing.T) {
+	t.Run("load", func(t *testing.T) {
+		body := []byte{0}
+		body = append(body, swarI32Const(3)...)
+		body = append(body, swarMem(0, 0, 0)...)
+		body = append(body, swarIntegerExtract(64, 1, false)...)
+		body = append(body, 0x0b)
+		m := productionMemoryModule(t, nil, []wasm.ValType{wasm.I64}, body)
+		got, _, err := runProductionSWARMemory(t, m, func(mem []byte) {
+			for i := 0; i < 32; i++ {
+				mem[i] = byte(i)
+			}
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if want := binary.LittleEndian.Uint64([]byte{11, 12, 13, 14, 15, 16, 17, 18}); got != want {
+			t.Fatalf("got %#x, want %#x", got, want)
+		}
+	})
+
+	t.Run("store", func(t *testing.T) {
+		const lo, hi = uint64(0x0706050403020100), uint64(0x0f0e0d0c0b0a0908)
+		body := []byte{0}
+		body = append(body, swarI32Const(5)...)
+		body = append(body, swarV128Const(lo, hi)...)
+		body = append(body, swarMem(11, 0, 0)...)
+		body = append(body, swarI32Const(13)...)
+		body = append(body, 0x29, 0x00, 0x00, 0x0b) // i64.load
+		m := productionMemoryModule(t, nil, []wasm.ValType{wasm.I64}, body)
+		got, memory, err := runProductionSWARMemory(t, m, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got != hi || binary.LittleEndian.Uint64(memory[5:13]) != lo {
+			t.Fatalf("result=%#x memory=%x", got, memory[5:21])
+		}
+	})
+
+	t.Run("store-oob-no-partial-mutation", func(t *testing.T) {
+		body := []byte{0}
+		body = append(body, swarI32Const(65528)...)
+		body = append(body, swarV128Const(0x1111111111111111, 0x2222222222222222)...)
+		body = append(body, swarMem(11, 0, 0)...)
+		body = append(body, 0x0b)
+		m := productionMemoryModule(t, nil, nil, body)
+		before := []byte{1, 2, 3, 4, 5, 6, 7, 8}
+		_, memory, err := runProductionSWARMemory(t, m, func(mem []byte) { copy(mem[65528:], before) })
+		if err == nil {
+			t.Fatal("expected out-of-bounds trap")
+		}
+		if got := memory[65528:65536]; string(got) != string(before) {
+			t.Fatalf("partial store mutated tail: got %x, want %x", got, before)
+		}
+	})
+
+	for _, tc := range []struct {
+		name   string
+		sub    uint32
+		init   []byte
+		width  int
+		lane   int
+		signed bool
+		want   uint64
+		result wasm.ValType
+	}{
+		{"load8x8-s", 1, []byte{0x80, 2, 3, 4, 5, 6, 7, 8}, 16, 0, true, uint64(uint32(0xffffff80)), wasm.I32},
+		{"load8x8-u", 2, []byte{0xff, 2, 3, 4, 5, 6, 7, 8}, 16, 0, false, 0xff, wasm.I32},
+		{"load16x4-s", 3, []byte{0x00, 0x80, 3, 0, 4, 0, 5, 0}, 32, 0, false, 0xffff8000, wasm.I32},
+		{"load32x2-u", 6, []byte{0xff, 0xff, 0xff, 0xff, 1, 0, 0, 0}, 64, 0, false, 0xffffffff, wasm.I64},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body := []byte{0}
+			body = append(body, swarI32Const(0)...)
+			body = append(body, swarMem(tc.sub, 0, 0)...)
+			body = append(body, swarIntegerExtract(tc.width, tc.lane, tc.signed)...)
+			body = append(body, 0x0b)
+			m := productionMemoryModule(t, nil, []wasm.ValType{tc.result}, body)
+			got, _, err := runProductionSWARMemory(t, m, func(mem []byte) { copy(mem, tc.init) })
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.width < 64 {
+				got = uint64(uint32(got))
+			}
+			if got != tc.want {
+				t.Fatalf("got %#x, want %#x", got, tc.want)
+			}
+		})
+	}
+
+	t.Run("splat-zero-and-lanes", func(t *testing.T) {
+		body := []byte{0}
+		body = append(body, swarI32Const(4)...)
+		body = append(body, swarMem(9, 0, 0)...)
+		body = append(body, swarIntegerExtract(32, 3, false)...)
+		body = append(body, 0x0b)
+		m := productionMemoryModule(t, nil, []wasm.ValType{wasm.I32}, body)
+		got, _, err := runProductionSWARMemory(t, m, func(mem []byte) { binary.LittleEndian.PutUint32(mem[4:], 0x89abcdef) })
+		if err != nil || uint32(got) != 0x89abcdef {
+			t.Fatalf("splat got %#x, err=%v", uint32(got), err)
+		}
+
+		body = []byte{0}
+		body = append(body, swarI32Const(0)...)
+		body = append(body, swarMem(92, 0, 0)...)
+		body = append(body, swarIntegerExtract(64, 1, false)...)
+		body = append(body, 0x0b)
+		m = productionMemoryModule(t, nil, []wasm.ValType{wasm.I64}, body)
+		got, _, err = runProductionSWARMemory(t, m, func(mem []byte) { binary.LittleEndian.PutUint64(mem, ^uint64(0)) })
+		if err != nil || got != 0 {
+			t.Fatalf("load-zero high got %#x, err=%v", got, err)
+		}
+
+		body = []byte{0}
+		body = append(body, swarI32Const(9)...)
+		body = append(body, swarV128Const(0, 0)...)
+		body = append(body, swarMem(84, 0, 0, 15)...)
+		body = append(body, swarIntegerExtract(8, 15, false)...)
+		body = append(body, 0x0b)
+		m = productionMemoryModule(t, nil, []wasm.ValType{wasm.I32}, body)
+		got, _, err = runProductionSWARMemory(t, m, func(mem []byte) { mem[9] = 0xab })
+		if err != nil || uint32(got) != 0xab {
+			t.Fatalf("load-lane got %#x, err=%v", got, err)
+		}
+
+		body = []byte{0}
+		body = append(body, swarI32Const(10)...)
+		body = append(body, swarV128Const(0x1122334455667788, 0x99aabbccddeeff00)...)
+		body = append(body, swarMem(88, 0, 0, 8)...)
+		body = append(body, swarI32Const(10)...)
+		body = append(body, 0x2d, 0x00, 0x00, 0x0b) // i32.load8_u
+		m = productionMemoryModule(t, nil, []wasm.ValType{wasm.I32}, body)
+		got, _, err = runProductionSWARMemory(t, m, nil)
+		if err != nil || uint32(got) != 0x00 {
+			t.Fatalf("store-lane got %#x, err=%v", got, err)
+		}
+	})
 }
 
 func TestSWARV128LocalControlAndSelectExec(t *testing.T) {

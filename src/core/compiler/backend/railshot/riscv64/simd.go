@@ -969,12 +969,288 @@ func integerCompareSpec(sub, base uint32) (cond Cond, signed bool) {
 	}
 }
 
+func (f *fn) v128Load(r *wasm.Reader) error {
+	if _, err := r.U32(); err != nil { // align
+		return err
+	}
+	off, err := r.U32()
+	if err != nil {
+		return err
+	}
+	ea, eaOwned, _, disp := f.memAddr(off, 16, true)
+	f.pinned = f.pinned.add(ea)
+	p := f.allocV128Pair(maskOf(ea))
+	f.pinned = f.pinned.remove(ea)
+	f.a.LoadIdx(p.lo, linMemReg, ea, disp, 8, false, true)
+	f.a.LoadIdx(p.hi, linMemReg, ea, disp+8, 8, false, true)
+	if eaOwned {
+		f.release(ea)
+	}
+	f.pushV128Pair(p)
+	return nil
+}
+
+func (f *fn) v128LoadExtend(r *wasm.Reader, sub uint32) error {
+	if _, err := r.U32(); err != nil { // align
+		return err
+	}
+	off, err := r.U32()
+	if err != nil {
+		return err
+	}
+	ea, eaOwned, _, disp := f.memAddr(off, 8, true)
+	f.pinned = f.pinned.add(ea)
+	p := f.allocV128Pair(maskOf(ea))
+	f.pinned = f.pinned.remove(ea)
+	f.a.LoadIdx(p.lo, linMemReg, ea, disp, 8, false, true)
+	f.a.MovImm64(p.hi, 0)
+	if eaOwned {
+		f.release(ea)
+	}
+	f.pushV128Pair(p)
+	switch sub {
+	case 1, 2:
+		f.integerExtend(8, sub == 1, false)
+	case 3, 4:
+		f.integerExtend(16, sub == 3, false)
+	case 5, 6:
+		f.integerExtend(32, sub == 5, false)
+	default:
+		panic("riscv64: invalid SIMD load-extend opcode")
+	}
+	return nil
+}
+
+func simdLoadSplatSize(sub uint32) int {
+	switch sub {
+	case 7:
+		return 1
+	case 8:
+		return 2
+	case 9:
+		return 4
+	case 10:
+		return 8
+	}
+	panic("riscv64: invalid SIMD load-splat opcode")
+}
+
+func (f *fn) v128LoadSplat(r *wasm.Reader, sub uint32) error {
+	if _, err := r.U32(); err != nil { // align
+		return err
+	}
+	off, err := r.U32()
+	if err != nil {
+		return err
+	}
+	size := simdLoadSplatSize(sub)
+	ea, eaOwned, _, disp := f.memAddr(off, size, true)
+	f.pinned = f.pinned.add(ea)
+	x := f.allocReg(maskOf(ea))
+	f.pinned = f.pinned.remove(ea)
+	f.a.LoadIdx(x, linMemReg, ea, disp, size, false, size == 8)
+	if eaOwned {
+		f.release(ea)
+	}
+	f.pushReg(x, mtI32OrWide(size == 8))
+	if size == 8 {
+		f.i64x2Splat()
+	} else {
+		f.integerSplat(size * 8)
+	}
+	return nil
+}
+
+func simdLoadZeroSize(sub uint32) int {
+	switch sub {
+	case 92:
+		return 4
+	case 93:
+		return 8
+	}
+	panic("riscv64: invalid SIMD load-zero opcode")
+}
+
+func (f *fn) v128LoadZero(r *wasm.Reader, sub uint32) error {
+	if _, err := r.U32(); err != nil { // align
+		return err
+	}
+	off, err := r.U32()
+	if err != nil {
+		return err
+	}
+	size := simdLoadZeroSize(sub)
+	ea, eaOwned, _, disp := f.memAddr(off, size, true)
+	f.pinned = f.pinned.add(ea)
+	p := f.allocV128Pair(maskOf(ea))
+	f.pinned = f.pinned.remove(ea)
+	f.a.LoadIdx(p.lo, linMemReg, ea, disp, size, false, size == 8)
+	f.a.MovImm64(p.hi, 0)
+	if eaOwned {
+		f.release(ea)
+	}
+	f.pushV128Pair(p)
+	return nil
+}
+
+// Guard pages make a single scalar access atomic with respect to Wasm traps,
+// but a split 16-byte store could otherwise write its low half before the high
+// half faults. Preflight the complete Wasm width before either half is stored.
+func (f *fn) preflightGuardSplitStore(ea Reg, disp int32, size int) {
+	if !f.guardMode {
+		return
+	}
+	f.pinned = f.pinned.add(ea)
+	t := f.allocReg(maskOf(ea))
+	f.leaDisp(t, ea, disp+int32(size), true)
+	mb := f.allocReg(maskOf(ea, t))
+	f.ld32(mb, linMemReg, -int32(bdCurBytes))
+	f.cmpRR(t, mb, true)
+	f.trapIf(condA, trapMemOOB)
+	f.release(mb)
+	f.release(t)
+	f.pinned = f.pinned.remove(ea)
+}
+
+func (f *fn) v128Store(r *wasm.Reader) error {
+	if _, err := r.U32(); err != nil { // align
+		return err
+	}
+	off, err := r.U32()
+	if err != nil {
+		return err
+	}
+	f.materializePendingLoads()
+	p := f.materializeV128(f.popValue())
+	f.pinned = f.pinned.union(p.mask())
+	ea, eaOwned, _, disp := f.memAddr(off, 16, true)
+	f.preflightGuardSplitStore(ea, disp, 16)
+	f.a.StoreIdx(linMemReg, ea, p.lo, disp, 8)
+	f.a.StoreIdx(linMemReg, ea, p.hi, disp+8, 8)
+	f.pinned = f.pinned.remove(p.lo).remove(p.hi)
+	if eaOwned {
+		f.release(ea)
+	}
+	f.releaseV128(p)
+	return nil
+}
+
+func simdLaneMemSize(sub uint32) int {
+	switch sub {
+	case 84, 88:
+		return 1
+	case 85, 89:
+		return 2
+	case 86, 90:
+		return 4
+	case 87, 91:
+		return 8
+	}
+	panic("riscv64: invalid SIMD lane memory opcode")
+}
+
+func (f *fn) replaceLaneFromReg(p v128Pair, lane, width int, x Reg) {
+	perHalf := 64 / width
+	half := p.lo
+	localLane := lane
+	if localLane >= perHalf {
+		half = p.hi
+		localLane -= perHalf
+	}
+	laneMask := swarLaneMask(width) << (localLane * width)
+	f.a.AndImm64(half, half, ^laneMask)
+	f.a.AndImm64(x, x, swarLaneMask(width))
+	if shift := localLane * width; shift != 0 {
+		f.a.LslImm(x, x, uint8(shift), false)
+	}
+	f.a.Orr64(half, half, x)
+}
+
+func (f *fn) v128LoadLane(r *wasm.Reader, sub uint32) error {
+	if _, err := r.U32(); err != nil { // align
+		return err
+	}
+	off, err := r.U32()
+	if err != nil {
+		return err
+	}
+	lane, err := r.Byte()
+	if err != nil {
+		return err
+	}
+	size := simdLaneMemSize(sub)
+	if int(lane) >= 16/size {
+		return fmt.Errorf("riscv64: invalid v128.load%d_lane lane %d", size*8, lane)
+	}
+	p := f.materializeV128(f.popValue())
+	f.pinned = f.pinned.union(p.mask())
+	ea, eaOwned, _, disp := f.memAddr(off, size, true)
+	f.pinned = f.pinned.add(ea)
+	x := f.allocReg(p.mask().add(ea))
+	f.pinned = f.pinned.remove(ea).remove(p.lo).remove(p.hi)
+	f.a.LoadIdx(x, linMemReg, ea, disp, size, false, size == 8)
+	f.replaceLaneFromReg(p, int(lane), size*8, x)
+	f.release(x)
+	if eaOwned {
+		f.release(ea)
+	}
+	f.pushV128Pair(p)
+	return nil
+}
+
+func (f *fn) v128StoreLane(r *wasm.Reader, sub uint32) error {
+	if _, err := r.U32(); err != nil { // align
+		return err
+	}
+	off, err := r.U32()
+	if err != nil {
+		return err
+	}
+	lane, err := r.Byte()
+	if err != nil {
+		return err
+	}
+	size := simdLaneMemSize(sub)
+	if int(lane) >= 16/size {
+		return fmt.Errorf("riscv64: invalid v128.store%d_lane lane %d", size*8, lane)
+	}
+	f.materializePendingLoads()
+	p := f.materializeV128(f.popValue())
+	f.pinned = f.pinned.union(p.mask())
+	x := f.allocReg(p.mask())
+	f.extractLaneTo(x, p, int(lane), size*8, false)
+	f.pinned = f.pinned.add(x)
+	ea, eaOwned, _, disp := f.memAddr(off, size, true)
+	f.a.StoreIdx(linMemReg, ea, x, disp, size)
+	f.pinned = f.pinned.remove(x).remove(p.lo).remove(p.hi)
+	if eaOwned {
+		f.release(ea)
+	}
+	f.release(x)
+	f.releaseV128(p)
+	return nil
+}
+
 func (f *fn) emitFD(r *wasm.Reader) error {
 	sub, err := r.U32()
 	if err != nil {
 		return err
 	}
 	switch sub {
+	case 0:
+		return f.v128Load(r)
+	case 1, 2, 3, 4, 5, 6:
+		return f.v128LoadExtend(r, sub)
+	case 7, 8, 9, 10:
+		return f.v128LoadSplat(r, sub)
+	case 11:
+		return f.v128Store(r)
+	case 84, 85, 86, 87:
+		return f.v128LoadLane(r, sub)
+	case 88, 89, 90, 91:
+		return f.v128StoreLane(r, sub)
+	case 92, 93:
+		return f.v128LoadZero(r, sub)
 	case 12: // v128.const
 		var b [16]byte
 		for i := range b {
