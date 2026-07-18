@@ -205,6 +205,14 @@ resource layer required by firmware:
 These resource managers build and test under both standard Go and TinyGo. They
 contain no MMU, signal, syscall, or host-pointer assumptions.
 
+Both code generators now consume the fixed `ContextABI` for executable i64
+memory thunks. Loads and stores combine the dynamic address and static Wasm
+offset with overflow detection, preflight the complete eight-byte width against
+the current memory length, write the explicit trap cell on failure, and only
+then access memory. QEMU tests cover successful unaligned-capable little-endian
+loads/stores, address and end-of-memory failures, trap writes, and proof that an
+out-of-bounds split store cannot mutate its in-bounds low word.
+
 This is still not public backend admission. Pair/quad control merges and calls
 in the full module compiler, calls/globals/tables/references, generated-code
 entry trampolines, firmware linking and transport, and Pico 2 hardware
