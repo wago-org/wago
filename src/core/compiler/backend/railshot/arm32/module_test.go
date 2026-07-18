@@ -353,6 +353,88 @@ func TestCompileModuleUsesMixedStackArgumentsAndResultsUnderQEMU(t *testing.T) {
 	runARM32Exit(t, qemu, append(a.B, cm.Code...), 49)
 }
 
+func arm32MixedIfModule(t *testing.T) *wasm.Module {
+	t.Helper()
+	body := []byte{2, 1, 0x7e, 1, 0x7d,
+		0x42, 40, 0x41, 0, 0x04, 0x40,
+		0x42, 1, 0x21, 0,
+		0x05, 0x42, 2, 0x21, 0,
+		0x0b, 0x20, 0, 0x7c, 0x0b}
+	code := append(wasmtest.ULEB(uint32(len(body))), body...)
+	m, err := wasm.DecodeModule(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I64}))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0})),
+		wasmtest.Section(10, wasmtest.Vec(code)),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+func TestCompileModulePreservesWideValueAcrossMixedIfUnderQEMU(t *testing.T) {
+	qemu, err := exec.LookPath("qemu-arm")
+	if err != nil {
+		t.Skip("qemu-arm not installed")
+	}
+	cm, err := CompileModule(arm32MixedIfModule(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var a a32.Asm
+	armMemoryContext(&a)
+	armContextArg(&a)
+	a.MovReg(a32.R11, a32.R0)
+	call := a.Call()
+	armExit(&a)
+	if !a.PatchCall(call, len(a.B)+cm.Entry[0]) {
+		t.Fatal("wrapper call relocation")
+	}
+	runARM32Exit(t, qemu, append(a.B, cm.Code...), 42)
+}
+
+func arm32MixedLoopModule(t *testing.T) *wasm.Module {
+	t.Helper()
+	body := []byte{2, 1, 0x7f, 1, 0x7e,
+		0x41, 3, 0x21, 0,
+		0x42, 40, 0x21, 1,
+		0x03, 0x40,
+		0x20, 1, 0x42, 1, 0x7c, 0x21, 1,
+		0x20, 0, 0x41, 1, 0x6b, 0x22, 0, 0x0d, 0,
+		0x0b, 0x20, 1, 0x0b}
+	code := append(wasmtest.ULEB(uint32(len(body))), body...)
+	m, err := wasm.DecodeModule(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I64}))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0})),
+		wasmtest.Section(10, wasmtest.Vec(code)),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+func TestCompileModuleExecutesMixedLoopWithWideLocalUnderQEMU(t *testing.T) {
+	qemu, err := exec.LookPath("qemu-arm")
+	if err != nil {
+		t.Skip("qemu-arm not installed")
+	}
+	cm, err := CompileModule(arm32MixedLoopModule(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var a a32.Asm
+	armMemoryContext(&a)
+	armContextArg(&a)
+	a.MovReg(a32.R11, a32.R0)
+	call := a.Call()
+	armExit(&a)
+	if !a.PatchCall(call, len(a.B)+cm.Entry[0]) {
+		t.Fatal("wrapper call relocation")
+	}
+	runARM32Exit(t, qemu, append(a.B, cm.Code...), 43)
+}
+
 func TestCompileModuleLaysOutFunctions(t *testing.T) {
 	cm, err := CompileModule(arm32Module(t))
 	if err != nil {

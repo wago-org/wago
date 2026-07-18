@@ -136,7 +136,14 @@ func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc) ([]byte, erro
 		return nil, fmt.Errorf("riscv32: mixed cancellation branch out of range")
 	}
 
-	for _, op := range plan.Ops {
+	type mixedBranchPatch struct {
+		at, label   int
+		conditional bool
+	}
+	labels := make([]int, len(plan.Ops)+1)
+	var branches []mixedBranchPatch
+	for opIndex, op := range plan.Ops {
+		labels[opIndex] = a.Len()
 		switch op.Kind {
 		case shared.MixedConst:
 			for i := uint8(0); i < op.Width; i++ {
@@ -286,6 +293,29 @@ func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc) ([]byte, erro
 			if !a.PatchFarBranch(selectedLeft, a.Len()) {
 				return nil, fmt.Errorf("riscv32: mixed select branch out of range")
 			}
+		case shared.MixedBranchZero, shared.MixedBranchNonzero:
+			must(a.Lw(rv.T0, rv.SP, off(op.Third)), "branch condition")
+			cond := rv.CondEQ
+			if op.Kind == shared.MixedBranchNonzero {
+				cond = rv.CondNE
+			}
+			branches = append(branches, mixedBranchPatch{at: a.FarBcond(rv.T0, rv.Zero, cond, branchScratch), label: op.Label, conditional: true})
+		case shared.MixedJump:
+			branches = append(branches, mixedBranchPatch{at: a.FarJump(rv.Zero, branchScratch), label: op.Label})
+		case shared.MixedPollCancellation:
+			must(a.Lw(rv.T0, rvContextReg, embedded32.ContextCancelCellOffset), "loop cancel cell")
+			must(a.Lw(rv.T0, rv.T0, 0), "loop cancel value")
+			loopClear := a.FarBcond(rv.T0, rv.Zero, rv.CondEQ, branchScratch)
+			must(a.Lw(rv.T1, rvContextReg, embedded32.ContextTrapCellOffset), "loop cancel trap cell")
+			a.MovImm32(rv.T0, uint32(embedded32.TrapCanceled))
+			must(a.Sw(rv.T0, rv.T1, 0), "loop cancel trap write")
+			must(a.Lw(rv.RA, rv.SP, saveOffset), "loop cancel return address restore")
+			must(a.Addi(rv.SP, rv.SP, frame), "loop cancel frame release")
+			a.MovImm32(rv.A0, 0)
+			a.Ret()
+			if !a.PatchFarBranch(loopClear, a.Len()) {
+				return nil, fmt.Errorf("riscv32: mixed loop cancellation branch out of range")
+			}
 		case shared.MixedCall:
 			if relocSink == nil {
 				return nil, fmt.Errorf("riscv32: mixed call has no relocation sink")
@@ -338,6 +368,22 @@ func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc) ([]byte, erro
 			a.Ret()
 		default:
 			return nil, fmt.Errorf("riscv32: unsupported mixed operation %d", op.Kind)
+		}
+	}
+
+	labels[len(plan.Ops)] = a.Len()
+	for _, branch := range branches {
+		if branch.label < 0 || branch.label >= len(labels) {
+			return nil, fmt.Errorf("riscv32: invalid mixed branch label %d", branch.label)
+		}
+		var ok bool
+		if branch.conditional {
+			ok = a.PatchFarBranch(branch.at, labels[branch.label])
+		} else {
+			ok = a.PatchFarJump(branch.at, labels[branch.label])
+		}
+		if !ok {
+			return nil, fmt.Errorf("riscv32: mixed structured branch out of range")
 		}
 	}
 

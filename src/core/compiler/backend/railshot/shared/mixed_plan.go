@@ -42,6 +42,10 @@ const (
 	MixedCall
 	MixedUnreachable
 	MixedSelect
+	MixedBranchZero
+	MixedBranchNonzero
+	MixedJump
+	MixedPollCancellation
 )
 
 type MixedOp struct {
@@ -54,6 +58,7 @@ type MixedOp struct {
 	Target      uint32
 	Args        []MixedValue
 	Results     []MixedValue
+	Label       int
 }
 
 type MixedValue struct {
@@ -232,6 +237,28 @@ func BuildMixedPlanWithCalls(ft *wasm.CompType, locals []wasm.LocalRun, body []b
 		return nil
 	}
 
+	type mixedControl struct {
+		kind     byte
+		entry    []MixedValue
+		slots    uint16
+		header   int
+		falseOp  int
+		jumpOp   int
+		elseSeen bool
+		pending  []int
+	}
+	var controls []mixedControl
+	stackMatches := func(want []MixedValue) bool {
+		if len(stack) != len(want) {
+			return false
+		}
+		for i := range stack {
+			if stack[i] != want[i] {
+				return false
+			}
+		}
+		return true
+	}
 	terminated := false
 	terminalUnreachable := false
 	for r.HasNext() {
@@ -248,7 +275,69 @@ func BuildMixedPlanWithCalls(ft *wasm.CompType, locals []wasm.LocalRun, body []b
 			terminated = true
 			terminalUnreachable = true
 		case 0x01: // nop
+		case 0x02, 0x03: // block / loop with void block type
+			blockType, err := r.Byte()
+			if err != nil {
+				return nil, err
+			}
+			if blockType != 0x40 {
+				return nil, fmt.Errorf("mixed block currently requires a void block type")
+			}
+			control := mixedControl{kind: op, entry: append([]MixedValue(nil), stack...), slots: operandSlots, falseOp: -1, jumpOp: -1}
+			if op == 0x03 {
+				control.header = len(p.Ops)
+				p.Ops = append(p.Ops, MixedOp{Kind: MixedPollCancellation})
+			}
+			controls = append(controls, control)
+		case 0x04: // if with void block type
+			blockType, err := r.Byte()
+			if err != nil {
+				return nil, err
+			}
+			if blockType != 0x40 {
+				return nil, fmt.Errorf("mixed if currently requires a void block type")
+			}
+			condition, err := pop(wasm.I32)
+			if err != nil {
+				return nil, err
+			}
+			branch := len(p.Ops)
+			p.Ops = append(p.Ops, MixedOp{Kind: MixedBranchZero, Third: condition.Slot, Label: -1})
+			controls = append(controls, mixedControl{kind: op, entry: append([]MixedValue(nil), stack...), slots: operandSlots, falseOp: branch, jumpOp: -1})
+		case 0x05: // else
+			if len(controls) == 0 || controls[len(controls)-1].kind != 0x04 || controls[len(controls)-1].elseSeen {
+				return nil, fmt.Errorf("mixed function has unexpected else")
+			}
+			control := &controls[len(controls)-1]
+			if !stackMatches(control.entry) || operandSlots != control.slots {
+				return nil, fmt.Errorf("mixed if true arm changes a void block stack")
+			}
+			control.jumpOp = len(p.Ops)
+			p.Ops = append(p.Ops, MixedOp{Kind: MixedJump, Label: -1})
+			p.Ops[control.falseOp].Label = len(p.Ops)
+			control.elseSeen = true
+			stack = append(stack[:0], control.entry...)
+			operandSlots = control.slots
 		case 0x0b: // end
+			if len(controls) != 0 {
+				control := controls[len(controls)-1]
+				if !stackMatches(control.entry) || operandSlots != control.slots {
+					return nil, fmt.Errorf("mixed if arm changes a void block stack")
+				}
+				target := len(p.Ops)
+				if control.kind == 0x04 {
+					if control.elseSeen {
+						p.Ops[control.jumpOp].Label = target
+					} else {
+						p.Ops[control.falseOp].Label = target
+					}
+				}
+				for _, branch := range control.pending {
+					p.Ops[branch].Label = target
+				}
+				controls = controls[:len(controls)-1]
+				continue
+			}
 			if r.HasNext() {
 				return nil, fmt.Errorf("mixed function has instructions after end")
 			}
@@ -268,6 +357,28 @@ func BuildMixedPlanWithCalls(ft *wasm.CompType, locals []wasm.LocalRun, body []b
 				p.ResultSlots += uint16(width)
 			}
 			return p, nil
+		case 0x0d: // br_if to a void label
+			depth, err := r.U32()
+			if err != nil || int(depth) >= len(controls) {
+				return nil, fmt.Errorf("mixed br_if depth %d is invalid", depth)
+			}
+			condition, err := pop(wasm.I32)
+			if err != nil {
+				return nil, err
+			}
+			targetIndex := len(controls) - 1 - int(depth)
+			target := &controls[targetIndex]
+			if !stackMatches(target.entry) || operandSlots != target.slots {
+				return nil, fmt.Errorf("mixed br_if changes a void label stack")
+			}
+			branch := len(p.Ops)
+			label := -1
+			if target.kind == 0x03 {
+				label = target.header
+			} else {
+				target.pending = append(target.pending, branch)
+			}
+			p.Ops = append(p.Ops, MixedOp{Kind: MixedBranchNonzero, Third: condition.Slot, Label: label})
 		case 0x0f: // return
 			terminated = true
 		case 0x10: // call
