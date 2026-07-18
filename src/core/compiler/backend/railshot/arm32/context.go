@@ -10,6 +10,20 @@ import (
 
 const armContextReg = a32.R11
 
+func (c *compiler) pollCancellation() error {
+	poll := c.alloc()
+	c.must(c.a.Ldr(poll, armContextReg, embedded32.ContextCancelCellOffset), "cancel cell")
+	c.must(c.a.Ldr(poll, poll, 0), "cancel value")
+	c.must(c.a.Cmp(poll, a32.R12), "cancel compare")
+	clear := c.a.FarBcond(a32.CondEQ)
+	c.emitContextTrap(embedded32.TrapCanceled)
+	if !c.a.PatchFarBranch(clear, c.a.Len()) {
+		return fmt.Errorf("arm32: cancellation branch out of range")
+	}
+	c.release(poll)
+	return nil
+}
+
 func (c *compiler) load(r *wasm.Reader, op byte) error {
 	if _, err := r.U32(); err != nil { // alignment is advisory.
 		return err

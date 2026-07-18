@@ -15,6 +15,7 @@ const (
 	TrapIntegerOverflow
 	TrapMemoryOutOfBounds
 	TrapIntegerDivideByZero
+	TrapCanceled
 )
 
 // F64Op identifies one scalar floating-point helper operation. Bitwise abs,

@@ -168,6 +168,20 @@ func TestCompileModuleMemoryAndTrapContextUnderQEMU(t *testing.T) {
 		a.PatchCall(call, len(a.B))
 		runARM32Exit(t, qemu, append(a.B, fn...), 42)
 	})
+	t.Run("canceled-entry", func(t *testing.T) {
+		var a a32.Asm
+		armMemoryContext(&a)
+		a.MovImm32(a32.R12, 1)
+		a.Str(a32.R12, a32.SP, 40)
+		armContextArg(&a)
+		a.MovReg(a32.R11, a32.R0)
+		a.MovImm32(a32.R0, 4)
+		call := a.Call()
+		a.Ldr(a32.R0, a32.SP, 32)
+		armExit(&a)
+		a.PatchCall(call, len(a.B))
+		runARM32Exit(t, qemu, append(a.B, fn...), int(embedded32.TrapCanceled))
+	})
 	t.Run("memory-grow-failure", func(t *testing.T) {
 		grow, err := CompileModule(arm32GrowModule(t))
 		if err != nil {
@@ -233,6 +247,9 @@ func TestCompileModuleExecutesSelectedFunctionUnderQEMU(t *testing.T) {
 	meta := cm.Functions[1]
 	fn := cm.Code[meta.Offset : meta.Offset+meta.Size]
 	var wrapper a32.Asm
+	armMemoryContext(&wrapper)
+	armContextArg(&wrapper)
+	wrapper.MovReg(a32.R11, a32.R0)
 	wrapper.MovImm32(a32.R0, 41)
 	call := wrapper.Call()
 	armExit(&wrapper)

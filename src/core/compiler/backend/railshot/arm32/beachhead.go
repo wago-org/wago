@@ -94,6 +94,11 @@ func compileBeachhead(numParams int, body []byte, context bool) ([]byte, error) 
 	for i := numParams; i < total; i++ {
 		c.must(c.a.MovImm32(c.locals[i], 0), "local zero")
 	}
+	if context {
+		if err := c.pollCancellation(); err != nil {
+			return nil, err
+		}
+	}
 	c.control = []*controlFrame{{function: true, elseSite: -1}}
 
 	for r.HasNext() {
@@ -111,7 +116,13 @@ func compileBeachhead(numParams int, body []byte, context bool) ([]byte, error) 
 			if err := readVoidBlockType(r); err != nil {
 				return nil, err
 			}
-			c.control = append(c.control, &controlFrame{loop: true, header: c.a.Len(), elseSite: -1})
+			header := c.a.Len()
+			if c.context {
+				if err := c.pollCancellation(); err != nil {
+					return nil, err
+				}
+			}
+			c.control = append(c.control, &controlFrame{loop: true, header: header, elseSite: -1})
 		case 0x04:
 			if err := readVoidBlockType(r); err != nil {
 				return nil, err

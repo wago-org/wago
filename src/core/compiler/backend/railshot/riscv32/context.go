@@ -10,6 +10,19 @@ import (
 
 const rvContextReg = rv.X23
 
+func (c *compiler) pollCancellation() error {
+	poll := c.alloc()
+	c.a.Lw(poll, rvContextReg, embedded32.ContextCancelCellOffset)
+	c.a.Lw(poll, poll, 0)
+	clear := c.a.FarBcond(poll, rv.Zero, rv.CondEQ, branchScratch)
+	c.emitContextTrap(embedded32.TrapCanceled)
+	if !c.a.PatchFarBranch(clear, c.a.Len()) {
+		return fmt.Errorf("riscv32: cancellation branch out of range")
+	}
+	c.release(poll)
+	return nil
+}
+
 func (c *compiler) load(r *wasm.Reader, op byte) error {
 	if _, err := r.U32(); err != nil {
 		return err
