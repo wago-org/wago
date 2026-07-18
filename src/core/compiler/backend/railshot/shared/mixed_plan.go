@@ -54,6 +54,7 @@ const (
 	MixedI64Helper
 	MixedMemoryLoad
 	MixedMemoryStore
+	MixedSIMDHelper
 )
 
 type MixedOp struct {
@@ -320,6 +321,22 @@ func BuildMixedPlanWithBlockResolver(ft *wasm.CompType, locals []wasm.LocalRun, 
 		}
 		width, _ := MixedValueSlots(output)
 		p.Ops = append(p.Ops, MixedOp{Kind: MixedI64Helper, Dst: out.Slot, Left: left.Slot, Right: right.Slot, Width: width, Arity: 2, InputWidth: 2, HelperOp: uint32(op)})
+		return nil
+	}
+	simdHelper := func(op uint32, arity uint8) error {
+		var inputs [3]MixedValue
+		for i := int(arity) - 1; i >= 0; i-- {
+			value, err := pop(wasm.V128)
+			if err != nil {
+				return err
+			}
+			inputs[i] = value
+		}
+		out, err := push(wasm.V128)
+		if err != nil {
+			return err
+		}
+		p.Ops = append(p.Ops, MixedOp{Kind: MixedSIMDHelper, Dst: out.Slot, Left: inputs[0].Slot, Right: inputs[1].Slot, Third: inputs[2].Slot, Width: 4, Arity: arity, HelperOp: op})
 		return nil
 	}
 
@@ -1205,6 +1222,14 @@ func BuildMixedPlanWithBlockResolver(ft *wasm.CompType, locals []wasm.LocalRun, 
 				}
 			case 177:
 				if err := binaryOp(MixedI32x4Sub, wasm.V128); err != nil {
+					return nil, err
+				}
+			case 103, 104, 105, 106, 116, 117, 118, 119, 227, 239:
+				if err := simdHelper(sub, 1); err != nil {
+					return nil, err
+				}
+			case 228, 229, 230, 231, 232, 233, 234, 235, 240, 241, 242, 243, 244, 245, 246, 247:
+				if err := simdHelper(sub, 2); err != nil {
 					return nil, err
 				}
 			default:

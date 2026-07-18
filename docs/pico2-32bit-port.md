@@ -182,9 +182,13 @@ root, arithmetic, min/max, comparisons, i32/i64 conversion, promotion from f32,
 trapping truncation, and saturating truncation; bitwise f64 operations remain
 direct. Mixed i64 helper dispatch covers shifts, rotates, bit counts, eqz and
 all comparisons, division/remainder traps, i32 extension, and sign extensions;
-add/sub/multiply/logic stay direct. More complex SIMD operations still use the complete helper ABI only in
-standalone thunks while normal mixed SIMD dispatch is wired next. Measurements
-decide which helper operations merit direct target-specific lowering.
+add/sub/multiply/logic stay direct. Normal mixed functions now also construct the
+stable 120-byte SIMD frame and dispatch f32x4/f64x2 rounding, square root,
+arithmetic, and min/max operations through the SIMD helper-table slot. Direct
+integer SWAR operations remain inline; the remaining lane, conversion, shuffle,
+relaxed, and SIMD-memory forms still need normal-function dispatch wiring.
+Measurements decide which helper operations merit direct target-specific
+lowering.
 
 A shared fixed-capacity group allocator now owns one-, two-, and four-register
 values atomically. Allocation, exact ABI acquisition, release, LRU spill-victim

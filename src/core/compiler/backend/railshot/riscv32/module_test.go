@@ -921,6 +921,87 @@ func TestCompileModuleBranchesWithWideResultUnderQEMU(t *testing.T) {
 	runRV32Exit(t, qemu, append(a.B, cm.Code...), 42)
 }
 
+func riscv32MixedSIMDHelperModule(t *testing.T) *wasm.Module {
+	t.Helper()
+	first := make([]byte, 16)
+	first[0] = 20
+	second := make([]byte, 16)
+	second[0] = 22
+	body := []byte{1, 1, 0x7f, 0xfd, 12}
+	body = append(body, first...)
+	body = append(body, 0xfd, 12)
+	body = append(body, second...)
+	body = append(body, 0xfd, 0xe4, 0x01, 0x0b)
+	code := append(wasmtest.ULEB(uint32(len(body))), body...)
+	m, err := wasm.DecodeModule(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.V128}))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0})),
+		wasmtest.Section(10, wasmtest.Vec(code)),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+func TestCompileModuleDispatchesSIMDHelperFromMixedFunctionUnderQEMU(t *testing.T) {
+	qemu, err := exec.LookPath("qemu-riscv32")
+	if err != nil {
+		t.Skip("qemu-riscv32 not installed")
+	}
+	cm, err := CompileModule(riscv32MixedSIMDHelperModule(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var helper rv.Asm
+	helper.Lw(rv.T0, rv.A0, embedded32.SIMDFrameAOffset)
+	helper.Lw(rv.T1, rv.A0, embedded32.SIMDFrameBOffset)
+	helper.Add(rv.T0, rv.T0, rv.T1)
+	helper.Sw(rv.T0, rv.A0, embedded32.SIMDFrameOutOffset)
+	for i := int32(1); i < 4; i++ {
+		helper.Sw(rv.Zero, rv.A0, embedded32.SIMDFrameOutOffset+i*4)
+	}
+	helper.Sw(rv.Zero, rv.A0, embedded32.SIMDFrameTrapOffset)
+	helper.Ret()
+	buildWrapper := func(table uint32) rv.Asm {
+		var a rv.Asm
+		rvMemoryContext(&a)
+		a.Addi(rv.T0, rv.SP, 84)
+		a.Sw(rv.T0, rv.SP, 24)
+		a.Sw(rv.Zero, rv.SP, 84)
+		a.MovImm32(rv.T0, table)
+		a.Sw(rv.T0, rv.SP, 32)
+		a.Addi(rv.A0, rv.SP, 16)
+		a.MovReg(rv.X23, rv.A0)
+		call := a.Jal(rv.RA)
+		a.MovImm32(rv.A7, 93)
+		a.Ecall()
+		if !a.PatchJAL21(call, len(a.B)+cm.Entry[0]) {
+			t.Fatal("wrapper call relocation")
+		}
+		return a
+	}
+	const base = uint32(0x10000)
+	wrapper := buildWrapper(base)
+	for {
+		helperOff := len(wrapper.B) + len(cm.Code)
+		tableOff := helperOff + len(helper.B)
+		next := buildWrapper(base + uint32(tableOff))
+		if len(next.B) == len(wrapper.B) {
+			wrapper = next
+			break
+		}
+		wrapper = next
+	}
+	helperOff := len(wrapper.B) + len(cm.Code)
+	image := append(wrapper.B, cm.Code...)
+	image = append(image, helper.B...)
+	var table [embedded32.HelperTableBytes]byte
+	binary.LittleEndian.PutUint32(table[embedded32.HelperSIMDOffset:], base+uint32(helperOff))
+	image = append(image, table[:]...)
+	runRV32Exit(t, qemu, image, 42)
+}
+
 func TestCompileModuleLaysOutFunctions(t *testing.T) {
 	cm, err := CompileModule(riscv32Module(t))
 	if err != nil {

@@ -96,6 +96,10 @@ func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc) ([]byte, erro
 			if helperBytes < embedded32.I64FrameBytes {
 				helperBytes = embedded32.I64FrameBytes
 			}
+		case shared.MixedSIMDHelper:
+			if helperBytes < embedded32.SIMDFrameBytes {
+				helperBytes = embedded32.SIMDFrameBytes
+			}
 		}
 	}
 	helperBase := uint16(valueBase + dataBytes)
@@ -335,6 +339,46 @@ func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc) ([]byte, erro
 			}
 			if !a.PatchFarBranch(selectedLeft, a.Len()) {
 				return nil, fmt.Errorf("arm32: mixed select branch out of range")
+			}
+		case shared.MixedSIMDHelper:
+			must(a.MovImm32(a32.R0, op.HelperOp), "simd helper op")
+			must(a.Str(a32.R0, a32.SP, helperBase+embedded32.SIMDFrameOpOffset), "simd helper op store")
+			inputs := []uint16{op.Left, op.Right, op.Third}
+			bases := []uint16{embedded32.SIMDFrameAOffset, embedded32.SIMDFrameBOffset, embedded32.SIMDFrameCOffset}
+			for input := uint8(0); input < op.Arity; input++ {
+				for i := uint16(0); i < 4; i++ {
+					must(a.Ldr(a32.R0, a32.SP, off(inputs[input])+i*4), "simd helper input load")
+					must(a.Str(a32.R0, a32.SP, helperBase+bases[input]+i*4), "simd helper input store")
+				}
+			}
+			must(a.Ldr(a32.R0, armContextReg, embedded32.ContextLinearMemoryBaseOffset), "simd helper memory base")
+			must(a.Str(a32.R0, a32.SP, helperBase+embedded32.SIMDFrameMemoryBaseOffset), "simd helper memory base store")
+			must(a.Ldr(a32.R0, armContextReg, embedded32.ContextLinearMemoryLengthOffset), "simd helper memory length")
+			must(a.Str(a32.R0, a32.SP, helperBase+embedded32.SIMDFrameMemoryLenOffset), "simd helper memory length store")
+			must(a.MovReg(a32.R0, a32.SP), "simd helper frame base")
+			must(a.MovImm32(a32.R1, uint32(helperBase)), "simd helper frame offset")
+			must(a.Add(a32.R0, a32.R0, a32.R1), "simd helper frame address")
+			must(a.Ldr(a32.R1, armContextReg, embedded32.ContextHelperTableOffset), "simd helper table")
+			must(a.Ldr(a32.R12, a32.R1, embedded32.HelperSIMDOffset), "simd helper target")
+			must(a.Blx(a32.R12), "simd helper call")
+			must(a.Ldr(a32.R0, a32.SP, helperBase+embedded32.SIMDFrameTrapOffset), "simd helper trap")
+			must(a.MovImm32(a32.R1, 0), "simd helper trap zero")
+			must(a.Cmp(a32.R0, a32.R1), "simd helper trap compare")
+			helperOK := a.FarBcond(a32.CondEQ)
+			must(a.Ldr(a32.R1, armContextReg, embedded32.ContextTrapCellOffset), "simd helper trap cell")
+			must(a.Str(a32.R0, a32.R1, 0), "simd helper trap publish")
+			must(a.Ldr(a32.LR, a32.SP, saveOffset), "simd helper trap return address restore")
+			must(a.MovImm32(a32.R12, frame), "simd helper trap frame size")
+			must(a.Add(a32.SP, a32.SP, a32.R12), "simd helper trap frame release")
+			must(a.MovImm32(a32.R0, 0), "simd helper trap result")
+			a.Ret()
+			a.Align4()
+			if !a.PatchFarBranch(helperOK, a.Len()) {
+				return nil, fmt.Errorf("arm32: simd helper trap branch out of range")
+			}
+			for i := uint16(0); i < 4; i++ {
+				must(a.Ldr(a32.R0, a32.SP, helperBase+embedded32.SIMDFrameOutOffset+i*4), "simd helper result load")
+				must(a.Str(a32.R0, a32.SP, off(op.Dst)+i*4), "simd helper result store")
 			}
 		case shared.MixedI64Helper:
 			must(a.MovImm32(a32.R0, op.HelperOp), "i64 helper op")
