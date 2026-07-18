@@ -18,6 +18,53 @@ func isFusableCompare(e *elem) bool {
 	return e != nil && e.kind == ekDeferred && (isCompare(e.op) || e.op == opEqz)
 }
 
+// tryMaskedEqzToFlags recognizes `(x & mask) == 0`, the core reduction used by
+// packed-byte/SWAR algorithms, and emits TEST directly. The ordinary lowering
+// materializes x&mask and then tests that result; TEST computes identical flags
+// without writing the temporary. The helper consumes the two deferred nodes but
+// leaves the outer node for either a branch consumer or SETcc materialization.
+func (f *fn) tryMaskedEqzToFlags(node *elem) (Cond, bool) {
+	if !knownBitsEnabled || node == nil || node.op != opEqz {
+		return 0, false
+	}
+	inner := node.arg0
+	if inner == nil || inner.kind != ekDeferred || inner.op != opAnd ||
+		inner.arg1 == nil || inner.arg1.kind != ekValue || inner.arg1.st.kind != stConst ||
+		inner.arg1.st.cval == 0 {
+		return 0, false
+	}
+
+	left := inner.arg0
+	var x Reg
+	owned := false
+	switch {
+	case left.kind == ekValue && (left.st.kind == stLocalReg || left.st.kind == stGlobReg):
+		x = left.st.reg
+	case left.kind == ekValue && left.st.kind == stReg:
+		x, owned = left.st.reg, true
+	default:
+		x, owned = f.materialize(left), true
+	}
+	f.pinned = f.pinned.add(x)
+	w := inner.typ.is64()
+	c := inner.arg1.st.cval
+	if !w || fitsImm32(c) {
+		f.a.TestImm(x, uint32(c), w)
+	} else {
+		t := f.allocReg(maskOf(x))
+		f.loadConst(t, inner.arg1.st)
+		f.a.TestReg(x, t, true)
+		f.release(t)
+	}
+	f.pinned = f.pinned.remove(x)
+	if owned {
+		f.release(x)
+	}
+	f.stats.peep("swar-mask-test")
+	f.consumeBlockBelow(node)
+	return condE, true
+}
+
 // flushBelow materializes every operand strictly below node's valent block into
 // its canonical frame slots (v128 values use two adjacent slots), leaving node's
 // block on top untouched. Returns the number of flushed operands. Used before emitting a
@@ -112,6 +159,12 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 	// condition instead of a materialized boolean. eq/ne are never deferred here.
 	if node.typ.isFloat() {
 		return f.condenseFCompareToFlags(node, invert)
+	}
+	if !invert {
+		if cc, ok := f.tryMaskedEqzToFlags(node); ok {
+			f.erase(node)
+			return cc
+		}
 	}
 	applyInvert := func(cc Cond) Cond {
 		if invert {

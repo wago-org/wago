@@ -18,6 +18,42 @@ func isFusableCompare(e *elem) bool {
 	return e != nil && e.kind == ekDeferred && (isCompare(e.op) || e.op == opEqz)
 }
 
+func (f *fn) tryMaskedEqzToFlags(node *elem) (Cond, bool) {
+	if !knownBitsEnabled || node == nil || node.op != opEqz {
+		return 0, false
+	}
+	inner := node.arg0
+	if inner == nil || inner.kind != ekDeferred || inner.op != opAnd ||
+		inner.arg1 == nil || inner.arg1.kind != ekValue || inner.arg1.st.kind != stConst ||
+		inner.arg1.st.cval == 0 {
+		return 0, false
+	}
+
+	x, owned := f.materializeRead(inner.arg0)
+	f.pinned = f.pinned.add(x)
+	wide := inner.typ.is64()
+	c := uint64(inner.arg1.st.cval)
+	emitted := false
+	if wide {
+		emitted = f.a.TstImm64(x, c)
+	} else {
+		emitted = f.a.TstImm32(x, uint32(c))
+	}
+	if !emitted {
+		t := f.allocReg(maskOf(x))
+		f.loadConst(t, storage{kind: stConst, typ: inner.typ, cval: int64(c)})
+		f.a.TstReg(x, t, !wide)
+		f.release(t)
+	}
+	f.pinned = f.pinned.remove(x)
+	if owned {
+		f.release(x)
+	}
+	f.stats.peep("swar-mask-test")
+	f.consumeBlockBelow(node)
+	return condE, true
+}
+
 // flushBelow materializes every operand strictly below node's valent block into
 // its canonical frame slots (v128 values use two adjacent slots), leaving node's
 // block on top untouched. Returns the number of flushed operands. Used before emitting a
@@ -112,6 +148,12 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 	// condition instead of a materialized boolean. eq/ne are never deferred here.
 	if node.typ.isFloat() {
 		return f.condenseFCompareToFlags(node, invert)
+	}
+	if !invert {
+		if cc, ok := f.tryMaskedEqzToFlags(node); ok {
+			f.erase(node)
+			return cc
+		}
 	}
 	applyInvert := func(cc Cond) Cond {
 		if invert {
