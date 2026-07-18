@@ -4,6 +4,7 @@ package riscv64
 
 import (
 	"encoding/binary"
+	"math"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -773,6 +774,151 @@ func TestSWARV128MemoryExec(t *testing.T) {
 		got, _, err = runProductionSWARMemory(t, m, nil)
 		if err != nil || uint32(got) != 0x00 {
 			t.Fatalf("store-lane got %#x, err=%v", got, err)
+		}
+	})
+}
+
+func swarF32Const(v float32) []byte {
+	var bits [4]byte
+	binary.LittleEndian.PutUint32(bits[:], math.Float32bits(v))
+	return append([]byte{0x43}, bits[:]...)
+}
+
+func swarF64Const(v float64) []byte {
+	var bits [8]byte
+	binary.LittleEndian.PutUint64(bits[:], math.Float64bits(v))
+	return append([]byte{0x44}, bits[:]...)
+}
+
+func TestSWARFloatLaneArithmeticCompareAndRoundingExec(t *testing.T) {
+	t.Run("splat-extract-replace", func(t *testing.T) {
+		m := swarScalarModule(t, wasm.F32, swarF32Const(3.5), swarFD(19), swarFD(31, 3))
+		if got := uint32(runProductionSWARWrapper(t, m)); got != math.Float32bits(3.5) {
+			t.Fatalf("f32 splat got %#x", got)
+		}
+		m = swarScalarModule(t, wasm.F64, swarV128Const(1, 2), swarF64Const(6.25), swarFD(34, 1), swarFD(33, 1))
+		if got := runProductionSWARWrapper(t, m); got != math.Float64bits(6.25) {
+			t.Fatalf("f64 replace got %#x", got)
+		}
+	})
+
+	for _, tc := range []struct {
+		name string
+		sub  uint32
+		a, b float32
+		want float32
+	}{
+		{"add", 228, 1.5, 2.25, 3.75},
+		{"sub", 229, 5.5, 1.25, 4.25},
+		{"mul", 230, 1.5, -2, -3},
+		{"div", 231, 7.5, 2.5, 3},
+	} {
+		t.Run("f32-"+tc.name, func(t *testing.T) {
+			aLo, aHi := swarPackLanes(32, uint64(math.Float32bits(tc.a)), 0, 0, 0)
+			bLo, bHi := swarPackLanes(32, uint64(math.Float32bits(tc.b)), 0, 0, 0)
+			m := swarScalarModule(t, wasm.F32,
+				swarV128Const(aLo, aHi), swarV128Const(bLo, bHi), swarFD(tc.sub), swarFD(31, 0))
+			if got := uint32(runProductionSWARWrapper(t, m)); got != math.Float32bits(tc.want) {
+				t.Fatalf("got %#x, want %#x", got, math.Float32bits(tc.want))
+			}
+		})
+	}
+
+	for _, tc := range []struct {
+		name string
+		sub  uint32
+		a, b float64
+		want float64
+	}{
+		{"add", 240, 1.5, 2.25, 3.75},
+		{"sub", 241, 5.5, 1.25, 4.25},
+		{"mul", 242, 1.5, -2, -3},
+		{"div", 243, 7.5, 2.5, 3},
+	} {
+		t.Run("f64-"+tc.name, func(t *testing.T) {
+			m := swarScalarModule(t, wasm.F64,
+				swarV128Const(math.Float64bits(tc.a), 0), swarV128Const(math.Float64bits(tc.b), 0), swarFD(tc.sub), swarFD(33, 0))
+			if got := runProductionSWARWrapper(t, m); got != math.Float64bits(tc.want) {
+				t.Fatalf("got %#x, want %#x", got, math.Float64bits(tc.want))
+			}
+		})
+	}
+
+	t.Run("bit-sign-and-sqrt", func(t *testing.T) {
+		const nanPayload = uint64(0x7ff8123456789abc)
+		m := swarScalarModule(t, wasm.F64, swarV128Const(nanPayload|1<<63, 0), swarFD(236), swarFD(33, 0))
+		if got := runProductionSWARWrapper(t, m); got != nanPayload {
+			t.Fatalf("abs payload got %#x", got)
+		}
+		m = swarScalarModule(t, wasm.F64, swarV128Const(nanPayload, 0), swarFD(237), swarFD(33, 0))
+		if got := runProductionSWARWrapper(t, m); got != nanPayload|1<<63 {
+			t.Fatalf("neg payload got %#x", got)
+		}
+		m = swarScalarModule(t, wasm.F64, swarV128Const(math.Float64bits(81), 0), swarFD(239), swarFD(33, 0))
+		if got := runProductionSWARWrapper(t, m); got != math.Float64bits(9) {
+			t.Fatalf("sqrt got %#x", got)
+		}
+	})
+
+	for _, tc := range []struct {
+		name string
+		sub  uint32
+		in   float64
+		want float64
+	}{
+		{"ceil", 116, -1.75, -1},
+		{"floor", 117, -1.25, -2},
+		{"trunc", 122, -1.75, -1},
+		{"nearest-even", 148, 2.5, 2},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := swarScalarModule(t, wasm.F64, swarV128Const(math.Float64bits(tc.in), 0), swarFD(tc.sub), swarFD(33, 0))
+			if got := runProductionSWARWrapper(t, m); got != math.Float64bits(tc.want) {
+				t.Fatalf("got %#x, want %#x", got, math.Float64bits(tc.want))
+			}
+		})
+	}
+
+	nan32 := uint64(0x7fc01234)
+	for _, tc := range []struct {
+		name string
+		sub  uint32
+		a, b uint64
+		want uint32
+	}{
+		{"eq", 65, uint64(math.Float32bits(2)), uint64(math.Float32bits(2)), 0xffffffff},
+		{"lt", 67, uint64(math.Float32bits(-1)), uint64(math.Float32bits(1)), 0xffffffff},
+		{"ne-nan", 66, nan32, uint64(math.Float32bits(1)), 0xffffffff},
+		{"lt-nan", 67, nan32, uint64(math.Float32bits(1)), 0},
+	} {
+		t.Run("cmp-"+tc.name, func(t *testing.T) {
+			aLo, aHi := swarPackLanes(32, tc.a, 0, 0, 0)
+			bLo, bHi := swarPackLanes(32, tc.b, 0, 0, 0)
+			m := swarScalarModule(t, wasm.I32,
+				swarV128Const(aLo, aHi), swarV128Const(bLo, bHi), swarFD(tc.sub), swarIntegerExtract(32, 0, false))
+			if got := uint32(runProductionSWARWrapper(t, m)); got != tc.want {
+				t.Fatalf("got %#x, want %#x", got, tc.want)
+			}
+		})
+	}
+
+	t.Run("min-max-pseudo", func(t *testing.T) {
+		plusZero, minusZero := math.Float64bits(0), math.Float64bits(math.Copysign(0, -1))
+		m := swarScalarModule(t, wasm.F64,
+			swarV128Const(plusZero, 0), swarV128Const(minusZero, 0), swarFD(244), swarFD(33, 0))
+		if got := runProductionSWARWrapper(t, m); got != minusZero {
+			t.Fatalf("min zero got %#x", got)
+		}
+		m = swarScalarModule(t, wasm.F64,
+			swarV128Const(minusZero, 0), swarV128Const(plusZero, 0), swarFD(245), swarFD(33, 0))
+		if got := runProductionSWARWrapper(t, m); got != plusZero {
+			t.Fatalf("max zero got %#x", got)
+		}
+		first := math.Float64bits(1.25)
+		m = swarScalarModule(t, wasm.F64,
+			swarV128Const(first, 0), swarV128Const(0x7ff8123456789abc, 0), swarFD(246), swarFD(33, 0))
+		if got := runProductionSWARWrapper(t, m); got != first {
+			t.Fatalf("pmin first-wins got %#x", got)
 		}
 	})
 }
