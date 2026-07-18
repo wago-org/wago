@@ -90,6 +90,47 @@ func TestPublishEmbeddedModuleIsTransactional(t *testing.T) {
 	}
 }
 
+func TestEmbeddedModuleDataInstantiation(t *testing.T) {
+	active := append([]byte{0, 0x41, 4, 0x0b}, wasmtest.ULEB(3)...)
+	active = append(active, 'a', 'b', 'c')
+	passive := append([]byte{1}, wasmtest.ULEB(3)...)
+	passive = append(passive, 'x', 'y', 'z')
+	m, err := wasm.DecodeModule(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0})),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0, 1})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x41, 0, 0x0b}))),
+		wasmtest.Section(11, wasmtest.Vec(active, passive)),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cm, err := CompileEmbeddedI32Module(m, EmbeddedModuleOptions{}, "test32", 4, 8, []byte{0, 0, 0, 0}, func(int, []byte) ([]byte, error) { return []byte{0, 0, 0, 0}, nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	memory, _ := embedded32.NewLinearMemory(make([]byte, embedded32.WasmPageSize), 1, 1)
+	store, err := cm.InstantiateData(memory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(memory.Bytes()[4:7]); got != "abc" {
+		t.Fatalf("active data=%q", got)
+	}
+	if trap := store.Init(memory, 1, 8, 0, 3); trap != embedded32.TrapNone || string(memory.Bytes()[8:11]) != "xyz" {
+		t.Fatalf("passive init trap=%d bytes=%q", trap, memory.Bytes()[8:11])
+	}
+	if trap := store.Init(memory, 0, 0, 0, 1); trap != embedded32.TrapMemoryOutOfBounds {
+		t.Fatalf("active segment remained available: %d", trap)
+	}
+
+	transactional := &EmbeddedModule{Data: []EmbeddedDataSegment{{Offset: 0, Bytes: []byte("ok")}, {Offset: embedded32.WasmPageSize, Bytes: []byte("bad")}}}
+	clear(memory.Bytes())
+	if _, err := transactional.InstantiateData(memory); err == nil || memory.Bytes()[0] != 0 {
+		t.Fatalf("failed active preflight mutated memory: err=%v byte=%d", err, memory.Bytes()[0])
+	}
+}
+
 func TestCompileEmbeddedI32ModuleReconstructsLocals(t *testing.T) {
 	localBody := []byte{1, 1, 0x7f, 0x41, 7, 0x21, 0, 0x20, 0, 0x0b}
 	code := append(wasmtest.ULEB(uint32(len(localBody))), localBody...)

@@ -269,7 +269,14 @@ trap before any callee-save state is exposed. Truly mixed-width calls/signatures
 and imported calls, wide structured control, and broader runtime metadata remain
 outside this module-wide slice.
 
+The embedded runtime now also provides complete preflighted `memory.copy`,
+`memory.fill`, passive `memory.init`, and idempotent `data.drop` semantics.
+Module layout retains active/passive segments in original index order;
+instantiation preflights every active destination transactionally before copying
+and starts active segments dropped. Generated `0xfc` dispatch still needs to be
+wired to this bounded runtime path.
+
 This is still not public backend admission. Pair/quad control merges and calls
-in the full module compiler, calls/globals/tables/references, generated-code
-entry trampolines, firmware linking and transport, and Pico 2 hardware
+in the full mixed-width module compiler, globals/tables/references, generated-
+code entry trampolines, firmware linking and transport, and Pico 2 hardware
 qualification remain to be implemented and measured.
