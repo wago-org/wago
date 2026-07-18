@@ -128,7 +128,20 @@ The initial foundation contains:
   `src/core/compiler/backend/railshot/{riscv32,arm32}`; and
 - direct execution tests under `qemu-riscv32` and `qemu-arm`.
 
-This is an executable beachhead, not public backend admission. Pair/quad
-railshot storage, complete scalar semantics, f64 helpers, complete SIMD, module
-linking, the embedded runtime, and Pico 2 hardware qualification remain to be
+The architecture-neutral `src/core/runtime/embedded32` helper ABI now adds:
+
+- allocation-free scalar f64 arithmetic, rounding, square root, comparisons,
+  deterministic min/max, integer/float conversion, trapping truncation, and
+  saturating truncation over little-endian 32-bit slots; and
+- a complete 218-op computational SIMD helper registry. Together with the 38
+  constant/shuffle/memory/lane-immediate instructions that must be lowered
+  directly, this accounts for exactly the decoder's 256 admitted SIMD
+  instructions. The helper implements deterministic relaxed projections and
+  serves as the code-size/correctness fallback when direct four-GPR SWAR would
+  create excessive register pressure.
+
+The helper package builds and tests with both standard Go and TinyGo, but helper
+call relocation from generated code is not public backend admission. Pair/quad
+railshot storage, direct handling of the 38 immediate/memory operations, module
+linking, the bare-metal runtime, and Pico 2 hardware qualification remain to be
 implemented and measured.
