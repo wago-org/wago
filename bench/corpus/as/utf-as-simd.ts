@@ -11,3 +11,10 @@ export function convertN(n: i32): i32 {
   for (let i = 0; i < n; i++) sum += UTF8.utf16LengthUnsafe(ptr, input.byteLength);
   return sum;
 }
+
+export function validateN(n: i32): i32 {
+  let sum = 0;
+  const ptr = changetype<usize>(input);
+  for (let i = 0; i < n; i++) sum += UTF8.validateUnsafe(ptr, input.byteLength);
+  return sum;
+}

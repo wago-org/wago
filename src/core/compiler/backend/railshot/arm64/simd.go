@@ -1366,6 +1366,99 @@ func (f *fn) v128AnyTrue() {
 	f.pushReg(r, mtI32)
 }
 
+// tryV128AndAnyTrue selects the exact adjacent `(a & b) != 0` sequence. The
+// reduction reuses an owned operand where possible and never exposes the
+// intermediate vector to the operand stack.
+func matchNextSIMDOp(r *wasm.Reader, want uint32) bool {
+	save := r.Offset()
+	prefix, err := r.Byte()
+	if err != nil || prefix != 0xfd {
+		_ = r.JumpTo(save)
+		return false
+	}
+	sub, err := r.U32()
+	if err != nil || sub != want {
+		_ = r.JumpTo(save)
+		return false
+	}
+	return true
+}
+
+func (f *fn) tryV128AndAnyTrue(r *wasm.Reader) bool {
+	if !simdSuperoptEnabled || !matchNextSIMDOp(r, 83) {
+		return false
+	}
+	b := f.popValue()
+	a := f.popValue()
+	sa, oa := f.operandRegV128(a)
+	f.fpinned = f.fpinned.add(sa)
+	sb, ob := f.operandRegV128(b)
+	f.fpinned = f.fpinned.remove(sa)
+	resultVec := sa
+	if !oa {
+		if ob {
+			resultVec = sb
+		} else {
+			resultVec = f.allocFReg(maskOf(sa, sb))
+		}
+	}
+	f.a.NeonAnd16b(resultVec, sa, sb)
+	f.a.NeonUmaxvB(resultVec, resultVec)
+	result := f.allocReg(0)
+	f.a.NeonUmovB(result, resultVec, 0)
+	f.a.CmpImm32(result, 0)
+	f.a.Cset32(result, condNE)
+	if oa && resultVec != sa {
+		f.releaseF(sa)
+	}
+	if ob && resultVec != sb {
+		f.releaseF(sb)
+	}
+	if resultVec != sa && resultVec != sb {
+		f.releaseF(resultVec)
+	} else if resultVec == sa && oa {
+		f.releaseF(sa)
+	} else if resultVec == sb && ob {
+		f.releaseF(sb)
+	}
+	f.pushReg(result, mtI32)
+	f.stats.peep("simd-and-anytrue")
+	return true
+}
+
+// tryV128NotAnd selects `a & ~b` from adjacent v128.not + v128.and and lowers
+// it to NEON BIC. Sources may alias the chosen destination: the three-register
+// instruction reads both before writing it.
+func (f *fn) tryV128NotAnd(r *wasm.Reader) bool {
+	if !simdSuperoptEnabled || !matchNextSIMDOp(r, 78) {
+		return false
+	}
+	b := f.popValue()
+	a := f.popValue()
+	sa, oa := f.operandRegV128(a)
+	f.fpinned = f.fpinned.add(sa)
+	sb, ob := f.operandRegV128(b)
+	f.fpinned = f.fpinned.remove(sa)
+	dst := sa
+	if !oa {
+		if ob {
+			dst = sb
+		} else {
+			dst = f.allocFReg(maskOf(sa, sb))
+		}
+	}
+	f.a.NeonAndn16b(dst, sa, sb)
+	if oa && dst != sa {
+		f.releaseF(sa)
+	}
+	if ob && dst != sb {
+		f.releaseF(sb)
+	}
+	f.pushVReg(dst)
+	f.stats.peep("simd-not-and")
+	return true
+}
+
 func (f *fn) v128AllTrue(cmpEqZero func(dst, s1, s2 Reg)) {
 	v := f.popValue()
 	x := f.materializeV128(v)
@@ -2331,8 +2424,14 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 193: // i64x2.neg
 		return f.v128IntegerNeg(r, f.a.NeonNegD)
 	case 77: // v128.not
+		if f.tryV128NotAnd(r) {
+			break
+		}
 		return f.v128UnaryNot(r)
 	case 78: // v128.and
+		if f.tryV128AndAnyTrue(r) {
+			break
+		}
 		return f.v128Bin(r, f.a.NeonAnd16b)
 	case 79: // v128.andnot (a &^ b)
 		// NEON BIC Vd.16b, Vn.16b, Vm.16b computes Vn & ~Vm directly, so Wasm

@@ -83,6 +83,11 @@ execution path. Railshot is the one and only backend.** The prior framing
   deferred tree. It carries no facts across nodes or blocks. The profitable cases
   remain narrow/shift mask elision (P2) and direct `(word & laneMask) == 0` flag
   lowering; boolean-ness remains subsumed by `stFlags` (P3).
+- **Persistent SIMD expression trees** — rejected. Exact adjacent SIMD superops use
+  bounded bytecode lookahead and immediately select a native lowering; near misses
+  restore the reader. This keeps SIMD eager, allocation-free, and outside the scalar
+  valent-tree model while still admitting offline-synthesized `VPTEST`/`BIC`/`VPANDN`
+  patterns. `WAGO_NO_SIMD_SUPEROPT=1` remains the differential oracle.
 - **Tiny unroll (const trip ≤4)** — layout-luck risk (±20% swings) exceeds the
   expected win; not now.
 - **Induction/accumulator pattern recognition + extra hint scoring terms** —
