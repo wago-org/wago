@@ -12,7 +12,7 @@ import (
 	"github.com/wago-org/wago/testutil/wasmtest"
 )
 
-func mod1(t *testing.T, params, results []wasm.ValType, funcBody []byte) *wasm.Module {
+func mod1(t testing.TB, params, results []wasm.ValType, funcBody []byte) *wasm.Module {
 	t.Helper()
 	entry := append(wasmtest.ULEB(uint32(len(funcBody))), funcBody...)
 	b := wasmtest.Module(

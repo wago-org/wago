@@ -236,11 +236,29 @@ func (a *Asm) shiftCL(digit byte, r Reg, w bool) {
 }
 
 func (a *Asm) TestSelf(r Reg, w bool) {
-	if w || r >= 8 {
-		a.emit(rex(w, r >= 8, false, r >= 8))
+	a.TestReg(r, r, w)
+}
+
+// TestReg emits TEST dst,src. Unlike AND it only updates flags, which lets the
+// compiler fuse packed-word mask predicates without materializing the masked
+// value first.
+func (a *Asm) TestReg(dst, src Reg, w bool) {
+	if w || dst >= 8 || src >= 8 {
+		a.emit(rex(w, src >= 8, false, dst >= 8))
 	}
 	a.emit(0x85)
-	a.emit(0xC0 | ((byte(r) & 7) << 3) | byte(r&7))
+	a.emit(0xC0 | ((byte(src) & 7) << 3) | byte(dst&7))
+}
+
+// TestImm emits TEST r,imm32. In the 64-bit form the immediate is sign-extended,
+// matching the architectural encoding; callers must materialize wider masks.
+func (a *Asm) TestImm(r Reg, imm uint32, w bool) {
+	if w || r >= 8 {
+		a.emit(rex(w, false, false, r >= 8))
+	}
+	a.emit(0xF7)
+	a.emit(0xC0 | byte(r&7)) // /0
+	a.imm32(int32(imm))
 }
 
 type Cond byte

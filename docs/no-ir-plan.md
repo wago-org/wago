@@ -77,9 +77,12 @@ execution path. Railshot is the one and only backend.** The prior framing
 - **General pending `local.set` with owned registers** (VB §5 options a/b) —
   allocator-invisible trees; only the register-free restriction (c) is
   scheduled (P4). Revisit a/b only if (c) measures well but misses cases.
-- **known-bits lattice struct** — rejected as a struct; its two profitable
-  cases ship as plain peepholes: narrow-load mask elision (P2) and boolean-ness
-  (subsumed by `stFlags`, P3).
+- **Persistent/general known-bits lattice state** — rejected. Revisited 2026-07-17
+  after the Souper and packed-byte/SWAR designs: Railshot now has a bounded,
+  allocation-free estimator that recursively visits only its existing depth-capped
+  deferred tree. It carries no facts across nodes or blocks. The profitable cases
+  remain narrow/shift mask elision (P2) and direct `(word & laneMask) == 0` flag
+  lowering; boolean-ness remains subsumed by `stFlags` (P3).
 - **Tiny unroll (const trip ≤4)** — layout-luck risk (±20% swings) exceeds the
   expected win; not now.
 - **Induction/accumulator pattern recognition + extra hint scoring terms** —
@@ -184,8 +187,10 @@ The original P2 design, retained for when a workload justifies it:
 3. **Const-fold pack** (`stack.go` fold table): compares, eqz, clz/ctz/popcnt,
    sign/zero extensions, wrap/extend, reinterpret-of-const; div/rem only when
    divisor is a nonzero const and the `INT_MIN / −1` case is excluded.
-   Plus **narrow-load mask elision**: `load8_u & 0xff` / `load16_u & 0xffff`
-   drop the `and` on the deferred-load node (the useful half of known-bits).
+   Plus **narrow-load/known-zero mask elision** (landed 2026-07-17):
+   `load8_u & 0xff`, `load16_u & 0xffff`, and masks already implied by constant
+   shifts/bitwise trees drop the outer `and`. The same bounded facts support direct
+   `TEST`/`TST` lowering for packed-word mask predicates.
 4. **Same-operand int compare identities**: `x==x→1`, `x!=x→0`, `≤/≥→1`,
    `</>→0` — same-local-no-intervening-set keying as the existing `x-x→0`.
    **Int only** (NaN forbids it for floats).

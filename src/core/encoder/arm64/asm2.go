@@ -113,6 +113,7 @@ func (a *Asm) Csel32(rd, rn, rm Reg, c Cond) {
 func (a *Asm) AndImm32(rd, rn Reg, val uint32) bool { return a.logicalImm32(0x12000000, rd, rn, val) }
 func (a *Asm) OrrImm32(rd, rn Reg, val uint32) bool { return a.logicalImm32(0x32000000, rd, rn, val) }
 func (a *Asm) EorImm32(rd, rn Reg, val uint32) bool { return a.logicalImm32(0x52000000, rd, rn, val) }
+func (a *Asm) TstImm32(rn Reg, val uint32) bool     { return a.logicalImm32(0x7200001F, ZR, rn, val) }
 
 func (a *Asm) logicalImm32(base uint32, rd, rn Reg, val uint32) bool {
 	n, immr, imms, ok := encodeLogicalImm(uint64(val), false)

@@ -59,6 +59,13 @@ condense engine) with an on-the-fly whole-register-file allocator. Landed, in ro
   identities (`x==x`/`x<=x`/`x>=x→1`, `x!=x`/`x<x`/`x>x→0`) alongside the existing
   `x-x`/`x&x` ones. All at `pushBinOp`/`pushUnOp`, fire only on compile-time-known inputs
   (`const-fold` / `same-operand` counters), so no node/SETcc is emitted (`fold.go`).
+- **Bounded bit facts + packed-word mask tests** — a Souper-inspired, allocation-free
+  estimator walks only the existing depth-capped deferred tree. It removes masks whose
+  cleared/set bits are already proved (`known-bits`), including unsigned narrow-load and
+  constant-shift masks. Lamport-style `(word & laneMask) == 0` predicates lower directly
+  to `TEST` (amd64) or `TST` (arm64), avoiding the temporary masked value
+  (`swar-mask-test`). There is no solver, cache, persistent IR, or unbounded analysis on
+  the compile path; `WAGO_NO_KNOWN_BITS=1` is the A/B oracle.
 - **Scaled-index LEA fusion** — `add(x, shl(y, k≤3))` → `lea [x + y*2ᵏ]` (the
   AssemblyScript array-address shape).
 - **`br_table` jump tables** (old P7) — n≥5 dispatches through a RIP-relative offset
@@ -212,7 +219,7 @@ flat/GC-bound; no further wago-side lever identified.
 Codegen, cheap-and-safe first: **alias-aware pending loads** (any store currently
 flushes ALL deferred loads — keep same-base provably-disjoint ones, plan P2.1) ·
 **pure-tree `drop` discard** (P2.2) · ~~**const-fold pack** — compares/eqz/clz/ctz/
-popcnt/extensions (P2.3)~~ ✅ DONE (narrow-load mask elision still open) · ~~**same-operand
+popcnt/extensions (P2.3)~~ ✅ DONE (including bounded narrow-load/shift mask elision) · ~~**same-operand
 int compare identities** (P2.4)~~ ✅ DONE. Then: **limited multi-result register ABI** (RAX,RDX / XMM0,XMM1 —
 unblocks multi-value, with `regMerge2`, P5.3) · **straight-line bounds facts** +
 **hybrid loop precheck** (explicit mode; the TinyGo story, P6.1–.2) · **store
@@ -224,7 +231,7 @@ caches** behind a table epoch (P8.6) · **`.wago` cache keys + CLI**
 (compile/run/inspect, P8.7) · **call-surviving valent trees** and a **tiny bytecode
 inliner** (both decision-gated on R0 counters, P5.4–.5) · **fused validate+compile**
 (premise re-measured post-#96, P7). Rejected (with reasons — plan §1.3): `stAddrExpr`,
-known-bits lattice, general pending sets with owned regs, tiny unroll, SIMD copy/fill
+persistent/general known-bits state, general pending sets with owned regs, tiny unroll, SIMD copy/fill
 now, `memory.size` micro-opt.
 
 ### Greenfield (not in WARP either)

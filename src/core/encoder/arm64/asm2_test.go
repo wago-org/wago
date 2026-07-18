@@ -46,6 +46,13 @@ func TestPortIntEncodings(t *testing.T) {
 		{"smull x0,w1,w2", func(a *Asm) { a.Smull(X0, X1, X2) }, 0x9b227c20},
 		{"umull x0,w1,w2", func(a *Asm) { a.Umull(X0, X1, X2) }, 0x9ba27c20},
 		{"csel w0,w1,w2,eq", func(a *Asm) { a.Csel32(X0, X1, X2, CondEQ) }, 0x1a820020},
+		{"tst x1,x2", func(a *Asm) { a.TstReg(X1, X2, false) }, 0xea02003f},
+		{"tst w1,w2", func(a *Asm) { a.TstReg(X1, X2, true) }, 0x6a02003f},
+		{"tst x1,#0x8080808080808080", func(a *Asm) {
+			if !a.TstImm64(X1, 0x8080808080808080) {
+				t.Fatal("packed high-bit mask not encodable")
+			}
+		}, 0xf201c03f},
 		// 32-bit logical immediate (and w0,w1,#0xff)
 		{"and w0,w1,#0xff", func(a *Asm) {
 			if !a.AndImm32(X0, X1, 0xff) {

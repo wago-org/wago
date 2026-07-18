@@ -325,6 +325,10 @@ func (f *fn) pushBinOp(op wOp, typ machineType) {
 	// One-constant algebraic simplification + strength reduction (P4): identities
 	// collapse without emitting a node; expensive ops rewrite to cheaper ones.
 	if right.kind == ekValue && right.st.kind == stConst {
+		if f.simplifyKnownBitsRHS(op, typ, left, right) {
+			f.stats.peep("known-bits")
+			return
+		}
 		if op2, done := f.simplifyConstRHS(op, typ, left, right); done {
 			f.stats.peep("alu-identity")
 			return

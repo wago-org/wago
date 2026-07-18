@@ -464,6 +464,18 @@ func (f *fn) condenseCompare(node *elem, dest Reg) Reg {
 	if node.typ.isFloat() { // deferred ordered float compare materialized as a value
 		return f.condenseFCompareValue(node, dest)
 	}
+	if cc, ok := f.tryMaskedEqzToFlags(node); ok {
+		result := dest
+		if result == regNone {
+			result = f.allocReg(0)
+		}
+		f.stats.peep("compare-setcc")
+		f.a.SetccReg(cc, result)
+		f.occupy(node, result)
+		node.st.typ = mtI32
+		node.op = opNone
+		return result
+	}
 	w := node.typ.is64()
 	left := node.arg0
 
