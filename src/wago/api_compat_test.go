@@ -308,7 +308,7 @@ func TestSIMDHostDetectionMatchesArchitectureBaseline(t *testing.T) {
 	if runtime.GOARCH == "arm64" && !got {
 		t.Fatal("arm64 baseline Advanced SIMD was rejected")
 	}
-	if runtime.GOARCH != "arm64" && runtime.GOARCH != "amd64" && got {
+	if runtime.GOARCH != "arm64" && runtime.GOARCH != "amd64" && runtime.GOARCH != "riscv64" && got {
 		t.Fatalf("unsupported architecture %s admitted SIMD", runtime.GOARCH)
 	}
 }

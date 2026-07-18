@@ -27,18 +27,32 @@ branch, instruction-cache, alignment, and vector constraints explicit.
 - Cooperative context cancellation polls at function entries and loop headers;
   native and synchronous host-call loops are interrupted under QEMU and the trap
   cell remains reusable after cancellation.
-- RVV/SIMD, full Release 2 execution including SIMD, and native-hardware
-  benchmarking remain deferred. SIMD modules are rejected explicitly before
-  scalar code generation.
+- RVV 1.0 host capability detection is implemented using Linux
+  `riscv_hwprobe` plus the process `AT_HWCAP`; the RVV encoder foundation is
+  instruction-tested and executes under QEMU. Complete SIMD lowering, full
+  Release 2 execution including SIMD, and native-hardware benchmarking remain
+  deferred. SIMD modules are still rejected before scalar code generation.
 
 ## Target baseline
 
 The scalar baseline is RV64G as exposed by Go's `linux/riscv64` target: RV64I
 plus M, A, F, D, Zicsr, and Zifencei. Generated scalar code does not require the
 compressed extension. The current backend always omits SIMD from
-`SupportedFeatures` and rejects SIMD modules. A future RVV backend may admit SIMD
-only after detecting the V extension and a VLEN of at least 128 bits; it must not
-silently scalarize an incomplete subset.
+`SupportedFeatures` and rejects SIMD modules until lowering is complete. Host
+capability detection requires both the ratified V 1.0 bit from
+`riscv_hwprobe` and the V bit in the process `AT_HWCAP`. The former avoids
+mistaking vendor RVV 0.7.1 HWCAPs for the incompatible ratified encoding; the
+latter respects Linux's process vector-state policy. The single-letter V 1.0
+extension depends on `Zvl128b` and `Zve64d`, so a successful probe already
+establishes VLEN >= 128 and the required vector floating-point widths. Missing,
+unknown, or contradictory capability sources conservatively disable SIMD. The
+backend must not silently scalarize an incomplete subset.
+
+The hardware probe uses a nil CPU set, asking Linux for the logical intersection
+across all online CPUs. This keeps generated RVV safe when Go moves execution
+between OS threads and harts. Do not replace it with `/proc/cpuinfo` parsing or
+HWCAP-only admission. HWCAP by itself is ambiguous on older vendor kernels, and
+`riscv_hwprobe` by itself does not express the process's vector-state permission.
 
 Linux is the first and only RISC-V operating-system target in this port. Darwin,
 Windows, riscv32, big-endian RISC-V, and bare-metal execution are out of scope.

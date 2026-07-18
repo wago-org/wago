@@ -323,10 +323,10 @@ func (e *UnsupportedFeatureError) Error() string {
 func (c *RuntimeConfig) frontendFeatures() frontend.Features {
 	simd := c.features.IsEnabled(CoreFeatureSIMD)
 	if simd && !hostSupportsSIMD() {
-		// Do not admit SIMD modules on hosts that cannot execute the backend's AVX
-		// and SSSE3/SSE4.1 instruction sequences: reject at compile time instead of
-		// risking SIGILL at runtime. Non-SIMD modules still compile with the default
-		// feature set on such hosts.
+		// Do not admit SIMD modules unless both the architecture backend and the
+		// host's required instruction/OS-state capabilities are available: reject
+		// at compile time instead of risking SIGILL at runtime. Non-SIMD modules
+		// still compile with the default feature set on such hosts.
 		simd = false
 	}
 	return frontend.Features{
