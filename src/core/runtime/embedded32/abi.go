@@ -7,13 +7,25 @@ import "encoding/binary"
 const (
 	HelperF64Offset  = 0
 	HelperSIMDOffset = 4
-	HelperTableBytes = 8
+	HelperI64Offset  = 8
+	HelperTableBytes = 12
 )
 
 // Stable F64Frame byte offsets used by generated code. F64Frame intentionally
 // contains an explicit three-byte pad after Op so these are identical on 32- and
 // 64-bit Go/TinyGo hosts.
 const (
+	I64FrameOpOffset     = 0
+	I64FrameALoOffset    = 4
+	I64FrameAHiOffset    = 8
+	I64FrameBLoOffset    = 12
+	I64FrameBHiOffset    = 16
+	I64FrameOutLoOffset  = 20
+	I64FrameOutHiOffset  = 24
+	I64FrameI32OutOffset = 28
+	I64FrameTrapOffset   = 32
+	I64FrameBytes        = 36
+
 	F64FrameOpOffset    = 0
 	F64FrameALoOffset   = 4
 	F64FrameAHiOffset   = 8

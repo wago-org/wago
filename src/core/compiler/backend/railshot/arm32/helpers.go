@@ -21,6 +21,13 @@ func CompileF64HelperThunk(op embedded32.F64Op) ([]byte, error) {
 	return compileHelperThunk(uint32(op), embedded32.HelperF64Offset), nil
 }
 
+func CompileI64HelperThunk(op embedded32.I64Op) ([]byte, error) {
+	if !embedded32.I64HelperValid(op) {
+		return nil, fmt.Errorf("arm32: invalid i64 helper opcode %d", op)
+	}
+	return compileHelperThunk(uint32(op), embedded32.HelperI64Offset), nil
+}
+
 func CompileSIMDHelperThunk(op uint32) ([]byte, error) {
 	if !embedded32.SIMDHelperValid(op) {
 		return nil, fmt.Errorf("arm32: invalid SIMD helper opcode %d", op)

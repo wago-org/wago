@@ -141,10 +141,14 @@ The architecture-neutral `src/core/runtime/embedded32` helper ABI now adds:
   size or register pressure.
 
 The helper ABI uses fixed 32-bit layouts independent of host pointer alignment.
-Both backends now emit 16-byte operation thunks that write the operation id,
-load a function from a two-slot helper table, and tail-call it without disturbing
-RA/LR. QEMU execution tests exercise both the scalar-f64 and SIMD table slots on
-both architectures. The helper package builds and tests with standard Go and
+Its three-slot table now contains scalar-f64, SIMD, and scalar-i64 entries. The
+i64 frame covers shifts, rotates, bit counts, `eqz`, every signed/unsigned
+comparison, trapping division/remainder, i32 extension, and all i64
+sign-extension operations with complete pair results and canonical traps. Both
+backends emit 16-byte operation thunks that write the operation id, load the
+selected helper, and tail-call it without disturbing RA/LR. QEMU execution tests
+exercise target helper dispatch, while architecture-neutral tests cover the full
+i64 semantic frame. The helper package builds and tests with standard Go and
 TinyGo.
 
 Both compiler packages now also consume real Wasm function bodies for direct

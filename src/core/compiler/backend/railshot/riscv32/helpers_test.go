@@ -16,8 +16,14 @@ func TestHelperThunkValidation(t *testing.T) {
 	if code, err := CompileF64HelperThunk(embedded32.F64Add); err != nil || len(code) != 16 {
 		t.Fatalf("f64 thunk len=%d err=%v", len(code), err)
 	}
+	if code, err := CompileI64HelperThunk(embedded32.I64Rotl); err != nil || len(code) != 16 {
+		t.Fatalf("i64 thunk len=%d err=%v", len(code), err)
+	}
 	if code, err := CompileSIMDHelperThunk(174); err != nil || len(code) != 16 {
 		t.Fatalf("SIMD thunk len=%d err=%v", len(code), err)
+	}
+	if _, err := CompileI64HelperThunk(255); err == nil {
+		t.Fatal("invalid i64 op accepted")
 	}
 	if _, err := CompileF64HelperThunk(255); err == nil {
 		t.Fatal("invalid f64 op accepted")

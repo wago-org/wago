@@ -6,8 +6,32 @@ import (
 )
 
 func TestStableHelperFrameLayouts(t *testing.T) {
-	var f F64Frame
+	var i I64Frame
 	checks := []struct {
+		name      string
+		got, want uintptr
+	}{
+		{"i64.op", unsafe.Offsetof(i.Op), I64FrameOpOffset},
+		{"i64.aLo", unsafe.Offsetof(i.ALo), I64FrameALoOffset},
+		{"i64.aHi", unsafe.Offsetof(i.AHi), I64FrameAHiOffset},
+		{"i64.bLo", unsafe.Offsetof(i.BLo), I64FrameBLoOffset},
+		{"i64.bHi", unsafe.Offsetof(i.BHi), I64FrameBHiOffset},
+		{"i64.outLo", unsafe.Offsetof(i.OutLo), I64FrameOutLoOffset},
+		{"i64.outHi", unsafe.Offsetof(i.OutHi), I64FrameOutHiOffset},
+		{"i64.i32Out", unsafe.Offsetof(i.I32Out), I64FrameI32OutOffset},
+		{"i64.trap", unsafe.Offsetof(i.Trap), I64FrameTrapOffset},
+	}
+	for _, c := range checks {
+		if c.got != c.want {
+			t.Errorf("%s offset=%d want=%d", c.name, c.got, c.want)
+		}
+	}
+	if got := unsafe.Sizeof(i); got != I64FrameBytes {
+		t.Fatalf("I64Frame size=%d want=%d", got, I64FrameBytes)
+	}
+
+	var f F64Frame
+	checks = []struct {
 		name      string
 		got, want uintptr
 	}{
