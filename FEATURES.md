@@ -55,7 +55,7 @@ Later proposals and engine/platform capabilities beyond the MVP.
 | Threads & atomics | ✓ | ⬜ planned |
 | Synchronous host-import results | ✓ | ✅ done |
 | Cooperative invocation cancellation | ✓ | 🚧 partial — ARM64 `Instance.Call(ctx, ...)` interrupts native execution at function entries and loop headers; amd64 currently honors cancellation before entry only. |
-| Architectures beyond linux/amd64 (arm64, riscv64, macOS, Windows) | ✓ | 🚧 partial — Linux/arm64 and Darwin/arm64 have native CI for the encoder, backend, runtime/API, explicit and signal-backed guard-page bounds, and corpus correctness. Linux/riscv64 has a native RV64G scalar encoder, no-cgo runtime, explicit-bounds railshot backend, public API coverage, exact scalar corpus parity with amd64, and a zero-failure curated WebAssembly 1.0 suite under QEMU. RV64 guard-page handling, RVV/SIMD, native-hardware validation, and Windows remain planned. |
+| Architectures beyond linux/amd64 (arm64, riscv64, macOS, Windows) | ✓ | 🚧 partial — Linux/arm64 and Darwin/arm64 have native CI for the encoder, backend, runtime/API, explicit and signal-backed guard-page bounds, and corpus correctness. Linux/riscv64 has a native RV64G scalar encoder, no-cgo runtime, explicit and signal-backed guard-page bounds, public API coverage, exact scalar corpus parity with amd64, and a zero-failure curated WebAssembly 1.0 suite under QEMU. RVV/SIMD, native-hardware validation, and Windows remain planned. |
 | Multi-memory | ✗ | ❌ not planned |
 | Exception handling proposal | ✗ | ❌ not planned |
 | Garbage collection proposal (wasm GC) | ✗ | ❌ not planned |

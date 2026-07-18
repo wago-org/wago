@@ -21,9 +21,12 @@ branch, instruction-cache, alignment, and vector constraints explicit.
   API suite also runs the Release 2 bulk-memory, multi-value, table, funcref,
   externref, imported-memory, and snapshot tests enabled for this target.
 - `GOOS=linux GOARCH=riscv64 CGO_ENABLED=0 go build ./...` succeeds.
-- Guard-page signal handling, RVV/SIMD, full Release 2 execution including SIMD,
-  and native-hardware benchmarking remain deferred. SIMD modules are rejected
-  explicitly before scalar code generation.
+- Linux guard-page execution is integrated under `-tags wago_guardpage`, including
+  lazy page commitment after `memory.grow`, out-of-bounds trap rewriting, imported
+  guarded memory, reservation reuse, and full public-suite execution under QEMU.
+- RVV/SIMD, full Release 2 execution including SIMD, and native-hardware
+  benchmarking remain deferred. SIMD modules are rejected explicitly before
+  scalar code generation.
 
 ## Target baseline
 
@@ -124,10 +127,12 @@ misaligned scalar loads. The lowering may use direct loads only when the access
 is proven naturally aligned or the supported Linux/hardware baseline explicitly
 guarantees the required behavior. Otherwise it must synthesize the access.
 
-Guard-page mode is a later acceptance phase. It requires a Linux/RISC-V signal
-handler that validates the active reservation and pinned `S9`, distinguishes
-in-range lazy growth from true out-of-bounds access, writes the wasm trap, and
-rewrites the saved PC to the native trap exit.
+Guard-page mode is available under `-tags wago_guardpage`. Its Linux/RISC-V
+signal handler validates the active reservation and saved `S9`, distinguishes
+in-range lazy growth from true out-of-bounds access, commits grown pages with
+`mprotect`, writes the wasm trap for genuine OOB faults, and rewrites the saved
+PC to the native trap exit. The handler's `ucontext` offsets are compile-time
+checked against Go mirrors of the Linux/RV64 signal layout.
 
 ## Delivery gates
 
@@ -140,10 +145,12 @@ Completed:
 5. Synchronous host calls, tables, references, bulk memory, and public runtime
    integration.
 6. Scalar corpus compile coverage and end-to-end result parity with amd64.
+7. Linux/RISC-V guard-page execution, lazy growth, reservation reuse, and public
+   runtime tests under QEMU.
 
 Remaining:
 
-7. Linux/RISC-V guard-page execution and signal stress.
 8. Full Release 2 execution after RVV removes the intentional SIMD gap.
 9. RVV lowering plus SIMD/relaxed-SIMD corpus parity.
-10. Native-hardware correctness, code-size, memory, and performance measurements.
+10. Native-hardware guard-page stress, correctness, code-size, memory, and
+    performance measurements.

@@ -79,8 +79,10 @@ in full — 57/57 applicable files, 0 failing assertions (see [SPECTEST.md](SPEC
   explicit-bounds memory, bulk memory, tables, globals, references, and host re-entry
 - [x] Exact public scalar corpus parity with amd64 and a zero-failure curated
   WebAssembly 1.0 suite under QEMU
-- [ ] Linux/RISC-V guard-page signal handling, RVV/SIMD, full Release 2 execution,
-  and native-hardware correctness/performance measurements
+- [x] Linux/RISC-V guard-page signal handling, lazy page commitment after
+  `memory.grow`, reservation reuse, and public guard-mode execution under QEMU
+- [ ] RVV/SIMD, full Release 2 execution, and native-hardware guard-page,
+  correctness, and performance measurements
 
 ## Next (near-term, linux/amd64)
 
@@ -144,7 +146,7 @@ codegen rationale is **[OPTIMIZATIONS.md](OPTIMIZATIONS.md)**. Summary of the tw
   snapshot isolation, complete inspection, cross-link teardown, and the
   zero-skip Release 2 execution corpus are done.
 - 🚧 Additional targets: Linux/arm64, Darwin/arm64, and scalar Linux/riscv64 are
-  native backends; RV64 guard pages/RVV and Windows ABIs remain planned
+  native backends; RV64 RVV/SIMD and Windows ABIs remain planned
 - [ ] wazero-compatible API shim for drop-in migration
 
 ## Non-goals (for now)
