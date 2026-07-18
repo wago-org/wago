@@ -162,6 +162,25 @@ Generated function code shrinks by 16 B for utf-as's matched decoder function
 ARM64 widen microbenchmark is smaller but slower (4.25→4.57 ns); the real utf-as result
 is the acceptance signal because the widened value feeds its surrounding decoder loop.
 
+### Native AMD64 A/B (2026-07-18, Ryzen 7 7800X3D, linux/amd64)
+
+Seven repeated 1 s samples on the remote native AMD64 host. These are raw medians from
+sequential off/on runs; no-hit json-as controls moved +1–3%, so compile changes in that
+range should be treated as noise rather than attributed to the selectors.
+
+| workload | idioms off | idioms on | change | memory |
+|---|---:|---:|---:|---:|
+| utf-as backend compile | 111.46 us | 114.16 us | +2.4% | 179,200 B / 156 allocs (same) |
+| utf-as full compile | 300.34 us | 304.30 us | +1.3% | 229,474 B / 235 allocs (same) |
+| utf-as `convertN(200)` | 185.92 us | 181.43 us | **−2.4%** | 0 B / 0 allocs per call |
+| xjb fixture backend compile | 11.114 us | 11.051 us | −0.6% | 28,144 B / 49 allocs (same) |
+| xjb fixture full compile | 26.138 us | 25.569 us | **−2.2%** | 35,201 B / 107 allocs (same) |
+| xjb exported `mulhi64` | 14.58 ns | 14.01 ns | **−3.9%** | 0 B / 0 allocs per call |
+
+AMD64 generated code shrinks by 32 B in utf-as's matched decoder function
+(4694→4662 B). The xjb multiply-high export shrinks by 112 B (201→89 B), eliminates
+its 72 B frame and spill, and passes native execution, liveness, and near-miss tests.
+
 ---
 
 ## Remaining roadmap (priority-ordered)
