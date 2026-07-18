@@ -66,7 +66,7 @@ func compileModuleFunction(ft *wasm.CompType, locals []wasm.LocalRun, body []byt
 	if homogeneousFunction(ft, locals, wasm.V128, false) {
 		return CompileV128Function(len(ft.Params), body)
 	}
-	return nil, fmt.Errorf("mixed-width function signature or locals are not yet supported")
+	return CompileMixedModuleFunction(ft, locals, body)
 }
 
 func homogeneousFunction(ft *wasm.CompType, locals []wasm.LocalRun, typ wasm.ValType, allowVoid bool) bool {

@@ -92,6 +92,54 @@ func TestCompileModuleLaysOutMixedWidthFunctions(t *testing.T) {
 	runRV32Exit(t, qemu, append(wrapper.B, fn...), 42)
 }
 
+func riscv32GenuinelyMixedModule(t *testing.T) *wasm.Module {
+	t.Helper()
+	body := []byte{3, 1, 0x7d, 1, 0x7c, 1, 0x7b,
+		0x20, 1, 0x42, 5, 0x7c,
+		0x43, 0x2a, 0, 0, 0x80, 0x8b, 0x1a,
+		0x44, 0x2a, 0, 0, 0, 0, 0, 0, 0x80, 0x99, 0x1a,
+		0xfd, 12, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 0xfd, 77, 0x1a,
+		0x0b}
+	code := append(wasmtest.ULEB(uint32(len(body))), body...)
+	m, err := wasm.DecodeModule(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I64}, []wasm.ValType{wasm.I64}))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0})),
+		wasmtest.Section(10, wasmtest.Vec(code)),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+func TestCompileModuleExecutesGenuinelyMixedFunctionUnderQEMU(t *testing.T) {
+	qemu, err := exec.LookPath("qemu-riscv32")
+	if err != nil {
+		t.Skip("qemu-riscv32 not installed")
+	}
+	cm, err := CompileModule(riscv32GenuinelyMixedModule(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cm.Functions[0].ParamSlots != 3 || cm.Functions[0].ResultSlots != 2 {
+		t.Fatalf("metadata=%+v", cm.Functions[0])
+	}
+	meta := cm.Functions[0]
+	fn := cm.Code[meta.Offset : meta.Offset+meta.Size]
+	var a rv.Asm
+	rvMemoryContext(&a)
+	a.Addi(rv.A0, rv.SP, 16)
+	a.MovReg(rv.X23, rv.A0)
+	a.MovImm32(rv.A0, 7)
+	a.MovImm32(rv.A1, 37)
+	a.MovImm32(rv.A2, 0)
+	call := a.Jal(rv.RA)
+	a.MovImm32(rv.A7, 93)
+	a.Ecall()
+	a.PatchJAL21(call, len(a.B))
+	runRV32Exit(t, qemu, append(a.B, fn...), 42)
+}
+
 func TestCompileModuleLaysOutFunctions(t *testing.T) {
 	cm, err := CompileModule(riscv32Module(t))
 	if err != nil {

@@ -239,9 +239,15 @@ cannot mutate its in-bounds low word. Normal mixed-width function lowering still
 needs to route decoded memargs through this registry.
 
 A shared module-layout stage now compiles every local function in the currently
-admitted homogeneous-value subsets into one 16-byte-aligned target image. A
-single module may contain separate i32, i64, integer-only f64, and direct-SWAR
-v128 functions; each individual function must still use one value class. It
+admitted scalar and direct-SWAR subsets into one 16-byte-aligned target image.
+A bounded shared frame planner assigns exact contiguous 32-bit slots to mixed
+parameters, locals, operands, and results, preserving one/two/four-slot values
+atomically. Genuinely mixed functions now execute constants, mixed local
+get/set/tee, complete drops, i32 arithmetic/logic, i64 add/sub/logic, raw-bit
+f32/f64 sign operations, and direct v128 bitwise plus i32x4 add/sub operations.
+The initial internal register ABI carries up to four serialized parameter/result
+slots on Arm and eight on RV32; larger signatures reject pending stack arguments.
+It
 reconstructs validated local declarations, records bounded per-function
 offset/size plus serialized parameter/result slot metadata,
 performs conservative code-arena capacity preflight before code generation, and
@@ -268,9 +274,10 @@ frames, checks each proposed frame against the context's downward-growing native
 stack limit, stages arguments through bounded frame slots, spills live scratch values
 across calls, relocates direct calls module-wide, supports recursion, and checks
 the trap cell after nested returns. Stack exhaustion writes a distinct canonical
-trap before any callee-save state is exposed. Truly mixed-width calls/signatures, indirect
-and imported calls, wide structured control, and broader runtime metadata remain
-outside this module-wide slice.
+trap before any callee-save state is exposed. Mixed-width signatures and locals
+now use exact bounded stack frames with entry cancellation and stack-limit
+checks. Mixed-width direct calls, indirect and imported calls, and wide
+structured control remain outside this module-wide slice.
 
 Module metadata now retains local i32 globals with exact mutability and constant
 initial values. Instantiation initializes bounded caller-provided 32-bit cells,
@@ -288,6 +295,6 @@ and starts active segments dropped. `ContextABI` now publishes a stable array of
 `memory.init` plus idempotent `data.drop` directly against those descriptors.
 
 This is still not public backend admission. Pair/quad control merges and calls
-in the full mixed-width module compiler, globals/tables/references, generated-
+in the mixed-width module compiler, wide globals/tables/references, generated-
 code entry trampolines, firmware linking and transport, and Pico 2 hardware
 qualification remain to be implemented and measured.
