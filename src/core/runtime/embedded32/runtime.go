@@ -227,6 +227,7 @@ type ContextABI struct {
 	CancelCell          uint32
 	HelperTable         uint32
 	LinearMemoryMaximum uint32
+	StackLimit          uint32
 }
 
 const (
@@ -236,7 +237,8 @@ const (
 	ContextCancelCellOffset          = 12
 	ContextHelperTableOffset         = 16
 	ContextLinearMemoryMaximumOffset = 20
-	ContextABISize                   = 24
+	ContextStackLimitOffset          = 24
+	ContextABISize                   = 28
 )
 
 // Runtime composes the fixed embedded resources. The initial profile permits

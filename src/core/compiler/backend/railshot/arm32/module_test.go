@@ -287,11 +287,24 @@ func TestCompileModuleMemoryAndTrapContextUnderQEMU(t *testing.T) {
 		a.PatchCall(call, len(a.B))
 		runARM32Exit(t, qemu, append(a.B, unreachableFn...), int(embedded32.TrapUnreachable))
 	})
+	t.Run("stack-overflow", func(t *testing.T) {
+		var a a32.Asm
+		armMemoryContext(&a)
+		a.Str(a32.SP, a32.SP, 40)
+		armContextArg(&a)
+		a.MovReg(a32.R11, a32.R0)
+		a.MovImm32(a32.R0, 4)
+		call := a.Call()
+		a.Ldr(a32.R0, a32.SP, 32)
+		armExit(&a)
+		a.PatchCall(call, len(a.B))
+		runARM32Exit(t, qemu, append(a.B, fn...), int(embedded32.TrapStackOverflow))
+	})
 	t.Run("canceled-entry", func(t *testing.T) {
 		var a a32.Asm
 		armMemoryContext(&a)
 		a.MovImm32(a32.R12, 1)
-		a.Str(a32.R12, a32.SP, 40)
+		a.Str(a32.R12, a32.SP, 44)
 		armContextArg(&a)
 		a.MovReg(a32.R11, a32.R0)
 		a.MovImm32(a32.R0, 4)

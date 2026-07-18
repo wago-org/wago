@@ -20,6 +20,20 @@ func (c *compiler) emitModulePrologue() {
 	c.frameSize = armModuleFrame
 	c.must(c.a.MovImm32(a32.R12, c.frameSize), "module frame size")
 	c.must(c.a.Sub(a32.SP, a32.SP, a32.R12), "module frame allocate")
+	c.must(c.a.Ldr(a32.R12, armContextReg, embedded32.ContextStackLimitOffset), "module stack limit")
+	c.must(c.a.Cmp(a32.SP, a32.R12), "module stack compare")
+	stackOK := c.a.FarBcond(a32.CondCS)
+	c.must(c.a.MovImm32(a32.R12, c.frameSize), "overflow frame release size")
+	c.must(c.a.Add(a32.SP, a32.SP, a32.R12), "overflow frame release")
+	c.must(c.a.Ldr(a32.R12, armContextReg, embedded32.ContextTrapCellOffset), "overflow trap cell")
+	c.must(c.a.MovImm32(a32.R0, uint32(embedded32.TrapStackOverflow)), "overflow trap code")
+	c.must(c.a.Str(a32.R0, a32.R12, 0), "overflow trap write")
+	c.must(c.a.MovImm32(a32.R0, 0), "overflow result")
+	c.a.Ret()
+	c.a.Align4()
+	if !c.a.PatchFarBranch(stackOK, c.a.Len()) {
+		panic("arm32: module stack branch out of range")
+	}
 	for i, reg := range []a32.Reg{a32.R4, a32.R5, a32.R6, a32.R7, a32.R8, a32.R9, a32.R10} {
 		c.must(c.a.Str(reg, a32.SP, uint16(i*4)), "module callee save")
 	}

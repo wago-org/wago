@@ -292,11 +292,25 @@ func TestCompileModuleMemoryAndTrapContextUnderQEMU(t *testing.T) {
 		a.PatchJAL21(call, len(a.B))
 		runRV32Exit(t, qemu, append(a.B, unreachableFn...), int(embedded32.TrapUnreachable))
 	})
+	t.Run("stack-overflow", func(t *testing.T) {
+		var a rv.Asm
+		rvMemoryContext(&a)
+		a.Sw(rv.SP, rv.SP, 40)
+		a.Addi(rv.A0, rv.SP, 16)
+		a.MovReg(rv.X23, rv.A0)
+		a.MovImm32(rv.A0, 4)
+		call := a.Jal(rv.RA)
+		a.Lw(rv.A0, rv.SP, 32)
+		a.MovImm32(rv.A7, 93)
+		a.Ecall()
+		a.PatchJAL21(call, len(a.B))
+		runRV32Exit(t, qemu, append(a.B, fn...), int(embedded32.TrapStackOverflow))
+	})
 	t.Run("canceled-entry", func(t *testing.T) {
 		var a rv.Asm
 		rvMemoryContext(&a)
 		a.MovImm32(rv.T1, 1)
-		a.Sw(rv.T1, rv.SP, 40)
+		a.Sw(rv.T1, rv.SP, 44)
 		a.Addi(rv.A0, rv.SP, 16)
 		a.MovReg(rv.X23, rv.A0)
 		a.MovImm32(rv.A0, 4)

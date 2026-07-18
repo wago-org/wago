@@ -21,6 +21,17 @@ var rvModuleSavedRegs = []rv.Reg{rv.X8, rv.X9, rv.X18, rv.X19, rv.X20, rv.X21, r
 func (c *compiler) emitModulePrologue() {
 	c.frameSize = rvModuleFrame
 	c.a.Addi(rv.SP, rv.SP, -c.frameSize)
+	c.a.Lw(rv.T6, rvContextReg, embedded32.ContextStackLimitOffset)
+	stackOK := c.a.FarBcond(rv.SP, rv.T6, rv.CondGEU, branchScratch)
+	c.a.Addi(rv.SP, rv.SP, c.frameSize)
+	c.a.Lw(rv.T6, rvContextReg, embedded32.ContextTrapCellOffset)
+	c.a.MovImm32(rv.T5, uint32(embedded32.TrapStackOverflow))
+	c.a.Sw(rv.T5, rv.T6, 0)
+	c.a.MovImm32(rv.A0, 0)
+	c.a.Ret()
+	if !c.a.PatchFarBranch(stackOK, c.a.Len()) {
+		panic("riscv32: module stack branch out of range")
+	}
 	for i, reg := range rvModuleSavedRegs {
 		c.a.Sw(reg, rv.SP, int32(i*4))
 	}

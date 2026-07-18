@@ -16,11 +16,12 @@ func rvMemoryContext(a *rv.Asm) {
 	a.Sw(rv.T1, rv.SP, 20)
 	a.Addi(rv.T1, rv.SP, 32)
 	a.Sw(rv.T1, rv.SP, 24)
-	a.Addi(rv.T1, rv.SP, 40)
+	a.Addi(rv.T1, rv.SP, 44)
 	a.Sw(rv.T1, rv.SP, 28)
 	a.MovImm32(rv.T1, 0)
 	a.Sw(rv.T1, rv.SP, 32)
 	a.Sw(rv.T1, rv.SP, 40)
+	a.Sw(rv.T1, rv.SP, 44)
 	a.MovImm32(rv.T1, 16)
 	a.Sw(rv.T1, rv.SP, 36)
 }
