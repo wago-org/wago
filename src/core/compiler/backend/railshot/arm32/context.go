@@ -302,6 +302,124 @@ func (c *compiler) memorySize() {
 	c.push(operand{reg: dst})
 }
 
+func (c *compiler) memoryCopy() error {
+	n := c.materialize(c.pop())
+	src := c.materialize(c.pop())
+	dst := c.materialize(c.pop())
+	tmp := c.alloc()
+	c.must(c.a.Ldr(tmp, armContextReg, embedded32.ContextLinearMemoryLengthOffset), "memory.copy length")
+	c.must(c.a.Cmp(tmp, n), "memory.copy size compare")
+	traps := []int{c.a.FarBcond(a32.CondCC)}
+	c.must(c.a.Sub(tmp, tmp, n), "memory.copy bound")
+	c.must(c.a.Cmp(tmp, dst), "memory.copy destination compare")
+	traps = append(traps, c.a.FarBcond(a32.CondCC))
+	c.must(c.a.Cmp(tmp, src), "memory.copy source compare")
+	traps = append(traps, c.a.FarBcond(a32.CondCC))
+	c.must(c.a.Ldr(tmp, armContextReg, embedded32.ContextLinearMemoryBaseOffset), "memory.copy base")
+	c.must(c.a.Add(dst, dst, tmp), "memory.copy destination")
+	c.must(c.a.Add(src, src, tmp), "memory.copy source")
+	c.must(c.a.Cmp(dst, src), "memory.copy direction")
+	forward := c.a.FarBcond(a32.CondLS)
+	c.must(c.a.Add(dst, dst, n), "memory.copy backward destination")
+	c.must(c.a.Add(src, src, n), "memory.copy backward source")
+	backLoop := c.a.Len()
+	c.must(c.a.Cmp(n, a32.R12), "memory.copy backward done")
+	backDone := c.a.FarBcond(a32.CondEQ)
+	c.must(c.a.MovImm32(tmp, 1), "memory.copy step")
+	c.must(c.a.Sub(dst, dst, tmp), "memory.copy destination decrement")
+	c.must(c.a.Sub(src, src, tmp), "memory.copy source decrement")
+	c.must(c.a.Ldrb(a32.R12, src, 0), "memory.copy backward load")
+	c.must(c.a.Strb(a32.R12, dst, 0), "memory.copy backward store")
+	c.must(c.a.Sub(n, n, tmp), "memory.copy backward count")
+	c.must(c.a.MovImm32(a32.R12, 0), "memory.copy restore zero")
+	back := c.a.Branch()
+	if !c.a.PatchBranch(back, backLoop) {
+		return fmt.Errorf("arm32: memory.copy backward loop out of range")
+	}
+	forwardTarget := c.a.Len()
+	if !c.a.PatchFarBranch(forward, forwardTarget) {
+		return fmt.Errorf("arm32: memory.copy direction branch out of range")
+	}
+	forwardLoop := c.a.Len()
+	c.must(c.a.Cmp(n, a32.R12), "memory.copy forward done")
+	forwardDone := c.a.FarBcond(a32.CondEQ)
+	c.must(c.a.Ldrb(a32.R12, src, 0), "memory.copy forward load")
+	c.must(c.a.Strb(a32.R12, dst, 0), "memory.copy forward store")
+	c.must(c.a.MovImm32(tmp, 1), "memory.copy step")
+	c.must(c.a.Add(dst, dst, tmp), "memory.copy destination advance")
+	c.must(c.a.Add(src, src, tmp), "memory.copy source advance")
+	c.must(c.a.Sub(n, n, tmp), "memory.copy forward count")
+	c.must(c.a.MovImm32(a32.R12, 0), "memory.copy restore zero")
+	forwardBack := c.a.Branch()
+	if !c.a.PatchBranch(forwardBack, forwardLoop) {
+		return fmt.Errorf("arm32: memory.copy forward loop out of range")
+	}
+	finishCopy := c.a.Len()
+	if !c.a.PatchFarBranch(backDone, finishCopy) || !c.a.PatchFarBranch(forwardDone, finishCopy) {
+		return fmt.Errorf("arm32: memory.copy done branch out of range")
+	}
+	done := c.a.Branch()
+	trap := c.a.Len()
+	c.emitContextTrap(embedded32.TrapMemoryOutOfBounds)
+	finish := c.a.Len()
+	if !c.a.PatchBranch(done, finish) {
+		return fmt.Errorf("arm32: memory.copy success branch out of range")
+	}
+	for _, at := range traps {
+		if !c.a.PatchFarBranch(at, trap) {
+			return fmt.Errorf("arm32: memory.copy trap branch out of range")
+		}
+	}
+	c.release(n)
+	c.release(src)
+	c.release(dst)
+	c.release(tmp)
+	return nil
+}
+
+func (c *compiler) memoryFill() error {
+	n := c.materialize(c.pop())
+	value := c.materialize(c.pop())
+	dst := c.materialize(c.pop())
+	tmp := c.alloc()
+	c.must(c.a.Ldr(tmp, armContextReg, embedded32.ContextLinearMemoryLengthOffset), "memory.fill length")
+	c.must(c.a.Cmp(tmp, n), "memory.fill size compare")
+	traps := []int{c.a.FarBcond(a32.CondCC)}
+	c.must(c.a.Sub(tmp, tmp, n), "memory.fill bound")
+	c.must(c.a.Cmp(tmp, dst), "memory.fill destination compare")
+	traps = append(traps, c.a.FarBcond(a32.CondCC))
+	c.must(c.a.Ldr(tmp, armContextReg, embedded32.ContextLinearMemoryBaseOffset), "memory.fill base")
+	c.must(c.a.Add(dst, dst, tmp), "memory.fill destination")
+	loop := c.a.Len()
+	c.must(c.a.Cmp(n, a32.R12), "memory.fill done")
+	filled := c.a.FarBcond(a32.CondEQ)
+	c.must(c.a.Strb(value, dst, 0), "memory.fill store")
+	c.must(c.a.MovImm32(tmp, 1), "memory.fill step")
+	c.must(c.a.Add(dst, dst, tmp), "memory.fill advance")
+	c.must(c.a.Sub(n, n, tmp), "memory.fill count")
+	back := c.a.Branch()
+	if !c.a.PatchBranch(back, loop) || !c.a.PatchFarBranch(filled, c.a.Len()) {
+		return fmt.Errorf("arm32: memory.fill loop out of range")
+	}
+	done := c.a.Branch()
+	trap := c.a.Len()
+	c.emitContextTrap(embedded32.TrapMemoryOutOfBounds)
+	finish := c.a.Len()
+	if !c.a.PatchBranch(done, finish) {
+		return fmt.Errorf("arm32: memory.fill success branch out of range")
+	}
+	for _, at := range traps {
+		if !c.a.PatchFarBranch(at, trap) {
+			return fmt.Errorf("arm32: memory.fill trap branch out of range")
+		}
+	}
+	c.release(n)
+	c.release(value)
+	c.release(dst)
+	c.release(tmp)
+	return nil
+}
+
 func (c *compiler) memoryGrow() error {
 	delta := c.materialize(c.pop())
 	old, current, limit := c.alloc(), c.alloc(), c.alloc()

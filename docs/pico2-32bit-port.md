@@ -276,10 +276,12 @@ functions execute `global.get`/`global.set` with immutable-set rejection.
 
 The embedded runtime now also provides complete preflighted `memory.copy`,
 `memory.fill`, passive `memory.init`, and idempotent `data.drop` semantics.
+Normal i32 module code directly lowers overlap-safe `memory.copy` and
+`memory.fill` with complete source/destination preflight before byte loops.
 Module layout retains active/passive segments in original index order;
 instantiation preflights every active destination transactionally before copying
-and starts active segments dropped. Generated `0xfc` dispatch still needs to be
-wired to this bounded runtime path.
+and starts active segments dropped. Generated `memory.init`/`data.drop` dispatch
+still needs a target-visible data-store handle in `ContextABI`.
 
 This is still not public backend admission. Pair/quad control merges and calls
 in the full mixed-width module compiler, globals/tables/references, generated-

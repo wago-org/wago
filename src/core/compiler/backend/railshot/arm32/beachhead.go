@@ -310,6 +310,35 @@ func compileBeachhead(m *wasm.Module, funcIdx, numParams int, body []byte, conte
 			}
 		case 0xc0, 0xc1:
 			c.signExtend(op)
+		case 0xfc:
+			if !c.context {
+				return nil, fmt.Errorf("arm32 beachhead bulk memory requires module context")
+			}
+			sub, err := r.U32()
+			if err != nil {
+				return nil, err
+			}
+			switch sub {
+			case 10:
+				dstMem, err1 := r.Byte()
+				srcMem, err2 := r.Byte()
+				if err1 != nil || err2 != nil || dstMem != 0 || srcMem != 0 {
+					return nil, fmt.Errorf("arm32: invalid memory.copy immediate")
+				}
+				if err := c.memoryCopy(); err != nil {
+					return nil, err
+				}
+			case 11:
+				mem, err := r.Byte()
+				if err != nil || mem != 0 {
+					return nil, fmt.Errorf("arm32: invalid memory.fill immediate")
+				}
+				if err := c.memoryFill(); err != nil {
+					return nil, err
+				}
+			default:
+				return nil, fmt.Errorf("arm32: unsupported bulk-memory subopcode %d", sub)
+			}
 		default:
 			return nil, fmt.Errorf("arm32 beachhead unsupported opcode %#x", op)
 		}

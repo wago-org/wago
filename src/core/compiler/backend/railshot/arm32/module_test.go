@@ -104,6 +104,46 @@ func TestCompileModuleLaysOutFunctions(t *testing.T) {
 	}
 }
 
+func arm32BulkModule(t *testing.T) *wasm.Module {
+	t.Helper()
+	body := []byte{
+		0x41, 0, 0x41, 42, 0x41, 4, 0xfc, 11, 0,
+		0x41, 4, 0x41, 0, 0x41, 4, 0xfc, 10, 0, 0,
+		0x41, 7, 0x2d, 0, 0, 0x0b,
+	}
+	m, err := wasm.DecodeModule(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0})),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0, 1})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+func TestCompileModuleBulkMemoryUnderQEMU(t *testing.T) {
+	qemu, err := exec.LookPath("qemu-arm")
+	if err != nil {
+		t.Skip("qemu-arm not installed")
+	}
+	cm, err := CompileModule(arm32BulkModule(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	meta := cm.Functions[0]
+	fn := cm.Code[meta.Offset : meta.Offset+meta.Size]
+	var a a32.Asm
+	armMemoryContext(&a)
+	armContextArg(&a)
+	a.MovReg(a32.R11, a32.R0)
+	call := a.Call()
+	armExit(&a)
+	a.PatchCall(call, len(a.B))
+	runARM32Exit(t, qemu, append(a.B, fn...), 42)
+}
+
 func arm32GlobalModule(t *testing.T) *wasm.Module {
 	t.Helper()
 	global := wasmtest.GlobalEntry(wasm.I32, true, []byte{0x41, 7, 0x0b})

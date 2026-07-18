@@ -312,6 +312,110 @@ func (c *compiler) memorySize() {
 	c.push(operand{reg: dst})
 }
 
+func (c *compiler) memoryCopy() error {
+	n := c.materialize(c.pop())
+	src := c.materialize(c.pop())
+	dst := c.materialize(c.pop())
+	tmp := c.alloc()
+	c.a.Lw(tmp, rvContextReg, embedded32.ContextLinearMemoryLengthOffset)
+	traps := []int{c.a.FarBcond(tmp, n, rv.CondLTU, branchScratch)}
+	c.a.Sub(tmp, tmp, n)
+	traps = append(traps, c.a.FarBcond(tmp, dst, rv.CondLTU, branchScratch))
+	traps = append(traps, c.a.FarBcond(tmp, src, rv.CondLTU, branchScratch))
+	c.a.Lw(tmp, rvContextReg, embedded32.ContextLinearMemoryBaseOffset)
+	c.a.Add(dst, dst, tmp)
+	c.a.Add(src, src, tmp)
+	forward := c.a.FarBcond(src, dst, rv.CondGEU, branchScratch)
+	c.a.Add(dst, dst, n)
+	c.a.Add(src, src, n)
+	backLoop := c.a.Len()
+	backDone := c.a.Bcond(n, rv.Zero, rv.CondEQ)
+	c.a.Addi(dst, dst, -1)
+	c.a.Addi(src, src, -1)
+	c.a.Lbu(rv.T5, src, 0)
+	c.a.Sb(rv.T5, dst, 0)
+	c.a.Addi(n, n, -1)
+	back := c.a.Jal(rv.Zero)
+	if !c.a.PatchJAL21(back, backLoop) {
+		return fmt.Errorf("riscv32: memory.copy backward loop out of range")
+	}
+	forwardTarget := c.a.Len()
+	if !c.a.PatchFarBranch(forward, forwardTarget) {
+		return fmt.Errorf("riscv32: memory.copy direction branch out of range")
+	}
+	forwardLoop := c.a.Len()
+	forwardDone := c.a.Bcond(n, rv.Zero, rv.CondEQ)
+	c.a.Lbu(rv.T5, src, 0)
+	c.a.Sb(rv.T5, dst, 0)
+	c.a.Addi(dst, dst, 1)
+	c.a.Addi(src, src, 1)
+	c.a.Addi(n, n, -1)
+	forwardBack := c.a.Jal(rv.Zero)
+	if !c.a.PatchJAL21(forwardBack, forwardLoop) {
+		return fmt.Errorf("riscv32: memory.copy forward loop out of range")
+	}
+	finishCopy := c.a.Len()
+	if !c.a.PatchBranch13(backDone, finishCopy) || !c.a.PatchBranch13(forwardDone, finishCopy) {
+		return fmt.Errorf("riscv32: memory.copy done branch out of range")
+	}
+	done := c.a.FarJump(rv.Zero, branchScratch)
+	trap := c.a.Len()
+	c.emitContextTrap(embedded32.TrapMemoryOutOfBounds)
+	finish := c.a.Len()
+	if !c.a.PatchFarJump(done, finish) {
+		return fmt.Errorf("riscv32: memory.copy success branch out of range")
+	}
+	for _, at := range traps {
+		if !c.a.PatchFarBranch(at, trap) {
+			return fmt.Errorf("riscv32: memory.copy trap branch out of range")
+		}
+	}
+	c.release(n)
+	c.release(src)
+	c.release(dst)
+	c.release(tmp)
+	return nil
+}
+
+func (c *compiler) memoryFill() error {
+	n := c.materialize(c.pop())
+	value := c.materialize(c.pop())
+	dst := c.materialize(c.pop())
+	tmp := c.alloc()
+	c.a.Lw(tmp, rvContextReg, embedded32.ContextLinearMemoryLengthOffset)
+	traps := []int{c.a.FarBcond(tmp, n, rv.CondLTU, branchScratch)}
+	c.a.Sub(tmp, tmp, n)
+	traps = append(traps, c.a.FarBcond(tmp, dst, rv.CondLTU, branchScratch))
+	c.a.Lw(tmp, rvContextReg, embedded32.ContextLinearMemoryBaseOffset)
+	c.a.Add(dst, dst, tmp)
+	loop := c.a.Len()
+	filled := c.a.Bcond(n, rv.Zero, rv.CondEQ)
+	c.a.Sb(value, dst, 0)
+	c.a.Addi(dst, dst, 1)
+	c.a.Addi(n, n, -1)
+	back := c.a.Jal(rv.Zero)
+	if !c.a.PatchJAL21(back, loop) || !c.a.PatchBranch13(filled, c.a.Len()) {
+		return fmt.Errorf("riscv32: memory.fill loop out of range")
+	}
+	done := c.a.FarJump(rv.Zero, branchScratch)
+	trap := c.a.Len()
+	c.emitContextTrap(embedded32.TrapMemoryOutOfBounds)
+	finish := c.a.Len()
+	if !c.a.PatchFarJump(done, finish) {
+		return fmt.Errorf("riscv32: memory.fill success branch out of range")
+	}
+	for _, at := range traps {
+		if !c.a.PatchFarBranch(at, trap) {
+			return fmt.Errorf("riscv32: memory.fill trap branch out of range")
+		}
+	}
+	c.release(n)
+	c.release(value)
+	c.release(dst)
+	c.release(tmp)
+	return nil
+}
+
 func (c *compiler) memoryGrow() error {
 	delta := c.materialize(c.pop())
 	old, current, limit := c.alloc(), c.alloc(), c.alloc()
