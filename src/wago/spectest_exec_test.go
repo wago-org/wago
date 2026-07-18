@@ -65,10 +65,17 @@ func specFilesForVersion(version, dir string) []string {
 	if version == "1.0" {
 		return coreFiles1_0
 	}
-	if version == "simd" {
+	if version == "simd" || version == "relaxed-simd" {
+		proposal := version
+		proposalDir := filepath.Join("proposals", proposal)
+		// Current spec checkouts place proposal suites under test/core/<proposal>;
+		// preserved legacy testsuite checkouts use proposals/<proposal>.
+		if len(wastNames(filepath.Join(dir, proposal))) != 0 {
+			proposalDir = proposal
+		}
 		var out []string
-		for _, name := range wastNames(filepath.Join(dir, "proposals", "simd")) {
-			out = append(out, filepath.Join("proposals", "simd", strings.TrimSuffix(name, ".wast")))
+		for _, name := range wastNames(filepath.Join(dir, proposalDir)) {
+			out = append(out, filepath.Join(proposalDir, strings.TrimSuffix(name, ".wast")))
 		}
 		sort.Strings(out)
 		return out
@@ -172,6 +179,7 @@ type specExecCmd struct {
 	As       string      `json:"as"`
 	Action   specAction  `json:"action"`
 	Expected []specValue `json:"expected"`
+	Either   []specValue `json:"either"` // relaxed-SIMD alternatives for one result
 	Text     string      `json:"text"`
 }
 
@@ -1258,6 +1266,15 @@ func runSpecExec(t *testing.T, wast2json, dir, version string, files []string) {
 		// by default; only the experimental 3.0 proposal aggregate needs all flags.
 		if version == "3.0" {
 			args = append([]string{"--enable-all"}, args...)
+		} else {
+			var features []string
+			if version == "relaxed-simd" {
+				features = append(features, "--enable-relaxed-simd")
+			}
+			if strings.Contains(base, "memory-multi") {
+				features = append(features, "--enable-multi-memory")
+			}
+			args = append(features, args...)
 		}
 		if out, err := exec.Command(wast2json, args...).CombinedOutput(); err != nil {
 			// The experimental 3.0 aggregate pins proposal .wast files whose stale
@@ -1367,6 +1384,13 @@ func runSpecExecFile(t *testing.T, base, tmp string, sf specExecFile) (stats spe
 	for _, c := range sf.Commands {
 		switch c.Type {
 		case "module":
+			// An unnamed, unregistered current module cannot be referenced after the
+			// next module command. Release it promptly instead of retaining every
+			// transient module until the end of large generated scripts (simd_const
+			// contains more than the fixed guard-region registry can hold at once).
+			if cur.inst != nil && !specModuleRetained(cur, named, registered) {
+				cur.close()
+			}
 			cur = specModule{}
 			data, err := os.ReadFile(filepath.Join(tmp, c.Filename))
 			if err != nil {
@@ -1602,6 +1626,17 @@ func (m *specModule) close() {
 	}
 }
 
+func specModuleRetained(m specModule, sets ...map[string]specModule) bool {
+	for _, set := range sets {
+		for _, retained := range set {
+			if retained.inst == m.inst {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 type specActionOutcome struct {
 	results    []uint64
 	trap       error
@@ -1682,6 +1717,16 @@ func runReturnAssert(t *testing.T, base string, c specExecCmd, m specModule) (sp
 	}
 	if out.trap != nil {
 		t.Errorf("%s.wast:%d %s(%v): expected return, got trap: %v", base, c.Line, c.Action.Field, argValues(c.Action.Args), out.trap)
+		return specGapNone, false
+	}
+	if len(c.Expected) == 0 && len(c.Either) != 0 {
+		for _, want := range c.Either {
+			n := resultSlotCount(want)
+			if len(out.results) == n && matchResult(out.results, want) {
+				return specGapNone, true
+			}
+		}
+		t.Errorf("%s.wast:%d %s(%v): got=%#x, want one relaxed alternative from %v", base, c.Line, c.Action.Field, argValues(c.Action.Args), out.results, c.Either)
 		return specGapNone, false
 	}
 	wantSlots := expectedResultSlots(c.Expected)

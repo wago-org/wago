@@ -47,4 +47,10 @@ func TestSIMDOpcodeInventory(t *testing.T) {
 			t.Fatalf("relaxed SIMD subopcode %d missing", sub)
 		}
 	}
+	for sub := uint32(0); sub <= 512; sub++ {
+		_, want := seenSub[sub]
+		if got := SIMDSubopcodeValid(sub); got != want {
+			t.Fatalf("SIMDSubopcodeValid(%d) = %v, inventory = %v", sub, got, want)
+		}
+	}
 }

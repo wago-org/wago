@@ -472,7 +472,7 @@ func TestCrossInstanceCallV128(t *testing.T) {
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
 	)
 	cB := MustCompile(modB)
-	if !cB.needsLink {
+	if !forceSyncHostImports && !cB.needsLink {
 		t.Fatal("v128 function import should need link")
 	}
 	inB, err := Instantiate(cB, InstantiateOptions{Imports: Imports{"env.id": idExport}})

@@ -259,7 +259,9 @@ func (f *fn) i64x2ReplaceLane(lane byte) error {
 	}
 	xe, ve := f.popValue(), f.popValue()
 	x := f.materialize(xe)
+	f.pinned = f.pinned.add(x)
 	p := f.materializeV128(ve)
+	f.pinned = f.pinned.remove(x)
 	if lane == 0 {
 		f.a.MovReg64(p.lo, x)
 	} else {
@@ -348,6 +350,9 @@ func (f *fn) floatSplat(f64 bool) {
 	fr := f.materializeF(e)
 	x := f.allocReg(0)
 	f.a.FmovToGpr(x, fr, f64)
+	if !f64 {
+		f.a.MovReg32(x, x) // discard RV64 NaN-boxing bits before packing two f32 lanes
+	}
 	f.releaseF(fr)
 	f.pushReg(x, mtI32OrWide(f64))
 	if f64 {
@@ -389,7 +394,9 @@ func (f *fn) floatReplaceLane(f64 bool, lane byte) error {
 	x := f.allocReg(0)
 	f.a.FmovToGpr(x, fr, f64)
 	f.releaseF(fr)
+	f.pinned = f.pinned.add(x)
 	p := f.materializeV128(ve)
+	f.pinned = f.pinned.remove(x)
 	f.replaceLaneFromReg(p, int(lane), width, x)
 	f.release(x)
 	f.pushV128Pair(p)
@@ -427,8 +434,22 @@ func (f *fn) floatUnary(f64 bool, op uint32) {
 	f.a.MovImm64(out.hi, 0)
 	x := f.allocReg(p.mask().union(out.mask()))
 	fr := f.allocFReg(0)
+	rounding := op == 103 || op == 104 || op == 105 || op == 106 || op == 116 || op == 117 || op == 122 || op == 148
+	zeroTest := regNone
+	if rounding {
+		zeroTest = f.allocReg(p.mask().union(out.mask()).add(x))
+	}
 	for lane := 0; lane < 128/width; lane++ {
 		f.extractLaneTo(x, p, lane, width, false)
+		var preserveZero int
+		if rounding {
+			magMask := ^uint64(1 << 63)
+			if !f64 {
+				magMask = 0x7fffffff
+			}
+			f.a.AndImm64(zeroTest, x, magMask)
+			preserveZero = f.a.Cbz64(zeroTest)
+		}
 		f.a.FmovFromGpr(fr, x, f64)
 		switch op {
 		case 227, 239:
@@ -445,7 +466,13 @@ func (f *fn) floatUnary(f64 bool, op uint32) {
 			panic("riscv64: invalid float SIMD unary opcode")
 		}
 		f.a.FmovToGpr(x, fr, f64)
+		if rounding {
+			f.a.PatchBranch19(preserveZero, f.a.Len())
+		}
 		f.insertLaneFrom(out, lane, width, x)
+	}
+	if zeroTest != regNone {
+		f.release(zeroTest)
 	}
 	f.releaseF(fr)
 	f.release(x)
@@ -786,7 +813,9 @@ func (f *fn) integerReplaceLane(width int, lane byte) error {
 	}
 	xe, ve := f.popValue(), f.popValue()
 	x := f.materialize(xe)
+	f.pinned = f.pinned.add(x)
 	p := f.materializeV128(ve)
+	f.pinned = f.pinned.remove(x)
 	perHalf := 64 / width
 	half := p.lo
 	localLane := int(lane)
@@ -1581,10 +1610,28 @@ func (f *fn) v128StoreLane(r *wasm.Reader, sub uint32) error {
 	return nil
 }
 
+// swarSIMDSubopcodeValid is the RV64 lowering registry. The ratified core and
+// relaxed proposal tables occupy 0..275 except for these 20 reserved holes.
+func swarSIMDSubopcodeValid(sub uint32) bool {
+	if sub > 275 {
+		return false
+	}
+	switch sub {
+	case 154, 162, 165, 166, 175, 176, 178, 179, 180, 187,
+		194, 197, 198, 207, 208, 210, 211, 212, 226, 238:
+		return false
+	default:
+		return true
+	}
+}
+
 func (f *fn) emitFD(r *wasm.Reader) error {
 	sub, err := r.U32()
 	if err != nil {
 		return err
+	}
+	if !swarSIMDSubopcodeValid(sub) {
+		return fmt.Errorf("riscv64: SWAR SIMD opcode %d is not implemented", sub)
 	}
 	switch sub {
 	case 0:
@@ -1873,7 +1920,7 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 275:
 		f.relaxedDotI8x16I7x16AddS()
 	default:
-		return fmt.Errorf("riscv64: SWAR SIMD opcode %d is not implemented", sub)
+		panic(fmt.Sprintf("riscv64: SWAR SIMD registry/dispatch mismatch for opcode %d", sub))
 	}
 	return nil
 }

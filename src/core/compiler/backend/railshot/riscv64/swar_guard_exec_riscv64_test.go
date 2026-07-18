@@ -15,7 +15,7 @@ func TestSWARGuardedV128StorePreflightsCompleteWidth(t *testing.T) {
 	body = append(body, swarMem(11, 0, 0)...)
 	body = append(body, 0x0b)
 	m := productionMemoryModule(t, nil, nil, body)
-	cm, err := CompileModuleWith(m, CompileOptions{ElideBoundsChecks: true, allowIncompleteSWAR: true})
+	cm, err := CompileModuleWith(m, CompileOptions{ElideBoundsChecks: true})
 	if err != nil {
 		t.Fatal(err)
 	}

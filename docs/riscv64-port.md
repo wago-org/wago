@@ -11,8 +11,9 @@ branch, instruction-cache, alignment, and vector constraints explicit.
 - Linux no-cgo foreign-stack runtime: integrated and green under
   `qemu-riscv64`, including synchronous host re-entry.
 - Production railshot backend: integrated for scalar integer and floating-point
-  operations, structured control, direct/indirect calls, explicit-bounds memory,
-  bulk memory, globals, tables, references, traps, and wrapper/internal ABIs.
+  operations plus complete core SIMD/relaxed-SIMD through an RV64G SWAR tier,
+  structured control, direct/indirect calls, explicit-bounds memory, bulk memory,
+  globals, tables, references, traps, and wrapper/internal ABIs.
 - Public end-to-end corpus execution matches the amd64 backend for the scalar
   manifest workloads, including recursive, FP-heavy, crypto, Rust, and
   AssemblyScript modules.
@@ -27,26 +28,31 @@ branch, instruction-cache, alignment, and vector constraints explicit.
 - Cooperative context cancellation polls at function entries and loop headers;
   native and synchronous host-call loops are interrupted under QEMU and the trap
   cell remains reusable after cancellation.
-- RVV 1.0 host capability detection is implemented using Linux
-  `riscv_hwprobe` plus the process `AT_HWCAP`; the RVV encoder foundation is
-  instruction-tested and executes under QEMU. Complete SIMD lowering, full
-  Release 2 execution including SIMD, and native-hardware benchmarking remain
-  deferred. SIMD modules are still rejected before scalar code generation.
+- All 256 decoded SIMD and relaxed-SIMD instructions lower through baseline
+  RV64G SWAR with two-GPR `v128` values. Public globals, locals, memory, control,
+  direct/indirect/cross-instance calls, and synchronous host calls use adjacent
+  little-endian uint64 ABI slots. The official current SIMD suite passes 473
+  modules and 24,335 assertions under QEMU; its one multi-memory module is the
+  separately reported project-wide feature gap. Relaxed SIMD passes 8 modules
+  and 69 assertions with zero gaps.
+- RVV 1.0 host capability detection remains implemented using Linux
+  `riscv_hwprobe` plus process `AT_HWCAP`; the RVV encoder foundation executes
+  under QEMU and is reserved for an optional future optimization tier.
 
 ## Target baseline
 
-The scalar baseline is RV64G as exposed by Go's `linux/riscv64` target: RV64I
-plus M, A, F, D, Zicsr, and Zifencei. Generated scalar code does not require the
-compressed extension. The current backend always omits SIMD from
-`SupportedFeatures` and rejects SIMD modules until lowering is complete. Host
-capability detection requires both the ratified V 1.0 bit from
-`riscv_hwprobe` and the V bit in the process `AT_HWCAP`. The former avoids
-mistaking vendor RVV 0.7.1 HWCAPs for the incompatible ratified encoding; the
-latter respects Linux's process vector-state policy. The single-letter V 1.0
-extension depends on `Zvl128b` and `Zve64d`, so a successful probe already
-establishes VLEN >= 128 and the required vector floating-point widths. Missing,
-unknown, or contradictory capability sources conservatively disable SIMD. The
-backend must not silently scalarize an incomplete subset.
+The execution baseline is RV64G as exposed by Go's `linux/riscv64` target:
+RV64I plus M, A, F, D, Zicsr, and Zifencei. Generated code does not require the
+compressed or vector extensions. WebAssembly SIMD is always available on this
+backend through complete SWAR lowering, independent of RVV.
+
+Optional RVV-tier capability detection requires both the ratified V 1.0 bit from
+`riscv_hwprobe` and the V bit in process `AT_HWCAP`. The former avoids mistaking
+vendor RVV 0.7.1 HWCAPs for the incompatible ratified encoding; the latter
+respects Linux's process vector-state policy. The single-letter V 1.0 extension
+depends on `Zvl128b` and `Zve64d`, so a successful probe establishes VLEN >= 128
+and vector f32/f64 support. Missing, unknown, or contradictory sources disable
+only the future RVV optimization tier, not WebAssembly SIMD semantics.
 
 The hardware probe uses a nil CPU set, asking Linux for the logical intersection
 across all online CPUs. This keeps generated RVV safe when Go moves execution
@@ -164,10 +170,14 @@ Completed:
 6. Scalar corpus compile coverage and end-to-end result parity with amd64.
 7. Linux/RISC-V guard-page execution, lazy growth, reservation reuse, and public
    runtime tests under QEMU.
+8. Complete RV64G SWAR lowering for all 256 core/relaxed SIMD instructions,
+   including pair allocation/spilling, memory atomicity, globals, control, and
+   serialized direct/indirect/host/cross-instance ABIs.
+9. Official SIMD and relaxed-SIMD proposal execution under QEMU with zero SIMD
+   failures; multi-memory remains separately unsupported project-wide.
 
 Remaining:
 
-8. Full Release 2 execution after RVV removes the intentional SIMD gap.
-9. RVV lowering plus SIMD/relaxed-SIMD corpus parity.
-10. Native-hardware guard-page stress, correctness, code-size, memory, and
+10. Optional RVV lowering and measured tier selection.
+11. Native-hardware guard-page stress, correctness, code-size, memory, and
     performance measurements.

@@ -28,7 +28,7 @@ func swarV128Const(lo, hi uint64) []byte {
 
 func runProductionSWARWrapper(t *testing.T, m *wasm.Module, serializedArgs ...uint64) uint64 {
 	t.Helper()
-	cm, err := CompileModuleWith(m, CompileOptions{allowIncompleteSWAR: true})
+	cm, err := CompileModuleWith(m, CompileOptions{})
 	if err != nil {
 		t.Fatalf("compile SWAR: %v", err)
 	}
@@ -64,7 +64,7 @@ func runProductionSWARWrapper(t *testing.T, m *wasm.Module, serializedArgs ...ui
 
 func runProductionSWARMemory(t *testing.T, m *wasm.Module, init func([]byte)) (uint64, []byte, error) {
 	t.Helper()
-	cm, err := CompileModuleWith(m, CompileOptions{allowIncompleteSWAR: true})
+	cm, err := CompileModuleWith(m, CompileOptions{})
 	if err != nil {
 		t.Fatalf("compile SWAR memory: %v", err)
 	}

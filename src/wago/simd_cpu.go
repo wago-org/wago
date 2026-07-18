@@ -13,9 +13,9 @@ import (
 // AVX OS support plus SSSE3/SSE4.1 are required. Linux exposes AVX in
 // /proc/cpuinfo only when the kernel has enabled the XSAVE state needed to run
 // AVX instructions. On arm64, Advanced SIMD/NEON is part of the baseline AArch64
-// profile used by Go. On linux/riscv64, detection requires ratified RVV 1.0 on
-// every online CPU plus process-level vector permission, although the backend
-// continues to reject SIMD until its RVV lowering is complete.
+// profile used by Go. RISC-V uses the baseline RV64G SWAR backend, so WebAssembly
+// SIMD admission does not depend on RVV; RVV detection remains available for a
+// future optimized tier.
 var simdHostFeaturesSupported = cachedSIMDHostFeatures
 
 var (
@@ -29,7 +29,7 @@ func cachedSIMDHostFeatures() bool {
 }
 
 func backendSupportsSIMD() bool {
-	return runtime.GOARCH == "amd64" || runtime.GOARCH == "arm64"
+	return runtime.GOARCH == "amd64" || runtime.GOARCH == "arm64" || runtime.GOARCH == "riscv64"
 }
 
 func hostSupportsSIMD() bool {
@@ -41,7 +41,7 @@ func detectSIMDHostFeatures() bool {
 	case "arm64":
 		return true
 	case "riscv64":
-		return detectRISCV64SIMDHostFeatures()
+		return true // baseline RV64G SWAR; detectRISCV64SIMDHostFeatures selects future RVV tiers
 	case "amd64":
 		data, err := os.ReadFile("/proc/cpuinfo")
 		if err != nil {

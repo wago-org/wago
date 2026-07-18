@@ -15,7 +15,6 @@ import (
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/codegen"
-	"github.com/wago-org/wago/src/core/compiler/frontend"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	rv "github.com/wago-org/wago/src/core/encoder/riscv64"
 	"github.com/wago-org/wago/src/core/runtime/abi"
@@ -62,8 +61,8 @@ var immutableTableTypeEnabled = os.Getenv("WAGO_RISCV64_NO_IMMUTABLE_TABLE_TYPE"
 var linearStoreForwardEnabled = os.Getenv("WAGO_RISCV64_NOMEMFWD") != "1"
 
 // These switches isolate register-lifetime optimizations for corpus A/B runs.
-// SIMD-related values remain false because the baseline deliberately rejects
-// v128 before function planning; they stay present only for the shared knob API.
+// V128 local pinning remains disabled because localDef models one register, not
+// an atomic two-GPR SWAR pair; other scalar register-lifetime knobs remain valid.
 var (
 	legacyGPPinsEnabled     = os.Getenv("WAGO_RISCV64_LEGACY_GPPINS") == "1"
 	legacyFPPinsEnabled     = os.Getenv("WAGO_RISCV64_LEGACY_FPPINS") == "1"
@@ -548,11 +547,6 @@ type CompileOptions struct {
 	// "explain" dashboard, docs/no-ir-plan.md P1). Independent of WAGO_EXPLAIN,
 	// which prints the same dump to stderr. nil = no collection, zero overhead.
 	Stats *ModuleStats
-
-	// allowIncompleteSWAR is test-only while the 256-opcode SWAR backend is
-	// developed in strict tranches. Public compilation keeps rejecting SIMD until
-	// the complete lowering and proposal suites are green.
-	allowIncompleteSWAR bool
 }
 
 // DirectBackend adapts the direct wasm-to-riscv64 compiler to the shared
@@ -585,9 +579,6 @@ func CompileModule(m *wasm.Module) (*rv.CompiledModule, error) {
 func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*rv.CompiledModule, error) {
 	if m == nil {
 		return nil, fmt.Errorf("riscv64: nil module")
-	}
-	if frontend.ModuleRequiresSIMD(m) && !opts.allowIncompleteSWAR {
-		return nil, fmt.Errorf("riscv64: SIMD requires an RVV-enabled backend")
 	}
 	guardMode := opts.ElideBoundsChecks
 	// P6.1 elision is on unless disabled per-compile (opts) or globally (env).

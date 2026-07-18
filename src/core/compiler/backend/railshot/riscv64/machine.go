@@ -974,11 +974,10 @@ func (a *machine) Frint(dst, src Reg, f64 bool, mode byte) {
 	a.MovImm64(addrScratch, threshold)
 	preserve := a.FarBcond(machineBranchScratch, addrScratch, rv.CondGEU, machineBranchScratch)
 	a.FcvtFloatToInt(addrScratch, src, f64, false, true, rm)
-	a.FcvtIntToFloat(dst, addrScratch, f64, false, true, rv.RoundNearestEven)
-	// Integer conversion would turn a negative rounded zero into +0. Restore the
-	// original sign only on the zero result.
+	// Integer conversion would turn a negative rounded zero into +0. Test the
+	// integer result before overwriting dst: src and dst may alias, so the original
+	// sign must be captured while src still contains the input lane.
 	nonzero := a.FarBcond(addrScratch, ZR, rv.CondNE, machineBranchScratch)
-	a.FmvToGPR(addrScratch, dst, f64)
 	a.FmvToGPR(machineBranchScratch, src, f64)
 	if f64 {
 		a.Srli(machineBranchScratch, machineBranchScratch, 63)
@@ -987,16 +986,25 @@ func (a *machine) Frint(dst, src Reg, f64 bool, mode byte) {
 		a.Srli(machineBranchScratch, machineBranchScratch, 31)
 		a.Slli(machineBranchScratch, machineBranchScratch, 31)
 	}
+	a.FcvtIntToFloat(dst, addrScratch, f64, false, true, rv.RoundNearestEven)
+	a.FmvToGPR(addrScratch, dst, f64)
 	a.Or(addrScratch, addrScratch, machineBranchScratch)
 	a.FmvFromGPR(dst, addrScratch, f64)
-	a.must(a.PatchFarBranch(nonzero, a.Len()), "frint signed zero")
-	done := a.FarJump(ZR, machineBranchScratch)
+	zeroDone := a.FarJump(ZR, machineBranchScratch)
+
+	nonzeroAt := a.Len()
+	a.FcvtIntToFloat(dst, addrScratch, f64, false, true, rv.RoundNearestEven)
+	nonzeroDone := a.FarJump(ZR, machineBranchScratch)
+	a.must(a.PatchFarBranch(nonzero, nonzeroAt), "frint nonzero")
+
 	preserveAt := a.Len()
 	// FMIN x,x preserves finite values, infinities, and signed zero while
 	// quieting signaling NaNs to an arithmetic NaN as WebAssembly requires.
 	a.Asm.Fmin(dst, src, src, f64)
 	a.must(a.PatchFarBranch(preserve, preserveAt), "frint preserve")
-	a.must(a.PatchFarJump(done, a.Len()), "frint end")
+	end := a.Len()
+	a.must(a.PatchFarJump(zeroDone, end), "frint zero end")
+	a.must(a.PatchFarJump(nonzeroDone, end), "frint nonzero end")
 }
 func (a *machine) Fcmp(left, right Reg, f64 bool) {
 	a.pending = pendingFlags{kind: pendingFloat, left: left, right: right, f64: f64}

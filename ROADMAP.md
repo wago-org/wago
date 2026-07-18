@@ -2,7 +2,7 @@
 
 wago is a pure-Go (no cgo) single-pass WebAssembly engine — a from-scratch port
 of [WARP](warp/)'s design. The primary target is **linux/amd64**, with native
-**linux/arm64**, **darwin/arm64**, and scalar **linux/riscv64** backends. The
+**linux/arm64**, **darwin/arm64**, and **linux/riscv64** backends. The
 amd64 baseline is SSSE3/SSE4.1 plus AVX/VEX.128 XMM encodings; AVX2/FMA/VNNI
 remain outside the baseline and require explicit feature gates. This file tracks
 what works and what's next at a glance.
@@ -72,7 +72,7 @@ in full — 57/57 applicable files, 0 failing assertions (see [SPECTEST.md](SPEC
 - [x] Reference globals, heterogeneous indexed table operations, and nonzero-table
   `call_indirect`, with native Linux/arm64 and Darwin/arm64 CI gates
 
-**Linux/RV64 scalar acceptance**
+**Linux/RV64 acceptance**
 - [x] Native RV64G encoder, no-cgo foreign-stack runtime, W^X publication, and
   process-wide Linux instruction-cache synchronization
 - [x] Production scalar railshot lowering for integer/FP, control, calls,
@@ -81,8 +81,11 @@ in full — 57/57 applicable files, 0 failing assertions (see [SPECTEST.md](SPEC
   WebAssembly 1.0 suite under QEMU
 - [x] Linux/RISC-V guard-page signal handling, lazy page commitment after
   `memory.grow`, reservation reuse, and public guard-mode execution under QEMU
-- [ ] RVV/SIMD, full Release 2 execution, and native-hardware guard-page,
-  correctness, and performance measurements
+- [x] Baseline RV64G SWAR lowering for all 256 decoded core/relaxed SIMD
+  instructions, public v128/host/cross-instance ABI support, and zero-failure
+  official SIMD plus relaxed-SIMD execution under QEMU
+- [ ] Optional RVV optimization and native-hardware guard-page, correctness,
+  code-size, memory, and performance measurements
 
 ## Next (near-term, linux/amd64)
 
@@ -136,7 +139,7 @@ codegen rationale is **[OPTIMIZATIONS.md](OPTIMIZATIONS.md)**. Summary of the tw
 
 ## Bigger bets
 
-- [x] SIMD (`v128`) — complete for the documented linux/amd64 SSSE3/SSE4.1 + AVX/VEX.128 baseline: every decoded core SIMD opcode and deterministic relaxed SIMD opcode through 0xfd 275 is frontend-admitted, validator-admitted, and lowered by railshot; reserved proposal-table holes are invalid-decode tests. Public `[16]byte` (`wago.V128`) plumbing covers locals, params/results, control flow, globals, cross-instance imports, and host imports/results. The official SIMD proposal corpus passes via WABT `wast2json` (24,325 assertions, 0 skipped modules/assertions). Keep AVX2/FMA/VNNI optimizations behind future CPU gates. Current metrics: [`docs/simd-performance-2026-07.md`](docs/simd-performance-2026-07.md).
+- [x] SIMD (`v128`) — complete for the documented linux/amd64 SSSE3/SSE4.1 + AVX/VEX.128 baseline and the linux/riscv64 RV64G SWAR baseline: all 256 decoded core/relaxed instructions through 0xfd 275 are frontend-admitted, validator-admitted, and lowered by railshot; reserved proposal-table holes are invalid-decode tests. Public `[16]byte` (`wago.V128`) plumbing covers locals, params/results, control flow, globals, cross-instance imports, and host imports/results. RV64's official current SIMD corpus passes 473 modules / 24,335 assertions, with the project-wide multi-memory case reported separately; relaxed SIMD passes 8 modules / 69 assertions. Keep AVX2/FMA/VNNI and RVV optimizations behind future CPU gates. Current amd64 metrics: [`docs/simd-performance-2026-07.md`](docs/simd-performance-2026-07.md).
 - [ ] Threads & atomics
 - [ ] Tail calls (`return_call` / `return_call_indirect`)
 - [x] Reference-types product completion: signatures, locals, control,
@@ -145,8 +148,9 @@ codegen rationale is **[OPTIMIZATIONS.md](OPTIMIZATIONS.md)**. Summary of the tw
   local/imported tables, exact exports/re-exports, codec-v20 structural metadata,
   snapshot isolation, complete inspection, cross-link teardown, and the
   zero-skip Release 2 execution corpus are done.
-- 🚧 Additional targets: Linux/arm64, Darwin/arm64, and scalar Linux/riscv64 are
-  native backends; RV64 RVV/SIMD and Windows ABIs remain planned
+- 🚧 Additional targets: Linux/arm64, Darwin/arm64, and Linux/riscv64 are native
+  backends; RV64 RVV optimization, native-hardware qualification, and Windows
+  ABIs remain planned
 - [ ] wazero-compatible API shim for drop-in migration
 
 ## Non-goals (for now)

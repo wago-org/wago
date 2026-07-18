@@ -57,7 +57,7 @@ func TestScalarCorpusCompiles(t *testing.T) {
 	}
 }
 
-func TestSIMDCorpusRejectedWithoutRVV(t *testing.T) {
+func TestSIMDCorpusCompilesWithoutRVV(t *testing.T) {
 	path := filepath.Join(corpusDir(t), "isa_simd_v128.wasm")
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -67,8 +67,11 @@ func TestSIMDCorpusRejectedWithoutRVV(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = CompileModule(mod)
-	if err == nil || !strings.Contains(err.Error(), "RVV") {
-		t.Fatalf("error = %v, want RVV rejection", err)
+	cm, err := CompileModule(mod)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cm.Code) == 0 {
+		t.Fatal("empty SIMD code")
 	}
 }

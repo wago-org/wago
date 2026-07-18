@@ -1,4 +1,4 @@
-// Package riscv64 implements the native scalar RV64 railshot backend.
+// Package riscv64 implements the native RV64 railshot backend.
 //
 // The backend consumes validated WebAssembly and lowers it directly to RV64G.
 // Comparisons produce integer predicates, branches compare registers without a
@@ -8,8 +8,9 @@
 // railshot-specific lowering policy.
 //
 // The supported production baseline includes scalar integer and floating-point
-// operations, structured control flow, direct and indirect calls, synchronous
-// host re-entry, explicit-bounds linear memory, bulk memory, tables, globals,
-// references, traps, and the public wrapper ABI. SIMD is rejected before code
-// generation until an RVV backend and runtime feature policy are available.
+// operations, complete core and relaxed SIMD through RV64G SWAR, structured
+// control flow, direct and indirect calls, synchronous host re-entry,
+// explicit-bounds linear memory, bulk memory, tables, globals, references,
+// traps, and the public wrapper ABI. RVV is reserved for an optional future
+// optimization tier and is not required for WebAssembly SIMD semantics.
 package riscv64
