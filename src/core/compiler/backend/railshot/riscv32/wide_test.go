@@ -309,6 +309,9 @@ func runRV32Exit(t *testing.T, qemu string, code []byte, want int) {
 		t.Fatal(err)
 	}
 	err := exec.Command(qemu, path).Run()
+	if want == 0 && err == nil {
+		return
+	}
 	var exit *exec.ExitError
 	if !errors.As(err, &exit) || exit.ExitCode() != want {
 		t.Fatalf("qemu=%v exit=%v want=%d", err, exit, want)

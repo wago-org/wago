@@ -161,9 +161,13 @@ these tests include cross-word `i64.mul`, packed carry-isolated SIMD arithmetic,
 and f64 sign-bit behavior. The i32 path now also lowers variable rotates,
 `clz`, `ctz`, `popcnt`, and both sign-extension instructions without requiring
 Arm or RISC-V bit-manipulation extensions; bounded count loops and rotate
-sequences execute under both QEMU targets. More complex f64/SIMD operations use
-the complete helper ABI while measurements decide which additional instructions
-merit direct inline SWAR.
+sequences execute under both QEMU targets. Context-aware division/remainder
+thunks cover all four signed/unsigned operations, preserve the defined signed
+remainder result for `min / -1`, and write distinct canonical divide-by-zero and
+signed-overflow traps. Normal function lowering still needs to reserve the
+context register and route the trapping opcodes through these thunks. More
+complex f64/SIMD operations use the complete helper ABI while measurements
+decide which additional instructions merit direct inline SWAR.
 
 A shared fixed-capacity group allocator now owns one-, two-, and four-register
 values atomically. Allocation, exact ABI acquisition, release, LRU spill-victim
