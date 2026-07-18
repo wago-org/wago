@@ -35,9 +35,15 @@ branch, instruction-cache, alignment, and vector constraints explicit.
   modules and 24,335 assertions under QEMU; its one multi-memory module is the
   separately reported project-wide feature gap. Relaxed SIMD passes 8 modules
   and 69 assertions with zero gaps.
-- RVV 1.0 host capability detection remains implemented using Linux
+- RVV 1.0 host capability detection is centralized in the runtime using Linux
   `riscv_hwprobe` plus process `AT_HWCAP`; the RVV encoder foundation executes
-  under QEMU and is reserved for an optional future optimization tier.
+  under QEMU and safely skips on baseline RV64G machines. It remains reserved for
+  an optional future optimization tier.
+- Conservative SWAR register-lifetime optimizations are enabled: one loop-hot
+  call-free v128 local may occupy an atomic GPR pair, reducing the checked fixture
+  from 25 to 15 static load/store words at unchanged 248-byte code size; caching
+  one v128 constant repeated at least three times reduces its fixture from 304 to
+  200 code bytes.
 
 ## Target baseline
 
@@ -145,10 +151,14 @@ relaxation.
 ## Linear memory
 
 The initial production backend uses explicit bounds checks. Wasm permits
-unaligned accesses; correctness must not depend on a platform silently emulating
-misaligned scalar loads. The lowering may use direct loads only when the access
-is proven naturally aligned or the supported Linux/hardware baseline explicitly
-guarantees the required behavior. Otherwise it must synthesize the access.
+unaligned accesses. Linux's RISC-V userspace ABI guarantees scalar misaligned
+access support, whether directly in hardware or through transparent kernel
+handling, so the Linux/RV64 backend may issue direct scalar loads and stores for
+Wasm accesses. The qualification suite exercises every byte offset modulo 16 for
+split v128 loads/stores. `RISCV64MisalignedScalarPerformance` records Linux's
+all-online-CPU hwprobe classification (`unknown`, `emulated`, `slow`, `fast`, or
+`unsupported`) for optimization and native performance reporting; semantic
+admission does not depend on that performance class.
 
 Guard-page mode is available under `-tags wago_guardpage`. Its Linux/RISC-V
 signal handler validates the active reservation and saved `S9`, distinguishes
@@ -156,6 +166,37 @@ in-range lazy growth from true out-of-bounds access, commits grown pages with
 `mprotect`, writes the wasm trap for genuine OOB faults, and rewrites the saved
 PC to the native trap exit. The handler's `ucontext` offsets are compile-time
 checked against Go mirrors of the Linux/RV64 signal layout.
+
+## Reproducible qualification
+
+Run the checked-in qualification gate from an amd64 development host with
+QEMU user emulation:
+
+```bash
+GO=/path/to/go QEMU_RISCV64=/usr/bin/qemu-riscv64 \
+  scripts/riscv64-qualify.sh qemu
+```
+
+The QEMU mode cross-builds explicit and guard-page backend/runtime/public test
+binaries, runs them with RVV, compressed instructions, Zba/Zbb/Zbc/Zbs, Zicond,
+Zfa, Zfh, and Zacas disabled, then runs positive RVV detection and execution on
+the default vector-capable model. If `WAGO_SPECTEST_DIR` and `wast2json` are
+available, it also runs the official SIMD and relaxed-SIMD suites in both bounds
+modes. Artifacts go under `.validation/riscv64-qualify` by default.
+
+On real Linux/RV64 hardware, run:
+
+```bash
+STRESS_COUNT=20 BENCH_TIME=250ms BENCH_COUNT=5 \
+  scripts/riscv64-qualify.sh native
+```
+
+Native mode records the kernel, Go version, commit, and `/proc/cpuinfo`; runs the
+full explicit/guard test suites and repeated runtime, signal, cancellation, host,
+and SIMD stress; optionally runs the official proposal suites; and records
+explicit/guard corpus benchmarks. Performance or cross-hart publication claims
+must attach these native artifacts. QEMU results remain correctness evidence
+only.
 
 ## Delivery gates
 
@@ -175,9 +216,15 @@ Completed:
    serialized direct/indirect/host/cross-instance ABIs.
 9. Official SIMD and relaxed-SIMD proposal execution under QEMU with zero SIMD
    failures; multi-memory remains separately unsupported project-wide.
+10. A checked-in QEMU/native qualification gate covering baseline-extension
+    disablement, positive/negative RVV policy, both bounds modes, proposal suites,
+    exhaustive v128 misalignment, cross-thread code publication stress, host
+    metadata, and native benchmark artifacts.
 
 Remaining:
 
-10. Optional RVV lowering and measured tier selection.
-11. Native-hardware guard-page stress, correctness, code-size, memory, and
-    performance measurements.
+11. Optional RVV lowering, only after native measurements justify a vector
+    representation and tier-selection policy over the measured SWAR baseline.
+12. Native-hardware guard-page, cross-hart publication, misaligned-access,
+    correctness, code-size, memory, and performance measurements using the
+    qualification gate above.

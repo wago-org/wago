@@ -84,8 +84,13 @@ in full — 57/57 applicable files, 0 failing assertions (see [SPECTEST.md](SPEC
 - [x] Baseline RV64G SWAR lowering for all 256 decoded core/relaxed SIMD
   instructions, public v128/host/cross-instance ABI support, and zero-failure
   official SIMD plus relaxed-SIMD execution under QEMU
-- [ ] Optional RVV optimization and native-hardware guard-page, correctness,
-  code-size, memory, and performance measurements
+- [x] Reproducible `scripts/riscv64-qualify.sh` QEMU/native gate for minimal
+  RV64G execution, RVV positive/negative policy, explicit/guard modes, proposal
+  suites, exhaustive v128 misalignment, cross-thread publication stress, host
+  metadata, and benchmark artifacts
+- [ ] Optional RVV optimization after native measurements justify the tier;
+  native-hardware guard-page, cross-hart publication, correctness, code-size,
+  memory, and performance qualification
 
 ## Next (near-term, linux/amd64)
 
