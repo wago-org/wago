@@ -29,10 +29,10 @@ branch, instruction-cache, alignment, and vector constraints explicit.
 
 The scalar baseline is RV64G as exposed by Go's `linux/riscv64` target: RV64I
 plus M, A, F, D, Zicsr, and Zifencei. Generated scalar code does not require the
-compressed extension. SIMD is admitted only when the V extension is detected and
-VLEN is at least 128 bits; otherwise `SupportedFeatures` must omit SIMD and the
-compiler must reject SIMD modules rather than silently scalarizing an incomplete
-subset.
+compressed extension. The current backend always omits SIMD from
+`SupportedFeatures` and rejects SIMD modules. A future RVV backend may admit SIMD
+only after detecting the V extension and a VLEN of at least 128 bits; it must not
+silently scalarize an incomplete subset.
 
 Linux is the first and only RISC-V operating-system target in this port. Darwin,
 Windows, riscv32, big-endian RISC-V, and bare-metal execution are out of scope.
@@ -70,9 +70,9 @@ this boundary. It executes integer, branch, memory, and scalar-FP code under
 QEMU, verifies the foreign SP, restores callee-saved state, and survives repeated
 GC cycles.
 
-## Proposed native ABI register roles
+## Native ABI register roles
 
-These roles are locked before the production backend is copied:
+The production backend uses these fixed roles:
 
 | Role | Register | Notes |
 |---|---|---|

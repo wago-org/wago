@@ -1,10 +1,11 @@
 # wago roadmap
 
 wago is a pure-Go (no cgo) single-pass WebAssembly engine — a from-scratch port
-of [WARP](warp/)'s design. Target today is **linux/amd64** with a modern CPU
-baseline of SSSE3/SSE4.1 plus AVX/VEX.128 XMM encodings; AVX2/FMA/VNNI remain
-outside the baseline and require explicit feature gates. This file tracks what
-works and what's next at a glance.
+of [WARP](warp/)'s design. The primary target is **linux/amd64**, with native
+**linux/arm64**, **darwin/arm64**, and scalar **linux/riscv64** backends. The
+amd64 baseline is SSSE3/SSE4.1 plus AVX/VEX.128 XMM encodings; AVX2/FMA/VNNI
+remain outside the baseline and require explicit feature gates. This file tracks
+what works and what's next at a glance.
 
 Three companion docs go deeper:
 - [FEATURES.md](FEATURES.md) — the per-feature support matrix (source of truth for
@@ -71,6 +72,16 @@ in full — 57/57 applicable files, 0 failing assertions (see [SPECTEST.md](SPEC
 - [x] Reference globals, heterogeneous indexed table operations, and nonzero-table
   `call_indirect`, with native Linux/arm64 and Darwin/arm64 CI gates
 
+**Linux/RV64 scalar acceptance**
+- [x] Native RV64G encoder, no-cgo foreign-stack runtime, W^X publication, and
+  process-wide Linux instruction-cache synchronization
+- [x] Production scalar railshot lowering for integer/FP, control, calls,
+  explicit-bounds memory, bulk memory, tables, globals, references, and host re-entry
+- [x] Exact public scalar corpus parity with amd64 and a zero-failure curated
+  WebAssembly 1.0 suite under QEMU
+- [ ] Linux/RISC-V guard-page signal handling, RVV/SIMD, full Release 2 execution,
+  and native-hardware correctness/performance measurements
+
 ## Next (near-term, linux/amd64)
 
 The detailed, phase-by-phase plan is **[docs/no-ir-plan.md](docs/no-ir-plan.md)**; the
@@ -132,8 +143,8 @@ codegen rationale is **[OPTIMIZATIONS.md](OPTIMIZATIONS.md)**. Summary of the tw
   local/imported tables, exact exports/re-exports, codec-v20 structural metadata,
   snapshot isolation, complete inspection, cross-link teardown, and the
   zero-skip Release 2 execution corpus are done.
-- [ ] Additional targets: **arm64** (WARP `backend/aarch64` as reference), then
-  macOS / Windows ABIs
+- 🚧 Additional targets: Linux/arm64, Darwin/arm64, and scalar Linux/riscv64 are
+  native backends; RV64 guard pages/RVV and Windows ABIs remain planned
 - [ ] wazero-compatible API shim for drop-in migration
 
 ## Non-goals (for now)
