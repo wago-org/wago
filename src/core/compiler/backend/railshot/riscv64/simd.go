@@ -543,6 +543,138 @@ func (f *fn) floatPMinMax(f64, max bool) {
 	f.pushV128Pair(out)
 }
 
+func (f *fn) floatDemotePromote(promote bool) {
+	p := f.materializeV128(f.popValue())
+	out := f.allocV128Pair(p.mask())
+	f.a.MovImm64(out.lo, 0)
+	f.a.MovImm64(out.hi, 0)
+	x := f.allocReg(p.mask().union(out.mask()))
+	fr := f.allocFReg(0)
+	for lane := 0; lane < 2; lane++ {
+		if promote {
+			f.extractLaneTo(x, p, lane, 32, false)
+			f.a.FmovFromGpr(fr, x, false)
+			f.a.FcvtS2D(fr, fr)
+			f.a.FmovToGpr(x, fr, true)
+			f.insertLaneFrom(out, lane, 64, x)
+		} else {
+			f.extractLaneTo(x, p, lane, 64, false)
+			f.a.FmovFromGpr(fr, x, true)
+			f.a.FcvtD2S(fr, fr)
+			f.a.FmovToGpr(x, fr, false)
+			f.insertLaneFrom(out, lane, 32, x)
+		}
+	}
+	f.releaseF(fr)
+	f.release(x)
+	f.releaseV128(p)
+	f.pushV128Pair(out)
+}
+
+func (f *fn) floatTruncSat(f64src, signed bool) {
+	p := f.materializeV128(f.popValue())
+	out := f.allocV128Pair(p.mask())
+	f.a.MovImm64(out.lo, 0)
+	f.a.MovImm64(out.hi, 0)
+	x := f.allocReg(p.mask().union(out.mask()))
+	fr := f.allocFReg(0)
+	// Scalar saturation materializes threshold constants internally. Pin every
+	// detached pair/temp register so those nested allocations cannot reclaim a
+	// live SIMD half, lane result, or source FP register.
+	f.pinned = f.pinned.union(p.mask()).union(out.mask()).add(x)
+	f.fpinned = f.fpinned.add(fr)
+	width, lanes := 32, 4
+	if f64src {
+		width, lanes = 64, 2
+	}
+	for lane := 0; lane < lanes; lane++ {
+		f.extractLaneTo(x, p, lane, width, false)
+		f.a.FmovFromGpr(fr, x, f64src)
+		if signed {
+			f.truncSatSigned(fr, x, f64src, false)
+		} else {
+			f.truncSatU32(fr, x, f64src)
+		}
+		f.insertLaneFrom(out, lane, 32, x)
+	}
+	f.fpinned = f.fpinned.remove(fr)
+	f.pinned = f.pinned.remove(p.lo).remove(p.hi).remove(out.lo).remove(out.hi).remove(x)
+	f.releaseF(fr)
+	f.release(x)
+	f.releaseV128(p)
+	f.pushV128Pair(out)
+}
+
+func (f *fn) integerToFloat(f64dst, signed bool) {
+	p := f.materializeV128(f.popValue())
+	out := f.allocV128Pair(p.mask())
+	f.a.MovImm64(out.lo, 0)
+	f.a.MovImm64(out.hi, 0)
+	x := f.allocReg(p.mask().union(out.mask()))
+	fr := f.allocFReg(0)
+	lanes := 4
+	if f64dst {
+		lanes = 2
+	}
+	for lane := 0; lane < lanes; lane++ {
+		f.extractLaneTo(x, p, lane, 32, signed)
+		if signed {
+			f.a.Scvtf(fr, x, f64dst, false)
+		} else {
+			f.a.Ucvtf(fr, x, f64dst, false)
+		}
+		f.a.FmovToGpr(x, fr, f64dst)
+		width := 32
+		if f64dst {
+			width = 64
+		}
+		f.insertLaneFrom(out, lane, width, x)
+	}
+	f.releaseF(fr)
+	f.release(x)
+	f.releaseV128(p)
+	f.pushV128Pair(out)
+}
+
+func (f *fn) relaxedFloatMadd(f64, neg bool) {
+	ce, be, ae := f.popValue(), f.popValue(), f.popValue()
+	c := f.materializeV128(ce)
+	b := f.materializeV128(be)
+	a := f.materializeV128(ae)
+	out := f.allocV128Pair(a.mask().union(b.mask()).union(c.mask()))
+	f.a.MovImm64(out.lo, 0)
+	f.a.MovImm64(out.hi, 0)
+	x := f.allocReg(a.mask().union(b.mask()).union(c.mask()).union(out.mask()))
+	fa := f.allocFReg(0)
+	fb := f.allocFReg(maskOf(fa))
+	width := 32
+	if f64 {
+		width = 64
+	}
+	for lane := 0; lane < 128/width; lane++ {
+		f.extractLaneTo(x, a, lane, width, false)
+		f.a.FmovFromGpr(fa, x, f64)
+		f.extractLaneTo(x, b, lane, width, false)
+		f.a.FmovFromGpr(fb, x, f64)
+		f.a.Fmul(fa, fa, fb, f64)
+		if neg {
+			f.a.Fneg(fa, fa, f64)
+		}
+		f.extractLaneTo(x, c, lane, width, false)
+		f.a.FmovFromGpr(fb, x, f64)
+		f.a.Fadd(fa, fa, fb, f64)
+		f.a.FmovToGpr(x, fa, f64)
+		f.insertLaneFrom(out, lane, width, x)
+	}
+	f.releaseF(fb)
+	f.releaseF(fa)
+	f.release(x)
+	f.releaseV128(c)
+	f.releaseV128(b)
+	f.releaseV128(a)
+	f.pushV128Pair(out)
+}
+
 func (f *fn) floatCompare(f64 bool, cond Cond) {
 	be, ae := f.popValue(), f.popValue()
 	b := f.materializeV128(be)
@@ -1595,6 +1727,10 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 		f.v128Bitselect()
 	case 83:
 		f.v128AnyTrue()
+	case 94:
+		f.floatDemotePromote(false)
+	case 95:
+		f.floatDemotePromote(true)
 	case 96, 97: // i8x16.abs/neg
 		f.integerUnary(8, sub == 96)
 	case 98:
@@ -1711,6 +1847,26 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 		f.floatBinary(true, sub)
 	case 246, 247:
 		f.floatPMinMax(true, sub == 247)
+	case 248, 257:
+		f.floatTruncSat(false, true)
+	case 249, 258:
+		f.floatTruncSat(false, false)
+	case 250:
+		f.integerToFloat(false, true)
+	case 251:
+		f.integerToFloat(false, false)
+	case 252, 259:
+		f.floatTruncSat(true, true)
+	case 253, 260:
+		f.floatTruncSat(true, false)
+	case 254:
+		f.integerToFloat(true, true)
+	case 255:
+		f.integerToFloat(true, false)
+	case 261, 262:
+		f.relaxedFloatMadd(false, sub == 262)
+	case 263, 264:
+		f.relaxedFloatMadd(true, sub == 264)
 	case 265, 266, 267, 268: // deterministic bitselect relaxed-laneselect projection
 		f.v128Bitselect()
 	case 269, 270:

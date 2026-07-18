@@ -923,6 +923,113 @@ func TestSWARFloatLaneArithmeticCompareAndRoundingExec(t *testing.T) {
 	})
 }
 
+func TestSWARFloatConversionsAndRelaxedMaddExec(t *testing.T) {
+	t.Run("demote-promote", func(t *testing.T) {
+		m := swarScalarModule(t, wasm.F32,
+			swarV128Const(math.Float64bits(1.5), math.Float64bits(-2.25)), swarFD(94), swarFD(31, 1))
+		if got := uint32(runProductionSWARWrapper(t, m)); got != math.Float32bits(-2.25) {
+			t.Fatalf("demote got %#x", got)
+		}
+		fLo, fHi := swarPackLanes(32, uint64(math.Float32bits(1.5)), uint64(math.Float32bits(-2.25)), 0, 0)
+		m = swarScalarModule(t, wasm.F64, swarV128Const(fLo, fHi), swarFD(95), swarFD(33, 1))
+		if got := runProductionSWARWrapper(t, m); got != math.Float64bits(-2.25) {
+			t.Fatalf("promote got %#x", got)
+		}
+	})
+
+	for _, tc := range []struct {
+		name string
+		sub  uint32
+		bits uint64
+		want uint32
+	}{
+		{"f32-signed", 248, uint64(math.Float32bits(-42.75)), 0xffffffd6},
+		{"f32-signed-nan", 248, 0x7fc01234, 0},
+		{"f32-signed-high", 257, uint64(math.Float32bits(float32(math.Inf(1)))), 0x7fffffff},
+		{"f32-unsigned-negative", 249, uint64(math.Float32bits(-1)), 0},
+		{"f32-unsigned-high", 258, uint64(math.Float32bits(float32(math.Inf(1)))), 0xffffffff},
+		{"f64-signed", 252, math.Float64bits(-42.75), 0xffffffd6},
+		{"f64-unsigned-nan", 260, 0x7ff8123456789abc, 0},
+		{"f64-unsigned-high", 253, math.Float64bits(math.Inf(1)), 0xffffffff},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f64src := tc.sub == 252 || tc.sub == 253 || tc.sub == 259 || tc.sub == 260
+			lo, hi := tc.bits, uint64(0)
+			if !f64src {
+				lo, hi = swarPackLanes(32, tc.bits, 0, 0, 0)
+			}
+			m := swarScalarModule(t, wasm.I32,
+				swarV128Const(lo, hi), swarFD(tc.sub), swarIntegerExtract(32, 0, false))
+			if got := uint32(runProductionSWARWrapper(t, m)); got != tc.want {
+				t.Fatalf("got %#x, want %#x", got, tc.want)
+			}
+		})
+	}
+
+	for _, tc := range []struct {
+		name string
+		sub  uint32
+		bits uint32
+		want uint64
+		f64  bool
+	}{
+		{"i32-to-f32-s", 250, 0xffffffd6, uint64(math.Float32bits(-42)), false},
+		{"i32-to-f32-u", 251, 0xffffffff, uint64(math.Float32bits(float32(uint64(0xffffffff)))), false},
+		{"i32-to-f64-s", 254, 0xffffffd6, math.Float64bits(-42), true},
+		{"i32-to-f64-u", 255, 0xffffffff, math.Float64bits(float64(uint64(0xffffffff))), true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			lo, hi := swarPackLanes(32, uint64(tc.bits), 0, 0, 0)
+			result, extract := wasm.F32, swarFD(31, 0)
+			if tc.f64 {
+				result, extract = wasm.F64, swarFD(33, 0)
+			}
+			m := swarScalarModule(t, result, swarV128Const(lo, hi), swarFD(tc.sub), extract)
+			got := runProductionSWARWrapper(t, m)
+			if !tc.f64 {
+				got = uint64(uint32(got))
+			}
+			if got != tc.want {
+				t.Fatalf("got %#x, want %#x", got, tc.want)
+			}
+		})
+	}
+
+	for _, tc := range []struct {
+		name string
+		sub  uint32
+		f64  bool
+		want float64
+	}{
+		{"f32-madd", 261, false, 10},
+		{"f32-nmadd", 262, false, 4},
+		{"f64-madd", 263, true, 10},
+		{"f64-nmadd", 264, true, 4},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			width, result, extract := 32, wasm.F32, swarFD(31, 0)
+			bits := func(v float64) uint64 { return uint64(math.Float32bits(float32(v))) }
+			if tc.f64 {
+				width, result, extract = 64, wasm.F64, swarFD(33, 0)
+				bits = func(v float64) uint64 { return math.Float64bits(v) }
+			}
+			aLo, aHi := swarPackLanes(width, bits(2), 0, 0, 0)
+			bLo, bHi := swarPackLanes(width, bits(1.5), 0, 0, 0)
+			cLo, cHi := swarPackLanes(width, bits(7), 0, 0, 0)
+			m := swarScalarModule(t, result,
+				swarV128Const(aLo, aHi), swarV128Const(bLo, bHi), swarV128Const(cLo, cHi), swarFD(tc.sub), extract)
+			got := runProductionSWARWrapper(t, m)
+			want := bits(tc.want)
+			if !tc.f64 {
+				got = uint64(uint32(got))
+			}
+			if got != want {
+				t.Fatalf("got %#x, want %#x", got, want)
+			}
+		})
+	}
+}
+
 func TestSWARV128LocalControlAndSelectExec(t *testing.T) {
 	t.Run("local", func(t *testing.T) {
 		body := []byte{1, 1, 0x7b} // one v128 local
