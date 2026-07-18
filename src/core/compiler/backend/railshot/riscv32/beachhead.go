@@ -9,6 +9,7 @@ import (
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	rv "github.com/wago-org/wago/src/core/encoder/riscv32"
+	"github.com/wago-org/wago/src/core/runtime/embedded32"
 )
 
 // A0/A1 are copied into callee-saved local homes before the argument registers
@@ -109,6 +110,11 @@ func compileBeachhead(numParams int, body []byte, context bool) ([]byte, error) 
 			return nil, err
 		}
 		switch op {
+		case 0x00: // unreachable
+			if !c.context {
+				return nil, fmt.Errorf("riscv32 beachhead unreachable requires module context")
+			}
+			c.emitContextTrap(embedded32.TrapUnreachable)
 		case 0x02: // block
 			if err := readVoidBlockType(r); err != nil {
 				return nil, err

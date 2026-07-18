@@ -119,6 +119,19 @@ func riscv32LoadModule(t *testing.T) *wasm.Module {
 	return m
 }
 
+func riscv32UnreachableModule(t *testing.T) *wasm.Module {
+	t.Helper()
+	m, err := wasm.DecodeModule(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x00, 0x0b}))),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
 func riscv32GrowModule(t *testing.T) *wasm.Module {
 	t.Helper()
 	m, err := wasm.DecodeModule(wasmtest.Module(
@@ -169,6 +182,24 @@ func TestCompileModuleMemoryAndTrapContextUnderQEMU(t *testing.T) {
 		a.Ecall()
 		a.PatchJAL21(call, len(a.B))
 		runRV32Exit(t, qemu, append(a.B, fn...), 42)
+	})
+	t.Run("unreachable", func(t *testing.T) {
+		unreachable, err := CompileModule(riscv32UnreachableModule(t))
+		if err != nil {
+			t.Fatal(err)
+		}
+		meta := unreachable.Functions[0]
+		unreachableFn := unreachable.Code[meta.Offset : meta.Offset+meta.Size]
+		var a rv.Asm
+		rvMemoryContext(&a)
+		a.Addi(rv.A0, rv.SP, 16)
+		a.MovReg(rv.X23, rv.A0)
+		call := a.Jal(rv.RA)
+		a.Lw(rv.A0, rv.SP, 32)
+		a.MovImm32(rv.A7, 93)
+		a.Ecall()
+		a.PatchJAL21(call, len(a.B))
+		runRV32Exit(t, qemu, append(a.B, unreachableFn...), int(embedded32.TrapUnreachable))
 	})
 	t.Run("canceled-entry", func(t *testing.T) {
 		var a rv.Asm

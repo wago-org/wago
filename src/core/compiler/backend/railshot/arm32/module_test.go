@@ -118,6 +118,19 @@ func arm32LoadModule(t *testing.T) *wasm.Module {
 	return m
 }
 
+func arm32UnreachableModule(t *testing.T) *wasm.Module {
+	t.Helper()
+	m, err := wasm.DecodeModule(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x00, 0x0b}))),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
 func arm32GrowModule(t *testing.T) *wasm.Module {
 	t.Helper()
 	m, err := wasm.DecodeModule(wasmtest.Module(
@@ -167,6 +180,23 @@ func TestCompileModuleMemoryAndTrapContextUnderQEMU(t *testing.T) {
 		armExit(&a)
 		a.PatchCall(call, len(a.B))
 		runARM32Exit(t, qemu, append(a.B, fn...), 42)
+	})
+	t.Run("unreachable", func(t *testing.T) {
+		unreachable, err := CompileModule(arm32UnreachableModule(t))
+		if err != nil {
+			t.Fatal(err)
+		}
+		meta := unreachable.Functions[0]
+		unreachableFn := unreachable.Code[meta.Offset : meta.Offset+meta.Size]
+		var a a32.Asm
+		armMemoryContext(&a)
+		armContextArg(&a)
+		a.MovReg(a32.R11, a32.R0)
+		call := a.Call()
+		a.Ldr(a32.R0, a32.SP, 32)
+		armExit(&a)
+		a.PatchCall(call, len(a.B))
+		runARM32Exit(t, qemu, append(a.B, unreachableFn...), int(embedded32.TrapUnreachable))
 	})
 	t.Run("canceled-entry", func(t *testing.T) {
 		var a a32.Asm

@@ -9,6 +9,7 @@ import (
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	a32 "github.com/wago-org/wago/src/core/encoder/arm32"
+	"github.com/wago-org/wago/src/core/runtime/embedded32"
 )
 
 var scratchRegs = []a32.Reg{a32.R0, a32.R1, a32.R2, a32.R3}
@@ -107,6 +108,11 @@ func compileBeachhead(numParams int, body []byte, context bool) ([]byte, error) 
 			return nil, err
 		}
 		switch op {
+		case 0x00:
+			if !c.context {
+				return nil, fmt.Errorf("arm32 beachhead unreachable requires module context")
+			}
+			c.emitContextTrap(embedded32.TrapUnreachable)
 		case 0x02:
 			if err := readVoidBlockType(r); err != nil {
 				return nil, err
