@@ -176,10 +176,16 @@ func CompileBeachhead(numParams int, body []byte) ([]byte, error) {
 			c.push(operand{constant: true, value: v})
 		case 0x45:
 			c.eqz()
+		case 0x67, 0x68, 0x69:
+			if err := c.countBits(op); err != nil {
+				return nil, err
+			}
 		case 0x46, 0x47, 0x48, 0x49, 0x4a, 0x4b, 0x4c, 0x4d, 0x4e, 0x4f:
 			c.compare(op)
-		case 0x6a, 0x6b, 0x6c, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76:
+		case 0x6a, 0x6b, 0x6c, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76, 0x77, 0x78:
 			c.binary(op)
+		case 0xc0, 0xc1:
+			c.signExtend(op)
 		default:
 			return nil, fmt.Errorf("arm32 beachhead unsupported opcode %#x", op)
 		}
@@ -280,12 +286,85 @@ func (c *compiler) binary(op byte) {
 		ok = c.a.Asr(dst, left, right)
 	case 0x76:
 		ok = c.a.Lsr(dst, left, right)
+	case 0x77:
+		tmp := c.alloc()
+		c.must(c.a.Sub(tmp, zeroReg, right), "rotl count")
+		ok = c.a.Ror(dst, left, tmp)
+		c.release(tmp)
+	case 0x78:
+		ok = c.a.Ror(dst, left, right)
 	}
 	c.must(ok, "binary")
 	c.release(left)
 	c.release(right)
 	c.push(operand{reg: dst})
 }
+func (c *compiler) countBits(op byte) error {
+	value := c.materialize(c.pop())
+	dst := c.alloc()
+	tmp := c.alloc()
+	c.must(c.a.MovImm32(dst, 0), "count init")
+	if op == 0x69 { // popcnt
+		loop := c.a.Len()
+		c.must(c.a.Cmp(value, zeroReg), "popcnt zero")
+		done := c.a.FarBcond(a32.CondEQ)
+		c.must(c.a.MovImm32(tmp, 1), "popcnt mask")
+		c.must(c.a.And(tmp, value, tmp), "popcnt bit")
+		c.must(c.a.Add(dst, dst, tmp), "popcnt add")
+		c.must(c.a.LsrImm(value, value, 1), "popcnt shift")
+		back := c.a.Branch()
+		if !c.a.PatchBranch(back, loop) || !c.a.PatchFarBranch(done, c.a.Len()) {
+			return fmt.Errorf("arm32: popcnt branch out of range")
+		}
+	} else {
+		c.must(c.a.Cmp(value, zeroReg), "count zero")
+		nonzero := c.a.FarBcond(a32.CondNE)
+		c.must(c.a.MovImm32(dst, 32), "zero count")
+		finishZero := c.a.Branch()
+		loop := c.a.Len()
+		if !c.a.PatchFarBranch(nonzero, loop) {
+			return fmt.Errorf("arm32: count entry branch out of range")
+		}
+		var done int
+		if op == 0x67 { // clz: a negative value has its top bit set.
+			c.must(c.a.Cmp(value, zeroReg), "clz top bit")
+			done = c.a.FarBcond(a32.CondMI)
+			c.must(c.a.LslImm(value, value, 1), "clz shift")
+		} else { // ctz
+			c.must(c.a.MovImm32(tmp, 1), "ctz mask")
+			c.must(c.a.And(tmp, value, tmp), "ctz bit")
+			c.must(c.a.Cmp(tmp, zeroReg), "ctz bit compare")
+			done = c.a.FarBcond(a32.CondNE)
+			c.must(c.a.LsrImm(value, value, 1), "ctz shift")
+		}
+		c.must(c.a.MovImm32(tmp, 1), "count increment")
+		c.must(c.a.Add(dst, dst, tmp), "count add")
+		back := c.a.Branch()
+		if !c.a.PatchBranch(back, loop) {
+			return fmt.Errorf("arm32: count loop branch out of range")
+		}
+		finish := c.a.Len()
+		if !c.a.PatchFarBranch(done, finish) || !c.a.PatchBranch(finishZero, finish) {
+			return fmt.Errorf("arm32: count finish branch out of range")
+		}
+	}
+	c.release(value)
+	c.release(tmp)
+	c.push(operand{reg: dst})
+	return nil
+}
+
+func (c *compiler) signExtend(op byte) {
+	value := c.materialize(c.pop())
+	shift := uint8(24)
+	if op == 0xc1 {
+		shift = 16
+	}
+	c.must(c.a.LslImm(value, value, shift), "sign extend left")
+	c.must(c.a.AsrImm(value, value, shift), "sign extend right")
+	c.push(operand{reg: value})
+}
+
 func (c *compiler) compare(op byte) {
 	right, left := c.materialize(c.pop()), c.materialize(c.pop())
 	cond := [...]a32.Cond{a32.CondEQ, a32.CondNE, a32.CondLT, a32.CondCC, a32.CondGT, a32.CondHI, a32.CondLE, a32.CondLS, a32.CondGE, a32.CondCS}[op-0x46]

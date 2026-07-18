@@ -176,10 +176,16 @@ func CompileBeachhead(numParams int, body []byte) ([]byte, error) {
 			c.push(operand{constant: true, value: v})
 		case 0x45: // i32.eqz
 			c.eqz()
+		case 0x67, 0x68, 0x69: // clz/ctz/popcnt
+			if err := c.countBits(op); err != nil {
+				return nil, err
+			}
 		case 0x46, 0x47, 0x48, 0x49, 0x4a, 0x4b, 0x4c, 0x4d, 0x4e, 0x4f:
 			c.compare(op)
-		case 0x6a, 0x6b, 0x6c, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76:
+		case 0x6a, 0x6b, 0x6c, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76, 0x77, 0x78:
 			c.binary(op)
+		case 0xc0, 0xc1: // extend8_s/extend16_s
+			c.signExtend(op)
 		default:
 			return nil, fmt.Errorf("riscv32 beachhead unsupported opcode %#x", op)
 		}
@@ -285,10 +291,81 @@ func (c *compiler) binary(op byte) {
 		c.a.Sra(dst, left, right)
 	case 0x76:
 		c.a.Srl(dst, left, right)
+	case 0x77:
+		tmp := c.alloc()
+		c.a.Neg(tmp, right)
+		c.a.Sll(dst, left, right)
+		c.a.Srl(tmp, left, tmp)
+		c.a.Or(dst, dst, tmp)
+		c.release(tmp)
+	case 0x78:
+		tmp := c.alloc()
+		c.a.Neg(tmp, right)
+		c.a.Srl(dst, left, right)
+		c.a.Sll(tmp, left, tmp)
+		c.a.Or(dst, dst, tmp)
+		c.release(tmp)
 	}
 	c.release(left)
 	c.release(right)
 	c.push(operand{reg: dst})
+}
+
+func (c *compiler) countBits(op byte) error {
+	value := c.materialize(c.pop())
+	dst := c.alloc()
+	tmp := c.alloc()
+	c.a.MovImm32(dst, 0)
+	if op == 0x69 { // popcnt
+		loop := c.a.Len()
+		done := c.a.Bcond(value, rv.Zero, rv.CondEQ)
+		c.a.Andi(tmp, value, 1)
+		c.a.Add(dst, dst, tmp)
+		c.a.Srli(value, value, 1)
+		back := c.a.Jal(rv.Zero)
+		if !c.a.PatchJAL21(back, loop) || !c.a.PatchBranch13(done, c.a.Len()) {
+			return fmt.Errorf("riscv32: popcnt branch out of range")
+		}
+	} else {
+		zero := c.a.Bcond(value, rv.Zero, rv.CondEQ)
+		loop := c.a.Len()
+		var done int
+		if op == 0x67 { // clz
+			done = c.a.Bcond(value, rv.Zero, rv.CondLT)
+			c.a.Slli(value, value, 1)
+		} else { // ctz
+			c.a.Andi(tmp, value, 1)
+			done = c.a.Bcond(tmp, rv.Zero, rv.CondNE)
+			c.a.Srli(value, value, 1)
+		}
+		c.a.Addi(dst, dst, 1)
+		back := c.a.Jal(rv.Zero)
+		if !c.a.PatchJAL21(back, loop) {
+			return fmt.Errorf("riscv32: count loop branch out of range")
+		}
+		finish := c.a.Len()
+		overZero := c.a.Jal(rv.Zero)
+		zeroCase := c.a.Len()
+		c.a.MovImm32(dst, 32)
+		end := c.a.Len()
+		if !c.a.PatchBranch13(zero, zeroCase) || !c.a.PatchBranch13(done, finish) || !c.a.PatchJAL21(overZero, end) {
+			return fmt.Errorf("riscv32: count finish branch out of range")
+		}
+	}
+	c.release(value)
+	c.release(tmp)
+	c.push(operand{reg: dst})
+	return nil
+}
+
+func (c *compiler) signExtend(op byte) {
+	value := c.materialize(c.pop())
+	if op == 0xc0 {
+		c.a.Sext8(value, value)
+	} else {
+		c.a.Sext16(value, value)
+	}
+	c.push(operand{reg: value})
 }
 
 func (c *compiler) compare(op byte) {

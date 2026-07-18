@@ -158,9 +158,12 @@ wide-value execution beachheads:
 
 The generated pair/quad code executes under both `qemu-riscv32` and `qemu-arm`;
 these tests include cross-word `i64.mul`, packed carry-isolated SIMD arithmetic,
-and f64 sign-bit behavior. More complex f64/SIMD operations use the complete
-helper ABI while measurements decide which additional instructions merit direct
-inline SWAR.
+and f64 sign-bit behavior. The i32 path now also lowers variable rotates,
+`clz`, `ctz`, `popcnt`, and both sign-extension instructions without requiring
+Arm or RISC-V bit-manipulation extensions; bounded count loops and rotate
+sequences execute under both QEMU targets. More complex f64/SIMD operations use
+the complete helper ABI while measurements decide which additional instructions
+merit direct inline SWAR.
 
 A shared fixed-capacity group allocator now owns one-, two-, and four-register
 values atomically. Allocation, exact ABI acquisition, release, LRU spill-victim

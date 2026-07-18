@@ -57,6 +57,42 @@ func TestCompileBeachheadRejectsUnsupportedShape(t *testing.T) {
 	}
 }
 
+func TestI32ExtendedOpsExecuteUnderQEMU(t *testing.T) {
+	qemu, err := exec.LookPath("qemu-riscv32")
+	if err != nil {
+		t.Skip("qemu-riscv32 not installed")
+	}
+	tests := []struct {
+		name string
+		body []byte
+		want int
+	}{
+		{"clz", []byte{0, 0x41, 1, 0x67, 0x0b}, 31},
+		{"ctz", []byte{0, 0x41, 16, 0x68, 0x0b}, 4},
+		{"popcnt", []byte{0, 0x41, 15, 0x69, 0x0b}, 4},
+		{"rotl", []byte{0, 0x41, 1, 0x41, 7, 0x77, 0x0b}, 128},
+		{"rotr", []byte{0, 0x41, 0x80, 0x02, 0x41, 1, 0x78, 0x0b}, 128},
+		{"extend8_s", []byte{0, 0x41, 0x80, 0x01, 0xc0, 0x41, 24, 0x76, 0x0b}, 255},
+		{"extend16_s", []byte{0, 0x41, 0x80, 0x80, 0x02, 0xc1, 0x41, 24, 0x76, 0x0b}, 255},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			fn, err := CompileBeachhead(0, tc.body)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var wrapper rv.Asm
+			call := wrapper.Jal(rv.RA)
+			wrapper.MovImm32(rv.A7, 93)
+			wrapper.Ecall()
+			if !wrapper.PatchJAL21(call, len(wrapper.B)) {
+				t.Fatal("wrapper call patch rejected")
+			}
+			runRV32Exit(t, qemu, append(wrapper.B, fn...), tc.want)
+		})
+	}
+}
+
 func TestCompileBeachheadExecutesUnderQEMU(t *testing.T) {
 	qemu, err := exec.LookPath("qemu-riscv32")
 	if err != nil {
