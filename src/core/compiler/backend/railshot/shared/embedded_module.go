@@ -21,16 +21,32 @@ type EmbeddedDataSegment struct {
 	Bytes   []byte
 }
 
+type EmbeddedGlobal struct {
+	Mutable bool
+	Value   uint32
+}
+
 type EmbeddedModule struct {
 	Code              []byte
 	Entry             []int
 	Functions         []EmbeddedFunctionMetadata
 	Data              []EmbeddedDataSegment
+	Globals           []EmbeddedGlobal
 	RequiredCodeBytes uint32
 }
 
 // InstantiateData preflights all active segments before mutating local memory,
 // then returns index-preserving passive/dropped state for bulk-memory helpers.
+func (m *EmbeddedModule) InstantiateGlobals(cells []uint32) error {
+	if m == nil || len(cells) < len(m.Globals) {
+		return embedded32.ErrArenaCapacity
+	}
+	for i := range m.Globals {
+		cells[i] = m.Globals[i].Value
+	}
+	return nil
+}
+
 func (m *EmbeddedModule) InstantiateData(memory *embedded32.LinearMemory) (*embedded32.DataStore, error) {
 	if m == nil || memory == nil {
 		return nil, embedded32.ErrInvalidArena
@@ -57,6 +73,7 @@ type PublishedEmbeddedModule struct {
 	Entry     []uint32
 	Functions []EmbeddedFunctionMetadata
 	Data      []EmbeddedDataSegment
+	Globals   []EmbeddedGlobal
 }
 
 func PublishEmbeddedModule(arena *embedded32.CodeArena, module *EmbeddedModule, publish embedded32.CodePublisher) (*PublishedEmbeddedModule, error) {
@@ -76,7 +93,7 @@ func PublishEmbeddedModule(arena *embedded32.CodeArena, module *EmbeddedModule, 
 	if err := tx.Commit(publish); err != nil {
 		return nil, err
 	}
-	out := &PublishedEmbeddedModule{Block: block, Entry: make([]uint32, len(module.Entry)), Functions: make([]EmbeddedFunctionMetadata, len(module.Functions)), Data: module.Data}
+	out := &PublishedEmbeddedModule{Block: block, Entry: make([]uint32, len(module.Entry)), Functions: make([]EmbeddedFunctionMetadata, len(module.Functions)), Data: module.Data, Globals: module.Globals}
 	for i, entry := range module.Entry {
 		out.Entry[i] = block.Offset + uint32(entry)
 	}
@@ -109,7 +126,7 @@ func CompileEmbeddedModule(m *wasm.Module, opts EmbeddedModuleOptions, target st
 	if len(m.Imports) != 0 {
 		return nil, fmt.Errorf("%s: module imports are not supported", target)
 	}
-	if len(m.Tables) != 0 || len(m.Memories) > 1 || len(m.Globals) != 0 || len(m.Elements) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.Start != nil {
+	if len(m.Tables) != 0 || len(m.Memories) > 1 || len(m.Elements) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.Start != nil {
 		return nil, fmt.Errorf("%s: module contains unsupported runtime state", target)
 	}
 	if len(m.Memories) == 1 && (m.Memories[0].Limits.Addr64 || m.Memories[0].Shared) {
@@ -156,7 +173,11 @@ func CompileEmbeddedModule(m *wasm.Module, opts EmbeddedModuleOptions, target st
 	if err != nil {
 		return nil, err
 	}
-	out := &EmbeddedModule{Code: make([]byte, 0, required), Entry: make([]int, len(bodies)), Functions: make([]EmbeddedFunctionMetadata, len(bodies)), Data: data, RequiredCodeBytes: uint32(required)}
+	globals, err := embeddedGlobals(m, target)
+	if err != nil {
+		return nil, err
+	}
+	out := &EmbeddedModule{Code: make([]byte, 0, required), Entry: make([]int, len(bodies)), Functions: make([]EmbeddedFunctionMetadata, len(bodies)), Data: data, Globals: globals, RequiredCodeBytes: uint32(required)}
 	for i, body := range bodies {
 		pad := (16 - len(out.Code)%16) % 16
 		if pad%len(alignmentPad) != 0 {
@@ -213,6 +234,22 @@ func CompileEmbeddedI32Module(m *wasm.Module, opts EmbeddedModuleOptions, target
 		}
 		return compile(len(ft.Params), body)
 	})
+}
+
+func embeddedGlobals(m *wasm.Module, target string) ([]EmbeddedGlobal, error) {
+	out := make([]EmbeddedGlobal, len(m.Globals))
+	for i := range m.Globals {
+		global := &m.Globals[i]
+		if global.Type.Type != wasm.I32 {
+			return nil, fmt.Errorf("%s: global %d type %s is not yet supported", target, i, global.Type.Type)
+		}
+		value, err := embeddedI32Const(global.Init)
+		if err != nil {
+			return nil, fmt.Errorf("%s: global %d initializer: %w", target, i, err)
+		}
+		out[i] = EmbeddedGlobal{Mutable: global.Type.Mutable, Value: value}
+	}
+	return out, nil
 }
 
 func embeddedDataSegments(m *wasm.Module, target string) ([]EmbeddedDataSegment, error) {

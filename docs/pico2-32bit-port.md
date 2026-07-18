@@ -269,6 +269,11 @@ trap before any callee-save state is exposed. Truly mixed-width calls/signatures
 and imported calls, wide structured control, and broader runtime metadata remain
 outside this module-wide slice.
 
+Module metadata now retains local i32 globals with exact mutability and constant
+initial values. Instantiation initializes bounded caller-provided 32-bit cells,
+`ContextABI` publishes their target base address, and normal generated i32
+functions execute `global.get`/`global.set` with immutable-set rejection.
+
 The embedded runtime now also provides complete preflighted `memory.copy`,
 `memory.fill`, passive `memory.init`, and idempotent `data.drop` semantics.
 Module layout retains active/passive segments in original index order;

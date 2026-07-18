@@ -145,6 +145,45 @@ func (c *compiler) call(target int) error {
 	return nil
 }
 
+func (c *compiler) globalGet(index uint32) error {
+	if c.module == nil || uint64(index) >= uint64(len(c.module.Globals)) || c.module.Globals[index].Type.Type != wasm.I32 {
+		return fmt.Errorf("riscv32: unsupported global.get %d", index)
+	}
+	base, dst := c.alloc(), c.alloc()
+	c.a.Lw(base, rvContextReg, embedded32.ContextGlobalsBaseOffset)
+	offset := uint64(index) * 4
+	if offset <= 2047 {
+		c.a.Lw(dst, base, int32(offset))
+	} else {
+		c.a.MovImm32(rv.T6, uint32(offset))
+		c.a.Add(base, base, rv.T6)
+		c.a.Lw(dst, base, 0)
+	}
+	c.release(base)
+	c.push(operand{reg: dst})
+	return nil
+}
+
+func (c *compiler) globalSet(index uint32) error {
+	if c.module == nil || uint64(index) >= uint64(len(c.module.Globals)) || c.module.Globals[index].Type.Type != wasm.I32 || !c.module.Globals[index].Type.Mutable {
+		return fmt.Errorf("riscv32: unsupported global.set %d", index)
+	}
+	value := c.materialize(c.pop())
+	base := c.alloc()
+	c.a.Lw(base, rvContextReg, embedded32.ContextGlobalsBaseOffset)
+	offset := uint64(index) * 4
+	if offset <= 2047 {
+		c.a.Sw(value, base, int32(offset))
+	} else {
+		c.a.MovImm32(rv.T6, uint32(offset))
+		c.a.Add(base, base, rv.T6)
+		c.a.Sw(value, base, 0)
+	}
+	c.release(value)
+	c.release(base)
+	return nil
+}
+
 func (c *compiler) load(r *wasm.Reader, op byte) error {
 	if _, err := r.U32(); err != nil {
 		return err

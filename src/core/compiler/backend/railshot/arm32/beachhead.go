@@ -223,6 +223,21 @@ func compileBeachhead(m *wasm.Module, funcIdx, numParams int, body []byte, conte
 			if err := c.selectI32(); err != nil {
 				return nil, err
 			}
+		case 0x23, 0x24:
+			if !c.context {
+				return nil, fmt.Errorf("arm32 beachhead global operation requires module context")
+			}
+			idx, err := r.U32()
+			if err != nil {
+				return nil, err
+			}
+			if op == 0x23 {
+				if err := c.globalGet(idx); err != nil {
+					return nil, err
+				}
+			} else if err := c.globalSet(idx); err != nil {
+				return nil, err
+			}
 		case 0x20:
 			idx, err := r.U32()
 			if err != nil || int(idx) >= len(c.locals) {

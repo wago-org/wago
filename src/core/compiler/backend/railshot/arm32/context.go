@@ -130,6 +130,47 @@ func (c *compiler) call(target int) error {
 	return nil
 }
 
+func (c *compiler) globalGet(index uint32) error {
+	if c.module == nil || uint64(index) >= uint64(len(c.module.Globals)) || c.module.Globals[index].Type.Type != wasm.I32 {
+		return fmt.Errorf("arm32: unsupported global.get %d", index)
+	}
+	base, dst := c.alloc(), c.alloc()
+	c.must(c.a.Ldr(base, armContextReg, embedded32.ContextGlobalsBaseOffset), "global base")
+	offset := uint64(index) * 4
+	if offset <= 4095 {
+		c.must(c.a.Ldr(dst, base, uint16(offset)), "global.get")
+	} else {
+		c.must(c.a.MovImm32(a32.R12, uint32(offset)), "global offset")
+		c.must(c.a.Add(base, base, a32.R12), "global address")
+		c.must(c.a.Ldr(dst, base, 0), "global.get")
+		c.must(c.a.MovImm32(a32.R12, 0), "restore zero register")
+	}
+	c.release(base)
+	c.push(operand{reg: dst})
+	return nil
+}
+
+func (c *compiler) globalSet(index uint32) error {
+	if c.module == nil || uint64(index) >= uint64(len(c.module.Globals)) || c.module.Globals[index].Type.Type != wasm.I32 || !c.module.Globals[index].Type.Mutable {
+		return fmt.Errorf("arm32: unsupported global.set %d", index)
+	}
+	value := c.materialize(c.pop())
+	base := c.alloc()
+	c.must(c.a.Ldr(base, armContextReg, embedded32.ContextGlobalsBaseOffset), "global base")
+	offset := uint64(index) * 4
+	if offset <= 4095 {
+		c.must(c.a.Str(value, base, uint16(offset)), "global.set")
+	} else {
+		c.must(c.a.MovImm32(a32.R12, uint32(offset)), "global offset")
+		c.must(c.a.Add(base, base, a32.R12), "global address")
+		c.must(c.a.Str(value, base, 0), "global.set")
+		c.must(c.a.MovImm32(a32.R12, 0), "restore zero register")
+	}
+	c.release(value)
+	c.release(base)
+	return nil
+}
+
 func (c *compiler) load(r *wasm.Reader, op byte) error {
 	if _, err := r.U32(); err != nil { // alignment is advisory.
 		return err

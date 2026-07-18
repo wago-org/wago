@@ -104,6 +104,49 @@ func TestCompileModuleLaysOutFunctions(t *testing.T) {
 	}
 }
 
+func arm32GlobalModule(t *testing.T) *wasm.Module {
+	t.Helper()
+	global := wasmtest.GlobalEntry(wasm.I32, true, []byte{0x41, 7, 0x0b})
+	m, err := wasm.DecodeModule(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0})),
+		wasmtest.Section(6, wasmtest.Vec(global)),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0, 0x24, 0, 0x23, 0, 0x0b}))),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+func TestCompileModuleI32GlobalsUnderQEMU(t *testing.T) {
+	qemu, err := exec.LookPath("qemu-arm")
+	if err != nil {
+		t.Skip("qemu-arm not installed")
+	}
+	cm, err := CompileModule(arm32GlobalModule(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cells := make([]uint32, 1)
+	if err := cm.InstantiateGlobals(cells); err != nil || cells[0] != 7 {
+		t.Fatalf("globals=%v err=%v", cells, err)
+	}
+	meta := cm.Functions[0]
+	fn := cm.Code[meta.Offset : meta.Offset+meta.Size]
+	var a a32.Asm
+	armMemoryContext(&a)
+	a.MovImm32(a32.R12, cells[0])
+	a.Str(a32.R12, a32.SP, 48)
+	armContextArg(&a)
+	a.MovReg(a32.R11, a32.R0)
+	a.MovImm32(a32.R0, 42)
+	call := a.Call()
+	armExit(&a)
+	a.PatchCall(call, len(a.B))
+	runARM32Exit(t, qemu, append(a.B, fn...), 42)
+}
+
 func arm32CallModule(t *testing.T, trapping bool) *wasm.Module {
 	t.Helper()
 	var types, funcs, code [][]byte
@@ -304,7 +347,7 @@ func TestCompileModuleMemoryAndTrapContextUnderQEMU(t *testing.T) {
 		var a a32.Asm
 		armMemoryContext(&a)
 		a.MovImm32(a32.R12, 1)
-		a.Str(a32.R12, a32.SP, 44)
+		a.Str(a32.R12, a32.SP, 52)
 		armContextArg(&a)
 		a.MovReg(a32.R11, a32.R0)
 		a.MovImm32(a32.R0, 4)

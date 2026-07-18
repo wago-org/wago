@@ -105,6 +105,50 @@ func TestCompileModuleLaysOutFunctions(t *testing.T) {
 	}
 }
 
+func riscv32GlobalModule(t *testing.T) *wasm.Module {
+	t.Helper()
+	global := wasmtest.GlobalEntry(wasm.I32, true, []byte{0x41, 7, 0x0b})
+	m, err := wasm.DecodeModule(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0})),
+		wasmtest.Section(6, wasmtest.Vec(global)),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0, 0x24, 0, 0x23, 0, 0x0b}))),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+func TestCompileModuleI32GlobalsUnderQEMU(t *testing.T) {
+	qemu, err := exec.LookPath("qemu-riscv32")
+	if err != nil {
+		t.Skip("qemu-riscv32 not installed")
+	}
+	cm, err := CompileModule(riscv32GlobalModule(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cells := make([]uint32, 1)
+	if err := cm.InstantiateGlobals(cells); err != nil || cells[0] != 7 {
+		t.Fatalf("globals=%v err=%v", cells, err)
+	}
+	meta := cm.Functions[0]
+	fn := cm.Code[meta.Offset : meta.Offset+meta.Size]
+	var a rv.Asm
+	rvMemoryContext(&a)
+	a.MovImm32(rv.T1, cells[0])
+	a.Sw(rv.T1, rv.SP, 48)
+	a.Addi(rv.A0, rv.SP, 16)
+	a.MovReg(rv.X23, rv.A0)
+	a.MovImm32(rv.A0, 42)
+	call := a.Jal(rv.RA)
+	a.MovImm32(rv.A7, 93)
+	a.Ecall()
+	a.PatchJAL21(call, len(a.B))
+	runRV32Exit(t, qemu, append(a.B, fn...), 42)
+}
+
 func riscv32CallModule(t *testing.T, trapping bool) *wasm.Module {
 	t.Helper()
 	var types, funcs, code [][]byte
@@ -310,7 +354,7 @@ func TestCompileModuleMemoryAndTrapContextUnderQEMU(t *testing.T) {
 		var a rv.Asm
 		rvMemoryContext(&a)
 		a.MovImm32(rv.T1, 1)
-		a.Sw(rv.T1, rv.SP, 44)
+		a.Sw(rv.T1, rv.SP, 52)
 		a.Addi(rv.A0, rv.SP, 16)
 		a.MovReg(rv.X23, rv.A0)
 		a.MovImm32(rv.A0, 4)

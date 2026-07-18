@@ -228,6 +228,7 @@ type ContextABI struct {
 	HelperTable         uint32
 	LinearMemoryMaximum uint32
 	StackLimit          uint32
+	GlobalsBase         uint32
 }
 
 const (
@@ -238,7 +239,8 @@ const (
 	ContextHelperTableOffset         = 16
 	ContextLinearMemoryMaximumOffset = 20
 	ContextStackLimitOffset          = 24
-	ContextABISize                   = 28
+	ContextGlobalsBaseOffset         = 28
+	ContextABISize                   = 32
 )
 
 // Runtime composes the fixed embedded resources. The initial profile permits
