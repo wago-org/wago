@@ -245,9 +245,11 @@ parameters, locals, operands, and results, preserving one/two/four-slot values
 atomically. Genuinely mixed functions now execute constants, mixed local
 get/set/tee, complete drops, i32 arithmetic/logic, i64 add/sub/logic, raw-bit
 f32/f64 sign operations, and direct v128 bitwise plus i32x4 add/sub operations.
-The initial internal register ABI carries up to four serialized parameter/result
-slots on Arm and eight on RV32; larger signatures reject pending stack arguments.
-Mixed functions now stage complete arguments from their slot frames, preserve
+The internal ABI carries the first four serialized parameter/result slots in
+Arm registers and the first eight in RV32 registers. Additional slots use a
+statically reserved, 16-byte-aligned outgoing area at the base of the caller's
+bounded frame; callees import and publish overflow slots relative to their entry
+stack pointer. Mixed functions stage complete arguments from their slot frames, preserve
 live wide values, relocate direct mixed-to-mixed calls, return ordered multiple
 results, execute typed or untyped atomic `select` across one/two/four-slot
 values, accept terminal explicit returns, and propagate nested traps without
@@ -284,9 +286,9 @@ across calls, relocates direct calls module-wide, supports recursion, and checks
 the trap cell after nested returns. Stack exhaustion writes a distinct canonical
 trap before any callee-save state is exposed. Mixed-width signatures and locals
 now use exact bounded stack frames with entry cancellation and stack-limit
-checks. Direct mixed-width calls and multiple results are now implemented for the
-register-slot ABI. Stack arguments, indirect and imported calls, calls into
-legacy homogeneous beachheads, and wide structured control remain outside this
+checks. Direct mixed-width calls, multiple results, and bounded stack argument/result
+overflow are implemented. Indirect and imported calls, calls into legacy
+homogeneous beachheads, and wide structured control remain outside this
 module-wide slice.
 
 Module metadata now retains local i32 globals with exact mutability and constant
@@ -305,6 +307,6 @@ and starts active segments dropped. `ContextABI` now publishes a stable array of
 `memory.init` plus idempotent `data.drop` directly against those descriptors.
 
 This is still not public backend admission. Pair/quad structured-control
-merges, stack-argument calls, wide globals/tables/references, generated-
+merges, wide globals/tables/references, generated-
 code entry trampolines, firmware linking and transport, and Pico 2 hardware
 qualification remain to be implemented and measured.

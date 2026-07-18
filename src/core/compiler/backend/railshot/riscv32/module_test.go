@@ -307,6 +307,63 @@ func TestCompileModuleSelectsAtomicWideValueUnderQEMU(t *testing.T) {
 	runRV32Exit(t, qemu, append(a.B, cm.Code...), 42)
 }
 
+func riscv32MixedStackABIModule(t *testing.T) *wasm.Module {
+	t.Helper()
+	sig := wasmtest.FuncType(
+		[]wasm.ValType{wasm.V128, wasm.V128, wasm.I32},
+		[]wasm.ValType{wasm.V128, wasm.V128, wasm.I32},
+	)
+	callee := []byte{0x20, 0, 0x20, 1, 0x20, 2, 0x0b}
+	caller := []byte{0x20, 0, 0x20, 1, 0x20, 2, 0x10, 0, 0x0b}
+	m, err := wasm.DecodeModule(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(sig)),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0}, []byte{0})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(callee), wasmtest.Code(caller))),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+func TestCompileModuleUsesMixedStackArgumentsAndResultsUnderQEMU(t *testing.T) {
+	qemu, err := exec.LookPath("qemu-riscv32")
+	if err != nil {
+		t.Skip("qemu-riscv32 not installed")
+	}
+	cm, err := CompileModule(riscv32MixedStackABIModule(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cm.Functions[1].ParamSlots != 9 || cm.Functions[1].ResultSlots != 9 {
+		t.Fatalf("metadata=%+v", cm.Functions[1])
+	}
+	var a rv.Asm
+	rvMemoryContext(&a)
+	a.MovImm32(rv.T0, 12)
+	a.Sw(rv.T0, rv.SP, 0)
+	a.Addi(rv.A0, rv.SP, 16)
+	a.MovReg(rv.X23, rv.A0)
+	a.MovImm32(rv.A0, 10)
+	a.MovImm32(rv.A1, 0)
+	a.MovImm32(rv.A2, 0)
+	a.MovImm32(rv.A3, 0)
+	a.MovImm32(rv.A4, 20)
+	a.MovImm32(rv.A5, 0)
+	a.MovImm32(rv.A6, 0)
+	a.MovImm32(rv.A7, 0)
+	call := a.Jal(rv.RA)
+	a.Add(rv.A0, rv.A0, rv.A4)
+	a.Lw(rv.T0, rv.SP, 0)
+	a.Add(rv.A0, rv.A0, rv.T0)
+	a.MovImm32(rv.A7, 93)
+	a.Ecall()
+	if !a.PatchJAL21(call, len(a.B)+cm.Entry[1]) {
+		t.Fatal("wrapper call relocation")
+	}
+	runRV32Exit(t, qemu, append(a.B, cm.Code...), 42)
+}
+
 func TestCompileModuleLaysOutFunctions(t *testing.T) {
 	cm, err := CompileModule(riscv32Module(t))
 	if err != nil {

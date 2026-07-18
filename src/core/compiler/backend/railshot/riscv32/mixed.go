@@ -9,6 +9,15 @@ import (
 	"github.com/wago-org/wago/src/core/runtime/embedded32"
 )
 
+func mixedValueSlotCount(values []shared.MixedValue) uint16 {
+	var slots uint16
+	for _, value := range values {
+		width, _ := shared.MixedValueSlots(value.Type)
+		slots += uint16(width)
+	}
+	return slots
+}
+
 func CompileMixedModuleFunction(ft *wasm.CompType, locals []wasm.LocalRun, body []byte) ([]byte, error) {
 	plan, err := shared.BuildMixedPlan(ft, locals, body)
 	if err != nil {
@@ -42,17 +51,46 @@ func compileMixedModuleFunction(m *wasm.Module, ft *wasm.CompType, locals []wasm
 }
 
 func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc) ([]byte, error) {
-	if plan.ParameterSlots > 8 || plan.ResultSlots > 8 {
-		return nil, fmt.Errorf("riscv32: mixed register ABI supports at most 8 parameter and result slots")
+	maxOutgoingSlots := uint16(0)
+	for _, op := range plan.Ops {
+		if op.Kind != shared.MixedCall {
+			continue
+		}
+		params, results := mixedValueSlotCount(op.Args), mixedValueSlotCount(op.Results)
+		if params > 8 {
+			params -= 8
+		} else {
+			params = 0
+		}
+		if results > 8 {
+			results -= 8
+		} else {
+			results = 0
+		}
+		if params > maxOutgoingSlots {
+			maxOutgoingSlots = params
+		}
+		if results > maxOutgoingSlots {
+			maxOutgoingSlots = results
+		}
 	}
+	outgoingBytes := int32(maxOutgoingSlots) * 4
+	valueBase := outgoingBytes
 	dataBytes := int32(plan.LocalSlots+plan.MaxOperandSlots) * 4
-	saveOffset := dataBytes
-	frame := (dataBytes + 4 + 15) &^ 15
-	if frame > 1024 {
+	saveOffset := valueBase + dataBytes
+	frame := (valueBase + dataBytes + 4 + 15) &^ 15
+	incomingSlots := plan.ParameterSlots
+	if plan.ResultSlots > incomingSlots {
+		incomingSlots = plan.ResultSlots
+	}
+	if incomingSlots > 8 && frame+int32(incomingSlots-8)*4 > 2047 {
+		return nil, fmt.Errorf("riscv32: mixed stack ABI displacement exceeds 2047 bytes")
+	}
+	if frame > 2032 {
 		return nil, fmt.Errorf("riscv32: mixed frame %d exceeds bounded stack displacement", frame)
 	}
 	var a rv.Asm
-	off := func(slot uint16) int32 { return int32(slot) * 4 }
+	off := func(slot uint16) int32 { return valueBase + int32(slot)*4 }
 	must := func(ok bool, what string) {
 		if !ok {
 			panic("riscv32: mixed " + what)
@@ -73,7 +111,12 @@ func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc) ([]byte, erro
 	}
 	must(a.Sw(rv.RA, rv.SP, saveOffset), "return address save")
 	for i := uint16(0); i < plan.ParameterSlots; i++ {
-		must(a.Sw(rv.A0+rv.Reg(i), rv.SP, off(i)), "parameter store")
+		if i < 8 {
+			must(a.Sw(rv.A0+rv.Reg(i), rv.SP, off(i)), "register parameter store")
+		} else {
+			must(a.Lw(rv.T0, rv.SP, frame+int32(i-8)*4), "stack parameter load")
+			must(a.Sw(rv.T0, rv.SP, off(i)), "stack parameter store")
+		}
 	}
 	a.MovImm32(rv.T0, 0)
 	for i := plan.DeclaredLocalStart; i < plan.LocalSlots; i++ {
@@ -251,10 +294,12 @@ func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc) ([]byte, erro
 			for _, arg := range op.Args {
 				width, _ := shared.MixedValueSlots(arg.Type)
 				for i := uint8(0); i < width; i++ {
-					if argReg >= 8 {
-						return nil, fmt.Errorf("riscv32: mixed call target %d exceeds 8 argument slots", op.Target)
+					if argReg < 8 {
+						must(a.Lw(rv.A0+rv.Reg(argReg), rv.SP, off(arg.Slot)+int32(i)*4), "register call argument")
+					} else {
+						must(a.Lw(rv.T0, rv.SP, off(arg.Slot)+int32(i)*4), "stack call argument load")
+						must(a.Sw(rv.T0, rv.SP, int32(argReg-8)*4), "stack call argument store")
 					}
-					must(a.Lw(rv.A0+rv.Reg(argReg), rv.SP, off(arg.Slot)+int32(i)*4), "call argument")
 					argReg++
 				}
 			}
@@ -264,10 +309,12 @@ func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc) ([]byte, erro
 			for _, result := range op.Results {
 				width, _ := shared.MixedValueSlots(result.Type)
 				for i := uint8(0); i < width; i++ {
-					if resultReg >= 8 {
-						return nil, fmt.Errorf("riscv32: mixed call target %d exceeds 8 result slots", op.Target)
+					if resultReg < 8 {
+						must(a.Sw(rv.A0+rv.Reg(resultReg), rv.SP, off(result.Slot)+int32(i)*4), "register call result")
+					} else {
+						must(a.Lw(rv.T0, rv.SP, int32(resultReg-8)*4), "stack call result load")
+						must(a.Sw(rv.T0, rv.SP, off(result.Slot)+int32(i)*4), "stack call result store")
 					}
-					must(a.Sw(rv.A0+rv.Reg(resultReg), rv.SP, off(result.Slot)+int32(i)*4), "call result")
 					resultReg++
 				}
 			}
@@ -298,7 +345,12 @@ func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc) ([]byte, erro
 	for _, result := range plan.Results {
 		width, _ := shared.MixedValueSlots(result.Type)
 		for i := uint8(0); i < width; i++ {
-			must(a.Lw(rv.A0+rv.Reg(resultReg), rv.SP, off(result.Slot)+int32(i)*4), "result load")
+			if resultReg < 8 {
+				must(a.Lw(rv.A0+rv.Reg(resultReg), rv.SP, off(result.Slot)+int32(i)*4), "register result load")
+			} else {
+				must(a.Lw(rv.T0, rv.SP, off(result.Slot)+int32(i)*4), "stack result load")
+				must(a.Sw(rv.T0, rv.SP, frame+int32(resultReg-8)*4), "stack result store")
+			}
 			resultReg++
 		}
 	}

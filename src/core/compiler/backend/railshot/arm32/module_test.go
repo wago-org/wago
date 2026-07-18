@@ -301,6 +301,58 @@ func TestCompileModuleSelectsAtomicWideValueUnderQEMU(t *testing.T) {
 	runARM32Exit(t, qemu, append(a.B, cm.Code...), 42)
 }
 
+func arm32MixedStackABIModule(t *testing.T) *wasm.Module {
+	t.Helper()
+	sig := wasmtest.FuncType(
+		[]wasm.ValType{wasm.I32, wasm.I64, wasm.I64},
+		[]wasm.ValType{wasm.I64, wasm.I64, wasm.I32},
+	)
+	callee := []byte{0x20, 1, 0x20, 2, 0x20, 0, 0x0b}
+	caller := []byte{0x20, 0, 0x20, 1, 0x20, 2, 0x10, 0, 0x0b}
+	m, err := wasm.DecodeModule(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(sig)),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0}, []byte{0})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(callee), wasmtest.Code(caller))),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+func TestCompileModuleUsesMixedStackArgumentsAndResultsUnderQEMU(t *testing.T) {
+	qemu, err := exec.LookPath("qemu-arm")
+	if err != nil {
+		t.Skip("qemu-arm not installed")
+	}
+	cm, err := CompileModule(arm32MixedStackABIModule(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cm.Functions[1].ParamSlots != 5 || cm.Functions[1].ResultSlots != 5 {
+		t.Fatalf("metadata=%+v", cm.Functions[1])
+	}
+	var a a32.Asm
+	armMemoryContext(&a)
+	a.MovImm32(a32.R12, 0)
+	a.Str(a32.R12, a32.SP, 0)
+	armContextArg(&a)
+	a.MovReg(a32.R11, a32.R0)
+	a.MovImm32(a32.R0, 7)
+	a.MovImm32(a32.R1, 37)
+	a.MovImm32(a32.R2, 0)
+	a.MovImm32(a32.R3, 5)
+	call := a.Call()
+	a.Add(a32.R0, a32.R0, a32.R2)
+	a.Ldr(a32.R1, a32.SP, 0)
+	a.Add(a32.R0, a32.R0, a32.R1)
+	armExit(&a)
+	if !a.PatchCall(call, len(a.B)+cm.Entry[1]) {
+		t.Fatal("wrapper call relocation")
+	}
+	runARM32Exit(t, qemu, append(a.B, cm.Code...), 49)
+}
+
 func TestCompileModuleLaysOutFunctions(t *testing.T) {
 	cm, err := CompileModule(arm32Module(t))
 	if err != nil {
