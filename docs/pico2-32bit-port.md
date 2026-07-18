@@ -180,7 +180,9 @@ pair/quad release is rejected transactionally. Both direct wide compilers use
 this allocator rather than independent per-register ownership.
 
 The i64 path additionally supports pair parameters, zero-initialized pair
-locals, and atomic `local.get`, `local.set`, and `local.tee`. Local homes use
+locals, atomic `local.get`, `local.set`, and `local.tee`, plus direct
+`extend8_s`, `extend16_s`, and `extend32_s` with complete high-word sign
+propagation. Local homes use
 callee-saved register pairs whose incoming values are preserved in aligned
 frames. QEMU executes a parameter/local/tee/multiply fixture on both targets.
 

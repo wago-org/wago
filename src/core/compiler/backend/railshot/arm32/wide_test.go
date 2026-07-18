@@ -74,6 +74,9 @@ func TestCompileI64Beachhead(t *testing.T) {
 	if _, err := CompileI64Beachhead([]byte{0, 0x42, 1, 0x86, 0x0b}); err == nil {
 		t.Fatal("unsupported shift accepted")
 	}
+	if _, err := CompileI64Beachhead([]byte{0, 0x42, 0x80, 0x01, 0xc2, 0x0b}); err != nil {
+		t.Fatal(err)
+	}
 	localBody := []byte{1, 1, 0x7e, 0x20, 0, 0x42, 5, 0x7c, 0x22, 1, 0x42, 2, 0x7e, 0x0b}
 	if _, err := CompileI64Function(1, localBody); err != nil {
 		t.Fatal(err)
@@ -213,6 +216,20 @@ func TestWideBeachheadsExecuteUnderQEMU(t *testing.T) {
 			t.Fatal("call patch")
 		}
 		runARM32Exit(t, qemu, append(entry.B, fn...), 42)
+	})
+	t.Run("i64-extend8-s", func(t *testing.T) {
+		fn, err := CompileI64Beachhead([]byte{0, 0x42, 0x80, 0x01, 0xc2, 0x0b})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var entry a32.Asm
+		call := entry.Call()
+		entry.MovReg(a32.R0, a32.R1)
+		entry.MovImm32(a32.R7, 1)
+		entry.Svc(0)
+		entry.Align4()
+		entry.PatchCall(call, len(entry.B))
+		runARM32Exit(t, qemu, append(entry.B, fn...), 255)
 	})
 	t.Run("i64-param-local", func(t *testing.T) {
 		body := []byte{1, 1, 0x7e, 0x20, 0, 0x42, 5, 0x7c, 0x22, 1, 0x42, 2, 0x7e, 0x0b}

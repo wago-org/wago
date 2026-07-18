@@ -675,6 +675,18 @@ func CompileI64Function(numParams int, body []byte) ([]byte, error) {
 			c.a.MovImm32(v.regs[0], uint32(x))
 			c.a.MovImm32(v.regs[1], uint32(uint64(x)>>32))
 			c.push(v)
+		case 0xc2, 0xc3, 0xc4:
+			v, e := c.pop(2)
+			if e != nil {
+				return nil, e
+			}
+			if op == 0xc2 {
+				c.a.Sext8(v.regs[0], v.regs[0])
+			} else if op == 0xc3 {
+				c.a.Sext16(v.regs[0], v.regs[0])
+			}
+			c.a.Srai(v.regs[1], v.regs[0], 31)
+			c.push(v)
 		case 0x7c, 0x7d, 0x7e, 0x83, 0x84, 0x85:
 			b, e := c.pop(2)
 			if e != nil {
