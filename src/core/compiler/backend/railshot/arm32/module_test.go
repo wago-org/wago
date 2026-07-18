@@ -104,6 +104,95 @@ func TestCompileModuleLaysOutFunctions(t *testing.T) {
 	}
 }
 
+func arm32CallModule(t *testing.T, trapping bool) *wasm.Module {
+	t.Helper()
+	var types, funcs, code [][]byte
+	if trapping {
+		types = [][]byte{wasmtest.FuncType(nil, nil)}
+		funcs = [][]byte{{0}, {0}}
+		code = [][]byte{wasmtest.Code([]byte{0x00, 0x0b}), wasmtest.Code([]byte{0x10, 0, 0x0b})}
+	} else {
+		types = [][]byte{wasmtest.FuncType(nil, []wasm.ValType{wasm.I32})}
+		funcs = [][]byte{{0}, {0}}
+		code = [][]byte{wasmtest.Code([]byte{0x41, 7, 0x0b}), wasmtest.Code([]byte{0x41, 35, 0x10, 0, 0x6a, 0x0b})}
+	}
+	m, err := wasm.DecodeModule(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(types...)),
+		wasmtest.Section(3, wasmtest.Vec(funcs...)),
+		wasmtest.Section(10, wasmtest.Vec(code...)),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+func arm32RecursiveModule(t *testing.T) *wasm.Module {
+	t.Helper()
+	recurBody := []byte{1, 1, 0x7f, 0x41, 1, 0x21, 1, 0x20, 0, 0x04, 0x40, 0x20, 0, 0x41, 1, 0x6b, 0x10, 0, 0x21, 1, 0x0b, 0x20, 1, 0x0b}
+	recurCode := append(wasmtest.ULEB(uint32(len(recurBody))), recurBody...)
+	m, err := wasm.DecodeModule(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}),
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0}, []byte{1})),
+		wasmtest.Section(10, wasmtest.Vec(recurCode, wasmtest.Code([]byte{0x41, 3, 0x10, 0, 0x0b}))),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+func TestCompileModuleDirectCallsUnderQEMU(t *testing.T) {
+	qemu, err := exec.LookPath("qemu-arm")
+	if err != nil {
+		t.Skip("qemu-arm not installed")
+	}
+	t.Run("recursion", func(t *testing.T) {
+		cm, err := CompileModule(arm32RecursiveModule(t))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var a a32.Asm
+		armMemoryContext(&a)
+		armContextArg(&a)
+		a.MovReg(a32.R11, a32.R0)
+		call := a.Call()
+		armExit(&a)
+		a.PatchCall(call, len(a.B)+cm.Entry[1])
+		runARM32Exit(t, qemu, append(a.B, cm.Code...), 1)
+	})
+	for _, trapping := range []bool{false, true} {
+		name := "live-value"
+		if trapping {
+			name = "nested-trap"
+		}
+		t.Run(name, func(t *testing.T) {
+			cm, err := CompileModule(arm32CallModule(t, trapping))
+			if err != nil {
+				t.Fatal(err)
+			}
+			var a a32.Asm
+			armMemoryContext(&a)
+			armContextArg(&a)
+			a.MovReg(a32.R11, a32.R0)
+			call := a.Call()
+			if trapping {
+				a.Ldr(a32.R0, a32.SP, 32)
+			}
+			armExit(&a)
+			a.PatchCall(call, len(a.B)+cm.Entry[1])
+			want := 42
+			if trapping {
+				want = int(embedded32.TrapUnreachable)
+			}
+			runARM32Exit(t, qemu, append(a.B, cm.Code...), want)
+		})
+	}
+}
+
 func arm32LoadModule(t *testing.T) *wasm.Module {
 	t.Helper()
 	m, err := wasm.DecodeModule(wasmtest.Module(

@@ -35,13 +35,21 @@ type controlFrame struct {
 	pending  []int
 }
 
+type callReloc struct {
+	at, target int
+}
+
 type compiler struct {
-	a       rv.Asm
-	stack   []operand
-	free    []rv.Reg
-	locals  []rv.Reg
-	control []*controlFrame
-	context bool
+	a         rv.Asm
+	stack     []operand
+	free      []rv.Reg
+	locals    []rv.Reg
+	control   []*controlFrame
+	context   bool
+	module    *wasm.Module
+	funcIdx   int
+	frameSize int32
+	relocSink *[]callReloc
 }
 
 // CompileBeachhead lowers one wasm function body using the temporary integer
@@ -49,15 +57,17 @@ type compiler struct {
 // returns in A0. It supports locals, integer arithmetic/comparisons, and
 // structured block/loop/if/br/br_if control with void block types.
 func CompileBeachhead(numParams int, body []byte) ([]byte, error) {
-	return compileBeachhead(numParams, body, false)
+	return compileBeachhead(nil, -1, numParams, body, false, nil)
 }
 
-func compileModuleBeachhead(numParams int, body []byte) ([]byte, error) {
-	return compileBeachhead(numParams, body, true)
+func compileModuleBeachhead(m *wasm.Module, funcIdx, numParams int, body []byte) ([]byte, []callReloc, error) {
+	var relocs []callReloc
+	code, err := compileBeachhead(m, funcIdx, numParams, body, true, &relocs)
+	return code, relocs, err
 }
 
-func compileBeachhead(numParams int, body []byte, context bool) ([]byte, error) {
-	c := &compiler{free: append([]rv.Reg(nil), scratchRegs...), context: context}
+func compileBeachhead(m *wasm.Module, funcIdx, numParams int, body []byte, context bool, relocSink *[]callReloc) ([]byte, error) {
+	c := &compiler{free: append([]rv.Reg(nil), scratchRegs...), context: context, module: m, funcIdx: funcIdx, relocSink: relocSink}
 	r := wasm.NewReader(body)
 
 	groups, err := r.U32()
@@ -91,6 +101,9 @@ func compileBeachhead(numParams int, body []byte, context bool) ([]byte, error) 
 		return nil, fmt.Errorf("riscv32 beachhead supports up to %d locals, got %d", len(availableLocals), total)
 	}
 	c.locals = append(c.locals, availableLocals[:total]...)
+	if context {
+		c.emitModulePrologue()
+	}
 	for i := 0; i < numParams; i++ {
 		c.a.MovReg(c.locals[i], rv.A0+rv.Reg(i))
 	}
@@ -179,6 +192,14 @@ func compileBeachhead(numParams int, body []byte, context bool) ([]byte, error) 
 			}
 		case 0x0f: // return
 			c.emitReturn()
+		case 0x10: // call
+			idx, err := r.U32()
+			if err != nil {
+				return nil, err
+			}
+			if err := c.call(int(idx)); err != nil {
+				return nil, err
+			}
 		case 0x1a: // drop
 			c.discard(c.pop())
 		case 0x1b: // select
@@ -348,7 +369,7 @@ func (c *compiler) emitReturn() {
 		}
 		c.release(result)
 	}
-	c.a.Ret()
+	c.emitModuleReturn()
 }
 
 func (c *compiler) binary(op byte) {

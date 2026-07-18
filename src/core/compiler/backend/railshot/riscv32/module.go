@@ -5,6 +5,7 @@ import (
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	rv "github.com/wago-org/wago/src/core/encoder/riscv32"
 	"github.com/wago-org/wago/src/core/runtime/embedded32"
 )
 
@@ -22,12 +23,36 @@ func CompileModule(m *wasm.Module) (*CompiledModule, error) {
 // into one 16-byte-aligned RV32IM image. Unsupported module state and target-
 // incompatible signatures are rejected before any image is returned.
 func CompileModuleWith(m *wasm.Module, opts ModuleCompileOptions) (*CompiledModule, error) {
-	return shared.CompileEmbeddedModule(m, opts, "riscv32", 40, []byte{0x13, 0x00, 0x00, 0x00}, compileModuleFunction)
+	if m == nil {
+		return nil, fmt.Errorf("riscv32: nil module")
+	}
+	relocs := make([][]callReloc, len(m.Code))
+	cm, err := shared.CompileEmbeddedModule(m, opts, "riscv32", 40, []byte{0x13, 0x00, 0x00, 0x00}, func(funcIdx int, ft *wasm.CompType, locals []wasm.LocalRun, body []byte) ([]byte, error) {
+		if homogeneousFunction(ft, locals, wasm.I32, true) {
+			code, r, err := compileModuleBeachhead(m, funcIdx, len(ft.Params), body)
+			relocs[funcIdx] = r
+			return code, err
+		}
+		return compileModuleFunction(ft, locals, body)
+	})
+	if err != nil {
+		return nil, err
+	}
+	a := rv.Asm{B: cm.Code}
+	for i := range relocs {
+		for _, reloc := range relocs[i] {
+			if reloc.target < 0 || reloc.target >= len(cm.Entry) || !a.PatchFarJump(cm.Entry[i]+reloc.at, cm.Entry[reloc.target]) {
+				return nil, fmt.Errorf("riscv32: call relocation from function %d to %d out of range", i, reloc.target)
+			}
+		}
+	}
+	cm.Code = a.B
+	return cm, nil
 }
 
 func compileModuleFunction(ft *wasm.CompType, locals []wasm.LocalRun, body []byte) ([]byte, error) {
 	if homogeneousFunction(ft, locals, wasm.I32, true) {
-		return compileModuleBeachhead(len(ft.Params), body)
+		return nil, fmt.Errorf("internal i32 module compiler dispatch")
 	}
 	if homogeneousFunction(ft, locals, wasm.I64, false) {
 		return CompileI64Function(len(ft.Params), body)

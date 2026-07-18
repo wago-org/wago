@@ -260,9 +260,12 @@ quad values without exposing partial storage. These functions poll the fixed
 cancellation cell after parameter capture at function entry and
 at every loop header, writing a canonical cancellation trap without relying on
 signals or firmware exceptions. Explicit `unreachable` instructions likewise
-write a distinct canonical trap from normal generated module code. Calls and
-relocations, truly mixed-width functions/signatures, wide structured control,
-and broader runtime metadata remain outside this module-wide slice.
+write a distinct canonical trap from normal generated module code. The i32 module ABI now preserves callee-saved local homes and LR/RA in fixed
+frames, stages arguments through bounded frame slots, spills live scratch values
+across calls, relocates direct calls module-wide, supports recursion, and checks
+the trap cell after nested returns. Truly mixed-width calls/signatures, indirect
+and imported calls, wide structured control, and broader runtime metadata remain
+outside this module-wide slice.
 
 This is still not public backend admission. Pair/quad control merges and calls
 in the full module compiler, calls/globals/tables/references, generated-code

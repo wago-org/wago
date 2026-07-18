@@ -5,6 +5,7 @@ import (
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	a32 "github.com/wago-org/wago/src/core/encoder/arm32"
 	"github.com/wago-org/wago/src/core/runtime/embedded32"
 )
 
@@ -22,12 +23,36 @@ func CompileModule(m *wasm.Module) (*CompiledModule, error) {
 // into one 16-byte-aligned Thumb-2 image. Unsupported module state and target-
 // incompatible signatures are rejected before any image is returned.
 func CompileModuleWith(m *wasm.Module, opts ModuleCompileOptions) (*CompiledModule, error) {
-	return shared.CompileEmbeddedModule(m, opts, "arm32", 32, []byte{0x00, 0xbf}, compileModuleFunction)
+	if m == nil {
+		return nil, fmt.Errorf("arm32: nil module")
+	}
+	relocs := make([][]callReloc, len(m.Code))
+	cm, err := shared.CompileEmbeddedModule(m, opts, "arm32", 32, []byte{0x00, 0xbf}, func(funcIdx int, ft *wasm.CompType, locals []wasm.LocalRun, body []byte) ([]byte, error) {
+		if homogeneousFunction(ft, locals, wasm.I32, true) {
+			code, r, err := compileModuleBeachhead(m, funcIdx, len(ft.Params), body)
+			relocs[funcIdx] = r
+			return code, err
+		}
+		return compileModuleFunction(ft, locals, body)
+	})
+	if err != nil {
+		return nil, err
+	}
+	a := a32.Asm{B: cm.Code}
+	for i := range relocs {
+		for _, reloc := range relocs[i] {
+			if reloc.target < 0 || reloc.target >= len(cm.Entry) || !a.PatchCall(cm.Entry[i]+reloc.at, cm.Entry[reloc.target]) {
+				return nil, fmt.Errorf("arm32: call relocation from function %d to %d out of range", i, reloc.target)
+			}
+		}
+	}
+	cm.Code = a.B
+	return cm, nil
 }
 
 func compileModuleFunction(ft *wasm.CompType, locals []wasm.LocalRun, body []byte) ([]byte, error) {
 	if homogeneousFunction(ft, locals, wasm.I32, true) {
-		return compileModuleBeachhead(len(ft.Params), body)
+		return nil, fmt.Errorf("internal i32 module compiler dispatch")
 	}
 	if homogeneousFunction(ft, locals, wasm.I64, false) {
 		return CompileI64Function(len(ft.Params), body)

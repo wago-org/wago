@@ -8,7 +8,39 @@ import (
 	"github.com/wago-org/wago/src/core/runtime/embedded32"
 )
 
-const armContextReg = a32.R11
+const (
+	armContextReg     = a32.R11
+	armModuleFrame    = 80
+	armLiveBase       = 32
+	armArgumentBase   = 48
+	armCallResultSlot = 64
+)
+
+func (c *compiler) emitModulePrologue() {
+	c.frameSize = armModuleFrame
+	c.must(c.a.MovImm32(a32.R12, c.frameSize), "module frame size")
+	c.must(c.a.Sub(a32.SP, a32.SP, a32.R12), "module frame allocate")
+	for i, reg := range []a32.Reg{a32.R4, a32.R5, a32.R6, a32.R7, a32.R8, a32.R9, a32.R10} {
+		c.must(c.a.Str(reg, a32.SP, uint16(i*4)), "module callee save")
+	}
+	c.must(c.a.Str(a32.LR, a32.SP, 28), "module lr save")
+	c.must(c.a.MovImm32(a32.R12, 0), "module zero register")
+}
+
+func (c *compiler) emitModuleReturn() {
+	if !c.context {
+		c.a.Ret()
+		return
+	}
+	for i, reg := range []a32.Reg{a32.R4, a32.R5, a32.R6, a32.R7, a32.R8, a32.R9, a32.R10} {
+		c.must(c.a.Ldr(reg, a32.SP, uint16(i*4)), "module callee restore")
+	}
+	c.must(c.a.Ldr(a32.LR, a32.SP, 28), "module lr restore")
+	c.must(c.a.MovImm32(a32.R12, c.frameSize), "module frame release size")
+	c.must(c.a.Add(a32.SP, a32.SP, a32.R12), "module frame release")
+	c.a.Ret()
+	c.a.Align4()
+}
 
 func (c *compiler) pollCancellation() error {
 	poll := c.alloc()
@@ -21,6 +53,66 @@ func (c *compiler) pollCancellation() error {
 		return fmt.Errorf("arm32: cancellation branch out of range")
 	}
 	c.release(poll)
+	return nil
+}
+
+func (c *compiler) call(target int) error {
+	if c.module == nil || c.relocSink == nil {
+		return fmt.Errorf("arm32: call requires module compilation")
+	}
+	ft, ok := c.module.FuncSignature(uint32(target))
+	if !ok || ft.Kind != wasm.CompFunc || len(ft.Params) > 4 || len(ft.Results) > 1 {
+		return fmt.Errorf("arm32: unsupported call target %d", target)
+	}
+	for _, typ := range ft.Params {
+		if typ != wasm.I32 {
+			return fmt.Errorf("arm32: call target %d has non-i32 parameter", target)
+		}
+	}
+	if len(ft.Results) == 1 && ft.Results[0] != wasm.I32 {
+		return fmt.Errorf("arm32: call target %d has non-i32 result", target)
+	}
+	for _, v := range c.stack {
+		if !v.constant {
+			c.must(c.a.Str(v.reg, a32.SP, armLiveBase+uint16(v.reg-a32.R0)*4), "call live spill")
+		}
+	}
+	args := make([]a32.Reg, len(ft.Params))
+	for i := len(args) - 1; i >= 0; i-- {
+		args[i] = c.materialize(c.pop())
+	}
+	for i, reg := range args {
+		c.must(c.a.Str(reg, a32.SP, armArgumentBase+uint16(i*4)), "call argument spill")
+		c.release(reg)
+	}
+	for i := range args {
+		c.must(c.a.Ldr(a32.R0+a32.Reg(i), a32.SP, armArgumentBase+uint16(i*4)), "call argument load")
+	}
+	at := c.a.Call()
+	*c.relocSink = append(*c.relocSink, callReloc{at: at, target: target})
+	if len(ft.Results) == 1 {
+		c.must(c.a.Str(a32.R0, a32.SP, armCallResultSlot), "call result spill")
+	}
+	c.must(c.a.Ldr(a32.R12, armContextReg, embedded32.ContextTrapCellOffset), "call trap cell")
+	c.must(c.a.Ldr(a32.R12, a32.R12, 0), "call trap value")
+	c.must(c.a.MovImm32(a32.R0, 0), "call trap zero")
+	c.must(c.a.Cmp(a32.R12, a32.R0), "call trap compare")
+	clear := c.a.FarBcond(a32.CondEQ)
+	c.emitModuleReturn()
+	if !c.a.PatchFarBranch(clear, c.a.Len()) {
+		return fmt.Errorf("arm32: call trap branch out of range")
+	}
+	c.must(c.a.MovImm32(a32.R12, 0), "restore zero register")
+	for _, v := range c.stack {
+		if !v.constant {
+			c.must(c.a.Ldr(v.reg, a32.SP, armLiveBase+uint16(v.reg-a32.R0)*4), "call live reload")
+		}
+	}
+	if len(ft.Results) == 1 {
+		dst := c.alloc()
+		c.must(c.a.Ldr(dst, a32.SP, armCallResultSlot), "call result reload")
+		c.push(operand{reg: dst})
+	}
 	return nil
 }
 
@@ -254,6 +346,5 @@ func (c *compiler) emitContextTrap(trap embedded32.Trap) {
 	c.must(c.a.MovImm32(a32.R0, uint32(trap)), "trap code")
 	c.must(c.a.Str(a32.R0, a32.R12, 0), "trap write")
 	c.must(c.a.MovImm32(a32.R0, 0), "trap result")
-	c.a.Ret()
-	c.a.Align4()
+	c.emitModuleReturn()
 }

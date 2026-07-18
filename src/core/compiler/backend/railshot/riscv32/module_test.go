@@ -105,6 +105,97 @@ func TestCompileModuleLaysOutFunctions(t *testing.T) {
 	}
 }
 
+func riscv32CallModule(t *testing.T, trapping bool) *wasm.Module {
+	t.Helper()
+	var types, funcs, code [][]byte
+	if trapping {
+		types = [][]byte{wasmtest.FuncType(nil, nil)}
+		funcs = [][]byte{{0}, {0}}
+		code = [][]byte{wasmtest.Code([]byte{0x00, 0x0b}), wasmtest.Code([]byte{0x10, 0, 0x0b})}
+	} else {
+		types = [][]byte{wasmtest.FuncType(nil, []wasm.ValType{wasm.I32})}
+		funcs = [][]byte{{0}, {0}}
+		code = [][]byte{wasmtest.Code([]byte{0x41, 7, 0x0b}), wasmtest.Code([]byte{0x41, 35, 0x10, 0, 0x6a, 0x0b})}
+	}
+	m, err := wasm.DecodeModule(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(types...)),
+		wasmtest.Section(3, wasmtest.Vec(funcs...)),
+		wasmtest.Section(10, wasmtest.Vec(code...)),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+func riscv32RecursiveModule(t *testing.T) *wasm.Module {
+	t.Helper()
+	recurBody := []byte{1, 1, 0x7f, 0x41, 1, 0x21, 1, 0x20, 0, 0x04, 0x40, 0x20, 0, 0x41, 1, 0x6b, 0x10, 0, 0x21, 1, 0x0b, 0x20, 1, 0x0b}
+	recurCode := append(wasmtest.ULEB(uint32(len(recurBody))), recurBody...)
+	m, err := wasm.DecodeModule(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}),
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0}, []byte{1})),
+		wasmtest.Section(10, wasmtest.Vec(recurCode, wasmtest.Code([]byte{0x41, 3, 0x10, 0, 0x0b}))),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+func TestCompileModuleDirectCallsUnderQEMU(t *testing.T) {
+	qemu, err := exec.LookPath("qemu-riscv32")
+	if err != nil {
+		t.Skip("qemu-riscv32 not installed")
+	}
+	t.Run("recursion", func(t *testing.T) {
+		cm, err := CompileModule(riscv32RecursiveModule(t))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var a rv.Asm
+		rvMemoryContext(&a)
+		a.Addi(rv.A0, rv.SP, 16)
+		a.MovReg(rv.X23, rv.A0)
+		call := a.Jal(rv.RA)
+		a.MovImm32(rv.A7, 93)
+		a.Ecall()
+		a.PatchJAL21(call, len(a.B)+cm.Entry[1])
+		runRV32Exit(t, qemu, append(a.B, cm.Code...), 1)
+	})
+	for _, trapping := range []bool{false, true} {
+		name := "live-value"
+		if trapping {
+			name = "nested-trap"
+		}
+		t.Run(name, func(t *testing.T) {
+			cm, err := CompileModule(riscv32CallModule(t, trapping))
+			if err != nil {
+				t.Fatal(err)
+			}
+			var a rv.Asm
+			rvMemoryContext(&a)
+			a.Addi(rv.A0, rv.SP, 16)
+			a.MovReg(rv.X23, rv.A0)
+			call := a.Jal(rv.RA)
+			if trapping {
+				a.Lw(rv.A0, rv.SP, 32)
+			}
+			a.MovImm32(rv.A7, 93)
+			a.Ecall()
+			a.PatchJAL21(call, len(a.B)+cm.Entry[1])
+			want := 42
+			if trapping {
+				want = int(embedded32.TrapUnreachable)
+			}
+			runRV32Exit(t, qemu, append(a.B, cm.Code...), want)
+		})
+	}
+}
+
 func riscv32LoadModule(t *testing.T) *wasm.Module {
 	t.Helper()
 	m, err := wasm.DecodeModule(wasmtest.Module(

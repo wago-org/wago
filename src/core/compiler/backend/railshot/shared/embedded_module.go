@@ -61,7 +61,7 @@ type EmbeddedModuleOptions struct {
 	EnforceCapacity bool
 }
 
-type EmbeddedFunctionCompiler func(ft *wasm.CompType, locals []wasm.LocalRun, body []byte) ([]byte, error)
+type EmbeddedFunctionCompiler func(funcIdx int, ft *wasm.CompType, locals []wasm.LocalRun, body []byte) ([]byte, error)
 
 // CompileEmbeddedModule validates and lays out a module while delegating exact
 // homogeneous or mixed-width function admission to the target compiler.
@@ -131,7 +131,7 @@ func CompileEmbeddedModule(m *wasm.Module, opts EmbeddedModuleOptions, target st
 			out.Code = append(out.Code, alignmentPad...)
 		}
 		entry := len(out.Code)
-		fnCode, err := compile(types[i], m.Code[i].Locals.Runs, body)
+		fnCode, err := compile(i, types[i], m.Code[i].Locals.Runs, body)
 		if err != nil {
 			return nil, fmt.Errorf("%s: function %d: %w", target, i, err)
 		}
@@ -159,7 +159,7 @@ func CompileEmbeddedModule(m *wasm.Module, opts EmbeddedModuleOptions, target st
 // CompileEmbeddedI32Module preserves the original strict i32 entry point for
 // tests and callers which intentionally admit only the initial scalar subset.
 func CompileEmbeddedI32Module(m *wasm.Module, opts EmbeddedModuleOptions, target string, maxParams, expansion int, alignmentPad []byte, compile func(int, []byte) ([]byte, error)) (*EmbeddedModule, error) {
-	return CompileEmbeddedModule(m, opts, target, expansion, alignmentPad, func(ft *wasm.CompType, locals []wasm.LocalRun, body []byte) ([]byte, error) {
+	return CompileEmbeddedModule(m, opts, target, expansion, alignmentPad, func(_ int, ft *wasm.CompType, locals []wasm.LocalRun, body []byte) ([]byte, error) {
 		if len(ft.Params) > maxParams {
 			return nil, fmt.Errorf("has %d parameters, maximum is %d", len(ft.Params), maxParams)
 		}

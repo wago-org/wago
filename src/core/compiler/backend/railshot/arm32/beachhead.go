@@ -30,13 +30,21 @@ type controlFrame struct {
 	elseSite int
 	pending  []int
 }
+type callReloc struct {
+	at, target int
+}
+
 type compiler struct {
-	a       a32.Asm
-	stack   []operand
-	free    []a32.Reg
-	locals  []a32.Reg
-	control []*controlFrame
-	context bool
+	a         a32.Asm
+	stack     []operand
+	free      []a32.Reg
+	locals    []a32.Reg
+	control   []*controlFrame
+	context   bool
+	module    *wasm.Module
+	funcIdx   int
+	frameSize uint32
+	relocSink *[]callReloc
 }
 
 // CompileBeachhead lowers one validated-style Wasm function body through a
@@ -45,15 +53,17 @@ type compiler struct {
 // register used to synthesize comparisons and branches without relying on
 // architecture-specific condition values in higher layers.
 func CompileBeachhead(numParams int, body []byte) ([]byte, error) {
-	return compileBeachhead(numParams, body, false)
+	return compileBeachhead(nil, -1, numParams, body, false, nil)
 }
 
-func compileModuleBeachhead(numParams int, body []byte) ([]byte, error) {
-	return compileBeachhead(numParams, body, true)
+func compileModuleBeachhead(m *wasm.Module, funcIdx, numParams int, body []byte) ([]byte, []callReloc, error) {
+	var relocs []callReloc
+	code, err := compileBeachhead(m, funcIdx, numParams, body, true, &relocs)
+	return code, relocs, err
 }
 
-func compileBeachhead(numParams int, body []byte, context bool) ([]byte, error) {
-	c := &compiler{free: append([]a32.Reg(nil), scratchRegs...), context: context}
+func compileBeachhead(m *wasm.Module, funcIdx, numParams int, body []byte, context bool, relocSink *[]callReloc) ([]byte, error) {
+	c := &compiler{free: append([]a32.Reg(nil), scratchRegs...), context: context, module: m, funcIdx: funcIdx, relocSink: relocSink}
 	if !c.a.MovImm32(zeroReg, 0) {
 		panic("arm32: cannot establish zero register")
 	}
@@ -89,6 +99,9 @@ func compileBeachhead(numParams int, body []byte, context bool) ([]byte, error) 
 		return nil, fmt.Errorf("arm32 beachhead supports up to %d locals, got %d", len(availableLocals), total)
 	}
 	c.locals = append(c.locals, availableLocals[:total]...)
+	if context {
+		c.emitModulePrologue()
+	}
 	for i := 0; i < numParams; i++ {
 		c.must(c.a.MovReg(c.locals[i], a32.R0+a32.Reg(i)), "parameter move")
 	}
@@ -180,6 +193,14 @@ func compileBeachhead(numParams int, body []byte, context bool) ([]byte, error) 
 			}
 		case 0x0f:
 			c.emitReturn()
+		case 0x10:
+			idx, err := r.U32()
+			if err != nil {
+				return nil, err
+			}
+			if err := c.call(int(idx)); err != nil {
+				return nil, err
+			}
 		case 0x1a:
 			c.discard(c.pop())
 		case 0x1b:
@@ -345,7 +366,7 @@ func (c *compiler) emitReturn() {
 		}
 		c.release(result)
 	}
-	c.a.Ret()
+	c.emitModuleReturn()
 }
 func (c *compiler) binary(op byte) {
 	right, left := c.materialize(c.pop()), c.materialize(c.pop())

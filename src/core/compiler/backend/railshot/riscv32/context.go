@@ -8,7 +8,46 @@ import (
 	"github.com/wago-org/wago/src/core/runtime/embedded32"
 )
 
-const rvContextReg = rv.X23
+const (
+	rvContextReg     = rv.X23
+	rvModuleFrame    = 128
+	rvLiveBase       = 40
+	rvArgumentBase   = 80
+	rvCallResultSlot = 112
+)
+
+var rvModuleSavedRegs = []rv.Reg{rv.X8, rv.X9, rv.X18, rv.X19, rv.X20, rv.X21, rv.X22, rv.X24, rv.X25}
+
+func (c *compiler) emitModulePrologue() {
+	c.frameSize = rvModuleFrame
+	c.a.Addi(rv.SP, rv.SP, -c.frameSize)
+	for i, reg := range rvModuleSavedRegs {
+		c.a.Sw(reg, rv.SP, int32(i*4))
+	}
+	c.a.Sw(rv.RA, rv.SP, 36)
+}
+
+func (c *compiler) emitModuleReturn() {
+	if !c.context {
+		c.a.Ret()
+		return
+	}
+	for i, reg := range rvModuleSavedRegs {
+		c.a.Lw(reg, rv.SP, int32(i*4))
+	}
+	c.a.Lw(rv.RA, rv.SP, 36)
+	c.a.Addi(rv.SP, rv.SP, c.frameSize)
+	c.a.Ret()
+}
+
+func rvScratchSlot(reg rv.Reg) (int32, bool) {
+	for i, candidate := range scratchRegs {
+		if candidate == reg {
+			return rvLiveBase + int32(i*4), true
+		}
+	}
+	return 0, false
+}
 
 func (c *compiler) pollCancellation() error {
 	poll := c.alloc()
@@ -20,6 +59,78 @@ func (c *compiler) pollCancellation() error {
 		return fmt.Errorf("riscv32: cancellation branch out of range")
 	}
 	c.release(poll)
+	return nil
+}
+
+func (c *compiler) call(target int) error {
+	if c.module == nil || c.relocSink == nil {
+		return fmt.Errorf("riscv32: call requires module compilation")
+	}
+	ft, ok := c.module.FuncSignature(uint32(target))
+	if !ok || ft.Kind != wasm.CompFunc || len(ft.Params) > 8 || len(ft.Results) > 1 {
+		return fmt.Errorf("riscv32: unsupported call target %d", target)
+	}
+	for _, typ := range ft.Params {
+		if typ != wasm.I32 {
+			return fmt.Errorf("riscv32: call target %d has non-i32 parameter", target)
+		}
+	}
+	if len(ft.Results) == 1 && ft.Results[0] != wasm.I32 {
+		return fmt.Errorf("riscv32: call target %d has non-i32 result", target)
+	}
+	for _, v := range c.stack {
+		if v.constant {
+			continue
+		}
+		off, ok := rvScratchSlot(v.reg)
+		if !ok || !c.a.Sw(v.reg, rv.SP, off) {
+			panic("riscv32: call live spill")
+		}
+	}
+	args := make([]rv.Reg, len(ft.Params))
+	for i := len(args) - 1; i >= 0; i-- {
+		args[i] = c.materialize(c.pop())
+	}
+	for i, reg := range args {
+		if !c.a.Sw(reg, rv.SP, rvArgumentBase+int32(i*4)) {
+			panic("riscv32: call argument spill")
+		}
+		c.release(reg)
+	}
+	for i := range args {
+		if !c.a.Lw(rv.A0+rv.Reg(i), rv.SP, rvArgumentBase+int32(i*4)) {
+			panic("riscv32: call argument load")
+		}
+	}
+	at := c.a.FarCall(rv.T6)
+	*c.relocSink = append(*c.relocSink, callReloc{at: at, target: target})
+	if len(ft.Results) == 1 && !c.a.Sw(rv.A0, rv.SP, rvCallResultSlot) {
+		panic("riscv32: call result spill")
+	}
+	c.a.Lw(rv.T6, rvContextReg, embedded32.ContextTrapCellOffset)
+	c.a.Lw(rv.T6, rv.T6, 0)
+	clear := c.a.FarBcond(rv.T6, rv.Zero, rv.CondEQ, branchScratch)
+	c.a.MovImm32(rv.A0, 0)
+	c.emitModuleReturn()
+	if !c.a.PatchFarBranch(clear, c.a.Len()) {
+		return fmt.Errorf("riscv32: call trap branch out of range")
+	}
+	for _, v := range c.stack {
+		if v.constant {
+			continue
+		}
+		off, _ := rvScratchSlot(v.reg)
+		if !c.a.Lw(v.reg, rv.SP, off) {
+			panic("riscv32: call live reload")
+		}
+	}
+	if len(ft.Results) == 1 {
+		dst := c.alloc()
+		if !c.a.Lw(dst, rv.SP, rvCallResultSlot) {
+			panic("riscv32: call result reload")
+		}
+		c.push(operand{reg: dst})
+	}
 	return nil
 }
 
@@ -244,5 +355,5 @@ func (c *compiler) emitContextTrap(trap embedded32.Trap) {
 	c.a.MovImm32(rv.T1, uint32(trap))
 	c.a.Sw(rv.T1, rv.T0, 0)
 	c.a.MovImm32(rv.A0, 0)
-	c.a.Ret()
+	c.emitModuleReturn()
 }
