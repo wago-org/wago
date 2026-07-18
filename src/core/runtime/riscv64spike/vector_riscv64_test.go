@@ -8,9 +8,13 @@ import (
 	"unsafe"
 
 	rv "github.com/wago-org/wago/src/core/encoder/riscv64"
+	coreruntime "github.com/wago-org/wago/src/core/runtime"
 )
 
 func TestRVVExecuteByteAdd(t *testing.T) {
+	if !coreruntime.RISCV64HasRVV() {
+		t.Skip("ratified RVV 1.0 is unavailable or disabled for this process")
+	}
 	var a rv.Asm
 	if !a.Vsetivli(rv.Zero, 16, rv.VE8) || !a.Vle(1, rv.A0, rv.VE8) {
 		t.Fatal("encode vector setup/load")
