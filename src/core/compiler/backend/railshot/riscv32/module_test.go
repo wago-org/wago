@@ -105,6 +105,58 @@ func TestCompileModuleLaysOutFunctions(t *testing.T) {
 	}
 }
 
+func riscv32MemoryInitModule(t *testing.T) *wasm.Module {
+	t.Helper()
+	body := []byte{0x41, 0, 0x41, 0, 0x41, 3, 0xfc, 8, 0, 0, 0xfc, 9, 0, 0x41, 0, 0x2d, 0, 0, 0x0b}
+	passive := append([]byte{1}, wasmtest.ULEB(3)...)
+	passive = append(passive, 'x', 'y', 'z')
+	count := uint32(1)
+	m, err := wasm.DecodeModule(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0})),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0, 1})),
+		wasmtest.Section(12, wasmtest.ULEB(count)),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+		wasmtest.Section(11, wasmtest.Vec(passive)),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+func TestCompileModuleMemoryInitUnderQEMU(t *testing.T) {
+	qemu, err := exec.LookPath("qemu-riscv32")
+	if err != nil {
+		t.Skip("qemu-riscv32 not installed")
+	}
+	cm, err := CompileModule(riscv32MemoryInitModule(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	meta := cm.Functions[0]
+	fn := cm.Code[meta.Offset : meta.Offset+meta.Size]
+	var a rv.Asm
+	rvMemoryContext(&a)
+	a.Addi(rv.T1, rv.SP, 80)
+	a.Sw(rv.T1, rv.SP, 64)
+	a.MovImm32(rv.T1, 3)
+	a.Sw(rv.T1, rv.SP, 68)
+	a.MovImm32(rv.T1, 0)
+	a.Sw(rv.T1, rv.SP, 72)
+	a.MovImm32(rv.T1, 0x007a7978)
+	a.Sw(rv.T1, rv.SP, 80)
+	a.MovImm32(rv.T1, 1)
+	a.Sw(rv.T1, rv.SP, 52)
+	a.Addi(rv.A0, rv.SP, 16)
+	a.MovReg(rv.X23, rv.A0)
+	call := a.Jal(rv.RA)
+	a.MovImm32(rv.A7, 93)
+	a.Ecall()
+	a.PatchJAL21(call, len(a.B))
+	runRV32Exit(t, qemu, append(a.B, fn...), 120)
+}
+
 func riscv32BulkModule(t *testing.T) *wasm.Module {
 	t.Helper()
 	body := []byte{
@@ -179,7 +231,7 @@ func TestCompileModuleI32GlobalsUnderQEMU(t *testing.T) {
 	var a rv.Asm
 	rvMemoryContext(&a)
 	a.MovImm32(rv.T1, cells[0])
-	a.Sw(rv.T1, rv.SP, 48)
+	a.Sw(rv.T1, rv.SP, 60)
 	a.Addi(rv.A0, rv.SP, 16)
 	a.MovReg(rv.X23, rv.A0)
 	a.MovImm32(rv.A0, 42)
@@ -395,7 +447,7 @@ func TestCompileModuleMemoryAndTrapContextUnderQEMU(t *testing.T) {
 		var a rv.Asm
 		rvMemoryContext(&a)
 		a.MovImm32(rv.T1, 1)
-		a.Sw(rv.T1, rv.SP, 52)
+		a.Sw(rv.T1, rv.SP, 56)
 		a.Addi(rv.A0, rv.SP, 16)
 		a.MovReg(rv.X23, rv.A0)
 		a.MovImm32(rv.A0, 4)

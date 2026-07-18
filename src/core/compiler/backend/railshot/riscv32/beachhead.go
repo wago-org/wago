@@ -318,6 +318,26 @@ func compileBeachhead(m *wasm.Module, funcIdx, numParams int, body []byte, conte
 				return nil, err
 			}
 			switch sub {
+			case 8:
+				dataIndex, err := r.U32()
+				if err != nil {
+					return nil, err
+				}
+				mem, err := r.Byte()
+				if err != nil || mem != 0 {
+					return nil, fmt.Errorf("riscv32: invalid memory.init immediate")
+				}
+				if err := c.memoryInit(dataIndex); err != nil {
+					return nil, err
+				}
+			case 9:
+				dataIndex, err := r.U32()
+				if err != nil {
+					return nil, err
+				}
+				if err := c.dataDrop(dataIndex); err != nil {
+					return nil, err
+				}
 			case 10:
 				dstMem, err1 := r.Byte()
 				srcMem, err2 := r.Byte()

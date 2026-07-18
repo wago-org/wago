@@ -312,6 +312,82 @@ func (c *compiler) memorySize() {
 	c.push(operand{reg: dst})
 }
 
+func (c *compiler) memoryInit(index uint32) error {
+	if c.module == nil || uint64(index) >= uint64(len(c.module.Data)) {
+		return fmt.Errorf("riscv32: invalid data segment %d", index)
+	}
+	n := c.materialize(c.pop())
+	src := c.materialize(c.pop())
+	dst := c.materialize(c.pop())
+	descriptor := c.alloc()
+	c.a.Lw(descriptor, rvContextReg, embedded32.ContextDataSegmentsBaseOffset)
+	c.a.MovImm32(rv.T6, index*embedded32.DataSegmentABIBytes)
+	c.a.Add(descriptor, descriptor, rv.T6)
+	c.a.Lw(rv.T5, descriptor, embedded32.DataSegmentDroppedOffset)
+	available := c.a.Bcond(rv.T5, rv.Zero, rv.CondEQ)
+	c.a.MovImm32(rv.T5, 0)
+	lengthReady := c.a.Jal(rv.Zero)
+	availableTarget := c.a.Len()
+	c.a.Lw(rv.T5, descriptor, embedded32.DataSegmentLengthOffset)
+	lengthTarget := c.a.Len()
+	if !c.a.PatchBranch13(available, availableTarget) || !c.a.PatchJAL21(lengthReady, lengthTarget) {
+		return fmt.Errorf("riscv32: data length branch out of range")
+	}
+	traps := []int{c.a.FarBcond(rv.T5, n, rv.CondLTU, branchScratch)}
+	c.a.Sub(rv.T5, rv.T5, n)
+	traps = append(traps, c.a.FarBcond(rv.T5, src, rv.CondLTU, branchScratch))
+	c.a.Lw(rv.T5, rvContextReg, embedded32.ContextLinearMemoryLengthOffset)
+	traps = append(traps, c.a.FarBcond(rv.T5, n, rv.CondLTU, branchScratch))
+	c.a.Sub(rv.T5, rv.T5, n)
+	traps = append(traps, c.a.FarBcond(rv.T5, dst, rv.CondLTU, branchScratch))
+	c.a.Lw(descriptor, descriptor, embedded32.DataSegmentBaseOffset)
+	c.a.Add(descriptor, descriptor, src)
+	c.a.Lw(rv.T5, rvContextReg, embedded32.ContextLinearMemoryBaseOffset)
+	c.a.Add(dst, dst, rv.T5)
+	loop := c.a.Len()
+	copied := c.a.Bcond(n, rv.Zero, rv.CondEQ)
+	c.a.Lbu(rv.T5, descriptor, 0)
+	c.a.Sb(rv.T5, dst, 0)
+	c.a.Addi(descriptor, descriptor, 1)
+	c.a.Addi(dst, dst, 1)
+	c.a.Addi(n, n, -1)
+	back := c.a.Jal(rv.Zero)
+	if !c.a.PatchJAL21(back, loop) || !c.a.PatchBranch13(copied, c.a.Len()) {
+		return fmt.Errorf("riscv32: memory.init loop out of range")
+	}
+	done := c.a.FarJump(rv.Zero, branchScratch)
+	trap := c.a.Len()
+	c.emitContextTrap(embedded32.TrapMemoryOutOfBounds)
+	finish := c.a.Len()
+	if !c.a.PatchFarJump(done, finish) {
+		return fmt.Errorf("riscv32: memory.init success branch out of range")
+	}
+	for _, at := range traps {
+		if !c.a.PatchFarBranch(at, trap) {
+			return fmt.Errorf("riscv32: memory.init trap branch out of range")
+		}
+	}
+	c.release(n)
+	c.release(src)
+	c.release(dst)
+	c.release(descriptor)
+	return nil
+}
+
+func (c *compiler) dataDrop(index uint32) error {
+	if c.module == nil || uint64(index) >= uint64(len(c.module.Data)) {
+		return fmt.Errorf("riscv32: invalid data segment %d", index)
+	}
+	descriptor := c.alloc()
+	c.a.Lw(descriptor, rvContextReg, embedded32.ContextDataSegmentsBaseOffset)
+	c.a.MovImm32(rv.T6, index*embedded32.DataSegmentABIBytes)
+	c.a.Add(descriptor, descriptor, rv.T6)
+	c.a.MovImm32(rv.T5, 1)
+	c.a.Sw(rv.T5, descriptor, embedded32.DataSegmentDroppedOffset)
+	c.release(descriptor)
+	return nil
+}
+
 func (c *compiler) memoryCopy() error {
 	n := c.materialize(c.pop())
 	src := c.materialize(c.pop())

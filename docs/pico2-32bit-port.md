@@ -280,8 +280,9 @@ Normal i32 module code directly lowers overlap-safe `memory.copy` and
 `memory.fill` with complete source/destination preflight before byte loops.
 Module layout retains active/passive segments in original index order;
 instantiation preflights every active destination transactionally before copying
-and starts active segments dropped. Generated `memory.init`/`data.drop` dispatch
-still needs a target-visible data-store handle in `ContextABI`.
+and starts active segments dropped. `ContextABI` now publishes a stable array of
+12-byte target data descriptors, and normal i32 functions execute preflighted
+`memory.init` plus idempotent `data.drop` directly against those descriptors.
 
 This is still not public backend admission. Pair/quad control merges and calls
 in the full mixed-width module compiler, globals/tables/references, generated-

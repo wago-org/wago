@@ -229,6 +229,8 @@ type ContextABI struct {
 	LinearMemoryMaximum uint32
 	StackLimit          uint32
 	GlobalsBase         uint32
+	DataSegmentsBase    uint32
+	DataSegmentCount    uint32
 }
 
 const (
@@ -240,7 +242,9 @@ const (
 	ContextLinearMemoryMaximumOffset = 20
 	ContextStackLimitOffset          = 24
 	ContextGlobalsBaseOffset         = 28
-	ContextABISize                   = 32
+	ContextDataSegmentsBaseOffset    = 32
+	ContextDataSegmentCountOffset    = 36
+	ContextABISize                   = 40
 )
 
 // Runtime composes the fixed embedded resources. The initial profile permits

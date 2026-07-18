@@ -37,6 +37,20 @@ type EmbeddedModule struct {
 
 // InstantiateData preflights all active segments before mutating local memory,
 // then returns index-preserving passive/dropped state for bulk-memory helpers.
+func (m *EmbeddedModule) DataSegmentABI(bases []uint32) ([]embedded32.DataSegmentABI, error) {
+	if m == nil || len(bases) < len(m.Data) {
+		return nil, embedded32.ErrArenaCapacity
+	}
+	out := make([]embedded32.DataSegmentABI, len(m.Data))
+	for i := range m.Data {
+		out[i] = embedded32.DataSegmentABI{Base: bases[i], Length: uint32(len(m.Data[i].Bytes))}
+		if !m.Data[i].Passive {
+			out[i].Dropped = 1
+		}
+	}
+	return out, nil
+}
+
 func (m *EmbeddedModule) InstantiateGlobals(cells []uint32) error {
 	if m == nil || len(cells) < len(m.Globals) {
 		return embedded32.ErrArenaCapacity

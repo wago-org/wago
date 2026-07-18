@@ -14,7 +14,18 @@ const (
 // Stable F64Frame byte offsets used by generated code. F64Frame intentionally
 // contains an explicit three-byte pad after Op so these are identical on 32- and
 // 64-bit Go/TinyGo hosts.
+type DataSegmentABI struct {
+	Base    uint32
+	Length  uint32
+	Dropped uint32
+}
+
 const (
+	DataSegmentBaseOffset    = 0
+	DataSegmentLengthOffset  = 4
+	DataSegmentDroppedOffset = 8
+	DataSegmentABIBytes      = 12
+
 	I64FrameOpOffset     = 0
 	I64FrameALoOffset    = 4
 	I64FrameAHiOffset    = 8

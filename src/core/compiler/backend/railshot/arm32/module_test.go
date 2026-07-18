@@ -104,6 +104,58 @@ func TestCompileModuleLaysOutFunctions(t *testing.T) {
 	}
 }
 
+func arm32MemoryInitModule(t *testing.T) *wasm.Module {
+	t.Helper()
+	body := []byte{0x41, 0, 0x41, 0, 0x41, 3, 0xfc, 8, 0, 0, 0xfc, 9, 0, 0x41, 0, 0x2d, 0, 0, 0x0b}
+	passive := append([]byte{1}, wasmtest.ULEB(3)...)
+	passive = append(passive, 'x', 'y', 'z')
+	count := uint32(1)
+	m, err := wasm.DecodeModule(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0})),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0, 1})),
+		wasmtest.Section(12, wasmtest.ULEB(count)),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+		wasmtest.Section(11, wasmtest.Vec(passive)),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+func TestCompileModuleMemoryInitUnderQEMU(t *testing.T) {
+	qemu, err := exec.LookPath("qemu-arm")
+	if err != nil {
+		t.Skip("qemu-arm not installed")
+	}
+	cm, err := CompileModule(arm32MemoryInitModule(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	meta := cm.Functions[0]
+	fn := cm.Code[meta.Offset : meta.Offset+meta.Size]
+	var a a32.Asm
+	armMemoryContext(&a)
+	a.MovImm32(a32.R12, 80)
+	a.Add(a32.R5, a32.SP, a32.R12)
+	a.Str(a32.R5, a32.SP, 64)
+	a.MovImm32(a32.R12, 3)
+	a.Str(a32.R12, a32.SP, 68)
+	a.MovImm32(a32.R12, 0)
+	a.Str(a32.R12, a32.SP, 72)
+	a.MovImm32(a32.R12, 0x007a7978)
+	a.Str(a32.R12, a32.SP, 80)
+	a.MovImm32(a32.R12, 1)
+	a.Str(a32.R12, a32.SP, 52)
+	armContextArg(&a)
+	a.MovReg(a32.R11, a32.R0)
+	call := a.Call()
+	armExit(&a)
+	a.PatchCall(call, len(a.B))
+	runARM32Exit(t, qemu, append(a.B, fn...), 120)
+}
+
 func arm32BulkModule(t *testing.T) *wasm.Module {
 	t.Helper()
 	body := []byte{
@@ -177,7 +229,7 @@ func TestCompileModuleI32GlobalsUnderQEMU(t *testing.T) {
 	var a a32.Asm
 	armMemoryContext(&a)
 	a.MovImm32(a32.R12, cells[0])
-	a.Str(a32.R12, a32.SP, 48)
+	a.Str(a32.R12, a32.SP, 60)
 	armContextArg(&a)
 	a.MovReg(a32.R11, a32.R0)
 	a.MovImm32(a32.R0, 42)
@@ -387,7 +439,7 @@ func TestCompileModuleMemoryAndTrapContextUnderQEMU(t *testing.T) {
 		var a a32.Asm
 		armMemoryContext(&a)
 		a.MovImm32(a32.R12, 1)
-		a.Str(a32.R12, a32.SP, 52)
+		a.Str(a32.R12, a32.SP, 56)
 		armContextArg(&a)
 		a.MovReg(a32.R11, a32.R0)
 		a.MovImm32(a32.R0, 4)

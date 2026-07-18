@@ -6,6 +6,11 @@ import (
 )
 
 func TestStableHelperFrameLayouts(t *testing.T) {
+	var d DataSegmentABI
+	if unsafe.Offsetof(d.Base) != DataSegmentBaseOffset || unsafe.Offsetof(d.Length) != DataSegmentLengthOffset || unsafe.Offsetof(d.Dropped) != DataSegmentDroppedOffset || unsafe.Sizeof(d) != DataSegmentABIBytes {
+		t.Fatalf("DataSegmentABI layout base=%d length=%d dropped=%d size=%d", unsafe.Offsetof(d.Base), unsafe.Offsetof(d.Length), unsafe.Offsetof(d.Dropped), unsafe.Sizeof(d))
+	}
+
 	var i I64Frame
 	checks := []struct {
 		name      string

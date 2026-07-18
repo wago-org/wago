@@ -302,6 +302,92 @@ func (c *compiler) memorySize() {
 	c.push(operand{reg: dst})
 }
 
+func (c *compiler) memoryInit(index uint32) error {
+	if c.module == nil || uint64(index) >= uint64(len(c.module.Data)) {
+		return fmt.Errorf("arm32: invalid data segment %d", index)
+	}
+	n := c.materialize(c.pop())
+	src := c.materialize(c.pop())
+	dst := c.materialize(c.pop())
+	descriptor := c.alloc()
+	c.must(c.a.Ldr(descriptor, armContextReg, embedded32.ContextDataSegmentsBaseOffset), "data descriptor base")
+	c.must(c.a.MovImm32(a32.R12, index*embedded32.DataSegmentABIBytes), "data descriptor offset")
+	c.must(c.a.Add(descriptor, descriptor, a32.R12), "data descriptor address")
+	c.must(c.a.Ldr(a32.LR, descriptor, embedded32.DataSegmentDroppedOffset), "data dropped flag")
+	c.must(c.a.MovImm32(a32.R12, 0), "data zero")
+	c.must(c.a.Cmp(a32.LR, a32.R12), "data dropped compare")
+	available := c.a.FarBcond(a32.CondEQ)
+	c.must(c.a.MovImm32(a32.LR, 0), "dropped data length")
+	lengthReady := c.a.Branch()
+	availableTarget := c.a.Len()
+	c.must(c.a.Ldr(a32.LR, descriptor, embedded32.DataSegmentLengthOffset), "data length")
+	lengthTarget := c.a.Len()
+	if !c.a.PatchFarBranch(available, availableTarget) || !c.a.PatchBranch(lengthReady, lengthTarget) {
+		return fmt.Errorf("arm32: data length branch out of range")
+	}
+	c.must(c.a.Cmp(a32.LR, n), "memory.init source size")
+	traps := []int{c.a.FarBcond(a32.CondCC)}
+	c.must(c.a.Sub(a32.LR, a32.LR, n), "memory.init source bound")
+	c.must(c.a.Cmp(a32.LR, src), "memory.init source compare")
+	traps = append(traps, c.a.FarBcond(a32.CondCC))
+	c.must(c.a.Ldr(a32.LR, armContextReg, embedded32.ContextLinearMemoryLengthOffset), "memory.init memory length")
+	c.must(c.a.Cmp(a32.LR, n), "memory.init destination size")
+	traps = append(traps, c.a.FarBcond(a32.CondCC))
+	c.must(c.a.Sub(a32.LR, a32.LR, n), "memory.init destination bound")
+	c.must(c.a.Cmp(a32.LR, dst), "memory.init destination compare")
+	traps = append(traps, c.a.FarBcond(a32.CondCC))
+	c.must(c.a.Ldr(descriptor, descriptor, embedded32.DataSegmentBaseOffset), "data payload base")
+	c.must(c.a.Add(descriptor, descriptor, src), "memory.init source")
+	c.must(c.a.Ldr(a32.LR, armContextReg, embedded32.ContextLinearMemoryBaseOffset), "memory.init memory base")
+	c.must(c.a.Add(dst, dst, a32.LR), "memory.init destination")
+	loop := c.a.Len()
+	c.must(c.a.Cmp(n, a32.R12), "memory.init done")
+	copied := c.a.FarBcond(a32.CondEQ)
+	c.must(c.a.Ldrb(a32.LR, descriptor, 0), "memory.init load")
+	c.must(c.a.Strb(a32.LR, dst, 0), "memory.init store")
+	c.must(c.a.MovImm32(a32.R12, 1), "memory.init step")
+	c.must(c.a.Add(descriptor, descriptor, a32.R12), "memory.init source advance")
+	c.must(c.a.Add(dst, dst, a32.R12), "memory.init destination advance")
+	c.must(c.a.Sub(n, n, a32.R12), "memory.init count")
+	c.must(c.a.MovImm32(a32.R12, 0), "memory.init restore zero")
+	back := c.a.Branch()
+	if !c.a.PatchBranch(back, loop) || !c.a.PatchFarBranch(copied, c.a.Len()) {
+		return fmt.Errorf("arm32: memory.init loop out of range")
+	}
+	done := c.a.Branch()
+	trap := c.a.Len()
+	c.emitContextTrap(embedded32.TrapMemoryOutOfBounds)
+	finish := c.a.Len()
+	if !c.a.PatchBranch(done, finish) {
+		return fmt.Errorf("arm32: memory.init success branch out of range")
+	}
+	for _, at := range traps {
+		if !c.a.PatchFarBranch(at, trap) {
+			return fmt.Errorf("arm32: memory.init trap branch out of range")
+		}
+	}
+	c.release(n)
+	c.release(src)
+	c.release(dst)
+	c.release(descriptor)
+	return nil
+}
+
+func (c *compiler) dataDrop(index uint32) error {
+	if c.module == nil || uint64(index) >= uint64(len(c.module.Data)) {
+		return fmt.Errorf("arm32: invalid data segment %d", index)
+	}
+	descriptor := c.alloc()
+	c.must(c.a.Ldr(descriptor, armContextReg, embedded32.ContextDataSegmentsBaseOffset), "data descriptor base")
+	c.must(c.a.MovImm32(a32.R12, index*embedded32.DataSegmentABIBytes), "data descriptor offset")
+	c.must(c.a.Add(descriptor, descriptor, a32.R12), "data descriptor address")
+	c.must(c.a.MovImm32(a32.LR, 1), "data dropped value")
+	c.must(c.a.Str(a32.LR, descriptor, embedded32.DataSegmentDroppedOffset), "data.drop")
+	c.must(c.a.MovImm32(a32.R12, 0), "restore zero register")
+	c.release(descriptor)
+	return nil
+}
+
 func (c *compiler) memoryCopy() error {
 	n := c.materialize(c.pop())
 	src := c.materialize(c.pop())
