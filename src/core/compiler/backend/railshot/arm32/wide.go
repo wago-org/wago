@@ -12,15 +12,19 @@ import (
 var wideRegPool = []a32.Reg{a32.R0, a32.R1, a32.R2, a32.R3, a32.R4, a32.R5, a32.R6, a32.R7, a32.R8, a32.R9, a32.R10, a32.R11}
 
 type wideValue struct {
-	n      int
-	regs   [4]a32.Reg
-	groups [4]shared.RegGroup
-	groupN int
+	n        int
+	regs     [4]a32.Reg
+	groups   [4]shared.RegGroup
+	groupN   int
+	spilled  bool
+	spillOff uint16
 }
 type wideCompiler struct {
-	a      a32.Asm
-	stack  []wideValue
-	groups shared.GroupAllocator
+	a          a32.Asm
+	stack      []wideValue
+	groups     shared.GroupAllocator
+	spillNext  uint16
+	spillLimit uint16
 }
 
 func newWideCompiler() *wideCompiler {
@@ -31,6 +35,11 @@ func newWideCompiler() *wideCompiler {
 	return &wideCompiler{groups: shared.NewGroupAllocator(ids)}
 }
 func (c *wideCompiler) alloc(n int) (wideValue, error) {
+	for c.groups.FreeRegisters() < n {
+		if !c.spillOne() {
+			return wideValue{}, fmt.Errorf("arm32: wide expression exceeds register capacity")
+		}
+	}
 	v := wideValue{n: n}
 	if n == 3 {
 		for i := 0; i < 3; i++ {
@@ -75,7 +84,49 @@ func (c *wideCompiler) pop(n int) (wideValue, error) {
 	if v.n != n {
 		return wideValue{}, fmt.Errorf("arm32: wide value has %d words, want %d", v.n, n)
 	}
+	if v.spilled {
+		fresh, err := c.alloc(n)
+		if err != nil {
+			return wideValue{}, err
+		}
+		for i := 0; i < n; i++ {
+			if !c.a.Ldr(fresh.regs[i], a32.SP, v.spillOff+uint16(i*4)) {
+				panic("arm32: spill reload")
+			}
+		}
+		v = fresh
+	}
 	return v, nil
+}
+func (c *wideCompiler) enableSpills(base, size uint16) {
+	c.spillNext = base
+	c.spillLimit = base + size
+}
+func (c *wideCompiler) spillOne() bool {
+	for i := 0; i < len(c.stack); i++ {
+		v := &c.stack[i]
+		if v.spilled || v.groupN != 1 || !c.groups.Owns(v.groups[0]) {
+			continue
+		}
+		size := uint16(v.n * 4)
+		if c.spillNext+size > c.spillLimit {
+			return false
+		}
+		off := c.spillNext
+		c.spillNext += size
+		for j := 0; j < v.n; j++ {
+			if !c.a.Str(v.regs[j], a32.SP, off+uint16(j*4)) {
+				panic("arm32: spill store")
+			}
+		}
+		c.release(*v)
+		v.spilled = true
+		v.spillOff = off
+		v.groupN = 0
+		v.regs = [4]a32.Reg{}
+		return true
+	}
+	return false
 }
 func quad(v wideValue) a32.Quad { return a32.Quad{v.regs[0], v.regs[1], v.regs[2], v.regs[3]} }
 
@@ -335,11 +386,11 @@ func CompileI64Function(numParams int, body []byte) ([]byte, error) {
 		return nil, fmt.Errorf("arm32: i64 function supports %d pair locals", len(i64LocalHomes))
 	}
 	locals := make([]wideValue, total)
-	frame := uint32((total*8 + 15) &^ 15)
-	if frame != 0 {
-		c.a.MovImm32(a32.R12, frame)
-		c.a.Sub(a32.SP, a32.SP, a32.R12)
-	}
+	saveBytes := uint16(total * 8)
+	frame := uint32((uint32(saveBytes) + 64 + 15) &^ 15)
+	c.a.MovImm32(a32.R12, frame)
+	c.a.Sub(a32.SP, a32.SP, a32.R12)
+	c.enableSpills(saveBytes, 64)
 	for i := 0; i < total; i++ {
 		home := i64LocalHomes[i]
 		if !c.a.Str(home[0], a32.SP, uint16(i*8)) || !c.a.Str(home[1], a32.SP, uint16(i*8+4)) {
@@ -364,10 +415,8 @@ func CompileI64Function(numParams int, body []byte) ([]byte, error) {
 			c.a.Ldr(home[0], a32.SP, uint16(i*8))
 			c.a.Ldr(home[1], a32.SP, uint16(i*8+4))
 		}
-		if frame != 0 {
-			c.a.MovImm32(a32.R12, frame)
-			c.a.Add(a32.SP, a32.SP, a32.R12)
-		}
+		c.a.MovImm32(a32.R12, frame)
+		c.a.Add(a32.SP, a32.SP, a32.R12)
 		c.a.Ret()
 		c.a.Align4()
 	}
@@ -383,7 +432,8 @@ func CompileI64Function(numParams int, body []byte) ([]byte, error) {
 			}
 			v, _ := c.pop(2)
 			if v.regs[0] != a32.R0 || v.regs[1] != a32.R1 {
-				return nil, fmt.Errorf("arm32: non-canonical i64 result registers")
+				c.a.MovReg(a32.R0, v.regs[0])
+				c.a.MovReg(a32.R1, v.regs[1])
 			}
 			epilogue()
 			return c.a.B, nil
