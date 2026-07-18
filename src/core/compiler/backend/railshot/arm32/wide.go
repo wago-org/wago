@@ -360,17 +360,73 @@ func CompileV128Function(numParams int, body []byte) ([]byte, error) {
 	return nil, fmt.Errorf("arm32: v128 body missing end")
 }
 
-// CompileF64BitBeachhead lowers f64.const/abs/neg/copysign through integer
-// register pairs. The result returns in R0/R1.
-func CompileF64BitBeachhead(body []byte) ([]byte, error) {
+// CompileF64BitBeachhead lowers a no-parameter integer-only f64 function.
+func CompileF64BitBeachhead(body []byte) ([]byte, error) { return CompileF64BitFunction(0, body) }
+
+// CompileF64BitFunction adds pair parameters, locals, and bounded spills to
+// f64.const/abs/neg/copysign. Arithmetic and conversions use helper thunks.
+func CompileF64BitFunction(numParams int, body []byte) ([]byte, error) {
 	c := newWideCompiler()
 	r := wasm.NewReader(body)
 	groups, err := r.U32()
 	if err != nil {
 		return nil, err
 	}
-	if groups != 0 {
-		return nil, fmt.Errorf("arm32: f64 beachhead does not support locals")
+	declared := 0
+	for i := uint32(0); i < groups; i++ {
+		n, e := r.U32()
+		if e != nil {
+			return nil, e
+		}
+		typ, e := r.Byte()
+		if e != nil {
+			return nil, e
+		}
+		if typ != 0x7c {
+			return nil, fmt.Errorf("arm32: f64 function local type %#x", typ)
+		}
+		declared += int(n)
+	}
+	if numParams < 0 || numParams > 2 {
+		return nil, fmt.Errorf("arm32: f64 function supports 0..2 parameters")
+	}
+	total := numParams + declared
+	if total > len(i64LocalHomes) {
+		return nil, fmt.Errorf("arm32: f64 function supports %d pair locals", len(i64LocalHomes))
+	}
+	locals := make([]wideValue, total)
+	saveBytes := uint16(total * 8)
+	frame := uint32((uint32(saveBytes) + 64 + 15) &^ 15)
+	c.a.MovImm32(a32.R12, frame)
+	c.a.Sub(a32.SP, a32.SP, a32.R12)
+	c.enableSpills(saveBytes, 64)
+	for i := 0; i < total; i++ {
+		home := i64LocalHomes[i]
+		c.a.Str(home[0], a32.SP, uint16(i*8))
+		c.a.Str(home[1], a32.SP, uint16(i*8+4))
+		g, ok := c.groups.Acquire([4]uint8{uint8(home[0]), uint8(home[1])}, 2)
+		if !ok {
+			panic("arm32: f64 local acquire")
+		}
+		locals[i] = wideValue{n: 2, regs: [4]a32.Reg{home[0], home[1]}, groups: [4]shared.RegGroup{g}, groupN: 1}
+		if i < numParams {
+			c.a.MovReg(home[0], a32.R0+a32.Reg(i*2))
+			c.a.MovReg(home[1], a32.R1+a32.Reg(i*2))
+		} else {
+			c.a.MovImm32(home[0], 0)
+			c.a.MovImm32(home[1], 0)
+		}
+	}
+	epilogue := func() {
+		for i := 0; i < total; i++ {
+			home := i64LocalHomes[i]
+			c.a.Ldr(home[0], a32.SP, uint16(i*8))
+			c.a.Ldr(home[1], a32.SP, uint16(i*8+4))
+		}
+		c.a.MovImm32(a32.R12, frame)
+		c.a.Add(a32.SP, a32.SP, a32.R12)
+		c.a.Ret()
+		c.a.Align4()
 	}
 	for r.HasNext() {
 		op, err := r.Byte()
@@ -382,13 +438,46 @@ func CompileF64BitBeachhead(body []byte) ([]byte, error) {
 			if len(c.stack) != 1 {
 				return nil, fmt.Errorf("arm32: f64 result stack has %d values", len(c.stack))
 			}
-			v, _ := c.pop(2)
-			if v.regs[0] != a32.R0 || v.regs[1] != a32.R1 {
-				return nil, fmt.Errorf("arm32: non-canonical f64 result registers")
+			v, e := c.pop(2)
+			if e != nil {
+				return nil, e
 			}
-			c.a.Ret()
-			c.a.Align4()
+			if v.regs[0] != a32.R0 || v.regs[1] != a32.R1 {
+				c.a.MovReg(a32.R0, v.regs[0])
+				c.a.MovReg(a32.R1, v.regs[1])
+			}
+			epilogue()
 			return c.a.B, nil
+		case 0x20, 0x21, 0x22:
+			idx, e := r.U32()
+			if e != nil {
+				return nil, e
+			}
+			if int(idx) >= len(locals) {
+				return nil, fmt.Errorf("arm32: f64 local index %d", idx)
+			}
+			home := locals[idx]
+			if op == 0x20 {
+				v, e := c.alloc(2)
+				if e != nil {
+					return nil, e
+				}
+				c.a.MovReg(v.regs[0], home.regs[0])
+				c.a.MovReg(v.regs[1], home.regs[1])
+				c.push(v)
+			} else {
+				v, e := c.pop(2)
+				if e != nil {
+					return nil, e
+				}
+				c.a.MovReg(home.regs[0], v.regs[0])
+				c.a.MovReg(home.regs[1], v.regs[1])
+				if op == 0x22 {
+					c.push(v)
+				} else {
+					c.release(v)
+				}
+			}
 		case 0x44:
 			bits, err := r.LEU64()
 			if err != nil {
@@ -441,7 +530,7 @@ func CompileF64BitBeachhead(body []byte) ([]byte, error) {
 			c.release(sign)
 			c.push(mag)
 		default:
-			return nil, fmt.Errorf("arm32: f64 bit beachhead unsupported opcode %#x", op)
+			return nil, fmt.Errorf("arm32: f64 bit function unsupported opcode %#x", op)
 		}
 	}
 	return nil, fmt.Errorf("arm32: f64 body missing end")

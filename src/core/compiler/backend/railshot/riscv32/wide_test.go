@@ -103,6 +103,24 @@ func TestCompileF64BitBeachhead(t *testing.T) {
 	if _, err := CompileF64BitBeachhead([]byte{0, 0xa0, 0x0b}); err == nil {
 		t.Fatal("f64.add accepted by bit beachhead")
 	}
+	local := []byte{1, 1, 0x7c, 0x20, 0, 0x9a, 0x22, 1, 0x0b}
+	if _, err := CompileF64BitFunction(1, local); err != nil {
+		t.Fatal(err)
+	}
+	spill := []byte{1, 2, 0x7c}
+	for i := 0; i < 5; i++ {
+		spill = append(spill, 0x44)
+		var b [8]byte
+		binary.LittleEndian.PutUint64(b[:], math.Float64bits(-1))
+		spill = append(spill, b[:]...)
+	}
+	for i := 0; i < 4; i++ {
+		spill = append(spill, 0xa6)
+	}
+	spill = append(spill, 0x0b)
+	if _, err := CompileF64BitFunction(0, spill); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestWideBeachheadsExecuteUnderQEMU(t *testing.T) {
@@ -219,6 +237,46 @@ func TestWideBeachheadsExecuteUnderQEMU(t *testing.T) {
 			t.Fatal("call patch")
 		}
 		runRV32Exit(t, qemu, append(entry.B, fn...), 15)
+	})
+	t.Run("f64-param-local", func(t *testing.T) {
+		body := []byte{1, 1, 0x7c, 0x20, 0, 0x9a, 0x22, 1, 0x0b}
+		fn, err := CompileF64BitFunction(1, body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var entry rv.Asm
+		entry.MovImm32(rv.A0, 0)
+		entry.MovImm32(rv.A1, 0x3ff80000)
+		call := entry.Jal(rv.RA)
+		entry.Srli(rv.A0, rv.A1, 31)
+		entry.MovImm32(rv.A7, 93)
+		entry.Ecall()
+		entry.PatchJAL21(call, len(entry.B))
+		runRV32Exit(t, qemu, append(entry.B, fn...), 1)
+	})
+	t.Run("f64-spill-reload", func(t *testing.T) {
+		body := []byte{1, 2, 0x7c}
+		for i := 0; i < 5; i++ {
+			body = append(body, 0x44)
+			var b [8]byte
+			binary.LittleEndian.PutUint64(b[:], math.Float64bits(-1))
+			body = append(body, b[:]...)
+		}
+		for i := 0; i < 4; i++ {
+			body = append(body, 0xa6)
+		}
+		body = append(body, 0x0b)
+		fn, err := CompileF64BitFunction(0, body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var entry rv.Asm
+		call := entry.Jal(rv.RA)
+		entry.Srli(rv.A0, rv.A1, 31)
+		entry.MovImm32(rv.A7, 93)
+		entry.Ecall()
+		entry.PatchJAL21(call, len(entry.B))
+		runRV32Exit(t, qemu, append(entry.B, fn...), 1)
 	})
 	t.Run("f64-neg", func(t *testing.T) {
 		body := []byte{0, 0x44}
