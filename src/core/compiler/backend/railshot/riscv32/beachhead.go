@@ -190,6 +190,10 @@ func compileBeachhead(m *wasm.Module, funcIdx, numParams int, body []byte, conte
 			if err := c.branch(r, true); err != nil {
 				return nil, err
 			}
+		case 0x0e: // br_table
+			if err := c.branchTable(r); err != nil {
+				return nil, err
+			}
 		case 0x0f: // return
 			c.emitReturn()
 		case 0x10: // call
@@ -358,6 +362,56 @@ func (c *compiler) branch(r *wasm.Reader, conditional bool) error {
 		fr.pending = append(fr.pending, site+4) // AUIPC+JALR starts after inverse branch.
 	}
 	c.release(cond)
+	return nil
+}
+
+func (c *compiler) branchTable(r *wasm.Reader) error {
+	n, err := r.U32()
+	if err != nil {
+		return err
+	}
+	depths := make([]uint32, int(n)+1)
+	for i := range depths {
+		depths[i], err = r.U32()
+		if err != nil {
+			return err
+		}
+		if int(depths[i]) >= len(c.control) {
+			return fmt.Errorf("riscv32: br_table depth %d exceeds control stack", depths[i])
+		}
+	}
+	selector := c.materialize(c.pop())
+	tmp := c.alloc()
+	for i := 0; i < int(n); i++ {
+		c.a.MovImm32(tmp, uint32(i))
+		fr := c.control[len(c.control)-1-int(depths[i])]
+		if fr.function {
+			return fmt.Errorf("riscv32: br_table to function result is not yet supported")
+		}
+		if fr.loop {
+			at := c.a.FarBcond(selector, tmp, rv.CondEQ, branchScratch)
+			if !c.a.PatchFarBranch(at, fr.header) {
+				return fmt.Errorf("riscv32: br_table loop target out of range")
+			}
+		} else {
+			at := c.a.FarBcond(selector, tmp, rv.CondEQ, branchScratch)
+			fr.pending = append(fr.pending, at+4)
+		}
+	}
+	fr := c.control[len(c.control)-1-int(depths[n])]
+	if fr.function {
+		return fmt.Errorf("riscv32: br_table default to function result is not yet supported")
+	}
+	if fr.loop {
+		at := c.a.FarJump(rv.Zero, branchScratch)
+		if !c.a.PatchFarJump(at, fr.header) {
+			return fmt.Errorf("riscv32: br_table default loop target out of range")
+		}
+	} else {
+		fr.pending = append(fr.pending, c.a.FarJump(rv.Zero, branchScratch))
+	}
+	c.release(selector)
+	c.release(tmp)
 	return nil
 }
 

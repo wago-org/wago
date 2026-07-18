@@ -191,6 +191,10 @@ func compileBeachhead(m *wasm.Module, funcIdx, numParams int, body []byte, conte
 			if err := c.branch(r, true); err != nil {
 				return nil, err
 			}
+		case 0x0e:
+			if err := c.branchTable(r); err != nil {
+				return nil, err
+			}
 		case 0x0f:
 			c.emitReturn()
 		case 0x10:
@@ -353,11 +357,61 @@ func (c *compiler) branch(r *wasm.Reader, conditional bool) error {
 			return fmt.Errorf("loop target out of range")
 		}
 	default:
-		fr.pending = append(fr.pending, c.a.FarBcond(a32.CondNE))
+		fr.pending = append(fr.pending, c.a.FarBcond(a32.CondNE)+2)
 	}
 	c.release(cond)
 	return nil
 }
+func (c *compiler) branchTable(r *wasm.Reader) error {
+	n, err := r.U32()
+	if err != nil {
+		return err
+	}
+	depths := make([]uint32, int(n)+1)
+	for i := range depths {
+		depths[i], err = r.U32()
+		if err != nil {
+			return err
+		}
+		if int(depths[i]) >= len(c.control) {
+			return fmt.Errorf("arm32: br_table depth %d exceeds control stack", depths[i])
+		}
+	}
+	selector := c.materialize(c.pop())
+	tmp := c.alloc()
+	for i := 0; i < int(n); i++ {
+		c.must(c.a.MovImm32(tmp, uint32(i)), "br_table index")
+		c.must(c.a.Cmp(selector, tmp), "br_table compare")
+		fr := c.control[len(c.control)-1-int(depths[i])]
+		if fr.function {
+			return fmt.Errorf("arm32: br_table to function result is not yet supported")
+		}
+		if fr.loop {
+			at := c.a.FarBcond(a32.CondEQ)
+			if !c.a.PatchFarBranch(at, fr.header) {
+				return fmt.Errorf("arm32: br_table loop target out of range")
+			}
+		} else {
+			fr.pending = append(fr.pending, c.a.FarBcond(a32.CondEQ)+2)
+		}
+	}
+	fr := c.control[len(c.control)-1-int(depths[n])]
+	if fr.function {
+		return fmt.Errorf("arm32: br_table default to function result is not yet supported")
+	}
+	if fr.loop {
+		at := c.a.Branch()
+		if !c.a.PatchBranch(at, fr.header) {
+			return fmt.Errorf("arm32: br_table default loop target out of range")
+		}
+	} else {
+		fr.pending = append(fr.pending, c.a.Branch())
+	}
+	c.release(selector)
+	c.release(tmp)
+	return nil
+}
+
 func (c *compiler) emitReturn() {
 	if len(c.stack) != 0 {
 		result := c.materialize(c.pop())
