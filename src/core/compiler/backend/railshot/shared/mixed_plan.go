@@ -111,6 +111,7 @@ func MixedValueSlots(typ wasm.ValType) (uint8, bool) {
 
 type MixedSignatureResolver func(uint32) (*wasm.CompType, bool)
 type MixedGlobalResolver func(uint32) (wasm.ValType, bool, bool)
+type MixedBlockResolver func(uint32) (*wasm.CompType, bool)
 
 func BuildMixedPlan(ft *wasm.CompType, locals []wasm.LocalRun, body []byte) (*MixedPlan, error) {
 	return BuildMixedPlanWithResolvers(ft, locals, body, nil, nil)
@@ -138,6 +139,10 @@ func BuildMixedPlanWithCalls(ft *wasm.CompType, locals []wasm.LocalRun, body []b
 }
 
 func BuildMixedPlanWithResolvers(ft *wasm.CompType, locals []wasm.LocalRun, body []byte, resolve MixedSignatureResolver, resolveGlobal MixedGlobalResolver) (*MixedPlan, error) {
+	return BuildMixedPlanWithBlockResolver(ft, locals, body, resolve, resolveGlobal, nil)
+}
+
+func BuildMixedPlanWithBlockResolver(ft *wasm.CompType, locals []wasm.LocalRun, body []byte, resolve MixedSignatureResolver, resolveGlobal MixedGlobalResolver, resolveBlock MixedBlockResolver) (*MixedPlan, error) {
 	if ft == nil || ft.Kind != wasm.CompFunc {
 		return nil, fmt.Errorf("mixed function has invalid type")
 	}
@@ -343,18 +348,32 @@ func BuildMixedPlanWithResolvers(ft *wasm.CompType, locals []wasm.LocalRun, body
 		return true
 	}
 	readBlockResults := func() ([]wasm.ValType, error) {
-		encoded, err := r.Byte()
-		if err != nil {
-			return nil, err
+		encoded, ok := r.Peek()
+		if !ok {
+			return nil, fmt.Errorf("mixed control type is truncated")
 		}
 		if encoded == 0x40 {
+			_, _ = r.Byte()
 			return nil, nil
 		}
-		typ, ok := mixedEncodedValueType(encoded)
-		if !ok {
-			return nil, fmt.Errorf("mixed control type %#x requires a type-index planner", encoded)
+		if typ, ok := mixedEncodedValueType(encoded); ok {
+			_, _ = r.Byte()
+			return []wasm.ValType{typ}, nil
 		}
-		return []wasm.ValType{typ}, nil
+		index, err := r.S33()
+		if err != nil || index < 0 || resolveBlock == nil {
+			return nil, fmt.Errorf("mixed control type index is invalid")
+		}
+		block, ok := resolveBlock(uint32(index))
+		if !ok || block == nil || block.Kind != wasm.CompFunc || len(block.Params) != 0 {
+			return nil, fmt.Errorf("mixed control type %d requires unsupported parameters", index)
+		}
+		for _, typ := range block.Results {
+			if _, ok := MixedValueSlots(typ); !ok {
+				return nil, fmt.Errorf("mixed control result type %s is not supported", typ)
+			}
+		}
+		return append([]wasm.ValType(nil), block.Results...), nil
 	}
 	controlMatches := func(control *mixedControl) ([]MixedValue, bool) {
 		if len(stack) != len(control.entry)+len(control.results) {

@@ -750,6 +750,48 @@ func TestCompileModuleMergesTypedWideIfResultUnderQEMU(t *testing.T) {
 	runRV32Exit(t, qemu, append(a.B, cm.Code...), 42)
 }
 
+func riscv32MixedMultiValueIfModule(t *testing.T) *wasm.Module {
+	t.Helper()
+	body := []byte{1, 1, 0x7d,
+		0x41, 0, 0x04, 0,
+		0x42, 37, 0x41, 1,
+		0x05, 0x42, 42, 0x41, 2,
+		0x0b, 0x0b}
+	code := append(wasmtest.ULEB(uint32(len(body))), body...)
+	m, err := wasm.DecodeModule(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I64, wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0})),
+		wasmtest.Section(10, wasmtest.Vec(code)),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+func TestCompileModuleMergesTypeIndexedMultiValueIfUnderQEMU(t *testing.T) {
+	qemu, err := exec.LookPath("qemu-riscv32")
+	if err != nil {
+		t.Skip("qemu-riscv32 not installed")
+	}
+	cm, err := CompileModule(riscv32MixedMultiValueIfModule(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var a rv.Asm
+	rvMemoryContext(&a)
+	a.Addi(rv.A0, rv.SP, 16)
+	a.MovReg(rv.X23, rv.A0)
+	call := a.Jal(rv.RA)
+	a.Add(rv.A0, rv.A0, rv.A2)
+	a.MovImm32(rv.A7, 93)
+	a.Ecall()
+	if !a.PatchJAL21(call, len(a.B)+cm.Entry[0]) {
+		t.Fatal("wrapper call relocation")
+	}
+	runRV32Exit(t, qemu, append(a.B, cm.Code...), 44)
+}
+
 func TestCompileModuleLaysOutFunctions(t *testing.T) {
 	cm, err := CompileModule(riscv32Module(t))
 	if err != nil {

@@ -27,7 +27,7 @@ func CompileMixedModuleFunction(ft *wasm.CompType, locals []wasm.LocalRun, body 
 }
 
 func compileMixedModuleFunction(m *wasm.Module, ft *wasm.CompType, locals []wasm.LocalRun, body []byte) ([]byte, []callReloc, error) {
-	plan, err := shared.BuildMixedPlanWithResolvers(ft, locals, body, func(index uint32) (*wasm.CompType, bool) {
+	plan, err := shared.BuildMixedPlanWithBlockResolver(ft, locals, body, func(index uint32) (*wasm.CompType, bool) {
 		return m.FuncSignature(index)
 	}, func(index uint32) (wasm.ValType, bool, bool) {
 		if int(index) >= len(m.Globals) {
@@ -35,6 +35,8 @@ func compileMixedModuleFunction(m *wasm.Module, ft *wasm.CompType, locals []wasm
 		}
 		global := m.Globals[index]
 		return global.Type.Type, global.Type.Mutable, true
+	}, func(index uint32) (*wasm.CompType, bool) {
+		return m.TypeFunc(index)
 	})
 	if err != nil {
 		return nil, nil, err
