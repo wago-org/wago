@@ -310,6 +310,86 @@ func TestSWARIntegerShiftUnaryAllTrueAndBitmaskExec(t *testing.T) {
 	}
 }
 
+func TestSWARIntegerCompareMinMaxMulAverageAndPopcntExec(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		width, lane int
+		sub         uint32
+		a, b        uint64
+		want        uint64
+	}{
+		{"i8-eq", 8, 0, 35, 7, 7, 0xff},
+		{"i8-ne", 8, 0, 36, 7, 8, 0xff},
+		{"i8-lt-s", 8, 0, 37, 0xff, 1, 0xff},
+		{"i8-lt-u", 8, 0, 38, 0xff, 1, 0},
+		{"i8-gt-s", 8, 0, 39, 1, 0xff, 0xff},
+		{"i8-ge-u-false", 8, 0, 44, 1, 2, 0},
+		{"i16-le-s", 16, 0, 51, 0x8000, 0x7fff, 0xffff},
+		{"i16-gt-u", 16, 0, 50, 0xffff, 1, 0xffff},
+		{"i32-lt-s", 32, 0, 57, 0xffffffff, 1, 0xffffffff},
+		{"i32-ge-u", 32, 0, 64, 0xffffffff, 1, 0xffffffff},
+		{"i64-lt-s", 64, 0, 216, ^uint64(0), 1, ^uint64(0)},
+		{"i64-gt-s-false", 64, 0, 217, 1, 2, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			resultType := wasm.I32
+			if tc.width == 64 {
+				resultType = wasm.I64
+			}
+			m := swarScalarModule(t, resultType,
+				swarV128Const(tc.a, 0), swarV128Const(tc.b, 0), swarFD(tc.sub),
+				swarIntegerExtract(tc.width, tc.lane, false))
+			got := runProductionSWARWrapper(t, m)
+			if tc.width < 64 {
+				got = uint64(uint32(got))
+			}
+			if got != tc.want {
+				t.Fatalf("got %#x, want %#x", got, tc.want)
+			}
+		})
+	}
+
+	for _, tc := range []struct {
+		name        string
+		width, lane int
+		sub         uint32
+		a, b, want  uint64
+	}{
+		{"i8-min-s", 8, 0, 118, 0xff, 1, 0xff},
+		{"i8-min-u", 8, 0, 119, 0xff, 1, 1},
+		{"i8-max-s", 8, 0, 120, 0xff, 1, 1},
+		{"i8-max-u", 8, 0, 121, 0xff, 1, 0xff},
+		{"i16-min-s", 16, 0, 150, 0x8000, 1, 0x8000},
+		{"i16-max-u", 16, 0, 153, 0xffff, 1, 0xffff},
+		{"i32-min-s", 32, 0, 182, 0xffffffff, 1, 0xffffffff},
+		{"i32-max-u", 32, 0, 185, 0xffffffff, 1, 0xffffffff},
+		{"i8-avgr-u", 8, 0, 123, 0xff, 0xff, 0xff},
+		{"i16-avgr-u", 16, 0, 155, 0xffff, 0xfffe, 0xffff},
+		{"i16-mul", 16, 0, 149, 300, 300, 0x5f90}, // 90000 modulo 2^16
+		{"i32-mul", 32, 0, 181, 0xffffffff, 2, 0xfffffffe},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := swarScalarModule(t, wasm.I32,
+				swarV128Const(tc.a, 0), swarV128Const(tc.b, 0), swarFD(tc.sub),
+				swarIntegerExtract(tc.width, tc.lane, false))
+			if got := runProductionSWARWrapper(t, m); uint32(got) != uint32(tc.want) {
+				t.Fatalf("got %#x, want %#x", uint32(got), uint32(tc.want))
+			}
+		})
+	}
+
+	t.Run("i8x16-popcnt", func(t *testing.T) {
+		const lo = uint64(0xff0180550f00aa7f)
+		for lane, want := range []uint32{7, 4, 0, 4, 4, 1, 1, 8} {
+			m := swarScalarModule(t, wasm.I32,
+				swarV128Const(lo, 0), swarFD(98), swarIntegerExtract(8, lane, false))
+			if got := runProductionSWARWrapper(t, m); uint32(got) != want {
+				t.Fatalf("lane %d: got %d, want %d", lane, got, want)
+			}
+		}
+	})
+}
+
 func TestSWARV128LocalControlAndSelectExec(t *testing.T) {
 	t.Run("local", func(t *testing.T) {
 		body := []byte{1, 1, 0x7b} // one v128 local

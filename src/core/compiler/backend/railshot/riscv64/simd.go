@@ -499,6 +499,155 @@ func (f *fn) integerBitmask(width int) {
 	f.pushReg(out, mtI32)
 }
 
+func (f *fn) integerCompare(width int, cond Cond, signed bool) {
+	be, ae := f.popValue(), f.popValue()
+	b := f.materializeV128(be)
+	a := f.materializeV128(ae)
+	out := f.allocV128Pair(a.mask().union(b.mask()))
+	f.a.MovImm64(out.lo, 0)
+	f.a.MovImm64(out.hi, 0)
+	x := f.allocReg(a.mask().union(b.mask()).union(out.mask()))
+	y := f.allocReg(a.mask().union(b.mask()).union(out.mask()).add(x))
+	for lane := 0; lane < 128/width; lane++ {
+		f.extractLaneTo(x, a, lane, width, signed)
+		f.extractLaneTo(y, b, lane, width, signed)
+		f.a.CmpReg64(x, y)
+		f.a.Cset64(x, cond)
+		f.a.Neg64(x, x) // true => all one bits in the destination lane
+		f.insertLaneFrom(out, lane, width, x)
+	}
+	f.release(y)
+	f.release(x)
+	f.releaseV128(b)
+	f.releaseV128(a)
+	f.pushV128Pair(out)
+}
+
+func (f *fn) integerMinMax(width int, signed, max bool) {
+	be, ae := f.popValue(), f.popValue()
+	b := f.materializeV128(be)
+	a := f.materializeV128(ae)
+	out := f.allocV128Pair(a.mask().union(b.mask()))
+	f.a.MovImm64(out.lo, 0)
+	f.a.MovImm64(out.hi, 0)
+	x := f.allocReg(a.mask().union(b.mask()).union(out.mask()))
+	y := f.allocReg(a.mask().union(b.mask()).union(out.mask()).add(x))
+	cond := condB
+	if signed {
+		cond = condL
+	}
+	if max {
+		cond = cond.Invert()
+	}
+	for lane := 0; lane < 128/width; lane++ {
+		f.extractLaneTo(x, a, lane, width, signed)
+		f.extractLaneTo(y, b, lane, width, signed)
+		f.a.CmpReg64(x, y)
+		f.a.Csel64(x, x, y, cond) // min: a<b; max: a>=b
+		f.insertLaneFrom(out, lane, width, x)
+	}
+	f.release(y)
+	f.release(x)
+	f.releaseV128(b)
+	f.releaseV128(a)
+	f.pushV128Pair(out)
+}
+
+func (f *fn) integerAvgrU(width int) {
+	be, ae := f.popValue(), f.popValue()
+	b := f.materializeV128(be)
+	a := f.materializeV128(ae)
+	out := f.allocV128Pair(a.mask().union(b.mask()))
+	f.a.MovImm64(out.lo, 0)
+	f.a.MovImm64(out.hi, 0)
+	x := f.allocReg(a.mask().union(b.mask()).union(out.mask()))
+	y := f.allocReg(a.mask().union(b.mask()).union(out.mask()).add(x))
+	for lane := 0; lane < 128/width; lane++ {
+		f.extractLaneTo(x, a, lane, width, false)
+		f.extractLaneTo(y, b, lane, width, false)
+		f.a.Add64(x, x, y)
+		f.a.AddImm64(x, x, 1)
+		f.a.LsrImm(x, x, 1, false)
+		f.insertLaneFrom(out, lane, width, x)
+	}
+	f.release(y)
+	f.release(x)
+	f.releaseV128(b)
+	f.releaseV128(a)
+	f.pushV128Pair(out)
+}
+
+func (f *fn) integerMul(width int) {
+	be, ae := f.popValue(), f.popValue()
+	b := f.materializeV128(be)
+	a := f.materializeV128(ae)
+	out := f.allocV128Pair(a.mask().union(b.mask()))
+	f.a.MovImm64(out.lo, 0)
+	f.a.MovImm64(out.hi, 0)
+	x := f.allocReg(a.mask().union(b.mask()).union(out.mask()))
+	y := f.allocReg(a.mask().union(b.mask()).union(out.mask()).add(x))
+	for lane := 0; lane < 128/width; lane++ {
+		f.extractLaneTo(x, a, lane, width, false)
+		f.extractLaneTo(y, b, lane, width, false)
+		f.a.Mul64(x, x, y)
+		f.insertLaneFrom(out, lane, width, x)
+	}
+	f.release(y)
+	f.release(x)
+	f.releaseV128(b)
+	f.releaseV128(a)
+	f.pushV128Pair(out)
+}
+
+func (f *fn) i8x16Popcnt() {
+	e := f.popValue()
+	p := f.materializeV128(e)
+	t := f.allocReg(p.mask())
+	emit := func(x Reg) {
+		f.a.LsrImm(t, x, 1, false)
+		f.a.AndImm64(t, t, 0x5555555555555555)
+		f.a.Sub64(x, x, t)
+		f.a.LsrImm(t, x, 2, false)
+		f.a.AndImm64(t, t, 0x3333333333333333)
+		f.a.AndImm64(x, x, 0x3333333333333333)
+		f.a.Add64(x, x, t)
+		f.a.LsrImm(t, x, 4, false)
+		f.a.Add64(x, x, t)
+		f.a.AndImm64(x, x, 0x0f0f0f0f0f0f0f0f)
+	}
+	emit(p.lo)
+	emit(p.hi)
+	f.release(t)
+	f.pushV128Pair(p)
+}
+
+func integerCompareSpec(sub, base uint32) (cond Cond, signed bool) {
+	switch sub - base {
+	case 0:
+		return condE, false
+	case 1:
+		return condNE, false
+	case 2:
+		return condL, true
+	case 3:
+		return condB, false
+	case 4:
+		return condG, true
+	case 5:
+		return condA, false
+	case 6:
+		return condLE, true
+	case 7:
+		return condBE, false
+	case 8:
+		return condGE, true
+	case 9:
+		return condAE, false
+	default:
+		panic("riscv64: invalid integer SIMD comparison")
+	}
+}
+
 func (f *fn) emitFD(r *wasm.Reader) error {
 	sub, err := r.U32()
 	if err != nil {
@@ -570,6 +719,15 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 			return err
 		}
 		return f.i64x2ReplaceLane(lane)
+	case 35, 36, 37, 38, 39, 40, 41, 42, 43, 44:
+		cond, signed := integerCompareSpec(sub, 35)
+		f.integerCompare(8, cond, signed)
+	case 45, 46, 47, 48, 49, 50, 51, 52, 53, 54:
+		cond, signed := integerCompareSpec(sub, 45)
+		f.integerCompare(16, cond, signed)
+	case 55, 56, 57, 58, 59, 60, 61, 62, 63, 64:
+		cond, signed := integerCompareSpec(sub, 55)
+		f.integerCompare(32, cond, signed)
 	case 77:
 		f.v128Not()
 	case 78, 79, 80, 81:
@@ -580,6 +738,8 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 		f.v128AnyTrue()
 	case 96, 97: // i8x16.abs/neg
 		f.integerUnary(8, sub == 96)
+	case 98:
+		f.i8x16Popcnt()
 	case 99:
 		f.integerAllTrue(8)
 	case 100:
@@ -588,6 +748,10 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 		f.integerShift(8, sub == 108, sub == 107)
 	case 110, 113: // i8x16 add/sub
 		f.packedAddSub(8, sub == 113)
+	case 118, 119, 120, 121: // i8x16 min/max
+		f.integerMinMax(8, sub == 118 || sub == 120, sub >= 120)
+	case 123:
+		f.integerAvgrU(8)
 	case 128, 129: // i16x8.abs/neg
 		f.integerUnary(16, sub == 128)
 	case 131:
@@ -598,6 +762,12 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 		f.integerShift(16, sub == 140, sub == 139)
 	case 142, 145: // i16x8 add/sub
 		f.packedAddSub(16, sub == 145)
+	case 149:
+		f.integerMul(16)
+	case 150, 151, 152, 153: // i16x8 min/max
+		f.integerMinMax(16, sub == 150 || sub == 152, sub >= 152)
+	case 155:
+		f.integerAvgrU(16)
 	case 160, 161: // i32x4.abs/neg
 		f.integerUnary(32, sub == 160)
 	case 163:
@@ -608,6 +778,10 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 		f.integerShift(32, sub == 172, sub == 171)
 	case 174, 177: // i32x4 add/sub
 		f.packedAddSub(32, sub == 177)
+	case 181:
+		f.integerMul(32)
+	case 182, 183, 184, 185: // i32x4 min/max
+		f.integerMinMax(32, sub == 182 || sub == 184, sub >= 184)
 	case 192, 193: // i64x2.abs/neg
 		f.integerUnary(64, sub == 192)
 	case 195:
@@ -618,6 +792,18 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 		f.integerShift(64, sub == 204, sub == 203)
 	case 206, 209, 213:
 		f.i64x2Binary(sub)
+	case 214:
+		f.integerCompare(64, condE, false)
+	case 215:
+		f.integerCompare(64, condNE, false)
+	case 216:
+		f.integerCompare(64, condL, true)
+	case 217:
+		f.integerCompare(64, condG, true)
+	case 218:
+		f.integerCompare(64, condLE, true)
+	case 219:
+		f.integerCompare(64, condGE, true)
 	default:
 		return fmt.Errorf("riscv64: SWAR SIMD opcode %d is not implemented", sub)
 	}
