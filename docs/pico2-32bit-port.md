@@ -141,7 +141,10 @@ The architecture-neutral `src/core/runtime/embedded32` helper ABI now adds:
   size or register pressure.
 
 The helper ABI uses fixed 32-bit layouts independent of host pointer alignment.
-Its three-slot table now contains scalar-f64, SIMD, and scalar-i64 entries. The
+Its three-slot table contains scalar-f64, SIMD, and scalar-i64 entries. Normal
+mixed module functions now construct and dispatch both scalar f64 and i64 helper
+frames through this table, with canonical trap publication and atomic result
+reloads. The
 i64 frame covers shifts, rotates, bit counts, `eqz`, every signed/unsigned
 comparison, trapping division/remainder, i32 extension, and all i64
 sign-extension operations with complete pair results and canonical traps. Both
@@ -177,7 +180,9 @@ their bounded native frame, dispatch through `ContextABI.HelperTable`, publish
 helper traps, and reload complete results. This path covers f64 rounding, square
 root, arithmetic, min/max, comparisons, i32/i64 conversion, promotion from f32,
 trapping truncation, and saturating truncation; bitwise f64 operations remain
-direct. More complex SIMD operations still use the complete helper ABI only in
+direct. Mixed i64 helper dispatch covers shifts, rotates, bit counts, eqz and
+all comparisons, division/remainder traps, i32 extension, and sign extensions;
+add/sub/multiply/logic stay direct. More complex SIMD operations still use the complete helper ABI only in
 standalone thunks while normal mixed SIMD dispatch is wired next. Measurements
 decide which helper operations merit direct target-specific lowering.
 

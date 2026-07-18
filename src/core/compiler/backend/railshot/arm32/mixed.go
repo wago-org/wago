@@ -85,9 +85,15 @@ func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc) ([]byte, erro
 	dataBytes := uint32(plan.LocalSlots+plan.MaxOperandSlots) * 4
 	helperBytes := uint32(0)
 	for _, op := range plan.Ops {
-		if op.Kind == shared.MixedF64Helper {
-			helperBytes = embedded32.F64FrameBytes
-			break
+		switch op.Kind {
+		case shared.MixedF64Helper:
+			if helperBytes < embedded32.F64FrameBytes {
+				helperBytes = embedded32.F64FrameBytes
+			}
+		case shared.MixedI64Helper:
+			if helperBytes < embedded32.I64FrameBytes {
+				helperBytes = embedded32.I64FrameBytes
+			}
 		}
 	}
 	helperBase := uint16(valueBase + dataBytes)
@@ -327,6 +333,52 @@ func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc) ([]byte, erro
 			}
 			if !a.PatchFarBranch(selectedLeft, a.Len()) {
 				return nil, fmt.Errorf("arm32: mixed select branch out of range")
+			}
+		case shared.MixedI64Helper:
+			must(a.MovImm32(a32.R0, op.HelperOp), "i64 helper op")
+			must(a.Str(a32.R0, a32.SP, helperBase+embedded32.I64FrameOpOffset), "i64 helper op store")
+			for i := uint8(0); i < op.InputWidth; i++ {
+				must(a.Ldr(a32.R0, a32.SP, off(op.Left)+uint16(i)*4), "i64 helper left load")
+				must(a.Str(a32.R0, a32.SP, helperBase+embedded32.I64FrameALoOffset+uint16(i)*4), "i64 helper left store")
+			}
+			if op.InputWidth == 1 {
+				must(a.MovImm32(a32.R0, 0), "i64 helper input high zero")
+				must(a.Str(a32.R0, a32.SP, helperBase+embedded32.I64FrameAHiOffset), "i64 helper input high store")
+			}
+			if op.Arity == 2 {
+				for i := uint16(0); i < 2; i++ {
+					must(a.Ldr(a32.R0, a32.SP, off(op.Right)+i*4), "i64 helper right load")
+					must(a.Str(a32.R0, a32.SP, helperBase+embedded32.I64FrameBLoOffset+i*4), "i64 helper right store")
+				}
+			}
+			must(a.MovReg(a32.R0, a32.SP), "i64 helper frame base")
+			must(a.MovImm32(a32.R1, uint32(helperBase)), "i64 helper frame offset")
+			must(a.Add(a32.R0, a32.R0, a32.R1), "i64 helper frame address")
+			must(a.Ldr(a32.R1, armContextReg, embedded32.ContextHelperTableOffset), "i64 helper table")
+			must(a.Ldr(a32.R12, a32.R1, embedded32.HelperI64Offset), "i64 helper target")
+			must(a.Blx(a32.R12), "i64 helper call")
+			must(a.Ldr(a32.R0, a32.SP, helperBase+embedded32.I64FrameTrapOffset), "i64 helper trap")
+			must(a.MovImm32(a32.R1, 0), "i64 helper trap zero")
+			must(a.Cmp(a32.R0, a32.R1), "i64 helper trap compare")
+			helperOK := a.FarBcond(a32.CondEQ)
+			must(a.Ldr(a32.R1, armContextReg, embedded32.ContextTrapCellOffset), "i64 helper trap cell")
+			must(a.Str(a32.R0, a32.R1, 0), "i64 helper trap publish")
+			must(a.Ldr(a32.LR, a32.SP, saveOffset), "i64 helper trap return address restore")
+			must(a.MovImm32(a32.R12, frame), "i64 helper trap frame size")
+			must(a.Add(a32.SP, a32.SP, a32.R12), "i64 helper trap frame release")
+			must(a.MovImm32(a32.R0, 0), "i64 helper trap result")
+			a.Ret()
+			a.Align4()
+			if !a.PatchFarBranch(helperOK, a.Len()) {
+				return nil, fmt.Errorf("arm32: i64 helper trap branch out of range")
+			}
+			resultOffset := uint16(embedded32.I64FrameOutLoOffset)
+			if op.Width == 1 {
+				resultOffset = embedded32.I64FrameI32OutOffset
+			}
+			for i := uint8(0); i < op.Width; i++ {
+				must(a.Ldr(a32.R0, a32.SP, helperBase+resultOffset+uint16(i)*4), "i64 helper result load")
+				must(a.Str(a32.R0, a32.SP, off(op.Dst)+uint16(i)*4), "i64 helper result store")
 			}
 		case shared.MixedF64Helper:
 			must(a.MovImm32(a32.R0, op.HelperOp), "f64 helper op")
