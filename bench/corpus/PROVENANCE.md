@@ -19,6 +19,7 @@ from acceptance.
 | synthetic | `bench/corpus/build.sh`, pinned wabt | reproducible |
 | Rust compute/WASI | `build-rust.sh`, `rust-wasi/build.sh`, pinned Rust target | reproducible with toolchain |
 | AssemblyScript | `build-as.sh`, reviewed source revision | fetched/build; revision required before refresh |
+| focused AssemblyScript idioms | `build-as.sh`, checked-in `as/*.ts` source | reproducible with the selected asc toolchain |
 | third-party engines | `fetch.sh` or reviewed regression source | fetched/regression-only |
 
 The manifest is the acceptance inventory. ISA modules are in

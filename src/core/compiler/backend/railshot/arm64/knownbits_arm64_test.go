@@ -3,6 +3,7 @@
 package arm64
 
 import (
+	"math/bits"
 	"runtime"
 	"testing"
 	"unsafe"
@@ -30,6 +31,28 @@ func swarMaskBranchBodyArm64() []byte {
 	b := swarMaskEqzBodyArm64()
 	b = b[:len(b)-1]
 	return append(b, 0x04, 0x7f, 0x41, 0x01, 0x05, 0x41, 0x00, 0x0b, 0x0b)
+}
+
+func swarWiden4BodyArm64() []byte {
+	b := []byte{0x01, 0x01, 0x7e, 0x20, 0x00, 0x42}
+	b = append(b, wasmtest.SLEB64(0xffffffff)...)
+	b = append(b, 0x83, 0x22, 0x01, 0x20, 0x01, 0x42, 0x10, 0x86, 0x84, 0x42)
+	b = append(b, wasmtest.SLEB64(0x0000ffff0000ffff)...)
+	b = append(b, 0x83, 0x22, 0x01, 0x20, 0x01, 0x42, 0x08, 0x86, 0x84, 0x42)
+	b = append(b, wasmtest.SLEB64(0x00ff00ff00ff00ff)...)
+	return append(b, 0x83, 0x0b)
+}
+
+func mulHighU64BodyArm64() []byte {
+	b := []byte{0x01, 0x02, 0x7e, 0x20, 0x00, 0x42, 0x20, 0x88, 0x22, 0x02, 0x20, 0x01, 0x42}
+	b = append(b, wasmtest.SLEB64(0xffffffff)...)
+	b = append(b, 0x83, 0x22, 0x03, 0x7e, 0x20, 0x00, 0x42)
+	b = append(b, wasmtest.SLEB64(0xffffffff)...)
+	b = append(b, 0x83, 0x22, 0x00, 0x20, 0x03, 0x7e, 0x42, 0x20, 0x88, 0x7c, 0x21, 0x03,
+		0x20, 0x01, 0x42, 0x20, 0x88, 0x22, 0x01, 0x20, 0x02, 0x7e,
+		0x20, 0x03, 0x42, 0x20, 0x88, 0x7c, 0x20, 0x00, 0x20, 0x01, 0x7e, 0x20, 0x03, 0x42)
+	b = append(b, wasmtest.SLEB64(0xffffffff)...)
+	return append(b, 0x83, 0x7c, 0x42, 0x20, 0x88, 0x7c, 0x0b)
 }
 
 func TestKnownBitsMaskElisionArm64(t *testing.T) {
@@ -112,6 +135,79 @@ func TestSWARMaskBranchFusionArm64(t *testing.T) {
 	}
 }
 
+func TestSWARWiden4FusionArm64(t *testing.T) {
+	i64 := []wasm.ValType{wasm.I64}
+	m := mod1(t, i64, i64, swarWiden4BodyArm64())
+	on := compileWithStats(t, m, false).Funcs[0]
+	if got := on.Peephole["swar-widen4"]; got != 1 {
+		t.Fatalf("swar-widen4 = %d, want 1 (all: %v)", got, on.Peephole)
+	}
+	var off *CodegenStats
+	func() {
+		saved := swarIdiomsEnabled
+		defer func() { swarIdiomsEnabled = saved }()
+		swarIdiomsEnabled = false
+		off = compileWithStats(t, m, false).Funcs[0]
+	}()
+	if on.CodeBytes >= off.CodeBytes {
+		t.Fatalf("fused code = %d bytes, unfused = %d; want smaller", on.CodeBytes, off.CodeBytes)
+	}
+	for _, tc := range []struct{ in, want uint64 }{
+		{0, 0},
+		{0x44332211, 0x0044003300220011},
+		{0xffffffffffffffff, 0x00ff00ff00ff00ff},
+	} {
+		if got := uint64(runArm64Internal2(t, m, uintptr(tc.in), 0)); got != tc.want {
+			t.Fatalf("widen(%#x) = %#x, want %#x", tc.in, got, tc.want)
+		}
+	}
+}
+
+func TestSWARWiden4PreservesLiveTemporaryArm64(t *testing.T) {
+	i64 := []wasm.ValType{wasm.I64}
+	body := swarWiden4BodyArm64()
+	body = append(body[:len(body)-1], 0x20, 0x01, 0x1a, 0x0b) // local.get 1; drop; end
+	m := mod1(t, i64, i64, body)
+	if got := compileWithStats(t, m, false).Funcs[0].Peephole["swar-widen4"]; got != 0 {
+		t.Fatalf("swar-widen4 = %d, want 0 while temporary remains live", got)
+	}
+}
+
+func TestMulHighU64FusionArm64(t *testing.T) {
+	i64 := []wasm.ValType{wasm.I64}
+	m := mod1(t, []wasm.ValType{wasm.I64, wasm.I64}, i64, mulHighU64BodyArm64())
+	s := compileWithStats(t, m, false).Funcs[0]
+	if got := s.Peephole["mul-high-u64"]; got != 1 {
+		t.Fatalf("mul-high-u64 = %d, want 1 (all: %v)", got, s.Peephole)
+	}
+	var off *CodegenStats
+	func() {
+		saved := swarIdiomsEnabled
+		defer func() { swarIdiomsEnabled = saved }()
+		swarIdiomsEnabled = false
+		off = compileWithStats(t, m, false).Funcs[0]
+	}()
+	if s.CodeBytes >= off.CodeBytes {
+		t.Fatalf("native mul-high code = %d bytes, expansion = %d; want smaller", s.CodeBytes, off.CodeBytes)
+	}
+	for _, tc := range [][2]uint64{{0, 0}, {1, 1}, {0xffffffffffffffff, 2}, {0x9e3779b97f4a7c15, 0xd6e8feb86659fd93}} {
+		want, _ := bits.Mul64(tc[0], tc[1])
+		if got := uint64(runArm64Internal2(t, m, uintptr(tc[0]), uintptr(tc[1]))); got != want {
+			t.Fatalf("mulhi(%#x,%#x) = %#x, want %#x", tc[0], tc[1], got, want)
+		}
+	}
+}
+
+func TestMulHighU64MatcherIsFunctionTailOnlyArm64(t *testing.T) {
+	i64 := []wasm.ValType{wasm.I64}
+	body := mulHighU64BodyArm64()
+	body = append(body[:len(body)-1], 0x42, 0x00, 0x7c, 0x0b) // result + 0; end
+	m := mod1(t, []wasm.ValType{wasm.I64, wasm.I64}, i64, body)
+	if got := compileWithStats(t, m, false).Funcs[0].Peephole["mul-high-u64"]; got != 0 {
+		t.Fatalf("mul-high-u64 = %d, want 0 away from function tail", got)
+	}
+}
+
 func BenchmarkKnownBitsCompileArm64(b *testing.B) {
 	i64, i32 := []wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I32}
 	m := mod1(b, i64, i32, swarMaskEqzBodyArm64())
@@ -144,6 +240,50 @@ func BenchmarkSWARMaskExecArm64(b *testing.B) {
 	var result uintptr
 	for i := 0; i < b.N; i++ {
 		result ^= arm64spike.Call2(entry, uintptr(i), 0)
+	}
+	knownBitsBenchmarkSink = result
+	b.ReportMetric(float64(len(cm.Code)), "code-B")
+	runtime.KeepAlive(code)
+}
+
+func BenchmarkSWARWiden4ExecArm64(b *testing.B) {
+	i64 := []wasm.ValType{wasm.I64}
+	cm, err := CompileModule(mod1(b, i64, i64, swarWiden4BodyArm64()))
+	if err != nil {
+		b.Fatal(err)
+	}
+	code, err := arm64spike.MapExec(cm.Code)
+	if err != nil {
+		b.Fatal(err)
+	}
+	entry := uintptr(unsafe.Pointer(&code[cm.InternalEntry[0]]))
+	b.ReportAllocs()
+	b.ResetTimer()
+	var result uintptr
+	for i := 0; i < b.N; i++ {
+		result ^= arm64spike.Call2(entry, uintptr(i), 0)
+	}
+	knownBitsBenchmarkSink = result
+	b.ReportMetric(float64(len(cm.Code)), "code-B")
+	runtime.KeepAlive(code)
+}
+
+func BenchmarkMulHighU64ExecArm64(b *testing.B) {
+	i64 := []wasm.ValType{wasm.I64}
+	cm, err := CompileModule(mod1(b, []wasm.ValType{wasm.I64, wasm.I64}, i64, mulHighU64BodyArm64()))
+	if err != nil {
+		b.Fatal(err)
+	}
+	code, err := arm64spike.MapExec(cm.Code)
+	if err != nil {
+		b.Fatal(err)
+	}
+	entry := uintptr(unsafe.Pointer(&code[cm.InternalEntry[0]]))
+	b.ReportAllocs()
+	b.ResetTimer()
+	var result uintptr
+	for i := 0; i < b.N; i++ {
+		result ^= arm64spike.Call2(entry, uintptr(i)*0x9e3779b9, uintptr(i)^0xd6e8feb8)
 	}
 	knownBitsBenchmarkSink = result
 	b.ReportMetric(float64(len(cm.Code)), "code-B")
