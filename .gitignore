@@ -45,3 +45,11 @@ card.md
 # Claude Code ephemeral git worktrees (per-session; never committed). Excluded
 # from gofmt/lint walks too — see lint-fmt in the Makefile.
 .claude/worktrees/
+
+# Local cross-architecture validation toolchains, generated binaries/logs, and
+# external spec-suite checkouts. These are reproducible development inputs and
+# can contain nested repositories or hundreds of megabytes of artifacts.
+/.tools/
+/.validation/
+/testdata/moonbit-json-smoke/_build/
+/tests/spec-v3/

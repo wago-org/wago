@@ -300,6 +300,24 @@ func decodeFDWithMemarg64(r *reader, memarg64 bool) (Instruction, error) {
 
 var fdMem = map[uint32]InstrKind{0: InstrV128Load, 1: InstrV128Load8x8S, 2: InstrV128Load8x8U, 3: InstrV128Load16x4S, 4: InstrV128Load16x4U, 5: InstrV128Load32x2S, 6: InstrV128Load32x2U, 7: InstrV128Load8Splat, 8: InstrV128Load16Splat, 9: InstrV128Load32Splat, 10: InstrV128Load64Splat, 11: InstrV128Store, 84: InstrV128Load8Lane, 85: InstrV128Load16Lane, 86: InstrV128Load32Lane, 87: InstrV128Load64Lane, 88: InstrV128Store8Lane, 89: InstrV128Store16Lane, 90: InstrV128Store32Lane, 91: InstrV128Store64Lane, 92: InstrV128Load32Zero, 93: InstrV128Load64Zero}
 var fdLane = map[uint32]InstrKind{21: InstrI8x16ExtractLaneS, 22: InstrI8x16ExtractLaneU, 23: InstrI8x16ReplaceLane, 24: InstrI16x8ExtractLaneS, 25: InstrI16x8ExtractLaneU, 26: InstrI16x8ReplaceLane, 27: InstrI32x4ExtractLane, 28: InstrI32x4ReplaceLane, 29: InstrI64x2ExtractLane, 30: InstrI64x2ReplaceLane, 31: InstrF32x4ExtractLane, 32: InstrF32x4ReplaceLane, 33: InstrF64x2ExtractLane, 34: InstrF64x2ReplaceLane}
+
+// SIMDSubopcodeValid reports whether sub is one of the core SIMD or relaxed-SIMD
+// instructions accepted by the 0xfd decoder. It intentionally excludes the 20
+// reserved holes in the proposal table.
+func SIMDSubopcodeValid(sub uint32) bool {
+	if sub == 12 || sub == 13 {
+		return true
+	}
+	if _, ok := fdNoImm[sub]; ok {
+		return true
+	}
+	if _, ok := fdMem[sub]; ok {
+		return true
+	}
+	_, ok := fdLane[sub]
+	return ok
+}
+
 var fdNoImm = map[uint32]InstrKind{
 	14:  InstrI8x16Swizzle,
 	15:  InstrI8x16Splat,

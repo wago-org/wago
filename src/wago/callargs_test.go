@@ -1,4 +1,4 @@
-//go:build linux && amd64 && !tinygo
+//go:build linux && (amd64 || riscv64) && !tinygo
 
 // This file builds fixtures by shelling out to wat2wasm via os/exec, which
 // TinyGo does not support; combined with TinyGo's testing package not honoring

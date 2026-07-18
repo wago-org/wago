@@ -1,4 +1,4 @@
-//go:build linux && arm64 && wago_guardpage
+//go:build linux && (amd64 || arm64 || riscv64) && wago_guardpage
 
 package runtime
 
@@ -15,8 +15,8 @@ import (
 // linMem + addr(≤4 GiB-1) + offset(≤4 GiB-1) + size, so the reservation covers
 // the full 8 GiB an in-range *or* out-of-range wasm32 access can name; an
 // out-of-range address lands on a PROT_NONE page and faults. The SIGSEGV/SIGBUS
-// handler (sigtrap_linux_arm64.go) turns that fault into a wasm trap, so the
-// JIT can omit the inline check entirely (amd64.ElideBoundsChecks).
+// architecture-specific signal handler turns that fault into a wasm trap, so
+// the JIT can omit inline checks entirely.
 const (
 	maxLinMemBytes   = uintptr(1) << 32               // 4 GiB: max wasm32 linear memory
 	offsetGuardBytes = (uintptr(1) << 32) + (1 << 16) // 4 GiB + 64 KiB: max memarg offset reach
@@ -34,8 +34,8 @@ const wasmPageBytes = 1 << 16
 // lazily commits pages within the (grown) logical size and traps only on a
 // genuinely out-of-range address. memory.grow may raise the logical size up to
 // maxBytes without any remap. Pair with InstallGuardTrapHandler and code
-// compiled in signals-based bounds mode (the arm64 backend's guard mode, which
-// elides the inline bounds checks and relies on the guard-page fault instead).
+// compiled in signals-based bounds mode, which elides inline bounds checks and
+// relies on guard-page faults instead.
 func NewJobMemoryGuarded(linBytes, maxBytes int) (*JobMemory, error) {
 	// Place linMem on a page boundary (basedata sits in the page just below it) so
 	// that, because wasm linear memory is always a multiple of the 64 KiB wasm

@@ -13,7 +13,9 @@ import (
 // AVX OS support plus SSSE3/SSE4.1 are required. Linux exposes AVX in
 // /proc/cpuinfo only when the kernel has enabled the XSAVE state needed to run
 // AVX instructions. On arm64, Advanced SIMD/NEON is part of the baseline AArch64
-// profile used by Go.
+// profile used by Go. RISC-V uses the baseline RV64G SWAR backend, so WebAssembly
+// SIMD admission does not depend on RVV; RVV detection remains available for a
+// future optimized tier.
 var simdHostFeaturesSupported = cachedSIMDHostFeatures
 
 var (
@@ -26,24 +28,33 @@ func cachedSIMDHostFeatures() bool {
 	return simdHostFeaturesOK
 }
 
-func hostSupportsSIMD() bool { return simdHostFeaturesSupported() }
+func backendSupportsSIMD() bool {
+	return runtime.GOARCH == "amd64" || runtime.GOARCH == "arm64" || runtime.GOARCH == "riscv64"
+}
+
+func hostSupportsSIMD() bool {
+	return backendSupportsSIMD() && simdHostFeaturesSupported()
+}
 
 func detectSIMDHostFeatures() bool {
-	if runtime.GOARCH == "arm64" {
+	switch runtime.GOARCH {
+	case "arm64":
 		return true
-	}
-	if runtime.GOARCH != "amd64" {
+	case "riscv64":
+		return true // baseline RV64G SWAR; detectRISCV64SIMDHostFeatures selects future RVV tiers
+	case "amd64":
+		data, err := os.ReadFile("/proc/cpuinfo")
+		if err != nil {
+			// Be conservative: without a reliable feature source, don't admit SIMD wasm.
+			return false
+		}
+		flags := strings.Fields(strings.ToLower(string(data)))
+		seen := map[string]bool{}
+		for _, f := range flags {
+			seen[f] = true
+		}
+		return seen["avx"] && seen["ssse3"] && seen["sse4_1"]
+	default:
 		return false
 	}
-	data, err := os.ReadFile("/proc/cpuinfo")
-	if err != nil {
-		// Be conservative: without a reliable feature source, don't admit SIMD wasm.
-		return false
-	}
-	flags := strings.Fields(strings.ToLower(string(data)))
-	seen := map[string]bool{}
-	for _, f := range flags {
-		seen[f] = true
-	}
-	return seen["avx"] && seen["ssse3"] && seen["sse4_1"]
 }

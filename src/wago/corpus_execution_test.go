@@ -1,4 +1,4 @@
-//go:build (linux && amd64) || (darwin && arm64)
+//go:build (linux && (amd64 || riscv64)) || (darwin && arm64)
 
 package wago
 

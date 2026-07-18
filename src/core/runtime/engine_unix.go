@@ -1,4 +1,4 @@
-//go:build (linux && (amd64 || arm64)) || (darwin && arm64)
+//go:build (linux && (amd64 || arm64 || riscv64)) || (darwin && arm64)
 
 package runtime
 
@@ -164,23 +164,37 @@ func installTrapCell(linMem, trap []byte) {
 // ctrl must point at an off-heap control frame of at least ctrlFrameSize bytes
 // whose address has been installed as the import ctx via JobMemory.SetCustomCtx.
 func (e *Engine) CallWithHost(code uintptr, serArgs, linMem, trap, results, ctrl []byte, host HostCall) error {
+	installTrapCell(linMem, trap)
+	return e.callWithHostPrepared(code, serArgs, slicePtr(linMem), trap, results, ctrl, host)
+}
+
+// CallWithHostPrepared is CallWithHost for an already-bound basedata block. It
+// accepts the native linear-memory base directly so zero-memory guarded modules
+// still provide the basedata address immediately below it.
+func (e *Engine) CallWithHostPrepared(code uintptr, serArgs []byte, linMemBase uintptr, trap, results, ctrl []byte, host HostCall) error {
+	if len(trap) >= 4 {
+		storeTrap(trap, 0)
+	}
+	return e.callWithHostPrepared(code, serArgs, linMemBase, trap, results, ctrl, host)
+}
+
+func (e *Engine) callWithHostPrepared(code uintptr, serArgs []byte, linMemBase uintptr, trap, results, ctrl []byte, host HostCall) error {
 	stub, err := hostCallStubPtr()
 	if err != nil {
 		return fmt.Errorf("jit: host-call stub: %w", err)
 	}
-	installTrapCell(linMem, trap)
 	binary.LittleEndian.PutUint64(ctrl[hcTrampoline:], uint64(stub)) // native calls [ctrl+hcTrampoline]
 	ctrlPtr := slicePtr(ctrl)
 	if e.hostScratchInUse {
 		var argBuf, resBuf [maxHostArity]uint64
-		return e.callWithHostLoop(code, serArgs, linMem, trap, results, ctrl, ctrlPtr, host, argBuf[:], resBuf[:])
+		return e.callWithHostLoop(code, serArgs, linMemBase, trap, results, ctrl, ctrlPtr, host, argBuf[:], resBuf[:])
 	}
 	e.hostScratchInUse = true
 	defer func() { e.hostScratchInUse = false }()
-	return e.callWithHostLoop(code, serArgs, linMem, trap, results, ctrl, ctrlPtr, host, e.hostArgs[:], e.hostResults[:])
+	return e.callWithHostLoop(code, serArgs, linMemBase, trap, results, ctrl, ctrlPtr, host, e.hostArgs[:], e.hostResults[:])
 }
 
-func (e *Engine) callWithHostLoop(code uintptr, serArgs, linMem, trap, results, ctrl []byte, ctrlPtr uintptr, host HostCall, argBuf, resBuf []uint64) error {
+func (e *Engine) callWithHostLoop(code uintptr, serArgs []byte, linMemBase uintptr, trap, results, ctrl []byte, ctrlPtr uintptr, host HostCall, argBuf, resBuf []uint64) error {
 	// The host-call re-entry loop is intentionally unbounded: a single guest
 	// invocation may legitimately make an arbitrary number of host calls (e.g. a
 	// long-running rule that polls Date.now()/Math.random() in a loop). A fixed
@@ -194,7 +208,7 @@ func (e *Engine) callWithHostLoop(code uintptr, serArgs, linMem, trap, results, 
 	// forever: both require the caller to arm a timeout, exactly as under wazero.
 	for first := true; ; first = false {
 		if first {
-			enterNative(code, slicePtr(serArgs), slicePtr(linMem), slicePtr(trap), slicePtr(results), e.stackTop)
+			enterNative(code, slicePtr(serArgs), linMemBase, slicePtr(trap), slicePtr(results), e.stackTop)
 		} else {
 			storeTrap(trap, 0) // clear the pending marker before resuming
 			resumeNative(ctrlPtr, e.stackTop)

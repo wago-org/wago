@@ -1,4 +1,4 @@
-//go:build (linux && (amd64 || arm64)) || (darwin && arm64)
+//go:build (linux && (amd64 || arm64 || riscv64)) || (darwin && arm64)
 
 package runtime
 
@@ -208,10 +208,7 @@ func (j *JobMemory) RestoreLinear(data []byte) {
 
 // CurrentBytes returns the host-facing view of linear memory at its current
 // (possibly grown) logical size — what Memory.Bytes exposes.
-func (j *JobMemory) CurrentBytes() []byte {
-	n := j.curBytes()
-	return j.mem[j.linOff : j.linOff+n : j.linOff+n]
-}
+func (j *JobMemory) CurrentBytes() []byte { return j.HostBytes() }
 
 // LinearMemory returns the native-facing view spanning the full reservation, so
 // its base pointer is always valid; native code enforces the current logical
