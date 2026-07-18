@@ -207,6 +207,19 @@ func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc) ([]byte, erro
 			}
 			must(a.Str(a32.R0, a32.SP, off(op.Dst)), "i64 result low")
 			must(a.Str(a32.R1, a32.SP, off(op.Dst)+4), "i64 result high")
+		case shared.MixedI64Mul:
+			must(a.Ldr(a32.R0, a32.SP, off(op.Left)), "i64 multiply left low")
+			must(a.Ldr(a32.R1, a32.SP, off(op.Right)), "i64 multiply right low")
+			must(a.Umull(a32.R2, a32.R3, a32.R0, a32.R1), "i64 multiply low product")
+			must(a.Ldr(a32.R1, a32.SP, off(op.Right)+4), "i64 multiply right high")
+			must(a.Mul(a32.R0, a32.R0, a32.R1), "i64 multiply first cross product")
+			must(a.Add(a32.R3, a32.R3, a32.R0), "i64 multiply first cross add")
+			must(a.Ldr(a32.R0, a32.SP, off(op.Left)+4), "i64 multiply left high")
+			must(a.Ldr(a32.R1, a32.SP, off(op.Right)), "i64 multiply right low reload")
+			must(a.Mul(a32.R0, a32.R0, a32.R1), "i64 multiply second cross product")
+			must(a.Add(a32.R3, a32.R3, a32.R0), "i64 multiply second cross add")
+			must(a.Str(a32.R2, a32.SP, off(op.Dst)), "i64 multiply result low")
+			must(a.Str(a32.R3, a32.SP, off(op.Dst)+4), "i64 multiply result high")
 		case shared.MixedI64And, shared.MixedI64Or, shared.MixedI64Xor:
 			for i := uint16(0); i < 2; i++ {
 				must(a.Ldr(a32.R0, a32.SP, off(op.Left)+i*4), "i64 logic left")

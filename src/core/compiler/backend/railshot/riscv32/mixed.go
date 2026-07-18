@@ -199,6 +199,20 @@ func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc) ([]byte, erro
 			}
 			must(a.Sw(rv.A0, rv.SP, off(op.Dst)), "i64 result low")
 			must(a.Sw(rv.A1, rv.SP, off(op.Dst)+4), "i64 result high")
+		case shared.MixedI64Mul:
+			must(a.Lw(rv.T0, rv.SP, off(op.Left)), "i64 multiply left low")
+			must(a.Lw(rv.T1, rv.SP, off(op.Right)), "i64 multiply right low")
+			a.Mul(rv.A0, rv.T0, rv.T1)
+			a.Mulhu(rv.A1, rv.T0, rv.T1)
+			must(a.Lw(rv.T1, rv.SP, off(op.Right)+4), "i64 multiply right high")
+			a.Mul(rv.T2, rv.T0, rv.T1)
+			a.Add(rv.A1, rv.A1, rv.T2)
+			must(a.Lw(rv.T0, rv.SP, off(op.Left)+4), "i64 multiply left high")
+			must(a.Lw(rv.T1, rv.SP, off(op.Right)), "i64 multiply right low reload")
+			a.Mul(rv.T2, rv.T0, rv.T1)
+			a.Add(rv.A1, rv.A1, rv.T2)
+			must(a.Sw(rv.A0, rv.SP, off(op.Dst)), "i64 multiply result low")
+			must(a.Sw(rv.A1, rv.SP, off(op.Dst)+4), "i64 multiply result high")
 		case shared.MixedI64And, shared.MixedI64Or, shared.MixedI64Xor:
 			for i := int32(0); i < 2; i++ {
 				must(a.Lw(rv.T0, rv.SP, off(op.Left)+i*4), "i64 logic left")

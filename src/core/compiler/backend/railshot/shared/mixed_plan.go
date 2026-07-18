@@ -23,6 +23,7 @@ const (
 	MixedI32Xor
 	MixedI64Add
 	MixedI64Sub
+	MixedI64Mul
 	MixedI64And
 	MixedI64Or
 	MixedI64Xor
@@ -653,6 +654,10 @@ func BuildMixedPlanWithResolvers(ft *wasm.CompType, locals []wasm.LocalRun, body
 			}
 		case 0x7d:
 			if err := binaryOp(MixedI64Sub, wasm.I64); err != nil {
+				return nil, err
+			}
+		case 0x7e:
+			if err := binaryOp(MixedI64Mul, wasm.I64); err != nil {
 				return nil, err
 			}
 		case 0x83:
