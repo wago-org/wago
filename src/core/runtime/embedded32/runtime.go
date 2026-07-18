@@ -11,6 +11,7 @@ var (
 	ErrArenaCapacity = errors.New("embedded32: arena capacity exceeded")
 	ErrInvalidArena  = errors.New("embedded32: invalid arena configuration")
 	ErrPublish       = errors.New("embedded32: code publication failed")
+	ErrRuntimeBusy   = errors.New("embedded32: runtime invocation already active")
 )
 
 // LinearMemory is a fixed-capacity, explicitly-bounds-checked Wasm memory. The
@@ -235,3 +236,65 @@ const (
 	ContextHelperTableOffset        = 16
 	ContextABISize                  = 20
 )
+
+// Runtime composes the fixed embedded resources. The initial profile permits
+// one active invocation, matching the no-threads product boundary.
+type Runtime struct {
+	Memory  *LinearMemory
+	Code    *CodeArena
+	Stacks  *StackArena
+	Control ControlCell
+	active  bool
+}
+type Invocation struct {
+	Stack   StackLease
+	runtime *Runtime
+}
+
+func NewRuntime(memory *LinearMemory, code *CodeArena, stacks *StackArena) (*Runtime, error) {
+	if memory == nil || code == nil || stacks == nil {
+		return nil, ErrInvalidArena
+	}
+	return &Runtime{Memory: memory, Code: code, Stacks: stacks}, nil
+}
+func (r *Runtime) BeginInvocation() (Invocation, error) {
+	if r.active {
+		return Invocation{}, ErrRuntimeBusy
+	}
+	stack, err := r.Stacks.Acquire()
+	if err != nil {
+		return Invocation{}, err
+	}
+	r.Control.Reset()
+	r.active = true
+	return Invocation{Stack: stack, runtime: r}, nil
+}
+func (i *Invocation) Control() *ControlCell {
+	if i.runtime == nil {
+		return nil
+	}
+	return &i.runtime.Control
+}
+func (i *Invocation) End() bool {
+	if i.runtime == nil {
+		return false
+	}
+	r := i.runtime
+	if !i.Stack.Release() {
+		return false
+	}
+	r.active = false
+	i.runtime = nil
+	return true
+}
+func (r *Runtime) Reset(initialPages uint32) bool {
+	if r.active {
+		return false
+	}
+	if !r.Memory.Reset(initialPages) {
+		return false
+	}
+	r.Code.Reset()
+	r.Control.Reset()
+	return true
+}

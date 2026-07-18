@@ -117,6 +117,52 @@ func TestStackArenaBoundedReuseAndZero(t *testing.T) {
 	y.Release()
 }
 
+func TestRuntimeInvocationLifecycle(t *testing.T) {
+	memory, _ := NewLinearMemory(make([]byte, WasmPageSize), 1, 1)
+	code := NewCodeArena(make([]byte, 64))
+	stacks, _ := NewStackArena(make([]byte, 128), 64)
+	r, err := NewRuntime(memory, code, stacks)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inv, err := r.BeginInvocation()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.BeginInvocation(); !errors.Is(err, ErrRuntimeBusy) {
+		t.Fatal("concurrent invocation accepted")
+	}
+	inv.Control().RequestCancel()
+	if inv.Control().Poll() != ExecutionCanceled {
+		t.Fatal("cancel")
+	}
+	if r.Reset(1) {
+		t.Fatal("reset active runtime")
+	}
+	if !inv.End() || inv.End() {
+		t.Fatal("invocation end")
+	}
+	if stacks.InUse() != 0 {
+		t.Fatal("stack leak")
+	}
+	tx, err := code.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	block, err := tx.Allocate(4, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	block.Bytes[0] = 9
+	if err := tx.Commit(nil); err != nil {
+		t.Fatal(err)
+	}
+	memory.Bytes()[0] = 8
+	if !r.Reset(1) || code.Used() != 0 || memory.Bytes()[0] != 0 || r.Control.Cancel != 0 {
+		t.Fatal("runtime reset")
+	}
+}
+
 func TestControlAndContextABI(t *testing.T) {
 	var c ControlCell
 	if c.Poll() != ExecutionRunning {

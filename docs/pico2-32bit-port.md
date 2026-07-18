@@ -197,7 +197,10 @@ resource layer required by firmware:
 - a bounded native-stack arena with at most 32 fixed slots, zero-on-acquire and
   zero-on-release; and
 - fixed-width context, trap, and cancellation cells suitable for physical
-  32-bit target addresses.
+  32-bit target addresses; and
+- a single-active-invocation runtime lifecycle that acquires/releases a native
+  stack, resets control cells, rejects concurrent entry, and refuses reset while
+  generated code is active.
 
 These resource managers build and test under both standard Go and TinyGo. They
 contain no MMU, signal, syscall, or host-pointer assumptions.
