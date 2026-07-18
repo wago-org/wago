@@ -755,6 +755,37 @@ func swarMem(sub, align, offset uint32, lane ...byte) []byte {
 }
 
 func TestSWARV128MemoryExec(t *testing.T) {
+	t.Run("all-misaligned-offsets", func(t *testing.T) {
+		const lo, hi = uint64(0x0706050403020100), uint64(0x0f0e0d0c0b0a0908)
+		for off := 0; off < 16; off++ {
+			body := []byte{0}
+			body = append(body, swarI32Const(int32(off))...)
+			body = append(body, swarMem(0, 0, 0)...)
+			body = append(body, swarIntegerExtract(64, 1, false)...)
+			body = append(body, 0x0b)
+			m := productionMemoryModule(t, nil, []wasm.ValType{wasm.I64}, body)
+			got, _, err := runProductionSWARMemory(t, m, func(mem []byte) {
+				binary.LittleEndian.PutUint64(mem[off:], lo)
+				binary.LittleEndian.PutUint64(mem[off+8:], hi)
+			})
+			if err != nil || got != hi {
+				t.Fatalf("v128.load offset %d = %#x, err=%v; want %#x", off, got, err, hi)
+			}
+
+			body = []byte{0}
+			body = append(body, swarI32Const(int32(off))...)
+			body = append(body, swarV128Const(lo, hi)...)
+			body = append(body, swarMem(11, 0, 0)...)
+			body = append(body, swarI32Const(int32(off+8))...)
+			body = append(body, 0x29, 0x00, 0x00, 0x0b)
+			m = productionMemoryModule(t, nil, []wasm.ValType{wasm.I64}, body)
+			got, memory, err := runProductionSWARMemory(t, m, nil)
+			if err != nil || got != hi || binary.LittleEndian.Uint64(memory[off:]) != lo {
+				t.Fatalf("v128.store offset %d = %#x/%x, err=%v", off, got, memory[off:off+16], err)
+			}
+		}
+	})
+
 	t.Run("load", func(t *testing.T) {
 		body := []byte{0}
 		body = append(body, swarI32Const(3)...)

@@ -62,6 +62,21 @@ func TestParseRISCV64HWCAP(t *testing.T) {
 	}
 }
 
+func TestRISCV64MisalignedScalarPerformancePolicy(t *testing.T) {
+	for value := uint64(0); value <= 4; value++ {
+		if got := RISCV64MisalignedPerf(value); got < RISCV64MisalignedUnknown || got > RISCV64MisalignedUnsupported {
+			t.Fatalf("classification %d out of range", value)
+		}
+	}
+	key, value, probeOK := probeRISCV64Value(riscvHWProbeKeyMisalignedScalar)
+	got, ok := RISCV64MisalignedScalarPerformance()
+	wantOK := probeOK && key == riscvHWProbeKeyMisalignedScalar && value <= uint64(RISCV64MisalignedUnsupported)
+	if ok != wantOK || ok && got != RISCV64MisalignedPerf(value) {
+		t.Fatalf("misaligned performance = %d/%v, probe = key %d value %d ok %v", got, ok, key, value, probeOK)
+	}
+	t.Logf("misaligned_scalar_key=%d value=%d probe_ok=%v classified=%d available=%v", key, value, probeOK, got, ok)
+}
+
 func TestRISCV64RVVDetectorMatchesKernelCapabilities(t *testing.T) {
 	key, extensions, probeOK := probeRISCV64IMAExtensions()
 	hwcap, hwcapOK := readRISCV64HWCAP()
