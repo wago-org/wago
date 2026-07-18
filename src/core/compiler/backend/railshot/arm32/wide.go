@@ -687,6 +687,80 @@ func CompileI64Function(numParams int, body []byte) ([]byte, error) {
 			c.a.MovImm32(v.regs[0], uint32(x))
 			c.a.MovImm32(v.regs[1], uint32(uint64(x)>>32))
 			c.push(v)
+		case 0x79, 0x7a, 0x7b:
+			v, e := c.pop(2)
+			if e != nil {
+				return nil, e
+			}
+			out, e := c.alloc(2)
+			if e != nil {
+				return nil, e
+			}
+			if !c.a.MovImm32(out.regs[0], 0) {
+				panic("arm32: i64 count init")
+			}
+			if op != 0x7b {
+				if !c.a.Orr(out.regs[1], v.regs[0], v.regs[1]) || !c.a.MovImm32(a32.R12, 0) || !c.a.Cmp(out.regs[1], a32.R12) {
+					panic("arm32: i64 count zero test")
+				}
+				nonzero := c.a.FarBcond(a32.CondNE)
+				if !c.a.MovImm32(out.regs[0], 64) {
+					panic("arm32: i64 zero count")
+				}
+				zeroDone := c.a.Branch()
+				loop := c.a.Len()
+				if !c.a.PatchFarBranch(nonzero, loop) {
+					return nil, fmt.Errorf("arm32: i64 count entry out of range")
+				}
+				var done int
+				if op == 0x79 {
+					if !c.a.MovImm32(a32.R12, 0) || !c.a.Cmp(v.regs[1], a32.R12) {
+						panic("arm32: i64.clz test")
+					}
+					done = c.a.FarBcond(a32.CondMI)
+					if !c.a.LsrImm(out.regs[1], v.regs[0], 31) || !c.a.LslImm(v.regs[0], v.regs[0], 1) ||
+						!c.a.LslImm(v.regs[1], v.regs[1], 1) || !c.a.Orr(v.regs[1], v.regs[1], out.regs[1]) {
+						panic("arm32: i64.clz shift")
+					}
+				} else {
+					if !c.a.MovImm32(a32.R12, 1) || !c.a.And(out.regs[1], v.regs[0], a32.R12) || !c.a.MovImm32(a32.R12, 0) || !c.a.Cmp(out.regs[1], a32.R12) {
+						panic("arm32: i64.ctz test")
+					}
+					done = c.a.FarBcond(a32.CondNE)
+					if !c.a.LslImm(out.regs[1], v.regs[1], 31) || !c.a.LsrImm(v.regs[0], v.regs[0], 1) ||
+						!c.a.LsrImm(v.regs[1], v.regs[1], 1) || !c.a.Orr(v.regs[0], v.regs[0], out.regs[1]) {
+						panic("arm32: i64.ctz shift")
+					}
+				}
+				if !c.a.MovImm32(a32.R12, 1) || !c.a.Add(out.regs[0], out.regs[0], a32.R12) {
+					panic("arm32: i64 count increment")
+				}
+				back := c.a.Branch()
+				finish := c.a.Len()
+				if !c.a.PatchBranch(back, loop) || !c.a.PatchFarBranch(done, finish) || !c.a.PatchBranch(zeroDone, finish) {
+					return nil, fmt.Errorf("arm32: i64 count branch out of range")
+				}
+			} else {
+				loop := c.a.Len()
+				if !c.a.Orr(out.regs[1], v.regs[0], v.regs[1]) || !c.a.MovImm32(a32.R12, 0) || !c.a.Cmp(out.regs[1], a32.R12) {
+					panic("arm32: i64.popcnt zero test")
+				}
+				done := c.a.FarBcond(a32.CondEQ)
+				if !c.a.MovImm32(a32.R12, 1) || !c.a.And(out.regs[1], v.regs[0], a32.R12) || !c.a.Add(out.regs[0], out.regs[0], out.regs[1]) ||
+					!c.a.LslImm(out.regs[1], v.regs[1], 31) || !c.a.LsrImm(v.regs[0], v.regs[0], 1) ||
+					!c.a.LsrImm(v.regs[1], v.regs[1], 1) || !c.a.Orr(v.regs[0], v.regs[0], out.regs[1]) {
+					panic("arm32: i64.popcnt")
+				}
+				back := c.a.Branch()
+				if !c.a.PatchBranch(back, loop) || !c.a.PatchFarBranch(done, c.a.Len()) {
+					return nil, fmt.Errorf("arm32: i64 popcnt branch out of range")
+				}
+			}
+			if !c.a.MovImm32(out.regs[1], 0) {
+				panic("arm32: i64 count high word")
+			}
+			c.release(v)
+			c.push(out)
 		case 0x86, 0x87, 0x88, 0x89, 0x8a:
 			count, e := c.pop(2)
 			if e != nil {

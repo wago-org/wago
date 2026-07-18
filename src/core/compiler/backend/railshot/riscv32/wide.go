@@ -675,6 +675,64 @@ func CompileI64Function(numParams int, body []byte) ([]byte, error) {
 			c.a.MovImm32(v.regs[0], uint32(x))
 			c.a.MovImm32(v.regs[1], uint32(uint64(x)>>32))
 			c.push(v)
+		case 0x79, 0x7a, 0x7b:
+			v, e := c.pop(2)
+			if e != nil {
+				return nil, e
+			}
+			out, e := c.alloc(2)
+			if e != nil {
+				return nil, e
+			}
+			c.a.MovImm32(out.regs[0], 0)
+			if op != 0x7b {
+				c.a.Or(out.regs[1], v.regs[0], v.regs[1])
+				nonzero := c.a.Bcond(out.regs[1], rv.Zero, rv.CondNE)
+				c.a.MovImm32(out.regs[0], 64)
+				zeroDone := c.a.Jal(rv.Zero)
+				loop := c.a.Len()
+				if !c.a.PatchBranch13(nonzero, loop) {
+					return nil, fmt.Errorf("riscv32: i64 count entry out of range")
+				}
+				var done int
+				if op == 0x79 {
+					done = c.a.Bcond(v.regs[1], rv.Zero, rv.CondLT)
+					c.a.Srli(out.regs[1], v.regs[0], 31)
+					c.a.Slli(v.regs[0], v.regs[0], 1)
+					c.a.Slli(v.regs[1], v.regs[1], 1)
+					c.a.Or(v.regs[1], v.regs[1], out.regs[1])
+				} else {
+					c.a.Andi(out.regs[1], v.regs[0], 1)
+					done = c.a.Bcond(out.regs[1], rv.Zero, rv.CondNE)
+					c.a.Slli(out.regs[1], v.regs[1], 31)
+					c.a.Srli(v.regs[0], v.regs[0], 1)
+					c.a.Srli(v.regs[1], v.regs[1], 1)
+					c.a.Or(v.regs[0], v.regs[0], out.regs[1])
+				}
+				c.a.Addi(out.regs[0], out.regs[0], 1)
+				back := c.a.Jal(rv.Zero)
+				finish := c.a.Len()
+				if !c.a.PatchJAL21(back, loop) || !c.a.PatchBranch13(done, finish) || !c.a.PatchJAL21(zeroDone, finish) {
+					return nil, fmt.Errorf("riscv32: i64 count branch out of range")
+				}
+			} else {
+				loop := c.a.Len()
+				c.a.Or(out.regs[1], v.regs[0], v.regs[1])
+				done := c.a.Bcond(out.regs[1], rv.Zero, rv.CondEQ)
+				c.a.Andi(out.regs[1], v.regs[0], 1)
+				c.a.Add(out.regs[0], out.regs[0], out.regs[1])
+				c.a.Slli(out.regs[1], v.regs[1], 31)
+				c.a.Srli(v.regs[0], v.regs[0], 1)
+				c.a.Srli(v.regs[1], v.regs[1], 1)
+				c.a.Or(v.regs[0], v.regs[0], out.regs[1])
+				back := c.a.Jal(rv.Zero)
+				if !c.a.PatchJAL21(back, loop) || !c.a.PatchBranch13(done, c.a.Len()) {
+					return nil, fmt.Errorf("riscv32: i64 popcnt branch out of range")
+				}
+			}
+			c.a.MovImm32(out.regs[1], 0)
+			c.release(v)
+			c.push(out)
 		case 0x86, 0x87, 0x88, 0x89, 0x8a:
 			count, e := c.pop(2)
 			if e != nil {

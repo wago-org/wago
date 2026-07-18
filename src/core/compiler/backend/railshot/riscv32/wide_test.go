@@ -71,6 +71,9 @@ func TestCompileI64Beachhead(t *testing.T) {
 	if len(code) == 0 || len(code)%4 != 0 {
 		t.Fatalf("code len=%d", len(code))
 	}
+	if _, err := CompileI64Beachhead([]byte{0, 0x42, 1, 0x79, 0x0b}); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := CompileI64Beachhead([]byte{0, 0x42, 1, 0x42, 1, 0x86, 0x0b}); err != nil {
 		t.Fatal(err)
 	}
@@ -208,6 +211,35 @@ func TestWideBeachheadsExecuteUnderQEMU(t *testing.T) {
 			t.Fatal("call patch")
 		}
 		runRV32Exit(t, qemu, append(entry.B, fn...), 42)
+	})
+	t.Run("i64-counts", func(t *testing.T) {
+		tests := []struct {
+			name   string
+			op     byte
+			lo, hi uint32
+			want   int
+		}{
+			{"clz", 0x79, 0, 0x00100000, 11},
+			{"clz-zero", 0x79, 0, 0, 64},
+			{"ctz", 0x7a, 0, 1, 32},
+			{"popcnt", 0x7b, 15, 0xf0000000, 8},
+		}
+		for _, tc := range tests {
+			t.Run(tc.name, func(t *testing.T) {
+				fn, err := CompileI64Function(1, []byte{0, 0x20, 0, tc.op, 0x0b})
+				if err != nil {
+					t.Fatal(err)
+				}
+				var entry rv.Asm
+				entry.MovImm32(rv.A0, tc.lo)
+				entry.MovImm32(rv.A1, tc.hi)
+				call := entry.Jal(rv.RA)
+				entry.MovImm32(rv.A7, 93)
+				entry.Ecall()
+				entry.PatchJAL21(call, len(entry.B))
+				runRV32Exit(t, qemu, append(entry.B, fn...), tc.want)
+			})
+		}
 	})
 	t.Run("i64-shifts-rotates", func(t *testing.T) {
 		tests := []struct {
