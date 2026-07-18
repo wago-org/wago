@@ -8,11 +8,22 @@ branch, instruction-cache, alignment, and vector constraints explicit.
 ## Current status
 
 - RV64G scalar instruction writer: complete and golden-tested.
-- Linux no-cgo foreign-stack spike: green under `qemu-riscv64`.
-- Integer/control compiler beachhead: executes constants, locals, arithmetic,
-  signed/unsigned comparisons, `if`, loops, `br`, `br_if`, and iterative fib.
-- Production railshot/runtime integration, full scalar corpus, guard pages, and
-  RVV remain subsequent gates.
+- Linux no-cgo foreign-stack runtime: integrated and green under
+  `qemu-riscv64`, including synchronous host re-entry.
+- Production railshot backend: integrated for scalar integer and floating-point
+  operations, structured control, direct/indirect calls, explicit-bounds memory,
+  bulk memory, globals, tables, references, traps, and wrapper/internal ABIs.
+- Public end-to-end corpus execution matches the amd64 backend for the scalar
+  manifest workloads, including recursive, FP-heavy, crypto, Rust, and
+  AssemblyScript modules.
+- The curated WebAssembly 1.0 execution suite passes under QEMU with 629 modules
+  and 16,026 assertions, with no failures or feature gaps. The Linux/RV64 public
+  API suite also runs the Release 2 bulk-memory, multi-value, table, funcref,
+  externref, imported-memory, and snapshot tests enabled for this target.
+- `GOOS=linux GOARCH=riscv64 CGO_ENABLED=0 go build ./...` succeeds.
+- Guard-page signal handling, RVV/SIMD, full Release 2 execution including SIMD,
+  and native-hardware benchmarking remain deferred. SIMD modules are rejected
+  explicitly before scalar code generation.
 
 ## Target baseline
 
@@ -70,11 +81,18 @@ These roles are locked before the production backend is copied:
 | wrapper args | `A0=serArgs`, `A1=linMem`, `A2=trap`, `A3=results` | same logical order as amd64/arm64 |
 | pinned linear-memory base | `S9/X25` | callee-saved; avoids Go's `CTXT` and `g` |
 | explicit mem-size cache | `S8/X24` | present only for explicit-bounds memory functions |
-| module-global pins | `S5..S7/X21..X23` | selected per module |
-| hot integer locals | `S0..S4/X8,X9,X18..X20` | backend may reduce this pool for call-making functions |
-| fixed address scratch | `T5/X30`, `T6/X31` | `T6` is also Go assembler TMP; generated raw code may use it, Go assembly must not assume it survives pseudo expansion |
-| merge/result scratch | `T4/X29` | never pinned |
-| unavailable | `Zero, RA, SP, GP, TP, X26, X27` | architectural, call, process/thread, or Go runtime roles |
+| hot integer locals | `S3..S7`, then selected temporaries in call-free code | call boundaries spill/reload pinned locals explicitly |
+| fixed address scratch | `T5/X30` | never allocated |
+| far-transfer scratch | `T6/X31` | never allocated; also Go assembler `TMP` in assembly sources |
+| merge register | `S2/X18` | reserved from local pinning when register merge is active |
+| Go runtime reserved | `S10/X26`, `S11/X27` | `CTXT` and `g`; generated code never allocates them |
+| unavailable | `Zero, RA, SP, GP, TP` | architectural, call, process, or thread roles |
+
+Module-wide global value pinning is disabled in the initial production baseline.
+Globals remain canonical in their runtime cells across every call boundary. This
+is deliberately conservative; it avoids hidden cross-function register
+invariants until native RISC-V pressure and performance measurements justify the
+optimization.
 
 The backend must save or spill every caller-visible value before calls according
 to the psABI. It must not allocate `X26` or `X27`, even in call-free functions:
@@ -113,12 +131,19 @@ rewrites the saved PC to the native trap exit.
 
 ## Delivery gates
 
+Completed:
+
 1. Encoder goldens and randomized immediate/patch tests.
-2. Foreign-stack no-cgo runtime spike under QEMU.
+2. Foreign-stack no-cgo runtime execution under QEMU.
 3. Minimal integer/control railshot beachhead.
 4. Production wrapper ABI, explicit traps, memory, calls, and scalar FP.
-5. Host calls, tables, references, bulk memory, and cross-instance execution.
-6. Scalar official-corpus parity with amd64/arm64.
-7. Guard-page execution and signal stress.
-8. RVV lowering plus full SIMD/relaxed-SIMD corpus parity.
-9. Native-hardware correctness and performance measurements.
+5. Synchronous host calls, tables, references, bulk memory, and public runtime
+   integration.
+6. Scalar corpus compile coverage and end-to-end result parity with amd64.
+
+Remaining:
+
+7. Linux/RISC-V guard-page execution and signal stress.
+8. Full Release 2 execution after RVV removes the intentional SIMD gap.
+9. RVV lowering plus SIMD/relaxed-SIMD corpus parity.
+10. Native-hardware correctness, code-size, memory, and performance measurements.
