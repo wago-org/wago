@@ -26,7 +26,13 @@ func cachedSIMDHostFeatures() bool {
 	return simdHostFeaturesOK
 }
 
-func hostSupportsSIMD() bool { return simdHostFeaturesSupported() }
+func backendSupportsSIMD() bool {
+	return runtime.GOARCH == "amd64" || runtime.GOARCH == "arm64"
+}
+
+func hostSupportsSIMD() bool {
+	return backendSupportsSIMD() && simdHostFeaturesSupported()
+}
 
 func detectSIMDHostFeatures() bool {
 	if runtime.GOARCH == "arm64" {

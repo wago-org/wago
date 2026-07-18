@@ -1,4 +1,4 @@
-//go:build linux && amd64
+//go:build linux && (amd64 || riscv64)
 
 package wago
 
@@ -219,7 +219,7 @@ func TestCrossInstanceCallNoArgs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("compile B: %v", err)
 	}
-	if !cB.needsLink {
+	if !forceSyncHostImports && !cB.needsLink {
 		t.Fatalf("B should need link (returning import)")
 	}
 	inB, err := Instantiate(cB, InstantiateOptions{Imports: Imports{"env.f": fExport}})
@@ -438,6 +438,9 @@ func TestCrossInstanceCallMultiValueImport(t *testing.T) {
 }
 
 func TestCrossInstanceCallV128(t *testing.T) {
+	if !hostSupportsSIMD() {
+		t.Skip("host SIMD unavailable")
+	}
 	vec := V128{0xde, 0xad, 0xbe, 0xef, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}
 	modA := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.V128}, []wasm.ValType{wasm.V128}))),

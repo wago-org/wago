@@ -251,6 +251,9 @@ func TestUnmarshalTruncatedV128GlobalPayload(t *testing.T) {
 }
 
 func TestUnmarshalRejectsSIMDBlobWhenHostUnsupported(t *testing.T) {
+	if !backendSupportsSIMD() {
+		t.Skip("backend SIMD unavailable")
+	}
 	t.Setenv("WAGO_BOUNDS", "explicit")
 	old := simdHostFeaturesSupported
 	simdHostFeaturesSupported = func() bool { return true }
@@ -274,6 +277,9 @@ func TestUnmarshalRejectsSIMDBlobWhenHostUnsupported(t *testing.T) {
 }
 
 func TestUnmarshalRejectsV128BlockTypeBlobWhenHostUnsupported(t *testing.T) {
+	if !backendSupportsSIMD() {
+		t.Skip("backend SIMD unavailable")
+	}
 	t.Setenv("WAGO_BOUNDS", "explicit")
 	old := simdHostFeaturesSupported
 	simdHostFeaturesSupported = func() bool { return true }
