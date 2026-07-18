@@ -186,7 +186,23 @@ spill/reload after reserving local homes and verify identical results on RV32
 and Thumb-2. Spill selection cannot target local homes or expose a partial
 value.
 
+The architecture-neutral runtime now also has the fixed-capacity embedded
+resource layer required by firmware:
+
+- fixed-page linear memory over caller-supplied SRAM, with explicit overflow-safe
+  bounds checks, zeroed growth, bounded `memory.grow`, and deterministic reset;
+- transactional code-arena allocation with power-of-two alignment, rollback on
+  publication failure, a target-specific publication callback, and rejection of
+  overlapping transactions;
+- a bounded native-stack arena with at most 32 fixed slots, zero-on-acquire and
+  zero-on-release; and
+- fixed-width context, trap, and cancellation cells suitable for physical
+  32-bit target addresses.
+
+These resource managers build and test under both standard Go and TinyGo. They
+contain no MMU, signal, syscall, or host-pointer assumptions.
+
 This is still not public backend admission. Pair/quad control merges and calls
-in the full module compiler, calls/globals/tables/references, the bare-metal
-executable and linear-memory arenas, firmware linking, and Pico 2 hardware
+in the full module compiler, calls/globals/tables/references, generated-code
+entry trampolines, firmware linking and transport, and Pico 2 hardware
 qualification remain to be implemented and measured.
