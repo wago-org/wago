@@ -18,6 +18,8 @@ func rvMemoryContext(a *rv.Asm) {
 	a.Sw(rv.T1, rv.SP, 24)
 	a.MovImm32(rv.T1, 0)
 	a.Sw(rv.T1, rv.SP, 32)
+	a.MovImm32(rv.T1, 16)
+	a.Sw(rv.T1, rv.SP, 36)
 }
 
 func TestScalarMemoryThunkCoverage(t *testing.T) {

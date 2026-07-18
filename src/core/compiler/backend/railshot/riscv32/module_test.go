@@ -119,6 +119,20 @@ func riscv32LoadModule(t *testing.T) *wasm.Module {
 	return m
 }
 
+func riscv32GrowModule(t *testing.T) *wasm.Module {
+	t.Helper()
+	m, err := wasm.DecodeModule(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0})),
+		wasmtest.Section(5, wasmtest.Vec([]byte{1, 0, 1})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0, 0x40, 0, 0x0b}))),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
 func riscv32DivModule(t *testing.T) *wasm.Module {
 	t.Helper()
 	m, err := wasm.DecodeModule(wasmtest.Module(
@@ -155,6 +169,27 @@ func TestCompileModuleMemoryAndTrapContextUnderQEMU(t *testing.T) {
 		a.Ecall()
 		a.PatchJAL21(call, len(a.B))
 		runRV32Exit(t, qemu, append(a.B, fn...), 42)
+	})
+	t.Run("memory-grow-failure", func(t *testing.T) {
+		grow, err := CompileModule(riscv32GrowModule(t))
+		if err != nil {
+			t.Fatal(err)
+		}
+		meta := grow.Functions[0]
+		growFn := grow.Code[meta.Offset : meta.Offset+meta.Size]
+		var a rv.Asm
+		rvMemoryContext(&a)
+		a.MovImm32(rv.T1, 0)
+		a.Sw(rv.T1, rv.SP, 20)
+		a.Sw(rv.T1, rv.SP, 36)
+		a.Addi(rv.A0, rv.SP, 16)
+		a.MovReg(rv.X23, rv.A0)
+		a.MovImm32(rv.A0, 1)
+		call := a.Jal(rv.RA)
+		a.MovImm32(rv.A7, 93)
+		a.Ecall()
+		a.PatchJAL21(call, len(a.B))
+		runRV32Exit(t, qemu, append(a.B, growFn...), 255)
 	})
 	t.Run("division-trap", func(t *testing.T) {
 		div, err := CompileModule(riscv32DivModule(t))

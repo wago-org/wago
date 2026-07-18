@@ -138,6 +138,50 @@ func (c *compiler) memorySize() {
 	c.push(operand{reg: dst})
 }
 
+func (c *compiler) memoryGrow() error {
+	delta := c.materialize(c.pop())
+	old, current, limit := c.alloc(), c.alloc(), c.alloc()
+	c.a.Lw(current, rvContextReg, embedded32.ContextLinearMemoryLengthOffset)
+	c.a.MovReg(old, current)
+	c.a.Srli(old, old, 16)
+	c.a.Srli(limit, delta, 16)
+	fails := []int{c.a.FarBcond(limit, rv.Zero, rv.CondNE, branchScratch)}
+	c.a.Slli(delta, delta, 16)
+	c.a.Add(delta, current, delta)
+	fails = append(fails, c.a.FarBcond(delta, current, rv.CondLTU, branchScratch))
+	c.a.Lw(limit, rvContextReg, embedded32.ContextLinearMemoryMaximumOffset)
+	fails = append(fails, c.a.FarBcond(limit, delta, rv.CondLTU, branchScratch))
+	c.a.Sw(delta, rvContextReg, embedded32.ContextLinearMemoryLengthOffset)
+	c.a.Lw(limit, rvContextReg, embedded32.ContextLinearMemoryBaseOffset)
+	c.a.Add(current, limit, current)
+	c.a.Add(limit, limit, delta)
+	loop := c.a.Len()
+	cleared := c.a.Bcond(current, limit, rv.CondEQ)
+	c.a.Sw(rv.Zero, current, 0)
+	c.a.Addi(current, current, 4)
+	back := c.a.Jal(rv.Zero)
+	if !c.a.PatchJAL21(back, loop) || !c.a.PatchBranch13(cleared, c.a.Len()) {
+		return fmt.Errorf("riscv32: memory.grow clear branch out of range")
+	}
+	done := c.a.FarJump(rv.Zero, branchScratch)
+	fail := c.a.Len()
+	c.a.MovImm32(old, 0xffffffff)
+	finish := c.a.Len()
+	if !c.a.PatchFarJump(done, finish) {
+		return fmt.Errorf("riscv32: memory.grow done branch out of range")
+	}
+	for _, at := range fails {
+		if !c.a.PatchFarBranch(at, fail) {
+			return fmt.Errorf("riscv32: memory.grow failure branch out of range")
+		}
+	}
+	c.release(delta)
+	c.release(current)
+	c.release(limit)
+	c.push(operand{reg: old})
+	return nil
+}
+
 func (c *compiler) divRem(op byte) error {
 	right, left := c.materialize(c.pop()), c.materialize(c.pop())
 	dst := c.alloc()

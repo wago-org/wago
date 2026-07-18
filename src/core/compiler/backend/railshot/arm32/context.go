@@ -141,6 +141,54 @@ func (c *compiler) memorySize() {
 	c.push(operand{reg: dst})
 }
 
+func (c *compiler) memoryGrow() error {
+	delta := c.materialize(c.pop())
+	old, current, limit := c.alloc(), c.alloc(), c.alloc()
+	c.must(c.a.Ldr(current, armContextReg, embedded32.ContextLinearMemoryLengthOffset), "memory.grow current")
+	c.must(c.a.MovReg(old, current), "memory.grow old")
+	c.must(c.a.LsrImm(old, old, 16), "memory.grow old pages")
+	c.must(c.a.LsrImm(limit, delta, 16), "memory.grow delta overflow")
+	c.must(c.a.Cmp(limit, a32.R12), "memory.grow delta compare")
+	fails := []int{c.a.FarBcond(a32.CondNE)}
+	c.must(c.a.LslImm(delta, delta, 16), "memory.grow delta bytes")
+	c.must(c.a.Adds(delta, current, delta), "memory.grow new length")
+	fails = append(fails, c.a.FarBcond(a32.CondCS))
+	c.must(c.a.Ldr(limit, armContextReg, embedded32.ContextLinearMemoryMaximumOffset), "memory.grow maximum")
+	c.must(c.a.Cmp(limit, delta), "memory.grow maximum compare")
+	fails = append(fails, c.a.FarBcond(a32.CondCC))
+	c.must(c.a.Str(delta, armContextReg, embedded32.ContextLinearMemoryLengthOffset), "memory.grow publish length")
+	c.must(c.a.Ldr(limit, armContextReg, embedded32.ContextLinearMemoryBaseOffset), "memory.grow base")
+	c.must(c.a.Add(current, limit, current), "memory.grow clear start")
+	c.must(c.a.Add(limit, limit, delta), "memory.grow clear end")
+	loop := c.a.Len()
+	c.must(c.a.Cmp(current, limit), "memory.grow clear compare")
+	cleared := c.a.FarBcond(a32.CondEQ)
+	c.must(c.a.Str(a32.R12, current, 0), "memory.grow clear word")
+	c.must(c.a.MovImm32(delta, 4), "memory.grow clear step")
+	c.must(c.a.Add(current, current, delta), "memory.grow clear advance")
+	back := c.a.Branch()
+	if !c.a.PatchBranch(back, loop) || !c.a.PatchFarBranch(cleared, c.a.Len()) {
+		return fmt.Errorf("arm32: memory.grow clear branch out of range")
+	}
+	done := c.a.Branch()
+	fail := c.a.Len()
+	c.must(c.a.MovImm32(old, 0xffffffff), "memory.grow failure result")
+	finish := c.a.Len()
+	if !c.a.PatchBranch(done, finish) {
+		return fmt.Errorf("arm32: memory.grow done branch out of range")
+	}
+	for _, at := range fails {
+		if !c.a.PatchFarBranch(at, fail) {
+			return fmt.Errorf("arm32: memory.grow failure branch out of range")
+		}
+	}
+	c.release(delta)
+	c.release(current)
+	c.release(limit)
+	c.push(operand{reg: old})
+	return nil
+}
+
 func (c *compiler) divRem(op byte) error {
 	right, left := c.materialize(c.pop()), c.materialize(c.pop())
 	dst := c.alloc()

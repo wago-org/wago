@@ -20,6 +20,8 @@ func armMemoryContext(a *a32.Asm) {
 	a.Str(a32.R5, a32.SP, 24)
 	a.MovImm32(a32.R12, 0)
 	a.Str(a32.R12, a32.SP, 32)
+	a.MovImm32(a32.R12, 16)
+	a.Str(a32.R12, a32.SP, 36)
 }
 func armExit(a *a32.Asm)       { a.MovImm32(a32.R7, 1); a.Svc(0); a.Align4() }
 func armContextArg(a *a32.Asm) { a.MovImm32(a32.R12, 16); a.Add(a32.R0, a32.SP, a32.R12) }

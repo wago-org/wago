@@ -118,6 +118,20 @@ func arm32LoadModule(t *testing.T) *wasm.Module {
 	return m
 }
 
+func arm32GrowModule(t *testing.T) *wasm.Module {
+	t.Helper()
+	m, err := wasm.DecodeModule(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0})),
+		wasmtest.Section(5, wasmtest.Vec([]byte{1, 0, 1})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0, 0x40, 0, 0x0b}))),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
 func arm32DivModule(t *testing.T) *wasm.Module {
 	t.Helper()
 	m, err := wasm.DecodeModule(wasmtest.Module(
@@ -153,6 +167,26 @@ func TestCompileModuleMemoryAndTrapContextUnderQEMU(t *testing.T) {
 		armExit(&a)
 		a.PatchCall(call, len(a.B))
 		runARM32Exit(t, qemu, append(a.B, fn...), 42)
+	})
+	t.Run("memory-grow-failure", func(t *testing.T) {
+		grow, err := CompileModule(arm32GrowModule(t))
+		if err != nil {
+			t.Fatal(err)
+		}
+		meta := grow.Functions[0]
+		growFn := grow.Code[meta.Offset : meta.Offset+meta.Size]
+		var a a32.Asm
+		armMemoryContext(&a)
+		a.MovImm32(a32.R12, 0)
+		a.Str(a32.R12, a32.SP, 20)
+		a.Str(a32.R12, a32.SP, 36)
+		armContextArg(&a)
+		a.MovReg(a32.R11, a32.R0)
+		a.MovImm32(a32.R0, 1)
+		call := a.Call()
+		armExit(&a)
+		a.PatchCall(call, len(a.B))
+		runARM32Exit(t, qemu, append(a.B, growFn...), 255)
 	})
 	t.Run("division-trap", func(t *testing.T) {
 		div, err := CompileModule(arm32DivModule(t))

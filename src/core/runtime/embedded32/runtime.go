@@ -221,20 +221,22 @@ func (c *ControlCell) Poll() uint32 {
 // ContextABI is the pointer-width-stable context passed to generated firmware
 // code. Every field is a physical 32-bit target address or byte count.
 type ContextABI struct {
-	LinearMemoryBase   uint32
-	LinearMemoryLength uint32
-	TrapCell           uint32
-	CancelCell         uint32
-	HelperTable        uint32
+	LinearMemoryBase    uint32
+	LinearMemoryLength  uint32
+	TrapCell            uint32
+	CancelCell          uint32
+	HelperTable         uint32
+	LinearMemoryMaximum uint32
 }
 
 const (
-	ContextLinearMemoryBaseOffset   = 0
-	ContextLinearMemoryLengthOffset = 4
-	ContextTrapCellOffset           = 8
-	ContextCancelCellOffset         = 12
-	ContextHelperTableOffset        = 16
-	ContextABISize                  = 20
+	ContextLinearMemoryBaseOffset    = 0
+	ContextLinearMemoryLengthOffset  = 4
+	ContextTrapCellOffset            = 8
+	ContextCancelCellOffset          = 12
+	ContextHelperTableOffset         = 16
+	ContextLinearMemoryMaximumOffset = 20
+	ContextABISize                   = 24
 )
 
 // Runtime composes the fixed embedded resources. The initial profile permits

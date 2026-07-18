@@ -251,9 +251,12 @@ trap writes occur in normal function code. `CompileModuleToArena` uses the fixed
 `CodeArena` transaction so capacity and target publication failures clear the
 entire candidate image. QEMU executes selected functions, successful memory
 loads, memory traps, and division traps from module images on both architectures.
-Calls and relocations, `memory.grow`, truly mixed-width functions/signatures,
-wide structured control, and broader runtime metadata remain outside this
-module-wide slice.
+Generated i32 module functions also implement bounded `memory.grow`: the
+extended context publishes the fixed backing maximum, growth validates page-to-
+byte overflow and capacity, zeroes the newly admitted range, refreshes the
+current-length field, and returns the old page count or `-1`. Calls and
+relocations, truly mixed-width functions/signatures, wide structured control,
+and broader runtime metadata remain outside this module-wide slice.
 
 This is still not public backend admission. Pair/quad control merges and calls
 in the full module compiler, calls/globals/tables/references, generated-code

@@ -203,15 +203,19 @@ func compileBeachhead(numParams int, body []byte, context bool) ([]byte, error) 
 			if err := c.store(r, op); err != nil {
 				return nil, err
 			}
-		case 0x3f:
+		case 0x3f, 0x40:
 			if !c.context {
-				return nil, fmt.Errorf("riscv32 beachhead memory.size requires module context")
+				return nil, fmt.Errorf("riscv32 beachhead memory operation requires module context")
 			}
 			reserved, err := r.Byte()
 			if err != nil || reserved != 0 {
-				return nil, fmt.Errorf("riscv32: invalid memory.size immediate")
+				return nil, fmt.Errorf("riscv32: invalid memory size/grow immediate")
 			}
-			c.memorySize()
+			if op == 0x3f {
+				c.memorySize()
+			} else if err := c.memoryGrow(); err != nil {
+				return nil, err
+			}
 		case 0x67, 0x68, 0x69: // clz/ctz/popcnt
 			if err := c.countBits(op); err != nil {
 				return nil, err
