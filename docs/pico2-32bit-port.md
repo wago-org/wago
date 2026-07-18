@@ -230,8 +230,11 @@ cannot mutate its in-bounds low word. Normal mixed-width function lowering still
 needs to route decoded memargs through this registry.
 
 A shared module-layout stage now compiles every local function in the currently
-admitted i32/control subset into one 16-byte-aligned target image. It reconstructs
-validated local declarations, records bounded per-function offset/size metadata,
+admitted homogeneous-value subsets into one 16-byte-aligned target image. A
+single module may contain separate i32, i64, integer-only f64, and direct-SWAR
+v128 functions; each individual function must still use one value class. It
+reconstructs validated local declarations, records bounded per-function
+offset/size plus serialized parameter/result slot metadata,
 performs conservative code-arena capacity preflight before code generation, and
 rejects imports, unsupported runtime state, incompatible signatures, missing
 byte-backed bodies, and unsupported instructions before publication. Module
@@ -242,8 +245,9 @@ trap writes occur in normal function code. `CompileModuleToArena` uses the fixed
 `CodeArena` transaction so capacity and target publication failures clear the
 entire candidate image. QEMU executes selected functions, successful memory
 loads, memory traps, and division traps from module images on both architectures.
-Calls and relocations, `memory.grow`, mixed-width signatures, and broader runtime
-metadata remain outside this module-wide slice.
+Calls and relocations, `memory.grow`, truly mixed-width functions/signatures,
+wide structured control, and broader runtime metadata remain outside this
+module-wide slice.
 
 This is still not public backend admission. Pair/quad control merges and calls
 in the full module compiler, calls/globals/tables/references, generated-code

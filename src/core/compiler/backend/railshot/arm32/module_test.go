@@ -29,6 +29,68 @@ func arm32Module(t *testing.T) *wasm.Module {
 	return m
 }
 
+func arm32MixedWidthModule(t *testing.T) *wasm.Module {
+	t.Helper()
+	m, err := wasm.DecodeModule(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I64}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0}, []byte{1})),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x41, 1, 0x0b}),
+			wasmtest.Code([]byte{0x42, 6, 0x42, 7, 0x7e, 0x0b}),
+		)),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+func TestCompileModuleAdmitsF64AndV128Functions(t *testing.T) {
+	f64Body := append([]byte{0x44}, []byte{0, 0, 0, 0, 0, 0, 0xf0, 0xbf}...)
+	f64Body = append(f64Body, 0x9a, 0x0b)
+	v128Body := append([]byte{0xfd, 0x0c}, make([]byte, 16)...)
+	v128Body = append(v128Body, 0x0b)
+	m, err := wasm.DecodeModule(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.F64}), wasmtest.FuncType(nil, []wasm.ValType{wasm.V128}))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0}, []byte{1})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(f64Body), wasmtest.Code(v128Body))),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cm, err := CompileModule(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cm.Functions[0].ResultSlots != 2 || cm.Functions[1].ResultSlots != 4 {
+		t.Fatalf("metadata=%+v", cm.Functions)
+	}
+}
+
+func TestCompileModuleLaysOutMixedWidthFunctions(t *testing.T) {
+	cm, err := CompileModule(arm32MixedWidthModule(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cm.Functions) != 2 || cm.Functions[0].ResultSlots != 1 || cm.Functions[1].ResultSlots != 2 {
+		t.Fatalf("metadata=%+v", cm.Functions)
+	}
+	qemu, err := exec.LookPath("qemu-arm")
+	if err != nil {
+		return
+	}
+	meta := cm.Functions[1]
+	fn := cm.Code[meta.Offset : meta.Offset+meta.Size]
+	var wrapper a32.Asm
+	call := wrapper.Call()
+	armExit(&wrapper)
+	wrapper.PatchCall(call, len(wrapper.B))
+	runARM32Exit(t, qemu, append(wrapper.B, fn...), 42)
+}
+
 func TestCompileModuleLaysOutFunctions(t *testing.T) {
 	cm, err := CompileModule(arm32Module(t))
 	if err != nil {

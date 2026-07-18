@@ -7,16 +7,14 @@ import (
 	"github.com/wago-org/wago/src/core/runtime/embedded32"
 )
 
-// EmbeddedFunctionMetadata describes one local function in a fixed embedded
-// module image. Offset and Size are byte offsets within Code.
 type EmbeddedFunctionMetadata struct {
-	FuncIndex uint32
-	Offset    uint32
-	Size      uint32
+	FuncIndex   uint32
+	Offset      uint32
+	Size        uint32
+	ParamSlots  uint16
+	ResultSlots uint16
 }
 
-// EmbeddedModule is the architecture-neutral layout produced by the first
-// module-wide 32-bit compiler stage.
 type EmbeddedModule struct {
 	Code              []byte
 	Entry             []int
@@ -24,16 +22,12 @@ type EmbeddedModule struct {
 	RequiredCodeBytes uint32
 }
 
-// PublishedEmbeddedModule identifies one transactionally published module in a
-// firmware code arena. Entry contains absolute arena offsets.
 type PublishedEmbeddedModule struct {
 	Block     embedded32.CodeBlock
 	Entry     []uint32
 	Functions []EmbeddedFunctionMetadata
 }
 
-// PublishEmbeddedModule copies a complete compiled image into one code-arena
-// transaction. A capacity or publication failure rolls back every byte.
 func PublishEmbeddedModule(arena *embedded32.CodeArena, module *EmbeddedModule, publish embedded32.CodePublisher) (*PublishedEmbeddedModule, error) {
 	if arena == nil || module == nil {
 		return nil, embedded32.ErrInvalidArena
@@ -51,11 +45,7 @@ func PublishEmbeddedModule(arena *embedded32.CodeArena, module *EmbeddedModule, 
 	if err := tx.Commit(publish); err != nil {
 		return nil, err
 	}
-	out := &PublishedEmbeddedModule{
-		Block:     block,
-		Entry:     make([]uint32, len(module.Entry)),
-		Functions: make([]EmbeddedFunctionMetadata, len(module.Functions)),
-	}
+	out := &PublishedEmbeddedModule{Block: block, Entry: make([]uint32, len(module.Entry)), Functions: make([]EmbeddedFunctionMetadata, len(module.Functions))}
 	for i, entry := range module.Entry {
 		out.Entry[i] = block.Offset + uint32(entry)
 	}
@@ -66,24 +56,21 @@ func PublishEmbeddedModule(arena *embedded32.CodeArena, module *EmbeddedModule, 
 	return out, nil
 }
 
-// EmbeddedModuleOptions bounds compilation for a firmware code arena. A zero
-// CodeCapacity performs an unbounded cross-host compile unless EnforceCapacity
-// is set; bounded capacity is checked conservatively before any function is
-// compiled and exactly afterward.
 type EmbeddedModuleOptions struct {
 	CodeCapacity    uint32
 	EnforceCapacity bool
 }
 
-// CompileEmbeddedI32Module lays out a strict i32/control subset as one module
-// image. It is shared by Thumb-2 and RV32 so compatibility rejection, local-run
-// reconstruction, capacity preflight, alignment, and metadata stay identical.
-func CompileEmbeddedI32Module(m *wasm.Module, opts EmbeddedModuleOptions, target string, maxParams, expansion int, alignmentPad []byte, compile func(int, []byte) ([]byte, error)) (*EmbeddedModule, error) {
+type EmbeddedFunctionCompiler func(ft *wasm.CompType, locals []wasm.LocalRun, body []byte) ([]byte, error)
+
+// CompileEmbeddedModule validates and lays out a module while delegating exact
+// homogeneous or mixed-width function admission to the target compiler.
+func CompileEmbeddedModule(m *wasm.Module, opts EmbeddedModuleOptions, target string, expansion int, alignmentPad []byte, compile EmbeddedFunctionCompiler) (*EmbeddedModule, error) {
 	if m == nil {
 		return nil, fmt.Errorf("%s: nil module", target)
 	}
-	if len(alignmentPad) == 0 || 16%len(alignmentPad) != 0 {
-		return nil, fmt.Errorf("%s: invalid module alignment encoding", target)
+	if compile == nil || len(alignmentPad) == 0 || 16%len(alignmentPad) != 0 {
+		return nil, fmt.Errorf("%s: invalid module compiler configuration", target)
 	}
 	if err := wasm.ValidateModule(m); err != nil {
 		return nil, fmt.Errorf("%s: module validation: %w", target, err)
@@ -103,37 +90,26 @@ func CompileEmbeddedI32Module(m *wasm.Module, opts EmbeddedModuleOptions, target
 
 	totalBody := 0
 	bodies := make([][]byte, len(m.Code))
-	paramCounts := make([]int, len(m.Code))
+	types := make([]*wasm.CompType, len(m.Code))
 	for i := range m.Code {
 		ft, ok := m.LocalFuncType(i)
 		if !ok || ft.Kind != wasm.CompFunc {
 			return nil, fmt.Errorf("%s: function %d has no function type", target, i)
 		}
-		if len(ft.Params) > maxParams {
-			return nil, fmt.Errorf("%s: function %d has %d parameters, maximum is %d", target, i, len(ft.Params), maxParams)
-		}
-		for _, typ := range ft.Params {
-			if typ != wasm.I32 {
-				return nil, fmt.Errorf("%s: function %d parameter type %s is not yet supported", target, i, typ)
-			}
-		}
-		if len(ft.Results) > 1 || len(ft.Results) == 1 && ft.Results[0] != wasm.I32 {
-			return nil, fmt.Errorf("%s: function %d result signature is not yet supported", target, i)
-		}
 		body := appendULEB32(nil, uint32(len(m.Code[i].Locals.Runs)))
 		for _, run := range m.Code[i].Locals.Runs {
-			if run.Type != wasm.I32 {
-				return nil, fmt.Errorf("%s: function %d local type %s is not yet supported", target, i, run.Type)
+			encoded, ok := wasm.EncodeValType(run.Type)
+			if !ok {
+				return nil, fmt.Errorf("%s: function %d local type %s has no embedded encoding", target, i, run.Type)
 			}
 			body = appendULEB32(body, run.Count)
-			body = append(body, byte(wasm.NumI32))
+			body = append(body, encoded)
 		}
 		if len(m.Code[i].BodyBytes) == 0 {
 			return nil, fmt.Errorf("%s: function %d has no byte-backed body", target, i)
 		}
 		body = append(body, m.Code[i].BodyBytes...)
-		bodies[i] = body
-		paramCounts[i] = len(ft.Params)
+		bodies[i], types[i] = body, ft
 		totalBody += len(body)
 	}
 
@@ -145,13 +121,7 @@ func CompileEmbeddedI32Module(m *wasm.Module, opts EmbeddedModuleOptions, target
 	if bounded && uint32(required) > opts.CodeCapacity {
 		return nil, fmt.Errorf("%s: code arena capacity %d is below preflight requirement %d", target, opts.CodeCapacity, required)
 	}
-
-	out := &EmbeddedModule{
-		Code:              make([]byte, 0, required),
-		Entry:             make([]int, len(bodies)),
-		Functions:         make([]EmbeddedFunctionMetadata, len(bodies)),
-		RequiredCodeBytes: uint32(required),
-	}
+	out := &EmbeddedModule{Code: make([]byte, 0, required), Entry: make([]int, len(bodies)), Functions: make([]EmbeddedFunctionMetadata, len(bodies)), RequiredCodeBytes: uint32(required)}
 	for i, body := range bodies {
 		pad := (16 - len(out.Code)%16) % 16
 		if pad%len(alignmentPad) != 0 {
@@ -161,21 +131,77 @@ func CompileEmbeddedI32Module(m *wasm.Module, opts EmbeddedModuleOptions, target
 			out.Code = append(out.Code, alignmentPad...)
 		}
 		entry := len(out.Code)
-		fnCode, err := compile(paramCounts[i], body)
+		fnCode, err := compile(types[i], m.Code[i].Locals.Runs, body)
 		if err != nil {
 			return nil, fmt.Errorf("%s: function %d: %w", target, i, err)
 		}
 		if len(fnCode)%len(alignmentPad) != 0 {
 			return nil, fmt.Errorf("%s: function %d emitted misaligned code size %d", target, i, len(fnCode))
 		}
+		params, err := serializedSlots(types[i].Params)
+		if err != nil {
+			return nil, fmt.Errorf("%s: function %d parameters: %w", target, i, err)
+		}
+		results, err := serializedSlots(types[i].Results)
+		if err != nil {
+			return nil, fmt.Errorf("%s: function %d results: %w", target, i, err)
+		}
 		out.Entry[i] = entry
 		out.Code = append(out.Code, fnCode...)
-		out.Functions[i] = EmbeddedFunctionMetadata{FuncIndex: uint32(i), Offset: uint32(entry), Size: uint32(len(fnCode))}
+		out.Functions[i] = EmbeddedFunctionMetadata{FuncIndex: uint32(i), Offset: uint32(entry), Size: uint32(len(fnCode)), ParamSlots: uint16(params), ResultSlots: uint16(results)}
 	}
 	if bounded && uint32(len(out.Code)) > opts.CodeCapacity {
 		return nil, fmt.Errorf("%s: compiled code size %d exceeds arena capacity %d", target, len(out.Code), opts.CodeCapacity)
 	}
 	return out, nil
+}
+
+// CompileEmbeddedI32Module preserves the original strict i32 entry point for
+// tests and callers which intentionally admit only the initial scalar subset.
+func CompileEmbeddedI32Module(m *wasm.Module, opts EmbeddedModuleOptions, target string, maxParams, expansion int, alignmentPad []byte, compile func(int, []byte) ([]byte, error)) (*EmbeddedModule, error) {
+	return CompileEmbeddedModule(m, opts, target, expansion, alignmentPad, func(ft *wasm.CompType, locals []wasm.LocalRun, body []byte) ([]byte, error) {
+		if len(ft.Params) > maxParams {
+			return nil, fmt.Errorf("has %d parameters, maximum is %d", len(ft.Params), maxParams)
+		}
+		for _, typ := range ft.Params {
+			if typ != wasm.I32 {
+				return nil, fmt.Errorf("parameter type %s is not yet supported", typ)
+			}
+		}
+		if len(ft.Results) > 1 || len(ft.Results) == 1 && ft.Results[0] != wasm.I32 {
+			return nil, fmt.Errorf("result signature is not yet supported")
+		}
+		for _, run := range locals {
+			if run.Type != wasm.I32 {
+				return nil, fmt.Errorf("local type %s is not yet supported", run.Type)
+			}
+		}
+		return compile(len(ft.Params), body)
+	})
+}
+
+func serializedSlots(types []wasm.ValType) (int, error) {
+	n := 0
+	for _, typ := range types {
+		switch typ {
+		case wasm.I32, wasm.F32:
+			n++
+		case wasm.I64, wasm.F64:
+			n += 2
+		case wasm.V128:
+			n += 4
+		default:
+			if typ.Kind == wasm.ValRef {
+				n++
+			} else {
+				return 0, fmt.Errorf("unsupported value type %s", typ)
+			}
+		}
+		if n > int(^uint16(0)) {
+			return 0, fmt.Errorf("serialized slot count overflow")
+		}
+	}
+	return n, nil
 }
 
 func appendULEB32(dst []byte, v uint32) []byte {
