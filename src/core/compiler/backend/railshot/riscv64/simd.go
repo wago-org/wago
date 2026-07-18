@@ -12,7 +12,9 @@ import (
 // v128Pair is the baseline RV64G representation of a WebAssembly v128. Lanes
 // use WebAssembly's little-endian numbering: lo contains bits 0..63 and hi bits
 // 64..127. RVV is an optional future optimization; SWAR never requires vector
-// register state.
+// register state. Packed formulas and scalar decomposition patterns use
+// JairusSW/as-simd's MIT-licensed v128_swar implementation as a primary
+// reference; see THIRD_PARTY_NOTICES.md.
 type v128Pair struct {
 	lo, hi Reg
 }
@@ -180,6 +182,58 @@ func (f *fn) v128AnyTrue() {
 	f.a.Snez(p.lo, p.lo)
 	f.release(p.hi)
 	f.pushReg(p.lo, mtI32)
+}
+
+func (f *fn) i8x16Shuffle(lanes [16]byte) {
+	be, ae := f.popValue(), f.popValue()
+	b := f.materializeV128(be)
+	a := f.materializeV128(ae)
+	out := f.allocV128Pair(a.mask().union(b.mask()))
+	f.a.MovImm64(out.lo, 0)
+	f.a.MovImm64(out.hi, 0)
+	t := f.allocReg(a.mask().union(b.mask()).union(out.mask()))
+	for lane, selector := range lanes {
+		src, srcLane := a, int(selector)
+		if selector >= 16 {
+			src, srcLane = b, int(selector)-16
+		}
+		f.extractLaneTo(t, src, srcLane, 8, false)
+		f.insertLaneFrom(out, lane, 8, t)
+	}
+	f.release(t)
+	f.releaseV128(b)
+	f.releaseV128(a)
+	f.pushV128Pair(out)
+}
+
+func (f *fn) i8x16Swizzle() {
+	ie, de := f.popValue(), f.popValue()
+	indices := f.materializeV128(ie)
+	data := f.materializeV128(de)
+	out := f.allocV128Pair(indices.mask().union(data.mask()))
+	f.a.MovImm64(out.lo, 0)
+	f.a.MovImm64(out.hi, 0)
+	idx := f.allocReg(indices.mask().union(data.mask()).union(out.mask()))
+	shift := f.allocReg(indices.mask().union(data.mask()).union(out.mask()).add(idx))
+	value := f.allocReg(indices.mask().union(data.mask()).union(out.mask()).add(idx).add(shift))
+	for lane := 0; lane < 16; lane++ {
+		f.extractLaneTo(idx, indices, lane, 8, false)
+		f.a.AndImm64(shift, idx, 7)
+		f.a.LslImm(shift, shift, 3, false)
+		f.a.CmpImm64(idx, 8)
+		f.a.Csel64(value, data.hi, data.lo, condAE)
+		f.a.Lsrv64(value, value, shift)
+		f.a.AndImm64(value, value, 0xff)
+		f.a.CmpImm64(idx, 16)
+		f.a.Csel64(value, value, ZR, condB)
+		f.insertLaneFrom(out, lane, 8, value)
+	}
+	f.release(value)
+	f.release(shift)
+	f.release(idx)
+	f.releaseV128(data)
+	f.releaseV128(indices)
+	f.pushV128Pair(out)
 }
 
 func (f *fn) i64x2Splat() {
@@ -803,6 +857,64 @@ func (f *fn) i32x4DotI16x8S() {
 	f.pushV128Pair(out)
 }
 
+func (f *fn) relaxedDotI8x16I7x16S() {
+	be, ae := f.popValue(), f.popValue()
+	b := f.materializeV128(be)
+	a := f.materializeV128(ae)
+	out := f.allocV128Pair(a.mask().union(b.mask()))
+	f.a.MovImm64(out.lo, 0)
+	f.a.MovImm64(out.hi, 0)
+	x := f.allocReg(a.mask().union(b.mask()).union(out.mask()))
+	y := f.allocReg(a.mask().union(b.mask()).union(out.mask()).add(x))
+	sum := f.allocReg(a.mask().union(b.mask()).union(out.mask()).add(x).add(y))
+	for lane := 0; lane < 8; lane++ {
+		f.extractLaneTo(x, a, lane*2, 8, true)
+		f.extractLaneTo(y, b, lane*2, 8, true)
+		f.a.Mul64(sum, x, y)
+		f.extractLaneTo(x, a, lane*2+1, 8, true)
+		f.extractLaneTo(y, b, lane*2+1, 8, true)
+		f.a.Mul64(x, x, y)
+		f.a.Add64(sum, sum, x)
+		f.insertLaneFrom(out, lane, 16, sum)
+	}
+	f.release(sum)
+	f.release(y)
+	f.release(x)
+	f.releaseV128(b)
+	f.releaseV128(a)
+	f.pushV128Pair(out)
+}
+
+func (f *fn) relaxedDotI8x16I7x16AddS() {
+	ce, be, ae := f.popValue(), f.popValue(), f.popValue()
+	c := f.materializeV128(ce)
+	b := f.materializeV128(be)
+	a := f.materializeV128(ae)
+	out := f.allocV128Pair(a.mask().union(b.mask()).union(c.mask()))
+	f.a.MovImm64(out.lo, 0)
+	f.a.MovImm64(out.hi, 0)
+	x := f.allocReg(a.mask().union(b.mask()).union(c.mask()).union(out.mask()))
+	y := f.allocReg(a.mask().union(b.mask()).union(c.mask()).union(out.mask()).add(x))
+	sum := f.allocReg(a.mask().union(b.mask()).union(c.mask()).union(out.mask()).add(x).add(y))
+	for lane := 0; lane < 4; lane++ {
+		f.extractLaneTo(sum, c, lane, 32, true)
+		for i := 0; i < 4; i++ {
+			f.extractLaneTo(x, a, lane*4+i, 8, true)
+			f.extractLaneTo(y, b, lane*4+i, 8, true)
+			f.a.Mul64(x, x, y)
+			f.a.Add64(sum, sum, x)
+		}
+		f.insertLaneFrom(out, lane, 32, sum)
+	}
+	f.release(sum)
+	f.release(y)
+	f.release(x)
+	f.releaseV128(c)
+	f.releaseV128(b)
+	f.releaseV128(a)
+	f.pushV128Pair(out)
+}
+
 func (f *fn) i16x8Q15mulrSatS() {
 	be, ae := f.popValue(), f.popValue()
 	b := f.materializeV128(be)
@@ -872,6 +984,21 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 			}
 		}
 		f.v128Const(binary.LittleEndian.Uint64(b[:8]), binary.LittleEndian.Uint64(b[8:]))
+	case 13: // i8x16.shuffle
+		var lanes [16]byte
+		for i := range lanes {
+			lane, err := r.Byte()
+			if err != nil {
+				return err
+			}
+			if lane >= 32 {
+				return fmt.Errorf("riscv64: invalid i8x16.shuffle lane %d", lane)
+			}
+			lanes[i] = lane
+		}
+		f.i8x16Shuffle(lanes)
+	case 14, 256: // strict swizzle is a deterministic relaxed-swizzle projection
+		f.i8x16Swizzle()
 	case 15: // i8x16.splat
 		f.integerSplat(8)
 	case 16: // i16x8.splat
@@ -1041,8 +1168,14 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 		f.integerCompare(64, condGE, true)
 	case 220, 221, 222, 223:
 		f.integerExtmul(32, sub == 220 || sub == 221, sub == 221 || sub == 223)
+	case 265, 266, 267, 268: // deterministic bitselect relaxed-laneselect projection
+		f.v128Bitselect()
 	case 273: // deterministic strict projection for relaxed q15 multiply
 		f.i16x8Q15mulrSatS()
+	case 274:
+		f.relaxedDotI8x16I7x16S()
+	case 275:
+		f.relaxedDotI8x16I7x16AddS()
 	default:
 		return fmt.Errorf("riscv64: SWAR SIMD opcode %d is not implemented", sub)
 	}

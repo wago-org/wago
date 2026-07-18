@@ -542,6 +542,59 @@ func TestSWARSaturatingNarrowExtendMultiplyAndDotExec(t *testing.T) {
 	}
 }
 
+func TestSWARShuffleSwizzleAndRelaxedIntegerExec(t *testing.T) {
+	aLo, aHi := swarPackLanes(8, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15)
+	bLo, bHi := swarPackLanes(8, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115)
+	selectors := []byte{31, 0, 16, 15, 8, 23, 7, 24, 1, 30, 14, 17, 6, 25, 13, 18}
+	shuffle := append(swarFD(13), selectors...)
+	for lane, want := range []uint32{115, 0, 100, 15, 8, 107, 7, 108, 1, 114, 14, 101, 6, 109, 13, 102} {
+		m := swarScalarModule(t, wasm.I32,
+			swarV128Const(aLo, aHi), swarV128Const(bLo, bHi), shuffle,
+			swarIntegerExtract(8, lane, false))
+		if got := runProductionSWARWrapper(t, m); uint32(got) != want {
+			t.Fatalf("shuffle lane %d: got %d, want %d", lane, got, want)
+		}
+	}
+
+	iLo, iHi := swarPackLanes(8, 0, 7, 8, 15, 16, 255, 3, 12, 14, 1, 9, 200, 6, 10, 2, 13)
+	for _, sub := range []uint32{14, 256} {
+		for lane, want := range []uint32{0, 7, 8, 15, 0, 0, 3, 12, 14, 1, 9, 0, 6, 10, 2, 13} {
+			m := swarScalarModule(t, wasm.I32,
+				swarV128Const(aLo, aHi), swarV128Const(iLo, iHi), swarFD(sub),
+				swarIntegerExtract(8, lane, false))
+			if got := runProductionSWARWrapper(t, m); uint32(got) != want {
+				t.Fatalf("swizzle sub %d lane %d: got %d, want %d", sub, lane, got, want)
+			}
+		}
+	}
+
+	for _, sub := range []uint32{265, 266, 267, 268} {
+		m := swarScalarModule(t, wasm.I64,
+			swarV128Const(0xffffffffffffffff, 0), swarV128Const(0, ^uint64(0)),
+			swarV128Const(0x00ff00ff00ff00ff, 0xff00ff00ff00ff00), swarFD(sub), swarFD(29, 0))
+		if got := runProductionSWARWrapper(t, m); got != 0x00ff00ff00ff00ff {
+			t.Fatalf("relaxed laneselect sub %d: got %#x", sub, got)
+		}
+	}
+
+	dotALo, dotAHi := swarPackLanes(8, 1, 2, 0xff, 0xfe, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14)
+	dotBLo, dotBHi := swarPackLanes(8, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18)
+	m := swarScalarModule(t, wasm.I32,
+		swarV128Const(dotALo, dotAHi), swarV128Const(dotBLo, dotBHi), swarFD(274),
+		swarIntegerExtract(16, 0, true))
+	if got := runProductionSWARWrapper(t, m); uint32(got) != 11 { // 1*3 + 2*4
+		t.Fatalf("relaxed dot got %d", got)
+	}
+
+	cLo, cHi := swarPackLanes(32, 100, 200, 300, 400)
+	m = swarScalarModule(t, wasm.I32,
+		swarV128Const(dotALo, dotAHi), swarV128Const(dotBLo, dotBHi), swarV128Const(cLo, cHi), swarFD(275),
+		swarIntegerExtract(32, 0, false))
+	if got := runProductionSWARWrapper(t, m); uint32(got) != 94 { // 100 + 1*3 + 2*4 - 1*5 - 2*6
+		t.Fatalf("relaxed dot-add got %d", got)
+	}
+}
+
 func TestSWARV128LocalControlAndSelectExec(t *testing.T) {
 	t.Run("local", func(t *testing.T) {
 		body := []byte{1, 1, 0x7b} // one v128 local
