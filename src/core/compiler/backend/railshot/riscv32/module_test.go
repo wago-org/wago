@@ -140,6 +140,136 @@ func TestCompileModuleExecutesGenuinelyMixedFunctionUnderQEMU(t *testing.T) {
 	runRV32Exit(t, qemu, append(a.B, fn...), 42)
 }
 
+func riscv32MixedCallModule(t *testing.T) *wasm.Module {
+	t.Helper()
+	callee := []byte{0x20, 1, 0x42, 5, 0x7c, 0x0b}
+	caller := []byte{0x42}
+	caller = append(caller, wasmtest.SLEB64(100)...)
+	caller = append(caller, 0x20, 0, 0x20, 1, 0x10, 0, 0x7c, 0x0b)
+	sig := wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I64}, []wasm.ValType{wasm.I64})
+	m, err := wasm.DecodeModule(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(sig)),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0}, []byte{0})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(callee), wasmtest.Code(caller))),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+func TestCompileModuleExecutesMixedCallWithLiveWideValueUnderQEMU(t *testing.T) {
+	qemu, err := exec.LookPath("qemu-riscv32")
+	if err != nil {
+		t.Skip("qemu-riscv32 not installed")
+	}
+	cm, err := CompileModule(riscv32MixedCallModule(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var a rv.Asm
+	rvMemoryContext(&a)
+	a.Addi(rv.A0, rv.SP, 16)
+	a.MovReg(rv.X23, rv.A0)
+	a.MovImm32(rv.A0, 7)
+	a.MovImm32(rv.A1, 37)
+	a.MovImm32(rv.A2, 0)
+	call := a.Jal(rv.RA)
+	a.MovImm32(rv.A7, 93)
+	a.Ecall()
+	if !a.PatchJAL21(call, len(a.B)+cm.Entry[1]) {
+		t.Fatal("wrapper call relocation")
+	}
+	image := append(a.B, cm.Code...)
+	runRV32Exit(t, qemu, image, 142)
+}
+
+func riscv32MixedTrapCallModule(t *testing.T) *wasm.Module {
+	t.Helper()
+	sig := wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I64}, []wasm.ValType{wasm.I64})
+	caller := []byte{0x20, 0, 0x20, 1, 0x10, 0, 0x0b}
+	m, err := wasm.DecodeModule(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(sig)),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0}, []byte{0})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x00, 0x0b}), wasmtest.Code(caller))),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+func TestCompileModulePropagatesMixedCallTrapUnderQEMU(t *testing.T) {
+	qemu, err := exec.LookPath("qemu-riscv32")
+	if err != nil {
+		t.Skip("qemu-riscv32 not installed")
+	}
+	cm, err := CompileModule(riscv32MixedTrapCallModule(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var a rv.Asm
+	rvMemoryContext(&a)
+	a.Addi(rv.A0, rv.SP, 16)
+	a.MovReg(rv.X23, rv.A0)
+	a.MovImm32(rv.A0, 7)
+	a.MovImm32(rv.A1, 37)
+	a.MovImm32(rv.A2, 0)
+	call := a.Jal(rv.RA)
+	a.Lw(rv.A0, rv.SP, 32)
+	a.MovImm32(rv.A7, 93)
+	a.Ecall()
+	if !a.PatchJAL21(call, len(a.B)+cm.Entry[1]) {
+		t.Fatal("wrapper call relocation")
+	}
+	runRV32Exit(t, qemu, append(a.B, cm.Code...), int(embedded32.TrapUnreachable))
+}
+
+func riscv32MixedMultiResultCallModule(t *testing.T) *wasm.Module {
+	t.Helper()
+	sig := wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I64}, []wasm.ValType{wasm.I32, wasm.I64})
+	body := []byte{0x20, 0, 0x20, 1, 0x0b}
+	caller := []byte{0x20, 0, 0x20, 1, 0x10, 0, 0x0b}
+	m, err := wasm.DecodeModule(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(sig)),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0}, []byte{0})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body), wasmtest.Code(caller))),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+func TestCompileModuleReturnsMultipleMixedCallResultsUnderQEMU(t *testing.T) {
+	qemu, err := exec.LookPath("qemu-riscv32")
+	if err != nil {
+		t.Skip("qemu-riscv32 not installed")
+	}
+	cm, err := CompileModule(riscv32MixedMultiResultCallModule(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cm.Functions[1].ResultSlots != 3 {
+		t.Fatalf("metadata=%+v", cm.Functions[1])
+	}
+	var a rv.Asm
+	rvMemoryContext(&a)
+	a.Addi(rv.A0, rv.SP, 16)
+	a.MovReg(rv.X23, rv.A0)
+	a.MovImm32(rv.A0, 42)
+	a.MovImm32(rv.A1, 37)
+	a.MovImm32(rv.A2, 0)
+	call := a.Jal(rv.RA)
+	a.Add(rv.A0, rv.A0, rv.A1)
+	a.MovImm32(rv.A7, 93)
+	a.Ecall()
+	if !a.PatchJAL21(call, len(a.B)+cm.Entry[1]) {
+		t.Fatal("wrapper call relocation")
+	}
+	runRV32Exit(t, qemu, append(a.B, cm.Code...), 79)
+}
+
 func TestCompileModuleLaysOutFunctions(t *testing.T) {
 	cm, err := CompileModule(riscv32Module(t))
 	if err != nil {

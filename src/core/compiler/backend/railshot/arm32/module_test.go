@@ -138,6 +138,133 @@ func TestCompileModuleExecutesGenuinelyMixedFunctionUnderQEMU(t *testing.T) {
 	runARM32Exit(t, qemu, append(a.B, fn...), 42)
 }
 
+func arm32MixedCallModule(t *testing.T) *wasm.Module {
+	t.Helper()
+	callee := []byte{0x20, 1, 0x42, 5, 0x7c, 0x0b}
+	caller := []byte{0x42}
+	caller = append(caller, wasmtest.SLEB64(100)...)
+	caller = append(caller, 0x20, 0, 0x20, 1, 0x10, 0, 0x7c, 0x0b)
+	sig := wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I64}, []wasm.ValType{wasm.I64})
+	m, err := wasm.DecodeModule(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(sig)),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0}, []byte{0})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(callee), wasmtest.Code(caller))),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+func TestCompileModuleExecutesMixedCallWithLiveWideValueUnderQEMU(t *testing.T) {
+	qemu, err := exec.LookPath("qemu-arm")
+	if err != nil {
+		t.Skip("qemu-arm not installed")
+	}
+	cm, err := CompileModule(arm32MixedCallModule(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var a a32.Asm
+	armMemoryContext(&a)
+	armContextArg(&a)
+	a.MovReg(a32.R11, a32.R0)
+	a.MovImm32(a32.R0, 7)
+	a.MovImm32(a32.R1, 37)
+	a.MovImm32(a32.R2, 0)
+	call := a.Call()
+	armExit(&a)
+	if !a.PatchCall(call, len(a.B)+cm.Entry[1]) {
+		t.Fatal("wrapper call relocation")
+	}
+	image := append(a.B, cm.Code...)
+	runARM32Exit(t, qemu, image, 142)
+}
+
+func arm32MixedTrapCallModule(t *testing.T) *wasm.Module {
+	t.Helper()
+	sig := wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I64}, []wasm.ValType{wasm.I64})
+	caller := []byte{0x20, 0, 0x20, 1, 0x10, 0, 0x0b}
+	m, err := wasm.DecodeModule(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(sig)),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0}, []byte{0})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x00, 0x0b}), wasmtest.Code(caller))),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+func TestCompileModulePropagatesMixedCallTrapUnderQEMU(t *testing.T) {
+	qemu, err := exec.LookPath("qemu-arm")
+	if err != nil {
+		t.Skip("qemu-arm not installed")
+	}
+	cm, err := CompileModule(arm32MixedTrapCallModule(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var a a32.Asm
+	armMemoryContext(&a)
+	armContextArg(&a)
+	a.MovReg(a32.R11, a32.R0)
+	a.MovImm32(a32.R0, 7)
+	a.MovImm32(a32.R1, 37)
+	a.MovImm32(a32.R2, 0)
+	call := a.Call()
+	a.Ldr(a32.R0, a32.SP, 32)
+	armExit(&a)
+	if !a.PatchCall(call, len(a.B)+cm.Entry[1]) {
+		t.Fatal("wrapper call relocation")
+	}
+	runARM32Exit(t, qemu, append(a.B, cm.Code...), int(embedded32.TrapUnreachable))
+}
+
+func arm32MixedMultiResultCallModule(t *testing.T) *wasm.Module {
+	t.Helper()
+	sig := wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I64}, []wasm.ValType{wasm.I32, wasm.I64})
+	body := []byte{0x20, 0, 0x20, 1, 0x0b}
+	caller := []byte{0x20, 0, 0x20, 1, 0x10, 0, 0x0b}
+	m, err := wasm.DecodeModule(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(sig)),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0}, []byte{0})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body), wasmtest.Code(caller))),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+func TestCompileModuleReturnsMultipleMixedCallResultsUnderQEMU(t *testing.T) {
+	qemu, err := exec.LookPath("qemu-arm")
+	if err != nil {
+		t.Skip("qemu-arm not installed")
+	}
+	cm, err := CompileModule(arm32MixedMultiResultCallModule(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cm.Functions[1].ResultSlots != 3 {
+		t.Fatalf("metadata=%+v", cm.Functions[1])
+	}
+	var a a32.Asm
+	armMemoryContext(&a)
+	armContextArg(&a)
+	a.MovReg(a32.R11, a32.R0)
+	a.MovImm32(a32.R0, 42)
+	a.MovImm32(a32.R1, 37)
+	a.MovImm32(a32.R2, 0)
+	call := a.Call()
+	a.Add(a32.R0, a32.R0, a32.R1)
+	armExit(&a)
+	if !a.PatchCall(call, len(a.B)+cm.Entry[1]) {
+		t.Fatal("wrapper call relocation")
+	}
+	runARM32Exit(t, qemu, append(a.B, cm.Code...), 79)
+}
+
 func TestCompileModuleLaysOutFunctions(t *testing.T) {
 	cm, err := CompileModule(arm32Module(t))
 	if err != nil {

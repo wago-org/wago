@@ -39,6 +39,8 @@ const (
 	MixedV128Bitselect
 	MixedI32x4Add
 	MixedI32x4Sub
+	MixedCall
+	MixedUnreachable
 )
 
 type MixedOp struct {
@@ -48,6 +50,9 @@ type MixedOp struct {
 	Third       uint16
 	Width       uint8
 	Words       [4]uint32
+	Target      uint32
+	Args        []MixedValue
+	Results     []MixedValue
 }
 
 type MixedValue struct {
@@ -85,7 +90,13 @@ func MixedValueSlots(typ wasm.ValType) (uint8, bool) {
 	}
 }
 
+type MixedSignatureResolver func(uint32) (*wasm.CompType, bool)
+
 func BuildMixedPlan(ft *wasm.CompType, locals []wasm.LocalRun, body []byte) (*MixedPlan, error) {
+	return BuildMixedPlanWithCalls(ft, locals, body, nil)
+}
+
+func BuildMixedPlanWithCalls(ft *wasm.CompType, locals []wasm.LocalRun, body []byte, resolve MixedSignatureResolver) (*MixedPlan, error) {
 	if ft == nil || ft.Kind != wasm.CompFunc {
 		return nil, fmt.Errorf("mixed function has invalid type")
 	}
@@ -203,31 +214,69 @@ func BuildMixedPlan(ft *wasm.CompType, locals []wasm.LocalRun, body []byte) (*Mi
 		return nil
 	}
 
+	terminated := false
 	for r.HasNext() {
 		op, err := r.Byte()
 		if err != nil {
 			return nil, err
 		}
+		if terminated && op != 0x0b {
+			return nil, fmt.Errorf("mixed function currently requires terminal unreachable")
+		}
 		switch op {
+		case 0x00: // unreachable
+			p.Ops = append(p.Ops, MixedOp{Kind: MixedUnreachable})
+			terminated = true
 		case 0x01: // nop
 		case 0x0b: // end
 			if r.HasNext() {
 				return nil, fmt.Errorf("mixed function has instructions after end")
 			}
-			if len(stack) != len(ft.Results) {
-				return nil, fmt.Errorf("mixed result stack has %d values, want %d", len(stack), len(ft.Results))
-			}
-			for i := range stack {
-				if stack[i].Type != ft.Results[i] {
-					return nil, fmt.Errorf("mixed result %d has type %s, want %s", i, stack[i].Type, ft.Results[i])
+			if !terminated {
+				if len(stack) != len(ft.Results) {
+					return nil, fmt.Errorf("mixed result stack has %d values, want %d", len(stack), len(ft.Results))
 				}
+				for i := range stack {
+					if stack[i].Type != ft.Results[i] {
+						return nil, fmt.Errorf("mixed result %d has type %s, want %s", i, stack[i].Type, ft.Results[i])
+					}
+				}
+				p.Results = append(p.Results, stack...)
 			}
-			p.Results = append(p.Results, stack...)
 			for _, typ := range ft.Results {
 				width, _ := MixedValueSlots(typ)
 				p.ResultSlots += uint16(width)
 			}
 			return p, nil
+		case 0x10: // call
+			target, err := r.U32()
+			if err != nil {
+				return nil, err
+			}
+			if resolve == nil {
+				return nil, fmt.Errorf("mixed function call requires module signatures")
+			}
+			callee, ok := resolve(target)
+			if !ok || callee == nil || callee.Kind != wasm.CompFunc {
+				return nil, fmt.Errorf("mixed function call target %d is invalid", target)
+			}
+			args := make([]MixedValue, len(callee.Params))
+			for i := len(callee.Params) - 1; i >= 0; i-- {
+				v, err := pop(callee.Params[i])
+				if err != nil {
+					return nil, fmt.Errorf("mixed call target %d argument %d: %w", target, i, err)
+				}
+				args[i] = v
+			}
+			results := make([]MixedValue, len(callee.Results))
+			for i, typ := range callee.Results {
+				v, err := push(typ)
+				if err != nil {
+					return nil, fmt.Errorf("mixed call target %d result %d: %w", target, i, err)
+				}
+				results[i] = v
+			}
+			p.Ops = append(p.Ops, MixedOp{Kind: MixedCall, Target: target, Args: args, Results: results})
 		case 0x1a: // drop
 			if len(stack) == 0 {
 				return nil, fmt.Errorf("mixed drop stack underflow")

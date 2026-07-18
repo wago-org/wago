@@ -14,14 +14,40 @@ func CompileMixedModuleFunction(ft *wasm.CompType, locals []wasm.LocalRun, body 
 	if err != nil {
 		return nil, err
 	}
+	return emitMixedPlan(plan, nil)
+}
+
+func compileMixedModuleFunction(m *wasm.Module, ft *wasm.CompType, locals []wasm.LocalRun, body []byte) ([]byte, []callReloc, error) {
+	plan, err := shared.BuildMixedPlanWithCalls(ft, locals, body, func(index uint32) (*wasm.CompType, bool) {
+		return m.FuncSignature(index)
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, op := range plan.Ops {
+		if op.Kind != shared.MixedCall {
+			continue
+		}
+		if int(op.Target) >= len(m.Code) {
+			return nil, nil, fmt.Errorf("riscv32: mixed call target %d is not local", op.Target)
+		}
+		targetType, ok := m.LocalFuncType(int(op.Target))
+		if !ok || !usesMixedModuleCompiler(targetType, m.Code[op.Target].Locals.Runs) {
+			return nil, nil, fmt.Errorf("riscv32: mixed call target %d does not use the mixed ABI", op.Target)
+		}
+	}
+	var relocs []callReloc
+	code, err := emitMixedPlan(plan, &relocs)
+	return code, relocs, err
+}
+
+func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc) ([]byte, error) {
 	if plan.ParameterSlots > 8 || plan.ResultSlots > 8 {
 		return nil, fmt.Errorf("riscv32: mixed register ABI supports at most 8 parameter and result slots")
 	}
-	frame := int32(plan.LocalSlots+plan.MaxOperandSlots) * 4
-	if frame < 16 {
-		frame = 16
-	}
-	frame = (frame + 15) &^ 15
+	dataBytes := int32(plan.LocalSlots+plan.MaxOperandSlots) * 4
+	saveOffset := dataBytes
+	frame := (dataBytes + 4 + 15) &^ 15
 	if frame > 1024 {
 		return nil, fmt.Errorf("riscv32: mixed frame %d exceeds bounded stack displacement", frame)
 	}
@@ -45,6 +71,7 @@ func CompileMixedModuleFunction(ft *wasm.CompType, locals []wasm.LocalRun, body 
 	if !a.PatchFarBranch(stackOK, a.Len()) {
 		return nil, fmt.Errorf("riscv32: mixed stack branch out of range")
 	}
+	must(a.Sw(rv.RA, rv.SP, saveOffset), "return address save")
 	for i := uint16(0); i < plan.ParameterSlots; i++ {
 		must(a.Sw(rv.A0+rv.Reg(i), rv.SP, off(i)), "parameter store")
 	}
@@ -55,6 +82,7 @@ func CompileMixedModuleFunction(ft *wasm.CompType, locals []wasm.LocalRun, body 
 	must(a.Lw(rv.T0, rvContextReg, embedded32.ContextCancelCellOffset), "cancel cell")
 	must(a.Lw(rv.T0, rv.T0, 0), "cancel value")
 	clear := a.FarBcond(rv.T0, rv.Zero, rv.CondEQ, branchScratch)
+	must(a.Lw(rv.RA, rv.SP, saveOffset), "cancel return address restore")
 	must(a.Addi(rv.SP, rv.SP, frame), "cancel frame release")
 	must(a.Lw(rv.T1, rvContextReg, embedded32.ContextTrapCellOffset), "cancel trap cell")
 	a.MovImm32(rv.T0, uint32(embedded32.TrapCanceled))
@@ -205,6 +233,52 @@ func CompileMixedModuleFunction(ft *wasm.CompType, locals []wasm.LocalRun, body 
 				a.Or(rv.T0, rv.T0, rv.T1)
 				must(a.Sw(rv.T0, rv.SP, off(op.Dst)+i*4), "bitselect result")
 			}
+		case shared.MixedCall:
+			if relocSink == nil {
+				return nil, fmt.Errorf("riscv32: mixed call has no relocation sink")
+			}
+			argReg := uint16(0)
+			for _, arg := range op.Args {
+				width, _ := shared.MixedValueSlots(arg.Type)
+				for i := uint8(0); i < width; i++ {
+					if argReg >= 8 {
+						return nil, fmt.Errorf("riscv32: mixed call target %d exceeds 8 argument slots", op.Target)
+					}
+					must(a.Lw(rv.A0+rv.Reg(argReg), rv.SP, off(arg.Slot)+int32(i)*4), "call argument")
+					argReg++
+				}
+			}
+			at := a.FarCall(branchScratch)
+			*relocSink = append(*relocSink, callReloc{at: at, target: int(op.Target)})
+			resultReg := uint16(0)
+			for _, result := range op.Results {
+				width, _ := shared.MixedValueSlots(result.Type)
+				for i := uint8(0); i < width; i++ {
+					if resultReg >= 8 {
+						return nil, fmt.Errorf("riscv32: mixed call target %d exceeds 8 result slots", op.Target)
+					}
+					must(a.Sw(rv.A0+rv.Reg(resultReg), rv.SP, off(result.Slot)+int32(i)*4), "call result")
+					resultReg++
+				}
+			}
+			must(a.Lw(rv.T0, rvContextReg, embedded32.ContextTrapCellOffset), "call trap cell")
+			must(a.Lw(rv.T0, rv.T0, 0), "call trap value")
+			callOK := a.FarBcond(rv.T0, rv.Zero, rv.CondEQ, branchScratch)
+			must(a.Lw(rv.RA, rv.SP, saveOffset), "trapping call return address restore")
+			must(a.Addi(rv.SP, rv.SP, frame), "trapping call frame release")
+			a.MovImm32(rv.A0, 0)
+			a.Ret()
+			if !a.PatchFarBranch(callOK, a.Len()) {
+				return nil, fmt.Errorf("riscv32: mixed call trap branch out of range")
+			}
+		case shared.MixedUnreachable:
+			must(a.Lw(rv.T1, rvContextReg, embedded32.ContextTrapCellOffset), "unreachable trap cell")
+			a.MovImm32(rv.T0, uint32(embedded32.TrapUnreachable))
+			must(a.Sw(rv.T0, rv.T1, 0), "unreachable trap write")
+			must(a.Lw(rv.RA, rv.SP, saveOffset), "unreachable return address restore")
+			must(a.Addi(rv.SP, rv.SP, frame), "unreachable frame release")
+			a.MovImm32(rv.A0, 0)
+			a.Ret()
 		default:
 			return nil, fmt.Errorf("riscv32: unsupported mixed operation %d", op.Kind)
 		}
@@ -218,6 +292,7 @@ func CompileMixedModuleFunction(ft *wasm.CompType, locals []wasm.LocalRun, body 
 			resultReg++
 		}
 	}
+	must(a.Lw(rv.RA, rv.SP, saveOffset), "return address restore")
 	must(a.Addi(rv.SP, rv.SP, frame), "frame release")
 	a.Ret()
 	return a.B, nil

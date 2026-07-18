@@ -33,7 +33,9 @@ func CompileModuleWith(m *wasm.Module, opts ModuleCompileOptions) (*CompiledModu
 			relocs[funcIdx] = r
 			return code, err
 		}
-		return compileModuleFunction(ft, locals, body)
+		code, r, err := compileModuleFunction(m, ft, locals, body)
+		relocs[funcIdx] = r
+		return code, err
 	})
 	if err != nil {
 		return nil, err
@@ -50,23 +52,35 @@ func CompileModuleWith(m *wasm.Module, opts ModuleCompileOptions) (*CompiledModu
 	return cm, nil
 }
 
-func compileModuleFunction(ft *wasm.CompType, locals []wasm.LocalRun, body []byte) ([]byte, error) {
+func compileModuleFunction(m *wasm.Module, ft *wasm.CompType, locals []wasm.LocalRun, body []byte) ([]byte, []callReloc, error) {
 	if homogeneousFunction(ft, locals, wasm.I32, true) {
-		return nil, fmt.Errorf("internal i32 module compiler dispatch")
+		return nil, nil, fmt.Errorf("internal i32 module compiler dispatch")
 	}
 	if homogeneousFunction(ft, locals, wasm.F32, false) {
-		return CompileF32BitFunction(len(ft.Params), body)
+		code, err := CompileF32BitFunction(len(ft.Params), body)
+		return code, nil, err
 	}
 	if homogeneousFunction(ft, locals, wasm.I64, false) {
-		return CompileI64Function(len(ft.Params), body)
+		code, err := CompileI64Function(len(ft.Params), body)
+		return code, nil, err
 	}
 	if homogeneousFunction(ft, locals, wasm.F64, false) {
-		return CompileF64BitFunction(len(ft.Params), body)
+		code, err := CompileF64BitFunction(len(ft.Params), body)
+		return code, nil, err
 	}
 	if homogeneousFunction(ft, locals, wasm.V128, false) {
-		return CompileV128Function(len(ft.Params), body)
+		code, err := CompileV128Function(len(ft.Params), body)
+		return code, nil, err
 	}
-	return CompileMixedModuleFunction(ft, locals, body)
+	return compileMixedModuleFunction(m, ft, locals, body)
+}
+
+func usesMixedModuleCompiler(ft *wasm.CompType, locals []wasm.LocalRun) bool {
+	return !homogeneousFunction(ft, locals, wasm.I32, true) &&
+		!homogeneousFunction(ft, locals, wasm.F32, false) &&
+		!homogeneousFunction(ft, locals, wasm.I64, false) &&
+		!homogeneousFunction(ft, locals, wasm.F64, false) &&
+		!homogeneousFunction(ft, locals, wasm.V128, false)
 }
 
 func homogeneousFunction(ft *wasm.CompType, locals []wasm.LocalRun, typ wasm.ValType, allowVoid bool) bool {

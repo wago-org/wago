@@ -247,7 +247,13 @@ get/set/tee, complete drops, i32 arithmetic/logic, i64 add/sub/logic, raw-bit
 f32/f64 sign operations, and direct v128 bitwise plus i32x4 add/sub operations.
 The initial internal register ABI carries up to four serialized parameter/result
 slots on Arm and eight on RV32; larger signatures reject pending stack arguments.
-It
+Mixed functions now stage complete arguments from their slot frames, preserve
+live wide values, relocate direct mixed-to-mixed calls, return ordered multiple
+results, and propagate nested traps without publishing partial values. Return
+addresses are held in fixed frame slots, so nested and recursive mixed calls use
+the same bounded native-stack checks as scalar calls. Calls into legacy
+homogeneous beachheads remain rejected until those bodies use the final module
+ABI. It
 reconstructs validated local declarations, records bounded per-function
 offset/size plus serialized parameter/result slot metadata,
 performs conservative code-arena capacity preflight before code generation, and
@@ -276,8 +282,10 @@ across calls, relocates direct calls module-wide, supports recursion, and checks
 the trap cell after nested returns. Stack exhaustion writes a distinct canonical
 trap before any callee-save state is exposed. Mixed-width signatures and locals
 now use exact bounded stack frames with entry cancellation and stack-limit
-checks. Mixed-width direct calls, indirect and imported calls, and wide
-structured control remain outside this module-wide slice.
+checks. Direct mixed-width calls and multiple results are now implemented for the
+register-slot ABI. Stack arguments, indirect and imported calls, calls into
+legacy homogeneous beachheads, and wide structured control remain outside this
+module-wide slice.
 
 Module metadata now retains local i32 globals with exact mutability and constant
 initial values. Instantiation initializes bounded caller-provided 32-bit cells,
@@ -294,7 +302,7 @@ and starts active segments dropped. `ContextABI` now publishes a stable array of
 12-byte target data descriptors, and normal i32 functions execute preflighted
 `memory.init` plus idempotent `data.drop` directly against those descriptors.
 
-This is still not public backend admission. Pair/quad control merges and calls
-in the mixed-width module compiler, wide globals/tables/references, generated-
+This is still not public backend admission. Pair/quad structured-control
+merges, stack-argument calls, wide globals/tables/references, generated-
 code entry trampolines, firmware linking and transport, and Pico 2 hardware
 qualification remain to be implemented and measured.
