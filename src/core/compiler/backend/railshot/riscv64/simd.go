@@ -621,6 +621,215 @@ func (f *fn) i8x16Popcnt() {
 	f.pushV128Pair(p)
 }
 
+func (f *fn) clampIntegerLane(x, bound Reg, width int, signed bool) {
+	if signed {
+		max := uint64(1)<<(width-1) - 1
+		min := -int64(uint64(1) << (width - 1))
+		f.a.MovImm64(bound, max)
+		f.a.CmpReg64(x, bound)
+		f.a.Csel64(x, bound, x, condG)
+		f.a.MovImm64(bound, uint64(min))
+		f.a.CmpReg64(x, bound)
+		f.a.Csel64(x, bound, x, condL)
+		return
+	}
+	f.a.MovImm64(bound, swarLaneMask(width))
+	f.a.CmpReg64(x, bound)
+	f.a.Csel64(x, bound, x, condA)
+}
+
+func (f *fn) integerSaturating(width int, signed, sub bool) {
+	be, ae := f.popValue(), f.popValue()
+	b := f.materializeV128(be)
+	a := f.materializeV128(ae)
+	out := f.allocV128Pair(a.mask().union(b.mask()))
+	f.a.MovImm64(out.lo, 0)
+	f.a.MovImm64(out.hi, 0)
+	x := f.allocReg(a.mask().union(b.mask()).union(out.mask()))
+	y := f.allocReg(a.mask().union(b.mask()).union(out.mask()).add(x))
+	bound := f.allocReg(a.mask().union(b.mask()).union(out.mask()).add(x).add(y))
+	for lane := 0; lane < 128/width; lane++ {
+		f.extractLaneTo(x, a, lane, width, signed)
+		f.extractLaneTo(y, b, lane, width, signed)
+		if sub && !signed {
+			f.a.CmpReg64(x, y)
+			f.a.Sub64(bound, x, y)
+			f.a.Csel64(x, ZR, bound, condB)
+		} else {
+			if sub {
+				f.a.Sub64(x, x, y)
+			} else {
+				f.a.Add64(x, x, y)
+			}
+			f.clampIntegerLane(x, bound, width, signed)
+		}
+		f.insertLaneFrom(out, lane, width, x)
+	}
+	f.release(bound)
+	f.release(y)
+	f.release(x)
+	f.releaseV128(b)
+	f.releaseV128(a)
+	f.pushV128Pair(out)
+}
+
+func (f *fn) integerNarrow(srcWidth int, signedOut bool) {
+	be, ae := f.popValue(), f.popValue()
+	b := f.materializeV128(be)
+	a := f.materializeV128(ae)
+	dstWidth := srcWidth / 2
+	out := f.allocV128Pair(a.mask().union(b.mask()))
+	f.a.MovImm64(out.lo, 0)
+	f.a.MovImm64(out.hi, 0)
+	x := f.allocReg(a.mask().union(b.mask()).union(out.mask()))
+	bound := f.allocReg(a.mask().union(b.mask()).union(out.mask()).add(x))
+	lanes := 128 / srcWidth
+	for lane := 0; lane < lanes*2; lane++ {
+		src, srcLane := a, lane
+		if lane >= lanes {
+			src, srcLane = b, lane-lanes
+		}
+		f.extractLaneTo(x, src, srcLane, srcWidth, true)
+		if !signedOut {
+			f.a.CmpImm64(x, 0)
+			f.a.Csel64(x, ZR, x, condL)
+		}
+		f.clampIntegerLane(x, bound, dstWidth, signedOut)
+		f.insertLaneFrom(out, lane, dstWidth, x)
+	}
+	f.release(bound)
+	f.release(x)
+	f.releaseV128(b)
+	f.releaseV128(a)
+	f.pushV128Pair(out)
+}
+
+func (f *fn) integerExtend(srcWidth int, signed, high bool) {
+	e := f.popValue()
+	v := f.materializeV128(e)
+	dstWidth := srcWidth * 2
+	out := f.allocV128Pair(v.mask())
+	f.a.MovImm64(out.lo, 0)
+	f.a.MovImm64(out.hi, 0)
+	x := f.allocReg(v.mask().union(out.mask()))
+	lanes := 128 / dstWidth
+	start := 0
+	if high {
+		start = lanes
+	}
+	for lane := 0; lane < lanes; lane++ {
+		f.extractLaneTo(x, v, start+lane, srcWidth, signed)
+		f.insertLaneFrom(out, lane, dstWidth, x)
+	}
+	f.release(x)
+	f.releaseV128(v)
+	f.pushV128Pair(out)
+}
+
+func (f *fn) integerExtmul(srcWidth int, signed, high bool) {
+	be, ae := f.popValue(), f.popValue()
+	b := f.materializeV128(be)
+	a := f.materializeV128(ae)
+	dstWidth := srcWidth * 2
+	out := f.allocV128Pair(a.mask().union(b.mask()))
+	f.a.MovImm64(out.lo, 0)
+	f.a.MovImm64(out.hi, 0)
+	x := f.allocReg(a.mask().union(b.mask()).union(out.mask()))
+	y := f.allocReg(a.mask().union(b.mask()).union(out.mask()).add(x))
+	lanes := 128 / dstWidth
+	start := 0
+	if high {
+		start = lanes
+	}
+	for lane := 0; lane < lanes; lane++ {
+		f.extractLaneTo(x, a, start+lane, srcWidth, signed)
+		f.extractLaneTo(y, b, start+lane, srcWidth, signed)
+		f.a.Mul64(x, x, y)
+		f.insertLaneFrom(out, lane, dstWidth, x)
+	}
+	f.release(y)
+	f.release(x)
+	f.releaseV128(b)
+	f.releaseV128(a)
+	f.pushV128Pair(out)
+}
+
+func (f *fn) integerExtaddPairwise(srcWidth int, signed bool) {
+	e := f.popValue()
+	v := f.materializeV128(e)
+	dstWidth := srcWidth * 2
+	out := f.allocV128Pair(v.mask())
+	f.a.MovImm64(out.lo, 0)
+	f.a.MovImm64(out.hi, 0)
+	x := f.allocReg(v.mask().union(out.mask()))
+	y := f.allocReg(v.mask().union(out.mask()).add(x))
+	for lane := 0; lane < 128/dstWidth; lane++ {
+		f.extractLaneTo(x, v, lane*2, srcWidth, signed)
+		f.extractLaneTo(y, v, lane*2+1, srcWidth, signed)
+		f.a.Add64(x, x, y)
+		f.insertLaneFrom(out, lane, dstWidth, x)
+	}
+	f.release(y)
+	f.release(x)
+	f.releaseV128(v)
+	f.pushV128Pair(out)
+}
+
+func (f *fn) i32x4DotI16x8S() {
+	be, ae := f.popValue(), f.popValue()
+	b := f.materializeV128(be)
+	a := f.materializeV128(ae)
+	out := f.allocV128Pair(a.mask().union(b.mask()))
+	f.a.MovImm64(out.lo, 0)
+	f.a.MovImm64(out.hi, 0)
+	x := f.allocReg(a.mask().union(b.mask()).union(out.mask()))
+	y := f.allocReg(a.mask().union(b.mask()).union(out.mask()).add(x))
+	sum := f.allocReg(a.mask().union(b.mask()).union(out.mask()).add(x).add(y))
+	for lane := 0; lane < 4; lane++ {
+		f.extractLaneTo(x, a, lane*2, 16, true)
+		f.extractLaneTo(y, b, lane*2, 16, true)
+		f.a.Mul64(sum, x, y)
+		f.extractLaneTo(x, a, lane*2+1, 16, true)
+		f.extractLaneTo(y, b, lane*2+1, 16, true)
+		f.a.Mul64(x, x, y)
+		f.a.Add64(sum, sum, x)
+		f.insertLaneFrom(out, lane, 32, sum)
+	}
+	f.release(sum)
+	f.release(y)
+	f.release(x)
+	f.releaseV128(b)
+	f.releaseV128(a)
+	f.pushV128Pair(out)
+}
+
+func (f *fn) i16x8Q15mulrSatS() {
+	be, ae := f.popValue(), f.popValue()
+	b := f.materializeV128(be)
+	a := f.materializeV128(ae)
+	out := f.allocV128Pair(a.mask().union(b.mask()))
+	f.a.MovImm64(out.lo, 0)
+	f.a.MovImm64(out.hi, 0)
+	x := f.allocReg(a.mask().union(b.mask()).union(out.mask()))
+	y := f.allocReg(a.mask().union(b.mask()).union(out.mask()).add(x))
+	bound := f.allocReg(a.mask().union(b.mask()).union(out.mask()).add(x).add(y))
+	for lane := 0; lane < 8; lane++ {
+		f.extractLaneTo(x, a, lane, 16, true)
+		f.extractLaneTo(y, b, lane, 16, true)
+		f.a.Mul64(x, x, y)
+		f.a.AddImm64(x, x, 0x4000)
+		f.a.AsrImm(x, x, 15, false)
+		f.clampIntegerLane(x, bound, 16, true)
+		f.insertLaneFrom(out, lane, 16, x)
+	}
+	f.release(bound)
+	f.release(y)
+	f.release(x)
+	f.releaseV128(b)
+	f.releaseV128(a)
+	f.pushV128Pair(out)
+}
+
 func integerCompareSpec(sub, base uint32) (cond Cond, signed bool) {
 	switch sub - base {
 	case 0:
@@ -744,36 +953,56 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 		f.integerAllTrue(8)
 	case 100:
 		f.integerBitmask(8)
+	case 101, 102:
+		f.integerNarrow(16, sub == 101)
 	case 107, 108, 109: // i8x16 shifts
 		f.integerShift(8, sub == 108, sub == 107)
 	case 110, 113: // i8x16 add/sub
 		f.packedAddSub(8, sub == 113)
+	case 111, 112, 114, 115: // i8x16 saturating add/sub
+		f.integerSaturating(8, sub == 111 || sub == 114, sub >= 114)
 	case 118, 119, 120, 121: // i8x16 min/max
 		f.integerMinMax(8, sub == 118 || sub == 120, sub >= 120)
 	case 123:
 		f.integerAvgrU(8)
+	case 124, 125:
+		f.integerExtaddPairwise(8, sub == 124)
+	case 126, 127:
+		f.integerExtaddPairwise(16, sub == 126)
 	case 128, 129: // i16x8.abs/neg
 		f.integerUnary(16, sub == 128)
+	case 130:
+		f.i16x8Q15mulrSatS()
 	case 131:
 		f.integerAllTrue(16)
 	case 132:
 		f.integerBitmask(16)
+	case 133, 134:
+		f.integerNarrow(32, sub == 133)
+	case 135, 136, 137, 138:
+		f.integerExtend(8, sub == 135 || sub == 136, sub == 136 || sub == 138)
 	case 139, 140, 141: // i16x8 shifts
 		f.integerShift(16, sub == 140, sub == 139)
 	case 142, 145: // i16x8 add/sub
 		f.packedAddSub(16, sub == 145)
+	case 143, 144, 146, 147: // i16x8 saturating add/sub
+		f.integerSaturating(16, sub == 143 || sub == 146, sub >= 146)
 	case 149:
 		f.integerMul(16)
 	case 150, 151, 152, 153: // i16x8 min/max
 		f.integerMinMax(16, sub == 150 || sub == 152, sub >= 152)
 	case 155:
 		f.integerAvgrU(16)
+	case 156, 157, 158, 159:
+		f.integerExtmul(8, sub == 156 || sub == 157, sub == 157 || sub == 159)
 	case 160, 161: // i32x4.abs/neg
 		f.integerUnary(32, sub == 160)
 	case 163:
 		f.integerAllTrue(32)
 	case 164:
 		f.integerBitmask(32)
+	case 167, 168, 169, 170:
+		f.integerExtend(16, sub == 167 || sub == 168, sub == 168 || sub == 170)
 	case 171, 172, 173: // i32x4 shifts
 		f.integerShift(32, sub == 172, sub == 171)
 	case 174, 177: // i32x4 add/sub
@@ -782,12 +1011,18 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 		f.integerMul(32)
 	case 182, 183, 184, 185: // i32x4 min/max
 		f.integerMinMax(32, sub == 182 || sub == 184, sub >= 184)
+	case 186:
+		f.i32x4DotI16x8S()
+	case 188, 189, 190, 191:
+		f.integerExtmul(16, sub == 188 || sub == 189, sub == 189 || sub == 191)
 	case 192, 193: // i64x2.abs/neg
 		f.integerUnary(64, sub == 192)
 	case 195:
 		f.integerAllTrue(64)
 	case 196:
 		f.integerBitmask(64)
+	case 199, 200, 201, 202:
+		f.integerExtend(32, sub == 199 || sub == 200, sub == 200 || sub == 202)
 	case 203, 204, 205: // i64x2 shifts
 		f.integerShift(64, sub == 204, sub == 203)
 	case 206, 209, 213:
@@ -804,6 +1039,10 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 		f.integerCompare(64, condLE, true)
 	case 219:
 		f.integerCompare(64, condGE, true)
+	case 220, 221, 222, 223:
+		f.integerExtmul(32, sub == 220 || sub == 221, sub == 221 || sub == 223)
+	case 273: // deterministic strict projection for relaxed q15 multiply
+		f.i16x8Q15mulrSatS()
 	default:
 		return fmt.Errorf("riscv64: SWAR SIMD opcode %d is not implemented", sub)
 	}

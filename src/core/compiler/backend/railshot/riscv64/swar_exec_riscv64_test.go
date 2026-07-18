@@ -390,6 +390,158 @@ func TestSWARIntegerCompareMinMaxMulAverageAndPopcntExec(t *testing.T) {
 	})
 }
 
+func swarPackLanes(width int, lanes ...uint64) (lo, hi uint64) {
+	for lane, value := range lanes {
+		shift := (lane * width) & 63
+		if lane*width < 64 {
+			lo |= (value & swarLaneMask(width)) << shift
+		} else {
+			hi |= (value & swarLaneMask(width)) << shift
+		}
+	}
+	return
+}
+
+func TestSWARSaturatingNarrowExtendMultiplyAndDotExec(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		width, lane int
+		sub         uint32
+		a, b        uint64
+		want        uint32
+	}{
+		{"i8-add-s-max", 8, 0, 111, 0x7f, 1, 0x7f},
+		{"i8-add-s-min", 8, 0, 111, 0x80, 0xff, 0x80},
+		{"i8-add-u", 8, 0, 112, 0xff, 1, 0xff},
+		{"i8-sub-s-min", 8, 0, 114, 0x80, 1, 0x80},
+		{"i8-sub-s-max", 8, 0, 114, 0x7f, 0xff, 0x7f},
+		{"i8-sub-u", 8, 0, 115, 0, 1, 0},
+		{"i16-add-s-max", 16, 0, 143, 0x7fff, 1, 0x7fff},
+		{"i16-add-u", 16, 0, 144, 0xffff, 1, 0xffff},
+		{"i16-sub-s-min", 16, 0, 146, 0x8000, 1, 0x8000},
+		{"i16-sub-u", 16, 0, 147, 0, 1, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := swarScalarModule(t, wasm.I32,
+				swarV128Const(tc.a, 0), swarV128Const(tc.b, 0), swarFD(tc.sub),
+				swarIntegerExtract(tc.width, tc.lane, false))
+			if got := runProductionSWARWrapper(t, m); uint32(got) != tc.want {
+				t.Fatalf("got %#x, want %#x", uint32(got), tc.want)
+			}
+		})
+	}
+
+	for _, tc := range []struct {
+		name               string
+		srcWidth, dstWidth int
+		sub                uint32
+		aLo, aHi, bLo, bHi uint64
+		lane               int
+		want               uint32
+	}{
+		{"i8-narrow-s-a", 16, 8, 101, 0x0000000000007fff, 0, 0, 0, 0, 0x7f},
+		{"i8-narrow-s-b", 16, 8, 101, 0, 0, 0x0000000000008000, 0, 8, 0x80},
+		{"i8-narrow-u-negative", 16, 8, 102, 0xffff, 0, 0, 0, 0, 0},
+		{"i8-narrow-u-high", 16, 8, 102, 300, 0, 0, 0, 0, 0xff},
+		{"i16-narrow-s", 32, 16, 133, 0x000000007fffffff, 0, 0, 0, 0, 0x7fff},
+		{"i16-narrow-u", 32, 16, 134, 0xffffffff, 0, 0, 0, 0, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := swarScalarModule(t, wasm.I32,
+				swarV128Const(tc.aLo, tc.aHi), swarV128Const(tc.bLo, tc.bHi), swarFD(tc.sub),
+				swarIntegerExtract(tc.dstWidth, tc.lane, false))
+			if got := runProductionSWARWrapper(t, m); uint32(got) != tc.want {
+				t.Fatalf("got %#x, want %#x", uint32(got), tc.want)
+			}
+		})
+	}
+
+	i8Lo, i8Hi := swarPackLanes(8, 0x80, 2, 3, 4, 5, 6, 7, 8, 0xff, 10, 11, 12, 13, 14, 15, 0x7f)
+	i16Lo, i16Hi := swarPackLanes(16, 0x8000, 2, 3, 4, 0xffff, 6, 7, 0x7fff)
+	for _, tc := range []struct {
+		name       string
+		sub        uint32
+		lo, hi     uint64
+		dstWidth   int
+		lane       int
+		want       uint64
+		resultType wasm.ValType
+	}{
+		{"i16-extend-low-i8-s", 135, i8Lo, i8Hi, 16, 0, 0xff80, wasm.I32},
+		{"i16-extend-high-i8-u", 138, i8Lo, i8Hi, 16, 0, 0xff, wasm.I32},
+		{"i32-extend-low-i16-s", 167, i16Lo, i16Hi, 32, 0, 0xffff8000, wasm.I32},
+		{"i32-extend-high-i16-u", 170, i16Lo, i16Hi, 32, 0, 0xffff, wasm.I32},
+		{"i64-extend-low-i32-s", 199, 0x00000000ffffffff, 0, 64, 0, ^uint64(0), wasm.I64},
+		{"i64-extend-high-i32-u", 202, 0, 0x00000000ffffffff, 64, 0, 0xffffffff, wasm.I64},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := swarScalarModule(t, tc.resultType,
+				swarV128Const(tc.lo, tc.hi), swarFD(tc.sub), swarIntegerExtract(tc.dstWidth, tc.lane, false))
+			got := runProductionSWARWrapper(t, m)
+			if tc.dstWidth < 64 {
+				got = uint64(uint32(got))
+			}
+			if got != tc.want {
+				t.Fatalf("got %#x, want %#x", got, tc.want)
+			}
+		})
+	}
+
+	for _, tc := range []struct {
+		name               string
+		sub                uint32
+		aLo, aHi, bLo, bHi uint64
+		dstWidth, lane     int
+		want               uint64
+		resultType         wasm.ValType
+	}{
+		{"i16-extmul-low-i8-s", 156, 0x80, 0, 2, 0, 16, 0, 0xff00, wasm.I32},
+		{"i16-extmul-high-i8-u", 159, 0, 0xff, 0, 2, 16, 0, 510, wasm.I32},
+		{"i32-extmul-low-i16-s", 188, 0x8000, 0, 2, 0, 32, 0, 0xffff0000, wasm.I32},
+		{"i64-extmul-low-i32-u", 222, 0xffffffff, 0, 2, 0, 64, 0, 0x1fffffffe, wasm.I64},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := swarScalarModule(t, tc.resultType,
+				swarV128Const(tc.aLo, tc.aHi), swarV128Const(tc.bLo, tc.bHi), swarFD(tc.sub),
+				swarIntegerExtract(tc.dstWidth, tc.lane, false))
+			got := runProductionSWARWrapper(t, m)
+			if tc.dstWidth < 64 {
+				got = uint64(uint32(got))
+			}
+			if got != tc.want {
+				t.Fatalf("got %#x, want %#x", got, tc.want)
+			}
+		})
+	}
+
+	t.Run("pairwise-and-dot", func(t *testing.T) {
+		lo, hi := swarPackLanes(8, 0xff, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16)
+		m := swarScalarModule(t, wasm.I32, swarV128Const(lo, hi), swarFD(124), swarIntegerExtract(16, 0, false))
+		if got := runProductionSWARWrapper(t, m); uint32(got) != 1 { // -1 + 2
+			t.Fatalf("pairwise got %#x", uint32(got))
+		}
+
+		aLo, aHi := swarPackLanes(16, 2, 3, 4, 5, 6, 7, 8, 9)
+		bLo, bHi := swarPackLanes(16, 10, 20, 30, 40, 50, 60, 70, 80)
+		m = swarScalarModule(t, wasm.I32,
+			swarV128Const(aLo, aHi), swarV128Const(bLo, bHi), swarFD(186), swarIntegerExtract(32, 0, false))
+		if got := runProductionSWARWrapper(t, m); uint32(got) != 80 { // 2*10 + 3*20
+			t.Fatalf("dot got %d", got)
+		}
+	})
+
+	for _, sub := range []uint32{130, 273} {
+		t.Run("q15", func(t *testing.T) {
+			m := swarScalarModule(t, wasm.I32,
+				swarV128Const(0x8000, 0), swarV128Const(0x8000, 0), swarFD(sub),
+				swarIntegerExtract(16, 0, false))
+			if got := runProductionSWARWrapper(t, m); uint32(got) != 0x7fff {
+				t.Fatalf("got %#x", uint32(got))
+			}
+		})
+	}
+}
+
 func TestSWARV128LocalControlAndSelectExec(t *testing.T) {
 	t.Run("local", func(t *testing.T) {
 		body := []byte{1, 1, 0x7b} // one v128 local
