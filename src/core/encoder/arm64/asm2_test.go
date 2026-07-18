@@ -316,6 +316,7 @@ func TestPortNeon16bLogical(t *testing.T) {
 		{"sxtl2 v0.2d,v1.4s", func(a *Asm) { a.NeonSxtl2DfromS(X0, X1) }, 0x4f20a420},
 		{"uxtl v0.2d,v1.2s", func(a *Asm) { a.NeonUxtlDfromS(X0, X1) }, 0x2f20a420},
 		{"uxtl2 v0.2d,v1.4s", func(a *Asm) { a.NeonUxtl2DfromS(X0, X1) }, 0x6f20a420},
+		{"xtn v0.8b,v1.8h", func(a *Asm) { a.NeonXtnBfromH(X0, X1) }, 0x0e212820},
 		{"sqxtn v0.8b,v1.8h", func(a *Asm) { a.NeonSqxtnBfromH(X0, X1) }, 0x0e214820},
 		{"sqxtn2 v0.16b,v2.8h", func(a *Asm) { a.NeonSqxtn2BfromH(X0, X2) }, 0x4e214840},
 		{"sqxtun v3.8b,v4.8h", func(a *Asm) { a.NeonSqxtunBfromH(X3, X4) }, 0x2e212883},

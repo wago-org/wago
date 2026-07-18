@@ -71,6 +71,7 @@ if [ "${SIMD_ONLY:-0}" != 1 ]; then
 	build blake-as assembly/wago-bench.ts blake-as --runtime stub
 	build utf-as   assembly/wago-bench.ts utf-as   --runtime stub
 	build_local xjb-mulhi.ts xjb-mulhi
+	build_local swar-pack-parse.ts swar-pack-parse
 fi
 
 # SIMD twins use checked-in Wago entrypoints so the corpus is reproducible.
