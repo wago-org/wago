@@ -27,8 +27,14 @@ func CompileMixedModuleFunction(ft *wasm.CompType, locals []wasm.LocalRun, body 
 }
 
 func compileMixedModuleFunction(m *wasm.Module, ft *wasm.CompType, locals []wasm.LocalRun, body []byte) ([]byte, []callReloc, error) {
-	plan, err := shared.BuildMixedPlanWithCalls(ft, locals, body, func(index uint32) (*wasm.CompType, bool) {
+	plan, err := shared.BuildMixedPlanWithResolvers(ft, locals, body, func(index uint32) (*wasm.CompType, bool) {
 		return m.FuncSignature(index)
+	}, func(index uint32) (wasm.ValType, bool, bool) {
+		if int(index) >= len(m.Globals) {
+			return wasm.ValType{}, false, false
+		}
+		global := m.Globals[index]
+		return global.Type.Type, global.Type.Mutable, true
 	})
 	if err != nil {
 		return nil, nil, err
@@ -292,6 +298,18 @@ func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc) ([]byte, erro
 			}
 			if !a.PatchFarBranch(selectedLeft, a.Len()) {
 				return nil, fmt.Errorf("riscv32: mixed select branch out of range")
+			}
+		case shared.MixedGlobalGet, shared.MixedGlobalSet:
+			if op.Target > 511 {
+				return nil, fmt.Errorf("riscv32: mixed global index %d exceeds direct displacement", op.Target)
+			}
+			must(a.Lw(rv.T0, rvContextReg, embedded32.ContextGlobalsBaseOffset), "global base")
+			if op.Kind == shared.MixedGlobalGet {
+				must(a.Lw(rv.T1, rv.T0, int32(op.Target*4)), "global.get")
+				must(a.Sw(rv.T1, rv.SP, off(op.Dst)), "global.get result")
+			} else {
+				must(a.Lw(rv.T1, rv.SP, off(op.Left)), "global.set value")
+				must(a.Sw(rv.T1, rv.T0, int32(op.Target*4)), "global.set")
 			}
 		case shared.MixedBranchZero, shared.MixedBranchNonzero:
 			must(a.Lw(rv.T0, rv.SP, off(op.Third)), "branch condition")

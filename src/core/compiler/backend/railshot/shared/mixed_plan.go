@@ -46,6 +46,8 @@ const (
 	MixedBranchNonzero
 	MixedJump
 	MixedPollCancellation
+	MixedGlobalGet
+	MixedGlobalSet
 )
 
 type MixedOp struct {
@@ -97,9 +99,10 @@ func MixedValueSlots(typ wasm.ValType) (uint8, bool) {
 }
 
 type MixedSignatureResolver func(uint32) (*wasm.CompType, bool)
+type MixedGlobalResolver func(uint32) (wasm.ValType, bool, bool)
 
 func BuildMixedPlan(ft *wasm.CompType, locals []wasm.LocalRun, body []byte) (*MixedPlan, error) {
-	return BuildMixedPlanWithCalls(ft, locals, body, nil)
+	return BuildMixedPlanWithResolvers(ft, locals, body, nil, nil)
 }
 
 func mixedEncodedValueType(encoded byte) (wasm.ValType, bool) {
@@ -120,6 +123,10 @@ func mixedEncodedValueType(encoded byte) (wasm.ValType, bool) {
 }
 
 func BuildMixedPlanWithCalls(ft *wasm.CompType, locals []wasm.LocalRun, body []byte, resolve MixedSignatureResolver) (*MixedPlan, error) {
+	return BuildMixedPlanWithResolvers(ft, locals, body, resolve, nil)
+}
+
+func BuildMixedPlanWithResolvers(ft *wasm.CompType, locals []wasm.LocalRun, body []byte, resolve MixedSignatureResolver, resolveGlobal MixedGlobalResolver) (*MixedPlan, error) {
 	if ft == nil || ft.Kind != wasm.CompFunc {
 		return nil, fmt.Errorf("mixed function has invalid type")
 	}
@@ -482,6 +489,38 @@ func BuildMixedPlanWithCalls(ft *wasm.CompType, locals []wasm.LocalRun, body []b
 				}
 				v := stack[len(stack)-1]
 				p.Ops = append(p.Ops, MixedOp{Kind: MixedCopy, Dst: local.Slot, Left: v.Slot, Width: local.Width})
+			}
+		case 0x23, 0x24: // global.get/set
+			index, err := r.U32()
+			if err != nil {
+				return nil, err
+			}
+			if resolveGlobal == nil {
+				return nil, fmt.Errorf("mixed global operation requires module globals")
+			}
+			typ, mutable, ok := resolveGlobal(index)
+			if !ok {
+				return nil, fmt.Errorf("mixed global index %d is invalid", index)
+			}
+			width, supported := MixedValueSlots(typ)
+			if !supported || width != 1 {
+				return nil, fmt.Errorf("mixed global %d type %s is not yet supported", index, typ)
+			}
+			if op == 0x23 {
+				out, err := push(typ)
+				if err != nil {
+					return nil, err
+				}
+				p.Ops = append(p.Ops, MixedOp{Kind: MixedGlobalGet, Dst: out.Slot, Target: index, Width: width})
+			} else {
+				if !mutable {
+					return nil, fmt.Errorf("mixed global %d is immutable", index)
+				}
+				value, err := pop(typ)
+				if err != nil {
+					return nil, err
+				}
+				p.Ops = append(p.Ops, MixedOp{Kind: MixedGlobalSet, Left: value.Slot, Target: index, Width: width})
 			}
 		case 0x41:
 			value, err := r.I32()

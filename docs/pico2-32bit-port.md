@@ -296,8 +296,9 @@ branches, and `br_table` value merges remain outside this module-wide slice.
 
 Module metadata now retains local i32 globals with exact mutability and constant
 initial values. Instantiation initializes bounded caller-provided 32-bit cells,
-`ContextABI` publishes their target base address, and normal generated i32
-functions execute `global.get`/`global.set` with immutable-set rejection.
+`ContextABI` publishes their target base address, and both scalar i32 and mixed
+frame functions execute `global.get`/`global.set` with immutable-set rejection.
+Mixed access preserves surrounding pair/quad operands in their frame slots.
 
 The embedded runtime now also provides complete preflighted `memory.copy`,
 `memory.fill`, passive `memory.init`, and idempotent `data.drop` semantics.
