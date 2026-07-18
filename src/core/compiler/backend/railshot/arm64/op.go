@@ -24,6 +24,7 @@ const (
 	opRotl
 	opRotr
 	opMul
+	opMulHighU // high 64 bits of an unsigned 64x64 product
 	opDivU
 	opDivS
 	opRemU
@@ -33,6 +34,7 @@ const (
 	opClz
 	opCtz
 	opPopcnt
+	opSWARWiden4 // zero-extend four packed bytes to four packed u16 lanes
 
 	// Integer width conversions (unary).
 	opWrap   // i32 <- i64 (truncate low 32, zero upper)
@@ -94,7 +96,7 @@ func isCompare(o wOp) bool {
 
 func isUnary(o wOp) bool {
 	switch o {
-	case opClz, opCtz, opPopcnt:
+	case opClz, opCtz, opPopcnt, opSWARWiden4:
 		return true
 	}
 	return false

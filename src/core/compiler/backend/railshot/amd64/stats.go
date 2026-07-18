@@ -45,6 +45,9 @@ var (
 	// knownBitsEnabled gates the bounded Souper-style bit estimator and the
 	// packed-word mask-test fusion built on the same deferred-tree facts.
 	knownBitsEnabled = os.Getenv("WAGO_NO_KNOWN_BITS") != "1"
+	// swarIdiomsEnabled gates exact, bounded recognition of open-coded packed-byte
+	// algorithms. WAGO_NO_SWAR_IDIOMS=1 is the A/B oracle.
+	swarIdiomsEnabled = os.Getenv("WAGO_NO_SWAR_IDIOMS") != "1"
 
 	// fcmpFuseEnabled gates float compare→branch fusion: an ordered float relation
 	// (lt/le/gt/ge) directly before if/br_if lowers to UCOMIS + a NaN-safe Jcc

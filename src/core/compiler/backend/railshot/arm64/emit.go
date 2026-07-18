@@ -40,6 +40,8 @@ var aluTable = map[wOp]aluEnc{
 func (f *fn) condense(node *elem, dest Reg) Reg {
 	f.stats.addCondense()
 	switch {
+	case node.op == opMulHighU:
+		return f.condenseMulHighU(node, dest)
 	case isBinALU(node.op):
 		return f.condenseBinary(node, dest)
 	case isShift(node.op):
@@ -54,6 +56,39 @@ func (f *fn) condense(node *elem, dest Reg) Reg {
 		return f.condenseDivRem(node, dest)
 	}
 	panic("arm64: unsupported deferred op")
+}
+
+// condenseMulHighU lowers the curated xjb-as multiply-high idiom to AArch64's
+// single unsigned high-half multiply instruction.
+func (f *fn) condenseMulHighU(node *elem, dest Reg) Reg {
+	left, right := node.arg0, node.arg1
+	l, ownL := f.materializeRead(left)
+	f.pinned = f.pinned.add(l)
+	r, ownR := f.materializeRead(right)
+	f.pinned = f.pinned.remove(l)
+
+	result := dest
+	if result == regNone {
+		switch {
+		case ownL:
+			result = l
+		case ownR:
+			result = r
+		default:
+			result = f.allocReg(maskOf(l, r))
+		}
+	}
+	f.a.Umulh(result, l, r)
+	if ownL && result != l {
+		f.release(l)
+	}
+	if ownR && result != r {
+		f.release(r)
+	}
+	f.consumeBlockBelow(node)
+	f.occupy(node, result)
+	node.op = opNone
+	return result
 }
 
 // condenseConvert lowers the integer width conversions (wrap / sign- & zero-
@@ -938,6 +973,14 @@ func (f *fn) condenseUnary(node *elem, dest Reg) Reg {
 		f.a.Addv8b(vPop, vPop)        // horizontal sum of the byte lanes
 		f.a.FmovToGpr(result, vPop, false)
 		f.releaseF(vPop)
+	case opSWARWiden4:
+		// Reinterpret the low four bytes as lanes and zero-extend them to four
+		// halfwords. Only the low 64 result bits are transferred back.
+		v := f.allocFReg(0)
+		f.a.FmovFromGpr(v, src, true)
+		f.a.NeonUxtlHfromB(v, v)
+		f.a.FmovToGpr(result, v, true)
+		f.releaseF(v)
 	}
 	if srcOwned && result != src {
 		f.release(src)

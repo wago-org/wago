@@ -17,7 +17,7 @@ Legend: effort S/M/L · value ⬜ low · 🟦 medium · 🟩 high · ⭐ very hi
 
 ---
 
-## What's in place (updated 2026-07-03)
+## What's in place (updated 2026-07-17)
 
 The backend (`src/core/compiler/backend/railshot`) is the full WARP-architecture port: a
 single-pass x86-64 codegen over a valent-block operand stack (deferred-action trees,
@@ -66,6 +66,14 @@ condense engine) with an on-the-fly whole-register-file allocator. Landed, in ro
   to `TEST` (amd64) or `TST` (arm64), avoiding the temporary masked value
   (`swar-mask-test`). There is no solver, cache, persistent IR, or unbounded analysis on
   the compile path; `WAGO_NO_KNOWN_BITS=1` is the A/B oracle.
+- **Curated broadword idioms** — Minotaur's offline-discovery/online-selection split is
+  adopted without putting an SMT solver or e-graph in the JIT. Exact, bounded bytecode
+  matchers recognize (1) utf-as's four-byte-to-four-u16 SWAR widening tree and lower it
+  to `UXTL` on arm64 or `VPUNPCKLBW` on amd64, and (2) xjb-as's function-tail unsigned
+  64x64 multiply-high expansion and lower it to `UMULH` or the native `RDX:RAX` `MUL`.
+  The widening matcher proves its overwritten temporary dead before rewriting; the
+  multiply matcher requires the final function `end`. `WAGO_NO_SWAR_IDIOMS=1` disables
+  both for correctness and performance A/B checks.
 - **Scaled-index LEA fusion** — `add(x, shl(y, k≤3))` → `lea [x + y*2ᵏ]` (the
   AssemblyScript array-address shape).
 - **`br_table` jump tables** (old P7) — n≥5 dispatches through a RIP-relative offset
@@ -134,6 +142,25 @@ deser is now within 1.13× of WARP.
 per unit — **serialize now beats WARP (97)**; deser is 1.07× WARP (164). wago
 beats wazero (147/305) on both json directions. The serialize chase is closed;
 see R4.
+
+### Curated-idiom A/B (2026-07-17, Apple M4 Max, darwin/arm64)
+
+Five repeated 500 ms samples, explicit bounds. Medians are shown; compilation memory is
+unchanged because the matchers use the existing reader and deferred nodes.
+
+| workload | idioms off | idioms on | change | memory |
+|---|---:|---:|---:|---:|
+| utf-as backend compile | 100.0 us | 102.1 us | +2.1% | 178,256 B / 161 allocs (same) |
+| utf-as full compile | 240.8 us | 241.8 us | +0.4% | 228,522 B / 240 allocs (same) |
+| utf-as `convertN(200)` | 116.6 us | 107.0 us | **−8.2%** | 0 B / 0 allocs per call |
+| xjb fixture backend compile | 10.07 us | 9.46 us | **−6.1%** | 28,968 B / 53 allocs (same) |
+| xjb fixture full compile | 22.14 us | 21.28 us | **−3.9%** | 36,035 B / 111 allocs (same) |
+| native `mulhi64` execution | 5.17 ns | 4.54 ns | **−12.2%** | 0 B / 0 allocs per call |
+
+Generated function code shrinks by 16 B for utf-as's matched decoder function
+(3448→3432 B) and by 72 B for the xjb multiply-high export (168→96 B). The isolated
+ARM64 widen microbenchmark is smaller but slower (4.25→4.57 ns); the real utf-as result
+is the acceptance signal because the widened value feeds its surrounding decoder loop.
 
 ---
 

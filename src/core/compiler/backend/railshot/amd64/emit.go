@@ -36,6 +36,8 @@ const (
 func (f *fn) condense(node *elem, dest Reg) Reg {
 	f.stats.addCondense()
 	switch {
+	case node.op == opMulHighU:
+		return f.condenseMulHighU(node, dest)
 	case isBinALU(node.op):
 		return f.condenseBinary(node, dest)
 	case isShift(node.op):
@@ -50,6 +52,37 @@ func (f *fn) condense(node *elem, dest Reg) Reg {
 		return f.condenseDivRem(node, dest)
 	}
 	panic("amd64: unsupported deferred op")
+}
+
+// condenseMulHighU lowers the curated xjb-as multiply-high idiom through x86's
+// fixed RDX:RAX unsigned multiply pair.
+func (f *fn) condenseMulHighU(node *elem, dest Reg) Reg {
+	f.spillIfUsed(RAX)
+	f.spillIfUsed(RDX)
+	f.pinned = f.pinned.add(RAX).add(RDX)
+
+	right := f.materialize(node.arg1)
+	if right == RAX || right == RDX {
+		safe := f.allocReg(0)
+		f.a.MovReg64(safe, right)
+		f.occupy(node.arg1, safe)
+		right = safe
+	}
+	f.pinned = f.pinned.add(right)
+	f.condenseInto(node.arg0, RAX)
+	f.a.Mul(right, true)
+	f.pinned = f.pinned.remove(right).remove(RAX).remove(RDX)
+	f.release(right)
+
+	result := RDX
+	if dest != regNone && dest != RDX {
+		f.a.MovReg64(dest, RDX)
+		result = dest
+	}
+	f.consumeBlockBelow(node)
+	f.occupy(node, result)
+	node.op = opNone
+	return result
 }
 
 // condenseConvert lowers the integer width conversions (wrap / sign- & zero-
@@ -597,6 +630,17 @@ func (f *fn) condenseUnary(node *elem, dest Reg) Reg {
 		f.a.Tzcnt(result, src, w)
 	case opPopcnt:
 		f.a.Popcnt(result, src, w)
+	case opSWARWiden4:
+		// Move the packed bytes to XMM, interleave them with zero bytes, and
+		// transfer the low four widened lanes back to the integer register.
+		v := f.allocFReg(0)
+		z := f.allocFReg(maskOf(v))
+		f.a.MovGprToXmm(v, src, true)
+		f.a.VPxor(z, z, z)
+		f.a.VPunpcklbw(v, v, z)
+		f.a.MovXmmToGpr(result, v, true)
+		f.releaseF(z)
+		f.releaseF(v)
 	}
 	if srcOwned && result != src {
 		f.release(src)
