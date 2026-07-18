@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"github.com/wago-org/wago/src/core/runtime/embedded32"
 )
 
 const MixedOperandSlotCapacity = 256
@@ -48,6 +49,7 @@ const (
 	MixedPollCancellation
 	MixedGlobalGet
 	MixedGlobalSet
+	MixedF64Helper
 )
 
 type MixedOp struct {
@@ -56,11 +58,14 @@ type MixedOp struct {
 	Left, Right uint16
 	Third       uint16
 	Width       uint8
+	Arity       uint8
+	InputWidth  uint8
 	Words       [4]uint32
 	Target      uint32
 	Args        []MixedValue
 	Results     []MixedValue
 	Label       int
+	HelperOp    uint32
 }
 
 type MixedValue struct {
@@ -241,6 +246,38 @@ func BuildMixedPlanWithResolvers(ft *wasm.CompType, locals []wasm.LocalRun, body
 			return err
 		}
 		p.Ops = append(p.Ops, MixedOp{Kind: kind, Dst: out.Slot, Left: left.Slot, Right: right.Slot})
+		return nil
+	}
+	helperUnary := func(op uint32, input, output wasm.ValType) error {
+		value, err := pop(input)
+		if err != nil {
+			return err
+		}
+		out, err := push(output)
+		if err != nil {
+			return err
+		}
+		width, _ := MixedValueSlots(output)
+		inputWidth, _ := MixedValueSlots(input)
+		p.Ops = append(p.Ops, MixedOp{Kind: MixedF64Helper, Dst: out.Slot, Left: value.Slot, Width: width, Arity: 1, InputWidth: inputWidth, HelperOp: op})
+		return nil
+	}
+	helperBinary := func(op uint32, input, output wasm.ValType) error {
+		right, err := pop(input)
+		if err != nil {
+			return err
+		}
+		left, err := pop(input)
+		if err != nil {
+			return err
+		}
+		out, err := push(output)
+		if err != nil {
+			return err
+		}
+		width, _ := MixedValueSlots(output)
+		inputWidth, _ := MixedValueSlots(input)
+		p.Ops = append(p.Ops, MixedOp{Kind: MixedF64Helper, Dst: out.Slot, Left: left.Slot, Right: right.Slot, Width: width, Arity: 2, InputWidth: inputWidth, HelperOp: op})
 		return nil
 	}
 
@@ -562,6 +599,30 @@ func BuildMixedPlanWithResolvers(ft *wasm.CompType, locals []wasm.LocalRun, body
 				return nil, err
 			}
 			p.Ops = append(p.Ops, MixedOp{Kind: MixedConst, Dst: out.Slot, Width: 2, Words: [4]uint32{binary.LittleEndian.Uint32(bits), binary.LittleEndian.Uint32(bits[4:])}})
+		case 0x61:
+			if err := helperBinary(uint32(embedded32.F64Eq), wasm.F64, wasm.I32); err != nil {
+				return nil, err
+			}
+		case 0x62:
+			if err := helperBinary(uint32(embedded32.F64Ne), wasm.F64, wasm.I32); err != nil {
+				return nil, err
+			}
+		case 0x63:
+			if err := helperBinary(uint32(embedded32.F64Lt), wasm.F64, wasm.I32); err != nil {
+				return nil, err
+			}
+		case 0x64:
+			if err := helperBinary(uint32(embedded32.F64Gt), wasm.F64, wasm.I32); err != nil {
+				return nil, err
+			}
+		case 0x65:
+			if err := helperBinary(uint32(embedded32.F64Le), wasm.F64, wasm.I32); err != nil {
+				return nil, err
+			}
+		case 0x66:
+			if err := helperBinary(uint32(embedded32.F64Ge), wasm.F64, wasm.I32); err != nil {
+				return nil, err
+			}
 		case 0x6a:
 			if err := binaryOp(MixedI32Add, wasm.I32); err != nil {
 				return nil, err
@@ -626,9 +687,114 @@ func BuildMixedPlanWithResolvers(ft *wasm.CompType, locals []wasm.LocalRun, body
 			if err := unary(MixedF64Neg, wasm.F64); err != nil {
 				return nil, err
 			}
+		case 0x9b:
+			if err := helperUnary(uint32(embedded32.F64Ceil), wasm.F64, wasm.F64); err != nil {
+				return nil, err
+			}
+		case 0x9c:
+			if err := helperUnary(uint32(embedded32.F64Floor), wasm.F64, wasm.F64); err != nil {
+				return nil, err
+			}
+		case 0x9d:
+			if err := helperUnary(uint32(embedded32.F64Trunc), wasm.F64, wasm.F64); err != nil {
+				return nil, err
+			}
+		case 0x9e:
+			if err := helperUnary(uint32(embedded32.F64Nearest), wasm.F64, wasm.F64); err != nil {
+				return nil, err
+			}
+		case 0x9f:
+			if err := helperUnary(uint32(embedded32.F64Sqrt), wasm.F64, wasm.F64); err != nil {
+				return nil, err
+			}
+		case 0xa0:
+			if err := helperBinary(uint32(embedded32.F64Add), wasm.F64, wasm.F64); err != nil {
+				return nil, err
+			}
+		case 0xa1:
+			if err := helperBinary(uint32(embedded32.F64Sub), wasm.F64, wasm.F64); err != nil {
+				return nil, err
+			}
+		case 0xa2:
+			if err := helperBinary(uint32(embedded32.F64Mul), wasm.F64, wasm.F64); err != nil {
+				return nil, err
+			}
+		case 0xa3:
+			if err := helperBinary(uint32(embedded32.F64Div), wasm.F64, wasm.F64); err != nil {
+				return nil, err
+			}
+		case 0xa4:
+			if err := helperBinary(uint32(embedded32.F64Min), wasm.F64, wasm.F64); err != nil {
+				return nil, err
+			}
+		case 0xa5:
+			if err := helperBinary(uint32(embedded32.F64Max), wasm.F64, wasm.F64); err != nil {
+				return nil, err
+			}
 		case 0xa6:
 			if err := binaryOp(MixedF64Copysign, wasm.F64); err != nil {
 				return nil, err
+			}
+		case 0xaa:
+			if err := helperUnary(uint32(embedded32.I32TruncF64S), wasm.F64, wasm.I32); err != nil {
+				return nil, err
+			}
+		case 0xab:
+			if err := helperUnary(uint32(embedded32.I32TruncF64U), wasm.F64, wasm.I32); err != nil {
+				return nil, err
+			}
+		case 0xb0:
+			if err := helperUnary(uint32(embedded32.I64TruncF64S), wasm.F64, wasm.I64); err != nil {
+				return nil, err
+			}
+		case 0xb1:
+			if err := helperUnary(uint32(embedded32.I64TruncF64U), wasm.F64, wasm.I64); err != nil {
+				return nil, err
+			}
+		case 0xb7:
+			if err := helperUnary(uint32(embedded32.F64ConvertI32S), wasm.I32, wasm.F64); err != nil {
+				return nil, err
+			}
+		case 0xb8:
+			if err := helperUnary(uint32(embedded32.F64ConvertI32U), wasm.I32, wasm.F64); err != nil {
+				return nil, err
+			}
+		case 0xb9:
+			if err := helperUnary(uint32(embedded32.F64ConvertI64S), wasm.I64, wasm.F64); err != nil {
+				return nil, err
+			}
+		case 0xba:
+			if err := helperUnary(uint32(embedded32.F64ConvertI64U), wasm.I64, wasm.F64); err != nil {
+				return nil, err
+			}
+		case 0xbb:
+			if err := helperUnary(uint32(embedded32.F64PromoteF32), wasm.F32, wasm.F64); err != nil {
+				return nil, err
+			}
+		case 0xfc:
+			sub, err := r.U32()
+			if err != nil {
+				return nil, err
+			}
+			switch sub {
+			case 2:
+				if err := helperUnary(uint32(embedded32.I32TruncSatF64S), wasm.F64, wasm.I32); err != nil {
+					return nil, err
+				}
+			case 3:
+				if err := helperUnary(uint32(embedded32.I32TruncSatF64U), wasm.F64, wasm.I32); err != nil {
+					return nil, err
+				}
+			case 6:
+				if err := helperUnary(uint32(embedded32.I64TruncSatF64S), wasm.F64, wasm.I64); err != nil {
+					return nil, err
+				}
+			case 7:
+				if err := helperUnary(uint32(embedded32.I64TruncSatF64U), wasm.F64, wasm.I64); err != nil {
+					return nil, err
+				}
+			default:
+				return nil, fmt.Errorf("mixed function unsupported 0xfc subopcode %d", sub)
 			}
 		case 0xfd:
 			sub, err := r.U32()

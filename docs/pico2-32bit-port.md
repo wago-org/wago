@@ -172,9 +172,14 @@ sequences execute under both QEMU targets. Context-aware division/remainder
 thunks cover all four signed/unsigned operations, preserve the defined signed
 remainder result for `min / -1`, and write distinct canonical divide-by-zero and
 signed-overflow traps. Normal function lowering still needs to reserve the
-context register and route the trapping opcodes through these thunks. More
-complex f64/SIMD operations use the complete helper ABI while measurements
-decide which additional instructions merit direct inline SWAR.
+context register and route the trapping opcodes through these thunks. Mixed module functions now construct the stable 32-byte f64 helper frame in
+their bounded native frame, dispatch through `ContextABI.HelperTable`, publish
+helper traps, and reload complete results. This path covers f64 rounding, square
+root, arithmetic, min/max, comparisons, i32/i64 conversion, promotion from f32,
+trapping truncation, and saturating truncation; bitwise f64 operations remain
+direct. More complex SIMD operations still use the complete helper ABI only in
+standalone thunks while normal mixed SIMD dispatch is wired next. Measurements
+decide which helper operations merit direct target-specific lowering.
 
 A shared fixed-capacity group allocator now owns one-, two-, and four-register
 values atomically. Allocation, exact ABI acquisition, release, LRU spill-victim
