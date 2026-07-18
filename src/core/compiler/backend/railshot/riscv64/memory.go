@@ -94,8 +94,11 @@ func (f *fn) emitInterruptCheck() {
 	}
 	f.ld64(X16, linMemReg, -int32(offTrapCellPtr))
 	f.ld32(X17, X16, 0)
-	f.cmpImm(X17, 0, false)
-	f.trapIf(condNE, trapInterrupted)
+	// Branch on the loaded value directly. Feeding X17 through the synthesized
+	// compare state would alias machineBranchScratch and let immediate
+	// materialization overwrite the value before the branch.
+	sc := f.scratchState()
+	sc.trapSites[trapInterrupted] = append(sc.trapSites[trapInterrupted], f.a.Cbnz64(X17))
 }
 
 // trapIf records a conditional branch to this function's shared trap stub for

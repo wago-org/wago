@@ -1,10 +1,11 @@
-//go:build ((linux && amd64) || arm64) && !tinygo
+//go:build ((linux && (amd64 || riscv64)) || arm64) && !tinygo
 
 package wago
 
 import (
 	"context"
 	"errors"
+	gruntime "runtime"
 	"testing"
 	"time"
 
@@ -102,9 +103,16 @@ func TestInvokeContextInterruptsHostCallLoop(t *testing.T) {
 	if elapsed := time.Since(started); elapsed > 5*time.Second {
 		t.Fatalf("cancellation took %v, want bounded interruption", elapsed)
 	}
-	// Prove the loop sailed past the historical 1<<20 host-call re-entry cap:
-	// interruption, not a synthetic bound, is what stopped it.
-	if calls <= 1<<20 {
+	// Prove native backends that predate the cap removal sail past the historical
+	// 1<<20 re-entry limit. RV64 never shipped that cap; under user-mode QEMU its
+	// host-call throughput is too low for this timing-based count to be meaningful,
+	// so the correctness gate there is that re-entry happened and cancellation —
+	// not a synthetic runtime error — terminated the loop.
+	if gruntime.GOARCH == "riscv64" {
+		if calls == 0 {
+			t.Fatal("host loop made no calls before cancellation")
+		}
+	} else if calls <= 1<<20 {
 		t.Fatalf("host calls = %d, want > %d (loop must exceed the old cap to be a real regression guard)", calls, 1<<20)
 	}
 }

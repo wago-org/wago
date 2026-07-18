@@ -54,7 +54,7 @@ Later proposals and engine/platform capabilities beyond the MVP.
 | Branch hinting (`metadata.code.branch_hint`) | ✓ | ✅ done: the current code-metadata wire format is decoded strictly (unique/pre-code section, ordered function/offset vectors, one-byte payload, and only `if`/`br_if` targets). ARM64 railshot uses `if` likelihood to weight local/global pinning and defers non-empty unlikely `br_if` reconciliation into cold target fragments. |
 | Threads & atomics | ✓ | ⬜ planned |
 | Synchronous host-import results | ✓ | ✅ done |
-| Cooperative invocation cancellation | ✓ | 🚧 partial — ARM64 `Instance.Call(ctx, ...)` interrupts native execution at function entries and loop headers; amd64 currently honors cancellation before entry only. |
+| Cooperative invocation cancellation | ✓ | ✅ done on native amd64, arm64, and linux/riscv64 backends: `Instance.Call(ctx, ...)` and `InvokeContext` interrupt execution at function entries and loop headers, including synchronous host-call loops, and leave the trap cell reusable for later calls. |
 | Architectures beyond linux/amd64 (arm64, riscv64, macOS, Windows) | ✓ | 🚧 partial — Linux/arm64 and Darwin/arm64 have native CI for the encoder, backend, runtime/API, explicit and signal-backed guard-page bounds, and corpus correctness. Linux/riscv64 has a native RV64G scalar encoder, no-cgo runtime, explicit and signal-backed guard-page bounds, public API coverage, exact scalar corpus parity with amd64, and a zero-failure curated WebAssembly 1.0 suite under QEMU. RVV/SIMD, native-hardware validation, and Windows remain planned. |
 | Multi-memory | ✗ | ❌ not planned |
 | Exception handling proposal | ✗ | ❌ not planned |

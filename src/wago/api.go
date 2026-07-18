@@ -1585,8 +1585,9 @@ func (in *Instance) Invoke(export string, args ...uint64) ([]uint64, error) {
 // interrupted at the next native safepoint and returns ctx.Err() (e.g.
 // context.DeadlineExceeded) instead of blocking on a runaway guest.
 //
-// Native cancellation is available on amd64/arm64; on other architectures ctx
-// is only checked before the call begins. A nil or already-cancelled ctx is
+// Native cancellation is available on amd64, arm64, and linux/riscv64; on
+// other architectures ctx is only checked before the call begins. A nil or
+// already-cancelled ctx is
 // handled up front; a Background context (Done() == nil) keeps Invoke's
 // zero-goroutine fast path.
 //
@@ -1783,11 +1784,10 @@ func (in *Instance) invokeLocalContext(li int, args []uint64, cancel <-chan stru
 }
 
 // nativeCancellationSupported reports whether the railshot backend for this
-// GOARCH emits cooperative cancellation polls (function-entry and loop-header
-// trap-cell checks). Both the amd64 and arm64 backends do, so a context-aware
-// Call can arm the watcher on either.
+// GOARCH emits cooperative cancellation polls at function entries and loop
+// headers, allowing a context-aware call to arm the trap-cell watcher.
 func nativeCancellationSupported() bool {
-	return goruntime.GOARCH == "amd64" || goruntime.GOARCH == "arm64"
+	return goruntime.GOARCH == "amd64" || goruntime.GOARCH == "arm64" || goruntime.GOARCH == "riscv64"
 }
 
 // startCancellationWatch arms the native safepoints for a high-level

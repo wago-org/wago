@@ -108,10 +108,10 @@ codegen rationale is **[OPTIMIZATIONS.md](OPTIMIZATIONS.md)**. Summary of the tw
 **Runtime & product** (no-ir-plan P8 — parallel track, feature value)
 - [x] **Synchronous host-import results** — returning host imports use the no-cgo
   re-entry protocol; `v128` host params/results use the same two-slot public ABI.
-- 🚧 Interruption / cooperative cancel: ARM64 `Call(ctx)` polls at function
-  entries and loop headers and returns `context.Canceled`/`DeadlineExceeded`;
-  amd64 native polling remains planned. The checkpoints also bound ARM64 Go-GC
-  stalls during long native loops.
+- [x] Interruption / cooperative cancel: amd64, ARM64, and Linux/RV64
+  `Call(ctx)`/`InvokeContext` poll at function entries and loop headers and return
+  `context.Canceled`/`DeadlineExceeded`, including synchronous host-call loops.
+  The checkpoints also bound Go-GC stalls during long native loops.
 - [ ] Wasm-level stack traces on trap (trap site → func idx → wasm pc)
 - [x] WebAssembly 2.0 product closeout: `.wago` codec v20 persists structural
   reference globals, indexed typed tables/exports/elements, exact local/imported

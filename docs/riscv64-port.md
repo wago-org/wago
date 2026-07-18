@@ -24,6 +24,9 @@ branch, instruction-cache, alignment, and vector constraints explicit.
 - Linux guard-page execution is integrated under `-tags wago_guardpage`, including
   lazy page commitment after `memory.grow`, out-of-bounds trap rewriting, imported
   guarded memory, reservation reuse, and full public-suite execution under QEMU.
+- Cooperative context cancellation polls at function entries and loop headers;
+  native and synchronous host-call loops are interrupted under QEMU and the trap
+  cell remains reusable after cancellation.
 - RVV/SIMD, full Release 2 execution including SIMD, and native-hardware
   benchmarking remain deferred. SIMD modules are rejected explicitly before
   scalar code generation.
