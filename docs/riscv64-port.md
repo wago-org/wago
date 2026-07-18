@@ -5,6 +5,15 @@ JIT target. The port follows the ARM64 backend's fixed-width writer, foreign-sta
 runtime, and architecture-subpackage structure while keeping RISC-V-specific
 branch, instruction-cache, alignment, and vector constraints explicit.
 
+## Current status
+
+- RV64G scalar instruction writer: complete and golden-tested.
+- Linux no-cgo foreign-stack spike: green under `qemu-riscv64`.
+- Integer/control compiler beachhead: executes constants, locals, arithmetic,
+  signed/unsigned comparisons, `if`, loops, `br`, `br_if`, and iterative fib.
+- Production railshot/runtime integration, full scalar corpus, guard pages, and
+  RVV remain subsequent gates.
+
 ## Target baseline
 
 The scalar baseline is RV64G as exposed by Go's `linux/riscv64` target: RV64I
