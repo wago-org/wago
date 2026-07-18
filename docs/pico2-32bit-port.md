@@ -179,10 +179,12 @@ with a bounded 128-byte quad-spill area. All three paths support parameters,
 zero-initialized locals, and atomic `local.get`, `local.set`, and `local.tee`;
 occupied callee-saved homes are preserved in aligned frames. When pressure
 exhausts the pool, the compiler stores and releases a complete pair or quad,
-then reloads every word together when consumed. QEMU fixtures force i64, f64,
-and v128 spill/reload after reserving local homes and verify identical results
-on RV32 and Thumb-2. Spill selection cannot target local homes or expose a
-partial value.
+then reloads every word together when consumed. Spill slots are tracked by a
+fixed bitmap and returned on reload, so bounded frames reuse dead slots instead
+of exhausting capacity monotonically. QEMU fixtures force i64, f64, and v128
+spill/reload after reserving local homes and verify identical results on RV32
+and Thumb-2. Spill selection cannot target local homes or expose a partial
+value.
 
 This is still not public backend admission. Pair/quad control merges and calls
 in the full module compiler, calls/globals/tables/references, the bare-metal

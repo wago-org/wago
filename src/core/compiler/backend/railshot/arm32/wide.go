@@ -23,8 +23,9 @@ type wideCompiler struct {
 	a          a32.Asm
 	stack      []wideValue
 	groups     shared.GroupAllocator
-	spillNext  uint16
+	spillBase  uint16
 	spillLimit uint16
+	spillUsed  uint32
 }
 
 func newWideCompiler() *wideCompiler {
@@ -94,13 +95,35 @@ func (c *wideCompiler) pop(n int) (wideValue, error) {
 				panic("arm32: spill reload")
 			}
 		}
+		c.freeSpill(v.spillOff, n)
 		v = fresh
 	}
 	return v, nil
 }
 func (c *wideCompiler) enableSpills(base, size uint16) {
-	c.spillNext = base
+	c.spillBase = base
 	c.spillLimit = base + size
+	c.spillUsed = 0
+}
+func (c *wideCompiler) allocSpill(words int) (uint16, bool) {
+	slots := int((c.spillLimit - c.spillBase) / 4)
+	mask := uint32((uint64(1) << words) - 1)
+	for i := 0; i+words <= slots; i++ {
+		m := mask << i
+		if c.spillUsed&m == 0 {
+			c.spillUsed |= m
+			return c.spillBase + uint16(i*4), true
+		}
+	}
+	return 0, false
+}
+func (c *wideCompiler) freeSpill(off uint16, words int) {
+	i := uint((off - c.spillBase) / 4)
+	mask := uint32((uint64(1)<<words)-1) << i
+	if c.spillUsed&mask != mask {
+		panic("arm32: invalid spill release")
+	}
+	c.spillUsed &^= mask
 }
 func (c *wideCompiler) spillOne() bool {
 	for i := 0; i < len(c.stack); i++ {
@@ -108,12 +131,10 @@ func (c *wideCompiler) spillOne() bool {
 		if v.spilled || v.groupN != 1 || !c.groups.Owns(v.groups[0]) {
 			continue
 		}
-		size := uint16(v.n * 4)
-		if c.spillNext+size > c.spillLimit {
+		off, ok := c.allocSpill(v.n)
+		if !ok {
 			return false
 		}
-		off := c.spillNext
-		c.spillNext += size
 		for j := 0; j < v.n; j++ {
 			if !c.a.Str(v.regs[j], a32.SP, off+uint16(j*4)) {
 				panic("arm32: spill store")

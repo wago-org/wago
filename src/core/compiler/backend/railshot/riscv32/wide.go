@@ -29,8 +29,8 @@ type wideCompiler struct {
 	stack      []wideValue
 	groups     shared.GroupAllocator
 	spillBase  int32
-	spillNext  int32
 	spillLimit int32
+	spillUsed  uint32
 }
 
 func newWideCompiler() *wideCompiler {
@@ -100,14 +100,35 @@ func (c *wideCompiler) pop(n int) (wideValue, error) {
 				panic("riscv32: spill reload")
 			}
 		}
+		c.freeSpill(v.spillOff, n)
 		v = fresh
 	}
 	return v, nil
 }
 func (c *wideCompiler) enableSpills(base, size int32) {
 	c.spillBase = base
-	c.spillNext = base
 	c.spillLimit = base + size
+	c.spillUsed = 0
+}
+func (c *wideCompiler) allocSpill(words int) (int32, bool) {
+	slots := int((c.spillLimit - c.spillBase) / 4)
+	mask := uint32((uint64(1) << words) - 1)
+	for i := 0; i+words <= slots; i++ {
+		m := mask << i
+		if c.spillUsed&m == 0 {
+			c.spillUsed |= m
+			return c.spillBase + int32(i*4), true
+		}
+	}
+	return 0, false
+}
+func (c *wideCompiler) freeSpill(off int32, words int) {
+	i := uint((off - c.spillBase) / 4)
+	mask := uint32((uint64(1)<<words)-1) << i
+	if c.spillUsed&mask != mask {
+		panic("riscv32: invalid spill release")
+	}
+	c.spillUsed &^= mask
 }
 func (c *wideCompiler) spillOne() bool {
 	for i := 0; i < len(c.stack); i++ {
@@ -115,12 +136,10 @@ func (c *wideCompiler) spillOne() bool {
 		if v.spilled || v.groupN != 1 || !c.groups.Owns(v.groups[0]) {
 			continue
 		}
-		size := int32(v.n * 4)
-		if c.spillNext+size > c.spillLimit {
+		off, ok := c.allocSpill(v.n)
+		if !ok {
 			return false
 		}
-		off := c.spillNext
-		c.spillNext += size
 		for j := 0; j < v.n; j++ {
 			if !c.a.Sw(v.regs[j], rv.SP, off+int32(j*4)) {
 				panic("riscv32: spill store")
