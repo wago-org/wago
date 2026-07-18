@@ -641,6 +641,24 @@ func (f *fn) condenseUnary(node *elem, dest Reg) Reg {
 		f.a.MovXmmToGpr(result, v, true)
 		f.releaseF(z)
 		f.releaseF(v)
+	case opSWARPack4:
+		// PSHUFB gathers bytes 0,2,4,6. Only the low four control bytes
+		// matter because the result is transferred back as an i32.
+		v := f.allocFReg(0)
+		shuffle := f.allocFReg(maskOf(v))
+		shuffleBits := f.allocReg(maskOf(src, result))
+		f.a.MovGprToXmm(v, src, true)
+		if w {
+			f.a.MovImm64(shuffleBits, 0x8080808006040200)
+		} else {
+			f.a.MovImm64(shuffleBits, 0x06040200)
+		}
+		f.a.MovGprToXmm(shuffle, shuffleBits, w)
+		f.a.VPshufb(v, v, shuffle)
+		f.a.MovXmmToGpr(result, v, w)
+		f.release(shuffleBits)
+		f.releaseF(shuffle)
+		f.releaseF(v)
 	}
 	if srcOwned && result != src {
 		f.release(src)

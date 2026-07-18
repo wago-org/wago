@@ -69,7 +69,8 @@ condense engine) with an on-the-fly whole-register-file allocator. Landed, in ro
 - **Curated broadword idioms** — Minotaur's offline-discovery/online-selection split is
   adopted without putting an SMT solver or e-graph in the JIT. Exact, bounded bytecode
   matchers recognize (1) utf-as's four-byte-to-four-u16 SWAR widening tree and lower it
-  to `UXTL` on arm64 or `VPUNPCKLBW` on amd64, and (2) xjb-as's function-tail unsigned
+  to `UXTL` on arm64 or `VPUNPCKLBW` on amd64, (2) its inverse four-u16-low-byte pack
+  tree and lower it to `XTN` or `VPSHUFB`, and (3) xjb-as's function-tail unsigned
   64x64 multiply-high expansion and lower it to `UMULH` or the native `RDX:RAX` `MUL`.
   The widening matcher proves its overwritten temporary dead before rewriting; the
   multiply matcher requires the final function `end`. `WAGO_NO_SWAR_IDIOMS=1` disables
@@ -180,6 +181,30 @@ range should be treated as noise rather than attributed to the selectors.
 AMD64 generated code shrinks by 32 B in utf-as's matched decoder function
 (4694→4662 B). The xjb multiply-high export shrinks by 112 B (201→89 B), eliminates
 its 72 B frame and spill, and passes native execution, liveness, and near-miss tests.
+
+### utf-as pack / broadword fixture A/B (2026-07-18)
+
+Five repeated 1 s samples per mode. The focused fixture preserves utf-as's exact
+four-halfword low-byte pack plus json-as's unchecked four-digit fold. Only the pack is
+selected: rewriting the digit fold lane-wise would change its cross-lane borrow behavior
+for arbitrary inputs, so it remains scalar until a checked-domain pattern is proved.
+
+| host / workload | idioms off | idioms on | change | memory |
+|---|---:|---:|---:|---:|
+| M4 Max backend compile | 10.523 us | 10.049 us | **−4.5%** | 29,568 B / 72 allocs (same) |
+| M4 Max full compile | 22.000 us | 21.937 us | −0.3% | 36,851 B / 135 allocs (same) |
+| M4 Max exported `pack` | 21.77 ns | 20.88 ns | **−4.1%** | 0 B / 0 allocs |
+| M4 Max mixed `runN(1000)` | 1.300 us | 1.019 us | **−21.6%** | 0 B / 0 allocs |
+| Ryzen backend compile | 12.576 us | 11.923 us | **−5.2%** | 28,440 B / 60 allocs (same) |
+| Ryzen full compile | 28.035 us | 27.444 us | **−2.1%** | 35,721 B / 127 allocs (same) |
+| Ryzen exported `pack` | 13.56 ns | 13.69 ns | +1.0% (host-call noise) | 0 B / 0 allocs |
+| Ryzen mixed `runN(1000)` | 1.926 us | 1.630 us | **−15.4%** | 0 B / 0 allocs |
+
+On ARM64, the pack export shrinks 116→72 B and the mixed loop 260→220 B; on AMD64
+they shrink 119→78 B and 256→219 B. The matcher
+also runs when AssemblyScript removes the final `i32.wrap_i64`, preserving the exact
+zero-extended i64 result. Native AMD64 measurements are recorded from the Ryzen host
+alongside the other AMD64 broadword numbers above.
 
 ---
 

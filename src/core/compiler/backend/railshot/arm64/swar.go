@@ -4,6 +4,81 @@ package arm64
 
 import "github.com/wago-org/wago/src/core/compiler/wasm"
 
+// trySWARPack4 recognizes utf-as's exact inverse of swar-widen4. The OR tree
+// may be associated or ordered differently, but must contain exactly the four
+// masked byte gathers from one local.
+func (f *fn) trySWARPack4(root *elem) bool {
+	if root != nil && root.kind == ekDeferred && root.op == opSWARPack4 {
+		return true
+	}
+	if !swarIdiomsEnabled || root == nil || root.kind != ekDeferred || root.op != opOr || root.typ != mtI64 {
+		return false
+	}
+	var terms [4]*elem
+	n := 0
+	var flatten func(*elem) bool
+	flatten = func(e *elem) bool {
+		if e.kind == ekDeferred && e.op == opOr && e.typ == mtI64 {
+			return flatten(e.arg0) && flatten(e.arg1)
+		}
+		if n == len(terms) {
+			return false
+		}
+		terms[n] = e
+		n++
+		return true
+	}
+	if !flatten(root) || n != len(terms) {
+		return false
+	}
+	var source *elem
+	local := -1
+	seen := uint8(0)
+	for _, term := range terms {
+		if term == nil || term.kind != ekDeferred || term.op != opAnd || term.typ != mtI64 {
+			return false
+		}
+		expr, mask := term.arg0, term.arg1
+		if expr != nil && expr.kind == ekValue && expr.st.kind == stConst {
+			expr, mask = mask, expr
+		}
+		if mask == nil || mask.kind != ekValue || mask.st.kind != stConst {
+			return false
+		}
+		shift := uint64(0)
+		leaf := expr
+		if expr != nil && expr.kind == ekDeferred && expr.op == opShrU && expr.typ == mtI64 {
+			leaf = expr.arg0
+			if expr.arg1 == nil || expr.arg1.kind != ekValue || expr.arg1.st.kind != stConst {
+				return false
+			}
+			shift = uint64(expr.arg1.st.cval)
+		}
+		if shift > 24 || shift&7 != 0 || uint64(mask.st.cval) != uint64(0xff)<<shift ||
+			leaf == nil || leaf.kind != ekValue || leaf.st.typ != mtI64 ||
+			(leaf.st.kind != stLocalRef && leaf.st.kind != stLocalReg) {
+			return false
+		}
+		if local < 0 {
+			local, source = leaf.st.idx, leaf
+		} else if leaf.st.idx != local {
+			return false
+		}
+		bit := uint8(1 << (shift / 8))
+		if seen&bit != 0 {
+			return false
+		}
+		seen |= bit
+	}
+	if seen != 0x0f {
+		return false
+	}
+	root.op, root.arg0, root.arg1 = opSWARPack4, source, nil
+	root.deferDepth = 1 + deferDepthOf(source)
+	f.stats.peep("swar-pack4")
+	return true
+}
+
 // tryMulHighU recognizes the exact straight-line unsigned 64x64 multiply-high
 // expansion emitted by xjb-as/AssemblyScript. The expansion overwrites its two
 // inputs and two scratch locals, so this first bounded form is deliberately

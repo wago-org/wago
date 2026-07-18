@@ -981,6 +981,13 @@ func (f *fn) condenseUnary(node *elem, dest Reg) Reg {
 		f.a.NeonUxtlHfromB(v, v)
 		f.a.FmovToGpr(result, v, true)
 		f.releaseF(v)
+	case opSWARPack4:
+		// XTN truncates four halfword lanes to their low bytes.
+		v := f.allocFReg(0)
+		f.a.FmovFromGpr(v, src, true)
+		f.a.NeonXtnBfromH(v, v)
+		f.a.FmovToGpr(result, v, w)
+		f.releaseF(v)
 	}
 	if srcOwned && result != src {
 		f.release(src)
