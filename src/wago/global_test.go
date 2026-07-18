@@ -1,4 +1,4 @@
-//go:build linux && amd64
+//go:build linux && (amd64 || riscv64)
 
 package wago
 
@@ -80,6 +80,9 @@ func TestCompileGlobalMetadataNumericInits(t *testing.T) {
 }
 
 func TestV128LocalGlobalGetSetAndAPI(t *testing.T) {
+	if !hostSupportsSIMD() {
+		t.Skip("host SIMD unavailable")
+	}
 	init := V128{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}
 	updated := V128{0xf0, 0xe1, 0xd2, 0xc3, 0xb4, 0xa5, 0x96, 0x87, 0x78, 0x69, 0x5a, 0x4b, 0x3c, 0x2d, 0x1e, 0x0f}
 	v128Const := func(v V128) []byte { return append(append([]byte{0xfd, 0x0c}, v[:]...), 0x0b) }
@@ -138,6 +141,9 @@ func TestV128LocalGlobalGetSetAndAPI(t *testing.T) {
 }
 
 func TestV128ImportedGlobalSharedObject(t *testing.T) {
+	if !hostSupportsSIMD() {
+		t.Skip("host SIMD unavailable")
+	}
 	initial := V128{0xaa, 0xbb, 0xcc, 0xdd, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}
 	updated := V128{12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0xdd, 0xcc, 0xbb, 0xaa}
 	mod := wasmtest.Module(

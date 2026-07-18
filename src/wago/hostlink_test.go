@@ -1,4 +1,4 @@
-//go:build linux && amd64 && !tinygo
+//go:build linux && (amd64 || riscv64) && !tinygo
 
 package wago
 
@@ -8,6 +8,9 @@ import (
 )
 
 func TestCallerResolverSyncLinkCacheClosesWithCompiled(t *testing.T) {
+	if forceSyncHostImports {
+		t.Skip("backend compiles host imports synchronously up front")
+	}
 	c := MustCompile(voidImportCallModule())
 	imports := Imports{"env.f": HostFunc(func(HostModule, []uint64, []uint64) {})}
 	linked, err := c.linkModuleMode(imports, nil, true)
@@ -37,6 +40,9 @@ func TestCallerResolverSyncLinkCacheClosesWithCompiled(t *testing.T) {
 // Instantiate reuses that linked module + its code mapping instead of re-running
 // the backend. Guards the large-module instantiate optimization.
 func TestHostLinkCached(t *testing.T) {
+	if forceSyncHostImports {
+		t.Skip("backend has no deferred host-link module")
+	}
 	src, err := os.ReadFile("../../bench/corpus/jsonproc.wasm")
 	if err != nil {
 		t.Skip("jsonproc.wasm not present")

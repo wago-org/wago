@@ -1,4 +1,4 @@
-//go:build linux && amd64
+//go:build linux && (amd64 || riscv64)
 
 package wago
 
@@ -91,6 +91,9 @@ func TestInvokeDynamicallySizesArgBuffer(t *testing.T) {
 }
 
 func TestInvokeV128UsesTwoPublicSlots(t *testing.T) {
+	if !hostSupportsSIMD() {
+		t.Skip("host SIMD unavailable")
+	}
 	vecLo, vecHi := uint64(0x0706050403020100), uint64(0x0f0e0d0c0b0a0908)
 	body := []byte{0x20, 0x01, 0x20, 0x02, 0x0b} // local.get v128 param; local.get trailing i32
 	mod := wasmtest.Module(
@@ -466,6 +469,12 @@ func TestCompiledRoundtripPreservesDebugNames(t *testing.T) {
 	}
 	if got := c.FuncDebugName(99); got != "func99" {
 		t.Fatalf("FuncDebugName(99) = %q, want func99", got)
+	}
+	if forceSyncHostImports {
+		// Synchronous-host native code is process-bound and intentionally cannot be
+		// serialized. The in-memory name checks above still cover RV64; codec name
+		// round-tripping is architecture-neutral and covered by serializable builds.
+		return
 	}
 
 	blob, err := c.MarshalBinary()
