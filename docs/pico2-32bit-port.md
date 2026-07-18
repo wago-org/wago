@@ -265,9 +265,10 @@ bounded frame; callees import and publish overflow slots relative to their entry
 stack pointer. Mixed functions stage complete arguments from their slot frames, preserve
 live wide values, relocate direct mixed-to-mixed calls, return ordered multiple
 results, execute typed or untyped atomic `select` across one/two/four-slot
-values, accept terminal explicit returns, execute nested void `if`/`else`,
-`block`, and `loop` frames, preserve live wide values across conditional arms,
-and lower stack-neutral `br_if` to block ends or loop headers. Mixed loops poll
+values, accept terminal explicit returns, execute nested `if`/`else`, `block`,
+and void `loop` frames, atomically merge inline single-value typed block and if
+results, preserve live wide values across conditional arms, and lower
+stack-neutral `br_if` to void block ends or loop headers. Mixed loops poll
 cancellation at every header. Nested traps propagate without publishing partial
 values. Return
 addresses are held in fixed frame slots, so nested and recursive mixed calls use
@@ -304,8 +305,9 @@ trap before any callee-save state is exposed. Mixed-width signatures and locals
 now use exact bounded stack frames with entry cancellation and stack-limit
 checks. Direct mixed-width calls, multiple results, and bounded stack argument/result
 overflow are implemented. Indirect and imported calls, calls into legacy
-homogeneous beachheads, typed block parameters/results, unconditional wide
-branches, and `br_table` value merges remain outside this module-wide slice.
+homogeneous beachheads, type-indexed/multi-value block signatures, typed loop
+backedges, unconditional wide branches, and `br_table` value merges remain
+outside this module-wide slice.
 
 Module metadata now retains local i32 globals with exact mutability and constant
 initial values. Instantiation initializes bounded caller-provided 32-bit cells,
@@ -323,7 +325,7 @@ and starts active segments dropped. `ContextABI` now publishes a stable array of
 12-byte target data descriptors, and normal i32 functions execute preflighted
 `memory.init` plus idempotent `data.drop` directly against those descriptors.
 
-This is still not public backend admission. Typed pair/quad structured-control
-merges, wide globals/tables/references, generated-
+This is still not public backend admission. Type-indexed and multi-value
+structured-control merges, wide globals/tables/references, generated-
 code entry trampolines, firmware linking and transport, and Pico 2 hardware
 qualification remain to be implemented and measured.

@@ -319,14 +319,16 @@ func BuildMixedPlanWithResolvers(ft *wasm.CompType, locals []wasm.LocalRun, body
 	}
 
 	type mixedControl struct {
-		kind     byte
-		entry    []MixedValue
-		slots    uint16
-		header   int
-		falseOp  int
-		jumpOp   int
-		elseSeen bool
-		pending  []int
+		kind       byte
+		entry      []MixedValue
+		slots      uint16
+		header     int
+		falseOp    int
+		jumpOp     int
+		elseSeen   bool
+		pending    []int
+		results    []wasm.ValType
+		armResults []MixedValue
 	}
 	var controls []mixedControl
 	stackMatches := func(want []MixedValue) bool {
@@ -339,6 +341,37 @@ func BuildMixedPlanWithResolvers(ft *wasm.CompType, locals []wasm.LocalRun, body
 			}
 		}
 		return true
+	}
+	readBlockResults := func() ([]wasm.ValType, error) {
+		encoded, err := r.Byte()
+		if err != nil {
+			return nil, err
+		}
+		if encoded == 0x40 {
+			return nil, nil
+		}
+		typ, ok := mixedEncodedValueType(encoded)
+		if !ok {
+			return nil, fmt.Errorf("mixed control type %#x requires a type-index planner", encoded)
+		}
+		return []wasm.ValType{typ}, nil
+	}
+	controlMatches := func(control *mixedControl) ([]MixedValue, bool) {
+		if len(stack) != len(control.entry)+len(control.results) {
+			return nil, false
+		}
+		for i := range control.entry {
+			if stack[i] != control.entry[i] {
+				return nil, false
+			}
+		}
+		for i, typ := range control.results {
+			if stack[len(control.entry)+i].Type != typ {
+				return nil, false
+			}
+		}
+		values := append([]MixedValue(nil), stack[len(control.entry):]...)
+		return values, true
 	}
 	terminated := false
 	terminalUnreachable := false
@@ -356,27 +389,24 @@ func BuildMixedPlanWithResolvers(ft *wasm.CompType, locals []wasm.LocalRun, body
 			terminated = true
 			terminalUnreachable = true
 		case 0x01: // nop
-		case 0x02, 0x03: // block / loop with void block type
-			blockType, err := r.Byte()
+		case 0x02, 0x03: // block / loop
+			results, err := readBlockResults()
 			if err != nil {
 				return nil, err
 			}
-			if blockType != 0x40 {
-				return nil, fmt.Errorf("mixed block currently requires a void block type")
+			if op == 0x03 && len(results) != 0 {
+				return nil, fmt.Errorf("mixed loop results require typed backedge merges")
 			}
-			control := mixedControl{kind: op, entry: append([]MixedValue(nil), stack...), slots: operandSlots, falseOp: -1, jumpOp: -1}
+			control := mixedControl{kind: op, entry: append([]MixedValue(nil), stack...), slots: operandSlots, falseOp: -1, jumpOp: -1, results: results}
 			if op == 0x03 {
 				control.header = len(p.Ops)
 				p.Ops = append(p.Ops, MixedOp{Kind: MixedPollCancellation})
 			}
 			controls = append(controls, control)
-		case 0x04: // if with void block type
-			blockType, err := r.Byte()
+		case 0x04: // if
+			results, err := readBlockResults()
 			if err != nil {
 				return nil, err
-			}
-			if blockType != 0x40 {
-				return nil, fmt.Errorf("mixed if currently requires a void block type")
 			}
 			condition, err := pop(wasm.I32)
 			if err != nil {
@@ -384,15 +414,17 @@ func BuildMixedPlanWithResolvers(ft *wasm.CompType, locals []wasm.LocalRun, body
 			}
 			branch := len(p.Ops)
 			p.Ops = append(p.Ops, MixedOp{Kind: MixedBranchZero, Third: condition.Slot, Label: -1})
-			controls = append(controls, mixedControl{kind: op, entry: append([]MixedValue(nil), stack...), slots: operandSlots, falseOp: branch, jumpOp: -1})
+			controls = append(controls, mixedControl{kind: op, entry: append([]MixedValue(nil), stack...), slots: operandSlots, falseOp: branch, jumpOp: -1, results: results})
 		case 0x05: // else
 			if len(controls) == 0 || controls[len(controls)-1].kind != 0x04 || controls[len(controls)-1].elseSeen {
 				return nil, fmt.Errorf("mixed function has unexpected else")
 			}
 			control := &controls[len(controls)-1]
-			if !stackMatches(control.entry) || operandSlots != control.slots {
-				return nil, fmt.Errorf("mixed if true arm changes a void block stack")
+			armResults, ok := controlMatches(control)
+			if !ok {
+				return nil, fmt.Errorf("mixed if true arm does not match block results")
 			}
+			control.armResults = armResults
 			control.jumpOp = len(p.Ops)
 			p.Ops = append(p.Ops, MixedOp{Kind: MixedJump, Label: -1})
 			p.Ops[control.falseOp].Label = len(p.Ops)
@@ -402,8 +434,22 @@ func BuildMixedPlanWithResolvers(ft *wasm.CompType, locals []wasm.LocalRun, body
 		case 0x0b: // end
 			if len(controls) != 0 {
 				control := controls[len(controls)-1]
-				if !stackMatches(control.entry) || operandSlots != control.slots {
-					return nil, fmt.Errorf("mixed if arm changes a void block stack")
+				results, ok := controlMatches(&control)
+				if !ok {
+					return nil, fmt.Errorf("mixed control arm does not match block results")
+				}
+				if control.kind == 0x04 && len(control.results) != 0 {
+					if !control.elseSeen {
+						return nil, fmt.Errorf("mixed result if requires else")
+					}
+					if len(results) != len(control.armResults) {
+						return nil, fmt.Errorf("mixed if result arity mismatch")
+					}
+					for i := range results {
+						if results[i] != control.armResults[i] {
+							return nil, fmt.Errorf("mixed if result slots do not merge atomically")
+						}
+					}
 				}
 				target := len(p.Ops)
 				if control.kind == 0x04 {
@@ -449,8 +495,8 @@ func BuildMixedPlanWithResolvers(ft *wasm.CompType, locals []wasm.LocalRun, body
 			}
 			targetIndex := len(controls) - 1 - int(depth)
 			target := &controls[targetIndex]
-			if !stackMatches(target.entry) || operandSlots != target.slots {
-				return nil, fmt.Errorf("mixed br_if changes a void label stack")
+			if len(target.results) != 0 || !stackMatches(target.entry) || operandSlots != target.slots {
+				return nil, fmt.Errorf("mixed br_if currently requires a void label stack")
 			}
 			branch := len(p.Ops)
 			label := -1
