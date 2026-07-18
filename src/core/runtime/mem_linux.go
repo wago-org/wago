@@ -1,4 +1,4 @@
-//go:build linux && (amd64 || arm64)
+//go:build linux && (amd64 || arm64 || riscv64)
 
 package runtime
 
@@ -56,6 +56,10 @@ func mmapExec(code []byte) ([]byte, error) {
 	}
 	copy(mem, code)
 	if err := syscall.Mprotect(mem, syscall.PROT_READ|syscall.PROT_EXEC); err != nil {
+		_ = syscall.Munmap(mem)
+		return nil, err
+	}
+	if err := syncInstructionCache(mem, len(code)); err != nil {
 		_ = syscall.Munmap(mem)
 		return nil, err
 	}
