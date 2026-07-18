@@ -249,7 +249,9 @@ The initial internal register ABI carries up to four serialized parameter/result
 slots on Arm and eight on RV32; larger signatures reject pending stack arguments.
 Mixed functions now stage complete arguments from their slot frames, preserve
 live wide values, relocate direct mixed-to-mixed calls, return ordered multiple
-results, and propagate nested traps without publishing partial values. Return
+results, execute typed or untyped atomic `select` across one/two/four-slot
+values, accept terminal explicit returns, and propagate nested traps without
+publishing partial values. Return
 addresses are held in fixed frame slots, so nested and recursive mixed calls use
 the same bounded native-stack checks as scalar calls. Calls into legacy
 homogeneous beachheads remain rejected until those bodies use the final module

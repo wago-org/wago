@@ -233,6 +233,16 @@ func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc) ([]byte, erro
 				a.Or(rv.T0, rv.T0, rv.T1)
 				must(a.Sw(rv.T0, rv.SP, off(op.Dst)+i*4), "bitselect result")
 			}
+		case shared.MixedSelect:
+			must(a.Lw(rv.T0, rv.SP, off(op.Third)), "select condition")
+			selectedLeft := a.FarBcond(rv.T0, rv.Zero, rv.CondNE, branchScratch)
+			for i := uint8(0); i < op.Width; i++ {
+				must(a.Lw(rv.T0, rv.SP, off(op.Right)+int32(i)*4), "select right load")
+				must(a.Sw(rv.T0, rv.SP, off(op.Dst)+int32(i)*4), "select right store")
+			}
+			if !a.PatchFarBranch(selectedLeft, a.Len()) {
+				return nil, fmt.Errorf("riscv32: mixed select branch out of range")
+			}
 		case shared.MixedCall:
 			if relocSink == nil {
 				return nil, fmt.Errorf("riscv32: mixed call has no relocation sink")

@@ -41,6 +41,7 @@ const (
 	MixedI32x4Sub
 	MixedCall
 	MixedUnreachable
+	MixedSelect
 )
 
 type MixedOp struct {
@@ -94,6 +95,23 @@ type MixedSignatureResolver func(uint32) (*wasm.CompType, bool)
 
 func BuildMixedPlan(ft *wasm.CompType, locals []wasm.LocalRun, body []byte) (*MixedPlan, error) {
 	return BuildMixedPlanWithCalls(ft, locals, body, nil)
+}
+
+func mixedEncodedValueType(encoded byte) (wasm.ValType, bool) {
+	switch encoded {
+	case 0x7f:
+		return wasm.I32, true
+	case 0x7e:
+		return wasm.I64, true
+	case 0x7d:
+		return wasm.F32, true
+	case 0x7c:
+		return wasm.F64, true
+	case 0x7b:
+		return wasm.V128, true
+	default:
+		return wasm.ValType{}, false
+	}
 }
 
 func BuildMixedPlanWithCalls(ft *wasm.CompType, locals []wasm.LocalRun, body []byte, resolve MixedSignatureResolver) (*MixedPlan, error) {
@@ -215,6 +233,7 @@ func BuildMixedPlanWithCalls(ft *wasm.CompType, locals []wasm.LocalRun, body []b
 	}
 
 	terminated := false
+	terminalUnreachable := false
 	for r.HasNext() {
 		op, err := r.Byte()
 		if err != nil {
@@ -227,12 +246,13 @@ func BuildMixedPlanWithCalls(ft *wasm.CompType, locals []wasm.LocalRun, body []b
 		case 0x00: // unreachable
 			p.Ops = append(p.Ops, MixedOp{Kind: MixedUnreachable})
 			terminated = true
+			terminalUnreachable = true
 		case 0x01: // nop
 		case 0x0b: // end
 			if r.HasNext() {
 				return nil, fmt.Errorf("mixed function has instructions after end")
 			}
-			if !terminated {
+			if !terminalUnreachable {
 				if len(stack) != len(ft.Results) {
 					return nil, fmt.Errorf("mixed result stack has %d values, want %d", len(stack), len(ft.Results))
 				}
@@ -248,6 +268,8 @@ func BuildMixedPlanWithCalls(ft *wasm.CompType, locals []wasm.LocalRun, body []b
 				p.ResultSlots += uint16(width)
 			}
 			return p, nil
+		case 0x0f: // return
+			terminated = true
 		case 0x10: // call
 			target, err := r.U32()
 			if err != nil {
@@ -284,6 +306,47 @@ func BuildMixedPlanWithCalls(ft *wasm.CompType, locals []wasm.LocalRun, body []b
 			if _, err := pop(stack[len(stack)-1].Type); err != nil {
 				return nil, err
 			}
+		case 0x1b, 0x1c: // select / typed select
+			var selectedType wasm.ValType
+			if op == 0x1c {
+				n, err := r.U32()
+				if err != nil || n != 1 {
+					return nil, fmt.Errorf("mixed typed select must contain one type")
+				}
+				encoded, err := r.Byte()
+				if err != nil {
+					return nil, err
+				}
+				var ok bool
+				selectedType, ok = mixedEncodedValueType(encoded)
+				if !ok {
+					return nil, fmt.Errorf("mixed typed select type %#x is not supported", encoded)
+				}
+			}
+			condition, err := pop(wasm.I32)
+			if err != nil {
+				return nil, err
+			}
+			if len(stack) == 0 {
+				return nil, fmt.Errorf("mixed select value stack underflow")
+			}
+			if op == 0x1b {
+				selectedType = stack[len(stack)-1].Type
+			}
+			right, err := pop(selectedType)
+			if err != nil {
+				return nil, err
+			}
+			left, err := pop(selectedType)
+			if err != nil {
+				return nil, err
+			}
+			out, err := push(selectedType)
+			if err != nil {
+				return nil, err
+			}
+			width, _ := MixedValueSlots(selectedType)
+			p.Ops = append(p.Ops, MixedOp{Kind: MixedSelect, Dst: out.Slot, Left: left.Slot, Right: right.Slot, Third: condition.Slot, Width: width})
 		case 0x20, 0x21, 0x22: // local.get/set/tee
 			idx, err := r.U32()
 			if err != nil || int(idx) >= len(p.Locals) {
