@@ -675,6 +675,55 @@ func CompileI64Function(numParams int, body []byte) ([]byte, error) {
 			c.a.MovImm32(v.regs[0], uint32(x))
 			c.a.MovImm32(v.regs[1], uint32(uint64(x)>>32))
 			c.push(v)
+		case 0x86, 0x87, 0x88, 0x89, 0x8a:
+			count, e := c.pop(2)
+			if e != nil {
+				return nil, e
+			}
+			v, e := c.pop(2)
+			if e != nil {
+				return nil, e
+			}
+			c.a.Andi(count.regs[0], count.regs[0], 63)
+			loop := c.a.Len()
+			done := c.a.Bcond(count.regs[0], rv.Zero, rv.CondEQ)
+			switch op {
+			case 0x86:
+				c.a.Srli(count.regs[1], v.regs[0], 31)
+				c.a.Slli(v.regs[0], v.regs[0], 1)
+				c.a.Slli(v.regs[1], v.regs[1], 1)
+				c.a.Or(v.regs[1], v.regs[1], count.regs[1])
+			case 0x87, 0x88:
+				c.a.Slli(count.regs[1], v.regs[1], 31)
+				c.a.Srli(v.regs[0], v.regs[0], 1)
+				if op == 0x87 {
+					c.a.Srai(v.regs[1], v.regs[1], 1)
+				} else {
+					c.a.Srli(v.regs[1], v.regs[1], 1)
+				}
+				c.a.Or(v.regs[0], v.regs[0], count.regs[1])
+			case 0x89:
+				c.a.Srli(count.regs[1], v.regs[1], 31)
+				c.a.Srli(rv.T6, v.regs[0], 31)
+				c.a.Slli(v.regs[0], v.regs[0], 1)
+				c.a.Slli(v.regs[1], v.regs[1], 1)
+				c.a.Or(v.regs[1], v.regs[1], rv.T6)
+				c.a.Or(v.regs[0], v.regs[0], count.regs[1])
+			case 0x8a:
+				c.a.Slli(count.regs[1], v.regs[0], 31)
+				c.a.Slli(rv.T6, v.regs[1], 31)
+				c.a.Srli(v.regs[0], v.regs[0], 1)
+				c.a.Srli(v.regs[1], v.regs[1], 1)
+				c.a.Or(v.regs[0], v.regs[0], rv.T6)
+				c.a.Or(v.regs[1], v.regs[1], count.regs[1])
+			}
+			c.a.Addi(count.regs[0], count.regs[0], -1)
+			back := c.a.Jal(rv.Zero)
+			if !c.a.PatchJAL21(back, loop) || !c.a.PatchBranch13(done, c.a.Len()) {
+				return nil, fmt.Errorf("riscv32: i64 shift loop out of range")
+			}
+			c.release(count)
+			c.push(v)
 		case 0xc2, 0xc3, 0xc4:
 			v, e := c.pop(2)
 			if e != nil {

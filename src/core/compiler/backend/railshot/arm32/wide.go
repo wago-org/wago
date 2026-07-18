@@ -687,6 +687,65 @@ func CompileI64Function(numParams int, body []byte) ([]byte, error) {
 			c.a.MovImm32(v.regs[0], uint32(x))
 			c.a.MovImm32(v.regs[1], uint32(uint64(x)>>32))
 			c.push(v)
+		case 0x86, 0x87, 0x88, 0x89, 0x8a:
+			count, e := c.pop(2)
+			if e != nil {
+				return nil, e
+			}
+			v, e := c.pop(2)
+			if e != nil {
+				return nil, e
+			}
+			if !c.a.MovImm32(a32.R12, 63) || !c.a.And(count.regs[0], count.regs[0], a32.R12) {
+				panic("arm32: i64 shift count")
+			}
+			loop := c.a.Len()
+			if !c.a.MovImm32(a32.R12, 0) || !c.a.Cmp(count.regs[0], a32.R12) {
+				panic("arm32: i64 shift loop compare")
+			}
+			done := c.a.FarBcond(a32.CondEQ)
+			switch op {
+			case 0x86: // shl
+				if !c.a.LsrImm(count.regs[1], v.regs[0], 31) || !c.a.LslImm(v.regs[0], v.regs[0], 1) ||
+					!c.a.LslImm(v.regs[1], v.regs[1], 1) || !c.a.Orr(v.regs[1], v.regs[1], count.regs[1]) {
+					panic("arm32: i64.shl")
+				}
+			case 0x87, 0x88: // shr_s/shr_u
+				if !c.a.LslImm(count.regs[1], v.regs[1], 31) || !c.a.LsrImm(v.regs[0], v.regs[0], 1) {
+					panic("arm32: i64.shr low")
+				}
+				if op == 0x87 {
+					if !c.a.AsrImm(v.regs[1], v.regs[1], 1) {
+						panic("arm32: i64.shr_s")
+					}
+				} else if !c.a.LsrImm(v.regs[1], v.regs[1], 1) {
+					panic("arm32: i64.shr_u")
+				}
+				if !c.a.Orr(v.regs[0], v.regs[0], count.regs[1]) {
+					panic("arm32: i64.shr merge")
+				}
+			case 0x89: // rotl
+				if !c.a.LsrImm(count.regs[1], v.regs[1], 31) || !c.a.LsrImm(a32.R12, v.regs[0], 31) ||
+					!c.a.LslImm(v.regs[0], v.regs[0], 1) || !c.a.LslImm(v.regs[1], v.regs[1], 1) ||
+					!c.a.Orr(v.regs[1], v.regs[1], a32.R12) || !c.a.Orr(v.regs[0], v.regs[0], count.regs[1]) {
+					panic("arm32: i64.rotl")
+				}
+			case 0x8a: // rotr
+				if !c.a.LslImm(count.regs[1], v.regs[0], 31) || !c.a.LslImm(a32.R12, v.regs[1], 31) ||
+					!c.a.LsrImm(v.regs[0], v.regs[0], 1) || !c.a.LsrImm(v.regs[1], v.regs[1], 1) ||
+					!c.a.Orr(v.regs[0], v.regs[0], a32.R12) || !c.a.Orr(v.regs[1], v.regs[1], count.regs[1]) {
+					panic("arm32: i64.rotr")
+				}
+			}
+			if !c.a.MovImm32(a32.R12, 1) || !c.a.Sub(count.regs[0], count.regs[0], a32.R12) {
+				panic("arm32: i64 shift decrement")
+			}
+			back := c.a.Branch()
+			if !c.a.PatchBranch(back, loop) || !c.a.PatchFarBranch(done, c.a.Len()) {
+				return nil, fmt.Errorf("arm32: i64 shift loop out of range")
+			}
+			c.release(count)
+			c.push(v)
 		case 0xc2, 0xc3, 0xc4:
 			v, e := c.pop(2)
 			if e != nil {

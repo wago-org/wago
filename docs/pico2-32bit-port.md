@@ -180,9 +180,12 @@ pair/quad release is rejected transactionally. Both direct wide compilers use
 this allocator rather than independent per-register ownership.
 
 The i64 path additionally supports pair parameters, zero-initialized pair
-locals, atomic `local.get`, `local.set`, and `local.tee`, plus direct
-`extend8_s`, `extend16_s`, and `extend32_s` with complete high-word sign
-propagation. Local homes use
+locals, atomic `local.get`, `local.set`, and `local.tee`, direct variable shifts
+and rotates with Wasm's modulo-64 count semantics, plus `extend8_s`,
+`extend16_s`, and `extend32_s` with complete high-word sign propagation. The
+portable shift/rotate baseline uses bounded one-bit loops; later direct
+cross-word sequences remain an optimization, not a correctness dependency.
+Local homes use
 callee-saved register pairs whose incoming values are preserved in aligned
 frames. QEMU executes a parameter/local/tee/multiply fixture on both targets.
 

@@ -71,8 +71,8 @@ func TestCompileI64Beachhead(t *testing.T) {
 	if len(code) == 0 || len(code)%4 != 0 {
 		t.Fatalf("code len=%d", len(code))
 	}
-	if _, err := CompileI64Beachhead([]byte{0, 0x42, 1, 0x86, 0x0b}); err == nil {
-		t.Fatal("unsupported shift accepted")
+	if _, err := CompileI64Beachhead([]byte{0, 0x42, 1, 0x42, 1, 0x86, 0x0b}); err != nil {
+		t.Fatal(err)
 	}
 	if _, err := CompileI64Beachhead([]byte{0, 0x42, 0x80, 0x01, 0xc2, 0x0b}); err != nil {
 		t.Fatal(err)
@@ -208,6 +208,42 @@ func TestWideBeachheadsExecuteUnderQEMU(t *testing.T) {
 			t.Fatal("call patch")
 		}
 		runRV32Exit(t, qemu, append(entry.B, fn...), 42)
+	})
+	t.Run("i64-shifts-rotates", func(t *testing.T) {
+		tests := []struct {
+			name          string
+			op            byte
+			lo, hi, count uint32
+			highResult    bool
+			want          int
+		}{
+			{"shl", 0x86, 1, 0, 33, true, 2},
+			{"shr_s", 0x87, 0, 0x80000000, 63, false, 255},
+			{"shr_u", 0x88, 0, 2, 33, false, 1},
+			{"rotl", 0x89, 1, 0x80000000, 1, false, 3},
+			{"rotr", 0x8a, 3, 0, 1, false, 1},
+		}
+		for _, tc := range tests {
+			t.Run(tc.name, func(t *testing.T) {
+				fn, err := CompileI64Function(2, []byte{0, 0x20, 0, 0x20, 1, tc.op, 0x0b})
+				if err != nil {
+					t.Fatal(err)
+				}
+				var entry rv.Asm
+				entry.MovImm32(rv.A0, tc.lo)
+				entry.MovImm32(rv.A1, tc.hi)
+				entry.MovImm32(rv.A2, tc.count)
+				entry.MovImm32(rv.A3, 0)
+				call := entry.Jal(rv.RA)
+				if tc.highResult {
+					entry.MovReg(rv.A0, rv.A1)
+				}
+				entry.MovImm32(rv.A7, 93)
+				entry.Ecall()
+				entry.PatchJAL21(call, len(entry.B))
+				runRV32Exit(t, qemu, append(entry.B, fn...), tc.want)
+			})
+		}
 	})
 	t.Run("i64-extend8-s", func(t *testing.T) {
 		fn, err := CompileI64Beachhead([]byte{0, 0x42, 0x80, 0x01, 0xc2, 0x0b})
