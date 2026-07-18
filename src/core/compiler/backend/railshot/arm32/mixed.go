@@ -422,6 +422,125 @@ func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc) ([]byte, erro
 				must(a.Ldr(a32.R0, a32.SP, helperBase+embedded32.F64FrameOutLoOffset+uint16(i)*4), "f64 helper result load")
 				must(a.Str(a32.R0, a32.SP, off(op.Dst)+uint16(i)*4), "f64 helper result store")
 			}
+		case shared.MixedMemoryLoad:
+			width, resultWords, signed, ok := embedded32.ScalarLoadInfo(embedded32.ScalarLoadOp(op.MemoryOp))
+			if !ok {
+				return nil, fmt.Errorf("arm32: invalid mixed scalar load %d", op.MemoryOp)
+			}
+			must(a.Ldr(a32.R0, a32.SP, off(op.Left)), "memory load address")
+			must(a.MovImm32(a32.R1, op.MemoryOffset), "memory load static offset")
+			must(a.Adds(a32.R0, a32.R0, a32.R1), "memory load effective address")
+			traps := []int{a.FarBcond(a32.CondCS)}
+			must(a.Ldr(a32.R1, armContextReg, embedded32.ContextLinearMemoryLengthOffset), "memory load length")
+			must(a.MovImm32(a32.R2, width), "memory load width")
+			must(a.Cmp(a32.R1, a32.R2), "memory load short compare")
+			traps = append(traps, a.FarBcond(a32.CondCC))
+			must(a.Sub(a32.R1, a32.R1, a32.R2), "memory load bound")
+			must(a.Cmp(a32.R1, a32.R0), "memory load bounds compare")
+			traps = append(traps, a.FarBcond(a32.CondCC))
+			must(a.Ldr(a32.R1, armContextReg, embedded32.ContextLinearMemoryBaseOffset), "memory load base")
+			must(a.Add(a32.R1, a32.R1, a32.R0), "memory load pointer")
+			switch width {
+			case 1:
+				if signed {
+					must(a.Ldrsb(a32.R2, a32.R1, 0), "memory load8 signed")
+				} else {
+					must(a.Ldrb(a32.R2, a32.R1, 0), "memory load8 unsigned")
+				}
+			case 2:
+				if signed {
+					must(a.Ldrsh(a32.R2, a32.R1, 0), "memory load16 signed")
+				} else {
+					must(a.Ldrh(a32.R2, a32.R1, 0), "memory load16 unsigned")
+				}
+			case 4:
+				must(a.Ldr(a32.R2, a32.R1, 0), "memory load32")
+			case 8:
+				must(a.Ldr(a32.R2, a32.R1, 0), "memory load64 low")
+				must(a.Ldr(a32.R3, a32.R1, 4), "memory load64 high")
+			}
+			must(a.Str(a32.R2, a32.SP, off(op.Dst)), "memory load result low")
+			if resultWords == 2 {
+				if width < 8 {
+					if signed {
+						must(a.AsrImm(a32.R3, a32.R2, 31), "memory load sign high")
+					} else {
+						must(a.MovImm32(a32.R3, 0), "memory load zero high")
+					}
+				}
+				must(a.Str(a32.R3, a32.SP, off(op.Dst)+4), "memory load result high")
+			}
+			done := a.Branch()
+			trap := a.Len()
+			must(a.Ldr(a32.R1, armContextReg, embedded32.ContextTrapCellOffset), "memory load trap cell")
+			must(a.MovImm32(a32.R0, uint32(embedded32.TrapMemoryOutOfBounds)), "memory load trap")
+			must(a.Str(a32.R0, a32.R1, 0), "memory load trap write")
+			must(a.Ldr(a32.LR, a32.SP, saveOffset), "memory load trap return address restore")
+			must(a.MovImm32(a32.R12, frame), "memory load trap frame size")
+			must(a.Add(a32.SP, a32.SP, a32.R12), "memory load trap frame release")
+			must(a.MovImm32(a32.R0, 0), "memory load trap result")
+			a.Ret()
+			a.Align4()
+			finish := a.Len()
+			if !a.PatchBranch(done, finish) {
+				return nil, fmt.Errorf("arm32: mixed memory load success branch out of range")
+			}
+			for _, branch := range traps {
+				if !a.PatchFarBranch(branch, trap) {
+					return nil, fmt.Errorf("arm32: mixed memory load trap branch out of range")
+				}
+			}
+		case shared.MixedMemoryStore:
+			width, _, ok := embedded32.ScalarStoreInfo(embedded32.ScalarStoreOp(op.MemoryOp))
+			if !ok {
+				return nil, fmt.Errorf("arm32: invalid mixed scalar store %d", op.MemoryOp)
+			}
+			must(a.Ldr(a32.R0, a32.SP, off(op.Left)), "memory store address")
+			must(a.MovImm32(a32.R1, op.MemoryOffset), "memory store static offset")
+			must(a.Adds(a32.R0, a32.R0, a32.R1), "memory store effective address")
+			traps := []int{a.FarBcond(a32.CondCS)}
+			must(a.Ldr(a32.R1, armContextReg, embedded32.ContextLinearMemoryLengthOffset), "memory store length")
+			must(a.MovImm32(a32.R2, width), "memory store width")
+			must(a.Cmp(a32.R1, a32.R2), "memory store short compare")
+			traps = append(traps, a.FarBcond(a32.CondCC))
+			must(a.Sub(a32.R1, a32.R1, a32.R2), "memory store bound")
+			must(a.Cmp(a32.R1, a32.R0), "memory store bounds compare")
+			traps = append(traps, a.FarBcond(a32.CondCC))
+			must(a.Ldr(a32.R1, armContextReg, embedded32.ContextLinearMemoryBaseOffset), "memory store base")
+			must(a.Add(a32.R1, a32.R1, a32.R0), "memory store pointer")
+			must(a.Ldr(a32.R2, a32.SP, off(op.Right)), "memory store value low")
+			switch width {
+			case 1:
+				must(a.Strb(a32.R2, a32.R1, 0), "memory store8")
+			case 2:
+				must(a.Strh(a32.R2, a32.R1, 0), "memory store16")
+			case 4:
+				must(a.Str(a32.R2, a32.R1, 0), "memory store32")
+			case 8:
+				must(a.Ldr(a32.R3, a32.SP, off(op.Right)+4), "memory store value high")
+				must(a.Str(a32.R2, a32.R1, 0), "memory store64 low")
+				must(a.Str(a32.R3, a32.R1, 4), "memory store64 high")
+			}
+			done := a.Branch()
+			trap := a.Len()
+			must(a.Ldr(a32.R1, armContextReg, embedded32.ContextTrapCellOffset), "memory store trap cell")
+			must(a.MovImm32(a32.R0, uint32(embedded32.TrapMemoryOutOfBounds)), "memory store trap")
+			must(a.Str(a32.R0, a32.R1, 0), "memory store trap write")
+			must(a.Ldr(a32.LR, a32.SP, saveOffset), "memory store trap return address restore")
+			must(a.MovImm32(a32.R12, frame), "memory store trap frame size")
+			must(a.Add(a32.SP, a32.SP, a32.R12), "memory store trap frame release")
+			must(a.MovImm32(a32.R0, 0), "memory store trap result")
+			a.Ret()
+			a.Align4()
+			finish := a.Len()
+			if !a.PatchBranch(done, finish) {
+				return nil, fmt.Errorf("arm32: mixed memory store success branch out of range")
+			}
+			for _, branch := range traps {
+				if !a.PatchFarBranch(branch, trap) {
+					return nil, fmt.Errorf("arm32: mixed memory store trap branch out of range")
+				}
+			}
 		case shared.MixedGlobalGet, shared.MixedGlobalSet:
 			if op.Target > 1023 {
 				return nil, fmt.Errorf("arm32: mixed global index %d exceeds direct displacement", op.Target)

@@ -52,22 +52,26 @@ const (
 	MixedGlobalSet
 	MixedF64Helper
 	MixedI64Helper
+	MixedMemoryLoad
+	MixedMemoryStore
 )
 
 type MixedOp struct {
-	Kind        MixedOpKind
-	Dst         uint16
-	Left, Right uint16
-	Third       uint16
-	Width       uint8
-	Arity       uint8
-	InputWidth  uint8
-	Words       [4]uint32
-	Target      uint32
-	Args        []MixedValue
-	Results     []MixedValue
-	Label       int
-	HelperOp    uint32
+	Kind         MixedOpKind
+	Dst          uint16
+	Left, Right  uint16
+	Third        uint16
+	Width        uint8
+	Arity        uint8
+	InputWidth   uint8
+	Words        [4]uint32
+	Target       uint32
+	Args         []MixedValue
+	Results      []MixedValue
+	Label        int
+	HelperOp     uint32
+	MemoryOp     uint8
+	MemoryOffset uint32
 }
 
 type MixedValue struct {
@@ -592,6 +596,68 @@ func BuildMixedPlanWithResolvers(ft *wasm.CompType, locals []wasm.LocalRun, body
 				}
 				p.Ops = append(p.Ops, MixedOp{Kind: MixedGlobalSet, Left: value.Slot, Target: index, Width: width})
 			}
+		case 0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35:
+			if _, err := r.U32(); err != nil { // alignment hint
+				return nil, err
+			}
+			offset, err := r.U32()
+			if err != nil {
+				return nil, err
+			}
+			loadOp, ok := embedded32.ScalarLoadForWasmOpcode(op)
+			if !ok {
+				return nil, fmt.Errorf("mixed scalar load opcode %#x", op)
+			}
+			address, err := pop(wasm.I32)
+			if err != nil {
+				return nil, err
+			}
+			resultType := wasm.I32
+			switch op {
+			case 0x29, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35:
+				resultType = wasm.I64
+			case 0x2a:
+				resultType = wasm.F32
+			case 0x2b:
+				resultType = wasm.F64
+			}
+			out, err := push(resultType)
+			if err != nil {
+				return nil, err
+			}
+			width, _ := MixedValueSlots(resultType)
+			p.Ops = append(p.Ops, MixedOp{Kind: MixedMemoryLoad, Dst: out.Slot, Left: address.Slot, Width: width, MemoryOp: uint8(loadOp), MemoryOffset: offset})
+		case 0x36, 0x37, 0x38, 0x39, 0x3a, 0x3b, 0x3c, 0x3d, 0x3e:
+			if _, err := r.U32(); err != nil { // alignment hint
+				return nil, err
+			}
+			offset, err := r.U32()
+			if err != nil {
+				return nil, err
+			}
+			storeOp, ok := embedded32.ScalarStoreForWasmOpcode(op)
+			if !ok {
+				return nil, fmt.Errorf("mixed scalar store opcode %#x", op)
+			}
+			valueType := wasm.I32
+			switch op {
+			case 0x37, 0x3c, 0x3d, 0x3e:
+				valueType = wasm.I64
+			case 0x38:
+				valueType = wasm.F32
+			case 0x39:
+				valueType = wasm.F64
+			}
+			value, err := pop(valueType)
+			if err != nil {
+				return nil, err
+			}
+			address, err := pop(wasm.I32)
+			if err != nil {
+				return nil, err
+			}
+			width, _ := MixedValueSlots(valueType)
+			p.Ops = append(p.Ops, MixedOp{Kind: MixedMemoryStore, Left: address.Slot, Right: value.Slot, Width: width, MemoryOp: uint8(storeOp), MemoryOffset: offset})
 		case 0x41:
 			value, err := r.I32()
 			if err != nil {

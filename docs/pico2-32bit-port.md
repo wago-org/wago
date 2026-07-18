@@ -245,8 +245,11 @@ only then access memory. Pair results are sign- or zero-extended into complete
 little-endian register pairs. QEMU tests on both targets cover successful
 unaligned narrow and full-width accesses, static-offset and end-of-memory
 failures, canonical trap writes, and proof that an out-of-bounds split store
-cannot mutate its in-bounds low word. Normal mixed-width function lowering still
-needs to route decoded memargs through this registry.
+cannot mutate its in-bounds low word. Normal mixed-width function lowering now routes every scalar i32/i64/f32/f64
+memarg through the same registry. Mixed loads and stores retain static-offset
+overflow checks, complete-width preflight, narrow signed/unsigned extension,
+and no-partial-write guarantees while surrounding wide operands remain in frame
+slots. SIMD memory forms still await normal mixed helper dispatch.
 
 A shared module-layout stage now compiles every local function in the currently
 admitted scalar and direct-SWAR subsets into one 16-byte-aligned target image.
