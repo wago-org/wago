@@ -117,6 +117,199 @@ func TestSWARV128AnyTrueExec(t *testing.T) {
 	}
 }
 
+func swarI32Const(v int32) []byte {
+	return append([]byte{0x41}, wasmtest.SLEB32(v)...)
+}
+
+func swarIntegerExtract(width, lane int, signed bool) []byte {
+	var sub uint32
+	switch width {
+	case 8:
+		sub = 22
+		if signed {
+			sub = 21
+		}
+	case 16:
+		sub = 25
+		if signed {
+			sub = 24
+		}
+	case 32:
+		sub = 27
+	case 64:
+		sub = 29
+	default:
+		panic("invalid lane width")
+	}
+	return swarFD(sub, byte(lane))
+}
+
+func TestSWARIntegerLanePlumbingExec(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		width, lane   int
+		value         int32
+		signedExtract bool
+		want          uint64
+	}{
+		{"i8-splat-signed", 8, 15, -128, true, uint64(uint32(0xffffff80))},
+		{"i8-splat-unsigned", 8, 9, 0xab, false, 0xab},
+		{"i16-splat-signed", 16, 7, -32767, true, uint64(uint32(0xffff8001))},
+		{"i16-splat-unsigned", 16, 5, 0xabcd, false, 0xabcd},
+		{"i32-splat", 32, 3, 0x76543210, false, 0x76543210},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			splatSub := map[int]uint32{8: 15, 16: 16, 32: 17}[tc.width]
+			m := swarScalarModule(t, wasm.I32, swarI32Const(tc.value), swarFD(splatSub), swarIntegerExtract(tc.width, tc.lane, tc.signedExtract))
+			if got := runProductionSWARWrapper(t, m); uint32(got) != uint32(tc.want) {
+				t.Fatalf("got %#x, want %#x", uint32(got), uint32(tc.want))
+			}
+		})
+	}
+
+	for _, tc := range []struct {
+		name        string
+		width, lane int
+		value       int32
+		want        uint64
+	}{
+		{"i8", 8, 10, 0xab, 0xab},
+		{"i16", 16, 6, 0x7abc, 0x7abc},
+		{"i32", 32, 3, 0x76543210, 0x76543210},
+	} {
+		t.Run("replace-"+tc.name, func(t *testing.T) {
+			replaceSub := map[int]uint32{8: 23, 16: 26, 32: 28}[tc.width]
+			m := swarScalarModule(t, wasm.I32,
+				swarV128Const(0, 0), swarI32Const(tc.value), swarFD(replaceSub, byte(tc.lane)),
+				swarIntegerExtract(tc.width, tc.lane, false))
+			if got := runProductionSWARWrapper(t, m); uint32(got) != uint32(tc.want) {
+				t.Fatalf("got %#x, want %#x", uint32(got), uint32(tc.want))
+			}
+		})
+	}
+}
+
+func TestSWARPackedAddSubNoCrossLaneCarryExec(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		width, lane   int
+		sub           uint32
+		aLo, aHi      uint64
+		bLo, bHi      uint64
+		signedExtract bool
+		want          uint64
+	}{
+		{"i8-add-carry", 8, 1, 110, 0x00000000000000ff, 0, 1, 0, false, 0},
+		{"i8-sub-borrow", 8, 1, 113, 0, 0, 1, 0, false, 0},
+		{"i16-add-carry", 16, 1, 142, 0x000000000000ffff, 0, 1, 0, false, 0},
+		{"i16-sub-borrow", 16, 1, 145, 0, 0, 1, 0, false, 0},
+		{"i32-add-carry", 32, 1, 174, 0x00000000ffffffff, 0, 1, 0, false, 0},
+		{"i32-sub-borrow", 32, 1, 177, 0, 0, 1, 0, false, 0},
+		{"i8-high-half", 8, 15, 110, 0, 0xfe00000000000000, 0, 0x0300000000000000, false, 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := swarScalarModule(t, wasm.I32,
+				swarV128Const(tc.aLo, tc.aHi), swarV128Const(tc.bLo, tc.bHi), swarFD(tc.sub),
+				swarIntegerExtract(tc.width, tc.lane, tc.signedExtract))
+			if got := runProductionSWARWrapper(t, m); uint32(got) != uint32(tc.want) {
+				t.Fatalf("got %#x, want %#x", uint32(got), uint32(tc.want))
+			}
+		})
+	}
+}
+
+func TestSWARIntegerShiftUnaryAllTrueAndBitmaskExec(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		width, lane   int
+		valueLo       uint64
+		shiftSub      uint32
+		count         int32
+		signedExtract bool
+		want          uint32
+	}{
+		{"i8-shl-masked-count", 8, 0, 0x81, 107, 9, false, 0x02},
+		{"i8-shr-s", 8, 0, 0x80, 108, 1, true, 0xffffffc0},
+		{"i8-shr-u", 8, 0, 0x80, 109, 1, false, 0x40},
+		{"i16-shl", 16, 0, 0x8001, 139, 1, false, 0x0002},
+		{"i16-shr-s", 16, 0, 0x8000, 140, 4, true, 0xfffff800},
+		{"i32-shr-u", 32, 0, 0x80000000, 173, 4, false, 0x08000000},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := swarScalarModule(t, wasm.I32,
+				swarV128Const(tc.valueLo, 0), swarI32Const(tc.count), swarFD(tc.shiftSub),
+				swarIntegerExtract(tc.width, tc.lane, tc.signedExtract))
+			if got := runProductionSWARWrapper(t, m); uint32(got) != tc.want {
+				t.Fatalf("got %#x, want %#x", uint32(got), tc.want)
+			}
+		})
+	}
+
+	for _, tc := range []struct {
+		name          string
+		width, lane   int
+		bits          uint64
+		sub           uint32
+		signedExtract bool
+		want          uint32
+	}{
+		{"i8-abs", 8, 0, 0xfb, 96, true, 5},
+		{"i8-abs-min", 8, 0, 0x80, 96, false, 0x80},
+		{"i16-neg", 16, 0, 5, 129, true, 0xfffffffb},
+		{"i32-abs", 32, 0, 0xffffffd6, 160, false, 42},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := swarScalarModule(t, wasm.I32,
+				swarV128Const(tc.bits, 0), swarFD(tc.sub),
+				swarIntegerExtract(tc.width, tc.lane, tc.signedExtract))
+			if got := runProductionSWARWrapper(t, m); uint32(got) != tc.want {
+				t.Fatalf("got %#x, want %#x", uint32(got), tc.want)
+			}
+		})
+	}
+
+	for _, tc := range []struct {
+		name   string
+		width  int
+		lo, hi uint64
+		want   uint32
+	}{
+		{"i8-all", 8, 0x0101010101010101, 0x0101010101010101, 1},
+		{"i8-zero", 8, 0x0101010101000101, 0x0101010101010101, 0},
+		{"i16-all", 16, 0x0001000100010001, 0x0001000100010001, 1},
+		{"i32-zero", 32, 0x0000000100000001, 0x0000000000000001, 0},
+		{"i64-all", 64, 1, 1, 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			sub := map[int]uint32{8: 99, 16: 131, 32: 163, 64: 195}[tc.width]
+			m := swarScalarModule(t, wasm.I32, swarV128Const(tc.lo, tc.hi), swarFD(sub))
+			if got := runProductionSWARWrapper(t, m); uint32(got) != tc.want {
+				t.Fatalf("got %d, want %d", got, tc.want)
+			}
+		})
+	}
+
+	for _, tc := range []struct {
+		name   string
+		width  int
+		lo, hi uint64
+		want   uint32
+	}{
+		{"i8", 8, 0x80007f0080007f80, 0x0080000000000080, 0x4189},
+		{"i16", 16, 0x800000007fff8000, 0x000080000000ffff, 0x59},
+		{"i32", 32, 0x8000000000000000, 0x800000007fffffff, 0x0a},
+		{"i64", 64, 1 << 63, 0, 0x01},
+	} {
+		t.Run("bitmask-"+tc.name, func(t *testing.T) {
+			sub := map[int]uint32{8: 100, 16: 132, 32: 164, 64: 196}[tc.width]
+			m := swarScalarModule(t, wasm.I32, swarV128Const(tc.lo, tc.hi), swarFD(sub))
+			if got := runProductionSWARWrapper(t, m); uint32(got) != tc.want {
+				t.Fatalf("got %#x, want %#x", uint32(got), tc.want)
+			}
+		})
+	}
+}
+
 func TestSWARV128LocalControlAndSelectExec(t *testing.T) {
 	t.Run("local", func(t *testing.T) {
 		body := []byte{1, 1, 0x7b} // one v128 local
