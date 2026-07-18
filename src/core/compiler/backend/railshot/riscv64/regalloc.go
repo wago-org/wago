@@ -65,11 +65,15 @@ func (f *fn) allocRegOrNone(avoid regMask) Reg {
 	// Spill a victim: the deepest (bottom-most) stack value in a register — it is
 	// used furthest in the future, WARP's spill heuristic approximated by depth.
 	for e := f.s.head.next; e != f.s.head; e = e.next {
-		if e.kind == ekValue && e.st.kind == stReg && !block.has(e.st.reg) {
-			r := e.st.reg
-			f.spill(e)
-			return r
+		if e.kind != ekValue || e.st.kind != stReg || block.has(e.st.reg) {
+			continue
 		}
+		if e.st.typ == mtV128 && block.has(e.st.reg2) {
+			continue
+		}
+		r := e.st.reg
+		f.spill(e)
+		return r
 	}
 	// Under high pressure, a pending deferred load holds an address register: emit
 	// its load and spill the result to free the register.
@@ -105,6 +109,10 @@ func (f *fn) spillIfUsed(r Reg) {
 
 // spill evicts the register-resident value elem e to a fresh frame slot.
 func (f *fn) spill(e *elem) {
+	if e.st.kind == stReg && e.st.typ == mtV128 {
+		f.spillV128(e)
+		return
+	}
 	if e.st.kind == stMemRef {
 		// e is a deferred load: e.st.reg holds the effective ADDRESS, not the
 		// loaded value. Emit the load now and spill the value. Storing the address
@@ -266,10 +274,11 @@ func (f *fn) loadMemRef(dst Reg, st storage) {
 }
 
 // materializeByType realizes e with the register class required by its machine
-// type. v128 is rejected before scalar code generation on RV64.
+// type. Generic callers only need to force realization; for v128 the low half is
+// returned while ownership remains recorded as a complete GPR pair in e.st.
 func (f *fn) materializeByType(e *elem) Reg {
 	if e.st.typ.isV128() {
-		return f.materializeV128(e)
+		return f.materializeV128(e).lo
 	}
 	if e.st.typ.isFloat() {
 		return f.materializeF(e)

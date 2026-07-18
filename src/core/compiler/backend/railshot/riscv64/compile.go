@@ -548,6 +548,11 @@ type CompileOptions struct {
 	// "explain" dashboard, docs/no-ir-plan.md P1). Independent of WAGO_EXPLAIN,
 	// which prints the same dump to stderr. nil = no collection, zero overhead.
 	Stats *ModuleStats
+
+	// allowIncompleteSWAR is test-only while the 256-opcode SWAR backend is
+	// developed in strict tranches. Public compilation keeps rejecting SIMD until
+	// the complete lowering and proposal suites are green.
+	allowIncompleteSWAR bool
 }
 
 // DirectBackend adapts the direct wasm-to-riscv64 compiler to the shared
@@ -581,7 +586,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*rv.CompiledModule,
 	if m == nil {
 		return nil, fmt.Errorf("riscv64: nil module")
 	}
-	if frontend.ModuleRequiresSIMD(m) {
+	if frontend.ModuleRequiresSIMD(m) && !opts.allowIncompleteSWAR {
 		return nil, fmt.Errorf("riscv64: SIMD requires an RVV-enabled backend")
 	}
 	guardMode := opts.ElideBoundsChecks

@@ -44,9 +44,9 @@ func (f *fn) flushBelow(node *elem) int {
 			continue
 		}
 		if typ == mtV128 {
-			x := f.materializeV128(root)
-			f.a.StrQ(SP, f.spillOff(slot), x)
-			f.releaseF(x)
+			p := f.materializeV128(root)
+			f.stV128(SP, f.spillOff(slot), p)
+			f.releaseV128(p)
 			root.kind = ekValue
 			f.replaceStorage(root, storage{kind: stSlot, typ: mtV128, slot: slot})
 			slot += 2

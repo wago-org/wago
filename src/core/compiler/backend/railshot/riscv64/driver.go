@@ -104,7 +104,9 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 		e := f.popValue()
 		switch e.st.kind {
 		case stReg:
-			if e.st.typ.isXMM() {
+			if e.st.typ == mtV128 {
+				f.releaseV128(v128Pair{lo: e.st.reg, hi: e.st.reg2})
+			} else if e.st.typ.isXMM() {
 				f.releaseF(e.st.reg)
 			} else {
 				f.release(e.st.reg)
@@ -950,23 +952,22 @@ func (f *fn) emitSelect() {
 	b := f.popValue()
 	a := f.popValue()
 
-	// V registers have no CSEL fold worth branching around here, so for the
-	// value-copy cases we branch: skip the copy when cond != 0 (keep a). Scalar
-	// floats use scalar FMOV; v128 uses a full-vector copy. Integer operands use CSEL.
+	// Scalar floats use scalar FMOV; SWAR v128 values branch around a two-GPR
+	// copy. Integer operands use CSEL.
 	aV128 := a.kind == ekValue && a.st.typ.isV128()
 	bV128 := b.kind == ekValue && b.st.typ.isV128()
 	if aV128 || bV128 {
-		aX := f.materializeV128(a)
-		f.fpinned = f.fpinned.add(aX)
-		bX := f.materializeV128(b)
-		f.pinned = f.pinned.remove(condReg)
-		skip := f.a.Cbnz64(condReg) // cond != 0 → keep a (CBNZ fuses test+branch)
-		f.a.NeonMov16b(aX, bX)      // cond == 0 → a = b (all 128 bits)
+		ap := f.materializeV128(a)
+		f.pinned = f.pinned.union(ap.mask())
+		bp := f.materializeV128(b)
+		f.pinned = f.pinned.remove(condReg).remove(ap.lo).remove(ap.hi)
+		skip := f.a.Cbnz64(condReg) // cond != 0 → keep a
+		f.a.MovReg64(ap.lo, bp.lo)  // cond == 0 → a = b
+		f.a.MovReg64(ap.hi, bp.hi)
 		f.a.PatchBranch19(skip, f.a.Len())
-		f.fpinned = f.fpinned.remove(aX)
-		f.releaseF(bX)
+		f.releaseV128(bp)
 		f.release(condReg)
-		f.pushVReg(aX)
+		f.pushV128Pair(ap)
 		return
 	}
 
@@ -1134,29 +1135,8 @@ func (f *fn) setLocal(x int, tee bool) {
 		}
 		return
 	}
-	if pr, _, ok := f.pinReg(x); ok && f.localType[x] == mtV128 {
-		// Register-pinned v128 local: move the value into its V register (full 128
-		// bits). A pinned-local source is moved directly; anything else is
-		// materialized first (materializeV128 never returns the pin, so the move is
-		// always to a distinct register).
-		if e.kind == ekValue && e.st.kind == stLocalReg {
-			if e.st.reg != pr {
-				f.a.NeonMov16b(pr, e.st.reg)
-			}
-		} else {
-			xmm := f.materializeV128(e)
-			if xmm != pr {
-				f.a.NeonMov16b(pr, xmm)
-			}
-			f.releaseF(xmm)
-		}
-		f.markLocalDirty(x)
-		if tee {
-			f.replaceStorage(e, storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: x})
-		} else {
-			f.erase(e)
-		}
-		return
+	if _, _, ok := f.pinReg(x); ok && f.localType[x] == mtV128 {
+		panic("riscv64: SWAR v128 local pinning is disabled")
 	}
 	if pr, isFloat, ok := f.pinReg(x); ok && isFloat {
 		// Register-pinned float local: move the value into its V register.
@@ -1181,12 +1161,12 @@ func (f *fn) setLocal(x int, tee bool) {
 		return
 	}
 	if f.localType[x] == mtV128 {
-		xmm := f.materializeV128(e)
-		f.stV128(SP, f.localOff(x), xmm) // helper hides the scaled-offset fallback (§6.1)
+		p := f.materializeV128(e)
+		f.stV128(SP, f.localOff(x), p)
 		f.locals[x].state = lsMem
 		if !tee {
 			f.erase(e)
-			f.releaseF(xmm)
+			f.releaseV128(p)
 		}
 		return
 	}

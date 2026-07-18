@@ -98,9 +98,10 @@ func (f *fn) globalGet(r *wasm.Reader) error {
 		}
 		f.pushFReg(xmm, mtOf2(f64))
 	case wasm.EqualValType(gtv, wasm.V128):
-		xmm := f.allocFReg(0)
-		f.a.LdrQ(xmm, cell, 0)
-		f.pushVReg(xmm)
+		p := f.allocV128Pair(0)
+		f.ld64(p.lo, cell, 0)
+		f.ld64(p.hi, cell, 8)
+		f.pushV128Pair(p)
 	default:
 		return fmt.Errorf("riscv64: global.get type %s not yet supported (global %d)", gtv, x)
 	}
@@ -159,12 +160,13 @@ func (f *fn) globalSet(r *wasm.Reader) error {
 	}
 	gtv := wasm.GlobalValueType(gt)
 	if wasm.EqualValType(gtv, wasm.V128) {
-		xmm := f.materializeV128(f.popValue())
-		f.fpinned = f.fpinned.add(xmm)
+		p := f.materializeV128(f.popValue())
+		f.pinned = f.pinned.union(p.mask())
 		cell := f.globalCellPtr(x) // cached, pinned
-		f.a.StrQ(cell, 0, xmm)
-		f.fpinned = f.fpinned.remove(xmm)
-		f.releaseF(xmm)
+		f.st64(cell, 0, p.lo)
+		f.st64(cell, 8, p.hi)
+		f.pinned = f.pinned.remove(p.lo).remove(p.hi)
+		f.releaseV128(p)
 		return nil
 	}
 	if wasm.EqualValType(gtv, wasm.F32) || wasm.EqualValType(gtv, wasm.F64) {

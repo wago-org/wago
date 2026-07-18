@@ -249,9 +249,9 @@ func (f *fn) flush() {
 			continue // already canonical
 		}
 		if typ == mtV128 {
-			x := f.materializeV128(root)
-			f.a.StrQ(SP, f.spillOff(slot), x)
-			f.releaseF(x)
+			p := f.materializeV128(root)
+			f.stV128(SP, f.spillOff(slot), p)
+			f.releaseV128(p)
 			slot += 2
 			continue
 		}

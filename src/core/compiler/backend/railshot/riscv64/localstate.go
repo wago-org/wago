@@ -71,12 +71,10 @@ func (f *fn) markDeclaredLocalZero(x int) {
 }
 
 func (f *fn) storeLocalReg(x int, reg Reg, isFloat bool) {
-	// riscv64: frame slots are addressed off SP; the store helpers hide the
-	// scaled-immediate encodability fallback (large frames overflow imm12) —
-	// see CONTRACT §6.1. Float slots pick STR S/D by the local's f64-ness; a
-	// v128 pin needs the full 128-bit STR Q.
+	// SWAR v128 locals are deliberately not register-pinned: a pin requires a
+	// GPR pair, while localDef currently represents one physical register.
 	if f.localType[x] == mtV128 {
-		f.stV128(SP, f.localOff(x), reg)
+		panic("riscv64: SWAR v128 local pinning is disabled")
 	} else if isFloat {
 		f.fst(SP, f.localOff(x), reg, f.localType[x] == mtF64)
 	} else {
@@ -86,7 +84,7 @@ func (f *fn) storeLocalReg(x int, reg Reg, isFloat bool) {
 
 func (f *fn) loadLocalReg(x int, reg Reg, isFloat bool) {
 	if f.localType[x] == mtV128 {
-		f.a.LdrQ(reg, SP, f.localOff(x))
+		panic("riscv64: SWAR v128 local pinning is disabled")
 	} else if isFloat {
 		f.fld(reg, SP, f.localOff(x), f.localType[x] == mtF64)
 	} else {
@@ -116,6 +114,9 @@ func (f *fn) materializeZeroLocal(x int, needSlot bool) {
 		r := f.allocReg(0)
 		f.a.MovImm64(r, 0)
 		f.st64(SP, f.localOff(x), r)
+		if f.localType[x] == mtV128 {
+			f.st64(SP, f.localOff(x)+8, r)
+		}
 		f.release(r)
 		f.locals[x].state = lsMem
 	}

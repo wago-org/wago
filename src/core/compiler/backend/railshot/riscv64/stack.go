@@ -41,10 +41,10 @@ func (t machineType) is64() bool    { return t == mtI64 || t == mtF64 }
 func (t machineType) isFloat() bool { return t == mtF32 || t == mtF64 }
 func (t machineType) isV128() bool  { return t == mtV128 }
 
-// isXMM reports whether the value lives in the SIMD/FP register file (V0–V31 on
-// riscv64 — the analog of x86's XMM registers). Name kept per the port contract's
-// type/method-name-parity rule so the sibling emit files read like the originals.
-func (t machineType) isXMM() bool { return t.isFloat() || t.isV128() }
+// isXMM reports whether the value lives in the scalar FP register file. RV64
+// SWAR v128 values live in pairs of GPRs instead, so they must never enter the
+// floating-register allocator.
+func (t machineType) isXMM() bool { return t.isFloat() }
 func (t machineType) stackSlots() int {
 	if t == mtV128 {
 		return 2
@@ -110,7 +110,8 @@ func (st storage) memBorrow() int { return int(st.cval) - 1 }
 type storage struct {
 	kind storageKind
 	typ  machineType
-	reg  Reg
+	reg  Reg // scalar register, or low 64-bit half for mtV128
+	reg2 Reg // high 64-bit half for register-resident mtV128
 	slot int
 	idx  int   // local/global index for stLocalRef/stGlobalRef
 	cval int64 // constant value/bits for stConst

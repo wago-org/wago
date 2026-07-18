@@ -52,8 +52,8 @@ func (f *fn) fconstMask() regMask {
 	return m
 }
 
-// allocFReg returns a free V register, spilling the deepest float-resident stack
-// value if none is free.
+// allocFReg returns a free scalar FP register, spilling the deepest
+// float-resident stack value if none is free.
 func (f *fn) allocFReg(avoid regMask) Reg {
 	block := avoid.union(f.fpinned).union(f.fpinnedLocalMask).union(f.fconstMask()).union(f.v128ConstMask())
 	for _, r := range fpAllocRegs {
@@ -71,16 +71,9 @@ func (f *fn) allocFReg(avoid regMask) Reg {
 	panic("riscv64: no V register available to spill")
 }
 
-// spillF evicts a V-resident float/vector value to a fresh frame slot.
+// spillF evicts a scalar FP value to a fresh frame slot.
 func (f *fn) spillF(e *elem) {
 	r := e.st.reg
-	if e.st.typ == mtV128 {
-		slot := f.allocSpillSlots(2)
-		f.a.StrQ(SP, f.spillOff(slot), r)
-		f.fregUser[r] = nil
-		f.replaceStorage(e, storage{kind: stSlot, typ: e.st.typ, slot: slot})
-		return
-	}
 	slot := f.allocSpillSlot()
 	f.a.StrF(SP, f.spillOff(slot), r, true)
 	f.fregUser[r] = nil
