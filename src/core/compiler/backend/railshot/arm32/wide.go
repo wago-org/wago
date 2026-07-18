@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	a32 "github.com/wago-org/wago/src/core/encoder/arm32"
 )
@@ -11,37 +12,57 @@ import (
 var wideRegPool = []a32.Reg{a32.R0, a32.R1, a32.R2, a32.R3, a32.R4, a32.R5, a32.R6, a32.R7, a32.R8, a32.R9, a32.R10, a32.R11}
 
 type wideValue struct {
-	n    int
-	regs [4]a32.Reg
+	n      int
+	regs   [4]a32.Reg
+	groups [4]shared.RegGroup
+	groupN int
 }
 type wideCompiler struct {
-	a     a32.Asm
-	stack []wideValue
-	used  [16]bool
+	a      a32.Asm
+	stack  []wideValue
+	groups shared.GroupAllocator
 }
 
+func newWideCompiler() *wideCompiler {
+	ids := make([]uint8, len(wideRegPool))
+	for i, r := range wideRegPool {
+		ids[i] = uint8(r)
+	}
+	return &wideCompiler{groups: shared.NewGroupAllocator(ids)}
+}
 func (c *wideCompiler) alloc(n int) (wideValue, error) {
 	v := wideValue{n: n}
-	left := n
-	for _, r := range wideRegPool {
-		if c.used[r] {
-			continue
+	if n == 3 {
+		for i := 0; i < 3; i++ {
+			g, ok := c.groups.Alloc(1)
+			if !ok {
+				for j := 0; j < i; j++ {
+					c.groups.Release(v.groups[j])
+				}
+				return wideValue{}, fmt.Errorf("arm32: wide expression exceeds register capacity")
+			}
+			v.groups[i] = g
+			v.regs[i] = a32.Reg(g.Regs[0])
+			v.groupN++
 		}
-		v.regs[n-left] = r
-		c.used[r] = true
-		left--
-		if left == 0 {
-			return v, nil
-		}
+		return v, nil
 	}
-	for i := 0; i < n-left; i++ {
-		c.used[v.regs[i]] = false
+	g, ok := c.groups.Alloc(uint8(n))
+	if !ok {
+		return wideValue{}, fmt.Errorf("arm32: wide expression exceeds register capacity")
 	}
-	return wideValue{}, fmt.Errorf("arm32: wide expression exceeds register capacity")
+	v.groups[0] = g
+	v.groupN = 1
+	for i := 0; i < n; i++ {
+		v.regs[i] = a32.Reg(g.Regs[i])
+	}
+	return v, nil
 }
 func (c *wideCompiler) release(v wideValue) {
-	for i := 0; i < v.n; i++ {
-		c.used[v.regs[i]] = false
+	for i := 0; i < v.groupN; i++ {
+		if !c.groups.Release(v.groups[i]) {
+			panic("arm32: partial or stale wide-value release")
+		}
 	}
 }
 func (c *wideCompiler) push(v wideValue) { c.stack = append(c.stack, v) }
@@ -61,7 +82,7 @@ func quad(v wideValue) a32.Quad { return a32.Quad{v.regs[0], v.regs[1], v.regs[2
 // CompileV128Beachhead lowers a strict straight-line v128 expression directly
 // through four-GPR Thumb-2 SWAR. The little-endian result returns in R0..R3.
 func CompileV128Beachhead(body []byte) ([]byte, error) {
-	c := new(wideCompiler)
+	c := newWideCompiler()
 	r := wasm.NewReader(body)
 	groups, err := r.U32()
 	if err != nil {
@@ -193,7 +214,7 @@ func CompileV128Beachhead(body []byte) ([]byte, error) {
 // CompileF64BitBeachhead lowers f64.const/abs/neg/copysign through integer
 // register pairs. The result returns in R0/R1.
 func CompileF64BitBeachhead(body []byte) ([]byte, error) {
-	c := new(wideCompiler)
+	c := newWideCompiler()
 	r := wasm.NewReader(body)
 	groups, err := r.U32()
 	if err != nil {
@@ -277,22 +298,83 @@ func CompileF64BitBeachhead(body []byte) ([]byte, error) {
 	return nil, fmt.Errorf("arm32: f64 body missing end")
 }
 
-// CompileI64Beachhead lowers straight-line two-GPR i64 constants and modular
-// arithmetic. The little-endian result returns in R0/R1.
-func CompileI64Beachhead(body []byte) ([]byte, error) {
-	c := new(wideCompiler)
+var i64LocalHomes = [][2]a32.Reg{{a32.R4, a32.R5}, {a32.R6, a32.R7}, {a32.R8, a32.R9}, {a32.R10, a32.R11}}
+
+// CompileI64Beachhead lowers a no-parameter i64 function.
+func CompileI64Beachhead(body []byte) ([]byte, error) { return CompileI64Function(0, body) }
+
+// CompileI64Function adds atomic pair parameters and register-backed locals to
+// the direct Thumb-2 i64 beachhead while preserving every callee-saved home.
+func CompileI64Function(numParams int, body []byte) ([]byte, error) {
+	c := newWideCompiler()
 	r := wasm.NewReader(body)
 	groups, err := r.U32()
 	if err != nil {
 		return nil, err
 	}
-	if groups != 0 {
-		return nil, fmt.Errorf("arm32: i64 beachhead does not support locals")
+	declared := 0
+	for i := uint32(0); i < groups; i++ {
+		n, e := r.U32()
+		if e != nil {
+			return nil, e
+		}
+		typ, e := r.Byte()
+		if e != nil {
+			return nil, e
+		}
+		if typ != 0x7e {
+			return nil, fmt.Errorf("arm32: i64 function local type %#x", typ)
+		}
+		declared += int(n)
+	}
+	if numParams < 0 || numParams > 2 {
+		return nil, fmt.Errorf("arm32: i64 function supports 0..2 parameters")
+	}
+	total := numParams + declared
+	if total > len(i64LocalHomes) {
+		return nil, fmt.Errorf("arm32: i64 function supports %d pair locals", len(i64LocalHomes))
+	}
+	locals := make([]wideValue, total)
+	frame := uint32((total*8 + 15) &^ 15)
+	if frame != 0 {
+		c.a.MovImm32(a32.R12, frame)
+		c.a.Sub(a32.SP, a32.SP, a32.R12)
+	}
+	for i := 0; i < total; i++ {
+		home := i64LocalHomes[i]
+		if !c.a.Str(home[0], a32.SP, uint16(i*8)) || !c.a.Str(home[1], a32.SP, uint16(i*8+4)) {
+			panic("arm32: local save")
+		}
+		g, ok := c.groups.Acquire([4]uint8{uint8(home[0]), uint8(home[1])}, 2)
+		if !ok {
+			panic("arm32: local home acquire")
+		}
+		locals[i] = wideValue{n: 2, regs: [4]a32.Reg{home[0], home[1]}, groups: [4]shared.RegGroup{g}, groupN: 1}
+		if i < numParams {
+			c.a.MovReg(home[0], a32.R0+a32.Reg(i*2))
+			c.a.MovReg(home[1], a32.R1+a32.Reg(i*2))
+		} else {
+			c.a.MovImm32(home[0], 0)
+			c.a.MovImm32(home[1], 0)
+		}
+	}
+	epilogue := func() {
+		for i := 0; i < total; i++ {
+			home := i64LocalHomes[i]
+			c.a.Ldr(home[0], a32.SP, uint16(i*8))
+			c.a.Ldr(home[1], a32.SP, uint16(i*8+4))
+		}
+		if frame != 0 {
+			c.a.MovImm32(a32.R12, frame)
+			c.a.Add(a32.SP, a32.SP, a32.R12)
+		}
+		c.a.Ret()
+		c.a.Align4()
 	}
 	for r.HasNext() {
-		op, err := r.Byte()
-		if err != nil {
-			return nil, err
+		op, e := r.Byte()
+		if e != nil {
+			return nil, e
 		}
 		switch op {
 		case 0x0b:
@@ -303,32 +385,60 @@ func CompileI64Beachhead(body []byte) ([]byte, error) {
 			if v.regs[0] != a32.R0 || v.regs[1] != a32.R1 {
 				return nil, fmt.Errorf("arm32: non-canonical i64 result registers")
 			}
-			c.a.Ret()
-			c.a.Align4()
+			epilogue()
 			return c.a.B, nil
-		case 0x42:
-			x, err := r.I64()
-			if err != nil {
-				return nil, err
+		case 0x20, 0x21, 0x22:
+			idx, e := r.U32()
+			if e != nil {
+				return nil, e
 			}
-			v, err := c.alloc(2)
-			if err != nil {
-				return nil, err
+			if int(idx) >= len(locals) {
+				return nil, fmt.Errorf("arm32: i64 local index %d", idx)
+			}
+			home := locals[idx]
+			if op == 0x20 {
+				v, e := c.alloc(2)
+				if e != nil {
+					return nil, e
+				}
+				c.a.MovReg(v.regs[0], home.regs[0])
+				c.a.MovReg(v.regs[1], home.regs[1])
+				c.push(v)
+			} else {
+				v, e := c.pop(2)
+				if e != nil {
+					return nil, e
+				}
+				c.a.MovReg(home.regs[0], v.regs[0])
+				c.a.MovReg(home.regs[1], v.regs[1])
+				if op == 0x22 {
+					c.push(v)
+				} else {
+					c.release(v)
+				}
+			}
+		case 0x42:
+			x, e := r.I64()
+			if e != nil {
+				return nil, e
+			}
+			v, e := c.alloc(2)
+			if e != nil {
+				return nil, e
 			}
 			c.a.MovImm32(v.regs[0], uint32(x))
 			c.a.MovImm32(v.regs[1], uint32(uint64(x)>>32))
 			c.push(v)
 		case 0x7c, 0x7d, 0x7e, 0x83, 0x84, 0x85:
-			b, err := c.pop(2)
-			if err != nil {
-				return nil, err
+			b, e := c.pop(2)
+			if e != nil {
+				return nil, e
 			}
-			a, err := c.pop(2)
-			if err != nil {
-				return nil, err
+			a, e := c.pop(2)
+			if e != nil {
+				return nil, e
 			}
-			switch op {
-			case 0x83, 0x84, 0x85:
+			if op >= 0x83 {
 				for i := 0; i < 2; i++ {
 					var ok bool
 					if op == 0x83 {
@@ -344,44 +454,44 @@ func CompileI64Beachhead(body []byte) ([]byte, error) {
 				}
 				c.release(b)
 				c.push(a)
-			default:
-				out, err := c.alloc(2)
-				if err != nil {
-					return nil, err
-				}
-				scratchN := 0
-				if op == 0x7e {
-					scratchN = 1
-				}
-				var s wideValue
-				if scratchN != 0 {
-					s, err = c.alloc(scratchN)
-					if err != nil {
-						return nil, err
-					}
-				}
-				var ok bool
-				if op == 0x7c {
-					ok = c.a.Add64(out.regs[0], out.regs[1], a.regs[0], a.regs[1], b.regs[0], b.regs[1])
-				} else if op == 0x7d {
-					ok = c.a.Sub64(out.regs[0], out.regs[1], a.regs[0], a.regs[1], b.regs[0], b.regs[1])
-				} else {
-					ok = c.a.Mul64(out.regs[0], out.regs[1], a.regs[0], a.regs[1], b.regs[0], b.regs[1], s.regs[0])
-				}
-				if !ok {
-					panic("arm32: i64 arithmetic")
-				}
-				c.a.MovReg(a.regs[0], out.regs[0])
-				c.a.MovReg(a.regs[1], out.regs[1])
-				if scratchN != 0 {
-					c.release(s)
-				}
-				c.release(out)
-				c.release(b)
-				c.push(a)
+				continue
 			}
+			out, e := c.alloc(2)
+			if e != nil {
+				return nil, e
+			}
+			sn := 0
+			if op == 0x7e {
+				sn = 1
+			}
+			var s wideValue
+			if sn != 0 {
+				s, e = c.alloc(sn)
+				if e != nil {
+					return nil, e
+				}
+			}
+			var ok bool
+			if op == 0x7c {
+				ok = c.a.Add64(out.regs[0], out.regs[1], a.regs[0], a.regs[1], b.regs[0], b.regs[1])
+			} else if op == 0x7d {
+				ok = c.a.Sub64(out.regs[0], out.regs[1], a.regs[0], a.regs[1], b.regs[0], b.regs[1])
+			} else {
+				ok = c.a.Mul64(out.regs[0], out.regs[1], a.regs[0], a.regs[1], b.regs[0], b.regs[1], s.regs[0])
+			}
+			if !ok {
+				panic("arm32: i64 arithmetic")
+			}
+			c.a.MovReg(a.regs[0], out.regs[0])
+			c.a.MovReg(a.regs[1], out.regs[1])
+			if sn != 0 {
+				c.release(s)
+			}
+			c.release(out)
+			c.release(b)
+			c.push(a)
 		default:
-			return nil, fmt.Errorf("arm32: i64 beachhead unsupported opcode %#x", op)
+			return nil, fmt.Errorf("arm32: i64 function unsupported opcode %#x", op)
 		}
 	}
 	return nil, fmt.Errorf("arm32: i64 body missing end")

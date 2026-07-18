@@ -47,6 +47,13 @@ func TestCompileI64Beachhead(t *testing.T) {
 	if _, err := CompileI64Beachhead([]byte{0, 0x42, 1, 0x86, 0x0b}); err == nil {
 		t.Fatal("unsupported shift accepted")
 	}
+	localBody := []byte{1, 1, 0x7e, 0x20, 0, 0x42, 5, 0x7c, 0x22, 1, 0x42, 2, 0x7e, 0x0b}
+	if _, err := CompileI64Function(1, localBody); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := CompileI64Function(1, []byte{0, 0x20, 2, 0x0b}); err == nil {
+		t.Fatal("invalid local accepted")
+	}
 }
 
 func TestCompileF64BitBeachhead(t *testing.T) {
@@ -101,6 +108,23 @@ func TestWideBeachheadsExecuteUnderQEMU(t *testing.T) {
 			t.Fatal(err)
 		}
 		var entry rv.Asm
+		call := entry.Jal(rv.RA)
+		entry.MovImm32(rv.A7, 93)
+		entry.Ecall()
+		if !entry.PatchJAL21(call, len(entry.B)) {
+			t.Fatal("call patch")
+		}
+		runRV32Exit(t, qemu, append(entry.B, fn...), 42)
+	})
+	t.Run("i64-param-local", func(t *testing.T) {
+		body := []byte{1, 1, 0x7e, 0x20, 0, 0x42, 5, 0x7c, 0x22, 1, 0x42, 2, 0x7e, 0x0b}
+		fn, err := CompileI64Function(1, body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var entry rv.Asm
+		entry.MovImm32(rv.A0, 16)
+		entry.MovImm32(rv.A1, 0)
 		call := entry.Jal(rv.RA)
 		entry.MovImm32(rv.A7, 93)
 		entry.Ecall()

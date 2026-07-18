@@ -162,7 +162,19 @@ and f64 sign-bit behavior. More complex f64/SIMD operations use the complete
 helper ABI while measurements decide which additional instructions merit direct
 inline SWAR.
 
-This is still not public backend admission. Pair/quad locals, spills, control
-merges and calls in the full module compiler, calls/globals/tables/references,
-the bare-metal executable and linear-memory arenas, firmware linking, and Pico 2
-hardware qualification remain to be implemented and measured.
+A shared fixed-capacity group allocator now owns one-, two-, and four-register
+values atomically. Allocation, exact ABI acquisition, release, LRU spill-victim
+selection, and exclusion masks operate on complete values; stale or partial
+pair/quad release is rejected transactionally. Both direct wide compilers use
+this allocator rather than independent per-register ownership.
+
+The i64 path additionally supports pair parameters, zero-initialized pair
+locals, and atomic `local.get`, `local.set`, and `local.tee`. Local homes use
+callee-saved register pairs whose incoming values are preserved in aligned
+frames. QEMU executes a parameter/local/tee/multiply fixture on both targets.
+
+This is still not public backend admission. General operand spills, pair/quad
+control merges and calls in the full module compiler, calls/globals/tables/
+references, the bare-metal executable and linear-memory arenas, firmware
+linking, and Pico 2 hardware qualification remain to be implemented and
+measured.
