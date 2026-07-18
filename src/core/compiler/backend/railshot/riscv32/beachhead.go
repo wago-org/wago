@@ -40,6 +40,7 @@ type compiler struct {
 	free    []rv.Reg
 	locals  []rv.Reg
 	control []*controlFrame
+	context bool
 }
 
 // CompileBeachhead lowers one wasm function body using the temporary integer
@@ -47,7 +48,15 @@ type compiler struct {
 // returns in A0. It supports locals, integer arithmetic/comparisons, and
 // structured block/loop/if/br/br_if control with void block types.
 func CompileBeachhead(numParams int, body []byte) ([]byte, error) {
-	c := &compiler{free: append([]rv.Reg(nil), scratchRegs...)}
+	return compileBeachhead(numParams, body, false)
+}
+
+func compileModuleBeachhead(numParams int, body []byte) ([]byte, error) {
+	return compileBeachhead(numParams, body, true)
+}
+
+func compileBeachhead(numParams int, body []byte, context bool) ([]byte, error) {
+	c := &compiler{free: append([]rv.Reg(nil), scratchRegs...), context: context}
 	r := wasm.NewReader(body)
 
 	groups, err := r.U32()
@@ -73,10 +82,14 @@ func CompileBeachhead(numParams int, body []byte) ([]byte, error) {
 	if numParams < 0 || numParams > 8 {
 		return nil, fmt.Errorf("riscv32 beachhead supports 0..8 parameters, got %d", numParams)
 	}
-	if total > len(localRegs) {
-		return nil, fmt.Errorf("riscv32 beachhead supports up to %d locals, got %d", len(localRegs), total)
+	availableLocals := localRegs
+	if context {
+		availableLocals = []rv.Reg{rv.X8, rv.X9, rv.X18, rv.X19, rv.X20, rv.X21, rv.X22, rv.X24, rv.X25}
 	}
-	c.locals = append(c.locals, localRegs[:total]...)
+	if total > len(availableLocals) {
+		return nil, fmt.Errorf("riscv32 beachhead supports up to %d locals, got %d", len(availableLocals), total)
+	}
+	c.locals = append(c.locals, availableLocals[:total]...)
 	for i := 0; i < numParams; i++ {
 		c.a.MovReg(c.locals[i], rv.A0+rv.Reg(i))
 	}
@@ -176,6 +189,29 @@ func CompileBeachhead(numParams int, body []byte) ([]byte, error) {
 			c.push(operand{constant: true, value: v})
 		case 0x45: // i32.eqz
 			c.eqz()
+		case 0x28, 0x2c, 0x2d, 0x2e, 0x2f:
+			if !c.context {
+				return nil, fmt.Errorf("riscv32 beachhead memory operation requires module context")
+			}
+			if err := c.load(r, op); err != nil {
+				return nil, err
+			}
+		case 0x36, 0x3a, 0x3b:
+			if !c.context {
+				return nil, fmt.Errorf("riscv32 beachhead memory operation requires module context")
+			}
+			if err := c.store(r, op); err != nil {
+				return nil, err
+			}
+		case 0x3f:
+			if !c.context {
+				return nil, fmt.Errorf("riscv32 beachhead memory.size requires module context")
+			}
+			reserved, err := r.Byte()
+			if err != nil || reserved != 0 {
+				return nil, fmt.Errorf("riscv32: invalid memory.size immediate")
+			}
+			c.memorySize()
 		case 0x67, 0x68, 0x69: // clz/ctz/popcnt
 			if err := c.countBits(op); err != nil {
 				return nil, err
@@ -184,6 +220,13 @@ func CompileBeachhead(numParams int, body []byte) ([]byte, error) {
 			c.compare(op)
 		case 0x6a, 0x6b, 0x6c, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76, 0x77, 0x78:
 			c.binary(op)
+		case 0x6d, 0x6e, 0x6f, 0x70:
+			if !c.context {
+				return nil, fmt.Errorf("riscv32 beachhead division requires module context")
+			}
+			if err := c.divRem(op); err != nil {
+				return nil, err
+			}
 		case 0xc0, 0xc1: // extend8_s/extend16_s
 			c.signExtend(op)
 		default:

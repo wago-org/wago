@@ -20,7 +20,7 @@ func CompileModule(m *wasm.Module) (*CompiledModule, error) {
 // into one 16-byte-aligned Thumb-2 image. Unsupported module state and target-
 // incompatible signatures are rejected before any image is returned.
 func CompileModuleWith(m *wasm.Module, opts ModuleCompileOptions) (*CompiledModule, error) {
-	return shared.CompileEmbeddedI32Module(m, opts, "arm32", 4, 32, []byte{0x00, 0xbf}, CompileBeachhead)
+	return shared.CompileEmbeddedI32Module(m, opts, "arm32", 4, 32, []byte{0x00, 0xbf}, compileModuleBeachhead)
 }
 
 // CompileModuleToArena preflights against the remaining arena capacity, then

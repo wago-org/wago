@@ -233,13 +233,17 @@ A shared module-layout stage now compiles every local function in the currently
 admitted i32/control subset into one 16-byte-aligned target image. It reconstructs
 validated local declarations, records bounded per-function offset/size metadata,
 performs conservative code-arena capacity preflight before code generation, and
-rejects imports, runtime state, incompatible signatures, missing byte-backed
-bodies, and unsupported instructions before publication. `CompileModuleToArena`
-uses the fixed `CodeArena` transaction so capacity and target publication
-failures clear the entire candidate image. QEMU executes a selected function
-from a two-function module image on both architectures. Calls and relocations,
-mixed-width signatures, runtime metadata, and normal scalar-memory dispatch are
-still outside this first module-wide slice.
+rejects imports, unsupported runtime state, incompatible signatures, missing
+byte-backed bodies, and unsupported instructions before publication. Module
+functions reserve a fixed context register (`R11` or `x23`) and now lower all i32
+load/store widths, `memory.size`, and trapping division/remainder directly through
+`ContextABI`; static-offset overflow, complete-width bounds checks, and canonical
+trap writes occur in normal function code. `CompileModuleToArena` uses the fixed
+`CodeArena` transaction so capacity and target publication failures clear the
+entire candidate image. QEMU executes selected functions, successful memory
+loads, memory traps, and division traps from module images on both architectures.
+Calls and relocations, `memory.grow`, mixed-width signatures, and broader runtime
+metadata remain outside this module-wide slice.
 
 This is still not public backend admission. Pair/quad control merges and calls
 in the full module compiler, calls/globals/tables/references, generated-code

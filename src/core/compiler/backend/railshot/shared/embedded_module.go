@@ -91,8 +91,11 @@ func CompileEmbeddedI32Module(m *wasm.Module, opts EmbeddedModuleOptions, target
 	if len(m.Imports) != 0 {
 		return nil, fmt.Errorf("%s: module imports are not supported", target)
 	}
-	if len(m.Tables) != 0 || len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Elements) != 0 || len(m.Data) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.Start != nil {
+	if len(m.Tables) != 0 || len(m.Memories) > 1 || len(m.Globals) != 0 || len(m.Elements) != 0 || len(m.Data) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.Start != nil {
 		return nil, fmt.Errorf("%s: module contains unsupported runtime state", target)
+	}
+	if len(m.Memories) == 1 && (m.Memories[0].Limits.Addr64 || m.Memories[0].Shared) {
+		return nil, fmt.Errorf("%s: target requires unshared memory32", target)
 	}
 	if len(m.FuncTypes) != len(m.Code) {
 		return nil, fmt.Errorf("%s: function/code count mismatch", target)

@@ -20,7 +20,7 @@ func CompileModule(m *wasm.Module) (*CompiledModule, error) {
 // into one 16-byte-aligned RV32IM image. Unsupported module state and target-
 // incompatible signatures are rejected before any image is returned.
 func CompileModuleWith(m *wasm.Module, opts ModuleCompileOptions) (*CompiledModule, error) {
-	return shared.CompileEmbeddedI32Module(m, opts, "riscv32", 8, 40, []byte{0x13, 0x00, 0x00, 0x00}, CompileBeachhead)
+	return shared.CompileEmbeddedI32Module(m, opts, "riscv32", 8, 40, []byte{0x13, 0x00, 0x00, 0x00}, compileModuleBeachhead)
 }
 
 // CompileModuleToArena preflights against the remaining arena capacity, then

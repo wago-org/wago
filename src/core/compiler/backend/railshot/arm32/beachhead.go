@@ -35,6 +35,7 @@ type compiler struct {
 	free    []a32.Reg
 	locals  []a32.Reg
 	control []*controlFrame
+	context bool
 }
 
 // CompileBeachhead lowers one validated-style Wasm function body through a
@@ -43,7 +44,15 @@ type compiler struct {
 // register used to synthesize comparisons and branches without relying on
 // architecture-specific condition values in higher layers.
 func CompileBeachhead(numParams int, body []byte) ([]byte, error) {
-	c := &compiler{free: append([]a32.Reg(nil), scratchRegs...)}
+	return compileBeachhead(numParams, body, false)
+}
+
+func compileModuleBeachhead(numParams int, body []byte) ([]byte, error) {
+	return compileBeachhead(numParams, body, true)
+}
+
+func compileBeachhead(numParams int, body []byte, context bool) ([]byte, error) {
+	c := &compiler{free: append([]a32.Reg(nil), scratchRegs...), context: context}
 	if !c.a.MovImm32(zeroReg, 0) {
 		panic("arm32: cannot establish zero register")
 	}
@@ -71,10 +80,14 @@ func CompileBeachhead(numParams int, body []byte) ([]byte, error) {
 	if numParams < 0 || numParams > 4 {
 		return nil, fmt.Errorf("arm32 beachhead supports 0..4 parameters, got %d", numParams)
 	}
-	if total > len(localRegs) {
-		return nil, fmt.Errorf("arm32 beachhead supports up to %d locals, got %d", len(localRegs), total)
+	availableLocals := localRegs
+	if context {
+		availableLocals = localRegs[:len(localRegs)-1] // R11 carries *ContextABI.
 	}
-	c.locals = append(c.locals, localRegs[:total]...)
+	if total > len(availableLocals) {
+		return nil, fmt.Errorf("arm32 beachhead supports up to %d locals, got %d", len(availableLocals), total)
+	}
+	c.locals = append(c.locals, availableLocals[:total]...)
 	for i := 0; i < numParams; i++ {
 		c.must(c.a.MovReg(c.locals[i], a32.R0+a32.Reg(i)), "parameter move")
 	}
@@ -176,6 +189,29 @@ func CompileBeachhead(numParams int, body []byte) ([]byte, error) {
 			c.push(operand{constant: true, value: v})
 		case 0x45:
 			c.eqz()
+		case 0x28, 0x2c, 0x2d, 0x2e, 0x2f:
+			if !c.context {
+				return nil, fmt.Errorf("arm32 beachhead memory operation requires module context")
+			}
+			if err := c.load(r, op); err != nil {
+				return nil, err
+			}
+		case 0x36, 0x3a, 0x3b:
+			if !c.context {
+				return nil, fmt.Errorf("arm32 beachhead memory operation requires module context")
+			}
+			if err := c.store(r, op); err != nil {
+				return nil, err
+			}
+		case 0x3f:
+			if !c.context {
+				return nil, fmt.Errorf("arm32 beachhead memory.size requires module context")
+			}
+			reserved, err := r.Byte()
+			if err != nil || reserved != 0 {
+				return nil, fmt.Errorf("arm32: invalid memory.size immediate")
+			}
+			c.memorySize()
 		case 0x67, 0x68, 0x69:
 			if err := c.countBits(op); err != nil {
 				return nil, err
@@ -184,6 +220,13 @@ func CompileBeachhead(numParams int, body []byte) ([]byte, error) {
 			c.compare(op)
 		case 0x6a, 0x6b, 0x6c, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76, 0x77, 0x78:
 			c.binary(op)
+		case 0x6d, 0x6e, 0x6f, 0x70:
+			if !c.context {
+				return nil, fmt.Errorf("arm32 beachhead division requires module context")
+			}
+			if err := c.divRem(op); err != nil {
+				return nil, err
+			}
 		case 0xc0, 0xc1:
 			c.signExtend(op)
 		default:

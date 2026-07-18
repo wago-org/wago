@@ -121,8 +121,9 @@ func TestCompileEmbeddedI32ModuleRejectsIncompatibleModules(t *testing.T) {
 		{"i64 signature", func(t *testing.T) *wasm.Module {
 			return embeddedTestModule(t, [][]byte{wasmtest.FuncType(nil, []wasm.ValType{wasm.I64})}, [][]byte{{0}}, [][]byte{wasmtest.Code([]byte{0x42, 0, 0x0b})})
 		}, "result signature"},
-		{"memory", func(t *testing.T) *wasm.Module {
-			return embeddedTestModule(t, [][]byte{wasmtest.FuncType(nil, []wasm.ValType{wasm.I32})}, [][]byte{{0}}, validCode, wasmtest.Section(5, wasmtest.Vec([]byte{0, 1})))
+		{"global", func(t *testing.T) *wasm.Module {
+			global := wasmtest.GlobalEntry(wasm.I32, false, []byte{0x41, 0, 0x0b})
+			return embeddedTestModule(t, [][]byte{wasmtest.FuncType(nil, []wasm.ValType{wasm.I32})}, [][]byte{{0}}, validCode, wasmtest.Section(6, wasmtest.Vec(global)))
 		}, "runtime state"},
 	}
 	for _, tc := range tests {
