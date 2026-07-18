@@ -113,6 +113,8 @@ func compileBeachhead(numParams int, body []byte, context bool) ([]byte, error) 
 				return nil, fmt.Errorf("arm32 beachhead unreachable requires module context")
 			}
 			c.emitContextTrap(embedded32.TrapUnreachable)
+		case 0x01:
+			// nop
 		case 0x02:
 			if err := readVoidBlockType(r); err != nil {
 				return nil, err
@@ -178,6 +180,24 @@ func compileBeachhead(numParams int, body []byte, context bool) ([]byte, error) 
 			}
 		case 0x0f:
 			c.emitReturn()
+		case 0x1a:
+			c.discard(c.pop())
+		case 0x1b:
+			if err := c.selectI32(); err != nil {
+				return nil, err
+			}
+		case 0x1c:
+			n, err := r.U32()
+			if err != nil || n != 1 {
+				return nil, fmt.Errorf("arm32: invalid typed select arity")
+			}
+			typ, err := r.Byte()
+			if err != nil || typ != byte(wasm.NumI32) {
+				return nil, fmt.Errorf("arm32: typed select supports only i32")
+			}
+			if err := c.selectI32(); err != nil {
+				return nil, err
+			}
 		case 0x20:
 			idx, err := r.U32()
 			if err != nil || int(idx) >= len(c.locals) {
@@ -427,6 +447,31 @@ func (c *compiler) signExtend(op byte) {
 	c.must(c.a.LslImm(value, value, shift), "sign extend left")
 	c.must(c.a.AsrImm(value, value, shift), "sign extend right")
 	c.push(operand{reg: value})
+}
+
+func (c *compiler) discard(v operand) {
+	if !v.constant {
+		c.release(v.reg)
+	}
+}
+
+func (c *compiler) selectI32() error {
+	cond := c.materialize(c.pop())
+	right := c.materialize(c.pop())
+	left := c.materialize(c.pop())
+	c.must(c.a.Cmp(cond, zeroReg), "select compare")
+	chooseRight := c.a.FarBcond(a32.CondEQ)
+	done := c.a.Branch()
+	rightTarget := c.a.Len()
+	c.must(c.a.MovReg(left, right), "select right")
+	finish := c.a.Len()
+	if !c.a.PatchFarBranch(chooseRight, rightTarget) || !c.a.PatchBranch(done, finish) {
+		return fmt.Errorf("arm32: select branch out of range")
+	}
+	c.release(cond)
+	c.release(right)
+	c.push(operand{reg: left})
+	return nil
 }
 
 func (c *compiler) compare(op byte) {

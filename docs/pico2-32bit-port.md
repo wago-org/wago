@@ -254,8 +254,10 @@ loads, memory traps, and division traps from module images on both architectures
 Generated i32 module functions also implement bounded `memory.grow`: the
 extended context publishes the fixed backing maximum, growth validates page-to-
 byte overflow and capacity, zeroes the newly admitted range, refreshes the
-current-length field, and returns the old page count or `-1`. These functions
-poll the fixed cancellation cell after parameter capture at function entry and
+current-length field, and returns the old page count or `-1`. The i32 path also executes `nop`, `drop`, untyped i32 `select`, and typed i32
+`select`; homogeneous i64, f64, and v128 functions can discard complete pair or
+quad values without exposing partial storage. These functions poll the fixed
+cancellation cell after parameter capture at function entry and
 at every loop header, writing a canonical cancellation trap without relying on
 signals or firmware exceptions. Explicit `unreachable` instructions likewise
 write a distinct canonical trap from normal generated module code. Calls and

@@ -228,6 +228,17 @@ func CompileV128Function(numParams int, body []byte) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
+		if op == 0x01 {
+			continue
+		}
+		if op == 0x1a {
+			v, e := c.pop(4)
+			if e != nil {
+				return nil, e
+			}
+			c.release(v)
+			continue
+		}
 		if op == 0x0b {
 			if len(c.stack) != 1 {
 				return nil, fmt.Errorf("arm32: v128 result stack has %d values", len(c.stack))
@@ -455,6 +466,14 @@ func CompileF64BitFunction(numParams int, body []byte) ([]byte, error) {
 			return nil, err
 		}
 		switch op {
+		case 0x01:
+			// nop
+		case 0x1a:
+			v, e := c.pop(2)
+			if e != nil {
+				return nil, e
+			}
+			c.release(v)
 		case 0x0b:
 			if len(c.stack) != 1 {
 				return nil, fmt.Errorf("arm32: f64 result stack has %d values", len(c.stack))
@@ -634,6 +653,14 @@ func CompileI64Function(numParams int, body []byte) ([]byte, error) {
 			return nil, e
 		}
 		switch op {
+		case 0x01:
+			// nop
+		case 0x1a:
+			v, e := c.pop(2)
+			if e != nil {
+				return nil, e
+			}
+			c.release(v)
 		case 0x0b:
 			if len(c.stack) != 1 {
 				return nil, fmt.Errorf("arm32: i64 result stack has %d values", len(c.stack))

@@ -115,6 +115,7 @@ func compileBeachhead(numParams int, body []byte, context bool) ([]byte, error) 
 				return nil, fmt.Errorf("riscv32 beachhead unreachable requires module context")
 			}
 			c.emitContextTrap(embedded32.TrapUnreachable)
+		case 0x01: // nop
 		case 0x02: // block
 			if err := readVoidBlockType(r); err != nil {
 				return nil, err
@@ -178,6 +179,24 @@ func compileBeachhead(numParams int, body []byte, context bool) ([]byte, error) 
 			}
 		case 0x0f: // return
 			c.emitReturn()
+		case 0x1a: // drop
+			c.discard(c.pop())
+		case 0x1b: // select
+			if err := c.selectI32(); err != nil {
+				return nil, err
+			}
+		case 0x1c: // select t
+			n, err := r.U32()
+			if err != nil || n != 1 {
+				return nil, fmt.Errorf("riscv32: invalid typed select arity")
+			}
+			typ, err := r.Byte()
+			if err != nil || typ != byte(wasm.NumI32) {
+				return nil, fmt.Errorf("riscv32: typed select supports only i32")
+			}
+			if err := c.selectI32(); err != nil {
+				return nil, err
+			}
 		case 0x20: // local.get
 			idx, err := r.U32()
 			if err != nil || int(idx) >= len(c.locals) {
@@ -430,6 +449,30 @@ func (c *compiler) signExtend(op byte) {
 		c.a.Sext16(value, value)
 	}
 	c.push(operand{reg: value})
+}
+
+func (c *compiler) discard(v operand) {
+	if !v.constant {
+		c.release(v.reg)
+	}
+}
+
+func (c *compiler) selectI32() error {
+	cond := c.materialize(c.pop())
+	right := c.materialize(c.pop())
+	left := c.materialize(c.pop())
+	chooseRight := c.a.FarBcond(cond, rv.Zero, rv.CondEQ, branchScratch)
+	done := c.a.FarJump(rv.Zero, branchScratch)
+	rightTarget := c.a.Len()
+	c.a.MovReg(left, right)
+	finish := c.a.Len()
+	if !c.a.PatchFarBranch(chooseRight, rightTarget) || !c.a.PatchFarJump(done, finish) {
+		return fmt.Errorf("riscv32: select branch out of range")
+	}
+	c.release(cond)
+	c.release(right)
+	c.push(operand{reg: left})
+	return nil
 }
 
 func (c *compiler) compare(op byte) {

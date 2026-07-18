@@ -71,6 +71,9 @@ func TestCompileI64Beachhead(t *testing.T) {
 	if len(code) == 0 || len(code)%4 != 0 {
 		t.Fatalf("code len=%d", len(code))
 	}
+	if _, err := CompileI64Beachhead([]byte{0, 0x42, 1, 0x1a, 0x42, 2, 0x0b}); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := CompileI64Beachhead([]byte{0, 0x42, 1, 0x79, 0x0b}); err != nil {
 		t.Fatal(err)
 	}
@@ -105,6 +108,14 @@ func TestCompileF64BitBeachhead(t *testing.T) {
 	}
 	if len(code) == 0 || len(code)%4 != 0 {
 		t.Fatalf("code len=%d", len(code))
+	}
+	drop := []byte{0, 0x44}
+	drop = append(drop, bits[:]...)
+	drop = append(drop, 0x1a, 0x44)
+	drop = append(drop, bits[:]...)
+	drop = append(drop, 0x0b)
+	if _, err := CompileF64BitBeachhead(drop); err != nil {
+		t.Fatal(err)
 	}
 	if _, err := CompileF64BitBeachhead([]byte{0, 0xa0, 0x0b}); err == nil {
 		t.Fatal("f64.add accepted by bit beachhead")
