@@ -12,7 +12,7 @@ func TestSIMDHelperRegistryAndDispatch(t *testing.T) {
 	count := 0
 	for op := uint32(0); op <= 512; op++ {
 		got := SIMDHelperValid(op)
-		want := wasm.SIMDSubopcodeValid(op) && !simdDirectImmediate(op)
+		want := wasm.SIMDSubopcodeValid(op)
 		if got != want {
 			t.Errorf("opcode %d: helper=%v want=%v", op, got, want)
 		}
@@ -29,16 +29,9 @@ func TestSIMDHelperRegistryAndDispatch(t *testing.T) {
 			}()
 		}
 	}
-	if count != 218 {
-		t.Fatalf("helper registry has %d opcodes, want 218", count)
+	if count != 256 {
+		t.Fatalf("helper registry has %d opcodes, want 256", count)
 	}
-}
-
-func simdDirectImmediate(op uint32) bool {
-	if op == 12 || op == 13 || op <= 11 || op == 84 || op == 85 || op == 86 || op == 87 || op == 88 || op == 89 || op == 90 || op == 91 || op == 92 || op == 93 {
-		return true
-	}
-	return op >= 21 && op <= 34
 }
 
 func TestSIMDPackedArithmeticAndSaturation(t *testing.T) {
@@ -92,6 +85,63 @@ func TestSIMDFloatEdgesAndConversions(t *testing.T) {
 	}
 	if got := binary.LittleEndian.Uint64(f.Out[8:]); got != 0 {
 		t.Fatalf("zero upper lanes = %#x", got)
+	}
+}
+
+func TestSIMDImmediateLaneAndMemoryOperations(t *testing.T) {
+	var imm V128
+	for i := range imm {
+		imm[i] = byte(15 - i)
+	}
+	f := SIMDFrame{Op: 12, Immediate: imm}
+	RunSIMD(&f)
+	if f.Out != imm {
+		t.Fatal("v128.const mismatch")
+	}
+	f = SIMDFrame{Op: 13, A: imm, B: V128{16, 17, 18, 19}, Immediate: V128{0, 15, 16, 17, 1, 14, 18, 19}}
+	RunSIMD(&f)
+	want := V128{15, 0, 16, 17, 14, 1, 18, 19}
+	for i := 0; i < 8; i++ {
+		if f.Out[i] != want[i] {
+			t.Fatalf("shuffle byte %d=%d want=%d", i, f.Out[i], want[i])
+		}
+	}
+
+	f = SIMDFrame{Op: 23, A: imm, Scalar: 0xaa, Lane: 3}
+	RunSIMD(&f)
+	if f.Out[3] != 0xaa {
+		t.Fatalf("replace lane=%#x", f.Out[3])
+	}
+	f = SIMDFrame{Op: 21, A: V128{0x80}, Lane: 0}
+	RunSIMD(&f)
+	if f.ScalarOut != 0xffffff80 {
+		t.Fatalf("extract signed=%#x", f.ScalarOut)
+	}
+
+	mem := make([]byte, 32)
+	for i := range mem {
+		mem[i] = byte(i)
+	}
+	f = SIMDFrame{Op: 0, Memory: mem, Address: 3}
+	RunSIMD(&f)
+	if f.Trap != TrapNone || f.Out[0] != 3 || f.Out[15] != 18 {
+		t.Fatalf("v128.load trap=%d out=%v", f.Trap, f.Out)
+	}
+	before := append([]byte(nil), mem...)
+	f = SIMDFrame{Op: 11, Memory: mem, Address: 20, A: imm}
+	RunSIMD(&f)
+	if f.Trap != TrapMemoryOutOfBounds {
+		t.Fatalf("store trap=%d", f.Trap)
+	}
+	for i := range mem {
+		if mem[i] != before[i] {
+			t.Fatalf("OOB store changed byte %d", i)
+		}
+	}
+	f = SIMDFrame{Op: 87, Memory: mem, Address: 5, A: imm, Lane: 1}
+	RunSIMD(&f)
+	if f.Trap != TrapNone || binary.LittleEndian.Uint64(f.Out[8:]) != binary.LittleEndian.Uint64(mem[5:13]) {
+		t.Fatal("load64_lane mismatch")
 	}
 }
 

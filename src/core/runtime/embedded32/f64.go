@@ -13,6 +13,7 @@ const (
 	TrapNone Trap = iota
 	TrapInvalidConversion
 	TrapIntegerOverflow
+	TrapMemoryOutOfBounds
 )
 
 // F64Op identifies one scalar floating-point helper operation. Bitwise abs,
@@ -121,12 +122,18 @@ func preserveZeroSign(inBits uint64, out float64) float64 {
 	return out
 }
 
+// F64HelperValid reports whether op is part of the scalar helper ABI.
+func F64HelperValid(op F64Op) bool { return op <= I64TruncSatF64U }
+
 // RunF64 executes one complete scalar f64 helper operation. It is deliberately
 // allocation-free and has a stable pointer-only ABI suitable for TinyGo-exported
 // firmware helpers.
 //
 //export wago_embedded32_f64
 func RunF64(f *F64Frame) {
+	if !F64HelperValid(f.Op) {
+		panic("embedded32: invalid f64 helper opcode")
+	}
 	f.Trap = TrapNone
 	aBits, bBits := f64bits(f.ALo, f.AHi), f64bits(f.BLo, f.BHi)
 	a, b := math.Float64frombits(aBits), math.Float64frombits(bBits)

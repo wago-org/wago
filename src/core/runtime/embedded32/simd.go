@@ -18,8 +18,13 @@ type SIMDFrame struct {
 	Op        uint32
 	Scalar    uint64
 	A, B, C   V128
+	Immediate V128
 	Out       V128
 	ScalarOut uint64
+	Memory    []byte
+	Address   uint32
+	Lane      uint32
+	Trap      Trap
 }
 
 func laneU(v *V128, width, lane int) uint64 {
@@ -161,17 +166,11 @@ func pminmax64(aBits, bBits uint64, max bool) uint64 {
 	return bBits
 }
 
-// SIMDHelperValid reports the 218 no-immediate computational instructions
-// serviced by RunSIMD. Constants, shuffle immediates, memory, and lane-immediate
-// instructions are lowered directly by the machine backends.
+// SIMDHelperValid mirrors the decoder's complete 256-instruction SIMD and
+// relaxed-SIMD inventory. Simple instructions may still be lowered directly,
+// while this helper remains the complete compact correctness fallback.
 func SIMDHelperValid(op uint32) bool {
-	if op < 14 || op > 275 {
-		return false
-	}
-	switch {
-	case op >= 21 && op <= 34:
-		return false
-	case op >= 84 && op <= 93:
+	if op > 275 {
 		return false
 	}
 	switch op {
@@ -190,9 +189,31 @@ func RunSIMD(f *SIMDFrame) {
 	if !SIMDHelperValid(f.Op) {
 		panic("embedded32: invalid SIMD helper opcode")
 	}
-	f.Out, f.ScalarOut = V128{}, 0
+	f.Out, f.ScalarOut, f.Trap = V128{}, 0, TrapNone
 	op := f.Op
 
+	if op <= 11 || op >= 84 && op <= 93 {
+		runSIMDMemory(f)
+		return
+	}
+	if op == 12 {
+		f.Out = f.Immediate
+		return
+	}
+	if op == 13 {
+		for i, x := range f.Immediate {
+			if x < 16 {
+				f.Out[i] = f.A[x]
+			} else {
+				f.Out[i] = f.B[x-16]
+			}
+		}
+		return
+	}
+	if op >= 21 && op <= 34 {
+		runSIMDLane(f)
+		return
+	}
 	if op == 14 || op == 256 { // strict deterministic swizzle projection
 		for i, x := range f.B {
 			if x < 16 {
@@ -655,6 +676,173 @@ func RunSIMD(f *SIMDFrame) {
 		return
 	}
 	panic("embedded32: unimplemented valid SIMD helper opcode")
+}
+
+func memoryWindow(f *SIMDFrame, n int) ([]byte, bool) {
+	end := uint64(f.Address) + uint64(n)
+	if end > uint64(len(f.Memory)) {
+		f.Trap = TrapMemoryOutOfBounds
+		return nil, false
+	}
+	return f.Memory[int(f.Address):int(end)], true
+}
+
+func runSIMDMemory(f *SIMDFrame) {
+	op := f.Op
+	switch op {
+	case 0: // v128.load
+		if p, ok := memoryWindow(f, 16); ok {
+			copy(f.Out[:], p)
+		}
+	case 1, 2: // load8x8_s/u
+		p, ok := memoryWindow(f, 8)
+		if !ok {
+			return
+		}
+		for i, x := range p {
+			if op == 1 {
+				putLane(&f.Out, 16, i, uint64(int16(int8(x))))
+			} else {
+				putLane(&f.Out, 16, i, uint64(x))
+			}
+		}
+	case 3, 4: // load16x4_s/u
+		p, ok := memoryWindow(f, 8)
+		if !ok {
+			return
+		}
+		for i := 0; i < 4; i++ {
+			x := binary.LittleEndian.Uint16(p[i*2:])
+			if op == 3 {
+				putLane(&f.Out, 32, i, uint64(int32(int16(x))))
+			} else {
+				putLane(&f.Out, 32, i, uint64(x))
+			}
+		}
+	case 5, 6: // load32x2_s/u
+		p, ok := memoryWindow(f, 8)
+		if !ok {
+			return
+		}
+		for i := 0; i < 2; i++ {
+			x := binary.LittleEndian.Uint32(p[i*4:])
+			if op == 5 {
+				putLane(&f.Out, 64, i, uint64(int64(int32(x))))
+			} else {
+				putLane(&f.Out, 64, i, uint64(x))
+			}
+		}
+	case 7, 8, 9, 10: // splat loads
+		width := 8 << uint(op-7)
+		p, ok := memoryWindow(f, width/8)
+		if !ok {
+			return
+		}
+		var x uint64
+		switch width {
+		case 8:
+			x = uint64(p[0])
+		case 16:
+			x = uint64(binary.LittleEndian.Uint16(p))
+		case 32:
+			x = uint64(binary.LittleEndian.Uint32(p))
+		case 64:
+			x = binary.LittleEndian.Uint64(p)
+		}
+		for i := 0; i < laneCount(width); i++ {
+			putLane(&f.Out, width, i, x)
+		}
+	case 11: // v128.store, complete-width preflight before mutation
+		if p, ok := memoryWindow(f, 16); ok {
+			copy(p, f.A[:])
+		}
+	case 84, 85, 86, 87: // lane loads
+		width := 8 << uint(op-84)
+		if int(f.Lane) >= laneCount(width) {
+			panic("embedded32: invalid SIMD load lane")
+		}
+		p, ok := memoryWindow(f, width/8)
+		if !ok {
+			return
+		}
+		f.Out = f.A
+		var x uint64
+		switch width {
+		case 8:
+			x = uint64(p[0])
+		case 16:
+			x = uint64(binary.LittleEndian.Uint16(p))
+		case 32:
+			x = uint64(binary.LittleEndian.Uint32(p))
+		case 64:
+			x = binary.LittleEndian.Uint64(p)
+		}
+		putLane(&f.Out, width, int(f.Lane), x)
+	case 88, 89, 90, 91: // lane stores
+		width := 8 << uint(op-88)
+		if int(f.Lane) >= laneCount(width) {
+			panic("embedded32: invalid SIMD store lane")
+		}
+		p, ok := memoryWindow(f, width/8)
+		if !ok {
+			return
+		}
+		x := laneU(&f.A, width, int(f.Lane))
+		switch width {
+		case 8:
+			p[0] = byte(x)
+		case 16:
+			binary.LittleEndian.PutUint16(p, uint16(x))
+		case 32:
+			binary.LittleEndian.PutUint32(p, uint32(x))
+		case 64:
+			binary.LittleEndian.PutUint64(p, x)
+		}
+	case 92:
+		if p, ok := memoryWindow(f, 4); ok {
+			copy(f.Out[:4], p)
+		}
+	case 93:
+		if p, ok := memoryWindow(f, 8); ok {
+			copy(f.Out[:8], p)
+		}
+	default:
+		panic("embedded32: invalid SIMD memory opcode")
+	}
+}
+
+func runSIMDLane(f *SIMDFrame) {
+	op := f.Op
+	width := 8
+	switch {
+	case op >= 24 && op <= 26:
+		width = 16
+	case op >= 27 && op <= 28:
+		width = 32
+	case op >= 29 && op <= 30:
+		width = 64
+	case op >= 31 && op <= 32:
+		width = 32
+	case op >= 33:
+		width = 64
+	}
+	if int(f.Lane) >= laneCount(width) {
+		panic("embedded32: invalid SIMD lane")
+	}
+	replace := op == 23 || op == 26 || op == 28 || op == 30 || op == 32 || op == 34
+	if replace {
+		f.Out = f.A
+		putLane(&f.Out, width, int(f.Lane), f.Scalar)
+		return
+	}
+	x := laneU(&f.A, width, int(f.Lane))
+	if op == 21 {
+		x = uint64(uint32(int32(int8(x))))
+	}
+	if op == 24 {
+		x = uint64(uint32(int32(int16(x))))
+	}
+	f.ScalarOut = x
 }
 
 func narrow(f *SIMDFrame, inW, outW int, signed bool) {

@@ -1,0 +1,69 @@
+package embedded32
+
+import (
+	"testing"
+	"unsafe"
+)
+
+func TestStableHelperFrameLayouts(t *testing.T) {
+	var f F64Frame
+	checks := []struct {
+		name      string
+		got, want uintptr
+	}{
+		{"f64.op", unsafe.Offsetof(f.Op), F64FrameOpOffset},
+		{"f64.aLo", unsafe.Offsetof(f.ALo), F64FrameALoOffset},
+		{"f64.aHi", unsafe.Offsetof(f.AHi), F64FrameAHiOffset},
+		{"f64.bLo", unsafe.Offsetof(f.BLo), F64FrameBLoOffset},
+		{"f64.bHi", unsafe.Offsetof(f.BHi), F64FrameBHiOffset},
+		{"f64.outLo", unsafe.Offsetof(f.OutLo), F64FrameOutLoOffset},
+		{"f64.outHi", unsafe.Offsetof(f.OutHi), F64FrameOutHiOffset},
+		{"f64.trap", unsafe.Offsetof(f.Trap), F64FrameTrapOffset},
+	}
+	for _, c := range checks {
+		if c.got != c.want {
+			t.Errorf("%s offset=%d want=%d", c.name, c.got, c.want)
+		}
+	}
+	if got := unsafe.Sizeof(f); got != F64FrameBytes {
+		t.Fatalf("F64Frame size=%d want=%d", got, F64FrameBytes)
+	}
+
+	var s SIMDABIFrame
+	checks = []struct {
+		name      string
+		got, want uintptr
+	}{
+		{"simd.op", unsafe.Offsetof(s.Op), SIMDFrameOpOffset},
+		{"simd.scalarLo", unsafe.Offsetof(s.ScalarLo), SIMDFrameScalarLoOffset},
+		{"simd.scalarHi", unsafe.Offsetof(s.ScalarHi), SIMDFrameScalarHiOffset},
+		{"simd.a", unsafe.Offsetof(s.A), SIMDFrameAOffset},
+		{"simd.b", unsafe.Offsetof(s.B), SIMDFrameBOffset},
+		{"simd.c", unsafe.Offsetof(s.C), SIMDFrameCOffset},
+		{"simd.immediate", unsafe.Offsetof(s.Immediate), SIMDFrameImmediateOffset},
+		{"simd.out", unsafe.Offsetof(s.Out), SIMDFrameOutOffset},
+		{"simd.scalarOut", unsafe.Offsetof(s.ScalarOutLo), SIMDFrameScalarOutOffset},
+		{"simd.memoryBase", unsafe.Offsetof(s.MemoryBase), SIMDFrameMemoryBaseOffset},
+		{"simd.memoryLen", unsafe.Offsetof(s.MemoryLen), SIMDFrameMemoryLenOffset},
+		{"simd.address", unsafe.Offsetof(s.Address), SIMDFrameAddressOffset},
+		{"simd.lane", unsafe.Offsetof(s.Lane), SIMDFrameLaneOffset},
+		{"simd.trap", unsafe.Offsetof(s.Trap), SIMDFrameTrapOffset},
+	}
+	for _, c := range checks {
+		if c.got != c.want {
+			t.Errorf("%s offset=%d want=%d", c.name, c.got, c.want)
+		}
+	}
+	if got := unsafe.Sizeof(s); got != SIMDFrameBytes {
+		t.Fatalf("SIMDABIFrame size=%d want=%d", got, SIMDFrameBytes)
+	}
+}
+
+func TestRunSIMDABI(t *testing.T) {
+	f := SIMDABIFrame{Op: 174, A: [4]uint32{1, 2, 3, 4}, B: [4]uint32{10, 20, 30, 40}}
+	RunSIMDABI(&f)
+	want := [4]uint32{11, 22, 33, 44}
+	if f.Out != want {
+		t.Fatalf("out=%v want=%v", f.Out, want)
+	}
+}
