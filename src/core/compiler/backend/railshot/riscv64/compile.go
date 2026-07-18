@@ -60,9 +60,8 @@ var immutableTableTypeEnabled = os.Getenv("WAGO_RISCV64_NO_IMMUTABLE_TABLE_TYPE"
 // side-effect-free local.get window and forwards an exact same-address load.
 var linearStoreForwardEnabled = os.Getenv("WAGO_RISCV64_NOMEMFWD") != "1"
 
-// These switches isolate register-lifetime optimizations for corpus A/B runs.
-// V128 local pinning remains disabled because localDef models one register, not
-// an atomic two-GPR SWAR pair; other scalar register-lifetime knobs remain valid.
+// These switches isolate register-lifetime optimizations for corpus A/B runs,
+// including the conservative SWAR pair-pin and repeated-v128-constant policies.
 var (
 	legacyGPPinsEnabled     = os.Getenv("WAGO_RISCV64_LEGACY_GPPINS") == "1"
 	legacyFPPinsEnabled     = os.Getenv("WAGO_RISCV64_LEGACY_FPPINS") == "1"

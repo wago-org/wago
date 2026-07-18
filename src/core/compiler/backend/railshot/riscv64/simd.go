@@ -27,13 +27,9 @@ type v128ConstReg struct {
 	regs   v128Pair
 }
 
-func (f *fn) v128ConstMask() regMask {
-	var m regMask
-	for _, c := range f.vconsts {
-		m = m.union(c.regs.mask())
-	}
-	return m
-}
+// RV64 caches v128 constants in GPR pairs, not FP/vector registers. The pairs
+// are blocked through f.reserved; the FP allocator therefore has no v128 mask.
+func (f *fn) v128ConstMask() regMask { return 0 }
 func (f *fn) pinnedV128LocalCount() int {
 	n := 0
 	for i := range f.locals {
