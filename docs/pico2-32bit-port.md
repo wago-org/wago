@@ -147,7 +147,22 @@ RA/LR. QEMU execution tests exercise both the scalar-f64 and SIMD table slots on
 both architectures. The helper package builds and tests with standard Go and
 TinyGo.
 
-This is still not public backend admission. Pair/quad storage in the full module
-compiler, calls/globals/tables/references, the bare-metal executable and linear-
-memory arenas, firmware linking, and Pico 2 hardware qualification remain to be
-implemented and measured.
+Both compiler packages now also consume real Wasm function bodies for direct
+wide-value execution beachheads:
+
+- `i64.const` plus modular add/sub/multiply and bitwise operations over atomic
+  two-GPR values;
+- `f64.const`, `abs`, `neg`, and `copysign` over integer register pairs; and
+- `v128.const`, bitwise operations, bitselect, packed `i8x16`/`i16x8` add/sub,
+  and `i32x4` add/sub over four-GPR values.
+
+The generated pair/quad code executes under both `qemu-riscv32` and `qemu-arm`;
+these tests include cross-word `i64.mul`, packed carry-isolated SIMD arithmetic,
+and f64 sign-bit behavior. More complex f64/SIMD operations use the complete
+helper ABI while measurements decide which additional instructions merit direct
+inline SWAR.
+
+This is still not public backend admission. Pair/quad locals, spills, control
+merges and calls in the full module compiler, calls/globals/tables/references,
+the bare-metal executable and linear-memory arenas, firmware linking, and Pico 2
+hardware qualification remain to be implemented and measured.
