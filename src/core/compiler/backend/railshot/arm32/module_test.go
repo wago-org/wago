@@ -990,6 +990,86 @@ func TestCompileModuleDispatchesSIMDHelperFromMixedFunctionUnderQEMU(t *testing.
 	runARM32Exit(t, qemu, image, 42)
 }
 
+func arm32MixedSIMDMemoryModule(t *testing.T) *wasm.Module {
+	t.Helper()
+	body := []byte{1, 1, 0x7f, 0x41, 0, 0xfd, 0, 4, 0, 0x0b}
+	code := append(wasmtest.ULEB(uint32(len(body))), body...)
+	m, err := wasm.DecodeModule(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.V128}))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0})),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0, 1})),
+		wasmtest.Section(10, wasmtest.Vec(code)),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+func TestCompileModuleDispatchesSIMDMemoryHelperUnderQEMU(t *testing.T) {
+	qemu, err := exec.LookPath("qemu-arm")
+	if err != nil {
+		t.Skip("qemu-arm not installed")
+	}
+	cm, err := CompileModule(arm32MixedSIMDMemoryModule(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var helper a32.Asm
+	helper.Ldr(a32.R1, a32.R0, embedded32.SIMDFrameMemoryBaseOffset)
+	helper.Ldr(a32.R2, a32.R0, embedded32.SIMDFrameAddressOffset)
+	helper.Add(a32.R1, a32.R1, a32.R2)
+	helper.Ldr(a32.R2, a32.R1, 0)
+	helper.Str(a32.R2, a32.R0, embedded32.SIMDFrameOutOffset)
+	helper.MovImm32(a32.R2, 0)
+	for i := uint16(1); i < 4; i++ {
+		helper.Str(a32.R2, a32.R0, embedded32.SIMDFrameOutOffset+i*4)
+	}
+	helper.Str(a32.R2, a32.R0, embedded32.SIMDFrameTrapOffset)
+	helper.Ret()
+	helper.Align4()
+	buildWrapper := func(table uint32) a32.Asm {
+		var a a32.Asm
+		armMemoryContext(&a)
+		a.MovImm32(a32.R12, 42)
+		a.Str(a32.R12, a32.SP, 0)
+		a.MovImm32(a32.R12, 84)
+		a.Add(a32.R5, a32.SP, a32.R12)
+		a.Str(a32.R5, a32.SP, 24)
+		a.MovImm32(a32.R12, 0)
+		a.Str(a32.R12, a32.SP, 84)
+		a.MovImm32(a32.R12, table)
+		a.Str(a32.R12, a32.SP, 32)
+		armContextArg(&a)
+		a.MovReg(a32.R11, a32.R0)
+		call := a.Call()
+		armExit(&a)
+		if !a.PatchCall(call, len(a.B)+cm.Entry[0]) {
+			t.Fatal("wrapper call relocation")
+		}
+		return a
+	}
+	const base = uint32(0x10000)
+	wrapper := buildWrapper(base)
+	for {
+		helperOff := len(wrapper.B) + len(cm.Code)
+		tableOff := helperOff + len(helper.B)
+		next := buildWrapper(base + uint32(tableOff))
+		if len(next.B) == len(wrapper.B) {
+			wrapper = next
+			break
+		}
+		wrapper = next
+	}
+	helperOff := len(wrapper.B) + len(cm.Code)
+	image := append(wrapper.B, cm.Code...)
+	image = append(image, helper.B...)
+	var table [embedded32.HelperTableBytes]byte
+	binary.LittleEndian.PutUint32(table[embedded32.HelperSIMDOffset:], base|uint32(helperOff)|1)
+	image = append(image, table[:]...)
+	runARM32Exit(t, qemu, image, 42)
+}
+
 func TestCompileModuleLaysOutFunctions(t *testing.T) {
 	cm, err := CompileModule(arm32Module(t))
 	if err != nil {

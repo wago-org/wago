@@ -73,6 +73,8 @@ type MixedOp struct {
 	HelperOp     uint32
 	MemoryOp     uint8
 	MemoryOffset uint32
+	Lane         uint32
+	HasMemory    bool
 }
 
 type MixedValue struct {
@@ -1175,6 +1177,32 @@ func BuildMixedPlanWithBlockResolver(ft *wasm.CompType, locals []wasm.LocalRun, 
 				return nil, err
 			}
 			switch sub {
+			case 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93:
+				if _, err := r.U32(); err != nil { // alignment hint
+					return nil, err
+				}
+				offset, err := r.U32()
+				if err != nil {
+					return nil, err
+				}
+				inputs, outputs, hasLane, ok := wasm.SIMDMemorySignature(sub)
+				if !ok {
+					return nil, fmt.Errorf("mixed function invalid SIMD memory subopcode %d", sub)
+				}
+				lane := byte(0)
+				if hasLane {
+					lane, err = r.Byte()
+					if err != nil {
+						return nil, err
+					}
+				}
+				if err := simdHelperSignature(sub, inputs, outputs); err != nil {
+					return nil, err
+				}
+				planned := &p.Ops[len(p.Ops)-1]
+				planned.HasMemory = true
+				planned.MemoryOffset = offset
+				planned.Lane = uint32(lane)
 			case 12:
 				bits, err := r.Bytes(16)
 				if err != nil {
@@ -1189,6 +1217,30 @@ func BuildMixedPlanWithBlockResolver(ft *wasm.CompType, locals []wasm.LocalRun, 
 					words[i] = binary.LittleEndian.Uint32(bits[i*4:])
 				}
 				p.Ops = append(p.Ops, MixedOp{Kind: MixedConst, Dst: out.Slot, Width: 4, Words: words})
+			case 13:
+				lanes, err := r.Bytes(16)
+				if err != nil {
+					return nil, err
+				}
+				if err := simdHelperSignature(sub, []wasm.ValType{wasm.V128, wasm.V128}, []wasm.ValType{wasm.V128}); err != nil {
+					return nil, err
+				}
+				for i := range p.Ops[len(p.Ops)-1].Words {
+					p.Ops[len(p.Ops)-1].Words[i] = binary.LittleEndian.Uint32(lanes[i*4:])
+				}
+			case 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34:
+				lane, err := r.Byte()
+				if err != nil {
+					return nil, err
+				}
+				inputs, outputs, ok := wasm.SIMDLaneSignature(sub)
+				if !ok {
+					return nil, fmt.Errorf("mixed function invalid SIMD lane subopcode %d", sub)
+				}
+				if err := simdHelperSignature(sub, inputs, outputs); err != nil {
+					return nil, err
+				}
+				p.Ops[len(p.Ops)-1].Lane = uint32(lane)
 			case 77:
 				if err := unary(MixedV128Not, wasm.V128); err != nil {
 					return nil, err

@@ -343,9 +343,33 @@ func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc) ([]byte, erro
 		case shared.MixedSIMDHelper:
 			must(a.MovImm32(a32.R0, op.HelperOp), "simd helper op")
 			must(a.Str(a32.R0, a32.SP, helperBase+embedded32.SIMDFrameOpOffset), "simd helper op store")
+			inputStart := 0
+			if op.HasMemory {
+				if len(op.Args) == 0 || op.Args[0].Type != wasm.I32 {
+					return nil, fmt.Errorf("arm32: simd memory helper has no i32 address")
+				}
+				must(a.Ldr(a32.R0, a32.SP, off(op.Args[0].Slot)), "simd memory address")
+				must(a.MovImm32(a32.R1, op.MemoryOffset), "simd memory static offset")
+				must(a.Adds(a32.R0, a32.R0, a32.R1), "simd memory effective address")
+				addressOK := a.FarBcond(a32.CondCC)
+				must(a.Ldr(a32.R1, armContextReg, embedded32.ContextTrapCellOffset), "simd memory overflow trap cell")
+				must(a.MovImm32(a32.R0, uint32(embedded32.TrapMemoryOutOfBounds)), "simd memory overflow trap")
+				must(a.Str(a32.R0, a32.R1, 0), "simd memory overflow trap write")
+				must(a.Ldr(a32.LR, a32.SP, saveOffset), "simd memory overflow return address restore")
+				must(a.MovImm32(a32.R12, frame), "simd memory overflow frame size")
+				must(a.Add(a32.SP, a32.SP, a32.R12), "simd memory overflow frame release")
+				must(a.MovImm32(a32.R0, 0), "simd memory overflow result")
+				a.Ret()
+				a.Align4()
+				if !a.PatchFarBranch(addressOK, a.Len()) {
+					return nil, fmt.Errorf("arm32: simd memory overflow branch out of range")
+				}
+				must(a.Str(a32.R0, a32.SP, helperBase+embedded32.SIMDFrameAddressOffset), "simd memory address store")
+				inputStart = 1
+			}
 			vectorInput := 0
 			vectorBases := []uint16{embedded32.SIMDFrameAOffset, embedded32.SIMDFrameBOffset, embedded32.SIMDFrameCOffset}
-			for _, input := range op.Args {
+			for _, input := range op.Args[inputStart:] {
 				width, _ := shared.MixedValueSlots(input.Type)
 				if input.Type == wasm.V128 {
 					for i := uint16(0); i < 4; i++ {
@@ -364,6 +388,12 @@ func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc) ([]byte, erro
 					}
 				}
 			}
+			for i := uint16(0); i < 4; i++ {
+				must(a.MovImm32(a32.R0, op.Words[i]), "simd helper immediate")
+				must(a.Str(a32.R0, a32.SP, helperBase+embedded32.SIMDFrameImmediateOffset+i*4), "simd helper immediate store")
+			}
+			must(a.MovImm32(a32.R0, op.Lane), "simd helper lane")
+			must(a.Str(a32.R0, a32.SP, helperBase+embedded32.SIMDFrameLaneOffset), "simd helper lane store")
 			must(a.Ldr(a32.R0, armContextReg, embedded32.ContextLinearMemoryBaseOffset), "simd helper memory base")
 			must(a.Str(a32.R0, a32.SP, helperBase+embedded32.SIMDFrameMemoryBaseOffset), "simd helper memory base store")
 			must(a.Ldr(a32.R0, armContextReg, embedded32.ContextLinearMemoryLengthOffset), "simd helper memory length")
@@ -388,6 +418,9 @@ func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc) ([]byte, erro
 			a.Align4()
 			if !a.PatchFarBranch(helperOK, a.Len()) {
 				return nil, fmt.Errorf("arm32: simd helper trap branch out of range")
+			}
+			if len(op.Results) == 0 {
+				break
 			}
 			if len(op.Results) != 1 {
 				return nil, fmt.Errorf("arm32: simd helper result arity %d", len(op.Results))

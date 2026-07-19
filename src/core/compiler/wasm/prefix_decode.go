@@ -307,6 +307,42 @@ var fdLane = map[uint32]InstrKind{21: InstrI8x16ExtractLaneS, 22: InstrI8x16Extr
 // SIMDNoImmediateSignature returns the validated operand and result types for
 // a SIMD subopcode that carries no immediate bytes after its subopcode. The
 // slices are newly allocated so callers cannot mutate validator state.
+func SIMDMemorySignature(sub uint32) (inputs, results []ValType, laneImmediate bool, ok bool) {
+	kind, ok := fdMem[sub]
+	if !ok {
+		return nil, nil, false, false
+	}
+	effect := simdEffects[kind]
+	switch effect.cat {
+	case simdEffLoad:
+		return []ValType{I32}, []ValType{V128}, false, true
+	case simdEffStore:
+		return []ValType{I32, V128}, nil, false, true
+	case simdEffMemLoadLane:
+		return []ValType{I32, V128}, []ValType{V128}, true, true
+	case simdEffMemStoreLane:
+		return []ValType{I32, V128}, nil, true, true
+	default:
+		return nil, nil, false, false
+	}
+}
+
+func SIMDLaneSignature(sub uint32) (inputs, results []ValType, ok bool) {
+	kind, ok := fdLane[sub]
+	if !ok {
+		return nil, nil, false
+	}
+	effect := simdEffects[kind]
+	switch effect.cat {
+	case simdEffExtract:
+		return []ValType{V128}, []ValType{effect.scalar}, true
+	case simdEffReplace:
+		return []ValType{V128, effect.scalar}, []ValType{V128}, true
+	default:
+		return nil, nil, false
+	}
+}
+
 func SIMDNoImmediateSignature(sub uint32) (inputs, results []ValType, ok bool) {
 	kind, ok := fdNoImm[sub]
 	if !ok {
