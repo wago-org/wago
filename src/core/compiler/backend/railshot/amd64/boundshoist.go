@@ -62,9 +62,9 @@ type hoistCand struct {
 // per-iteration accesses that would be elided (the check-density benefit signal),
 // and whether the loop grows memory (a grower is not versioned in v1). Post-
 // validation, so a decode error just ends the scan with what was found.
-func scanLoopHoistable(r *wasm.Reader) (cands []hoistCand, elidable int, hasGrow bool) {
+func scanLoopHoistable(r *wasm.Reader) (cands []hoistCand, elidable int, hasGrow bool, setLocals map[uint32]bool) {
 	start := r.Offset()
-	set := map[uint32]bool{}
+	setLocals = map[uint32]bool{}
 	maxExt := map[uint32]int32{}
 	acc := map[uint32]int{}     // direct-access count per base
 	poison := map[uint32]bool{} // bases with a direct access this scan can't size (SIMD)
@@ -99,7 +99,7 @@ scan:
 			if err != nil {
 				break scan
 			}
-			set[idx] = true
+			setLocals[idx] = true
 		case 0x40: // memory.grow
 			if _, err := r.U32(); err != nil {
 				break scan
@@ -150,7 +150,7 @@ scan:
 	}
 	r.JumpTo(start)
 	for b, ext := range maxExt {
-		if !set[b] && !poison[b] { // invariant, never set in the loop, all accesses sized
+		if !setLocals[b] && !poison[b] { // invariant, never set in the loop, all accesses sized
 			cands = append(cands, hoistCand{base: b, extent: ext})
 			elidable += acc[b]
 		}
@@ -159,7 +159,7 @@ scan:
 	// function compilation creates these maps on different goroutines and exposed
 	// the latent nondeterminism as byte-different code for the same function.
 	slices.SortFunc(cands, func(a, b hoistCand) int { return cmp.Compare(a.base, b.base) })
-	return cands, elidable, hasGrow
+	return cands, elidable, hasGrow, setLocals
 }
 
 // loopPrecheckMinChecks is the minimum per-iteration elided-check count for a loop
