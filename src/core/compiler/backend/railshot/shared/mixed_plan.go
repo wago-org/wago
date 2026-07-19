@@ -114,7 +114,7 @@ func MixedValueSlots(typ wasm.ValType) (uint8, bool) {
 }
 
 type MixedSignatureResolver func(uint32) (*wasm.CompType, bool)
-type MixedGlobalResolver func(uint32) (wasm.ValType, bool, bool)
+type MixedGlobalResolver func(uint32) (wasm.ValType, bool, uint32, bool)
 type MixedBlockResolver func(uint32) (*wasm.CompType, bool)
 
 func BuildMixedPlan(ft *wasm.CompType, locals []wasm.LocalRun, body []byte) (*MixedPlan, error) {
@@ -781,20 +781,20 @@ func BuildMixedPlanWithBlockResolver(ft *wasm.CompType, locals []wasm.LocalRun, 
 			if resolveGlobal == nil {
 				return nil, fmt.Errorf("mixed global operation requires module globals")
 			}
-			typ, mutable, ok := resolveGlobal(index)
+			typ, mutable, slot, ok := resolveGlobal(index)
 			if !ok {
 				return nil, fmt.Errorf("mixed global index %d is invalid", index)
 			}
 			width, supported := MixedValueSlots(typ)
-			if !supported || width != 1 {
-				return nil, fmt.Errorf("mixed global %d type %s is not yet supported", index, typ)
+			if !supported || slot > ^uint32(0)-uint32(width) {
+				return nil, fmt.Errorf("mixed global %d type %s is not supported", index, typ)
 			}
 			if op == 0x23 {
 				out, err := push(typ)
 				if err != nil {
 					return nil, err
 				}
-				p.Ops = append(p.Ops, MixedOp{Kind: MixedGlobalGet, Dst: out.Slot, Target: index, Width: width})
+				p.Ops = append(p.Ops, MixedOp{Kind: MixedGlobalGet, Dst: out.Slot, Target: slot, Width: width})
 			} else {
 				if !mutable {
 					return nil, fmt.Errorf("mixed global %d is immutable", index)
@@ -803,7 +803,7 @@ func BuildMixedPlanWithBlockResolver(ft *wasm.CompType, locals []wasm.LocalRun, 
 				if err != nil {
 					return nil, err
 				}
-				p.Ops = append(p.Ops, MixedOp{Kind: MixedGlobalSet, Left: value.Slot, Target: index, Width: width})
+				p.Ops = append(p.Ops, MixedOp{Kind: MixedGlobalSet, Left: value.Slot, Target: slot, Width: width})
 			}
 		case 0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35:
 			if _, err := r.U32(); err != nil { // alignment hint

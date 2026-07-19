@@ -478,6 +478,56 @@ func TestCompileModuleAccessesI32GlobalFromMixedFunctionUnderQEMU(t *testing.T) 
 	runARM32Exit(t, qemu, append(a.B, cm.Code...), 42)
 }
 
+func arm32WideGlobalModule(t *testing.T) *wasm.Module {
+	t.Helper()
+	init := append([]byte{0x42}, wasmtest.SLEB64(40)...)
+	init = append(init, 0x0b)
+	body := append([]byte{0x23, 0, 0x42}, wasmtest.SLEB64(2)...)
+	body = append(body, 0x7c, 0x24, 0, 0x23, 0, 0x0b)
+	m, err := wasm.DecodeModule(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I64}))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0})),
+		wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.I64, true, init))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+func TestCompileModuleAccessesWideGlobalUnderQEMU(t *testing.T) {
+	qemu, err := exec.LookPath("qemu-arm")
+	if err != nil {
+		t.Skip("qemu-arm not installed")
+	}
+	cm, err := CompileModule(arm32WideGlobalModule(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cells := make([]uint32, 2)
+	if err := cm.InstantiateGlobals(cells); err != nil || cells[0] != 40 || cells[1] != 0 {
+		t.Fatalf("globals=%v err=%v", cells, err)
+	}
+	var a a32.Asm
+	armMemoryContext(&a)
+	a.MovImm32(a32.R12, 72)
+	a.Add(a32.R5, a32.SP, a32.R12)
+	a.Str(a32.R5, a32.SP, 44)
+	a.MovImm32(a32.R12, cells[0])
+	a.Str(a32.R12, a32.SP, 72)
+	a.MovImm32(a32.R12, cells[1])
+	a.Str(a32.R12, a32.SP, 76)
+	armContextArg(&a)
+	a.MovReg(a32.R11, a32.R0)
+	call := a.Call()
+	armExit(&a)
+	if !a.PatchCall(call, len(a.B)+cm.Entry[0]) {
+		t.Fatal("wrapper call relocation")
+	}
+	runARM32Exit(t, qemu, append(a.B, cm.Code...), 42)
+}
+
 func arm32MixedF64HelperModule(t *testing.T) *wasm.Module {
 	t.Helper()
 	body := []byte{1, 1, 0x7f,

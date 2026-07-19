@@ -2,7 +2,9 @@ package shared
 
 import (
 	"bytes"
+	"encoding/binary"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 
@@ -56,6 +58,52 @@ func TestCompileEmbeddedI32ModuleLayoutAndPreflight(t *testing.T) {
 	_, err = CompileEmbeddedI32Module(m, EmbeddedModuleOptions{CodeCapacity: cm.RequiredCodeBytes - 1}, "test32", 4, 8, []byte{0, 0, 0, 0}, fake)
 	if err == nil || !strings.Contains(err.Error(), "preflight requirement") {
 		t.Fatalf("capacity error=%v", err)
+	}
+}
+
+func TestCompileEmbeddedModuleInitializesSerializedWideGlobals(t *testing.T) {
+	f32 := make([]byte, 6)
+	f32[0] = 0x43
+	binary.LittleEndian.PutUint32(f32[1:], 0x11223344)
+	f32[5] = 0x0b
+	f64 := make([]byte, 10)
+	f64[0] = 0x44
+	binary.LittleEndian.PutUint64(f64[1:], 0x8877665544332211)
+	f64[9] = 0x0b
+	v128 := append([]byte{0xfd, 0x0c}, []byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}...)
+	v128 = append(v128, 0x0b)
+	i64 := append([]byte{0x42}, wasmtest.SLEB64(0x112233445566778)...)
+	i64 = append(i64, 0x0b)
+	m, err := wasm.DecodeModule(wasmtest.Module(
+		wasmtest.Section(6, wasmtest.Vec(
+			wasmtest.GlobalEntry(wasm.I32, false, []byte{0x41, 7, 0x0b}),
+			wasmtest.GlobalEntry(wasm.I64, true, i64),
+			wasmtest.GlobalEntry(wasm.F32, false, f32),
+			wasmtest.GlobalEntry(wasm.F64, true, f64),
+			wasmtest.GlobalEntry(wasm.V128, false, v128),
+		)),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cm, err := CompileEmbeddedModule(m, EmbeddedModuleOptions{}, "test", 1, []byte{0}, func(int, *wasm.CompType, []wasm.LocalRun, []byte) ([]byte, error) {
+		return nil, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cells := make([]uint32, 10)
+	if err := cm.InstantiateGlobals(cells); err != nil {
+		t.Fatal(err)
+	}
+	want := []uint32{7, 0x45566778, 0x01122334, 0x11223344, 0x44332211, 0x88776655, 0x03020100, 0x07060504, 0x0b0a0908, 0x0f0e0d0c}
+	if !slices.Equal(cells, want) {
+		t.Fatalf("global cells = %#v, want %#v", cells, want)
+	}
+	for i, slot := range []uint32{0, 1, 3, 4, 6} {
+		if cm.Globals[i].Slot != slot {
+			t.Fatalf("global %d slot = %d, want %d", i, cm.Globals[i].Slot, slot)
+		}
 	}
 }
 

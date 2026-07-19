@@ -3,6 +3,7 @@ package riscv32
 import (
 	"fmt"
 
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	rv "github.com/wago-org/wago/src/core/encoder/riscv32"
 	"github.com/wago-org/wago/src/core/runtime/embedded32"
@@ -149,9 +150,13 @@ func (c *compiler) globalGet(index uint32) error {
 	if c.module == nil || uint64(index) >= uint64(len(c.module.Globals)) || c.module.Globals[index].Type.Type != wasm.I32 {
 		return fmt.Errorf("riscv32: unsupported global.get %d", index)
 	}
+	slot, ok := shared.EmbeddedGlobalSlot(c.module, index)
+	if !ok {
+		return fmt.Errorf("riscv32: unsupported global.get %d", index)
+	}
 	base, dst := c.alloc(), c.alloc()
 	c.a.Lw(base, rvContextReg, embedded32.ContextGlobalsBaseOffset)
-	offset := uint64(index) * 4
+	offset := uint64(slot) * 4
 	if offset <= 2047 {
 		c.a.Lw(dst, base, int32(offset))
 	} else {
@@ -168,10 +173,14 @@ func (c *compiler) globalSet(index uint32) error {
 	if c.module == nil || uint64(index) >= uint64(len(c.module.Globals)) || c.module.Globals[index].Type.Type != wasm.I32 || !c.module.Globals[index].Type.Mutable {
 		return fmt.Errorf("riscv32: unsupported global.set %d", index)
 	}
+	slot, ok := shared.EmbeddedGlobalSlot(c.module, index)
+	if !ok {
+		return fmt.Errorf("riscv32: unsupported global.set %d", index)
+	}
 	value := c.materialize(c.pop())
 	base := c.alloc()
 	c.a.Lw(base, rvContextReg, embedded32.ContextGlobalsBaseOffset)
-	offset := uint64(index) * 4
+	offset := uint64(slot) * 4
 	if offset <= 2047 {
 		c.a.Sw(value, base, int32(offset))
 	} else {

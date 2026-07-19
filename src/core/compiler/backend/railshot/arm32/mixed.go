@@ -29,12 +29,13 @@ func CompileMixedModuleFunction(ft *wasm.CompType, locals []wasm.LocalRun, body 
 func compileMixedModuleFunction(m *wasm.Module, ft *wasm.CompType, locals []wasm.LocalRun, body []byte) ([]byte, []callReloc, error) {
 	plan, err := shared.BuildMixedPlanWithBlockResolver(ft, locals, body, func(index uint32) (*wasm.CompType, bool) {
 		return m.FuncSignature(index)
-	}, func(index uint32) (wasm.ValType, bool, bool) {
-		if int(index) >= len(m.Globals) {
-			return wasm.ValType{}, false, false
+	}, func(index uint32) (wasm.ValType, bool, uint32, bool) {
+		slot, ok := shared.EmbeddedGlobalSlot(m, index)
+		if !ok {
+			return wasm.ValType{}, false, 0, false
 		}
 		global := m.Globals[index]
-		return global.Type.Type, global.Type.Mutable, true
+		return global.Type.Type, global.Type.Mutable, slot, true
 	}, func(index uint32) (*wasm.CompType, bool) {
 		return m.TypeFunc(index)
 	})
@@ -687,16 +688,19 @@ func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc) ([]byte, erro
 				}
 			}
 		case shared.MixedGlobalGet, shared.MixedGlobalSet:
-			if op.Target > 1023 {
-				return nil, fmt.Errorf("arm32: mixed global index %d exceeds direct displacement", op.Target)
+			if uint64(op.Target)+uint64(op.Width) > 1024 {
+				return nil, fmt.Errorf("arm32: mixed global slot %d width %d exceeds direct displacement", op.Target, op.Width)
 			}
 			must(a.Ldr(a32.R0, armContextReg, embedded32.ContextGlobalsBaseOffset), "global base")
-			if op.Kind == shared.MixedGlobalGet {
-				must(a.Ldr(a32.R1, a32.R0, uint16(op.Target*4)), "global.get")
-				must(a.Str(a32.R1, a32.SP, off(op.Dst)), "global.get result")
-			} else {
-				must(a.Ldr(a32.R1, a32.SP, off(op.Left)), "global.set value")
-				must(a.Str(a32.R1, a32.R0, uint16(op.Target*4)), "global.set")
+			for i := uint8(0); i < op.Width; i++ {
+				globalOffset := uint16((op.Target + uint32(i)) * 4)
+				if op.Kind == shared.MixedGlobalGet {
+					must(a.Ldr(a32.R1, a32.R0, globalOffset), "global.get")
+					must(a.Str(a32.R1, a32.SP, off(op.Dst)+uint16(i)*4), "global.get result")
+				} else {
+					must(a.Ldr(a32.R1, a32.SP, off(op.Left)+uint16(i)*4), "global.set value")
+					must(a.Str(a32.R1, a32.R0, globalOffset), "global.set")
+				}
 			}
 		case shared.MixedBranchZero, shared.MixedBranchNonzero:
 			must(a.Ldr(a32.R0, a32.SP, off(op.Third)), "branch condition")

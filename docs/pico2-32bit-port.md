@@ -325,11 +325,13 @@ homogeneous beachheads, arbitrary-depth/unconditional loop branches, and
 `br_table` value merges remain
 outside this module-wide slice.
 
-Module metadata now retains local i32 globals with exact mutability and constant
-initial values. Instantiation initializes bounded caller-provided 32-bit cells,
-`ContextABI` publishes their target base address, and both scalar i32 and mixed
-frame functions execute `global.get`/`global.set` with immutable-set rejection.
-Mixed access preserves surrounding pair/quad operands in their frame slots.
+Module metadata now retains local i32/i64/f32/f64/v128 globals with exact
+mutability, serialized slot offsets, and raw constant initial values.
+Instantiation preflights and initializes bounded caller-provided 32-bit cells,
+`ContextABI` publishes their target base address, and scalar i32 plus mixed frame
+functions execute `global.get`/`global.set` with immutable-set rejection. Pair
+and quad globals move through the frame atomically as complete values, while
+mixed access preserves all surrounding wide operands.
 
 The embedded runtime now also provides complete preflighted `memory.copy`,
 `memory.fill`, passive `memory.init`, and idempotent `data.drop` semantics.
@@ -342,7 +344,7 @@ and starts active segments dropped. `ContextABI` now publishes a stable array of
 `memory.init` plus idempotent `data.drop` directly against those descriptors.
 
 This is still not public backend admission. Arbitrary-depth and table-driven
-structured-control transfers, wide globals/tables/references, start invocation,
+structured-control transfers, tables/references, start invocation,
 generated-
 code entry trampolines, firmware linking and transport, and Pico 2 hardware
 qualification remain to be implemented and measured.

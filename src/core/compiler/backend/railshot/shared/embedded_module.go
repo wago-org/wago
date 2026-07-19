@@ -1,6 +1,7 @@
 package shared
 
 import (
+	"encoding/binary"
 	"fmt"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -22,8 +23,10 @@ type EmbeddedDataSegment struct {
 }
 
 type EmbeddedGlobal struct {
+	Type    wasm.ValType
 	Mutable bool
-	Value   uint32
+	Slot    uint32
+	Words   [4]uint32
 }
 
 type EmbeddedExport struct {
@@ -60,11 +63,27 @@ func (m *EmbeddedModule) DataSegmentABI(bases []uint32) ([]embedded32.DataSegmen
 }
 
 func (m *EmbeddedModule) InstantiateGlobals(cells []uint32) error {
-	if m == nil || len(cells) < len(m.Globals) {
+	if m == nil {
+		return embedded32.ErrArenaCapacity
+	}
+	var required uint32
+	for i := range m.Globals {
+		width, ok := MixedValueSlots(m.Globals[i].Type)
+		if !ok || m.Globals[i].Slot > ^uint32(0)-uint32(width) {
+			return fmt.Errorf("embedded global %d has invalid layout", i)
+		}
+		end := m.Globals[i].Slot + uint32(width)
+		if end > required {
+			required = end
+		}
+	}
+	if uint64(required) > uint64(len(cells)) {
 		return embedded32.ErrArenaCapacity
 	}
 	for i := range m.Globals {
-		cells[i] = m.Globals[i].Value
+		global := &m.Globals[i]
+		width, _ := MixedValueSlots(global.Type)
+		copy(cells[global.Slot:global.Slot+uint32(width)], global.Words[:width])
 	}
 	return nil
 }
@@ -272,20 +291,144 @@ func CompileEmbeddedI32Module(m *wasm.Module, opts EmbeddedModuleOptions, target
 	})
 }
 
+func EmbeddedGlobalSlot(m *wasm.Module, index uint32) (uint32, bool) {
+	if m == nil || uint64(index) >= uint64(len(m.Globals)) {
+		return 0, false
+	}
+	var slot uint32
+	for i := uint32(0); i < index; i++ {
+		width, ok := MixedValueSlots(m.Globals[i].Type.Type)
+		if !ok || slot > ^uint32(0)-uint32(width) {
+			return 0, false
+		}
+		slot += uint32(width)
+	}
+	return slot, true
+}
+
 func embeddedGlobals(m *wasm.Module, target string) ([]EmbeddedGlobal, error) {
 	out := make([]EmbeddedGlobal, len(m.Globals))
 	for i := range m.Globals {
 		global := &m.Globals[i]
-		if global.Type.Type != wasm.I32 {
-			return nil, fmt.Errorf("%s: global %d type %s is not yet supported", target, i, global.Type.Type)
+		slot, ok := EmbeddedGlobalSlot(m, uint32(i))
+		if !ok {
+			return nil, fmt.Errorf("%s: global %d has unsupported type or layout", target, i)
 		}
-		value, err := embeddedI32Const(global.Init)
+		words, err := embeddedConstWords(global.Init, global.Type.Type)
 		if err != nil {
 			return nil, fmt.Errorf("%s: global %d initializer: %w", target, i, err)
 		}
-		out[i] = EmbeddedGlobal{Mutable: global.Type.Mutable, Value: value}
+		out[i] = EmbeddedGlobal{Type: global.Type.Type, Mutable: global.Type.Mutable, Slot: slot, Words: words}
 	}
 	return out, nil
+}
+
+func embeddedConstWords(expr wasm.Expr, typ wasm.ValType) ([4]uint32, error) {
+	var words [4]uint32
+	if len(expr.BodyBytes) != 0 {
+		r := wasm.NewReader(expr.BodyBytes)
+		op, err := r.Byte()
+		if err != nil {
+			return words, err
+		}
+		switch typ {
+		case wasm.I32:
+			if op != 0x41 {
+				return words, fmt.Errorf("expected i32.const")
+			}
+			value, err := r.I32()
+			if err != nil {
+				return words, err
+			}
+			words[0] = uint32(value)
+		case wasm.I64:
+			if op != 0x42 {
+				return words, fmt.Errorf("expected i64.const")
+			}
+			value, err := r.I64()
+			if err != nil {
+				return words, err
+			}
+			words[0], words[1] = uint32(value), uint32(uint64(value)>>32)
+		case wasm.F32:
+			if op != 0x43 {
+				return words, fmt.Errorf("expected f32.const")
+			}
+			bits, err := r.Bytes(4)
+			if err != nil {
+				return words, err
+			}
+			words[0] = binary.LittleEndian.Uint32(bits)
+		case wasm.F64:
+			if op != 0x44 {
+				return words, fmt.Errorf("expected f64.const")
+			}
+			bits, err := r.Bytes(8)
+			if err != nil {
+				return words, err
+			}
+			value := binary.LittleEndian.Uint64(bits)
+			words[0], words[1] = uint32(value), uint32(value>>32)
+		case wasm.V128:
+			if op != 0xfd {
+				return words, fmt.Errorf("expected v128.const")
+			}
+			subop, err := r.U32()
+			if err != nil || subop != 0x0c {
+				return words, fmt.Errorf("expected v128.const")
+			}
+			bits, err := r.Bytes(16)
+			if err != nil {
+				return words, err
+			}
+			for i := range words {
+				words[i] = binary.LittleEndian.Uint32(bits[i*4:])
+			}
+		default:
+			return words, fmt.Errorf("global type %s is not supported", typ)
+		}
+		end, err := r.Byte()
+		if err != nil || end != 0x0b || r.HasNext() {
+			return words, fmt.Errorf("malformed const expression")
+		}
+		return words, nil
+	}
+	if len(expr.Instrs) != 1 {
+		return words, fmt.Errorf("unsupported const expression")
+	}
+	in := expr.Instrs[0]
+	switch typ {
+	case wasm.I32:
+		if in.Kind != wasm.InstrI32Const {
+			return words, fmt.Errorf("expected i32.const")
+		}
+		words[0] = uint32(in.I32)
+	case wasm.I64:
+		if in.Kind != wasm.InstrI64Const {
+			return words, fmt.Errorf("expected i64.const")
+		}
+		words[0], words[1] = uint32(in.I64), uint32(uint64(in.I64)>>32)
+	case wasm.F32:
+		if in.Kind != wasm.InstrF32Const {
+			return words, fmt.Errorf("expected f32.const")
+		}
+		words[0] = in.F32Bits
+	case wasm.F64:
+		if in.Kind != wasm.InstrF64Const {
+			return words, fmt.Errorf("expected f64.const")
+		}
+		words[0], words[1] = uint32(in.F64Bits), uint32(in.F64Bits>>32)
+	case wasm.V128:
+		if in.Kind != wasm.InstrV128Const || len(in.Bytes()) != 16 {
+			return words, fmt.Errorf("expected v128.const")
+		}
+		for i := range words {
+			words[i] = binary.LittleEndian.Uint32(in.Bytes()[i*4:])
+		}
+	default:
+		return words, fmt.Errorf("global type %s is not supported", typ)
+	}
+	return words, nil
 }
 
 func embeddedDataSegments(m *wasm.Module, target string) ([]EmbeddedDataSegment, error) {
