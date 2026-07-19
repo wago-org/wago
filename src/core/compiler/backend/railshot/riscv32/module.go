@@ -200,6 +200,20 @@ func FirmwareImageSize(module *CompiledModule, opts FirmwareOptions) (uint32, er
 	return shared.EmbeddedFirmwareImageSize(module, opts)
 }
 
+func NewFirmwareTransportRunner(image *FirmwareImage, maximumPayload uint32, invoker embedded32.FirmwareTransportInvoker) (*embedded32.FirmwareTransportRunner, error) {
+	if image == nil || image.ContextAddress == 0 || maximumPayload == 0 || invoker == nil {
+		return nil, embedded32.ErrInvalidArena
+	}
+	return &embedded32.FirmwareTransportRunner{
+		Target:         embedded32.TransportTargetRISCV32,
+		MaximumPayload: maximumPayload,
+		ContextAddress: image.ContextAddress,
+		StartAddress:   image.StartAddress,
+		Functions:      image.TransportFunctions,
+		Invoker:        invoker,
+	}, nil
+}
+
 func CompileModuleToArena(m *wasm.Module, arena *embedded32.CodeArena, publish embedded32.CodePublisher) (*shared.PublishedEmbeddedModule, error) {
 	if arena == nil {
 		return nil, embedded32.ErrInvalidArena

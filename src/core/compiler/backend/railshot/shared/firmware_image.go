@@ -24,6 +24,8 @@ type EmbeddedFirmwareExport struct {
 	Kind        wasm.ExternKind
 	Index       uint32
 	CallAddress uint32
+	ParamSlots  uint16
+	ResultSlots uint16
 }
 
 type EmbeddedFirmwareImage struct {
@@ -40,6 +42,7 @@ type EmbeddedFirmwareImage struct {
 	TableAddress        uint32
 	StartAddress        uint32
 	Exports             []EmbeddedFirmwareExport
+	TransportFunctions  []embedded32.FirmwareTransportFunction
 }
 
 type embeddedFirmwareLayout struct {
@@ -380,6 +383,12 @@ func BuildEmbeddedFirmwareImage(dst []byte, module *EmbeddedModule, opts Embedde
 	put(layout.context+embedded32.ContextDataSegmentCountOffset, uint32(len(module.Data)))
 	put(layout.context+embedded32.ContextTableOffset, tableAddress)
 
+	functionExports := 0
+	for i := range module.Exports {
+		if module.Exports[i].Kind == wasm.ExternFunc {
+			functionExports++
+		}
+	}
 	image := &EmbeddedFirmwareImage{
 		Bytes:               imageBytes,
 		BaseAddress:         opts.BaseAddress,
@@ -393,10 +402,12 @@ func BuildEmbeddedFirmwareImage(dst []byte, module *EmbeddedModule, opts Embedde
 		GlobalsAddress:      globalsAddress,
 		TableAddress:        tableAddress,
 		Exports:             make([]EmbeddedFirmwareExport, len(module.Exports)),
+		TransportFunctions:  make([]embedded32.FirmwareTransportFunction, functionExports),
 	}
 	if module.StartEntry != nil {
 		image.StartAddress = addr(layout.code+uint32(*module.StartEntry)) | opts.FunctionAddressMask
 	}
+	functionOrdinal := 0
 	for i := range module.Exports {
 		export := module.Exports[i]
 		out := EmbeddedFirmwareExport{Name: export.Name, Kind: export.Kind, Index: export.Index}
@@ -406,6 +417,8 @@ func BuildEmbeddedFirmwareImage(dst []byte, module *EmbeddedModule, opts Embedde
 				function := &module.Functions[j]
 				if function.FuncIndex == export.Index && function.HasCallEntry {
 					out.CallAddress = addr(layout.code+function.CallOffset) | opts.FunctionAddressMask
+					out.ParamSlots = function.ParamSlots
+					out.ResultSlots = function.ResultSlots
 					found = true
 					break
 				}
@@ -413,6 +426,8 @@ func BuildEmbeddedFirmwareImage(dst []byte, module *EmbeddedModule, opts Embedde
 			if !found {
 				return nil, fmt.Errorf("embedded32: exported function %d has no call entry", export.Index)
 			}
+			image.TransportFunctions[functionOrdinal] = embedded32.FirmwareTransportFunction{Address: out.CallAddress, ParamSlots: out.ParamSlots, ResultSlots: out.ResultSlots}
+			functionOrdinal++
 		}
 		image.Exports[i] = out
 	}

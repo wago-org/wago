@@ -410,9 +410,13 @@ bounded payload lengths, bitwise IEEE CRC32, distinct protocol/trap result
 codes, fixed hello/call/slot payloads, and strict request/response kinds. A
 caller-storage `TransportEndpoint` decodes parameter slots, preflights the full
 response before dispatch, suppresses result publication on traps, and emits
-hello/instantiate/start/call/cancel/reset responses without allocations. The
-remaining firmware work is the RP2350 SDK I/O loop and generated-entry handler,
-not another host-dependent protocol.
+hello/instantiate/start/call/cancel/reset responses without allocations.
+`FirmwareTransportRunner` adds the single-image lifecycle, exact exported
+parameter/result slot admission, start-before-call ordering, retryable failed
+instantiation/start/reset, and trap propagation. Target wrappers construct it
+from the image's filtered function-export table. The remaining firmware work is
+the RP2350 SDK I/O loop and low-level generated-entry invoker, not another
+host-dependent protocol.
 
 Modules with a start function also append a 16-byte-aligned target entry thunk.
 The thunk accepts only a `ContextABI` pointer in the platform's first argument
@@ -423,6 +427,6 @@ transactional instantiation/start sequencing without target-specific inline
 assembly.
 
 This is still not public backend admission. Open-module firmware linking, the
-RP2350 SDK transport I/O and generated-entry runner, official module-level suite
+RP2350 SDK transport I/O and low-level generated-entry invoker, official module-level suite
 qualification, and Pico 2 hardware qualification remain to be implemented and
 measured.
