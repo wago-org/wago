@@ -369,7 +369,13 @@ and starts active segments dropped. `ContextABI` now publishes a stable array of
 preflighted `memory.init` plus idempotent `data.drop` directly against those
 descriptors.
 
-Function imports now use a caller-published target array at
+Imported memory and the single imported funcref table now bind directly to the
+same caller-owned `ContextABI` memory/table descriptors used by local state.
+Imported-table instantiation preserves preexisting cells while transactionally
+applying active element ranges; imported memory retains the host backing and
+applies the same active-data preflight.
+
+Function imports use a caller-published target array at
 `ContextABI.ImportsBase`. Both the i32 compiler and mixed-frame compiler stage
 the validated internal ABI, dispatch through the fixed import slot, propagate
 callback traps through the shared trap cell, and preserve local/global function
@@ -391,7 +397,7 @@ returns the published trap code. This gives firmware a conventional ABI for
 transactional instantiation/start sequencing without target-specific inline
 assembly.
 
-This is still not public backend admission. Non-function imports, firmware
-linking and
+This is still not public backend admission. Imported globals, firmware linking
+and
 transport, and Pico 2 hardware
 qualification remain to be implemented and measured.

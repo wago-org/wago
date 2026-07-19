@@ -2008,6 +2008,114 @@ func TestCompileModuleBulkMemoryFromMixedFunctionUnderQEMU(t *testing.T) {
 	runRV32Exit(t, qemu, append(a.B, fn...), 42)
 }
 
+func riscv32ImportedMemoryModule(t *testing.T) *wasm.Module {
+	t.Helper()
+	memoryImport := append(wasmtest.Name("env"), wasmtest.Name("memory")...)
+	memoryImport = append(memoryImport, 2, 0, 0)
+	m, err := wasm.DecodeModule(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(2, wasmtest.Vec(memoryImport)),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0, 0x2d, 0, 0, 0x0b}))),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+func TestCompileModuleAccessesImportedMemoryUnderQEMU(t *testing.T) {
+	qemu, err := exec.LookPath("qemu-riscv32")
+	if err != nil {
+		t.Skip("qemu-riscv32 not installed")
+	}
+	cm, err := CompileModule(riscv32ImportedMemoryModule(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cm.MemoryImported {
+		t.Fatal("memory import metadata not retained")
+	}
+	var a rv.Asm
+	rvMemoryContext(&a)
+	a.MovImm32(rv.T0, 42)
+	a.Sb(rv.T0, rv.SP, 0)
+	a.Addi(rv.A0, rv.SP, 16)
+	a.MovReg(rv.X23, rv.A0)
+	a.MovImm32(rv.A0, 0)
+	call := a.Jal(rv.RA)
+	a.MovImm32(rv.A7, 93)
+	a.Ecall()
+	if !a.PatchJAL21(call, len(a.B)+cm.Entry[0]) {
+		t.Fatal("wrapper call relocation")
+	}
+	runRV32Exit(t, qemu, append(a.B, cm.Code...), 42)
+}
+
+func riscv32ImportedTableModule(t *testing.T) *wasm.Module {
+	t.Helper()
+	tableImport := append(wasmtest.Name("env"), wasmtest.Name("table")...)
+	tableImport = append(tableImport, 1, 0x70, 1, 1, 1)
+	body := []byte{1, 1, 0x7c, 0x20, 0, 0x25, 0, 0xd1, 0x41, 42, 0x6a, 0x0b}
+	code := append(wasmtest.ULEB(uint32(len(body))), body...)
+	m, err := wasm.DecodeModule(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(2, wasmtest.Vec(tableImport)),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0})),
+		wasmtest.Section(10, wasmtest.Vec(code)),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+func TestCompileModuleAccessesImportedTableUnderQEMU(t *testing.T) {
+	qemu, err := exec.LookPath("qemu-riscv32")
+	if err != nil {
+		t.Skip("qemu-riscv32 not installed")
+	}
+	cm, err := CompileModule(riscv32ImportedTableModule(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	entries := []uint32{7}
+	if cm.Table == nil || !cm.Table.Imported {
+		t.Fatalf("table metadata=%+v", cm.Table)
+	}
+	if err := cm.InstantiateTable(entries); err != nil || entries[0] != 7 {
+		t.Fatalf("imported table entries=%v err=%v", entries, err)
+	}
+	var a rv.Asm
+	rvMemoryContext(&a)
+	a.Addi(rv.T0, rv.SP, 124)
+	a.Sw(rv.T0, rv.SP, 28)
+	a.Addi(rv.T0, rv.SP, 64)
+	a.Sw(rv.T0, rv.SP, 56)
+	a.Addi(rv.T0, rv.SP, 96)
+	a.Sw(rv.T0, rv.SP, 64)
+	a.MovImm32(rv.T0, 1)
+	a.Sw(rv.T0, rv.SP, 68)
+	a.Sw(rv.T0, rv.SP, 72)
+	a.Sw(rv.Zero, rv.SP, 76)
+	a.Sw(rv.Zero, rv.SP, 80)
+	a.Sw(rv.Zero, rv.SP, 84)
+	a.Sw(rv.Zero, rv.SP, 88)
+	a.MovImm32(rv.T0, entries[0])
+	a.Sw(rv.T0, rv.SP, 96)
+	a.Sw(rv.Zero, rv.SP, 124)
+	a.Addi(rv.A0, rv.SP, 16)
+	a.MovReg(rv.X23, rv.A0)
+	a.MovImm32(rv.A0, 0)
+	call := a.Jal(rv.RA)
+	a.MovImm32(rv.A7, 93)
+	a.Ecall()
+	if !a.PatchJAL21(call, len(a.B)+cm.Entry[0]) {
+		t.Fatal("wrapper call relocation")
+	}
+	runRV32Exit(t, qemu, append(a.B, cm.Code...), 42)
+}
+
 func riscv32MixedToI32CallModule(t *testing.T) *wasm.Module {
 	t.Helper()
 	m, err := wasm.DecodeModule(wasmtest.Module(

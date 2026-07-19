@@ -46,6 +46,7 @@ type EmbeddedElementSegment struct {
 }
 
 type EmbeddedTable struct {
+	Imported   bool
 	Minimum    uint32
 	Maximum    uint32
 	HasMaximum bool
@@ -64,6 +65,7 @@ type EmbeddedModule struct {
 	Functions         []EmbeddedFunctionMetadata
 	FunctionTypeIDs   []uint32
 	ImportedFunctions uint32
+	MemoryImported    bool
 	Data              []EmbeddedDataSegment
 	Globals           []EmbeddedGlobal
 	Table             *EmbeddedTable
@@ -146,13 +148,19 @@ func (m *EmbeddedModule) InstantiateTable(entries []uint32) error {
 	if uint64(m.Table.Minimum) > uint64(len(entries)) {
 		return embedded32.ErrArenaCapacity
 	}
+	activeLimit := uint64(m.Table.Minimum)
+	if m.Table.Imported {
+		activeLimit = uint64(len(entries))
+	}
 	for i := range m.Table.Elements {
 		segment := &m.Table.Elements[i]
-		if segment.Mode == EmbeddedElementActive && uint64(segment.Offset)+uint64(len(segment.Values)) > uint64(m.Table.Minimum) {
-			return fmt.Errorf("embedded element segment %d exceeds table minimum", i)
+		if segment.Mode == EmbeddedElementActive && uint64(segment.Offset)+uint64(len(segment.Values)) > activeLimit {
+			return fmt.Errorf("embedded element segment %d exceeds table length", i)
 		}
 	}
-	clear(entries[:m.Table.Minimum])
+	if !m.Table.Imported {
+		clear(entries[:m.Table.Minimum])
+	}
 	for i := range m.Table.Elements {
 		segment := &m.Table.Elements[i]
 		if segment.Mode == EmbeddedElementActive {
@@ -189,6 +197,7 @@ type PublishedEmbeddedModule struct {
 	Functions         []EmbeddedFunctionMetadata
 	FunctionTypeIDs   []uint32
 	ImportedFunctions uint32
+	MemoryImported    bool
 	Data              []EmbeddedDataSegment
 	Globals           []EmbeddedGlobal
 	Table             *EmbeddedTable
@@ -214,7 +223,7 @@ func PublishEmbeddedModule(arena *embedded32.CodeArena, module *EmbeddedModule, 
 	if err := tx.Commit(publish); err != nil {
 		return nil, err
 	}
-	out := &PublishedEmbeddedModule{Block: block, Entry: make([]uint32, len(module.Entry)), Functions: make([]EmbeddedFunctionMetadata, len(module.Functions)), FunctionTypeIDs: append([]uint32(nil), module.FunctionTypeIDs...), ImportedFunctions: module.ImportedFunctions, Data: module.Data, Globals: module.Globals, Table: module.Table, Exports: module.Exports, Start: module.Start}
+	out := &PublishedEmbeddedModule{Block: block, Entry: make([]uint32, len(module.Entry)), Functions: make([]EmbeddedFunctionMetadata, len(module.Functions)), FunctionTypeIDs: append([]uint32(nil), module.FunctionTypeIDs...), ImportedFunctions: module.ImportedFunctions, MemoryImported: module.MemoryImported, Data: module.Data, Globals: module.Globals, Table: module.Table, Exports: module.Exports, Start: module.Start}
 	if module.StartEntry != nil {
 		entry := block.Offset + uint32(*module.StartEntry)
 		out.StartEntry = &entry
@@ -252,14 +261,27 @@ func CompileEmbeddedModule(m *wasm.Module, opts EmbeddedModuleOptions, target st
 		return nil, fmt.Errorf("%s: module validation: %w", target, err)
 	}
 	importedFunctions := uint32(0)
+	importedTables, importedMemories := 0, 0
+	var importedMemory *wasm.MemType
 	for i := range m.Imports {
-		if m.Imports[i].Type.Kind != wasm.ExternFunc {
+		switch m.Imports[i].Type.Kind {
+		case wasm.ExternFunc:
+			importedFunctions++
+		case wasm.ExternTable:
+			importedTables++
+		case wasm.ExternMem:
+			importedMemories++
+			memory := m.Imports[i].Type.Mem
+			importedMemory = &memory
+		default:
 			return nil, fmt.Errorf("%s: import %d kind %d is not supported", target, i, m.Imports[i].Type.Kind)
 		}
-		importedFunctions++
 	}
-	if len(m.Tables) > 1 || len(m.Memories) > 1 || len(m.Tags) != 0 || len(m.StringRefs) != 0 {
+	if importedTables+len(m.Tables) > 1 || importedMemories+len(m.Memories) > 1 || len(m.Tags) != 0 || len(m.StringRefs) != 0 {
 		return nil, fmt.Errorf("%s: module contains unsupported runtime state", target)
+	}
+	if importedMemory != nil && (importedMemory.Limits.Addr64 || importedMemory.Shared) {
+		return nil, fmt.Errorf("%s: target requires unshared imported memory32", target)
 	}
 	if len(m.Memories) == 1 && (m.Memories[0].Limits.Addr64 || m.Memories[0].Shared) {
 		return nil, fmt.Errorf("%s: target requires unshared memory32", target)
@@ -329,7 +351,7 @@ func CompileEmbeddedModule(m *wasm.Module, opts EmbeddedModuleOptions, target st
 		}
 		start = &index
 	}
-	out := &EmbeddedModule{Code: make([]byte, 0, required), Entry: make([]int, len(bodies)), Functions: make([]EmbeddedFunctionMetadata, len(bodies)), FunctionTypeIDs: functionTypeIDs, ImportedFunctions: importedFunctions, Data: data, Globals: globals, Table: table, Exports: exports, Start: start, RequiredCodeBytes: uint32(required)}
+	out := &EmbeddedModule{Code: make([]byte, 0, required), Entry: make([]int, len(bodies)), Functions: make([]EmbeddedFunctionMetadata, len(bodies)), FunctionTypeIDs: functionTypeIDs, ImportedFunctions: importedFunctions, MemoryImported: importedMemories == 1, Data: data, Globals: globals, Table: table, Exports: exports, Start: start, RequiredCodeBytes: uint32(required)}
 	for i, body := range bodies {
 		pad := (16 - len(out.Code)%16) % 16
 		if pad%len(alignmentPad) != 0 {
@@ -492,30 +514,58 @@ func embeddedFunctionTypeIDs(m *wasm.Module) ([]uint32, error) {
 	return out, nil
 }
 
+func EmbeddedTableValueType(m *wasm.Module, index uint32) (wasm.ValType, bool) {
+	if m == nil || index != 0 {
+		return wasm.ValType{}, false
+	}
+	for i := range m.Imports {
+		if m.Imports[i].Type.Kind == wasm.ExternTable {
+			return wasm.RefVal(m.Imports[i].Type.Table.Ref), true
+		}
+	}
+	if len(m.Tables) == 1 {
+		return wasm.RefVal(m.Tables[0].Type.Ref), true
+	}
+	return wasm.ValType{}, false
+}
+
 func embeddedTable(m *wasm.Module, target string) (*EmbeddedTable, error) {
-	if len(m.Tables) == 0 {
+	var tableType *wasm.TableType
+	var tableInit *wasm.Expr
+	imported := false
+	for i := range m.Imports {
+		if m.Imports[i].Type.Kind == wasm.ExternTable {
+			typ := m.Imports[i].Type.Table
+			tableType, imported = &typ, true
+			break
+		}
+	}
+	if len(m.Tables) != 0 {
+		tableType = &m.Tables[0].Type
+		tableInit = m.Tables[0].Init
+	}
+	if tableType == nil {
 		if len(m.Elements) != 0 {
 			return nil, fmt.Errorf("%s: element segments require a table", target)
 		}
 		return nil, nil
 	}
-	table := &m.Tables[0]
-	if table.Type.Ref != wasm.FuncRef.Ref {
-		return nil, fmt.Errorf("%s: table type %s is not supported", target, table.Type.Ref)
+	if tableType.Ref != wasm.FuncRef.Ref {
+		return nil, fmt.Errorf("%s: table type %s is not supported", target, tableType.Ref)
 	}
 	const maxTableSlots = uint64(^uint32(0) / 4)
-	if table.Type.Limits.Addr64 || table.Type.Limits.Min > maxTableSlots {
+	if tableType.Limits.Addr64 || tableType.Limits.Min > maxTableSlots {
 		return nil, fmt.Errorf("%s: table limits exceed the addressable 32-bit slot range", target)
 	}
-	if table.Init != nil {
+	if tableInit != nil {
 		return nil, fmt.Errorf("%s: table initializer expressions are not supported", target)
 	}
-	out := &EmbeddedTable{Minimum: uint32(table.Type.Limits.Min)}
-	if table.Type.Limits.Max != nil {
-		if *table.Type.Limits.Max > maxTableSlots {
+	out := &EmbeddedTable{Imported: imported, Minimum: uint32(tableType.Limits.Min)}
+	if tableType.Limits.Max != nil {
+		if *tableType.Limits.Max > maxTableSlots {
 			return nil, fmt.Errorf("%s: table maximum exceeds the addressable 32-bit slot range", target)
 		}
-		out.Maximum, out.HasMaximum = uint32(*table.Type.Limits.Max), true
+		out.Maximum, out.HasMaximum = uint32(*tableType.Limits.Max), true
 	}
 	functionCount := m.ImportedFuncCount() + len(m.Code)
 	out.Elements = make([]EmbeddedElementSegment, 0, len(m.Elements))
@@ -564,9 +614,6 @@ func embeddedTable(m *wasm.Module, target string) (*EmbeddedTable, error) {
 			}
 		default:
 			return nil, fmt.Errorf("%s: element segment %d kind is not supported", target, i)
-		}
-		if mode == EmbeddedElementActive && uint64(offset)+uint64(len(values)) > uint64(out.Minimum) {
-			return nil, fmt.Errorf("%s: element segment %d exceeds table minimum", target, i)
 		}
 		out.Elements = append(out.Elements, EmbeddedElementSegment{Mode: mode, Offset: offset, Values: values})
 	}

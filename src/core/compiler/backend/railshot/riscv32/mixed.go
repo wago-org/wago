@@ -39,10 +39,7 @@ func compileMixedModuleFunction(m *wasm.Module, ft *wasm.CompType, locals []wasm
 	}, func(index uint32) (*wasm.CompType, bool) {
 		return m.TypeFunc(index)
 	}, func(index uint32) (wasm.ValType, bool) {
-		if index != 0 || len(m.Tables) != 1 {
-			return wasm.ValType{}, false
-		}
-		return wasm.RefVal(m.Tables[0].Type.Ref), true
+		return shared.EmbeddedTableValueType(m, index)
 	})
 	if err != nil {
 		return nil, nil, err
@@ -59,7 +56,7 @@ func compileMixedModuleFunction(m *wasm.Module, ft *wasm.CompType, locals []wasm
 			return nil, nil, fmt.Errorf("riscv32: invalid mixed table.init table %d", op.Lane)
 		}
 		if op.Kind == shared.MixedCallIndirect {
-			if op.Lane != 0 || len(m.Tables) != 1 {
+			if typ, ok := shared.EmbeddedTableValueType(m, op.Lane); !ok || typ != wasm.FuncRef {
 				return nil, nil, fmt.Errorf("riscv32: invalid mixed indirect table %d", op.Lane)
 			}
 			typeID, ok := shared.EmbeddedFunctionTypeID(m, op.Target)
