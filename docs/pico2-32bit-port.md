@@ -175,8 +175,8 @@ Arm or RISC-V bit-manipulation extensions; bounded count loops and rotate
 sequences execute under both QEMU targets. Context-aware division/remainder
 thunks cover all four signed/unsigned operations, preserve the defined signed
 remainder result for `min / -1`, and write distinct canonical divide-by-zero and
-signed-overflow traps. Normal function lowering still needs to reserve the
-context register and route the trapping opcodes through these thunks. Mixed module functions now construct the stable 32-byte f64 helper frame in
+signed-overflow traps. Normal function lowering reserves the fixed context
+register and routes the trapping opcodes through these thunks. Mixed module functions now construct the stable 32-byte f64 helper frame in
 their bounded native frame, dispatch through `ContextABI.HelperTable`, publish
 helper traps, and reload complete results. This path covers f32/f64 rounding, square root, arithmetic, min/max,
 comparisons, i32/i64 conversion, f32/f64 promotion/demotion, trapping truncation,
@@ -260,7 +260,7 @@ cannot mutate its in-bounds low word. Normal mixed-width function lowering now r
 memarg through the same registry. Mixed loads and stores retain static-offset
 overflow checks, complete-width preflight, narrow signed/unsigned extension,
 and no-partial-write guarantees while surrounding wide operands remain in frame
-slots. SIMD memory forms still await normal mixed helper dispatch.
+slots. SIMD memory and lane-memory forms use the complete mixed helper dispatch.
 
 A shared module-layout stage now compiles every local function in the currently
 admitted scalar and direct-SWAR subsets into one 16-byte-aligned target image.
@@ -296,9 +296,10 @@ transactional publication so firmware instantiation can resolve public entries
 and invoke start after state initialization. It
 reconstructs validated local declarations, records bounded per-function
 offset/size plus serialized parameter/result slot metadata,
-performs conservative code-arena capacity preflight before code generation, and
-rejects imports, unsupported runtime state, incompatible signatures, missing
-byte-backed bodies, and unsupported instructions before publication. Module
+performs conservative code-arena capacity preflight before code generation,
+retains supported import contracts, and rejects unsupported runtime state,
+incompatible signatures, missing byte-backed bodies, and unsupported
+instructions before publication. Module
 functions reserve a fixed context register (`R11` or `x23`) and now lower all i32
 load/store widths, `memory.size`, and trapping division/remainder directly through
 `ContextABI`; static-offset overflow, complete-width bounds checks, and canonical
@@ -379,6 +380,15 @@ wide cells remain aliased rather than copied into module-local storage. Local
 constant initializers may read immutable imported globals, with every source
 cell and destination range preflighted before any local global is published.
 
+Every import now retains its module/name, kind-specific ordinal, exact
+function signature and cross-module structural type ID, global type/mutability,
+or table/memory limits. `ResolveEmbeddedLinks` resolves complete module/export
+names transactionally, validates exact function/global contracts and Wasm limit
+matching, rejects duplicate/missing providers, and produces a binding plan
+before any target address is published. Function type IDs now use the shared
+structural hash with in-module collision rejection, so identical signatures are
+stable across independently compiled modules.
+
 Function imports use a caller-published target array at
 `ContextABI.ImportsBase`. Both the i32 compiler and mixed-frame compiler stage
 the validated internal ABI, dispatch through the fixed import slot, propagate
@@ -426,7 +436,7 @@ returns the published trap code. This gives firmware a conventional ABI for
 transactional instantiation/start sequencing without target-specific inline
 assembly.
 
-This is still not public backend admission. Open-module firmware linking, the
-RP2350 SDK transport I/O and low-level generated-entry invoker, official module-level suite
-qualification, and Pico 2 hardware qualification remain to be implemented and
-measured.
+This is still not public backend admission. Linked-image address/context
+publication, the RP2350 SDK transport I/O and low-level generated-entry invoker,
+official module-level suite qualification, and Pico 2 hardware qualification
+remain to be implemented and measured.

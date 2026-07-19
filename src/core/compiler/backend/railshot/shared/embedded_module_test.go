@@ -146,6 +146,52 @@ func TestCompileEmbeddedModuleBindsImportedGlobalsAndInitializers(t *testing.T) 
 	}
 }
 
+func TestCompileEmbeddedModuleRetainsImportContracts(t *testing.T) {
+	functionImport := append(wasmtest.Name("host"), wasmtest.Name("call")...)
+	functionImport = append(functionImport, 0, 0)
+	tableImport := append(wasmtest.Name("host"), wasmtest.Name("table")...)
+	tableImport = append(tableImport, 1, 0x70, 1, 1, 3)
+	memoryImport := append(wasmtest.Name("host"), wasmtest.Name("memory")...)
+	memoryImport = append(memoryImport, 2, 1, 1, 2)
+	m, err := wasm.DecodeModule(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I64}, []wasm.ValType{wasm.F64}))),
+		wasmtest.Section(2, wasmtest.Vec(
+			functionImport,
+			tableImport,
+			memoryImport,
+			wasmtest.GlobalImportEntry("host", "global", wasm.I64, true),
+		)),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cm, err := CompileEmbeddedModule(m, EmbeddedModuleOptions{}, "test", 1, []byte{0}, func(int, *wasm.CompType, []wasm.LocalRun, []byte) ([]byte, error) {
+		return nil, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cm.Imports) != 4 {
+		t.Fatalf("imports=%+v", cm.Imports)
+	}
+	function := cm.Imports[0]
+	if function.Module != "host" || function.Name != "call" || function.Kind != wasm.ExternFunc || function.Index != 0 || !slices.Equal(function.Params, []wasm.ValType{wasm.I32, wasm.I64}) || !slices.Equal(function.Results, []wasm.ValType{wasm.F64}) {
+		t.Fatalf("function import=%+v", function)
+	}
+	table := cm.Imports[1]
+	if table.Kind != wasm.ExternTable || table.Index != 0 || table.Reference != wasm.FuncRef.Ref || table.Minimum != 1 || !table.HasMaximum || table.Maximum != 3 {
+		t.Fatalf("table import=%+v", table)
+	}
+	memory := cm.Imports[2]
+	if memory.Kind != wasm.ExternMem || memory.Index != 0 || memory.Minimum != 1 || !memory.HasMaximum || memory.Maximum != 2 {
+		t.Fatalf("memory import=%+v", memory)
+	}
+	global := cm.Imports[3]
+	if global.Kind != wasm.ExternGlobal || global.Index != 0 || global.Type != wasm.I64 || !global.Mutable {
+		t.Fatalf("global import=%+v", global)
+	}
+}
+
 func TestCompileEmbeddedModuleInitializesActiveFunctionTable(t *testing.T) {
 	m := embeddedTestModule(t,
 		[][]byte{wasmtest.FuncType(nil, nil)},

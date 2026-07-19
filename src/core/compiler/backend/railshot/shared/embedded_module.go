@@ -8,6 +8,28 @@ import (
 	"github.com/wago-org/wago/src/core/runtime/embedded32"
 )
 
+type EmbeddedImport struct {
+	Module         string
+	Name           string
+	Kind           wasm.ExternKind
+	Index          uint32
+	Params         []wasm.ValType
+	Results        []wasm.ValType
+	FunctionTypeID uint32
+	Type           wasm.ValType
+	Mutable        bool
+	Reference      wasm.RefType
+	Minimum        uint32
+	Maximum        uint32
+	HasMaximum     bool
+}
+
+type EmbeddedFunctionSignature struct {
+	Params  []wasm.ValType
+	Results []wasm.ValType
+	TypeID  uint32
+}
+
 type EmbeddedFunctionMetadata struct {
 	FuncIndex    uint32
 	Offset       uint32
@@ -69,21 +91,23 @@ type EmbeddedExport struct {
 }
 
 type EmbeddedModule struct {
-	Code              []byte
-	Entry             []int
-	Functions         []EmbeddedFunctionMetadata
-	FunctionTypeIDs   []uint32
-	ImportedFunctions uint32
-	MemoryImported    bool
-	Memory            *EmbeddedMemory
-	Data              []EmbeddedDataSegment
-	ImportedGlobals   []EmbeddedGlobal
-	Globals           []EmbeddedGlobal
-	Table             *EmbeddedTable
-	Exports           []EmbeddedExport
-	Start             *uint32
-	StartEntry        *int
-	RequiredCodeBytes uint32
+	Code               []byte
+	Entry              []int
+	Functions          []EmbeddedFunctionMetadata
+	FunctionTypeIDs    []uint32
+	FunctionSignatures []EmbeddedFunctionSignature
+	ImportedFunctions  uint32
+	Imports            []EmbeddedImport
+	MemoryImported     bool
+	Memory             *EmbeddedMemory
+	Data               []EmbeddedDataSegment
+	ImportedGlobals    []EmbeddedGlobal
+	Globals            []EmbeddedGlobal
+	Table              *EmbeddedTable
+	Exports            []EmbeddedExport
+	Start              *uint32
+	StartEntry         *int
+	RequiredCodeBytes  uint32
 }
 
 // InstantiateData preflights all active segments before mutating local memory,
@@ -217,20 +241,22 @@ func (m *EmbeddedModule) InstantiateData(memory *embedded32.LinearMemory) (*embe
 }
 
 type PublishedEmbeddedModule struct {
-	Block             embedded32.CodeBlock
-	Entry             []uint32
-	Functions         []EmbeddedFunctionMetadata
-	FunctionTypeIDs   []uint32
-	ImportedFunctions uint32
-	MemoryImported    bool
-	Memory            *EmbeddedMemory
-	Data              []EmbeddedDataSegment
-	ImportedGlobals   []EmbeddedGlobal
-	Globals           []EmbeddedGlobal
-	Table             *EmbeddedTable
-	Exports           []EmbeddedExport
-	Start             *uint32
-	StartEntry        *uint32
+	Block              embedded32.CodeBlock
+	Entry              []uint32
+	Functions          []EmbeddedFunctionMetadata
+	FunctionTypeIDs    []uint32
+	FunctionSignatures []EmbeddedFunctionSignature
+	ImportedFunctions  uint32
+	Imports            []EmbeddedImport
+	MemoryImported     bool
+	Memory             *EmbeddedMemory
+	Data               []EmbeddedDataSegment
+	ImportedGlobals    []EmbeddedGlobal
+	Globals            []EmbeddedGlobal
+	Table              *EmbeddedTable
+	Exports            []EmbeddedExport
+	Start              *uint32
+	StartEntry         *uint32
 }
 
 func PublishEmbeddedModule(arena *embedded32.CodeArena, module *EmbeddedModule, publish embedded32.CodePublisher) (*PublishedEmbeddedModule, error) {
@@ -250,7 +276,7 @@ func PublishEmbeddedModule(arena *embedded32.CodeArena, module *EmbeddedModule, 
 	if err := tx.Commit(publish); err != nil {
 		return nil, err
 	}
-	out := &PublishedEmbeddedModule{Block: block, Entry: make([]uint32, len(module.Entry)), Functions: make([]EmbeddedFunctionMetadata, len(module.Functions)), FunctionTypeIDs: append([]uint32(nil), module.FunctionTypeIDs...), ImportedFunctions: module.ImportedFunctions, MemoryImported: module.MemoryImported, Memory: module.Memory, Data: module.Data, ImportedGlobals: module.ImportedGlobals, Globals: module.Globals, Table: module.Table, Exports: module.Exports, Start: module.Start}
+	out := &PublishedEmbeddedModule{Block: block, Entry: make([]uint32, len(module.Entry)), Functions: make([]EmbeddedFunctionMetadata, len(module.Functions)), FunctionTypeIDs: append([]uint32(nil), module.FunctionTypeIDs...), FunctionSignatures: module.FunctionSignatures, ImportedFunctions: module.ImportedFunctions, Imports: module.Imports, MemoryImported: module.MemoryImported, Memory: module.Memory, Data: module.Data, ImportedGlobals: module.ImportedGlobals, Globals: module.Globals, Table: module.Table, Exports: module.Exports, Start: module.Start}
 	if module.StartEntry != nil {
 		entry := block.Offset + uint32(*module.StartEntry)
 		out.StartEntry = &entry
@@ -313,6 +339,10 @@ func CompileEmbeddedModule(m *wasm.Module, opts EmbeddedModuleOptions, target st
 	}
 	if importedTables+len(m.Tables) > 1 || importedMemories+len(m.Memories) > 1 || len(m.Tags) != 0 || len(m.StringRefs) != 0 {
 		return nil, fmt.Errorf("%s: module contains unsupported runtime state", target)
+	}
+	imports, err := embeddedImports(m, target)
+	if err != nil {
+		return nil, err
 	}
 	if importedMemory != nil && (importedMemory.Limits.Addr64 || importedMemory.Shared) {
 		return nil, fmt.Errorf("%s: target requires unshared imported memory32", target)
@@ -377,6 +407,10 @@ func CompileEmbeddedModule(m *wasm.Module, opts EmbeddedModuleOptions, target st
 	if err != nil {
 		return nil, fmt.Errorf("%s: function type IDs: %w", target, err)
 	}
+	functionSignatures, err := embeddedFunctionSignatures(m, functionTypeIDs)
+	if err != nil {
+		return nil, fmt.Errorf("%s: function signatures: %w", target, err)
+	}
 	exports := make([]EmbeddedExport, len(m.Exports))
 	for i := range m.Exports {
 		exports[i] = EmbeddedExport{Name: m.Exports[i].Name, Kind: m.Exports[i].Index.Kind, Index: m.Exports[i].Index.Index}
@@ -389,7 +423,7 @@ func CompileEmbeddedModule(m *wasm.Module, opts EmbeddedModuleOptions, target st
 		}
 		start = &index
 	}
-	out := &EmbeddedModule{Code: make([]byte, 0, required), Entry: make([]int, len(bodies)), Functions: make([]EmbeddedFunctionMetadata, len(bodies)), FunctionTypeIDs: functionTypeIDs, ImportedFunctions: importedFunctions, MemoryImported: importedMemories == 1, Memory: memory, Data: data, ImportedGlobals: importedGlobals, Globals: globals, Table: table, Exports: exports, Start: start, RequiredCodeBytes: uint32(required)}
+	out := &EmbeddedModule{Code: make([]byte, 0, required), Entry: make([]int, len(bodies)), Functions: make([]EmbeddedFunctionMetadata, len(bodies)), FunctionTypeIDs: functionTypeIDs, FunctionSignatures: functionSignatures, ImportedFunctions: importedFunctions, Imports: imports, MemoryImported: importedMemories == 1, Memory: memory, Data: data, ImportedGlobals: importedGlobals, Globals: globals, Table: table, Exports: exports, Start: start, RequiredCodeBytes: uint32(required)}
 	for i, body := range bodies {
 		pad := (16 - len(out.Code)%16) % 16
 		if pad%len(alignmentPad) != 0 {
@@ -479,9 +513,8 @@ func embeddedFunctionTypeKey(ft *wasm.CompType) (string, error) {
 
 func embeddedFunctionTypeMap(m *wasm.Module) (map[uint32]uint32, error) {
 	ids := make(map[uint32]uint32)
-	canonical := make(map[string]uint32)
+	seen := make(map[uint32]string)
 	var index uint32
-	var nextID uint32 = 1
 	for i := range m.Types {
 		for j := range m.Types[i].SubTypes {
 			comp := &m.Types[i].SubTypes[j].Comp
@@ -490,12 +523,11 @@ func embeddedFunctionTypeMap(m *wasm.Module) (map[uint32]uint32, error) {
 				if err != nil {
 					return nil, fmt.Errorf("type %d: %w", index, err)
 				}
-				id, ok := canonical[key]
-				if !ok {
-					id = nextID
-					nextID++
-					canonical[key] = id
+				id := wasm.StructuralFuncTypeID(comp)
+				if previous, ok := seen[id]; ok && previous != key {
+					return nil, fmt.Errorf("type %d structural id collision", index)
 				}
+				seen[id] = key
 				ids[index] = id
 			}
 			index++
@@ -514,6 +546,51 @@ func EmbeddedFunctionTypeID(m *wasm.Module, index uint32) (uint32, bool) {
 	}
 	id, ok := ids[index]
 	return id, ok
+}
+
+func embeddedImports(m *wasm.Module, target string) ([]EmbeddedImport, error) {
+	out := make([]EmbeddedImport, len(m.Imports))
+	var functionIndex, tableIndex, memoryIndex, globalIndex uint32
+	for i := range m.Imports {
+		in := &m.Imports[i]
+		entry := EmbeddedImport{Module: in.Module, Name: in.Name, Kind: in.Type.Kind}
+		switch in.Type.Kind {
+		case wasm.ExternFunc:
+			ft, ok := m.FuncSignature(functionIndex)
+			if !ok || ft.Kind != wasm.CompFunc {
+				return nil, fmt.Errorf("%s: imported function %d has no function type", target, functionIndex)
+			}
+			entry.Index = functionIndex
+			entry.Params = append([]wasm.ValType(nil), ft.Params...)
+			entry.Results = append([]wasm.ValType(nil), ft.Results...)
+			entry.FunctionTypeID = wasm.StructuralFuncTypeID(ft)
+			functionIndex++
+		case wasm.ExternTable:
+			entry.Index = tableIndex
+			entry.Reference = in.Type.Table.Ref
+			entry.Minimum = uint32(in.Type.Table.Limits.Min)
+			if in.Type.Table.Limits.Max != nil {
+				entry.Maximum, entry.HasMaximum = uint32(*in.Type.Table.Limits.Max), true
+			}
+			tableIndex++
+		case wasm.ExternMem:
+			entry.Index = memoryIndex
+			entry.Minimum = uint32(in.Type.Mem.Limits.Min)
+			if in.Type.Mem.Limits.Max != nil {
+				entry.Maximum, entry.HasMaximum = uint32(*in.Type.Mem.Limits.Max), true
+			}
+			memoryIndex++
+		case wasm.ExternGlobal:
+			entry.Index = globalIndex
+			entry.Type = in.Type.Global.Type
+			entry.Mutable = in.Type.Global.Mutable
+			globalIndex++
+		default:
+			return nil, fmt.Errorf("%s: import %d kind %d is not supported", target, i, in.Type.Kind)
+		}
+		out[i] = entry
+	}
+	return out, nil
 }
 
 func embeddedFunctionTypeIDs(m *wasm.Module) ([]uint32, error) {
@@ -548,6 +625,25 @@ func embeddedFunctionTypeIDs(m *wasm.Module) ([]uint32, error) {
 			return nil, fmt.Errorf("function %d type %d is not an embedded function type", i, index.Index)
 		}
 		out[imported+i] = id
+	}
+	return out, nil
+}
+
+func embeddedFunctionSignatures(m *wasm.Module, ids []uint32) ([]EmbeddedFunctionSignature, error) {
+	if m == nil || len(ids) != m.FuncCount() {
+		return nil, fmt.Errorf("function signature/type id count mismatch")
+	}
+	out := make([]EmbeddedFunctionSignature, len(ids))
+	for i := range out {
+		ft, ok := m.FuncSignature(uint32(i))
+		if !ok || ft.Kind != wasm.CompFunc {
+			return nil, fmt.Errorf("function %d has no function signature", i)
+		}
+		out[i] = EmbeddedFunctionSignature{
+			Params:  append([]wasm.ValType(nil), ft.Params...),
+			Results: append([]wasm.ValType(nil), ft.Results...),
+			TypeID:  ids[i],
+		}
 	}
 	return out, nil
 }
