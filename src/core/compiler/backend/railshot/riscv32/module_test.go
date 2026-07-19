@@ -2117,8 +2117,17 @@ func TestCompileModuleAccessesImportedMemoryUnderQEMU(t *testing.T) {
 	}
 	var a rv.Asm
 	rvMemoryContext(&a)
-	a.MovImm32(rv.T0, 42)
+	a.MovImm32(rv.T0, 7)
 	a.Sb(rv.T0, rv.SP, 0)
+	a.MovImm32(rv.T0, 42)
+	a.Sb(rv.T0, rv.SP, 4)
+	a.Addi(rv.T0, rv.SP, 4)
+	a.Sw(rv.T0, rv.SP, 72)
+	a.MovImm32(rv.T0, 16)
+	a.Sw(rv.T0, rv.SP, 76)
+	a.Sw(rv.T0, rv.SP, 92)
+	a.Addi(rv.T0, rv.SP, 72)
+	a.Sw(rv.T0, rv.SP, 68)
 	a.Addi(rv.A0, rv.SP, 16)
 	a.MovReg(rv.X23, rv.A0)
 	a.MovImm32(rv.A0, 0)

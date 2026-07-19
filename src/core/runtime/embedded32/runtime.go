@@ -234,6 +234,7 @@ type ContextABI struct {
 	Table               uint32
 	ImportsBase         uint32
 	ImportedGlobalsBase uint32
+	LinearMemoryContext uint32
 }
 
 const (
@@ -250,7 +251,8 @@ const (
 	ContextTableOffset               = 40
 	ContextImportsBaseOffset         = 44
 	ContextImportedGlobalsBaseOffset = 48
-	ContextABISize                   = 52
+	ContextLinearMemoryContextOffset = 52
+	ContextABISize                   = 56
 )
 
 // Runtime composes the fixed embedded resources. The initial profile permits

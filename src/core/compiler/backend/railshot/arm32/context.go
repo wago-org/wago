@@ -225,6 +225,24 @@ func (c *compiler) globalSet(index uint32) error {
 	return nil
 }
 
+func (c *compiler) loadMemoryField(dst a32.Reg, offset uint16, what string) {
+	base := armContextReg
+	if c.module != nil && c.module.ImportedMemCount() != 0 {
+		c.must(c.a.Ldr(a32.LR, armContextReg, embedded32.ContextLinearMemoryContextOffset), "memory context")
+		base = a32.LR
+	}
+	c.must(c.a.Ldr(dst, base, offset), what)
+}
+
+func (c *compiler) storeMemoryField(src a32.Reg, offset uint16, what string) {
+	base := armContextReg
+	if c.module != nil && c.module.ImportedMemCount() != 0 {
+		c.must(c.a.Ldr(a32.LR, armContextReg, embedded32.ContextLinearMemoryContextOffset), "memory context")
+		base = a32.LR
+	}
+	c.must(c.a.Str(src, base, offset), what)
+}
+
 func (c *compiler) load(r *wasm.Reader, op byte) error {
 	if _, err := r.U32(); err != nil { // alignment is advisory.
 		return err
@@ -250,14 +268,14 @@ func (c *compiler) load(r *wasm.Reader, op byte) error {
 	c.must(c.a.MovImm32(tmp, offset), "load offset")
 	c.must(c.a.Adds(addr, addr, tmp), "load address")
 	traps := []int{c.a.FarBcond(a32.CondCS)}
-	c.must(c.a.Ldr(tmp, armContextReg, embedded32.ContextLinearMemoryLengthOffset), "load length")
+	c.loadMemoryField(tmp, embedded32.ContextLinearMemoryLengthOffset, "load length")
 	c.must(c.a.MovImm32(dst, width), "load width")
 	c.must(c.a.Cmp(tmp, dst), "load short compare")
 	traps = append(traps, c.a.FarBcond(a32.CondCC))
 	c.must(c.a.Sub(tmp, tmp, dst), "load bound")
 	c.must(c.a.Cmp(tmp, addr), "load bounds compare")
 	traps = append(traps, c.a.FarBcond(a32.CondCC))
-	c.must(c.a.Ldr(tmp, armContextReg, embedded32.ContextLinearMemoryBaseOffset), "load base")
+	c.loadMemoryField(tmp, embedded32.ContextLinearMemoryBaseOffset, "load base")
 	c.must(c.a.Add(tmp, tmp, addr), "load pointer")
 	switch width {
 	case 1:
@@ -313,14 +331,14 @@ func (c *compiler) store(r *wasm.Reader, op byte) error {
 	c.must(c.a.MovImm32(tmp, offset), "store offset")
 	c.must(c.a.Adds(addr, addr, tmp), "store address")
 	traps := []int{c.a.FarBcond(a32.CondCS)}
-	c.must(c.a.Ldr(tmp, armContextReg, embedded32.ContextLinearMemoryLengthOffset), "store length")
+	c.loadMemoryField(tmp, embedded32.ContextLinearMemoryLengthOffset, "store length")
 	c.must(c.a.MovImm32(a32.R12, width), "store width")
 	c.must(c.a.Cmp(tmp, a32.R12), "store short compare")
 	traps = append(traps, c.a.FarBcond(a32.CondCC))
 	c.must(c.a.Sub(tmp, tmp, a32.R12), "store bound")
 	c.must(c.a.Cmp(tmp, addr), "store bounds compare")
 	traps = append(traps, c.a.FarBcond(a32.CondCC))
-	c.must(c.a.Ldr(tmp, armContextReg, embedded32.ContextLinearMemoryBaseOffset), "store base")
+	c.loadMemoryField(tmp, embedded32.ContextLinearMemoryBaseOffset, "store base")
 	c.must(c.a.Add(tmp, tmp, addr), "store pointer")
 	switch width {
 	case 1:
@@ -351,7 +369,7 @@ func (c *compiler) store(r *wasm.Reader, op byte) error {
 
 func (c *compiler) memorySize() {
 	dst := c.alloc()
-	c.must(c.a.Ldr(dst, armContextReg, embedded32.ContextLinearMemoryLengthOffset), "memory.size length")
+	c.loadMemoryField(dst, embedded32.ContextLinearMemoryLengthOffset, "memory.size length")
 	c.must(c.a.LsrImm(dst, dst, 16), "memory.size pages")
 	c.push(operand{reg: dst})
 }
@@ -384,7 +402,7 @@ func (c *compiler) memoryInit(index uint32) error {
 	c.must(c.a.Sub(a32.LR, a32.LR, n), "memory.init source bound")
 	c.must(c.a.Cmp(a32.LR, src), "memory.init source compare")
 	traps = append(traps, c.a.FarBcond(a32.CondCC))
-	c.must(c.a.Ldr(a32.LR, armContextReg, embedded32.ContextLinearMemoryLengthOffset), "memory.init memory length")
+	c.loadMemoryField(a32.LR, embedded32.ContextLinearMemoryLengthOffset, "memory.init memory length")
 	c.must(c.a.Cmp(a32.LR, n), "memory.init destination size")
 	traps = append(traps, c.a.FarBcond(a32.CondCC))
 	c.must(c.a.Sub(a32.LR, a32.LR, n), "memory.init destination bound")
@@ -392,7 +410,7 @@ func (c *compiler) memoryInit(index uint32) error {
 	traps = append(traps, c.a.FarBcond(a32.CondCC))
 	c.must(c.a.Ldr(descriptor, descriptor, embedded32.DataSegmentBaseOffset), "data payload base")
 	c.must(c.a.Add(descriptor, descriptor, src), "memory.init source")
-	c.must(c.a.Ldr(a32.LR, armContextReg, embedded32.ContextLinearMemoryBaseOffset), "memory.init memory base")
+	c.loadMemoryField(a32.LR, embedded32.ContextLinearMemoryBaseOffset, "memory.init memory base")
 	c.must(c.a.Add(dst, dst, a32.LR), "memory.init destination")
 	loop := c.a.Len()
 	c.must(c.a.Cmp(n, a32.R12), "memory.init done")
@@ -447,7 +465,7 @@ func (c *compiler) memoryCopy() error {
 	src := c.materialize(c.pop())
 	dst := c.materialize(c.pop())
 	tmp := c.alloc()
-	c.must(c.a.Ldr(tmp, armContextReg, embedded32.ContextLinearMemoryLengthOffset), "memory.copy length")
+	c.loadMemoryField(tmp, embedded32.ContextLinearMemoryLengthOffset, "memory.copy length")
 	c.must(c.a.Cmp(tmp, n), "memory.copy size compare")
 	traps := []int{c.a.FarBcond(a32.CondCC)}
 	c.must(c.a.Sub(tmp, tmp, n), "memory.copy bound")
@@ -455,7 +473,7 @@ func (c *compiler) memoryCopy() error {
 	traps = append(traps, c.a.FarBcond(a32.CondCC))
 	c.must(c.a.Cmp(tmp, src), "memory.copy source compare")
 	traps = append(traps, c.a.FarBcond(a32.CondCC))
-	c.must(c.a.Ldr(tmp, armContextReg, embedded32.ContextLinearMemoryBaseOffset), "memory.copy base")
+	c.loadMemoryField(tmp, embedded32.ContextLinearMemoryBaseOffset, "memory.copy base")
 	c.must(c.a.Add(dst, dst, tmp), "memory.copy destination")
 	c.must(c.a.Add(src, src, tmp), "memory.copy source")
 	c.must(c.a.Cmp(dst, src), "memory.copy direction")
@@ -522,13 +540,13 @@ func (c *compiler) memoryFill() error {
 	value := c.materialize(c.pop())
 	dst := c.materialize(c.pop())
 	tmp := c.alloc()
-	c.must(c.a.Ldr(tmp, armContextReg, embedded32.ContextLinearMemoryLengthOffset), "memory.fill length")
+	c.loadMemoryField(tmp, embedded32.ContextLinearMemoryLengthOffset, "memory.fill length")
 	c.must(c.a.Cmp(tmp, n), "memory.fill size compare")
 	traps := []int{c.a.FarBcond(a32.CondCC)}
 	c.must(c.a.Sub(tmp, tmp, n), "memory.fill bound")
 	c.must(c.a.Cmp(tmp, dst), "memory.fill destination compare")
 	traps = append(traps, c.a.FarBcond(a32.CondCC))
-	c.must(c.a.Ldr(tmp, armContextReg, embedded32.ContextLinearMemoryBaseOffset), "memory.fill base")
+	c.loadMemoryField(tmp, embedded32.ContextLinearMemoryBaseOffset, "memory.fill base")
 	c.must(c.a.Add(dst, dst, tmp), "memory.fill destination")
 	loop := c.a.Len()
 	c.must(c.a.Cmp(n, a32.R12), "memory.fill done")
@@ -563,7 +581,7 @@ func (c *compiler) memoryFill() error {
 func (c *compiler) memoryGrow() error {
 	delta := c.materialize(c.pop())
 	old, current, limit := c.alloc(), c.alloc(), c.alloc()
-	c.must(c.a.Ldr(current, armContextReg, embedded32.ContextLinearMemoryLengthOffset), "memory.grow current")
+	c.loadMemoryField(current, embedded32.ContextLinearMemoryLengthOffset, "memory.grow current")
 	c.must(c.a.MovReg(old, current), "memory.grow old")
 	c.must(c.a.LsrImm(old, old, 16), "memory.grow old pages")
 	c.must(c.a.LsrImm(limit, delta, 16), "memory.grow delta overflow")
@@ -572,11 +590,11 @@ func (c *compiler) memoryGrow() error {
 	c.must(c.a.LslImm(delta, delta, 16), "memory.grow delta bytes")
 	c.must(c.a.Adds(delta, current, delta), "memory.grow new length")
 	fails = append(fails, c.a.FarBcond(a32.CondCS))
-	c.must(c.a.Ldr(limit, armContextReg, embedded32.ContextLinearMemoryMaximumOffset), "memory.grow maximum")
+	c.loadMemoryField(limit, embedded32.ContextLinearMemoryMaximumOffset, "memory.grow maximum")
 	c.must(c.a.Cmp(limit, delta), "memory.grow maximum compare")
 	fails = append(fails, c.a.FarBcond(a32.CondCC))
-	c.must(c.a.Str(delta, armContextReg, embedded32.ContextLinearMemoryLengthOffset), "memory.grow publish length")
-	c.must(c.a.Ldr(limit, armContextReg, embedded32.ContextLinearMemoryBaseOffset), "memory.grow base")
+	c.storeMemoryField(delta, embedded32.ContextLinearMemoryLengthOffset, "memory.grow publish length")
+	c.loadMemoryField(limit, embedded32.ContextLinearMemoryBaseOffset, "memory.grow base")
 	c.must(c.a.Add(current, limit, current), "memory.grow clear start")
 	c.must(c.a.Add(limit, limit, delta), "memory.grow clear end")
 	loop := c.a.Len()

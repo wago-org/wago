@@ -23,7 +23,7 @@ func CompileMixedModuleFunction(ft *wasm.CompType, locals []wasm.LocalRun, body 
 	if err != nil {
 		return nil, err
 	}
-	return emitMixedPlan(plan, nil)
+	return emitMixedPlan(plan, nil, false)
 }
 
 func compileMixedModuleFunction(m *wasm.Module, ft *wasm.CompType, locals []wasm.LocalRun, body []byte) ([]byte, []callReloc, error) {
@@ -80,11 +80,11 @@ func compileMixedModuleFunction(m *wasm.Module, ft *wasm.CompType, locals []wasm
 		op.Target = localTarget
 	}
 	var relocs []callReloc
-	code, err := emitMixedPlan(plan, &relocs)
+	code, err := emitMixedPlan(plan, &relocs, m.ImportedMemCount() != 0)
 	return code, relocs, err
 }
 
-func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc) ([]byte, error) {
+func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc, memoryImported bool) ([]byte, error) {
 	maxOutgoingSlots := uint16(0)
 	for _, op := range plan.Ops {
 		if op.Kind != shared.MixedCall && op.Kind != shared.MixedCallImport && op.Kind != shared.MixedCallIndirect {
@@ -164,6 +164,22 @@ func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc) ([]byte, erro
 		}
 	}
 	off := func(slot uint16) uint16 { return uint16(valueBase) + slot*4 }
+	loadMemoryField := func(dst, scratch a32.Reg, offset uint16, what string) {
+		base := armContextReg
+		if memoryImported {
+			must(a.Ldr(scratch, armContextReg, embedded32.ContextLinearMemoryContextOffset), "memory context")
+			base = scratch
+		}
+		must(a.Ldr(dst, base, offset), what)
+	}
+	storeMemoryField := func(src, scratch a32.Reg, offset uint16, what string) {
+		base := armContextReg
+		if memoryImported {
+			must(a.Ldr(scratch, armContextReg, embedded32.ContextLinearMemoryContextOffset), "memory context")
+			base = scratch
+		}
+		must(a.Str(src, base, offset), what)
+	}
 
 	must(a.MovImm32(a32.R12, frame), "frame size")
 	must(a.Sub(a32.SP, a32.SP, a32.R12), "frame allocate")
@@ -625,9 +641,9 @@ func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc) ([]byte, erro
 			}
 			must(a.MovImm32(a32.R0, op.Lane), "simd helper lane")
 			must(a.Str(a32.R0, a32.SP, helperBase+embedded32.SIMDFrameLaneOffset), "simd helper lane store")
-			must(a.Ldr(a32.R0, armContextReg, embedded32.ContextLinearMemoryBaseOffset), "simd helper memory base")
+			loadMemoryField(a32.R0, a32.LR, embedded32.ContextLinearMemoryBaseOffset, "simd helper memory base")
 			must(a.Str(a32.R0, a32.SP, helperBase+embedded32.SIMDFrameMemoryBaseOffset), "simd helper memory base store")
-			must(a.Ldr(a32.R0, armContextReg, embedded32.ContextLinearMemoryLengthOffset), "simd helper memory length")
+			loadMemoryField(a32.R0, a32.LR, embedded32.ContextLinearMemoryLengthOffset, "simd helper memory length")
 			must(a.Str(a32.R0, a32.SP, helperBase+embedded32.SIMDFrameMemoryLenOffset), "simd helper memory length store")
 			must(a.MovReg(a32.R0, a32.SP), "simd helper frame base")
 			must(a.MovImm32(a32.R1, uint32(helperBase)), "simd helper frame offset")
@@ -803,14 +819,14 @@ func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc) ([]byte, erro
 			must(a.MovImm32(a32.R1, op.MemoryOffset), "memory load static offset")
 			must(a.Adds(a32.R0, a32.R0, a32.R1), "memory load effective address")
 			traps := []int{a.FarBcond(a32.CondCS)}
-			must(a.Ldr(a32.R1, armContextReg, embedded32.ContextLinearMemoryLengthOffset), "memory load length")
+			loadMemoryField(a32.R1, a32.LR, embedded32.ContextLinearMemoryLengthOffset, "memory load length")
 			must(a.MovImm32(a32.R2, width), "memory load width")
 			must(a.Cmp(a32.R1, a32.R2), "memory load short compare")
 			traps = append(traps, a.FarBcond(a32.CondCC))
 			must(a.Sub(a32.R1, a32.R1, a32.R2), "memory load bound")
 			must(a.Cmp(a32.R1, a32.R0), "memory load bounds compare")
 			traps = append(traps, a.FarBcond(a32.CondCC))
-			must(a.Ldr(a32.R1, armContextReg, embedded32.ContextLinearMemoryBaseOffset), "memory load base")
+			loadMemoryField(a32.R1, a32.LR, embedded32.ContextLinearMemoryBaseOffset, "memory load base")
 			must(a.Add(a32.R1, a32.R1, a32.R0), "memory load pointer")
 			switch width {
 			case 1:
@@ -871,14 +887,14 @@ func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc) ([]byte, erro
 			must(a.MovImm32(a32.R1, op.MemoryOffset), "memory store static offset")
 			must(a.Adds(a32.R0, a32.R0, a32.R1), "memory store effective address")
 			traps := []int{a.FarBcond(a32.CondCS)}
-			must(a.Ldr(a32.R1, armContextReg, embedded32.ContextLinearMemoryLengthOffset), "memory store length")
+			loadMemoryField(a32.R1, a32.LR, embedded32.ContextLinearMemoryLengthOffset, "memory store length")
 			must(a.MovImm32(a32.R2, width), "memory store width")
 			must(a.Cmp(a32.R1, a32.R2), "memory store short compare")
 			traps = append(traps, a.FarBcond(a32.CondCC))
 			must(a.Sub(a32.R1, a32.R1, a32.R2), "memory store bound")
 			must(a.Cmp(a32.R1, a32.R0), "memory store bounds compare")
 			traps = append(traps, a.FarBcond(a32.CondCC))
-			must(a.Ldr(a32.R1, armContextReg, embedded32.ContextLinearMemoryBaseOffset), "memory store base")
+			loadMemoryField(a32.R1, a32.LR, embedded32.ContextLinearMemoryBaseOffset, "memory store base")
 			must(a.Add(a32.R1, a32.R1, a32.R0), "memory store pointer")
 			must(a.Ldr(a32.R2, a32.SP, off(op.Right)), "memory store value low")
 			switch width {
@@ -937,7 +953,7 @@ func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc) ([]byte, erro
 			must(a.Sub(a32.LR, a32.LR, a32.R2), "memory.init source bound")
 			must(a.Cmp(a32.LR, a32.R1), "memory.init source compare")
 			traps = append(traps, a.FarBcond(a32.CondCC))
-			must(a.Ldr(a32.LR, armContextReg, embedded32.ContextLinearMemoryLengthOffset), "memory.init memory length")
+			loadMemoryField(a32.LR, a32.LR, embedded32.ContextLinearMemoryLengthOffset, "memory.init memory length")
 			must(a.Cmp(a32.LR, a32.R2), "memory.init destination size")
 			traps = append(traps, a.FarBcond(a32.CondCC))
 			must(a.Sub(a32.LR, a32.LR, a32.R2), "memory.init destination bound")
@@ -945,7 +961,7 @@ func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc) ([]byte, erro
 			traps = append(traps, a.FarBcond(a32.CondCC))
 			must(a.Ldr(a32.R3, a32.R3, embedded32.DataSegmentBaseOffset), "memory.init data base")
 			must(a.Add(a32.R3, a32.R3, a32.R1), "memory.init source")
-			must(a.Ldr(a32.LR, armContextReg, embedded32.ContextLinearMemoryBaseOffset), "memory.init memory base")
+			loadMemoryField(a32.LR, a32.LR, embedded32.ContextLinearMemoryBaseOffset, "memory.init memory base")
 			must(a.Add(a32.R0, a32.R0, a32.LR), "memory.init destination pointer")
 			loop := a.Len()
 			must(a.Cmp(a32.R2, a32.R12), "memory.init done")
@@ -975,7 +991,7 @@ func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc) ([]byte, erro
 			must(a.Ldr(a32.R0, a32.SP, off(op.Left)), "memory.copy destination")
 			must(a.Ldr(a32.R1, a32.SP, off(op.Right)), "memory.copy source")
 			must(a.Ldr(a32.R2, a32.SP, off(op.Third)), "memory.copy count")
-			must(a.Ldr(a32.R3, armContextReg, embedded32.ContextLinearMemoryLengthOffset), "memory.copy length")
+			loadMemoryField(a32.R3, a32.LR, embedded32.ContextLinearMemoryLengthOffset, "memory.copy length")
 			must(a.Cmp(a32.R3, a32.R2), "memory.copy size compare")
 			traps := []int{a.FarBcond(a32.CondCC)}
 			must(a.Sub(a32.R3, a32.R3, a32.R2), "memory.copy bound")
@@ -983,7 +999,7 @@ func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc) ([]byte, erro
 			traps = append(traps, a.FarBcond(a32.CondCC))
 			must(a.Cmp(a32.R3, a32.R1), "memory.copy source compare")
 			traps = append(traps, a.FarBcond(a32.CondCC))
-			must(a.Ldr(a32.R3, armContextReg, embedded32.ContextLinearMemoryBaseOffset), "memory.copy base")
+			loadMemoryField(a32.R3, a32.LR, embedded32.ContextLinearMemoryBaseOffset, "memory.copy base")
 			must(a.Add(a32.R0, a32.R0, a32.R3), "memory.copy destination pointer")
 			must(a.Add(a32.R1, a32.R1, a32.R3), "memory.copy source pointer")
 			must(a.MovImm32(a32.R12, 0), "memory.copy zero")
@@ -1035,13 +1051,13 @@ func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc) ([]byte, erro
 			must(a.Ldr(a32.R0, a32.SP, off(op.Left)), "memory.fill destination")
 			must(a.Ldr(a32.R1, a32.SP, off(op.Right)), "memory.fill value")
 			must(a.Ldr(a32.R2, a32.SP, off(op.Third)), "memory.fill count")
-			must(a.Ldr(a32.R3, armContextReg, embedded32.ContextLinearMemoryLengthOffset), "memory.fill length")
+			loadMemoryField(a32.R3, a32.LR, embedded32.ContextLinearMemoryLengthOffset, "memory.fill length")
 			must(a.Cmp(a32.R3, a32.R2), "memory.fill size compare")
 			traps := []int{a.FarBcond(a32.CondCC)}
 			must(a.Sub(a32.R3, a32.R3, a32.R2), "memory.fill bound")
 			must(a.Cmp(a32.R3, a32.R0), "memory.fill destination compare")
 			traps = append(traps, a.FarBcond(a32.CondCC))
-			must(a.Ldr(a32.R3, armContextReg, embedded32.ContextLinearMemoryBaseOffset), "memory.fill base")
+			loadMemoryField(a32.R3, a32.LR, embedded32.ContextLinearMemoryBaseOffset, "memory.fill base")
 			must(a.Add(a32.R0, a32.R0, a32.R3), "memory.fill destination pointer")
 			must(a.MovImm32(a32.R12, 0), "memory.fill zero")
 			loop := a.Len()
@@ -1060,12 +1076,12 @@ func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc) ([]byte, erro
 				return nil, err
 			}
 		case shared.MixedMemorySize:
-			must(a.Ldr(a32.R0, armContextReg, embedded32.ContextLinearMemoryLengthOffset), "memory.size length")
+			loadMemoryField(a32.R0, a32.LR, embedded32.ContextLinearMemoryLengthOffset, "memory.size length")
 			must(a.LsrImm(a32.R0, a32.R0, 16), "memory.size pages")
 			must(a.Str(a32.R0, a32.SP, off(op.Dst)), "memory.size result")
 		case shared.MixedMemoryGrow:
 			must(a.Ldr(a32.R0, a32.SP, off(op.Left)), "memory.grow delta")
-			must(a.Ldr(a32.R1, armContextReg, embedded32.ContextLinearMemoryLengthOffset), "memory.grow current")
+			loadMemoryField(a32.R1, a32.LR, embedded32.ContextLinearMemoryLengthOffset, "memory.grow current")
 			must(a.MovReg(a32.R2, a32.R1), "memory.grow old")
 			must(a.LsrImm(a32.R2, a32.R2, 16), "memory.grow old pages")
 			must(a.LsrImm(a32.R3, a32.R0, 16), "memory.grow delta overflow")
@@ -1075,11 +1091,11 @@ func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc) ([]byte, erro
 			must(a.LslImm(a32.R0, a32.R0, 16), "memory.grow delta bytes")
 			must(a.Adds(a32.R0, a32.R1, a32.R0), "memory.grow new length")
 			fails = append(fails, a.FarBcond(a32.CondCS))
-			must(a.Ldr(a32.R3, armContextReg, embedded32.ContextLinearMemoryMaximumOffset), "memory.grow maximum")
+			loadMemoryField(a32.R3, a32.LR, embedded32.ContextLinearMemoryMaximumOffset, "memory.grow maximum")
 			must(a.Cmp(a32.R3, a32.R0), "memory.grow maximum compare")
 			fails = append(fails, a.FarBcond(a32.CondCC))
-			must(a.Str(a32.R0, armContextReg, embedded32.ContextLinearMemoryLengthOffset), "memory.grow publish length")
-			must(a.Ldr(a32.R3, armContextReg, embedded32.ContextLinearMemoryBaseOffset), "memory.grow base")
+			storeMemoryField(a32.R0, a32.LR, embedded32.ContextLinearMemoryLengthOffset, "memory.grow publish length")
+			loadMemoryField(a32.R3, a32.LR, embedded32.ContextLinearMemoryBaseOffset, "memory.grow base")
 			must(a.Add(a32.R1, a32.R3, a32.R1), "memory.grow clear start")
 			must(a.Add(a32.R3, a32.R3, a32.R0), "memory.grow clear end")
 			loop := a.Len()

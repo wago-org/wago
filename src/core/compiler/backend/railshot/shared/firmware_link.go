@@ -109,6 +109,19 @@ func BuildEmbeddedLinkedFirmwareImage(dst []byte, plan *EmbeddedLinkPlan, opts E
 				}
 			}
 		}
+		if module.MemoryImported {
+			importIndex, ok := embeddedImportIndex(module, wasm.ExternMem, 0)
+			if !ok {
+				return nil, fmt.Errorf("embedded32: module %q memory import is unavailable", plan.Modules[consumerIndex].Name)
+			}
+			memoryContext, err := resolveLinkedMemoryContext(plan, layout, out, consumerIndex, importIndex, make(map[[2]int]bool))
+			if err != nil {
+				return nil, err
+			}
+			if err := putAddress(image.ContextAddress+embedded32.ContextLinearMemoryContextOffset, memoryContext); err != nil {
+				return nil, err
+			}
+		}
 		if len(module.ImportedGlobals) != 0 {
 			directoryAddress := opts.BaseAddress + moduleLayout.globalsOffset
 			if err := putAddress(image.ContextAddress+embedded32.ContextImportedGlobalsBaseOffset, directoryAddress); err != nil {
@@ -158,8 +171,12 @@ func embeddedLinkedFirmwarePlan(plan *EmbeddedLinkPlan, opts EmbeddedLinkedFirmw
 		if module == nil {
 			return nil, fmt.Errorf("embedded32: linked module %d is nil", i)
 		}
-		if module.MemoryImported || module.Memory != nil && module.Memory.Imported {
-			return nil, fmt.Errorf("embedded32: module %q imports memory; shared memory descriptors are not linked yet", plan.Modules[i].Name)
+		if module.MemoryImported {
+			for j := range module.Data {
+				if !module.Data[j].Passive {
+					return nil, fmt.Errorf("embedded32: module %q has active data for imported memory; linked active initialization is not implemented", plan.Modules[i].Name)
+				}
+			}
 		}
 		if module.Table != nil && module.Table.Imported {
 			return nil, fmt.Errorf("embedded32: module %q imports a table; shared table descriptors are not linked yet", plan.Modules[i].Name)
@@ -183,6 +200,9 @@ func embeddedLinkedFirmwarePlan(plan *EmbeddedLinkPlan, opts EmbeddedLinkedFirmw
 		clone.ImportedFunctions = 0
 		clone.ImportedGlobals = nil
 		clone.MemoryImported = false
+		if module.MemoryImported {
+			clone.Memory = nil
+		}
 		clone.Globals = append([]EmbeddedGlobal(nil), module.Globals...)
 		for j := range clone.Globals {
 			if !clone.Globals[j].HasInitGlobal {
@@ -246,7 +266,7 @@ func embeddedLinkedFirmwarePlan(plan *EmbeddedLinkPlan, opts EmbeddedLinkedFirmw
 	for consumer := range plan.Modules {
 		for importIndex := range plan.Modules[consumer].Module.Imports {
 			kind := plan.Modules[consumer].Module.Imports[importIndex].Kind
-			if kind != wasm.ExternFunc && kind != wasm.ExternGlobal {
+			if kind != wasm.ExternFunc && kind != wasm.ExternGlobal && kind != wasm.ExternMem {
 				return nil, fmt.Errorf("embedded32: module %q import %d kind %d is not linkable in a firmware bundle", plan.Modules[consumer].Name, importIndex, kind)
 			}
 			if _, ok := binding[[2]int{consumer, importIndex}]; !ok {
@@ -256,7 +276,11 @@ func embeddedLinkedFirmwarePlan(plan *EmbeddedLinkPlan, opts EmbeddedLinkedFirmw
 				if err := validateLinkedFunctionTarget(plan, binding, consumer, importIndex, make(map[[2]int]bool)); err != nil {
 					return nil, err
 				}
-			} else if err := validateLinkedGlobalTarget(plan, binding, consumer, importIndex, make(map[[2]int]bool)); err != nil {
+			} else if kind == wasm.ExternGlobal {
+				if err := validateLinkedGlobalTarget(plan, binding, consumer, importIndex, make(map[[2]int]bool)); err != nil {
+					return nil, err
+				}
+			} else if err := validateLinkedMemoryTarget(plan, binding, consumer, importIndex, make(map[[2]int]bool)); err != nil {
 				return nil, err
 			}
 		}
@@ -302,6 +326,32 @@ func validateLinkedFunctionTarget(plan *EmbeddedLinkPlan, binding map[[2]int]Emb
 		}
 	}
 	return fmt.Errorf("embedded32: provider function %d has no local entry", export.Index)
+}
+
+func validateLinkedMemoryTarget(plan *EmbeddedLinkPlan, binding map[[2]int]EmbeddedLinkBinding, consumer, importIndex int, visiting map[[2]int]bool) error {
+	key := [2]int{consumer, importIndex}
+	if visiting[key] {
+		return fmt.Errorf("embedded32: cyclic memory re-export at module %q import %d", plan.Modules[consumer].Name, importIndex)
+	}
+	visiting[key] = true
+	defer delete(visiting, key)
+	item, ok := binding[key]
+	if !ok {
+		return fmt.Errorf("embedded32: unbound memory import at module %q import %d", plan.Modules[consumer].Name, importIndex)
+	}
+	provider := plan.Modules[item.ProviderModule].Module
+	export := provider.Exports[item.ExportIndex]
+	if export.Index != 0 || provider.Memory == nil {
+		return fmt.Errorf("embedded32: provider memory %d is unavailable", export.Index)
+	}
+	if provider.Memory.Imported {
+		providerImport, ok := embeddedImportIndex(provider, wasm.ExternMem, 0)
+		if !ok {
+			return fmt.Errorf("embedded32: provider memory import is unavailable")
+		}
+		return validateLinkedMemoryTarget(plan, binding, item.ProviderModule, providerImport, visiting)
+	}
+	return nil
 }
 
 func validateLinkedGlobalTarget(plan *EmbeddedLinkPlan, binding map[[2]int]EmbeddedLinkBinding, consumer, importIndex int, visiting map[[2]int]bool) error {
@@ -361,6 +411,32 @@ func resolveLinkedFunction(plan *EmbeddedLinkPlan, layout *embeddedLinkedFirmwar
 		}
 	}
 	return 0, 0, fmt.Errorf("embedded32: provider function %d has no local entry", export.Index)
+}
+
+func resolveLinkedMemoryContext(plan *EmbeddedLinkPlan, layout *embeddedLinkedFirmwareLayout, image *EmbeddedLinkedFirmwareImage, consumer, importIndex int, visiting map[[2]int]bool) (uint32, error) {
+	key := [2]int{consumer, importIndex}
+	if visiting[key] {
+		return 0, fmt.Errorf("embedded32: cyclic memory re-export at module %q import %d", plan.Modules[consumer].Name, importIndex)
+	}
+	visiting[key] = true
+	defer delete(visiting, key)
+	item, ok := layout.binding[key]
+	if !ok {
+		return 0, fmt.Errorf("embedded32: unbound memory import at module %q import %d", plan.Modules[consumer].Name, importIndex)
+	}
+	provider := plan.Modules[item.ProviderModule].Module
+	export := provider.Exports[item.ExportIndex]
+	if export.Index != 0 || provider.Memory == nil {
+		return 0, fmt.Errorf("embedded32: provider memory %d is unavailable", export.Index)
+	}
+	if provider.Memory.Imported {
+		providerImport, ok := embeddedImportIndex(provider, wasm.ExternMem, 0)
+		if !ok {
+			return 0, fmt.Errorf("embedded32: provider memory import is unavailable")
+		}
+		return resolveLinkedMemoryContext(plan, layout, image, item.ProviderModule, providerImport, visiting)
+	}
+	return image.Modules[item.ProviderModule].Image.ContextAddress, nil
 }
 
 func resolveLinkedGlobalAddress(plan *EmbeddedLinkPlan, layout *embeddedLinkedFirmwareLayout, image *EmbeddedLinkedFirmwareImage, consumer, importIndex int, visiting map[[2]int]bool) (uint32, error) {

@@ -425,8 +425,13 @@ global initializers through the binding graph, preserves target function-pointer
 encoding, and publishes no addresses until every binding and capacity check
 passes. Generated Arm32/RV32 tests execute calls with a distinct provider
 context, restore consumer globals afterward, and propagate provider traps.
-Imported memory and table bundles remain rejected because their mutable
-length/element state is not yet split from per-module descriptors.
+Imported memory now publishes `ContextABI.LinearMemoryContext`: every scalar,
+SIMD, bulk-memory, size, and grow path reads or updates the provider context's
+shared base/length/maximum fields while retaining the consumer's own trap and
+data-segment state. Linked active data initialization into imported memory is
+still rejected transactionally; passive `memory.init` remains representable.
+Imported table bundles remain rejected until shared table storage is separated
+from each consumer's element-segment descriptors.
 
 The runtime now defines the board-wire contract independently of UART/USB
 plumbing: a versioned 24-byte little-endian frame header, sequence numbers,
@@ -450,7 +455,7 @@ returns the published trap code. This gives firmware a conventional ABI for
 transactional instantiation/start sequencing without target-specific inline
 assembly.
 
-This is still not public backend admission. Shared imported-memory/table
-bundle descriptors, the RP2350 SDK transport I/O and low-level generated-entry
+This is still not public backend admission. Shared imported-table bundle
+storage and linked active-data initialization, the RP2350 SDK transport I/O and low-level generated-entry
 invoker, official module-level suite qualification, and Pico 2 hardware
 qualification remain to be implemented and measured.

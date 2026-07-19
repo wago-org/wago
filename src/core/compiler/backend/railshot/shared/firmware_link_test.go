@@ -108,6 +108,64 @@ func TestBuildEmbeddedLinkedFirmwareImagePublishesFunctionContextsAndGlobalAlias
 	}
 }
 
+func embeddedFirmwareMemoryProvider(t *testing.T) *EmbeddedModule {
+	t.Helper()
+	return compileEmbeddedLinkTestModule(t, wasmtest.Module(
+		wasmtest.Section(5, wasmtest.Vec([]byte{1, 1, 2})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("memory", byte(wasm.ExternMem), 0))),
+	))
+}
+
+func embeddedFirmwareMemoryConsumer(t *testing.T) *EmbeddedModule {
+	t.Helper()
+	memoryImport := append(wasmtest.Name("provider"), wasmtest.Name("memory")...)
+	memoryImport = append(memoryImport, 2, 1, 1, 2)
+	m := compileEmbeddedLinkTestModule(t, wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(2, wasmtest.Vec(memoryImport)),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("size", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x3f, 0, 0x0b}))),
+	))
+	m.Functions[0].CallOffset = m.Functions[0].Offset
+	m.Functions[0].HasCallEntry = true
+	return m
+}
+
+func TestBuildEmbeddedLinkedFirmwareImagePublishesSharedMemoryContext(t *testing.T) {
+	provider := embeddedFirmwareMemoryProvider(t)
+	consumer := embeddedFirmwareMemoryConsumer(t)
+	plan, err := ResolveEmbeddedLinks([]EmbeddedNamedModule{{Name: "provider", Module: provider}, {Name: "consumer", Module: consumer}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	opts := linkedFirmwareTestOptions(2)
+	opts.Modules[0].MemoryCapacity = 2 * embedded32.WasmPageSize
+	size, err := EmbeddedLinkedFirmwareImageSize(plan, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	image, err := BuildEmbeddedLinkedFirmwareImage(make([]byte, size), plan, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	providerImage := image.Modules[0].Image
+	consumerImage := image.Modules[1].Image
+	word := func(address uint32) uint32 {
+		offset := address - image.BaseAddress
+		return binary.LittleEndian.Uint32(image.Bytes[offset : offset+4])
+	}
+	if got := word(consumerImage.ContextAddress + embedded32.ContextLinearMemoryContextOffset); got != providerImage.ContextAddress {
+		t.Fatalf("memory context=%#x want %#x", got, providerImage.ContextAddress)
+	}
+	if got := word(providerImage.ContextAddress + embedded32.ContextLinearMemoryLengthOffset); got != embedded32.WasmPageSize {
+		t.Fatalf("provider memory length=%d", got)
+	}
+	if consumerImage.MemoryAddress != 0 || consumerImage.MemoryCapacity != 0 {
+		t.Fatalf("consumer allocated imported memory: %+v", consumerImage)
+	}
+}
+
 func TestBuildEmbeddedLinkedFirmwareImagePreflightsCapacity(t *testing.T) {
 	provider := embeddedFirmwareLinkProvider(t)
 	consumer := embeddedFirmwareLinkConsumer(t)
