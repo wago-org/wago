@@ -361,6 +361,9 @@ func BuildEmbeddedLinkedFirmwareImage(dst []byte, plan *EmbeddedLinkPlan, opts E
 						return nil, err
 					}
 				}
+				if err := putAddress(descriptors+uint32(elementIndex)*embedded32.DataSegmentABIBytes+embedded32.DataSegmentDroppedOffset, 1); err != nil {
+					return nil, err
+				}
 			}
 		}
 		if len(module.ImportedGlobals) != 0 {
@@ -456,14 +459,23 @@ func embeddedLinkedFirmwarePlan(plan *EmbeddedLinkPlan, opts EmbeddedLinkedFirmw
 		}
 		clone.Tables = append([]EmbeddedTable(nil), module.Tables...)
 		for j := range clone.Tables {
+			imported := clone.Tables[j].Imported
 			clone.Tables[j].Imported = false
 			clone.Tables[j].Elements = nil
+			if imported {
+				clone.Tables[j].Minimum = 0
+				clone.Tables[j].Maximum = 0
+				clone.Tables[j].HasMaximum = true
+			}
 		}
 		clone.Elements = append([]EmbeddedElementSegment(nil), module.Elements...)
 		if module.Elements == nil && module.Table != nil {
 			clone.Elements = append([]EmbeddedElementSegment(nil), module.Table.Elements...)
 		}
 		for j := range clone.Elements {
+			if clone.Elements[j].Mode == EmbeddedElementActive && uint64(clone.Elements[j].Table) < uint64(len(module.Tables)) && module.Tables[clone.Elements[j].Table].Imported {
+				clone.Elements[j].Mode = EmbeddedElementPassive
+			}
 			if clone.Elements[j].HasOffsetGlobal {
 				value, err := resolveOffset(clone.Elements[j].OffsetGlobal)
 				if err != nil {
@@ -528,6 +540,21 @@ func embeddedLinkedFirmwarePlan(plan *EmbeddedLinkPlan, opts EmbeddedLinkedFirmw
 			clone.Globals[j].HasInitGlobal = false
 		}
 		moduleOptions := opts.Modules[i]
+		if len(clone.Tables) != 0 {
+			capacities := make([]uint32, len(clone.Tables))
+			for tableIndex := range capacities {
+				if module.Tables[tableIndex].Imported {
+					continue
+				}
+				if tableIndex < len(moduleOptions.TableCapacities) {
+					capacities[tableIndex] = moduleOptions.TableCapacities[tableIndex]
+				} else if tableIndex == 0 {
+					capacities[tableIndex] = moduleOptions.TableCapacity
+				}
+			}
+			moduleOptions.TableCapacity = 0
+			moduleOptions.TableCapacities = capacities
+		}
 		if i != 0 && moduleOptions.FunctionAddressMask != opts.Modules[0].FunctionAddressMask {
 			return nil, fmt.Errorf("embedded32: linked modules use different function address masks")
 		}

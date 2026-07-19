@@ -472,13 +472,14 @@ provider's initial length, copied in module-instantiation order, and marked
 dropped only after the complete bundle layout succeeds; passive `memory.init`
 keeps the consumer descriptors.
 
-Imported table execution now separates `ContextABI.TableStorage` from the
-consumer's `ContextABI.Table` element descriptors. Get/set/size/grow/fill/copy,
-`table.init`, and indirect dispatch therefore observe one caller-owned mutable
-storage descriptor while `elem.drop` remains module-local. Firmware bundles
-still reject imported tables because the current compact non-null funcref value
-is a module-local function index rather than a cross-module function-reference
-descriptor.
+Imported table execution now resolves every indexed table-directory entry to
+the provider's mutable descriptor while element descriptors remain module-local.
+Get/set/size/grow/fill/copy, `table.init`, and indirect dispatch therefore share
+provider storage while `elem.drop` remains local. Linked images allocate no
+entry backing for imported-table placeholders, translate non-null references
+into the bundle-wide identity registry, publish the owning function context,
+and mark active imported-table elements dropped only after all target ranges
+have been preflighted and copied.
 
 The runtime now defines the board-wire contract independently of UART/USB
 plumbing: a versioned 24-byte little-endian frame header, sequence numbers,
@@ -502,7 +503,7 @@ returns the published trap code. This gives firmware a conventional ABI for
 transactional instantiation/start sequencing without target-specific inline
 assembly.
 
-This is still not public backend admission. Cross-module funcref descriptors
-for imported-table bundles, the RP2350 SDK transport I/O and low-level generated-entry
-invoker, official module-level suite qualification, and Pico 2 hardware
-qualification remain to be implemented and measured.
+This is still not public backend admission. The RP2350 SDK transport I/O and
+low-level generated-entry invoker, official generated-code module-suite
+qualification, and Pico 2 hardware qualification remain to be implemented and
+measured.

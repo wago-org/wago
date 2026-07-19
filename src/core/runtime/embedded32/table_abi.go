@@ -1,9 +1,9 @@
 package embedded32
 
-// TableABI is the fixed target-side descriptor for the single-table embedded
-// profile. Table entries contain zero for null or function-index-plus-one for a
-// local funcref. FunctionEntriesBase and FunctionTypesBase index parallel arrays
-// by the decoded zero-based function index.
+// TableABI is one fixed target-side descriptor in the context's indexed table
+// directory. Table entries contain zero for null or a function identity plus
+// one. The three function arrays index entry, structural type, and owning module
+// context by the decoded bundle-wide identity.
 type TableABI struct {
 	EntriesBase          uint32
 	Length               uint32

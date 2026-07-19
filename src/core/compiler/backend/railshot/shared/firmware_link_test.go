@@ -222,6 +222,10 @@ func TestEmbeddedLinkedFirmwareImagePublishesCrossModuleFuncrefs(t *testing.T) {
 	if got := word(refs); got != 1 {
 		t.Fatalf("consumer imported ref.func identity=%d", got)
 	}
+	elements := word(consumerImage.ContextAddress + embedded32.ContextElementSegmentsBaseOffset)
+	if got := word(elements + embedded32.DataSegmentDroppedOffset); got != 1 {
+		t.Fatalf("consumer active element dropped=%d", got)
+	}
 }
 
 func TestBuildEmbeddedLinkedFirmwareImageAppliesActiveImportedData(t *testing.T) {
@@ -315,7 +319,11 @@ func TestEmbeddedLinkedFirmwareImagePublishesImportedTableAliases(t *testing.T) 
 		return binary.LittleEndian.Uint32(image.Bytes[offset : offset+4])
 	}
 	providerTable := image.Modules[0].Image.TableAddresses[0]
-	consumerContext := image.Modules[1].Image.ContextAddress
+	consumerImage := image.Modules[1].Image
+	consumerContext := consumerImage.ContextAddress
+	if got := word(consumerImage.TableAddresses[0] + embedded32.TableABIMaximumOffset); got != 0 {
+		t.Fatalf("duplicate imported-table capacity=%d", got)
+	}
 	directory := word(consumerContext + embedded32.ContextTablesBaseOffset)
 	if got := word(directory); got != providerTable {
 		t.Fatalf("consumer table=%#x provider=%#x", got, providerTable)
