@@ -9,7 +9,7 @@ import (
 )
 
 func rvMemoryContext(a *rv.Asm) {
-	a.Addi(rv.SP, rv.SP, -96)
+	a.Addi(rv.SP, rv.SP, -128)
 	a.MovReg(rv.T0, rv.SP)
 	a.Sw(rv.T0, rv.SP, 16)
 	a.MovImm32(rv.T1, 16)

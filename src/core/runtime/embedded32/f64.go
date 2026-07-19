@@ -18,6 +18,9 @@ const (
 	TrapCanceled
 	TrapUnreachable
 	TrapStackOverflow
+	TrapTableOutOfBounds
+	TrapIndirectCallNull
+	TrapIndirectCallTypeMismatch
 )
 
 // F64Op identifies one scalar floating-point helper operation. Bitwise abs,

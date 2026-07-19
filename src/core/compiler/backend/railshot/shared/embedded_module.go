@@ -51,6 +51,7 @@ type EmbeddedModule struct {
 	Code              []byte
 	Entry             []int
 	Functions         []EmbeddedFunctionMetadata
+	FunctionTypeIDs   []uint32
 	Data              []EmbeddedDataSegment
 	Globals           []EmbeddedGlobal
 	Table             *EmbeddedTable
@@ -147,14 +148,15 @@ func (m *EmbeddedModule) InstantiateData(memory *embedded32.LinearMemory) (*embe
 }
 
 type PublishedEmbeddedModule struct {
-	Block     embedded32.CodeBlock
-	Entry     []uint32
-	Functions []EmbeddedFunctionMetadata
-	Data      []EmbeddedDataSegment
-	Globals   []EmbeddedGlobal
-	Table     *EmbeddedTable
-	Exports   []EmbeddedExport
-	Start     *uint32
+	Block           embedded32.CodeBlock
+	Entry           []uint32
+	Functions       []EmbeddedFunctionMetadata
+	FunctionTypeIDs []uint32
+	Data            []EmbeddedDataSegment
+	Globals         []EmbeddedGlobal
+	Table           *EmbeddedTable
+	Exports         []EmbeddedExport
+	Start           *uint32
 }
 
 func PublishEmbeddedModule(arena *embedded32.CodeArena, module *EmbeddedModule, publish embedded32.CodePublisher) (*PublishedEmbeddedModule, error) {
@@ -174,7 +176,7 @@ func PublishEmbeddedModule(arena *embedded32.CodeArena, module *EmbeddedModule, 
 	if err := tx.Commit(publish); err != nil {
 		return nil, err
 	}
-	out := &PublishedEmbeddedModule{Block: block, Entry: make([]uint32, len(module.Entry)), Functions: make([]EmbeddedFunctionMetadata, len(module.Functions)), Data: module.Data, Globals: module.Globals, Table: module.Table, Exports: module.Exports, Start: module.Start}
+	out := &PublishedEmbeddedModule{Block: block, Entry: make([]uint32, len(module.Entry)), Functions: make([]EmbeddedFunctionMetadata, len(module.Functions)), FunctionTypeIDs: append([]uint32(nil), module.FunctionTypeIDs...), Data: module.Data, Globals: module.Globals, Table: module.Table, Exports: module.Exports, Start: module.Start}
 	for i, entry := range module.Entry {
 		out.Entry[i] = block.Offset + uint32(entry)
 	}
@@ -262,6 +264,10 @@ func CompileEmbeddedModule(m *wasm.Module, opts EmbeddedModuleOptions, target st
 	if err != nil {
 		return nil, err
 	}
+	functionTypeIDs, err := embeddedFunctionTypeIDs(m)
+	if err != nil {
+		return nil, fmt.Errorf("%s: function type IDs: %w", target, err)
+	}
 	exports := make([]EmbeddedExport, len(m.Exports))
 	for i := range m.Exports {
 		exports[i] = EmbeddedExport{Name: m.Exports[i].Name, Kind: m.Exports[i].Index.Kind, Index: m.Exports[i].Index.Index}
@@ -274,7 +280,7 @@ func CompileEmbeddedModule(m *wasm.Module, opts EmbeddedModuleOptions, target st
 		}
 		start = &index
 	}
-	out := &EmbeddedModule{Code: make([]byte, 0, required), Entry: make([]int, len(bodies)), Functions: make([]EmbeddedFunctionMetadata, len(bodies)), Data: data, Globals: globals, Table: table, Exports: exports, Start: start, RequiredCodeBytes: uint32(required)}
+	out := &EmbeddedModule{Code: make([]byte, 0, required), Entry: make([]int, len(bodies)), Functions: make([]EmbeddedFunctionMetadata, len(bodies)), FunctionTypeIDs: functionTypeIDs, Data: data, Globals: globals, Table: table, Exports: exports, Start: start, RequiredCodeBytes: uint32(required)}
 	for i, body := range bodies {
 		pad := (16 - len(out.Code)%16) % 16
 		if pad%len(alignmentPad) != 0 {
@@ -333,6 +339,93 @@ func CompileEmbeddedI32Module(m *wasm.Module, opts EmbeddedModuleOptions, target
 	})
 }
 
+func embeddedFunctionTypeKey(ft *wasm.CompType) (string, error) {
+	if ft == nil || ft.Kind != wasm.CompFunc {
+		return "", fmt.Errorf("type is not a function")
+	}
+	key := appendULEB32(nil, uint32(len(ft.Params)))
+	for _, typ := range ft.Params {
+		if _, ok := MixedValueSlots(typ); !ok {
+			return "", fmt.Errorf("parameter type %s is not supported", typ)
+		}
+		encoded, ok := wasm.EncodeValType(typ)
+		if !ok {
+			return "", fmt.Errorf("parameter type %s has no embedded encoding", typ)
+		}
+		key = append(key, encoded)
+	}
+	key = appendULEB32(key, uint32(len(ft.Results)))
+	for _, typ := range ft.Results {
+		if _, ok := MixedValueSlots(typ); !ok {
+			return "", fmt.Errorf("result type %s is not supported", typ)
+		}
+		encoded, ok := wasm.EncodeValType(typ)
+		if !ok {
+			return "", fmt.Errorf("result type %s has no embedded encoding", typ)
+		}
+		key = append(key, encoded)
+	}
+	return string(key), nil
+}
+
+func embeddedFunctionTypeMap(m *wasm.Module) (map[uint32]uint32, error) {
+	ids := make(map[uint32]uint32)
+	canonical := make(map[string]uint32)
+	var index uint32
+	var nextID uint32 = 1
+	for i := range m.Types {
+		for j := range m.Types[i].SubTypes {
+			comp := &m.Types[i].SubTypes[j].Comp
+			if comp.Kind == wasm.CompFunc {
+				key, err := embeddedFunctionTypeKey(comp)
+				if err != nil {
+					return nil, fmt.Errorf("type %d: %w", index, err)
+				}
+				id, ok := canonical[key]
+				if !ok {
+					id = nextID
+					nextID++
+					canonical[key] = id
+				}
+				ids[index] = id
+			}
+			index++
+		}
+	}
+	return ids, nil
+}
+
+func EmbeddedFunctionTypeID(m *wasm.Module, index uint32) (uint32, bool) {
+	if m == nil {
+		return 0, false
+	}
+	ids, err := embeddedFunctionTypeMap(m)
+	if err != nil {
+		return 0, false
+	}
+	id, ok := ids[index]
+	return id, ok
+}
+
+func embeddedFunctionTypeIDs(m *wasm.Module) ([]uint32, error) {
+	ids, err := embeddedFunctionTypeMap(m)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]uint32, len(m.FuncTypes))
+	for i, index := range m.FuncTypes {
+		if index.Rec {
+			return nil, fmt.Errorf("function %d uses a recursion-local type index", i)
+		}
+		id, ok := ids[index.Index]
+		if !ok {
+			return nil, fmt.Errorf("function %d type %d is not an embedded function type", i, index.Index)
+		}
+		out[i] = id
+	}
+	return out, nil
+}
+
 func embeddedTable(m *wasm.Module, target string) (*EmbeddedTable, error) {
 	if len(m.Tables) == 0 {
 		if len(m.Elements) != 0 {
@@ -344,16 +437,17 @@ func embeddedTable(m *wasm.Module, target string) (*EmbeddedTable, error) {
 	if table.Type.Ref != wasm.FuncRef.Ref {
 		return nil, fmt.Errorf("%s: table type %s is not supported", target, table.Type.Ref)
 	}
-	if table.Type.Limits.Addr64 || table.Type.Limits.Min > uint64(^uint32(0)) {
-		return nil, fmt.Errorf("%s: table limits exceed the 32-bit target", target)
+	const maxTableSlots = uint64(^uint32(0) / 4)
+	if table.Type.Limits.Addr64 || table.Type.Limits.Min > maxTableSlots {
+		return nil, fmt.Errorf("%s: table limits exceed the addressable 32-bit slot range", target)
 	}
 	if table.Init != nil {
 		return nil, fmt.Errorf("%s: table initializer expressions are not supported", target)
 	}
 	out := &EmbeddedTable{Minimum: uint32(table.Type.Limits.Min)}
 	if table.Type.Limits.Max != nil {
-		if *table.Type.Limits.Max > uint64(^uint32(0)) {
-			return nil, fmt.Errorf("%s: table maximum exceeds the 32-bit target", target)
+		if *table.Type.Limits.Max > maxTableSlots {
+			return nil, fmt.Errorf("%s: table maximum exceeds the addressable 32-bit slot range", target)
 		}
 		out.Maximum, out.HasMaximum = uint32(*table.Type.Limits.Max), true
 	}

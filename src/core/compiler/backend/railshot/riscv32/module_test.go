@@ -697,6 +697,152 @@ func TestCompileModuleExecutesRefNullUnderQEMU(t *testing.T) {
 	runRV32Exit(t, qemu, append(a.B, cm.Code...), 1)
 }
 
+func riscv32TableAccessModule(t *testing.T) *wasm.Module {
+	t.Helper()
+	body := []byte{0x41, 0, 0x20, 0, 0x26, 0, 0x41, 0, 0x25, 0, 0xd1, 0x41, 42, 0x6a, 0x0b}
+	m, err := wasm.DecodeModule(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.FuncRef}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0})),
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 1, 2, 2})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+func TestCompileModuleAccessesFunctionTableUnderQEMU(t *testing.T) {
+	qemu, err := exec.LookPath("qemu-riscv32")
+	if err != nil {
+		t.Skip("qemu-riscv32 not installed")
+	}
+	cm, err := CompileModule(riscv32TableAccessModule(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	entries := make([]uint32, 2)
+	if err := cm.InstantiateTable(entries); err != nil {
+		t.Fatal(err)
+	}
+	var a rv.Asm
+	rvMemoryContext(&a)
+	a.Addi(rv.T0, rv.SP, 92)
+	a.Sw(rv.T0, rv.SP, 28)
+	a.Addi(rv.T0, rv.SP, 64)
+	a.Sw(rv.T0, rv.SP, 56)
+	a.Addi(rv.T0, rv.SP, 80)
+	a.Sw(rv.T0, rv.SP, 64)
+	a.MovImm32(rv.T0, 2)
+	a.Sw(rv.T0, rv.SP, 68)
+	a.Sw(rv.Zero, rv.SP, 72)
+	a.Sw(rv.Zero, rv.SP, 76)
+	a.Sw(rv.Zero, rv.SP, 80)
+	a.Sw(rv.Zero, rv.SP, 84)
+	a.Sw(rv.Zero, rv.SP, 92)
+	a.Addi(rv.A0, rv.SP, 16)
+	a.MovReg(rv.X23, rv.A0)
+	a.MovImm32(rv.A0, 7)
+	call := a.Jal(rv.RA)
+	a.MovImm32(rv.A7, 93)
+	a.Ecall()
+	if !a.PatchJAL21(call, len(a.B)+cm.Entry[0]) {
+		t.Fatal("wrapper call relocation")
+	}
+	runRV32Exit(t, qemu, append(a.B, cm.Code...), 42)
+}
+
+func riscv32IndirectCallModule(t *testing.T) *wasm.Module {
+	t.Helper()
+	callerBody := []byte{1, 1, 0x7c, 0x20, 0, 0x41, 0, 0x11, 0, 0, 0x0b}
+	callerCode := append(wasmtest.ULEB(uint32(len(callerBody))), callerBody...)
+	m, err := wasm.DecodeModule(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}),
+			wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0}, []byte{1})),
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 1, 1, 1})),
+		wasmtest.Section(9, wasmtest.Vec([]byte{0, 0x41, 0, 0x0b, 1, 0})),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x20, 0, 0x41, 1, 0x6a, 0x0b}),
+			callerCode,
+		)),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+func TestCompileModuleCallsFunctionTableUnderQEMU(t *testing.T) {
+	qemu, err := exec.LookPath("qemu-riscv32")
+	if err != nil {
+		t.Skip("qemu-riscv32 not installed")
+	}
+	cm, err := CompileModule(riscv32IndirectCallModule(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	entries := make([]uint32, 1)
+	if err := cm.InstantiateTable(entries); err != nil || entries[0] != 1 {
+		t.Fatalf("entries=%v err=%v", entries, err)
+	}
+	if len(cm.FunctionTypeIDs) != 2 || cm.FunctionTypeIDs[0] != cm.FunctionTypeIDs[1] {
+		t.Fatalf("function type IDs=%v", cm.FunctionTypeIDs)
+	}
+	const base = uint32(0x10000)
+	buildWrapper := func(fn0, fn1 uint32) rv.Asm {
+		var a rv.Asm
+		rvMemoryContext(&a)
+		a.Addi(rv.T0, rv.SP, 124)
+		a.Sw(rv.T0, rv.SP, 28)
+		a.Addi(rv.T0, rv.SP, 64)
+		a.Sw(rv.T0, rv.SP, 56)
+		a.Addi(rv.T0, rv.SP, 80)
+		a.Sw(rv.T0, rv.SP, 64)
+		a.MovImm32(rv.T0, 1)
+		a.Sw(rv.T0, rv.SP, 68)
+		a.Addi(rv.T0, rv.SP, 84)
+		a.Sw(rv.T0, rv.SP, 72)
+		a.Addi(rv.T0, rv.SP, 96)
+		a.Sw(rv.T0, rv.SP, 76)
+		a.MovImm32(rv.T0, entries[0])
+		a.Sw(rv.T0, rv.SP, 80)
+		a.MovImm32(rv.T0, fn0)
+		a.Sw(rv.T0, rv.SP, 84)
+		a.MovImm32(rv.T0, fn1)
+		a.Sw(rv.T0, rv.SP, 88)
+		a.MovImm32(rv.T0, cm.FunctionTypeIDs[0])
+		a.Sw(rv.T0, rv.SP, 96)
+		a.MovImm32(rv.T0, cm.FunctionTypeIDs[1])
+		a.Sw(rv.T0, rv.SP, 100)
+		a.Sw(rv.Zero, rv.SP, 124)
+		a.Addi(rv.A0, rv.SP, 16)
+		a.MovReg(rv.X23, rv.A0)
+		a.MovImm32(rv.A0, 41)
+		call := a.Jal(rv.RA)
+		a.MovImm32(rv.A7, 93)
+		a.Ecall()
+		if !a.PatchJAL21(call, len(a.B)+cm.Entry[1]) {
+			t.Fatal("wrapper call relocation")
+		}
+		return a
+	}
+	wrapper := buildWrapper(base, base)
+	for {
+		fn0 := base + uint32(len(wrapper.B)+cm.Entry[0])
+		fn1 := base + uint32(len(wrapper.B)+cm.Entry[1])
+		next := buildWrapper(fn0, fn1)
+		if len(next.B) == len(wrapper.B) {
+			wrapper = next
+			break
+		}
+		wrapper = next
+	}
+	runRV32Exit(t, qemu, append(wrapper.B, cm.Code...), 42)
+}
+
 func riscv32MixedF64HelperModule(t *testing.T) *wasm.Module {
 	t.Helper()
 	body := []byte{1, 1, 0x7f,

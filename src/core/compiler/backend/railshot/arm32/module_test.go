@@ -679,6 +679,160 @@ func TestCompileModuleExecutesRefNullUnderQEMU(t *testing.T) {
 	runARM32Exit(t, qemu, append(a.B, cm.Code...), 1)
 }
 
+func arm32TableAccessModule(t *testing.T) *wasm.Module {
+	t.Helper()
+	body := []byte{0x41, 0, 0x20, 0, 0x26, 0, 0x41, 0, 0x25, 0, 0xd1, 0x41, 42, 0x6a, 0x0b}
+	m, err := wasm.DecodeModule(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.FuncRef}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0})),
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 1, 2, 2})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+func TestCompileModuleAccessesFunctionTableUnderQEMU(t *testing.T) {
+	qemu, err := exec.LookPath("qemu-arm")
+	if err != nil {
+		t.Skip("qemu-arm not installed")
+	}
+	cm, err := CompileModule(arm32TableAccessModule(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	entries := make([]uint32, 2)
+	if err := cm.InstantiateTable(entries); err != nil {
+		t.Fatal(err)
+	}
+	var a a32.Asm
+	armMemoryContext(&a)
+	a.MovImm32(a32.R12, 92)
+	a.Add(a32.R5, a32.SP, a32.R12)
+	a.Str(a32.R5, a32.SP, 28)
+	a.MovImm32(a32.R12, 64)
+	a.Add(a32.R5, a32.SP, a32.R12)
+	a.Str(a32.R5, a32.SP, 56)
+	a.MovImm32(a32.R12, 80)
+	a.Add(a32.R5, a32.SP, a32.R12)
+	a.Str(a32.R5, a32.SP, 64)
+	a.MovImm32(a32.R12, 2)
+	a.Str(a32.R12, a32.SP, 68)
+	a.MovImm32(a32.R12, 0)
+	a.Str(a32.R12, a32.SP, 72)
+	a.Str(a32.R12, a32.SP, 76)
+	a.Str(a32.R12, a32.SP, 80)
+	a.Str(a32.R12, a32.SP, 84)
+	a.Str(a32.R12, a32.SP, 92)
+	armContextArg(&a)
+	a.MovReg(a32.R11, a32.R0)
+	a.MovImm32(a32.R0, 7)
+	call := a.Call()
+	armExit(&a)
+	if !a.PatchCall(call, len(a.B)+cm.Entry[0]) {
+		t.Fatal("wrapper call relocation")
+	}
+	runARM32Exit(t, qemu, append(a.B, cm.Code...), 42)
+}
+
+func arm32IndirectCallModule(t *testing.T) *wasm.Module {
+	t.Helper()
+	callerBody := []byte{1, 1, 0x7c, 0x20, 0, 0x41, 0, 0x11, 0, 0, 0x0b}
+	callerCode := append(wasmtest.ULEB(uint32(len(callerBody))), callerBody...)
+	m, err := wasm.DecodeModule(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}),
+			wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0}, []byte{1})),
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 1, 1, 1})),
+		wasmtest.Section(9, wasmtest.Vec([]byte{0, 0x41, 0, 0x0b, 1, 0})),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x20, 0, 0x41, 1, 0x6a, 0x0b}),
+			callerCode,
+		)),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+func TestCompileModuleCallsFunctionTableUnderQEMU(t *testing.T) {
+	qemu, err := exec.LookPath("qemu-arm")
+	if err != nil {
+		t.Skip("qemu-arm not installed")
+	}
+	cm, err := CompileModule(arm32IndirectCallModule(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	entries := make([]uint32, 1)
+	if err := cm.InstantiateTable(entries); err != nil || entries[0] != 1 {
+		t.Fatalf("entries=%v err=%v", entries, err)
+	}
+	if len(cm.FunctionTypeIDs) != 2 || cm.FunctionTypeIDs[0] != cm.FunctionTypeIDs[1] {
+		t.Fatalf("function type IDs=%v", cm.FunctionTypeIDs)
+	}
+	const base = uint32(0x10000)
+	buildWrapper := func(fn0, fn1 uint32) a32.Asm {
+		var a a32.Asm
+		armMemoryContext(&a)
+		a.MovImm32(a32.R12, 124)
+		a.Add(a32.R5, a32.SP, a32.R12)
+		a.Str(a32.R5, a32.SP, 28)
+		a.MovImm32(a32.R12, 64)
+		a.Add(a32.R5, a32.SP, a32.R12)
+		a.Str(a32.R5, a32.SP, 56)
+		a.MovImm32(a32.R12, 80)
+		a.Add(a32.R5, a32.SP, a32.R12)
+		a.Str(a32.R5, a32.SP, 64)
+		a.MovImm32(a32.R12, 1)
+		a.Str(a32.R12, a32.SP, 68)
+		a.MovImm32(a32.R12, 84)
+		a.Add(a32.R5, a32.SP, a32.R12)
+		a.Str(a32.R5, a32.SP, 72)
+		a.MovImm32(a32.R12, 96)
+		a.Add(a32.R5, a32.SP, a32.R12)
+		a.Str(a32.R5, a32.SP, 76)
+		a.MovImm32(a32.R12, entries[0])
+		a.Str(a32.R12, a32.SP, 80)
+		a.MovImm32(a32.R12, fn0|1)
+		a.Str(a32.R12, a32.SP, 84)
+		a.MovImm32(a32.R12, fn1|1)
+		a.Str(a32.R12, a32.SP, 88)
+		a.MovImm32(a32.R12, cm.FunctionTypeIDs[0])
+		a.Str(a32.R12, a32.SP, 96)
+		a.MovImm32(a32.R12, cm.FunctionTypeIDs[1])
+		a.Str(a32.R12, a32.SP, 100)
+		a.MovImm32(a32.R12, 0)
+		a.Str(a32.R12, a32.SP, 124)
+		armContextArg(&a)
+		a.MovReg(a32.R11, a32.R0)
+		a.MovImm32(a32.R0, 41)
+		call := a.Call()
+		armExit(&a)
+		if !a.PatchCall(call, len(a.B)+cm.Entry[1]) {
+			t.Fatal("wrapper call relocation")
+		}
+		return a
+	}
+	wrapper := buildWrapper(base, base)
+	for {
+		fn0 := base + uint32(len(wrapper.B)+cm.Entry[0])
+		fn1 := base + uint32(len(wrapper.B)+cm.Entry[1])
+		next := buildWrapper(fn0, fn1)
+		if len(next.B) == len(wrapper.B) {
+			wrapper = next
+			break
+		}
+		wrapper = next
+	}
+	runARM32Exit(t, qemu, append(wrapper.B, cm.Code...), 42)
+}
+
 func arm32MixedF64HelperModule(t *testing.T) *wasm.Module {
 	t.Helper()
 	body := []byte{1, 1, 0x7f,

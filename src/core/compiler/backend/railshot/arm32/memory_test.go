@@ -9,7 +9,7 @@ import (
 )
 
 func armMemoryContext(a *a32.Asm) {
-	a.MovImm32(a32.R12, 96)
+	a.MovImm32(a32.R12, 128)
 	a.Sub(a32.SP, a32.SP, a32.R12)
 	a.MovReg(a32.R4, a32.SP)
 	a.Str(a32.R4, a32.SP, 16)

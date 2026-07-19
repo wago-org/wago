@@ -53,6 +53,7 @@ const (
 	MixedI32x4Add
 	MixedI32x4Sub
 	MixedCall
+	MixedCallIndirect
 	MixedUnreachable
 	MixedSelect
 	MixedBranchZero
@@ -61,6 +62,8 @@ const (
 	MixedPollCancellation
 	MixedGlobalGet
 	MixedGlobalSet
+	MixedTableGet
+	MixedTableSet
 	MixedF64Helper
 	MixedF32Helper
 	MixedI64Helper
@@ -136,6 +139,7 @@ func MixedValueSlots(typ wasm.ValType) (uint8, bool) {
 type MixedSignatureResolver func(uint32) (*wasm.CompType, bool)
 type MixedGlobalResolver func(uint32) (wasm.ValType, bool, uint32, bool)
 type MixedBlockResolver func(uint32) (*wasm.CompType, bool)
+type MixedTableResolver func(uint32) (wasm.ValType, bool)
 
 func BuildMixedPlan(ft *wasm.CompType, locals []wasm.LocalRun, body []byte) (*MixedPlan, error) {
 	return BuildMixedPlanWithResolvers(ft, locals, body, nil, nil)
@@ -171,6 +175,10 @@ func BuildMixedPlanWithResolvers(ft *wasm.CompType, locals []wasm.LocalRun, body
 }
 
 func BuildMixedPlanWithBlockResolver(ft *wasm.CompType, locals []wasm.LocalRun, body []byte, resolve MixedSignatureResolver, resolveGlobal MixedGlobalResolver, resolveBlock MixedBlockResolver) (*MixedPlan, error) {
+	return BuildMixedPlanWithModuleResolvers(ft, locals, body, resolve, resolveGlobal, resolveBlock, nil)
+}
+
+func BuildMixedPlanWithModuleResolvers(ft *wasm.CompType, locals []wasm.LocalRun, body []byte, resolve MixedSignatureResolver, resolveGlobal MixedGlobalResolver, resolveBlock MixedBlockResolver, resolveTable MixedTableResolver) (*MixedPlan, error) {
 	if ft == nil || ft.Kind != wasm.CompFunc {
 		return nil, fmt.Errorf("mixed function has invalid type")
 	}
@@ -737,6 +745,47 @@ func BuildMixedPlanWithBlockResolver(ft *wasm.CompType, locals []wasm.LocalRun, 
 				results[i] = v
 			}
 			p.Ops = append(p.Ops, MixedOp{Kind: MixedCall, Target: target, Args: args, Results: results})
+		case 0x11: // call_indirect
+			typeIndex, err := r.U32()
+			if err != nil {
+				return nil, err
+			}
+			tableIndex, err := r.U32()
+			if err != nil {
+				return nil, err
+			}
+			if resolveBlock == nil || resolveTable == nil {
+				return nil, fmt.Errorf("mixed call_indirect requires module types and tables")
+			}
+			callee, ok := resolveBlock(typeIndex)
+			if !ok || callee == nil || callee.Kind != wasm.CompFunc {
+				return nil, fmt.Errorf("mixed call_indirect type %d is invalid", typeIndex)
+			}
+			tableType, ok := resolveTable(tableIndex)
+			if !ok || tableType != wasm.FuncRef {
+				return nil, fmt.Errorf("mixed call_indirect table %d is not funcref", tableIndex)
+			}
+			elementIndex, err := pop(wasm.I32)
+			if err != nil {
+				return nil, fmt.Errorf("mixed call_indirect table operand: %w", err)
+			}
+			args := make([]MixedValue, len(callee.Params))
+			for i := len(callee.Params) - 1; i >= 0; i-- {
+				v, err := pop(callee.Params[i])
+				if err != nil {
+					return nil, fmt.Errorf("mixed call_indirect type %d argument %d: %w", typeIndex, i, err)
+				}
+				args[i] = v
+			}
+			results := make([]MixedValue, len(callee.Results))
+			for i, typ := range callee.Results {
+				v, err := push(typ)
+				if err != nil {
+					return nil, fmt.Errorf("mixed call_indirect type %d result %d: %w", typeIndex, i, err)
+				}
+				results[i] = v
+			}
+			p.Ops = append(p.Ops, MixedOp{Kind: MixedCallIndirect, Target: typeIndex, Third: elementIndex.Slot, Lane: tableIndex, Args: args, Results: results})
 		case 0x1a: // drop
 			if len(stack) == 0 {
 				return nil, fmt.Errorf("mixed drop stack underflow")
@@ -841,6 +890,42 @@ func BuildMixedPlanWithBlockResolver(ft *wasm.CompType, locals []wasm.LocalRun, 
 					return nil, err
 				}
 				p.Ops = append(p.Ops, MixedOp{Kind: MixedGlobalSet, Left: value.Slot, Target: slot, Width: width})
+			}
+		case 0x25, 0x26: // table.get/set
+			index, err := r.U32()
+			if err != nil {
+				return nil, err
+			}
+			if resolveTable == nil {
+				return nil, fmt.Errorf("mixed table operation requires module tables")
+			}
+			typ, ok := resolveTable(index)
+			if !ok {
+				return nil, fmt.Errorf("mixed table index %d is invalid", index)
+			}
+			if _, supported := MixedValueSlots(typ); !supported || typ.Kind != wasm.ValRef {
+				return nil, fmt.Errorf("mixed table %d type %s is not supported", index, typ)
+			}
+			if op == 0x25 {
+				elementIndex, err := pop(wasm.I32)
+				if err != nil {
+					return nil, err
+				}
+				out, err := push(typ)
+				if err != nil {
+					return nil, err
+				}
+				p.Ops = append(p.Ops, MixedOp{Kind: MixedTableGet, Dst: out.Slot, Left: elementIndex.Slot, Target: index, Width: 1})
+			} else {
+				value, err := pop(typ)
+				if err != nil {
+					return nil, err
+				}
+				elementIndex, err := pop(wasm.I32)
+				if err != nil {
+					return nil, err
+				}
+				p.Ops = append(p.Ops, MixedOp{Kind: MixedTableSet, Left: elementIndex.Slot, Right: value.Slot, Target: index, Width: 1})
 			}
 		case 0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35:
 			if _, err := r.U32(); err != nil { // alignment hint

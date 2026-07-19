@@ -27,7 +27,7 @@ func CompileMixedModuleFunction(ft *wasm.CompType, locals []wasm.LocalRun, body 
 }
 
 func compileMixedModuleFunction(m *wasm.Module, ft *wasm.CompType, locals []wasm.LocalRun, body []byte) ([]byte, []callReloc, error) {
-	plan, err := shared.BuildMixedPlanWithBlockResolver(ft, locals, body, func(index uint32) (*wasm.CompType, bool) {
+	plan, err := shared.BuildMixedPlanWithModuleResolvers(ft, locals, body, func(index uint32) (*wasm.CompType, bool) {
 		return m.FuncSignature(index)
 	}, func(index uint32) (wasm.ValType, bool, uint32, bool) {
 		slot, ok := shared.EmbeddedGlobalSlot(m, index)
@@ -38,13 +38,30 @@ func compileMixedModuleFunction(m *wasm.Module, ft *wasm.CompType, locals []wasm
 		return global.Type.Type, global.Type.Mutable, slot, true
 	}, func(index uint32) (*wasm.CompType, bool) {
 		return m.TypeFunc(index)
+	}, func(index uint32) (wasm.ValType, bool) {
+		if index != 0 || len(m.Tables) != 1 {
+			return wasm.ValType{}, false
+		}
+		return wasm.RefVal(m.Tables[0].Type.Ref), true
 	})
 	if err != nil {
 		return nil, nil, err
 	}
-	for _, op := range plan.Ops {
+	for i := range plan.Ops {
+		op := &plan.Ops[i]
 		if (op.Kind == shared.MixedMemoryInit || op.Kind == shared.MixedDataDrop) && uint64(op.Target) >= uint64(len(m.Data)) {
 			return nil, nil, fmt.Errorf("arm32: invalid mixed data segment %d", op.Target)
+		}
+		if op.Kind == shared.MixedCallIndirect {
+			if op.Lane != 0 || len(m.Tables) != 1 {
+				return nil, nil, fmt.Errorf("arm32: invalid mixed indirect table %d", op.Lane)
+			}
+			typeID, ok := shared.EmbeddedFunctionTypeID(m, op.Target)
+			if !ok {
+				return nil, nil, fmt.Errorf("arm32: invalid mixed indirect type %d", op.Target)
+			}
+			op.Target = typeID
+			continue
 		}
 		if op.Kind != shared.MixedCall {
 			continue
@@ -65,7 +82,7 @@ func compileMixedModuleFunction(m *wasm.Module, ft *wasm.CompType, locals []wasm
 func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc) ([]byte, error) {
 	maxOutgoingSlots := uint16(0)
 	for _, op := range plan.Ops {
-		if op.Kind != shared.MixedCall {
+		if op.Kind != shared.MixedCall && op.Kind != shared.MixedCallIndirect {
 			continue
 		}
 		params, results := mixedValueSlotCount(op.Args), mixedValueSlotCount(op.Results)
@@ -111,7 +128,15 @@ func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc) ([]byte, erro
 		}
 	}
 	helperBase := uint16(valueBase + dataBytes)
-	saveOffset := helperBase + uint16(helperBytes)
+	indirectBytes := uint16(0)
+	for _, op := range plan.Ops {
+		if op.Kind == shared.MixedCallIndirect {
+			indirectBytes = 4
+			break
+		}
+	}
+	indirectTargetOffset := helperBase + uint16(helperBytes)
+	saveOffset := indirectTargetOffset + indirectBytes
 	frame := (uint32(saveOffset) + 4 + 15) &^ 15
 	incomingSlots := plan.ParameterSlots
 	if plan.ResultSlots > incomingSlots {
@@ -181,6 +206,19 @@ func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc) ([]byte, erro
 	type mixedBranchPatch struct {
 		at, label   int
 		conditional bool
+	}
+	emitTrapReturn := func(kind embedded32.Trap, name string) int {
+		at := a.Len()
+		must(a.Ldr(a32.R1, armContextReg, embedded32.ContextTrapCellOffset), name+" trap cell")
+		must(a.MovImm32(a32.R0, uint32(kind)), name+" trap")
+		must(a.Str(a32.R0, a32.R1, 0), name+" trap write")
+		must(a.Ldr(a32.LR, a32.SP, saveOffset), name+" return address restore")
+		must(a.MovImm32(a32.R12, frame), name+" frame size")
+		must(a.Add(a32.SP, a32.SP, a32.R12), name+" frame release")
+		must(a.MovImm32(a32.R0, 0), name+" result")
+		a.Ret()
+		a.Align4()
+		return at
 	}
 	emitMemoryTrap := func(done int, traps []int, name string) error {
 		trap := a.Len()
@@ -959,6 +997,40 @@ func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc) ([]byte, erro
 					must(a.Str(a32.R1, a32.R0, globalOffset), "global.set")
 				}
 			}
+		case shared.MixedTableGet, shared.MixedTableSet:
+			if op.Target != 0 {
+				return nil, fmt.Errorf("arm32: mixed table index %d is not supported", op.Target)
+			}
+			must(a.Ldr(a32.R0, a32.SP, off(op.Left)), "table element index")
+			must(a.Ldr(a32.R1, armContextReg, embedded32.ContextTableOffset), "table descriptor")
+			must(a.Ldr(a32.R2, a32.R1, embedded32.TableABILengthOffset), "table length")
+			must(a.Cmp(a32.R0, a32.R2), "table bounds compare")
+			outOfBounds := a.FarBcond(a32.CondCS)
+			must(a.Ldr(a32.R2, a32.R1, embedded32.TableABIEntriesBaseOffset), "table entries")
+			must(a.LslImm(a32.R3, a32.R0, 2), "table entry offset")
+			must(a.Add(a32.R2, a32.R2, a32.R3), "table entry address")
+			if op.Kind == shared.MixedTableGet {
+				must(a.Ldr(a32.R0, a32.R2, 0), "table.get")
+				must(a.Str(a32.R0, a32.SP, off(op.Dst)), "table.get result")
+			} else {
+				must(a.Ldr(a32.R0, a32.SP, off(op.Right)), "table.set value")
+				must(a.Str(a32.R0, a32.R2, 0), "table.set")
+			}
+			done := a.Branch()
+			trap := a.Len()
+			must(a.Ldr(a32.R1, armContextReg, embedded32.ContextTrapCellOffset), "table trap cell")
+			must(a.MovImm32(a32.R0, uint32(embedded32.TrapTableOutOfBounds)), "table trap")
+			must(a.Str(a32.R0, a32.R1, 0), "table trap write")
+			must(a.Ldr(a32.LR, a32.SP, saveOffset), "table trap return address restore")
+			must(a.MovImm32(a32.R12, frame), "table trap frame size")
+			must(a.Add(a32.SP, a32.SP, a32.R12), "table trap frame release")
+			must(a.MovImm32(a32.R0, 0), "table trap result")
+			a.Ret()
+			a.Align4()
+			finish := a.Len()
+			if !a.PatchBranch(done, finish) || !a.PatchFarBranch(outOfBounds, trap) {
+				return nil, fmt.Errorf("arm32: mixed table branch out of range")
+			}
 		case shared.MixedBranchZero, shared.MixedBranchNonzero:
 			must(a.Ldr(a32.R0, a32.SP, off(op.Third)), "branch condition")
 			must(a.MovImm32(a32.R1, 0), "branch zero")
@@ -988,8 +1060,43 @@ func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc) ([]byte, erro
 			if !a.PatchFarBranch(loopClear, a.Len()) {
 				return nil, fmt.Errorf("arm32: mixed loop cancellation branch out of range")
 			}
-		case shared.MixedCall:
-			if relocSink == nil {
+		case shared.MixedCall, shared.MixedCallIndirect:
+			if op.Kind == shared.MixedCallIndirect {
+				must(a.Ldr(a32.R0, a32.SP, off(op.Third)), "indirect table index")
+				must(a.Ldr(a32.R3, armContextReg, embedded32.ContextTableOffset), "indirect table descriptor")
+				must(a.Ldr(a32.R1, a32.R3, embedded32.TableABILengthOffset), "indirect table length")
+				must(a.Cmp(a32.R0, a32.R1), "indirect table bounds compare")
+				outOfBounds := a.FarBcond(a32.CondCS)
+				must(a.Ldr(a32.R1, a32.R3, embedded32.TableABIEntriesBaseOffset), "indirect table entries")
+				must(a.LslImm(a32.R2, a32.R0, 2), "indirect table offset")
+				must(a.Add(a32.R1, a32.R1, a32.R2), "indirect table entry address")
+				must(a.Ldr(a32.R1, a32.R1, 0), "indirect table entry")
+				must(a.MovImm32(a32.R2, 0), "indirect null zero")
+				must(a.Cmp(a32.R1, a32.R2), "indirect null compare")
+				null := a.FarBcond(a32.CondEQ)
+				must(a.MovImm32(a32.R2, 1), "indirect function bias")
+				must(a.Sub(a32.R1, a32.R1, a32.R2), "indirect function index")
+				must(a.Ldr(a32.R0, a32.R3, embedded32.TableABIFunctionTypesBaseOffset), "indirect function types")
+				must(a.LslImm(a32.R2, a32.R1, 2), "indirect function type offset")
+				must(a.Add(a32.R0, a32.R0, a32.R2), "indirect function type address")
+				must(a.Ldr(a32.R0, a32.R0, 0), "indirect actual type")
+				must(a.MovImm32(a32.R2, op.Target), "indirect expected type")
+				must(a.Cmp(a32.R0, a32.R2), "indirect type compare")
+				typeMismatch := a.FarBcond(a32.CondNE)
+				must(a.Ldr(a32.R0, a32.R3, embedded32.TableABIFunctionEntriesBaseOffset), "indirect function entries")
+				must(a.LslImm(a32.R2, a32.R1, 2), "indirect function entry offset")
+				must(a.Add(a32.R0, a32.R0, a32.R2), "indirect function entry address")
+				must(a.Ldr(a32.R0, a32.R0, 0), "indirect call target")
+				must(a.Str(a32.R0, a32.SP, indirectTargetOffset), "indirect call target save")
+				resolved := a.Branch()
+				outOfBoundsTarget := emitTrapReturn(embedded32.TrapTableOutOfBounds, "indirect table bounds")
+				nullTarget := emitTrapReturn(embedded32.TrapIndirectCallNull, "indirect null")
+				typeMismatchTarget := emitTrapReturn(embedded32.TrapIndirectCallTypeMismatch, "indirect type")
+				resolvedTarget := a.Len()
+				if !a.PatchBranch(resolved, resolvedTarget) || !a.PatchFarBranch(outOfBounds, outOfBoundsTarget) || !a.PatchFarBranch(null, nullTarget) || !a.PatchFarBranch(typeMismatch, typeMismatchTarget) {
+					return nil, fmt.Errorf("arm32: mixed indirect resolution branch out of range")
+				}
+			} else if relocSink == nil {
 				return nil, fmt.Errorf("arm32: mixed call has no relocation sink")
 			}
 			argReg := uint16(0)
@@ -1005,8 +1112,13 @@ func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc) ([]byte, erro
 					argReg++
 				}
 			}
-			at := a.Call()
-			*relocSink = append(*relocSink, callReloc{at: at, target: int(op.Target)})
+			if op.Kind == shared.MixedCallIndirect {
+				must(a.Ldr(a32.R12, a32.SP, indirectTargetOffset), "indirect call target restore")
+				must(a.Blx(a32.R12), "indirect call")
+			} else {
+				at := a.Call()
+				*relocSink = append(*relocSink, callReloc{at: at, target: int(op.Target)})
+			}
 			resultReg := uint16(0)
 			for _, result := range op.Results {
 				width, _ := shared.MixedValueSlots(result.Type)
