@@ -15,6 +15,12 @@ type ModuleCompileOptions = shared.EmbeddedModuleOptions
 // CompiledModule is one module-wide RV32IM image with local-function metadata.
 type CompiledModule = shared.EmbeddedModule
 
+// FirmwareOptions controls bounded static firmware-image layout.
+type FirmwareOptions = shared.EmbeddedFirmwareOptions
+
+// FirmwareImage is a closed module image with serialized target ABI state.
+type FirmwareImage = shared.EmbeddedFirmwareImage
+
 func CompileModule(m *wasm.Module) (*CompiledModule, error) {
 	return CompileModuleWith(m, ModuleCompileOptions{})
 }
@@ -184,6 +190,16 @@ func homogeneousFunction(ft *wasm.CompType, locals []wasm.LocalRun, typ wasm.Val
 
 // CompileModuleToArena preflights against the remaining arena capacity, then
 // compiles and publishes the complete image transactionally.
+func BuildFirmwareImage(dst []byte, module *CompiledModule, opts FirmwareOptions) (*FirmwareImage, error) {
+	opts.FunctionAddressMask = 0
+	return shared.BuildEmbeddedFirmwareImage(dst, module, opts)
+}
+
+func FirmwareImageSize(module *CompiledModule, opts FirmwareOptions) (uint32, error) {
+	opts.FunctionAddressMask = 0
+	return shared.EmbeddedFirmwareImageSize(module, opts)
+}
+
 func CompileModuleToArena(m *wasm.Module, arena *embedded32.CodeArena, publish embedded32.CodePublisher) (*shared.PublishedEmbeddedModule, error) {
 	if arena == nil {
 		return nil, embedded32.ErrInvalidArena

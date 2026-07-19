@@ -24,6 +24,13 @@ type EmbeddedDataSegment struct {
 	Bytes   []byte
 }
 
+type EmbeddedMemory struct {
+	Imported   bool
+	Minimum    uint32
+	Maximum    uint32
+	HasMaximum bool
+}
+
 type EmbeddedGlobal struct {
 	Type          wasm.ValType
 	Mutable       bool
@@ -68,6 +75,7 @@ type EmbeddedModule struct {
 	FunctionTypeIDs   []uint32
 	ImportedFunctions uint32
 	MemoryImported    bool
+	Memory            *EmbeddedMemory
 	Data              []EmbeddedDataSegment
 	ImportedGlobals   []EmbeddedGlobal
 	Globals           []EmbeddedGlobal
@@ -215,6 +223,7 @@ type PublishedEmbeddedModule struct {
 	FunctionTypeIDs   []uint32
 	ImportedFunctions uint32
 	MemoryImported    bool
+	Memory            *EmbeddedMemory
 	Data              []EmbeddedDataSegment
 	ImportedGlobals   []EmbeddedGlobal
 	Globals           []EmbeddedGlobal
@@ -241,7 +250,7 @@ func PublishEmbeddedModule(arena *embedded32.CodeArena, module *EmbeddedModule, 
 	if err := tx.Commit(publish); err != nil {
 		return nil, err
 	}
-	out := &PublishedEmbeddedModule{Block: block, Entry: make([]uint32, len(module.Entry)), Functions: make([]EmbeddedFunctionMetadata, len(module.Functions)), FunctionTypeIDs: append([]uint32(nil), module.FunctionTypeIDs...), ImportedFunctions: module.ImportedFunctions, MemoryImported: module.MemoryImported, Data: module.Data, ImportedGlobals: module.ImportedGlobals, Globals: module.Globals, Table: module.Table, Exports: module.Exports, Start: module.Start}
+	out := &PublishedEmbeddedModule{Block: block, Entry: make([]uint32, len(module.Entry)), Functions: make([]EmbeddedFunctionMetadata, len(module.Functions)), FunctionTypeIDs: append([]uint32(nil), module.FunctionTypeIDs...), ImportedFunctions: module.ImportedFunctions, MemoryImported: module.MemoryImported, Memory: module.Memory, Data: module.Data, ImportedGlobals: module.ImportedGlobals, Globals: module.Globals, Table: module.Table, Exports: module.Exports, Start: module.Start}
 	if module.StartEntry != nil {
 		entry := block.Offset + uint32(*module.StartEntry)
 		out.StartEntry = &entry
@@ -348,6 +357,10 @@ func CompileEmbeddedModule(m *wasm.Module, opts EmbeddedModuleOptions, target st
 	if bounded && uint32(required) > opts.CodeCapacity {
 		return nil, fmt.Errorf("%s: code arena capacity %d is below preflight requirement %d", target, opts.CodeCapacity, required)
 	}
+	memory, err := embeddedMemory(m, target)
+	if err != nil {
+		return nil, err
+	}
 	data, err := embeddedDataSegments(m, target)
 	if err != nil {
 		return nil, err
@@ -376,7 +389,7 @@ func CompileEmbeddedModule(m *wasm.Module, opts EmbeddedModuleOptions, target st
 		}
 		start = &index
 	}
-	out := &EmbeddedModule{Code: make([]byte, 0, required), Entry: make([]int, len(bodies)), Functions: make([]EmbeddedFunctionMetadata, len(bodies)), FunctionTypeIDs: functionTypeIDs, ImportedFunctions: importedFunctions, MemoryImported: importedMemories == 1, Data: data, ImportedGlobals: importedGlobals, Globals: globals, Table: table, Exports: exports, Start: start, RequiredCodeBytes: uint32(required)}
+	out := &EmbeddedModule{Code: make([]byte, 0, required), Entry: make([]int, len(bodies)), Functions: make([]EmbeddedFunctionMetadata, len(bodies)), FunctionTypeIDs: functionTypeIDs, ImportedFunctions: importedFunctions, MemoryImported: importedMemories == 1, Memory: memory, Data: data, ImportedGlobals: importedGlobals, Globals: globals, Table: table, Exports: exports, Start: start, RequiredCodeBytes: uint32(required)}
 	for i, body := range bodies {
 		pad := (16 - len(out.Code)%16) % 16
 		if pad%len(alignmentPad) != 0 {
@@ -898,6 +911,35 @@ func embeddedConstWords(expr wasm.Expr, typ wasm.ValType) ([4]uint32, error) {
 		return words, fmt.Errorf("global type %s is not supported", typ)
 	}
 	return words, nil
+}
+
+func embeddedMemory(m *wasm.Module, target string) (*EmbeddedMemory, error) {
+	var memoryType *wasm.MemType
+	imported := false
+	for i := range m.Imports {
+		if m.Imports[i].Type.Kind == wasm.ExternMem {
+			typ := m.Imports[i].Type.Mem
+			memoryType, imported = &typ, true
+			break
+		}
+	}
+	if len(m.Memories) != 0 {
+		memoryType = &m.Memories[0]
+	}
+	if memoryType == nil {
+		return nil, nil
+	}
+	if memoryType.Limits.Addr64 || memoryType.Shared || memoryType.Limits.Min > uint64(^uint32(0)) {
+		return nil, fmt.Errorf("%s: memory limits exceed the embedded memory32 profile", target)
+	}
+	out := &EmbeddedMemory{Imported: imported, Minimum: uint32(memoryType.Limits.Min)}
+	if memoryType.Limits.Max != nil {
+		if *memoryType.Limits.Max > uint64(^uint32(0)) {
+			return nil, fmt.Errorf("%s: memory maximum exceeds the embedded memory32 profile", target)
+		}
+		out.Maximum, out.HasMaximum = uint32(*memoryType.Limits.Max), true
+	}
+	return out, nil
 }
 
 func embeddedDataSegments(m *wasm.Module, target string) ([]EmbeddedDataSegment, error) {

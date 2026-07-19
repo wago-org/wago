@@ -393,6 +393,17 @@ bounded stack overflow area, preserves the fixed context register, invokes the
 internal module ABI, and writes complete results only when the trap cell remains
 clear.
 
+Closed modules can now be serialized into one preflighted static firmware
+image. The shared layout builder retains declared memory limits, lays out code,
+`ContextABI`, trap/cancellation cells, helper addresses, serialized globals,
+data/element descriptors and bytes, table storage, parallel function entry/type
+arrays, and bounded linear-memory capacity in caller-provided storage. It
+applies active data and element initializers only after complete capacity/range
+validation, rejects unresolved imports, publishes target addresses without host
+pointer assumptions, and preserves Thumb function-pointer bit zero through the
+Arm-specific wrapper. The image reports conventional start and exported
+`CallABI` entry addresses for a board harness.
+
 Modules with a start function also append a 16-byte-aligned target entry thunk.
 The thunk accepts only a `ContextABI` pointer in the platform's first argument
 register, preserves the platform callee-saved context register and return
@@ -401,6 +412,6 @@ returns the published trap code. This gives firmware a conventional ABI for
 transactional instantiation/start sequencing without target-specific inline
 assembly.
 
-This is still not public backend admission. Firmware linking and transport, and
-Pico 2 hardware
-qualification remain to be implemented and measured.
+This is still not public backend admission. Open-module firmware linking, the
+board transport/runner, official module-level suite qualification, and Pico 2
+hardware qualification remain to be implemented and measured.

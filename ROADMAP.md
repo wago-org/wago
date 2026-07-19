@@ -156,11 +156,12 @@ codegen rationale is **[OPTIMIZATIONS.md](OPTIMIZATIONS.md)**. Summary of the tw
 - 🚧 Additional targets: Linux/arm64, Darwin/arm64, and Linux/riscv64 are native
   backends; RV64 RVV optimization, native-hardware qualification, and Windows
   ABIs remain planned. Experimental RP2350 work now has cross-host fixed-width
-  RV32IM and Thumb-2 encoders; executing i32/control and wide-value beachheads;
-  atomic i64/f64 pair and v128 quad locals/spills; complete f64/SIMD helper
-  semantics; and fixed-capacity embedded memory, code, and stack resources.
-  Full module control/calls/memory/linking, firmware entry/transport, and Pico 2
-  qualification remain before public admission (see
+  RV32IM and Thumb-2 encoders; complete mixed one/two/four-slot module lowering;
+  scalar, SIMD, memory, table/reference, import, direct/indirect-call, start, and
+  export execution; fixed-capacity embedded resources; and a bounded
+  closed-module firmware-image builder. Open-module firmware linking, board
+  transport, official module-suite execution, and Pico 2 qualification remain
+  before public admission (see
   `docs/pico2-32bit-port.md`).
 - [ ] wazero-compatible API shim for drop-in migration
 
