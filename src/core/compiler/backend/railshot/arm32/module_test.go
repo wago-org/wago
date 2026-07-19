@@ -994,11 +994,13 @@ func TestCompileModuleInitializesTableFromPassiveElementUnderQEMU(t *testing.T) 
 	a.MovImm32(a32.R12, 0)
 	a.Str(a32.R12, a32.SP, 76)
 	a.Str(a32.R12, a32.SP, 80)
+	a.MovImm32(a32.R12, 0)
+	a.Str(a32.R12, a32.SP, 84)
 	a.MovImm32(a32.R12, 104)
 	a.Add(a32.R5, a32.SP, a32.R12)
-	a.Str(a32.R5, a32.SP, 84)
+	a.Str(a32.R5, a32.SP, 88)
 	a.MovImm32(a32.R12, 1)
-	a.Str(a32.R12, a32.SP, 88)
+	a.Str(a32.R12, a32.SP, 92)
 	a.MovImm32(a32.R12, 0)
 	a.Str(a32.R12, a32.SP, 96)
 	a.MovImm32(a32.R12, 120)
@@ -1563,6 +1565,7 @@ func arm32MixedDeepBranchModule(t *testing.T) *wasm.Module {
 		0x41, 1, 0x1a,
 		0x02, 0x40, 0x41, 2, 0x1a, 0x0b,
 		0x0b,
+		0x42, 0,
 		0x0b,
 		0x0b,
 	})

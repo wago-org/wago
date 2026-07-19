@@ -1003,10 +1003,11 @@ func TestCompileModuleInitializesTableFromPassiveElementUnderQEMU(t *testing.T) 
 	a.Sw(rv.T0, rv.SP, 72)
 	a.Sw(rv.Zero, rv.SP, 76)
 	a.Sw(rv.Zero, rv.SP, 80)
+	a.Sw(rv.Zero, rv.SP, 84)
 	a.Addi(rv.T0, rv.SP, 104)
-	a.Sw(rv.T0, rv.SP, 84)
-	a.MovImm32(rv.T0, 1)
 	a.Sw(rv.T0, rv.SP, 88)
+	a.MovImm32(rv.T0, 1)
+	a.Sw(rv.T0, rv.SP, 92)
 	a.Sw(rv.Zero, rv.SP, 96)
 	a.Addi(rv.T0, rv.SP, 120)
 	a.Sw(rv.T0, rv.SP, 104)
@@ -1563,6 +1564,7 @@ func riscv32MixedDeepBranchModule(t *testing.T) *wasm.Module {
 		0x41, 1, 0x1a,
 		0x02, 0x40, 0x41, 2, 0x1a, 0x0b,
 		0x0b,
+		0x42, 0,
 		0x0b,
 		0x0b,
 	})
@@ -2506,7 +2508,14 @@ func TestCompileModuleSwitchesLinkedImportContextUnderQEMU(t *testing.T) {
 			const base = uint32(0x10000)
 			wrapper := build(base, trapping)
 			providerAddress := base + uint32(len(wrapper.B)+len(cm.Code)+provider.Entry[0])
-			wrapper = build(providerAddress, trapping)
+			for {
+				wrapper = build(providerAddress, trapping)
+				next := base + uint32(len(wrapper.B)+len(cm.Code)+provider.Entry[0])
+				if next == providerAddress {
+					break
+				}
+				providerAddress = next
+			}
 			image := append(wrapper.B, cm.Code...)
 			image = append(image, provider.Code...)
 			want := 43

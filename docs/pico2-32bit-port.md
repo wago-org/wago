@@ -306,7 +306,7 @@ admitted scalar and direct-SWAR subsets into one 16-byte-aligned target image.
 A bounded shared frame planner assigns exact contiguous 32-bit slots to mixed
 parameters, locals, operands, and results, preserving one/two/four-slot values
 atomically. Genuinely mixed functions now execute constants, mixed local
-get/set/tee, complete drops, all i32 arithmetic, bit counts, shifts, rotates,
+get/set/tee, complete drops, all i32 arithmetic, bit counts, Wasm-masked shifts and rotates,
 signed/unsigned comparisons, trapping division/remainder, sign extensions, and
 i64 wrapping, plus i64
 add/sub/multiply/logic, raw-bit f32/f64 sign operations, and direct v128 bitwise

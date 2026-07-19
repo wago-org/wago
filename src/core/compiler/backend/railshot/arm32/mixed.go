@@ -469,6 +469,8 @@ func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc, memoryImporte
 		case shared.MixedI32Shl, shared.MixedI32ShrS, shared.MixedI32ShrU, shared.MixedI32Rotl, shared.MixedI32Rotr:
 			must(a.Ldr(a32.R0, a32.SP, off(op.Left)), "i32 shift value")
 			must(a.Ldr(a32.R1, a32.SP, off(op.Right)), "i32 shift count")
+			must(a.MovImm32(a32.R2, 31), "i32 shift mask")
+			must(a.And(a32.R1, a32.R1, a32.R2), "i32 shift count mask")
 			switch op.Kind {
 			case shared.MixedI32Shl:
 				must(a.Lsl(a32.R2, a32.R0, a32.R1), "i32 shl")
