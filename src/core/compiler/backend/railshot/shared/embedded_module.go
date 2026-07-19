@@ -25,10 +25,12 @@ type EmbeddedDataSegment struct {
 }
 
 type EmbeddedGlobal struct {
-	Type    wasm.ValType
-	Mutable bool
-	Slot    uint32
-	Words   [4]uint32
+	Type          wasm.ValType
+	Mutable       bool
+	Slot          uint32
+	Words         [4]uint32
+	HasInitGlobal bool
+	InitGlobal    uint32
 }
 
 type EmbeddedElementMode uint8
@@ -67,6 +69,7 @@ type EmbeddedModule struct {
 	ImportedFunctions uint32
 	MemoryImported    bool
 	Data              []EmbeddedDataSegment
+	ImportedGlobals   []EmbeddedGlobal
 	Globals           []EmbeddedGlobal
 	Table             *EmbeddedTable
 	Exports           []EmbeddedExport
@@ -92,18 +95,28 @@ func (m *EmbeddedModule) DataSegmentABI(bases []uint32) ([]embedded32.DataSegmen
 }
 
 func (m *EmbeddedModule) InstantiateGlobals(cells []uint32) error {
+	return m.InstantiateGlobalsWithImports(cells, nil)
+}
+
+func (m *EmbeddedModule) InstantiateGlobalsWithImports(cells []uint32, importedCells [][]uint32) error {
 	if m == nil {
 		return embedded32.ErrArenaCapacity
 	}
 	var required uint32
 	for i := range m.Globals {
-		width, ok := MixedValueSlots(m.Globals[i].Type)
-		if !ok || m.Globals[i].Slot > ^uint32(0)-uint32(width) {
+		global := &m.Globals[i]
+		width, ok := MixedValueSlots(global.Type)
+		if !ok || global.Slot > ^uint32(0)-uint32(width) {
 			return fmt.Errorf("embedded global %d has invalid layout", i)
 		}
-		end := m.Globals[i].Slot + uint32(width)
+		end := global.Slot + uint32(width)
 		if end > required {
 			required = end
+		}
+		if global.HasInitGlobal {
+			if uint64(global.InitGlobal) >= uint64(len(importedCells)) || len(importedCells[global.InitGlobal]) < int(width) {
+				return fmt.Errorf("embedded global %d imported initializer %d is unavailable", i, global.InitGlobal)
+			}
 		}
 	}
 	if uint64(required) > uint64(len(cells)) {
@@ -112,7 +125,11 @@ func (m *EmbeddedModule) InstantiateGlobals(cells []uint32) error {
 	for i := range m.Globals {
 		global := &m.Globals[i]
 		width, _ := MixedValueSlots(global.Type)
-		copy(cells[global.Slot:global.Slot+uint32(width)], global.Words[:width])
+		if global.HasInitGlobal {
+			copy(cells[global.Slot:global.Slot+uint32(width)], importedCells[global.InitGlobal][:width])
+		} else {
+			copy(cells[global.Slot:global.Slot+uint32(width)], global.Words[:width])
+		}
 	}
 	return nil
 }
@@ -199,6 +216,7 @@ type PublishedEmbeddedModule struct {
 	ImportedFunctions uint32
 	MemoryImported    bool
 	Data              []EmbeddedDataSegment
+	ImportedGlobals   []EmbeddedGlobal
 	Globals           []EmbeddedGlobal
 	Table             *EmbeddedTable
 	Exports           []EmbeddedExport
@@ -223,7 +241,7 @@ func PublishEmbeddedModule(arena *embedded32.CodeArena, module *EmbeddedModule, 
 	if err := tx.Commit(publish); err != nil {
 		return nil, err
 	}
-	out := &PublishedEmbeddedModule{Block: block, Entry: make([]uint32, len(module.Entry)), Functions: make([]EmbeddedFunctionMetadata, len(module.Functions)), FunctionTypeIDs: append([]uint32(nil), module.FunctionTypeIDs...), ImportedFunctions: module.ImportedFunctions, MemoryImported: module.MemoryImported, Data: module.Data, Globals: module.Globals, Table: module.Table, Exports: module.Exports, Start: module.Start}
+	out := &PublishedEmbeddedModule{Block: block, Entry: make([]uint32, len(module.Entry)), Functions: make([]EmbeddedFunctionMetadata, len(module.Functions)), FunctionTypeIDs: append([]uint32(nil), module.FunctionTypeIDs...), ImportedFunctions: module.ImportedFunctions, MemoryImported: module.MemoryImported, Data: module.Data, ImportedGlobals: module.ImportedGlobals, Globals: module.Globals, Table: module.Table, Exports: module.Exports, Start: module.Start}
 	if module.StartEntry != nil {
 		entry := block.Offset + uint32(*module.StartEntry)
 		out.StartEntry = &entry
@@ -263,6 +281,7 @@ func CompileEmbeddedModule(m *wasm.Module, opts EmbeddedModuleOptions, target st
 	importedFunctions := uint32(0)
 	importedTables, importedMemories := 0, 0
 	var importedMemory *wasm.MemType
+	var importedGlobals []EmbeddedGlobal
 	for i := range m.Imports {
 		switch m.Imports[i].Type.Kind {
 		case wasm.ExternFunc:
@@ -273,6 +292,12 @@ func CompileEmbeddedModule(m *wasm.Module, opts EmbeddedModuleOptions, target st
 			importedMemories++
 			memory := m.Imports[i].Type.Mem
 			importedMemory = &memory
+		case wasm.ExternGlobal:
+			global := m.Imports[i].Type.Global
+			if _, ok := MixedValueSlots(global.Type); !ok {
+				return nil, fmt.Errorf("%s: imported global %d type %s is not supported", target, len(importedGlobals), global.Type)
+			}
+			importedGlobals = append(importedGlobals, EmbeddedGlobal{Type: global.Type, Mutable: global.Mutable, Slot: uint32(len(importedGlobals))})
 		default:
 			return nil, fmt.Errorf("%s: import %d kind %d is not supported", target, i, m.Imports[i].Type.Kind)
 		}
@@ -351,7 +376,7 @@ func CompileEmbeddedModule(m *wasm.Module, opts EmbeddedModuleOptions, target st
 		}
 		start = &index
 	}
-	out := &EmbeddedModule{Code: make([]byte, 0, required), Entry: make([]int, len(bodies)), Functions: make([]EmbeddedFunctionMetadata, len(bodies)), FunctionTypeIDs: functionTypeIDs, ImportedFunctions: importedFunctions, MemoryImported: importedMemories == 1, Data: data, Globals: globals, Table: table, Exports: exports, Start: start, RequiredCodeBytes: uint32(required)}
+	out := &EmbeddedModule{Code: make([]byte, 0, required), Entry: make([]int, len(bodies)), Functions: make([]EmbeddedFunctionMetadata, len(bodies)), FunctionTypeIDs: functionTypeIDs, ImportedFunctions: importedFunctions, MemoryImported: importedMemories == 1, Data: data, ImportedGlobals: importedGlobals, Globals: globals, Table: table, Exports: exports, Start: start, RequiredCodeBytes: uint32(required)}
 	for i, body := range bodies {
 		pad := (16 - len(out.Code)%16) % 16
 		if pad%len(alignmentPad) != 0 {
@@ -669,7 +694,7 @@ func embeddedFuncRefConst(expr wasm.Expr, functionCount int) (uint32, error) {
 	}
 }
 
-func EmbeddedGlobalSlot(m *wasm.Module, index uint32) (uint32, bool) {
+func embeddedLocalGlobalSlot(m *wasm.Module, index uint32) (uint32, bool) {
 	if m == nil || uint64(index) >= uint64(len(m.Globals)) {
 		return 0, false
 	}
@@ -684,21 +709,87 @@ func EmbeddedGlobalSlot(m *wasm.Module, index uint32) (uint32, bool) {
 	return slot, true
 }
 
+func EmbeddedGlobalLocation(m *wasm.Module, index uint32) (typ wasm.ValType, mutable bool, target uint32, imported bool, ok bool) {
+	if m == nil {
+		return wasm.ValType{}, false, 0, false, false
+	}
+	var importedIndex uint32
+	for i := range m.Imports {
+		if m.Imports[i].Type.Kind != wasm.ExternGlobal {
+			continue
+		}
+		if importedIndex == index {
+			global := m.Imports[i].Type.Global
+			if _, supported := MixedValueSlots(global.Type); !supported {
+				return wasm.ValType{}, false, 0, false, false
+			}
+			return global.Type, global.Mutable, importedIndex, true, true
+		}
+		importedIndex++
+	}
+	if index < importedIndex {
+		return wasm.ValType{}, false, 0, false, false
+	}
+	localIndex := index - importedIndex
+	if uint64(localIndex) >= uint64(len(m.Globals)) {
+		return wasm.ValType{}, false, 0, false, false
+	}
+	slot, ok := embeddedLocalGlobalSlot(m, localIndex)
+	if !ok {
+		return wasm.ValType{}, false, 0, false, false
+	}
+	global := m.Globals[localIndex]
+	return global.Type.Type, global.Type.Mutable, slot, false, true
+}
+
 func embeddedGlobals(m *wasm.Module, target string) ([]EmbeddedGlobal, error) {
 	out := make([]EmbeddedGlobal, len(m.Globals))
 	for i := range m.Globals {
 		global := &m.Globals[i]
-		slot, ok := EmbeddedGlobalSlot(m, uint32(i))
+		slot, ok := embeddedLocalGlobalSlot(m, uint32(i))
 		if !ok {
 			return nil, fmt.Errorf("%s: global %d has unsupported type or layout", target, i)
 		}
-		words, err := embeddedConstWords(global.Init, global.Type.Type)
+		words, initGlobal, hasInitGlobal, err := embeddedGlobalInit(m, global.Init, global.Type.Type)
 		if err != nil {
 			return nil, fmt.Errorf("%s: global %d initializer: %w", target, i, err)
 		}
-		out[i] = EmbeddedGlobal{Type: global.Type.Type, Mutable: global.Type.Mutable, Slot: slot, Words: words}
+		out[i] = EmbeddedGlobal{Type: global.Type.Type, Mutable: global.Type.Mutable, Slot: slot, Words: words, HasInitGlobal: hasInitGlobal, InitGlobal: initGlobal}
 	}
 	return out, nil
+}
+
+func embeddedGlobalInit(m *wasm.Module, expr wasm.Expr, typ wasm.ValType) ([4]uint32, uint32, bool, error) {
+	var words [4]uint32
+	if len(expr.BodyBytes) != 0 {
+		r := wasm.NewReader(expr.BodyBytes)
+		op, err := r.Byte()
+		if err == nil && op == 0x23 {
+			index, err := r.U32()
+			if err != nil {
+				return words, 0, false, err
+			}
+			end, err := r.Byte()
+			if err != nil || end != 0x0b || r.HasNext() {
+				return words, 0, false, fmt.Errorf("malformed global.get const expression")
+			}
+			globalType, mutable, target, imported, ok := EmbeddedGlobalLocation(m, index)
+			if !ok || !imported || mutable || globalType != typ {
+				return words, 0, false, fmt.Errorf("global.get initializer %d is not an immutable imported %s", index, typ)
+			}
+			return words, target, true, nil
+		}
+	}
+	if len(expr.Instrs) == 1 && expr.Instrs[0].Kind == wasm.InstrGlobalGet {
+		index := expr.Instrs[0].Index
+		globalType, mutable, target, imported, ok := EmbeddedGlobalLocation(m, index)
+		if !ok || !imported || mutable || globalType != typ {
+			return words, 0, false, fmt.Errorf("global.get initializer %d is not an immutable imported %s", index, typ)
+		}
+		return words, target, true, nil
+	}
+	words, err := embeddedConstWords(expr, typ)
+	return words, 0, false, err
 }
 
 func embeddedConstWords(expr wasm.Expr, typ wasm.ValType) ([4]uint32, error) {

@@ -107,6 +107,45 @@ func TestCompileEmbeddedModuleInitializesSerializedWideGlobals(t *testing.T) {
 	}
 }
 
+func TestCompileEmbeddedModuleBindsImportedGlobalsAndInitializers(t *testing.T) {
+	m, err := wasm.DecodeModule(wasmtest.Module(
+		wasmtest.Section(2, wasmtest.Vec(
+			wasmtest.GlobalImportEntry("env", "wide", wasm.I64, false),
+			wasmtest.GlobalImportEntry("env", "word", wasm.I32, true),
+		)),
+		wasmtest.Section(6, wasmtest.Vec(
+			wasmtest.GlobalEntry(wasm.I64, false, []byte{0x23, 0, 0x0b}),
+			wasmtest.GlobalEntry(wasm.I32, true, []byte{0x41, 7, 0x0b}),
+		)),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cm, err := CompileEmbeddedModule(m, EmbeddedModuleOptions{}, "test", 1, []byte{0}, func(int, *wasm.CompType, []wasm.LocalRun, []byte) ([]byte, error) {
+		return nil, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cm.ImportedGlobals) != 2 || cm.ImportedGlobals[0].Type != wasm.I64 || cm.ImportedGlobals[1].Type != wasm.I32 || !cm.ImportedGlobals[1].Mutable {
+		t.Fatalf("imported globals=%+v", cm.ImportedGlobals)
+	}
+	if len(cm.Globals) != 2 || !cm.Globals[0].HasInitGlobal || cm.Globals[0].InitGlobal != 0 || cm.Globals[0].Slot != 0 || cm.Globals[1].Slot != 2 {
+		t.Fatalf("local globals=%+v", cm.Globals)
+	}
+	cells := []uint32{9, 9, 9}
+	if err := cm.InstantiateGlobals(cells); err == nil || !slices.Equal(cells, []uint32{9, 9, 9}) {
+		t.Fatalf("missing import cells error=%v cells=%v", err, cells)
+	}
+	if err := cm.InstantiateGlobalsWithImports(cells, [][]uint32{{0x55667788, 0x11223344}, {5}}); err != nil {
+		t.Fatal(err)
+	}
+	want := []uint32{0x55667788, 0x11223344, 7}
+	if !slices.Equal(cells, want) {
+		t.Fatalf("global cells=%#v want=%#v", cells, want)
+	}
+}
+
 func TestCompileEmbeddedModuleInitializesActiveFunctionTable(t *testing.T) {
 	m := embeddedTestModule(t,
 		[][]byte{wasmtest.FuncType(nil, nil)},

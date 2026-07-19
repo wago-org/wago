@@ -29,13 +29,8 @@ func CompileMixedModuleFunction(ft *wasm.CompType, locals []wasm.LocalRun, body 
 func compileMixedModuleFunction(m *wasm.Module, ft *wasm.CompType, locals []wasm.LocalRun, body []byte) ([]byte, []callReloc, error) {
 	plan, err := shared.BuildMixedPlanWithModuleResolvers(ft, locals, body, func(index uint32) (*wasm.CompType, bool) {
 		return m.FuncSignature(index)
-	}, func(index uint32) (wasm.ValType, bool, uint32, bool) {
-		slot, ok := shared.EmbeddedGlobalSlot(m, index)
-		if !ok {
-			return wasm.ValType{}, false, 0, false
-		}
-		global := m.Globals[index]
-		return global.Type.Type, global.Type.Mutable, slot, true
+	}, func(index uint32) (wasm.ValType, bool, uint32, bool, bool) {
+		return shared.EmbeddedGlobalLocation(m, index)
 	}, func(index uint32) (*wasm.CompType, bool) {
 		return m.TypeFunc(index)
 	}, func(index uint32) (wasm.ValType, bool) {
@@ -1107,12 +1102,24 @@ func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc) ([]byte, erro
 			}
 			must(a.Str(a32.R2, a32.SP, off(op.Dst)), "memory.grow result")
 		case shared.MixedGlobalGet, shared.MixedGlobalSet:
-			if uint64(op.Target)+uint64(op.Width) > 1024 {
-				return nil, fmt.Errorf("arm32: mixed global slot %d width %d exceeds direct displacement", op.Target, op.Width)
+			if op.Imported {
+				if op.Target > 1023 {
+					return nil, fmt.Errorf("arm32: imported global index %d exceeds direct displacement", op.Target)
+				}
+				must(a.Ldr(a32.R0, armContextReg, embedded32.ContextImportedGlobalsBaseOffset), "imported global directory")
+				must(a.Ldr(a32.R0, a32.R0, uint16(op.Target*4)), "imported global cell")
+			} else {
+				if uint64(op.Target)+uint64(op.Width) > 1024 {
+					return nil, fmt.Errorf("arm32: mixed global slot %d width %d exceeds direct displacement", op.Target, op.Width)
+				}
+				must(a.Ldr(a32.R0, armContextReg, embedded32.ContextGlobalsBaseOffset), "global base")
 			}
-			must(a.Ldr(a32.R0, armContextReg, embedded32.ContextGlobalsBaseOffset), "global base")
 			for i := uint8(0); i < op.Width; i++ {
-				globalOffset := uint16((op.Target + uint32(i)) * 4)
+				globalSlot := uint32(i)
+				if !op.Imported {
+					globalSlot += op.Target
+				}
+				globalOffset := uint16(globalSlot * 4)
 				if op.Kind == shared.MixedGlobalGet {
 					must(a.Ldr(a32.R1, a32.R0, globalOffset), "global.get")
 					must(a.Str(a32.R1, a32.SP, off(op.Dst)+uint16(i)*4), "global.get result")

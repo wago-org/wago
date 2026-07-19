@@ -142,16 +142,28 @@ func (c *compiler) call(target int) error {
 }
 
 func (c *compiler) globalGet(index uint32) error {
-	if c.module == nil || uint64(index) >= uint64(len(c.module.Globals)) || c.module.Globals[index].Type.Type != wasm.I32 {
-		return fmt.Errorf("arm32: unsupported global.get %d", index)
-	}
-	slot, ok := shared.EmbeddedGlobalSlot(c.module, index)
-	if !ok {
+	typ, _, target, imported, ok := shared.EmbeddedGlobalLocation(c.module, index)
+	if !ok || typ != wasm.I32 {
 		return fmt.Errorf("arm32: unsupported global.get %d", index)
 	}
 	base, dst := c.alloc(), c.alloc()
-	c.must(c.a.Ldr(base, armContextReg, embedded32.ContextGlobalsBaseOffset), "global base")
-	offset := uint64(slot) * 4
+	contextOffset := uint16(embedded32.ContextGlobalsBaseOffset)
+	if imported {
+		contextOffset = embedded32.ContextImportedGlobalsBaseOffset
+	}
+	c.must(c.a.Ldr(base, armContextReg, contextOffset), "global base")
+	offset := uint64(target) * 4
+	if imported {
+		if offset <= 4095 {
+			c.must(c.a.Ldr(base, base, uint16(offset)), "imported global cell")
+		} else {
+			c.must(c.a.MovImm32(a32.R12, uint32(offset)), "imported global offset")
+			c.must(c.a.Add(base, base, a32.R12), "imported global address")
+			c.must(c.a.Ldr(base, base, 0), "imported global cell")
+			c.must(c.a.MovImm32(a32.R12, 0), "restore zero register")
+		}
+		offset = 0
+	}
 	if offset <= 4095 {
 		c.must(c.a.Ldr(dst, base, uint16(offset)), "global.get")
 	} else {
@@ -166,17 +178,29 @@ func (c *compiler) globalGet(index uint32) error {
 }
 
 func (c *compiler) globalSet(index uint32) error {
-	if c.module == nil || uint64(index) >= uint64(len(c.module.Globals)) || c.module.Globals[index].Type.Type != wasm.I32 || !c.module.Globals[index].Type.Mutable {
-		return fmt.Errorf("arm32: unsupported global.set %d", index)
-	}
-	slot, ok := shared.EmbeddedGlobalSlot(c.module, index)
-	if !ok {
+	typ, mutable, target, imported, ok := shared.EmbeddedGlobalLocation(c.module, index)
+	if !ok || typ != wasm.I32 || !mutable {
 		return fmt.Errorf("arm32: unsupported global.set %d", index)
 	}
 	value := c.materialize(c.pop())
 	base := c.alloc()
-	c.must(c.a.Ldr(base, armContextReg, embedded32.ContextGlobalsBaseOffset), "global base")
-	offset := uint64(slot) * 4
+	contextOffset := uint16(embedded32.ContextGlobalsBaseOffset)
+	if imported {
+		contextOffset = embedded32.ContextImportedGlobalsBaseOffset
+	}
+	c.must(c.a.Ldr(base, armContextReg, contextOffset), "global base")
+	offset := uint64(target) * 4
+	if imported {
+		if offset <= 4095 {
+			c.must(c.a.Ldr(base, base, uint16(offset)), "imported global cell")
+		} else {
+			c.must(c.a.MovImm32(a32.R12, uint32(offset)), "imported global offset")
+			c.must(c.a.Add(base, base, a32.R12), "imported global address")
+			c.must(c.a.Ldr(base, base, 0), "imported global cell")
+			c.must(c.a.MovImm32(a32.R12, 0), "restore zero register")
+		}
+		offset = 0
+	}
 	if offset <= 4095 {
 		c.must(c.a.Str(value, base, uint16(offset)), "global.set")
 	} else {

@@ -118,6 +118,7 @@ type MixedOp struct {
 	MemoryOffset uint32
 	Lane         uint32
 	HasMemory    bool
+	Imported     bool
 }
 
 type MixedValue struct {
@@ -159,7 +160,7 @@ func MixedValueSlots(typ wasm.ValType) (uint8, bool) {
 }
 
 type MixedSignatureResolver func(uint32) (*wasm.CompType, bool)
-type MixedGlobalResolver func(uint32) (wasm.ValType, bool, uint32, bool)
+type MixedGlobalResolver func(uint32) (wasm.ValType, bool, uint32, bool, bool)
 type MixedBlockResolver func(uint32) (*wasm.CompType, bool)
 type MixedTableResolver func(uint32) (wasm.ValType, bool)
 
@@ -1017,7 +1018,7 @@ func BuildMixedPlanWithModuleResolvers(ft *wasm.CompType, locals []wasm.LocalRun
 			if resolveGlobal == nil {
 				return nil, fmt.Errorf("mixed global operation requires module globals")
 			}
-			typ, mutable, slot, ok := resolveGlobal(index)
+			typ, mutable, slot, imported, ok := resolveGlobal(index)
 			if !ok {
 				return nil, fmt.Errorf("mixed global index %d is invalid", index)
 			}
@@ -1030,7 +1031,7 @@ func BuildMixedPlanWithModuleResolvers(ft *wasm.CompType, locals []wasm.LocalRun
 				if err != nil {
 					return nil, err
 				}
-				p.Ops = append(p.Ops, MixedOp{Kind: MixedGlobalGet, Dst: out.Slot, Target: slot, Width: width})
+				p.Ops = append(p.Ops, MixedOp{Kind: MixedGlobalGet, Dst: out.Slot, Target: slot, Width: width, Imported: imported})
 			} else {
 				if !mutable {
 					return nil, fmt.Errorf("mixed global %d is immutable", index)
@@ -1039,7 +1040,7 @@ func BuildMixedPlanWithModuleResolvers(ft *wasm.CompType, locals []wasm.LocalRun
 				if err != nil {
 					return nil, err
 				}
-				p.Ops = append(p.Ops, MixedOp{Kind: MixedGlobalSet, Left: value.Slot, Target: slot, Width: width})
+				p.Ops = append(p.Ops, MixedOp{Kind: MixedGlobalSet, Left: value.Slot, Target: slot, Width: width, Imported: imported})
 			}
 		case 0x25, 0x26: // table.get/set
 			index, err := r.U32()

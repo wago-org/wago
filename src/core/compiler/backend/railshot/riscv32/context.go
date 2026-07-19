@@ -157,16 +157,27 @@ func (c *compiler) call(target int) error {
 }
 
 func (c *compiler) globalGet(index uint32) error {
-	if c.module == nil || uint64(index) >= uint64(len(c.module.Globals)) || c.module.Globals[index].Type.Type != wasm.I32 {
-		return fmt.Errorf("riscv32: unsupported global.get %d", index)
-	}
-	slot, ok := shared.EmbeddedGlobalSlot(c.module, index)
-	if !ok {
+	typ, _, target, imported, ok := shared.EmbeddedGlobalLocation(c.module, index)
+	if !ok || typ != wasm.I32 {
 		return fmt.Errorf("riscv32: unsupported global.get %d", index)
 	}
 	base, dst := c.alloc(), c.alloc()
-	c.a.Lw(base, rvContextReg, embedded32.ContextGlobalsBaseOffset)
-	offset := uint64(slot) * 4
+	contextOffset := int32(embedded32.ContextGlobalsBaseOffset)
+	if imported {
+		contextOffset = embedded32.ContextImportedGlobalsBaseOffset
+	}
+	c.a.Lw(base, rvContextReg, contextOffset)
+	offset := uint64(target) * 4
+	if imported {
+		if offset <= 2047 {
+			c.a.Lw(base, base, int32(offset))
+		} else {
+			c.a.MovImm32(rv.T6, uint32(offset))
+			c.a.Add(base, base, rv.T6)
+			c.a.Lw(base, base, 0)
+		}
+		offset = 0
+	}
 	if offset <= 2047 {
 		c.a.Lw(dst, base, int32(offset))
 	} else {
@@ -180,17 +191,28 @@ func (c *compiler) globalGet(index uint32) error {
 }
 
 func (c *compiler) globalSet(index uint32) error {
-	if c.module == nil || uint64(index) >= uint64(len(c.module.Globals)) || c.module.Globals[index].Type.Type != wasm.I32 || !c.module.Globals[index].Type.Mutable {
-		return fmt.Errorf("riscv32: unsupported global.set %d", index)
-	}
-	slot, ok := shared.EmbeddedGlobalSlot(c.module, index)
-	if !ok {
+	typ, mutable, target, imported, ok := shared.EmbeddedGlobalLocation(c.module, index)
+	if !ok || typ != wasm.I32 || !mutable {
 		return fmt.Errorf("riscv32: unsupported global.set %d", index)
 	}
 	value := c.materialize(c.pop())
 	base := c.alloc()
-	c.a.Lw(base, rvContextReg, embedded32.ContextGlobalsBaseOffset)
-	offset := uint64(slot) * 4
+	contextOffset := int32(embedded32.ContextGlobalsBaseOffset)
+	if imported {
+		contextOffset = embedded32.ContextImportedGlobalsBaseOffset
+	}
+	c.a.Lw(base, rvContextReg, contextOffset)
+	offset := uint64(target) * 4
+	if imported {
+		if offset <= 2047 {
+			c.a.Lw(base, base, int32(offset))
+		} else {
+			c.a.MovImm32(rv.T6, uint32(offset))
+			c.a.Add(base, base, rv.T6)
+			c.a.Lw(base, base, 0)
+		}
+		offset = 0
+	}
 	if offset <= 2047 {
 		c.a.Sw(value, base, int32(offset))
 	} else {

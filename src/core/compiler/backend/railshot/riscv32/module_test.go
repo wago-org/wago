@@ -2008,6 +2008,85 @@ func TestCompileModuleBulkMemoryFromMixedFunctionUnderQEMU(t *testing.T) {
 	runRV32Exit(t, qemu, append(a.B, fn...), 42)
 }
 
+func riscv32ImportedGlobalModule(t *testing.T) *wasm.Module {
+	t.Helper()
+	m, err := wasm.DecodeModule(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I64}),
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(2, wasmtest.Vec(
+			wasmtest.GlobalImportEntry("env", "base", wasm.I64, false),
+			wasmtest.GlobalImportEntry("env", "wide", wasm.I64, true),
+			wasmtest.GlobalImportEntry("env", "word", wasm.I32, true),
+		)),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0}, []byte{1})),
+		wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.I64, false, []byte{0x23, 0, 0x0b}))),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x23, 1, 0x42, 2, 0x7c, 0x24, 1, 0x23, 3, 0x23, 1, 0x7c, 0x0b}),
+			wasmtest.Code([]byte{0x23, 2, 0x41, 1, 0x6a, 0x24, 2, 0x23, 2, 0x0b}),
+		)),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+func TestCompileModuleAccessesImportedGlobalsUnderQEMU(t *testing.T) {
+	qemu, err := exec.LookPath("qemu-riscv32")
+	if err != nil {
+		t.Skip("qemu-riscv32 not installed")
+	}
+	cm, err := CompileModule(riscv32ImportedGlobalModule(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cm.ImportedGlobals) != 3 || len(cm.Globals) != 1 || !cm.Globals[0].HasInitGlobal || cm.Globals[0].InitGlobal != 0 {
+		t.Fatalf("imported=%+v globals=%+v", cm.ImportedGlobals, cm.Globals)
+	}
+	localCells := make([]uint32, 2)
+	if err := cm.InstantiateGlobalsWithImports(localCells, [][]uint32{{10, 0}, {30, 0}, {40}}); err != nil || localCells[0] != 10 || localCells[1] != 0 {
+		t.Fatalf("local globals=%v err=%v", localCells, err)
+	}
+	var a rv.Asm
+	rvMemoryContext(&a)
+	a.Addi(rv.T0, rv.SP, 104)
+	a.Sw(rv.T0, rv.SP, 44)
+	a.Addi(rv.T0, rv.SP, 72)
+	a.Sw(rv.T0, rv.SP, 64)
+	a.Addi(rv.T0, rv.SP, 84)
+	a.Sw(rv.T0, rv.SP, 72)
+	a.Addi(rv.T0, rv.SP, 92)
+	a.Sw(rv.T0, rv.SP, 76)
+	a.Addi(rv.T0, rv.SP, 100)
+	a.Sw(rv.T0, rv.SP, 80)
+	a.MovImm32(rv.T0, 10)
+	a.Sw(rv.T0, rv.SP, 84)
+	a.Sw(rv.Zero, rv.SP, 88)
+	a.MovImm32(rv.T0, 30)
+	a.Sw(rv.T0, rv.SP, 92)
+	a.Sw(rv.Zero, rv.SP, 96)
+	a.MovImm32(rv.T0, 40)
+	a.Sw(rv.T0, rv.SP, 100)
+	a.MovImm32(rv.T0, localCells[0])
+	a.Sw(rv.T0, rv.SP, 104)
+	a.MovImm32(rv.T0, localCells[1])
+	a.Sw(rv.T0, rv.SP, 108)
+	a.Addi(rv.A0, rv.SP, 16)
+	a.MovReg(rv.X23, rv.A0)
+	first := a.Jal(rv.RA)
+	a.MovReg(rv.S0, rv.A0)
+	second := a.Jal(rv.RA)
+	a.Add(rv.A0, rv.A0, rv.S0)
+	a.MovImm32(rv.A7, 93)
+	a.Ecall()
+	if !a.PatchJAL21(first, len(a.B)+cm.Entry[0]) || !a.PatchJAL21(second, len(a.B)+cm.Entry[1]) {
+		t.Fatal("wrapper call relocation")
+	}
+	runRV32Exit(t, qemu, append(a.B, cm.Code...), 83)
+}
+
 func riscv32ImportedMemoryModule(t *testing.T) *wasm.Module {
 	t.Helper()
 	memoryImport := append(wasmtest.Name("env"), wasmtest.Name("memory")...)
