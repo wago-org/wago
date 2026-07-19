@@ -13,6 +13,9 @@ import (
 )
 
 func TestHelperThunkValidation(t *testing.T) {
+	if code, err := CompileF32HelperThunk(embedded32.F32Add); err != nil || len(code) != 16 {
+		t.Fatalf("f32 thunk len=%d err=%v", len(code), err)
+	}
 	if code, err := CompileF64HelperThunk(embedded32.F64Add); err != nil || len(code) != 16 {
 		t.Fatalf("f64 thunk len=%d err=%v", len(code), err)
 	}

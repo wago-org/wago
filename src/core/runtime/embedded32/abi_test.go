@@ -11,6 +11,11 @@ func TestStableHelperFrameLayouts(t *testing.T) {
 		t.Fatalf("DataSegmentABI layout base=%d length=%d dropped=%d size=%d", unsafe.Offsetof(d.Base), unsafe.Offsetof(d.Length), unsafe.Offsetof(d.Dropped), unsafe.Sizeof(d))
 	}
 
+	var f32 F32Frame
+	if unsafe.Offsetof(f32.Op) != F32FrameOpOffset || unsafe.Offsetof(f32.ALo) != F32FrameALoOffset || unsafe.Offsetof(f32.AHi) != F32FrameAHiOffset || unsafe.Offsetof(f32.BLo) != F32FrameBLoOffset || unsafe.Offsetof(f32.BHi) != F32FrameBHiOffset || unsafe.Offsetof(f32.OutLo) != F32FrameOutLoOffset || unsafe.Offsetof(f32.OutHi) != F32FrameOutHiOffset || unsafe.Offsetof(f32.Trap) != F32FrameTrapOffset || unsafe.Sizeof(f32) != F32FrameBytes {
+		t.Fatalf("F32Frame layout size=%d", unsafe.Sizeof(f32))
+	}
+
 	var i I64Frame
 	checks := []struct {
 		name      string

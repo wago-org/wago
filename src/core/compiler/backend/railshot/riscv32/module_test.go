@@ -86,6 +86,9 @@ func TestCompileModuleLaysOutMixedWidthFunctions(t *testing.T) {
 	meta := cm.Functions[1]
 	fn := cm.Code[meta.Offset : meta.Offset+meta.Size]
 	var wrapper rv.Asm
+	rvMemoryContext(&wrapper)
+	wrapper.Addi(rv.A0, rv.SP, 16)
+	wrapper.MovReg(rv.X23, rv.A0)
 	call := wrapper.Jal(rv.RA)
 	wrapper.MovImm32(rv.A7, 93)
 	wrapper.Ecall()
@@ -1075,6 +1078,80 @@ func TestCompileModuleDispatchesSIMDMemoryHelperUnderQEMU(t *testing.T) {
 	image = append(image, helper.B...)
 	var table [embedded32.HelperTableBytes]byte
 	binary.LittleEndian.PutUint32(table[embedded32.HelperSIMDOffset:], base+uint32(helperOff))
+	image = append(image, table[:]...)
+	runRV32Exit(t, qemu, image, 42)
+}
+
+func riscv32MixedF32HelperModule(t *testing.T) *wasm.Module {
+	t.Helper()
+	body := []byte{1, 1, 0x7e,
+		0x43, 20, 0, 0, 0,
+		0x43, 22, 0, 0, 0,
+		0x92, 0x0b}
+	code := append(wasmtest.ULEB(uint32(len(body))), body...)
+	m, err := wasm.DecodeModule(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.F32}))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0})),
+		wasmtest.Section(10, wasmtest.Vec(code)),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+func TestCompileModuleDispatchesF32HelperFromMixedFunctionUnderQEMU(t *testing.T) {
+	qemu, err := exec.LookPath("qemu-riscv32")
+	if err != nil {
+		t.Skip("qemu-riscv32 not installed")
+	}
+	cm, err := CompileModule(riscv32MixedF32HelperModule(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var helper rv.Asm
+	helper.Lw(rv.T0, rv.A0, embedded32.F32FrameALoOffset)
+	helper.Lw(rv.T1, rv.A0, embedded32.F32FrameBLoOffset)
+	helper.Add(rv.T0, rv.T0, rv.T1)
+	helper.Sw(rv.T0, rv.A0, embedded32.F32FrameOutLoOffset)
+	helper.Sw(rv.Zero, rv.A0, embedded32.F32FrameOutHiOffset)
+	helper.Sw(rv.Zero, rv.A0, embedded32.F32FrameTrapOffset)
+	helper.Ret()
+	buildWrapper := func(table uint32) rv.Asm {
+		var a rv.Asm
+		rvMemoryContext(&a)
+		a.Addi(rv.T0, rv.SP, 84)
+		a.Sw(rv.T0, rv.SP, 24)
+		a.Sw(rv.Zero, rv.SP, 84)
+		a.MovImm32(rv.T0, table)
+		a.Sw(rv.T0, rv.SP, 32)
+		a.Addi(rv.A0, rv.SP, 16)
+		a.MovReg(rv.X23, rv.A0)
+		call := a.Jal(rv.RA)
+		a.MovImm32(rv.A7, 93)
+		a.Ecall()
+		if !a.PatchJAL21(call, len(a.B)+cm.Entry[0]) {
+			t.Fatal("wrapper call relocation")
+		}
+		return a
+	}
+	const base = uint32(0x10000)
+	wrapper := buildWrapper(base)
+	for {
+		helperOff := len(wrapper.B) + len(cm.Code)
+		tableOff := helperOff + len(helper.B)
+		next := buildWrapper(base + uint32(tableOff))
+		if len(next.B) == len(wrapper.B) {
+			wrapper = next
+			break
+		}
+		wrapper = next
+	}
+	helperOff := len(wrapper.B) + len(cm.Code)
+	image := append(wrapper.B, cm.Code...)
+	image = append(image, helper.B...)
+	var table [embedded32.HelperTableBytes]byte
+	binary.LittleEndian.PutUint32(table[embedded32.HelperF32Offset:], base+uint32(helperOff))
 	image = append(image, table[:]...)
 	runRV32Exit(t, qemu, image, 42)
 }

@@ -56,31 +56,11 @@ func compileModuleFunction(m *wasm.Module, ft *wasm.CompType, locals []wasm.Loca
 	if homogeneousFunction(ft, locals, wasm.I32, true) {
 		return nil, nil, fmt.Errorf("internal i32 module compiler dispatch")
 	}
-	if homogeneousFunction(ft, locals, wasm.F32, false) {
-		code, err := CompileF32BitFunction(len(ft.Params), body)
-		return code, nil, err
-	}
-	if homogeneousFunction(ft, locals, wasm.I64, false) {
-		code, err := CompileI64Function(len(ft.Params), body)
-		return code, nil, err
-	}
-	if homogeneousFunction(ft, locals, wasm.F64, false) {
-		code, err := CompileF64BitFunction(len(ft.Params), body)
-		return code, nil, err
-	}
-	if homogeneousFunction(ft, locals, wasm.V128, false) {
-		code, err := CompileV128Function(len(ft.Params), body)
-		return code, nil, err
-	}
 	return compileMixedModuleFunction(m, ft, locals, body)
 }
 
 func usesMixedModuleCompiler(ft *wasm.CompType, locals []wasm.LocalRun) bool {
-	return !homogeneousFunction(ft, locals, wasm.I32, true) &&
-		!homogeneousFunction(ft, locals, wasm.F32, false) &&
-		!homogeneousFunction(ft, locals, wasm.I64, false) &&
-		!homogeneousFunction(ft, locals, wasm.F64, false) &&
-		!homogeneousFunction(ft, locals, wasm.V128, false)
+	return !homogeneousFunction(ft, locals, wasm.I32, true)
 }
 
 func homogeneousFunction(ft *wasm.CompType, locals []wasm.LocalRun, typ wasm.ValType, allowVoid bool) bool {

@@ -10,10 +10,17 @@ import (
 // Helper thunk ABI:
 //
 //	A0 = pointer to the fixed helper frame
-//	A1 = pointer to the two-entry helper table
+//	A1 = pointer to the fixed helper table
 //
 // The thunk writes its operation id, loads the target function, and tail-calls
 // it so the caller's RA is preserved without a native stack frame.
+func CompileF32HelperThunk(op embedded32.F32Op) ([]byte, error) {
+	if !embedded32.F32HelperValid(op) {
+		return nil, fmt.Errorf("riscv32: invalid f32 helper opcode %d", op)
+	}
+	return compileHelperThunk(uint32(op), embedded32.HelperF32Offset), nil
+}
+
 func CompileF64HelperThunk(op embedded32.F64Op) ([]byte, error) {
 	if !embedded32.F64HelperValid(op) {
 		return nil, fmt.Errorf("riscv32: invalid f64 helper opcode %d", op)

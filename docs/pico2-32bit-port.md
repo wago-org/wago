@@ -130,9 +130,9 @@ The initial foundation contains:
 
 The architecture-neutral `src/core/runtime/embedded32` helper ABI now adds:
 
-- allocation-free scalar f64 arithmetic, rounding, square root, comparisons,
-  deterministic min/max, integer/float conversion, trapping truncation, and
-  saturating truncation over little-endian 32-bit slots; and
+- allocation-free scalar f32 and f64 arithmetic, rounding, square root,
+  comparisons, deterministic min/max, integer/float conversion, trapping
+  truncation, and saturating truncation over little-endian 32-bit slots; and
 - a complete 256-op SIMD helper registry exactly matching the decoder, including
   constants, shuffle, lane-immediate operations, every SIMD memory form,
   deterministic relaxed projections, and complete-width store preflight.
@@ -141,8 +141,8 @@ The architecture-neutral `src/core/runtime/embedded32` helper ABI now adds:
   size or register pressure.
 
 The helper ABI uses fixed 32-bit layouts independent of host pointer alignment.
-Its three-slot table contains scalar-f64, SIMD, and scalar-i64 entries. Normal
-mixed module functions now construct and dispatch both scalar f64 and i64 helper
+Its four-slot table contains scalar-f64, SIMD, scalar-i64, and scalar-f32
+entries. Normal mixed module functions construct and dispatch all four helper
 frames through this table, with canonical trap publication and atomic result
 reloads. The
 i64 frame covers shifts, rotates, bit counts, `eqz`, every signed/unsigned
@@ -154,11 +154,12 @@ exercise target helper dispatch, while architecture-neutral tests cover the full
 i64 semantic frame. The helper package builds and tests with standard Go and
 TinyGo.
 
-Both compiler packages now also consume real Wasm function bodies for direct
-wide-value execution beachheads. Homogeneous f32 functions have a raw-bit
-baseline for constants, locals, `abs`, `neg`, `copysign`, `nop`, and `drop` by
-translation to the qualified one-word integer allocator; unsupported arithmetic
-still rejects explicitly pending helper integration:
+Both compiler packages also retain standalone direct function beachheads.
+Standalone homogeneous f32 functions have a raw-bit baseline for constants,
+locals, `abs`, `neg`, `copysign`, `nop`, and `drop`. Module compilation routes
+all non-i32 signatures through the context-aware mixed planner, so homogeneous
+f32/f64/i64/v128 module functions use the same complete frame and helper ABI as
+genuinely mixed functions:
 
 - `i64.const` plus modular add/sub/multiply and bitwise operations over atomic
   two-GPR values;
@@ -177,9 +178,9 @@ remainder result for `min / -1`, and write distinct canonical divide-by-zero and
 signed-overflow traps. Normal function lowering still needs to reserve the
 context register and route the trapping opcodes through these thunks. Mixed module functions now construct the stable 32-byte f64 helper frame in
 their bounded native frame, dispatch through `ContextABI.HelperTable`, publish
-helper traps, and reload complete results. This path covers f64 rounding, square
-root, arithmetic, min/max, comparisons, i32/i64 conversion, promotion from f32,
-trapping truncation, and saturating truncation; bitwise f64 operations remain
+helper traps, and reload complete results. This path covers f32/f64 rounding, square root, arithmetic, min/max,
+comparisons, i32/i64 conversion, f32/f64 promotion/demotion, trapping truncation,
+and saturating truncation; bitwise floating-point operations remain
 direct. Mixed i64 helper dispatch covers shifts, rotates, bit counts, eqz and
 all comparisons, division/remainder traps, i32 extension, and sign extensions;
 add/sub/multiply/logic stay direct. Normal mixed functions now also construct the

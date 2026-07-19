@@ -92,6 +92,10 @@ func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc) ([]byte, erro
 			if helperBytes < embedded32.F64FrameBytes {
 				helperBytes = embedded32.F64FrameBytes
 			}
+		case shared.MixedF32Helper:
+			if helperBytes < embedded32.F32FrameBytes {
+				helperBytes = embedded32.F32FrameBytes
+			}
 		case shared.MixedI64Helper:
 			if helperBytes < embedded32.I64FrameBytes {
 				helperBytes = embedded32.I64FrameBytes
@@ -458,6 +462,39 @@ func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc) ([]byte, erro
 			for i := uint8(0); i < op.Width; i++ {
 				must(a.Lw(rv.T0, rv.SP, helperBase+resultOffset+int32(i)*4), "i64 helper result load")
 				must(a.Sw(rv.T0, rv.SP, off(op.Dst)+int32(i)*4), "i64 helper result store")
+			}
+		case shared.MixedF32Helper:
+			a.MovImm32(rv.T0, op.HelperOp)
+			must(a.Sw(rv.T0, rv.SP, helperBase+embedded32.F32FrameOpOffset), "f32 helper op store")
+			for i := uint8(0); i < op.InputWidth; i++ {
+				must(a.Lw(rv.T0, rv.SP, off(op.Left)+int32(i)*4), "f32 helper left load")
+				must(a.Sw(rv.T0, rv.SP, helperBase+embedded32.F32FrameALoOffset+int32(i)*4), "f32 helper left store")
+			}
+			if op.InputWidth == 1 {
+				must(a.Sw(rv.Zero, rv.SP, helperBase+embedded32.F32FrameAHiOffset), "f32 helper input high store")
+			}
+			if op.Arity == 2 {
+				must(a.Lw(rv.T0, rv.SP, off(op.Right)), "f32 helper right load")
+				must(a.Sw(rv.T0, rv.SP, helperBase+embedded32.F32FrameBLoOffset), "f32 helper right store")
+			}
+			must(a.Addi(rv.A0, rv.SP, helperBase), "f32 helper frame address")
+			must(a.Lw(rv.A1, rvContextReg, embedded32.ContextHelperTableOffset), "f32 helper table")
+			must(a.Lw(rv.T0, rv.A1, embedded32.HelperF32Offset), "f32 helper target")
+			a.Blr(rv.T0)
+			must(a.Lw(rv.T0, rv.SP, helperBase+embedded32.F32FrameTrapOffset), "f32 helper trap")
+			helperOK := a.FarBcond(rv.T0, rv.Zero, rv.CondEQ, branchScratch)
+			must(a.Lw(rv.T1, rvContextReg, embedded32.ContextTrapCellOffset), "f32 helper trap cell")
+			must(a.Sw(rv.T0, rv.T1, 0), "f32 helper trap publish")
+			must(a.Lw(rv.RA, rv.SP, saveOffset), "f32 helper trap return address restore")
+			must(a.Addi(rv.SP, rv.SP, frame), "f32 helper trap frame release")
+			a.MovImm32(rv.A0, 0)
+			a.Ret()
+			if !a.PatchFarBranch(helperOK, a.Len()) {
+				return nil, fmt.Errorf("riscv32: f32 helper trap branch out of range")
+			}
+			for i := uint8(0); i < op.Width; i++ {
+				must(a.Lw(rv.T0, rv.SP, helperBase+embedded32.F32FrameOutLoOffset+int32(i)*4), "f32 helper result load")
+				must(a.Sw(rv.T0, rv.SP, off(op.Dst)+int32(i)*4), "f32 helper result store")
 			}
 		case shared.MixedF64Helper:
 			a.MovImm32(rv.T0, op.HelperOp)

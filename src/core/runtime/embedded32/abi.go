@@ -8,7 +8,8 @@ const (
 	HelperF64Offset  = 0
 	HelperSIMDOffset = 4
 	HelperI64Offset  = 8
-	HelperTableBytes = 12
+	HelperF32Offset  = 12
+	HelperTableBytes = 16
 )
 
 // Stable F64Frame byte offsets used by generated code. F64Frame intentionally
@@ -36,6 +37,16 @@ const (
 	I64FrameI32OutOffset = 28
 	I64FrameTrapOffset   = 32
 	I64FrameBytes        = 36
+
+	F32FrameOpOffset    = 0
+	F32FrameALoOffset   = 4
+	F32FrameAHiOffset   = 8
+	F32FrameBLoOffset   = 12
+	F32FrameBHiOffset   = 16
+	F32FrameOutLoOffset = 20
+	F32FrameOutHiOffset = 24
+	F32FrameTrapOffset  = 28
+	F32FrameBytes       = 32
 
 	F64FrameOpOffset    = 0
 	F64FrameALoOffset   = 4

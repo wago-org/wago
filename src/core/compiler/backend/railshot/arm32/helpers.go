@@ -10,10 +10,17 @@ import (
 // Helper thunk ABI:
 //
 //	R0 = pointer to the fixed helper frame
-//	R1 = pointer to the two-entry helper table
+//	R1 = pointer to the fixed helper table
 //
 // The helper pointer stored by the board runtime must carry the Thumb state bit.
 // The thunk tail-calls it so the caller's LR survives without a native frame.
+func CompileF32HelperThunk(op embedded32.F32Op) ([]byte, error) {
+	if !embedded32.F32HelperValid(op) {
+		return nil, fmt.Errorf("arm32: invalid f32 helper opcode %d", op)
+	}
+	return compileHelperThunk(uint32(op), embedded32.HelperF32Offset), nil
+}
+
 func CompileF64HelperThunk(op embedded32.F64Op) ([]byte, error) {
 	if !embedded32.F64HelperValid(op) {
 		return nil, fmt.Errorf("arm32: invalid f64 helper opcode %d", op)
