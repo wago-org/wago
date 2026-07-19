@@ -139,10 +139,14 @@ SIMD min-operation arity reduced it to 3. Context-switching imported start
 thunks and separating declared table maxima from bounded backing capacity then
 left only the guard-page stress module's intentionally huge live local frame,
 while preserving identical target decisions and zero malformed/invalid
-admissions. Multi-table must move into the gate for full
-Release 2 parity; only the five multi-memory modules remain an intentional
-language-feature exclusion. Execution assertions still require the firmware or
-QEMU module runner.
+admissions. Indexed table resolution, directory-based get/set/size/grow/fill/
+copy/init, and nonzero-table indirect calls then moved all 85 multi-table
+modules into the gate. The current admission run covers 3,853 modules with only
+five multi-memory exclusions and one explicit resource rejection for the 8.4
+KiB live-local guard-page stress function. Multi-table firmware layout and
+cross-module funcref identity still have to match this code-admission surface
+before execution qualification. Execution assertions still require the firmware
+or QEMU module runner.
 
 ## Current implementation status
 

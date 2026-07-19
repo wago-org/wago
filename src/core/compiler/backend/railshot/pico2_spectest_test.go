@@ -108,7 +108,7 @@ func TestPico2Release2CompileAdmission(t *testing.T) {
 }
 
 func pico2OutsideCompletionGate(module *wasm.Module) bool {
-	if module == nil || module.MemCount() > 1 || module.TableCount() > 1 || len(module.Tags) != 0 || len(module.StringRefs) != 0 {
+	if module == nil || module.MemCount() > 1 || len(module.Tags) != 0 || len(module.StringRefs) != 0 {
 		return true
 	}
 	for i := range module.Imports {
@@ -143,7 +143,6 @@ func TestPico2OutsideCompletionGate(t *testing.T) {
 	}
 	cases := []*wasm.Module{
 		{Memories: []wasm.MemType{{}, {}}},
-		{Tables: []wasm.Table{{}, {}}},
 		{Memories: []wasm.MemType{{Shared: true}}},
 		{Memories: []wasm.MemType{{Limits: wasm.Limits{Addr64: true}}}},
 		{Tags: []wasm.TagType{{}}},

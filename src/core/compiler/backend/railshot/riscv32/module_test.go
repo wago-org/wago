@@ -71,6 +71,22 @@ func TestCompileModuleAdmitsF64AndV128Functions(t *testing.T) {
 	}
 }
 
+func TestCompileModuleAdmitsIndexedTables(t *testing.T) {
+	table := []byte{0x70, 0, 1}
+	m, err := wasm.DecodeModule(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0})),
+		wasmtest.Section(4, wasmtest.Vec(table, table)),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0xfc, 0x10, 1, 0x0b}))),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := CompileModule(m); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestCompileModuleAdmitsImportedStart(t *testing.T) {
 	functionImport := append(wasmtest.Name("m"), wasmtest.Name("start")...)
 	functionImport = append(functionImport, byte(wasm.ExternFunc), 0)

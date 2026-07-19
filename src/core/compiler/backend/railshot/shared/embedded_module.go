@@ -74,6 +74,7 @@ const (
 
 type EmbeddedElementSegment struct {
 	Mode            EmbeddedElementMode
+	Table           uint32
 	Reference       wasm.RefType
 	Offset          uint32
 	HasOffsetGlobal bool
@@ -373,7 +374,7 @@ func CompileEmbeddedModule(m *wasm.Module, opts EmbeddedModuleOptions, target st
 			return nil, fmt.Errorf("%s: import %d kind %d is not supported", target, i, m.Imports[i].Type.Kind)
 		}
 	}
-	if importedTables+len(m.Tables) > 1 || importedMemories+len(m.Memories) > 1 || len(m.Tags) != 0 || len(m.StringRefs) != 0 {
+	if importedMemories+len(m.Memories) > 1 || len(m.Tags) != 0 || len(m.StringRefs) != 0 {
 		return nil, fmt.Errorf("%s: module contains unsupported runtime state", target)
 	}
 	imports, err := embeddedImports(m, target)
@@ -699,16 +700,22 @@ func embeddedFunctionSignatures(m *wasm.Module, ids []uint32) ([]EmbeddedFunctio
 }
 
 func EmbeddedTableValueType(m *wasm.Module, index uint32) (wasm.ValType, bool) {
-	if m == nil || index != 0 {
+	if m == nil {
 		return wasm.ValType{}, false
 	}
+	var ordinal uint32
 	for i := range m.Imports {
-		if m.Imports[i].Type.Kind == wasm.ExternTable {
+		if m.Imports[i].Type.Kind != wasm.ExternTable {
+			continue
+		}
+		if ordinal == index {
 			return embeddedReferenceValueType(m.Imports[i].Type.Table.Ref)
 		}
+		ordinal++
 	}
-	if len(m.Tables) == 1 {
-		return embeddedReferenceValueType(m.Tables[0].Type.Ref)
+	local := uint64(index) - uint64(ordinal)
+	if uint64(index) >= uint64(ordinal) && local < uint64(len(m.Tables)) {
+		return embeddedReferenceValueType(m.Tables[local].Type.Ref)
 	}
 	return wasm.ValType{}, false
 }
@@ -728,6 +735,39 @@ func embeddedReferenceValueType(ref wasm.RefType) (wasm.ValType, bool) {
 }
 
 func embeddedTable(m *wasm.Module, target string) (*EmbeddedTable, error) {
+	const maxTableSlots = uint64(^uint32(0) / 4)
+	validateTable := func(index uint32, typ wasm.TableType, init *wasm.Expr) error {
+		if _, ok := embeddedReferenceValueType(typ.Ref); !ok {
+			return fmt.Errorf("%s: table %d type %s is not supported", target, index, typ.Ref)
+		}
+		if typ.Limits.Addr64 || typ.Limits.Min > maxTableSlots {
+			return fmt.Errorf("%s: table %d limits exceed the addressable 32-bit slot range", target, index)
+		}
+		if typ.Limits.Max != nil && *typ.Limits.Max > uint64(^uint32(0)) {
+			return fmt.Errorf("%s: table %d maximum exceeds the memory32 index range", target, index)
+		}
+		if init != nil {
+			return fmt.Errorf("%s: table %d initializer expressions are not supported", target, index)
+		}
+		return nil
+	}
+	var tableIndex uint32
+	for i := range m.Imports {
+		if m.Imports[i].Type.Kind != wasm.ExternTable {
+			continue
+		}
+		if err := validateTable(tableIndex, m.Imports[i].Type.Table, nil); err != nil {
+			return nil, err
+		}
+		tableIndex++
+	}
+	for i := range m.Tables {
+		if err := validateTable(tableIndex, m.Tables[i].Type, m.Tables[i].Init); err != nil {
+			return nil, err
+		}
+		tableIndex++
+	}
+
 	var tableType *wasm.TableType
 	var tableInit *wasm.Expr
 	imported := false
@@ -738,25 +778,16 @@ func embeddedTable(m *wasm.Module, target string) (*EmbeddedTable, error) {
 			break
 		}
 	}
-	if len(m.Tables) != 0 {
+	if tableType == nil && len(m.Tables) != 0 {
 		tableType = &m.Tables[0].Type
 		tableInit = m.Tables[0].Init
 	}
 	if tableType == nil && len(m.Elements) == 0 {
 		return nil, nil
 	}
-	var tableValueType wasm.ValType
 	if tableType == nil {
 		tableType = &wasm.TableType{Ref: wasm.FuncRef.Ref}
-		tableValueType = wasm.FuncRef
-	} else {
-		var ok bool
-		tableValueType, ok = embeddedReferenceValueType(tableType.Ref)
-		if !ok {
-			return nil, fmt.Errorf("%s: table type %s is not supported", target, tableType.Ref)
-		}
 	}
-	const maxTableSlots = uint64(^uint32(0) / 4)
 	if tableType.Limits.Addr64 || tableType.Limits.Min > maxTableSlots {
 		return nil, fmt.Errorf("%s: table limits exceed the addressable 32-bit slot range", target)
 	}
@@ -779,8 +810,8 @@ func embeddedTable(m *wasm.Module, target string) (*EmbeddedTable, error) {
 		var hasOffsetGlobal bool
 		switch elem.Mode.Kind {
 		case wasm.ElemActive:
-			if elem.Mode.Table != 0 {
-				return nil, fmt.Errorf("%s: element segment %d targets unsupported table", target, i)
+			if uint64(elem.Mode.Table) >= uint64(m.TableCount()) {
+				return nil, fmt.Errorf("%s: element segment %d targets unavailable table %d", target, i, elem.Mode.Table)
 			}
 			var err error
 			offset, offsetGlobal, hasOffsetGlobal, err = embeddedI32Offset(m, elem.Mode.Offset)
@@ -807,8 +838,11 @@ func embeddedTable(m *wasm.Module, target string) (*EmbeddedTable, error) {
 		default:
 			return nil, fmt.Errorf("%s: element segment %d kind is not supported", target, i)
 		}
-		if mode == EmbeddedElementActive && tableValueType != valueType {
-			return nil, fmt.Errorf("%s: element segment %d type does not match table", target, i)
+		if mode == EmbeddedElementActive {
+			targetType, ok := EmbeddedTableValueType(m, uint32(elem.Mode.Table))
+			if !ok || targetType != valueType {
+				return nil, fmt.Errorf("%s: element segment %d type does not match table", target, i)
+			}
 		}
 		values := make([]uint32, 0)
 		if elem.Kind.Kind == wasm.ElemFuncs {
@@ -835,7 +869,7 @@ func embeddedTable(m *wasm.Module, target string) (*EmbeddedTable, error) {
 				values[j] = value
 			}
 		}
-		segment := EmbeddedElementSegment{Mode: mode, Reference: reference, Offset: offset, HasOffsetGlobal: hasOffsetGlobal, OffsetGlobal: offsetGlobal, Values: values}
+		segment := EmbeddedElementSegment{Mode: mode, Table: uint32(elem.Mode.Table), Reference: reference, Offset: offset, HasOffsetGlobal: hasOffsetGlobal, OffsetGlobal: offsetGlobal, Values: values}
 		out.Elements = append(out.Elements, segment)
 	}
 	return out, nil
