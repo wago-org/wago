@@ -166,6 +166,41 @@ func TestBuildEmbeddedLinkedFirmwareImagePublishesSharedMemoryContext(t *testing
 	}
 }
 
+func TestBuildEmbeddedLinkedFirmwareImageAppliesActiveImportedData(t *testing.T) {
+	provider := embeddedFirmwareMemoryProvider(t)
+	memoryImport := append(wasmtest.Name("provider"), wasmtest.Name("memory")...)
+	memoryImport = append(memoryImport, 2, 1, 1, 2)
+	consumer := compileEmbeddedLinkTestModule(t, wasmtest.Module(
+		wasmtest.Section(2, wasmtest.Vec(memoryImport)),
+		wasmtest.Section(11, wasmtest.Vec([]byte{0, 0x41, 1, 0x0b, 2, 0xaa, 0xbb})),
+	))
+	plan, err := ResolveEmbeddedLinks([]EmbeddedNamedModule{{Name: "provider", Module: provider}, {Name: "consumer", Module: consumer}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	opts := linkedFirmwareTestOptions(2)
+	opts.Modules[0].MemoryCapacity = 2 * embedded32.WasmPageSize
+	size, err := EmbeddedLinkedFirmwareImageSize(plan, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	image, err := BuildEmbeddedLinkedFirmwareImage(make([]byte, size), plan, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	providerImage := image.Modules[0].Image
+	consumerImage := image.Modules[1].Image
+	memoryOffset := providerImage.MemoryAddress - image.BaseAddress
+	if got := image.Bytes[memoryOffset+1 : memoryOffset+3]; got[0] != 0xaa || got[1] != 0xbb {
+		t.Fatalf("active data=%x", got)
+	}
+	descriptorAddress := binary.LittleEndian.Uint32(image.Bytes[consumerImage.ContextAddress-image.BaseAddress+embedded32.ContextDataSegmentsBaseOffset:])
+	dropped := binary.LittleEndian.Uint32(image.Bytes[descriptorAddress-image.BaseAddress+embedded32.DataSegmentDroppedOffset:])
+	if dropped != 1 {
+		t.Fatalf("active descriptor dropped=%d", dropped)
+	}
+}
+
 func TestBuildEmbeddedLinkedFirmwareImagePreflightsCapacity(t *testing.T) {
 	provider := embeddedFirmwareLinkProvider(t)
 	consumer := embeddedFirmwareLinkConsumer(t)

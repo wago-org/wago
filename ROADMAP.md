@@ -161,8 +161,9 @@ codegen rationale is **[OPTIMIZATIONS.md](OPTIMIZATIONS.md)**. Summary of the tw
   export execution; fixed-capacity embedded resources; and a bounded
   closed-module firmware-image builder plus an allocation-free framed transport
   endpoint, strict import/export contract resolution, and context-aware
-  function/global/memory firmware bundles. Shared imported-table storage and
-  linked active-data initialization, RP2350 SDK I/O/low-level generated-entry invocation, official module-suite execution, and Pico 2 qualification remain
+  function/global/memory firmware bundles with transactional linked active data.
+  Cross-module funcref descriptors for imported-table bundles, RP2350 SDK
+  I/O/low-level generated-entry invocation, official module-suite execution, and Pico 2 qualification remain
   before public admission (see
   `docs/pico2-32bit-port.md`).
 - [ ] wazero-compatible API shim for drop-in migration

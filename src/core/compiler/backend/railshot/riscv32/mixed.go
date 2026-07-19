@@ -23,7 +23,7 @@ func CompileMixedModuleFunction(ft *wasm.CompType, locals []wasm.LocalRun, body 
 	if err != nil {
 		return nil, err
 	}
-	return emitMixedPlan(plan, nil, false)
+	return emitMixedPlan(plan, nil, false, false)
 }
 
 func compileMixedModuleFunction(m *wasm.Module, ft *wasm.CompType, locals []wasm.LocalRun, body []byte) ([]byte, []callReloc, error) {
@@ -80,11 +80,11 @@ func compileMixedModuleFunction(m *wasm.Module, ft *wasm.CompType, locals []wasm
 		op.Target = localTarget
 	}
 	var relocs []callReloc
-	code, err := emitMixedPlan(plan, &relocs, m.ImportedMemCount() != 0)
+	code, err := emitMixedPlan(plan, &relocs, m.ImportedMemCount() != 0, m.ImportedTableCount() != 0)
 	return code, relocs, err
 }
 
-func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc, memoryImported bool) ([]byte, error) {
+func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc, memoryImported, tableImported bool) ([]byte, error) {
 	maxOutgoingSlots := uint16(0)
 	for _, op := range plan.Ops {
 		if op.Kind != shared.MixedCall && op.Kind != shared.MixedCallImport && op.Kind != shared.MixedCallIndirect {
@@ -179,6 +179,13 @@ func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc, memoryImporte
 			base = scratch
 		}
 		must(a.Sw(src, base, offset), what)
+	}
+	loadTableStorage := func(dst rv.Reg, what string) {
+		offset := int32(embedded32.ContextTableOffset)
+		if tableImported {
+			offset = embedded32.ContextTableStorageOffset
+		}
+		must(a.Lw(dst, rvContextReg, offset), what)
 	}
 
 	must(a.Addi(rv.SP, rv.SP, -frame), "frame allocate")
@@ -1066,7 +1073,7 @@ func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc, memoryImporte
 				return nil, fmt.Errorf("riscv32: mixed table index %d is not supported", op.Target)
 			}
 			must(a.Lw(rv.T0, rv.SP, off(op.Left)), "table element index")
-			must(a.Lw(rv.T1, rvContextReg, embedded32.ContextTableOffset), "table descriptor")
+			loadTableStorage(rv.T1, "table descriptor")
 			must(a.Lw(rv.T2, rv.T1, embedded32.TableABILengthOffset), "table length")
 			outOfBounds := a.FarBcond(rv.T0, rv.T2, rv.CondGEU, branchScratch)
 			must(a.Lw(rv.T2, rv.T1, embedded32.TableABIEntriesBaseOffset), "table entries")
@@ -1096,11 +1103,12 @@ func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc, memoryImporte
 			must(a.Lw(rv.T0, rv.SP, off(op.Left)), "table.init destination")
 			must(a.Lw(rv.T1, rv.SP, off(op.Right)), "table.init source offset")
 			must(a.Lw(rv.T2, rv.SP, off(op.Third)), "table.init count")
-			must(a.Lw(rv.T3, rvContextReg, embedded32.ContextTableOffset), "table.init table descriptor")
+			loadTableStorage(rv.T3, "table.init table descriptor")
 			must(a.Lw(rv.T4, rv.T3, embedded32.TableABILengthOffset), "table.init table length")
 			traps := []int{a.FarBcond(rv.T4, rv.T2, rv.CondLTU, branchScratch)}
 			a.Sub(rv.T4, rv.T4, rv.T2)
 			traps = append(traps, a.FarBcond(rv.T4, rv.T0, rv.CondLTU, branchScratch))
+			must(a.Lw(rv.T3, rvContextReg, embedded32.ContextTableOffset), "table.init module descriptor")
 			must(a.Lw(rv.T3, rv.T3, embedded32.TableABIElementSegmentsBaseOffset), "table.init element descriptor base")
 			a.MovImm32(rv.T6, op.Target*embedded32.DataSegmentABIBytes)
 			a.Add(rv.T3, rv.T3, rv.T6)
@@ -1120,7 +1128,7 @@ func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc, memoryImporte
 			must(a.Lw(rv.T3, rv.T3, embedded32.DataSegmentBaseOffset), "table.init payload base")
 			a.Slli(rv.T4, rv.T1, 2)
 			a.Add(rv.T3, rv.T3, rv.T4)
-			must(a.Lw(rv.T5, rvContextReg, embedded32.ContextTableOffset), "table.init table descriptor restore")
+			loadTableStorage(rv.T5, "table.init table descriptor restore")
 			must(a.Lw(rv.T5, rv.T5, embedded32.TableABIEntriesBaseOffset), "table.init entries")
 			a.Slli(rv.T4, rv.T0, 2)
 			a.Add(rv.T5, rv.T5, rv.T4)
@@ -1157,14 +1165,14 @@ func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc, memoryImporte
 			if op.Target != 0 {
 				return nil, fmt.Errorf("riscv32: mixed table.size index %d is not supported", op.Target)
 			}
-			must(a.Lw(rv.T0, rvContextReg, embedded32.ContextTableOffset), "table.size descriptor")
+			loadTableStorage(rv.T0, "table.size descriptor")
 			must(a.Lw(rv.T0, rv.T0, embedded32.TableABILengthOffset), "table.size length")
 			must(a.Sw(rv.T0, rv.SP, off(op.Dst)), "table.size result")
 		case shared.MixedTableGrow:
 			if op.Target != 0 {
 				return nil, fmt.Errorf("riscv32: mixed table.grow index %d is not supported", op.Target)
 			}
-			must(a.Lw(rv.T0, rvContextReg, embedded32.ContextTableOffset), "table.grow descriptor")
+			loadTableStorage(rv.T0, "table.grow descriptor")
 			must(a.Lw(rv.T1, rv.T0, embedded32.TableABILengthOffset), "table.grow old length")
 			must(a.Lw(rv.T2, rv.SP, off(op.Right)), "table.grow delta")
 			a.Add(rv.T2, rv.T1, rv.T2)
@@ -1185,7 +1193,7 @@ func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc, memoryImporte
 			if !a.PatchJAL21(back, loop) || !a.PatchBranch13(filled, a.Len()) {
 				return nil, fmt.Errorf("riscv32: mixed table.grow fill branch out of range")
 			}
-			must(a.Lw(rv.T0, rvContextReg, embedded32.ContextTableOffset), "table.grow descriptor restore")
+			loadTableStorage(rv.T0, "table.grow descriptor restore")
 			must(a.Sw(rv.T2, rv.T0, embedded32.TableABILengthOffset), "table.grow publish length")
 			done := a.FarJump(rv.Zero, branchScratch)
 			fail := a.Len()
@@ -1207,7 +1215,7 @@ func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc, memoryImporte
 			must(a.Lw(rv.T0, rv.SP, off(op.Left)), "table.fill destination")
 			must(a.Lw(rv.T1, rv.SP, off(op.Right)), "table.fill value")
 			must(a.Lw(rv.T2, rv.SP, off(op.Third)), "table.fill count")
-			must(a.Lw(rv.T3, rvContextReg, embedded32.ContextTableOffset), "table.fill descriptor")
+			loadTableStorage(rv.T3, "table.fill descriptor")
 			must(a.Lw(rv.T4, rv.T3, embedded32.TableABILengthOffset), "table.fill length")
 			traps := []int{a.FarBcond(rv.T4, rv.T2, rv.CondLTU, branchScratch)}
 			a.Sub(rv.T4, rv.T4, rv.T2)
@@ -1242,13 +1250,13 @@ func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc, memoryImporte
 			must(a.Lw(rv.T0, rv.SP, off(op.Left)), "table.copy destination")
 			must(a.Lw(rv.T1, rv.SP, off(op.Right)), "table.copy source")
 			must(a.Lw(rv.T2, rv.SP, off(op.Third)), "table.copy count")
-			must(a.Lw(rv.T3, rvContextReg, embedded32.ContextTableOffset), "table.copy descriptor")
+			loadTableStorage(rv.T3, "table.copy descriptor")
 			must(a.Lw(rv.T3, rv.T3, embedded32.TableABILengthOffset), "table.copy length")
 			traps := []int{a.FarBcond(rv.T3, rv.T2, rv.CondLTU, branchScratch)}
 			a.Sub(rv.T3, rv.T3, rv.T2)
 			traps = append(traps, a.FarBcond(rv.T3, rv.T0, rv.CondLTU, branchScratch))
 			traps = append(traps, a.FarBcond(rv.T3, rv.T1, rv.CondLTU, branchScratch))
-			must(a.Lw(rv.T3, rvContextReg, embedded32.ContextTableOffset), "table.copy descriptor restore")
+			loadTableStorage(rv.T3, "table.copy descriptor restore")
 			must(a.Lw(rv.T3, rv.T3, embedded32.TableABIEntriesBaseOffset), "table.copy entries")
 			a.Slli(rv.T4, rv.T0, 2)
 			a.Add(rv.T0, rv.T3, rv.T4)
@@ -1340,7 +1348,7 @@ func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc, memoryImporte
 				must(a.Lw(rvContextReg, rv.T0, embedded32.ImportFunctionContextOffset), "callee context")
 			} else if op.Kind == shared.MixedCallIndirect {
 				must(a.Lw(rv.T0, rv.SP, off(op.Third)), "indirect table index")
-				must(a.Lw(rv.T3, rvContextReg, embedded32.ContextTableOffset), "indirect table descriptor")
+				loadTableStorage(rv.T3, "indirect table descriptor")
 				must(a.Lw(rv.T1, rv.T3, embedded32.TableABILengthOffset), "indirect table length")
 				outOfBounds := a.FarBcond(rv.T0, rv.T1, rv.CondGEU, branchScratch)
 				must(a.Lw(rv.T1, rv.T3, embedded32.TableABIEntriesBaseOffset), "indirect table entries")

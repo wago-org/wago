@@ -74,6 +74,13 @@ func BuildEmbeddedLinkedFirmwareImage(dst []byte, plan *EmbeddedLinkPlan, opts E
 		}
 		out.Modules[i] = EmbeddedLinkedFirmwareModule{Name: plan.Modules[i].Name, Image: image}
 	}
+	readAddress := func(address uint32) (uint32, error) {
+		if address < opts.BaseAddress || uint64(address-opts.BaseAddress)+4 > uint64(len(out.Bytes)) {
+			return 0, fmt.Errorf("embedded32: linked target address %#x is outside the image", address)
+		}
+		offset := address - opts.BaseAddress
+		return binary.LittleEndian.Uint32(out.Bytes[offset : offset+4]), nil
+	}
 	putAddress := func(address, value uint32) error {
 		if address < opts.BaseAddress || uint64(address-opts.BaseAddress)+4 > uint64(len(out.Bytes)) {
 			return fmt.Errorf("embedded32: linked target address %#x is outside the image", address)
@@ -120,6 +127,39 @@ func BuildEmbeddedLinkedFirmwareImage(dst []byte, plan *EmbeddedLinkPlan, opts E
 			}
 			if err := putAddress(image.ContextAddress+embedded32.ContextLinearMemoryContextOffset, memoryContext); err != nil {
 				return nil, err
+			}
+			memoryBase, err := readAddress(memoryContext + embedded32.ContextLinearMemoryBaseOffset)
+			if err != nil {
+				return nil, err
+			}
+			memoryLength, err := readAddress(memoryContext + embedded32.ContextLinearMemoryLengthOffset)
+			if err != nil {
+				return nil, err
+			}
+			descriptors, err := readAddress(image.ContextAddress + embedded32.ContextDataSegmentsBaseOffset)
+			if err != nil {
+				return nil, err
+			}
+			for segmentIndex := range module.Data {
+				segment := &module.Data[segmentIndex]
+				if segment.Passive {
+					continue
+				}
+				if uint64(segment.Offset)+uint64(len(segment.Bytes)) > uint64(memoryLength) {
+					return nil, fmt.Errorf("embedded32: module %q active data segment %d exceeds linked memory", plan.Modules[consumerIndex].Name, segmentIndex)
+				}
+				if memoryBase < opts.BaseAddress {
+					return nil, fmt.Errorf("embedded32: module %q linked memory is outside the image", plan.Modules[consumerIndex].Name)
+				}
+				start := uint64(memoryBase-opts.BaseAddress) + uint64(segment.Offset)
+				end := start + uint64(len(segment.Bytes))
+				if end > uint64(len(out.Bytes)) {
+					return nil, fmt.Errorf("embedded32: module %q active data segment %d targets memory outside the image", plan.Modules[consumerIndex].Name, segmentIndex)
+				}
+				copy(out.Bytes[start:end], segment.Bytes)
+				if err := putAddress(descriptors+uint32(segmentIndex)*embedded32.DataSegmentABIBytes+embedded32.DataSegmentDroppedOffset, 1); err != nil {
+					return nil, err
+				}
 			}
 		}
 		if len(module.ImportedGlobals) != 0 {
@@ -172,9 +212,20 @@ func embeddedLinkedFirmwarePlan(plan *EmbeddedLinkPlan, opts EmbeddedLinkedFirmw
 			return nil, fmt.Errorf("embedded32: linked module %d is nil", i)
 		}
 		if module.MemoryImported {
+			importIndex, ok := embeddedImportIndex(module, wasm.ExternMem, 0)
+			if !ok {
+				return nil, fmt.Errorf("embedded32: module %q memory import is unavailable", plan.Modules[i].Name)
+			}
+			providerIndex, err := resolveLinkedMemoryModule(plan, binding, i, importIndex, make(map[[2]int]bool))
+			if err != nil {
+				return nil, err
+			}
+			providerMemory := plan.Modules[providerIndex].Module.Memory
+			initialBytes := uint64(providerMemory.Minimum) * uint64(embedded32.WasmPageSize)
 			for j := range module.Data {
-				if !module.Data[j].Passive {
-					return nil, fmt.Errorf("embedded32: module %q has active data for imported memory; linked active initialization is not implemented", plan.Modules[i].Name)
+				segment := &module.Data[j]
+				if !segment.Passive && uint64(segment.Offset)+uint64(len(segment.Bytes)) > initialBytes {
+					return nil, fmt.Errorf("embedded32: module %q active data segment %d exceeds linked initial memory", plan.Modules[i].Name, j)
 				}
 			}
 		}
@@ -202,6 +253,12 @@ func embeddedLinkedFirmwarePlan(plan *EmbeddedLinkPlan, opts EmbeddedLinkedFirmw
 		clone.MemoryImported = false
 		if module.MemoryImported {
 			clone.Memory = nil
+			clone.Data = append([]EmbeddedDataSegment(nil), module.Data...)
+			for j := range clone.Data {
+				if !clone.Data[j].Passive {
+					clone.Data[j].Passive = true
+				}
+			}
 		}
 		clone.Globals = append([]EmbeddedGlobal(nil), module.Globals...)
 		for j := range clone.Globals {
@@ -411,6 +468,32 @@ func resolveLinkedFunction(plan *EmbeddedLinkPlan, layout *embeddedLinkedFirmwar
 		}
 	}
 	return 0, 0, fmt.Errorf("embedded32: provider function %d has no local entry", export.Index)
+}
+
+func resolveLinkedMemoryModule(plan *EmbeddedLinkPlan, binding map[[2]int]EmbeddedLinkBinding, consumer, importIndex int, visiting map[[2]int]bool) (int, error) {
+	key := [2]int{consumer, importIndex}
+	if visiting[key] {
+		return 0, fmt.Errorf("embedded32: cyclic memory re-export at module %q import %d", plan.Modules[consumer].Name, importIndex)
+	}
+	visiting[key] = true
+	defer delete(visiting, key)
+	item, ok := binding[key]
+	if !ok {
+		return 0, fmt.Errorf("embedded32: unbound memory import at module %q import %d", plan.Modules[consumer].Name, importIndex)
+	}
+	provider := plan.Modules[item.ProviderModule].Module
+	export := provider.Exports[item.ExportIndex]
+	if export.Index != 0 || provider.Memory == nil {
+		return 0, fmt.Errorf("embedded32: provider memory %d is unavailable", export.Index)
+	}
+	if provider.Memory.Imported {
+		providerImport, ok := embeddedImportIndex(provider, wasm.ExternMem, 0)
+		if !ok {
+			return 0, fmt.Errorf("embedded32: provider memory import is unavailable")
+		}
+		return resolveLinkedMemoryModule(plan, binding, item.ProviderModule, providerImport, visiting)
+	}
+	return item.ProviderModule, nil
 }
 
 func resolveLinkedMemoryContext(plan *EmbeddedLinkPlan, layout *embeddedLinkedFirmwareLayout, image *EmbeddedLinkedFirmwareImage, consumer, importIndex int, visiting map[[2]int]bool) (uint32, error) {
