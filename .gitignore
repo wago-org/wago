@@ -19,6 +19,9 @@ wago-runtime-minimal-tiny
 # Editor / OS
 .DS_Store
 
+# Local performance lab notebooks, profiles, and raw benchmark captures.
+.perf/
+
 # Locally-generated benchmark charts (published to the wago-org/docs repo)
 bench/charts/
 
