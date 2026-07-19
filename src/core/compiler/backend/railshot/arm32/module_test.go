@@ -71,6 +71,21 @@ func TestCompileModuleAdmitsF64AndV128Functions(t *testing.T) {
 	}
 }
 
+func TestCompileModuleUsesMixedPlannerForI32Signatures(t *testing.T) {
+	m, err := wasm.DecodeModule(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0})),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0, 1})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x41, 0, 0x31, 0, 0, 0xa7, 0x0b}))),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := CompileModule(m); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestCompileModuleLaysOutMixedWidthFunctions(t *testing.T) {
 	cm, err := CompileModule(arm32MixedWidthModule(t))
 	if err != nil {

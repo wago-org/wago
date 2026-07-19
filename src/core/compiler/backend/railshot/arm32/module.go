@@ -31,20 +31,15 @@ func CompileModule(m *wasm.Module) (*CompiledModule, error) {
 	return CompileModuleWith(m, ModuleCompileOptions{})
 }
 
-// CompileModuleWith compiles the strict currently admitted i32/control subset
-// into one 16-byte-aligned Thumb-2 image. Unsupported module state and target-
-// incompatible signatures are rejected before any image is returned.
+// CompileModuleWith compiles the strict embedded profile through the mixed-width
+// planner into one 16-byte-aligned Thumb-2 image. Unsupported module state and
+// target-incompatible signatures are rejected before any image is returned.
 func CompileModuleWith(m *wasm.Module, opts ModuleCompileOptions) (*CompiledModule, error) {
 	if m == nil {
 		return nil, fmt.Errorf("arm32: nil module")
 	}
 	relocs := make([][]callReloc, len(m.Code))
 	cm, err := shared.CompileEmbeddedModule(m, opts, "arm32", 32, []byte{0x00, 0xbf}, func(funcIdx int, ft *wasm.CompType, locals []wasm.LocalRun, body []byte) ([]byte, error) {
-		if homogeneousFunction(ft, locals, wasm.I32, true) {
-			code, r, err := compileModuleBeachhead(m, funcIdx, len(ft.Params), body)
-			relocs[funcIdx] = r
-			return code, err
-		}
 		code, r, err := compileModuleFunction(m, ft, locals, body)
 		relocs[funcIdx] = r
 		return code, err
@@ -171,14 +166,11 @@ func CompileModuleWith(m *wasm.Module, opts ModuleCompileOptions) (*CompiledModu
 }
 
 func compileModuleFunction(m *wasm.Module, ft *wasm.CompType, locals []wasm.LocalRun, body []byte) ([]byte, []callReloc, error) {
-	if homogeneousFunction(ft, locals, wasm.I32, true) {
-		return nil, nil, fmt.Errorf("internal i32 module compiler dispatch")
-	}
 	return compileMixedModuleFunction(m, ft, locals, body)
 }
 
-func usesMixedModuleCompiler(ft *wasm.CompType, locals []wasm.LocalRun) bool {
-	return !homogeneousFunction(ft, locals, wasm.I32, true)
+func usesMixedModuleCompiler(_ *wasm.CompType, _ []wasm.LocalRun) bool {
+	return true
 }
 
 func homogeneousFunction(ft *wasm.CompType, locals []wasm.LocalRun, typ wasm.ValType, allowVoid bool) bool {

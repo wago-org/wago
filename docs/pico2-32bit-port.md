@@ -117,12 +117,22 @@ requires board evidence and explicit documentation of the embedded runtime's
 memory and security model.
 
 `TestPico2Release2CompileAdmission` is the opt-in module-level admission gate for
-an external WebAssembly/spec v2.0.0 checkout. It runs `wast2json`, decodes every
+the pinned WebAssembly/spec v2.0.0 checkout. It runs `wast2json`, decodes every
 emitted module, requires Arm32 and RV32 to agree, requires valid in-gate modules
 to compile, requires malformed/invalid modules to reject, and counts only the
 explicit multi-memory/multi-table/threads-memory64/exception/GC boundary as
-outside the completion gate. Execution assertions still require the firmware or
-QEMU module runner.
+outside the completion gate. Module compilation now routes i32-only signatures
+through the same complete mixed-width planner instead of the legacy beachhead.
+
+The first full pinned-corpus run inspected 3,768 in-gate modules and excluded 90
+modules at the explicit boundary. Arm32 and RV32 made identical admission
+decisions and admitted no malformed/invalid module, but 77 valid modules across
+37 of 147 script files were still rejected; 110 script files passed completely.
+The remaining groups are typed dead-control joins/terminal-unreachable handling,
+non-constant imported-global data/element offsets, externref and reference
+initializers, declarative elements without a table, imported start functions,
+one bounded-stack stress module, and target-incompatible maximum capacities.
+Execution assertions still require the firmware or QEMU module runner.
 
 ## Current implementation status
 
