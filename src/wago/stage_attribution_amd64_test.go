@@ -224,6 +224,7 @@ func BenchmarkCore3FrontendStages(b *testing.B) {
 			})
 			b.Run("native-lowering", func(b *testing.B) {
 				b.ReportAllocs()
+				codeBytes := 0
 				for i := 0; i < b.N; i++ {
 					b.StopTimer()
 					m, cfg, _ := decodeValidateCore3Stage(b, fixture, data)
@@ -245,8 +246,10 @@ func BenchmarkCore3FrontendStages(b *testing.B) {
 					if err != nil {
 						b.Fatal(err)
 					}
-					core3StageIntSink = len(cm.Code)
+					codeBytes = len(cm.Code)
+					core3StageIntSink = codeBytes
 				}
+				b.ReportMetric(float64(codeBytes), "code-B")
 			})
 			b.Run("full-compile", func(b *testing.B) {
 				cfg := core3StageConfig(fixture)
