@@ -515,4 +515,8 @@ assembly.
 This is still not public backend admission. Official generated-code
 module-suite qualification, concrete Pico SDK helper bindings/image embedding,
 and physical Cortex-M33 plus Hazard3 qualification remain to be implemented and
-measured.
+measured. The qualification path now has a persistent Arm32/RV32 QEMU process:
+it enters serialized firmware exports repeatedly without resetting module
+state, forwards fixed helper frames to the Go semantic oracle, returns complete
+slot payloads, and suppresses payloads on traps. This is the execution substrate
+for the official script runner rather than another per-op smoke test.
