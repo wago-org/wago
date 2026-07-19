@@ -142,28 +142,28 @@ func minmax32(aBits, bBits uint32, max bool) uint32 {
 func pminmax32(aBits, bBits uint32, max bool) uint32 {
 	a, b := math.Float32frombits(aBits), math.Float32frombits(bBits)
 	if max {
-		if a > b {
-			return aBits
+		if a < b {
+			return bBits
 		}
-		return bBits
-	}
-	if a < b {
 		return aBits
 	}
-	return bBits
+	if b < a {
+		return bBits
+	}
+	return aBits
 }
 func pminmax64(aBits, bBits uint64, max bool) uint64 {
 	a, b := math.Float64frombits(aBits), math.Float64frombits(bBits)
 	if max {
-		if a > b {
-			return aBits
+		if a < b {
+			return bBits
 		}
-		return bBits
-	}
-	if a < b {
 		return aBits
 	}
-	return bBits
+	if b < a {
+		return bBits
+	}
+	return aBits
 }
 
 // SIMDHelperValid mirrors the decoder's complete 256-instruction SIMD and

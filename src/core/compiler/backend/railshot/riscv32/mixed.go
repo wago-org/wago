@@ -1406,6 +1406,10 @@ func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc, memoryImporte
 			} else if relocSink == nil {
 				return nil, fmt.Errorf("riscv32: mixed call has no relocation sink")
 			}
+			if op.Kind == shared.MixedCallImport || op.Kind == shared.MixedCallIndirect {
+				must(a.Lw(rv.T0, rvContextReg, embedded32.ContextTrapCellOffset), "callee trap cell clear")
+				must(a.Sw(rv.Zero, rv.T0, 0), "callee trap clear")
+			}
 			argReg := uint16(0)
 			for _, arg := range op.Args {
 				width, _ := shared.MixedValueSlots(arg.Type)

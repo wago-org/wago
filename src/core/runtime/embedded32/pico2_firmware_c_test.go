@@ -49,6 +49,7 @@ func TestPico2FirmwareCABIConstants(t *testing.T) {
 	checks := []string{
 		"#define WAGO_PICO2_CONTEXT_ABI_BYTES UINT32_C(" + decimal(ContextABISize) + ")",
 		"#define WAGO_PICO2_CALL_ABI_BYTES UINT32_C(" + decimal(CallABIBytes) + ")",
+		"#define WAGO_PICO2_CONTEXT_TRAP_CELL_OFFSET UINT32_C(" + decimal(ContextTrapCellOffset) + ")",
 		"#define WAGO_PICO2_CONTEXT_CANCEL_CELL_OFFSET UINT32_C(" + decimal(ContextCancelCellOffset) + ")",
 	}
 	for _, check := range checks {

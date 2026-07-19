@@ -290,7 +290,10 @@ func (f *F64Frame) truncI32(x float64, signed, saturating bool) {
 		return
 	}
 	if signed {
-		if x < -0x1p31 || x >= 0x1p31 {
+		// Truncation toward zero admits negative fractions down to, but not
+		// including, -2^31-1. Testing x < -2^31 rejects valid values such as
+		// -2147483648.9 before truncation.
+		if x <= -2147483649 || x >= 0x1p31 {
 			f.conversionFail(saturating, true, math.Signbit(x), 32, true)
 			return
 		}

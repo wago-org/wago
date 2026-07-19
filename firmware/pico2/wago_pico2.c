@@ -417,6 +417,8 @@ static wago_pico2_code wago_direct_start(void *user, uint32_t entry, uint32_t co
     (void)user;
 #if UINTPTR_MAX == UINT32_MAX
     typedef uint32_t (*start_function)(uint32_t);
+    uint32_t trap_cell = *(uint32_t *)(uintptr_t)(context + WAGO_PICO2_CONTEXT_TRAP_CELL_OFFSET);
+    *(uint32_t *)(uintptr_t)trap_cell = 0;
     return ((start_function)(uintptr_t)entry)(context);
 #else
     (void)entry;
@@ -434,6 +436,8 @@ static wago_pico2_code wago_direct_call(void *user, uint32_t entry, uint32_t con
 #if UINTPTR_MAX == UINT32_MAX
     typedef uint32_t (*call_function)(const struct wago_pico2_call_abi *);
     struct wago_pico2_call_abi call;
+    uint32_t trap_cell = *(uint32_t *)(uintptr_t)(context + WAGO_PICO2_CONTEXT_TRAP_CELL_OFFSET);
+    *(uint32_t *)(uintptr_t)trap_cell = 0;
     call.context = context;
     call.parameters = (uint32_t)(uintptr_t)parameters;
     call.results = (uint32_t)(uintptr_t)results;

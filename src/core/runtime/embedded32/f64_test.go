@@ -110,6 +110,7 @@ func TestF64ConversionsAndTraps(t *testing.T) {
 		trap   Trap
 	}{
 		{I32TruncF64S, -12.75, 0xfffffff4, 0, TrapNone},
+		{I32TruncF64S, -2147483648.9, 0x80000000, 0, TrapNone},
 		{I32TruncF64U, -0.5, 0, 0, TrapNone},
 		{I64TruncF64S, -1, 0xffffffff, 0xffffffff, TrapNone},
 		{I32TruncF64S, math.NaN(), 0, 0, TrapInvalidConversion},

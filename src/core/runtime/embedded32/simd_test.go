@@ -8,6 +8,24 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
+func TestSIMDPseudoMinMaxPreservesFirstOperandOnUnorderedOrTiedValues(t *testing.T) {
+	if got := pminmax32(0, 0x80000000, false); got != 0 {
+		t.Fatalf("f32 pmin(+0,-0)=%#x", got)
+	}
+	if got := pminmax32(0x80000000, 0, false); got != 0x80000000 {
+		t.Fatalf("f32 pmin(-0,+0)=%#x", got)
+	}
+	if got := pminmax32(0x7fc01234, math.Float32bits(1), true); got != 0x7fc01234 {
+		t.Fatalf("f32 pmax(NaN,1)=%#x", got)
+	}
+	if got := pminmax64(0, 0x8000000000000000, true); got != 0 {
+		t.Fatalf("f64 pmax(+0,-0)=%#x", got)
+	}
+	if got := pminmax64(0x7ff8000000001234, math.Float64bits(1), false); got != 0x7ff8000000001234 {
+		t.Fatalf("f64 pmin(NaN,1)=%#x", got)
+	}
+}
+
 func TestSIMDHelperRegistryAndDispatch(t *testing.T) {
 	count := 0
 	for op := uint32(0); op <= 512; op++ {
