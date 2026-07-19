@@ -2218,6 +2218,29 @@ func refTypeName(rt wasm.RefType) string {
 // substring search, so non-SIMD immediates that happen to contain 0xfd do not
 // make a scalar module non-portable.
 func ModuleRequiresSIMD(m *wasm.Module) bool {
+	if ModuleNonCodeRequiresSIMD(m) {
+		return true
+	}
+	if m == nil {
+		return false
+	}
+	for i := range m.Code {
+		for _, run := range m.Code[i].Locals.Runs {
+			if valTypeRequiresSIMD(run.Type) {
+				return true
+			}
+		}
+		if exprRequiresSIMD(wasm.Expr{Instrs: m.Code[i].Body.Instrs, BodyBytes: m.Code[i].BodyBytes}) {
+			return true
+		}
+	}
+	return false
+}
+
+// ModuleNonCodeRequiresSIMD reports whether declarations or initializer
+// expressions outside the code section require SIMD. Callers that already walk
+// function bodies can use it to avoid a duplicate code-section scan.
+func ModuleNonCodeRequiresSIMD(m *wasm.Module) bool {
 	if m == nil {
 		return false
 	}
@@ -2268,16 +2291,6 @@ func ModuleRequiresSIMD(m *wasm.Module) bool {
 			return true
 		}
 	}
-	for i := range m.Code {
-		for _, run := range m.Code[i].Locals.Runs {
-			if valTypeRequiresSIMD(run.Type) {
-				return true
-			}
-		}
-		if exprRequiresSIMD(wasm.Expr{Instrs: m.Code[i].Body.Instrs, BodyBytes: m.Code[i].BodyBytes}) {
-			return true
-		}
-	}
 	return false
 }
 
@@ -2303,8 +2316,7 @@ func exprRequiresSIMD(e wasm.Expr) bool {
 
 func exprBytesRequireSIMD(body []byte) bool {
 	r := wasm.NewReader(body)
-	p := supportPass{feat: AllFeatures()}
-	for instr := 0; r.HasNext(); instr++ {
+	for r.HasNext() {
 		op, err := r.Byte()
 		if err != nil {
 			return false
@@ -2334,10 +2346,15 @@ func exprBytesRequireSIMD(body []byte) bool {
 				if b == 0x7b {
 					return true
 				}
+				if b == 0x63 || b == 0x64 {
+					if _, err := r.S33(); err != nil {
+						return false
+					}
+				}
 			}
 			continue
 		}
-		if _, err := p.instrByte(r, op, "simd scan", instr); err != nil {
+		if _, err := wasm.ClassifyInstructionImmediate(r, op); err != nil {
 			return false
 		}
 	}

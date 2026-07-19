@@ -14,7 +14,8 @@ func moduleRequiredFeatures(m *wasm.Module) CoreFeatures {
 		return 0
 	}
 	var out CoreFeatures
-	if frontend.ModuleRequiresSIMD(m) {
+	programmaticCode := false
+	if frontend.ModuleNonCodeRequiresSIMD(m) {
 		out |= CoreFeatureSIMD
 	}
 	if m.TagCount() != 0 {
@@ -104,7 +105,14 @@ func moduleRequiredFeatures(m *wasm.Module) CoreFeatures {
 		for _, local := range fn.Locals.Runs {
 			out |= requiredFeaturesForValType(local.Type)
 		}
-		out |= requiredFeaturesForBodyBytes(fn.BodyBytes)
+		if len(fn.BodyBytes) != 0 {
+			out |= requiredFeaturesForBodyBytes(fn.BodyBytes)
+		} else if len(fn.Body.Instrs) != 0 {
+			programmaticCode = true
+		}
+	}
+	if programmaticCode && frontend.ModuleRequiresSIMD(m) {
+		out |= CoreFeatureSIMD
 	}
 	return out
 }
@@ -149,6 +157,9 @@ func requiredFeaturesForBodyBytes(body []byte) CoreFeatures {
 		if err != nil {
 			break
 		}
+		if op == 0xfd {
+			out |= CoreFeatureSIMD
+		}
 		if op == 0x02 || op == 0x03 || op == 0x04 {
 			first, err := r.Byte()
 			if err != nil {
@@ -187,6 +198,29 @@ func requiredFeaturesForBodyBytes(body []byte) CoreFeatures {
 				break
 			}
 			out |= requiredFeaturesForHeapImmediate(heap)
+			continue
+		}
+		if op == 0x1c {
+			n, readErr := r.U32()
+			if readErr != nil {
+				break
+			}
+			for i := uint32(0); i < n; i++ {
+				b, readErr := r.Byte()
+				if readErr != nil {
+					break
+				}
+				if b == 0x7b {
+					out |= CoreFeatureSIMD
+				}
+				if b == 0x63 || b == 0x64 {
+					heap, heapErr := r.S33()
+					if heapErr != nil {
+						break
+					}
+					out |= requiredFeaturesForHeapImmediate(heap)
+				}
+			}
 			continue
 		}
 		imm, err := wasm.ClassifyInstructionImmediate(r, op)
