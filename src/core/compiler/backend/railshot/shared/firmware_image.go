@@ -21,12 +21,13 @@ type EmbeddedFirmwareOptions struct {
 }
 
 type EmbeddedFirmwareExport struct {
-	Name        string
-	Kind        wasm.ExternKind
-	Index       uint32
-	CallAddress uint32
-	ParamSlots  uint16
-	ResultSlots uint16
+	Name           string
+	Kind           wasm.ExternKind
+	Index          uint32
+	CallAddress    uint32
+	ContextAddress uint32
+	ParamSlots     uint16
+	ResultSlots    uint16
 }
 
 type EmbeddedFirmwareImage struct {
@@ -531,7 +532,8 @@ func BuildEmbeddedFirmwareImage(dst []byte, module *EmbeddedModule, opts Embedde
 			if !found {
 				return nil, fmt.Errorf("embedded32: exported function %d has no call entry", export.Index)
 			}
-			image.TransportFunctions[functionOrdinal] = embedded32.FirmwareTransportFunction{Address: out.CallAddress, ParamSlots: out.ParamSlots, ResultSlots: out.ResultSlots}
+			out.ContextAddress = image.ContextAddress
+			image.TransportFunctions[functionOrdinal] = embedded32.FirmwareTransportFunction{Address: out.CallAddress, Context: out.ContextAddress, ParamSlots: out.ParamSlots, ResultSlots: out.ResultSlots}
 			functionOrdinal++
 		}
 		image.Exports[i] = out

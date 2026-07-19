@@ -166,6 +166,40 @@ func TestBuildEmbeddedLinkedFirmwareImagePublishesSharedMemoryContext(t *testing
 	}
 }
 
+func TestEmbeddedLinkedFirmwareImagePublishesImportedFunctionReexports(t *testing.T) {
+	provider := embeddedFirmwareLinkProvider(t)
+	functionImport := append(wasmtest.Name("provider"), wasmtest.Name("f")...)
+	functionImport = append(functionImport, byte(wasm.ExternFunc), 0)
+	reexport := compileEmbeddedLinkTestModule(t, wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(2, wasmtest.Vec(functionImport)),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("forward", byte(wasm.ExternFunc), 0))),
+	))
+	plan, err := ResolveEmbeddedLinks([]EmbeddedNamedModule{{Name: "provider", Module: provider}, {Name: "reexport", Module: reexport}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	opts := linkedFirmwareTestOptions(2)
+	size, err := EmbeddedLinkedFirmwareImageSize(plan, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	image, err := BuildEmbeddedLinkedFirmwareImage(make([]byte, size), plan, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	providerImage := image.Modules[0].Image
+	reexportImage := image.Modules[1].Image
+	if len(reexportImage.Exports) != 1 || len(reexportImage.TransportFunctions) != 1 {
+		t.Fatalf("reexport metadata=%+v transport=%+v", reexportImage.Exports, reexportImage.TransportFunctions)
+	}
+	got := reexportImage.TransportFunctions[0]
+	want := providerImage.TransportFunctions[0]
+	if got != want || got.Context != providerImage.ContextAddress {
+		t.Fatalf("reexport=%+v provider=%+v", got, want)
+	}
+}
+
 func TestEmbeddedLinkedFirmwareImagePublishesCrossModuleFuncrefs(t *testing.T) {
 	provider := compileEmbeddedLinkTestModule(t, wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),

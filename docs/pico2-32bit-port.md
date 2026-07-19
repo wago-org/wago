@@ -462,8 +462,11 @@ context-aware function-import descriptors, points imported-global directories
 at the provider's exact one/two/four-slot cells, evaluates immutable imported
 global initializers through the binding graph, preserves target function-pointer
 encoding, and publishes no addresses until every binding and capacity check
-passes. Generated Arm32/RV32 tests execute calls with a distinct provider
-context, restore consumer globals afterward, and propagate provider traps.
+passes. Imported-function re-exports retain the provider's exported call entry,
+exact slot shape, and owning context, so transport calls do not accidentally
+enter them with the forwarding module's state. Generated Arm32/RV32 tests
+execute calls with a distinct provider context, restore consumer globals
+afterward, and propagate provider traps.
 Imported memory now publishes `ContextABI.LinearMemoryContext`: every scalar,
 SIMD, bulk-memory, size, and grow path reads or updates the provider context's
 shared base/length/maximum fields while retaining the consumer's own trap and

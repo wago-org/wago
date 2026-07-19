@@ -63,10 +63,10 @@ func TestBuildEmbeddedFirmwareImageSerializesClosedModuleState(t *testing.T) {
 	}
 	word := func(offset uint32) uint32 { return binary.LittleEndian.Uint32(image.Bytes[offset : offset+4]) }
 	address := func(offset uint32) uint32 { return opts.BaseAddress + offset }
-	if len(image.TransportFunctions) != 1 || image.TransportFunctions[0] != (embedded32.FirmwareTransportFunction{Address: address(layout.code+4) | 1, ParamSlots: 2, ResultSlots: 1}) {
+	if len(image.TransportFunctions) != 1 || image.TransportFunctions[0] != (embedded32.FirmwareTransportFunction{Address: address(layout.code+4) | 1, Context: image.ContextAddress, ParamSlots: 2, ResultSlots: 1}) {
 		t.Fatalf("transport functions=%+v", image.TransportFunctions)
 	}
-	if image.ContextAddress != address(layout.context) || image.StartAddress != address(layout.code+8)|1 || len(image.Exports) != 2 || image.Exports[0].CallAddress != address(layout.code+4)|1 || image.Exports[0].ParamSlots != 2 || image.Exports[0].ResultSlots != 1 {
+	if image.ContextAddress != address(layout.context) || image.StartAddress != address(layout.code+8)|1 || len(image.Exports) != 2 || image.Exports[0].CallAddress != address(layout.code+4)|1 || image.Exports[0].ContextAddress != image.ContextAddress || image.Exports[0].ParamSlots != 2 || image.Exports[0].ResultSlots != 1 {
 		t.Fatalf("image metadata=%+v", image)
 	}
 	if word(layout.context+embedded32.ContextLinearMemoryBaseOffset) != image.MemoryAddress ||

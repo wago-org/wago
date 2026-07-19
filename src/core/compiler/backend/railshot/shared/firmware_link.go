@@ -79,6 +79,34 @@ func BuildEmbeddedLinkedFirmwareImage(dst []byte, plan *EmbeddedLinkPlan, opts E
 		}
 		out.Modules[i] = EmbeddedLinkedFirmwareModule{Name: plan.Modules[i].Name, Image: image}
 	}
+	for moduleIndex := range plan.Modules {
+		module := plan.Modules[moduleIndex].Module
+		image := out.Modules[moduleIndex].Image
+		functionExports := 0
+		for i := range module.Exports {
+			if module.Exports[i].Kind == wasm.ExternFunc {
+				functionExports++
+			}
+		}
+		image.Exports = make([]EmbeddedFirmwareExport, len(module.Exports))
+		image.TransportFunctions = make([]embedded32.FirmwareTransportFunction, 0, functionExports)
+		for exportIndex := range module.Exports {
+			export := module.Exports[exportIndex]
+			published := EmbeddedFirmwareExport{Name: export.Name, Kind: export.Kind, Index: export.Index}
+			if export.Kind == wasm.ExternFunc {
+				function, err := resolveLinkedFunctionCall(plan, layout, out, moduleIndex, export.Index, make(map[[2]uint32]bool))
+				if err != nil {
+					return nil, err
+				}
+				published.CallAddress = function.Address
+				published.ContextAddress = function.Context
+				published.ParamSlots = function.ParamSlots
+				published.ResultSlots = function.ResultSlots
+				image.TransportFunctions = append(image.TransportFunctions, function)
+			}
+			image.Exports[exportIndex] = published
+		}
+	}
 	readAddress := func(address uint32) (uint32, error) {
 		if address < opts.BaseAddress || uint64(address-opts.BaseAddress)+4 > uint64(len(out.Bytes)) {
 			return 0, fmt.Errorf("embedded32: linked target address %#x is outside the image", address)
@@ -423,13 +451,14 @@ func embeddedLinkedFirmwarePlan(plan *EmbeddedLinkPlan, opts EmbeddedLinkedFirmw
 		if module == nil {
 			return nil, fmt.Errorf("embedded32: linked module %d is nil", i)
 		}
+		clone := *module
+		clone.Exports = make([]EmbeddedExport, 0, len(module.Exports))
 		for j := range module.Exports {
-			export := &module.Exports[j]
-			if export.Kind == wasm.ExternFunc && export.Index < module.ImportedFunctions {
-				return nil, fmt.Errorf("embedded32: module %q re-exports imported function %q; transport entry forwarding is not linked yet", plan.Modules[i].Name, export.Name)
+			export := module.Exports[j]
+			if export.Kind != wasm.ExternFunc || export.Index >= module.ImportedFunctions {
+				clone.Exports = append(clone.Exports, export)
 			}
 		}
-		clone := *module
 		clone.Imports = nil
 		clone.ImportedFunctions = 0
 		clone.ImportedGlobals = nil
@@ -781,6 +810,42 @@ func resolveLinkedFunction(plan *EmbeddedLinkPlan, layout *embeddedLinkedFirmwar
 		}
 	}
 	return 0, 0, fmt.Errorf("embedded32: provider function %d has no local entry", export.Index)
+}
+
+func resolveLinkedFunctionCall(plan *EmbeddedLinkPlan, layout *embeddedLinkedFirmwareLayout, image *EmbeddedLinkedFirmwareImage, moduleIndex int, functionIndex uint32, visiting map[[2]uint32]bool) (embedded32.FirmwareTransportFunction, error) {
+	key := [2]uint32{uint32(moduleIndex), functionIndex}
+	if visiting[key] {
+		return embedded32.FirmwareTransportFunction{}, fmt.Errorf("embedded32: cyclic function re-export at module %q function %d", plan.Modules[moduleIndex].Name, functionIndex)
+	}
+	visiting[key] = true
+	defer delete(visiting, key)
+	module := plan.Modules[moduleIndex].Module
+	if functionIndex < module.ImportedFunctions {
+		importIndex, ok := embeddedImportIndex(module, wasm.ExternFunc, functionIndex)
+		if !ok {
+			return embedded32.FirmwareTransportFunction{}, fmt.Errorf("embedded32: module %q function import %d is unavailable", plan.Modules[moduleIndex].Name, functionIndex)
+		}
+		item, ok := layout.binding[[2]int{moduleIndex, importIndex}]
+		if !ok {
+			return embedded32.FirmwareTransportFunction{}, fmt.Errorf("embedded32: module %q function import %d is unbound", plan.Modules[moduleIndex].Name, functionIndex)
+		}
+		export := plan.Modules[item.ProviderModule].Module.Exports[item.ExportIndex]
+		return resolveLinkedFunctionCall(plan, layout, image, item.ProviderModule, export.Index, visiting)
+	}
+	for i := range module.Functions {
+		function := &module.Functions[i]
+		if function.FuncIndex != functionIndex || !function.HasCallEntry {
+			continue
+		}
+		providerImage := image.Modules[moduleIndex].Image
+		return embedded32.FirmwareTransportFunction{
+			Address:     providerImage.CodeAddress + function.CallOffset | layout.modules[moduleIndex].options.FunctionAddressMask,
+			Context:     providerImage.ContextAddress,
+			ParamSlots:  function.ParamSlots,
+			ResultSlots: function.ResultSlots,
+		}, nil
+	}
+	return embedded32.FirmwareTransportFunction{}, fmt.Errorf("embedded32: module %q function %d has no call entry", plan.Modules[moduleIndex].Name, functionIndex)
 }
 
 func resolveLinkedFunctionID(plan *EmbeddedLinkPlan, layout *embeddedLinkedFirmwareLayout, moduleIndex int, functionIndex uint32, visiting map[[2]uint32]bool) (uint32, error) {

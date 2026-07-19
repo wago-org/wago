@@ -5,6 +5,7 @@ package embedded32
 // state bit on Arm32).
 type FirmwareTransportFunction struct {
 	Address     uint32
+	Context     uint32
 	ParamSlots  uint16
 	ResultSlots uint16
 }
@@ -79,7 +80,11 @@ func (r *FirmwareTransportRunner) Call(exportOrdinal uint32, parameters, results
 	if function.Address == 0 || uint64(function.ParamSlots) != uint64(len(parameters)) || uint64(function.ResultSlots) != uint64(len(results)) {
 		return TransportCodeState
 	}
-	return r.Invoker.Call(function.Address, r.ContextAddress, parameters, results)
+	contextAddress := function.Context
+	if contextAddress == 0 {
+		contextAddress = r.ContextAddress
+	}
+	return r.Invoker.Call(function.Address, contextAddress, parameters, results)
 }
 
 func (r *FirmwareTransportRunner) Cancel() TransportCode {

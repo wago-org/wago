@@ -84,8 +84,12 @@ func TestFirmwareTransportRunnerLifecycle(t *testing.T) {
 		t.Fatalf("start code=%#x invoker=%+v", code, invoker)
 	}
 	results := make([]uint32, 2)
-	if code := runner.Call(0, []uint32{1, 2}, results); code != TransportCodeOK || !slices.Equal(results, []uint32{41, 43}) || invoker.calls != 1 || invoker.lastAddress != runner.Functions[0].Address {
+	if code := runner.Call(0, []uint32{1, 2}, results); code != TransportCodeOK || !slices.Equal(results, []uint32{41, 43}) || invoker.calls != 1 || invoker.lastAddress != runner.Functions[0].Address || invoker.lastContext != runner.ContextAddress {
 		t.Fatalf("call code=%#x results=%v invoker=%+v", code, results, invoker)
+	}
+	runner.Functions[0].Context = 0x20000400
+	if code := runner.Call(0, []uint32{1, 2}, results); code != TransportCodeOK || invoker.lastContext != runner.Functions[0].Context {
+		t.Fatalf("forwarded call code=%#x context=%#x", code, invoker.lastContext)
 	}
 	if code := runner.Cancel(); code != TransportCodeOK || invoker.cancels != 1 {
 		t.Fatalf("cancel code=%#x count=%d", code, invoker.cancels)
