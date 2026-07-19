@@ -128,6 +128,20 @@ func TestReferenceAndTableMetadataScanners(t *testing.T) {
 	}
 }
 
+func TestSIMDByteScannerSkipsNonSIMDImmediatesSemantically(t *testing.T) {
+	v128Const := append([]byte{0xfd, 0x0c}, make([]byte, 16)...)
+	v128Const = append(v128Const, 0x0b)
+	if !exprBytesRequireSIMD(append([]byte{0x10, 0x00}, v128Const...)) {
+		t.Fatal("SIMD after call immediate was missed")
+	}
+	if !exprBytesRequireSIMD(append([]byte{0x1c, 0x01, 0x63, 0x70}, v128Const...)) {
+		t.Fatal("SIMD after typed-reference select immediate was missed")
+	}
+	if exprBytesRequireSIMD([]byte{0x41, 0xfd, 0x00, 0x0b}) {
+		t.Fatal("SIMD byte inside i32.const immediate was misclassified")
+	}
+}
+
 func TestModuleRequiresSIMDScansEveryModuleComponent(t *testing.T) {
 	funcType := wasm.RecType{SubTypes: []wasm.SubType{{Comp: wasm.CompType{Kind: wasm.CompFunc, Params: []wasm.ValType{wasm.V128}}}}}
 	fd := []byte{0xfd, 0x00, 0x0b}
