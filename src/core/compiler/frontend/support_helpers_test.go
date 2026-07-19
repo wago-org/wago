@@ -588,6 +588,15 @@ func TestProgrammaticTableGrowAndConstExpressionSupport(t *testing.T) {
 	}
 }
 
+func TestFunctionAdmissionDiagnostic(t *testing.T) {
+	p := supportPass{m: &wasm.Module{}}
+	if err := p.funcExprBytes([]byte{0xd0, 0x70, 0x0b}, 7); err == nil {
+		t.Fatal("ref.null accepted without reference types")
+	} else if got, want := err.Error(), "unsupported reference instruction RefNull at function 7 instruction 0"; got != want {
+		t.Fatalf("function diagnostic = %q, want %q", got, want)
+	}
+}
+
 func TestDataAdmissionDiagnostic(t *testing.T) {
 	p := supportPass{m: &wasm.Module{Data: []wasm.Data{{Mode: wasm.DataMode{Kind: wasm.DataActive, Mem: 1}}}}}
 	if err := p.data(); err == nil {

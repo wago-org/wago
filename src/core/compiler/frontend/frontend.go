@@ -959,24 +959,37 @@ func (p supportPass) maxLocalFuncSlots() (params, results int) {
 func (p supportPass) funcs() error {
 	importedFuncs := p.m.ImportedFuncCount()
 	for i, fn := range p.m.Code {
-		ctx := "function " + strconv.Itoa(importedFuncs+i)
+		funcIndex := importedFuncs + i
 		for j, run := range fn.Locals.Runs {
 			if p.supportedValType(run.Type) {
 				continue
 			}
-			if err := p.valType(run.Type, fmt.Sprintf("%s local run %d", ctx, j)); err != nil {
+			if err := p.valType(run.Type, fmt.Sprintf("function %d local run %d", funcIndex, j)); err != nil {
 				return err
 			}
 		}
-		body := wasm.Expr{BodyBytes: fn.BodyBytes}
-		if len(fn.BodyBytes) == 0 {
-			body = fn.Body
+		if len(fn.BodyBytes) != 0 {
+			if err := p.funcExprBytes(fn.BodyBytes, funcIndex); err != nil {
+				return err
+			}
+			continue
 		}
-		if err := p.expr(body, ctx); err != nil {
+		if err := p.expr(fn.Body, "function "+strconv.Itoa(funcIndex)); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func (p supportPass) funcExprBytes(body []byte, funcIndex int) error {
+	err := p.exprBytes(body, "")
+	unsupported, ok := err.(*UnsupportedError)
+	if !ok {
+		return err
+	}
+	copy := *unsupported
+	copy.Context = "function " + strconv.Itoa(funcIndex) + copy.Context
+	return &copy
 }
 
 func (p supportPass) expr(e wasm.Expr, context string) error {
