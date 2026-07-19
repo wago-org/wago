@@ -164,8 +164,10 @@ codegen rationale is **[OPTIMIZATIONS.md](OPTIMIZATIONS.md)**. Summary of the tw
   function/global/memory/table firmware bundles with transactional linked active
   data/elements and bundle-wide context-aware funcref identities. A freestanding
   C endpoint now supplies direct generated-entry invocation and the Pico SDK
-  stdio loop. Concrete board helper/image integration, official module-suite
-  execution, and Pico 2 qualification remain
+  stdio loop. Both generated targets pass all 147 pinned WebAssembly 2.0 script
+  files under QEMU (48,238 executed actions/assertions, with one documented
+  bounded-frame resource module). Concrete board helper/image integration,
+  physical Pico 2 qualification, and measured footprint/performance remain
   before public admission (see
   `docs/pico2-32bit-port.md`).
 - [ ] wazero-compatible API shim for drop-in migration

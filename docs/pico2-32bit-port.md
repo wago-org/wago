@@ -155,8 +155,8 @@ and switch module context for indirect calls. Active elements targeting imported
 tables are applied only after complete bundle preflight. Linked-image QEMU tests
 now execute provider-owned table entries under both Arm32 and RV32, verify the
 consumer context is restored, and verify provider traps propagate through the
-consumer trap cell. Full official-script execution still requires the module
-runner.
+consumer trap cell. The persistent module runner now executes the complete
+pinned Release 2 script corpus under both targets.
 
 ## Current implementation status
 
@@ -234,8 +234,9 @@ relaxed-SIMD projections, and every SIMD memory/lane-memory form. Static memory
 offsets are overflow-checked before helper entry; the helper preflights complete
 access widths and publishes canonical traps. Direct integer SWAR operations
 remain inline. All 256 decoder-admitted core and relaxed SIMD instructions are
-therefore represented in normal mixed function lowering, although official
-proposal-suite qualification is still pending.
+therefore represented in normal mixed function lowering. The pinned Release 2
+core SIMD scripts now pass under both generated-code targets; relaxed-SIMD
+proposal qualification remains outside the WebAssembly 2.0 completion gate.
 Measurements decide which helper operations merit direct target-specific
 lowering.
 
@@ -512,11 +513,17 @@ returns the published trap code. This gives firmware a conventional ABI for
 transactional instantiation/start sequencing without target-specific inline
 assembly.
 
-This is still not public backend admission. Official generated-code
-module-suite qualification, concrete Pico SDK helper bindings/image embedding,
-and physical Cortex-M33 plus Hazard3 qualification remain to be implemented and
-measured. The qualification path now has a persistent Arm32/RV32 QEMU process:
-it enters serialized firmware exports repeatedly without resetting module
-state, forwards fixed helper frames to the Go semantic oracle, returns complete
-slot payloads, and suppresses payloads on traps. This is the execution substrate
-for the official script runner rather than another per-op smoke test.
+The official generated-code qualification now passes all 147 pinned Release 2
+script files under both Arm32 and RV32 QEMU. It instantiates 1,633 executable
+module cases and executes 48,238 actions/assertions with identical target
+results; the only bounded gap is the documented 256-slot guard-page stress
+module, whose 10 assertions are classified as a resource limit. The runner
+preserves script module state, resolves registered imports, validates
+runtime-grown memory/table minima, stages observable imported active segments
+in module order, preserves successful segments before later instantiation
+traps, forwards fixed helper frames (including SIMD memory windows) to the Go
+semantic oracle, and checks exact scalar/reference/vector/NaN results and traps.
+
+This is still not public backend admission. Concrete Pico SDK helper bindings
+and image embedding, physical Cortex-M33 plus Hazard3 qualification, and measured
+code-size/SRAM/stack/performance budgets remain to be completed.
