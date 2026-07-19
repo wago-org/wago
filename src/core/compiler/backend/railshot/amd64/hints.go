@@ -427,10 +427,6 @@ func scanBodyBytes(body []byte, nLocals int, nGlobals int, selfIdx uint32) (func
 	return scanBodyBytesMemory64(body, nLocals, nGlobals, selfIdx, false)
 }
 
-func scanBodyBytesInto(body []byte, nLocals int, nGlobals int, selfIdx uint32, h funcHints, elig *globalEligibilityTracker) (funcHints, error) {
-	return scanBodyBytesIntoMemory64(body, nLocals, nGlobals, selfIdx, h, elig, false)
-}
-
 func scanBodyBytesMemory64(body []byte, nLocals int, nGlobals int, selfIdx uint32, memory64 bool) (funcHints, error) {
 	h := newFuncHints(nLocals, nGlobals)
 	elig := newGlobalEligibilityTracker(nGlobals)

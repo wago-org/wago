@@ -157,18 +157,6 @@ func tailResultABICompatible(a, b []wasm.ValType) bool {
 	return true
 }
 
-func sameValTypes(a, b []wasm.ValType) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if !wasm.EqualValType(a[i], b[i]) {
-			return false
-		}
-	}
-	return true
-}
-
 func (f *fn) callOp(r *wasm.Reader) error {
 	idx, err := r.U32()
 	if err != nil {
