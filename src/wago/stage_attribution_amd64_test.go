@@ -97,11 +97,13 @@ func decodeValidateCore3Stage(b *testing.B, fixture core3StageFixture, data []by
 }
 
 var (
-	core3StageFeatureSink  CoreFeatures
-	core3StageIntSink      int
-	core3StageFactsSink    *frontend.ModuleFacts
-	core3StageTypesSink    []DefinedTypeDescriptor
-	core3StageCompiledSink *Compiled
+	core3StageFeatureSink   CoreFeatures
+	core3StageElemStateSink int
+	core3StageDataStateSink int
+	core3StageIntSink       int
+	core3StageFactsSink     *frontend.ModuleFacts
+	core3StageTypesSink     []DefinedTypeDescriptor
+	core3StageCompiledSink  *Compiled
 )
 
 // BenchmarkCore3FrontendStages attributes the repeated frontend/type/codegen
@@ -123,6 +125,19 @@ func BenchmarkCore3FrontendStages(b *testing.B) {
 					reportCore3StageShape(b, data, m)
 					b.StartTimer()
 					core3StageFeatureSink = moduleRequiredFeatures(m)
+				}
+			})
+			b.Run("segment-state-counts", func(b *testing.B) {
+				b.ReportAllocs()
+				for i := 0; i < b.N; i++ {
+					b.StopTimer()
+					m, err := wasm.DecodeModule(data)
+					if err != nil {
+						b.Fatal(err)
+					}
+					reportCore3StageShape(b, data, m)
+					b.StartTimer()
+					core3StageElemStateSink, core3StageDataStateSink = moduleSegmentStateCounts(m)
 				}
 			})
 			b.Run("gc-descriptors", func(b *testing.B) {
