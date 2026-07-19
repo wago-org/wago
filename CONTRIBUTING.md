@@ -141,8 +141,10 @@ go test -bench .
 
 For changes that affect parsing, validation, codegen, instantiation, memory, or
 host-call logging, also test a larger or more adversarial input than the happy
-path fixture. The goal is to catch behavior that is technically correct on small
-modules but falls over with:
+path fixture. Function-worker changes should include `BenchmarkValidateWorkers`
+and/or `BenchmarkCompileFullWorkers` at fixed `GOMAXPROCS`, with serial and
+parallel allocation counts. The goal is to catch behavior that is technically
+correct on small modules but falls over with:
 
 - many functions, locals, params, results, blocks, or table entries
 - large active data or element segments

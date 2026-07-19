@@ -134,18 +134,18 @@ func (m BoundsCheckMode) String() string {
 // config can be shared and specialised safely. wago-specific knobs (e.g.
 // WithBoundsChecks) extend the wazero-style surface.
 type RuntimeConfig struct {
-	features       CoreFeatures
-	maxMemoryPages uint32
-	boundsChecks   BoundsCheckMode
-	noDeferBounds  bool // disable skipping of provably-redundant bounds checks (default: enabled)
-	compileWorkers int  // 0 adaptive; 1 serial; >1 forced maximum
+	features        CoreFeatures
+	maxMemoryPages  uint32
+	boundsChecks    BoundsCheckMode
+	noDeferBounds   bool // disable skipping of provably-redundant bounds checks (default: enabled)
+	functionWorkers int  // function validation/codegen: 0 adaptive; 1 serial; >1 forced maximum
 }
 
 const defaultMaxMemoryPages = 1 << 16 // 4 GiB worth of 64 KiB wasm pages
 
 // NewRuntimeConfig returns the default configuration: wago's supported feature
-// set, serial function compilation, and the fastest available bounds-check mode —
-// signals-based (guard-page) when the binary was built with -tags wago_guardpage,
+// set, serial function validation/codegen, and the fastest available bounds-check
+// mode — signals-based (guard-page) when built with -tags wago_guardpage,
 // explicit otherwise. WAGO_BOUNDS overrides either way ("explicit" / "signals").
 func NewRuntimeConfig() *RuntimeConfig {
 	bounds := BoundsChecksExplicit
@@ -159,10 +159,10 @@ func NewRuntimeConfig() *RuntimeConfig {
 		bounds = BoundsChecksExplicit
 	}
 	return &RuntimeConfig{
-		features:       coreFeaturesWago,
-		maxMemoryPages: defaultMaxMemoryPages,
-		boundsChecks:   bounds,
-		compileWorkers: 1,
+		features:        coreFeaturesWago,
+		maxMemoryPages:  defaultMaxMemoryPages,
+		boundsChecks:    bounds,
+		functionWorkers: 1,
 	}
 }
 
@@ -225,14 +225,20 @@ func (c *RuntimeConfig) WithDeferBoundsChecks(enabled bool) *RuntimeConfig {
 	return &n
 }
 
-// WithCompileWorkers sets the per-module function-codegen policy. Zero selects
-// the measured adaptive policy, one forces the serial fast path, and N > 1
-// forces at most N workers (still capped by GOMAXPROCS and local-function count).
-// Negative values are rejected by Validate.
-func (c *RuntimeConfig) WithCompileWorkers(workers int) *RuntimeConfig {
+// WithFunctionWorkers sets the per-module function validation/codegen policy.
+// Zero selects the measured adaptive policy, one forces the serial fast path,
+// and N > 1 forces at most N workers (still capped by GOMAXPROCS and local-
+// function count). Negative values are rejected by Validate.
+func (c *RuntimeConfig) WithFunctionWorkers(workers int) *RuntimeConfig {
 	n := *c
-	n.compileWorkers = workers
+	n.functionWorkers = workers
 	return &n
+}
+
+// WithCompileWorkers is retained for source compatibility.
+// Deprecated: use WithFunctionWorkers.
+func (c *RuntimeConfig) WithCompileWorkers(workers int) *RuntimeConfig {
+	return c.WithFunctionWorkers(workers)
 }
 
 // CoreFeatures reports the configured feature set.
@@ -248,9 +254,13 @@ func (c *RuntimeConfig) DeferBoundsChecks() bool { return !c.noDeferBounds }
 // MemoryLimitPages reports the configured maximum linear-memory size in pages.
 func (c *RuntimeConfig) MemoryLimitPages() uint32 { return c.maxMemoryPages }
 
-// CompileWorkers reports the configured compile-worker policy: zero adaptive,
-// one serial, or a positive forced maximum.
-func (c *RuntimeConfig) CompileWorkers() int { return c.compileWorkers }
+// FunctionWorkers reports the configured function-pipeline worker policy: zero
+// adaptive, one serial, or a positive forced maximum.
+func (c *RuntimeConfig) FunctionWorkers() int { return c.functionWorkers }
+
+// CompileWorkers is retained for source compatibility.
+// Deprecated: use FunctionWorkers.
+func (c *RuntimeConfig) CompileWorkers() int { return c.FunctionWorkers() }
 
 // Compile decodes, validates, and compiles wasmBytes under this config. On
 // success the returned Compiled owns the byte slice and the caller must not
@@ -272,8 +282,8 @@ func (c *RuntimeConfig) MustCompile(wasmBytes []byte) *Compiled {
 }
 
 func (c *RuntimeConfig) String() string {
-	return fmt.Sprintf("RuntimeConfig{features: %s, bounds: %s, maxMemoryPages: %d, compileWorkers: %d}",
-		c.features, c.boundsChecks, c.maxMemoryPages, c.compileWorkers)
+	return fmt.Sprintf("RuntimeConfig{features: %s, bounds: %s, maxMemoryPages: %d, functionWorkers: %d}",
+		c.features, c.boundsChecks, c.maxMemoryPages, c.functionWorkers)
 }
 
 // SupportedFeatures reports the WebAssembly feature set this wago build can
@@ -344,8 +354,8 @@ func (c *RuntimeConfig) frontendFeatures() frontend.Features {
 // surfacing a bad config early (e.g. at startup). A feature flag is never a
 // silent no-op.
 func (c *RuntimeConfig) Validate() error {
-	if c.compileWorkers < 0 {
-		return fmt.Errorf("wago: compile workers must be non-negative, got %d", c.compileWorkers)
+	if c.functionWorkers < 0 {
+		return fmt.Errorf("wago: function workers must be non-negative, got %d", c.functionWorkers)
 	}
 	if unsupported := c.features &^ coreFeaturesWago; unsupported != 0 {
 		return &UnsupportedFeatureError{Requested: unsupported, Supported: coreFeaturesWago}

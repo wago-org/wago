@@ -18,7 +18,7 @@ func runCommand() *Cmd {
 		{Name: "invoke", Short: "e", Arg: "<name>", Help: "exported function to call"},
 		{Name: "plugin", Arg: "<names>", Help: "comma-separated extra plugins to enable, on top of wago.json (see: wago plugin list)"},
 		{Name: "bounds", Arg: "<mode>", Help: "bounds checks: defer (default) | all"},
-		{Name: "parallel", Short: "p", Arg: "[workers]", Help: "parallel function compilation; omit workers for adaptive mode"},
+		parallelFlag(),
 	}, optKnobFlags()...)
 	return &Cmd{
 		Name:        "run",
@@ -26,24 +26,28 @@ func runCommand() *Cmd {
 		Args:        "<file> [args...]",
 		PassThrough: true,
 		Normalize: func(args []string) ([]string, error) {
-			return normalizeRunParallelArgs(args, flags)
+			return normalizeParallelArgs(args, flags, true)
 		},
 		Flags: flags,
 		Long: "<file> is raw .wasm or a precompiled .wago. Args after the file are typed by the\n" +
 			"signature; override per-arg with a suffix:  42   7:i64   3.5:f64\n" +
-			"Use -p for adaptive compile parallelism, or -p8 / -p 8 / --parallel=8 to\n" +
+			"Use -p for adaptive validation/compile parallelism, or -p8 / -p 8 / --parallel=8 to\n" +
 			"force a worker maximum. Optimization knobs: see `wago opts`.",
 		Run: runExec,
 	}
 }
 
-// normalizeRunParallelArgs accepts the standard separated/equal forms plus the
-// convenient joined form requested by the CLI: -p, -p8, -p 8, -p=8,
-// --parallel, and --parallel=8. Bare -p/--parallel means adaptive mode. Parsing
-// stops at the wasm file so a guest's own -p argument remains untouched. Values
-// belonging to earlier value-taking flags are skipped according to the same Flag
-// table used by parse, so they cannot be mistaken for the file boundary.
-func normalizeRunParallelArgs(args []string, flags []Flag) ([]string, error) {
+func parallelFlag() Flag {
+	return Flag{Name: "parallel", Short: "p", Arg: "[workers]", Help: "parallel function validation and compilation; omit workers for adaptive mode"}
+}
+
+// normalizeParallelArgs accepts -p, -p8, -p 8, -p=8, --parallel, and
+// --parallel=8. Bare -p/--parallel means adaptive mode. Run stops at the first
+// positional so later flags reach the guest; validate scans after its module
+// path because ordinary command flags may follow positionals. A -- terminator
+// always stops normalization. Values belonging to earlier value-taking flags
+// are skipped according to the same Flag table used by parse.
+func normalizeParallelArgs(args []string, flags []Flag, stopAtPositional bool) ([]string, error) {
 	valueFlags := make(map[string]struct{}, len(flags)*2)
 	for _, flag := range flags {
 		if flag.Bool || flag.Name == "parallel" {
@@ -58,9 +62,17 @@ func normalizeRunParallelArgs(args []string, flags []Flag) ([]string, error) {
 	out := make([]string, 0, len(args)+1)
 	for i := 0; i < len(args); i++ {
 		a := args[i]
-		if a == "--" || a == "-" || a == "" || a[0] != '-' {
+		if a == "--" {
 			out = append(out, args[i:]...)
 			return out, nil
+		}
+		if a == "-" || a == "" || a[0] != '-' {
+			out = append(out, a)
+			if stopAtPositional {
+				out = append(out, args[i+1:]...)
+				return out, nil
+			}
+			continue
 		}
 		switch a {
 		case "-p", "--parallel":
@@ -103,18 +115,26 @@ func runConfig(bounds, parallel string) (*wago.RuntimeConfig, error) {
 	default:
 		return nil, fmt.Errorf("unknown --bounds %q (want: defer, all)", bounds)
 	}
+	workers, err := parallelPolicy(parallel)
+	if err != nil {
+		return nil, err
+	}
+	return cfg.WithFunctionWorkers(workers), nil
+}
+
+func parallelPolicy(parallel string) (int, error) {
 	switch parallel {
-	case "": // default remains serial
+	case "":
+		return 1, nil
 	case "auto":
-		cfg = cfg.WithCompileWorkers(0)
+		return 0, nil
 	default:
 		workers, err := strconv.Atoi(parallel)
 		if err != nil || workers < 0 {
-			return nil, fmt.Errorf("invalid parallelism %q (want: -p, or a non-negative worker count)", parallel)
+			return 0, fmt.Errorf("invalid parallelism %q (want: -p, or a non-negative worker count)", parallel)
 		}
-		cfg = cfg.WithCompileWorkers(workers)
+		return workers, nil
 	}
-	return cfg, nil
 }
 
 func runExec(c *Ctx) {

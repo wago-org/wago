@@ -16,6 +16,8 @@ complementary suites live here:
 go test -bench . -benchmem                  # everything, raw numbers
 go test -bench '^BenchmarkCompile$' -benchmem   # one stage across the corpus
 go test -bench 'Decode|Exec' -benchmem      # a couple of stages
+go test -bench '^BenchmarkValidateWorkers' -benchmem  # validation p1/p2/p4/p8 matrix
+go test -bench '^BenchmarkCompileFullWorkers' -benchmem # public pipeline worker matrix
 go test -bench . -benchmem -wago.bench.isa  # include generated ISA micro-suite
 WAGO_BOUNDS=signals go test -tags wago_guardpage -bench '^BenchmarkExec/memory_tree\.run$' -benchmem
 make bench BENCHTIME=1x BENCH_ISA=1         # all corpora once; uses guard-page only on supported hosts
@@ -35,7 +37,8 @@ results read as `Stage/<module>`:
 | Stage | Times |
 |---|---|
 | `Decode` | wasm bytes → byte-backed `*Module` (function locals + raw BodyBytes, no production function-body AST) |
-| `Validate` | type-check a decoded module |
+| `Validate` | type-check a decoded module serially |
+| `ValidateWorkers` | type-check function bodies at forced p1/p2/p4/p8 worker counts |
 | `Compile` | native codegen for a decoded+validated module |
 | `CompileFull` | end-to-end `wago.Compile` (decode+validate+compile) |
 | `Instantiate` | instance setup for a compiled module |
@@ -161,8 +164,9 @@ go run ./cmd/validatestats -runs 30 -warmup 5         # full corpus
 go run ./cmd/validatestats -file ../tests/testdata/fib.wasm
 ```
 
-The measured path is the CLI-equivalent `wago validate <file>` flow:
-byte-backed `DecodeModule` + `ValidateModule`. It does not build or verify IR.
+The measured path is the default serial `wago validate <file>` flow:
+byte-backed `DecodeModule` + `ValidateModule`. Use `BenchmarkValidateWorkers` for
+parallel validation measurements. Neither path builds or verifies IR.
 
 `cmd/benchpub` runs the stage suite, records a **versioned** JSON run
 (`git describe` + commit + date + cpu), appends it to a rolling `history.json`,

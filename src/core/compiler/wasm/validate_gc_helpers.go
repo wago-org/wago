@@ -154,10 +154,12 @@ func (v *moduleValidator) resolvedCompType(idx TypeIdx) (*CompType, bool) {
 		ct := v.resolveCompTypeRecIndexes(st.Comp, recGroup)
 		entry.ct = &ct
 	}
-	if v.compCache == nil {
-		v.compCache = make(map[uint32]compCacheEntry)
+	if !v.compCacheFrozen {
+		if v.compCache == nil {
+			v.compCache = make(map[uint32]compCacheEntry)
+		}
+		v.compCache[idx.Index] = entry
 	}
-	v.compCache[idx.Index] = entry
 	return entry.ct, entry.ok
 }
 

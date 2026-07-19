@@ -173,7 +173,19 @@ func TestRunHelpCollapsesBooleanPairs(t *testing.T) {
 		t.Fatalf("run help did not collapse optimization pair:\n%s", b)
 	}
 	if !strings.Contains(text, "--parallel, -p [workers]") || !strings.Contains(text, "-p8 / -p 8 / --parallel=8") {
-		t.Fatalf("run help did not document compile parallelism:\n%s", b)
+		t.Fatalf("run help did not document function parallelism:\n%s", b)
+	}
+
+	f, err = os.CreateTemp(t.TempDir(), "validate-help-*.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	validateCommand().printHelp(f, "wago validate")
+	f.Close()
+	b, _ = os.ReadFile(f.Name())
+	text = string(b)
+	if !strings.Contains(text, "--parallel, -p [workers]") || !strings.Contains(text, "parallel function validation") {
+		t.Fatalf("validate help did not document function parallelism:\n%s", b)
 	}
 }
 

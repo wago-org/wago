@@ -68,8 +68,10 @@ backend codegen.
 `Compile` (in `src/wago/api.go`) runs decode → validate → backend codegen and
 returns a `*Compiled`: machine code plus the instantiate-time metadata
 (signatures, imports/exports, globals, element/data segments, table size).
-`Instantiate` turns a `*Compiled` into a runnable `*Instance`. `Invoke` calls an
-exported function.
+Validation and codegen can use the same bounded per-module function-worker policy;
+module-wide analysis remains serial, and final errors/code layout remain ordered by
+function index. `Instantiate` turns a `*Compiled` into a runnable `*Instance`.
+`Invoke` calls an exported function.
 
 ---
 
@@ -79,7 +81,7 @@ exported function.
 src/wago/                         public API implementation (package wago)
 wago.go                           generated root facade (re-exports src/wago)
 internal/genfacade/               generator for wago.go (+ up-to-date test)
-cli/wago/                         CLI: run; compile/profile/validate are stubs
+cli/wago/                         CLI entry point and command implementation
 src/core/compiler/wasm/           decoder + validator (front end)
 src/core/compiler/backend/railshot/  direct native codegen (Valent-Block)
   amd64/                            x86-64 selection, registers, ABI, encoding
@@ -106,6 +108,12 @@ so the public package stays clean.
 - `validate.go` / `validate_ops.go` enforce the wasm type rules: a structured
   operand-stack/control-frame validator that type-checks every opcode and
   rejects malformed or ill-typed modules before any code is emitted.
+- Module declarations and constant expressions, including element initializers,
+  validate serially. With function workers enabled, independent bodies use
+  worker-local stacks/readers. Shared module/element metadata is immutable, the
+  type cache is frozen, and `table.init` reads only the validated element type;
+  errors are selected by lowest function index so diagnostics match serial
+  validation.
 - Unsupported value types and opcodes are rejected explicitly rather than
   silently accepted — correctness and explicit failure come first.
 
@@ -137,9 +145,12 @@ registers just in time. At control-flow joins the machine state is flushed to
 deterministic frame slots so every incoming edge agrees on register/stack state.
 
 The decoded module and complete function bodies remain available throughout
-compilation. Railshot reuses module-scoped scratch arenas between functions and
-pre-sizes retained output, reducing transient heap growth without imposing a
-streaming or borrowed-buffer lifetime on analysis and optimization code.
+compilation. Railshot reuses module-scoped scratch arenas between functions on
+the serial path. With function workers enabled, module-wide decisions finish
+first, each worker owns private scratch and an append-only code arena, and the
+results are joined and relocated in original function order. This reduces
+one-module latency without making code layout or serialized output depend on
+scheduling.
 
 The net effect: straight-line code emits essentially no per-operation stack
 traffic. `valent_test.go`'s `TestRegisterResident` disassembles a straight-line
