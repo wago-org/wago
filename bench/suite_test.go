@@ -180,6 +180,36 @@ func BenchmarkValidate(b *testing.B) {
 	})
 }
 
+// BenchmarkValidateWorkers measures one decoded module's validation latency at
+// forced function-worker counts. Module-level validation remains serial; only
+// independent function bodies fan out. As with BenchmarkCompileWorkers, this is
+// intra-module latency rather than multi-module throughput.
+func BenchmarkValidateWorkers(b *testing.B) {
+	wanted := map[string]bool{
+		"tiny": true, "many_funcs": true, "json-as": true,
+		"lua": true, "sqlite3": true, "ruby": true, "esbuild": true,
+	}
+	for _, m := range loadCorpus(b) {
+		if !m.supports("Validate") || !wanted[m.name()] {
+			continue
+		}
+		mod := m.decoded(b)
+		b.Run(m.name(), func(b *testing.B) {
+			for _, workers := range []int{1, 2, 4, 8} {
+				b.Run(fmt.Sprintf("p%d", workers), func(b *testing.B) {
+					b.ReportAllocs()
+					b.ResetTimer()
+					for i := 0; i < b.N; i++ {
+						if err := wasm.ValidateModuleWithWorkers(mod, workers); err != nil {
+							b.Fatal(err)
+						}
+					}
+				})
+			}
+		})
+	}
+}
+
 // BenchmarkCompile times native codegen for an already decoded+validated module.
 func BenchmarkCompile(b *testing.B) {
 	eachModule(b, "Compile", func(b *testing.B, m corpusModule) {
@@ -268,7 +298,7 @@ func BenchmarkCompileFullWorkers(b *testing.B) {
 			}{{"p1", 1}, {"p2", 2}, {"p4", 4}, {"p8", 8}, {"auto", 0}} {
 				b.Run(mode.name, func(b *testing.B) {
 					b.ReportAllocs()
-					cfg := wago.NewRuntimeConfig().WithCompileWorkers(mode.workers)
+					cfg := wago.NewRuntimeConfig().WithFunctionWorkers(mode.workers)
 					var cm *wago.Compiled
 					for i := 0; i < b.N; i++ {
 						var err error
@@ -302,7 +332,7 @@ func BenchmarkCompileMultiModuleThroughput(b *testing.B) {
 			}{{"p1", 1}, {"auto", 0}} {
 				b.Run(mode.name, func(b *testing.B) {
 					b.ReportAllocs()
-					cfg := wago.NewRuntimeConfig().WithCompileWorkers(mode.workers)
+					cfg := wago.NewRuntimeConfig().WithFunctionWorkers(mode.workers)
 					b.RunParallel(func(pb *testing.PB) {
 						for pb.Next() {
 							if _, err := wago.Compile(cfg, m.bytes); err != nil {

@@ -1,38 +1,119 @@
 package wasm
 
+import (
+	"sync"
+	"sync/atomic"
+)
+
 // ValidateModule validates module-level indexes and typechecks function bodies.
 // The default path consumes raw BodyBytes produced by DecodeModule instead of a
 // structured function-body instruction tree. Programmatically constructed tests
 // may still supply Func.Body instructions when BodyBytes is empty.
 func ValidateModule(m *Module) error {
-	v := &moduleValidator{m: m, funcIndex: -1}
+	return validateModuleWithWorkers(m, nil, 1)
+}
+
+// ValidateModuleWithWorkers is ValidateModule with bounded function-body
+// parallelism. Module-level declarations, element initializer expressions, and
+// other constant expressions are validated serially first. workers <= 1 retains
+// the allocation-minimal serial path; larger values are capped by the local-
+// function count. If multiple functions are invalid, the lowest function index
+// wins regardless of completion order.
+func ValidateModuleWithWorkers(m *Module, workers int) error {
+	return validateModuleWithWorkers(m, nil, workers)
+}
+
+func validateModuleWithWorkers(m *Module, direct *directValidationEnv, workers int) error {
+	v := &moduleValidator{m: m, funcIndex: -1, direct: direct}
 	if err := v.validateModule(); err != nil {
 		return err
 	}
-	importedFuncs := m.ImportedFuncCount()
-	memarg64 := moduleMemargOffset64(m)
+	return v.validateFunctions(workers)
+}
+
+func (v *moduleValidator) validateFunctions(workers int) error {
+	if workers <= 1 || len(v.m.Code) <= 1 {
+		return v.validateFunctionsSerial()
+	}
+	if workers > len(v.m.Code) {
+		workers = len(v.m.Code)
+	}
+	v.freezeCompCache()
+	return v.validateFunctionsParallel(workers)
+}
+
+func (v *moduleValidator) validateFunctionsSerial() error {
+	importedFuncs := v.m.ImportedFuncCount()
+	memarg64 := moduleMemargOffset64(v.m)
 	fv := &funcValidator{moduleValidator: v}
-	for i, fn := range m.Code {
-		abs := importedFuncs + i
-		if i >= len(m.FuncTypes) {
-			return v.err(ErrUnknownFunc, "code without function type")
-		}
-		ft, ok := v.funcType(uint32(abs))
-		if !ok {
-			return v.err(ErrUnknownType, "function type")
-		}
-		fv.beginFunc(abs)
-		if len(fn.BodyBytes) != 0 {
-			if err := fv.validateFuncDirect(directCodeBody{locals: fn.Locals, body: fn.BodyBytes}, ft, memarg64); err != nil {
-				return err
-			}
-			continue
-		}
-		if err := fv.validateFunc(fn, ft); err != nil {
+	for i := range v.m.Code {
+		if err := v.validateFunction(fv, i, importedFuncs, memarg64); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func (v *moduleValidator) validateFunction(fv *funcValidator, localIndex, importedFuncs int, memarg64 bool) error {
+	fn := &v.m.Code[localIndex]
+	abs := importedFuncs + localIndex
+	if localIndex >= len(v.m.FuncTypes) {
+		return v.err(ErrUnknownFunc, "code without function type")
+	}
+	ft, ok := v.funcType(uint32(abs))
+	if !ok {
+		return v.err(ErrUnknownType, "function type")
+	}
+	fv.beginFunc(abs)
+	if len(fn.BodyBytes) != 0 {
+		return fv.validateFuncDirect(directCodeBody{locals: fn.Locals, body: fn.BodyBytes}, ft, memarg64)
+	}
+	return fv.validateFunc(*fn, ft)
+}
+
+// validateFunctionsParallel is split from the serial path so its goroutine
+// closure and worker bookkeeping cannot escape into or allocate on serial
+// validation. Each worker owns one funcValidator. The module/direct metadata and
+// declared-function bits are immutable, the component-type cache is frozen, and
+// the serial const-expression validator is no longer reachable from body checks.
+func (v *moduleValidator) validateFunctionsParallel(workers int) error {
+	importedFuncs := v.m.ImportedFuncCount()
+	memarg64 := moduleMemargOffset64(v.m)
+	errs := make([]error, len(v.m.Code))
+	var next atomic.Int64
+	var wg sync.WaitGroup
+	wg.Add(workers)
+	for worker := 0; worker < workers; worker++ {
+		go func() {
+			defer wg.Done()
+			fv := funcValidator{moduleValidator: v}
+			for {
+				i := int(next.Add(1) - 1)
+				if i >= len(v.m.Code) {
+					return
+				}
+				errs[i] = v.validateFunction(&fv, i, importedFuncs, memarg64)
+			}
+		}()
+	}
+	wg.Wait()
+	for i := range errs {
+		if errs[i] != nil {
+			return errs[i]
+		}
+	}
+	return nil
+}
+
+// freezeCompCache resolves every valid flat type index before workers start.
+// Function validation then performs concurrent read-only map lookups. Invalid
+// body immediates may still miss the cache; resolvedCompType computes those
+// without mutating the frozen map so malformed modules remain race-free.
+func (v *moduleValidator) freezeCompCache() {
+	for i := 0; i < v.m.flattenedTypeCount(); i++ {
+		_, _ = v.resolvedCompType(TypeIdx{Index: uint32(i)})
+	}
+	v.compCacheFrozen = true
 }
 
 type moduleValidator struct {
@@ -52,11 +133,12 @@ type moduleValidator struct {
 	// compTypeFromTypeIdx are called once per block/call/call_indirect, and
 	// re-resolving allocated fresh Params/Results slices plus a CompType each
 	// time; caching returns a shared read-only pointer instead.
-	compCache map[uint32]compCacheEntry
+	compCache       map[uint32]compCacheEntry
+	compCacheFrozen bool
 
-	// constFV is reused across the module's const-expression checks (global/table/
-	// data offsets, element expressions) to avoid a fresh validator + reader per
-	// expression.
+	// constFV is serial module-validation scratch for global/table/data offsets
+	// and element initializer expressions. Function-body validation never reaches
+	// it: table.init reads the element type metadata validated in this phase.
 	constFV *funcValidator
 }
 
@@ -597,6 +679,27 @@ func (v *moduleValidator) validateElemPayload(e Elem) (RefType, error) {
 		return e.Kind.Ref, nil
 	default:
 		return RefType{}, v.err(ErrTypeMismatch, "unknown element kind")
+	}
+}
+
+// elemRefType returns previously validated element metadata for table.init.
+// It deliberately does not revisit initializer expressions: those are checked
+// serially by validateElem before any function worker can start.
+func (v *funcValidator) elemRefType(index uint32) (RefType, error) {
+	if v.direct != nil {
+		return v.directElemRefType(index)
+	}
+	if uint64(index) >= uint64(len(v.m.Elements)) {
+		return RefType{}, v.verr(ErrUnknownTable, "table.init elem")
+	}
+	e := &v.m.Elements[index]
+	switch e.Kind.Kind {
+	case ElemFuncs, ElemFuncExprs:
+		return FuncRef.Ref, nil
+	case ElemTypedExprs:
+		return e.Kind.Ref, nil
+	default:
+		return RefType{}, v.verr(ErrTypeMismatch, "unknown element kind")
 	}
 }
 

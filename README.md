@@ -32,6 +32,7 @@
   - [Startup latency](#startup-latency)
   - [Binary size](#binary-size)
   - [Performance tuning](#performance-tuning)
+  - [Function workers](#function-workers)
   - [Running benchmarks locally](#running-benchmarks-locally)
 - [Configuration](#configuration)
 - [Debugging](#debugging)
@@ -115,6 +116,7 @@ The high-level project docs live in this repo:
 - [OPTIMIZATIONS.md](OPTIMIZATIONS.md) — current and planned codegen work.
 - [docs/plugin-api-v2.md](docs/plugin-api-v2.md) — capability-based plugin architecture.
 - [docs/wago-json.md](docs/wago-json.md) — manifest and schema reference.
+- [docs/function-workers.md](docs/function-workers.md) — parallel validation/codegen policy and tradeoffs.
 - [examples/README.md](examples/README.md) — runnable Go API examples.
 - [bench/README.md](bench/README.md) — benchmark corpus and publishing flow.
 
@@ -138,9 +140,9 @@ suffix when the default parser is not enough:
 wago run -e hypot tests/testdata/fprog.wasm 3:f64 4:f64
 ```
 
-Compilation is serial by default. Use `-p` for adaptive per-function compile
-parallelism, or specify a worker maximum with the standard separated form or the
-short joined form:
+Function validation and codegen are serial by default. Use `-p` for adaptive
+per-function parallelism, or specify a worker maximum with the standard
+separated form or the short joined form:
 
 ```bash
 wago run -p app.wasm          # adaptive policy
@@ -149,10 +151,11 @@ wago run -p8 app.wasm         # equivalent shorthand
 wago run --parallel=8 app.wasm
 ```
 
-Validate without executing:
+Validate without executing; the same worker flag is available:
 
 ```bash
 wago validate tests/testdata/fib.wasm
+wago validate -p tests/testdata/large.wasm
 ```
 
 `wago build` is reserved for the future `.wago` product path and currently
@@ -644,11 +647,27 @@ using TinyGo; see the TinyGo doc for the foreign-stack and GC rationale.
 | `WAGO_NO_BOUNDS_FACTS=1` | Disable deferred bounds-check facts globally. |
 | `RuntimeConfig.WithFeature` | Accept or reject individual wasm feature families. |
 | `RuntimeConfig.WithMemoryLimitPages` | Cap declared linear memory in 64 KiB wasm pages. |
-| `RuntimeConfig.WithCompileWorkers` | Select serial (`1`), adaptive (`0`), or a forced worker maximum. |
-| `wago run -p[workers]` | Enable adaptive compile parallelism (`-p`) or force a maximum (`-p8`, `-p 8`). |
+| `RuntimeConfig.WithFunctionWorkers` | Select serial (`1`), adaptive (`0`), or a forced worker maximum for function validation and codegen. |
+| `wago run -p[workers]` | Enable adaptive validation/compile parallelism (`-p`) or force a maximum (`-p8`, `-p 8`). |
+| `wago validate -p[workers]` | Apply the same worker policy to validation-only workflows. |
 
 Guard-page mode is faster on memory-heavy modules but installs process-wide signal
 handlers and must be selected deliberately in builds that include it.
+
+### Function workers
+
+Function workers parallelize independent wasm function validation and native
+code generation while keeping module-level analysis serial and deterministic.
+The default is one worker. Use `WithFunctionWorkers(0)` or CLI `-p` for the
+measured adaptive policy; forced values are capped by `GOMAXPROCS` and the local
+function count. Adaptive mode keeps small modules serial and uses at most four
+workers for larger modules.
+
+Parallelism trades bounded transient memory and CPU for lower one-module startup
+latency. It is best suited to CLI/build-style workloads; memory-constrained or
+highly concurrent services should retain the serial default unless benchmarks
+justify otherwise. See [docs/function-workers.md](docs/function-workers.md) for
+policy, determinism, CLI forms, and measurements.
 
 ### Running benchmarks locally
 
@@ -701,7 +720,8 @@ Wago's runtime config is immutable. Every `WithXxx` method returns a copy:
 ```go
 cfg := wago.NewRuntimeConfig().
 	WithFeature(wago.CoreFeatureBulkMemoryOperations, false).
-	WithMemoryLimitPages(256)
+	WithMemoryLimitPages(256).
+	WithFunctionWorkers(0) // adaptive validation + codegen
 
 if wago.GuardPageSupported() {
 	cfg = cfg.WithBoundsChecks(wago.BoundsChecksSignalsBased)

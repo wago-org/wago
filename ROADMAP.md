@@ -25,7 +25,8 @@ in full — 57/57 applicable files, 0 failing assertions (see [SPECTEST.md](SPEC
 - [x] Binary decoder for all sections; byte-backed `DecodeModule` (function bodies
   stay raw bytes, not materialized AST)
 - [x] Full validator (operand/control stack typing), byte-backed and differential-tested
-  against the official spec testsuite
+  against the official spec testsuite; independent function bodies support bounded,
+  deterministic parallel validation through the function-worker policy
 
 **Compiler backend (`src/core/compiler/backend/railshot`)**
 - [x] Single-pass x86-64 codegen with the WARP Valent-Block register allocator
@@ -45,6 +46,8 @@ in full — 57/57 applicable files, 0 failing assertions (see [SPECTEST.md](SPEC
   `HostFunc` replay, host functions usable as table funcrefs)
 - [x] `select` / `select t`; active element and data segment initialization; `start`
 - [x] Hotness-aware local pinning + value-pinned/module-pinned hot globals
+- [x] Bounded parallel function codegen with worker-local scratch/arenas and
+  deterministic ordered assembly, sharing one policy with function validation
 
 **Runtime (`src/core/runtime`)**
 - [x] No-cgo execution: W^X `mmap`, foreign-stack trampoline, `g` preservation,
@@ -55,11 +58,14 @@ in full — 57/57 applicable files, 0 failing assertions (see [SPECTEST.md](SPEC
 
 **Tooling**
 - [x] `wago` CLI: `run` / `validate` / `version`, typed args
-- [x] Public API: `Run`/`RunValues`, `Compile`/`Compiled`, `Instance`
+- [x] Public API: `Run`/`RunValues`, `Compile`/`Compiled`, `Instance`, plus
+  opt-in serial/adaptive/forced function-worker policy for validation and codegen
 - [x] Workers plugin: the separate `github.com/wago-org/workers` extension
   owns a transactional worker service with bounded copied tagged delivery,
   cooperative kill, neutral exit events, and creator-authorized lifetime links;
   actor/PID/mailbox/supervisor policy remains plugin-owned
+- [x] `wago run` and `wago validate` expose adaptive/forced function workers via
+  `-p`, with serial defaults for predictable memory use
 - [x] Benchmarks vs wazero (compile ~34× faster; wago wins fib_rec, sieve, memory_tree,
   linked_list, dispatch, branches, json deserialize; loses on json serialize, blake)
 

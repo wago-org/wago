@@ -6,12 +6,16 @@ Branch: `parallel-func-comp`
 
 Baseline commit: `e774b93849df0fd66d0c4ad8def0c73a8ed7ec82`
 
+Follow-up: [Parallel function validation experiment](parallel-function-validation-report.md)
+extends the same opt-in worker policy to validation and records the additional
+end-to-end latency improvement.
+
 ## Decision
 
 **Ship the bounded worker implementation and public configuration, but keep the
 default serial.** Applications that prioritize one-module compile latency can opt
-into the measured adaptive policy with `WithCompileWorkers(0)` or force a maximum
-with `WithCompileWorkers(N)`. The defaults used by `NewRuntimeConfig`,
+into the measured adaptive policy with `WithFunctionWorkers(0)` or force a maximum
+with `WithFunctionWorkers(N)`. The defaults used by `NewRuntimeConfig`,
 `Compile(nil, ...)`, and `Load` when given raw wasm remain serial.
 
 Enabling parallel compilation globally by default is not justified:
@@ -79,11 +83,13 @@ candidate ordering. Both backends now sort candidates by base local with the
 generic `slices.SortFunc`, avoiding the allocation that `sort.Slice` would add to
 the serial path.
 
-Public integration:
+Public integration (renamed to the broader function-worker terminology when
+validation joined the same policy):
 
-- `WithCompileWorkers(0)`: adaptive, opt-in;
-- `WithCompileWorkers(1)`: serial;
-- `WithCompileWorkers(N)`, `N > 1`: forced maximum;
+- `WithFunctionWorkers(0)`: adaptive, opt-in;
+- `WithFunctionWorkers(1)`: serial;
+- `WithFunctionWorkers(N)`, `N > 1`: forced maximum;
+- `WithCompileWorkers` remains a deprecated source-compatible alias;
 - `wago run -p`: adaptive CLI mode;
 - `wago run -p8`, `wago run -p 8`, or `wago run --parallel=8`: forced CLI maximum;
 - negative values fail `RuntimeConfig.Validate`;
@@ -268,7 +274,7 @@ Race and correctness:
 go test -race ./src/core/compiler/backend/railshot/amd64 \
   -run 'TestCompileWorkers(Deterministic|CorpusParity)' -count=1 -timeout=0
 go test -race ./src/wago \
-  -run 'TestCompileWorkers(LinkPathAndSerialization|ForModulePolicy)' -count=1
+  -run 'TestFunctionWorkers(LinkPathAndSerialization|ForModulePolicy)' -count=1
 make test
 make test-corpus
 PATH="$PWD/.tools/wabt-1.0.41-linux-x64/bin:$PATH" make spec

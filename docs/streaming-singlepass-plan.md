@@ -29,12 +29,14 @@ expressions, and active data are slices of the source buffer. The compile path
 then performs separate decode, validation, support, hint, and code-generation
 walks.
 
-The backend compiles functions sequentially, but it first retains a
-module-wide hint for every function. Those hints contain per-local and
-per-global arrays, so their retained cost can be O(functions * globals).
-Forward inlining, module-global pinning, and immutable-table specialization
-also depend on future bodies. The emitted module code grows in a heap `[]byte`,
-then the first instantiation copies it into an RX mapping.
+The default backend path compiles functions sequentially; the opt-in function-
+worker policy can instead compile independent bodies with bounded worker-local
+scratch and code arenas. Both paths first retain a module-wide hint for every
+function. Those hints contain per-local and per-global arrays, so their retained
+cost can be O(functions * globals). Forward inlining, module-global pinning, and
+immutable-table specialization also depend on future bodies. The emitted module
+code grows in a heap `[]byte`, then the first instantiation copies it into an RX
+mapping.
 
 Function imports add a separate whole-source dependency: link-time recompiling
 currently copies, re-decodes, and re-lowers the original wasm in order to bake
@@ -52,8 +54,10 @@ cross-instance call addresses into code.
   including trailing data/custom sections, are accepted.
 - Keep local wasm-to-wasm calls direct on the hot path. Do not replace them with
   a universal dispatch table merely to simplify streaming.
-- Keep compilation sequential initially. Parallel compilation increases the
-  peak working set and is not needed for the first bounded-memory result.
+- The historical streaming design would have kept compilation sequential at
+  first. Production Wago now offers opt-in bounded function workers; any future
+  streaming mode must preserve an explicit serial policy for its lowest-memory
+  configuration.
 - Make every budget explicit: input window, body/spool policy, validation
   workspace, metadata, native code, and retained segment bytes. Exceeding a
   configured budget must return a clear resource-limit error.

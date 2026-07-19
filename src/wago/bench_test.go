@@ -316,7 +316,7 @@ func BenchmarkCompileLinkWorkers(b *testing.B) {
 		workers int
 	}{{"p1", 1}, {"p2", 2}, {"p4", 4}, {"p8", 8}, {"auto", 0}} {
 		b.Run(mode.name, func(b *testing.B) {
-			cfg := NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit).WithCompileWorkers(mode.workers)
+			cfg := NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit).WithFunctionWorkers(mode.workers)
 			b.ReportAllocs()
 			for i := 0; i < b.N; i++ {
 				c, err := Compile(cfg, mod)

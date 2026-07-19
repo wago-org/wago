@@ -274,12 +274,15 @@ func TestConfigValidateAndIntrospection(t *testing.T) {
 	if err := NewRuntimeConfig().Validate(); err != nil {
 		t.Fatalf("default config should validate: %v", err)
 	}
-	if err := NewRuntimeConfig().WithCompileWorkers(-1).Validate(); err == nil || !strings.Contains(err.Error(), "non-negative") {
-		t.Fatalf("negative compile workers should fail validation, got %v", err)
+	if err := NewRuntimeConfig().WithFunctionWorkers(-1).Validate(); err == nil || !strings.Contains(err.Error(), "non-negative") {
+		t.Fatalf("negative function workers should fail validation, got %v", err)
 	}
-	workers := NewRuntimeConfig().WithCompileWorkers(4)
-	if workers.CompileWorkers() != 4 || NewRuntimeConfig().CompileWorkers() != 1 {
-		t.Fatal("WithCompileWorkers must be immutable and observable; default must remain serial")
+	workers := NewRuntimeConfig().WithFunctionWorkers(4)
+	if workers.FunctionWorkers() != 4 || NewRuntimeConfig().FunctionWorkers() != 1 {
+		t.Fatal("WithFunctionWorkers must be immutable and observable; default must remain serial")
+	}
+	if got := NewRuntimeConfig().WithCompileWorkers(3); got.CompileWorkers() != 3 || got.FunctionWorkers() != 3 {
+		t.Fatal("deprecated compile-worker aliases must preserve the function-worker policy")
 	}
 	wantFeatures := coreFeaturesWago
 	if !hostSupportsSIMD() {
@@ -293,12 +296,12 @@ func TestConfigValidateAndIntrospection(t *testing.T) {
 	}
 	// String is non-empty / informative. The default bounds mode depends on the
 	// build tag (explicit normally, signals-based under wago_guardpage).
-	if s := NewRuntimeConfig().String(); (!strings.Contains(s, "explicit") && !strings.Contains(s, "signals-based")) || !strings.Contains(s, "compileWorkers: 1") {
+	if s := NewRuntimeConfig().String(); (!strings.Contains(s, "explicit") && !strings.Contains(s, "signals-based")) || !strings.Contains(s, "functionWorkers: 1") {
 		t.Fatalf("config String missing bounds mode or serial default policy: %q", s)
 	}
 }
 
-func TestCompileWorkersLinkPathAndSerialization(t *testing.T) {
+func TestFunctionWorkersLinkPathAndSerialization(t *testing.T) {
 	producer, err := Instantiate(MustCompile(benchAddOneModule()), InstantiateOptions{})
 	if err != nil {
 		t.Fatalf("instantiate link producer: %v", err)
@@ -313,22 +316,22 @@ func TestCompileWorkersLinkPathAndSerialization(t *testing.T) {
 	imports := Imports{"env.f": f}
 	compileLinked := func(workers int) (*Compiled, *Compiled) {
 		t.Helper()
-		cfg := NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit).WithCompileWorkers(workers)
+		cfg := NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit).WithFunctionWorkers(workers)
 		c, err := Compile(cfg, mod)
 		if err != nil {
 			t.Fatalf("workers=%d compile: %v", workers, err)
 		}
-		if int(c.compileWorkers) != workers || len(c.wasmBytes) == 0 {
-			t.Fatalf("workers=%d metadata policy=%d retainedSource=%d", workers, c.compileWorkers, len(c.wasmBytes))
+		if int(c.functionWorkers) != workers || len(c.wasmBytes) == 0 {
+			t.Fatalf("workers=%d metadata policy=%d retainedSource=%d", workers, c.functionWorkers, len(c.wasmBytes))
 		}
 		linked, err := c.linkModule(imports, nil)
 		if err != nil {
 			_ = c.Close()
 			t.Fatalf("workers=%d link: %v", workers, err)
 		}
-		if linked == c || int(linked.compileWorkers) != workers {
+		if linked == c || int(linked.functionWorkers) != workers {
 			_ = c.Close()
-			t.Fatalf("workers=%d linked=%p owner=%p policy=%d", workers, linked, c, linked.compileWorkers)
+			t.Fatalf("workers=%d linked=%p owner=%p policy=%d", workers, linked, c, linked.functionWorkers)
 		}
 		return c, linked
 	}
@@ -342,12 +345,12 @@ func TestCompileWorkersLinkPathAndSerialization(t *testing.T) {
 		t.Fatal("link-time parallel codegen differs from serial output")
 	}
 
-	serialArtifact, err := NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit).WithCompileWorkers(1).Compile(benchAddOneModule())
+	serialArtifact, err := NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit).WithFunctionWorkers(1).Compile(benchAddOneModule())
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer serialArtifact.Close()
-	parallelArtifact, err := NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit).WithCompileWorkers(8).Compile(benchAddOneModule())
+	parallelArtifact, err := NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit).WithFunctionWorkers(8).Compile(benchAddOneModule())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -361,14 +364,14 @@ func TestCompileWorkersLinkPathAndSerialization(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(parallelBlob, serialBlob) {
-		t.Fatal("compile-worker policy changed serialized output")
+		t.Fatal("function-worker policy changed serialized output")
 	}
 	var loaded Compiled
 	if err := loaded.UnmarshalBinary(parallelBlob); err != nil {
 		t.Fatal(err)
 	}
-	if loaded.compileWorkers != 0 {
-		t.Fatalf("deserialized compile policy = %d, want zero/non-serialized", loaded.compileWorkers)
+	if loaded.functionWorkers != 0 {
+		t.Fatalf("deserialized function policy = %d, want zero/non-serialized", loaded.functionWorkers)
 	}
 }
 
@@ -380,7 +383,7 @@ func intSliceBytes(v []int) []byte {
 	return out
 }
 
-func TestCompileWorkersForModulePolicy(t *testing.T) {
+func TestFunctionWorkersForModulePolicy(t *testing.T) {
 	module := func(funcs, bodyBytes int) *wasm.Module {
 		m := &wasm.Module{Code: make([]wasm.Func, funcs)}
 		remaining := bodyBytes
@@ -406,19 +409,19 @@ func TestCompileWorkersForModulePolicy(t *testing.T) {
 		}
 		return w
 	}
-	if got := compileWorkersForModule(module(2, 9), 0); got != 1 {
+	if got := functionWorkersForModule(module(2, 9), 0); got != 1 {
 		t.Fatalf("tiny auto workers = %d, want serial", got)
 	}
-	if got, want := compileWorkersForModule(module(301, 2053), 0), capWant(4, 301); got != want {
+	if got, want := functionWorkersForModule(module(301, 2053), 0), capWant(4, 301); got != want {
 		t.Fatalf("many-functions auto workers = %d, want %d", got, want)
 	}
-	if got, want := compileWorkersForModule(module(658, 234408), 0), capWant(4, 658); got != want {
+	if got, want := functionWorkersForModule(module(658, 234408), 0), capWant(4, 658); got != want {
 		t.Fatalf("lua-tier auto workers = %d, want %d", got, want)
 	}
-	if got, want := compileWorkersForModule(module(2831, 798392), 0), capWant(4, 2831); got != want {
+	if got, want := functionWorkersForModule(module(2831, 798392), 0), capWant(4, 2831); got != want {
 		t.Fatalf("sqlite-tier auto workers = %d, want %d", got, want)
 	}
-	if got, want := compileWorkersForModule(module(10, 10), 3), capWant(3, 10); got != want {
+	if got, want := functionWorkersForModule(module(10, 10), 3), capWant(3, 10); got != want {
 		t.Fatalf("forced maximum workers = %d, want %d", got, want)
 	}
 }

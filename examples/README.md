@@ -27,7 +27,7 @@ not wasm authoring.
 | 08 | [custom-plugin](08-custom-plugin) | Writing your own `Extension` |
 | 10 | [hooks](10-hooks) | Invoke/compile hooks (tracing, auto-instrumentation) |
 | 14 | [handles](14-handles) | `HandleTable` resource handles with a generation guard |
-| 15 | [config](15-config) | `RuntimeConfig`: features and bounds-check modes |
+| 15 | [config](15-config) | `RuntimeConfig`: features, bounds checks, and function workers |
 | 16 | [serialize](16-serialize) | Precompiling to a `.wago` blob and loading it |
 
 Run them all:

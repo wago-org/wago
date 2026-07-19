@@ -612,7 +612,7 @@ type Compiled struct {
 	needsLink        bool
 	boundsElide      bool   // cached ElideBoundsChecks decision, for the link-time recompile
 	noDeferBounds    bool   // cached DeferBoundsChecks=false decision, for the link-time recompile
-	compileWorkers   uint16 // capped compile policy for link-time recompilation; never serialized
+	functionWorkers  uint16 // capped function-worker policy for link-time recompilation; never serialized
 	requiredFeatures uint8  // exact optional core-feature bits required by code/metadata
 
 	// hostLink caches the host-only link recompile. A needsLink module (returning

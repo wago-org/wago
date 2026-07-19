@@ -444,27 +444,11 @@ func (v *funcValidator) step(in *Instruction) error {
 			return err
 		}
 	case InstrTableInit:
-		var elemRef RefType
-		if v.direct != nil {
-			if int(in.Index) >= len(v.direct.elements) {
-				return v.verr(ErrUnknownTable, "table.init elem")
-			}
-			elem := v.direct.elements[in.Index]
-			var err error
-			elemRef, err = v.validateDirectElemPayload(elem)
-			if err != nil {
-				return err
-			}
-		} else {
-			if int(in.Index) >= len(v.m.Elements) {
-				return v.verr(ErrUnknownTable, "table.init elem")
-			}
-			elem := v.m.Elements[in.Index]
-			var err error
-			elemRef, err = v.validateElemPayload(elem)
-			if err != nil {
-				return err
-			}
+		// Element expressions were validated during the serial module phase. The
+		// body check needs only their immutable declared/result reference type.
+		elemRef, err := v.elemRefType(in.Index)
+		if err != nil {
+			return err
 		}
 		tt, ok := v.tableType(in.Index2)
 		if !ok {
