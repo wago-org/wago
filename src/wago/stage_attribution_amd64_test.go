@@ -249,7 +249,7 @@ func BenchmarkCore3FrontendStages(b *testing.B) {
 				}
 			})
 			if fixture.linkCold {
-				b.Run("link-cold", func(b *testing.B) {
+				b.Run("bind-cold", func(b *testing.B) {
 					cfg := core3StageConfig(fixture)
 					b.ReportAllocs()
 					for i := 0; i < b.N; i++ {
@@ -263,16 +263,15 @@ func BenchmarkCore3FrontendStages(b *testing.B) {
 							imports[key] = HostFunc(func(HostModule, []uint64, []uint64) {})
 						}
 						b.StartTimer()
-						linked, err := compiled.linkModuleMode(imports, nil, true)
+						instance, err := Instantiate(compiled, InstantiateOptions{Imports: imports})
+						if err == nil {
+							err = instance.Close()
+						}
 						b.StopTimer()
+						_ = compiled.Close()
 						if err != nil {
-							_ = compiled.Close()
 							b.Fatal(err)
 						}
-						if linked != compiled {
-							_ = linked.Close()
-						}
-						_ = compiled.Close()
 						b.StartTimer()
 					}
 				})
@@ -289,17 +288,10 @@ func BenchmarkCore3FrontendStages(b *testing.B) {
 					for _, key := range compiled.Imports {
 						imports[key] = HostFunc(func(HostModule, []uint64, []uint64) {})
 					}
-					linked, err := compiled.linkModuleMode(imports, nil, true)
-					if err != nil {
-						b.Fatal(err)
-					}
-					if linked != compiled {
-						defer linked.Close()
-					}
 					b.ReportAllocs()
 					b.ResetTimer()
 					for i := 0; i < b.N; i++ {
-						instance, err := Instantiate(linked, InstantiateOptions{Imports: imports})
+						instance, err := Instantiate(compiled, InstantiateOptions{Imports: imports})
 						if err != nil {
 							b.Fatal(err)
 						}
@@ -320,14 +312,7 @@ func BenchmarkCore3FrontendStages(b *testing.B) {
 					for _, key := range compiled.Imports {
 						imports[key] = HostFunc(func(HostModule, []uint64, []uint64) {})
 					}
-					linked, err := compiled.linkModuleMode(imports, nil, true)
-					if err != nil {
-						b.Fatal(err)
-					}
-					if linked != compiled {
-						defer linked.Close()
-					}
-					instance, err := Instantiate(linked, InstantiateOptions{Imports: imports})
+					instance, err := Instantiate(compiled, InstantiateOptions{Imports: imports})
 					if err != nil {
 						b.Fatal(err)
 					}
