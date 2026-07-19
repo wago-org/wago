@@ -45,10 +45,6 @@ func ValidateModuleWithFeaturesAndWorkers(m *Module, features ValidationFeatures
 	return validateModuleWithWorkersAndFeatures(m, nil, workers, features)
 }
 
-func validateModuleWithWorkers(m *Module, direct *directValidationEnv, workers int) error {
-	return validateModuleWithWorkersAndFeatures(m, direct, workers, ValidationFeatures{})
-}
-
 func validateModuleWithWorkersAndFeatures(m *Module, direct *directValidationEnv, workers int, features ValidationFeatures) error {
 	v := &moduleValidator{m: m, funcIndex: -1, direct: direct, features: features}
 	if err := v.validateModule(); err != nil {

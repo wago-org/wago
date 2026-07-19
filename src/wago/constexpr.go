@@ -436,7 +436,7 @@ func evalConstExprWithContext(e wasm.Expr, want wasm.ValType, ctx *constExprComp
 		var types []DefinedTypeDescriptor
 		var err error
 		if ctx != nil {
-			exact, types = ValueTypeDescriptor{}, ctx.types
+			types = ctx.types
 			exact, err = ctx.converter.valueType(refType, -1)
 		} else {
 			exact, err = valueTypeDescriptorInModule(nil, refType)
