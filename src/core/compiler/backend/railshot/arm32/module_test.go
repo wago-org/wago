@@ -71,6 +71,29 @@ func TestCompileModuleAdmitsF64AndV128Functions(t *testing.T) {
 	}
 }
 
+func TestCompileModuleAdmitsRelease2PlannerShapes(t *testing.T) {
+	m, err := wasm.DecodeModule(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}),
+			wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32, wasm.I32}),
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+			wasmtest.FuncType([]wasm.ValType{wasm.V128, wasm.V128}, []wasm.ValType{wasm.V128}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0}, []byte{2}, []byte{3})),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x41, 1, 0x41, 2, 0x20, 0, 0x04, 1, 0x0b, 0x6a, 0x0b}),
+			wasmtest.Code([]byte{0xd0, 0x70, 0xd1, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0, 0x20, 1, 0xfd, 0x76, 0x0b}),
+		)),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := CompileModule(m); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestCompileModuleAdmitsFunctionLabelAndEarlyReturn(t *testing.T) {
 	m, err := wasm.DecodeModule(wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),

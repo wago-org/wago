@@ -708,7 +708,14 @@ func BuildMixedPlanWithModuleResolvers(ft *wasm.CompType, locals []wasm.LocalRun
 				}
 				if control.kind == 0x04 && len(control.results) != 0 {
 					if !control.elseSeen {
-						return nil, fmt.Errorf("mixed result if requires else")
+						if len(control.params) != len(control.results) {
+							return nil, fmt.Errorf("mixed result if requires else")
+						}
+						for i := range control.params {
+							if control.params[i] != control.results[i] {
+								return nil, fmt.Errorf("mixed result if requires matching implicit else parameters")
+							}
+						}
 					}
 					if control.armReachable {
 						if len(results) != len(control.armResults) {
@@ -1740,8 +1747,10 @@ func BuildMixedPlanWithModuleResolvers(ft *wasm.CompType, locals []wasm.LocalRun
 			if len(stack) == 0 || stack[len(stack)-1].Type.Kind != wasm.ValRef {
 				return nil, fmt.Errorf("mixed ref.is_null requires reference operand")
 			}
-			value := stack[len(stack)-1]
-			stack = stack[:len(stack)-1]
+			value, err := pop(stack[len(stack)-1].Type)
+			if err != nil {
+				return nil, err
+			}
 			out, err := push(wasm.I32)
 			if err != nil {
 				return nil, err
@@ -2097,7 +2106,7 @@ func BuildMixedPlanWithModuleResolvers(ft *wasm.CompType, locals []wasm.LocalRun
 				if err := binaryOp(MixedI32x4Sub, wasm.V128); err != nil {
 					return nil, err
 				}
-			case 103, 104, 105, 106, 116, 117, 118, 119, 227, 239:
+			case 103, 104, 105, 106, 116, 117, 227, 239:
 				if err := simdHelper(sub, 1); err != nil {
 					return nil, err
 				}
