@@ -142,16 +142,17 @@ func BuildEmbeddedLinkedFirmwareImage(dst []byte, plan *EmbeddedLinkPlan, opts E
 			}
 			for segmentIndex := range module.Data {
 				segment := &module.Data[segmentIndex]
+				resolved := &layout.modules[consumerIndex].clone.Data[segmentIndex]
 				if segment.Passive {
 					continue
 				}
-				if uint64(segment.Offset)+uint64(len(segment.Bytes)) > uint64(memoryLength) {
+				if uint64(resolved.Offset)+uint64(len(segment.Bytes)) > uint64(memoryLength) {
 					return nil, fmt.Errorf("embedded32: module %q active data segment %d exceeds linked memory", plan.Modules[consumerIndex].Name, segmentIndex)
 				}
 				if memoryBase < opts.BaseAddress {
 					return nil, fmt.Errorf("embedded32: module %q linked memory is outside the image", plan.Modules[consumerIndex].Name)
 				}
-				start := uint64(memoryBase-opts.BaseAddress) + uint64(segment.Offset)
+				start := uint64(memoryBase-opts.BaseAddress) + uint64(resolved.Offset)
 				end := start + uint64(len(segment.Bytes))
 				if end > uint64(len(out.Bytes)) {
 					return nil, fmt.Errorf("embedded32: module %q active data segment %d targets memory outside the image", plan.Modules[consumerIndex].Name, segmentIndex)
@@ -211,24 +212,6 @@ func embeddedLinkedFirmwarePlan(plan *EmbeddedLinkPlan, opts EmbeddedLinkedFirmw
 		if module == nil {
 			return nil, fmt.Errorf("embedded32: linked module %d is nil", i)
 		}
-		if module.MemoryImported {
-			importIndex, ok := embeddedImportIndex(module, wasm.ExternMem, 0)
-			if !ok {
-				return nil, fmt.Errorf("embedded32: module %q memory import is unavailable", plan.Modules[i].Name)
-			}
-			providerIndex, err := resolveLinkedMemoryModule(plan, binding, i, importIndex, make(map[[2]int]bool))
-			if err != nil {
-				return nil, err
-			}
-			providerMemory := plan.Modules[providerIndex].Module.Memory
-			initialBytes := uint64(providerMemory.Minimum) * uint64(embedded32.WasmPageSize)
-			for j := range module.Data {
-				segment := &module.Data[j]
-				if !segment.Passive && uint64(segment.Offset)+uint64(len(segment.Bytes)) > initialBytes {
-					return nil, fmt.Errorf("embedded32: module %q active data segment %d exceeds linked initial memory", plan.Modules[i].Name, j)
-				}
-			}
-		}
 		if module.Table != nil && module.Table.Imported {
 			return nil, fmt.Errorf("embedded32: module %q imports a table; shared table descriptors are not linked yet", plan.Modules[i].Name)
 		}
@@ -251,14 +234,64 @@ func embeddedLinkedFirmwarePlan(plan *EmbeddedLinkPlan, opts EmbeddedLinkedFirmw
 		clone.ImportedFunctions = 0
 		clone.ImportedGlobals = nil
 		clone.MemoryImported = false
-		if module.MemoryImported {
-			clone.Memory = nil
-			clone.Data = append([]EmbeddedDataSegment(nil), module.Data...)
-			for j := range clone.Data {
-				if !clone.Data[j].Passive {
-					clone.Data[j].Passive = true
+		resolveOffset := func(global uint32) (uint32, error) {
+			importIndex, ok := embeddedImportIndex(module, wasm.ExternGlobal, global)
+			if !ok {
+				return 0, fmt.Errorf("embedded32: module %q offset global import %d is unavailable", plan.Modules[i].Name, global)
+			}
+			item, ok := binding[[2]int{i, importIndex}]
+			if !ok {
+				return 0, fmt.Errorf("embedded32: module %q offset global import %d is unbound", plan.Modules[i].Name, global)
+			}
+			providerExport := plan.Modules[item.ProviderModule].Module.Exports[item.ExportIndex]
+			words, err := resolveLinkedGlobalWords(plan, binding, item.ProviderModule, providerExport.Index, globalWords, visitingGlobals)
+			return words[0], err
+		}
+		clone.Data = append([]EmbeddedDataSegment(nil), module.Data...)
+		for j := range clone.Data {
+			if clone.Data[j].HasOffsetGlobal {
+				value, err := resolveOffset(clone.Data[j].OffsetGlobal)
+				if err != nil {
+					return nil, err
+				}
+				clone.Data[j].Offset, clone.Data[j].HasOffsetGlobal = value, false
+			}
+		}
+		if module.Table != nil {
+			table := *module.Table
+			table.Elements = append([]EmbeddedElementSegment(nil), module.Table.Elements...)
+			for j := range table.Elements {
+				if table.Elements[j].HasOffsetGlobal {
+					value, err := resolveOffset(table.Elements[j].OffsetGlobal)
+					if err != nil {
+						return nil, err
+					}
+					table.Elements[j].Offset, table.Elements[j].HasOffsetGlobal = value, false
 				}
 			}
+			clone.Table = &table
+		}
+		if module.MemoryImported {
+			importIndex, ok := embeddedImportIndex(module, wasm.ExternMem, 0)
+			if !ok {
+				return nil, fmt.Errorf("embedded32: module %q memory import is unavailable", plan.Modules[i].Name)
+			}
+			providerIndex, err := resolveLinkedMemoryModule(plan, binding, i, importIndex, make(map[[2]int]bool))
+			if err != nil {
+				return nil, err
+			}
+			providerMemory := plan.Modules[providerIndex].Module.Memory
+			initialBytes := uint64(providerMemory.Minimum) * uint64(embedded32.WasmPageSize)
+			for j := range clone.Data {
+				segment := &clone.Data[j]
+				if !segment.Passive && uint64(segment.Offset)+uint64(len(segment.Bytes)) > initialBytes {
+					return nil, fmt.Errorf("embedded32: module %q active data segment %d exceeds linked initial memory", plan.Modules[i].Name, j)
+				}
+				if !segment.Passive {
+					segment.Passive = true
+				}
+			}
+			clone.Memory = nil
 		}
 		clone.Globals = append([]EmbeddedGlobal(nil), module.Globals...)
 		for j := range clone.Globals {

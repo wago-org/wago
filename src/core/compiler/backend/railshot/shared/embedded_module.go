@@ -41,9 +41,11 @@ type EmbeddedFunctionMetadata struct {
 }
 
 type EmbeddedDataSegment struct {
-	Passive bool
-	Offset  uint32
-	Bytes   []byte
+	Passive         bool
+	Offset          uint32
+	HasOffsetGlobal bool
+	OffsetGlobal    uint32
+	Bytes           []byte
 }
 
 type EmbeddedMemory struct {
@@ -71,10 +73,12 @@ const (
 )
 
 type EmbeddedElementSegment struct {
-	Mode      EmbeddedElementMode
-	Reference wasm.RefType
-	Offset    uint32
-	Values    []uint32
+	Mode            EmbeddedElementMode
+	Reference       wasm.RefType
+	Offset          uint32
+	HasOffsetGlobal bool
+	OffsetGlobal    uint32
+	Values          []uint32
 }
 
 type EmbeddedTable struct {
@@ -190,6 +194,20 @@ func (m *EmbeddedModule) ElementSegmentABI(bases []uint32) ([]embedded32.DataSeg
 }
 
 func (m *EmbeddedModule) InstantiateTable(entries []uint32) error {
+	return m.InstantiateTableWithImports(entries, nil)
+}
+
+func embeddedOffsetValue(offset uint32, hasGlobal bool, global uint32, importedCells [][]uint32) (uint32, error) {
+	if !hasGlobal {
+		return offset, nil
+	}
+	if uint64(global) >= uint64(len(importedCells)) || len(importedCells[global]) == 0 {
+		return 0, fmt.Errorf("embedded imported offset global %d is unavailable", global)
+	}
+	return importedCells[global][0], nil
+}
+
+func (m *EmbeddedModule) InstantiateTableWithImports(entries []uint32, importedCells [][]uint32) error {
 	if m == nil || m.Table == nil {
 		if len(entries) != 0 {
 			clear(entries)
@@ -203,9 +221,15 @@ func (m *EmbeddedModule) InstantiateTable(entries []uint32) error {
 	if m.Table.Imported {
 		activeLimit = uint64(len(entries))
 	}
+	offsets := make([]uint32, len(m.Table.Elements))
 	for i := range m.Table.Elements {
 		segment := &m.Table.Elements[i]
-		if segment.Mode == EmbeddedElementActive && uint64(segment.Offset)+uint64(len(segment.Values)) > activeLimit {
+		offset, err := embeddedOffsetValue(segment.Offset, segment.HasOffsetGlobal, segment.OffsetGlobal, importedCells)
+		if err != nil {
+			return fmt.Errorf("embedded element segment %d: %w", i, err)
+		}
+		offsets[i] = offset
+		if segment.Mode == EmbeddedElementActive && uint64(offset)+uint64(len(segment.Values)) > activeLimit {
 			return fmt.Errorf("embedded element segment %d exceeds table length", i)
 		}
 	}
@@ -215,19 +239,29 @@ func (m *EmbeddedModule) InstantiateTable(entries []uint32) error {
 	for i := range m.Table.Elements {
 		segment := &m.Table.Elements[i]
 		if segment.Mode == EmbeddedElementActive {
-			copy(entries[segment.Offset:], segment.Values)
+			copy(entries[offsets[i]:], segment.Values)
 		}
 	}
 	return nil
 }
 
 func (m *EmbeddedModule) InstantiateData(memory *embedded32.LinearMemory) (*embedded32.DataStore, error) {
+	return m.InstantiateDataWithImports(memory, nil)
+}
+
+func (m *EmbeddedModule) InstantiateDataWithImports(memory *embedded32.LinearMemory, importedCells [][]uint32) (*embedded32.DataStore, error) {
 	if m == nil || memory == nil {
 		return nil, embedded32.ErrInvalidArena
 	}
+	offsets := make([]uint32, len(m.Data))
 	for i := range m.Data {
 		segment := &m.Data[i]
-		if !segment.Passive && (uint64(segment.Offset)+uint64(len(segment.Bytes)) > uint64(len(memory.Bytes()))) {
+		offset, err := embeddedOffsetValue(segment.Offset, segment.HasOffsetGlobal, segment.OffsetGlobal, importedCells)
+		if err != nil {
+			return nil, fmt.Errorf("embedded32: active data segment %d: %w", i, err)
+		}
+		offsets[i] = offset
+		if !segment.Passive && uint64(offset)+uint64(len(segment.Bytes)) > uint64(len(memory.Bytes())) {
 			return nil, fmt.Errorf("embedded32: active data segment %d out of bounds", i)
 		}
 	}
@@ -235,7 +269,7 @@ func (m *EmbeddedModule) InstantiateData(memory *embedded32.LinearMemory) (*embe
 	for i := range m.Data {
 		segment := &m.Data[i]
 		if !segment.Passive {
-			copy(memory.Bytes()[segment.Offset:], segment.Bytes)
+			copy(memory.Bytes()[offsets[i]:], segment.Bytes)
 		}
 		inits[i] = embedded32.DataSegmentInit{Bytes: segment.Bytes, Dropped: !segment.Passive}
 	}
@@ -741,14 +775,15 @@ func embeddedTable(m *wasm.Module, target string) (*EmbeddedTable, error) {
 	for i := range m.Elements {
 		elem := &m.Elements[i]
 		mode := EmbeddedElementActive
-		var offset uint32
+		var offset, offsetGlobal uint32
+		var hasOffsetGlobal bool
 		switch elem.Mode.Kind {
 		case wasm.ElemActive:
 			if elem.Mode.Table != 0 {
 				return nil, fmt.Errorf("%s: element segment %d targets unsupported table", target, i)
 			}
 			var err error
-			offset, err = embeddedI32Const(elem.Mode.Offset)
+			offset, offsetGlobal, hasOffsetGlobal, err = embeddedI32Offset(m, elem.Mode.Offset)
 			if err != nil {
 				return nil, fmt.Errorf("%s: element segment %d offset: %w", target, i, err)
 			}
@@ -800,7 +835,8 @@ func embeddedTable(m *wasm.Module, target string) (*EmbeddedTable, error) {
 				values[j] = value
 			}
 		}
-		out.Elements = append(out.Elements, EmbeddedElementSegment{Mode: mode, Reference: reference, Offset: offset, Values: values})
+		segment := EmbeddedElementSegment{Mode: mode, Reference: reference, Offset: offset, HasOffsetGlobal: hasOffsetGlobal, OffsetGlobal: offsetGlobal, Values: values}
+		out.Elements = append(out.Elements, segment)
 	}
 	return out, nil
 }
@@ -1139,13 +1175,18 @@ func embeddedDataSegments(m *wasm.Module, target string) ([]EmbeddedDataSegment,
 		if data.Mode.Mem != 0 {
 			return nil, fmt.Errorf("%s: data segment %d targets unsupported memory", target, i)
 		}
-		offset, err := embeddedI32Const(data.Mode.Offset)
+		offset, offsetGlobal, hasOffsetGlobal, err := embeddedI32Offset(m, data.Mode.Offset)
 		if err != nil {
 			return nil, fmt.Errorf("%s: data segment %d offset: %w", target, i, err)
 		}
-		out[i].Offset = offset
+		out[i].Offset, out[i].OffsetGlobal, out[i].HasOffsetGlobal = offset, offsetGlobal, hasOffsetGlobal
 	}
 	return out, nil
+}
+
+func embeddedI32Offset(m *wasm.Module, expr wasm.Expr) (uint32, uint32, bool, error) {
+	words, global, hasGlobal, err := embeddedGlobalInit(m, expr, wasm.I32)
+	return words[0], global, hasGlobal, err
 }
 
 func embeddedI32Const(expr wasm.Expr) (uint32, error) {

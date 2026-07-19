@@ -342,6 +342,18 @@ func TestEmbeddedModuleDataInstantiation(t *testing.T) {
 	if _, err := transactional.InstantiateData(memory); err == nil || memory.Bytes()[0] != 0 {
 		t.Fatalf("failed active preflight mutated memory: err=%v byte=%d", err, memory.Bytes()[0])
 	}
+
+	importOffset := &EmbeddedModule{Data: []EmbeddedDataSegment{{HasOffsetGlobal: true, OffsetGlobal: 0, Bytes: []byte("global")}}}
+	if _, err := importOffset.InstantiateDataWithImports(memory, [][]uint32{{12}}); err != nil {
+		t.Fatal(err)
+	}
+	if got := string(memory.Bytes()[12:18]); got != "global" {
+		t.Fatalf("imported-global active data=%q", got)
+	}
+	clear(memory.Bytes())
+	if _, err := importOffset.InstantiateDataWithImports(memory, nil); err == nil || memory.Bytes()[12] != 0 {
+		t.Fatalf("missing imported offset mutated memory: err=%v byte=%d", err, memory.Bytes()[12])
+	}
 }
 
 func TestCompileEmbeddedI32ModuleReconstructsLocals(t *testing.T) {
