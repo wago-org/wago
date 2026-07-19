@@ -950,6 +950,152 @@ func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc) ([]byte, erro
 			if !a.PatchFarJump(done, finish) || !a.PatchFarBranch(outOfBounds, trap) {
 				return nil, fmt.Errorf("riscv32: mixed table branch out of range")
 			}
+		case shared.MixedTableSize:
+			if op.Target != 0 {
+				return nil, fmt.Errorf("riscv32: mixed table.size index %d is not supported", op.Target)
+			}
+			must(a.Lw(rv.T0, rvContextReg, embedded32.ContextTableOffset), "table.size descriptor")
+			must(a.Lw(rv.T0, rv.T0, embedded32.TableABILengthOffset), "table.size length")
+			must(a.Sw(rv.T0, rv.SP, off(op.Dst)), "table.size result")
+		case shared.MixedTableGrow:
+			if op.Target != 0 {
+				return nil, fmt.Errorf("riscv32: mixed table.grow index %d is not supported", op.Target)
+			}
+			must(a.Lw(rv.T0, rvContextReg, embedded32.ContextTableOffset), "table.grow descriptor")
+			must(a.Lw(rv.T1, rv.T0, embedded32.TableABILengthOffset), "table.grow old length")
+			must(a.Lw(rv.T2, rv.SP, off(op.Right)), "table.grow delta")
+			a.Add(rv.T2, rv.T1, rv.T2)
+			fails := []int{a.FarBcond(rv.T2, rv.T1, rv.CondLTU, branchScratch)}
+			must(a.Lw(rv.T3, rv.T0, embedded32.TableABIMaximumOffset), "table.grow maximum")
+			fails = append(fails, a.FarBcond(rv.T3, rv.T2, rv.CondLTU, branchScratch))
+			must(a.Lw(rv.T3, rv.T0, embedded32.TableABIEntriesBaseOffset), "table.grow entries")
+			a.Slli(rv.T4, rv.T1, 2)
+			a.Add(rv.T3, rv.T3, rv.T4)
+			must(a.Lw(rv.T4, rv.SP, off(op.Right)), "table.grow fill count")
+			must(a.Lw(rv.T5, rv.SP, off(op.Left)), "table.grow fill value")
+			loop := a.Len()
+			filled := a.Bcond(rv.T4, rv.Zero, rv.CondEQ)
+			must(a.Sw(rv.T5, rv.T3, 0), "table.grow fill store")
+			must(a.Addi(rv.T3, rv.T3, 4), "table.grow fill advance")
+			must(a.Addi(rv.T4, rv.T4, -1), "table.grow count decrement")
+			back := a.Jal(rv.Zero)
+			if !a.PatchJAL21(back, loop) || !a.PatchBranch13(filled, a.Len()) {
+				return nil, fmt.Errorf("riscv32: mixed table.grow fill branch out of range")
+			}
+			must(a.Lw(rv.T0, rvContextReg, embedded32.ContextTableOffset), "table.grow descriptor restore")
+			must(a.Sw(rv.T2, rv.T0, embedded32.TableABILengthOffset), "table.grow publish length")
+			done := a.FarJump(rv.Zero, branchScratch)
+			fail := a.Len()
+			a.MovImm32(rv.T1, 0xffffffff)
+			finish := a.Len()
+			if !a.PatchFarJump(done, finish) {
+				return nil, fmt.Errorf("riscv32: mixed table.grow done branch out of range")
+			}
+			for _, branch := range fails {
+				if !a.PatchFarBranch(branch, fail) {
+					return nil, fmt.Errorf("riscv32: mixed table.grow failure branch out of range")
+				}
+			}
+			must(a.Sw(rv.T1, rv.SP, off(op.Dst)), "table.grow result")
+		case shared.MixedTableFill:
+			if op.Target != 0 {
+				return nil, fmt.Errorf("riscv32: mixed table.fill index %d is not supported", op.Target)
+			}
+			must(a.Lw(rv.T0, rv.SP, off(op.Left)), "table.fill destination")
+			must(a.Lw(rv.T1, rv.SP, off(op.Right)), "table.fill value")
+			must(a.Lw(rv.T2, rv.SP, off(op.Third)), "table.fill count")
+			must(a.Lw(rv.T3, rvContextReg, embedded32.ContextTableOffset), "table.fill descriptor")
+			must(a.Lw(rv.T4, rv.T3, embedded32.TableABILengthOffset), "table.fill length")
+			traps := []int{a.FarBcond(rv.T4, rv.T2, rv.CondLTU, branchScratch)}
+			a.Sub(rv.T4, rv.T4, rv.T2)
+			traps = append(traps, a.FarBcond(rv.T4, rv.T0, rv.CondLTU, branchScratch))
+			must(a.Lw(rv.T3, rv.T3, embedded32.TableABIEntriesBaseOffset), "table.fill entries")
+			a.Slli(rv.T4, rv.T0, 2)
+			a.Add(rv.T3, rv.T3, rv.T4)
+			loop := a.Len()
+			filled := a.Bcond(rv.T2, rv.Zero, rv.CondEQ)
+			must(a.Sw(rv.T1, rv.T3, 0), "table.fill store")
+			must(a.Addi(rv.T3, rv.T3, 4), "table.fill advance")
+			must(a.Addi(rv.T2, rv.T2, -1), "table.fill count decrement")
+			back := a.Jal(rv.Zero)
+			if !a.PatchJAL21(back, loop) || !a.PatchBranch13(filled, a.Len()) {
+				return nil, fmt.Errorf("riscv32: mixed table.fill loop out of range")
+			}
+			done := a.FarJump(rv.Zero, branchScratch)
+			trap := emitTrapReturn(embedded32.TrapTableOutOfBounds, "table.fill bounds")
+			finish := a.Len()
+			if !a.PatchFarJump(done, finish) {
+				return nil, fmt.Errorf("riscv32: mixed table.fill success branch out of range")
+			}
+			for _, branch := range traps {
+				if !a.PatchFarBranch(branch, trap) {
+					return nil, fmt.Errorf("riscv32: mixed table.fill trap branch out of range")
+				}
+			}
+		case shared.MixedTableCopy:
+			if op.Target != 0 || op.Lane != 0 {
+				return nil, fmt.Errorf("riscv32: mixed table.copy indexes %d/%d are not supported", op.Target, op.Lane)
+			}
+			must(a.Lw(rv.T0, rv.SP, off(op.Left)), "table.copy destination")
+			must(a.Lw(rv.T1, rv.SP, off(op.Right)), "table.copy source")
+			must(a.Lw(rv.T2, rv.SP, off(op.Third)), "table.copy count")
+			must(a.Lw(rv.T3, rvContextReg, embedded32.ContextTableOffset), "table.copy descriptor")
+			must(a.Lw(rv.T3, rv.T3, embedded32.TableABILengthOffset), "table.copy length")
+			traps := []int{a.FarBcond(rv.T3, rv.T2, rv.CondLTU, branchScratch)}
+			a.Sub(rv.T3, rv.T3, rv.T2)
+			traps = append(traps, a.FarBcond(rv.T3, rv.T0, rv.CondLTU, branchScratch))
+			traps = append(traps, a.FarBcond(rv.T3, rv.T1, rv.CondLTU, branchScratch))
+			must(a.Lw(rv.T3, rvContextReg, embedded32.ContextTableOffset), "table.copy descriptor restore")
+			must(a.Lw(rv.T3, rv.T3, embedded32.TableABIEntriesBaseOffset), "table.copy entries")
+			a.Slli(rv.T4, rv.T0, 2)
+			a.Add(rv.T0, rv.T3, rv.T4)
+			a.Slli(rv.T4, rv.T1, 2)
+			a.Add(rv.T1, rv.T3, rv.T4)
+			forward := a.FarBcond(rv.T1, rv.T0, rv.CondGEU, branchScratch)
+			a.Slli(rv.T4, rv.T2, 2)
+			a.Add(rv.T0, rv.T0, rv.T4)
+			a.Add(rv.T1, rv.T1, rv.T4)
+			backLoop := a.Len()
+			backDone := a.Bcond(rv.T2, rv.Zero, rv.CondEQ)
+			must(a.Addi(rv.T0, rv.T0, -4), "table.copy destination decrement")
+			must(a.Addi(rv.T1, rv.T1, -4), "table.copy source decrement")
+			must(a.Lw(rv.T4, rv.T1, 0), "table.copy backward load")
+			must(a.Sw(rv.T4, rv.T0, 0), "table.copy backward store")
+			must(a.Addi(rv.T2, rv.T2, -1), "table.copy backward count")
+			back := a.Jal(rv.Zero)
+			if !a.PatchJAL21(back, backLoop) {
+				return nil, fmt.Errorf("riscv32: mixed table.copy backward loop out of range")
+			}
+			forwardTarget := a.Len()
+			if !a.PatchFarBranch(forward, forwardTarget) {
+				return nil, fmt.Errorf("riscv32: mixed table.copy direction branch out of range")
+			}
+			forwardLoop := a.Len()
+			forwardDone := a.Bcond(rv.T2, rv.Zero, rv.CondEQ)
+			must(a.Lw(rv.T4, rv.T1, 0), "table.copy forward load")
+			must(a.Sw(rv.T4, rv.T0, 0), "table.copy forward store")
+			must(a.Addi(rv.T0, rv.T0, 4), "table.copy destination advance")
+			must(a.Addi(rv.T1, rv.T1, 4), "table.copy source advance")
+			must(a.Addi(rv.T2, rv.T2, -1), "table.copy forward count")
+			forwardBack := a.Jal(rv.Zero)
+			if !a.PatchJAL21(forwardBack, forwardLoop) {
+				return nil, fmt.Errorf("riscv32: mixed table.copy forward loop out of range")
+			}
+			finishCopy := a.Len()
+			if !a.PatchBranch13(backDone, finishCopy) || !a.PatchBranch13(forwardDone, finishCopy) {
+				return nil, fmt.Errorf("riscv32: mixed table.copy done branch out of range")
+			}
+			done := a.FarJump(rv.Zero, branchScratch)
+			trap := emitTrapReturn(embedded32.TrapTableOutOfBounds, "table.copy bounds")
+			finish := a.Len()
+			if !a.PatchFarJump(done, finish) {
+				return nil, fmt.Errorf("riscv32: mixed table.copy success branch out of range")
+			}
+			for _, branch := range traps {
+				if !a.PatchFarBranch(branch, trap) {
+					return nil, fmt.Errorf("riscv32: mixed table.copy trap branch out of range")
+				}
+			}
 		case shared.MixedBranchZero, shared.MixedBranchNonzero:
 			must(a.Lw(rv.T0, rv.SP, off(op.Third)), "branch condition")
 			cond := rv.CondEQ

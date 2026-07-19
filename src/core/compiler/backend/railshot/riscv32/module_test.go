@@ -731,14 +731,15 @@ func TestCompileModuleAccessesFunctionTableUnderQEMU(t *testing.T) {
 	a.Sw(rv.T0, rv.SP, 28)
 	a.Addi(rv.T0, rv.SP, 64)
 	a.Sw(rv.T0, rv.SP, 56)
-	a.Addi(rv.T0, rv.SP, 80)
+	a.Addi(rv.T0, rv.SP, 84)
 	a.Sw(rv.T0, rv.SP, 64)
 	a.MovImm32(rv.T0, 2)
 	a.Sw(rv.T0, rv.SP, 68)
-	a.Sw(rv.Zero, rv.SP, 72)
+	a.Sw(rv.T0, rv.SP, 72)
 	a.Sw(rv.Zero, rv.SP, 76)
 	a.Sw(rv.Zero, rv.SP, 80)
 	a.Sw(rv.Zero, rv.SP, 84)
+	a.Sw(rv.Zero, rv.SP, 88)
 	a.Sw(rv.Zero, rv.SP, 92)
 	a.Addi(rv.A0, rv.SP, 16)
 	a.MovReg(rv.X23, rv.A0)
@@ -750,6 +751,67 @@ func TestCompileModuleAccessesFunctionTableUnderQEMU(t *testing.T) {
 		t.Fatal("wrapper call relocation")
 	}
 	runRV32Exit(t, qemu, append(a.B, cm.Code...), 42)
+}
+
+func riscv32TableBulkModule(t *testing.T) *wasm.Module {
+	t.Helper()
+	body := []byte{
+		0x20, 0, 0x41, 2, 0xfc, 15, 0,
+		0xfc, 16, 0, 0x6a,
+		0x41, 0, 0x20, 0, 0x41, 2, 0xfc, 17, 0,
+		0x41, 2, 0x41, 0, 0x41, 2, 0xfc, 14, 0, 0,
+		0x41, 3, 0x25, 0, 0xd1, 0x6a, 0x0b,
+	}
+	m, err := wasm.DecodeModule(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.FuncRef}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0})),
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 1, 2, 4})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+func TestCompileModuleGrowsAndCopiesFunctionTableUnderQEMU(t *testing.T) {
+	qemu, err := exec.LookPath("qemu-riscv32")
+	if err != nil {
+		t.Skip("qemu-riscv32 not installed")
+	}
+	cm, err := CompileModule(riscv32TableBulkModule(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var a rv.Asm
+	rvMemoryContext(&a)
+	a.Addi(rv.T0, rv.SP, 124)
+	a.Sw(rv.T0, rv.SP, 28)
+	a.Addi(rv.T0, rv.SP, 64)
+	a.Sw(rv.T0, rv.SP, 56)
+	a.Addi(rv.T0, rv.SP, 84)
+	a.Sw(rv.T0, rv.SP, 64)
+	a.MovImm32(rv.T0, 2)
+	a.Sw(rv.T0, rv.SP, 68)
+	a.MovImm32(rv.T0, 4)
+	a.Sw(rv.T0, rv.SP, 72)
+	a.Sw(rv.Zero, rv.SP, 76)
+	a.Sw(rv.Zero, rv.SP, 80)
+	a.Sw(rv.Zero, rv.SP, 84)
+	a.Sw(rv.Zero, rv.SP, 88)
+	a.Sw(rv.Zero, rv.SP, 92)
+	a.Sw(rv.Zero, rv.SP, 96)
+	a.Sw(rv.Zero, rv.SP, 124)
+	a.Addi(rv.A0, rv.SP, 16)
+	a.MovReg(rv.X23, rv.A0)
+	a.MovImm32(rv.A0, 7)
+	call := a.Jal(rv.RA)
+	a.MovImm32(rv.A7, 93)
+	a.Ecall()
+	if !a.PatchJAL21(call, len(a.B)+cm.Entry[0]) {
+		t.Fatal("wrapper call relocation")
+	}
+	runRV32Exit(t, qemu, append(a.B, cm.Code...), 6)
 }
 
 func riscv32IndirectCallModule(t *testing.T) *wasm.Module {
@@ -799,20 +861,21 @@ func TestCompileModuleCallsFunctionTableUnderQEMU(t *testing.T) {
 		a.Sw(rv.T0, rv.SP, 28)
 		a.Addi(rv.T0, rv.SP, 64)
 		a.Sw(rv.T0, rv.SP, 56)
-		a.Addi(rv.T0, rv.SP, 80)
+		a.Addi(rv.T0, rv.SP, 84)
 		a.Sw(rv.T0, rv.SP, 64)
 		a.MovImm32(rv.T0, 1)
 		a.Sw(rv.T0, rv.SP, 68)
-		a.Addi(rv.T0, rv.SP, 84)
 		a.Sw(rv.T0, rv.SP, 72)
-		a.Addi(rv.T0, rv.SP, 96)
+		a.Addi(rv.T0, rv.SP, 88)
 		a.Sw(rv.T0, rv.SP, 76)
-		a.MovImm32(rv.T0, entries[0])
+		a.Addi(rv.T0, rv.SP, 96)
 		a.Sw(rv.T0, rv.SP, 80)
-		a.MovImm32(rv.T0, fn0)
+		a.MovImm32(rv.T0, entries[0])
 		a.Sw(rv.T0, rv.SP, 84)
-		a.MovImm32(rv.T0, fn1)
+		a.MovImm32(rv.T0, fn0)
 		a.Sw(rv.T0, rv.SP, 88)
+		a.MovImm32(rv.T0, fn1)
+		a.Sw(rv.T0, rv.SP, 92)
 		a.MovImm32(rv.T0, cm.FunctionTypeIDs[0])
 		a.Sw(rv.T0, rv.SP, 96)
 		a.MovImm32(rv.T0, cm.FunctionTypeIDs[1])

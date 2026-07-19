@@ -7,6 +7,7 @@ package embedded32
 type TableABI struct {
 	EntriesBase         uint32
 	Length              uint32
+	Maximum             uint32
 	FunctionEntriesBase uint32
 	FunctionTypesBase   uint32
 }
@@ -14,7 +15,8 @@ type TableABI struct {
 const (
 	TableABIEntriesBaseOffset         = 0
 	TableABILengthOffset              = 4
-	TableABIFunctionEntriesBaseOffset = 8
-	TableABIFunctionTypesBaseOffset   = 12
-	TableABIBytes                     = 16
+	TableABIMaximumOffset             = 8
+	TableABIFunctionEntriesBaseOffset = 12
+	TableABIFunctionTypesBaseOffset   = 16
+	TableABIBytes                     = 20
 )

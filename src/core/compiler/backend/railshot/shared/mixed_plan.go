@@ -64,6 +64,10 @@ const (
 	MixedGlobalSet
 	MixedTableGet
 	MixedTableSet
+	MixedTableSize
+	MixedTableGrow
+	MixedTableFill
+	MixedTableCopy
 	MixedF64Helper
 	MixedF32Helper
 	MixedI64Helper
@@ -1654,6 +1658,87 @@ func BuildMixedPlanWithModuleResolvers(ft *wasm.CompType, locals []wasm.LocalRun
 					return nil, err
 				}
 				p.Ops = append(p.Ops, MixedOp{Kind: MixedMemoryFill, Left: dst.Slot, Right: value.Slot, Third: n.Slot})
+			case 14: // table.copy
+				dstTable, err1 := r.U32()
+				srcTable, err2 := r.U32()
+				if err1 != nil || err2 != nil || resolveTable == nil {
+					return nil, fmt.Errorf("mixed table.copy requires module tables")
+				}
+				dstType, dstOK := resolveTable(dstTable)
+				srcType, srcOK := resolveTable(srcTable)
+				if !dstOK || !srcOK || dstType != srcType || dstType.Kind != wasm.ValRef {
+					return nil, fmt.Errorf("mixed table.copy types do not match")
+				}
+				n, err := pop(wasm.I32)
+				if err != nil {
+					return nil, err
+				}
+				src, err := pop(wasm.I32)
+				if err != nil {
+					return nil, err
+				}
+				dst, err := pop(wasm.I32)
+				if err != nil {
+					return nil, err
+				}
+				p.Ops = append(p.Ops, MixedOp{Kind: MixedTableCopy, Left: dst.Slot, Right: src.Slot, Third: n.Slot, Target: dstTable, Lane: srcTable})
+			case 15: // table.grow
+				tableIndex, err := r.U32()
+				if err != nil || resolveTable == nil {
+					return nil, fmt.Errorf("mixed table.grow requires module tables")
+				}
+				typ, ok := resolveTable(tableIndex)
+				if !ok || typ.Kind != wasm.ValRef {
+					return nil, fmt.Errorf("mixed table.grow table %d is invalid", tableIndex)
+				}
+				delta, err := pop(wasm.I32)
+				if err != nil {
+					return nil, err
+				}
+				value, err := pop(typ)
+				if err != nil {
+					return nil, err
+				}
+				out, err := push(wasm.I32)
+				if err != nil {
+					return nil, err
+				}
+				p.Ops = append(p.Ops, MixedOp{Kind: MixedTableGrow, Dst: out.Slot, Left: value.Slot, Right: delta.Slot, Target: tableIndex, Width: 1})
+			case 16: // table.size
+				tableIndex, err := r.U32()
+				if err != nil || resolveTable == nil {
+					return nil, fmt.Errorf("mixed table.size requires module tables")
+				}
+				if typ, ok := resolveTable(tableIndex); !ok || typ.Kind != wasm.ValRef {
+					return nil, fmt.Errorf("mixed table.size table %d is invalid", tableIndex)
+				}
+				out, err := push(wasm.I32)
+				if err != nil {
+					return nil, err
+				}
+				p.Ops = append(p.Ops, MixedOp{Kind: MixedTableSize, Dst: out.Slot, Target: tableIndex, Width: 1})
+			case 17: // table.fill
+				tableIndex, err := r.U32()
+				if err != nil || resolveTable == nil {
+					return nil, fmt.Errorf("mixed table.fill requires module tables")
+				}
+				typ, ok := resolveTable(tableIndex)
+				if !ok || typ.Kind != wasm.ValRef {
+					return nil, fmt.Errorf("mixed table.fill table %d is invalid", tableIndex)
+				}
+				n, err := pop(wasm.I32)
+				if err != nil {
+					return nil, err
+				}
+				value, err := pop(typ)
+				if err != nil {
+					return nil, err
+				}
+				dst, err := pop(wasm.I32)
+				if err != nil {
+					return nil, err
+				}
+				p.Ops = append(p.Ops, MixedOp{Kind: MixedTableFill, Left: dst.Slot, Right: value.Slot, Third: n.Slot, Target: tableIndex})
 			default:
 				return nil, fmt.Errorf("mixed function unsupported 0xfc subopcode %d", sub)
 			}

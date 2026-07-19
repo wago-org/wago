@@ -7,8 +7,8 @@ import (
 
 func TestStableHelperFrameLayouts(t *testing.T) {
 	var table TableABI
-	if unsafe.Offsetof(table.EntriesBase) != TableABIEntriesBaseOffset || unsafe.Offsetof(table.Length) != TableABILengthOffset || unsafe.Offsetof(table.FunctionEntriesBase) != TableABIFunctionEntriesBaseOffset || unsafe.Offsetof(table.FunctionTypesBase) != TableABIFunctionTypesBaseOffset || unsafe.Sizeof(table) != TableABIBytes {
-		t.Fatalf("TableABI layout entries=%d length=%d functions=%d types=%d size=%d", unsafe.Offsetof(table.EntriesBase), unsafe.Offsetof(table.Length), unsafe.Offsetof(table.FunctionEntriesBase), unsafe.Offsetof(table.FunctionTypesBase), unsafe.Sizeof(table))
+	if unsafe.Offsetof(table.EntriesBase) != TableABIEntriesBaseOffset || unsafe.Offsetof(table.Length) != TableABILengthOffset || unsafe.Offsetof(table.Maximum) != TableABIMaximumOffset || unsafe.Offsetof(table.FunctionEntriesBase) != TableABIFunctionEntriesBaseOffset || unsafe.Offsetof(table.FunctionTypesBase) != TableABIFunctionTypesBaseOffset || unsafe.Sizeof(table) != TableABIBytes {
+		t.Fatalf("TableABI layout entries=%d length=%d maximum=%d functions=%d types=%d size=%d", unsafe.Offsetof(table.EntriesBase), unsafe.Offsetof(table.Length), unsafe.Offsetof(table.Maximum), unsafe.Offsetof(table.FunctionEntriesBase), unsafe.Offsetof(table.FunctionTypesBase), unsafe.Sizeof(table))
 	}
 
 	var d DataSegmentABI

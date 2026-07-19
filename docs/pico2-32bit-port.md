@@ -340,8 +340,11 @@ single-table descriptor containing table entries, length, published function
 entries, and parallel function type IDs. Module metadata retains bounded local
 funcref table limits and active element initializers; instantiation preflights
 all active ranges before clearing and populating caller-owned table cells.
-Mixed functions now execute bounded `table.get` and `table.set`, and
-`call_indirect` resolves function-index-plus-one entries through parallel
+Mixed functions now execute bounded `table.get`, `table.set`, `table.size`,
+`table.grow`, `table.fill`, and overlap-safe `table.copy`. Growth preflights the
+fixed descriptor maximum, initializes every new complete slot, and only then
+publishes the new length. `call_indirect` resolves function-index-plus-one
+entries through parallel
 published code/type arrays. Structurally identical core signatures share a
 canonical type ID; bounds, null, and type mismatches publish distinct traps
 before any target call.
@@ -358,7 +361,7 @@ preflighted `memory.init` plus idempotent `data.drop` directly against those
 descriptors.
 
 This is still not public backend admission. Arbitrary-depth and table-driven
-structured-control transfers, table growth/bulk operations, start invocation,
+structured-control transfers, passive element/table.init state, start invocation,
 generated-
 code entry trampolines, firmware linking and transport, and Pico 2 hardware
 qualification remain to be implemented and measured.
