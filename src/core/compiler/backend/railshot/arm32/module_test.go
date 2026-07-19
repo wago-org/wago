@@ -568,6 +568,51 @@ func TestCompileModuleAccessesWideGlobalUnderQEMU(t *testing.T) {
 	runARM32Exit(t, qemu, append(a.B, cm.Code...), 42)
 }
 
+func arm32MixedI32CompleteModule(t *testing.T) *wasm.Module {
+	t.Helper()
+	body := []byte{1, 1, 0x7c,
+		0x41, 16, 0x67,
+		0x41, 16, 0x68, 0x6a,
+		0x41, 15, 0x69, 0x6a,
+		0x41, 42, 0x41, 2, 0x6e, 0x6a,
+		0x41, 1, 0x41, 33, 0x74, 0x6a,
+		0x41, 0x7f, 0xc0, 0x6a,
+		0x42, 42, 0xa7, 0x6a,
+		0x0b,
+	}
+	code := append(wasmtest.ULEB(uint32(len(body))), body...)
+	m, err := wasm.DecodeModule(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0})),
+		wasmtest.Section(10, wasmtest.Vec(code)),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+func TestCompileModuleExecutesCompleteMixedI32SemanticsUnderQEMU(t *testing.T) {
+	qemu, err := exec.LookPath("qemu-arm")
+	if err != nil {
+		t.Skip("qemu-arm not installed")
+	}
+	cm, err := CompileModule(arm32MixedI32CompleteModule(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var a a32.Asm
+	armMemoryContext(&a)
+	armContextArg(&a)
+	a.MovReg(a32.R11, a32.R0)
+	call := a.Call()
+	armExit(&a)
+	if !a.PatchCall(call, len(a.B)+cm.Entry[0]) {
+		t.Fatal("wrapper call relocation")
+	}
+	runARM32Exit(t, qemu, append(a.B, cm.Code...), 99)
+}
+
 func arm32MixedI32CompareModule(t *testing.T) *wasm.Module {
 	t.Helper()
 	body := []byte{1, 1, 0x7c,

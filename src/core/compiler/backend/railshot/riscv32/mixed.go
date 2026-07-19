@@ -314,6 +314,111 @@ func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc) ([]byte, erro
 				}
 			}
 			must(a.Sw(rv.T2, rv.SP, off(op.Dst)), "i32 compare result")
+		case shared.MixedI32Clz, shared.MixedI32Ctz, shared.MixedI32Popcnt:
+			must(a.Lw(rv.T0, rv.SP, off(op.Left)), "i32 count value")
+			a.MovImm32(rv.T1, 0)
+			if op.Kind == shared.MixedI32Popcnt {
+				loop := a.Len()
+				done := a.Bcond(rv.T0, rv.Zero, rv.CondEQ)
+				a.Andi(rv.T2, rv.T0, 1)
+				a.Add(rv.T1, rv.T1, rv.T2)
+				a.Srli(rv.T0, rv.T0, 1)
+				back := a.Jal(rv.Zero)
+				if !a.PatchJAL21(back, loop) || !a.PatchBranch13(done, a.Len()) {
+					return nil, fmt.Errorf("riscv32: mixed i32 popcnt branch out of range")
+				}
+			} else {
+				zero := a.Bcond(rv.T0, rv.Zero, rv.CondEQ)
+				loop := a.Len()
+				var done int
+				if op.Kind == shared.MixedI32Clz {
+					done = a.Bcond(rv.T0, rv.Zero, rv.CondLT)
+					a.Slli(rv.T0, rv.T0, 1)
+				} else {
+					a.Andi(rv.T2, rv.T0, 1)
+					done = a.Bcond(rv.T2, rv.Zero, rv.CondNE)
+					a.Srli(rv.T0, rv.T0, 1)
+				}
+				a.Addi(rv.T1, rv.T1, 1)
+				back := a.Jal(rv.Zero)
+				if !a.PatchJAL21(back, loop) {
+					return nil, fmt.Errorf("riscv32: mixed i32 count loop out of range")
+				}
+				finish := a.Len()
+				overZero := a.Jal(rv.Zero)
+				zeroCase := a.Len()
+				a.MovImm32(rv.T1, 32)
+				end := a.Len()
+				if !a.PatchBranch13(zero, zeroCase) || !a.PatchBranch13(done, finish) || !a.PatchJAL21(overZero, end) {
+					return nil, fmt.Errorf("riscv32: mixed i32 count finish branch out of range")
+				}
+			}
+			must(a.Sw(rv.T1, rv.SP, off(op.Dst)), "i32 count result")
+		case shared.MixedI32DivS, shared.MixedI32DivU, shared.MixedI32RemS, shared.MixedI32RemU:
+			must(a.Lw(rv.T0, rv.SP, off(op.Left)), "i32 division left")
+			must(a.Lw(rv.T1, rv.SP, off(op.Right)), "i32 division right")
+			zero := a.FarBcond(rv.T1, rv.Zero, rv.CondEQ, branchScratch)
+			overflow := -1
+			if op.Kind == shared.MixedI32DivS {
+				a.MovImm32(rv.T2, 0x80000000)
+				notMinimum := a.FarBcond(rv.T0, rv.T2, rv.CondNE, branchScratch)
+				a.MovImm32(rv.T2, 0xffffffff)
+				overflow = a.FarBcond(rv.T1, rv.T2, rv.CondEQ, branchScratch)
+				if !a.PatchFarBranch(notMinimum, a.Len()) {
+					return nil, fmt.Errorf("riscv32: mixed i32 division overflow skip out of range")
+				}
+			}
+			switch op.Kind {
+			case shared.MixedI32DivS:
+				a.Div(rv.T2, rv.T0, rv.T1)
+			case shared.MixedI32DivU:
+				a.Divu(rv.T2, rv.T0, rv.T1)
+			case shared.MixedI32RemS:
+				a.Rem(rv.T2, rv.T0, rv.T1)
+			case shared.MixedI32RemU:
+				a.Remu(rv.T2, rv.T0, rv.T1)
+			}
+			must(a.Sw(rv.T2, rv.SP, off(op.Dst)), "i32 division result")
+			done := a.FarJump(rv.Zero, branchScratch)
+			zeroTarget := emitTrapReturn(embedded32.TrapIntegerDivideByZero, "i32 division zero")
+			overflowTarget := a.Len()
+			if overflow >= 0 {
+				overflowTarget = emitTrapReturn(embedded32.TrapIntegerOverflow, "i32 division overflow")
+			}
+			finish := a.Len()
+			if !a.PatchFarJump(done, finish) || !a.PatchFarBranch(zero, zeroTarget) || (overflow >= 0 && !a.PatchFarBranch(overflow, overflowTarget)) {
+				return nil, fmt.Errorf("riscv32: mixed i32 division branch out of range")
+			}
+		case shared.MixedI32Shl, shared.MixedI32ShrS, shared.MixedI32ShrU, shared.MixedI32Rotl, shared.MixedI32Rotr:
+			must(a.Lw(rv.T0, rv.SP, off(op.Left)), "i32 shift value")
+			must(a.Lw(rv.T1, rv.SP, off(op.Right)), "i32 shift count")
+			switch op.Kind {
+			case shared.MixedI32Shl:
+				a.Sll(rv.T2, rv.T0, rv.T1)
+			case shared.MixedI32ShrS:
+				a.Sra(rv.T2, rv.T0, rv.T1)
+			case shared.MixedI32ShrU:
+				a.Srl(rv.T2, rv.T0, rv.T1)
+			case shared.MixedI32Rotl:
+				a.Neg(rv.T3, rv.T1)
+				a.Sll(rv.T2, rv.T0, rv.T1)
+				a.Srl(rv.T3, rv.T0, rv.T3)
+				a.Or(rv.T2, rv.T2, rv.T3)
+			case shared.MixedI32Rotr:
+				a.Neg(rv.T3, rv.T1)
+				a.Srl(rv.T2, rv.T0, rv.T1)
+				a.Sll(rv.T3, rv.T0, rv.T3)
+				a.Or(rv.T2, rv.T2, rv.T3)
+			}
+			must(a.Sw(rv.T2, rv.SP, off(op.Dst)), "i32 shift result")
+		case shared.MixedI32Extend8S, shared.MixedI32Extend16S:
+			must(a.Lw(rv.T0, rv.SP, off(op.Left)), "i32 sign extension value")
+			if op.Kind == shared.MixedI32Extend8S {
+				a.Sext8(rv.T0, rv.T0)
+			} else {
+				a.Sext16(rv.T0, rv.T0)
+			}
+			must(a.Sw(rv.T0, rv.SP, off(op.Dst)), "i32 sign extension result")
 		case shared.MixedI64Add, shared.MixedI64Sub:
 			must(a.Lw(rv.T0, rv.SP, off(op.Left)), "i64 left low")
 			must(a.Lw(rv.T1, rv.SP, off(op.Left)+4), "i64 left high")

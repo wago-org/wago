@@ -32,6 +32,20 @@ const (
 	MixedI32LeU
 	MixedI32GeS
 	MixedI32GeU
+	MixedI32Clz
+	MixedI32Ctz
+	MixedI32Popcnt
+	MixedI32DivS
+	MixedI32DivU
+	MixedI32RemS
+	MixedI32RemU
+	MixedI32Shl
+	MixedI32ShrS
+	MixedI32ShrU
+	MixedI32Rotl
+	MixedI32Rotr
+	MixedI32Extend8S
+	MixedI32Extend16S
 	MixedI64Add
 	MixedI64Sub
 	MixedI64Mul
@@ -1104,6 +1118,54 @@ func BuildMixedPlanWithModuleResolvers(ft *wasm.CompType, locals []wasm.LocalRun
 			if err := binaryOp(MixedI32GeU, wasm.I32); err != nil {
 				return nil, err
 			}
+		case 0x67:
+			if err := unaryOp(MixedI32Clz, wasm.I32); err != nil {
+				return nil, err
+			}
+		case 0x68:
+			if err := unaryOp(MixedI32Ctz, wasm.I32); err != nil {
+				return nil, err
+			}
+		case 0x69:
+			if err := unaryOp(MixedI32Popcnt, wasm.I32); err != nil {
+				return nil, err
+			}
+		case 0x6d:
+			if err := binaryOp(MixedI32DivS, wasm.I32); err != nil {
+				return nil, err
+			}
+		case 0x6e:
+			if err := binaryOp(MixedI32DivU, wasm.I32); err != nil {
+				return nil, err
+			}
+		case 0x6f:
+			if err := binaryOp(MixedI32RemS, wasm.I32); err != nil {
+				return nil, err
+			}
+		case 0x70:
+			if err := binaryOp(MixedI32RemU, wasm.I32); err != nil {
+				return nil, err
+			}
+		case 0x74:
+			if err := binaryOp(MixedI32Shl, wasm.I32); err != nil {
+				return nil, err
+			}
+		case 0x75:
+			if err := binaryOp(MixedI32ShrS, wasm.I32); err != nil {
+				return nil, err
+			}
+		case 0x76:
+			if err := binaryOp(MixedI32ShrU, wasm.I32); err != nil {
+				return nil, err
+			}
+		case 0x77:
+			if err := binaryOp(MixedI32Rotl, wasm.I32); err != nil {
+				return nil, err
+			}
+		case 0x78:
+			if err := binaryOp(MixedI32Rotr, wasm.I32); err != nil {
+				return nil, err
+			}
 		case 0x5b:
 			if err := f32HelperBinary(embedded32.F32Eq, wasm.I32); err != nil {
 				return nil, err
@@ -1484,6 +1546,16 @@ func BuildMixedPlanWithModuleResolvers(ft *wasm.CompType, locals []wasm.LocalRun
 			if err := helperUnary(uint32(embedded32.F64PromoteF32), wasm.F32, wasm.F64); err != nil {
 				return nil, err
 			}
+		case 0xa7:
+			value, err := pop(wasm.I64)
+			if err != nil {
+				return nil, err
+			}
+			out, err := push(wasm.I32)
+			if err != nil {
+				return nil, err
+			}
+			p.Ops = append(p.Ops, MixedOp{Kind: MixedCopy, Dst: out.Slot, Left: value.Slot, Width: 1})
 		case 0xbc:
 			if err := bitcast(wasm.F32, wasm.I32); err != nil {
 				return nil, err
@@ -1498,6 +1570,14 @@ func BuildMixedPlanWithModuleResolvers(ft *wasm.CompType, locals []wasm.LocalRun
 			}
 		case 0xbf:
 			if err := bitcast(wasm.I64, wasm.F64); err != nil {
+				return nil, err
+			}
+		case 0xc0:
+			if err := unaryOp(MixedI32Extend8S, wasm.I32); err != nil {
+				return nil, err
+			}
+		case 0xc1:
+			if err := unaryOp(MixedI32Extend16S, wasm.I32); err != nil {
 				return nil, err
 			}
 		case 0xc2:

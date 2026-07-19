@@ -328,6 +328,120 @@ func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc) ([]byte, erro
 				return nil, fmt.Errorf("arm32: mixed i32 comparison branch out of range")
 			}
 			must(a.Str(a32.R2, a32.SP, off(op.Dst)), "i32 compare result")
+		case shared.MixedI32Clz, shared.MixedI32Ctz, shared.MixedI32Popcnt:
+			must(a.Ldr(a32.R0, a32.SP, off(op.Left)), "i32 count value")
+			must(a.MovImm32(a32.R1, 0), "i32 count result")
+			must(a.MovImm32(a32.R2, 0), "i32 count zero")
+			if op.Kind == shared.MixedI32Popcnt {
+				loop := a.Len()
+				must(a.Cmp(a32.R0, a32.R2), "i32 popcnt done compare")
+				done := a.FarBcond(a32.CondEQ)
+				must(a.MovImm32(a32.R3, 1), "i32 popcnt mask")
+				must(a.And(a32.R3, a32.R0, a32.R3), "i32 popcnt bit")
+				must(a.Add(a32.R1, a32.R1, a32.R3), "i32 popcnt add")
+				must(a.LsrImm(a32.R0, a32.R0, 1), "i32 popcnt shift")
+				back := a.Branch()
+				if !a.PatchBranch(back, loop) || !a.PatchFarBranch(done, a.Len()) {
+					return nil, fmt.Errorf("arm32: mixed i32 popcnt branch out of range")
+				}
+			} else {
+				must(a.Cmp(a32.R0, a32.R2), "i32 count zero compare")
+				nonzero := a.FarBcond(a32.CondNE)
+				must(a.MovImm32(a32.R1, 32), "i32 count zero result")
+				zeroDone := a.Branch()
+				loop := a.Len()
+				if !a.PatchFarBranch(nonzero, loop) {
+					return nil, fmt.Errorf("arm32: mixed i32 count entry branch out of range")
+				}
+				var done int
+				if op.Kind == shared.MixedI32Clz {
+					must(a.Cmp(a32.R0, a32.R2), "i32 clz top bit")
+					done = a.FarBcond(a32.CondMI)
+					must(a.LslImm(a32.R0, a32.R0, 1), "i32 clz shift")
+				} else {
+					must(a.MovImm32(a32.R3, 1), "i32 ctz mask")
+					must(a.And(a32.R3, a32.R0, a32.R3), "i32 ctz bit")
+					must(a.Cmp(a32.R3, a32.R2), "i32 ctz bit compare")
+					done = a.FarBcond(a32.CondNE)
+					must(a.LsrImm(a32.R0, a32.R0, 1), "i32 ctz shift")
+				}
+				must(a.MovImm32(a32.R3, 1), "i32 count increment")
+				must(a.Add(a32.R1, a32.R1, a32.R3), "i32 count add")
+				back := a.Branch()
+				if !a.PatchBranch(back, loop) {
+					return nil, fmt.Errorf("arm32: mixed i32 count loop out of range")
+				}
+				finish := a.Len()
+				if !a.PatchFarBranch(done, finish) || !a.PatchBranch(zeroDone, finish) {
+					return nil, fmt.Errorf("arm32: mixed i32 count finish branch out of range")
+				}
+			}
+			must(a.Str(a32.R1, a32.SP, off(op.Dst)), "i32 count result store")
+		case shared.MixedI32DivS, shared.MixedI32DivU, shared.MixedI32RemS, shared.MixedI32RemU:
+			must(a.Ldr(a32.R0, a32.SP, off(op.Left)), "i32 division left")
+			must(a.Ldr(a32.R1, a32.SP, off(op.Right)), "i32 division right")
+			must(a.MovImm32(a32.R2, 0), "i32 division zero")
+			must(a.Cmp(a32.R1, a32.R2), "i32 divisor zero compare")
+			zero := a.FarBcond(a32.CondEQ)
+			overflow := -1
+			if op.Kind == shared.MixedI32DivS {
+				must(a.MovImm32(a32.R2, 0x80000000), "i32 division minimum")
+				must(a.Cmp(a32.R0, a32.R2), "i32 division minimum compare")
+				notMinimum := a.FarBcond(a32.CondNE)
+				must(a.MovImm32(a32.R2, 0xffffffff), "i32 division minus one")
+				must(a.Cmp(a32.R1, a32.R2), "i32 division overflow compare")
+				overflow = a.FarBcond(a32.CondEQ)
+				if !a.PatchFarBranch(notMinimum, a.Len()) {
+					return nil, fmt.Errorf("arm32: mixed i32 division overflow skip out of range")
+				}
+			}
+			if op.Kind == shared.MixedI32DivS || op.Kind == shared.MixedI32RemS {
+				must(a.Sdiv(a32.R2, a32.R0, a32.R1), "i32 signed division")
+			} else {
+				must(a.Udiv(a32.R2, a32.R0, a32.R1), "i32 unsigned division")
+			}
+			if op.Kind == shared.MixedI32RemS || op.Kind == shared.MixedI32RemU {
+				must(a.Mul(a32.R2, a32.R2, a32.R1), "i32 remainder product")
+				must(a.Sub(a32.R2, a32.R0, a32.R2), "i32 remainder result")
+			}
+			must(a.Str(a32.R2, a32.SP, off(op.Dst)), "i32 division result")
+			done := a.Branch()
+			zeroTarget := emitTrapReturn(embedded32.TrapIntegerDivideByZero, "i32 division zero")
+			overflowTarget := a.Len()
+			if overflow >= 0 {
+				overflowTarget = emitTrapReturn(embedded32.TrapIntegerOverflow, "i32 division overflow")
+			}
+			finish := a.Len()
+			if !a.PatchBranch(done, finish) || !a.PatchFarBranch(zero, zeroTarget) || (overflow >= 0 && !a.PatchFarBranch(overflow, overflowTarget)) {
+				return nil, fmt.Errorf("arm32: mixed i32 division branch out of range")
+			}
+		case shared.MixedI32Shl, shared.MixedI32ShrS, shared.MixedI32ShrU, shared.MixedI32Rotl, shared.MixedI32Rotr:
+			must(a.Ldr(a32.R0, a32.SP, off(op.Left)), "i32 shift value")
+			must(a.Ldr(a32.R1, a32.SP, off(op.Right)), "i32 shift count")
+			switch op.Kind {
+			case shared.MixedI32Shl:
+				must(a.Lsl(a32.R2, a32.R0, a32.R1), "i32 shl")
+			case shared.MixedI32ShrS:
+				must(a.Asr(a32.R2, a32.R0, a32.R1), "i32 shr_s")
+			case shared.MixedI32ShrU:
+				must(a.Lsr(a32.R2, a32.R0, a32.R1), "i32 shr_u")
+			case shared.MixedI32Rotl:
+				must(a.MovImm32(a32.R2, 0), "i32 rotl zero")
+				must(a.Sub(a32.R2, a32.R2, a32.R1), "i32 rotl inverse count")
+				must(a.Ror(a32.R2, a32.R0, a32.R2), "i32 rotl")
+			case shared.MixedI32Rotr:
+				must(a.Ror(a32.R2, a32.R0, a32.R1), "i32 rotr")
+			}
+			must(a.Str(a32.R2, a32.SP, off(op.Dst)), "i32 shift result")
+		case shared.MixedI32Extend8S, shared.MixedI32Extend16S:
+			must(a.Ldr(a32.R0, a32.SP, off(op.Left)), "i32 sign extension value")
+			shift := uint8(24)
+			if op.Kind == shared.MixedI32Extend16S {
+				shift = 16
+			}
+			must(a.LslImm(a32.R0, a32.R0, shift), "i32 sign extension left")
+			must(a.AsrImm(a32.R0, a32.R0, shift), "i32 sign extension right")
+			must(a.Str(a32.R0, a32.SP, off(op.Dst)), "i32 sign extension result")
 		case shared.MixedI64Add, shared.MixedI64Sub:
 			must(a.Ldr(a32.R0, a32.SP, off(op.Left)), "i64 left low")
 			must(a.Ldr(a32.R1, a32.SP, off(op.Left)+4), "i64 left high")
