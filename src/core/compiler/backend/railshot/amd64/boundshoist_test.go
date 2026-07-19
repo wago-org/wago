@@ -21,6 +21,31 @@ var readLoopBody = []byte{
 	0x0b, 0x20, 0x02, 0x0b, // end loop; local.get $sum; end
 }
 
+func TestLoopHoistScanSuppliesLoopFacts(t *testing.T) {
+	body := []byte{
+		0x20, 0x00, 0x28, 0x02, 0x00, // local.get 0; i32.load
+		0x21, 0x02, // local.set 2
+		0x40, 0x00, // memory.grow 0
+		0x02, 0x40, 0x21, 0x03, 0x0b, // block; local.set 3; end
+		0x0b, // loop end
+	}
+	bodyReader := wasm.NewReader(body)
+	wantSet, wantGrow := scanLoopBody(bodyReader)
+	hoistReader := wasm.NewReader(body)
+	_, _, gotGrow, gotSet := scanLoopHoistable(hoistReader)
+	if gotGrow != wantGrow || len(gotSet) != len(wantSet) {
+		t.Fatalf("hoist loop facts = %v/%v, want %v/%v", gotSet, gotGrow, wantSet, wantGrow)
+	}
+	for local := range wantSet {
+		if !gotSet[local] {
+			t.Fatalf("hoist loop facts missed local %d: got %v, want %v", local, gotSet, wantSet)
+		}
+	}
+	if bodyReader.Offset() != 0 || hoistReader.Offset() != 0 {
+		t.Fatalf("loop scanners did not restore readers: body=%d hoist=%d", bodyReader.Offset(), hoistReader.Offset())
+	}
+}
+
 // TestLoopPrecheckSlowTrap: an out-of-bounds invariant base fails the precheck and
 // runs the SLOW (checked) body, which must trap at the access — preserving exact
 // trap semantics (a hoisted check would have trapped before the loop regardless).
