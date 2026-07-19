@@ -111,6 +111,8 @@ type EmbeddedModule struct {
 	ImportedGlobals    []EmbeddedGlobal
 	Globals            []EmbeddedGlobal
 	Table              *EmbeddedTable
+	Tables             []EmbeddedTable
+	Elements           []EmbeddedElementSegment
 	Exports            []EmbeddedExport
 	Start              *uint32
 	StartEntry         *int
@@ -291,6 +293,8 @@ type PublishedEmbeddedModule struct {
 	ImportedGlobals    []EmbeddedGlobal
 	Globals            []EmbeddedGlobal
 	Table              *EmbeddedTable
+	Tables             []EmbeddedTable
+	Elements           []EmbeddedElementSegment
 	Exports            []EmbeddedExport
 	Start              *uint32
 	StartEntry         *uint32
@@ -313,7 +317,7 @@ func PublishEmbeddedModule(arena *embedded32.CodeArena, module *EmbeddedModule, 
 	if err := tx.Commit(publish); err != nil {
 		return nil, err
 	}
-	out := &PublishedEmbeddedModule{Block: block, Entry: make([]uint32, len(module.Entry)), Functions: make([]EmbeddedFunctionMetadata, len(module.Functions)), FunctionTypeIDs: append([]uint32(nil), module.FunctionTypeIDs...), FunctionSignatures: module.FunctionSignatures, ImportedFunctions: module.ImportedFunctions, Imports: module.Imports, MemoryImported: module.MemoryImported, Memory: module.Memory, Data: module.Data, ImportedGlobals: module.ImportedGlobals, Globals: module.Globals, Table: module.Table, Exports: module.Exports, Start: module.Start}
+	out := &PublishedEmbeddedModule{Block: block, Entry: make([]uint32, len(module.Entry)), Functions: make([]EmbeddedFunctionMetadata, len(module.Functions)), FunctionTypeIDs: append([]uint32(nil), module.FunctionTypeIDs...), FunctionSignatures: module.FunctionSignatures, ImportedFunctions: module.ImportedFunctions, Imports: module.Imports, MemoryImported: module.MemoryImported, Memory: module.Memory, Data: module.Data, ImportedGlobals: module.ImportedGlobals, Globals: module.Globals, Table: module.Table, Tables: module.Tables, Elements: module.Elements, Exports: module.Exports, Start: module.Start}
 	if module.StartEntry != nil {
 		entry := block.Offset + uint32(*module.StartEntry)
 		out.StartEntry = &entry
@@ -440,6 +444,19 @@ func CompileEmbeddedModule(m *wasm.Module, opts EmbeddedModuleOptions, target st
 	if err != nil {
 		return nil, err
 	}
+	tables := embeddedTableList(m)
+	var elements []EmbeddedElementSegment
+	if table != nil {
+		elements = append([]EmbeddedElementSegment(nil), table.Elements...)
+	}
+	if len(tables) == 1 {
+		tables[0].Elements = elements
+		table = &tables[0]
+	} else if len(tables) > 1 {
+		compat := tables[0]
+		compat.Elements = elements
+		table = &compat
+	}
 	functionTypeIDs, err := embeddedFunctionTypeIDs(m)
 	if err != nil {
 		return nil, fmt.Errorf("%s: function type IDs: %w", target, err)
@@ -460,7 +477,7 @@ func CompileEmbeddedModule(m *wasm.Module, opts EmbeddedModuleOptions, target st
 		}
 		start = &index
 	}
-	out := &EmbeddedModule{Code: make([]byte, 0, required), Entry: make([]int, len(bodies)), Functions: make([]EmbeddedFunctionMetadata, len(bodies)), FunctionTypeIDs: functionTypeIDs, FunctionSignatures: functionSignatures, ImportedFunctions: importedFunctions, Imports: imports, MemoryImported: importedMemories == 1, Memory: memory, Data: data, ImportedGlobals: importedGlobals, Globals: globals, Table: table, Exports: exports, Start: start, RequiredCodeBytes: uint32(required)}
+	out := &EmbeddedModule{Code: make([]byte, 0, required), Entry: make([]int, len(bodies)), Functions: make([]EmbeddedFunctionMetadata, len(bodies)), FunctionTypeIDs: functionTypeIDs, FunctionSignatures: functionSignatures, ImportedFunctions: importedFunctions, Imports: imports, MemoryImported: importedMemories == 1, Memory: memory, Data: data, ImportedGlobals: importedGlobals, Globals: globals, Table: table, Tables: tables, Elements: elements, Exports: exports, Start: start, RequiredCodeBytes: uint32(required)}
 	for i, body := range bodies {
 		pad := (16 - len(out.Code)%16) % 16
 		if pad%len(alignmentPad) != 0 {
@@ -718,6 +735,33 @@ func EmbeddedTableValueType(m *wasm.Module, index uint32) (wasm.ValType, bool) {
 		return embeddedReferenceValueType(m.Tables[local].Type.Ref)
 	}
 	return wasm.ValType{}, false
+}
+
+func embeddedTableList(m *wasm.Module) []EmbeddedTable {
+	if m == nil {
+		return nil
+	}
+	out := make([]EmbeddedTable, 0, m.TableCount())
+	for i := range m.Imports {
+		if m.Imports[i].Type.Kind != wasm.ExternTable {
+			continue
+		}
+		typ := m.Imports[i].Type.Table
+		item := EmbeddedTable{Imported: true, Reference: typ.Ref, Minimum: uint32(typ.Limits.Min)}
+		if typ.Limits.Max != nil {
+			item.Maximum, item.HasMaximum = uint32(*typ.Limits.Max), true
+		}
+		out = append(out, item)
+	}
+	for i := range m.Tables {
+		typ := m.Tables[i].Type
+		item := EmbeddedTable{Reference: typ.Ref, Minimum: uint32(typ.Limits.Min)}
+		if typ.Limits.Max != nil {
+			item.Maximum, item.HasMaximum = uint32(*typ.Limits.Max), true
+		}
+		out = append(out, item)
+	}
+	return out
 }
 
 func embeddedReferenceValueType(ref wasm.RefType) (wasm.ValType, bool) {

@@ -106,6 +106,56 @@ func TestBuildEmbeddedFirmwareImageSerializesClosedModuleState(t *testing.T) {
 	}
 }
 
+func TestBuildEmbeddedFirmwareImageSerializesIndexedTables(t *testing.T) {
+	module := &EmbeddedModule{
+		Tables: []EmbeddedTable{
+			{Reference: wasm.FuncRef.Ref, Minimum: 1, Maximum: 2, HasMaximum: true},
+			{Reference: wasm.ExternRef.Ref, Minimum: 2, Maximum: 4, HasMaximum: true},
+		},
+		Elements: []EmbeddedElementSegment{{Mode: EmbeddedElementActive, Table: 1, Reference: wasm.ExternRef.Ref, Offset: 1, Values: []uint32{0}}},
+	}
+	opts := EmbeddedFirmwareOptions{
+		BaseAddress:      0x20000000,
+		TableCapacities:  []uint32{2, 4},
+		NativeStackLimit: 0x20040000,
+		HelperEntries:    [4]uint32{1, 2, 3, 4},
+	}
+	size, err := EmbeddedFirmwareImageSize(module, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	image, err := BuildEmbeddedFirmwareImage(make([]byte, size), module, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(image.TableAddresses) != 2 || image.TableAddress != image.TableAddresses[0] {
+		t.Fatalf("table addresses=%#v first=%#x", image.TableAddresses, image.TableAddress)
+	}
+	wordAt := func(address uint32) uint32 {
+		offset := address - image.BaseAddress
+		return binary.LittleEndian.Uint32(image.Bytes[offset : offset+4])
+	}
+	if got := wordAt(image.ContextAddress + embedded32.ContextTableCountOffset); got != 2 {
+		t.Fatalf("table count=%d", got)
+	}
+	directory := wordAt(image.ContextAddress + embedded32.ContextTablesBaseOffset)
+	for i, address := range image.TableAddresses {
+		if got := wordAt(directory + uint32(i*4)); got != address {
+			t.Fatalf("directory[%d]=%#x want %#x", i, got, address)
+		}
+	}
+	if got := wordAt(image.TableAddresses[1] + embedded32.TableABILengthOffset); got != 2 {
+		t.Fatalf("table 1 length=%d", got)
+	}
+	entries := wordAt(image.TableAddresses[1] + embedded32.TableABIEntriesBaseOffset)
+	if got := wordAt(entries + 4); got != 0 {
+		t.Fatalf("table 1 active externref=%#x", got)
+	}
+	if got := wordAt(image.ContextAddress + embedded32.ContextElementSegmentCountOffset); got != 1 {
+		t.Fatalf("element count=%d", got)
+	}
+}
+
 func TestBuildEmbeddedFirmwareImagePreflightsBeforeMutation(t *testing.T) {
 	module := testEmbeddedFirmwareModule()
 	opts := EmbeddedFirmwareOptions{

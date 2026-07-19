@@ -193,7 +193,7 @@ func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc, memoryImporte
 		must(a.Ldr(dst, armContextReg, offset), what)
 	}
 	loadElementSegments := func(dst a32.Reg, what string) {
-		if tableCount > 1 {
+		if tableCount != 1 {
 			must(a.Ldr(dst, armContextReg, embedded32.ContextElementSegmentsBaseOffset), what)
 			return
 		}

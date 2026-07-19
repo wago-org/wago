@@ -14,6 +14,7 @@ type EmbeddedFirmwareOptions struct {
 	BaseAddress         uint32
 	MemoryCapacity      uint32
 	TableCapacity       uint32
+	TableCapacities     []uint32
 	NativeStackLimit    uint32
 	FunctionAddressMask uint32
 	HelperEntries       [4]uint32
@@ -40,9 +41,16 @@ type EmbeddedFirmwareImage struct {
 	MemoryCapacity      uint32
 	GlobalsAddress      uint32
 	TableAddress        uint32
+	TableAddresses      []uint32
 	StartAddress        uint32
 	Exports             []EmbeddedFirmwareExport
 	TransportFunctions  []embedded32.FirmwareTransportFunction
+}
+
+type embeddedFirmwareTableLayout struct {
+	descriptor uint32
+	entries    uint32
+	capacity   uint32
 }
 
 type embeddedFirmwareLayout struct {
@@ -58,6 +66,8 @@ type embeddedFirmwareLayout struct {
 	dataBytes          []uint32
 	table              uint32
 	tableEntries       uint32
+	tableDirectory     uint32
+	tables             []embeddedFirmwareTableLayout
 	functionEntries    uint32
 	functionTypes      uint32
 	elementDescriptors uint32
@@ -85,12 +95,45 @@ func (a *embeddedFirmwareAllocator) reserve(size, align uint64) (uint32, error) 
 	return uint32(start), nil
 }
 
+func embeddedModuleTables(module *EmbeddedModule) []EmbeddedTable {
+	if module == nil {
+		return nil
+	}
+	if module.Tables != nil || module.Elements != nil {
+		return module.Tables
+	}
+	if module.Table != nil {
+		return []EmbeddedTable{*module.Table}
+	}
+	return nil
+}
+
+func embeddedModuleElements(module *EmbeddedModule) []EmbeddedElementSegment {
+	if module == nil {
+		return nil
+	}
+	if module.Elements != nil || module.Tables != nil {
+		return module.Elements
+	}
+	if module.Table != nil {
+		return module.Table.Elements
+	}
+	return nil
+}
+
 func embeddedFirmwarePlan(module *EmbeddedModule, opts EmbeddedFirmwareOptions) (*embeddedFirmwareLayout, error) {
 	if module == nil {
 		return nil, embedded32.ErrInvalidArena
 	}
-	if module.ImportedFunctions != 0 || module.MemoryImported || len(module.ImportedGlobals) != 0 || module.Table != nil && module.Table.Imported {
+	tables := embeddedModuleTables(module)
+	elements := embeddedModuleElements(module)
+	if module.ImportedFunctions != 0 || module.MemoryImported || len(module.ImportedGlobals) != 0 {
 		return nil, fmt.Errorf("embedded32: firmware image requires a closed module")
+	}
+	for i := range tables {
+		if tables[i].Imported {
+			return nil, fmt.Errorf("embedded32: firmware image requires closed table %d", i)
+		}
 	}
 	if opts.FunctionAddressMask > 1 {
 		return nil, fmt.Errorf("embedded32: invalid function address mask %#x", opts.FunctionAddressMask)
@@ -148,23 +191,36 @@ func embeddedFirmwarePlan(module *EmbeddedModule, opts EmbeddedFirmwareOptions) 
 			}
 		}
 	}
-	if module.Table != nil {
-		capacity := opts.TableCapacity
-		if capacity == 0 {
-			capacity = module.Table.Minimum
-		}
-		if capacity < module.Table.Minimum || module.Table.HasMaximum && capacity > module.Table.Maximum {
-			return nil, fmt.Errorf("embedded32: table capacity %d is outside module limits", capacity)
-		}
-		layout.tableCapacity = capacity
-		if layout.table, err = a.reserve(embedded32.TableABIBytes, 4); err != nil {
+	if len(tables) != 0 {
+		layout.tables = make([]embeddedFirmwareTableLayout, len(tables))
+		if layout.tableDirectory, err = a.reserve(uint64(len(tables))*4, 4); err != nil {
 			return nil, err
 		}
-		if capacity != 0 {
-			if layout.tableEntries, err = a.reserve(uint64(capacity)*4, 4); err != nil {
+		for i := range tables {
+			capacity := uint32(0)
+			if i < len(opts.TableCapacities) {
+				capacity = opts.TableCapacities[i]
+			} else if i == 0 {
+				capacity = opts.TableCapacity
+			}
+			if capacity == 0 {
+				capacity = tables[i].Minimum
+			}
+			if capacity < tables[i].Minimum || tables[i].HasMaximum && capacity > tables[i].Maximum {
+				return nil, fmt.Errorf("embedded32: table %d capacity %d is outside module limits", i, capacity)
+			}
+			item := &layout.tables[i]
+			item.capacity = capacity
+			if item.descriptor, err = a.reserve(embedded32.TableABIBytes, 4); err != nil {
 				return nil, err
 			}
+			if capacity != 0 {
+				if item.entries, err = a.reserve(uint64(capacity)*4, 4); err != nil {
+					return nil, err
+				}
+			}
 		}
+		layout.table, layout.tableEntries, layout.tableCapacity = layout.tables[0].descriptor, layout.tables[0].entries, layout.tables[0].capacity
 		functionCount := len(module.FunctionTypeIDs)
 		if functionCount != 0 {
 			if layout.functionEntries, err = a.reserve(uint64(functionCount)*4, 4); err != nil {
@@ -174,15 +230,15 @@ func embeddedFirmwarePlan(module *EmbeddedModule, opts EmbeddedFirmwareOptions) 
 				return nil, err
 			}
 		}
-		if len(module.Table.Elements) != 0 {
-			if layout.elementDescriptors, err = a.reserve(uint64(len(module.Table.Elements))*embedded32.DataSegmentABIBytes, 4); err != nil {
+	}
+	if len(elements) != 0 {
+		if layout.elementDescriptors, err = a.reserve(uint64(len(elements))*embedded32.DataSegmentABIBytes, 4); err != nil {
+			return nil, err
+		}
+		layout.elementValues = make([]uint32, len(elements))
+		for i := range elements {
+			if layout.elementValues[i], err = a.reserve(uint64(len(elements[i].Values))*4, 4); err != nil {
 				return nil, err
-			}
-			layout.elementValues = make([]uint32, len(module.Table.Elements))
-			for i := range module.Table.Elements {
-				if layout.elementValues[i], err = a.reserve(uint64(len(module.Table.Elements[i].Values))*4, 4); err != nil {
-					return nil, err
-				}
 			}
 		}
 	}
@@ -222,18 +278,22 @@ func embeddedFirmwarePlan(module *EmbeddedModule, opts EmbeddedFirmwareOptions) 
 			return nil, fmt.Errorf("embedded32: active data segment %d exceeds initial memory", i)
 		}
 	}
-	if module.Table != nil {
-		for i := range module.Table.Elements {
-			segment := &module.Table.Elements[i]
-			if segment.Mode == EmbeddedElementActive && uint64(segment.Offset)+uint64(len(segment.Values)) > uint64(module.Table.Minimum) {
-				return nil, fmt.Errorf("embedded32: active element segment %d exceeds initial table", i)
-			}
+	for i := range elements {
+		segment := &elements[i]
+		if segment.Mode != EmbeddedElementActive {
+			continue
 		}
-		for i := range module.Functions {
-			function := &module.Functions[i]
-			if uint64(function.FuncIndex) >= uint64(len(module.FunctionTypeIDs)) {
-				return nil, fmt.Errorf("embedded32: function metadata index %d is unavailable", function.FuncIndex)
-			}
+		if uint64(segment.Table) >= uint64(len(tables)) {
+			return nil, fmt.Errorf("embedded32: active element segment %d targets unavailable table %d", i, segment.Table)
+		}
+		if uint64(segment.Offset)+uint64(len(segment.Values)) > uint64(tables[segment.Table].Minimum) {
+			return nil, fmt.Errorf("embedded32: active element segment %d exceeds initial table %d", i, segment.Table)
+		}
+	}
+	for i := range module.Functions {
+		function := &module.Functions[i]
+		if uint64(function.FuncIndex) >= uint64(len(module.FunctionTypeIDs)) {
+			return nil, fmt.Errorf("embedded32: function metadata index %d is unavailable", function.FuncIndex)
 		}
 	}
 	for i := range module.Exports {
@@ -276,6 +336,8 @@ func BuildEmbeddedFirmwareImage(dst []byte, module *EmbeddedModule, opts Embedde
 	if uint64(layout.required) > uint64(len(dst)) {
 		return nil, embedded32.ErrArenaCapacity
 	}
+	tables := embeddedModuleTables(module)
+	elements := embeddedModuleElements(module)
 	var globalCells []uint32
 	if layout.globalSlots != 0 {
 		globalCells = make([]uint32, layout.globalSlots)
@@ -283,11 +345,14 @@ func BuildEmbeddedFirmwareImage(dst []byte, module *EmbeddedModule, opts Embedde
 			return nil, err
 		}
 	}
-	var tableEntries []uint32
-	if module.Table != nil {
-		tableEntries = make([]uint32, layout.tableCapacity)
-		if err := module.InstantiateTable(tableEntries); err != nil {
-			return nil, err
+	tableEntries := make([][]uint32, len(tables))
+	for i := range tables {
+		tableEntries[i] = make([]uint32, layout.tables[i].capacity)
+	}
+	for i := range elements {
+		segment := &elements[i]
+		if segment.Mode == EmbeddedElementActive {
+			copy(tableEntries[segment.Table][segment.Offset:], segment.Values)
 		}
 	}
 	imageBytes := dst[:layout.required]
@@ -315,10 +380,7 @@ func BuildEmbeddedFirmwareImage(dst []byte, module *EmbeddedModule, opts Embedde
 			copy(imageBytes[layout.memory+segment.Offset:], segment.Bytes)
 		}
 	}
-	if module.Table != nil {
-		for i, value := range tableEntries {
-			put(layout.tableEntries+uint32(i*4), value)
-		}
+	if len(tables) != 0 {
 		for i, value := range module.FunctionTypeIDs {
 			put(layout.functionTypes+uint32(i*4), value)
 		}
@@ -326,39 +388,48 @@ func BuildEmbeddedFirmwareImage(dst []byte, module *EmbeddedModule, opts Embedde
 			function := &module.Functions[i]
 			put(layout.functionEntries+function.FuncIndex*4, addr(layout.code+function.Offset)|opts.FunctionAddressMask)
 		}
-		for i := range module.Table.Elements {
-			segment := &module.Table.Elements[i]
-			values := layout.elementValues[i]
-			for j, value := range segment.Values {
-				put(values+uint32(j*4), value)
-			}
-			descriptor := layout.elementDescriptors + uint32(i)*embedded32.DataSegmentABIBytes
-			put(descriptor+embedded32.DataSegmentBaseOffset, addr(values))
-			put(descriptor+embedded32.DataSegmentLengthOffset, uint32(len(segment.Values)))
-			if segment.Mode != EmbeddedElementPassive {
-				put(descriptor+embedded32.DataSegmentDroppedOffset, 1)
-			}
-		}
-		var entriesAddress, functionEntriesAddress, functionTypesAddress, elementsAddress uint32
-		if layout.tableCapacity != 0 {
-			entriesAddress = addr(layout.tableEntries)
-		}
-		if len(module.FunctionTypeIDs) != 0 {
-			functionEntriesAddress = addr(layout.functionEntries)
-			functionTypesAddress = addr(layout.functionTypes)
-		}
-		if len(module.Table.Elements) != 0 {
-			elementsAddress = addr(layout.elementDescriptors)
-		}
-		put(layout.table+embedded32.TableABIEntriesBaseOffset, entriesAddress)
-		put(layout.table+embedded32.TableABILengthOffset, module.Table.Minimum)
-		put(layout.table+embedded32.TableABIMaximumOffset, layout.tableCapacity)
-		put(layout.table+embedded32.TableABIFunctionEntriesBaseOffset, functionEntriesAddress)
-		put(layout.table+embedded32.TableABIFunctionTypesBaseOffset, functionTypesAddress)
-		put(layout.table+embedded32.TableABIElementSegmentsBaseOffset, elementsAddress)
-		put(layout.table+embedded32.TableABIElementSegmentCountOffset, uint32(len(module.Table.Elements)))
 	}
-	var memoryAddress, globalsAddress, dataAddress, tableAddress uint32
+	for i := range elements {
+		segment := &elements[i]
+		values := layout.elementValues[i]
+		for j, value := range segment.Values {
+			put(values+uint32(j*4), value)
+		}
+		descriptor := layout.elementDescriptors + uint32(i)*embedded32.DataSegmentABIBytes
+		put(descriptor+embedded32.DataSegmentBaseOffset, addr(values))
+		put(descriptor+embedded32.DataSegmentLengthOffset, uint32(len(segment.Values)))
+		if segment.Mode != EmbeddedElementPassive {
+			put(descriptor+embedded32.DataSegmentDroppedOffset, 1)
+		}
+	}
+	var functionEntriesAddress, functionTypesAddress, elementsAddress uint32
+	if len(module.FunctionTypeIDs) != 0 && len(tables) != 0 {
+		functionEntriesAddress = addr(layout.functionEntries)
+		functionTypesAddress = addr(layout.functionTypes)
+	}
+	if len(elements) != 0 {
+		elementsAddress = addr(layout.elementDescriptors)
+	}
+	for i := range tables {
+		item := &layout.tables[i]
+		var entriesAddress uint32
+		if item.capacity != 0 {
+			entriesAddress = addr(item.entries)
+			for j, value := range tableEntries[i] {
+				put(item.entries+uint32(j*4), value)
+			}
+		}
+		put(layout.tableDirectory+uint32(i*4), addr(item.descriptor))
+		put(item.descriptor+embedded32.TableABIEntriesBaseOffset, entriesAddress)
+		put(item.descriptor+embedded32.TableABILengthOffset, tables[i].Minimum)
+		put(item.descriptor+embedded32.TableABIMaximumOffset, item.capacity)
+		put(item.descriptor+embedded32.TableABIFunctionEntriesBaseOffset, functionEntriesAddress)
+		put(item.descriptor+embedded32.TableABIFunctionTypesBaseOffset, functionTypesAddress)
+		put(item.descriptor+embedded32.TableABIElementSegmentsBaseOffset, elementsAddress)
+		put(item.descriptor+embedded32.TableABIElementSegmentCountOffset, uint32(len(elements)))
+	}
+	var memoryAddress, globalsAddress, dataAddress, tableAddress, tablesAddress uint32
+	tableAddresses := make([]uint32, len(tables))
 	if module.Memory != nil && layout.memoryCapacity != 0 {
 		memoryAddress = addr(layout.memory)
 	}
@@ -368,8 +439,12 @@ func BuildEmbeddedFirmwareImage(dst []byte, module *EmbeddedModule, opts Embedde
 	if len(module.Data) != 0 {
 		dataAddress = addr(layout.dataDescriptors)
 	}
-	if module.Table != nil {
-		tableAddress = addr(layout.table)
+	if len(tables) != 0 {
+		tablesAddress = addr(layout.tableDirectory)
+		for i := range tables {
+			tableAddresses[i] = addr(layout.tables[i].descriptor)
+		}
+		tableAddress = tableAddresses[0]
 	}
 	put(layout.context+embedded32.ContextLinearMemoryBaseOffset, memoryAddress)
 	put(layout.context+embedded32.ContextLinearMemoryLengthOffset, layout.memoryLength)
@@ -382,6 +457,11 @@ func BuildEmbeddedFirmwareImage(dst []byte, module *EmbeddedModule, opts Embedde
 	put(layout.context+embedded32.ContextDataSegmentsBaseOffset, dataAddress)
 	put(layout.context+embedded32.ContextDataSegmentCountOffset, uint32(len(module.Data)))
 	put(layout.context+embedded32.ContextTableOffset, tableAddress)
+	put(layout.context+embedded32.ContextTableStorageOffset, tableAddress)
+	put(layout.context+embedded32.ContextTablesBaseOffset, tablesAddress)
+	put(layout.context+embedded32.ContextTableCountOffset, uint32(len(tables)))
+	put(layout.context+embedded32.ContextElementSegmentsBaseOffset, elementsAddress)
+	put(layout.context+embedded32.ContextElementSegmentCountOffset, uint32(len(elements)))
 
 	functionExports := 0
 	for i := range module.Exports {
@@ -401,6 +481,7 @@ func BuildEmbeddedFirmwareImage(dst []byte, module *EmbeddedModule, opts Embedde
 		MemoryCapacity:      layout.memoryCapacity,
 		GlobalsAddress:      globalsAddress,
 		TableAddress:        tableAddress,
+		TableAddresses:      tableAddresses,
 		Exports:             make([]EmbeddedFirmwareExport, len(module.Exports)),
 		TransportFunctions:  make([]embedded32.FirmwareTransportFunction, functionExports),
 	}

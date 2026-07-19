@@ -143,9 +143,11 @@ admissions. Indexed table resolution, directory-based get/set/size/grow/fill/
 copy/init, and nonzero-table indirect calls then moved all 85 multi-table
 modules into the gate. The current admission run covers 3,853 modules with only
 five multi-memory exclusions and one explicit resource rejection for the 8.4
-KiB live-local guard-page stress function. Multi-table firmware layout and
-cross-module funcref identity still have to match this code-admission surface
-before execution qualification. Execution assertions still require the firmware
+KiB live-local guard-page stress function. Closed firmware images now allocate bounded per-table descriptors/backing,
+publish an indexed descriptor directory, apply active elements to their exact
+target, and retain one module-wide passive/declarative descriptor set.
+Cross-module imported-table publication and funcref identity still have to match
+this local code/image surface before execution qualification. Execution assertions still require the firmware
 or QEMU module runner.
 
 ## Current implementation status

@@ -89,10 +89,13 @@ func matchEmbeddedImport(in *EmbeddedImport, provider *EmbeddedModule, out *Embe
 			return fmt.Errorf("function signature mismatch")
 		}
 	case wasm.ExternTable:
-		if out.Index != 0 || provider.Table == nil {
+		tables := embeddedModuleTables(provider)
+		if uint64(out.Index) >= uint64(len(tables)) {
 			return fmt.Errorf("table export index %d is unavailable", out.Index)
 		}
-		if in.Reference != wasm.FuncRef.Ref || !embeddedLimitsMatch(in.Minimum, in.Maximum, in.HasMaximum, provider.Table.Minimum, provider.Table.Maximum, provider.Table.HasMaximum) {
+		expected, expectedOK := embeddedReferenceValueType(in.Reference)
+		actual, actualOK := embeddedReferenceValueType(tables[out.Index].Reference)
+		if !expectedOK || !actualOK || expected != actual || !embeddedLimitsMatch(in.Minimum, in.Maximum, in.HasMaximum, tables[out.Index].Minimum, tables[out.Index].Maximum, tables[out.Index].HasMaximum) {
 			return fmt.Errorf("table type mismatch")
 		}
 	case wasm.ExternMem:
