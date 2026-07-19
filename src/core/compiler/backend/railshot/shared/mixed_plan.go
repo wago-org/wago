@@ -490,7 +490,7 @@ func BuildMixedPlanWithModuleResolvers(ft *wasm.CompType, locals []wasm.LocalRun
 		armReachable bool
 		dead         bool
 	}
-	var controls []mixedControl
+	controls := []mixedControl{{kind: 0xff, falseOp: -1, jumpOp: -1, results: append([]wasm.ValType(nil), ft.Results...)}}
 	readBlockSignature := func() (mixedBlockSignature, error) {
 		encoded, ok := r.Peek()
 		if !ok {
@@ -605,16 +605,11 @@ func BuildMixedPlanWithModuleResolvers(ft *wasm.CompType, locals []wasm.LocalRun
 			operandSlots += uint16(width)
 		}
 	}
-	terminated := false
-	terminalUnreachable := false
 	branchTerminated := false
 	for r.HasNext() {
 		op, err := r.Byte()
 		if err != nil {
 			return nil, err
-		}
-		if terminated && op != 0x0b {
-			return nil, fmt.Errorf("mixed function currently requires terminal unreachable")
 		}
 		if branchTerminated && op != 0x05 && op != 0x0b {
 			if op == 0x02 || op == 0x03 || op == 0x04 {
@@ -630,8 +625,7 @@ func BuildMixedPlanWithModuleResolvers(ft *wasm.CompType, locals []wasm.LocalRun
 		switch op {
 		case 0x00: // unreachable
 			p.Ops = append(p.Ops, MixedOp{Kind: MixedUnreachable})
-			terminated = true
-			terminalUnreachable = true
+			branchTerminated = true
 		case 0x01: // nop
 		case 0x02, 0x03: // block / loop
 			sig, err := readBlockSignature()
@@ -691,79 +685,71 @@ func BuildMixedPlanWithModuleResolvers(ft *wasm.CompType, locals []wasm.LocalRun
 			operandSlots = control.startSlots
 			branchTerminated = false
 		case 0x0b: // end
-			if len(controls) != 0 {
-				control := controls[len(controls)-1]
-				if control.dead {
-					controls = controls[:len(controls)-1]
-					continue
-				}
-				target := len(p.Ops)
-				endReachable := false
-				if branchTerminated {
-					endReachable = len(control.pending) != 0 || control.jumpOp >= 0 || (control.kind == 0x04 && !control.elseSeen)
-					if endReachable {
-						setControlResults(&control)
-					}
-				} else {
-					results, ok := controlMatches(&control)
-					if !ok {
-						return nil, fmt.Errorf("mixed control arm does not match block results")
-					}
-					if control.kind == 0x04 && len(control.results) != 0 {
-						if !control.elseSeen {
-							return nil, fmt.Errorf("mixed result if requires else")
-						}
-						if control.armReachable {
-							if len(results) != len(control.armResults) {
-								return nil, fmt.Errorf("mixed if result arity mismatch")
-							}
-							for i := range results {
-								if results[i] != control.armResults[i] {
-									return nil, fmt.Errorf("mixed if result slots do not merge atomically")
-								}
-							}
-						}
-					}
-					endReachable = true
-				}
-				if control.kind == 0x04 {
-					if control.elseSeen {
-						if control.jumpOp >= 0 {
-							p.Ops[control.jumpOp].Label = target
-						}
-					} else {
-						p.Ops[control.falseOp].Label = target
-					}
-				}
-				for _, branch := range control.pending {
-					p.Ops[branch].Label = target
-				}
+			if len(controls) == 0 {
+				return nil, fmt.Errorf("mixed function has unexpected end")
+			}
+			control := controls[len(controls)-1]
+			if control.dead {
 				controls = controls[:len(controls)-1]
-				branchTerminated = !endReachable
 				continue
 			}
-			if r.HasNext() {
-				return nil, fmt.Errorf("mixed function has instructions after end")
-			}
+			functionEnd := control.kind == 0xff
+			target := len(p.Ops)
+			endReachable := false
 			if branchTerminated {
-				terminalUnreachable = true
-			}
-			if !terminalUnreachable {
-				if len(stack) != len(ft.Results) {
-					return nil, fmt.Errorf("mixed result stack has %d values, want %d", len(stack), len(ft.Results))
+				endReachable = len(control.pending) != 0 || control.jumpOp >= 0 || (control.kind == 0x04 && !control.elseSeen)
+				if endReachable {
+					setControlResults(&control)
 				}
-				for i := range stack {
-					if stack[i].Type != ft.Results[i] {
-						return nil, fmt.Errorf("mixed result %d has type %s, want %s", i, stack[i].Type, ft.Results[i])
+			} else {
+				results, ok := controlMatches(&control)
+				if !ok {
+					return nil, fmt.Errorf("mixed control arm does not match block results")
+				}
+				if control.kind == 0x04 && len(control.results) != 0 {
+					if !control.elseSeen {
+						return nil, fmt.Errorf("mixed result if requires else")
+					}
+					if control.armReachable {
+						if len(results) != len(control.armResults) {
+							return nil, fmt.Errorf("mixed if result arity mismatch")
+						}
+						for i := range results {
+							if results[i] != control.armResults[i] {
+								return nil, fmt.Errorf("mixed if result slots do not merge atomically")
+							}
+						}
 					}
 				}
-				p.Results = append(p.Results, stack...)
+				endReachable = true
 			}
-			for _, typ := range ft.Results {
-				width, _ := MixedValueSlots(typ)
-				p.ResultSlots += uint16(width)
+			if control.kind == 0x04 {
+				if control.elseSeen {
+					if control.jumpOp >= 0 {
+						p.Ops[control.jumpOp].Label = target
+					}
+				} else {
+					p.Ops[control.falseOp].Label = target
+				}
 			}
-			return p, nil
+			for _, branch := range control.pending {
+				p.Ops[branch].Label = target
+			}
+			if functionEnd {
+				if r.HasNext() {
+					return nil, fmt.Errorf("mixed function has instructions after end")
+				}
+				if endReachable {
+					p.Results = append(p.Results, stack...)
+				}
+				for _, typ := range ft.Results {
+					width, _ := MixedValueSlots(typ)
+					p.ResultSlots += uint16(width)
+				}
+				return p, nil
+			}
+			controls = controls[:len(controls)-1]
+			branchTerminated = !endReachable
 		case 0x0c: // br
 			depth, err := r.U32()
 			if err != nil || int(depth) >= len(controls) {
@@ -866,7 +852,16 @@ func BuildMixedPlanWithModuleResolvers(ft *wasm.CompType, locals []wasm.LocalRun
 			}
 			branchTerminated = true
 		case 0x0f: // return
-			terminated = true
+			root := &controls[0]
+			moves, err := branchMoves(root)
+			if err != nil {
+				return nil, fmt.Errorf("mixed return: %w", err)
+			}
+			p.Ops = append(p.Ops, moves...)
+			branch := len(p.Ops)
+			root.pending = append(root.pending, branch)
+			p.Ops = append(p.Ops, MixedOp{Kind: MixedJump, Label: -1})
+			branchTerminated = true
 		case 0x10: // call
 			target, err := r.U32()
 			if err != nil {

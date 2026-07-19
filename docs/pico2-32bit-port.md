@@ -124,15 +124,20 @@ explicit multi-memory/multi-table/threads-memory64/exception/GC boundary as
 outside the completion gate. Module compilation now routes i32-only signatures
 through the same complete mixed-width planner instead of the legacy beachhead.
 
-The first full pinned-corpus run inspected 3,768 in-gate modules and excluded 90
-modules at the explicit boundary. Arm32 and RV32 made identical admission
-decisions and admitted no malformed/invalid module, but 77 valid modules across
-37 of 147 script files were still rejected; 110 script files passed completely.
-The remaining groups are typed dead-control joins/terminal-unreachable handling,
-non-constant imported-global data/element offsets, externref and reference
-initializers, declarative elements without a table, imported start functions,
-one bounded-stack stress module, and target-incompatible maximum capacities.
-Execution assertions still require the firmware or QEMU module runner.
+The pinned Linux/amd64 Release 2 execution target is freshly green at 1,600
+modules and 48,248 assertions with zero failures, skips, or bounded gap reasons.
+The first embedded admission run inspected 3,768 in-gate modules and excluded 90
+modules at the then-current boundary. Routing function labels, early returns,
+unreachable tails, and branch-carried results through one synthetic function
+control frame reduced valid Arm32/RV32 rejections from 77 to 33 while preserving
+identical target decisions and zero malformed/invalid admissions. The remaining
+groups are imported-global data/element offsets, externref and reference
+initializers/tables, declarative elements without a table, four result-control
+cases, imported start functions, one bounded-stack stress module, and one
+maximum-capacity policy case. Multi-table must move into the gate for full
+Release 2 parity; only the five multi-memory modules remain an intentional
+language-feature exclusion. Execution assertions still require the firmware or
+QEMU module runner.
 
 ## Current implementation status
 

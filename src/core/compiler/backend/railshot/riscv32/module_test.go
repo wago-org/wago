@@ -71,6 +71,20 @@ func TestCompileModuleAdmitsF64AndV128Functions(t *testing.T) {
 	}
 }
 
+func TestCompileModuleAdmitsFunctionLabelAndEarlyReturn(t *testing.T) {
+	m, err := wasm.DecodeModule(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x02, 0x40, 0x20, 0, 0x0d, 0, 0x41, 2, 0x0f, 0x0b, 0x41, 3, 0x0b}))),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := CompileModule(m); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestCompileModuleUsesMixedPlannerForI32Signatures(t *testing.T) {
 	m, err := wasm.DecodeModule(wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
