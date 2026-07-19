@@ -82,8 +82,8 @@ func compileMixedModuleFunction(m *wasm.Module, ft *wasm.CompType, locals []wasm
 			return nil, nil, fmt.Errorf("riscv32: mixed call target %d is unavailable", op.Target)
 		}
 		targetType, ok := m.LocalFuncType(int(localTarget))
-		if !ok || !usesMixedModuleCompiler(targetType, m.Code[localTarget].Locals.Runs) {
-			return nil, nil, fmt.Errorf("riscv32: mixed call target %d does not use the mixed ABI", op.Target)
+		if !ok || (!usesMixedModuleCompiler(targetType, m.Code[localTarget].Locals.Runs) && !homogeneousFunction(targetType, m.Code[localTarget].Locals.Runs, wasm.I32, true)) {
+			return nil, nil, fmt.Errorf("riscv32: mixed call target %d does not use a compatible module ABI", op.Target)
 		}
 		op.Target = localTarget
 	}
@@ -1282,6 +1282,10 @@ func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc) ([]byte, erro
 				cond = rv.CondNE
 			}
 			branches = append(branches, mixedBranchPatch{at: a.FarBcond(rv.T0, rv.Zero, cond, branchScratch), label: op.Label, conditional: true})
+		case shared.MixedBranchEqualImmediate:
+			must(a.Lw(rv.T0, rv.SP, off(op.Third)), "branch table selector")
+			a.MovImm32(rv.T1, op.Target)
+			branches = append(branches, mixedBranchPatch{at: a.FarBcond(rv.T0, rv.T1, rv.CondEQ, branchScratch), label: op.Label, conditional: true})
 		case shared.MixedJump:
 			branches = append(branches, mixedBranchPatch{at: a.FarJump(rv.Zero, branchScratch), label: op.Label})
 		case shared.MixedPollCancellation:

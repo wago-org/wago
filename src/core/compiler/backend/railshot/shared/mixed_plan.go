@@ -73,6 +73,7 @@ const (
 	MixedSelect
 	MixedBranchZero
 	MixedBranchNonzero
+	MixedBranchEqualImmediate
 	MixedJump
 	MixedPollCancellation
 	MixedGlobalGet
@@ -472,32 +473,22 @@ func BuildMixedPlanWithModuleResolvers(ft *wasm.CompType, locals []wasm.LocalRun
 		params, results []wasm.ValType
 	}
 	type mixedControl struct {
-		kind       byte
-		base       []MixedValue
-		start      []MixedValue
-		baseSlots  uint16
-		startSlots uint16
-		header     int
-		falseOp    int
-		jumpOp     int
-		elseSeen   bool
-		pending    []int
-		params     []wasm.ValType
-		results    []wasm.ValType
-		armResults []MixedValue
+		kind         byte
+		base         []MixedValue
+		start        []MixedValue
+		baseSlots    uint16
+		startSlots   uint16
+		header       int
+		falseOp      int
+		jumpOp       int
+		elseSeen     bool
+		pending      []int
+		params       []wasm.ValType
+		results      []wasm.ValType
+		armResults   []MixedValue
+		armReachable bool
 	}
 	var controls []mixedControl
-	stackMatches := func(want []MixedValue) bool {
-		if len(stack) != len(want) {
-			return false
-		}
-		for i := range stack {
-			if stack[i] != want[i] {
-				return false
-			}
-		}
-		return true
-	}
 	readBlockSignature := func() (mixedBlockSignature, error) {
 		encoded, ok := r.Peek()
 		if !ok {
@@ -569,6 +560,49 @@ func BuildMixedPlanWithModuleResolvers(ft *wasm.CompType, locals []wasm.LocalRun
 		values := append([]MixedValue(nil), stack[len(control.base):]...)
 		return values, true
 	}
+	branchMoves := func(control *mixedControl) ([]MixedOp, error) {
+		labelTypes := control.results
+		if control.kind == 0x03 {
+			labelTypes = control.params
+		}
+		if len(stack) < len(control.base)+len(labelTypes) {
+			return nil, fmt.Errorf("mixed branch target stack underflow")
+		}
+		for i := range control.base {
+			if stack[i] != control.base[i] {
+				return nil, fmt.Errorf("mixed branch target base does not match")
+			}
+		}
+		sources := stack[len(stack)-len(labelTypes):]
+		moves := make([]MixedOp, 0, len(labelTypes))
+		destinationSlot := control.baseSlots
+		for i, typ := range labelTypes {
+			if sources[i].Type != typ {
+				return nil, fmt.Errorf("mixed branch value %d has type %s, want %s", i, sources[i].Type, typ)
+			}
+			width, _ := MixedValueSlots(typ)
+			destination := uint16(0)
+			if control.kind == 0x03 {
+				destination = control.start[len(control.base)+i].Slot
+			} else {
+				destination = p.LocalSlots + destinationSlot
+				destinationSlot += uint16(width)
+			}
+			if sources[i].Slot != destination {
+				moves = append(moves, MixedOp{Kind: MixedCopy, Dst: destination, Left: sources[i].Slot, Width: width})
+			}
+		}
+		return moves, nil
+	}
+	setControlResults := func(control *mixedControl) {
+		stack = append(stack[:0], control.base...)
+		operandSlots = control.baseSlots
+		for _, typ := range control.results {
+			width, _ := MixedValueSlots(typ)
+			stack = append(stack, MixedValue{Type: typ, Slot: p.LocalSlots + operandSlots})
+			operandSlots += uint16(width)
+		}
+	}
 	terminated := false
 	terminalUnreachable := false
 	branchTerminated := false
@@ -625,13 +659,18 @@ func BuildMixedPlanWithModuleResolvers(ft *wasm.CompType, locals []wasm.LocalRun
 				return nil, fmt.Errorf("mixed function has unexpected else")
 			}
 			control := &controls[len(controls)-1]
-			armResults, ok := controlMatches(control)
-			if !ok {
-				return nil, fmt.Errorf("mixed if true arm does not match block results")
+			if branchTerminated {
+				control.armReachable = false
+			} else {
+				armResults, ok := controlMatches(control)
+				if !ok {
+					return nil, fmt.Errorf("mixed if true arm does not match block results")
+				}
+				control.armResults = armResults
+				control.armReachable = true
+				control.jumpOp = len(p.Ops)
+				p.Ops = append(p.Ops, MixedOp{Kind: MixedJump, Label: -1})
 			}
-			control.armResults = armResults
-			control.jumpOp = len(p.Ops)
-			p.Ops = append(p.Ops, MixedOp{Kind: MixedJump, Label: -1})
 			p.Ops[control.falseOp].Label = len(p.Ops)
 			control.elseSeen = true
 			stack = append(stack[:0], control.start...)
@@ -640,27 +679,40 @@ func BuildMixedPlanWithModuleResolvers(ft *wasm.CompType, locals []wasm.LocalRun
 		case 0x0b: // end
 			if len(controls) != 0 {
 				control := controls[len(controls)-1]
-				results, ok := controlMatches(&control)
-				if !ok {
-					return nil, fmt.Errorf("mixed control arm does not match block results")
-				}
-				if control.kind == 0x04 && len(control.results) != 0 {
-					if !control.elseSeen {
-						return nil, fmt.Errorf("mixed result if requires else")
+				target := len(p.Ops)
+				endReachable := false
+				if branchTerminated {
+					endReachable = len(control.pending) != 0 || control.jumpOp >= 0 || (control.kind == 0x04 && !control.elseSeen)
+					if endReachable {
+						setControlResults(&control)
 					}
-					if len(results) != len(control.armResults) {
-						return nil, fmt.Errorf("mixed if result arity mismatch")
+				} else {
+					results, ok := controlMatches(&control)
+					if !ok {
+						return nil, fmt.Errorf("mixed control arm does not match block results")
 					}
-					for i := range results {
-						if results[i] != control.armResults[i] {
-							return nil, fmt.Errorf("mixed if result slots do not merge atomically")
+					if control.kind == 0x04 && len(control.results) != 0 {
+						if !control.elseSeen {
+							return nil, fmt.Errorf("mixed result if requires else")
+						}
+						if control.armReachable {
+							if len(results) != len(control.armResults) {
+								return nil, fmt.Errorf("mixed if result arity mismatch")
+							}
+							for i := range results {
+								if results[i] != control.armResults[i] {
+									return nil, fmt.Errorf("mixed if result slots do not merge atomically")
+								}
+							}
 						}
 					}
+					endReachable = true
 				}
-				target := len(p.Ops)
 				if control.kind == 0x04 {
 					if control.elseSeen {
-						p.Ops[control.jumpOp].Label = target
+						if control.jumpOp >= 0 {
+							p.Ops[control.jumpOp].Label = target
+						}
 					} else {
 						p.Ops[control.falseOp].Label = target
 					}
@@ -669,11 +721,14 @@ func BuildMixedPlanWithModuleResolvers(ft *wasm.CompType, locals []wasm.LocalRun
 					p.Ops[branch].Label = target
 				}
 				controls = controls[:len(controls)-1]
-				branchTerminated = false
+				branchTerminated = !endReachable
 				continue
 			}
 			if r.HasNext() {
 				return nil, fmt.Errorf("mixed function has instructions after end")
+			}
+			if branchTerminated {
+				terminalUnreachable = true
 			}
 			if !terminalUnreachable {
 				if len(stack) != len(ft.Results) {
@@ -691,21 +746,26 @@ func BuildMixedPlanWithModuleResolvers(ft *wasm.CompType, locals []wasm.LocalRun
 				p.ResultSlots += uint16(width)
 			}
 			return p, nil
-		case 0x0c: // br to the innermost non-loop label
+		case 0x0c: // br
 			depth, err := r.U32()
-			if err != nil || depth != 0 || len(controls) == 0 {
-				return nil, fmt.Errorf("mixed br currently supports only depth zero")
+			if err != nil || int(depth) >= len(controls) {
+				return nil, fmt.Errorf("mixed br depth %d is invalid", depth)
 			}
-			target := &controls[len(controls)-1]
-			if target.kind == 0x03 {
-				return nil, fmt.Errorf("mixed unconditional loop backedge is not yet supported")
+			targetIndex := len(controls) - 1 - int(depth)
+			target := &controls[targetIndex]
+			moves, err := branchMoves(target)
+			if err != nil {
+				return nil, err
 			}
-			if _, ok := controlMatches(target); !ok {
-				return nil, fmt.Errorf("mixed br values do not match the target label")
-			}
+			p.Ops = append(p.Ops, moves...)
 			branch := len(p.Ops)
-			target.pending = append(target.pending, branch)
-			p.Ops = append(p.Ops, MixedOp{Kind: MixedJump, Label: -1})
+			label := -1
+			if target.kind == 0x03 {
+				label = target.header
+			} else {
+				target.pending = append(target.pending, branch)
+			}
+			p.Ops = append(p.Ops, MixedOp{Kind: MixedJump, Label: label})
 			branchTerminated = true
 		case 0x0d: // br_if to a typed label
 			depth, err := r.U32()
@@ -718,15 +778,13 @@ func BuildMixedPlanWithModuleResolvers(ft *wasm.CompType, locals []wasm.LocalRun
 			}
 			targetIndex := len(controls) - 1 - int(depth)
 			target := &controls[targetIndex]
-			matches := false
-			if target.kind == 0x03 {
-				matches = stackMatches(target.start) && operandSlots == target.startSlots
-			} else {
-				_, matches = controlMatches(target)
+			moves, err := branchMoves(target)
+			if err != nil {
+				return nil, err
 			}
-			if !matches {
-				return nil, fmt.Errorf("mixed br_if values do not match the target label")
-			}
+			skip := len(p.Ops)
+			p.Ops = append(p.Ops, MixedOp{Kind: MixedBranchZero, Third: condition.Slot, Label: -1})
+			p.Ops = append(p.Ops, moves...)
 			branch := len(p.Ops)
 			label := -1
 			if target.kind == 0x03 {
@@ -734,7 +792,61 @@ func BuildMixedPlanWithModuleResolvers(ft *wasm.CompType, locals []wasm.LocalRun
 			} else {
 				target.pending = append(target.pending, branch)
 			}
-			p.Ops = append(p.Ops, MixedOp{Kind: MixedBranchNonzero, Third: condition.Slot, Label: label})
+			p.Ops = append(p.Ops, MixedOp{Kind: MixedJump, Label: label})
+			p.Ops[skip].Label = len(p.Ops)
+		case 0x0e: // br_table
+			count, err := r.U32()
+			if err != nil {
+				return nil, err
+			}
+			depths := make([]uint32, count+1)
+			for i := range depths {
+				depth, err := r.U32()
+				if err != nil || int(depth) >= len(controls) {
+					return nil, fmt.Errorf("mixed br_table depth %d is invalid", depth)
+				}
+				depths[i] = depth
+			}
+			selector, err := pop(wasm.I32)
+			if err != nil {
+				return nil, err
+			}
+			moveSets := make([][]MixedOp, len(depths))
+			targetIndexes := make([]int, len(depths))
+			for i, depth := range depths {
+				targetIndexes[i] = len(controls) - 1 - int(depth)
+				moves, err := branchMoves(&controls[targetIndexes[i]])
+				if err != nil {
+					return nil, fmt.Errorf("mixed br_table target %d: %w", i, err)
+				}
+				moveSets[i] = moves
+			}
+			dispatch := make([]int, count)
+			for i := uint32(0); i < count; i++ {
+				dispatch[i] = len(p.Ops)
+				p.Ops = append(p.Ops, MixedOp{Kind: MixedBranchEqualImmediate, Third: selector.Slot, Target: i, Label: -1})
+			}
+			defaultDispatch := len(p.Ops)
+			p.Ops = append(p.Ops, MixedOp{Kind: MixedJump, Label: -1})
+			for i := range depths {
+				block := len(p.Ops)
+				if i < int(count) {
+					p.Ops[dispatch[i]].Label = block
+				} else {
+					p.Ops[defaultDispatch].Label = block
+				}
+				p.Ops = append(p.Ops, moveSets[i]...)
+				target := &controls[targetIndexes[i]]
+				jump := len(p.Ops)
+				label := -1
+				if target.kind == 0x03 {
+					label = target.header
+				} else {
+					target.pending = append(target.pending, jump)
+				}
+				p.Ops = append(p.Ops, MixedOp{Kind: MixedJump, Label: label})
+			}
+			branchTerminated = true
 		case 0x0f: // return
 			terminated = true
 		case 0x10: // call

@@ -1465,6 +1465,114 @@ func TestCompileModuleBranchesWithWideResultUnderQEMU(t *testing.T) {
 	runARM32Exit(t, qemu, append(a.B, cm.Code...), 42)
 }
 
+func arm32MixedDeepBranchModule(t *testing.T) *wasm.Module {
+	t.Helper()
+	outer := wasmtest.Code([]byte{
+		0x02, 0x7e,
+		0x02, 0x40,
+		0x42, 42,
+		0x0c, 1,
+		0x0b,
+		0x0b,
+		0x0b,
+	})
+	conditional := wasmtest.Code([]byte{
+		0x02, 0x7e,
+		0x41, 7,
+		0x42, 42,
+		0x41, 1,
+		0x0d, 0,
+		0x1a,
+		0x1a,
+		0x42, 0,
+		0x0b,
+		0x0b,
+	})
+	m, err := wasm.DecodeModule(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I64}))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0}, []byte{0})),
+		wasmtest.Section(10, wasmtest.Vec(outer, conditional)),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+func TestCompileModuleBranchesAcrossNestedWideControlsUnderQEMU(t *testing.T) {
+	qemu, err := exec.LookPath("qemu-arm")
+	if err != nil {
+		t.Skip("qemu-arm not installed")
+	}
+	cm, err := CompileModule(arm32MixedDeepBranchModule(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var a a32.Asm
+	armMemoryContext(&a)
+	armContextArg(&a)
+	a.MovReg(a32.R11, a32.R0)
+	first := a.Call()
+	a.MovReg(a32.R4, a32.R0)
+	second := a.Call()
+	a.Add(a32.R0, a32.R0, a32.R4)
+	armExit(&a)
+	if !a.PatchCall(first, len(a.B)+cm.Entry[0]) || !a.PatchCall(second, len(a.B)+cm.Entry[1]) {
+		t.Fatal("wrapper call relocation")
+	}
+	runARM32Exit(t, qemu, append(a.B, cm.Code...), 84)
+}
+
+func arm32MixedBranchTableModule(t *testing.T) *wasm.Module {
+	t.Helper()
+	body := []byte{
+		0x02, 0x7e,
+		0x02, 0x7e,
+		0x42, 40,
+		0x20, 0,
+		0x0e, 2, 0, 1, 1,
+		0x0b,
+		0x42, 2, 0x7c,
+		0x0b,
+		0x0b,
+	}
+	m, err := wasm.DecodeModule(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I64}))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+func TestCompileModuleBranchesThroughWideTableTargetsUnderQEMU(t *testing.T) {
+	qemu, err := exec.LookPath("qemu-arm")
+	if err != nil {
+		t.Skip("qemu-arm not installed")
+	}
+	cm, err := CompileModule(arm32MixedBranchTableModule(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var a a32.Asm
+	armMemoryContext(&a)
+	armContextArg(&a)
+	a.MovReg(a32.R11, a32.R0)
+	a.MovImm32(a32.R0, 0)
+	first := a.Call()
+	a.MovReg(a32.R4, a32.R0)
+	a.MovImm32(a32.R0, 1)
+	second := a.Call()
+	a.Add(a32.R0, a32.R0, a32.R4)
+	armExit(&a)
+	if !a.PatchCall(first, len(a.B)+cm.Entry[0]) || !a.PatchCall(second, len(a.B)+cm.Entry[0]) {
+		t.Fatal("wrapper call relocation")
+	}
+	runARM32Exit(t, qemu, append(a.B, cm.Code...), 82)
+}
+
 func arm32MixedSIMDHelperModule(t *testing.T) *wasm.Module {
 	t.Helper()
 	first := make([]byte, 16)
@@ -1902,6 +2010,48 @@ func TestCompileModuleBulkMemoryFromMixedFunctionUnderQEMU(t *testing.T) {
 	armExit(&a)
 	a.PatchCall(call, len(a.B))
 	runARM32Exit(t, qemu, append(a.B, fn...), 42)
+}
+
+func arm32MixedToI32CallModule(t *testing.T) *wasm.Module {
+	t.Helper()
+	m, err := wasm.DecodeModule(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}),
+			wasmtest.FuncType([]wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0}, []byte{1})),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x20, 0, 0x41, 1, 0x6a, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0, 0xa7, 0x10, 0, 0x0b}),
+		)),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+func TestCompileModuleCallsI32FunctionFromMixedFrameUnderQEMU(t *testing.T) {
+	qemu, err := exec.LookPath("qemu-arm")
+	if err != nil {
+		t.Skip("qemu-arm not installed")
+	}
+	cm, err := CompileModule(arm32MixedToI32CallModule(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var a a32.Asm
+	armMemoryContext(&a)
+	armContextArg(&a)
+	a.MovReg(a32.R11, a32.R0)
+	a.MovImm32(a32.R0, 41)
+	a.MovImm32(a32.R1, 0)
+	call := a.Call()
+	armExit(&a)
+	if !a.PatchCall(call, len(a.B)+cm.Entry[1]) {
+		t.Fatal("wrapper call relocation")
+	}
+	runARM32Exit(t, qemu, append(a.B, cm.Code...), 42)
 }
 
 func arm32ImportedCallModule(t *testing.T) *wasm.Module {

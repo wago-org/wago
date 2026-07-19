@@ -323,11 +323,15 @@ across calls, relocates direct calls module-wide, supports recursion, and checks
 the trap cell after nested returns. Stack exhaustion writes a distinct canonical
 trap before any callee-save state is exposed. Mixed-width signatures and locals
 now use exact bounded stack frames with entry cancellation and stack-limit
-checks. Direct mixed-width calls, multiple results, and bounded stack argument/result
-overflow are implemented. Indirect and imported calls, calls into legacy
-homogeneous beachheads, arbitrary-depth/unconditional loop branches, and
-`br_table` value merges remain
-outside this module-wide slice.
+checks. Direct mixed-width calls, calls into the compatible i32 module ABI,
+multiple results, imported callbacks, indirect calls, and bounded stack
+argument/result overflow are implemented. Typed `br` and `br_if` now target
+arbitrary enclosing block/loop depths, moving one/two/four-slot branch values
+into canonical target homes before transfer. Value-carrying `br_table` dispatch
+uses per-target atomic merge blocks, and unconditional loop backedges continue
+to poll cancellation at their headers. The parser still deliberately requires
+unreachable code after an unconditional transfer to reach an immediate
+`else`/`end` boundary rather than accepting arbitrary dead instruction streams.
 
 Module metadata now retains local i32/i64/f32/f64/v128 globals with exact
 mutability, serialized slot offsets, and raw constant initial values.
@@ -387,7 +391,7 @@ returns the published trap code. This gives firmware a conventional ABI for
 transactional instantiation/start sequencing without target-specific inline
 assembly.
 
-This is still not public backend admission. Arbitrary-depth and table-driven
-structured-control transfers, non-function imports, firmware linking and
+This is still not public backend admission. Arbitrary dead-code regions after
+unconditional transfers, non-function imports, firmware linking and
 transport, and Pico 2 hardware
 qualification remain to be implemented and measured.
