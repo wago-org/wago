@@ -55,6 +55,8 @@ const (
 	MixedI64Helper
 	MixedMemoryLoad
 	MixedMemoryStore
+	MixedMemorySize
+	MixedMemoryGrow
 	MixedSIMDHelper
 )
 
@@ -867,6 +869,30 @@ func BuildMixedPlanWithBlockResolver(ft *wasm.CompType, locals []wasm.LocalRun, 
 			}
 			width, _ := MixedValueSlots(valueType)
 			p.Ops = append(p.Ops, MixedOp{Kind: MixedMemoryStore, Left: address.Slot, Right: value.Slot, Width: width, MemoryOp: uint8(storeOp), MemoryOffset: offset})
+		case 0x3f: // memory.size
+			memory, err := r.U32()
+			if err != nil || memory != 0 {
+				return nil, fmt.Errorf("mixed memory.size requires memory zero")
+			}
+			out, err := push(wasm.I32)
+			if err != nil {
+				return nil, err
+			}
+			p.Ops = append(p.Ops, MixedOp{Kind: MixedMemorySize, Dst: out.Slot, Width: 1})
+		case 0x40: // memory.grow
+			memory, err := r.U32()
+			if err != nil || memory != 0 {
+				return nil, fmt.Errorf("mixed memory.grow requires memory zero")
+			}
+			delta, err := pop(wasm.I32)
+			if err != nil {
+				return nil, err
+			}
+			out, err := push(wasm.I32)
+			if err != nil {
+				return nil, err
+			}
+			p.Ops = append(p.Ops, MixedOp{Kind: MixedMemoryGrow, Dst: out.Slot, Left: delta.Slot, Width: 1})
 		case 0x41:
 			value, err := r.I32()
 			if err != nil {

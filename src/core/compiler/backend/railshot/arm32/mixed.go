@@ -687,6 +687,52 @@ func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc) ([]byte, erro
 					return nil, fmt.Errorf("arm32: mixed memory store trap branch out of range")
 				}
 			}
+		case shared.MixedMemorySize:
+			must(a.Ldr(a32.R0, armContextReg, embedded32.ContextLinearMemoryLengthOffset), "memory.size length")
+			must(a.LsrImm(a32.R0, a32.R0, 16), "memory.size pages")
+			must(a.Str(a32.R0, a32.SP, off(op.Dst)), "memory.size result")
+		case shared.MixedMemoryGrow:
+			must(a.Ldr(a32.R0, a32.SP, off(op.Left)), "memory.grow delta")
+			must(a.Ldr(a32.R1, armContextReg, embedded32.ContextLinearMemoryLengthOffset), "memory.grow current")
+			must(a.MovReg(a32.R2, a32.R1), "memory.grow old")
+			must(a.LsrImm(a32.R2, a32.R2, 16), "memory.grow old pages")
+			must(a.LsrImm(a32.R3, a32.R0, 16), "memory.grow delta overflow")
+			must(a.MovImm32(a32.R12, 0), "memory.grow zero")
+			must(a.Cmp(a32.R3, a32.R12), "memory.grow delta compare")
+			fails := []int{a.FarBcond(a32.CondNE)}
+			must(a.LslImm(a32.R0, a32.R0, 16), "memory.grow delta bytes")
+			must(a.Adds(a32.R0, a32.R1, a32.R0), "memory.grow new length")
+			fails = append(fails, a.FarBcond(a32.CondCS))
+			must(a.Ldr(a32.R3, armContextReg, embedded32.ContextLinearMemoryMaximumOffset), "memory.grow maximum")
+			must(a.Cmp(a32.R3, a32.R0), "memory.grow maximum compare")
+			fails = append(fails, a.FarBcond(a32.CondCC))
+			must(a.Str(a32.R0, armContextReg, embedded32.ContextLinearMemoryLengthOffset), "memory.grow publish length")
+			must(a.Ldr(a32.R3, armContextReg, embedded32.ContextLinearMemoryBaseOffset), "memory.grow base")
+			must(a.Add(a32.R1, a32.R3, a32.R1), "memory.grow clear start")
+			must(a.Add(a32.R3, a32.R3, a32.R0), "memory.grow clear end")
+			loop := a.Len()
+			must(a.Cmp(a32.R1, a32.R3), "memory.grow clear compare")
+			cleared := a.FarBcond(a32.CondEQ)
+			must(a.Str(a32.R12, a32.R1, 0), "memory.grow clear word")
+			must(a.MovImm32(a32.R0, 4), "memory.grow clear step")
+			must(a.Add(a32.R1, a32.R1, a32.R0), "memory.grow clear advance")
+			back := a.Branch()
+			if !a.PatchBranch(back, loop) || !a.PatchFarBranch(cleared, a.Len()) {
+				return nil, fmt.Errorf("arm32: mixed memory.grow clear branch out of range")
+			}
+			done := a.Branch()
+			fail := a.Len()
+			must(a.MovImm32(a32.R2, 0xffffffff), "memory.grow failure result")
+			finish := a.Len()
+			if !a.PatchBranch(done, finish) {
+				return nil, fmt.Errorf("arm32: mixed memory.grow done branch out of range")
+			}
+			for _, at := range fails {
+				if !a.PatchFarBranch(at, fail) {
+					return nil, fmt.Errorf("arm32: mixed memory.grow failure branch out of range")
+				}
+			}
+			must(a.Str(a32.R2, a32.SP, off(op.Dst)), "memory.grow result")
 		case shared.MixedGlobalGet, shared.MixedGlobalSet:
 			if uint64(op.Target)+uint64(op.Width) > 1024 {
 				return nil, fmt.Errorf("arm32: mixed global slot %d width %d exceeds direct displacement", op.Target, op.Width)

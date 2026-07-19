@@ -303,10 +303,11 @@ trap writes occur in normal function code. `CompileModuleToArena` uses the fixed
 `CodeArena` transaction so capacity and target publication failures clear the
 entire candidate image. QEMU executes selected functions, successful memory
 loads, memory traps, and division traps from module images on both architectures.
-Generated i32 module functions also implement bounded `memory.grow`: the
-extended context publishes the fixed backing maximum, growth validates page-to-
-byte overflow and capacity, zeroes the newly admitted range, refreshes the
-current-length field, and returns the old page count or `-1`. The i32 path also executes `nop`, `drop`, untyped i32 `select`, typed i32
+Generated i32 and mixed module functions implement `memory.size` and bounded
+`memory.grow`: the extended context publishes the fixed backing maximum, growth
+validates page-to-byte overflow and capacity, zeroes the newly admitted range,
+refreshes the current-length field, and returns the old page count or `-1`. The
+i32 path also executes `nop`, `drop`, untyped i32 `select`, typed i32
 `select`, and void-label `br_table`; homogeneous i64, f64, and v128 functions can discard complete pair or
 quad values without exposing partial storage. These functions poll the fixed
 cancellation cell after parameter capture at function entry and

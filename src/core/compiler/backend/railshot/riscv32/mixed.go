@@ -645,6 +645,47 @@ func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc) ([]byte, erro
 					return nil, fmt.Errorf("riscv32: mixed memory store trap branch out of range")
 				}
 			}
+		case shared.MixedMemorySize:
+			must(a.Lw(rv.T0, rvContextReg, embedded32.ContextLinearMemoryLengthOffset), "memory.size length")
+			a.Srli(rv.T0, rv.T0, 16)
+			must(a.Sw(rv.T0, rv.SP, off(op.Dst)), "memory.size result")
+		case shared.MixedMemoryGrow:
+			must(a.Lw(rv.T0, rv.SP, off(op.Left)), "memory.grow delta")
+			must(a.Lw(rv.T1, rvContextReg, embedded32.ContextLinearMemoryLengthOffset), "memory.grow current")
+			a.MovReg(rv.T2, rv.T1)
+			a.Srli(rv.T2, rv.T2, 16)
+			a.Srli(rv.T3, rv.T0, 16)
+			fails := []int{a.FarBcond(rv.T3, rv.Zero, rv.CondNE, branchScratch)}
+			a.Slli(rv.T0, rv.T0, 16)
+			a.Add(rv.T0, rv.T1, rv.T0)
+			fails = append(fails, a.FarBcond(rv.T0, rv.T1, rv.CondLTU, branchScratch))
+			must(a.Lw(rv.T3, rvContextReg, embedded32.ContextLinearMemoryMaximumOffset), "memory.grow maximum")
+			fails = append(fails, a.FarBcond(rv.T3, rv.T0, rv.CondLTU, branchScratch))
+			must(a.Sw(rv.T0, rvContextReg, embedded32.ContextLinearMemoryLengthOffset), "memory.grow publish length")
+			must(a.Lw(rv.T3, rvContextReg, embedded32.ContextLinearMemoryBaseOffset), "memory.grow base")
+			a.Add(rv.T1, rv.T3, rv.T1)
+			a.Add(rv.T3, rv.T3, rv.T0)
+			loop := a.Len()
+			cleared := a.Bcond(rv.T1, rv.T3, rv.CondEQ)
+			must(a.Sw(rv.Zero, rv.T1, 0), "memory.grow clear word")
+			must(a.Addi(rv.T1, rv.T1, 4), "memory.grow clear advance")
+			back := a.Jal(rv.Zero)
+			if !a.PatchJAL21(back, loop) || !a.PatchBranch13(cleared, a.Len()) {
+				return nil, fmt.Errorf("riscv32: mixed memory.grow clear branch out of range")
+			}
+			done := a.FarJump(rv.Zero, branchScratch)
+			fail := a.Len()
+			a.MovImm32(rv.T2, 0xffffffff)
+			finish := a.Len()
+			if !a.PatchFarJump(done, finish) {
+				return nil, fmt.Errorf("riscv32: mixed memory.grow done branch out of range")
+			}
+			for _, at := range fails {
+				if !a.PatchFarBranch(at, fail) {
+					return nil, fmt.Errorf("riscv32: mixed memory.grow failure branch out of range")
+				}
+			}
+			must(a.Sw(rv.T2, rv.SP, off(op.Dst)), "memory.grow result")
 		case shared.MixedGlobalGet, shared.MixedGlobalSet:
 			if uint64(op.Target)+uint64(op.Width) > 512 {
 				return nil, fmt.Errorf("riscv32: mixed global slot %d width %d exceeds direct displacement", op.Target, op.Width)

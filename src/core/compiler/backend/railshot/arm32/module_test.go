@@ -478,6 +478,46 @@ func TestCompileModuleAccessesI32GlobalFromMixedFunctionUnderQEMU(t *testing.T) 
 	runARM32Exit(t, qemu, append(a.B, cm.Code...), 42)
 }
 
+func arm32MixedMemorySizeGrowModule(t *testing.T) *wasm.Module {
+	t.Helper()
+	body := []byte{1, 1, 0x7c, 0x41, 0, 0x40, 0, 0x3f, 0, 0x6a, 0x0b}
+	code := append(wasmtest.ULEB(uint32(len(body))), body...)
+	m, err := wasm.DecodeModule(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0})),
+		wasmtest.Section(5, wasmtest.Vec([]byte{1, 1, 1})),
+		wasmtest.Section(10, wasmtest.Vec(code)),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+func TestCompileModuleExecutesMemorySizeGrowFromMixedFunctionUnderQEMU(t *testing.T) {
+	qemu, err := exec.LookPath("qemu-arm")
+	if err != nil {
+		t.Skip("qemu-arm not installed")
+	}
+	cm, err := CompileModule(arm32MixedMemorySizeGrowModule(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var a a32.Asm
+	armMemoryContext(&a)
+	a.MovImm32(a32.R12, 65536)
+	a.Str(a32.R12, a32.SP, 20)
+	a.Str(a32.R12, a32.SP, 36)
+	armContextArg(&a)
+	a.MovReg(a32.R11, a32.R0)
+	call := a.Call()
+	armExit(&a)
+	if !a.PatchCall(call, len(a.B)+cm.Entry[0]) {
+		t.Fatal("wrapper call relocation")
+	}
+	runARM32Exit(t, qemu, append(a.B, cm.Code...), 2)
+}
+
 func arm32WideGlobalModule(t *testing.T) *wasm.Module {
 	t.Helper()
 	init := append([]byte{0x42}, wasmtest.SLEB64(40)...)
