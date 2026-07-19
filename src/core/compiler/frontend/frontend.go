@@ -1625,7 +1625,7 @@ func (p supportPass) constExprBytes(body []byte, context string) error {
 		if err != nil {
 			return err
 		}
-		ctx := instructionContext(context, instr)
+		ctx := func() string { return instructionContext(context, instr) }
 		switch op {
 		case 0x0b:
 			if r.BytesLeft() != 0 {
@@ -1638,7 +1638,7 @@ func (p supportPass) constExprBytes(body []byte, context string) error {
 				return err
 			}
 			if !p.feat.ExtendedConst && (p.m == nil || int(idx) >= p.m.ImportedGlobalCount()) {
-				return p.unsupported("const expression", "prior global.get (extended-const-expressions disabled)", ctx)
+				return p.unsupported("const expression", "prior global.get (extended-const-expressions disabled)", ctx())
 			}
 		case 0x41:
 			if _, err := r.I32(); err != nil {
@@ -1658,7 +1658,7 @@ func (p supportPass) constExprBytes(body []byte, context string) error {
 			}
 		case 0x6a, 0x6b, 0x6c, 0x7c, 0x7d, 0x7e:
 			if !p.feat.ExtendedConst {
-				return p.unsupported("const expression", "integer add/sub/mul (extended-const-expressions disabled)", ctx)
+				return p.unsupported("const expression", "integer add/sub/mul (extended-const-expressions disabled)", ctx())
 			}
 		case 0xd0:
 			heap, err := r.S33()
@@ -1666,7 +1666,7 @@ func (p supportPass) constExprBytes(body []byte, context string) error {
 				return err
 			}
 			if !p.feat.ReferenceTypes {
-				return p.unsupported("const expression", "ref.null (reference-types disabled)", ctx)
+				return p.unsupported("const expression", "ref.null (reference-types disabled)", ctx())
 			}
 			// Abstract heap types encoded as S33: func (-16) and extern (-17) plus
 			// their bottoms nofunc (-13) / noextern (-14). Exact null-only products
@@ -1676,7 +1676,7 @@ func (p supportPass) constExprBytes(body []byte, context string) error {
 			case -16, -17, -13, -14:
 			default:
 				if !p.supportedNullReferenceHeap(heap) && !p.supportedGCHeap(heap) && (!p.feat.TypedFunctionReferences || !p.supportedTypedFuncHeap(heap)) {
-					return p.unsupported("const expression", fmt.Sprintf("ref.null heap type %d", heap), ctx)
+					return p.unsupported("const expression", fmt.Sprintf("ref.null heap type %d", heap), ctx())
 				}
 			}
 		case 0xd2:
@@ -1684,7 +1684,7 @@ func (p supportPass) constExprBytes(body []byte, context string) error {
 				return err
 			}
 			if !p.feat.ReferenceTypes {
-				return p.unsupported("const expression", "ref.func (reference-types disabled)", ctx)
+				return p.unsupported("const expression", "ref.func (reference-types disabled)", ctx())
 			}
 		case 0xfb:
 			imm, err := wasm.ClassifyInstructionImmediate(&r, op)
@@ -1696,7 +1696,7 @@ func (p supportPass) constExprBytes(body []byte, context string) error {
 			i31Const := p.feat.GCI31Products && imm.Kind == wasm.InstrRefI31
 			conversionConst := p.feat.GCStructProducts && (imm.Kind == wasm.InstrAnyConvertExtern || imm.Kind == wasm.InstrExternConvertAny)
 			if !structConst && !arrayConst && !i31Const && !conversionConst {
-				return p.unsupported("const expression", imm.Kind.String()+" (gc disabled)", ctx)
+				return p.unsupported("const expression", imm.Kind.String()+" (gc disabled)", ctx())
 			}
 		case 0xfd:
 			var imm wasm.InstructionImmediate
@@ -1704,13 +1704,13 @@ func (p supportPass) constExprBytes(body []byte, context string) error {
 				return err
 			}
 			if !p.feat.SIMD {
-				return p.unsupported("const expression", "v128.const (simd disabled)", ctx)
+				return p.unsupported("const expression", "v128.const (simd disabled)", ctx())
 			}
 			if imm.Subopcode != 12 {
-				return p.unsupported("const expression", simdUnsupportedName(imm), ctx)
+				return p.unsupported("const expression", simdUnsupportedName(imm), ctx())
 			}
 		default:
-			return p.unsupported("const expression", fmt.Sprintf("opcode 0x%02x", op), ctx)
+			return p.unsupported("const expression", fmt.Sprintf("opcode 0x%02x", op), ctx())
 		}
 	}
 	return p.unsupported("const expression", "missing end", context)
