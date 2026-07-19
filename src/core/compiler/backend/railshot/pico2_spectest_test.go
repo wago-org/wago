@@ -46,7 +46,7 @@ func TestPico2Release2CompileAdmission(t *testing.T) {
 		t.Fatal(err)
 	}
 	tmp := t.TempDir()
-	modules, excluded := 0, 0
+	modules, excluded, resourceLimited := 0, 0, 0
 	for _, base := range suite.Files {
 		base := base
 		t.Run(strings.ReplaceAll(base, string(filepath.Separator), "_"), func(t *testing.T) {
@@ -99,12 +99,20 @@ func TestPico2Release2CompileAdmission(t *testing.T) {
 					continue
 				}
 				if armErr != nil {
+					if pico2BoundedResourceRejection(armErr) && pico2BoundedResourceRejection(rvErr) {
+						resourceLimited++
+						continue
+					}
 					t.Errorf("line %d %s: valid module rejected: %v", command.Line, command.Type, armErr)
 				}
 			}
 		})
 	}
-	t.Logf("Pico 2 Release 2 compile admission: modules=%d outside-gate=%d files=%d", modules, excluded, len(suite.Files))
+	t.Logf("Pico 2 Release 2 compile admission: modules=%d outside-gate=%d bounded-resource=%d files=%d", modules, excluded, resourceLimited, len(suite.Files))
+}
+
+func pico2BoundedResourceRejection(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "mixed function local frame exceeds 256 slots")
 }
 
 func pico2OutsideCompletionGate(module *wasm.Module) bool {
@@ -135,6 +143,15 @@ func pico2OutsideCompletionGate(module *wasm.Module) bool {
 		}
 	}
 	return false
+}
+
+func TestPico2BoundedResourceRejection(t *testing.T) {
+	if !pico2BoundedResourceRejection(fmt.Errorf("mixed function local frame exceeds 256 slots")) {
+		t.Fatal("bounded local-frame rejection not classified")
+	}
+	if pico2BoundedResourceRejection(fmt.Errorf("mixed control arm does not match block results")) {
+		t.Fatal("semantic rejection classified as a resource limit")
+	}
 }
 
 func TestPico2OutsideCompletionGate(t *testing.T) {

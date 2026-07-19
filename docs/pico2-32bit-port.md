@@ -141,9 +141,11 @@ left only the guard-page stress module's intentionally huge live local frame,
 while preserving identical target decisions and zero malformed/invalid
 admissions. Indexed table resolution, directory-based get/set/size/grow/fill/
 copy/init, and nonzero-table indirect calls then moved all 85 multi-table
-modules into the gate. The current admission run covers 3,853 modules with only
-five multi-memory exclusions and one explicit resource rejection for the 8.4
-KiB live-local guard-page stress function. Closed firmware images now allocate bounded per-table descriptors/backing,
+modules into the gate. The current admission run passes across 3,853 modules
+with only five multi-memory exclusions and one explicitly classified bounded
+resource rejection for the 8.4 KiB live-local guard-page stress function. The
+resource classifier accepts only the deterministic 256-slot mixed-frame limit;
+all other valid-module rejections remain test failures. Closed firmware images now allocate bounded per-table descriptors/backing,
 publish an indexed descriptor directory, apply active elements to their exact
 target, and retain one module-wide passive/declarative descriptor set.
 Linked bundles now bind imported table-directory entries directly to provider
