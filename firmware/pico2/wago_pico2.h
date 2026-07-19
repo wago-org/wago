@@ -19,6 +19,13 @@ extern "C" {
 #define WAGO_PICO2_CALL_ABI_BYTES UINT32_C(12)
 #define WAGO_PICO2_CONTEXT_TRAP_CELL_OFFSET UINT32_C(8)
 #define WAGO_PICO2_CONTEXT_CANCEL_CELL_OFFSET UINT32_C(12)
+#define WAGO_PICO2_CONTEXT_HELPER_TABLE_OFFSET UINT32_C(16)
+
+#define WAGO_PICO2_HELPER_F64_OFFSET UINT32_C(0)
+#define WAGO_PICO2_HELPER_SIMD_OFFSET UINT32_C(4)
+#define WAGO_PICO2_HELPER_I64_OFFSET UINT32_C(8)
+#define WAGO_PICO2_HELPER_F32_OFFSET UINT32_C(12)
+#define WAGO_PICO2_HELPER_TABLE_BYTES UINT32_C(16)
 
 #define WAGO_PICO2_TARGET_ARM32 UINT32_C(1)
 #define WAGO_PICO2_TARGET_RISCV32 UINT32_C(2)
@@ -54,11 +61,107 @@ struct wago_pico2_call_abi {
     uint32_t results;
 };
 
+struct wago_pico2_f32_frame {
+    uint32_t op;
+    uint32_t a_lo;
+    uint32_t a_hi;
+    uint32_t b_lo;
+    uint32_t b_hi;
+    uint32_t out_lo;
+    uint32_t out_hi;
+    uint32_t trap;
+};
+
+struct wago_pico2_f64_frame {
+    uint32_t op;
+    uint32_t a_lo;
+    uint32_t a_hi;
+    uint32_t b_lo;
+    uint32_t b_hi;
+    uint32_t out_lo;
+    uint32_t out_hi;
+    uint32_t trap;
+};
+
+struct wago_pico2_i64_frame {
+    uint32_t op;
+    uint32_t a_lo;
+    uint32_t a_hi;
+    uint32_t b_lo;
+    uint32_t b_hi;
+    uint32_t out_lo;
+    uint32_t out_hi;
+    uint32_t i32_out;
+    uint32_t trap;
+};
+
+struct wago_pico2_simd_frame {
+    uint32_t op;
+    uint32_t scalar_lo;
+    uint32_t scalar_hi;
+    uint32_t a[4];
+    uint32_t b[4];
+    uint32_t c[4];
+    uint32_t immediate[4];
+    uint32_t out[4];
+    uint32_t scalar_out_lo;
+    uint32_t scalar_out_hi;
+    uint32_t memory_base;
+    uint32_t memory_length;
+    uint32_t address;
+    uint32_t lane;
+    uint32_t trap;
+};
+
+typedef void (*wago_pico2_f32_helper)(struct wago_pico2_f32_frame *frame);
+typedef void (*wago_pico2_f64_helper)(struct wago_pico2_f64_frame *frame);
+typedef void (*wago_pico2_i64_helper)(struct wago_pico2_i64_frame *frame);
+typedef void (*wago_pico2_simd_helper)(struct wago_pico2_simd_frame *frame);
+
+struct wago_pico2_helper_callbacks {
+    wago_pico2_f64_helper f64;
+    wago_pico2_simd_helper simd;
+    wago_pico2_i64_helper i64;
+    wago_pico2_f32_helper f32;
+};
+
+struct wago_pico2_helper_entries {
+    uint32_t f64;
+    uint32_t simd;
+    uint32_t i64;
+    uint32_t f32;
+};
+
+/* Fixed symbols exported by the allocation-free embedded32 helper package. */
+void wago_embedded32_f64(struct wago_pico2_f64_frame *frame);
+void wago_embedded32_simd_abi(struct wago_pico2_simd_frame *frame);
+void wago_embedded32_i64(struct wago_pico2_i64_frame *frame);
+void wago_embedded32_f32(struct wago_pico2_f32_frame *frame);
+
+#define WAGO_PICO2_EMBEDDED32_HELPER_CALLBACKS \
+    {wago_embedded32_f64, wago_embedded32_simd_abi, \
+     wago_embedded32_i64, wago_embedded32_f32}
+
 struct wago_pico2_function {
     uint32_t address;
     uint32_t context;
     uint16_t parameter_slots;
     uint16_t result_slots;
+};
+
+struct wago_pico2_image {
+    uint32_t target;
+    uint32_t maximum_payload;
+    uint32_t load_address;
+    uint8_t *image;
+    const uint8_t *initial_image;
+    uint32_t image_size;
+    uint32_t context_address;
+    uint32_t start_address;
+    const struct wago_pico2_function *functions;
+    uint32_t function_count;
+    const uint32_t *contexts;
+    uint32_t context_count;
 };
 
 struct wago_pico2_runner;
@@ -89,6 +192,11 @@ struct wago_pico2_runner {
     const struct wago_pico2_invoker *invoker;
     uint8_t initialized;
     uint8_t started;
+
+    uint32_t image_address;
+    const uint32_t *contexts;
+    uint32_t context_count;
+    struct wago_pico2_helper_entries helpers;
 };
 
 struct wago_pico2_endpoint {
@@ -110,6 +218,13 @@ struct wago_pico2_io {
 
 uint32_t wago_pico2_crc32(const uint8_t *first, uint32_t first_length,
                           const uint8_t *second, uint32_t second_length);
+
+wago_pico2_code wago_pico2_helper_entries_init(
+    struct wago_pico2_helper_entries *entries, uint32_t target,
+    const struct wago_pico2_helper_callbacks *callbacks);
+wago_pico2_code wago_pico2_runner_init(
+    struct wago_pico2_runner *runner, const struct wago_pico2_image *image,
+    const struct wago_pico2_helper_entries *helpers);
 
 wago_pico2_code wago_pico2_runner_instantiate(struct wago_pico2_runner *runner);
 wago_pico2_code wago_pico2_runner_start(struct wago_pico2_runner *runner);

@@ -5,6 +5,14 @@
 
 #define CHECK(condition) do { if (!(condition)) { fprintf(stderr, "check failed at line %d: %s\n", __LINE__, #condition); return 1; } } while (0)
 
+_Static_assert(sizeof(struct wago_pico2_call_abi) == WAGO_PICO2_CALL_ABI_BYTES, "call ABI size");
+_Static_assert(sizeof(struct wago_pico2_f32_frame) == 32, "f32 helper frame size");
+_Static_assert(sizeof(struct wago_pico2_f64_frame) == 32, "f64 helper frame size");
+_Static_assert(sizeof(struct wago_pico2_i64_frame) == 36, "i64 helper frame size");
+_Static_assert(sizeof(struct wago_pico2_simd_frame) == 120, "SIMD helper frame size");
+_Static_assert(sizeof(struct wago_pico2_helper_entries) == WAGO_PICO2_HELPER_TABLE_BYTES,
+               "helper table size");
+
 struct test_state {
     uint32_t instantiates;
     uint32_t starts;
@@ -110,18 +118,13 @@ int main(void) {
         {0x20000301u, 0x20000400u, 2, 2},
     };
     struct wago_pico2_runner runner = {
-        WAGO_PICO2_TARGET_ARM32,
-        128,
-        0x20000100u,
-        0x20000201u,
-        functions,
-        1,
-        NULL,
-        NULL,
-        0,
-        &invoker,
-        0,
-        0,
+        .target = WAGO_PICO2_TARGET_ARM32,
+        .maximum_payload = 128,
+        .context_address = 0x20000100u,
+        .start_address = 0x20000201u,
+        .functions = functions,
+        .function_count = 1,
+        .invoker = &invoker,
     };
     uint32_t parameters[4] = {0};
     uint32_t results[4] = {0};
@@ -202,6 +205,48 @@ int main(void) {
     CHECK(wago_pico2_dispatch(&endpoint, request_bytes, request_length,
                               response, sizeof(response), &response_length) == WAGO_PICO2_DISPATCH_OK);
     CHECK(state.resets == 1 && !runner.initialized && !runner.started);
+
+    {
+        uint8_t initial_image[160] = {0};
+        uint8_t live_image[160] = {0};
+        const uint32_t contexts[] = {0x10000020u};
+        const struct wago_pico2_helper_entries helpers = {
+            0x1001u, 0x2001u, 0x3001u, 0x4001u,
+        };
+        const struct wago_pico2_image image = {
+            .target = WAGO_PICO2_TARGET_ARM32,
+            .maximum_payload = 128,
+            .load_address = 0x10000000u,
+            .image = live_image,
+            .initial_image = initial_image,
+            .image_size = sizeof(initial_image),
+            .context_address = contexts[0],
+            .contexts = contexts,
+            .context_count = 1,
+        };
+        struct wago_pico2_runner embedded_runner;
+        put32(initial_image + 0x20 + WAGO_PICO2_CONTEXT_HELPER_TABLE_OFFSET,
+              0x10000080u);
+        memset(&embedded_runner, 0xa5, sizeof(embedded_runner));
+        CHECK(wago_pico2_runner_init(&embedded_runner, &image, &helpers) == WAGO_PICO2_OK);
+        CHECK(!embedded_runner.initialized && !embedded_runner.started);
+        live_image[0] = 0xee;
+        put32(initial_image + 0x20 + WAGO_PICO2_CONTEXT_HELPER_TABLE_OFFSET,
+              0x20000000u);
+        CHECK(wago_pico2_runner_instantiate(&embedded_runner) == WAGO_PICO2_STATE);
+        CHECK(live_image[0] == 0xee && !embedded_runner.initialized);
+        put32(initial_image + 0x20 + WAGO_PICO2_CONTEXT_HELPER_TABLE_OFFSET,
+              0x10000080u);
+        CHECK(wago_pico2_runner_instantiate(&embedded_runner) == WAGO_PICO2_OK);
+        CHECK(get32(live_image + 0x80 + WAGO_PICO2_HELPER_F64_OFFSET) == helpers.f64);
+        CHECK(get32(live_image + 0x80 + WAGO_PICO2_HELPER_SIMD_OFFSET) == helpers.simd);
+        CHECK(get32(live_image + 0x80 + WAGO_PICO2_HELPER_I64_OFFSET) == helpers.i64);
+        CHECK(get32(live_image + 0x80 + WAGO_PICO2_HELPER_F32_OFFSET) == helpers.f32);
+        live_image[0] = 0xff;
+        CHECK(wago_pico2_runner_reset(&embedded_runner) == WAGO_PICO2_OK);
+        CHECK(live_image[0] == initial_image[0]);
+        CHECK(get32(live_image + 0x80 + WAGO_PICO2_HELPER_F64_OFFSET) == helpers.f64);
+    }
 
     return 0;
 }

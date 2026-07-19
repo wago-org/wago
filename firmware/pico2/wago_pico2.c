@@ -62,6 +62,157 @@ uint32_t wago_pico2_crc32(const uint8_t *first, uint32_t first_length,
     return ~crc;
 }
 
+static int wago_helper_address(uint32_t *out, uint32_t target,
+                               const void *function_object, size_t function_size) {
+#if UINTPTR_MAX == UINT32_MAX
+    uintptr_t address = 0;
+    if (out == NULL || function_object == NULL || function_size != sizeof(address)) {
+        return 0;
+    }
+    wago_copy((uint8_t *)&address, (const uint8_t *)function_object,
+              (uint32_t)function_size);
+    if (target == WAGO_PICO2_TARGET_ARM32) {
+        address |= (uintptr_t)1;
+    } else if (target != WAGO_PICO2_TARGET_RISCV32 || (address & (uintptr_t)1) != 0) {
+        return 0;
+    }
+    if (address == 0) {
+        return 0;
+    }
+    *out = (uint32_t)address;
+    return 1;
+#else
+    (void)out;
+    (void)target;
+    (void)function_object;
+    (void)function_size;
+    return 0;
+#endif
+}
+
+wago_pico2_code wago_pico2_helper_entries_init(
+    struct wago_pico2_helper_entries *entries, uint32_t target,
+    const struct wago_pico2_helper_callbacks *callbacks) {
+    struct wago_pico2_helper_entries out;
+    if (entries == NULL || callbacks == NULL || callbacks->f64 == NULL ||
+        callbacks->simd == NULL || callbacks->i64 == NULL || callbacks->f32 == NULL) {
+        return WAGO_PICO2_STATE;
+    }
+    if (!wago_helper_address(&out.f64, target, &callbacks->f64, sizeof(callbacks->f64)) ||
+        !wago_helper_address(&out.simd, target, &callbacks->simd, sizeof(callbacks->simd)) ||
+        !wago_helper_address(&out.i64, target, &callbacks->i64, sizeof(callbacks->i64)) ||
+        !wago_helper_address(&out.f32, target, &callbacks->f32, sizeof(callbacks->f32))) {
+        return WAGO_PICO2_UNSUPPORTED;
+    }
+    *entries = out;
+    return WAGO_PICO2_OK;
+}
+
+static int wago_address_range(uint32_t base, uint32_t image_size,
+                              uint32_t address, uint32_t length, uint32_t *offset) {
+    uint64_t start;
+    uint64_t end;
+    uint64_t image_end;
+    if (offset == NULL || address < base) {
+        return 0;
+    }
+    start = (uint64_t)address;
+    end = start + (uint64_t)length;
+    image_end = (uint64_t)base + (uint64_t)image_size;
+    if (end < start || end > image_end) {
+        return 0;
+    }
+    *offset = address - base;
+    return 1;
+}
+
+static int wago_code_range(const struct wago_pico2_image *image, uint32_t callable) {
+    uint32_t address = callable;
+    uint32_t offset;
+    if (image->target == WAGO_PICO2_TARGET_ARM32) {
+        if ((address & 1u) == 0) {
+            return 0;
+        }
+        address &= ~UINT32_C(1);
+    } else if ((address & 1u) != 0) {
+        return 0;
+    }
+    return wago_address_range(image->load_address, image->image_size,
+                              address, 1, &offset);
+}
+
+wago_pico2_code wago_pico2_runner_init(
+    struct wago_pico2_runner *runner, const struct wago_pico2_image *image,
+    const struct wago_pico2_helper_entries *helpers) {
+    uint64_t image_end;
+    uint32_t i;
+    uint32_t count;
+    if (runner == NULL || image == NULL || helpers == NULL ||
+        (image->target != WAGO_PICO2_TARGET_ARM32 &&
+         image->target != WAGO_PICO2_TARGET_RISCV32) ||
+        image->maximum_payload == 0 || image->load_address == 0 ||
+        image->image == NULL || image->initial_image == NULL || image->image_size == 0 ||
+        image->context_address == 0 ||
+        (image->function_count != 0 && image->functions == NULL) ||
+        (image->context_count != 0 && image->contexts == NULL) ||
+        helpers->f64 == 0 || helpers->simd == 0 || helpers->i64 == 0 || helpers->f32 == 0) {
+        return WAGO_PICO2_STATE;
+    }
+    image_end = (uint64_t)image->load_address + (uint64_t)image->image_size;
+    if (image_end > (uint64_t)UINT32_MAX + 1u ||
+        image->context_address < image->load_address ||
+        (uint64_t)image->context_address + WAGO_PICO2_CONTEXT_ABI_BYTES > image_end) {
+        return WAGO_PICO2_STATE;
+    }
+    if (image->start_address != 0 && !wago_code_range(image, image->start_address)) {
+        return WAGO_PICO2_STATE;
+    }
+    for (i = 0; i < image->function_count; ++i) {
+        uint32_t function_context = image->functions[i].context != 0 ?
+                                    image->functions[i].context : image->context_address;
+        uint32_t context_offset;
+        if (!wago_code_range(image, image->functions[i].address) ||
+            !wago_address_range(image->load_address, image->image_size, function_context,
+                                WAGO_PICO2_CONTEXT_ABI_BYTES, &context_offset)) {
+            return WAGO_PICO2_STATE;
+        }
+    }
+    count = image->context_count != 0 ? image->context_count : 1;
+    for (i = 0; i < count; ++i) {
+        uint32_t context = image->context_count != 0 ? image->contexts[i] : image->context_address;
+        uint32_t context_offset;
+        uint32_t helper_address;
+        uint32_t helper_offset;
+        if (!wago_address_range(image->load_address, image->image_size, context,
+                                WAGO_PICO2_CONTEXT_ABI_BYTES, &context_offset)) {
+            return WAGO_PICO2_STATE;
+        }
+        helper_address = wago_get32(image->initial_image + context_offset +
+                                    WAGO_PICO2_CONTEXT_HELPER_TABLE_OFFSET);
+        if (!wago_address_range(image->load_address, image->image_size, helper_address,
+                                WAGO_PICO2_HELPER_TABLE_BYTES, &helper_offset)) {
+            return WAGO_PICO2_STATE;
+        }
+    }
+    runner->target = image->target;
+    runner->maximum_payload = image->maximum_payload;
+    runner->context_address = image->context_address;
+    runner->start_address = image->start_address;
+    runner->functions = image->functions;
+    runner->function_count = image->function_count;
+    runner->image = image->image;
+    runner->initial_image = image->initial_image;
+    runner->image_size = image->image_size;
+    runner->invoker = &wago_pico2_direct_invoker;
+    runner->initialized = 0;
+    runner->started = 0;
+    runner->image_address = image->load_address;
+    runner->contexts = image->contexts;
+    runner->context_count = image->context_count;
+    runner->helpers = *helpers;
+    return WAGO_PICO2_OK;
+}
+
 static const struct wago_pico2_invoker *wago_invoker(const struct wago_pico2_runner *runner) {
     return runner->invoker != NULL ? runner->invoker : &wago_pico2_direct_invoker;
 }
@@ -397,11 +548,63 @@ int wago_pico2_serve_once(struct wago_pico2_endpoint *endpoint,
     return wago_io_write_exact(io, response, response_length);
 }
 
+static int wago_image_range(const struct wago_pico2_runner *runner,
+                            uint32_t address, uint32_t length, uint32_t *offset) {
+    return wago_address_range(runner->image_address, runner->image_size,
+                              address, length, offset);
+}
+
 static wago_pico2_code wago_direct_restore(struct wago_pico2_runner *runner) {
-    if (runner->image == NULL || runner->initial_image == NULL || runner->image_size == 0) {
+    uint32_t i;
+    uint32_t count;
+    if (runner->image == NULL || runner->initial_image == NULL || runner->image_size == 0 ||
+        runner->image_address == 0 || runner->helpers.f64 == 0 || runner->helpers.simd == 0 ||
+        runner->helpers.i64 == 0 || runner->helpers.f32 == 0) {
         return WAGO_PICO2_STATE;
     }
+#if UINTPTR_MAX == UINT32_MAX
+    if ((uint32_t)(uintptr_t)runner->image != runner->image_address) {
+        return WAGO_PICO2_STATE;
+    }
+#endif
+    count = runner->context_count != 0 ? runner->context_count : 1;
+    for (i = 0; i < count; ++i) {
+        uint32_t context = runner->context_count != 0 ? runner->contexts[i] : runner->context_address;
+        uint32_t context_offset;
+        uint32_t helper_address;
+        uint32_t helper_offset;
+        if (!wago_image_range(runner, context, WAGO_PICO2_CONTEXT_ABI_BYTES,
+                              &context_offset)) {
+            return WAGO_PICO2_STATE;
+        }
+        helper_address = wago_get32(runner->initial_image + context_offset +
+                                    WAGO_PICO2_CONTEXT_HELPER_TABLE_OFFSET);
+        if (!wago_image_range(runner, helper_address, WAGO_PICO2_HELPER_TABLE_BYTES,
+                              &helper_offset)) {
+            return WAGO_PICO2_STATE;
+        }
+    }
     wago_copy(runner->image, runner->initial_image, runner->image_size);
+    for (i = 0; i < count; ++i) {
+        uint32_t context = runner->context_count != 0 ? runner->contexts[i] : runner->context_address;
+        uint32_t context_offset;
+        uint32_t helper_address;
+        uint32_t helper_offset;
+        (void)wago_image_range(runner, context, WAGO_PICO2_CONTEXT_ABI_BYTES,
+                               &context_offset);
+        helper_address = wago_get32(runner->image + context_offset +
+                                    WAGO_PICO2_CONTEXT_HELPER_TABLE_OFFSET);
+        (void)wago_image_range(runner, helper_address, WAGO_PICO2_HELPER_TABLE_BYTES,
+                               &helper_offset);
+        wago_put32(runner->image + helper_offset + WAGO_PICO2_HELPER_F64_OFFSET,
+                   runner->helpers.f64);
+        wago_put32(runner->image + helper_offset + WAGO_PICO2_HELPER_SIMD_OFFSET,
+                   runner->helpers.simd);
+        wago_put32(runner->image + helper_offset + WAGO_PICO2_HELPER_I64_OFFSET,
+                   runner->helpers.i64);
+        wago_put32(runner->image + helper_offset + WAGO_PICO2_HELPER_F32_OFFSET,
+                   runner->helpers.f32);
+    }
 #if defined(__GNUC__) || defined(__clang__)
     __builtin___clear_cache((char *)runner->image, (char *)runner->image + runner->image_size);
 #endif
