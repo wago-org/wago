@@ -847,7 +847,8 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	if err != nil {
 		return nil, fmt.Errorf("decode: %w", err)
 	}
-	requiredByModule := moduleRequiredFeatures(m)
+	requirements := analyzeModuleRequirements(m)
+	requiredByModule := requirements.features
 	if !requiredByModule.IsEnabled(CoreFeatureTypedFunctionReferences) && !requiredByModule.IsEnabled(CoreFeatureGC) && !moduleUsesTypedTableReferences(m) {
 		features.TypedFunctionReferences = false
 		features.TypedTailCalls = false
@@ -960,7 +961,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 			return nil, fmt.Errorf("compile: unsupported memory multi-memory with signals-based bounds checks")
 		}
 	}
-	if features.TailCalls && moduleRequiredFeatures(m).IsEnabled(CoreFeatureTailCall) && (goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64") {
+	if features.TailCalls && requiredByModule.IsEnabled(CoreFeatureTailCall) && (goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64") {
 		return nil, fmt.Errorf("compile: unsupported instruction tail-call staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
 	}
 	if features.ExceptionHandling {
@@ -1466,7 +1467,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		}
 		c.FuncTypeID = append(c.FuncTypeID, key)
 	}
-	elemStateCount, dataStateCount := moduleSegmentStateCounts(m)
+	elemStateCount, dataStateCount := requirements.elemStateCount, requirements.dataStateCount
 	if elemStateCount > 0 {
 		// table.init/elem.drop immediates address the module's original element
 		// index space. Active/declarative slots remain zero-length (dropped).

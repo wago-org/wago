@@ -34,4 +34,20 @@ func TestModuleSegmentStateCountsIncludeGCArraySegments(t *testing.T) {
 	if elemCount != 4 || dataCount != 5 {
 		t.Fatalf("segment state counts = %d/%d, want 4/5", elemCount, dataCount)
 	}
+	requirements := analyzeModuleRequirements(m)
+	if requirements.elemStateCount != elemCount || requirements.dataStateCount != dataCount {
+		t.Fatalf("fused segment state counts = %d/%d, want %d/%d", requirements.elemStateCount, requirements.dataStateCount, elemCount, dataCount)
+	}
+
+	programmatic := &wasm.Module{
+		Elements: make([]wasm.Elem, 3),
+		Code: []wasm.Func{{Body: wasm.Expr{Instrs: []wasm.Instruction{{
+			Kind:  wasm.InstrElemDrop,
+			Index: 2,
+		}}}}},
+	}
+	requirements = analyzeModuleRequirements(programmatic)
+	if requirements.elemStateCount != 3 {
+		t.Fatalf("programmatic fused element state count = %d, want 3", requirements.elemStateCount)
+	}
 }
