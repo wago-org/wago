@@ -494,9 +494,12 @@ hello/instantiate/start/call/cancel/reset responses without allocations.
 `FirmwareTransportRunner` adds the single-image lifecycle, exact exported
 parameter/result slot admission, start-before-call ordering, retryable failed
 instantiation/start/reset, and trap propagation. Target wrappers construct it
-from the image's filtered function-export table. The remaining firmware work is
-the RP2350 SDK I/O loop and low-level generated-entry invoker, not another
-host-dependent protocol.
+from the image's filtered function-export table. `firmware/pico2` now mirrors
+that state machine in freestanding C, restores a pristine bounded image, enters
+generated start/`CallABI` thunks directly on 32-bit targets, preflights complete
+responses, and supplies a Pico SDK stdio loop for either USB CDC or UART. The
+application still supplies the fixed buffers, image metadata, and four
+allocation-free numeric/SIMD helper callbacks.
 
 Modules with a start function also append a 16-byte-aligned target entry thunk.
 The thunk accepts only a `ContextABI` pointer in the platform's first argument
@@ -506,7 +509,7 @@ returns the published trap code. This gives firmware a conventional ABI for
 transactional instantiation/start sequencing without target-specific inline
 assembly.
 
-This is still not public backend admission. The RP2350 SDK transport I/O and
-low-level generated-entry invoker, official generated-code module-suite
-qualification, and Pico 2 hardware qualification remain to be implemented and
+This is still not public backend admission. Official generated-code
+module-suite qualification, concrete Pico SDK helper bindings/image embedding,
+and physical Cortex-M33 plus Hazard3 qualification remain to be implemented and
 measured.

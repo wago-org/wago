@@ -1,0 +1,474 @@
+#include "wago_pico2.h"
+
+#include <limits.h>
+
+static void wago_copy(uint8_t *destination, const uint8_t *source, uint32_t length) {
+    uint32_t i;
+    for (i = 0; i < length; ++i) {
+        destination[i] = source[i];
+    }
+}
+
+static uint16_t wago_get16(const uint8_t *p) {
+    return (uint16_t)((uint16_t)p[0] | (uint16_t)((uint16_t)p[1] << 8));
+}
+
+static uint32_t wago_get32(const uint8_t *p) {
+    return (uint32_t)p[0] |
+           ((uint32_t)p[1] << 8) |
+           ((uint32_t)p[2] << 16) |
+           ((uint32_t)p[3] << 24);
+}
+
+static void wago_put16(uint8_t *p, uint16_t value) {
+    p[0] = (uint8_t)value;
+    p[1] = (uint8_t)(value >> 8);
+}
+
+static void wago_put32(uint8_t *p, uint32_t value) {
+    p[0] = (uint8_t)value;
+    p[1] = (uint8_t)(value >> 8);
+    p[2] = (uint8_t)(value >> 16);
+    p[3] = (uint8_t)(value >> 24);
+}
+
+static int wago_kind_valid(uint16_t kind) {
+    uint16_t base = (uint16_t)(kind & (uint16_t)~WAGO_PICO2_TRANSPORT_RESPONSE_MASK);
+    return base >= WAGO_PICO2_HELLO && base <= WAGO_PICO2_RESET;
+}
+
+static uint32_t wago_crc_part(uint32_t crc, const uint8_t *bytes, uint32_t length) {
+    uint32_t i;
+    for (i = 0; i < length; ++i) {
+        uint32_t bit;
+        crc ^= bytes[i];
+        for (bit = 0; bit < 8; ++bit) {
+            uint32_t mask = 0u - (crc & 1u);
+            crc = (crc >> 1) ^ (UINT32_C(0xedb88320) & mask);
+        }
+    }
+    return crc;
+}
+
+uint32_t wago_pico2_crc32(const uint8_t *first, uint32_t first_length,
+                          const uint8_t *second, uint32_t second_length) {
+    uint32_t crc = UINT32_MAX;
+    if (first_length != 0) {
+        crc = wago_crc_part(crc, first, first_length);
+    }
+    if (second_length != 0) {
+        crc = wago_crc_part(crc, second, second_length);
+    }
+    return ~crc;
+}
+
+static const struct wago_pico2_invoker *wago_invoker(const struct wago_pico2_runner *runner) {
+    return runner->invoker != NULL ? runner->invoker : &wago_pico2_direct_invoker;
+}
+
+static int wago_runner_valid(const struct wago_pico2_runner *runner) {
+    return runner != NULL && runner->target != 0 && runner->maximum_payload != 0 &&
+           runner->context_address != 0 &&
+           (runner->function_count == 0 || runner->functions != NULL);
+}
+
+wago_pico2_code wago_pico2_runner_instantiate(struct wago_pico2_runner *runner) {
+    const struct wago_pico2_invoker *invoker;
+    wago_pico2_code code;
+    if (!wago_runner_valid(runner) || runner->initialized) {
+        return WAGO_PICO2_STATE;
+    }
+    invoker = wago_invoker(runner);
+    if (invoker->instantiate == NULL) {
+        return WAGO_PICO2_UNSUPPORTED;
+    }
+    code = invoker->instantiate(invoker->user, runner);
+    if (code == WAGO_PICO2_OK) {
+        runner->initialized = 1;
+        runner->started = 0;
+    }
+    return code;
+}
+
+wago_pico2_code wago_pico2_runner_start(struct wago_pico2_runner *runner) {
+    const struct wago_pico2_invoker *invoker;
+    wago_pico2_code code;
+    if (!wago_runner_valid(runner) || !runner->initialized || runner->started) {
+        return WAGO_PICO2_STATE;
+    }
+    if (runner->start_address == 0) {
+        runner->started = 1;
+        return WAGO_PICO2_OK;
+    }
+    invoker = wago_invoker(runner);
+    if (invoker->start == NULL) {
+        return WAGO_PICO2_UNSUPPORTED;
+    }
+    code = invoker->start(invoker->user, runner->start_address, runner->context_address);
+    if (code == WAGO_PICO2_OK) {
+        runner->started = 1;
+    }
+    return code;
+}
+
+wago_pico2_code wago_pico2_runner_call(struct wago_pico2_runner *runner,
+                                        uint32_t export_ordinal,
+                                        const uint32_t *parameters,
+                                        uint32_t parameter_slots,
+                                        uint32_t *results,
+                                        uint32_t result_slots) {
+    const struct wago_pico2_invoker *invoker;
+    const struct wago_pico2_function *function;
+    uint32_t context;
+    if (!wago_runner_valid(runner) || !runner->initialized || !runner->started ||
+        export_ordinal >= runner->function_count) {
+        return WAGO_PICO2_STATE;
+    }
+    function = &runner->functions[export_ordinal];
+    if (function->address == 0 || function->parameter_slots != parameter_slots ||
+        function->result_slots != result_slots ||
+        (parameter_slots != 0 && parameters == NULL) ||
+        (result_slots != 0 && results == NULL)) {
+        return WAGO_PICO2_STATE;
+    }
+    invoker = wago_invoker(runner);
+    if (invoker->call == NULL) {
+        return WAGO_PICO2_UNSUPPORTED;
+    }
+    context = function->context != 0 ? function->context : runner->context_address;
+    return invoker->call(invoker->user, function->address, context,
+                         parameters, parameter_slots, results, result_slots);
+}
+
+wago_pico2_code wago_pico2_runner_cancel(struct wago_pico2_runner *runner) {
+    const struct wago_pico2_invoker *invoker;
+    if (!wago_runner_valid(runner) || !runner->initialized) {
+        return WAGO_PICO2_STATE;
+    }
+    invoker = wago_invoker(runner);
+    if (invoker->cancel == NULL) {
+        return WAGO_PICO2_UNSUPPORTED;
+    }
+    return invoker->cancel(invoker->user, runner->context_address);
+}
+
+wago_pico2_code wago_pico2_runner_reset(struct wago_pico2_runner *runner) {
+    const struct wago_pico2_invoker *invoker;
+    wago_pico2_code code;
+    if (!wago_runner_valid(runner) || !runner->initialized) {
+        return WAGO_PICO2_STATE;
+    }
+    invoker = wago_invoker(runner);
+    if (invoker->reset == NULL) {
+        return WAGO_PICO2_UNSUPPORTED;
+    }
+    code = invoker->reset(invoker->user, runner);
+    if (code == WAGO_PICO2_OK) {
+        runner->initialized = 0;
+        runner->started = 0;
+    }
+    return code;
+}
+
+static int wago_encode_response(uint8_t *response, uint32_t response_capacity,
+                                uint16_t request_kind, uint32_t sequence,
+                                wago_pico2_code code,
+                                const uint8_t *payload, uint32_t payload_length,
+                                uint32_t *response_length) {
+    uint32_t total;
+    if (payload_length > UINT32_MAX - WAGO_PICO2_TRANSPORT_HEADER_BYTES) {
+        return WAGO_PICO2_DISPATCH_FRAME;
+    }
+    total = WAGO_PICO2_TRANSPORT_HEADER_BYTES + payload_length;
+    if (total > response_capacity) {
+        return WAGO_PICO2_DISPATCH_CAPACITY;
+    }
+    wago_put32(response + 0, WAGO_PICO2_TRANSPORT_MAGIC);
+    wago_put16(response + 4, WAGO_PICO2_TRANSPORT_VERSION);
+    wago_put16(response + 6, (uint16_t)(request_kind | WAGO_PICO2_TRANSPORT_RESPONSE_MASK));
+    wago_put32(response + 8, sequence);
+    wago_put32(response + 12, payload_length);
+    wago_put32(response + 16, code);
+    if (payload_length != 0) {
+        wago_copy(response + WAGO_PICO2_TRANSPORT_HEADER_BYTES, payload, payload_length);
+    }
+    wago_put32(response + 20,
+               wago_pico2_crc32(response, 20,
+                                response + WAGO_PICO2_TRANSPORT_HEADER_BYTES,
+                                payload_length));
+    *response_length = total;
+    return WAGO_PICO2_DISPATCH_OK;
+}
+
+int wago_pico2_dispatch(struct wago_pico2_endpoint *endpoint,
+                        const uint8_t *request, uint32_t request_length,
+                        uint8_t *response, uint32_t response_capacity,
+                        uint32_t *response_length) {
+    uint16_t kind;
+    uint32_t sequence;
+    uint32_t payload_length;
+    const uint8_t *payload;
+    const uint8_t *response_payload = NULL;
+    uint32_t response_payload_length = 0;
+    wago_pico2_code code = WAGO_PICO2_OK;
+    if (endpoint == NULL || endpoint->runner == NULL || request == NULL ||
+        response == NULL || response_length == NULL ||
+        (endpoint->parameter_capacity != 0 && endpoint->parameter_slots == NULL) ||
+        (endpoint->result_capacity != 0 && endpoint->result_slots == NULL) ||
+        (endpoint->payload_capacity != 0 && endpoint->payload_scratch == NULL) ||
+        endpoint->maximum_payload > UINT32_MAX - WAGO_PICO2_TRANSPORT_HEADER_BYTES ||
+        request_length < WAGO_PICO2_TRANSPORT_HEADER_BYTES) {
+        return WAGO_PICO2_DISPATCH_FRAME;
+    }
+    if (response_capacity < WAGO_PICO2_TRANSPORT_HEADER_BYTES) {
+        return WAGO_PICO2_DISPATCH_CAPACITY;
+    }
+    if (wago_get32(request + 0) != WAGO_PICO2_TRANSPORT_MAGIC ||
+        wago_get16(request + 4) != WAGO_PICO2_TRANSPORT_VERSION) {
+        return WAGO_PICO2_DISPATCH_FRAME;
+    }
+    kind = wago_get16(request + 6);
+    if (!wago_kind_valid(kind) || (kind & WAGO_PICO2_TRANSPORT_RESPONSE_MASK) != 0 ||
+        wago_get32(request + 16) != WAGO_PICO2_OK) {
+        return WAGO_PICO2_DISPATCH_FRAME;
+    }
+    sequence = wago_get32(request + 8);
+    payload_length = wago_get32(request + 12);
+    if (payload_length > endpoint->maximum_payload ||
+        payload_length > UINT32_MAX - WAGO_PICO2_TRANSPORT_HEADER_BYTES ||
+        WAGO_PICO2_TRANSPORT_HEADER_BYTES + payload_length != request_length) {
+        return payload_length > endpoint->maximum_payload ?
+               WAGO_PICO2_DISPATCH_CAPACITY : WAGO_PICO2_DISPATCH_FRAME;
+    }
+    payload = request + WAGO_PICO2_TRANSPORT_HEADER_BYTES;
+    if (wago_pico2_crc32(request, 20, payload, payload_length) != wago_get32(request + 20)) {
+        return WAGO_PICO2_DISPATCH_CHECKSUM;
+    }
+
+    switch (kind) {
+    case WAGO_PICO2_HELLO: {
+        uint32_t maximum_payload;
+        if (payload_length != 0) {
+            return WAGO_PICO2_DISPATCH_FRAME;
+        }
+        if (endpoint->payload_capacity < WAGO_PICO2_TRANSPORT_HELLO_BYTES ||
+            response_capacity < WAGO_PICO2_TRANSPORT_HEADER_BYTES + WAGO_PICO2_TRANSPORT_HELLO_BYTES) {
+            return WAGO_PICO2_DISPATCH_CAPACITY;
+        }
+        maximum_payload = endpoint->runner->maximum_payload;
+        if (maximum_payload > endpoint->maximum_payload) {
+            maximum_payload = endpoint->maximum_payload;
+        }
+        wago_put32(endpoint->payload_scratch + 0, endpoint->runner->target);
+        wago_put32(endpoint->payload_scratch + 4, WAGO_PICO2_CONTEXT_ABI_BYTES);
+        wago_put32(endpoint->payload_scratch + 8, WAGO_PICO2_CALL_ABI_BYTES);
+        wago_put32(endpoint->payload_scratch + 12, maximum_payload);
+        response_payload = endpoint->payload_scratch;
+        response_payload_length = WAGO_PICO2_TRANSPORT_HELLO_BYTES;
+        break;
+    }
+    case WAGO_PICO2_INSTANTIATE:
+        if (payload_length != 0) {
+            return WAGO_PICO2_DISPATCH_FRAME;
+        }
+        code = wago_pico2_runner_instantiate(endpoint->runner);
+        break;
+    case WAGO_PICO2_START:
+        if (payload_length != 0) {
+            return WAGO_PICO2_DISPATCH_FRAME;
+        }
+        code = wago_pico2_runner_start(endpoint->runner);
+        break;
+    case WAGO_PICO2_CALL: {
+        uint32_t export_ordinal;
+        uint32_t parameter_slots;
+        uint32_t result_slots;
+        uint64_t expected;
+        uint32_t i;
+        if (payload_length < WAGO_PICO2_TRANSPORT_CALL_HEADER_BYTES) {
+            return WAGO_PICO2_DISPATCH_FRAME;
+        }
+        export_ordinal = wago_get32(payload + 0);
+        parameter_slots = wago_get32(payload + 4);
+        result_slots = wago_get32(payload + 8);
+        expected = (uint64_t)WAGO_PICO2_TRANSPORT_CALL_HEADER_BYTES + (uint64_t)parameter_slots * 4u;
+        if (expected != payload_length || parameter_slots > endpoint->parameter_capacity ||
+            result_slots > endpoint->result_capacity) {
+            return WAGO_PICO2_DISPATCH_FRAME;
+        }
+        if ((uint64_t)result_slots * 4u > endpoint->payload_capacity ||
+            (uint64_t)WAGO_PICO2_TRANSPORT_HEADER_BYTES + (uint64_t)result_slots * 4u > response_capacity) {
+            return WAGO_PICO2_DISPATCH_CAPACITY;
+        }
+        for (i = 0; i < parameter_slots; ++i) {
+            endpoint->parameter_slots[i] = wago_get32(payload + WAGO_PICO2_TRANSPORT_CALL_HEADER_BYTES + i * 4u);
+        }
+        for (i = 0; i < result_slots; ++i) {
+            endpoint->result_slots[i] = 0;
+        }
+        code = wago_pico2_runner_call(endpoint->runner, export_ordinal,
+                                      endpoint->parameter_slots, parameter_slots,
+                                      endpoint->result_slots, result_slots);
+        if (code == WAGO_PICO2_OK) {
+            for (i = 0; i < result_slots; ++i) {
+                wago_put32(endpoint->payload_scratch + i * 4u, endpoint->result_slots[i]);
+            }
+            response_payload = endpoint->payload_scratch;
+            response_payload_length = result_slots * 4u;
+        }
+        break;
+    }
+    case WAGO_PICO2_CANCEL:
+        if (payload_length != 0) {
+            return WAGO_PICO2_DISPATCH_FRAME;
+        }
+        code = wago_pico2_runner_cancel(endpoint->runner);
+        break;
+    case WAGO_PICO2_RESET:
+        if (payload_length != 0) {
+            return WAGO_PICO2_DISPATCH_FRAME;
+        }
+        code = wago_pico2_runner_reset(endpoint->runner);
+        break;
+    default:
+        return WAGO_PICO2_DISPATCH_FRAME;
+    }
+
+    return wago_encode_response(response, response_capacity, kind, sequence,
+                                code, response_payload, response_payload_length,
+                                response_length);
+}
+
+static int wago_io_read_exact(const struct wago_pico2_io *io, uint8_t *destination, uint32_t length) {
+    uint32_t done = 0;
+    while (done < length) {
+        int count = io->read(io->user, destination + done, length - done);
+        if (count <= 0 || (uint32_t)count > length - done) {
+            return WAGO_PICO2_DISPATCH_IO;
+        }
+        done += (uint32_t)count;
+    }
+    return WAGO_PICO2_DISPATCH_OK;
+}
+
+static int wago_io_write_exact(const struct wago_pico2_io *io, const uint8_t *source, uint32_t length) {
+    uint32_t done = 0;
+    while (done < length) {
+        int count = io->write(io->user, source + done, length - done);
+        if (count <= 0 || (uint32_t)count > length - done) {
+            return WAGO_PICO2_DISPATCH_IO;
+        }
+        done += (uint32_t)count;
+    }
+    return WAGO_PICO2_DISPATCH_OK;
+}
+
+int wago_pico2_serve_once(struct wago_pico2_endpoint *endpoint,
+                          const struct wago_pico2_io *io,
+                          uint8_t *request, uint32_t request_capacity,
+                          uint8_t *response, uint32_t response_capacity) {
+    uint32_t payload_length;
+    uint32_t request_length;
+    uint32_t response_length;
+    int result;
+    if (endpoint == NULL || io == NULL || io->read == NULL || io->write == NULL ||
+        request == NULL || response == NULL || request_capacity < WAGO_PICO2_TRANSPORT_HEADER_BYTES) {
+        return WAGO_PICO2_DISPATCH_FRAME;
+    }
+    result = wago_io_read_exact(io, request, WAGO_PICO2_TRANSPORT_HEADER_BYTES);
+    if (result != WAGO_PICO2_DISPATCH_OK) {
+        return result;
+    }
+    payload_length = wago_get32(request + 12);
+    if (payload_length > endpoint->maximum_payload ||
+        payload_length > request_capacity - WAGO_PICO2_TRANSPORT_HEADER_BYTES) {
+        return WAGO_PICO2_DISPATCH_CAPACITY;
+    }
+    request_length = WAGO_PICO2_TRANSPORT_HEADER_BYTES + payload_length;
+    result = wago_io_read_exact(io, request + WAGO_PICO2_TRANSPORT_HEADER_BYTES, payload_length);
+    if (result != WAGO_PICO2_DISPATCH_OK) {
+        return result;
+    }
+    result = wago_pico2_dispatch(endpoint, request, request_length,
+                                 response, response_capacity, &response_length);
+    if (result != WAGO_PICO2_DISPATCH_OK) {
+        return result;
+    }
+    return wago_io_write_exact(io, response, response_length);
+}
+
+static wago_pico2_code wago_direct_restore(struct wago_pico2_runner *runner) {
+    if (runner->image == NULL || runner->initial_image == NULL || runner->image_size == 0) {
+        return WAGO_PICO2_STATE;
+    }
+    wago_copy(runner->image, runner->initial_image, runner->image_size);
+#if defined(__GNUC__) || defined(__clang__)
+    __builtin___clear_cache((char *)runner->image, (char *)runner->image + runner->image_size);
+#endif
+    return WAGO_PICO2_OK;
+}
+
+static wago_pico2_code wago_direct_instantiate(void *user, struct wago_pico2_runner *runner) {
+    (void)user;
+    return wago_direct_restore(runner);
+}
+
+static wago_pico2_code wago_direct_start(void *user, uint32_t entry, uint32_t context) {
+    (void)user;
+#if UINTPTR_MAX == UINT32_MAX
+    typedef uint32_t (*start_function)(uint32_t);
+    return ((start_function)(uintptr_t)entry)(context);
+#else
+    (void)entry;
+    (void)context;
+    return WAGO_PICO2_UNSUPPORTED;
+#endif
+}
+
+static wago_pico2_code wago_direct_call(void *user, uint32_t entry, uint32_t context,
+                                        const uint32_t *parameters, uint32_t parameter_slots,
+                                        uint32_t *results, uint32_t result_slots) {
+    (void)user;
+    (void)parameter_slots;
+    (void)result_slots;
+#if UINTPTR_MAX == UINT32_MAX
+    typedef uint32_t (*call_function)(const struct wago_pico2_call_abi *);
+    struct wago_pico2_call_abi call;
+    call.context = context;
+    call.parameters = (uint32_t)(uintptr_t)parameters;
+    call.results = (uint32_t)(uintptr_t)results;
+    return ((call_function)(uintptr_t)entry)(&call);
+#else
+    (void)entry;
+    (void)context;
+    (void)parameters;
+    (void)results;
+    return WAGO_PICO2_UNSUPPORTED;
+#endif
+}
+
+static wago_pico2_code wago_direct_cancel(void *user, uint32_t context) {
+    (void)user;
+#if UINTPTR_MAX == UINT32_MAX
+    uint32_t *cell = (uint32_t *)(uintptr_t)(context + WAGO_PICO2_CONTEXT_CANCEL_CELL_OFFSET);
+    *cell = 1;
+    return WAGO_PICO2_OK;
+#else
+    (void)context;
+    return WAGO_PICO2_UNSUPPORTED;
+#endif
+}
+
+static wago_pico2_code wago_direct_reset(void *user, struct wago_pico2_runner *runner) {
+    (void)user;
+    return wago_direct_restore(runner);
+}
+
+const struct wago_pico2_invoker wago_pico2_direct_invoker = {
+    NULL,
+    wago_direct_instantiate,
+    wago_direct_start,
+    wago_direct_call,
+    wago_direct_cancel,
+    wago_direct_reset,
+};

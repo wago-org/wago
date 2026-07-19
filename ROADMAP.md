@@ -162,9 +162,10 @@ codegen rationale is **[OPTIMIZATIONS.md](OPTIMIZATIONS.md)**. Summary of the tw
   closed-module firmware-image builder plus an allocation-free framed transport
   endpoint, strict import/export contract resolution, and context-aware
   function/global/memory/table firmware bundles with transactional linked active
-  data/elements and bundle-wide context-aware funcref identities. RP2350 SDK
-  I/O/low-level generated-entry invocation, official module-suite execution,
-  and Pico 2 qualification remain
+  data/elements and bundle-wide context-aware funcref identities. A freestanding
+  C endpoint now supplies direct generated-entry invocation and the Pico SDK
+  stdio loop. Concrete board helper/image integration, official module-suite
+  execution, and Pico 2 qualification remain
   before public admission (see
   `docs/pico2-32bit-port.md`).
 - [ ] wazero-compatible API shim for drop-in migration
