@@ -57,6 +57,10 @@ const (
 	MixedMemoryStore
 	MixedMemorySize
 	MixedMemoryGrow
+	MixedMemoryInit
+	MixedDataDrop
+	MixedMemoryCopy
+	MixedMemoryFill
 	MixedSIMDHelper
 )
 
@@ -1379,6 +1383,71 @@ func BuildMixedPlanWithBlockResolver(ft *wasm.CompType, locals []wasm.LocalRun, 
 				if err := helperUnary(uint32(embedded32.I64TruncSatF64U), wasm.F64, wasm.I64); err != nil {
 					return nil, err
 				}
+			case 8: // memory.init
+				dataIndex, err := r.U32()
+				if err != nil {
+					return nil, err
+				}
+				memory, err := r.U32()
+				if err != nil || memory != 0 {
+					return nil, fmt.Errorf("mixed memory.init requires memory zero")
+				}
+				n, err := pop(wasm.I32)
+				if err != nil {
+					return nil, err
+				}
+				src, err := pop(wasm.I32)
+				if err != nil {
+					return nil, err
+				}
+				dst, err := pop(wasm.I32)
+				if err != nil {
+					return nil, err
+				}
+				p.Ops = append(p.Ops, MixedOp{Kind: MixedMemoryInit, Left: dst.Slot, Right: src.Slot, Third: n.Slot, Target: dataIndex})
+			case 9: // data.drop
+				dataIndex, err := r.U32()
+				if err != nil {
+					return nil, err
+				}
+				p.Ops = append(p.Ops, MixedOp{Kind: MixedDataDrop, Target: dataIndex})
+			case 10: // memory.copy
+				dstMemory, err1 := r.U32()
+				srcMemory, err2 := r.U32()
+				if err1 != nil || err2 != nil || dstMemory != 0 || srcMemory != 0 {
+					return nil, fmt.Errorf("mixed memory.copy requires memory zero")
+				}
+				n, err := pop(wasm.I32)
+				if err != nil {
+					return nil, err
+				}
+				src, err := pop(wasm.I32)
+				if err != nil {
+					return nil, err
+				}
+				dst, err := pop(wasm.I32)
+				if err != nil {
+					return nil, err
+				}
+				p.Ops = append(p.Ops, MixedOp{Kind: MixedMemoryCopy, Left: dst.Slot, Right: src.Slot, Third: n.Slot})
+			case 11: // memory.fill
+				memory, err := r.U32()
+				if err != nil || memory != 0 {
+					return nil, fmt.Errorf("mixed memory.fill requires memory zero")
+				}
+				n, err := pop(wasm.I32)
+				if err != nil {
+					return nil, err
+				}
+				value, err := pop(wasm.I32)
+				if err != nil {
+					return nil, err
+				}
+				dst, err := pop(wasm.I32)
+				if err != nil {
+					return nil, err
+				}
+				p.Ops = append(p.Ops, MixedOp{Kind: MixedMemoryFill, Left: dst.Slot, Right: value.Slot, Third: n.Slot})
 			default:
 				return nil, fmt.Errorf("mixed function unsupported 0xfc subopcode %d", sub)
 			}

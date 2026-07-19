@@ -43,6 +43,9 @@ func compileMixedModuleFunction(m *wasm.Module, ft *wasm.CompType, locals []wasm
 		return nil, nil, err
 	}
 	for _, op := range plan.Ops {
+		if (op.Kind == shared.MixedMemoryInit || op.Kind == shared.MixedDataDrop) && uint64(op.Target) >= uint64(len(m.Data)) {
+			return nil, nil, fmt.Errorf("arm32: invalid mixed data segment %d", op.Target)
+		}
 		if op.Kind != shared.MixedCall {
 			continue
 		}
@@ -178,6 +181,28 @@ func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc) ([]byte, erro
 	type mixedBranchPatch struct {
 		at, label   int
 		conditional bool
+	}
+	emitMemoryTrap := func(done int, traps []int, name string) error {
+		trap := a.Len()
+		must(a.Ldr(a32.R1, armContextReg, embedded32.ContextTrapCellOffset), name+" trap cell")
+		must(a.MovImm32(a32.R0, uint32(embedded32.TrapMemoryOutOfBounds)), name+" trap")
+		must(a.Str(a32.R0, a32.R1, 0), name+" trap write")
+		must(a.Ldr(a32.LR, a32.SP, saveOffset), name+" trap return address restore")
+		must(a.MovImm32(a32.R12, frame), name+" trap frame size")
+		must(a.Add(a32.SP, a32.SP, a32.R12), name+" trap frame release")
+		must(a.MovImm32(a32.R0, 0), name+" trap result")
+		a.Ret()
+		a.Align4()
+		finish := a.Len()
+		if !a.PatchBranch(done, finish) {
+			return fmt.Errorf("arm32: mixed %s success branch out of range", name)
+		}
+		for _, branch := range traps {
+			if !a.PatchFarBranch(branch, trap) {
+				return fmt.Errorf("arm32: mixed %s trap branch out of range", name)
+			}
+		}
+		return nil
 	}
 	labels := make([]int, len(plan.Ops)+1)
 	var branches []mixedBranchPatch
@@ -686,6 +711,152 @@ func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc) ([]byte, erro
 				if !a.PatchFarBranch(branch, trap) {
 					return nil, fmt.Errorf("arm32: mixed memory store trap branch out of range")
 				}
+			}
+		case shared.MixedMemoryInit:
+			must(a.Ldr(a32.R0, a32.SP, off(op.Left)), "memory.init destination")
+			must(a.Ldr(a32.R1, a32.SP, off(op.Right)), "memory.init source offset")
+			must(a.Ldr(a32.R2, a32.SP, off(op.Third)), "memory.init count")
+			must(a.Ldr(a32.R3, armContextReg, embedded32.ContextDataSegmentsBaseOffset), "memory.init descriptor base")
+			must(a.MovImm32(a32.R12, op.Target*embedded32.DataSegmentABIBytes), "memory.init descriptor offset")
+			must(a.Add(a32.R3, a32.R3, a32.R12), "memory.init descriptor address")
+			must(a.Ldr(a32.LR, a32.R3, embedded32.DataSegmentDroppedOffset), "memory.init dropped flag")
+			must(a.MovImm32(a32.R12, 0), "memory.init zero")
+			must(a.Cmp(a32.LR, a32.R12), "memory.init dropped compare")
+			available := a.FarBcond(a32.CondEQ)
+			must(a.MovImm32(a32.LR, 0), "memory.init dropped length")
+			lengthReady := a.Branch()
+			availableTarget := a.Len()
+			must(a.Ldr(a32.LR, a32.R3, embedded32.DataSegmentLengthOffset), "memory.init data length")
+			lengthTarget := a.Len()
+			if !a.PatchFarBranch(available, availableTarget) || !a.PatchBranch(lengthReady, lengthTarget) {
+				return nil, fmt.Errorf("arm32: mixed memory.init data length branch out of range")
+			}
+			must(a.Cmp(a32.LR, a32.R2), "memory.init source size")
+			traps := []int{a.FarBcond(a32.CondCC)}
+			must(a.Sub(a32.LR, a32.LR, a32.R2), "memory.init source bound")
+			must(a.Cmp(a32.LR, a32.R1), "memory.init source compare")
+			traps = append(traps, a.FarBcond(a32.CondCC))
+			must(a.Ldr(a32.LR, armContextReg, embedded32.ContextLinearMemoryLengthOffset), "memory.init memory length")
+			must(a.Cmp(a32.LR, a32.R2), "memory.init destination size")
+			traps = append(traps, a.FarBcond(a32.CondCC))
+			must(a.Sub(a32.LR, a32.LR, a32.R2), "memory.init destination bound")
+			must(a.Cmp(a32.LR, a32.R0), "memory.init destination compare")
+			traps = append(traps, a.FarBcond(a32.CondCC))
+			must(a.Ldr(a32.R3, a32.R3, embedded32.DataSegmentBaseOffset), "memory.init data base")
+			must(a.Add(a32.R3, a32.R3, a32.R1), "memory.init source")
+			must(a.Ldr(a32.LR, armContextReg, embedded32.ContextLinearMemoryBaseOffset), "memory.init memory base")
+			must(a.Add(a32.R0, a32.R0, a32.LR), "memory.init destination pointer")
+			loop := a.Len()
+			must(a.Cmp(a32.R2, a32.R12), "memory.init done")
+			copied := a.FarBcond(a32.CondEQ)
+			must(a.Ldrb(a32.LR, a32.R3, 0), "memory.init load")
+			must(a.Strb(a32.LR, a32.R0, 0), "memory.init store")
+			must(a.MovImm32(a32.R12, 1), "memory.init step")
+			must(a.Add(a32.R3, a32.R3, a32.R12), "memory.init source advance")
+			must(a.Add(a32.R0, a32.R0, a32.R12), "memory.init destination advance")
+			must(a.Sub(a32.R2, a32.R2, a32.R12), "memory.init count decrement")
+			must(a.MovImm32(a32.R12, 0), "memory.init restore zero")
+			back := a.Branch()
+			if !a.PatchBranch(back, loop) || !a.PatchFarBranch(copied, a.Len()) {
+				return nil, fmt.Errorf("arm32: mixed memory.init loop out of range")
+			}
+			done := a.Branch()
+			if err := emitMemoryTrap(done, traps, "memory.init"); err != nil {
+				return nil, err
+			}
+		case shared.MixedDataDrop:
+			must(a.Ldr(a32.R0, armContextReg, embedded32.ContextDataSegmentsBaseOffset), "data.drop descriptor base")
+			must(a.MovImm32(a32.R1, op.Target*embedded32.DataSegmentABIBytes), "data.drop descriptor offset")
+			must(a.Add(a32.R0, a32.R0, a32.R1), "data.drop descriptor address")
+			must(a.MovImm32(a32.R1, 1), "data.drop value")
+			must(a.Str(a32.R1, a32.R0, embedded32.DataSegmentDroppedOffset), "data.drop store")
+		case shared.MixedMemoryCopy:
+			must(a.Ldr(a32.R0, a32.SP, off(op.Left)), "memory.copy destination")
+			must(a.Ldr(a32.R1, a32.SP, off(op.Right)), "memory.copy source")
+			must(a.Ldr(a32.R2, a32.SP, off(op.Third)), "memory.copy count")
+			must(a.Ldr(a32.R3, armContextReg, embedded32.ContextLinearMemoryLengthOffset), "memory.copy length")
+			must(a.Cmp(a32.R3, a32.R2), "memory.copy size compare")
+			traps := []int{a.FarBcond(a32.CondCC)}
+			must(a.Sub(a32.R3, a32.R3, a32.R2), "memory.copy bound")
+			must(a.Cmp(a32.R3, a32.R0), "memory.copy destination compare")
+			traps = append(traps, a.FarBcond(a32.CondCC))
+			must(a.Cmp(a32.R3, a32.R1), "memory.copy source compare")
+			traps = append(traps, a.FarBcond(a32.CondCC))
+			must(a.Ldr(a32.R3, armContextReg, embedded32.ContextLinearMemoryBaseOffset), "memory.copy base")
+			must(a.Add(a32.R0, a32.R0, a32.R3), "memory.copy destination pointer")
+			must(a.Add(a32.R1, a32.R1, a32.R3), "memory.copy source pointer")
+			must(a.MovImm32(a32.R12, 0), "memory.copy zero")
+			must(a.Cmp(a32.R0, a32.R1), "memory.copy direction")
+			forward := a.FarBcond(a32.CondLS)
+			must(a.Add(a32.R0, a32.R0, a32.R2), "memory.copy backward destination")
+			must(a.Add(a32.R1, a32.R1, a32.R2), "memory.copy backward source")
+			backLoop := a.Len()
+			must(a.Cmp(a32.R2, a32.R12), "memory.copy backward done")
+			backDone := a.FarBcond(a32.CondEQ)
+			must(a.MovImm32(a32.R3, 1), "memory.copy backward step")
+			must(a.Sub(a32.R0, a32.R0, a32.R3), "memory.copy destination decrement")
+			must(a.Sub(a32.R1, a32.R1, a32.R3), "memory.copy source decrement")
+			must(a.Ldrb(a32.R12, a32.R1, 0), "memory.copy backward load")
+			must(a.Strb(a32.R12, a32.R0, 0), "memory.copy backward store")
+			must(a.Sub(a32.R2, a32.R2, a32.R3), "memory.copy backward count")
+			must(a.MovImm32(a32.R12, 0), "memory.copy restore zero")
+			back := a.Branch()
+			if !a.PatchBranch(back, backLoop) {
+				return nil, fmt.Errorf("arm32: mixed memory.copy backward loop out of range")
+			}
+			forwardTarget := a.Len()
+			if !a.PatchFarBranch(forward, forwardTarget) {
+				return nil, fmt.Errorf("arm32: mixed memory.copy direction branch out of range")
+			}
+			forwardLoop := a.Len()
+			must(a.Cmp(a32.R2, a32.R12), "memory.copy forward done")
+			forwardDone := a.FarBcond(a32.CondEQ)
+			must(a.Ldrb(a32.R12, a32.R1, 0), "memory.copy forward load")
+			must(a.Strb(a32.R12, a32.R0, 0), "memory.copy forward store")
+			must(a.MovImm32(a32.R3, 1), "memory.copy forward step")
+			must(a.Add(a32.R0, a32.R0, a32.R3), "memory.copy destination advance")
+			must(a.Add(a32.R1, a32.R1, a32.R3), "memory.copy source advance")
+			must(a.Sub(a32.R2, a32.R2, a32.R3), "memory.copy forward count")
+			must(a.MovImm32(a32.R12, 0), "memory.copy restore zero")
+			forwardBack := a.Branch()
+			if !a.PatchBranch(forwardBack, forwardLoop) {
+				return nil, fmt.Errorf("arm32: mixed memory.copy forward loop out of range")
+			}
+			finishCopy := a.Len()
+			if !a.PatchFarBranch(backDone, finishCopy) || !a.PatchFarBranch(forwardDone, finishCopy) {
+				return nil, fmt.Errorf("arm32: mixed memory.copy done branch out of range")
+			}
+			done := a.Branch()
+			if err := emitMemoryTrap(done, traps, "memory.copy"); err != nil {
+				return nil, err
+			}
+		case shared.MixedMemoryFill:
+			must(a.Ldr(a32.R0, a32.SP, off(op.Left)), "memory.fill destination")
+			must(a.Ldr(a32.R1, a32.SP, off(op.Right)), "memory.fill value")
+			must(a.Ldr(a32.R2, a32.SP, off(op.Third)), "memory.fill count")
+			must(a.Ldr(a32.R3, armContextReg, embedded32.ContextLinearMemoryLengthOffset), "memory.fill length")
+			must(a.Cmp(a32.R3, a32.R2), "memory.fill size compare")
+			traps := []int{a.FarBcond(a32.CondCC)}
+			must(a.Sub(a32.R3, a32.R3, a32.R2), "memory.fill bound")
+			must(a.Cmp(a32.R3, a32.R0), "memory.fill destination compare")
+			traps = append(traps, a.FarBcond(a32.CondCC))
+			must(a.Ldr(a32.R3, armContextReg, embedded32.ContextLinearMemoryBaseOffset), "memory.fill base")
+			must(a.Add(a32.R0, a32.R0, a32.R3), "memory.fill destination pointer")
+			must(a.MovImm32(a32.R12, 0), "memory.fill zero")
+			loop := a.Len()
+			must(a.Cmp(a32.R2, a32.R12), "memory.fill done")
+			filled := a.FarBcond(a32.CondEQ)
+			must(a.Strb(a32.R1, a32.R0, 0), "memory.fill store")
+			must(a.MovImm32(a32.R3, 1), "memory.fill step")
+			must(a.Add(a32.R0, a32.R0, a32.R3), "memory.fill advance")
+			must(a.Sub(a32.R2, a32.R2, a32.R3), "memory.fill count decrement")
+			back := a.Branch()
+			if !a.PatchBranch(back, loop) || !a.PatchFarBranch(filled, a.Len()) {
+				return nil, fmt.Errorf("arm32: mixed memory.fill loop out of range")
+			}
+			done := a.Branch()
+			if err := emitMemoryTrap(done, traps, "memory.fill"); err != nil {
+				return nil, err
 			}
 		case shared.MixedMemorySize:
 			must(a.Ldr(a32.R0, armContextReg, embedded32.ContextLinearMemoryLengthOffset), "memory.size length")

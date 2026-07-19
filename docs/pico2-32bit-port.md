@@ -336,13 +336,14 @@ mixed access preserves all surrounding wide operands.
 
 The embedded runtime now also provides complete preflighted `memory.copy`,
 `memory.fill`, passive `memory.init`, and idempotent `data.drop` semantics.
-Normal i32 module code directly lowers overlap-safe `memory.copy` and
+Normal i32 and mixed module code directly lower overlap-safe `memory.copy` and
 `memory.fill` with complete source/destination preflight before byte loops.
 Module layout retains active/passive segments in original index order;
 instantiation preflights every active destination transactionally before copying
 and starts active segments dropped. `ContextABI` now publishes a stable array of
-12-byte target data descriptors, and normal i32 functions execute preflighted
-`memory.init` plus idempotent `data.drop` directly against those descriptors.
+12-byte target data descriptors, and normal i32 plus mixed functions execute
+preflighted `memory.init` plus idempotent `data.drop` directly against those
+descriptors.
 
 This is still not public backend admission. Arbitrary-depth and table-driven
 structured-control transfers, tables/references, start invocation,

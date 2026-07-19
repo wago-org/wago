@@ -43,6 +43,9 @@ func compileMixedModuleFunction(m *wasm.Module, ft *wasm.CompType, locals []wasm
 		return nil, nil, err
 	}
 	for _, op := range plan.Ops {
+		if (op.Kind == shared.MixedMemoryInit || op.Kind == shared.MixedDataDrop) && uint64(op.Target) >= uint64(len(m.Data)) {
+			return nil, nil, fmt.Errorf("riscv32: invalid mixed data segment %d", op.Target)
+		}
 		if op.Kind != shared.MixedCall {
 			continue
 		}
@@ -170,6 +173,26 @@ func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc) ([]byte, erro
 	type mixedBranchPatch struct {
 		at, label   int
 		conditional bool
+	}
+	emitMemoryTrap := func(done int, traps []int, name string) error {
+		trap := a.Len()
+		must(a.Lw(rv.T1, rvContextReg, embedded32.ContextTrapCellOffset), name+" trap cell")
+		a.MovImm32(rv.T0, uint32(embedded32.TrapMemoryOutOfBounds))
+		must(a.Sw(rv.T0, rv.T1, 0), name+" trap write")
+		must(a.Lw(rv.RA, rv.SP, saveOffset), name+" trap return address restore")
+		must(a.Addi(rv.SP, rv.SP, frame), name+" trap frame release")
+		a.MovImm32(rv.A0, 0)
+		a.Ret()
+		finish := a.Len()
+		if !a.PatchFarJump(done, finish) {
+			return fmt.Errorf("riscv32: mixed %s success branch out of range", name)
+		}
+		for _, branch := range traps {
+			if !a.PatchFarBranch(branch, trap) {
+				return fmt.Errorf("riscv32: mixed %s trap branch out of range", name)
+			}
+		}
+		return nil
 	}
 	labels := make([]int, len(plan.Ops)+1)
 	var branches []mixedBranchPatch
@@ -644,6 +667,127 @@ func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc) ([]byte, erro
 				if !a.PatchFarBranch(branch, trap) {
 					return nil, fmt.Errorf("riscv32: mixed memory store trap branch out of range")
 				}
+			}
+		case shared.MixedMemoryInit:
+			must(a.Lw(rv.T0, rv.SP, off(op.Left)), "memory.init destination")
+			must(a.Lw(rv.T1, rv.SP, off(op.Right)), "memory.init source offset")
+			must(a.Lw(rv.T2, rv.SP, off(op.Third)), "memory.init count")
+			must(a.Lw(rv.T3, rvContextReg, embedded32.ContextDataSegmentsBaseOffset), "memory.init descriptor base")
+			a.MovImm32(rv.T6, op.Target*embedded32.DataSegmentABIBytes)
+			a.Add(rv.T3, rv.T3, rv.T6)
+			must(a.Lw(rv.T5, rv.T3, embedded32.DataSegmentDroppedOffset), "memory.init dropped flag")
+			available := a.Bcond(rv.T5, rv.Zero, rv.CondEQ)
+			a.MovImm32(rv.T5, 0)
+			lengthReady := a.Jal(rv.Zero)
+			availableTarget := a.Len()
+			must(a.Lw(rv.T5, rv.T3, embedded32.DataSegmentLengthOffset), "memory.init data length")
+			lengthTarget := a.Len()
+			if !a.PatchBranch13(available, availableTarget) || !a.PatchJAL21(lengthReady, lengthTarget) {
+				return nil, fmt.Errorf("riscv32: mixed memory.init data length branch out of range")
+			}
+			traps := []int{a.FarBcond(rv.T5, rv.T2, rv.CondLTU, branchScratch)}
+			a.Sub(rv.T5, rv.T5, rv.T2)
+			traps = append(traps, a.FarBcond(rv.T5, rv.T1, rv.CondLTU, branchScratch))
+			must(a.Lw(rv.T5, rvContextReg, embedded32.ContextLinearMemoryLengthOffset), "memory.init memory length")
+			traps = append(traps, a.FarBcond(rv.T5, rv.T2, rv.CondLTU, branchScratch))
+			a.Sub(rv.T5, rv.T5, rv.T2)
+			traps = append(traps, a.FarBcond(rv.T5, rv.T0, rv.CondLTU, branchScratch))
+			must(a.Lw(rv.T3, rv.T3, embedded32.DataSegmentBaseOffset), "memory.init data base")
+			a.Add(rv.T3, rv.T3, rv.T1)
+			must(a.Lw(rv.T5, rvContextReg, embedded32.ContextLinearMemoryBaseOffset), "memory.init memory base")
+			a.Add(rv.T0, rv.T0, rv.T5)
+			loop := a.Len()
+			copied := a.Bcond(rv.T2, rv.Zero, rv.CondEQ)
+			must(a.Lbu(rv.T5, rv.T3, 0), "memory.init load")
+			must(a.Sb(rv.T5, rv.T0, 0), "memory.init store")
+			must(a.Addi(rv.T3, rv.T3, 1), "memory.init source advance")
+			must(a.Addi(rv.T0, rv.T0, 1), "memory.init destination advance")
+			must(a.Addi(rv.T2, rv.T2, -1), "memory.init count decrement")
+			back := a.Jal(rv.Zero)
+			if !a.PatchJAL21(back, loop) || !a.PatchBranch13(copied, a.Len()) {
+				return nil, fmt.Errorf("riscv32: mixed memory.init loop out of range")
+			}
+			done := a.FarJump(rv.Zero, branchScratch)
+			if err := emitMemoryTrap(done, traps, "memory.init"); err != nil {
+				return nil, err
+			}
+		case shared.MixedDataDrop:
+			must(a.Lw(rv.T0, rvContextReg, embedded32.ContextDataSegmentsBaseOffset), "data.drop descriptor base")
+			a.MovImm32(rv.T1, op.Target*embedded32.DataSegmentABIBytes)
+			a.Add(rv.T0, rv.T0, rv.T1)
+			a.MovImm32(rv.T1, 1)
+			must(a.Sw(rv.T1, rv.T0, embedded32.DataSegmentDroppedOffset), "data.drop store")
+		case shared.MixedMemoryCopy:
+			must(a.Lw(rv.T0, rv.SP, off(op.Left)), "memory.copy destination")
+			must(a.Lw(rv.T1, rv.SP, off(op.Right)), "memory.copy source")
+			must(a.Lw(rv.T2, rv.SP, off(op.Third)), "memory.copy count")
+			must(a.Lw(rv.T3, rvContextReg, embedded32.ContextLinearMemoryLengthOffset), "memory.copy length")
+			traps := []int{a.FarBcond(rv.T3, rv.T2, rv.CondLTU, branchScratch)}
+			a.Sub(rv.T3, rv.T3, rv.T2)
+			traps = append(traps, a.FarBcond(rv.T3, rv.T0, rv.CondLTU, branchScratch))
+			traps = append(traps, a.FarBcond(rv.T3, rv.T1, rv.CondLTU, branchScratch))
+			must(a.Lw(rv.T3, rvContextReg, embedded32.ContextLinearMemoryBaseOffset), "memory.copy base")
+			a.Add(rv.T0, rv.T0, rv.T3)
+			a.Add(rv.T1, rv.T1, rv.T3)
+			forward := a.FarBcond(rv.T1, rv.T0, rv.CondGEU, branchScratch)
+			a.Add(rv.T0, rv.T0, rv.T2)
+			a.Add(rv.T1, rv.T1, rv.T2)
+			backLoop := a.Len()
+			backDone := a.Bcond(rv.T2, rv.Zero, rv.CondEQ)
+			must(a.Addi(rv.T0, rv.T0, -1), "memory.copy destination decrement")
+			must(a.Addi(rv.T1, rv.T1, -1), "memory.copy source decrement")
+			must(a.Lbu(rv.T5, rv.T1, 0), "memory.copy backward load")
+			must(a.Sb(rv.T5, rv.T0, 0), "memory.copy backward store")
+			must(a.Addi(rv.T2, rv.T2, -1), "memory.copy backward count")
+			back := a.Jal(rv.Zero)
+			if !a.PatchJAL21(back, backLoop) {
+				return nil, fmt.Errorf("riscv32: mixed memory.copy backward loop out of range")
+			}
+			forwardTarget := a.Len()
+			if !a.PatchFarBranch(forward, forwardTarget) {
+				return nil, fmt.Errorf("riscv32: mixed memory.copy direction branch out of range")
+			}
+			forwardLoop := a.Len()
+			forwardDone := a.Bcond(rv.T2, rv.Zero, rv.CondEQ)
+			must(a.Lbu(rv.T5, rv.T1, 0), "memory.copy forward load")
+			must(a.Sb(rv.T5, rv.T0, 0), "memory.copy forward store")
+			must(a.Addi(rv.T0, rv.T0, 1), "memory.copy destination advance")
+			must(a.Addi(rv.T1, rv.T1, 1), "memory.copy source advance")
+			must(a.Addi(rv.T2, rv.T2, -1), "memory.copy forward count")
+			forwardBack := a.Jal(rv.Zero)
+			if !a.PatchJAL21(forwardBack, forwardLoop) {
+				return nil, fmt.Errorf("riscv32: mixed memory.copy forward loop out of range")
+			}
+			finishCopy := a.Len()
+			if !a.PatchBranch13(backDone, finishCopy) || !a.PatchBranch13(forwardDone, finishCopy) {
+				return nil, fmt.Errorf("riscv32: mixed memory.copy done branch out of range")
+			}
+			done := a.FarJump(rv.Zero, branchScratch)
+			if err := emitMemoryTrap(done, traps, "memory.copy"); err != nil {
+				return nil, err
+			}
+		case shared.MixedMemoryFill:
+			must(a.Lw(rv.T0, rv.SP, off(op.Left)), "memory.fill destination")
+			must(a.Lw(rv.T1, rv.SP, off(op.Right)), "memory.fill value")
+			must(a.Lw(rv.T2, rv.SP, off(op.Third)), "memory.fill count")
+			must(a.Lw(rv.T3, rvContextReg, embedded32.ContextLinearMemoryLengthOffset), "memory.fill length")
+			traps := []int{a.FarBcond(rv.T3, rv.T2, rv.CondLTU, branchScratch)}
+			a.Sub(rv.T3, rv.T3, rv.T2)
+			traps = append(traps, a.FarBcond(rv.T3, rv.T0, rv.CondLTU, branchScratch))
+			must(a.Lw(rv.T3, rvContextReg, embedded32.ContextLinearMemoryBaseOffset), "memory.fill base")
+			a.Add(rv.T0, rv.T0, rv.T3)
+			loop := a.Len()
+			filled := a.Bcond(rv.T2, rv.Zero, rv.CondEQ)
+			must(a.Sb(rv.T1, rv.T0, 0), "memory.fill store")
+			must(a.Addi(rv.T0, rv.T0, 1), "memory.fill advance")
+			must(a.Addi(rv.T2, rv.T2, -1), "memory.fill count decrement")
+			back := a.Jal(rv.Zero)
+			if !a.PatchJAL21(back, loop) || !a.PatchBranch13(filled, a.Len()) {
+				return nil, fmt.Errorf("riscv32: mixed memory.fill loop out of range")
+			}
+			done := a.FarJump(rv.Zero, branchScratch)
+			if err := emitMemoryTrap(done, traps, "memory.fill"); err != nil {
+				return nil, err
 			}
 		case shared.MixedMemorySize:
 			must(a.Lw(rv.T0, rvContextReg, embedded32.ContextLinearMemoryLengthOffset), "memory.size length")
