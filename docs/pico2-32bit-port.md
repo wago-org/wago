@@ -116,6 +116,14 @@ QEMU is a correctness oracle, not a Pico 2 performance oracle. Public admission
 requires board evidence and explicit documentation of the embedded runtime's
 memory and security model.
 
+`TestPico2Release2CompileAdmission` is the opt-in module-level admission gate for
+an external WebAssembly/spec v2.0.0 checkout. It runs `wast2json`, decodes every
+emitted module, requires Arm32 and RV32 to agree, requires valid in-gate modules
+to compile, requires malformed/invalid modules to reject, and counts only the
+explicit multi-memory/multi-table/threads-memory64/exception/GC boundary as
+outside the completion gate. Execution assertions still require the firmware or
+QEMU module runner.
+
 ## Current implementation status
 
 The initial foundation contains:
