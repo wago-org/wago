@@ -389,11 +389,14 @@ before any target address is published. Function type IDs now use the shared
 structural hash with in-module collision rejection, so identical signatures are
 stable across independently compiled modules.
 
-Function imports use a caller-published target array at
-`ContextABI.ImportsBase`. Both the i32 compiler and mixed-frame compiler stage
-the validated internal ABI, dispatch through the fixed import slot, propagate
-callback traps through the shared trap cell, and preserve local/global function
-indexing in metadata, tables, exports, and canonical type arrays.
+Function imports use a caller-published array of stable 8-byte
+`ImportFunctionABI` descriptors at `ContextABI.ImportsBase`. Each descriptor
+contains the callable entry and the callee `ContextABI`. Both i32 and mixed
+callers save their own fixed context register, switch before dispatch, preserve
+the serialized register/overflow ABI, copy the callee trap into the caller trap
+cell, and restore the caller context before continuing. This supports direct
+module-to-module calls as well as host callbacks and keeps local/global function
+indexing stable.
 
 Each exported local function now receives one deduplicated, 16-byte-aligned
 entry thunk. Firmware passes a stable 12-byte `CallABI` containing target
@@ -413,6 +416,17 @@ validation, rejects unresolved imports, publishes target addresses without host
 pointer assumptions, and preserves Thumb function-pointer bit zero through the
 Arm-specific wrapper. The image reports conventional start and exported
 `CallABI` entry addresses for a board harness.
+
+Resolved function/global module graphs can now be laid out as one bounded
+firmware bundle. The linker preflights every constituent image, serializes
+context-aware function-import descriptors, points imported-global directories
+at the provider's exact one/two/four-slot cells, evaluates immutable imported
+global initializers through the binding graph, preserves target function-pointer
+encoding, and publishes no addresses until every binding and capacity check
+passes. Generated Arm32/RV32 tests execute calls with a distinct provider
+context, restore consumer globals afterward, and propagate provider traps.
+Imported memory and table bundles remain rejected because their mutable
+length/element state is not yet split from per-module descriptors.
 
 The runtime now defines the board-wire contract independently of UART/USB
 plumbing: a versioned 24-byte little-endian frame header, sequence numbers,
@@ -436,7 +450,7 @@ returns the published trap code. This gives firmware a conventional ABI for
 transactional instantiation/start sequencing without target-specific inline
 assembly.
 
-This is still not public backend admission. Linked-image address/context
-publication, the RP2350 SDK transport I/O and low-level generated-entry invoker,
-official module-level suite qualification, and Pico 2 hardware qualification
-remain to be implemented and measured.
+This is still not public backend admission. Shared imported-memory/table
+bundle descriptors, the RP2350 SDK transport I/O and low-level generated-entry
+invoker, official module-level suite qualification, and Pico 2 hardware
+qualification remain to be implemented and measured.

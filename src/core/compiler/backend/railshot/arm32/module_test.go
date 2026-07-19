@@ -2302,8 +2302,10 @@ func TestCompileModuleCallsImportedCallbacksUnderQEMU(t *testing.T) {
 		a.Str(a32.R5, a32.SP, 60)
 		a.MovImm32(a32.R12, callbackAddress|1)
 		a.Str(a32.R12, a32.SP, 96)
-		a.Str(a32.R12, a32.SP, 100)
+		a.Str(a32.R12, a32.SP, 104)
 		armContextArg(&a)
+		a.Str(a32.R0, a32.SP, 100)
+		a.Str(a32.R0, a32.SP, 108)
 		a.MovReg(a32.R11, a32.R0)
 		a.MovImm32(a32.R0, 41)
 		first := a.Call()
@@ -2331,6 +2333,115 @@ func TestCompileModuleCallsImportedCallbacksUnderQEMU(t *testing.T) {
 	image := append(wrapper.B, cm.Code...)
 	image = append(image, callback.B...)
 	runARM32Exit(t, qemu, image, 83)
+}
+
+func arm32LinkedImportModule(t *testing.T) *wasm.Module {
+	t.Helper()
+	importFunction := append(wasmtest.Name("env"), wasmtest.Name("f")...)
+	importFunction = append(importFunction, 0, 0)
+	m, err := wasm.DecodeModule(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(2, wasmtest.Vec(importFunction)),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0})),
+		wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.I32, false, []byte{0x41, 1, 0x0b}))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x10, 0, 0x23, 0, 0x6a, 0x0b}))),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+func arm32LinkedProviderModule(t *testing.T, trapping bool) *wasm.Module {
+	t.Helper()
+	body := []byte{0x23, 0, 0x0b}
+	if trapping {
+		body = []byte{0x00, 0x0b}
+	}
+	m, err := wasm.DecodeModule(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0})),
+		wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.I32, false, []byte{0x41, 42, 0x0b}))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+func TestCompileModuleSwitchesLinkedImportContextUnderQEMU(t *testing.T) {
+	qemu, err := exec.LookPath("qemu-arm")
+	if err != nil {
+		t.Skip("qemu-arm not installed")
+	}
+	cm, err := CompileModule(arm32LinkedImportModule(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	build := func(callbackAddress uint32, trapping bool) (a a32.Asm) {
+		armMemoryContext(&a)
+		a.MovImm32(a32.R12, 128)
+		a.Sub(a32.SP, a32.SP, a32.R12)
+		a.MovImm32(a32.R12, 80)
+		a.Add(a32.R5, a32.SP, a32.R12)
+		a.Str(a32.R5, a32.SP, 172)
+		a.MovImm32(a32.R12, 88)
+		a.Add(a32.R5, a32.SP, a32.R12)
+		a.Str(a32.R5, a32.SP, 188)
+		a.MovImm32(a32.R12, callbackAddress|1)
+		a.Str(a32.R12, a32.SP, 88)
+		a.MovImm32(a32.R12, 16)
+		a.Add(a32.R5, a32.SP, a32.R12)
+		a.Str(a32.R5, a32.SP, 92)
+		a.MovImm32(a32.R12, 1)
+		a.Str(a32.R12, a32.SP, 80)
+		a.MovImm32(a32.R12, 68)
+		a.Add(a32.R5, a32.SP, a32.R12)
+		a.Str(a32.R5, a32.SP, 24)
+		a.MovImm32(a32.R12, 72)
+		a.Add(a32.R5, a32.SP, a32.R12)
+		a.Str(a32.R5, a32.SP, 28)
+		a.MovImm32(a32.R12, 76)
+		a.Add(a32.R5, a32.SP, a32.R12)
+		a.Str(a32.R5, a32.SP, 44)
+		a.MovImm32(a32.R12, 0)
+		a.Str(a32.R12, a32.SP, 68)
+		a.Str(a32.R12, a32.SP, 72)
+		a.MovImm32(a32.R12, 42)
+		a.Str(a32.R12, a32.SP, 76)
+		a.MovImm32(a32.R12, 144)
+		a.Add(a32.R0, a32.SP, a32.R12)
+		a.MovReg(a32.R11, a32.R0)
+		call := a.Call()
+		if trapping {
+			a.Ldr(a32.R0, a32.SP, 160)
+		}
+		armExit(&a)
+		if !a.PatchCall(call, len(a.B)+cm.Entry[0]) {
+			t.Fatal("wrapper call relocation")
+		}
+		return a
+	}
+	for _, trapping := range []bool{false, true} {
+		t.Run(map[bool]string{false: "restore", true: "trap"}[trapping], func(t *testing.T) {
+			provider, err := CompileModule(arm32LinkedProviderModule(t, trapping))
+			if err != nil {
+				t.Fatal(err)
+			}
+			const base = uint32(0x10000)
+			wrapper := build(base, trapping)
+			providerAddress := base + uint32(len(wrapper.B)+len(cm.Code)+provider.Entry[0])
+			wrapper = build(providerAddress, trapping)
+			image := append(wrapper.B, cm.Code...)
+			image = append(image, provider.Code...)
+			want := 43
+			if trapping {
+				want = int(embedded32.TrapUnreachable)
+			}
+			runARM32Exit(t, qemu, image, want)
+		})
+	}
 }
 
 func arm32ExportedCallModule(t *testing.T) *wasm.Module {

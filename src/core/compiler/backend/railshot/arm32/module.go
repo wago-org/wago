@@ -21,6 +21,12 @@ type FirmwareOptions = shared.EmbeddedFirmwareOptions
 // FirmwareImage is a closed module image with serialized target ABI state.
 type FirmwareImage = shared.EmbeddedFirmwareImage
 
+// LinkedFirmwareOptions controls a resolved multi-module firmware bundle.
+type LinkedFirmwareOptions = shared.EmbeddedLinkedFirmwareOptions
+
+// LinkedFirmwareImage is a resolved multi-module firmware bundle.
+type LinkedFirmwareImage = shared.EmbeddedLinkedFirmwareImage
+
 func CompileModule(m *wasm.Module) (*CompiledModule, error) {
 	return CompileModuleWith(m, ModuleCompileOptions{})
 }
@@ -206,6 +212,22 @@ func BuildFirmwareImage(dst []byte, module *CompiledModule, opts FirmwareOptions
 func FirmwareImageSize(module *CompiledModule, opts FirmwareOptions) (uint32, error) {
 	opts.FunctionAddressMask = 1
 	return shared.EmbeddedFirmwareImageSize(module, opts)
+}
+
+func LinkedFirmwareImageSize(plan *shared.EmbeddedLinkPlan, opts LinkedFirmwareOptions) (uint32, error) {
+	opts.Modules = append([]shared.EmbeddedFirmwareOptions(nil), opts.Modules...)
+	for i := range opts.Modules {
+		opts.Modules[i].FunctionAddressMask = 1
+	}
+	return shared.EmbeddedLinkedFirmwareImageSize(plan, opts)
+}
+
+func BuildLinkedFirmwareImage(dst []byte, plan *shared.EmbeddedLinkPlan, opts LinkedFirmwareOptions) (*LinkedFirmwareImage, error) {
+	opts.Modules = append([]shared.EmbeddedFirmwareOptions(nil), opts.Modules...)
+	for i := range opts.Modules {
+		opts.Modules[i].FunctionAddressMask = 1
+	}
+	return shared.BuildEmbeddedLinkedFirmwareImage(dst, plan, opts)
 }
 
 func NewFirmwareTransportRunner(image *FirmwareImage, maximumPayload uint32, invoker embedded32.FirmwareTransportInvoker) (*embedded32.FirmwareTransportRunner, error) {

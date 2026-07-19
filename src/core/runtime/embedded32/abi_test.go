@@ -6,6 +6,11 @@ import (
 )
 
 func TestStableHelperFrameLayouts(t *testing.T) {
+	var imported ImportFunctionABI
+	if unsafe.Offsetof(imported.Entry) != ImportFunctionEntryOffset || unsafe.Offsetof(imported.Context) != ImportFunctionContextOffset || unsafe.Sizeof(imported) != ImportFunctionABIBytes {
+		t.Fatalf("ImportFunctionABI layout entry=%d context=%d size=%d", unsafe.Offsetof(imported.Entry), unsafe.Offsetof(imported.Context), unsafe.Sizeof(imported))
+	}
+
 	var call CallABI
 	if unsafe.Offsetof(call.Context) != CallABIContextOffset || unsafe.Offsetof(call.Parameters) != CallABIParametersOffset || unsafe.Offsetof(call.Results) != CallABIResultsOffset || unsafe.Sizeof(call) != CallABIBytes {
 		t.Fatalf("CallABI layout context=%d parameters=%d results=%d size=%d", unsafe.Offsetof(call.Context), unsafe.Offsetof(call.Parameters), unsafe.Offsetof(call.Results), unsafe.Sizeof(call))

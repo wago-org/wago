@@ -135,12 +135,16 @@ func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc) ([]byte, erro
 	helperBase := valueBase + dataBytes
 	indirectBytes := int32(0)
 	for _, op := range plan.Ops {
-		if op.Kind == shared.MixedCallIndirect || op.Kind == shared.MixedCallImport {
-			indirectBytes = 4
+		if op.Kind == shared.MixedCallImport {
+			indirectBytes = 8
 			break
+		}
+		if op.Kind == shared.MixedCallIndirect {
+			indirectBytes = 4
 		}
 	}
 	indirectTargetOffset := helperBase + helperBytes
+	importContextOffset := indirectTargetOffset + 4
 	saveOffset := indirectTargetOffset + indirectBytes
 	frame := (saveOffset + 4 + 15) &^ 15
 	incomingSlots := plan.ParameterSlots
@@ -1308,12 +1312,16 @@ func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc) ([]byte, erro
 			}
 		case shared.MixedCall, shared.MixedCallImport, shared.MixedCallIndirect:
 			if op.Kind == shared.MixedCallImport {
-				if op.Target > 511 {
-					return nil, fmt.Errorf("riscv32: import index %d exceeds direct displacement", op.Target)
+				if uint64(op.Target) > uint64(^uint32(0)/embedded32.ImportFunctionABIBytes) {
+					return nil, fmt.Errorf("riscv32: import index %d exceeds addressable descriptors", op.Target)
 				}
 				must(a.Lw(rv.T0, rvContextReg, embedded32.ContextImportsBaseOffset), "import table")
-				must(a.Lw(rv.T0, rv.T0, int32(op.Target*4)), "import target")
-				must(a.Sw(rv.T0, rv.SP, indirectTargetOffset), "import target save")
+				a.MovImm32(rv.T1, op.Target*embedded32.ImportFunctionABIBytes)
+				a.Add(rv.T0, rv.T0, rv.T1)
+				must(a.Lw(rv.T1, rv.T0, embedded32.ImportFunctionEntryOffset), "import target")
+				must(a.Sw(rv.T1, rv.SP, indirectTargetOffset), "import target save")
+				must(a.Sw(rvContextReg, rv.SP, importContextOffset), "caller context save")
+				must(a.Lw(rvContextReg, rv.T0, embedded32.ImportFunctionContextOffset), "callee context")
 			} else if op.Kind == shared.MixedCallIndirect {
 				must(a.Lw(rv.T0, rv.SP, off(op.Third)), "indirect table index")
 				must(a.Lw(rv.T3, rvContextReg, embedded32.ContextTableOffset), "indirect table descriptor")
@@ -1379,6 +1387,13 @@ func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc) ([]byte, erro
 					}
 					resultReg++
 				}
+			}
+			if op.Kind == shared.MixedCallImport {
+				must(a.Lw(rv.T0, rvContextReg, embedded32.ContextTrapCellOffset), "callee trap cell")
+				must(a.Lw(rv.T0, rv.T0, 0), "callee trap value")
+				must(a.Lw(rvContextReg, rv.SP, importContextOffset), "caller context restore")
+				must(a.Lw(rv.T1, rvContextReg, embedded32.ContextTrapCellOffset), "caller trap cell")
+				must(a.Sw(rv.T0, rv.T1, 0), "import trap propagation")
 			}
 			must(a.Lw(rv.T0, rvContextReg, embedded32.ContextTrapCellOffset), "call trap cell")
 			must(a.Lw(rv.T0, rv.T0, 0), "call trap value")

@@ -10,11 +10,12 @@ import (
 )
 
 const (
-	armContextReg     = a32.R11
-	armModuleFrame    = 80
-	armLiveBase       = 32
-	armArgumentBase   = 48
-	armCallResultSlot = 64
+	armContextReg        = a32.R11
+	armModuleFrame       = 80
+	armLiveBase          = 32
+	armArgumentBase      = 48
+	armCallResultSlot    = 64
+	armImportContextSlot = 68
 )
 
 func (c *compiler) emitModulePrologue() {
@@ -105,18 +106,28 @@ func (c *compiler) call(target int) error {
 	}
 	imported := c.module.ImportedFuncCount()
 	if target < imported {
-		if target > 1023 {
+		if target > 511 {
 			return fmt.Errorf("arm32: import index %d exceeds direct displacement", target)
 		}
 		c.must(c.a.Ldr(a32.R12, armContextReg, embedded32.ContextImportsBaseOffset), "import table")
-		c.must(c.a.Ldr(a32.R12, a32.R12, uint16(target*4)), "import target")
-		c.must(c.a.Blx(a32.R12), "import call")
+		c.must(c.a.Ldr(a32.LR, a32.R12, uint16(target*embedded32.ImportFunctionABIBytes+embedded32.ImportFunctionEntryOffset)), "import target")
+		c.must(c.a.Ldr(a32.R12, a32.R12, uint16(target*embedded32.ImportFunctionABIBytes+embedded32.ImportFunctionContextOffset)), "import context")
+		c.must(c.a.Str(armContextReg, a32.SP, armImportContextSlot), "caller context save")
+		c.must(c.a.MovReg(armContextReg, a32.R12), "callee context")
+		c.must(c.a.Blx(a32.LR), "import call")
 	} else {
 		at := c.a.Call()
 		*c.relocSink = append(*c.relocSink, callReloc{at: at, target: target - imported})
 	}
 	if len(ft.Results) == 1 {
 		c.must(c.a.Str(a32.R0, a32.SP, armCallResultSlot), "call result spill")
+	}
+	if target < imported {
+		c.must(c.a.Ldr(a32.R12, armContextReg, embedded32.ContextTrapCellOffset), "callee trap cell")
+		c.must(c.a.Ldr(a32.R12, a32.R12, 0), "callee trap value")
+		c.must(c.a.Ldr(armContextReg, a32.SP, armImportContextSlot), "caller context restore")
+		c.must(c.a.Ldr(a32.LR, armContextReg, embedded32.ContextTrapCellOffset), "caller trap cell")
+		c.must(c.a.Str(a32.R12, a32.LR, 0), "import trap propagation")
 	}
 	c.must(c.a.Ldr(a32.R12, armContextReg, embedded32.ContextTrapCellOffset), "call trap cell")
 	c.must(c.a.Ldr(a32.R12, a32.R12, 0), "call trap value")

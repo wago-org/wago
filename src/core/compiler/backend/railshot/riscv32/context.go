@@ -10,11 +10,12 @@ import (
 )
 
 const (
-	rvContextReg     = rv.X23
-	rvModuleFrame    = 128
-	rvLiveBase       = 40
-	rvArgumentBase   = 80
-	rvCallResultSlot = 112
+	rvContextReg        = rv.X23
+	rvModuleFrame       = 128
+	rvLiveBase          = 40
+	rvArgumentBase      = 80
+	rvCallResultSlot    = 112
+	rvImportContextSlot = 116
 )
 
 var rvModuleSavedRegs = []rv.Reg{rv.X8, rv.X9, rv.X18, rv.X19, rv.X20, rv.X21, rv.X22, rv.X24, rv.X25}
@@ -116,18 +117,30 @@ func (c *compiler) call(target int) error {
 	}
 	imported := c.module.ImportedFuncCount()
 	if target < imported {
-		if target > 511 {
-			return fmt.Errorf("riscv32: import index %d exceeds direct displacement", target)
+		if uint64(target) > uint64(^uint32(0)/embedded32.ImportFunctionABIBytes) {
+			return fmt.Errorf("riscv32: import index %d exceeds addressable descriptors", target)
 		}
 		c.a.Lw(rv.T6, rvContextReg, embedded32.ContextImportsBaseOffset)
-		c.a.Lw(rv.T6, rv.T6, int32(target*4))
-		c.a.Blr(rv.T6)
+		c.a.MovImm32(rv.T5, uint32(target)*embedded32.ImportFunctionABIBytes)
+		c.a.Add(rv.T6, rv.T6, rv.T5)
+		c.a.Lw(rv.T5, rv.T6, embedded32.ImportFunctionEntryOffset)
+		c.a.Lw(rv.T6, rv.T6, embedded32.ImportFunctionContextOffset)
+		c.a.Sw(rvContextReg, rv.SP, rvImportContextSlot)
+		c.a.MovReg(rvContextReg, rv.T6)
+		c.a.Blr(rv.T5)
 	} else {
 		at := c.a.FarCall(rv.T6)
 		*c.relocSink = append(*c.relocSink, callReloc{at: at, target: target - imported})
 	}
 	if len(ft.Results) == 1 && !c.a.Sw(rv.A0, rv.SP, rvCallResultSlot) {
 		panic("riscv32: call result spill")
+	}
+	if target < imported {
+		c.a.Lw(rv.T6, rvContextReg, embedded32.ContextTrapCellOffset)
+		c.a.Lw(rv.T6, rv.T6, 0)
+		c.a.Lw(rvContextReg, rv.SP, rvImportContextSlot)
+		c.a.Lw(rv.T5, rvContextReg, embedded32.ContextTrapCellOffset)
+		c.a.Sw(rv.T6, rv.T5, 0)
 	}
 	c.a.Lw(rv.T6, rvContextReg, embedded32.ContextTrapCellOffset)
 	c.a.Lw(rv.T6, rv.T6, 0)
