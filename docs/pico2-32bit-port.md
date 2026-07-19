@@ -501,9 +501,17 @@ instantiation/start/reset, and trap propagation. Target wrappers construct it
 from the image's filtered function-export table. `firmware/pico2` now mirrors
 that state machine in freestanding C, restores a pristine bounded image, enters
 generated start/`CallABI` thunks directly on 32-bit targets, preflights complete
-responses, and supplies a Pico SDK stdio loop for either USB CDC or UART. The
-application still supplies the fixed buffers, image metadata, and four
-allocation-free numeric/SIMD helper callbacks.
+responses, and supplies a Pico SDK stdio loop for either USB CDC or UART. A Go
+renderer now emits the pristine flash snapshot, fixed-address mutable SRAM
+array, export/context descriptors, and a GNU ld `NOLOAD` fragment with exact
+address/size assertions. The C runner preflights every linked context and helper
+table before image mutation, restores the full image transactionally, and
+patches all four helper entries after every instantiate/reset. Pico SDK CMake
+integration builds the exact allocation-free Go f32/f64/i64/SIMD semantics as a
+relocatable TinyGo object for Cortex-M33 or RV32, localizing all non-helper
+runtime symbols so the board SDK retains its reset/IRQ/runtime boundary. The
+application supplies only fixed transport buffers and selects its generated
+image descriptor.
 
 Modules with a start function also append a 16-byte-aligned target entry thunk.
 The thunk accepts only a `ContextABI` pointer in the platform's first argument
@@ -524,6 +532,9 @@ in module order, preserves successful segments before later instantiation
 traps, forwards fixed helper frames (including SIMD memory windows) to the Go
 semantic oracle, and checks exact scalar/reference/vector/NaN results and traps.
 
-This is still not public backend admission. Concrete Pico SDK helper bindings
-and image embedding, physical Cortex-M33 plus Hazard3 qualification, and measured
-code-size/SRAM/stack/performance budgets remain to be completed.
+This is still not public backend admission. Physical Cortex-M33 plus Hazard3
+qualification and measured whole-firmware code-size/SRAM/stack/performance
+budgets remain to be completed. The localized helper objects themselves measure
+20,111 bytes text/121 bytes data/1,704 bytes BSS for the TinyGo `pico2` profile
+and 21,417/32/4,240 bytes for the RV32 profile before final board-link section
+garbage collection; final admitted budgets must use the linked Pico SDK images.
