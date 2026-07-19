@@ -363,6 +363,12 @@ and starts active segments dropped. `ContextABI` now publishes a stable array of
 preflighted `memory.init` plus idempotent `data.drop` directly against those
 descriptors.
 
+Function imports now use a caller-published target array at
+`ContextABI.ImportsBase`. Both the i32 compiler and mixed-frame compiler stage
+the validated internal ABI, dispatch through the fixed import slot, propagate
+callback traps through the shared trap cell, and preserve local/global function
+indexing in metadata, tables, exports, and canonical type arrays.
+
 Each exported local function now receives one deduplicated, 16-byte-aligned
 entry thunk. Firmware passes a stable 12-byte `CallABI` containing target
 addresses for `ContextABI`, serialized parameter slots, and serialized result
@@ -380,6 +386,6 @@ transactional instantiation/start sequencing without target-specific inline
 assembly.
 
 This is still not public backend admission. Arbitrary-depth and table-driven
-structured-control transfers, imported callbacks, firmware linking and
+structured-control transfers, non-function imports, firmware linking and
 transport, and Pico 2 hardware
 qualification remain to be implemented and measured.

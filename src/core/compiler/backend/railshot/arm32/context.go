@@ -103,8 +103,18 @@ func (c *compiler) call(target int) error {
 	for i := range args {
 		c.must(c.a.Ldr(a32.R0+a32.Reg(i), a32.SP, armArgumentBase+uint16(i*4)), "call argument load")
 	}
-	at := c.a.Call()
-	*c.relocSink = append(*c.relocSink, callReloc{at: at, target: target})
+	imported := c.module.ImportedFuncCount()
+	if target < imported {
+		if target > 1023 {
+			return fmt.Errorf("arm32: import index %d exceeds direct displacement", target)
+		}
+		c.must(c.a.Ldr(a32.R12, armContextReg, embedded32.ContextImportsBaseOffset), "import table")
+		c.must(c.a.Ldr(a32.R12, a32.R12, uint16(target*4)), "import target")
+		c.must(c.a.Blx(a32.R12), "import call")
+	} else {
+		at := c.a.Call()
+		*c.relocSink = append(*c.relocSink, callReloc{at: at, target: target - imported})
+	}
 	if len(ft.Results) == 1 {
 		c.must(c.a.Str(a32.R0, a32.SP, armCallResultSlot), "call result spill")
 	}

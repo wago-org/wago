@@ -1859,6 +1859,87 @@ func TestCompileModuleBulkMemoryFromMixedFunctionUnderQEMU(t *testing.T) {
 	runARM32Exit(t, qemu, append(a.B, fn...), 42)
 }
 
+func arm32ImportedCallModule(t *testing.T) *wasm.Module {
+	t.Helper()
+	importI32 := append(wasmtest.Name("env"), wasmtest.Name("i32")...)
+	importI32 = append(importI32, 0, 0)
+	importI64 := append(wasmtest.Name("env"), wasmtest.Name("i64")...)
+	importI64 = append(importI64, 0, 1)
+	m, err := wasm.DecodeModule(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}),
+			wasmtest.FuncType([]wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I64}),
+		)),
+		wasmtest.Section(2, wasmtest.Vec(importI32, importI64)),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0}, []byte{1})),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x20, 0, 0x10, 0, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0, 0x10, 1, 0x0b}),
+		)),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+func TestCompileModuleCallsImportedCallbacksUnderQEMU(t *testing.T) {
+	qemu, err := exec.LookPath("qemu-arm")
+	if err != nil {
+		t.Skip("qemu-arm not installed")
+	}
+	cm, err := CompileModule(arm32ImportedCallModule(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cm.ImportedFunctions != 2 || len(cm.FunctionTypeIDs) != 4 || cm.Functions[0].FuncIndex != 2 || cm.Functions[1].FuncIndex != 3 {
+		t.Fatalf("imports=%d typeIDs=%v functions=%+v", cm.ImportedFunctions, cm.FunctionTypeIDs, cm.Functions)
+	}
+	var callback a32.Asm
+	callback.MovImm32(a32.R12, 1)
+	callback.Add(a32.R0, a32.R0, a32.R12)
+	callback.Ret()
+	callback.Align4()
+	const base = uint32(0x10000)
+	buildWrapper := func(callbackAddress uint32) a32.Asm {
+		var a a32.Asm
+		armMemoryContext(&a)
+		a.MovImm32(a32.R12, 96)
+		a.Add(a32.R5, a32.SP, a32.R12)
+		a.Str(a32.R5, a32.SP, 60)
+		a.MovImm32(a32.R12, callbackAddress|1)
+		a.Str(a32.R12, a32.SP, 96)
+		a.Str(a32.R12, a32.SP, 100)
+		armContextArg(&a)
+		a.MovReg(a32.R11, a32.R0)
+		a.MovImm32(a32.R0, 41)
+		first := a.Call()
+		a.MovReg(a32.R4, a32.R0)
+		a.MovImm32(a32.R0, 40)
+		a.MovImm32(a32.R1, 0)
+		second := a.Call()
+		a.Add(a32.R0, a32.R0, a32.R4)
+		armExit(&a)
+		if !a.PatchCall(first, len(a.B)+cm.Entry[0]) || !a.PatchCall(second, len(a.B)+cm.Entry[1]) {
+			t.Fatal("wrapper call relocation")
+		}
+		return a
+	}
+	wrapper := buildWrapper(base)
+	for {
+		callbackAddress := base + uint32(len(wrapper.B)+len(cm.Code))
+		next := buildWrapper(callbackAddress)
+		if len(next.B) == len(wrapper.B) {
+			wrapper = next
+			break
+		}
+		wrapper = next
+	}
+	image := append(wrapper.B, cm.Code...)
+	image = append(image, callback.B...)
+	runARM32Exit(t, qemu, image, 83)
+}
+
 func arm32ExportedCallModule(t *testing.T) *wasm.Module {
 	t.Helper()
 	m, err := wasm.DecodeModule(wasmtest.Module(

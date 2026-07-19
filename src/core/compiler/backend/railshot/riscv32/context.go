@@ -114,8 +114,18 @@ func (c *compiler) call(target int) error {
 			panic("riscv32: call argument load")
 		}
 	}
-	at := c.a.FarCall(rv.T6)
-	*c.relocSink = append(*c.relocSink, callReloc{at: at, target: target})
+	imported := c.module.ImportedFuncCount()
+	if target < imported {
+		if target > 511 {
+			return fmt.Errorf("riscv32: import index %d exceeds direct displacement", target)
+		}
+		c.a.Lw(rv.T6, rvContextReg, embedded32.ContextImportsBaseOffset)
+		c.a.Lw(rv.T6, rv.T6, int32(target*4))
+		c.a.Blr(rv.T6)
+	} else {
+		at := c.a.FarCall(rv.T6)
+		*c.relocSink = append(*c.relocSink, callReloc{at: at, target: target - imported})
+	}
 	if len(ft.Results) == 1 && !c.a.Sw(rv.A0, rv.SP, rvCallResultSlot) {
 		panic("riscv32: call result spill")
 	}

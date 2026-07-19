@@ -1850,6 +1850,85 @@ func TestCompileModuleBulkMemoryFromMixedFunctionUnderQEMU(t *testing.T) {
 	runRV32Exit(t, qemu, append(a.B, fn...), 42)
 }
 
+func riscv32ImportedCallModule(t *testing.T) *wasm.Module {
+	t.Helper()
+	importI32 := append(wasmtest.Name("env"), wasmtest.Name("i32")...)
+	importI32 = append(importI32, 0, 0)
+	importI64 := append(wasmtest.Name("env"), wasmtest.Name("i64")...)
+	importI64 = append(importI64, 0, 1)
+	m, err := wasm.DecodeModule(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}),
+			wasmtest.FuncType([]wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I64}),
+		)),
+		wasmtest.Section(2, wasmtest.Vec(importI32, importI64)),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0}, []byte{1})),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x20, 0, 0x10, 0, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0, 0x10, 1, 0x0b}),
+		)),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+func TestCompileModuleCallsImportedCallbacksUnderQEMU(t *testing.T) {
+	qemu, err := exec.LookPath("qemu-riscv32")
+	if err != nil {
+		t.Skip("qemu-riscv32 not installed")
+	}
+	cm, err := CompileModule(riscv32ImportedCallModule(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cm.ImportedFunctions != 2 || len(cm.FunctionTypeIDs) != 4 || cm.Functions[0].FuncIndex != 2 || cm.Functions[1].FuncIndex != 3 {
+		t.Fatalf("imports=%d typeIDs=%v functions=%+v", cm.ImportedFunctions, cm.FunctionTypeIDs, cm.Functions)
+	}
+	var callback rv.Asm
+	callback.Addi(rv.A0, rv.A0, 1)
+	callback.Ret()
+	const base = uint32(0x10000)
+	buildWrapper := func(callbackAddress uint32) rv.Asm {
+		var a rv.Asm
+		rvMemoryContext(&a)
+		a.Addi(rv.T0, rv.SP, 96)
+		a.Sw(rv.T0, rv.SP, 60)
+		a.MovImm32(rv.T0, callbackAddress)
+		a.Sw(rv.T0, rv.SP, 96)
+		a.Sw(rv.T0, rv.SP, 100)
+		a.Addi(rv.A0, rv.SP, 16)
+		a.MovReg(rv.X23, rv.A0)
+		a.MovImm32(rv.A0, 41)
+		first := a.Jal(rv.RA)
+		a.MovReg(rv.S0, rv.A0)
+		a.MovImm32(rv.A0, 40)
+		a.MovImm32(rv.A1, 0)
+		second := a.Jal(rv.RA)
+		a.Add(rv.A0, rv.A0, rv.S0)
+		a.MovImm32(rv.A7, 93)
+		a.Ecall()
+		if !a.PatchJAL21(first, len(a.B)+cm.Entry[0]) || !a.PatchJAL21(second, len(a.B)+cm.Entry[1]) {
+			t.Fatal("wrapper call relocation")
+		}
+		return a
+	}
+	wrapper := buildWrapper(base)
+	for {
+		callbackAddress := base + uint32(len(wrapper.B)+len(cm.Code))
+		next := buildWrapper(callbackAddress)
+		if len(next.B) == len(wrapper.B) {
+			wrapper = next
+			break
+		}
+		wrapper = next
+	}
+	image := append(wrapper.B, cm.Code...)
+	image = append(image, callback.B...)
+	runRV32Exit(t, qemu, image, 83)
+}
+
 func riscv32ExportedCallModule(t *testing.T) *wasm.Module {
 	t.Helper()
 	m, err := wasm.DecodeModule(wasmtest.Module(

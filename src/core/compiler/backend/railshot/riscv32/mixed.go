@@ -72,13 +72,20 @@ func compileMixedModuleFunction(m *wasm.Module, ft *wasm.CompType, locals []wasm
 		if op.Kind != shared.MixedCall {
 			continue
 		}
-		if int(op.Target) >= len(m.Code) {
-			return nil, nil, fmt.Errorf("riscv32: mixed call target %d is not local", op.Target)
+		imported := uint32(m.ImportedFuncCount())
+		if op.Target < imported {
+			op.Kind = shared.MixedCallImport
+			continue
 		}
-		targetType, ok := m.LocalFuncType(int(op.Target))
-		if !ok || !usesMixedModuleCompiler(targetType, m.Code[op.Target].Locals.Runs) {
+		localTarget := op.Target - imported
+		if uint64(localTarget) >= uint64(len(m.Code)) {
+			return nil, nil, fmt.Errorf("riscv32: mixed call target %d is unavailable", op.Target)
+		}
+		targetType, ok := m.LocalFuncType(int(localTarget))
+		if !ok || !usesMixedModuleCompiler(targetType, m.Code[localTarget].Locals.Runs) {
 			return nil, nil, fmt.Errorf("riscv32: mixed call target %d does not use the mixed ABI", op.Target)
 		}
+		op.Target = localTarget
 	}
 	var relocs []callReloc
 	code, err := emitMixedPlan(plan, &relocs)
@@ -88,7 +95,7 @@ func compileMixedModuleFunction(m *wasm.Module, ft *wasm.CompType, locals []wasm
 func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc) ([]byte, error) {
 	maxOutgoingSlots := uint16(0)
 	for _, op := range plan.Ops {
-		if op.Kind != shared.MixedCall && op.Kind != shared.MixedCallIndirect {
+		if op.Kind != shared.MixedCall && op.Kind != shared.MixedCallImport && op.Kind != shared.MixedCallIndirect {
 			continue
 		}
 		params, results := mixedValueSlotCount(op.Args), mixedValueSlotCount(op.Results)
@@ -136,7 +143,7 @@ func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc) ([]byte, erro
 	helperBase := valueBase + dataBytes
 	indirectBytes := int32(0)
 	for _, op := range plan.Ops {
-		if op.Kind == shared.MixedCallIndirect {
+		if op.Kind == shared.MixedCallIndirect || op.Kind == shared.MixedCallImport {
 			indirectBytes = 4
 			break
 		}
@@ -1186,8 +1193,15 @@ func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc) ([]byte, erro
 			if !a.PatchFarBranch(loopClear, a.Len()) {
 				return nil, fmt.Errorf("riscv32: mixed loop cancellation branch out of range")
 			}
-		case shared.MixedCall, shared.MixedCallIndirect:
-			if op.Kind == shared.MixedCallIndirect {
+		case shared.MixedCall, shared.MixedCallImport, shared.MixedCallIndirect:
+			if op.Kind == shared.MixedCallImport {
+				if op.Target > 511 {
+					return nil, fmt.Errorf("riscv32: import index %d exceeds direct displacement", op.Target)
+				}
+				must(a.Lw(rv.T0, rvContextReg, embedded32.ContextImportsBaseOffset), "import table")
+				must(a.Lw(rv.T0, rv.T0, int32(op.Target*4)), "import target")
+				must(a.Sw(rv.T0, rv.SP, indirectTargetOffset), "import target save")
+			} else if op.Kind == shared.MixedCallIndirect {
 				must(a.Lw(rv.T0, rv.SP, off(op.Third)), "indirect table index")
 				must(a.Lw(rv.T3, rvContextReg, embedded32.ContextTableOffset), "indirect table descriptor")
 				must(a.Lw(rv.T1, rv.T3, embedded32.TableABILengthOffset), "indirect table length")
@@ -1233,7 +1247,7 @@ func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc) ([]byte, erro
 					argReg++
 				}
 			}
-			if op.Kind == shared.MixedCallIndirect {
+			if op.Kind == shared.MixedCallIndirect || op.Kind == shared.MixedCallImport {
 				must(a.Lw(rv.T0, rv.SP, indirectTargetOffset), "indirect call target restore")
 				a.Blr(rv.T0)
 			} else {

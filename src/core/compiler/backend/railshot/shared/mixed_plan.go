@@ -53,6 +53,7 @@ const (
 	MixedI32x4Add
 	MixedI32x4Sub
 	MixedCall
+	MixedCallImport
 	MixedCallIndirect
 	MixedUnreachable
 	MixedSelect

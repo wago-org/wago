@@ -51,8 +51,8 @@ func CompileModuleWith(m *wasm.Module, opts ModuleCompileOptions) (*CompiledModu
 	exported := make([]bool, len(cm.Functions))
 	for i := range m.Exports {
 		export := &m.Exports[i]
-		if export.Index.Kind == wasm.ExternFunc && uint64(export.Index.Index) < uint64(len(exported)) {
-			exported[export.Index.Index] = true
+		if export.Index.Kind == wasm.ExternFunc && export.Index.Index >= cm.ImportedFunctions && uint64(export.Index.Index-cm.ImportedFunctions) < uint64(len(exported)) {
+			exported[export.Index.Index-cm.ImportedFunctions] = true
 		}
 	}
 	for i, needed := range exported {
@@ -142,7 +142,8 @@ func CompileModuleWith(m *wasm.Module, opts ModuleCompileOptions) (*CompiledModu
 		a.Add(a32.SP, a32.SP, a32.R12)
 		a.Ret()
 		a.Align4()
-		if int(*cm.Start) >= len(cm.Entry) || !a.PatchCall(call, cm.Entry[*cm.Start]) {
+		startLocal := *cm.Start - cm.ImportedFunctions
+		if int(startLocal) >= len(cm.Entry) || !a.PatchCall(call, cm.Entry[startLocal]) {
 			return nil, fmt.Errorf("arm32: start relocation out of range")
 		}
 		cm.StartEntry = &startEntry
