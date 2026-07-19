@@ -1,145 +1,116 @@
-# Pico 2 firmware transport
+# Pico 2 pure-Go firmware boundary
 
-This directory contains the allocation-free C boundary used to host a bounded
-Arm32 or RV32 firmware image on RP2350.
+The Pico 2 integration is intentionally Go/TinyGo-only. It uses no C source,
+cgo, CMake, Pico SDK runtime, or mixed-language helper object.
 
-`wago_pico2.c` mirrors `src/core/runtime/embedded32` exactly:
+The reusable pieces live in `src/core/runtime/embedded32`:
 
-- 24-byte versioned little-endian frames and IEEE CRC32;
-- hello/instantiate/start/call/cancel/reset lifecycle enforcement;
-- exact serialized parameter/result-slot shapes;
-- response-capacity preflight before a stateful call;
-- per-export context selection for imported-function re-exports; and
-- direct invocation of generated `CallABI` and start thunks on 32-bit targets.
+- `TransportEndpoint` implements the bounded framed protocol;
+- `ServeTransportOnce` performs exact stream reads/writes with caller storage;
+- `FirmwareTransportRunner` enforces instantiate/start/call/reset lifecycle;
+- `FirmwareImageInvoker` transactionally restores and patches a linked image;
+- f32, f64, i64, and SIMD helpers retain their fixed pointer-only 32-bit ABIs.
 
-The endpoint owns no storage. The application supplies request/response byte
-buffers, parameter/result slot arrays, the mutable SRAM image, and a pristine
-snapshot (normally in flash). `wago_pico2_direct_invoker` restores the complete
-image before instantiation/reset, publishes the instruction range, invokes the
-32-bit entry pointers, and writes cancellation through `ContextABI`.
+Only two board-specific operations remain outside portable Go:
 
-## Pico SDK integration
+1. reserve/map the generated image's fixed SRAM range; and
+2. enter an arbitrary generated-code address and expose the four helper entry
+   addresses.
 
-Add the two runtime sources to a Pico SDK target and define
-`WAGO_PICO2_PICO_SDK`:
+Those operations use small target assembly shims, following wago's existing
+no-cgo native-entry pattern. Transport, lifecycle, image mutation, helpers, and
+board I/O remain Go.
 
-```cmake
-target_sources(my_firmware PRIVATE
-    ${WAGO_ROOT}/firmware/pico2/wago_pico2.c
-    ${WAGO_ROOT}/firmware/pico2/wago_pico2_pico_sdk.c)
-target_include_directories(my_firmware PRIVATE
-    ${WAGO_ROOT}/firmware/pico2)
-target_compile_definitions(my_firmware PRIVATE WAGO_PICO2_PICO_SDK=1)
-target_link_libraries(my_firmware PRIVATE pico_stdlib)
-```
+## Generate a Go image
 
-Generate the image source and linker fragment after building a closed or linked
-firmware image:
+After building a closed or linked firmware image, emit a Go descriptor and SRAM
+reservation fragment:
 
 ```go
-source, err := shared.RenderPico2LinkedFirmwareC(bundle, rootModule,
-    shared.Pico2FirmwareCOptions{
-        Symbol: "application_wasm",
+source, err := shared.RenderPico2LinkedFirmwareGo(bundle, rootModule,
+    shared.Pico2FirmwareGoOptions{
+        Package: "firmware",
+        Symbol: "ApplicationImage",
         Target: embedded32.TransportTargetArm32, // or RISCV32
         MaximumPayload: 4096,
     })
-linker, err := shared.RenderPico2FirmwareLinkerScript(
-    "application_wasm", "", bundle.BaseAddress, uint32(len(bundle.Bytes)))
+linker, err := shared.RenderPico2FirmwareMemoryScript(
+    "ApplicationImage", bundle.BaseAddress, uint32(len(bundle.Bytes)))
 ```
 
-The generated C file contains the pristine flash snapshot, a mutable SRAM array,
-all transport export metadata, every linked module context, and a
-`wago_pico2_image` descriptor. The generated GNU ld fragment places the mutable
-array at the exact address used to compile the image, marks it `NOLOAD`, and
-asserts both its address and size. Attach both files to the board target:
+The generated Go source contains:
 
-```cmake
-wago_pico2_add_generated_image(my_firmware
-    ${CMAKE_CURRENT_BINARY_DIR}/application_wasm.c
-    ${CMAKE_CURRENT_BINARY_DIR}/application_wasm.ld)
+- a constant string snapshot suitable for flash;
+- exact export slot metadata;
+- every linked module context; and
+- an `embedded32.FirmwareImageDescriptor`.
 
-# Cortex-M33 build:
-wago_pico2_add_tinygo_helpers(my_firmware pico2)
-# Hazard3 build (use instead of the line above):
-# wago_pico2_add_tinygo_helpers(my_firmware riscv-qemu)
-```
+The linker fragment reserves the complete fixed-address SRAM range as `NOLOAD`
+and asserts its address and size. It contains no C-facing symbols or initialized
+RAM payload.
 
-The TinyGo helper target emits a relocatable object from
-`src/core/runtime/embedded32`, then localizes every symbol except the four fixed
-helper entries. The Pico SDK retains its own reset, IRQ, allocator, and runtime
-boundary, while final `--gc-sections` removes unreachable TinyGo startup code.
-The `riscv-qemu` TinyGo target is used only as a freestanding RV32 helper-code
-profile; no QEMU startup entry is retained in the board image.
+## TinyGo startup
 
-Bind the four fixed pointer-only helper ABIs, initialize the generated image,
-and serve with caller-owned storage:
+Board startup binds the reserved SRAM and target assembly entries without
+allocating:
 
-```c
-extern const struct wago_pico2_image application_wasm;
+```go
+image := unsafe.Slice(
+    (*byte)(unsafe.Pointer(uintptr(ApplicationImage.ImageAddress))),
+    len(ApplicationImage.InitialImage),
+)
+ApplicationImage.Image = image
+ApplicationImage.HelperEntries = boardHelperEntries() // f64, SIMD, i64, f32
 
-static struct wago_pico2_runner runner;
-static uint32_t parameters[32];
-static uint32_t results[32];
-static uint8_t payload[4096];
-static uint8_t request[WAGO_PICO2_TRANSPORT_HEADER_BYTES + 4096];
-static uint8_t response[WAGO_PICO2_TRANSPORT_HEADER_BYTES + 4096];
+native := boardNativeEntry{} // target assembly Start/Call implementation
+invoker := embedded32.FirmwareImageInvoker{
+    Descriptor: &ApplicationImage,
+    Native: native,
+    Publish: boardPublishInstructions,
+}
+runner := embedded32.FirmwareTransportRunner{
+    Target: ApplicationImage.Target,
+    MaximumPayload: ApplicationImage.MaximumPayload,
+    ContextAddress: ApplicationImage.ContextAddress,
+    StartAddress: ApplicationImage.StartAddress,
+    Functions: ApplicationImage.Functions,
+    Invoker: &invoker,
+}
+endpoint := embedded32.TransportEndpoint{
+    ParameterSlots: parameterSlots[:],
+    ResultSlots: resultSlots[:],
+    PayloadScratch: payload[:],
+    MaximumPayload: ApplicationImage.MaximumPayload,
+}
 
-int main(void) {
-    const struct wago_pico2_helper_callbacks callbacks =
-        WAGO_PICO2_EMBEDDED32_HELPER_CALLBACKS;
-    struct wago_pico2_helper_entries entries;
-    struct wago_pico2_endpoint endpoint;
-
-    stdio_init_all();
-    if (wago_pico2_helper_entries_init(&entries, application_wasm.target,
-                                       &callbacks) != WAGO_PICO2_OK ||
-        wago_pico2_runner_init(&runner, &application_wasm,
-                               &entries) != WAGO_PICO2_OK) {
-        return 1;
+for {
+    if err := embedded32.ServeTransportOnce(
+        &endpoint, &runner, boardStream,
+        request[:], response[:],
+    ); err != nil {
+        boardProtocolError(err)
     }
-    endpoint = (struct wago_pico2_endpoint){
-        &runner, parameters, 32, results, 32,
-        payload, sizeof(payload), sizeof(payload),
-    };
-    return wago_pico2_pico_sdk_serve(&endpoint, request, sizeof(request),
-                                     response, sizeof(response));
 }
 ```
 
-`WAGO_PICO2_EMBEDDED32_HELPER_CALLBACKS` binds the exact exported symbols
-`wago_embedded32_f64`, `wago_embedded32_simd_abi`, `wago_embedded32_i64`, and
-`wago_embedded32_f32`. Their frame layouts are compile-time checked by the C
-self-test. They allocate no transport storage and never retain a frame pointer.
-`wago_pico2_runner_init` records their callable target addresses; every
-instantiate/reset restores the full image and then patches every linked
-module's helper table before publishing instructions.
+`boardStream` is an allocation-free `io.ReadWriter` implemented with TinyGo's
+board support or direct RP2350 MMIO. Cortex-M33 and Hazard3 builds use separate
+assembly shims for generated entry and instruction publication; neither requires
+a C ABI or C runtime.
 
-The Pico SDK adapter uses the configured stdio transport, so the same loop works
-with USB CDC or UART according to the board's `pico_enable_stdio_*` settings.
+`FirmwareImageInvoker` preflights all contexts, helper tables, callable entries,
+and complete image bounds before mutation. Instantiate/reset copies the complete
+snapshot, patches every linked module's helper table, and only then publishes
+instructions through a non-failing target publication hook. Start and call clear
+the selected context's trap cell before entering generated code.
 
 ## Validation
 
-The Go runtime test compiles the portable endpoint with:
-
 ```sh
-cc -std=c11 -Wall -Wextra -Werror -pedantic \
-  firmware/pico2/wago_pico2.c firmware/pico2/wago_pico2_test.c
+go test ./src/core/runtime/embedded32 -count=1
+go test ./src/core/compiler/backend/railshot/shared -count=1
 ```
 
-The self-test checks lifecycle ordering, CRC rejection, complete response
-preflight, forwarded contexts, result publication, trap payload suppression,
-transactional helper-table patching, and reset. Generated image C is also
-compiled with the same strict flags. Cross-compile both helper profiles with:
-
-```sh
-PATH="$(dirname "$(command -v tinygo)"):$PATH" \
-WAGO_PICO2_TINYGO_HELPERS=1 \
-  go test ./src/core/runtime/embedded32 \
-    -run '^TestPico2TinyGoHelpers$' -count=1 -v
-```
-
-With TinyGo 0.41.1, the localized pre-link helper objects measure 20,111 bytes
-text, 121 bytes data, and 1,704 bytes BSS for `pico2`; the RV32 object measures
-21,417 bytes text, 32 bytes data, and 4,240 bytes BSS. Whole-firmware admission
-uses the final Pico SDK link map after unreachable localized runtime sections
-are removed, not these upper-bound object totals.
+The tests cover allocation-free stream framing, transactional image restore,
+linked helper-table patching, instruction publication, trap/cancellation cells,
+callable-address validation, and generated Go source parsing.

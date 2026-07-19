@@ -109,7 +109,7 @@ must match the admitted RV64 policy.
 3. Cross-host beachhead compiler execution for i32 control and arithmetic.
 4. Pair/quad ABI, spills, memory accesses, and helper relocations.
 5. Scalar official corpus, then complete f64 and SIMD proposal suites.
-6. Pico SDK runner on RP2350 Arm and Hazard3 modes with identical fixtures.
+6. Pure-Go/TinyGo runner on RP2350 Arm and Hazard3 modes with identical fixtures.
 7. Native code-size, compile-time, SRAM, stack, and execution measurements.
 
 QEMU is a correctness oracle, not a Pico 2 performance oracle. Public admission
@@ -497,21 +497,18 @@ response before dispatch, suppresses result publication on traps, and emits
 hello/instantiate/start/call/cancel/reset responses without allocations.
 `FirmwareTransportRunner` adds the single-image lifecycle, exact exported
 parameter/result slot admission, start-before-call ordering, retryable failed
-instantiation/start/reset, and trap propagation. Target wrappers construct it
-from the image's filtered function-export table. `firmware/pico2` now mirrors
-that state machine in freestanding C, restores a pristine bounded image, enters
-generated start/`CallABI` thunks directly on 32-bit targets, preflights complete
-responses, and supplies a Pico SDK stdio loop for either USB CDC or UART. A Go
-renderer now emits the pristine flash snapshot, fixed-address mutable SRAM
-array, export/context descriptors, and a GNU ld `NOLOAD` fragment with exact
-address/size assertions. The C runner preflights every linked context and helper
-table before image mutation, restores the full image transactionally, and
-patches all four helper entries after every instantiate/reset. Pico SDK CMake
-integration builds the exact allocation-free Go f32/f64/i64/SIMD semantics as a
-relocatable TinyGo object for Cortex-M33 or RV32, localizing all non-helper
-runtime symbols so the board SDK retains its reset/IRQ/runtime boundary. The
-application supplies only fixed transport buffers and selects its generated
-image descriptor.
+instantiation/start/reset, and trap propagation. `ServeTransportOnce` adds exact
+stream reads/writes over caller-owned request and response buffers.
+`FirmwareImageInvoker` preflights every linked context, helper table, callable
+entry, trap cell, cancellation cell, and complete image bound before mutation;
+it restores the pristine snapshot, patches all helper tables, and invokes a
+non-failing publication hook only after the image is complete. A Go renderer emits a
+flash-friendly constant snapshot plus export/context metadata, while a GNU ld
+`NOLOAD` fragment reserves and asserts the fixed SRAM range. Board startup binds
+that range and the four existing Go helper entries. Only small target assembly
+shims remain to provide arbitrary generated entry and instruction publication,
+following the existing no-cgo native-runtime pattern. There is no C source, cgo, CMake, or
+Pico SDK runtime dependency in the board path.
 
 Modules with a start function also append a 16-byte-aligned target entry thunk.
 The thunk accepts only a `ContextABI` pointer in the platform's first argument
@@ -534,7 +531,4 @@ semantic oracle, and checks exact scalar/reference/vector/NaN results and traps.
 
 This is still not public backend admission. Physical Cortex-M33 plus Hazard3
 qualification and measured whole-firmware code-size/SRAM/stack/performance
-budgets remain to be completed. The localized helper objects themselves measure
-20,111 bytes text/121 bytes data/1,704 bytes BSS for the TinyGo `pico2` profile
-and 21,417/32/4,240 bytes for the RV32 profile before final board-link section
-garbage collection; final admitted budgets must use the linked Pico SDK images.
+budgets remain to be completed with the pure-Go/TinyGo firmware image.

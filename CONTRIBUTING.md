@@ -54,7 +54,9 @@ Use [FEATURES.md](FEATURES.md) before adding feature work and
 - Reject unsupported Wasm features explicitly instead of accepting modules that
   run with partial semantics.
 - Keep public API behavior boring: return errors for bad inputs, do not panic.
-- Preserve the no-cgo runtime boundary unless a change has a clear design note.
+- Preserve the pure-Go runtime and firmware boundary. Use target assembly and
+  linker scripts where unavoidable, but do not introduce cgo, a C runtime,
+  CMake, or mixed-language board shims without an explicitly approved design.
 - Keep comments minimal. Add short doc comments for exported API and larger or
   less obvious compiler/runtime functions.
 
