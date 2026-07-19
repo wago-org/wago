@@ -159,8 +159,9 @@ codegen rationale is **[OPTIMIZATIONS.md](OPTIMIZATIONS.md)**. Summary of the tw
   RV32IM and Thumb-2 encoders; complete mixed one/two/four-slot module lowering;
   scalar, SIMD, memory, table/reference, import, direct/indirect-call, start, and
   export execution; fixed-capacity embedded resources; and a bounded
-  closed-module firmware-image builder. Open-module firmware linking, board
-  transport, official module-suite execution, and Pico 2 qualification remain
+  closed-module firmware-image builder plus an allocation-free framed transport
+  endpoint. Open-module firmware linking, RP2350 SDK I/O/generated-entry
+  integration, official module-suite execution, and Pico 2 qualification remain
   before public admission (see
   `docs/pico2-32bit-port.md`).
 - [ ] wazero-compatible API shim for drop-in migration

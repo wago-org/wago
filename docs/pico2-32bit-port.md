@@ -404,6 +404,16 @@ pointer assumptions, and preserves Thumb function-pointer bit zero through the
 Arm-specific wrapper. The image reports conventional start and exported
 `CallABI` entry addresses for a board harness.
 
+The runtime now defines the board-wire contract independently of UART/USB
+plumbing: a versioned 24-byte little-endian frame header, sequence numbers,
+bounded payload lengths, bitwise IEEE CRC32, distinct protocol/trap result
+codes, fixed hello/call/slot payloads, and strict request/response kinds. A
+caller-storage `TransportEndpoint` decodes parameter slots, preflights the full
+response before dispatch, suppresses result publication on traps, and emits
+hello/instantiate/start/call/cancel/reset responses without allocations. The
+remaining firmware work is the RP2350 SDK I/O loop and generated-entry handler,
+not another host-dependent protocol.
+
 Modules with a start function also append a 16-byte-aligned target entry thunk.
 The thunk accepts only a `ContextABI` pointer in the platform's first argument
 register, preserves the platform callee-saved context register and return
@@ -413,5 +423,6 @@ transactional instantiation/start sequencing without target-specific inline
 assembly.
 
 This is still not public backend admission. Open-module firmware linking, the
-board transport/runner, official module-level suite qualification, and Pico 2
-hardware qualification remain to be implemented and measured.
+RP2350 SDK transport I/O and generated-entry runner, official module-level suite
+qualification, and Pico 2 hardware qualification remain to be implemented and
+measured.
