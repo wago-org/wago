@@ -183,10 +183,12 @@ trapping truncation, and saturating truncation; bitwise f64 operations remain
 direct. Mixed i64 helper dispatch covers shifts, rotates, bit counts, eqz and
 all comparisons, division/remainder traps, i32 extension, and sign extensions;
 add/sub/multiply/logic stay direct. Normal mixed functions now also construct the
-stable 120-byte SIMD frame and dispatch f32x4/f64x2 rounding, square root,
-arithmetic, and min/max operations through the SIMD helper-table slot. Direct
-integer SWAR operations remain inline; the remaining lane, conversion, shuffle,
-relaxed, and SIMD-memory forms still need normal-function dispatch wiring.
+stable 120-byte SIMD frame and dispatch every validated no-immediate SIMD stack
+shape through the SIMD helper-table slot. This includes scalar splats, shifts,
+comparisons, reductions, integer and floating unary/binary/ternary operations,
+conversions, and relaxed-SIMD projections. Direct integer SWAR operations remain
+inline; shuffle immediates, lane immediates, and SIMD-memory forms still need
+normal-function dispatch wiring.
 Measurements decide which helper operations merit direct target-specific
 lowering.
 

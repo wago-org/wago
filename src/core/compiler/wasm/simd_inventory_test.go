@@ -1,6 +1,31 @@
 package wasm
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
+
+func TestSIMDNoImmediateSignatures(t *testing.T) {
+	tests := []struct {
+		sub     uint32
+		inputs  []ValType
+		results []ValType
+	}{
+		{15, []ValType{I32}, []ValType{V128}},
+		{83, []ValType{V128}, []ValType{I32}},
+		{228, []ValType{V128, V128}, []ValType{V128}},
+		{261, []ValType{V128, V128, V128}, []ValType{V128}},
+	}
+	for _, tc := range tests {
+		inputs, results, ok := SIMDNoImmediateSignature(tc.sub)
+		if !ok || !slices.Equal(inputs, tc.inputs) || !slices.Equal(results, tc.results) {
+			t.Fatalf("subopcode %d signature inputs=%v results=%v ok=%v", tc.sub, inputs, results, ok)
+		}
+	}
+	if _, _, ok := SIMDNoImmediateSignature(13); ok {
+		t.Fatal("shuffle immediate reported as no-immediate SIMD")
+	}
+}
 
 func TestSIMDOpcodeInventory(t *testing.T) {
 	seenSub := make(map[uint32]InstrKind, 256)

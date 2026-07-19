@@ -323,21 +323,32 @@ func BuildMixedPlanWithBlockResolver(ft *wasm.CompType, locals []wasm.LocalRun, 
 		p.Ops = append(p.Ops, MixedOp{Kind: MixedI64Helper, Dst: out.Slot, Left: left.Slot, Right: right.Slot, Width: width, Arity: 2, InputWidth: 2, HelperOp: uint32(op)})
 		return nil
 	}
-	simdHelper := func(op uint32, arity uint8) error {
-		var inputs [3]MixedValue
-		for i := int(arity) - 1; i >= 0; i-- {
-			value, err := pop(wasm.V128)
+	simdHelperSignature := func(op uint32, inputTypes, outputTypes []wasm.ValType) error {
+		inputs := make([]MixedValue, len(inputTypes))
+		for i := len(inputTypes) - 1; i >= 0; i-- {
+			value, err := pop(inputTypes[i])
 			if err != nil {
 				return err
 			}
 			inputs[i] = value
 		}
-		out, err := push(wasm.V128)
-		if err != nil {
-			return err
+		outputs := make([]MixedValue, len(outputTypes))
+		for i, typ := range outputTypes {
+			value, err := push(typ)
+			if err != nil {
+				return err
+			}
+			outputs[i] = value
 		}
-		p.Ops = append(p.Ops, MixedOp{Kind: MixedSIMDHelper, Dst: out.Slot, Left: inputs[0].Slot, Right: inputs[1].Slot, Third: inputs[2].Slot, Width: 4, Arity: arity, HelperOp: op})
+		p.Ops = append(p.Ops, MixedOp{Kind: MixedSIMDHelper, HelperOp: op, Args: inputs, Results: outputs})
 		return nil
+	}
+	simdHelper := func(op uint32, arity uint8) error {
+		inputs := make([]wasm.ValType, arity)
+		for i := range inputs {
+			inputs[i] = wasm.V128
+		}
+		return simdHelperSignature(op, inputs, []wasm.ValType{wasm.V128})
 	}
 
 	type mixedBlockSignature struct {
@@ -1233,7 +1244,13 @@ func BuildMixedPlanWithBlockResolver(ft *wasm.CompType, locals []wasm.LocalRun, 
 					return nil, err
 				}
 			default:
-				return nil, fmt.Errorf("mixed function unsupported SIMD subopcode %d", sub)
+				inputs, outputs, ok := wasm.SIMDNoImmediateSignature(sub)
+				if !ok {
+					return nil, fmt.Errorf("mixed function unsupported SIMD subopcode %d", sub)
+				}
+				if err := simdHelperSignature(sub, inputs, outputs); err != nil {
+					return nil, err
+				}
 			}
 		default:
 			return nil, fmt.Errorf("mixed function unsupported opcode %#x", op)

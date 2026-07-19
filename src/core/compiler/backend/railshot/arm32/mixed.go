@@ -343,12 +343,25 @@ func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc) ([]byte, erro
 		case shared.MixedSIMDHelper:
 			must(a.MovImm32(a32.R0, op.HelperOp), "simd helper op")
 			must(a.Str(a32.R0, a32.SP, helperBase+embedded32.SIMDFrameOpOffset), "simd helper op store")
-			inputs := []uint16{op.Left, op.Right, op.Third}
-			bases := []uint16{embedded32.SIMDFrameAOffset, embedded32.SIMDFrameBOffset, embedded32.SIMDFrameCOffset}
-			for input := uint8(0); input < op.Arity; input++ {
-				for i := uint16(0); i < 4; i++ {
-					must(a.Ldr(a32.R0, a32.SP, off(inputs[input])+i*4), "simd helper input load")
-					must(a.Str(a32.R0, a32.SP, helperBase+bases[input]+i*4), "simd helper input store")
+			vectorInput := 0
+			vectorBases := []uint16{embedded32.SIMDFrameAOffset, embedded32.SIMDFrameBOffset, embedded32.SIMDFrameCOffset}
+			for _, input := range op.Args {
+				width, _ := shared.MixedValueSlots(input.Type)
+				if input.Type == wasm.V128 {
+					for i := uint16(0); i < 4; i++ {
+						must(a.Ldr(a32.R0, a32.SP, off(input.Slot)+i*4), "simd helper vector input load")
+						must(a.Str(a32.R0, a32.SP, helperBase+vectorBases[vectorInput]+i*4), "simd helper vector input store")
+					}
+					vectorInput++
+				} else {
+					for i := uint8(0); i < width; i++ {
+						must(a.Ldr(a32.R0, a32.SP, off(input.Slot)+uint16(i)*4), "simd helper scalar input load")
+						must(a.Str(a32.R0, a32.SP, helperBase+embedded32.SIMDFrameScalarLoOffset+uint16(i)*4), "simd helper scalar input store")
+					}
+					if width == 1 {
+						must(a.MovImm32(a32.R0, 0), "simd helper scalar high zero")
+						must(a.Str(a32.R0, a32.SP, helperBase+embedded32.SIMDFrameScalarHiOffset), "simd helper scalar high store")
+					}
 				}
 			}
 			must(a.Ldr(a32.R0, armContextReg, embedded32.ContextLinearMemoryBaseOffset), "simd helper memory base")
@@ -376,9 +389,18 @@ func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc) ([]byte, erro
 			if !a.PatchFarBranch(helperOK, a.Len()) {
 				return nil, fmt.Errorf("arm32: simd helper trap branch out of range")
 			}
-			for i := uint16(0); i < 4; i++ {
-				must(a.Ldr(a32.R0, a32.SP, helperBase+embedded32.SIMDFrameOutOffset+i*4), "simd helper result load")
-				must(a.Str(a32.R0, a32.SP, off(op.Dst)+i*4), "simd helper result store")
+			if len(op.Results) != 1 {
+				return nil, fmt.Errorf("arm32: simd helper result arity %d", len(op.Results))
+			}
+			result := op.Results[0]
+			width, _ := shared.MixedValueSlots(result.Type)
+			resultBase := uint16(embedded32.SIMDFrameScalarOutOffset)
+			if result.Type == wasm.V128 {
+				resultBase = embedded32.SIMDFrameOutOffset
+			}
+			for i := uint8(0); i < width; i++ {
+				must(a.Ldr(a32.R0, a32.SP, helperBase+resultBase+uint16(i)*4), "simd helper result load")
+				must(a.Str(a32.R0, a32.SP, off(result.Slot)+uint16(i)*4), "simd helper result store")
 			}
 		case shared.MixedI64Helper:
 			must(a.MovImm32(a32.R0, op.HelperOp), "i64 helper op")

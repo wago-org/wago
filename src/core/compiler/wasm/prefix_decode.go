@@ -304,6 +304,33 @@ var fdLane = map[uint32]InstrKind{21: InstrI8x16ExtractLaneS, 22: InstrI8x16Extr
 // SIMDSubopcodeValid reports whether sub is one of the core SIMD or relaxed-SIMD
 // instructions accepted by the 0xfd decoder. It intentionally excludes the 20
 // reserved holes in the proposal table.
+// SIMDNoImmediateSignature returns the validated operand and result types for
+// a SIMD subopcode that carries no immediate bytes after its subopcode. The
+// slices are newly allocated so callers cannot mutate validator state.
+func SIMDNoImmediateSignature(sub uint32) (inputs, results []ValType, ok bool) {
+	kind, ok := fdNoImm[sub]
+	if !ok {
+		return nil, nil, false
+	}
+	effect := simdEffects[kind]
+	switch effect.cat {
+	case simdEffSplat:
+		return []ValType{effect.scalar}, []ValType{V128}, true
+	case simdEffShift:
+		return []ValType{V128, I32}, []ValType{V128}, true
+	case simdEffUnary:
+		return []ValType{V128}, []ValType{V128}, true
+	case simdEffBinary:
+		return []ValType{V128, V128}, []ValType{V128}, true
+	case simdEffTernary, simdBitselect:
+		return []ValType{V128, V128, V128}, []ValType{V128}, true
+	case simdPopV128PushI32:
+		return []ValType{V128}, []ValType{I32}, true
+	default:
+		return nil, nil, false
+	}
+}
+
 func SIMDSubopcodeValid(sub uint32) bool {
 	if sub == 12 || sub == 13 {
 		return true
