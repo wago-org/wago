@@ -233,6 +233,25 @@ func TestEmbeddedLinkedFirmwareImagePublishesCrossModuleFuncrefs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	deferredOptions := opts
+	deferredOptions.DeferImportedActiveSegments = true
+	deferred, err := BuildEmbeddedLinkedFirmwareImage(make([]byte, size), plan, deferredOptions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	deferredWord := func(address uint32) uint32 {
+		offset := address - deferred.BaseAddress
+		return binary.LittleEndian.Uint32(deferred.Bytes[offset : offset+4])
+	}
+	deferredTable := deferred.Modules[0].Image.TableAddresses[0]
+	deferredEntries := deferredWord(deferredTable + embedded32.TableABIEntriesBaseOffset)
+	if got := deferredWord(deferredEntries); got != 0 {
+		t.Fatalf("deferred linked table funcref=%d", got)
+	}
+	deferredElements := deferredWord(deferred.Modules[1].Image.ContextAddress + embedded32.ContextElementSegmentsBaseOffset)
+	if got := deferredWord(deferredElements + embedded32.DataSegmentDroppedOffset); got != 0 {
+		t.Fatalf("deferred active element dropped=%d", got)
+	}
 	image, err := BuildEmbeddedLinkedFirmwareImage(make([]byte, size), plan, opts)
 	if err != nil {
 		t.Fatal(err)

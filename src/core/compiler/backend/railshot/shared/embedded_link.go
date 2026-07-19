@@ -19,14 +19,23 @@ type EmbeddedLinkBinding struct {
 }
 
 type EmbeddedLinkPlan struct {
-	Modules  []EmbeddedNamedModule
-	Bindings []EmbeddedLinkBinding
+	Modules                 []EmbeddedNamedModule
+	Bindings                []EmbeddedLinkBinding
+	AllowRuntimeGrownLimits bool
+}
+
+type EmbeddedLinkOptions struct {
+	AllowRuntimeGrownLimits bool
 }
 
 // ResolveEmbeddedLinks resolves every retained import by module/name and checks
 // its complete embedded ABI contract. It does not publish target addresses;
 // firmware layout consumes the returned bindings only after all imports pass.
 func ResolveEmbeddedLinks(modules []EmbeddedNamedModule) (*EmbeddedLinkPlan, error) {
+	return ResolveEmbeddedLinksWithOptions(modules, EmbeddedLinkOptions{})
+}
+
+func ResolveEmbeddedLinksWithOptions(modules []EmbeddedNamedModule, options EmbeddedLinkOptions) (*EmbeddedLinkPlan, error) {
 	byName := make(map[string]int, len(modules))
 	exports := make([]map[string]int, len(modules))
 	for i := range modules {
@@ -61,7 +70,7 @@ func ResolveEmbeddedLinks(modules []EmbeddedNamedModule) (*EmbeddedLinkPlan, err
 				return nil, fmt.Errorf("embedded32: module %q import %q.%q has no export", modules[consumerIndex].Name, in.Module, in.Name)
 			}
 			out := &modules[providerIndex].Module.Exports[exportIndex]
-			if err := matchEmbeddedImport(in, modules[providerIndex].Module, out); err != nil {
+			if err := matchEmbeddedImport(in, modules[providerIndex].Module, out, options.AllowRuntimeGrownLimits); err != nil {
 				return nil, fmt.Errorf("embedded32: module %q import %q.%q: %w", modules[consumerIndex].Name, in.Module, in.Name, err)
 			}
 			bindings = append(bindings, EmbeddedLinkBinding{
@@ -72,10 +81,10 @@ func ResolveEmbeddedLinks(modules []EmbeddedNamedModule) (*EmbeddedLinkPlan, err
 			})
 		}
 	}
-	return &EmbeddedLinkPlan{Modules: append([]EmbeddedNamedModule(nil), modules...), Bindings: bindings}, nil
+	return &EmbeddedLinkPlan{Modules: append([]EmbeddedNamedModule(nil), modules...), Bindings: bindings, AllowRuntimeGrownLimits: options.AllowRuntimeGrownLimits}, nil
 }
 
-func matchEmbeddedImport(in *EmbeddedImport, provider *EmbeddedModule, out *EmbeddedExport) error {
+func matchEmbeddedImport(in *EmbeddedImport, provider *EmbeddedModule, out *EmbeddedExport, allowRuntimeGrownLimits bool) error {
 	if in == nil || provider == nil || out == nil || in.Kind != out.Kind {
 		return fmt.Errorf("kind mismatch")
 	}
@@ -95,14 +104,14 @@ func matchEmbeddedImport(in *EmbeddedImport, provider *EmbeddedModule, out *Embe
 		}
 		expected, expectedOK := embeddedReferenceValueType(in.Reference)
 		actual, actualOK := embeddedReferenceValueType(tables[out.Index].Reference)
-		if !expectedOK || !actualOK || expected != actual || !embeddedLimitsMatch(in.Minimum, in.Maximum, in.HasMaximum, tables[out.Index].Minimum, tables[out.Index].Maximum, tables[out.Index].HasMaximum) {
+		if !expectedOK || !actualOK || expected != actual || !embeddedLimitsMatch(in.Minimum, in.Maximum, in.HasMaximum, tables[out.Index].Minimum, tables[out.Index].Maximum, tables[out.Index].HasMaximum, allowRuntimeGrownLimits) {
 			return fmt.Errorf("table type mismatch")
 		}
 	case wasm.ExternMem:
 		if out.Index != 0 || provider.Memory == nil {
 			return fmt.Errorf("memory export index %d is unavailable", out.Index)
 		}
-		if !embeddedLimitsMatch(in.Minimum, in.Maximum, in.HasMaximum, provider.Memory.Minimum, provider.Memory.Maximum, provider.Memory.HasMaximum) {
+		if !embeddedLimitsMatch(in.Minimum, in.Maximum, in.HasMaximum, provider.Memory.Minimum, provider.Memory.Maximum, provider.Memory.HasMaximum, allowRuntimeGrownLimits) {
 			return fmt.Errorf("memory type mismatch")
 		}
 	case wasm.ExternGlobal:
@@ -119,8 +128,8 @@ func matchEmbeddedImport(in *EmbeddedImport, provider *EmbeddedModule, out *Embe
 	return nil
 }
 
-func embeddedLimitsMatch(expectedMin, expectedMax uint32, expectedHasMax bool, actualMin, actualMax uint32, actualHasMax bool) bool {
-	if actualMin < expectedMin {
+func embeddedLimitsMatch(expectedMin, expectedMax uint32, expectedHasMax bool, actualMin, actualMax uint32, actualHasMax, allowRuntimeGrownLimits bool) bool {
+	if actualMin < expectedMin && (!allowRuntimeGrownLimits || actualHasMax && actualMax < expectedMin) {
 		return false
 	}
 	return !expectedHasMax || actualHasMax && actualMax <= expectedMax

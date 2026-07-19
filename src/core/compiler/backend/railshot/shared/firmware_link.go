@@ -9,8 +9,9 @@ import (
 )
 
 type EmbeddedLinkedFirmwareOptions struct {
-	BaseAddress uint32
-	Modules     []EmbeddedFirmwareOptions
+	BaseAddress                 uint32
+	Modules                     []EmbeddedFirmwareOptions
+	DeferImportedActiveSegments bool
 }
 
 type EmbeddedLinkedFirmwareModule struct {
@@ -301,7 +302,7 @@ func BuildEmbeddedLinkedFirmwareImage(dst []byte, plan *EmbeddedLinkPlan, opts E
 			for segmentIndex := range module.Data {
 				segment := &module.Data[segmentIndex]
 				resolved := &layout.modules[consumerIndex].clone.Data[segmentIndex]
-				if segment.Passive {
+				if segment.Passive || opts.DeferImportedActiveSegments {
 					continue
 				}
 				if uint64(resolved.Offset)+uint64(len(segment.Bytes)) > uint64(memoryLength) {
@@ -358,7 +359,7 @@ func BuildEmbeddedLinkedFirmwareImage(dst []byte, plan *EmbeddedLinkPlan, opts E
 			}
 			for elementIndex := range elements {
 				segment := &elements[elementIndex]
-				if segment.Mode != EmbeddedElementActive || uint64(segment.Table) >= uint64(len(tables)) || !tables[segment.Table].Imported {
+				if segment.Mode != EmbeddedElementActive || uint64(segment.Table) >= uint64(len(tables)) || !tables[segment.Table].Imported || opts.DeferImportedActiveSegments {
 					continue
 				}
 				providerTable, err := readAddress(directory + segment.Table*4)
@@ -421,7 +422,7 @@ func embeddedLinkedFirmwarePlan(plan *EmbeddedLinkPlan, opts EmbeddedLinkedFirmw
 	if plan == nil || len(plan.Modules) == 0 || len(opts.Modules) != len(plan.Modules) {
 		return nil, embedded32.ErrInvalidArena
 	}
-	validated, err := ResolveEmbeddedLinks(plan.Modules)
+	validated, err := ResolveEmbeddedLinksWithOptions(plan.Modules, EmbeddedLinkOptions{AllowRuntimeGrownLimits: plan.AllowRuntimeGrownLimits})
 	if err != nil {
 		return nil, err
 	}

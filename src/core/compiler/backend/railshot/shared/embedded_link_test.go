@@ -104,6 +104,27 @@ func TestResolveEmbeddedLinksRejectsMismatches(t *testing.T) {
 	}
 }
 
+func TestResolveEmbeddedLinksCanDeferRuntimeGrownMinimums(t *testing.T) {
+	provider := embeddedLinkProvider(t)
+	consumer := embeddedLinkConsumer(t)
+	provider.Memory.Minimum = 0
+	provider.Tables[0].Minimum = 0
+	provider.Table.Minimum = 0
+	if _, err := ResolveEmbeddedLinks([]EmbeddedNamedModule{{Name: "provider", Module: provider}, {Name: "consumer", Module: consumer}}); err == nil {
+		t.Fatal("strict runtime-grown limits accepted")
+	}
+	plan, err := ResolveEmbeddedLinksWithOptions(
+		[]EmbeddedNamedModule{{Name: "provider", Module: provider}, {Name: "consumer", Module: consumer}},
+		EmbeddedLinkOptions{AllowRuntimeGrownLimits: true},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !plan.AllowRuntimeGrownLimits || len(plan.Bindings) != 4 {
+		t.Fatalf("plan=%+v", plan)
+	}
+}
+
 func TestResolveEmbeddedLinksRejectsMissingAndDuplicateModules(t *testing.T) {
 	consumer := embeddedLinkConsumer(t)
 	if _, err := ResolveEmbeddedLinks([]EmbeddedNamedModule{{Name: "consumer", Module: consumer}}); err == nil {
