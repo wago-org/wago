@@ -487,6 +487,7 @@ func BuildMixedPlanWithModuleResolvers(ft *wasm.CompType, locals []wasm.LocalRun
 		results      []wasm.ValType
 		armResults   []MixedValue
 		armReachable bool
+		dead         bool
 	}
 	var controls []mixedControl
 	readBlockSignature := func() (mixedBlockSignature, error) {
@@ -615,7 +616,15 @@ func BuildMixedPlanWithModuleResolvers(ft *wasm.CompType, locals []wasm.LocalRun
 			return nil, fmt.Errorf("mixed function currently requires terminal unreachable")
 		}
 		if branchTerminated && op != 0x05 && op != 0x0b {
-			return nil, fmt.Errorf("mixed unconditional branch currently requires an immediate else or end")
+			if op == 0x02 || op == 0x03 || op == 0x04 {
+				if err := wasm.SkipInstructionImmediate(r, op); err != nil {
+					return nil, fmt.Errorf("mixed dead control immediate: %w", err)
+				}
+				controls = append(controls, mixedControl{kind: op, dead: true, falseOp: -1, jumpOp: -1})
+			} else if err := wasm.SkipInstructionImmediate(r, op); err != nil {
+				return nil, fmt.Errorf("mixed dead instruction %#x: %w", op, err)
+			}
+			continue
 		}
 		switch op {
 		case 0x00: // unreachable
@@ -659,6 +668,10 @@ func BuildMixedPlanWithModuleResolvers(ft *wasm.CompType, locals []wasm.LocalRun
 				return nil, fmt.Errorf("mixed function has unexpected else")
 			}
 			control := &controls[len(controls)-1]
+			if control.dead {
+				control.elseSeen = true
+				continue
+			}
 			if branchTerminated {
 				control.armReachable = false
 			} else {
@@ -679,6 +692,10 @@ func BuildMixedPlanWithModuleResolvers(ft *wasm.CompType, locals []wasm.LocalRun
 		case 0x0b: // end
 			if len(controls) != 0 {
 				control := controls[len(controls)-1]
+				if control.dead {
+					controls = controls[:len(controls)-1]
+					continue
+				}
 				target := len(p.Ops)
 				endReachable := false
 				if branchTerminated {
