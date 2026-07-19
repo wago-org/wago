@@ -5,16 +5,27 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
+type moduleRequirements struct {
+	features       CoreFeatures
+	elemStateCount int
+	dataStateCount int
+}
+
 // moduleRequiredFeatures records optional core features that remain execution
 // dependencies of the compiled artifact. Codec v25 stores the full public
 // CoreFeatures mask and rejects unknown bits. Compile-time-only features such as
 // extended constant expressions are folded into initializer metadata.
 func moduleRequiredFeatures(m *wasm.Module) CoreFeatures {
+	return analyzeModuleRequirements(m).features
+}
+
+func analyzeModuleRequirements(m *wasm.Module) moduleRequirements {
 	if m == nil {
-		return 0
+		return moduleRequirements{}
 	}
 	var out CoreFeatures
 	programmaticCode := false
+	elemStateCount, dataStateCount := 0, 0
 	if frontend.ModuleNonCodeRequiresSIMD(m) {
 		out |= CoreFeatureSIMD
 	}
@@ -88,17 +99,21 @@ func moduleRequiredFeatures(m *wasm.Module) CoreFeatures {
 			out |= CoreFeatureTable64
 		}
 	}
-	for _, elem := range m.Elements {
+	for i, elem := range m.Elements {
 		if elem.Mode.Kind != wasm.ElemActive {
 			out |= CoreFeatureBulkMemoryOperations
+		}
+		if elem.Mode.Kind == wasm.ElemPassive {
+			elemStateCount = i + 1
 		}
 		if elem.Kind.Kind != wasm.ElemFuncs {
 			out |= CoreFeatureReferenceTypes
 		}
 	}
-	for _, data := range m.Data {
+	for i, data := range m.Data {
 		if data.Mode.Kind == wasm.DataPassive {
 			out |= CoreFeatureBulkMemoryOperations
+			dataStateCount = i + 1
 		}
 	}
 	for _, fn := range m.Code {
@@ -106,15 +121,16 @@ func moduleRequiredFeatures(m *wasm.Module) CoreFeatures {
 			out |= requiredFeaturesForValType(local.Type)
 		}
 		if len(fn.BodyBytes) != 0 {
-			out |= requiredFeaturesForBodyBytes(fn.BodyBytes)
+			out |= requiredFeaturesAndSegmentCountsForBodyBytes(fn.BodyBytes, &elemStateCount, &dataStateCount)
 		} else if len(fn.Body.Instrs) != 0 {
 			programmaticCode = true
+			instrsSegmentStateCounts(fn.Body.Instrs, &elemStateCount, &dataStateCount)
 		}
 	}
 	if programmaticCode && frontend.ModuleRequiresSIMD(m) {
 		out |= CoreFeatureSIMD
 	}
-	return out
+	return moduleRequirements{features: out, elemStateCount: elemStateCount, dataStateCount: dataStateCount}
 }
 
 func requiredFeaturesForValTypes(types []wasm.ValType) CoreFeatures {
@@ -150,6 +166,11 @@ func requiredFeaturesForValType(typ wasm.ValType) CoreFeatures {
 }
 
 func requiredFeaturesForBodyBytes(body []byte) CoreFeatures {
+	elemStateCount, dataStateCount := 0, 0
+	return requiredFeaturesAndSegmentCountsForBodyBytes(body, &elemStateCount, &dataStateCount)
+}
+
+func requiredFeaturesAndSegmentCountsForBodyBytes(body []byte, elemStateCount, dataStateCount *int) CoreFeatures {
 	var out CoreFeatures
 	r := wasm.NewReader(body)
 	for r.HasNext() {
@@ -227,6 +248,7 @@ func requiredFeaturesForBodyBytes(body []byte) CoreFeatures {
 		if err != nil {
 			break
 		}
+		segmentStateCount(imm.Kind, imm.Index, imm.Index2, elemStateCount, dataStateCount)
 		switch imm.Kind {
 		case wasm.InstrI32Extend8S, wasm.InstrI32Extend16S, wasm.InstrI64Extend8S, wasm.InstrI64Extend16S, wasm.InstrI64Extend32S:
 			out |= CoreFeatureSignExtensionOps
