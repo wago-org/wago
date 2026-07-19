@@ -29,6 +29,8 @@ const (
 	protocolCall   = uint32(1)
 	protocolStart  = uint32(2)
 	protocolExit   = uint32(3)
+	protocolRead   = uint32(4)
+	protocolWrite  = uint32(5)
 	protocolHelper = uint32(1)
 	protocolResult = uint32(2)
 )
@@ -92,6 +94,50 @@ func (c *Client) StartFunction(entry, context uint32) (embedded32.Trap, error) {
 	return c.request(protocolStart, entry, context, nil, 0, nil)
 }
 
+func (c *Client) Write(address uint32, data []byte) error {
+	for len(data) != 0 {
+		count := len(data)
+		if count > 1024 {
+			count = 1024
+		}
+		var header [20]byte
+		binary.LittleEndian.PutUint32(header[0:4], protocolWrite)
+		binary.LittleEndian.PutUint32(header[4:8], address)
+		binary.LittleEndian.PutUint32(header[16:20], uint32(count))
+		if _, err := c.stdin.Write(header[:]); err != nil {
+			return err
+		}
+		if _, err := c.stdin.Write(data[:count]); err != nil {
+			return err
+		}
+		var response [12]byte
+		if _, err := io.ReadFull(c.stdout, response[:]); err != nil {
+			return err
+		}
+		if binary.LittleEndian.Uint32(response[0:4]) != protocolResult || binary.LittleEndian.Uint32(response[4:8]) != 0 || binary.LittleEndian.Uint32(response[8:12]) != 0 {
+			return fmt.Errorf("qemu32: invalid write response %x", response)
+		}
+		address += uint32(count)
+		data = data[count:]
+	}
+	return nil
+}
+
+func (c *Client) Read(address, slots uint32) ([]uint32, error) {
+	if slots > maximumSlots {
+		return nil, fmt.Errorf("qemu32: read slots exceed %d", maximumSlots)
+	}
+	results := make([]uint32, slots)
+	trap, err := c.request(protocolRead, address, 0, nil, slots, results)
+	if err != nil {
+		return nil, err
+	}
+	if trap != embedded32.TrapNone {
+		return nil, fmt.Errorf("qemu32: read returned trap %d", trap)
+	}
+	return results, nil
+}
+
 func (c *Client) Call(entry, context uint32, parameters []uint32, resultSlots uint32) ([]uint32, embedded32.Trap, error) {
 	if len(parameters) > int(maximumSlots) || resultSlots > maximumSlots {
 		return nil, embedded32.TrapNone, fmt.Errorf("qemu32: call slots exceed %d", maximumSlots)
@@ -133,11 +179,17 @@ func (c *Client) request(op, entry, context uint32, parameters []uint32, resultS
 			if _, err := io.ReadFull(c.stdout, frame); err != nil {
 				return embedded32.TrapNone, err
 			}
-			if err := executeHelper(kind, frame); err != nil {
-				return embedded32.TrapNone, err
-			}
-			if _, err := c.stdin.Write(frame); err != nil {
-				return embedded32.TrapNone, err
+			if kind == 3 {
+				if err := c.executeSIMDHelper(frame); err != nil {
+					return embedded32.TrapNone, err
+				}
+			} else {
+				if err := executeHelper(kind, frame); err != nil {
+					return embedded32.TrapNone, err
+				}
+				if _, err := c.stdin.Write(frame); err != nil {
+					return embedded32.TrapNone, err
+				}
 			}
 		case protocolResult:
 			code := embedded32.Trap(binary.LittleEndian.Uint32(response[4:8]))
@@ -199,13 +251,81 @@ func executeHelper(kind uint32, frame []byte) error {
 			return fmt.Errorf("qemu32: i64 frame bytes=%d", len(frame))
 		}
 		embedded32.RunI64((*embedded32.I64Frame)(unsafe.Pointer(&frame[0])))
-	case 3:
-		if len(frame) != int(embedded32.SIMDFrameBytes) {
-			return fmt.Errorf("qemu32: simd frame bytes=%d", len(frame))
-		}
-		embedded32.RunSIMD((*embedded32.SIMDFrame)(unsafe.Pointer(&frame[0])))
 	default:
 		return fmt.Errorf("qemu32: unknown helper kind %d", kind)
 	}
 	return nil
+}
+
+func (c *Client) executeSIMDHelper(frame []byte) error {
+	if len(frame) != int(embedded32.SIMDFrameBytes) {
+		return fmt.Errorf("qemu32: simd frame bytes=%d", len(frame))
+	}
+	get := func(offset uint32) uint32 { return binary.LittleEndian.Uint32(frame[offset : offset+4]) }
+	f := embedded32.SIMDFrame{
+		Op:      get(embedded32.SIMDFrameOpOffset),
+		Scalar:  uint64(get(embedded32.SIMDFrameScalarLoOffset)) | uint64(get(embedded32.SIMDFrameScalarHiOffset))<<32,
+		Address: get(embedded32.SIMDFrameAddressOffset),
+		Lane:    get(embedded32.SIMDFrameLaneOffset),
+	}
+	copy(f.A[:], frame[embedded32.SIMDFrameAOffset:embedded32.SIMDFrameAOffset+16])
+	copy(f.B[:], frame[embedded32.SIMDFrameBOffset:embedded32.SIMDFrameBOffset+16])
+	copy(f.C[:], frame[embedded32.SIMDFrameCOffset:embedded32.SIMDFrameCOffset+16])
+	copy(f.Immediate[:], frame[embedded32.SIMDFrameImmediateOffset:embedded32.SIMDFrameImmediateOffset+16])
+	memoryBase := get(embedded32.SIMDFrameMemoryBaseOffset)
+	memoryLength := get(embedded32.SIMDFrameMemoryLenOffset)
+	width, store := simdMemoryAccess(f.Op)
+	var request [12]byte
+	var memory []byte
+	if width != 0 && uint64(f.Address)+uint64(width) <= uint64(memoryLength) && uint64(memoryBase)+uint64(f.Address) <= uint64(^uint32(0)) {
+		binary.LittleEndian.PutUint32(request[0:4], memoryBase+f.Address)
+		binary.LittleEndian.PutUint32(request[4:8], width)
+		if store {
+			binary.LittleEndian.PutUint32(request[8:12], width)
+		}
+		memory = make([]byte, width)
+		f.Memory = memory
+		f.Address = 0
+	}
+	if _, err := c.stdin.Write(request[:]); err != nil {
+		return err
+	}
+	if len(memory) != 0 {
+		if _, err := io.ReadFull(c.stdout, memory); err != nil {
+			return err
+		}
+	}
+	embedded32.RunSIMD(&f)
+	copy(frame[embedded32.SIMDFrameOutOffset:embedded32.SIMDFrameOutOffset+16], f.Out[:])
+	binary.LittleEndian.PutUint32(frame[embedded32.SIMDFrameScalarOutOffset:embedded32.SIMDFrameScalarOutOffset+4], uint32(f.ScalarOut))
+	binary.LittleEndian.PutUint32(frame[embedded32.SIMDFrameScalarOutOffset+4:embedded32.SIMDFrameScalarOutOffset+8], uint32(f.ScalarOut>>32))
+	binary.LittleEndian.PutUint32(frame[embedded32.SIMDFrameTrapOffset:embedded32.SIMDFrameTrapOffset+4], uint32(f.Trap))
+	if _, err := c.stdin.Write(frame); err != nil {
+		return err
+	}
+	if store && len(memory) != 0 {
+		if _, err := c.stdin.Write(memory); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func simdMemoryAccess(op uint32) (width uint32, store bool) {
+	switch op {
+	case 0, 11:
+		return 16, op == 11
+	case 1, 2, 3, 4, 5, 6:
+		return 8, false
+	case 7, 84, 88:
+		return 1, op == 88
+	case 8, 85, 89:
+		return 2, op == 89
+	case 9, 86, 90, 92:
+		return 4, op == 90
+	case 10, 87, 91, 93:
+		return 8, op == 91
+	default:
+		return 0, false
+	}
 }

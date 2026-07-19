@@ -117,6 +117,20 @@ func armMain(layout Layout) ([]byte, error) {
 		return nil, err
 	}
 	startBranch := a.FarBcond(a32.CondEQ)
+	if err := must(a.MovImm32(a32.R0, protocolRead), "read op"); err != nil {
+		return nil, err
+	}
+	if err := must(a.Cmp(a32.R4, a32.R0), "read compare"); err != nil {
+		return nil, err
+	}
+	readBranch := a.FarBcond(a32.CondEQ)
+	if err := must(a.MovImm32(a32.R0, protocolWrite), "write op"); err != nil {
+		return nil, err
+	}
+	if err := must(a.Cmp(a32.R4, a32.R0), "write compare"); err != nil {
+		return nil, err
+	}
+	writeBranch := a.FarBcond(a32.CondEQ)
 	if err := must(a.MovImm32(a32.R0, protocolExit), "exit op"); err != nil {
 		return nil, err
 	}
@@ -164,6 +178,24 @@ func armMain(layout Layout) ([]byte, error) {
 	if err := must(a.Ldr(a32.R0, a32.R3, 8), "call context"); err != nil {
 		return nil, err
 	}
+	if err := must(a.Ldr(a32.R3, a32.R0, embedded32.ContextTrapCellOffset), "qemu trap cell"); err != nil {
+		return nil, err
+	}
+	if err := must(a.MovImm32(a32.R2, 0), "qemu trap clear"); err != nil {
+		return nil, err
+	}
+	if err := must(a.Str(a32.R2, a32.R3, 0), "qemu trap clear store"); err != nil {
+		return nil, err
+	}
+	if err := must(a.MovImm32(a32.R2, 64*1024), "qemu stack budget"); err != nil {
+		return nil, err
+	}
+	if err := must(a.Sub(a32.R2, a32.SP, a32.R2), "qemu stack limit"); err != nil {
+		return nil, err
+	}
+	if err := must(a.Str(a32.R2, a32.R0, embedded32.ContextStackLimitOffset), "qemu stack limit store"); err != nil {
+		return nil, err
+	}
 	if err := must(a.MovImm32(a32.R1, layout.CallAddress), "call abi address"); err != nil {
 		return nil, err
 	}
@@ -180,6 +212,9 @@ func armMain(layout Layout) ([]byte, error) {
 		return nil, err
 	}
 	if err := must(a.Str(a32.R0, a32.R1, embedded32.CallABIResultsOffset), "results store"); err != nil {
+		return nil, err
+	}
+	if err := must(a.MovImm32(a32.R3, layout.RequestAddress), "call entry request"); err != nil {
 		return nil, err
 	}
 	if err := must(a.Ldr(a32.R12, a32.R3, 4), "call entry"); err != nil {
@@ -259,6 +294,24 @@ func armMain(layout Layout) ([]byte, error) {
 	if err := must(a.Ldr(a32.R0, a32.R3, 8), "start context"); err != nil {
 		return nil, err
 	}
+	if err := must(a.Ldr(a32.R3, a32.R0, embedded32.ContextTrapCellOffset), "start trap cell"); err != nil {
+		return nil, err
+	}
+	if err := must(a.MovImm32(a32.R2, 0), "start trap clear"); err != nil {
+		return nil, err
+	}
+	if err := must(a.Str(a32.R2, a32.R3, 0), "start trap clear store"); err != nil {
+		return nil, err
+	}
+	if err := must(a.MovImm32(a32.R2, 64*1024), "start stack budget"); err != nil {
+		return nil, err
+	}
+	if err := must(a.Sub(a32.R2, a32.SP, a32.R2), "start stack limit"); err != nil {
+		return nil, err
+	}
+	if err := must(a.Str(a32.R2, a32.R0, embedded32.ContextStackLimitOffset), "start stack limit store"); err != nil {
+		return nil, err
+	}
 	if err := must(a.Blx(a32.R12), "start invoke"); err != nil {
 		return nil, err
 	}
@@ -288,6 +341,98 @@ func armMain(layout Layout) ([]byte, error) {
 		return nil, fmt.Errorf("qemu32: patch arm start loop")
 	}
 
+	readTarget := a.Len()
+	if err := must(a.MovImm32(a32.R3, layout.RequestAddress), "read request address"); err != nil {
+		return nil, err
+	}
+	if err := must(a.Ldr(a32.R5, a32.R3, 4), "read source"); err != nil {
+		return nil, err
+	}
+	if err := must(a.Ldr(a32.R6, a32.R3, 16), "read count"); err != nil {
+		return nil, err
+	}
+	if err := must(a.MovImm32(a32.R3, layout.ResponseAddress), "read response address"); err != nil {
+		return nil, err
+	}
+	if err := must(a.MovImm32(a32.R0, protocolResult), "read result tag"); err != nil {
+		return nil, err
+	}
+	if err := must(a.Str(a32.R0, a32.R3, 0), "read result tag store"); err != nil {
+		return nil, err
+	}
+	if err := must(a.MovImm32(a32.R0, 0), "read result code"); err != nil {
+		return nil, err
+	}
+	if err := must(a.Str(a32.R0, a32.R3, 4), "read result code store"); err != nil {
+		return nil, err
+	}
+	if err := must(a.Str(a32.R6, a32.R3, 8), "read result count store"); err != nil {
+		return nil, err
+	}
+	if err := emitWrite(layout.ResponseAddress, a32.PC, 12); err != nil {
+		return nil, err
+	}
+	if err := must(a.LslImm(a32.R2, a32.R6, 2), "read result bytes"); err != nil {
+		return nil, err
+	}
+	if err := must(a.MovImm32(a32.R0, 1), "read result fd"); err != nil {
+		return nil, err
+	}
+	if err := must(a.MovReg(a32.R1, a32.R5), "read result source"); err != nil {
+		return nil, err
+	}
+	if err := must(a.MovImm32(a32.R7, 4), "read result write"); err != nil {
+		return nil, err
+	}
+	a.Svc(0)
+	back = a.Branch()
+	if !a.PatchBranch(back, loop) {
+		return nil, fmt.Errorf("qemu32: patch arm read loop")
+	}
+
+	writeTarget := a.Len()
+	if err := must(a.MovImm32(a32.R3, layout.RequestAddress), "write request address"); err != nil {
+		return nil, err
+	}
+	if err := must(a.Ldr(a32.R1, a32.R3, 4), "write destination"); err != nil {
+		return nil, err
+	}
+	if err := must(a.Ldr(a32.R2, a32.R3, 16), "write byte count"); err != nil {
+		return nil, err
+	}
+	if err := must(a.MovImm32(a32.R0, 0), "write input fd"); err != nil {
+		return nil, err
+	}
+	if err := must(a.MovImm32(a32.R7, 3), "write input read"); err != nil {
+		return nil, err
+	}
+	a.Svc(0)
+	if err := must(a.MovImm32(a32.R3, layout.ResponseAddress), "write response address"); err != nil {
+		return nil, err
+	}
+	if err := must(a.MovImm32(a32.R0, protocolResult), "write result tag"); err != nil {
+		return nil, err
+	}
+	if err := must(a.Str(a32.R0, a32.R3, 0), "write result tag store"); err != nil {
+		return nil, err
+	}
+	if err := must(a.MovImm32(a32.R0, 0), "write result zero"); err != nil {
+		return nil, err
+	}
+	if err := must(a.Str(a32.R0, a32.R3, 4), "write result code store"); err != nil {
+		return nil, err
+	}
+	if err := must(a.Str(a32.R0, a32.R3, 8), "write result count store"); err != nil {
+		return nil, err
+	}
+	if err := emitWrite(layout.ResponseAddress, a32.PC, 12); err != nil {
+		return nil, err
+	}
+	back = a.Branch()
+	if !a.PatchBranch(back, loop) {
+		return nil, fmt.Errorf("qemu32: patch arm write loop")
+	}
+
 	exitTarget := a.Len()
 	if err := must(a.MovImm32(a32.R0, 0), "exit status"); err != nil {
 		return nil, err
@@ -296,7 +441,7 @@ func armMain(layout Layout) ([]byte, error) {
 		return nil, err
 	}
 	a.Svc(0)
-	if !a.PatchFarBranch(callBranch, callTarget) || !a.PatchFarBranch(startBranch, startTarget) || !a.PatchFarBranch(exitBranch, exitTarget) {
+	if !a.PatchFarBranch(callBranch, callTarget) || !a.PatchFarBranch(startBranch, startTarget) || !a.PatchFarBranch(readBranch, readTarget) || !a.PatchFarBranch(writeBranch, writeTarget) || !a.PatchFarBranch(exitBranch, exitTarget) {
 		return nil, fmt.Errorf("qemu32: patch arm dispatch")
 	}
 	return a.B, nil
@@ -359,6 +504,47 @@ func armHelper(layout Layout, kind, size uint32) ([]byte, error) {
 		return nil, err
 	}
 	a.Svc(0)
+	if kind == 3 {
+		if err := must(a.MovImm32(a32.R0, 0), "memory request fd"); err != nil {
+			return nil, err
+		}
+		if err := must(a.MovImm32(a32.R1, layout.HelperHeaderAddress), "memory request address"); err != nil {
+			return nil, err
+		}
+		if err := must(a.MovImm32(a32.R2, 12), "memory request bytes"); err != nil {
+			return nil, err
+		}
+		if err := must(a.MovImm32(a32.R7, 3), "memory request read"); err != nil {
+			return nil, err
+		}
+		a.Svc(0)
+		if err := must(a.MovImm32(a32.R3, layout.HelperHeaderAddress), "memory request reload"); err != nil {
+			return nil, err
+		}
+		if err := must(a.Ldr(a32.R1, a32.R3, 0), "memory source"); err != nil {
+			return nil, err
+		}
+		if err := must(a.Ldr(a32.R2, a32.R3, 4), "memory read width"); err != nil {
+			return nil, err
+		}
+		if err := must(a.MovImm32(a32.R0, 0), "memory width zero"); err != nil {
+			return nil, err
+		}
+		if err := must(a.Cmp(a32.R2, a32.R0), "memory width compare"); err != nil {
+			return nil, err
+		}
+		memoryReady := a.FarBcond(a32.CondEQ)
+		if err := must(a.MovImm32(a32.R0, 1), "memory write fd"); err != nil {
+			return nil, err
+		}
+		if err := must(a.MovImm32(a32.R7, 4), "memory write"); err != nil {
+			return nil, err
+		}
+		a.Svc(0)
+		if !a.PatchFarBranch(memoryReady, a.Len()) {
+			return nil, fmt.Errorf("qemu32: patch arm memory-ready branch")
+		}
+	}
 	if err := must(a.MovImm32(a32.R3, layout.HelperStateAddress), "read state"); err != nil {
 		return nil, err
 	}
@@ -375,6 +561,34 @@ func armHelper(layout Layout, kind, size uint32) ([]byte, error) {
 		return nil, err
 	}
 	a.Svc(0)
+	if kind == 3 {
+		if err := must(a.MovImm32(a32.R3, layout.HelperHeaderAddress), "memory response"); err != nil {
+			return nil, err
+		}
+		if err := must(a.Ldr(a32.R1, a32.R3, 0), "memory destination"); err != nil {
+			return nil, err
+		}
+		if err := must(a.Ldr(a32.R2, a32.R3, 8), "memory write width"); err != nil {
+			return nil, err
+		}
+		if err := must(a.MovImm32(a32.R0, 0), "memory write zero"); err != nil {
+			return nil, err
+		}
+		if err := must(a.Cmp(a32.R2, a32.R0), "memory write compare"); err != nil {
+			return nil, err
+		}
+		memoryWritten := a.FarBcond(a32.CondEQ)
+		if err := must(a.MovImm32(a32.R0, 0), "memory read fd"); err != nil {
+			return nil, err
+		}
+		if err := must(a.MovImm32(a32.R7, 3), "memory read"); err != nil {
+			return nil, err
+		}
+		a.Svc(0)
+		if !a.PatchFarBranch(memoryWritten, a.Len()) {
+			return nil, fmt.Errorf("qemu32: patch arm memory-written branch")
+		}
+	}
 	if err := must(a.MovImm32(a32.R3, layout.HelperStateAddress), "restore state"); err != nil {
 		return nil, err
 	}

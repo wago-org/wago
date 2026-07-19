@@ -79,6 +79,10 @@ func rvMain(layout Layout) ([]byte, error) {
 	callBranch := a.FarBcond(rv.T0, rv.T1, rv.CondEQ, rv.T6)
 	a.MovImm32(rv.T1, protocolStart)
 	startBranch := a.FarBcond(rv.T0, rv.T1, rv.CondEQ, rv.T6)
+	a.MovImm32(rv.T1, protocolRead)
+	readBranch := a.FarBcond(rv.T0, rv.T1, rv.CondEQ, rv.T6)
+	a.MovImm32(rv.T1, protocolWrite)
+	writeBranch := a.FarBcond(rv.T0, rv.T1, rv.CondEQ, rv.T6)
 	a.MovImm32(rv.T1, protocolExit)
 	exitBranch := a.FarBcond(rv.T0, rv.T1, rv.CondEQ, rv.T6)
 	a.MovImm32(rv.A0, 126)
@@ -99,6 +103,14 @@ func rvMain(layout Layout) ([]byte, error) {
 	a.MovImm32(rv.T2, layout.RequestAddress)
 	if !a.Lw(rv.T0, rv.T2, 8) {
 		return nil, fmt.Errorf("qemu32: encode rv call context")
+	}
+	if !a.Lw(rv.T3, rv.T0, embedded32.ContextTrapCellOffset) || !a.Sw(rv.Zero, rv.T3, 0) {
+		return nil, fmt.Errorf("qemu32: encode rv trap clear")
+	}
+	a.MovImm32(rv.T3, 64*1024)
+	a.Sub(rv.T3, rv.SP, rv.T3)
+	if !a.Sw(rv.T3, rv.T0, embedded32.ContextStackLimitOffset) {
+		return nil, fmt.Errorf("qemu32: encode rv stack limit")
 	}
 	a.MovImm32(rv.T1, layout.CallAddress)
 	if !a.Sw(rv.T0, rv.T1, embedded32.CallABIContextOffset) {
@@ -156,6 +168,14 @@ func rvMain(layout Layout) ([]byte, error) {
 	if !a.Lw(rv.T0, rv.T2, 4) || !a.Lw(rv.A0, rv.T2, 8) {
 		return nil, fmt.Errorf("qemu32: encode rv start request")
 	}
+	if !a.Lw(rv.T3, rv.A0, embedded32.ContextTrapCellOffset) || !a.Sw(rv.Zero, rv.T3, 0) {
+		return nil, fmt.Errorf("qemu32: encode rv start trap clear")
+	}
+	a.MovImm32(rv.T3, 64*1024)
+	a.Sub(rv.T3, rv.SP, rv.T3)
+	if !a.Sw(rv.T3, rv.A0, embedded32.ContextStackLimitOffset) {
+		return nil, fmt.Errorf("qemu32: encode rv start stack limit")
+	}
 	a.Blr(rv.T0)
 	a.MovImm32(rv.T2, layout.ResponseAddress)
 	a.MovImm32(rv.T1, protocolResult)
@@ -168,11 +188,51 @@ func rvMain(layout Layout) ([]byte, error) {
 		return nil, fmt.Errorf("qemu32: patch rv start loop")
 	}
 
+	readTarget := a.Len()
+	a.MovImm32(rv.T2, layout.RequestAddress)
+	if !a.Lw(rv.S0, rv.T2, 4) || !a.Lw(rv.S1, rv.T2, 16) {
+		return nil, fmt.Errorf("qemu32: encode rv read request")
+	}
+	a.MovImm32(rv.T2, layout.ResponseAddress)
+	a.MovImm32(rv.T1, protocolResult)
+	if !a.Sw(rv.T1, rv.T2, 0) || !a.Sw(rv.Zero, rv.T2, 4) || !a.Sw(rv.S1, rv.T2, 8) {
+		return nil, fmt.Errorf("qemu32: encode rv read response")
+	}
+	emitWrite(layout.ResponseAddress, rv.Zero, 12)
+	a.Slli(rv.A2, rv.S1, 2)
+	a.MovImm32(rv.A0, 1)
+	a.MovReg(rv.A1, rv.S0)
+	a.MovImm32(rv.A7, 64)
+	a.Ecall()
+	back = a.FarJump(rv.Zero, rv.T6)
+	if !a.PatchFarJump(back, loop) {
+		return nil, fmt.Errorf("qemu32: patch rv read loop")
+	}
+
+	writeTarget := a.Len()
+	a.MovImm32(rv.T2, layout.RequestAddress)
+	if !a.Lw(rv.A1, rv.T2, 4) || !a.Lw(rv.A2, rv.T2, 16) {
+		return nil, fmt.Errorf("qemu32: encode rv write request")
+	}
+	a.MovImm32(rv.A0, 0)
+	a.MovImm32(rv.A7, 63)
+	a.Ecall()
+	a.MovImm32(rv.T2, layout.ResponseAddress)
+	a.MovImm32(rv.T1, protocolResult)
+	if !a.Sw(rv.T1, rv.T2, 0) || !a.Sw(rv.Zero, rv.T2, 4) || !a.Sw(rv.Zero, rv.T2, 8) {
+		return nil, fmt.Errorf("qemu32: encode rv write response")
+	}
+	emitWrite(layout.ResponseAddress, rv.Zero, 12)
+	back = a.FarJump(rv.Zero, rv.T6)
+	if !a.PatchFarJump(back, loop) {
+		return nil, fmt.Errorf("qemu32: patch rv write loop")
+	}
+
 	exitTarget := a.Len()
 	a.MovImm32(rv.A0, 0)
 	a.MovImm32(rv.A7, 93)
 	a.Ecall()
-	if !a.PatchFarBranch(callBranch, callTarget) || !a.PatchFarBranch(startBranch, startTarget) || !a.PatchFarBranch(exitBranch, exitTarget) {
+	if !a.PatchFarBranch(callBranch, callTarget) || !a.PatchFarBranch(startBranch, startTarget) || !a.PatchFarBranch(readBranch, readTarget) || !a.PatchFarBranch(writeBranch, writeTarget) || !a.PatchFarBranch(exitBranch, exitTarget) {
 		return nil, fmt.Errorf("qemu32: patch rv dispatch")
 	}
 	return a.B, nil
@@ -207,6 +267,24 @@ func rvHelper(layout Layout, kind, size uint32) ([]byte, error) {
 	a.MovImm32(rv.A2, size)
 	a.MovImm32(rv.A7, 64)
 	a.Ecall()
+	if kind == 3 {
+		a.MovImm32(rv.A0, 0)
+		a.MovImm32(rv.A1, layout.HelperHeaderAddress)
+		a.MovImm32(rv.A2, 12)
+		a.MovImm32(rv.A7, 63)
+		a.Ecall()
+		a.MovImm32(rv.T0, layout.HelperHeaderAddress)
+		if !a.Lw(rv.A1, rv.T0, 0) || !a.Lw(rv.A2, rv.T0, 4) {
+			return nil, fmt.Errorf("qemu32: encode rv helper memory request")
+		}
+		memoryReady := a.FarBcond(rv.A2, rv.Zero, rv.CondEQ, rv.T6)
+		a.MovImm32(rv.A0, 1)
+		a.MovImm32(rv.A7, 64)
+		a.Ecall()
+		if !a.PatchFarBranch(memoryReady, a.Len()) {
+			return nil, fmt.Errorf("qemu32: patch rv helper memory-ready branch")
+		}
+	}
 	a.MovImm32(rv.T0, layout.HelperStateAddress)
 	if !a.Lw(rv.A1, rv.T0, 0) {
 		return nil, fmt.Errorf("qemu32: encode rv helper read frame")
@@ -215,6 +293,19 @@ func rvHelper(layout Layout, kind, size uint32) ([]byte, error) {
 	a.MovImm32(rv.A2, size)
 	a.MovImm32(rv.A7, 63)
 	a.Ecall()
+	if kind == 3 {
+		a.MovImm32(rv.T0, layout.HelperHeaderAddress)
+		if !a.Lw(rv.A1, rv.T0, 0) || !a.Lw(rv.A2, rv.T0, 8) {
+			return nil, fmt.Errorf("qemu32: encode rv helper memory response")
+		}
+		memoryWritten := a.FarBcond(rv.A2, rv.Zero, rv.CondEQ, rv.T6)
+		a.MovImm32(rv.A0, 0)
+		a.MovImm32(rv.A7, 63)
+		a.Ecall()
+		if !a.PatchFarBranch(memoryWritten, a.Len()) {
+			return nil, fmt.Errorf("qemu32: patch rv helper memory-written branch")
+		}
+	}
 	a.Ret()
 	return a.B, nil
 }
