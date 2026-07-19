@@ -454,8 +454,8 @@ func CompileEmbeddedModule(m *wasm.Module, opts EmbeddedModuleOptions, target st
 	var start *uint32
 	if m.Start != nil {
 		index := uint32(*m.Start)
-		if index < importedFunctions || uint64(index-importedFunctions) >= uint64(len(bodies)) {
-			return nil, fmt.Errorf("%s: start function %d is not local", target, index)
+		if uint64(index) >= uint64(len(functionSignatures)) {
+			return nil, fmt.Errorf("%s: start function %d is unavailable", target, index)
 		}
 		start = &index
 	}
@@ -765,8 +765,8 @@ func embeddedTable(m *wasm.Module, target string) (*EmbeddedTable, error) {
 	}
 	out := &EmbeddedTable{Imported: imported, Reference: tableType.Ref, Minimum: uint32(tableType.Limits.Min)}
 	if tableType.Limits.Max != nil {
-		if *tableType.Limits.Max > maxTableSlots {
-			return nil, fmt.Errorf("%s: table maximum exceeds the addressable 32-bit slot range", target)
+		if *tableType.Limits.Max > uint64(^uint32(0)) {
+			return nil, fmt.Errorf("%s: table maximum exceeds the memory32 index range", target)
 		}
 		out.Maximum, out.HasMaximum = uint32(*tableType.Limits.Max), true
 	}

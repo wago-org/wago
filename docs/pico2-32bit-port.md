@@ -135,10 +135,11 @@ funcref global initializers, and descriptor-only passive/declarative elements
 then reduced the count to 17. Resolving immutable imported i32 globals before
 transactional active data/element preflight reduced it again to 8. Completing
 implicit-else block parameters, reference-test stack accounting, and the exact
-SIMD min-operation arity reduced it to 3, while preserving identical target
-decisions and zero malformed/invalid admissions. The remaining cases are one
-imported start function, one bounded-stack stress module, and one maximum-
-capacity policy module. Multi-table must move into the gate for full
+SIMD min-operation arity reduced it to 3. Context-switching imported start
+thunks and separating declared table maxima from bounded backing capacity then
+left only the guard-page stress module's intentionally huge live local frame,
+while preserving identical target decisions and zero malformed/invalid
+admissions. Multi-table must move into the gate for full
 Release 2 parity; only the five multi-memory modules remain an intentional
 language-feature exclusion. Execution assertions still require the firmware or
 QEMU module runner.

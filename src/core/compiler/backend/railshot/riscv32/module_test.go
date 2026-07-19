@@ -71,6 +71,26 @@ func TestCompileModuleAdmitsF64AndV128Functions(t *testing.T) {
 	}
 }
 
+func TestCompileModuleAdmitsImportedStart(t *testing.T) {
+	functionImport := append(wasmtest.Name("m"), wasmtest.Name("start")...)
+	functionImport = append(functionImport, byte(wasm.ExternFunc), 0)
+	m, err := wasm.DecodeModule(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(2, wasmtest.Vec(functionImport)),
+		wasmtest.Section(8, []byte{0}),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cm, err := CompileModule(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cm.Start == nil || *cm.Start != 0 || cm.StartEntry == nil {
+		t.Fatalf("start=%v entry=%v", cm.Start, cm.StartEntry)
+	}
+}
+
 func TestCompileModuleAdmitsRelease2PlannerShapes(t *testing.T) {
 	m, err := wasm.DecodeModule(wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(

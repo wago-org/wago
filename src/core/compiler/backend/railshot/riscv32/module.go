@@ -133,18 +133,32 @@ func CompileModuleWith(m *wasm.Module, opts ModuleCompileOptions) (*CompiledModu
 		a.Addi(rv.SP, rv.SP, -16)
 		a.Sw(rv.X23, rv.SP, 0)
 		a.Sw(rv.RA, rv.SP, 4)
+		a.Sw(rv.A0, rv.SP, 8)
 		a.MovReg(rv.X23, rv.A0)
-		call := a.FarCall(branchScratch)
-		a.Lw(rv.T0, rv.X23, embedded32.ContextTrapCellOffset)
-		a.Lw(rv.A0, rv.T0, 0)
+		if *cm.Start < cm.ImportedFunctions {
+			a.Lw(rv.T0, rv.X23, embedded32.ContextImportsBaseOffset)
+			descriptorOffset := int32(*cm.Start * embedded32.ImportFunctionABIBytes)
+			a.Lw(rv.T1, rv.T0, descriptorOffset+embedded32.ImportFunctionEntryOffset)
+			a.Lw(rv.X23, rv.T0, descriptorOffset+embedded32.ImportFunctionContextOffset)
+			a.Jalr(rv.RA, rv.T1, 0)
+			a.Lw(rv.T0, rv.X23, embedded32.ContextTrapCellOffset)
+			a.Lw(rv.A0, rv.T0, 0)
+			a.Lw(rv.X23, rv.SP, 8)
+			a.Lw(rv.T0, rv.X23, embedded32.ContextTrapCellOffset)
+			a.Sw(rv.A0, rv.T0, 0)
+		} else {
+			call := a.FarCall(branchScratch)
+			a.Lw(rv.T0, rv.X23, embedded32.ContextTrapCellOffset)
+			a.Lw(rv.A0, rv.T0, 0)
+			startLocal := *cm.Start - cm.ImportedFunctions
+			if int(startLocal) >= len(cm.Entry) || !a.PatchFarJump(call, cm.Entry[startLocal]) {
+				return nil, fmt.Errorf("riscv32: start relocation out of range")
+			}
+		}
 		a.Lw(rv.X23, rv.SP, 0)
 		a.Lw(rv.RA, rv.SP, 4)
 		a.Addi(rv.SP, rv.SP, 16)
 		a.Ret()
-		startLocal := *cm.Start - cm.ImportedFunctions
-		if int(startLocal) >= len(cm.Entry) || !a.PatchFarJump(call, cm.Entry[startLocal]) {
-			return nil, fmt.Errorf("riscv32: start relocation out of range")
-		}
 		cm.StartEntry = &startEntry
 	}
 	cm.Code = a.B
