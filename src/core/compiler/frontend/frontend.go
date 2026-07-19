@@ -804,9 +804,8 @@ func (p supportPass) data() error {
 	for i, d := range p.m.Data {
 		switch d.Mode.Kind {
 		case wasm.DataActive:
-			ctx := fmt.Sprintf("data %d", i)
 			if d.Mode.Mem != 0 && !p.feat.MultiMemory {
-				return p.unsupported("data", fmt.Sprintf("memory index %d", d.Mode.Mem), ctx)
+				return p.unsupported("data", fmt.Sprintf("memory index %d", d.Mode.Mem), fmt.Sprintf("data %d", i))
 			}
 			if err := p.constExpr(d.Mode.Offset, ""); err != nil {
 				if unsupported, ok := err.(*UnsupportedError); ok {

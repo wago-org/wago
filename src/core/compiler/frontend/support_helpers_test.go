@@ -588,6 +588,15 @@ func TestProgrammaticTableGrowAndConstExpressionSupport(t *testing.T) {
 	}
 }
 
+func TestDataAdmissionDiagnostic(t *testing.T) {
+	p := supportPass{m: &wasm.Module{Data: []wasm.Data{{Mode: wasm.DataMode{Kind: wasm.DataActive, Mem: 1}}}}}
+	if err := p.data(); err == nil {
+		t.Fatal("multi-memory data segment accepted without multi-memory")
+	} else if got, want := err.Error(), "unsupported data memory index 1 at data 0"; got != want {
+		t.Fatalf("data diagnostic = %q, want %q", got, want)
+	}
+}
+
 func TestValueAndGlobalTypeSupportHelpers(t *testing.T) {
 	base := supportPass{}
 	for _, vt := range []wasm.ValType{wasm.I32, wasm.I64, wasm.F32, wasm.F64} {
