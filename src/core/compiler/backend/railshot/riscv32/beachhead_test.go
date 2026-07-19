@@ -151,7 +151,7 @@ func rv32ELF(code []byte) []byte {
 	write(uint32(base))
 	write(uint32(len(code)))
 	write(uint32(len(code)))
-	write(uint32(5))
+	write(uint32(7))
 	write(uint32(0x1000))
 	for buf.Len() < codeOff {
 		buf.WriteByte(0)

@@ -152,8 +152,11 @@ Linked bundles now bind imported table-directory entries directly to provider
 descriptors, translate each module's local/imported `ref.func` values into one
 bounded bundle-wide identity space, publish parallel entry/type/context arrays,
 and switch module context for indirect calls. Active elements targeting imported
-tables are applied only after complete bundle preflight. Execution assertions
-still require the firmware or QEMU module runner.
+tables are applied only after complete bundle preflight. Linked-image QEMU tests
+now execute provider-owned table entries under both Arm32 and RV32, verify the
+consumer context is restored, and verify provider traps propagate through the
+consumer trap cell. Full official-script execution still requires the module
+runner.
 
 ## Current implementation status
 
