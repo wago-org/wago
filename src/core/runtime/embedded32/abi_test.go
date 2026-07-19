@@ -6,6 +6,11 @@ import (
 )
 
 func TestStableHelperFrameLayouts(t *testing.T) {
+	var table TableABI
+	if unsafe.Offsetof(table.EntriesBase) != TableABIEntriesBaseOffset || unsafe.Offsetof(table.Length) != TableABILengthOffset || unsafe.Offsetof(table.FunctionEntriesBase) != TableABIFunctionEntriesBaseOffset || unsafe.Offsetof(table.FunctionTypesBase) != TableABIFunctionTypesBaseOffset || unsafe.Sizeof(table) != TableABIBytes {
+		t.Fatalf("TableABI layout entries=%d length=%d functions=%d types=%d size=%d", unsafe.Offsetof(table.EntriesBase), unsafe.Offsetof(table.Length), unsafe.Offsetof(table.FunctionEntriesBase), unsafe.Offsetof(table.FunctionTypesBase), unsafe.Sizeof(table))
+	}
+
 	var d DataSegmentABI
 	if unsafe.Offsetof(d.Base) != DataSegmentBaseOffset || unsafe.Offsetof(d.Length) != DataSegmentLengthOffset || unsafe.Offsetof(d.Dropped) != DataSegmentDroppedOffset || unsafe.Sizeof(d) != DataSegmentABIBytes {
 		t.Fatalf("DataSegmentABI layout base=%d length=%d dropped=%d size=%d", unsafe.Offsetof(d.Base), unsafe.Offsetof(d.Length), unsafe.Offsetof(d.Dropped), unsafe.Sizeof(d))

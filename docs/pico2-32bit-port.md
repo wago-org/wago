@@ -335,8 +335,12 @@ functions execute `global.get`/`global.set` with immutable-set rejection. Pair a
 while mixed access preserves all surrounding wide operands. Nullable funcref
 and externref values use one serialized slot; reference parameters, locals,
 results, `ref.null`, `ref.func`, and `ref.is_null` now use the same mixed frame
-and call ABI. Table storage and indirect dispatch remain a separate runtime
-slice.
+and call ABI. The context now also reserves one stable pointer to a 16-byte
+single-table descriptor containing table entries, length, published function
+entries, and parallel function type IDs. Module metadata retains bounded local
+funcref table limits and active element initializers; instantiation preflights
+all active ranges before clearing and populating caller-owned table cells.
+Indirect dispatch remains a separate compiler slice.
 
 The embedded runtime now also provides complete preflighted `memory.copy`,
 `memory.fill`, passive `memory.init`, and idempotent `data.drop` semantics.
@@ -350,7 +354,7 @@ preflighted `memory.init` plus idempotent `data.drop` directly against those
 descriptors.
 
 This is still not public backend admission. Arbitrary-depth and table-driven
-structured-control transfers, tables/references, start invocation,
+structured-control transfers, table instructions and indirect calls, start invocation,
 generated-
 code entry trampolines, firmware linking and transport, and Pico 2 hardware
 qualification remain to be implemented and measured.

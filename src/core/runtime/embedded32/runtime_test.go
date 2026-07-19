@@ -178,7 +178,7 @@ func TestControlAndContextABI(t *testing.T) {
 		t.Fatal("reset")
 	}
 	var x ContextABI
-	checks := []struct{ got, want uintptr }{{unsafe.Offsetof(x.LinearMemoryBase), ContextLinearMemoryBaseOffset}, {unsafe.Offsetof(x.LinearMemoryLength), ContextLinearMemoryLengthOffset}, {unsafe.Offsetof(x.TrapCell), ContextTrapCellOffset}, {unsafe.Offsetof(x.CancelCell), ContextCancelCellOffset}, {unsafe.Offsetof(x.HelperTable), ContextHelperTableOffset}, {unsafe.Offsetof(x.LinearMemoryMaximum), ContextLinearMemoryMaximumOffset}, {unsafe.Offsetof(x.StackLimit), ContextStackLimitOffset}, {unsafe.Offsetof(x.GlobalsBase), ContextGlobalsBaseOffset}, {unsafe.Offsetof(x.DataSegmentsBase), ContextDataSegmentsBaseOffset}, {unsafe.Offsetof(x.DataSegmentCount), ContextDataSegmentCountOffset}, {unsafe.Sizeof(x), ContextABISize}}
+	checks := []struct{ got, want uintptr }{{unsafe.Offsetof(x.LinearMemoryBase), ContextLinearMemoryBaseOffset}, {unsafe.Offsetof(x.LinearMemoryLength), ContextLinearMemoryLengthOffset}, {unsafe.Offsetof(x.TrapCell), ContextTrapCellOffset}, {unsafe.Offsetof(x.CancelCell), ContextCancelCellOffset}, {unsafe.Offsetof(x.HelperTable), ContextHelperTableOffset}, {unsafe.Offsetof(x.LinearMemoryMaximum), ContextLinearMemoryMaximumOffset}, {unsafe.Offsetof(x.StackLimit), ContextStackLimitOffset}, {unsafe.Offsetof(x.GlobalsBase), ContextGlobalsBaseOffset}, {unsafe.Offsetof(x.DataSegmentsBase), ContextDataSegmentsBaseOffset}, {unsafe.Offsetof(x.DataSegmentCount), ContextDataSegmentCountOffset}, {unsafe.Offsetof(x.Table), ContextTableOffset}, {unsafe.Sizeof(x), ContextABISize}}
 	for _, c := range checks {
 		if c.got != c.want {
 			t.Fatalf("layout got=%d want=%d", c.got, c.want)

@@ -107,6 +107,36 @@ func TestCompileEmbeddedModuleInitializesSerializedWideGlobals(t *testing.T) {
 	}
 }
 
+func TestCompileEmbeddedModuleInitializesActiveFunctionTable(t *testing.T) {
+	m := embeddedTestModule(t,
+		[][]byte{wasmtest.FuncType(nil, nil)},
+		[][]byte{{0}},
+		[][]byte{wasmtest.Code([]byte{0x0b})},
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 1, 3, 5})),
+		wasmtest.Section(9, wasmtest.Vec([]byte{0, 0x41, 1, 0x0b, 1, 0})),
+	)
+	cm, err := CompileEmbeddedModule(m, EmbeddedModuleOptions{}, "test", 1, []byte{0}, func(int, *wasm.CompType, []wasm.LocalRun, []byte) ([]byte, error) {
+		return []byte{0}, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cm.Table == nil || cm.Table.Minimum != 3 || !cm.Table.HasMaximum || cm.Table.Maximum != 5 {
+		t.Fatalf("table=%+v", cm.Table)
+	}
+	entries := []uint32{9, 9, 9}
+	if err := cm.InstantiateTable(entries); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(entries, []uint32{0, 1, 0}) {
+		t.Fatalf("entries=%v", entries)
+	}
+	short := []uint32{7, 7}
+	if err := cm.InstantiateTable(short); !errors.Is(err, embedded32.ErrArenaCapacity) || !slices.Equal(short, []uint32{7, 7}) {
+		t.Fatalf("short entries=%v err=%v", short, err)
+	}
+}
+
 func TestEmbeddedModuleRetainsExportsAndStart(t *testing.T) {
 	m := embeddedTestModule(t,
 		[][]byte{wasmtest.FuncType(nil, nil)},
@@ -236,10 +266,10 @@ func TestCompileEmbeddedI32ModuleRejectsIncompatibleModules(t *testing.T) {
 		{"i64 signature", func(t *testing.T) *wasm.Module {
 			return embeddedTestModule(t, [][]byte{wasmtest.FuncType(nil, []wasm.ValType{wasm.I64})}, [][]byte{{0}}, [][]byte{wasmtest.Code([]byte{0x42, 0, 0x0b})})
 		}, "result signature"},
-		{"table", func(t *testing.T) *wasm.Module {
-			table := []byte{0x70, 0, 0}
+		{"externref table", func(t *testing.T) *wasm.Module {
+			table := []byte{0x6f, 0, 0}
 			return embeddedTestModule(t, [][]byte{wasmtest.FuncType(nil, []wasm.ValType{wasm.I32})}, [][]byte{{0}}, validCode, wasmtest.Section(4, wasmtest.Vec(table)))
-		}, "runtime state"},
+		}, "table type"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

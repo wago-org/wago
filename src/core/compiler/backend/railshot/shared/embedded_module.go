@@ -29,6 +29,18 @@ type EmbeddedGlobal struct {
 	Words   [4]uint32
 }
 
+type EmbeddedElementSegment struct {
+	Offset uint32
+	Values []uint32
+}
+
+type EmbeddedTable struct {
+	Minimum    uint32
+	Maximum    uint32
+	HasMaximum bool
+	Elements   []EmbeddedElementSegment
+}
+
 type EmbeddedExport struct {
 	Name  string
 	Kind  wasm.ExternKind
@@ -41,6 +53,7 @@ type EmbeddedModule struct {
 	Functions         []EmbeddedFunctionMetadata
 	Data              []EmbeddedDataSegment
 	Globals           []EmbeddedGlobal
+	Table             *EmbeddedTable
 	Exports           []EmbeddedExport
 	Start             *uint32
 	RequiredCodeBytes uint32
@@ -88,6 +101,30 @@ func (m *EmbeddedModule) InstantiateGlobals(cells []uint32) error {
 	return nil
 }
 
+func (m *EmbeddedModule) InstantiateTable(entries []uint32) error {
+	if m == nil || m.Table == nil {
+		if len(entries) != 0 {
+			clear(entries)
+		}
+		return nil
+	}
+	if uint64(m.Table.Minimum) > uint64(len(entries)) {
+		return embedded32.ErrArenaCapacity
+	}
+	for i := range m.Table.Elements {
+		segment := &m.Table.Elements[i]
+		if uint64(segment.Offset)+uint64(len(segment.Values)) > uint64(m.Table.Minimum) {
+			return fmt.Errorf("embedded element segment %d exceeds table minimum", i)
+		}
+	}
+	clear(entries[:m.Table.Minimum])
+	for i := range m.Table.Elements {
+		segment := &m.Table.Elements[i]
+		copy(entries[segment.Offset:], segment.Values)
+	}
+	return nil
+}
+
 func (m *EmbeddedModule) InstantiateData(memory *embedded32.LinearMemory) (*embedded32.DataStore, error) {
 	if m == nil || memory == nil {
 		return nil, embedded32.ErrInvalidArena
@@ -115,6 +152,7 @@ type PublishedEmbeddedModule struct {
 	Functions []EmbeddedFunctionMetadata
 	Data      []EmbeddedDataSegment
 	Globals   []EmbeddedGlobal
+	Table     *EmbeddedTable
 	Exports   []EmbeddedExport
 	Start     *uint32
 }
@@ -136,7 +174,7 @@ func PublishEmbeddedModule(arena *embedded32.CodeArena, module *EmbeddedModule, 
 	if err := tx.Commit(publish); err != nil {
 		return nil, err
 	}
-	out := &PublishedEmbeddedModule{Block: block, Entry: make([]uint32, len(module.Entry)), Functions: make([]EmbeddedFunctionMetadata, len(module.Functions)), Data: module.Data, Globals: module.Globals, Exports: module.Exports, Start: module.Start}
+	out := &PublishedEmbeddedModule{Block: block, Entry: make([]uint32, len(module.Entry)), Functions: make([]EmbeddedFunctionMetadata, len(module.Functions)), Data: module.Data, Globals: module.Globals, Table: module.Table, Exports: module.Exports, Start: module.Start}
 	for i, entry := range module.Entry {
 		out.Entry[i] = block.Offset + uint32(entry)
 	}
@@ -169,7 +207,7 @@ func CompileEmbeddedModule(m *wasm.Module, opts EmbeddedModuleOptions, target st
 	if len(m.Imports) != 0 {
 		return nil, fmt.Errorf("%s: module imports are not supported", target)
 	}
-	if len(m.Tables) != 0 || len(m.Memories) > 1 || len(m.Elements) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 {
+	if len(m.Tables) > 1 || len(m.Memories) > 1 || len(m.Tags) != 0 || len(m.StringRefs) != 0 {
 		return nil, fmt.Errorf("%s: module contains unsupported runtime state", target)
 	}
 	if len(m.Memories) == 1 && (m.Memories[0].Limits.Addr64 || m.Memories[0].Shared) {
@@ -220,6 +258,10 @@ func CompileEmbeddedModule(m *wasm.Module, opts EmbeddedModuleOptions, target st
 	if err != nil {
 		return nil, err
 	}
+	table, err := embeddedTable(m, target)
+	if err != nil {
+		return nil, err
+	}
 	exports := make([]EmbeddedExport, len(m.Exports))
 	for i := range m.Exports {
 		exports[i] = EmbeddedExport{Name: m.Exports[i].Name, Kind: m.Exports[i].Index.Kind, Index: m.Exports[i].Index.Index}
@@ -232,7 +274,7 @@ func CompileEmbeddedModule(m *wasm.Module, opts EmbeddedModuleOptions, target st
 		}
 		start = &index
 	}
-	out := &EmbeddedModule{Code: make([]byte, 0, required), Entry: make([]int, len(bodies)), Functions: make([]EmbeddedFunctionMetadata, len(bodies)), Data: data, Globals: globals, Exports: exports, Start: start, RequiredCodeBytes: uint32(required)}
+	out := &EmbeddedModule{Code: make([]byte, 0, required), Entry: make([]int, len(bodies)), Functions: make([]EmbeddedFunctionMetadata, len(bodies)), Data: data, Globals: globals, Table: table, Exports: exports, Start: start, RequiredCodeBytes: uint32(required)}
 	for i, body := range bodies {
 		pad := (16 - len(out.Code)%16) % 16
 		if pad%len(alignmentPad) != 0 {
@@ -289,6 +331,122 @@ func CompileEmbeddedI32Module(m *wasm.Module, opts EmbeddedModuleOptions, target
 		}
 		return compile(len(ft.Params), body)
 	})
+}
+
+func embeddedTable(m *wasm.Module, target string) (*EmbeddedTable, error) {
+	if len(m.Tables) == 0 {
+		if len(m.Elements) != 0 {
+			return nil, fmt.Errorf("%s: element segments require a table", target)
+		}
+		return nil, nil
+	}
+	table := &m.Tables[0]
+	if table.Type.Ref != wasm.FuncRef.Ref {
+		return nil, fmt.Errorf("%s: table type %s is not supported", target, table.Type.Ref)
+	}
+	if table.Type.Limits.Addr64 || table.Type.Limits.Min > uint64(^uint32(0)) {
+		return nil, fmt.Errorf("%s: table limits exceed the 32-bit target", target)
+	}
+	if table.Init != nil {
+		return nil, fmt.Errorf("%s: table initializer expressions are not supported", target)
+	}
+	out := &EmbeddedTable{Minimum: uint32(table.Type.Limits.Min)}
+	if table.Type.Limits.Max != nil {
+		if *table.Type.Limits.Max > uint64(^uint32(0)) {
+			return nil, fmt.Errorf("%s: table maximum exceeds the 32-bit target", target)
+		}
+		out.Maximum, out.HasMaximum = uint32(*table.Type.Limits.Max), true
+	}
+	out.Elements = make([]EmbeddedElementSegment, 0, len(m.Elements))
+	for i := range m.Elements {
+		elem := &m.Elements[i]
+		if elem.Mode.Kind != wasm.ElemActive || elem.Mode.Table != 0 {
+			return nil, fmt.Errorf("%s: element segment %d must be active for table zero", target, i)
+		}
+		offset, err := embeddedI32Const(elem.Mode.Offset)
+		if err != nil {
+			return nil, fmt.Errorf("%s: element segment %d offset: %w", target, i, err)
+		}
+		values := make([]uint32, 0)
+		switch elem.Kind.Kind {
+		case wasm.ElemFuncs:
+			values = make([]uint32, len(elem.Kind.Funcs))
+			for j, index := range elem.Kind.Funcs {
+				if uint64(index) >= uint64(len(m.Code)) || uint32(index) == ^uint32(0) {
+					return nil, fmt.Errorf("%s: element segment %d function %d is not local", target, i, index)
+				}
+				values[j] = uint32(index) + 1
+			}
+		case wasm.ElemFuncExprs, wasm.ElemTypedExprs:
+			if elem.Kind.Ref != wasm.FuncRef.Ref {
+				return nil, fmt.Errorf("%s: element segment %d reference type %s is not supported", target, i, elem.Kind.Ref)
+			}
+			values = make([]uint32, len(elem.Kind.Exprs))
+			for j := range elem.Kind.Exprs {
+				value, err := embeddedFuncRefConst(elem.Kind.Exprs[j], len(m.Code))
+				if err != nil {
+					return nil, fmt.Errorf("%s: element segment %d value %d: %w", target, i, j, err)
+				}
+				values[j] = value
+			}
+		default:
+			return nil, fmt.Errorf("%s: element segment %d kind is not supported", target, i)
+		}
+		if uint64(offset)+uint64(len(values)) > uint64(out.Minimum) {
+			return nil, fmt.Errorf("%s: element segment %d exceeds table minimum", target, i)
+		}
+		out.Elements = append(out.Elements, EmbeddedElementSegment{Offset: offset, Values: values})
+	}
+	return out, nil
+}
+
+func embeddedFuncRefConst(expr wasm.Expr, functionCount int) (uint32, error) {
+	if len(expr.BodyBytes) != 0 {
+		r := wasm.NewReader(expr.BodyBytes)
+		op, err := r.Byte()
+		if err != nil {
+			return 0, err
+		}
+		var value uint32
+		switch op {
+		case 0xd0:
+			heap, err := r.S33()
+			if err != nil || heap != -16 {
+				return 0, fmt.Errorf("expected ref.null func")
+			}
+		case 0xd2:
+			index, err := r.U32()
+			if err != nil || uint64(index) >= uint64(functionCount) || index == ^uint32(0) {
+				return 0, fmt.Errorf("ref.func index %d is not local", index)
+			}
+			value = index + 1
+		default:
+			return 0, fmt.Errorf("expected ref.null or ref.func")
+		}
+		end, err := r.Byte()
+		if err != nil || end != 0x0b || r.HasNext() {
+			return 0, fmt.Errorf("malformed reference const expression")
+		}
+		return value, nil
+	}
+	if len(expr.Instrs) != 1 {
+		return 0, fmt.Errorf("unsupported reference const expression")
+	}
+	in := expr.Instrs[0]
+	switch in.Kind {
+	case wasm.InstrRefNull:
+		if in.HeapType() != wasm.AbsHeap(wasm.HeapFunc) {
+			return 0, fmt.Errorf("expected ref.null func")
+		}
+		return 0, nil
+	case wasm.InstrRefFunc:
+		if uint64(in.Index) >= uint64(functionCount) || in.Index == ^uint32(0) {
+			return 0, fmt.Errorf("ref.func index %d is not local", in.Index)
+		}
+		return in.Index + 1, nil
+	default:
+		return 0, fmt.Errorf("expected ref.null or ref.func")
+	}
 }
 
 func EmbeddedGlobalSlot(m *wasm.Module, index uint32) (uint32, bool) {
