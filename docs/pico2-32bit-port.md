@@ -343,7 +343,10 @@ all active ranges before clearing and populating caller-owned table cells.
 Mixed functions now execute bounded `table.get`, `table.set`, `table.size`,
 `table.grow`, `table.fill`, and overlap-safe `table.copy`. Growth preflights the
 fixed descriptor maximum, initializes every new complete slot, and only then
-publishes the new length. `call_indirect` resolves function-index-plus-one
+publishes the new length. Active, passive, and declarative element segments are
+retained in index order; active ranges initialize transactionally, while
+`table.init` and idempotent `elem.drop` use fixed 12-byte element descriptors
+with dropped-state enforcement. `call_indirect` resolves function-index-plus-one
 entries through parallel
 published code/type arrays. Structurally identical core signatures share a
 canonical type ID; bounds, null, and type mismatches publish distinct traps
@@ -361,7 +364,7 @@ preflighted `memory.init` plus idempotent `data.drop` directly against those
 descriptors.
 
 This is still not public backend admission. Arbitrary-depth and table-driven
-structured-control transfers, passive element/table.init state, start invocation,
+structured-control transfers, start invocation,
 generated-
 code entry trampolines, firmware linking and transport, and Pico 2 hardware
 qualification remain to be implemented and measured.

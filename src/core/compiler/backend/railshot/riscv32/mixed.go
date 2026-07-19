@@ -52,6 +52,12 @@ func compileMixedModuleFunction(m *wasm.Module, ft *wasm.CompType, locals []wasm
 		if (op.Kind == shared.MixedMemoryInit || op.Kind == shared.MixedDataDrop) && uint64(op.Target) >= uint64(len(m.Data)) {
 			return nil, nil, fmt.Errorf("riscv32: invalid mixed data segment %d", op.Target)
 		}
+		if (op.Kind == shared.MixedTableInit || op.Kind == shared.MixedElemDrop) && uint64(op.Target) >= uint64(len(m.Elements)) {
+			return nil, nil, fmt.Errorf("riscv32: invalid mixed element segment %d", op.Target)
+		}
+		if op.Kind == shared.MixedTableInit && op.Lane != 0 {
+			return nil, nil, fmt.Errorf("riscv32: invalid mixed table.init table %d", op.Lane)
+		}
 		if op.Kind == shared.MixedCallIndirect {
 			if op.Lane != 0 || len(m.Tables) != 1 {
 				return nil, nil, fmt.Errorf("riscv32: invalid mixed indirect table %d", op.Lane)
@@ -950,6 +956,67 @@ func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc) ([]byte, erro
 			if !a.PatchFarJump(done, finish) || !a.PatchFarBranch(outOfBounds, trap) {
 				return nil, fmt.Errorf("riscv32: mixed table branch out of range")
 			}
+		case shared.MixedTableInit:
+			must(a.Lw(rv.T0, rv.SP, off(op.Left)), "table.init destination")
+			must(a.Lw(rv.T1, rv.SP, off(op.Right)), "table.init source offset")
+			must(a.Lw(rv.T2, rv.SP, off(op.Third)), "table.init count")
+			must(a.Lw(rv.T3, rvContextReg, embedded32.ContextTableOffset), "table.init table descriptor")
+			must(a.Lw(rv.T4, rv.T3, embedded32.TableABILengthOffset), "table.init table length")
+			traps := []int{a.FarBcond(rv.T4, rv.T2, rv.CondLTU, branchScratch)}
+			a.Sub(rv.T4, rv.T4, rv.T2)
+			traps = append(traps, a.FarBcond(rv.T4, rv.T0, rv.CondLTU, branchScratch))
+			must(a.Lw(rv.T3, rv.T3, embedded32.TableABIElementSegmentsBaseOffset), "table.init element descriptor base")
+			a.MovImm32(rv.T6, op.Target*embedded32.DataSegmentABIBytes)
+			a.Add(rv.T3, rv.T3, rv.T6)
+			must(a.Lw(rv.T5, rv.T3, embedded32.DataSegmentDroppedOffset), "table.init dropped flag")
+			available := a.Bcond(rv.T5, rv.Zero, rv.CondEQ)
+			a.MovImm32(rv.T5, 0)
+			lengthReady := a.Jal(rv.Zero)
+			availableTarget := a.Len()
+			must(a.Lw(rv.T5, rv.T3, embedded32.DataSegmentLengthOffset), "table.init element length")
+			lengthTarget := a.Len()
+			if !a.PatchBranch13(available, availableTarget) || !a.PatchJAL21(lengthReady, lengthTarget) {
+				return nil, fmt.Errorf("riscv32: mixed table.init element length branch out of range")
+			}
+			traps = append(traps, a.FarBcond(rv.T5, rv.T2, rv.CondLTU, branchScratch))
+			a.Sub(rv.T5, rv.T5, rv.T2)
+			traps = append(traps, a.FarBcond(rv.T5, rv.T1, rv.CondLTU, branchScratch))
+			must(a.Lw(rv.T3, rv.T3, embedded32.DataSegmentBaseOffset), "table.init payload base")
+			a.Slli(rv.T4, rv.T1, 2)
+			a.Add(rv.T3, rv.T3, rv.T4)
+			must(a.Lw(rv.T5, rvContextReg, embedded32.ContextTableOffset), "table.init table descriptor restore")
+			must(a.Lw(rv.T5, rv.T5, embedded32.TableABIEntriesBaseOffset), "table.init entries")
+			a.Slli(rv.T4, rv.T0, 2)
+			a.Add(rv.T5, rv.T5, rv.T4)
+			loop := a.Len()
+			copied := a.Bcond(rv.T2, rv.Zero, rv.CondEQ)
+			must(a.Lw(rv.T0, rv.T3, 0), "table.init load")
+			must(a.Sw(rv.T0, rv.T5, 0), "table.init store")
+			must(a.Addi(rv.T3, rv.T3, 4), "table.init source advance")
+			must(a.Addi(rv.T5, rv.T5, 4), "table.init destination advance")
+			must(a.Addi(rv.T2, rv.T2, -1), "table.init count decrement")
+			back := a.Jal(rv.Zero)
+			if !a.PatchJAL21(back, loop) || !a.PatchBranch13(copied, a.Len()) {
+				return nil, fmt.Errorf("riscv32: mixed table.init loop out of range")
+			}
+			done := a.FarJump(rv.Zero, branchScratch)
+			trap := emitTrapReturn(embedded32.TrapTableOutOfBounds, "table.init bounds")
+			finish := a.Len()
+			if !a.PatchFarJump(done, finish) {
+				return nil, fmt.Errorf("riscv32: mixed table.init success branch out of range")
+			}
+			for _, branch := range traps {
+				if !a.PatchFarBranch(branch, trap) {
+					return nil, fmt.Errorf("riscv32: mixed table.init trap branch out of range")
+				}
+			}
+		case shared.MixedElemDrop:
+			must(a.Lw(rv.T0, rvContextReg, embedded32.ContextTableOffset), "elem.drop table descriptor")
+			must(a.Lw(rv.T0, rv.T0, embedded32.TableABIElementSegmentsBaseOffset), "elem.drop descriptor base")
+			a.MovImm32(rv.T1, op.Target*embedded32.DataSegmentABIBytes)
+			a.Add(rv.T0, rv.T0, rv.T1)
+			a.MovImm32(rv.T1, 1)
+			must(a.Sw(rv.T1, rv.T0, embedded32.DataSegmentDroppedOffset), "elem.drop store")
 		case shared.MixedTableSize:
 			if op.Target != 0 {
 				return nil, fmt.Errorf("riscv32: mixed table.size index %d is not supported", op.Target)

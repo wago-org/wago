@@ -10,6 +10,8 @@ type TableABI struct {
 	Maximum             uint32
 	FunctionEntriesBase uint32
 	FunctionTypesBase   uint32
+	ElementSegmentsBase uint32
+	ElementSegmentCount uint32
 }
 
 const (
@@ -18,5 +20,7 @@ const (
 	TableABIMaximumOffset             = 8
 	TableABIFunctionEntriesBaseOffset = 12
 	TableABIFunctionTypesBaseOffset   = 16
-	TableABIBytes                     = 20
+	TableABIElementSegmentsBaseOffset = 20
+	TableABIElementSegmentCountOffset = 24
+	TableABIBytes                     = 28
 )

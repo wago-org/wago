@@ -68,6 +68,8 @@ const (
 	MixedTableGrow
 	MixedTableFill
 	MixedTableCopy
+	MixedTableInit
+	MixedElemDrop
 	MixedF64Helper
 	MixedF32Helper
 	MixedI64Helper
@@ -1658,6 +1660,37 @@ func BuildMixedPlanWithModuleResolvers(ft *wasm.CompType, locals []wasm.LocalRun
 					return nil, err
 				}
 				p.Ops = append(p.Ops, MixedOp{Kind: MixedMemoryFill, Left: dst.Slot, Right: value.Slot, Third: n.Slot})
+			case 12: // table.init
+				elementIndex, err := r.U32()
+				if err != nil {
+					return nil, err
+				}
+				tableIndex, err := r.U32()
+				if err != nil || resolveTable == nil {
+					return nil, fmt.Errorf("mixed table.init requires module tables")
+				}
+				if typ, ok := resolveTable(tableIndex); !ok || typ.Kind != wasm.ValRef {
+					return nil, fmt.Errorf("mixed table.init table %d is invalid", tableIndex)
+				}
+				n, err := pop(wasm.I32)
+				if err != nil {
+					return nil, err
+				}
+				src, err := pop(wasm.I32)
+				if err != nil {
+					return nil, err
+				}
+				dst, err := pop(wasm.I32)
+				if err != nil {
+					return nil, err
+				}
+				p.Ops = append(p.Ops, MixedOp{Kind: MixedTableInit, Left: dst.Slot, Right: src.Slot, Third: n.Slot, Target: elementIndex, Lane: tableIndex})
+			case 13: // elem.drop
+				elementIndex, err := r.U32()
+				if err != nil {
+					return nil, err
+				}
+				p.Ops = append(p.Ops, MixedOp{Kind: MixedElemDrop, Target: elementIndex})
 			case 14: // table.copy
 				dstTable, err1 := r.U32()
 				srcTable, err2 := r.U32()

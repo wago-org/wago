@@ -29,7 +29,16 @@ type EmbeddedGlobal struct {
 	Words   [4]uint32
 }
 
+type EmbeddedElementMode uint8
+
+const (
+	EmbeddedElementActive EmbeddedElementMode = iota
+	EmbeddedElementPassive
+	EmbeddedElementDeclarative
+)
+
 type EmbeddedElementSegment struct {
+	Mode   EmbeddedElementMode
 	Offset uint32
 	Values []uint32
 }
@@ -102,6 +111,27 @@ func (m *EmbeddedModule) InstantiateGlobals(cells []uint32) error {
 	return nil
 }
 
+func (m *EmbeddedModule) ElementSegmentABI(bases []uint32) ([]embedded32.DataSegmentABI, error) {
+	if m == nil || m.Table == nil {
+		if len(bases) != 0 {
+			return nil, embedded32.ErrArenaCapacity
+		}
+		return nil, nil
+	}
+	if len(bases) < len(m.Table.Elements) {
+		return nil, embedded32.ErrArenaCapacity
+	}
+	out := make([]embedded32.DataSegmentABI, len(m.Table.Elements))
+	for i := range m.Table.Elements {
+		segment := &m.Table.Elements[i]
+		out[i] = embedded32.DataSegmentABI{Base: bases[i], Length: uint32(len(segment.Values))}
+		if segment.Mode != EmbeddedElementPassive {
+			out[i].Dropped = 1
+		}
+	}
+	return out, nil
+}
+
 func (m *EmbeddedModule) InstantiateTable(entries []uint32) error {
 	if m == nil || m.Table == nil {
 		if len(entries) != 0 {
@@ -114,14 +144,16 @@ func (m *EmbeddedModule) InstantiateTable(entries []uint32) error {
 	}
 	for i := range m.Table.Elements {
 		segment := &m.Table.Elements[i]
-		if uint64(segment.Offset)+uint64(len(segment.Values)) > uint64(m.Table.Minimum) {
+		if segment.Mode == EmbeddedElementActive && uint64(segment.Offset)+uint64(len(segment.Values)) > uint64(m.Table.Minimum) {
 			return fmt.Errorf("embedded element segment %d exceeds table minimum", i)
 		}
 	}
 	clear(entries[:m.Table.Minimum])
 	for i := range m.Table.Elements {
 		segment := &m.Table.Elements[i]
-		copy(entries[segment.Offset:], segment.Values)
+		if segment.Mode == EmbeddedElementActive {
+			copy(entries[segment.Offset:], segment.Values)
+		}
 	}
 	return nil
 }
@@ -454,12 +486,24 @@ func embeddedTable(m *wasm.Module, target string) (*EmbeddedTable, error) {
 	out.Elements = make([]EmbeddedElementSegment, 0, len(m.Elements))
 	for i := range m.Elements {
 		elem := &m.Elements[i]
-		if elem.Mode.Kind != wasm.ElemActive || elem.Mode.Table != 0 {
-			return nil, fmt.Errorf("%s: element segment %d must be active for table zero", target, i)
-		}
-		offset, err := embeddedI32Const(elem.Mode.Offset)
-		if err != nil {
-			return nil, fmt.Errorf("%s: element segment %d offset: %w", target, i, err)
+		mode := EmbeddedElementActive
+		var offset uint32
+		switch elem.Mode.Kind {
+		case wasm.ElemActive:
+			if elem.Mode.Table != 0 {
+				return nil, fmt.Errorf("%s: element segment %d targets unsupported table", target, i)
+			}
+			var err error
+			offset, err = embeddedI32Const(elem.Mode.Offset)
+			if err != nil {
+				return nil, fmt.Errorf("%s: element segment %d offset: %w", target, i, err)
+			}
+		case wasm.ElemPassive:
+			mode = EmbeddedElementPassive
+		case wasm.ElemDeclarative:
+			mode = EmbeddedElementDeclarative
+		default:
+			return nil, fmt.Errorf("%s: element segment %d mode is not supported", target, i)
 		}
 		values := make([]uint32, 0)
 		switch elem.Kind.Kind {
@@ -486,10 +530,10 @@ func embeddedTable(m *wasm.Module, target string) (*EmbeddedTable, error) {
 		default:
 			return nil, fmt.Errorf("%s: element segment %d kind is not supported", target, i)
 		}
-		if uint64(offset)+uint64(len(values)) > uint64(out.Minimum) {
+		if mode == EmbeddedElementActive && uint64(offset)+uint64(len(values)) > uint64(out.Minimum) {
 			return nil, fmt.Errorf("%s: element segment %d exceeds table minimum", target, i)
 		}
-		out.Elements = append(out.Elements, EmbeddedElementSegment{Offset: offset, Values: values})
+		out.Elements = append(out.Elements, EmbeddedElementSegment{Mode: mode, Offset: offset, Values: values})
 	}
 	return out, nil
 }
