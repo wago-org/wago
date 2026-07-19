@@ -48,6 +48,76 @@ func CompileModuleWith(m *wasm.Module, opts ModuleCompileOptions) (*CompiledModu
 			}
 		}
 	}
+	exported := make([]bool, len(cm.Functions))
+	for i := range m.Exports {
+		export := &m.Exports[i]
+		if export.Index.Kind == wasm.ExternFunc && uint64(export.Index.Index) < uint64(len(exported)) {
+			exported[export.Index.Index] = true
+		}
+	}
+	for i, needed := range exported {
+		if !needed {
+			continue
+		}
+		for len(a.B)%16 != 0 {
+			a.Nop()
+		}
+		meta := &cm.Functions[i]
+		overflowSlots := int32(0)
+		if meta.ParamSlots > 8 {
+			overflowSlots = int32(meta.ParamSlots - 8)
+		}
+		if meta.ResultSlots > 8 && int32(meta.ResultSlots-8) > overflowSlots {
+			overflowSlots = int32(meta.ResultSlots - 8)
+		}
+		stateBase := overflowSlots * 4
+		frame := (stateBase + 12 + 15) &^ 15
+		if frame > 2048 {
+			return nil, fmt.Errorf("riscv32: exported function %d entry frame exceeds displacement", i)
+		}
+		meta.CallOffset, meta.HasCallEntry = uint32(a.Len()), true
+		a.Addi(rv.SP, rv.SP, -frame)
+		a.Sw(rv.X23, rv.SP, stateBase+4)
+		a.Sw(rv.RA, rv.SP, stateBase+8)
+		a.MovReg(rv.T0, rv.A0)
+		a.Lw(rv.X23, rv.T0, embedded32.CallABIContextOffset)
+		a.Lw(rv.T1, rv.T0, embedded32.CallABIResultsOffset)
+		a.Sw(rv.T1, rv.SP, stateBase)
+		a.Lw(rv.T0, rv.T0, embedded32.CallABIParametersOffset)
+		for slot := uint16(0); slot < meta.ParamSlots; slot++ {
+			if slot < 8 {
+				a.Lw(rv.A0+rv.Reg(slot), rv.T0, int32(slot)*4)
+			} else {
+				a.Lw(rv.T1, rv.T0, int32(slot)*4)
+				a.Sw(rv.T1, rv.SP, int32(slot-8)*4)
+			}
+		}
+		call := a.FarCall(branchScratch)
+		a.Lw(rv.T0, rv.X23, embedded32.ContextTrapCellOffset)
+		a.Lw(rv.T1, rv.T0, 0)
+		success := a.FarBcond(rv.T1, rv.Zero, rv.CondEQ, branchScratch)
+		a.MovReg(rv.A0, rv.T1)
+		done := a.FarJump(rv.Zero, branchScratch)
+		successTarget := a.Len()
+		a.Lw(rv.T0, rv.SP, stateBase)
+		for slot := uint16(0); slot < meta.ResultSlots; slot++ {
+			if slot < 8 {
+				a.Sw(rv.A0+rv.Reg(slot), rv.T0, int32(slot)*4)
+			} else {
+				a.Lw(rv.T1, rv.SP, int32(slot-8)*4)
+				a.Sw(rv.T1, rv.T0, int32(slot)*4)
+			}
+		}
+		a.MovImm32(rv.A0, 0)
+		doneTarget := a.Len()
+		a.Lw(rv.X23, rv.SP, stateBase+4)
+		a.Lw(rv.RA, rv.SP, stateBase+8)
+		a.Addi(rv.SP, rv.SP, frame)
+		a.Ret()
+		if !a.PatchFarJump(call, cm.Entry[i]) || !a.PatchFarBranch(success, successTarget) || !a.PatchFarJump(done, doneTarget) {
+			return nil, fmt.Errorf("riscv32: exported function %d entry relocation out of range", i)
+		}
+	}
 	if cm.Start != nil {
 		for len(a.B)%16 != 0 {
 			a.Nop()

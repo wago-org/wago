@@ -1859,6 +1859,63 @@ func TestCompileModuleBulkMemoryFromMixedFunctionUnderQEMU(t *testing.T) {
 	runARM32Exit(t, qemu, append(a.B, fn...), 42)
 }
 
+func arm32ExportedCallModule(t *testing.T) *wasm.Module {
+	t.Helper()
+	m, err := wasm.DecodeModule(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I64}, []wasm.ValType{wasm.I64}))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 1, 0x0b}))),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+func TestCompileModuleCallsExportThroughSerializedEntryThunkUnderQEMU(t *testing.T) {
+	qemu, err := exec.LookPath("qemu-arm")
+	if err != nil {
+		t.Skip("qemu-arm not installed")
+	}
+	cm, err := CompileModule(arm32ExportedCallModule(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	meta := cm.Functions[0]
+	if !meta.HasCallEntry || meta.CallOffset%16 != 0 || meta.ParamSlots != 3 || meta.ResultSlots != 2 {
+		t.Fatalf("function metadata=%+v", meta)
+	}
+	var a a32.Asm
+	armMemoryContext(&a)
+	a.MovImm32(a32.R12, 9)
+	a.Str(a32.R12, a32.SP, 64)
+	a.MovImm32(a32.R12, 42)
+	a.Str(a32.R12, a32.SP, 68)
+	a.MovImm32(a32.R12, 0)
+	a.Str(a32.R12, a32.SP, 72)
+	a.Str(a32.R12, a32.SP, 80)
+	a.Str(a32.R12, a32.SP, 84)
+	a.MovImm32(a32.R12, 16)
+	a.Add(a32.R5, a32.SP, a32.R12)
+	a.Str(a32.R5, a32.SP, 96)
+	a.MovImm32(a32.R12, 64)
+	a.Add(a32.R5, a32.SP, a32.R12)
+	a.Str(a32.R5, a32.SP, 100)
+	a.MovImm32(a32.R12, 80)
+	a.Add(a32.R5, a32.SP, a32.R12)
+	a.Str(a32.R5, a32.SP, 104)
+	a.MovImm32(a32.R12, 96)
+	a.Add(a32.R0, a32.SP, a32.R12)
+	call := a.Call()
+	a.Ldr(a32.R0, a32.SP, 80)
+	armExit(&a)
+	if !a.PatchCall(call, len(a.B)+int(meta.CallOffset)) {
+		t.Fatal("export thunk relocation")
+	}
+	runARM32Exit(t, qemu, append(a.B, cm.Code...), 42)
+}
+
 func arm32StartModule(t *testing.T) *wasm.Module {
 	t.Helper()
 	m, err := wasm.DecodeModule(wasmtest.Module(

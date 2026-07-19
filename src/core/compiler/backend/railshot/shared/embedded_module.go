@@ -9,11 +9,13 @@ import (
 )
 
 type EmbeddedFunctionMetadata struct {
-	FuncIndex   uint32
-	Offset      uint32
-	Size        uint32
-	ParamSlots  uint16
-	ResultSlots uint16
+	FuncIndex    uint32
+	Offset       uint32
+	Size         uint32
+	ParamSlots   uint16
+	ResultSlots  uint16
+	CallOffset   uint32
+	HasCallEntry bool
 }
 
 type EmbeddedDataSegment struct {
@@ -220,6 +222,9 @@ func PublishEmbeddedModule(arena *embedded32.CodeArena, module *EmbeddedModule, 
 	}
 	for i, meta := range module.Functions {
 		meta.Offset += block.Offset
+		if meta.HasCallEntry {
+			meta.CallOffset += block.Offset
+		}
 		out.Functions[i] = meta
 	}
 	return out, nil

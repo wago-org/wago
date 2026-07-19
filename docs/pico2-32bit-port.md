@@ -363,7 +363,15 @@ and starts active segments dropped. `ContextABI` now publishes a stable array of
 preflighted `memory.init` plus idempotent `data.drop` directly against those
 descriptors.
 
-Modules with a start function now append a 16-byte-aligned target entry thunk.
+Each exported local function now receives one deduplicated, 16-byte-aligned
+entry thunk. Firmware passes a stable 12-byte `CallABI` containing target
+addresses for `ContextABI`, serialized parameter slots, and serialized result
+slots. The thunk stages the architecture's four/eight register slots plus the
+bounded stack overflow area, preserves the fixed context register, invokes the
+internal module ABI, and writes complete results only when the trap cell remains
+clear.
+
+Modules with a start function also append a 16-byte-aligned target entry thunk.
 The thunk accepts only a `ContextABI` pointer in the platform's first argument
 register, preserves the platform callee-saved context register and return
 address, invokes the validated zero-argument/zero-result start function, and
@@ -372,6 +380,6 @@ transactional instantiation/start sequencing without target-specific inline
 assembly.
 
 This is still not public backend admission. Arbitrary-depth and table-driven
-structured-control transfers, general exported-function entry trampolines,
-firmware linking and transport, and Pico 2 hardware
+structured-control transfers, imported callbacks, firmware linking and
+transport, and Pico 2 hardware
 qualification remain to be implemented and measured.

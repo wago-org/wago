@@ -1850,6 +1850,59 @@ func TestCompileModuleBulkMemoryFromMixedFunctionUnderQEMU(t *testing.T) {
 	runRV32Exit(t, qemu, append(a.B, fn...), 42)
 }
 
+func riscv32ExportedCallModule(t *testing.T) *wasm.Module {
+	t.Helper()
+	m, err := wasm.DecodeModule(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I64}, []wasm.ValType{wasm.I64}))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 1, 0x0b}))),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+func TestCompileModuleCallsExportThroughSerializedEntryThunkUnderQEMU(t *testing.T) {
+	qemu, err := exec.LookPath("qemu-riscv32")
+	if err != nil {
+		t.Skip("qemu-riscv32 not installed")
+	}
+	cm, err := CompileModule(riscv32ExportedCallModule(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	meta := cm.Functions[0]
+	if !meta.HasCallEntry || meta.CallOffset%16 != 0 || meta.ParamSlots != 3 || meta.ResultSlots != 2 {
+		t.Fatalf("function metadata=%+v", meta)
+	}
+	var a rv.Asm
+	rvMemoryContext(&a)
+	a.MovImm32(rv.T0, 9)
+	a.Sw(rv.T0, rv.SP, 64)
+	a.MovImm32(rv.T0, 42)
+	a.Sw(rv.T0, rv.SP, 68)
+	a.Sw(rv.Zero, rv.SP, 72)
+	a.Sw(rv.Zero, rv.SP, 80)
+	a.Sw(rv.Zero, rv.SP, 84)
+	a.Addi(rv.T0, rv.SP, 16)
+	a.Sw(rv.T0, rv.SP, 96)
+	a.Addi(rv.T0, rv.SP, 64)
+	a.Sw(rv.T0, rv.SP, 100)
+	a.Addi(rv.T0, rv.SP, 80)
+	a.Sw(rv.T0, rv.SP, 104)
+	a.Addi(rv.A0, rv.SP, 96)
+	call := a.Jal(rv.RA)
+	a.Lw(rv.A0, rv.SP, 80)
+	a.MovImm32(rv.A7, 93)
+	a.Ecall()
+	if !a.PatchJAL21(call, len(a.B)+int(meta.CallOffset)) {
+		t.Fatal("export thunk relocation")
+	}
+	runRV32Exit(t, qemu, append(a.B, cm.Code...), 42)
+}
+
 func riscv32StartModule(t *testing.T) *wasm.Module {
 	t.Helper()
 	m, err := wasm.DecodeModule(wasmtest.Module(
