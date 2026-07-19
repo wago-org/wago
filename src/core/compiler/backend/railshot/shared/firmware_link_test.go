@@ -166,6 +166,64 @@ func TestBuildEmbeddedLinkedFirmwareImagePublishesSharedMemoryContext(t *testing
 	}
 }
 
+func TestEmbeddedLinkedFirmwareImagePublishesCrossModuleFuncrefs(t *testing.T) {
+	provider := compileEmbeddedLinkTestModule(t, wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0})),
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 1, 1, 2})),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("f", byte(wasm.ExternFunc), 0),
+			wasmtest.ExportEntry("table", byte(wasm.ExternTable), 0),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x0b}))),
+	))
+	provider.Functions[0].CallOffset = provider.Functions[0].Offset
+	provider.Functions[0].HasCallEntry = true
+	functionImport := append(wasmtest.Name("provider"), wasmtest.Name("f")...)
+	functionImport = append(functionImport, byte(wasm.ExternFunc), 0)
+	tableImport := append(wasmtest.Name("provider"), wasmtest.Name("table")...)
+	tableImport = append(tableImport, byte(wasm.ExternTable), 0x70, 1, 1, 2)
+	consumer := compileEmbeddedLinkTestModule(t, wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(2, wasmtest.Vec(functionImport, tableImport)),
+		wasmtest.Section(9, wasmtest.Vec([]byte{0, 0x41, 0, 0x0b, 1, 0})),
+	))
+	plan, err := ResolveEmbeddedLinks([]EmbeddedNamedModule{{Name: "provider", Module: provider}, {Name: "consumer", Module: consumer}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	opts := linkedFirmwareTestOptions(2)
+	opts.Modules[0].TableCapacity = 2
+	opts.Modules[1].TableCapacity = 2
+	size, err := EmbeddedLinkedFirmwareImageSize(plan, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	image, err := BuildEmbeddedLinkedFirmwareImage(make([]byte, size), plan, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	word := func(address uint32) uint32 {
+		offset := address - image.BaseAddress
+		return binary.LittleEndian.Uint32(image.Bytes[offset : offset+4])
+	}
+	providerImage := image.Modules[0].Image
+	consumerImage := image.Modules[1].Image
+	table := providerImage.TableAddresses[0]
+	entries := word(table + embedded32.TableABIEntriesBaseOffset)
+	if got := word(entries); got != 1 {
+		t.Fatalf("linked table funcref=%d", got)
+	}
+	contexts := word(table + embedded32.TableABIFunctionContextsBaseOffset)
+	if got := word(contexts); got != providerImage.ContextAddress {
+		t.Fatalf("linked function context=%#x provider=%#x", got, providerImage.ContextAddress)
+	}
+	refs := word(consumerImage.ContextAddress + embedded32.ContextFunctionRefsBaseOffset)
+	if got := word(refs); got != 1 {
+		t.Fatalf("consumer imported ref.func identity=%d", got)
+	}
+}
+
 func TestBuildEmbeddedLinkedFirmwareImageAppliesActiveImportedData(t *testing.T) {
 	provider := embeddedFirmwareMemoryProvider(t)
 	memoryImport := append(wasmtest.Name("provider"), wasmtest.Name("memory")...)
@@ -227,14 +285,42 @@ func TestBuildEmbeddedLinkedFirmwareImagePreflightsCapacity(t *testing.T) {
 	}
 }
 
-func TestEmbeddedLinkedFirmwareImageRejectsSharedMemoryAndTableImports(t *testing.T) {
-	provider := embeddedLinkProvider(t)
-	consumer := embeddedLinkConsumer(t)
+func TestEmbeddedLinkedFirmwareImagePublishesImportedTableAliases(t *testing.T) {
+	provider := compileEmbeddedLinkTestModule(t, wasmtest.Module(
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 1, 2, 4})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("table", byte(wasm.ExternTable), 0))),
+	))
+	tableImport := append(wasmtest.Name("provider"), wasmtest.Name("table")...)
+	tableImport = append(tableImport, byte(wasm.ExternTable), 0x70, 1, 1, 4)
+	consumer := compileEmbeddedLinkTestModule(t, wasmtest.Module(
+		wasmtest.Section(2, wasmtest.Vec(tableImport)),
+	))
 	plan, err := ResolveEmbeddedLinks([]EmbeddedNamedModule{{Name: "provider", Module: provider}, {Name: "consumer", Module: consumer}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := EmbeddedLinkedFirmwareImageSize(plan, linkedFirmwareTestOptions(2)); err == nil {
-		t.Fatal("shared memory/table link accepted")
+	opts := linkedFirmwareTestOptions(2)
+	opts.Modules[0].TableCapacity = 4
+	opts.Modules[1].TableCapacity = 4
+	size, err := EmbeddedLinkedFirmwareImageSize(plan, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	image, err := BuildEmbeddedLinkedFirmwareImage(make([]byte, size), plan, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	word := func(address uint32) uint32 {
+		offset := address - image.BaseAddress
+		return binary.LittleEndian.Uint32(image.Bytes[offset : offset+4])
+	}
+	providerTable := image.Modules[0].Image.TableAddresses[0]
+	consumerContext := image.Modules[1].Image.ContextAddress
+	directory := word(consumerContext + embedded32.ContextTablesBaseOffset)
+	if got := word(directory); got != providerTable {
+		t.Fatalf("consumer table=%#x provider=%#x", got, providerTable)
+	}
+	if got := word(consumerContext + embedded32.ContextTableStorageOffset); got != providerTable {
+		t.Fatalf("consumer table-0 storage=%#x provider=%#x", got, providerTable)
 	}
 }

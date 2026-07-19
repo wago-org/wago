@@ -70,6 +70,8 @@ type embeddedFirmwareLayout struct {
 	tables             []embeddedFirmwareTableLayout
 	functionEntries    uint32
 	functionTypes      uint32
+	functionContexts   uint32
+	functionRefs       uint32
 	elementDescriptors uint32
 	elementValues      []uint32
 	memory             uint32
@@ -191,6 +193,12 @@ func embeddedFirmwarePlan(module *EmbeddedModule, opts EmbeddedFirmwareOptions) 
 			}
 		}
 	}
+	functionCount := len(module.FunctionTypeIDs)
+	if functionCount != 0 {
+		if layout.functionRefs, err = a.reserve(uint64(functionCount)*4, 4); err != nil {
+			return nil, err
+		}
+	}
 	if len(tables) != 0 {
 		layout.tables = make([]embeddedFirmwareTableLayout, len(tables))
 		if layout.tableDirectory, err = a.reserve(uint64(len(tables))*4, 4); err != nil {
@@ -221,12 +229,14 @@ func embeddedFirmwarePlan(module *EmbeddedModule, opts EmbeddedFirmwareOptions) 
 			}
 		}
 		layout.table, layout.tableEntries, layout.tableCapacity = layout.tables[0].descriptor, layout.tables[0].entries, layout.tables[0].capacity
-		functionCount := len(module.FunctionTypeIDs)
 		if functionCount != 0 {
 			if layout.functionEntries, err = a.reserve(uint64(functionCount)*4, 4); err != nil {
 				return nil, err
 			}
 			if layout.functionTypes, err = a.reserve(uint64(functionCount)*4, 4); err != nil {
+				return nil, err
+			}
+			if layout.functionContexts, err = a.reserve(uint64(functionCount)*4, 4); err != nil {
 				return nil, err
 			}
 		}
@@ -380,9 +390,17 @@ func BuildEmbeddedFirmwareImage(dst []byte, module *EmbeddedModule, opts Embedde
 			copy(imageBytes[layout.memory+segment.Offset:], segment.Bytes)
 		}
 	}
+	if len(module.FunctionTypeIDs) != 0 {
+		for i := range module.FunctionTypeIDs {
+			put(layout.functionRefs+uint32(i*4), uint32(i+1))
+		}
+	}
 	if len(tables) != 0 {
 		for i, value := range module.FunctionTypeIDs {
 			put(layout.functionTypes+uint32(i*4), value)
+		}
+		for i := range module.FunctionTypeIDs {
+			put(layout.functionContexts+uint32(i*4), addr(layout.context))
 		}
 		for i := range module.Functions {
 			function := &module.Functions[i]
@@ -402,10 +420,11 @@ func BuildEmbeddedFirmwareImage(dst []byte, module *EmbeddedModule, opts Embedde
 			put(descriptor+embedded32.DataSegmentDroppedOffset, 1)
 		}
 	}
-	var functionEntriesAddress, functionTypesAddress, elementsAddress uint32
+	var functionEntriesAddress, functionTypesAddress, functionContextsAddress, elementsAddress uint32
 	if len(module.FunctionTypeIDs) != 0 && len(tables) != 0 {
 		functionEntriesAddress = addr(layout.functionEntries)
 		functionTypesAddress = addr(layout.functionTypes)
+		functionContextsAddress = addr(layout.functionContexts)
 	}
 	if len(elements) != 0 {
 		elementsAddress = addr(layout.elementDescriptors)
@@ -425,6 +444,7 @@ func BuildEmbeddedFirmwareImage(dst []byte, module *EmbeddedModule, opts Embedde
 		put(item.descriptor+embedded32.TableABIMaximumOffset, item.capacity)
 		put(item.descriptor+embedded32.TableABIFunctionEntriesBaseOffset, functionEntriesAddress)
 		put(item.descriptor+embedded32.TableABIFunctionTypesBaseOffset, functionTypesAddress)
+		put(item.descriptor+embedded32.TableABIFunctionContextsBaseOffset, functionContextsAddress)
 		put(item.descriptor+embedded32.TableABIElementSegmentsBaseOffset, elementsAddress)
 		put(item.descriptor+embedded32.TableABIElementSegmentCountOffset, uint32(len(elements)))
 	}
@@ -462,6 +482,10 @@ func BuildEmbeddedFirmwareImage(dst []byte, module *EmbeddedModule, opts Embedde
 	put(layout.context+embedded32.ContextTableCountOffset, uint32(len(tables)))
 	put(layout.context+embedded32.ContextElementSegmentsBaseOffset, elementsAddress)
 	put(layout.context+embedded32.ContextElementSegmentCountOffset, uint32(len(elements)))
+	if len(module.FunctionTypeIDs) != 0 {
+		put(layout.context+embedded32.ContextFunctionRefsBaseOffset, addr(layout.functionRefs))
+	}
+	put(layout.context+embedded32.ContextFunctionRefCountOffset, uint32(len(module.FunctionTypeIDs)))
 
 	functionExports := 0
 	for i := range module.Exports {

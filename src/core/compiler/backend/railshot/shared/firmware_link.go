@@ -35,9 +35,14 @@ type embeddedLinkedModuleLayout struct {
 }
 
 type embeddedLinkedFirmwareLayout struct {
-	required uint32
-	modules  []embeddedLinkedModuleLayout
-	binding  map[[2]int]EmbeddedLinkBinding
+	required               uint32
+	modules                []embeddedLinkedModuleLayout
+	binding                map[[2]int]EmbeddedLinkBinding
+	functionBase           []uint32
+	functionCount          uint32
+	functionEntriesOffset  uint32
+	functionTypesOffset    uint32
+	functionContextsOffset uint32
 }
 
 // EmbeddedLinkedFirmwareImageSize preflights a resolved function/global link
@@ -88,6 +93,131 @@ func BuildEmbeddedLinkedFirmwareImage(dst []byte, plan *EmbeddedLinkPlan, opts E
 		offset := address - opts.BaseAddress
 		binary.LittleEndian.PutUint32(out.Bytes[offset:offset+4], value)
 		return nil
+	}
+	functionEntriesAddress := opts.BaseAddress + layout.functionEntriesOffset
+	functionTypesAddress := opts.BaseAddress + layout.functionTypesOffset
+	functionContextsAddress := opts.BaseAddress + layout.functionContextsOffset
+	for moduleIndex := range plan.Modules {
+		module := plan.Modules[moduleIndex].Module
+		image := out.Modules[moduleIndex].Image
+		for localIndex := range module.Functions {
+			function := &module.Functions[localIndex]
+			id := layout.functionBase[moduleIndex] + uint32(localIndex)
+			entry := image.CodeAddress + function.Offset
+			entry |= layout.modules[moduleIndex].options.FunctionAddressMask
+			if err := putAddress(functionEntriesAddress+id*4, entry); err != nil {
+				return nil, err
+			}
+			if err := putAddress(functionTypesAddress+id*4, module.FunctionTypeIDs[function.FuncIndex]); err != nil {
+				return nil, err
+			}
+			if err := putAddress(functionContextsAddress+id*4, image.ContextAddress); err != nil {
+				return nil, err
+			}
+		}
+		refsAddress, err := readAddress(image.ContextAddress + embedded32.ContextFunctionRefsBaseOffset)
+		if err != nil {
+			return nil, err
+		}
+		for functionIndex := range module.FunctionTypeIDs {
+			id, err := resolveLinkedFunctionID(plan, layout, moduleIndex, uint32(functionIndex), make(map[[2]uint32]bool))
+			if err != nil {
+				return nil, err
+			}
+			if err := putAddress(refsAddress+uint32(functionIndex)*4, id+1); err != nil {
+				return nil, err
+			}
+		}
+		for _, tableAddress := range image.TableAddresses {
+			if err := putAddress(tableAddress+embedded32.TableABIFunctionEntriesBaseOffset, functionEntriesAddress); err != nil {
+				return nil, err
+			}
+			if err := putAddress(tableAddress+embedded32.TableABIFunctionTypesBaseOffset, functionTypesAddress); err != nil {
+				return nil, err
+			}
+			if err := putAddress(tableAddress+embedded32.TableABIFunctionContextsBaseOffset, functionContextsAddress); err != nil {
+				return nil, err
+			}
+		}
+		elements := embeddedModuleElements(module)
+		descriptors, err := readAddress(image.ContextAddress + embedded32.ContextElementSegmentsBaseOffset)
+		if err != nil {
+			return nil, err
+		}
+		for elementIndex := range elements {
+			valueType, ok := embeddedReferenceValueType(elements[elementIndex].Reference)
+			if !ok || valueType != wasm.FuncRef {
+				continue
+			}
+			base, err := readAddress(descriptors + uint32(elementIndex)*embedded32.DataSegmentABIBytes + embedded32.DataSegmentBaseOffset)
+			if err != nil {
+				return nil, err
+			}
+			for valueIndex, value := range elements[elementIndex].Values {
+				if value == 0 {
+					continue
+				}
+				id, err := resolveLinkedFunctionID(plan, layout, moduleIndex, value-1, make(map[[2]uint32]bool))
+				if err != nil {
+					return nil, err
+				}
+				if err := putAddress(base+uint32(valueIndex)*4, id+1); err != nil {
+					return nil, err
+				}
+			}
+		}
+		tables := embeddedModuleTables(module)
+		for tableIndex := range tables {
+			if tables[tableIndex].Imported {
+				continue
+			}
+			valueType, ok := embeddedReferenceValueType(tables[tableIndex].Reference)
+			if !ok || valueType != wasm.FuncRef {
+				continue
+			}
+			tableAddress := image.TableAddresses[tableIndex]
+			entries, err := readAddress(tableAddress + embedded32.TableABIEntriesBaseOffset)
+			if err != nil {
+				return nil, err
+			}
+			length, err := readAddress(tableAddress + embedded32.TableABILengthOffset)
+			if err != nil {
+				return nil, err
+			}
+			for entryIndex := uint32(0); entryIndex < length; entryIndex++ {
+				value, err := readAddress(entries + entryIndex*4)
+				if err != nil {
+					return nil, err
+				}
+				if value == 0 {
+					continue
+				}
+				id, err := resolveLinkedFunctionID(plan, layout, moduleIndex, value-1, make(map[[2]uint32]bool))
+				if err != nil {
+					return nil, err
+				}
+				if err := putAddress(entries+entryIndex*4, id+1); err != nil {
+					return nil, err
+				}
+			}
+		}
+		for globalIndex := range module.Globals {
+			global := &module.Globals[globalIndex]
+			if global.Type.Kind != wasm.ValRef {
+				continue
+			}
+			valueType, ok := embeddedReferenceValueType(global.Type.Ref)
+			if !ok || valueType != wasm.FuncRef {
+				continue
+			}
+			value, err := resolveLinkedFuncRefGlobal(plan, layout, moduleIndex, uint32(len(module.ImportedGlobals)+globalIndex), make(map[[2]uint32]bool))
+			if err != nil {
+				return nil, err
+			}
+			if err := putAddress(image.GlobalsAddress+global.Slot*4, value); err != nil {
+				return nil, err
+			}
+		}
 	}
 	for consumerIndex := range plan.Modules {
 		module := plan.Modules[consumerIndex].Module
@@ -163,6 +293,76 @@ func BuildEmbeddedLinkedFirmwareImage(dst []byte, plan *EmbeddedLinkPlan, opts E
 				}
 			}
 		}
+		tables := embeddedModuleTables(module)
+		if len(tables) != 0 {
+			directory, err := readAddress(image.ContextAddress + embedded32.ContextTablesBaseOffset)
+			if err != nil {
+				return nil, err
+			}
+			for tableIndex := range tables {
+				if !tables[tableIndex].Imported {
+					continue
+				}
+				importIndex, ok := embeddedImportIndex(module, wasm.ExternTable, uint32(tableIndex))
+				if !ok {
+					return nil, fmt.Errorf("embedded32: module %q table import %d is unavailable", plan.Modules[consumerIndex].Name, tableIndex)
+				}
+				providerTable, err := resolveLinkedTableAddress(plan, layout, out, consumerIndex, importIndex, make(map[[2]int]bool))
+				if err != nil {
+					return nil, err
+				}
+				if err := putAddress(directory+uint32(tableIndex)*4, providerTable); err != nil {
+					return nil, err
+				}
+				if tableIndex == 0 {
+					if err := putAddress(image.ContextAddress+embedded32.ContextTableOffset, providerTable); err != nil {
+						return nil, err
+					}
+					if err := putAddress(image.ContextAddress+embedded32.ContextTableStorageOffset, providerTable); err != nil {
+						return nil, err
+					}
+				}
+			}
+			elements := embeddedModuleElements(module)
+			descriptors, err := readAddress(image.ContextAddress + embedded32.ContextElementSegmentsBaseOffset)
+			if err != nil {
+				return nil, err
+			}
+			for elementIndex := range elements {
+				segment := &elements[elementIndex]
+				if segment.Mode != EmbeddedElementActive || uint64(segment.Table) >= uint64(len(tables)) || !tables[segment.Table].Imported {
+					continue
+				}
+				providerTable, err := readAddress(directory + segment.Table*4)
+				if err != nil {
+					return nil, err
+				}
+				entries, err := readAddress(providerTable + embedded32.TableABIEntriesBaseOffset)
+				if err != nil {
+					return nil, err
+				}
+				length, err := readAddress(providerTable + embedded32.TableABILengthOffset)
+				if err != nil {
+					return nil, err
+				}
+				if uint64(segment.Offset)+uint64(len(segment.Values)) > uint64(length) {
+					return nil, fmt.Errorf("embedded32: module %q active element segment %d exceeds linked table", plan.Modules[consumerIndex].Name, elementIndex)
+				}
+				values, err := readAddress(descriptors + uint32(elementIndex)*embedded32.DataSegmentABIBytes + embedded32.DataSegmentBaseOffset)
+				if err != nil {
+					return nil, err
+				}
+				for valueIndex := range segment.Values {
+					value, err := readAddress(values + uint32(valueIndex)*4)
+					if err != nil {
+						return nil, err
+					}
+					if err := putAddress(entries+(segment.Offset+uint32(valueIndex))*4, value); err != nil {
+						return nil, err
+					}
+				}
+			}
+		}
 		if len(module.ImportedGlobals) != 0 {
 			directoryAddress := opts.BaseAddress + moduleLayout.globalsOffset
 			if err := putAddress(image.ContextAddress+embedded32.ContextImportedGlobalsBaseOffset, directoryAddress); err != nil {
@@ -203,7 +403,15 @@ func embeddedLinkedFirmwarePlan(plan *EmbeddedLinkPlan, opts EmbeddedLinkedFirmw
 		}
 		binding[key] = item
 	}
-	layout := &embeddedLinkedFirmwareLayout{modules: make([]embeddedLinkedModuleLayout, len(plan.Modules)), binding: binding}
+	layout := &embeddedLinkedFirmwareLayout{modules: make([]embeddedLinkedModuleLayout, len(plan.Modules)), binding: binding, functionBase: make([]uint32, len(plan.Modules))}
+	for i := range plan.Modules {
+		layout.functionBase[i] = layout.functionCount
+		count := uint64(len(plan.Modules[i].Module.Functions))
+		if uint64(layout.functionCount)+count > uint64(^uint32(0)) {
+			return nil, embedded32.ErrArenaCapacity
+		}
+		layout.functionCount += uint32(count)
+	}
 	globalWords := make(map[[2]uint32][4]uint32)
 	visitingGlobals := make(map[[2]uint32]bool)
 	var offset uint64
@@ -211,17 +419,6 @@ func embeddedLinkedFirmwarePlan(plan *EmbeddedLinkPlan, opts EmbeddedLinkedFirmw
 		module := plan.Modules[i].Module
 		if module == nil {
 			return nil, fmt.Errorf("embedded32: linked module %d is nil", i)
-		}
-		if module.Table != nil && module.Table.Imported {
-			return nil, fmt.Errorf("embedded32: module %q imports a table; shared table descriptors are not linked yet", plan.Modules[i].Name)
-		}
-		if module.Table != nil && module.ImportedFunctions != 0 {
-			return nil, fmt.Errorf("embedded32: module %q combines imported functions with a table; context-aware table entries are not linked yet", plan.Modules[i].Name)
-		}
-		for j := range module.ImportedGlobals {
-			if wasm.EqualValType(module.ImportedGlobals[j].Type, wasm.FuncRef) {
-				return nil, fmt.Errorf("embedded32: module %q imports a funcref global; cross-module function references are not linked yet", plan.Modules[i].Name)
-			}
 		}
 		for j := range module.Exports {
 			export := &module.Exports[j]
@@ -257,19 +454,35 @@ func embeddedLinkedFirmwarePlan(plan *EmbeddedLinkPlan, opts EmbeddedLinkedFirmw
 				clone.Data[j].Offset, clone.Data[j].HasOffsetGlobal = value, false
 			}
 		}
-		if module.Table != nil {
-			table := *module.Table
-			table.Elements = append([]EmbeddedElementSegment(nil), module.Table.Elements...)
-			for j := range table.Elements {
-				if table.Elements[j].HasOffsetGlobal {
-					value, err := resolveOffset(table.Elements[j].OffsetGlobal)
-					if err != nil {
-						return nil, err
-					}
-					table.Elements[j].Offset, table.Elements[j].HasOffsetGlobal = value, false
+		clone.Tables = append([]EmbeddedTable(nil), module.Tables...)
+		for j := range clone.Tables {
+			clone.Tables[j].Imported = false
+			clone.Tables[j].Elements = nil
+		}
+		clone.Elements = append([]EmbeddedElementSegment(nil), module.Elements...)
+		if module.Elements == nil && module.Table != nil {
+			clone.Elements = append([]EmbeddedElementSegment(nil), module.Table.Elements...)
+		}
+		for j := range clone.Elements {
+			if clone.Elements[j].HasOffsetGlobal {
+				value, err := resolveOffset(clone.Elements[j].OffsetGlobal)
+				if err != nil {
+					return nil, err
 				}
+				clone.Elements[j].Offset, clone.Elements[j].HasOffsetGlobal = value, false
 			}
-			clone.Table = &table
+		}
+		if len(clone.Tables) == 1 {
+			clone.Tables[0].Elements = clone.Elements
+			clone.Table = &clone.Tables[0]
+		} else if len(clone.Tables) > 1 {
+			compat := clone.Tables[0]
+			compat.Elements = clone.Elements
+			clone.Table = &compat
+		} else if len(clone.Elements) != 0 {
+			clone.Table = &EmbeddedTable{Reference: wasm.FuncRef.Ref, Elements: clone.Elements}
+		} else {
+			clone.Table = nil
 		}
 		if module.MemoryImported {
 			importIndex, ok := embeddedImportIndex(module, wasm.ExternMem, 0)
@@ -349,6 +562,15 @@ func embeddedLinkedFirmwarePlan(plan *EmbeddedLinkPlan, opts EmbeddedLinkedFirmw
 		}
 		moduleLayout.regionBytes = uint32(offset) - moduleLayout.offset
 	}
+	offset = (offset + 3) &^ 3
+	if layout.functionCount != 0 {
+		layout.functionEntriesOffset = uint32(offset)
+		offset += uint64(layout.functionCount) * 4
+		layout.functionTypesOffset = uint32(offset)
+		offset += uint64(layout.functionCount) * 4
+		layout.functionContextsOffset = uint32(offset)
+		offset += uint64(layout.functionCount) * 4
+	}
 	if offset > uint64(^uint32(0)) || uint64(opts.BaseAddress)+offset > uint64(^uint32(0)) {
 		return nil, embedded32.ErrArenaCapacity
 	}
@@ -356,7 +578,7 @@ func embeddedLinkedFirmwarePlan(plan *EmbeddedLinkPlan, opts EmbeddedLinkedFirmw
 	for consumer := range plan.Modules {
 		for importIndex := range plan.Modules[consumer].Module.Imports {
 			kind := plan.Modules[consumer].Module.Imports[importIndex].Kind
-			if kind != wasm.ExternFunc && kind != wasm.ExternGlobal && kind != wasm.ExternMem {
+			if kind != wasm.ExternFunc && kind != wasm.ExternGlobal && kind != wasm.ExternMem && kind != wasm.ExternTable {
 				return nil, fmt.Errorf("embedded32: module %q import %d kind %d is not linkable in a firmware bundle", plan.Modules[consumer].Name, importIndex, kind)
 			}
 			if _, ok := binding[[2]int{consumer, importIndex}]; !ok {
@@ -368,6 +590,10 @@ func embeddedLinkedFirmwarePlan(plan *EmbeddedLinkPlan, opts EmbeddedLinkedFirmw
 				}
 			} else if kind == wasm.ExternGlobal {
 				if err := validateLinkedGlobalTarget(plan, binding, consumer, importIndex, make(map[[2]int]bool)); err != nil {
+					return nil, err
+				}
+			} else if kind == wasm.ExternTable {
+				if err := validateLinkedTableTarget(plan, binding, consumer, importIndex, make(map[[2]int]bool)); err != nil {
 					return nil, err
 				}
 			} else if err := validateLinkedMemoryTarget(plan, binding, consumer, importIndex, make(map[[2]int]bool)); err != nil {
@@ -444,6 +670,33 @@ func validateLinkedMemoryTarget(plan *EmbeddedLinkPlan, binding map[[2]int]Embed
 	return nil
 }
 
+func validateLinkedTableTarget(plan *EmbeddedLinkPlan, binding map[[2]int]EmbeddedLinkBinding, consumer, importIndex int, visiting map[[2]int]bool) error {
+	key := [2]int{consumer, importIndex}
+	if visiting[key] {
+		return fmt.Errorf("embedded32: cyclic table re-export at module %q import %d", plan.Modules[consumer].Name, importIndex)
+	}
+	visiting[key] = true
+	defer delete(visiting, key)
+	item, ok := binding[key]
+	if !ok {
+		return fmt.Errorf("embedded32: unbound table import at module %q import %d", plan.Modules[consumer].Name, importIndex)
+	}
+	provider := plan.Modules[item.ProviderModule].Module
+	export := provider.Exports[item.ExportIndex]
+	tables := embeddedModuleTables(provider)
+	if uint64(export.Index) >= uint64(len(tables)) {
+		return fmt.Errorf("embedded32: provider table %d is unavailable", export.Index)
+	}
+	if tables[export.Index].Imported {
+		providerImport, ok := embeddedImportIndex(provider, wasm.ExternTable, export.Index)
+		if !ok {
+			return fmt.Errorf("embedded32: provider table import %d is unavailable", export.Index)
+		}
+		return validateLinkedTableTarget(plan, binding, item.ProviderModule, providerImport, visiting)
+	}
+	return nil
+}
+
 func validateLinkedGlobalTarget(plan *EmbeddedLinkPlan, binding map[[2]int]EmbeddedLinkBinding, consumer, importIndex int, visiting map[[2]int]bool) error {
 	key := [2]int{consumer, importIndex}
 	if visiting[key] {
@@ -501,6 +754,64 @@ func resolveLinkedFunction(plan *EmbeddedLinkPlan, layout *embeddedLinkedFirmwar
 		}
 	}
 	return 0, 0, fmt.Errorf("embedded32: provider function %d has no local entry", export.Index)
+}
+
+func resolveLinkedFunctionID(plan *EmbeddedLinkPlan, layout *embeddedLinkedFirmwareLayout, moduleIndex int, functionIndex uint32, visiting map[[2]uint32]bool) (uint32, error) {
+	key := [2]uint32{uint32(moduleIndex), functionIndex}
+	if visiting[key] {
+		return 0, fmt.Errorf("embedded32: cyclic function identity at module %q function %d", plan.Modules[moduleIndex].Name, functionIndex)
+	}
+	visiting[key] = true
+	defer delete(visiting, key)
+	module := plan.Modules[moduleIndex].Module
+	if functionIndex < module.ImportedFunctions {
+		importIndex, ok := embeddedImportIndex(module, wasm.ExternFunc, functionIndex)
+		if !ok {
+			return 0, fmt.Errorf("embedded32: module %q function import %d is unavailable", plan.Modules[moduleIndex].Name, functionIndex)
+		}
+		item, ok := layout.binding[[2]int{moduleIndex, importIndex}]
+		if !ok {
+			return 0, fmt.Errorf("embedded32: module %q function import %d is unbound", plan.Modules[moduleIndex].Name, functionIndex)
+		}
+		export := plan.Modules[item.ProviderModule].Module.Exports[item.ExportIndex]
+		return resolveLinkedFunctionID(plan, layout, item.ProviderModule, export.Index, visiting)
+	}
+	local := functionIndex - module.ImportedFunctions
+	if uint64(local) >= uint64(len(module.Functions)) {
+		return 0, fmt.Errorf("embedded32: module %q local function %d is unavailable", plan.Modules[moduleIndex].Name, functionIndex)
+	}
+	return layout.functionBase[moduleIndex] + local, nil
+}
+
+func resolveLinkedTableAddress(plan *EmbeddedLinkPlan, layout *embeddedLinkedFirmwareLayout, image *EmbeddedLinkedFirmwareImage, consumer, importIndex int, visiting map[[2]int]bool) (uint32, error) {
+	key := [2]int{consumer, importIndex}
+	if visiting[key] {
+		return 0, fmt.Errorf("embedded32: cyclic table re-export at module %q import %d", plan.Modules[consumer].Name, importIndex)
+	}
+	visiting[key] = true
+	defer delete(visiting, key)
+	item, ok := layout.binding[key]
+	if !ok {
+		return 0, fmt.Errorf("embedded32: unbound table import at module %q import %d", plan.Modules[consumer].Name, importIndex)
+	}
+	provider := plan.Modules[item.ProviderModule].Module
+	export := provider.Exports[item.ExportIndex]
+	tables := embeddedModuleTables(provider)
+	if uint64(export.Index) >= uint64(len(tables)) {
+		return 0, fmt.Errorf("embedded32: provider table %d is unavailable", export.Index)
+	}
+	if tables[export.Index].Imported {
+		providerImport, ok := embeddedImportIndex(provider, wasm.ExternTable, export.Index)
+		if !ok {
+			return 0, fmt.Errorf("embedded32: provider table import %d is unavailable", export.Index)
+		}
+		return resolveLinkedTableAddress(plan, layout, image, item.ProviderModule, providerImport, visiting)
+	}
+	providerImage := image.Modules[item.ProviderModule].Image
+	if uint64(export.Index) >= uint64(len(providerImage.TableAddresses)) {
+		return 0, fmt.Errorf("embedded32: provider table image %d is unavailable", export.Index)
+	}
+	return providerImage.TableAddresses[export.Index], nil
 }
 
 func resolveLinkedMemoryModule(plan *EmbeddedLinkPlan, binding map[[2]int]EmbeddedLinkBinding, consumer, importIndex int, visiting map[[2]int]bool) (int, error) {
@@ -582,6 +893,57 @@ func resolveLinkedGlobalAddress(plan *EmbeddedLinkPlan, layout *embeddedLinkedFi
 	global := provider.Globals[local]
 	providerImage := image.Modules[binding.ProviderModule].Image
 	return providerImage.GlobalsAddress + global.Slot*4, nil
+}
+
+func resolveLinkedFuncRefGlobal(plan *EmbeddedLinkPlan, layout *embeddedLinkedFirmwareLayout, moduleIndex int, globalIndex uint32, visiting map[[2]uint32]bool) (uint32, error) {
+	key := [2]uint32{uint32(moduleIndex), globalIndex}
+	if visiting[key] {
+		return 0, fmt.Errorf("embedded32: cyclic funcref global at module %q global %d", plan.Modules[moduleIndex].Name, globalIndex)
+	}
+	visiting[key] = true
+	defer delete(visiting, key)
+	module := plan.Modules[moduleIndex].Module
+	if uint64(globalIndex) < uint64(len(module.ImportedGlobals)) {
+		importIndex, ok := embeddedImportIndex(module, wasm.ExternGlobal, globalIndex)
+		if !ok {
+			return 0, fmt.Errorf("embedded32: module %q funcref global import %d is unavailable", plan.Modules[moduleIndex].Name, globalIndex)
+		}
+		item, ok := layout.binding[[2]int{moduleIndex, importIndex}]
+		if !ok {
+			return 0, fmt.Errorf("embedded32: module %q funcref global import %d is unbound", plan.Modules[moduleIndex].Name, globalIndex)
+		}
+		export := plan.Modules[item.ProviderModule].Module.Exports[item.ExportIndex]
+		return resolveLinkedFuncRefGlobal(plan, layout, item.ProviderModule, export.Index, visiting)
+	}
+	local := uint64(globalIndex) - uint64(len(module.ImportedGlobals))
+	if local >= uint64(len(module.Globals)) {
+		return 0, fmt.Errorf("embedded32: module %q funcref global %d is unavailable", plan.Modules[moduleIndex].Name, globalIndex)
+	}
+	global := module.Globals[local]
+	valueType, ok := embeddedReferenceValueType(global.Type.Ref)
+	if !ok || valueType != wasm.FuncRef {
+		return 0, fmt.Errorf("embedded32: module %q global %d is not funcref", plan.Modules[moduleIndex].Name, globalIndex)
+	}
+	if global.HasInitGlobal {
+		importIndex, ok := embeddedImportIndex(module, wasm.ExternGlobal, global.InitGlobal)
+		if !ok {
+			return 0, fmt.Errorf("embedded32: module %q funcref initializer import %d is unavailable", plan.Modules[moduleIndex].Name, global.InitGlobal)
+		}
+		item, ok := layout.binding[[2]int{moduleIndex, importIndex}]
+		if !ok {
+			return 0, fmt.Errorf("embedded32: module %q funcref initializer import %d is unbound", plan.Modules[moduleIndex].Name, global.InitGlobal)
+		}
+		export := plan.Modules[item.ProviderModule].Module.Exports[item.ExportIndex]
+		return resolveLinkedFuncRefGlobal(plan, layout, item.ProviderModule, export.Index, visiting)
+	}
+	if global.Words[0] == 0 {
+		return 0, nil
+	}
+	id, err := resolveLinkedFunctionID(plan, layout, moduleIndex, global.Words[0]-1, make(map[[2]uint32]bool))
+	if err != nil {
+		return 0, err
+	}
+	return id + 1, nil
 }
 
 func resolveLinkedGlobalWords(plan *EmbeddedLinkPlan, binding map[[2]int]EmbeddedLinkBinding, moduleIndex int, globalIndex uint32, memo map[[2]uint32][4]uint32, visiting map[[2]uint32]bool) ([4]uint32, error) {

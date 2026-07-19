@@ -137,7 +137,7 @@ func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc, memoryImporte
 			break
 		}
 		if op.Kind == shared.MixedCallIndirect {
-			indirectBytes = 4
+			indirectBytes = 8
 		}
 	}
 	indirectTargetOffset := helperBase + uint16(helperBytes)
@@ -297,6 +297,25 @@ func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc, memoryImporte
 				must(a.MovImm32(a32.R0, op.Words[i]), "constant")
 				must(a.Str(a32.R0, a32.SP, off(op.Dst)+uint16(i)*4), "constant store")
 			}
+		case shared.MixedRefFunc:
+			must(a.Ldr(a32.R0, armContextReg, embedded32.ContextFunctionRefsBaseOffset), "ref.func directory")
+			must(a.MovImm32(a32.R1, 0), "ref.func directory zero")
+			must(a.Cmp(a32.R0, a32.R1), "ref.func directory compare")
+			fallback := a.FarBcond(a32.CondEQ)
+			if op.Target > ^uint32(0)/4 {
+				return nil, fmt.Errorf("arm32: ref.func index %d overflows directory", op.Target)
+			}
+			must(a.MovImm32(a32.R1, op.Target*4), "ref.func directory offset")
+			must(a.Add(a32.R0, a32.R0, a32.R1), "ref.func directory address")
+			must(a.Ldr(a32.R0, a32.R0, 0), "ref.func value")
+			done := a.Branch()
+			fallbackTarget := a.Len()
+			must(a.MovImm32(a32.R0, op.Target+1), "ref.func local value")
+			finish := a.Len()
+			if !a.PatchFarBranch(fallback, fallbackTarget) || !a.PatchBranch(done, finish) {
+				return nil, fmt.Errorf("arm32: ref.func directory branch out of range")
+			}
+			must(a.Str(a32.R0, a32.SP, off(op.Dst)), "ref.func store")
 		case shared.MixedCopy:
 			for i := uint8(0); i < op.Width; i++ {
 				must(a.Ldr(a32.R0, a32.SP, off(op.Left)+uint16(i)*4), "copy load")
@@ -1503,6 +1522,16 @@ func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc, memoryImporte
 				must(a.Add(a32.R0, a32.R0, a32.R2), "indirect function entry address")
 				must(a.Ldr(a32.R0, a32.R0, 0), "indirect call target")
 				must(a.Str(a32.R0, a32.SP, indirectTargetOffset), "indirect call target save")
+				must(a.Str(armContextReg, a32.SP, importContextOffset), "indirect caller context save")
+				must(a.Ldr(a32.R0, a32.R3, embedded32.TableABIFunctionContextsBaseOffset), "indirect function contexts")
+				must(a.MovImm32(a32.R12, 0), "indirect contexts zero")
+				must(a.Cmp(a32.R0, a32.R12), "indirect contexts compare")
+				noContext := a.FarBcond(a32.CondEQ)
+				must(a.Add(a32.R0, a32.R0, a32.R2), "indirect function context address")
+				must(a.Ldr(armContextReg, a32.R0, 0), "indirect callee context")
+				if !a.PatchFarBranch(noContext, a.Len()) {
+					return nil, fmt.Errorf("arm32: mixed indirect context branch out of range")
+				}
 				resolved := a.Branch()
 				outOfBoundsTarget := emitTrapReturn(embedded32.TrapTableOutOfBounds, "indirect table bounds")
 				nullTarget := emitTrapReturn(embedded32.TrapIndirectCallNull, "indirect null")
@@ -1547,7 +1576,7 @@ func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc, memoryImporte
 					resultReg++
 				}
 			}
-			if op.Kind == shared.MixedCallImport {
+			if op.Kind == shared.MixedCallImport || op.Kind == shared.MixedCallIndirect {
 				must(a.Ldr(a32.R0, armContextReg, embedded32.ContextTrapCellOffset), "callee trap cell")
 				must(a.Ldr(a32.R0, a32.R0, 0), "callee trap value")
 				must(a.Ldr(armContextReg, a32.SP, importContextOffset), "caller context restore")

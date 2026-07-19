@@ -240,6 +240,8 @@ type ContextABI struct {
 	TableCount          uint32
 	ElementSegmentsBase uint32
 	ElementSegmentCount uint32
+	FunctionRefsBase    uint32
+	FunctionRefCount    uint32
 }
 
 const (
@@ -262,7 +264,9 @@ const (
 	ContextTableCountOffset          = 64
 	ContextElementSegmentsBaseOffset = 68
 	ContextElementSegmentCountOffset = 72
-	ContextABISize                   = 76
+	ContextFunctionRefsBaseOffset    = 76
+	ContextFunctionRefCountOffset    = 80
+	ContextABISize                   = 84
 )
 
 // Runtime composes the fixed embedded resources. The initial profile permits

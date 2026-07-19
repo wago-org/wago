@@ -146,9 +146,12 @@ five multi-memory exclusions and one explicit resource rejection for the 8.4
 KiB live-local guard-page stress function. Closed firmware images now allocate bounded per-table descriptors/backing,
 publish an indexed descriptor directory, apply active elements to their exact
 target, and retain one module-wide passive/declarative descriptor set.
-Cross-module imported-table publication and funcref identity still have to match
-this local code/image surface before execution qualification. Execution assertions still require the firmware
-or QEMU module runner.
+Linked bundles now bind imported table-directory entries directly to provider
+descriptors, translate each module's local/imported `ref.func` values into one
+bounded bundle-wide identity space, publish parallel entry/type/context arrays,
+and switch module context for indirect calls. Active elements targeting imported
+tables are applied only after complete bundle preflight. Execution assertions
+still require the firmware or QEMU module runner.
 
 ## Current implementation status
 

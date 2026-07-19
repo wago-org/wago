@@ -5,22 +5,24 @@ package embedded32
 // local funcref. FunctionEntriesBase and FunctionTypesBase index parallel arrays
 // by the decoded zero-based function index.
 type TableABI struct {
-	EntriesBase         uint32
-	Length              uint32
-	Maximum             uint32
-	FunctionEntriesBase uint32
-	FunctionTypesBase   uint32
-	ElementSegmentsBase uint32
-	ElementSegmentCount uint32
+	EntriesBase          uint32
+	Length               uint32
+	Maximum              uint32
+	FunctionEntriesBase  uint32
+	FunctionTypesBase    uint32
+	FunctionContextsBase uint32
+	ElementSegmentsBase  uint32
+	ElementSegmentCount  uint32
 }
 
 const (
-	TableABIEntriesBaseOffset         = 0
-	TableABILengthOffset              = 4
-	TableABIMaximumOffset             = 8
-	TableABIFunctionEntriesBaseOffset = 12
-	TableABIFunctionTypesBaseOffset   = 16
-	TableABIElementSegmentsBaseOffset = 20
-	TableABIElementSegmentCountOffset = 24
-	TableABIBytes                     = 28
+	TableABIEntriesBaseOffset          = 0
+	TableABILengthOffset               = 4
+	TableABIMaximumOffset              = 8
+	TableABIFunctionEntriesBaseOffset  = 12
+	TableABIFunctionTypesBaseOffset    = 16
+	TableABIFunctionContextsBaseOffset = 20
+	TableABIElementSegmentsBaseOffset  = 24
+	TableABIElementSegmentCountOffset  = 28
+	TableABIBytes                      = 32
 )

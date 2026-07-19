@@ -15,6 +15,7 @@ type MixedOpKind uint8
 const (
 	MixedConst MixedOpKind = iota
 	MixedCopy
+	MixedRefFunc
 	MixedI32Add
 	MixedI32Sub
 	MixedI32Mul
@@ -1771,7 +1772,7 @@ func BuildMixedPlanWithModuleResolvers(ft *wasm.CompType, locals []wasm.LocalRun
 			if err != nil {
 				return nil, err
 			}
-			p.Ops = append(p.Ops, MixedOp{Kind: MixedConst, Dst: out.Slot, Width: 1, Words: [4]uint32{index + 1}})
+			p.Ops = append(p.Ops, MixedOp{Kind: MixedRefFunc, Dst: out.Slot, Width: 1, Target: index})
 		case 0xfc:
 			sub, err := r.U32()
 			if err != nil {
