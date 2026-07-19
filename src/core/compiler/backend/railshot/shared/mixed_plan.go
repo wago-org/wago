@@ -21,6 +21,17 @@ const (
 	MixedI32And
 	MixedI32Or
 	MixedI32Xor
+	MixedI32Eqz
+	MixedI32Eq
+	MixedI32Ne
+	MixedI32LtS
+	MixedI32LtU
+	MixedI32GtS
+	MixedI32GtU
+	MixedI32LeS
+	MixedI32LeU
+	MixedI32GeS
+	MixedI32GeU
 	MixedI64Add
 	MixedI64Sub
 	MixedI64Mul
@@ -115,6 +126,9 @@ func MixedValueSlots(typ wasm.ValType) (uint8, bool) {
 	case wasm.V128:
 		return 4, true
 	default:
+		if typ.Kind == wasm.ValRef && typ.Ref.Nullable && (typ.Ref.Heap == wasm.AbsHeap(wasm.HeapFunc) || typ.Ref.Heap == wasm.AbsHeap(wasm.HeapExtern)) {
+			return 1, true
+		}
 		return 0, false
 	}
 }
@@ -139,6 +153,10 @@ func mixedEncodedValueType(encoded byte) (wasm.ValType, bool) {
 		return wasm.F64, true
 	case 0x7b:
 		return wasm.V128, true
+	case 0x70:
+		return wasm.FuncRef, true
+	case 0x6f:
+		return wasm.ExternRef, true
 	default:
 		return wasm.ValType{}, false
 	}
@@ -268,6 +286,19 @@ func BuildMixedPlanWithBlockResolver(ft *wasm.CompType, locals []wasm.LocalRun, 
 			return err
 		}
 		p.Ops = append(p.Ops, MixedOp{Kind: MixedCopy, Dst: out.Slot, Left: value.Slot, Width: inWidth})
+		return nil
+	}
+	unaryOp := func(kind MixedOpKind, typ wasm.ValType) error {
+		value, err := pop(typ)
+		if err != nil {
+			return err
+		}
+		out, err := push(typ)
+		if err != nil {
+			return err
+		}
+		width, _ := MixedValueSlots(typ)
+		p.Ops = append(p.Ops, MixedOp{Kind: kind, Dst: out.Slot, Left: value.Slot, Width: width})
 		return nil
 	}
 	binaryOp := func(kind MixedOpKind, typ wasm.ValType) error {
@@ -937,6 +968,50 @@ func BuildMixedPlanWithBlockResolver(ft *wasm.CompType, locals []wasm.LocalRun, 
 				return nil, err
 			}
 			p.Ops = append(p.Ops, MixedOp{Kind: MixedConst, Dst: out.Slot, Width: 2, Words: [4]uint32{binary.LittleEndian.Uint32(bits), binary.LittleEndian.Uint32(bits[4:])}})
+		case 0x45:
+			if err := unaryOp(MixedI32Eqz, wasm.I32); err != nil {
+				return nil, err
+			}
+		case 0x46:
+			if err := binaryOp(MixedI32Eq, wasm.I32); err != nil {
+				return nil, err
+			}
+		case 0x47:
+			if err := binaryOp(MixedI32Ne, wasm.I32); err != nil {
+				return nil, err
+			}
+		case 0x48:
+			if err := binaryOp(MixedI32LtS, wasm.I32); err != nil {
+				return nil, err
+			}
+		case 0x49:
+			if err := binaryOp(MixedI32LtU, wasm.I32); err != nil {
+				return nil, err
+			}
+		case 0x4a:
+			if err := binaryOp(MixedI32GtS, wasm.I32); err != nil {
+				return nil, err
+			}
+		case 0x4b:
+			if err := binaryOp(MixedI32GtU, wasm.I32); err != nil {
+				return nil, err
+			}
+		case 0x4c:
+			if err := binaryOp(MixedI32LeS, wasm.I32); err != nil {
+				return nil, err
+			}
+		case 0x4d:
+			if err := binaryOp(MixedI32LeU, wasm.I32); err != nil {
+				return nil, err
+			}
+		case 0x4e:
+			if err := binaryOp(MixedI32GeS, wasm.I32); err != nil {
+				return nil, err
+			}
+		case 0x4f:
+			if err := binaryOp(MixedI32GeU, wasm.I32); err != nil {
+				return nil, err
+			}
 		case 0x5b:
 			if err := f32HelperBinary(embedded32.F32Eq, wasm.I32); err != nil {
 				return nil, err
@@ -1345,6 +1420,52 @@ func BuildMixedPlanWithBlockResolver(ft *wasm.CompType, locals []wasm.LocalRun, 
 			if err := i64HelperUnary(embedded32.I64Extend32S, wasm.I64, wasm.I64); err != nil {
 				return nil, err
 			}
+		case 0xd0: // ref.null
+			heap, err := r.S33()
+			if err != nil {
+				return nil, err
+			}
+			var typ wasm.ValType
+			switch heap {
+			case -16:
+				typ = wasm.FuncRef
+			case -17:
+				typ = wasm.ExternRef
+			default:
+				return nil, fmt.Errorf("mixed ref.null heap type %d is not supported", heap)
+			}
+			out, err := push(typ)
+			if err != nil {
+				return nil, err
+			}
+			p.Ops = append(p.Ops, MixedOp{Kind: MixedConst, Dst: out.Slot, Width: 1})
+		case 0xd1: // ref.is_null
+			if len(stack) == 0 || stack[len(stack)-1].Type.Kind != wasm.ValRef {
+				return nil, fmt.Errorf("mixed ref.is_null requires reference operand")
+			}
+			value := stack[len(stack)-1]
+			stack = stack[:len(stack)-1]
+			out, err := push(wasm.I32)
+			if err != nil {
+				return nil, err
+			}
+			p.Ops = append(p.Ops, MixedOp{Kind: MixedI32Eqz, Dst: out.Slot, Left: value.Slot, Width: 1})
+		case 0xd2: // ref.func
+			index, err := r.U32()
+			if err != nil {
+				return nil, err
+			}
+			if resolve == nil {
+				return nil, fmt.Errorf("mixed ref.func requires module functions")
+			}
+			if _, ok := resolve(index); !ok || index == ^uint32(0) {
+				return nil, fmt.Errorf("mixed ref.func index %d is invalid", index)
+			}
+			out, err := push(wasm.FuncRef)
+			if err != nil {
+				return nil, err
+			}
+			p.Ops = append(p.Ops, MixedOp{Kind: MixedConst, Dst: out.Slot, Width: 1, Words: [4]uint32{index + 1}})
 		case 0xfc:
 			sub, err := r.U32()
 			if err != nil {

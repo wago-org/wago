@@ -227,6 +227,44 @@ func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc) ([]byte, erro
 				a.Xor(rv.T0, rv.T0, rv.T1)
 			}
 			must(a.Sw(rv.T0, rv.SP, off(op.Dst)), "i32 result")
+		case shared.MixedI32Eqz, shared.MixedI32Eq, shared.MixedI32Ne,
+			shared.MixedI32LtS, shared.MixedI32LtU, shared.MixedI32GtS, shared.MixedI32GtU,
+			shared.MixedI32LeS, shared.MixedI32LeU, shared.MixedI32GeS, shared.MixedI32GeU:
+			must(a.Lw(rv.T0, rv.SP, off(op.Left)), "i32 compare left")
+			if op.Kind == shared.MixedI32Eqz {
+				a.Seqz(rv.T2, rv.T0)
+			} else {
+				must(a.Lw(rv.T1, rv.SP, off(op.Right)), "i32 compare right")
+				switch op.Kind {
+				case shared.MixedI32Eq:
+					a.Sub(rv.T2, rv.T0, rv.T1)
+					a.Seqz(rv.T2, rv.T2)
+				case shared.MixedI32Ne:
+					a.Sub(rv.T2, rv.T0, rv.T1)
+					a.Snez(rv.T2, rv.T2)
+				case shared.MixedI32LtS:
+					a.Slt(rv.T2, rv.T0, rv.T1)
+				case shared.MixedI32LtU:
+					a.Sltu(rv.T2, rv.T0, rv.T1)
+				case shared.MixedI32GtS:
+					a.Slt(rv.T2, rv.T1, rv.T0)
+				case shared.MixedI32GtU:
+					a.Sltu(rv.T2, rv.T1, rv.T0)
+				case shared.MixedI32LeS:
+					a.Slt(rv.T2, rv.T1, rv.T0)
+					a.Xori(rv.T2, rv.T2, 1)
+				case shared.MixedI32LeU:
+					a.Sltu(rv.T2, rv.T1, rv.T0)
+					a.Xori(rv.T2, rv.T2, 1)
+				case shared.MixedI32GeS:
+					a.Slt(rv.T2, rv.T0, rv.T1)
+					a.Xori(rv.T2, rv.T2, 1)
+				case shared.MixedI32GeU:
+					a.Sltu(rv.T2, rv.T0, rv.T1)
+					a.Xori(rv.T2, rv.T2, 1)
+				}
+			}
+			must(a.Sw(rv.T2, rv.SP, off(op.Dst)), "i32 compare result")
 		case shared.MixedI64Add, shared.MixedI64Sub:
 			must(a.Lw(rv.T0, rv.SP, off(op.Left)), "i64 left low")
 			must(a.Lw(rv.T1, rv.SP, off(op.Left)+4), "i64 left high")

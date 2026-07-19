@@ -267,8 +267,9 @@ admitted scalar and direct-SWAR subsets into one 16-byte-aligned target image.
 A bounded shared frame planner assigns exact contiguous 32-bit slots to mixed
 parameters, locals, operands, and results, preserving one/two/four-slot values
 atomically. Genuinely mixed functions now execute constants, mixed local
-get/set/tee, complete drops, i32 arithmetic/logic, i64 add/sub/multiply/logic, raw-bit
-f32/f64 sign operations, and direct v128 bitwise plus i32x4 add/sub operations.
+get/set/tee, complete drops, i32 arithmetic/logic/comparisons, i64
+add/sub/multiply/logic, raw-bit f32/f64 sign operations, and direct v128 bitwise
+plus i32x4 add/sub operations.
 The internal ABI carries the first four serialized parameter/result slots in
 Arm registers and the first eight in RV32 registers. Additional slots use a
 statically reserved, 16-byte-aligned outgoing area at the base of the caller's
@@ -330,9 +331,12 @@ Module metadata now retains local i32/i64/f32/f64/v128 globals with exact
 mutability, serialized slot offsets, and raw constant initial values.
 Instantiation preflights and initializes bounded caller-provided 32-bit cells,
 `ContextABI` publishes their target base address, and scalar i32 plus mixed frame
-functions execute `global.get`/`global.set` with immutable-set rejection. Pair
-and quad globals move through the frame atomically as complete values, while
-mixed access preserves all surrounding wide operands.
+functions execute `global.get`/`global.set` with immutable-set rejection. Pair and quad globals move through the frame atomically as complete values,
+while mixed access preserves all surrounding wide operands. Nullable funcref
+and externref values use one serialized slot; reference parameters, locals,
+results, `ref.null`, `ref.func`, and `ref.is_null` now use the same mixed frame
+and call ABI. Table storage and indirect dispatch remain a separate runtime
+slice.
 
 The embedded runtime now also provides complete preflighted `memory.copy`,
 `memory.fill`, passive `memory.init`, and idempotent `data.drop` semantics.

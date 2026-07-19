@@ -237,6 +237,46 @@ func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc) ([]byte, erro
 				must(a.Eor(a32.R0, a32.R0, a32.R1), "i32 xor")
 			}
 			must(a.Str(a32.R0, a32.SP, off(op.Dst)), "i32 result")
+		case shared.MixedI32Eqz, shared.MixedI32Eq, shared.MixedI32Ne,
+			shared.MixedI32LtS, shared.MixedI32LtU, shared.MixedI32GtS, shared.MixedI32GtU,
+			shared.MixedI32LeS, shared.MixedI32LeU, shared.MixedI32GeS, shared.MixedI32GeU:
+			must(a.Ldr(a32.R0, a32.SP, off(op.Left)), "i32 compare left")
+			cond := a32.CondEQ
+			if op.Kind == shared.MixedI32Eqz {
+				must(a.MovImm32(a32.R1, 0), "i32 eqz zero")
+			} else {
+				must(a.Ldr(a32.R1, a32.SP, off(op.Right)), "i32 compare right")
+				switch op.Kind {
+				case shared.MixedI32Eq:
+					cond = a32.CondEQ
+				case shared.MixedI32Ne:
+					cond = a32.CondNE
+				case shared.MixedI32LtS:
+					cond = a32.CondLT
+				case shared.MixedI32LtU:
+					cond = a32.CondCC
+				case shared.MixedI32GtS:
+					cond = a32.CondGT
+				case shared.MixedI32GtU:
+					cond = a32.CondHI
+				case shared.MixedI32LeS:
+					cond = a32.CondLE
+				case shared.MixedI32LeU:
+					cond = a32.CondLS
+				case shared.MixedI32GeS:
+					cond = a32.CondGE
+				case shared.MixedI32GeU:
+					cond = a32.CondCS
+				}
+			}
+			must(a.Cmp(a32.R0, a32.R1), "i32 compare")
+			must(a.MovImm32(a32.R2, 0), "i32 compare false")
+			skip := a.FarBcond(cond.Invert())
+			must(a.MovImm32(a32.R2, 1), "i32 compare true")
+			if !a.PatchFarBranch(skip, a.Len()) {
+				return nil, fmt.Errorf("arm32: mixed i32 comparison branch out of range")
+			}
+			must(a.Str(a32.R2, a32.SP, off(op.Dst)), "i32 compare result")
 		case shared.MixedI64Add, shared.MixedI64Sub:
 			must(a.Ldr(a32.R0, a32.SP, off(op.Left)), "i64 left low")
 			must(a.Ldr(a32.R1, a32.SP, off(op.Left)+4), "i64 left high")

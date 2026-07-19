@@ -583,6 +583,120 @@ func TestCompileModuleAccessesWideGlobalUnderQEMU(t *testing.T) {
 	runRV32Exit(t, qemu, append(a.B, cm.Code...), 42)
 }
 
+func riscv32MixedI32CompareModule(t *testing.T) *wasm.Module {
+	t.Helper()
+	body := []byte{1, 1, 0x7c,
+		0x41, 0x7f, 0x41, 1, 0x48,
+		0x41, 0x7f, 0x41, 1, 0x4b, 0x6a,
+		0x41, 0, 0x45, 0x6a,
+		0x41, 5, 0x41, 5, 0x46, 0x6a,
+		0x0b,
+	}
+	code := append(wasmtest.ULEB(uint32(len(body))), body...)
+	m, err := wasm.DecodeModule(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0})),
+		wasmtest.Section(10, wasmtest.Vec(code)),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+func TestCompileModuleExecutesMixedI32ComparisonsUnderQEMU(t *testing.T) {
+	qemu, err := exec.LookPath("qemu-riscv32")
+	if err != nil {
+		t.Skip("qemu-riscv32 not installed")
+	}
+	cm, err := CompileModule(riscv32MixedI32CompareModule(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var a rv.Asm
+	rvMemoryContext(&a)
+	a.Addi(rv.A0, rv.SP, 16)
+	a.MovReg(rv.X23, rv.A0)
+	call := a.Jal(rv.RA)
+	a.MovImm32(rv.A7, 93)
+	a.Ecall()
+	if !a.PatchJAL21(call, len(a.B)+cm.Entry[0]) {
+		t.Fatal("wrapper call relocation")
+	}
+	runRV32Exit(t, qemu, append(a.B, cm.Code...), 4)
+}
+
+func riscv32ReferenceModule(t *testing.T) *wasm.Module {
+	t.Helper()
+	m, err := wasm.DecodeModule(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.FuncRef}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0, 0xd1, 0x0b}))),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+func TestCompileModuleExecutesReferenceValuesUnderQEMU(t *testing.T) {
+	qemu, err := exec.LookPath("qemu-riscv32")
+	if err != nil {
+		t.Skip("qemu-riscv32 not installed")
+	}
+	cm, err := CompileModule(riscv32ReferenceModule(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var a rv.Asm
+	rvMemoryContext(&a)
+	a.Addi(rv.A0, rv.SP, 16)
+	a.MovReg(rv.X23, rv.A0)
+	a.MovImm32(rv.A0, 0)
+	first := a.Jal(rv.RA)
+	a.MovReg(rv.S0, rv.A0)
+	a.MovImm32(rv.A0, 7)
+	second := a.Jal(rv.RA)
+	a.Add(rv.A0, rv.A0, rv.S0)
+	a.MovImm32(rv.A7, 93)
+	a.Ecall()
+	target := len(a.B) + cm.Entry[0]
+	if !a.PatchJAL21(first, target) || !a.PatchJAL21(second, target) {
+		t.Fatal("wrapper call relocation")
+	}
+	runRV32Exit(t, qemu, append(a.B, cm.Code...), 1)
+}
+
+func TestCompileModuleExecutesRefNullUnderQEMU(t *testing.T) {
+	qemu, err := exec.LookPath("qemu-riscv32")
+	if err != nil {
+		t.Skip("qemu-riscv32 not installed")
+	}
+	m, err := wasm.DecodeModule(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0})),
+		wasmtest.Section(10, wasmtest.Vec([]byte{7, 1, 1, 0x7c, 0xd0, 0x70, 0xd1, 0x0b})),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cm, err := CompileModule(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var a rv.Asm
+	rvMemoryContext(&a)
+	a.Addi(rv.A0, rv.SP, 16)
+	a.MovReg(rv.X23, rv.A0)
+	call := a.Jal(rv.RA)
+	a.MovImm32(rv.A7, 93)
+	a.Ecall()
+	if !a.PatchJAL21(call, len(a.B)+cm.Entry[0]) {
+		t.Fatal("wrapper call relocation")
+	}
+	runRV32Exit(t, qemu, append(a.B, cm.Code...), 1)
+}
+
 func riscv32MixedF64HelperModule(t *testing.T) *wasm.Module {
 	t.Helper()
 	body := []byte{1, 1, 0x7f,
