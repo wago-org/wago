@@ -192,6 +192,30 @@ func TestCompileEmbeddedModuleRetainsImportContracts(t *testing.T) {
 	}
 }
 
+func TestCompileEmbeddedModuleRetainsRelease2ReferenceState(t *testing.T) {
+	m := embeddedTestModule(t, nil, nil, nil,
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x6f, 0, 1})),
+		wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.ExternRef, false, []byte{0xd0, 0x6f, 0x0b}))),
+		wasmtest.Section(9, wasmtest.Vec([]byte{3, 0, 0})),
+	)
+	cm, err := CompileEmbeddedModule(m, EmbeddedModuleOptions{}, "test", 4, []byte{0}, func(int, *wasm.CompType, []wasm.LocalRun, []byte) ([]byte, error) {
+		return nil, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cm.Table == nil {
+		t.Fatal("missing element descriptor table")
+	}
+	typ, ok := embeddedReferenceValueType(cm.Table.Reference)
+	if !ok || typ != wasm.ExternRef || len(cm.Table.Elements) != 1 || cm.Table.Elements[0].Mode != EmbeddedElementDeclarative {
+		t.Fatalf("table=%+v", cm.Table)
+	}
+	if len(cm.Globals) != 1 || cm.Globals[0].Type.Kind != wasm.ValRef || cm.Globals[0].Words[0] != 0 {
+		t.Fatalf("globals=%+v", cm.Globals)
+	}
+}
+
 func TestCompileEmbeddedModuleInitializesActiveFunctionTable(t *testing.T) {
 	m := embeddedTestModule(t,
 		[][]byte{wasmtest.FuncType(nil, nil)},

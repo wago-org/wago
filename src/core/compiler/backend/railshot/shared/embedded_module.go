@@ -71,13 +71,15 @@ const (
 )
 
 type EmbeddedElementSegment struct {
-	Mode   EmbeddedElementMode
-	Offset uint32
-	Values []uint32
+	Mode      EmbeddedElementMode
+	Reference wasm.RefType
+	Offset    uint32
+	Values    []uint32
 }
 
 type EmbeddedTable struct {
 	Imported   bool
+	Reference  wasm.RefType
 	Minimum    uint32
 	Maximum    uint32
 	HasMaximum bool
@@ -461,6 +463,20 @@ func CompileEmbeddedModule(m *wasm.Module, opts EmbeddedModuleOptions, target st
 // CompileEmbeddedI32Module preserves the original strict i32 entry point for
 // tests and callers which intentionally admit only the initial scalar subset.
 func CompileEmbeddedI32Module(m *wasm.Module, opts EmbeddedModuleOptions, target string, maxParams, expansion int, alignmentPad []byte, compile func(int, []byte) ([]byte, error)) (*EmbeddedModule, error) {
+	if m != nil {
+		for i := range m.Imports {
+			if m.Imports[i].Type.Kind == wasm.ExternTable {
+				if typ, ok := embeddedReferenceValueType(m.Imports[i].Type.Table.Ref); !ok || typ != wasm.FuncRef {
+					return nil, fmt.Errorf("%s: table type %s is not supported", target, m.Imports[i].Type.Table.Ref)
+				}
+			}
+		}
+		for i := range m.Tables {
+			if typ, ok := embeddedReferenceValueType(m.Tables[i].Type.Ref); !ok || typ != wasm.FuncRef {
+				return nil, fmt.Errorf("%s: table type %s is not supported", target, m.Tables[i].Type.Ref)
+			}
+		}
+	}
 	return CompileEmbeddedModule(m, opts, target, expansion, alignmentPad, func(_ int, ft *wasm.CompType, locals []wasm.LocalRun, body []byte) ([]byte, error) {
 		if len(ft.Params) > maxParams {
 			return nil, fmt.Errorf("has %d parameters, maximum is %d", len(ft.Params), maxParams)
@@ -654,13 +670,27 @@ func EmbeddedTableValueType(m *wasm.Module, index uint32) (wasm.ValType, bool) {
 	}
 	for i := range m.Imports {
 		if m.Imports[i].Type.Kind == wasm.ExternTable {
-			return wasm.RefVal(m.Imports[i].Type.Table.Ref), true
+			return embeddedReferenceValueType(m.Imports[i].Type.Table.Ref)
 		}
 	}
 	if len(m.Tables) == 1 {
-		return wasm.RefVal(m.Tables[0].Type.Ref), true
+		return embeddedReferenceValueType(m.Tables[0].Type.Ref)
 	}
 	return wasm.ValType{}, false
+}
+
+func embeddedReferenceValueType(ref wasm.RefType) (wasm.ValType, bool) {
+	if !ref.Nullable || ref.Exact || ref.Heap.Kind != wasm.HeapAbs {
+		return wasm.ValType{}, false
+	}
+	switch ref.Heap.Abs {
+	case wasm.HeapFunc:
+		return wasm.FuncRef, true
+	case wasm.HeapExtern:
+		return wasm.ExternRef, true
+	default:
+		return wasm.ValType{}, false
+	}
 }
 
 func embeddedTable(m *wasm.Module, target string) (*EmbeddedTable, error) {
@@ -678,14 +708,19 @@ func embeddedTable(m *wasm.Module, target string) (*EmbeddedTable, error) {
 		tableType = &m.Tables[0].Type
 		tableInit = m.Tables[0].Init
 	}
-	if tableType == nil {
-		if len(m.Elements) != 0 {
-			return nil, fmt.Errorf("%s: element segments require a table", target)
-		}
+	if tableType == nil && len(m.Elements) == 0 {
 		return nil, nil
 	}
-	if tableType.Ref != wasm.FuncRef.Ref {
-		return nil, fmt.Errorf("%s: table type %s is not supported", target, tableType.Ref)
+	var tableValueType wasm.ValType
+	if tableType == nil {
+		tableType = &wasm.TableType{Ref: wasm.FuncRef.Ref}
+		tableValueType = wasm.FuncRef
+	} else {
+		var ok bool
+		tableValueType, ok = embeddedReferenceValueType(tableType.Ref)
+		if !ok {
+			return nil, fmt.Errorf("%s: table type %s is not supported", target, tableType.Ref)
+		}
 	}
 	const maxTableSlots = uint64(^uint32(0) / 4)
 	if tableType.Limits.Addr64 || tableType.Limits.Min > maxTableSlots {
@@ -694,7 +729,7 @@ func embeddedTable(m *wasm.Module, target string) (*EmbeddedTable, error) {
 	if tableInit != nil {
 		return nil, fmt.Errorf("%s: table initializer expressions are not supported", target)
 	}
-	out := &EmbeddedTable{Imported: imported, Minimum: uint32(tableType.Limits.Min)}
+	out := &EmbeddedTable{Imported: imported, Reference: tableType.Ref, Minimum: uint32(tableType.Limits.Min)}
 	if tableType.Limits.Max != nil {
 		if *tableType.Limits.Max > maxTableSlots {
 			return nil, fmt.Errorf("%s: table maximum exceeds the addressable 32-bit slot range", target)
@@ -724,9 +759,24 @@ func embeddedTable(m *wasm.Module, target string) (*EmbeddedTable, error) {
 		default:
 			return nil, fmt.Errorf("%s: element segment %d mode is not supported", target, i)
 		}
-		values := make([]uint32, 0)
+		reference, valueType := wasm.FuncRef.Ref, wasm.FuncRef
 		switch elem.Kind.Kind {
-		case wasm.ElemFuncs:
+		case wasm.ElemFuncs, wasm.ElemFuncExprs:
+		case wasm.ElemTypedExprs:
+			var ok bool
+			valueType, ok = embeddedReferenceValueType(elem.Kind.Ref)
+			if !ok {
+				return nil, fmt.Errorf("%s: element segment %d reference type %s is not supported", target, i, elem.Kind.Ref)
+			}
+			reference = elem.Kind.Ref
+		default:
+			return nil, fmt.Errorf("%s: element segment %d kind is not supported", target, i)
+		}
+		if mode == EmbeddedElementActive && tableValueType != valueType {
+			return nil, fmt.Errorf("%s: element segment %d type does not match table", target, i)
+		}
+		values := make([]uint32, 0)
+		if elem.Kind.Kind == wasm.ElemFuncs {
 			values = make([]uint32, len(elem.Kind.Funcs))
 			for j, index := range elem.Kind.Funcs {
 				if uint64(index) >= uint64(functionCount) || uint32(index) == ^uint32(0) {
@@ -734,22 +784,23 @@ func embeddedTable(m *wasm.Module, target string) (*EmbeddedTable, error) {
 				}
 				values[j] = uint32(index) + 1
 			}
-		case wasm.ElemFuncExprs, wasm.ElemTypedExprs:
-			if elem.Kind.Ref != wasm.FuncRef.Ref {
-				return nil, fmt.Errorf("%s: element segment %d reference type %s is not supported", target, i, elem.Kind.Ref)
-			}
+		} else {
 			values = make([]uint32, len(elem.Kind.Exprs))
 			for j := range elem.Kind.Exprs {
-				value, err := embeddedFuncRefConst(elem.Kind.Exprs[j], functionCount)
+				var value uint32
+				var err error
+				if valueType == wasm.FuncRef {
+					value, err = embeddedFuncRefConst(elem.Kind.Exprs[j], functionCount)
+				} else {
+					err = embeddedExternRefConst(elem.Kind.Exprs[j])
+				}
 				if err != nil {
 					return nil, fmt.Errorf("%s: element segment %d value %d: %w", target, i, j, err)
 				}
 				values[j] = value
 			}
-		default:
-			return nil, fmt.Errorf("%s: element segment %d kind is not supported", target, i)
 		}
-		out.Elements = append(out.Elements, EmbeddedElementSegment{Mode: mode, Offset: offset, Values: values})
+		out.Elements = append(out.Elements, EmbeddedElementSegment{Mode: mode, Reference: reference, Offset: offset, Values: values})
 	}
 	return out, nil
 }
@@ -801,6 +852,29 @@ func embeddedFuncRefConst(expr wasm.Expr, functionCount int) (uint32, error) {
 	default:
 		return 0, fmt.Errorf("expected ref.null or ref.func")
 	}
+}
+
+func embeddedExternRefConst(expr wasm.Expr) error {
+	if len(expr.BodyBytes) != 0 {
+		r := wasm.NewReader(expr.BodyBytes)
+		op, err := r.Byte()
+		if err != nil || op != 0xd0 {
+			return fmt.Errorf("expected ref.null extern")
+		}
+		heap, err := r.S33()
+		if err != nil || heap != -17 {
+			return fmt.Errorf("expected ref.null extern")
+		}
+		end, err := r.Byte()
+		if err != nil || end != 0x0b || r.HasNext() {
+			return fmt.Errorf("malformed reference const expression")
+		}
+		return nil
+	}
+	if len(expr.Instrs) != 1 || expr.Instrs[0].Kind != wasm.InstrRefNull || expr.Instrs[0].HeapType() != wasm.AbsHeap(wasm.HeapExtern) {
+		return fmt.Errorf("expected ref.null extern")
+	}
+	return nil
 }
 
 func embeddedLocalGlobalSlot(m *wasm.Module, index uint32) (uint32, bool) {
@@ -896,6 +970,18 @@ func embeddedGlobalInit(m *wasm.Module, expr wasm.Expr, typ wasm.ValType) ([4]ui
 			return words, 0, false, fmt.Errorf("global.get initializer %d is not an immutable imported %s", index, typ)
 		}
 		return words, target, true, nil
+	}
+	if typ.Kind == wasm.ValRef {
+		valueType, ok := embeddedReferenceValueType(typ.Ref)
+		if !ok {
+			return words, 0, false, fmt.Errorf("global type %s is not supported", typ)
+		}
+		if valueType == wasm.FuncRef {
+			value, err := embeddedFuncRefConst(expr, m.FuncCount())
+			words[0] = value
+			return words, 0, false, err
+		}
+		return words, 0, false, embeddedExternRefConst(expr)
 	}
 	words, err := embeddedConstWords(expr, typ)
 	return words, 0, false, err
