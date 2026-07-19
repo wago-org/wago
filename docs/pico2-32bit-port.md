@@ -363,8 +363,15 @@ and starts active segments dropped. `ContextABI` now publishes a stable array of
 preflighted `memory.init` plus idempotent `data.drop` directly against those
 descriptors.
 
+Modules with a start function now append a 16-byte-aligned target entry thunk.
+The thunk accepts only a `ContextABI` pointer in the platform's first argument
+register, preserves the platform callee-saved context register and return
+address, invokes the validated zero-argument/zero-result start function, and
+returns the published trap code. This gives firmware a conventional ABI for
+transactional instantiation/start sequencing without target-specific inline
+assembly.
+
 This is still not public backend admission. Arbitrary-depth and table-driven
-structured-control transfers, start invocation,
-generated-
-code entry trampolines, firmware linking and transport, and Pico 2 hardware
+structured-control transfers, general exported-function entry trampolines,
+firmware linking and transport, and Pico 2 hardware
 qualification remain to be implemented and measured.

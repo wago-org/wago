@@ -1850,6 +1850,46 @@ func TestCompileModuleBulkMemoryFromMixedFunctionUnderQEMU(t *testing.T) {
 	runRV32Exit(t, qemu, append(a.B, fn...), 42)
 }
 
+func riscv32StartModule(t *testing.T) *wasm.Module {
+	t.Helper()
+	m, err := wasm.DecodeModule(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0})),
+		wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.I32, true, []byte{0x41, 0, 0x0b}))),
+		wasmtest.Section(8, []byte{0}),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x41, 42, 0x24, 0, 0x0b}))),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+func TestCompileModuleInvokesStartThroughEntryThunkUnderQEMU(t *testing.T) {
+	qemu, err := exec.LookPath("qemu-riscv32")
+	if err != nil {
+		t.Skip("qemu-riscv32 not installed")
+	}
+	cm, err := CompileModule(riscv32StartModule(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cm.StartEntry == nil || *cm.StartEntry%16 != 0 {
+		t.Fatalf("start entry=%v", cm.StartEntry)
+	}
+	var a rv.Asm
+	rvMemoryContext(&a)
+	a.Addi(rv.A0, rv.SP, 16)
+	call := a.Jal(rv.RA)
+	a.Lw(rv.A0, rv.SP, 60)
+	a.MovImm32(rv.A7, 93)
+	a.Ecall()
+	if !a.PatchJAL21(call, len(a.B)+*cm.StartEntry) {
+		t.Fatal("start thunk relocation")
+	}
+	runRV32Exit(t, qemu, append(a.B, cm.Code...), 42)
+}
+
 func riscv32GlobalModule(t *testing.T) *wasm.Module {
 	t.Helper()
 	global := wasmtest.GlobalEntry(wasm.I32, true, []byte{0x41, 7, 0x0b})

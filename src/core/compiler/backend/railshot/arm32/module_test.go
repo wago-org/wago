@@ -1859,6 +1859,45 @@ func TestCompileModuleBulkMemoryFromMixedFunctionUnderQEMU(t *testing.T) {
 	runARM32Exit(t, qemu, append(a.B, fn...), 42)
 }
 
+func arm32StartModule(t *testing.T) *wasm.Module {
+	t.Helper()
+	m, err := wasm.DecodeModule(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0})),
+		wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.I32, true, []byte{0x41, 0, 0x0b}))),
+		wasmtest.Section(8, []byte{0}),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x41, 42, 0x24, 0, 0x0b}))),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+func TestCompileModuleInvokesStartThroughEntryThunkUnderQEMU(t *testing.T) {
+	qemu, err := exec.LookPath("qemu-arm")
+	if err != nil {
+		t.Skip("qemu-arm not installed")
+	}
+	cm, err := CompileModule(arm32StartModule(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cm.StartEntry == nil || *cm.StartEntry%16 != 0 {
+		t.Fatalf("start entry=%v", cm.StartEntry)
+	}
+	var a a32.Asm
+	armMemoryContext(&a)
+	armContextArg(&a)
+	call := a.Call()
+	a.Ldr(a32.R0, a32.SP, 60)
+	armExit(&a)
+	if !a.PatchCall(call, len(a.B)+*cm.StartEntry) {
+		t.Fatal("start thunk relocation")
+	}
+	runARM32Exit(t, qemu, append(a.B, cm.Code...), 42)
+}
+
 func arm32GlobalModule(t *testing.T) *wasm.Module {
 	t.Helper()
 	global := wasmtest.GlobalEntry(wasm.I32, true, []byte{0x41, 7, 0x0b})

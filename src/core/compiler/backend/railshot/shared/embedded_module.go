@@ -66,6 +66,7 @@ type EmbeddedModule struct {
 	Table             *EmbeddedTable
 	Exports           []EmbeddedExport
 	Start             *uint32
+	StartEntry        *int
 	RequiredCodeBytes uint32
 }
 
@@ -189,6 +190,7 @@ type PublishedEmbeddedModule struct {
 	Table           *EmbeddedTable
 	Exports         []EmbeddedExport
 	Start           *uint32
+	StartEntry      *uint32
 }
 
 func PublishEmbeddedModule(arena *embedded32.CodeArena, module *EmbeddedModule, publish embedded32.CodePublisher) (*PublishedEmbeddedModule, error) {
@@ -209,6 +211,10 @@ func PublishEmbeddedModule(arena *embedded32.CodeArena, module *EmbeddedModule, 
 		return nil, err
 	}
 	out := &PublishedEmbeddedModule{Block: block, Entry: make([]uint32, len(module.Entry)), Functions: make([]EmbeddedFunctionMetadata, len(module.Functions)), FunctionTypeIDs: append([]uint32(nil), module.FunctionTypeIDs...), Data: module.Data, Globals: module.Globals, Table: module.Table, Exports: module.Exports, Start: module.Start}
+	if module.StartEntry != nil {
+		entry := block.Offset + uint32(*module.StartEntry)
+		out.StartEntry = &entry
+	}
 	for i, entry := range module.Entry {
 		out.Entry[i] = block.Offset + uint32(entry)
 	}

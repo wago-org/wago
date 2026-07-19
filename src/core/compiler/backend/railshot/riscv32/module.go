@@ -48,7 +48,34 @@ func CompileModuleWith(m *wasm.Module, opts ModuleCompileOptions) (*CompiledModu
 			}
 		}
 	}
+	if cm.Start != nil {
+		for len(a.B)%16 != 0 {
+			a.Nop()
+		}
+		startEntry := a.Len()
+		a.Addi(rv.SP, rv.SP, -16)
+		a.Sw(rv.X23, rv.SP, 0)
+		a.Sw(rv.RA, rv.SP, 4)
+		a.MovReg(rv.X23, rv.A0)
+		call := a.FarCall(branchScratch)
+		a.Lw(rv.T0, rv.X23, embedded32.ContextTrapCellOffset)
+		a.Lw(rv.A0, rv.T0, 0)
+		a.Lw(rv.X23, rv.SP, 0)
+		a.Lw(rv.RA, rv.SP, 4)
+		a.Addi(rv.SP, rv.SP, 16)
+		a.Ret()
+		if int(*cm.Start) >= len(cm.Entry) || !a.PatchFarJump(call, cm.Entry[*cm.Start]) {
+			return nil, fmt.Errorf("riscv32: start relocation out of range")
+		}
+		cm.StartEntry = &startEntry
+	}
 	cm.Code = a.B
+	if (opts.EnforceCapacity || opts.CodeCapacity != 0) && uint64(len(cm.Code)) > uint64(opts.CodeCapacity) {
+		return nil, fmt.Errorf("riscv32: code arena capacity %d is below emitted image %d", opts.CodeCapacity, len(cm.Code))
+	}
+	if uint32(len(cm.Code)) > cm.RequiredCodeBytes {
+		cm.RequiredCodeBytes = uint32(len(cm.Code))
+	}
 	return cm, nil
 }
 
