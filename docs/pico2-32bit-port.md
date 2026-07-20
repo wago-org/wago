@@ -155,6 +155,12 @@ response after generated code returns. This keeps loop/function-entry
 cancellation polls reachable without a goroutine, a second heap-backed request
 path, or target-specific parsing inside generated code.
 
+The physical Hazard3 cancellation gate passed on 2026-07-20: an infinite-loop
+Wasm function was interrupted by a cancel frame sent 100 ms after call dispatch,
+returned `TrapCanceled`, and then produced the queued cancel acknowledgement in
+protocol order. A follow-up Hello probe confirmed that the board remained
+available.
+
 `TestPico2Release2CompileAdmission` is the opt-in module-level admission gate for
 the pinned WebAssembly/spec v2.0.0 checkout. It runs `wast2json`, decodes every
 emitted module, requires Arm32 and RV32 to agree, requires valid in-gate modules

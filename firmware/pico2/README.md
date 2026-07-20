@@ -200,6 +200,11 @@ go test ./src/core/compiler/backend/railshot \
   -run '^TestPico2BoardCancellation$' -count=1 -v -timeout=1m
 ```
 
+This gate passed on physical Hazard3 hardware on 2026-07-20. The cancel frame
+was sent 100 ms after dispatch, the generated infinite loop returned
+`TrapCanceled`, the queued cancel acknowledgement followed, and a subsequent
+Hello probe succeeded.
+
 Only these board-specific operations remain outside portable Go:
 
 1. switch to the dedicated generated-code stack and enter an arbitrary target
