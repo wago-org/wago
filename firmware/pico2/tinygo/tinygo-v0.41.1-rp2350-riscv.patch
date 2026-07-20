@@ -288,6 +288,57 @@ index f776c5c..b164696 100644
  
  	// Pause watchdog during debug
  	rp.WATCHDOG.CTRL.SetBits(rp.WATCHDOG_CTRL_PAUSE_DBG0 | rp.WATCHDOG_CTRL_PAUSE_DBG1 | rp.WATCHDOG_CTRL_PAUSE_JTAG)
+diff --git a/src/machine/usb.go b/src/machine/usb.go
+index 3833c78..6d693e1 100644
+--- a/src/machine/usb.go
++++ b/src/machine/usb.go
+@@ -30,6 +30,13 @@ func initUSB() {
+ //go:linkname enableUSBCDC machine/usb/cdc.EnableUSBCDC
+ func enableUSBCDC()
+ 
++// SetUSBCDCRxHandler installs an interrupt-context observer for received USB
++// CDC bytes. The handler runs before the serial ring buffer receives the same
++// bytes and does not consume them.
++//
++//go:linkname SetUSBCDCRxHandler machine/usb/cdc.SetRxHandler
++func SetUSBCDCRxHandler(handler func([]byte))
++
+ type Serialer interface {
+ 	WriteByte(c byte) error
+ 	Write(data []byte) (n int, err error)
+diff --git a/src/machine/usb/cdc/usbcdc.go b/src/machine/usb/cdc/usbcdc.go
+index b9e6836..a609578 100644
+--- a/src/machine/usb/cdc/usbcdc.go
++++ b/src/machine/usb/cdc/usbcdc.go
+@@ -38,8 +38,15 @@ var (
+ 	USB *USBCDC
+ 
+ 	usbLineInfo = cdcLineInfo{115200, 0x00, 0x00, 0x08, 0x00}
++	rxHandler   func([]byte)
+ )
+ 
++// SetRxHandler installs an interrupt-context observer for received bytes. The
++// observer must not retain data and does not consume it from the serial stream.
++func SetRxHandler(handler func([]byte)) {
++	rxHandler = handler
++}
++
+ // Read from the RX buffer.
+ func (usbcdc *USBCDC) Read(data []byte) (n int, err error) {
+ 	data1, data2 := usbcdc.rx.Peek()
+@@ -151,7 +158,11 @@ func (usbcdc *USBCDC) RTS() bool {
+ 
+ func cdcCallbackRx(b []byte) {
+ 	free := USB.rx.Free()
+-	USB.rx.Put(b[:min(len(b), int(free))])
++	accepted := b[:min(len(b), int(free))]
++	if rxHandler != nil {
++		rxHandler(accepted)
++	}
++	USB.rx.Put(accepted)
+ }
+ 
+ var cdcSetupBuff [cdcLineInfoSize]byte
 diff --git a/src/runtime/interrupt/interrupt_rp2350_hazard3.go b/src/runtime/interrupt/interrupt_rp2350_hazard3.go
 new file mode 100644
 index 0000000..2e6946a
@@ -739,4 +790,3 @@ index 0000000..038f90b
 +}
 +
 +INCLUDE "targets/riscv.ld"
-

@@ -146,6 +146,15 @@ script, and target JSON. `scripts/pico2-build.sh arm` and
 `scripts/pico2-build.sh riscv` then derive temporary targets that add Wago's
 native assembly without modifying the prepared TinyGo root.
 
+Because the endpoint normally dispatches one request synchronously, the TinyGo
+patch also exposes a non-consuming USB CDC receive observer. Firmware feeds
+those interrupt-context bytes to a fixed 24-byte transport-header recognizer.
+A valid cancel request sets the current image's cancellation cell immediately,
+while the same request remains in the serial ring for its ordered protocol
+response after generated code returns. This keeps loop/function-entry
+cancellation polls reachable without a goroutine, a second heap-backed request
+path, or target-specific parsing inside generated code.
+
 `TestPico2Release2CompileAdmission` is the opt-in module-level admission gate for
 the pinned WebAssembly/spec v2.0.0 checkout. It runs `wast2json`, decodes every
 emitted module, requires Arm32 and RV32 to agree, requires valid in-gate modules

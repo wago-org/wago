@@ -31,6 +31,8 @@ var (
 	uploadStorage      [uploadArenaBytes + 15]byte
 	liveImageStorage   [liveImageArenaBytes + 15]byte
 	nativeStackStorage [nativeStackBytes + 15]byte
+	board              boardHandler
+	cancelObserver     embedded32.TransportCancelObserver
 )
 
 // usbStream adapts TinyGo's non-blocking USB CDC serial interface to the
@@ -59,6 +61,10 @@ func (usbStream) Read(dst []byte) (int, error) {
 
 func (usbStream) Write(src []byte) (int, error) {
 	return machine.Serial.Write(src)
+}
+
+func observeUSB(src []byte) {
+	cancelObserver.Observe(src)
 }
 
 type boardHandler struct {
@@ -191,12 +197,14 @@ func main() {
 		MaximumChunk: maximumPayload - embedded32.TransportUploadChunkHeader,
 	}
 	stream := usbStream{}
-	handler := boardHandler{upload: &upload, liveImage: liveArena, liveAddress: liveAddress, stackLimit: stackLimit, stackTop: stackTop}
+	board = boardHandler{upload: &upload, liveImage: liveArena, liveAddress: liveAddress, stackLimit: stackLimit, stackTop: stackTop}
+	cancelObserver = embedded32.TransportCancelObserver{Handler: &board, MaximumPayload: maximumPayload}
+	machine.SetUSBCDCRxHandler(observeUSB)
 	for {
 		machine.Watchdog.Update()
 		if err := embedded32.ServeTransportOnce(
 			&endpoint,
-			&handler,
+			&board,
 			stream,
 			requestStorage[:],
 			responseStorage[:],

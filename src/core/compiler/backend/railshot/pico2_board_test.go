@@ -101,6 +101,69 @@ func TestPico2Release2BoardExecution(t *testing.T) {
 	t.Logf("Pico 2 %s physical execution: modules=%d assertions=%d files=%d", targetName, modules, assertions, files)
 }
 
+// TestPico2BoardCancellation proves that USB receive interrupts can signal the
+// cancellation cell while generated code owns the synchronous call path.
+func TestPico2BoardCancellation(t *testing.T) {
+	port := os.Getenv("WAGO_PICO2_SERIAL")
+	if port == "" {
+		t.Skip("WAGO_PICO2_SERIAL is required")
+	}
+	target, targetName, err := pico2BoardTarget(os.Getenv("WAGO_PICO2_TARGET"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	board, err := openPico2Board(port, target, targetName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer board.close()
+
+	module, err := wasm.DecodeModule(pico2CancellationModule)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(module); err != nil {
+		t.Fatal(err)
+	}
+	uploaded, err := board.compileUploadStart(module)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ordinal, function, err := pico2BoardExport(uploaded, "run")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if function.ParamSlots != 0 || function.ResultSlots != 0 {
+		t.Fatalf("run shape=%d/%d", function.ParamSlots, function.ResultSlots)
+	}
+	code, err := board.callAndCancel(ordinal, 100*time.Millisecond)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if code != embedded32.TransportTrapCode(embedded32.TrapCanceled) {
+		t.Fatalf("call code=%#x, want canceled trap=%#x", code, embedded32.TransportTrapCode(embedded32.TrapCanceled))
+	}
+	t.Logf("Pico 2 %s cancellation interrupted a running generated loop", targetName)
+}
+
+var pico2CancellationModule = []byte{
+	0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00,
+	0x01, 0x04, 0x01, 0x60, 0x00, 0x00,
+	0x03, 0x02, 0x01, 0x00,
+	0x07, 0x07, 0x01, 0x03, 'r', 'u', 'n', 0x00, 0x00,
+	0x0a, 0x09, 0x01, 0x07, 0x00, 0x03, 0x40, 0x0c, 0x00, 0x0b, 0x0b,
+}
+
+func TestPico2CancellationModuleValid(t *testing.T) {
+	module, err := wasm.DecodeModule(pico2CancellationModule)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(module); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func pico2BoardTarget(value string) (uint32, string, error) {
 	switch value {
 	case "", "arm", "arm32":
@@ -535,14 +598,68 @@ func (b *pico2Board) exchangeAny(kind embedded32.TransportKind, payload []byte) 
 		return embedded32.TransportFrame{}, embedded32.ErrTransportCapacity
 	}
 	b.sequence++
+	sequence := b.sequence
 	request := make([]byte, int(embedded32.TransportHeaderBytes)+len(payload))
-	n, err := embedded32.EncodeTransportFrame(request, embedded32.TransportFrame{Kind: kind, Sequence: b.sequence, Payload: payload})
+	n, err := embedded32.EncodeTransportFrame(request, embedded32.TransportFrame{Kind: kind, Sequence: sequence, Payload: payload})
 	if err != nil {
 		return embedded32.TransportFrame{}, err
 	}
 	if err := pico2BoardWriteFull(b.stream, request[:n]); err != nil {
 		return embedded32.TransportFrame{}, err
 	}
+	return b.readResponse(kind, sequence)
+}
+
+func (b *pico2Board) callAndCancel(export uint32, delay time.Duration) (embedded32.TransportCode, error) {
+	payload := make([]byte, embedded32.TransportCallHeaderBytes)
+	payloadBytes, err := embedded32.EncodeTransportCallRequest(payload, embedded32.TransportCallRequest{ExportIndex: export})
+	if err != nil {
+		return 0, err
+	}
+	b.sequence++
+	callSequence := b.sequence
+	callRequest := make([]byte, embedded32.TransportHeaderBytes+payloadBytes)
+	callBytes, err := embedded32.EncodeTransportFrame(callRequest, embedded32.TransportFrame{
+		Kind: embedded32.TransportCall, Sequence: callSequence, Payload: payload[:payloadBytes],
+	})
+	if err != nil {
+		return 0, err
+	}
+	b.sequence++
+	cancelSequence := b.sequence
+	cancelRequest := make([]byte, embedded32.TransportHeaderBytes)
+	cancelBytes, err := embedded32.EncodeTransportFrame(cancelRequest, embedded32.TransportFrame{
+		Kind: embedded32.TransportCancel, Sequence: cancelSequence,
+	})
+	if err != nil {
+		return 0, err
+	}
+	if err := pico2BoardWriteFull(b.stream, callRequest[:callBytes]); err != nil {
+		return 0, err
+	}
+	cancelWrite := make(chan error, 1)
+	timer := time.AfterFunc(delay, func() {
+		cancelWrite <- pico2BoardWriteFull(b.stream, cancelRequest[:cancelBytes])
+	})
+	defer timer.Stop()
+	callFrame, err := b.readResponse(embedded32.TransportCall, callSequence)
+	if err != nil {
+		return 0, err
+	}
+	if err := <-cancelWrite; err != nil {
+		return 0, err
+	}
+	cancelFrame, err := b.readResponse(embedded32.TransportCancel, cancelSequence)
+	if err != nil {
+		return 0, err
+	}
+	if cancelFrame.Code != embedded32.TransportCodeOK {
+		return 0, fmt.Errorf("cancel response code=%#x", cancelFrame.Code)
+	}
+	return callFrame.Code, nil
+}
+
+func (b *pico2Board) readResponse(kind embedded32.TransportKind, sequence uint32) (embedded32.TransportFrame, error) {
 	timer := time.AfterFunc(pico2BoardExchangeTimeout, func() { _ = b.stream.Close() })
 	defer timer.Stop()
 	header := make([]byte, embedded32.TransportHeaderBytes)
@@ -562,7 +679,7 @@ func (b *pico2Board) exchangeAny(kind embedded32.TransportKind, payload []byte) 
 	if err != nil {
 		return embedded32.TransportFrame{}, err
 	}
-	if consumed != uint32(len(response)) || frame.Kind != kind.Response() || frame.Sequence != b.sequence {
+	if consumed != uint32(len(response)) || frame.Kind != kind.Response() || frame.Sequence != sequence {
 		return embedded32.TransportFrame{}, fmt.Errorf("unexpected response kind=%d sequence=%d", frame.Kind, frame.Sequence)
 	}
 	return frame, nil

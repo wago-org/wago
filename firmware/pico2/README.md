@@ -26,7 +26,8 @@ export TINYGOROOT=/tmp/tinygo-wago-0.41.1
 
 The patch includes the RP2350 USB status-clear fix, the Hazard3 startup and
 interrupt path, RP2350 ROM/watchdog corrections, the RISC-V IMAGE_DEF and
-linker script, and the `pico2-riscv` target. It applies cleanly to the official
+linker script, the `pico2-riscv` target, and a non-consuming USB CDC receive
+observer used for in-flight cancellation. It applies cleanly to the official
 TinyGo `v0.41.1` tag. Use a TinyGo 0.41.1 executable with this root; mixing the
 patch with another TinyGo release is unsupported.
 
@@ -184,6 +185,20 @@ An incomplete, out-of-order, oversized, checksum-invalid, malformed, wrong-
 target, or wrong-address artifact is never made executable. Beginning another
 upload invalidates the old runner before it mutates the snapshot. Instantiate
 and reset copy the pristine artifact image into the separate live arena.
+
+Cancellation remains responsive while generated code is running. The USB CDC
+receive interrupt feeds a 24-byte, allocation-free frame observer before
+placing the same bytes in the serial ring. A complete checksummed cancel request
+sets the live cancellation cell immediately; the request remains queued for the
+normal ordered transport response after the generated call returns with
+`TrapCanceled`. Reproduce this hardware gate with:
+
+```sh
+WAGO_PICO2_SERIAL=/dev/ttyACM0 \
+WAGO_PICO2_TARGET=riscv32 \
+go test ./src/core/compiler/backend/railshot \
+  -run '^TestPico2BoardCancellation$' -count=1 -v -timeout=1m
+```
 
 Only these board-specific operations remain outside portable Go:
 
