@@ -116,6 +116,36 @@ QEMU is a correctness oracle, not a Pico 2 performance oracle. Public admission
 requires board evidence and explicit documentation of the embedded runtime's
 memory and security model.
 
+Physical qualification now has an opt-in one-resident-module corpus path,
+`TestPico2Release2BoardExecution`. `WAGO_PICO2_TARGET` selects `arm32` or
+`riscv32`. It uses `wast2json` on the host, queries the board's live image
+address, compiles and uploads one matching artifact, and checks the script's
+result and trap expectations over USB CDC before replacing the image at the
+next module. Linear-memory capacity is the largest whole-page
+reservation that fits the advertised fixed arena, so bounded `memory.grow`
+coverage uses available SRAM without promising unbounded growth.
+`WAGO_PICO2_SPECTEST_FILE` selects the initial
+script and `WAGO_PICO2_TRACE=1` logs every target action. The path rejects rather
+than skips cross-upload registered-module references, imports, exported-global
+reads, and uninstantiable setup until bounded target memory read/write and
+provider persistence are part of the transport.
+
+The qualified Arm firmware retains separate 128 KiB upload and live-image
+arenas plus a 32 KiB native stack. Experimental 160 KiB and 192 KiB paired
+arenas linked with 156,728 and 91,192 bytes respectively between TinyGo's heap
+markers, but neither image reached USB CDC on the physical board. Treat those
+linker totals as insufficient startup evidence: larger live memory needs a
+sparser artifact/snapshot design, not merely larger static arrays.
+
+The board firmware is published as source, not as a prebuilt UF2. Both targets
+use TinyGo 0.41.1 with
+`firmware/pico2/tinygo/tinygo-v0.41.1-rp2350-riscv.patch` applied to the official
+`v0.41.1` source root. That patch captures the qualified RP2350 USB fix,
+Hazard3 startup/interrupt/ROM/watchdog support, RISC-V image definition, linker
+script, and target JSON. `scripts/pico2-build.sh arm` and
+`scripts/pico2-build.sh riscv` then derive temporary targets that add Wago's
+native assembly without modifying the prepared TinyGo root.
+
 `TestPico2Release2CompileAdmission` is the opt-in module-level admission gate for
 the pinned WebAssembly/spec v2.0.0 checkout. It runs `wast2json`, decodes every
 emitted module, requires Arm32 and RV32 to agree, requires valid in-gate modules
@@ -296,10 +326,13 @@ stores. Loads and stores combine the dynamic address and static Wasm offset with
 overflow detection, preflight the complete access width against the current
 memory length, write the canonical `TrapMemoryOutOfBounds` value on failure, and
 only then access memory. Pair results are sign- or zero-extended into complete
-little-endian register pairs. QEMU tests on both targets cover successful
-unaligned narrow and full-width accesses, static-offset and end-of-memory
-failures, canonical trap writes, and proof that an out-of-bounds split store
-cannot mutate its in-bounds low word. Normal mixed-width function lowering now routes every scalar i32/i64/f32/f64
+little-endian register pairs. Hazard3 requires natural alignment even though
+WebAssembly does not, so RV32 keeps an aligned halfword/word fast path and uses
+a bytewise little-endian fallback for misaligned accesses. QEMU tests on both
+targets cover successful unaligned narrow and full-width accesses, static-offset
+and end-of-memory failures, canonical trap writes, and proof that an
+out-of-bounds split store cannot mutate its in-bounds low word. Normal
+mixed-width function lowering now routes every scalar i32/i64/f32/f64
 memarg through the same registry. Mixed loads and stores retain static-offset
 overflow checks, complete-width preflight, narrow signed/unsigned extension,
 and no-partial-write guarantees while surrounding wide operands remain in frame
@@ -505,10 +538,14 @@ it restores the pristine snapshot, patches all helper tables, and invokes a
 non-failing publication hook only after the image is complete. A Go renderer emits a
 flash-friendly constant snapshot plus export/context metadata, while a GNU ld
 `NOLOAD` fragment reserves and asserts the fixed SRAM range. Board startup binds
-that range and the four existing Go helper entries. Only small target assembly
-shims remain to provide arbitrary generated entry and instruction publication,
-following the existing no-cgo native-runtime pattern. There is no C source, cgo, CMake, or
-Pico SDK runtime dependency in the board path.
+that range and the four existing Go helper entries. The Cortex-M33 firmware now
+uses a 128 KiB immutable upload arena, a separate 128 KiB live-image arena, and
+a checked 32 KiB native stack. Its small Thumb-2 shim switches stacks, enters
+arbitrary generated/start addresses, exposes the four TinyGo helper symbols,
+and issues instruction-publication barriers. A strict allocation-free artifact
+decoder supplies exact image, context, start, and callable-export metadata from
+the checksummed upload. There is no C source, cgo, CMake, or Pico SDK runtime
+dependency in the board path.
 
 Modules with a start function also append a 16-byte-aligned target entry thunk.
 The thunk accepts only a `ContextABI` pointer in the platform's first argument
@@ -529,6 +566,32 @@ in module order, preserves successful segments before later instantiation
 traps, forwards fixed helper frames (including SIMD memory windows) to the Go
 semantic oracle, and checks exact scalar/reference/vector/NaN results and traps.
 
-This is still not public backend admission. Physical Cortex-M33 plus Hazard3
-qualification and measured whole-firmware code-size/SRAM/stack/performance
-budgets remain to be completed with the pure-Go/TinyGo firmware image.
+Physical Cortex-M33 qualification has reached the first native execution
+milestone: on 2026-07-19 the USB transport compiled, uploaded, instantiated, and
+executed `bench/corpus/fib_rec.wasm`, returning `fib(28) = 317811` without a
+trap. The measured ELF uses 40,720 bytes of text, 176 bytes of data, and 301,848
+bytes of BSS; `_heap_start` is `0x20049bc8` and `_heap_end` is `0x20080000`.
+
+Physical Hazard3 qualification reached the same milestone on 2026-07-20. A
+no-cgo TinyGo RV32IMAC firmware booted through an RP2350 RISC-V IMAGE_DEF,
+enumerated USB CDC, advertised target `riscv32` and a 128 KiB arena at
+`0x200220f0`, accepted a 780-byte `fib_rec` artifact, and returned
+`fib(28) = 317811`. Reset restored the pristine image and a second call returned
+`fib(10) = 55` without re-uploading. The qualified ELF uses 53,028 bytes of
+text, 172 bytes of data, and 297,736 bytes of BSS; `_heap_start` is
+`0x2004abc0` and `_heap_end` is `0x20080000`. The physical `i32.wast` harness
+then passed one uploaded module and all 374 assertions.
+
+A subsequent watchdog-isolated Hazard3 run attempted all 147 Release 2 scripts
+and probed the board after each one: 116 files passed outright, with 1,244
+modules and 44,969 actions/assertions executed on the core. The other 31 files
+were accounted for by bounded image, growth, function-directory, or frame
+capacity (18) and the one-resident harness's import/replaced-module limitation
+(13). No unexplained result mismatch remained. The run exposed and closed
+Hazard3's mandatory natural-alignment gap; `float_memory.wast` now passes 6
+modules and 84 assertions physically, while `address.wast` passes 4 modules and
+255 assertions.
+
+This is still not public backend admission. Complete physical Cortex-M33
+coverage, broader linked-module target orchestration, and native performance
+measurements remain to be completed.

@@ -169,10 +169,13 @@ codegen rationale is **[OPTIMIZATIONS.md](OPTIMIZATIONS.md)**. Summary of the tw
   Only small target assembly shims provide arbitrary generated entry and helper
   addresses. Both generated targets pass all 147 pinned WebAssembly 2.0 script
   files under QEMU (48,238 executed actions/assertions, with one documented
-  bounded-frame resource module). Physical Pico 2 qualification and measured
-  whole-firmware footprint/performance remain
-  before public admission (see
-  `docs/pico2-32bit-port.md`).
+  bounded-frame resource module). Physical Cortex-M33 execution is proven with
+  `fib_rec`; a watchdog-isolated Hazard3 sweep attempted all 147 scripts, passed
+  116 outright, and executed 1,244 modules plus 44,969 actions/assertions with
+  every remaining case classified as a bounded-resource or one-resident-harness
+  limitation. Complete Cortex-M33 corpus coverage, broader linked-module board
+  orchestration, and measured native performance remain before public admission
+  (see `docs/pico2-32bit-port.md`).
 - [ ] wazero-compatible API shim for drop-in migration
 
 ## Non-goals (for now)
