@@ -13,6 +13,7 @@ type testTransportHandler struct {
 	cancels      int
 	resets       int
 	callCode     TransportCode
+	upload       *FirmwareUpload
 }
 
 func (h *testTransportHandler) Hello() TransportHelloInfo {
@@ -35,6 +36,16 @@ func (h *testTransportHandler) Call(exportIndex uint32, parameters, results []ui
 }
 func (h *testTransportHandler) Cancel() TransportCode { h.cancels++; return TransportCodeOK }
 func (h *testTransportHandler) Reset() TransportCode  { h.resets++; return TransportCodeOK }
+func (h *testTransportHandler) UploadStatus() TransportUploadStatusInfo {
+	return h.upload.UploadStatus()
+}
+func (h *testTransportHandler) UploadBegin(request TransportUploadBeginRequest) TransportCode {
+	return h.upload.UploadBegin(request)
+}
+func (h *testTransportHandler) UploadChunk(request TransportUploadChunkRequest) TransportCode {
+	return h.upload.UploadChunk(request)
+}
+func (h *testTransportHandler) UploadCommit() TransportCode { return h.upload.UploadCommit() }
 
 func encodeTransportTestRequest(t *testing.T, kind TransportKind, sequence uint32, payload []byte, dst []byte) []byte {
 	t.Helper()
@@ -167,5 +178,57 @@ func TestTransportEndpointDispatchIsAllocationFree(t *testing.T) {
 	})
 	if allocs != 0 {
 		t.Fatalf("dispatch allocations=%f", allocs)
+	}
+}
+
+func TestTransportEndpointDispatchesTransactionalUpload(t *testing.T) {
+	storage := make([]byte, 32)
+	handler := &testTransportHandler{upload: &FirmwareUpload{Storage: storage, BaseAddress: 0x20010000, MaximumChunk: 8}}
+	endpoint := TransportEndpoint{PayloadScratch: make([]byte, 32), MaximumPayload: 32}
+	requestStorage, responseStorage := make([]byte, 64), make([]byte, 64)
+	dispatch := func(kind TransportKind, sequence uint32, payload []byte) TransportFrame {
+		t.Helper()
+		request := encodeTransportTestRequest(t, kind, sequence, payload, requestStorage)
+		n, err := endpoint.Dispatch(request, responseStorage, handler)
+		if err != nil {
+			t.Fatal(err)
+		}
+		frame, _, err := DecodeTransportFrame(responseStorage[:n], 32)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return frame
+	}
+	statusFrame := dispatch(TransportUploadStatus, 1, nil)
+	status, err := DecodeTransportUploadStatus(statusFrame.Payload)
+	if err != nil || status.Capacity != 32 || status.MaximumChunk != 8 || status.State != TransportUploadEmpty {
+		t.Fatalf("status=%+v err=%v", status, err)
+	}
+	image := []byte("pico upload")
+	payload := make([]byte, 32)
+	if err := EncodeTransportUploadBegin(payload, TransportUploadBeginRequest{ImageBytes: uint32(len(image)), ImageChecksum: TransportChecksum(image)}); err != nil {
+		t.Fatal(err)
+	}
+	if frame := dispatch(TransportUploadBegin, 2, payload[:TransportUploadBeginBytes]); frame.Code != TransportCodeOK {
+		t.Fatalf("begin code=%#x", frame.Code)
+	}
+	for offset := 0; offset < len(image); {
+		end := min(offset+8, len(image))
+		n, err := EncodeTransportUploadChunk(payload, TransportUploadChunkRequest{Offset: uint32(offset), Bytes: image[offset:end]})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if frame := dispatch(TransportUploadChunk, uint32(3+offset), payload[:n]); frame.Code != TransportCodeOK {
+			t.Fatalf("chunk %d code=%#x", offset, frame.Code)
+		}
+		offset = end
+	}
+	if frame := dispatch(TransportUploadCommit, 99, nil); frame.Code != TransportCodeOK {
+		t.Fatalf("commit code=%#x", frame.Code)
+	}
+	statusFrame = dispatch(TransportUploadStatus, 100, nil)
+	status, err = DecodeTransportUploadStatus(statusFrame.Payload)
+	if err != nil || status.State != TransportUploadCommitted || status.ImageBytes != uint32(len(image)) {
+		t.Fatalf("committed status=%+v err=%v", status, err)
 	}
 }

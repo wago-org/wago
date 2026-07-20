@@ -54,6 +54,36 @@ func TestF64ArithmeticAndBits(t *testing.T) {
 	}
 }
 
+func TestF64UnaryArithmeticQuietsSignalingNaN(t *testing.T) {
+	const signaling = uint64(0xfff4000000000000)
+	const quiet = uint64(0xfffc000000000000)
+	for _, op := range []F64Op{F64Ceil, F64Floor, F64Trunc, F64Nearest, F64Sqrt} {
+		f := frame(op, signaling, 0)
+		RunF64(&f)
+		if got := outBits(&f); got != quiet {
+			t.Errorf("op %d signaling NaN = %#x, want %#x", op, got, quiet)
+		}
+	}
+}
+
+func TestF64IntegralRoundingAtPrecisionBoundary(t *testing.T) {
+	for _, tc := range []struct {
+		op         F64Op
+		bits, want uint64
+	}{
+		{F64Ceil, 0x432fffffffffffff, 0x4330000000000000},
+		{F64Floor, 0xc32fffffffffffff, 0xc330000000000000},
+		{F64Trunc, 0x458fe9af5b5e16fa, 0x458fe9af5b5e16fa},
+		{F64Nearest, 0x458fe9af5b5e16fa, 0x458fe9af5b5e16fa},
+	} {
+		f := frame(tc.op, tc.bits, 0)
+		RunF64(&f)
+		if got := outBits(&f); got != tc.want {
+			t.Errorf("op %d bits=%#x = %#x, want %#x", tc.op, tc.bits, got, tc.want)
+		}
+	}
+}
+
 func TestF64MinMaxNaNAndZero(t *testing.T) {
 	for _, tc := range []struct {
 		op         F64Op
@@ -127,6 +157,23 @@ func TestF64ConversionsAndTraps(t *testing.T) {
 	}
 }
 
+func TestF64TruncationUsesExactIEEEBitsAtI64Boundaries(t *testing.T) {
+	for _, tc := range []struct {
+		op         F64Op
+		bits, want uint64
+	}{
+		{I64TruncF64S, 0x43dfffffffffffff, 0x7ffffffffffffc00},
+		{I64TruncF64S, 0xc3e0000000000000, 0x8000000000000000},
+		{I64TruncF64U, 0x43efffffffffffff, 0xfffffffffffff800},
+	} {
+		f := frame(tc.op, tc.bits, 0)
+		RunF64(&f)
+		if got := outBits(&f); got != tc.want || f.Trap != TrapNone {
+			t.Errorf("op %d bits=%#x = %#x trap=%d, want %#x", tc.op, tc.bits, got, f.Trap, tc.want)
+		}
+	}
+}
+
 func TestF64ConversionSources(t *testing.T) {
 	f := frame(F64ConvertI32S, uint64(uint32(0xffffffff)), 0)
 	RunF64(&f)
@@ -142,5 +189,10 @@ func TestF64ConversionSources(t *testing.T) {
 	RunF64(&f)
 	if got := math.Float64frombits(outBits(&f)); got != 1.25 {
 		t.Fatalf("promote = %v", got)
+	}
+	f = frame(F64PromoteF32, 0x7fa00000, 0)
+	RunF64(&f)
+	if got := outBits(&f); got != 0x7ffc000000000000 {
+		t.Fatalf("promote signaling NaN = %#x", got)
 	}
 }

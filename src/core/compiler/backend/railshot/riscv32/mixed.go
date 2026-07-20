@@ -813,24 +813,18 @@ func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc, memoryImporte
 			traps = append(traps, a.FarBcond(rv.T1, rv.T0, rv.CondLTU, branchScratch))
 			loadMemoryField(rv.T1, rv.T6, embedded32.ContextLinearMemoryBaseOffset, "memory load base")
 			a.Add(rv.T1, rv.T1, rv.T0)
-			switch width {
-			case 1:
-				if signed {
-					must(a.Lb(rv.T2, rv.T1, 0), "memory load8 signed")
-				} else {
-					must(a.Lbu(rv.T2, rv.T1, 0), "memory load8 unsigned")
+			if err := emitScalarLoad(&a, width, rv.T1, rv.T2, rv.T3, rv.T0); err != nil {
+				return nil, err
+			}
+			if signed {
+				switch width {
+				case 1:
+					must(a.Slli(rv.T2, rv.T2, 24), "memory load8 sign shift")
+					must(a.Srai(rv.T2, rv.T2, 24), "memory load8 sign extend")
+				case 2:
+					must(a.Slli(rv.T2, rv.T2, 16), "memory load16 sign shift")
+					must(a.Srai(rv.T2, rv.T2, 16), "memory load16 sign extend")
 				}
-			case 2:
-				if signed {
-					must(a.Lh(rv.T2, rv.T1, 0), "memory load16 signed")
-				} else {
-					must(a.Lhu(rv.T2, rv.T1, 0), "memory load16 unsigned")
-				}
-			case 4:
-				must(a.Lw(rv.T2, rv.T1, 0), "memory load32")
-			case 8:
-				must(a.Lw(rv.T2, rv.T1, 0), "memory load64 low")
-				must(a.Lw(rv.T3, rv.T1, 4), "memory load64 high")
 			}
 			must(a.Sw(rv.T2, rv.SP, off(op.Dst)), "memory load result low")
 			if resultWords == 2 {
@@ -879,17 +873,11 @@ func emitMixedPlan(plan *shared.MixedPlan, relocSink *[]callReloc, memoryImporte
 			loadMemoryField(rv.T1, rv.T6, embedded32.ContextLinearMemoryBaseOffset, "memory store base")
 			a.Add(rv.T1, rv.T1, rv.T0)
 			must(a.Lw(rv.T2, rv.SP, off(op.Right)), "memory store value low")
-			switch width {
-			case 1:
-				must(a.Sb(rv.T2, rv.T1, 0), "memory store8")
-			case 2:
-				must(a.Sh(rv.T2, rv.T1, 0), "memory store16")
-			case 4:
-				must(a.Sw(rv.T2, rv.T1, 0), "memory store32")
-			case 8:
+			if width == 8 {
 				must(a.Lw(rv.T3, rv.SP, off(op.Right)+4), "memory store value high")
-				must(a.Sw(rv.T2, rv.T1, 0), "memory store64 low")
-				must(a.Sw(rv.T3, rv.T1, 4), "memory store64 high")
+			}
+			if err := emitScalarStore(&a, width, rv.T1, rv.T2, rv.T3, rv.T0); err != nil {
+				return nil, err
 			}
 			done := a.FarJump(rv.Zero, branchScratch)
 			trap := a.Len()

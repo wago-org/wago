@@ -57,6 +57,89 @@ func preserveZeroSign32(bits uint32, out float32) float32 {
 	return out
 }
 
+func truncF32Magnitude(bits uint32) uint64 {
+	exponent := int(bits>>23&0xff) - 127
+	if exponent < 0 {
+		return 0
+	}
+	significand := uint64(bits&0x007fffff | 0x00800000)
+	if exponent >= 23 {
+		return significand << uint(exponent-23)
+	}
+	return significand >> uint(23-exponent)
+}
+
+func roundF32Bits(bits uint32, mode floatRoundMode) uint32 {
+	const (
+		signMask = uint32(1) << 31
+		absMask  = signMask - 1
+		halfBits = uint32(0x3f000000)
+		oneBits  = uint32(0x3f800000)
+	)
+	abs := bits & absMask
+	exponentBits := abs >> 23
+	if exponentBits == 0xff {
+		if abs&0x007fffff != 0 {
+			return quiet32(bits)
+		}
+		return bits
+	}
+	exponent := int(exponentBits) - 127
+	if exponent >= 23 || abs == 0 {
+		return bits
+	}
+	negative := bits&signMask != 0
+	if exponent < 0 {
+		signedZero := bits & signMask
+		switch mode {
+		case roundCeil:
+			if !negative {
+				return oneBits
+			}
+		case roundFloor:
+			if negative {
+				return signMask | oneBits
+			}
+		case roundNearest:
+			if abs > halfBits {
+				return bits&signMask | oneBits
+			}
+		}
+		return signedZero
+	}
+	shift := uint(23 - exponent)
+	unit := uint32(1) << shift
+	mask := unit - 1
+	remainder := bits & mask
+	if remainder == 0 {
+		return bits
+	}
+	result := bits &^ mask
+	switch mode {
+	case roundCeil:
+		if !negative {
+			result += unit
+		}
+	case roundFloor:
+		if negative {
+			result += unit
+		}
+	case roundNearest:
+		half := unit >> 1
+		if remainder > half || remainder == half && result&unit != 0 {
+			result += unit
+		}
+	}
+	return result
+}
+
+func demoteF64Bits(bits uint64) uint32 {
+	if bits&0x7ff0000000000000 == 0x7ff0000000000000 && bits&0x000fffffffffffff != 0 {
+		return uint32(bits>>32)&0x80000000 | 0x7fc00000 | uint32(bits>>29)&0x003fffff
+	}
+	return math.Float32bits(float32(math.Float64frombits(bits)))
+}
+
 //export wago_embedded32_f32
 func RunF32(f *F32Frame) {
 	op := F32Op(f.Op)
@@ -78,13 +161,13 @@ func RunF32(f *F32Frame) {
 	case F32Neg:
 		f.OutLo = aBits ^ 0x80000000
 	case F32Ceil:
-		set(preserveZeroSign32(aBits, float32(math.Ceil(float64(a)))))
+		f.OutLo = roundF32Bits(aBits, roundCeil)
 	case F32Floor:
-		set(preserveZeroSign32(aBits, float32(math.Floor(float64(a)))))
+		f.OutLo = roundF32Bits(aBits, roundFloor)
 	case F32Trunc:
-		set(preserveZeroSign32(aBits, float32(math.Trunc(float64(a)))))
+		f.OutLo = roundF32Bits(aBits, roundTrunc)
 	case F32Nearest:
-		set(preserveZeroSign32(aBits, float32(math.RoundToEven(float64(a)))))
+		f.OutLo = roundF32Bits(aBits, roundNearest)
 	case F32Sqrt:
 		set(float32(math.Sqrt(float64(a))))
 	case F32Add:
@@ -114,7 +197,7 @@ func RunF32(f *F32Frame) {
 	case F32Ge:
 		boolOut(a >= b)
 	case F32DemoteF64:
-		set(float32(math.Float64frombits(join64(f.ALo, f.AHi))))
+		f.OutLo = demoteF64Bits(join64(f.ALo, f.AHi))
 	case F32ConvertI32S:
 		set(float32(int32(f.ALo)))
 	case F32ConvertI32U:
@@ -185,14 +268,17 @@ func (f *F32Frame) truncI32(x float32, signed, saturating bool) {
 			f.conversionFail(saturating, true, math.Signbit(float64(x)), 32, true)
 			return
 		}
-		f.OutLo = uint32(int32(x))
+		f.OutLo = uint32(truncF32Magnitude(f.ALo))
+		if f.ALo>>31 != 0 {
+			f.OutLo = 0 - f.OutLo
+		}
 		return
 	}
 	if x <= -1 || x >= 0x1p32 {
 		f.conversionFail(saturating, true, math.Signbit(float64(x)), 32, false)
 		return
 	}
-	f.OutLo = uint32(x)
+	f.OutLo = uint32(truncF32Magnitude(f.ALo))
 }
 
 func (f *F32Frame) truncI64(x float32, signed, saturating bool) {
@@ -205,12 +291,16 @@ func (f *F32Frame) truncI64(x float32, signed, saturating bool) {
 			f.conversionFail(saturating, true, math.Signbit(float64(x)), 64, true)
 			return
 		}
-		f.OutLo, f.OutHi = split64(uint64(int64(x)))
+		value := truncF32Magnitude(f.ALo)
+		if f.ALo>>31 != 0 {
+			value = 0 - value
+		}
+		f.OutLo, f.OutHi = split64(value)
 		return
 	}
 	if x <= -1 || x >= 0x1p64 {
 		f.conversionFail(saturating, true, math.Signbit(float64(x)), 64, false)
 		return
 	}
-	f.OutLo, f.OutHi = split64(uint64(x))
+	f.OutLo, f.OutHi = split64(truncF32Magnitude(f.ALo))
 }

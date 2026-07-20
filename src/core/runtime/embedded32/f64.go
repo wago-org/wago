@@ -85,6 +85,15 @@ func setf64(f *F64Frame, v float64)     { set64(f, math.Float64bits(v)) }
 
 const canonicalNaN64 = uint64(0x7ff8000000000000)
 
+type floatRoundMode uint8
+
+const (
+	roundCeil floatRoundMode = iota
+	roundFloor
+	roundTrunc
+	roundNearest
+)
+
 func isNaN64(bits uint64) bool {
 	return bits&0x7ff0000000000000 == 0x7ff0000000000000 && bits&0x000fffffffffffff != 0
 }
@@ -93,6 +102,92 @@ func quietNaN64(bits uint64) uint64 {
 		return canonicalNaN64
 	}
 	return bits | 0x0008000000000000
+}
+
+// roundF64Bits implements the four Wasm integral rounding operations without
+// passing already-integral values through the target math library. This avoids
+// precision loss in TinyGo's bare-metal implementations at and above 2^52.
+func roundF64Bits(bits uint64, mode floatRoundMode) uint64 {
+	const (
+		signMask = uint64(1) << 63
+		absMask  = signMask - 1
+		halfBits = uint64(0x3fe0000000000000)
+		oneBits  = uint64(0x3ff0000000000000)
+	)
+	abs := bits & absMask
+	exponentBits := abs >> 52
+	if exponentBits == 0x7ff {
+		if abs&0x000fffffffffffff != 0 {
+			return quietNaN64(bits)
+		}
+		return bits
+	}
+	exponent := int(exponentBits) - 1023
+	if exponent >= 52 || abs == 0 {
+		return bits
+	}
+	negative := bits&signMask != 0
+	if exponent < 0 {
+		signedZero := bits & signMask
+		switch mode {
+		case roundCeil:
+			if !negative {
+				return oneBits
+			}
+		case roundFloor:
+			if negative {
+				return signMask | oneBits
+			}
+		case roundNearest:
+			if abs > halfBits {
+				return bits&signMask | oneBits
+			}
+		}
+		return signedZero
+	}
+	shift := uint(52 - exponent)
+	unit := uint64(1) << shift
+	mask := unit - 1
+	remainder := bits & mask
+	if remainder == 0 {
+		return bits
+	}
+	result := bits &^ mask
+	switch mode {
+	case roundCeil:
+		if !negative {
+			result += unit
+		}
+	case roundFloor:
+		if negative {
+			result += unit
+		}
+	case roundNearest:
+		half := unit >> 1
+		if remainder > half || remainder == half && result&unit != 0 {
+			result += unit
+		}
+	}
+	return result
+}
+
+func promoteF32Bits(bits uint32) uint64 {
+	if bits&0x7f800000 == 0x7f800000 && bits&0x007fffff != 0 {
+		return uint64(bits&0x80000000)<<32 | 0x7ff8000000000000 | uint64(bits&0x007fffff)<<29
+	}
+	return math.Float64bits(float64(math.Float32frombits(bits)))
+}
+
+func truncF64Magnitude(bits uint64) uint64 {
+	exponent := int(bits>>52&0x7ff) - 1023
+	if exponent < 0 {
+		return 0
+	}
+	significand := bits&0x000fffffffffffff | 0x0010000000000000
+	if exponent >= 52 {
+		return significand << uint(exponent-52)
+	}
+	return significand >> uint(52-exponent)
 }
 func minmax64(aBits, bBits uint64, max bool) uint64 {
 	if isNaN64(aBits) {
@@ -144,19 +239,30 @@ func RunF64(f *F64Frame) {
 	f.Trap = TrapNone
 	aBits, bBits := f64bits(f.ALo, f.AHi), f64bits(f.BLo, f.BHi)
 	a, b := math.Float64frombits(aBits), math.Float64frombits(bBits)
+	// Some bare-metal math implementations preserve the signaling bit for
+	// bit-manipulation-based rounding functions such as RoundToEven. Wasm
+	// requires every arithmetic NaN result to be quiet, independent of the Go
+	// math implementation selected by the target toolchain.
+	if isNaN64(aBits) {
+		switch f.Op {
+		case F64Ceil, F64Floor, F64Trunc, F64Nearest, F64Sqrt:
+			set64(f, quietNaN64(aBits))
+			return
+		}
+	}
 	switch f.Op {
 	case F64Abs:
 		set64(f, aBits&^uint64(1<<63))
 	case F64Neg:
 		set64(f, aBits^(uint64(1)<<63))
 	case F64Ceil:
-		setf64(f, preserveZeroSign(aBits, math.Ceil(a)))
+		set64(f, roundF64Bits(aBits, roundCeil))
 	case F64Floor:
-		setf64(f, preserveZeroSign(aBits, math.Floor(a)))
+		set64(f, roundF64Bits(aBits, roundFloor))
 	case F64Trunc:
-		setf64(f, preserveZeroSign(aBits, math.Trunc(a)))
+		set64(f, roundF64Bits(aBits, roundTrunc))
 	case F64Nearest:
-		setf64(f, preserveZeroSign(aBits, math.RoundToEven(a)))
+		set64(f, roundF64Bits(aBits, roundNearest))
 	case F64Sqrt:
 		setf64(f, math.Sqrt(a))
 	case F64Add:
@@ -216,7 +322,7 @@ func RunF64(f *F64Frame) {
 		}
 		f.OutHi = 0
 	case F64PromoteF32:
-		setf64(f, float64(math.Float32frombits(f.ALo)))
+		set64(f, promoteF32Bits(f.ALo))
 	case F64ConvertI32S:
 		setf64(f, float64(int32(f.ALo)))
 	case F64ConvertI32U:
@@ -297,14 +403,18 @@ func (f *F64Frame) truncI32(x float64, signed, saturating bool) {
 			f.conversionFail(saturating, true, math.Signbit(x), 32, true)
 			return
 		}
-		f.OutLo, f.OutHi = uint32(int32(math.Trunc(x))), 0
+		value := uint32(truncF64Magnitude(f64bits(f.ALo, f.AHi)))
+		if f.AHi>>31 != 0 {
+			value = 0 - value
+		}
+		f.OutLo, f.OutHi = value, 0
 		return
 	}
 	if x <= -1 || x >= 0x1p32 {
 		f.conversionFail(saturating, true, math.Signbit(x), 32, false)
 		return
 	}
-	f.OutLo, f.OutHi = uint32(math.Trunc(x)), 0
+	f.OutLo, f.OutHi = uint32(truncF64Magnitude(f64bits(f.ALo, f.AHi))), 0
 }
 func (f *F64Frame) truncI64(x float64, signed, saturating bool) {
 	if math.IsNaN(x) {
@@ -316,12 +426,16 @@ func (f *F64Frame) truncI64(x float64, signed, saturating bool) {
 			f.conversionFail(saturating, true, math.Signbit(x), 64, true)
 			return
 		}
-		f.OutLo, f.OutHi = split64(uint64(int64(math.Trunc(x))))
+		value := truncF64Magnitude(f64bits(f.ALo, f.AHi))
+		if f.AHi>>31 != 0 {
+			value = 0 - value
+		}
+		f.OutLo, f.OutHi = split64(value)
 		return
 	}
 	if x <= -1 || x >= 0x1p64 {
 		f.conversionFail(saturating, true, math.Signbit(x), 64, false)
 		return
 	}
-	f.OutLo, f.OutHi = split64(uint64(math.Trunc(x)))
+	f.OutLo, f.OutHi = split64(truncF64Magnitude(f64bits(f.ALo, f.AHi)))
 }

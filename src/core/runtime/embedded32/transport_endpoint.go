@@ -13,6 +13,15 @@ type TransportHandler interface {
 	Reset() TransportCode
 }
 
+// TransportUploadHandler is an optional extension implemented by persistent
+// firmware that accepts host-compiled target images into fixed SRAM.
+type TransportUploadHandler interface {
+	UploadStatus() TransportUploadStatusInfo
+	UploadBegin(TransportUploadBeginRequest) TransportCode
+	UploadChunk(TransportUploadChunkRequest) TransportCode
+	UploadCommit() TransportCode
+}
+
 // TransportEndpoint owns no storage. The firmware supplies bounded slot and
 // payload scratch buffers once and reuses them for every request.
 type TransportEndpoint struct {
@@ -94,6 +103,54 @@ func (e *TransportEndpoint) Dispatch(request, response []byte, handler Transport
 			return 0, ErrTransportFrame
 		}
 		code = handler.Reset()
+	case TransportUploadStatus:
+		if !empty() {
+			return 0, ErrTransportFrame
+		}
+		upload, ok := handler.(TransportUploadHandler)
+		if !ok {
+			code = TransportCodeUnsupported
+			break
+		}
+		if len(e.PayloadScratch) < int(TransportUploadStatusBytes) || len(response) < int(TransportHeaderBytes+TransportUploadStatusBytes) {
+			return 0, ErrTransportCapacity
+		}
+		if err := EncodeTransportUploadStatus(e.PayloadScratch, upload.UploadStatus()); err != nil {
+			return 0, err
+		}
+		payload = e.PayloadScratch[:TransportUploadStatusBytes]
+	case TransportUploadBegin:
+		upload, ok := handler.(TransportUploadHandler)
+		if !ok {
+			code = TransportCodeUnsupported
+			break
+		}
+		begin, err := DecodeTransportUploadBegin(frame.Payload)
+		if err != nil {
+			return 0, err
+		}
+		code = upload.UploadBegin(begin)
+	case TransportUploadChunk:
+		upload, ok := handler.(TransportUploadHandler)
+		if !ok {
+			code = TransportCodeUnsupported
+			break
+		}
+		chunk, err := DecodeTransportUploadChunk(frame.Payload)
+		if err != nil {
+			return 0, err
+		}
+		code = upload.UploadChunk(chunk)
+	case TransportUploadCommit:
+		if !empty() {
+			return 0, ErrTransportFrame
+		}
+		upload, ok := handler.(TransportUploadHandler)
+		if !ok {
+			code = TransportCodeUnsupported
+			break
+		}
+		code = upload.UploadCommit()
 	default:
 		return 0, ErrTransportFrame
 	}

@@ -87,6 +87,25 @@ func TestScalarMemoryThunksExecuteUnderQEMU(t *testing.T) {
 		a.PatchJAL21(call, len(a.B))
 		runRV32Exit(t, qemu, append(a.B, fn...), 0x11)
 	})
+	t.Run("load32-unaligned", func(t *testing.T) {
+		fn, err := CompileScalarLoadThunk(embedded32.ScalarI32Load, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var a rv.Asm
+		rvMemoryContext(&a)
+		a.MovImm32(rv.T1, 0x1234562a)
+		a.Sw(rv.T1, rv.SP, 0)
+		a.MovImm32(rv.T1, 0x78)
+		a.Sb(rv.T1, rv.SP, 4)
+		a.Addi(rv.A0, rv.SP, 16)
+		a.MovImm32(rv.A1, 1)
+		call := a.Jal(rv.RA)
+		a.MovImm32(rv.A7, 93)
+		a.Ecall()
+		a.PatchJAL21(call, len(a.B))
+		runRV32Exit(t, qemu, append(a.B, fn...), 0x56)
+	})
 	t.Run("load8-signed-i64", func(t *testing.T) {
 		fn, err := CompileScalarLoadThunk(embedded32.ScalarI64Load8S, 0)
 		if err != nil {
@@ -150,6 +169,23 @@ func TestScalarMemoryThunksExecuteUnderQEMU(t *testing.T) {
 		a.Ecall()
 		a.PatchJAL21(call, len(a.B))
 		runRV32Exit(t, qemu, append(a.B, fn...), 0x34)
+	})
+	t.Run("store32-unaligned", func(t *testing.T) {
+		fn, err := CompileScalarStoreThunk(embedded32.ScalarI32Store, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var a rv.Asm
+		rvMemoryContext(&a)
+		a.Addi(rv.A0, rv.SP, 16)
+		a.MovImm32(rv.A1, 1)
+		a.MovImm32(rv.A2, 0x1234562a)
+		call := a.Jal(rv.RA)
+		a.Lbu(rv.A0, rv.SP, 4)
+		a.MovImm32(rv.A7, 93)
+		a.Ecall()
+		a.PatchJAL21(call, len(a.B))
+		runRV32Exit(t, qemu, append(a.B, fn...), 0x12)
 	})
 	t.Run("store-oob-atomic", func(t *testing.T) {
 		fn, _ := CompileI64StoreThunk(0)

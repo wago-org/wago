@@ -4,19 +4,23 @@ import "encoding/binary"
 
 // FirmwareImageDescriptor is the allocation-free Go representation of one
 // prelinked bare-metal image. InitialImage is normally a generated string
-// constant kept in flash. Image is caller-owned storage mapped at ImageAddress.
+// constant kept in flash. InitialImageBytes supports a caller-owned uploaded
+// snapshot. Exactly one initial-image representation must be present. Image is
+// caller-owned storage mapped at ImageAddress.
 type FirmwareImageDescriptor struct {
-	Target         uint32
-	MaximumPayload uint32
-	ImageAddress   uint32
-	InitialImage   string
-	Image          []byte
+	Target            uint32
+	MaximumPayload    uint32
+	ImageAddress      uint32
+	InitialImage      string
+	InitialImageBytes []byte
+	Image             []byte
 
 	ContextAddress uint32
 	StartAddress   uint32
 	Functions      []FirmwareTransportFunction
 	Contexts       []uint32
 	HelperEntries  [4]uint32
+	StackLimit     uint32
 }
 
 // FirmwareNativeEntry is the minimal architecture-specific boundary required
@@ -34,6 +38,10 @@ type FirmwareImageInvoker struct {
 	Native     FirmwareNativeEntry
 	Publish    func(imageAddress uint32, image []byte)
 }
+
+// Valid reports whether every address and patch location is safe to use before
+// the live image is mutated.
+func (d *FirmwareImageDescriptor) Valid() bool { return d.valid() }
 
 func (i *FirmwareImageInvoker) Instantiate(contextAddress uint32) TransportCode {
 	if i == nil || i.Descriptor == nil || contextAddress != i.Descriptor.ContextAddress {
@@ -103,7 +111,11 @@ func (i *FirmwareImageInvoker) restore() TransportCode {
 	if !d.valid() {
 		return TransportCodeState
 	}
-	copy(d.Image, d.InitialImage)
+	if len(d.InitialImageBytes) != 0 {
+		copy(d.Image, d.InitialImageBytes)
+	} else {
+		copy(d.Image, d.InitialImage)
+	}
 	for n := 0; n < d.contextCount(); n++ {
 		contextOffset, _ := d.rangeOffset(d.contextAt(n), ContextABISize)
 		helperAddress := binary.LittleEndian.Uint32(d.Image[contextOffset+ContextHelperTableOffset:])
@@ -112,6 +124,9 @@ func (i *FirmwareImageInvoker) restore() TransportCode {
 		binary.LittleEndian.PutUint32(d.Image[helperOffset+HelperSIMDOffset:], d.HelperEntries[1])
 		binary.LittleEndian.PutUint32(d.Image[helperOffset+HelperI64Offset:], d.HelperEntries[2])
 		binary.LittleEndian.PutUint32(d.Image[helperOffset+HelperF32Offset:], d.HelperEntries[3])
+		if d.StackLimit != 0 {
+			binary.LittleEndian.PutUint32(d.Image[contextOffset+ContextStackLimitOffset:], d.StackLimit)
+		}
 	}
 	if i.Publish != nil {
 		i.Publish(d.ImageAddress, d.Image)
@@ -121,8 +136,9 @@ func (i *FirmwareImageInvoker) restore() TransportCode {
 
 func (d *FirmwareImageDescriptor) valid() bool {
 	if d == nil || (d.Target != TransportTargetArm32 && d.Target != TransportTargetRISCV32) ||
-		d.MaximumPayload == 0 || d.ImageAddress == 0 || len(d.InitialImage) == 0 ||
-		len(d.InitialImage) != len(d.Image) || uint64(len(d.Image)) > uint64(^uint32(0)) ||
+		d.MaximumPayload == 0 || d.ImageAddress == 0 || d.initialLength() == 0 ||
+		(len(d.InitialImage) == 0) == (len(d.InitialImageBytes) == 0) ||
+		d.initialLength() != len(d.Image) || uint64(len(d.Image)) > uint64(^uint32(0)) ||
 		d.ContextAddress == 0 ||
 		d.HelperEntries[0] == 0 || d.HelperEntries[1] == 0 ||
 		d.HelperEntries[2] == 0 || d.HelperEntries[3] == 0 {
@@ -138,7 +154,7 @@ func (d *FirmwareImageDescriptor) valid() bool {
 		if !ok {
 			return false
 		}
-		helperAddress := firmwareStringUint32(d.InitialImage, contextOffset+ContextHelperTableOffset)
+		helperAddress := d.initialUint32(contextOffset + ContextHelperTableOffset)
 		if _, ok := d.rangeOffsetInitial(helperAddress, HelperTableBytes); !ok {
 			return false
 		}
@@ -199,10 +215,24 @@ func (d *FirmwareImageDescriptor) rangeOffset(address, length uint32) (uint32, b
 }
 
 func (d *FirmwareImageDescriptor) rangeOffsetInitial(address, length uint32) (uint32, bool) {
-	if uint64(len(d.InitialImage)) > uint64(^uint32(0)) {
+	if uint64(d.initialLength()) > uint64(^uint32(0)) {
 		return 0, false
 	}
-	return firmwareRangeOffset(d.ImageAddress, uint32(len(d.InitialImage)), address, length)
+	return firmwareRangeOffset(d.ImageAddress, uint32(d.initialLength()), address, length)
+}
+
+func (d *FirmwareImageDescriptor) initialLength() int {
+	if len(d.InitialImageBytes) != 0 {
+		return len(d.InitialImageBytes)
+	}
+	return len(d.InitialImage)
+}
+
+func (d *FirmwareImageDescriptor) initialUint32(offset uint32) uint32 {
+	if len(d.InitialImageBytes) != 0 {
+		return binary.LittleEndian.Uint32(d.InitialImageBytes[offset:])
+	}
+	return firmwareStringUint32(d.InitialImage, offset)
 }
 
 func firmwareStringUint32(value string, offset uint32) uint32 {

@@ -21,6 +21,10 @@ const (
 	TransportCall
 	TransportCancel
 	TransportReset
+	TransportUploadStatus
+	TransportUploadBegin
+	TransportUploadChunk
+	TransportUploadCommit
 )
 
 func (k TransportKind) Base() TransportKind { return k &^ TransportKind(TransportResponseMask) }
@@ -30,7 +34,7 @@ func (k TransportKind) Response() TransportKind {
 }
 func (k TransportKind) Valid() bool {
 	base := k.Base()
-	return base >= TransportHello && base <= TransportReset
+	return base >= TransportHello && base <= TransportUploadCommit
 }
 
 type TransportCode uint32
@@ -41,6 +45,7 @@ const (
 	TransportCodeUnsupported TransportCode = 0x80000002
 	TransportCodeCapacity    TransportCode = 0x80000003
 	TransportCodeState       TransportCode = 0x80000004
+	TransportCodeChecksum    TransportCode = 0x80000005
 )
 
 func TransportTrapCode(trap Trap) TransportCode { return TransportCode(trap) }
@@ -130,6 +135,126 @@ func transportChecksum(parts ...[]byte) uint32 {
 		}
 	}
 	return ^crc
+}
+
+// TransportChecksum returns the bitwise IEEE CRC32 used by transport frames
+// and uploaded firmware images.
+func TransportChecksum(src []byte) uint32 { return transportChecksum(src) }
+
+const (
+	TransportUploadStatusBytes = uint32(24)
+	TransportUploadBeginBytes  = uint32(8)
+	TransportUploadChunkHeader = uint32(4)
+)
+
+const (
+	TransportUploadEmpty = uint32(iota)
+	TransportUploadReceiving
+	TransportUploadCommitted
+)
+
+// TransportUploadStatusInfo describes the target live-image base, fixed
+// artifact capacity, and currently staged or committed upload.
+type TransportUploadStatusInfo struct {
+	BaseAddress   uint32
+	Capacity      uint32
+	MaximumChunk  uint32
+	ImageBytes    uint32
+	ImageChecksum uint32
+	State         uint32
+}
+
+type TransportUploadBeginRequest struct {
+	ImageBytes    uint32
+	ImageChecksum uint32
+}
+
+type TransportUploadChunkRequest struct {
+	Offset uint32
+	Bytes  []byte
+}
+
+func EncodeTransportUploadStatus(dst []byte, status TransportUploadStatusInfo) error {
+	if len(dst) < int(TransportUploadStatusBytes) || status.BaseAddress == 0 || status.Capacity == 0 ||
+		status.MaximumChunk == 0 || status.MaximumChunk > status.Capacity || status.ImageBytes > status.Capacity ||
+		status.State > TransportUploadCommitted || status.State == TransportUploadEmpty && (status.ImageBytes != 0 || status.ImageChecksum != 0) ||
+		status.State != TransportUploadEmpty && status.ImageBytes == 0 {
+		return ErrTransportFrame
+	}
+	binary.LittleEndian.PutUint32(dst[0:4], status.BaseAddress)
+	binary.LittleEndian.PutUint32(dst[4:8], status.Capacity)
+	binary.LittleEndian.PutUint32(dst[8:12], status.MaximumChunk)
+	binary.LittleEndian.PutUint32(dst[12:16], status.ImageBytes)
+	binary.LittleEndian.PutUint32(dst[16:20], status.ImageChecksum)
+	binary.LittleEndian.PutUint32(dst[20:24], status.State)
+	return nil
+}
+
+func DecodeTransportUploadStatus(src []byte) (TransportUploadStatusInfo, error) {
+	if len(src) != int(TransportUploadStatusBytes) {
+		return TransportUploadStatusInfo{}, ErrTransportFrame
+	}
+	status := TransportUploadStatusInfo{
+		BaseAddress:   binary.LittleEndian.Uint32(src[0:4]),
+		Capacity:      binary.LittleEndian.Uint32(src[4:8]),
+		MaximumChunk:  binary.LittleEndian.Uint32(src[8:12]),
+		ImageBytes:    binary.LittleEndian.Uint32(src[12:16]),
+		ImageChecksum: binary.LittleEndian.Uint32(src[16:20]),
+		State:         binary.LittleEndian.Uint32(src[20:24]),
+	}
+	if status.BaseAddress == 0 || status.Capacity == 0 || status.MaximumChunk == 0 ||
+		status.MaximumChunk > status.Capacity || status.ImageBytes > status.Capacity ||
+		status.State > TransportUploadCommitted || status.State == TransportUploadEmpty && (status.ImageBytes != 0 || status.ImageChecksum != 0) ||
+		status.State != TransportUploadEmpty && status.ImageBytes == 0 {
+		return TransportUploadStatusInfo{}, ErrTransportFrame
+	}
+	return status, nil
+}
+
+func EncodeTransportUploadBegin(dst []byte, request TransportUploadBeginRequest) error {
+	if len(dst) < int(TransportUploadBeginBytes) || request.ImageBytes == 0 {
+		return ErrTransportFrame
+	}
+	binary.LittleEndian.PutUint32(dst[0:4], request.ImageBytes)
+	binary.LittleEndian.PutUint32(dst[4:8], request.ImageChecksum)
+	return nil
+}
+
+func DecodeTransportUploadBegin(src []byte) (TransportUploadBeginRequest, error) {
+	if len(src) != int(TransportUploadBeginBytes) {
+		return TransportUploadBeginRequest{}, ErrTransportFrame
+	}
+	request := TransportUploadBeginRequest{
+		ImageBytes:    binary.LittleEndian.Uint32(src[0:4]),
+		ImageChecksum: binary.LittleEndian.Uint32(src[4:8]),
+	}
+	if request.ImageBytes == 0 {
+		return TransportUploadBeginRequest{}, ErrTransportFrame
+	}
+	return request, nil
+}
+
+func EncodeTransportUploadChunk(dst []byte, request TransportUploadChunkRequest) (uint32, error) {
+	if len(request.Bytes) == 0 || uint64(len(request.Bytes)) > uint64(^uint32(0))-uint64(TransportUploadChunkHeader) {
+		return 0, ErrTransportFrame
+	}
+	size := TransportUploadChunkHeader + uint32(len(request.Bytes))
+	if uint64(size) > uint64(len(dst)) {
+		return 0, ErrTransportCapacity
+	}
+	binary.LittleEndian.PutUint32(dst[0:4], request.Offset)
+	copy(dst[TransportUploadChunkHeader:size], request.Bytes)
+	return size, nil
+}
+
+func DecodeTransportUploadChunk(src []byte) (TransportUploadChunkRequest, error) {
+	if len(src) <= int(TransportUploadChunkHeader) {
+		return TransportUploadChunkRequest{}, ErrTransportFrame
+	}
+	return TransportUploadChunkRequest{
+		Offset: binary.LittleEndian.Uint32(src[0:4]),
+		Bytes:  src[TransportUploadChunkHeader:],
+	}, nil
 }
 
 const TransportCallHeaderBytes = uint32(12)

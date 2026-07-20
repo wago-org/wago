@@ -132,3 +132,48 @@ func TestTransportResultSlotsAndHelloRoundTrip(t *testing.T) {
 		t.Fatalf("hello=%+v err=%v", got, err)
 	}
 }
+
+func TestTransportUploadPayloadRoundTrip(t *testing.T) {
+	payload := make([]byte, 64)
+	status := TransportUploadStatusInfo{
+		BaseAddress:   0x20010000,
+		Capacity:      256 << 10,
+		MaximumChunk:  252,
+		ImageBytes:    12345,
+		ImageChecksum: 0x12345678,
+		State:         TransportUploadCommitted,
+	}
+	if err := EncodeTransportUploadStatus(payload, status); err != nil {
+		t.Fatal(err)
+	}
+	gotStatus, err := DecodeTransportUploadStatus(payload[:TransportUploadStatusBytes])
+	if err != nil || gotStatus != status {
+		t.Fatalf("status=%+v err=%v", gotStatus, err)
+	}
+	begin := TransportUploadBeginRequest{ImageBytes: 12345, ImageChecksum: 0x12345678}
+	if err := EncodeTransportUploadBegin(payload, begin); err != nil {
+		t.Fatal(err)
+	}
+	gotBegin, err := DecodeTransportUploadBegin(payload[:TransportUploadBeginBytes])
+	if err != nil || gotBegin != begin {
+		t.Fatalf("begin=%+v err=%v", gotBegin, err)
+	}
+	chunk := TransportUploadChunkRequest{Offset: 77, Bytes: []byte{1, 2, 3, 4}}
+	n, err := EncodeTransportUploadChunk(payload, chunk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gotChunk, err := DecodeTransportUploadChunk(payload[:n])
+	if err != nil || gotChunk.Offset != chunk.Offset || !slices.Equal(gotChunk.Bytes, chunk.Bytes) {
+		t.Fatalf("chunk=%+v err=%v", gotChunk, err)
+	}
+	if _, err := DecodeTransportUploadStatus(payload[:TransportUploadStatusBytes-1]); !errors.Is(err, ErrTransportFrame) {
+		t.Fatalf("short status error=%v", err)
+	}
+	if _, err := DecodeTransportUploadBegin(nil); !errors.Is(err, ErrTransportFrame) {
+		t.Fatalf("empty begin error=%v", err)
+	}
+	if _, err := DecodeTransportUploadChunk(make([]byte, TransportUploadChunkHeader)); !errors.Is(err, ErrTransportFrame) {
+		t.Fatalf("empty chunk error=%v", err)
+	}
+}

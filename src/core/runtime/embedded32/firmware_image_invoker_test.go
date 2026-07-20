@@ -165,3 +165,20 @@ func TestFirmwareImageInvokerRestoreAllocations(t *testing.T) {
 		t.Fatalf("restore allocations=%v", allocations)
 	}
 }
+
+func TestFirmwareImageInvokerRestoresUploadedBytesAndPatchesStackLimit(t *testing.T) {
+	d, initial := newFirmwareImageFixture(TransportTargetArm32)
+	d.InitialImage = ""
+	d.InitialImageBytes = initial
+	d.StackLimit = 0x20070000
+	invoker := &FirmwareImageInvoker{Descriptor: d, Native: &testFirmwareNative{descriptor: d}}
+	if code := invoker.Instantiate(d.ContextAddress); code != TransportCodeOK {
+		t.Fatalf("instantiate=%#x", code)
+	}
+	for _, context := range d.Contexts {
+		offset, _ := d.rangeOffset(context, ContextABISize)
+		if got := binary.LittleEndian.Uint32(d.Image[offset+ContextStackLimitOffset:]); got != d.StackLimit {
+			t.Fatalf("context %#x stack limit=%#x", context, got)
+		}
+	}
+}

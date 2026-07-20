@@ -334,12 +334,12 @@ func RunSIMD(f *SIMDFrame) {
 		}
 		return
 	case 94:
-		putF32(&f.Out, 0, float32(f64(&f.A, 0)))
-		putF32(&f.Out, 1, float32(f64(&f.A, 1)))
+		putLane(&f.Out, 32, 0, uint64(demoteF64Bits(laneU(&f.A, 64, 0))))
+		putLane(&f.Out, 32, 1, uint64(demoteF64Bits(laneU(&f.A, 64, 1))))
 		return
 	case 95:
-		putF64(&f.Out, 0, float64(f32(&f.A, 0)))
-		putF64(&f.Out, 1, float64(f32(&f.A, 1)))
+		putLane(&f.Out, 64, 0, promoteF32Bits(uint32(laneU(&f.A, 32, 0))))
+		putLane(&f.Out, 64, 1, promoteF32Bits(uint32(laneU(&f.A, 32, 1))))
 		return
 	}
 
@@ -899,41 +899,41 @@ func floatUnary(f *SIMDFrame) {
 	}
 	for i := 0; i < laneCount(width); i++ {
 		if width == 32 {
-			x := float64(f32(&f.A, i))
+			bits := uint32(laneU(&f.A, 32, i))
 			switch f.Op {
 			case 103:
-				x = math.Ceil(x)
+				putLane(&f.Out, 32, i, uint64(roundF32Bits(bits, roundCeil)))
 			case 104:
-				x = math.Floor(x)
+				putLane(&f.Out, 32, i, uint64(roundF32Bits(bits, roundFloor)))
 			case 105:
-				x = math.Trunc(x)
+				putLane(&f.Out, 32, i, uint64(roundF32Bits(bits, roundTrunc)))
 			case 106:
-				x = math.RoundToEven(x)
+				putLane(&f.Out, 32, i, uint64(roundF32Bits(bits, roundNearest)))
 			case 227:
-				x = math.Sqrt(x)
+				if bits&0x7f800000 == 0x7f800000 && bits&0x007fffff != 0 {
+					putLane(&f.Out, 32, i, uint64(quiet32(bits)))
+				} else {
+					putF32(&f.Out, i, float32(math.Sqrt(float64(math.Float32frombits(bits)))))
+				}
 			}
-			if x == 0 {
-				x = math.Copysign(0, float64(f32(&f.A, i)))
-			}
-			putF32(&f.Out, i, float32(x))
 		} else {
-			x := f64(&f.A, i)
+			bits := laneU(&f.A, 64, i)
 			switch f.Op {
 			case 116:
-				x = math.Ceil(x)
+				putLane(&f.Out, 64, i, roundF64Bits(bits, roundCeil))
 			case 117:
-				x = math.Floor(x)
+				putLane(&f.Out, 64, i, roundF64Bits(bits, roundFloor))
 			case 122:
-				x = math.Trunc(x)
+				putLane(&f.Out, 64, i, roundF64Bits(bits, roundTrunc))
 			case 148:
-				x = math.RoundToEven(x)
+				putLane(&f.Out, 64, i, roundF64Bits(bits, roundNearest))
 			case 239:
-				x = math.Sqrt(x)
+				if isNaN64(bits) {
+					putLane(&f.Out, 64, i, quietNaN64(bits))
+				} else {
+					putF64(&f.Out, i, math.Sqrt(math.Float64frombits(bits)))
+				}
 			}
-			if x == 0 {
-				x = math.Copysign(0, f64(&f.A, i))
-			}
-			putF64(&f.Out, i, x)
 		}
 	}
 }

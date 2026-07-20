@@ -106,6 +106,47 @@ func TestSIMDFloatEdgesAndConversions(t *testing.T) {
 	}
 }
 
+func TestSIMDRoundingPreservesIntegralBitsAndQuietsNaNs(t *testing.T) {
+	for _, op := range []uint32{103, 104, 105, 106} {
+		f := SIMDFrame{Op: op}
+		for i, bits := range []uint32{0x6c7f4d7b, 0x6511a2b4, 0x7fa00000, 0xffa00000} {
+			binary.LittleEndian.PutUint32(f.A[i*4:], bits)
+		}
+		RunSIMD(&f)
+		for i, want := range []uint32{0x6c7f4d7b, 0x6511a2b4, 0x7fe00000, 0xffe00000} {
+			if got := binary.LittleEndian.Uint32(f.Out[i*4:]); got != want {
+				t.Errorf("f32 op %d lane %d = %#x, want %#x", op, i, got, want)
+			}
+		}
+	}
+
+	for _, op := range []uint32{116, 117, 122, 148} {
+		f := SIMDFrame{Op: op}
+		binary.LittleEndian.PutUint64(f.A[0:], 0x458fe9af5b5e16fa)
+		binary.LittleEndian.PutUint64(f.A[8:], 0xfff4000000000000)
+		RunSIMD(&f)
+		if got := binary.LittleEndian.Uint64(f.Out[0:]); got != 0x458fe9af5b5e16fa {
+			t.Errorf("f64 op %d integral lane = %#x", op, got)
+		}
+		if got := binary.LittleEndian.Uint64(f.Out[8:]); got != 0xfffc000000000000 {
+			t.Errorf("f64 op %d signaling NaN lane = %#x", op, got)
+		}
+	}
+}
+
+func TestSIMDPromoteQuietsSignalingNaNs(t *testing.T) {
+	f := SIMDFrame{Op: 95}
+	binary.LittleEndian.PutUint32(f.A[0:], 0x7fa00000)
+	binary.LittleEndian.PutUint32(f.A[4:], 0xffa00000)
+	RunSIMD(&f)
+	if got := binary.LittleEndian.Uint64(f.Out[0:]); got != 0x7ffc000000000000 {
+		t.Errorf("positive signaling NaN = %#x", got)
+	}
+	if got := binary.LittleEndian.Uint64(f.Out[8:]); got != 0xfffc000000000000 {
+		t.Errorf("negative signaling NaN = %#x", got)
+	}
+}
+
 func TestSIMDImmediateLaneAndMemoryOperations(t *testing.T) {
 	var imm V128
 	for i := range imm {
