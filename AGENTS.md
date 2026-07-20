@@ -23,6 +23,10 @@ Prioritize:
   best-effort parsing that accepts invalid input.
 - Keep the JIT direct; add abstractions only when tests, benchmarks, or repeated
   code prove they are needed.
+- Preserve the pure-Go runtime and firmware boundary: no cgo, C runtime, CMake,
+  or mixed-language board shim. Small target assembly and linker scripts are
+  acceptable where direct generated-code entry or fixed SRAM placement requires
+  them.
 - Avoid unbounded caches, goroutine-heavy designs, and hot-path allocations
   unless measured and justified.
 - Make performance and footprint claims with numbers.

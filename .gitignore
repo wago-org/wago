@@ -1,6 +1,7 @@
 # Go build artifacts
 *.test
 *.out
+/build/
 
 # Built CLI binaries (make build / build-release / tinygo-build) + release assets
 /wago

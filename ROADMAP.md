@@ -155,7 +155,27 @@ codegen rationale is **[OPTIMIZATIONS.md](OPTIMIZATIONS.md)**. Summary of the tw
   zero-skip Release 2 execution corpus are done.
 - 🚧 Additional targets: Linux/arm64, Darwin/arm64, and Linux/riscv64 are native
   backends; RV64 RVV optimization, native-hardware qualification, and Windows
-  ABIs remain planned
+  ABIs remain planned. Experimental RP2350 work now has cross-host fixed-width
+  RV32IM and Thumb-2 encoders; complete mixed one/two/four-slot module lowering;
+  scalar, SIMD, memory, table/reference, import, direct/indirect-call, start, and
+  export execution; fixed-capacity embedded resources; and a bounded
+  closed-module firmware-image builder plus an allocation-free framed transport
+  endpoint, strict import/export contract resolution, and context-aware
+  function/global/memory/table firmware bundles with transactional linked active
+  data/elements and bundle-wide context-aware funcref identities. The board
+  boundary is pure Go/TinyGo: generated Go descriptors retain flash snapshots
+  and linked contexts, an allocation-free image invoker restores and patches
+  fixed SRAM transactionally, and the stream endpoint uses caller-owned buffers.
+  Only small target assembly shims provide arbitrary generated entry and helper
+  addresses. Both generated targets pass all 147 pinned WebAssembly 2.0 script
+  files under QEMU (48,238 executed actions/assertions, with one documented
+  bounded-frame resource module). Physical Cortex-M33 execution is proven with
+  `fib_rec`; a watchdog-isolated Hazard3 sweep attempted all 147 scripts, passed
+  116 outright, and executed 1,244 modules plus 44,969 actions/assertions with
+  every remaining case classified as a bounded-resource or one-resident-harness
+  limitation. Complete Cortex-M33 corpus coverage, broader linked-module board
+  orchestration, and measured native performance remain before public admission
+  (see `docs/pico2-32bit-port.md`).
 - [ ] wazero-compatible API shim for drop-in migration
 
 ## Non-goals (for now)

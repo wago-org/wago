@@ -1,0 +1,792 @@
+diff --git a/src/device/riscv/start.S b/src/device/riscv/start.S
+index d67d82d..b8a3f9a 100644
+--- a/src/device/riscv/start.S
++++ b/src/device/riscv/start.S
+@@ -55,5 +55,9 @@ _start:
+     la gp,      __global_pointer$
+     .option pop
+ 
+-    // Jump to runtime.main
++    // Jump to the target runtime entry point.
++#if defined(PICO2_RISCV)
++    call Reset_Handler
++#else
+     call main
++#endif
+diff --git a/src/device/rp/rp2350_riscv_image.S b/src/device/rp/rp2350_riscv_image.S
+new file mode 100644
+index 0000000..ffb9c36
+--- /dev/null
++++ b/src/device/rp/rp2350_riscv_image.S
+@@ -0,0 +1,25 @@
++.section .embedded_block, "a"
++.p2align 2
++.global rp2350_riscv_image_def
++rp2350_riscv_image_def:
++    // RP2350 block-loop marker.
++    .word 0xffffded3
++
++    // IMAGE_TYPE: executable, Hazard3 RISC-V, RP2350.
++    .byte 0x42
++    .byte 0x01
++    .hword 0x1101
++
++    // ENTRY_POINT: reset entry and initial stack pointer.
++    .byte 0x44
++    .byte 0x03
++    .hword 0
++    .word _start
++    .word 0x20082000
++
++    // LAST item: four words of item data; this block loops to itself.
++    .byte 0xff
++    .hword 4
++    .byte 0
++    .word 0
++    .word 0xab123579
+diff --git a/src/machine/machine_rp2350_irq_arm.go b/src/machine/machine_rp2350_irq_arm.go
+new file mode 100644
+index 0000000..5ced671
+--- /dev/null
++++ b/src/machine/machine_rp2350_irq_arm.go
+@@ -0,0 +1,27 @@
++//go:build rp2350 && !pico2riscv
++
++package machine
++
++import "device/rp"
++
++func rp2350IRQSet(num uint32, enabled bool) {
++	if num >= _NUMIRQ {
++		return
++	}
++
++	registerIndex := num / 32
++	mask := uint32(1) << (num % 32)
++	if enabled {
++		if registerIndex == 0 {
++			rp.PPB.NVIC_ICPR0.Set(mask)
++			rp.PPB.NVIC_ISER0.Set(mask)
++		} else {
++			rp.PPB.NVIC_ICPR1.Set(mask)
++			rp.PPB.NVIC_ISER1.Set(mask)
++		}
++	} else if registerIndex == 0 {
++		rp.PPB.NVIC_ICER0.Set(mask)
++	} else {
++		rp.PPB.NVIC_ICER1.Set(mask)
++	}
++}
+diff --git a/src/machine/machine_rp2350_irq_hazard3.go b/src/machine/machine_rp2350_irq_hazard3.go
+new file mode 100644
+index 0000000..71fbc89
+--- /dev/null
++++ b/src/machine/machine_rp2350_irq_hazard3.go
+@@ -0,0 +1,28 @@
++//go:build rp2350 && pico2riscv
++
++package machine
++
++import "device/riscv"
++
++const (
++	hazard3MEIEA = riscv.CSR(0xbe0)
++	hazard3MEIFA = riscv.CSR(0xbe2)
++)
++
++func rp2350IRQSet(num uint32, enabled bool) {
++	if num >= _NUMIRQ {
++		return
++	}
++
++	window := uintptr(num / 16)
++	mask := uintptr(1) << (num % 16)
++	selectorAndMask := window | mask<<16
++	if enabled {
++		// Clear a forced pending bit before enabling. An asserted peripheral
++		// immediately becomes pending again.
++		hazard3MEIFA.ClearBits(selectorAndMask)
++		hazard3MEIEA.SetBits(selectorAndMask)
++	} else {
++		hazard3MEIEA.ClearBits(selectorAndMask)
++	}
++}
+diff --git a/src/machine/machine_rp2350_rom.go b/src/machine/machine_rp2350_rom.go
+index 665464a..36a879c 100644
+--- a/src/machine/machine_rp2350_rom.go
++++ b/src/machine/machine_rp2350_rom.go
+@@ -160,7 +160,12 @@ static bool pico_processor_state_is_nonsecure(void) {
+ #define BOOTROM_WELL_KNOWN_PTR_SIZE (BOOTROM_IS_A2() ? 2 : 4)
+ 
+ #define BOOTROM_VTABLE_OFFSET 0x00
++#ifdef __riscv
++#define BOOTROM_TABLE_LOOKUP_OFFSET 0x7df8
++#define BOOTROM_TABLE_LOOKUP_ENTRY_OFFSET 0x7dfa
++#else
+ #define BOOTROM_TABLE_LOOKUP_OFFSET     (BOOTROM_FUNC_TABLE_OFFSET + BOOTROM_WELL_KNOWN_PTR_SIZE)
++#endif
+ 
+ 
+ // https://github.com/raspberrypi/pico-sdk
+@@ -176,6 +181,7 @@ static bool pico_processor_state_is_nonsecure(void) {
+ 
+ #define RT_FLAG_FUNC_ARM_SEC    0x0004
+ #define RT_FLAG_FUNC_ARM_NONSEC 0x0010
++#define RT_FLAG_FUNC_RISCV      0x0001
+ #define RT_FLAG_DATA            0x0040
+ 
+ 
+@@ -188,12 +194,17 @@ typedef void *(*rom_table_lookup_fn)(uint32_t code, uint32_t mask);
+ 
+ __attribute__((always_inline))
+ static void *rom_func_lookup_inline(uint32_t code) {
++#ifdef __riscv
++    rom_table_lookup_fn rom_table_lookup = (rom_table_lookup_fn) (uintptr_t)*(uint16_t*)(BOOTROM_TABLE_LOOKUP_ENTRY_OFFSET);
++    return rom_table_lookup(code, RT_FLAG_FUNC_RISCV);
++#else
+     rom_table_lookup_fn rom_table_lookup = (rom_table_lookup_fn) (uintptr_t)*(uint16_t*)(BOOTROM_TABLE_LOOKUP_OFFSET);
+     if (pico_processor_state_is_nonsecure()) {
+         return rom_table_lookup(code, RT_FLAG_FUNC_ARM_NONSEC);
+     } else {
+         return rom_table_lookup(code, RT_FLAG_FUNC_ARM_SEC);
+     }
++#endif
+ }
+ 
+ __attribute__((always_inline))
+diff --git a/src/machine/machine_rp2350_usb.go b/src/machine/machine_rp2350_usb.go
+index c98327b..ca56573 100644
+--- a/src/machine/machine_rp2350_usb.go
++++ b/src/machine/machine_rp2350_usb.go
+@@ -93,6 +93,7 @@ func handleUSBIRQ(intr interrupt.Interrupt) {
+ 		}
+ 
+ 		s2 := rp.USB.BUFF_STATUS.Get()
++		rp.USB.BUFF_STATUS.Set(s2)
+ 
+ 		// OUT (PC -> rp2350)
+ 		for i := 0; i < 16; i++ {
+@@ -113,7 +114,6 @@ func handleUSBIRQ(intr interrupt.Interrupt) {
+ 			}
+ 		}
+ 
+-		rp.USB.BUFF_STATUS.Set(s2)
+ 	}
+ 
+ 	// Bus is reset
+diff --git a/src/machine/machine_rp2_2040.go b/src/machine/machine_rp2_2040.go
+index 78336a3..11c4ac4 100644
+--- a/src/machine/machine_rp2_2040.go
++++ b/src/machine/machine_rp2_2040.go
+@@ -8,6 +8,11 @@ import (
+ 	"unsafe"
+ )
+ 
++const (
++	watchdogTickFactor = 2
++	watchdogResetMask  = 0x0001ffff
++)
++
+ const (
+ 	cpuFreq          = 200 * MHz
+ 	_NUMBANK0_GPIOS  = 30
+diff --git a/src/machine/machine_rp2_2350.go b/src/machine/machine_rp2_2350.go
+index efb39a6..948653c 100644
+--- a/src/machine/machine_rp2_2350.go
++++ b/src/machine/machine_rp2_2350.go
+@@ -8,6 +8,11 @@ import (
+ 	"unsafe"
+ )
+ 
++const (
++	watchdogTickFactor = 1
++	watchdogResetMask  = 0x01ffffff
++)
++
+ const (
+ 	cpuFreq          = 150 * MHz
+ 	_NUMBANK0_GPIOS  = 48
+@@ -180,30 +185,7 @@ var (
+ // Enable or disable a specific interrupt on the executing core.
+ // num is the interrupt number which must be in [0,_NUMIRQ).
+ func irqSet(num uint32, enabled bool) {
+-	if num >= _NUMIRQ {
+-		return
+-	}
+-
+-	register_index := num / 32
+-	var mask uint32 = 1 << (num % 32)
+-
+-	if enabled {
+-		// Clear pending before enable
+-		//(if IRQ is actually asserted, it will immediately re-pend)
+-		if register_index == 0 {
+-			rp.PPB.NVIC_ICPR0.Set(mask)
+-			rp.PPB.NVIC_ISER0.Set(mask)
+-		} else {
+-			rp.PPB.NVIC_ICPR1.Set(mask)
+-			rp.PPB.NVIC_ISER1.Set(mask)
+-		}
+-	} else {
+-		if register_index == 0 {
+-			rp.PPB.NVIC_ICER0.Set(mask)
+-		} else {
+-			rp.PPB.NVIC_ICER1.Set(mask)
+-		}
+-	}
++	rp2350IRQSet(num, enabled)
+ }
+ 
+ func (clks *clocksType) initRTC() {} // No RTC on RP2350.
+@@ -218,7 +200,9 @@ func (clks *clocksType) initTicks() {
+ // On RP2040, the watchdog contained a tick generator used to generate a 1μs tick for the watchdog. This was also
+ // distributed to the system timer. On RP2350, the watchdog instead takes a tick input from the system-level ticks block. See Section 8.5.
+ func (wd *watchdogImpl) startTick(cycles uint32) {
+-	rp.TICKS.WATCHDOG_CTRL.SetBits(1)
++	rp.TICKS.WATCHDOG_CTRL.ClearBits(rp.TICKS_WATCHDOG_CTRL_ENABLE)
++	rp.TICKS.WATCHDOG_CYCLES.Set(cycles)
++	rp.TICKS.WATCHDOG_CTRL.SetBits(rp.TICKS_WATCHDOG_CTRL_ENABLE)
+ }
+ 
+ func adjustCoreVoltage() bool {
+diff --git a/src/machine/machine_rp2_watchdog.go b/src/machine/machine_rp2_watchdog.go
+index f776c5c..b164696 100644
+--- a/src/machine/machine_rp2_watchdog.go
++++ b/src/machine/machine_rp2_watchdog.go
+@@ -11,12 +11,12 @@ import (
+ var Watchdog = &watchdogImpl{}
+ 
+ const (
+-	// WatchdogMaxTimeout in milliseconds (approx 8.3s).
++	// WatchdogMaxTimeout in milliseconds.
+ 	//
+ 	// Nominal 1us per watchdog tick, 24-bit counter,
+-	// but due to errata two ticks consumed per 1us.
++	// RP2040 errata E1 consumes two ticks per microsecond; RP2350 does not.
+ 	// See: Errata RP2040-E1
+-	WatchdogMaxTimeout = (rp.WATCHDOG_LOAD_LOAD_Msk / 1000) / 2
++	WatchdogMaxTimeout = (rp.WATCHDOG_LOAD_LOAD_Msk / 1000) / watchdogTickFactor
+ )
+ 
+ type watchdogImpl struct {
+@@ -30,8 +30,7 @@ type watchdogImpl struct {
+ // some platforms attempting to reconfigure after starting the watchdog
+ // is explicitly forbidden / will not work.
+ func (wd *watchdogImpl) Configure(config WatchdogConfig) error {
+-	// x2 due to errata RP2040-E1
+-	wd.loadValue = config.TimeoutMillis * 1000 * 2
++	wd.loadValue = config.TimeoutMillis * 1000 * watchdogTickFactor
+ 	if wd.loadValue > rp.WATCHDOG_LOAD_LOAD_Msk {
+ 		wd.loadValue = rp.WATCHDOG_LOAD_LOAD_Msk
+ 	}
+@@ -39,7 +38,7 @@ func (wd *watchdogImpl) Configure(config WatchdogConfig) error {
+ 	rp.WATCHDOG.CTRL.ClearBits(rp.WATCHDOG_CTRL_ENABLE)
+ 
+ 	// Reset everything apart from ROSC and XOSC
+-	rp.PSM.WDSEL.Set(0x0001ffff &^ (rp.PSM_WDSEL_ROSC | rp.PSM_WDSEL_XOSC))
++	rp.PSM.WDSEL.Set(watchdogResetMask &^ (rp.PSM_WDSEL_ROSC | rp.PSM_WDSEL_XOSC))
+ 
+ 	// Pause watchdog during debug
+ 	rp.WATCHDOG.CTRL.SetBits(rp.WATCHDOG_CTRL_PAUSE_DBG0 | rp.WATCHDOG_CTRL_PAUSE_DBG1 | rp.WATCHDOG_CTRL_PAUSE_JTAG)
+diff --git a/src/machine/usb.go b/src/machine/usb.go
+index 3833c78..6d693e1 100644
+--- a/src/machine/usb.go
++++ b/src/machine/usb.go
+@@ -30,6 +30,13 @@ func initUSB() {
+ //go:linkname enableUSBCDC machine/usb/cdc.EnableUSBCDC
+ func enableUSBCDC()
+ 
++// SetUSBCDCRxHandler installs an interrupt-context observer for received USB
++// CDC bytes. The handler runs before the serial ring buffer receives the same
++// bytes and does not consume them.
++//
++//go:linkname SetUSBCDCRxHandler machine/usb/cdc.SetRxHandler
++func SetUSBCDCRxHandler(handler func([]byte))
++
+ type Serialer interface {
+ 	WriteByte(c byte) error
+ 	Write(data []byte) (n int, err error)
+diff --git a/src/machine/usb/cdc/usbcdc.go b/src/machine/usb/cdc/usbcdc.go
+index b9e6836..a609578 100644
+--- a/src/machine/usb/cdc/usbcdc.go
++++ b/src/machine/usb/cdc/usbcdc.go
+@@ -38,8 +38,15 @@ var (
+ 	USB *USBCDC
+ 
+ 	usbLineInfo = cdcLineInfo{115200, 0x00, 0x00, 0x08, 0x00}
++	rxHandler   func([]byte)
+ )
+ 
++// SetRxHandler installs an interrupt-context observer for received bytes. The
++// observer must not retain data and does not consume it from the serial stream.
++func SetRxHandler(handler func([]byte)) {
++	rxHandler = handler
++}
++
+ // Read from the RX buffer.
+ func (usbcdc *USBCDC) Read(data []byte) (n int, err error) {
+ 	data1, data2 := usbcdc.rx.Peek()
+@@ -151,7 +158,11 @@ func (usbcdc *USBCDC) RTS() bool {
+ 
+ func cdcCallbackRx(b []byte) {
+ 	free := USB.rx.Free()
+-	USB.rx.Put(b[:min(len(b), int(free))])
++	accepted := b[:min(len(b), int(free))]
++	if rxHandler != nil {
++		rxHandler(accepted)
++	}
++	USB.rx.Put(accepted)
+ }
+ 
+ var cdcSetupBuff [cdcLineInfoSize]byte
+diff --git a/src/runtime/interrupt/interrupt_rp2350_hazard3.go b/src/runtime/interrupt/interrupt_rp2350_hazard3.go
+new file mode 100644
+index 0000000..2e6946a
+--- /dev/null
++++ b/src/runtime/interrupt/interrupt_rp2350_hazard3.go
+@@ -0,0 +1,167 @@
++//go:build rp2350 && pico2riscv
++
++package interrupt
++
++import "device/riscv"
++
++//go:linkname callHandlers runtime/interrupt.callHandlers
++func callHandlers(num int)
++
++const (
++	hazard3MEIEA      = riscv.CSR(0xbe0)
++	hazard3MEIFA      = riscv.CSR(0xbe2)
++	hazard3MEIPRA     = riscv.CSR(0xbe3)
++	hazard3MEINEXT    = riscv.CSR(0xbe4)
++	hazard3MEICONTEXT = riscv.CSR(0xbe5)
++)
++
++func hazard3ArrayBits(num, entriesPerWindow int) (window, mask uintptr) {
++	window = uintptr(num / entriesPerWindow)
++	mask = uintptr(1) << (num % entriesPerWindow)
++	return
++}
++
++// Enable enables this external interrupt on the executing Hazard3 core.
++func (irq Interrupt) Enable() {
++	window, mask := hazard3ArrayBits(irq.num, 16)
++	selectorAndMask := window | mask<<16
++	hazard3MEIFA.ClearBits(selectorAndMask)
++	hazard3MEIEA.SetBits(selectorAndMask)
++}
++
++// Disable disables this external interrupt on the executing Hazard3 core.
++func (irq Interrupt) Disable() {
++	window, mask := hazard3ArrayBits(irq.num, 16)
++	hazard3MEIEA.ClearBits(window | mask<<16)
++}
++
++// SetPriority maps the Cortex-style TinyGo priority (zero is highest) onto
++// Hazard3's four-bit priority field (15 is highest).
++func (irq Interrupt) SetPriority(priority uint8) {
++	window := uintptr(irq.num / 4)
++	shift := uintptr(irq.num%4) * 4
++	mask := uintptr(0xf) << shift
++	value := uintptr((priority>>4)^0xf) << shift
++	hazard3MEIPRA.ClearBits(window | mask<<16)
++	hazard3MEIPRA.SetBits(window | value<<16)
++}
++
++func callHandler(num int) {
++	switch num {
++	case 0:
++		callHandlers(0)
++	case 1:
++		callHandlers(1)
++	case 2:
++		callHandlers(2)
++	case 3:
++		callHandlers(3)
++	case 4:
++		callHandlers(4)
++	case 5:
++		callHandlers(5)
++	case 6:
++		callHandlers(6)
++	case 7:
++		callHandlers(7)
++	case 8:
++		callHandlers(8)
++	case 9:
++		callHandlers(9)
++	case 10:
++		callHandlers(10)
++	case 11:
++		callHandlers(11)
++	case 12:
++		callHandlers(12)
++	case 13:
++		callHandlers(13)
++	case 14:
++		callHandlers(14)
++	case 15:
++		callHandlers(15)
++	case 16:
++		callHandlers(16)
++	case 17:
++		callHandlers(17)
++	case 18:
++		callHandlers(18)
++	case 19:
++		callHandlers(19)
++	case 20:
++		callHandlers(20)
++	case 21:
++		callHandlers(21)
++	case 22:
++		callHandlers(22)
++	case 23:
++		callHandlers(23)
++	case 24:
++		callHandlers(24)
++	case 25:
++		callHandlers(25)
++	case 26:
++		callHandlers(26)
++	case 27:
++		callHandlers(27)
++	case 28:
++		callHandlers(28)
++	case 29:
++		callHandlers(29)
++	case 30:
++		callHandlers(30)
++	case 31:
++		callHandlers(31)
++	case 32:
++		callHandlers(32)
++	case 33:
++		callHandlers(33)
++	case 34:
++		callHandlers(34)
++	case 35:
++		callHandlers(35)
++	case 36:
++		callHandlers(36)
++	case 37:
++		callHandlers(37)
++	case 38:
++		callHandlers(38)
++	case 39:
++		callHandlers(39)
++	case 40:
++		callHandlers(40)
++	case 41:
++		callHandlers(41)
++	case 42:
++		callHandlers(42)
++	case 43:
++		callHandlers(43)
++	case 44:
++		callHandlers(44)
++	case 45:
++		callHandlers(45)
++	}
++}
++
++//export handleInterrupt
++func handleInterrupt() {
++	cause := riscv.MCAUSE.Get()
++	if cause&(uintptr(1)<<31) == 0 || cause&0x7fffffff != riscv.MachineExternalInterrupt {
++		for {
++			riscv.Asm("wfi")
++		}
++	}
++
++	// Save external-interrupt context and clear the standard timer/software
++	// enables just as the Pico SDK Hazard3 entry path does.
++	context := hazard3MEICONTEXT.SetBits(2)
++	for {
++		next := hazard3MEINEXT.SetBits(1)
++		if next&(uintptr(1)<<31) != 0 {
++			break
++		}
++		callHandler(int((next & 0x7fc) >> 2))
++	}
++	hazard3MEICONTEXT.Set(context)
++	riscv.MCAUSE.Set(0)
++}
+diff --git a/src/runtime/runtime_rp2.go b/src/runtime/runtime_rp2.go
+index 1cd23d6..6203234 100644
+--- a/src/runtime/runtime_rp2.go
++++ b/src/runtime/runtime_rp2.go
+@@ -3,7 +3,6 @@
+ package runtime
+ 
+ import (
+-	"device/arm"
+ 	"device/rp"
+ 	"internal/task"
+ 	"machine"
+@@ -81,7 +80,7 @@ func sleepTicksMulticore(d timeUnit) {
+ 
+ // Interrupt an ongoing call to sleepTicksMulticore on another core.
+ func interruptSleepTicksMulticore(wakeup timeUnit) {
+-	arm.Asm("sev")
++	rp2SendEvent()
+ }
+ 
+ // Number of cores that are currently in schedulerUnlockAndWait.
+@@ -95,7 +94,7 @@ var waitingCore uint8
+ func schedulerUnlockAndWait() {
+ 	waitingCore++
+ 	schedulerLock.Unlock()
+-	arm.Asm("wfe")
++	rp2WaitForEvent()
+ 	schedulerLock.Lock()
+ 	waitingCore--
+ }
+@@ -104,7 +103,7 @@ func schedulerUnlockAndWait() {
+ // held.
+ func schedulerWake() {
+ 	if waitingCore != 0 {
+-		arm.Asm("sev")
++		rp2SendEvent()
+ 	}
+ }
+ 
+@@ -123,7 +122,7 @@ func startSecondaryCores() {
+ 		cmd := core1StartSequence[seq]
+ 		if cmd == 0 {
+ 			multicore_fifo_drain()
+-			arm.Asm("sev")
++			rp2SendEvent()
+ 		}
+ 		multicore_fifo_push_blocking(cmd)
+ 		response := multicore_fifo_pop_blocking()
+@@ -213,12 +212,12 @@ func multicore_fifo_push_blocking(data uint32) {
+ 	for !multicore_fifo_wready() {
+ 	}
+ 	rp.SIO.FIFO_WR.Set(data)
+-	arm.Asm("sev")
++	rp2SendEvent()
+ }
+ 
+ func multicore_fifo_pop_blocking() uint32 {
+ 	for !multicore_fifo_rvalid() {
+-		arm.Asm("wfe")
++		rp2WaitForEvent()
+ 	}
+ 
+ 	return rp.SIO.FIFO_RD.Get()
+@@ -233,11 +232,11 @@ var gcSignalWait volatile.Register8
+ func gcInterruptHandler(hartID uint32) {
+ 	// Let the GC know we're ready.
+ 	gcScanState.Add(1)
+-	arm.Asm("sev")
++	rp2SendEvent()
+ 
+ 	// Wait until we get a signal to start scanning.
+ 	for gcSignalWait.Get() == 0 {
+-		arm.Asm("wfe")
++		rp2WaitForEvent()
+ 	}
+ 	gcSignalWait.Set(0)
+ 
+@@ -250,17 +249,17 @@ func gcInterruptHandler(hartID uint32) {
+ 
+ 	// Signal we've finished scanning.
+ 	gcScanState.Store(1)
+-	arm.Asm("sev")
++	rp2SendEvent()
+ 
+ 	// Wait until we get a signal that the stop-the-world phase has ended.
+ 	for gcSignalWait.Get() == 0 {
+-		arm.Asm("wfe")
++		rp2WaitForEvent()
+ 	}
+ 	gcSignalWait.Set(0)
+ 
+ 	// Signal we received the signal and are going to exit the interrupt.
+ 	gcScanState.Add(1)
+-	arm.Asm("sev")
++	rp2SendEvent()
+ }
+ 
+ // Pause the given core by sending it an interrupt.
+@@ -273,7 +272,7 @@ func gcPauseCore(core uint32) {
+ // the core, and the second time to end the stop-the-world phase.
+ func gcSignalCore(core uint32) {
+ 	gcSignalWait.Set(1)
+-	arm.Asm("sev")
++	rp2SendEvent()
+ }
+ 
+ // Returns the stack top (highest address) of the system stack of the given
+@@ -319,23 +318,23 @@ func (l *spinLock) Lock() {
+ 	// Wait for the lock to be available.
+ 	spinlock := l.spinlock()
+ 	for spinlock.Get() == 0 {
+-		arm.Asm("wfe")
++		rp2WaitForEvent()
+ 	}
+ }
+ 
+ func (l *spinLock) Unlock() {
+ 	l.spinlock().Set(0)
+-	arm.Asm("sev")
++	rp2SendEvent()
+ }
+ 
+ // Wait until a signal is received, indicating that it can resume from the
+ // spinloop.
+ func spinLoopWait() {
+-	arm.Asm("wfe")
++	rp2WaitForEvent()
+ }
+ 
+-func waitForEvents() {
+-	arm.Asm("wfe")
++func rp2RuntimeWaitForEvents() {
++	rp2WaitForEvent()
+ }
+ 
+ func putchar(c byte) {
+@@ -358,9 +357,11 @@ func buffered() int {
+ func machineInit()
+ 
+ func init() {
++	rp2InitInterrupts()
+ 	machineInit()
+ 
+ 	machine.InitSerial()
++	rp2EnableInterrupts()
+ }
+ 
+ func prerun() {
+diff --git a/src/runtime/runtime_rp2350_hazard3.go b/src/runtime/runtime_rp2350_hazard3.go
+new file mode 100644
+index 0000000..a25e321
+--- /dev/null
++++ b/src/runtime/runtime_rp2350_hazard3.go
+@@ -0,0 +1,47 @@
++//go:build rp2350 && pico2riscv
++
++package runtime
++
++import (
++	"device/riscv"
++	"unsafe"
++)
++
++//go:extern handleInterruptASM
++var handleInterruptASM [0]uintptr
++
++func rp2InitInterrupts() {
++	riscv.MCAUSE.Set(0)
++	riscv.MTVEC.Set(uintptr(unsafe.Pointer(&handleInterruptASM)))
++	// The boot ROM does not promise that Hazard3's banked external-enable
++	// array is clear. Disable every RP2350 IRQ before drivers register theirs.
++	for window := uintptr(0); window < 3; window++ {
++		riscv.CSR(0xbe0).ClearBits(window | uintptr(0xffff)<<16)
++	}
++	riscv.MIE.Set(riscv.MIE_MEIE)
++	riscv.MSTATUS.ClearBits(riscv.MSTATUS_MIE)
++}
++
++func rp2EnableInterrupts() {
++	riscv.MSTATUS.SetBits(riscv.MSTATUS_MIE)
++}
++
++func rp2WaitForEvent() {
++	riscv.Asm("wfi")
++}
++
++// The Pico 2 RISC-V target currently runs a single core without the task
++// scheduler. There is therefore no sleeping peer hart to notify.
++func rp2SendEvent() {
++	riscv.Asm("fence rw, rw")
++}
++
++func exit(code int) {
++	for {
++		riscv.Asm("wfi")
++	}
++}
++
++func abort() {
++	exit(1)
++}
+diff --git a/src/runtime/runtime_rp2_arm.go b/src/runtime/runtime_rp2_arm.go
+new file mode 100644
+index 0000000..402978a
+--- /dev/null
++++ b/src/runtime/runtime_rp2_arm.go
+@@ -0,0 +1,21 @@
++//go:build (rp2040 || rp2350) && !pico2riscv
++
++package runtime
++
++import "device/arm"
++
++func rp2InitInterrupts() {}
++
++func rp2EnableInterrupts() {}
++
++func rp2WaitForEvent() {
++	arm.Asm("wfe")
++}
++
++func rp2SendEvent() {
++	arm.Asm("sev")
++}
++
++func waitForEvents() {
++	rp2RuntimeWaitForEvents()
++}
+diff --git a/targets/pico2-riscv.json b/targets/pico2-riscv.json
+new file mode 100644
+index 0000000..1df844a
+--- /dev/null
++++ b/targets/pico2-riscv.json
+@@ -0,0 +1,20 @@
++{
++    "inherits": ["riscv32"],
++    "build-tags": ["rp2350", "rp", "pico2", "pico2riscv"],
++    "cpu": "generic-rv32",
++    "features": "+32bit,+a,+c,+m,+zaamo,+zalrsc,+zicsr,+zifencei,+zmmul",
++    "scheduler": "none",
++    "serial": "usb",
++    "serial-port": ["2e8a:000A", "2e8a:0009"],
++    "flash-1200-bps-reset": "true",
++    "flash-method": "msd",
++    "msd-volume-name": ["RP2350"],
++    "msd-firmware-name": "firmware.uf2",
++    "binary-format": "uf2",
++    "uf2-family-id": "0xe48bff5a",
++    "default-stack-size": 8192,
++    "cflags": ["-march=rv32imac_zicsr", "-DPICO2_RISCV=1"],
++    "ldflags": ["--defsym=__flash_size=4M", "--defsym=__num_stacks=1"],
++    "extra-files": ["src/device/rp/rp2350_riscv_image.S"],
++    "linkerscript": "targets/rp2350-riscv.ld"
++}
+diff --git a/targets/rp2350-riscv.ld b/targets/rp2350-riscv.ld
+new file mode 100644
+index 0000000..038f90b
+--- /dev/null
++++ b/targets/rp2350-riscv.ld
+@@ -0,0 +1,18 @@
++MEMORY
++{
++    FLASH_TEXT (rx) : ORIGIN = 0x10000000, LENGTH = __flash_size
++    RAM (rwx)       : ORIGIN = 0x20000000, LENGTH = 512K
++}
++
++ENTRY(_start)
++_stack_size = 8K;
++
++SECTIONS
++{
++    .picobin :
++    {
++        KEEP(*(.embedded_block))
++    } >FLASH_TEXT
++}
++
++INCLUDE "targets/riscv.ld"

@@ -1,6 +1,61 @@
 package wasm
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
+
+func TestSIMDNoImmediateSignatures(t *testing.T) {
+	tests := []struct {
+		sub     uint32
+		inputs  []ValType
+		results []ValType
+	}{
+		{15, []ValType{I32}, []ValType{V128}},
+		{83, []ValType{V128}, []ValType{I32}},
+		{228, []ValType{V128, V128}, []ValType{V128}},
+		{261, []ValType{V128, V128, V128}, []ValType{V128}},
+	}
+	for _, tc := range tests {
+		inputs, results, ok := SIMDNoImmediateSignature(tc.sub)
+		if !ok || !slices.Equal(inputs, tc.inputs) || !slices.Equal(results, tc.results) {
+			t.Fatalf("subopcode %d signature inputs=%v results=%v ok=%v", tc.sub, inputs, results, ok)
+		}
+	}
+	if _, _, ok := SIMDNoImmediateSignature(13); ok {
+		t.Fatal("shuffle immediate reported as no-immediate SIMD")
+	}
+	for _, tc := range []struct {
+		sub     uint32
+		inputs  []ValType
+		results []ValType
+	}{
+		{21, []ValType{V128}, []ValType{I32}},
+		{23, []ValType{V128, I32}, []ValType{V128}},
+		{33, []ValType{V128}, []ValType{F64}},
+	} {
+		inputs, results, ok := SIMDLaneSignature(tc.sub)
+		if !ok || !slices.Equal(inputs, tc.inputs) || !slices.Equal(results, tc.results) {
+			t.Fatalf("lane subopcode %d signature inputs=%v results=%v ok=%v", tc.sub, inputs, results, ok)
+		}
+	}
+	for _, tc := range []struct {
+		sub     uint32
+		inputs  []ValType
+		results []ValType
+		hasLane bool
+	}{
+		{0, []ValType{I32}, []ValType{V128}, false},
+		{11, []ValType{I32, V128}, nil, false},
+		{84, []ValType{I32, V128}, []ValType{V128}, true},
+		{88, []ValType{I32, V128}, nil, true},
+	} {
+		inputs, results, lane, ok := SIMDMemorySignature(tc.sub)
+		if !ok || lane != tc.hasLane || !slices.Equal(inputs, tc.inputs) || !slices.Equal(results, tc.results) {
+			t.Fatalf("memory subopcode %d signature inputs=%v results=%v lane=%v ok=%v", tc.sub, inputs, results, lane, ok)
+		}
+	}
+}
 
 func TestSIMDOpcodeInventory(t *testing.T) {
 	seenSub := make(map[uint32]InstrKind, 256)
