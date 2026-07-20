@@ -135,21 +135,35 @@ func TestFirmwareImageInvokerLifecycle(t *testing.T) {
 }
 
 func TestFirmwareImageInvokerPreflightsBeforeMutation(t *testing.T) {
-	d, _ := newFirmwareImageFixture(TransportTargetRISCV32)
-	for index := range d.Image {
-		d.Image[index] = 0xa5
-	}
-	before := slices.Clone(d.Image)
-	initial := []byte(d.InitialImage)
-	second := d.Contexts[1] - d.ImageAddress
-	binary.LittleEndian.PutUint32(initial[second+ContextHelperTableOffset:], 0x30000000)
-	d.InitialImage = string(initial)
-	invoker := &FirmwareImageInvoker{Descriptor: d, Native: &testFirmwareNative{descriptor: d}}
-	if code := invoker.Instantiate(d.ContextAddress); code != TransportCodeState {
-		t.Fatalf("instantiate=%#x", code)
-	}
-	if !slices.Equal(d.Image, before) {
-		t.Fatal("invalid image mutated destination")
+	for _, test := range []struct {
+		name  string
+		field uint32
+	}{
+		{name: "trap", field: ContextTrapCellOffset},
+		{name: "cancel", field: ContextCancelCellOffset},
+		{name: "helpers", field: ContextHelperTableOffset},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			d, initial := newFirmwareImageFixture(TransportTargetRISCV32)
+			d.InitialImage = ""
+			d.InitialImageBytes = slices.Clone(initial)
+			for index := range d.Image {
+				d.Image[index] = 0xa5
+			}
+			before := slices.Clone(d.Image)
+			second := d.Contexts[1] - d.ImageAddress
+			binary.LittleEndian.PutUint32(d.InitialImageBytes[second+test.field:], 0x30000000)
+			invoker := &FirmwareImageInvoker{Descriptor: d, Native: &testFirmwareNative{descriptor: d}}
+			if d.Valid() {
+				t.Fatal("invalid descriptor accepted")
+			}
+			if code := invoker.Instantiate(d.ContextAddress); code != TransportCodeState {
+				t.Fatalf("instantiate=%#x", code)
+			}
+			if !slices.Equal(d.Image, before) {
+				t.Fatal("invalid image mutated destination")
+			}
+		})
 	}
 }
 

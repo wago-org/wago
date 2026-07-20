@@ -154,6 +154,14 @@ func (d *FirmwareImageDescriptor) valid() bool {
 		if !ok {
 			return false
 		}
+		trapAddress := d.initialUint32(contextOffset + ContextTrapCellOffset)
+		if _, ok := d.rangeOffsetInitial(trapAddress, 4); !ok {
+			return false
+		}
+		cancelAddress := d.initialUint32(contextOffset + ContextCancelCellOffset)
+		if _, ok := d.rangeOffsetInitial(cancelAddress, 4); !ok {
+			return false
+		}
 		helperAddress := d.initialUint32(contextOffset + ContextHelperTableOffset)
 		if _, ok := d.rangeOffsetInitial(helperAddress, HelperTableBytes); !ok {
 			return false
