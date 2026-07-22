@@ -222,24 +222,26 @@ func (j *JobMemory) LinearMemory() []byte {
 	return j.mem[j.linOff : j.linOff+n : j.linOff+n]
 }
 
-// HostBytes returns a LIVE view of linear memory for host-side access (for example,
-// embedder Read/Write), reflecting memory.grow. Native code tracks the current
-// logical size in the basedata cache (curBytes) and, in guard-page mode, commits
-// the grown pages without touching the Go-side j.mem slice — so a host reader must
-// slice over the stable base up to curBytes, not rely on j.mem's (initial) length
-// or j.linLen. The base never moves: growable memory is a fixed full-size
-// reservation, so only the length grows. Unlike CurrentBytes, this stays valid
-// after growth in guard-page mode (where j.mem is capped at the initial commit).
-func (j *JobMemory) HostBytes() []byte {
+// HostBytesChecked returns a LIVE view of linear memory for host-side access,
+// reflecting memory.grow. Guard-page growth raises the logical size before pages
+// are necessarily fault-committed; this method commits the newly host-visible
+// range and extends j.mem's stable-base view before returning it.
+func (j *JobMemory) HostBytesChecked() ([]byte, error) {
 	n := j.curBytes()
-	if j.reserveBase != 0 {
-		// Guard-page: j.mem is capped at the initial commit, but its backing array
-		// is the whole reservation (committed up to curBytes by grow), so re-slice
-		// through the existing *byte to the current size — like rearmGuarded, and
-		// vet-safe (no uintptr->Pointer round-trip).
-		return unsafe.Slice(&j.mem[0], j.linOff+n)[j.linOff:]
+	if j.reserveBase != 0 && j.linOff+n > len(j.mem) {
+		if err := growGuardedHostView(j, n); err != nil {
+			return nil, err
+		}
 	}
-	return j.mem[j.linOff : j.linOff+n : j.linOff+n]
+	return j.mem[j.linOff : j.linOff+n : j.linOff+n], nil
+}
+
+// HostBytes is the no-error convenience form used by public byte/read/write
+// accessors. A rare guard-page commit failure returns nil and therefore fails
+// host bounds checks rather than exposing an inaccessible slice.
+func (j *JobMemory) HostBytes() []byte {
+	b, _ := j.HostBytesChecked()
+	return b
 }
 
 // LinMemBase is the pointer handed to native code as the linMem base

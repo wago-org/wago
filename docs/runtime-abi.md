@@ -44,6 +44,17 @@ retains each distinct producer instance until the importer's physical resource
 release; logical close alone cannot release those roots when a table, global, or
 public token still retains the importer's descriptor arena.
 
+## Guarded host memory access
+
+In guard-page mode, `memory.grow` raises the logical size before newly in-bounds
+pages are necessarily committed; native loads/stores commit them lazily through
+the fault handler. Host access uses `JobMemory.HostBytesChecked`, which mprotects
+and extends the stable-base Go view through the current logical size first. This
+is required for `Memory.Bytes`, typed host reads/writes, snapshot restore, and
+active data initialization against an imported memory that grew before the new
+instance was created. `CurrentBytes` remains limited to the original committed
+Go slice and must not be used for that case.
+
 ## Global storage convention
 
 Each instantiated module owns an arena-backed globals pointer table:

@@ -720,14 +720,23 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		// The snapshot's linear-memory bytes already reflect post-data-init state
 		// plus every mutation up to the capture point, so copy them wholesale and
 		// skip the module's active data segments below.
-		dst := jm.HostBytes()
+		dst, hostErr := jm.HostBytesChecked()
+		if hostErr != nil {
+			return nil, fmt.Errorf("snapshot memory host access: %w", hostErr)
+		}
 		if len(opts.restore.memory) > len(dst) {
 			return nil, fmt.Errorf("snapshot memory (%d bytes) exceeds instance memory (%d bytes)", len(opts.restore.memory), len(dst))
 		}
 		copy(dst, opts.restore.memory)
 	}
 	if initErr == nil && len(c.Data) > 0 && opts.restore == nil {
-		lin := jm.CurrentBytes() // active data must fit the initial size, not the reservation
+		// Imported guarded memory may already have grown beyond its initial committed
+		// Go slice. HostBytes re-slices the stable reservation to the current logical
+		// size; for fresh owned memory that size is still the declared initial size.
+		lin, hostErr := jm.HostBytesChecked()
+		if hostErr != nil {
+			return nil, fmt.Errorf("active data host access: %w", hostErr)
+		}
 		for seg, d := range c.Data {
 			off := d.Offset.Base
 			if d.Offset.HasGlobal {
