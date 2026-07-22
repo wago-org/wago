@@ -557,15 +557,15 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 	f.a.Push(RAX) // alignment pad
 
 	if b.Dynamic {
-		if b.ImportIndex > uint32((1<<31-1-24)/32) {
+		if b.ImportIndex > uint32((1<<31-1-runtime.ImportDispatchCallerContextOffset)/runtime.ImportDispatchEntryBytes) {
 			return fmt.Errorf("import dispatch index %d overflows displacement", b.ImportIndex)
 		}
-		disp := int32(b.ImportIndex * 32)
+		disp := int32(b.ImportIndex * runtime.ImportDispatchEntryBytes)
 		f.a.Load64(RAX, RBX, -offImportDispatchPtr)
-		f.a.Load64(RSI, RAX, disp+8)  // callee/home linMem (wrapper-ABI arg 1)
-		f.a.Load64(R10, RAX, disp+16) // target instance context
-		f.a.Load64(R9, RAX, disp+24)  // caller context, needed after return
-		f.a.Load64(R11, RAX, disp)    // wrapper entry
+		f.a.Load64(RSI, RAX, disp+runtime.ImportDispatchHomeLinMemOffset)    // wrapper-ABI arg 1
+		f.a.Load64(R10, RAX, disp+runtime.ImportDispatchTargetContextOffset) // target context
+		f.a.Load64(R9, RAX, disp+runtime.ImportDispatchCallerContextOffset)  // caller context
+		f.a.Load64(R11, RAX, disp+runtime.ImportDispatchCodePtrOffset)       // wrapper entry
 		f.a.Push(R9)
 		f.a.Push(R10) // alignment pad + preserves the caller-context pair
 		f.copyInstanceContext(RSI, R10)

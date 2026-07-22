@@ -586,16 +586,16 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 	f.a.StpPre(X27, X9, SP, -16) // X9 = alignment pad
 
 	if b.Dynamic {
-		if b.ImportIndex > uint32((1<<31-1-24)/32) {
+		if b.ImportIndex > uint32((1<<31-1-runtime.ImportDispatchCallerContextOffset)/runtime.ImportDispatchEntryBytes) {
 			return fmt.Errorf("import dispatch index %d overflows displacement", b.ImportIndex)
 		}
-		disp := int32(b.ImportIndex * 32)
+		disp := int32(b.ImportIndex * runtime.ImportDispatchEntryBytes)
 		f.ld64(X16, linMemReg, -int32(offImportDispatchPtr))
-		f.ld64(X1, X16, disp+8)   // callee/home linMem (wrapper-ABI arg 1)
-		f.ld64(X10, X16, disp+16) // target instance context
-		f.ld64(X17, X16, disp)    // wrapper entry
+		f.ld64(X1, X16, disp+runtime.ImportDispatchHomeLinMemOffset)     // wrapper-ABI arg 1
+		f.ld64(X10, X16, disp+runtime.ImportDispatchTargetContextOffset) // target context
+		f.ld64(X17, X16, disp+runtime.ImportDispatchCodePtrOffset)       // wrapper entry
 		f.copyInstanceContext(X1, X10)
-		f.ld64(X16, X16, disp+24) // caller context, needed after return
+		f.ld64(X16, X16, disp+runtime.ImportDispatchCallerContextOffset) // caller context
 		f.a.StpPre(X16, X17, SP, -16)
 	} else {
 		f.a.MovImm64(X1, b.CalleeLinMem) // callee linMem base (wrapper-ABI arg 1)

@@ -33,8 +33,8 @@ const (
 	PassiveDataPtrOffset = 128
 
 	// ImportDispatchPtrOffset points at per-instance imported-function targets.
-	// Each entry is {wrapperEntry, homeLinMem, targetContext, callerContext}, four
-	// u64 values in Wasm import order.
+	// Entry size/field offsets are runtime.ImportDispatch* constants; entries are
+	// ordered by Wasm function-import index.
 	ImportDispatchPtrOffset = 136
 
 	// BasedataSize keeps the linear-memory base 16-byte aligned after the wago

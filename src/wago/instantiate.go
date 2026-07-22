@@ -349,28 +349,28 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	}
 	thunkMem = generatedThunks
 	if c.dynamicImports && c.NumImports > 0 {
-		dispatch := ar.Alloc(c.NumImports * 32)
+		dispatch := ar.Alloc(c.NumImports * runtime.ImportDispatchEntryBytes)
 		selfLinMem := uint64(jm.LinMemBase())
 		for i, key := range c.Imports {
-			off := i * 32
+			off := i * runtime.ImportDispatchEntryBytes
 			if ex, ok := imports[key].(*InstanceExport); ok && ex != nil && ex.inst != nil {
 				if ex.localIdx < 0 || ex.localIdx >= len(ex.inst.c.Entry) {
 					return nil, fmt.Errorf("cross-instance import %q references an unavailable function", key)
 				}
-				binary.LittleEndian.PutUint64(dispatch[off:], uint64(ex.inst.base)+uint64(ex.inst.c.Entry[ex.localIdx]))
-				binary.LittleEndian.PutUint64(dispatch[off+8:], uint64(ex.inst.jm.LinMemBase()))
-				binary.LittleEndian.PutUint64(dispatch[off+16:], uint64(ex.inst.nativeContext))
-				binary.LittleEndian.PutUint64(dispatch[off+24:], uint64(nativeContextPtr))
+				binary.LittleEndian.PutUint64(dispatch[off+runtime.ImportDispatchCodePtrOffset:], uint64(ex.inst.base)+uint64(ex.inst.c.Entry[ex.localIdx]))
+				binary.LittleEndian.PutUint64(dispatch[off+runtime.ImportDispatchHomeLinMemOffset:], uint64(ex.inst.jm.LinMemBase()))
+				binary.LittleEndian.PutUint64(dispatch[off+runtime.ImportDispatchTargetContextOffset:], uint64(ex.inst.nativeContext))
+				binary.LittleEndian.PutUint64(dispatch[off+runtime.ImportDispatchCallerContextOffset:], uint64(nativeContextPtr))
 				continue
 			}
 			addr, ok := thunkAddr[uint32(i)]
 			if !ok {
 				return nil, fmt.Errorf("import %q has no host dispatch thunk", key)
 			}
-			binary.LittleEndian.PutUint64(dispatch[off:], addr)
-			binary.LittleEndian.PutUint64(dispatch[off+8:], selfLinMem)
-			binary.LittleEndian.PutUint64(dispatch[off+16:], uint64(nativeContextPtr))
-			binary.LittleEndian.PutUint64(dispatch[off+24:], uint64(nativeContextPtr))
+			binary.LittleEndian.PutUint64(dispatch[off+runtime.ImportDispatchCodePtrOffset:], addr)
+			binary.LittleEndian.PutUint64(dispatch[off+runtime.ImportDispatchHomeLinMemOffset:], selfLinMem)
+			binary.LittleEndian.PutUint64(dispatch[off+runtime.ImportDispatchTargetContextOffset:], uint64(nativeContextPtr))
+			binary.LittleEndian.PutUint64(dispatch[off+runtime.ImportDispatchCallerContextOffset:], uint64(nativeContextPtr))
 		}
 		jm.SetImportDispatchPtr(uintptr(unsafe.Pointer(&dispatch[0])))
 	}

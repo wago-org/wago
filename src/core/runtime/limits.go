@@ -11,6 +11,16 @@ const InstantiateArenaSize = 1 << 20
 
 const HostCallLogBytes = 8 + ((1<<16)/8)*8
 
+// Import dispatch entries bind already-compiled imported calls to one instance's
+// concrete host or cross-instance wrapper target.
+const (
+	ImportDispatchCodePtrOffset       = 0
+	ImportDispatchHomeLinMemOffset    = 8
+	ImportDispatchTargetContextOffset = 16
+	ImportDispatchCallerContextOffset = 24
+	ImportDispatchEntryBytes          = 32
+)
+
 // PassiveElemDescBytes is the size of one passive element segment descriptor:
 // {ptr u64, len u32, pad u32}. elem.drop zeroes len. The ptr targets an array
 // of TableEntryBytes descriptors so table.init can copy directly into table 0.
@@ -154,10 +164,10 @@ func InstantiateArenaNeed(fp InstantiateFootprint) (int, error) {
 	if need == 0 && fp.FuncImportCount > 0 {
 		need += HostCallLogBytes
 	}
-	if fp.FuncImportCount > (maxInt()-need)/32 {
+	if fp.FuncImportCount > (maxInt()-need)/ImportDispatchEntryBytes {
 		return 0, fmt.Errorf("function import count %d overflows dispatch allocation", fp.FuncImportCount)
 	}
-	need += fp.FuncImportCount * 32
+	need += fp.FuncImportCount * ImportDispatchEntryBytes
 	if fp.GlobalCount > (maxInt()-need)/16 {
 		return 0, fmt.Errorf("global count %d overflows arena allocation", fp.GlobalCount)
 	}
