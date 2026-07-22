@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 )
@@ -13,11 +12,7 @@ import (
 // from drifting away from the implementation. Design rationale remains prose;
 // only stable markers and the placement of dated snapshots are enforced here.
 func TestRepositoryStatusDocuments(t *testing.T) {
-	_, file, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("runtime.Caller failed")
-	}
-	root := filepath.Clean(filepath.Join(filepath.Dir(file), "..", ".."))
+	root := repositoryRoot(t)
 
 	architecture := readRepositoryDocument(t, root, "ARCHITECTURE.md")
 	for _, marker := range []string{
@@ -46,6 +41,26 @@ func TestRepositoryStatusDocuments(t *testing.T) {
 		"docs/archive/status/2026-07-10-arm64-runtime-perf.md",
 	} {
 		readRepositoryDocument(t, root, archived)
+	}
+}
+
+func repositoryRoot(t *testing.T) string {
+	t.Helper()
+	dir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("working directory: %v", err)
+	}
+	for {
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			return dir
+		} else if !os.IsNotExist(err) {
+			t.Fatalf("stat go.mod: %v", err)
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			t.Fatalf("repository root not found from %s", dir)
+		}
+		dir = parent
 	}
 }
 
