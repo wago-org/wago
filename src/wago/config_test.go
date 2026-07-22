@@ -325,14 +325,9 @@ func TestFunctionWorkersImportedCodeAndSerialization(t *testing.T) {
 		if !c.dynamicImports || len(c.Code) == 0 {
 			t.Fatalf("workers=%d dynamic=%v code=%d", workers, c.dynamicImports, len(c.Code))
 		}
-		linked, err := c.linkModule(imports, nil)
-		if err != nil {
+		if err := c.validateImportBindings(imports, nil); err != nil {
 			_ = c.Close()
-			t.Fatalf("workers=%d bind: %v", workers, err)
-		}
-		if linked != c {
-			_ = c.Close()
-			t.Fatalf("workers=%d binding changed compiled image", workers)
+			t.Fatalf("workers=%d bindings: %v", workers, err)
 		}
 		return c
 	}

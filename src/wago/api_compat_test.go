@@ -226,16 +226,11 @@ func TestReturningHostImportUsesCompiledDispatch(t *testing.T) {
 	}
 	defer c.Close()
 	imports := Imports{"env.answer": HostFunc(func(_ HostModule, _, results []uint64) { results[0] = I32(42) })}
-	first, err := c.linkModule(imports, nil)
-	if err != nil {
-		t.Fatalf("link returning host module: %v", err)
+	if err := c.validateImportBindings(imports, nil); err != nil {
+		t.Fatalf("validate returning host bindings: %v", err)
 	}
-	second, err := c.linkModule(imports, nil)
-	if err != nil {
-		t.Fatalf("repeat link returning host module: %v", err)
-	}
-	if first != c || second != c || !c.dynamicImports || len(c.Code) == 0 {
-		t.Fatalf("dynamic linked modules = %p, %p owner=%p dynamic=%v code=%d", first, second, c, c.dynamicImports, len(c.Code))
+	if !c.dynamicImports || len(c.Code) == 0 {
+		t.Fatalf("compiled import dispatch dynamic=%v code=%d", c.dynamicImports, len(c.Code))
 	}
 	in, err := Instantiate(c, imports)
 	if err != nil {

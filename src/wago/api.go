@@ -485,50 +485,45 @@ func (c *Compiled) importsRequireSync(imports Imports, force bool) bool {
 	return false
 }
 
-// linkModule resolves imports using the module's normal host-call mode.
-func (c *Compiled) linkModule(imports Imports, store *referenceStore) (*Compiled, error) {
-	return c.linkModuleMode(imports, store, false)
-}
-
-// linkModuleMode validates cross-instance bindings. Imported calls themselves
-// are already compiled and load wrapper targets from the instance dispatch table,
-// so linking never decodes or recompiles the module.
-func (c *Compiled) linkModuleMode(imports Imports, store *referenceStore, _ bool) (*Compiled, error) {
+// validateImportBindings checks cross-instance signatures and reference-store
+// compatibility. Imported calls are already compiled; instantiation only writes
+// concrete targets into the per-instance dispatch table.
+func (c *Compiled) validateImportBindings(imports Imports, store *referenceStore) error {
 	for i, key := range c.Imports {
 		ex, ok := imports[key].(*InstanceExport)
 		if !ok {
 			continue
 		}
 		if ex == nil || ex.inst == nil {
-			return nil, fmt.Errorf("cross-instance import %q is nil", key)
+			return fmt.Errorf("cross-instance import %q is nil", key)
 		}
 		if ex.localIdx < 0 || ex.localIdx >= len(ex.inst.c.Entry) {
-			return nil, fmt.Errorf("cross-instance import %q references an unavailable function", key)
+			return fmt.Errorf("cross-instance import %q references an unavailable function", key)
 		}
 		if i >= len(c.importFuncSigs) {
-			return nil, fmt.Errorf("cross-instance import %q is missing its signature", key)
+			return fmt.Errorf("cross-instance import %q is missing its signature", key)
 		}
 		sig := c.importFuncSigs[i]
 		if len(sig.Params) != len(ex.params) || len(sig.Results) != len(ex.results) {
-			return nil, fmt.Errorf("cross-instance import %q signature mismatch", key)
+			return fmt.Errorf("cross-instance import %q signature mismatch", key)
 		}
 		for j := range sig.Params {
 			if sig.Params[j] != ex.params[j] {
-				return nil, fmt.Errorf("cross-instance import %q signature mismatch", key)
+				return fmt.Errorf("cross-instance import %q signature mismatch", key)
 			}
 		}
 		for j := range sig.Results {
 			if sig.Results[j] != ex.results[j] {
-				return nil, fmt.Errorf("cross-instance import %q signature mismatch", key)
+				return fmt.Errorf("cross-instance import %q signature mismatch", key)
 			}
 		}
 		if hasValType(sig.Params, ValExternRef) || hasValType(sig.Results, ValExternRef) {
 			if store == nil || ex.inst.refStore != store {
-				return nil, fmt.Errorf("cross-instance externref import %q requires the same reference store", key)
+				return fmt.Errorf("cross-instance externref import %q requires the same reference store", key)
 			}
 		}
 	}
-	return c, nil
+	return nil
 }
 
 func sigMatches(ft *wasm.CompType, ex *InstanceExport) bool {

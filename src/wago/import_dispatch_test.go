@@ -7,16 +7,15 @@ import (
 	"testing"
 )
 
-func TestForcedSyncBindingReusesCompiledCode(t *testing.T) {
+func TestSyncHostPolicyUsesBindingIndependentCode(t *testing.T) {
 	c := MustCompile(voidImportCallModule())
 	defer c.Close()
 	imports := Imports{"env.f": HostFunc(func(HostModule, []uint64, []uint64) {})}
-	linked, err := c.linkModuleMode(imports, nil, true)
-	if err != nil {
-		t.Fatalf("forced synchronous binding: %v", err)
+	if err := c.validateImportBindings(imports, nil); err != nil {
+		t.Fatalf("validate synchronous binding: %v", err)
 	}
-	if linked != c || !c.dynamicImports || len(c.Code) == 0 {
-		t.Fatalf("binding = %p owner=%p dynamic=%v code=%d", linked, c, c.dynamicImports, len(c.Code))
+	if !c.dynamicImports || len(c.Code) == 0 {
+		t.Fatalf("dynamic=%v code=%d", c.dynamicImports, len(c.Code))
 	}
 }
 
@@ -68,15 +67,7 @@ func TestImportedModuleCodeIsBindingIndependent(t *testing.T) {
 	for _, name := range c.Imports {
 		stubs[name] = HostFunc(func(HostModule, []uint64, []uint64) {})
 	}
-	first, err := c.linkModule(stubs, nil)
-	if err != nil {
-		t.Fatalf("bind 1: %v", err)
-	}
-	second, err := c.linkModule(stubs, nil)
-	if err != nil {
-		t.Fatalf("bind 2: %v", err)
-	}
-	if first != c || second != c {
-		t.Fatalf("binding changed compiled image: %p %p owner=%p", first, second, c)
+	if err := c.validateImportBindings(stubs, nil); err != nil {
+		t.Fatalf("validate bindings: %v", err)
 	}
 }

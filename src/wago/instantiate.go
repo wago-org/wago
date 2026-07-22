@@ -121,16 +121,11 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 	return b.instantiate()
 }
 
-func (b *instanceBuilder) prepareCompiled() error {
-	linked, err := b.c.linkModuleMode(b.imports, b.opts.store, b.opts.forceSyncHost)
-	if err != nil {
+func (b *instanceBuilder) validateCompiled() error {
+	if err := b.c.validateImportBindings(b.imports, b.opts.store); err != nil {
 		return err
 	}
-	if err := linked.validateCached(); err != nil {
-		return err
-	}
-	b.c = linked
-	return nil
+	return b.c.validateCached()
 }
 
 func (b *instanceBuilder) prepareCollector() error {
@@ -190,7 +185,7 @@ func (b *instanceBuilder) rollbackPreparedState() {
 }
 
 func (b *instanceBuilder) instantiate() (result *Instance, err error) {
-	if err := b.prepareCompiled(); err != nil {
+	if err := b.validateCompiled(); err != nil {
 		return nil, err
 	}
 	if err := b.prepareCollector(); err != nil {

@@ -438,7 +438,7 @@ func bindHostImport(v any, sig FuncSig) (HostFunc, error) {
 
 // buildSyncHosts resolves every function import of a sync-mode module to a
 // HostFunc, indexed by import function index. c.Imports lists the function
-// imports in order; c.importFuncSigs (set by linkModule) holds their signatures.
+// imports in order; c.importFuncSigs holds their compile-time signatures.
 func (c *Compiled) buildSyncHosts(imports Imports) ([]HostFunc, error) {
 	hosts := make([]HostFunc, len(c.Imports))
 	for i, key := range c.Imports {
