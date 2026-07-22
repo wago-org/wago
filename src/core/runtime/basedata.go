@@ -274,6 +274,45 @@ func (j *JobMemory) HasTrapCell(trap []byte) bool {
 	return len(trap) >= 4 && j.getU64(abi.TrapCellPtrOffset) == uint64(slicePtr(trap))
 }
 
+// InstanceContext is the per-instance subset of basedata. It deliberately
+// excludes linear-memory size/growth state and per-invocation trap/stack fields,
+// which belong to the shared Memory backing and active Engine call respectively.
+type InstanceContext struct {
+	CustomCtx      uintptr
+	TablePtr       uintptr
+	FuncRefDescPtr uintptr
+	PassiveElemPtr uintptr
+	GlobalsPtr     uintptr
+	PassiveDataPtr uintptr
+	TableDirPtr    uintptr
+}
+
+// CaptureInstanceContext snapshots the per-instance pointer fields currently
+// installed in basedata.
+func (j *JobMemory) CaptureInstanceContext() InstanceContext {
+	return InstanceContext{
+		CustomCtx:      uintptr(j.getU64(offCustomCtx)),
+		TablePtr:       uintptr(j.getU64(offTablePtr)),
+		FuncRefDescPtr: uintptr(j.getU64(offFuncRefDescPtr)),
+		PassiveElemPtr: uintptr(j.getU64(offPassiveElemPtr)),
+		GlobalsPtr:     uintptr(j.getU64(offGlobalsPtr)),
+		PassiveDataPtr: uintptr(j.getU64(offPassiveDataPtr)),
+		TableDirPtr:    uintptr(j.getU64(offTableDirPtr)),
+	}
+}
+
+// BindInstanceContext installs one instance's pointer fields before native
+// entry. Memory size/growth caches and invocation control words are untouched.
+func (j *JobMemory) BindInstanceContext(ctx InstanceContext) {
+	j.putU64(offCustomCtx, uint64(ctx.CustomCtx))
+	j.putU64(offTablePtr, uint64(ctx.TablePtr))
+	j.putU64(offFuncRefDescPtr, uint64(ctx.FuncRefDescPtr))
+	j.putU64(offPassiveElemPtr, uint64(ctx.PassiveElemPtr))
+	j.putU64(offGlobalsPtr, uint64(ctx.GlobalsPtr))
+	j.putU64(offPassiveDataPtr, uint64(ctx.PassiveDataPtr))
+	j.putU64(offTableDirPtr, uint64(ctx.TableDirPtr))
+}
+
 // SetCustomCtx writes the V2 host-import context pointer ([linMem - 40]).
 func (j *JobMemory) SetCustomCtx(v uintptr) { j.putU64(offCustomCtx, uint64(v)) }
 
