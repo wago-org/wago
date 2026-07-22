@@ -10,6 +10,40 @@ import (
 	"github.com/wago-org/wago/testutil/wasmtest"
 )
 
+func TestGuardedImportedGrownMemoryAcceptsActiveData(t *testing.T) {
+	cfg := NewRuntimeConfig().WithBoundsChecks(BoundsChecksSignalsBased)
+	producerCode, err := Compile(cfg, guardedGrowableMemoryModule())
+	if err != nil {
+		t.Fatalf("compile producer: %v", err)
+	}
+	defer producerCode.Close()
+	producer, err := Instantiate(producerCode, InstantiateOptions{})
+	if err != nil {
+		t.Fatalf("instantiate producer: %v", err)
+	}
+	defer producer.Close()
+	if got, err := producer.Invoke("grow", I32(4)); err != nil || len(got) != 1 || AsI32(got[0]) != 1 {
+		t.Fatalf("memory.grow = %v, %v; want previous size 1", got, err)
+	}
+	memory, err := producer.ExportedMemory("mem")
+	if err != nil {
+		t.Fatalf("ExportedMemory: %v", err)
+	}
+	consumerCode, err := Compile(cfg, activeDataImportedMemoryModule(4*65536, 'x'))
+	if err != nil {
+		t.Fatalf("compile consumer: %v", err)
+	}
+	defer consumerCode.Close()
+	consumer, err := Instantiate(consumerCode, InstantiateOptions{Imports: Imports{"env.mem": memory}})
+	if err != nil {
+		t.Fatalf("instantiate consumer after grow: %v", err)
+	}
+	defer consumer.Close()
+	if got := memory.Bytes()[4*65536]; got != 'x' {
+		t.Fatalf("active data byte = %q, want x", got)
+	}
+}
+
 // TestImportedMemoryGuardPage drives a module importing host memory under
 // signals-based (guard-page) bounds checks: in-bounds store/load work against the
 // guard-page-backed host memory, and an out-of-range access faults into a wasm
@@ -136,6 +170,31 @@ func TestImportedMemoryGuardPageCrossInstance(t *testing.T) {
 // explicit-bounds instance's memory is a plain mapping, so importing it into a
 // signals-based module must be refused rather than silently eliding checks against
 // an unguarded region.
+func guardedGrowableMemoryModule() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x01, 0x01, 0x05})), // min=1 max=5
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("grow", 0, 0),
+			wasmtest.ExportEntry("mem", 2, 0),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, 0x40, 0x00, 0x0b}))),
+	)
+}
+
+func activeDataImportedMemoryModule(offset int32, value byte) []byte {
+	memoryImport := append(wasmtest.Name("env"), wasmtest.Name("mem")...)
+	memoryImport = append(memoryImport, 0x02, 0x01, 0x01, 0x05) // memory min=1 max=5
+	segment := []byte{0x00, 0x41}
+	segment = append(segment, wasmtest.SLEB32(offset)...)
+	segment = append(segment, 0x0b, 0x01, value)
+	return wasmtest.Module(
+		wasmtest.Section(2, wasmtest.Vec(memoryImport)),
+		wasmtest.Section(11, wasmtest.Vec(segment)),
+	)
+}
+
 func TestImportedMemoryGuardPageRejectsPlainMemory(t *testing.T) {
 	// Owner compiled with explicit bounds -> its owned memory is not guarded.
 	explicitCfg := NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit)
