@@ -190,6 +190,32 @@ func TestConfigValidationRejectsUnsupported(t *testing.T) {
 	}
 }
 
+func TestEffectiveCompileBoundsModeZeroMemoryARM64Fallback(t *testing.T) {
+	zeroLocal := &wasm.Module{Memories: []wasm.MemType{{Limits: wasm.Limits{Min: 0}}}}
+	want := BoundsChecksSignalsBased
+	if runtime.GOARCH == "arm64" {
+		want = BoundsChecksExplicit
+	}
+	if got := effectiveCompileBoundsMode(BoundsChecksSignalsBased, zeroLocal); got != want {
+		t.Fatalf("zero-minimum local memory mode = %v, want %v", got, want)
+	}
+	zeroImport := &wasm.Module{Imports: []wasm.Import{{Type: wasm.ExternType{Kind: wasm.ExternMem, Mem: wasm.MemType{Limits: wasm.Limits{Min: 0}}}}}}
+	if got := effectiveCompileBoundsMode(BoundsChecksSignalsBased, zeroImport); got != want {
+		t.Fatalf("zero-minimum imported memory mode = %v, want %v", got, want)
+	}
+	for name, module := range map[string]*wasm.Module{
+		"no memory":       {},
+		"one-page memory": {Memories: []wasm.MemType{{Limits: wasm.Limits{Min: 1}}}},
+	} {
+		if got := effectiveCompileBoundsMode(BoundsChecksSignalsBased, module); got != BoundsChecksSignalsBased {
+			t.Errorf("%s mode = %v, want signals-based", name, got)
+		}
+	}
+	if got := effectiveCompileBoundsMode(BoundsChecksExplicit, zeroLocal); got != BoundsChecksExplicit {
+		t.Fatalf("explicit request changed to %v", got)
+	}
+}
+
 func TestConfigSignalsBasedRequiresBuildTag(t *testing.T) {
 	cfg := NewRuntimeConfig().WithBoundsChecks(BoundsChecksSignalsBased)
 	_, err := Compile(cfg, signExtModule())

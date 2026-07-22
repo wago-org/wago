@@ -62,6 +62,13 @@ Wasm's pinned `X26`: Linux and Darwin replacement-PC returns can otherwise reach
 the landing pad with an unusable `X26`, preventing recovery of the foreign-stack
 save area and `enterNative` continuation.
 
+ARM64 modules whose declared or imported memory minimum is zero use explicit
+bounds checks and classic growable memory even when signals-based checks were
+requested. This narrow fallback preserves exact zero-page semantics until the
+ARM64 guard entry can safely place its control words immediately below a linMem
+that starts on the first inaccessible linear page. One-page-and-larger ARM64
+memories continue to use the guard-page path.
+
 ## Global storage convention
 
 Each instantiated module owns an arena-backed globals pointer table:

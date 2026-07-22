@@ -124,7 +124,8 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 	}
 	// Architectures that always use the sync-host dispatcher can compile host
 	// defaults up front; others defer returning imports until link time.
-	elide := cfg.boundsChecks == BoundsChecksSignalsBased
+	boundsMode := effectiveCompileBoundsMode(cfg.boundsChecks, m)
+	elide := boundsMode == BoundsChecksSignalsBased
 	importedFuncs := m.ImportedFuncCount()
 	dynamicBindings := make([]railshotImportBinding, importedFuncs)
 	for i := range dynamicBindings {
@@ -137,7 +138,7 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 	}
 	code, entry, internalEntry := cm.Code, cm.Entry, cm.InternalEntry
 
-	c := &Compiled{Code: code, Entry: entry, InternalEntry: internalEntry, NumImports: importedFuncs, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, boundsMode: cfg.boundsChecks, GCTypeDescs: gcDescs, requiredFeatures: uint8(moduleRequiredFeatures(m)), dynamicImports: importedFuncs > 0}
+	c := &Compiled{Code: code, Entry: entry, InternalEntry: internalEntry, NumImports: importedFuncs, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, boundsMode: boundsMode, GCTypeDescs: gcDescs, requiredFeatures: uint8(moduleRequiredFeatures(m)), dynamicImports: importedFuncs > 0}
 	if importedFuncs > 0 {
 		c.importFuncSigs = make([]FuncSig, importedFuncs)
 		for i := 0; i < importedFuncs; i++ {
@@ -373,6 +374,33 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 		c.Data = append(c.Data, init)
 	}
 	return installCompiledFinalizer(c), nil
+}
+
+// effectiveCompileBoundsMode keeps zero-minimum memories correct on ARM64.
+// The current ARM64 guard entry places control words immediately below linMem;
+// when linMem begins on the first inaccessible linear page, entry is not reliable
+// across the supported Linux and Darwin signal trampolines. Compile those rare
+// modules with explicit checks and classic growable memory instead.
+func effectiveCompileBoundsMode(requested BoundsCheckMode, m *wasm.Module) BoundsCheckMode {
+	if requested != BoundsChecksSignalsBased || goruntime.GOARCH != "arm64" {
+		return requested
+	}
+	if min, ok := moduleInitialMemoryPages(m); ok && min == 0 {
+		return BoundsChecksExplicit
+	}
+	return requested
+}
+
+func moduleInitialMemoryPages(m *wasm.Module) (uint64, bool) {
+	for i := range m.Imports {
+		if m.Imports[i].Type.Kind == wasm.ExternMem {
+			return m.Imports[i].Type.Mem.Limits.Min, true
+		}
+	}
+	if len(m.Memories) != 0 {
+		return m.Memories[0].Limits.Min, true
+	}
+	return 0, false
 }
 
 func compileMemoryPressure(sourceBytes int) (int, func()) {
