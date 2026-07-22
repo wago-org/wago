@@ -169,9 +169,6 @@ func TestLegacyHostFuncCompatibleImportRoundTrips(t *testing.T) {
 	if !requireStandardGoTestRuntime(t) {
 		return
 	}
-	if forceSyncHostImports {
-		t.Skip("legacy async host import serialization unavailable on this architecture")
-	}
 	t.Setenv("WAGO_BOUNDS", "explicit")
 	c := MustCompile(voidI32ImportCallerModule())
 	blob, err := c.MarshalBinary()

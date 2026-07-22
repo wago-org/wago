@@ -279,7 +279,7 @@ func TestOwnedHostFuncrefRejectsCorruptedDescriptorMetadata(t *testing.T) {
 	}
 	defer in.Close()
 
-	off := coreruntime.TableEntryBytes
+	off := coreruntime.FuncRefDescBytes
 	refSlotOff := off + coreruntime.TableEntryRefSlotOffset
 	refSlot := binary.LittleEndian.Uint64(in.funcRefDescs[refSlotOff:])
 	binary.LittleEndian.PutUint64(in.funcRefDescs[refSlotOff:], refSlot+8)

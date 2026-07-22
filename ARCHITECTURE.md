@@ -12,7 +12,7 @@ runtime support also exist for **linux/arm64** and **darwin/arm64**, with the
 remaining platform qualification tracked in [FEATURES.md](FEATURES.md) and the
 ARM64 documents under `docs/`.
 
-<!-- artifact:codec-version 20 -->
+<!-- artifact:codec-version 21 -->
 
 **CPU baseline: modern x86-64 with SSSE3/SSE4.1 plus AVX/VEX.128 XMM encodings.** The backend emits
 some instructions beyond original x86-64 without a CPUID gate or fallback:
@@ -172,10 +172,10 @@ middle and back end in one pass.
 
 ## 5. Scalar SSA IR tier (`src/core/compiler/ir`)
 
-The `ir` package adds a compact, block-parameter SSA form for validated wasm
-functions. It is intentionally isolated today: no runtime path imports it yet.
-Its job is to give the future optimizing/JIT tier a strict trust boundary while
-sharing the same decoded wasm metadata as the single-pass backend.
+The `ir` package contains a compact block-parameter SSA form for focused
+verification and differential-oracle experiments. It is intentionally isolated:
+production compiler, runtime, and public packages may not import it, and there is
+no planned IR execution tier. Boundary tests enforce that quarantine.
 
 Scope is deliberately scalar-only for now (`i32`, `i64`, `f32`, `f64`). Reference,
 GC, vector, multi-memory, and multi-table behavior stays at the wasm validation
@@ -196,8 +196,8 @@ references before any optimizer or IR backend consumes a function.
 `Compiled` holds the emitted code plus everything `Instantiate` needs without
 re-decoding:
 
-- `Code`, `Entry` (per-function offsets), `Funcs` (signatures)
-- `Imports` / `NumImports`, `Exports`
+- `Code`, wrapper/internal `Entry` offsets, and `Funcs` signatures
+- `Imports` / `NumImports`, import signatures, dynamic-dispatch shape, and `Exports`
 - `GlobalImports`, `Globals`, `GlobalExports` (numeric global metadata)
 - `TableSize`, `FuncTypeID`, `Elems` (active element segments)
 - `Data` (active data segments)
@@ -206,9 +206,10 @@ re-decoding:
 (`MarshalBinary`/`UnmarshalBinary`, magic `WAGO` + version byte). `Load` accepts
 either a precompiled blob (fast reload, no recompile) or raw wasm (compiled on
 load); `IsCompiled` distinguishes them. `validate()` hardens every blob against
-malformed metadata before any memory is mapped. The size-focused CLI `run` path
-accepts only raw wasm today, so the serialization path stays available to the Go
-API without being pulled into the CLI binary.
+malformed metadata before any memory is mapped. Codec v21 persists the
+binding-independent imported-call shape, so modules with function imports can be
+serialized before host or instance targets are known; live addresses and store
+identity are installed only during instantiation.
 
 ---
 
@@ -221,19 +222,32 @@ A single contiguous, mmap'd region. Native code receives a pointer to the
 below that base (`[linMem - off]`), a layout verified field-for-field against
 WARP's `basedataoffsets.hpp`:
 
-| offset | field                                            |
-|-------:|--------------------------------------------------|
-| 8      | actual linear-memory byte size (bounds checks)   |
-| 16     | trap handler pointer                             |
-| 32     | runtime pointer                                  |
-| 40     | host-import context pointer (the host-call log)  |
-| 72     | stack fence (overflow check)                     |
-| 80     | indirect-call table descriptor (wago extension)  |
-| 88     | per-instance globals pointer table (wago ext.)   |
-| 96     | `basedataSize` — keeps linMem 16-byte aligned    |
+| offset | field |
+|-------:|-------|
+| 8 | actual linear-memory byte size (bounds checks) |
+| 12 | declared/engine maximum pages |
+| 16 / 24 | trap handler and stack-reentry pointers |
+| 40 | host-call log or synchronous control-frame pointer |
+| 48 | native scratch spill word |
+| 72 | stack fence |
+| 80 | table-0 descriptor |
+| 88 | canonical funcref-descriptor array |
+| 96 | indexed table-directory pointer |
+| 104 | active trap-cell pointer |
+| 112 | globals pointer table |
+| 120 / 128 | passive element/data descriptor arrays |
+| 136 | imported-function dispatch table |
 
-Mapping off-heap is essential: the address must be **stable** for the lifetime
-of native execution (the Go GC must never move it).
+Memory-size/growth fields belong to the memory backing. The pointer subset from
+40 and 80–136 is modeled as a 64-byte `InstanceContext`, captured in the
+instance arena and rebound before every public native entry. Shared-memory users
+serialize entry while rebinding, so one linear-memory mapping can safely serve
+instances with independent globals, tables, host state, segments, and import
+bindings. Direct and indirect cross-instance calls copy the target context into
+its home basedata and restore the caller context on normal return.
+
+Mapping off-heap is essential: every native-visible address must be **stable**
+for the lifetime of execution (the Go GC must never move it).
 
 ### Off-heap allocation
 
@@ -245,8 +259,9 @@ receives a Go heap pointer.
 ### Mapping code (W^X)
 
 `MapCode` mmaps the compiled bytes `PROT_READ|PROT_WRITE`, copies the code in,
-then `mprotect`s to `PROT_READ|PROT_EXEC` — write-xor-execute. `Instance.Close`
-unmaps it.
+then `mprotect`s to `PROT_READ|PROT_EXEC` — write-xor-execute. A refcounted cache
+shares one executable mapping across instances of a `Compiled`; the mapping is
+unmapped after the compiled owner is closed and the last instance releases it.
 
 ### Execution: the foreign stack & trampoline
 
@@ -284,7 +299,7 @@ allocation-free on the hot path.
 
 Each instance owns a **pointer table** (one 8-byte slot per global, in wasm
 global-index order; imported globals first). Codegen reads/writes a global by
-loading the table base from `[linMem - 88]`, indexing the slot, and
+loading the table base from `[linMem - 112]`, indexing the slot, and
 dereferencing the 8-byte cell.
 
 - Module-local globals point at instance-local cells.
@@ -304,27 +319,30 @@ resolved at instantiate time after imports are bound.
 
 ## 10. Tables & `call_indirect`
 
-When a module has a table or active element segments, `Instantiate` builds a
-**table descriptor** (`[len][entry...]`, each entry `{codePtr, sigID}`) in the
-arena and points `[linMem - 80]` at it. `call_indirect` bounds-checks the index,
-verifies the runtime signature id against the call site's expected id, and jumps.
+For each funcref table, `Instantiate` builds a descriptor with an 8-byte
+`{len,max}` header and 32-byte entries containing code pointer, canonical
+signature id, home linear-memory pointer, and canonical funcref handle.
+`call_indirect` bounds-checks the index, verifies the signature, resolves the
+canonical descriptor's owning instance context, and then takes either the local
+wrapper path or the cross-instance context-switch path. Externref tables use
+8-byte store handles rather than function descriptors.
 
 ---
 
 ## 11. Host imports
 
-Host imports use a **deferred host-call log**, not synchronous re-entry. A host
-import is a `func(arg int32)` (void, one i32). During execution, native code
-appends `(importIndex, arg)` records to the off-heap log whose base is published
-in basedata at offset 40. After `Engine.Call` returns, `Invoke` reads the log and
-replays each recorded call against the registered Go `HostFunc`s.
+Imported calls are compiled once as loads from the per-instance dispatch table.
+At instantiation, each cell receives a wrapper entry, home linear-memory base,
+target instance context, and caller context. Cross-instance cells point directly
+at the producer's wrapper entry; host cells point at small instance-owned thunks.
 
-Consequence: host functions run **after** the wasm call returns, on the goroutine
-stack in normal Go context — so no external party observes or mutates instance
-state mid-execution. (A synchronous, value-returning re-entry path —
-`CallWithHost`, signaling via the trap slot and resuming native code — exists in
-the runtime as an experimental "V2" spike but is not yet wired into the public
-API.)
+Legacy void `HostFunc` signatures that fit the batched protocol may append calls
+to the off-heap log at basedata offset 40 and replay them after native return.
+Returning, vector, owned, reflected, or caller-sensitive host functions use the
+synchronous `CallWithHost` control frame: native execution yields to Go at the
+actual call site, Go writes results, and the same foreign-stack invocation
+resumes. One instance selects exactly one host protocol because both use the
+same context slot.
 
 ---
 
@@ -332,9 +350,10 @@ API.)
 
 Linear memory is the mmap-backed tail of JobMemory, exposed zero-copy via
 `Instance.Memory().Bytes()` — writes are visible in both directions without
-copying. Loads/stores are bounds-checked against the size cached in basedata.
-Active data segments are copied in at instantiate time with bounds validation.
-`memory.grow` is not yet supported.
+copying. Explicit mode checks the current size cached in basedata; supported
+platforms can instead use guard-page reservations. `memory.grow` raises the
+logical size within a stable pre-reserved mapping, preserving the native base.
+Active and passive data operations retain strict bounds and dropped-state checks.
 
 ---
 

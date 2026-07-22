@@ -312,9 +312,9 @@ func TestHostFuncRefDescriptorLookup(t *testing.T) {
 			FuncTypeID: []uint32{1, 1},
 		},
 		imports:      Imports{key: owner},
-		funcRefDescs: make([]byte, 3*coreruntime.TableEntryBytes),
+		funcRefDescs: make([]byte, 3*coreruntime.FuncRefDescBytes),
 	}
-	desc := uint64(uintptr(unsafe.Pointer(&in.funcRefDescs[coreruntime.TableEntryBytes])))
+	desc := uint64(uintptr(unsafe.Pointer(&in.funcRefDescs[coreruntime.FuncRefDescBytes])))
 	if got := in.hostFuncRefForDescriptor(desc); got != owner {
 		t.Fatalf("host descriptor owner = %p, want %p", got, owner)
 	}
@@ -322,7 +322,7 @@ func TestHostFuncRefDescriptorLookup(t *testing.T) {
 		0,
 		uint64(uintptr(unsafe.Pointer(&in.funcRefDescs[0]))),
 		desc + 1,
-		uint64(uintptr(unsafe.Pointer(&in.funcRefDescs[2*coreruntime.TableEntryBytes]))),
+		uint64(uintptr(unsafe.Pointer(&in.funcRefDescs[2*coreruntime.FuncRefDescBytes]))),
 	} {
 		if got := in.hostFuncRefForDescriptor(bad); got != nil {
 			t.Fatalf("invalid descriptor %#x resolved to %p", bad, got)
@@ -332,7 +332,7 @@ func TestHostFuncRefDescriptorLookup(t *testing.T) {
 		t.Fatal("descriptor resolved without a descriptor arena")
 	}
 	local, ok := in.localFuncrefDescriptor(0)
-	wantLocal := uint64(uintptr(unsafe.Pointer(&in.funcRefDescs[2*coreruntime.TableEntryBytes])))
+	wantLocal := uint64(uintptr(unsafe.Pointer(&in.funcRefDescs[2*coreruntime.FuncRefDescBytes])))
 	if !ok || local != wantLocal {
 		t.Fatalf("local descriptor = %#x, %v; want %#x, true", local, ok, wantLocal)
 	}

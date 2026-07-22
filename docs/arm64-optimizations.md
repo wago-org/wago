@@ -30,7 +30,7 @@ ops, CMOV, and fixed division registers are replaced with AArch64 forms.
 | Register ABI calls | Internal wasm calls pass simple signatures in registers | Present; arm64-specific register ABI |
 | Single-register returns | Single-result functions produce directly in return register | Present; X0/V0 |
 | Call-localset fuse | Direct call result can sink into local.set | Present |
-| Import binding lowering | Host/cross-instance call paths resolved at link-time recompile | Present |
+| Import binding lowering | Binding-independent imported calls load per-instance dispatch cells and switch explicit target context | Present |
 | Compare-branch fuse | Compare feeding branch skips boolean materialization | Present; `CMP/FCMP + B.cond` |
 | Eqz fold | `eqz` inverts next branch/select condition | Present |
 | Empty-edge branch fold | (arm64-specific) A value-less `br_if` whose edge emits no code lowers to a single `B.cond target` instead of `B.cond skip; B target; skip:` — one fewer taken branch per loop iteration. `opBr`/`brIfFused`; `WAGO_ARM64_NOBRFOLD=1`. Halves tight ALU/branch loops on M4 (`globals`, `sieve`, `memory.sum`). |

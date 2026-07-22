@@ -32,6 +32,15 @@ const (
 	TableEntryBytes            = 32
 )
 
+// FuncRefDescBytes is the size of one canonical per-function descriptor. Its
+// first TableEntryBytes bytes are copied into funcref tables; the trailing
+// context pointer identifies the owning instance even when linear memory is
+// shared by multiple instances.
+const (
+	FuncRefContextOffset = TableEntryBytes
+	FuncRefDescBytes     = TableEntryBytes + 8
+)
+
 // PassiveDataDescBytes is the size of one passive data segment descriptor:
 // {ptr u64, len u32, pad u32}. The JIT reads these for memory.init/data.drop.
 const PassiveDataDescBytes = 16
@@ -130,7 +139,7 @@ func InstantiateArenaNeed(fp InstantiateFootprint) (int, error) {
 			return 0, fmt.Errorf("table %d capacity %d with stride %d overflows arena allocation", i, capacity, stride)
 		}
 	}
-	if fp.FuncRefCount > maxInt()/TableEntryBytes {
+	if fp.FuncRefCount > maxInt()/FuncRefDescBytes {
 		return 0, fmt.Errorf("funcref descriptor count %d overflows arena allocation", fp.FuncRefCount)
 	}
 	argsBytes, err := SlotBytes(fp.MaxParamSlots)
@@ -145,6 +154,10 @@ func InstantiateArenaNeed(fp InstantiateFootprint) (int, error) {
 	if need == 0 && fp.FuncImportCount > 0 {
 		need += HostCallLogBytes
 	}
+	if fp.FuncImportCount > (maxInt()-need)/32 {
+		return 0, fmt.Errorf("function import count %d overflows dispatch allocation", fp.FuncImportCount)
+	}
+	need += fp.FuncImportCount * 32
 	if fp.GlobalCount > (maxInt()-need)/16 {
 		return 0, fmt.Errorf("global count %d overflows arena allocation", fp.GlobalCount)
 	}
@@ -166,7 +179,7 @@ func InstantiateArenaNeed(fp InstantiateFootprint) (int, error) {
 		}
 		need += tableBytes
 	}
-	funcRefBytes := fp.FuncRefCount * TableEntryBytes
+	funcRefBytes := fp.FuncRefCount * FuncRefDescBytes
 	if need > maxInt()-funcRefBytes {
 		return 0, fmt.Errorf("funcref descriptor count %d overflows arena allocation", fp.FuncRefCount)
 	}

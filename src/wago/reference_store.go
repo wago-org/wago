@@ -329,7 +329,7 @@ func (s *referenceStore) canonicalFuncrefOwnerLocked(source *Instance, descripto
 			return nil, 0, false
 		}
 		key := source.c.Imports[fidx]
-		off := (fidx + 1) * coreruntime.TableEntryBytes
+		off := (fidx + 1) * coreruntime.FuncRefDescBytes
 		refSlot := binary.LittleEndian.Uint64(source.funcRefDescs[off+coreruntime.TableEntryRefSlotOffset:])
 		if ex, ok := source.imports[key].(*InstanceExport); ok {
 			if ex == nil || ex.inst == nil || ex.inst.refStore != s {
@@ -366,18 +366,18 @@ func (s *referenceStore) canonicalFuncrefOwnerLocked(source *Instance, descripto
 }
 
 func (in *Instance) funcrefDescriptorIndex(descriptor uint64) (int, bool) {
-	if len(in.funcRefDescs) < 2*coreruntime.TableEntryBytes {
+	if len(in.funcRefDescs) < 2*coreruntime.FuncRefDescBytes {
 		return 0, false
 	}
 	base := uint64(uintptr(unsafe.Pointer(&in.funcRefDescs[0])))
-	if descriptor < base+coreruntime.TableEntryBytes || descriptor >= base+uint64(len(in.funcRefDescs)) {
+	if descriptor < base+coreruntime.FuncRefDescBytes || descriptor >= base+uint64(len(in.funcRefDescs)) {
 		return 0, false
 	}
 	delta := descriptor - base
-	if delta%coreruntime.TableEntryBytes != 0 {
+	if delta%coreruntime.FuncRefDescBytes != 0 {
 		return 0, false
 	}
-	funcIndex := int(delta/coreruntime.TableEntryBytes) - 1
+	funcIndex := int(delta/coreruntime.FuncRefDescBytes) - 1
 	return funcIndex, funcIndex >= 0 && funcIndex < len(in.c.FuncTypeID)
 }
 
@@ -400,8 +400,8 @@ func (in *Instance) localFuncrefDescriptor(localIdx int) (uint64, bool) {
 	if localIdx < 0 || fidx < in.c.NumImports || fidx >= len(in.c.FuncTypeID) || len(in.funcRefDescs) == 0 {
 		return 0, false
 	}
-	off := (fidx + 1) * coreruntime.TableEntryBytes
-	if off+coreruntime.TableEntryBytes > len(in.funcRefDescs) {
+	off := (fidx + 1) * coreruntime.FuncRefDescBytes
+	if off+coreruntime.FuncRefDescBytes > len(in.funcRefDescs) {
 		return 0, false
 	}
 	return uint64(uintptr(unsafe.Pointer(&in.funcRefDescs[off]))), true

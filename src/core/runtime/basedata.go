@@ -35,6 +35,7 @@ const (
 	offGlobalsPtr           = abi.GlobalsPtrOffset
 	offPassiveDataPtr       = abi.PassiveDataPtrOffset
 	offTableDirPtr          = abi.TableDirPtrOffset
+	offImportDispatchPtr    = abi.ImportDispatchPtrOffset
 
 	basedataSize = abi.BasedataSize // keeps linMem 16-byte aligned after appending wago extension fields
 )
@@ -285,9 +286,10 @@ type InstanceContext struct {
 	GlobalsPtr     uintptr
 	PassiveDataPtr uintptr
 	TableDirPtr    uintptr
+	ImportDispatch uintptr
 }
 
-const InstanceContextBytes = 7 * 8
+const InstanceContextBytes = 8 * 8
 
 // CaptureInstanceContext snapshots the per-instance pointer fields currently
 // installed in basedata.
@@ -300,6 +302,7 @@ func (j *JobMemory) CaptureInstanceContext() InstanceContext {
 		GlobalsPtr:     uintptr(j.getU64(offGlobalsPtr)),
 		PassiveDataPtr: uintptr(j.getU64(offPassiveDataPtr)),
 		TableDirPtr:    uintptr(j.getU64(offTableDirPtr)),
+		ImportDispatch: uintptr(j.getU64(offImportDispatchPtr)),
 	}
 }
 
@@ -313,6 +316,7 @@ func (j *JobMemory) BindInstanceContext(ctx InstanceContext) {
 	j.putU64(offGlobalsPtr, uint64(ctx.GlobalsPtr))
 	j.putU64(offPassiveDataPtr, uint64(ctx.PassiveDataPtr))
 	j.putU64(offTableDirPtr, uint64(ctx.TableDirPtr))
+	j.putU64(offImportDispatchPtr, uint64(ctx.ImportDispatch))
 }
 
 // CaptureInstanceContextBytes stores the current context in a stable off-heap
@@ -322,7 +326,7 @@ func (j *JobMemory) CaptureInstanceContextBytes(dst []byte) {
 		panic("runtime: short instance context buffer")
 	}
 	ctx := j.CaptureInstanceContext()
-	for i, value := range [...]uintptr{ctx.CustomCtx, ctx.TablePtr, ctx.FuncRefDescPtr, ctx.PassiveElemPtr, ctx.GlobalsPtr, ctx.PassiveDataPtr, ctx.TableDirPtr} {
+	for i, value := range [...]uintptr{ctx.CustomCtx, ctx.TablePtr, ctx.FuncRefDescPtr, ctx.PassiveElemPtr, ctx.GlobalsPtr, ctx.PassiveDataPtr, ctx.TableDirPtr, ctx.ImportDispatch} {
 		binary.LittleEndian.PutUint64(dst[i*8:], uint64(value))
 	}
 }
@@ -341,6 +345,7 @@ func (j *JobMemory) BindInstanceContextBytes(src []byte) {
 		GlobalsPtr:     uintptr(binary.LittleEndian.Uint64(src[32:])),
 		PassiveDataPtr: uintptr(binary.LittleEndian.Uint64(src[40:])),
 		TableDirPtr:    uintptr(binary.LittleEndian.Uint64(src[48:])),
+		ImportDispatch: uintptr(binary.LittleEndian.Uint64(src[56:])),
 	})
 }
 
@@ -367,6 +372,9 @@ func (j *JobMemory) SetPassiveDataPtr(v uintptr) { j.putU64(offPassiveDataPtr, u
 
 // SetTableDirPtr writes the indexed table descriptor directory pointer.
 func (j *JobMemory) SetTableDirPtr(v uintptr) { j.putU64(offTableDirPtr, uint64(v)) }
+
+// SetImportDispatchPtr writes the imported-function target array pointer.
+func (j *JobMemory) SetImportDispatchPtr(v uintptr) { j.putU64(offImportDispatchPtr, uint64(v)) }
 
 // TableDirPtr returns the runtime-owned indexed table descriptor directory.
 func (j *JobMemory) TableDirPtr() uintptr { return uintptr(j.getU64(offTableDirPtr)) }

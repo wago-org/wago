@@ -7,36 +7,51 @@ import (
 	"testing"
 )
 
-func TestCallerResolverSyncLinkCacheClosesWithCompiled(t *testing.T) {
+func TestForcedSyncBindingReusesCompiledCode(t *testing.T) {
 	c := MustCompile(voidImportCallModule())
+	defer c.Close()
 	imports := Imports{"env.f": HostFunc(func(HostModule, []uint64, []uint64) {})}
 	linked, err := c.linkModuleMode(imports, nil, true)
 	if err != nil {
-		t.Fatalf("forced synchronous link: %v", err)
+		t.Fatalf("forced synchronous binding: %v", err)
 	}
-	if linked == c || !linked.syncHostImports {
-		t.Fatalf("forced link = %p sync=%v, want distinct synchronous module", linked, linked.syncHostImports)
-	}
-	if c.hostLink == nil || c.hostLink.syncC != linked {
-		t.Fatal("forced synchronous link was not memoized")
-	}
-	linked.ensureCodeCache()
-	if err := c.Close(); err != nil {
-		t.Fatalf("Compiled.Close: %v", err)
-	}
-	linked.codeCache.mu.Lock()
-	closed := linked.codeCache.closed
-	linked.codeCache.mu.Unlock()
-	if !closed {
-		t.Fatal("Compiled.Close left forced synchronous linked code open")
+	if linked != c || !c.dynamicImports || len(c.Code) == 0 {
+		t.Fatalf("binding = %p owner=%p dynamic=%v code=%d", linked, c, c.dynamicImports, len(c.Code))
 	}
 }
 
-// TestHostLinkCached verifies the host-only link recompile is memoized: a
-// needsLink module (returning imports) links once and every later host
-// Instantiate reuses that linked module + its code mapping instead of re-running
-// the backend. Guards the large-module instantiate optimization.
-func TestHostLinkCached(t *testing.T) {
+func TestImportedInstancesShareCodeAcrossBindings(t *testing.T) {
+	c := MustCompile(returningImportModule(returningI32Sig(), []byte{0x00, 0x20, 0x00, 0x10, 0x00, 0x0b}))
+	defer c.Close()
+	instantiate := func(delta uint64) *Instance {
+		t.Helper()
+		in, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.f": HostFunc(func(_ HostModule, params, results []uint64) {
+			results[0] = params[0] + delta
+		})}})
+		if err != nil {
+			t.Fatalf("Instantiate delta=%d: %v", delta, err)
+		}
+		return in
+	}
+	first := instantiate(1)
+	defer first.Close()
+	second := instantiate(2)
+	defer second.Close()
+	if first.c != c || second.c != c || first.base != second.base {
+		t.Fatalf("instances did not share compiled image: c=%p first=%p/%#x second=%p/%#x", c, first.c, first.base, second.c, second.base)
+	}
+	for _, tc := range []struct {
+		in   *Instance
+		want int32
+	}{{first, 8}, {second, 9}} {
+		got, err := tc.in.Invoke("g", I32(7))
+		if err != nil || AsI32(got[0]) != tc.want {
+			t.Fatalf("Invoke = %v, %v; want %d", got, err, tc.want)
+		}
+	}
+}
+
+func TestImportedModuleCodeIsBindingIndependent(t *testing.T) {
 	src, err := os.ReadFile("../../bench/corpus/jsonproc.wasm")
 	if err != nil {
 		t.Skip("jsonproc.wasm not present")
@@ -45,27 +60,23 @@ func TestHostLinkCached(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !c.needsLink || c.hostLink == nil {
-		t.Fatalf("expected a deferred-codegen (needsLink) module with a host-link cache")
+	defer c.Close()
+	if !c.dynamicImports || len(c.Code) == 0 || len(c.Entry) == 0 {
+		t.Fatalf("imported module dynamic=%v code=%d entries=%d", c.dynamicImports, len(c.Code), len(c.Entry))
 	}
-	// Satisfy the module's imports with bare stubs; this test exercises link
-	// caching, not host-import behavior, so the imports need only bind.
 	stubs := Imports{}
 	for _, name := range c.Imports {
 		stubs[name] = HostFunc(func(HostModule, []uint64, []uint64) {})
 	}
-	l1, err := c.linkModule(stubs, nil)
+	first, err := c.linkModule(stubs, nil)
 	if err != nil {
-		t.Fatalf("link 1: %v", err)
+		t.Fatalf("bind 1: %v", err)
 	}
-	l2, err := c.linkModule(stubs, nil)
+	second, err := c.linkModule(stubs, nil)
 	if err != nil {
-		t.Fatalf("link 2: %v", err)
+		t.Fatalf("bind 2: %v", err)
 	}
-	if l1 == c {
-		t.Fatal("host link should recompile to a fresh linked module")
-	}
-	if l1 != l2 {
-		t.Fatal("host link not cached: repeated linkModule produced different linked modules")
+	if first != c || second != c {
+		t.Fatalf("binding changed compiled image: %p %p owner=%p", first, second, c)
 	}
 }

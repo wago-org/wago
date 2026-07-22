@@ -2,17 +2,18 @@ package wago
 
 import "testing"
 
-func TestCompileRetainsTransferredSourceWithoutCopy(t *testing.T) {
+func TestCompileDoesNotRetainSourceForLinking(t *testing.T) {
 	source := returningImportModule([]byte{0x60, 0x00, 0x01, 0x7f}, []byte{0x00, 0x10, 0x00, 0x0b})
 	compiled, err := Compile(nil, source)
 	if err != nil {
 		t.Fatalf("Compile: %v", err)
 	}
-	if len(compiled.wasmBytes) != len(source) {
-		t.Fatalf("retained source length = %d, want %d", len(compiled.wasmBytes), len(source))
+	defer compiled.Close()
+	if !compiled.dynamicImports {
+		t.Fatal("function imports were not compiled through dynamic dispatch")
 	}
-	if len(source) > 0 && &compiled.wasmBytes[0] != &source[0] {
-		t.Fatal("Compile copied transferred source")
+	if len(compiled.Code) == 0 || len(compiled.Entry) == 0 {
+		t.Fatal("function-import module deferred native code generation")
 	}
 }
 

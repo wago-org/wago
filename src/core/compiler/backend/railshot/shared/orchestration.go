@@ -47,12 +47,13 @@ type ModuleGlobalPinInfo struct {
 }
 
 const (
-	CallInline        = "inline"
-	CallHost          = "host"
-	CallHostSync      = "hostsync"
-	CallCrossInstance = "crossinstance"
-	CallRegisterABI   = "regabi"
-	CallMixed         = "mixed"
-	CallWrapper       = "wrapper"
-	CallIndirect      = "indirect"
+	CallInline         = "inline"
+	CallHost           = "host"
+	CallHostSync       = "hostsync"
+	CallCrossInstance  = "crossinstance"
+	CallImportDispatch = "importdispatch"
+	CallRegisterABI    = "regabi"
+	CallMixed          = "mixed"
+	CallWrapper        = "wrapper"
+	CallIndirect       = "indirect"
 )

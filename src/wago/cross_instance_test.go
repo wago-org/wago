@@ -219,8 +219,8 @@ func TestCrossInstanceCallNoArgs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("compile B: %v", err)
 	}
-	if !cB.needsLink {
-		t.Fatalf("B should need link (returning import)")
+	if !cB.dynamicImports || len(cB.Code) == 0 {
+		t.Fatalf("B should compile returning imports through dynamic dispatch")
 	}
 	inB, err := Instantiate(cB, InstantiateOptions{Imports: Imports{"env.f": fExport}})
 	if err != nil {
@@ -469,8 +469,8 @@ func TestCrossInstanceCallV128(t *testing.T) {
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
 	)
 	cB := MustCompile(modB)
-	if !cB.needsLink {
-		t.Fatal("v128 function import should need link")
+	if !cB.dynamicImports || len(cB.Code) == 0 {
+		t.Fatal("v128 function import should compile through dynamic dispatch")
 	}
 	inB, err := Instantiate(cB, InstantiateOptions{Imports: Imports{"env.id": idExport}})
 	if err != nil {

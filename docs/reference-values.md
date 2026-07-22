@@ -151,7 +151,7 @@ while Runtime instances can consume its token; after instances and the Runtime
 close, the owner may close while the still-live global keeps the token entry until
 its own final close.
 
-Codec version 20 serializes only the global's structural type, mutability, import/
+Codec version 21 serializes only the global's structural type, mutability, import/
 export identity, and null/`ref.func`/imported-`global.get` initializer. Snapshots
 continue to reject reference globals. The runtime `Global`, its token,
 `HostFuncRef` owner, dispatch index, descriptor, thunk address, producer, and
@@ -353,7 +353,7 @@ with a same-size owner pointer and remains 40 bytes.
 Imported immutable `global.get` initializers copy the validated reference into a
 local 8-byte cell. Funcref copies preserve the canonical descriptor and true
 producer; externref copies preserve the generation-checked handle. No Go pointer
-enters mmap-backed storage. `.wago` codec version 20 persists the structural reference-global declaration and
+enters mmap-backed storage. `.wago` codec version 21 persists the structural reference-global declaration and
 initializer, while snapshots continue to reject reference-global state. No live
 handle, descriptor, producer identity, or store identity is serialized.
 
@@ -461,7 +461,7 @@ funcref retention remains unchanged and capacity-bounded. `elem.drop` now also
 works in modules with no table by installing only the bounded descriptor state it
 needs.
 
-Codec version 20 preserves every runtime-relevant table index/type/import/export/
+Codec version 21 preserves every runtime-relevant table index/type/import/export/
 limit and typed element mode/destination/null-or-`ref.func` payload. It records no
 table cell contents, token, descriptor, owner, or store identity. Snapshots
 continue to reject every table module. Inert unexported tables
@@ -727,7 +727,7 @@ deduplicate in the table's retained-root map, while distinct tables release thei
 roots independently; the failed instance closes physically only after the last
 retaining table releases it.
 
-`.wago` version 20 preserves multiple imported and local tables in declaration
+`.wago` version 21 preserves multiple imported and local tables in declaration
 order, exact element types and import limits, local runtime capacities,
 nonzero active destinations, typed passive/declarative state, and exact named
 table exports. The loader reconstructs only fresh per-instance descriptors and
@@ -887,7 +887,7 @@ Snapshot products share one fail-closed validator. `Capture`, snapshot marshal,
 `LoadSnapshot` and `Instantiate(*Snapshot)` reject
 every table and every reference global until a resolver/state format exists. This
 also rejects forged in-memory snapshots and raw snapshot blobs embedding a valid
-codec-v20 reference module; callers cannot bypass `Capture` to admit unsupported
+codec-v21 reference module; callers cannot bypass `Capture` to admit unsupported
 live state.
 
 `ModuleMetadata` now contains deterministic Wasm-index-ordered `Functions`,
@@ -897,7 +897,7 @@ import, and exports. Table entries carry exact type, import, exports, declared
 minimum, and an optional exact declared maximum; implementation-only growth
 reserves are not reported as Wasm limits. Duplicate table imports remain separate
 index entries even when they use the same key. The same metadata is reconstructed
-from codec-v20-loaded modules. `Module.Imports` exposes the corresponding exact
+from codec-v21-loaded modules. `Module.Imports` exposes the corresponding exact
 function signatures, global types/mutability, and table types/limits.
 
 Cross-link teardown is locked as one ownership proof: a producer may be logically
@@ -923,14 +923,14 @@ occupies existing struct padding; all documented layouts remain unchanged.
 
 ## `.wago` compatibility
 
-Compiled-module codec version 20 keeps WebAssembly structural type codes `0x70`
+Compiled-module codec version 21 keeps WebAssembly structural type codes `0x70`
 (`funcref`) and `0x6f` (`externref`) and records an exact byte-sized mask of the
-optional core features used by generated code and metadata. Version 19 blobs are
-rejected by a version-20 loader, and unknown or structurally missing feature bits
+optional core features used by generated code and metadata. Version 20 and older
+blobs are rejected by the version-21 loader, and unknown or structurally missing feature bits
 fail closed. SIMD blobs additionally reject on hosts without the documented CPU
 baseline.
 
-Version 20 serializes reference globals as structure only: exact import/type/
+Version 21 serializes reference globals as structure only: exact import/type/
 mutability/export metadata plus literal null, imported immutable `global.get`, or
 structural `ref.func` initializers. It serializes all compiled tables in Wasm index
 order with exact element type, import key/limits or local runtime size/capacity,
@@ -941,15 +941,38 @@ storage, and focused tests execute reference globals, two funcref tables,
 nonzero-table `call_indirect`, exact table exports, and externref table null round
 trips after a codec load.
 
-The codec never writes a live `FuncRef`/`ExternRef` token, descriptor address,
-producer pointer, `HostFuncRef` owner or dispatch index, thunk address, table cell
-contents, or reference-store identity. Nonzero reference literal bits are rejected
-before marshal/load. Link-deferred and synchronous-host-specialized modules remain
-codec-rejected and must be rebound from structural metadata in the target
-Runtime. Decoding uses a fresh `Compiled` value, so reused receivers cannot retain
-stale tables, exports, globals, passive state, link state, or runtime caches.
+The codec records whether imported calls use the binding-independent dispatch
+ABI, but never writes a live `FuncRef`/`ExternRef` token, descriptor address,
+producer pointer, `HostFuncRef` owner or dispatch index, thunk address, concrete
+import target, table cell contents, or reference-store identity. Nonzero reference
+literal bits are rejected before marshal/load. Function-import modules are now
+serializable before binding; instantiation creates fresh dispatch cells and host
+thunks in the target runtime. Decoding uses a fresh `Compiled` value, so reused
+receivers cannot retain stale tables, exports, globals, passive state, or runtime caches.
 Snapshots remain deliberately stricter: every table and every reference global is
 rejected until an application-provided resolver/state format exists.
+
+### Imported-call/context cleanup measurements (July 22, 2026)
+
+On the pinned AMD Ryzen 7 8845HS cleanup run, `Compiled` is 584 bytes, down from
+632 bytes (48 bytes / 7.6%) after deleting retained link source, deferred-link
+flags, worker/bounds recompile policy, synchronous-link state, and host-link
+caches. Modules with function imports now contain complete native code and share
+one executable mapping across differently bound instances. Canonical funcref
+descriptors grow from 32 to 40 bytes only when reference operations require that
+arena; table entries remain 32 bytes. The trailing context pointer makes indirect
+calls distinguish instances that share the same linear-memory base.
+
+Three one-second samples measured scalar instantiation at 1,328–1,338 ns/op,
+1,360 B/op, and 9 allocs/op (about 9.7% slower than the 1,196–1,231 ns/op
+pre-dispatch samples, with bytes and allocations unchanged). Direct returning
+host calls measured 123.0–128.8 ns/op at 0 B/op; direct cross-instance calls
+41.2–43.0 ns/op at 0 B/op; host funcref table calls 121.1–121.9 ns/op at 0 B/op;
+and legacy void host replay 57.5–58.0 ns/op at 8 B/op and 1 allocation. Direct
+host-import instantiation measured 10.9–11.2 us/op, 2,032 B/op, and 19 allocations;
+the table/funcref form measured 12.0–12.6 us/op, 2,040 B/op, and 20 allocations.
+A 1,600-function imported-call compile on one pinned CPU measured 48.5–51.3 ms,
+4,016,276–4,016,286 B/op, and 15,996 allocations across worker policies.
 
 Pinned single-CPU three-second medians on July 10, 2026 are 483.8 ns/op and
 1,724 ns/op for scalar marshal/unmarshal (336 B/op with 2 allocations and
@@ -961,14 +984,15 @@ table-0 indirect dispatch 19.37 ns/op, scalar instantiation 1,310 ns/op, and
 fixed-table instantiation 1,376 ns/op. Ordinary allocation watchpoints remain
 51,353-51,354 B/op and 365 allocations for validation, 26,880 B/op and 62
 allocations for compile, zero allocations for Invoke paths, and 1,224 B/op plus
-7 allocations for scalar/fixed-table instantiation. `Compiled` remains 632 bytes;
+7 allocations for scalar/fixed-table instantiation. After removing retained link
+source, link-policy fields, and host-link caches, `Compiled` is 584 bytes;
 the broad instantiation timing movement without allocation/layout change remains
 a scheduler/frequency watchpoint rather than an attributed codec regression.
 
 The focused commands are:
 
 ```sh
-go test -count=1 -run '^TestCompiledCodecV20' ./src/wago
+go test -count=1 -run '^TestCompiledCodecV21' ./src/wago
 
 taskset -c 0 go test ./src/wago -run '^$' \
   -bench '^(BenchmarkMarshalCompiledSmallScalar|BenchmarkUnmarshalCompiledSmallScalar|BenchmarkMarshalCompiledStructuralReferences|BenchmarkUnmarshalCompiledStructuralReferences)$' \

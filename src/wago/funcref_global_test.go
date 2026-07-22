@@ -75,7 +75,7 @@ func TestRefFuncGlobalDescriptorArenaIsBoundedAndDemandDriven(t *testing.T) {
 	}
 	defer nullInstance.Close()
 
-	want := (len(withRef.FuncTypeID) + 1) * coreruntime.TableEntryBytes
+	want := (len(withRef.FuncTypeID) + 1) * coreruntime.FuncRefDescBytes
 	if got := len(refInstance.funcRefDescs); got != want {
 		t.Fatalf("ref.func descriptor arena = %d bytes, want exact bounded %d", got, want)
 	}

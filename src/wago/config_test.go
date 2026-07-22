@@ -301,65 +301,53 @@ func TestConfigValidateAndIntrospection(t *testing.T) {
 	}
 }
 
-func TestFunctionWorkersLinkPathAndSerialization(t *testing.T) {
-	producer, err := Instantiate(MustCompile(benchAddOneModule()), InstantiateOptions{})
+func TestFunctionWorkersImportedCodeAndSerialization(t *testing.T) {
+	producerCode := MustCompile(benchAddOneModule())
+	defer producerCode.Close()
+	producer, err := Instantiate(producerCode, InstantiateOptions{})
 	if err != nil {
-		t.Fatalf("instantiate link producer: %v", err)
+		t.Fatalf("instantiate producer: %v", err)
 	}
 	defer producer.Close()
 	f, err := producer.ExportedFunc("f")
 	if err != nil {
-		t.Fatalf("export link producer function: %v", err)
+		t.Fatalf("export producer function: %v", err)
 	}
 
-	mod := benchParallelLinkModule(64, 16)
+	mod := benchImportedModule(64, 16)
 	imports := Imports{"env.f": f}
-	compileLinked := func(workers int) (*Compiled, *Compiled) {
+	compile := func(workers int) *Compiled {
 		t.Helper()
-		cfg := NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit).WithFunctionWorkers(workers)
-		c, err := Compile(cfg, mod)
+		c, err := NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit).WithFunctionWorkers(workers).Compile(mod)
 		if err != nil {
 			t.Fatalf("workers=%d compile: %v", workers, err)
 		}
-		if int(c.functionWorkers) != workers || len(c.wasmBytes) == 0 {
-			t.Fatalf("workers=%d metadata policy=%d retainedSource=%d", workers, c.functionWorkers, len(c.wasmBytes))
+		if !c.dynamicImports || len(c.Code) == 0 {
+			t.Fatalf("workers=%d dynamic=%v code=%d", workers, c.dynamicImports, len(c.Code))
 		}
 		linked, err := c.linkModule(imports, nil)
 		if err != nil {
 			_ = c.Close()
-			t.Fatalf("workers=%d link: %v", workers, err)
+			t.Fatalf("workers=%d bind: %v", workers, err)
 		}
-		if linked == c || int(linked.functionWorkers) != workers {
+		if linked != c {
 			_ = c.Close()
-			t.Fatalf("workers=%d linked=%p owner=%p policy=%d", workers, linked, c, linked.functionWorkers)
+			t.Fatalf("workers=%d binding changed compiled image", workers)
 		}
-		return c, linked
+		return c
 	}
-	serialOwner, serial := compileLinked(1)
-	defer serialOwner.Close()
+	serial := compile(1)
 	defer serial.Close()
-	parallelOwner, parallel := compileLinked(8)
-	defer parallelOwner.Close()
+	parallel := compile(8)
 	defer parallel.Close()
 	if !bytes.Equal(parallel.Code, serial.Code) || !bytes.Equal(intSliceBytes(parallel.Entry), intSliceBytes(serial.Entry)) || !bytes.Equal(intSliceBytes(parallel.InternalEntry), intSliceBytes(serial.InternalEntry)) {
-		t.Fatal("link-time parallel codegen differs from serial output")
+		t.Fatal("parallel codegen differs from serial output")
 	}
-
-	serialArtifact, err := NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit).WithFunctionWorkers(1).Compile(benchAddOneModule())
+	serialBlob, err := serial.MarshalBinary()
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer serialArtifact.Close()
-	parallelArtifact, err := NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit).WithFunctionWorkers(8).Compile(benchAddOneModule())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer parallelArtifact.Close()
-	serialBlob, err := serialArtifact.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	parallelBlob, err := parallelArtifact.MarshalBinary()
+	parallelBlob, err := parallel.MarshalBinary()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -370,8 +358,9 @@ func TestFunctionWorkersLinkPathAndSerialization(t *testing.T) {
 	if err := loaded.UnmarshalBinary(parallelBlob); err != nil {
 		t.Fatal(err)
 	}
-	if loaded.functionWorkers != 0 {
-		t.Fatalf("deserialized function policy = %d, want zero/non-serialized", loaded.functionWorkers)
+	defer loaded.Close()
+	if !loaded.dynamicImports {
+		t.Fatal("serialized imported module lost dynamic dispatch metadata")
 	}
 }
 

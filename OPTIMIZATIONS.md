@@ -222,8 +222,9 @@ unblocks multi-value, with `regMerge2`, P5.3) · **straight-line bounds facts** 
 **hybrid loop precheck** (explicit mode; the TinyGo story, P6.1–.2) · **store
 combining** (explicit-only, cold-path sequential replay for trap semantics, P6.3) ·
 **CPUID probe** (JIT'd stub, zero deps) gating **BMI2 shifts** + `smallBulkMax`
-tuning (P6.5) · **immutable-global const folding** incl. link-time specialization of
-imported ones (fits the existing link-time recompile) · **`call_indirect` inline
+tuning (P6.5) · **immutable-global const folding** for locals; imported-global
+specialization would need guarded dispatch metadata rather than whole-module
+recompilation · **`call_indirect` inline
 caches** behind a table epoch (P8.6) · **`.wago` cache keys + CLI**
 (compile/run/inspect, P8.7) · **call-surviving valent trees** and a **tiny bytecode
 inliner** (both decision-gated on R0 counters, P5.4–.5) · **fused validate+compile**

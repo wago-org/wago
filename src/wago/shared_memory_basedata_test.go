@@ -90,6 +90,61 @@ func TestSharedMemoryImporterRebindsBasedataState(t *testing.T) {
 	}
 }
 
+func TestSharedMemoryIndirectCallSwitchesPrivateContext(t *testing.T) {
+	rt := NewRuntime()
+	defer rt.Close()
+	memory, err := NewSharedMemory(1, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer memory.Close()
+
+	producer, err := rt.Instantiate(context.Background(), mustCompileWat(rt, t, `(module
+		(import "env" "mem" (memory 1))
+		(global $g (mut i32) (i32.const 10))
+		(func (export "target") (result i32)
+			(global.set $g (i32.add (global.get $g) (i32.const 1)))
+			(global.get $g)))`), WithImports(Imports{"env.mem": memory}))
+	if err != nil {
+		t.Fatalf("instantiate producer: %v", err)
+	}
+	defer producer.Close()
+	target, err := producer.ExportedFunc("target")
+	if err != nil {
+		t.Fatalf("export target: %v", err)
+	}
+
+	consumer, err := rt.Instantiate(context.Background(), mustCompileWat(rt, t, `(module
+		(type $result-i32 (func (result i32)))
+		(import "env" "mem" (memory 1))
+		(import "env" "target" (func $target (type $result-i32)))
+		(global $g (mut i32) (i32.const 100))
+		(table 1 funcref)
+		(elem (i32.const 0) func $target)
+		(func (export "indirect") (result i32)
+			(call_indirect (type $result-i32) (i32.const 0)))
+		(func (export "own") (result i32)
+			(global.set $g (i32.add (global.get $g) (i32.const 1)))
+			(global.get $g)))`), WithImports(Imports{"env.mem": memory, "env.target": target}))
+	if err != nil {
+		t.Fatalf("instantiate consumer: %v", err)
+	}
+	defer consumer.Close()
+
+	for _, tc := range []struct {
+		export string
+		want   int32
+	}{{"indirect", 11}, {"own", 101}, {"indirect", 12}, {"own", 102}} {
+		got, err := consumer.Invoke(tc.export)
+		if err != nil {
+			t.Fatalf("%s: %v", tc.export, err)
+		}
+		if value := AsI32(got[0]); value != tc.want {
+			t.Fatalf("%s = %d, want %d", tc.export, value, tc.want)
+		}
+	}
+}
+
 func mustCompileWat(rt *Runtime, t *testing.T, wat string) *Module {
 	t.Helper()
 	m, err := rt.Compile(watToWasm(t, wat))

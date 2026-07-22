@@ -595,48 +595,19 @@ type Compiled struct {
 	memoryImport string
 
 	// tableImport preserves the direct table-0 API/runtime metadata. Additional
-	// imported tables occupy the leading extraTables entries, and codec v20 writes
+	// imported tables occupy the leading extraTables entries, and codec v21 writes
 	// every declaration in exact Wasm index order.
 	tableImport       string
 	tableImportMin    int
 	tableImportMax    int
 	tableImportHasMax bool
 
-	// wasmBytes retains the caller-transferred raw module for the link-time
-	// recompile that lowers cross-instance calls (set only when the module has
-	// function imports, the recompile candidates). needsLink marks a module whose
-	// codegen was deferred
-	// because it has a returning import that must be bound to another instance's
-	// function at Instantiate; its Code/Entry are empty until then.
-	wasmBytes        []byte
-	needsLink        bool
-	boundsElide      bool   // cached ElideBoundsChecks decision, for the link-time recompile
-	noDeferBounds    bool   // cached DeferBoundsChecks=false decision, for the link-time recompile
-	functionWorkers  uint16 // capped function-worker policy for link-time recompilation; never serialized
-	requiredFeatures uint8  // exact optional core-feature bits required by code/metadata
-
-	// hostLink caches the host-only link recompile. A needsLink module (returning
-	// import) defers codegen to Instantiate; when every import binds to a host
-	// function (no cross-instance) the recompiled code is IDENTICAL regardless of
-	// which host functions are supplied (host dispatch is a runtime table, not baked
-	// into code), so it is produced once and reused — turning repeated Instantiate
-	// of a host module from "re-run the whole backend" into "reuse the code +
-	// its executable mapping". Non-deferred modules with function imports use the
-	// same cache when non-legacy host bindings force a host-only sync recompile.
-	// A pointer so the link-time `linked := *c` copy carries no lock. nil for
-	// modules with no function imports (or hand-built/deserialized).
-	hostLink *hostLinkCache
-
-	// syncHostImports is set by linkModule when the module has a returning/v128
-	// host import or exact caller resolution requires call-site callbacks: all host
-	// calls then use the synchronous control frame and Invoke
-	// drives the CallWithHost re-entry loop. importFuncSigs holds the function
-	// imports' signatures (imports first), needed to bind host functions and to
-	// keep legacy HostFunc validation sound after compiled-code serialization.
-	// syncHostImports is instance-specific and never serialized; importFuncSigs is
-	// serialized with the rest of the immutable import metadata.
-	syncHostImports bool
-	importFuncSigs  []FuncSig
+	// Imported calls use wrapper targets from a per-instance dispatch table. The
+	// code image is therefore complete at Compile time and independent of concrete
+	// host or cross-instance bindings.
+	dynamicImports   bool
+	requiredFeatures uint8
+	importFuncSigs   []FuncSig
 
 	GCTypeDescs []gc.TypeDesc // immutable Wasm GC descriptor metadata; per-instance heaps own collection state
 
@@ -648,9 +619,8 @@ type Compiled struct {
 	// validateMemo memoizes the instantiate-boundary metadata validation for
 	// modules produced by Compile/UnmarshalBinary, which are immutable: the full
 	// check (which loops all funcs/globals/exports/GC descs) then only runs once
-	// instead of on every Instantiate. It is a pointer so a by-value Compiled copy
-	// (the link-time recompile) doesn't copy a lock; a nil memo means "validate
-	// every time" — which is what a hand-constructed Compiled (exported fields,
+	// instead of on every Instantiate. A nil memo means "validate every time" —
+	// which is what a hand-constructed Compiled (exported fields,
 	// no memo) gets, preserving its first-use validation.
 	validateMemo *validateMemo
 
@@ -660,19 +630,6 @@ type Compiled struct {
 type validateMemo struct {
 	once sync.Once
 	err  error
-}
-
-// hostLinkCache memoizes host-only link recompiles of a needsLink module (see
-// Compiled.hostLink). Normal and forced-synchronous host modes are cached
-// separately so caller-resolution authority cannot reuse async replay code.
-type hostLinkCache struct {
-	once sync.Once
-	c    *Compiled
-	err  error
-
-	syncOnce sync.Once
-	syncC    *Compiled
-	syncErr  error
 }
 
 // validateCached returns the metadata-validation result, running the full check

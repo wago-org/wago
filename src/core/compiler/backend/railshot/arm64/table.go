@@ -10,9 +10,11 @@ import (
 )
 
 const (
-	offFuncRefDescPtr = abi.FuncRefDescPtrOffset
-	offPassiveElemPtr = abi.PassiveElemPtrOffset
-	offTableDirPtr    = abi.TableDirPtrOffset
+	offFuncRefDescPtr    = abi.FuncRefDescPtrOffset
+	offPassiveElemPtr    = abi.PassiveElemPtrOffset
+	offTableDirPtr       = abi.TableDirPtrOffset
+	offImportDispatchPtr = abi.ImportDispatchPtrOffset
+	offGlobalsPtr        = abi.GlobalsPtrOffset
 )
 
 func (f *fn) loadTableDescriptor(dst Reg, tableIdx uint32) {
@@ -409,7 +411,7 @@ func (f *fn) refFunc(r *wasm.Reader) error {
 	f.ld64(ref, linMemReg, -int32(offFuncRefDescPtr))
 	f.cmpImm(ref, 0, true) // was TestSelf — CMP ref,#0 (SUBS XZR,ref,#0)
 	f.trapIf(condE, trapIndirectOOB)
-	f.leaDisp(ref, ref, int32((idx+1)*runtime.TableEntryBytes), true)
+	f.leaDisp(ref, ref, int32((idx+1)*runtime.FuncRefDescBytes), true)
 	f.pushReg(ref, mtI64)
 	return nil
 }

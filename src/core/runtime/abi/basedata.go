@@ -32,7 +32,12 @@ const (
 	// {ptr u64, len u32, pad u32}; data.drop zeroes len.
 	PassiveDataPtrOffset = 128
 
+	// ImportDispatchPtrOffset points at per-instance imported-function targets.
+	// Each entry is {wrapperEntry, homeLinMem, targetContext, callerContext}, four
+	// u64 values in Wasm import order.
+	ImportDispatchPtrOffset = 136
+
 	// BasedataSize keeps the linear-memory base 16-byte aligned after the wago
 	// extension fields appended to the WARP-compatible basedata layout.
-	BasedataSize = 128
+	BasedataSize = 144
 )

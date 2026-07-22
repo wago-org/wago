@@ -85,9 +85,9 @@ finish first; workers compile functions into private arenas; final machine code
 is joined in original function order. Generated output and serialized `.wago`
 artifacts are independent of worker count.
 
-Modules whose code generation is deferred until import linking still benefit
-from parallel validation during initial compilation. Their retained worker
-policy is also reused for link-time code generation.
+Function-import modules are fully compiled in this phase too: imported calls use
+binding-independent dispatch cells, so instantiation never reruns validation or
+code generation and `Compiled` retains no worker policy.
 
 ## Performance and memory
 

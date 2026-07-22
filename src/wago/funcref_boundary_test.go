@@ -45,10 +45,10 @@ func TestPublicFuncrefIngressRejectsForgedNonNullBeforeNativeExecution(t *testin
 		t.Run(tc.name, func(t *testing.T) {
 			in := instantiateFuncrefBoundaryTestModule(t, funcrefIngressBoundaryModule())
 			defer in.Close()
-			if len(in.funcRefDescs) < 2*coreruntime.TableEntryBytes {
+			if len(in.funcRefDescs) < 2*coreruntime.FuncRefDescBytes {
 				t.Fatalf("funcref descriptor arena = %d bytes, want at least two entries", len(in.funcRefDescs))
 			}
-			forged := uint64(uintptr(unsafe.Pointer(&in.funcRefDescs[coreruntime.TableEntryBytes])))
+			forged := uint64(uintptr(unsafe.Pointer(&in.funcRefDescs[coreruntime.FuncRefDescBytes])))
 
 			out, err := tc.call(in, forged)
 			if err == nil || !strings.Contains(err.Error(), "invalid funcref token") {
@@ -73,11 +73,11 @@ func TestPublicFuncrefEgressReturnsStableOpaqueToken(t *testing.T) {
 		t.Fatalf("Invoke get = %v, %v; want one non-null token", first, err)
 	}
 	token := first[0]
-	if len(in.funcRefDescs) < 2*coreruntime.TableEntryBytes {
+	if len(in.funcRefDescs) < 2*coreruntime.FuncRefDescBytes {
 		t.Fatalf("funcref descriptor arena = %d bytes, want at least two entries", len(in.funcRefDescs))
 	}
-	descriptor := uint64(uintptr(unsafe.Pointer(&in.funcRefDescs[coreruntime.TableEntryBytes])))
-	code := *(*uint64)(unsafe.Pointer(&in.funcRefDescs[coreruntime.TableEntryBytes]))
+	descriptor := uint64(uintptr(unsafe.Pointer(&in.funcRefDescs[coreruntime.FuncRefDescBytes])))
+	code := *(*uint64)(unsafe.Pointer(&in.funcRefDescs[coreruntime.FuncRefDescBytes]))
 	if token == descriptor || token == code || token == uint64(in.base) {
 		t.Fatalf("public token %#x aliases descriptor/code mapping %#x/%#x/%#x", token, descriptor, code, in.base)
 	}
@@ -301,7 +301,7 @@ func TestRuntimeImportedFuncrefRejectsForeignOrCorruptCanonicalDescriptor(t *tes
 		}
 		defer importer.Close()
 
-		importedOff := coreruntime.TableEntryBytes
+		importedOff := coreruntime.FuncRefDescBytes
 		canonical := binary.LittleEndian.Uint64(importer.funcRefDescs[importedOff+coreruntime.TableEntryRefSlotOffset:])
 		binary.LittleEndian.PutUint64(importer.funcRefDescs[importedOff+coreruntime.TableEntryRefSlotOffset:], canonical+8)
 		got, err := importer.Invoke("get")

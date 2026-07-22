@@ -10,13 +10,13 @@ import (
 
 // InstanceExport is a handle to another instance's exported function, used as an
 // import value for cross-instance linking. Place it in an Imports map under the
-// importing module's "module.name" key; Instantiate then recompiles the importing
-// module so calls to that import become a native call into this instance's
-// function (see linkModule / emitCrossInstanceCall).
+// importing module's "module.name" key; Instantiate binds the producer's entry,
+// linear-memory base, and instance context into the importer's dispatch table.
 //
-// The referenced instance must normally stay open (not Closed) for as long as
-// any importing instance can execute it: linked code holds its linear-memory and
-// code addresses directly. A same-runtime public funcref token is the exception:
+// The referenced instance must remain physically live for as long as any
+// importing instance can execute it. Import attachment retains its code, memory,
+// descriptor arena, and context even if the producer is logically closed. A
+// same-runtime public funcref token uses the same physical-root principle:
 // token issuance retains the producer's code, descriptor arena, and home context
 // until the shared reference store releases that token root.
 type InstanceExport struct {

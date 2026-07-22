@@ -11,7 +11,7 @@ are addressed as negative displacements from the linear-memory pointer used by
 JIT code. Existing offsets must not move without re-deriving the runtime ABI and
 updating the guard tests.
 
-The globals pointer lives at basedata offset `88` (`abi.GlobalsPtrOffset`, used
+The globals pointer lives at basedata offset `112` (`abi.GlobalsPtrOffset`, used
 by runtime layout and backend codegen). Backend `global.get`/`global.set` code
 loads this pointer from basedata, indexes the per-instance global pointer table,
 then loads or stores the pointed-to 8-byte global cell.
@@ -30,10 +30,16 @@ context before execution. Shared memories serialize native entry while rebinding
 so multiple importers may retain independent globals, tables, host context, and
 passive-segment state without leaving basedata pointing at another instance's
 released arena. Linear-memory size/growth caches remain backing-owned, while trap
-and stack fields remain invocation-owned. A native cross-instance call between
-two instances using the same shared memory is rejected when either side has
-private context until imported calls switch context through runtime dispatch
-cells.
+and stack fields remain invocation-owned.
+
+Direct imported calls load `{entry, homeLinMem, targetContext, callerContext}`
+from the per-instance dispatch table. Indirect calls recover `targetContext` from
+the canonical funcref descriptor referenced by the table entry. Both paths bind
+the target pointer context before crossing instances and restore the caller
+context after a normal return. A trap unwinds the native call tree before restore;
+the next serialized public entry always rebinds its own captured context first.
+Canonical funcref descriptors are 40 bytes: the 32-byte table payload plus an
+8-byte owning-context pointer. Table entries remain 32 bytes.
 
 ## Global storage convention
 

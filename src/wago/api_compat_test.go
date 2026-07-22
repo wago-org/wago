@@ -210,7 +210,7 @@ func TestCompiledAPIHelpers(t *testing.T) {
 	}
 }
 
-func TestDeferredHostLinkCachesReturningImport(t *testing.T) {
+func TestReturningHostImportUsesCompiledDispatch(t *testing.T) {
 	funcImport := append(wasmtest.Name("env"), wasmtest.Name("answer")...)
 	funcImport = append(funcImport, 0, 0) // function import, type 0
 	mod := wasmtest.Module(
@@ -234,12 +234,8 @@ func TestDeferredHostLinkCachesReturningImport(t *testing.T) {
 	if err != nil {
 		t.Fatalf("repeat link returning host module: %v", err)
 	}
-	if c.needsLink {
-		if c.hostLink == nil || first == c || second != first || !first.syncHostImports {
-			t.Fatalf("deferred linked modules = %p, %p sync=%v", first, second, first.syncHostImports)
-		}
-	} else if first != c || second != c || !c.syncHostImports {
-		t.Fatalf("eager synchronous module = %p, %p sync=%v", first, second, c.syncHostImports)
+	if first != c || second != c || !c.dynamicImports || len(c.Code) == 0 {
+		t.Fatalf("dynamic linked modules = %p, %p owner=%p dynamic=%v code=%d", first, second, c, c.dynamicImports, len(c.Code))
 	}
 	in, err := Instantiate(c, imports)
 	if err != nil {

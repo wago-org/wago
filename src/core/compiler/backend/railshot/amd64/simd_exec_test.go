@@ -470,9 +470,17 @@ func TestSIMDV128IndirectCallMixedSignature(t *testing.T) {
 		binary.LittleEndian.PutUint32(desc[0:], 1)
 		binary.LittleEndian.PutUint32(desc[4:], 1)
 		ent := desc[8:]
-		binary.LittleEndian.PutUint64(ent[runtime.TableEntryCodePtrOffset:], uint64(entry)+uint64(cm.Entry[1]))
-		binary.LittleEndian.PutUint32(ent[runtime.TableEntrySigIDOffset:], m.StructuralTypeID(1))
-		binary.LittleEndian.PutUint64(ent[runtime.TableEntryHomeLinMemOffset:], uint64(jm.LinMemBase()))
+		funcDescs := serArgs[168 : 168+2*runtime.FuncRefDescBytes]
+		context := uint64(uintptr(unsafe.Pointer(&funcDescs[0])))
+		binary.LittleEndian.PutUint64(funcDescs[runtime.FuncRefContextOffset:], context)
+		canonical := funcDescs[runtime.FuncRefDescBytes:]
+		binary.LittleEndian.PutUint64(canonical[runtime.TableEntryCodePtrOffset:], uint64(entry)+uint64(cm.Entry[1]))
+		binary.LittleEndian.PutUint32(canonical[runtime.TableEntrySigIDOffset:], m.StructuralTypeID(1))
+		binary.LittleEndian.PutUint64(canonical[runtime.TableEntryHomeLinMemOffset:], uint64(jm.LinMemBase()))
+		binary.LittleEndian.PutUint64(canonical[runtime.TableEntryRefSlotOffset:], uint64(uintptr(unsafe.Pointer(&canonical[0]))))
+		binary.LittleEndian.PutUint64(canonical[runtime.FuncRefContextOffset:], context)
+		copy(ent, canonical[:runtime.TableEntryBytes])
+		jm.SetFuncRefDesc(uintptr(unsafe.Pointer(&funcDescs[0])))
 		jm.SetTablePtr(uintptr(unsafe.Pointer(&desc[0])))
 	})
 	var got [16]byte

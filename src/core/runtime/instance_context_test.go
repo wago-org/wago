@@ -32,6 +32,7 @@ func TestInstanceContextRoundTripLeavesMemoryAndInvocationState(t *testing.T) {
 		GlobalsPtr:     5,
 		PassiveDataPtr: 6,
 		TableDirPtr:    7,
+		ImportDispatch: 8,
 	}
 	jm.BindInstanceContext(want)
 	if got := jm.CaptureInstanceContext(); got != want {

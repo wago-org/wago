@@ -53,7 +53,8 @@ in full — 57/57 applicable files, 0 failing assertions (see [SPECTEST.md](SPEC
 - [x] No-cgo execution: W^X `mmap`, foreign-stack trampoline, `g` preservation,
   trap→error, zero-copy linear memory
 - [x] Cross-instance linking: function / global / table / memory imports & exports,
-  including shared mutable tables + memories, via link-time recompile + context-swap
+  including shared mutable tables + memories. Imported calls compile once and bind
+  through per-instance dispatch cells with explicit direct/indirect context switching.
 - [x] Instance slot reuse (lower instantiate cost — explicit #105, guard-page #108)
 
 **Tooling**
@@ -116,7 +117,7 @@ codegen rationale is **[OPTIMIZATIONS.md](OPTIMIZATIONS.md)**. Summary of the tw
   amd64 native polling remains planned. The checkpoints also bound ARM64 Go-GC
   stalls during long native loops.
 - [ ] Wasm-level stack traces on trap (trap site → func idx → wasm pc)
-- [x] WebAssembly 2.0 product closeout: `.wago` codec v20 persists structural
+- [x] WebAssembly 2.0 product closeout: `.wago` codec v21 persists structural
   reference globals, indexed typed tables/exports/elements, exact local/imported
   table-limit forms, and required-feature bits without serializing live runtime
   identity. Snapshot products reject every table/reference-global module.
@@ -145,7 +146,7 @@ codegen rationale is **[OPTIMIZATIONS.md](OPTIMIZATIONS.md)**. Summary of the tw
 - [x] Reference-types product completion: signatures, locals, control,
   local/imported/shared globals, host ABI, explicit host funcref ownership/egress,
   typed 8-byte externref tables/elements, every `table.*` operation, multiple
-  local/imported tables, exact exports/re-exports, codec-v20 structural metadata,
+  local/imported tables, exact exports/re-exports, codec-v21 structural metadata,
   snapshot isolation, complete inspection, cross-link teardown, and the
   zero-skip Release 2 execution corpus are done.
 - 🚧 Additional targets: native **linux/arm64** and **darwin/arm64** backends and

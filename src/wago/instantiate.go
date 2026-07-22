@@ -243,49 +243,6 @@ func (b *instanceBuilder) attachReferenceImports() ([]*resolvedGlobalImport, err
 	return importGlobals, nil
 }
 
-func sharedMemoryContextSwitchConflict(c *Compiled, imports Imports, memory *runtime.JobMemory) bool {
-	callerPrivate := compiledHasPrivateNativeContext(c, imports)
-	for _, key := range c.Imports {
-		ex, ok := imports[key].(*InstanceExport)
-		if !ok || ex == nil || ex.inst == nil || ex.inst.jm != memory {
-			continue
-		}
-		if callerPrivate || instanceHasPrivateNativeContext(ex.inst) {
-			return true
-		}
-	}
-	return false
-}
-
-func instanceHasPrivateNativeContext(in *Instance) bool {
-	if in == nil || in.nativeContext == 0 {
-		return false
-	}
-	ctx := unsafe.Slice((*byte)(offHeapPtr(in.nativeContext)), runtime.InstanceContextBytes)
-	for _, b := range ctx {
-		if b != 0 {
-			return true
-		}
-	}
-	return false
-}
-
-func compiledHasPrivateNativeContext(c *Compiled, imports Imports) bool {
-	hasHostCtx := c.syncHostImports || c.needsPublicFuncrefHostReentry()
-	if !hasHostCtx {
-		for _, key := range c.Imports {
-			if _, cross := imports[key].(*InstanceExport); !cross {
-				hasHostCtx = true
-				break
-			}
-		}
-	}
-	hasPrivateTableState := c.tableCount() > 1 || c.tableCount() > c.tableImportCount()
-	hasNativeGlobalState := len(c.Globals) > 0 && len(c.Entry) > 0
-	return hasNativeGlobalState || hasPrivateTableState || len(c.PassiveData) > 0 ||
-		len(c.passiveElems) > 0 || c.needsFuncRefDescs() || hasHostCtx
-}
-
 func (b *instanceBuilder) rollbackPreparedState() {
 	b.hostAttachments.detachAll()
 	b.globalAttachments.detachAll()
@@ -338,14 +295,10 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		// NewMemory and guard-page instance owners provide one only in a
 		// wago_guardpage build; reject a plain mapping (e.g. an explicit-bounds
 		// owner's memory, or a deserialized signals-based module in a default binary).
-		guarded, shared := m.importShape()
+		guarded, _ := m.importShape()
 		if c.boundsMode == BoundsChecksSignalsBased && !guarded {
 			runtime.ReleaseEngine(eng)
 			return nil, fmt.Errorf("imported memory %q is not guard-page backed; signals-based bounds checks require a guard-page memory (build with -tags wago_guardpage)", c.memoryImport)
-		}
-		if shared && sharedMemoryContextSwitchConflict(c, imports, m.jobMemory()) {
-			runtime.ReleaseEngine(eng)
-			return nil, fmt.Errorf("a module importing shared memory may not make a native cross-instance call to another instance using the same memory while either side has private native context")
 		}
 		if err := m.attachImporter(); err != nil {
 			runtime.ReleaseEngine(eng)
@@ -391,6 +344,8 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		runtime.ReleaseEngine(eng)
 		return nil, err
 	}
+	nativeContext := ar.AllocNoZero(runtime.InstanceContextBytes)
+	nativeContextPtr := uintptr(unsafe.Pointer(&nativeContext[0]))
 	base, err := c.acquireCode()
 	if err != nil {
 		runtime.ReleaseArena(ar)
@@ -413,7 +368,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	}()
 	var hostLog, ctrl []byte
 	var syncHosts []HostFunc
-	syncMode := c.syncHostImports || c.needsPublicFuncrefHostReentry()
+	syncMode := c.importsRequireSync(imports, opts.forceSyncHost)
 	if syncMode {
 		// Synchronous host-call path: install the control frame (not the async
 		// log) as the import ctx. Modules that accept public funcrefs and can call
@@ -454,35 +409,49 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	}
 	jm.SetStackFence(eng.StackLimit()) // trap runaway recursion instead of faulting
 
+	thunkAddr, generatedThunks, err := buildHostFuncThunks(c, imports, syncMode)
+	if err != nil {
+		return nil, err
+	}
+	thunkMem = generatedThunks
+	if c.dynamicImports && c.NumImports > 0 {
+		dispatch := ar.Alloc(c.NumImports * 32)
+		selfLinMem := uint64(jm.LinMemBase())
+		for i, key := range c.Imports {
+			off := i * 32
+			if ex, ok := imports[key].(*InstanceExport); ok && ex != nil && ex.inst != nil {
+				if ex.localIdx < 0 || ex.localIdx >= len(ex.inst.c.Entry) {
+					return nil, fmt.Errorf("cross-instance import %q references an unavailable function", key)
+				}
+				binary.LittleEndian.PutUint64(dispatch[off:], uint64(ex.inst.base)+uint64(ex.inst.c.Entry[ex.localIdx]))
+				binary.LittleEndian.PutUint64(dispatch[off+8:], uint64(ex.inst.jm.LinMemBase()))
+				binary.LittleEndian.PutUint64(dispatch[off+16:], uint64(ex.inst.nativeContext))
+				binary.LittleEndian.PutUint64(dispatch[off+24:], uint64(nativeContextPtr))
+				continue
+			}
+			addr, ok := thunkAddr[uint32(i)]
+			if !ok {
+				return nil, fmt.Errorf("import %q has no host dispatch thunk", key)
+			}
+			binary.LittleEndian.PutUint64(dispatch[off:], addr)
+			binary.LittleEndian.PutUint64(dispatch[off+8:], selfLinMem)
+			binary.LittleEndian.PutUint64(dispatch[off+16:], uint64(nativeContextPtr))
+			binary.LittleEndian.PutUint64(dispatch[off+24:], uint64(nativeContextPtr))
+		}
+		jm.SetImportDispatchPtr(uintptr(unsafe.Pointer(&dispatch[0])))
+	}
+
 	var initErr error
 	var tableDesc []byte
 	var funcRefDescs []byte
 	var writeTableEntry func([]byte, uint32)
 	if c.needsFuncRefDescs() {
 		selfLinMem := uint64(jm.LinMemBase())
-		var thunkAddr map[uint32]uint64
-		needsHostThunk := c.hasFuncrefTable()
-		if !needsHostThunk {
-			for _, key := range c.Imports {
-				if _, owned := imports[key].(*HostFuncRef); owned {
-					needsHostThunk = true
-					break
-				}
-			}
-		}
-		if needsHostThunk {
-			// Host functions that can flow through a funcref table need per-instance
-			// thunks. An explicitly owned table-free ref.func also needs one because
-			// its public token may later enter another instance's table/call_indirect.
-			var terr error
-			thunkAddr, thunkMem, terr = buildHostFuncThunks(c, imports)
-			if terr != nil {
-				return nil, terr
-			}
-		}
-		funcRefDescs = ar.Alloc(runtime.TableEntryBytes * (len(c.FuncTypeID) + 1))
+		funcRefDescs = ar.Alloc(runtime.FuncRefDescBytes * (len(c.FuncTypeID) + 1))
+		binary.LittleEndian.PutUint64(funcRefDescs[runtime.FuncRefContextOffset:], uint64(nativeContextPtr))
 		for fidx := 0; fidx < len(c.FuncTypeID); fidx++ {
-			off := (fidx + 1) * runtime.TableEntryBytes
+			off := (fidx + 1) * runtime.FuncRefDescBytes
+			targetContext := uint64(nativeContextPtr)
 			if li := fidx - c.NumImports; li >= 0 && li < len(c.Entry) {
 				code, home := uint64(base)+uint64(c.Entry[li]), selfLinMem
 				if li < len(c.InternalEntry) && c.InternalEntry[li] != c.Entry[li] && funcSigIntRegABI(c.Funcs[li]) {
@@ -495,6 +464,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 				if ex, ok := imports[c.Imports[fidx]].(*InstanceExport); ok && ex != nil && ex.inst != nil && ex.localIdx < len(ex.inst.c.Entry) {
 					binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntryCodePtrOffset:], uint64(ex.inst.base)+uint64(ex.inst.c.Entry[ex.localIdx]))
 					binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntryHomeLinMemOffset:], uint64(ex.inst.jm.LinMemBase()))
+					targetContext = uint64(ex.inst.nativeContext)
 				} else if addr, ok := thunkAddr[uint32(fidx)]; ok {
 					binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntryCodePtrOffset:], addr)
 					binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntryHomeLinMemOffset:], selfLinMem)
@@ -502,13 +472,14 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			}
 			binary.LittleEndian.PutUint32(funcRefDescs[off+runtime.TableEntrySigIDOffset:], c.FuncTypeID[fidx])
 			binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntryRefSlotOffset:], uint64(uintptr(unsafe.Pointer(&funcRefDescs[off]))))
+			binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.FuncRefContextOffset:], targetContext)
 			if fidx < c.NumImports {
 				// Cross-instance imports reuse the producer's canonical identity when
 				// that producer already owns a descriptor arena.
 				if ex, ok := imports[c.Imports[fidx]].(*InstanceExport); ok && ex != nil && ex.inst != nil && ex.inst.funcRefDescs != nil {
 					homeFidx := ex.inst.c.NumImports + ex.localIdx
-					homeOff := (homeFidx + 1) * runtime.TableEntryBytes
-					if homeOff+runtime.TableEntryBytes <= len(ex.inst.funcRefDescs) {
+					homeOff := (homeFidx + 1) * runtime.FuncRefDescBytes
+					if homeOff+runtime.FuncRefDescBytes <= len(ex.inst.funcRefDescs) {
 						copy(funcRefDescs[off+runtime.TableEntryRefSlotOffset:off+runtime.TableEntryRefSlotOffset+8], ex.inst.funcRefDescs[homeOff+runtime.TableEntryRefSlotOffset:homeOff+runtime.TableEntryRefSlotOffset+8])
 					}
 				}
@@ -525,7 +496,8 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 				clear(entry)
 				return
 			}
-			copy(entry, funcRefDescs[payload*runtime.TableEntryBytes:(payload+1)*runtime.TableEntryBytes])
+			off := payload * runtime.FuncRefDescBytes
+			copy(entry, funcRefDescs[off:off+runtime.TableEntryBytes])
 		}
 	}
 	writeElemEntry := func(entry []byte, refType ValType, value RefInit) error {
@@ -573,8 +545,8 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			} else {
 				bits, vec := g.Bits, g.V128
 				if g.HasInitFunc {
-					off := (int(g.InitFunc) + 1) * runtime.TableEntryBytes
-					if off < runtime.TableEntryBytes || off+runtime.TableEntryBytes > len(funcRefDescs) {
+					off := (int(g.InitFunc) + 1) * runtime.FuncRefDescBytes
+					if off < runtime.FuncRefDescBytes || off+runtime.FuncRefDescBytes > len(funcRefDescs) {
 						return nil, fmt.Errorf("global %d ref.func initializer index %d has no descriptor", i, g.InitFunc)
 					}
 					bits = uint64(uintptr(unsafe.Pointer(&funcRefDescs[off])))
@@ -841,12 +813,11 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	if len(tableDesc) != 0 {
 		tableDescPtr = uintptr(unsafe.Pointer(&tableDesc[0]))
 	}
-	nativeContext := ar.AllocNoZero(runtime.InstanceContextBytes)
 	jm.CaptureInstanceContextBytes(nativeContext)
 	in := &Instance{
 		c: c, eng: eng, jm: jm, memory: memObj, ownsMem: ownsMem, ar: ar, base: base, hosts: imports.hostFuncs(), imports: imports, hostLog: hostLog, syncMode: syncMode, ctrl: ctrl, syncHosts: syncHosts, globals: globals, globalCells: globalCells, tableDescPtr: tableDescPtr, tableDescLen: len(tableDesc), funcRefDescs: funcRefDescs, passiveDataDesc: passiveDataDesc, thunkMem: thunkMem, gc: b.collector,
 		serArgs: serArgs, results: results, trap: trap, resultVals: make([]uint64, c.maxResultSlots), rt: opts.runtime,
-		nativeContext: uintptr(unsafe.Pointer(&nativeContext[0])),
+		nativeContext: nativeContextPtr,
 	}
 	b.registeredInstance = in
 	if opts.origin != InstantiateDirect || opts.pluginGC != nil {
@@ -998,16 +969,10 @@ func funcSigIntRegABI(sig FuncSig) bool {
 	return true
 }
 
-// buildHostFuncThunks generates a per-instance executable mapping of thunks for
-// host function imports that may be materialized as funcrefs, returning each such
-// import's thunk entry address and the mapping (nil when none). We generate for
-// every host-bound import in table-using modules, not just imports mentioned by
-// active segments: passive/declarative element segments and ref.func can also
-// place an import into a table later. A call_indirect through a legacy async
-// HostFunc thunk logs the host call for the normal post-invoke replay; a
-// sync-mode thunk uses the synchronous control frame and returns the host results
-// through the wrapper result slots.
-func buildHostFuncThunks(c *Compiled, imports Imports) (map[uint32]uint64, []byte, error) {
+// buildHostFuncThunks generates wrapper-ABI targets for every host-bound import.
+// The same target serves direct imported calls through the instance dispatch
+// table and host funcrefs stored in Wasm tables.
+func buildHostFuncThunks(c *Compiled, imports Imports, syncMode bool) (map[uint32]uint64, []byte, error) {
 	var blob []byte
 	offs := map[uint32]int{}
 	for fidx := 0; fidx < c.NumImports; fidx++ {
@@ -1015,21 +980,21 @@ func buildHostFuncThunks(c *Compiled, imports Imports) (map[uint32]uint64, []byt
 		if _, isCross := imports[key].(*InstanceExport); isCross {
 			continue // cross-instance funcref, not a host function
 		}
-		if c.syncHostImports {
+		if syncMode {
 			if fidx >= len(c.importFuncSigs) {
-				return nil, nil, fmt.Errorf("import %q may become a table funcref but its signature is missing", key)
+				return nil, nil, fmt.Errorf("import %q wrapper signature is missing", key)
 			}
 			sig := c.importFuncSigs[fidx]
 			paramSlots, err := valTypesSlots(sig.Params)
 			if err != nil {
-				return nil, nil, fmt.Errorf("import %q table thunk params: %w", key, err)
+				return nil, nil, fmt.Errorf("import %q wrapper params: %w", key, err)
 			}
 			resultSlots, err := valTypesSlots(sig.Results)
 			if err != nil {
-				return nil, nil, fmt.Errorf("import %q table thunk results: %w", key, err)
+				return nil, nil, fmt.Errorf("import %q wrapper results: %w", key, err)
 			}
 			if paramSlots > runtime.MaxHostArity || resultSlots > runtime.MaxHostArity {
-				return nil, nil, fmt.Errorf("import %q may become a table funcref and uses %d param slot(s), %d result slot(s); synchronous table host funcrefs support at most %d slots in each direction", key, paramSlots, resultSlots, runtime.MaxHostArity)
+				return nil, nil, fmt.Errorf("import %q uses %d param slot(s), %d result slot(s); synchronous host wrappers support at most %d slots in each direction", key, paramSlots, resultSlots, runtime.MaxHostArity)
 			}
 			dispatch := uint32(fidx)
 			owned := false
@@ -1053,7 +1018,7 @@ func buildHostFuncThunks(c *Compiled, imports Imports) (map[uint32]uint64, []byt
 			blob = append(blob, railshotHostIndirectThunk(uint32(fidx))...)
 		default:
 			if imports[key] != nil {
-				return nil, nil, fmt.Errorf("import %q may become a table funcref but is %T; table host funcrefs in async mode support wago.HostFunc or *wago.HostFuncRef bindings", key, imports[key])
+				return nil, nil, fmt.Errorf("import %q is %T; async host wrappers support wago.HostFunc or *wago.HostFuncRef bindings", key, imports[key])
 			}
 		}
 	}
@@ -1062,7 +1027,7 @@ func buildHostFuncThunks(c *Compiled, imports Imports) (map[uint32]uint64, []byt
 	}
 	mem, base, err := runtime.MapCode(blob)
 	if err != nil {
-		return nil, nil, fmt.Errorf("host-func table thunk: %w", err)
+		return nil, nil, fmt.Errorf("host import wrapper thunk: %w", err)
 	}
 	addr := make(map[uint32]uint64, len(offs))
 	for fidx, o := range offs {

@@ -1,9 +1,11 @@
 package shared
 
-// ImportBinding describes a link-time imported-function binding. The zero value
-// selects host-import lowering; CrossInstance supplies the native context and
-// wrapper entry needed by either architecture's direct-call lowering.
+// ImportBinding describes imported-function lowering. Dynamic selects the
+// per-instance dispatch table, while CrossInstance retains the legacy immediate
+// binding used by focused backend tests and older low-level callers.
 type ImportBinding struct {
+	Dynamic       bool
+	ImportIndex   uint32
 	CrossInstance bool
 	CalleeLinMem  uint64
 	CalleeEntry   uint64

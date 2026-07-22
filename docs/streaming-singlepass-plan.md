@@ -38,9 +38,9 @@ immutable-table specialization also depend on future bodies. The emitted module
 code grows in a heap `[]byte`, then the first instantiation copies it into an RX
 mapping.
 
-Function imports add a separate whole-source dependency: link-time recompiling
-currently copies, re-decodes, and re-lowers the original wasm in order to bake
-cross-instance call addresses into code.
+At the time of this plan, function imports added a separate whole-source
+recompile dependency. That constraint has since been removed: imported calls are
+compiled once and concrete targets are installed in per-instance dispatch cells.
 
 ## Design invariants
 

@@ -67,14 +67,15 @@ var (
 )
 
 const (
-	callKindInline        = shared.CallInline
-	callKindHost          = shared.CallHost
-	callKindHostSync      = shared.CallHostSync
-	callKindCrossInstance = shared.CallCrossInstance
-	callKindRegisterABI   = shared.CallRegisterABI
-	callKindMixed         = shared.CallMixed
-	callKindWrapper       = shared.CallWrapper
-	callKindIndirect      = shared.CallIndirect
+	callKindInline         = shared.CallInline
+	callKindHost           = shared.CallHost
+	callKindHostSync       = shared.CallHostSync
+	callKindCrossInstance  = shared.CallCrossInstance
+	callKindImportDispatch = shared.CallImportDispatch
+	callKindRegisterABI    = shared.CallRegisterABI
+	callKindMixed          = shared.CallMixed
+	callKindWrapper        = shared.CallWrapper
+	callKindIndirect       = shared.CallIndirect
 )
 
 func parsePinGlobalK(s string) int {
@@ -119,7 +120,7 @@ type CodegenStats struct {
 	TrapStubs             int // shared cold trap stubs emitted (one per trap code used)
 
 	// Calls, by lowering kind: regabi / mixed / wrapper / host / indirect /
-	// crossinstance.
+	// crossinstance / importdispatch.
 	Calls map[string]int
 
 	// Pins.

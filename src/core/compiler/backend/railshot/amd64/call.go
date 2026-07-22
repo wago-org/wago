@@ -8,6 +8,7 @@ import (
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/encoder/amd64"
+	"github.com/wago-org/wago/src/core/runtime"
 )
 
 // regABIEnabled turns on the register-based internal-call ABI (default on;
@@ -121,7 +122,7 @@ func (f *fn) callOp(r *wasm.Reader) error {
 		}
 	}
 	if int(idx) < imported {
-		if f.importBindings != nil && int(idx) < len(f.importBindings) && f.importBindings[idx].CrossInstance {
+		if f.importBindings != nil && int(idx) < len(f.importBindings) && (f.importBindings[idx].Dynamic || f.importBindings[idx].CrossInstance) {
 			return f.emitCrossInstanceCall(f.importBindings[idx], ft)
 		}
 		// A module with any returning host import uses the synchronous control
@@ -467,6 +468,24 @@ const (
 	maxSyncHostSlots = 16  // must match runtime.MaxHostArity / maxHostArity
 )
 
+var instanceContextOffsets = [...]int32{
+	offCustomCtx,
+	offTablePtr,
+	offFuncRefDescPtr,
+	offPassiveElemPtr,
+	offGlobalsPtr,
+	offPassiveDataPtr,
+	offTableDirPtr,
+	offImportDispatchPtr,
+}
+
+func (f *fn) copyInstanceContext(dst, src Reg) {
+	for i, off := range instanceContextOffsets {
+		f.a.Load64(RAX, src, int32(i*8))
+		f.a.Store64(dst, -off, RAX)
+	}
+}
+
 // emitCrossInstanceCall lowers a call to an imported function that is bound to
 // another instance's function (cross-instance linking). Unlike a host import
 // (which logs and returns void), this is a real native call into the callee
@@ -475,10 +494,15 @@ const (
 // globals R12-R14), so the caller's whole-module-invariant registers are
 // preserved across the call by push/pop; the three per-execution control words
 // (trap re-entry, stack fence, trap cell) are copied caller→callee so a trap in
-// the callee unwinds to this execution's enterNative. Callee linMem/entry are
-// baked as immediates by the link-time recompile.
+// the callee unwinds to this execution's enterNative. Production code loads the
+// callee entry, home memory, and target/caller contexts from the import dispatch
+// cell; the immediate form remains only for focused backend callers.
 func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
-	f.stats.call(callKindCrossInstance)
+	kind := callKindCrossInstance
+	if b.Dynamic {
+		kind = callKindImportDispatch
+	}
+	f.stats.call(kind)
 	p, rN := len(ft.Params), len(ft.Results)
 	roots := f.rootsBottomToTop()
 	d := len(roots)
@@ -532,7 +556,22 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 	f.a.Push(R15)
 	f.a.Push(RAX) // alignment pad
 
-	f.a.MovImm64(RSI, b.CalleeLinMem) // callee linMem base (wrapper-ABI arg 1)
+	if b.Dynamic {
+		if b.ImportIndex > uint32((1<<31-1-24)/32) {
+			return fmt.Errorf("import dispatch index %d overflows displacement", b.ImportIndex)
+		}
+		disp := int32(b.ImportIndex * 32)
+		f.a.Load64(RAX, RBX, -offImportDispatchPtr)
+		f.a.Load64(RSI, RAX, disp+8)  // callee/home linMem (wrapper-ABI arg 1)
+		f.a.Load64(R10, RAX, disp+16) // target instance context
+		f.a.Load64(R9, RAX, disp+24)  // caller context, needed after return
+		f.a.Load64(R11, RAX, disp)    // wrapper entry
+		f.a.Push(R9)
+		f.a.Push(R10) // alignment pad + preserves the caller-context pair
+		f.copyInstanceContext(RSI, R10)
+	} else {
+		f.a.MovImm64(RSI, b.CalleeLinMem) // callee linMem base (wrapper-ABI arg 1)
+	}
 	// Copy the per-execution control words caller(RBX)→callee(RSI).
 	f.a.Load64(RAX, RBX, -offTrapReentry)
 	f.a.Store64(RSI, -offTrapReentry, RAX)
@@ -541,15 +580,26 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 	f.a.Load64(RAX, RBX, -offTrapCellPtr)
 	f.a.Store64(RSI, -offTrapCellPtr, RAX)
 
-	f.a.MovImm64(RAX, b.CalleeEntry)
-	f.a.CallReg(RAX)
+	if b.Dynamic {
+		f.a.CallReg(R11)
+	} else {
+		f.a.MovImm64(RAX, b.CalleeEntry)
+		f.a.CallReg(RAX)
+	}
 
+	if b.Dynamic {
+		f.a.Pop(R10) // alignment pad
+		f.a.Pop(R9)  // caller context
+	}
 	f.a.Pop(RAX) // alignment pad
 	f.a.Pop(R15)
 	f.a.Pop(R14)
 	f.a.Pop(R13)
 	f.a.Pop(R12)
 	f.a.Pop(RBX)
+	if b.Dynamic {
+		f.copyInstanceContext(RBX, R9)
+	}
 
 	f.reloadLocalsForCall() // non-STACK_REG model only
 	f.deriveModuleGlobals() // cross-instance callee may have written shared global cells
@@ -999,6 +1049,15 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 
 	home := f.allocReg(maskOf(idxReg, code))
 	f.a.Load64(home, idxReg, 24) // entry home linMem base
+	canonical := f.allocReg(maskOf(idxReg, code, home))
+	f.a.Load64(canonical, idxReg, 32) // canonical descriptor pointer
+	f.a.TestSelf(canonical, true)
+	f.trapIf(condE, trapIndirectOOB)
+	targetContext := f.allocReg(maskOf(idxReg, code, home, canonical))
+	f.a.Load64(targetContext, canonical, runtime.FuncRefContextOffset)
+	f.a.TestSelf(targetContext, true)
+	f.trapIf(condE, trapIndirectOOB)
+	f.release(canonical)
 	f.pinned = f.pinned.remove(idxReg)
 	f.release(idxReg)
 	if sigFitsRegABI(ft) && sigIsIntOnly(ft) {
@@ -1014,7 +1073,7 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 				types[i] = root.typ
 			}
 		}
-		f.pinned = f.pinned.add(code).add(home)
+		f.pinned = f.pinned.add(code).add(home).add(targetContext)
 		f.flush()
 		savedLocals := append([]localDef(nil), f.locals...)
 		tag := f.allocReg(maskOf(code, home))
@@ -1023,7 +1082,8 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 		f.a.TestSelf(tag, true)
 		f.release(tag)
 		wrapper := f.a.JccPlaceholder(condE)
-		f.pinned = f.pinned.remove(home)
+		f.pinned = f.pinned.remove(home).remove(targetContext)
+		f.release(targetContext)
 		f.emitRegisterCallVia(ft, -1, -1, code)
 		f.pinned = f.pinned.remove(code)
 		f.release(code)
@@ -1039,7 +1099,7 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 		// pointer without spending an immediate-mask register.
 		f.a.ShiftImm(4, home, 1, true)
 		f.a.ShiftImm(5, home, 1, true)
-		f.emitIndirectCallHomeAware(ft, home)
+		f.emitIndirectCallHomeAware(ft, home, targetContext)
 		f.a.PatchRel32(done, f.a.Len())
 		return nil
 	}
@@ -1048,19 +1108,19 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 	f.a.Store64(RBX, -int32(offSpillRegion), code)
 	f.release(code)
 
-	f.emitIndirectCallHomeAware(ft, home)
+	f.emitIndirectCallHomeAware(ft, home, targetContext)
 	return nil
 }
 
 // emitIndirectCallHomeAware makes the indirect call to the code ptr stashed at
 // [linMem-offSpillRegion], running the funcref in its home instance's context.
-// homeReg holds the entry's home linMem base. When it equals the caller's linMem
-// (RBX) — the common single-instance case — it is a plain frameless wrapper call.
-// Otherwise the funcref belongs to another instance: preserve the caller's
+// homeReg holds the entry's home linMem base and targetContextReg identifies its
+// owning instance. Matching caller/target contexts take the plain frameless
+// wrapper path, even when memory aliases are possible. Otherwise preserve the caller's
 // whole-module-invariant registers (RBX, R12-R15), copy the per-execution control
 // words caller→callee, and enter the callee's offset-0 entry with RSI = its linMem
 // (the same context-swap as emitCrossInstanceCall, selected at run time).
-func (f *fn) emitIndirectCallHomeAware(ft *wasm.CompType, homeReg Reg) {
+func (f *fn) emitIndirectCallHomeAware(ft *wasm.CompType, homeReg, targetContextReg Reg) {
 	p, rN := len(ft.Params), len(ft.Results)
 	roots := f.rootsBottomToTop()
 	d := len(roots)
@@ -1090,15 +1150,18 @@ func (f *fn) emitIndirectCallHomeAware(ft *wasm.CompType, homeReg Reg) {
 		resultSlots += mtOf(rt).stackSlots()
 	}
 
-	// Stash homeLinMem to a scratch slot above the slot-width results. The frame is
-	// stable during the frameless call, so it survives arg staging and the
-	// cross-instance path's RSP changes.
+	// Stash the home linear-memory and target-context pointers above the results.
+	// The frame is stable during the frameless call, so both survive arg staging
+	// and the cross-instance path's RSP changes.
 	homeSlot := resultSlot + resultSlots
-	if need := homeSlot + 1; need > f.maxSpill {
+	targetContextSlot := homeSlot + 1
+	if need := targetContextSlot + 1; need > f.maxSpill {
 		f.maxSpill = need
 	}
 	f.a.Store64(RSP, f.spillOff(homeSlot), homeReg)
+	f.a.Store64(RSP, f.spillOff(targetContextSlot), targetContextReg)
 	f.release(homeReg)
+	f.release(targetContextReg)
 
 	f.flush()                        // args → canonical slot-width slots
 	f.storePinnedGlobals(false)      // value-pinned globals → cells
@@ -1111,8 +1174,11 @@ func (f *fn) emitIndirectCallHomeAware(ft *wasm.CompType, homeReg Reg) {
 	f.a.LeaRsp(RDI, argOff)                 // args = &first arg slot
 	f.a.LeaRsp(RCX, f.spillOff(resultSlot)) // results = &slot top
 
-	f.a.Load64(R11, RSP, f.spillOff(homeSlot)) // R11 = homeLinMem (caller-saved scratch)
-	f.a.Cmp64(R11, RBX)
+	f.a.Load64(R11, RSP, f.spillOff(homeSlot))          // target home linMem
+	f.a.Load64(R10, RSP, f.spillOff(targetContextSlot)) // target instance context
+	f.a.Load64(R9, RBX, -offFuncRefDescPtr)
+	f.a.Load64(R9, R9, runtime.FuncRefContextOffset) // caller instance context
+	f.a.Cmp64(R10, R9)
 	jne := f.a.JccPlaceholder(condNE)
 	// Same instance: RSI = caller linMem, call the entry directly.
 	f.a.MovReg64(RSI, RBX)
@@ -1127,6 +1193,9 @@ func (f *fn) emitIndirectCallHomeAware(ft *wasm.CompType, homeReg Reg) {
 	f.a.Push(R14)
 	f.a.Push(R15)
 	f.a.Push(RAX) // alignment pad
+	f.a.Push(R9)
+	f.a.Push(R10) // alignment pad + preserves the caller-context pair
+	f.copyInstanceContext(R11, R10)
 	f.a.Load64(RAX, RBX, -offTrapReentry)
 	f.a.Store64(R11, -offTrapReentry, RAX)
 	f.a.Load64(RAX, RBX, -offStackFence)
@@ -1135,12 +1204,15 @@ func (f *fn) emitIndirectCallHomeAware(ft *wasm.CompType, homeReg Reg) {
 	f.a.Store64(R11, -offTrapCellPtr, RAX)
 	f.a.MovReg64(RSI, R11)
 	f.a.CallMem(RBX, -int32(offSpillRegion)) // RBX unchanged by the pushes
+	f.a.Pop(R10)
+	f.a.Pop(R9)
 	f.a.Pop(RAX)
 	f.a.Pop(R15)
 	f.a.Pop(R14)
 	f.a.Pop(R13)
 	f.a.Pop(R12)
 	f.a.Pop(RBX)
+	f.copyInstanceContext(RBX, R9)
 	f.deriveModuleGlobals() // cross-instance callee may have written shared global cells
 	f.a.PatchRel32(jdone, f.a.Len())
 
