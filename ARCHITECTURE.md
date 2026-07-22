@@ -1,12 +1,18 @@
 # Architecture
 
 `wago` is a pure-Go (no-cgo) WebAssembly engine. It decodes, validates, and
-compiles wasm modules to x86-64 machine code with a single-pass backend, then
+compiles wasm modules to native machine code with a single-pass backend, then
 executes that code directly from Go — no C toolchain, no cgo, no FFI. The
 host-boundary shape and runtime ABI are derived from [WARP](https://github.com/wasm-ecosystem/wasm-compiler),
 a C++ single-pass wasm engine (vendored at `warp/` as a reference submodule).
 
-Target platform today: **linux/amd64**.
+<!-- architecture:targets linux/amd64 linux/arm64 darwin/arm64 -->
+The mature production target is **linux/amd64**. Native Railshot compilation and
+runtime support also exist for **linux/arm64** and **darwin/arm64**, with the
+remaining platform qualification tracked in [FEATURES.md](FEATURES.md) and the
+ARM64 documents under `docs/`.
+
+<!-- artifact:codec-version 20 -->
 
 **CPU baseline: modern x86-64 with SSSE3/SSE4.1 plus AVX/VEX.128 XMM encodings.** The backend emits
 some instructions beyond original x86-64 without a CPUID gate or fallback:
@@ -25,7 +31,8 @@ for relaxed SIMD dot products and madd/nmadd until newer-ISA gates exist. Core
 `i32x4.dot_i16x8_s` uses VEX.128 `VPMADDWD`, which is within the documented
 baseline and does not require AVX2/VNNI.
 
-Current SIMD support is partial and explicit-gated: `v128` participates in the
+SIMD support is complete for the documented linux/amd64 baseline and remains
+explicitly feature-gated: `v128` participates in the
 railshot operand stack, params, locals, spills, control-flow frame slots/branches,
 wrapper ABI calls/results, and linear memory load/store, extending-load/load-splat/load-zero ops, and lane memory load/store, with lowering for `v128.const`, i8x16.swizzle/shuffle, deterministic i8x16.relaxed_swizzle/relaxed_laneselect/relaxed truncations/relaxed packed-float minmax/relaxed packed-float madd/nmadd/i16x8.relaxed_q15mulr_s/relaxed dot products, splats, lane extract/replace,
 basic bitwise ops, `v128.any_true`, all_true/bitmask for i8x16/i16x8/i32x4/i64x2,
@@ -382,12 +389,16 @@ not built or needed to build/test the Go module.
 
 ## 16. Current scope & limitations
 
-- **linux/amd64 only**, JIT-only (no interpreter tier).
-- The priority is completing **WebAssembly 1.0 (MVP)**. Most of the MVP is
-  implemented; see [FEATURES.md](FEATURES.md) for the current per-feature board.
-  Post-MVP proposals are partially in (multi-value, reference-type `select t`,
-  saturating truncation, `memory.copy`/`fill`, and explicit-gated SIMD); several
-  others are planned.
+- Wago is JIT-only; there is no interpreter tier.
+- **linux/amd64** is the mature production target. **linux/arm64** and
+  **darwin/arm64** have native compiler/runtime support but remain under platform
+  qualification; Windows is not supported.
+- WebAssembly 1.0 and the documented WebAssembly 2.0 feature set are complete on
+  the supported amd64 baseline. Tail calls, threads/atomics, multi-memory,
+  exception handling, and the Wasm GC proposal remain outside the current
+  supported feature set unless [FEATURES.md](FEATURES.md) says otherwise.
+- The off-path `src/core/compiler/ir` package is a research/debug oracle, not an
+  execution tier. Railshot is the only production backend.
 
 This section only sketches scope — **[FEATURES.md](FEATURES.md) is the source of
 truth** for per-feature status, with [ROADMAP.md](ROADMAP.md) for the plan and
