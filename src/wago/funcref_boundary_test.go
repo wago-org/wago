@@ -223,7 +223,6 @@ func TestRuntimeImportedFuncrefFromBareProducerGetsStableIdentity(t *testing.T) 
 	if err != nil {
 		t.Fatalf("Instantiate producer: %v", err)
 	}
-	defer producer.Close()
 	if len(producer.funcRefDescs) != 0 {
 		t.Fatalf("bare producer allocated %d descriptor bytes before a reference use", len(producer.funcRefDescs))
 	}
@@ -239,7 +238,10 @@ func TestRuntimeImportedFuncrefFromBareProducerGetsStableIdentity(t *testing.T) 
 	if err != nil {
 		t.Fatalf("Instantiate importer: %v", err)
 	}
-	defer importer.Close()
+	alias, err := rt.Instantiate(context.Background(), importerMod, WithImports(Imports{"env.target": target}))
+	if err != nil {
+		t.Fatalf("Instantiate alias importer: %v", err)
+	}
 
 	first, err := importer.Invoke("get")
 	if err != nil || len(first) != 1 || first[0] == 0 {
@@ -248,6 +250,31 @@ func TestRuntimeImportedFuncrefFromBareProducerGetsStableIdentity(t *testing.T) 
 	second, err := importer.Invoke("get_table")
 	if err != nil || len(second) != 1 || second[0] != first[0] {
 		t.Fatalf("table identity = %v, %v; want token %#x", second, err, first[0])
+	}
+	aliasRef, err := alias.Invoke("get")
+	if err != nil || len(aliasRef) != 1 || aliasRef[0] != first[0] {
+		t.Fatalf("alias importer identity = %v, %v; want token %#x", aliasRef, err, first[0])
+	}
+	consumerMod, err := rt.Compile(funcrefCallableConsumerModule())
+	if err != nil {
+		t.Fatalf("Compile consumer: %v", err)
+	}
+	consumer, err := rt.Instantiate(context.Background(), consumerMod)
+	if err != nil {
+		t.Fatalf("Instantiate consumer: %v", err)
+	}
+	defer consumer.Close()
+	if err := producer.Close(); err != nil {
+		t.Fatalf("Close producer: %v", err)
+	}
+	if err := importer.Close(); err != nil {
+		t.Fatalf("Close importer: %v", err)
+	}
+	if err := alias.Close(); err != nil {
+		t.Fatalf("Close alias: %v", err)
+	}
+	if got, err := consumer.Invoke("call", first[0]); err != nil || len(got) != 1 || AsI32(got[0]) != 42 {
+		t.Fatalf("call after producer/importer close = %v, %v; want 42", got, err)
 	}
 }
 
@@ -285,7 +312,7 @@ func TestRuntimeImportedFuncrefRejectsForeignOrCorruptCanonicalDescriptor(t *tes
 		if err == nil || !strings.Contains(err.Error(), "invalid funcref result") || got != nil {
 			t.Fatalf("cross-runtime imported get = %v, %v; want fail-closed result", got, err)
 		}
-		if len(importerRT.refStore.byToken) != 0 || len(importerRT.refStore.byDescriptor) != 0 {
+		if len(importerRT.refStore.byToken) != 0 || len(importerRT.refStore.byIdentity) != 0 {
 			t.Fatal("cross-runtime rejection issued a public token")
 		}
 	})
@@ -309,7 +336,7 @@ func TestRuntimeImportedFuncrefRejectsForeignOrCorruptCanonicalDescriptor(t *tes
 		if err == nil || !strings.Contains(err.Error(), "invalid funcref result") || got != nil {
 			t.Fatalf("host imported get = %v, %v; want fail-closed result", got, err)
 		}
-		if len(rt.refStore.byToken) != 0 || len(rt.refStore.byDescriptor) != 0 {
+		if len(rt.refStore.byToken) != 0 || len(rt.refStore.byIdentity) != 0 {
 			t.Fatal("host-import rejection issued a public token")
 		}
 	})
@@ -347,7 +374,7 @@ func TestRuntimeImportedFuncrefRejectsForeignOrCorruptCanonicalDescriptor(t *tes
 		if err == nil || !strings.Contains(err.Error(), "invalid funcref result") || got != nil {
 			t.Fatalf("corrupt imported get = %v, %v; want fail-closed result", got, err)
 		}
-		if len(rt.refStore.byToken) != 0 || len(rt.refStore.byDescriptor) != 0 {
+		if len(rt.refStore.byToken) != 0 || len(rt.refStore.byIdentity) != 0 {
 			t.Fatal("corrupt canonical descriptor issued a public token")
 		}
 	})

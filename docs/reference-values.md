@@ -43,11 +43,16 @@ produce public tokens. For an imported `ref.func`, the store first proves that
 the returned descriptor is inside the returning instance's descriptor arena,
 then reads its immutable `refSlot`, verifies the exact `InstanceExport` binding,
 and resolves the canonical descriptor only against an instance registered in
-the same store. The issued token is the producer's existing identity and retains
-the producer, not the importer. A canonical local descriptor returned by
-`table.get` follows the same registered-range path. Existing tokens remain
-usable after producer logical close because their store entry is already an
-exact retained root.
+the same store. When the producer already has a descriptor arena, the issued
+token is the producer's existing identity and retains the producer directly. A
+bare producer that never executes reference operations has no such arena; in
+that case the importer's exact proxy descriptor becomes the store identity, and
+token retention keeps the importer physically live while its function attachment
+retains the producer. The store also keys tokens by `(producer, local function)`
+so separate importers still receive one stable identity. A canonical local
+descriptor returned by `table.get` follows the same registered-range path.
+Existing tokens remain usable after logical close because their complete
+retention chain remains rooted until store teardown.
 
 The store never dereferences public bits or an unvalidated `refSlot`. Corrupted
 canonical metadata, cross-runtime/private-store imports, and unowned host-import

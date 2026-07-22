@@ -798,7 +798,7 @@ func (g *Global) validateReferenceImport(store *referenceStore) error {
 	store.mu.Lock()
 	var ok bool
 	if o.instance == nil {
-		entry := store.byDescriptor[bits]
+		entry := store.byIdentity[funcrefIdentity{descriptor: bits}]
 		ok = entry != nil && entry.descriptor == bits
 	} else {
 		_, _, ok = store.canonicalFuncrefOwnerLocked(o.instance, bits)

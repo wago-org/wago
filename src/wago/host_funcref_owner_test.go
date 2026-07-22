@@ -286,7 +286,7 @@ func TestOwnedHostFuncrefRejectsCorruptedDescriptorMetadata(t *testing.T) {
 	if got, err := in.Invoke("get"); err == nil || !strings.Contains(err.Error(), "invalid funcref result") || got != nil {
 		t.Fatalf("corrupted owned host get = %v, %v; want fail-closed result", got, err)
 	}
-	if len(rt.refStore.byToken) != 0 || len(rt.refStore.byDescriptor) != 0 {
+	if len(rt.refStore.byToken) != 0 || len(rt.refStore.byIdentity) != 0 {
 		t.Fatal("corrupted host descriptor issued a public token")
 	}
 }

@@ -24,11 +24,17 @@ type referenceStore struct {
 	liveInstances uint32
 	liveObjects   uint32
 	instances     map[*Instance]struct{}
-	byDescriptor  map[uint64]*funcrefTokenEntry
+	byIdentity    map[funcrefIdentity]*funcrefTokenEntry
 	byToken       map[uint64]*funcrefTokenEntry
 	externKey     uint64
 	externSeed    uint32
 	externrefs    []externrefSlot
+}
+
+type funcrefIdentity struct {
+	descriptor uint64
+	instance   *Instance
+	localIdx   int
 }
 
 type funcrefTokenEntry struct {
@@ -161,7 +167,7 @@ func (s *referenceStore) issue(source *Instance, descriptor uint64) (uint64, err
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if entry := s.byDescriptor[descriptor]; entry != nil {
+	if entry := s.byIdentity[funcrefIdentity{descriptor: descriptor}]; entry != nil {
 		return entry.token, nil
 	}
 	if source == nil {
@@ -171,7 +177,13 @@ func (s *referenceStore) issue(source *Instance, descriptor uint64) (uint64, err
 	if !ok {
 		return 0, fmt.Errorf("invalid funcref result descriptor")
 	}
-	if entry := s.byDescriptor[canonical]; entry != nil {
+	identity, hasIdentity := source.funcrefFunctionIdentity(descriptor)
+	if hasIdentity {
+		if entry := s.byIdentity[identity]; entry != nil {
+			return entry.token, nil
+		}
+	}
+	if entry := s.byIdentity[funcrefIdentity{descriptor: canonical}]; entry != nil {
 		return entry.token, nil
 	}
 	if !owner.retainResourceRoot() {
@@ -183,14 +195,20 @@ func (s *referenceStore) issue(source *Instance, descriptor uint64) (uint64, err
 		return 0, err
 	}
 	entry := &funcrefTokenEntry{token: token, descriptor: canonical, owner: owner}
-	if s.byDescriptor == nil {
-		s.byDescriptor = make(map[uint64]*funcrefTokenEntry)
+	if s.byIdentity == nil {
+		s.byIdentity = make(map[funcrefIdentity]*funcrefTokenEntry)
 		s.byToken = make(map[uint64]*funcrefTokenEntry)
 	}
-	s.byDescriptor[canonical] = entry
+	s.byIdentity[funcrefIdentity{descriptor: canonical}] = entry
+	if hasIdentity {
+		s.byIdentity[identity] = entry
+	}
 	s.byToken[token] = entry
 	if hostOwner := owner.hostFuncRefForDescriptor(canonical); hostOwner != nil && !hostOwner.markTokenLive(owner, canonical) {
-		delete(s.byDescriptor, canonical)
+		delete(s.byIdentity, funcrefIdentity{descriptor: canonical})
+		if hasIdentity {
+			delete(s.byIdentity, identity)
+		}
 		delete(s.byToken, token)
 		owner.releaseResourceRoot()
 		return 0, fmt.Errorf("host funcref owner closed during token issue")
@@ -301,7 +319,7 @@ func (s *referenceStore) releaseEntriesLocked() []*funcrefTokenEntry {
 			entries = append(entries, entry)
 		}
 	}
-	s.byDescriptor = nil
+	s.byIdentity = nil
 	s.byToken = nil
 	clear(s.externrefs)
 	s.externrefs = nil
@@ -332,14 +350,33 @@ func (s *referenceStore) canonicalFuncrefOwnerLocked(source *Instance, descripto
 		off := (fidx + 1) * coreruntime.FuncRefDescBytes
 		refSlot := binary.LittleEndian.Uint64(source.funcRefDescs[off+coreruntime.TableEntryRefSlotOffset:])
 		if ex, ok := source.imports[key].(*InstanceExport); ok {
-			if ex == nil || ex.inst == nil || ex.inst.refStore != s {
+			if ex == nil || ex.inst == nil || ex.inst.refStore != s || ex.localIdx < 0 || ex.localIdx >= len(ex.inst.c.Entry) {
 				return nil, 0, false
 			}
-			canonical, ok := ex.inst.localFuncrefDescriptor(ex.localIdx)
-			if !ok || refSlot != canonical {
+			entry := source.funcRefDescs[off : off+coreruntime.FuncRefDescBytes]
+			expectedCode := uint64(ex.inst.base) + uint64(ex.inst.c.Entry[ex.localIdx])
+			if binary.LittleEndian.Uint64(entry[coreruntime.TableEntryCodePtrOffset:]) != expectedCode ||
+				binary.LittleEndian.Uint64(entry[coreruntime.TableEntryHomeLinMemOffset:]) != uint64(ex.inst.jm.LinMemBase()) ||
+				binary.LittleEndian.Uint32(entry[coreruntime.TableEntrySigIDOffset:]) != source.c.FuncTypeID[fidx] ||
+				binary.LittleEndian.Uint64(entry[coreruntime.FuncRefContextOffset:]) != uint64(ex.inst.nativeContext) {
 				return nil, 0, false
 			}
-			if s.byDescriptor[canonical] != nil {
+			canonical, hasCanonical := ex.inst.localFuncrefDescriptor(ex.localIdx)
+			if !hasCanonical {
+				// The producer never needed a descriptor arena itself. The importer's
+				// exact proxy becomes the store identity; token retention keeps this
+				// importer physically live, and its function attachment retains the
+				// producer code/context until the token is released.
+				if refSlot != descriptor {
+					return nil, 0, false
+				}
+				_, registered := s.instances[source]
+				return source, descriptor, registered
+			}
+			if refSlot != canonical {
+				return nil, 0, false
+			}
+			if s.byIdentity[funcrefIdentity{descriptor: canonical}] != nil {
 				return ex.inst, canonical, true
 			}
 			_, registered := s.instances[ex.inst]
@@ -379,6 +416,24 @@ func (in *Instance) funcrefDescriptorIndex(descriptor uint64) (int, bool) {
 	}
 	funcIndex := int(delta/coreruntime.FuncRefDescBytes) - 1
 	return funcIndex, funcIndex >= 0 && funcIndex < len(in.c.FuncTypeID)
+}
+
+func (in *Instance) funcrefFunctionIdentity(descriptor uint64) (funcrefIdentity, bool) {
+	fidx, ok := in.funcrefDescriptorIndex(descriptor)
+	if !ok {
+		return funcrefIdentity{}, false
+	}
+	if fidx >= in.c.NumImports {
+		return funcrefIdentity{instance: in, localIdx: fidx - in.c.NumImports}, true
+	}
+	if fidx >= len(in.c.Imports) {
+		return funcrefIdentity{}, false
+	}
+	export, ok := in.imports[in.c.Imports[fidx]].(*InstanceExport)
+	if !ok || export == nil || export.inst == nil || export.localIdx < 0 {
+		return funcrefIdentity{}, false
+	}
+	return funcrefIdentity{instance: export.inst, localIdx: export.localIdx}, true
 }
 
 func (in *Instance) ownsLocalFuncrefDescriptor(descriptor uint64) bool {

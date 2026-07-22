@@ -103,7 +103,7 @@ func TestRefFuncGlobalHostImportEgressFailsClosed(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "invalid funcref result") || got != nil {
 		t.Fatalf("host-imported global get = %v, %v; want fail-closed egress", got, err)
 	}
-	if len(rt.refStore.byToken) != 0 || len(rt.refStore.byDescriptor) != 0 {
+	if len(rt.refStore.byToken) != 0 || len(rt.refStore.byIdentity) != 0 {
 		t.Fatal("host-imported global egress issued a public token")
 	}
 }
