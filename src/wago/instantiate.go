@@ -28,13 +28,11 @@ type Instance struct {
 	eng                    *runtime.Engine
 	jm                     *runtime.JobMemory
 	memory                 *Memory // the memory object (owned or host-imported)
-	ownsMem                bool    // false when memory is host-imported (don't close it)
 	ar                     *runtime.Arena
 	base                   uintptr
 	hosts                  map[string]HostFunc
 	imports                Imports // the imports as provided to Instantiate
 	hostLog                []byte
-	syncMode               bool                                // true when host imports use the synchronous re-entry protocol
 	ctrl                   []byte                              // sync host-call control frame (nil in async mode)
 	syncHosts              []HostFunc                          // per import-func-index host, sync mode only
 	hostCall               runtime.HostCall                    // per-instance sync host dispatcher, allocated once
@@ -57,7 +55,10 @@ type Instance struct {
 	resourceRefs           int
 	closed                 bool // logical close; retained references may defer physical release
 	resourcesClosed        bool
-	nativeControlShared    bool // entered from another instance; prepared control fields may be overwritten
+	ownsMem                bool    // false when memory is host-imported (don't close it)
+	syncMode               bool    // true when host imports use the synchronous re-entry protocol
+	nativeControlShared    bool    // entered from another instance; prepared control fields may be overwritten
+	nativeContext          uintptr // arena-backed context bytes rebound before every native entry
 
 	// rt is set when the instance is created through Runtime.Instantiate, so
 	// Instance.Call and Instance.Close can fire lifecycle hooks. It is nil for
@@ -242,6 +243,49 @@ func (b *instanceBuilder) attachReferenceImports() ([]*resolvedGlobalImport, err
 	return importGlobals, nil
 }
 
+func sharedMemoryContextSwitchConflict(c *Compiled, imports Imports, memory *runtime.JobMemory) bool {
+	callerPrivate := compiledHasPrivateNativeContext(c, imports)
+	for _, key := range c.Imports {
+		ex, ok := imports[key].(*InstanceExport)
+		if !ok || ex == nil || ex.inst == nil || ex.inst.jm != memory {
+			continue
+		}
+		if callerPrivate || instanceHasPrivateNativeContext(ex.inst) {
+			return true
+		}
+	}
+	return false
+}
+
+func instanceHasPrivateNativeContext(in *Instance) bool {
+	if in == nil || in.nativeContext == 0 {
+		return false
+	}
+	ctx := unsafe.Slice((*byte)(offHeapPtr(in.nativeContext)), runtime.InstanceContextBytes)
+	for _, b := range ctx {
+		if b != 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func compiledHasPrivateNativeContext(c *Compiled, imports Imports) bool {
+	hasHostCtx := c.syncHostImports || c.needsPublicFuncrefHostReentry()
+	if !hasHostCtx {
+		for _, key := range c.Imports {
+			if _, cross := imports[key].(*InstanceExport); !cross {
+				hasHostCtx = true
+				break
+			}
+		}
+	}
+	hasPrivateTableState := c.tableCount() > 1 || c.tableCount() > c.tableImportCount()
+	hasNativeGlobalState := len(c.Globals) > 0 && len(c.Entry) > 0
+	return hasNativeGlobalState || hasPrivateTableState || len(c.PassiveData) > 0 ||
+		len(c.passiveElems) > 0 || c.needsFuncRefDescs() || hasHostCtx
+}
+
 func (b *instanceBuilder) rollbackPreparedState() {
 	b.hostAttachments.detachAll()
 	b.globalAttachments.detachAll()
@@ -283,12 +327,6 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		memObj  *Memory
 		ownsMem bool
 	)
-	// transientSharedImporter marks a shared-memory importer that would install
-	// per-instance basedata into the owner's region: it is run only to apply its
-	// active-segment store effects and its start function, then rolled back via
-	// savedBasedata and never kept live. See the shared-memory guard below.
-	var transientSharedImporter bool
-	var savedBasedata []byte
 	if c.memoryImport != "" {
 		m, ok := imports.memory(c.memoryImport)
 		if !ok {
@@ -305,67 +343,15 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			runtime.ReleaseEngine(eng)
 			return nil, fmt.Errorf("imported memory %q is not guard-page backed; signals-based bounds checks require a guard-page memory (build with -tags wago_guardpage)", c.memoryImport)
 		}
-		if shared {
-			// Cross-instance shared memory: the importer runs directly on the memory
-			// owner's JobMemory, including its fixed negative-offset basedata region.
-			// Every per-instance pointer that lives in basedata — the globals array,
-			// the table pointer/directory, the host-call ctx (control frame or async
-			// log), the funcref descriptor table, and the passive element/data state —
-			// is written once at instantiation from THIS instance's arena and is never
-			// re-established per call (only the stack fence is refreshed on entry, see
-			// callNative). A second importer of the same memory would overwrite those
-			// slots, so calls into the first importer read the second's state, and once
-			// the second's arena is freed the first dangles into released memory —
-			// cross-instance corruption and use-after-free during ordinary sequential
-			// instantiation. Until the ABI separates linear-memory backing from
-			// per-instance basedata, a shared-memory importer may only compute over the
-			// shared linear pages: no globals, tables, funcrefs, host calls, or passive
-			// segments (imported or local), all of which claim a basedata slot.
-			hasHostCtx := c.syncHostImports || c.needsPublicFuncrefHostReentry()
-			if !hasHostCtx {
-				for _, key := range c.Imports {
-					if _, cross := imports[key].(*InstanceExport); !cross {
-						hasHostCtx = true // async/legacy host import installs the host-call log ctx
-						break
-					}
-				}
-			}
-			// A sole imported table only repoints the shared table slot at storage
-			// that is reference-counted (not this instance's arena), so it stays
-			// UAF-safe; a local table or any multi-table shape installs an
-			// arena-backed descriptor/directory that would dangle for the memory
-			// owner and co-importers once this instance's arena is freed.
-			hasPrivateTableState := c.tableCount() > 1 || c.tableCount() > c.tableImportCount()
-			// Globals need a basedata pointer only when native functions can access
-			// them. An initializer-only module may read imported immutable globals
-			// while applying active segments without installing per-instance state
-			// into the shared memory owner's basedata.
-			hasNativeGlobalState := len(c.Globals) > 0 && len(c.Entry) > 0
-			if hasNativeGlobalState || hasPrivateTableState || len(c.PassiveData) > 0 ||
-				len(c.passiveElems) > 0 || c.needsFuncRefDescs() || hasHostCtx {
-				// A start function's store effects — active data/element segments written
-				// into the shared memory and table — must persist even when start traps
-				// (WebAssembly linking semantics: "the store is modified if the start
-				// function traps"). Run such a module transiently: snapshot the owner's
-				// basedata below, let this module install its own basedata and run start,
-				// then restore the owner's basedata and discard this module (it can never
-				// be kept live without aliasing the owner). A module with no start has no
-				// observable reason to run here, so it is still rejected outright.
-				if !c.HasStart {
-					runtime.ReleaseEngine(eng)
-					return nil, fmt.Errorf("a module importing a shared memory may not install per-instance basedata state (globals, local or multiple tables, funcrefs, host calls, or passive segments) that would alias the shared linear memory owner's region")
-				}
-				transientSharedImporter = true
-			}
+		if shared && sharedMemoryContextSwitchConflict(c, imports, m.jobMemory()) {
+			runtime.ReleaseEngine(eng)
+			return nil, fmt.Errorf("a module importing shared memory may not make a native cross-instance call to another instance using the same memory while either side has private native context")
 		}
 		if err := m.attachImporter(); err != nil {
 			runtime.ReleaseEngine(eng)
 			return nil, fmt.Errorf("imported memory %q: %w", c.memoryImport, err)
 		}
 		jm, memObj = m.jobMemory(), m
-		if transientSharedImporter {
-			savedBasedata = jm.SnapshotBasedata()
-		}
 	} else {
 		initialBytes, maxBytes := c.memorySizeBytes()
 		// Restoring from a snapshot: size the fresh mapping to the snapshot's
@@ -855,9 +841,12 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	if len(tableDesc) != 0 {
 		tableDescPtr = uintptr(unsafe.Pointer(&tableDesc[0]))
 	}
+	nativeContext := ar.AllocNoZero(runtime.InstanceContextBytes)
+	jm.CaptureInstanceContextBytes(nativeContext)
 	in := &Instance{
 		c: c, eng: eng, jm: jm, memory: memObj, ownsMem: ownsMem, ar: ar, base: base, hosts: imports.hostFuncs(), imports: imports, hostLog: hostLog, syncMode: syncMode, ctrl: ctrl, syncHosts: syncHosts, globals: globals, globalCells: globalCells, tableDescPtr: tableDescPtr, tableDescLen: len(tableDesc), funcRefDescs: funcRefDescs, passiveDataDesc: passiveDataDesc, thunkMem: thunkMem, gc: b.collector,
 		serArgs: serArgs, results: results, trap: trap, resultVals: make([]uint64, c.maxResultSlots), rt: opts.runtime,
+		nativeContext: uintptr(unsafe.Pointer(&nativeContext[0])),
 	}
 	b.registeredInstance = in
 	if opts.origin != InstantiateDirect || opts.pluginGC != nil {
@@ -938,17 +927,9 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			if in.syncMode {
 				startErr = in.callNativeSync(startEntry)
 			} else {
-				startErr = callNative(c, eng, jm, false, startEntry, serArgs, trap, results)
+				startErr = in.callNativeAsync(startEntry, false)
 			}
 			if startErr != nil {
-				// A transient shared-memory importer installed its basedata into the
-				// owner's region only to run this start; restore it now that native
-				// execution is done. Its active data/element writes into the shared
-				// memory and table persist (they live in linear memory and table
-				// storage, not basedata).
-				if transientSharedImporter {
-					jm.RestoreBasedata(savedBasedata)
-				}
 				// Instantiation writes to imported tables are store side effects. If a
 				// local funcref remains installed when start traps, the shared table
 				// becomes the failed instance's lifetime owner. The table prunes roots
@@ -961,22 +942,6 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 				return nil, fmt.Errorf("start function trapped: %w", startErr)
 			}
 		}
-	}
-
-	if transientSharedImporter {
-		// The importer's start did not trap, but it cannot be kept live on the
-		// owner's shared basedata. Its active-segment store effects are already
-		// applied to the shared memory/table; restore the owner's basedata, retain
-		// any table roots it contributed, and report that a live instance of this
-		// shape is unsupported. (The store-modified-on-trap case returns above.)
-		jm.RestoreBasedata(savedBasedata)
-		if opts.runtime == nil {
-			if retainProducerRootsInImportedTables(in) {
-				b.success = true
-			}
-			_ = in.Close()
-		}
-		return nil, fmt.Errorf("a module importing a shared memory may not be instantiated as a live instance when it installs per-instance basedata state")
 	}
 
 	b.success = true

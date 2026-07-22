@@ -1668,7 +1668,7 @@ func TestMultipleImportedTablesCheckEveryLimit(t *testing.T) {
 	}
 }
 
-func TestImportedThenLocalTablesRejectSharedMemoryBasedataAlias(t *testing.T) {
+func TestImportedThenLocalTablesRebindSharedMemoryContext(t *testing.T) {
 	if !requireExternalWAT(t) {
 		return
 	}
@@ -1694,9 +1694,11 @@ func TestImportedThenLocalTablesRejectSharedMemoryBasedataAlias(t *testing.T) {
 		(import "owner" "memory" (memory 1))
 		(import "owner" "table" (table 1 1 funcref))
 		(table 1 1 funcref))`))
-	if _, err := Instantiate(compiled, Imports{"owner.memory": memory, "owner.table": table}); err == nil || !strings.Contains(err.Error(), "would alias the shared linear memory owner") {
-		t.Fatalf("Instantiate shared-memory imported+local tables = %v, want basedata ownership rejection", err)
+	combined, err := Instantiate(compiled, Imports{"owner.memory": memory, "owner.table": table})
+	if err != nil {
+		t.Fatalf("Instantiate shared-memory imported+local tables: %v", err)
 	}
+	defer combined.Close()
 
 	second, err := NewTable(1, 1)
 	if err != nil {
@@ -1710,9 +1712,11 @@ func TestImportedThenLocalTablesRejectSharedMemoryBasedataAlias(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Compile shared-memory multiple imported tables: %v", err)
 	}
-	if _, err := Instantiate(multipleImports, Imports{"owner.memory": memory, "owner.a": table, "owner.b": second}); err == nil || !strings.Contains(err.Error(), "would alias the shared linear memory owner") {
-		t.Fatalf("Instantiate shared-memory multiple imported tables = %v, want basedata ownership rejection", err)
+	multiple, err := Instantiate(multipleImports, Imports{"owner.memory": memory, "owner.a": table, "owner.b": second})
+	if err != nil {
+		t.Fatalf("Instantiate shared-memory multiple imported tables: %v", err)
 	}
+	defer multiple.Close()
 }
 
 func TestImportedThenLocalFailedInstantiationRetainsSharedTableWrites(t *testing.T) {

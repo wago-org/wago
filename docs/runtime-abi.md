@@ -24,6 +24,17 @@ prepared-call fast path—must restore its own trap-cell pointer and engine fenc
 before entering native code. Bind-once prepared calls are valid only while an
 instance can never be used as a cross-instance callee.
 
+The remaining pointer fields are modeled as `runtime.InstanceContext` and
+captured when instantiation finishes. Every public native entry rebinds that
+context before execution. Shared memories serialize native entry while rebinding,
+so multiple importers may retain independent globals, tables, host context, and
+passive-segment state without leaving basedata pointing at another instance's
+released arena. Linear-memory size/growth caches remain backing-owned, while trap
+and stack fields remain invocation-owned. A native cross-instance call between
+two instances using the same shared memory is rejected when either side has
+private context until imported calls switch context through runtime dispatch
+cells.
+
 ## Global storage convention
 
 Each instantiated module owns an arena-backed globals pointer table:

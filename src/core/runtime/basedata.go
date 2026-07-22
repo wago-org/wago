@@ -287,6 +287,8 @@ type InstanceContext struct {
 	TableDirPtr    uintptr
 }
 
+const InstanceContextBytes = 7 * 8
+
 // CaptureInstanceContext snapshots the per-instance pointer fields currently
 // installed in basedata.
 func (j *JobMemory) CaptureInstanceContext() InstanceContext {
@@ -311,6 +313,35 @@ func (j *JobMemory) BindInstanceContext(ctx InstanceContext) {
 	j.putU64(offGlobalsPtr, uint64(ctx.GlobalsPtr))
 	j.putU64(offPassiveDataPtr, uint64(ctx.PassiveDataPtr))
 	j.putU64(offTableDirPtr, uint64(ctx.TableDirPtr))
+}
+
+// CaptureInstanceContextBytes stores the current context in a stable off-heap
+// buffer owned by the instance arena.
+func (j *JobMemory) CaptureInstanceContextBytes(dst []byte) {
+	if len(dst) < InstanceContextBytes {
+		panic("runtime: short instance context buffer")
+	}
+	ctx := j.CaptureInstanceContext()
+	for i, value := range [...]uintptr{ctx.CustomCtx, ctx.TablePtr, ctx.FuncRefDescPtr, ctx.PassiveElemPtr, ctx.GlobalsPtr, ctx.PassiveDataPtr, ctx.TableDirPtr} {
+		binary.LittleEndian.PutUint64(dst[i*8:], uint64(value))
+	}
+}
+
+// BindInstanceContextBytes restores a context captured by
+// CaptureInstanceContextBytes.
+func (j *JobMemory) BindInstanceContextBytes(src []byte) {
+	if len(src) < InstanceContextBytes {
+		panic("runtime: short instance context buffer")
+	}
+	j.BindInstanceContext(InstanceContext{
+		CustomCtx:      uintptr(binary.LittleEndian.Uint64(src[0:])),
+		TablePtr:       uintptr(binary.LittleEndian.Uint64(src[8:])),
+		FuncRefDescPtr: uintptr(binary.LittleEndian.Uint64(src[16:])),
+		PassiveElemPtr: uintptr(binary.LittleEndian.Uint64(src[24:])),
+		GlobalsPtr:     uintptr(binary.LittleEndian.Uint64(src[32:])),
+		PassiveDataPtr: uintptr(binary.LittleEndian.Uint64(src[40:])),
+		TableDirPtr:    uintptr(binary.LittleEndian.Uint64(src[48:])),
+	})
 }
 
 // SetCustomCtx writes the V2 host-import context pointer ([linMem - 40]).
@@ -339,20 +370,6 @@ func (j *JobMemory) SetTableDirPtr(v uintptr) { j.putU64(offTableDirPtr, uint64(
 
 // TableDirPtr returns the runtime-owned indexed table descriptor directory.
 func (j *JobMemory) TableDirPtr() uintptr { return uintptr(j.getU64(offTableDirPtr)) }
-
-// SnapshotBasedata copies the whole per-instance basedata region (the bytes below
-// the linear-memory base). It lets a transient co-tenant of a shared JobMemory be
-// instantiated and run — installing its own globals/table/funcref/ctx pointers and
-// stack fence — and then rolled back with RestoreBasedata, so the memory owner's
-// basedata is never left aliasing the co-tenant's arena. Linear memory and table
-// storage (positive offsets / separate descriptors) are untouched, so a co-tenant's
-// active-segment store effects still persist.
-func (j *JobMemory) SnapshotBasedata() []byte {
-	return append([]byte(nil), j.mem[:j.linOff]...)
-}
-
-// RestoreBasedata writes back a region previously returned by SnapshotBasedata.
-func (j *JobMemory) RestoreBasedata(saved []byte) { copy(j.mem[:j.linOff], saved) }
 
 // ReserveRange returns the guard-page reservation [base, base+len) for the trap
 // handler's fault-address check (both zero in classic mode).

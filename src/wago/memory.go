@@ -22,8 +22,9 @@ type Memory struct {
 
 type memoryState struct {
 	mu        sync.Mutex
-	owner     *Instance // non-nil for an instance-owned exported memory
-	importers int
+	execMu    sync.Mutex // serializes basedata context binding for shared memories
+	owner     *Instance  // non-nil for an instance-owned exported memory
+	importers int32
 	shared    bool // true when multiple compatible instances may import this memory
 	closed    bool
 }
@@ -192,6 +193,30 @@ func (m *Memory) share(owner *Instance) error {
 	}
 	s.shared = true
 	return nil
+}
+
+func (m *Memory) lockExecution() *memoryState {
+	if m == nil {
+		return nil
+	}
+	s := m.state.Load()
+	if s == nil {
+		return nil
+	}
+	s.mu.Lock()
+	shared := s.shared
+	s.mu.Unlock()
+	if !shared {
+		return nil
+	}
+	s.execMu.Lock()
+	return s
+}
+
+func (s *memoryState) unlockExecution() {
+	if s != nil {
+		s.execMu.Unlock()
+	}
 }
 
 func (m *Memory) importShape() (guarded, shared bool) {

@@ -4,17 +4,13 @@ package wago
 
 import (
 	"context"
-	"strings"
 	"testing"
 )
 
-// A module importing a shared memory runs on the memory owner's JobMemory,
-// including its fixed negative-offset basedata region. Any per-instance state
-// whose pointer lives in basedata (globals array, table pointer, host-call ctx,
-// funcref descriptors, passive segments) would clobber a second importer's slot
-// and dangle once its arena is freed. Such importers must be rejected; a
-// pure-compute importer over the shared linear pages must still succeed.
-func TestSharedMemoryImporterRejectsBasedataState(t *testing.T) {
+// Shared-memory importers capture their per-instance basedata pointers and
+// rebind them before each serialized native entry. Private globals, funcref
+// descriptors, and pure memory computation can therefore coexist safely.
+func TestSharedMemoryImporterRebindsBasedataState(t *testing.T) {
 	rt := NewRuntime()
 	defer rt.Close()
 
@@ -54,24 +50,31 @@ func TestSharedMemoryImporterRejectsBasedataState(t *testing.T) {
 		t.Fatalf("initializer Close: %v", err)
 	}
 
-	// Imported global — the exact reviewer scenario. The importer's globals pointer
-	// array is arena-backed and would overwrite the shared basedata GlobalsPtr.
+	// An imported global uses an importer-owned pointer array, rebound on entry.
 	withGlobal := mustCompileWat(rt, t, `(module
 		(import "env" "mem" (memory 1))
 		(import "env" "g" (global (mut i32)))
 		(func (export "f") (result i32) (global.get 0)))`)
-	if _, err := rt.Instantiate(context.Background(), withGlobal, WithImports(Imports{"env.mem": memImport, "env.g": globalImport})); err == nil || !strings.Contains(err.Error(), "shared linear memory") {
-		t.Fatalf("shared-memory importer with imported global error = %v, want rejection", err)
+	globalUser, err := rt.Instantiate(context.Background(), withGlobal, WithImports(Imports{"env.mem": memImport, "env.g": globalImport}))
+	if err != nil {
+		t.Fatalf("shared-memory importer with imported global: %v", err)
+	}
+	if err := globalUser.Close(); err != nil {
+		t.Fatalf("global importer Close: %v", err)
 	}
 
-	// ref.func user without a table still needs funcref descriptors (basedata slot).
+	// A ref.func user without a table gets an importer-owned descriptor context.
 	withFuncref := mustCompileWat(rt, t, `(module
 		(import "env" "mem" (memory 1))
 		(func $f)
 		(elem declare func $f)
 		(func (export "g") (result funcref) (ref.func $f)))`)
-	if _, err := rt.Instantiate(context.Background(), withFuncref, WithImports(Imports{"env.mem": memImport})); err == nil || !strings.Contains(err.Error(), "shared linear memory") {
-		t.Fatalf("shared-memory importer using ref.func error = %v, want rejection", err)
+	funcrefUser, err := rt.Instantiate(context.Background(), withFuncref, WithImports(Imports{"env.mem": memImport}))
+	if err != nil {
+		t.Fatalf("shared-memory importer using ref.func: %v", err)
+	}
+	if err := funcrefUser.Close(); err != nil {
+		t.Fatalf("funcref importer Close: %v", err)
 	}
 
 	// Pure computation over the shared linear memory remains allowed.

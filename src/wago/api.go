@@ -1431,6 +1431,10 @@ func (c *Compiled) validateArenaFootprint() error {
 	if err != nil {
 		return fmt.Errorf("compiled metadata invalid: %w", err)
 	}
+	if need > maxInt()-wruntime.InstanceContextBytes {
+		return fmt.Errorf("compiled metadata invalid: instantiate arena need overflows instance context")
+	}
+	need += wruntime.InstanceContextBytes
 	if need > wruntime.InstantiateArenaSize {
 		return fmt.Errorf("compiled metadata invalid: instantiate arena need %d > limit %d", need, wruntime.InstantiateArenaSize)
 	}
@@ -1633,7 +1637,7 @@ func (in *Instance) invoke(export string, args []uint64, cancel <-chan struct{})
 			return nil, err
 		}
 	} else {
-		if err := callNative(in.c, in.eng, in.jm, in.nativeControlShared, entry, in.serArgs, in.trap, in.results); err != nil {
+		if err := in.callNativeAsync(entry, false); err != nil {
 			stopCancel()
 			return nil, err
 		}
@@ -1713,7 +1717,7 @@ func (in *Instance) invokeLocalContext(li int, args []uint64, cancel <-chan stru
 			return nil, err
 		}
 	} else {
-		if err := callNative(in.c, in.eng, in.jm, in.nativeControlShared, entry, in.serArgs, in.trap, in.results); err != nil {
+		if err := in.callNativeAsync(entry, false); err != nil {
 			stopCancel()
 			return nil, err
 		}
