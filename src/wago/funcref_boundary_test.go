@@ -212,6 +212,45 @@ func TestRuntimeImportedFuncrefUsesProducerIdentityAndLifetime(t *testing.T) {
 	}
 }
 
+func TestRuntimeImportedFuncrefFromBareProducerGetsStableIdentity(t *testing.T) {
+	rt := NewRuntime()
+	defer rt.Close()
+	producerMod, err := rt.Compile(funcrefBareProducerModule())
+	if err != nil {
+		t.Fatalf("Compile producer: %v", err)
+	}
+	producer, err := rt.Instantiate(context.Background(), producerMod)
+	if err != nil {
+		t.Fatalf("Instantiate producer: %v", err)
+	}
+	defer producer.Close()
+	if len(producer.funcRefDescs) != 0 {
+		t.Fatalf("bare producer allocated %d descriptor bytes before a reference use", len(producer.funcRefDescs))
+	}
+	target, err := producer.ExportedFunc("target")
+	if err != nil {
+		t.Fatalf("Export target: %v", err)
+	}
+	importerMod, err := rt.Compile(funcrefImportedRefFuncModule())
+	if err != nil {
+		t.Fatalf("Compile importer: %v", err)
+	}
+	importer, err := rt.Instantiate(context.Background(), importerMod, WithImports(Imports{"env.target": target}))
+	if err != nil {
+		t.Fatalf("Instantiate importer: %v", err)
+	}
+	defer importer.Close()
+
+	first, err := importer.Invoke("get")
+	if err != nil || len(first) != 1 || first[0] == 0 {
+		t.Fatalf("first imported ref.func = %v, %v; want one non-null token", first, err)
+	}
+	second, err := importer.Invoke("get_table")
+	if err != nil || len(second) != 1 || second[0] != first[0] {
+		t.Fatalf("table identity = %v, %v; want token %#x", second, err, first[0])
+	}
+}
+
 func TestRuntimeImportedFuncrefRejectsForeignOrCorruptCanonicalDescriptor(t *testing.T) {
 	t.Run("cross-runtime", func(t *testing.T) {
 		producerRT := NewRuntime()
@@ -515,6 +554,15 @@ func funcrefCallableProducerModule() []byte {
 			wasmtest.Code([]byte{0xd2, 0x00, 0x0b}), // ref.func 0
 			wasmtest.Code([]byte{0x41, 0x00, 0x20, 0x00, 0x26, 0x00, 0x41, 0x00, 0x11, 0x00, 0x00, 0x0b}),
 		)),
+	)
+}
+
+func funcrefBareProducerModule() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("target", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x41, 0x2a, 0x0b}))),
 	)
 }
 
