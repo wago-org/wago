@@ -79,6 +79,46 @@ func (d *importDedup[T]) reset() {
 	d.extra = nil
 }
 
+type functionImportAttachments struct {
+	set importDedup[*Instance]
+}
+
+func (a *functionImportAttachments) attach(export *InstanceExport) error {
+	if export == nil || export.inst == nil {
+		return fmt.Errorf("instance export is nil")
+	}
+	producer := export.inst
+	if a.set.contains(producer) {
+		return nil
+	}
+	if !producer.retainResourceRoot() {
+		return fmt.Errorf("producer instance is closed")
+	}
+	a.set.push(producer)
+	return nil
+}
+
+func (a *functionImportAttachments) detachAll() {
+	a.set.each((*Instance).releaseResourceRoot)
+	a.set.reset()
+}
+
+func detachImportedFunctions(in *Instance) {
+	if in == nil || in.c == nil {
+		return
+	}
+	var seen importDedup[*Instance]
+	for _, key := range in.c.Imports {
+		export, ok := in.imports[key].(*InstanceExport)
+		if !ok || export == nil || export.inst == nil {
+			continue
+		}
+		if seen.add(export.inst) {
+			export.inst.releaseResourceRoot()
+		}
+	}
+}
+
 type hostFuncRefAttachments struct {
 	set importDedup[*HostFuncRef]
 }

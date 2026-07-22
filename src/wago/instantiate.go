@@ -105,12 +105,13 @@ type instanceBuilder struct {
 	opts    InstantiateOptions
 	imports Imports
 
-	collector          *gc.Collector
-	success            bool
-	registeredInstance *Instance
-	hostAttachments    hostFuncRefAttachments
-	tableAttachments   tableImportAttachments
-	globalAttachments  globalImportAttachments
+	collector           *gc.Collector
+	success             bool
+	registeredInstance  *Instance
+	functionAttachments functionImportAttachments
+	hostAttachments     hostFuncRefAttachments
+	tableAttachments    tableImportAttachments
+	globalAttachments   globalImportAttachments
 }
 
 // instantiateCore maps code and applies explicit instance options. It is the
@@ -144,17 +145,20 @@ func (b *instanceBuilder) prepareCollector() error {
 	return nil
 }
 
-func (b *instanceBuilder) attachReferenceImports() ([]*resolvedGlobalImport, error) {
+func (b *instanceBuilder) attachImports() ([]*resolvedGlobalImport, error) {
 	for i, key := range b.c.Imports {
-		owner, ok := b.imports[key].(*HostFuncRef)
-		if !ok {
-			continue
-		}
-		if i >= len(b.c.importFuncSigs) {
-			return nil, fmt.Errorf("imported host funcref %q has no signature", key)
-		}
-		if err := b.hostAttachments.attach(owner, b.opts.store, b.c.importFuncSigs[i]); err != nil {
-			return nil, fmt.Errorf("imported host funcref %q: %w", key, err)
+		switch value := b.imports[key].(type) {
+		case *InstanceExport:
+			if err := b.functionAttachments.attach(value); err != nil {
+				return nil, fmt.Errorf("imported function %q: %w", key, err)
+			}
+		case *HostFuncRef:
+			if i >= len(b.c.importFuncSigs) {
+				return nil, fmt.Errorf("imported host funcref %q has no signature", key)
+			}
+			if err := b.hostAttachments.attach(value, b.opts.store, b.c.importFuncSigs[i]); err != nil {
+				return nil, fmt.Errorf("imported host funcref %q: %w", key, err)
+			}
 		}
 	}
 	importGlobals, err := b.c.importedGlobals(b.imports)
@@ -173,6 +177,7 @@ func (b *instanceBuilder) attachReferenceImports() ([]*resolvedGlobalImport, err
 }
 
 func (b *instanceBuilder) rollbackPreparedState() {
+	b.functionAttachments.detachAll()
 	b.hostAttachments.detachAll()
 	b.globalAttachments.detachAll()
 	b.tableAttachments.detachAll()
@@ -197,7 +202,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			b.rollbackPreparedState()
 		}
 	}()
-	importGlobals, err := b.attachReferenceImports()
+	importGlobals, err := b.attachImports()
 	if err != nil {
 		return nil, err
 	}

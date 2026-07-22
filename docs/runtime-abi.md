@@ -39,7 +39,10 @@ the target pointer context before crossing instances and restore the caller
 context after a normal return. A trap unwinds the native call tree before restore;
 the next serialized public entry always rebinds its own captured context first.
 Canonical funcref descriptors are 40 bytes: the 32-byte table payload plus an
-8-byte owning-context pointer. Table entries remain 32 bytes.
+8-byte owning-context pointer. Table entries remain 32 bytes. A function importer
+retains each distinct producer instance until the importer's physical resource
+release; logical close alone cannot release those roots when a table, global, or
+public token still retains the importer's descriptor arena.
 
 ## Global storage convention
 

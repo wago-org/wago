@@ -122,6 +122,11 @@ func (in *Instance) releaseResources() {
 	in.resourcesClosed = true
 	in.lifeMu.Unlock()
 
+	// Function-import dispatch cells and imported funcref descriptors contain raw
+	// producer code/context pointers. Keep their producer roots until physical
+	// release, not merely logical Close: a table/global/token may retain this
+	// instance's descriptor arena after Close.
+	detachImportedFunctions(in)
 	if in.gc != nil {
 		in.gc.Close()
 	}
