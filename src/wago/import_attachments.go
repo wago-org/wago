@@ -1,0 +1,279 @@
+package wago
+
+import (
+	"encoding/binary"
+	"fmt"
+	"unsafe"
+)
+
+// importDedup is an insertion-ordered set of distinct comparable values — the
+// engine uses it for import owner pointers (host funcrefs, reference globals,
+// imported tables). A small inline array keeps the common case (a handful of
+// imports) allocation-free; overflow spills to a slice. The zero value is ready
+// to use.
+type importDedup[T comparable] struct {
+	inline [4]T
+	n      int
+	extra  []T
+}
+
+func (d *importDedup[T]) contains(v T) bool {
+	for i := 0; i < d.n && i < len(d.inline); i++ {
+		if d.inline[i] == v {
+			return true
+		}
+	}
+	for _, e := range d.extra {
+		if e == v {
+			return true
+		}
+	}
+	return false
+}
+
+// push appends v unconditionally; callers needing dedup use add or guard with
+// contains first.
+func (d *importDedup[T]) push(v T) {
+	if d.n < len(d.inline) {
+		d.inline[d.n] = v
+	} else {
+		d.extra = append(d.extra, v)
+	}
+	d.n++
+}
+
+// add inserts v if absent and reports whether it was newly inserted.
+func (d *importDedup[T]) add(v T) bool {
+	if d.contains(v) {
+		return false
+	}
+	d.push(v)
+	return true
+}
+
+// each calls fn for every distinct element in insertion order.
+func (d *importDedup[T]) each(fn func(T)) {
+	inlineCount := d.n
+	if inlineCount > len(d.inline) {
+		inlineCount = len(d.inline)
+	}
+	for i := 0; i < inlineCount; i++ {
+		fn(d.inline[i])
+	}
+	for _, e := range d.extra {
+		fn(e)
+	}
+}
+
+// reset empties the set, clearing the inline array so it retains no references.
+func (d *importDedup[T]) reset() {
+	inlineCount := d.n
+	if inlineCount > len(d.inline) {
+		inlineCount = len(d.inline)
+	}
+	var zero T
+	for i := 0; i < inlineCount; i++ {
+		d.inline[i] = zero
+	}
+	d.n = 0
+	d.extra = nil
+}
+
+type hostFuncRefAttachments struct {
+	set importDedup[*HostFuncRef]
+}
+
+func (a *hostFuncRefAttachments) attach(owner *HostFuncRef, store *referenceStore, sig FuncSig) error {
+	if owner == nil {
+		return fmt.Errorf("host funcref owner is nil")
+	}
+	if a.set.contains(owner) {
+		return owner.validateImport(store, sig)
+	}
+	if err := owner.attachImporter(store, sig); err != nil {
+		return err
+	}
+	a.set.push(owner)
+	return nil
+}
+
+func (a *hostFuncRefAttachments) detachAll() {
+	a.set.each((*HostFuncRef).detachImporter)
+	a.set.reset()
+}
+
+func detachImportedHostFuncRefs(in *Instance) {
+	if in == nil || in.c == nil {
+		return
+	}
+	var seen importDedup[*HostFuncRef]
+	for _, key := range in.c.Imports {
+		owner, ok := in.imports[key].(*HostFuncRef)
+		if !ok || owner == nil {
+			continue
+		}
+		if seen.add(owner) {
+			owner.detachImporter()
+		}
+	}
+}
+
+type globalImportAttachments struct {
+	set importDedup[*Global]
+}
+
+func (a *globalImportAttachments) attach(global *Global, store *referenceStore) error {
+	if global == nil {
+		return fmt.Errorf("reference global is nil")
+	}
+	if a.set.contains(global) {
+		return global.validateReferenceImport(store)
+	}
+	if err := global.attachReferenceImporter(store); err != nil {
+		return err
+	}
+	a.set.push(global)
+	return nil
+}
+
+func (a *globalImportAttachments) detachAll() {
+	a.set.each((*Global).detachReferenceImporter)
+	a.set.reset()
+}
+
+func detachImportedGlobals(in *Instance) {
+	if in == nil || in.c == nil {
+		return
+	}
+	var seen importDedup[*Global]
+	for _, imp := range in.c.GlobalImports {
+		if !isReferenceValType(imp.Type) {
+			continue
+		}
+		provided, ok := in.imports.global(imp.Module + "." + imp.Name)
+		if !ok || provided.Global == nil {
+			continue
+		}
+		if seen.add(provided.Global) {
+			provided.Global.detachReferenceImporter()
+		}
+	}
+}
+
+func retainProducerRootsInImportedGlobals(in *Instance) bool {
+	if in == nil || in.c == nil {
+		return false
+	}
+	retained := false
+	var seen importDedup[*Global]
+	for _, imp := range in.c.GlobalImports {
+		if imp.Type != ValFuncRef {
+			continue
+		}
+		provided, ok := in.imports.global(imp.Module + "." + imp.Name)
+		if !ok || provided.Global == nil {
+			continue
+		}
+		if !seen.add(provided.Global) {
+			continue
+		}
+		if provided.Global.retainProducerInstance(in) {
+			retained = true
+		}
+	}
+	return retained
+}
+
+type tableImportAttachments struct {
+	set importDedup[*Table]
+}
+
+func (a *tableImportAttachments) attach(table *Table, elementType ValType, store *referenceStore) error {
+	if err := table.validateImport(elementType, store); err != nil {
+		return err
+	}
+	if a.set.contains(table) {
+		return nil
+	}
+	if err := table.attachImporter(elementType, store); err != nil {
+		return err
+	}
+	a.set.push(table)
+	return nil
+}
+
+func (a *tableImportAttachments) detachAll() {
+	a.set.each((*Table).detachImporter)
+	a.set.reset()
+}
+
+func detachImportedTables(in *Instance) {
+	if in == nil || in.c == nil {
+		return
+	}
+	var seen importDedup[*Table]
+	for tableIndex := 0; tableIndex < in.c.tableImportCount(); tableIndex++ {
+		def, _ := in.c.tableImportAt(tableIndex)
+		table, ok := in.imports.table(def.Key)
+		if !ok || table == nil {
+			continue
+		}
+		if seen.add(table) {
+			table.detachImporter()
+		}
+	}
+}
+
+func retainProducerRootsInImportedTables(in *Instance) bool {
+	if in == nil || in.c == nil {
+		return false
+	}
+	retained := false
+	for tableIndex := 0; tableIndex < in.c.tableImportCount(); tableIndex++ {
+		def, _ := in.c.tableImportAt(tableIndex)
+		table, ok := in.imports.table(def.Key)
+		if ok && table.retainProducerInstance(in) {
+			retained = true
+		}
+	}
+	return retained
+}
+
+func (in *Instance) tableDescriptor(index int) []byte {
+	if in == nil || in.c == nil || index < 0 || index >= in.c.tableCount() {
+		return nil
+	}
+	if importDef, imported := in.c.tableImportAt(index); imported {
+		table, ok := in.imports.table(importDef.Key)
+		if !ok || len(table.desc) < 8 {
+			return nil
+		}
+		return table.desc
+	}
+	if index == 0 {
+		if in.tableDescPtr == 0 || in.tableDescLen <= 0 {
+			return nil
+		}
+		return unsafe.Slice((*byte)(offHeapPtr(in.tableDescPtr)), in.tableDescLen)
+	}
+	dirPtr := in.jm.TableDirPtr()
+	if dirPtr == 0 {
+		return nil
+	}
+	dir := unsafe.Slice((*byte)(offHeapPtr(dirPtr)), 8*in.c.tableCount())
+	descPtr := uintptr(binary.LittleEndian.Uint64(dir[index*8:]))
+	if descPtr == 0 {
+		return nil
+	}
+	def := in.c.tableDef(index)
+	capacity := def.Max
+	if capacity == 0 {
+		capacity = def.Size
+	}
+	return unsafe.Slice((*byte)(offHeapPtr(descPtr)), 8+capacity*in.c.tableEntryBytes(index))
+}
+
+// Imports returns the imports map this instance was created with, for retrieving
+// imported objects (e.g. a *Memory or *Global) by "module.name" key. The map is
+// the one passed to Instantiate; do not mutate it.
+func (in *Instance) Imports() Imports { return in.imports }
