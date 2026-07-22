@@ -163,7 +163,7 @@ func (f *fn) callOp(r *wasm.Reader) error {
 // synchronous re-entry path instead (callHostSync). The caller (emitCall) routes
 // by result arity, so ft here always has zero results.
 func (f *fn) callHost(importIdx int, ft *wasm.CompType) error {
-	f.stats.call("host")
+	f.stats.call(callKindHost)
 	p := len(ft.Params)
 	f.flush()
 	d := f.depth()
@@ -238,7 +238,7 @@ func funcTypeSlots(ts []wasm.ValType) int {
 // Value-pinned and module-pinned globals ARE synced around the call: the host may
 // read or write the instance's globals through their cells.
 func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
-	f.stats.call("hostsync")
+	f.stats.call(callKindHostSync)
 	p, rN := len(ft.Params), len(ft.Results)
 	paramSlots := funcTypeSlots(ft.Params)
 	resultSlots := funcTypeSlots(ft.Results)
@@ -478,7 +478,7 @@ const (
 // the callee unwinds to this execution's enterNative. Callee linMem/entry are
 // baked as immediates by the link-time recompile.
 func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
-	f.stats.call("crossinstance")
+	f.stats.call(callKindCrossInstance)
 	p, rN := len(ft.Params), len(ft.Results)
 	roots := f.rootsBottomToTop()
 	d := len(roots)
@@ -614,15 +614,15 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 func (f *fn) callInternal(localIdx int, ft *wasm.CompType, resHint int) error {
 	if regABIEnabled && sigFitsRegABI(ft) {
 		if sigIsIntOnly(ft) {
-			f.stats.call("regabi")
+			f.stats.call(callKindRegisterABI)
 			f.emitRegisterCall(localIdx, ft, resHint)
 		} else {
-			f.stats.call("mixed")
+			f.stats.call(callKindMixed)
 			f.emitMixedRegisterCall(localIdx, ft)
 		}
 		return nil
 	}
-	f.stats.call("wrapper")
+	f.stats.call(callKindWrapper)
 	f.emitWrapperCall(ft, func() {
 		site := f.a.CallRel32()
 		f.relocs = append(f.relocs, callReloc{at: site, target: localIdx})
@@ -921,7 +921,7 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 // pointer via the wrapper ABI. Table layout matches the runtime (16-byte slots;
 // +8 code ptr, +16 type id) with the descriptor pointer at [linMem-offTablePtr].
 func (f *fn) callIndirect(r *wasm.Reader) error {
-	f.stats.call("indirect")
+	f.stats.call(callKindIndirect)
 	typeIdx, err := r.U32()
 	if err != nil {
 		return err

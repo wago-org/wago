@@ -20,6 +20,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
@@ -63,6 +64,17 @@ var (
 	// exactly commutative (incl. NaN/±0), so output is bit-identical.
 	// WAGO_NO_COMMUTE_FMEM=1 is the A/B oracle.
 	commuteFMemEnabled = os.Getenv("WAGO_NO_COMMUTE_FMEM") != "1"
+)
+
+const (
+	callKindInline        = shared.CallInline
+	callKindHost          = shared.CallHost
+	callKindHostSync      = shared.CallHostSync
+	callKindCrossInstance = shared.CallCrossInstance
+	callKindRegisterABI   = shared.CallRegisterABI
+	callKindMixed         = shared.CallMixed
+	callKindWrapper       = shared.CallWrapper
+	callKindIndirect      = shared.CallIndirect
 )
 
 func parsePinGlobalK(s string) int {
@@ -231,10 +243,7 @@ func (s *CodegenStats) peep(name string) {
 }
 
 // ModuleGlobalPinInfo describes one module-wide global→register reservation.
-type ModuleGlobalPinInfo struct {
-	Global uint32
-	Reg    string
-}
+type ModuleGlobalPinInfo = shared.ModuleGlobalPinInfo
 
 // ModuleStats aggregates one module's per-function stats plus the module-wide
 // decisions. The zero value is ready to collect into.

@@ -20,6 +20,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	a64 "github.com/wago-org/wago/src/core/encoder/arm64"
 )
@@ -51,6 +52,17 @@ var (
 	// mulAddFuseEnabled gates MADD/MSUB fusion of add(c, a*b)/sub(c, a*b) into a
 	// single multiply-add/-subtract. WAGO_NO_MULADD=1 is the A/B oracle.
 	mulAddFuseEnabled = os.Getenv("WAGO_NO_MULADD") != "1"
+)
+
+const (
+	callKindInline        = shared.CallInline
+	callKindHost          = shared.CallHost
+	callKindHostSync      = shared.CallHostSync
+	callKindCrossInstance = shared.CallCrossInstance
+	callKindRegisterABI   = shared.CallRegisterABI
+	callKindMixed         = shared.CallMixed
+	callKindWrapper       = shared.CallWrapper
+	callKindIndirect      = shared.CallIndirect
 )
 
 func parsePinGlobalK(s string) int {
@@ -250,11 +262,8 @@ func (s *CodegenStats) peep(name string) {
 	s.Peephole[name]++
 }
 
-// ModuleGlobalPinInfo describes one module-wide globalâregister reservation.
-type ModuleGlobalPinInfo struct {
-	Global uint32
-	Reg    string
-}
+// ModuleGlobalPinInfo describes one module-wide global-to-register reservation.
+type ModuleGlobalPinInfo = shared.ModuleGlobalPinInfo
 
 // ModuleStats aggregates one module's per-function stats plus the module-wide
 // decisions. The zero value is ready to collect into.
