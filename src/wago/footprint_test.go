@@ -1,6 +1,27 @@
 package wago
 
-import "testing"
+import (
+	"testing"
+
+	coreruntime "github.com/wago-org/wago/src/core/runtime"
+)
+
+func TestFunctionImportArenaNeedUsesConcreteBindingShape(t *testing.T) {
+	compiled := MustCompile(voidI32ImportCallerModule())
+	defer compiled.Close()
+	baseline := compiled.instantiateArenaNeed
+	if got := compiled.arenaNeedForImports(Imports{"env.log": HostFunc(func(HostModule, []uint64, []uint64) {})}, false); got != baseline {
+		t.Fatalf("async host arena need = %d, want baseline %d", got, baseline)
+	}
+	crossWant := baseline - coreruntime.HostCallLogBytes
+	if got := compiled.arenaNeedForImports(Imports{"env.log": &InstanceExport{}}, false); got != crossWant {
+		t.Fatalf("cross-only arena need = %d, want %d", got, crossWant)
+	}
+	syncWant := crossWant + coreruntime.HostCtrlFrameBytes
+	if got := compiled.arenaNeedForImports(Imports{"env.log": HostFunc(func(HostModule, []uint64, []uint64) {})}, true); got != syncWant {
+		t.Fatalf("sync host arena need = %d, want %d", got, syncWant)
+	}
+}
 
 func requireBoundedInstanceFootprint(t *testing.T, got uintptr) {
 	t.Helper()

@@ -128,6 +128,29 @@ func (b *instanceBuilder) validateCompiled() error {
 	return b.c.validateCached()
 }
 
+func (c *Compiled) arenaNeedForImports(imports Imports, syncMode bool) int {
+	need := c.instantiateArenaNeed
+	if len(c.Imports) == 0 {
+		return need
+	}
+	baselineHostBytes := runtime.HostCallLogBytes
+	if c.needsPublicFuncrefHostReentry() {
+		baselineHostBytes = runtime.HostCtrlFrameBytes
+	}
+	actualHostBytes := 0
+	if syncMode {
+		actualHostBytes = runtime.HostCtrlFrameBytes
+	} else {
+		for _, key := range c.Imports {
+			if _, cross := imports[key].(*InstanceExport); !cross {
+				actualHostBytes = runtime.HostCallLogBytes
+				break
+			}
+		}
+	}
+	return need - baselineHostBytes + actualHostBytes
+}
+
 func (b *instanceBuilder) prepareCollector() error {
 	if !gc.HasHeapObjectTypes(b.c.GCTypeDescs) {
 		return nil
@@ -192,6 +215,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		return nil, err
 	}
 	c, opts, imports := b.c, b.opts, b.imports
+	syncMode := c.importsRequireSync(imports, opts.forceSyncHost)
 	defer func() {
 		if !b.success {
 			b.rollbackPreparedState()
@@ -267,7 +291,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			memObj.detachImporter()
 		}
 	}
-	ar, err := runtime.AcquireArena(c.instantiateArenaNeed)
+	ar, err := runtime.AcquireArena(c.arenaNeedForImports(imports, syncMode))
 	if err != nil {
 		closeMem()
 		runtime.ReleaseEngine(eng)
@@ -297,7 +321,6 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	}()
 	var hostLog, ctrl []byte
 	var syncHosts []HostFunc
-	syncMode := c.importsRequireSync(imports, opts.forceSyncHost)
 	if syncMode {
 		// Synchronous host-call path: install the control frame (not the async
 		// log) as the import ctx. Modules that accept public funcrefs and can call

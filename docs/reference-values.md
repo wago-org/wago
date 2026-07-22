@@ -976,6 +976,10 @@ host calls measured 123.0–128.8 ns/op at 0 B/op; direct cross-instance calls
 and legacy void host replay 57.5–58.0 ns/op at 8 B/op and 1 allocation. Direct
 host-import instantiation measured 10.9–11.2 us/op, 2,032 B/op, and 19 allocations;
 the table/funcref form measured 12.0–12.6 us/op, 2,040 B/op, and 20 allocations.
+Instantiation now sizes the off-heap arena from concrete bindings instead of the
+worst-case async-host shape: a synchronous host module requests 65,216 fewer
+bytes and a cross-instance-only module requests 65,544 fewer bytes. The warmed
+direct-host timing remained 11.1–11.3 us/op with unchanged Go bytes/allocations.
 A 1,600-function imported-call compile on one pinned CPU measured 48.5–51.3 ms,
 4,016,276–4,016,286 B/op, and 15,996 allocations across worker policies.
 
