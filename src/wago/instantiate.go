@@ -167,68 +167,109 @@ func instantiateArgs(args []any) (InstantiateOptions, error) {
 	}
 }
 
+// instanceBuilder owns the pre-commit state of one instantiation. Concrete
+// fields keep unsafe/off-heap ownership visible; no generic cleanup stack is
+// used on this allocation-sensitive path.
+type instanceBuilder struct {
+	c       *Compiled
+	opts    InstantiateOptions
+	imports Imports
+
+	collector          *gc.Collector
+	success            bool
+	registeredInstance *Instance
+	hostAttachments    hostFuncRefAttachments
+	tableAttachments   tableImportAttachments
+	globalAttachments  globalImportAttachments
+}
+
 // instantiateCore maps code and applies explicit instance options. It is the
 // shared engine behind Instantiate for both the compiled and snapshot paths.
-func instantiateCore(c *Compiled, opts InstantiateOptions) (result *Instance, err error) {
-	imports := opts.Imports
-	// Resolve cross-instance function imports, recompiling the module with their
-	// bindings when any are present (a no-op for host-only modules).
-	c, err = c.linkModuleMode(imports, opts.store, opts.forceSyncHost)
+func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
+	b := instanceBuilder{c: c, opts: opts, imports: opts.Imports}
+	return b.instantiate()
+}
+
+func (b *instanceBuilder) prepareCompiled() error {
+	linked, err := b.c.linkModuleMode(b.imports, b.opts.store, b.opts.forceSyncHost)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	if err := c.validateCached(); err != nil {
-		return nil, err
+	if err := linked.validateCached(); err != nil {
+		return err
 	}
-	var collector *gc.Collector
-	if gc.HasHeapObjectTypes(c.GCTypeDescs) {
-		var err error
-		collector, err = gc.NewCollector(opts.GC, c.GCTypeDescs)
-		if err != nil {
-			return nil, err
-		}
+	b.c = linked
+	return nil
+}
+
+func (b *instanceBuilder) prepareCollector() error {
+	if !gc.HasHeapObjectTypes(b.c.GCTypeDescs) {
+		return nil
 	}
-	success := false
-	var registeredInstance *Instance
-	var hostAttachments hostFuncRefAttachments
-	var tableAttachments tableImportAttachments
-	var globalAttachments globalImportAttachments
-	defer func() {
-		if !success {
-			hostAttachments.detachAll()
-			globalAttachments.detachAll()
-			tableAttachments.detachAll()
-			if registeredInstance != nil && registeredInstance.refStore != nil {
-				registeredInstance.refStore.instanceClosed(registeredInstance)
-			}
-			if collector != nil {
-				collector.Close()
-			}
-		}
-	}()
-	for i, key := range c.Imports {
-		owner, ok := imports[key].(*HostFuncRef)
+	collector, err := gc.NewCollector(b.opts.GC, b.c.GCTypeDescs)
+	if err != nil {
+		return err
+	}
+	b.collector = collector
+	return nil
+}
+
+func (b *instanceBuilder) attachReferenceImports() ([]*resolvedGlobalImport, error) {
+	for i, key := range b.c.Imports {
+		owner, ok := b.imports[key].(*HostFuncRef)
 		if !ok {
 			continue
 		}
-		if i >= len(c.importFuncSigs) {
+		if i >= len(b.c.importFuncSigs) {
 			return nil, fmt.Errorf("imported host funcref %q has no signature", key)
 		}
-		if err := hostAttachments.attach(owner, opts.store, c.importFuncSigs[i]); err != nil {
+		if err := b.hostAttachments.attach(owner, b.opts.store, b.c.importFuncSigs[i]); err != nil {
 			return nil, fmt.Errorf("imported host funcref %q: %w", key, err)
 		}
 	}
-	importGlobals, err := c.importedGlobals(imports)
+	importGlobals, err := b.c.importedGlobals(b.imports)
 	if err != nil {
 		return nil, err
 	}
-	for i, imp := range c.GlobalImports {
+	for i, imp := range b.c.GlobalImports {
 		if !isReferenceValType(imp.Type) {
 			continue
 		}
-		if err := globalAttachments.attach(importGlobals[i].global, opts.store); err != nil {
+		if err := b.globalAttachments.attach(importGlobals[i].global, b.opts.store); err != nil {
 			return nil, fmt.Errorf("imported global %q.%q: %w", imp.Module, imp.Name, err)
 		}
+	}
+	return importGlobals, nil
+}
+
+func (b *instanceBuilder) rollbackPreparedState() {
+	b.hostAttachments.detachAll()
+	b.globalAttachments.detachAll()
+	b.tableAttachments.detachAll()
+	if b.registeredInstance != nil && b.registeredInstance.refStore != nil {
+		b.registeredInstance.refStore.instanceClosed(b.registeredInstance)
+	}
+	if b.collector != nil {
+		b.collector.Close()
+	}
+}
+
+func (b *instanceBuilder) instantiate() (result *Instance, err error) {
+	if err := b.prepareCompiled(); err != nil {
+		return nil, err
+	}
+	if err := b.prepareCollector(); err != nil {
+		return nil, err
+	}
+	c, opts, imports := b.c, b.opts, b.imports
+	defer func() {
+		if !b.success {
+			b.rollbackPreparedState()
+		}
+	}()
+	importGlobals, err := b.attachReferenceImports()
+	if err != nil {
+		return nil, err
 	}
 	eng, err := runtime.AcquireEngine()
 	if err != nil {
@@ -373,7 +414,7 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (result *Instance, er
 	}
 	var thunkMem []byte // host-func-in-table log thunks; unmapped on failure/close
 	defer func() {
-		if success {
+		if b.success {
 			return
 		}
 		if thunkMem != nil {
@@ -614,7 +655,7 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (result *Instance, er
 				if !ok {
 					return nil, fmt.Errorf("missing imported table %q", importDef.Key)
 				}
-				if err := tableAttachments.attach(t, c.tableElementType(tableIndex), opts.store); err != nil {
+				if err := b.tableAttachments.attach(t, c.tableElementType(tableIndex), opts.store); err != nil {
 					return nil, fmt.Errorf("imported table %q: %w", importDef.Key, err)
 				}
 				desc = t.desc
@@ -815,10 +856,10 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (result *Instance, er
 		tableDescPtr = uintptr(unsafe.Pointer(&tableDesc[0]))
 	}
 	in := &Instance{
-		c: c, eng: eng, jm: jm, memory: memObj, ownsMem: ownsMem, ar: ar, base: base, hosts: imports.hostFuncs(), imports: imports, hostLog: hostLog, syncMode: syncMode, ctrl: ctrl, syncHosts: syncHosts, globals: globals, globalCells: globalCells, tableDescPtr: tableDescPtr, tableDescLen: len(tableDesc), funcRefDescs: funcRefDescs, passiveDataDesc: passiveDataDesc, thunkMem: thunkMem, gc: collector,
+		c: c, eng: eng, jm: jm, memory: memObj, ownsMem: ownsMem, ar: ar, base: base, hosts: imports.hostFuncs(), imports: imports, hostLog: hostLog, syncMode: syncMode, ctrl: ctrl, syncHosts: syncHosts, globals: globals, globalCells: globalCells, tableDescPtr: tableDescPtr, tableDescLen: len(tableDesc), funcRefDescs: funcRefDescs, passiveDataDesc: passiveDataDesc, thunkMem: thunkMem, gc: b.collector,
 		serArgs: serArgs, results: results, trap: trap, resultVals: make([]uint64, c.maxResultSlots), rt: opts.runtime,
 	}
-	registeredInstance = in
+	b.registeredInstance = in
 	if opts.origin != InstantiateDirect || opts.pluginGC != nil {
 		state := in.ensurePluginState()
 		state.origin = opts.origin
@@ -839,10 +880,10 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (result *Instance, er
 					err = fmt.Errorf("wago: instantiation panicked after instance creation: %v", recovered)
 				}
 			}
-			if success {
+			if b.success {
 				return
 			}
-			success = true // the normal Close path now owns all instance resources
+			b.success = true // the normal Close path now owns all instance resources
 			err = joinPrimary(err, in.Close())
 		}()
 	}
@@ -858,7 +899,7 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (result *Instance, er
 
 	if initErr != nil {
 		if opts.runtime == nil && retainProducerRootsInImportedTables(in) {
-			success = true
+			b.success = true
 			_ = in.Close()
 		}
 		return nil, initErr
@@ -914,7 +955,7 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (result *Instance, er
 				// no longer present in any slot, so retention stays bounded by its
 				// descriptor capacity rather than by failed-instantiation count.
 				if opts.runtime == nil && retainProducerRootsInImportedTables(in) {
-					success = true
+					b.success = true
 					_ = in.Close()
 				}
 				return nil, fmt.Errorf("start function trapped: %w", startErr)
@@ -931,14 +972,14 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (result *Instance, er
 		jm.RestoreBasedata(savedBasedata)
 		if opts.runtime == nil {
 			if retainProducerRootsInImportedTables(in) {
-				success = true
+				b.success = true
 			}
 			_ = in.Close()
 		}
 		return nil, fmt.Errorf("a module importing a shared memory may not be instantiated as a live instance when it installs per-instance basedata state")
 	}
 
-	success = true
+	b.success = true
 	return in, nil
 }
 
