@@ -55,6 +55,13 @@ active data initialization against an imported memory that grew before the new
 instance was created. `CurrentBytes` remains limited to the original committed
 Go slice and must not be used for that case.
 
+On ARM64, the guard fault handler passes the faulting linear-memory base through
+saved `X9` when it replaces the faulting PC with the native trap-exit landing
+pad. The landing pad must not depend on the platform signal trampoline restoring
+Wasm's pinned `X26`: Linux and Darwin replacement-PC returns can otherwise reach
+the landing pad with an unusable `X26`, preventing recovery of the foreign-stack
+save area and `enterNative` continuation.
+
 ## Global storage convention
 
 Each instantiated module owns an arena-backed globals pointer table:
