@@ -171,11 +171,10 @@ func InstallGuardTrapHandler() error {
 // into the handler and surfaces as a *TrapError. Thread-safe: all per-fault state
 // is derived from the faulting frame + the reservation registry, so concurrent
 // guarded calls (each with its own engine + guarded memory) run in parallel.
-func (e *Engine) CallGuarded(code uintptr, serArgs, linMem, trap, results []byte, j *JobMemory) error {
-	if j.reserveBase == 0 {
+func (e *Engine) CallGuarded(code uintptr, serArgs []byte, linMemBase uintptr, trap, results []byte, j *JobMemory) error {
+	if j.reserveBase == 0 || linMemBase == 0 {
 		return fmt.Errorf("CallGuarded requires NewJobMemoryGuarded")
 	}
-	linMemBase := j.LinMemBase()
 	if len(trap) >= 4 {
 		trap[0], trap[1], trap[2], trap[3] = 0, 0, 0, 0
 		j.putU64(abi.TrapCellPtrOffset, uint64(slicePtr(trap)))
