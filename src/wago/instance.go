@@ -52,6 +52,7 @@ type Instance struct {
 	resourceRefs           int32
 	invocationState        atomic.Uint32 // high bit closes entry; low bits count active public invocations
 	closed                 bool          // logical close; retained references may defer physical release
+	finalizing             bool          // one goroutine owns the quiescent root snapshot/release transition
 	resourcesClosed        bool
 	ownsMem                bool    // false when memory is host-imported (don't close it)
 	syncMode               bool    // true when host imports use the synchronous re-entry protocol

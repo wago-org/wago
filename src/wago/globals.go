@@ -137,7 +137,24 @@ func newGlobalInCell(t ValType, bits uint64, vec V128, mutable bool, cell []byte
 // preserving established transitive attachments. A later scan drops any root
 // no longer represented by the single live cell.
 func (g *Global) retainProducerInstance(in *Instance) bool {
-	if g == nil || g.owner == nil || g.owner.typ != ValFuncRef || in == nil || !in.retainResourceRoot() {
+	return g.retainProducerInstanceMode(in, false)
+}
+
+func (g *Global) retainProducerInstanceForFinalization(in *Instance) bool {
+	return g.retainProducerInstanceMode(in, true)
+}
+
+func (g *Global) retainProducerInstanceMode(in *Instance, finalization bool) bool {
+	if g == nil || g.owner == nil || g.owner.typ != ValFuncRef || in == nil {
+		return false
+	}
+	var retained bool
+	if finalization {
+		retained = in.retainResourceRootForFinalization()
+	} else {
+		retained = in.retainResourceRoot()
+	}
+	if !retained {
 		return false
 	}
 	o := g.owner

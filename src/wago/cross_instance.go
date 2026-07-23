@@ -266,7 +266,24 @@ func (t *Table) detachImporter() {
 // refSlot identities and release writers no longer represented by any entry,
 // keeping retention bounded by the table's finite descriptor capacity.
 func (t *Table) retainProducerInstance(in *Instance) bool {
-	if t == nil || t.owner == nil || t.owner.elementType != ValFuncRef || in == nil || !in.retainResourceRoot() {
+	return t.retainProducerInstanceMode(in, false)
+}
+
+func (t *Table) retainProducerInstanceForFinalization(in *Instance) bool {
+	return t.retainProducerInstanceMode(in, true)
+}
+
+func (t *Table) retainProducerInstanceMode(in *Instance, finalization bool) bool {
+	if t == nil || t.owner == nil || t.owner.elementType != ValFuncRef || in == nil {
+		return false
+	}
+	var retained bool
+	if finalization {
+		retained = in.retainResourceRootForFinalization()
+	} else {
+		retained = in.retainResourceRoot()
+	}
+	if !retained {
 		return false
 	}
 

@@ -2,8 +2,78 @@ package wago
 
 import (
 	"strings"
+	"sync"
 	"testing"
 )
+
+func TestReferenceStoreCloseAccountingOrderIndependent(t *testing.T) {
+	cases := []struct {
+		name string
+		run  func(*referenceStore, *Instance)
+	}{
+		{
+			name: "logical then physical",
+			run: func(store *referenceStore, in *Instance) {
+				store.instanceClosed(in)
+				store.instanceClosed(in)
+				store.resourceOwnerReleased(in)
+				store.resourceOwnerReleased(in)
+			},
+		},
+		{
+			name: "physical then logical",
+			run: func(store *referenceStore, in *Instance) {
+				store.resourceOwnerReleased(in)
+				store.resourceOwnerReleased(in)
+				store.instanceClosed(in)
+				store.instanceClosed(in)
+			},
+		},
+		{
+			name: "concurrent",
+			run: func(store *referenceStore, in *Instance) {
+				start := make(chan struct{})
+				var wg sync.WaitGroup
+				wg.Add(2)
+				go func() { defer wg.Done(); <-start; store.instanceClosed(in) }()
+				go func() { defer wg.Done(); <-start; store.resourceOwnerReleased(in) }()
+				close(start)
+				wg.Wait()
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			store := newReferenceStore(false)
+			in := &Instance{}
+			if err := store.registerInstance(in); err != nil {
+				t.Fatalf("registerInstance: %v", err)
+			}
+			owner := &Instance{resourcesClosed: true, resourceRefs: 1}
+			entry := &funcrefTokenEntry{token: 1, owner: owner, descriptor: 1}
+			store.byToken = map[uint64]*funcrefTokenEntry{1: entry}
+			store.byIdentity = map[funcrefIdentity]*funcrefTokenEntry{{descriptor: 1}: entry}
+			store.closeRuntime() // token cleanup must wait for both instance transitions
+			if len(store.byToken) != 1 {
+				t.Fatal("runtime close released entries while a logical instance remained")
+			}
+
+			tc.run(store, in)
+			if store.liveInstances != 0 {
+				t.Fatalf("liveInstances = %d, want 0", store.liveInstances)
+			}
+			if len(store.instances) != 0 {
+				t.Fatalf("instance membership remains after both transitions: %#v", store.instances)
+			}
+			if len(store.byToken) != 0 || len(store.byIdentity) != 0 {
+				t.Fatal("runtime-close token cleanup did not run after the final transition")
+			}
+			if owner.resourceRefs != 0 {
+				t.Fatalf("released token owner roots = %d, want 0", owner.resourceRefs)
+			}
+		})
+	}
+}
 
 func TestInvocationLeaseStateMachine(t *testing.T) {
 	t.Run("entry then close publication", func(t *testing.T) {

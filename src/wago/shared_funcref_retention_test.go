@@ -16,6 +16,127 @@ import (
 // the producer until the entry is overwritten or the table closes. Regression
 // for the use-after-free where a closed producer's arena was freed while another
 // importer could still call_indirect its funcref.
+func TestCloseSnapshotsPostHostFuncrefWritesAfterQuiescence(t *testing.T) {
+	rt := NewRuntime()
+	defer rt.Close()
+	table, err := NewTable(1, 1)
+	if err != nil {
+		t.Fatalf("NewTable: %v", err)
+	}
+	global, err := rt.NewFuncRefGlobal(NullFuncRef(), true)
+	if err != nil {
+		t.Fatalf("NewFuncRefGlobal: %v", err)
+	}
+
+	entered := make(chan struct{})
+	releaseHost := make(chan struct{})
+	closePublished := make(chan struct{})
+	var writer *Instance
+	rt.hooks.beforeClose = append(rt.hooks.beforeClose, func(ctx *InstanceContext) {
+		if ctx.Instance != writer {
+			return
+		}
+		if got := writer.invocationState.Load(); got&instanceInvocationClosed == 0 {
+			t.Errorf("BeforeClose observed invocation state %#x without the close gate", got)
+		}
+		if _, err := writer.Invoke("write_after_host"); err == nil {
+			t.Error("post-gate invocation entered before the final snapshot")
+		}
+		close(closePublished)
+	})
+
+	writerCode := mustCompileWat(rt, t, `(module
+		(type $target (func (result i32)))
+		(import "env" "block" (func $block))
+		(import "env" "table" (table 1 1 funcref))
+		(import "env" "global" (global $global (mut funcref)))
+		(func $target (type $target) (result i32) (i32.const 77))
+		(elem declare func $target)
+		(func (export "write_after_host")
+			(call $block)
+			(i32.const 0) (ref.func $target) (table.set 0)
+			(ref.func $target) (global.set $global)))`)
+	writer, err = rt.Instantiate(context.Background(), writerCode, WithImports(Imports{
+		"env.block": HostFunc(func(HostModule, []uint64, []uint64) {
+			close(entered)
+			<-releaseHost
+		}),
+		"env.table":  table,
+		"env.global": global,
+	}))
+	if err != nil {
+		t.Fatalf("instantiate writer: %v", err)
+	}
+
+	callDone := make(chan error, 1)
+	go func() {
+		_, err := writer.Invoke("write_after_host")
+		callDone <- err
+	}()
+	<-entered
+	closeDone := make(chan error, 1)
+	go func() { closeDone <- writer.Close() }()
+	<-closePublished // exact barrier: no later invocation can enter
+	close(releaseHost)
+	if err := <-callDone; err == nil {
+		t.Fatal("host-parked invocation completed without the close interruption")
+	}
+	if err := <-closeDone; err != nil {
+		t.Fatalf("writer Close: %v", err)
+	}
+	if writer.resourcesClosed || writer.resourceRefs != 2 {
+		t.Fatalf("writer finalization state: resourcesClosed=%v roots=%d, want false/2", writer.resourcesClosed, writer.resourceRefs)
+	}
+
+	tableReaderCode := mustCompileWat(rt, t, `(module
+		(type $target (func (result i32)))
+		(import "env" "table" (table 1 1 funcref))
+		(func (export "call") (result i32)
+			(i32.const 0) (call_indirect (type $target))))`)
+	tableReader, err := rt.Instantiate(context.Background(), tableReaderCode, WithImports(Imports{"env.table": table}))
+	if err != nil {
+		t.Fatalf("instantiate table reader: %v", err)
+	}
+	if got := tableTestCallI32(t, tableReader, "call"); got != 77 {
+		t.Fatalf("table call after writer close = %d, want 77", got)
+	}
+
+	globalReaderCode := mustCompileWat(rt, t, `(module
+		(type $target (func (result i32)))
+		(import "env" "global" (global $global (mut funcref)))
+		(table 1 1 funcref)
+		(func (export "call") (result i32)
+			(i32.const 0) (global.get $global) (table.set 0)
+			(i32.const 0) (call_indirect (type $target))))`)
+	globalReader, err := rt.Instantiate(context.Background(), globalReaderCode, WithImports(Imports{"env.global": global}))
+	if err != nil {
+		t.Fatalf("instantiate global reader: %v", err)
+	}
+	if got := tableTestCallI32(t, globalReader, "call"); got != 77 {
+		t.Fatalf("global call after writer close = %d, want 77", got)
+	}
+
+	if err := tableReader.Close(); err != nil {
+		t.Fatalf("table reader Close: %v", err)
+	}
+	if err := globalReader.Close(); err != nil {
+		t.Fatalf("global reader Close: %v", err)
+	}
+	startRelease := make(chan struct{})
+	releaseDone := make(chan error, 2)
+	go func() { <-startRelease; releaseDone <- table.Close() }()
+	go func() { <-startRelease; releaseDone <- global.Close() }()
+	close(startRelease)
+	for range 2 {
+		if err := <-releaseDone; err != nil {
+			t.Fatalf("container Close: %v", err)
+		}
+	}
+	if !writer.resourcesClosed || writer.resourceRefs != 0 {
+		t.Fatalf("writer after both roots release: resourcesClosed=%v roots=%d, want true/0", writer.resourcesClosed, writer.resourceRefs)
+	}
+}
+
 func TestClosedProducerFuncrefInSharedTableStaysCallable(t *testing.T) {
 	tbl, err := NewTable(1, 1)
 	if err != nil {

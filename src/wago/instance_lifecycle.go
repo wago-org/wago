@@ -70,6 +70,17 @@ func (in *Instance) closeOnce() error {
 		return nil
 	}
 
+	// Publish the invocation gate before lifecycle hooks. Existing activations may
+	// finish, but hooks and concurrent callers observe a logically closed instance.
+	// Physical finalization remains disabled until all BeforeClose hooks finish.
+	previousInvocations := in.closeInvocationEntry()
+	activeInvocations := previousInvocations & instanceInvocationCount
+	in.lifeMu.Lock()
+	if activeInvocations != 0 && len(in.trap) >= 4 {
+		atomic.StoreUint32((*uint32)(unsafe.Pointer(&in.trap[0])), uint32(runtime.TrapInterrupted))
+	}
+	in.lifeMu.Unlock()
+
 	if in.rt != nil {
 		for i := len(in.rt.hooks.internalBeforeClose) - 1; i >= 0; i-- {
 			fn := in.rt.hooks.internalBeforeClose[i]
@@ -88,32 +99,19 @@ func (in *Instance) closeOnce() error {
 		}
 	}
 
-	// Before marking the instance closed, transfer producer roots to imported
-	// funcref tables/globals that still hold any descriptor reachable through this
-	// instance: local functions, canonical InstanceExport identities, bare-producer
-	// proxies, or HostFuncRef proxies. Retaining the writer preserves its existing
-	// transitive attachments. retainResourceRoot refuses a closed instance, so this
-	// runs first; the container prunes the root after overwrite or on close.
-	appendStep("retain imported table roots", func() { retainProducerRootsInImportedTables(in) })
-	appendStep("retain imported global roots", func() { retainProducerRootsInImportedGlobals(in) })
-
-	previousInvocations := in.closeInvocationEntry()
-	activeInvocations := previousInvocations & instanceInvocationCount
+	// An activation parked in host code may have resumed and mutated an imported
+	// table/global while hooks ran. Root transfer is therefore deferred to
+	// tryFinalize after the active count reaches zero. closed enables that final
+	// transition only after BeforeClose is completely finished.
 	in.lifeMu.Lock()
 	in.closed = true
-	shouldRelease := in.resourceRefs == 0 && activeInvocations == 0
 	store := in.refStore
-	if activeInvocations != 0 && len(in.trap) >= 4 {
-		atomic.StoreUint32((*uint32)(unsafe.Pointer(&in.trap[0])), uint32(runtime.TrapInterrupted))
-	}
 	in.lifeMu.Unlock()
 
 	if store != nil {
 		appendStep("close reference store instance", func() { store.instanceClosed(in) })
 	}
-	if shouldRelease {
-		appendStep("release instance resources", in.releaseResources)
-	}
+	appendStep("finalize instance resources", in.tryFinalize)
 	if hctx != nil {
 		for i := len(in.rt.hooks.afterClose) - 1; i >= 0; i-- {
 			fn := in.rt.hooks.afterClose[i]
@@ -161,31 +159,61 @@ func (in *Instance) endInvocation() {
 	if in == nil {
 		return
 	}
-	state := in.invocationState.Add(^uint32(0))
-	if state != instanceInvocationClosed {
-		return
-	}
-	in.lifeMu.Lock()
-	shouldRelease := in.closed && in.resourceRefs == 0 && !in.resourcesClosed
-	store := in.refStore
-	in.lifeMu.Unlock()
-	if shouldRelease {
-		if store != nil {
-			store.resourceOwnerReleased(in)
+	for {
+		state := in.invocationState.Load()
+		if state&instanceInvocationCount == 0 {
+			panic("wago: invocation lease underflow")
 		}
-		in.releaseResources()
+		next := state - 1 // the count cannot borrow through the separately checked close bit
+		if !in.invocationState.CompareAndSwap(state, next) {
+			continue
+		}
+		if next == instanceInvocationClosed {
+			in.tryFinalize()
+		}
+		return
 	}
 }
 
-func (in *Instance) releaseResources() {
+// tryFinalize owns the exactly-once transition from logically closed to
+// physically released. The final imported-table/global scan runs only after the
+// invocation gate is closed and the active count is zero, so it observes every
+// write made by a resumed host-parked activation. Resource-root release races
+// are resolved by the final locked recheck before resourcesClosed is committed.
+func (in *Instance) tryFinalize() {
+	if in == nil {
+		return
+	}
 	in.lifeMu.Lock()
-	if in.resourcesClosed {
+	if !in.closed || in.finalizing || in.resourcesClosed || in.invocationState.Load()&instanceInvocationCount != 0 {
 		in.lifeMu.Unlock()
 		return
 	}
-	in.resourcesClosed = true
+	in.finalizing = true
 	in.lifeMu.Unlock()
 
+	retainProducerRootsInImportedTablesForFinalization(in)
+	retainProducerRootsInImportedGlobalsForFinalization(in)
+
+	in.lifeMu.Lock()
+	in.finalizing = false
+	if in.resourcesClosed || !in.closed || in.resourceRefs != 0 || in.invocationState.Load()&instanceInvocationCount != 0 {
+		in.lifeMu.Unlock()
+		return
+	}
+	in.resourcesClosed = true // commit the one physical-release owner
+	store := in.refStore
+	in.lifeMu.Unlock()
+
+	if store != nil {
+		store.resourceOwnerReleased(in)
+	}
+	in.releaseResources()
+}
+
+// releaseResources performs the physical teardown after tryFinalize has claimed
+// it by setting resourcesClosed under lifeMu.
+func (in *Instance) releaseResources() {
 	// Every imported raw-pointer dependency remains attached until physical
 	// release. A table/global/token or downstream function importer may keep this
 	// instance's native code and context callable after logical Close.

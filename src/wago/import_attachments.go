@@ -247,6 +247,14 @@ func detachImportedGlobals(in *Instance) {
 }
 
 func retainProducerRootsInImportedGlobals(in *Instance) bool {
+	return retainProducerRootsInImportedGlobalsMode(in, false)
+}
+
+func retainProducerRootsInImportedGlobalsForFinalization(in *Instance) bool {
+	return retainProducerRootsInImportedGlobalsMode(in, true)
+}
+
+func retainProducerRootsInImportedGlobalsMode(in *Instance, finalization bool) bool {
 	if in == nil || in.c == nil {
 		return false
 	}
@@ -263,7 +271,13 @@ func retainProducerRootsInImportedGlobals(in *Instance) bool {
 		if !seen.add(provided.Global) {
 			continue
 		}
-		if provided.Global.retainProducerInstance(in) {
+		var rooted bool
+		if finalization {
+			rooted = provided.Global.retainProducerInstanceForFinalization(in)
+		} else {
+			rooted = provided.Global.retainProducerInstance(in)
+		}
+		if rooted {
 			in.transferImportedGlobalAttachment(provided.Global)
 			retained = true
 		}
@@ -343,6 +357,14 @@ func detachImportedTables(in *Instance) {
 }
 
 func retainProducerRootsInImportedTables(in *Instance) bool {
+	return retainProducerRootsInImportedTablesMode(in, false)
+}
+
+func retainProducerRootsInImportedTablesForFinalization(in *Instance) bool {
+	return retainProducerRootsInImportedTablesMode(in, true)
+}
+
+func retainProducerRootsInImportedTablesMode(in *Instance, finalization bool) bool {
 	if in == nil || in.c == nil {
 		return false
 	}
@@ -353,7 +375,13 @@ func retainProducerRootsInImportedTables(in *Instance) bool {
 		if !ok || table == nil {
 			continue
 		}
-		if table.retainProducerInstance(in) {
+		var rooted bool
+		if finalization {
+			rooted = table.retainProducerInstanceForFinalization(in)
+		} else {
+			rooted = table.retainProducerInstance(in)
+		}
+		if rooted {
 			in.transferImportedTableAttachment(table)
 			retained = true
 		}
@@ -364,7 +392,11 @@ func retainProducerRootsInImportedTables(in *Instance) bool {
 		// release them.
 		for globalIndex := 0; globalIndex < len(in.c.GlobalImports) && globalIndex < len(in.globalCells); globalIndex++ {
 			for _, producer := range in.globalCells[globalIndex].funcrefProducerRoots() {
-				table.retainProducerInstance(producer)
+				if finalization {
+					table.retainProducerInstanceForFinalization(producer)
+				} else {
+					table.retainProducerInstance(producer)
+				}
 			}
 		}
 	}
