@@ -11,111 +11,127 @@ package wago
 import impl "github.com/wago-org/wago/src/wago"
 
 type (
-	BoundsCheckMode           = impl.BoundsCheckMode
-	CallerResolver            = impl.CallerResolver
-	Capability                = impl.Capability
-	CapabilityBudget          = impl.CapabilityBudget
-	CapabilityOption          = impl.CapabilityOption
-	Compatibility             = impl.Compatibility
-	CompileContext            = impl.CompileContext
-	CompileHookAccess         = impl.CompileHookAccess
-	Compiled                  = impl.Compiled
-	ConfigSchemaProvider      = impl.ConfigSchemaProvider
-	CoreFeatures              = impl.CoreFeatures
-	DataInit                  = impl.DataInit
-	Dirs                      = impl.Dirs
-	ElemInit                  = impl.ElemInit
-	ElemMode                  = impl.ElemMode
-	ExitError                 = impl.ExitError
-	Extension                 = impl.Extension
-	ExtensionError            = impl.ExtensionError
-	ExtensionFactory          = impl.ExtensionFactory
-	ExtensionInfo             = impl.ExtensionInfo
-	ExternRef                 = impl.ExternRef
-	ExternRefHostModule       = impl.ExternRefHostModule
-	FuncRef                   = impl.FuncRef
-	FuncSig                   = impl.FuncSig
-	FunctionMetadata          = impl.FunctionMetadata
-	GCAllocatorKind           = impl.GCAllocatorKind
-	GCConfig                  = impl.GCConfig
-	GCProfile                 = impl.GCProfile
-	GCRuntimeKind             = impl.GCRuntimeKind
-	Global                    = impl.Global
-	GlobalDef                 = impl.GlobalDef
-	GlobalImport              = impl.GlobalImport
-	GlobalImportDef           = impl.GlobalImportDef
-	GlobalMetadata            = impl.GlobalMetadata
-	GuardPageUnavailableError = impl.GuardPageUnavailableError
-	Handle                    = impl.Handle
-	HandleTable               = impl.HandleTable
-	HookRegistry              = impl.HookRegistry
-	HostEnvironment           = impl.HostEnvironment
-	HostExit                  = impl.HostExit
-	HostFunc                  = impl.HostFunc
-	HostFuncRef               = impl.HostFuncRef
-	HostImportAccess          = impl.HostImportAccess
-	HostModule                = impl.HostModule
-	ImportFuncBuilder         = impl.ImportFuncBuilder
-	ImportKind                = impl.ImportKind
-	ImportModuleBuilder       = impl.ImportModuleBuilder
-	ImportOverridePolicy      = impl.ImportOverridePolicy
-	ImportSpec                = impl.ImportSpec
-	Imports                   = impl.Imports
-	Instance                  = impl.Instance
-	InstanceContext           = impl.InstanceContext
-	InstanceExport            = impl.InstanceExport
-	InstanceHookAccess        = impl.InstanceHookAccess
-	InstanceManager           = impl.InstanceManager
-	Instantiable              = impl.Instantiable
-	InstantiateContext        = impl.InstantiateContext
-	InstantiateOption         = impl.InstantiateOption
-	InstantiateOptions        = impl.InstantiateOptions
-	InstantiateOrigin         = impl.InstantiateOrigin
-	InvokeContext             = impl.InvokeContext
-	InvokeHookAccess          = impl.InvokeHookAccess
-	ManagedInstance           = impl.ManagedInstance
-	Memory                    = impl.Memory
-	Module                    = impl.Module
-	ModuleMetadata            = impl.ModuleMetadata
-	OffsetInit                = impl.OffsetInit
-	OptKnobInfo               = impl.OptKnobInfo
-	PassiveDataInit           = impl.PassiveDataInit
-	PluginCapability          = impl.PluginCapability
-	PluginConfig              = impl.PluginConfig
-	PluginError               = impl.PluginError
-	PluginHost                = impl.PluginHost
-	PluginPhase               = impl.PluginPhase
-	PluginPlan                = impl.PluginPlan
-	PluginPlanEntry           = impl.PluginPlanEntry
-	PluginStarter             = impl.PluginStarter
-	PluginStopper             = impl.PluginStopper
-	Policy                    = impl.Policy
-	PreparedFunction          = impl.PreparedFunction
-	RefInit                   = impl.RefInit
-	Registry                  = impl.Registry
-	Resource                  = impl.Resource
-	Runtime                   = impl.Runtime
-	RuntimeConfig             = impl.RuntimeConfig
-	RuntimeContext            = impl.RuntimeContext
-	RuntimeHookAccess         = impl.RuntimeHookAccess
-	RuntimeOption             = impl.RuntimeOption
-	ServiceRef                = impl.ServiceRef
-	Snapshot                  = impl.Snapshot
-	SnapshotKind              = impl.SnapshotKind
-	SnapshotOptions           = impl.SnapshotOptions
-	Stability                 = impl.Stability
-	Table                     = impl.Table
-	TableMetadata             = impl.TableMetadata
-	TrapCode                  = impl.TrapCode
-	TrapError                 = impl.TrapError
-	UnsupportedFeatureError   = impl.UnsupportedFeatureError
-	UseOption                 = impl.UseOption
-	V128                      = impl.V128
-	ValType                   = impl.ValType
-	Value                     = impl.Value
+	AMD64Compatibility          = impl.AMD64Compatibility
+	AMD64Features               = impl.AMD64Features
+	AMD64InstructionLowering    = impl.AMD64InstructionLowering
+	AMD64LoweringContext        = impl.AMD64LoweringContext
+	AMD64ManagedLoweringContext = impl.AMD64ManagedLoweringContext
+	Bits                        = impl.Bits
+	BoundsCheckMode             = impl.BoundsCheckMode
+	CallerResolver              = impl.CallerResolver
+	Capability                  = impl.Capability
+	CapabilityBudget            = impl.CapabilityBudget
+	CapabilityOption            = impl.CapabilityOption
+	Compatibility               = impl.Compatibility
+	CompileContext              = impl.CompileContext
+	CompileHookAccess           = impl.CompileHookAccess
+	Compiled                    = impl.Compiled
+	CompilerRegistry            = impl.CompilerRegistry
+	ConfigSchemaProvider        = impl.ConfigSchemaProvider
+	CoreFeatures                = impl.CoreFeatures
+	DataInit                    = impl.DataInit
+	Dirs                        = impl.Dirs
+	ElemInit                    = impl.ElemInit
+	ElemMode                    = impl.ElemMode
+	ExitError                   = impl.ExitError
+	Extension                   = impl.Extension
+	ExtensionError              = impl.ExtensionError
+	ExtensionFactory            = impl.ExtensionFactory
+	ExtensionInfo               = impl.ExtensionInfo
+	ExternRef                   = impl.ExternRef
+	ExternRefHostModule         = impl.ExternRefHostModule
+	FuncRef                     = impl.FuncRef
+	FuncSig                     = impl.FuncSig
+	FunctionMetadata            = impl.FunctionMetadata
+	GCAllocatorKind             = impl.GCAllocatorKind
+	GCConfig                    = impl.GCConfig
+	GCProfile                   = impl.GCProfile
+	GCRuntimeKind               = impl.GCRuntimeKind
+	Global                      = impl.Global
+	GlobalDef                   = impl.GlobalDef
+	GlobalImport                = impl.GlobalImport
+	GlobalImportDef             = impl.GlobalImportDef
+	GlobalMetadata              = impl.GlobalMetadata
+	GuardPageUnavailableError   = impl.GuardPageUnavailableError
+	Handle                      = impl.Handle
+	HandleTable                 = impl.HandleTable
+	HookRegistry                = impl.HookRegistry
+	HostEnvironment             = impl.HostEnvironment
+	HostExit                    = impl.HostExit
+	HostFunc                    = impl.HostFunc
+	HostFuncRef                 = impl.HostFuncRef
+	HostImportAccess            = impl.HostImportAccess
+	HostModule                  = impl.HostModule
+	ImportFuncBuilder           = impl.ImportFuncBuilder
+	ImportKind                  = impl.ImportKind
+	ImportModuleBuilder         = impl.ImportModuleBuilder
+	ImportOverridePolicy        = impl.ImportOverridePolicy
+	ImportSpec                  = impl.ImportSpec
+	Imports                     = impl.Imports
+	Instance                    = impl.Instance
+	InstanceContext             = impl.InstanceContext
+	InstanceExport              = impl.InstanceExport
+	InstanceHookAccess          = impl.InstanceHookAccess
+	InstanceManager             = impl.InstanceManager
+	Instantiable                = impl.Instantiable
+	InstantiateContext          = impl.InstantiateContext
+	InstantiateOption           = impl.InstantiateOption
+	InstantiateOptions          = impl.InstantiateOptions
+	InstantiateOrigin           = impl.InstantiateOrigin
+	InstructionContext          = impl.InstructionContext
+	InstructionHandler          = impl.InstructionHandler
+	InstructionLowerer          = impl.InstructionLowerer
+	InstructionSpec             = impl.InstructionSpec
+	InvokeContext               = impl.InvokeContext
+	InvokeHookAccess            = impl.InvokeHookAccess
+	LowerValue                  = impl.LowerValue
+	LoweringContext             = impl.LoweringContext
+	ManagedInstance             = impl.ManagedInstance
+	Memory                      = impl.Memory
+	Module                      = impl.Module
+	ModuleMetadata              = impl.ModuleMetadata
+	OffsetInit                  = impl.OffsetInit
+	OptKnobInfo                 = impl.OptKnobInfo
+	PassiveDataInit             = impl.PassiveDataInit
+	PluginCapability            = impl.PluginCapability
+	PluginConfig                = impl.PluginConfig
+	PluginError                 = impl.PluginError
+	PluginHost                  = impl.PluginHost
+	PluginPhase                 = impl.PluginPhase
+	PluginPlan                  = impl.PluginPlan
+	PluginPlanEntry             = impl.PluginPlanEntry
+	PluginStarter               = impl.PluginStarter
+	PluginStopper               = impl.PluginStopper
+	Policy                      = impl.Policy
+	PreparedFunction            = impl.PreparedFunction
+	RefInit                     = impl.RefInit
+	Registry                    = impl.Registry
+	Resource                    = impl.Resource
+	Runtime                     = impl.Runtime
+	RuntimeConfig               = impl.RuntimeConfig
+	RuntimeContext              = impl.RuntimeContext
+	RuntimeHookAccess           = impl.RuntimeHookAccess
+	RuntimeOption               = impl.RuntimeOption
+	ServiceRef                  = impl.ServiceRef
+	Snapshot                    = impl.Snapshot
+	SnapshotKind                = impl.SnapshotKind
+	SnapshotOptions             = impl.SnapshotOptions
+	Stability                   = impl.Stability
+	Table                       = impl.Table
+	TableMetadata               = impl.TableMetadata
+	TrapCode                    = impl.TrapCode
+	TrapError                   = impl.TrapError
+	UnsupportedFeatureError     = impl.UnsupportedFeatureError
+	UseOption                   = impl.UseOption
+	V128                        = impl.V128
+	ValType                     = impl.ValType
+	Value                       = impl.Value
 )
 
 const (
+	AMD64CompatibilityFullAccess               = impl.AMD64CompatibilityFullAccess
+	AMD64CompatibilityManaged                  = impl.AMD64CompatibilityManaged
+	AMD64FeatureAVX2                           = impl.AMD64FeatureAVX2
 	AllowTestOverrides                         = impl.AllowTestOverrides
 	BoundsChecksExplicit                       = impl.BoundsChecksExplicit
 	BoundsChecksSignalsBased                   = impl.BoundsChecksSignalsBased
@@ -210,6 +226,8 @@ func AsI32(b uint64) int32 { return impl.AsI32(b) }
 
 func AsI64(b uint64) int64 { return impl.AsI64(b) }
 
+func BitsFromUint32(width int32, v uint32) (Bits, error) { return impl.BitsFromUint32(width, v) }
+
 func CapabilityDocs(docs string) CapabilityOption { return impl.CapabilityDocs(docs) }
 
 func Capture(c *Compiled, opts SnapshotOptions) (*Snapshot, error) { return impl.Capture(c, opts) }
@@ -253,6 +271,10 @@ func Load(b []byte) (*Compiled, error) { return impl.Load(b) }
 func LoadSnapshot(b []byte) (*Snapshot, error) { return impl.LoadSnapshot(b) }
 
 func MustCompile(wasmBytes []byte) *Compiled { return impl.MustCompile(wasmBytes) }
+
+func NewBits(width int32, littleEndian []byte) (Bits, error) {
+	return impl.NewBits(width, littleEndian)
+}
 
 func NewExtension(name string) (Extension, bool) { return impl.NewExtension(name) }
 

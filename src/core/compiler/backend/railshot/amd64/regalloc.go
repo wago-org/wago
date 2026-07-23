@@ -189,8 +189,8 @@ func (f *fn) materialize(e *elem) Reg {
 		f.occupy(e, r)
 		return r
 	case stLocalRef:
-		if e.st.typ == mtV128 {
-			panic("amd64: v128 local requires XMM materialization")
+		if e.st.typ.isVector() {
+			panic("amd64: vector local requires SIMD materialization")
 		}
 		r := f.allocReg(0)
 		f.a.Load64(r, RSP, f.localOff(e.st.idx))
@@ -264,6 +264,9 @@ func (f *fn) loadMemRef(dst Reg, st storage) {
 // materializeByType realizes e with the register class required by its machine
 // type. v128 values are XMM values even though they are not scalar floats.
 func (f *fn) materializeByType(e *elem) Reg {
+	if e.st.typ.isV256() {
+		return f.loadV256(e)
+	}
 	if e.st.typ.isV128() {
 		return f.materializeV128(e)
 	}

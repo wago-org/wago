@@ -13,8 +13,10 @@ import (
 	"sync"
 	"sync/atomic"
 
+	railcore "github.com/wago-org/wago/src/core/compiler/backend/railshot"
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/codegen"
+	"github.com/wago-org/wago/src/core/compiler/machinecode"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/encoder/amd64"
 	"github.com/wago-org/wago/src/core/runtime/abi"
@@ -127,6 +129,8 @@ type fn struct {
 	m  *wasm.Module
 	ft *wasm.CompType // this function's signature
 	transient
+	globalIdx          int
+	customInstructions map[uint32]CustomInstruction
 
 	nParams     int
 	nLocals     int           // params + declared locals
@@ -147,6 +151,7 @@ type fn struct {
 	// in its register (dirty), in both register+slot (clean), or only in its slot.
 	// Call-free functions keep locals permanently in registers (locals[].state unused).
 	usesCalls bool
+	usesWide  bool
 
 	// Register occupancy: regUser[r] is the value elem currently resident in
 	// physical register r, or nil if r is free. Only allocatable GPRs are tracked.
@@ -540,7 +545,42 @@ type CompileOptions struct {
 	// "explain" dashboard, docs/no-ir-plan.md P1). Independent of WAGO_EXPLAIN,
 	// which prints the same dump to stderr. nil = no collection, zero overhead.
 	Stats *ModuleStats
+
+	// CustomInstructions contains validated recipes keyed by imported function
+	// index. Unsupported recipes remain ordinary host calls.
+	CustomInstructions map[uint32]CustomInstruction
 }
+
+type CustomInstructionOp = railcore.CustomInstructionOp
+type CustomInstructionNode = railcore.CustomInstructionNode
+type CustomInstruction = railcore.CustomInstruction
+
+const (
+	CustomInstructionInput  = railcore.CustomInstructionInput
+	CustomInstructionConst  = railcore.CustomInstructionConst
+	CustomInstructionAdd    = railcore.CustomInstructionAdd
+	CustomInstructionSub    = railcore.CustomInstructionSub
+	CustomInstructionMul    = railcore.CustomInstructionMul
+	CustomInstructionAnd    = railcore.CustomInstructionAnd
+	CustomInstructionOr     = railcore.CustomInstructionOr
+	CustomInstructionXor    = railcore.CustomInstructionXor
+	CustomInstructionNot    = railcore.CustomInstructionNot
+	CustomInstructionShl    = railcore.CustomInstructionShl
+	CustomInstructionShrU   = railcore.CustomInstructionShrU
+	CustomInstructionShrS   = railcore.CustomInstructionShrS
+	CustomInstructionEq     = railcore.CustomInstructionEq
+	CustomInstructionNe     = railcore.CustomInstructionNe
+	CustomInstructionLtU    = railcore.CustomInstructionLtU
+	CustomInstructionLtS    = railcore.CustomInstructionLtS
+	CustomInstructionLeU    = railcore.CustomInstructionLeU
+	CustomInstructionLeS    = railcore.CustomInstructionLeS
+	CustomInstructionGtU    = railcore.CustomInstructionGtU
+	CustomInstructionGtS    = railcore.CustomInstructionGtS
+	CustomInstructionGeU    = railcore.CustomInstructionGeU
+	CustomInstructionGeS    = railcore.CustomInstructionGeS
+	CustomInstructionIsZero = railcore.CustomInstructionIsZero
+	CustomInstructionSelect = railcore.CustomInstructionSelect
+)
 
 // DirectBackend adapts the direct wasm-to-amd64 compiler to the shared
 // backend-neutral codegen.Backend shape used by heap/GC lowering work.
@@ -609,6 +649,13 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	// Auto-inlining (WAGO_INLINE): the straight-line leaf callees to splice at their
 	// call sites, keyed by global func index. nil when inlining is disabled.
 	inlineTargets := buildInlineTargets(m, allHints)
+	requiresAVX2 := false
+	for _, definition := range opts.CustomInstructions {
+		if definition.AMD64 != nil && definition.AMD64.Features&machinecode.AMD64FeatureAVX2 != 0 {
+			requiresAVX2 = true
+			break
+		}
+	}
 	// Pre-size the module code buffer to roughly the final machine-code size
 	// (lowering emits ~4-5 native bytes per wasm body byte, matching asmCapForBody).
 	// Without this the buffer grows geometrically, and each reallocation copies the
@@ -634,7 +681,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 				st = &CodegenStats{FuncIdx: i, Name: funcDisplayName(m, i, importedFuncs)}
 				ms.Funcs[i] = st
 			}
-			fnCode, rl, internalOff, err := compileFunc(m, i, guardMode, boundsFacts, opts.Interruptible, modGlobals, hints, opts.ImportBindings, opts.SyncHostCalls, st, inlineTargets, sc)
+			fnCode, rl, internalOff, err := compileFunc(m, i, guardMode, boundsFacts, opts.Interruptible, modGlobals, hints, opts.ImportBindings, opts.SyncHostCalls, opts.CustomInstructions, st, inlineTargets, sc)
 			allHints[i] = funcHints{}
 			if err != nil {
 				return nil, fmt.Errorf("amd64: function %d: %w", i, err)
@@ -666,15 +713,15 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		if explainEnabled && ms != nil {
 			fmt.Fprint(os.Stderr, ms.String())
 		}
-		return &amd64.CompiledModule{Code: code, Entry: entry, InternalEntry: internalEntry}, nil
+		return &amd64.CompiledModule{Code: code, Entry: entry, InternalEntry: internalEntry, RequiresAVX2: requiresAVX2}, nil
 	}
 
-	return compileModuleParallel(m, opts, workers, codeCap, entry, internalEntry, relocs, allHints, modGlobals, inlineTargets, ms, guardMode, boundsFacts, importedFuncs)
+	return compileModuleParallel(m, opts, workers, codeCap, entry, internalEntry, relocs, allHints, modGlobals, inlineTargets, ms, guardMode, boundsFacts, importedFuncs, requiresAVX2)
 }
 
 // compileModuleParallel is split from CompileModuleWith so the goroutine closure
 // and its captured state cannot escape into or add allocations to the serial path.
-func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap int, entry, internalEntry []int, relocs [][]callReloc, allHints []funcHints, modGlobals []moduleGlobalPin, inlineTargets map[int]*inlineTarget, ms *ModuleStats, guardMode, boundsFacts bool, importedFuncs int) (*amd64.CompiledModule, error) {
+func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap int, entry, internalEntry []int, relocs [][]callReloc, allHints []funcHints, modGlobals []moduleGlobalPin, inlineTargets map[int]*inlineTarget, ms *ModuleStats, guardMode, boundsFacts bool, importedFuncs int, requiresAVX2 bool) (*amd64.CompiledModule, error) {
 	n := len(m.Code)
 	// Parallel codegen starts only after every module-wide decision is complete.
 	// Each function has a deterministic stats destination, and each worker owns all
@@ -709,7 +756,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 				if ms != nil {
 					st = ms.Funcs[i]
 				}
-				fnCode, rl, internalOff, err := compileFunc(m, i, guardMode, boundsFacts, opts.Interruptible, modGlobals, allHints[i], opts.ImportBindings, opts.SyncHostCalls, st, inlineTargets, ws.scratch)
+				fnCode, rl, internalOff, err := compileFunc(m, i, guardMode, boundsFacts, opts.Interruptible, modGlobals, allHints[i], opts.ImportBindings, opts.SyncHostCalls, opts.CustomInstructions, st, inlineTargets, ws.scratch)
 				allHints[i] = funcHints{}
 				if err != nil {
 					results[i].err = err
@@ -757,7 +804,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	if explainEnabled && ms != nil {
 		fmt.Fprint(os.Stderr, ms.String())
 	}
-	return &amd64.CompiledModule{Code: code, Entry: entry, InternalEntry: internalEntry}, nil
+	return &amd64.CompiledModule{Code: code, Entry: entry, InternalEntry: internalEntry, RequiresAVX2: requiresAVX2}, nil
 }
 
 func firstFuncError(results []funcResult) (int, error) {
@@ -1062,11 +1109,11 @@ var errRegExhausted = errors.New("amd64: no register available to spill")
 // compileFunc compiles one function, retrying with local pinning disabled if the
 // first (pinned) attempt exhausts the register file. Pinning is a pure speed
 // optimization, so the unpinned recompile is always correct.
-func compileFunc(m *wasm.Module, funcIdx int, guardMode, boundsFacts, interruptible bool, modGlobals []moduleGlobalPin, hints funcHints, importBindings []ImportBinding, syncHostCalls bool, stats *CodegenStats, inlineTargets map[int]*inlineTarget, sc *scratch) (code []byte, relocs []callReloc, internalOff int, err error) {
-	code, relocs, internalOff, err = compileFuncAttempt(m, funcIdx, guardMode, boundsFacts, interruptible, modGlobals, hints, importBindings, syncHostCalls, stats, true, inlineTargets, sc)
+func compileFunc(m *wasm.Module, funcIdx int, guardMode, boundsFacts, interruptible bool, modGlobals []moduleGlobalPin, hints funcHints, importBindings []ImportBinding, syncHostCalls bool, custom map[uint32]CustomInstruction, stats *CodegenStats, inlineTargets map[int]*inlineTarget, sc *scratch) (code []byte, relocs []callReloc, internalOff int, err error) {
+	code, relocs, internalOff, err = compileFuncAttempt(m, funcIdx, guardMode, boundsFacts, interruptible, modGlobals, hints, importBindings, syncHostCalls, custom, stats, true, inlineTargets, sc)
 	if errors.Is(err, errRegExhausted) {
 		resetFuncStats(stats)
-		code, relocs, internalOff, err = compileFuncAttempt(m, funcIdx, guardMode, boundsFacts, interruptible, modGlobals, hints, importBindings, syncHostCalls, stats, false, inlineTargets, sc)
+		code, relocs, internalOff, err = compileFuncAttempt(m, funcIdx, guardMode, boundsFacts, interruptible, modGlobals, hints, importBindings, syncHostCalls, custom, stats, false, inlineTargets, sc)
 		if err == nil {
 			stats.setUnpinnedRetry()
 		}
@@ -1074,7 +1121,7 @@ func compileFunc(m *wasm.Module, funcIdx int, guardMode, boundsFacts, interrupti
 	return
 }
 
-func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, interruptible bool, modGlobals []moduleGlobalPin, hints funcHints, importBindings []ImportBinding, syncHostCalls bool, stats *CodegenStats, pinLocals bool, inlineTargets map[int]*inlineTarget, sc *scratch) (code []byte, relocs []callReloc, internalOff int, err error) {
+func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, interruptible bool, modGlobals []moduleGlobalPin, hints funcHints, importBindings []ImportBinding, syncHostCalls bool, custom map[uint32]CustomInstruction, stats *CodegenStats, pinLocals bool, inlineTargets map[int]*inlineTarget, sc *scratch) (code []byte, relocs []callReloc, internalOff int, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			if _, ok := r.(regExhausted); ok {
@@ -1100,7 +1147,7 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, int
 
 	sc.reset()
 	sc.asm.Grow(asmCapForBody(len(c.BodyBytes)))
-	f := &fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, transient: sc.transient, nParams: len(ft.Params), nLocals: nLocals, guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, regMerge: regMergeEnabled, globalCellReg: regNone, memSizeReg: regNone, immutableLocalTable: hints.immutableLocalTable, immutableTableType: hints.immutableTableType, immutableTableTyped: hints.immutableTableTyped, monomorphicTarget: hints.monomorphicTarget, importBindings: importBindings, stats: stats}
+	f := &fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, transient: sc.transient, globalIdx: m.ImportedFuncCount() + funcIdx, customInstructions: custom, nParams: len(ft.Params), nLocals: nLocals, guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, regMerge: regMergeEnabled, globalCellReg: regNone, memSizeReg: regNone, immutableLocalTable: hints.immutableLocalTable, immutableTableType: hints.immutableTableType, immutableTableTyped: hints.immutableTableTyped, monomorphicTarget: hints.monomorphicTarget, importBindings: importBindings, stats: stats}
 	// Retain the (possibly grown) control-frame backing for the next function.
 	defer func() {
 		sc.ctrl = f.ctrl

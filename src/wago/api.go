@@ -101,6 +101,10 @@ func functionWorkersForModule(m *wasm.Module, policy int) int {
 }
 
 func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) {
+	return compileWithConfigAndInstructions(cfg, wasmBytes, nil)
+}
+
+func compileWithConfigAndInstructions(cfg *RuntimeConfig, wasmBytes []byte, instructions map[string]*registeredInstruction) (*Compiled, error) {
 	if cfg == nil {
 		cfg = NewRuntimeConfig()
 	}
@@ -122,6 +126,25 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 	if err := frontend.RejectUnsupportedWithFeatures(m, cfg.frontendFeatures()); err != nil {
 		return nil, fmt.Errorf("compile: %w", err)
 	}
+	var functionIndex uint32
+	for i := range m.Imports {
+		imp := &m.Imports[i]
+		if imp.Type.Kind != wasm.ExternFunc {
+			continue
+		}
+		if ins := instructions[imp.Module+"."+imp.Name]; ins != nil {
+			ft, ok := m.FuncSignature(functionIndex)
+			if !ok {
+				return nil, fmt.Errorf("compile: instruction import %q has no function signature", imp.Module+"."+imp.Name)
+			}
+			sig := FuncSig{Params: valTypesFromWasm(ft.Params), Results: valTypesFromWasm(ft.Results)}
+			if err := validateInstructionSignature(imp.Module+"."+imp.Name, ins.spec, sig); err != nil {
+				return nil, err
+			}
+		}
+		functionIndex++
+	}
+	customInstructions := resolveInstructionLowerings(m, instructions)
 	// Architectures that always use the sync-host dispatcher can compile host
 	// defaults up front; others defer returning imports until link time.
 	boundsMode := effectiveCompileBoundsMode(cfg.boundsChecks, m)
@@ -132,13 +155,13 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 		dynamicBindings[i] = railshotImportBinding{Dynamic: true, ImportIndex: uint32(i)}
 	}
 	pressureAt, pressure := compileMemoryPressure(len(wasmBytes))
-	cm, err := railshotCompileModuleWith(m, railshotCompileOptions{Workers: workers, ElideBoundsChecks: elide, NoBoundsFacts: cfg.noDeferBounds, ImportBindings: dynamicBindings, Interruptible: true, MemoryPressureAt: pressureAt, MemoryPressure: pressure})
+	cm, err := railshotCompileModuleWith(m, railshotCompileOptions{Workers: workers, ElideBoundsChecks: elide, NoBoundsFacts: cfg.noDeferBounds, ImportBindings: dynamicBindings, Interruptible: true, MemoryPressureAt: pressureAt, MemoryPressure: pressure, CustomInstructions: customInstructions})
 	if err != nil {
 		return nil, fmt.Errorf("compile: %w", err)
 	}
 	code, entry, internalEntry := cm.Code, cm.Entry, cm.InternalEntry
 
-	c := &Compiled{Code: code, Entry: entry, InternalEntry: internalEntry, NumImports: importedFuncs, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, boundsMode: boundsMode, GCTypeDescs: gcDescs, requiredFeatures: uint8(moduleRequiredFeatures(m)), dynamicImports: importedFuncs > 0}
+	c := &Compiled{Code: code, Entry: entry, InternalEntry: internalEntry, NumImports: importedFuncs, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, boundsMode: boundsMode, GCTypeDescs: gcDescs, requiredFeatures: uint8(moduleRequiredFeatures(m)), dynamicImports: importedFuncs > 0, customInstructions: customInstructions, requiresAVX2: cm.RequiresAVX2}
 	if importedFuncs > 0 {
 		c.importFuncSigs = make([]FuncSig, importedFuncs)
 		for i := 0; i < importedFuncs; i++ {
@@ -1420,6 +1443,9 @@ const wagoVersion = 21
 func (c *Compiled) MarshalBinary() ([]byte, error) {
 	if c.boundsMode == BoundsChecksSignalsBased {
 		return nil, errors.New("wago: signals-based compiled modules cannot be serialized; recompile from wasm at load time")
+	}
+	if c.requiresAVX2 {
+		return nil, errors.New("wago: AVX2 plugin code cannot be serialized until the artifact format records CPU requirements")
 	}
 	if len(c.Entry) == 0 && len(c.Funcs) > 0 {
 		return nil, errors.New("wago: compiled module has functions but no native entries")

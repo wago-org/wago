@@ -13,6 +13,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	railcore "github.com/wago-org/wago/src/core/compiler/backend/railshot"
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/codegen"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -581,6 +582,10 @@ type CompileOptions struct {
 	// "explain" dashboard, docs/no-ir-plan.md P1). Independent of WAGO_EXPLAIN,
 	// which prints the same dump to stderr. nil = no collection, zero overhead.
 	Stats *ModuleStats
+
+	// CustomInstructions are currently handled by portable host fallbacks on
+	// arm64; the field keeps the backend-neutral compile contract identical.
+	CustomInstructions map[uint32]railcore.CustomInstruction
 }
 
 // DirectBackend adapts the direct wasm-to-arm64 compiler to the shared

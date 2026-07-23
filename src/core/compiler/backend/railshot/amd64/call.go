@@ -109,6 +109,11 @@ func (f *fn) callOp(r *wasm.Reader) error {
 		return fmt.Errorf("call: unknown function %d", idx)
 	}
 	imported := f.m.ImportedFuncCount()
+	if int(idx) < imported && f.customInstructions != nil {
+		if custom, ok := f.customInstructions[idx]; ok {
+			return f.emitCustomInstruction(custom, ft)
+		}
+	}
 	// Auto-inlining (WAGO_INLINE): splice a straight-line leaf callee's body here
 	// instead of emitting a call. The frame reserved the callee's locals past
 	// f.nLocals in this caller; the splice binds params, zeroes declared locals, and
@@ -155,6 +160,179 @@ func (f *fn) callOp(r *wasm.Reader) error {
 		}
 	}
 	return f.callInternal(int(idx)-imported, ft, hint)
+}
+
+func (f *fn) emitCustomInstruction(custom CustomInstruction, ft *wasm.CompType) error {
+	if custom.AMD64 != nil {
+		return f.emitPluginAMD64(custom.AMD64, custom.InputWidths, custom.ResultWidth, len(ft.Results))
+	}
+	if len(ft.Results) != 1 || !wasm.EqualValType(ft.Results[0], wasm.I32) {
+		return fmt.Errorf("custom instruction %d must return one i32", f.globalIdx)
+	}
+	// Snapshot physical arguments into stable frame slots. Recipes are expression
+	// DAGs, not a postfix-only macro: an input may be reused, reordered, or omitted.
+	// Keeping the original argument nodes on the operand stack reserves the slots
+	// until the result has been fully materialized.
+	var args []*elem
+	var argSlots []int
+	if !custom.StackCompatible {
+		roots := f.rootsBottomToTop()
+		if len(roots) < len(ft.Params) {
+			return fmt.Errorf("custom instruction %d has %d stack argument(s), want %d", f.globalIdx, len(roots), len(ft.Params))
+		}
+		args = append([]*elem(nil), roots[len(roots)-len(ft.Params):]...)
+		argSlots = make([]int, len(args))
+		for i, arg := range args {
+			f.materialize(arg)
+			f.spill(arg)
+			argSlots[i] = arg.st.slot
+		}
+	}
+
+	maskTop := func(width int32) {
+		if width >= 32 {
+			return
+		}
+		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64((uint64(1) << uint(width)) - 1)})
+		f.pushBinOp(opAnd, mtI32)
+	}
+	signExtendTop := func(width int32) {
+		if width >= 32 {
+			return
+		}
+		shift := int64(32 - width)
+		f.pushValue(storage{kind: stConst, typ: mtI32, cval: shift})
+		f.pushBinOp(opShl, mtI32)
+		f.pushValue(storage{kind: stConst, typ: mtI32, cval: shift})
+		f.pushBinOp(opShrS, mtI32)
+	}
+	var emit func(int) error
+	emit = func(id int) error {
+		if id < 0 || id >= len(custom.Nodes) {
+			return fmt.Errorf("custom instruction node %d out of range", id)
+		}
+		n := custom.Nodes[id]
+		switch n.Op {
+		case CustomInstructionInput:
+			if custom.StackCompatible {
+				return nil // physical parameters already occupy the operand stack
+			}
+			if n.Input < 0 || n.Input >= len(argSlots) {
+				return fmt.Errorf("custom instruction input %d out of range", n.Input)
+			}
+			f.pushValue(storage{kind: stSlot, typ: mtI32, slot: argSlots[n.Input]})
+			maskTop(n.Width)
+			return nil
+		case CustomInstructionConst:
+			f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(n.Const)})
+			return nil
+		case CustomInstructionNot:
+			if err := emit(n.A); err != nil {
+				return err
+			}
+			f.pushValue(storage{kind: stConst, typ: mtI32, cval: -1})
+			f.pushBinOp(opXor, mtI32)
+			maskTop(n.Width)
+		case CustomInstructionIsZero:
+			if err := emit(n.A); err != nil {
+				return err
+			}
+			f.pushUnOp(opEqz, mtI32)
+		case CustomInstructionSelect:
+			if err := emit(n.A); err != nil {
+				return err
+			}
+			if err := emit(n.B); err != nil {
+				return err
+			}
+			if err := emit(n.C); err != nil {
+				return err
+			}
+			f.emitSelect()
+			maskTop(n.Width)
+		default:
+			if err := emit(n.A); err != nil {
+				return err
+			}
+			operandWidth := custom.Nodes[n.A].Width
+			signed := n.Op == CustomInstructionShrS || n.Op == CustomInstructionLtS || n.Op == CustomInstructionLeS || n.Op == CustomInstructionGtS || n.Op == CustomInstructionGeS
+			if signed {
+				signExtendTop(operandWidth)
+			}
+			if err := emit(n.B); err != nil {
+				return err
+			}
+			if signed && n.Op != CustomInstructionShrS {
+				signExtendTop(operandWidth)
+			}
+			if n.Op == CustomInstructionShl || n.Op == CustomInstructionShrU || n.Op == CustomInstructionShrS {
+				if operandWidth < 32 {
+					f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(operandWidth)})
+					f.pushBinOp(opRemU, mtI32)
+				}
+			}
+			var op wOp
+			switch n.Op {
+			case CustomInstructionAdd:
+				op = opAdd
+			case CustomInstructionSub:
+				op = opSub
+			case CustomInstructionMul:
+				op = opMul
+			case CustomInstructionAnd:
+				op = opAnd
+			case CustomInstructionOr:
+				op = opOr
+			case CustomInstructionXor:
+				op = opXor
+			case CustomInstructionShl:
+				op = opShl
+			case CustomInstructionShrU:
+				op = opShrU
+			case CustomInstructionShrS:
+				op = opShrS
+			case CustomInstructionEq:
+				op = opEq
+			case CustomInstructionNe:
+				op = opNe
+			case CustomInstructionLtU:
+				op = opLtU
+			case CustomInstructionLtS:
+				op = opLtS
+			case CustomInstructionLeU:
+				op = opLeU
+			case CustomInstructionLeS:
+				op = opLeS
+			case CustomInstructionGtU:
+				op = opGtU
+			case CustomInstructionGtS:
+				op = opGtS
+			case CustomInstructionGeU:
+				op = opGeU
+			case CustomInstructionGeS:
+				op = opGeS
+			default:
+				return fmt.Errorf("unsupported custom instruction operation %d", n.Op)
+			}
+			f.pushBinOp(op, mtI32)
+			if !isCompare(op) {
+				maskTop(n.Width)
+			}
+		}
+		return nil
+	}
+	if err := emit(custom.Output); err != nil {
+		return err
+	}
+	if !custom.StackCompatible {
+		result := f.popValue()
+		for _, arg := range args {
+			f.erase(arg)
+		}
+		f.pushValue(result.st)
+	}
+	f.stats.call("custom")
+	return nil
 }
 
 // callHost lowers a call to a VOID imported (host) function. Native wasm code

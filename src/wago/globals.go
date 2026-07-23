@@ -6,6 +6,7 @@ import (
 	"math"
 	"sync"
 
+	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/src/core/runtime/gc"
@@ -621,8 +622,13 @@ type Compiled struct {
 	// no memo) gets, preserving its first-use validation.
 	validateMemo *validateMemo
 
-	codeCache *compiledCodeCache
+	codeCache          *compiledCodeCache
+	customInstructions map[uint32]railshot.CustomInstruction
+	requiresAVX2       bool
 }
+
+// RequiresAVX2 reports whether compilation selected an AVX2 plugin lowering.
+func (c *Compiled) RequiresAVX2() bool { return c != nil && c.requiresAVX2 }
 
 type validateMemo struct {
 	once sync.Once

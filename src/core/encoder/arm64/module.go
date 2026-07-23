@@ -9,4 +9,5 @@ type CompiledModule struct {
 	Code          []byte // all local functions concatenated, 16-byte aligned
 	Entry         []int  // Entry[localFuncIdx] = byte offset in Code
 	InternalEntry []int  // register-ABI internal entry offset (== Entry[i] when none)
+	RequiresAVX2  bool   // always false on arm64; keeps backend result metadata uniform
 }

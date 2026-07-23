@@ -2057,6 +2057,13 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
+	return f.emitFDSub(sub, r)
+}
+
+// emitFDSub lowers one already-decoded SIMD subopcode. Keeping immediate
+// decoding in the supplied reader lets managed compiler plugins reuse the
+// mature v128 lowering at wider internal widths when AVX2 has no direct form.
+func (f *fn) emitFDSub(sub uint32, r *wasm.Reader) error {
 	switch sub {
 	case 0: // v128.load
 		return f.v128Load(r)
