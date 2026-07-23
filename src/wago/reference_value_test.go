@@ -280,21 +280,25 @@ func TestHostCallWaitRegistrationLifecycle(t *testing.T) {
 
 func TestHostReferenceTranslationSlotAndTokenValidation(t *testing.T) {
 	in := &Instance{}
-	if err := in.translateHostReferenceArgs(nil, []ValType{ValV128}); err != nil {
+	if err := in.translateHostReferenceArgs(nil, []ValType{ValV128}, nil); err != nil {
 		t.Fatalf("v128 argument slots: %v", err)
 	}
-	if err := in.translateHostReferenceResults(nil, []ValType{ValV128}); err != nil {
+	if err := in.translateHostReferenceResults(nil, []ValType{ValV128}, nil); err != nil {
 		t.Fatalf("v128 result slots: %v", err)
 	}
+	funcrefType := []ValueTypeDescriptor{{
+		Kind: ValueTypeReference,
+		Ref:  ReferenceTypeDescriptor{Nullable: true, Heap: HeapTypeDescriptor{Abstract: AbstractHeapFunc}},
+	}}
 	for _, tc := range []struct {
 		name string
 		fn   func() error
 	}{
-		{"missing argument", func() error { return in.translateHostReferenceArgs(nil, []ValType{ValI32}) }},
-		{"invalid externref argument", func() error { return in.translateHostReferenceArgs([]uint64{1}, []ValType{ValExternRef}) }},
-		{"missing result", func() error { return in.translateHostReferenceResults(nil, []ValType{ValI64}) }},
-		{"invalid funcref result", func() error { return in.translateHostReferenceResults([]uint64{1}, []ValType{ValFuncRef}) }},
-		{"invalid externref result", func() error { return in.translateHostReferenceResults([]uint64{1}, []ValType{ValExternRef}) }},
+		{"missing argument", func() error { return in.translateHostReferenceArgs(nil, []ValType{ValI32}, nil) }},
+		{"invalid externref argument", func() error { return in.translateHostReferenceArgs([]uint64{1}, []ValType{ValExternRef}, nil) }},
+		{"missing result", func() error { return in.translateHostReferenceResults(nil, []ValType{ValI64}, nil) }},
+		{"invalid funcref result", func() error { return in.translateHostReferenceResults([]uint64{1}, []ValType{ValFuncRef}, funcrefType) }},
+		{"invalid externref result", func() error { return in.translateHostReferenceResults([]uint64{1}, []ValType{ValExternRef}, nil) }},
 	} {
 		if err := tc.fn(); err == nil {
 			t.Errorf("%s accepted invalid host reference values", tc.name)
@@ -309,7 +313,7 @@ func TestHostFuncRefDescriptorLookup(t *testing.T) {
 		c: &Compiled{
 			NumImports: 1,
 			Imports:    []string{key},
-			FuncTypeID: []uint32{1, 1},
+			FuncTypeID: []uint64{1, 1},
 		},
 		imports:      Imports{key: owner},
 		funcRefDescs: make([]byte, 3*coreruntime.FuncRefDescBytes),

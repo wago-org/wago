@@ -54,6 +54,60 @@ descriptor returned by `table.get` follows the same registered-range path.
 Existing tokens remain usable after logical close because their complete
 retention chain remains rooted until store teardown.
 
+Iteration 12 extends the same lifetime rule below the token surface. Each distinct
+`InstanceExport` producer used by a consumer is retained transactionally before
+link-time recompilation and released on consumer close or any failed instantiate
+path. A shifted typed `call_ref` therefore remains valid after producer logical
+close without depending on token issuance. The retained set is bounded by the
+consumer's finite function-import set and lives only in the existing lazy instance
+sidecar; ordinary `Instance` and 32-byte descriptor layouts do not grow.
+
+Iteration 13 gives one subset of those retained descriptors a bounded root tail
+context without changing their 32-byte representation. An int-register
+`InstanceExport` wrapper carries a cross-instance home-pointer tag distinct from
+the same-instance internal-entry tag. Iteration 15 adds a third tag for exact
+same-instance wrapper descriptors, so a typed global may tail-enter a local scalar
+wrapper without treating an owned host thunk at the same basedata address as local.
+Ordinary amd64 and arm64 indirect/reference calls mask all three tags before context
+comparison; public token canonicalization masks them only after descriptor/store
+ownership has been proved.
+
+At root `return_call_ref`, amd64 removes the current frame and adapter continuation
+and jumps to the admitted wrapper. A nested internal caller instead replaces the
+released callee frame with one fixed 32-byte record containing a trampoline, caller
+linmem, and two integer result slots. The wrapper returns through the trampoline,
+which restores caller memory/module context plus `RAX`/`RDX` before the ordinary
+continuation resumes. Iteration 15 proves both result slots, producer logical close,
+and 10,000 repeated cross-instance transfers. Iteration 18 makes the pinned official
+file gap-free at 51 commands / 5 modules / 35 assertions / 11 invalid modules by
+returning one canonical funcref descriptor in RAX; a focused public-token round trip
+proves that direct and tailed results retain the same function identity. Hosts reached
+through typed descriptors, untagged foreign descriptors, foreign float/general
+reference results, nulls, wrong keys, snapshots, public admission, and arm64 typed-tail
+execution remain explicit failures. Iteration 16's direct `return_call` host support
+is a separate static-import path through the existing bounded host bridge; it does
+not tag or admit host funcref descriptors. Iteration 19 adds another separate path for
+retained int-register `InstanceExport` direct imports. Link-time immutable wrapper/home
+addresses feed a dedicated four-word root/nested return record rather than any funcref
+or typed-tail scratch slot. Producer close order, million-step local continuation,
+10,000 repeated transfers, oversized-signature rejection, and recovery after a foreign
+trap are covered. Iteration 20 reuses the same fixed record for exactly
+`(i32, f64) -> f64`: arguments still marshal through the target wrapper bank and the
+nested trampoline restores the sole result slot into XMM0. Other float and oversized
+direct signatures remain gated. Iteration 17's
+indirect-tail work is also
+separate from public token ownership: finite per-table analysis proves only local,
+unexported, unmutated tables whose entries are same-module functions. Scalar staged
+tail modules may tag GP/XMM internal descriptors; wrapper-only mixed-result targets
+use the fixed basedata argument bank. Ordinary Release 1/2 float descriptors retain
+the wrapper path, and imported/mutable/exported/host-descriptor tables remain gated.
+`Instance`, basedata, and native descriptor sizes do not grow. Iteration 20's exact
+mixed-float direct cross-instance tail measured 61.37-63.30 ns/op at 0 B/op and 0
+allocations/op; Iteration 19's integer watchpoint was 60.97-61.67 ns/op.
+Iteration 18's staged reference-result tail measured 97.15-99.04 ns/op at zero
+allocations; retained typed cross-instance root/nested watchpoints remain 63.65-64.89
+ns/op and 75.82-78.51 ns/op, both 0 B/op and 0 allocations/op on the iteration-16 host.
+
 The store never dereferences public bits or an unvalidated `refSlot`. Corrupted
 canonical metadata, cross-runtime/private-store imports, and unowned host-import
 funcrefs remain fail-closed and issue no token. Local and imported/shared
@@ -156,7 +210,7 @@ while Runtime instances can consume its token; after instances and the Runtime
 close, the owner may close while the still-live global keeps the token entry until
 its own final close.
 
-Codec version 21 serializes only the global's structural type, mutability, import/
+Codec version 23 serializes only the global's structural type, mutability, import/
 export identity, and null/`ref.func`/imported-`global.get` initializer. Snapshots
 continue to reject reference globals. The runtime `Global`, its token,
 `HostFuncRef` owner, dispatch index, descriptor, thunk address, producer, and
@@ -358,7 +412,7 @@ with a same-size owner pointer and remains 40 bytes.
 Imported immutable `global.get` initializers copy the validated reference into a
 local 8-byte cell. Funcref copies preserve the canonical descriptor and true
 producer; externref copies preserve the generation-checked handle. No Go pointer
-enters mmap-backed storage. `.wago` codec version 21 persists the structural reference-global declaration and
+enters mmap-backed storage. `.wago` codec version 23 persists the structural reference-global declaration and
 initializer, while snapshots continue to reject reference-global state. No live
 handle, descriptor, producer identity, or store identity is serialized.
 
@@ -466,7 +520,7 @@ funcref retention remains unchanged and capacity-bounded. `elem.drop` now also
 works in modules with no table by installing only the bounded descriptor state it
 needs.
 
-Codec version 21 preserves every runtime-relevant table index/type/import/export/
+Codec version 23 preserves every runtime-relevant table index/type/import/export/
 limit and typed element mode/destination/null-or-`ref.func` payload. It records no
 table cell contents, token, descriptor, owner, or store identity. Snapshots
 continue to reject every table module. Inert unexported tables
@@ -550,11 +604,15 @@ instance's canonical descriptor only after code mapping; neither serialized nor
 public metadata contains the descriptor address. JIT `global.get` and
 `global.set` copy the internal 64-bit descriptor representation directly, so a
 non-null token accepted at `Invoke`, typed `Call`, or `SetGlobalValue` is resolved
-through the instance's exact reference store before it reaches the cell.
-`GlobalValue` performs the inverse checked translation and returns the stable
-token already owned by that store. The token entry retains the true producer's
-arena, code, and home context, so a global can continue returning the value after
-the producer's logical close.
+through the instance's exact reference store before it reaches the cell. For an
+indexed function reference, `Instance.SetGlobalValue`, `Global.SetValue`,
+`GlobalValue`, and `Global.GetValue` additionally compare the token/descriptor's
+full structural function type against the declaration and enforce nullability;
+the compact `ValFuncRef` ABI category is never sufficient. Failed type checks
+leave the cell unchanged. `GlobalValue` performs the inverse checked translation
+and returns the stable token already owned by that store. The token entry retains
+the true producer's arena, code, and home context, so a global can continue
+returning the value after the producer's logical close.
 
 The raw numeric `Instance.Global`/`SetGlobal` methods reject reference globals.
 An exported `*Global` returns zero from `Get` and rejects `Set` for a reference
@@ -567,7 +625,22 @@ owner and close-order model described above. A `ref.func` of an imported
 `InstanceExport` remains internally callable and keeps exact `refSlot`
 canonicalization against the true producer descriptor arena. Explicitly owned
 host-import descriptors and host-created funcref globals use the HostFuncRef/token
-model above. Raw unowned host descriptors still fail closed.
+model above. Raw unowned host descriptors still fail closed. If shared table or
+global storage retains a logically closed producer, every completed guest call
+that can mutate imported funcref storage reconciles the bounded owner roots after
+result tokenization. A successful final `table.set`/fill/copy/init/grow or
+`global.set` overwrite releases the producer and its physical resources; a
+trapping write leaves the descriptor and root intact. Host `Global.SetValue`
+performs the same reconciliation immediately. No container grows an unbounded
+history of overwritten producers.
+
+Iteration 9 temporary `testing.AllocsPerRun(1000, ...)` measurements reported zero
+allocations/run for matching indexed `Instance.SetGlobalValue` and
+`Global.SetValue`. Three 200 ms samples of ordinary imported-table invocation
+remained allocation-free: one imported table measured 63.77-64.38 ns/op and two
+imported tables measured 88.69-90.96 ns/op on the current host. These are current-
+host watchpoints, not before/after claims; root reconciliation is limited to
+modules that import funcref storage and scans only finite declared containers.
 
 On July 10, 2026, the pinned single-CPU null global set/get benchmark measured a
 21.49 ns/op median with 0 B/op and 0 allocs/op. Warmed Runtime instantiation of
@@ -604,6 +677,26 @@ above, and disabling the feature rejects those signatures explicitly. Externref
 and funcref host imports use the synchronous reflection-free slot ABI. Funcref
 callbacks see opaque store tokens and results are resolved before re-entry;
 non-null host descriptors require an explicit HostFuncRef owner.
+
+For staged Core 3.0 indexed references, ABI-category equality is no longer the
+last boundary check. The descriptor's canonical owner supplies the actual exact
+function type and containing recursive graph. Public `Call`/`Invoke` ingress,
+public result egress, and synchronous host argument/result translation require
+that type to subtype the declared indexed reference and reject null for non-null
+declarations. Invalid or foreign tokens keep the older invalid-token diagnostics;
+a valid token with the wrong indexed signature reports an exact structural type
+mismatch. These checks remain behind the disabled typed-function-reference
+product gate, but they prevent the staged path from treating two `ValFuncRef`
+slots as interchangeable.
+
+Runtime table descriptors still carry a 32-bit signature ID. For signatures that
+contain indexed references, the ID hashes the reachable structural graph,
+including recursive back-edges, subtype/descriptor metadata, fields, and nested
+function signatures; raw module type indexes are not included. Non-indexed
+signatures retain the previous ID algorithm. The hash is compile-time only and
+uses no process-global cache. As with the existing 32-bit signature scheme, this
+is a compact runtime discriminator rather than a cryptographic identity; exact
+public/storage checks continue to use full descriptors.
 
 ## Boundary guard performance
 
@@ -654,6 +747,14 @@ cross-instance-only host-log cost (8 B/op, 1 alloc/op); omitting the unused asyn
 host log removed it. The registry therefore adds no steady-state scalar Invoke,
 round-trip, compile, or warmed-instantiation allocation. Treat sub-nanosecond
 single-host timing differences as noise/watchpoints rather than final gates.
+
+A temporary July 15, 2026 staged indexed-reference measurement (test removed
+after capture) ran 1,000 calls per sample. Exact typed `Invoke` remained at
+0 allocations/run; high-level typed `Call` measured 3 allocations/run, matching
+its result/value API shape rather than adding an indexed-type lookup allocation.
+This is an allocation watchpoint, not a throughput comparison. The exact
+signature view aliases immutable compiled metadata, and canonical token/descriptor
+type lookup uses existing bounded store maps.
 
 On linux/amd64, `unsafe.Sizeof(Instance{})` remains 776 bytes versus 744 bytes at
 `e54f9556`. The shared-table lifetime object reuses the former 24-byte descriptor
@@ -889,11 +990,27 @@ and remains a noise watchpoint rather than evidence of a regression.
 ## Snapshots, inspection, and linked teardown
 
 Snapshot products share one fail-closed validator. `Capture`, snapshot marshal,
-`LoadSnapshot` and `Instantiate(*Snapshot)` reject
-every table and every reference global until a resolver/state format exists. This
-also rejects forged in-memory snapshots and raw snapshot blobs embedding a valid
-codec-v21 reference module; callers cannot bypass `Capture` to admit unsupported
-live state.
+`LoadSnapshot` and `Instantiate(*Snapshot)` reject every table and every reference
+global until a resolver/state format exists. Iteration 12 additionally rejects any
+artifact whose code or metadata requires typed function references or tail calls,
+before imports are retained, start runs, or memory/global state mutates. Typed/tail
+opcode requirements are now recorded in the full-width codec-v26 feature word;
+compile-only staged admission is kept in a non-serialized code-cache sidecar, so a
+public load of the same artifact remains fail-closed. Iteration 13 keeps that rule
+for the compile-only typed-tail gate and makes multi-memory snapshot errors shape-
+specific. Iteration 14 implements the owned-local side through snapshot version 3:
+each memory record carries a bounded page count and independently zero-tail-trimmed
+image; restore sizes every mapping first, copies every image, rebuilds every 16-byte
+native directory entry, and restores passive-data drop lengths with the same
+snapshot. Blob loading retains only the stored prefixes, so a malicious page count
+does not allocate a zero tail before module-limit validation. The sparse two-memory
+fixture is 198,339 bytes for 327,680 bytes of live pages; `Snapshot` grows from 160
+to 184 bytes and each `memorySnap` is 32 bytes. Imported/shared memories, function/
+global/table imports in a multi-memory snapshot, registered tenants, guard mode,
+tables, reference globals, and typed/tail artifacts still reject before attachment
+or mutation. Public load of a staged multi-memory snapshot still rejects its
+unsupported feature bits. Forged in-memory snapshots and raw blobs cannot bypass
+count, page, image-length, declared-limit, passive-state, or feature checks.
 
 `ModuleMetadata` now contains deterministic Wasm-index-ordered `Functions`,
 `Globals`, and `Tables`. Function entries carry exact parameter/result reference
@@ -902,7 +1019,7 @@ import, and exports. Table entries carry exact type, import, exports, declared
 minimum, and an optional exact declared maximum; implementation-only growth
 reserves are not reported as Wasm limits. Duplicate table imports remain separate
 index entries even when they use the same key. The same metadata is reconstructed
-from codec-v21-loaded modules. `Module.Imports` exposes the corresponding exact
+from codec-v26-loaded modules. `Module.Imports` exposes the corresponding exact
 function signatures, global types/mutability, and table types/limits.
 
 Cross-link teardown is locked as one ownership proof: a producer may be logically
@@ -924,38 +1041,84 @@ shapes. Scalar marshal/unmarshal medians are 382.3/1,535 ns/op at 336 B/2 and
 1,240 B/16; structural-reference marshal/unmarshal medians are 1,364/3,127 ns/op
 at 976 B/5 and 2,424 B/36. The inspection and pool checks are off ordinary
 compile/invoke/instantiate hot paths, and the local-table explicit-maximum bit
-occupies existing struct padding; all documented layouts remain unchanged.
+occupied existing struct padding in codec v20. These are historical v20 codec measurements; v21 added extended-expression
+metadata and v22 adds recursive/indexed type graphs, a deduplicated storage-type
+pool, and a full-width feature word. Version 23 added exact indexed-memory metadata, version 24 active-data memory
+indexes, and version 25 collision-resistant native signature keys. Re-benchmark
+v25 before using the old blob/allocation numbers for capacity planning.
+
+## Staged indexed-reference storage compatibility
+
+Typed function references remain publicly disabled, but the internal staged path
+now compiles and instantiates indexed global and table declarations without
+collapsing them to generic `funcref`. Every imported/exported reference owner
+retains its exact `ValueTypeDescriptor` and containing type graph. Compatibility
+uses a bounded cross-module coinductive comparison:
+
+- immutable global imports are covariant;
+- mutable global imports and tables are invariant;
+- element segment types are subtypes of their active destination table;
+- `ref.func` global/table/element initializers are checked against the declared
+  indexed destination type; and
+- null payloads are rejected for non-null segment types.
+
+Raw type-index equality is never used across modules. Structurally equivalent
+function graphs at different indexes link, while different signatures with the
+same `ValFuncRef` ABI category fail before storage is shared. The comparison map
+is compile/instantiate-time only and bounded by the reachable product of the two
+finite type graphs. Iteration 10 executes the same shifted indexed type through
+`table.get/set/grow/fill/copy/init`, imported and re-exported aliases, producer
+replacement, close order, and trapping writes. A local table owner now reconciles
+its exported handle after invocation, so overwriting the final descriptor of a
+closed consumer releases that consumer; a trapping write preserves descriptor and
+root. Runtime table entries and global cells retain their existing
+32-byte/8-byte representations. Current measurements report `Global=40`,
+`globalOwner=112`, `Table=64`, and `tableOwner=104` bytes; a staged local typed-table
+instantiate/close fixture measured 5 allocations per run. Snapshots still
+reject every table/reference-global module.
 
 ## `.wago` compatibility
 
-Compiled-module codec version 21 keeps WebAssembly structural type codes `0x70`
-(`funcref`) and `0x6f` (`externref`) and records an exact byte-sized mask of the
-optional core features used by generated code and metadata. Version 20 and older
-blobs are rejected by the version-21 loader, and unknown or structurally missing feature bits
-fail closed. SIMD blobs additionally reject on hosts without the documented CPU
-baseline.
+Compiled-module codec version 26 stores flattened recursive type definitions,
+exact reference nullability/exactness/heap identity, declared function type indexes,
+a deduplicated global/table/element value-type pool, exact indexed memory/data/table-
+address metadata, the direct memory-0 execution cache, collision-resistant 64-bit
+native signature keys, and the full optional feature mask. Version 25 and older blobs are
+rejected by the version-26 loader because the table32/table64 address form is now
+explicit for every persisted table; unknown, truncated, out-of-range,
+ABI-inconsistent, or structurally missing feature metadata fails closed. SIMD
+blobs additionally reject on hosts without the documented CPU baseline.
 
-Version 21 serializes reference globals as structure only: exact import/type/
-mutability/export metadata plus literal null, imported immutable `global.get`, or
-structural `ref.func` initializers. It serializes all compiled tables in Wasm index
-order with exact element type, import key/limits or local runtime size/capacity,
-the local declaration's explicit-maximum bit, initializer, and named exports. Active and element-state metadata preserve exact
-reference type, mode, destination table, offset, and explicit null/`ref.func`
-payloads. Loaded modules allocate fresh cells, descriptors, and typed table
-storage, and focused tests execute reference globals, two funcref tables,
-nonzero-table `call_indirect`, exact table exports, and externref table null round
-trips after a codec load.
+Codec v26 serializes reference globals as structure only: exact import/type/
+mutability/export metadata plus literal null, earlier immutable `global.get`, or
+structural `ref.func` initializers. It also records the exact address form of every
+table declaration/import. It retains validated scalar extended-expression
+programs for numeric globals and active offsets, and serializes all compiled tables
+in Wasm index order with exact element type, import key/limits or local runtime
+size/capacity, the local declaration's explicit-maximum bit, initializer, and named
+exports. Active and element-state metadata preserve exact reference type, mode,
+destination table, offset, and explicit null/`ref.func` payloads. Indexed and
+non-null function-reference metadata can round-trip internally, but public load
+still rejects the typed-reference feature bit until execution/lifecycle support is
+complete. Loaded WebAssembly 2.0 modules allocate fresh cells, descriptors, and
+typed table storage, and focused tests execute reference globals, two funcref
+tables, nonzero-table `call_indirect`, exact table exports, and externref table
+null round trips after a codec load.
 
 The codec records whether imported calls use the binding-independent dispatch
 ABI, but never writes a live `FuncRef`/`ExternRef` token, descriptor address,
 producer pointer, `HostFuncRef` owner or dispatch index, thunk address, concrete
 import target, table cell contents, or reference-store identity. Nonzero reference
-literal bits are rejected before marshal/load. Function-import modules are now
+literal bits are rejected before marshal/load. Function-import modules are
 serializable before binding; instantiation creates fresh dispatch cells and host
 thunks in the target runtime. Decoding uses a fresh `Compiled` value, so reused
-receivers cannot retain stale tables, exports, globals, passive state, or runtime caches.
-Snapshots remain deliberately stricter: every table and every reference global is
-rejected until an application-provided resolver/state format exists.
+receivers cannot retain stale tables, exports, globals, passive state, or runtime
+caches. Snapshots remain deliberately stricter: every table, every reference global,
+every imported/shared/registered multi-memory shape, and every typed-reference/
+tail-call artifact is rejected until a complete state/resolver format exists.
+Owned local multiple-memory modules without function/global/table imports use the
+version-3 per-memory state format internally; public multi-memory admission remains
+disabled.
 
 ### Imported-call/context cleanup measurements (July 22, 2026)
 
@@ -983,7 +1146,8 @@ direct-host timing remained 11.1–11.3 us/op with unchanged Go bytes/allocation
 A 1,600-function imported-call compile on one pinned CPU measured 48.5–51.3 ms,
 4,016,276–4,016,286 B/op, and 15,996 allocations across worker policies.
 
-Pinned single-CPU three-second medians on July 10, 2026 are 483.8 ns/op and
+
+Historical codec-v20 single-CPU three-second medians on July 10, 2026 were 483.8 ns/op and
 1,724 ns/op for scalar marshal/unmarshal (336 B/op with 2 allocations and
 1,240 B/op with 16 allocations). The structural reference fixture measures
 1,478 ns/op marshal at 976 B/op and 5 allocations, and 4,103 ns/op unmarshal at
@@ -997,6 +1161,31 @@ allocations for compile, zero allocations for Invoke paths, and 1,224 B/op plus
 source, link-policy fields, and host-link caches, `Compiled` is 584 bytes;
 the broad instantiation timing movement without allocation/layout change remains
 a scheduler/frequency watchpoint rather than an attributed codec regression.
+
+Iteration-6 codec-v22 layout measurements historically superseded those sizes: `Compiled` is 696 bytes, `FuncSig` 56, `GlobalDef` 88,
+`GlobalImportDef` 48, `tableDef` 48, `ElemInit` 80, and `HostFuncRef` 120. Current
+fixture blobs are 193 bytes for a scalar add module (one defined type, no pooled
+storage type), 659 bytes for a reference-global module (two definitions, one
+pooled type), and 1,218 bytes for a two-table module (one definition, one pooled
+type). These are layout/blob measurements, not throughput results. An iteration-7
+200 ms, three-sample codec watchpoint on the current linux/amd64 host measured
+scalar marshal at 840-854 ns/op (528 B, 14 allocs), structural-reference marshal
+at 2.11-2.20 us/op (1,344 B, 21 allocs), scalar unmarshal at 1.73-1.81 us/op
+(1,601-1,602 B, 27 allocs), and structural-reference unmarshal at 4.11-4.22 us/op
+(3,164-3,165 B, 52 allocs). These are historical v22 watchpoints, not a
+before/after throughput claim.
+
+Iteration 10 moves the current codec to v23. `Compiled` is 712 bytes and
+`Instance` is 792 bytes on the measured linux/amd64 build. The compiled memory
+sidecar is 40 bytes, one `memoryDef` is 40 bytes, and the instance sidecar is 48
+bytes but remains nil for ordinary single-memory instances. A two-memory native
+directory consumes 32 arena bytes (16 per memory) and memory 0 keeps its direct
+RBX/basedata cache. Three 200 ms samples measured scalar marshal at
+1.027-1.061 us/op (528 B, 14 allocations), structural marshal at
+2.397-2.443 us/op (1,344 B, 21 allocations), scalar unmarshal at
+1.982-2.115 us/op (1,762 B, 29 allocations), and structural unmarshal at
+4.428-4.478 us/op (3,325 B, 54 allocations). These are current-host v23
+watchpoints, not an attributed regression claim.
 
 The focused commands are:
 
@@ -1039,10 +1228,13 @@ or compile-latency regression in that watchpoint.
 The official-suite harness encodes null references as token zero. It interns
 WABT `ref.extern N` arguments in the target instance's reference store and
 checks externref results by resolving the returned token to the same fixture
-identity. WABT's value-less non-null funcref expectation matches any nonzero
-opaque token, while null still requires token zero. Direct `get` actions execute
-externref and funcref globals through typed access. No reference result/global
-sites remain classified as harness gaps.
+identity. WABT encodes the text pattern `(ref.func)` as funcref value `"0"`; that
+is a non-null wildcard, not Wasm function index zero, so it matches any nonzero
+opaque token. Positive indexed patterns, if emitted, use
+`Instance.FuncRefMatchesFunction`, which compares canonical descriptor identity
+rather than token bits. Direct `get` actions execute externref and funcref globals
+through typed access. No reference result/global sites remain classified as
+harness gaps.
 
 With WABT 1.0.36 available on July 10, 2026, the Release 2 execution harness
 honors named modules, `register`, named actions, and `assert_uninstantiable` with

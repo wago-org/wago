@@ -165,12 +165,18 @@ type globalImportAttachments struct {
 
 func (a *globalImportAttachments) attach(global *Global, store *referenceStore) error {
 	if global == nil {
-		return fmt.Errorf("reference global is nil")
+		return fmt.Errorf("global is nil")
+	}
+	validate := global.validateNumericImport
+	attach := global.attachNumericImporter
+	if isReferenceValType(global.Type) {
+		validate = func() error { return global.validateReferenceImport(store) }
+		attach = func() error { return global.attachReferenceImporter(store) }
 	}
 	if a.set.contains(global) {
-		return global.validateReferenceImport(store)
+		return validate()
 	}
-	if err := global.attachReferenceImporter(store); err != nil {
+	if err := attach(); err != nil {
 		return err
 	}
 	a.set.push(global)
@@ -233,11 +239,8 @@ func detachImportedGlobals(in *Instance) {
 	}
 	var seen importDedup[*Global]
 	for _, imp := range in.c.GlobalImports {
-		if !isReferenceValType(imp.Type) {
-			continue
-		}
 		provided, ok := in.imports.global(imp.Module + "." + imp.Name)
-		if !ok || provided.Global == nil {
+		if !ok || provided.Global == nil || (!isReferenceValType(imp.Type) && provided.Global.owner == nil) {
 			continue
 		}
 		if seen.add(provided.Global) && !in.ownsTransferredGlobalAttachment(provided.Global) {
@@ -275,14 +278,14 @@ type tableImportAttachments struct {
 	set importDedup[*Table]
 }
 
-func (a *tableImportAttachments) attach(table *Table, elementType ValType, store *referenceStore) error {
-	if err := table.validateImport(elementType, store); err != nil {
+func (a *tableImportAttachments) attach(table *Table, elementType ValType, exact ValueTypeDescriptor, types []DefinedTypeDescriptor, store *referenceStore, addr64 bool) error {
+	if err := table.validateImport(elementType, exact, types, store, addr64); err != nil {
 		return err
 	}
 	if a.set.contains(table) {
 		return nil
 	}
-	if err := table.attachImporter(elementType, store); err != nil {
+	if err := table.attachImporter(elementType, exact, types, store, addr64); err != nil {
 		return err
 	}
 	a.set.push(table)
@@ -292,6 +295,32 @@ func (a *tableImportAttachments) attach(table *Table, elementType ValType, store
 func (a *tableImportAttachments) detachAll() {
 	a.set.each((*Table).detachImporter)
 	a.set.reset()
+}
+
+func (c *Compiled) preflightImportBindings(imports Imports) error {
+	// Function bindings keep their signature-specific validation in
+	// validateImportBindings. Storage imports are otherwise resolved in separate
+	// setup phases, so verify their presence before attaching or mutating owners.
+	for i := range c.GlobalImports {
+		imp := c.GlobalImports[i]
+		key := imp.Module + "." + imp.Name
+		if _, ok := imports[key]; !ok {
+			return fmt.Errorf("missing imported global %q", key)
+		}
+	}
+	for i := 0; i < c.memoryImportCount(); i++ {
+		def, _ := c.memoryImportAt(i)
+		if _, ok := imports[def.ImportKey]; !ok {
+			return fmt.Errorf("missing imported memory %q", def.ImportKey)
+		}
+	}
+	for i := 0; i < c.tableImportCount(); i++ {
+		def, _ := c.tableImportAt(i)
+		if _, ok := imports[def.Key]; !ok {
+			return fmt.Errorf("missing imported table %q", def.Key)
+		}
+	}
+	return nil
 }
 
 func (in *Instance) transferImportedTableAttachment(table *Table) {
@@ -358,6 +387,60 @@ func retainProducerRootsInImportedTables(in *Instance) bool {
 	return retained
 }
 
+func (in *Instance) importsFuncrefStorage() bool {
+	if in == nil || in.c == nil {
+		return false
+	}
+	for _, imp := range in.c.GlobalImports {
+		if imp.Type == ValFuncRef {
+			return true
+		}
+	}
+	for tableIndex := 0; tableIndex < in.c.tableImportCount(); tableIndex++ {
+		def, _ := in.c.tableImportAt(tableIndex)
+		if def.Type == ValFuncRef {
+			return true
+		}
+	}
+	return false
+}
+
+// reconcileFuncrefRoots drops producer roots after a completed guest invocation
+// overwrites the last descriptor held by an imported table/global or by one of
+// this instance's exported local tables. The scans are bounded by the declared
+// containers' capacities and run only over owners that currently retain closed
+// producers.
+func (in *Instance) reconcileFuncrefRoots() {
+	if in == nil || in.c == nil {
+		return
+	}
+	var globals importDedup[*Global]
+	for _, imp := range in.c.GlobalImports {
+		if imp.Type != ValFuncRef {
+			continue
+		}
+		provided, ok := in.imports.global(imp.Module + "." + imp.Name)
+		if ok && provided.Global != nil && globals.add(provided.Global) {
+			provided.Global.pruneRetainedInstances()
+		}
+	}
+	var tables importDedup[*Table]
+	for tableIndex := 0; tableIndex < in.c.tableImportCount(); tableIndex++ {
+		def, _ := in.c.tableImportAt(tableIndex)
+		table, ok := in.imports.table(def.Key)
+		if ok && table != nil && tables.add(table) {
+			table.pruneRetainedInstances()
+		}
+	}
+	in.lifeMu.Lock()
+	for table := in.table; table != nil; table = table.next {
+		if table.owner != nil && table.owner.elementType == ValFuncRef && tables.add(table) {
+			table.pruneRetainedInstances()
+		}
+	}
+	in.lifeMu.Unlock()
+}
+
 func (in *Instance) tableDescriptor(index int) []byte {
 	if in == nil || in.c == nil || index < 0 || index >= in.c.tableCount() {
 		return nil
@@ -384,11 +467,7 @@ func (in *Instance) tableDescriptor(index int) []byte {
 	if descPtr == 0 {
 		return nil
 	}
-	def := in.c.tableDef(index)
-	capacity := def.Max
-	if capacity == 0 {
-		capacity = def.Size
-	}
+	capacity := in.c.tableRuntimeCapacity(index)
 	return unsafe.Slice((*byte)(offHeapPtr(descPtr)), 8+capacity*in.c.tableEntryBytes(index))
 }
 

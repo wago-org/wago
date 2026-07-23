@@ -6,6 +6,28 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
+func supportPassWithFacts(t *testing.T, m *wasm.Module, feat Features) supportPass {
+	t.Helper()
+	facts, err := AnalyzeModuleFacts(m)
+	if err != nil {
+		t.Fatalf("analyze module facts: %v", err)
+	}
+	return supportPass{m: m, feat: feat, facts: facts}
+}
+
+func singleTableGrowFact(t *testing.T, body []byte, instrs []wasm.Instruction) bool {
+	t.Helper()
+	m := &wasm.Module{
+		Tables: []wasm.Table{{}},
+		Code:   []wasm.Func{{BodyBytes: body, Body: wasm.Expr{Instrs: instrs}}},
+	}
+	facts, err := AnalyzeModuleFacts(m)
+	if err != nil {
+		t.Fatalf("analyze table.grow facts: %v", err)
+	}
+	return facts.TableGrowUsed[0]
+}
+
 func TestInstructionFamilyClassification(t *testing.T) {
 	for _, k := range []wasm.InstrKind{wasm.InstrRefNull, wasm.InstrCallRef, wasm.InstrI31GetU} {
 		if !isReferenceInstruction(k) {
@@ -106,6 +128,20 @@ func TestReferenceAndTableMetadataScanners(t *testing.T) {
 	}
 }
 
+func TestSIMDByteScannerSkipsNonSIMDImmediatesSemantically(t *testing.T) {
+	v128Const := append([]byte{0xfd, 0x0c}, make([]byte, 16)...)
+	v128Const = append(v128Const, 0x0b)
+	if !exprBytesRequireSIMD(append([]byte{0x10, 0x00}, v128Const...)) {
+		t.Fatal("SIMD after call immediate was missed")
+	}
+	if !exprBytesRequireSIMD(append([]byte{0x1c, 0x01, 0x63, 0x70}, v128Const...)) {
+		t.Fatal("SIMD after typed-reference select immediate was missed")
+	}
+	if exprBytesRequireSIMD([]byte{0x41, 0xfd, 0x00, 0x0b}) {
+		t.Fatal("SIMD byte inside i32.const immediate was misclassified")
+	}
+}
+
 func TestModuleRequiresSIMDScansEveryModuleComponent(t *testing.T) {
 	funcType := wasm.RecType{SubTypes: []wasm.SubType{{Comp: wasm.CompType{Kind: wasm.CompFunc, Params: []wasm.ValType{wasm.V128}}}}}
 	fd := []byte{0xfd, 0x00, 0x0b}
@@ -136,7 +172,8 @@ func TestModuleRequiresSIMDScansEveryModuleComponent(t *testing.T) {
 }
 
 func TestRuntimeFootprintSupportValidation(t *testing.T) {
-	if err := (supportPass{m: &wasm.Module{}}).runtimeFootprint(); err != nil {
+	empty := &wasm.Module{}
+	if err := supportPassWithFacts(t, empty, Features{}).runtimeFootprint(); err != nil {
 		t.Fatalf("empty module footprint: %v", err)
 	}
 	funcRef := wasm.AbsRef(wasm.HeapFunc)
@@ -147,17 +184,18 @@ func TestRuntimeFootprintSupportValidation(t *testing.T) {
 		Elements:  []wasm.Elem{{Mode: wasm.ElemMode{Kind: wasm.ElemPassive}, Kind: wasm.ElemKind{Kind: wasm.ElemFuncs, Funcs: []wasm.FuncIdx{0, 1}}}},
 		Data:      []wasm.Data{{Mode: wasm.DataMode{Kind: wasm.DataPassive}}},
 	}
-	if err := (supportPass{m: m}).runtimeFootprint(); err != nil {
+	if err := supportPassWithFacts(t, m, Features{}).runtimeFootprint(); err != nil {
 		t.Fatalf("table/passive footprint: %v", err)
 	}
 	overflow := uint64(maxInt()) + 1
-	if err := (supportPass{m: &wasm.Module{Tables: []wasm.Table{{Type: wasm.TableType{Ref: funcRef, Limits: wasm.Limits{Min: overflow}}}}}}).runtimeFootprint(); err == nil {
+	overflowModule := &wasm.Module{Tables: []wasm.Table{{Type: wasm.TableType{Ref: funcRef, Limits: wasm.Limits{Min: overflow}}}}}
+	if err := supportPassWithFacts(t, overflowModule, Features{}).runtimeFootprint(); err == nil {
 		t.Fatal("overflowing table footprint accepted")
 	}
 }
 
 func TestExpressionSupportASTAndByteForms(t *testing.T) {
-	p := supportPass{feat: AllFeatures()}
+	p := supportPass{m: &wasm.Module{}, feat: AllFeatures()}
 	if err := p.expr(wasm.Expr{Instrs: []wasm.Instruction{{Kind: wasm.InstrI32Add}, {Kind: wasm.InstrIf}}}, "ast"); err != nil {
 		t.Fatalf("supported AST expression: %v", err)
 	}
@@ -235,8 +273,10 @@ func TestSupportPresentationAndSIMDByteHelpers(t *testing.T) {
 	if _, ok := blockTypeBytesRequireSIMD(wasm.NewReader(nil)); ok {
 		t.Fatal("truncated block type accepted")
 	}
-	if !bodyBytesUseTableGrow([]byte{0xfc, 0x0f, 0x00, 0x0b}) || bodyBytesUseTableGrow([]byte{0x0b}) || !bodyBytesUseTableGrow([]byte{0xff}) {
-		t.Fatal("table.grow byte scanner changed")
+	if !singleTableGrowFact(t, []byte{0xfc, 0x0f, 0x00, 0x0b}, nil) ||
+		singleTableGrowFact(t, []byte{0x0b}, nil) ||
+		!singleTableGrowFact(t, []byte{0xff}, nil) {
+		t.Fatal("table.grow module facts changed")
 	}
 	for _, tc := range []struct {
 		name string
@@ -332,13 +372,15 @@ func TestExportSupportValidation(t *testing.T) {
 }
 
 func TestConstantExpressionSupportForms(t *testing.T) {
-	all := supportPass{feat: AllFeatures()}
+	all := supportPass{m: &wasm.Module{}, feat: AllFeatures()}
 	v128 := append([]byte{0xfd, 0x0c}, make([]byte, 16)...)
 	v128 = append(v128, 0x0b)
 	for _, body := range [][]byte{
 		{0x23, 0x00, 0x0b},
+		{0x41, 0x00, 0x41, 0x00, 0x6a, 0x0b},
 		{0x41, 0x00, 0x0b},
 		{0x42, 0x00, 0x0b},
+		{0x41, 0x00, 0x41, 0x00, 0x6a, 0x0b},
 		{0x43, 0, 0, 0, 0, 0x0b},
 		{0x44, 0, 0, 0, 0, 0, 0, 0, 0, 0x0b},
 		{0xd0, 0x70, 0x0b},
@@ -358,8 +400,10 @@ func TestConstantExpressionSupportForms(t *testing.T) {
 		{Kind: wasm.InstrF32Const},
 		{Kind: wasm.InstrF64Const},
 		{Kind: wasm.InstrGlobalGet},
+		{Kind: wasm.InstrI32Add},
 		{Kind: wasm.InstrRefFunc},
 		{Kind: wasm.InstrV128Const},
+		{Kind: wasm.InstrI32Add},
 	} {
 		if err := all.constExpr(wasm.Expr{Instrs: []wasm.Instruction{in}}, "constant"); err != nil {
 			t.Fatalf("valid instruction constant expression %s: %v", in.Kind, err)
@@ -370,14 +414,12 @@ func TestConstantExpressionSupportForms(t *testing.T) {
 		pass supportPass
 		expr wasm.Expr
 	}{
-		{"v128 disabled", supportPass{feat: Features{}}, wasm.Expr{BodyBytes: v128}},
-		{"ref null disabled", supportPass{feat: Features{}}, wasm.Expr{BodyBytes: []byte{0xd0, 0x70, 0x0b}}},
-		{"ref func disabled", supportPass{feat: Features{}}, wasm.Expr{BodyBytes: []byte{0xd2, 0x00, 0x0b}}},
+		{"v128 disabled", supportPass{m: &wasm.Module{}, feat: Features{}}, wasm.Expr{BodyBytes: v128}},
+		{"ref null disabled", supportPass{m: &wasm.Module{}, feat: Features{}}, wasm.Expr{BodyBytes: []byte{0xd0, 0x70, 0x0b}}},
+		{"ref func disabled", supportPass{m: &wasm.Module{}, feat: Features{}}, wasm.Expr{BodyBytes: []byte{0xd2, 0x00, 0x0b}}},
 		{"invalid ref heap", all, wasm.Expr{BodyBytes: []byte{0xd0, 0x7f, 0x0b}}},
 		{"unknown opcode", all, wasm.Expr{BodyBytes: []byte{0x01, 0x0b}}},
-		{"multi instruction", all, wasm.Expr{BodyBytes: []byte{0x41, 0x00, 0x41, 0x00, 0x0b}}},
-		{"instruction form disabled", supportPass{feat: Features{}}, wasm.Expr{Instrs: []wasm.Instruction{{Kind: wasm.InstrV128Const}}}},
-		{"instruction form invalid", all, wasm.Expr{Instrs: []wasm.Instruction{{Kind: wasm.InstrI32Add}}}},
+		{"instruction form disabled", supportPass{m: &wasm.Module{}, feat: Features{}}, wasm.Expr{Instrs: []wasm.Instruction{{Kind: wasm.InstrV128Const}}}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if err := tc.pass.constExpr(tc.expr, "constant"); err == nil {
@@ -466,7 +508,7 @@ func TestTableSupportValidation(t *testing.T) {
 }
 
 func TestProgrammaticInstructionSupportGates(t *testing.T) {
-	full := supportPass{feat: AllFeatures()}
+	full := supportPass{m: &wasm.Module{}, feat: AllFeatures()}
 	for _, in := range []wasm.Instruction{
 		{Kind: wasm.InstrI32Add},
 		{Kind: wasm.InstrI32Extend8S},
@@ -479,7 +521,7 @@ func TestProgrammaticInstructionSupportGates(t *testing.T) {
 		}
 	}
 
-	disabled := supportPass{}
+	disabled := supportPass{m: &wasm.Module{}}
 	for _, k := range []wasm.InstrKind{
 		wasm.InstrI32Extend8S,
 		wasm.InstrMemoryCopy,
@@ -510,12 +552,12 @@ func TestProgrammaticInstructionSupportGates(t *testing.T) {
 }
 
 func TestProgrammaticTableGrowAndConstExpressionSupport(t *testing.T) {
-	if instrsUseTableGrow([]wasm.Instruction{{Kind: wasm.InstrI32Add}}) ||
-		!instrsUseTableGrow([]wasm.Instruction{{Kind: wasm.InstrTableGrow}}) {
-		t.Fatal("programmatic table.grow scanner changed")
+	if singleTableGrowFact(t, nil, []wasm.Instruction{{Kind: wasm.InstrI32Add}}) ||
+		!singleTableGrowFact(t, nil, []wasm.Instruction{{Kind: wasm.InstrTableGrow}}) {
+		t.Fatal("programmatic table.grow module facts changed")
 	}
 
-	full := supportPass{feat: AllFeatures()}
+	full := supportPass{m: &wasm.Module{}, feat: AllFeatures()}
 	for _, body := range [][]byte{
 		{0x23, 0x00, 0x0b}, // global.get 0
 		{0x41, 0x00, 0x0b}, // i32.const 0
@@ -539,9 +581,14 @@ func TestProgrammaticTableGrowAndConstExpressionSupport(t *testing.T) {
 		{0xd2, 0x00, 0x0b},
 		append([]byte{0xfd, 0x0c}, append(make([]byte, 16), 0x0b)...),
 	} {
-		if err := (supportPass{}).constExpr(wasm.Expr{BodyBytes: body}, "test"); err == nil {
+		if err := (supportPass{m: &wasm.Module{}}).constExpr(wasm.Expr{BodyBytes: body}, "test"); err == nil {
 			t.Fatalf("disabled-feature const expression %x accepted", body)
 		}
+	}
+	if err := (supportPass{m: &wasm.Module{}}).constExpr(wasm.Expr{BodyBytes: []byte{0x41, 0x00, 0x6a, 0x0b}}, "global 2 initializer"); err == nil {
+		t.Fatal("disabled extended const expression accepted")
+	} else if got, want := err.Error(), "unsupported const expression integer add/sub/mul (extended-const-expressions disabled) at global 2 initializer instruction 1"; got != want {
+		t.Fatalf("const expression diagnostic = %q, want %q", got, want)
 	}
 	for _, body := range [][]byte{
 		{0xd0, 0x7f, 0x0b},
@@ -552,6 +599,24 @@ func TestProgrammaticTableGrowAndConstExpressionSupport(t *testing.T) {
 		if err := full.constExpr(wasm.Expr{BodyBytes: body}, "test"); err == nil {
 			t.Fatalf("invalid const expression %x accepted", body)
 		}
+	}
+}
+
+func TestFunctionAdmissionDiagnostic(t *testing.T) {
+	p := supportPass{m: &wasm.Module{}}
+	if err := p.funcExprBytes([]byte{0xd0, 0x70, 0x0b}, 7); err == nil {
+		t.Fatal("ref.null accepted without reference types")
+	} else if got, want := err.Error(), "unsupported reference instruction RefNull at function 7 instruction 0"; got != want {
+		t.Fatalf("function diagnostic = %q, want %q", got, want)
+	}
+}
+
+func TestDataAdmissionDiagnostic(t *testing.T) {
+	p := supportPass{m: &wasm.Module{Data: []wasm.Data{{Mode: wasm.DataMode{Kind: wasm.DataActive, Mem: 1}}}}}
+	if err := p.data(); err == nil {
+		t.Fatal("multi-memory data segment accepted without multi-memory")
+	} else if got, want := err.Error(), "unsupported data memory index 1 at data 0"; got != want {
+		t.Fatalf("data diagnostic = %q, want %q", got, want)
 	}
 }
 
@@ -571,7 +636,7 @@ func TestValueAndGlobalTypeSupportHelpers(t *testing.T) {
 	if err := base.valType(wasm.V128, "test"); err == nil || base.supportedValType(wasm.V128) {
 		t.Fatal("SIMD type accepted without SIMD")
 	}
-	full := supportPass{feat: AllFeatures()}
+	full := supportPass{m: &wasm.Module{}, feat: AllFeatures()}
 	for _, vt := range []wasm.ValType{wasm.V128, wasm.FuncRef, wasm.ExternRef} {
 		if err := full.valType(vt, "test"); err != nil {
 			t.Fatalf("enabled value type %s rejected: %v", vt, err)

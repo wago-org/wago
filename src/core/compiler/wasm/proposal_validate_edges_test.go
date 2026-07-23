@@ -18,8 +18,10 @@ func refToType(idx uint32, nullable bool) ValType {
 func descriptorModule(body ...Instruction) *Module {
 	return &Module{
 		Types: []RecType{
-			structType(nil, TypeMetadata{Descriptor: ptr(TypeIdx{Index: 1})}),
-			structType(nil, TypeMetadata{Describes: ptr(TypeIdx{Index: 0})}),
+			{SubTypes: []SubType{
+				{Final: true, Metadata: TypeMetadata{Descriptor: ptr(TypeIdx{Index: 1, Rec: true})}, Comp: CompType{Kind: CompStruct}},
+				{Final: true, Metadata: TypeMetadata{Describes: ptr(TypeIdx{Index: 0, Rec: true})}, Comp: CompType{Kind: CompStruct}},
+			}},
 			ft(nil, nil),
 		},
 		FuncTypes: []TypeIdx{{Index: 2}},
@@ -205,6 +207,25 @@ func TestTypecheckSIMDLaneBounds(t *testing.T) {
 			expectValidateErr(t, m, ErrTypeMismatch)
 		})
 	}
+}
+
+func TestValidateThrowAndTryTableReachability(t *testing.T) {
+	m := modWithFunc(nil, nil, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrThrow, Index: 0})
+	m.Types = []RecType{ft([]ValType{I32}, nil), ft(nil, nil)}
+	m.Tags = []TagType{{Type: TypeIdx{Index: 0}}}
+	m.FuncTypes = []TypeIdx{{Index: 1}}
+	if err := ValidateModule(m); err != nil {
+		t.Fatalf("ValidateModule throw: %v", err)
+	}
+
+	bad := modWithFunc(nil, nil, Instruction{Kind: InstrThrow, Index: 0})
+	bad.Types = []RecType{ft([]ValType{I32}, nil), ft(nil, nil)}
+	bad.Tags = []TagType{{Type: TypeIdx{Index: 0}}}
+	bad.FuncTypes = []TypeIdx{{Index: 1}}
+	expectValidateErr(t, bad, ErrTypeMismatch)
+
+	unknown := modWithFunc(nil, nil, Instruction{Kind: InstrThrow, Index: 0})
+	expectValidateErr(t, unknown, ErrUnknownTag)
 }
 
 func TestTypecheckNegativeControlTailAndCast(t *testing.T) {

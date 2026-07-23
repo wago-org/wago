@@ -2,6 +2,8 @@
 
 package amd64
 
+import "github.com/wago-org/wago/src/core/runtime"
+
 // On-the-fly register allocator — the core of WARP's speed. Values (locals,
 // temporaries, deferred results) live in registers over the whole general-purpose
 // file and are spilled to frame slots only when the allocator runs out. Ported
@@ -180,6 +182,14 @@ func (f *fn) materialize(e *elem) Reg {
 	case stConst:
 		r := f.allocReg(0)
 		f.loadConst(r, e.st)
+		f.occupy(e, r)
+		return r
+	case stFuncRef:
+		r := f.allocReg(0)
+		f.a.Load64(r, RBX, -int32(offFuncRefDescPtr))
+		f.a.TestSelf(r, true)
+		f.trapIf(condE, trapIndirectOOB)
+		f.a.LeaDisp(r, r, int32((uint32(e.st.idx)+1)*runtime.TableEntryBytes))
 		f.occupy(e, r)
 		return r
 	case stSlot:

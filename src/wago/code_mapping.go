@@ -9,11 +9,18 @@ import (
 )
 
 type compiledCodeCache struct {
-	mu     sync.Mutex
-	mem    []byte
-	base   uintptr
-	refs   int
-	closed bool
+	mu                              sync.Mutex
+	mem                             []byte
+	base                            uintptr
+	refs                            int
+	closed                          bool
+	collectorFreeStructuralMetadata bool                         // exact staged products use struct descriptors only for function identity
+	collectorFreeGCArrayMetadata    bool                         // exact staged array declaration/binding products allocate no collector
+	gcTypeSubtypingProduct          stagedGCTypeSubtypingProduct // exact first gc/type-subtyping no-object product; never serialized
+	gcStructProduct                 stagedGCStructProduct        // exact compile-only public GC ownership boundary; never serialized
+	gcArrayProduct                  stagedGCArrayProduct         // exact compile-only array boundary; never serialized
+	gcI31Product                    stagedGCI31Product           // exact non-allocating i31 boundary; never serialized
+	stagedFeatures                  CoreFeatures                 // compile-only admission; never serialized or publicly loaded
 }
 
 func installCompiledFinalizer(c *Compiled) *Compiled {
@@ -26,6 +33,73 @@ func installCompiledFinalizer(c *Compiled) *Compiled {
 		_ = c.Close()
 	})
 	return c
+}
+
+func (c *Compiled) stagedFeatures() CoreFeatures {
+	if c == nil || c.codeCache == nil {
+		return 0
+	}
+	return c.codeCache.stagedFeatures
+}
+
+func (c *Compiled) collectorFreeStructuralMetadata() bool {
+	return c != nil && c.codeCache != nil && c.codeCache.collectorFreeStructuralMetadata
+}
+
+func (c *Compiled) stagedGCTypeSubtypingProduct() stagedGCTypeSubtypingProduct {
+	if c == nil || c.codeCache == nil {
+		return 0
+	}
+	return c.codeCache.gcTypeSubtypingProduct
+}
+
+func (c *Compiled) usesGCTypeSubtypingRefTest() bool {
+	if c == nil {
+		return false
+	}
+	p := c.stagedGCTypeSubtypingProduct()
+	return p.usesRefTest() || p.usesRuntimeFunctionIdentity()
+}
+
+func (c *Compiled) usesGCStructHelpers() bool {
+	return c != nil && c.stagedGCStructProduct().requiresHelpers()
+}
+
+func (c *Compiled) usesGCArrayHelpers() bool {
+	return c != nil && (c.stagedGCStructProduct().requiresArrayHelpers() || c.stagedGCArrayProduct().requiresHelpers())
+}
+
+func (c *Compiled) collectorFreeGCArrayMetadata() bool {
+	return c != nil && c.codeCache != nil && c.codeCache.collectorFreeGCArrayMetadata
+}
+
+func (c *Compiled) stagedGCStructProduct() stagedGCStructProduct {
+	if c == nil || c.codeCache == nil {
+		return 0
+	}
+	return c.codeCache.gcStructProduct
+}
+
+func (c *Compiled) stagedGCArrayProduct() stagedGCArrayProduct {
+	if c == nil || c.codeCache == nil {
+		return 0
+	}
+	return c.codeCache.gcArrayProduct
+}
+
+func (c *Compiled) usesGenericGCExecution() bool {
+	if c == nil {
+		return false
+	}
+	arrayProduct := c.stagedGCArrayProduct()
+	return c.stagedGCStructProduct() == stagedGCStructGeneric || arrayProduct == stagedGCArrayProductNewData || arrayProduct == stagedGCArrayProductNewElem || arrayProduct == stagedGCArrayProductGeneric
+}
+
+func (c *Compiled) stagedGCI31Product() stagedGCI31Product {
+	if c == nil || c.codeCache == nil {
+		return 0
+	}
+	return c.codeCache.gcI31Product
 }
 
 func (c *Compiled) ensureCodeCache() {

@@ -11,6 +11,7 @@ package wago
 import impl "github.com/wago-org/wago/src/wago"
 
 type (
+	AbstractHeapType          = impl.AbstractHeapType
 	BoundsCheckMode           = impl.BoundsCheckMode
 	CallerResolver            = impl.CallerResolver
 	Capability                = impl.Capability
@@ -20,9 +21,11 @@ type (
 	CompileContext            = impl.CompileContext
 	CompileHookAccess         = impl.CompileHookAccess
 	Compiled                  = impl.Compiled
+	CompositeTypeKind         = impl.CompositeTypeKind
 	ConfigSchemaProvider      = impl.ConfigSchemaProvider
 	CoreFeatures              = impl.CoreFeatures
 	DataInit                  = impl.DataInit
+	DefinedTypeDescriptor     = impl.DefinedTypeDescriptor
 	Dirs                      = impl.Dirs
 	ElemInit                  = impl.ElemInit
 	ElemMode                  = impl.ElemMode
@@ -33,12 +36,14 @@ type (
 	ExtensionInfo             = impl.ExtensionInfo
 	ExternRef                 = impl.ExternRef
 	ExternRefHostModule       = impl.ExternRefHostModule
+	FieldTypeDescriptor       = impl.FieldTypeDescriptor
 	FuncRef                   = impl.FuncRef
 	FuncSig                   = impl.FuncSig
 	FunctionMetadata          = impl.FunctionMetadata
 	GCAllocatorKind           = impl.GCAllocatorKind
 	GCConfig                  = impl.GCConfig
 	GCProfile                 = impl.GCProfile
+	GCRef                     = impl.GCRef
 	GCRuntimeKind             = impl.GCRuntimeKind
 	Global                    = impl.Global
 	GlobalDef                 = impl.GlobalDef
@@ -48,6 +53,7 @@ type (
 	GuardPageUnavailableError = impl.GuardPageUnavailableError
 	Handle                    = impl.Handle
 	HandleTable               = impl.HandleTable
+	HeapTypeDescriptor        = impl.HeapTypeDescriptor
 	HookRegistry              = impl.HookRegistry
 	HostEnvironment           = impl.HostEnvironment
 	HostExit                  = impl.HostExit
@@ -55,6 +61,7 @@ type (
 	HostFuncRef               = impl.HostFuncRef
 	HostImportAccess          = impl.HostImportAccess
 	HostModule                = impl.HostModule
+	I31Ref                    = impl.I31Ref
 	ImportFuncBuilder         = impl.ImportFuncBuilder
 	ImportKind                = impl.ImportKind
 	ImportModuleBuilder       = impl.ImportModuleBuilder
@@ -75,10 +82,12 @@ type (
 	InvokeHookAccess          = impl.InvokeHookAccess
 	ManagedInstance           = impl.ManagedInstance
 	Memory                    = impl.Memory
+	MemoryMetadata            = impl.MemoryMetadata
 	Module                    = impl.Module
 	ModuleMetadata            = impl.ModuleMetadata
 	OffsetInit                = impl.OffsetInit
 	OptKnobInfo               = impl.OptKnobInfo
+	PackedType                = impl.PackedType
 	PassiveDataInit           = impl.PassiveDataInit
 	PluginCapability          = impl.PluginCapability
 	PluginConfig              = impl.PluginConfig
@@ -92,6 +101,7 @@ type (
 	Policy                    = impl.Policy
 	PreparedFunction          = impl.PreparedFunction
 	RefInit                   = impl.RefInit
+	ReferenceTypeDescriptor   = impl.ReferenceTypeDescriptor
 	Registry                  = impl.Registry
 	Resource                  = impl.Resource
 	Runtime                   = impl.Runtime
@@ -104,8 +114,11 @@ type (
 	SnapshotKind              = impl.SnapshotKind
 	SnapshotOptions           = impl.SnapshotOptions
 	Stability                 = impl.Stability
+	StorageTypeDescriptor     = impl.StorageTypeDescriptor
 	Table                     = impl.Table
 	TableMetadata             = impl.TableMetadata
+	Tag                       = impl.Tag
+	TagMetadata               = impl.TagMetadata
 	TrapCode                  = impl.TrapCode
 	TrapError                 = impl.TrapError
 	UnsupportedFeatureError   = impl.UnsupportedFeatureError
@@ -113,9 +126,24 @@ type (
 	V128                      = impl.V128
 	ValType                   = impl.ValType
 	Value                     = impl.Value
+	ValueTypeDescriptor       = impl.ValueTypeDescriptor
+	ValueTypeKind             = impl.ValueTypeKind
 )
 
 const (
+	AbstractHeapAny                            = impl.AbstractHeapAny
+	AbstractHeapArray                          = impl.AbstractHeapArray
+	AbstractHeapEq                             = impl.AbstractHeapEq
+	AbstractHeapExn                            = impl.AbstractHeapExn
+	AbstractHeapExtern                         = impl.AbstractHeapExtern
+	AbstractHeapFunc                           = impl.AbstractHeapFunc
+	AbstractHeapI31                            = impl.AbstractHeapI31
+	AbstractHeapNoExn                          = impl.AbstractHeapNoExn
+	AbstractHeapNoExtern                       = impl.AbstractHeapNoExtern
+	AbstractHeapNoFunc                         = impl.AbstractHeapNoFunc
+	AbstractHeapNone                           = impl.AbstractHeapNone
+	AbstractHeapString                         = impl.AbstractHeapString
+	AbstractHeapStruct                         = impl.AbstractHeapStruct
 	AllowTestOverrides                         = impl.AllowTestOverrides
 	BoundsChecksExplicit                       = impl.BoundsChecksExplicit
 	BoundsChecksSignalsBased                   = impl.BoundsChecksSignalsBased
@@ -128,16 +156,27 @@ const (
 	CapMetricsWrite                            = impl.CapMetricsWrite
 	CapNetworkOutbound                         = impl.CapNetworkOutbound
 	CapTimerRead                               = impl.CapTimerRead
+	CompositeTypeArray                         = impl.CompositeTypeArray
+	CompositeTypeFunction                      = impl.CompositeTypeFunction
+	CompositeTypeStruct                        = impl.CompositeTypeStruct
 	CoreFeatureBulkMemoryOperations            = impl.CoreFeatureBulkMemoryOperations
+	CoreFeatureExceptionHandling               = impl.CoreFeatureExceptionHandling
+	CoreFeatureExtendedConstExpressions        = impl.CoreFeatureExtendedConstExpressions
+	CoreFeatureGC                              = impl.CoreFeatureGC
+	CoreFeatureMemory64                        = impl.CoreFeatureMemory64
+	CoreFeatureMultiMemory                     = impl.CoreFeatureMultiMemory
 	CoreFeatureMultiValue                      = impl.CoreFeatureMultiValue
 	CoreFeatureMutableGlobal                   = impl.CoreFeatureMutableGlobal
 	CoreFeatureNonTrappingFloatToIntConversion = impl.CoreFeatureNonTrappingFloatToIntConversion
 	CoreFeatureReferenceTypes                  = impl.CoreFeatureReferenceTypes
 	CoreFeatureSIMD                            = impl.CoreFeatureSIMD
 	CoreFeatureSignExtensionOps                = impl.CoreFeatureSignExtensionOps
+	CoreFeatureTable64                         = impl.CoreFeatureTable64
 	CoreFeatureTailCall                        = impl.CoreFeatureTailCall
+	CoreFeatureTypedFunctionReferences         = impl.CoreFeatureTypedFunctionReferences
 	CoreFeaturesV1                             = impl.CoreFeaturesV1
 	CoreFeaturesV2                             = impl.CoreFeaturesV2
+	CoreFeaturesV3                             = impl.CoreFeaturesV3
 	Deprecated                                 = impl.Deprecated
 	ElemModeActive                             = impl.ElemModeActive
 	ElemModeDeclarative                        = impl.ElemModeDeclarative
@@ -158,9 +197,12 @@ const (
 	ImportGlobal                               = impl.ImportGlobal
 	ImportMemory                               = impl.ImportMemory
 	ImportTable                                = impl.ImportTable
+	ImportTag                                  = impl.ImportTag
 	InstantiateDirect                          = impl.InstantiateDirect
 	InstantiateManaged                         = impl.InstantiateManaged
 	NoExtensionOverrides                       = impl.NoExtensionOverrides
+	PackedTypeI16                              = impl.PackedTypeI16
+	PackedTypeI8                               = impl.PackedTypeI8
 	PluginCompileHooks                         = impl.PluginCompileHooks
 	PluginHostEnvironment                      = impl.PluginHostEnvironment
 	PluginHostImports                          = impl.PluginHostImports
@@ -179,6 +221,7 @@ const (
 	Stable                                     = impl.Stable
 	TrapBuiltin                                = impl.TrapBuiltin
 	TrapCalledFnNotLinked                      = impl.TrapCalledFnNotLinked
+	TrapCastFailure                            = impl.TrapCastFailure
 	TrapDivOverflow                            = impl.TrapDivOverflow
 	TrapDivZero                                = impl.TrapDivZero
 	TrapIndirectOutOfBounds                    = impl.TrapIndirectOutOfBounds
@@ -189,16 +232,26 @@ const (
 	TrapLinkedMemNotLinked                     = impl.TrapLinkedMemNotLinked
 	TrapLinkedMemOutOfBounds                   = impl.TrapLinkedMemOutOfBounds
 	TrapNone                                   = impl.TrapNone
+	TrapNullReference                          = impl.TrapNullReference
 	TrapStackFenceBreached                     = impl.TrapStackFenceBreached
 	TrapTruncOverflow                          = impl.TrapTruncOverflow
 	TrapUnreachable                            = impl.TrapUnreachable
+	ValAnyRef                                  = impl.ValAnyRef
+	ValExnRef                                  = impl.ValExnRef
 	ValExternRef                               = impl.ValExternRef
 	ValF32                                     = impl.ValF32
 	ValF64                                     = impl.ValF64
 	ValFuncRef                                 = impl.ValFuncRef
+	ValI31Ref                                  = impl.ValI31Ref
 	ValI32                                     = impl.ValI32
 	ValI64                                     = impl.ValI64
 	ValV128                                    = impl.ValV128
+	ValueTypeF32                               = impl.ValueTypeF32
+	ValueTypeF64                               = impl.ValueTypeF64
+	ValueTypeI32                               = impl.ValueTypeI32
+	ValueTypeI64                               = impl.ValueTypeI64
+	ValueTypeReference                         = impl.ValueTypeReference
+	ValueTypeV128                              = impl.ValueTypeV128
 	Version                                    = impl.Version
 )
 
@@ -268,6 +321,8 @@ func NewGlobalV128(v V128, mutable bool) *Global { return impl.NewGlobalV128(v, 
 
 func NewHandleTable() *HandleTable { return impl.NewHandleTable() }
 
+func NewI31Ref(v int32) I31Ref { return impl.NewI31Ref(v) }
+
 func NewMemory(minPages uint32, maxPages uint32) (*Memory, error) {
 	return impl.NewMemory(minPages, maxPages)
 }
@@ -282,9 +337,17 @@ func NewSharedMemory(minPages uint32, maxPages uint32) (*Memory, error) {
 
 func NewTable(minSize uint32, maxSize uint32) (*Table, error) { return impl.NewTable(minSize, maxSize) }
 
+func NewTable64(minSize uint32, maxSize uint32) (*Table, error) {
+	return impl.NewTable64(minSize, maxSize)
+}
+
 func NullExternRef() ExternRef { return impl.NullExternRef() }
 
 func NullFuncRef() FuncRef { return impl.NullFuncRef() }
+
+func NullGCRef() GCRef { return impl.NullGCRef() }
+
+func NullI31Ref() I31Ref { return impl.NullI31Ref() }
 
 func OptKnobs() []OptKnobInfo { return impl.OptKnobs() }
 
@@ -315,6 +378,8 @@ func ValueF32(v float32) Value { return impl.ValueF32(v) }
 func ValueF64(v float64) Value { return impl.ValueF64(v) }
 
 func ValueFuncRef(v FuncRef) Value { return impl.ValueFuncRef(v) }
+
+func ValueI31Ref(v I31Ref) Value { return impl.ValueI31Ref(v) }
 
 func ValueI32(v int32) Value { return impl.ValueI32(v) }
 

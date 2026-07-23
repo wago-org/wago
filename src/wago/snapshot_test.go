@@ -17,6 +17,11 @@ func TestLoadSnapshotRejectsOversizedCountsBeforeAlloc(t *testing.T) {
 		want string
 	}{
 		{
+			name: "memories",
+			blob: appendSnapshotUvarints(snapshotHeader(snapshotVersion), 1<<62),
+			want: "memory count",
+		},
+		{
 			name: "globals",
 			blob: appendSnapshotUvarints(snapshotPrefix(snapshotVersion), 1<<62),
 			want: "global count",
@@ -39,11 +44,18 @@ func TestLoadSnapshotRejectsOversizedCountsBeforeAlloc(t *testing.T) {
 	}
 }
 
-func snapshotPrefix(version byte) []byte {
+func snapshotHeader(version byte) []byte {
 	b := []byte(snapshotMagic)
 	b = append(b, version, byte(SnapshotInit))
+	return appendSnapshotUvarints(b, 0) // compiled module byte length
+}
+
+func snapshotPrefix(version byte) []byte {
+	b := snapshotHeader(version)
+	if version >= 3 {
+		return appendSnapshotUvarints(b, 0) // memory count
+	}
 	return appendSnapshotUvarints(b,
-		0, // compiled module byte length
 		0, // memory pages
 		0, // stored memory byte length
 	)
@@ -149,7 +161,7 @@ func TestCaptureInstanceSnapshotCopiesLiveState(t *testing.T) {
 	}
 	defer mem.Close()
 	mem.Bytes()[0] = 9
-	c := &Compiled{PassiveData: []PassiveDataInit{{Bytes: []byte("abc")}}}
+	c := &Compiled{HasMemory: true, MemMinPages: 1, MemMaxPages: 1, PassiveData: []PassiveDataInit{{Bytes: []byte("abc")}}}
 	g := &Global{Type: ValI32, cell: make([]byte, 8)}
 	binary.LittleEndian.PutUint64(g.cell, 17)
 	desc := make([]byte, runtime.PassiveDataDescBytes)
@@ -214,7 +226,9 @@ func TestCaptureRejectsImportedMemory(t *testing.T) {
 }
 
 func TestSnapshotPortableBinaryAndFileRoundTrip(t *testing.T) {
-	c := compileExplicitArtifact(t, wasmtest.Module())
+	c := compileExplicitArtifact(t, wasmtest.Module(
+		wasmtest.Section(5, wasmtest.Vec([]byte{0, 1})),
+	))
 	s := &Snapshot{
 		c:        c,
 		kind:     SnapshotWarm,
@@ -233,7 +247,7 @@ func TestSnapshotPortableBinaryAndFileRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadSnapshot: %v", err)
 	}
-	if loaded.Kind() != SnapshotWarm || len(loaded.memory) != 65536 || loaded.memory[0] != 7 || len(loaded.globals) != 2 || loaded.globals[1].vec != (V128{1, 2, 3}) {
+	if loaded.Kind() != SnapshotWarm || len(loaded.memories) != 1 || loaded.memories[0].pages != 1 || len(loaded.memory) != 1 || loaded.memory[0] != 7 || len(loaded.globals) != 2 || loaded.globals[1].vec != (V128{1, 2, 3}) {
 		t.Fatalf("loaded snapshot = %#v", loaded)
 	}
 	path := filepath.Join(t.TempDir(), "snapshot.bin")

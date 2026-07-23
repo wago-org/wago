@@ -1,0 +1,713 @@
+//go:build linux && amd64 && !tinygo && !wago_guardpage
+
+package wago
+
+import (
+	"strings"
+	"sync"
+	"testing"
+
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"github.com/wago-org/wago/testutil/wasmtest"
+)
+
+func memoryImportEntry(module, name string, limits ...byte) []byte {
+	entry := append(wasmtest.Name(module), wasmtest.Name(name)...)
+	entry = append(entry, 0x02)
+	return append(entry, limits...)
+}
+
+func officialMultiMemoryProducerModule() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(5, wasmtest.Vec(
+			[]byte{0x01, 0x02, 0x05}, // mem1: 2..5
+			[]byte{0x00, 0x00},       // mem2: 0, no maximum
+		)),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("mem1", 2, 0),
+			wasmtest.ExportEntry("mem2", 2, 1),
+		)),
+	)
+}
+
+func nativeMultiMemoryProducerModule() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec(
+			[]byte{0x01, 0x02, 0x05},
+			[]byte{0x00, 0x00},
+		)),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("f", 0, 0),
+			wasmtest.ExportEntry("mem1", 2, 0),
+			wasmtest.ExportEntry("mem2", 2, 1),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x41, 0x00, 0x0b}))),
+	)
+}
+
+func officialMultiMemoryConsumerModule() []byte {
+	types := wasmtest.Section(1, wasmtest.Vec(
+		wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}),
+	))
+	imports := wasmtest.Section(2, wasmtest.Vec(
+		memoryImportEntry("M", "mem1", 0x01, 0x01, 0x06),
+		memoryImportEntry("M", "mem2", 0x00, 0x00),
+	))
+	funcs := make([][]byte, 0, 8)
+	for i := 0; i < 4; i++ {
+		funcs = append(funcs, wasmtest.ULEB(0))
+	}
+	for i := 0; i < 4; i++ {
+		funcs = append(funcs, wasmtest.ULEB(1))
+	}
+	exports := make([][]byte, 0, 8)
+	for i := 0; i < 4; i++ {
+		exports = append(exports, wasmtest.ExportEntry("size"+string(rune('1'+i)), 0, uint32(i)))
+	}
+	for i := 0; i < 4; i++ {
+		exports = append(exports, wasmtest.ExportEntry("grow"+string(rune('1'+i)), 0, uint32(4+i)))
+	}
+	codes := make([][]byte, 0, 8)
+	for i := byte(0); i < 4; i++ {
+		codes = append(codes, wasmtest.Code([]byte{0x3f, i, 0x0b}))
+	}
+	for i := byte(0); i < 4; i++ {
+		codes = append(codes, wasmtest.Code([]byte{0x20, 0x00, 0x40, i, 0x0b}))
+	}
+	return wasmtest.Module(
+		types,
+		imports,
+		wasmtest.Section(3, wasmtest.Vec(funcs...)),
+		wasmtest.Section(5, wasmtest.Vec(
+			[]byte{0x00, 0x03},
+			[]byte{0x01, 0x04, 0x05},
+		)),
+		wasmtest.Section(7, wasmtest.Vec(exports...)),
+		wasmtest.Section(10, wasmtest.Vec(codes...)),
+	)
+}
+
+func TestStagedMultiMemoryOfficialImportGrowLinking(t *testing.T) {
+	producerCompiled := stagedMultiMemoryCompile(t, officialMultiMemoryProducerModule())
+	producer, err := instantiateCore(producerCompiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatalf("instantiate producer: %v", err)
+	}
+	consumerCompiled := stagedMultiMemoryCompile(t, officialMultiMemoryConsumerModule())
+	keys := consumerCompiled.MemoryImports()
+	if len(keys) != 2 || keys[0] != "M.mem1" || keys[1] != "M.mem2" {
+		t.Fatalf("memory imports = %v, want [M.mem1 M.mem2]", keys)
+	}
+	imports := make(Imports, len(keys))
+	for _, key := range keys {
+		field := strings.TrimPrefix(key, "M.")
+		memory, err := producer.ExportedMemory(field)
+		if err != nil {
+			t.Fatalf("resolve registered memory %q: %v", key, err)
+		}
+		imports[key] = memory
+	}
+	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: imports})
+	if err != nil {
+		t.Fatalf("instantiate consumer: %v", err)
+	}
+	consumer2, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: imports})
+	if err != nil {
+		t.Fatalf("instantiate second registered-memory consumer: %v", err)
+	}
+
+	for i, want := range []int32{2, 0, 3, 4} {
+		if got := tableTestCallI32(t, consumer, "size"+string(rune('1'+i))); got != want {
+			t.Fatalf("initial memory %d size = %d, want %d", i, got, want)
+		}
+	}
+	if got := tableTestCallI32(t, consumer, "grow1", I32(1)); got != 2 {
+		t.Fatalf("grow imported memory 1 = %d, want 2", got)
+	}
+	if got := tableTestCallI32(t, consumer, "grow2", I32(10)); got != 0 {
+		t.Fatalf("grow imported memory 2 = %d, want 0", got)
+	}
+	if got1, got2 := tableTestCallI32(t, consumer2, "size1"), tableTestCallI32(t, consumer2, "size2"); got1 != 3 || got2 != 10 {
+		t.Fatalf("second consumer imported growth visibility = %d,%d, want 3,10", got1, got2)
+	}
+	if got := tableTestCallI32(t, consumer, "grow3", I32(3)); got != 3 {
+		t.Fatalf("grow local memory 3 = %d, want 3", got)
+	}
+	if got := tableTestCallI32(t, consumer, "grow4", I32(1)); got != 4 {
+		t.Fatalf("grow local memory 4 = %d, want 4", got)
+	}
+	if got := tableTestCallI32(t, consumer, "grow4", I32(1)); got != -1 {
+		t.Fatalf("grow local memory 4 past max = %d, want -1", got)
+	}
+	for i, want := range []int32{3, 10, 6, 5} {
+		if got := tableTestCallI32(t, consumer, "size"+string(rune('1'+i))); got != want {
+			t.Fatalf("grown memory %d size = %d, want %d", i, got, want)
+		}
+	}
+
+	if err := producer.Close(); err != nil {
+		t.Fatalf("logical producer close: %v", err)
+	}
+	producer.lifeMu.Lock()
+	producerResourcesClosed := producer.resourcesClosed
+	producer.lifeMu.Unlock()
+	if producerResourcesClosed {
+		t.Fatal("producer resources closed while imported memories remain live")
+	}
+	if got := tableTestCallI32(t, consumer, "size1"); got != 3 {
+		t.Fatalf("consumer lost grown imported memory after producer close: %d", got)
+	}
+	if err := consumer.Close(); err != nil {
+		t.Fatalf("consumer close: %v", err)
+	}
+	producer.lifeMu.Lock()
+	producerResourcesClosed = producer.resourcesClosed
+	producer.lifeMu.Unlock()
+	if producerResourcesClosed {
+		t.Fatal("producer resources closed while second memory importer remained live")
+	}
+	if got := tableTestCallI32(t, consumer2, "size1"); got != 3 {
+		t.Fatalf("second consumer lost imported memory after first close: %d", got)
+	}
+	if err := consumer2.Close(); err != nil {
+		t.Fatalf("second consumer close: %v", err)
+	}
+	producer.lifeMu.Lock()
+	producerResourcesClosed = producer.resourcesClosed
+	producer.lifeMu.Unlock()
+	if !producerResourcesClosed {
+		t.Fatal("producer resources retained after final memory importer closed")
+	}
+}
+
+func TestStagedMultiMemoryNativeProducerTenantRebindsContext(t *testing.T) {
+	producerCompiled := stagedMultiMemoryCompile(t, nativeMultiMemoryProducerModule())
+	producer, err := instantiateCore(producerCompiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatalf("instantiate native producer: %v", err)
+	}
+	defer producer.Close()
+	m1, err := producer.ExportedMemory("mem1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m2, err := producer.ExportedMemory("mem2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	consumerCompiled := stagedMultiMemoryCompile(t, officialMultiMemoryConsumerModule())
+	defer consumerCompiled.Close()
+	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{"M.mem1": m1, "M.mem2": m2}})
+	if err != nil {
+		t.Fatalf("instantiate against executable memory owner: %v", err)
+	}
+	defer consumer.Close()
+	if got := tableTestCallI32(t, producer, "f"); got != 0 {
+		t.Fatalf("producer call after tenant install = %d, want 0", got)
+	}
+	if got := tableTestCallI32(t, consumer, "size1"); got != 2 {
+		t.Fatalf("consumer imported memory size = %d, want 2", got)
+	}
+	if got := tableTestCallI32(t, consumer, "size3"); got != 3 {
+		t.Fatalf("consumer private memory size = %d, want 3", got)
+	}
+
+	var wg sync.WaitGroup
+	errs := make(chan string, 2)
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 1000; i++ {
+			got, err := producer.Invoke("f")
+			if err != nil || len(got) != 1 || int32(got[0]) != 0 {
+				errs <- "producer result changed during native-context rebinding"
+				return
+			}
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 1000; i++ {
+			got, err := consumer.Invoke("size3")
+			if err != nil || len(got) != 1 || int32(got[0]) != 3 {
+				errs <- "consumer private directory changed during native-context rebinding"
+				return
+			}
+		}
+	}()
+	wg.Wait()
+	close(errs)
+	for msg := range errs {
+		t.Fatal(msg)
+	}
+}
+
+func importedGlobalMultiMemoryModule() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+			wasmtest.FuncType([]wasm.ValType{wasm.I32}, nil),
+		)),
+		wasmtest.Section(2, wasmtest.Vec(
+			memoryImportEntry("M", "mem1", 0x01, 0x01, 0x05),
+			wasmtest.GlobalImportEntry("env", "counter", wasm.I32, true),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1), wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x01, 0x01, 0x02})),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("read", 0, 0),
+			wasmtest.ExportEntry("write", 0, 1),
+			wasmtest.ExportEntry("local_size", 0, 2),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x23, 0x00, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0x00, 0x24, 0x00, 0x0b}),
+			wasmtest.Code([]byte{0x3f, 0x01, 0x0b}),
+		)),
+	)
+}
+
+func TestStagedMultiMemoryContextRetainsImportedNumericGlobal(t *testing.T) {
+	producerCompiled := stagedMultiMemoryCompile(t, nativeMultiMemoryProducerModule())
+	defer producerCompiled.Close()
+	producer, err := instantiateCore(producerCompiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	memory, err := producer.ExportedMemory("mem1")
+	if err != nil {
+		producer.Close()
+		t.Fatal(err)
+	}
+	counter := NewGlobalI32(7, true)
+	consumerCompiled := stagedMultiMemoryCompile(t, importedGlobalMultiMemoryModule())
+	defer consumerCompiled.Close()
+	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{
+		"M.mem1": memory, "env.counter": GlobalImport{Global: counter},
+	}})
+	if err != nil {
+		producer.Close()
+		counter.Close()
+		t.Fatalf("instantiate imported-global tenant: %v", err)
+	}
+	if got := tableTestCallI32(t, consumer, "read"); got != 7 {
+		t.Fatalf("initial imported global = %d, want 7", got)
+	}
+	if _, err := consumer.Invoke("write", I32(9)); err != nil {
+		t.Fatalf("write imported global: %v", err)
+	}
+	if got := int32(counter.Get()); got != 9 {
+		t.Fatalf("host imported global after guest write = %d, want 9", got)
+	}
+	if got := tableTestCallI32(t, consumer, "local_size"); got != 1 {
+		t.Fatalf("tenant local memory size = %d, want 1", got)
+	}
+
+	var wg sync.WaitGroup
+	errs := make(chan string, 2)
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 1000; i++ {
+			if got, err := producer.Invoke("f"); err != nil || len(got) != 1 || got[0] != 0 {
+				errs <- "owner call changed during imported-global context rebinding"
+				return
+			}
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 1000; i++ {
+			if got, err := consumer.Invoke("read"); err != nil || len(got) != 1 || int32(got[0]) != 9 {
+				errs <- "tenant imported global changed during context rebinding"
+				return
+			}
+		}
+	}()
+	wg.Wait()
+	close(errs)
+	for msg := range errs {
+		t.Fatal(msg)
+	}
+
+	if err := counter.Close(); err == nil || !strings.Contains(err.Error(), "live importer") {
+		t.Fatalf("imported global close with live tenant = %v, want close-order rejection", err)
+	}
+	if err := producer.Close(); err != nil {
+		t.Fatalf("logical memory owner close: %v", err)
+	}
+	if got := tableTestCallI32(t, consumer, "read"); got != 9 {
+		t.Fatalf("tenant lost imported global after owner closes: %d", got)
+	}
+	if _, err := consumer.Invoke("write", I32(11)); err != nil || int32(counter.Get()) != 11 {
+		t.Fatalf("tenant write after owner closes: err=%v value=%d", err, int32(counter.Get()))
+	}
+	producer.lifeMu.Lock()
+	producerReleased := producer.resourcesClosed
+	producer.lifeMu.Unlock()
+	if producerReleased {
+		t.Fatal("memory owner released while imported-global tenant remained live")
+	}
+	if err := consumer.Close(); err != nil {
+		t.Fatalf("tenant close: %v", err)
+	}
+	producer.lifeMu.Lock()
+	producerReleased = producer.resourcesClosed
+	producer.lifeMu.Unlock()
+	if !producerReleased {
+		t.Fatal("memory owner remained retained after imported-global tenant close")
+	}
+	if err := counter.Close(); err != nil {
+		t.Fatalf("imported global close after tenant: %v", err)
+	}
+}
+
+func soleImportedTableMultiMemoryModule() []byte {
+	tableImport := append(wasmtest.Name("env"), wasmtest.Name("table")...)
+	tableImport = append(tableImport, byte(wasm.ExternTable), 0x70, 0x01, 0x01, 0x01)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+			wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}),
+			wasmtest.FuncType([]wasm.ValType{wasm.I32}, nil),
+		)),
+		wasmtest.Section(2, wasmtest.Vec(
+			memoryImportEntry("M", "mem1", 0x01, 0x01, 0x05),
+			tableImport,
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1), wasmtest.ULEB(2), wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x01, 0x01, 0x02})),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("size", 0, 0),
+			wasmtest.ExportEntry("is_null", 0, 1),
+			wasmtest.ExportEntry("clear", 0, 2),
+			wasmtest.ExportEntry("local_size", 0, 3),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0xfc, 0x10, 0x00, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0x00, 0x25, 0x00, 0xd1, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0x00, 0xd0, 0x70, 0x26, 0x00, 0x0b}),
+			wasmtest.Code([]byte{0x3f, 0x01, 0x0b}),
+		)),
+	)
+}
+
+func soleImportedTableProducerModule() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x01, 0x01, 0x01})),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("f", 0, 0),
+			wasmtest.ExportEntry("table", 1, 0),
+		)),
+		wasmtest.Section(9, wasmtest.Vec([]byte{0x00, 0x41, 0x00, 0x0b, 0x01, 0x00})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x41, 0x07, 0x0b}))),
+	)
+}
+
+func TestStagedMultiMemoryContextRetainsSoleImportedTable(t *testing.T) {
+	memoryCompiled := stagedMultiMemoryCompile(t, nativeMultiMemoryProducerModule())
+	defer memoryCompiled.Close()
+	memoryOwner, err := instantiateCore(memoryCompiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	memory, err := memoryOwner.ExportedMemory("mem1")
+	if err != nil {
+		memoryOwner.Close()
+		t.Fatal(err)
+	}
+
+	tableCompiled, err := Compile(nil, soleImportedTableProducerModule())
+	if err != nil {
+		memoryOwner.Close()
+		t.Fatal(err)
+	}
+	defer tableCompiled.Close()
+	tableOwner, err := instantiateCore(tableCompiled, InstantiateOptions{})
+	if err != nil {
+		memoryOwner.Close()
+		t.Fatal(err)
+	}
+	table, err := tableOwner.ExportedTable("table")
+	if err != nil {
+		memoryOwner.Close()
+		tableOwner.Close()
+		t.Fatal(err)
+	}
+
+	consumerCompiled := stagedMultiMemoryCompile(t, soleImportedTableMultiMemoryModule())
+	defer consumerCompiled.Close()
+	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{
+		"M.mem1": memory, "env.table": table,
+	}})
+	if err != nil {
+		memoryOwner.Close()
+		tableOwner.Close()
+		t.Fatalf("instantiate sole-table tenant: %v", err)
+	}
+	if got := tableTestCallI32(t, consumer, "size"); got != 1 {
+		t.Fatalf("imported table size = %d, want 1", got)
+	}
+	if got := tableTestCallI32(t, consumer, "is_null", I32(0)); got != 0 {
+		t.Fatalf("imported table slot 0 null = %d, want 0", got)
+	}
+	if got := tableTestCallI32(t, consumer, "local_size"); got != 1 {
+		t.Fatalf("sole-table tenant local memory size = %d, want 1", got)
+	}
+	if _, err := consumer.Invoke("clear", I32(1)); err == nil || !strings.Contains(err.Error(), "out of bounds") {
+		t.Fatalf("out-of-bounds imported table.set error = %v", err)
+	}
+	if got := tableTestCallI32(t, consumer, "is_null", I32(0)); got != 0 {
+		t.Fatalf("trapping table.set changed slot 0: null=%d", got)
+	}
+
+	var wg sync.WaitGroup
+	errs := make(chan string, 2)
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 1000; i++ {
+			if got, err := memoryOwner.Invoke("f"); err != nil || len(got) != 1 || got[0] != 0 {
+				errs <- "memory owner changed during sole-table context rebinding"
+				return
+			}
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 1000; i++ {
+			if got, err := consumer.Invoke("is_null", I32(0)); err != nil || len(got) != 1 || got[0] != 0 {
+				errs <- "sole imported table changed during context rebinding"
+				return
+			}
+		}
+	}()
+	wg.Wait()
+	close(errs)
+	for msg := range errs {
+		t.Fatal(msg)
+	}
+
+	if err := memoryOwner.Close(); err != nil {
+		t.Fatalf("logical memory owner close: %v", err)
+	}
+	if err := tableOwner.Close(); err != nil {
+		t.Fatalf("logical table owner close: %v", err)
+	}
+	for name, owner := range map[string]*Instance{"memory": memoryOwner, "table": tableOwner} {
+		owner.lifeMu.Lock()
+		released := owner.resourcesClosed
+		owner.lifeMu.Unlock()
+		if released {
+			t.Fatalf("%s owner released while sole-table tenant remained live", name)
+		}
+	}
+	if got := tableTestCallI32(t, consumer, "is_null", I32(0)); got != 0 {
+		t.Fatalf("tenant lost imported table after owner close: %d", got)
+	}
+	if _, err := consumer.Invoke("clear", I32(0)); err != nil {
+		t.Fatalf("clear imported table slot: %v", err)
+	}
+	if got := tableTestCallI32(t, consumer, "is_null", I32(0)); got != 1 {
+		t.Fatalf("cleared imported table slot null = %d, want 1", got)
+	}
+	if err := consumer.Close(); err != nil {
+		t.Fatalf("sole-table tenant close: %v", err)
+	}
+	for name, owner := range map[string]*Instance{"memory": memoryOwner, "table": tableOwner} {
+		owner.lifeMu.Lock()
+		released := owner.resourcesClosed
+		owner.lifeMu.Unlock()
+		if !released {
+			t.Fatalf("%s owner remained retained after sole-table tenant close", name)
+		}
+	}
+}
+
+func growingImportedTableMultiMemoryModule() []byte {
+	tableImport := append(wasmtest.Name("env"), wasmtest.Name("table")...)
+	tableImport = append(tableImport, byte(wasm.ExternTable), 0x70, 0x01, 0x01, 0x01)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(2, wasmtest.Vec(
+			memoryImportEntry("M", "mem1", 0x01, 0x01, 0x05),
+			tableImport,
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x01, 0x01, 0x02})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("grow", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0xd0, 0x70, 0x41, 0x01, 0xfc, 0x0f, 0x00, 0x0b}))),
+	)
+}
+
+func TestStagedMultiMemoryContextRunsWiderImportedTableOps(t *testing.T) {
+	memoryCompiled := stagedMultiMemoryCompile(t, nativeMultiMemoryProducerModule())
+	defer memoryCompiled.Close()
+	memoryOwner, err := instantiateCore(memoryCompiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer memoryOwner.Close()
+	memory, err := memoryOwner.ExportedMemory("mem1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	table, err := NewTable(1, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer table.Close()
+	compiled := stagedMultiMemoryCompile(t, growingImportedTableMultiMemoryModule())
+	defer compiled.Close()
+	consumer, err := instantiateCore(compiled, InstantiateOptions{Imports: Imports{"M.mem1": memory, "env.table": table}})
+	if err != nil {
+		t.Fatalf("instantiate wider imported-table tenant: %v", err)
+	}
+	defer consumer.Close()
+	if got := tableTestCallI32(t, consumer, "grow"); got != -1 {
+		t.Fatalf("full imported table grow = %d, want -1", got)
+	}
+}
+
+func localGlobalMultiMemoryModule() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(2, wasmtest.Vec(memoryImportEntry("M", "mem1", 0x01, 0x01, 0x05))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x01, 0x01, 0x02})),
+		wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.I32, true, []byte{0x41, 0x00, 0x0b}))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("read", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x23, 0x00, 0x0b}))),
+	)
+}
+
+func TestStagedMultiMemoryContextIsolatesLocalGlobal(t *testing.T) {
+	producerCompiled := stagedMultiMemoryCompile(t, nativeMultiMemoryProducerModule())
+	defer producerCompiled.Close()
+	producer, err := instantiateCore(producerCompiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer producer.Close()
+	memory, err := producer.ExportedMemory("mem1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	compiled := stagedMultiMemoryCompile(t, localGlobalMultiMemoryModule())
+	defer compiled.Close()
+	consumer, err := instantiateCore(compiled, InstantiateOptions{Imports: Imports{"M.mem1": memory}})
+	if err != nil {
+		t.Fatalf("instantiate local-global tenant: %v", err)
+	}
+	defer consumer.Close()
+	if got := tableTestCallI32(t, consumer, "read"); got != 0 {
+		t.Fatalf("tenant local global = %d, want 0", got)
+	}
+	if got := tableTestCallI32(t, producer, "f"); got != 0 {
+		t.Fatalf("producer context after local-global tenant = %d, want 0", got)
+	}
+}
+
+func importedCallMultiMemoryModule() []byte {
+	funcImport := append(append(wasmtest.Name("M"), wasmtest.Name("f")...), 0x00, 0x00)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(2, wasmtest.Vec(funcImport, memoryImportEntry("M", "mem1", 0x01, 0x01, 0x05))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x01, 0x01, 0x02})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("call", 0, 1))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x10, 0x00, 0x0b}))),
+	)
+}
+
+func TestStagedMultiMemoryNativeImportedCallRebindsContext(t *testing.T) {
+	producerCompiled := stagedMultiMemoryCompile(t, nativeMultiMemoryProducerModule())
+	defer producerCompiled.Close()
+	producer, err := instantiateCore(producerCompiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer producer.Close()
+	memory, err := producer.ExportedMemory("mem1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fn, err := producer.ExportedFunc("f")
+	if err != nil {
+		t.Fatal(err)
+	}
+	consumerCompiled := stagedMultiMemoryCompile(t, importedCallMultiMemoryModule())
+	defer consumerCompiled.Close()
+	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{"M.f": fn, "M.mem1": memory}})
+	if err != nil {
+		t.Fatalf("instantiate native imported-call consumer: %v", err)
+	}
+	defer consumer.Close()
+	if got := tableTestCallI32(t, consumer, "call"); got != 0 {
+		t.Fatalf("native imported call = %d, want 0", got)
+	}
+	if got := tableTestCallI32(t, producer, "f"); got != 0 {
+		t.Fatalf("producer context after imported call = %d, want 0", got)
+	}
+}
+
+func missingSecondMemoryModule() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(2, wasmtest.Vec(
+			memoryImportEntry("env", "first", 0x01, 0x01, 0x02),
+			memoryImportEntry("env", "missing", 0x01, 0x01, 0x02),
+		)),
+	)
+}
+
+func TestStagedMultiMemoryFailedLinkIsAtomic(t *testing.T) {
+	compiled := stagedMultiMemoryCompile(t, missingSecondMemoryModule())
+	memory, err := NewMemory(1, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := instantiateCore(compiled, InstantiateOptions{Imports: Imports{"env.first": memory}}); err == nil || !strings.Contains(err.Error(), "missing imported memory") {
+		t.Fatalf("instantiate with missing second memory = %v, want explicit missing-import error", err)
+	}
+	if err := memory.Close(); err != nil {
+		t.Fatalf("failed link leaked first memory attachment: %v", err)
+	}
+}
+
+func multiMemorySnapshotStartModule() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(2, wasmtest.Vec(append(append(wasmtest.Name("env"), wasmtest.Name("tick")...), 0x00, 0x00))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x01, 0x01, 0x02}, []byte{0x01, 0x01, 0x02})),
+		wasmtest.Section(8, wasmtest.ULEB(0)),
+	)
+}
+
+func TestStagedMultiMemorySnapshotPolicyRejectsBeforeMutation(t *testing.T) {
+	compiled := stagedMultiMemoryCompile(t, multiMemorySnapshotStartModule())
+	blob, err := compiled.MarshalBinary()
+	if err != nil {
+		t.Fatalf("marshal staged compiled module: %v", err)
+	}
+	var loaded Compiled
+	if err := unmarshalCompiled(&loaded, blob[5:]); err != nil {
+		t.Fatalf("reload staged compiled module: %v", err)
+	}
+	defer loaded.Close()
+
+	for _, c := range []*Compiled{compiled, &loaded} {
+		calls := 0
+		_, err := Capture(c, SnapshotOptions{Imports: Imports{"env.tick": HostFunc(func(HostModule, []uint64, []uint64) { calls++ })}})
+		if err == nil || !strings.Contains(err.Error(), "multiple memories") {
+			t.Fatalf("Capture multi-memory module = %v, want explicit policy rejection", err)
+		}
+		if calls != 0 {
+			t.Fatalf("snapshot rejection ran start function %d time(s)", calls)
+		}
+	}
+}

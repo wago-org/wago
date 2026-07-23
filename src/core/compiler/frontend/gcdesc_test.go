@@ -298,7 +298,7 @@ func TestBuildGCTypeDescsFromDecodedRecursiveTypeIndexes(t *testing.T) {
 			0x4e, 0x03, // rec group with three struct subtypes; flattened base is type 1.
 			0x50, 0x00, 0x4d, 0x03, 0x5f, 0x00, // type 1: open struct, descriptor type 3.
 			0x50, 0x01, 0x01, 0x5f, 0x01, 0x7f, 0x00, // type 2: open struct <: type 1, i32 field.
-			0x4f, 0x01, 0x02, 0x5f, 0x01, 0x63, 0x02, 0x00, // type 3: final struct <: type 2, (ref null type 2) field.
+			0x4f, 0x01, 0x02, 0x5f, 0x02, 0x7f, 0x00, 0x63, 0x02, 0x00, // type 3: final struct <: type 2, i32 prefix plus (ref null type 2).
 		},
 	)))
 	m, err := wasm.DecodeModule(mod)
@@ -315,7 +315,7 @@ func TestBuildGCTypeDescsFromDecodedRecursiveTypeIndexes(t *testing.T) {
 	if idx := group[2].Supers[0]; !idx.Rec || idx.Index != 1 {
 		t.Fatalf("child super index = %#v, want rec 1", idx)
 	}
-	fieldHeap := group[2].Comp.Fields[0].Storage.Val.Ref.Heap
+	fieldHeap := group[2].Comp.Fields[1].Storage.Val.Ref.Heap
 	if fieldHeap.Kind != wasm.HeapTypeIndex || !fieldHeap.Type.Rec || fieldHeap.Type.Index != 1 {
 		t.Fatalf("child field heap = %#v, want rec type 1", fieldHeap)
 	}
@@ -335,7 +335,7 @@ func TestBuildGCTypeDescsFromDecodedRecursiveTypeIndexes(t *testing.T) {
 	if !descs[3].HasSuper || descs[3].Super != 2 {
 		t.Fatalf("type 3 super = %d has=%v, want flattened type 2", descs[3].Super, descs[3].HasSuper)
 	}
-	if descs[3].Fields[0].Kind != gc.StorageRefNull || descs[3].Fields[0].Offset != 0 {
-		t.Fatalf("type 3 field = %+v, want nullable ref at offset 0", descs[3].Fields[0])
+	if len(descs[3].Fields) != 2 || descs[3].Fields[1].Kind != gc.StorageRefNull || descs[3].Fields[1].Offset != 4 {
+		t.Fatalf("type 3 fields = %+v, want i32 prefix plus nullable ref at offset 4", descs[3].Fields)
 	}
 }

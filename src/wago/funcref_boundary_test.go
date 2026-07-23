@@ -90,6 +90,12 @@ func TestPublicFuncrefEgressReturnsStableOpaqueToken(t *testing.T) {
 	if err != nil || len(typed) != 1 || typed[0].Type() != ValFuncRef || typed[0].Bits() != token {
 		t.Fatalf("Call get = %v, %v; want typed token %#x", typed, err, token)
 	}
+	if !in.FuncRefMatchesFunction(typed[0].FuncRef(), 0) {
+		t.Fatal("typed token does not match its ref.func 0 identity")
+	}
+	if in.FuncRefMatchesFunction(typed[0].FuncRef(), 1) || in.FuncRefMatchesFunction(typed[0].FuncRef(), 99) {
+		t.Fatal("typed token matched a different or out-of-range function identity")
+	}
 	local, err := in.invokeLocal(1, nil)
 	if err != nil || len(local) != 1 || local[0] != token {
 		t.Fatalf("invokeLocal get = %v, %v; want token %#x", local, err, token)
@@ -392,8 +398,8 @@ func TestFuncrefReferenceStoreStructFootprint(t *testing.T) {
 		return
 	}
 	requireBoundedInstanceFootprint(t, unsafe.Sizeof(Instance{}))
-	if got := unsafe.Sizeof(referenceStore{}); got != 88 {
-		t.Fatalf("referenceStore size = %d, want 88 bytes", got)
+	if got := unsafe.Sizeof(referenceStore{}); got != 112 {
+		t.Fatalf("referenceStore size = %d, want 112 bytes with exact type registry", got)
 	}
 	if got := unsafe.Sizeof(Table{}); got != 64 {
 		t.Fatalf("Table size = %d, want 64 bytes", got)
@@ -404,8 +410,8 @@ func TestFuncrefReferenceStoreStructFootprint(t *testing.T) {
 	if got := unsafe.Sizeof(externrefSlot{}); got != 24 {
 		t.Fatalf("externrefSlot size = %d, want 24 bytes", got)
 	}
-	if got := unsafe.Sizeof(HostFuncRef{}); got != 112 {
-		t.Fatalf("HostFuncRef size = %d, want 112 bytes", got)
+	if got := unsafe.Sizeof(HostFuncRef{}); got != 120 {
+		t.Fatalf("HostFuncRef size = %d, want 120 bytes", got)
 	}
 }
 

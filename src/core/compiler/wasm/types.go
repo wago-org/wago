@@ -475,9 +475,18 @@ type Module struct {
 	DataCount         *uint32
 	Code              []Func
 	Data              []Data
+
+	UsesCompactImports bool
+
 	// BranchHints is the validated metadata.code.branch_hint custom section.
 	// Nil means that the module did not contain the section.
 	BranchHints []FuncBranchHints
+
+	// structuralTypeCache is module-lifetime compiler state. Decoded/validated
+	// modules are immutable while compiling; the cache fingerprints the outer
+	// type slice so ordinary test/module copies with replacement type sections
+	// cannot reuse stale identities.
+	structuralTypeCache *structuralTypeKeyCache
 }
 
 func (m *Module) ImportedFuncCount() int { return m.importCount(ExternFunc) }

@@ -11,9 +11,14 @@ the complete native platform matrix:
 | `macos-15-intel` | Darwin | amd64 | portable compiler/encoder | no | no | no |
 | `macos-15` | Darwin | arm64 | yes | yes | yes | yes |
 
-Each matrix cell asserts `go env GOOS` and `GOARCH` before testing. WABT is
-installed explicitly so tests that need `wat2wasm` do not silently skip because
-the runner image lacks the tool.
+Each matrix cell asserts `go env GOOS` and `GOARCH` before testing. Every runtime
+job bootstraps the checksum-pinned WABT release and adds its complete `bin`
+directory to `PATH`, so `wast2json` and `wat2wasm` do not depend on older runner
+packages. Linux/amd64 and coverage additionally initialize the pinned
+`tests/spec-v3` submodule, build the interpreter from that exact checkout, and
+export its path and revision. This is the authoritative fallback for
+exception-handling source forms that WABT 1.0.41 cannot parse; ARM64 does not
+compile those amd64-only supplementary fixture tests and avoids the OCaml setup.
 
 The three supported runtime targets run `make test`, which builds and tests every
 Go package, followed by `make test-corpus` with a bounded per-case timeout and
@@ -27,7 +32,12 @@ Linux/amd64 continues to host architecture-independent lint, TinyGo, coverage,
 and binary-size jobs. TinyGo mirrors the native matrix: Linux/amd64 and
 Linux/arm64 build, test, and smoke-run the CLI; Darwin/arm64 runs the runtime and
 public API suites; Darwin/amd64 runs the same portable compiler/encoder scope as
-Big Go. The CI card runs the WebAssembly 1.0, 2.0, and 3.0 suites
+Big Go. TinyGo runtime tests use verbose output so architecture-specific panics
+identify the active test instead of reporting only an anonymous package failure.
+`SupportedFeatures` and `RuntimeConfig.Validate` expose the complete Core 3
+families only on linux/amd64; other runtime targets reject backend-incomplete
+families before decoding or native lowering.
+The CI card runs the WebAssembly 1.0, 2.0, and 3.0 suites
 for visibility without making their current gaps required checks. The final
 `CI` aggregation job is the stable branch-protection check and fails if any
 required matrix cell or supporting job fails.
@@ -46,7 +56,9 @@ best-effort: a failed target is omitted and does not block the release. Every
 channel uses the same asset names: `wago-<goos>-<goarch>` (for example,
 `wago-linux-arm64`).
 
-For a local native approximation, run:
+For a local native approximation, run the commands below. The formatting gate
+checks tracked Go files only, so toolchains or diagnostics retained under `.git/`
+do not contaminate `make lint`.
 
 ```sh
 make lint

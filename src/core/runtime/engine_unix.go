@@ -150,7 +150,9 @@ func installTrapCell(linMem, trap []byte) {
 		return
 	}
 	storeTrap(trap, 0)
-	*(*uint64)(unsafe.Pointer(uintptr(unsafe.Pointer(&linMem[0])) - abi.TrapCellPtrOffset)) = uint64(slicePtr(trap))
+	base := unsafe.Pointer(&linMem[0])
+	*(*uint64)(unsafe.Add(base, -int(abi.TrapCellPtrOffset))) = uint64(slicePtr(trap))
+	*(*uint64)(unsafe.Add(base, -int(abi.EHHandlerPtrOffset))) = 0
 }
 
 // CallWithHost runs native code that may request returning host imports via the

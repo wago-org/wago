@@ -39,6 +39,8 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 		case 0x01: // nop
 		case 0x02, 0x03, 0x04: // block / loop / if
 			err = f.opBlock(r, op)
+		case 0x1f: // try_table
+			err = f.opTryTable(r)
 		case 0x05: // else
 			err = f.opElse()
 		case 0x0b: // end
@@ -82,13 +84,39 @@ func (f *fn) fcmpMaybeDefer(r *wasm.Reader, op wOp, f64 bool) {
 // conversions). Called only when reachable; dead code is skipped by the body loop.
 func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 	switch op {
+	case 0x08: // throw
+		return f.opThrow(r)
+	case 0x0a: // throw_ref
+		return f.opThrowRef()
 	case 0x10: // call
 		return f.callOp(r)
 	case 0x11: // call_indirect
 		return f.callIndirect(r)
+	case 0x12: // return_call
+		return f.returnCall(r)
+	case 0x13: // return_call_indirect
+		return f.returnCallIndirect(r)
+	case 0x14: // call_ref
+		return f.callRef(r)
+	case 0x15: // return_call_ref
+		return f.returnCallRef(r)
 
 	case 0x1a: // drop
 		e := f.popValue()
+		if e.st.ehRoot {
+			root, owned := f.materializeRead(e)
+			zero := f.allocReg(maskOf(root))
+			f.a.XorSelf32(zero)
+			for off := int32(0); off < ehRootSlots*8; off += 8 {
+				f.a.Store64(root, off, zero)
+			}
+			f.release(zero)
+			if owned {
+				f.release(root)
+			}
+			f.stats.peep("eh-root-clear")
+			break
+		}
 		switch e.st.kind {
 		case stReg:
 			if e.st.typ.isXMM() {
@@ -599,6 +627,14 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 		return f.refFunc(r)
 	case 0xd3: // ref.eq
 		f.refEq()
+	case 0xd4: // ref.as_non_null
+		f.refAsNonNull()
+	case 0xd5: // br_on_null
+		return f.brOnNull(r)
+	case 0xd6: // br_on_non_null
+		return f.brOnNonNull(r)
+	case 0xfb: // GC/reference proposal opcodes
+		return f.emitFB(r)
 	case 0xfc: // misc (multi-byte) opcodes
 		return f.emitFC(r)
 	case 0xfd: // SIMD

@@ -1,0 +1,352 @@
+{
+  "schema": 2,
+  "suite_revision": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+  "file": "gc/i31",
+  "leaders": [
+    {
+      "filename": "i31.0.wasm",
+      "command_line": 19,
+      "source_line": 1,
+      "size": 252,
+      "sha256": "4bdd4d0f186a2fd617b41ad4940e17f2c0415514ebc636a56e41496e8c392aea",
+      "class": "core",
+      "gate": "i31 encode/get/null/mutable-global/public-result product",
+      "type_graph": "rec[func(i32)-\u003e(ref i31)]|rec[func(i32)-\u003e(i32)]|rec[func()-\u003e(i32)]|rec[func()-\u003e(i32,i32)]|rec[func(i32)-\u003e()]",
+      "state_graph": "imports=0 funcs=7 globals=[const ref i31,mut ref i31] tables=0 memories=0 tags=0 elements=0 data=0 exports=[new=0:0,get_u=0:1,get_s=0:2,get_u-null=0:3,get_s-null=0:4,get_globals=0:5,set_global=0:6]",
+      "opcodes": [
+        {
+          "opcode": "GlobalGet",
+          "count": 2
+        },
+        {
+          "opcode": "GlobalSet",
+          "count": 1
+        },
+        {
+          "opcode": "I31GetS",
+          "count": 2
+        },
+        {
+          "opcode": "I31GetU",
+          "count": 4
+        },
+        {
+          "opcode": "I32Const",
+          "count": 2
+        },
+        {
+          "opcode": "LocalGet",
+          "count": 4
+        },
+        {
+          "opcode": "RefI31",
+          "count": 6
+        },
+        {
+          "opcode": "RefNull",
+          "count": 2
+        }
+      ],
+      "actions": [
+        "return:new",
+        "return:get_u",
+        "return:get_u",
+        "return:get_u",
+        "return:get_u",
+        "return:get_u",
+        "return:get_u",
+        "return:get_u",
+        "return:get_u",
+        "return:get_s",
+        "return:get_s",
+        "return:get_s",
+        "return:get_s",
+        "return:get_s",
+        "return:get_s",
+        "return:get_s",
+        "return:get_s",
+        "trap:get_u-null",
+        "trap:get_s-null",
+        "return:get_globals",
+        "action:set_global",
+        "return:get_globals"
+      ]
+    },
+    {
+      "filename": "i31.1.wasm",
+      "command_line": 61,
+      "source_line": 61,
+      "size": 259,
+      "sha256": "c2a2062022d3b99a27aada76d1fe14cdacf3387e7497943d17d3681f65ed7329",
+      "class": "i31-table",
+      "gate": "i31 table operations and element lifecycle",
+      "type_graph": "rec[func()-\u003e(i32)]|rec[func(i32)-\u003e(i32)]|rec[func(i32,i32)-\u003e(i32)]|rec[func(i32,i32,i32)-\u003e()]",
+      "state_graph": "imports=0 funcs=6 globals=[] tables=1 memories=0 tags=0 elements=2 data=0 exports=[size=0:0,get=0:1,grow=0:2,fill=0:3,copy=0:4,init=0:5]",
+      "opcodes": [
+        {
+          "opcode": "I31GetU",
+          "count": 1
+        },
+        {
+          "opcode": "LocalGet",
+          "count": 12
+        },
+        {
+          "opcode": "RefI31",
+          "count": 2
+        },
+        {
+          "opcode": "TableCopy",
+          "count": 1
+        },
+        {
+          "opcode": "TableFill",
+          "count": 1
+        },
+        {
+          "opcode": "TableGet",
+          "count": 1
+        },
+        {
+          "opcode": "TableGrow",
+          "count": 1
+        },
+        {
+          "opcode": "TableInit",
+          "count": 1
+        },
+        {
+          "opcode": "TableSize",
+          "count": 1
+        }
+      ],
+      "actions": [
+        "return:size",
+        "return:get",
+        "return:get",
+        "return:get",
+        "return:grow",
+        "return:size",
+        "return:get",
+        "return:get",
+        "action:fill",
+        "return:get",
+        "return:get",
+        "action:copy",
+        "return:get",
+        "return:get",
+        "action:init",
+        "return:get",
+        "return:get",
+        "return:get"
+      ]
+    },
+    {
+      "filename": "i31.2.wasm",
+      "command_line": 87,
+      "source_line": 123,
+      "size": 31,
+      "sha256": "99e43692c16af0e869ec03ae71d348ebd73fff4d401ca3e91393ad6151d6cf96",
+      "class": "numeric-env",
+      "type_graph": "",
+      "state_graph": "imports=0 funcs=0 globals=[const i32] tables=0 memories=0 tags=0 elements=0 data=0 exports=[g=3:0]",
+      "opcodes": [
+        {
+          "opcode": "I32Const",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "filename": "i31.3.wasm",
+      "command_line": 97,
+      "source_line": 128,
+      "size": 96,
+      "sha256": "0a26e50d6ec8ccbaf1cc3a59fc2e1be6dca2c22219ba70ca80a01451882bf0e4",
+      "class": "table-global-initializer",
+      "gate": "i31 table initializer from imported numeric global",
+      "type_graph": "rec[func(i32)-\u003e(i32)]",
+      "state_graph": "imports=1 funcs=1 globals=[] tables=1 memories=0 tags=0 elements=0 data=0 exports=[get=0:0]",
+      "opcodes": [
+        {
+          "opcode": "I31GetU",
+          "count": 1
+        },
+        {
+          "opcode": "LocalGet",
+          "count": 1
+        },
+        {
+          "opcode": "TableGet",
+          "count": 1
+        }
+      ],
+      "actions": [
+        "return:get",
+        "return:get",
+        "return:get"
+      ]
+    },
+    {
+      "filename": "i31.4.wasm",
+      "command_line": 110,
+      "source_line": 140,
+      "size": 88,
+      "sha256": "024b9a334c9a7bb6933243fa1eaf60ed653338034bfaf9e54fb23ccc13c9ad87",
+      "class": "global-global-initializer",
+      "gate": "i31 global initializer from imported numeric global",
+      "type_graph": "rec[func()-\u003e(i32)]",
+      "state_graph": "imports=1 funcs=1 globals=[const ref null i31] tables=0 memories=0 tags=0 elements=0 data=0 exports=[get=0:0]",
+      "opcodes": [
+        {
+          "opcode": "GlobalGet",
+          "count": 2
+        },
+        {
+          "opcode": "I31GetU",
+          "count": 1
+        },
+        {
+          "opcode": "RefI31",
+          "count": 1
+        }
+      ],
+      "actions": [
+        "return:get"
+      ]
+    },
+    {
+      "filename": "i31.5.wasm",
+      "command_line": 124,
+      "source_line": 150,
+      "size": 131,
+      "sha256": "757d3266617ea901221facbda9b660d6d1fd52adf492ffa82ba0658dc846b26d",
+      "class": "anyref-global",
+      "gate": "anyref global i31 storage and cast product",
+      "type_graph": "rec[func()-\u003e(i32,i32)]|rec[func(i32)-\u003e()]",
+      "state_graph": "imports=0 funcs=2 globals=[const ref null any,mut ref null any] tables=0 memories=0 tags=0 elements=0 data=0 exports=[get_globals=0:0,set_global=0:1]",
+      "opcodes": [
+        {
+          "opcode": "GlobalGet",
+          "count": 2
+        },
+        {
+          "opcode": "GlobalSet",
+          "count": 1
+        },
+        {
+          "opcode": "I31GetU",
+          "count": 2
+        },
+        {
+          "opcode": "I32Const",
+          "count": 2
+        },
+        {
+          "opcode": "LocalGet",
+          "count": 1
+        },
+        {
+          "opcode": "RefCast",
+          "count": 2
+        },
+        {
+          "opcode": "RefI31",
+          "count": 3
+        }
+      ],
+      "actions": [
+        "return:get_globals",
+        "action:set_global",
+        "return:get_globals"
+      ]
+    },
+    {
+      "filename": "i31.6.wasm",
+      "command_line": 147,
+      "source_line": 168,
+      "size": 262,
+      "sha256": "572387a2c9d7ea9112f3940025b7c57041cd9478185ed7e32bb93a01fbfa5a69",
+      "class": "anyref-table",
+      "gate": "anyref table i31 storage, cast, and element lifecycle",
+      "type_graph": "rec[func()-\u003e(i32)]|rec[func(i32)-\u003e(i32)]|rec[func(i32,i32)-\u003e(i32)]|rec[func(i32,i32,i32)-\u003e()]",
+      "state_graph": "imports=0 funcs=6 globals=[] tables=1 memories=0 tags=0 elements=2 data=0 exports=[size=0:0,get=0:1,grow=0:2,fill=0:3,copy=0:4,init=0:5]",
+      "opcodes": [
+        {
+          "opcode": "I31GetU",
+          "count": 1
+        },
+        {
+          "opcode": "LocalGet",
+          "count": 12
+        },
+        {
+          "opcode": "RefCast",
+          "count": 1
+        },
+        {
+          "opcode": "RefI31",
+          "count": 2
+        },
+        {
+          "opcode": "TableCopy",
+          "count": 1
+        },
+        {
+          "opcode": "TableFill",
+          "count": 1
+        },
+        {
+          "opcode": "TableGet",
+          "count": 1
+        },
+        {
+          "opcode": "TableGrow",
+          "count": 1
+        },
+        {
+          "opcode": "TableInit",
+          "count": 1
+        },
+        {
+          "opcode": "TableSize",
+          "count": 1
+        }
+      ],
+      "actions": [
+        "return:size",
+        "return:get",
+        "return:get",
+        "return:get",
+        "return:grow",
+        "return:size",
+        "return:get",
+        "return:get",
+        "action:fill",
+        "return:get",
+        "return:get",
+        "action:copy",
+        "return:get",
+        "return:get",
+        "action:init",
+        "return:get",
+        "return:get",
+        "return:get"
+      ]
+    }
+  ],
+  "gates": [],
+  "counts": {
+    "commands": 80,
+    "modules_passed": 7,
+    "assertions_passed": 65,
+    "expected_invalid": 0,
+    "expected_unlinkable": 0,
+    "expected_uninstantiable": 0,
+    "expected_feature_rejects": 0,
+    "blocked_commands": 0,
+    "unexpected_compile_rejects": 0,
+    "unexpected_link_rejects": 0,
+    "failures": 0
+  }
+}

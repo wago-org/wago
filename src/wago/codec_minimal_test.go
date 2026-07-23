@@ -1,10 +1,15 @@
 package wago
 
 import (
+	"bytes"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/runtime/gc"
 )
+
+func offsetInitEqual(a, b OffsetInit) bool {
+	return a.Base == b.Base && a.HasGlobal == b.HasGlobal && a.Global == b.Global && bytes.Equal(a.Expr, b.Expr)
+}
 
 func TestCompiledCodecRoundTripsMultipleEmptyDataSegments(t *testing.T) {
 	input := &Compiled{
@@ -20,7 +25,7 @@ func TestCompiledCodecRoundTripsMultipleEmptyDataSegments(t *testing.T) {
 		t.Fatalf("Data length = %d, want %d", len(got.Data), len(input.Data))
 	}
 	for i, seg := range got.Data {
-		if seg.Offset != input.Data[i].Offset {
+		if !offsetInitEqual(seg.Offset, input.Data[i].Offset) {
 			t.Fatalf("Data[%d].Offset = %+v, want %+v", i, seg.Offset, input.Data[i].Offset)
 		}
 		if len(seg.Bytes) != 0 {
@@ -82,7 +87,7 @@ func TestCompiledCodecRoundTripsMultipleEmptyElementSegments(t *testing.T) {
 		t.Fatalf("Elems length = %d, want %d", len(got.Elems), len(input.Elems))
 	}
 	for i, seg := range got.Elems {
-		if seg.Offset != input.Elems[i].Offset {
+		if !offsetInitEqual(seg.Offset, input.Elems[i].Offset) {
 			t.Fatalf("Elems[%d].Offset = %+v, want %+v", i, seg.Offset, input.Elems[i].Offset)
 		}
 		if len(seg.Values) != 0 {
@@ -100,7 +105,7 @@ func TestCompiledCodecRoundTripsEmptyStrings(t *testing.T) {
 		Imports:        []string{""},
 		importFuncSigs: []FuncSig{{}},
 		Funcs:          []FuncSig{{}},
-		FuncTypeID:     []uint32{0, 0},
+		FuncTypeID:     []uint64{0, 0},
 		Exports:        map[string]int{"": 1},
 	}
 

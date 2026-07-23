@@ -23,6 +23,10 @@ const (
 	TrapInterrupted          TrapCode = 12
 	TrapStackFenceBreached   TrapCode = 13
 	TrapCalledFnNotLinked    TrapCode = 14
+	TrapUnsupportedTailCall  TrapCode = 15
+	TrapNullReference        TrapCode = 16
+	TrapUnhandledException   TrapCode = 17
+	TrapCastFailure          TrapCode = 18
 )
 
 var trapMessages = map[TrapCode]string{
@@ -41,6 +45,10 @@ var trapMessages = map[TrapCode]string{
 	TrapInterrupted:          "runtime interrupt requested",
 	TrapStackFenceBreached:   "stack fence breached",
 	TrapCalledFnNotLinked:    "called function not linked",
+	TrapUnsupportedTailCall:  "tail call target requires an unsupported context switch",
+	TrapNullReference:        "null reference",
+	TrapUnhandledException:   "unhandled WebAssembly exception",
+	TrapCastFailure:          "cast failure",
 }
 
 func (c TrapCode) String() string {

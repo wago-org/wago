@@ -149,7 +149,7 @@ type fn struct {
 	// immutableLocalTable proves every non-null table-0 entry targets this module,
 	// so call_indirect can enter it directly through the internal register ABI.
 	immutableLocalTable bool
-	immutableTableType  uint32
+	immutableTableType  uint64
 	immutableTableTyped bool
 	monomorphicTarget   int
 	// preserveCallerPins marks a simple register-ABI leaf whose internal entry
@@ -571,6 +571,18 @@ type CompileOptions struct {
 	MemoryPressureAt int
 	MemoryPressure   func()
 
+	// GCTypeSubtypingRefTest is present for cross-target option parity. Staged
+	// admission rejects it before arm64 code generation.
+	GCTypeSubtypingRefTest bool
+
+	// GCStructHelpers is present for cross-target option parity. Staged admission
+	// rejects it before arm64 code generation.
+	GCStructHelpers bool
+
+	// GCArrayHelpers is present for cross-target option parity. Staged admission
+	// rejects it before arm64 code generation.
+	GCArrayHelpers bool
+
 	// Codegen carries injectable runtime/heap dependencies for future WasmGC
 	// lowering. The current direct backend does not lower WasmGC opcodes yet, but
 	// threading the option here lets that work use the same HeapABI as the IR
@@ -620,7 +632,15 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 	internalEntry := make([]int, n)
 	importedFuncs := m.ImportedFuncCount()
 	nGlobals := m.GlobalCount()
-	allHints, globalScores, err := computeModuleHints(m, nGlobals, importedFuncs)
+	hintGlobals := nGlobals
+	// Dense per-function global scoring costs O(functions*globals) memory even
+	// when each function touches only a handful of globals. Above one million
+	// cells, disable the optional global-pinning heuristic while retaining every
+	// semantic/call/local hint; this bounds compile memory for generated modules.
+	if uint64(n)*uint64(nGlobals) > 1<<20 {
+		hintGlobals = 0
+	}
+	allHints, globalScores, err := computeModuleHints(m, hintGlobals, importedFuncs)
 	if err != nil {
 		return nil, fmt.Errorf("arm64: %w", err)
 	}
@@ -982,11 +1002,11 @@ func moduleExportsTable(m *wasm.Module) bool {
 	return false
 }
 
-func immutableLocalTableType(m *wasm.Module) (uint32, bool) {
+func immutableLocalTableType(m *wasm.Module) (uint64, bool) {
 	if !immutableTableTypeEnabled || len(m.Tables) != 1 || m.Tables[0].Init != nil {
 		return 0, false
 	}
-	var want uint32
+	var want uint64
 	found := false
 	for i := range m.Elements {
 		e := &m.Elements[i]
@@ -997,14 +1017,17 @@ func immutableLocalTableType(m *wasm.Module) (uint32, bool) {
 			return 0, false
 		}
 		for _, idx := range e.Kind.Funcs {
-			ft, ok := m.FuncSignature(uint32(idx))
+			typeIdx, ok := m.FuncTypeIndex(uint32(idx))
 			if !ok {
 				return 0, false
 			}
-			id := wasm.StructuralFuncTypeID(ft)
+			key, ok := m.StructuralTypeKeyChecked(typeIdx.Index)
+			if !ok {
+				return 0, false
+			}
 			if !found {
-				want, found = id, true
-			} else if id != want {
+				want, found = key, true
+			} else if key != want {
 				return 0, false
 			}
 		}

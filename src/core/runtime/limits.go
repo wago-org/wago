@@ -32,7 +32,7 @@ const (
 const PassiveElemDescBytes = 16
 
 // TableEntryBytes is the size of one indirect-call table descriptor entry:
-// {codePtr u64, sigID u32, pad u32, homeLinMem u64, refSlot u64}. homeLinMem lets
+// {codePtr u64, sigKey u64, homeLinMem u64, refSlot u64}. homeLinMem lets
 // call_indirect run each funcref in its home instance's context (cross-instance
 // linking), and refSlot carries the nullable descriptor-pointer funcref handle
 // returned by table.get.
@@ -41,7 +41,7 @@ const PassiveElemDescBytes = 16
 // must use this size and these offsets.
 const (
 	TableEntryCodePtrOffset    = 0
-	TableEntrySigIDOffset      = 8
+	TableEntrySigKeyOffset     = 8
 	TableEntryHomeLinMemOffset = 16
 	TableEntryRefSlotOffset    = 24
 	TableEntryBytes            = 32
@@ -82,7 +82,9 @@ type InstantiateFootprint struct {
 	FuncImportCount    int
 	HostCallBytes      int // explicit sync control-frame bytes; zero selects the legacy async log for function imports
 	FuncRefCount       int
+	TagCount           int // one 8-byte exact native identity per exception tag
 	GlobalCount        int
+	MemoryCount        int // 16-byte native directory entries when greater than one
 	HasTable           bool
 	TableSize          int
 	TableCapacity      int
@@ -101,7 +103,7 @@ type InstantiateFootprint struct {
 // during instance creation, plus a small alignment slack for the allocator's
 // 8-byte rounding before each allocation.
 func InstantiateArenaNeed(fp InstantiateFootprint) (int, error) {
-	if fp.FuncImportCount < 0 || fp.HostCallBytes < 0 || fp.FuncRefCount < 0 || fp.GlobalCount < 0 || fp.TableSize < 0 || fp.TableCapacity < 0 || fp.ImportedTableCount < 0 || fp.ElemCount < 0 || fp.PassiveElemCount < 0 || fp.PassiveElemBytes < 0 || fp.PassiveDataCount < 0 || fp.MaxParamSlots < 0 || fp.MaxResultSlots < 0 {
+	if fp.FuncImportCount < 0 || fp.HostCallBytes < 0 || fp.FuncRefCount < 0 || fp.TagCount < 0 || fp.GlobalCount < 0 || fp.MemoryCount < 0 || fp.TableSize < 0 || fp.TableCapacity < 0 || fp.ImportedTableCount < 0 || fp.ElemCount < 0 || fp.PassiveElemCount < 0 || fp.PassiveElemBytes < 0 || fp.PassiveDataCount < 0 || fp.MaxParamSlots < 0 || fp.MaxResultSlots < 0 {
 		return 0, fmt.Errorf("negative instantiate footprint input")
 	}
 	tableCaps := fp.TableCapacities
@@ -173,11 +175,21 @@ func InstantiateArenaNeed(fp InstantiateFootprint) (int, error) {
 		return 0, fmt.Errorf("function import count %d overflows dispatch allocation", fp.FuncImportCount)
 	}
 	need += fp.FuncImportCount * ImportDispatchEntryBytes
+	if fp.TagCount > (maxInt()-need)/8 {
+		return 0, fmt.Errorf("exception tag count %d overflows identity directory allocation", fp.TagCount)
+	}
+	need += 8 * fp.TagCount
 	if fp.GlobalCount > (maxInt()-need)/16 {
 		return 0, fmt.Errorf("global count %d overflows arena allocation", fp.GlobalCount)
 	}
 	need += 8 * fp.GlobalCount // globals pointer table
 	need += 8 * fp.GlobalCount // worst-case cells for local/value-import globals
+	if fp.MemoryCount > 1 {
+		if fp.MemoryCount > (maxInt()-need)/16 {
+			return 0, fmt.Errorf("memory count %d overflows directory allocation", fp.MemoryCount)
+		}
+		need += 16 * fp.MemoryCount
+	}
 	if len(tableCaps) > 1 {
 		if len(tableCaps) > (maxInt()-need)/8 {
 			return 0, fmt.Errorf("table count %d overflows directory allocation", len(tableCaps))

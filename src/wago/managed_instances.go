@@ -44,7 +44,7 @@ type ManagedInstance struct {
 
 var voidFuncType = wasm.CompType{Kind: wasm.CompFunc}
 
-func voidFuncTypeID() uint32 { return wasm.StructuralFuncTypeID(&voidFuncType) }
+func voidFuncTypeKey() uint64 { return wasm.StructuralFuncTypeKey(&voidFuncType) }
 
 func newPendingInstanceManager(owner string, budget CapabilityBudget) *InstanceManager {
 	return &InstanceManager{owner: owner, budget: budget, instances: map[*ManagedInstance]struct{}{}, byInstance: map[*Instance]*ManagedInstance{}}
@@ -109,9 +109,15 @@ func (m *InstanceManager) Instantiate(ctx context.Context, mod *Module, opts ...
 		m.mu.Unlock()
 		return nil, fmt.Errorf("wago: plugin %s managed-instance limit %d reached: %w", m.owner, m.budget.MaxInstances, ErrPermissionDenied)
 	}
-	if m.budget.MaxMemoryBytes != 0 && mod != nil && mod.c != nil && mod.c.HasMemory && uint64(mod.c.MemMaxPages)*65536 > m.budget.MaxMemoryBytes {
-		m.mu.Unlock()
-		return nil, fmt.Errorf("wago: plugin %s module memory exceeds managed budget %d: %w", m.owner, m.budget.MaxMemoryBytes, ErrPermissionDenied)
+	if m.budget.MaxMemoryBytes != 0 && mod != nil && mod.c != nil && mod.c.memoryCount() != 0 {
+		maxBytes, limitErr := mod.c.declaredMemoryMaxBytes()
+		if limitErr != nil || maxBytes > m.budget.MaxMemoryBytes {
+			m.mu.Unlock()
+			if limitErr != nil {
+				return nil, fmt.Errorf("wago: plugin %s module memory limits: %v: %w", m.owner, limitErr, ErrPermissionDenied)
+			}
+			return nil, fmt.Errorf("wago: plugin %s module memory total %d exceeds managed budget %d: %w", m.owner, maxBytes, m.budget.MaxMemoryBytes, ErrPermissionDenied)
+		}
 	}
 	m.live++
 	m.pending.Add(1)
@@ -251,8 +257,8 @@ func (m *ManagedInstance) ValidateVoidTableEntry(index uint32) error {
 	if binary.LittleEndian.Uint64(entry) == 0 {
 		return fmt.Errorf("wago: table index %d is null", index)
 	}
-	if got, want := binary.LittleEndian.Uint32(entry[8:]), voidFuncTypeID(); got != want {
-		return fmt.Errorf("wago: table index %d has signature id %d, want () -> () (%d)", index, got, want)
+	if got, want := binary.LittleEndian.Uint64(entry[8:]), voidFuncTypeKey(); got != want {
+		return fmt.Errorf("wago: table index %d has signature key %d, want () -> () (%d)", index, got, want)
 	}
 	return nil
 }

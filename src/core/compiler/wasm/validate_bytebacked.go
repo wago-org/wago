@@ -55,17 +55,27 @@ type DecodedByteBackedModule struct {
 // path. It is a convenience for benchmarks and internal tests that need a
 // single call around explicit decode then validate phases.
 func ValidateByteBackedModule(data []byte) error {
-	return ValidateByteBackedModuleWithWorkers(data, 1)
+	return validateByteBackedModule(data, 1, ValidationFeatures{})
 }
 
 // ValidateByteBackedModuleWithWorkers is ValidateByteBackedModule with bounded
 // parallel function-body validation. workers <= 1 retains serial behavior.
 func ValidateByteBackedModuleWithWorkers(data []byte, workers int) error {
+	return validateByteBackedModule(data, workers, ValidationFeatures{})
+}
+
+// ValidateByteBackedModuleWithFeatures is the explicit-feature variant of
+// ValidateByteBackedModule.
+func ValidateByteBackedModuleWithFeatures(data []byte, features ValidationFeatures) error {
+	return validateByteBackedModule(data, 1, features)
+}
+
+func validateByteBackedModule(data []byte, workers int, features ValidationFeatures) error {
 	dm, err := DecodeModuleByteBacked(data)
 	if err != nil {
 		return err
 	}
-	return ValidateDecodedByteBackedModuleWithWorkers(dm, workers)
+	return validateDecodedByteBackedModule(dm, workers, features)
 }
 
 // DecodeModuleByteBacked decodes data without materializing the structured
@@ -88,17 +98,27 @@ func DecodeModuleByteBacked(data []byte) (*DecodedByteBackedModule, error) {
 // DecodeModuleByteBacked without requiring a structured function-body
 // instruction tree.
 func ValidateDecodedByteBackedModule(dm *DecodedByteBackedModule) error {
-	return ValidateDecodedByteBackedModuleWithWorkers(dm, 1)
+	return validateDecodedByteBackedModule(dm, 1, ValidationFeatures{})
 }
 
 // ValidateDecodedByteBackedModuleWithWorkers is
 // ValidateDecodedByteBackedModule with bounded parallel function-body
 // validation. Errors remain ordered by function index.
 func ValidateDecodedByteBackedModuleWithWorkers(dm *DecodedByteBackedModule, workers int) error {
+	return validateDecodedByteBackedModule(dm, workers, ValidationFeatures{})
+}
+
+// ValidateDecodedByteBackedModuleWithFeatures validates a decoded compact module
+// under explicitly staged release features.
+func ValidateDecodedByteBackedModuleWithFeatures(dm *DecodedByteBackedModule, features ValidationFeatures) error {
+	return validateDecodedByteBackedModule(dm, 1, features)
+}
+
+func validateDecodedByteBackedModule(dm *DecodedByteBackedModule, workers int, features ValidationFeatures) error {
 	if dm == nil || dm.Module == nil {
 		return &ValidationError{Code: ErrTypeMismatch, Func: -1, Detail: "nil byte-backed module"}
 	}
-	return validateModuleWithWorkers(dm.Module, &dm.direct, workers)
+	return validateModuleWithWorkersAndFeatures(dm.Module, &dm.direct, workers, features)
 }
 
 func (dm *directModule) populateCodeBodies() {
@@ -207,7 +227,7 @@ func decodeDirectModule(data []byte) (*directModule, error) {
 		case secElement:
 			err = decodeDirectElementSection(dm, &sub)
 		case secCode:
-			dm.m.Code, dm.usesDataCountInstr, err = decodeDirectCodeSection(&sub, moduleMemargOffset64(&dm.m))
+			dm.m.Code, dm.usesDataCountInstr, err = decodeDirectCodeSection(&sub, moduleMemargOffset64(&dm.m), dm.m.MemCount() > 1)
 			dm.seenCode = true
 		case secData:
 			err = decodeDirectDataSection(dm, &sub)
@@ -646,7 +666,7 @@ func readDirectConstExprBytes(r *reader) (directConstExpr, error) {
 	}
 }
 
-func decodeDirectCodeSection(r *reader, memarg64 bool) ([]Func, bool, error) {
+func decodeDirectCodeSection(r *reader, memarg64, multiMemory bool) ([]Func, bool, error) {
 	n, err := r.u32()
 	if err != nil {
 		return nil, false, err
@@ -675,7 +695,7 @@ func decodeDirectCodeSection(r *reader, memarg64 bool) ([]Func, bool, error) {
 		}
 		var exprBytes []byte
 		var bodyUsesDataCount bool
-		exprBytes, frames, bodyUsesDataCount, err = readDirectFuncExprBytes(&sub, frames, memarg64)
+		exprBytes, frames, bodyUsesDataCount, err = readDirectFuncExprBytes(&sub, frames, memarg64, multiMemory)
 		if err != nil {
 			return nil, false, err
 		}
@@ -696,7 +716,7 @@ type exprSkipFrame struct {
 // readDirectFuncExprBytes returns the raw expression bytes of one function body
 // and the (possibly grown) frame buffer so the caller can reuse it across every
 // function in the code section instead of allocating a nesting stack per body.
-func readDirectFuncExprBytes(r *reader, stack []exprSkipFrame, memarg64 bool) ([]byte, []exprSkipFrame, bool, error) {
+func readDirectFuncExprBytes(r *reader, stack []exprSkipFrame, memarg64, multiMemory bool) ([]byte, []exprSkipFrame, bool, error) {
 	start := r.off()
 	stack = stack[:0]
 	usesDataCountInstr := false
@@ -710,7 +730,7 @@ func readDirectFuncExprBytes(r *reader, stack []exprSkipFrame, memarg64 bool) ([
 			return nil, stack, false, err
 		}
 		imm = InstructionImmediate{}
-		op, err := classifyExprOpAfterOpcodeWithMemarg64(r, opcode, &imm, memarg64)
+		op, err := classifyExprOpAfterOpcodeWithFeatures(r, opcode, &imm, memarg64, multiMemory)
 		if err != nil {
 			return nil, stack, false, err
 		}
@@ -742,11 +762,16 @@ func readDirectFuncExprBytes(r *reader, stack []exprSkipFrame, memarg64 bool) ([
 }
 
 func (v *moduleValidator) validateConstExprDirect(e directConstExpr, want ValType) error {
+	return v.validateConstExprDirectWithGlobalLimit(e, want, v.m.ImportedGlobalCount()+len(v.m.Globals))
+}
+
+func (v *moduleValidator) validateConstExprDirectWithGlobalLimit(e directConstExpr, want ValType, globalLimit int) error {
 	fv := v.constFV
 	if fv == nil {
 		fv = &funcValidator{moduleValidator: v, funcIndex: -1, constOnly: true}
 		v.constFV = fv
 	}
+	fv.constGlobalLimit = globalLimit
 	fv.resetStacks()
 	fv.constResult[0] = want
 	fv.pushCtrl(ctrlFunc, nil, fv.constResult[:])
@@ -760,7 +785,7 @@ func (v *moduleValidator) validateConstExprDirect(e directConstExpr, want ValTyp
 			}
 			return nil
 		}
-		if err := fv.decodeDirectOp(r, false, &op); err != nil {
+		if err := fv.decodeDirectOp(r, false, false, &op); err != nil {
 			return err
 		}
 		if op.kind != directInstr && op.kind != directEnd {
@@ -802,7 +827,7 @@ func (v *moduleValidator) validateDirectElemPayload(e directElem) (RefType, erro
 		if e.hasFuncs && int(e.maxFunc) >= v.m.FuncCount() {
 			return RefType{}, v.err(ErrUnknownFunc, "elem")
 		}
-		return FuncRef.Ref, nil
+		return Ref(false, AbsHeap(HeapFunc), false), nil
 	case ElemFuncExprs:
 		for _, ex := range e.exprs {
 			if err := v.validateConstExprDirect(ex, FuncRef); err != nil {
@@ -842,7 +867,7 @@ func (v *funcValidator) directElemRefType(index uint32) (RefType, error) {
 	}
 }
 
-func (v *funcValidator) validateFuncDirect(body directCodeBody, ft *CompType, memarg64 bool) error {
+func (v *funcValidator) validateFuncDirect(body directCodeBody, ft *CompType, memarg64, multiMemory bool) error {
 	v.localParams = ft.Params
 	v.localRuns = body.locals.Runs
 	var overflow bool
@@ -866,7 +891,7 @@ func (v *funcValidator) validateFuncDirect(body directCodeBody, ft *CompType, me
 			}
 			return nil
 		}
-		if err := v.decodeDirectOp(r, memarg64, &op); err != nil {
+		if err := v.decodeDirectOp(r, memarg64, multiMemory, &op); err != nil {
 			return err
 		}
 		if err := v.stepDirectOp(&op); err != nil {
@@ -894,7 +919,7 @@ type directOp struct {
 	catches   []Catch
 }
 
-func (v *funcValidator) decodeDirectOp(r *reader, memarg64 bool, out *directOp) error {
+func (v *funcValidator) decodeDirectOp(r *reader, memarg64, multiMemory bool, out *directOp) error {
 	op, err := r.byte()
 	if err != nil {
 		*out = directOp{}
@@ -1022,12 +1047,17 @@ func (v *funcValidator) decodeDirectOp(r *reader, memarg64 bool, out *directOp) 
 		v.opExt = instrExt{MemArg: ma}
 		*out = directOp{kind: directInstr, instr: Instruction{Kind: memOpcodeKind[op], ext: &v.opExt}}
 		return err
-	case 0x3f:
-		in, err := reservedZeroInst(r, InstrMemorySize)
-		*out = directOp{kind: directInstr, instr: in}
-		return err
-	case 0x40:
-		in, err := reservedZeroInst(r, InstrMemoryGrow)
+	case 0x3f, 0x40:
+		kind := InstrMemorySize
+		if op == 0x40 {
+			kind = InstrMemoryGrow
+		}
+		if multiMemory {
+			in, err := indexInst(r, kind)
+			*out = directOp{kind: directInstr, instr: in}
+			return err
+		}
+		in, err := reservedZeroInst(r, kind)
 		*out = directOp{kind: directInstr, instr: in}
 		return err
 	case 0x41:
@@ -1163,7 +1193,9 @@ func (v *funcValidator) directStartTryTable(bt BlockType, catches []Catch) error
 			payload = append(payload, ft.Params...)
 		}
 		if c.Kind == CatchRef || c.Kind == CatchAllRef {
-			payload = append(payload, RefVal(AbsRef(HeapExn)))
+			// Reference catches materialize a non-null exception reference. The
+			// target label may widen it to nullable exnref, but not vice versa.
+			payload = append(payload, RefVal(Ref(false, AbsHeap(HeapExn), false)))
 		}
 		if c.Kind == CatchAll && len(lt) != 0 {
 			return v.verr(ErrTypeMismatch, "catch_all label must expect no values")
@@ -1177,7 +1209,7 @@ func (v *funcValidator) directStartTryTable(bt BlockType, catches []Catch) error
 			}
 		}
 	}
-	return v.directPushCtrl(ctrlBlock, ins, outs)
+	return v.directPushCtrl(ctrlTry, ins, outs)
 }
 
 func (v *funcValidator) directElse() error {
@@ -1210,12 +1242,15 @@ func (v *funcValidator) directEnd() error {
 	if _, err := v.popCtrl(); err != nil {
 		return err
 	}
+	if f.kind == ctrlTry && f.unreachable {
+		v.unreachable()
+	}
 	if f.kind == ctrlIf {
 		if f.ifSeenElse {
 			if len(v.vals) != f.ifThenHeight {
 				return v.verr(ErrTypeMismatch, "if branch heights")
 			}
-		} else if !sameValTypes(f.in, f.out) {
+		} else if !v.sameValTypes(f.in, f.out) {
 			return v.verr(ErrTypeMismatch, "if without else")
 		}
 	}

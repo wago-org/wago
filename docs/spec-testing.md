@@ -11,6 +11,7 @@ support is completed.
 |---|---|---|---|
 | WebAssembly 1.0 baseline | `WebAssembly/testsuite` at `a8bcbafe6d2fb191ce0188de0e18fdc107fa2598` | `tests/spec` | checkout root |
 | WebAssembly 2.0 | `WebAssembly/spec` tag `v2.0.0`, commit `05ca4182176763112561ae20153975c12bd689e4` | `tests/spec-v2` | `test/core` |
+| WebAssembly 3.0 | `WebAssembly/spec` tag `wg-3.0`, commit `9d36019973201a19f9c9ebb0f10828b2fe2374aa` | `tests/spec-v3` | `test/core` |
 
 The Release 2 source is the specification repository because that tagged tree
 contains the official release's complete core tests, including the nested
@@ -23,6 +24,7 @@ Initialize only the suite needed for a focused run:
 ```sh
 git submodule update --init tests/spec       # WebAssembly 1.0
 git submodule update --init tests/spec-v2    # WebAssembly 2.0
+git submodule update --init tests/spec-v3    # WebAssembly 3.0
 ```
 
 ## Commands
@@ -32,6 +34,7 @@ Install WABT so `wast2json` is on `PATH`, then run:
 ```sh
 make spec1
 make spec2
+make spec3
 make simd
 ```
 
@@ -42,6 +45,59 @@ informational CI card. `make simd` is the required native execution gate for the
 focused official SIMD proposal corpus on each supported runtime target; broader
 spec-suite gaps remain visible in the card without failing the aggregate CI
 check.
+
+`make spec3` verifies checksum-pinned WABT 1.0.41 and the official 3.0.0
+reference interpreter built from the exact Release 3 pin. WABT remains primary;
+28 unsupported text files fall back to the strict binary-script converter. The
+current schema-2 inventory processes all 258 files with zero parser failures:
+144 green/114 red, modules pass=1,691/skip=535, assertions
+pass=51,765/fail=5/skip=6,268. The five reached failures are two in `linking`, one
+in `multi-memory/linking0`, and two in `multi-memory/linking3`; the former
+`select` funcref wildcard failure is green. Iteration 13 decodes bounded Core 3
+`0x7f` mixed-kind and `0x7e` shared-kind compact import groups on both decoder
+paths, with malformed count/kind/type/index rejection and default Release 2
+fail-closed validation. A focused runner converts the actual pinned
+`memory_grow`, `memory_size_import`, and `linking0`-`3` files with WABT 1.0.41 and
+executes every safe admitted command under staged compilation. It proves exact
+import order/codec reload, unknown-import atomicity, prior segment/start store
+modification, producer growth limits, and explicit executable-owner/function/
+private-basedata failures. The same iteration adds retained root cross-instance
+`return_call_ref` with nested/host/null/wrong-key traps. Iteration 14 introduced
+`tests/spec-v3-staged-multi-memory.json`; iteration 15 upgrades it to a schema-2
+complete family matrix over all 41 pinned multi-memory files plus
+`simd/simd_memory-multi`. Iteration 17 closes the former `linking1`, `load1`, and
+`store1` basedata gates through a finite compile-only owner/tenant proof. All 913
+commands are now gap-free: 79 instantiated modules, 771 successful assertions,
+4 invalid, 22 unlinkable, and 20 uninstantiable cases, with zero feature rejects,
+blocked commands, or unexpected compile/link/assertion gaps. The runner requires pinned WABT
+and skips as a whole when the tool is absent; it never turns missing tooling into
+a partial green matrix. Iteration 15 also adds
+`tests/spec-v3-staged-return-call-ref.json`: Iteration 18 makes all 51 commands
+fully green under staged admission, with 5 modules and 35 assertions executing and
+11 invalid modules rejected. The admitted reference-result shape is one canonical
+funcref descriptor returned in RAX; broader reference/foreign result ABIs remain gated.
+Iteration 16 adds
+`tests/spec-v3-staged-return-call.json`, fully green for all 47 commands (3 modules,
+33 assertions, 11 invalid), and `tests/spec-v3-staged-return-call-indirect.json`,
+which Iteration 17 makes fully green for all 79 commands: 3 modules, 49 assertions,
+16 invalid, and 11 malformed. The proof is finite per local unexported/unmutated
+ table; imported, mutable, exported, and host/cross-instance descriptor tables remain
+fail-closed. Iteration 17 also adds `tests/spec-v3-staged-memory64.json`; Iteration 18
+admits active data initialization with exact i64 offset metadata and updates the six-file
+accounting to 807 commands: 7 modules and 92 assertions execute, while 36 bounded-policy/
+family gates and 530 dependent commands remain explicit; 83 invalid and 59 malformed
+cases are recorded. Iteration 19 adds every SIMD memory load/store/extend/splat/zero/
+lane form to the same bounded memory64 policy; the pinned six files contain no newly
+admitted module, so their exact totals remain unchanged. The same iteration proves a
+separate retained int-register cross-instance direct-tail transition and a sole bounded
+imported funcref-table basedata tenant. Iteration 20 adds bounded memory64 copy/fill,
+local table64 size/get/set with codec-v26 metadata, and exactly `(i32, f64) -> f64`
+through the direct cross-tail record. Snapshot-v3 owned-local restore, nested tail
+continuations, bounded local memory64 scalar/SIMD/data/bulk execution, table64 execution,
+and finite imported-owner tenants are supplementary evidence; public memory64/table64/tail/reference gates remain closed, so the public
+schema-2 inventory remains byte-for-byte unchanged.
+Refresh the machine-readable red inventory with `scripts/spec3-baseline.sh`; the
+command remains nonzero until the zero-gap completion gate is met.
 
 The validation harness uses the same release discovery and can be run directly:
 
@@ -102,7 +158,7 @@ replay requires 2 passed modules and locks the official shape with imported tabl
 The imported/local ownership guards prove active writes and indexed calls across
 multiple imported and local tables, cross-table copy, exact imported re-export
 and local export resolution, duplicate import aliases, independent limit and
-policy checks, codec-v21 structural round-trip, shared-memory per-instance context rebinding, finite
+policy checks, codec-v22 structural round-trip, shared-memory per-instance context rebinding, finite
 alias-safe failed-instance retention, preservation of every producer's unrelated
 export-handle chain, and consumer-before-producer close ordering. The footprint
 guards require a capacity-one second local funcref table to add exactly 56 arena
@@ -156,11 +212,15 @@ WAGO_SPECTEST_DIR="$PWD/tests/spec-v2" WAGO_SPEC_VERSION=2.0 \
 
 The locked sites are `imports.wast` lines 483, 487, and 491 plus `memory.wast`
 lines 10 and 11. They cover two imported memories, one imported plus one local
-memory, and two local memories. Multi-memory is not part of WebAssembly 2.0 and
-is a documented wago non-goal, so validation counts imported and local memories
-together and rejects totals above one clearly; focused local tests preserve one
-imported or one local memory as valid. The guard exercises both AST and byte-
-backed validation and keeps this rejection ahead of frontend support filtering.
+memory, and two local memories. Multi-memory is not part of WebAssembly 2.0, so
+the default validator continues to count imported and local memories together and
+reject totals above one clearly; focused local tests preserve one imported or one
+local memory as valid. Core 3 work uses only the explicit
+`ValidationFeatures{MultiMemory: true}` path, which accepts valid indexed
+`memory.size`/`memory.grow` and memargs while still rejecting unknown indexes.
+That staged API is not wired to public compile/runtime admission. The Release 2
+guard exercises both AST and byte-backed default validation and keeps its
+rejection ahead of frontend support filtering.
 
 For the Release 2 implicit-select operand rule, run the formerly failing
 official site through both validator paths together with the local form matrix:
@@ -216,8 +276,10 @@ the reserved immediate must be exactly one literal `0x00` byte. Reject nonzero
 bytes and non-minimal two- through five-byte LEB zero encodings during decode.
 Keep the structured AST decoder, byte-backed instruction walk, and direct
 validator decoder aligned, and preserve truncated-immediate offsets plus code-
-section spans. Multi-memory remains outside the target; do not generalize this
-field to a nonzero index.
+section spans. The default/WebAssembly 2.0 path must still reject nonzero and
+non-minimal encodings. The explicit Core 3 multi-memory validation path decodes a
+canonical ULEB memory index instead; do not let that staged path weaken default
+binary strictness or imply frontend/runtime execution support.
 
 For the Release 2 memory32 memarg offset-width rule, run the twelve formerly
 accepted sites together with the local AST, byte-backed, and direct-validator
@@ -413,8 +475,8 @@ shared mutation, duplicate-alias deduplication, local export then re-import,
 runtime-owned externref `GetValue`/`SetValue`, null/non-null identity, imported
 immutable `global.get` copies, cross-runtime/private-store/forged rejection before
 storage, producer and consumer close ordering, Runtime.Close root retention, and
-unchanged 40-byte `Global`, 776-byte `Instance`, 584-byte `Compiled`, and 88-byte
-`referenceStore` layouts. Host global close rejects live importers. Codec v21
+bounded 40-byte `Global`, 776-byte `Instance`, 648-byte `Compiled`, and 88-byte
+`referenceStore` layouts. Host global close rejects live importers. Codec v22
 round-trips structural reference-global metadata; snapshots continue to reject
 live reference-global state.
 
@@ -437,10 +499,10 @@ The local gate pins `Runtime.NewFuncRefGlobal` with null and exact same-store
 shared mutation, duplicate-alias deduplication, callable `HostFuncRef` identity,
 producer retention, and importer/Runtime/owner/global close ordering. It rejects
 forged and cross-runtime tokens and proves raw `HostFunc` descriptor egress stays
-fail-closed. Codec v21 persists structural reference-global metadata only while
+fail-closed. Codec v22 persists structural reference-global metadata only while
 snapshots still reject live reference state, and
-`Global`, `HostFuncRef`, `Compiled`, `Instance`, and `referenceStore` remain 40,
-112, 584, 776, and 88 bytes. This is a host API/lifetime gate; it does not change
+`Global`, `HostFuncRef`, `Compiled`, `Instance`, and `referenceStore` are 40,
+120, 648, 776, and 88 bytes. This is a host API/lifetime gate; it does not change
 the official Release 2 corpus counts.
 
 For the bounded module-local externref-table slice, run:
@@ -458,7 +520,7 @@ null initialization, same-store non-null identity, exact table indexes and
 8-byte strides, bounds traps, zero-length fill/grow behavior, bounded 1,024-entry
 min-only growth, feature gating, forged/cross-store rejection before storage,
 store teardown, and no funcref descriptor arena for externref-only tables.
-Codec v21 round-trips externref-table structure while snapshots remain an
+Codec v22 round-trips externref-table structure while snapshots remain an
 explicit live-table-state rejection. Imported/shared ownership and exact exports/re-exports are covered by
 the next gate. The focused official roots lock
 `ref_is_null` at 1 module / 13 assertions; `table_set`, `table_size`, and
@@ -481,9 +543,9 @@ The local matrix requires `Runtime.NewExternRefTable`, exact externref type and
 8-byte stride, same-store aliases, get/set/size/grow/fill visibility, local export
 then re-import/re-export, limit checks, cross-runtime and standalone/private-store
 rejection, host-table close rejection with live importers, Runtime.Close root
-retention through the final table close, codec-v21 structural round-trip plus
-snapshot rejection, and the
-unchanged 64-byte `Table`, 776-byte `Instance`, and 584-byte `Compiled` layouts.
+retention through the final table close, codec-v22 structural round-trip plus
+snapshot rejection, and the bounded 64-byte `Table`, 776-byte `Instance`, and
+648-byte `Compiled` layouts.
 The source/execution guard pins `linking.wast:291-309`; its exporter and compatible
 importer execute as two modules, while the two incompatible-type assertions remain
 covered by local exact-type tests because the execution harness does not replay
@@ -502,7 +564,7 @@ The source and execution guards pin `bulk.wast:274/297`, `elem.wast:654-677`,
 and `table.wast:8/9`. They require active/passive/declarative null externref
 segments, nonzero and imported destinations, 8-byte `table.init`/`table.copy`,
 `elem.drop`, overlap, zero-length and out-of-bounds behavior, declaration-order
-failed-instantiation effects, no failed externref producer root, codec-v21
+failed-instantiation effects, no failed externref producer root, codec-v22
 structural round-trip, snapshot rejection, and unchanged public/runtime layouts. The two `bulk.wast`
 modules prove element drop state without a table. The two `table.wast` modules
 prove that inert unexported huge spare capacities do not force an unusable arena
@@ -518,7 +580,7 @@ file and never leaks to another file. All importing instances close before the
 file-scoped owners. Imported-memory re-export returns the original `*Memory`, so
 `imports.wast` growth/size actions observe one identity and producer lifetime.
 
-For codec-v21 structural reference persistence and the snapshot live-state
+For codec-v22 structural reference persistence and the snapshot live-state
 boundary, run:
 
 ```sh
@@ -563,8 +625,8 @@ accepted-invalid or accepted-malformed sites. The execution run is green at
 1,600 passed / 0 failed / 0 skipped modules and 48,248 passed / 0 failed / 0
 skipped assertions; every bounded gap reason is zero. `imports.wast` is fully
 green at 54 / 34 modules/assertions, `data.wast` at 25 / 14, and `linking.wast`
-at 21 / 90. `.wago` codec v21 persists structural reference globals, indexed typed
-tables/exports/elements, exact declared table-limit forms, and required-feature
+at 21 / 90. `.wago` codec v26 persists structural reference globals, indexed typed
+tables/exports/elements, exact declared table/memory-limit forms, and required-feature
 bits while rejecting live runtime identity. The remaining product gates are also
 closed locally: snapshot fail-closed admission,
 all-table/reference inspection after compile/load, trapped-lease release, and

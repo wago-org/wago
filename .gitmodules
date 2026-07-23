@@ -11,3 +11,6 @@
 [submodule "tests/spec-v2"]
 	path = tests/spec-v2
 	url = https://github.com/WebAssembly/spec
+[submodule "tests/spec-v3"]
+	path = tests/spec-v3
+	url = https://github.com/WebAssembly/spec

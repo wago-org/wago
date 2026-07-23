@@ -75,7 +75,7 @@ func TestImmutableLocalTableCallIndirectSpecialization(t *testing.T) {
 		t.Fatalf("exported-table hints: %v", err)
 	}
 	for i := range hints {
-		if hints[i].immutableLocalTable {
+		if _, ok := (&fn{immutableTables: hints[i].immutableTables}).immutableTable(0); ok {
 			t.Fatalf("function %d specialized an externally mutable exported table", i)
 		}
 	}
@@ -101,7 +101,7 @@ func TestImmutableLocalTableMixedTypesKeepDynamicCheck(t *testing.T) {
 	if err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if _, ok := immutableLocalTableType(m); ok {
+	if _, ok := immutableLocalTableType(m, 0); ok {
 		t.Fatal("mixed-signature table was classified as uniform")
 	}
 }

@@ -215,14 +215,14 @@ func TestHostCreatedFuncRefGlobalPersistenceAndLayoutsStayFailClosed(t *testing.
 		t.Fatalf("Global size = %d, want 40", got)
 	}
 	requireBoundedInstanceFootprint(t, unsafe.Sizeof(Instance{}))
-	if got := unsafe.Sizeof(Compiled{}); got != 584 {
-		t.Fatalf("Compiled size = %d, want 584", got)
+	if got := unsafe.Sizeof(Compiled{}); got != 664 {
+		t.Fatalf("Compiled size = %d, want 664", got)
 	}
-	if got := unsafe.Sizeof(HostFuncRef{}); got != 112 {
-		t.Fatalf("HostFuncRef size = %d, want 112", got)
+	if got := unsafe.Sizeof(HostFuncRef{}); got != 120 {
+		t.Fatalf("HostFuncRef size = %d, want 120", got)
 	}
-	if got := unsafe.Sizeof(referenceStore{}); got != 88 {
-		t.Fatalf("referenceStore size = %d, want 88", got)
+	if got := unsafe.Sizeof(referenceStore{}); got != 112 {
+		t.Fatalf("referenceStore size = %d, want 112 with exact type registry", got)
 	}
 	compiled := MustCompile(importedReferenceGlobalModule(wasm.FuncRef, true))
 	defer compiled.Close()

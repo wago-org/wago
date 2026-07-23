@@ -70,6 +70,20 @@ func (f *fn) tableIsExternref(tableIdx uint32) bool {
 	return ok && wasm.EqualValType(wasm.RefVal(tt.Ref), wasm.ExternRef)
 }
 
+func (f *fn) tableAddr64(tableIdx uint32) bool {
+	tt, ok := f.m.TableType(tableIdx)
+	return ok && tt.Limits.Addr64
+}
+
+// canonicalizeTableOperand zero-extends table32 operands through a W-register
+// write before any X-width address arithmetic or loop use. Host-produced i32
+// values may have arbitrary upper bits in their 64-bit ABI slots.
+func (f *fn) canonicalizeTableOperand(reg Reg, tableIdx uint32) {
+	if !f.tableAddr64(tableIdx) {
+		f.a.MovReg32(reg, reg)
+	}
+}
+
 func (f *fn) typedTableEntryAddr(dst, tbl Reg, tableIdx uint32) {
 	shift := byte(5)
 	if f.tableIsExternref(tableIdx) {
@@ -100,7 +114,11 @@ func (f *fn) tableSize(r *wasm.Reader) error {
 	tbl := f.allocReg(0)
 	f.loadTableDescriptor(tbl, tableIdx)
 	f.ld32(tbl, tbl, 0)
-	f.pushReg(tbl, mtI32)
+	if f.tableAddr64(tableIdx) {
+		f.pushReg(tbl, mtI64)
+	} else {
+		f.pushReg(tbl, mtI32)
+	}
 	return nil
 }
 
@@ -119,6 +137,10 @@ func (f *fn) tableInit(r *wasm.Reader) error {
 	f.ld64(X9, SP, f.spillOff(d-3))  // dst table offset
 	f.ld64(X10, SP, f.spillOff(d-2)) // src element offset
 	f.ld64(X11, SP, f.spillOff(d-1)) // n entries
+	f.canonicalizeTableOperand(X9, tableIdx)
+	// Element segment source indexes and lengths are always i32.
+	f.a.MovReg32(X10, X10)
+	f.a.MovReg32(X11, X11)
 
 	f.loadTableDescriptor(X14, tableIdx)
 	f.ld32(X12, X14, 0)
@@ -164,6 +186,11 @@ func (f *fn) tableCopy(r *wasm.Reader) error {
 	f.ld64(X9, SP, f.spillOff(d-3))
 	f.ld64(X10, SP, f.spillOff(d-2))
 	f.ld64(X11, SP, f.spillOff(d-1))
+	f.canonicalizeTableOperand(X9, dstTableIdx)
+	f.canonicalizeTableOperand(X10, srcTableIdx)
+	if !f.tableAddr64(dstTableIdx) || !f.tableAddr64(srcTableIdx) {
+		f.a.MovReg32(X11, X11)
+	}
 	f.loadTableDescriptor(X14, dstTableIdx)
 	f.ld32(X12, X14, 0)
 	f.leaScaled(X13, X9, X11, 0, 0, true)
@@ -209,11 +236,14 @@ func (f *fn) tableFill(r *wasm.Reader) error {
 	f.ld64(X9, SP, f.spillOff(d-3))
 	f.ld64(X12, SP, f.spillOff(d-2))
 	f.ld64(X11, SP, f.spillOff(d-1))
+	f.canonicalizeTableOperand(X9, tableIdx)
+	f.canonicalizeTableOperand(X11, tableIdx)
 	f.loadTableDescriptor(X14, tableIdx)
 	f.ld32(X13, X14, 0)
 	f.leaScaled(X9, X9, X11, 0, 0, true)
 	f.trapUnlessLE(X9, X13)
 	f.ld64(X9, SP, f.spillOff(d-3))
+	f.canonicalizeTableOperand(X9, tableIdx)
 	f.tableEntryAddr(X9, X14)
 	// snapshotFuncrefDescriptor uses the register allocator internally. Keep the
 	// fixed destination/count registers live across it so descriptor snapshotting
@@ -233,6 +263,8 @@ func (f *fn) externrefTableFill(tableIdx uint32) error {
 	f.ld64(X9, SP, f.spillOff(d-3))
 	f.ld64(X12, SP, f.spillOff(d-2))
 	f.ld64(X11, SP, f.spillOff(d-1))
+	f.canonicalizeTableOperand(X9, tableIdx)
+	f.canonicalizeTableOperand(X11, tableIdx)
 	f.loadTableDescriptor(X14, tableIdx)
 	f.ld32(X13, X14, 0)
 	f.leaScaled(X9, X9, X11, 0, 0, true)
@@ -255,6 +287,7 @@ func (f *fn) tableGrow(r *wasm.Reader) error {
 	f.materializePendingLoads()
 	f.flush()
 	delta := f.materialize(f.popValue())
+	f.canonicalizeTableOperand(delta, tableIdx)
 	f.pinned = f.pinned.add(delta)
 	ref := f.materialize(f.popValue())
 	f.pinned = f.pinned.add(ref)
@@ -264,17 +297,19 @@ func (f *fn) tableGrow(r *wasm.Reader) error {
 	old := f.allocReg(maskOf(delta).add(ref).add(tbl))
 	f.ld32(old, tbl, 0)
 	nw := f.allocReg(maskOf(delta).add(ref).add(tbl).add(old))
-	f.a.MovReg32(nw, old) // zero-extend old into nw (was MovRegReg32)
-	// nw = old + delta, checking for 32-bit unsigned overflow. On arm64 the add
-	// must be the flag-setting ADDS form, and the carry-out condition is CondCS
-	// (carry set) — the opposite of the compare-borrow CondCC that condB maps to:
-	// after an ADD, C=1 means unsigned overflow, whereas after a SUB/CMP, C=1 means
-	// no-borrow. So this branch uses a64.CondCS explicitly, not condB.
-	f.a.Adds32(nw, nw, delta)
+	addr64 := f.tableAddr64(tableIdx)
+	if addr64 {
+		f.a.MovReg64(nw, old)
+		f.a.Adds64(nw, nw, delta)
+	} else {
+		f.a.MovReg32(nw, old)
+		f.a.Adds32(nw, nw, delta)
+	}
+	// ADDS carry set is unsigned overflow at either operand width.
 	failOverflow := f.a.Bcond(a64.CondCS)
 	max := f.allocReg(maskOf(delta).add(ref).add(tbl).add(old).add(nw))
 	f.ld32(max, tbl, 4)
-	f.cmpRR(nw, max, false)
+	f.cmpRR(nw, max, addr64)
 	failMax := f.a.Bcond(condA)
 	f.release(max)
 	// table.grow keeps the descriptor pointer, old length, and new length live
@@ -292,7 +327,11 @@ func (f *fn) tableGrow(r *wasm.Reader) error {
 	done := f.a.Branch()
 	f.a.PatchBranch19(failOverflow, f.a.Len())
 	f.a.PatchBranch19(failMax, f.a.Len())
-	f.a.MovImm64(old, 0xFFFFFFFF) // -1 as i32 (was MovImm32(old,-1))
+	if addr64 {
+		f.a.MovImm64(old, ^uint64(0))
+	} else {
+		f.a.MovImm64(old, 0xFFFFFFFF)
+	}
 	f.a.PatchBranch26(done, f.a.Len())
 	f.pinned = f.pinned.remove(delta)
 	f.pinned = f.pinned.remove(ref)
@@ -301,7 +340,11 @@ func (f *fn) tableGrow(r *wasm.Reader) error {
 	f.release(tbl)
 	f.release(nw)
 	f.release(dst)
-	f.pushReg(old, mtI32)
+	if addr64 {
+		f.pushReg(old, mtI64)
+	} else {
+		f.pushReg(old, mtI32)
+	}
 	return nil
 }
 
@@ -309,6 +352,7 @@ func (f *fn) externrefTableGrow(tableIdx uint32) error {
 	f.materializePendingLoads()
 	f.flush()
 	delta := f.materialize(f.popValue())
+	f.canonicalizeTableOperand(delta, tableIdx)
 	f.pinned = f.pinned.add(delta)
 	ref := f.materialize(f.popValue())
 	f.pinned = f.pinned.add(ref)
@@ -317,12 +361,18 @@ func (f *fn) externrefTableGrow(tableIdx uint32) error {
 	old := f.allocReg(maskOf(delta).add(ref).add(tbl))
 	f.ld32(old, tbl, 0)
 	nw := f.allocReg(maskOf(delta).add(ref).add(tbl).add(old))
-	f.a.MovReg32(nw, old)
-	f.a.Adds32(nw, nw, delta)
+	addr64 := f.tableAddr64(tableIdx)
+	if addr64 {
+		f.a.MovReg64(nw, old)
+		f.a.Adds64(nw, nw, delta)
+	} else {
+		f.a.MovReg32(nw, old)
+		f.a.Adds32(nw, nw, delta)
+	}
 	failOverflow := f.a.Bcond(a64.CondCS)
 	max := f.allocReg(maskOf(delta).add(ref).add(tbl).add(old).add(nw))
 	f.ld32(max, tbl, 4)
-	f.cmpRR(nw, max, false)
+	f.cmpRR(nw, max, addr64)
 	failMax := f.a.Bcond(condA)
 	f.release(max)
 	f.pinned = f.pinned.add(tbl).add(old).add(nw)
@@ -335,7 +385,11 @@ func (f *fn) externrefTableGrow(tableIdx uint32) error {
 	done := f.a.Branch()
 	f.a.PatchBranch19(failOverflow, f.a.Len())
 	f.a.PatchBranch19(failMax, f.a.Len())
-	f.a.MovImm64(old, 0xFFFFFFFF)
+	if addr64 {
+		f.a.MovImm64(old, ^uint64(0))
+	} else {
+		f.a.MovImm64(old, 0xFFFFFFFF)
+	}
 	f.a.PatchBranch26(done, f.a.Len())
 	f.pinned = f.pinned.remove(delta).remove(ref)
 	f.release(delta)
@@ -343,7 +397,11 @@ func (f *fn) externrefTableGrow(tableIdx uint32) error {
 	f.release(tbl)
 	f.release(nw)
 	f.release(dst)
-	f.pushReg(old, mtI32)
+	if addr64 {
+		f.pushReg(old, mtI64)
+	} else {
+		f.pushReg(old, mtI32)
+	}
 	return nil
 }
 
@@ -495,13 +553,14 @@ func (f *fn) copyFuncrefToEntry(ref, entry Reg) {
 }
 
 func (f *fn) checkedTableEntryAddr(idxReg Reg, tableIdx uint32) (entry Reg, table Reg) {
+	f.canonicalizeTableOperand(idxReg, tableIdx)
 	f.pinned = f.pinned.add(idxReg)
 	tbl := f.allocReg(0)
 	f.loadTableDescriptor(tbl, tableIdx)
 	f.pinned = f.pinned.add(tbl)
 	ln := f.allocReg(0)
 	f.ld32(ln, tbl, 0)
-	f.cmpRR(idxReg, ln, false) // was AluRR(0x39,…) — CMP idx,len (32-bit)
+	f.cmpRR(idxReg, ln, f.tableAddr64(tableIdx))
 	f.release(ln)
 	f.trapIf(condAE, trapIndirectOOB)
 	f.typedTableEntryAddr(idxReg, tbl, tableIdx)

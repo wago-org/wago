@@ -125,9 +125,22 @@ func (in *Instance) releaseResources() {
 	detachImportedHostFuncRefs(in)
 	detachImportedGlobals(in)
 	detachImportedTables(in)
+	detachImportedTags(in)
 	transferredImportAttachments.Delete(in)
 	if in.gc != nil {
-		in.gc.Close()
+		closeCollector := func() {
+			if table := in.existingGCRefTestTableState(); table != nil {
+				table.drop(in.gc)
+			}
+			in.gc.Close()
+		}
+		if state := in.existingPublicGCState(); state != nil {
+			state.mu.Lock()
+			closeCollector()
+			state.mu.Unlock()
+		} else {
+			closeCollector()
+		}
 	}
 	for table := in.table; table != nil; table = table.next {
 		table.releaseRetainedInstances()
@@ -139,12 +152,28 @@ func (in *Instance) releaseResources() {
 	}
 	in.c.releaseCode()
 	runtime.ReleaseArena(in.ar)
+	var detachedMemories importDedup[*Memory]
+	if in.memoryDir != nil {
+		for i := len(in.memoryDir.memories) - 1; i >= 1; i-- {
+			memory := in.memoryDir.memories[i]
+			if memory == nil {
+				continue
+			}
+			if i < len(in.memoryDir.owns) && in.memoryDir.owns[i] {
+				memoryJM := memory.jobMemory()
+				memory.ownerClosed()
+				runtime.ReleaseJobMemory(memoryJM)
+			} else if detachedMemories.add(memory) {
+				memory.detachImporter()
+			}
+		}
+	}
 	if in.ownsMem {
 		if in.memory != nil {
 			in.memory.ownerClosed()
 		}
 		runtime.ReleaseJobMemory(in.jm)
-	} else if in.memory != nil {
+	} else if in.memory != nil && detachedMemories.add(in.memory) {
 		in.memory.detachImporter()
 	}
 	runtime.ReleaseEngine(in.eng)

@@ -32,6 +32,20 @@ func peekByte(j *JobMemory, off uintptr) byte {
 	return *(*byte)(unsafe.Pointer(j.reserveBase + uintptr(j.linOff) + off))
 }
 
+func TestGuardedHostBytesTracksLogicalGrowth(t *testing.T) {
+	const page = wasmPageBytes
+	j, err := NewJobMemoryGuarded(page, 5*page)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer j.Close()
+
+	j.putU32(offActualLinMemByteSize, 5*page)
+	if got := len(j.HostBytes()); got != 5*page {
+		t.Fatalf("HostBytes length after logical growth = %d, want %d", got, 5*page)
+	}
+}
+
 // TestGuardedJobMemoryReuse verifies the one-slot guard-page reuse cache: a
 // released reservation is handed back by the next Acquire (same base, proving no
 // re-mmap), and every page the previous instance dirtied — the initial region and

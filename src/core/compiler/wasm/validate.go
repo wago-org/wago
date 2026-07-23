@@ -5,12 +5,22 @@ import (
 	"sync/atomic"
 )
 
+// ValidationFeatures enables release-specific validation rules without making
+// them part of the default product claim. A feature may validate here while the
+// frontend/runtime still reject execution explicitly.
+type ValidationFeatures struct {
+	CompactImports bool
+	MultiMemory    bool
+	GCConstExpr    bool // internal staged admission for GC allocation/conversion constant expressions
+}
+
 // ValidateModule validates module-level indexes and typechecks function bodies.
 // The default path consumes raw BodyBytes produced by DecodeModule instead of a
 // structured function-body instruction tree. Programmatically constructed tests
-// may still supply Func.Body instructions when BodyBytes is empty.
+// may still supply Func.Body instructions when BodyBytes is empty. The default
+// preserves the WebAssembly 2.0 single-memory validation boundary.
 func ValidateModule(m *Module) error {
-	return validateModuleWithWorkers(m, nil, 1)
+	return validateModuleWithWorkersAndFeatures(m, nil, 1, ValidationFeatures{})
 }
 
 // ValidateModuleWithWorkers is ValidateModule with bounded function-body
@@ -20,11 +30,23 @@ func ValidateModule(m *Module) error {
 // function count. If multiple functions are invalid, the lowest function index
 // wins regardless of completion order.
 func ValidateModuleWithWorkers(m *Module, workers int) error {
-	return validateModuleWithWorkers(m, nil, workers)
+	return validateModuleWithWorkersAndFeatures(m, nil, workers, ValidationFeatures{})
 }
 
-func validateModuleWithWorkers(m *Module, direct *directValidationEnv, workers int) error {
-	v := &moduleValidator{m: m, funcIndex: -1, direct: direct}
+// ValidateModuleWithFeatures validates a module under explicitly staged release
+// features. Unsupported execution remains the frontend's responsibility.
+func ValidateModuleWithFeatures(m *Module, features ValidationFeatures) error {
+	return validateModuleWithWorkersAndFeatures(m, nil, 1, features)
+}
+
+// ValidateModuleWithFeaturesAndWorkers combines explicitly staged validation
+// features with bounded function-body parallelism.
+func ValidateModuleWithFeaturesAndWorkers(m *Module, features ValidationFeatures, workers int) error {
+	return validateModuleWithWorkersAndFeatures(m, nil, workers, features)
+}
+
+func validateModuleWithWorkersAndFeatures(m *Module, direct *directValidationEnv, workers int, features ValidationFeatures) error {
+	v := &moduleValidator{m: m, funcIndex: -1, direct: direct, features: features}
 	if err := v.validateModule(); err != nil {
 		return err
 	}
@@ -66,7 +88,7 @@ func (v *moduleValidator) validateFunction(fv *funcValidator, localIndex, import
 	}
 	fv.beginFunc(abs)
 	if len(fn.BodyBytes) != 0 {
-		return fv.validateFuncDirect(directCodeBody{locals: fn.Locals, body: fn.BodyBytes}, ft, memarg64)
+		return fv.validateFuncDirect(directCodeBody{locals: fn.Locals, body: fn.BodyBytes}, ft, memarg64, v.features.MultiMemory)
 	}
 	return fv.validateFunc(*fn, ft)
 }
@@ -120,6 +142,7 @@ type moduleValidator struct {
 	m         *Module
 	funcIndex int
 	direct    *directValidationEnv
+	features  ValidationFeatures
 
 	// declaredFuncBits is the module validation context's declared function-
 	// reference set. The inline word keeps the common <=64-function module from
@@ -150,6 +173,7 @@ type compCacheEntry struct {
 const (
 	maxTable32Limit  = uint64(1<<32 - 1)
 	maxMemory32Pages = uint64(1 << 16)
+	maxMemory64Pages = uint64(1 << 48)
 )
 
 func (v *moduleValidator) err(c ValidationErrorCode, d string) error {
@@ -157,6 +181,9 @@ func (v *moduleValidator) err(c ValidationErrorCode, d string) error {
 }
 
 func (v *moduleValidator) validateModule() error {
+	if v.m.UsesCompactImports && !v.features.CompactImports {
+		return v.err(ErrUnsupportedFeature, "compact imports")
+	}
 	v.collectDeclaredFuncs()
 	for gi, rt := range v.m.Types {
 		for _, st := range rt.SubTypes {
@@ -210,26 +237,27 @@ func (v *moduleValidator) validateModule() error {
 			return err
 		}
 	}
-	if v.m.MemCount() > 1 {
+	if v.m.MemCount() > 1 && !v.features.MultiMemory {
 		return v.err(ErrUnsupportedFeature, "multiple memories")
 	}
 	for _, tag := range v.m.Tags {
-		if !v.validTypeIdx(tag.Type) || v.funcTypeFromTypeIdx(tag.Type) == nil {
-			return v.err(ErrUnknownType, "tag")
+		if err := v.validateTagType(tag, "tag"); err != nil {
+			return err
 		}
 	}
 	for i, g := range v.m.Globals {
 		if err := v.validateGlobalType(g.Type); err != nil {
 			return err
 		}
+		globalLimit := v.m.ImportedGlobalCount() + i
 		if v.direct != nil {
 			if i >= len(v.direct.globalInits) {
 				return v.err(ErrTypeMismatch, "global init")
 			}
-			if err := v.validateConstExprDirect(v.direct.globalInits[i], g.Type.Type); err != nil {
+			if err := v.validateConstExprDirectWithGlobalLimit(v.direct.globalInits[i], g.Type.Type, globalLimit); err != nil {
 				return err
 			}
-		} else if err := v.validateConstExpr(g.Init, g.Type.Type); err != nil {
+		} else if err := v.validateConstExprWithGlobalLimit(g.Init, g.Type.Type, globalLimit); err != nil {
 			return err
 		}
 	}
@@ -342,7 +370,7 @@ func (v *moduleValidator) collectDeclaredFuncsInExpr(expr Expr) {
 	fv.rd.reset(expr.BodyBytes)
 	var op directOp
 	for fv.rd.has() {
-		if err := fv.decodeDirectOp(&fv.rd, false, &op); err != nil {
+		if err := fv.decodeDirectOp(&fv.rd, false, false, &op); err != nil {
 			// The normal const-expression validation path reports malformed bytes;
 			// declaration collection must not change validation error ordering.
 			return
@@ -387,9 +415,18 @@ func (v *moduleValidator) validateExternType(et ExternType) error {
 	case ExternGlobal:
 		return v.validateGlobalType(et.Global)
 	case ExternTag:
-		if v.funcTypeFromTypeIdx(et.Tag.Type) == nil {
-			return v.err(ErrUnknownType, "import tag")
-		}
+		return v.validateTagType(et.Tag, "import tag")
+	}
+	return nil
+}
+
+func (v *moduleValidator) validateTagType(tag TagType, detail string) error {
+	ft := v.funcTypeFromTypeIdx(tag.Type)
+	if ft == nil {
+		return v.err(ErrUnknownType, detail)
+	}
+	if len(ft.Results) != 0 {
+		return v.err(ErrTypeMismatch, "non-empty tag result type")
 	}
 	return nil
 }
@@ -506,7 +543,13 @@ func (v *moduleValidator) validateMemType(mt MemType) error {
 	if mt.Shared && mt.Limits.Max == nil {
 		return v.err(ErrInvalidSharedMemory, "")
 	}
-	if !mt.Limits.Addr64 {
+	if mt.Limits.Addr64 {
+		// Core 3 memory64 limits are bounded to 2^48 pages even though their
+		// binary representation and the common Limits storage are uint64.
+		if mt.Limits.Min > maxMemory64Pages || (mt.Limits.Max != nil && *mt.Limits.Max > maxMemory64Pages) {
+			return v.err(ErrInvalidLimitRange, "memory64 limit out of range")
+		}
+	} else {
 		// Memory32 limits are page counts bounded to the 4 GiB address space.
 		// Reject values that only fit because the common Limits storage is uint64.
 		if mt.Limits.Min > maxMemory32Pages || (mt.Limits.Max != nil && *mt.Limits.Max > maxMemory32Pages) {
@@ -609,10 +652,14 @@ func (v *moduleValidator) validExternIdx(x ExternIdx) bool {
 }
 
 func (v *moduleValidator) validateConstExpr(e Expr, want ValType) error {
+	return v.validateConstExprWithGlobalLimit(e, want, v.m.ImportedGlobalCount()+len(v.m.Globals))
+}
+
+func (v *moduleValidator) validateConstExprWithGlobalLimit(e Expr, want ValType, globalLimit int) error {
 	if len(e.BodyBytes) != 0 {
-		return v.validateConstExprDirect(directConstExpr{body: e.BodyBytes}, want)
+		return v.validateConstExprDirectWithGlobalLimit(directConstExpr{body: e.BodyBytes}, want, globalLimit)
 	}
-	fv := &funcValidator{moduleValidator: v, funcIndex: -1, constOnly: true}
+	fv := &funcValidator{moduleValidator: v, funcIndex: -1, constOnly: true, constGlobalLimit: globalLimit}
 	fv.resetStacks()
 	fv.pushCtrl(ctrlFunc, nil, []ValType{want})
 	for _, in := range e.Instrs {
@@ -657,7 +704,7 @@ func (v *moduleValidator) validateElemPayload(e Elem) (RefType, error) {
 				return RefType{}, v.err(ErrUnknownFunc, "elem")
 			}
 		}
-		return FuncRef.Ref, nil
+		return Ref(false, AbsHeap(HeapFunc), false), nil
 	case ElemFuncExprs:
 		for _, ex := range e.Kind.Exprs {
 			if err := v.validateConstExpr(ex, FuncRef); err != nil {
@@ -714,6 +761,7 @@ const (
 	ctrlBlock
 	ctrlLoop
 	ctrlIf
+	ctrlTry
 )
 
 type ctrlFrame struct {
@@ -738,13 +786,14 @@ type funcValidator struct {
 	// Small inline backing stores cover the common straight-line function and
 	// const-expression cases without heap-allocating separate stack slices. Larger
 	// or deeply nested functions still grow normally and reuse that capacity.
-	valBuf      [2]val
-	ctrlBuf     [1]ctrlFrame
-	constResult [1]ValType
-	localParams []ValType
-	localRuns   []LocalRun
-	localCount  uint64
-	constOnly   bool
+	valBuf           [2]val
+	ctrlBuf          [1]ctrlFrame
+	constResult      [1]ValType
+	localParams      []ValType
+	localRuns        []LocalRun
+	localCount       uint64
+	constOnly        bool
+	constGlobalLimit int // globals below this absolute index are visible to a const expression
 	// rd is reused across bodies validated by this funcValidator so the byte
 	// cursor is not heap-allocated per function/const-expression.
 	rd reader
@@ -909,6 +958,8 @@ func absHeapSubtype(a, b AbsHeapType) bool {
 		return b == HeapFunc
 	case HeapNoExtern:
 		return b == HeapExtern
+	case HeapNoExn:
+		return b == HeapExn
 	case HeapNone:
 		return b == HeapAny || b == HeapEq || b == HeapStruct || b == HeapArray || b == HeapI31
 	case HeapI31, HeapStruct, HeapArray:

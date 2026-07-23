@@ -1,0 +1,19 @@
+{
+  "schema": 1,
+  "suite_revision": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+  "file": "return_call_indirect",
+  "counts": {
+    "commands": 79,
+    "modules_passed": 3,
+    "assertions_passed": 49,
+    "expected_invalid": 16,
+    "expected_malformed": 11,
+    "expected_unlinkable": 0,
+    "expected_uninstantiable": 0,
+    "expected_feature_rejects": 0,
+    "blocked_commands": 0,
+    "unexpected_compile_rejects": 0,
+    "unexpected_link_rejects": 0,
+    "failures": 0
+  }
+}

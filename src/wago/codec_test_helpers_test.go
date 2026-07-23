@@ -9,10 +9,14 @@ func writeCompiledCodecPrefixAfterFuncs(t testing.TB, w *compiledWriter) {
 	w.intSlice(nil) // InternalEntry.
 	w.uvar(0)       // NumImports.
 	w.stringSlice(nil)
-	if err := w.funcSigs(nil); err != nil {
+	if err := w.typeDescriptors(nil); err != nil {
+		t.Fatalf("write types: %v", err)
+	}
+	w.valueTypes(nil)
+	if err := w.funcSigs(nil, nil); err != nil {
 		t.Fatalf("write import funcs: %v", err)
 	}
-	if err := w.funcSigs(nil); err != nil {
+	if err := w.funcSigs(nil, nil); err != nil {
 		t.Fatalf("write funcs: %v", err)
 	}
 }
@@ -27,10 +31,10 @@ func writeCompiledCodecPrefixAfterGlobalExports(t testing.TB, w *compiledWriter)
 	t.Helper()
 	writeCompiledCodecPrefixAfterExports(t, w)
 	w.nameSec(nil)
-	if err := w.globalImports(nil); err != nil {
+	if err := w.globalImports(nil, &Compiled{}); err != nil {
 		t.Fatalf("write global imports: %v", err)
 	}
-	if err := w.globals(nil); err != nil {
+	if err := w.globals(nil, &Compiled{}); err != nil {
 		t.Fatalf("write globals: %v", err)
 	}
 	w.stringIntMap(nil)
@@ -41,28 +45,36 @@ func writeCompiledCodecPrefixAfterFuncTypeIDs(t testing.TB, w *compiledWriter) {
 	writeCompiledCodecPrefixAfterGlobalExports(t, w)
 	w.uvar(0) // tables.
 	w.stringIntMap(nil)
-	w.u32Slice(nil)
-	w.bool(false) // NeedsFuncRefDescs.
+	w.u64Slice(nil) // native function type keys (legacy FuncTypeID field).
+	w.bool(false)   // NeedsFuncRefDescs.
 }
 
 func writeCompiledCodecElementPrefix(w *compiledWriter) {
 	w.uvar(1)
 	w.u32(0)
-	w.u8(0x70) // funcref.
+	w.bool(false)
+	w.u8(0x70) // legacy funcref.
 	w.u8(byte(ElemModeActive))
 	w.offset(OffsetInit{})
 }
 
-func writeCompiledCodecPrefixAfterMemoryImport(t testing.TB, w *compiledWriter) {
+func writeCompiledCodecPrefixAfterMemoryExports(t testing.TB, w *compiledWriter) {
 	t.Helper()
 	writeCompiledCodecPrefixAfterFuncTypeIDs(t, w)
-	w.elems(nil) // active element segments.
-	w.elems(nil) // passive element segments.
+	_ = w.elems(nil, &Compiled{}) // active element segments.
+	_ = w.elems(nil, &Compiled{}) // passive element segments.
 	w.data(nil)
 	w.passiveData(nil)
-	w.str("")     // memoryImport.
-	w.bool(false) // dynamicImports.
-	w.u8(0)       // requiredFeatures.
+	w.memories(&Compiled{})
+	w.stringIntMap(nil) // memory exports.
+	w.bool(false)       // dynamicImports.
+}
+
+func writeCompiledCodecPrefixAfterMemoryImport(t testing.TB, w *compiledWriter) {
+	t.Helper()
+	writeCompiledCodecPrefixAfterMemoryExports(t, w)
+	w.tags(&Compiled{})
+	w.u64(0) // requiredFeatures.
 }
 
 // compileExplicitArtifact keeps serialization fixtures independent of the

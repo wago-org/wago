@@ -1,0 +1,174 @@
+{
+  "schema": 2,
+  "suite_revision": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+  "file": "gc/ref_cast",
+  "leaders": [
+    {
+      "filename": "ref_cast.0.wasm",
+      "command_line": 27,
+      "source_line": 3,
+      "size": 380,
+      "sha256": "c85556089bf1a39cb3082f7de916c00eaa2482253cf126d8a9fc09ab970eed4b",
+      "class": "abstract",
+      "gate": "",
+      "type_graph": "rec[func()-\u003e()]|rec[struct{}]|rec[array{i8}]|rec[func(externref)-\u003e()]|rec[func(i32)-\u003e()]",
+      "state_graph": "imports=0 funcs=7 globals=[] tables=1 memories=0 tags=0 elements=1 data=0 exports=[init=0:1,ref_cast_non_null=0:2,ref_cast_null=0:3,ref_cast_i31=0:4,ref_cast_struct=0:5,ref_cast_array=0:6]",
+      "opcodes": [
+        {
+          "opcode": "AnyConvertExtern",
+          "count": 1
+        },
+        {
+          "opcode": "ArrayNewDefault",
+          "count": 1
+        },
+        {
+          "opcode": "Drop",
+          "count": 13
+        },
+        {
+          "opcode": "I32Const",
+          "count": 10
+        },
+        {
+          "opcode": "LocalGet",
+          "count": 14
+        },
+        {
+          "opcode": "RefAsNonNull",
+          "count": 1
+        },
+        {
+          "opcode": "RefCast",
+          "count": 12
+        },
+        {
+          "opcode": "RefI31",
+          "count": 1
+        },
+        {
+          "opcode": "RefNull",
+          "count": 4
+        },
+        {
+          "opcode": "StructNewDefault",
+          "count": 1
+        },
+        {
+          "opcode": "TableGet",
+          "count": 13
+        },
+        {
+          "opcode": "TableSet",
+          "count": 8
+        }
+      ],
+      "actions": [
+        "action:init",
+        "trap:null reference:ref_cast_non_null",
+        "return:ref_cast_non_null",
+        "return:ref_cast_non_null",
+        "return:ref_cast_non_null",
+        "return:ref_cast_non_null",
+        "trap:null reference:ref_cast_non_null",
+        "trap:null reference:ref_cast_non_null",
+        "trap:null reference:ref_cast_non_null",
+        "return:ref_cast_null",
+        "trap:cast failure:ref_cast_null",
+        "trap:cast failure:ref_cast_null",
+        "trap:cast failure:ref_cast_null",
+        "trap:cast failure:ref_cast_null",
+        "return:ref_cast_null",
+        "return:ref_cast_null",
+        "return:ref_cast_null",
+        "trap:cast failure:ref_cast_i31",
+        "return:ref_cast_i31",
+        "trap:cast failure:ref_cast_i31",
+        "trap:cast failure:ref_cast_i31",
+        "trap:cast failure:ref_cast_i31",
+        "trap:cast failure:ref_cast_i31",
+        "trap:cast failure:ref_cast_i31",
+        "trap:cast failure:ref_cast_i31",
+        "trap:cast failure:ref_cast_struct",
+        "trap:cast failure:ref_cast_struct",
+        "return:ref_cast_struct",
+        "trap:cast failure:ref_cast_struct",
+        "trap:cast failure:ref_cast_struct",
+        "trap:cast failure:ref_cast_struct",
+        "trap:cast failure:ref_cast_struct",
+        "trap:cast failure:ref_cast_struct",
+        "trap:cast failure:ref_cast_array",
+        "trap:cast failure:ref_cast_array",
+        "trap:cast failure:ref_cast_array",
+        "return:ref_cast_array",
+        "trap:cast failure:ref_cast_array",
+        "trap:cast failure:ref_cast_array",
+        "trap:cast failure:ref_cast_array",
+        "trap:cast failure:ref_cast_array"
+      ]
+    },
+    {
+      "filename": "ref_cast.1.wasm",
+      "command_line": 103,
+      "source_line": 99,
+      "size": 512,
+      "sha256": "65f1f33b335ca62d90ad089a74f8a29ea3163f9a3a2f53096bdeac9e4b86f4a6",
+      "class": "concrete",
+      "gate": "",
+      "type_graph": "rec[sub(final=false,supers=[],struct{})]|rec[sub(final=false,supers=[{0 false}],struct{i32})]|rec[sub(final=false,supers=[{0 false}],struct{i32})]|rec[sub(final=false,supers=[{1 false}],struct{i32,i32})]|rec[sub(final=false,supers=[{2 false}],struct{i32,i32})]|rec[sub(final=false,supers=[{0 false}],struct{i32,i32})]|rec[sub(final=false,supers=[{0 false}],struct{})]|rec[sub(final=false,supers=[{6 false}],struct{i32,i32})]|rec[func()-\u003e()]",
+      "state_graph": "imports=0 funcs=3 globals=[] tables=1 memories=0 tags=0 elements=0 data=0 exports=[test-sub=0:1,test-canon=0:2]",
+      "opcodes": [
+        {
+          "opcode": "Call",
+          "count": 2
+        },
+        {
+          "opcode": "Drop",
+          "count": 38
+        },
+        {
+          "opcode": "I32Const",
+          "count": 42
+        },
+        {
+          "opcode": "RefCast",
+          "count": 38
+        },
+        {
+          "opcode": "RefNull",
+          "count": 4
+        },
+        {
+          "opcode": "StructNewDefault",
+          "count": 8
+        },
+        {
+          "opcode": "TableGet",
+          "count": 34
+        },
+        {
+          "opcode": "TableSet",
+          "count": 8
+        }
+      ],
+      "actions": [
+        "action:test-sub",
+        "action:test-canon"
+      ]
+    }
+  ],
+  "gates": [],
+  "counts": {
+    "commands": 47,
+    "modules_passed": 2,
+    "assertions_passed": 40,
+    "expected_invalid": 0,
+    "expected_unlinkable": 0,
+    "expected_uninstantiable": 0,
+    "expected_feature_rejects": 0,
+    "blocked_commands": 0,
+    "unexpected_compile_rejects": 0,
+    "unexpected_link_rejects": 0,
+    "failures": 0
+  }
+}

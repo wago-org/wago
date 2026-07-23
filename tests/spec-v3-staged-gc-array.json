@@ -1,0 +1,323 @@
+{
+  "schema": 2,
+  "suite_revision": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+  "file": "gc/array",
+  "leaders": [
+    {
+      "filename": "array.0.wasm",
+      "command_line": 8,
+      "source_line": 3,
+      "size": 80,
+      "sha256": "995b6f4472185333316f224edf99518254df392aa1592239c2d9a0d81e2c052a",
+      "class": "declarations",
+      "gate": "array declaration metadata product",
+      "type_graph": "rec[array{i8}]|rec[array{i16}]|rec[array{i32}]|rec[array{i64}]|rec[array{f32}]|rec[array{f64}]|rec[array{ref null any}]|rec[array{ref struct}]|rec[array{ref type 0}]|rec[array{ref null type 1}]|rec[array{mut i8}]|rec[array{mut i16}]|rec[array{mut i32}]|rec[array{mut i64}]|rec[array{mut i32}]|rec[array{mut i64}]|rec[array{mut ref null any}]|rec[array{mut ref struct}]|rec[array{mut ref type 0}]|rec[array{mut ref null i31}]",
+      "state_graph": "imports=0 funcs=0 globals=[] tables=0 memories=0 tags=0 elements=0 data=0 exports=[]"
+    },
+    {
+      "filename": "array.2.wasm",
+      "command_line": 19,
+      "source_line": 37,
+      "size": 55,
+      "sha256": "a812822a7372385725cb75c70f0c3cfa7b9cca83a2bb8306a752adc44dc546bd",
+      "class": "bindings",
+      "gate": "recursive array binding metadata product",
+      "type_graph": "rec[array{ref type 1};array{ref type 0}]|rec[array{i32}]|rec[func(ref type 2)-\u003e()]",
+      "state_graph": "imports=0 funcs=1 globals=[] tables=0 memories=0 tags=0 elements=0 data=0 exports=[]"
+    },
+    {
+      "filename": "array.5.wasm",
+      "command_line": 46,
+      "source_line": 60,
+      "size": 250,
+      "sha256": "dff18bcf6b1ed6fdb6ae63692baa8e649e22794de7f4dbf3bc76e0f2b0f28898",
+      "class": "numeric-default",
+      "gate": "numeric array.new/default/get/set/len globals and public results",
+      "type_graph": "rec[array{f32}]|rec[array{mut f32}]|rec[func()-\u003e(ref type 0)]|rec[func(i32,ref type 0)-\u003e(f32)]|rec[func(i32)-\u003e(f32)]|rec[func(i32,ref type 1,f32)-\u003e(f32)]|rec[func(i32,f32)-\u003e(f32)]|rec[func(ref array)-\u003e(i32)]|rec[func()-\u003e(i32)]",
+      "state_graph": "imports=0 funcs=7 globals=[const ref type 0,const ref type 0] tables=0 memories=0 tags=0 elements=0 data=0 exports=[new=0:0,get=0:2,set_get=0:4,len=0:6]",
+      "opcodes": [
+        {
+          "opcode": "ArrayGet",
+          "count": 2
+        },
+        {
+          "opcode": "ArrayLen",
+          "count": 1
+        },
+        {
+          "opcode": "ArrayNew",
+          "count": 1
+        },
+        {
+          "opcode": "ArrayNewDefault",
+          "count": 3
+        },
+        {
+          "opcode": "ArraySet",
+          "count": 1
+        },
+        {
+          "opcode": "Call",
+          "count": 5
+        },
+        {
+          "opcode": "F32Const",
+          "count": 1
+        },
+        {
+          "opcode": "I32Const",
+          "count": 4
+        },
+        {
+          "opcode": "LocalGet",
+          "count": 11
+        }
+      ],
+      "actions": [
+        "return:new",
+        "return:new",
+        "return:get",
+        "return:set_get",
+        "return:len",
+        "trap:get",
+        "trap:set_get"
+      ]
+    },
+    {
+      "filename": "array.6.wasm",
+      "command_line": 79,
+      "source_line": 106,
+      "size": 268,
+      "sha256": "6ff5956b84b5035df8d3419edc8c67348cffd06d5a4cad86cfba56c415acbf25",
+      "class": "numeric-fixed",
+      "gate": "numeric array.new_fixed/get/set/len global and public results",
+      "type_graph": "rec[array{f32}]|rec[array{mut f32}]|rec[func()-\u003e(ref type 0)]|rec[func(i32,ref type 0)-\u003e(f32)]|rec[func(i32)-\u003e(f32)]|rec[func(i32,ref type 1,f32)-\u003e(f32)]|rec[func(i32,f32)-\u003e(f32)]|rec[func(ref array)-\u003e(i32)]|rec[func()-\u003e(i32)]",
+      "state_graph": "imports=0 funcs=7 globals=[const ref type 0] tables=0 memories=0 tags=0 elements=0 data=0 exports=[new=0:0,get=0:2,set_get=0:4,len=0:6]",
+      "opcodes": [
+        {
+          "opcode": "ArrayGet",
+          "count": 2
+        },
+        {
+          "opcode": "ArrayLen",
+          "count": 1
+        },
+        {
+          "opcode": "ArrayNewFixed",
+          "count": 3
+        },
+        {
+          "opcode": "ArraySet",
+          "count": 1
+        },
+        {
+          "opcode": "Call",
+          "count": 5
+        },
+        {
+          "opcode": "F32Const",
+          "count": 7
+        },
+        {
+          "opcode": "LocalGet",
+          "count": 11
+        }
+      ],
+      "actions": [
+        "return:new",
+        "return:new",
+        "return:get",
+        "return:set_get",
+        "return:len",
+        "trap:get",
+        "trap:set_get"
+      ]
+    },
+    {
+      "filename": "array.7.wasm",
+      "command_line": 117,
+      "source_line": 151,
+      "size": 351,
+      "sha256": "7fc4afb6a2e3b2f6b1562b4d0185b6d5d4426c579bcda44cce3b3a1401247bce",
+      "class": "packed-data",
+      "gate": "packed array.new_data/get/set/len and data-segment lifecycle",
+      "type_graph": "rec[array{i8}]|rec[array{mut i8}]|rec[func()-\u003e(ref type 0)]|rec[func(i32,ref type 0)-\u003e(i32)]|rec[func(i32)-\u003e(i32)]|rec[func(i32,ref type 1,i32)-\u003e(i32)]|rec[func(i32,i32)-\u003e(i32)]|rec[func(ref array)-\u003e(i32)]|rec[func()-\u003e(i32)]|rec[func()-\u003e()]",
+      "state_graph": "imports=0 funcs=11 globals=[] tables=0 memories=0 tags=0 elements=0 data=1 exports=[new=0:0,new-overflow=0:1,get_u=0:3,get_s=0:5,set_get=0:7,len=0:9,drop_segs=0:10]",
+      "opcodes": [
+        {
+          "opcode": "ArrayGetS",
+          "count": 1
+        },
+        {
+          "opcode": "ArrayGetU",
+          "count": 2
+        },
+        {
+          "opcode": "ArrayLen",
+          "count": 1
+        },
+        {
+          "opcode": "ArrayNewData",
+          "count": 3
+        },
+        {
+          "opcode": "ArraySet",
+          "count": 1
+        },
+        {
+          "opcode": "Call",
+          "count": 7
+        },
+        {
+          "opcode": "DataDrop",
+          "count": 1
+        },
+        {
+          "opcode": "I32Const",
+          "count": 6
+        },
+        {
+          "opcode": "LocalGet",
+          "count": 14
+        }
+      ],
+      "actions": [
+        "return:new",
+        "return:new",
+        "return:get_u",
+        "return:get_s",
+        "return:set_get",
+        "return:len",
+        "trap:new-overflow",
+        "trap:get_u",
+        "trap:get_s",
+        "trap:set_get",
+        "return:drop_segs",
+        "trap:new",
+        "trap:new-overflow"
+      ]
+    },
+    {
+      "filename": "array.8.wasm",
+      "command_line": 164,
+      "source_line": 219,
+      "size": 396,
+      "sha256": "19178a5db9c6ded41e185a9422c558a65d4bc1f11e7b0df11a776226f22812a9",
+      "class": "reference-elements",
+      "gate": "reference array.new_elem/get/set/len barriers and element lifecycle",
+      "type_graph": "rec[array{i8}]|rec[array{ref type 0}]|rec[array{mut ref type 0}]|rec[array{ref null type 0}]|rec[array{mut ref null any}]|rec[func()-\u003e(ref type 1)]|rec[func()-\u003e(ref type 3)]|rec[func()-\u003e(ref type 4)]|rec[func(i32,i32,ref type 1)-\u003e(i32)]|rec[func(i32,i32)-\u003e(i32)]|rec[func(i32,i32,ref type 2,i32)-\u003e(i32)]|rec[func(i32,i32,i32)-\u003e(i32)]|rec[func(ref array)-\u003e(i32)]|rec[func()-\u003e(i32)]|rec[func()-\u003e()]",
+      "state_graph": "imports=0 funcs=11 globals=[] tables=0 memories=0 tags=0 elements=1 data=0 exports=[new=0:0,new-overflow=0:1,get=0:5,set_get=0:7,len=0:9,drop_segs=0:10]",
+      "opcodes": [
+        {
+          "opcode": "ArrayGet",
+          "count": 3
+        },
+        {
+          "opcode": "ArrayGetU",
+          "count": 2
+        },
+        {
+          "opcode": "ArrayLen",
+          "count": 1
+        },
+        {
+          "opcode": "ArrayNewElem",
+          "count": 5
+        },
+        {
+          "opcode": "ArraySet",
+          "count": 1
+        },
+        {
+          "opcode": "Call",
+          "count": 5
+        },
+        {
+          "opcode": "ElemDrop",
+          "count": 1
+        },
+        {
+          "opcode": "I32Const",
+          "count": 10
+        },
+        {
+          "opcode": "LocalGet",
+          "count": 16
+        }
+      ],
+      "actions": [
+        "return:new",
+        "return:new",
+        "return:get",
+        "return:get",
+        "return:set_get",
+        "return:len",
+        "trap:new-overflow",
+        "trap:get",
+        "trap:set_get",
+        "return:drop_segs",
+        "trap:new",
+        "trap:new-overflow"
+      ]
+    },
+    {
+      "filename": "array.12.wasm",
+      "command_line": 225,
+      "source_line": 332,
+      "size": 115,
+      "sha256": "b6446904a92663c6dc462e8c7f4b1a2077c7b942ce7be0fa053c32ecb990b96a",
+      "class": "null-dereference",
+      "gate": "null array.get/array.set trap product",
+      "type_graph": "rec[array{mut i32}]|rec[func()-\u003e()]",
+      "state_graph": "imports=0 funcs=2 globals=[] tables=0 memories=0 tags=0 elements=0 data=0 exports=[array.get-null=0:0,array.set-null=0:1]",
+      "opcodes": [
+        {
+          "opcode": "ArrayGet",
+          "count": 1
+        },
+        {
+          "opcode": "ArraySet",
+          "count": 1
+        },
+        {
+          "opcode": "Drop",
+          "count": 1
+        },
+        {
+          "opcode": "I32Const",
+          "count": 3
+        },
+        {
+          "opcode": "LocalGet",
+          "count": 2
+        }
+      ],
+      "actions": [
+        "trap:array.get-null",
+        "trap:array.set-null"
+      ]
+    }
+  ],
+  "invalid_source_lines": {
+    "186": 292,
+    "197": 302,
+    "20": 48,
+    "206": 315,
+    "24": 52,
+    "9": 27
+  },
+  "gates": [],
+  "counts": {
+    "commands": 61,
+    "modules_passed": 7,
+    "assertions_passed": 41,
+    "expected_invalid": 6,
+    "expected_unlinkable": 0,
+    "expected_uninstantiable": 0,
+    "expected_feature_rejects": 0,
+    "blocked_commands": 0,
+    "unexpected_compile_rejects": 0,
+    "unexpected_link_rejects": 0,
+    "failures": 0
+  }
+}

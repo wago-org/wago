@@ -9,6 +9,7 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	a64 "github.com/wago-org/wago/src/core/encoder/arm64"
 	"github.com/wago-org/wago/src/core/runtime"
+	"github.com/wago-org/wago/src/core/runtime/abi"
 )
 
 // regABIEnabled turns on the register-based internal-call ABI (default on;
@@ -50,8 +51,6 @@ type callReloc struct {
 // (AAPCS64 return register, also arg 0).
 var intArgRegs = []Reg{X0, X1, X2, X3, X4, X5, X6, X7}
 var fpArgRegs = []Reg{0, 1, 2, 3, 4, 5, 6, 7} // V0..V7; single float result returns in V0.
-
-const internalEntryHomeTag uint64 = 1 << 63
 
 func isIntValType(t wasm.ValType) bool {
 	return wasm.EqualValType(t, wasm.I32) || wasm.EqualValType(t, wasm.I64)
@@ -254,10 +253,12 @@ func funcTypeSlots(ts []wasm.ValType) int {
 // onto the operand stack.
 //
 // hostCallStub saves and resumeNative restores the callee-saved registers
-// (X19..linMemReg, low 64 bits of V8..V15), so pinned locals and linMem survive the
-// round trip and need no spilling — unlike a wasm→wasm call, whose callee reuses
-// those registers. Value-pinned and module-pinned globals ARE synced around the
-// call: the host may read or write the instance's globals through their cells.
+// (X19..linMemReg, low 64 bits of V8..V15), but the extended local-pin pool also
+// uses caller-saved X8..X11 and vector values may occupy the full 128 bits.
+// Pinned locals are therefore homed before the transition and restored under the
+// old non-STACK_REG model. Value-pinned and module-pinned globals are also synced
+// around the call: the host may read or write the instance's globals through
+// their cells.
 func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	f.stats.call(callKindHostSync)
 	p, rN := len(ft.Params), len(ft.Results)
@@ -319,10 +320,11 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 		argSlot += mt.stackSlots()
 		ctrlSlot += mt.stackSlots()
 	}
+	f.spillLocalsForCall()
 	f.a.MovImm64(X16, uint64(uint32(importIdx)))
 	f.st32(X11, hcImportIdx, X16)
 	// hcNArgs packs param slots (low 16) and result slots (high 16) so the Go
-	// re-entry loop copies back only the real result count. Both are <= 16.
+	// re-entry loop copies back only the real result count. Both are <= 64.
 	f.a.MovImm64(X16, uint64(uint32(paramSlots)|uint32(resultSlots)<<16))
 	f.st32(X11, hcNArgs, X16)
 
@@ -330,6 +332,7 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	// trap unwinds the whole native tree in one jump (it never returns here).
 	f.ld64(X16, X11, hcTrampoline)
 	f.a.Blr(X16)
+	f.reloadLocalsForCall()
 
 	f.deriveModuleGlobals() // the host may have written global cells
 	f.derivePinnedGlobals()
@@ -477,10 +480,11 @@ func hostIndirectSyncThunk(importIdx uint32, paramSlots, resultSlots int, useHom
 // and backend/railshot/arm64: a scratch cell to carry the indirect code pointer
 // across the flush, and the indirect-call table descriptor pointer.
 const (
-	offCustomCtx   = 40 // host-call log pointer / sync host-call control frame
-	offSpillRegion = 48 // 8B scratch
-	offStackFence  = 72 // low stack bound for the fence check
-	offTablePtr    = 80 // table descriptor pointer
+	offCustomCtx    = 40 // host-call log pointer / sync host-call control frame
+	offSpillRegion  = 48 // 8B scratch
+	offStackFence   = 72 // low stack bound for the fence check
+	offTablePtr     = 80 // table descriptor pointer
+	offMemoryDirPtr = abi.MemoryDirPtrOffset
 	// offTrapHandlerPtr (32), offTrapStackReentry (24), and offTrapCellPtr
 	// (== abi.TrapCellPtrOffset) are defined in memory.go.
 )
@@ -488,14 +492,14 @@ const (
 // Control-frame field offsets for the synchronous host-call protocol. A
 // returning host import needs no async log, so it reuses the customCtx slot
 // (offCustomCtx) for its control frame. These MUST match
-// src/core/runtime/hostcall_arm64.go (hcSavedSP..hcResults, maxHostArity=16).
+// src/core/runtime/hostcall_arm64.go (hcSavedSP..hcResults, maxHostArity=64).
 const (
 	hcTrampoline     = 176 // u64: hostCallStub address (published per-instance by CallWithHost)
 	hcImportIdx      = 184 // u32: native -> Go
 	hcNArgs          = 188 // u32: low 16 bits = param slots, high 16 bits = result slots
-	hcArgs           = 192 // [16]u64: native -> Go
-	hcResults        = 320 // [16]u64: Go -> native (== hcArgs + 16*8)
-	maxSyncHostSlots = 16  // must match runtime.MaxHostArity / maxHostArity
+	hcArgs           = 192 // [64]u64: native -> Go
+	hcResults        = 704 // [64]u64: Go -> native (== hcArgs + 64*8)
+	maxSyncHostSlots = 64  // must match runtime.MaxHostArity / maxHostArity
 )
 
 var instanceContextOffsets = [...]int32{
@@ -506,6 +510,7 @@ var instanceContextOffsets = [...]int32{
 	offGlobalsPtr,
 	offPassiveDataPtr,
 	offTableDirPtr,
+	offMemoryDirPtr,
 	offImportDispatchPtr,
 }
 
@@ -1020,10 +1025,28 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 	}
 }
 
+func (f *fn) descriptorEntryKind(home Reg, avoid regMask) Reg {
+	kind := f.allocReg(avoid)
+	f.a.LsrImm(kind, home, abi.FuncRefEntryTagShift, false)
+	return kind
+}
+
+func (f *fn) stripDescriptorHomeTags(home Reg) {
+	f.a.AndImm64(home, home, ^uint64(abi.FuncRefHomeTagMask))
+}
+
+func (f *fn) validateWrapperDescriptor(kind, home Reg) {
+	// Valid wrapper tags are host=0, local=1, and cross=2. A retained local
+	// wrapper may appear in another instance; home-aware dispatch decides whether
+	// to switch contexts.
+	f.cmpImm(kind, uint32(abi.FuncRefCrossInstanceTagValue), true)
+	f.trapIf(condA, trapIndirectSig)
+}
+
 // callIndirect lowers call_indirect: bounds-check the table index, verify the
-// entry's canonical type id, reject a null entry, then call the entry's code
-// pointer via the wrapper ABI. Table layout matches the runtime (16-byte slots;
-// +8 code ptr, +16 type id) with the descriptor pointer at [linMem-offTablePtr].
+// entry's canonical type key, reject a null entry, then call the entry's code
+// pointer via the wrapper ABI. Table layout matches the runtime (32-byte entries;
+// +8 code ptr, +16 type key) with the descriptor pointer at [linMem-offTablePtr].
 func (f *fn) callIndirect(r *wasm.Reader) error {
 	f.stats.call(callKindIndirect)
 	typeIdx, err := r.U32()
@@ -1038,9 +1061,13 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 	if !ok {
 		return fmt.Errorf("call_indirect: bad type %d", typeIdx)
 	}
-	canon := int32(f.m.StructuralTypeID(typeIdx))
+	canon, ok := f.m.StructuralTypeKeyChecked(typeIdx)
+	if !ok {
+		return fmt.Errorf("call_indirect: type %d exceeds bounded native identity", typeIdx)
+	}
 
-	idxReg := f.materialize(f.popValue()) // table index (i32)
+	idxReg := f.materialize(f.popValue())
+	f.canonicalizeTableOperand(idxReg, tableIdx)
 	f.pinned = f.pinned.add(idxReg)
 	tbl := f.allocReg(0)
 	f.loadTableDescriptor(tbl, tableIdx)
@@ -1048,7 +1075,7 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 
 	ln := f.allocReg(0)
 	f.ld32(ln, tbl, 0) // table length
-	f.cmpRR(idxReg, ln, false)
+	f.cmpRR(idxReg, ln, f.tableAddr64(tableIdx))
 	f.release(ln)
 	f.trapIf(condAE, trapIndirectOOB) // idx >= length → cold stub
 
@@ -1058,7 +1085,7 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 	f.pinned = f.pinned.remove(tbl)
 	f.release(tbl)
 
-	// Entry fields (folding the 8-byte descriptor header): +8 code, +16 sig id,
+	// Entry fields (folding the 8-byte descriptor header): +8 code, +16 type key,
 	// +24 home linMem. Check null (uninitialized element) BEFORE the signature so a
 	// zero-initialized entry traps as an empty slot, not a type mismatch.
 	code := f.allocReg(0)
@@ -1066,20 +1093,16 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 	f.cmpImm(code, 0, true)
 	f.trapIf(condE, trapIndirectOOB) // null entry
 
-	if tableIdx == 0 && f.immutableTableTyped && f.immutableTableType == uint32(canon) {
+	if tableIdx == 0 && f.immutableTableTyped && f.immutableTableType == canon {
 		f.stats.peep("immutable-table-type-check-elide")
 	} else {
-		tid := f.allocReg(maskOf(code))
-		f.ld32(tid, idxReg, 16) // entry type id
-		if fitsAddSubImm12(int64(canon)) {
-			f.cmpImmS(tid, int64(canon), false)
-		} else {
-			want := f.allocReg(maskOf(code).add(tid))
-			f.a.MovImm32(want, canon)
-			f.cmpRR(tid, want, false)
-			f.release(want)
-		}
-		f.release(tid)
+		got := f.allocReg(maskOf(code))
+		f.ld64(got, idxReg, 16) // entry structural type key
+		want := f.allocReg(maskOf(code).add(got))
+		f.a.MovImm64(want, canon)
+		f.cmpRR(got, want, true)
+		f.release(want)
+		f.release(got)
 		f.trapIf(condNE, trapIndirectSig)
 	}
 
@@ -1110,6 +1133,16 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 	// (including the stack fence). Verified: spec1 passes and spec2/3 no longer
 	// crash. Re-enable only with an entry pointer that preserves the fence.
 	if immutableLocalPolyFastPath && tableIdx == 0 && f.immutableLocalTable && sigFitsRegABI(ft) && sigIsIntOnly(ft) {
+		home := f.allocReg(maskOf(idxReg, code))
+		f.ld64(home, idxReg, 24)
+		kind := f.descriptorEntryKind(home, maskOf(idxReg, code, home))
+		f.stripDescriptorHomeTags(home)
+		f.cmpImm(kind, uint32(abi.FuncRefInternalTagValue), true)
+		f.trapIf(condNE, trapIndirectSig)
+		f.cmpRR(home, linMemReg, true)
+		f.trapIf(condNE, trapIndirectSig)
+		f.release(kind)
+		f.release(home)
 		f.pinned = f.pinned.remove(idxReg).add(code)
 		f.release(idxReg)
 		f.stats.peep("immutable-local-call-indirect")
@@ -1147,13 +1180,11 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 		f.pinned = f.pinned.add(code).add(home).add(targetContext)
 		f.flush()
 		savedLocals := append([]localDef(nil), f.locals...)
-		tag := f.allocReg(maskOf(code, home))
-		f.a.AndImm64(tag, home, internalEntryHomeTag)
-		f.cmpImm(tag, 0, true)
-		f.release(tag)
-		wrapper := f.a.Bcond(condE)
-		f.pinned = f.pinned.remove(home).remove(targetContext)
-		f.release(targetContext)
+		kind := f.descriptorEntryKind(home, maskOf(code, home, targetContext))
+		f.cmpImm(kind, uint32(abi.FuncRefInternalTagValue), true)
+		wrapper := f.a.Bcond(condNE)
+		f.stripDescriptorHomeTags(home)
+		f.pinned = f.pinned.remove(home)
 		f.emitRegisterCallVia(ft, -1, false, -1, code)
 		done := f.a.Branch()
 		f.a.PatchBranch19(wrapper, f.a.Len())
@@ -1162,13 +1193,19 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 		f.st64(linMemReg, -int32(offSpillRegion), code)
 		f.pinned = f.pinned.remove(code)
 		f.release(code)
-		f.a.AndImm64(home, home, ^internalEntryHomeTag)
+		f.stripDescriptorHomeTags(home)
+		f.validateWrapperDescriptor(kind, home)
+		f.release(kind)
 		f.emitIndirectCallHomeAware(ft, home, targetContext)
 		f.a.PatchBranch26(done, f.a.Len())
 		return nil
 	}
 
 	// Stash the code ptr in linMem scratch so it survives the call staging.
+	kind := f.descriptorEntryKind(home, maskOf(code, home, targetContext))
+	f.stripDescriptorHomeTags(home)
+	f.validateWrapperDescriptor(kind, home)
+	f.release(kind)
 	f.st64(linMemReg, -int32(offSpillRegion), code)
 	f.release(code)
 

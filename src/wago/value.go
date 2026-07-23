@@ -19,9 +19,10 @@ func ValueI64(v int64) Value   { return Value{ValI64, I64(v)} }
 func ValueF32(v float32) Value { return Value{ValF32, F32(v)} }
 func ValueF64(v float64) Value { return Value{ValF64, F64(v)} }
 
-// ValueFuncRef and ValueExternRef construct typed reference Values.
+// ValueFuncRef, ValueExternRef, and ValueI31Ref construct typed reference Values.
 func ValueFuncRef(v FuncRef) Value     { return Value{ValFuncRef, v.token} }
 func ValueExternRef(v ExternRef) Value { return Value{ValExternRef, v.token} }
+func ValueI31Ref(v I31Ref) Value       { return Value{ValI31Ref, uint64(v.bits)} }
 
 // ValueOf builds a Value from raw ABI bits interpreted per t (i32/f32 in the
 // low 32 bits). Reference bits are opaque and must not be treated as or derived
@@ -43,10 +44,12 @@ func (v Value) I64() int64   { return AsI64(v.bits) }
 func (v Value) F32() float32 { return AsF32(v.bits) }
 func (v Value) F64() float64 { return AsF64(v.bits) }
 
-// FuncRef and ExternRef return the value's opaque reference token. As with the
-// numeric accessors, the result is only meaningful when Type matches.
+// FuncRef, ExternRef, GCRef, and I31Ref decode the matching reference category.
+// I31Ref is an immediate value rather than an opaque token.
 func (v Value) FuncRef() FuncRef     { return FuncRef{token: v.bits} }
 func (v Value) ExternRef() ExternRef { return ExternRef{token: v.bits} }
+func (v Value) GCRef() GCRef         { return GCRef{token: v.bits} }
+func (v Value) I31Ref() I31Ref       { return I31Ref{bits: uint32(v.bits)} }
 
 func (v Value) String() string {
 	switch v.typ {
@@ -68,6 +71,21 @@ func (v Value) String() string {
 			return "externref(null)"
 		}
 		return "externref(opaque)"
+	case ValAnyRef:
+		if v.GCRef().IsNull() {
+			return "anyref(null)"
+		}
+		return "anyref(opaque)"
+	case ValExnRef:
+		if v.bits == 0 {
+			return "exnref(null)"
+		}
+		return "exnref(unsupported-non-null)"
+	case ValI31Ref:
+		if v.I31Ref().IsNull() {
+			return "i31ref(null)"
+		}
+		return fmt.Sprintf("i31ref(%d)", v.I31Ref().Signed())
 	case ValI32:
 		return fmt.Sprintf("i32(%d)", v.I32())
 	default:

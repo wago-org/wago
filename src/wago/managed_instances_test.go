@@ -205,8 +205,8 @@ func TestManagedVoidTableValidationRejectsNullAndWrongSignature(t *testing.T) {
 }
 
 func TestManagedCapabilityGuardHelpers(t *testing.T) {
-	if voidFuncTypeID() == 0 {
-		t.Fatal("void function type ID is zero")
+	if voidFuncTypeKey() == 0 {
+		t.Fatal("void function type key is zero")
 	}
 	m := newPendingInstanceManager("plugin", CapabilityBudget{MaxInstances: 2})
 	if m.owner != "plugin" || m.budget.MaxInstances != 2 || len(m.instances) != 0 || len(m.byInstance) != 0 {

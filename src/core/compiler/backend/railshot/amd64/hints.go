@@ -30,6 +30,7 @@ func loopWeight(depth int) int64 {
 type funcHints struct {
 	nLocals       int
 	hasCall       bool // any direct or indirect call
+	hasTailCall   bool // any return_call/return_call_indirect/return_call_ref
 	callsSelf     bool // a direct call to the function's own index
 	touchesMemory bool // any linear-memory op
 	usesBulkMem   bool // memory.copy/fill (rep movs/stos clobber RDI/RSI/RCX)
@@ -43,15 +44,11 @@ type funcHints struct {
 	hasLoop        bool
 	hasControlFlow bool
 
-	// immutableLocalTable is derived after the one-pass per-function scans have
-	// been aggregated (computeModuleHints). The table must also be private (an
-	// exported table can be mutated by another importing instance). Every non-null
-	// entry is then a same-module function and can use the internal register ABI
-	// without a run-time home-tag fork.
-	immutableLocalTable bool
-	immutableTableType  uint32
-	immutableTableTyped bool
-	monomorphicTarget   int // local function index when every non-null entry is identical; -1 otherwise
+	// immutableTables is derived after the one-pass per-function scans have been
+	// aggregated (computeModuleHints). Each admitted table is local, unexported,
+	// never mutated, and contains only same-module functions, so indirect calls may
+	// use the internal register ABI without a run-time home/tag fork.
+	immutableTables []immutableTableHint
 
 	// Loop-weighted hotness: local.get/global.get = 1×, set/tee = 2×, ×loopWeight
 	// per enclosing loop level.
@@ -93,6 +90,13 @@ func addHotness(scores []uint32, idx uint32, delta int64) {
 	} else {
 		scores[idx] += uint32(delta)
 	}
+}
+
+type immutableTableHint struct {
+	local             bool
+	typeKey           uint64
+	typed             bool
+	monomorphicTarget int // local function index when every non-null entry is identical; -1 otherwise
 }
 
 type globalEligibilityTracker struct {
@@ -165,8 +169,12 @@ func scanFuncBody(fn wasm.Func, nLocals, nGlobals int, selfIdx uint32) (funcHint
 }
 
 func scanFuncBodyInto(fn wasm.Func, nLocals, nGlobals int, selfIdx uint32, h funcHints, elig *globalEligibilityTracker) (funcHints, error) {
+	return scanFuncBodyIntoMemory64(fn, nLocals, nGlobals, selfIdx, h, elig, false)
+}
+
+func scanFuncBodyIntoMemory64(fn wasm.Func, nLocals, nGlobals int, selfIdx uint32, h funcHints, elig *globalEligibilityTracker, memory64 bool) (funcHints, error) {
 	if len(fn.BodyBytes) != 0 {
-		return scanBodyBytesInto(fn.BodyBytes, nLocals, nGlobals, selfIdx, h, elig)
+		return scanBodyBytesIntoMemory64(fn.BodyBytes, nLocals, nGlobals, selfIdx, h, elig, memory64)
 	}
 	return scanBodyInto(fn.Body, nLocals, nGlobals, selfIdx, h, elig), nil
 }
@@ -201,11 +209,17 @@ func scanBodyInto(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32, h funcH
 			switch in.Kind {
 			case wasm.InstrCall, wasm.InstrReturnCall, wasm.InstrCallRef, wasm.InstrReturnCallRef:
 				sub, h.hasCall = true, true
+				if in.Kind == wasm.InstrReturnCall || in.Kind == wasm.InstrReturnCallRef {
+					h.hasTailCall = true
+				}
 				if in.Kind == wasm.InstrCall && in.Index == selfIdx {
 					h.callsSelf = true
 				}
 			case wasm.InstrCallIndirect, wasm.InstrReturnCallIndirect:
 				sub, h.hasCall = true, true
+				if in.Kind == wasm.InstrReturnCallIndirect {
+					h.hasTailCall = true
+				}
 			case wasm.InstrLocalGet:
 				if int(in.Index) < nLocals {
 					addHotness(h.localScore, in.Index, w)
@@ -410,15 +424,19 @@ func (s *globalScoreByteScanner) classifyInstructionInto(op byte, imm *wasm.Inst
 // allocating Instruction trees. body includes the terminating end opcode and
 // excludes local declarations.
 func scanBodyBytes(body []byte, nLocals int, nGlobals int, selfIdx uint32) (funcHints, error) {
-	h := newFuncHints(nLocals, nGlobals)
-	elig := newGlobalEligibilityTracker(nGlobals)
-	return scanBodyBytesInto(body, nLocals, nGlobals, selfIdx, h, &elig)
+	return scanBodyBytesMemory64(body, nLocals, nGlobals, selfIdx, false)
 }
 
-func scanBodyBytesInto(body []byte, nLocals int, nGlobals int, selfIdx uint32, h funcHints, elig *globalEligibilityTracker) (funcHints, error) {
+func scanBodyBytesMemory64(body []byte, nLocals int, nGlobals int, selfIdx uint32, memory64 bool) (funcHints, error) {
+	h := newFuncHints(nLocals, nGlobals)
+	elig := newGlobalEligibilityTracker(nGlobals)
+	return scanBodyBytesIntoMemory64(body, nLocals, nGlobals, selfIdx, h, &elig, memory64)
+}
+
+func scanBodyBytesIntoMemory64(body []byte, nLocals int, nGlobals int, selfIdx uint32, h funcHints, elig *globalEligibilityTracker, memory64 bool) (funcHints, error) {
 	elig.reset()
 	r := wasm.ReaderFrom(body)
-	s := byteBodyScanner{r: byteScanReader{Reader: &r}, h: h, nLocals: nLocals, nGlobals: nGlobals, selfIdx: selfIdx, elig: elig}
+	s := byteBodyScanner{r: byteScanReader{Reader: &r}, h: h, nLocals: nLocals, nGlobals: nGlobals, selfIdx: selfIdx, elig: elig, memory64: memory64}
 	called, term, err := s.scanExpr(0, 0, -1, false)
 	if err != nil {
 		return s.h, err
@@ -439,6 +457,7 @@ type byteBodyScanner struct {
 	nGlobals int
 	selfIdx  uint32
 	elig     *globalEligibilityTracker
+	memory64 bool
 }
 
 func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAtElse bool) (bool, byte, error) {
@@ -528,6 +547,9 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			}
 			s.noteStackArenaOp(op, &imm)
 			s.h.hasCall, subHasCall = true, true
+			if op == 0x12 {
+				s.h.hasTailCall = true
+			}
 			if op == 0x10 && imm.Index == s.selfIdx {
 				s.h.callsSelf = true
 			}
@@ -539,6 +561,9 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			}
 			s.noteStackArenaOp(op, &imm)
 			s.h.hasCall, subHasCall = true, true
+			if op == 0x13 || op == 0x15 {
+				s.h.hasTailCall = true
+			}
 		case 0x20, 0x21, 0x22: // local.get/set/tee
 			var imm wasm.InstructionImmediate
 			err := s.classifyInstructionInto(op, &imm)
@@ -577,6 +602,12 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				return true, 0, err
 			}
 			s.noteStackArenaOp(op, &imm)
+			if op == 0xfb {
+				switch imm.Kind {
+				case wasm.InstrStructNew, wasm.InstrStructNewDefault, wasm.InstrStructGet, wasm.InstrStructGetS, wasm.InstrStructGetU, wasm.InstrStructSet:
+					s.h.hasCall, subHasCall = true, true
+				}
+			}
 			if imm.TouchesMemory {
 				s.h.touchesMemory = true
 			}
@@ -614,7 +645,43 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 }
 
 func (s *byteBodyScanner) classifyInstructionInto(op byte, imm *wasm.InstructionImmediate) error {
-	err := wasm.ClassifyInstructionImmediateInto(s.r.Reader, op, imm)
+	if op >= 0x28 && op <= 0x3e {
+		align, err := s.r.U32()
+		if err != nil {
+			return err
+		}
+		if align >= 64 && align < 128 {
+			index, err := s.r.U32()
+			if err != nil {
+				return err
+			}
+			imm.HasMemIndex, imm.MemIndex = true, index
+		}
+		if s.memory64 {
+			if _, err := s.r.U64(); err != nil {
+				return err
+			}
+		} else if _, err := s.r.U32(); err != nil {
+			return err
+		}
+		imm.TouchesMemory = true
+		return nil
+	}
+	if op == 0x3f || op == 0x40 {
+		index, err := s.r.U32()
+		if err != nil {
+			return err
+		}
+		imm.Index = index
+		imm.TouchesMemory = true
+		if op == 0x3f {
+			imm.Kind = wasm.InstrMemorySize
+		} else {
+			imm.Kind = wasm.InstrMemoryGrow
+		}
+		return nil
+	}
+	err := wasm.ClassifyInstructionImmediateIntoWithMemarg64(s.r.Reader, op, imm, s.memory64)
 	if err == nil && isTableMutation(imm.Kind) {
 		s.h.mutatesTable = true
 	}
@@ -660,6 +727,13 @@ func stackArenaOpAllocates(op byte, imm *wasm.InstructionImmediate) bool {
 		return true
 	case 0xfc:
 		return imm.Subopcode <= 7 || imm.Subopcode == 15 || imm.Subopcode == 16 // trunc_sat/table.grow/table.size push.
+	case 0xfb:
+		switch imm.Kind {
+		case wasm.InstrStructNew, wasm.InstrStructNewDefault, wasm.InstrStructGet, wasm.InstrStructGetS, wasm.InstrStructGetU, wasm.InstrRefTest:
+			return true
+		default:
+			return false
+		}
 	case 0xfd:
 		switch imm.Subopcode {
 		case 11, 88, 89, 90, 91: // v128.store and v128.store{8,16,32,64}_lane push no result.

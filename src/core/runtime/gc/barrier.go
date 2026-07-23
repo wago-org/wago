@@ -1,9 +1,6 @@
 package gc
 
-import (
-	"encoding/binary"
-	"errors"
-)
+import "errors"
 
 var errRange = errors.New("gc: index out of range")
 
@@ -11,7 +8,8 @@ type SlotKind uint8
 
 type objectCard struct {
 	handle uint32
-	index  uint32
+	index  uint32 // inclusive dirty-range start
+	end    uint32 // inclusive dirty-range end
 }
 
 type slotCard struct {
@@ -82,12 +80,14 @@ func (c *Collector) WriteBarrierSlot(kind SlotKind, index uint32, child Ref) {
 	}
 }
 func (c *Collector) CardMarkArray(array Ref, elementIndex uint32) {
-	if c.cfg.Profile == ProfileTiny {
+	if c.cfg.Profile == ProfileTiny || !array.IsObj() || !c.validObjectRef(array) {
 		return
 	}
-	if array.IsObj() && c.validObjectRef(array) {
-		c.addObjectCard(handleOf(array), elementIndex)
+	e := c.entry(array)
+	if e.space != spaceOld && e.space != spaceLarge {
+		return
 	}
+	c.addObjectCard(handleOf(array), elementIndex)
 }
 
 // BulkWriteBarrier records dirty array range metadata after a bulk ref-array
@@ -102,78 +102,109 @@ func (c *Collector) BulkWriteBarrier(dst Ref, start, length uint32) {
 // write. Callers must invoke it only after the destination range contains the
 // new refs so the remembered-set scan can observe old/large-to-nursery edges.
 func (c *Collector) PostBulkWriteBarrier(dst Ref, start, length uint32) {
-	if c.cfg.Profile == ProfileTiny {
-		return
-	}
 	if !dst.IsObj() || !c.validObjectRef(dst) || length == 0 {
 		return
 	}
-	h := handleOf(dst)
-	c.addObjectCard(h, start)
-	if length > 1 {
-		end := uint64(start) + uint64(length) - 1
-		if end > uint64(^uint32(0)) {
-			end = uint64(^uint32(0))
+	if c.cfg.Profile == ProfileTiny {
+		d, err := c.refDesc(dst)
+		if err != nil || d.Kind != KindArray || !isCollectorRefKind(d.Elem) {
+			return
 		}
-		c.addObjectCard(h, uint32(end))
-	}
-	c.rememberBulkArrayRange(h, start, length)
-}
-
-func (c *Collector) rememberBulkArrayRange(h, start, length uint32) {
-	if h == 0 || int(h) >= len(c.handles) {
+		for i := uint32(0); i < length; i++ {
+			value, err := c.loadValue(dst, uint64(PayloadOffset)+uint64(start+i)*uint64(d.ElemSize), d.Elem)
+			if err != nil {
+				return
+			}
+			c.tinyWriteBarrierObject(dst, value.Ref)
+		}
 		return
 	}
+	h := handleOf(dst)
 	sp := c.handles[h].space
 	if sp != spaceOld && sp != spaceLarge {
 		return
 	}
-	dst := makeObjRef(h)
-	hdr := c.header(dst)
-	d, err := c.desc(TypeID(hdr.TypeID))
-	if err != nil || !d.ArrayElementsAreRefs() || start >= hdr.Aux {
+	end := uint64(start) + uint64(length) - 1
+	if end > uint64(^uint32(0)) {
+		end = uint64(^uint32(0))
+	}
+	c.addObjectCardRange(h, start, uint32(end))
+	// Remember conservatively when the newly written range contains a nursery
+	// edge. Do not scan unrelated elements or remove an existing remembered bit
+	// on this hot path; collection-time pruning establishes the exact cold state.
+	if c.arrayRangeContainsNurseryRef(dst, start, length) {
+		c.remember(h)
+	}
+}
+
+func (c *Collector) addObjectCard(h, index uint32) { c.addObjectCardRange(h, index, index) }
+
+func (c *Collector) addObjectCardRange(h, start, end uint32) {
+	if h == 0 || int(h) >= len(c.handles) || end < start {
 		return
 	}
-	end := uint64(start) + uint64(length)
-	if end > uint64(hdr.Aux) {
-		end = uint64(hdr.Aux)
+	e := &c.handles[h]
+	if e.space != spaceOld && e.space != spaceLarge {
+		return
 	}
-	b := c.bytes(dst)
-	for i := start; uint64(i) < end; i++ {
-		off := PayloadOffset + i*d.ElemSize
-		if uint64(off)+4 > uint64(len(b)) {
-			return
+	if e.cardSlot != 0 {
+		card := &c.objectCards[e.cardSlot-1]
+		if start < card.index {
+			card.index = start
 		}
-		if c.isNurseryRef(Ref(binary.LittleEndian.Uint32(b[off:]))) {
-			c.remember(h)
-			return
+		if end > card.end {
+			card.end = end
 		}
+		return
+	}
+	c.objectCards = append(c.objectCards, objectCard{handle: h, index: start, end: end})
+	e.cardSlot = uint32(len(c.objectCards))
+}
+
+func slotCardKey(kind SlotKind, index uint32) uint64 {
+	return uint64(kind)<<32 | uint64(index)
+}
+
+func (c *Collector) slotCardIndexOK(kind SlotKind, index uint32) bool {
+	switch kind {
+	case SlotGlobal:
+		return slotIndexOK(index, len(c.globalSlots))
+	case SlotTable:
+		return slotIndexOK(index, len(c.tableSlots))
+	default:
+		return false
 	}
 }
-func (c *Collector) addObjectCard(h, index uint32) {
-	for _, card := range c.objectCards {
-		if card.handle == h && card.index == index {
-			return
-		}
-	}
-	c.objectCards = append(c.objectCards, objectCard{handle: h, index: index})
-}
+
 func (c *Collector) addSlotCard(kind SlotKind, index uint32) {
-	for _, card := range c.slotCards {
-		if card.kind == kind && card.index == index {
-			return
-		}
+	if !c.slotCardIndexOK(kind, index) {
+		return
+	}
+	key := slotCardKey(kind, index)
+	if c.slotCardSlot != nil && c.slotCardSlot[key] != 0 {
+		return
+	}
+	if c.slotCardSlot == nil {
+		c.slotCardSlot = make(map[uint64]uint32)
 	}
 	c.slotCards = append(c.slotCards, slotCard{kind: kind, index: index})
+	c.slotCardSlot[key] = uint32(len(c.slotCards))
 }
 func (c *Collector) pruneSlotCard(kind SlotKind, index uint32) {
-	out := c.slotCards[:0]
-	for _, card := range c.slotCards {
-		if card.kind != kind || card.index != index {
-			out = append(out, card)
-		}
+	key := slotCardKey(kind, index)
+	slot := c.slotCardSlot[key]
+	if slot == 0 {
+		return
 	}
-	c.slotCards = out
+	pos := int(slot - 1)
+	last := len(c.slotCards) - 1
+	moved := c.slotCards[last]
+	c.slotCards[pos] = moved
+	c.slotCards = c.slotCards[:last]
+	delete(c.slotCardSlot, key)
+	if pos != last {
+		c.slotCardSlot[slotCardKey(moved.kind, moved.index)] = uint32(pos + 1)
+	}
 }
 func (c *Collector) pruneSlotCardUnlessNursery(kind SlotKind, index uint32, r Ref) {
 	if r.IsObj() && c.validObjectRef(r) && c.entry(r).space == spaceNursery {
@@ -182,43 +213,40 @@ func (c *Collector) pruneSlotCardUnlessNursery(kind SlotKind, index uint32, r Re
 	c.pruneSlotCard(kind, index)
 }
 func (c *Collector) remember(h uint32) {
-	for _, x := range c.remembered {
-		if x == h {
-			return
-		}
+	if h == 0 || int(h) >= len(c.handles) {
+		return
 	}
+	e := &c.handles[h]
+	if e.remembered || (e.space != spaceOld && e.space != spaceLarge) {
+		return
+	}
+	e.remembered = true
 	c.remembered = append(c.remembered, h)
 }
 func (c *Collector) removeRemembered(h uint32) {
-	out := c.remembered[:0]
-	for _, x := range c.remembered {
-		if x != h {
-			out = append(out, x)
-		}
+	if h != 0 && int(h) < len(c.handles) {
+		// The dense list is compacted once on the collection cold path. free is
+		// called only during that sweep, so a cleared handle cannot be reused
+		// before pruneRemembered removes its stale list entry.
+		c.handles[h].remembered = false
 	}
-	c.remembered = out
 }
 func (c *Collector) pruneRemembered() {
 	out := c.remembered[:0]
 	for _, h := range c.remembered {
-		if h == 0 || int(h) >= len(c.handles) {
-			continue
+		keep := h != 0 && int(h) < len(c.handles) && c.handles[h].remembered
+		if keep {
+			sp := c.handles[h].space
+			keep = (sp == spaceOld || sp == spaceLarge) && c.handleContainsNurseryRef(h)
 		}
-		sp := c.handles[h].space
-		if (sp == spaceOld || sp == spaceLarge) && c.handleContainsNurseryRef(h) {
+		if keep {
 			out = append(out, h)
+		} else if h != 0 && int(h) < len(c.handles) {
+			c.handles[h].remembered = false
 		}
 	}
+	clear(c.remembered[len(out):])
 	c.remembered = out
-}
-func (c *Collector) pruneRememberedHandleUnlessNursery(h uint32) {
-	if h == 0 || int(h) >= len(c.handles) {
-		return
-	}
-	sp := c.handles[h].space
-	if (sp == spaceOld || sp == spaceLarge) && !c.handleContainsNurseryRef(h) {
-		c.removeRemembered(h)
-	}
 }
 func (c *Collector) isNurseryRef(r Ref) bool {
 	if !r.IsObj() || !c.validObjectRef(r) {
@@ -227,14 +255,34 @@ func (c *Collector) isNurseryRef(r Ref) bool {
 	return c.entry(r).space == spaceNursery
 }
 func (c *Collector) removeCardsForHandle(h uint32) {
-	out := c.objectCards[:0]
+	if h == 0 || int(h) >= len(c.handles) {
+		return
+	}
+	e := &c.handles[h]
+	if e.cardSlot == 0 {
+		return
+	}
+	pos := int(e.cardSlot - 1)
+	last := len(c.objectCards) - 1
+	moved := c.objectCards[last]
+	c.objectCards[pos] = moved
+	c.objectCards = c.objectCards[:last]
+	e.cardSlot = 0
+	if pos != last && moved.handle != 0 && int(moved.handle) < len(c.handles) {
+		c.handles[moved.handle].cardSlot = uint32(pos + 1)
+	}
+}
+func (c *Collector) clearCardMetadata() {
 	for _, card := range c.objectCards {
-		if card.handle != h {
-			out = append(out, card)
+		if card.handle != 0 && int(card.handle) < len(c.handles) {
+			c.handles[card.handle].cardSlot = 0
 		}
 	}
-	c.objectCards = out
+	c.objectCards = c.objectCards[:0]
+	c.slotCards = c.slotCards[:0]
+	clear(c.slotCardSlot)
 }
+
 func (c *Collector) RememberedCount() int { return len(c.remembered) }
 func (c *Collector) CardCount() int       { return len(c.objectCards) + len(c.slotCards) }
 func (c *Collector) ForcePromote(r Ref) error {
@@ -258,6 +306,27 @@ func (c *Collector) ForcePromote(r Ref) error {
 		c.remember(h)
 	}
 	return nil
+}
+
+func (c *Collector) arrayRangeContainsNurseryRef(array Ref, start, length uint32) bool {
+	d, err := c.refDesc(array)
+	if err != nil || !d.ArrayElementsAreRefs() || length == 0 {
+		return false
+	}
+	arrayLen := c.header(array).Aux
+	if uint64(start)+uint64(length) > uint64(arrayLen) {
+		return false
+	}
+	b := c.bytes(array)
+	off := uint64(PayloadOffset) + uint64(start)*uint64(d.ElemSize)
+	for i := uint32(0); i < length; i++ {
+		r := Ref(uint32(b[off]) | uint32(b[off+1])<<8 | uint32(b[off+2])<<16 | uint32(b[off+3])<<24)
+		if c.isNurseryRef(r) {
+			return true
+		}
+		off += uint64(d.ElemSize)
+	}
+	return false
 }
 
 func (c *Collector) handleContainsNurseryRef(h uint32) bool {

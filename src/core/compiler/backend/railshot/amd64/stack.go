@@ -49,6 +49,7 @@ type storageKind uint8
 const (
 	stInvalid   storageKind = iota
 	stConst                 // an immediate; cval holds the value/bits
+	stFuncRef               // exact staged local ref.func provenance; idx = function index
 	stReg                   // a physical register the value OWNS; reg holds it
 	stSlot                  // a frame stack slot; slot holds the RSP-relative slot index
 	stLocalRef              // a frame-resident local read (lazy); idx = local index
@@ -104,12 +105,13 @@ func memRefFoldable(st storage, w bool) bool {
 
 // storage records where a value lives and its machine type.
 type storage struct {
-	kind storageKind
-	typ  machineType
-	reg  Reg
-	slot int
-	idx  int   // local/global index for stLocalRef/stGlobalRef
-	cval int64 // constant value/bits for stConst
+	kind   storageKind
+	typ    machineType
+	reg    Reg
+	ehRoot bool // frame-relative rooted exception identity; clear the three-word record on drop
+	slot   int
+	idx    int   // local/global index for stLocalRef/stGlobalRef
+	cval   int64 // constant value/bits for stConst
 }
 
 // elemKind tags a stack node.

@@ -62,15 +62,15 @@ func TestCompiledCodecRoundTripsReferenceSignatures(t *testing.T) {
 		Code:       []byte{0xc3},
 		Entry:      []int{0},
 		Funcs:      []FuncSig{{Params: []ValType{ValFuncRef, ValExternRef}, Results: []ValType{ValExternRef, ValFuncRef}}},
-		FuncTypeID: []uint32{0},
+		FuncTypeID: []uint64{0},
 		Exports:    map[string]int{"refs": 0},
 	}
 	blob, err := input.MarshalBinary()
 	if err != nil {
 		t.Fatalf("MarshalBinary: %v", err)
 	}
-	if blob[4] != wagoVersion || wagoVersion != 21 {
-		t.Fatalf("compiled codec version = %d, want structural-reference version 21", blob[4])
+	if blob[4] != wagoVersion || wagoVersion != 27 {
+		t.Fatalf("compiled codec version = %d, want exception-tag-directory version 27", blob[4])
 	}
 	for _, version := range []byte{19, 20} {
 		oldVersion := append([]byte(nil), blob...)
@@ -93,6 +93,61 @@ func TestCompiledCodecRoundTripsReferenceSignatures(t *testing.T) {
 	}
 	if want := []ValType{ValExternRef, ValFuncRef}; !reflect.DeepEqual(results, want) {
 		t.Fatalf("results = %v, want %v", results, want)
+	}
+}
+
+func TestCompiledCodecV22CarriesIndexedFunctionSignatures(t *testing.T) {
+	indexed := ValueTypeDescriptor{Kind: ValueTypeReference, Ref: ReferenceTypeDescriptor{Heap: HeapTypeDescriptor{Defined: true, TypeIndex: 0}}}
+	stored := indexed
+	stored.Ref.Nullable = true
+	input := &Compiled{
+		Code:       []byte{0xc3},
+		Entry:      []int{0},
+		ValueTypes: []ValueTypeDescriptor{stored},
+		Types: []DefinedTypeDescriptor{
+			{RecGroup: 0, Final: true, Kind: CompositeTypeFunction, Params: []ValueTypeDescriptor{{Kind: ValueTypeI32}}, Results: []ValueTypeDescriptor{{Kind: ValueTypeI32}}},
+			{RecGroup: 1, Final: true, Kind: CompositeTypeFunction, Params: []ValueTypeDescriptor{{Kind: ValueTypeI32}, indexed}, Results: []ValueTypeDescriptor{{Kind: ValueTypeI32}}},
+		},
+		Funcs: []FuncSig{{
+			Params:       []ValType{ValI32, ValFuncRef},
+			Results:      []ValType{ValI32},
+			TypeIndex:    1,
+			HasTypeIndex: true,
+		}},
+		FuncTypeID: []uint64{7},
+		Exports:    map[string]int{"call": 0},
+		Globals: []GlobalDef{{
+			Type: ValFuncRef, ValueTypeIndex: 0, HasValueType: true,
+		}},
+		HasTable: true, TableType: ValFuncRef, TableValueTypeIndex: 0, TableHasValueType: true,
+		Elems:            []ElemInit{{TableIndex: 0, RefType: ValFuncRef, ValueTypeIndex: 0, HasValueType: true, Mode: ElemModeActive, Values: []RefInit{{Null: true}}}},
+		requiredFeatures: CoreFeatureReferenceTypes | CoreFeatureTypedFunctionReferences,
+	}
+	meta := (&Module{c: input}).Metadata()
+	if len(meta.Types) != 2 || len(meta.Functions) != 1 || meta.Functions[0].ParamTypes[1] != indexed || len(meta.Globals) != 1 || !meta.Globals[0].HasValueType || meta.Globals[0].ValueType != stored || len(meta.Tables) != 1 || !meta.Tables[0].HasValueType || meta.Tables[0].ValueType != stored {
+		t.Fatalf("structural module metadata = %#v", meta)
+	}
+
+	blob, err := marshalCompiled(input)
+	if err != nil {
+		t.Fatalf("marshalCompiled indexed signature: %v", err)
+	}
+	var got Compiled
+	if err := unmarshalCompiled(&got, blob[5:]); err != nil {
+		t.Fatalf("unmarshalCompiled indexed signature: %v", err)
+	}
+	if !reflect.DeepEqual(got.Types, input.Types) || !reflect.DeepEqual(got.ValueTypes, input.ValueTypes) || !reflect.DeepEqual(got.Funcs, input.Funcs) || !reflect.DeepEqual(got.Globals, input.Globals) || !reflect.DeepEqual(got.Elems, input.Elems) || got.TableValueTypeIndex != 0 || !got.TableHasValueType {
+		t.Fatalf("indexed metadata changed: types=%#v values=%#v funcs=%#v globals=%#v elems=%#v", got.Types, got.ValueTypes, got.Funcs, got.Globals, got.Elems)
+	}
+	if err := got.UnmarshalBinary(blob); err != nil {
+		t.Fatalf("public typed-reference load = %v", err)
+	}
+
+	bad := *input
+	bad.Types = cloneDefinedTypeDescriptors(input.Types)
+	bad.Types[1].Params[1].Ref.Heap.TypeIndex = 9
+	if _, err := marshalCompiled(&bad); err == nil || !strings.Contains(err.Error(), "type index") {
+		t.Fatalf("malformed indexed signature error = %v", err)
 	}
 }
 

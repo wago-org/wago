@@ -109,6 +109,80 @@ func TestArrayInitializerRefSurvivesAllocationCollection(t *testing.T) {
 	}
 }
 
+func TestAtomicConstructorRefsSurviveAllocationCollection(t *testing.T) {
+	c := newTestCollector(t, Config{})
+	left, err := c.NewStructDefault(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	right, err := c.NewStructDefault(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.StructSet(left, 0, I32Value(11)); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.StructSet(right, 0, I32Value(22)); err != nil {
+		t.Fatal(err)
+	}
+	c.cfg.CollectEveryAlloc = true
+	values := []Value{RefValue(left), RefValue(right)}
+	pair, err := c.NewStructWithRoots(1, values, Slots{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, want := range []int32{11, 22} {
+		stored, err := c.StructGet(pair, uint32(i))
+		if err != nil {
+			t.Fatal(err)
+		}
+		field, err := c.StructGet(stored.Ref, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if field.I32() != want {
+			t.Fatalf("struct field %d child = %d, want %d", i, field.I32(), want)
+		}
+	}
+
+	pairRoot := Root(pair)
+	first, err := c.NewStructDefaultWithRoots(0, Slots{&pairRoot})
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstRoot := Root(first)
+	second, err := c.NewStructDefaultWithRoots(0, Slots{&pairRoot, &firstRoot})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pair, first = Ref(pairRoot), Ref(firstRoot)
+	if err := c.StructSet(first, 0, I32Value(33)); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.StructSet(second, 0, I32Value(44)); err != nil {
+		t.Fatal(err)
+	}
+	arrayValues := []Value{RefValue(first), RefValue(second)}
+	pairRoot = Root(pair)
+	array, err := c.NewArrayFixedWithRoots(3, arrayValues, Slots{&pairRoot})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, want := range []int32{33, 44} {
+		stored, err := c.ArrayGet(array, uint32(i))
+		if err != nil {
+			t.Fatal(err)
+		}
+		field, err := c.StructGet(stored.Ref, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if field.I32() != want {
+			t.Fatalf("array element %d child = %d, want %d", i, field.I32(), want)
+		}
+	}
+}
+
 func TestFullCollectionRootsChainsAndCycles(t *testing.T) {
 	c := newTestCollector(t, Config{PoisonFreed: true})
 	a, _ := c.NewStructDefault(1)
@@ -425,6 +499,13 @@ func TestCardMetadataRetainsFullIndexes(t *testing.T) {
 
 	const elementIndex = uint32(0x1_0001)
 	c.CardMarkArray(arr, elementIndex)
+	if len(c.objectCards) != 0 {
+		t.Fatalf("nursery array recorded generational cards: %d", len(c.objectCards))
+	}
+	if err := c.ForcePromote(arr); err != nil {
+		t.Fatal(err)
+	}
+	c.CardMarkArray(arr, elementIndex)
 	if len(c.objectCards) != 1 {
 		t.Fatalf("object cards=%d, want 1", len(c.objectCards))
 	}
@@ -433,14 +514,14 @@ func TestCardMetadataRetainsFullIndexes(t *testing.T) {
 	}
 
 	c.BulkWriteBarrier(arr, ^uint32(0)-1, 4)
-	if len(c.objectCards) != 3 {
-		t.Fatalf("object cards=%d, want 3", len(c.objectCards))
+	if len(c.objectCards) != 1 {
+		t.Fatalf("object card ranges=%d, want 1", len(c.objectCards))
 	}
-	if got := c.objectCards[1].index; got != ^uint32(0)-1 {
-		t.Fatalf("bulk start index=%#x, want %#x", got, ^uint32(0)-1)
+	if got := c.objectCards[0].index; got != elementIndex {
+		t.Fatalf("coalesced start index=%#x, want %#x", got, elementIndex)
 	}
-	if got := c.objectCards[2].index; got != ^uint32(0) {
-		t.Fatalf("bulk end index=%#x, want saturated %#x", got, ^uint32(0))
+	if got := c.objectCards[0].end; got != ^uint32(0) {
+		t.Fatalf("coalesced end index=%#x, want saturated %#x", got, ^uint32(0))
 	}
 }
 
@@ -469,8 +550,15 @@ func TestSlotCardsAreNotRemovedAsObjectCards(t *testing.T) {
 		t.Fatalf("slot card removed as object card; remaining=%d", len(c.slotCards))
 	}
 
-	c.objectCards = append(c.objectCards, objectCard{handle: 7, index: 0})
-	c.removeCardsForHandle(7)
+	arr, err := c.NewArrayDefault(3, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.ForcePromote(arr); err != nil {
+		t.Fatal(err)
+	}
+	c.CardMarkArray(arr, 0)
+	c.removeCardsForHandle(handleOf(arr))
 	if len(c.objectCards) != 0 {
 		t.Fatalf("object card for freed handle remained: %v", c.objectCards)
 	}

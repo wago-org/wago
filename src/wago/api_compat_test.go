@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/wago-org/wago/src/core/compiler/frontend"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/testutil/wasmtest"
 )
@@ -118,10 +119,13 @@ func TestCompiledAPIHelpers(t *testing.T) {
 		!funcTypeUsesV128(&wasm.CompType{Results: []wasm.ValType{wasm.V128}}) {
 		t.Fatal("v128 function signature detection changed")
 	}
-	ft := &wasm.CompType{Params: []wasm.ValType{wasm.I32}, Results: []wasm.ValType{wasm.I64}}
-	if !sigMatches(ft, &InstanceExport{params: []ValType{ValI32}, results: []ValType{ValI64}}) ||
-		sigMatches(ft, &InstanceExport{params: []ValType{ValI64}, results: []ValType{ValI64}}) ||
-		sigMatches(ft, &InstanceExport{params: []ValType{ValI32}}) {
+	required := FuncSig{Params: []ValType{ValI32}, Results: []ValType{ValI64}}
+	export := func(sig FuncSig) *InstanceExport {
+		return &InstanceExport{inst: &Instance{c: &Compiled{Funcs: []FuncSig{sig}}}, localIdx: 0}
+	}
+	if !sigMatches(required, nil, export(FuncSig{Params: []ValType{ValI32}, Results: []ValType{ValI64}}), false) ||
+		sigMatches(required, nil, export(FuncSig{Params: []ValType{ValI64}, Results: []ValType{ValI64}}), false) ||
+		sigMatches(required, nil, export(FuncSig{Params: []ValType{ValI32}}), false) {
 		t.Fatal("cross-instance signature matching changed")
 	}
 	for _, tc := range []struct {
@@ -138,15 +142,23 @@ func TestCompiledAPIHelpers(t *testing.T) {
 			t.Errorf("asyncReplayable(%+v) = %v, want %v", tc.sig, got, tc.want)
 		}
 	}
-	if bodyBytesUseMemoryGrow([]byte{0x0b}) || !bodyBytesUseMemoryGrow([]byte{0x40, 0x00, 0x0b}) || !bodyBytesUseMemoryGrow([]byte{0xff}) {
-		t.Fatal("memory.grow byte scanner changed")
+	memoryGrowFact := func(m *wasm.Module) bool {
+		t.Helper()
+		facts, err := frontend.AnalyzeModuleFacts(m)
+		if err != nil {
+			t.Fatalf("analyze memory.grow facts: %v", err)
+		}
+		return facts.MemoryGrowUsed[0]
 	}
-	if instrsUseMemoryGrow([]wasm.Instruction{{Kind: wasm.InstrI32Add}}) || !instrsUseMemoryGrow([]wasm.Instruction{{Kind: wasm.InstrMemoryGrow}}) {
-		t.Fatal("programmatic memory.grow scanner changed")
+	withMemory := func(fn wasm.Func) *wasm.Module {
+		return &wasm.Module{Memories: []wasm.MemType{{}}, Code: []wasm.Func{fn}}
 	}
-	if !moduleUsesMemoryGrow(&wasm.Module{Code: []wasm.Func{{BodyBytes: []byte{0x40, 0x00, 0x0b}}}}) ||
-		moduleUsesMemoryGrow(&wasm.Module{Code: []wasm.Func{{Body: wasm.Expr{Instrs: []wasm.Instruction{{Kind: wasm.InstrI32Add}}}}}}) {
-		t.Fatal("module memory.grow detection changed")
+	if memoryGrowFact(withMemory(wasm.Func{BodyBytes: []byte{0x0b}})) ||
+		!memoryGrowFact(withMemory(wasm.Func{BodyBytes: []byte{0x40, 0x00, 0x0b}})) ||
+		!memoryGrowFact(withMemory(wasm.Func{BodyBytes: []byte{0xff}})) ||
+		memoryGrowFact(withMemory(wasm.Func{Body: wasm.Expr{Instrs: []wasm.Instruction{{Kind: wasm.InstrI32Add}}}})) ||
+		!memoryGrowFact(withMemory(wasm.Func{Body: wasm.Expr{Instrs: []wasm.Instruction{{Kind: wasm.InstrMemoryGrow}}}})) {
+		t.Fatal("memory.grow module facts changed")
 	}
 
 	elem, data := 0, 0
@@ -156,7 +168,7 @@ func TestCompiledAPIHelpers(t *testing.T) {
 		{Kind: wasm.InstrMemoryInit, Index: 4},
 		{Kind: wasm.InstrDataDrop, Index: 3},
 	} {
-		segmentStateCount(in.Kind, in.Index, &elem, &data)
+		segmentStateCount(in.Kind, in.Index, in.Index2, &elem, &data)
 	}
 	if elem != 3 || data != 5 {
 		t.Fatalf("segment state counts = %d, %d", elem, data)
@@ -281,7 +293,7 @@ func TestRuntimeConfigPortableFluentSurface(t *testing.T) {
 	if got := (&UnsupportedFeatureError{Requested: CoreFeatureTailCall, Supported: CoreFeaturesV2}).Error(); !strings.Contains(got, "tail-call") {
 		t.Fatalf("UnsupportedFeatureError = %q", got)
 	}
-	err := NewRuntimeConfig().WithFeature(CoreFeatureTailCall, true).Validate()
+	err := NewRuntimeConfig().WithFeature(CoreFeatures(1<<63), true).Validate()
 	var unsupported *UnsupportedFeatureError
 	if !errors.As(err, &unsupported) {
 		t.Fatalf("Validate unsupported = %v", err)
@@ -424,7 +436,7 @@ func TestRuntimeReferenceAndErrorPortableSurface(t *testing.T) {
 	if _, err := (*Instance)(nil).NewExternRef("x"); err == nil {
 		t.Fatal("nil instance accepted an externref")
 	}
-	private := &Instance{}
+	private := &Instance{c: &Compiled{}}
 	privateRef, err := private.NewExternRef("private")
 	if err != nil {
 		t.Fatalf("private NewExternRef: %v", err)

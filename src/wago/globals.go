@@ -87,14 +87,17 @@ type Global struct {
 }
 
 type globalOwner struct {
-	mu        sync.Mutex
-	arena     *coreruntime.Arena
-	store     *referenceStore
-	instance  *Instance
-	typ       ValType
-	mutable   bool
-	importers int
-	closed    bool
+	mu           sync.Mutex
+	arena        *coreruntime.Arena
+	store        *referenceStore
+	instance     *Instance
+	typ          ValType
+	mutable      bool
+	valueType    ValueTypeDescriptor
+	types        []DefinedTypeDescriptor
+	hasValueType bool
+	importers    int
+	closed       bool
 	// retained holds writer instances whose reachable funcref is currently stored
 	// in this global's cell (funcref globals only). Each root preserves the writer's
 	// descriptor arena and transitive import attachments until overwrite or close.
@@ -178,6 +181,31 @@ func (g *Global) retainProducerInstance(in *Instance) bool {
 		root.releaseResourceRoot()
 	}
 	return true
+}
+
+// pruneRetainedInstances releases a closed producer after its descriptor has
+// been overwritten. The single cell is sampled only after native execution or a
+// completed host SetValue, so trapping global writes preserve the previous root.
+func (g *Global) pruneRetainedInstances() {
+	if g == nil || g.owner == nil {
+		return
+	}
+	o := g.owner
+	var release []*Instance
+	o.mu.Lock()
+	if !o.closed && len(g.cell) >= 8 {
+		current := readGlobalObject(g, ValFuncRef)
+		for root := range o.retained {
+			if !root.ownsLocalFuncrefDescriptor(current) {
+				delete(o.retained, root)
+				release = append(release, root)
+			}
+		}
+	}
+	o.mu.Unlock()
+	for _, root := range release {
+		root.releaseResourceRoot()
+	}
 }
 
 // NewFuncRefGlobal creates a host-owned funcref global bound to this Runtime's
@@ -333,6 +361,7 @@ func (g *Global) GetValue() (Value, error) {
 	o := g.owner
 	o.mu.Lock()
 	typ, store, source, closed := o.typ, o.store, o.instance, o.closed
+	exact, exactTypes, hasExact := o.valueType, o.types, o.hasValueType
 	consistent := g.Type == typ && g.Mutable == o.mutable
 	o.mu.Unlock()
 	if closed || !consistent || !isReferenceValType(typ) {
@@ -340,6 +369,9 @@ func (g *Global) GetValue() (Value, error) {
 	}
 	bits := readGlobalObject(g, typ)
 	if bits == 0 {
+		if hasExact && exact.Kind == ValueTypeReference && !exact.Ref.Nullable {
+			return Value{}, fmt.Errorf("global contains null for a non-null reference type")
+		}
 		return Value{typ: typ}, nil
 	}
 	if store == nil {
@@ -350,6 +382,12 @@ func (g *Global) GetValue() (Value, error) {
 			return Value{}, fmt.Errorf("global contains an invalid externref value")
 		}
 		return Value{typ: ValExternRef, bits: bits}, nil
+	}
+	if hasExact {
+		actual, actualTypes, ok := store.descriptorFuncrefExactType(source, bits)
+		if !ok || !valueTypeSubtype(actual, actualTypes, exact, exactTypes) {
+			return Value{}, fmt.Errorf("global contains a funcref with an incompatible exact structural type")
+		}
 	}
 	token, err := store.issue(source, bits)
 	if err != nil {
@@ -369,6 +407,7 @@ func (g *Global) SetValue(v Value) error {
 	o := g.owner
 	o.mu.Lock()
 	typ, mutable, store, closed := o.typ, o.mutable, o.store, o.closed
+	exact, exactTypes, hasExact := o.valueType, o.types, o.hasValueType
 	consistent := g.Type == typ && g.Mutable == mutable
 	o.mu.Unlock()
 	if closed || !consistent || !isReferenceValType(typ) {
@@ -381,6 +420,9 @@ func (g *Global) SetValue(v Value) error {
 		return fmt.Errorf("global is immutable")
 	}
 	bits := v.bits
+	if bits == 0 && hasExact && exact.Kind == ValueTypeReference && !exact.Ref.Nullable {
+		return fmt.Errorf("global requires a non-null reference value")
+	}
 	if bits != 0 {
 		if store == nil {
 			return fmt.Errorf("global has no compatible reference store")
@@ -390,6 +432,15 @@ func (g *Global) SetValue(v Value) error {
 				return fmt.Errorf("invalid externref token")
 			}
 		} else {
+			if hasExact {
+				actual, actualTypes, ok := store.tokenFuncrefExactType(bits)
+				if !ok {
+					return fmt.Errorf("invalid funcref token")
+				}
+				if !valueTypeSubtype(actual, actualTypes, exact, exactTypes) {
+					return fmt.Errorf("funcref token does not match the global's exact structural type")
+				}
+			}
 			descriptor, ok := store.resolve(bits)
 			if !ok {
 				return fmt.Errorf("invalid funcref token")
@@ -398,6 +449,9 @@ func (g *Global) SetValue(v Value) error {
 		}
 	}
 	writeGlobalObject(g, typ, bits)
+	if typ == ValFuncRef {
+		g.pruneRetainedInstances()
+	}
 	return nil
 }
 
@@ -428,16 +482,23 @@ type GlobalImport struct {
 	Global  *Global
 }
 
-type FuncSig struct{ Params, Results []ValType }
+type FuncSig struct {
+	Params, Results []ValType
+	TypeIndex       uint32
+	HasTypeIndex    bool
+	unsafeCrossTail bool // imported return_call use exceeds the admitted cross-instance tail ABI
+}
 
 // OffsetInit is active data/element offset metadata. Base is the literal i32
 // offset. When HasGlobal is true, Global names an imported immutable i32 global
-// whose current instance cell is read during instantiation instead, after import
-// values have been resolved.
+// whose current instance cell is read during instantiation. Expr holds a
+// validated extended constant-expression program when the offset needs integer
+// arithmetic; it is evaluated after imported globals have been resolved.
 type OffsetInit struct {
 	Base      uint32
 	HasGlobal bool
 	Global    int
+	Expr      []byte
 }
 
 const nullFuncRefIndex = ^uint32(0) // internal sentinel while decoding table initializer expressions
@@ -453,11 +514,13 @@ const (
 )
 
 // RefInit is one typed element initializer. Null is explicit so ref.null never
-// aliases an ordinary uint32 function index. Non-null initializers are ref.func
-// and therefore valid only for a funcref segment.
+// aliases an ordinary uint32 payload. Funcref segments interpret FuncIndex as a
+// function index; exact i31 segments interpret it as the tagged compact immediate.
 type RefInit struct {
-	FuncIndex uint32
-	Null      bool
+	FuncIndex   uint32
+	GlobalIndex uint32
+	Null        bool
+	HasGlobal   bool
 }
 
 // ElemInit is typed element-segment metadata. TableIndex names an active
@@ -465,39 +528,49 @@ type RefInit struct {
 // representation, Mode preserves active/passive/declarative semantics, and
 // Values carries structural null/ref.func payloads without live addresses.
 type ElemInit struct {
-	TableIndex uint32
-	RefType    ValType
-	Mode       ElemMode
-	Offset     OffsetInit
-	Values     []RefInit
+	TableIndex     uint32
+	RefType        ValType
+	ValueTypeIndex uint32
+	HasValueType   bool
+	Mode           ElemMode
+	Offset         OffsetInit
+	Values         []RefInit
 }
 
 // tableDef is compact instantiate-time metadata for local tables after table 0.
 // Table 0 retains the legacy direct fields on Compiled so its hot path and codec
 // layout stay unchanged during the multiple-table closeout.
 type tableDef struct {
-	ImportKey    string  // non-empty only for imported nonzero table indexes
-	Size         int     // local size, or imported minimum when ImportKey is non-empty
-	Max          int     // local runtime capacity, or imported declared maximum
-	Type         ValType // zero is the hand-built legacy funcref shape
-	HasInitFunc  bool
-	ImportHasMax bool
-	HasMax       bool // local declaration has an explicit maximum; Max is exact when true
-	InitFunc     uint32
+	ImportKey      string  // non-empty only for imported nonzero table indexes
+	Size           int     // local size, or imported minimum when ImportKey is non-empty
+	Max            uint64  // exact local declared maximum when HasMax; otherwise runtime reserve; imported maximum when ImportKey is non-empty
+	Type           ValType // zero is the hand-built legacy funcref shape
+	ValueTypeIndex uint32
+	HasValueType   bool
+	HasInitFunc    bool
+	ImportHasMax   bool
+	HasMax         bool // local declaration has an explicit maximum; Max is exact when true
+	Addr64         bool // table indexes and limits use the Core 3 i64 address form
+	InitFunc       uint32
 }
 
 type tableImportDef struct {
-	Key    string
-	Min    int
-	Max    int
-	Type   ValType
-	HasMax bool
+	Key string
+	Min uint64 // exact declared minimum; executable sizing uses checked int conversion
+	Max uint64 // exact declared maximum when HasMax
+
+	Type           ValType
+	ValueTypeIndex uint32
+	HasValueType   bool
+	HasMax         bool
+	Addr64         bool
 }
 
 // DataInit is active data-segment metadata.
 type DataInit struct {
-	Offset OffsetInit
-	Bytes  []byte
+	MemoryIndex uint32
+	Offset      OffsetInit
+	Bytes       []byte
 }
 
 // PassiveDataInit is data-segment state metadata for memory.init/data.drop.
@@ -507,31 +580,76 @@ type PassiveDataInit struct {
 	Bytes []byte
 }
 
+// memoryDef is exact declaration metadata in Wasm memory-index order. Imported
+// memories precede local definitions. The legacy memory-0 fields on Compiled
+// remain the direct execution cache until indexed codegen is complete.
+type memoryDef struct {
+	ImportKey string
+	Min       uint64
+	Max       uint64
+	HasMax    bool
+	Addr64    bool
+	Shared    bool
+}
+
+func (c *Compiled) funcTypeKey(index int) uint64 {
+	if c != nil && index >= 0 && index < len(c.FuncTypeID) {
+		return c.FuncTypeID[index]
+	}
+	return 0
+}
+
+type compiledMemoryDirectory struct {
+	defs         []memoryDef
+	exports      map[string]int
+	exactExports bool
+	staged       bool // internal multi-memory execution gate; never serialized
+
+	stagedMemory64  bool                   // internal bounded memory64 execution gate; never serialized
+	gcStructGlobals []gcStructGlobalInit   // exact staged GC constant initializers; never serialized
+	gcArrayGlobals  []gcArrayGlobalInit    // exact staged bounded numeric array globals; never serialized
+	gcArrayElement  *gcArrayElementInit    // exact passive GC element constructors; never serialized
+	gcI31TableInit  *gcI31TableInitializer // exact imported-global i31 table initializer; never serialized
+	ehTags          []compiledTagDef       // staged EH product metadata in tag-index order; never serialized
+	ehTagExports    map[string]int         // exact tag export name -> tag index; never serialized
+}
+
 // GlobalDef is the compact instantiate-time metadata for one wasm global.
 // Each instance stores one pointer-table entry per global; scalar globals use an
 // 8-byte cell (i32/f32 in the low 32 bits) and v128 globals use a 16-byte cell.
 // Bits/V128 hold literal initializers. When HasInitGlobal is true, InitGlobal
-// names an earlier imported immutable global whose current value is copied into
-// this global's own local cell during instantiation; it is not a slot alias.
-// When HasInitFunc is true, InitFunc is a structural Wasm function index that is
-// resolved to this instance's canonical descriptor after code mapping.
+// names an earlier immutable global whose current value is copied into this
+// global's own local cell during instantiation; it is not a slot alias. InitExpr
+// holds a validated scalar extended constant expression evaluated against
+// earlier immutable globals. When HasInitFunc is true, InitFunc is a structural
+// Wasm function index resolved to this instance's canonical descriptor.
 type GlobalDef struct {
-	Type          ValType
-	Mutable       bool
-	Bits          uint64
-	V128          V128
-	HasInitGlobal bool
-	InitGlobal    int
-	HasInitFunc   bool
-	InitFunc      uint32
+	Type           ValType
+	ValueTypeIndex uint32
+	HasValueType   bool
+	Mutable        bool
+	Bits           uint64
+	V128           V128
+	HasInitGlobal  bool
+	InitGlobal     int
+	HasInitFunc    bool
+	InitFunc       uint32
+	InitExpr       []byte
 }
 
 // GlobalImportDef identifies one imported global entry in wasm global-index order.
 type GlobalImportDef struct {
-	Module  string
-	Name    string
-	Type    ValType
-	Mutable bool
+	Module         string
+	Name           string
+	Type           ValType
+	ValueTypeIndex uint32
+	HasValueType   bool
+	Mutable        bool
+}
+
+type compiledTagDef struct {
+	ImportKey string
+	TypeIndex uint32
 }
 
 // Compiled is emitted machine code plus instantiate-time metadata.
@@ -542,9 +660,11 @@ type Compiled struct {
 	// entry offset (== Entry[i] when none): indirect calls to compatible
 	// signatures bypass the wrapper adapter via the table's delta field.
 	InternalEntry []int
-	Funcs         []FuncSig      // signature per local function
-	Imports       []string       // "module.name" per imported function
-	Exports       map[string]int // exported function name -> global function index
+	Funcs         []FuncSig               // signature per local function
+	Types         []DefinedTypeDescriptor // flattened structural type graph for indexed references
+	ValueTypes    []ValueTypeDescriptor   // deduplicated exact global/table/element types
+	Imports       []string                // "module.name" per imported function
+	Exports       map[string]int          // exported function name -> global function index
 	NumImports    int
 	Names         *wasm.NameSec // parsed debug names from the wasm name custom section
 
@@ -554,26 +674,31 @@ type Compiled struct {
 	tableExports           map[string]int    // exported table name -> table index; allocated only when non-empty
 	hasTableExportMetadata bool              // false only for legacy hand-built Compiled values
 
-	HasTable          bool       // true when table 0 is declared, even with minimum length 0
-	TableType         ValType    // table-0 element type; zero is legacy funcref metadata
-	TableSize         int        // initial/current table-0 length
-	TableMax          int        // table-0 allocated capacity/max; zero means TableSize for older hand-built metadata
-	HasTableInitFunc  bool       // table-0 initializer is a non-null ref.func payload
-	TableHasMax       bool       // local table-0 declaration has an explicit maximum
-	TableInitFunc     uint32     // wasm function index used to prefill table 0 when HasTableInitFunc
-	extraTables       []tableDef // table indexes 1..N; imported positions carry indexed import metadata
-	FuncTypeID        []uint32   // canonical signature id per global function index
-	NeedsFuncRefDescs bool       // true when instantiation requires the canonical per-function descriptor arena
-	Elems             []ElemInit // active element segments
+	HasTable            bool    // true when table 0 is declared, even with minimum length 0
+	TableType           ValType // table-0 element type; zero is legacy funcref metadata
+	TableValueTypeIndex uint32
+	TableHasValueType   bool
+	TableSize           int        // initial/current table-0 length
+	TableMax            uint64     // exact declared maximum when TableHasMax; otherwise runtime reserve; zero means TableSize for older hand-built metadata
+	HasTableInitFunc    bool       // table-0 initializer is a non-null ref.func payload
+	TableHasMax         bool       // local table-0 declaration has an explicit maximum
+	TableAddr64         bool       // table-0 indexes and limits use the Core 3 i64 address form
+	stagedTable64       bool       // compile-only admission sidecar; never serialized
+	TableInitFunc       uint32     // wasm function index used to prefill table 0 when HasTableInitFunc
+	extraTables         []tableDef // table indexes 1..N; imported positions carry indexed import metadata
+	FuncTypeID          []uint64   // collision-resistant native signature key; legacy field name
+	NeedsFuncRefDescs   bool       // true when instantiation requires the canonical per-function descriptor arena
+	Elems               []ElemInit // active element segments
 
 	passiveElems []ElemInit // element-state descriptors keyed by original index; active/declarative slots start dropped
 
 	Data        []DataInit        // active data segments (copied into linear memory at instantiate)
 	PassiveData []PassiveDataInit // data-state descriptors keyed by original index; active slots start dropped
 
-	HasMemory   bool   // module declares a linear memory
-	MemMinPages uint32 // initial linear-memory size (pages); allocated at instantiate
-	MemMaxPages uint32 // grow ceiling (pages); 0 means use the engine default
+	HasMemory   bool   // module declares memory 0; direct execution cache
+	MemMinPages uint32 // memory-0 initial size (pages); allocated at instantiate
+	MemMaxPages uint32 // memory-0 reservation ceiling; 0 means use the engine default
+	memoryDir   *compiledMemoryDirectory
 
 	HasStart       bool // module declares a start function to run at instantiate
 	StartLocalFunc int  // its local function index (valid when HasStart && !StartIsImport)
@@ -592,7 +717,7 @@ type Compiled struct {
 	memoryImport string
 
 	// tableImport preserves the direct table-0 API/runtime metadata. Additional
-	// imported tables occupy the leading extraTables entries, and codec v21 writes
+	// imported tables occupy the leading extraTables entries, and codec v22 writes
 	// every declaration in exact Wasm index order.
 	tableImport       string
 	tableImportMin    int
@@ -603,7 +728,7 @@ type Compiled struct {
 	// code image is therefore complete at Compile time and independent of concrete
 	// host or cross-instance bindings.
 	dynamicImports   bool
-	requiredFeatures uint8
+	requiredFeatures CoreFeatures
 	importFuncSigs   []FuncSig
 
 	GCTypeDescs []gc.TypeDesc // immutable Wasm GC descriptor metadata; per-instance heaps own collection state
@@ -681,6 +806,49 @@ func (c *Compiled) ExportedGlobal(name string) (GlobalDef, bool) {
 	return c.Globals[idx], true
 }
 
+func (c *Compiled) globalExactType(index int) (ValueTypeDescriptor, error) {
+	if c == nil || index < 0 || index >= len(c.Globals) {
+		return ValueTypeDescriptor{}, fmt.Errorf("global index %d out of range", index)
+	}
+	g := c.Globals[index]
+	return exactValueType(g.Type, g.HasValueType, g.ValueTypeIndex, c.ValueTypes, c.Types)
+}
+
+func (c *Compiled) tableExactType(index int) (ValueTypeDescriptor, error) {
+	if c == nil || index < 0 || index >= c.tableCount() {
+		return ValueTypeDescriptor{}, fmt.Errorf("table index %d out of range", index)
+	}
+	def := c.tableDef(index)
+	return exactValueType(c.tableElementType(index), def.HasValueType, def.ValueTypeIndex, c.ValueTypes, c.Types)
+}
+
+func (c *Compiled) elemExactType(elem ElemInit) (ValueTypeDescriptor, error) {
+	return exactValueType(normalizedElemRefType(elem.RefType), elem.HasValueType, elem.ValueTypeIndex, c.ValueTypes, c.Types)
+}
+
+func (c *Compiled) functionRefExactType(index uint32) (ValueTypeDescriptor, error) {
+	var sig FuncSig
+	if int(index) < c.NumImports {
+		if int(index) >= len(c.importFuncSigs) {
+			return ValueTypeDescriptor{}, fmt.Errorf("function index %d out of range", index)
+		}
+		sig = c.importFuncSigs[index]
+	} else {
+		local := int(index) - c.NumImports
+		if local < 0 || local >= len(c.Funcs) {
+			return ValueTypeDescriptor{}, fmt.Errorf("function index %d out of range", index)
+		}
+		sig = c.Funcs[local]
+	}
+	if sig.HasTypeIndex {
+		if int(sig.TypeIndex) >= len(c.Types) || c.Types[sig.TypeIndex].Kind != CompositeTypeFunction {
+			return ValueTypeDescriptor{}, fmt.Errorf("function index %d has invalid declared type %d", index, sig.TypeIndex)
+		}
+		return ValueTypeDescriptor{Kind: ValueTypeReference, Ref: ReferenceTypeDescriptor{Heap: HeapTypeDescriptor{Defined: true, TypeIndex: sig.TypeIndex}}}, nil
+	}
+	return ValueTypeDescriptor{Kind: ValueTypeReference, Ref: ReferenceTypeDescriptor{Heap: HeapTypeDescriptor{Abstract: AbstractHeapFunc}}}, nil
+}
+
 type resolvedGlobalImport struct {
 	global      *Global
 	initialType ValType
@@ -698,7 +866,7 @@ func (c *Compiled) importedGlobals(imports Imports) ([]*resolvedGlobalImport, er
 	for i, imp := range c.GlobalImports {
 		key := imp.Module + "." + imp.Name
 		if g := byKey[key]; g != nil {
-			if err := validateResolvedImportedGlobal(key, g, imp); err != nil {
+			if err := c.validateResolvedImportedGlobal(key, g, imp); err != nil {
 				return nil, err
 			}
 			globals[i] = g
@@ -709,7 +877,7 @@ func (c *Compiled) importedGlobals(imports Imports) ([]*resolvedGlobalImport, er
 			return nil, fmt.Errorf("missing imported global %q", key)
 		}
 		g := &resolvedGlobalImport{global: provided.Global, initialType: provided.Type, initialBits: provided.Bits, initialV128: provided.V128, mutable: provided.Mutable}
-		if err := validateResolvedImportedGlobal(key, g, imp); err != nil {
+		if err := c.validateResolvedImportedGlobal(key, g, imp); err != nil {
 			return nil, err
 		}
 		byKey[key] = g
@@ -718,12 +886,12 @@ func (c *Compiled) importedGlobals(imports Imports) ([]*resolvedGlobalImport, er
 	return globals, nil
 }
 
-func validateResolvedImportedGlobal(key string, g *resolvedGlobalImport, imp GlobalImportDef) error {
+func (c *Compiled) validateResolvedImportedGlobal(key string, g *resolvedGlobalImport, imp GlobalImportDef) error {
 	if g == nil {
 		return fmt.Errorf("imported global %q is nil", key)
 	}
 	if g.global != nil {
-		return validateImportedGlobal(key, g.global, imp)
+		return c.validateImportedGlobal(key, g.global, imp)
 	}
 	if isReferenceValType(imp.Type) {
 		return fmt.Errorf("imported reference global %q requires an explicit store-bound *Global", key)
@@ -737,7 +905,7 @@ func validateResolvedImportedGlobal(key string, g *resolvedGlobalImport, imp Glo
 	return nil
 }
 
-func validateImportedGlobal(key string, g *Global, imp GlobalImportDef) error {
+func (c *Compiled) validateImportedGlobal(key string, g *Global, imp GlobalImportDef) error {
 	if g == nil {
 		return fmt.Errorf("imported global %q is nil", key)
 	}
@@ -757,9 +925,66 @@ func validateImportedGlobal(key string, g *Global, imp GlobalImportDef) error {
 	if actualMutable != imp.Mutable {
 		return fmt.Errorf("imported global %q mutability mismatch", key)
 	}
-	if isReferenceValType(imp.Type) && g.owner == nil {
+	if !isReferenceValType(imp.Type) {
+		return nil
+	}
+	if g.owner == nil {
 		return fmt.Errorf("imported global %q has no explicit reference owner", key)
 	}
+	required, err := exactValueType(imp.Type, imp.HasValueType, imp.ValueTypeIndex, c.ValueTypes, c.Types)
+	if err != nil {
+		return fmt.Errorf("imported global %q required type: %w", key, err)
+	}
+	o := g.owner
+	o.mu.Lock()
+	actual, actualTypes, hasExact := o.valueType, o.types, o.hasValueType
+	o.mu.Unlock()
+	if !hasExact {
+		actual, _ = valueTypeDescriptorFromValType(actualType)
+	}
+	compatible := valueTypeSubtype(actual, actualTypes, required, c.Types)
+	if imp.Mutable {
+		compatible = compatible && valueTypeSubtype(required, c.Types, actual, actualTypes)
+	}
+	if !compatible {
+		return fmt.Errorf("imported global %q exact type is incompatible with required structural type", key)
+	}
+	return nil
+}
+
+func (g *Global) validateNumericImport() error {
+	if g == nil || g.owner == nil || len(g.cell) < globalCellSize(g.Type) {
+		return fmt.Errorf("numeric global descriptor is invalid")
+	}
+	o := g.owner
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if o.closed {
+		return fmt.Errorf("numeric global owner is closed")
+	}
+	if isReferenceValType(o.typ) || o.typ != g.Type || o.mutable != g.Mutable {
+		return fmt.Errorf("numeric global owner metadata is inconsistent")
+	}
+	if o.instance != nil && !o.instance.hasPhysicalResources() {
+		return fmt.Errorf("numeric global owner instance is closed")
+	}
+	return nil
+}
+
+func (g *Global) attachNumericImporter() error {
+	if err := g.validateNumericImport(); err != nil {
+		return err
+	}
+	o := g.owner
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if o.closed {
+		return fmt.Errorf("numeric global owner is closed")
+	}
+	if o.instance != nil && !o.instance.retainResourceRoot() {
+		return fmt.Errorf("numeric global owner instance is closed")
+	}
+	o.importers++
 	return nil
 }
 

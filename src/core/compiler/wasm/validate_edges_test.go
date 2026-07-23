@@ -169,6 +169,10 @@ func TestValidateModuleLevelIndexes(t *testing.T) {
 	t.Run("tag invalid type", func(t *testing.T) {
 		expectValidateErr(t, &Module{Types: []RecType{ft(nil, nil)}, Tags: []TagType{{Type: TypeIdx{Index: 2}}}}, ErrUnknownType)
 	})
+	t.Run("tag result type", func(t *testing.T) {
+		expectValidateErr(t, &Module{Types: []RecType{ft(nil, []ValType{I32})}, Tags: []TagType{{Type: TypeIdx{Index: 0}}}}, ErrTypeMismatch)
+		expectValidateErr(t, &Module{Types: []RecType{ft(nil, []ValType{I32})}, Imports: []Import{{Type: ExternType{Kind: ExternTag, Tag: TagType{Type: TypeIdx{Index: 0}}}}}}, ErrTypeMismatch)
+	})
 	badRef := RefVal(Ref(true, IndexedHeap(TypeIdx{Index: 99}), false))
 	t.Run("function signature unknown heap type", func(t *testing.T) {
 		expectValidateErr(t, &Module{Types: []RecType{ft(nil, []ValType{badRef})}}, ErrUnknownType)
@@ -298,5 +302,17 @@ func TestValidateGlobalsTablesMemoryAndConstExprs(t *testing.T) {
 		m := modWithFunc(nil, []ValType{AnyRef}, Instruction{Kind: InstrStringConst, Index: 0})
 		m.StringRefs = [][]byte{[]byte("hello")}
 		expectValidateErr(t, m, ErrTypeMismatch)
+	})
+	t.Run("noexn is the exception bottom type", func(t *testing.T) {
+		m := modWithFunc(nil, []ValType{RefVal(AbsRef(HeapExn))}, Instruction{Kind: InstrRefNull, ext: &instrExt{RefType: AbsRef(HeapNoExn)}})
+		if err := ValidateModule(m); err != nil {
+			t.Fatalf("ValidateModule: %v", err)
+		}
+	})
+	t.Run("nofunc is below indexed function heaps", func(t *testing.T) {
+		m := &Module{Types: []RecType{ft(nil, nil), ft(nil, []ValType{RefVal(Ref(true, IndexedHeap(TypeIdx{Index: 0}), false))})}, FuncTypes: []TypeIdx{{Index: 1}}, Code: []Func{{Body: Expr{Instrs: []Instruction{{Kind: InstrRefNull, ext: &instrExt{RefType: AbsRef(HeapNoFunc)}}}}}}}
+		if err := ValidateModule(m); err != nil {
+			t.Fatalf("ValidateModule: %v", err)
+		}
 	})
 }

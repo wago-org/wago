@@ -35,19 +35,23 @@ const (
 type Config struct {
 	// Profile selects the heap profile. The zero value preserves the default
 	// throughput collector behavior.
-	Profile               Profile
-	Allocator             AllocatorKind
-	Runtime               RuntimeKind
-	NurseryBytes          uint32
-	OldBlockBytes         uint32
-	LargeObjectBytes      uint32
-	CollectEveryAlloc     bool
-	StressNurseryBytes    uint32
-	ForceMajorEveryMinor  bool
-	VerifyAfterCollect    bool
-	PoisonFreed           bool
-	StressBarriers        bool
-	DisableMovingNursery  bool
+	Profile              Profile
+	Allocator            AllocatorKind
+	Runtime              RuntimeKind
+	NurseryBytes         uint32
+	OldBlockBytes        uint32
+	LargeObjectBytes     uint32
+	CollectEveryAlloc    bool
+	StressNurseryBytes   uint32
+	ForceMajorEveryMinor bool
+	VerifyAfterCollect   bool
+	PoisonFreed          bool
+	StressBarriers       bool
+	DisableMovingNursery bool
+	// DisableCollection keeps every object in the bounded throughput heap and
+	// returns an allocation error on exhaustion. It is used by general WasmGC
+	// code until native frame roots can be published at every safepoint.
+	DisableCollection     bool
 	TinyHeapBytes         uint32
 	TinyBlockBytes        uint32
 	TinyStepBudget        uint32
@@ -62,10 +66,12 @@ type Config struct {
 }
 
 type Stats struct {
-	Allocations      uint64
-	MinorCollections uint64
-	FullCollections  uint64
-	LiveObjects      uint32
+	Allocations            uint64
+	MinorCollections       uint64
+	FullCollections        uint64
+	MinorObjectsScanned    uint64
+	MinorRememberedScanned uint64
+	LiveObjects            uint32
 }
 
 type spaceKind uint8
@@ -79,32 +85,37 @@ const (
 )
 
 type handleEntry struct {
-	off, size uint32
-	allocSize uint32
-	class     uint16
-	space     spaceKind
+	off, size  uint32
+	allocSize  uint32
+	cardSlot   uint32 // one-based index in Collector.objectCards
+	class      uint16
+	space      spaceKind
+	remembered bool
 }
 
 type Collector struct {
-	cfg         Config
-	types       []TypeDesc
-	typeIndex   []int
-	nursery     []byte
-	nurseryBump uint32
-	tiny        tinyHeap
-	tinyGC      tinyGC
-	throughput  throughputHeap
-	handles     []handleEntry // index 0 is never used; Ref stores index<<1.
-	freeHandles []uint32
-	mark        []bool
-	markStack   []uint32
-	remembered  []uint32
-	objectCards []objectCard
-	slotCards   []slotCard
-	globalSlots []Ref
-	tableSlots  []Ref
-	stats       Stats
-	closed      bool
+	cfg              Config
+	types            []TypeDesc
+	typeIndex        []int
+	nursery          []byte
+	nurseryBump      uint32
+	tiny             tinyHeap
+	tinyGC           tinyGC
+	throughput       throughputHeap
+	handles          []handleEntry // index 0 is never used; Ref stores index<<1.
+	freeHandles      []uint32
+	nurseryHandles   []uint32 // dense live nursery set; minor collection never scans all old handles
+	mark             []bool
+	markStack        []uint32
+	promotionScratch []plannedPromotion
+	remembered       []uint32
+	objectCards      []objectCard
+	slotCards        []slotCard
+	slotCardSlot     map[uint64]uint32 // one-based indexes in slotCards, allocated lazily
+	globalSlots      []Ref
+	tableSlots       []Ref
+	stats            Stats
+	closed           bool
 }
 
 const defaultNursery = 64 << 10
@@ -153,11 +164,14 @@ func (c *Collector) Close() {
 	c.throughput.Close()
 	c.handles = nil
 	c.freeHandles = nil
+	c.nurseryHandles = nil
 	c.mark = nil
 	c.markStack = nil
+	c.promotionScratch = nil
 	c.remembered = nil
 	c.objectCards = nil
 	c.slotCards = nil
+	c.slotCardSlot = nil
 	c.globalSlots = nil
 	c.tableSlots = nil
 	c.tinyGC.color = nil

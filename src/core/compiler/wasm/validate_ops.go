@@ -4,7 +4,7 @@ package wasm
 // Instruction struct is ~56 bytes and this is the validator's innermost hot path,
 // so passing a value here shows up as runtime.duffcopy under profiling.
 func (v *funcValidator) step(in *Instruction) error {
-	if v.constOnly && !isConstInstruction(in.Kind) {
+	if v.constOnly && !isConstInstruction(in.Kind) && !(v.features.GCConstExpr && (in.Kind == InstrStructNew || in.Kind == InstrArrayNew || in.Kind == InstrArrayNewDefault || in.Kind == InstrRefI31 || in.Kind == InstrAnyConvertExtern || in.Kind == InstrExternConvertAny)) {
 		return v.verr(ErrConstExprRequired, in.Kind.String())
 	}
 	for _, t := range in.ValTypes() {
@@ -93,7 +93,7 @@ func (v *funcValidator) step(in *Instruction) error {
 			if err != nil {
 				return err
 			}
-		} else if !sameValTypes(ins, outs) {
+		} else if !v.sameValTypes(ins, outs) {
 			// With no else arm, the false path preserves the block inputs as the
 			// expression results. Accept only the shape the IR builder can model
 			// directly: identical input/output types.
@@ -166,7 +166,7 @@ func (v *funcValidator) step(in *Instruction) error {
 			return err
 		}
 		if in.Kind == InstrReturnCall {
-			if !sameValTypes(ft.Results, v.ctrls[0].out) {
+			if !v.matchValTypes(ft.Results, v.ctrls[0].out) {
 				return v.verr(ErrTypeMismatch, "return_call")
 			}
 			v.unreachable()
@@ -196,7 +196,7 @@ func (v *funcValidator) step(in *Instruction) error {
 			return err
 		}
 		if in.Kind == InstrReturnCallIndirect {
-			if !sameValTypes(ft.Results, v.ctrls[0].out) {
+			if !v.matchValTypes(ft.Results, v.ctrls[0].out) {
 				return v.verr(ErrTypeMismatch, "return_call_indirect")
 			}
 			v.unreachable()
@@ -273,7 +273,7 @@ func (v *funcValidator) step(in *Instruction) error {
 		if !ok {
 			return v.verr(ErrUnknownGlobal, "")
 		}
-		if v.constOnly && (int(in.Index) >= v.m.ImportedGlobalCount() || gt.Mutable) {
+		if v.constOnly && (int(in.Index) >= v.constGlobalLimit || gt.Mutable) {
 			return v.verr(ErrConstExprRequired, "global.get")
 		}
 		v.push(gt.Type)
@@ -318,13 +318,17 @@ func (v *funcValidator) step(in *Instruction) error {
 		}
 		v.push(RefVal(in.RefType()))
 	case InstrRefFunc:
-		if int(in.Index) >= v.m.FuncCount() {
+		typeIdx, ok := v.m.FuncTypeIndex(in.Index)
+		if !ok {
 			return v.verr(ErrUnknownFunc, "ref.func")
 		}
 		if !v.isDeclaredFunc(in.Index) {
 			return v.verr(ErrUnknownFunc, "undeclared function reference")
 		}
-		v.push(FuncRef)
+		// Core 3.0 gives ref.func the exact declared function type rather than
+		// collapsing it to the abstract funcref supertype. The reference is
+		// non-null and remains a subtype of funcref for Release 2 consumers.
+		v.push(RefVal(Ref(false, IndexedHeap(typeIdx), false)))
 	case InstrRefIsNull:
 		_, err := v.pop()
 		if err != nil {
@@ -385,17 +389,23 @@ func (v *funcValidator) step(in *Instruction) error {
 		if err != nil {
 			return err
 		}
-		if !x.unknown && x.t.Kind != ValRef {
+		if len(lt) == 0 || lt[len(lt)-1].Kind != ValRef || (!x.unknown && x.t.Kind != ValRef) {
 			return v.verr(ErrTypeMismatch, "br_on_non_null")
 		}
 		if !x.unknown {
 			x.t.Ref.Nullable = false
+			if !v.subtype(x.t, lt[len(lt)-1]) {
+				return v.verr(ErrTypeMismatch, x.t.String()+" is not "+lt[len(lt)-1].String())
+			}
 		}
-		v.vals = append(v.vals, x)
-		if err := v.popAll(lt); err != nil {
+		prefix := lt[:len(lt)-1]
+		if err := v.popAll(prefix); err != nil {
 			return err
 		}
-		v.pushAll(lt)
+		// A taken branch appends the non-null reference to the label payload.
+		// The null fallthrough consumes the reference and retains only the
+		// payload values that precede it.
+		v.pushAll(prefix)
 	case InstrMemoryInit:
 		if err := v.checkDataIndex(in.Index, "memory.init"); err != nil {
 			return err
@@ -533,13 +543,42 @@ func (v *funcValidator) step(in *Instruction) error {
 
 func isConstInstruction(k InstrKind) bool {
 	switch k {
-	case InstrI32Const, InstrI64Const, InstrF32Const, InstrF64Const, InstrV128Const, InstrRefNull, InstrRefFunc, InstrGlobalGet, InstrStructNewDefault, InstrArrayNewFixed, InstrStringConst:
+	case InstrI32Const, InstrI64Const, InstrF32Const, InstrF64Const, InstrV128Const,
+		InstrI32Add, InstrI32Sub, InstrI32Mul, InstrI64Add, InstrI64Sub, InstrI64Mul,
+		InstrRefNull, InstrRefFunc, InstrGlobalGet, InstrStructNewDefault, InstrArrayNewFixed, InstrStringConst:
 		return true
 	}
 	return false
 }
 func isImplicitSelectType(t ValType) bool {
 	return t.Kind == ValNum || t.Kind == ValVec
+}
+
+// matchValTypes reports whether actual values may flow to expected result
+// positions. Tail calls use this covariant relation: a non-null/indexed reference
+// result may satisfy a nullable/abstract caller result without requiring equality.
+func (v *funcValidator) matchValTypes(actual, expected []ValType) bool {
+	if len(actual) != len(expected) {
+		return false
+	}
+	for i := range actual {
+		if !v.subtype(actual[i], expected[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+func (v *funcValidator) sameValTypes(a, b []ValType) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if !v.subtype(a[i], b[i]) || !v.subtype(b[i], a[i]) {
+			return false
+		}
+	}
+	return true
 }
 
 func sameValTypes(a, b []ValType) bool {

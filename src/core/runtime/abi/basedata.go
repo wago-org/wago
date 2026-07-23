@@ -2,8 +2,26 @@
 // and the runtime implementation.
 package abi
 
+// FuncRefEntryKind is the native calling convention accepted by a funcref
+// descriptor's code pointer. The kind is encoded in the high bits of the home
+// word; the low bits remain the canonical home linear-memory pointer.
+type FuncRefEntryKind uint8
+
+const (
+	FuncRefEntryInvalid FuncRefEntryKind = iota
+	FuncRefEntryInternal
+	FuncRefEntryLocalWrapper
+	FuncRefEntryCrossInstanceWrapper
+	FuncRefEntryHostThunk
+)
+
 // Basedata offsets are byte distances below the linear-memory base.
 const (
+	// MemoryDirPtrOffset points at 16-byte indexed-memory entries
+	// {base u64, current-bytes u32, current-pages u32}. Memory 0 keeps the direct
+	// RBX/basedata hot path; native code consults this directory only for nonzero
+	// indexes. Offset 64 was the unused WARP memory-helper slot.
+	MemoryDirPtrOffset = 64
 	// FuncRefDescPtrOffset is the basedata slot holding the per-instance canonical
 	// funcref descriptor array used by table.set/fill/grow/ref.func lowering.
 	FuncRefDescPtrOffset = 88
@@ -37,7 +55,89 @@ const (
 	// ordered by Wasm function-import index.
 	ImportDispatchPtrOffset = 136
 
+	// TailArgsOffset is the end of a fixed 16-slot scratch bank used only while a
+	// wrapper-ABI tail call tears down the current frame and enters the next one.
+	// The bank occupies [linMem-272, linMem-144), immediately below the import-
+	// dispatch pointer, and is reused by every tail step without allocation.
+	TailArgsOffset = 272
+	TailArgsSlots  = 16
+
+	// TailCrossCodeOffset, TailCrossHomeOffset, and TailCrossContextOffset are
+	// scratch slots at the high end of the wrapper-tail bank. A register-ABI
+	// return_call_ref uses them only while transferring a root adapter or one fixed
+	// nested return context into a retained cross-instance wrapper; wrapper-tail
+	// and cross-tail contexts are mutually exclusive.
+	TailCrossCodeOffset    = 152
+	TailCrossHomeOffset    = 160
+	TailCrossContextOffset = 168
+
+	// EHHandlerPtrOffset is retained as the cold-path reset slot for staged
+	// exception handling. Native amd64 execution carries the active handler in
+	// RBP so concurrent cross-instance throws do not share mutable basedata state.
+	EHHandlerPtrOffset = 152
+
+	// EHTagDirPtrOffset points at one exact 64-bit identity per declared/imported
+	// exception tag. The staged EH shape admits only register-ABI tails, so this
+	// otherwise-unused wrapper-tail slot cannot be overwritten by argument-bank use.
+	EHTagDirPtrOffset = 160
+
+	// FuncRefInternalHomeTag marks a descriptor whose code pointer is an internal
+	// register-ABI entry in the same instance. FuncRefCrossInstanceHomeTag marks a
+	// retained InstanceExport wrapper descriptor admitted by the bounded root or
+	// nested-tail context transfer. FuncRefLocalWrapperHomeTag distinguishes a
+	// same-instance wrapper descriptor from a host thunk that shares the caller's
+	// basedata. The low 61 bits remain the canonical home linear-memory pointer on
+	// supported linux/amd64 hosts.
+	FuncRefEntryTagShift                = 61
+	FuncRefInternalHomeTag       uint64 = 1 << 63
+	FuncRefCrossInstanceHomeTag  uint64 = 1 << 62
+	FuncRefLocalWrapperHomeTag   uint64 = 1 << 61
+	FuncRefHomeTagMask                  = FuncRefInternalHomeTag | FuncRefCrossInstanceHomeTag | FuncRefLocalWrapperHomeTag
+	FuncRefInternalTagValue             = FuncRefInternalHomeTag >> FuncRefEntryTagShift
+	FuncRefCrossInstanceTagValue        = FuncRefCrossInstanceHomeTag >> FuncRefEntryTagShift
+	FuncRefLocalWrapperTagValue         = FuncRefLocalWrapperHomeTag >> FuncRefEntryTagShift
+	FuncRefHostThunkTagValue            = 0
+
 	// BasedataSize keeps the linear-memory base 16-byte aligned after the wago
-	// extension fields appended to the WARP-compatible basedata layout.
-	BasedataSize = 144
+	// extension fields and the bounded wrapper-tail argument bank.
+	BasedataSize = TailArgsOffset
 )
+
+// TagFuncRefHome combines a canonical home pointer with one authoritative entry
+// kind. It rejects pointers that collide with the reserved tag bits.
+func TagFuncRefHome(home uint64, kind FuncRefEntryKind) (uint64, bool) {
+	if home&FuncRefHomeTagMask != 0 {
+		return 0, false
+	}
+	switch kind {
+	case FuncRefEntryInternal:
+		return home | FuncRefInternalHomeTag, true
+	case FuncRefEntryLocalWrapper:
+		return home | FuncRefLocalWrapperHomeTag, true
+	case FuncRefEntryCrossInstanceWrapper:
+		return home | FuncRefCrossInstanceHomeTag, true
+	case FuncRefEntryHostThunk:
+		return home, true
+	default:
+		return 0, false
+	}
+}
+
+// DecodeFuncRefHome returns the exact entry kind and canonical home pointer.
+// Multiple simultaneous kind tags are invalid rather than being interpreted by
+// bit priority.
+func DecodeFuncRefHome(tagged uint64) (FuncRefEntryKind, uint64) {
+	home := tagged &^ FuncRefHomeTagMask
+	switch tagged & FuncRefHomeTagMask {
+	case FuncRefInternalHomeTag:
+		return FuncRefEntryInternal, home
+	case FuncRefLocalWrapperHomeTag:
+		return FuncRefEntryLocalWrapper, home
+	case FuncRefCrossInstanceHomeTag:
+		return FuncRefEntryCrossInstanceWrapper, home
+	case 0:
+		return FuncRefEntryHostThunk, home
+	default:
+		return FuncRefEntryInvalid, home
+	}
+}

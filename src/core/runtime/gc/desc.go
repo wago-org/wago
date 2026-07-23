@@ -25,6 +25,12 @@ const (
 	StorageF64
 	StorageRef
 	StorageRefNull
+	// Function and extern references use stable 64-bit runtime tokens and are
+	// deliberately not traced as compact collector object handles.
+	StorageFuncRef
+	StorageFuncRefNull
+	StorageExternRef
+	StorageExternRefNull
 )
 
 type FieldDesc struct {
@@ -71,7 +77,7 @@ func newStructDescLayout(id TypeID, fields []StorageKind, initialOffset uint32) 
 		if a > d.Align {
 			d.Align = a
 		}
-		if isRefKind(k) {
+		if isCollectorRefKind(k) {
 			d.HasRefs = true
 		}
 	}
@@ -88,15 +94,17 @@ func NewArrayDesc(id TypeID, elem StorageKind) (TypeDesc, error) {
 	if err != nil {
 		return TypeDesc{}, err
 	}
-	return TypeDesc{ID: id, Kind: KindArray, Elem: elem, ElemSize: sz, Align: a, HasRefs: isRefKind(elem), Final: true}, nil
+	return TypeDesc{ID: id, Kind: KindArray, Elem: elem, ElemSize: sz, Align: a, HasRefs: isCollectorRefKind(elem), Final: true}, nil
 }
 
-func (d TypeDesc) PointerFree() bool          { return !d.HasRefs }
-func (d TypeDesc) ArrayElementsAreRefs() bool { return d.Kind == KindArray && isRefKind(d.Elem) }
+func (d TypeDesc) PointerFree() bool { return !d.HasRefs }
+func (d TypeDesc) ArrayElementsAreRefs() bool {
+	return d.Kind == KindArray && isCollectorRefKind(d.Elem)
+}
 func (d TypeDesc) StructRefOffsets() []uint32 {
 	var out []uint32
 	for _, f := range d.Fields {
-		if isRefKind(f.Kind) {
+		if isCollectorRefKind(f.Kind) {
 			out = append(out, f.Offset)
 		}
 	}
@@ -111,14 +119,44 @@ func storageLayout(k StorageKind) (alignBytes, size uint32, err error) {
 		return 2, 2, nil
 	case StorageI32, StorageF32, StorageRef, StorageRefNull:
 		return 4, 4, nil
-	case StorageI64, StorageF64:
+	case StorageI64, StorageF64, StorageFuncRef, StorageFuncRefNull, StorageExternRef, StorageExternRefNull:
 		return 8, 8, nil
 	default:
 		return 0, 0, fmt.Errorf("gc: unknown storage kind %d", k)
 	}
 }
 
-func isRefKind(k StorageKind) bool { return k == StorageRef || k == StorageRefNull }
+func isCollectorRefKind(k StorageKind) bool { return k == StorageRef || k == StorageRefNull }
+
+func isOpaqueRefKind(k StorageKind) bool {
+	return k == StorageFuncRef || k == StorageFuncRefNull || k == StorageExternRef || k == StorageExternRefNull
+}
+
+func isAnyReferenceStorage(k StorageKind) bool { return isCollectorRefKind(k) || isOpaqueRefKind(k) }
+
+func isNumericStorage(k StorageKind) bool {
+	return !isAnyReferenceStorage(k) && k >= StorageI8 && k <= StorageF64
+}
+
+func isNullableReferenceStorage(k StorageKind) bool {
+	return k == StorageRefNull || k == StorageFuncRefNull || k == StorageExternRefNull
+}
+
+func referenceStorageCompatible(dst, src StorageKind) bool {
+	if dst == src {
+		return isAnyReferenceStorage(dst)
+	}
+	switch dst {
+	case StorageRefNull:
+		return src == StorageRef
+	case StorageFuncRefNull:
+		return src == StorageFuncRef
+	case StorageExternRefNull:
+		return src == StorageExternRef
+	default:
+		return false
+	}
+}
 func align(v, a uint32) uint32 {
 	if a <= 1 {
 		return v

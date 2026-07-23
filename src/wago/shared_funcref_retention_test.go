@@ -16,6 +16,22 @@ import (
 // the producer until the entry is overwritten or the table closes. Regression
 // for the use-after-free where a closed producer's arena was freed while another
 // importer could still call_indirect its funcref.
+func sharedTableClearerModule() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(2, wasmtest.Vec(tableTestImportTable("env", "t", 1, 1))),
+		tableTestFuncSection(0, 0),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("clear", 0, 0),
+			wasmtest.ExportEntry("trap", 0, 1),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code(tableTestBody(tableTestI32Const(0), tableTestRefNullFunc(), []byte{0x26, 0x00})),
+			wasmtest.Code(tableTestBody(tableTestI32Const(1), tableTestRefNullFunc(), []byte{0x26, 0x00})),
+		)),
+	)
+}
+
 func TestClosedProducerFuncrefInSharedTableStaysCallable(t *testing.T) {
 	tbl, err := NewTable(1, 1)
 	if err != nil {
@@ -69,6 +85,55 @@ func TestClosedProducerFuncrefInSharedTableStaysCallable(t *testing.T) {
 	}
 }
 
+func TestSharedTableOverwriteReleasesClosedProducerAtomically(t *testing.T) {
+	tbl, err := NewTable(1, 1)
+	if err != nil {
+		t.Fatalf("NewTable: %v", err)
+	}
+	defer tbl.Close()
+
+	setterMod := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(2, wasmtest.Vec(tableTestImportTable("env", "t", 1, 1))),
+		tableTestFuncSection(0, 0),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("set", 0, 1))),
+		wasmtest.Section(9, wasmtest.Vec(tableTestDeclarativeElem(0))),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code(tableTestBody()),
+			wasmtest.Code(tableTestBody(tableTestI32Const(0), tableTestRefFunc(0), []byte{0x26, 0x00})),
+		)),
+	)
+	setter := tableTestInstantiateWithImports(t, setterMod, Imports{"env.t": tbl})
+	clearer := tableTestInstantiateWithImports(t, sharedTableClearerModule(), Imports{"env.t": tbl})
+	defer clearer.Close()
+
+	if _, err := setter.Invoke("set"); err != nil {
+		t.Fatalf("set: %v", err)
+	}
+	if err := setter.Close(); err != nil {
+		t.Fatalf("setter Close: %v", err)
+	}
+	if !setter.hasResourceRoots() {
+		t.Fatal("closed producer was not retained by the shared table")
+	}
+
+	if _, err := clearer.Invoke("trap"); err == nil {
+		t.Fatal("out-of-bounds table.set unexpectedly succeeded")
+	}
+	if !setter.hasResourceRoots() {
+		t.Fatal("trapping table.set released the producer root despite leaving the descriptor unchanged")
+	}
+	if _, err := clearer.Invoke("clear"); err != nil {
+		t.Fatalf("clear: %v", err)
+	}
+	if setter.hasResourceRoots() {
+		t.Fatal("successful table.set overwrite did not release the closed producer root")
+	}
+	if setter.hasPhysicalResources() {
+		t.Fatal("closed producer resources remained mapped after its final table root was overwritten")
+	}
+}
+
 // The single-slot analog for funcref globals: a producer that writes its local
 // funcref into an imported mutable funcref global via global.set and then closes
 // must be retained by the global's owner until the value is overwritten or the
@@ -108,5 +173,45 @@ func TestClosedProducerFuncrefInSharedGlobalIsRetained(t *testing.T) {
 	}
 	if in.hasResourceRoots() {
 		t.Fatal("producer root not released after global close")
+	}
+}
+
+func TestSharedGlobalHostOverwriteReleasesClosedProducer(t *testing.T) {
+	rt := NewRuntime()
+	defer rt.Close()
+
+	g, err := rt.NewFuncRefGlobal(FuncRef{}, true)
+	if err != nil {
+		t.Fatalf("NewFuncRefGlobal: %v", err)
+	}
+	defer g.Close()
+
+	producer := mustCompileWat(rt, t, `(module
+		(import "env" "g" (global (mut funcref)))
+		(func $f)
+		(elem declare func $f)
+		(func (export "store") (global.set 0 (ref.func $f))))`)
+	in, err := rt.Instantiate(context.Background(), producer, WithImports(Imports{"env.g": g}))
+	if err != nil {
+		t.Fatalf("instantiate producer: %v", err)
+	}
+	if _, err := in.Invoke("store"); err != nil {
+		t.Fatalf("store: %v", err)
+	}
+	if err := in.Close(); err != nil {
+		t.Fatalf("producer Close: %v", err)
+	}
+	if !in.hasResourceRoots() {
+		t.Fatal("closed producer was not retained by the shared global")
+	}
+
+	if err := g.SetValue(ValueFuncRef(NullFuncRef())); err != nil {
+		t.Fatalf("SetValue(null): %v", err)
+	}
+	if in.hasResourceRoots() {
+		t.Fatal("host global overwrite did not release the closed producer root")
+	}
+	if in.hasPhysicalResources() {
+		t.Fatal("closed producer resources remained mapped after its final global root was overwritten")
 	}
 }

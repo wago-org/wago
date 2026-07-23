@@ -127,7 +127,7 @@ func generatedValidCompiled(t testing.TB, data []byte) *Compiled {
 		importFuncSigs: make([]FuncSig, importCount),
 		Funcs:          make([]FuncSig, localFuncCount),
 		Entry:          make([]int, localFuncCount),
-		FuncTypeID:     make([]uint32, totalFuncs),
+		FuncTypeID:     make([]uint64, totalFuncs),
 		Exports:        map[string]int{},
 		GlobalExports:  map[string]int{},
 	}
@@ -135,7 +135,7 @@ func generatedValidCompiled(t testing.TB, data []byte) *Compiled {
 		c.Imports[i] = r.smallString("imp")
 	}
 	for i := range c.FuncTypeID {
-		c.FuncTypeID[i] = uint32(r.n(4))
+		c.FuncTypeID[i] = uint64(r.next()) | uint64(r.next())<<8 | uint64(r.next())<<16 | uint64(r.next())<<24 | uint64(r.next())<<32
 	}
 	if localFuncCount > 0 {
 		c.Code = make([]byte, localFuncCount+r.n(4))
@@ -310,7 +310,7 @@ func compiledCodecFuzzSeeds(t testing.TB) [][]byte {
 				Results: []ValType{ValF64},
 			}},
 			Exports:    map[string]int{"run": 1},
-			FuncTypeID: []uint32{0, 1},
+			FuncTypeID: []uint64{10, 11},
 
 			GlobalImports: []GlobalImportDef{{Module: "env", Name: "base", Type: ValI32}},
 			Globals: []GlobalDef{

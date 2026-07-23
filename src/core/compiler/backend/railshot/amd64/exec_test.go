@@ -425,6 +425,21 @@ func TestAmd64HostImportSyncMultiParam(t *testing.T) {
 	}
 }
 
+func TestAmd64HostImportSyncFloatLocalSurvives(t *testing.T) {
+	// type 0: (f32)->(f32). The imported result is discarded; the caller must
+	// recover its f32 parameter after the parked-Go transition clobbers XMMs.
+	sig := wasmtest.FuncType([]wasm.ValType{wasm.F32}, []wasm.ValType{wasm.F32})
+	body := []byte{0x00, 0x20, 0x00, 0x10, 0x00, 0x1a, 0x20, 0x00, 0x0b}
+	m := hostSyncModule(sig, body)
+	host := func(_ uintptr, imp uint32, args, res []uint64) { res[0] = uint64(math.Float32bits(99)) }
+	want := math.Float32bits(7)
+	for i := 0; i < 100; i++ {
+		if got := runHostSync(t, m, host, int32(want)); got != want {
+			t.Fatalf("iteration %d result = %#x, want preserved local %#x", i, got, want)
+		}
+	}
+}
+
 // TestAmd64GlobalsCompile checks global.get/set lower without error (end-to-end
 // global access is verified at src/wago integration, which populates the runtime
 // globals slot-array).

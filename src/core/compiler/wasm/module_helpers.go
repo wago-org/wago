@@ -1,5 +1,10 @@
 package wasm
 
+import (
+	"crypto/sha256"
+	"encoding/binary"
+)
+
 // LocalCount returns the size of the wasm local index space for parameters plus
 // compact declared-local runs. The overflow result is true only if the uint64
 // count wrapped; callers with smaller frame limits must still enforce them.
@@ -71,6 +76,32 @@ func TableAddrType(tt TableType) ValType {
 	return I32
 }
 
+// MemoryType resolves a memory index across imported memories followed by local
+// definitions without materializing a parallel index.
+func (m *Module) MemoryType(idx uint32) (MemType, bool) {
+	if m == nil {
+		return MemType{}, false
+	}
+	n := uint32(0)
+	for i := range m.Imports {
+		if m.Imports[i].Type.Kind != ExternMem {
+			continue
+		}
+		if n == idx {
+			return m.Imports[i].Type.Mem, true
+		}
+		n++
+	}
+	if idx < n {
+		return MemType{}, false
+	}
+	local := int(idx - n)
+	if local < 0 || local >= len(m.Memories) {
+		return MemType{}, false
+	}
+	return m.Memories[local], true
+}
+
 func MemoryAddrType(mt MemType) ValType {
 	if mt.Limits.Addr64 {
 		return I64
@@ -84,28 +115,25 @@ func IsNumericGlobalType(t ValType) bool {
 	return equalValType(t, I32) || equalValType(t, I64) || equalValType(t, F32) || equalValType(t, F64)
 }
 
-// EncodeValType returns the canonical one-byte encoding for MVP numeric/vector
-// value types and bare nullable reference aliases used by the current tests and
-// wasm builders.
+// EncodeValType returns the one-byte encoding for MVP numeric/vector value
+// types and bare nullable reference aliases. Unlike semantic equality, this
+// helper intentionally observes RefType.Bare so an explicit (ref null ...)
+// value type is not silently rewritten as shorthand during a binary round trip.
 func EncodeValType(t ValType) (byte, bool) {
-	switch {
-	case equalValType(t, I32):
-		return 0x7f, true
-	case equalValType(t, I64):
-		return 0x7e, true
-	case equalValType(t, F32):
-		return 0x7d, true
-	case equalValType(t, F64):
-		return 0x7c, true
-	case equalValType(t, V128):
+	switch t.Kind {
+	case ValNum:
+		switch t.Num {
+		case NumI32, NumI64, NumF32, NumF64:
+			return byte(t.Num), true
+		}
+	case ValVec:
 		return 0x7b, true
-	case equalValType(t, FuncRef):
-		return 0x70, true
-	case equalValType(t, ExternRef):
-		return 0x6f, true
-	default:
-		return 0, false
+	case ValRef:
+		if t.Ref.Bare && t.Ref.Nullable && !t.Ref.Exact && t.Ref.Heap.Kind == HeapAbs {
+			return byte(t.Ref.Heap.Abs), true
+		}
 	}
+	return 0, false
 }
 
 // MustEncodeValType is EncodeValType for test/build helpers where unsupported
@@ -118,23 +146,32 @@ func MustEncodeValType(t ValType) byte {
 	return b
 }
 
-// FuncSignature returns the function signature for a global function index.
-func (m *Module) FuncSignature(idx uint32) (*CompType, bool) {
+// FuncTypeIndex returns the declared type index for a global function index.
+func (m *Module) FuncTypeIndex(idx uint32) (TypeIdx, bool) {
 	i := uint32(0)
 	for j := range m.Imports {
 		if m.Imports[j].Type.Kind != ExternFunc {
 			continue
 		}
 		if i == idx {
-			return m.typeFunc(m.Imports[j].Type.Type)
+			return m.Imports[j].Type.Type, true
 		}
 		i++
 	}
 	local := int(idx - i)
 	if idx < i || local < 0 || local >= len(m.FuncTypes) {
+		return TypeIdx{}, false
+	}
+	return m.FuncTypes[local], true
+}
+
+// FuncSignature returns the function signature for a global function index.
+func (m *Module) FuncSignature(idx uint32) (*CompType, bool) {
+	typeIdx, ok := m.FuncTypeIndex(idx)
+	if !ok {
 		return nil, false
 	}
-	return m.typeFunc(m.FuncTypes[local])
+	return m.typeFunc(typeIdx)
 }
 
 // LocalFuncType returns the stored function signature for a local
@@ -216,6 +253,12 @@ func (m *Module) TypeFunc(typeIdx uint32) (*CompType, bool) {
 // absolute module indexes.
 func (m *Module) ResolvedTypeFunc(typeIdx uint32) (*CompType, bool) {
 	return m.resolvedTypeFunc(TypeIdx{Index: typeIdx})
+}
+
+// ReferenceTypeSubtype reports the validated Core reference subtyping relation
+// within this module, including structural equivalence and declared super chains.
+func (m *Module) ReferenceTypeSubtype(actual, required RefType) bool {
+	return (&moduleValidator{m: m}).refSubtype(actual, required)
 }
 
 func (m *Module) flatTypeIdxInRecGroup(idx TypeIdx, recGroup int) (int, bool) {
@@ -360,7 +403,40 @@ func (m *Module) StructuralTypeID(typeIdx uint32) uint32 {
 	if !ok {
 		return typeIdx
 	}
+	if compTypeHasIndexedReferences(ft) || m.typeInNonSingletonRecGroup(typeIdx) {
+		if id, ok := m.structuralIndexedFuncTypeID(typeIdx); ok {
+			return id
+		}
+	}
 	return StructuralFuncTypeID(ft)
+}
+
+// StructuralTypeKey returns the collision-resistant native call discriminator
+// for a function type. Validated callers should use StructuralTypeKeyChecked so
+// an over-complex indexed graph is rejected rather than assigned a fallback key.
+func (m *Module) StructuralTypeKey(typeIdx uint32) uint64 {
+	key, _ := m.StructuralTypeKeyChecked(typeIdx)
+	return key
+}
+
+// StructuralTypeKeyChecked is stable across modules with equivalent indexed or
+// recursive graphs, uses only bounded per-call state, and has no process-global
+// interning cache. The boolean is false for a non-function type, malformed graph,
+// or a graph exceeding the bounded canonicalization work limit.
+func (m *Module) StructuralTypeKeyChecked(typeIdx uint32) (uint64, bool) {
+	ft, ok := m.TypeFunc(typeIdx)
+	if !ok {
+		return 0, false
+	}
+	if compTypeHasIndexedReferences(ft) || m.typeInNonSingletonRecGroup(typeIdx) {
+		return m.structuralIndexedFuncTypeKey(typeIdx)
+	}
+	return StructuralFuncTypeKey(ft), true
+}
+
+func (m *Module) typeInNonSingletonRecGroup(typeIdx uint32) bool {
+	_, group, ok := m.subtypeByTypeIdxWithRecGroup(TypeIdx{Index: typeIdx})
+	return ok && len(m.Types[group].SubTypes) > 1
 }
 
 // StructuralFuncTypeID hashes a function type's encoded params/results (FNV-1a)
@@ -372,14 +448,67 @@ func StructuralFuncTypeID(ft *CompType) uint32 {
 	mix := func(b byte) { h ^= uint32(b); h *= prime32 }
 	mix(byte(len(ft.Params)))
 	for _, t := range ft.Params {
-		c, _ := EncodeValType(t)
-		mix(c)
+		mix(structuralLegacyValTypeByte(t))
 	}
 	mix(0xfe) // params/results separator
 	mix(byte(len(ft.Results)))
 	for _, t := range ft.Results {
-		c, _ := EncodeValType(t)
-		mix(c)
+		mix(structuralLegacyValTypeByte(t))
 	}
 	return h
+}
+
+// StructuralFuncTypeKey hashes the complete non-indexed value shape with
+// SHA-256 and uses 64 bits in native descriptors. The full structural metadata
+// remains authoritative at public/storage boundaries; this wider independent
+// key prevents collisions in the legacy 32-bit FNV discriminator from admitting
+// a wrong native target.
+func structuralLegacyValTypeByte(t ValType) byte {
+	switch t.Kind {
+	case ValNum:
+		return byte(t.Num)
+	case ValVec:
+		return 0x7b
+	case ValRef:
+		// Canonicalize shorthand and explicit nullable abstract references to
+		// the same legacy byte. Wider identity is provided by StructuralTypeKey.
+		if t.Ref.Nullable && !t.Ref.Exact && t.Ref.Heap.Kind == HeapAbs {
+			return byte(t.Ref.Heap.Abs)
+		}
+	}
+	return 0
+}
+
+func StructuralFuncTypeKey(ft *CompType) uint64 {
+	encoded := make([]byte, 0, 16+8*(len(ft.Params)+len(ft.Results)))
+	mixU32 := func(v uint32) {
+		encoded = append(encoded, byte(v), byte(v>>8), byte(v>>16), byte(v>>24))
+	}
+	writeValue := func(t ValType) {
+		encoded = append(encoded, byte(t.Kind))
+		switch t.Kind {
+		case ValNum:
+			encoded = append(encoded, byte(t.Num))
+		case ValRef:
+			flags := byte(0)
+			if t.Ref.Nullable {
+				flags |= 1
+			}
+			if t.Ref.Exact {
+				flags |= 2
+			}
+			encoded = append(encoded, flags, byte(t.Ref.Heap.Kind), byte(t.Ref.Heap.Abs))
+		}
+	}
+	mixU32(uint32(len(ft.Params)))
+	for _, t := range ft.Params {
+		writeValue(t)
+	}
+	encoded = append(encoded, 0xfe)
+	mixU32(uint32(len(ft.Results)))
+	for _, t := range ft.Results {
+		writeValue(t)
+	}
+	sum := sha256.Sum256(encoded)
+	return binary.LittleEndian.Uint64(sum[:8])
 }

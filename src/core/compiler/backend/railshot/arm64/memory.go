@@ -176,8 +176,10 @@ func (f *fn) memAddr(off uint32, size int, aliasPinned bool) (ea Reg, eaOwned bo
 			borrow = e.st.idx
 		}
 	} else {
-		ea, eaOwned = f.materialize(e), true // ea = addr (u32, zero-extended)
+		ea, eaOwned = f.materialize(e), true
 	}
+	// ABI slots are 64-bit words; memory32 consumes only the low i32 bits.
+	f.a.MovReg32(ea, ea)
 	if int64(off)+int64(size) <= 0x7FFFFFFF {
 		disp = int32(off)
 		leaDisp = int32(off) + int32(size)
@@ -704,6 +706,9 @@ func (f *fn) memoryInit(r *wasm.Reader) error {
 	f.ld64(X9, SP, f.spillOff(d-3))  // dst offset
 	f.ld64(X10, SP, f.spillOff(d-2)) // src offset in passive segment
 	f.ld64(X11, SP, f.spillOff(d-1)) // n
+	f.a.MovReg32(X9, X9)
+	f.a.MovReg32(X10, X10)
+	f.a.MovReg32(X11, X11)
 
 	mb := f.memSizeReg
 	if mb == regNone {
@@ -748,16 +753,18 @@ func (f *fn) dataDrop(r *wasm.Reader) error {
 // i32 operands (dst, src, n) are read from canonical slots into the scratch
 // registers X9/X10/X11; X12/X13 are free scratch after the flush.
 func (f *fn) memoryCopy(r *wasm.Reader) error {
-	if _, err := r.U32(); err != nil { // dst memidx
+	dstMemory, err := r.U32()
+	if err != nil {
 		return err
 	}
-	if _, err := r.U32(); err != nil { // src memidx
+	srcMemory, err := r.U32()
+	if err != nil {
 		return err
 	}
 	if top := f.s.back(); top != nil && top.kind == ekValue && top.st.kind == stConst {
 		if n := uint64(uint32(top.st.cval)); n <= 64 {
 			f.stats.peep("memcopy-unroll")
-			f.memoryCopyConst(int(n))
+			f.memoryCopyConst(int(n), dstMemory, srcMemory)
 			return nil
 		}
 	}
@@ -767,6 +774,9 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 	f.ld64(X9, SP, f.spillOff(d-3))  // dst offset
 	f.ld64(X10, SP, f.spillOff(d-2)) // src offset
 	f.ld64(X11, SP, f.spillOff(d-1)) // n
+	f.a.MovReg32(X9, X9)
+	f.a.MovReg32(X10, X10)
+	f.a.MovReg32(X11, X11)
 
 	// Scratch in X12/X13 only (never pinnable); X9-X11 hold dst/src/n.
 	mb := f.memSizeReg
@@ -862,12 +872,13 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 // memoryFill lowers memory.fill (memset of the low byte of val) via a byte-fill
 // loop.
 func (f *fn) memoryFill(r *wasm.Reader) error {
-	if _, err := r.U32(); err != nil { // memidx
+	memoryIndex, err := r.U32()
+	if err != nil {
 		return err
 	}
 	if top := f.s.back(); top != nil && top.kind == ekValue && top.st.kind == stConst {
 		if n := uint64(uint32(top.st.cval)); n <= 64 {
-			f.memoryFillConst(int(n))
+			f.memoryFillConst(int(n), memoryIndex)
 			return nil
 		}
 	}
@@ -877,6 +888,8 @@ func (f *fn) memoryFill(r *wasm.Reader) error {
 	f.ld64(X9, SP, f.spillOff(d-3))  // dst offset
 	f.ld64(X14, SP, f.spillOff(d-2)) // fill byte (low 8 bits)
 	f.ld64(X11, SP, f.spillOff(d-1)) // n
+	f.a.MovReg32(X9, X9)
+	f.a.MovReg32(X11, X11)
 
 	// Scratch in X12/X13 only (never pinnable).
 	mb := f.memSizeReg
@@ -978,24 +991,24 @@ func (f *fn) memoryGrow(r *wasm.Reader) error {
 // bulkChunks returns the (offset, size) store/load plan for a small constant
 // bulk-memory op: 8-byte blocks with an overlapping tail (memmove's small-size
 // technique), so n bytes are covered by at most 8 chunks for n <= 64.
-func bulkChunks(n int) [][2]int {
+func bulkChunks(n int, buf *[8][2]int) [][2]int {
+	chunks := buf[:0]
 	switch {
 	case n == 0:
-		return nil
+		return chunks
 	case n == 1 || n == 2 || n == 4 || n == 8:
-		return [][2]int{{0, n}}
+		return append(chunks, [2]int{0, n})
 	case n < 4:
-		return [][2]int{{0, 2}, {n - 2, 2}} // n == 3
+		return append(chunks, [2]int{0, 2}, [2]int{n - 2, 2}) // n == 3
 	case n < 8:
-		return [][2]int{{0, 4}, {n - 4, 4}}
+		return append(chunks, [2]int{0, 4}, [2]int{n - 4, 4})
 	case n <= 16:
-		return [][2]int{{0, 8}, {n - 8, 8}}
+		return append(chunks, [2]int{0, 8}, [2]int{n - 8, 8})
 	case n <= 24:
-		return [][2]int{{0, 8}, {8, 8}, {n - 8, 8}}
+		return append(chunks, [2]int{0, 8}, [2]int{8, 8}, [2]int{n - 8, 8})
 	case n <= 32:
-		return [][2]int{{0, 8}, {8, 8}, {16, 8}, {n - 8, 8}}
+		return append(chunks, [2]int{0, 8}, [2]int{8, 8}, [2]int{16, 8}, [2]int{n - 8, 8})
 	default:
-		chunks := make([][2]int, 0, (n+7)/8)
 		for off := 0; off+8 < n; off += 8 {
 			chunks = append(chunks, [2]int{off, 8})
 		}
@@ -1003,15 +1016,25 @@ func bulkChunks(n int) [][2]int {
 	}
 }
 
+func (f *fn) memoryAddr64(memoryIndex uint32) bool {
+	mt, ok := f.m.MemoryType(memoryIndex)
+	return ok && mt.Limits.Addr64
+}
+
 // bulkBoundsCheck emits `trap unless base+n <= memBytes` for an unrolled bulk
-// op (skipped in guard mode: the stores/loads fault like scalar accesses).
-func (f *fn) bulkBoundsCheck(base Reg, n int) {
-	if f.guardMode {
-		return
-	}
+// op. Constant paths always check, including signals-based mode: a zero-length
+// operation has no later load/store to fault and must still reject base > size.
+func (f *fn) bulkBoundsCheck(base Reg, n int, memoryIndex uint32) {
 	f.pinned = f.pinned.add(base)
 	t := f.allocReg(0)
-	f.leaDisp(t, base, int32(n), true)
+	if f.memoryAddr64(memoryIndex) {
+		f.a.MovReg64(t, base)
+		f.a.MovImm64(X16, uint64(n))
+		f.a.Adds64(t, t, X16)
+		f.trapIf(a64.CondCS, trapMemOOB)
+	} else {
+		f.leaDisp(t, base, int32(n), true)
+	}
 	if f.memSizeReg != regNone {
 		f.cmpRR(t, f.memSizeReg, true)
 	} else {
@@ -1027,7 +1050,7 @@ func (f *fn) bulkBoundsCheck(base Reg, n int) {
 
 // memoryFillConst lowers memory.fill with a small constant length as unrolled
 // stores of a byte-replicated pattern — no flush, no fill-loop startup.
-func (f *fn) memoryFillConst(n int) {
+func (f *fn) memoryFillConst(n int, memoryIndex uint32) {
 	f.stats.peep("memfill-unroll")
 	f.materializePendingLoads() // pending loads must read pre-fill memory
 	f.erase(f.s.back())         // n (const)
@@ -1049,8 +1072,12 @@ func (f *fn) memoryFillConst(n int) {
 		f.pinned = f.pinned.add(pat)
 	}
 	dst, dstOwned := f.materializeRead(f.popValue())
-	f.bulkBoundsCheck(dst, n)
-	for _, c := range bulkChunks(n) {
+	if !f.memoryAddr64(memoryIndex) {
+		f.a.MovReg32(dst, dst)
+	}
+	f.bulkBoundsCheck(dst, n, memoryIndex)
+	var chunkBuf [8][2]int
+	for _, c := range bulkChunks(n, &chunkBuf) {
 		f.a.StoreIdx(linMemReg, dst, pat, int32(c[0]), c[1])
 	}
 	if pat != regNone {
@@ -1064,17 +1091,25 @@ func (f *fn) memoryFillConst(n int) {
 
 // memoryCopyConst lowers memory.copy with a small constant length as
 // load-all-then-store-all chunks — inherently overlap-safe (memmove semantics).
-func (f *fn) memoryCopyConst(n int) {
+func (f *fn) memoryCopyConst(n int, dstMemory, srcMemory uint32) {
 	f.materializePendingLoads()
 	f.erase(f.s.back()) // n (const)
 	src, srcOwned := f.materializeRead(f.popValue())
 	f.pinned = f.pinned.add(src)
 	dst, dstOwned := f.materializeRead(f.popValue())
 	f.pinned = f.pinned.add(dst)
-	f.bulkBoundsCheck(dst, n)
-	f.bulkBoundsCheck(src, n)
-	chunks := bulkChunks(n)
-	regs := make([]Reg, len(chunks))
+	if !f.memoryAddr64(dstMemory) {
+		f.a.MovReg32(dst, dst)
+	}
+	if !f.memoryAddr64(srcMemory) {
+		f.a.MovReg32(src, src)
+	}
+	f.bulkBoundsCheck(dst, n, dstMemory)
+	f.bulkBoundsCheck(src, n, srcMemory)
+	var chunkBuf [8][2]int
+	chunks := bulkChunks(n, &chunkBuf)
+	var regBuf [8]Reg
+	regs := regBuf[:len(chunks)]
 	avoid := maskOf(src, dst)
 	for i, c := range chunks {
 		r := f.allocReg(avoid)

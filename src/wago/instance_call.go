@@ -15,8 +15,10 @@ import (
 // begins. When the instance was created through a Runtime, its BeforeInvoke and
 // AfterInvoke hooks fire around the call. Reference Values carry one opaque
 // uint64 token slot; non-null funcrefs are valid only in the Runtime store (or
-// standalone private store) that issued them. Accepting a reference-typed module
-// remains controlled by compiler feature support. v128
+// standalone private store) that issued them. The exact staged basic-struct
+// result may also return one bounded GCRef token that must be released through
+// its producer Instance. Accepting a reference-typed module remains controlled
+// by compiler feature support. v128
 // parameters/results are not expressible as a Value; use Invoke for those.
 func (in *Instance) Call(ctx context.Context, export string, args ...Value) ([]Value, error) {
 	if ctx != nil {
@@ -121,16 +123,33 @@ func (in *Instance) GlobalValue(name string) (Value, error) {
 		return value, nil
 	}
 	bits := readGlobalObject(cell, g.Type)
-	if g.Type == ValFuncRef && bits != 0 {
-		store, err := in.funcrefStoreForEgress()
+	if (g.Type == ValAnyRef || g.Type == ValExnRef) && bits != 0 {
+		return Value{}, fmt.Errorf("global %q contains a non-null %s value; public GC/exception reference egress is unsupported", name, g.Type)
+	}
+	if g.Type == ValFuncRef {
+		exact, err := in.c.globalExactType(idx)
 		if err != nil {
-			return Value{}, fmt.Errorf("global %q: invalid funcref value: %w", name, err)
+			return Value{}, fmt.Errorf("global %q exact type: %w", name, err)
 		}
-		token, err := store.issue(in, bits)
-		if err != nil {
-			return Value{}, fmt.Errorf("global %q: invalid funcref value: %w", name, err)
+		if bits == 0 {
+			if exact.Kind == ValueTypeReference && !exact.Ref.Nullable {
+				return Value{}, fmt.Errorf("global %q contains null for a non-null reference type", name)
+			}
+		} else {
+			store, err := in.funcrefStoreForEgress()
+			if err != nil {
+				return Value{}, fmt.Errorf("global %q: invalid funcref value: %w", name, err)
+			}
+			actual, actualTypes, ok := store.descriptorFuncrefExactType(in, bits)
+			if !ok || !valueTypeSubtype(actual, actualTypes, exact, in.c.Types) {
+				return Value{}, fmt.Errorf("global %q contains a funcref with an incompatible exact structural type", name)
+			}
+			token, err := store.issue(in, bits)
+			if err != nil {
+				return Value{}, fmt.Errorf("global %q: invalid funcref value: %w", name, err)
+			}
+			bits = token
 		}
-		bits = token
 	}
 	if g.Type == ValExternRef && bits != 0 && !in.validExternrefToken(bits) {
 		return Value{}, fmt.Errorf("global %q: invalid externref value", name)
@@ -162,15 +181,35 @@ func (in *Instance) SetGlobalValue(name string, v Value) error {
 		return nil
 	}
 	bits := v.bits
-	if g.Type == ValFuncRef && bits != 0 {
-		if in.refStore == nil {
-			return fmt.Errorf("global %q: invalid funcref token", name)
+	if (g.Type == ValAnyRef || g.Type == ValExnRef) && bits != 0 {
+		return fmt.Errorf("global %q: non-null %s ingress is unsupported", name, g.Type)
+	}
+	if g.Type == ValFuncRef {
+		exact, err := in.c.globalExactType(idx)
+		if err != nil {
+			return fmt.Errorf("global %q exact type: %w", name, err)
 		}
-		descriptor, ok := in.refStore.resolve(bits)
-		if !ok {
-			return fmt.Errorf("global %q: invalid funcref token", name)
+		if bits == 0 {
+			if exact.Kind == ValueTypeReference && !exact.Ref.Nullable {
+				return fmt.Errorf("global %q requires a non-null reference value", name)
+			}
+		} else {
+			if in.refStore == nil {
+				return fmt.Errorf("global %q: invalid funcref token", name)
+			}
+			actual, actualTypes, ok := in.refStore.tokenFuncrefExactType(bits)
+			if !ok {
+				return fmt.Errorf("global %q: invalid funcref token", name)
+			}
+			if !valueTypeSubtype(actual, actualTypes, exact, in.c.Types) {
+				return fmt.Errorf("global %q: funcref token does not match its exact structural type", name)
+			}
+			descriptor, ok := in.refStore.resolve(bits)
+			if !ok {
+				return fmt.Errorf("global %q: invalid funcref token", name)
+			}
+			bits = descriptor
 		}
-		bits = descriptor
 	}
 	if g.Type == ValExternRef && bits != 0 && !in.validExternrefToken(bits) {
 		return fmt.Errorf("global %q: invalid externref token", name)
