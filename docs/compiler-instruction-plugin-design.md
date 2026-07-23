@@ -65,6 +65,11 @@ the numeric semantic key. The amd64 backend currently uses AVX2/YMM chunks;
 arm64 reuses the standard Wasm SIMD lowering over NEON chunks. The same import
 therefore compiles on both architectures without a source or binary change.
 
+Backends validate each dynamic pointer once for the complete logical width and
+reuse that native address for all chunks. When a constant pointer range fits in
+the module's minimum memory, compilation proves it safe and removes the runtime
+check; memory cannot shrink, so the proof remains valid after `memory.grow`.
+
 ## Native amd64 lowering
 
 An instruction may additionally provide one amd64 implementation. The

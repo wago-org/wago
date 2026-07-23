@@ -229,6 +229,42 @@ func TestCustomSIMDInstructionLowersAcrossArchitectures(t *testing.T) {
 	}
 }
 
+func TestCustomSIMDConstantRangeProofRejectsPartialVector(t *testing.T) {
+	rt := NewRuntime()
+	if err := rt.Use(instructionSIMDExt{}); err != nil {
+		t.Fatal(err)
+	}
+	importSig := wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32, wasm.I32}, nil)
+	runSig := wasmtest.FuncType(nil, nil)
+	body := []byte{0x41}
+	body = append(body, wasmtest.SLEB32(0)...)
+	body = append(body, 0x41)
+	body = append(body, wasmtest.SLEB32(64)...)
+	body = append(body, 0x41)
+	body = append(body, wasmtest.SLEB32(65520)...) // only 16 of 32 bytes remain
+	body = append(body, 0x10, 0x00, 0x0b)
+	module := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(importSig, runSig)),
+		wasmtest.Section(2, wasmtest.Vec(instructionFuncImport("test-simd", "i8x32.xor", 0))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0, 1})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 1))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+	mod, err := rt.Compile(module)
+	if err != nil {
+		t.Fatal(err)
+	}
+	instance, err := rt.Instantiate(context.Background(), mod)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	if _, err := instance.Invoke("run"); err == nil {
+		t.Fatal("partially in-bounds constant SIMD pointer did not trap")
+	}
+}
+
 func TestCustomInstructionRichRecipesLowerNatively(t *testing.T) {
 	signed4 := func(v uint32) int32 { return int32(int8(uint8(v<<4))) >> 4 }
 	comparisons := []struct {

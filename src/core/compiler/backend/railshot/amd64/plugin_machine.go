@@ -3,6 +3,7 @@ package amd64
 import (
 	"fmt"
 
+	railcore "github.com/wago-org/wago/src/core/compiler/backend/railshot"
 	"github.com/wago-org/wago/src/core/compiler/machinecode"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	x86 "github.com/wago-org/wago/src/core/encoder/amd64"
@@ -15,6 +16,12 @@ type pluginAMD64Context struct {
 	gp, ymm    regMask
 	output     Reg
 	outputSet  bool
+	wideIndex  [4]Reg
+	wideDisp   [4]int32
+	wideSize   uint32
+	wideReady  bool
+	paramConst [4]uint32
+	constParam [4]bool
 }
 
 func (c *pluginAMD64Context) Encoder() *x86.Asm { return c.f.a }
@@ -63,6 +70,14 @@ func (c *pluginAMD64Context) ConstYMMRepeated128(lo, hi uint64) x86.Reg {
 }
 
 func (c *pluginAMD64Context) LoadYMM(input int, offset uint32) (x86.Reg, error) {
+	if c.wideReady {
+		if input < 0 || input >= len(c.paramSlots) || offset > c.wideSize || c.wideSize-offset < 32 {
+			return 0, fmt.Errorf("amd64 plugin wide load input=%d offset=%d exceeds %d bytes", input, offset, c.wideSize)
+		}
+		x := c.AllocYMM()
+		c.f.a.YMovdquLoadIdx(x, RBX, c.wideIndex[input], c.wideDisp[input]+int32(offset))
+		return x, nil
+	}
 	base, index, disp, err := c.CheckedMemory(input, offset, 32)
 	if err != nil {
 		return 0, err
@@ -77,12 +92,43 @@ func (c *pluginAMD64Context) StoreYMM(input int, offset uint32, value x86.Reg) e
 	if !c.ymm.has(value) {
 		return fmt.Errorf("amd64 plugin YMM register %d is not owned by the lowering", value)
 	}
+	if c.wideReady {
+		if input < 0 || input >= len(c.paramSlots) || offset > c.wideSize || c.wideSize-offset < 32 {
+			return fmt.Errorf("amd64 plugin wide store input=%d offset=%d exceeds %d bytes", input, offset, c.wideSize)
+		}
+		c.f.a.YMovdquStoreIdx(RBX, c.wideIndex[input], value, c.wideDisp[input]+int32(offset))
+		return nil
+	}
 	base, index, disp, err := c.CheckedMemory(input, offset, 32)
 	if err != nil {
 		return err
 	}
 	c.f.a.YMovdquStoreIdx(base, index, value, disp)
 	c.Release(index)
+	return nil
+}
+
+// prepareWideMemory validates every pointer for the complete vector width once
+// and retains its effective address. Subsequent chunk loads/stores need neither
+// another pointer reload nor another bounds check.
+func (c *pluginAMD64Context) prepareWideMemory(size uint32) error {
+	if len(c.paramSlots) > len(c.wideIndex) {
+		return fmt.Errorf("amd64 plugin wide SIMD has %d pointers, max %d", len(c.paramSlots), len(c.wideIndex))
+	}
+	for input := range c.paramSlots {
+		if c.constParam[input] && railcore.ConstantMemoryRangeInMinimum(c.f.m, c.paramConst[input], size) {
+			index := c.AllocGP()
+			c.f.a.MovImm32(index, int32(c.paramConst[input]))
+			c.wideIndex[input] = index
+			continue
+		}
+		_, index, disp, err := c.CheckedMemory(input, 0, int(size))
+		if err != nil {
+			return err
+		}
+		c.wideIndex[input], c.wideDisp[input] = index, disp
+	}
+	c.wideSize, c.wideReady = size, true
 	return nil
 }
 
@@ -219,10 +265,20 @@ func (f *fn) emitPluginAMD64(lowering *machinecode.AMD64Lowering, inputWidths []
 	if len(types) < paramCount {
 		return fmt.Errorf("amd64 plugin lowering has %d stack argument(s), want %d", len(types), paramCount)
 	}
-	f.flush()
 	base := len(types) - paramCount
 	roots := f.rootsBottomToTop()
+	var paramConst [4]uint32
+	var constParam [4]bool
+	for i := 0; i < paramCount && i < len(paramConst); i++ {
+		e := roots[base+i]
+		if e.kind == ekValue && e.st.kind == stConst && e.st.typ == mtI32 {
+			paramConst[i], constParam[i] = uint32(e.st.cval), true
+		}
+	}
+	f.flush()
+	roots = f.rootsBottomToTop()
 	ctx := &pluginAMD64Context{f: f, paramSlots: make([]int, paramCount), paramWidth: inputWidths, output: regNone}
+	ctx.paramConst, ctx.constParam = paramConst, constParam
 	for i := range ctx.paramSlots {
 		e := roots[base+i]
 		if e.kind != ekValue || e.st.kind != stSlot || e.st.typ != mtI32 {
@@ -262,16 +318,20 @@ func (f *fn) emitCustomSIMD(simd *CustomSIMDInstruction, inputWidths []int32, ft
 		Compatibility: machinecode.AMD64CompatibilityManaged,
 		Features:      machinecode.AMD64FeatureAVX2,
 		Managed: func(ctx machinecode.AMD64ManagedContext) error {
+			native := ctx.(*pluginAMD64Context)
+			if err := native.prepareWideMemory(uint32(simd.Width / 8)); err != nil {
+				return err
+			}
 			for offset := uint32(0); offset < uint32(simd.Width/8); offset += 32 {
-				inputs := make([]Reg, int(simd.Arity))
-				for i := range inputs {
+				var inputs [3]Reg
+				for i := 0; i < int(simd.Arity); i++ {
 					x, err := ctx.LoadYMM(i+1, offset)
 					if err != nil {
 						return err
 					}
 					inputs[i] = x
 				}
-				result, err := ctx.SIMD256YMM(simd.Subopcode, nil, inputs...)
+				result, err := ctx.SIMD256YMM(simd.Subopcode, nil, inputs[:simd.Arity]...)
 				if err != nil {
 					return err
 				}
