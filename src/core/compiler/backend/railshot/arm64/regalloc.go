@@ -173,8 +173,8 @@ func (f *fn) curSpillSlot() int {
 // materialize ensures value elem e lives in a register and returns it. A deferred
 // node is condensed; a constant/local/slot value is loaded/moved into a fresh reg.
 func (f *fn) materialize(e *elem) Reg {
-	if e.st.typ == mtVirtual {
-		panic("virtual externref escaped to an ordinary Wasm instruction")
+	if e.st.typ == mtCustom {
+		panic("custom value escaped to an ordinary Wasm instruction")
 	}
 	if e.isDeferred() {
 		return f.condense(e, regNone)

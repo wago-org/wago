@@ -242,8 +242,8 @@ func (f *fn) flush() {
 	slot := 0
 	for _, root := range roots {
 		typ := rootMachineType(root)
-		if typ == mtVirtual {
-			panic("virtual externref cannot cross a control-flow or ordinary call boundary")
+		if typ == mtCustom {
+			panic("custom value cannot cross a control-flow or ordinary call boundary")
 		}
 		f.stats.addFlushRoot(root.kind == ekDeferred)
 		types = append(types, typ)

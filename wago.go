@@ -33,6 +33,9 @@ type (
 	CompilerRegistry            = impl.CompilerRegistry
 	ConfigSchemaProvider        = impl.ConfigSchemaProvider
 	CoreFeatures                = impl.CoreFeatures
+	CustomSignature             = impl.CustomSignature
+	CustomType                  = impl.CustomType
+	CustomTypeSpec              = impl.CustomTypeSpec
 	DataInit                    = impl.DataInit
 	Dirs                        = impl.Dirs
 	ElemInit                    = impl.ElemInit
@@ -130,8 +133,7 @@ type (
 	V128                        = impl.V128
 	ValType                     = impl.ValType
 	Value                       = impl.Value
-	VirtualSignature            = impl.VirtualSignature
-	VirtualType                 = impl.VirtualType
+	WasmType                    = impl.WasmType
 )
 
 const (
@@ -225,6 +227,13 @@ const (
 	ValI64                                     = impl.ValI64
 	ValV128                                    = impl.ValV128
 	Version                                    = impl.Version
+	WasmExternRef                              = impl.WasmExternRef
+	WasmF32                                    = impl.WasmF32
+	WasmF64                                    = impl.WasmF64
+	WasmFuncRef                                = impl.WasmFuncRef
+	WasmI32                                    = impl.WasmI32
+	WasmI64                                    = impl.WasmI64
+	WasmV128                                   = impl.WasmV128
 )
 
 func AsF32(b uint64) float32 { return impl.AsF32(b) }

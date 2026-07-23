@@ -172,7 +172,7 @@ func (f *fn) callOp(r *wasm.Reader) error {
 }
 
 func (f *fn) emitCustomInstruction(custom railcore.CustomInstruction, ft *wasm.CompType) error {
-	return f.emitPluginARM64(custom.ARM64, custom.InputWidths, custom.ResultWidth, len(ft.Results), custom.VirtualInputs, custom.VirtualOutput)
+	return f.emitPluginARM64(custom.ARM64, custom.InputWidths, custom.ResultWidth, len(ft.Results), custom.CustomInputs, custom.CustomOutput)
 }
 
 // inCallSiteLoop reports whether the current call site is nested in a Wasm loop.

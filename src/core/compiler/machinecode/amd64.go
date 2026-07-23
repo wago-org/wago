@@ -38,9 +38,9 @@ type AMD64Lowering struct {
 // to the plugin.
 type AMD64ManagedContext interface {
 	InputI32(index int) (x86.Reg, error)
-	// InputVirtual transfers an erased externref input's native register bundle
+	// InputCustom transfers an erased custom input's native register bundle
 	// to the lowering. Registers are ordered from the lowest-address chunk.
-	InputVirtual(index int) ([]x86.Reg, error)
+	InputCustom(index int) ([]x86.Reg, error)
 	Release(reg x86.Reg)
 	ReleaseGP(reg x86.Reg)
 	ReleaseVector(reg x86.Reg)
@@ -50,9 +50,9 @@ type AMD64ManagedContext interface {
 	LoadZMM(input int, offset uint32) (x86.Reg, error)
 	StoreZMM(input int, offset uint32, value x86.Reg) error
 	OutputI32(reg x86.Reg) error
-	// OutputVirtual assigns the erased externref result. Every register must be
-	// owned by this lowering and the bundle must match the declared virtual size.
-	OutputVirtual(regs ...x86.Reg) error
+	// OutputCustom assigns the erased custom result. Every register must be
+	// owned by this lowering and the bundle must match the declared custom size.
+	OutputCustom(regs ...x86.Reg) error
 }
 
 // AMD64Context exposes Wago's real encoder and managed access to the surrounding

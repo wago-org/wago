@@ -124,23 +124,29 @@ but does not interpret the plugin's instructions.
 Instruction module names, operation names, versioning, feature dispatch,
 cross-platform behavior, and machine-code sequences all belong to the plugin.
 
-## Erased `externref` values
+## Registered custom value types
 
 Pointer imports are suitable at the boundary, but a sequence of pointer-based
 vector operations reloads and stores the same values repeatedly. A plugin can
-instead mark selected `externref` parameters and a single `externref` result as
-a compiler-erased virtual type:
+register a custom type once, choose a standard Wasm validation carrier, and use
+the returned opaque token in any number of instructions:
 
 ```go
-v256 := wago.VirtualType{Name: "example.v256", Size: 32}
+compiler := reg.Compiler()
+v256, err := compiler.Type(wago.CustomTypeSpec{
+	Name:    "example.v256",
+	Size:    32,
+	Carrier: wago.WasmExternRef,
+})
+if err != nil {
+	return err
+}
 
-reg.Compiler().Instruction(wago.InstructionSpec{
+return compiler.Instruction(wago.InstructionSpec{
 	Module: "example",
 	Name:   "v256.xor",
-	Input:  []int32{256, 256},
-	Output: []int32{256},
-	Virtual: &wago.VirtualSignature{
-		Inputs: []wago.VirtualType{v256, v256},
+	Custom: &wago.CustomSignature{
+		Inputs: []wago.CustomType{v256, v256},
 		Output: &v256,
 	},
 	AMD64: amd64Xor,
@@ -148,13 +154,23 @@ reg.Compiler().Instruction(wago.InstructionSpec{
 })
 ```
 
-The physical Wasm signature is
-`(externref, externref) -> externref`. `InputVirtual` transfers each input's
-native register bundle to the lowering, and `OutputVirtual` assigns the output
+Wago derives custom input and output bit widths from the registered tokens.
+Mixed signatures retain `Input` entries only for ordinary values; use zero at a
+custom position and Wago fills it from the type.
+
+With `WasmExternRef`, the physical signature is
+`(externref, externref) -> externref`. `InputCustom` transfers each input's
+native register bundle to the lowering, and `OutputCustom` assigns the output
 bundle. The plugin owns the type name, byte size, register chunking, semantics,
 and machine code.
 
-The `externref` is only a validated carrier. Wago does not allocate a host
+The carrier can be `WasmI32`, `WasmI64`, `WasmF32`, `WasmF64`, `WasmV128`,
+`WasmFuncRef`, or `WasmExternRef`. It affects only the module's ordinary physical function
+signature; the registered custom type identity remains distinct inside the
+compiler. This lets any source language emit whichever standard type it can
+represent most naturally, without a custom section or a new binary type code.
+
+An `externref` carrier is only a validation marker. Wago does not allocate a host
 object, enter the runtime reference store, or materialize the value in linear
 memory. A source-language transform can therefore emit a chain such as:
 
@@ -170,13 +186,18 @@ and the native backend keeps the intermediate value in registers. Load and
 store remain ordinary plugin-defined instructions; Wago does not attach memory
 or SIMD meaning to them.
 
-Virtual values are intentionally native-only and currently have expression
+Custom values are intentionally native-only and currently have expression
 lifetime. They may flow directly between plugin calls, be dropped, or be
 consumed by a plugin call, but cannot be stored in Wasm locals, passed to an
 ordinary function, returned from the guest, or carried across control flow.
-Compilation rejects such escapes. A virtual instruction must provide at least
+Compilation rejects such escapes. A custom instruction must provide at least
 one target lowering and must not provide a portable `Handler`; a target without
 that lowering retains a trapping import.
+
+`CompilerRegistry.Type` is the single registration seam. Repeating the same
+name, size, and carrier is idempotent. Reusing a name with a different
+declaration, using an unregistered token, or using a token obtained from another
+registry is rejected before the instruction is installed.
 
 Because general-purpose and vector register numbers overlap on both supported
 architectures, raw lowerings should call `ReleaseGP` or `ReleaseVector`.

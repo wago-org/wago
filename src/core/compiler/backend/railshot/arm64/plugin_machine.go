@@ -11,17 +11,17 @@ import (
 )
 
 type pluginARM64Context struct {
-	f             *fn
-	paramSlots    []int
-	paramWidth    []int32
-	paramElems    []*elem
-	paramVirtual  []coreplugins.VirtualType
-	virtualRead   []bool
-	gp, vector    regMask
-	output        Reg
-	outputSet     bool
-	virtualOutput *coreplugins.VirtualType
-	virtualRegs   []Reg
+	f            *fn
+	paramSlots   []int
+	paramWidth   []int32
+	paramElems   []*elem
+	paramCustom  []coreplugins.CustomType
+	customRead   []bool
+	gp, vector   regMask
+	output       Reg
+	outputSet    bool
+	customOutput *coreplugins.CustomType
+	customRegs   []Reg
 }
 
 func (c *pluginARM64Context) Encoder() *a64.Asm { return c.f.a }
@@ -44,24 +44,24 @@ func (c *pluginARM64Context) InputI32(index int) (a64.Reg, error) {
 	return r, nil
 }
 
-func (c *pluginARM64Context) InputVirtual(index int) ([]a64.Reg, error) {
-	if index < 0 || index >= len(c.paramElems) || index >= len(c.paramVirtual) || c.paramVirtual[index] == (coreplugins.VirtualType{}) {
-		return nil, fmt.Errorf("arm64 plugin virtual input %d out of range", index)
+func (c *pluginARM64Context) InputCustom(index int) ([]a64.Reg, error) {
+	if index < 0 || index >= len(c.paramElems) || index >= len(c.paramCustom) || c.paramCustom[index].IsZero() {
+		return nil, fmt.Errorf("arm64 plugin custom input %d out of range", index)
 	}
 	e := c.paramElems[index]
-	want := c.paramVirtual[index]
-	if e.kind != ekValue || e.st.typ != mtVirtual || e.st.virtual == nil || !e.st.virtual.Equal(want) {
-		return nil, fmt.Errorf("arm64 plugin virtual input %d has incompatible erased externref type", index)
+	want := c.paramCustom[index]
+	if e.kind != ekValue || e.st.typ != mtCustom || e.st.custom == nil || !e.st.custom.Equal(want) {
+		return nil, fmt.Errorf("arm64 plugin custom input %d has incompatible custom type", index)
 	}
-	regs := c.f.materializePluginVirtual(e)
+	regs := c.f.materializePluginCustom(e)
 	out := append([]Reg(nil), regs...)
 	for _, reg := range out {
 		c.f.fregUser[reg] = nil
 		c.f.fpinned = c.f.fpinned.add(reg)
 		c.vector = c.vector.add(reg)
 	}
-	e.st.vcount = 0
-	c.virtualRead[index] = true
+	e.st.vregs = nil
+	c.customRead[index] = true
 	return out, nil
 }
 
@@ -126,7 +126,7 @@ func (c *pluginARM64Context) ReleaseGP(reg a64.Reg) {
 }
 
 func (c *pluginARM64Context) ReleaseVector(reg a64.Reg) {
-	for _, output := range c.virtualRegs {
+	for _, output := range c.customRegs {
 		if reg == output {
 			return
 		}
@@ -157,8 +157,8 @@ func (c *pluginARM64Context) CheckedMemory(input int, offset uint32, size int) (
 }
 
 func (c *pluginARM64Context) OutputI32(reg a64.Reg) error {
-	if c.virtualOutput != nil {
-		return fmt.Errorf("arm64 plugin virtual instruction cannot set an i32 output")
+	if c.customOutput != nil {
+		return fmt.Errorf("arm64 plugin custom instruction cannot set an i32 output")
 	}
 	if !c.gp.has(reg) {
 		return fmt.Errorf("arm64 plugin output register %d is not owned by the lowering", reg)
@@ -170,40 +170,40 @@ func (c *pluginARM64Context) OutputI32(reg a64.Reg) error {
 	return nil
 }
 
-func (c *pluginARM64Context) OutputVirtual(regs ...a64.Reg) error {
-	if c.virtualOutput == nil {
-		return fmt.Errorf("arm64 plugin instruction has no virtual output")
+func (c *pluginARM64Context) OutputCustom(regs ...a64.Reg) error {
+	if c.customOutput == nil {
+		return fmt.Errorf("arm64 plugin instruction has no custom output")
 	}
-	want := int(c.virtualOutput.Size / 16)
+	want := int(c.customOutput.Size() / 16)
 	if len(regs) != want {
-		return fmt.Errorf("arm64 plugin virtual output has %d register(s), want %d", len(regs), want)
+		return fmt.Errorf("arm64 plugin custom output has %d register(s), want %d", len(regs), want)
 	}
-	if c.outputSet || len(c.virtualRegs) != 0 {
+	if c.outputSet || len(c.customRegs) != 0 {
 		return fmt.Errorf("arm64 plugin output already assigned")
 	}
 	seen := regMask(0)
 	for _, reg := range regs {
 		if !c.vector.has(reg) {
-			return fmt.Errorf("arm64 plugin virtual output register %d is not owned by the lowering (bundle %v)", reg, regs)
+			return fmt.Errorf("arm64 plugin custom output register %d is not owned by the lowering (bundle %v)", reg, regs)
 		}
 		if seen.has(reg) {
-			return fmt.Errorf("arm64 plugin virtual output register %d is duplicated (bundle %v)", reg, regs)
+			return fmt.Errorf("arm64 plugin custom output register %d is duplicated (bundle %v)", reg, regs)
 		}
 		seen = seen.add(reg)
 	}
-	c.virtualRegs = append([]Reg(nil), regs...)
+	c.customRegs = append([]Reg(nil), regs...)
 	return nil
 }
 
-func (f *fn) materializePluginVirtual(e *elem) []Reg {
+func (f *fn) materializePluginCustom(e *elem) []Reg {
 	if e.st.kind == stReg {
-		return e.st.vregs[:e.st.vcount]
+		return e.st.vregs
 	}
-	if e.st.kind != stSlot || e.st.virtual == nil {
-		panic("arm64: cannot materialize virtual plugin value")
+	if e.st.kind != stSlot || e.st.custom == nil {
+		panic("arm64: cannot materialize custom plugin value")
 	}
-	count := int(e.st.virtual.Size / 16)
-	var regs [4]Reg
+	count := int(e.st.custom.Size() / 16)
+	regs := make([]Reg, count)
 	var avoid regMask
 	for i := 0; i < count; i++ {
 		reg := f.allocFReg(avoid)
@@ -216,9 +216,9 @@ func (f *fn) materializePluginVirtual(e *elem) []Reg {
 		f.fpinned = f.fpinned.remove(regs[i])
 		f.fregUser[regs[i]] = e
 	}
-	e.st.kind, e.st.typ, e.st.reg = stReg, mtVirtual, regs[0]
-	e.st.vregs, e.st.vcount = regs, uint8(count)
-	return e.st.vregs[:count]
+	e.st.kind, e.st.typ, e.st.reg = stReg, mtCustom, regs[0]
+	e.st.vregs = regs
+	return e.st.vregs
 }
 
 func (c *pluginARM64Context) finish(resultWidth int32) {
@@ -248,9 +248,9 @@ func (c *pluginARM64Context) finish(resultWidth int32) {
 	}
 }
 
-func (f *fn) emitPluginARM64(lowering *machinecode.ARM64Lowering, inputWidths []int32, resultWidth int32, resultCount int, virtualInputs []coreplugins.VirtualType, virtualOutput *coreplugins.VirtualType) error {
-	if len(virtualInputs) != 0 || virtualOutput != nil {
-		return f.emitPluginARM64Virtual(lowering, inputWidths, resultCount, virtualInputs, virtualOutput)
+func (f *fn) emitPluginARM64(lowering *machinecode.ARM64Lowering, inputWidths []int32, resultWidth int32, resultCount int, customInputs []coreplugins.CustomType, customOutput *coreplugins.CustomType) error {
+	if len(customInputs) != 0 || customOutput != nil {
+		return f.emitPluginARM64Custom(lowering, inputWidths, resultCount, customInputs, customOutput)
 	}
 	paramCount := len(inputWidths)
 	types := f.currentLogicalTypes()
@@ -292,10 +292,10 @@ func (f *fn) emitPluginARM64(lowering *machinecode.ARM64Lowering, inputWidths []
 	return nil
 }
 
-func (f *fn) emitPluginARM64Virtual(lowering *machinecode.ARM64Lowering, inputWidths []int32, resultCount int, virtualInputs []coreplugins.VirtualType, virtualOutput *coreplugins.VirtualType) error {
+func (f *fn) emitPluginARM64Custom(lowering *machinecode.ARM64Lowering, inputWidths []int32, resultCount int, customInputs []coreplugins.CustomType, customOutput *coreplugins.CustomType) error {
 	paramCount := len(inputWidths)
-	if len(virtualInputs) != paramCount {
-		return fmt.Errorf("arm64 plugin virtual signature has %d inputs, want %d", len(virtualInputs), paramCount)
+	if len(customInputs) != paramCount {
+		return fmt.Errorf("arm64 plugin custom signature has %d inputs, want %d", len(customInputs), paramCount)
 	}
 	roots := append([]*elem(nil), f.rootsBottomToTop()...)
 	if len(roots) < paramCount {
@@ -304,14 +304,14 @@ func (f *fn) emitPluginARM64Virtual(lowering *machinecode.ARM64Lowering, inputWi
 	base := len(roots) - paramCount
 	ctx := &pluginARM64Context{
 		f: f, paramSlots: make([]int, paramCount), paramWidth: inputWidths,
-		paramElems: roots[base:], paramVirtual: virtualInputs, virtualRead: make([]bool, paramCount),
-		output: regNone, virtualOutput: virtualOutput,
+		paramElems: roots[base:], paramCustom: customInputs, customRead: make([]bool, paramCount),
+		output: regNone, customOutput: customOutput,
 	}
-	for i, typ := range virtualInputs {
+	for i, typ := range customInputs {
 		e := ctx.paramElems[i]
-		if typ != (coreplugins.VirtualType{}) {
-			if e.kind != ekValue || e.st.typ != mtVirtual || e.st.virtual == nil || !e.st.virtual.Equal(typ) {
-				return fmt.Errorf("arm64 plugin virtual input %d has incompatible erased externref type", i)
+		if !typ.IsZero() {
+			if e.kind != ekValue || e.st.typ != mtCustom || e.st.custom == nil || !e.st.custom.Equal(typ) {
+				return fmt.Errorf("arm64 plugin custom input %d has incompatible custom type", i)
 			}
 			continue
 		}
@@ -335,20 +335,20 @@ func (f *fn) emitPluginARM64Virtual(lowering *machinecode.ARM64Lowering, inputWi
 	default:
 		return fmt.Errorf("unsupported arm64 plugin compatibility mode %d", lowering.Compatibility)
 	}
-	for i, typ := range virtualInputs {
-		if typ != (coreplugins.VirtualType{}) && !ctx.virtualRead[i] {
-			return fmt.Errorf("arm64 plugin lowering did not consume virtual input %d", i)
+	for i, typ := range customInputs {
+		if !typ.IsZero() && !ctx.customRead[i] {
+			return fmt.Errorf("arm64 plugin lowering did not consume custom input %d", i)
 		}
 	}
-	if virtualOutput != nil {
-		if resultCount != 1 || len(ctx.virtualRegs) == 0 {
-			return fmt.Errorf("arm64 plugin lowering did not set its virtual output")
+	if customOutput != nil {
+		if resultCount != 1 || len(ctx.customRegs) == 0 {
+			return fmt.Errorf("arm64 plugin lowering did not set its custom output")
 		}
-	} else if resultCount != 0 || len(ctx.virtualRegs) != 0 || ctx.outputSet {
-		return fmt.Errorf("arm64 virtual plugin lowering has an invalid physical output")
+	} else if resultCount != 0 || len(ctx.customRegs) != 0 || ctx.outputSet {
+		return fmt.Errorf("arm64 custom plugin lowering has an invalid physical output")
 	}
-	outputs := make(map[Reg]bool, len(ctx.virtualRegs))
-	for _, reg := range ctx.virtualRegs {
+	outputs := make(map[Reg]bool, len(ctx.customRegs))
+	for _, reg := range ctx.customRegs {
 		outputs[reg] = true
 	}
 	for reg := Reg(0); reg < 32; reg++ {
@@ -360,23 +360,22 @@ func (f *fn) emitPluginARM64Virtual(lowering *machinecode.ARM64Lowering, inputWi
 		}
 	}
 	for _, root := range ctx.paramElems {
-		if root.st.typ == mtVirtual && root.st.vcount != 0 {
-			for _, reg := range root.st.vregs[:root.st.vcount] {
+		if root.st.typ == mtCustom {
+			for _, reg := range root.st.vregs {
 				f.releaseF(reg)
 			}
 		}
 		f.erase(root)
 	}
-	if virtualOutput != nil {
-		st := storage{kind: stReg, typ: mtVirtual, reg: ctx.virtualRegs[0], virtual: virtualOutput, vcount: uint8(len(ctx.virtualRegs))}
-		copy(st.vregs[:], ctx.virtualRegs)
+	if customOutput != nil {
+		st := storage{kind: stReg, typ: mtCustom, reg: ctx.customRegs[0], custom: customOutput, vregs: append([]Reg(nil), ctx.customRegs...)}
 		e := f.pushValue(st)
-		for _, reg := range ctx.virtualRegs {
+		for _, reg := range ctx.customRegs {
 			ctx.vector = ctx.vector.remove(reg)
 			f.fpinned = f.fpinned.remove(reg)
 			f.fregUser[reg] = e
 		}
 	}
-	f.stats.call("custom-machine-code-virtual")
+	f.stats.call("custom-machine-code-custom")
 	return nil
 }

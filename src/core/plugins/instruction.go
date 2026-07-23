@@ -10,35 +10,74 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/machinecode"
 )
 
-// VirtualType describes a compiler-erased value carried through Wasm as an
-// externref. Name supplies plugin-owned type identity; Size is its native spill
-// size in bytes. Virtual values never enter the runtime reference store.
-type VirtualType struct {
-	Name string
-	Size int32
+// WasmType is a standard physical WebAssembly value type used to carry a
+// compiler-erased custom value through validation. It does not describe the
+// custom value's native representation.
+type WasmType uint8
+
+const (
+	WasmI32 WasmType = iota + 1
+	WasmI64
+	WasmF32
+	WasmF64
+	WasmV128
+	WasmFuncRef
+	WasmExternRef
+)
+
+func (t WasmType) valid() bool { return t >= WasmI32 && t <= WasmExternRef }
+
+// CustomTypeSpec declares one plugin-owned logical type. Carrier is the
+// standard Wasm type in the guest signature; Size is the erased native value's
+// byte width and must be 16-byte aligned.
+type CustomTypeSpec struct {
+	Name    string
+	Size    int32
+	Carrier WasmType
 }
 
-func (v VirtualType) valid() bool {
-	return v.Name != "" && v.Size > 0 && v.Size%16 == 0
+// CustomType is an opaque token returned by CompilerRegistry.Type. Plugins use
+// the token in instruction signatures; they cannot forge registered types.
+type CustomType struct {
+	name    string
+	size    int32
+	carrier WasmType
 }
 
-func (v VirtualType) Equal(other VirtualType) bool {
-	return v.Name == other.Name && v.Size == other.Size
+func PrepareCustomType(spec CustomTypeSpec) (CustomType, error) {
+	if spec.Name == "" {
+		return CustomType{}, fmt.Errorf("wago: custom type requires Name")
+	}
+	if spec.Size <= 0 || spec.Size%16 != 0 {
+		return CustomType{}, fmt.Errorf("wago: custom type %q requires a positive 16-byte-aligned Size", spec.Name)
+	}
+	if !spec.Carrier.valid() {
+		return CustomType{}, fmt.Errorf("wago: custom type %q has unsupported Wasm carrier %d", spec.Name, spec.Carrier)
+	}
+	return CustomType{name: spec.Name, size: spec.Size, carrier: spec.Carrier}, nil
 }
 
-// VirtualSignature overlays compiler-erased externref carriers on selected
-// logical inputs and the optional single output. Inputs, when non-nil, must
-// have the same length as InstructionSpec.Input; a zero VirtualType leaves that
-// parameter as the ordinary i32 carrier.
-type VirtualSignature struct {
-	Inputs []VirtualType
-	Output *VirtualType
+func (t CustomType) Name() string            { return t.name }
+func (t CustomType) Size() int32             { return t.size }
+func (t CustomType) Bits() int32             { return t.size * 8 }
+func (t CustomType) Carrier() WasmType       { return t.carrier }
+func (t CustomType) IsZero() bool            { return t == (CustomType{}) }
+func (t CustomType) Valid() bool             { return t.name != "" && t.size > 0 && t.carrier.valid() }
+func (t CustomType) Equal(o CustomType) bool { return t == o }
+
+// CustomSignature assigns registered custom types to selected logical inputs
+// and the optional single output. Inputs must have the same length as
+// InstructionSpec.Input; a zero CustomType leaves that parameter on the
+// ordinary i32/handle ABI.
+type CustomSignature struct {
+	Inputs []CustomType
+	Output *CustomType
 }
 
 // InstructionSpec describes a language-neutral custom instruction. Input and
 // Output contain logical value widths in bits. Ordinary values use the existing
-// i32/handle ABI. Virtual-selected values physically use externref and are
-// erased into plugin-owned native register bundles during compilation.
+// i32/handle ABI. Custom values physically use their registered standard Wasm
+// carrier and are erased into plugin-owned native register bundles.
 type InstructionSpec struct {
 	Module  string
 	Name    string
@@ -46,7 +85,7 @@ type InstructionSpec struct {
 	Output  []int32
 	Handler InstructionHandler
 	Lower   InstructionLowerer
-	Virtual *VirtualSignature
+	Custom  *CustomSignature
 	// AMD64 is an explicitly unsafe, fully trusted machine-code lowering. It may
 	// use Wago's real encoder or append arbitrary bytes through Encoder().B.
 	AMD64 *machinecode.AMD64Lowering
@@ -366,8 +405,8 @@ type Instruction struct {
 	ARM64           *machinecode.ARM64Lowering
 	InputWidths     []int32
 	ResultWidth     int32
-	VirtualInputs   []VirtualType
-	VirtualOutput   *VirtualType
+	CustomInputs    []CustomType
+	CustomOutput    *CustomType
 }
 
 // Definition is a validated plugin instruction. It owns detached copies of the
@@ -384,11 +423,11 @@ type Definition struct {
 // portable Handler.
 func (d Definition) Native() (Instruction, bool) {
 	native := Instruction{InputWidths: append([]int32(nil), d.Spec.Input...)}
-	if d.Spec.Virtual != nil {
-		native.VirtualInputs = append([]VirtualType(nil), d.Spec.Virtual.Inputs...)
-		if d.Spec.Virtual.Output != nil {
-			out := *d.Spec.Virtual.Output
-			native.VirtualOutput = &out
+	if d.Spec.Custom != nil {
+		native.CustomInputs = append([]CustomType(nil), d.Spec.Custom.Inputs...)
+		if d.Spec.Custom.Output != nil {
+			out := *d.Spec.Custom.Output
+			native.CustomOutput = &out
 		}
 	}
 	if d.amd64 != nil {
@@ -498,7 +537,22 @@ func Prepare(spec InstructionSpec) (Definition, error) {
 	if spec.Module == "" || spec.Name == "" {
 		return Definition{}, fmt.Errorf("wago: instruction requires Module and Name")
 	}
-	if spec.Handler == nil && spec.Virtual == nil {
+	if spec.Custom != nil {
+		if len(spec.Input) == 0 && len(spec.Custom.Inputs) != 0 {
+			spec.Input = make([]int32, len(spec.Custom.Inputs))
+		}
+		if len(spec.Custom.Inputs) == len(spec.Input) {
+			for i, typ := range spec.Custom.Inputs {
+				if spec.Input[i] == 0 && typ.Valid() {
+					spec.Input[i] = typ.Bits()
+				}
+			}
+		}
+		if len(spec.Output) == 0 && spec.Custom.Output != nil && spec.Custom.Output.Valid() {
+			spec.Output = []int32{spec.Custom.Output.Bits()}
+		}
+	}
+	if spec.Handler == nil && spec.Custom == nil {
 		return Definition{}, fmt.Errorf("wago: instruction %q.%q requires Handler", spec.Module, spec.Name)
 	}
 	for _, widths := range [][]int32{spec.Input, spec.Output} {
@@ -508,37 +562,43 @@ func Prepare(spec InstructionSpec) (Definition, error) {
 			}
 		}
 	}
-	if spec.Virtual != nil {
-		if len(spec.Virtual.Inputs) != len(spec.Input) {
-			return Definition{}, fmt.Errorf("wago: instruction %q.%q virtual input metadata has %d entries, want %d", spec.Module, spec.Name, len(spec.Virtual.Inputs), len(spec.Input))
+	if spec.Custom != nil {
+		if len(spec.Custom.Inputs) != len(spec.Input) {
+			return Definition{}, fmt.Errorf("wago: instruction %q.%q custom input metadata has %d entries, want %d", spec.Module, spec.Name, len(spec.Custom.Inputs), len(spec.Input))
 		}
-		for i, typ := range spec.Virtual.Inputs {
-			if typ == (VirtualType{}) {
+		hasCustom := false
+		for i, typ := range spec.Custom.Inputs {
+			if typ.IsZero() {
 				continue
 			}
-			if !typ.valid() {
-				return Definition{}, fmt.Errorf("wago: instruction %q.%q virtual input %d requires a name and a positive 16-byte-aligned size", spec.Module, spec.Name, i)
+			hasCustom = true
+			if !typ.Valid() {
+				return Definition{}, fmt.Errorf("wago: instruction %q.%q custom input %d is not a registered type", spec.Module, spec.Name, i)
 			}
-			if spec.Input[i] != typ.Size*8 {
-				return Definition{}, fmt.Errorf("wago: instruction %q.%q virtual input %d is %d bits but type %q is %d bytes", spec.Module, spec.Name, i, spec.Input[i], typ.Name, typ.Size)
+			if spec.Input[i] != typ.Size()*8 {
+				return Definition{}, fmt.Errorf("wago: instruction %q.%q custom input %d is %d bits but type %q is %d bytes", spec.Module, spec.Name, i, spec.Input[i], typ.Name(), typ.Size())
 			}
 		}
-		if spec.Virtual.Output != nil {
+		if spec.Custom.Output != nil {
+			hasCustom = true
 			if len(spec.Output) != 1 {
-				return Definition{}, fmt.Errorf("wago: instruction %q.%q virtual output requires exactly one logical output", spec.Module, spec.Name)
+				return Definition{}, fmt.Errorf("wago: instruction %q.%q custom output requires exactly one logical output", spec.Module, spec.Name)
 			}
-			if !spec.Virtual.Output.valid() {
-				return Definition{}, fmt.Errorf("wago: instruction %q.%q virtual output requires a name and a positive 16-byte-aligned size", spec.Module, spec.Name)
+			if !spec.Custom.Output.Valid() {
+				return Definition{}, fmt.Errorf("wago: instruction %q.%q custom output is not a registered type", spec.Module, spec.Name)
 			}
-			if spec.Output[0] != spec.Virtual.Output.Size*8 {
-				return Definition{}, fmt.Errorf("wago: instruction %q.%q virtual output is %d bits but type %q is %d bytes", spec.Module, spec.Name, spec.Output[0], spec.Virtual.Output.Name, spec.Virtual.Output.Size)
+			if spec.Output[0] != spec.Custom.Output.Size()*8 {
+				return Definition{}, fmt.Errorf("wago: instruction %q.%q custom output is %d bits but type %q is %d bytes", spec.Module, spec.Name, spec.Output[0], spec.Custom.Output.Name(), spec.Custom.Output.Size())
 			}
+		}
+		if !hasCustom {
+			return Definition{}, fmt.Errorf("wago: instruction %q.%q custom signature contains no custom values", spec.Module, spec.Name)
 		}
 		if spec.Handler != nil {
-			return Definition{}, fmt.Errorf("wago: instruction %q.%q virtual values are native-only and forbid Handler", spec.Module, spec.Name)
+			return Definition{}, fmt.Errorf("wago: instruction %q.%q custom values are native-only and forbid Handler", spec.Module, spec.Name)
 		}
 		if spec.AMD64 == nil && spec.ARM64 == nil {
-			return Definition{}, fmt.Errorf("wago: instruction %q.%q virtual values require a native lowering", spec.Module, spec.Name)
+			return Definition{}, fmt.Errorf("wago: instruction %q.%q custom values require a native lowering", spec.Module, spec.Name)
 		}
 	}
 	recipe, err := buildInstructionRecipe(spec)
@@ -567,12 +627,12 @@ func Prepare(spec InstructionSpec) (Definition, error) {
 			return Definition{}, fmt.Errorf("wago: instruction %q.%q amd64 lowering supports at most one direct output", spec.Module, spec.Name)
 		}
 		for i, width := range spec.Input {
-			if width > 32 && (spec.Virtual == nil || spec.Virtual.Inputs[i] == (VirtualType{})) {
+			if width > 32 && (spec.Custom == nil || spec.Custom.Inputs[i].IsZero()) {
 				return Definition{}, fmt.Errorf("wago: instruction %q.%q amd64 lowering only supports direct values up to 32 bits", spec.Module, spec.Name)
 			}
 		}
 		for _, width := range spec.Output {
-			if width > 32 && (spec.Virtual == nil || spec.Virtual.Output == nil) {
+			if width > 32 && (spec.Custom == nil || spec.Custom.Output == nil) {
 				return Definition{}, fmt.Errorf("wago: instruction %q.%q amd64 lowering only supports direct values up to 32 bits", spec.Module, spec.Name)
 			}
 		}
@@ -596,12 +656,12 @@ func Prepare(spec InstructionSpec) (Definition, error) {
 			return Definition{}, fmt.Errorf("wago: instruction %q.%q arm64 lowering supports at most one direct output", spec.Module, spec.Name)
 		}
 		for i, width := range spec.Input {
-			if width > 32 && (spec.Virtual == nil || spec.Virtual.Inputs[i] == (VirtualType{})) {
+			if width > 32 && (spec.Custom == nil || spec.Custom.Inputs[i].IsZero()) {
 				return Definition{}, fmt.Errorf("wago: instruction %q.%q arm64 lowering only supports direct values up to 32 bits", spec.Module, spec.Name)
 			}
 		}
 		for _, width := range spec.Output {
-			if width > 32 && (spec.Virtual == nil || spec.Virtual.Output == nil) {
+			if width > 32 && (spec.Custom == nil || spec.Custom.Output == nil) {
 				return Definition{}, fmt.Errorf("wago: instruction %q.%q arm64 lowering only supports direct values up to 32 bits", spec.Module, spec.Name)
 			}
 		}
@@ -610,13 +670,13 @@ func Prepare(spec InstructionSpec) (Definition, error) {
 	}
 	spec.Input = append([]int32(nil), spec.Input...)
 	spec.Output = append([]int32(nil), spec.Output...)
-	if spec.Virtual != nil {
-		virtual := &VirtualSignature{Inputs: append([]VirtualType(nil), spec.Virtual.Inputs...)}
-		if spec.Virtual.Output != nil {
-			out := *spec.Virtual.Output
-			virtual.Output = &out
+	if spec.Custom != nil {
+		custom := &CustomSignature{Inputs: append([]CustomType(nil), spec.Custom.Inputs...)}
+		if spec.Custom.Output != nil {
+			out := *spec.Custom.Output
+			custom.Output = &out
 		}
-		spec.Virtual = virtual
+		spec.Custom = custom
 	}
 	spec.AMD64 = amd64Lowering
 	spec.ARM64 = arm64Lowering

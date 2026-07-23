@@ -38,7 +38,7 @@ const (
 	mtF32
 	mtF64
 	mtV128
-	mtVirtual
+	mtCustom
 )
 
 func (t machineType) is64() bool    { return t == mtI64 || t == mtF64 }
@@ -48,7 +48,7 @@ func (t machineType) isV128() bool  { return t == mtV128 }
 // isXMM reports whether the value lives in the SIMD/FP register file (V0–V31 on
 // arm64 — the analog of x86's XMM registers). Name kept per the port contract's
 // type/method-name-parity rule so the sibling emit files read like the originals.
-func (t machineType) isXMM() bool { return t.isFloat() || t.isV128() || t == mtVirtual }
+func (t machineType) isXMM() bool { return t.isFloat() || t.isV128() || t == mtCustom }
 func (t machineType) stackSlots() int {
 	if t == mtV128 {
 		return 2
@@ -112,15 +112,14 @@ func (st storage) memBorrow() int { return int(st.cval) - 1 }
 
 // storage records where a value lives and its machine type.
 type storage struct {
-	kind    storageKind
-	typ     machineType
-	reg     Reg
-	slot    int
-	idx     int   // local/global index for stLocalRef/stGlobalRef
-	cval    int64 // constant value/bits for stConst
-	virtual *coreplugins.VirtualType
-	vregs   [4]Reg
-	vcount  uint8
+	kind   storageKind
+	typ    machineType
+	reg    Reg
+	slot   int
+	idx    int   // local/global index for stLocalRef/stGlobalRef
+	cval   int64 // constant value/bits for stConst
+	custom *coreplugins.CustomType
+	vregs  []Reg
 }
 
 // elemKind tags a stack node.
