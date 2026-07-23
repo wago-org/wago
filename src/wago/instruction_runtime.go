@@ -58,16 +58,44 @@ func (s *instructionState) allocID() uint32 {
 	return s.next
 }
 
+func customCarrierType(typ CustomType) ValType {
+	switch typ.Carrier() {
+	case WasmI64:
+		return ValI64
+	case WasmF32:
+		return ValF32
+	case WasmF64:
+		return ValF64
+	case WasmV128:
+		return ValV128
+	case WasmFuncRef:
+		return ValFuncRef
+	case WasmExternRef:
+		return ValExternRef
+	default:
+		return ValI32
+	}
+}
+
 func instructionImport(ins *registeredInstruction) *registeredImport {
 	params := make([]ValType, len(ins.spec.Input))
 	for i := range params {
 		params[i] = ValI32
+		if ins.spec.Custom != nil && !ins.spec.Custom.Inputs[i].IsZero() {
+			params[i] = customCarrierType(ins.spec.Custom.Inputs[i])
+		}
 	}
 	var results []ValType
 	if len(ins.spec.Output) > 0 {
 		results = []ValType{ValI32}
+		if ins.spec.Custom != nil && ins.spec.Custom.Output != nil {
+			results[0] = customCarrierType(*ins.spec.Custom.Output)
+		}
 	}
 	fn := instructionHostFunc(func(m HostModule, raw, result []uint64) {
+		if ins.spec.Custom != nil {
+			panic(instructionTrap{fmt.Errorf("wago: custom instruction %s.%s requires native lowering", ins.spec.Module, ins.spec.Name)})
+		}
 		in, ok := instructionCallingInstance(m)
 		if !ok {
 			panic(instructionTrap{fmt.Errorf("wago: instruction called without an instance")})
@@ -167,6 +195,9 @@ func validateInstructionSignature(key string, spec InstructionSpec, sig FuncSig)
 	params := make([]ValType, len(spec.Input))
 	for i := range params {
 		params[i] = ValI32
+		if spec.Custom != nil && !spec.Custom.Inputs[i].IsZero() {
+			params[i] = customCarrierType(spec.Custom.Inputs[i])
+		}
 	}
 	wantResults := 0
 	if len(spec.Output) > 0 {
@@ -175,6 +206,9 @@ func validateInstructionSignature(key string, spec InstructionSpec, sig FuncSig)
 	results := make([]ValType, wantResults)
 	if wantResults != 0 {
 		results[0] = ValI32
+		if spec.Custom != nil && spec.Custom.Output != nil {
+			results[0] = customCarrierType(*spec.Custom.Output)
+		}
 	}
 	return validatePhysicalImportSignature(key, params, results, sig)
 }

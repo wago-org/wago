@@ -76,6 +76,16 @@ func (f *fn) allocFReg(avoid regMask) Reg {
 // spillF evicts an XMM-resident float/vector value to a fresh frame slot.
 func (f *fn) spillF(e *elem) {
 	r := e.st.reg
+	if e.st.typ == mtCustom {
+		chunks := int((e.st.custom.Size() + 31) / 32)
+		slot := f.allocSpillSlots(chunks * 4)
+		for i, reg := range e.st.vregs {
+			f.a.YMovdquStoreDisp(RSP, f.spillOff(slot+i*4), reg)
+			f.fregUser[reg] = nil
+		}
+		f.replaceStorage(e, storage{kind: stSlot, typ: mtCustom, slot: slot, custom: e.st.custom})
+		return
+	}
 	if e.st.typ == mtV128 {
 		slot := f.allocSpillSlots(2)
 		f.a.VMovdquStoreDisp(RSP, f.spillOff(slot), r)

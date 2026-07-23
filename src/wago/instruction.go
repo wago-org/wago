@@ -30,8 +30,20 @@ type Bits = coreplugins.Bits
 type LowerValue = coreplugins.LowerValue
 type InstructionLowerer = coreplugins.InstructionLowerer
 type LoweringContext = coreplugins.LoweringContext
+type WasmType = coreplugins.WasmType
+type CustomTypeSpec = coreplugins.CustomTypeSpec
+type CustomType = coreplugins.CustomType
+type CustomSignature = coreplugins.CustomSignature
 
 const (
+	WasmI32       = coreplugins.WasmI32
+	WasmI64       = coreplugins.WasmI64
+	WasmF32       = coreplugins.WasmF32
+	WasmF64       = coreplugins.WasmF64
+	WasmV128      = coreplugins.WasmV128
+	WasmFuncRef   = coreplugins.WasmFuncRef
+	WasmExternRef = coreplugins.WasmExternRef
+
 	AMD64FeatureAVX2             = machinecode.AMD64FeatureAVX2
 	AMD64FeatureAVX512           = machinecode.AMD64FeatureAVX512
 	AMD64CompatibilityManaged    = machinecode.AMD64CompatibilityManaged
@@ -51,6 +63,55 @@ func BitsFromUint32(width int32, value uint32) (Bits, error) {
 type registeredInstruction struct {
 	spec       InstructionSpec
 	definition coreplugins.Definition
+}
+
+// Type registers a plugin-owned logical value type and returns its opaque
+// identity token. Repeating an identical declaration is idempotent; reusing a
+// name with a different size or carrier is rejected.
+func (r *CompilerRegistry) Type(spec CustomTypeSpec) (CustomType, error) {
+	if r == nil || r.reg == nil {
+		return CustomType{}, fmt.Errorf("wago: nil compiler registry")
+	}
+	typ, err := coreplugins.PrepareCustomType(spec)
+	if err != nil {
+		return CustomType{}, err
+	}
+	if r.reg.customTypes == nil {
+		r.reg.customTypes = make(map[string]CustomType)
+	}
+	if existing, ok := r.reg.customTypes[typ.Name()]; ok {
+		if !existing.Equal(typ) {
+			return CustomType{}, fmt.Errorf("wago: custom type %q conflicts with its previous registration", typ.Name())
+		}
+		return existing, nil
+	}
+	r.reg.customTypes[typ.Name()] = typ
+	return typ, nil
+}
+
+func (r *CompilerRegistry) validateCustomSignature(sig *CustomSignature) error {
+	if sig == nil {
+		return nil
+	}
+	check := func(typ CustomType) error {
+		if typ.IsZero() {
+			return nil
+		}
+		registered, ok := r.reg.customTypes[typ.Name()]
+		if !ok || !registered.Equal(typ) {
+			return fmt.Errorf("wago: custom type %q was not registered with this compiler registry", typ.Name())
+		}
+		return nil
+	}
+	for _, typ := range sig.Inputs {
+		if err := check(typ); err != nil {
+			return err
+		}
+	}
+	if sig.Output != nil {
+		return check(*sig.Output)
+	}
+	return nil
 }
 
 func resolveInstructionLowerings(m *wasm.Module, registered map[string]*registeredInstruction) map[uint32]coreplugins.Instruction {
@@ -82,6 +143,9 @@ func resolveInstructionLowerings(m *wasm.Module, registered map[string]*register
 func (r *CompilerRegistry) Instruction(spec InstructionSpec) error {
 	if r == nil || r.reg == nil {
 		return fmt.Errorf("wago: nil compiler registry")
+	}
+	if err := r.validateCustomSignature(spec.Custom); err != nil {
+		return err
 	}
 	definition, err := coreplugins.Prepare(spec)
 	if err != nil {

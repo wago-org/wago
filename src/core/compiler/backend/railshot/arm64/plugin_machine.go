@@ -7,15 +7,21 @@ import (
 
 	"github.com/wago-org/wago/src/core/compiler/machinecode"
 	a64 "github.com/wago-org/wago/src/core/encoder/arm64"
+	coreplugins "github.com/wago-org/wago/src/core/plugins"
 )
 
 type pluginARM64Context struct {
-	f          *fn
-	paramSlots []int
-	paramWidth []int32
-	gp, vector regMask
-	output     Reg
-	outputSet  bool
+	f            *fn
+	paramSlots   []int
+	paramWidth   []int32
+	paramElems   []*elem
+	paramCustom  []coreplugins.CustomType
+	customRead   []bool
+	gp, vector   regMask
+	output       Reg
+	outputSet    bool
+	customOutput *coreplugins.CustomType
+	customRegs   []Reg
 }
 
 func (c *pluginARM64Context) Encoder() *a64.Asm { return c.f.a }
@@ -32,10 +38,31 @@ func (c *pluginARM64Context) InputI32(index int) (a64.Reg, error) {
 			tmp := c.AllocGP(r)
 			c.f.a.MovImm64(tmp, uint64(mask))
 			c.f.a.And32(r, r, tmp)
-			c.Release(tmp)
+			c.ReleaseGP(tmp)
 		}
 	}
 	return r, nil
+}
+
+func (c *pluginARM64Context) InputCustom(index int) ([]a64.Reg, error) {
+	if index < 0 || index >= len(c.paramElems) || index >= len(c.paramCustom) || c.paramCustom[index].IsZero() {
+		return nil, fmt.Errorf("arm64 plugin custom input %d out of range", index)
+	}
+	e := c.paramElems[index]
+	want := c.paramCustom[index]
+	if e.kind != ekValue || e.st.typ != mtCustom || e.st.custom == nil || !e.st.custom.Equal(want) {
+		return nil, fmt.Errorf("arm64 plugin custom input %d has incompatible custom type", index)
+	}
+	regs := c.f.materializePluginCustom(e)
+	out := append([]Reg(nil), regs...)
+	for _, reg := range out {
+		c.f.fregUser[reg] = nil
+		c.f.fpinned = c.f.fpinned.add(reg)
+		c.vector = c.vector.add(reg)
+	}
+	e.st.vregs = nil
+	c.customRead[index] = true
+	return out, nil
 }
 
 func arm64ExclusionMask(regs []a64.Reg) regMask { return maskOf(regs...) }
@@ -83,6 +110,11 @@ func (c *pluginARM64Context) ReserveVector(reg a64.Reg) error {
 }
 
 func (c *pluginARM64Context) Release(reg a64.Reg) {
+	c.ReleaseGP(reg)
+	c.ReleaseVector(reg)
+}
+
+func (c *pluginARM64Context) ReleaseGP(reg a64.Reg) {
 	if c.outputSet && reg == c.output {
 		return
 	}
@@ -90,6 +122,14 @@ func (c *pluginARM64Context) Release(reg a64.Reg) {
 		c.gp = c.gp.remove(reg)
 		c.f.pinned = c.f.pinned.remove(reg)
 		c.f.release(reg)
+	}
+}
+
+func (c *pluginARM64Context) ReleaseVector(reg a64.Reg) {
+	for _, output := range c.customRegs {
+		if reg == output {
+			return
+		}
 	}
 	if c.vector.has(reg) {
 		c.vector = c.vector.remove(reg)
@@ -117,6 +157,9 @@ func (c *pluginARM64Context) CheckedMemory(input int, offset uint32, size int) (
 }
 
 func (c *pluginARM64Context) OutputI32(reg a64.Reg) error {
+	if c.customOutput != nil {
+		return fmt.Errorf("arm64 plugin custom instruction cannot set an i32 output")
+	}
 	if !c.gp.has(reg) {
 		return fmt.Errorf("arm64 plugin output register %d is not owned by the lowering", reg)
 	}
@@ -127,13 +170,64 @@ func (c *pluginARM64Context) OutputI32(reg a64.Reg) error {
 	return nil
 }
 
+func (c *pluginARM64Context) OutputCustom(regs ...a64.Reg) error {
+	if c.customOutput == nil {
+		return fmt.Errorf("arm64 plugin instruction has no custom output")
+	}
+	want := int(c.customOutput.Size() / 16)
+	if len(regs) != want {
+		return fmt.Errorf("arm64 plugin custom output has %d register(s), want %d", len(regs), want)
+	}
+	if c.outputSet || len(c.customRegs) != 0 {
+		return fmt.Errorf("arm64 plugin output already assigned")
+	}
+	seen := regMask(0)
+	for _, reg := range regs {
+		if !c.vector.has(reg) {
+			return fmt.Errorf("arm64 plugin custom output register %d is not owned by the lowering (bundle %v)", reg, regs)
+		}
+		if seen.has(reg) {
+			return fmt.Errorf("arm64 plugin custom output register %d is duplicated (bundle %v)", reg, regs)
+		}
+		seen = seen.add(reg)
+	}
+	c.customRegs = append([]Reg(nil), regs...)
+	return nil
+}
+
+func (f *fn) materializePluginCustom(e *elem) []Reg {
+	if e.st.kind == stReg {
+		return e.st.vregs
+	}
+	if e.st.kind != stSlot || e.st.custom == nil {
+		panic("arm64: cannot materialize custom plugin value")
+	}
+	count := int(e.st.custom.Size() / 16)
+	regs := make([]Reg, count)
+	var avoid regMask
+	for i := 0; i < count; i++ {
+		reg := f.allocFReg(avoid)
+		avoid = avoid.add(reg)
+		f.fpinned = f.fpinned.add(reg)
+		regs[i] = reg
+		f.a.LdrQ(reg, SP, f.spillOff(e.st.slot+i*2))
+	}
+	for i := 0; i < count; i++ {
+		f.fpinned = f.fpinned.remove(regs[i])
+		f.fregUser[regs[i]] = e
+	}
+	e.st.kind, e.st.typ, e.st.reg = stReg, mtCustom, regs[0]
+	e.st.vregs = regs
+	return e.st.vregs
+}
+
 func (c *pluginARM64Context) finish(resultWidth int32) {
 	for r := Reg(0); r < 32; r++ {
 		if c.gp.has(r) && (!c.outputSet || r != c.output) {
-			c.Release(r)
+			c.ReleaseGP(r)
 		}
 		if c.vector.has(r) {
-			c.Release(r)
+			c.ReleaseVector(r)
 		}
 	}
 	if !c.outputSet {
@@ -154,7 +248,10 @@ func (c *pluginARM64Context) finish(resultWidth int32) {
 	}
 }
 
-func (f *fn) emitPluginARM64(lowering *machinecode.ARM64Lowering, inputWidths []int32, resultWidth int32, resultCount int) error {
+func (f *fn) emitPluginARM64(lowering *machinecode.ARM64Lowering, inputWidths []int32, resultWidth int32, resultCount int, customInputs []coreplugins.CustomType, customOutput *coreplugins.CustomType) error {
+	if len(customInputs) != 0 || customOutput != nil {
+		return f.emitPluginARM64Custom(lowering, inputWidths, resultCount, customInputs, customOutput)
+	}
 	paramCount := len(inputWidths)
 	types := f.currentLogicalTypes()
 	if len(types) < paramCount {
@@ -192,5 +289,93 @@ func (f *fn) emitPluginARM64(lowering *machinecode.ARM64Lowering, inputWidths []
 	f.setDepthTypes(types[:base])
 	ctx.finish(resultWidth)
 	f.stats.call("custom-machine-code")
+	return nil
+}
+
+func (f *fn) emitPluginARM64Custom(lowering *machinecode.ARM64Lowering, inputWidths []int32, resultCount int, customInputs []coreplugins.CustomType, customOutput *coreplugins.CustomType) error {
+	paramCount := len(inputWidths)
+	if len(customInputs) != paramCount {
+		return fmt.Errorf("arm64 plugin custom signature has %d inputs, want %d", len(customInputs), paramCount)
+	}
+	roots := append([]*elem(nil), f.rootsBottomToTop()...)
+	if len(roots) < paramCount {
+		return fmt.Errorf("arm64 plugin lowering has %d stack argument(s), want %d", len(roots), paramCount)
+	}
+	base := len(roots) - paramCount
+	ctx := &pluginARM64Context{
+		f: f, paramSlots: make([]int, paramCount), paramWidth: inputWidths,
+		paramElems: roots[base:], paramCustom: customInputs, customRead: make([]bool, paramCount),
+		output: regNone, customOutput: customOutput,
+	}
+	for i, typ := range customInputs {
+		e := ctx.paramElems[i]
+		if !typ.IsZero() {
+			if e.kind != ekValue || e.st.typ != mtCustom || e.st.custom == nil || !e.st.custom.Equal(typ) {
+				return fmt.Errorf("arm64 plugin custom input %d has incompatible custom type", i)
+			}
+			continue
+		}
+		if e.kind != ekValue || e.st.typ != mtI32 {
+			return fmt.Errorf("arm64 plugin input %d is not i32", i)
+		}
+		r := f.materialize(e)
+		f.spill(e)
+		f.release(r)
+		ctx.paramSlots[i] = e.st.slot
+	}
+	switch lowering.Compatibility {
+	case machinecode.ARM64CompatibilityManaged:
+		if err := lowering.Managed(ctx); err != nil {
+			return err
+		}
+	case machinecode.ARM64CompatibilityFullAccess:
+		if err := lowering.Emit(ctx); err != nil {
+			return err
+		}
+	default:
+		return fmt.Errorf("unsupported arm64 plugin compatibility mode %d", lowering.Compatibility)
+	}
+	for i, typ := range customInputs {
+		if !typ.IsZero() && !ctx.customRead[i] {
+			return fmt.Errorf("arm64 plugin lowering did not consume custom input %d", i)
+		}
+	}
+	if customOutput != nil {
+		if resultCount != 1 || len(ctx.customRegs) == 0 {
+			return fmt.Errorf("arm64 plugin lowering did not set its custom output")
+		}
+	} else if resultCount != 0 || len(ctx.customRegs) != 0 || ctx.outputSet {
+		return fmt.Errorf("arm64 custom plugin lowering has an invalid physical output")
+	}
+	outputs := make(map[Reg]bool, len(ctx.customRegs))
+	for _, reg := range ctx.customRegs {
+		outputs[reg] = true
+	}
+	for reg := Reg(0); reg < 32; reg++ {
+		if ctx.gp.has(reg) {
+			ctx.ReleaseGP(reg)
+		}
+		if ctx.vector.has(reg) && !outputs[reg] {
+			ctx.ReleaseVector(reg)
+		}
+	}
+	for _, root := range ctx.paramElems {
+		if root.st.typ == mtCustom {
+			for _, reg := range root.st.vregs {
+				f.releaseF(reg)
+			}
+		}
+		f.erase(root)
+	}
+	if customOutput != nil {
+		st := storage{kind: stReg, typ: mtCustom, reg: ctx.customRegs[0], custom: customOutput, vregs: append([]Reg(nil), ctx.customRegs...)}
+		e := f.pushValue(st)
+		for _, reg := range ctx.customRegs {
+			ctx.vector = ctx.vector.remove(reg)
+			f.fpinned = f.fpinned.remove(reg)
+			f.fregUser[reg] = e
+		}
+	}
+	f.stats.call("custom-machine-code-custom")
 	return nil
 }
