@@ -35,10 +35,12 @@ make spec2
 make simd
 ```
 
-`make spec2` sets `WAGO_SPECTEST_DIR` to the `tests/spec-v2` checkout and
-`WAGO_SPEC_VERSION=2.0`; the execution harness resolves the tagged repository's
-`test/core` layout. CI provisions WABT and runs the full release suites for the
-informational CI card. `make simd` is the required native execution gate for the
+`make spec2` requires `wast2json`, initializes `tests/spec-v2`, verifies the
+pinned 147-file digest and validation accounting, then runs the exact Release 2
+execution wrapper. Ordinary `go test ./...` jobs skip only these two pinned
+wrappers when the optional submodule or WABT is absent; the mandatory `make
+spec2` target fails hard instead. CI provisions WABT and runs the full release
+suites for the informational CI card. `make simd` is the required native execution gate for the
 focused official SIMD proposal corpus on each supported runtime target; broader
 spec-suite gaps remain visible in the card without failing the aggregate CI
 check.
@@ -555,8 +557,10 @@ to be empty. The full Release 2 execution test fails if any module or assertion
 is skipped, so a future unsupported module cannot become a green reasoned skip.
 Unknown action/value shapes remain harness failures, not skips.
 
-A missing/empty Release 2 checkout, a discovered file that disappears, or a
-`wast2json` conversion failure is an error rather than a silent empty run. The
+Inside the mandatory `make spec2` gate, a missing/empty Release 2 checkout, a
+discovered file that disappears, or a `wast2json` conversion failure is an error
+rather than a silent empty run. Ordinary package tests report a skip with the
+required command when the optional checkout or tool is unavailable. The
 July 23, 2026 audit run is green at 1,600 passed / 0 failed / 0 skipped modules
 and 2,880 passed / 0 failed / 1,077 non-validation-action skips, with no
 accepted-invalid or accepted-malformed sites. The execution run is green at
