@@ -169,6 +169,28 @@ jobs:
         if: matrix.runtime
         run: make simd
 
+  core-v2:
+    name: Core v2 conformance / Linux amd64
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+
+      # This is the mandatory exact Release 2 gate, not the informational CI
+      # card summary. Provision the parser explicitly and fetch only the pinned
+      # WebAssembly/spec v2.0.0 submodule consumed by make spec2.
+      - name: Install WABT
+        run: sudo apt-get update && sudo apt-get install -y wabt
+      - name: Fetch pinned Core v2 corpus
+        run: git submodule update --init tests/spec-v2
+      - name: Run exact Core v2 validation and execution
+        run: make spec2
+
   tinygo:
     name: TinyGo / ${{ matrix.name }}
     needs: changes
@@ -361,7 +383,7 @@ jobs:
   ci-ok:
     name: CI
     if: always()
-    needs: [changes, lint, platform-test, tinygo, coverage, size]
+    needs: [changes, lint, platform-test, core-v2, tinygo, coverage, size]
     runs-on: ubuntu-latest
     steps:
       - name: Verify no required job failed

@@ -30,20 +30,26 @@ git submodule update --init tests/spec-v2    # WebAssembly 2.0
 Install WABT so `wast2json` is on `PATH`, then run:
 
 ```sh
-make spec1
-make spec2
-make simd
+git submodule update --init tests/spec-v2
+make spec2       # exact mandatory Core v2 CI gate
+make spec1       # broader local/informational release sweep
+make simd        # required focused SIMD execution gate
 ```
 
 `make spec2` requires `wast2json`, initializes `tests/spec-v2`, verifies the
 pinned 147-file digest and validation accounting, then runs the exact Release 2
 execution wrapper. Ordinary `go test ./...` jobs skip only these two pinned
 wrappers when the optional submodule or WABT is absent; the mandatory `make
-spec2` target fails hard instead. CI provisions WABT and runs the full release
-suites for the informational CI card. `make simd` is the required native execution gate for the
-focused official SIMD proposal corpus on each supported runtime target; broader
-spec-suite gaps remain visible in the card without failing the aggregate CI
-check.
+spec2` target fails hard instead.
+
+CI has a dedicated Linux/amd64 **Core v2 conformance** job that installs WABT,
+initializes only `tests/spec-v2`, and runs `make spec2`. That job is a dependency
+of the aggregate `CI` branch-protection check, so missing tooling, corpus drift,
+validation-accounting drift, or execution regressions fail the pull request.
+The broader WebAssembly 1.0/2.0/3.0 summaries in the CI card remain
+informational and do not replace this exact gate. `make simd` remains the
+required native execution gate for the focused official SIMD proposal corpus on
+each supported runtime target.
 
 The validation harness uses the same release discovery and can be run directly:
 
