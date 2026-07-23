@@ -1110,18 +1110,28 @@ func (f *fn) emitIndirectCallHomeAware(ft *wasm.CompType, homeReg, targetContext
 
 	// Stash the home linear-memory and target-context pointers above the results.
 	// The frame is stable during the frameless call, so both survive arg staging
-	// and the cross-instance path's RSP changes.
+	// and the cross-instance path's RSP changes. Reserve the whole scratch range
+	// through spillFloor while flushing: maxSpill sizes the frame, but curSpillSlot
+	// deliberately does not treat that high-water mark as live storage. In
+	// particular, flushWideStack stages above the current operand extent and would
+	// otherwise overwrite these manually written slots.
 	homeSlot := resultSlot + resultSlots
 	targetContextSlot := homeSlot + 1
-	if need := targetContextSlot + 1; need > f.maxSpill {
-		f.maxSpill = need
+	scratchEnd := targetContextSlot + 1
+	if scratchEnd > f.maxSpill {
+		f.maxSpill = scratchEnd
 	}
 	f.a.Store64(RSP, f.spillOff(homeSlot), homeReg)
 	f.a.Store64(RSP, f.spillOff(targetContextSlot), targetContextReg)
 	f.release(homeReg)
 	f.release(targetContextReg)
 
-	f.flush()                        // args → canonical slot-width slots
+	oldSpillFloor := f.spillFloor
+	if scratchEnd > f.spillFloor {
+		f.spillFloor = scratchEnd
+	}
+	f.flush() // args → canonical slot-width slots
+	f.spillFloor = oldSpillFloor
 	f.storePinnedGlobals(false)      // value-pinned globals → cells
 	f.storeModuleGlobals(RAX)        // same-instance callee's offset-0 prologue reloads from cells
 	argOff := f.spillOff(resultSlot) // p==0: unused, but a valid in-frame address
