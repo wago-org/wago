@@ -88,7 +88,40 @@ func (customCarrierExtension) Register(reg *Registry) error {
 			return err
 		}
 	}
-	return nil
+	alias, err := compiler.Type(CustomTypeSpec{Name: "test.value.alias", Size: 32, Carrier: WasmI32})
+	if err != nil {
+		return err
+	}
+	return compiler.Instruction(InstructionSpec{
+		Module: "test:custom", Name: "test.value.alias.drop",
+		Custom: &CustomSignature{Inputs: []CustomType{alias}},
+		AMD64: &AMD64InstructionLowering{
+			Compatibility: AMD64CompatibilityFullAccess,
+			Emit: func(ctx AMD64LoweringContext) error {
+				regs, err := ctx.InputCustom(0)
+				if err != nil {
+					return err
+				}
+				for _, reg := range regs {
+					ctx.ReleaseVector(reg)
+				}
+				return nil
+			},
+		},
+		ARM64: &ARM64InstructionLowering{
+			Compatibility: ARM64CompatibilityFullAccess,
+			Emit: func(ctx ARM64LoweringContext) error {
+				regs, err := ctx.InputCustom(0)
+				if err != nil {
+					return err
+				}
+				for _, reg := range regs {
+					ctx.ReleaseVector(reg)
+				}
+				return nil
+			},
+		},
+	})
 }
 
 func TestCustomTypeCarriersCompileAndExecuteAsErasedValues(t *testing.T) {
@@ -142,6 +175,17 @@ func TestCustomTypeCarriersDeterminePhysicalSignatures(t *testing.T) {
 	}
 }
 
+func TestCustomTypeIdentityIsStrongerThanPhysicalCarrier(t *testing.T) {
+	rt := NewRuntime()
+	if err := rt.Use(customCarrierExtension{}); err != nil {
+		t.Fatal(err)
+	}
+	_, err := rt.Compile(customCarrierChainModule("test.value.0", "test.value.alias.drop", 0x7f))
+	if err == nil || !strings.Contains(err.Error(), "incompatible custom type") {
+		t.Fatalf("compile error = %v, want incompatible custom type", err)
+	}
+}
+
 func TestCustomTypeRegistrationRejectsConflictsAndForeignTokens(t *testing.T) {
 	first := (&Registry{}).Compiler()
 	typ, err := first.Type(CustomTypeSpec{Name: "test.value", Size: 32, Carrier: WasmI32})
@@ -166,6 +210,10 @@ func TestCustomTypeRegistrationRejectsConflictsAndForeignTokens(t *testing.T) {
 }
 
 func customCarrierModule(name string, carrier byte) []byte {
+	return customCarrierChainModule(name, name+".drop", carrier)
+}
+
+func customCarrierChainModule(producer, consumer string, carrier byte) []byte {
 	produce := []byte{0x60, 0, 1, carrier}
 	consume := []byte{0x60, 1, carrier, 0}
 	run := wasmtest.FuncType(nil, nil)
@@ -176,7 +224,7 @@ func customCarrierModule(name string, carrier byte) []byte {
 	}
 	return wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(produce, consume, run)),
-		wasmtest.Section(2, wasmtest.Vec(importFunc(name, 0), importFunc(name+".drop", 1))),
+		wasmtest.Section(2, wasmtest.Vec(importFunc(producer, 0), importFunc(consumer, 1))),
 		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2))),
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 2))),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x10, 0, 0x10, 1, 0x0b}))),
