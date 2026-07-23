@@ -336,6 +336,13 @@ func TestCompiledValidateRejectsMalformedMetadata(t *testing.T) {
 			c.Globals = []GlobalDef{{Type: ValFuncRef}}
 			c.Elems = []ElemInit{{RefType: ValFuncRef, Mode: ElemModeActive, Values: []RefInit{{HasGlobal: true, GlobalIndex: 0}}}}
 		}, want: "must reference an immutable imported global"},
+		{name: "element global init ref scalar", mut: func(c *Compiled) {
+			c.HasTable = true
+			c.TableSize = 1
+			c.GlobalImports = []GlobalImportDef{{Module: "env", Name: "scalar", Type: ValI32}}
+			c.Globals = []GlobalDef{{Type: ValI32}}
+			c.Elems = []ElemInit{{RefType: ValFuncRef, Mode: ElemModeActive, Values: []RefInit{{HasGlobal: true, GlobalIndex: 0}}}}
+		}, want: "global 0 type i32 does not match funcref"},
 		{name: "data offset ref not imported", mut: func(c *Compiled) { c.Data = []DataInit{{Offset: OffsetInit{HasGlobal: true, Global: 0}}} }, want: "data 0 offset global 0 must be imported immutable i32"},
 		{name: "arena footprint too large", mut: func(c *Compiled) { c.HasTable = true; c.TableSize = wruntime.InstantiateArenaSize }, want: "instantiate arena need"},
 		{name: "passive element footprint too large", mut: func(c *Compiled) {

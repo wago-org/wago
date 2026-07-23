@@ -472,7 +472,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 				return fmt.Errorf("element global initializer index %d out of range", value.GlobalIndex)
 			}
 			global := globalCells[value.GlobalIndex]
-			if normalizedElemRefType(global.Type) != normalizedElemRefType(refType) {
+			if global.Type != normalizedElemRefType(refType) {
 				return fmt.Errorf("element global initializer type %s does not match %s", global.Type, refType)
 			}
 			bits := readGlobalObject(global, global.Type)

@@ -1345,7 +1345,7 @@ func (c *Compiled) validateElementGlobalInitializer(kind string, seg, valueIndex
 	if uint64(globalIndex) >= uint64(len(c.GlobalImports)) || source.Mutable {
 		return fmt.Errorf("compiled metadata invalid: %s element %d global %d must reference an immutable imported global", kind, seg, globalIndex)
 	}
-	if normalizedElemRefType(source.Type) != refType {
+	if source.Type != refType {
 		return fmt.Errorf("compiled metadata invalid: %s element %d global %d type %s does not match %s", kind, seg, globalIndex, source.Type, refType)
 	}
 	return nil
