@@ -228,7 +228,9 @@ func AsI32(b uint64) int32 { return impl.AsI32(b) }
 
 func AsI64(b uint64) int64 { return impl.AsI64(b) }
 
-func BitsFromUint32(width int32, v uint32) (Bits, error) { return impl.BitsFromUint32(width, v) }
+func BitsFromUint32(width int32, value uint32) (Bits, error) {
+	return impl.BitsFromUint32(width, value)
+}
 
 func CapabilityDocs(docs string) CapabilityOption { return impl.CapabilityDocs(docs) }
 

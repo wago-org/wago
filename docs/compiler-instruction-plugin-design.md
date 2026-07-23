@@ -126,3 +126,23 @@ same ordinary imports independently.
 Instruction modules and names are plugin-owned strings. Versioning and
 compatibility policy belong to the plugin; Wago does not impose a hash or
 version-locking scheme.
+
+## Implementation seam
+
+`src/core/plugins` owns the backend-neutral instruction module: logical bit
+values, `InstructionSpec`, recipe construction and validation, SIMD semantics,
+and the canonical native-lowering model. This keeps plugin contracts independent
+of a particular compiler backend and lets registration validate each definition
+once.
+
+`src/wago` is the public compatibility adapter. Its existing instruction types
+are aliases of `core/plugins`, so extensions keep the same source interface; it
+adds only registry integration, portable host imports, and opaque-value handle
+management.
+
+Railshot integrates through
+`src/core/compiler/backend/railshot/custom_instruction.go`, a compatibility
+adapter that aliases the canonical lowering model and retains Railshot-specific
+memory-range proofs. Backend emitters consume that model but do not own or
+redefine plugin semantics. A future backend can integrate the same model without
+depending on Railshot.

@@ -31,7 +31,7 @@ func (s *instructionState) allocValue(v Bits) uint32 {
 		s.values = make(map[uint32]Bits)
 	}
 	id := s.allocID()
-	s.values[id] = v.clone()
+	s.values[id] = v.Clone()
 	return id
 }
 
@@ -42,7 +42,7 @@ func (s *instructionState) allocPack(values []Bits) uint32 {
 	id := s.allocID()
 	copyValues := make([]Bits, len(values))
 	for i := range values {
-		copyValues[i] = values[i].clone()
+		copyValues[i] = values[i].Clone()
 	}
 	s.packs[id] = instructionResultPack{values: copyValues}
 	return id
@@ -84,10 +84,10 @@ func instructionImport(ins *registeredInstruction) *registeredImport {
 				continue
 			}
 			v, ok := in.instructionState.values[word]
-			if !ok || !v.validFor(width) {
+			if !ok || !v.ValidFor(width) {
 				panic(instructionTrap{fmt.Errorf("wago: instruction %s.%s input %d: invalid %d-bit value handle %d", ins.spec.Module, ins.spec.Name, i, width, word)})
 			}
-			args[i] = v.clone()
+			args[i] = v.Clone()
 		}
 		out, err := ins.spec.Handler(m, args)
 		if err != nil {
@@ -97,7 +97,7 @@ func instructionImport(ins *registeredInstruction) *registeredImport {
 			panic(instructionTrap{fmt.Errorf("wago: instruction %s.%s returned %d value(s), want %d", ins.spec.Module, ins.spec.Name, len(out), len(ins.spec.Output))})
 		}
 		for i, width := range ins.spec.Output {
-			if !out[i].validFor(width) {
+			if !out[i].ValidFor(width) {
 				panic(instructionTrap{fmt.Errorf("wago: instruction %s.%s output %d has width %d, want %d", ins.spec.Module, ins.spec.Name, i, out[i].Width(), width)})
 			}
 		}

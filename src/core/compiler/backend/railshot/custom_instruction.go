@@ -1,65 +1,43 @@
 package railshot
 
 import (
-	"github.com/wago-org/wago/src/core/compiler/machinecode"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	coreplugins "github.com/wago-org/wago/src/core/plugins"
 )
 
-type CustomInstructionOp uint8
+// Compatibility aliases keep Railshot's existing integration surface stable
+// while core/plugins owns the canonical instruction model.
+type CustomInstructionOp = coreplugins.InstructionOp
+type CustomInstructionNode = coreplugins.InstructionNode
+type CustomSIMDInstruction = coreplugins.SIMDInstruction
+type CustomInstruction = coreplugins.Instruction
 
 const (
-	CustomInstructionInput CustomInstructionOp = iota
-	CustomInstructionConst
-	CustomInstructionAdd
-	CustomInstructionSub
-	CustomInstructionMul
-	CustomInstructionAnd
-	CustomInstructionOr
-	CustomInstructionXor
-	CustomInstructionNot
-	CustomInstructionShl
-	CustomInstructionShrU
-	CustomInstructionShrS
-	CustomInstructionEq
-	CustomInstructionNe
-	CustomInstructionLtU
-	CustomInstructionLtS
-	CustomInstructionLeU
-	CustomInstructionLeS
-	CustomInstructionGtU
-	CustomInstructionGtS
-	CustomInstructionGeU
-	CustomInstructionGeS
-	CustomInstructionIsZero
-	CustomInstructionSelect
+	CustomInstructionInput  = coreplugins.InstructionInput
+	CustomInstructionConst  = coreplugins.InstructionConst
+	CustomInstructionAdd    = coreplugins.InstructionAdd
+	CustomInstructionSub    = coreplugins.InstructionSub
+	CustomInstructionMul    = coreplugins.InstructionMul
+	CustomInstructionAnd    = coreplugins.InstructionAnd
+	CustomInstructionOr     = coreplugins.InstructionOr
+	CustomInstructionXor    = coreplugins.InstructionXor
+	CustomInstructionNot    = coreplugins.InstructionNot
+	CustomInstructionShl    = coreplugins.InstructionShl
+	CustomInstructionShrU   = coreplugins.InstructionShrU
+	CustomInstructionShrS   = coreplugins.InstructionShrS
+	CustomInstructionEq     = coreplugins.InstructionEq
+	CustomInstructionNe     = coreplugins.InstructionNe
+	CustomInstructionLtU    = coreplugins.InstructionLtU
+	CustomInstructionLtS    = coreplugins.InstructionLtS
+	CustomInstructionLeU    = coreplugins.InstructionLeU
+	CustomInstructionLeS    = coreplugins.InstructionLeS
+	CustomInstructionGtU    = coreplugins.InstructionGtU
+	CustomInstructionGtS    = coreplugins.InstructionGtS
+	CustomInstructionGeU    = coreplugins.InstructionGeU
+	CustomInstructionGeS    = coreplugins.InstructionGeS
+	CustomInstructionIsZero = coreplugins.InstructionIsZero
+	CustomInstructionSelect = coreplugins.InstructionSelect
 )
-
-type CustomInstructionNode struct {
-	Op      CustomInstructionOp
-	Width   int32
-	A, B, C int
-	Input   int
-	Const   uint32
-}
-
-// CustomSIMDInstruction describes a pointer-based, architecture-neutral wide
-// SIMD operation. The physical Wasm parameters are destination first followed
-// by Arity input pointers. Backends choose their native vector width.
-type CustomSIMDInstruction struct {
-	Width     uint16
-	Subopcode uint32
-	Arity     uint8
-}
-
-type CustomInstruction struct {
-	Nodes           []CustomInstructionNode
-	Output          int
-	StackCompatible bool
-	AMD64           *machinecode.AMD64Lowering
-	SIMD            *CustomSIMDInstruction
-	InputWidths     []int32
-	ResultWidth     int32
-}
 
 // ConstantMemoryRangeInMinimum reports whether address..address+size is present
 // from instantiation onward. Linear memory never shrinks, so backends may omit a
