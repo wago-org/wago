@@ -32,7 +32,7 @@ type Instance struct {
 	hostLog                []byte
 	ctrl                   []byte                              // sync host-call control frame (nil in async mode)
 	syncHosts              []HostFunc                          // per import-func-index host, sync mode only
-	hostCall               runtime.HostCall                    // per-instance sync host dispatcher, allocated once
+	hostCall               runtime.HostCall                    // active instance's bound host imports
 	pluginState            atomic.Pointer[instancePluginState] // allocated only after privileged instance services activate
 	globals                []byte                              // pointer table handed to JIT code
 	globalCells            []*Global

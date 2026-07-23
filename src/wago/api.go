@@ -490,20 +490,28 @@ func asyncReplayable(sig FuncSig) bool {
 		(len(sig.Params) == 0 || sig.Params[0] == ValI32)
 }
 
-func (c *Compiled) importsRequireSync(_ Imports, force bool) bool {
+func (c *Compiled) importsRequireSync(imports Imports, force bool) bool {
 	if force || forceSyncHostImports || c.needsPublicFuncrefHostReentry() {
 		return true
 	}
-	// Any function import may later be reached while this instance is a
-	// cross-instance callee. Use the parked-host protocol even for legacy void
-	// HostFunc bindings so dispatch cannot be logged into a buffer the public root
-	// never replays. InstanceExport-only consumers also need the loop because the
-	// active producer may make a host call.
-	if len(c.Imports) != 0 {
+	for _, key := range c.Imports {
+		if export, cross := imports[key].(*InstanceExport); cross {
+			// A cross-instance-only consumer needs the parked-host loop only when
+			// its target can itself park. syncMode is immutable after the producer
+			// is instantiated and already includes its transitive direct imports.
+			if export == nil || export.inst == nil || export.inst.syncMode {
+				return true
+			}
+			continue
+		}
+		// Every actual host binding remains synchronous. In particular, a legacy
+		// replayable HostFunc may later be reached through an InstanceExport, where
+		// logging into the callee's private buffer would be invisible to the public
+		// root. Only host-free cross-instance links take the fast native path.
 		return true
 	}
-	// An imported funcref table can already contain a host or cross-instance
-	// descriptor even when this module has no function imports of its own.
+	// An imported funcref table can be mutated to contain a host or
+	// cross-instance descriptor after instantiation, so it remains conservative.
 	for i := 0; i < c.tableImportCount(); i++ {
 		if c.tableElementType(i) == ValFuncRef {
 			return true

@@ -67,19 +67,23 @@ that have never been entered as public roots.
 
 The process-wide native execution lease is released before arbitrary Go host
 code runs. Nested Wasm entry may therefore acquire the lease without deadlock.
-On every normal return or panic path the dispatcher reacquires the lease and
-rebinds the exact parked callee context; immediately before `resumeNative`, the
-runtime restores the parked activation's trap pointer, stack fence, and
-architecture-specific trap re-entry control. `HostExit`, traps, and propagated
-host panics therefore cannot leave a lease held or resume against a context
-installed by nested entry.
+On every normal return or panic path the dispatcher reacquires the lease. It
+rebinds the exact parked callee context when the execution epoch shows that a
+nested or competing public entry ran; otherwise the already-installed context
+is reused. Immediately before `resumeNative`, the runtime restores the parked
+activation's trap pointer, stack fence, and architecture-specific trap re-entry
+control. `HostExit`, traps, and propagated host panics therefore cannot leave a
+lease held or resume against a context installed by nested entry.
 
-Modules with function imports use synchronous dispatch, including legacy void
-HostFunc signatures, because such an instance may later execute as a
-cross-instance callee. Modules importing a funcref table also use the synchronous
-loop because the table may already contain a host descriptor. The old async log
-format remains an internal compatibility path but is not selected for these
-compositions.
+Instances with actual host bindings use synchronous dispatch, including legacy
+void HostFunc signatures, because such an instance may later execute as a
+cross-instance callee. That parking capability propagates transitively through
+canonical InstanceExport imports. A host-free cross-instance-only consumer whose
+targets cannot park uses the ordinary native entry path and allocates neither a
+control frame nor an async replay log. Modules importing a funcref table remain
+synchronous because the table may be mutated to contain a host descriptor. The
+old async log format remains an internal compatibility path but is not selected
+for these compositions.
 
 ## Guarded host memory access
 

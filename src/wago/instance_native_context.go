@@ -12,7 +12,10 @@ import (
 // target basedata region they may rebind without recursive per-memory lock
 // ordering. Synchronous host dispatch releases the lease while arbitrary Go code
 // runs, then reacquires it and rebinds the exact parked callee before resume.
-var nativeExecutionMu sync.Mutex
+var (
+	nativeExecutionMu    sync.Mutex
+	nativeExecutionEpoch uint64 // guarded by nativeExecutionMu; advances on every public native entry
+)
 
 type executionLease struct{}
 
@@ -22,6 +25,7 @@ type executionLease struct{}
 // the engine entry/resume paths.
 func (in *Instance) beginNativeEntry() *executionLease {
 	nativeExecutionMu.Lock()
+	nativeExecutionEpoch++
 	in.bindNativeContext()
 	return &executionLease{}
 }

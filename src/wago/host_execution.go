@@ -42,25 +42,39 @@ func offHeapSlicePtr(b []byte) uintptr {
 	return uintptr(unsafe.Pointer(&b[0]))
 }
 
-// dispatchSynchronousHostCall runs the active callee's host binding without the
-// non-reentrant native execution lease. The deferred reacquire covers normal
-// return, HostExit, validation panics, and arbitrary host panics. Rebinding the
-// parked callee after nested wasm entry is mandatory before Engine resumes its
-// saved activation.
-func dispatchSynchronousHostCall(ctrl uintptr, importIdx uint32, args, results []uint64) {
-	value, ok := hostControlInstances.Load(ctrl)
-	if !ok {
-		panic(invalidHostReference{err: fmt.Errorf("host control frame %x has no live instance", ctrl)})
+// dispatchSynchronousHostCall routes the common root-instance host call without
+// touching the process-wide registry. A cross-instance callee falls back to the
+// active control-frame lookup published by its native host stub.
+func (root *Instance) dispatchSynchronousHostCall(ctrl uintptr, importIdx uint32, args, results []uint64) {
+	active := root
+	if root == nil || ctrl != offHeapSlicePtr(root.ctrl) {
+		value, ok := hostControlInstances.Load(ctrl)
+		if !ok {
+			panic(invalidHostReference{err: fmt.Errorf("host control frame %x has no live instance", ctrl)})
+		}
+		active, ok = value.(*Instance)
+		if !ok || active == nil {
+			panic(invalidHostReference{err: fmt.Errorf("host control frame %x has no live instance", ctrl)})
+		}
 	}
-	active, ok := value.(*Instance)
-	if !ok || active == nil || active.hostCall == nil {
+	if active.hostCall == nil {
 		panic(invalidHostReference{err: fmt.Errorf("host control frame %x has no dispatcher", ctrl)})
 	}
 
+	// Run arbitrary Go host code without the non-reentrant native execution
+	// lease. The deferred reacquire covers normal return, HostExit, validation
+	// panics, and arbitrary host panics. Rebind the exact parked callee because a
+	// nested wasm entry may have replaced its shared basedata context.
+	epoch := nativeExecutionEpoch
 	nativeExecutionMu.Unlock()
 	defer func() {
 		nativeExecutionMu.Lock()
-		active.bindNativeContext()
+		// If no nested or competing public entry ran while host code owned the Go
+		// stack, the parked callee's basedata is still installed. Avoid rewriting
+		// all eight context words on this overwhelmingly common return path.
+		if nativeExecutionEpoch != epoch {
+			active.bindNativeContext()
+		}
 	}()
 	active.hostCall(ctrl, importIdx, args, results)
 }

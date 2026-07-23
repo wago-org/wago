@@ -45,6 +45,16 @@ func crossHostProducerModule() []byte {
 	)
 }
 
+func voidImportForwarderModule(importModule, importName, exportName string) []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(2, wasmtest.Vec(portableFuncImportEntry(importModule, importName, 0))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry(exportName, 0, 1))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x10, 0x00, 0x0b}))),
+	)
+}
+
 func privateSharedMemoryReaderModule(initial int32) []byte {
 	return wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
@@ -93,6 +103,41 @@ func crossHostConsumerModule() []byte {
 	)
 }
 
+func TestReplayableHostProducerPropagatesSynchronousDispatch(t *testing.T) {
+	producerCode := MustCompile(voidImportForwarderModule("env", "tick", "run"))
+	defer producerCode.Close()
+	calls := 0
+	producer, err := Instantiate(producerCode, Imports{"env.tick": HostFunc(func(HostModule, []uint64, []uint64) { calls++ })})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer producer.Close()
+	if !producer.syncMode {
+		t.Fatal("replayable host-only producer did not enable synchronous dispatch")
+	}
+
+	target, err := producer.ExportedFunc("run")
+	if err != nil {
+		t.Fatal(err)
+	}
+	consumerCode := MustCompile(voidImportForwarderModule("producer", "run", "call"))
+	defer consumerCode.Close()
+	consumer, err := Instantiate(consumerCode, Imports{"producer.run": target})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer consumer.Close()
+	if !consumer.syncMode {
+		t.Fatal("consumer did not inherit replayable producer host capability")
+	}
+	if results, err := consumer.Invoke("call"); err != nil || len(results) != 0 {
+		t.Fatalf("call = %v, %v", results, err)
+	}
+	if calls != 1 {
+		t.Fatalf("host calls = %d, want 1", calls)
+	}
+}
+
 func TestCrossInstanceHostDispatchUsesActiveCallee(t *testing.T) {
 	m1, err := NewSharedMemory(1, 1)
 	if err != nil {
@@ -138,6 +183,9 @@ func TestCrossInstanceHostDispatchUsesActiveCallee(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer producer.Close()
+	if !producer.syncMode {
+		t.Fatal("host-capable producer did not enable synchronous dispatch")
+	}
 
 	asyncExport, _ := producer.ExportedFunc("call_async")
 	syncExport, _ := producer.ExportedFunc("call_sync")
@@ -154,6 +202,9 @@ func TestCrossInstanceHostDispatchUsesActiveCallee(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer consumer.Close()
+	if !consumer.syncMode {
+		t.Fatal("consumer did not inherit host-parking capability from producer")
+	}
 
 	for _, name := range []string{"direct_async", "indirect_async"} {
 		if values, callErr := consumer.Invoke(name); callErr != nil || len(values) != 0 {

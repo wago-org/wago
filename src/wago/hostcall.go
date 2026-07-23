@@ -630,7 +630,7 @@ func (in *Instance) callNativeSync(entry uintptr) (err error) {
 	if in.hostCall == nil {
 		in.hostCall = in.newHostDispatch()
 	}
-	err = in.eng.CallWithHostBase(entry, in.serArgs, in.jm.LinMemBase(), in.trap, in.results, in.ctrl, dispatchSynchronousHostCall)
+	err = in.eng.CallWithHostBase(entry, in.serArgs, in.jm.LinMemBase(), in.trap, in.results, in.ctrl, in.dispatchSynchronousHostCall)
 	goruntime.KeepAlive(in)
 	goruntime.KeepAlive(in.c)
 	return err
