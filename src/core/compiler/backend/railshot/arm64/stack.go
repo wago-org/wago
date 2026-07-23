@@ -76,7 +76,7 @@ const (
 // and elide dead loads (WARP liftToRegInPlace). borrow >= 0 marks ea as local
 // `borrow`'s pinned register read in place: consumers must not write or release
 // it, and a local.set of that local materializes the load first (realizeLocalRefs).
-func memRefStorage(ea Reg, disp int32, size int, signed, wide bool, borrow int) storage {
+func memRefStorage(ea Reg, disp int32, size int, signed, wide bool, borrow, aliasLocal int) storage {
 	typ := mtI32
 	if wide {
 		typ = mtI64
@@ -85,22 +85,29 @@ func memRefStorage(ea Reg, disp int32, size int, signed, wide bool, borrow int) 
 	if signed {
 		sidx |= 0x100
 	}
+	if aliasLocal >= 0 {
+		sidx |= (aliasLocal + 1) << 10
+	}
 	return storage{kind: stMemRef, typ: typ, reg: ea, slot: int(disp), idx: sidx, cval: int64(borrow + 1)}
 }
 
-func fmemRefStorage(ea Reg, disp int32, f64 bool, borrow int) storage {
+func fmemRefStorage(ea Reg, disp int32, f64 bool, borrow, aliasLocal int) storage {
 	typ := mtF32
 	size := 4
 	if f64 {
 		typ = mtF64
 		size = 8
 	}
+	if aliasLocal >= 0 {
+		size |= (aliasLocal + 1) << 10
+	}
 	return storage{kind: stMemRef, typ: typ, reg: ea, slot: int(disp), idx: size, cval: int64(borrow + 1)}
 }
 
-func (st storage) memDisp() int32  { return int32(st.slot) }
-func (st storage) memSize() int    { return st.idx & 0xff }
-func (st storage) memSigned() bool { return st.idx&0x100 != 0 }
+func (st storage) memDisp() int32     { return int32(st.slot) }
+func (st storage) memSize() int       { return st.idx & 0xff }
+func (st storage) memSigned() bool    { return st.idx&0x100 != 0 }
+func (st storage) memAliasLocal() int { return (st.idx >> 10) - 1 }
 
 // memBorrow returns the local whose pinned register serves as this deferred
 // load's address, or -1 when the address register is owned.

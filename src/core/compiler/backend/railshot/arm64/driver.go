@@ -1077,9 +1077,10 @@ func (f *fn) realizeLocalRefs(x int, skipFrom *elem) {
 		switch {
 		case e.kind == ekValue && (e.st.kind == stLocalRef || e.st.kind == stLocalReg) && e.st.idx == x:
 			f.materializeByType(e)
-		case e.kind == ekValue && e.st.kind == stMemRef && e.st.memBorrow() == x:
-			// A deferred load addressing through x's pinned register: emit it
-			// before x is overwritten.
+		case e.kind == ekValue && e.st.kind == stMemRef && (e.st.memBorrow() == x || e.st.memAliasLocal() == x):
+			// A deferred load derived from x must execute before x is overwritten.
+			// memBorrow covers an in-place pinned address; memAliasLocal also covers
+			// the owned zero-extension copy used for wasm i32 addresses.
 			f.materializeByType(e)
 		case e.kind == ekDeferred && subtreeRefsLocal(e, x):
 			f.condense(e, regNone)

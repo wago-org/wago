@@ -321,12 +321,17 @@ func (f *fn) memLoad(r *wasm.Reader, size int, signed, wide bool) error {
 	// liftToRegInPlace): the deferred load records the borrow so a local.set of
 	// that local realizes the load first, and consumers neither write nor
 	// release the register.
+	addrLocal, addrOK := localAddressKey(f.s.back())
+	aliasLocal := -1
+	if addrOK {
+		aliasLocal = addrLocal
+	}
 	ea, eaOwned, borrow, disp := f.memAddr(off, size, true)
 	// Defer the load: push a bounds-checked memory reference (the LDR is emitted
 	// when the value is materialized — arm64 has no memory operand to fold into,
 	// so unlike x86 there is no r/m consumer, but deferring still lets the consumer
 	// pick the destination register and elide dead loads).
-	e := f.pushValue(memRefStorage(ea, disp, size, signed, wide, borrow))
+	e := f.pushValue(memRefStorage(ea, disp, size, signed, wide, borrow, aliasLocal))
 	if eaOwned {
 		f.regUser[ea] = e // an owned address register belongs to the deferred load
 	}
@@ -352,9 +357,10 @@ func (f *fn) memStore(r *wasm.Reader, size int) error {
 		f.stats.peep("store-imm")
 		v := top.st.cval
 		f.erase(top)
+		addrLocal, addrOK := localAddressKey(f.s.back())
 		ea, eaOwned, _, disp := f.memAddr(off, size, true)
 		f.pinned = f.pinned.add(ea)
-		f.materializePendingLoadsBeforeStore(ea, disp, size)
+		f.materializePendingLoadsBeforeStore(ea, addrLocal, addrOK, disp, size)
 		if size == 8 {
 			f.a.StoreImmIdx(linMemReg, ea, disp, int32(v), 4)
 			f.a.StoreImmIdx(linMemReg, ea, disp+4, int32(v>>32), 4)
@@ -377,7 +383,7 @@ func (f *fn) memStore(r *wasm.Reader, size int) error {
 	addrLocal, addrOK := localAddressKey(f.s.back())
 	ea, eaOwned, _, disp := f.memAddr(off, size, true)
 	f.pinned = f.pinned.add(ea)
-	f.materializePendingLoadsBeforeStore(ea, disp, size)
+	f.materializePendingLoadsBeforeStore(ea, addrLocal, addrOK, disp, size)
 	f.a.StoreIdx(linMemReg, ea, vreg, disp, size)
 	f.pinned = f.pinned.remove(ea)
 	f.pinned = f.pinned.remove(vreg)
