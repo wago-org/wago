@@ -3,6 +3,7 @@
 package runtime
 
 import (
+	"encoding/binary"
 	"sync"
 
 	a64 "github.com/wago-org/wago/src/core/encoder/arm64"
@@ -51,13 +52,20 @@ const hostCallPending = 0x10000
 const HostCtrlFrameBytes = ctrlFrameSize
 const MaxHostArity = maxHostArity
 
-type HostCall func(importIdx uint32, args, results []uint64)
+type HostCall func(ctrl uintptr, importIdx uint32, args, results []uint64)
 
 var (
 	hostStubOnce sync.Once
 	hostStubPtr  uintptr
 	hostStubErr  error
 )
+
+func prepareHostResume(ctrl, trap []byte, _ uintptr, stackLimit uintptr) {
+	linMem := uintptr(binary.LittleEndian.Uint64(ctrl[hcSavedLinMem:]))
+	storeOffHeapU64(linMem-abi.TrapCellPtrOffset, uint64(slicePtr(trap)))
+	storeOffHeapU64(linMem-offStackFence, uint64(stackLimit))
+	// resumeNative reinstalls the ARM64 trap re-entry SP and continuation PC.
+}
 
 func hostCallStubPtr() (uintptr, error) {
 	hostStubOnce.Do(func() {
@@ -99,6 +107,7 @@ func hostCallStub() []byte {
 	a.StrF(a64.X9, hcSavedV15, a64.Reg(15), true)
 	a.SubImm64(a64.X10, a64.X26, abi.TrapCellPtrOffset)
 	mustEncode(a.Load64(a64.X10, a64.X10, 0))
+	mustEncode(a.Store64(a64.X9, a64.X10, 8)) // publish the exact active control frame at trap+8
 	a.MovImm64(a64.X11, hostCallPending)
 	mustEncode(a.Store32(a64.X11, a64.X10, 0))
 	a.SubImm64(a64.X10, a64.X26, offTrapStackReentry)

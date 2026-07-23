@@ -67,6 +67,7 @@ settrap:
 	MOVD	-104(R26), R12          // basedata trap-cell pointer
 	CBZ	R12, chain               // no active guarded call: not ours
 	MOVW	R13, (R12)
+	MOVD	R26, 88(R14)            // saved X9 = linMem for the landing pad
 	MOVD	·guardTrapExitHandlerJumpPC(SB), R9
 	MOVD	R9, 272(R14)            // saved PC = native trap-exit landing pad
 	MOVWU	284(R14), R9
@@ -99,12 +100,13 @@ TEXT ·addrGuardSigHandler(SB), NOSPLIT, $0-8
 	RET
 
 // nativeTrapExitHandlerJump restores the foreign-stack save-area pointer and
-// branches to enterNative's continuation. X26 remains the faulting linMem.
+// branches to enterNative's continuation. The handler passes linMem explicitly
+// in saved X9 so replacement-PC return does not depend on X26 preservation.
 TEXT ·nativeTrapExitHandlerJump(SB), NOSPLIT|NOFRAME, $0-0
-	MOVD	-24(R26), R9
-	MOVD	R9, RSP
-	MOVD	-32(R26), R9
-	B	(R9)
+	MOVD	-24(R9), R10
+	MOVD	R10, RSP
+	MOVD	-32(R9), R10
+	B	(R10)
 
 TEXT ·addrNativeTrapExitHandlerJump(SB), NOSPLIT, $0-8
 	MOVD	$·nativeTrapExitHandlerJump(SB), R0

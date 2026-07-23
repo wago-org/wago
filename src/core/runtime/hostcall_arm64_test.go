@@ -13,7 +13,7 @@ func hostCallFixture(t *testing.T, jm *JobMemory, ar *Arena) (serArgs, results, 
 	t.Helper()
 	serArgs = ar.Alloc(16)
 	results = ar.Alloc(16)
-	trap = ar.Alloc(8)
+	trap = ar.Alloc(TrapBufferBytes)
 	ctrl = ar.Alloc(ctrlFrameSize)
 	jm.SetCustomCtx(slicePtr(ctrl))
 	return
@@ -63,7 +63,7 @@ func TestHostCallRoundtrip(t *testing.T) {
 	calls := 0
 	var sawImport uint32
 	var sawArg uint64
-	host := func(imp uint32, args, res []uint64) {
+	host := func(_ uintptr, imp uint32, args, res []uint64) {
 		calls++
 		sawImport = imp
 		sawArg = args[0]

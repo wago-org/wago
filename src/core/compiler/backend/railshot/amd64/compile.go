@@ -285,9 +285,9 @@ type fn struct {
 	// splice (the synthetic frame is always at index >= 1, above ctrl[0]=cfFunc).
 	inlineRetFrame int
 
-	// importBindings, when non-nil, resolves imported-function calls to host
-	// (log-and-replay) or cross-instance (native context-swap) lowering. Set only
-	// on the link-time recompile of a module with cross-instance imports.
+	// importBindings selects imported-call lowering. Production compilation uses
+	// Dynamic bindings so each call loads its wrapper target and contexts from the
+	// per-instance dispatch table; immediate bindings remain for low-level tests.
 	importBindings []ImportBinding
 
 	// syncHostCalls is set when the module has any returning host import, so every
@@ -505,10 +505,9 @@ type CompileOptions struct {
 	// env var forces the same globally; this is the per-compile override.
 	NoBoundsFacts bool
 
-	// ImportBindings, when non-nil, resolves imported functions to host or
-	// cross-instance lowering (indexed by imported-function index). Used by the
-	// link-time recompile that wires cross-instance calls; nil means every import
-	// is a host import (the default single-pass compile).
+	// ImportBindings selects imported-function lowering by Wasm import index.
+	// Dynamic bindings produce binding-independent code backed by the instance
+	// dispatch table. nil retains the low-level legacy host-import path.
 	ImportBindings []ImportBinding
 
 	// SyncHostCalls forces host imports through the synchronous host-call control
@@ -620,25 +619,14 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		totalBody += len(m.Code[i].BodyBytes)
 	}
 	codeCap := shared.TaperedModuleCodeCapacity(totalBody, n, 40, 37, 1<<20)
-	workers := opts.Workers
-	if workers > 1 {
-		if max := runtime.GOMAXPROCS(0); workers > max {
-			workers = max
-		}
-		if workers > n {
-			workers = n
-		}
-	}
+	workers := shared.ResolveWorkers(opts.Workers, n, runtime.GOMAXPROCS(0))
 	if workers <= 1 {
 		// Keep the serial compiler as a distinct fast path: one reusable scratch,
 		// no goroutines, channels, atomics, worker metadata, or intermediate arena.
 		sc := newScratch()
 		code := make([]byte, 0, codeCap)
 		pressureDone := false
-		pressureAt := opts.MemoryPressureAt
-		if opts.MemoryPressure != nil && pressureAt <= 0 {
-			pressureAt = cap(code) * 7 / 8
-		}
+		pressureAt := shared.PressureThreshold(opts.MemoryPressureAt, cap(code))
 		for i := range m.Code {
 			hints := allHints[i]
 			var st *CodegenStats
@@ -698,10 +686,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	}
 	states := make([]workerState, workers)
 	arenaCap := (codeCap + workers - 1) / workers
-	pressureAt := opts.MemoryPressureAt
-	if opts.MemoryPressure != nil && pressureAt <= 0 {
-		pressureAt = codeCap * 7 / 8
-	}
+	pressureAt := shared.PressureThreshold(opts.MemoryPressureAt, codeCap)
 	var pressureBytes atomic.Int64
 	var pressureOnce sync.Once
 	for i := range states {
@@ -776,12 +761,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 }
 
 func firstFuncError(results []funcResult) (int, error) {
-	for i := range results {
-		if results[i].err != nil {
-			return i, results[i].err
-		}
-	}
-	return 0, nil
+	return shared.FirstErrorIndex(len(results), func(i int) error { return results[i].err })
 }
 
 // moduleGlobalPinInfos converts the internal module-global pin assignments to the

@@ -72,9 +72,9 @@ func benchReturningImportModule() []byte {
 	return returningImportModule(returningI32Sig(), []byte{0x00, 0x20, 0x00, 0x10, 0x00, 0x0b}) // local.get 0; call 0; end
 }
 
-// benchParallelLinkModule builds a link-deferred module with enough independent
-// local functions to measure worker policy propagation through link-time codegen.
-func benchParallelLinkModule(funcs, adds int) []byte {
+// benchImportedModule builds a module with enough independent local functions
+// to measure worker policy while every imported call uses dynamic dispatch.
+func benchImportedModule(funcs, adds int) []byte {
 	sig := wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32})
 	imp := append(append(wasmtest.Name("env"), wasmtest.Name("f")...), 0x00, 0x00) // func, type 0
 	funcTypes := make([][]byte, funcs)
@@ -305,12 +305,10 @@ func BenchmarkCompileSmallScalar(b *testing.B) {
 	}
 }
 
-// BenchmarkCompileLinkWorkers measures the public decode+validate plus deferred
-// host-link codegen path. A fresh Compiled is used per iteration so the host-link
-// cache cannot hide recompilation.
-func BenchmarkCompileLinkWorkers(b *testing.B) {
-	mod := benchParallelLinkModule(1600, 128)
-	imports := Imports{"env.f": HostFunc(func(_ HostModule, params, results []uint64) { results[0] = params[0] })}
+// BenchmarkCompileImportedWorkers measures complete decode, validation, and
+// binding-independent code generation for a large function-import module.
+func BenchmarkCompileImportedWorkers(b *testing.B) {
+	mod := benchImportedModule(1600, 128)
 	for _, mode := range []struct {
 		name    string
 		workers int
@@ -323,12 +321,7 @@ func BenchmarkCompileLinkWorkers(b *testing.B) {
 				if err != nil {
 					b.Fatal(err)
 				}
-				linked, err := c.linkModule(imports, nil)
-				if err != nil {
-					_ = c.Close()
-					b.Fatal(err)
-				}
-				benchCompiledSink = linked
+				benchCompiledSink = c
 				if err := c.Close(); err != nil {
 					b.Fatal(err)
 				}
@@ -1223,6 +1216,93 @@ func BenchmarkInvokeHostFuncDirect(b *testing.B) {
 	}
 }
 
+func BenchmarkInvokeCrossInstanceDirect(b *testing.B) {
+	producerCode := benchMustCompile(b, benchAddOneModule())
+	defer producerCode.Close()
+	producer, err := Instantiate(producerCode, InstantiateOptions{})
+	if err != nil {
+		b.Fatalf("Instantiate producer: %v", err)
+	}
+	defer producer.Close()
+	target, err := producer.ExportedFunc("f")
+	if err != nil {
+		b.Fatalf("ExportedFunc: %v", err)
+	}
+	consumerCode := benchMustCompile(b, benchReturningImportModule())
+	defer consumerCode.Close()
+	consumer, err := Instantiate(consumerCode, InstantiateOptions{Imports: Imports{"env.f": target}})
+	if err != nil {
+		b.Fatalf("Instantiate consumer: %v", err)
+	}
+	defer consumer.Close()
+	if _, err := consumer.Invoke("g", I32(1)); err != nil {
+		b.Fatalf("warm Invoke: %v", err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		res, err := consumer.Invoke("g", I32(int32(i)))
+		if err != nil {
+			b.Fatal(err)
+		}
+		benchResultSink = res
+	}
+}
+
+func BenchmarkInvokeCrossInstanceIndirect(b *testing.B) {
+	producerCode := benchMustCompile(b, benchAddOneModule())
+	defer producerCode.Close()
+	producer, err := Instantiate(producerCode)
+	if err != nil {
+		b.Fatalf("Instantiate producer: %v", err)
+	}
+	defer producer.Close()
+	target, err := producer.ExportedFunc("f")
+	if err != nil {
+		b.Fatalf("ExportedFunc: %v", err)
+	}
+	consumerCode := benchMustCompile(b, benchTableReturningImportModule())
+	defer consumerCode.Close()
+	consumer, err := Instantiate(consumerCode, Imports{"env.f": target})
+	if err != nil {
+		b.Fatalf("Instantiate consumer: %v", err)
+	}
+	defer consumer.Close()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		res, err := consumer.Invoke("g", I32(int32(i)))
+		if err != nil {
+			b.Fatal(err)
+		}
+		benchResultSink = res
+	}
+}
+
+func BenchmarkInvokeSharedMemoryPublicEntry(b *testing.B) {
+	memory, err := NewSharedMemory(1, 1)
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer memory.Close()
+	compiled := benchMustCompile(b, sharedMemoryPrivateGlobalModule(10))
+	defer compiled.Close()
+	in, err := Instantiate(compiled, Imports{"env.memory": memory})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer in.Close()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		res, err := in.Invoke("bump")
+		if err != nil {
+			b.Fatal(err)
+		}
+		benchResultSink = res
+	}
+}
+
 func BenchmarkInvokeHostFuncExternrefRoundTrip(b *testing.B) {
 	rt := NewRuntime()
 	defer rt.Close()
@@ -2041,10 +2121,31 @@ func BenchmarkInstantiateImportedStartHostFunc(b *testing.B) {
 	}
 }
 
+func BenchmarkInstantiateHostFuncDirect(b *testing.B) {
+	c := benchMustCompile(b, benchReturningImportModule())
+	defer c.Close()
+	imports := Imports{"env.f": HostFunc(func(_ HostModule, p, r []uint64) { r[0] = p[0] })}
+	warm, err := Instantiate(c, InstantiateOptions{Imports: imports})
+	if err != nil {
+		b.Fatalf("warm Instantiate: %v", err)
+	}
+	warm.Close()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		in, err := Instantiate(c, InstantiateOptions{Imports: imports})
+		if err != nil {
+			b.Fatal(err)
+		}
+		in.Close()
+	}
+}
+
 func BenchmarkInstantiateTableHostFuncThunk(b *testing.B) {
 	c := benchMustCompile(b, benchTableReturningImportModule())
 	imports := Imports{"env.f": HostFunc(func(_ HostModule, p, r []uint64) { r[0] = p[0] })}
-	// Warm the host link cache so the benchmark isolates instance wiring and thunk mapping.
+	// Warm shared code mapping so the benchmark isolates instance wiring, dispatch
+	// allocation, and per-instance host-thunk mapping.
 	warm, err := Instantiate(c, InstantiateOptions{Imports: imports})
 	if err != nil {
 		b.Fatalf("warm Instantiate: %v", err)

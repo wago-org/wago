@@ -11,7 +11,7 @@ are addressed as negative displacements from the linear-memory pointer used by
 JIT code. Existing offsets must not move without re-deriving the runtime ABI and
 updating the guard tests.
 
-The globals pointer lives at basedata offset `88` (`abi.GlobalsPtrOffset`, used
+The globals pointer lives at basedata offset `112` (`abi.GlobalsPtrOffset`, used
 by runtime layout and backend codegen). Backend `global.get`/`global.set` code
 loads this pointer from basedata, indexes the per-instance global pointer table,
 then loads or stores the pointed-to 8-byte global cell.
@@ -23,6 +23,94 @@ the whole native call tree. Consequently every later public entry—including th
 prepared-call fast path—must restore its own trap-cell pointer and engine fence
 before entering native code. Bind-once prepared calls are valid only while an
 instance can never be used as a cross-instance callee.
+
+The remaining pointer fields are modeled as `runtime.InstanceContext` and
+captured when instantiation finishes. Every public native entry rebinds that
+context and refreshes its invocation control fields before execution. The
+current correctness-first execution lease serializes native execution
+process-wide: one public root owns every basedata region its direct or indirect
+cross-instance call graph may rebind. This avoids recursive per-memory lock
+ordering and covers same-memory, different-memory, and cyclic call graphs.
+Linear-memory size/growth caches remain backing-owned, while trap and stack
+fields remain invocation-owned.
+
+Direct imported calls load `{entry, homeLinMem, targetContext, callerContext}`
+from the per-instance dispatch table. Indirect calls recover `targetContext` from
+the canonical funcref descriptor referenced by the table entry. Both paths bind
+the target pointer context before crossing instances and restore the caller
+context after a normal return. A trap unwinds the native call tree before restore;
+the next serialized public entry always rebinds its own captured context first.
+Canonical funcref descriptors are 40 bytes: the 32-byte table payload plus an
+8-byte owning-context pointer. Table entries remain 32 bytes. A function importer
+retains each distinct producer instance until the importer's physical resource
+release; logical close alone cannot release those roots when a table, global, or
+public token still retains the importer's descriptor arena. Imported HostFuncRef,
+reference-global, and table attachments follow the same physical-release rule.
+When an imported funcref container retains the writer itself, that container
+attachment is transferred to the retained root to avoid a self-owning importer
+cycle, and is released exactly once.
+
+## Synchronous host parking and active-callee routing
+
+The trap allocation is 16 bytes. Bytes 0..3 hold the trap/pending code; bytes
+8..15 hold the exact active host-control-frame pointer for a parked activation.
+AMD64 and ARM64 host stubs save the current register state into the callee's
+control frame, publish that frame pointer at `trap+8`, write
+`hostCallPending`, and unwind to Go.
+
+`Engine.CallWithHost` reads arguments and import indexes from the published
+frame, not from the public root's frame. The frame address resolves to the
+physically live callee instance, so dispatch uses that instance's import
+namespace, HostFunc/HostFuncRef binding, HostModule, and result buffer. Every
+synchronous frame receives its trampoline at instantiation, including callees
+that have never been entered as public roots.
+
+The process-wide native execution lease is released before arbitrary Go host
+code runs. Nested Wasm entry may therefore acquire the lease without deadlock.
+On every normal return or panic path the dispatcher reacquires the lease. It
+rebinds the exact parked callee context when the execution epoch shows that a
+nested or competing public entry ran; otherwise the already-installed context
+is reused. Immediately before `resumeNative`, the runtime restores the parked
+activation's trap pointer, stack fence, and architecture-specific trap re-entry
+control. `HostExit`, traps, and propagated host panics therefore cannot leave a
+lease held or resume against a context installed by nested entry.
+
+Instances with actual host bindings use synchronous dispatch, including legacy
+void HostFunc signatures, because such an instance may later execute as a
+cross-instance callee. That parking capability propagates transitively through
+canonical InstanceExport imports. Where the architecture host policy permits,
+a host-free cross-instance-only consumer whose targets cannot park uses the
+ordinary native entry path and allocates neither a control frame nor an async
+replay log. Forced-synchronous architectures still allocate their control frame.
+Modules importing a funcref table remain
+synchronous because the table may be mutated to contain a host descriptor. The
+old async log format remains an internal compatibility path but is not selected
+for these compositions.
+
+## Guarded host memory access
+
+In guard-page mode, `memory.grow` raises the logical size before newly in-bounds
+pages are necessarily committed; native loads/stores commit them lazily through
+the fault handler. Host access uses `JobMemory.HostBytesChecked`, which mprotects
+and extends the stable-base Go view through the current logical size first. This
+is required for `Memory.Bytes`, typed host reads/writes, snapshot restore, and
+active data initialization against an imported memory that grew before the new
+instance was created. `CurrentBytes` remains limited to the original committed
+Go slice and must not be used for that case.
+
+On ARM64, the guard fault handler passes the faulting linear-memory base through
+saved `X9` when it replaces the faulting PC with the native trap-exit landing
+pad. The landing pad must not depend on the platform signal trampoline restoring
+Wasm's pinned `X26`: Linux and Darwin replacement-PC returns can otherwise reach
+the landing pad with an unusable `X26`, preventing recovery of the foreign-stack
+save area and `enterNative` continuation.
+
+ARM64 modules whose declared or imported memory minimum is zero use explicit
+bounds checks and classic growable memory even when signals-based checks were
+requested. This narrow fallback preserves exact zero-page semantics until the
+ARM64 guard entry can safely place its control words immediately below a linMem
+that starts on the first inaccessible linear page. One-page-and-larger ARM64
+memories continue to use the guard-page path.
 
 ## Global storage convention
 
@@ -81,9 +169,8 @@ Such caching must preserve this invariant:
   may be shared with the host and with other instances importing the same
   `*Global`, so the cell must remain the shared source of truth.
 
-The deferred host-call model (host imports are logged during execution and
-replayed only after the wasm call returns) guarantees no host or cross-instance
-access occurs *within* a single execution. Intra-instance spill discipline is
-therefore both sufficient and necessary; non-exported, non-imported globals need
-only that, while exported and imported globals additionally must be coherent at
-`Invoke` return, which a function-exit spill already provides.
+Synchronous host callbacks and cross-instance calls may observe globals during
+one public invocation. Generated code must therefore spill caller-cached globals
+before either boundary and reload afterward. Non-exported, non-imported globals
+need the same call-boundary discipline for host re-entry; exported and imported
+globals additionally remain coherent at public return.

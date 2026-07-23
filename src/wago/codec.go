@@ -87,6 +87,7 @@ func marshalCompiled(c *Compiled) ([]byte, error) {
 	w.data(c.Data)
 	w.passiveData(c.PassiveData)
 	w.str(c.memoryImport)
+	w.bool(c.dynamicImports)
 	w.u8(uint8(compiledStructuralRequiredFeatures(c)))
 	w.gcTypeDescs(c.GCTypeDescs)
 	return w.buf, nil
@@ -430,6 +431,10 @@ func unmarshalCompiled(c *Compiled, data []byte) error {
 		return err
 	}
 	c.memoryImport, err = r.str()
+	if err != nil {
+		return err
+	}
+	c.dynamicImports, err = r.bool()
 	if err != nil {
 		return err
 	}

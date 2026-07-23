@@ -184,6 +184,49 @@ func TestCrossInstanceGlobalShared(t *testing.T) {
 // TestCrossInstanceCallNoArgs: instance A exports f()->i32 = 42; instance B
 // imports env.f and calls it, returning its result. Exercises the native
 // context-swap end to end.
+func TestCrossInstanceFunctionImportRetainsProducerResources(t *testing.T) {
+	producerCode := MustCompile(benchAddOneModule())
+	defer producerCode.Close()
+	producer, err := Instantiate(producerCode, InstantiateOptions{})
+	if err != nil {
+		t.Fatalf("Instantiate producer: %v", err)
+	}
+	target, err := producer.ExportedFunc("f")
+	if err != nil {
+		t.Fatalf("ExportedFunc: %v", err)
+	}
+	consumerCode := MustCompile(benchReturningImportModule())
+	defer consumerCode.Close()
+	consumer, err := Instantiate(consumerCode, InstantiateOptions{Imports: Imports{"env.f": target}})
+	if err != nil {
+		t.Fatalf("Instantiate consumer: %v", err)
+	}
+	if err := producer.Close(); err != nil {
+		t.Fatalf("Close producer: %v", err)
+	}
+	producer.lifeMu.Lock()
+	released := producer.resourcesClosed
+	producer.lifeMu.Unlock()
+	if released {
+		_ = consumer.Close()
+		t.Fatal("producer resources released while a function importer still held dispatch pointers")
+	}
+	got, err := consumer.Invoke("g", I32(7))
+	if err != nil || len(got) != 1 || AsI32(got[0]) != 8 {
+		_ = consumer.Close()
+		t.Fatalf("consumer call after producer close = %v, %v; want 8", got, err)
+	}
+	if err := consumer.Close(); err != nil {
+		t.Fatalf("Close consumer: %v", err)
+	}
+	producer.lifeMu.Lock()
+	released = producer.resourcesClosed
+	producer.lifeMu.Unlock()
+	if !released {
+		t.Fatal("producer resources remained live after final function importer closed")
+	}
+}
+
 func TestCrossInstanceCallNoArgs(t *testing.T) {
 	modA := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
@@ -219,8 +262,8 @@ func TestCrossInstanceCallNoArgs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("compile B: %v", err)
 	}
-	if !cB.needsLink {
-		t.Fatalf("B should need link (returning import)")
+	if !cB.dynamicImports || len(cB.Code) == 0 {
+		t.Fatalf("B should compile returning imports through dynamic dispatch")
 	}
 	inB, err := Instantiate(cB, InstantiateOptions{Imports: Imports{"env.f": fExport}})
 	if err != nil {
@@ -469,8 +512,8 @@ func TestCrossInstanceCallV128(t *testing.T) {
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
 	)
 	cB := MustCompile(modB)
-	if !cB.needsLink {
-		t.Fatal("v128 function import should need link")
+	if !cB.dynamicImports || len(cB.Code) == 0 {
+		t.Fatal("v128 function import should compile through dynamic dispatch")
 	}
 	inB, err := Instantiate(cB, InstantiateOptions{Imports: Imports{"env.id": idExport}})
 	if err != nil {

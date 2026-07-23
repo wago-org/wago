@@ -108,8 +108,8 @@ func TestHostCreatedFuncRefGlobalSharesOwnedTokenAndCallableIdentity(t *testing.
 	if err := shared.Close(); err == nil || !strings.Contains(err.Error(), "live importer") {
 		t.Fatalf("Close global with importer error = %v", err)
 	}
-	if err := owner.Close(); err == nil || !strings.Contains(err.Error(), "live funcref token") {
-		t.Fatalf("Close host owner with live token error = %v", err)
+	if err := owner.Close(); err == nil || (!strings.Contains(err.Error(), "live funcref token") && !strings.Contains(err.Error(), "live importer")) {
+		t.Fatalf("Close host owner with retained reference error = %v", err)
 	}
 	if err := importer.Close(); err != nil {
 		t.Fatalf("Close importer: %v", err)
@@ -215,8 +215,8 @@ func TestHostCreatedFuncRefGlobalPersistenceAndLayoutsStayFailClosed(t *testing.
 		t.Fatalf("Global size = %d, want 40", got)
 	}
 	requireBoundedInstanceFootprint(t, unsafe.Sizeof(Instance{}))
-	if got := unsafe.Sizeof(Compiled{}); got != 632 {
-		t.Fatalf("Compiled size = %d, want 632", got)
+	if got := unsafe.Sizeof(Compiled{}); got != 584 {
+		t.Fatalf("Compiled size = %d, want 584", got)
 	}
 	if got := unsafe.Sizeof(HostFuncRef{}); got != 112 {
 		t.Fatalf("HostFuncRef size = %d, want 112", got)

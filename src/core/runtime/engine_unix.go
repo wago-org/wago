@@ -163,24 +163,57 @@ func installTrapCell(linMem, trap []byte) {
 //
 // ctrl must point at an off-heap control frame of at least ctrlFrameSize bytes
 // whose address has been installed as the import ctx via JobMemory.SetCustomCtx.
+// A cross-instance callee may park through a different frame; its stub publishes
+// that exact pointer at trap+8 so dispatch and resume follow the active callee.
 func (e *Engine) CallWithHost(code uintptr, serArgs, linMem, trap, results, ctrl []byte, host HostCall) error {
+	return e.CallWithHostBase(code, serArgs, slicePtr(linMem), trap, results, ctrl, host)
+}
+
+// CallWithHostBase is the stable-base form used by guard-page JobMemory, whose
+// reserved linear-memory base may not be representable by LinearMemory's Go
+// slice. The guard handler is installed/registered by JobMemory creation.
+func (e *Engine) CallWithHostBase(code uintptr, serArgs []byte, linMemBase uintptr, trap, results, ctrl []byte, host HostCall) error {
+	if linMemBase == 0 {
+		return fmt.Errorf("jit: host-call linear-memory base is zero")
+	}
+	if len(trap) < TrapBufferBytes {
+		return fmt.Errorf("jit: host-call trap buffer has %d bytes, need %d", len(trap), TrapBufferBytes)
+	}
+	if err := InitHostCtrlFrame(ctrl); err != nil {
+		return err
+	}
+	storeTrap(trap, 0)
+	storeOffHeapU64(linMemBase-abi.TrapCellPtrOffset, uint64(slicePtr(trap)))
+	ctrlPtr := slicePtr(ctrl)
+	if e.hostScratchInUse {
+		var argBuf, resBuf [maxHostArity]uint64
+		return e.callWithHostLoop(code, serArgs, linMemBase, trap, results, ctrl, ctrlPtr, host, argBuf[:], resBuf[:])
+	}
+	e.hostScratchInUse = true
+	defer func() { e.hostScratchInUse = false }()
+	return e.callWithHostLoop(code, serArgs, linMemBase, trap, results, ctrl, ctrlPtr, host, e.hostArgs[:], e.hostResults[:])
+}
+
+// InitHostCtrlFrame installs the shared host-call trampoline in an off-heap
+// control frame. Instantiate calls it eagerly so a callee that has never been a
+// public root can still park when reached through a cross-instance call.
+func InitHostCtrlFrame(ctrl []byte) error {
+	if len(ctrl) < ctrlFrameSize {
+		return fmt.Errorf("jit: host control frame has %d bytes, need %d", len(ctrl), ctrlFrameSize)
+	}
 	stub, err := hostCallStubPtr()
 	if err != nil {
 		return fmt.Errorf("jit: host-call stub: %w", err)
 	}
-	installTrapCell(linMem, trap)
-	binary.LittleEndian.PutUint64(ctrl[hcTrampoline:], uint64(stub)) // native calls [ctrl+hcTrampoline]
-	ctrlPtr := slicePtr(ctrl)
-	if e.hostScratchInUse {
-		var argBuf, resBuf [maxHostArity]uint64
-		return e.callWithHostLoop(code, serArgs, linMem, trap, results, ctrl, ctrlPtr, host, argBuf[:], resBuf[:])
-	}
-	e.hostScratchInUse = true
-	defer func() { e.hostScratchInUse = false }()
-	return e.callWithHostLoop(code, serArgs, linMem, trap, results, ctrl, ctrlPtr, host, e.hostArgs[:], e.hostResults[:])
+	binary.LittleEndian.PutUint64(ctrl[hcTrampoline:], uint64(stub))
+	return nil
 }
 
-func (e *Engine) callWithHostLoop(code uintptr, serArgs, linMem, trap, results, ctrl []byte, ctrlPtr uintptr, host HostCall, argBuf, resBuf []uint64) error {
+func hostCtrlFrame(ptr uintptr) []byte {
+	return unsafe.Slice((*byte)(offHeapPointer(ptr)), ctrlFrameSize)
+}
+
+func (e *Engine) callWithHostLoop(code uintptr, serArgs []byte, linMemBase uintptr, trap, results, ctrl []byte, ctrlPtr uintptr, host HostCall, argBuf, resBuf []uint64) error {
 	// The host-call re-entry loop is intentionally unbounded: a single guest
 	// invocation may legitimately make an arbitrary number of host calls (e.g. a
 	// long-running rule that polls Date.now()/Math.random() in a loop). A fixed
@@ -194,13 +227,19 @@ func (e *Engine) callWithHostLoop(code uintptr, serArgs, linMem, trap, results, 
 	// forever: both require the caller to arm a timeout, exactly as under wazero.
 	for first := true; ; first = false {
 		if first {
-			enterNative(code, slicePtr(serArgs), slicePtr(linMem), slicePtr(trap), slicePtr(results), e.stackTop)
+			enterNative(code, slicePtr(serArgs), linMemBase, slicePtr(trap), slicePtr(results), e.stackTop)
 		} else {
 			storeTrap(trap, 0) // clear the pending marker before resuming
+			prepareHostResume(ctrl, trap, e.stackTop, e.StackLimit())
 			resumeNative(ctrlPtr, e.stackTop)
 		}
 		switch tc := loadTrap(trap); {
 		case tc == hostCallPending:
+			ctrlPtr = uintptr(binary.LittleEndian.Uint64(trap[8:]))
+			if ctrlPtr == 0 {
+				return fmt.Errorf("jit: host call did not publish an active control frame")
+			}
+			ctrl = hostCtrlFrame(ctrlPtr)
 			imp := binary.LittleEndian.Uint32(ctrl[hcImportIdx:])
 			// hcNArgs packs the call's slot counts: low 16 bits = param slots
 			// (native->Go), high 16 bits = result slots (Go->native). Copying only
@@ -219,7 +258,7 @@ func (e *Engine) callWithHostLoop(code uintptr, serArgs, linMem, trap, results, 
 			for k := 0; k < nres; k++ {
 				resBuf[k] = 0
 			}
-			host(imp, argBuf[:n], resBuf)
+			host(ctrlPtr, imp, argBuf[:n], resBuf)
 			for k := 0; k < nres; k++ {
 				binary.LittleEndian.PutUint64(ctrl[hcResults+k*8:], resBuf[k])
 			}
@@ -256,4 +295,15 @@ func slicePtr(b []byte) uintptr {
 		return 0
 	}
 	return uintptr(unsafe.Pointer(&b[0]))
+}
+
+// storeOffHeapU64 writes through a known mmap-backed address. Routing the
+// uintptr bits through a pointer-sized local mirrors the public runtime's
+// offHeapPtr helper and avoids pretending the address belongs to the Go heap.
+func offHeapPointer(addr uintptr) unsafe.Pointer {
+	return *(*unsafe.Pointer)(unsafe.Pointer(&addr))
+}
+
+func storeOffHeapU64(addr uintptr, value uint64) {
+	*(*uint64)(offHeapPointer(addr)) = value
 }

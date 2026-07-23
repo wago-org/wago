@@ -4,81 +4,11 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"sync"
-	"sync/atomic"
 	"unsafe"
 
 	"github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/src/core/runtime/gc"
 )
-
-// offHeapPtr reinterprets a known off-heap address — JIT arena / table-descriptor
-// memory, kept live by arena/table ownership and never on the Go heap — as an
-// unsafe.Pointer. Routing through *uintptr avoids a direct uintptr→unsafe.Pointer
-// conversion, which go vet's unsafeptr pass flags (it cannot prove the target is
-// non-heap). Use ONLY for addresses into that off-heap memory; there is no
-// live-pointer hazard there.
-func offHeapPtr(addr uintptr) unsafe.Pointer {
-	return *(*unsafe.Pointer)(unsafe.Pointer(&addr))
-}
-
-// Instance is ready for repeated Invoke calls.
-type Instance struct {
-	c                      *Compiled
-	eng                    *runtime.Engine
-	jm                     *runtime.JobMemory
-	memory                 *Memory // the memory object (owned or host-imported)
-	ownsMem                bool    // false when memory is host-imported (don't close it)
-	ar                     *runtime.Arena
-	base                   uintptr
-	hosts                  map[string]HostFunc
-	imports                Imports // the imports as provided to Instantiate
-	hostLog                []byte
-	syncMode               bool                                // true when host imports use the synchronous re-entry protocol
-	ctrl                   []byte                              // sync host-call control frame (nil in async mode)
-	syncHosts              []HostFunc                          // per import-func-index host, sync mode only
-	hostCall               runtime.HostCall                    // per-instance sync host dispatcher, allocated once
-	pluginState            atomic.Pointer[instancePluginState] // allocated only after privileged instance services activate
-	globals                []byte                              // pointer table handed to JIT code
-	globalCells            []*Global
-	table                  *Table        // lazily created importer-owned local export-handle chain
-	tableDescPtr           uintptr       // local/imported descriptor address; arena/table ownership keeps it live
-	tableDescLen           int           // descriptor byte length for safe slice reconstruction
-	funcRefDescs           []byte        // canonical funcref descriptor handles for this instance's function index space
-	passiveDataDesc        []byte        // per-instance data-segment descriptors; active slots start dropped
-	thunkMem               []byte        // executable mapping for host-func-in-table log thunks (nil if none)
-	gc                     *gc.Collector // nil for modules with no Wasm GC descriptors/runtime use
-	serArgs, results, trap []byte
-	resultVals             []uint64       // reusable Invoke result buffer (valid until the next call)
-	ic                     [4]invokeCache // tiny fixed export resolution cache
-	icNext                 uint8          // round-robin replacement cursor
-	refStore               *referenceStore
-	lifeMu                 sync.Mutex
-	resourceRefs           int
-	closed                 bool // logical close; retained references may defer physical release
-	resourcesClosed        bool
-	nativeControlShared    bool // entered from another instance; prepared control fields may be overwritten
-
-	// rt is set when the instance is created through Runtime.Instantiate, so
-	// Instance.Call and Instance.Close can fire lifecycle hooks. It is nil for
-	// low-level package-level Instantiate, which stays hook-free.
-	rt *Runtime
-}
-
-// invokeCache memoizes per-export work so hot Invoke loops skip the exports map
-// probe and the fat ValType width comparisons on every call. Instance keeps a
-// few fixed slots because real AS loops commonly interleave the business export
-// with __collect, __pin, or paired request/response exports.
-type invokeCache struct {
-	export            string
-	valid             bool
-	li                int // local index, or -1-import index for an InstanceExport re-export
-	paramSlots        int
-	resultSlots       int
-	hasFuncRefParams  bool
-	hasFuncRefResults bool
-	resultWide        []bool // one entry per returned uint64 slot; false means read low 32 bits
-}
 
 // InstantiateOptions configures instance creation from a *Compiled. When
 // instantiating from a *Snapshot both fields are ignored: the snapshot carries
@@ -167,68 +97,133 @@ func instantiateArgs(args []any) (InstantiateOptions, error) {
 	}
 }
 
+// instanceBuilder owns the pre-commit state of one instantiation. Concrete
+// fields keep unsafe/off-heap ownership visible; no generic cleanup stack is
+// used on this allocation-sensitive path.
+type instanceBuilder struct {
+	c       *Compiled
+	opts    InstantiateOptions
+	imports Imports
+
+	collector           *gc.Collector
+	success             bool
+	registeredInstance  *Instance
+	functionAttachments functionImportAttachments
+	hostAttachments     hostFuncRefAttachments
+	tableAttachments    tableImportAttachments
+	globalAttachments   globalImportAttachments
+}
+
 // instantiateCore maps code and applies explicit instance options. It is the
 // shared engine behind Instantiate for both the compiled and snapshot paths.
-func instantiateCore(c *Compiled, opts InstantiateOptions) (result *Instance, err error) {
-	imports := opts.Imports
-	// Resolve cross-instance function imports, recompiling the module with their
-	// bindings when any are present (a no-op for host-only modules).
-	c, err = c.linkModuleMode(imports, opts.store, opts.forceSyncHost)
+func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
+	b := instanceBuilder{c: c, opts: opts, imports: opts.Imports}
+	return b.instantiate()
+}
+
+func (b *instanceBuilder) validateCompiled() error {
+	if err := b.c.validateImportBindings(b.imports, b.opts.store); err != nil {
+		return err
+	}
+	return b.c.validateCached()
+}
+
+func (c *Compiled) arenaNeedForImports(imports Imports, syncMode bool) int {
+	need := c.instantiateArenaNeed
+	if len(c.Imports) == 0 {
+		return need
+	}
+	baselineHostBytes := runtime.HostCallLogBytes
+	if c.needsPublicFuncrefHostReentry() {
+		baselineHostBytes = runtime.HostCtrlFrameBytes
+	}
+	actualHostBytes := 0
+	if syncMode {
+		actualHostBytes = runtime.HostCtrlFrameBytes
+	} else {
+		for _, key := range c.Imports {
+			if _, cross := imports[key].(*InstanceExport); !cross {
+				actualHostBytes = runtime.HostCallLogBytes
+				break
+			}
+		}
+	}
+	return need - baselineHostBytes + actualHostBytes
+}
+
+func (b *instanceBuilder) prepareCollector() error {
+	if !gc.HasHeapObjectTypes(b.c.GCTypeDescs) {
+		return nil
+	}
+	collector, err := gc.NewCollector(b.opts.GC, b.c.GCTypeDescs)
+	if err != nil {
+		return err
+	}
+	b.collector = collector
+	return nil
+}
+
+func (b *instanceBuilder) attachImports() ([]*resolvedGlobalImport, error) {
+	for i, key := range b.c.Imports {
+		switch value := b.imports[key].(type) {
+		case *InstanceExport:
+			if err := b.functionAttachments.attach(value); err != nil {
+				return nil, fmt.Errorf("imported function %q: %w", key, err)
+			}
+		case *HostFuncRef:
+			if i >= len(b.c.importFuncSigs) {
+				return nil, fmt.Errorf("imported host funcref %q has no signature", key)
+			}
+			if err := b.hostAttachments.attach(value, b.opts.store, b.c.importFuncSigs[i]); err != nil {
+				return nil, fmt.Errorf("imported host funcref %q: %w", key, err)
+			}
+		}
+	}
+	importGlobals, err := b.c.importedGlobals(b.imports)
 	if err != nil {
 		return nil, err
 	}
-	if err := c.validateCached(); err != nil {
-		return nil, err
-	}
-	var collector *gc.Collector
-	if gc.HasHeapObjectTypes(c.GCTypeDescs) {
-		var err error
-		collector, err = gc.NewCollector(opts.GC, c.GCTypeDescs)
-		if err != nil {
-			return nil, err
-		}
-	}
-	success := false
-	var registeredInstance *Instance
-	var hostAttachments hostFuncRefAttachments
-	var tableAttachments tableImportAttachments
-	var globalAttachments globalImportAttachments
-	defer func() {
-		if !success {
-			hostAttachments.detachAll()
-			globalAttachments.detachAll()
-			tableAttachments.detachAll()
-			if registeredInstance != nil && registeredInstance.refStore != nil {
-				registeredInstance.refStore.instanceClosed(registeredInstance)
-			}
-			if collector != nil {
-				collector.Close()
-			}
-		}
-	}()
-	for i, key := range c.Imports {
-		owner, ok := imports[key].(*HostFuncRef)
-		if !ok {
-			continue
-		}
-		if i >= len(c.importFuncSigs) {
-			return nil, fmt.Errorf("imported host funcref %q has no signature", key)
-		}
-		if err := hostAttachments.attach(owner, opts.store, c.importFuncSigs[i]); err != nil {
-			return nil, fmt.Errorf("imported host funcref %q: %w", key, err)
-		}
-	}
-	importGlobals, err := c.importedGlobals(imports)
-	if err != nil {
-		return nil, err
-	}
-	for i, imp := range c.GlobalImports {
+	for i, imp := range b.c.GlobalImports {
 		if !isReferenceValType(imp.Type) {
 			continue
 		}
-		if err := globalAttachments.attach(importGlobals[i].global, opts.store); err != nil {
+		if err := b.globalAttachments.attach(importGlobals[i].global, b.opts.store); err != nil {
 			return nil, fmt.Errorf("imported global %q.%q: %w", imp.Module, imp.Name, err)
 		}
+	}
+	return importGlobals, nil
+}
+
+func (b *instanceBuilder) rollbackPreparedState() {
+	b.functionAttachments.detachAll()
+	b.hostAttachments.detachAll()
+	b.globalAttachments.detachAll()
+	b.tableAttachments.detachAll()
+	if b.registeredInstance != nil && b.registeredInstance.refStore != nil {
+		b.registeredInstance.refStore.instanceClosed(b.registeredInstance)
+	}
+	if b.collector != nil {
+		b.collector.Close()
+	}
+}
+
+func (b *instanceBuilder) instantiate() (result *Instance, err error) {
+	if err := b.validateCompiled(); err != nil {
+		return nil, err
+	}
+	if err := b.prepareCollector(); err != nil {
+		return nil, err
+	}
+	c, opts, imports := b.c, b.opts, b.imports
+	syncMode := c.importsRequireSync(imports, opts.forceSyncHost)
+	defer func() {
+		if !b.success {
+			b.rollbackPreparedState()
+		}
+	}()
+	importGlobals, err := b.attachImports()
+	if err != nil {
+		return nil, err
 	}
 	eng, err := runtime.AcquireEngine()
 	if err != nil {
@@ -242,12 +237,6 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (result *Instance, er
 		memObj  *Memory
 		ownsMem bool
 	)
-	// transientSharedImporter marks a shared-memory importer that would install
-	// per-instance basedata into the owner's region: it is run only to apply its
-	// active-segment store effects and its start function, then rolled back via
-	// savedBasedata and never kept live. See the shared-memory guard below.
-	var transientSharedImporter bool
-	var savedBasedata []byte
 	if c.memoryImport != "" {
 		m, ok := imports.memory(c.memoryImport)
 		if !ok {
@@ -259,72 +248,16 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (result *Instance, er
 		// NewMemory and guard-page instance owners provide one only in a
 		// wago_guardpage build; reject a plain mapping (e.g. an explicit-bounds
 		// owner's memory, or a deserialized signals-based module in a default binary).
-		guarded, shared := m.importShape()
+		guarded, _ := m.importShape()
 		if c.boundsMode == BoundsChecksSignalsBased && !guarded {
 			runtime.ReleaseEngine(eng)
 			return nil, fmt.Errorf("imported memory %q is not guard-page backed; signals-based bounds checks require a guard-page memory (build with -tags wago_guardpage)", c.memoryImport)
-		}
-		if shared {
-			// Cross-instance shared memory: the importer runs directly on the memory
-			// owner's JobMemory, including its fixed negative-offset basedata region.
-			// Every per-instance pointer that lives in basedata — the globals array,
-			// the table pointer/directory, the host-call ctx (control frame or async
-			// log), the funcref descriptor table, and the passive element/data state —
-			// is written once at instantiation from THIS instance's arena and is never
-			// re-established per call (only the stack fence is refreshed on entry, see
-			// callNative). A second importer of the same memory would overwrite those
-			// slots, so calls into the first importer read the second's state, and once
-			// the second's arena is freed the first dangles into released memory —
-			// cross-instance corruption and use-after-free during ordinary sequential
-			// instantiation. Until the ABI separates linear-memory backing from
-			// per-instance basedata, a shared-memory importer may only compute over the
-			// shared linear pages: no globals, tables, funcrefs, host calls, or passive
-			// segments (imported or local), all of which claim a basedata slot.
-			hasHostCtx := c.syncHostImports || c.needsPublicFuncrefHostReentry()
-			if !hasHostCtx {
-				for _, key := range c.Imports {
-					if _, cross := imports[key].(*InstanceExport); !cross {
-						hasHostCtx = true // async/legacy host import installs the host-call log ctx
-						break
-					}
-				}
-			}
-			// A sole imported table only repoints the shared table slot at storage
-			// that is reference-counted (not this instance's arena), so it stays
-			// UAF-safe; a local table or any multi-table shape installs an
-			// arena-backed descriptor/directory that would dangle for the memory
-			// owner and co-importers once this instance's arena is freed.
-			hasPrivateTableState := c.tableCount() > 1 || c.tableCount() > c.tableImportCount()
-			// Globals need a basedata pointer only when native functions can access
-			// them. An initializer-only module may read imported immutable globals
-			// while applying active segments without installing per-instance state
-			// into the shared memory owner's basedata.
-			hasNativeGlobalState := len(c.Globals) > 0 && len(c.Entry) > 0
-			if hasNativeGlobalState || hasPrivateTableState || len(c.PassiveData) > 0 ||
-				len(c.passiveElems) > 0 || c.needsFuncRefDescs() || hasHostCtx {
-				// A start function's store effects — active data/element segments written
-				// into the shared memory and table — must persist even when start traps
-				// (WebAssembly linking semantics: "the store is modified if the start
-				// function traps"). Run such a module transiently: snapshot the owner's
-				// basedata below, let this module install its own basedata and run start,
-				// then restore the owner's basedata and discard this module (it can never
-				// be kept live without aliasing the owner). A module with no start has no
-				// observable reason to run here, so it is still rejected outright.
-				if !c.HasStart {
-					runtime.ReleaseEngine(eng)
-					return nil, fmt.Errorf("a module importing a shared memory may not install per-instance basedata state (globals, local or multiple tables, funcrefs, host calls, or passive segments) that would alias the shared linear memory owner's region")
-				}
-				transientSharedImporter = true
-			}
 		}
 		if err := m.attachImporter(); err != nil {
 			runtime.ReleaseEngine(eng)
 			return nil, fmt.Errorf("imported memory %q: %w", c.memoryImport, err)
 		}
 		jm, memObj = m.jobMemory(), m
-		if transientSharedImporter {
-			savedBasedata = jm.SnapshotBasedata()
-		}
 	} else {
 		initialBytes, maxBytes := c.memorySizeBytes()
 		// Restoring from a snapshot: size the fresh mapping to the snapshot's
@@ -358,12 +291,14 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (result *Instance, er
 			memObj.detachImporter()
 		}
 	}
-	ar, err := runtime.AcquireArena(c.instantiateArenaNeed)
+	ar, err := runtime.AcquireArena(c.arenaNeedForImports(imports, syncMode))
 	if err != nil {
 		closeMem()
 		runtime.ReleaseEngine(eng)
 		return nil, err
 	}
+	nativeContext := ar.AllocNoZero(runtime.InstanceContextBytes)
+	nativeContextPtr := uintptr(unsafe.Pointer(&nativeContext[0]))
 	base, err := c.acquireCode()
 	if err != nil {
 		runtime.ReleaseArena(ar)
@@ -373,7 +308,7 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (result *Instance, er
 	}
 	var thunkMem []byte // host-func-in-table log thunks; unmapped on failure/close
 	defer func() {
-		if success {
+		if b.success {
 			return
 		}
 		if thunkMem != nil {
@@ -386,13 +321,15 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (result *Instance, er
 	}()
 	var hostLog, ctrl []byte
 	var syncHosts []HostFunc
-	syncMode := c.syncHostImports || c.needsPublicFuncrefHostReentry()
 	if syncMode {
 		// Synchronous host-call path: install the control frame (not the async
 		// log) as the import ctx. Modules that accept public funcrefs and can call
 		// them indirectly also need this frame so an owned host descriptor remains
 		// callable after crossing from another instance.
 		ctrl = ar.AllocNoZero(runtime.HostCtrlFrameBytes)
+		if err := runtime.InitHostCtrlFrame(ctrl); err != nil {
+			return nil, fmt.Errorf("instantiate: initialize host control frame: %w", err)
+		}
 		jm.SetCustomCtx(uintptr(unsafe.Pointer(&ctrl[0])))
 		if len(c.Imports) > 0 {
 			syncHosts, err = c.buildSyncHosts(imports)
@@ -427,35 +364,49 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (result *Instance, er
 	}
 	jm.SetStackFence(eng.StackLimit()) // trap runaway recursion instead of faulting
 
+	thunkAddr, generatedThunks, err := buildHostFuncThunks(c, imports, syncMode)
+	if err != nil {
+		return nil, err
+	}
+	thunkMem = generatedThunks
+	if c.dynamicImports && c.NumImports > 0 {
+		dispatch := ar.Alloc(c.NumImports * runtime.ImportDispatchEntryBytes)
+		selfLinMem := uint64(jm.LinMemBase())
+		for i, key := range c.Imports {
+			off := i * runtime.ImportDispatchEntryBytes
+			if ex, ok := imports[key].(*InstanceExport); ok && ex != nil && ex.inst != nil {
+				if ex.localIdx < 0 || ex.localIdx >= len(ex.inst.c.Entry) {
+					return nil, fmt.Errorf("cross-instance import %q references an unavailable function", key)
+				}
+				binary.LittleEndian.PutUint64(dispatch[off+runtime.ImportDispatchCodePtrOffset:], uint64(ex.inst.base)+uint64(ex.inst.c.Entry[ex.localIdx]))
+				binary.LittleEndian.PutUint64(dispatch[off+runtime.ImportDispatchHomeLinMemOffset:], uint64(ex.inst.jm.LinMemBase()))
+				binary.LittleEndian.PutUint64(dispatch[off+runtime.ImportDispatchTargetContextOffset:], uint64(ex.inst.nativeContext))
+				binary.LittleEndian.PutUint64(dispatch[off+runtime.ImportDispatchCallerContextOffset:], uint64(nativeContextPtr))
+				continue
+			}
+			addr, ok := thunkAddr[uint32(i)]
+			if !ok {
+				return nil, fmt.Errorf("import %q has no host dispatch thunk", key)
+			}
+			binary.LittleEndian.PutUint64(dispatch[off+runtime.ImportDispatchCodePtrOffset:], addr)
+			binary.LittleEndian.PutUint64(dispatch[off+runtime.ImportDispatchHomeLinMemOffset:], selfLinMem)
+			binary.LittleEndian.PutUint64(dispatch[off+runtime.ImportDispatchTargetContextOffset:], uint64(nativeContextPtr))
+			binary.LittleEndian.PutUint64(dispatch[off+runtime.ImportDispatchCallerContextOffset:], uint64(nativeContextPtr))
+		}
+		jm.SetImportDispatchPtr(uintptr(unsafe.Pointer(&dispatch[0])))
+	}
+
 	var initErr error
 	var tableDesc []byte
 	var funcRefDescs []byte
 	var writeTableEntry func([]byte, uint32)
 	if c.needsFuncRefDescs() {
 		selfLinMem := uint64(jm.LinMemBase())
-		var thunkAddr map[uint32]uint64
-		needsHostThunk := c.hasFuncrefTable()
-		if !needsHostThunk {
-			for _, key := range c.Imports {
-				if _, owned := imports[key].(*HostFuncRef); owned {
-					needsHostThunk = true
-					break
-				}
-			}
-		}
-		if needsHostThunk {
-			// Host functions that can flow through a funcref table need per-instance
-			// thunks. An explicitly owned table-free ref.func also needs one because
-			// its public token may later enter another instance's table/call_indirect.
-			var terr error
-			thunkAddr, thunkMem, terr = buildHostFuncThunks(c, imports)
-			if terr != nil {
-				return nil, terr
-			}
-		}
-		funcRefDescs = ar.Alloc(runtime.TableEntryBytes * (len(c.FuncTypeID) + 1))
+		funcRefDescs = ar.Alloc(runtime.FuncRefDescBytes * (len(c.FuncTypeID) + 1))
+		binary.LittleEndian.PutUint64(funcRefDescs[runtime.FuncRefContextOffset:], uint64(nativeContextPtr))
 		for fidx := 0; fidx < len(c.FuncTypeID); fidx++ {
-			off := (fidx + 1) * runtime.TableEntryBytes
+			off := (fidx + 1) * runtime.FuncRefDescBytes
+			targetContext := uint64(nativeContextPtr)
 			if li := fidx - c.NumImports; li >= 0 && li < len(c.Entry) {
 				code, home := uint64(base)+uint64(c.Entry[li]), selfLinMem
 				if li < len(c.InternalEntry) && c.InternalEntry[li] != c.Entry[li] && funcSigIntRegABI(c.Funcs[li]) {
@@ -468,6 +419,7 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (result *Instance, er
 				if ex, ok := imports[c.Imports[fidx]].(*InstanceExport); ok && ex != nil && ex.inst != nil && ex.localIdx < len(ex.inst.c.Entry) {
 					binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntryCodePtrOffset:], uint64(ex.inst.base)+uint64(ex.inst.c.Entry[ex.localIdx]))
 					binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntryHomeLinMemOffset:], uint64(ex.inst.jm.LinMemBase()))
+					targetContext = uint64(ex.inst.nativeContext)
 				} else if addr, ok := thunkAddr[uint32(fidx)]; ok {
 					binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntryCodePtrOffset:], addr)
 					binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntryHomeLinMemOffset:], selfLinMem)
@@ -475,13 +427,14 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (result *Instance, er
 			}
 			binary.LittleEndian.PutUint32(funcRefDescs[off+runtime.TableEntrySigIDOffset:], c.FuncTypeID[fidx])
 			binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntryRefSlotOffset:], uint64(uintptr(unsafe.Pointer(&funcRefDescs[off]))))
+			binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.FuncRefContextOffset:], targetContext)
 			if fidx < c.NumImports {
 				// Cross-instance imports reuse the producer's canonical identity when
 				// that producer already owns a descriptor arena.
 				if ex, ok := imports[c.Imports[fidx]].(*InstanceExport); ok && ex != nil && ex.inst != nil && ex.inst.funcRefDescs != nil {
 					homeFidx := ex.inst.c.NumImports + ex.localIdx
-					homeOff := (homeFidx + 1) * runtime.TableEntryBytes
-					if homeOff+runtime.TableEntryBytes <= len(ex.inst.funcRefDescs) {
+					homeOff := (homeFidx + 1) * runtime.FuncRefDescBytes
+					if homeOff+runtime.FuncRefDescBytes <= len(ex.inst.funcRefDescs) {
 						copy(funcRefDescs[off+runtime.TableEntryRefSlotOffset:off+runtime.TableEntryRefSlotOffset+8], ex.inst.funcRefDescs[homeOff+runtime.TableEntryRefSlotOffset:homeOff+runtime.TableEntryRefSlotOffset+8])
 					}
 				}
@@ -498,7 +451,8 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (result *Instance, er
 				clear(entry)
 				return
 			}
-			copy(entry, funcRefDescs[payload*runtime.TableEntryBytes:(payload+1)*runtime.TableEntryBytes])
+			off := payload * runtime.FuncRefDescBytes
+			copy(entry, funcRefDescs[off:off+runtime.TableEntryBytes])
 		}
 	}
 	writeElemEntry := func(entry []byte, refType ValType, value RefInit) error {
@@ -546,8 +500,8 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (result *Instance, er
 			} else {
 				bits, vec := g.Bits, g.V128
 				if g.HasInitFunc {
-					off := (int(g.InitFunc) + 1) * runtime.TableEntryBytes
-					if off < runtime.TableEntryBytes || off+runtime.TableEntryBytes > len(funcRefDescs) {
+					off := (int(g.InitFunc) + 1) * runtime.FuncRefDescBytes
+					if off < runtime.FuncRefDescBytes || off+runtime.FuncRefDescBytes > len(funcRefDescs) {
 						return nil, fmt.Errorf("global %d ref.func initializer index %d has no descriptor", i, g.InitFunc)
 					}
 					bits = uint64(uintptr(unsafe.Pointer(&funcRefDescs[off])))
@@ -614,7 +568,7 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (result *Instance, er
 				if !ok {
 					return nil, fmt.Errorf("missing imported table %q", importDef.Key)
 				}
-				if err := tableAttachments.attach(t, c.tableElementType(tableIndex), opts.store); err != nil {
+				if err := b.tableAttachments.attach(t, c.tableElementType(tableIndex), opts.store); err != nil {
 					return nil, fmt.Errorf("imported table %q: %w", importDef.Key, err)
 				}
 				desc = t.desc
@@ -769,14 +723,23 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (result *Instance, er
 		// The snapshot's linear-memory bytes already reflect post-data-init state
 		// plus every mutation up to the capture point, so copy them wholesale and
 		// skip the module's active data segments below.
-		dst := jm.HostBytes()
+		dst, hostErr := jm.HostBytesChecked()
+		if hostErr != nil {
+			return nil, fmt.Errorf("snapshot memory host access: %w", hostErr)
+		}
 		if len(opts.restore.memory) > len(dst) {
 			return nil, fmt.Errorf("snapshot memory (%d bytes) exceeds instance memory (%d bytes)", len(opts.restore.memory), len(dst))
 		}
 		copy(dst, opts.restore.memory)
 	}
 	if initErr == nil && len(c.Data) > 0 && opts.restore == nil {
-		lin := jm.CurrentBytes() // active data must fit the initial size, not the reservation
+		// Imported guarded memory may already have grown beyond its initial committed
+		// Go slice. HostBytes re-slices the stable reservation to the current logical
+		// size; for fresh owned memory that size is still the declared initial size.
+		lin, hostErr := jm.HostBytesChecked()
+		if hostErr != nil {
+			return nil, fmt.Errorf("active data host access: %w", hostErr)
+		}
 		for seg, d := range c.Data {
 			off := d.Offset.Base
 			if d.Offset.HasGlobal {
@@ -805,7 +768,7 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (result *Instance, er
 	}
 	serArgs := ar.Alloc(argsBytes)
 	results := ar.Alloc(resultsBytes)
-	trap := ar.Alloc(8)
+	trap := ar.Alloc(runtime.TrapBufferBytes)
 	if err := jm.BindTrapCell(trap); err != nil {
 		return nil, fmt.Errorf("bind trap cell: %w", err)
 	}
@@ -814,11 +777,23 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (result *Instance, er
 	if len(tableDesc) != 0 {
 		tableDescPtr = uintptr(unsafe.Pointer(&tableDesc[0]))
 	}
+	jm.CaptureInstanceContextBytes(nativeContext)
 	in := &Instance{
-		c: c, eng: eng, jm: jm, memory: memObj, ownsMem: ownsMem, ar: ar, base: base, hosts: imports.hostFuncs(), imports: imports, hostLog: hostLog, syncMode: syncMode, ctrl: ctrl, syncHosts: syncHosts, globals: globals, globalCells: globalCells, tableDescPtr: tableDescPtr, tableDescLen: len(tableDesc), funcRefDescs: funcRefDescs, passiveDataDesc: passiveDataDesc, thunkMem: thunkMem, gc: collector,
+		c: c, eng: eng, jm: jm, memory: memObj, ownsMem: ownsMem, ar: ar, base: base, hosts: imports.hostFuncs(), imports: imports, hostLog: hostLog, syncMode: syncMode, ctrl: ctrl, syncHosts: syncHosts, globals: globals, globalCells: globalCells, tableDescPtr: tableDescPtr, tableDescLen: len(tableDesc), funcRefDescs: funcRefDescs, passiveDataDesc: passiveDataDesc, thunkMem: thunkMem, gc: b.collector,
 		serArgs: serArgs, results: results, trap: trap, resultVals: make([]uint64, c.maxResultSlots), rt: opts.runtime,
+		nativeContext: nativeContextPtr,
 	}
-	registeredInstance = in
+	b.registeredInstance = in
+	if in.syncMode {
+		if err := registerHostControl(in); err != nil {
+			return nil, fmt.Errorf("instantiate: register host control frame: %w", err)
+		}
+		defer func() {
+			if !b.success {
+				unregisterHostControl(in)
+			}
+		}()
+	}
 	if opts.origin != InstantiateDirect || opts.pluginGC != nil {
 		state := in.ensurePluginState()
 		state.origin = opts.origin
@@ -839,10 +814,10 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (result *Instance, er
 					err = fmt.Errorf("wago: instantiation panicked after instance creation: %v", recovered)
 				}
 			}
-			if success {
+			if b.success {
 				return
 			}
-			success = true // the normal Close path now owns all instance resources
+			b.success = true // the normal Close path now owns all instance resources
 			err = joinPrimary(err, in.Close())
 		}()
 	}
@@ -857,9 +832,13 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (result *Instance, er
 	}
 
 	if initErr != nil {
-		if opts.runtime == nil && retainProducerRootsInImportedTables(in) {
-			success = true
-			_ = in.Close()
+		if opts.runtime == nil {
+			tableRetained := retainProducerRootsInImportedTables(in)
+			globalRetained := retainProducerRootsInImportedGlobals(in)
+			if tableRetained || globalRetained {
+				b.success = true
+				_ = in.Close()
+			}
 		}
 		return nil, initErr
 	}
@@ -897,48 +876,28 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (result *Instance, er
 			if in.syncMode {
 				startErr = in.callNativeSync(startEntry)
 			} else {
-				startErr = callNative(c, eng, jm, false, startEntry, serArgs, trap, results)
+				startErr = in.callNativeAsync(startEntry, false)
 			}
 			if startErr != nil {
-				// A transient shared-memory importer installed its basedata into the
-				// owner's region only to run this start; restore it now that native
-				// execution is done. Its active data/element writes into the shared
-				// memory and table persist (they live in linear memory and table
-				// storage, not basedata).
-				if transientSharedImporter {
-					jm.RestoreBasedata(savedBasedata)
-				}
 				// Instantiation writes to imported tables are store side effects. If a
 				// local funcref remains installed when start traps, the shared table
 				// becomes the failed instance's lifetime owner. The table prunes roots
 				// no longer present in any slot, so retention stays bounded by its
 				// descriptor capacity rather than by failed-instantiation count.
-				if opts.runtime == nil && retainProducerRootsInImportedTables(in) {
-					success = true
-					_ = in.Close()
+				if opts.runtime == nil {
+					tableRetained := retainProducerRootsInImportedTables(in)
+					globalRetained := retainProducerRootsInImportedGlobals(in)
+					if tableRetained || globalRetained {
+						b.success = true
+						_ = in.Close()
+					}
 				}
 				return nil, fmt.Errorf("start function trapped: %w", startErr)
 			}
 		}
 	}
 
-	if transientSharedImporter {
-		// The importer's start did not trap, but it cannot be kept live on the
-		// owner's shared basedata. Its active-segment store effects are already
-		// applied to the shared memory/table; restore the owner's basedata, retain
-		// any table roots it contributed, and report that a live instance of this
-		// shape is unsupported. (The store-modified-on-trap case returns above.)
-		jm.RestoreBasedata(savedBasedata)
-		if opts.runtime == nil {
-			if retainProducerRootsInImportedTables(in) {
-				success = true
-			}
-			_ = in.Close()
-		}
-		return nil, fmt.Errorf("a module importing a shared memory may not be instantiated as a live instance when it installs per-instance basedata state")
-	}
-
-	success = true
+	b.success = true
 	return in, nil
 }
 
@@ -992,16 +951,10 @@ func funcSigIntRegABI(sig FuncSig) bool {
 	return true
 }
 
-// buildHostFuncThunks generates a per-instance executable mapping of thunks for
-// host function imports that may be materialized as funcrefs, returning each such
-// import's thunk entry address and the mapping (nil when none). We generate for
-// every host-bound import in table-using modules, not just imports mentioned by
-// active segments: passive/declarative element segments and ref.func can also
-// place an import into a table later. A call_indirect through a legacy async
-// HostFunc thunk logs the host call for the normal post-invoke replay; a
-// sync-mode thunk uses the synchronous control frame and returns the host results
-// through the wrapper result slots.
-func buildHostFuncThunks(c *Compiled, imports Imports) (map[uint32]uint64, []byte, error) {
+// buildHostFuncThunks generates wrapper-ABI targets for every host-bound import.
+// The same target serves direct imported calls through the instance dispatch
+// table and host funcrefs stored in Wasm tables.
+func buildHostFuncThunks(c *Compiled, imports Imports, syncMode bool) (map[uint32]uint64, []byte, error) {
 	var blob []byte
 	offs := map[uint32]int{}
 	for fidx := 0; fidx < c.NumImports; fidx++ {
@@ -1009,21 +962,21 @@ func buildHostFuncThunks(c *Compiled, imports Imports) (map[uint32]uint64, []byt
 		if _, isCross := imports[key].(*InstanceExport); isCross {
 			continue // cross-instance funcref, not a host function
 		}
-		if c.syncHostImports {
+		if syncMode {
 			if fidx >= len(c.importFuncSigs) {
-				return nil, nil, fmt.Errorf("import %q may become a table funcref but its signature is missing", key)
+				return nil, nil, fmt.Errorf("import %q wrapper signature is missing", key)
 			}
 			sig := c.importFuncSigs[fidx]
 			paramSlots, err := valTypesSlots(sig.Params)
 			if err != nil {
-				return nil, nil, fmt.Errorf("import %q table thunk params: %w", key, err)
+				return nil, nil, fmt.Errorf("import %q wrapper params: %w", key, err)
 			}
 			resultSlots, err := valTypesSlots(sig.Results)
 			if err != nil {
-				return nil, nil, fmt.Errorf("import %q table thunk results: %w", key, err)
+				return nil, nil, fmt.Errorf("import %q wrapper results: %w", key, err)
 			}
 			if paramSlots > runtime.MaxHostArity || resultSlots > runtime.MaxHostArity {
-				return nil, nil, fmt.Errorf("import %q may become a table funcref and uses %d param slot(s), %d result slot(s); synchronous table host funcrefs support at most %d slots in each direction", key, paramSlots, resultSlots, runtime.MaxHostArity)
+				return nil, nil, fmt.Errorf("import %q uses %d param slot(s), %d result slot(s); synchronous host wrappers support at most %d slots in each direction", key, paramSlots, resultSlots, runtime.MaxHostArity)
 			}
 			dispatch := uint32(fidx)
 			owned := false
@@ -1047,7 +1000,7 @@ func buildHostFuncThunks(c *Compiled, imports Imports) (map[uint32]uint64, []byt
 			blob = append(blob, railshotHostIndirectThunk(uint32(fidx))...)
 		default:
 			if imports[key] != nil {
-				return nil, nil, fmt.Errorf("import %q may become a table funcref but is %T; table host funcrefs in async mode support wago.HostFunc or *wago.HostFuncRef bindings", key, imports[key])
+				return nil, nil, fmt.Errorf("import %q is %T; async host wrappers support wago.HostFunc or *wago.HostFuncRef bindings", key, imports[key])
 			}
 		}
 	}
@@ -1056,7 +1009,7 @@ func buildHostFuncThunks(c *Compiled, imports Imports) (map[uint32]uint64, []byt
 	}
 	mem, base, err := runtime.MapCode(blob)
 	if err != nil {
-		return nil, nil, fmt.Errorf("host-func table thunk: %w", err)
+		return nil, nil, fmt.Errorf("host import wrapper thunk: %w", err)
 	}
 	addr := make(map[uint32]uint64, len(offs))
 	for fidx, o := range offs {
@@ -1064,417 +1017,3 @@ func buildHostFuncThunks(c *Compiled, imports Imports) (map[uint32]uint64, []byt
 	}
 	return addr, mem, nil
 }
-
-// Close releases the instance's mapped code, engine, and (if instance-owned) its
-// memory. An imported memory is left for the host to Close. Close is idempotent.
-// Concurrent callers wait for the active close operation and receive its same
-// completed, possibly aggregated, error result.
-func (in *Instance) Close() (err error) {
-	if in == nil {
-		return nil
-	}
-	state, owner := in.beginClose()
-	if !owner {
-		<-state.done
-		return state.result
-	}
-	defer func() {
-		if recovered := recover(); recovered != nil {
-			if panicErr, ok := recovered.(error); ok {
-				err = joinPrimary(err, fmt.Errorf("wago: instance close panicked: %w", panicErr))
-			} else {
-				err = joinPrimary(err, fmt.Errorf("wago: instance close panicked: %v", recovered))
-			}
-		}
-		state.result = err
-		close(state.done)
-	}()
-	return in.closeOnce()
-}
-
-func (in *Instance) beginClose() (*instanceCloseState, bool) {
-	state := in.ensurePluginState()
-	if active := state.close.Load(); active != nil {
-		return active, false
-	}
-	candidate := &instanceCloseState{done: make(chan struct{})}
-	if state.close.CompareAndSwap(nil, candidate) {
-		return candidate, true
-	}
-	return state.close.Load(), false
-}
-
-func (in *Instance) closeOnce() error {
-	var errs []error
-	appendStep := func(phase string, fn func()) {
-		if err := callHookSafely(phase, fn); err != nil {
-			errs = append(errs, err)
-		}
-	}
-
-	in.lifeMu.Lock()
-	alreadyClosed := in.closed
-	in.lifeMu.Unlock()
-	if alreadyClosed {
-		return nil
-	}
-
-	if in.rt != nil {
-		for i := len(in.rt.hooks.internalBeforeClose) - 1; i >= 0; i-- {
-			fn := in.rt.hooks.internalBeforeClose[i]
-			appendStep("internal BeforeClose", func() { fn(in) })
-		}
-	}
-
-	var hctx *InstanceContext
-	if in.rt != nil && (len(in.rt.hooks.beforeClose) != 0 || len(in.rt.hooks.afterClose) != 0) {
-		hctx = &InstanceContext{
-			Runtime: in.rt, Compiled: in.c, Instance: in, Origin: in.instantiateOrigin(), Metadata: map[string]any{},
-		}
-		for i := len(in.rt.hooks.beforeClose) - 1; i >= 0; i-- {
-			fn := in.rt.hooks.beforeClose[i]
-			appendStep("BeforeClose", func() { fn(hctx) })
-		}
-	}
-
-	// Before marking the instance closed, transfer producer roots to any imported
-	// funcref table or global that still holds a local funcref this instance wrote
-	// (via table.set/fill/grow/init or global.set). The descriptor embeds this
-	// instance's code pointer and home linear-memory address, so it must outlive
-	// the write for other importers that later read it. retainResourceRoot refuses
-	// a closed instance, so this runs before in.closed is set; the container drops
-	// the root when the descriptor is overwritten or the container closes.
-	appendStep("retain imported table roots", func() { retainProducerRootsInImportedTables(in) })
-	appendStep("retain imported global roots", func() { retainProducerRootsInImportedGlobals(in) })
-
-	in.lifeMu.Lock()
-	in.closed = true
-	shouldRelease := in.resourceRefs == 0
-	store := in.refStore
-	in.lifeMu.Unlock()
-
-	appendStep("detach imported host functions", func() { detachImportedHostFuncRefs(in) })
-	appendStep("detach imported globals", func() { detachImportedGlobals(in) })
-	appendStep("detach imported tables", func() { detachImportedTables(in) })
-	if store != nil {
-		appendStep("close reference store instance", func() { store.instanceClosed(in) })
-	}
-	if shouldRelease {
-		appendStep("release instance resources", in.releaseResources)
-	}
-	if hctx != nil {
-		for i := len(in.rt.hooks.afterClose) - 1; i >= 0; i-- {
-			fn := in.rt.hooks.afterClose[i]
-			appendStep("AfterClose", func() { fn(hctx) })
-		}
-	}
-	return errors.Join(errs...)
-}
-
-func (in *Instance) releaseResources() {
-	in.lifeMu.Lock()
-	if in.resourcesClosed {
-		in.lifeMu.Unlock()
-		return
-	}
-	in.resourcesClosed = true
-	in.lifeMu.Unlock()
-
-	if in.gc != nil {
-		in.gc.Close()
-	}
-	for table := in.table; table != nil; table = table.next {
-		table.releaseRetainedInstances()
-	}
-	if in.thunkMem != nil {
-		runtime.Unmap(in.thunkMem)
-		in.thunkMem = nil
-	}
-	in.c.releaseCode()
-	runtime.ReleaseArena(in.ar)
-	if in.ownsMem {
-		if in.memory != nil {
-			in.memory.ownerClosed()
-		}
-		runtime.ReleaseJobMemory(in.jm)
-	} else if in.memory != nil {
-		in.memory.detachImporter()
-	}
-	runtime.ReleaseEngine(in.eng)
-}
-
-// Memory returns the instance's linear-memory object (instance-owned or the
-// host-imported one). Use Memory().Bytes() for the zero-copy byte view.
-func (in *Instance) Memory() *Memory { return in.memory }
-
-// importDedup is an insertion-ordered set of distinct comparable values — the
-// engine uses it for import owner pointers (host funcrefs, reference globals,
-// imported tables). A small inline array keeps the common case (a handful of
-// imports) allocation-free; overflow spills to a slice. The zero value is ready
-// to use.
-type importDedup[T comparable] struct {
-	inline [4]T
-	n      int
-	extra  []T
-}
-
-func (d *importDedup[T]) contains(v T) bool {
-	for i := 0; i < d.n && i < len(d.inline); i++ {
-		if d.inline[i] == v {
-			return true
-		}
-	}
-	for _, e := range d.extra {
-		if e == v {
-			return true
-		}
-	}
-	return false
-}
-
-// push appends v unconditionally; callers needing dedup use add or guard with
-// contains first.
-func (d *importDedup[T]) push(v T) {
-	if d.n < len(d.inline) {
-		d.inline[d.n] = v
-	} else {
-		d.extra = append(d.extra, v)
-	}
-	d.n++
-}
-
-// add inserts v if absent and reports whether it was newly inserted.
-func (d *importDedup[T]) add(v T) bool {
-	if d.contains(v) {
-		return false
-	}
-	d.push(v)
-	return true
-}
-
-// each calls fn for every distinct element in insertion order.
-func (d *importDedup[T]) each(fn func(T)) {
-	inlineCount := d.n
-	if inlineCount > len(d.inline) {
-		inlineCount = len(d.inline)
-	}
-	for i := 0; i < inlineCount; i++ {
-		fn(d.inline[i])
-	}
-	for _, e := range d.extra {
-		fn(e)
-	}
-}
-
-// reset empties the set, clearing the inline array so it retains no references.
-func (d *importDedup[T]) reset() {
-	inlineCount := d.n
-	if inlineCount > len(d.inline) {
-		inlineCount = len(d.inline)
-	}
-	var zero T
-	for i := 0; i < inlineCount; i++ {
-		d.inline[i] = zero
-	}
-	d.n = 0
-	d.extra = nil
-}
-
-type hostFuncRefAttachments struct {
-	set importDedup[*HostFuncRef]
-}
-
-func (a *hostFuncRefAttachments) attach(owner *HostFuncRef, store *referenceStore, sig FuncSig) error {
-	if owner == nil {
-		return fmt.Errorf("host funcref owner is nil")
-	}
-	if a.set.contains(owner) {
-		return owner.validateImport(store, sig)
-	}
-	if err := owner.attachImporter(store, sig); err != nil {
-		return err
-	}
-	a.set.push(owner)
-	return nil
-}
-
-func (a *hostFuncRefAttachments) detachAll() {
-	a.set.each((*HostFuncRef).detachImporter)
-	a.set.reset()
-}
-
-func detachImportedHostFuncRefs(in *Instance) {
-	if in == nil || in.c == nil {
-		return
-	}
-	var seen importDedup[*HostFuncRef]
-	for _, key := range in.c.Imports {
-		owner, ok := in.imports[key].(*HostFuncRef)
-		if !ok || owner == nil {
-			continue
-		}
-		if seen.add(owner) {
-			owner.detachImporter()
-		}
-	}
-}
-
-type globalImportAttachments struct {
-	set importDedup[*Global]
-}
-
-func (a *globalImportAttachments) attach(global *Global, store *referenceStore) error {
-	if global == nil {
-		return fmt.Errorf("reference global is nil")
-	}
-	if a.set.contains(global) {
-		return global.validateReferenceImport(store)
-	}
-	if err := global.attachReferenceImporter(store); err != nil {
-		return err
-	}
-	a.set.push(global)
-	return nil
-}
-
-func (a *globalImportAttachments) detachAll() {
-	a.set.each((*Global).detachReferenceImporter)
-	a.set.reset()
-}
-
-func detachImportedGlobals(in *Instance) {
-	if in == nil || in.c == nil {
-		return
-	}
-	var seen importDedup[*Global]
-	for _, imp := range in.c.GlobalImports {
-		if !isReferenceValType(imp.Type) {
-			continue
-		}
-		provided, ok := in.imports.global(imp.Module + "." + imp.Name)
-		if !ok || provided.Global == nil {
-			continue
-		}
-		if seen.add(provided.Global) {
-			provided.Global.detachReferenceImporter()
-		}
-	}
-}
-
-func retainProducerRootsInImportedGlobals(in *Instance) bool {
-	if in == nil || in.c == nil {
-		return false
-	}
-	retained := false
-	var seen importDedup[*Global]
-	for _, imp := range in.c.GlobalImports {
-		if imp.Type != ValFuncRef {
-			continue
-		}
-		provided, ok := in.imports.global(imp.Module + "." + imp.Name)
-		if !ok || provided.Global == nil {
-			continue
-		}
-		if !seen.add(provided.Global) {
-			continue
-		}
-		if provided.Global.retainProducerInstance(in) {
-			retained = true
-		}
-	}
-	return retained
-}
-
-type tableImportAttachments struct {
-	set importDedup[*Table]
-}
-
-func (a *tableImportAttachments) attach(table *Table, elementType ValType, store *referenceStore) error {
-	if err := table.validateImport(elementType, store); err != nil {
-		return err
-	}
-	if a.set.contains(table) {
-		return nil
-	}
-	if err := table.attachImporter(elementType, store); err != nil {
-		return err
-	}
-	a.set.push(table)
-	return nil
-}
-
-func (a *tableImportAttachments) detachAll() {
-	a.set.each((*Table).detachImporter)
-	a.set.reset()
-}
-
-func detachImportedTables(in *Instance) {
-	if in == nil || in.c == nil {
-		return
-	}
-	var seen importDedup[*Table]
-	for tableIndex := 0; tableIndex < in.c.tableImportCount(); tableIndex++ {
-		def, _ := in.c.tableImportAt(tableIndex)
-		table, ok := in.imports.table(def.Key)
-		if !ok || table == nil {
-			continue
-		}
-		if seen.add(table) {
-			table.detachImporter()
-		}
-	}
-}
-
-func retainProducerRootsInImportedTables(in *Instance) bool {
-	if in == nil || in.c == nil {
-		return false
-	}
-	retained := false
-	for tableIndex := 0; tableIndex < in.c.tableImportCount(); tableIndex++ {
-		def, _ := in.c.tableImportAt(tableIndex)
-		table, ok := in.imports.table(def.Key)
-		if ok && table.retainProducerInstance(in) {
-			retained = true
-		}
-	}
-	return retained
-}
-
-func (in *Instance) tableDescriptor(index int) []byte {
-	if in == nil || in.c == nil || index < 0 || index >= in.c.tableCount() {
-		return nil
-	}
-	if importDef, imported := in.c.tableImportAt(index); imported {
-		table, ok := in.imports.table(importDef.Key)
-		if !ok || len(table.desc) < 8 {
-			return nil
-		}
-		return table.desc
-	}
-	if index == 0 {
-		if in.tableDescPtr == 0 || in.tableDescLen <= 0 {
-			return nil
-		}
-		return unsafe.Slice((*byte)(offHeapPtr(in.tableDescPtr)), in.tableDescLen)
-	}
-	dirPtr := in.jm.TableDirPtr()
-	if dirPtr == 0 {
-		return nil
-	}
-	dir := unsafe.Slice((*byte)(offHeapPtr(dirPtr)), 8*in.c.tableCount())
-	descPtr := uintptr(binary.LittleEndian.Uint64(dir[index*8:]))
-	if descPtr == 0 {
-		return nil
-	}
-	def := in.c.tableDef(index)
-	capacity := def.Max
-	if capacity == 0 {
-		capacity = def.Size
-	}
-	return unsafe.Slice((*byte)(offHeapPtr(descPtr)), 8+capacity*in.c.tableEntryBytes(index))
-}
-
-// Imports returns the imports map this instance was created with, for retrieving
-// imported objects (e.g. a *Memory or *Global) by "module.name" key. The map is
-// the one passed to Instantiate; do not mutate it.
-func (in *Instance) Imports() Imports { return in.imports }

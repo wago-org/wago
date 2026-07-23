@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-func TestSnapshotProductsRejectCodecV20ReferenceState(t *testing.T) {
+func TestSnapshotProductsRejectCodecV21ReferenceState(t *testing.T) {
 	t.Setenv("WAGO_BOUNDS", "explicit")
 	for _, tc := range []struct {
 		name string
@@ -29,7 +29,7 @@ func TestSnapshotProductsRejectCodecV20ReferenceState(t *testing.T) {
 
 			blob := rawSnapshotBlobForCompiled(t, c)
 			if _, err := LoadSnapshot(blob); err == nil || !strings.Contains(err.Error(), tc.want) {
-				t.Fatalf("LoadSnapshot(codec-v20 %s module) = %v, want %q rejection", tc.name, err, tc.want)
+				t.Fatalf("LoadSnapshot(codec-v21 %s module) = %v, want %q rejection", tc.name, err, tc.want)
 			}
 		})
 	}

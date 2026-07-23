@@ -1,5 +1,9 @@
 # Agent Todo
 
+Status: completed historical roadmap. Current feature and artifact truth lives in
+`FEATURES.md`, `ROADMAP.md`, and `ARCHITECTURE.md`; codec/version measurements
+below record the implementation state when each item landed.
+
 ## WebAssembly 2.0 Completion Roadmap
 
 Goal: complete WebAssembly 2.0 semantics without regressing the table-0,

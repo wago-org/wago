@@ -1,5 +1,9 @@
 # Wago → WARP-Topology Redesign Plan
 
+Status: superseded; retained as design history. The current direction shares only
+measured architecture-neutral orchestration and keeps direct per-architecture
+lowering rather than adopting this wholesale topology.
+
 ## Context
 
 Wago's railshot backend is already a port of WARP's valent-block codegen core, but its *pipeline topology* is not: Wago materializes a whole decoded `wasm.Module` AST, then runs ~4 separate body walks (validate → support pass → hints → codegen), duplicated across two ~17k-line per-arch driver mirrors. WARP instead has **one shared frontend** (streamed sections, decode-each-instruction-once, validation fused into the same walk) driving **thin per-arch backends**, with **no module AST** (compact offset tables) and **two bounded memory pools** (scratch slabs + output).
@@ -8,7 +12,7 @@ Measured consequence (compile-only peak RSS, darwin/arm64, min of 3): Wago is 3.
 
 **Key session facts the plan builds on** (verified, with citations in session):
 - `bodyLoop` and `pushBinOp` are byte-identical between `railshot/amd64` and `railshot/arm64`; control/driver files are line-for-line structural twins (~17,251 duplicated arm64 lines / 28 mirrored files). Arch-dependent surface = `f.a.*` encodings, regalloc, `cc.go` ABI, condition mapping only.
-- Instantiate/serialization never touch `wasm.Module` — everything already lands in compact `Compiled` fields. The only post-compile Module consumer is `hostLinkCache` (link-time recompilation), which the streaming branch already replaced with a compact link artifact.
+- At the time, `hostLinkCache` was the only post-compile `wasm.Module` consumer. The production path now removes that cache and link-time recompilation entirely in favor of per-instance dispatch cells.
 - WARP fuses validation via a `ValidationStack` running beside the operand stack in one decode loop (warp `Frontend.cpp:1290+`); holds output in ONE buffer with forward-call chains threaded through it; scratch is slab-reset per function.
 - Each railshot backend is `//go:build <arch>`-gated (one arch per binary), so a concrete type alias — not a Go interface — can bind frontend→backend with zero dispatch cost.
 

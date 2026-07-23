@@ -84,8 +84,8 @@ func TestOwnedHostFuncrefEgressRoundTripAndCloseOrdering(t *testing.T) {
 	if got, err := consumer.Call(context.Background(), "call", token); err != nil || len(got) != 1 || got[0].I32() != 42 {
 		t.Fatalf("call retained owned host token = %v, %v; want 42", got, err)
 	}
-	if err := owner.Close(); err == nil || !strings.Contains(err.Error(), "live funcref token") {
-		t.Fatalf("Close owner with live token error = %v, want token-lifetime rejection", err)
+	if err := owner.Close(); err == nil || (!strings.Contains(err.Error(), "live funcref token") && !strings.Contains(err.Error(), "live importer")) {
+		t.Fatalf("Close owner with retained reference error = %v", err)
 	}
 	if err := consumer.Close(); err != nil {
 		t.Fatalf("Close consumer: %v", err)
@@ -279,14 +279,14 @@ func TestOwnedHostFuncrefRejectsCorruptedDescriptorMetadata(t *testing.T) {
 	}
 	defer in.Close()
 
-	off := coreruntime.TableEntryBytes
+	off := coreruntime.FuncRefDescBytes
 	refSlotOff := off + coreruntime.TableEntryRefSlotOffset
 	refSlot := binary.LittleEndian.Uint64(in.funcRefDescs[refSlotOff:])
 	binary.LittleEndian.PutUint64(in.funcRefDescs[refSlotOff:], refSlot+8)
 	if got, err := in.Invoke("get"); err == nil || !strings.Contains(err.Error(), "invalid funcref result") || got != nil {
 		t.Fatalf("corrupted owned host get = %v, %v; want fail-closed result", got, err)
 	}
-	if len(rt.refStore.byToken) != 0 || len(rt.refStore.byDescriptor) != 0 {
+	if len(rt.refStore.byToken) != 0 || len(rt.refStore.byIdentity) != 0 {
 		t.Fatal("corrupted host descriptor issued a public token")
 	}
 }

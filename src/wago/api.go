@@ -34,9 +34,9 @@ const (
 // Compile decodes, validates, and compiles a wasm module to native code.
 //
 // On success ownership of wasmBytes transfers to the returned Compiled. The
-// caller must not mutate or reuse its backing array: active segment metadata and
-// link-time recompilation deliberately retain slices into that storage. This
-// avoids an input-sized copy for modules with function imports.
+// caller must not mutate or reuse its backing array: decoded segment metadata
+// may retain slices into that storage. This avoids an input-sized copy while the
+// compiled artifact is live.
 //
 // It accepts both the current explicit form:
 //
@@ -90,16 +90,6 @@ func compileArgs(args []any) (*RuntimeConfig, []byte, error) {
 	}
 }
 
-// storedFunctionWorkers keeps link-time policy in existing Compiled padding.
-// Values above uint16 still mean "at least every practical GOMAXPROCS" and are
-// therefore equivalent after the worker cap.
-func storedFunctionWorkers(policy int) uint16 {
-	if policy > int(^uint16(0)) {
-		return ^uint16(0)
-	}
-	return uint16(policy)
-}
-
 // functionWorkersForModule resolves the configured policy once so validation
 // and codegen use the same bounded worker count for a module.
 func functionWorkersForModule(m *wasm.Module, policy int) int {
@@ -134,22 +124,21 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 	}
 	// Architectures that always use the sync-host dispatcher can compile host
 	// defaults up front; others defer returning imports until link time.
-	elide := cfg.boundsChecks == BoundsChecksSignalsBased
+	boundsMode := effectiveCompileBoundsMode(cfg.boundsChecks, m)
+	elide := boundsMode == BoundsChecksSignalsBased
 	importedFuncs := m.ImportedFuncCount()
-	syncHostInitial := forceSyncHostImports && importedFuncs > 0
-	needsLink := moduleNeedsLink(m) && !syncHostInitial
-	var code []byte
-	var entry, internalEntry []int
-	if !needsLink {
-		pressureAt, pressure := compileMemoryPressure(len(wasmBytes))
-		cm, err := railshotCompileModuleWith(m, railshotCompileOptions{Workers: workers, ElideBoundsChecks: elide, NoBoundsFacts: cfg.noDeferBounds, SyncHostCalls: syncHostInitial, Interruptible: true, MemoryPressureAt: pressureAt, MemoryPressure: pressure})
-		if err != nil {
-			return nil, fmt.Errorf("compile: %w", err)
-		}
-		code, entry, internalEntry = cm.Code, cm.Entry, cm.InternalEntry
+	dynamicBindings := make([]railshotImportBinding, importedFuncs)
+	for i := range dynamicBindings {
+		dynamicBindings[i] = railshotImportBinding{Dynamic: true, ImportIndex: uint32(i)}
 	}
+	pressureAt, pressure := compileMemoryPressure(len(wasmBytes))
+	cm, err := railshotCompileModuleWith(m, railshotCompileOptions{Workers: workers, ElideBoundsChecks: elide, NoBoundsFacts: cfg.noDeferBounds, ImportBindings: dynamicBindings, Interruptible: true, MemoryPressureAt: pressureAt, MemoryPressure: pressure})
+	if err != nil {
+		return nil, fmt.Errorf("compile: %w", err)
+	}
+	code, entry, internalEntry := cm.Code, cm.Entry, cm.InternalEntry
 
-	c := &Compiled{Code: code, Entry: entry, InternalEntry: internalEntry, NumImports: importedFuncs, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, boundsMode: cfg.boundsChecks, GCTypeDescs: gcDescs, needsLink: needsLink, boundsElide: elide, noDeferBounds: cfg.noDeferBounds, functionWorkers: storedFunctionWorkers(cfg.functionWorkers), requiredFeatures: uint8(moduleRequiredFeatures(m)), syncHostImports: syncHostInitial}
+	c := &Compiled{Code: code, Entry: entry, InternalEntry: internalEntry, NumImports: importedFuncs, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, boundsMode: boundsMode, GCTypeDescs: gcDescs, requiredFeatures: uint8(moduleRequiredFeatures(m)), dynamicImports: importedFuncs > 0}
 	if importedFuncs > 0 {
 		c.importFuncSigs = make([]FuncSig, importedFuncs)
 		for i := 0; i < importedFuncs; i++ {
@@ -157,17 +146,6 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 				c.importFuncSigs[i] = FuncSig{valTypesFromWasm(ft.Params), valTypesFromWasm(ft.Results)}
 			}
 		}
-	}
-	// Retain the raw module for the link-time recompile whenever an import could be
-	// bound cross-instance (any function import), or codegen was deferred.
-	if needsLink || importedFuncs > 0 {
-		c.wasmBytes = wasmBytes
-	}
-	// Any module with function imports may need a host-only sync recompile at
-	// Instantiate (deferred returning/v128 imports, or non-legacy host bindings),
-	// and that generated code is independent of the concrete host function values.
-	if importedFuncs > 0 && !syncHostInitial {
-		c.hostLink = &hostLinkCache{}
 	}
 	importedTables := m.ImportedTableCount()
 	var additionalTableImports []tableImportDef
@@ -398,6 +376,33 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 	return installCompiledFinalizer(c), nil
 }
 
+// effectiveCompileBoundsMode keeps zero-minimum memories correct on ARM64.
+// The current ARM64 guard entry places control words immediately below linMem;
+// when linMem begins on the first inaccessible linear page, entry is not reliable
+// across the supported Linux and Darwin signal trampolines. Compile those rare
+// modules with explicit checks and classic growable memory instead.
+func effectiveCompileBoundsMode(requested BoundsCheckMode, m *wasm.Module) BoundsCheckMode {
+	if requested != BoundsChecksSignalsBased || goruntime.GOARCH != "arm64" {
+		return requested
+	}
+	if min, ok := moduleInitialMemoryPages(m); ok && min == 0 {
+		return BoundsChecksExplicit
+	}
+	return requested
+}
+
+func moduleInitialMemoryPages(m *wasm.Module) (uint64, bool) {
+	for i := range m.Imports {
+		if m.Imports[i].Type.Kind == wasm.ExternMem {
+			return m.Imports[i].Type.Mem.Limits.Min, true
+		}
+	}
+	if len(m.Memories) != 0 {
+		return m.Memories[0].Limits.Min, true
+	}
+	return 0, false
+}
+
 func compileMemoryPressure(sourceBytes int) (int, func()) {
 	// One checkpoint is enough to prevent dead per-function state from riding the
 	// GC growth curve to the end of real-world modules. Small modules stay on the
@@ -406,20 +411,6 @@ func compileMemoryPressure(sourceBytes int) (int, func()) {
 		return 0, nil
 	}
 	return 0, goruntime.GC
-}
-
-// moduleNeedsLink reports whether the module has a returning function import,
-// which the host log-and-replay model cannot satisfy: it must be bound to
-// another instance's function at Instantiate, so codegen is deferred to the
-// link-time recompile.
-func moduleNeedsLink(m *wasm.Module) bool {
-	imported := m.ImportedFuncCount()
-	for i := 0; i < imported; i++ {
-		if ft, ok := m.FuncSignature(uint32(i)); ok && (len(ft.Results) != 0 || funcTypeUsesV128(ft)) {
-			return true
-		}
-	}
-	return false
 }
 
 func elemModeFromWasm(mode wasm.ElemModeKind) ElemMode {
@@ -499,141 +490,75 @@ func asyncReplayable(sig FuncSig) bool {
 		(len(sig.Params) == 0 || sig.Params[0] == ValI32)
 }
 
-// linkModule resolves imports using the module's normal host-call mode.
-func (c *Compiled) linkModule(imports Imports, store *referenceStore) (*Compiled, error) {
-	return c.linkModuleMode(imports, store, false)
+func (c *Compiled) importsRequireSync(imports Imports, force bool) bool {
+	if force || forceSyncHostImports || c.needsPublicFuncrefHostReentry() {
+		return true
+	}
+	for _, key := range c.Imports {
+		if export, cross := imports[key].(*InstanceExport); cross {
+			// A cross-instance-only consumer needs the parked-host loop only when
+			// its target can itself park. syncMode is immutable after the producer
+			// is instantiated and already includes its transitive direct imports.
+			if export == nil || export.inst == nil || export.inst.syncMode {
+				return true
+			}
+			continue
+		}
+		// Every actual host binding remains synchronous. In particular, a legacy
+		// replayable HostFunc may later be reached through an InstanceExport, where
+		// logging into the callee's private buffer would be invisible to the public
+		// root. Only host-free cross-instance links take the fast native path.
+		return true
+	}
+	// An imported funcref table can be mutated to contain a host or
+	// cross-instance descriptor after instantiation, so it remains conservative.
+	for i := 0; i < c.tableImportCount(); i++ {
+		if c.tableElementType(i) == ValFuncRef {
+			return true
+		}
+	}
+	return false
 }
 
-// linkModuleMode resolves the module's function imports and, when necessary,
-// recompiles them for native cross-instance calls or synchronous host callbacks.
-// forceSyncHost is used by Runtime caller resolution so a host callback happens
-// at the actual Wasm call site, including before a later start-function trap.
-func (c *Compiled) linkModuleMode(imports Imports, store *referenceStore, forceSyncHost bool) (*Compiled, error) {
-	bindings := make([]railshotImportBinding, len(c.Imports))
-	anyCross := false
-	requestSyncHost := forceSyncHost
-	forceSyncHost = false
+// validateImportBindings checks cross-instance signatures and reference-store
+// compatibility. Imported calls are already compiled; instantiation only writes
+// concrete targets into the per-instance dispatch table.
+func (c *Compiled) validateImportBindings(imports Imports, store *referenceStore) error {
 	for i, key := range c.Imports {
 		ex, ok := imports[key].(*InstanceExport)
 		if !ok {
-			forceSyncHost = forceSyncHost || requestSyncHost
-			switch imports[key].(type) {
-			case *HostFuncRef:
-				if i >= len(c.importFuncSigs) {
-					return nil, fmt.Errorf("import %q: missing signature", key)
-				}
-				// Owned host descriptors must be callable after crossing into another
-				// instance, so their thunk always uses the synchronous store dispatcher.
-				forceSyncHost = true
-			case HostFunc:
-				if i >= len(c.importFuncSigs) {
-					return nil, fmt.Errorf("import %q: missing signature", key)
-				}
-				// A void import taking an optional single i32 arg can be served by the
-				// async log-and-replay path (which captures one i32, no results). Any
-				// other signature must run through the synchronous host dispatcher.
-				if !c.syncHostImports && (forceSyncHostImports || !asyncReplayable(c.importFuncSigs[i])) {
-					forceSyncHost = true
-				}
-			default:
-				if imports[key] != nil {
-					// An unknown host binding must run through the synchronous dispatcher,
-					// where bindHostImport rejects it with its concrete type.
-					forceSyncHost = true
-				}
-			}
 			continue
 		}
 		if ex == nil || ex.inst == nil {
-			return nil, fmt.Errorf("cross-instance import %q is nil", key)
+			return fmt.Errorf("cross-instance import %q is nil", key)
 		}
 		if ex.localIdx < 0 || ex.localIdx >= len(ex.inst.c.Entry) {
-			return nil, fmt.Errorf("cross-instance import %q references an unavailable function", key)
+			return fmt.Errorf("cross-instance import %q references an unavailable function", key)
 		}
 		if i >= len(c.importFuncSigs) {
-			return nil, fmt.Errorf("cross-instance import %q is missing its signature", key)
+			return fmt.Errorf("cross-instance import %q is missing its signature", key)
 		}
 		sig := c.importFuncSigs[i]
+		if len(sig.Params) != len(ex.params) || len(sig.Results) != len(ex.results) {
+			return fmt.Errorf("cross-instance import %q signature mismatch", key)
+		}
+		for j := range sig.Params {
+			if sig.Params[j] != ex.params[j] {
+				return fmt.Errorf("cross-instance import %q signature mismatch", key)
+			}
+		}
+		for j := range sig.Results {
+			if sig.Results[j] != ex.results[j] {
+				return fmt.Errorf("cross-instance import %q signature mismatch", key)
+			}
+		}
 		if hasValType(sig.Params, ValExternRef) || hasValType(sig.Results, ValExternRef) {
 			if store == nil || ex.inst.refStore != store {
-				return nil, fmt.Errorf("cross-instance externref import %q requires the same reference store", key)
+				return fmt.Errorf("cross-instance externref import %q requires the same reference store", key)
 			}
 		}
-		bindings[i] = railshotImportBinding{
-			CrossInstance: true,
-			CalleeLinMem:  uint64(ex.inst.jm.LinMemBase()),
-			CalleeEntry:   uint64(ex.inst.base + uintptr(ex.inst.c.Entry[ex.localIdx])),
-		}
-		anyCross = true
 	}
-	if !c.needsLink && !anyCross && (!forceSyncHost || c.syncHostImports) {
-		return c, nil // existing code already has the required host-call mode
-	}
-	// Host-only link (deferred codegen, no cross-instance binding): the recompiled
-	// code does not depend on which host functions are supplied, so produce it once
-	// and reuse it — every later Instantiate then skips re-running the backend and
-	// shares the one executable mapping. (bindings here are all zero-value.)
-	if !anyCross {
-		if hl := c.hostLink; hl != nil {
-			if forceSyncHost {
-				hl.syncOnce.Do(func() { hl.syncC, hl.syncErr = c.recompileLinked(nil, bindings, true) })
-				return hl.syncC, hl.syncErr
-			}
-			hl.once.Do(func() { hl.c, hl.err = c.recompileLinked(nil, bindings, false) })
-			return hl.c, hl.err
-		}
-	}
-	return c.recompileLinked(imports, bindings, forceSyncHost)
-}
-
-// recompileLinked re-runs codegen with the given import bindings and returns a
-// fresh linked Compiled. bindings is all zero-value for a host-only link and
-// carries per-instance callee addresses for cross-instance imports.
-func (c *Compiled) recompileLinked(imports Imports, bindings []railshotImportBinding, forceSyncHost bool) (*Compiled, error) {
-	if len(c.wasmBytes) == 0 {
-		return nil, fmt.Errorf("cross-instance linking requires the retained module source")
-	}
-	m, err := wasm.DecodeModule(c.wasmBytes)
-	if err != nil {
-		return nil, fmt.Errorf("link: decode: %w", err)
-	}
-	imported := m.ImportedFuncCount()
-	importSigs := make([]FuncSig, imported)
-	syncHost := forceSyncHost
-	for i := 0; i < imported; i++ {
-		ft, ok := m.FuncSignature(uint32(i))
-		if !ok {
-			continue
-		}
-		importSigs[i] = FuncSig{valTypesFromWasm(ft.Params), valTypesFromWasm(ft.Results)}
-		if i < len(bindings) && bindings[i].CrossInstance {
-			if ex, ok := imports[c.Imports[i]].(*InstanceExport); !ok || !sigMatches(ft, ex) {
-				return nil, fmt.Errorf("cross-instance import %q signature mismatch", c.Imports[i])
-			}
-		} else if len(ft.Results) != 0 || funcTypeUsesV128(ft) {
-			// A returning import, or any host import carrying v128 slots, uses the
-			// synchronous re-entry protocol (callHostSync). The older async log path
-			// can only replay legacy void HostFunc calls with a single i32 argument.
-			syncHost = true
-		}
-	}
-	pressureAt, pressure := compileMemoryPressure(len(c.wasmBytes))
-	cm, err := railshotCompileModuleWith(m, railshotCompileOptions{Workers: functionWorkersForModule(m, int(c.functionWorkers)), ElideBoundsChecks: c.boundsElide, NoBoundsFacts: c.noDeferBounds, ImportBindings: bindings, SyncHostCalls: syncHost, Interruptible: true, MemoryPressureAt: pressureAt, MemoryPressure: pressure})
-	if err != nil {
-		return nil, fmt.Errorf("link: %w", err)
-	}
-	linked := *c
-	linked.Code = cm.Code
-	linked.Entry = cm.Entry
-	linked.InternalEntry = cm.InternalEntry
-	linked.needsLink = false
-	linked.requiredFeatures = uint8(CoreFeatures(c.requiredFeatures) | moduleRequiredFeatures(m))
-	linked.wasmBytes = nil
-	linked.codeCache = nil // fresh code mapping (shared across instances of this linked module)
-	linked.hostLink = nil  // the linked module is already linked; never re-links
-	linked.syncHostImports = syncHost
-	linked.importFuncSigs = importSigs
-	return installCompiledFinalizer(&linked), nil
+	return nil
 }
 
 func sigMatches(ft *wasm.CompType, ex *InstanceExport) bool {
@@ -922,6 +847,9 @@ func (c *Compiled) validate() error {
 	if len(c.importFuncSigs) != c.NumImports {
 		return fmt.Errorf("compiled metadata invalid: importFuncSigs length %d != NumImports %d", len(c.importFuncSigs), c.NumImports)
 	}
+	if c.dynamicImports != (c.NumImports > 0) {
+		return fmt.Errorf("compiled metadata invalid: dynamic import dispatch=%v with %d function import(s)", c.dynamicImports, c.NumImports)
+	}
 	if c.NumImports > maxInt()-len(c.Funcs) {
 		return fmt.Errorf("compiled metadata invalid: function count overflows int")
 	}
@@ -1193,7 +1121,7 @@ func (c *Compiled) validateRuntimeReferenceGlobalMetadata() error {
 	return nil
 }
 
-func (c *Compiled) validateCodecV20Metadata() error {
+func (c *Compiled) validateCodecV21Metadata() error {
 	if unsupported := compiledStructuralRequiredFeatures(c) &^ coreFeaturesWago; unsupported != 0 {
 		return fmt.Errorf("compiled metadata invalid: unknown required feature bits 0x%x", uint64(unsupported))
 	}
@@ -1407,7 +1335,7 @@ func (c *Compiled) validateArenaFootprint() error {
 		passiveElemBytes += len(elem.Values) * stride
 	}
 	hostCallBytes := 0
-	if c.syncHostImports || c.needsPublicFuncrefHostReentry() {
+	if c.needsPublicFuncrefHostReentry() {
 		hostCallBytes = wruntime.HostCtrlFrameBytes
 	}
 	need, err := wruntime.InstantiateArenaNeed(wruntime.InstantiateFootprint{
@@ -1431,6 +1359,10 @@ func (c *Compiled) validateArenaFootprint() error {
 	if err != nil {
 		return fmt.Errorf("compiled metadata invalid: %w", err)
 	}
+	if need > maxInt()-wruntime.InstanceContextBytes {
+		return fmt.Errorf("compiled metadata invalid: instantiate arena need overflows instance context")
+	}
+	need += wruntime.InstanceContextBytes
 	if need > wruntime.InstantiateArenaSize {
 		return fmt.Errorf("compiled metadata invalid: instantiate arena need %d > limit %d", need, wruntime.InstantiateArenaSize)
 	}
@@ -1473,10 +1405,11 @@ func (c *Compiled) validateDeferredOffsetGlobal(kind string, seg, idx int) error
 
 const wagoMagic = "WAGO"
 
-// Version 20 records exact structural reference-global, indexed-table, typed
-// element, and required-feature metadata. It never serializes live reference
-// tokens, descriptors, owners, dispatch state, thunk addresses, or store identity.
-const wagoVersion = 20
+// Version 21 adds binding-independent imported-call dispatch metadata to the
+// structural reference-global, indexed-table, typed-element, and feature data.
+// It never serializes live reference tokens, target addresses, thunk addresses,
+// owners, or store identity.
+const wagoVersion = 21
 
 // MarshalBinary serializes the precompiled module to a ".wago" blob.
 //
@@ -1488,13 +1421,13 @@ func (c *Compiled) MarshalBinary() ([]byte, error) {
 	if c.boundsMode == BoundsChecksSignalsBased {
 		return nil, errors.New("wago: signals-based compiled modules cannot be serialized; recompile from wasm at load time")
 	}
-	if c.needsLink || (len(c.Entry) == 0 && len(c.Funcs) > 0) {
-		return nil, errors.New("wago: link-deferred compiled modules cannot be serialized; instantiate or recompile from wasm at load time")
+	if len(c.Entry) == 0 && len(c.Funcs) > 0 {
+		return nil, errors.New("wago: compiled module has functions but no native entries")
 	}
-	if c.syncHostImports {
-		return nil, errors.New("wago: synchronous-host compiled modules cannot be serialized; recompile from wasm at load time")
+	if c.NumImports > 0 && !c.dynamicImports {
+		return nil, errors.New("wago: imported-function code lacks dynamic dispatch metadata")
 	}
-	if err := c.validateCodecV20Metadata(); err != nil {
+	if err := c.validateCodecV21Metadata(); err != nil {
 		return nil, err
 	}
 	return marshalCompiled(c)
@@ -1633,7 +1566,7 @@ func (in *Instance) invoke(export string, args []uint64, cancel <-chan struct{})
 			return nil, err
 		}
 	} else {
-		if err := callNative(in.c, in.eng, in.jm, in.nativeControlShared, entry, in.serArgs, in.trap, in.results); err != nil {
+		if err := in.callNativeAsync(entry, false); err != nil {
 			stopCancel()
 			return nil, err
 		}
@@ -1713,7 +1646,7 @@ func (in *Instance) invokeLocalContext(li int, args []uint64, cancel <-chan stru
 			return nil, err
 		}
 	} else {
-		if err := callNative(in.c, in.eng, in.jm, in.nativeControlShared, entry, in.serArgs, in.trap, in.results); err != nil {
+		if err := in.callNativeAsync(entry, false); err != nil {
 			stopCancel()
 			return nil, err
 		}

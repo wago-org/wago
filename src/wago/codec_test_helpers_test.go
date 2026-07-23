@@ -60,8 +60,9 @@ func writeCompiledCodecPrefixAfterMemoryImport(t testing.TB, w *compiledWriter) 
 	w.elems(nil) // passive element segments.
 	w.data(nil)
 	w.passiveData(nil)
-	w.str("") // memoryImport.
-	w.u8(0)   // requiredFeatures.
+	w.str("")     // memoryImport.
+	w.bool(false) // dynamicImports.
+	w.u8(0)       // requiredFeatures.
 }
 
 // compileExplicitArtifact keeps serialization fixtures independent of the

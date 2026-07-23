@@ -126,8 +126,8 @@ func Capture(c *Compiled, opts SnapshotOptions) (*Snapshot, error) {
 // instance. Callers must first enforce the Snapshot admission and owned-memory
 // boundaries without exporting mutable snapshot internals.
 func captureInstanceSnapshot(in *Instance, opts SnapshotOptions) *Snapshot {
-	// linkModule may return a specialized *Compiled (import-bound); capture against
-	// the instance's actual module so restore recompiles identically.
+	// Capture against the instance's actual immutable compiled image. Concrete
+	// import targets remain per-instance dispatch state and are never serialized.
 	s := &Snapshot{
 		c:       in.c,
 		imports: opts.Imports,

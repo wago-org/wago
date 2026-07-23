@@ -83,9 +83,14 @@ func TestInvokeContextInterruptsHostCallLoop(t *testing.T) {
 		)),
 	)
 	calls := 0
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	c := MustCompile(mod)
 	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.tick": HostFunc(func(_ HostModule, _, r []uint64) {
 		calls++
+		if calls == 1<<20+1 {
+			cancel()
+		}
 		r[0] = I32(0)
 	})}})
 	if err != nil {
@@ -93,11 +98,9 @@ func TestInvokeContextInterruptsHostCallLoop(t *testing.T) {
 	}
 	defer in.Close()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
-	defer cancel()
 	started := time.Now()
-	if _, err := in.InvokeContext(ctx, "spin"); !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("spin error = %v, want context deadline (a re-entry-cap error here is the regression)", err)
+	if _, err := in.InvokeContext(ctx, "spin"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("spin error = %v, want context cancellation (a re-entry-cap error here is the regression)", err)
 	}
 	if elapsed := time.Since(started); elapsed > 5*time.Second {
 		t.Fatalf("cancellation took %v, want bounded interruption", elapsed)

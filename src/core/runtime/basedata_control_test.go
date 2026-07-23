@@ -79,12 +79,6 @@ func TestJobMemoryRestoreAndBasedataControl(t *testing.T) {
 	if got := j.TableDirPtr(); got != 4 || j.getU64(offTablePtr) != 1 || j.getU64(offFuncRefDescPtr) != 2 || j.getU64(offPassiveElemPtr) != 3 {
 		t.Fatal("basedata pointer fields did not round-trip")
 	}
-	snap := j.SnapshotBasedata()
-	j.SetTableDirPtr(9)
-	j.RestoreBasedata(snap)
-	if j.TableDirPtr() != 4 {
-		t.Fatal("basedata snapshot did not restore")
-	}
 	if base, length := j.ReserveRange(); base != 0 || length != 0 {
 		t.Fatalf("classic reservation = %#x/%#x", base, length)
 	}
