@@ -1580,6 +1580,81 @@ func (f *fn) v128AnyTrue() {
 	f.pushReg(r, mtI32)
 }
 
+// tryV128AndAnyTrue selects `(a & b) != 0` before v128.and materializes its
+// result. VPTEST sets ZF directly from the bitwise intersection, eliminating
+// the temporary vector, zero vector, byte compare, movemask, and integer cmp.
+func matchNextSIMDOp(r *wasm.Reader, want uint32) bool {
+	save := r.Offset()
+	prefix, err := r.Byte()
+	if err != nil || prefix != 0xfd {
+		_ = r.JumpTo(save)
+		return false
+	}
+	sub, err := r.U32()
+	if err != nil || sub != want {
+		_ = r.JumpTo(save)
+		return false
+	}
+	return true
+}
+
+func (f *fn) tryV128AndAnyTrue(r *wasm.Reader) bool {
+	if !simdSuperoptEnabled || !matchNextSIMDOp(r, 83) {
+		return false
+	}
+	b := f.popValue()
+	a := f.popValue()
+	sa, oa := f.operandRegV128(a)
+	f.fpinned = f.fpinned.add(sa)
+	sb, ob := f.operandRegV128(b)
+	f.fpinned = f.fpinned.remove(sa)
+	f.a.VPtest(sa, sb)
+	if oa {
+		f.releaseF(sa)
+	}
+	if ob {
+		f.releaseF(sb)
+	}
+	result := f.allocReg(0)
+	f.a.SetccReg(condNE, result)
+	f.pushReg(result, mtI32)
+	f.stats.peep("simd-and-anytrue")
+	return true
+}
+
+// tryV128NotAnd selects `a & ~b` when producers spell it as v128.not followed
+// immediately by v128.and. The Wasm v128.andnot opcode and VPANDN use opposite
+// source order, so VPANDN(dst,b,a) is the exact one-instruction result.
+func (f *fn) tryV128NotAnd(r *wasm.Reader) bool {
+	if !simdSuperoptEnabled || !matchNextSIMDOp(r, 78) {
+		return false
+	}
+	b := f.popValue()
+	a := f.popValue()
+	sa, oa := f.operandRegV128(a)
+	f.fpinned = f.fpinned.add(sa)
+	sb, ob := f.operandRegV128(b)
+	f.fpinned = f.fpinned.remove(sa)
+	dst := sa
+	if !oa {
+		if ob {
+			dst = sb
+		} else {
+			dst = f.allocFReg(maskOf(sa, sb))
+		}
+	}
+	f.a.VPandn(dst, sb, sa)
+	if oa && dst != sa {
+		f.releaseF(sa)
+	}
+	if ob && dst != sb {
+		f.releaseF(sb)
+	}
+	f.pushVReg(dst)
+	f.stats.peep("simd-not-and")
+	return true
+}
+
 func (f *fn) v128AllTrue(cmpEqZero func(dst, s1, s2 Reg)) {
 	v := f.popValue()
 	x := f.materializeV128(v)
@@ -2516,8 +2591,14 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 193: // i64x2.neg
 		f.v128IntegerNeg(f.a.VPsubq)
 	case 77: // v128.not
+		if f.tryV128NotAnd(r) {
+			break
+		}
 		f.v128UnaryNot()
 	case 78: // v128.and
+		if f.tryV128AndAnyTrue(r) {
+			break
+		}
 		f.v128Bin(r, f.a.VPand)
 	case 79: // v128.andnot (a & ~b). VPANDN(dst, s1, s2) = ~s1 & s2, so
 		// VPANDN(dst, b, a) = ~b & a = the Wasm result in one instruction.

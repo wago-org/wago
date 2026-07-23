@@ -325,6 +325,10 @@ func (f *fn) pushBinOp(op wOp, typ machineType) {
 	// One-constant algebraic simplification + strength reduction (P4): identities
 	// collapse without emitting a node; expensive ops rewrite to cheaper ones.
 	if right.kind == ekValue && right.st.kind == stConst {
+		if f.simplifyKnownBitsRHS(op, typ, left, right) {
+			f.stats.peep("known-bits")
+			return
+		}
 		if op2, done := f.simplifyConstRHS(op, typ, left, right); done {
 			f.stats.peep("alu-identity")
 			return
@@ -336,6 +340,16 @@ func (f *fn) pushBinOp(op wOp, typ machineType) {
 	if f.simplifySameOperand(op, typ, left, right) {
 		f.stats.peep("same-operand")
 		return
+	}
+	if op == opOr && typ == mtI64 {
+		candidate := elem{kind: ekDeferred, op: op, typ: typ, arg0: left, arg1: right}
+		candidate.deferDepth = 1 + max16(deferDepthOf(left), deferDepthOf(right))
+		if f.trySWARPack4(&candidate) {
+			node := f.s.alloc()
+			*node = candidate
+			f.s.push(node)
+			return
+		}
 	}
 	// Cap deferred-tree height: condense the deeper operand now if deferring this
 	// op would push the subtree past maxDeferDepth, so the tree condense() later
@@ -500,6 +514,10 @@ func log2u(v uint64) int {
 // when condensed.
 func (f *fn) pushUnOp(op wOp, typ machineType) {
 	operand := f.s.back()
+	if op == opWrap && f.trySWARPack4(operand) {
+		operand.typ = mtI32
+		return
+	}
 	// Constant-fold clz/ctz/popcnt/eqz and the width conversions over a constant.
 	if operand.kind == ekValue && operand.st.kind == stConst {
 		if v, rtyp, ok := foldUnaryConst(op, operand.st.cval, typ); ok {

@@ -36,6 +36,8 @@ const (
 func (f *fn) condense(node *elem, dest Reg) Reg {
 	f.stats.addCondense()
 	switch {
+	case node.op == opMulHighU:
+		return f.condenseMulHighU(node, dest)
 	case isBinALU(node.op):
 		return f.condenseBinary(node, dest)
 	case isShift(node.op):
@@ -50,6 +52,37 @@ func (f *fn) condense(node *elem, dest Reg) Reg {
 		return f.condenseDivRem(node, dest)
 	}
 	panic("amd64: unsupported deferred op")
+}
+
+// condenseMulHighU lowers the curated xjb-as multiply-high idiom through x86's
+// fixed RDX:RAX unsigned multiply pair.
+func (f *fn) condenseMulHighU(node *elem, dest Reg) Reg {
+	f.spillIfUsed(RAX)
+	f.spillIfUsed(RDX)
+	f.pinned = f.pinned.add(RAX).add(RDX)
+
+	right := f.materialize(node.arg1)
+	if right == RAX || right == RDX {
+		safe := f.allocReg(0)
+		f.a.MovReg64(safe, right)
+		f.occupy(node.arg1, safe)
+		right = safe
+	}
+	f.pinned = f.pinned.add(right)
+	f.condenseInto(node.arg0, RAX)
+	f.a.Mul(right, true)
+	f.pinned = f.pinned.remove(right).remove(RAX).remove(RDX)
+	f.release(right)
+
+	result := RDX
+	if dest != regNone && dest != RDX {
+		f.a.MovReg64(dest, RDX)
+		result = dest
+	}
+	f.consumeBlockBelow(node)
+	f.occupy(node, result)
+	node.op = opNone
+	return result
 }
 
 // condenseConvert lowers the integer width conversions (wrap / sign- & zero-
@@ -464,6 +497,18 @@ func (f *fn) condenseCompare(node *elem, dest Reg) Reg {
 	if node.typ.isFloat() { // deferred ordered float compare materialized as a value
 		return f.condenseFCompareValue(node, dest)
 	}
+	if cc, ok := f.tryMaskedEqzToFlags(node); ok {
+		result := dest
+		if result == regNone {
+			result = f.allocReg(0)
+		}
+		f.stats.peep("compare-setcc")
+		f.a.SetccReg(cc, result)
+		f.occupy(node, result)
+		node.st.typ = mtI32
+		node.op = opNone
+		return result
+	}
 	w := node.typ.is64()
 	left := node.arg0
 
@@ -585,6 +630,35 @@ func (f *fn) condenseUnary(node *elem, dest Reg) Reg {
 		f.a.Tzcnt(result, src, w)
 	case opPopcnt:
 		f.a.Popcnt(result, src, w)
+	case opSWARWiden4:
+		// Move the packed bytes to XMM, interleave them with zero bytes, and
+		// transfer the low four widened lanes back to the integer register.
+		v := f.allocFReg(0)
+		z := f.allocFReg(maskOf(v))
+		f.a.MovGprToXmm(v, src, true)
+		f.a.VPxor(z, z, z)
+		f.a.VPunpcklbw(v, v, z)
+		f.a.MovXmmToGpr(result, v, true)
+		f.releaseF(z)
+		f.releaseF(v)
+	case opSWARPack4:
+		// PSHUFB gathers bytes 0,2,4,6. Only the low four control bytes
+		// matter because the result is transferred back as an i32.
+		v := f.allocFReg(0)
+		shuffle := f.allocFReg(maskOf(v))
+		shuffleBits := f.allocReg(maskOf(src, result))
+		f.a.MovGprToXmm(v, src, true)
+		if w {
+			f.a.MovImm64(shuffleBits, 0x8080808006040200)
+		} else {
+			f.a.MovImm64(shuffleBits, 0x06040200)
+		}
+		f.a.MovGprToXmm(shuffle, shuffleBits, w)
+		f.a.VPshufb(v, v, shuffle)
+		f.a.MovXmmToGpr(result, v, w)
+		f.release(shuffleBits)
+		f.releaseF(shuffle)
+		f.releaseF(v)
 	}
 	if srcOwned && result != src {
 		f.release(src)

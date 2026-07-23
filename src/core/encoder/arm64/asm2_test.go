@@ -46,6 +46,13 @@ func TestPortIntEncodings(t *testing.T) {
 		{"smull x0,w1,w2", func(a *Asm) { a.Smull(X0, X1, X2) }, 0x9b227c20},
 		{"umull x0,w1,w2", func(a *Asm) { a.Umull(X0, X1, X2) }, 0x9ba27c20},
 		{"csel w0,w1,w2,eq", func(a *Asm) { a.Csel32(X0, X1, X2, CondEQ) }, 0x1a820020},
+		{"tst x1,x2", func(a *Asm) { a.TstReg(X1, X2, false) }, 0xea02003f},
+		{"tst w1,w2", func(a *Asm) { a.TstReg(X1, X2, true) }, 0x6a02003f},
+		{"tst x1,#0x8080808080808080", func(a *Asm) {
+			if !a.TstImm64(X1, 0x8080808080808080) {
+				t.Fatal("packed high-bit mask not encodable")
+			}
+		}, 0xf201c03f},
 		// 32-bit logical immediate (and w0,w1,#0xff)
 		{"and w0,w1,#0xff", func(a *Asm) {
 			if !a.AndImm32(X0, X1, 0xff) {
@@ -309,6 +316,7 @@ func TestPortNeon16bLogical(t *testing.T) {
 		{"sxtl2 v0.2d,v1.4s", func(a *Asm) { a.NeonSxtl2DfromS(X0, X1) }, 0x4f20a420},
 		{"uxtl v0.2d,v1.2s", func(a *Asm) { a.NeonUxtlDfromS(X0, X1) }, 0x2f20a420},
 		{"uxtl2 v0.2d,v1.4s", func(a *Asm) { a.NeonUxtl2DfromS(X0, X1) }, 0x6f20a420},
+		{"xtn v0.8b,v1.8h", func(a *Asm) { a.NeonXtnBfromH(X0, X1) }, 0x0e212820},
 		{"sqxtn v0.8b,v1.8h", func(a *Asm) { a.NeonSqxtnBfromH(X0, X1) }, 0x0e214820},
 		{"sqxtn2 v0.16b,v2.8h", func(a *Asm) { a.NeonSqxtn2BfromH(X0, X2) }, 0x4e214840},
 		{"sqxtun v3.8b,v4.8h", func(a *Asm) { a.NeonSqxtunBfromH(X3, X4) }, 0x2e212883},

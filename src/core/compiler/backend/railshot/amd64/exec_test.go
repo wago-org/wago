@@ -46,7 +46,7 @@ func TestDirectBackendUsesSharedCodegenOptions(t *testing.T) {
 
 // mod1 builds and decodes a one-function module exporting "f". funcBody is the
 // full code entry (local declarations + instruction stream).
-func mod1(t *testing.T, params, results []wasm.ValType, funcBody []byte) *wasm.Module {
+func mod1(t testing.TB, params, results []wasm.ValType, funcBody []byte) *wasm.Module {
 	t.Helper()
 	entry := append(wasmtest.ULEB(uint32(len(funcBody))), funcBody...)
 	b := wasmtest.Module(

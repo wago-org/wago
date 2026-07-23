@@ -53,12 +53,25 @@ find_asc
 [ -n "$asc_bin" ] || { printf 'build-as: asc not found (set ASC or install AS in a library)\n' >&2; exit 1; }
 printf 'build-as: using asc = %s\n' "$asc_bin"
 
+# Focused local fixtures preserve the source shape of third-party idioms without
+# requiring the whole package checkout. They use the same pinned asc selected
+# above and are committed beside the larger corpus artifacts.
+build_local() { # source output
+	source=$1 out=$2
+	printf 'build-as: %s -> %s.wasm\n' "$source" "$out"
+	"$asc_bin" "$here/as/$source" -o "$here/$out.wasm" \
+		-O3 --noAssert --uncheckedBehavior always --runtime stub \
+		--disable simd --enable bulk-memory
+}
+
 # json-as needs its @json transform and the incremental runtime (it allocates +
 # GCs); blake-as/utf-as are allocation-free, so the leaner stub runtime is used.
 if [ "${SIMD_ONLY:-0}" != 1 ]; then
 	build json-as  assembly/wago-bench.ts json-as  --transform ./transform --runtime incremental --exportRuntime
 	build blake-as assembly/wago-bench.ts blake-as --runtime stub
 	build utf-as   assembly/wago-bench.ts utf-as   --runtime stub
+	build_local xjb-mulhi.ts xjb-mulhi
+	build_local swar-pack-parse.ts swar-pack-parse
 fi
 
 # SIMD twins use checked-in Wago entrypoints so the corpus is reproducible.

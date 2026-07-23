@@ -323,6 +323,15 @@ func (a *Asm) Cset32(rd Reg, c Cond) {
 // immediate (all-zeros, all-ones, or a non-repeating pattern) — the caller must
 // then materialize the constant in a register and use the register form.
 func (a *Asm) AndImm64(rd, rn Reg, val uint64) bool { return a.logicalImm(0x92000000, rd, rn, val) }
+
+// TstImm64 is the TST Xn,#imm alias (ANDS XZR,Xn,#imm). It returns false when
+// imm is not an AArch64 logical immediate and emits nothing in that case.
+func (a *Asm) TstImm64(rn Reg, val uint64) bool { return a.logicalImm(0xF200001F, ZR, rn, val) }
+
+// TstReg emits the TST register alias (ANDS ZR,rn,rm).
+func (a *Asm) TstReg(rn, rm Reg, w bool) {
+	a.word(wbase(w, 0x6A00001F, 0xEA00001F) | r(rm)<<16 | r(rn)<<5)
+}
 func (a *Asm) OrrImm64(rd, rn Reg, val uint64) bool { return a.logicalImm(0xB2000000, rd, rn, val) }
 func (a *Asm) EorImm64(rd, rn Reg, val uint64) bool { return a.logicalImm(0xD2000000, rd, rn, val) }
 

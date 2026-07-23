@@ -145,6 +145,8 @@ func TestRemainingIntegerInstructionForms(t *testing.T) {
 		{"cmp32", func(a *Asm) { a.Cmp32(R8, R9) }, []byte{0x45, 0x39, 0xc8}},
 		{"imul", func(a *Asm) { a.IMul(R8, R9, true) }, []byte{0x4d, 0x0f, 0xaf, 0xc1}},
 		{"test self", func(a *Asm) { a.TestSelf(R8, true) }, []byte{0x4d, 0x85, 0xc0}},
+		{"test reg", func(a *Asm) { a.TestReg(R8, R9, true) }, []byte{0x4d, 0x85, 0xc8}},
+		{"test imm", func(a *Asm) { a.TestImm(R8, 0x80808080, false) }, []byte{0x41, 0xf7, 0xc0, 0x80, 0x80, 0x80, 0x80}},
 		{"return", func(a *Asm) { a.Ret() }, []byte{0xc3}},
 		{"sub rsp", func(a *Asm) { a.SubRsp(16) }, []byte{0x48, 0x81, 0xec, 16, 0, 0, 0}},
 		{"alu rr", func(a *Asm) { a.AluRR(0x01, R8, R9, true) }, []byte{0x4d, 0x01, 0xc8}},

@@ -113,6 +113,7 @@ func (a *Asm) Csel32(rd, rn, rm Reg, c Cond) {
 func (a *Asm) AndImm32(rd, rn Reg, val uint32) bool { return a.logicalImm32(0x12000000, rd, rn, val) }
 func (a *Asm) OrrImm32(rd, rn Reg, val uint32) bool { return a.logicalImm32(0x32000000, rd, rn, val) }
 func (a *Asm) EorImm32(rd, rn Reg, val uint32) bool { return a.logicalImm32(0x52000000, rd, rn, val) }
+func (a *Asm) TstImm32(rn Reg, val uint32) bool     { return a.logicalImm32(0x7200001F, ZR, rn, val) }
 
 func (a *Asm) logicalImm32(base uint32, rd, rn Reg, val uint32) bool {
 	n, immr, imms, ok := encodeLogicalImm(uint64(val), false)
@@ -852,6 +853,7 @@ func (a *Asm) NeonSshrvD(dst, n, m Reg) { a.neon3(0x4E204400, 8, dst, n, m) } //
 
 // Helpers for the i64x2.mul widening recombine (NEON has no MUL.2D).
 func (a *Asm) NeonRev64S(dst, n Reg)       { a.word(0x4EA00800 | r(n)<<5 | r(dst)) } // REV64 Vd.4S,Vn.4S
+func (a *Asm) NeonXtnBfromH(dst, n Reg)    { a.word(0x0E212800 | r(n)<<5 | r(dst)) } // XTN Vd.8B,Vn.8H
 func (a *Asm) NeonXtnSfromD(dst, n Reg)    { a.word(0x0EA12800 | r(n)<<5 | r(dst)) } // XTN Vd.2S,Vn.2D
 func (a *Asm) NeonUaddlpDfromS(dst, n Reg) { a.word(0x6EA02800 | r(n)<<5 | r(dst)) } // UADDLP Vd.2D,Vn.4S
 func (a *Asm) NeonShlD(dst, n Reg, shift uint8) { // SHL Vd.2D,Vn.2D,#shift

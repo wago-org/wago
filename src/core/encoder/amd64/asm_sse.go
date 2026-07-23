@@ -343,6 +343,7 @@ func (a *Asm) VPcmpgtw(dst, s1, s2 Reg)  { a.vex3RRR(0b01, 0x65, dst, s1, s2) }
 func (a *Asm) VPcmpgtd(dst, s1, s2 Reg)  { a.vex3RRR(0b01, 0x66, dst, s1, s2) }
 func (a *Asm) VPcmpgtq(dst, s1, s2 Reg)  { a.vex3RRRMap(vexMap0F38, 0b01, 0x37, dst, s1, s2) }
 func (a *Asm) VPmovmskb(dst, src Reg)    { a.vex3RRReserved(vexMap0F, 0b01, 0xD7, dst, src) }
+func (a *Asm) VPtest(a1, a2 Reg)         { a.vex3RRReserved(vexMap0F38, 0b01, 0x17, a1, a2) }
 func (a *Asm) VMovmskps(dst, src Reg)    { a.vex3RRReserved(vexMap0F, 0b00, 0x50, dst, src) } // 4 f32-lane sign bits -> gpr
 func (a *Asm) VMovmskpd(dst, src Reg)    { a.vex3RRReserved(vexMap0F, 0b01, 0x50, dst, src) } // 2 f64-lane sign bits -> gpr
 func (a *Asm) VPacksswb(dst, s1, s2 Reg) { a.vex3RRR(0b01, 0x63, dst, s1, s2) }               // pack words->bytes, signed saturate

@@ -44,6 +44,15 @@ var (
 	// storing $c with a flag-neutral Cset after the CMP. WAGO_NO_STFLAGS=1 is the
 	// A/B oracle + kill switch for this flag-desync-sensitive path.
 	stFlagsEnabled = os.Getenv("WAGO_NO_STFLAGS") != "1"
+	// knownBitsEnabled gates the bounded deferred-tree bit estimator and direct
+	// packed-word mask-test lowering.
+	knownBitsEnabled = os.Getenv("WAGO_NO_KNOWN_BITS") != "1"
+	// swarIdiomsEnabled gates exact, bounded recognition of open-coded packed-byte
+	// algorithms. WAGO_NO_SWAR_IDIOMS=1 is the A/B oracle.
+	swarIdiomsEnabled = os.Getenv("WAGO_NO_SWAR_IDIOMS") != "1"
+	// simdSuperoptEnabled gates exact bounded selection of multi-op Wasm SIMD
+	// sequences. WAGO_NO_SIMD_SUPEROPT=1 is the A/B oracle.
+	simdSuperoptEnabled = os.Getenv("WAGO_NO_SIMD_SUPEROPT") != "1"
 
 	// fcmpFuseEnabled gates float compare→branch fusion (FCMP + B.cond instead of
 	// FCMP + CSET + branch). WAGO_NO_FCMP_FUSE=1 is the A/B oracle.

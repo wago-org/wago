@@ -182,6 +182,12 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 			return err
 		}
 		if op == 0x22 {
+			if done, err := f.tryMulHighU(r, int(x)+f.localBase); done || err != nil {
+				return err
+			}
+			if done, err := f.trySWARWiden4(r, int(x)+f.localBase); done || err != nil {
+				return err
+			}
 			if done, err := f.tryTeeCompareBrIf(r, int(x)+f.localBase); done || err != nil {
 				return err
 			}

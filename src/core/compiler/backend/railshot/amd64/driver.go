@@ -162,6 +162,14 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 		if err != nil {
 			return err
 		}
+		if op == 0x22 {
+			if done, err := f.tryMulHighU(r, int(x)+f.localBase); done || err != nil {
+				return err
+			}
+			if done, err := f.trySWARWiden4(r, int(x)+f.localBase); done || err != nil {
+				return err
+			}
+		}
 		f.setLocal(int(x)+f.localBase, op == 0x22) // localBase remaps an inlined callee's locals; 0 otherwise
 	case 0x23: // global.get
 		return f.globalGet(r)
