@@ -168,6 +168,9 @@ func (m *Memory) attachImporter() error {
 	if s.closed || m.jm == nil {
 		return fmt.Errorf("memory owner is closed")
 	}
+	if s.owner != nil && !s.shared {
+		return fmt.Errorf("memory has not been exported for import")
+	}
 	if !s.shared && s.importers != 0 {
 		return fmt.Errorf("memory is already used by another instance")
 	}
@@ -196,6 +199,34 @@ func (m *Memory) detachImporter() {
 	if owner != nil {
 		owner.releaseResourceRoot()
 	}
+}
+
+func (m *Memory) observeOwner(owner *Instance) error {
+	if m == nil || owner == nil {
+		return fmt.Errorf("memory owner is nil")
+	}
+	s := m.state.Load()
+	if s == nil {
+		fresh := &memoryState{}
+		if m.state.CompareAndSwap(nil, fresh) {
+			s = fresh
+		} else {
+			s = m.state.Load()
+		}
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed || m.jm == nil {
+		return fmt.Errorf("memory owner is closed")
+	}
+	if s.owner != nil && s.owner != owner {
+		return fmt.Errorf("memory already has a different producer owner")
+	}
+	s.owner = owner
+	if owner.c != nil {
+		s.hasMax = owner.c.MemHasMax
+	}
+	return nil
 }
 
 func (m *Memory) share(owner *Instance) error {

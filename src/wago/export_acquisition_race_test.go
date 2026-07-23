@@ -46,6 +46,41 @@ func TestExportAcquisitionCloseLinearization(t *testing.T) {
 		}
 	})
 
+	t.Run("Instance.Memory binds owner without exporting", func(t *testing.T) {
+		rt, in, _ := newExportAcquisitionFixture(t)
+		defer rt.Close()
+		memory := in.Memory()
+		if memory == nil || len(memory.Bytes()) != 1<<16 {
+			t.Fatal("Instance.Memory acquisition was not usable")
+		}
+		memoryImporter := mustCompileWat(rt, t, `(module (import "env" "memory" (memory 1 1)))`)
+		if _, err := rt.Instantiate(context.Background(), memoryImporter, WithImports(Imports{"env.memory": memory})); err == nil || !strings.Contains(err.Error(), "not been exported") {
+			t.Fatalf("unexported Instance.Memory import error = %v, want explicit export requirement", err)
+		}
+
+		gatePublished := make(chan struct{})
+		releaseClose := make(chan struct{})
+		rt.hooks.beforeClose = append(rt.hooks.beforeClose, func(ctx *InstanceContext) {
+			if ctx.Instance == in {
+				close(gatePublished)
+				<-releaseClose
+			}
+		})
+		closeDone := make(chan error, 1)
+		go func() { closeDone <- in.Close() }()
+		<-gatePublished
+		if got := memory.Bytes(); got != nil {
+			t.Fatalf("Instance.Memory Bytes after close gate length = %d, want nil", len(got))
+		}
+		close(releaseClose)
+		if err := <-closeDone; err != nil {
+			t.Fatalf("Close: %v", err)
+		}
+		if got := memory.Bytes(); got != nil {
+			t.Fatalf("Instance.Memory Bytes after physical close length = %d, want nil", len(got))
+		}
+	})
+
 	t.Run("acquisition wins then handles fail closed", func(t *testing.T) {
 		rt, in, consumerCode := newExportAcquisitionFixture(t)
 		defer rt.Close()

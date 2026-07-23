@@ -257,5 +257,8 @@ func (in *Instance) Memory() *Memory {
 		return nil
 	}
 	defer in.endInvocation()
+	if in.ownsMem && in.memory.observeOwner(in) != nil {
+		return nil
+	}
 	return in.memory
 }
