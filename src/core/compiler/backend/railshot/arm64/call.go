@@ -1316,7 +1316,7 @@ func (f *fn) emitWrapperCall(ft *wasm.CompType, emitCall func()) {
 // multi-value calls are not limited by the physical register file.
 func (f *fn) finishWrapperResults(belowTypes []machineType, resultSlot int, results []wasm.ValType) {
 	const maxRegisterResults = 12
-	if len(results) > maxRegisterResults {
+	if len(results) > maxRegisterResults || !f.wrapperResultsFitRegisters(results) {
 		f.adoptWideWrapperResults(belowTypes, resultSlot, results)
 		return
 	}
@@ -1371,6 +1371,45 @@ func (f *fn) finishWrapperResults(belowTypes []machineType, resultSlot int, resu
 			f.pushReg(regs[i], typ)
 		}
 	}
+}
+
+// wrapperResultsFitRegisters mirrors the amd64 pressure gate. Wrapper results
+// are pinned until all slot loads finish, while local/global reservations and FP
+// constant registers remain unavailable after setDepthTypes. Scalar floats also
+// need one temporary GPR for the slot-to-V-register move.
+func (f *fn) wrapperResultsFitRegisters(results []wasm.ValType) bool {
+	gpNeed, fpNeed := 0, 0
+	needsFloatTmp := false
+	for _, result := range results {
+		typ := mtOf(result)
+		switch {
+		case typ.isV128():
+			fpNeed++
+		case typ.isFloat():
+			fpNeed++
+			needsFloatTmp = true
+		default:
+			gpNeed++
+		}
+	}
+	if needsFloatTmp {
+		gpNeed++
+	}
+	gpBlock := f.pinnedLocalMask.union(f.reserved)
+	gpAvail := 0
+	for _, r := range gpAlloc {
+		if !gpBlock.has(r) {
+			gpAvail++
+		}
+	}
+	fpBlock := f.fpinnedLocalMask.union(f.fconstMask()).union(f.v128ConstMask())
+	fpAvail := 0
+	for _, r := range fpAllocRegs {
+		if !fpBlock.has(r) {
+			fpAvail++
+		}
+	}
+	return gpNeed <= gpAvail && fpNeed <= fpAvail
 }
 
 func (f *fn) adoptWideWrapperResults(belowTypes []machineType, resultSlot int, results []wasm.ValType) {
