@@ -82,13 +82,13 @@ func BenchmarkHostCall(b *testing.B) {
 
 	serArgs := ar.Alloc(16)
 	results := ar.Alloc(16)
-	trap := ar.Alloc(8)
+	trap := ar.Alloc(TrapBufferBytes)
 	ctrl := ar.Alloc(ctrlFrameSize)
 	jm.SetCustomCtx(slicePtr(ctrl))
 	lin := jm.LinearMemory()
 	binary.LittleEndian.PutUint32(serArgs, 20)
 	codePtr := slicePtr(code)
-	host := func(imp uint32, args, res []uint64) { res[0] = args[0] * 2 }
+	host := func(_ uintptr, imp uint32, args, res []uint64) { res[0] = args[0] * 2 }
 
 	b.ReportAllocs()
 	b.ResetTimer()

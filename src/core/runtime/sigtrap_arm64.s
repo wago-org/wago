@@ -46,6 +46,7 @@ dotrap:
 	MOVD	-104(R26), R12          // R12 = trap cell pointer
 	MOVW	$3, R13                 // TrapLinMemOutOfBounds
 	MOVW	R13, (R12)
+	MOVD	R26, 256(R2)           // saved X9 = linMem for the landing pad
 	MOVD	·guardTrapExitHandlerJumpPC(SB), R9
 	MOVD	R9, 440(R2)             // saved PC = nativeTrapExitHandlerJump
 	RET                             // -> kernel signal return -> nativeTrapExitHandlerJump
@@ -57,15 +58,15 @@ next:
 	MOVD	·guardOldHandler(SB), R9
 	B	(R9)
 
-// nativeTrapExitHandlerJump is the arm64/WARP landing pad. X26 is still the
-// faulting frame's linMem after sigreturn; [X26-24] is the trampoline-recorded
-// re-entry SP and [X26-32] is the trampoline continuation PC. Unlike amd64, arm64
-// BL does not push a return address, so branch to the saved continuation directly.
+// nativeTrapExitHandlerJump is the arm64/WARP landing pad. The signal handler
+// places the faulting linMem in saved X9 before sigreturn; do not depend on the
+// platform signal trampoline preserving native code's pinned X26 when replacing
+// the PC. [X9-24] is enterNative's save-area SP and [X9-32] its continuation.
 TEXT ·nativeTrapExitHandlerJump(SB), NOSPLIT|NOFRAME, $0-0
-	MOVD	-24(R26), R9
-	MOVD	R9, RSP
-	MOVD	-32(R26), R9
-	B	(R9)
+	MOVD	-24(R9), R10
+	MOVD	R10, RSP
+	MOVD	-32(R9), R10
+	B	(R10)
 
 TEXT ·addrGuardSigHandler(SB), NOSPLIT, $0-8
 	MOVD	$·guardSigHandler(SB), R0

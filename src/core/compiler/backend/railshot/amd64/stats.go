@@ -20,6 +20,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
@@ -65,6 +66,18 @@ var (
 	commuteFMemEnabled = os.Getenv("WAGO_NO_COMMUTE_FMEM") != "1"
 )
 
+const (
+	callKindInline         = shared.CallInline
+	callKindHost           = shared.CallHost
+	callKindHostSync       = shared.CallHostSync
+	callKindCrossInstance  = shared.CallCrossInstance
+	callKindImportDispatch = shared.CallImportDispatch
+	callKindRegisterABI    = shared.CallRegisterABI
+	callKindMixed          = shared.CallMixed
+	callKindWrapper        = shared.CallWrapper
+	callKindIndirect       = shared.CallIndirect
+)
+
 func parsePinGlobalK(s string) int {
 	switch s {
 	case "0":
@@ -107,7 +120,7 @@ type CodegenStats struct {
 	TrapStubs             int // shared cold trap stubs emitted (one per trap code used)
 
 	// Calls, by lowering kind: regabi / mixed / wrapper / host / indirect /
-	// crossinstance.
+	// crossinstance / importdispatch.
 	Calls map[string]int
 
 	// Pins.
@@ -231,10 +244,7 @@ func (s *CodegenStats) peep(name string) {
 }
 
 // ModuleGlobalPinInfo describes one module-wide global→register reservation.
-type ModuleGlobalPinInfo struct {
-	Global uint32
-	Reg    string
-}
+type ModuleGlobalPinInfo = shared.ModuleGlobalPinInfo
 
 // ModuleStats aggregates one module's per-function stats plus the module-wide
 // decisions. The zero value is ready to collect into.

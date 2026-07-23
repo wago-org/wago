@@ -122,6 +122,7 @@ func generatedValidCompiled(t testing.TB, data []byte) *Compiled {
 
 	c := &Compiled{
 		NumImports:     importCount,
+		dynamicImports: importCount > 0,
 		Imports:        make([]string, importCount),
 		importFuncSigs: make([]FuncSig, importCount),
 		Funcs:          make([]FuncSig, localFuncCount),
@@ -301,6 +302,7 @@ func compiledCodecFuzzSeeds(t testing.TB) [][]byte {
 			Code:           []byte{0xc3},
 			Entry:          []int{0},
 			NumImports:     1,
+			dynamicImports: true,
 			Imports:        []string{"env.host"},
 			importFuncSigs: []FuncSig{{Params: []ValType{ValI32}}},
 			Funcs: []FuncSig{{

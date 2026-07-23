@@ -56,8 +56,8 @@ func TestSyncHostImportV128SlotForm(t *testing.T) {
 	sig := wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.V128, wasm.I64}, []wasm.ValType{wasm.V128, wasm.I32})
 	body := []byte{0x00, 0x20, 0x00, 0x20, 0x01, 0x20, 0x02, 0x10, 0x00, 0x0b} // local.get 0,1,2; call 0; end
 	c := MustCompile(returningImportModule(sig, body))
-	if !forceSyncHostImports && !c.needsLink {
-		t.Fatal("v128 host import should force link-time sync host lowering")
+	if !c.dynamicImports || len(c.Code) == 0 {
+		t.Fatal("v128 host import should compile through dynamic dispatch")
 	}
 	calls := 0
 	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.f": HostFunc(func(_ HostModule, p, r []uint64) {
@@ -111,8 +111,8 @@ func TestSyncHostImportVoidV128UsesSyncPath(t *testing.T) {
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, 0x10, 0x00, 0x41, 0x07, 0x0b}))), // local.get 0; call 0; i32.const 7; end
 	)
 	c := MustCompile(mod)
-	if !forceSyncHostImports && !c.needsLink {
-		t.Fatal("void v128 host import should force link-time sync host lowering")
+	if !c.dynamicImports || len(c.Code) == 0 {
+		t.Fatal("void v128 host import should compile through dynamic dispatch")
 	}
 	called := false
 	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.f": HostFunc(func(_ HostModule, p, r []uint64) {

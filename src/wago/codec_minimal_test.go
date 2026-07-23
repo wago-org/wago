@@ -96,6 +96,7 @@ func TestCompiledCodecRoundTripsEmptyStrings(t *testing.T) {
 		Code:           []byte{0},
 		Entry:          []int{0},
 		NumImports:     1,
+		dynamicImports: true,
 		Imports:        []string{""},
 		importFuncSigs: []FuncSig{{}},
 		Funcs:          []FuncSig{{}},

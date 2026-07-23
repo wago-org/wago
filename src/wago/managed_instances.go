@@ -285,7 +285,7 @@ func (m *ManagedInstance) InvokeVoidTable(ctx context.Context, index uint32) err
 	if in.syncMode {
 		return in.callNativeSync(base)
 	}
-	if err := callNative(in.c, in.eng, in.jm, in.nativeControlShared, base, in.serArgs, in.trap, in.results); err != nil {
+	if err := in.callNativeAsync(base, false); err != nil {
 		return err
 	}
 	return in.replayHostLog()

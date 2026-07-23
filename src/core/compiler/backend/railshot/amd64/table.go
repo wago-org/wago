@@ -9,9 +9,11 @@ import (
 )
 
 const (
-	offFuncRefDescPtr = abi.FuncRefDescPtrOffset
-	offPassiveElemPtr = abi.PassiveElemPtrOffset
-	offTableDirPtr    = abi.TableDirPtrOffset
+	offFuncRefDescPtr    = abi.FuncRefDescPtrOffset
+	offPassiveElemPtr    = abi.PassiveElemPtrOffset
+	offTableDirPtr       = abi.TableDirPtrOffset
+	offImportDispatchPtr = abi.ImportDispatchPtrOffset
+	offGlobalsPtr        = abi.GlobalsPtrOffset
 )
 
 func readSingleTableIndex(r *wasm.Reader) (uint32, error) {
@@ -395,7 +397,7 @@ func (f *fn) refFunc(r *wasm.Reader) error {
 	f.a.Load64(ref, RBX, -int32(offFuncRefDescPtr))
 	f.a.TestSelf(ref, true)
 	f.trapIf(condE, trapIndirectOOB)
-	f.a.LeaDisp(ref, ref, int32((idx+1)*runtime.TableEntryBytes))
+	f.a.LeaDisp(ref, ref, int32((idx+1)*runtime.FuncRefDescBytes))
 	f.pushReg(ref, mtI64)
 	return nil
 }

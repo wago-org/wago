@@ -354,7 +354,7 @@ func runHostSync(t *testing.T, m *wasm.Module, host runtime.HostCall, args ...in
 
 	serArgs := ar.Alloc(128)
 	results := ar.Alloc(128)
-	trap := ar.Alloc(8)
+	trap := ar.Alloc(runtime.TrapBufferBytes)
 	ctrl := ar.Alloc(runtime.HostCtrlFrameBytes)
 	jm.SetCustomCtx(uintptr(unsafe.Pointer(&ctrl[0]))) // install the control frame as import ctx
 	for i, a := range args {
@@ -395,7 +395,7 @@ func TestAmd64HostImportSyncResult(t *testing.T) {
 	sig := wasmtest.FuncType([]wasm.ValType{i32}, []wasm.ValType{i32})
 	m := hostSyncModule(sig, []byte{0x00, 0x20, 0x00, 0x10, 0x00, 0x0b})
 	calls := 0
-	host := func(imp uint32, args, res []uint64) {
+	host := func(_ uintptr, imp uint32, args, res []uint64) {
 		calls++
 		if imp != 0 {
 			t.Errorf("host importIdx = %d, want 0", imp)
@@ -419,7 +419,7 @@ func TestAmd64HostImportSyncMultiParam(t *testing.T) {
 	// k(a,b): local.get 0; local.get 1; call 0; local.get 0; i32.add; end
 	body := []byte{0x00, 0x20, 0x00, 0x20, 0x01, 0x10, 0x00, 0x20, 0x00, 0x6a, 0x0b}
 	m := hostSyncModule(sig, body)
-	host := func(imp uint32, args, res []uint64) { res[0] = args[0] + args[1] }
+	host := func(_ uintptr, imp uint32, args, res []uint64) { res[0] = args[0] + args[1] }
 	if got := runHostSync(t, m, host, 20, 3); got != 43 { // env.add(20,3)=23, +a(20)=43
 		t.Fatalf("result = %d, want 43 (add(20,3)+20)", got)
 	}

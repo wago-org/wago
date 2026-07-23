@@ -7,7 +7,7 @@ import (
 
 // moduleRequiredFeatures records the optional core features that the compiled
 // module actually uses. The byte-sized on-disk mask is intentionally narrower
-// than CoreFeatures: codec v20 rejects unknown/high bits rather than silently
+// than CoreFeatures: codec v21 rejects unknown/high bits rather than silently
 // loading code produced for a feature this build cannot identify.
 func moduleRequiredFeatures(m *wasm.Module) CoreFeatures {
 	if m == nil {

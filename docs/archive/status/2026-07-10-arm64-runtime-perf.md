@@ -1,4 +1,8 @@
-# Repository Status
+# Archived repository status
+
+> Historical snapshot from July 10, 2026. This file does not describe the
+> current branch. Consult `ARCHITECTURE.md`, `FEATURES.md`, and `ROADMAP.md` for
+> current repository state.
 
 Status date: 2026-07-10
 Branch: `jairus/arm64-runtime-perf`

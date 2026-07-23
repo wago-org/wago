@@ -35,6 +35,7 @@ const (
 	offGlobalsPtr           = abi.GlobalsPtrOffset
 	offPassiveDataPtr       = abi.PassiveDataPtrOffset
 	offTableDirPtr          = abi.TableDirPtrOffset
+	offImportDispatchPtr    = abi.ImportDispatchPtrOffset
 
 	basedataSize = abi.BasedataSize // keeps linMem 16-byte aligned after appending wago extension fields
 )
@@ -221,24 +222,26 @@ func (j *JobMemory) LinearMemory() []byte {
 	return j.mem[j.linOff : j.linOff+n : j.linOff+n]
 }
 
-// HostBytes returns a LIVE view of linear memory for host-side access (for example,
-// embedder Read/Write), reflecting memory.grow. Native code tracks the current
-// logical size in the basedata cache (curBytes) and, in guard-page mode, commits
-// the grown pages without touching the Go-side j.mem slice — so a host reader must
-// slice over the stable base up to curBytes, not rely on j.mem's (initial) length
-// or j.linLen. The base never moves: growable memory is a fixed full-size
-// reservation, so only the length grows. Unlike CurrentBytes, this stays valid
-// after growth in guard-page mode (where j.mem is capped at the initial commit).
-func (j *JobMemory) HostBytes() []byte {
+// HostBytesChecked returns a LIVE view of linear memory for host-side access,
+// reflecting memory.grow. Guard-page growth raises the logical size before pages
+// are necessarily fault-committed; this method commits the newly host-visible
+// range and extends j.mem's stable-base view before returning it.
+func (j *JobMemory) HostBytesChecked() ([]byte, error) {
 	n := j.curBytes()
-	if j.reserveBase != 0 {
-		// Guard-page: j.mem is capped at the initial commit, but its backing array
-		// is the whole reservation (committed up to curBytes by grow), so re-slice
-		// through the existing *byte to the current size — like rearmGuarded, and
-		// vet-safe (no uintptr->Pointer round-trip).
-		return unsafe.Slice(&j.mem[0], j.linOff+n)[j.linOff:]
+	if j.reserveBase != 0 && j.linOff+n > len(j.mem) {
+		if err := growGuardedHostView(j, n); err != nil {
+			return nil, err
+		}
 	}
-	return j.mem[j.linOff : j.linOff+n : j.linOff+n]
+	return j.mem[j.linOff : j.linOff+n : j.linOff+n], nil
+}
+
+// HostBytes is the no-error convenience form used by public byte/read/write
+// accessors. A rare guard-page commit failure returns nil and therefore fails
+// host bounds checks rather than exposing an inaccessible slice.
+func (j *JobMemory) HostBytes() []byte {
+	b, _ := j.HostBytesChecked()
+	return b
 }
 
 // LinMemBase is the pointer handed to native code as the linMem base
@@ -274,6 +277,80 @@ func (j *JobMemory) HasTrapCell(trap []byte) bool {
 	return len(trap) >= 4 && j.getU64(abi.TrapCellPtrOffset) == uint64(slicePtr(trap))
 }
 
+// InstanceContext is the per-instance subset of basedata. It deliberately
+// excludes linear-memory size/growth state and per-invocation trap/stack fields,
+// which belong to the shared Memory backing and active Engine call respectively.
+type InstanceContext struct {
+	CustomCtx      uintptr
+	TablePtr       uintptr
+	FuncRefDescPtr uintptr
+	PassiveElemPtr uintptr
+	GlobalsPtr     uintptr
+	PassiveDataPtr uintptr
+	TableDirPtr    uintptr
+	ImportDispatch uintptr
+}
+
+const InstanceContextBytes = 8 * 8
+
+// CaptureInstanceContext snapshots the per-instance pointer fields currently
+// installed in basedata.
+func (j *JobMemory) CaptureInstanceContext() InstanceContext {
+	return InstanceContext{
+		CustomCtx:      uintptr(j.getU64(offCustomCtx)),
+		TablePtr:       uintptr(j.getU64(offTablePtr)),
+		FuncRefDescPtr: uintptr(j.getU64(offFuncRefDescPtr)),
+		PassiveElemPtr: uintptr(j.getU64(offPassiveElemPtr)),
+		GlobalsPtr:     uintptr(j.getU64(offGlobalsPtr)),
+		PassiveDataPtr: uintptr(j.getU64(offPassiveDataPtr)),
+		TableDirPtr:    uintptr(j.getU64(offTableDirPtr)),
+		ImportDispatch: uintptr(j.getU64(offImportDispatchPtr)),
+	}
+}
+
+// BindInstanceContext installs one instance's pointer fields before native
+// entry. Memory size/growth caches and invocation control words are untouched.
+func (j *JobMemory) BindInstanceContext(ctx InstanceContext) {
+	j.putU64(offCustomCtx, uint64(ctx.CustomCtx))
+	j.putU64(offTablePtr, uint64(ctx.TablePtr))
+	j.putU64(offFuncRefDescPtr, uint64(ctx.FuncRefDescPtr))
+	j.putU64(offPassiveElemPtr, uint64(ctx.PassiveElemPtr))
+	j.putU64(offGlobalsPtr, uint64(ctx.GlobalsPtr))
+	j.putU64(offPassiveDataPtr, uint64(ctx.PassiveDataPtr))
+	j.putU64(offTableDirPtr, uint64(ctx.TableDirPtr))
+	j.putU64(offImportDispatchPtr, uint64(ctx.ImportDispatch))
+}
+
+// CaptureInstanceContextBytes stores the current context in a stable off-heap
+// buffer owned by the instance arena.
+func (j *JobMemory) CaptureInstanceContextBytes(dst []byte) {
+	if len(dst) < InstanceContextBytes {
+		panic("runtime: short instance context buffer")
+	}
+	ctx := j.CaptureInstanceContext()
+	for i, value := range [...]uintptr{ctx.CustomCtx, ctx.TablePtr, ctx.FuncRefDescPtr, ctx.PassiveElemPtr, ctx.GlobalsPtr, ctx.PassiveDataPtr, ctx.TableDirPtr, ctx.ImportDispatch} {
+		binary.LittleEndian.PutUint64(dst[i*8:], uint64(value))
+	}
+}
+
+// BindInstanceContextBytes restores a context captured by
+// CaptureInstanceContextBytes.
+func (j *JobMemory) BindInstanceContextBytes(src []byte) {
+	if len(src) < InstanceContextBytes {
+		panic("runtime: short instance context buffer")
+	}
+	j.BindInstanceContext(InstanceContext{
+		CustomCtx:      uintptr(binary.LittleEndian.Uint64(src[0:])),
+		TablePtr:       uintptr(binary.LittleEndian.Uint64(src[8:])),
+		FuncRefDescPtr: uintptr(binary.LittleEndian.Uint64(src[16:])),
+		PassiveElemPtr: uintptr(binary.LittleEndian.Uint64(src[24:])),
+		GlobalsPtr:     uintptr(binary.LittleEndian.Uint64(src[32:])),
+		PassiveDataPtr: uintptr(binary.LittleEndian.Uint64(src[40:])),
+		TableDirPtr:    uintptr(binary.LittleEndian.Uint64(src[48:])),
+		ImportDispatch: uintptr(binary.LittleEndian.Uint64(src[56:])),
+	})
+}
+
 // SetCustomCtx writes the V2 host-import context pointer ([linMem - 40]).
 func (j *JobMemory) SetCustomCtx(v uintptr) { j.putU64(offCustomCtx, uint64(v)) }
 
@@ -298,22 +375,11 @@ func (j *JobMemory) SetPassiveDataPtr(v uintptr) { j.putU64(offPassiveDataPtr, u
 // SetTableDirPtr writes the indexed table descriptor directory pointer.
 func (j *JobMemory) SetTableDirPtr(v uintptr) { j.putU64(offTableDirPtr, uint64(v)) }
 
+// SetImportDispatchPtr writes the imported-function target array pointer.
+func (j *JobMemory) SetImportDispatchPtr(v uintptr) { j.putU64(offImportDispatchPtr, uint64(v)) }
+
 // TableDirPtr returns the runtime-owned indexed table descriptor directory.
 func (j *JobMemory) TableDirPtr() uintptr { return uintptr(j.getU64(offTableDirPtr)) }
-
-// SnapshotBasedata copies the whole per-instance basedata region (the bytes below
-// the linear-memory base). It lets a transient co-tenant of a shared JobMemory be
-// instantiated and run — installing its own globals/table/funcref/ctx pointers and
-// stack fence — and then rolled back with RestoreBasedata, so the memory owner's
-// basedata is never left aliasing the co-tenant's arena. Linear memory and table
-// storage (positive offsets / separate descriptors) are untouched, so a co-tenant's
-// active-segment store effects still persist.
-func (j *JobMemory) SnapshotBasedata() []byte {
-	return append([]byte(nil), j.mem[:j.linOff]...)
-}
-
-// RestoreBasedata writes back a region previously returned by SnapshotBasedata.
-func (j *JobMemory) RestoreBasedata(saved []byte) { copy(j.mem[:j.linOff], saved) }
 
 // ReserveRange returns the guard-page reservation [base, base+len) for the trap
 // handler's fault-address check (both zero in classic mode).

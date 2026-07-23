@@ -11,6 +11,21 @@ const InstantiateArenaSize = 1 << 20
 
 const HostCallLogBytes = 8 + ((1<<16)/8)*8
 
+// TrapBufferBytes reserves the 4-byte trap code plus an 8-byte parked-host
+// control-frame pointer at offset 8. The host-call stub publishes the exact
+// active callee frame there before unwinding to Go.
+const TrapBufferBytes = 16
+
+// Import dispatch entries bind already-compiled imported calls to one instance's
+// concrete host or cross-instance wrapper target.
+const (
+	ImportDispatchCodePtrOffset       = 0
+	ImportDispatchHomeLinMemOffset    = 8
+	ImportDispatchTargetContextOffset = 16
+	ImportDispatchCallerContextOffset = 24
+	ImportDispatchEntryBytes          = 32
+)
+
 // PassiveElemDescBytes is the size of one passive element segment descriptor:
 // {ptr u64, len u32, pad u32}. elem.drop zeroes len. The ptr targets an array
 // of TableEntryBytes descriptors so table.init can copy directly into table 0.
@@ -30,6 +45,15 @@ const (
 	TableEntryHomeLinMemOffset = 16
 	TableEntryRefSlotOffset    = 24
 	TableEntryBytes            = 32
+)
+
+// FuncRefDescBytes is the size of one canonical per-function descriptor. Its
+// first TableEntryBytes bytes are copied into funcref tables; the trailing
+// context pointer identifies the owning instance even when linear memory is
+// shared by multiple instances.
+const (
+	FuncRefContextOffset = TableEntryBytes
+	FuncRefDescBytes     = TableEntryBytes + 8
 )
 
 // PassiveDataDescBytes is the size of one passive data segment descriptor:
@@ -130,7 +154,7 @@ func InstantiateArenaNeed(fp InstantiateFootprint) (int, error) {
 			return 0, fmt.Errorf("table %d capacity %d with stride %d overflows arena allocation", i, capacity, stride)
 		}
 	}
-	if fp.FuncRefCount > maxInt()/TableEntryBytes {
+	if fp.FuncRefCount > maxInt()/FuncRefDescBytes {
 		return 0, fmt.Errorf("funcref descriptor count %d overflows arena allocation", fp.FuncRefCount)
 	}
 	argsBytes, err := SlotBytes(fp.MaxParamSlots)
@@ -145,6 +169,10 @@ func InstantiateArenaNeed(fp InstantiateFootprint) (int, error) {
 	if need == 0 && fp.FuncImportCount > 0 {
 		need += HostCallLogBytes
 	}
+	if fp.FuncImportCount > (maxInt()-need)/ImportDispatchEntryBytes {
+		return 0, fmt.Errorf("function import count %d overflows dispatch allocation", fp.FuncImportCount)
+	}
+	need += fp.FuncImportCount * ImportDispatchEntryBytes
 	if fp.GlobalCount > (maxInt()-need)/16 {
 		return 0, fmt.Errorf("global count %d overflows arena allocation", fp.GlobalCount)
 	}
@@ -166,7 +194,7 @@ func InstantiateArenaNeed(fp InstantiateFootprint) (int, error) {
 		}
 		need += tableBytes
 	}
-	funcRefBytes := fp.FuncRefCount * TableEntryBytes
+	funcRefBytes := fp.FuncRefCount * FuncRefDescBytes
 	if need > maxInt()-funcRefBytes {
 		return 0, fmt.Errorf("funcref descriptor count %d overflows arena allocation", fp.FuncRefCount)
 	}
@@ -184,10 +212,10 @@ func InstantiateArenaNeed(fp InstantiateFootprint) (int, error) {
 		return 0, fmt.Errorf("passive data count %d overflows arena allocation", fp.PassiveDataCount)
 	}
 	need += fp.PassiveDataCount * PassiveDataDescBytes
-	if need > maxInt()-argsBytes || need+argsBytes > maxInt()-resultsBytes || need+argsBytes+resultsBytes > maxInt()-8 {
+	if need > maxInt()-argsBytes || need+argsBytes > maxInt()-resultsBytes || need+argsBytes+resultsBytes > maxInt()-TrapBufferBytes {
 		return 0, fmt.Errorf("call buffers overflow arena allocation")
 	}
-	need += argsBytes + resultsBytes + 8 // args, results, trap buffers
+	need += argsBytes + resultsBytes + TrapBufferBytes // args, results, trap buffers
 	// Arena.Alloc 8-aligns each allocation; reserve a small fixed alignment slack.
 	if need > maxInt()-8*8 {
 		return 0, fmt.Errorf("instantiate footprint overflows arena allocation")

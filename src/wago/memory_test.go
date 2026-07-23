@@ -151,8 +151,8 @@ func TestMemoryOwnershipSidecarPreservesScalarHandleFootprint(t *testing.T) {
 	if got := unsafe.Sizeof(Memory{}); got != 16 {
 		t.Fatalf("Memory size = %d, want 16 bytes", got)
 	}
-	if got := unsafe.Sizeof(memoryState{}); got != 32 {
-		t.Fatalf("memoryState size = %d, want 32 bytes", got)
+	if got := unsafe.Sizeof(memoryState{}); got != 24 {
+		t.Fatalf("memoryState size = %d, want 24 bytes", got)
 	}
 	local := &Memory{}
 	if local.state.Load() != nil {

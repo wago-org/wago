@@ -639,7 +639,7 @@ func inlinePlanTouchesMemory(callees []*inlineTarget) bool {
 // on the cheap frameless path; a control-flow callee runs under a synthetic
 // boundary frame (inlineBodyCtrl).
 func (f *fn) inlineCall(t *inlineTarget) error {
-	f.stats.call("inline")
+	f.stats.call(callKindInline)
 	base := f.inlineBase[t.globalIdx]
 	f.bindInlineParams(t, base)
 

@@ -23,7 +23,7 @@ type Memory struct {
 type memoryState struct {
 	mu        sync.Mutex
 	owner     *Instance // non-nil for an instance-owned exported memory
-	importers int
+	importers int32
 	shared    bool // true when multiple compatible instances may import this memory
 	closed    bool
 }

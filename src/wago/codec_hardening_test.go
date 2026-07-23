@@ -3,6 +3,7 @@ package wago
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -11,42 +12,48 @@ import (
 	"github.com/wago-org/wago/testutil/wasmtest"
 )
 
-func TestMarshalRejectsLinkDeferredModule(t *testing.T) {
+func TestMarshalRoundTripsReturningImportDispatch(t *testing.T) {
 	t.Setenv("WAGO_BOUNDS", "explicit")
 	c := MustCompile(returningImportModule(returningI32Sig(), []byte{0x00, 0x20, 0x00, 0x10, 0x00, 0x0b}))
-	if forceSyncHostImports {
-		if !c.syncHostImports {
-			t.Fatal("returning import should compile with sync host imports")
-		}
-	} else if !c.needsLink {
-		t.Fatal("returning import should defer codegen")
+	defer c.Close()
+	blob, err := c.MarshalBinary()
+	if err != nil {
+		t.Fatalf("MarshalBinary: %v", err)
 	}
-	_, err := c.MarshalBinary()
-	want := "link-deferred"
-	if forceSyncHostImports {
-		want = "synchronous-host"
+	var loaded Compiled
+	if err := loaded.UnmarshalBinary(blob); err != nil {
+		t.Fatalf("UnmarshalBinary: %v", err)
 	}
-	if err == nil || !strings.Contains(err.Error(), want) {
-		t.Fatalf("want %s marshal error, got %v", want, err)
+	defer loaded.Close()
+	if !loaded.dynamicImports {
+		t.Fatal("loaded returning import lost dynamic dispatch metadata")
 	}
 }
 
-func TestMarshalRejectsSyncHostLinkedModule(t *testing.T) {
+func TestMarshalRoundTripsSyncHostDispatch(t *testing.T) {
 	t.Setenv("WAGO_BOUNDS", "explicit")
-	// A void f64 import cannot use the async replay path, so binding it forces the
-	// synchronous host dispatcher.
 	c := MustCompile(voidF64ImportCallerModule())
-	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.f": HostFunc(func(HostModule, []uint64, []uint64) {})}})
+	defer c.Close()
+	blob, err := c.MarshalBinary()
 	if err != nil {
-		t.Fatalf("instantiate sync host module: %v", err)
+		t.Fatalf("MarshalBinary: %v", err)
+	}
+	var loaded Compiled
+	if err := loaded.UnmarshalBinary(blob); err != nil {
+		t.Fatalf("UnmarshalBinary: %v", err)
+	}
+	defer loaded.Close()
+	called := 0
+	in, err := Instantiate(&loaded, InstantiateOptions{Imports: Imports{"env.f": HostFunc(func(HostModule, []uint64, []uint64) { called++ })}})
+	if err != nil {
+		t.Fatalf("Instantiate: %v", err)
 	}
 	defer in.Close()
-	if !in.c.syncHostImports {
-		t.Fatal("linked module should use sync host imports")
+	if _, err := in.Invoke("g"); err != nil {
+		t.Fatalf("Invoke: %v", err)
 	}
-	_, err = in.c.MarshalBinary()
-	if err == nil || !strings.Contains(err.Error(), "synchronous-host") {
-		t.Fatalf("want synchronous-host marshal error, got %v", err)
+	if called != 1 {
+		t.Fatalf("host calls = %d, want 1", called)
 	}
 }
 
@@ -62,14 +69,16 @@ func TestCompiledCodecRoundTripsReferenceSignatures(t *testing.T) {
 	if err != nil {
 		t.Fatalf("MarshalBinary: %v", err)
 	}
-	if blob[4] != wagoVersion || wagoVersion != 20 {
-		t.Fatalf("compiled codec version = %d, want structural-reference version 20", blob[4])
+	if blob[4] != wagoVersion || wagoVersion != 21 {
+		t.Fatalf("compiled codec version = %d, want structural-reference version 21", blob[4])
 	}
-	oldVersion := append([]byte(nil), blob...)
-	oldVersion[4] = 19
-	var old Compiled
-	if err := old.UnmarshalBinary(oldVersion); err == nil || !strings.Contains(err.Error(), "version 19 unsupported") {
-		t.Fatalf("version-19 reference blob error = %v, want explicit incompatibility rejection", err)
+	for _, version := range []byte{19, 20} {
+		oldVersion := append([]byte(nil), blob...)
+		oldVersion[4] = version
+		var old Compiled
+		if err := old.UnmarshalBinary(oldVersion); err == nil || !strings.Contains(err.Error(), fmt.Sprintf("version %d unsupported", version)) {
+			t.Fatalf("version-%d reference blob error = %v, want explicit incompatibility rejection", version, err)
+		}
 	}
 	var got Compiled
 	if err := got.UnmarshalBinary(blob); err != nil {

@@ -280,7 +280,7 @@ func BenchmarkCompileFull(b *testing.B) {
 
 // BenchmarkCompileFullWorkers measures the real public compile pipeline at
 // forced worker maxima and in adaptive mode, including decode, validation,
-// frontend checks, and backend codegen when the module is not link-deferred.
+// frontend checks, and complete backend codegen (including dynamic imports).
 func BenchmarkCompileFullWorkers(b *testing.B) {
 	wanted := map[string]bool{
 		"tiny": true, "fib_rec": true, "many_funcs": true,

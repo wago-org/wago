@@ -45,10 +45,10 @@ func TestPublicFuncrefIngressRejectsForgedNonNullBeforeNativeExecution(t *testin
 		t.Run(tc.name, func(t *testing.T) {
 			in := instantiateFuncrefBoundaryTestModule(t, funcrefIngressBoundaryModule())
 			defer in.Close()
-			if len(in.funcRefDescs) < 2*coreruntime.TableEntryBytes {
+			if len(in.funcRefDescs) < 2*coreruntime.FuncRefDescBytes {
 				t.Fatalf("funcref descriptor arena = %d bytes, want at least two entries", len(in.funcRefDescs))
 			}
-			forged := uint64(uintptr(unsafe.Pointer(&in.funcRefDescs[coreruntime.TableEntryBytes])))
+			forged := uint64(uintptr(unsafe.Pointer(&in.funcRefDescs[coreruntime.FuncRefDescBytes])))
 
 			out, err := tc.call(in, forged)
 			if err == nil || !strings.Contains(err.Error(), "invalid funcref token") {
@@ -73,11 +73,11 @@ func TestPublicFuncrefEgressReturnsStableOpaqueToken(t *testing.T) {
 		t.Fatalf("Invoke get = %v, %v; want one non-null token", first, err)
 	}
 	token := first[0]
-	if len(in.funcRefDescs) < 2*coreruntime.TableEntryBytes {
+	if len(in.funcRefDescs) < 2*coreruntime.FuncRefDescBytes {
 		t.Fatalf("funcref descriptor arena = %d bytes, want at least two entries", len(in.funcRefDescs))
 	}
-	descriptor := uint64(uintptr(unsafe.Pointer(&in.funcRefDescs[coreruntime.TableEntryBytes])))
-	code := *(*uint64)(unsafe.Pointer(&in.funcRefDescs[coreruntime.TableEntryBytes]))
+	descriptor := uint64(uintptr(unsafe.Pointer(&in.funcRefDescs[coreruntime.FuncRefDescBytes])))
+	code := *(*uint64)(unsafe.Pointer(&in.funcRefDescs[coreruntime.FuncRefDescBytes]))
 	if token == descriptor || token == code || token == uint64(in.base) {
 		t.Fatalf("public token %#x aliases descriptor/code mapping %#x/%#x/%#x", token, descriptor, code, in.base)
 	}
@@ -173,7 +173,14 @@ func TestRuntimeImportedFuncrefUsesProducerIdentityAndLifetime(t *testing.T) {
 	}
 	defer importer.Close()
 	if importer.hostLog != nil {
-		t.Fatal("cross-instance-only importer allocated an async host log")
+		t.Fatal("host-free cross-instance importer allocated an async host log")
+	}
+	if forceSyncHostImports {
+		if !importer.syncMode || importer.ctrl == nil {
+			t.Fatal("forced-sync architecture omitted the host control frame")
+		}
+	} else if importer.syncMode || importer.ctrl != nil {
+		t.Fatal("host-free cross-instance importer allocated host-dispatch state")
 	}
 	consumerMod, err := rt.Compile(funcrefCallableConsumerModule())
 	if err != nil {
@@ -212,6 +219,72 @@ func TestRuntimeImportedFuncrefUsesProducerIdentityAndLifetime(t *testing.T) {
 	}
 }
 
+func TestRuntimeImportedFuncrefFromBareProducerGetsStableIdentity(t *testing.T) {
+	rt := NewRuntime()
+	defer rt.Close()
+	producerMod, err := rt.Compile(funcrefBareProducerModule())
+	if err != nil {
+		t.Fatalf("Compile producer: %v", err)
+	}
+	producer, err := rt.Instantiate(context.Background(), producerMod)
+	if err != nil {
+		t.Fatalf("Instantiate producer: %v", err)
+	}
+	if len(producer.funcRefDescs) != 0 {
+		t.Fatalf("bare producer allocated %d descriptor bytes before a reference use", len(producer.funcRefDescs))
+	}
+	target, err := producer.ExportedFunc("target")
+	if err != nil {
+		t.Fatalf("Export target: %v", err)
+	}
+	importerMod, err := rt.Compile(funcrefImportedRefFuncModule())
+	if err != nil {
+		t.Fatalf("Compile importer: %v", err)
+	}
+	importer, err := rt.Instantiate(context.Background(), importerMod, WithImports(Imports{"env.target": target}))
+	if err != nil {
+		t.Fatalf("Instantiate importer: %v", err)
+	}
+	alias, err := rt.Instantiate(context.Background(), importerMod, WithImports(Imports{"env.target": target}))
+	if err != nil {
+		t.Fatalf("Instantiate alias importer: %v", err)
+	}
+
+	first, err := importer.Invoke("get")
+	if err != nil || len(first) != 1 || first[0] == 0 {
+		t.Fatalf("first imported ref.func = %v, %v; want one non-null token", first, err)
+	}
+	second, err := importer.Invoke("get_table")
+	if err != nil || len(second) != 1 || second[0] != first[0] {
+		t.Fatalf("table identity = %v, %v; want token %#x", second, err, first[0])
+	}
+	aliasRef, err := alias.Invoke("get")
+	if err != nil || len(aliasRef) != 1 || aliasRef[0] != first[0] {
+		t.Fatalf("alias importer identity = %v, %v; want token %#x", aliasRef, err, first[0])
+	}
+	consumerMod, err := rt.Compile(funcrefCallableConsumerModule())
+	if err != nil {
+		t.Fatalf("Compile consumer: %v", err)
+	}
+	consumer, err := rt.Instantiate(context.Background(), consumerMod)
+	if err != nil {
+		t.Fatalf("Instantiate consumer: %v", err)
+	}
+	defer consumer.Close()
+	if err := producer.Close(); err != nil {
+		t.Fatalf("Close producer: %v", err)
+	}
+	if err := importer.Close(); err != nil {
+		t.Fatalf("Close importer: %v", err)
+	}
+	if err := alias.Close(); err != nil {
+		t.Fatalf("Close alias: %v", err)
+	}
+	if got, err := consumer.Invoke("call", first[0]); err != nil || len(got) != 1 || AsI32(got[0]) != 42 {
+		t.Fatalf("call after producer/importer close = %v, %v; want 42", got, err)
+	}
+}
+
 func TestRuntimeImportedFuncrefRejectsForeignOrCorruptCanonicalDescriptor(t *testing.T) {
 	t.Run("cross-runtime", func(t *testing.T) {
 		producerRT := NewRuntime()
@@ -246,7 +319,7 @@ func TestRuntimeImportedFuncrefRejectsForeignOrCorruptCanonicalDescriptor(t *tes
 		if err == nil || !strings.Contains(err.Error(), "invalid funcref result") || got != nil {
 			t.Fatalf("cross-runtime imported get = %v, %v; want fail-closed result", got, err)
 		}
-		if len(importerRT.refStore.byToken) != 0 || len(importerRT.refStore.byDescriptor) != 0 {
+		if len(importerRT.refStore.byToken) != 0 || len(importerRT.refStore.byIdentity) != 0 {
 			t.Fatal("cross-runtime rejection issued a public token")
 		}
 	})
@@ -270,7 +343,7 @@ func TestRuntimeImportedFuncrefRejectsForeignOrCorruptCanonicalDescriptor(t *tes
 		if err == nil || !strings.Contains(err.Error(), "invalid funcref result") || got != nil {
 			t.Fatalf("host imported get = %v, %v; want fail-closed result", got, err)
 		}
-		if len(rt.refStore.byToken) != 0 || len(rt.refStore.byDescriptor) != 0 {
+		if len(rt.refStore.byToken) != 0 || len(rt.refStore.byIdentity) != 0 {
 			t.Fatal("host-import rejection issued a public token")
 		}
 	})
@@ -301,14 +374,14 @@ func TestRuntimeImportedFuncrefRejectsForeignOrCorruptCanonicalDescriptor(t *tes
 		}
 		defer importer.Close()
 
-		importedOff := coreruntime.TableEntryBytes
+		importedOff := coreruntime.FuncRefDescBytes
 		canonical := binary.LittleEndian.Uint64(importer.funcRefDescs[importedOff+coreruntime.TableEntryRefSlotOffset:])
 		binary.LittleEndian.PutUint64(importer.funcRefDescs[importedOff+coreruntime.TableEntryRefSlotOffset:], canonical+8)
 		got, err := importer.Invoke("get")
 		if err == nil || !strings.Contains(err.Error(), "invalid funcref result") || got != nil {
 			t.Fatalf("corrupt imported get = %v, %v; want fail-closed result", got, err)
 		}
-		if len(rt.refStore.byToken) != 0 || len(rt.refStore.byDescriptor) != 0 {
+		if len(rt.refStore.byToken) != 0 || len(rt.refStore.byIdentity) != 0 {
 			t.Fatal("corrupt canonical descriptor issued a public token")
 		}
 	})
@@ -515,6 +588,15 @@ func funcrefCallableProducerModule() []byte {
 			wasmtest.Code([]byte{0xd2, 0x00, 0x0b}), // ref.func 0
 			wasmtest.Code([]byte{0x41, 0x00, 0x20, 0x00, 0x26, 0x00, 0x41, 0x00, 0x11, 0x00, 0x00, 0x0b}),
 		)),
+	)
+}
+
+func funcrefBareProducerModule() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("target", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x41, 0x2a, 0x0b}))),
 	)
 }
 

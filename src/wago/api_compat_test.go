@@ -210,7 +210,7 @@ func TestCompiledAPIHelpers(t *testing.T) {
 	}
 }
 
-func TestDeferredHostLinkCachesReturningImport(t *testing.T) {
+func TestReturningHostImportUsesCompiledDispatch(t *testing.T) {
 	funcImport := append(wasmtest.Name("env"), wasmtest.Name("answer")...)
 	funcImport = append(funcImport, 0, 0) // function import, type 0
 	mod := wasmtest.Module(
@@ -226,20 +226,11 @@ func TestDeferredHostLinkCachesReturningImport(t *testing.T) {
 	}
 	defer c.Close()
 	imports := Imports{"env.answer": HostFunc(func(_ HostModule, _, results []uint64) { results[0] = I32(42) })}
-	first, err := c.linkModule(imports, nil)
-	if err != nil {
-		t.Fatalf("link returning host module: %v", err)
+	if err := c.validateImportBindings(imports, nil); err != nil {
+		t.Fatalf("validate returning host bindings: %v", err)
 	}
-	second, err := c.linkModule(imports, nil)
-	if err != nil {
-		t.Fatalf("repeat link returning host module: %v", err)
-	}
-	if c.needsLink {
-		if c.hostLink == nil || first == c || second != first || !first.syncHostImports {
-			t.Fatalf("deferred linked modules = %p, %p sync=%v", first, second, first.syncHostImports)
-		}
-	} else if first != c || second != c || !c.syncHostImports {
-		t.Fatalf("eager synchronous module = %p, %p sync=%v", first, second, c.syncHostImports)
+	if !c.dynamicImports || len(c.Code) == 0 {
+		t.Fatalf("compiled import dispatch dynamic=%v code=%d", c.dynamicImports, len(c.Code))
 	}
 	in, err := Instantiate(c, imports)
 	if err != nil {

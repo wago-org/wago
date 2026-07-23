@@ -4,17 +4,13 @@ package wago
 
 import (
 	"context"
-	"strings"
 	"testing"
 )
 
-// A module importing a shared memory runs on the memory owner's JobMemory,
-// including its fixed negative-offset basedata region. Any per-instance state
-// whose pointer lives in basedata (globals array, table pointer, host-call ctx,
-// funcref descriptors, passive segments) would clobber a second importer's slot
-// and dangle once its arena is freed. Such importers must be rejected; a
-// pure-compute importer over the shared linear pages must still succeed.
-func TestSharedMemoryImporterRejectsBasedataState(t *testing.T) {
+// Shared-memory importers capture their per-instance basedata pointers and
+// rebind them before each serialized native entry. Private globals, funcref
+// descriptors, and pure memory computation can therefore coexist safely.
+func TestSharedMemoryImporterRebindsBasedataState(t *testing.T) {
 	rt := NewRuntime()
 	defer rt.Close()
 
@@ -54,24 +50,31 @@ func TestSharedMemoryImporterRejectsBasedataState(t *testing.T) {
 		t.Fatalf("initializer Close: %v", err)
 	}
 
-	// Imported global — the exact reviewer scenario. The importer's globals pointer
-	// array is arena-backed and would overwrite the shared basedata GlobalsPtr.
+	// An imported global uses an importer-owned pointer array, rebound on entry.
 	withGlobal := mustCompileWat(rt, t, `(module
 		(import "env" "mem" (memory 1))
 		(import "env" "g" (global (mut i32)))
 		(func (export "f") (result i32) (global.get 0)))`)
-	if _, err := rt.Instantiate(context.Background(), withGlobal, WithImports(Imports{"env.mem": memImport, "env.g": globalImport})); err == nil || !strings.Contains(err.Error(), "shared linear memory") {
-		t.Fatalf("shared-memory importer with imported global error = %v, want rejection", err)
+	globalUser, err := rt.Instantiate(context.Background(), withGlobal, WithImports(Imports{"env.mem": memImport, "env.g": globalImport}))
+	if err != nil {
+		t.Fatalf("shared-memory importer with imported global: %v", err)
+	}
+	if err := globalUser.Close(); err != nil {
+		t.Fatalf("global importer Close: %v", err)
 	}
 
-	// ref.func user without a table still needs funcref descriptors (basedata slot).
+	// A ref.func user without a table gets an importer-owned descriptor context.
 	withFuncref := mustCompileWat(rt, t, `(module
 		(import "env" "mem" (memory 1))
 		(func $f)
 		(elem declare func $f)
 		(func (export "g") (result funcref) (ref.func $f)))`)
-	if _, err := rt.Instantiate(context.Background(), withFuncref, WithImports(Imports{"env.mem": memImport})); err == nil || !strings.Contains(err.Error(), "shared linear memory") {
-		t.Fatalf("shared-memory importer using ref.func error = %v, want rejection", err)
+	funcrefUser, err := rt.Instantiate(context.Background(), withFuncref, WithImports(Imports{"env.mem": memImport}))
+	if err != nil {
+		t.Fatalf("shared-memory importer using ref.func: %v", err)
+	}
+	if err := funcrefUser.Close(); err != nil {
+		t.Fatalf("funcref importer Close: %v", err)
 	}
 
 	// Pure computation over the shared linear memory remains allowed.
@@ -84,6 +87,61 @@ func TestSharedMemoryImporterRejectsBasedataState(t *testing.T) {
 	}
 	if err := consumer.Close(); err != nil {
 		t.Fatalf("consumer Close: %v", err)
+	}
+}
+
+func TestSharedMemoryIndirectCallSwitchesPrivateContext(t *testing.T) {
+	rt := NewRuntime()
+	defer rt.Close()
+	memory, err := NewSharedMemory(1, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer memory.Close()
+
+	producer, err := rt.Instantiate(context.Background(), mustCompileWat(rt, t, `(module
+		(import "env" "mem" (memory 1))
+		(global $g (mut i32) (i32.const 10))
+		(func (export "target") (result i32)
+			(global.set $g (i32.add (global.get $g) (i32.const 1)))
+			(global.get $g)))`), WithImports(Imports{"env.mem": memory}))
+	if err != nil {
+		t.Fatalf("instantiate producer: %v", err)
+	}
+	defer producer.Close()
+	target, err := producer.ExportedFunc("target")
+	if err != nil {
+		t.Fatalf("export target: %v", err)
+	}
+
+	consumer, err := rt.Instantiate(context.Background(), mustCompileWat(rt, t, `(module
+		(type $result-i32 (func (result i32)))
+		(import "env" "mem" (memory 1))
+		(import "env" "target" (func $target (type $result-i32)))
+		(global $g (mut i32) (i32.const 100))
+		(table 1 funcref)
+		(elem (i32.const 0) func $target)
+		(func (export "indirect") (result i32)
+			(call_indirect (type $result-i32) (i32.const 0)))
+		(func (export "own") (result i32)
+			(global.set $g (i32.add (global.get $g) (i32.const 1)))
+			(global.get $g)))`), WithImports(Imports{"env.mem": memory, "env.target": target}))
+	if err != nil {
+		t.Fatalf("instantiate consumer: %v", err)
+	}
+	defer consumer.Close()
+
+	for _, tc := range []struct {
+		export string
+		want   int32
+	}{{"indirect", 11}, {"own", 101}, {"indirect", 12}, {"own", 102}} {
+		got, err := consumer.Invoke(tc.export)
+		if err != nil {
+			t.Fatalf("%s: %v", tc.export, err)
+		}
+		if value := AsI32(got[0]); value != tc.want {
+			t.Fatalf("%s = %d, want %d", tc.export, value, tc.want)
+		}
 	}
 }
 

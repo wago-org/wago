@@ -19,8 +19,8 @@ type compiledCodeCache struct {
 func installCompiledFinalizer(c *Compiled) *Compiled {
 	c.ensureCodeCache()
 	// Give this compiler/deserialize-produced module its own validation memo so
-	// Instantiate validates it once. A fresh memo (not the source's) is essential
-	// for the link-time `linked := *c` copy, whose Code/Entry differ from c.
+	// Instantiate validates immutable compiler-produced metadata once. Hand-built
+	// Compiled values leave the memo nil and are validated on every use.
 	c.validateMemo = &validateMemo{}
 	goruntime.SetFinalizer(c, func(c *Compiled) {
 		_ = c.Close()
@@ -77,17 +77,6 @@ func (c *Compiled) releaseCode() {
 func (c *Compiled) Close() error {
 	if c == nil {
 		return nil
-	}
-	// Release the memoized host-only linked module's mapping too (its finalizer
-	// would eventually, but a caller closing c wants the code freed promptly). Live
-	// instances keep it mapped via the code refcount until they close.
-	if hl := c.hostLink; hl != nil {
-		if hl.c != nil {
-			_ = hl.c.Close()
-		}
-		if hl.syncC != nil && hl.syncC != hl.c {
-			_ = hl.syncC.Close()
-		}
 	}
 	c.ensureCodeCache()
 	cc := c.codeCache

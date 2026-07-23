@@ -53,7 +53,8 @@ in full — 57/57 applicable files, 0 failing assertions (see [SPECTEST.md](SPEC
 - [x] No-cgo execution: W^X `mmap`, foreign-stack trampoline, `g` preservation,
   trap→error, zero-copy linear memory
 - [x] Cross-instance linking: function / global / table / memory imports & exports,
-  including shared mutable tables + memories, via link-time recompile + context-swap
+  including shared mutable tables + memories. Imported calls compile once and bind
+  through per-instance dispatch cells with explicit direct/indirect context switching.
 - [x] Instance slot reuse (lower instantiate cost — explicit #105, guard-page #108)
 
 **Tooling**
@@ -82,20 +83,30 @@ in full — 57/57 applicable files, 0 failing assertions (see [SPECTEST.md](SPEC
 The detailed, phase-by-phase plan is **[docs/no-ir-plan.md](docs/no-ir-plan.md)**; the
 codegen rationale is **[OPTIMIZATIONS.md](OPTIMIZATIONS.md)**. Summary of the two tracks:
 
-**Engine & performance** (no-ir-plan P1–P7 — each its own PR, measured against P1's stats)
-- [ ] **P1 — `CodegenStats` + explain mode** *(do first; everything after proves itself
-  against it)*: per-function counters, `WAGO_EXPLAIN`, golden-disassembly harness,
-  `WAGO_DEBUG_MODGLOBALS` / `WAGO_PIN_GLOBAL_K` knobs
-- [ ] **P2 — cheap railshot wins**: alias-aware pending loads, pure-tree `drop` discard,
-  const-fold pack + narrow-load mask elision, same-operand int compare identities
-- [ ] **P3 — `stFlags`**: flags-resident compare results (fusion past adjacency); the
-  main near-term codegen unlock
+**Engine & performance** (no-ir-plan P1–P7, measured against P1's stats)
+<!-- roadmap:P1 status=done -->
+- [x] **P1 — `CodegenStats` + explain mode**: per-function counters,
+  `WAGO_EXPLAIN`, golden-disassembly harness, `WAGO_DEBUG_MODGLOBALS`, and
+  `WAGO_PIN_GLOBAL_K` are implemented on amd64 and arm64.
+<!-- roadmap:P2 status=partial -->
+- 🚧 **P2 — cheap railshot wins**: the const-fold pack and same-operand integer
+  identities are landed; alias-aware pending loads, pure-tree `drop`, and
+  narrow-load mask elision remain measurement-gated.
+<!-- roadmap:P3 status=partial -->
+- 🚧 **P3 — `stFlags` and compare fusion**: eqz-of-compare inversion and ordered
+  float compare-to-branch fusion are landed; broader flags-resident consumers
+  remain measurement-gated.
+<!-- roadmap:P5 status=partial -->
 - 🚧 **P5 — calls**: ARM64 mixed GP/FP parallel staging, two-integer-result
   `X0/X1` returns, and proven monomorphic indirect calls are landed. Broader
   multi-result register shapes and mutable-table epoch caches remain.
-- [ ] **P6 — memory & bounds** (explicit mode): straight-line bounds facts, hybrid loop
-  precheck, store combining, load-after-store forwarding, CPUID probe → BMI2 shifts
+<!-- roadmap:P6 status=partial -->
+- 🚧 **P6 — memory & bounds** (explicit mode): straight-line bounds facts are
+  implemented; hybrid loop prechecks, store combining, load-after-store
+  forwarding, and a CPUID-gated BMI2 path remain.
+<!-- roadmap:P4 status=planned -->
 - [ ] **P4 — restricted pending `local.set`/`tee`** *(gated on P1 counters)*
+<!-- roadmap:P7 status=planned -->
 - [ ] **P7 — compile path** *(premise re-measured post-#96)*: fused validate+compile
 
 **Runtime & product** (no-ir-plan P8 — parallel track, feature value)
@@ -106,7 +117,7 @@ codegen rationale is **[OPTIMIZATIONS.md](OPTIMIZATIONS.md)**. Summary of the tw
   amd64 native polling remains planned. The checkpoints also bound ARM64 Go-GC
   stalls during long native loops.
 - [ ] Wasm-level stack traces on trap (trap site → func idx → wasm pc)
-- [x] WebAssembly 2.0 product closeout: `.wago` codec v20 persists structural
+- [x] WebAssembly 2.0 product closeout: `.wago` codec v21 persists structural
   reference globals, indexed typed tables/exports/elements, exact local/imported
   table-limit forms, and required-feature bits without serializing live runtime
   identity. Snapshot products reject every table/reference-global module.
@@ -135,11 +146,12 @@ codegen rationale is **[OPTIMIZATIONS.md](OPTIMIZATIONS.md)**. Summary of the tw
 - [x] Reference-types product completion: signatures, locals, control,
   local/imported/shared globals, host ABI, explicit host funcref ownership/egress,
   typed 8-byte externref tables/elements, every `table.*` operation, multiple
-  local/imported tables, exact exports/re-exports, codec-v20 structural metadata,
+  local/imported tables, exact exports/re-exports, codec-v21 structural metadata,
   snapshot isolation, complete inspection, cross-link teardown, and the
   zero-skip Release 2 execution corpus are done.
-- [ ] Additional targets: **arm64** (WARP `backend/aarch64` as reference), then
-  macOS / Windows ABIs
+- 🚧 Additional targets: native **linux/arm64** and **darwin/arm64** backends and
+  runtime paths are implemented and under qualification; Windows ABI support
+  remains planned.
 - [ ] wazero-compatible API shim for drop-in migration
 
 ## Non-goals (for now)

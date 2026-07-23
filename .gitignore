@@ -45,3 +45,6 @@ card.md
 # Claude Code ephemeral git worktrees (per-session; never committed). Excluded
 # from gofmt/lint walks too — see lint-fmt in the Makefile.
 .claude/worktrees/
+
+# Local temporary analysis and cleanup notes
+/.tmp/

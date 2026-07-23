@@ -1,19 +1,18 @@
 package wago
 
 import (
-	"bytes"
 	"reflect"
 	"strings"
 	"testing"
 )
 
-func TestCompiledCodecV20VersionContract(t *testing.T) {
+func TestCompiledCodecV21VersionContract(t *testing.T) {
 	blob, err := (&Compiled{}).MarshalBinary()
 	if err != nil {
 		t.Fatalf("MarshalBinary: %v", err)
 	}
-	if got := blob[4]; got != 20 {
-		t.Fatalf("compiled codec version = %d, want 20", got)
+	if got := blob[4]; got != 21 {
+		t.Fatalf("compiled codec version = %d, want 21", got)
 	}
 
 	v19 := append([]byte(nil), blob...)
@@ -24,7 +23,7 @@ func TestCompiledCodecV20VersionContract(t *testing.T) {
 	}
 }
 
-func TestCompiledCodecV20RoundTripsStructuralReferenceMetadata(t *testing.T) {
+func TestCompiledCodecV21RoundTripsStructuralReferenceMetadata(t *testing.T) {
 	input := structuralReferenceCodecFixture()
 	blob, err := input.MarshalBinary()
 	if err != nil {
@@ -52,21 +51,9 @@ func TestCompiledCodecV20RoundTripsStructuralReferenceMetadata(t *testing.T) {
 	}
 }
 
-func TestCompiledCodecV20ClearsReusedReceiverAndOmitsLiveState(t *testing.T) {
-	input := structuralReferenceCodecFixture()
-	input.wasmBytes = []byte("UNSERIALIZED-RUNTIME-IDENTITY")
-	blob, err := input.MarshalBinary()
-	if err != nil {
-		t.Fatalf("MarshalBinary: %v", err)
-	}
-	if bytes.Contains(blob, input.wasmBytes) {
-		t.Fatal("compiled blob contains non-structural runtime/link identity bytes")
-	}
-
+func TestCompiledCodecV21ClearsReusedReceiverAndOmitsLiveState(t *testing.T) {
 	reused := structuralReferenceCodecFixture()
-	reused.wasmBytes = []byte("stale")
-	reused.needsLink = true
-	reused.syncHostImports = true
+	reused.dynamicImports = true
 	reused.tableExports = map[string]int{"stale": 99}
 	reused.extraTables = []tableDef{{ImportKey: "stale", Size: 99, Max: 99, Type: ValExternRef}}
 
@@ -77,12 +64,12 @@ func TestCompiledCodecV20ClearsReusedReceiverAndOmitsLiveState(t *testing.T) {
 	if err := reused.UnmarshalBinary(empty); err != nil {
 		t.Fatalf("UnmarshalBinary into reused receiver: %v", err)
 	}
-	if reused.wasmBytes != nil || reused.needsLink || reused.syncHostImports || reused.tableExports != nil || reused.extraTables != nil || reused.HasTable || len(reused.Globals) != 0 || len(reused.passiveElems) != 0 {
+	if reused.dynamicImports || reused.tableExports != nil || reused.extraTables != nil || reused.HasTable || len(reused.Globals) != 0 || len(reused.passiveElems) != 0 {
 		t.Fatalf("reused receiver retained stale state: %+v", reused)
 	}
 }
 
-func TestCompiledCodecV20RejectsLiveAndMalformedReferenceMetadata(t *testing.T) {
+func TestCompiledCodecV21RejectsLiveAndMalformedReferenceMetadata(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		mut  func(*Compiled)
@@ -119,7 +106,7 @@ func TestCompiledCodecV20RejectsLiveAndMalformedReferenceMetadata(t *testing.T) 
 	}
 }
 
-func TestCompiledCodecV20RequiredFeatureBitsAreExactAndFailClosed(t *testing.T) {
+func TestCompiledCodecV21RequiredFeatureBitsAreExactAndFailClosed(t *testing.T) {
 	fixture := structuralReferenceCodecFixture()
 	loaded := roundTripCompiled(t, fixture)
 	want := CoreFeatureMutableGlobal | CoreFeatureMultiValue | CoreFeatureBulkMemoryOperations | CoreFeatureReferenceTypes
@@ -152,7 +139,7 @@ func TestCompiledCodecV20RequiredFeatureBitsAreExactAndFailClosed(t *testing.T) 
 	}
 }
 
-func TestCompiledCodecV20CompileRecordsUsedFeatureFamilies(t *testing.T) {
+func TestCompiledCodecV21CompileRecordsUsedFeatureFamilies(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
 		module []byte
@@ -178,7 +165,7 @@ func TestCompiledCodecV20CompileRecordsUsedFeatureFamilies(t *testing.T) {
 	}
 }
 
-func TestCompiledCodecV20LoadedReferenceExecutionAndSnapshotBoundary(t *testing.T) {
+func TestCompiledCodecV21LoadedReferenceExecutionAndSnapshotBoundary(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
 		module []byte

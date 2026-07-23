@@ -102,7 +102,7 @@ replay requires 2 passed modules and locks the official shape with imported tabl
 The imported/local ownership guards prove active writes and indexed calls across
 multiple imported and local tables, cross-table copy, exact imported re-export
 and local export resolution, duplicate import aliases, independent limit and
-policy checks, codec-v20 structural round-trip, shared-memory basedata rejection, finite
+policy checks, codec-v21 structural round-trip, shared-memory per-instance context rebinding, finite
 alias-safe failed-instance retention, preservation of every producer's unrelated
 export-handle chain, and consumer-before-producer close ordering. The footprint
 guards require a capacity-one second local funcref table to add exactly 56 arena
@@ -413,8 +413,8 @@ shared mutation, duplicate-alias deduplication, local export then re-import,
 runtime-owned externref `GetValue`/`SetValue`, null/non-null identity, imported
 immutable `global.get` copies, cross-runtime/private-store/forged rejection before
 storage, producer and consumer close ordering, Runtime.Close root retention, and
-unchanged 40-byte `Global`, 776-byte `Instance`, 632-byte `Compiled`, and 88-byte
-`referenceStore` layouts. Host global close rejects live importers. Codec v20
+unchanged 40-byte `Global`, 776-byte `Instance`, 584-byte `Compiled`, and 88-byte
+`referenceStore` layouts. Host global close rejects live importers. Codec v21
 round-trips structural reference-global metadata; snapshots continue to reject
 live reference-global state.
 
@@ -437,10 +437,10 @@ The local gate pins `Runtime.NewFuncRefGlobal` with null and exact same-store
 shared mutation, duplicate-alias deduplication, callable `HostFuncRef` identity,
 producer retention, and importer/Runtime/owner/global close ordering. It rejects
 forged and cross-runtime tokens and proves raw `HostFunc` descriptor egress stays
-fail-closed. Codec v20 persists structural reference-global metadata only while
+fail-closed. Codec v21 persists structural reference-global metadata only while
 snapshots still reject live reference state, and
 `Global`, `HostFuncRef`, `Compiled`, `Instance`, and `referenceStore` remain 40,
-112, 632, 776, and 88 bytes. This is a host API/lifetime gate; it does not change
+112, 584, 776, and 88 bytes. This is a host API/lifetime gate; it does not change
 the official Release 2 corpus counts.
 
 For the bounded module-local externref-table slice, run:
@@ -458,7 +458,7 @@ null initialization, same-store non-null identity, exact table indexes and
 8-byte strides, bounds traps, zero-length fill/grow behavior, bounded 1,024-entry
 min-only growth, feature gating, forged/cross-store rejection before storage,
 store teardown, and no funcref descriptor arena for externref-only tables.
-Codec v20 round-trips externref-table structure while snapshots remain an
+Codec v21 round-trips externref-table structure while snapshots remain an
 explicit live-table-state rejection. Imported/shared ownership and exact exports/re-exports are covered by
 the next gate. The focused official roots lock
 `ref_is_null` at 1 module / 13 assertions; `table_set`, `table_size`, and
@@ -481,9 +481,9 @@ The local matrix requires `Runtime.NewExternRefTable`, exact externref type and
 8-byte stride, same-store aliases, get/set/size/grow/fill visibility, local export
 then re-import/re-export, limit checks, cross-runtime and standalone/private-store
 rejection, host-table close rejection with live importers, Runtime.Close root
-retention through the final table close, codec-v20 structural round-trip plus
+retention through the final table close, codec-v21 structural round-trip plus
 snapshot rejection, and the
-unchanged 64-byte `Table`, 776-byte `Instance`, and 632-byte `Compiled` layouts.
+unchanged 64-byte `Table`, 776-byte `Instance`, and 584-byte `Compiled` layouts.
 The source/execution guard pins `linking.wast:291-309`; its exporter and compatible
 importer execute as two modules, while the two incompatible-type assertions remain
 covered by local exact-type tests because the execution harness does not replay
@@ -502,7 +502,7 @@ The source and execution guards pin `bulk.wast:274/297`, `elem.wast:654-677`,
 and `table.wast:8/9`. They require active/passive/declarative null externref
 segments, nonzero and imported destinations, 8-byte `table.init`/`table.copy`,
 `elem.drop`, overlap, zero-length and out-of-bounds behavior, declaration-order
-failed-instantiation effects, no failed externref producer root, codec-v20
+failed-instantiation effects, no failed externref producer root, codec-v21
 structural round-trip, snapshot rejection, and unchanged public/runtime layouts. The two `bulk.wast`
 modules prove element drop state without a table. The two `table.wast` modules
 prove that inert unexported huge spare capacities do not force an unusable arena
@@ -518,11 +518,11 @@ file and never leaks to another file. All importing instances close before the
 file-scoped owners. Imported-memory re-export returns the original `*Memory`, so
 `imports.wast` growth/size actions observe one identity and producer lifetime.
 
-For codec-v20 structural reference persistence and the snapshot live-state
+For codec-v21 structural reference persistence and the snapshot live-state
 boundary, run:
 
 ```sh
-go test -count=1 -run '^TestCompiledCodecV20' ./src/wago
+go test -count=1 -run '^TestCompiledCodecV21' ./src/wago
 ```
 
 This gate covers the version-19 incompatibility boundary, exact reference
@@ -563,7 +563,7 @@ accepted-invalid or accepted-malformed sites. The execution run is green at
 1,600 passed / 0 failed / 0 skipped modules and 48,248 passed / 0 failed / 0
 skipped assertions; every bounded gap reason is zero. `imports.wast` is fully
 green at 54 / 34 modules/assertions, `data.wast` at 25 / 14, and `linking.wast`
-at 21 / 90. `.wago` codec v20 persists structural reference globals, indexed typed
+at 21 / 90. `.wago` codec v21 persists structural reference globals, indexed typed
 tables/exports/elements, exact declared table-limit forms, and required-feature
 bits while rejecting live runtime identity. The remaining product gates are also
 closed locally: snapshot fail-closed admission,
