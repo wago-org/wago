@@ -38,13 +38,19 @@ func (in *Instance) bindNativeContext() {
 func (*executionLease) unlockExecution() { nativeExecutionMu.Unlock() }
 
 func (in *Instance) callNativeAsync(entry uintptr, prepared bool) error {
+	return in.callNativeAsyncWithTrap(entry, prepared, in.trap)
+}
+
+// callNativeAsyncWithTrap enters this instance while preserving an outer
+// caller's trap cell across a Go-level re-export delegation.
+func (in *Instance) callNativeAsyncWithTrap(entry uintptr, prepared bool, activeTrap []byte) error {
 	locked := in.beginNativeEntry()
 	defer locked.unlockExecution()
 	if prepared {
-		if err := refreshNativeControl(true, in.eng, in.jm, in.trap); err != nil {
+		if err := refreshNativeControl(true, in.eng, in.jm, activeTrap); err != nil {
 			return err
 		}
-		return in.eng.CallPrepared(entry, in.serArgs, in.jm.LinMemBase(), in.trap, in.results)
+		return in.eng.CallPrepared(entry, in.serArgs, in.jm.LinMemBase(), activeTrap, in.results)
 	}
-	return callNative(in.c, in.eng, in.jm, true, entry, in.serArgs, in.trap, in.results)
+	return callNative(in.c, in.eng, in.jm, true, entry, in.serArgs, activeTrap, in.results)
 }

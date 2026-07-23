@@ -606,7 +606,13 @@ func (e *ExitError) Error() string { return fmt.Sprintf("exit status %d", e.Code
 // callNativeSync runs a native entry that may make synchronous host calls,
 // driving the re-entry loop with this instance's host dispatch. A host function
 // may panic(HostExit{...}) to terminate; it is recovered here as an *ExitError.
-func (in *Instance) callNativeSync(entry uintptr) (err error) {
+func (in *Instance) callNativeSync(entry uintptr) error {
+	return in.callNativeSyncWithTrap(entry, in.trap)
+}
+
+// callNativeSyncWithTrap is the host-capable form used when a Go-level
+// re-export delegates execution while retaining the outer caller's trap cell.
+func (in *Instance) callNativeSyncWithTrap(entry uintptr, activeTrap []byte) (err error) {
 	locked := in.beginNativeEntry()
 	defer locked.unlockExecution()
 	defer func() {
@@ -634,7 +640,7 @@ func (in *Instance) callNativeSync(entry uintptr) (err error) {
 	if in.hostCall == nil {
 		in.hostCall = in.newHostDispatch()
 	}
-	err = in.eng.CallWithHostBase(entry, in.serArgs, in.jm.LinMemBase(), in.trap, in.results, in.ctrl, in.dispatchSynchronousHostCall)
+	err = in.eng.CallWithHostBase(entry, in.serArgs, in.jm.LinMemBase(), activeTrap, in.results, in.ctrl, in.dispatchSynchronousHostCall)
 	goruntime.KeepAlive(in)
 	goruntime.KeepAlive(in.c)
 	return err

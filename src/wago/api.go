@@ -1737,7 +1737,9 @@ func (in *Instance) invoke(export string, args []uint64, cancel <-chan struct{})
 		if !ok || ex == nil || ex.inst == nil {
 			return nil, fmt.Errorf("export %q is an imported function without an InstanceExport owner", export)
 		}
-		return ex.inst.invokeLocalContext(ex.localIdx, args, cancel)
+		// Native cross-instance calls copy the caller's trap cell into the callee.
+		// This Go-level re-export path must preserve the same interruption owner.
+		return ex.inst.invokeLocalContext(ex.localIdx, args, cancel, in.trap)
 	}
 	if len(args) != ic.paramSlots {
 		return nil, fmt.Errorf("%s expects %d arg slot(s), got %d", export, ic.paramSlots, len(args))
@@ -1759,7 +1761,10 @@ func (in *Instance) invoke(export string, args []uint64, cancel <-chan struct{})
 		binary.LittleEndian.PutUint32(in.hostLog, 0) // reset host-call log
 	}
 	entry := in.base + uintptr(in.c.Entry[li])
-	stopCancel := in.startCancellationWatch(cancel)
+	stopCancel := noOpCancellationWatch
+	if cancel != nil {
+		stopCancel = in.startCancellationWatch(cancel, in.trap)
+	}
 	if in.syncMode {
 		if err := in.callNativeSync(entry); err != nil {
 			stopCancel()
@@ -1800,13 +1805,15 @@ func (in *Instance) invoke(export string, args []uint64, cancel <-chan struct{})
 
 // invokeLocal calls this instance's local function `li` directly (bypassing the
 // export-name cache). Used to call through a re-exported import into the instance
-// that satisfies it. It shares the instance's call buffers, so the returned slice
-// is valid only until the next call on this instance.
+// that satisfies it. activeTrap is the outer caller's invocation cell, matching
+// the native dynamic-call ABI so closing a re-exporting caller interrupts code
+// executing in the producer. It shares the instance's call buffers, so the
+// returned slice is valid only until the next call on this Instance.
 func (in *Instance) invokeLocal(li int, args []uint64) ([]uint64, error) {
-	return in.invokeLocalContext(li, args, nil)
+	return in.invokeLocalContext(li, args, nil, in.trap)
 }
 
-func (in *Instance) invokeLocalContext(li int, args []uint64, cancel <-chan struct{}) ([]uint64, error) {
+func (in *Instance) invokeLocalContext(li int, args []uint64, cancel <-chan struct{}, activeTrap []byte) ([]uint64, error) {
 	if err := in.beginInvocation(); err != nil {
 		return nil, fmt.Errorf("invoke function %d: %w", li, err)
 	}
@@ -1843,14 +1850,20 @@ func (in *Instance) invokeLocalContext(li int, args []uint64, cancel <-chan stru
 		binary.LittleEndian.PutUint32(in.hostLog, 0)
 	}
 	entry := in.base + uintptr(in.c.Entry[li])
-	stopCancel := in.startCancellationWatch(cancel)
+	if len(activeTrap) < 4 {
+		activeTrap = in.trap
+	}
+	stopCancel := noOpCancellationWatch
+	if cancel != nil {
+		stopCancel = in.startCancellationWatch(cancel, activeTrap)
+	}
 	if in.syncMode {
-		if err := in.callNativeSync(entry); err != nil {
+		if err := in.callNativeSyncWithTrap(entry, activeTrap); err != nil {
 			stopCancel()
 			return nil, err
 		}
 	} else {
-		if err := in.callNativeAsync(entry, false); err != nil {
+		if err := in.callNativeAsyncWithTrap(entry, false, activeTrap); err != nil {
 			stopCancel()
 			return nil, err
 		}
@@ -1905,13 +1918,15 @@ func nativeCancellationSupported() bool {
 
 // startCancellationWatch arms the native safepoints for a high-level
 // context-aware Call. Background contexts keep the zero-goroutine fast path.
-func (in *Instance) startCancellationWatch(cancel <-chan struct{}) func() {
-	if !nativeCancellationSupported() || cancel == nil || len(in.trap) < 4 {
+func noOpCancellationWatch() {}
+
+func (in *Instance) startCancellationWatch(cancel <-chan struct{}, activeTrap []byte) func() {
+	if !nativeCancellationSupported() || cancel == nil || len(activeTrap) < 4 {
 		return func() {}
 	}
 	done := make(chan struct{})
 	stopped := make(chan struct{})
-	trap := (*uint32)(unsafe.Pointer(&in.trap[0]))
+	trap := (*uint32)(unsafe.Pointer(&activeTrap[0]))
 	go func() {
 		defer close(stopped)
 		select {

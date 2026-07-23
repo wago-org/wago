@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/testutil/wasmtest"
@@ -49,6 +50,74 @@ func TestImportedFunctionReexportForwardsInvokeCallTrapAndState(t *testing.T) {
 	state, err = producer.Invoke("state")
 	if err != nil || len(state) != 1 || AsI32(state[0]) != -1 {
 		t.Fatalf("producer state after forwarded trap = %v, %v; want -1", state, err)
+	}
+}
+
+func TestImportedFunctionReexportCloseInterruptsDelegatedExecution(t *testing.T) {
+	if !nativeCancellationSupported() {
+		t.Skip("native cancellation requires amd64 or arm64")
+	}
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	defer func() {
+		select {
+		case <-release:
+		default:
+			close(release)
+		}
+	}()
+	rt := NewRuntime()
+	defer rt.Close()
+	producerMod, err := rt.Compile(reexportInfiniteProducerModule())
+	if err != nil {
+		t.Fatalf("Compile producer: %v", err)
+	}
+	producer, err := rt.Instantiate(context.Background(), producerMod, WithImports(Imports{
+		"env.entered": HostFunc(func(HostModule, []uint64, []uint64) {
+			close(entered)
+			<-release
+		}),
+	}))
+	if err != nil {
+		t.Fatalf("Instantiate producer: %v", err)
+	}
+	defer producer.Close()
+	spin, err := producer.ExportedFunc("spin")
+	if err != nil {
+		t.Fatalf("Export producer spin: %v", err)
+	}
+	relayMod, err := rt.Compile(voidImportedFunctionReexportModule())
+	if err != nil {
+		t.Fatalf("Compile relay: %v", err)
+	}
+	relay, err := rt.Instantiate(context.Background(), relayMod, WithImports(Imports{"env.spin": spin}))
+	if err != nil {
+		t.Fatalf("Instantiate relay: %v", err)
+	}
+	defer relay.Close()
+
+	callDone := make(chan error, 1)
+	go func() {
+		_, err := relay.Invoke("spin")
+		callDone <- err
+	}()
+	select {
+	case <-entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("delegated invocation did not enter producer")
+	}
+	if err := relay.Close(); err != nil {
+		t.Fatalf("Close relay: %v", err)
+	}
+	close(release)
+	select {
+	case err := <-callDone:
+		requireWazeroInterruptedTrap(t, err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("relay Close did not interrupt delegated producer execution")
+	}
+	if producer.isLogicallyClosed() {
+		t.Fatal("relay Close also logically closed the producer")
 	}
 }
 
@@ -141,6 +210,34 @@ func importedFunctionReexportModule() []byte {
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
 		wasmtest.Section(2, wasmtest.Vec(imp)),
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("forward", 0, 0))),
+	)
+}
+
+func voidImportedFunctionReexportModule() []byte {
+	imp := append(wasmtest.Name("env"), wasmtest.Name("spin")...)
+	imp = append(imp, 0x00, 0x00) // function import, type 0
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(2, wasmtest.Vec(imp)),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("spin", 0, 0))),
+	)
+}
+
+func reexportInfiniteProducerModule() []byte {
+	imp := append(wasmtest.Name("env"), wasmtest.Name("entered")...)
+	imp = append(imp, 0x00, 0x00) // function import, type 0
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(2, wasmtest.Vec(imp)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("spin", 0, 1))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
+			0x10, 0x00, // call imported entered callback
+			0x03, 0x40, // loop
+			0x0c, 0x00, // br 0
+			0x0b, // end loop
+			0x0b, // end function
+		}))),
 	)
 }
 
