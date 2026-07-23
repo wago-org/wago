@@ -143,12 +143,18 @@ func (in *Instance) beginInvocation() error {
 	if in == nil {
 		return fmt.Errorf("instance is nil")
 	}
-	state := in.invocationState.Add(1)
-	if state&instanceInvocationClosed == 0 {
-		return nil
+	for {
+		state := in.invocationState.Load()
+		if state&instanceInvocationClosed != 0 {
+			return fmt.Errorf("instance is closed")
+		}
+		if state&instanceInvocationCount == instanceInvocationCount {
+			return fmt.Errorf("instance has too many active invocations")
+		}
+		if in.invocationState.CompareAndSwap(state, state+1) {
+			return nil
+		}
 	}
-	in.invocationState.Add(^uint32(0))
-	return fmt.Errorf("instance is closed")
 }
 
 func (in *Instance) endInvocation() {
