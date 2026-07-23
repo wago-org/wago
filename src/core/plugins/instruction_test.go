@@ -12,6 +12,27 @@ func portableAdd(_ InstructionContext, args []Bits) ([]Bits, error) {
 	return []Bits{sum}, err
 }
 
+func TestPrepareCustomTypeSupportsStandardCarriers(t *testing.T) {
+	for _, carrier := range []WasmType{WasmI32, WasmI64, WasmF32, WasmF64, WasmV128, WasmFuncRef, WasmExternRef} {
+		typ, err := PrepareCustomType(CustomTypeSpec{Name: "example.value", Size: 16, Carrier: carrier})
+		if err != nil {
+			t.Fatalf("carrier %d: %v", carrier, err)
+		}
+		if typ.Name() != "example.value" || typ.Size() != 16 || typ.Carrier() != carrier || !typ.Valid() {
+			t.Fatalf("carrier %d produced %+v", carrier, typ)
+		}
+	}
+	for _, spec := range []CustomTypeSpec{
+		{Size: 16, Carrier: WasmI32},
+		{Name: "bad", Size: 15, Carrier: WasmI32},
+		{Name: "bad", Size: 16, Carrier: WasmType(255)},
+	} {
+		if _, err := PrepareCustomType(spec); err == nil {
+			t.Fatalf("invalid custom type accepted: %+v", spec)
+		}
+	}
+}
+
 func TestPrepareBuildsNativeInstruction(t *testing.T) {
 	input := []int32{4, 4}
 	output := []int32{4}
@@ -83,7 +104,53 @@ func TestPrepareBuildsIndependentTargetLowerings(t *testing.T) {
 	}
 }
 
+func TestPrepareBuildsCustomInstruction(t *testing.T) {
+	vector, err := PrepareCustomType(CustomTypeSpec{Name: "example.v256", Size: 32, Carrier: WasmExternRef})
+	if err != nil {
+		t.Fatal(err)
+	}
+	output := vector
+	inputs := []CustomType{vector, vector}
+	def, err := Prepare(InstructionSpec{
+		Module: "example", Name: "v256.xor",
+		Custom: &CustomSignature{Inputs: inputs, Output: &output},
+		AMD64: &machinecode.AMD64Lowering{
+			Compatibility: machinecode.AMD64CompatibilityFullAccess,
+			Emit:          func(machinecode.AMD64Context) error { return nil },
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Registration snapshots both the signature slices and pointed-to result.
+	inputs[0] = CustomType{}
+	output = CustomType{}
+	native, ok := def.Native()
+	if !ok {
+		t.Fatal("custom instruction should have a native lowering")
+	}
+	if len(native.CustomInputs) != 2 || native.CustomInputs[0].Name() != "example.v256" ||
+		native.CustomOutput == nil || native.CustomOutput.Name() != "example.v256" {
+		t.Fatalf("custom signature was not detached: %+v", native)
+	}
+	if native.ResultWidth != 256 || native.StackCompatible {
+		t.Fatalf("unexpected custom lowering: %+v", native)
+	}
+	if got := def.Spec.Input; len(got) != 2 || got[0] != 256 || got[1] != 256 {
+		t.Fatalf("derived custom input widths=%v", got)
+	}
+}
+
 func TestPrepareRejectsInvalidDefinitions(t *testing.T) {
+	vector, err := PrepareCustomType(CustomTypeSpec{Name: "example.v256", Size: 32, Carrier: WasmExternRef})
+	if err != nil {
+		t.Fatal(err)
+	}
+	customAMD64 := &machinecode.AMD64Lowering{
+		Compatibility: machinecode.AMD64CompatibilityFullAccess,
+		Emit:          func(machinecode.AMD64Context) error { return nil },
+	}
 	tests := []struct {
 		name string
 		spec InstructionSpec
@@ -110,6 +177,41 @@ func TestPrepareRejectsInvalidDefinitions(t *testing.T) {
 				Lower:   func(LoweringContext) error { return nil },
 			},
 			want: "did not set output",
+		},
+		{
+			name: "custom metadata length",
+			spec: InstructionSpec{
+				Module: "example", Name: "bad", Input: []int32{256},
+				Custom: &CustomSignature{}, AMD64: customAMD64,
+			},
+			want: "custom input metadata has 0 entries, want 1",
+		},
+		{
+			name: "custom width mismatch",
+			spec: InstructionSpec{
+				Module: "example", Name: "bad", Input: []int32{128},
+				Custom: &CustomSignature{Inputs: []CustomType{vector}},
+				AMD64:  customAMD64,
+			},
+			want: "is 128 bits",
+		},
+		{
+			name: "custom handler",
+			spec: InstructionSpec{
+				Module: "example", Name: "bad", Input: []int32{256},
+				Custom:  &CustomSignature{Inputs: []CustomType{vector}},
+				Handler: func(InstructionContext, []Bits) ([]Bits, error) { return nil, nil },
+				AMD64:   customAMD64,
+			},
+			want: "native-only and forbid Handler",
+		},
+		{
+			name: "custom without lowering",
+			spec: InstructionSpec{
+				Module: "example", Name: "bad", Input: []int32{256},
+				Custom: &CustomSignature{Inputs: []CustomType{vector}},
+			},
+			want: "require a native lowering",
 		},
 	}
 

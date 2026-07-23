@@ -26,8 +26,12 @@ type ARM64Lowering struct {
 // cross-platform semantic operations.
 type ARM64ManagedContext interface {
 	InputI32(index int) (a64.Reg, error)
+	InputCustom(index int) ([]a64.Reg, error)
 	Release(reg a64.Reg)
+	ReleaseGP(reg a64.Reg)
+	ReleaseVector(reg a64.Reg)
 	OutputI32(reg a64.Reg) error
+	OutputCustom(regs ...a64.Reg) error
 }
 
 // ARM64Context exposes Wago's raw AArch64 encoder. Encoder().B is public, so a

@@ -2,8 +2,8 @@
 
 Wago compiler plugins can recognize ordinary Wasm function imports and replace
 their calls during native code generation. Any source language that can emit an
-`i32` import can use the mechanism without custom Wasm types, custom sections,
-binary rewriting, or compiler-specific metadata.
+`i32` or `externref` import can use the mechanism without custom Wasm types,
+custom sections, or compiler-specific metadata.
 
 The guest ABI is conventional:
 
@@ -123,3 +123,83 @@ but does not interpret the plugin's instructions.
 
 Instruction module names, operation names, versioning, feature dispatch,
 cross-platform behavior, and machine-code sequences all belong to the plugin.
+
+## Registered custom value types
+
+Pointer imports are suitable at the boundary, but a sequence of pointer-based
+vector operations reloads and stores the same values repeatedly. A plugin can
+register a custom type once, choose a standard Wasm validation carrier, and use
+the returned opaque token in any number of instructions:
+
+```go
+compiler := reg.Compiler()
+v256, err := compiler.Type(wago.CustomTypeSpec{
+	Name:    "example.v256",
+	Size:    32,
+	Carrier: wago.WasmExternRef,
+})
+if err != nil {
+	return err
+}
+
+return compiler.Instruction(wago.InstructionSpec{
+	Module: "example",
+	Name:   "v256.xor",
+	Custom: &wago.CustomSignature{
+		Inputs: []wago.CustomType{v256, v256},
+		Output: &v256,
+	},
+	AMD64: amd64Xor,
+	ARM64: arm64Xor,
+})
+```
+
+Wago derives custom input and output bit widths from the registered tokens.
+Mixed signatures retain `Input` entries only for ordinary values; use zero at a
+custom position and Wago fills it from the type.
+
+With `WasmExternRef`, the physical signature is
+`(externref, externref) -> externref`. `InputCustom` transfers each input's
+native register bundle to the lowering, and `OutputCustom` assigns the output
+bundle. The plugin owns the type name, byte size, register chunking, semantics,
+and machine code.
+
+The carrier can be `WasmI32`, `WasmI64`, `WasmF32`, `WasmF64`, `WasmV128`,
+`WasmFuncRef`, or `WasmExternRef`. It affects only the module's ordinary physical function
+signature; the registered custom type identity remains distinct inside the
+compiler. This lets any source language emit whichever standard type it can
+represent most naturally, without a custom section or a new binary type code.
+
+An `externref` carrier is only a validation marker. Wago does not allocate a host
+object, enter the runtime reference store, or materialize the value in linear
+memory. A source-language transform can therefore emit a chain such as:
+
+```wat
+(call $v256.store
+  (call $v256.xor
+    (call $v256.load (i32.const 32))
+    (call $v256.load (i32.const 64)))
+  (i32.const 0))
+```
+
+and the native backend keeps the intermediate value in registers. Load and
+store remain ordinary plugin-defined instructions; Wago does not attach memory
+or SIMD meaning to them.
+
+Custom values are intentionally native-only and currently have expression
+lifetime. They may flow directly between plugin calls, be dropped, or be
+consumed by a plugin call, but cannot be stored in Wasm locals, passed to an
+ordinary function, returned from the guest, or carried across control flow.
+Compilation rejects such escapes. A custom instruction must provide at least
+one target lowering and must not provide a portable `Handler`; a target without
+that lowering retains a trapping import.
+
+`CompilerRegistry.Type` is the single registration seam. Repeating the same
+name, size, and carrier is idempotent. Reusing a name with a different
+declaration, using an unregistered token, or using a token obtained from another
+registry is rejected before the instruction is installed.
+
+Because general-purpose and vector register numbers overlap on both supported
+architectures, raw lowerings should call `ReleaseGP` or `ReleaseVector`.
+`Release` remains as a compatibility convenience when the register class is
+unambiguous.

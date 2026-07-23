@@ -7,15 +7,21 @@ import (
 
 	"github.com/wago-org/wago/src/core/compiler/machinecode"
 	x86 "github.com/wago-org/wago/src/core/encoder/amd64"
+	coreplugins "github.com/wago-org/wago/src/core/plugins"
 )
 
 type pluginAMD64Context struct {
-	f          *fn
-	paramSlots []int
-	paramWidth []int32
-	gp, ymm    regMask
-	output     Reg
-	outputSet  bool
+	f            *fn
+	paramSlots   []int
+	paramWidth   []int32
+	paramElems   []*elem
+	paramCustom  []coreplugins.CustomType
+	customRead   []bool
+	gp, ymm      regMask
+	output       Reg
+	outputSet    bool
+	customOutput *coreplugins.CustomType
+	customRegs   []Reg
 }
 
 func (c *pluginAMD64Context) Encoder() *x86.Asm { return c.f.a }
@@ -30,6 +36,27 @@ func (c *pluginAMD64Context) InputI32(index int) (x86.Reg, error) {
 		c.f.a.AluRI(4, r, int32((uint64(1)<<uint(width))-1), false)
 	}
 	return r, nil
+}
+
+func (c *pluginAMD64Context) InputCustom(index int) ([]x86.Reg, error) {
+	if index < 0 || index >= len(c.paramElems) || index >= len(c.paramCustom) || c.paramCustom[index].IsZero() {
+		return nil, fmt.Errorf("amd64 plugin custom input %d out of range", index)
+	}
+	e := c.paramElems[index]
+	want := c.paramCustom[index]
+	if e.kind != ekValue || e.st.typ != mtCustom || e.st.custom == nil || !e.st.custom.Equal(want) {
+		return nil, fmt.Errorf("amd64 plugin custom input %d has incompatible custom type", index)
+	}
+	regs := c.f.materializePluginCustom(e)
+	out := append([]Reg(nil), regs...)
+	for _, reg := range out {
+		c.f.fregUser[reg] = nil
+		c.f.fpinned = c.f.fpinned.add(reg)
+		c.ymm = c.ymm.add(reg)
+	}
+	e.st.vregs = nil
+	c.customRead[index] = true
+	return out, nil
 }
 
 func exclusionMask(regs []x86.Reg) regMask {
@@ -73,7 +100,7 @@ func (c *pluginAMD64Context) LoadYMM(input int, offset uint32) (x86.Reg, error) 
 	}
 	x := c.AllocYMM()
 	c.f.a.YMovdquLoadIdx(x, base, index, disp)
-	c.Release(index)
+	c.ReleaseGP(index)
 	return x, nil
 }
 
@@ -86,7 +113,7 @@ func (c *pluginAMD64Context) StoreYMM(input int, offset uint32, value x86.Reg) e
 		return err
 	}
 	c.f.a.YMovdquStoreIdx(base, index, value, disp)
-	c.Release(index)
+	c.ReleaseGP(index)
 	return nil
 }
 
@@ -97,7 +124,7 @@ func (c *pluginAMD64Context) LoadZMM(input int, offset uint32) (x86.Reg, error) 
 	}
 	x := c.AllocYMM()
 	c.f.a.ZMovdqu64LoadIdx(x, base, index, disp)
-	c.Release(index)
+	c.ReleaseGP(index)
 	return x, nil
 }
 
@@ -110,7 +137,7 @@ func (c *pluginAMD64Context) StoreZMM(input int, offset uint32, value x86.Reg) e
 		return err
 	}
 	c.f.a.ZMovdqu64StoreIdx(base, index, value, disp)
-	c.Release(index)
+	c.ReleaseGP(index)
 	return nil
 }
 
@@ -143,6 +170,11 @@ func (c *pluginAMD64Context) ReserveYMM(reg x86.Reg) error {
 }
 
 func (c *pluginAMD64Context) Release(reg x86.Reg) {
+	c.ReleaseGP(reg)
+	c.ReleaseVector(reg)
+}
+
+func (c *pluginAMD64Context) ReleaseGP(reg x86.Reg) {
 	if c.outputSet && reg == c.output {
 		return
 	}
@@ -150,6 +182,14 @@ func (c *pluginAMD64Context) Release(reg x86.Reg) {
 		c.gp = c.gp.remove(reg)
 		c.f.pinned = c.f.pinned.remove(reg)
 		c.f.release(reg)
+	}
+}
+
+func (c *pluginAMD64Context) ReleaseVector(reg x86.Reg) {
+	for _, output := range c.customRegs {
+		if reg == output {
+			return
+		}
 	}
 	if c.ymm.has(reg) {
 		c.ymm = c.ymm.remove(reg)
@@ -177,6 +217,9 @@ func (c *pluginAMD64Context) CheckedMemory(input int, offset uint32, size int) (
 }
 
 func (c *pluginAMD64Context) OutputI32(reg x86.Reg) error {
+	if c.customOutput != nil {
+		return fmt.Errorf("amd64 plugin custom instruction cannot set an i32 output")
+	}
 	if !c.gp.has(reg) {
 		return fmt.Errorf("amd64 plugin output register %d is not owned by the lowering", reg)
 	}
@@ -187,13 +230,61 @@ func (c *pluginAMD64Context) OutputI32(reg x86.Reg) error {
 	return nil
 }
 
+func (c *pluginAMD64Context) OutputCustom(regs ...x86.Reg) error {
+	if c.customOutput == nil {
+		return fmt.Errorf("amd64 plugin instruction has no custom output")
+	}
+	want := int((c.customOutput.Size() + 31) / 32)
+	if len(regs) != want {
+		return fmt.Errorf("amd64 plugin custom output has %d register(s), want %d", len(regs), want)
+	}
+	if c.outputSet || len(c.customRegs) != 0 {
+		return fmt.Errorf("amd64 plugin output already assigned")
+	}
+	seen := regMask(0)
+	for _, reg := range regs {
+		if !c.ymm.has(reg) || seen.has(reg) {
+			return fmt.Errorf("amd64 plugin custom output register %d is not uniquely owned by the lowering", reg)
+		}
+		seen = seen.add(reg)
+	}
+	c.customRegs = append([]Reg(nil), regs...)
+	return nil
+}
+
+func (f *fn) materializePluginCustom(e *elem) []Reg {
+	if e.st.kind == stReg {
+		return e.st.vregs
+	}
+	if e.st.kind != stSlot || e.st.custom == nil {
+		panic("amd64: cannot materialize custom plugin value")
+	}
+	count := int((e.st.custom.Size() + 31) / 32)
+	regs := make([]Reg, count)
+	var avoid regMask
+	for i := 0; i < count; i++ {
+		reg := f.allocFReg(avoid)
+		avoid = avoid.add(reg)
+		f.fpinned = f.fpinned.add(reg)
+		regs[i] = reg
+		f.a.YMovdquLoadDisp(reg, RSP, f.spillOff(e.st.slot+i*4))
+	}
+	for i := 0; i < count; i++ {
+		f.fpinned = f.fpinned.remove(regs[i])
+		f.fregUser[regs[i]] = e
+	}
+	e.st.kind, e.st.typ, e.st.reg = stReg, mtCustom, regs[0]
+	e.st.vregs = regs
+	return e.st.vregs
+}
+
 func (c *pluginAMD64Context) finish(resultWidth int32) {
 	for r := Reg(0); r < 16; r++ {
 		if c.gp.has(r) && (!c.outputSet || r != c.output) {
-			c.Release(r)
+			c.ReleaseGP(r)
 		}
 		if c.ymm.has(r) {
-			c.Release(r)
+			c.ReleaseVector(r)
 		}
 	}
 	if !c.outputSet {
@@ -209,7 +300,10 @@ func (c *pluginAMD64Context) finish(resultWidth int32) {
 	}
 }
 
-func (f *fn) emitPluginAMD64(lowering *machinecode.AMD64Lowering, inputWidths []int32, resultWidth int32, resultCount int) error {
+func (f *fn) emitPluginAMD64(lowering *machinecode.AMD64Lowering, inputWidths []int32, resultWidth int32, resultCount int, customInputs []coreplugins.CustomType, customOutput *coreplugins.CustomType) error {
+	if len(customInputs) != 0 || customOutput != nil {
+		return f.emitPluginAMD64Custom(lowering, inputWidths, resultCount, customInputs, customOutput)
+	}
 	paramCount := len(inputWidths)
 	types := f.currentLogicalTypes()
 	if len(types) < paramCount {
@@ -250,5 +344,96 @@ func (f *fn) emitPluginAMD64(lowering *machinecode.AMD64Lowering, inputWidths []
 		f.usesWide = true
 	}
 	f.stats.call("custom-machine-code")
+	return nil
+}
+
+func (f *fn) emitPluginAMD64Custom(lowering *machinecode.AMD64Lowering, inputWidths []int32, resultCount int, customInputs []coreplugins.CustomType, customOutput *coreplugins.CustomType) error {
+	paramCount := len(inputWidths)
+	if len(customInputs) != paramCount {
+		return fmt.Errorf("amd64 plugin custom signature has %d inputs, want %d", len(customInputs), paramCount)
+	}
+	roots := append([]*elem(nil), f.rootsBottomToTop()...)
+	if len(roots) < paramCount {
+		return fmt.Errorf("amd64 plugin lowering has %d stack argument(s), want %d", len(roots), paramCount)
+	}
+	base := len(roots) - paramCount
+	ctx := &pluginAMD64Context{
+		f: f, paramSlots: make([]int, paramCount), paramWidth: inputWidths,
+		paramElems: roots[base:], paramCustom: customInputs, customRead: make([]bool, paramCount),
+		output: regNone, customOutput: customOutput,
+	}
+	for i, typ := range customInputs {
+		e := ctx.paramElems[i]
+		if !typ.IsZero() {
+			if e.kind != ekValue || e.st.typ != mtCustom || e.st.custom == nil || !e.st.custom.Equal(typ) {
+				return fmt.Errorf("amd64 plugin custom input %d has incompatible custom type", i)
+			}
+			continue
+		}
+		if e.kind != ekValue || e.st.typ != mtI32 {
+			return fmt.Errorf("amd64 plugin input %d is not i32", i)
+		}
+		r := f.materialize(e)
+		f.spill(e)
+		f.release(r)
+		ctx.paramSlots[i] = e.st.slot
+	}
+	switch lowering.Compatibility {
+	case machinecode.AMD64CompatibilityManaged:
+		if err := lowering.Managed(ctx); err != nil {
+			return err
+		}
+	case machinecode.AMD64CompatibilityFullAccess:
+		if err := lowering.Emit(ctx); err != nil {
+			return err
+		}
+	default:
+		return fmt.Errorf("unsupported amd64 plugin compatibility mode %d", lowering.Compatibility)
+	}
+	for i, typ := range customInputs {
+		if !typ.IsZero() && !ctx.customRead[i] {
+			return fmt.Errorf("amd64 plugin lowering did not consume custom input %d", i)
+		}
+	}
+	if customOutput != nil {
+		if resultCount != 1 || len(ctx.customRegs) == 0 {
+			return fmt.Errorf("amd64 plugin lowering did not set its custom output")
+		}
+	} else if resultCount != 0 || len(ctx.customRegs) != 0 || ctx.outputSet {
+		return fmt.Errorf("amd64 custom plugin lowering has an invalid physical output")
+	}
+	outputs := make(map[Reg]bool, len(ctx.customRegs))
+	for _, reg := range ctx.customRegs {
+		outputs[reg] = true
+	}
+	for reg := Reg(0); reg < 16; reg++ {
+		if ctx.gp.has(reg) {
+			ctx.ReleaseGP(reg)
+		}
+		if ctx.ymm.has(reg) && !outputs[reg] {
+			ctx.ReleaseVector(reg)
+		}
+	}
+	for _, root := range ctx.paramElems {
+		if root.st.typ == mtCustom {
+			for _, reg := range root.st.vregs {
+				f.releaseF(reg)
+			}
+		}
+		f.erase(root)
+	}
+	if customOutput != nil {
+		st := storage{kind: stReg, typ: mtCustom, reg: ctx.customRegs[0], custom: customOutput, vregs: append([]Reg(nil), ctx.customRegs...)}
+		e := f.pushValue(st)
+		for _, reg := range ctx.customRegs {
+			ctx.ymm = ctx.ymm.remove(reg)
+			f.fpinned = f.fpinned.remove(reg)
+			f.fregUser[reg] = e
+		}
+	}
+	if lowering.Features&(machinecode.AMD64FeatureAVX2|machinecode.AMD64FeatureAVX512) != 0 {
+		f.usesWide = true
+	}
+	f.stats.call("custom-machine-code-custom")
 	return nil
 }

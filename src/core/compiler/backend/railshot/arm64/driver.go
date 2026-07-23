@@ -104,7 +104,11 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 		e := f.popValue()
 		switch e.st.kind {
 		case stReg:
-			if e.st.typ.isXMM() {
+			if e.st.typ == mtCustom {
+				for _, reg := range e.st.vregs {
+					f.releaseF(reg)
+				}
+			} else if e.st.typ.isXMM() {
 				f.releaseF(e.st.reg)
 			} else {
 				f.release(e.st.reg)
@@ -1104,6 +1108,9 @@ func (f *fn) setLocal(x int, tee bool) {
 		f.invalidateBoundsCert() // the certified base local changed value
 	}
 	e := f.s.back()
+	if e != nil && e.kind == ekValue && e.st.typ == mtCustom {
+		panic("custom value cannot be stored in a Wasm local")
+	}
 	if e != nil && e.isDeferred() {
 		f.stats.addLocalSetDeferred()
 	}

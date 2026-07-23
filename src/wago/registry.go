@@ -21,6 +21,7 @@ type Registry struct {
 	used         map[PluginCapability]struct{}
 	config       json.RawMessage
 	compiler     *CompilerRegistry
+	customTypes  map[string]CustomType
 	instructions []*registeredInstruction
 }
 
