@@ -3,6 +3,7 @@
 package wago
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"reflect"
@@ -1047,8 +1048,8 @@ func TestStagedGCTypeSubtypingRemainingProductsLifecycle(t *testing.T) {
 		wasm, code int
 		codec      int
 	}{
-		{m9ProviderCompiled, 136, 253, 725},
-		{m9ConsumerCompiled, 164, 0, 589},
+		{m9ProviderCompiled, 136, 253, 726},
+		{m9ConsumerCompiled, 164, 0, 590},
 	} {
 		blob, err := marshalCompiled(item.c)
 		if err != nil {
@@ -1078,7 +1079,7 @@ func TestStagedGCTypeSubtypingRemainingProductsLifecycle(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if in.gc != nil || len(in.funcRefDescs) != 3*coreruntime.TableEntryBytes {
+		if in.gc != nil || len(in.funcRefDescs) != 3*coreruntime.FuncRefDescBytes {
 			t.Fatalf("M9 provider gc/arena = %v/%d", in.gc, len(in.funcRefDescs))
 		}
 		exports := map[string]*InstanceExport{}
@@ -1095,12 +1096,12 @@ func TestStagedGCTypeSubtypingRemainingProductsLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if consumer.gc != nil || len(consumer.funcRefDescs) != 9*coreruntime.TableEntryBytes {
+	if consumer.gc != nil || len(consumer.funcRefDescs) != 9*coreruntime.FuncRefDescBytes {
 		t.Fatalf("M9 consumer gc/arena = %v/%d", consumer.gc, len(consumer.funcRefDescs))
 	}
 	for i, providerFunc := range []int{0, 0, 1, 1, 0, 0, 1, 1} {
-		consumerOff := (i + 1) * coreruntime.TableEntryBytes
-		providerOff := (providerFunc + 1) * coreruntime.TableEntryBytes
+		consumerOff := (i + 1) * coreruntime.FuncRefDescBytes
+		providerOff := (providerFunc + 1) * coreruntime.FuncRefDescBytes
 		got := binary.LittleEndian.Uint64(consumer.funcRefDescs[consumerOff+coreruntime.TableEntryRefSlotOffset:])
 		want := binary.LittleEndian.Uint64(provider.funcRefDescs[providerOff+coreruntime.TableEntryRefSlotOffset:])
 		if got == 0 || got != want {
@@ -1145,8 +1146,8 @@ func TestStagedGCTypeSubtypingRemainingProductsLifecycle(t *testing.T) {
 		providerSizes      [3]int
 		consumerSizes      [3]int
 	}{
-		{stagedGCTypeSubtypingCrossGroupMismatchLinkProviderPin, stagedGCTypeSubtypingCrossGroupMismatchLinkConsumerPin, "M10.f", [3]int{74, 77, 304}, [3]int{43, 0, 148}},
-		{stagedGCTypeSubtypingTransitiveMismatchLinkProviderPin, stagedGCTypeSubtypingTransitiveMismatchLinkConsumerPin, "M11.f", [3]int{87, 77, 384}, [3]int{56, 0, 228}},
+		{stagedGCTypeSubtypingCrossGroupMismatchLinkProviderPin, stagedGCTypeSubtypingCrossGroupMismatchLinkConsumerPin, "M10.f", [3]int{74, 77, 305}, [3]int{43, 0, 149}},
+		{stagedGCTypeSubtypingTransitiveMismatchLinkProviderPin, stagedGCTypeSubtypingTransitiveMismatchLinkConsumerPin, "M11.f", [3]int{87, 77, 385}, [3]int{56, 0, 229}},
 	} {
 		pc, cc := compile(tc.provider), compile(tc.consumer)
 		for _, item := range []struct {
@@ -1220,7 +1221,7 @@ func TestStagedGCTypeSubtypingDuplicateRecursiveLinkingClusterLifecycle(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := [6]int{len(providerData), len(providerCompiled.Code), len(providerBlob), len(consumerData), len(consumerCompiled.Code), len(consumerBlob)}; got != [6]int{100, 253, 531, 92, 0, 315} {
+	if got := [6]int{len(providerData), len(providerCompiled.Code), len(providerBlob), len(consumerData), len(consumerCompiled.Code), len(consumerBlob)}; got != [6]int{100, 253, 532, 92, 0, 316} {
 		t.Fatalf("wasm/code/codec sizes = %v", got)
 	}
 	state := func(in *Instance) (int, bool) {
@@ -1246,19 +1247,19 @@ func TestStagedGCTypeSubtypingDuplicateRecursiveLinkingClusterLifecycle(t *testi
 		return in, ex
 	}
 	provider, exports := newProvider()
-	if len(provider.funcRefDescs) != 3*coreruntime.TableEntryBytes {
+	if len(provider.funcRefDescs) != 3*coreruntime.FuncRefDescBytes {
 		t.Fatalf("provider arena = %d", len(provider.funcRefDescs))
 	}
 	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{"M8.f11": exports["f11"], "M8.f12": exports["f12"]}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if consumer.gc != nil || len(consumer.funcRefDescs) != 5*coreruntime.TableEntryBytes {
+	if consumer.gc != nil || len(consumer.funcRefDescs) != 5*coreruntime.FuncRefDescBytes {
 		t.Fatalf("consumer gc/arena = %v/%d", consumer.gc, len(consumer.funcRefDescs))
 	}
 	for i, providerFunc := range []int{0, 0, 1, 1} {
-		consumerOff := (i + 1) * coreruntime.TableEntryBytes
-		providerOff := (providerFunc + 1) * coreruntime.TableEntryBytes
+		consumerOff := (i + 1) * coreruntime.FuncRefDescBytes
+		providerOff := (providerFunc + 1) * coreruntime.FuncRefDescBytes
 		got := binary.LittleEndian.Uint64(consumer.funcRefDescs[consumerOff+coreruntime.TableEntryRefSlotOffset:])
 		want := binary.LittleEndian.Uint64(provider.funcRefDescs[providerOff+coreruntime.TableEntryRefSlotOffset:])
 		if got == 0 || got != want {
@@ -1268,8 +1269,8 @@ func TestStagedGCTypeSubtypingDuplicateRecursiveLinkingClusterLifecycle(t *testi
 	if refs, closed := state(provider); refs != 1 || closed {
 		t.Fatalf("deduplicated owner state = %d/%v", refs, closed)
 	}
-	if _, err := marshalCompiled(consumer.c); err == nil || !strings.Contains(err.Error(), "retained gc/type-subtyping function bindings") {
-		t.Fatalf("linked codec = %v", err)
+	if linkedBlob, err := marshalCompiled(consumer.c); err != nil || !bytes.Equal(linkedBlob, consumerBlob) {
+		t.Fatalf("linked codec changed binding-independent declaration: bytesEqual=%v, err=%v", bytes.Equal(linkedBlob, consumerBlob), err)
 	}
 	if err := provider.Close(); err != nil {
 		t.Fatal(err)
@@ -1353,8 +1354,8 @@ func TestStagedGCTypeSubtypingExtendedProjectionLinkingClusterLifecycle(t *testi
 	if err != nil {
 		t.Fatalf("marshal unlinked consumer: %v", err)
 	}
-	if got := [6]int{len(providerData), len(providerCompiled.Code), len(providerBlob), len(consumerData), len(consumerCompiled.Code), len(consumerBlob)}; got != [6]int{114, 77, 561, 102, 0, 502} {
-		t.Fatalf("extended projection link wasm/code/codec sizes = %v, want [114 77 561 102 0 502]", got)
+	if got := [6]int{len(providerData), len(providerCompiled.Code), len(providerBlob), len(consumerData), len(consumerCompiled.Code), len(consumerBlob)}; got != [6]int{114, 77, 562, 102, 0, 503} {
+		t.Fatalf("extended projection link wasm/code/codec sizes = %v, want [114 77 562 102 0 503]", got)
 	}
 
 	resourceState := func(in *Instance) (refs int, closed bool) {
@@ -1379,10 +1380,10 @@ func TestStagedGCTypeSubtypingExtendedProjectionLinkingClusterLifecycle(t *testi
 	}
 
 	provider, exported := instantiateProvider()
-	if got, want := len(provider.funcRefDescs), 2*coreruntime.TableEntryBytes; got != want {
+	if got, want := len(provider.funcRefDescs), 2*coreruntime.FuncRefDescBytes; got != want {
 		t.Fatalf("provider descriptor arena = %d bytes, want %d", got, want)
 	}
-	providerOff := coreruntime.TableEntryBytes
+	providerOff := coreruntime.FuncRefDescBytes
 	providerIdentity := binary.LittleEndian.Uint64(provider.funcRefDescs[providerOff+coreruntime.TableEntryRefSlotOffset:])
 	if providerIdentity != uint64(uintptr(unsafe.Pointer(&provider.funcRefDescs[providerOff]))) {
 		t.Fatalf("provider descriptor identity = %#x, want self-owned canonical address", providerIdentity)
@@ -1407,11 +1408,11 @@ func TestStagedGCTypeSubtypingExtendedProjectionLinkingClusterLifecycle(t *testi
 	if consumer.gc != nil {
 		t.Fatal("extended projection link consumer allocated a collector")
 	}
-	if got, want := len(consumer.funcRefDescs), 3*coreruntime.TableEntryBytes; got != want {
+	if got, want := len(consumer.funcRefDescs), 3*coreruntime.FuncRefDescBytes; got != want {
 		t.Fatalf("consumer descriptor arena = %d bytes, want %d", got, want)
 	}
 	for importIndex := 0; importIndex < 2; importIndex++ {
-		consumerOff := (importIndex + 1) * coreruntime.TableEntryBytes
+		consumerOff := (importIndex + 1) * coreruntime.FuncRefDescBytes
 		if got := binary.LittleEndian.Uint64(consumer.funcRefDescs[consumerOff+coreruntime.TableEntryCodePtrOffset:]); got == 0 {
 			t.Fatalf("consumer import %d descriptor has a null code pointer", importIndex)
 		}
@@ -1422,8 +1423,8 @@ func TestStagedGCTypeSubtypingExtendedProjectionLinkingClusterLifecycle(t *testi
 	if refs, closed := resourceState(provider); refs != 1 || closed {
 		t.Fatalf("duplicate imports retained provider refs/resourcesClosed = %d/%v, want 1/false", refs, closed)
 	}
-	if _, err := marshalCompiled(consumer.c); err == nil || !strings.Contains(err.Error(), "retained gc/type-subtyping function bindings") {
-		t.Fatalf("linked consumer codec = %v, want retained-binding rejection", err)
+	if linkedBlob, err := marshalCompiled(consumer.c); err != nil || !bytes.Equal(linkedBlob, consumerBlob) {
+		t.Fatalf("linked consumer codec changed binding-independent declaration: bytesEqual=%v, err=%v", bytes.Equal(linkedBlob, consumerBlob), err)
 	}
 	if err := provider.Close(); err != nil {
 		t.Fatalf("logical provider close: %v", err)
@@ -1545,8 +1546,8 @@ func TestStagedGCTypeSubtypingIndependentStructLinkingClusterLifecycle(t *testin
 	if err != nil {
 		t.Fatalf("marshal unlinked consumer: %v", err)
 	}
-	if got := [6]int{len(providerData), len(providerCompiled.Code), len(providerBlob), len(consumerData), len(consumerCompiled.Code), len(consumerBlob)}; got != [6]int{82, 77, 403, 63, 0, 326} {
-		t.Fatalf("independent struct link wasm/code/codec sizes = %v, want [82 77 403 63 0 326]", got)
+	if got := [6]int{len(providerData), len(providerCompiled.Code), len(providerBlob), len(consumerData), len(consumerCompiled.Code), len(consumerBlob)}; got != [6]int{82, 77, 404, 63, 0, 327} {
+		t.Fatalf("independent struct link wasm/code/codec sizes = %v, want [82 77 404 63 0 327]", got)
 	}
 
 	resourceState := func(in *Instance) (refs int, closed bool) {
@@ -1571,10 +1572,10 @@ func TestStagedGCTypeSubtypingIndependentStructLinkingClusterLifecycle(t *testin
 	}
 
 	provider, exported := instantiateProvider()
-	if got, want := len(provider.funcRefDescs), 2*coreruntime.TableEntryBytes; got != want {
+	if got, want := len(provider.funcRefDescs), 2*coreruntime.FuncRefDescBytes; got != want {
 		t.Fatalf("provider descriptor arena = %d bytes, want %d", got, want)
 	}
-	providerOff := coreruntime.TableEntryBytes
+	providerOff := coreruntime.FuncRefDescBytes
 	providerIdentity := binary.LittleEndian.Uint64(provider.funcRefDescs[providerOff+coreruntime.TableEntryRefSlotOffset:])
 	if providerIdentity != uint64(uintptr(unsafe.Pointer(&provider.funcRefDescs[providerOff]))) {
 		t.Fatalf("provider descriptor identity = %#x, want self-owned canonical address", providerIdentity)
@@ -1599,10 +1600,10 @@ func TestStagedGCTypeSubtypingIndependentStructLinkingClusterLifecycle(t *testin
 	if consumer.gc != nil {
 		t.Fatal("independent struct link consumer allocated a collector")
 	}
-	if got, want := len(consumer.funcRefDescs), 2*coreruntime.TableEntryBytes; got != want {
+	if got, want := len(consumer.funcRefDescs), 2*coreruntime.FuncRefDescBytes; got != want {
 		t.Fatalf("consumer descriptor arena = %d bytes, want %d", got, want)
 	}
-	consumerOff := coreruntime.TableEntryBytes
+	consumerOff := coreruntime.FuncRefDescBytes
 	if got := binary.LittleEndian.Uint64(consumer.funcRefDescs[consumerOff+coreruntime.TableEntryCodePtrOffset:]); got == 0 {
 		t.Fatal("consumer import descriptor has a null code pointer")
 	}
@@ -1612,8 +1613,8 @@ func TestStagedGCTypeSubtypingIndependentStructLinkingClusterLifecycle(t *testin
 	if refs, closed := resourceState(provider); refs != 1 || closed {
 		t.Fatalf("consumer retained provider refs/resourcesClosed = %d/%v, want 1/false", refs, closed)
 	}
-	if _, err := marshalCompiled(consumer.c); err == nil || !strings.Contains(err.Error(), "retained gc/type-subtyping function bindings") {
-		t.Fatalf("linked consumer codec = %v, want retained-binding rejection", err)
+	if linkedBlob, err := marshalCompiled(consumer.c); err != nil || !bytes.Equal(linkedBlob, consumerBlob) {
+		t.Fatalf("linked consumer codec changed binding-independent declaration: bytesEqual=%v, err=%v", bytes.Equal(linkedBlob, consumerBlob), err)
 	}
 	if err := provider.Close(); err != nil {
 		t.Fatalf("logical provider close: %v", err)
