@@ -433,11 +433,13 @@ type FuncSig struct{ Params, Results []ValType }
 // OffsetInit is active data/element offset metadata. Base is the literal i32
 // offset. When HasGlobal is true, Global names an imported immutable i32 global
 // whose current instance cell is read during instantiation instead, after import
-// values have been resolved.
+// values have been resolved. Expr preserves an extended constant expression
+// whose arithmetic must be evaluated after imported globals are available.
 type OffsetInit struct {
 	Base      uint32
 	HasGlobal bool
 	Global    int
+	Expr      []byte
 }
 
 const nullFuncRefIndex = ^uint32(0) // internal sentinel while decoding table initializer expressions
@@ -456,8 +458,10 @@ const (
 // aliases an ordinary uint32 function index. Non-null initializers are ref.func
 // and therefore valid only for a funcref segment.
 type RefInit struct {
-	FuncIndex uint32
-	Null      bool
+	FuncIndex   uint32
+	Null        bool
+	HasGlobal   bool
+	GlobalIndex uint32
 }
 
 // ElemInit is typed element-segment metadata. TableIndex names an active
@@ -513,8 +517,10 @@ type PassiveDataInit struct {
 // Bits/V128 hold literal initializers. When HasInitGlobal is true, InitGlobal
 // names an earlier imported immutable global whose current value is copied into
 // this global's own local cell during instantiation; it is not a slot alias.
-// When HasInitFunc is true, InitFunc is a structural Wasm function index that is
-// resolved to this instance's canonical descriptor after code mapping.
+// InitExpr preserves extended integer constant-expression arithmetic that is
+// evaluated after imported globals are available. When HasInitFunc is true,
+// InitFunc is a structural Wasm function index resolved to this instance's
+// canonical descriptor after code mapping.
 type GlobalDef struct {
 	Type          ValType
 	Mutable       bool
@@ -522,6 +528,7 @@ type GlobalDef struct {
 	V128          V128
 	HasInitGlobal bool
 	InitGlobal    int
+	InitExpr      []byte
 	HasInitFunc   bool
 	InitFunc      uint32
 }
@@ -592,7 +599,7 @@ type Compiled struct {
 	memoryImport string
 
 	// tableImport preserves the direct table-0 API/runtime metadata. Additional
-	// imported tables occupy the leading extraTables entries, and codec v21 writes
+	// imported tables occupy the leading extraTables entries, and codec v23 writes
 	// every declaration in exact Wasm index order.
 	tableImport       string
 	tableImportMin    int

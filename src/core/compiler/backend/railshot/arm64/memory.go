@@ -699,11 +699,10 @@ func (f *fn) memoryInit(r *wasm.Reader) error {
 		return err
 	}
 	f.materializePendingLoads()
-	f.flush()
-	d := f.depth()
-	f.ld64(X9, SP, f.spillOff(d-3))  // dst offset
-	f.ld64(X10, SP, f.spillOff(d-2)) // src offset in passive segment
-	f.ld64(X11, SP, f.spillOff(d-1)) // n
+	types, argsSlot := f.flushSuffix(3)
+	f.ld64(X9, SP, f.spillOff(argsSlot))    // dst offset
+	f.ld64(X10, SP, f.spillOff(argsSlot+1)) // src offset in passive segment
+	f.ld64(X11, SP, f.spillOff(argsSlot+2)) // n
 
 	mb := f.memSizeReg
 	if mb == regNone {
@@ -724,7 +723,7 @@ func (f *fn) memoryInit(r *wasm.Reader) error {
 	f.a.Add64(X10, X10, X13)     // absolute src
 	f.copyFwdLoop(X9, X10, X11)
 
-	f.setDepth(d - 3)
+	f.dropFlushedSuffix(types, 3)
 	return nil
 }
 
@@ -762,11 +761,10 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 		}
 	}
 	f.materializePendingLoads()
-	f.flush()
-	d := f.depth()
-	f.ld64(X9, SP, f.spillOff(d-3))  // dst offset
-	f.ld64(X10, SP, f.spillOff(d-2)) // src offset
-	f.ld64(X11, SP, f.spillOff(d-1)) // n
+	types, argsSlot := f.flushSuffix(3)
+	f.ld64(X9, SP, f.spillOff(argsSlot))    // dst offset
+	f.ld64(X10, SP, f.spillOff(argsSlot+1)) // src offset
+	f.ld64(X11, SP, f.spillOff(argsSlot+2)) // n
 
 	// Scratch in X12/X13 only (never pinnable); X9-X11 hold dst/src/n.
 	mb := f.memSizeReg
@@ -855,7 +853,7 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 		f.a.PatchBranch19(j, f.a.Len())
 	}
 
-	f.setDepth(d - 3)
+	f.dropFlushedSuffix(types, 3)
 	return nil
 }
 
@@ -872,11 +870,10 @@ func (f *fn) memoryFill(r *wasm.Reader) error {
 		}
 	}
 	f.materializePendingLoads()
-	f.flush()
-	d := f.depth()
-	f.ld64(X9, SP, f.spillOff(d-3))  // dst offset
-	f.ld64(X14, SP, f.spillOff(d-2)) // fill byte (low 8 bits)
-	f.ld64(X11, SP, f.spillOff(d-1)) // n
+	types, argsSlot := f.flushSuffix(3)
+	f.ld64(X9, SP, f.spillOff(argsSlot))    // dst offset
+	f.ld64(X14, SP, f.spillOff(argsSlot+1)) // fill byte (low 8 bits)
+	f.ld64(X11, SP, f.spillOff(argsSlot+2)) // n
 
 	// Scratch in X12/X13 only (never pinnable).
 	mb := f.memSizeReg
@@ -917,7 +914,7 @@ func (f *fn) memoryFill(r *wasm.Reader) error {
 	f.a.PatchBranch26(skipFill, f.a.Len())
 	f.a.PatchBranch19(fillDone, f.a.Len())
 
-	f.setDepth(d - 3)
+	f.dropFlushedSuffix(types, 3)
 	return nil
 }
 

@@ -184,10 +184,9 @@ func (f *fn) inCallSiteLoop() bool {
 func (f *fn) callHost(importIdx int, ft *wasm.CompType) error {
 	f.stats.call(callKindHost)
 	p := len(ft.Params)
-	f.flush()
-	d := f.depth()
+	types, argSlot := f.flushSuffix(p)
 	if p > 0 {
-		f.ld32(X0, SP, f.spillOff(d-p)) // first param
+		f.ld32(X0, SP, f.spillOff(argSlot)) // first param
 	} else {
 		f.a.MovImm64(X0, 0) // zero (no flag side effect on arm64)
 	}
@@ -202,7 +201,7 @@ func (f *fn) callHost(importIdx int, ft *wasm.CompType) error {
 	f.st32(X10, 4, X0)
 	f.a.AddImm32(X9, X9, 1) // count++
 	f.st32(X11, 0, X9)
-	f.setDepth(d - p)
+	f.dropFlushedSuffix(types, p)
 	return nil
 }
 
@@ -533,7 +532,7 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 		kind = callKindImportDispatch
 	}
 	f.stats.call(kind)
-	p, rN := len(ft.Params), len(ft.Results)
+	p := len(ft.Params)
 	roots := f.rootsBottomToTop()
 	d := len(roots)
 	types := f.tmpTypes[:0]
@@ -631,56 +630,9 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 	f.deriveModuleGlobals() // cross-instance callee may have written shared global cells
 	f.derivePinnedGlobals() // reload value-pinned globals from B's cells
 
-	// Pop the args; load results out of their slot-width ABI area.
-	f.setDepthTypes(belowTypes)
-	res := f.tmpRegs[:0]
-	if cap(res) < rN {
-		res = make([]Reg, 0, rN)
-	}
-	res = res[:rN]
-	f.tmpRegs = res
-	resTypes := f.tmpTypes[:0]
-	if cap(resTypes) < rN {
-		resTypes = make([]machineType, 0, rN)
-	}
-	resTypes = resTypes[:rN]
-	f.tmpTypes = resTypes
-	resSlot := resultSlot
-	for i := 0; i < rN; i++ {
-		rt := mtOf(ft.Results[i])
-		resTypes[i] = rt
-		switch {
-		case rt.isV128():
-			res[i] = f.allocFReg(0)
-			f.a.VMovdquLoadDisp(res[i], SP, f.spillOff(resSlot))
-			f.fpinned = f.fpinned.add(res[i])
-		case rt.isFloat():
-			tmp := f.allocReg(0)
-			f.ld64(tmp, SP, f.spillOff(resSlot))
-			res[i] = f.allocFReg(0)
-			f.a.FmovFromGpr(res[i], tmp, true)
-			f.release(tmp)
-			f.fpinned = f.fpinned.add(res[i])
-		default:
-			res[i] = f.allocReg(0)
-			f.ld64(res[i], SP, f.spillOff(resSlot))
-			f.pinned = f.pinned.add(res[i])
-		}
-		resSlot += rt.stackSlots()
-	}
-	for i := 0; i < rN; i++ {
-		switch rt := resTypes[i]; {
-		case rt.isV128():
-			f.fpinned = f.fpinned.remove(res[i])
-			f.pushVReg(res[i])
-		case rt.isFloat():
-			f.fpinned = f.fpinned.remove(res[i])
-			f.pushFReg(res[i], rt)
-		default:
-			f.pinned = f.pinned.remove(res[i])
-			f.pushReg(res[i], rt)
-		}
-	}
+	// Pop the arguments and publish the wrapper results without imposing a
+	// physical-register arity limit.
+	f.finishWrapperResults(belowTypes, resultSlot, ft.Results)
 	return nil
 }
 
@@ -715,6 +667,9 @@ func (f *fn) emitRegisterCall(localIdx int, ft *wasm.CompType, resHint int, pres
 func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins bool, localIdx int, indirect Reg) {
 	p, rN := len(ft.Params), len(ft.Results)
 	d := f.depth()
+	allTypes := f.currentLogicalTypes()
+	belowTypes := append(f.tmpTypes2[:0], allTypes[:d-p]...)
+	f.tmpTypes2 = belowTypes
 	if !preservesPins {
 		f.storePinnedGlobals(false) // spill value-pinned globals to their cells before the call (scratch is free here)
 	}
@@ -789,8 +744,8 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins b
 	}
 	f.tmpDeferred = deferred[:0]
 
-	// Consume the args; the operand model is now the k below-operands in slots.
-	f.setDepth(d - p)
+	// Consume the args while preserving v128 slot widths below the call.
+	f.setDepthTypes(belowTypes)
 
 	// No environment passing: linMemReg (linMem) is a whole-module invariant and the
 	// trap cell pointer lives in basedata — the callee inherits both (WARP model).
@@ -871,6 +826,9 @@ func (f *fn) directCalleePreservesPins(localIdx int) bool {
 func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 	p, rN := len(ft.Params), len(ft.Results)
 	d := f.depth()
+	allTypes := f.currentLogicalTypes()
+	belowTypes := append(f.tmpTypes2[:0], allTypes[:d-p]...)
+	f.tmpTypes2 = belowTypes
 
 	f.storePinnedGlobals(false) // spill value-pinned globals to their cells before the call
 	argRoots := f.tmpRoots[:0]
@@ -986,7 +944,7 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 			f.ld64(da.target, SP, f.localOff(da.root.st.idx))
 		}
 	}
-	f.setDepth(d - p)
+	f.setDepthTypes(belowTypes)
 
 	site := f.a.Bl()
 	f.relocs = append(f.relocs, callReloc{at: site, target: localIdx, internal: true})
@@ -1185,7 +1143,7 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 // words caller→callee, and enter the callee's offset-0 entry with X1 = its linMem
 // (the same context-swap as emitCrossInstanceCall, selected at run time).
 func (f *fn) emitIndirectCallHomeAware(ft *wasm.CompType, homeReg, targetContextReg Reg) {
-	p, rN := len(ft.Params), len(ft.Results)
+	p := len(ft.Params)
 	roots := f.rootsBottomToTop()
 	d := len(roots)
 	types := f.tmpTypes[:0]
@@ -1279,57 +1237,8 @@ func (f *fn) emitIndirectCallHomeAware(ft *wasm.CompType, homeReg, targetContext
 	f.reloadLocalsForCall()
 	f.derivePinnedGlobals()
 
-	// Pop the args; load results out of their slot-width ABI area into fresh registers.
-	f.setDepthTypes(belowTypes)
-	res := f.tmpRegs[:0]
-	if cap(res) < rN {
-		res = make([]Reg, 0, rN)
-	}
-	res = res[:rN]
-	f.tmpRegs = res
-	resTypes := f.tmpTypes[:0]
-	if cap(resTypes) < rN {
-		resTypes = make([]machineType, 0, rN)
-	}
-	resTypes = resTypes[:rN]
-	f.tmpTypes = resTypes
-	resSlot := resultSlot
-	for i := 0; i < rN; i++ {
-		rt := mtOf(ft.Results[i])
-		resTypes[i] = rt
-		switch {
-		case rt.isV128():
-			res[i] = f.allocFReg(0)
-			f.a.VMovdquLoadDisp(res[i], SP, f.spillOff(resSlot))
-			f.fpinned = f.fpinned.add(res[i])
-		case rt.isFloat():
-			tmp := f.allocReg(0)
-			f.ld64(tmp, SP, f.spillOff(resSlot))
-			res[i] = f.allocFReg(0)
-			f.a.FmovFromGpr(res[i], tmp, true)
-			f.release(tmp)
-			f.fpinned = f.fpinned.add(res[i])
-		default:
-			res[i] = f.allocReg(0)
-			f.ld64(res[i], SP, f.spillOff(resSlot))
-			f.pinned = f.pinned.add(res[i])
-		}
-		resSlot += rt.stackSlots()
-	}
-	for i := 0; i < rN; i++ {
-		rt := resTypes[i]
-		switch {
-		case rt.isV128():
-			f.fpinned = f.fpinned.remove(res[i])
-			f.pushVReg(res[i])
-		case rt.isFloat():
-			f.fpinned = f.fpinned.remove(res[i])
-			f.pushFReg(res[i], rt)
-		default:
-			f.pinned = f.pinned.remove(res[i])
-			f.pushReg(res[i], rt)
-		}
-	}
+	// Publish the wrapper results without imposing a physical-register arity limit.
+	f.finishWrapperResults(belowTypes, resultSlot, ft.Results)
 }
 
 // emitWrapperCall sets up the wrapper ABI registers (X0=args, X3=results,
@@ -1341,7 +1250,7 @@ func (f *fn) emitIndirectCallHomeAware(ft *wasm.CompType, homeReg, targetContext
 // just above the current operand slot top. So there is no separate native-stack
 // buffer and no transient SubSP/AddSP — SP stays put for the whole call.
 func (f *fn) emitWrapperCall(ft *wasm.CompType, emitCall func()) {
-	p, rN := len(ft.Params), len(ft.Results)
+	p := len(ft.Params)
 	roots := f.rootsBottomToTop()
 	d := len(roots)
 	types := f.tmpTypes[:0]
@@ -1397,56 +1306,89 @@ func (f *fn) emitWrapperCall(ft *wasm.CompType, emitCall func()) {
 	f.reloadLocalsForCall() // non-STACK_REG model only
 	f.derivePinnedGlobals() // reload value-pinned globals: the callee may have changed the shared cell
 
-	// Pop the args; load results out of their slot-width ABI area into fresh registers.
+	// Publish the wrapper results without imposing a physical-register arity limit.
+	f.finishWrapperResults(belowTypes, resultSlot, ft.Results)
+}
+
+// finishWrapperResults removes consumed arguments and publishes wrapper-ABI
+// results on the operand stack. Common narrow signatures retain the established
+// register-resident path. Very wide signatures stay in canonical slots so legal
+// multi-value calls are not limited by the physical register file.
+func (f *fn) finishWrapperResults(belowTypes []machineType, resultSlot int, results []wasm.ValType) {
+	const maxRegisterResults = 12
+	if len(results) > maxRegisterResults {
+		f.adoptWideWrapperResults(belowTypes, resultSlot, results)
+		return
+	}
+
 	f.setDepthTypes(belowTypes)
-	res := f.tmpRegs[:0]
-	if cap(res) < rN {
-		res = make([]Reg, 0, rN)
+	resultN := len(results)
+	regs := f.tmpRegs[:0]
+	if cap(regs) < resultN {
+		regs = make([]Reg, 0, resultN)
 	}
-	res = res[:rN]
-	f.tmpRegs = res
-	resTypes := f.tmpTypes[:0]
-	if cap(resTypes) < rN {
-		resTypes = make([]machineType, 0, rN)
+	regs = regs[:resultN]
+	f.tmpRegs = regs
+	types := f.tmpTypes[:0]
+	if cap(types) < resultN {
+		types = make([]machineType, 0, resultN)
 	}
-	resTypes = resTypes[:rN]
-	f.tmpTypes = resTypes
-	resSlot := resultSlot
-	for i := 0; i < rN; i++ {
-		rt := mtOf(ft.Results[i])
-		resTypes[i] = rt
+	types = types[:resultN]
+	f.tmpTypes = types
+	resultSlotCursor := resultSlot
+	for i, result := range results {
+		typ := mtOf(result)
+		types[i] = typ
 		switch {
-		case rt.isV128():
-			res[i] = f.allocFReg(0)
-			f.a.VMovdquLoadDisp(res[i], SP, f.spillOff(resSlot))
-			f.fpinned = f.fpinned.add(res[i]) // keep across the remaining loads
-		case rt.isFloat():
-			// Load the 8-byte result word into a GP scratch, then into a V reg.
+		case typ.isV128():
+			regs[i] = f.allocFReg(0)
+			f.a.VMovdquLoadDisp(regs[i], SP, f.spillOff(resultSlotCursor))
+			f.fpinned = f.fpinned.add(regs[i])
+		case typ.isFloat():
 			tmp := f.allocReg(0)
-			f.ld64(tmp, SP, f.spillOff(resSlot))
-			res[i] = f.allocFReg(0)
-			f.a.FmovFromGpr(res[i], tmp, true)
+			f.ld64(tmp, SP, f.spillOff(resultSlotCursor))
+			regs[i] = f.allocFReg(0)
+			f.a.FmovFromGpr(regs[i], tmp, true)
 			f.release(tmp)
-			f.fpinned = f.fpinned.add(res[i]) // keep across the remaining loads
+			f.fpinned = f.fpinned.add(regs[i])
 		default:
-			res[i] = f.allocReg(0)
-			f.ld64(res[i], SP, f.spillOff(resSlot))
-			f.pinned = f.pinned.add(res[i]) // keep across the remaining loads
+			regs[i] = f.allocReg(0)
+			f.ld64(regs[i], SP, f.spillOff(resultSlotCursor))
+			f.pinned = f.pinned.add(regs[i])
 		}
-		resSlot += rt.stackSlots()
+		resultSlotCursor += typ.stackSlots()
 	}
-	for i := 0; i < rN; i++ {
-		rt := resTypes[i]
+	for i, typ := range types {
 		switch {
-		case rt.isV128():
-			f.fpinned = f.fpinned.remove(res[i])
-			f.pushVReg(res[i])
-		case rt.isFloat():
-			f.fpinned = f.fpinned.remove(res[i])
-			f.pushFReg(res[i], rt)
+		case typ.isV128():
+			f.fpinned = f.fpinned.remove(regs[i])
+			f.pushVReg(regs[i])
+		case typ.isFloat():
+			f.fpinned = f.fpinned.remove(regs[i])
+			f.pushFReg(regs[i], typ)
 		default:
-			f.pinned = f.pinned.remove(res[i])
-			f.pushReg(res[i], rt)
+			f.pinned = f.pinned.remove(regs[i])
+			f.pushReg(regs[i], typ)
 		}
 	}
+}
+
+func (f *fn) adoptWideWrapperResults(belowTypes []machineType, resultSlot int, results []wasm.ValType) {
+	dstSlot := 0
+	for _, typ := range belowTypes {
+		dstSlot += typ.stackSlots()
+	}
+	resultSlots := funcTypeSlots(results)
+	f.moveSlots(resultSlot, dstSlot, resultSlots)
+
+	types := f.tmpTypes[:0]
+	if need := len(belowTypes) + len(results); cap(types) < need {
+		types = make([]machineType, 0, need)
+	}
+	types = append(types, belowTypes...)
+	for _, result := range results {
+		types = append(types, mtOf(result))
+	}
+	f.tmpTypes = types
+	f.setDepthTypes(types)
 }

@@ -5,9 +5,11 @@ import "fmt"
 // ElementExpr is the decoded payload of a core WebAssembly 2.0 element
 // expression. The Release 2 forms are ref.null func/extern and ref.func.
 type ElementExpr struct {
-	RefType   RefType
-	Null      bool
-	FuncIndex uint32
+	RefType     RefType
+	Null        bool
+	FuncIndex   uint32
+	HasGlobal   bool
+	GlobalIndex uint32
 }
 
 // ParseElementExpr parses exactly one supported Release 2 element expression
@@ -26,6 +28,8 @@ func ParseElementExpr(e Expr) (ElementExpr, error) {
 			return ElementExpr{RefType: ref, Null: true}, nil
 		case InstrRefFunc:
 			return ElementExpr{RefType: FuncRef.Ref, FuncIndex: in.Index}, nil
+		case InstrGlobalGet:
+			return ElementExpr{HasGlobal: true, GlobalIndex: in.Index}, nil
 		default:
 			return ElementExpr{}, fmt.Errorf("%s", in.Kind.String())
 		}
@@ -61,6 +65,13 @@ func ParseElementExpr(e Expr) (ElementExpr, error) {
 		}
 		out.RefType = FuncRef.Ref
 		out.FuncIndex = idx
+	case 0x23: // global.get (extended constant expressions)
+		idx, err := r.U32()
+		if err != nil {
+			return ElementExpr{}, err
+		}
+		out.HasGlobal = true
+		out.GlobalIndex = idx
 	default:
 		return ElementExpr{}, fmt.Errorf("opcode 0x%02x", op)
 	}

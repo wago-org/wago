@@ -128,6 +128,19 @@ func slotOfLogicalTypes(types []machineType, logical int) int {
 
 func (f *fn) currentLogicalTypes() []machineType { return f.logicalTypes(f.rootsBottomToTop()) }
 
+// flushSuffix canonicalizes the stack and returns its logical types plus the
+// physical slot where the last n logical operands begin. Logical depth and slot
+// depth differ whenever values below the suffix include v128.
+func (f *fn) flushSuffix(n int) ([]machineType, int) {
+	f.flush()
+	types := f.currentLogicalTypes()
+	return types, slotOfLogicalTypes(types, len(types)-n)
+}
+
+func (f *fn) dropFlushedSuffix(types []machineType, n int) {
+	f.setDepthTypes(types[:len(types)-n])
+}
+
 func (f *fn) moveBranchValues(fr *ctrlFrame, d, a int) {
 	types := f.currentLogicalTypes()
 	fromSlot := slotOfLogicalTypes(types, d-a)
@@ -152,6 +165,9 @@ func (f *fn) flush() {
 	f.invalidateGlobalsCache() // the cached cell ptr must not span a call/control boundary
 	f.invalidateBoundsCert()   // bounds facts are valid only within a straight-line region
 	roots := f.rootsBottomToTop()
+	if f.flushWideStack(roots) {
+		return
+	}
 	types := f.tmpTypes[:0]
 	slot := 0
 	for _, root := range roots {
@@ -191,6 +207,65 @@ func (f *fn) flush() {
 	}
 	f.tmpTypes = types
 	f.setDepthTypes(types)
+}
+
+// flushWideStack stages unusually wide operand stacks in a disjoint frame range
+// before copying them to canonical slots. The normal one-pass flush is faster,
+// but with more live values than the register files can hold, earlier allocation
+// spills can occupy low slots that the one-pass walk overwrites before reloading
+// their owners. Wide multi-value signatures are cold ABI stress shapes, so a
+// bounded extra copy is preferable to making every ordinary flush pay for a
+// parallel-move algorithm.
+func (f *fn) flushWideStack(roots []*elem) bool {
+	const wideFlushSlots = 64
+
+	types := f.tmpFlushTypes[:0]
+	total := 0
+	for _, root := range roots {
+		typ := rootMachineType(root)
+		types = append(types, typ)
+		total += typ.stackSlots()
+	}
+	f.tmpFlushTypes = types
+	if total <= wideFlushSlots {
+		return false
+	}
+
+	stageBase := f.curSpillSlot()
+	if stageBase < total {
+		stageBase = total
+	}
+	stageEnd := stageBase + total
+	if stageEnd > f.maxSpill {
+		f.maxSpill = stageEnd
+	}
+	oldFloor := f.spillFloor
+	f.spillFloor = stageEnd // allocator spills must not overwrite staged values
+
+	slot := stageBase
+	for i, root := range roots {
+		typ := types[i]
+		switch {
+		case typ == mtV128:
+			x := f.materializeV128(root)
+			f.a.VMovdquStoreDisp(RSP, f.spillOff(slot), x)
+			f.releaseF(x)
+		case typ.isFloat():
+			x := f.materializeF(root)
+			f.a.FStoreDisp(RSP, f.spillOff(slot), x, true)
+			f.releaseF(x)
+		default:
+			r := f.materialize(root)
+			f.a.Store64(RSP, f.spillOff(slot), r)
+			f.release(r)
+		}
+		slot += typ.stackSlots()
+	}
+	f.spillFloor = oldFloor
+
+	f.moveSlots(stageBase, 0, total)
+	f.setDepthTypes(types)
+	return true
 }
 
 // setDepth resets the operand stack model to l canonical scalar slot entries

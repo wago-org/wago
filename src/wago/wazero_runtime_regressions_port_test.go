@@ -2,9 +2,12 @@ package wago
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/binary"
 	"math"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -13,8 +16,6 @@ import (
 )
 
 const wazeroUremRegallocWasmBase64 = "AGFzbQEAAAABEgNgBH9/f38Bf2ABfwBgAn9/AAIWAQVyZXBybwx1cGRhdGVfbm9uY2UAAQMEAwIAAAUDAQARBgYBfwFBAAsHIQIPX19zdGFja19wb2ludGVyAwALZmlsbF9ibG9ja3MAAwq5CQMDAAALBABBEgutCQIafwt+IwAiBCEaIAQkACAAKAIQIhhBAnQiBEVFBEABQQYhGQJAAkACQAJAIAAoAggiEyAYQQN0IgcgEyAHSxsgBG4iCCAEbCIVIAJLIgYNACAIQQJ0IhRFDQMgACgCDCEJIBQgFSAVIBRwayIXS0UEQAEgFEEKdCEKQQAhCyABIQUDQCALIg5BAWohCyAXIBRrIRcgBSAKaiEFQQAhFkEAIQQDQCARQQQ2AtQIIBFBBDYCzAggEUHAADYCxAggESADNgLACCARIBY2AjwgESAONgJAIBEgEUHAAGo2AtAIIBEgEUE8ajYCyAggEUHAEGpBAEEB/AsAIBFBwAhqQQMgEUHAEGpBgAgQAiIZQf8BcUESRw0DIARBgAhqIQwgFkEBaiEWIBFBwBBqIQJBgAghBEEAIRNBgQEhBwNAIARBB00NBiAHQX9qIgdFDQUgEyACKQAANwMAIBNBAWohEyACIARBCCAEQQhJGyISaiECIAQgEmsiBA0ACyAMIgQgBEcNAAsgFCAXTQ0ACwtBEiEZIAlFDQBBACABIAYbIQ8gCEEDbCIXQX9qIQsgAC0AUCIErUIDgyEmQgEhJyAJrSEkIBWtIShCACEfIAAoAkRBEEYhGyAEIRADQCAfIiBCAXwhHyAbICBQIgxyIQ4gECAMcSEcQgAhIQNAICEhHiARQQFGBH9BAQUBIBwLIRYgHkIBfCEhIBhFRQRAASAeUCEdIAghAyAIIB6nbCEKIB4gIIRC/////w+DISVCACEiA0AgEUHAAGpBAEGACPwLACARQcAIakEAQYAI/AsAIBFBwBBqQQBBgAj8CwACfwJAAkAgFkVFBEABIBEgJjcD6AggESAkNwPgCCARICg3A9gIIBEgHjcD0AggESAiNwPICCARICA3A8AIICVQRQ0BDAILICVQDQELIBQgIqdsIApqIgcgHWohBEEAIRIgCiEGIBEMAQtBAiESIBQgIqdsQQJyIgchBEEBCyEAIBIgCE9FBEABIAYhCSAEQX9qIQQgASAHQQp0aiETICKnIQUDQAJAAkAgFkUEQAEgBCAVTw0BIA8gBEEKdGohAgwCCwJAIBJB/wBxIgINAAsgEUHAAGogAkEDdGohAgwBCwALIAIpAwAhIwJ/IAxFRQRAASAARUUEQAEgBSENIBJBf2oMAgsgIiAjQiCIpyAYcCINrVFFBEABIAYgEkVrDAILIAkgEmoMAQsgIiAjQiCIpyAYcCINrVFFBEABIBcgEkVrDAELIAsgEmoLIgIgA2ogI0L/////D4MiIyAjfkIgiCACrX5CIIinQX9zaiAUcCECAkACQAJAAkAgBCAVT0UEQAEgAiANIBRsaiAVTw0BIA5FBEABIAcgFU8NA0EAIQQDQCATIARqIgIgAikDACARQcAYaiAEaikDAIU3AwAgBEEIaiIEQYAIRw0ACwwFCyAHIBVJDQMACwALAAsACyABIAdBCnRqIBFBwBhqQYAI/AoAAAsgE0EAaiETIAciBEEBaiEHIBJBAWoiEiAISQ0ACwsgIkIBfCIiICdSDQALCyAhQgRSDQALIB8gJFINAAsLIBokACAZDwsACwALAAsACw=="
-
-const wazeroHugeStackWasmBase64 = "AGFzbQEAAAABpQICYAV9e398fooBe3x+fn5+fn5+fn5+fn5+fn5+fnt+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn58e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3x8YAN/f3+KAXt8fn5+fn5+fn5+fn5+fn5+fn57fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fHt7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t8fAMDAgABBQMBAAEHIQIEbWFpbgAAFm1lbW9yeV9maWxsX2FmdGVyX21haW4AAQqpCAL0BwD9DAEAAAAAAAAAAgAAAAAAAABEAwAAAAAAAABCBEIFQgZCB0IIQglCCkILQgxCDUIOQg9CEEIRQhJCE0IU/QwVAAAAAAAAABYAAAAAAAAAQhdCGEIZQhpCG0IcQh1CHkIfQiBCIUIiQiNCJEIlQiZCJ0IoQilCKkIrQixCLUIuQi9CMEIxQjJCM0I0QjVCNkI3QjhCOUI6QjtCPEI9Qj5CP0LAAELBAELCAELDAELEAELFAELGAELHAELIAELJAELKAELLAELMAELNAELOAELPAELQAELRAELSAELTAELUAELVAELWAELXAELYAELZAELaAELbAELcAELdAELeAELfAELgAELhAERiAAAAAAAAAP0MYwAAAAAAAABkAAAAAAAAAP0MZQAAAAAAAABmAAAAAAAAAP0MZwAAAAAAAABoAAAAAAAAAP0MaQAAAAAAAABqAAAAAAAAAP0MawAAAAAAAABsAAAAAAAAAP0MbQAAAAAAAABuAAAAAAAAAP0MbwAAAAAAAABwAAAAAAAAAP0McQAAAAAAAAByAAAAAAAAAP0McwAAAAAAAAB0AAAAAAAAAP0MdQAAAAAAAAB2AAAAAAAAAP0MdwAAAAAAAAB4AAAAAAAAAP0MeQAAAAAAAAB6AAAAAAAAAP0MewAAAAAAAAB8AAAAAAAAAP0MfQAAAAAAAAB+AAAAAAAAAP0MfwAAAAAAAACAAAAAAAAAAP0MgQAAAAAAAACCAAAAAAAAAP0MgwAAAAAAAACEAAAAAAAAAP0MhQAAAAAAAACGAAAAAAAAAP0MhwAAAAAAAACIAAAAAAAAAP0MiQAAAAAAAACKAAAAAAAAAP0MiwAAAAAAAACMAAAAAAAAAP0MjQAAAAAAAACOAAAAAAAAAP0MjwAAAAAAAACQAAAAAAAAAP0MkQAAAAAAAACSAAAAAAAAAP0MkwAAAAAAAACUAAAAAAAAAP0MlQAAAAAAAACWAAAAAAAAAP0MlwAAAAAAAACYAAAAAAAAAP0MmQAAAAAAAACaAAAAAAAAAP0MmwAAAAAAAACcAAAAAAAAAP0MnQAAAAAAAACeAAAAAAAAAP0MnwAAAAAAAACgAAAAAAAAAP0MoQAAAAAAAACiAAAAAAAAAP0MowAAAAAAAACkAAAAAAAAAP0MpQAAAAAAAACmAAAAAAAAAP0MpwAAAAAAAACoAAAAAAAAAP0MqQAAAAAAAACqAAAAAAAAAP0MqwAAAAAAAACsAAAAAAAAAP0MrQAAAAAAAACuAAAAAAAAAP0MrwAAAAAAAACwAAAAAAAAAP0MsQAAAAAAAACyAAAAAAAAAESzAAAAAAAAAES0AAAAAAAAAAsxAEMAAAAA/QwAAAAAAAAAAAAAAAAAAAAAQQBEAAAAAAAAAABCABAAIAAgASAC/AsACw=="
 
 // These runtime cases are ported from wazero's engine/adhoc_test.go and its
 // testdata modules at c0f3a4ec.
@@ -305,21 +306,82 @@ func TestWazeroPortARM64UremRegalloc(t *testing.T) {
 	}
 }
 
-func TestWazeroPortHugeMixedValueStack(t *testing.T) {
-	// This test relies on t.Skipf to bail out on the known frontend gap; TinyGo's
-	// testing harness cannot Skip (no runtime.Goexit()), and its decoder rejects
-	// this 180-slot fixture, so restrict it to the standard Go runtime.
-	if !requireStandardGoTestRuntime(t) {
-		return
-	}
-	mod, err := base64.StdEncoding.DecodeString(wazeroHugeStackWasmBase64)
+type wazeroCrossRuntimeImportExt struct{}
+
+func (wazeroCrossRuntimeImportExt) Info() ExtensionInfo {
+	return ExtensionInfo{ID: "test.wazero.cross-runtime", Version: "1.0.0", Stability: Stable}
+}
+
+func (wazeroCrossRuntimeImportExt) Register(reg *Registry) error {
+	reg.ImportModule("env").
+		Func("proxy", HostFunc(func(_ HostModule, p, r []uint64) { r[0] = p[1] })).
+		Params(ValI32, ValI64).Results(ValI64)
+	return nil
+}
+
+func TestWazeroPortHugeCallStackUnwindsToStartTrap(t *testing.T) {
+	mod, err := os.ReadFile(filepath.Join("..", "..", "testdata", "wazero", "engine", "huge_call_stack_unwind.wasm"))
 	if err != nil {
-		t.Fatalf("decode upstream fixture: %v", err)
+		t.Fatalf("read upstream fixture: %v", err)
 	}
 	compiled, err := Compile(nil, mod)
-	if err != nil && strings.Contains(err.Error(), "invalid type at offset 139 in section 1") {
-		t.Skipf("known frontend gap for wazero's 180-slot mixed SIMD signature: %v", err)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
 	}
+	in, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{}})
+	if in != nil {
+		_ = in.Close()
+		t.Fatal("recursive trapping start function unexpectedly instantiated")
+	}
+	if err == nil || !strings.Contains(err.Error(), "start function trapped: wasm trap: integer division by zero") {
+		t.Fatalf("start trap = %v, want integer division by zero after deep unwind", err)
+	}
+}
+
+func TestWazeroPortCrossRuntimeInstantiationUsesStructuralImportTypes(t *testing.T) {
+	funcImport := append(wasmtest.Name("env"), wasmtest.Name("proxy")...)
+	funcImport = append(funcImport, 0x00, 0x02) // function import, type index 2
+	mod := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}),
+			wasmtest.FuncType([]wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I64}),
+			wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I64}, []wasm.ValType{wasm.I64}),
+		)),
+		wasmtest.Section(2, wasmtest.Vec(funcImport)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 1))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, 0x0b}))),
+	)
+
+	rt1 := NewRuntime()
+	defer rt1.Close()
+	compiled, err := rt1.Compile(mod)
+	if err != nil {
+		t.Fatalf("compile in runtime 1: %v", err)
+	}
+
+	rt2 := NewRuntime()
+	defer rt2.Close()
+	if err := rt2.Use(wazeroCrossRuntimeImportExt{}); err != nil {
+		t.Fatalf("register runtime 2 import: %v", err)
+	}
+	in, err := rt2.Instantiate(context.Background(), compiled)
+	if err != nil {
+		t.Fatalf("cross-runtime instantiate with structurally identical import: %v", err)
+	}
+	defer in.Close()
+	got, err := in.Invoke("f", I32(37))
+	if err != nil || len(got) != 1 || AsI32(got[0]) != 37 {
+		t.Fatalf("f(37) = %v, err %v", got, err)
+	}
+}
+
+func TestWazeroPortHugeMixedValueStack(t *testing.T) {
+	mod, err := os.ReadFile(filepath.Join("..", "..", "testdata", "wazero", "engine", "hugestack.wasm"))
+	if err != nil {
+		t.Fatalf("read upstream fixture: %v", err)
+	}
+	compiled, err := Compile(nil, mod)
 	if err != nil {
 		t.Fatalf("compile: %v", err)
 	}

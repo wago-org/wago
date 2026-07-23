@@ -518,7 +518,7 @@ func (in *Instance) releaseResourceRoot() {
 	if in.resourceRefs > 0 {
 		in.resourceRefs--
 	}
-	shouldRelease := in.closed && in.resourceRefs == 0 && !in.resourcesClosed
+	shouldRelease := in.closed && in.resourceRefs == 0 && in.invocationState.Load()&instanceInvocationCount == 0 && !in.resourcesClosed
 	store := in.refStore
 	in.lifeMu.Unlock()
 	if shouldRelease {

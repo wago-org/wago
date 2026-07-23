@@ -26,9 +26,10 @@ type PreparedFunction struct {
 // lookup occurs outside the timed invocation loop. Re-exported imports continue
 // to use Invoke because their target instance may differ.
 func (in *Instance) PrepareFunction(export string) (*PreparedFunction, error) {
-	if in == nil || in.closed {
-		return nil, fmt.Errorf("wago: prepare function on closed instance")
+	if err := in.beginInvocation(); err != nil {
+		return nil, fmt.Errorf("wago: prepare function: %w", err)
 	}
+	defer in.endInvocation()
 	ic := in.findInvokeCache(export)
 	if ic == nil {
 		var err error
@@ -52,10 +53,14 @@ func (in *Instance) PrepareFunction(export string) (*PreparedFunction, error) {
 // Invoke calls the prepared export. Arguments and results use the same raw slot
 // representation and lifetime rules as Instance.Invoke.
 func (fn *PreparedFunction) Invoke(args ...uint64) ([]uint64, error) {
-	if fn == nil || fn.in == nil || fn.in.closed {
+	if fn == nil || fn.in == nil {
 		return nil, fmt.Errorf("wago: invoke closed prepared function")
 	}
 	in := fn.in
+	if err := in.beginInvocation(); err != nil {
+		return nil, fmt.Errorf("wago: invoke prepared function: %w", err)
+	}
+	defer in.endInvocation()
 	if len(args) != fn.paramSlots {
 		return nil, fmt.Errorf("%s expects %d arg slot(s), got %d", fn.export, fn.paramSlots, len(args))
 	}

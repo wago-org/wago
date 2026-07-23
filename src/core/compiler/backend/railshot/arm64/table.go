@@ -114,11 +114,10 @@ func (f *fn) tableInit(r *wasm.Reader) error {
 		return err
 	}
 	f.materializePendingLoads()
-	f.flush()
-	d := f.depth()
-	f.ld64(X9, SP, f.spillOff(d-3))  // dst table offset
-	f.ld64(X10, SP, f.spillOff(d-2)) // src element offset
-	f.ld64(X11, SP, f.spillOff(d-1)) // n entries
+	types, argsSlot := f.flushSuffix(3)
+	f.ld64(X9, SP, f.spillOff(argsSlot))    // dst table offset
+	f.ld64(X10, SP, f.spillOff(argsSlot+1)) // src element offset
+	f.ld64(X11, SP, f.spillOff(argsSlot+2)) // n entries
 
 	f.loadTableDescriptor(X14, tableIdx)
 	f.ld32(X12, X14, 0)
@@ -136,7 +135,7 @@ func (f *fn) tableInit(r *wasm.Reader) error {
 	f.entryArrayAddr(X10, X14, externref)
 	f.shiftImm(shLSL, X11, entryStrideShift(externref), true)
 	f.copyFwdLoop(X9, X10, X11) // was RepMovsb — forward byte copy (§4f)
-	f.setDepth(d - 3)
+	f.dropFlushedSuffix(types, 3)
 	return nil
 }
 
@@ -159,11 +158,10 @@ func (f *fn) tableCopy(r *wasm.Reader) error {
 		return err
 	}
 	f.materializePendingLoads()
-	f.flush()
-	d := f.depth()
-	f.ld64(X9, SP, f.spillOff(d-3))
-	f.ld64(X10, SP, f.spillOff(d-2))
-	f.ld64(X11, SP, f.spillOff(d-1))
+	types, argsSlot := f.flushSuffix(3)
+	f.ld64(X9, SP, f.spillOff(argsSlot))
+	f.ld64(X10, SP, f.spillOff(argsSlot+1))
+	f.ld64(X11, SP, f.spillOff(argsSlot+2))
 	f.loadTableDescriptor(X14, dstTableIdx)
 	f.ld32(X12, X14, 0)
 	f.leaScaled(X13, X9, X11, 0, 0, true)
@@ -190,7 +188,7 @@ func (f *fn) tableCopy(r *wasm.Reader) error {
 	f.a.PatchBranch19(fwdDisjoint, f.a.Len())
 	f.copyFwdLoop(X9, X10, X11) // forward byte copy (was RepMovsb)
 	f.a.PatchBranch26(done, f.a.Len())
-	f.setDepth(d - 3)
+	f.dropFlushedSuffix(types, 3)
 	return nil
 }
 
@@ -203,17 +201,16 @@ func (f *fn) tableFill(r *wasm.Reader) error {
 		return f.externrefTableFill(tableIdx)
 	}
 	f.materializePendingLoads()
-	f.flush()
-	d := f.depth()
+	types, argsSlot := f.flushSuffix(3)
 	valSlot := f.allocSpillSlots(runtime.TableEntryBytes / 8)
-	f.ld64(X9, SP, f.spillOff(d-3))
-	f.ld64(X12, SP, f.spillOff(d-2))
-	f.ld64(X11, SP, f.spillOff(d-1))
+	f.ld64(X9, SP, f.spillOff(argsSlot))
+	f.ld64(X12, SP, f.spillOff(argsSlot+1))
+	f.ld64(X11, SP, f.spillOff(argsSlot+2))
 	f.loadTableDescriptor(X14, tableIdx)
 	f.ld32(X13, X14, 0)
 	f.leaScaled(X9, X9, X11, 0, 0, true)
 	f.trapUnlessLE(X9, X13)
-	f.ld64(X9, SP, f.spillOff(d-3))
+	f.ld64(X9, SP, f.spillOff(argsSlot))
 	f.tableEntryAddr(X9, X14)
 	// snapshotFuncrefDescriptor uses the register allocator internally. Keep the
 	// fixed destination/count registers live across it so descriptor snapshotting
@@ -222,25 +219,24 @@ func (f *fn) tableFill(r *wasm.Reader) error {
 	f.snapshotFuncrefDescriptor(X12, valSlot)
 	f.fillTableEntries(X9, X11, valSlot)
 	f.pinned = f.pinned.remove(X11).remove(X9)
-	f.setDepth(d - 3)
+	f.dropFlushedSuffix(types, 3)
 	return nil
 }
 
 func (f *fn) externrefTableFill(tableIdx uint32) error {
 	f.materializePendingLoads()
-	f.flush()
-	d := f.depth()
-	f.ld64(X9, SP, f.spillOff(d-3))
-	f.ld64(X12, SP, f.spillOff(d-2))
-	f.ld64(X11, SP, f.spillOff(d-1))
+	types, argsSlot := f.flushSuffix(3)
+	f.ld64(X9, SP, f.spillOff(argsSlot))
+	f.ld64(X12, SP, f.spillOff(argsSlot+1))
+	f.ld64(X11, SP, f.spillOff(argsSlot+2))
 	f.loadTableDescriptor(X14, tableIdx)
 	f.ld32(X13, X14, 0)
 	f.leaScaled(X9, X9, X11, 0, 0, true)
 	f.trapUnlessLE(X9, X13)
-	f.ld64(X9, SP, f.spillOff(d-3))
+	f.ld64(X9, SP, f.spillOff(argsSlot))
 	f.typedTableEntryAddr(X9, X14, tableIdx)
 	f.fillExternrefEntries(X9, X11, X12)
-	f.setDepth(d - 3)
+	f.dropFlushedSuffix(types, 3)
 	return nil
 }
 

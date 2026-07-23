@@ -46,6 +46,9 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 		switch op {
 		case 0x00: // unreachable
 			if !f.unreachable {
+				// Preserve Wasm evaluation order: deferred operations preceding
+				// unreachable may trap first (for example integer div/rem).
+				f.flush()
 				f.trapAlways(trapUnreachable)
 				f.unreachable = true
 			}

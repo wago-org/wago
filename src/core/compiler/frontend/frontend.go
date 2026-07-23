@@ -1149,7 +1149,8 @@ func (p supportPass) constExpr(e wasm.Expr, context string) error {
 	}
 	for i, in := range e.Instrs {
 		switch in.Kind {
-		case wasm.InstrI32Const, wasm.InstrI64Const, wasm.InstrF32Const, wasm.InstrF64Const, wasm.InstrGlobalGet:
+		case wasm.InstrI32Const, wasm.InstrI64Const, wasm.InstrF32Const, wasm.InstrF64Const, wasm.InstrGlobalGet,
+			wasm.InstrI32Add, wasm.InstrI32Sub, wasm.InstrI32Mul, wasm.InstrI64Add, wasm.InstrI64Sub, wasm.InstrI64Mul:
 		case wasm.InstrV128Const:
 			if !p.feat.SIMD {
 				return p.unsupported("const expression", "v128.const (simd disabled)", instructionContext(context, i))
@@ -1174,79 +1175,74 @@ func (p supportPass) constExpr(e wasm.Expr, context string) error {
 
 func (p supportPass) constExprBytes(body []byte, context string) error {
 	r := wasm.ReaderFrom(body)
-	op, err := r.Byte()
-	if err != nil {
-		return err
-	}
-	switch op {
-	case 0x23:
-		if _, err := r.U32(); err != nil {
-			return err
-		}
-	case 0x41:
-		if _, err := r.I32(); err != nil {
-			return err
-		}
-	case 0x42:
-		if _, err := r.I64(); err != nil {
-			return err
-		}
-	case 0x43:
-		if _, err := r.Bytes(4); err != nil {
-			return err
-		}
-	case 0x44:
-		if _, err := r.Bytes(8); err != nil {
-			return err
-		}
-	case 0xd0:
-		heap, err := r.S33()
+	for instruction := 0; ; instruction++ {
+		op, err := r.Byte()
 		if err != nil {
 			return err
 		}
-		if !p.feat.ReferenceTypes {
-			return p.unsupported("const expression", "ref.null (reference-types disabled)", instructionContext(context, 0))
-		}
-		// Abstract heap types encoded as S33: func (-16) and extern (-17) plus
-		// their bottoms nofunc (-13) / noextern (-14). Validation accepts the
-		// bottom nulls as subtypes of func/extern (see isNullableAbsRef), so the
-		// support pass must accept them too rather than rejecting valid modules.
-		switch heap {
-		case -16, -17, -13, -14:
+		switch op {
+		case 0x0b:
+			if r.BytesLeft() != 0 {
+				return p.unsupported("const expression", "trailing bytes", context)
+			}
+			return nil
+		case 0x23:
+			if _, err := r.U32(); err != nil {
+				return err
+			}
+		case 0x41:
+			if _, err := r.I32(); err != nil {
+				return err
+			}
+		case 0x42:
+			if _, err := r.I64(); err != nil {
+				return err
+			}
+		case 0x43:
+			if _, err := r.Bytes(4); err != nil {
+				return err
+			}
+		case 0x44:
+			if _, err := r.Bytes(8); err != nil {
+				return err
+			}
+		case 0x6a, 0x6b, 0x6c, 0x7c, 0x7d, 0x7e:
+			// Extended constant-expression integer add/sub/mul.
+		case 0xd0:
+			heap, err := r.S33()
+			if err != nil {
+				return err
+			}
+			if !p.feat.ReferenceTypes {
+				return p.unsupported("const expression", "ref.null (reference-types disabled)", instructionContext(context, instruction))
+			}
+			switch heap {
+			case -16, -17, -13, -14:
+			default:
+				return p.unsupported("const expression", fmt.Sprintf("ref.null heap type %d", heap), instructionContext(context, instruction))
+			}
+		case 0xd2:
+			if _, err := r.U32(); err != nil {
+				return err
+			}
+			if !p.feat.ReferenceTypes {
+				return p.unsupported("const expression", "ref.func (reference-types disabled)", instructionContext(context, instruction))
+			}
+		case 0xfd:
+			var imm wasm.InstructionImmediate
+			if err := wasm.ClassifyInstructionImmediateInto(&r, op, &imm); err != nil {
+				return err
+			}
+			if !p.feat.SIMD {
+				return p.unsupported("const expression", "v128.const (simd disabled)", instructionContext(context, instruction))
+			}
+			if imm.Subopcode != 12 {
+				return p.unsupported("const expression", simdUnsupportedName(imm), instructionContext(context, instruction))
+			}
 		default:
-			return p.unsupported("const expression", fmt.Sprintf("ref.null heap type %d", heap), instructionContext(context, 0))
+			return p.unsupported("const expression", fmt.Sprintf("opcode 0x%02x", op), instructionContext(context, instruction))
 		}
-	case 0xd2:
-		if _, err := r.U32(); err != nil {
-			return err
-		}
-		if !p.feat.ReferenceTypes {
-			return p.unsupported("const expression", "ref.func (reference-types disabled)", instructionContext(context, 0))
-		}
-	case 0xfd:
-		var imm wasm.InstructionImmediate
-		err := wasm.ClassifyInstructionImmediateInto(&r, op, &imm)
-		if err != nil {
-			return err
-		}
-		if !p.feat.SIMD {
-			return p.unsupported("const expression", "v128.const (simd disabled)", instructionContext(context, 0))
-		}
-		if imm.Subopcode != 12 {
-			return p.unsupported("const expression", simdUnsupportedName(imm), instructionContext(context, 0))
-		}
-	default:
-		feature := fmt.Sprintf("opcode 0x%02x", op)
-		return p.unsupported("const expression", feature, instructionContext(context, 0))
 	}
-	end, err := r.Byte()
-	if err != nil {
-		return err
-	}
-	if end != 0x0b || r.BytesLeft() != 0 {
-		return p.unsupported("const expression", "multi-instruction", context)
-	}
-	return nil
 }
 
 func (p supportPass) instr(in wasm.Instruction, context string) error {

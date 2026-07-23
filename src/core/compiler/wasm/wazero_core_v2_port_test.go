@@ -1,0 +1,33 @@
+package wasm
+
+import (
+	"os/exec"
+	"path/filepath"
+	"testing"
+
+	"github.com/wago-org/wago/internal/spectest"
+)
+
+func TestWazeroPortPinnedCoreV2Validation(t *testing.T) {
+	root := filepath.Clean("../../../../tests/spec-v2")
+	suite, err := spectest.DiscoverRelease2(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(suite.Files) != 147 {
+		t.Fatalf("pinned Core v2 manifest has %d WAST files, want 147", len(suite.Files))
+	}
+	digest, err := spectest.Release2Digest(suite)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "124235f8e65d0c4f5454e369e6c8d9695a1f0264ca45d3e634614884a491fb0a"; digest != want {
+		t.Fatalf("pinned Core v2 digest = %s, want %s", digest, want)
+	}
+	if _, err := exec.LookPath("wast2json"); err != nil {
+		t.Fatalf("wast2json is required to validate the pinned Core v2 suite: %v", err)
+	}
+	t.Setenv("WAGO_SPECTEST_DIR", root)
+	t.Setenv("WAGO_SPEC_VERSION", "2.0")
+	TestSpecSuite(t)
+}

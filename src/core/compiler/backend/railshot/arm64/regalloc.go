@@ -158,7 +158,7 @@ func (f *fn) allocSpillSlots(n int) int {
 // the next free slot index. (Simple bump within the current operand-stack extent;
 // slots are reclaimed as values are consumed.)
 func (f *fn) curSpillSlot() int {
-	used := 0
+	used := f.spillFloor
 	for e := f.s.head.next; e != f.s.head; e = e.next {
 		if e.kind == ekValue && e.st.kind == stSlot {
 			end := e.st.slot + e.st.typ.stackSlots()

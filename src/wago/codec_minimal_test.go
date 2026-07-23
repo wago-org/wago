@@ -1,6 +1,7 @@
 package wago
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/runtime/gc"
@@ -20,7 +21,7 @@ func TestCompiledCodecRoundTripsMultipleEmptyDataSegments(t *testing.T) {
 		t.Fatalf("Data length = %d, want %d", len(got.Data), len(input.Data))
 	}
 	for i, seg := range got.Data {
-		if seg.Offset != input.Data[i].Offset {
+		if !reflect.DeepEqual(seg.Offset, input.Data[i].Offset) {
 			t.Fatalf("Data[%d].Offset = %+v, want %+v", i, seg.Offset, input.Data[i].Offset)
 		}
 		if len(seg.Bytes) != 0 {
@@ -82,7 +83,7 @@ func TestCompiledCodecRoundTripsMultipleEmptyElementSegments(t *testing.T) {
 		t.Fatalf("Elems length = %d, want %d", len(got.Elems), len(input.Elems))
 	}
 	for i, seg := range got.Elems {
-		if seg.Offset != input.Elems[i].Offset {
+		if !reflect.DeepEqual(seg.Offset, input.Elems[i].Offset) {
 			t.Fatalf("Elems[%d].Offset = %+v, want %+v", i, seg.Offset, input.Elems[i].Offset)
 		}
 		if len(seg.Values) != 0 {

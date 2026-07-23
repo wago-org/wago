@@ -49,8 +49,9 @@ type Instance struct {
 	icNext                 uint8          // round-robin replacement cursor
 	refStore               *referenceStore
 	lifeMu                 sync.Mutex
-	resourceRefs           int
-	closed                 bool // logical close; retained references may defer physical release
+	resourceRefs           int32
+	invocationState        atomic.Uint32 // high bit closes entry; low bits count active public invocations
+	closed                 bool          // logical close; retained references may defer physical release
 	resourcesClosed        bool
 	ownsMem                bool    // false when memory is host-imported (don't close it)
 	syncMode               bool    // true when host imports use the synchronous re-entry protocol

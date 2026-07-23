@@ -892,7 +892,7 @@ Snapshot products share one fail-closed validator. `Capture`, snapshot marshal,
 `LoadSnapshot` and `Instantiate(*Snapshot)` reject
 every table and every reference global until a resolver/state format exists. This
 also rejects forged in-memory snapshots and raw snapshot blobs embedding a valid
-codec-v21 reference module; callers cannot bypass `Capture` to admit unsupported
+codec-v23 reference module; callers cannot bypass `Capture` to admit unsupported
 live state.
 
 `ModuleMetadata` now contains deterministic Wasm-index-ordered `Functions`,
@@ -902,7 +902,7 @@ import, and exports. Table entries carry exact type, import, exports, declared
 minimum, and an optional exact declared maximum; implementation-only growth
 reserves are not reported as Wasm limits. Duplicate table imports remain separate
 index entries even when they use the same key. The same metadata is reconstructed
-from codec-v21-loaded modules. `Module.Imports` exposes the corresponding exact
+from codec-v23-loaded modules. `Module.Imports` exposes the corresponding exact
 function signatures, global types/mutability, and table types/limits.
 
 Cross-link teardown is locked as one ownership proof: a producer may be logically
@@ -1001,7 +1001,7 @@ a scheduler/frequency watchpoint rather than an attributed codec regression.
 The focused commands are:
 
 ```sh
-go test -count=1 -run '^TestCompiledCodecV21' ./src/wago
+go test -count=1 -run '^TestCompiledCodecV23' ./src/wago
 
 taskset -c 0 go test ./src/wago -run '^$' \
   -bench '^(BenchmarkMarshalCompiledSmallScalar|BenchmarkUnmarshalCompiledSmallScalar|BenchmarkMarshalCompiledStructuralReferences|BenchmarkUnmarshalCompiledStructuralReferences)$' \

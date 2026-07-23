@@ -3,6 +3,8 @@
 package spectest
 
 import (
+	"crypto/sha256"
+	"encoding/binary"
 	"fmt"
 	"io/fs"
 	"os"
@@ -58,6 +60,27 @@ func DiscoverRelease2(checkout string) (Release2Suite, error) {
 		return Release2Suite{}, fmt.Errorf("WebAssembly 2.0 corpus %q does not match the official test/core layout", checkout)
 	}
 	return Release2Suite{CoreDir: coreDir, Files: files}, nil
+}
+
+// Release2Digest hashes every discovered relative path and WAST byte sequence,
+// making fixture drift visible even when the file count is unchanged.
+func Release2Digest(suite Release2Suite) (string, error) {
+	h := sha256.New()
+	var lenBuf [8]byte
+	for _, rel := range suite.Files {
+		pathBytes := []byte(filepath.ToSlash(rel))
+		binary.LittleEndian.PutUint64(lenBuf[:], uint64(len(pathBytes)))
+		_, _ = h.Write(lenBuf[:])
+		_, _ = h.Write(pathBytes)
+		data, err := os.ReadFile(filepath.Join(suite.CoreDir, rel+".wast"))
+		if err != nil {
+			return "", fmt.Errorf("read WebAssembly 2.0 fixture %q: %w", rel, err)
+		}
+		binary.LittleEndian.PutUint64(lenBuf[:], uint64(len(data)))
+		_, _ = h.Write(lenBuf[:])
+		_, _ = h.Write(data)
+	}
+	return fmt.Sprintf("%x", h.Sum(nil)), nil
 }
 
 func contains(values []string, want string) bool {

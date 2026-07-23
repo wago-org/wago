@@ -6,24 +6,24 @@ import (
 	"testing"
 )
 
-func TestCompiledCodecV21VersionContract(t *testing.T) {
+func TestCompiledCodecV23VersionContract(t *testing.T) {
 	blob, err := (&Compiled{}).MarshalBinary()
 	if err != nil {
 		t.Fatalf("MarshalBinary: %v", err)
 	}
-	if got := blob[4]; got != 21 {
-		t.Fatalf("compiled codec version = %d, want 21", got)
+	if got := blob[4]; got != 23 {
+		t.Fatalf("compiled codec version = %d, want 23", got)
 	}
 
-	v19 := append([]byte(nil), blob...)
-	v19[4] = 19
+	v21 := append([]byte(nil), blob...)
+	v21[4] = 21
 	var got Compiled
-	if err := got.UnmarshalBinary(v19); err == nil || !strings.Contains(err.Error(), "version 19 unsupported") {
-		t.Fatalf("UnmarshalBinary v19 error = %v, want explicit incompatibility rejection", err)
+	if err := got.UnmarshalBinary(v21); err == nil || !strings.Contains(err.Error(), "version 21 unsupported") {
+		t.Fatalf("UnmarshalBinary v21 error = %v, want explicit incompatibility rejection", err)
 	}
 }
 
-func TestCompiledCodecV21RoundTripsStructuralReferenceMetadata(t *testing.T) {
+func TestCompiledCodecV23RoundTripsStructuralReferenceMetadata(t *testing.T) {
 	input := structuralReferenceCodecFixture()
 	blob, err := input.MarshalBinary()
 	if err != nil {
@@ -51,7 +51,7 @@ func TestCompiledCodecV21RoundTripsStructuralReferenceMetadata(t *testing.T) {
 	}
 }
 
-func TestCompiledCodecV21ClearsReusedReceiverAndOmitsLiveState(t *testing.T) {
+func TestCompiledCodecV23ClearsReusedReceiverAndOmitsLiveState(t *testing.T) {
 	reused := structuralReferenceCodecFixture()
 	reused.dynamicImports = true
 	reused.tableExports = map[string]int{"stale": 99}
@@ -69,7 +69,7 @@ func TestCompiledCodecV21ClearsReusedReceiverAndOmitsLiveState(t *testing.T) {
 	}
 }
 
-func TestCompiledCodecV21RejectsLiveAndMalformedReferenceMetadata(t *testing.T) {
+func TestCompiledCodecV23RejectsLiveAndMalformedReferenceMetadata(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		mut  func(*Compiled)
@@ -106,7 +106,7 @@ func TestCompiledCodecV21RejectsLiveAndMalformedReferenceMetadata(t *testing.T) 
 	}
 }
 
-func TestCompiledCodecV21RequiredFeatureBitsAreExactAndFailClosed(t *testing.T) {
+func TestCompiledCodecV23RequiredFeatureBitsAreExactAndFailClosed(t *testing.T) {
 	fixture := structuralReferenceCodecFixture()
 	loaded := roundTripCompiled(t, fixture)
 	want := CoreFeatureMutableGlobal | CoreFeatureMultiValue | CoreFeatureBulkMemoryOperations | CoreFeatureReferenceTypes
@@ -139,7 +139,7 @@ func TestCompiledCodecV21RequiredFeatureBitsAreExactAndFailClosed(t *testing.T) 
 	}
 }
 
-func TestCompiledCodecV21CompileRecordsUsedFeatureFamilies(t *testing.T) {
+func TestCompiledCodecV23CompileRecordsUsedFeatureFamilies(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
 		module []byte
@@ -165,7 +165,7 @@ func TestCompiledCodecV21CompileRecordsUsedFeatureFamilies(t *testing.T) {
 	}
 }
 
-func TestCompiledCodecV21LoadedReferenceExecutionAndSnapshotBoundary(t *testing.T) {
+func TestCompiledCodecV23LoadedReferenceExecutionAndSnapshotBoundary(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
 		module []byte

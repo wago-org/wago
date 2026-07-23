@@ -162,7 +162,10 @@ type fn struct {
 	vconsts  []v128ConstReg // repeated v128.const values cached in reserved XMM regs
 	v128Pool []poolConst    // 4/8/16-byte constants materialized via a trailing rip-relative pool
 
-	maxSpill      int  // high-water number of operand spill slots used
+	maxSpill int // high-water number of operand spill slots used
+	// spillFloor temporarily reserves a low spill-slot range while wide-stack
+	// canonicalization stages values above both their old homes and destinations.
+	spillFloor    int
 	subRspAt      int  // byte offset of the prologue's SubRsp imm32 (patched with frameSize)
 	addRspAt      int  // byte offset of the epilogue's AddRsp imm32 (patched with frameSize)
 	guardMode     bool // elide inline bounds checks; rely on guard-page + SIGSEGV trap
@@ -303,19 +306,20 @@ type fn struct {
 }
 
 type transient struct {
-	lsPool      [][]locState
-	endsPool    [][]int
-	tmpRoots    []*elem
-	tmpTypes    []machineType
-	tmpTypes2   []machineType
-	tmpRegs     []Reg
-	tmpSlots    []int
-	tmpMoves    []regMove
-	tmpLabels   []uint32
-	tmpDeferred []deferredArg
-	tmpBelow    []*elem
-	tmpGpCand   []gpCand
-	tmpInts     []int
+	lsPool        [][]locState
+	endsPool      [][]int
+	tmpRoots      []*elem
+	tmpTypes      []machineType
+	tmpTypes2     []machineType
+	tmpFlushTypes []machineType
+	tmpRegs       []Reg
+	tmpSlots      []int
+	tmpMoves      []regMove
+	tmpLabels     []uint32
+	tmpDeferred   []deferredArg
+	tmpBelow      []*elem
+	tmpGpCand     []gpCand
+	tmpInts       []int
 }
 
 // gpCand is a hot int local or global competing for a GP pin register, ranked by
@@ -1191,7 +1195,10 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, int
 	// dropping every local/global VALUE pin frees the entire neutral file for
 	// scratch. Pinning is a pure speed optimization, so the unpinned compile is
 	// always correct.
-	if !pinLocals {
+	disableLocalPins := !pinLocals || nLocals > 64
+	if disableLocalPins {
+		// Very wide signatures are cold ABI stress shapes where pinning a tiny
+		// prefix complicates argument homing without meaningful locality benefit.
 		gpPool = nil
 	}
 	// Hot mutable-int globals share the GP pin pool with locals, holding their VALUE
@@ -1215,6 +1222,11 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, int
 	fpPinLimit := baseFPPins
 	if extendedFPPinsEnabled && !hasCall {
 		fpPinLimit = len(pinnedFLocalRegs)
+	}
+	if disableLocalPins {
+		// The register-pressure retry must disable FP/v128 pins too, not only GP
+		// pins, or an "unpinned" retry can still exhaust/corrupt the XMM bank.
+		fpPinLimit = 0
 	}
 	f.assignPinnedLocals(hints.localScore, globalScores, globalElig, gpPool, fpPinLimit, v128LocalPinsEnabled && !hasCall)
 	if regABI && !hasCall && f.nParams > 4 {

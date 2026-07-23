@@ -69,10 +69,10 @@ func TestCompiledCodecRoundTripsReferenceSignatures(t *testing.T) {
 	if err != nil {
 		t.Fatalf("MarshalBinary: %v", err)
 	}
-	if blob[4] != wagoVersion || wagoVersion != 21 {
-		t.Fatalf("compiled codec version = %d, want structural-reference version 21", blob[4])
+	if blob[4] != wagoVersion || wagoVersion != 23 {
+		t.Fatalf("compiled codec version = %d, want extended-const version 23", blob[4])
 	}
-	for _, version := range []byte{19, 20} {
+	for _, version := range []byte{20, 21, 22} {
 		oldVersion := append([]byte(nil), blob...)
 		oldVersion[4] = version
 		var old Compiled
@@ -154,6 +154,25 @@ func TestCompiledCodecAcceptsStructuralReferenceGlobalsAndRejectsLiveBits(t *tes
 	}
 	if _, err := (&Compiled{Globals: []GlobalDef{{Type: ValExternRef, Bits: 0x1234}}}).MarshalBinary(); err == nil || !strings.Contains(err.Error(), "non-null externref") {
 		t.Fatalf("MarshalBinary live externref error = %v, want fail-closed rejection", err)
+	}
+}
+
+func TestCompiledCodecRejectsMalformedExtendedConstMetadata(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		c    *Compiled
+		want string
+	}{
+		{name: "global bad type", c: &Compiled{Globals: []GlobalDef{{Type: ValI64, InitExpr: []byte{0x41, 0x01, 0x0b}}}}, want: "type i32, want i64"},
+		{name: "global unavailable import", c: &Compiled{Globals: []GlobalDef{{Type: ValI32, InitExpr: []byte{0x23, 0x00, 0x41, 0x01, 0x6a, 0x0b}}}}, want: "not an imported global"},
+		{name: "data malformed", c: &Compiled{Data: []DataInit{{Offset: OffsetInit{Expr: []byte{0x41, 0x01}}}}}, want: "missing end"},
+		{name: "element multiple forms", c: &Compiled{Elems: []ElemInit{{RefType: ValFuncRef, Mode: ElemModeActive, Offset: OffsetInit{HasGlobal: true, Expr: []byte{0x41, 0x00, 0x0b}}}}}, want: "multiple offset initializer forms"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := tc.c.MarshalBinary(); err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("MarshalBinary error = %v, want substring %q", err, tc.want)
+			}
+		})
 	}
 }
 

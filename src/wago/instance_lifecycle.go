@@ -3,14 +3,23 @@ package wago
 import (
 	"errors"
 	"fmt"
+	"sync/atomic"
+	"unsafe"
 
 	"github.com/wago-org/wago/src/core/runtime"
 )
 
-// Close releases the instance's mapped code, engine, and (if instance-owned) its
-// memory. An imported memory is left for the host to Close. Close is idempotent.
-// Concurrent callers wait for the active close operation and receive its same
-// completed, possibly aggregated, error result.
+const (
+	instanceInvocationClosed = uint32(1 << 31)
+	instanceInvocationCount  = instanceInvocationClosed - 1
+)
+
+// Close logically closes the instance and releases its mapped code, engine, and
+// owned memory as soon as no invocation or retained reference can still reach
+// them. An activation parked in host code may finish after Close returns; its
+// invocation lease defers physical release until native execution has unwound.
+// Imported memory is left for the host to Close. Close is idempotent. Concurrent
+// callers wait for the active close operation and receive its same result.
 func (in *Instance) Close() (err error) {
 	if in == nil {
 		return nil
@@ -88,10 +97,15 @@ func (in *Instance) closeOnce() error {
 	appendStep("retain imported table roots", func() { retainProducerRootsInImportedTables(in) })
 	appendStep("retain imported global roots", func() { retainProducerRootsInImportedGlobals(in) })
 
+	previousInvocations := in.closeInvocationEntry()
+	activeInvocations := previousInvocations & instanceInvocationCount
 	in.lifeMu.Lock()
 	in.closed = true
-	shouldRelease := in.resourceRefs == 0
+	shouldRelease := in.resourceRefs == 0 && activeInvocations == 0
 	store := in.refStore
+	if activeInvocations != 0 && len(in.trap) >= 4 {
+		atomic.StoreUint32((*uint32)(unsafe.Pointer(&in.trap[0])), uint32(runtime.TrapInterrupted))
+	}
 	in.lifeMu.Unlock()
 
 	if store != nil {
@@ -107,6 +121,50 @@ func (in *Instance) closeOnce() error {
 		}
 	}
 	return errors.Join(errs...)
+}
+
+func (in *Instance) closeInvocationEntry() uint32 {
+	for {
+		state := in.invocationState.Load()
+		if state&instanceInvocationClosed != 0 {
+			return state
+		}
+		if in.invocationState.CompareAndSwap(state, state|instanceInvocationClosed) {
+			return state
+		}
+	}
+}
+
+func (in *Instance) beginInvocation() error {
+	if in == nil {
+		return fmt.Errorf("instance is nil")
+	}
+	state := in.invocationState.Add(1)
+	if state&instanceInvocationClosed == 0 {
+		return nil
+	}
+	in.invocationState.Add(^uint32(0))
+	return fmt.Errorf("instance is closed")
+}
+
+func (in *Instance) endInvocation() {
+	if in == nil {
+		return
+	}
+	state := in.invocationState.Add(^uint32(0))
+	if state != instanceInvocationClosed {
+		return
+	}
+	in.lifeMu.Lock()
+	shouldRelease := in.closed && in.resourceRefs == 0 && !in.resourcesClosed
+	store := in.refStore
+	in.lifeMu.Unlock()
+	if shouldRelease {
+		if store != nil {
+			store.resourceOwnerReleased(in)
+		}
+		in.releaseResources()
+	}
 }
 
 func (in *Instance) releaseResources() {
