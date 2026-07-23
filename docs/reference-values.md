@@ -197,7 +197,7 @@ taskset -c 0 go test ./src/wago -run '^$' \
 instances may import at once. It preserves one byte/grow state, counts live
 importers, and rejects `Close` until every importer has physically released its
 attachment. The public `Memory` handle remains 16 bytes (two pointers). A
-32-byte lifecycle sidecar is allocated only for host-created or exported/shared
+24-byte lifecycle sidecar is allocated only for host-created or exported/shared
 memory; ordinary instance-owned scalar memories leave that pointer nil, preserving
 1,224 B/op and 7 allocs/op for warmed scalar instantiation.
 

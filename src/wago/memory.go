@@ -22,8 +22,7 @@ type Memory struct {
 
 type memoryState struct {
 	mu        sync.Mutex
-	execMu    sync.Mutex // reserved for a future measured per-memory execution lease
-	owner     *Instance  // non-nil for an instance-owned exported memory
+	owner     *Instance // non-nil for an instance-owned exported memory
 	importers int32
 	shared    bool // true when multiple compatible instances may import this memory
 	closed    bool
