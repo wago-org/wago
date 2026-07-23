@@ -2,7 +2,10 @@
 
 package amd64
 
-import "github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
+import (
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
+	coreplugins "github.com/wago-org/wago/src/core/plugins"
+)
 
 // The operand stack and its element model — ported from WARP's Stack /
 // StackElement / StackType / VariableStorage (warp/src/core/compiler/common/).
@@ -29,12 +32,13 @@ const (
 	mtF32
 	mtF64
 	mtV128
+	mtVirtual
 )
 
 func (t machineType) is64() bool    { return t == mtI64 || t == mtF64 }
 func (t machineType) isFloat() bool { return t == mtF32 || t == mtF64 }
 func (t machineType) isV128() bool  { return t == mtV128 }
-func (t machineType) isXMM() bool   { return t.isFloat() || t.isV128() }
+func (t machineType) isXMM() bool   { return t.isFloat() || t.isV128() || t == mtVirtual }
 func (t machineType) stackSlots() int {
 	if t == mtV128 {
 		return 2
@@ -110,6 +114,11 @@ type storage struct {
 	slot int
 	idx  int   // local/global index for stLocalRef/stGlobalRef
 	cval int64 // constant value/bits for stConst
+	// virtual is non-nil only for compiler-erased externref values. vregs holds
+	// one YMM per 32-byte chunk; reg aliases vregs[0] for allocator scans.
+	virtual *coreplugins.VirtualType
+	vregs   [4]Reg
+	vcount  uint8
 }
 
 // elemKind tags a stack node.

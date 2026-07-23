@@ -83,7 +83,43 @@ func TestPrepareBuildsIndependentTargetLowerings(t *testing.T) {
 	}
 }
 
+func TestPrepareBuildsVirtualInstruction(t *testing.T) {
+	vector := VirtualType{Name: "example.v256", Size: 32}
+	inputs := []VirtualType{vector, vector}
+	def, err := Prepare(InstructionSpec{
+		Module: "example", Name: "v256.xor",
+		Input: []int32{256, 256}, Output: []int32{256},
+		Virtual: &VirtualSignature{Inputs: inputs, Output: &vector},
+		AMD64: &machinecode.AMD64Lowering{
+			Compatibility: machinecode.AMD64CompatibilityFullAccess,
+			Emit:          func(machinecode.AMD64Context) error { return nil },
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Registration snapshots both the signature slices and pointed-to result.
+	inputs[0] = VirtualType{Name: "mutated", Size: 16}
+	vector.Name = "mutated"
+	native, ok := def.Native()
+	if !ok {
+		t.Fatal("virtual instruction should have a native lowering")
+	}
+	if len(native.VirtualInputs) != 2 || native.VirtualInputs[0].Name != "example.v256" ||
+		native.VirtualOutput == nil || native.VirtualOutput.Name != "example.v256" {
+		t.Fatalf("virtual signature was not detached: %+v", native)
+	}
+	if native.ResultWidth != 256 || native.StackCompatible {
+		t.Fatalf("unexpected virtual lowering: %+v", native)
+	}
+}
+
 func TestPrepareRejectsInvalidDefinitions(t *testing.T) {
+	virtualAMD64 := &machinecode.AMD64Lowering{
+		Compatibility: machinecode.AMD64CompatibilityFullAccess,
+		Emit:          func(machinecode.AMD64Context) error { return nil },
+	}
 	tests := []struct {
 		name string
 		spec InstructionSpec
@@ -110,6 +146,41 @@ func TestPrepareRejectsInvalidDefinitions(t *testing.T) {
 				Lower:   func(LoweringContext) error { return nil },
 			},
 			want: "did not set output",
+		},
+		{
+			name: "virtual metadata length",
+			spec: InstructionSpec{
+				Module: "example", Name: "bad", Input: []int32{256},
+				Virtual: &VirtualSignature{}, AMD64: virtualAMD64,
+			},
+			want: "virtual input metadata has 0 entries, want 1",
+		},
+		{
+			name: "virtual width mismatch",
+			spec: InstructionSpec{
+				Module: "example", Name: "bad", Input: []int32{128},
+				Virtual: &VirtualSignature{Inputs: []VirtualType{{Name: "example.v256", Size: 32}}},
+				AMD64:   virtualAMD64,
+			},
+			want: "is 128 bits",
+		},
+		{
+			name: "virtual handler",
+			spec: InstructionSpec{
+				Module: "example", Name: "bad", Input: []int32{256},
+				Virtual: &VirtualSignature{Inputs: []VirtualType{{Name: "example.v256", Size: 32}}},
+				Handler: func(InstructionContext, []Bits) ([]Bits, error) { return nil, nil },
+				AMD64:   virtualAMD64,
+			},
+			want: "native-only and forbid Handler",
+		},
+		{
+			name: "virtual without lowering",
+			spec: InstructionSpec{
+				Module: "example", Name: "bad", Input: []int32{256},
+				Virtual: &VirtualSignature{Inputs: []VirtualType{{Name: "example.v256", Size: 32}}},
+			},
+			want: "require a native lowering",
 		},
 	}
 

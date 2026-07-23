@@ -77,6 +77,16 @@ func (f *fn) allocFReg(avoid regMask) Reg {
 // spillF evicts a V-resident float/vector value to a fresh frame slot.
 func (f *fn) spillF(e *elem) {
 	r := e.st.reg
+	if e.st.typ == mtVirtual {
+		slot := f.allocSpillSlots(int(e.st.virtual.Size / 8))
+		for i := 0; i < int(e.st.vcount); i++ {
+			reg := e.st.vregs[i]
+			f.a.StrQ(SP, f.spillOff(slot+i*2), reg)
+			f.fregUser[reg] = nil
+		}
+		f.replaceStorage(e, storage{kind: stSlot, typ: mtVirtual, slot: slot, virtual: e.st.virtual})
+		return
+	}
 	if e.st.typ == mtV128 {
 		slot := f.allocSpillSlots(2)
 		f.a.StrQ(a64.SP, f.spillOff(slot), r)

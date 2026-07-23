@@ -156,6 +156,9 @@ func (f *fn) flush() {
 	slot := 0
 	for _, root := range roots {
 		typ := rootMachineType(root)
+		if typ == mtVirtual {
+			panic("virtual externref cannot cross a control-flow or ordinary call boundary")
+		}
 		types = append(types, typ)
 		if root.kind == ekValue && root.st.kind == stSlot && root.st.slot == slot && root.st.typ == typ {
 			slot += typ.stackSlots()

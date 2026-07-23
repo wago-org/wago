@@ -30,6 +30,8 @@ type Bits = coreplugins.Bits
 type LowerValue = coreplugins.LowerValue
 type InstructionLowerer = coreplugins.InstructionLowerer
 type LoweringContext = coreplugins.LoweringContext
+type VirtualType = coreplugins.VirtualType
+type VirtualSignature = coreplugins.VirtualSignature
 
 const (
 	AMD64FeatureAVX2             = machinecode.AMD64FeatureAVX2

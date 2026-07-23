@@ -130,6 +130,8 @@ type (
 	V128                        = impl.V128
 	ValType                     = impl.ValType
 	Value                       = impl.Value
+	VirtualSignature            = impl.VirtualSignature
+	VirtualType                 = impl.VirtualType
 )
 
 const (

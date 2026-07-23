@@ -62,12 +62,21 @@ func instructionImport(ins *registeredInstruction) *registeredImport {
 	params := make([]ValType, len(ins.spec.Input))
 	for i := range params {
 		params[i] = ValI32
+		if ins.spec.Virtual != nil && ins.spec.Virtual.Inputs[i] != (VirtualType{}) {
+			params[i] = ValExternRef
+		}
 	}
 	var results []ValType
 	if len(ins.spec.Output) > 0 {
 		results = []ValType{ValI32}
+		if ins.spec.Virtual != nil && ins.spec.Virtual.Output != nil {
+			results[0] = ValExternRef
+		}
 	}
 	fn := instructionHostFunc(func(m HostModule, raw, result []uint64) {
+		if ins.spec.Virtual != nil {
+			panic(instructionTrap{fmt.Errorf("wago: virtual instruction %s.%s requires native lowering", ins.spec.Module, ins.spec.Name)})
+		}
 		in, ok := instructionCallingInstance(m)
 		if !ok {
 			panic(instructionTrap{fmt.Errorf("wago: instruction called without an instance")})
@@ -167,6 +176,9 @@ func validateInstructionSignature(key string, spec InstructionSpec, sig FuncSig)
 	params := make([]ValType, len(spec.Input))
 	for i := range params {
 		params[i] = ValI32
+		if spec.Virtual != nil && spec.Virtual.Inputs[i] != (VirtualType{}) {
+			params[i] = ValExternRef
+		}
 	}
 	wantResults := 0
 	if len(spec.Output) > 0 {
@@ -175,6 +187,9 @@ func validateInstructionSignature(key string, spec InstructionSpec, sig FuncSig)
 	results := make([]ValType, wantResults)
 	if wantResults != 0 {
 		results[0] = ValI32
+		if spec.Virtual != nil && spec.Virtual.Output != nil {
+			results[0] = ValExternRef
+		}
 	}
 	return validatePhysicalImportSignature(key, params, results, sig)
 }
