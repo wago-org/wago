@@ -78,9 +78,11 @@ lease held or resume against a context installed by nested entry.
 Instances with actual host bindings use synchronous dispatch, including legacy
 void HostFunc signatures, because such an instance may later execute as a
 cross-instance callee. That parking capability propagates transitively through
-canonical InstanceExport imports. A host-free cross-instance-only consumer whose
-targets cannot park uses the ordinary native entry path and allocates neither a
-control frame nor an async replay log. Modules importing a funcref table remain
+canonical InstanceExport imports. Where the architecture host policy permits,
+a host-free cross-instance-only consumer whose targets cannot park uses the
+ordinary native entry path and allocates neither a control frame nor an async
+replay log. Forced-synchronous architectures still allocate their control frame.
+Modules importing a funcref table remain
 synchronous because the table may be mutated to contain a host descriptor. The
 old async log format remains an internal compatibility path but is not selected
 for these compositions.
