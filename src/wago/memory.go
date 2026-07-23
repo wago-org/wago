@@ -88,69 +88,29 @@ func newMemory(minPages, maxPages uint32, shared bool) (*Memory, error) {
 // CurrentBytes would panic there (slice bounds beyond the initial commit); this
 // mirrors what Instance.Read/Write already use via mem().
 //
-// A view remains valid only while its owning instance remains open. Callers must
-// synchronize Instance.Close with accesses through a previously returned view.
-// If Close wins while Bytes itself is acquiring the view, Bytes returns nil.
+// The returned slice borrows mmap-backed storage: it is valid only while this
+// Memory and its owning Instance remain open. Bytes and every access through a
+// previously returned slice must not run concurrently with Memory.Close or
+// Instance.Close. A raw []byte cannot carry a lifetime-release callback, so
+// callers are responsible for that synchronization. After close is observable,
+// Bytes returns nil rather than exposing the stale mapping.
 func (m *Memory) Bytes() []byte {
-	return m.bytesWhileOwnerLive(nil)
-}
-
-// bytesWhileOwnerLive obtains the current view and optionally calls inspect
-// while the owner invocation lease is still held. Releasing the last lease is
-// separated from finalization so a concurrently closed owner cannot unmap the
-// view and then have Bytes return it. The callback is an internal scoped-access
-// seam used by deterministic close-race tests.
-func (m *Memory) bytesWhileOwnerLive(inspect func([]byte)) []byte {
-	owner, ok := m.beginOwnerAccess()
-	if !ok {
-		return nil
-	}
-	jm := m.jobMemory()
-	if jm == nil {
-		if owner != nil {
-			owner.endInvocation()
-		}
-		return nil
-	}
-	view := jm.HostBytes()
-	if inspect != nil {
-		inspect(view)
-	}
-	if owner == nil {
-		return view
-	}
-	state := owner.releaseInvocationLease()
-	if state&instanceInvocationClosed == 0 {
-		return view
-	}
-	// Clear the outward result before the last closed lease can finalize and
-	// unmap the JobMemory. Returning nil is the clean close-wins outcome.
-	owner.tryFinalize()
-	return nil
-}
-
-func (m *Memory) beginOwnerAccess() (*Instance, bool) {
 	if m == nil {
-		return nil, false
+		return nil
 	}
 	s := m.state.Load()
 	if s == nil {
-		return nil, true
+		if m.jm == nil {
+			return nil
+		}
+		return m.jm.HostBytes()
 	}
 	s.mu.Lock()
-	owner := s.owner
-	closed := s.closed || m.jm == nil
-	s.mu.Unlock()
-	if closed {
-		return nil, false
+	defer s.mu.Unlock()
+	if s.closed || m.jm == nil || (s.owner != nil && s.owner.isLogicallyClosed()) {
+		return nil
 	}
-	if owner == nil {
-		return nil, true
-	}
-	if err := owner.beginInvocation(); err != nil {
-		return nil, false
-	}
-	return owner, true
+	return m.jm.HostBytes()
 }
 
 // Close releases a host-created memory after every importer closes. An exported

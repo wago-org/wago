@@ -362,9 +362,12 @@ same context slot.
 
 Linear memory is the mmap-backed tail of JobMemory, exposed zero-copy via
 `Instance.Memory().Bytes()` — writes are visible in both directions without
-copying. Explicit mode checks the current size cached in basedata; supported
-platforms can instead use guard-page reservations. `memory.grow` raises the
-logical size within a stable pre-reserved mapping, preserving the native base.
+copying. Because a raw `[]byte` cannot own or release the mmap lifetime,
+`Memory.Bytes`, access through a returned slice, and `Instance.Close`/`Memory.Close`
+must be externally synchronized; the view is invalid once its owner closes.
+Explicit mode checks the current size cached in basedata; supported platforms
+can instead use guard-page reservations. `memory.grow` raises the logical size
+within a stable pre-reserved mapping, preserving the native base.
 Active and passive data operations retain strict bounds and dropped-state checks.
 
 ---
