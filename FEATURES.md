@@ -33,7 +33,7 @@ in full (57/57 applicable files, 0 failing assertions; see [SPECTEST.md](SPECTES
 | **`memory.size` / `memory.grow`** | ✓ | ✅ done (grow up to the declared max via an up-front reservation; no remap) |
 | Active data segments | ✓ | ✅ done |
 | Tables + active element segments | ✓ | ✅ done |
-| Function imports / exports | ✓ | ✅ done (host imports: numeric scalars and `v128` params/results via `SyncHostFunc`/reflected functions, legacy void `HostFunc` batched replay; every imported call compiles once and binds through a per-instance dispatch cell with native context switching) |
+| Function imports / exports | ✓ | ✅ done (host imports: numeric scalars and `v128` params/results via synchronous parked-host dispatch, including legacy void `HostFunc`; every imported call compiles once and binds through a per-instance dispatch cell with native context switching and active-callee host routing) |
 | Memory / table / global imports & exports | ✓ | ✅ done (cross-instance function / global / table / memory linking, incl. shared mutable tables + memories, and host functions used as table funcrefs) |
 | `start` function | ✓ | ✅ done (local, or an imported void host function) |
 

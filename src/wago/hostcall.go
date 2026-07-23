@@ -224,13 +224,19 @@ func (h *HostFuncRef) Close() error {
 		store.mu.Unlock()
 		return nil
 	}
-	if h.importers != 0 {
+	// A runtime-closed store with no live logical instances may finish closing the
+	// host owner that anchors its last public token. The token keeps fn intact
+	// until releaseEntries drops the producer root and physical teardown detaches
+	// the importer. Every other retained-code path (for example an external table
+	// root without a token) continues to reject Close while importers remain.
+	closingLastTokenRoot := h.tokenLive && store.runtimeClosed && store.liveInstances == 0
+	if h.importers != 0 && !closingLastTokenRoot {
 		count := h.importers
 		h.mu.Unlock()
 		store.mu.Unlock()
 		return fmt.Errorf("wago: host funcref has %d live importer(s); close consumers before the owner", count)
 	}
-	if h.tokenLive && (!store.runtimeClosed || store.liveInstances != 0) {
+	if h.tokenLive && !closingLastTokenRoot {
 		h.mu.Unlock()
 		store.mu.Unlock()
 		return fmt.Errorf("wago: host funcref has a live funcref token; close its runtime instances before the owner")
@@ -478,7 +484,7 @@ type invalidHostReference struct{ err error }
 // bound to this instance. It is constructed once at instantiation so hot Invoke
 // paths do not allocate a fresh closure per call.
 func (in *Instance) newHostDispatch() runtime.HostCall {
-	return func(importIdx uint32, args, results []uint64) {
+	return func(_ uintptr, importIdx uint32, args, results []uint64) {
 		var fn HostFunc
 		var sig FuncSig
 		if importIdx&hostFuncRefDispatchBit != 0 {
@@ -624,7 +630,7 @@ func (in *Instance) callNativeSync(entry uintptr) (err error) {
 	if in.hostCall == nil {
 		in.hostCall = in.newHostDispatch()
 	}
-	err = in.eng.CallWithHost(entry, in.serArgs, in.jm.LinearMemory(), in.trap, in.results, in.ctrl, in.hostCall)
+	err = in.eng.CallWithHostBase(entry, in.serArgs, in.jm.LinMemBase(), in.trap, in.results, in.ctrl, dispatchSynchronousHostCall)
 	goruntime.KeepAlive(in)
 	goruntime.KeepAlive(in.c)
 	return err

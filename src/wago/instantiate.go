@@ -327,6 +327,9 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		// them indirectly also need this frame so an owned host descriptor remains
 		// callable after crossing from another instance.
 		ctrl = ar.AllocNoZero(runtime.HostCtrlFrameBytes)
+		if err := runtime.InitHostCtrlFrame(ctrl); err != nil {
+			return nil, fmt.Errorf("instantiate: initialize host control frame: %w", err)
+		}
 		jm.SetCustomCtx(uintptr(unsafe.Pointer(&ctrl[0])))
 		if len(c.Imports) > 0 {
 			syncHosts, err = c.buildSyncHosts(imports)
@@ -765,7 +768,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	}
 	serArgs := ar.Alloc(argsBytes)
 	results := ar.Alloc(resultsBytes)
-	trap := ar.Alloc(8)
+	trap := ar.Alloc(runtime.TrapBufferBytes)
 	if err := jm.BindTrapCell(trap); err != nil {
 		return nil, fmt.Errorf("bind trap cell: %w", err)
 	}
@@ -781,6 +784,16 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		nativeContext: nativeContextPtr,
 	}
 	b.registeredInstance = in
+	if in.syncMode {
+		if err := registerHostControl(in); err != nil {
+			return nil, fmt.Errorf("instantiate: register host control frame: %w", err)
+		}
+		defer func() {
+			if !b.success {
+				unregisterHostControl(in)
+			}
+		}()
+	}
 	if opts.origin != InstantiateDirect || opts.pluginGC != nil {
 		state := in.ensurePluginState()
 		state.origin = opts.origin
@@ -819,9 +832,13 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	}
 
 	if initErr != nil {
-		if opts.runtime == nil && retainProducerRootsInImportedTables(in) {
-			b.success = true
-			_ = in.Close()
+		if opts.runtime == nil {
+			tableRetained := retainProducerRootsInImportedTables(in)
+			globalRetained := retainProducerRootsInImportedGlobals(in)
+			if tableRetained || globalRetained {
+				b.success = true
+				_ = in.Close()
+			}
 		}
 		return nil, initErr
 	}
@@ -867,9 +884,13 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 				// becomes the failed instance's lifetime owner. The table prunes roots
 				// no longer present in any slot, so retention stays bounded by its
 				// descriptor capacity rather than by failed-instantiation count.
-				if opts.runtime == nil && retainProducerRootsInImportedTables(in) {
-					b.success = true
-					_ = in.Close()
+				if opts.runtime == nil {
+					tableRetained := retainProducerRootsInImportedTables(in)
+					globalRetained := retainProducerRootsInImportedGlobals(in)
+					if tableRetained || globalRetained {
+						b.success = true
+						_ = in.Close()
+					}
 				}
 				return nil, fmt.Errorf("start function trapped: %w", startErr)
 			}

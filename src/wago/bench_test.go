@@ -1249,6 +1249,60 @@ func BenchmarkInvokeCrossInstanceDirect(b *testing.B) {
 	}
 }
 
+func BenchmarkInvokeCrossInstanceIndirect(b *testing.B) {
+	producerCode := benchMustCompile(b, benchAddOneModule())
+	defer producerCode.Close()
+	producer, err := Instantiate(producerCode)
+	if err != nil {
+		b.Fatalf("Instantiate producer: %v", err)
+	}
+	defer producer.Close()
+	target, err := producer.ExportedFunc("f")
+	if err != nil {
+		b.Fatalf("ExportedFunc: %v", err)
+	}
+	consumerCode := benchMustCompile(b, benchTableReturningImportModule())
+	defer consumerCode.Close()
+	consumer, err := Instantiate(consumerCode, Imports{"env.f": target})
+	if err != nil {
+		b.Fatalf("Instantiate consumer: %v", err)
+	}
+	defer consumer.Close()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		res, err := consumer.Invoke("g", I32(int32(i)))
+		if err != nil {
+			b.Fatal(err)
+		}
+		benchResultSink = res
+	}
+}
+
+func BenchmarkInvokeSharedMemoryPublicEntry(b *testing.B) {
+	memory, err := NewSharedMemory(1, 1)
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer memory.Close()
+	compiled := benchMustCompile(b, sharedMemoryPrivateGlobalModule(10))
+	defer compiled.Close()
+	in, err := Instantiate(compiled, Imports{"env.memory": memory})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer in.Close()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		res, err := in.Invoke("bump")
+		if err != nil {
+			b.Fatal(err)
+		}
+		benchResultSink = res
+	}
+}
+
 func BenchmarkInvokeHostFuncExternrefRoundTrip(b *testing.B) {
 	rt := NewRuntime()
 	defer rt.Close()

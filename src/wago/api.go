@@ -490,24 +490,23 @@ func asyncReplayable(sig FuncSig) bool {
 		(len(sig.Params) == 0 || sig.Params[0] == ValI32)
 }
 
-func (c *Compiled) importsRequireSync(imports Imports, force bool) bool {
+func (c *Compiled) importsRequireSync(_ Imports, force bool) bool {
 	if force || forceSyncHostImports || c.needsPublicFuncrefHostReentry() {
 		return true
 	}
-	for i, key := range c.Imports {
-		if _, cross := imports[key].(*InstanceExport); cross {
-			continue
-		}
-		if _, owned := imports[key].(*HostFuncRef); owned {
+	// Any function import may later be reached while this instance is a
+	// cross-instance callee. Use the parked-host protocol even for legacy void
+	// HostFunc bindings so dispatch cannot be logged into a buffer the public root
+	// never replays. InstanceExport-only consumers also need the loop because the
+	// active producer may make a host call.
+	if len(c.Imports) != 0 {
+		return true
+	}
+	// An imported funcref table can already contain a host or cross-instance
+	// descriptor even when this module has no function imports of its own.
+	for i := 0; i < c.tableImportCount(); i++ {
+		if c.tableElementType(i) == ValFuncRef {
 			return true
-		}
-		if i >= len(c.importFuncSigs) || !asyncReplayable(c.importFuncSigs[i]) {
-			return true
-		}
-		if imports[key] != nil {
-			if _, legacy := imports[key].(HostFunc); !legacy {
-				return true
-			}
 		}
 	}
 	return false

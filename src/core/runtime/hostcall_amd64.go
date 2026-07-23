@@ -2,7 +2,12 @@
 
 package runtime
 
-import "sync"
+import (
+	"encoding/binary"
+	"sync"
+
+	"github.com/wago-org/wago/src/core/runtime/abi"
+)
 
 // Synchronous host-import re-entry protocol (P8.1). A returning host import
 // cannot use the async log-and-replay path (the host must run *during* the wasm
@@ -52,18 +57,19 @@ const HostCtrlFrameBytes = ctrlFrameSize
 // host import may carry through the control frame.
 const MaxHostArity = maxHostArity
 
-// HostCall runs the bound host import importIdx with the argument slots args and
-// writes its results into results (results has len maxHostArity; only the leading
-// slots the import's signature defines are meaningful). It runs on the goroutine
-// stack in normal Go context, so arbitrary host code — allocation, even a nested
-// wasm invocation — is safe (no foreign-stack/morestack hazard).
-type HostCall func(importIdx uint32, args, results []uint64)
+// HostCall runs the bound host import from the instance identified by ctrl.
+// importIdx is in that instance's function-import namespace. It writes results
+// into results (only the signature-defined leading slots are meaningful) while
+// running on the goroutine stack, so allocation and nested wasm invocation are
+// safe.
+type HostCall func(ctrl uintptr, importIdx uint32, args, results []uint64)
 
 // hostCallStub is shared, position-independent machine code entered by native
 // code via `call [ctrl+hcTrampoline]` (rbx = linMem, rsp -> the wasm resume
 // address). It saves the wasm callee-saved registers + RSP into the control
-// frame at [rbx-offCustomCtx], writes hostCallPending into the trap cell at
-// [rbx-TrapCellPtrOffset], then unwinds to Go via the trap re-entry SP at
+// frame at [rbx-offCustomCtx], publishes that exact frame pointer at trap+8,
+// writes hostCallPending into the trap cell at [rbx-TrapCellPtrOffset], then
+// unwinds to Go via the trap re-entry SP at
 // [rbx-offTrapStackReentry] exactly like the trap path. Assembled from
 // hoststub.s (`as` + objdump); the disassembly offsets are -0x28 (offCustomCtx
 // 40), -0x68 (TrapCellPtrOffset 104), -0x18 (offTrapStackReentry 24).
@@ -77,6 +83,7 @@ var hostCallStub = []byte{
 	0x4d, 0x89, 0x71, 0x28, // mov  %r14,0x28(%r9)
 	0x4d, 0x89, 0x79, 0x30, // mov  %r15,0x30(%r9)
 	0x4c, 0x8b, 0x43, 0x98, // mov  -0x68(%rbx),%r8      ; r8 = trap cell ptr
+	0x4d, 0x89, 0x48, 0x08, // mov  %r9,0x8(%r8)         ; publish active ctrl
 	0x41, 0xc7, 0x00, 0x00, 0x00, 0x01, 0x00, // movl $0x10000,(%r8)  ; hostCallPending
 	0x48, 0x8b, 0x63, 0xe8, // mov  -0x18(%rbx),%rsp     ; trap re-entry SP
 	0xc3, //                   ret                       ; -> shared enterNative epilogue
@@ -90,6 +97,15 @@ var (
 	hostStubPtr  uintptr
 	hostStubErr  error
 )
+
+func prepareHostResume(ctrl, trap []byte, stackTop, stackLimit uintptr) {
+	linMem := uintptr(binary.LittleEndian.Uint64(ctrl[hcSavedRBX:]))
+	storeOffHeapU64(linMem-abi.TrapCellPtrOffset, uint64(slicePtr(trap)))
+	storeOffHeapU64(linMem-offStackFence, uint64(stackLimit))
+	// Both the standard and TinyGo amd64 entry trampolines reserve 64 bytes at
+	// stackTop and CALL from there, so trap re-entry is stackTop-64-8.
+	storeOffHeapU64(linMem-offTrapStackReentry, uint64(stackTop-72))
+}
 
 func hostCallStubPtr() (uintptr, error) {
 	hostStubOnce.Do(func() {

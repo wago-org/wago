@@ -26,11 +26,13 @@ instance can never be used as a cross-instance callee.
 
 The remaining pointer fields are modeled as `runtime.InstanceContext` and
 captured when instantiation finishes. Every public native entry rebinds that
-context before execution. Shared memories serialize native entry while rebinding,
-so multiple importers may retain independent globals, tables, host context, and
-passive-segment state without leaving basedata pointing at another instance's
-released arena. Linear-memory size/growth caches remain backing-owned, while trap
-and stack fields remain invocation-owned.
+context and refreshes its invocation control fields before execution. The
+current correctness-first execution lease serializes native execution
+process-wide: one public root owns every basedata region its direct or indirect
+cross-instance call graph may rebind. This avoids recursive per-memory lock
+ordering and covers same-memory, different-memory, and cyclic call graphs.
+Linear-memory size/growth caches remain backing-owned, while trap and stack
+fields remain invocation-owned.
 
 Direct imported calls load `{entry, homeLinMem, targetContext, callerContext}`
 from the per-instance dispatch table. Indirect calls recover `targetContext` from
@@ -42,7 +44,42 @@ Canonical funcref descriptors are 40 bytes: the 32-byte table payload plus an
 8-byte owning-context pointer. Table entries remain 32 bytes. A function importer
 retains each distinct producer instance until the importer's physical resource
 release; logical close alone cannot release those roots when a table, global, or
-public token still retains the importer's descriptor arena.
+public token still retains the importer's descriptor arena. Imported HostFuncRef,
+reference-global, and table attachments follow the same physical-release rule.
+When an imported funcref container retains the writer itself, that container
+attachment is transferred to the retained root to avoid a self-owning importer
+cycle, and is released exactly once.
+
+## Synchronous host parking and active-callee routing
+
+The trap allocation is 16 bytes. Bytes 0..3 hold the trap/pending code; bytes
+8..15 hold the exact active host-control-frame pointer for a parked activation.
+AMD64 and ARM64 host stubs save the current register state into the callee's
+control frame, publish that frame pointer at `trap+8`, write
+`hostCallPending`, and unwind to Go.
+
+`Engine.CallWithHost` reads arguments and import indexes from the published
+frame, not from the public root's frame. The frame address resolves to the
+physically live callee instance, so dispatch uses that instance's import
+namespace, HostFunc/HostFuncRef binding, HostModule, and result buffer. Every
+synchronous frame receives its trampoline at instantiation, including callees
+that have never been entered as public roots.
+
+The process-wide native execution lease is released before arbitrary Go host
+code runs. Nested Wasm entry may therefore acquire the lease without deadlock.
+On every normal return or panic path the dispatcher reacquires the lease and
+rebinds the exact parked callee context; immediately before `resumeNative`, the
+runtime restores the parked activation's trap pointer, stack fence, and
+architecture-specific trap re-entry control. `HostExit`, traps, and propagated
+host panics therefore cannot leave a lease held or resume against a context
+installed by nested entry.
+
+Modules with function imports use synchronous dispatch, including legacy void
+HostFunc signatures, because such an instance may later execute as a
+cross-instance callee. Modules importing a funcref table also use the synchronous
+loop because the table may already contain a host descriptor. The old async log
+format remains an internal compatibility path but is not selected for these
+compositions.
 
 ## Guarded host memory access
 
@@ -126,9 +163,8 @@ Such caching must preserve this invariant:
   may be shared with the host and with other instances importing the same
   `*Global`, so the cell must remain the shared source of truth.
 
-The deferred host-call model (host imports are logged during execution and
-replayed only after the wasm call returns) guarantees no host or cross-instance
-access occurs *within* a single execution. Intra-instance spill discipline is
-therefore both sufficient and necessary; non-exported, non-imported globals need
-only that, while exported and imported globals additionally must be coherent at
-`Invoke` return, which a function-exit spill already provides.
+Synchronous host callbacks and cross-instance calls may observe globals during
+one public invocation. Generated code must therefore spill caller-cached globals
+before either boundary and reload afterward. Non-exported, non-imported globals
+need the same call-boundary discipline for host re-entry; exported and imported
+globals additionally remain coherent at public return.

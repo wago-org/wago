@@ -145,10 +145,7 @@ func TestImportedStartBadSignatureErrors(t *testing.T) {
 func TestMissingLegacyAsyncHostImportErrors(t *testing.T) {
 	c := MustCompile(voidI32ImportCallerModule())
 	_, err := Instantiate(c, InstantiateOptions{})
-	want := "legacy async host calls require wago.HostFunc"
-	if forceSyncHostImports {
-		want = "no host function provided"
-	}
+	want := "no host function provided"
 	if err == nil || !strings.Contains(err.Error(), "env.log") || !strings.Contains(err.Error(), want) {
 		t.Fatalf("want missing host import error containing %q, got %v", want, err)
 	}
@@ -452,5 +449,5 @@ func TestMissingSyncHostDispatchErrors(t *testing.T) {
 		}
 	}()
 	var res [1]uint64
-	in.hostCall(0, nil, res[:])
+	in.hostCall(0, 0, nil, res[:])
 }

@@ -11,6 +11,11 @@ const InstantiateArenaSize = 1 << 20
 
 const HostCallLogBytes = 8 + ((1<<16)/8)*8
 
+// TrapBufferBytes reserves the 4-byte trap code plus an 8-byte parked-host
+// control-frame pointer at offset 8. The host-call stub publishes the exact
+// active callee frame there before unwinding to Go.
+const TrapBufferBytes = 16
+
 // Import dispatch entries bind already-compiled imported calls to one instance's
 // concrete host or cross-instance wrapper target.
 const (
@@ -207,10 +212,10 @@ func InstantiateArenaNeed(fp InstantiateFootprint) (int, error) {
 		return 0, fmt.Errorf("passive data count %d overflows arena allocation", fp.PassiveDataCount)
 	}
 	need += fp.PassiveDataCount * PassiveDataDescBytes
-	if need > maxInt()-argsBytes || need+argsBytes > maxInt()-resultsBytes || need+argsBytes+resultsBytes > maxInt()-8 {
+	if need > maxInt()-argsBytes || need+argsBytes > maxInt()-resultsBytes || need+argsBytes+resultsBytes > maxInt()-TrapBufferBytes {
 		return 0, fmt.Errorf("call buffers overflow arena allocation")
 	}
-	need += argsBytes + resultsBytes + 8 // args, results, trap buffers
+	need += argsBytes + resultsBytes + TrapBufferBytes // args, results, trap buffers
 	// Arena.Alloc 8-aligns each allocation; reserve a small fixed alignment slack.
 	if need > maxInt()-8*8 {
 		return 0, fmt.Errorf("instantiate footprint overflows arena allocation")
