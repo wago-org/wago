@@ -87,26 +87,55 @@ func newMemory(minPages, maxPages uint32, shared bool) (*Memory, error) {
 // capped at the initial commit while the grown pages live in the reservation.
 // CurrentBytes would panic there (slice bounds beyond the initial commit); this
 // mirrors what Instance.Read/Write already use via mem().
+//
+// A view remains valid only while its owning instance remains open. Callers must
+// synchronize Instance.Close with accesses through a previously returned view.
+// If Close wins while Bytes itself is acquiring the view, Bytes returns nil.
 func (m *Memory) Bytes() []byte {
-	end, ok := m.beginOwnerAccess()
+	return m.bytesWhileOwnerLive(nil)
+}
+
+// bytesWhileOwnerLive obtains the current view and optionally calls inspect
+// while the owner invocation lease is still held. Releasing the last lease is
+// separated from finalization so a concurrently closed owner cannot unmap the
+// view and then have Bytes return it. The callback is an internal scoped-access
+// seam used by deterministic close-race tests.
+func (m *Memory) bytesWhileOwnerLive(inspect func([]byte)) []byte {
+	owner, ok := m.beginOwnerAccess()
 	if !ok {
 		return nil
 	}
-	defer end()
 	jm := m.jobMemory()
 	if jm == nil {
+		if owner != nil {
+			owner.endInvocation()
+		}
 		return nil
 	}
-	return jm.HostBytes()
+	view := jm.HostBytes()
+	if inspect != nil {
+		inspect(view)
+	}
+	if owner == nil {
+		return view
+	}
+	state := owner.releaseInvocationLease()
+	if state&instanceInvocationClosed == 0 {
+		return view
+	}
+	// Clear the outward result before the last closed lease can finalize and
+	// unmap the JobMemory. Returning nil is the clean close-wins outcome.
+	owner.tryFinalize()
+	return nil
 }
 
-func (m *Memory) beginOwnerAccess() (func(), bool) {
+func (m *Memory) beginOwnerAccess() (*Instance, bool) {
 	if m == nil {
 		return nil, false
 	}
 	s := m.state.Load()
 	if s == nil {
-		return func() {}, true
+		return nil, true
 	}
 	s.mu.Lock()
 	owner := s.owner
@@ -116,12 +145,12 @@ func (m *Memory) beginOwnerAccess() (func(), bool) {
 		return nil, false
 	}
 	if owner == nil {
-		return func() {}, true
+		return nil, true
 	}
 	if err := owner.beginInvocation(); err != nil {
 		return nil, false
 	}
-	return owner.endInvocation, true
+	return owner, true
 }
 
 // Close releases a host-created memory after every importer closes. An exported

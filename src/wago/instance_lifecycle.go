@@ -156,8 +156,20 @@ func (in *Instance) beginInvocation() error {
 }
 
 func (in *Instance) endInvocation() {
+	state := in.releaseInvocationLease()
+	if state == instanceInvocationClosed {
+		in.tryFinalize()
+	}
+}
+
+// releaseInvocationLease decrements only the packed invocation count and
+// returns the resulting state. Most callers use endInvocation, which immediately
+// finalizes a closed instance after the last lease. Zero-copy object accessors
+// may need to inspect this state first so they can discard a view before the
+// finalizer unmaps its storage.
+func (in *Instance) releaseInvocationLease() uint32 {
 	if in == nil {
-		return
+		return 0
 	}
 	for {
 		state := in.invocationState.Load()
@@ -165,13 +177,9 @@ func (in *Instance) endInvocation() {
 			panic("wago: invocation lease underflow")
 		}
 		next := state - 1 // the count cannot borrow through the separately checked close bit
-		if !in.invocationState.CompareAndSwap(state, next) {
-			continue
+		if in.invocationState.CompareAndSwap(state, next) {
+			return next
 		}
-		if next == instanceInvocationClosed {
-			in.tryFinalize()
-		}
-		return
 	}
 }
 

@@ -81,6 +81,51 @@ func TestExportAcquisitionCloseLinearization(t *testing.T) {
 		}
 	})
 
+	t.Run("Bytes discards a view when close wins before lease release", func(t *testing.T) {
+		rt, in, _ := newExportAcquisitionFixture(t)
+		defer rt.Close()
+		memory := in.Memory()
+		if memory == nil {
+			t.Fatal("Instance.Memory returned nil")
+		}
+
+		gatePublished := make(chan struct{})
+		rt.hooks.beforeClose = append(rt.hooks.beforeClose, func(ctx *InstanceContext) {
+			if ctx.Instance == in {
+				close(gatePublished)
+			}
+		})
+		viewAcquired := make(chan struct{})
+		releaseView := make(chan struct{})
+		viewSize := make(chan int, 1)
+		viewDone := make(chan []byte, 1)
+		go func() {
+			viewDone <- memory.bytesWhileOwnerLive(func(view []byte) {
+				viewSize <- len(view)
+				close(viewAcquired)
+				<-releaseView
+			})
+		}()
+		<-viewAcquired // exact barrier: Bytes holds the owner invocation lease
+		if got := <-viewSize; got != 1<<16 {
+			t.Fatalf("leased view length = %d, want %d", got, 1<<16)
+		}
+
+		closeDone := make(chan error, 1)
+		go func() { closeDone <- in.Close() }()
+		<-gatePublished // Close has won entry while Bytes still owns the final lease
+		close(releaseView)
+		if got := <-viewDone; got != nil {
+			t.Fatalf("Bytes returned a %d-byte view after close won, want nil", len(got))
+		}
+		if err := <-closeDone; err != nil {
+			t.Fatalf("Close: %v", err)
+		}
+		if !in.resourcesClosed {
+			t.Fatal("last view lease did not finalize the closed instance")
+		}
+	})
+
 	t.Run("acquisition wins then handles fail closed", func(t *testing.T) {
 		rt, in, consumerCode := newExportAcquisitionFixture(t)
 		defer rt.Close()
