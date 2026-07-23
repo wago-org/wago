@@ -121,6 +121,79 @@ func TestImportedFunctionReexportCloseInterruptsDelegatedExecution(t *testing.T)
 	}
 }
 
+func TestImportedFunctionReexportUsesCallerInvocationLease(t *testing.T) {
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	defer func() {
+		select {
+		case <-release:
+		default:
+			close(release)
+		}
+	}()
+	rt := NewRuntime()
+	defer rt.Close()
+	producerMod, err := rt.Compile(reexportBlockingProducerModule())
+	if err != nil {
+		t.Fatalf("Compile producer: %v", err)
+	}
+	producer, err := rt.Instantiate(context.Background(), producerMod, WithImports(Imports{
+		"env.entered": HostFunc(func(HostModule, []uint64, []uint64) {
+			close(entered)
+			<-release
+		}),
+	}))
+	if err != nil {
+		t.Fatalf("Instantiate producer: %v", err)
+	}
+	defer producer.Close()
+	target, err := producer.ExportedFunc("run")
+	if err != nil {
+		t.Fatalf("Export producer run: %v", err)
+	}
+	relayMod, err := rt.Compile(voidImportedFunctionReexportModule())
+	if err != nil {
+		t.Fatalf("Compile relay: %v", err)
+	}
+	relay, err := rt.Instantiate(context.Background(), relayMod, WithImports(Imports{"env.spin": target}))
+	if err != nil {
+		t.Fatalf("Instantiate relay: %v", err)
+	}
+	defer relay.Close()
+
+	callDone := make(chan error, 1)
+	go func() {
+		_, err := relay.Invoke("spin")
+		callDone <- err
+	}()
+	select {
+	case <-entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("delegated invocation did not enter producer")
+	}
+	if got := producer.invocationState.Load() & instanceInvocationCount; got != 0 {
+		t.Fatalf("producer invocation leases = %d, want 0 for attached delegation", got)
+	}
+	if got := relay.invocationState.Load() & instanceInvocationCount; got != 1 {
+		t.Fatalf("relay invocation leases = %d, want 1", got)
+	}
+	if err := producer.Close(); err != nil {
+		t.Fatalf("Close producer: %v", err)
+	}
+	if producer.resourcesClosed {
+		t.Fatal("producer resources closed while relay import attachment remains")
+	}
+	close(release)
+	select {
+	case err := <-callDone:
+		if err != nil {
+			t.Fatalf("delegated call after producer logical close: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("delegated call did not return after host release")
+	}
+}
+
 func TestImportedFunctionReexportCanLinkAgain(t *testing.T) {
 	rt, producer, relay := instantiateImportedFunctionReexport(t)
 	defer closeImportedFunctionReexport(t, rt, producer, relay)
@@ -220,6 +293,21 @@ func voidImportedFunctionReexportModule() []byte {
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
 		wasmtest.Section(2, wasmtest.Vec(imp)),
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("spin", 0, 0))),
+	)
+}
+
+func reexportBlockingProducerModule() []byte {
+	imp := append(wasmtest.Name("env"), wasmtest.Name("entered")...)
+	imp = append(imp, 0x00, 0x00) // function import, type 0
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(2, wasmtest.Vec(imp)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 1))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
+			0x10, 0x00, // call imported entered callback
+			0x0b, // end function
+		}))),
 	)
 }
 

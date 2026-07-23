@@ -1737,9 +1737,11 @@ func (in *Instance) invoke(export string, args []uint64, cancel <-chan struct{})
 		if !ok || ex == nil || ex.inst == nil {
 			return nil, fmt.Errorf("export %q is an imported function without an InstanceExport owner", export)
 		}
-		// Native cross-instance calls copy the caller's trap cell into the callee.
-		// This Go-level re-export path must preserve the same interruption owner.
-		return ex.inst.invokeLocalContext(ex.localIdx, args, cancel, in.trap)
+		// Native cross-instance calls carry only the caller's invocation lease and
+		// trap cell; the import attachment retains the producer's physical resources.
+		// Keep this Go-level re-export path identical so producer Close neither owns
+		// nor strands an invocation initiated through the relay.
+		return ex.inst.invokeAttachedLocalContext(ex.localIdx, args, cancel, in.trap)
 	}
 	if len(args) != ic.paramSlots {
 		return nil, fmt.Errorf("%s expects %d arg slot(s), got %d", export, ic.paramSlots, len(args))
@@ -1818,6 +1820,13 @@ func (in *Instance) invokeLocalContext(li int, args []uint64, cancel <-chan stru
 		return nil, fmt.Errorf("invoke function %d: %w", li, err)
 	}
 	defer in.endInvocation()
+	return in.invokeAttachedLocalContext(li, args, cancel, activeTrap)
+}
+
+// invokeAttachedLocalContext enters a producer retained by the caller's function
+// import attachment. The caller owns the invocation lease and active trap cell,
+// exactly as for a native dynamic import call.
+func (in *Instance) invokeAttachedLocalContext(li int, args []uint64, cancel <-chan struct{}, activeTrap []byte) ([]uint64, error) {
 	if li < 0 || li >= len(in.c.Funcs) || li >= len(in.c.Entry) {
 		return nil, fmt.Errorf("invalid function index %d", li)
 	}
