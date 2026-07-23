@@ -95,6 +95,34 @@ func instantiateDirectCrossTail(t testing.TB, exportName string) (*Instance, *In
 	return producer, consumer
 }
 
+func TestStagedDirectReturnCallDynamicHostDispatch(t *testing.T) {
+	compiled, err := compileStagedTail(directCrossTailConsumerModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	calls := 0
+	in, err := instantiateCore(compiled, InstantiateOptions{Imports: Imports{
+		"env.f": HostFunc(func(_ HostModule, params, results []uint64) {
+			calls++
+			results[0] = I32(AsI32(params[0]) + 1)
+		}),
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	if got := tableTestCallI32(t, in, "run", I32(41)); got != 42 {
+		t.Fatalf("root dynamic host tail = %d, want 42", got)
+	}
+	if got := tableTestCallI32(t, in, "nested", I32(41)); got != 47 {
+		t.Fatalf("nested dynamic host tail = %d, want 47", got)
+	}
+	if calls != 2 {
+		t.Fatalf("dynamic host tail calls = %d, want 2", calls)
+	}
+}
+
 func TestStagedDirectCrossInstanceReturnCall(t *testing.T) {
 	if _, err := Compile(nil, directCrossTailConsumerModule()); err == nil || !strings.Contains(err.Error(), "tail-call disabled") {
 		t.Fatalf("public direct cross-tail compile error = %v, want fail-closed feature rejection", err)
