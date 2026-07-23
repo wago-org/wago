@@ -123,6 +123,9 @@ func TestCompiledCodecV23RequiredFeatureBitsAreExactAndFailClosed(t *testing.T) 
 	}
 	// The fixture has an empty memory-import string and GC descriptor list, so
 	// the required-feature byte is the penultimate byte before the zero GC count.
+	if got := CoreFeatures(blob[len(blob)-2]); got != want || blob[len(blob)-1] != 0 {
+		t.Fatalf("feature-byte fixture layout changed: tail=%x want features %s then zero GC count", blob[len(blob)-2:], want)
+	}
 	blob[len(blob)-2] = 0
 	var decoded Compiled
 	if err := decoded.UnmarshalBinary(blob); err == nil || !strings.Contains(err.Error(), "unrecorded features") {
@@ -132,6 +135,9 @@ func TestCompiledCodecV23RequiredFeatureBitsAreExactAndFailClosed(t *testing.T) 
 	blob, err = (&Compiled{}).MarshalBinary()
 	if err != nil {
 		t.Fatalf("marshal unknown-feature fixture: %v", err)
+	}
+	if blob[len(blob)-2] != 0 || blob[len(blob)-1] != 0 {
+		t.Fatalf("empty feature-byte fixture layout changed: tail=%x", blob[len(blob)-2:])
 	}
 	blob[len(blob)-2] = uint8(CoreFeatureTailCall)
 	if err := decoded.UnmarshalBinary(blob); err == nil || !strings.Contains(err.Error(), "unknown required feature bits") {

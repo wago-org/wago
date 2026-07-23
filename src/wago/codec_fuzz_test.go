@@ -214,6 +214,8 @@ func generatedValidCompiled(t testing.TB, data []byte) *Compiled {
 	}
 	if r.n(2) == 1 {
 		c.memoryImport = "env.memory"
+		c.HasMemory = true
+		c.MemMaxPages = 65535
 	}
 	if r.n(2) == 1 {
 		moduleName := r.smallString("mod")
@@ -325,6 +327,8 @@ func compiledCodecFuzzSeeds(t testing.TB) [][]byte {
 			Data:      []DataInit{{Offset: OffsetInit{Base: 1}, Bytes: []byte{1, 2, 3}}},
 
 			memoryImport: "env.memory",
+			HasMemory:    true,
+			MemMaxPages:  65535,
 			GCTypeDescs:  []gc.TypeDesc{structDesc, arrayDesc},
 		},
 	}

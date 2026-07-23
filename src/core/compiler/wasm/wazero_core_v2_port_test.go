@@ -1,6 +1,7 @@
 package wasm
 
 import (
+	"os"
 	"os/exec"
 	"path/filepath"
 	"testing"
@@ -10,6 +11,12 @@ import (
 
 func TestWazeroPortPinnedCoreV2Validation(t *testing.T) {
 	root := filepath.Clean("../../../../tests/spec-v2")
+	if _, err := os.Stat(filepath.Join(root, "test", "core")); err != nil {
+		if os.IsNotExist(err) {
+			t.Fatal("pinned Core v2 submodule is not initialized; run make spec2 for mandatory execution")
+		}
+		t.Fatal(err)
+	}
 	suite, err := spectest.DiscoverRelease2(root)
 	if err != nil {
 		t.Fatal(err)
@@ -25,7 +32,7 @@ func TestWazeroPortPinnedCoreV2Validation(t *testing.T) {
 		t.Fatalf("pinned Core v2 digest = %s, want %s", digest, want)
 	}
 	if _, err := exec.LookPath("wast2json"); err != nil {
-		t.Fatalf("wast2json is required to validate the pinned Core v2 suite: %v", err)
+		t.Fatalf("wast2json is unavailable; run make spec2 for mandatory execution: %v", err)
 	}
 	t.Setenv("WAGO_SPECTEST_DIR", root)
 	t.Setenv("WAGO_SPEC_VERSION", "2.0")

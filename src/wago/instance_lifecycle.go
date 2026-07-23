@@ -123,6 +123,10 @@ func (in *Instance) closeOnce() error {
 	return errors.Join(errs...)
 }
 
+func (in *Instance) isLogicallyClosed() bool {
+	return in == nil || in.invocationState.Load()&instanceInvocationClosed != 0
+}
+
 func (in *Instance) closeInvocationEntry() uint32 {
 	for {
 		state := in.invocationState.Load()

@@ -180,6 +180,39 @@ func (g *Global) retainProducerInstance(in *Instance) bool {
 	return true
 }
 
+// funcrefProducerRoots snapshots the instances that keep the current global
+// descriptor reachable. Active element initialization can copy that descriptor
+// into a different shared owner, which must retain these actual producers before
+// the global importer detaches.
+func (g *Global) funcrefProducerRoots() []*Instance {
+	if g == nil || g.owner == nil {
+		return nil
+	}
+	o := g.owner
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if o.closed || o.typ != ValFuncRef {
+		return nil
+	}
+	roots := make([]*Instance, 0, len(o.retained)+1)
+	seen := make(map[*Instance]struct{}, len(o.retained)+1)
+	if o.instance != nil {
+		roots = append(roots, o.instance)
+		seen[o.instance] = struct{}{}
+	}
+	for root := range o.retained {
+		if root == nil {
+			continue
+		}
+		if _, ok := seen[root]; ok {
+			continue
+		}
+		seen[root] = struct{}{}
+		roots = append(roots, root)
+	}
+	return roots
+}
+
 // NewFuncRefGlobal creates a host-owned funcref global bound to this Runtime's
 // exact reference store. The initial token must be null or have been issued by
 // the same Runtime. A non-null host-function token can originate only from an
@@ -541,7 +574,12 @@ type GlobalImportDef struct {
 	Mutable bool
 }
 
-// Compiled is emitted machine code plus instantiate-time metadata.
+const memoryExportSentinel = -1
+
+// Compiled is emitted machine code plus instantiate-time metadata. Function
+// exports remain isolated in the public Exports map; the private tableExports map
+// also uses memoryExportSentinel for memory names because Wasm export names are
+// unique across kinds.
 type Compiled struct {
 	Code  []byte
 	Entry []int // entry offset per local function
@@ -558,7 +596,7 @@ type Compiled struct {
 	GlobalImports          []GlobalImportDef // imported global entries, preceding local globals
 	Globals                []GlobalDef       // global entries in wasm global-index order
 	GlobalExports          map[string]int    // exported global name -> global index
-	tableExports           map[string]int    // exported table name -> table index; allocated only when non-empty
+	tableExports           map[string]int    // exported table name -> index, or memoryExportSentinel for memory names
 	hasTableExportMetadata bool              // false only for legacy hand-built Compiled values
 
 	HasTable          bool       // true when table 0 is declared, even with minimum length 0
@@ -578,9 +616,10 @@ type Compiled struct {
 	Data        []DataInit        // active data segments (copied into linear memory at instantiate)
 	PassiveData []PassiveDataInit // data-state descriptors keyed by original index; active slots start dropped
 
-	HasMemory   bool   // module declares a linear memory
+	HasMemory   bool   // module declares or imports a linear memory
 	MemMinPages uint32 // initial linear-memory size (pages); allocated at instantiate
 	MemMaxPages uint32 // grow ceiling (pages); 0 means use the engine default
+	MemHasMax   bool   // local memory declaration has an explicit maximum
 
 	HasStart       bool // module declares a start function to run at instantiate
 	StartLocalFunc int  // its local function index (valid when HasStart && !StartIsImport)
@@ -595,7 +634,8 @@ type Compiled struct {
 	boundsMode BoundsCheckMode
 
 	// memoryImport is the "module.name" key of the module's imported memory, if it
-	// imports one; Instantiate then requires a *Memory for that key.
+	// imports one; Instantiate then requires a *Memory for that key. Imported
+	// memory limits reuse MemMinPages, MemMaxPages, and MemHasMax.
 	memoryImport string
 
 	// tableImport preserves the direct table-0 API/runtime metadata. Additional

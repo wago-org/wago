@@ -475,7 +475,8 @@ their minimum only when no grow/export surface can observe that spare capacity;
 ordinary table capacities and all observable grow/export limits are unchanged.
 
 With WABT 1.0.36, the full Release 2 execution gate is now green at 1,600
-modules and 48,248 assertions with zero failures, skips, or gap reasons.
+modules and 48,331 assertions, including all 83 unlinkable assertions, with zero
+failures, skips, or gap reasons.
 `bulk.wast`, `elem.wast`, and `table.wast` remain fully executable at 13/104,
 29/37, and 9/0 modules/assertions; `table_get.wast`, `table_copy.wast`,
 `table_init.wast`, and `ref_func.wast` remain green at 1/10, 52/1,675, 35/677,
@@ -1044,16 +1045,17 @@ opaque token, while null still requires token zero. Direct `get` actions execute
 externref and funcref globals through typed access. No reference result/global
 sites remain classified as harness gaps.
 
-With WABT 1.0.36 available on July 10, 2026, the Release 2 execution harness
+With WABT 1.0.36 available on July 23, 2026, the Release 2 execution harness
 honors named modules, `register`, named actions, and `assert_uninstantiable` with
 registered function, memory, table, and global imports. Every file replay uses
 one `Runtime`, one file-scoped standard table, one file-scoped standard memory,
 and the exact standard print functions. Imported function and memory re-exports
 preserve their original owners. The current command reports 1,600 passed / 0
-failed / 0 skipped modules and 48,248 passed / 0 failed / 0 skipped assertions;
-every bounded gap reason is zero, and the test now fails if any Release 2 module
-or assertion becomes skipped. `imports.wast` is fully green at 54 modules / 34
-assertions, `data.wast` at 25 / 14, and `linking.wast` at 21 / 90. The complete
+failed / 0 skipped modules and 48,331 passed / 0 failed / 0 skipped assertions,
+including all 83 unlinkable commands; every bounded gap reason is zero, and the
+test now fails if any Release 2 module or assertion becomes skipped.
+`imports.wast` is fully green at 54 modules / 105 assertions, `data.wast` at 25 /
+14, and `linking.wast` at 21 / 102. The complete
 valid-module validation gate remains 1,600 passed / 0 failed / 0 skipped;
 invalid/malformed assertions retain their independent 2,880 passed / 0 failed /
 1,077 non-validation-action skips.

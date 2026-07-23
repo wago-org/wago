@@ -557,13 +557,13 @@ Unknown action/value shapes remain harness failures, not skips.
 
 A missing/empty Release 2 checkout, a discovered file that disappears, or a
 `wast2json` conversion failure is an error rather than a silent empty run. The
-July 10, 2026 validation run is green at 1,600 passed / 0 failed / 0 skipped
-modules and 2,880 passed / 0 failed / 1,077 non-validation-action skips, with no
+July 23, 2026 audit run is green at 1,600 passed / 0 failed / 0 skipped modules
+and 2,880 passed / 0 failed / 1,077 non-validation-action skips, with no
 accepted-invalid or accepted-malformed sites. The execution run is green at
-1,600 passed / 0 failed / 0 skipped modules and 48,248 passed / 0 failed / 0
-skipped assertions; every bounded gap reason is zero. `imports.wast` is fully
-green at 54 / 34 modules/assertions, `data.wast` at 25 / 14, and `linking.wast`
-at 21 / 90. `.wago` codec v23 persists structural reference globals, indexed typed
+1,600 passed / 0 failed / 0 skipped modules and 48,331 passed / 0 failed / 0
+skipped assertions, including all 83 `assert_unlinkable` commands; every bounded
+gap reason is zero. `imports.wast` is fully green at 54 / 105 modules/assertions,
+`data.wast` at 25 / 14, and `linking.wast` at 21 / 102. `.wago` codec v23 persists structural reference globals, indexed typed
 tables/exports/elements, exact declared table-limit forms, and required-feature
 bits while rejecting live runtime identity. The remaining product gates are also
 closed locally: snapshot fail-closed admission,

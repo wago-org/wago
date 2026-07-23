@@ -2,7 +2,6 @@ package wago
 
 import (
 	"bytes"
-	"encoding/binary"
 	"fmt"
 	"reflect"
 	"strings"
@@ -178,21 +177,16 @@ func TestCompiledCodecRejectsMalformedExtendedConstMetadata(t *testing.T) {
 
 func TestCompiledCodecLoadRejectsForgedLiveReferenceGlobal(t *testing.T) {
 	const marker = uint64(0x8877665544332211)
-	blob, err := marshalCompiled(&Compiled{Globals: []GlobalDef{{Type: ValI64, Bits: marker}}})
+	// marshalCompiled intentionally bypasses Compiled.MarshalBinary's validation,
+	// while still recording the structural reference-types feature bit. This makes
+	// the load-side live-token check the only reason the blob can be rejected.
+	blob, err := marshalCompiled(&Compiled{Globals: []GlobalDef{{Type: ValExternRef, Bits: marker}}})
 	if err != nil {
-		t.Fatalf("marshal scalar fixture: %v", err)
+		t.Fatalf("marshal forged externref fixture: %v", err)
 	}
-	var encodedMarker [8]byte
-	binary.LittleEndian.PutUint64(encodedMarker[:], marker)
-	i := bytes.Index(blob, encodedMarker[:])
-	if i < 3 {
-		t.Fatalf("encoded marker not found in compiled blob")
-	}
-	blob[i-3] = 0x6f // change the scalar global type to externref, retaining live token bits.
-
 	var got Compiled
-	if err := got.UnmarshalBinary(blob); err == nil || (!strings.Contains(err.Error(), "non-null externref") && !strings.Contains(err.Error(), "unrecorded features")) {
-		t.Fatalf("UnmarshalBinary error = %v, want forged live-reference/feature rejection", err)
+	if err := got.UnmarshalBinary(blob); err == nil || !strings.Contains(err.Error(), "non-null externref") {
+		t.Fatalf("UnmarshalBinary error = %v, want forged live externref rejection", err)
 	}
 }
 

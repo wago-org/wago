@@ -69,6 +69,68 @@ func TestClosedProducerFuncrefInSharedTableStaysCallable(t *testing.T) {
 	}
 }
 
+// A global.get element initializer copies the descriptor owned by the imported
+// global's producer, not one represented in the writer's own descriptor arena.
+// Closing the writer must transfer that actual producer to the persistent table
+// before detaching the global import.
+func TestGlobalGetElementRetainsActualProducerInSharedTable(t *testing.T) {
+	rt := NewRuntime()
+	defer rt.Close()
+	table, err := NewTable(1, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer table.Close()
+
+	producerCode := mustCompileWat(rt, t, `(module
+		(type $target (func (result i32)))
+		(func $target (type $target) (result i32) (i32.const 42))
+		(global (export "g") funcref (ref.func $target))
+		(elem declare func $target))`)
+	producer, err := rt.Instantiate(context.Background(), producerCode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	global, err := producer.ExportedGlobalObject("g")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	writerCode := mustCompileWat(rt, t, `(module
+		(import "env" "g" (global funcref))
+		(import "env" "t" (table 1 funcref))
+		(elem (table 0) (i32.const 0) funcref (global.get 0)))`)
+	writer, err := rt.Instantiate(context.Background(), writerCode, WithImports(Imports{"env.g": global, "env.t": table}))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	readerCode := mustCompileWat(rt, t, `(module
+		(type $target (func (result i32)))
+		(import "env" "t" (table 1 funcref))
+		(func (export "call") (result i32)
+			(i32.const 0)
+			(call_indirect (type $target))))`)
+	reader, err := rt.Instantiate(context.Background(), readerCode, WithImports(Imports{"env.t": table}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reader.Close()
+
+	if err := producer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if !producer.hasPhysicalResources() {
+		t.Fatal("global-derived table entry released its actual producer")
+	}
+	if got := tableTestCallI32(t, reader, "call"); got != 42 {
+		t.Fatalf("call after producer and writer close = %d, want 42", got)
+	}
+}
+
 // The single-slot analog for funcref globals: a producer that writes its local
 // funcref into an imported mutable funcref global via global.set and then closes
 // must be retained by the global's owner until the value is overwritten or the

@@ -56,6 +56,102 @@ func growMemModule() []byte {
 	)
 }
 
+func TestImportedMemoryLinkingValidatesExportNameAndCodecLimits(t *testing.T) {
+	ownerModule := wasmtest.Module(
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})), // memory min=1, no declared max
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("memory", 2, 0))),
+	)
+	ownerCompiled, err := Compile(nil, ownerModule)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := ownerCompiled.Close(); err != nil {
+			t.Errorf("close owner compiled module: %v", err)
+		}
+	}()
+	owner, err := Instantiate(ownerCompiled)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := owner.Close(); err != nil {
+			t.Errorf("close owner instance: %v", err)
+		}
+	}()
+	if _, err := owner.ExportedMemory("missing"); err == nil {
+		t.Fatal("undeclared memory export name was accepted")
+	}
+	if _, err := owner.ExportedMemory("memory"); err != nil {
+		t.Fatalf("declared memory export: %v", err)
+	}
+
+	memoryImport := append(wasmtest.Name("env"), wasmtest.Name("mem")...)
+	memoryImport = append(memoryImport, 0x02, 0x01, 0x02, 0x03) // memory min=2 max=3
+	consumerCompiled, err := Compile(nil, wasmtest.Module(wasmtest.Section(2, wasmtest.Vec(memoryImport))))
+	if err != nil {
+		t.Fatal(err)
+	}
+	blob, err := consumerCompiled.MarshalBinary()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := consumerCompiled.Close(); err != nil {
+		t.Fatal(err)
+	}
+	var loaded Compiled
+	if err := loaded.UnmarshalBinary(blob); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := loaded.Close(); err != nil {
+			t.Errorf("close decoded consumer: %v", err)
+		}
+	}()
+	if !loaded.HasMemory || loaded.MemMinPages != 2 || loaded.MemMaxPages != 3 || !loaded.MemHasMax {
+		t.Fatalf("decoded memory import limits = present:%v min:%d max:%d hasMax:%v, want true/2/3/true", loaded.HasMemory, loaded.MemMinPages, loaded.MemMaxPages, loaded.MemHasMax)
+	}
+
+	tooSmall, err := NewMemory(1, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if in, err := Instantiate(&loaded, Imports{"env.mem": tooSmall}); err == nil {
+		_ = in.Close()
+		t.Fatal("memory below the imported minimum linked successfully")
+	}
+	if err := tooSmall.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	tooWide, err := NewMemory(2, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if in, err := Instantiate(&loaded, Imports{"env.mem": tooWide}); err == nil {
+		_ = in.Close()
+		t.Fatal("memory above the imported maximum linked successfully")
+	}
+	if err := tooWide.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	compatible, err := NewMemory(2, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	in, err := Instantiate(&loaded, Imports{"env.mem": compatible})
+	if err != nil {
+		t.Fatalf("compatible memory import: %v", err)
+	}
+	if err := in.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := compatible.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestImportedMemoryShared(t *testing.T) {
 	t.Setenv("WAGO_BOUNDS", "explicit") // pin the explicit-bounds path (guard-page imports are covered in memory_guardpage_test.go)
 	c, err := Compile(nil, importMemModule())

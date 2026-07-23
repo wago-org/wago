@@ -172,6 +172,13 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 			c.Globals = append(c.Globals, GlobalDef{Type: imp.Type, Mutable: imp.Mutable})
 		case wasm.ExternMem:
 			c.memoryImport = im.Module + "." + im.Name
+			c.HasMemory = true
+			c.MemMinPages = uint32(im.Type.Mem.Limits.Min)
+			c.MemMaxPages = 65535
+			if im.Type.Mem.Limits.Max != nil {
+				c.MemMaxPages = uint32(*im.Type.Mem.Limits.Max)
+				c.MemHasMax = true
+			}
 		case wasm.ExternTable:
 			def := tableImportDef{Key: im.Module + "." + im.Name, Type: valTypeFromWasm(wasm.RefVal(im.Type.Table.Ref))}
 			min := im.Type.Table.Limits.Min
@@ -227,6 +234,10 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 			}
 			c.tableExports[m.Exports[i].Name] = int(m.Exports[i].Index.Index)
 		case wasm.ExternMem:
+			if c.tableExports == nil {
+				c.tableExports = make(map[string]int)
+			}
+			c.tableExports[m.Exports[i].Name] = memoryExportSentinel
 			memoryExported = true
 		}
 	}
@@ -289,6 +300,7 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 		c.MemMaxPages = 65535 // default ceiling when the module declares no max
 		if lim.Max != nil {
 			c.MemMaxPages = uint32(*lim.Max)
+			c.MemHasMax = true
 		}
 		// Pin the reservation to the initial size only when this module never grows
 		// the memory AND doesn't export it — an exported memory may be grown by
@@ -897,6 +909,16 @@ func (c *Compiled) validate() error {
 	if required&^coreFeaturesWago != 0 {
 		return fmt.Errorf("compiled metadata invalid: unknown required feature bits 0x%x", uint64(required&^coreFeaturesWago))
 	}
+	if c.memoryImport != "" && !c.HasMemory {
+		return fmt.Errorf("compiled metadata invalid: memory import without memory limits")
+	}
+	if c.HasMemory {
+		if c.MemMaxPages < c.MemMinPages {
+			return fmt.Errorf("compiled metadata invalid: memory max %d < min %d", c.MemMaxPages, c.MemMinPages)
+		}
+	} else if c.MemMinPages != 0 || c.MemMaxPages != 0 || c.MemHasMax {
+		return fmt.Errorf("compiled metadata invalid: memory limits without memory")
+	}
 	if c.TableSize < 0 {
 		return fmt.Errorf("compiled metadata invalid: negative TableSize %d", c.TableSize)
 	}
@@ -1022,9 +1044,15 @@ func (c *Compiled) validate() error {
 		}
 	}
 	if len(c.tableExports) != 0 && !c.hasTableExportMetadata {
-		return fmt.Errorf("compiled metadata invalid: table exports without exact export metadata marker")
+		return fmt.Errorf("compiled metadata invalid: table/memory exports without exact export metadata marker")
 	}
 	for name, tableIndex := range c.tableExports {
+		if tableIndex == memoryExportSentinel {
+			if !c.HasMemory {
+				return fmt.Errorf("compiled metadata invalid: memory export %q without memory", name)
+			}
+			continue
+		}
 		if tableIndex < 0 || tableIndex >= c.tableCount() {
 			return fmt.Errorf("compiled metadata invalid: table export %q index %d out of range", name, tableIndex)
 		}
@@ -1236,6 +1264,12 @@ func (c *Compiled) validateCodecV23Metadata() error {
 		}
 	}
 	for name, tableIndex := range c.tableExports {
+		if tableIndex == memoryExportSentinel {
+			if !c.HasMemory {
+				return fmt.Errorf("compiled metadata invalid: memory export %q without memory", name)
+			}
+			continue
+		}
 		if tableIndex < 0 || tableIndex >= c.tableCount() {
 			return fmt.Errorf("compiled metadata invalid: table export %q index %d out of range", name, tableIndex)
 		}

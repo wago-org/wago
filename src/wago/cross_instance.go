@@ -35,6 +35,9 @@ func (in *Instance) ExportedFunc(name string) (*InstanceExport, error) {
 	if in == nil {
 		return nil, fmt.Errorf("instance is nil")
 	}
+	if in.isLogicallyClosed() {
+		return nil, fmt.Errorf("instance is closed")
+	}
 	gfi, ok := in.c.Exports[name]
 	if !ok {
 		return nil, fmt.Errorf("no exported function %q", name)
@@ -351,6 +354,9 @@ func (in *Instance) ExportedTable(name string) (*Table, error) {
 	if in == nil || in.c == nil {
 		return nil, fmt.Errorf("instance has no table to export")
 	}
+	if in.isLogicallyClosed() {
+		return nil, fmt.Errorf("instance is closed")
+	}
 	tableIndex := 0
 	if in.c.hasTableExportMetadata {
 		var ok bool
@@ -400,10 +406,19 @@ func (in *Instance) ExportedTable(name string) (*Table, error) {
 // it does not copy storage or create a relay lifetime. Because importers share one
 // basedata region, they may not declare private globals, tables, or passive data
 // state. Consumer attachments retain the original producer until the final
-// importer closes. `name` is advisory (WebAssembly 2.0 modules have one memory).
+// importer closes. Compiler-produced modules require the exact declared export
+// name; only legacy hand-built Compiled values retain the advisory-name fallback.
 func (in *Instance) ExportedMemory(name string) (*Memory, error) {
 	if in == nil || in.memory == nil {
 		return nil, fmt.Errorf("instance has no memory to export")
+	}
+	if in.isLogicallyClosed() {
+		return nil, fmt.Errorf("instance is closed")
+	}
+	if in.c.hasTableExportMetadata {
+		if kind, ok := in.c.tableExports[name]; !ok || kind != memoryExportSentinel {
+			return nil, fmt.Errorf("memory export %q not found", name)
+		}
 	}
 	var owner *Instance
 	if in.ownsMem {
@@ -424,6 +439,9 @@ func (in *Instance) ExportedMemory(name string) (*Memory, error) {
 func (in *Instance) ExportedGlobalObject(name string) (*Global, error) {
 	if in == nil {
 		return nil, fmt.Errorf("instance is nil")
+	}
+	if in.isLogicallyClosed() {
+		return nil, fmt.Errorf("instance is closed")
 	}
 	idx, ok := in.c.GlobalExports[name]
 	if !ok {

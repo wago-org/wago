@@ -243,6 +243,15 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			runtime.ReleaseEngine(eng)
 			return nil, fmt.Errorf("missing imported memory %q", c.memoryImport)
 		}
+		actualMin, actualMax, actualHasMax, limitsOK := m.importLimits()
+		if !limitsOK {
+			runtime.ReleaseEngine(eng)
+			return nil, fmt.Errorf("imported memory %q is unavailable", c.memoryImport)
+		}
+		if actualMin < c.MemMinPages || (c.MemHasMax && (!actualHasMax || actualMax > c.MemMaxPages)) {
+			runtime.ReleaseEngine(eng)
+			return nil, fmt.Errorf("imported memory %q has incompatible limits min=%d max=%s; want min>=%d max<=%s", c.memoryImport, actualMin, formatMemoryMaximum(actualMax, actualHasMax), c.MemMinPages, formatMemoryMaximum(c.MemMaxPages, c.MemHasMax))
+		}
 		// A signals-based module elides inline bounds checks and relies on the
 		// guard-page fault, so the imported memory must be guard-page backed. Host
 		// NewMemory and guard-page instance owners provide one only in a
@@ -690,6 +699,16 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 				if err := writeElemEntry(desc[off:off+entryBytes], el.RefType, value); err != nil {
 					initErr = fmt.Errorf("active element segment %d value %d: %w", seg, k, err)
 					break
+				}
+				if value.HasGlobal && normalizedElemRefType(el.RefType) == ValFuncRef {
+					if tableImport, imported := c.tableImportAt(int(el.TableIndex)); imported {
+						if table, ok := imports.table(tableImport.Key); ok && table != nil {
+							global := globalCells[value.GlobalIndex]
+							for _, producer := range global.funcrefProducerRoots() {
+								table.retainProducerInstance(producer)
+							}
+						}
+					}
 				}
 			}
 			if initErr != nil {

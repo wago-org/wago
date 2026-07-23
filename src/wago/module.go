@@ -1,5 +1,7 @@
 package wago
 
+import "sort"
+
 // Module is the runtime-aware wrapper over a *Compiled: it carries the compiled
 // code plus the extension-derived view of the module (its imports, the
 // capabilities it requires, and lightweight metadata). rt.Compile returns one;
@@ -227,10 +229,17 @@ func (m *Module) Metadata() ModuleMetadata {
 		}
 	}
 
+	exportedTables := make([]string, 0, len(c.tableExports))
+	for name, index := range c.tableExports {
+		if index != memoryExportSentinel {
+			exportedTables = append(exportedTables, name)
+		}
+	}
+	sort.Strings(exportedTables)
 	return ModuleMetadata{
 		ExportedFuncs:        c.ExportedFunctions(),
 		ExportedGlobals:      c.ExportedGlobals(),
-		ExportedTables:       sortedKeys(c.tableExports),
+		ExportedTables:       exportedTables,
 		FuncImportCount:      len(c.Imports),
 		RequiredCapabilities: m.RequiredCapabilities(),
 		Functions:            functions,

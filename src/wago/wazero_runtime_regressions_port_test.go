@@ -328,6 +328,7 @@ func TestWazeroPortHugeCallStackUnwindsToStartTrap(t *testing.T) {
 	if err != nil {
 		t.Fatalf("compile: %v", err)
 	}
+	defer compiled.Close()
 	in, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{}})
 	if in != nil {
 		_ = in.Close()
@@ -359,6 +360,7 @@ func TestWazeroPortCrossRuntimeInstantiationUsesStructuralImportTypes(t *testing
 	if err != nil {
 		t.Fatalf("compile in runtime 1: %v", err)
 	}
+	defer compiled.Close()
 
 	rt2 := NewRuntime()
 	defer rt2.Close()
@@ -385,6 +387,7 @@ func TestWazeroPortHugeMixedValueStack(t *testing.T) {
 	if err != nil {
 		t.Fatalf("compile: %v", err)
 	}
+	defer compiled.Close()
 	in, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{}})
 	if err != nil {
 		t.Fatalf("instantiate: %v", err)
@@ -423,6 +426,11 @@ func instantiateWazeroPortModule(t *testing.T, mod []byte) *Instance {
 	if err != nil {
 		t.Fatalf("compile: %v", err)
 	}
+	t.Cleanup(func() {
+		if err := compiled.Close(); err != nil {
+			t.Errorf("close compiled module: %v", err)
+		}
+	})
 	in, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{}})
 	if err != nil {
 		t.Fatalf("instantiate: %v", err)

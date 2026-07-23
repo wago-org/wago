@@ -87,6 +87,10 @@ func marshalCompiled(c *Compiled) ([]byte, error) {
 	w.data(c.Data)
 	w.passiveData(c.PassiveData)
 	w.str(c.memoryImport)
+	w.bool(c.HasMemory)
+	w.u32(c.MemMinPages)
+	w.u32(c.MemMaxPages)
+	w.bool(c.MemHasMax)
 	w.bool(c.dynamicImports)
 	w.u8(uint8(compiledStructuralRequiredFeatures(c)))
 	w.gcTypeDescs(c.GCTypeDescs)
@@ -439,6 +443,22 @@ func unmarshalCompiled(c *Compiled, data []byte) error {
 		return err
 	}
 	c.memoryImport, err = r.str()
+	if err != nil {
+		return err
+	}
+	c.HasMemory, err = r.bool()
+	if err != nil {
+		return err
+	}
+	c.MemMinPages, err = r.u32()
+	if err != nil {
+		return err
+	}
+	c.MemMaxPages, err = r.u32()
+	if err != nil {
+		return err
+	}
+	c.MemHasMax, err = r.bool()
 	if err != nil {
 		return err
 	}

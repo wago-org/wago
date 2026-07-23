@@ -26,7 +26,10 @@ func (in *Instance) memPtr(offset uint32, size int) (unsafe.Pointer, bool) {
 	if uint64(offset)+uint64(size) > uint64(len(mem)) {
 		return nil, false
 	}
-	return unsafe.Add(unsafe.Pointer(&mem[0]), offset), true
+	// TinyGo lowers unsafe.Add with a uint32 offset through signed pointer
+	// arithmetic on native targets, so addresses at or above 2 GiB can wrap into
+	// unmapped space. Widen the already-bounds-checked offset before addition.
+	return unsafe.Pointer(uintptr(unsafe.Pointer(&mem[0])) + uintptr(offset)), true
 }
 
 // mem returns the instance's LIVE linear memory. The JobMemory is the source of

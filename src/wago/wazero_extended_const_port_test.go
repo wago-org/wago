@@ -4,6 +4,7 @@ package wago_test
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -72,8 +73,8 @@ func TestWazeroPortExtendedConstCodecExecution(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			defer compiled.Close()
 			blob, err := compiled.MarshalBinary()
-			_ = compiled.Close()
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -82,6 +83,31 @@ func TestWazeroPortExtendedConstCodecExecution(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer loaded.Close()
+			switch tc.name {
+			case "data offset":
+				if !reflect.DeepEqual(loaded.Data, compiled.Data) || len(loaded.Data) != 1 || len(loaded.Data[0].Offset.Expr) == 0 {
+					t.Fatalf("loaded data metadata = %#v, want preserved extended offset %#v", loaded.Data, compiled.Data)
+				}
+			case "element offset":
+				if !reflect.DeepEqual(loaded.Elems, compiled.Elems) || len(loaded.Elems) != 1 || len(loaded.Elems[0].Offset.Expr) == 0 {
+					t.Fatalf("loaded element metadata = %#v, want preserved extended offset %#v", loaded.Elems, compiled.Elems)
+				}
+			default:
+				var compiledExprs, loadedExprs [][]byte
+				for _, global := range compiled.Globals {
+					if len(global.InitExpr) != 0 {
+						compiledExprs = append(compiledExprs, global.InitExpr)
+					}
+				}
+				for _, global := range loaded.Globals {
+					if len(global.InitExpr) != 0 {
+						loadedExprs = append(loadedExprs, global.InitExpr)
+					}
+				}
+				if len(loadedExprs) == 0 || !reflect.DeepEqual(loadedExprs, compiledExprs) {
+					t.Fatalf("loaded global expressions = %#v, want %#v", loadedExprs, compiledExprs)
+				}
+			}
 			in, err := wago.Instantiate(loaded, wago.InstantiateOptions{Imports: imports})
 			if err != nil {
 				t.Fatal(err)
@@ -93,6 +119,13 @@ func TestWazeroPortExtendedConstCodecExecution(t *testing.T) {
 			got, err := in.Invoke(tc.export, tc.args...)
 			if err != nil || len(got) != 1 || got[0] != tc.want {
 				t.Fatalf("%s%v = %v, %v; want [%d]", tc.export, tc.args, got, err, tc.want)
+			}
+			if tc.name == "element offset" {
+				_, err = in.Invoke(tc.export, wago.I32(0))
+				var trap *wago.TrapError
+				if !errors.As(err, &trap) || trap.Code != wago.TrapIndirectOutOfBounds {
+					t.Fatalf("%s(0) error = %v, want uninitialized-element trap", tc.export, err)
+				}
 			}
 		})
 	}

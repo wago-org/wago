@@ -351,17 +351,6 @@ func (f *fn) flushWideStack(roots []*elem) bool {
 	return true
 }
 
-// setDepth resets the operand stack model to l canonical scalar slot entries
-// and frees all registers.
-func (f *fn) setDepth(l int) {
-	types := f.tmpTypes[:0]
-	for i := 0; i < l; i++ {
-		types = append(types, mtI64)
-	}
-	f.tmpTypes = types
-	f.setDepthTypes(types)
-}
-
 func (f *fn) setDepthTypes(types []machineType) {
 	f.s.head.prev, f.s.head.next = f.s.head, f.s.head
 	slot := 0

@@ -24,6 +24,7 @@ type memoryState struct {
 	mu        sync.Mutex
 	owner     *Instance // non-nil for an instance-owned exported memory
 	importers int32
+	hasMax    bool // whether the JobMemory reservation is the declared Wasm maximum
 	shared    bool // true when multiple compatible instances may import this memory
 	closed    bool
 }
@@ -74,7 +75,9 @@ func newMemory(minPages, maxPages uint32, shared bool) (*Memory, error) {
 		return nil, err
 	}
 	m := &Memory{jm: jm}
-	m.state.Store(&memoryState{shared: shared})
+	// The host API defines maxPages == 0 as fixed memory, so every host-created
+	// memory has a declared maximum equal to the JobMemory reservation.
+	m.state.Store(&memoryState{hasMax: true, shared: shared})
 	return m, nil
 }
 
@@ -189,9 +192,41 @@ func (m *Memory) share(owner *Instance) error {
 			return fmt.Errorf("memory already has a different producer owner")
 		}
 		s.owner = owner
+		if owner.c != nil {
+			s.hasMax = owner.c.MemHasMax
+		}
 	}
 	s.shared = true
 	return nil
+}
+
+func formatMemoryMaximum(maxPages uint32, hasMax bool) string {
+	if !hasMax {
+		return "unbounded"
+	}
+	return fmt.Sprintf("%d", maxPages)
+}
+
+func (m *Memory) importLimits() (minPages, maxPages uint32, hasMax bool, ok bool) {
+	if m == nil {
+		return 0, 0, false, false
+	}
+	s := m.state.Load()
+	if s == nil {
+		return 0, 0, false, false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed || m.jm == nil {
+		return 0, 0, false, false
+	}
+	const pageBytes = 1 << 16
+	currentPages := uint32(len(m.jm.HostBytes()) / pageBytes)
+	maxPages = 0
+	if s.hasMax {
+		maxPages = uint32(len(m.jm.LinearMemory()) / pageBytes)
+	}
+	return currentPages, maxPages, s.hasMax, true
 }
 
 func (m *Memory) importShape() (guarded, shared bool) {

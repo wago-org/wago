@@ -29,7 +29,8 @@ The file ledger below is not used as a substitute for subtest accounting:
 
 - `internal/integration_test/engine/adhoc_test.go` registers 39 engine cases.
   Twenty-seven observable runtime/compiler contracts are ported or matched by
-  named Wago suites: all huge-stack and many-value variants, huge relocation,
+  named Wago suites: all huge-stack and many-value variants, the 40,000-function
+  relocation layout plus arm64 BL boundary checks,
   imported mutable globals, overflow/extension/unreachable, recursive and
   indirect host entry, host memory, numeric host slots, close interruption and
   close-in-flight, repeated instantiation isolation, memory operations and
@@ -40,10 +41,21 @@ The file ledger below is not used as a substitute for subtest accounting:
   does not expose; they are not counted as Wasm semantic coverage.
 - Core v2 accounting is exact at 147 WAST files (90 top-level core files and 57
   SIMD files), with the pinned tree digest checked independently by decode and
-  execution wrappers. This supersedes the historical 46-file selector boundary.
+  execution wrappers. Validation pins 1,600 modules, 2,880 binary assertions,
+  and 1,077 malformed-text commands. Execution now accounts for all 48,331
+  runtime assertions, including the 83 `assert_unlinkable` commands previously
+  ignored. Those checks exposed 12 failures around memory-export names, memory
+  import limits, and a resulting table-initialization side effect; exact export
+  metadata plus link-time limit validation now make the expanded corpus green.
+  This supersedes the historical 46-file selector boundary and prevents the old
+  48,248-assertion subset from being reported as the full corpus.
 - Extended-constant accounting is exact at 63 generated artifacts. Proposal
   fail-closed accounting is exact at 782 generated exception-handling,
-  tail-call, threads, and typed-function-reference artifacts.
+  tail-call, threads, and typed-function-reference artifacts. The 42 supported
+  negative-instantiation binaries are counted separately from ordinary modules
+  instead of accepting arbitrary empty-import failures; all 12 self-contained
+  element-segment negatives run with the required `spectest.table` binding and
+  assert the intended out-of-bounds failure.
 - Fuzz and engine binary manifests are exact at 71 and 23 fixtures,
   respectively; manifest drift fails tests instead of silently changing scope.
 
@@ -188,7 +200,7 @@ with one packed atomic state also kept `unsafe.Sizeof(Instance{})` unchanged at
 | `internal/integration_test/bench/hostfunc_bench_test.go` | benchmark/example only | documentation or performance harness, not a correctness regression suite |
 | `internal/integration_test/bench/interface_bench_test.go` | benchmark/example only | documentation or performance harness, not a correctness regression suite |
 | `internal/integration_test/bench/memory_bench_test.go` | benchmark/example only | documentation or performance harness, not a correctness regression suite |
-| `internal/integration_test/engine/adhoc_test.go` | ported / already covered | concrete ports cover huge/many-value stacks, 40,000-function relocation layout, overflow, zero-extension, host memory, recursive entry and memory growth, reftype imports, memory growth/bounds, nested host panics, infinite-loop interruption, prepared/callback/importing/imported close-in-flight, and huge-call-stack unwind; listener/DWARF-only surfaces remain non-applicable |
+| `internal/integration_test/engine/adhoc_test.go` | ported / already covered | concrete ports cover huge/many-value stacks, the bounded-memory 40,000-function relocation layout plus direct arm64 BL boundary tests, overflow, zero-extension, host memory, recursive entry and memory growth, reftype imports, memory growth/bounds, nested host panics, infinite-loop interruption, prepared/callback/importing/imported close-in-flight, and huge-call-stack unwind; listener/DWARF-only surfaces remain non-applicable |
 | `internal/integration_test/engine/dwarf_test.go` | not applicable | Wago does not expose wazero's DWARF source-line stack-trace formatting surface |
 | `internal/integration_test/engine/eh_hammer_test.go` | unsupported, fail-closed tested | all pinned exception-handling generated binaries are accounted for and valid proposal modules reject explicitly as unsupported |
 | `internal/integration_test/engine/exceptions_test.go` | unsupported, fail-closed tested | all pinned exception-handling generated binaries plus 11 engine regressions reject explicitly as unsupported |

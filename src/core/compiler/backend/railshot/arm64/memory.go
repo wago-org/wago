@@ -176,7 +176,19 @@ func (f *fn) memAddr(off uint32, size int, aliasPinned bool) (ea Reg, eaOwned bo
 			borrow = e.st.idx
 		}
 	} else {
-		ea, eaOwned = f.materialize(e), true // ea = addr (u32, zero-extended)
+		ea, eaOwned = f.materialize(e), true
+	}
+	// Wasm memory addresses are unsigned i32 values. Operations such as
+	// i8x16.extract_lane_s may leave a sign-extended X-register value, so using
+	// it directly in 64-bit effective-address arithmetic can wrap 0xffffffff+1
+	// to zero instead of trapping at 2^32. Preserve borrowed pinned locals by
+	// zero-extending into a private address register.
+	if !eaOwned {
+		zeroExtended := f.allocReg(maskOf(ea))
+		f.a.MovReg32(zeroExtended, ea)
+		ea, eaOwned, borrow = zeroExtended, true, -1
+	} else {
+		f.a.MovReg32(ea, ea)
 	}
 	if int64(off)+int64(size) <= 0x7FFFFFFF {
 		disp = int32(off)

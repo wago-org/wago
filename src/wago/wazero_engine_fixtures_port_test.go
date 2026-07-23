@@ -159,7 +159,10 @@ func TestWazeroPortEngineBehaviorFixtures(t *testing.T) {
 			t.Fatalf("store_int = %v, %v; want [0]", got, err)
 		}
 		want := []byte{0, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0}
-		if len(observed) < len(want) || string(observed[:len(want)]) != string(want) {
+		if len(observed) < len(want) {
+			t.Fatalf("host-observed memory length = %d, want at least %d", len(observed), len(want))
+		}
+		if string(observed[:len(want)]) != string(want) {
 			t.Fatalf("host-observed memory = %x, want %x", observed[:len(want)], want)
 		}
 	})

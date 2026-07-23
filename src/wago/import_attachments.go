@@ -350,9 +350,22 @@ func retainProducerRootsInImportedTables(in *Instance) bool {
 	for tableIndex := 0; tableIndex < in.c.tableImportCount(); tableIndex++ {
 		def, _ := in.c.tableImportAt(tableIndex)
 		table, ok := in.imports.table(def.Key)
-		if ok && table.retainProducerInstance(in) {
+		if !ok || table == nil {
+			continue
+		}
+		if table.retainProducerInstance(in) {
 			in.transferImportedTableAttachment(table)
 			retained = true
+		}
+		// An active global.get element can copy a descriptor owned by an
+		// imported funcref global's producer directly into this table. Such a
+		// descriptor need not appear in the writer's own funcRefDescs, so retain
+		// the global's actual producer roots before detachImportedGlobals can
+		// release them.
+		for globalIndex := 0; globalIndex < len(in.c.GlobalImports) && globalIndex < len(in.globalCells); globalIndex++ {
+			for _, producer := range in.globalCells[globalIndex].funcrefProducerRoots() {
+				table.retainProducerInstance(producer)
+			}
 		}
 	}
 	return retained

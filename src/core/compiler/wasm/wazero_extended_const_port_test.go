@@ -45,12 +45,15 @@ func TestWazeroPortExtendedConstValidation(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				m, err := DecodeModule(data)
-				if err == nil {
-					err = ValidateModule(m)
+				m, decodeErr := DecodeModule(data)
+				var validateErr error
+				if decodeErr == nil {
+					validateErr = ValidateModule(m)
 				}
-				if err == nil {
+				if decodeErr == nil && validateErr == nil {
 					t.Errorf("%s:%d invalid module accepted: %s", base, cmd.Line, cmd.Text)
+				} else if isUnsupportedValidation(validateErr) {
+					t.Errorf("%s:%d extended-const invalid module reached unsupported validation: %v", base, cmd.Line, validateErr)
 				}
 			case "assert_malformed":
 				if cmd.ModuleType != "binary" {
@@ -68,6 +71,8 @@ func TestWazeroPortExtendedConstValidation(t *testing.T) {
 				if _, err := DecodeModule(data); err == nil {
 					t.Errorf("%s:%d malformed binary accepted: %s", base, cmd.Line, cmd.Text)
 				}
+			default:
+				t.Errorf("%s:%d unhandled fixture command %q with file %s", base, cmd.Line, cmd.Type, cmd.Filename)
 			}
 		}
 	}

@@ -20,7 +20,11 @@ func TestWazeroPortConcurrentCompileInstantiateExecute(t *testing.T) {
 		workers, iterations = 4, 10
 	}
 	rt := NewRuntime()
-	defer rt.Close()
+	t.Cleanup(func() {
+		if err := rt.Close(); err != nil {
+			t.Errorf("close runtime: %v", err)
+		}
+	})
 
 	start := make(chan struct{})
 	errCh := make(chan error, workers)
@@ -52,17 +56,23 @@ func TestWazeroPortConcurrentCompileInstantiateExecute(t *testing.T) {
 				}
 				in, err := rt.Instantiate(context.Background(), compiled)
 				if err != nil {
+					_ = compiled.Close()
 					errCh <- fmt.Errorf("worker %d iteration %d instantiate: %w", p, n, err)
 					return
 				}
 				got, callErr := in.Invoke("f")
-				closeErr := in.Close()
+				instanceCloseErr := in.Close()
+				compiledCloseErr := compiled.Close()
 				if callErr != nil || len(got) != 1 || AsI32(got[0]) != int32(want) {
 					errCh <- fmt.Errorf("worker %d iteration %d f() = %v, %v; want %d", p, n, got, callErr, want)
 					return
 				}
-				if closeErr != nil {
-					errCh <- fmt.Errorf("worker %d iteration %d close: %w", p, n, closeErr)
+				if instanceCloseErr != nil {
+					errCh <- fmt.Errorf("worker %d iteration %d close instance: %w", p, n, instanceCloseErr)
+					return
+				}
+				if compiledCloseErr != nil {
+					errCh <- fmt.Errorf("worker %d iteration %d close compiled module: %w", p, n, compiledCloseErr)
 					return
 				}
 			}

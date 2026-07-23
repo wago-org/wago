@@ -360,8 +360,8 @@ to cross public funcref boundaries as a stable opaque token while retaining the
 callable thunk/context. `Runtime.NewFuncRefGlobal` creates a host-owned null or
 same-store token-initialized funcref cell from that exact proof. Raw `HostFunc`
 imports remain callable but their descriptors cannot egress. The official Release
-2 execution corpus passes 1,600 modules and 48,248 assertions with zero feature
-gaps. `.wago` codec v23 round-trips structural reference globals, indexed typed
+2 execution corpus passes 1,600 modules and 48,331 assertions, including all 83
+unlinkable assertions, with zero feature gaps. `.wago` codec v23 round-trips structural reference globals, indexed typed
 tables/exports/elements, exact declared table-limit forms, and required-feature
 bits while rejecting live tokens, owners, descriptors, dispatch state, thunk
 addresses, and store identity. Fresh instantiation reinstates local reference state;
@@ -525,7 +525,7 @@ for the listed subset. [FEATURES.md](FEATURES.md) is the source of truth.
 | Non-trapping float-to-int | `trunc_sat` done. |
 | Bulk memory | Linear memory plus funcref and externref tables are complete for copy/fill/init/drop, passive data/elements, overlap, bounds, and already-dropped active/declarative segment state. |
 | Multi-value | Done semantically for functions, blocks, branches, calls, public invocation, and compiled metadata; a wider optimized result ABI remains a performance task. |
-| Reference types | Done for WebAssembly 2.0: nullable/non-null `funcref`, `externref`, structural `ref.func`, typed `select`, signatures, locals/control flow, local/imported/shared globals, reflection-free host calls, explicit host funcref ownership, typed 8-byte externref tables/elements, multiple local/imported tables, indexed operations and `call_indirect`, duplicate aliases, and exact exports/re-exports execute. Codec v23 persists safe structural metadata, dynamic-import shape, and exact required features/limits. Snapshot isolation, deterministic all-table/reference inspection, and cross-link teardown are audited. The Release 2 execution corpus is zero-skip at 1,600 modules / 48,248 assertions. |
+| Reference types | Done for WebAssembly 2.0: nullable/non-null `funcref`, `externref`, structural `ref.func`, typed `select`, signatures, locals/control flow, local/imported/shared globals, reflection-free host calls, explicit host funcref ownership, typed 8-byte externref tables/elements, multiple local/imported tables, indexed operations and `call_indirect`, duplicate aliases, and exact exports/re-exports execute. Codec v23 persists safe structural metadata, dynamic-import shape, and exact required features/limits. Snapshot isolation, deterministic all-table/reference inspection, and cross-link teardown are audited. The Release 2 execution corpus is zero-skip at 1,600 modules / 48,331 assertions, including all 83 unlinkable assertions. |
 | SIMD | Done for the documented linux/amd64 baseline: SSSE3/SSE4.1 plus AVX/VEX.128. Core SIMD and deterministic relaxed SIMD opcodes through `0xfd 275` are decoded, validated, and lowered. |
 | Threads and atomics | Planned. |
 | Tail calls | Planned. |

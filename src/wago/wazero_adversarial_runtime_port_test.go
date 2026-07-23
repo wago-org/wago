@@ -16,6 +16,9 @@ import (
 )
 
 func TestWazeroPortCallArityAndPreparedStack(t *testing.T) {
+	if !requireExternalWAT(t) {
+		return
+	}
 	in := mustInstantiateWazeroAdversarial(t, watToWasmCA(t, `(module
   (func (export "add") (param i32 i32) (result i32)
     local.get 0
@@ -41,6 +44,9 @@ func TestWazeroPortCallArityAndPreparedStack(t *testing.T) {
 }
 
 func TestWazeroPortImportedMutableGlobalUpdate(t *testing.T) {
+	if !requireExternalWAT(t) {
+		return
+	}
 	rt := NewRuntime()
 	defer rt.Close()
 	providerCode, err := rt.Compile(watToWasmCA(t, `(module
@@ -89,6 +95,9 @@ func TestWazeroPortImportedMutableGlobalUpdate(t *testing.T) {
 }
 
 func TestWazeroPortCallImportedHostFunctionIndirectly(t *testing.T) {
+	if !requireExternalWAT(t) {
+		return
+	}
 	calls := 0
 	in := mustInstantiateWazeroAdversarial(t, watToWasmCA(t, `(module
   (type $host-type (func (param i32) (result i32)))
@@ -295,6 +304,9 @@ func TestWazeroPortNestedHostPanicDoesNotCorruptRuntime(t *testing.T) {
 }
 
 func TestWazeroPortCloseTableOwnerOrWriterKeepsEntriesCallable(t *testing.T) {
+	if !requireExternalWAT(t) {
+		return
+	}
 	const tableOwnerWAT = `(module
   (type $entry (func (result i32)))
   (type $caller (func (param i32) (result i32)))
@@ -390,6 +402,9 @@ func TestWazeroPortCloseTableOwnerOrWriterKeepsEntriesCallable(t *testing.T) {
 }
 
 func TestWazeroPortCloseInterruptsInfiniteInvocation(t *testing.T) {
+	if !requireExternalWAT(t) {
+		return
+	}
 	entered := make(chan struct{})
 	in := mustInstantiateWazeroAdversarial(t, watToWasmCA(t, `(module
   (import "env" "entered" (func $entered))
@@ -608,7 +623,11 @@ func TestWazeroPortCloseImportedOrImportingModuleWhileCallInFlight(t *testing.T)
 	}
 }
 
-func TestWazeroPortHugeBinaryRelocations(t *testing.T) {
+// This is the bounded-memory half of wazero's huge-binary regression: it keeps
+// the 40,000-function index/relocation layout while using small bodies. The
+// arm64 backend's separate TestPatchCallRelocsRangeChecks pins BL displacement
+// boundaries without allocating the upstream test's hundreds-of-megabytes image.
+func TestWazeroPortManyFunctionRelocationLayout(t *testing.T) {
 	const functionCount = 40000
 	const additions = 8
 	addBody := make([]byte, 0, additions*7+3)
@@ -699,6 +718,9 @@ func TestWazeroPortRepeatedRuntimeCompileInstantiateDoesNotRetainHeap(t *testing
 			if err := in.Close(); err != nil {
 				t.Fatal(err)
 			}
+			if err := compiled.Close(); err != nil {
+				t.Fatal(err)
+			}
 			for _, owner := range owners {
 				if err := owner.Close(); err != nil {
 					t.Fatal(err)
@@ -724,7 +746,7 @@ func TestWazeroPortRepeatedRuntimeCompileInstantiateDoesNotRetainHeap(t *testing
 	runtime.GC()
 	var after runtime.MemStats
 	runtime.ReadMemStats(&after)
-	if after.HeapAlloc > before.HeapAlloc+32<<20 {
+	if after.HeapAlloc > before.HeapAlloc+8<<20 {
 		t.Fatalf("retained heap grew from %d to %d bytes", before.HeapAlloc, after.HeapAlloc)
 	}
 }
