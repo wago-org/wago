@@ -214,6 +214,11 @@ func (j *JobMemory) CurrentBytes() []byte {
 	return j.mem[j.linOff : j.linOff+n : j.linOff+n]
 }
 
+// MaxPages returns the declared/runtime memory.grow ceiling retained in the
+// basedata control block. Unlike len(LinearMemory), this is exact in both classic
+// and guard-page layouts, where the Go view may cover only committed pages.
+func (j *JobMemory) MaxPages() uint32 { return j.getU32(offMaxLinMemPages) }
+
 // LinearMemory returns the native-facing view spanning the full reservation, so
 // its base pointer is always valid; native code enforces the current logical
 // size via the bounds-check size cache, not this slice's length.

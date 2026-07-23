@@ -69,7 +69,7 @@ func TestWazeroPortExtendedConstCodecExecution(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			compiled, err := wago.Compile(nil, data)
+			compiled, err := wago.Compile(wago.NewRuntimeConfig().WithBoundsChecks(wago.BoundsChecksExplicit), data)
 			if err != nil {
 				t.Fatal(err)
 			}

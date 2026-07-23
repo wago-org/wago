@@ -88,7 +88,7 @@ func TestImportedMemoryLinkingValidatesExportNameAndCodecLimits(t *testing.T) {
 
 	memoryImport := append(wasmtest.Name("env"), wasmtest.Name("mem")...)
 	memoryImport = append(memoryImport, 0x02, 0x01, 0x02, 0x03) // memory min=2 max=3
-	consumerCompiled, err := Compile(nil, wasmtest.Module(wasmtest.Section(2, wasmtest.Vec(memoryImport))))
+	consumerCompiled, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit), wasmtest.Module(wasmtest.Section(2, wasmtest.Vec(memoryImport))))
 	if err != nil {
 		t.Fatal(err)
 	}

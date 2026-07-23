@@ -605,7 +605,7 @@ func testWazeroFuzz888(t *testing.T) {
 
 func testWazeroExtendedConstElementFixture(t *testing.T, id string) {
 	t.Helper()
-	rt := NewRuntime()
+	rt := NewRuntime(WithRuntimeConfig(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit)))
 	defer rt.Close()
 	mod, err := rt.Compile(readWazeroFuzzFixture(t, id))
 	if err != nil {

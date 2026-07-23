@@ -224,7 +224,7 @@ func (m *Memory) importLimits() (minPages, maxPages uint32, hasMax bool, ok bool
 	currentPages := uint32(len(m.jm.HostBytes()) / pageBytes)
 	maxPages = 0
 	if s.hasMax {
-		maxPages = uint32(len(m.jm.LinearMemory()) / pageBytes)
+		maxPages = m.jm.MaxPages()
 	}
 	return currentPages, maxPages, s.hasMax, true
 }
