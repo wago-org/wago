@@ -13,7 +13,7 @@ on amd64 and arm64. Linux and Darwin/arm64 additionally support signal-backed
 guard-page bounds checks; all six targets support explicit bounds checks and
 cooperative cancellation safepoints.
 
-<!-- artifact:codec-version 23 -->
+<!-- artifact:codec-version 27 -->
 
 **CPU baseline: modern x86-64 with SSSE3/SSE4.1 plus AVX/VEX.128 XMM encodings.** The backend emits
 some instructions beyond original x86-64 without a CPUID gate or fallback:
@@ -215,7 +215,7 @@ re-decoding:
 (`MarshalBinary`/`UnmarshalBinary`, magic `WAGO` + version byte). `Load` accepts
 either a precompiled blob (fast reload, no recompile) or raw wasm (compiled on
 load); `IsCompiled` distinguishes them. `validate()` hardens every blob against
-malformed metadata before any memory is mapped. Codec v23 persists the
+malformed metadata before any memory is mapped. Codec v21 persists the
 binding-independent imported-call shape, so modules with function imports can be
 serialized before host or instance targets are known; live addresses and store
 identity are installed only during instantiation.
@@ -285,14 +285,6 @@ enters native code through `enterNative` (`trampoline_amd64.s`), which:
 Running on a separate stack keeps native wasm code off the goroutine stack,
 which Go may grow/move (`morestack`) — that would be catastrophic mid-execution.
 After the call returns, a non-zero trap slot becomes a Go `*TrapError`.
-
-Every public, prepared, and managed native entry acquires an invocation lease.
-`Instance.Close` first marks the instance logically closed, publishes
-`TrapInterrupted` to an active caller, and prevents new entries. Executable
-mappings, engine stacks, arenas, and owned memory are released only after both
-invocation leases and retained reference/import roots reach zero. This ordering
-allows a host-parked activation to unwind without a use-after-unmap while still
-making close interruption bounded at generated safepoints.
 
 ---
 
@@ -367,12 +359,9 @@ same context slot.
 
 Linear memory is the mmap-backed tail of JobMemory, exposed zero-copy via
 `Instance.Memory().Bytes()` — writes are visible in both directions without
-copying. Because a raw `[]byte` cannot own or release the mmap lifetime,
-`Memory.Bytes`, access through a returned slice, and `Instance.Close`/`Memory.Close`
-must be externally synchronized; the view is invalid once its owner closes.
-Explicit mode checks the current size cached in basedata; supported platforms
-can instead use guard-page reservations. `memory.grow` raises the logical size
-within a stable pre-reserved mapping, preserving the native base.
+copying. Explicit mode checks the current size cached in basedata; supported
+platforms can instead use guard-page reservations. `memory.grow` raises the
+logical size within a stable pre-reserved mapping, preserving the native base.
 Active and passive data operations retain strict bounds and dropped-state checks.
 
 ---
