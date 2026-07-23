@@ -509,8 +509,8 @@ func elementPayloads(m *wasm.Module, e *wasm.Elem) (ValType, []RefInit, error) {
 				if !ok {
 					return 0, nil, fmt.Errorf("expression %d global index %d out of range", i, payload.GlobalIndex)
 				}
-				if gt.Mutable {
-					return 0, nil, fmt.Errorf("expression %d global %d is mutable", i, payload.GlobalIndex)
+				if int(payload.GlobalIndex) >= m.ImportedGlobalCount() || gt.Mutable {
+					return 0, nil, fmt.Errorf("expression %d global %d is not an immutable import", i, payload.GlobalIndex)
 				}
 				if valTypeFromWasm(gt.Type) != refType {
 					return 0, nil, fmt.Errorf("expression %d global type does not match segment type %s", i, refType)
@@ -1152,12 +1152,8 @@ func (c *Compiled) validate() error {
 				continue
 			}
 			if value.HasGlobal {
-				if int(value.GlobalIndex) >= len(c.Globals) {
-					return fmt.Errorf("compiled metadata invalid: %s element %d global %d index %d out of range", kind, seg, k, value.GlobalIndex)
-				}
-				source := c.Globals[value.GlobalIndex]
-				if source.Mutable || normalizedElemRefType(source.Type) != refType {
-					return fmt.Errorf("compiled metadata invalid: %s element %d global %d has incompatible type/mutability", kind, seg, value.GlobalIndex)
+				if err := c.validateElementGlobalInitializer(kind, seg, k, refType, value.GlobalIndex); err != nil {
+					return err
 				}
 				continue
 			}
@@ -1309,7 +1305,13 @@ func (c *Compiled) validateCodecV23Metadata() error {
 			}
 			refType := normalizedElemRefType(elem.RefType)
 			for j, value := range elem.Values {
-				if !value.Null && !value.HasGlobal && refType != ValFuncRef {
+				if value.HasGlobal {
+					if err := c.validateElementGlobalInitializer(kind, i, j, refType, value.GlobalIndex); err != nil {
+						return err
+					}
+					continue
+				}
+				if !value.Null && refType != ValFuncRef {
 					return fmt.Errorf("compiled metadata invalid: %s element %d value %d is non-null %s", kind, i, j, refType)
 				}
 			}
@@ -1331,6 +1333,20 @@ func (c *Compiled) validateCodecV23Metadata() error {
 				return fmt.Errorf("compiled metadata invalid: data %d extended offset: %w", i, err)
 			}
 		}
+	}
+	return nil
+}
+
+func (c *Compiled) validateElementGlobalInitializer(kind string, seg, valueIndex int, refType ValType, globalIndex uint32) error {
+	if uint64(globalIndex) >= uint64(len(c.Globals)) {
+		return fmt.Errorf("compiled metadata invalid: %s element %d global %d index %d out of range", kind, seg, valueIndex, globalIndex)
+	}
+	source := c.Globals[globalIndex]
+	if uint64(globalIndex) >= uint64(len(c.GlobalImports)) || source.Mutable {
+		return fmt.Errorf("compiled metadata invalid: %s element %d global %d must reference an immutable imported global", kind, seg, globalIndex)
+	}
+	if normalizedElemRefType(source.Type) != refType {
+		return fmt.Errorf("compiled metadata invalid: %s element %d global %d type %s does not match %s", kind, seg, globalIndex, source.Type, refType)
 	}
 	return nil
 }

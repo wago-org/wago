@@ -330,6 +330,12 @@ func TestCompiledValidateRejectsMalformedMetadata(t *testing.T) {
 		{name: "global init ref out of range", mut: func(c *Compiled) {
 			c.Globals = append(c.Globals, GlobalDef{Type: ValI32, HasInitGlobal: true, InitGlobal: 3})
 		}, want: "global 1 initializer references unavailable global 3"},
+		{name: "element global init ref not imported", mut: func(c *Compiled) {
+			c.HasTable = true
+			c.TableSize = 1
+			c.Globals = []GlobalDef{{Type: ValFuncRef}}
+			c.Elems = []ElemInit{{RefType: ValFuncRef, Mode: ElemModeActive, Values: []RefInit{{HasGlobal: true, GlobalIndex: 0}}}}
+		}, want: "must reference an immutable imported global"},
 		{name: "data offset ref not imported", mut: func(c *Compiled) { c.Data = []DataInit{{Offset: OffsetInit{HasGlobal: true, Global: 0}}} }, want: "data 0 offset global 0 must be imported immutable i32"},
 		{name: "arena footprint too large", mut: func(c *Compiled) { c.HasTable = true; c.TableSize = wruntime.InstantiateArenaSize }, want: "instantiate arena need"},
 		{name: "passive element footprint too large", mut: func(c *Compiled) {
@@ -347,6 +353,17 @@ func TestCompiledValidateRejectsMalformedMetadata(t *testing.T) {
 			}
 		})
 	}
+	t.Run("element imported immutable global allowed", func(t *testing.T) {
+		c := base()
+		c.HasTable = true
+		c.TableSize = 1
+		c.GlobalImports = []GlobalImportDef{{Module: "env", Name: "ref", Type: ValFuncRef}}
+		c.Globals = []GlobalDef{{Type: ValFuncRef}}
+		c.Elems = []ElemInit{{RefType: ValFuncRef, Mode: ElemModeActive, Values: []RefInit{{HasGlobal: true, GlobalIndex: 0}}}}
+		if err := c.validate(); err != nil {
+			t.Fatalf("validate imported global element initializer: %v", err)
+		}
+	})
 	t.Run("passive explicit null allowed", func(t *testing.T) {
 		c := base()
 		c.HasTable = true

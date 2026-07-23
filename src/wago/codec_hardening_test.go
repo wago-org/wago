@@ -166,12 +166,30 @@ func TestCompiledCodecRejectsMalformedExtendedConstMetadata(t *testing.T) {
 		{name: "global unavailable import", c: &Compiled{Globals: []GlobalDef{{Type: ValI32, InitExpr: []byte{0x23, 0x00, 0x41, 0x01, 0x6a, 0x0b}}}}, want: "not an imported global"},
 		{name: "data malformed", c: &Compiled{Data: []DataInit{{Offset: OffsetInit{Expr: []byte{0x41, 0x01}}}}}, want: "missing end"},
 		{name: "element multiple forms", c: &Compiled{Elems: []ElemInit{{RefType: ValFuncRef, Mode: ElemModeActive, Offset: OffsetInit{HasGlobal: true, Expr: []byte{0x41, 0x00, 0x0b}}}}}, want: "multiple offset initializer forms"},
+		{name: "element local global initializer", c: &Compiled{Globals: []GlobalDef{{Type: ValFuncRef}}, Elems: []ElemInit{{RefType: ValFuncRef, Mode: ElemModeActive, Values: []RefInit{{HasGlobal: true, GlobalIndex: 0}}}}}, want: "must reference an immutable imported global"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if _, err := tc.c.MarshalBinary(); err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("MarshalBinary error = %v, want substring %q", err, tc.want)
 			}
 		})
+	}
+}
+
+func TestCompiledCodecLoadRejectsElementLocalGlobalInitializer(t *testing.T) {
+	forged := &Compiled{
+		HasTable:  true,
+		TableSize: 1,
+		Globals:   []GlobalDef{{Type: ValFuncRef}},
+		Elems:     []ElemInit{{RefType: ValFuncRef, Mode: ElemModeActive, Values: []RefInit{{HasGlobal: true, GlobalIndex: 0}}}},
+	}
+	blob, err := marshalCompiled(forged)
+	if err != nil {
+		t.Fatalf("marshal forged element initializer: %v", err)
+	}
+	var got Compiled
+	if err := got.UnmarshalBinary(blob); err == nil || !strings.Contains(err.Error(), "must reference an immutable imported global") {
+		t.Fatalf("UnmarshalBinary error = %v, want local-global initializer rejection", err)
 	}
 }
 
