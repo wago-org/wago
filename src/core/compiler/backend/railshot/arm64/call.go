@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 
+	railcore "github.com/wago-org/wago/src/core/compiler/backend/railshot"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	a64 "github.com/wago-org/wago/src/core/encoder/arm64"
 	"github.com/wago-org/wago/src/core/runtime"
@@ -117,6 +118,11 @@ func (f *fn) callOp(r *wasm.Reader) error {
 		return fmt.Errorf("call: unknown function %d", idx)
 	}
 	imported := f.m.ImportedFuncCount()
+	if int(idx) < imported && f.customInstructions != nil {
+		if custom, ok := f.customInstructions[idx]; ok && custom.ARM64 != nil {
+			return f.emitCustomInstruction(custom, ft)
+		}
+	}
 	// Auto-inlining (WAGO_INLINE): splice a straight-line leaf callee's body here
 	// instead of emitting a call. The frame reserved the callee's locals past
 	// f.nLocals in this caller; the splice binds params, zeroes declared locals, and
@@ -163,6 +169,10 @@ func (f *fn) callOp(r *wasm.Reader) error {
 		}
 	}
 	return f.callInternal(int(idx)-imported, ft, hint)
+}
+
+func (f *fn) emitCustomInstruction(custom railcore.CustomInstruction, ft *wasm.CompType) error {
+	return f.emitPluginARM64(custom.ARM64, custom.InputWidths, custom.ResultWidth, len(ft.Results))
 }
 
 // inCallSiteLoop reports whether the current call site is nested in a Wasm loop.

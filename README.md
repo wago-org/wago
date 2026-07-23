@@ -115,6 +115,7 @@ The high-level project docs live in this repo:
 - [ARCHITECTURE.md](ARCHITECTURE.md) — pipeline, runtime, ABI, and design notes.
 - [OPTIMIZATIONS.md](OPTIMIZATIONS.md) — current and planned codegen work.
 - [docs/plugin-api-v2.md](docs/plugin-api-v2.md) — capability-based plugin architecture.
+- [docs/compiler-instruction-plugin-design.md](docs/compiler-instruction-plugin-design.md) — language-neutral custom instructions and native lowering.
 - [docs/wago-json.md](docs/wago-json.md) — manifest and schema reference.
 - [docs/function-workers.md](docs/function-workers.md) — parallel validation/codegen policy and tradeoffs.
 - [examples/README.md](examples/README.md) — runnable Go API examples.

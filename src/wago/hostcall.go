@@ -623,6 +623,10 @@ func (in *Instance) callNativeSync(entry uintptr) (err error) {
 				err = invalid.err
 				return
 			}
+			if instruction, ok := r.(instructionTrap); ok {
+				err = instruction.err
+				return
+			}
 			panic(r)
 		}
 	}()

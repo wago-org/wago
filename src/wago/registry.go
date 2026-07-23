@@ -8,18 +8,20 @@ import (
 // the capabilities, host imports, and hooks the extension contributes; the
 // runtime reads the recorded state after Register returns and wires it in.
 type Registry struct {
-	info     ExtensionInfo
-	caps     []capabilitySpec
-	imports  []*registeredImport
-	hooks    *HookRegistry
-	managers []*InstanceManager
-	activate []func(*Runtime)
-	provides []serviceProvision
-	requires []serviceBinder
-	grants   map[PluginCapability]struct{}
-	budgets  map[PluginCapability]CapabilityBudget
-	used     map[PluginCapability]struct{}
-	config   json.RawMessage
+	info         ExtensionInfo
+	caps         []capabilitySpec
+	imports      []*registeredImport
+	hooks        *HookRegistry
+	managers     []*InstanceManager
+	activate     []func(*Runtime)
+	provides     []serviceProvision
+	requires     []serviceBinder
+	grants       map[PluginCapability]struct{}
+	budgets      map[PluginCapability]CapabilityBudget
+	used         map[PluginCapability]struct{}
+	config       json.RawMessage
+	compiler     *CompilerRegistry
+	instructions []*registeredInstruction
 }
 
 // ManagedInstances requests a plugin-scoped runtime instance owner. Manifest
@@ -133,6 +135,14 @@ func (r *Registry) ImportModule(name string) *ImportModuleBuilder {
 
 // Hooks returns the hook registry for observing runtime and instance lifecycle.
 func (r *Registry) Hooks() *HookRegistry { return r.hooks }
+
+// Compiler returns the trusted compiler contribution registry.
+func (r *Registry) Compiler() *CompilerRegistry {
+	if r.compiler == nil {
+		r.compiler = &CompilerRegistry{reg: r}
+	}
+	return r.compiler
+}
 
 // ImportModuleBuilder scopes host-import declarations to one wasm module name.
 type ImportModuleBuilder struct {
