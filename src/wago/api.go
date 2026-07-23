@@ -833,6 +833,106 @@ func moduleUsesTypedTableReferences(m *wasm.Module) bool {
 	return false
 }
 
+func directCrossTailRegABI(ft *wasm.CompType) bool {
+	if ft == nil || len(ft.Results) > 2 {
+		return false
+	}
+	if len(ft.Results) == 2 && (!isIntegerWasmType(ft.Results[0]) || !isIntegerWasmType(ft.Results[1])) {
+		return false
+	}
+	gp, fp := 0, 0
+	for _, typ := range ft.Params {
+		switch {
+		case isIntegerWasmType(typ):
+			gp++
+		case wasm.EqualValType(typ, wasm.F32), wasm.EqualValType(typ, wasm.F64):
+			fp++
+		default:
+			return false
+		}
+	}
+	if gp > 7 || fp > 8 {
+		return false
+	}
+	for _, typ := range ft.Results {
+		if !isIntegerWasmType(typ) && !wasm.EqualValType(typ, wasm.F32) && !wasm.EqualValType(typ, wasm.F64) {
+			return false
+		}
+	}
+	return true
+}
+
+func isIntegerWasmType(typ wasm.ValType) bool {
+	return wasm.EqualValType(typ, wasm.I32) || wasm.EqualValType(typ, wasm.I64)
+}
+
+func directCrossTailTargetABI(ft *wasm.CompType) bool {
+	integerOnly := true
+	for _, typ := range ft.Params {
+		integerOnly = integerOnly && isIntegerWasmType(typ)
+	}
+	for _, typ := range ft.Results {
+		integerOnly = integerOnly && isIntegerWasmType(typ)
+	}
+	if integerOnly {
+		return true
+	}
+	if len(ft.Params) == 2 && wasm.EqualValType(ft.Params[0], wasm.I32) && wasm.EqualValType(ft.Params[1], wasm.F64) &&
+		len(ft.Results) == 1 && wasm.EqualValType(ft.Results[0], wasm.F64) {
+		return true
+	}
+	return len(ft.Params) == 1 && wasm.EqualValType(ft.Params[0], wasm.F64) &&
+		len(ft.Results) == 1 && wasm.EqualValType(ft.Results[0], wasm.I32)
+}
+
+func unsafeDirectTailImportBitset(m *wasm.Module) ([]uint64, error) {
+	imported := m.ImportedFuncCount()
+	if imported == 0 {
+		return nil, nil
+	}
+	var bits []uint64
+	for localIdx := range m.Code {
+		caller, ok := m.FuncSignature(uint32(imported + localIdx))
+		if !ok {
+			return nil, fmt.Errorf("function %d signature is unavailable", localIdx)
+		}
+		body := m.Code[localIdx].BodyBytes
+		if len(body) == 0 {
+			encoded, err := wasm.EncodeExpr(m.Code[localIdx].Body)
+			if err != nil {
+				return nil, fmt.Errorf("function %d body: %w", localIdx, err)
+			}
+			body = encoded
+		}
+		r := wasm.NewReader(body)
+		for r.HasNext() {
+			op, err := r.Byte()
+			if err != nil {
+				return nil, fmt.Errorf("function %d tail scan: %w", localIdx, err)
+			}
+			imm, err := wasm.ClassifyInstructionImmediate(r, op)
+			if err != nil {
+				return nil, fmt.Errorf("function %d tail scan: %w", localIdx, err)
+			}
+			if imm.Kind != wasm.InstrReturnCall || int(imm.Index) >= imported {
+				continue
+			}
+			target, ok := m.FuncSignature(imm.Index)
+			if !ok {
+				return nil, fmt.Errorf("function %d return_call target %d signature is unavailable", localIdx, imm.Index)
+			}
+			if directCrossTailRegABI(caller) && directCrossTailRegABI(target) && directCrossTailTargetABI(target) {
+				continue
+			}
+			if bits == nil {
+				bits = make([]uint64, (imported+63)/64)
+			}
+			bits[imm.Index>>6] |= uint64(1) << (imm.Index & 63)
+		}
+	}
+	return bits, nil
+}
+
 func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features frontend.Features) (*Compiled, error) {
 	m, err := wasm.DecodeModule(wasmBytes)
 	if err != nil {
@@ -1075,6 +1175,13 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 	if err := frontend.RejectUnsupportedWithFeaturesAndFacts(m, features, moduleFacts); err != nil {
 		return nil, fmt.Errorf("compile: %w", err)
 	}
+	var unsafeDirectTailImports []uint64
+	if features.TailCalls {
+		unsafeDirectTailImports, err = unsafeDirectTailImportBitset(m)
+		if err != nil {
+			return nil, fmt.Errorf("compile: direct imported tail metadata: %w", err)
+		}
+	}
 	// Architectures that always use the sync-host dispatcher can compile host
 	// defaults up front; others defer returning imports until link time.
 	boundsMode := effectiveCompileBoundsMode(cfg.boundsChecks, m)
@@ -1147,7 +1254,12 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 			if err != nil {
 				return nil, fmt.Errorf("imported function %d results: %w", i, err)
 			}
-			c.importFuncSigs[i] = FuncSig{Params: params, Results: results, TypeIndex: typeIdx.Index, HasTypeIndex: true}
+			unsafeCrossTail := false
+			word := i >> 6
+			if word < len(unsafeDirectTailImports) {
+				unsafeCrossTail = unsafeDirectTailImports[word]&(uint64(1)<<uint(i&63)) != 0
+			}
+			c.importFuncSigs[i] = FuncSig{Params: params, Results: results, TypeIndex: typeIdx.Index, HasTypeIndex: true, unsafeCrossTail: unsafeCrossTail}
 		}
 	}
 	importedTables := m.ImportedTableCount()
@@ -1814,6 +1926,9 @@ func (c *Compiled) validateImportBindings(imports Imports, store *referenceStore
 		}
 		if i >= len(c.importFuncSigs) {
 			return fmt.Errorf("cross-instance import %q is missing its signature", key)
+		}
+		if c.importFuncSigs[i].unsafeCrossTail {
+			return fmt.Errorf("cross-instance import %q requires unsupported cross-instance tail ABI", key)
 		}
 		if gcSubtypeLinkConsumer && ex.inst.c.stagedGCTypeSubtypingProduct() != gcSubtypeLinkProvider {
 			return fmt.Errorf("cross-instance import %q signature mismatch: producer is outside the exact gc/type-subtyping link product", key)

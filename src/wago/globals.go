@@ -486,6 +486,7 @@ type FuncSig struct {
 	Params, Results []ValType
 	TypeIndex       uint32
 	HasTypeIndex    bool
+	unsafeCrossTail bool // imported return_call use exceeds the admitted cross-instance tail ABI
 }
 
 // OffsetInit is active data/element offset metadata. Base is the literal i32

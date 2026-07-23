@@ -236,14 +236,26 @@ func (f *fn) returnCall(r *wasm.Reader) error {
 	}
 	imported := f.m.ImportedFuncCount()
 	if int(idx) < imported {
-		if f.importBindings != nil && int(idx) < len(f.importBindings) && f.importBindings[idx].CrossInstance {
-			if !sigFitsRegABI(f.ft) || !sigFitsRegABI(ft) || !sigFitsDirectCrossTailABI(ft) {
-				return fmt.Errorf("return_call: imported target %d requires unsupported cross-instance tail ABI", idx)
+		if f.importBindings != nil && int(idx) < len(f.importBindings) {
+			binding := f.importBindings[idx]
+			if binding.Dynamic && sigFitsRegABI(f.ft) && sigFitsRegABI(ft) && sigFitsDirectCrossTailABI(ft) {
+				if binding.ImportIndex > uint32((1<<31-1-runtime.ImportDispatchCallerContextOffset)/runtime.ImportDispatchEntryBytes) {
+					return fmt.Errorf("return_call: import dispatch index %d overflows displacement", binding.ImportIndex)
+				}
+				f.stats.call("tail-direct-dispatch")
+				f.emitTailDynamicImportJump(ft, binding)
+				f.unreachable = true
+				return nil
 			}
-			f.stats.call("tail-direct-cross")
-			f.emitTailCrossDirectJump(ft, f.importBindings[idx])
-			f.unreachable = true
-			return nil
+			if binding.CrossInstance {
+				if !sigFitsRegABI(f.ft) || !sigFitsRegABI(ft) || !sigFitsDirectCrossTailABI(ft) {
+					return fmt.Errorf("return_call: imported target %d requires unsupported cross-instance tail ABI", idx)
+				}
+				f.stats.call("tail-direct-cross")
+				f.emitTailCrossDirectJump(ft, binding)
+				f.unreachable = true
+				return nil
+			}
 		}
 		var err error
 		if f.syncHostCalls || len(ft.Results) != 0 {
@@ -299,6 +311,103 @@ func (f *fn) emitTailWrapperJump(ft *wasm.CompType, target int) {
 // four-word return record whose local trampoline restores the caller context and
 // either up to two integer results or one float result. No frame or record
 // accumulates with repeated tails.
+// emitTailDynamicImportJump tail-enters the wrapper selected by this instance's
+// import dispatch entry. The same path handles retained InstanceExports and host
+// thunks: both expose the wrapper ABI, while the target/caller context pointers
+// make same-memory rebinding explicit. A nested register-ABI caller receives one
+// fixed context/result record, so repeated cross-instance tails do not accumulate
+// native frames.
+func (f *fn) emitTailDynamicImportJump(ft *wasm.CompType, b ImportBinding) {
+	p := len(ft.Params)
+	roots := f.rootsBottomToTop()
+	types := make([]machineType, len(roots))
+	for i, root := range roots {
+		types[i] = rootMachineType(root)
+	}
+	f.flush()
+	f.storePinnedGlobals(false)
+	f.storeModuleGlobals(RDX)
+
+	// Stage wrapper arguments before loading the dispatch tuple; the staging loop
+	// uses RAX as scratch while the tuple must survive until the final jump.
+	f.a.Load64(R8, RBX, -offImportDispatchPtr)
+	disp := int32(b.ImportIndex * runtime.ImportDispatchEntryBytes)
+	f.a.Load64(R11, R8, disp+runtime.ImportDispatchHomeLinMemOffset)
+	f.a.MovReg64(RDI, R11)
+	f.a.LeaDisp(RDI, RDI, -int32(abi.TailArgsOffset))
+	argBase := len(types) - p
+	for i := range ft.Params {
+		srcSlot := slotOfLogicalTypes(types, argBase+i)
+		f.a.Load64(RAX, RSP, f.spillOff(srcSlot))
+		f.a.Store64(RDI, int32(i*8), RAX)
+	}
+	f.a.Load64(R9, R8, disp+runtime.ImportDispatchCodePtrOffset)
+	f.a.Load64(R10, R8, disp+runtime.ImportDispatchTargetContextOffset)
+	f.a.Load64(R8, R8, disp+runtime.ImportDispatchCallerContextOffset)
+
+	frameSite := f.a.Len() + 3
+	f.a.AddRsp(0)
+	f.sc.tailFrameSites = append(f.sc.tailFrameSites, frameSite)
+
+	f.a.Load64(RAX, RSP, 0)
+	leaSite := f.a.LeaRipPlaceholder(RDX)
+	f.a.PatchRel32(leaSite, f.adapterReturnOff)
+	f.a.Cmp64(RAX, RDX)
+	nested := f.a.JccPlaceholder(condNE)
+	f.a.Load64(RCX, RSP, 8)
+
+	copyControl := func() {
+		f.a.Load64(RAX, RBX, -offTrapReentry)
+		f.a.Store64(R11, -offTrapReentry, RAX)
+		f.a.Load64(RAX, RBX, -offStackFence)
+		f.a.Store64(R11, -offStackFence, RAX)
+		f.a.Load64(RAX, RBX, -offTrapCellPtr)
+		f.a.Store64(R11, -offTrapCellPtr, RAX)
+	}
+	f.copyInstanceContext(R11, R10)
+	copyControl()
+	f.a.MovReg64(RSI, R11)
+	f.a.AddRsp(16)
+	f.a.JmpReg(R9)
+
+	f.a.PatchRel32(nested, f.a.Len())
+	// [trampoline, caller linmem, caller context, result0, result1, pad]. The
+	// 48-byte allocation preserves wrapper-entry stack alignment; after RET pops
+	// the trampoline, adding 40 reaches the original caller return address.
+	f.a.SubRsp(48)
+	trampolineSite := f.a.LeaRipPlaceholder(RAX)
+	f.a.Store64(RSP, 0, RAX)
+	f.a.Store64(RSP, 8, RBX)
+	f.a.Store64(RSP, 16, R8)
+	f.a.LeaDisp(RCX, RSP, 24)
+	f.copyInstanceContext(R11, R10)
+	copyControl()
+	f.a.MovReg64(RSI, R11)
+	f.a.JmpReg(R9)
+
+	trampoline := f.a.Len()
+	f.a.PatchRel32(trampolineSite, trampoline)
+	f.a.Load64(RBX, RSP, 0)
+	f.a.Load64(R10, RSP, 8)
+	f.copyInstanceContext(RBX, R10)
+	if f.memSizeReg != regNone {
+		f.a.Load32(f.memSizeReg, RBX, -bdCurBytes)
+	}
+	f.deriveModuleGlobals()
+	if len(ft.Results) > 0 {
+		if isFloatValType(ft.Results[0]) {
+			f.a.FLoadDisp(0, RSP, 16, wasm.EqualValType(ft.Results[0], wasm.F64))
+		} else {
+			f.a.Load64(RAX, RSP, 16)
+		}
+	}
+	if len(ft.Results) > 1 {
+		f.a.Load64(RDX, RSP, 24)
+	}
+	f.a.AddRsp(40)
+	f.a.Ret()
+}
+
 func (f *fn) emitTailCrossDirectJump(ft *wasm.CompType, b ImportBinding) {
 	p := len(ft.Params)
 	roots := f.rootsBottomToTop()
