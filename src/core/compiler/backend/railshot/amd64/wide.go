@@ -8,17 +8,6 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
-func wideDstForResult(below, prior []machineType) int {
-	slot := 0
-	for _, t := range below {
-		slot += t.stackSlots()
-	}
-	for _, t := range prior {
-		slot += t.stackSlots()
-	}
-	return slot
-}
-
 // v256 values are canonical frame residents between operations and materialize
 // into one YMM register for AVX2 lowering.
 func (f *fn) loadV256(e *elem) Reg {
@@ -47,25 +36,6 @@ func (f *fn) pushYReg(r Reg) *elem {
 	e := f.pushValue(storage{kind: stReg, typ: mtV256, reg: r})
 	f.fregUser[r] = e
 	return e
-}
-
-func (f *fn) storeV256(e *elem, slot int) {
-	x := f.loadV256(e)
-	f.a.YMovdquStoreDisp(RSP, f.spillOff(slot), x)
-	f.releaseF(x)
-}
-
-func (f *fn) storeV256Local(e *elem, local int) {
-	x := f.loadV256(e)
-	f.a.YMovdquStoreDisp(RSP, f.localOff(local), x)
-	f.releaseF(x)
-}
-
-func (f *fn) copySpillV256(src, dst int) {
-	x := f.allocFReg(0)
-	f.a.YMovdquLoadDisp(x, RSP, f.spillOff(src))
-	f.a.YMovdquStoreDisp(RSP, f.spillOff(dst), x)
-	f.releaseF(x)
 }
 
 func (f *fn) v256Const(r *wasm.Reader) error {
@@ -388,25 +358,6 @@ func (f *fn) v256AnyTrue() {
 	f.a.AluRI(7, r, -1, false)
 	f.a.SetccReg(condNE, r)
 	f.pushReg(r, mtI32)
-}
-
-func (f *fn) v256Select() {
-	f.flush()
-	cond, b, a := f.popValue(), f.popValue(), f.popValue()
-	cr := f.materialize(cond)
-	f.pinned = f.pinned.add(cr)
-	xa := f.loadV256(a)
-	f.fpinned = f.fpinned.add(xa)
-	xb := f.loadV256(b)
-	f.a.TestSelf(cr, false)
-	skip := f.a.JccPlaceholder(condNE)
-	f.a.YMovdqu(xa, xb)
-	f.a.PatchRel32(skip, f.a.Len())
-	f.fpinned = f.fpinned.remove(xa)
-	f.releaseF(xb)
-	f.pinned = f.pinned.remove(cr)
-	f.release(cr)
-	f.pushYReg(xa)
 }
 
 func (f *fn) v256Load(r *wasm.Reader) error {

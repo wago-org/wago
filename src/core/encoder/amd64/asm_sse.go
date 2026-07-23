@@ -124,10 +124,6 @@ func (a *Asm) vex3RRReservedL(opcodeMap, pp, op byte, reg, rm Reg, l byte) {
 	a.emit(0xC4, byte1, byte2, op, 0xC0|((byte(reg)&7)<<3)|byte(rm&7))
 }
 
-func (a *Asm) vex3MemPrefix(opcodeMap, pp byte, reg Reg, src1 Reg, hasSrc1 bool, base Reg, index Reg, indexed bool) {
-	a.vex3MemPrefixL(opcodeMap, pp, reg, src1, hasSrc1, base, index, indexed, 0)
-}
-
 func (a *Asm) vex3MemPrefixL(opcodeMap, pp byte, reg Reg, src1 Reg, hasSrc1 bool, base Reg, index Reg, indexed bool, l byte) {
 	rBit, xBit, bBit := byte(1), byte(1), byte(1) // inverted REX.R / REX.X / REX.B
 	if reg >= 8 {

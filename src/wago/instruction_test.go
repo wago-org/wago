@@ -145,6 +145,9 @@ func instructionFuncImport(module, name string, typeIndex uint32) []byte {
 }
 
 func TestCustomInstructionI4AddLowersNatively(t *testing.T) {
+	if runtime.GOARCH != "amd64" {
+		t.Skip("scalar lowering backend is amd64-only")
+	}
 	calls := 0
 	rt := NewRuntime()
 	if err := rt.Use(instructionTestExt{nativeCalls: &calls}); err != nil {
@@ -266,6 +269,9 @@ func TestCustomSIMDConstantRangeProofRejectsPartialVector(t *testing.T) {
 }
 
 func TestCustomInstructionRichRecipesLowerNatively(t *testing.T) {
+	if runtime.GOARCH != "amd64" {
+		t.Skip("scalar lowering backend is amd64-only")
+	}
 	signed4 := func(v uint32) int32 { return int32(int8(uint8(v<<4))) >> 4 }
 	comparisons := []struct {
 		name  string
@@ -417,6 +423,9 @@ func TestCustomInstructionRichRecipesLowerNatively(t *testing.T) {
 }
 
 func TestCustomInstructionPluginMachineCode(t *testing.T) {
+	if runtime.GOARCH != "amd64" {
+		t.Skip("amd64 machine-code lowering")
+	}
 	t.Run("managed", func(t *testing.T) {
 		calls := 0
 		ext := instructionMachineExt{name: "i4.identity", input: []int32{4}, output: []int32{4}, portableCalls: &calls}
