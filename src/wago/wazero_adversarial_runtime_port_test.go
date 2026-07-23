@@ -259,6 +259,9 @@ func TestWazeroPortCloseWhileHostCallInFlight(t *testing.T) {
 }
 
 func TestWazeroPortNestedHostPanicDoesNotCorruptRuntime(t *testing.T) {
+	if !requireStandardGoTestRuntime(t) {
+		return
+	}
 	rt := NewRuntime()
 	defer rt.Close()
 	producerCode, err := rt.Compile(wazeroImportForwardModule("panic"))

@@ -179,6 +179,9 @@ func TestWazeroPortEngineBehaviorFixtures(t *testing.T) {
 		}
 	})
 	t.Run("unreachable_host_panic", func(t *testing.T) {
+		if !requireStandardGoTestRuntime(t) {
+			return
+		}
 		in := instantiateWazeroEngineFixture(t, "unreachable.wasm", Imports{"host.cause_unreachable": HostFunc(func(_ HostModule, _, _ []uint64) {
 			panic(errors.New("panic in host function"))
 		})})
