@@ -3,6 +3,8 @@ package plugins
 import (
 	"strings"
 	"testing"
+
+	"github.com/wago-org/wago/src/core/compiler/machinecode"
 )
 
 func portableAdd(_ InstructionContext, args []Bits) ([]Bits, error) {
@@ -49,28 +51,35 @@ func TestPrepareBuildsNativeInstruction(t *testing.T) {
 	}
 }
 
-func TestPrepareBuildsSIMDInstruction(t *testing.T) {
-	simd := &SIMDInstruction{Width: 256, Subopcode: 81, Arity: 2}
+func TestPrepareBuildsIndependentTargetLowerings(t *testing.T) {
+	amd64 := &machinecode.AMD64Lowering{
+		Compatibility: machinecode.AMD64CompatibilityManaged,
+		Managed:       func(machinecode.AMD64ManagedContext) error { return nil },
+	}
+	arm64 := &machinecode.ARM64Lowering{
+		Compatibility: machinecode.ARM64CompatibilityManaged,
+		Managed:       func(machinecode.ARM64ManagedContext) error { return nil },
+	}
 	def, err := Prepare(InstructionSpec{
 		Module:  "example",
-		Name:    "i8x32.xor",
-		Input:   []int32{32, 32, 32},
+		Name:    "raw",
+		Input:   []int32{32},
 		Handler: func(InstructionContext, []Bits) ([]Bits, error) { return nil, nil },
-		SIMD:    simd,
+		AMD64:   amd64,
+		ARM64:   arm64,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	simd.Width = 512
+	amd64.Compatibility = 0
+	arm64.Compatibility = 0
 	native, ok := def.Native()
-	if !ok || native.SIMD == nil {
-		t.Fatal("SIMD declaration should produce a native instruction")
+	if !ok || native.AMD64 == nil || native.ARM64 == nil {
+		t.Fatal("target declarations should produce native instruction lowerings")
 	}
-	if native.SIMD.Width != 256 || native.SIMD.Subopcode != 81 || native.SIMD.Arity != 2 {
-		t.Fatalf("unexpected SIMD lowering: %+v", native.SIMD)
-	}
-	if def.Spec.SIMD == nil || def.Spec.SIMD.Width != 256 {
-		t.Fatalf("Prepare did not detach SIMD declaration: %+v", def.Spec.SIMD)
+	if native.AMD64.Compatibility != machinecode.AMD64CompatibilityManaged ||
+		native.ARM64.Compatibility != machinecode.ARM64CompatibilityManaged {
+		t.Fatalf("Prepare did not detach target declarations: %+v", native)
 	}
 }
 

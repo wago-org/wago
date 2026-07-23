@@ -1872,13 +1872,6 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
-	return f.emitFDSub(sub, r)
-}
-
-// emitFDSub lowers one already-decoded SIMD subopcode. Custom wide-SIMD
-// instructions reuse this exact Wasm semantic lowering one NEON register at a
-// time, so their guest ABI remains independent of the host architecture.
-func (f *fn) emitFDSub(sub uint32, r *wasm.Reader) error {
 	switch sub {
 	case 0: // v128.load
 		return f.v128Load(r)

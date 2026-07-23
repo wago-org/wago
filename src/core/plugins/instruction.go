@@ -10,15 +10,6 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/machinecode"
 )
 
-// SIMDInstruction describes a pointer-based, architecture-neutral wide SIMD
-// operation. The physical Wasm parameters are destination first followed by
-// Arity input pointers. Backends privately select their native representation.
-type SIMDInstruction struct {
-	Width     uint16
-	Subopcode uint32
-	Arity     uint8
-}
-
 // InstructionSpec describes a language-neutral custom instruction. Input and
 // Output contain logical value widths in bits. Its physical Wasm signature is
 // derived entirely from those slices: every input is i32, and the result is
@@ -31,14 +22,12 @@ type InstructionSpec struct {
 	Output  []int32
 	Handler InstructionHandler
 	Lower   InstructionLowerer
-	// SIMD declares an architecture-neutral Wasm SIMD-style operation over
-	// linear-memory vectors. Its physical signature is
-	// (destination i32, input pointers...) -> (). Backends privately select
-	// NEON, YMM, or another native representation.
-	SIMD *SIMDInstruction
 	// AMD64 is an explicitly unsafe, fully trusted machine-code lowering. It may
 	// use Wago's real encoder or append arbitrary bytes through Encoder().B.
 	AMD64 *machinecode.AMD64Lowering
+	// ARM64 is the independent AArch64 lowering for the same logical
+	// instruction. The plugin owns its equivalence with AMD64 and any fallback.
+	ARM64 *machinecode.ARM64Lowering
 }
 
 // InstructionHandler implements the portable semantics of an instruction.
@@ -349,7 +338,7 @@ type Instruction struct {
 	Output          int
 	StackCompatible bool
 	AMD64           *machinecode.AMD64Lowering
-	SIMD            *SIMDInstruction
+	ARM64           *machinecode.ARM64Lowering
 	InputWidths     []int32
 	ResultWidth     int32
 }
@@ -360,54 +349,55 @@ type Definition struct {
 	Spec   InstructionSpec
 	recipe *instructionRecipe
 	amd64  *machinecode.AMD64Lowering
-	simd   *SIMDInstruction
+	arm64  *machinecode.ARM64Lowering
 }
 
 // Native selects the allocation-free subset compiler backends currently
 // support. False means the exact same Wasm import transparently retains its
 // portable Handler.
 func (d Definition) Native() (Instruction, bool) {
-	if d.simd != nil {
-		copy := *d.simd
-		return Instruction{
-			SIMD:        &copy,
-			InputWidths: append([]int32(nil), d.Spec.Input...),
-		}, true
-	}
+	native := Instruction{InputWidths: append([]int32(nil), d.Spec.Input...)}
 	if d.amd64 != nil {
 		copy := *d.amd64
-		var resultWidth int32
-		if len(d.Spec.Output) == 1 {
-			resultWidth = d.Spec.Output[0]
-		}
-		return Instruction{AMD64: &copy, InputWidths: append([]int32(nil), d.Spec.Input...), ResultWidth: resultWidth}, true
+		native.AMD64 = &copy
 	}
+	if d.arm64 != nil {
+		copy := *d.arm64
+		native.ARM64 = &copy
+	}
+	if len(d.Spec.Output) == 1 {
+		native.ResultWidth = d.Spec.Output[0]
+	}
+	hasTarget := native.AMD64 != nil || native.ARM64 != nil
 	r := d.recipe
 	if r == nil || len(d.Spec.Output) != 1 || d.Spec.Output[0] > 32 {
-		return Instruction{}, false
+		return native, hasTarget
 	}
 	for _, w := range d.Spec.Input {
 		if w > 32 {
-			return Instruction{}, false
+			return native, hasTarget
 		}
 	}
 	nodes := make([]InstructionNode, len(r.nodes))
 	for i, n := range r.nodes {
 		if n.width > 32 {
-			return Instruction{}, false
+			return native, hasTarget
 		}
 		if n.op == InstructionInput {
 			if n.input < 0 || n.input >= len(d.Spec.Input) {
-				return Instruction{}, false
+				return native, hasTarget
 			}
 		}
 		nodes[i] = InstructionNode{Op: n.op, Width: n.width, A: n.a, B: n.b, C: n.c, Input: n.input, Const: n.constant.Uint32()}
 	}
 	out := r.outputs[0]
 	if out < 0 || out >= len(r.nodes) {
-		return Instruction{}, false
+		return native, hasTarget
 	}
-	return Instruction{Nodes: nodes, Output: out, ResultWidth: d.Spec.Output[0], StackCompatible: stackCompatibleInstructionRecipe(r, len(d.Spec.Input))}, true
+	native.Nodes = nodes
+	native.Output = out
+	native.StackCompatible = stackCompatibleInstructionRecipe(r, len(d.Spec.Input))
+	return native, true
 }
 
 // stackCompatibleInstructionRecipe recognizes the zero-copy subset whose input
@@ -489,28 +479,7 @@ func Prepare(spec InstructionSpec) (Definition, error) {
 		return Definition{}, fmt.Errorf("wago: instruction %q.%q lowering: %w", spec.Module, spec.Name, err)
 	}
 	var amd64Lowering *machinecode.AMD64Lowering
-	var simdLowering *SIMDInstruction
-	if spec.SIMD != nil {
-		if spec.AMD64 != nil || spec.Lower != nil {
-			return Definition{}, fmt.Errorf("wago: instruction %q.%q SIMD lowering cannot be combined with Lower or AMD64", spec.Module, spec.Name)
-		}
-		if spec.SIMD.Width < 256 || spec.SIMD.Width%256 != 0 {
-			return Definition{}, fmt.Errorf("wago: instruction %q.%q SIMD width %d must be a positive multiple of 256", spec.Module, spec.Name, spec.SIMD.Width)
-		}
-		if spec.SIMD.Arity < 1 || spec.SIMD.Arity > 3 {
-			return Definition{}, fmt.Errorf("wago: instruction %q.%q SIMD arity %d must be in [1,3]", spec.Module, spec.Name, spec.SIMD.Arity)
-		}
-		if len(spec.Output) != 0 || len(spec.Input) != int(spec.SIMD.Arity)+1 {
-			return Definition{}, fmt.Errorf("wago: instruction %q.%q SIMD signature must be (destination, %d input pointer(s)) -> ()", spec.Module, spec.Name, spec.SIMD.Arity)
-		}
-		for _, width := range spec.Input {
-			if width != 32 {
-				return Definition{}, fmt.Errorf("wago: instruction %q.%q SIMD pointer widths must all be 32 bits", spec.Module, spec.Name)
-			}
-		}
-		copy := *spec.SIMD
-		simdLowering = &copy
-	}
+	var arm64Lowering *machinecode.ARM64Lowering
 	if spec.AMD64 != nil {
 		switch spec.AMD64.Compatibility {
 		case machinecode.AMD64CompatibilityManaged:
@@ -538,9 +507,33 @@ func Prepare(spec InstructionSpec) (Definition, error) {
 		copy := *spec.AMD64
 		amd64Lowering = &copy
 	}
+	if spec.ARM64 != nil {
+		switch spec.ARM64.Compatibility {
+		case machinecode.ARM64CompatibilityManaged:
+			if spec.ARM64.Managed == nil || spec.ARM64.Emit != nil {
+				return Definition{}, fmt.Errorf("wago: instruction %q.%q managed arm64 lowering requires Managed and forbids Emit", spec.Module, spec.Name)
+			}
+		case machinecode.ARM64CompatibilityFullAccess:
+			if spec.ARM64.Emit == nil || spec.ARM64.Managed != nil {
+				return Definition{}, fmt.Errorf("wago: instruction %q.%q full-access arm64 lowering requires Emit and forbids Managed", spec.Module, spec.Name)
+			}
+		default:
+			return Definition{}, fmt.Errorf("wago: instruction %q.%q requires an explicit arm64 compatibility mode", spec.Module, spec.Name)
+		}
+		if len(spec.Output) > 1 {
+			return Definition{}, fmt.Errorf("wago: instruction %q.%q arm64 lowering supports at most one direct output", spec.Module, spec.Name)
+		}
+		for _, width := range append(append([]int32(nil), spec.Input...), spec.Output...) {
+			if width > 32 {
+				return Definition{}, fmt.Errorf("wago: instruction %q.%q arm64 lowering only supports direct values up to 32 bits", spec.Module, spec.Name)
+			}
+		}
+		copy := *spec.ARM64
+		arm64Lowering = &copy
+	}
 	spec.Input = append([]int32(nil), spec.Input...)
 	spec.Output = append([]int32(nil), spec.Output...)
 	spec.AMD64 = amd64Lowering
-	spec.SIMD = simdLowering
-	return Definition{Spec: spec, recipe: recipe, amd64: amd64Lowering, simd: simdLowering}, nil
+	spec.ARM64 = arm64Lowering
+	return Definition{Spec: spec, recipe: recipe, amd64: amd64Lowering, arm64: arm64Lowering}, nil
 }

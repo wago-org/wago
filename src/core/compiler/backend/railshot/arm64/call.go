@@ -119,7 +119,7 @@ func (f *fn) callOp(r *wasm.Reader) error {
 	}
 	imported := f.m.ImportedFuncCount()
 	if int(idx) < imported && f.customInstructions != nil {
-		if custom, ok := f.customInstructions[idx]; ok && custom.SIMD != nil {
+		if custom, ok := f.customInstructions[idx]; ok && custom.ARM64 != nil {
 			return f.emitCustomInstruction(custom, ft)
 		}
 	}
@@ -172,77 +172,7 @@ func (f *fn) callOp(r *wasm.Reader) error {
 }
 
 func (f *fn) emitCustomInstruction(custom railcore.CustomInstruction, ft *wasm.CompType) error {
-	if custom.SIMD == nil {
-		return fmt.Errorf("arm64: custom instruction has no portable SIMD lowering")
-	}
-	return f.emitCustomSIMD(custom.SIMD, custom.InputWidths, ft)
-}
-
-func (f *fn) emitCustomSIMD(simd *railcore.CustomSIMDInstruction, inputWidths []int32, ft *wasm.CompType) error {
-	if len(ft.Results) != 0 || len(ft.Params) != len(inputWidths) {
-		return fmt.Errorf("arm64: custom SIMD instruction has incompatible physical signature")
-	}
-	types := f.currentLogicalTypes()
-	if len(types) < len(inputWidths) {
-		return fmt.Errorf("arm64: custom SIMD instruction has %d stack argument(s), want %d", len(types), len(inputWidths))
-	}
-	base := len(types) - len(inputWidths)
-	if len(inputWidths) > 4 {
-		return fmt.Errorf("arm64: custom SIMD has %d pointers, max 4", len(inputWidths))
-	}
-	roots := f.rootsBottomToTop()
-	var paramConst [4]uint32
-	var constParam [4]bool
-	for i := range inputWidths {
-		e := roots[base+i]
-		if e.kind == ekValue && e.st.kind == stConst && e.st.typ == mtI32 {
-			paramConst[i], constParam[i] = uint32(e.st.cval), true
-		}
-	}
-	f.flush()
-	roots = f.rootsBottomToTop()
-	var addresses [4]Reg
-	for i := range inputWidths {
-		e := roots[base+i]
-		if e.kind != ekValue || e.st.kind != stSlot || e.st.typ != mtI32 {
-			return fmt.Errorf("arm64: custom SIMD input %d is not a canonical i32 slot", i)
-		}
-		var address Reg
-		if constParam[i] && railcore.ConstantMemoryRangeInMinimum(f.m, paramConst[i], uint32(simd.Width/8)) {
-			address = f.allocReg(0)
-			f.a.MovImm64(address, uint64(paramConst[i]))
-		} else {
-			f.pushValue(storage{kind: stSlot, typ: mtI32, slot: e.st.slot})
-			var owned bool
-			address, owned, _, _ = f.memAddr(0, int(simd.Width/8), false)
-			if !owned {
-				return fmt.Errorf("arm64: custom SIMD input %d address is not owned", i)
-			}
-		}
-		addresses[i] = address
-		f.pinned = f.pinned.add(address)
-	}
-	for offset := uint32(0); offset < uint32(simd.Width/8); offset += 16 {
-		for input := 0; input < int(simd.Arity); input++ {
-			x := f.allocFReg(0)
-			f.a.LdrQIdx(x, linMemReg, addresses[input+1], int32(offset))
-			f.pushVReg(x)
-		}
-		if err := f.emitFDSub(simd.Subopcode, wasm.NewReader(nil)); err != nil {
-			return err
-		}
-		result := f.popValue()
-		x := f.materializeV128(result)
-		f.a.StrQIdx(linMemReg, addresses[0], x, int32(offset))
-		f.releaseF(x)
-	}
-	for i := range inputWidths {
-		f.pinned = f.pinned.remove(addresses[i])
-		f.release(addresses[i])
-	}
-	f.setDepthTypes(types[:base])
-	f.stats.call("custom-simd")
-	return nil
+	return f.emitPluginARM64(custom.ARM64, custom.InputWidths, custom.ResultWidth, len(ft.Results))
 }
 
 // inCallSiteLoop reports whether the current call site is nested in a Wasm loop.

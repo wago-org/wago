@@ -1,11 +1,11 @@
 # Compiler instruction plugins
 
 Wago compiler plugins can recognize ordinary Wasm function imports and replace
-their calls during native code generation. This gives every source language
-that can emit an `i32` import the same extension mechanism without custom Wasm
-types, custom sections, binary rewriting, or compiler-specific metadata.
+their calls during native code generation. Any source language that can emit an
+`i32` import can use the mechanism without custom Wasm types, custom sections,
+binary rewriting, or compiler-specific metadata.
 
-The guest ABI is deliberately conventional:
+The guest ABI is conventional:
 
 - every logical input is one physical `i32`;
 - zero logical outputs produce no Wasm result;
@@ -13,9 +13,8 @@ The guest ABI is deliberately conventional:
 - values wider than 32 bits and multi-value results use opaque handles managed
   by `wago:abi`.
 
-The bit widths in `Input` and `Output` describe logical values, not Wasm value
-types. For example, this registers `(i4, i4) -> i4` over a physical
-`(i32, i32) -> i32` import:
+`Input` and `Output` contain logical bit widths. This registers `(i4, i4) -> i4`
+over a physical `(i32, i32) -> i32` import:
 
 ```go
 reg.Capability(wago.CapCompilerCodegen)
@@ -35,114 +34,92 @@ return reg.Compiler().Instruction(wago.InstructionSpec{
 })
 ```
 
-`Handler` is the portable correctness path. `Lower` builds a constrained,
-target-independent fixed-width expression DAG. Wago currently lowers scalar
-recipes up to 32 bits and otherwise leaves the ordinary host call intact.
+`Handler` is the executable fallback. `Lower` is an optional constrained scalar
+recipe. Neither facility defines a SIMD vocabulary.
 
-## Architecture-neutral SIMD operations
+## Raw target lowerings
 
-Plugins should expose SIMD semantics—not target mnemonics—to guest Wasm.
-`InstructionSpec.SIMD` describes a pointer-based operation once, and each Wago
-backend selects its private register width and instruction sequence:
+Target-specific implementations are independent plugin callbacks. Wago does not
+define vector widths, lane types, SIMD opcodes, instruction selection,
+multi-register chunking, or equivalence between targets. A plugin that supports
+both AMD64 and ARM64 supplies both implementations and owns their compatibility.
 
 ```go
 reg.Compiler().Instruction(wago.InstructionSpec{
-	Module: "example-simd",
-	Name:   "i8x32.xor",
-	Input:  []int32{32, 32, 32}, // destination, left, right pointers
+	Module:  "example",
+	Name:    "bytes.xor32",
+	Input:   []int32{32, 32, 32}, // destination, left, right pointers
 	Handler: portableFallback,
-	SIMD: &wago.SIMDInstruction{
-		Width:     256,
-		Subopcode: 81, // engine-private v128.xor semantic key
-		Arity:     2,
+
+	AMD64: &wago.AMD64InstructionLowering{
+		Compatibility: wago.AMD64CompatibilityFullAccess,
+		Features:      wago.AMD64FeatureAVX2,
+		Emit: func(ctx wago.AMD64LoweringContext) error {
+			dstBase, dst, dstDisp, err := ctx.CheckedMemory(0, 0, 32)
+			if err != nil {
+				return err
+			}
+			leftBase, left, leftDisp, err := ctx.CheckedMemory(1, 0, 32)
+			if err != nil {
+				return err
+			}
+			rightBase, right, rightDisp, err := ctx.CheckedMemory(2, 0, 32)
+			if err != nil {
+				return err
+			}
+			x := ctx.AllocYMM()
+			y := ctx.AllocYMM(x)
+			a := ctx.Encoder()
+			a.YMovdquLoadIdx(x, leftBase, left, leftDisp)
+			a.YMovdquLoadIdx(y, rightBase, right, rightDisp)
+			a.YPxor(x, x, y)
+			a.YMovdquStoreIdx(dstBase, dst, x, dstDisp)
+			return nil
+		},
+	},
+
+	ARM64: &wago.ARM64InstructionLowering{
+		Compatibility: wago.ARM64CompatibilityFullAccess,
+		Emit: func(ctx wago.ARM64LoweringContext) error {
+			// The plugin emits its own AArch64/NEON sequence here.
+			// Wago does not derive it from the AMD64 implementation.
+			return emitNEONXor32(ctx)
+		},
 	},
 })
 ```
 
-The Wasm module imports `(i32, i32, i32) -> ()` under the semantic name
-`i8x32.xor`. It never observes NEON registers, YMM/ZMM registers, AVX mnemonics,
-or the numeric semantic key. The amd64 backend selects exact AVX-512/ZMM forms
-when profitable and otherwise uses AVX2/YMM chunks; arm64 reuses the standard
-Wasm SIMD lowering over NEON chunks. The same import
-therefore compiles on both architectures without a source or binary change.
+The import name is the plugin's semantic contract. The two callbacks contain
+raw target instructions. A plugin may select AVX2, AVX-512, NEON, SVE, scalar
+code, or any other implementation supported by the exposed encoder. Feature
+selection and fallback between those implementations are plugin policy.
 
-Backends validate each dynamic pointer once for the complete logical width and
-reuse that native address for all chunks. When a constant pointer range fits in
-the module's minimum memory, compilation proves it safe and removes the runtime
-check; memory cannot shrink, so the proof remains valid after `memory.grow`.
+## Compatibility modes
 
-## Native amd64 lowering
+`Managed` receives canonical inputs, checked memory helpers, and engine-owned
+register lifetimes without direct encoder access. It is intentionally small and
+contains no semantic instruction helpers.
 
-An instruction may additionally provide one amd64 implementation. The
-compatibility mode is mandatory.
+`FullAccess` additionally exposes the target encoder and physical-register
+allocation/reservation. Encoder byte buffers are public, so trusted plugins can
+emit instructions not yet covered by a typed encoder method. Wago cannot verify
+arbitrary machine code and treats a full-access plugin like backend code.
 
-`AMD64CompatibilityManaged` is the preferred mode. It exposes canonical `i32`
-inputs, checked linear-memory access, engine-owned YMM/ZMM operations, register
-allocation, and output placement. It does not expose the encoder.
+Both modes run at compile time. AMD64 feature declarations are recorded in the
+compiled artifact. A target callback that is absent is not intercepted on that
+target; the ordinary imported function remains available as the fallback.
 
-```go
-AMD64: &wago.AMD64InstructionLowering{
-	Compatibility: wago.AMD64CompatibilityManaged,
-	Features:      wago.AMD64FeatureAVX2,
-	Managed: func(ctx wago.AMD64ManagedLoweringContext) error {
-		a, err := ctx.LoadYMM(1, 0)
-		if err != nil {
-			return err
-		}
-		b, err := ctx.LoadYMM(2, 0)
-		if err != nil {
-			return err
-		}
-		out, err := ctx.SIMD256YMM(81, nil, a, b) // v128.xor semantics at 256 bits
-		if err != nil {
-			return err
-		}
-		return ctx.StoreYMM(0, 0, out)
-	},
-}
-```
+## Ownership boundary
 
-`AMD64CompatibilityFullAccess` is an explicitly unsafe mode for trusted
-plugins. It adds the real encoder, managed GP/YMM allocation, physical-register
-reservation, the linear-memory base, and checked address construction. A plugin
-may append arbitrary bytes through `ctx.Encoder().B`; Wago cannot verify those
-bytes and treats the plugin like backend code.
+`src/core/plugins` owns registration, logical bit widths, validation, and the
+canonical references to target callbacks.
 
-Both modes run at compile time. Generated code exposes its AVX2 and AVX-512
-requirements through `Compiled`; serialization is refused until the artifact
-format can preserve those requirements. The plugin is not needed to load an
-already compiled artifact.
+`src/core/compiler/machinecode` owns only raw lowering contexts and trust modes.
+It must not grow plugin-specific instruction semantics.
 
-## Validation and fallback
+Each Railshot backend adapts its stack, register allocator, checked linear
+memory, and raw encoder to the corresponding context. It invokes the callback
+but does not interpret the plugin's instructions.
 
-Wago verifies the imported physical signature against the registered logical
-contract before code generation. A mismatched import is a compile error.
-
-If an instruction has no supported native recipe, its `Handler` remains a
-synchronous host import. Modules therefore retain executable semantics on Wago
-targets without the selected native lowering. Other runtimes may provide the
-same ordinary imports independently.
-
-Instruction modules and names are plugin-owned strings. Versioning and
-compatibility policy belong to the plugin; Wago does not impose a hash or
-version-locking scheme.
-
-## Implementation seam
-
-`src/core/plugins` owns the backend-neutral instruction module: logical bit
-values, `InstructionSpec`, recipe construction and validation, SIMD semantics,
-and the canonical native-lowering model. This keeps plugin contracts independent
-of a particular compiler backend and lets registration validate each definition
-once.
-
-`src/wago` is the public compatibility adapter. Its existing instruction types
-are aliases of `core/plugins`, so extensions keep the same source interface; it
-adds only registry integration, portable host imports, and opaque-value handle
-management.
-
-Railshot integrates through
-`src/core/compiler/backend/railshot/custom_instruction.go`, a compatibility
-adapter that aliases the canonical lowering model and retains Railshot-specific
-memory-range proofs. Backend emitters consume that model but do not own or
-redefine plugin semantics. A future backend can integrate the same model without
-depending on Railshot.
+Instruction module names, operation names, versioning, feature dispatch,
+cross-platform behavior, and machine-code sequences all belong to the plugin.

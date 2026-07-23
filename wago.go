@@ -16,6 +16,10 @@ type (
 	AMD64InstructionLowering    = impl.AMD64InstructionLowering
 	AMD64LoweringContext        = impl.AMD64LoweringContext
 	AMD64ManagedLoweringContext = impl.AMD64ManagedLoweringContext
+	ARM64Compatibility          = impl.ARM64Compatibility
+	ARM64InstructionLowering    = impl.ARM64InstructionLowering
+	ARM64LoweringContext        = impl.ARM64LoweringContext
+	ARM64ManagedLoweringContext = impl.ARM64ManagedLoweringContext
 	Bits                        = impl.Bits
 	BoundsCheckMode             = impl.BoundsCheckMode
 	CallerResolver              = impl.CallerResolver
@@ -112,7 +116,6 @@ type (
 	RuntimeContext              = impl.RuntimeContext
 	RuntimeHookAccess           = impl.RuntimeHookAccess
 	RuntimeOption               = impl.RuntimeOption
-	SIMDInstruction             = impl.SIMDInstruction
 	ServiceRef                  = impl.ServiceRef
 	Snapshot                    = impl.Snapshot
 	SnapshotKind                = impl.SnapshotKind
@@ -134,6 +137,8 @@ const (
 	AMD64CompatibilityManaged                  = impl.AMD64CompatibilityManaged
 	AMD64FeatureAVX2                           = impl.AMD64FeatureAVX2
 	AMD64FeatureAVX512                         = impl.AMD64FeatureAVX512
+	ARM64CompatibilityFullAccess               = impl.ARM64CompatibilityFullAccess
+	ARM64CompatibilityManaged                  = impl.ARM64CompatibilityManaged
 	AllowTestOverrides                         = impl.AllowTestOverrides
 	BoundsChecksExplicit                       = impl.BoundsChecksExplicit
 	BoundsChecksSignalsBased                   = impl.BoundsChecksSignalsBased

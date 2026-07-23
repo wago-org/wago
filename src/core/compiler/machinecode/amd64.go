@@ -32,18 +32,18 @@ type AMD64Lowering struct {
 }
 
 // AMD64ManagedContext is the safer machine-lowering surface. It provides
-// canonical scalar inputs, checked memory, engine-owned SIMD lowering, and
-// result placement without exposing the encoder or arbitrary registers.
+// canonical scalar inputs, checked memory transfers, and result placement
+// without exposing the encoder or arbitrary registers. It deliberately has no
+// architecture-neutral instruction vocabulary: instruction semantics belong
+// to the plugin.
 type AMD64ManagedContext interface {
 	InputI32(index int) (x86.Reg, error)
 	Release(reg x86.Reg)
 	ConstYMMRepeated128(lo, hi uint64) x86.Reg
 	LoadYMM(input int, offset uint32) (x86.Reg, error)
 	StoreYMM(input int, offset uint32, value x86.Reg) error
-	SIMD256YMM(subopcode uint32, immediate []byte, inputs ...x86.Reg) (x86.Reg, error)
 	LoadZMM(input int, offset uint32) (x86.Reg, error)
 	StoreZMM(input int, offset uint32, value x86.Reg) error
-	SIMD512ZMM(subopcode uint32, inputs ...x86.Reg) (x86.Reg, error)
 	OutputI32(reg x86.Reg) error
 }
 

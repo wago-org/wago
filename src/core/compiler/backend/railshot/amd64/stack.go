@@ -29,19 +29,13 @@ const (
 	mtF32
 	mtF64
 	mtV128
-	mtV256
 )
 
-func (t machineType) is64() bool     { return t == mtI64 || t == mtF64 }
-func (t machineType) isFloat() bool  { return t == mtF32 || t == mtF64 }
-func (t machineType) isV128() bool   { return t == mtV128 }
-func (t machineType) isV256() bool   { return t == mtV256 }
-func (t machineType) isVector() bool { return t == mtV128 || t == mtV256 }
-func (t machineType) isXMM() bool    { return t.isFloat() || t.isVector() }
+func (t machineType) is64() bool    { return t == mtI64 || t == mtF64 }
+func (t machineType) isFloat() bool { return t == mtF32 || t == mtF64 }
+func (t machineType) isV128() bool  { return t == mtV128 }
+func (t machineType) isXMM() bool   { return t.isFloat() || t.isV128() }
 func (t machineType) stackSlots() int {
-	if t == mtV256 {
-		return 4
-	}
 	if t == mtV128 {
 		return 2
 	}

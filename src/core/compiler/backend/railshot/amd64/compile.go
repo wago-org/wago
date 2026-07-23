@@ -554,7 +554,6 @@ type CompileOptions struct {
 type CustomInstructionOp = railcore.CustomInstructionOp
 type CustomInstructionNode = railcore.CustomInstructionNode
 type CustomInstruction = railcore.CustomInstruction
-type CustomSIMDInstruction = railcore.CustomSIMDInstruction
 
 const (
 	CustomInstructionInput  = railcore.CustomInstructionInput
@@ -653,16 +652,6 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	requiresAVX2 := false
 	requiresAVX512 := false
 	for _, definition := range opts.CustomInstructions {
-		if definition.SIMD != nil {
-			_, direct := zmmEncodingFor(definition.SIMD.Subopcode)
-			direct = direct || definition.SIMD.Subopcode == 82 ||
-				definition.SIMD.Subopcode >= 265 && definition.SIMD.Subopcode <= 268
-			if definition.SIMD.Width == 512 && direct && canUseZMM(definition.SIMD.Subopcode) {
-				requiresAVX512 = true
-			} else {
-				requiresAVX2 = true
-			}
-		}
 		if definition.AMD64 != nil {
 			if definition.AMD64.Features&machinecode.AMD64FeatureAVX2 != 0 {
 				requiresAVX2 = true
