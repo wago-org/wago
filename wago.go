@@ -112,6 +112,7 @@ type (
 	RuntimeContext              = impl.RuntimeContext
 	RuntimeHookAccess           = impl.RuntimeHookAccess
 	RuntimeOption               = impl.RuntimeOption
+	SIMDInstruction             = impl.SIMDInstruction
 	ServiceRef                  = impl.ServiceRef
 	Snapshot                    = impl.Snapshot
 	SnapshotKind                = impl.SnapshotKind

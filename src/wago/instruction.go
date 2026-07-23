@@ -18,6 +18,7 @@ type AMD64Compatibility = machinecode.AMD64Compatibility
 type AMD64InstructionLowering = machinecode.AMD64Lowering
 type AMD64LoweringContext = machinecode.AMD64Context
 type AMD64ManagedLoweringContext = machinecode.AMD64ManagedContext
+type SIMDInstruction = railshot.CustomSIMDInstruction
 
 const (
 	AMD64FeatureAVX2             = machinecode.AMD64FeatureAVX2
@@ -37,6 +38,11 @@ type InstructionSpec struct {
 	Output  []int32
 	Handler InstructionHandler
 	Lower   InstructionLowerer
+	// SIMD declares an architecture-neutral Wasm SIMD-style operation over
+	// linear-memory vectors. Its physical signature is
+	// (destination i32, input pointers...) -> (). Backends privately select
+	// NEON, YMM, or another native representation.
+	SIMD *SIMDInstruction
 	// AMD64 is an explicitly unsafe, fully trusted machine-code lowering. It may
 	// use Wago's real encoder or append arbitrary bytes through Encoder().B.
 	AMD64 *machinecode.AMD64Lowering
@@ -333,6 +339,7 @@ type registeredInstruction struct {
 	spec   InstructionSpec
 	recipe *instructionRecipe
 	amd64  *machinecode.AMD64Lowering
+	simd   *railshot.CustomSIMDInstruction
 }
 
 func resolveInstructionLowerings(m *wasm.Module, registered map[string]*registeredInstruction) map[uint32]railshot.CustomInstruction {
@@ -363,6 +370,13 @@ func resolveInstructionLowerings(m *wasm.Module, registered map[string]*register
 // supported by the amd64 direct backend. Every other recipe keeps the exact
 // same ABI and transparently calls its portable Handler.
 func nativeInstructionRecipe(ins *registeredInstruction) (railshot.CustomInstruction, bool) {
+	if ins.simd != nil {
+		copy := *ins.simd
+		return railshot.CustomInstruction{
+			SIMD:        &copy,
+			InputWidths: append([]int32(nil), ins.spec.Input...),
+		}, true
+	}
 	if ins.amd64 != nil {
 		copy := *ins.amd64
 		var resultWidth int32
@@ -481,6 +495,28 @@ func (r *CompilerRegistry) Instruction(spec InstructionSpec) error {
 		return fmt.Errorf("wago: instruction %q.%q lowering: %w", spec.Module, spec.Name, err)
 	}
 	var amd64Lowering *machinecode.AMD64Lowering
+	var simdLowering *railshot.CustomSIMDInstruction
+	if spec.SIMD != nil {
+		if spec.AMD64 != nil || spec.Lower != nil {
+			return fmt.Errorf("wago: instruction %q.%q SIMD lowering cannot be combined with Lower or AMD64", spec.Module, spec.Name)
+		}
+		if spec.SIMD.Width < 256 || spec.SIMD.Width%256 != 0 {
+			return fmt.Errorf("wago: instruction %q.%q SIMD width %d must be a positive multiple of 256", spec.Module, spec.Name, spec.SIMD.Width)
+		}
+		if spec.SIMD.Arity < 1 || spec.SIMD.Arity > 3 {
+			return fmt.Errorf("wago: instruction %q.%q SIMD arity %d must be in [1,3]", spec.Module, spec.Name, spec.SIMD.Arity)
+		}
+		if len(spec.Output) != 0 || len(spec.Input) != int(spec.SIMD.Arity)+1 {
+			return fmt.Errorf("wago: instruction %q.%q SIMD signature must be (destination, %d input pointer(s)) -> ()", spec.Module, spec.Name, spec.SIMD.Arity)
+		}
+		for _, width := range spec.Input {
+			if width != 32 {
+				return fmt.Errorf("wago: instruction %q.%q SIMD pointer widths must all be 32 bits", spec.Module, spec.Name)
+			}
+		}
+		copy := *spec.SIMD
+		simdLowering = &copy
+	}
 	if spec.AMD64 != nil {
 		switch spec.AMD64.Compatibility {
 		case machinecode.AMD64CompatibilityManaged:
@@ -510,6 +546,6 @@ func (r *CompilerRegistry) Instruction(spec InstructionSpec) error {
 	}
 	spec.Input = append([]int32(nil), spec.Input...)
 	spec.Output = append([]int32(nil), spec.Output...)
-	r.reg.instructions = append(r.reg.instructions, &registeredInstruction{spec: spec, recipe: recipe, amd64: amd64Lowering})
+	r.reg.instructions = append(r.reg.instructions, &registeredInstruction{spec: spec, recipe: recipe, amd64: amd64Lowering, simd: simdLowering})
 	return nil
 }

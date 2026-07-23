@@ -554,6 +554,7 @@ type CompileOptions struct {
 type CustomInstructionOp = railcore.CustomInstructionOp
 type CustomInstructionNode = railcore.CustomInstructionNode
 type CustomInstruction = railcore.CustomInstruction
+type CustomSIMDInstruction = railcore.CustomSIMDInstruction
 
 const (
 	CustomInstructionInput  = railcore.CustomInstructionInput
@@ -651,7 +652,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	inlineTargets := buildInlineTargets(m, allHints)
 	requiresAVX2 := false
 	for _, definition := range opts.CustomInstructions {
-		if definition.AMD64 != nil && definition.AMD64.Features&machinecode.AMD64FeatureAVX2 != 0 {
+		if definition.SIMD != nil || definition.AMD64 != nil && definition.AMD64.Features&machinecode.AMD64FeatureAVX2 != 0 {
 			requiresAVX2 = true
 			break
 		}

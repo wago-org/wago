@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -32,6 +33,23 @@ type instructionMachineExt struct {
 	output        []int32
 	lowering      *AMD64InstructionLowering
 	portableCalls *int
+}
+
+type instructionSIMDExt struct{}
+
+func (instructionSIMDExt) Info() ExtensionInfo {
+	return ExtensionInfo{ID: "test.instruction-simd", Version: "1.0.0", Stability: Experimental}
+}
+
+func (instructionSIMDExt) Register(r *Registry) error {
+	r.Capability(CapCompilerCodegen)
+	return r.Compiler().Instruction(InstructionSpec{
+		Module: "test-simd", Name: "i8x32.xor", Input: []int32{32, 32, 32},
+		Handler: func(InstructionContext, []Bits) ([]Bits, error) {
+			return nil, errors.New("native SIMD lowering was not selected")
+		},
+		SIMD: &SIMDInstruction{Width: 256, Subopcode: 81, Arity: 2},
+	})
 }
 
 func (instructionMachineExt) Info() ExtensionInfo {
@@ -166,6 +184,48 @@ func TestCustomInstructionI4AddLowersNatively(t *testing.T) {
 	}
 	if calls != 0 {
 		t.Fatalf("portable handler called %d time(s), want native lowering", calls)
+	}
+}
+
+func TestCustomSIMDInstructionLowersAcrossArchitectures(t *testing.T) {
+	rt := NewRuntime()
+	if err := rt.Use(instructionSIMDExt{}); err != nil {
+		t.Fatal(err)
+	}
+	sig := wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32, wasm.I32}, nil)
+	module := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(sig)),
+		wasmtest.Section(2, wasmtest.Vec(instructionFuncImport("test-simd", "i8x32.xor", 0))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0, 1})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 1), wasmtest.ExportEntry("memory", 2, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, 0x20, 0x01, 0x20, 0x02, 0x10, 0x00, 0x0b}))),
+	)
+	mod, err := rt.Compile(module)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := mod.Compiled().RequiresAVX2(); got != (runtime.GOARCH == "amd64") {
+		t.Fatalf("RequiresAVX2=%v on %s", got, runtime.GOARCH)
+	}
+	instance, err := rt.Instantiate(context.Background(), mod)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	memory := instance.Memory().Bytes()
+	for i := 0; i < 32; i++ {
+		memory[64+i] = byte(i*3 + 1)
+		memory[128+i] = byte(255 - i*5)
+	}
+	if _, err := instance.Invoke("run", I32(0), I32(64), I32(128)); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 32; i++ {
+		want := byte(i*3+1) ^ byte(255-i*5)
+		if memory[i] != want {
+			t.Fatalf("byte %d=%#x, want %#x", i, memory[i], want)
+		}
 	}
 }
 

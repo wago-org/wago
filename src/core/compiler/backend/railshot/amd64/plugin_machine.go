@@ -256,3 +256,32 @@ func (f *fn) emitPluginAMD64(lowering *machinecode.AMD64Lowering, inputWidths []
 	f.stats.call("custom-machine-code")
 	return nil
 }
+
+func (f *fn) emitCustomSIMD(simd *CustomSIMDInstruction, inputWidths []int32, ft *wasm.CompType) error {
+	lowering := &machinecode.AMD64Lowering{
+		Compatibility: machinecode.AMD64CompatibilityManaged,
+		Features:      machinecode.AMD64FeatureAVX2,
+		Managed: func(ctx machinecode.AMD64ManagedContext) error {
+			for offset := uint32(0); offset < uint32(simd.Width/8); offset += 32 {
+				inputs := make([]Reg, int(simd.Arity))
+				for i := range inputs {
+					x, err := ctx.LoadYMM(i+1, offset)
+					if err != nil {
+						return err
+					}
+					inputs[i] = x
+				}
+				result, err := ctx.SIMD256YMM(simd.Subopcode, nil, inputs...)
+				if err != nil {
+					return err
+				}
+				if err := ctx.StoreYMM(0, offset, result); err != nil {
+					return err
+				}
+				ctx.Release(result)
+			}
+			return nil
+		},
+	}
+	return f.emitPluginAMD64(lowering, inputWidths, 0, len(ft.Results))
+}

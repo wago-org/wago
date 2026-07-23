@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 
+	railcore "github.com/wago-org/wago/src/core/compiler/backend/railshot"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	a64 "github.com/wago-org/wago/src/core/encoder/arm64"
 	"github.com/wago-org/wago/src/core/runtime"
@@ -117,6 +118,11 @@ func (f *fn) callOp(r *wasm.Reader) error {
 		return fmt.Errorf("call: unknown function %d", idx)
 	}
 	imported := f.m.ImportedFuncCount()
+	if int(idx) < imported && f.customInstructions != nil {
+		if custom, ok := f.customInstructions[idx]; ok && custom.SIMD != nil {
+			return f.emitCustomInstruction(custom, ft)
+		}
+	}
 	// Auto-inlining (WAGO_INLINE): splice a straight-line leaf callee's body here
 	// instead of emitting a call. The frame reserved the callee's locals past
 	// f.nLocals in this caller; the splice binds params, zeroes declared locals, and
@@ -163,6 +169,68 @@ func (f *fn) callOp(r *wasm.Reader) error {
 		}
 	}
 	return f.callInternal(int(idx)-imported, ft, hint)
+}
+
+func (f *fn) emitCustomInstruction(custom railcore.CustomInstruction, ft *wasm.CompType) error {
+	if custom.SIMD == nil {
+		return fmt.Errorf("arm64: custom instruction has no portable SIMD lowering")
+	}
+	return f.emitCustomSIMD(custom.SIMD, custom.InputWidths, ft)
+}
+
+func (f *fn) emitCustomSIMD(simd *railcore.CustomSIMDInstruction, inputWidths []int32, ft *wasm.CompType) error {
+	if len(ft.Results) != 0 || len(ft.Params) != len(inputWidths) {
+		return fmt.Errorf("arm64: custom SIMD instruction has incompatible physical signature")
+	}
+	types := f.currentLogicalTypes()
+	if len(types) < len(inputWidths) {
+		return fmt.Errorf("arm64: custom SIMD instruction has %d stack argument(s), want %d", len(types), len(inputWidths))
+	}
+	f.flush()
+	base := len(types) - len(inputWidths)
+	roots := f.rootsBottomToTop()
+	slots := make([]int, len(inputWidths))
+	for i := range slots {
+		e := roots[base+i]
+		if e.kind != ekValue || e.st.kind != stSlot || e.st.typ != mtI32 {
+			return fmt.Errorf("arm64: custom SIMD input %d is not a canonical i32 slot", i)
+		}
+		slots[i] = e.st.slot
+	}
+	for offset := uint32(0); offset < uint32(simd.Width/8); offset += 16 {
+		// v128.store expects its address below the vector result.
+		f.pushValue(storage{kind: stSlot, typ: mtI32, slot: slots[0]})
+		for input := 0; input < int(simd.Arity); input++ {
+			f.pushValue(storage{kind: stSlot, typ: mtI32, slot: slots[input+1]})
+			if err := f.v128Load(wasm.NewReader(simdMemarg(offset))); err != nil {
+				return err
+			}
+		}
+		if err := f.emitFDSub(simd.Subopcode, wasm.NewReader(nil)); err != nil {
+			return err
+		}
+		if err := f.v128Store(wasm.NewReader(simdMemarg(offset))); err != nil {
+			return err
+		}
+	}
+	f.setDepthTypes(types[:base])
+	f.stats.call("custom-simd")
+	return nil
+}
+
+func simdMemarg(offset uint32) []byte {
+	out := []byte{0} // natural alignment is irrelevant to semantic correctness.
+	for {
+		b := byte(offset & 0x7f)
+		offset >>= 7
+		if offset != 0 {
+			b |= 0x80
+		}
+		out = append(out, b)
+		if offset == 0 {
+			return out
+		}
+	}
 }
 
 // inCallSiteLoop reports whether the current call site is nested in a Wasm loop.

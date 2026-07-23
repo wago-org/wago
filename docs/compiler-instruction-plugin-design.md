@@ -39,6 +39,32 @@ return reg.Compiler().Instruction(wago.InstructionSpec{
 target-independent fixed-width expression DAG. Wago currently lowers scalar
 recipes up to 32 bits and otherwise leaves the ordinary host call intact.
 
+## Architecture-neutral SIMD operations
+
+Plugins should expose SIMD semantics—not target mnemonics—to guest Wasm.
+`InstructionSpec.SIMD` describes a pointer-based operation once, and each Wago
+backend selects its private register width and instruction sequence:
+
+```go
+reg.Compiler().Instruction(wago.InstructionSpec{
+	Module: "example-simd",
+	Name:   "i8x32.xor",
+	Input:  []int32{32, 32, 32}, // destination, left, right pointers
+	Handler: portableFallback,
+	SIMD: &wago.SIMDInstruction{
+		Width:     256,
+		Subopcode: 81, // engine-private v128.xor semantic key
+		Arity:     2,
+	},
+})
+```
+
+The Wasm module imports `(i32, i32, i32) -> ()` under the semantic name
+`i8x32.xor`. It never observes NEON registers, YMM registers, AVX mnemonics, or
+the numeric semantic key. The amd64 backend currently uses AVX2/YMM chunks;
+arm64 reuses the standard Wasm SIMD lowering over NEON chunks. The same import
+therefore compiles on both architectures without a source or binary change.
+
 ## Native amd64 lowering
 
 An instruction may additionally provide one amd64 implementation. The

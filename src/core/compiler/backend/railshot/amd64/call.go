@@ -163,6 +163,9 @@ func (f *fn) callOp(r *wasm.Reader) error {
 }
 
 func (f *fn) emitCustomInstruction(custom CustomInstruction, ft *wasm.CompType) error {
+	if custom.SIMD != nil {
+		return f.emitCustomSIMD(custom.SIMD, custom.InputWidths, ft)
+	}
 	if custom.AMD64 != nil {
 		return f.emitPluginAMD64(custom.AMD64, custom.InputWidths, custom.ResultWidth, len(ft.Results))
 	}
