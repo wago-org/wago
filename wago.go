@@ -133,6 +133,7 @@ const (
 	AMD64CompatibilityFullAccess               = impl.AMD64CompatibilityFullAccess
 	AMD64CompatibilityManaged                  = impl.AMD64CompatibilityManaged
 	AMD64FeatureAVX2                           = impl.AMD64FeatureAVX2
+	AMD64FeatureAVX512                         = impl.AMD64FeatureAVX512
 	AllowTestOverrides                         = impl.AllowTestOverrides
 	BoundsChecksExplicit                       = impl.BoundsChecksExplicit
 	BoundsChecksSignalsBased                   = impl.BoundsChecksSignalsBased

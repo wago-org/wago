@@ -651,10 +651,25 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	// call sites, keyed by global func index. nil when inlining is disabled.
 	inlineTargets := buildInlineTargets(m, allHints)
 	requiresAVX2 := false
+	requiresAVX512 := false
 	for _, definition := range opts.CustomInstructions {
-		if definition.SIMD != nil || definition.AMD64 != nil && definition.AMD64.Features&machinecode.AMD64FeatureAVX2 != 0 {
-			requiresAVX2 = true
-			break
+		if definition.SIMD != nil {
+			_, direct := zmmEncodingFor(definition.SIMD.Subopcode)
+			direct = direct || definition.SIMD.Subopcode == 82 ||
+				definition.SIMD.Subopcode >= 265 && definition.SIMD.Subopcode <= 268
+			if definition.SIMD.Width == 512 && direct && canUseZMM(definition.SIMD.Subopcode) {
+				requiresAVX512 = true
+			} else {
+				requiresAVX2 = true
+			}
+		}
+		if definition.AMD64 != nil {
+			if definition.AMD64.Features&machinecode.AMD64FeatureAVX2 != 0 {
+				requiresAVX2 = true
+			}
+			if definition.AMD64.Features&machinecode.AMD64FeatureAVX512 != 0 {
+				requiresAVX512 = true
+			}
 		}
 	}
 	// Pre-size the module code buffer to roughly the final machine-code size
@@ -714,15 +729,15 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		if explainEnabled && ms != nil {
 			fmt.Fprint(os.Stderr, ms.String())
 		}
-		return &amd64.CompiledModule{Code: code, Entry: entry, InternalEntry: internalEntry, RequiresAVX2: requiresAVX2}, nil
+		return &amd64.CompiledModule{Code: code, Entry: entry, InternalEntry: internalEntry, RequiresAVX2: requiresAVX2, RequiresAVX512: requiresAVX512}, nil
 	}
 
-	return compileModuleParallel(m, opts, workers, codeCap, entry, internalEntry, relocs, allHints, modGlobals, inlineTargets, ms, guardMode, boundsFacts, importedFuncs, requiresAVX2)
+	return compileModuleParallel(m, opts, workers, codeCap, entry, internalEntry, relocs, allHints, modGlobals, inlineTargets, ms, guardMode, boundsFacts, importedFuncs, requiresAVX2, requiresAVX512)
 }
 
 // compileModuleParallel is split from CompileModuleWith so the goroutine closure
 // and its captured state cannot escape into or add allocations to the serial path.
-func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap int, entry, internalEntry []int, relocs [][]callReloc, allHints []funcHints, modGlobals []moduleGlobalPin, inlineTargets map[int]*inlineTarget, ms *ModuleStats, guardMode, boundsFacts bool, importedFuncs int, requiresAVX2 bool) (*amd64.CompiledModule, error) {
+func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap int, entry, internalEntry []int, relocs [][]callReloc, allHints []funcHints, modGlobals []moduleGlobalPin, inlineTargets map[int]*inlineTarget, ms *ModuleStats, guardMode, boundsFacts bool, importedFuncs int, requiresAVX2, requiresAVX512 bool) (*amd64.CompiledModule, error) {
 	n := len(m.Code)
 	// Parallel codegen starts only after every module-wide decision is complete.
 	// Each function has a deterministic stats destination, and each worker owns all
@@ -805,7 +820,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	if explainEnabled && ms != nil {
 		fmt.Fprint(os.Stderr, ms.String())
 	}
-	return &amd64.CompiledModule{Code: code, Entry: entry, InternalEntry: internalEntry, RequiresAVX2: requiresAVX2}, nil
+	return &amd64.CompiledModule{Code: code, Entry: entry, InternalEntry: internalEntry, RequiresAVX2: requiresAVX2, RequiresAVX512: requiresAVX512}, nil
 }
 
 func firstFuncError(results []funcResult) (int, error) {

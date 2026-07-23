@@ -17,4 +17,7 @@ type CompiledModule struct {
 	// RequiresAVX2 reports that Code contains AVX2/YMM instructions selected by
 	// the backend (including plugin-provided portable intrinsics).
 	RequiresAVX2 bool
+
+	// RequiresAVX512 reports that Code contains an AVX-512/ZMM lowering.
+	RequiresAVX512 bool
 }

@@ -161,7 +161,7 @@ func compileWithConfigAndInstructions(cfg *RuntimeConfig, wasmBytes []byte, inst
 	}
 	code, entry, internalEntry := cm.Code, cm.Entry, cm.InternalEntry
 
-	c := &Compiled{Code: code, Entry: entry, InternalEntry: internalEntry, NumImports: importedFuncs, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, boundsMode: boundsMode, GCTypeDescs: gcDescs, requiredFeatures: uint8(moduleRequiredFeatures(m)), dynamicImports: importedFuncs > 0, customInstructions: customInstructions, requiresAVX2: cm.RequiresAVX2}
+	c := &Compiled{Code: code, Entry: entry, InternalEntry: internalEntry, NumImports: importedFuncs, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, boundsMode: boundsMode, GCTypeDescs: gcDescs, requiredFeatures: uint8(moduleRequiredFeatures(m)), dynamicImports: importedFuncs > 0, customInstructions: customInstructions, requiresAVX2: cm.RequiresAVX2, requiresAVX512: cm.RequiresAVX512}
 	if importedFuncs > 0 {
 		c.importFuncSigs = make([]FuncSig, importedFuncs)
 		for i := 0; i < importedFuncs; i++ {
@@ -1444,8 +1444,8 @@ func (c *Compiled) MarshalBinary() ([]byte, error) {
 	if c.boundsMode == BoundsChecksSignalsBased {
 		return nil, errors.New("wago: signals-based compiled modules cannot be serialized; recompile from wasm at load time")
 	}
-	if c.requiresAVX2 {
-		return nil, errors.New("wago: AVX2 plugin code cannot be serialized until the artifact format records CPU requirements")
+	if c.requiresAVX2 || c.requiresAVX512 {
+		return nil, errors.New("wago: wide-SIMD plugin code cannot be serialized until the artifact format records CPU requirements")
 	}
 	if len(c.Entry) == 0 && len(c.Funcs) > 0 {
 		return nil, errors.New("wago: compiled module has functions but no native entries")

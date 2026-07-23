@@ -625,10 +625,14 @@ type Compiled struct {
 	codeCache          *compiledCodeCache
 	customInstructions map[uint32]railshot.CustomInstruction
 	requiresAVX2       bool
+	requiresAVX512     bool
 }
 
 // RequiresAVX2 reports whether compilation selected an AVX2 plugin lowering.
 func (c *Compiled) RequiresAVX2() bool { return c != nil && c.requiresAVX2 }
+
+// RequiresAVX512 reports whether compilation selected an AVX-512 plugin lowering.
+func (c *Compiled) RequiresAVX512() bool { return c != nil && c.requiresAVX512 }
 
 type validateMemo struct {
 	once sync.Once

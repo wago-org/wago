@@ -60,9 +60,10 @@ reg.Compiler().Instruction(wago.InstructionSpec{
 ```
 
 The Wasm module imports `(i32, i32, i32) -> ()` under the semantic name
-`i8x32.xor`. It never observes NEON registers, YMM registers, AVX mnemonics, or
-the numeric semantic key. The amd64 backend currently uses AVX2/YMM chunks;
-arm64 reuses the standard Wasm SIMD lowering over NEON chunks. The same import
+`i8x32.xor`. It never observes NEON registers, YMM/ZMM registers, AVX mnemonics,
+or the numeric semantic key. The amd64 backend selects exact AVX-512/ZMM forms
+when profitable and otherwise uses AVX2/YMM chunks; arm64 reuses the standard
+Wasm SIMD lowering over NEON chunks. The same import
 therefore compiles on both architectures without a source or binary change.
 
 Backends validate each dynamic pointer once for the complete logical width and
@@ -76,7 +77,7 @@ An instruction may additionally provide one amd64 implementation. The
 compatibility mode is mandatory.
 
 `AMD64CompatibilityManaged` is the preferred mode. It exposes canonical `i32`
-inputs, checked linear-memory access, engine-owned YMM operations, register
+inputs, checked linear-memory access, engine-owned YMM/ZMM operations, register
 allocation, and output placement. It does not expose the encoder.
 
 ```go
@@ -107,9 +108,10 @@ reservation, the linear-memory base, and checked address construction. A plugin
 may append arbitrary bytes through `ctx.Encoder().B`; Wago cannot verify those
 bytes and treats the plugin like backend code.
 
-Both modes run at compile time. Generated code records its AVX2 requirement, so
-loading fails on unsupported CPUs. The plugin is not needed to load an already
-compiled artifact.
+Both modes run at compile time. Generated code exposes its AVX2 and AVX-512
+requirements through `Compiled`; serialization is refused until the artifact
+format can preserve those requirements. The plugin is not needed to load an
+already compiled artifact.
 
 ## Validation and fallback
 

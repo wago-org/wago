@@ -9,6 +9,7 @@ type AMD64Features uint64
 
 const (
 	AMD64FeatureAVX2 AMD64Features = 1 << iota
+	AMD64FeatureAVX512
 )
 
 // AMD64Compatibility selects the trust/portability contract of an amd64
@@ -40,6 +41,9 @@ type AMD64ManagedContext interface {
 	LoadYMM(input int, offset uint32) (x86.Reg, error)
 	StoreYMM(input int, offset uint32, value x86.Reg) error
 	SIMD256YMM(subopcode uint32, immediate []byte, inputs ...x86.Reg) (x86.Reg, error)
+	LoadZMM(input int, offset uint32) (x86.Reg, error)
+	StoreZMM(input int, offset uint32, value x86.Reg) error
+	SIMD512ZMM(subopcode uint32, inputs ...x86.Reg) (x86.Reg, error)
 	OutputI32(reg x86.Reg) error
 }
 

@@ -396,6 +396,7 @@ func (a *Asm) YPmulhrsw(d, x, y Reg) {
 	a.vex3RRRMapL(vexMap0F38, 1, 0x0B, d, x, y, 1)
 }
 func (a *Asm) YPmaddwd(d, x, y Reg) { a.vex3RRRMapL(vexMap0F, 1, 0xF5, d, x, y, 1) }
+func (a *Asm) YPmuludq(d, x, y Reg) { a.vex3RRRMapL(vexMap0F, 1, 0xF4, d, x, y, 1) }
 func (a *Asm) YPminsb(d, x, y Reg) {
 	a.vex3RRRMapL(vexMap0F38, 1, 0x38, d, x, y, 1)
 }
@@ -564,6 +565,7 @@ func (a *Asm) vexShiftDwordImmL(ext byte, dst, src Reg, imm, l byte) {
 
 func (a *Asm) YPsrldImm(dst, src Reg, imm byte) { a.vexShiftDwordImmL(2, dst, src, imm, 1) }
 func (a *Asm) YPsrlqImm(dst, src Reg, imm byte) { a.vexShiftQwordImmL(2, dst, src, imm, 1) }
+func (a *Asm) YPsllqImm(dst, src Reg, imm byte) { a.vexShiftQwordImmL(6, dst, src, imm, 1) }
 func (a *Asm) YPsrlwImm(dst, src Reg, imm byte) { a.vexShiftWordImmL(2, dst, src, imm, 1) }
 
 func (a *Asm) VPadddMemDisp(dst, s1, base Reg, disp int32) {

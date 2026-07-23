@@ -285,6 +285,35 @@ func (f *fn) v256I8Popcnt() {
 	f.pushYReg(x)
 }
 
+func (f *fn) v256I64Abs() {
+	a := f.popValue()
+	x := f.loadV256(a)
+	sign := f.allocFReg(maskOf(x))
+	f.a.YPxor(sign, sign, sign)
+	f.a.YPcmpgtq(sign, sign, x)
+	f.a.YPxor(x, x, sign)
+	f.a.YPsubq(x, x, sign)
+	f.releaseF(sign)
+	f.pushYReg(x)
+}
+
+func (f *fn) v256I64Mul() {
+	f.v256Bin(func(dst, a, b Reg) {
+		cross := f.allocFReg(maskOf(a, b))
+		t := f.allocFReg(maskOf(a, b, cross))
+		f.a.YPsrlqImm(cross, b, 32)
+		f.a.YPmuludq(cross, cross, a)
+		f.a.YPsrlqImm(t, a, 32)
+		f.a.YPmuludq(t, t, b)
+		f.a.YPaddq(cross, cross, t)
+		f.a.YPsllqImm(cross, cross, 32)
+		f.a.YPmuludq(dst, a, b)
+		f.a.YPaddq(dst, dst, cross)
+		f.releaseF(t)
+		f.releaseF(cross)
+	})
+}
+
 func (f *fn) v256RelaxedMadd(f64, neg bool) {
 	cElem, bElem, aElem := f.popValue(), f.popValue(), f.popValue()
 	a := f.loadV256(aElem)
@@ -1053,6 +1082,10 @@ func (f *fn) emitV256YMM(sub uint32) bool {
 		f.v256Bin(f.a.YPmaddwd)
 	case 193:
 		f.v256IntegerNeg(f.a.YPsubq)
+	case 192:
+		f.v256I64Abs()
+	case 213:
+		f.v256I64Mul()
 	case 195:
 		f.v256AllTrue(f.a.YPcmpeqq)
 	case 203:

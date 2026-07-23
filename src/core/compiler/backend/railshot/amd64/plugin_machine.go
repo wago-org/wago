@@ -108,6 +108,207 @@ func (c *pluginAMD64Context) StoreYMM(input int, offset uint32, value x86.Reg) e
 	return nil
 }
 
+func (c *pluginAMD64Context) LoadZMM(input int, offset uint32) (x86.Reg, error) {
+	if !c.wideReady || input < 0 || input >= len(c.paramSlots) || offset > c.wideSize || c.wideSize-offset < 64 {
+		return 0, fmt.Errorf("amd64 plugin wide ZMM load input=%d offset=%d exceeds %d bytes", input, offset, c.wideSize)
+	}
+	x := c.AllocYMM()
+	c.f.a.ZMovdqu64LoadIdx(x, RBX, c.wideIndex[input], c.wideDisp[input]+int32(offset))
+	return x, nil
+}
+
+func (c *pluginAMD64Context) StoreZMM(input int, offset uint32, value x86.Reg) error {
+	if !c.ymm.has(value) {
+		return fmt.Errorf("amd64 plugin ZMM register %d is not owned by the lowering", value)
+	}
+	if !c.wideReady || input < 0 || input >= len(c.paramSlots) || offset > c.wideSize || c.wideSize-offset < 64 {
+		return fmt.Errorf("amd64 plugin wide ZMM store input=%d offset=%d exceeds %d bytes", input, offset, c.wideSize)
+	}
+	c.f.a.ZMovdqu64StoreIdx(RBX, c.wideIndex[input], value, c.wideDisp[input]+int32(offset))
+	return nil
+}
+
+type zmmEncoding struct {
+	opcodeMap, pp, op byte
+	w, unary          bool
+	swap              bool
+}
+
+func zmmEncodingFor(sub uint32) (zmmEncoding, bool) {
+	e := zmmEncoding{opcodeMap: 1, pp: 1}
+	switch sub {
+	case 78:
+		e.op = 0xdb // vpandd
+	case 80:
+		e.op = 0xeb // vpord
+	case 81:
+		e.op = 0xef // vpxord
+	case 96:
+		e.opcodeMap, e.op, e.unary = 2, 0x1c, true // vpabsb
+	case 110:
+		e.op = 0xfc // vpaddb
+	case 111:
+		e.op = 0xec // vpaddsb
+	case 112:
+		e.op = 0xdc // vpaddusb
+	case 113:
+		e.op = 0xf8 // vpsubb
+	case 114:
+		e.op = 0xe8 // vpsubsb
+	case 115:
+		e.op = 0xd8 // vpsubusb
+	case 118:
+		e.opcodeMap, e.op = 2, 0x38 // vpminsb
+	case 119:
+		e.op = 0xda // vpminub
+	case 120:
+		e.opcodeMap, e.op = 2, 0x3c // vpmaxsb
+	case 121:
+		e.op = 0xde // vpmaxub
+	case 123:
+		e.op = 0xe0 // vpavgb
+	case 128:
+		e.opcodeMap, e.op, e.unary = 2, 0x1d, true // vpabsw
+	case 130, 273:
+		e.opcodeMap, e.op = 2, 0x0b // vpmulhrsw
+	case 142:
+		e.op = 0xfd // vpaddw
+	case 143:
+		e.op = 0xed // vpaddsw
+	case 144:
+		e.op = 0xdd // vpaddusw
+	case 145:
+		e.op = 0xf9 // vpsubw
+	case 146:
+		e.op = 0xe9 // vpsubsw
+	case 147:
+		e.op = 0xd9 // vpsubusw
+	case 149:
+		e.op = 0xd5 // vpmullw
+	case 150:
+		e.op = 0xea // vpminsw
+	case 151:
+		e.opcodeMap, e.op = 2, 0x3a // vpminuw
+	case 152:
+		e.op = 0xee // vpmaxsw
+	case 153:
+		e.opcodeMap, e.op = 2, 0x3e // vpmaxuw
+	case 155:
+		e.op = 0xe3 // vpavgw
+	case 160:
+		e.opcodeMap, e.op, e.unary = 2, 0x1e, true // vpabsd
+	case 174:
+		e.op = 0xfe // vpaddd
+	case 177:
+		e.op = 0xfa // vpsubd
+	case 181:
+		e.opcodeMap, e.op = 2, 0x40 // vpmulld
+	case 182:
+		e.opcodeMap, e.op = 2, 0x39 // vpminsd
+	case 183:
+		e.opcodeMap, e.op = 2, 0x3b // vpminud
+	case 184:
+		e.opcodeMap, e.op = 2, 0x3d // vpmaxsd
+	case 185:
+		e.opcodeMap, e.op = 2, 0x3f // vpmaxud
+	case 186:
+		e.op = 0xf5 // vpmaddwd
+	case 192:
+		e.opcodeMap, e.op, e.w, e.unary = 2, 0x1f, true, true // vpabsq
+	case 206:
+		e.op, e.w = 0xd4, true // vpaddq
+	case 209:
+		e.op, e.w = 0xfb, true // vpsubq
+	case 213:
+		e.opcodeMap, e.op, e.w = 2, 0x40, true // vpmullq
+	case 227:
+		e.pp, e.op, e.unary = 0, 0x51, true // vsqrtps
+	case 228:
+		e.pp, e.op = 0, 0x58 // vaddps
+	case 229:
+		e.pp, e.op = 0, 0x5c // vsubps
+	case 230:
+		e.pp, e.op = 0, 0x59 // vmulps
+	case 231:
+		e.pp, e.op = 0, 0x5e // vdivps
+	case 234:
+		e.pp, e.op, e.swap = 0, 0x5d, true // vminps, reversed for pmin
+	case 235:
+		e.pp, e.op, e.swap = 0, 0x5f, true // vmaxps, reversed for pmax
+	case 239:
+		e.op, e.w, e.unary = 0x51, true, true // vsqrtpd
+	case 240:
+		e.op, e.w = 0x58, true // vaddpd
+	case 241:
+		e.op, e.w = 0x5c, true // vsubpd
+	case 242:
+		e.op, e.w = 0x59, true // vmulpd
+	case 243:
+		e.op, e.w = 0x5e, true // vdivpd
+	case 246:
+		e.op, e.w, e.swap = 0x5d, true, true // vminpd, reversed for pmin
+	case 247:
+		e.op, e.w, e.swap = 0x5f, true, true // vmaxpd, reversed for pmax
+	case 269:
+		e.pp, e.op = 0, 0x5d // relaxed vminps
+	case 270:
+		e.pp, e.op = 0, 0x5f // relaxed vmaxps
+	case 271:
+		e.op, e.w = 0x5d, true // relaxed vminpd
+	case 272:
+		e.op, e.w = 0x5f, true // relaxed vmaxpd
+	default:
+		return zmmEncoding{}, false
+	}
+	return e, true
+}
+
+func (c *pluginAMD64Context) SIMD512ZMM(subopcode uint32, inputs ...x86.Reg) (x86.Reg, error) {
+	if subopcode == 82 || subopcode >= 265 && subopcode <= 268 {
+		if len(inputs) != 3 {
+			return 0, fmt.Errorf("amd64 ZMM bitselect has %d inputs, want 3", len(inputs))
+		}
+	} else {
+		e, ok := zmmEncodingFor(subopcode)
+		if !ok {
+			return 0, fmt.Errorf("amd64 SIMD opcode %d has no direct ZMM lowering", subopcode)
+		}
+		want := 2
+		if e.unary {
+			want = 1
+		}
+		if len(inputs) != want {
+			return 0, fmt.Errorf("amd64 ZMM opcode %d has %d inputs, want %d", subopcode, len(inputs), want)
+		}
+	}
+	for _, input := range inputs {
+		if !c.ymm.has(input) {
+			return 0, fmt.Errorf("amd64 plugin ZMM register %d is not owned by the lowering", input)
+		}
+	}
+	dst := inputs[0]
+	if subopcode == 82 || subopcode >= 265 && subopcode <= 268 {
+		// With EVEX operands (dst=a, src1=b, src2=mask), 0xe4 is
+		// (a & mask) | (b & ~mask).
+		c.f.a.ZPternlogd(dst, inputs[1], inputs[2], 0xe4)
+	} else {
+		e, _ := zmmEncodingFor(subopcode)
+		if e.unary {
+			c.f.a.ZSIMDRR(e.opcodeMap, e.pp, e.op, e.w, dst, inputs[0])
+		} else {
+			x, y := inputs[0], inputs[1]
+			if e.swap {
+				x, y = y, x
+			}
+			c.f.a.ZSIMDRRR(e.opcodeMap, e.pp, e.op, e.w, dst, x, y)
+		}
+	}
+	for _, input := range inputs[1:] {
+		c.Release(input)
+	}
+	return dst, nil
+}
+
 // prepareWideMemory validates every pointer for the complete vector width once
 // and retains its effective address. Subsequent chunk loads/stores need neither
 // another pointer reload nor another bounds check.
@@ -306,7 +507,7 @@ func (f *fn) emitPluginAMD64(lowering *machinecode.AMD64Lowering, inputWidths []
 	}
 	f.setDepthTypes(types[:base])
 	ctx.finish(resultWidth)
-	if lowering.Features&machinecode.AMD64FeatureAVX2 != 0 {
+	if lowering.Features&(machinecode.AMD64FeatureAVX2|machinecode.AMD64FeatureAVX512) != 0 {
 		f.usesWide = true
 	}
 	f.stats.call("custom-machine-code")
@@ -314,13 +515,39 @@ func (f *fn) emitPluginAMD64(lowering *machinecode.AMD64Lowering, inputWidths []
 }
 
 func (f *fn) emitCustomSIMD(simd *CustomSIMDInstruction, inputWidths []int32, ft *wasm.CompType) error {
+	_, directZMM := zmmEncodingFor(simd.Subopcode)
+	directZMM = directZMM || simd.Subopcode == 82 || simd.Subopcode >= 265 && simd.Subopcode <= 268
+	useZMM := simd.Width == 512 && directZMM && canUseZMM(simd.Subopcode)
+	features := machinecode.AMD64FeatureAVX2
+	if useZMM {
+		features = machinecode.AMD64FeatureAVX512
+	}
 	lowering := &machinecode.AMD64Lowering{
 		Compatibility: machinecode.AMD64CompatibilityManaged,
-		Features:      machinecode.AMD64FeatureAVX2,
+		Features:      features,
 		Managed: func(ctx machinecode.AMD64ManagedContext) error {
 			native := ctx.(*pluginAMD64Context)
 			if err := native.prepareWideMemory(uint32(simd.Width / 8)); err != nil {
 				return err
+			}
+			if useZMM {
+				var inputs [3]Reg
+				for i := 0; i < int(simd.Arity); i++ {
+					x, err := ctx.LoadZMM(i+1, 0)
+					if err != nil {
+						return err
+					}
+					inputs[i] = x
+				}
+				result, err := ctx.SIMD512ZMM(simd.Subopcode, inputs[:simd.Arity]...)
+				if err != nil {
+					return err
+				}
+				if err := ctx.StoreZMM(0, 0, result); err != nil {
+					return err
+				}
+				ctx.Release(result)
+				return nil
 			}
 			for offset := uint32(0); offset < uint32(simd.Width/8); offset += 32 {
 				var inputs [3]Reg

@@ -22,6 +22,7 @@ type SIMDInstruction = railshot.CustomSIMDInstruction
 
 const (
 	AMD64FeatureAVX2             = machinecode.AMD64FeatureAVX2
+	AMD64FeatureAVX512           = machinecode.AMD64FeatureAVX512
 	AMD64CompatibilityManaged    = machinecode.AMD64CompatibilityManaged
 	AMD64CompatibilityFullAccess = machinecode.AMD64CompatibilityFullAccess
 )
@@ -530,7 +531,7 @@ func (r *CompilerRegistry) Instruction(spec InstructionSpec) error {
 		default:
 			return fmt.Errorf("wago: instruction %q.%q requires an explicit amd64 compatibility mode", spec.Module, spec.Name)
 		}
-		if spec.AMD64.Features & ^machinecode.AMD64FeatureAVX2 != 0 {
+		if spec.AMD64.Features & ^(machinecode.AMD64FeatureAVX2|machinecode.AMD64FeatureAVX512) != 0 {
 			return fmt.Errorf("wago: instruction %q.%q declares unsupported amd64 features %#x", spec.Module, spec.Name, spec.AMD64.Features)
 		}
 		if len(spec.Output) > 1 {
