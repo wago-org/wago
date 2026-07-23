@@ -393,7 +393,7 @@ type scratch struct {
 
 	retSites      []int
 	ctrl          []ctrlFrame
-	trapSites     [trapStackFence + 1][]int
+	trapSites     [trapTableOOB + 1][]int
 	branchTargets map[int]bool
 	transient
 }

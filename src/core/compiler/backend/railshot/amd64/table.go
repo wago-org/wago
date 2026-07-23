@@ -76,6 +76,11 @@ func (f *fn) entryArrayAddr(dst, base Reg, externref bool) {
 	f.a.Add64(dst, base)
 }
 
+func (f *fn) trapTableUnlessLE(value, limit Reg) {
+	f.a.Cmp64(value, limit)
+	f.trapIf(condA, trapTableOOB)
+}
+
 func (f *fn) tableSize(r *wasm.Reader) error {
 	tableIdx, err := readSingleTableIndex(r)
 	if err != nil {
@@ -106,7 +111,7 @@ func (f *fn) tableInit(r *wasm.Reader) error {
 	f.loadTableDescriptor(R8, tableIdx)
 	f.a.Load32(RAX, R8, 0)
 	f.a.LeaScaled(RDX, RDI, RCX, 0, 0)
-	f.trapUnlessLE(RDX, RAX)
+	f.trapTableUnlessLE(RDX, RAX)
 	// The destination entry stride is fixed by the table's type, and validation
 	// requires the element segment's type to be a subtype of the table's (same
 	// reference family, so identical entry size). Keying the source stride and
@@ -120,7 +125,7 @@ func (f *fn) tableInit(r *wasm.Reader) error {
 	f.a.Load64(R8, RBX, -int32(offPassiveElemPtr))
 	f.a.Load32(RAX, R8, disp+8)
 	f.a.LeaScaled(RDX, RSI, RCX, 0, 0)
-	f.trapUnlessLE(RDX, RAX)
+	f.trapTableUnlessLE(RDX, RAX)
 	f.a.Load64(R8, R8, disp)
 	f.entryArrayAddr(RSI, R8, externref)
 	f.a.ShiftImm(4, RCX, entryStrideShift(externref), true)
@@ -156,10 +161,10 @@ func (f *fn) tableCopy(r *wasm.Reader) error {
 	f.loadTableDescriptor(R9, srcTableIdx)
 	f.a.Load32(RAX, R8, 0)
 	f.a.LeaScaled(RDX, RDI, RCX, 0, 0)
-	f.trapUnlessLE(RDX, RAX)
+	f.trapTableUnlessLE(RDX, RAX)
 	f.a.Load32(RAX, R9, 0)
 	f.a.LeaScaled(RDX, RSI, RCX, 0, 0)
-	f.trapUnlessLE(RDX, RAX)
+	f.trapTableUnlessLE(RDX, RAX)
 	externref := f.tableIsExternref(dstTableIdx)
 	f.typedTableEntryAddr(RDI, R8, dstTableIdx)
 	f.typedTableEntryAddr(RSI, R9, srcTableIdx)
@@ -200,7 +205,7 @@ func (f *fn) tableFill(r *wasm.Reader) error {
 	f.loadTableDescriptor(R8, tableIdx)
 	f.a.Load32(RDX, R8, 0)
 	f.a.LeaScaled(RDI, RDI, RCX, 0, 0)
-	f.trapUnlessLE(RDI, RDX)
+	f.trapTableUnlessLE(RDI, RDX)
 	f.a.Load64(RDI, RSP, f.spillOff(argsSlot))
 	f.tableEntryAddr(RDI, R8)
 	// snapshotFuncrefDescriptor uses the register allocator internally. Keep the
@@ -223,7 +228,7 @@ func (f *fn) externrefTableFill(tableIdx uint32) error {
 	f.loadTableDescriptor(R8, tableIdx)
 	f.a.Load32(RDX, R8, 0)
 	f.a.LeaScaled(RDI, RDI, RCX, 0, 0)
-	f.trapUnlessLE(RDI, RDX)
+	f.trapTableUnlessLE(RDI, RDX)
 	f.a.Load64(RDI, RSP, f.spillOff(argsSlot))
 	f.typedTableEntryAddr(RDI, R8, tableIdx)
 	f.fillExternrefEntries(RDI, RCX, RAX)

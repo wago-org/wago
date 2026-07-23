@@ -382,7 +382,7 @@ type scratch struct {
 	// is indexed by trap code (a small dense enum), replacing a per-function map.
 	retSites     []int
 	brFoldSites  []int
-	trapSites    [trapStackFence + 1][]int
+	trapSites    [trapTableOOB + 1][]int
 	ctrl         []ctrlFrame // control-frame stack backing; reused across functions
 	pinnedLocals []int       // pinned-local index backing; reused across functions
 	transient

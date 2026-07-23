@@ -190,6 +190,7 @@ const (
 	TrapLinkedMemOutOfBounds                   = impl.TrapLinkedMemOutOfBounds
 	TrapNone                                   = impl.TrapNone
 	TrapStackFenceBreached                     = impl.TrapStackFenceBreached
+	TrapTableOutOfBounds                       = impl.TrapTableOutOfBounds
 	TrapTruncOverflow                          = impl.TrapTruncOverflow
 	TrapUnreachable                            = impl.TrapUnreachable
 	ValExternRef                               = impl.ValExternRef

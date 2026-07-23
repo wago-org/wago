@@ -4,7 +4,8 @@ package runtime
 
 import "fmt"
 
-// TrapCode mirrors vb::TrapCode (src/core/common/TrapCode.hpp).
+// TrapCode is Wago's stable native-to-Go trap ABI. Codes 0 through 14 mirror
+// vb::TrapCode (src/core/common/TrapCode.hpp); Wago-specific codes are appended.
 type TrapCode uint32
 
 const (
@@ -23,6 +24,7 @@ const (
 	TrapInterrupted          TrapCode = 12
 	TrapStackFenceBreached   TrapCode = 13
 	TrapCalledFnNotLinked    TrapCode = 14
+	TrapTableOutOfBounds     TrapCode = 15
 )
 
 var trapMessages = map[TrapCode]string{
@@ -41,6 +43,7 @@ var trapMessages = map[TrapCode]string{
 	TrapInterrupted:          "runtime interrupt requested",
 	TrapStackFenceBreached:   "stack fence breached",
 	TrapCalledFnNotLinked:    "called function not linked",
+	TrapTableOutOfBounds:     "table access out of bounds",
 }
 
 func (c TrapCode) String() string {
