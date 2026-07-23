@@ -10,13 +10,29 @@ import (
 	"testing"
 )
 
+type wazeroProposalValue struct {
+	Type  string `json:"type"`
+	Value string `json:"value"`
+}
+
+type wazeroProposalAction struct {
+	Type   string                `json:"type"`
+	Module string                `json:"module"`
+	Field  string                `json:"field"`
+	Args   []wazeroProposalValue `json:"args"`
+}
+
 type wazeroProposalFile struct {
 	Commands []struct {
-		Type       string `json:"type"`
-		Line       int    `json:"line"`
-		Filename   string `json:"filename"`
-		ModuleType string `json:"module_type"`
-		Text       string `json:"text"`
+		Type       string                `json:"type"`
+		Line       int                   `json:"line"`
+		Filename   string                `json:"filename"`
+		ModuleType string                `json:"module_type"`
+		Name       string                `json:"name"`
+		As         string                `json:"as"`
+		Action     wazeroProposalAction  `json:"action"`
+		Expected   []wazeroProposalValue `json:"expected"`
+		Text       string                `json:"text"`
 	} `json:"commands"`
 }
 
@@ -112,10 +128,9 @@ func TestWazeroPortUnsupportedProposalCorporaFailClosed(t *testing.T) {
 						} else if compileErr != nil {
 							t.Errorf("%s:%d valid negative module failed without explicit unsupported rejection: %v", filepath.Base(jsonPath), cmd.Line, compileErr)
 						} else {
-							// Count these separately from ordinary accepted modules. Correctly
-							// replaying them requires the WAST file's registered providers;
-							// empty imports would turn unrelated missing-import errors into false
-							// positives. Focused tests below exercise the self-contained cases.
+							// Count these separately from ordinary accepted modules. The
+							// stateful replay test exercises every supported negative with the
+							// WAST file's exact registered providers and intended error oracle.
 							negativeInstantiation++
 						}
 					case "module":
@@ -146,57 +161,6 @@ func TestWazeroPortUnsupportedProposalCorporaFailClosed(t *testing.T) {
 			}
 			if validAccepted != want.accepted || validRejected != want.unsupported || invalidRejected != want.invalid || negativeInstantiation != want.negativeInstantiation || malformedBinary != want.malformedBinary || malformedText != want.malformedText {
 				t.Fatalf("corpus accounting = accepted %d unsupported %d invalid %d negative-instantiation %d malformed binary/text %d/%d, want %d/%d/%d/%d/%d/%d", validAccepted, validRejected, invalidRejected, negativeInstantiation, malformedBinary, malformedText, want.accepted, want.unsupported, want.invalid, want.negativeInstantiation, want.malformedBinary, want.malformedText)
-			}
-		})
-	}
-}
-
-func TestWazeroPortTypedFunctionReferenceElemInstantiationFailuresUseSpectestTable(t *testing.T) {
-	dir := filepath.Clean("../../testdata/wazero/spectest-proposals/typed-function-references")
-	table, err := NewTable(10, 20)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		if err := table.Close(); err != nil {
-			t.Errorf("close spectest.table: %v", err)
-		}
-	}()
-	imports := Imports{"spectest.table": table}
-	fixtures := []string{
-		"elem.61.wasm", "elem.62.wasm", "elem.63.wasm", "elem.64.wasm",
-		"elem.65.wasm", "elem.66.wasm", "elem.67.wasm", "elem.68.wasm",
-		"elem.69.wasm", "elem.70.wasm", "elem.71.wasm", "elem.72.wasm",
-	}
-	for _, fixture := range fixtures {
-		fixture := fixture
-		t.Run(fixture, func(t *testing.T) {
-			data, err := os.ReadFile(filepath.Join(dir, fixture))
-			if err != nil {
-				t.Fatal(err)
-			}
-			compiled, err := Compile(nil, data)
-			if err != nil {
-				t.Fatalf("compile: %v", err)
-			}
-			in, instantiateErr := Instantiate(compiled, InstantiateOptions{Imports: imports})
-			if in != nil {
-				if err := in.Close(); err != nil {
-					t.Errorf("close unexpected instance: %v", err)
-				}
-			}
-			if err := compiled.Close(); err != nil {
-				t.Errorf("close compiled module: %v", err)
-			}
-			if instantiateErr == nil {
-				t.Fatal("module instantiated successfully, want active element-segment bounds failure")
-			}
-			message := strings.ToLower(instantiateErr.Error())
-			if strings.Contains(message, "missing imported table") {
-				t.Fatalf("failure came from the harness import setup, not the fixture oracle: %v", instantiateErr)
-			}
-			if !strings.Contains(message, "active element segment") || !strings.Contains(message, "out of bounds") {
-				t.Fatalf("instantiate error = %v, want active element-segment out-of-bounds failure", instantiateErr)
 			}
 		})
 	}

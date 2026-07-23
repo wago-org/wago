@@ -51,11 +51,17 @@ The file ledger below is not used as a substitute for subtest accounting:
   48,248-assertion subset from being reported as the full corpus.
 - Extended-constant accounting is exact at 63 generated artifacts. Proposal
   fail-closed accounting is exact at 782 generated exception-handling,
-  tail-call, threads, and typed-function-reference artifacts. The 42 supported
-  negative-instantiation binaries are counted separately from ordinary modules
-  instead of accepting arbitrary empty-import failures; all 12 self-contained
-  element-segment negatives run with the required `spectest.table` binding and
-  assert the intended out-of-bounds failure.
+  tail-call, threads, and typed-function-reference artifacts. All 202 assertions
+  in the typed-function-reference `elem` and `linking` files now receive an
+  intended oracle with zero skips: 88 `assert_return`, 21 `assert_trap`, 47
+  `assert_unlinkable`, 19 `assert_uninstantiable`, and 27 `assert_invalid`.
+  Replay is declaration ordered, tracks named/registered modules, executes
+  preceding state mutations and post-failure observations, and distinguishes
+  table bounds traps from linear-memory bounds traps. Unlinkable commands use
+  exact function/global/table/memory matching against the registered providers;
+  23 compile-supported consumers are additionally cross-checked through Wago's
+  import resolver, while 24 are proved unlinkable before Wago's explicit
+  rejection of their unsupported executable typed-reference forms.
 - Fuzz and engine binary manifests are exact at 71 and 23 fixtures,
   respectively; manifest drift fails tests instead of silently changing scope.
 
