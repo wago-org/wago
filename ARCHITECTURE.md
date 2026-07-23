@@ -12,7 +12,7 @@ runtime support also exist for **linux/arm64** and **darwin/arm64**, with the
 remaining platform qualification tracked in [FEATURES.md](FEATURES.md) and the
 ARM64 documents under `docs/`.
 
-<!-- artifact:codec-version 21 -->
+<!-- artifact:codec-version 27 -->
 
 **CPU baseline: modern x86-64 with SSSE3/SSE4.1 plus AVX/VEX.128 XMM encodings.** The backend emits
 some instructions beyond original x86-64 without a CPUID gate or fallback:
