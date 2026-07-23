@@ -557,7 +557,14 @@ func (s *referenceStore) descriptorFuncrefExactType(source *Instance, descriptor
 		return ValueTypeDescriptor{}, nil, false
 	}
 	s.mu.Lock()
-	owner, canonical, ok := s.canonicalFuncrefOwnerLocked(source, descriptor)
+	var owner *Instance
+	canonical := descriptor
+	ok := false
+	if entry := s.byIdentity[funcrefIdentity{descriptor: descriptor}]; entry != nil {
+		owner, canonical, ok = entry.owner, entry.descriptor, true
+	} else {
+		owner, canonical, ok = s.canonicalFuncrefOwnerLocked(source, descriptor)
+	}
 	s.mu.Unlock()
 	if !ok {
 		return ValueTypeDescriptor{}, nil, false
