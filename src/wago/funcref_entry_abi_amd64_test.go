@@ -161,7 +161,7 @@ func TestFuncrefDescriptorRejectsConflictingEntryKindTags(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer in.Close()
-	off := runtime.TableEntryBytes
+	off := runtime.FuncRefDescBytes
 	home := binary.LittleEndian.Uint64(in.funcRefDescs[off+runtime.TableEntryHomeLinMemOffset:])
 	binary.LittleEndian.PutUint64(in.funcRefDescs[off+runtime.TableEntryHomeLinMemOffset:], home|abi.FuncRefLocalWrapperHomeTag)
 	if _, err := in.Call(context.Background(), "run"); err == nil || !strings.Contains(err.Error(), "unsupported context") {
