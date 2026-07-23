@@ -45,16 +45,17 @@ type Runtime struct {
 	hooks                *HookRegistry
 	refStore             *referenceStore
 
-	exts        []ExtensionInfo
-	extensions  map[string]Extension
-	imports     Imports                      // "module.name" -> host fn (any)
-	importMeta  map[string]*registeredImport // "module.name" -> declared signature/cap/docs
-	importOwner map[string]string            // "module.name" -> owning extension ID
-	moduleOwner map[string]string            // import module -> owning extension ID
-	caps        map[Capability]string
-	capOrder    []Capability
-	closed      bool
-	pluginStops []registeredPluginStop
+	exts         []ExtensionInfo
+	extensions   map[string]Extension
+	imports      Imports                      // "module.name" -> host fn (any)
+	importMeta   map[string]*registeredImport // "module.name" -> declared signature/cap/docs
+	importOwner  map[string]string            // "module.name" -> owning extension ID
+	moduleOwner  map[string]string            // import module -> owning extension ID
+	caps         map[Capability]string
+	capOrder     []Capability
+	instructions map[string]*registeredInstruction
+	closed       bool
+	pluginStops  []registeredPluginStop
 }
 
 type registeredPluginStop struct {
@@ -79,15 +80,16 @@ func WithImportOverridePolicy(p ImportOverridePolicy) RuntimeOption {
 // NewRuntime creates a runtime with no extensions registered.
 func NewRuntime(opts ...RuntimeOption) *Runtime {
 	rt := &Runtime{
-		cfg:         NewRuntimeConfig(),
-		hooks:       &HookRegistry{},
-		refStore:    newReferenceStore(false),
-		extensions:  map[string]Extension{},
-		imports:     Imports{},
-		importMeta:  map[string]*registeredImport{},
-		importOwner: map[string]string{},
-		moduleOwner: map[string]string{},
-		caps:        map[Capability]string{},
+		cfg:          NewRuntimeConfig(),
+		hooks:        &HookRegistry{},
+		refStore:     newReferenceStore(false),
+		extensions:   map[string]Extension{},
+		imports:      Imports{},
+		importMeta:   map[string]*registeredImport{},
+		importOwner:  map[string]string{},
+		moduleOwner:  map[string]string{},
+		caps:         map[Capability]string{},
+		instructions: map[string]*registeredInstruction{},
 	}
 	for _, opt := range opts {
 		opt(rt)
@@ -162,6 +164,23 @@ func (rt *Runtime) Use(ext Extension, opts ...UseOption) error {
 	if err := ext.Register(reg); err != nil {
 		return &ExtensionError{Extension: info.ID, Operation: "register", Err: err}
 	}
+	if len(reg.instructions) > 0 && !registryDeclaresCapability(reg, CapCompilerCodegen) {
+		return &ExtensionError{Extension: info.ID, Operation: "register",
+			Err: fmt.Errorf("compiler contributions require capability %q: %w", CapCompilerCodegen, ErrPermissionDenied)}
+	}
+	seenInstructions := make(map[string]struct{}, len(reg.instructions))
+	for _, ins := range reg.instructions {
+		key := ins.spec.Module + "." + ins.spec.Name
+		if _, duplicate := seenInstructions[key]; duplicate {
+			return &ExtensionError{Extension: info.ID, Operation: "register",
+				Err: fmt.Errorf("instruction import %q conflicts with another registration: %w", key, ErrExtensionConflict)}
+		}
+		seenInstructions[key] = struct{}{}
+		reg.imports = append(reg.imports, instructionImport(ins))
+	}
+	if len(reg.instructions) > 0 {
+		reg.imports = append(reg.imports, instructionABIImports()...)
+	}
 	if cfg.strict {
 		for _, cap := range reg.requiredPluginCapabilities() {
 			if _, ok := cfg.grants[cap]; !ok {
@@ -195,6 +214,10 @@ func (rt *Runtime) Use(ext Extension, opts ...UseOption) error {
 				return &ExtensionError{Extension: info.ID, Operation: "register",
 					Err: fmt.Errorf("import %q already provided by extension %q: %w", imp.key(), owner, ErrExtensionConflict)}
 			}
+		}
+		for _, ins := range reg.instructions {
+			key := ins.spec.Module + "." + ins.spec.Name
+			rt.instructions[key] = ins
 		}
 
 		// Commit.
@@ -242,7 +265,14 @@ func (rt *Runtime) Compile(wasmBytes []byte) (*Module, error) {
 			source = next
 		}
 	}
-	c, err := Compile(rt.cfg, source)
+	rt.mu.Lock()
+	instructions := make(map[string]*registeredInstruction, len(rt.instructions))
+	for key, ins := range rt.instructions {
+		instructions[key] = ins
+	}
+	cfg := rt.cfg
+	rt.mu.Unlock()
+	c, err := compileWithConfigAndInstructions(cfg, source, instructions)
 	if err != nil {
 		return nil, err
 	}
@@ -255,6 +285,15 @@ func (rt *Runtime) Compile(wasmBytes []byte) (*Module, error) {
 		}
 	}
 	return mod, nil
+}
+
+func registryDeclaresCapability(reg *Registry, want Capability) bool {
+	for _, spec := range reg.caps {
+		if spec.cap == want {
+			return true
+		}
+	}
+	return false
 }
 
 // Module binds an already compiled artifact to this runtime's plugin imports

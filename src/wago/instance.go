@@ -58,6 +58,7 @@ type Instance struct {
 	syncMode               bool    // true when host imports use the synchronous re-entry protocol
 	nativeControlShared    bool    // entered from another instance; prepared control fields may be overwritten
 	nativeContext          uintptr // arena-backed context bytes rebound before every native entry
+	instructionState       instructionState
 
 	// rt is set when the instance is created through Runtime.Instantiate, so
 	// Instance.Call and Instance.Close can fire lifecycle hooks. It is nil for
