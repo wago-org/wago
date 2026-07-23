@@ -79,13 +79,12 @@ func (in *Instance) closeOnce() error {
 		}
 	}
 
-	// Before marking the instance closed, transfer producer roots to any imported
-	// funcref table or global that still holds a local funcref this instance wrote
-	// (via table.set/fill/grow/init or global.set). The descriptor embeds this
-	// instance's code pointer and home linear-memory address, so it must outlive
-	// the write for other importers that later read it. retainResourceRoot refuses
-	// a closed instance, so this runs before in.closed is set; the container drops
-	// the root when the descriptor is overwritten or the container closes.
+	// Before marking the instance closed, transfer producer roots to imported
+	// funcref tables/globals that still hold any descriptor reachable through this
+	// instance: local functions, canonical InstanceExport identities, bare-producer
+	// proxies, or HostFuncRef proxies. Retaining the writer preserves its existing
+	// transitive attachments. retainResourceRoot refuses a closed instance, so this
+	// runs first; the container prunes the root after overwrite or on close.
 	appendStep("retain imported table roots", func() { retainProducerRootsInImportedTables(in) })
 	appendStep("retain imported global roots", func() { retainProducerRootsInImportedGlobals(in) })
 
@@ -95,9 +94,6 @@ func (in *Instance) closeOnce() error {
 	store := in.refStore
 	in.lifeMu.Unlock()
 
-	appendStep("detach imported host functions", func() { detachImportedHostFuncRefs(in) })
-	appendStep("detach imported globals", func() { detachImportedGlobals(in) })
-	appendStep("detach imported tables", func() { detachImportedTables(in) })
 	if store != nil {
 		appendStep("close reference store instance", func() { store.instanceClosed(in) })
 	}
@@ -122,17 +118,21 @@ func (in *Instance) releaseResources() {
 	in.resourcesClosed = true
 	in.lifeMu.Unlock()
 
-	// Function-import dispatch cells and imported funcref descriptors contain raw
-	// producer code/context pointers. Keep their producer roots until physical
-	// release, not merely logical Close: a table/global/token may retain this
-	// instance's descriptor arena after Close.
+	// Every imported raw-pointer dependency remains attached until physical
+	// release. A table/global/token or downstream function importer may keep this
+	// instance's native code and context callable after logical Close.
 	detachImportedFunctions(in)
+	detachImportedHostFuncRefs(in)
+	detachImportedGlobals(in)
+	detachImportedTables(in)
+	transferredImportAttachments.Delete(in)
 	if in.gc != nil {
 		in.gc.Close()
 	}
 	for table := in.table; table != nil; table = table.next {
 		table.releaseRetainedInstances()
 	}
+	unregisterHostControl(in)
 	if in.thunkMem != nil {
 		runtime.Unmap(in.thunkMem)
 		in.thunkMem = nil

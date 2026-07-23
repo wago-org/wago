@@ -256,14 +256,12 @@ func (t *Table) detachImporter() {
 }
 
 // retainProducerInstance transfers an instance's resource lifetime to this
-// shared table when one of its local funcrefs remains installed in the table —
-// whether the instance failed a start trap or closed after successfully writing
-// the funcref via table.set/fill/grow/init or an active element segment. The
-// funcref descriptor holds the producer's code pointer and home linear-memory
-// address, so the producer must outlive the descriptor. Before adding the root,
-// scan refSlot identities and release producers no longer represented by any
-// entry, keeping retention bounded by the table's finite descriptor capacity
-// even as repeated writes overwrite the same slots.
+// shared table when a funcref reachable through that instance remains installed
+// in the table. This includes local descriptors, canonical InstanceExport slots,
+// importer-owned bare-producer proxies, and HostFuncRef proxies. Retaining the
+// writer preserves its existing attachment chain. Before adding the root, scan
+// refSlot identities and release writers no longer represented by any entry,
+// keeping retention bounded by the table's finite descriptor capacity.
 func (t *Table) retainProducerInstance(in *Instance) bool {
 	if t == nil || t.owner == nil || t.owner.elementType != ValFuncRef || in == nil || !in.retainResourceRoot() {
 		return false
@@ -277,12 +275,12 @@ func (t *Table) retainProducerInstance(in *Instance) bool {
 		return false
 	}
 	for root := range t.retained {
-		if !t.containsLocalFuncref(root) {
+		if !t.containsReachableFuncref(root) {
 			delete(t.retained, root)
 			release = append(release, root)
 		}
 	}
-	if !t.containsLocalFuncref(in) {
+	if !t.containsReachableFuncref(in) {
 		t.mu.Unlock()
 		in.releaseResourceRoot()
 		for _, root := range release {
@@ -309,7 +307,7 @@ func (t *Table) retainProducerInstance(in *Instance) bool {
 	return true
 }
 
-func (t *Table) containsLocalFuncref(in *Instance) bool {
+func (t *Table) containsReachableFuncref(in *Instance) bool {
 	size := int(binary.LittleEndian.Uint32(t.desc))
 	capacity := (len(t.desc) - 8) / coreruntime.TableEntryBytes
 	if size > capacity {
@@ -317,7 +315,7 @@ func (t *Table) containsLocalFuncref(in *Instance) bool {
 	}
 	for slot := 0; slot < size; slot++ {
 		off := 8 + slot*coreruntime.TableEntryBytes + coreruntime.TableEntryRefSlotOffset
-		if in.ownsLocalFuncrefDescriptor(binary.LittleEndian.Uint64(t.desc[off:])) {
+		if in.reachesFuncrefDescriptor(binary.LittleEndian.Uint64(t.desc[off:])) {
 			return true
 		}
 	}

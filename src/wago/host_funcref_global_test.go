@@ -108,8 +108,8 @@ func TestHostCreatedFuncRefGlobalSharesOwnedTokenAndCallableIdentity(t *testing.
 	if err := shared.Close(); err == nil || !strings.Contains(err.Error(), "live importer") {
 		t.Fatalf("Close global with importer error = %v", err)
 	}
-	if err := owner.Close(); err == nil || !strings.Contains(err.Error(), "live funcref token") {
-		t.Fatalf("Close host owner with live token error = %v", err)
+	if err := owner.Close(); err == nil || (!strings.Contains(err.Error(), "live funcref token") && !strings.Contains(err.Error(), "live importer")) {
+		t.Fatalf("Close host owner with retained reference error = %v", err)
 	}
 	if err := importer.Close(); err != nil {
 		t.Fatalf("Close importer: %v", err)

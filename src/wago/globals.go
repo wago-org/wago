@@ -95,10 +95,9 @@ type globalOwner struct {
 	mutable   bool
 	importers int
 	closed    bool
-	// retained holds producer instances whose local funcref is currently stored
-	// in this global's cell (funcref globals only). Each retained instance keeps a
-	// resource root so its code/arena outlives the raw descriptor; roots are
-	// released when the descriptor is overwritten (next scan) or the global closes.
+	// retained holds writer instances whose reachable funcref is currently stored
+	// in this global's cell (funcref globals only). Each root preserves the writer's
+	// descriptor arena and transitive import attachments until overwrite or close.
 	retained map[*Instance]struct{}
 }
 
@@ -132,13 +131,11 @@ func newGlobalInCell(t ValType, bits uint64, vec V128, mutable bool, cell []byte
 }
 
 // retainProducerInstance transfers an instance's resource lifetime to this
-// funcref global when the instance's local funcref is the value currently held
-// in the cell — mirroring Table.retainProducerInstance for the single-slot
-// global case. The raw descriptor embeds the producer's code pointer and home
-// linear-memory address, so a producer that wrote it via global.set and then
-// closed must be kept alive for other importers that read the global. Before
-// adding the root it drops any previously retained producer no longer named by
-// the current cell value, keeping retention bounded to the live descriptor.
+// funcref global when the current descriptor is reachable through that
+// instance's function-index space. Retaining the writer covers local,
+// canonical-import, bare-producer proxy, and HostFuncRef proxy descriptors while
+// preserving established transitive attachments. A later scan drops any root
+// no longer represented by the single live cell.
 func (g *Global) retainProducerInstance(in *Instance) bool {
 	if g == nil || g.owner == nil || g.owner.typ != ValFuncRef || in == nil || !in.retainResourceRoot() {
 		return false
@@ -153,12 +150,12 @@ func (g *Global) retainProducerInstance(in *Instance) bool {
 	}
 	current := readGlobalObject(g, ValFuncRef)
 	for root := range o.retained {
-		if !root.ownsLocalFuncrefDescriptor(current) {
+		if !root.reachesFuncrefDescriptor(current) {
 			delete(o.retained, root)
 			release = append(release, root)
 		}
 	}
-	if !in.ownsLocalFuncrefDescriptor(current) {
+	if !in.reachesFuncrefDescriptor(current) {
 		o.mu.Unlock()
 		in.releaseResourceRoot()
 		for _, root := range release {
@@ -800,6 +797,18 @@ func (g *Global) validateReferenceImport(store *referenceStore) error {
 	if o.instance == nil {
 		entry := store.byIdentity[funcrefIdentity{descriptor: bits}]
 		ok = entry != nil && entry.descriptor == bits
+		if !ok {
+			// A failed or closed writer may have transferred its physical lifetime
+			// directly to this host-owned global without ever issuing a public token.
+			// Its retained descriptor chain is a valid same-store import root.
+			for root := range o.retained {
+				_, registered := store.instances[root]
+				if registered && root.refStore == store && root.hasPhysicalResources() && root.reachesFuncrefDescriptor(bits) {
+					ok = true
+					break
+				}
+			}
+		}
 	} else {
 		_, _, ok = store.canonicalFuncrefOwnerLocked(o.instance, bits)
 	}

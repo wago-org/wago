@@ -3,6 +3,7 @@ package wago
 import (
 	"encoding/binary"
 	"fmt"
+	"sync"
 	"unsafe"
 )
 
@@ -181,6 +182,51 @@ func (a *globalImportAttachments) detachAll() {
 	a.set.reset()
 }
 
+type transferredImportAttachmentState struct {
+	mu      sync.Mutex
+	tables  map[*Table]struct{}
+	globals map[*Global]struct{}
+}
+
+var transferredImportAttachments sync.Map // map[*Instance]*transferredImportAttachmentState
+
+func transferredImportState(in *Instance) *transferredImportAttachmentState {
+	state := &transferredImportAttachmentState{}
+	actual, _ := transferredImportAttachments.LoadOrStore(in, state)
+	return actual.(*transferredImportAttachmentState)
+}
+
+func (in *Instance) transferImportedGlobalAttachment(global *Global) {
+	if in == nil || global == nil {
+		return
+	}
+	state := transferredImportState(in)
+	state.mu.Lock()
+	if state.globals == nil {
+		state.globals = make(map[*Global]struct{})
+	}
+	_, exists := state.globals[global]
+	if !exists {
+		state.globals[global] = struct{}{}
+	}
+	state.mu.Unlock()
+	if !exists {
+		global.detachReferenceImporter()
+	}
+}
+
+func (in *Instance) ownsTransferredGlobalAttachment(global *Global) bool {
+	value, ok := transferredImportAttachments.Load(in)
+	if !ok {
+		return false
+	}
+	state := value.(*transferredImportAttachmentState)
+	state.mu.Lock()
+	_, ok = state.globals[global]
+	state.mu.Unlock()
+	return ok
+}
+
 func detachImportedGlobals(in *Instance) {
 	if in == nil || in.c == nil {
 		return
@@ -194,7 +240,7 @@ func detachImportedGlobals(in *Instance) {
 		if !ok || provided.Global == nil {
 			continue
 		}
-		if seen.add(provided.Global) {
+		if seen.add(provided.Global) && !in.ownsTransferredGlobalAttachment(provided.Global) {
 			provided.Global.detachReferenceImporter()
 		}
 	}
@@ -218,6 +264,7 @@ func retainProducerRootsInImportedGlobals(in *Instance) bool {
 			continue
 		}
 		if provided.Global.retainProducerInstance(in) {
+			in.transferImportedGlobalAttachment(provided.Global)
 			retained = true
 		}
 	}
@@ -247,6 +294,37 @@ func (a *tableImportAttachments) detachAll() {
 	a.set.reset()
 }
 
+func (in *Instance) transferImportedTableAttachment(table *Table) {
+	if in == nil || table == nil {
+		return
+	}
+	state := transferredImportState(in)
+	state.mu.Lock()
+	if state.tables == nil {
+		state.tables = make(map[*Table]struct{})
+	}
+	_, exists := state.tables[table]
+	if !exists {
+		state.tables[table] = struct{}{}
+	}
+	state.mu.Unlock()
+	if !exists {
+		table.detachImporter()
+	}
+}
+
+func (in *Instance) ownsTransferredTableAttachment(table *Table) bool {
+	value, ok := transferredImportAttachments.Load(in)
+	if !ok {
+		return false
+	}
+	state := value.(*transferredImportAttachmentState)
+	state.mu.Lock()
+	_, ok = state.tables[table]
+	state.mu.Unlock()
+	return ok
+}
+
 func detachImportedTables(in *Instance) {
 	if in == nil || in.c == nil {
 		return
@@ -258,7 +336,7 @@ func detachImportedTables(in *Instance) {
 		if !ok || table == nil {
 			continue
 		}
-		if seen.add(table) {
+		if seen.add(table) && !in.ownsTransferredTableAttachment(table) {
 			table.detachImporter()
 		}
 	}
@@ -273,6 +351,7 @@ func retainProducerRootsInImportedTables(in *Instance) bool {
 		def, _ := in.c.tableImportAt(tableIndex)
 		table, ok := in.imports.table(def.Key)
 		if ok && table.retainProducerInstance(in) {
+			in.transferImportedTableAttachment(table)
 			retained = true
 		}
 	}

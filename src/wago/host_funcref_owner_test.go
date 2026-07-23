@@ -84,8 +84,8 @@ func TestOwnedHostFuncrefEgressRoundTripAndCloseOrdering(t *testing.T) {
 	if got, err := consumer.Call(context.Background(), "call", token); err != nil || len(got) != 1 || got[0].I32() != 42 {
 		t.Fatalf("call retained owned host token = %v, %v; want 42", got, err)
 	}
-	if err := owner.Close(); err == nil || !strings.Contains(err.Error(), "live funcref token") {
-		t.Fatalf("Close owner with live token error = %v, want token-lifetime rejection", err)
+	if err := owner.Close(); err == nil || (!strings.Contains(err.Error(), "live funcref token") && !strings.Contains(err.Error(), "live importer")) {
+		t.Fatalf("Close owner with retained reference error = %v", err)
 	}
 	if err := consumer.Close(); err != nil {
 		t.Fatalf("Close consumer: %v", err)

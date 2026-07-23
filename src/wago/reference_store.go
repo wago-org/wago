@@ -441,6 +441,27 @@ func (in *Instance) ownsLocalFuncrefDescriptor(descriptor uint64) bool {
 	return ok && funcIndex >= in.c.NumImports
 }
 
+// reachesFuncrefDescriptor reports whether descriptor is represented in this
+// instance's function-index descriptor space. Imported InstanceExport entries
+// may reuse a producer's canonical refSlot, while bare producers and HostFuncRef
+// bindings use importer-owned proxy slots. Retaining this instance preserves the
+// already-established function/host attachment chain for every form.
+func (in *Instance) reachesFuncrefDescriptor(descriptor uint64) bool {
+	if in == nil || descriptor == 0 || len(in.funcRefDescs) < 2*coreruntime.FuncRefDescBytes {
+		return false
+	}
+	for fidx := 0; fidx < len(in.c.FuncTypeID); fidx++ {
+		off := (fidx + 1) * coreruntime.FuncRefDescBytes
+		if off+coreruntime.FuncRefDescBytes > len(in.funcRefDescs) {
+			return false
+		}
+		if binary.LittleEndian.Uint64(in.funcRefDescs[off+coreruntime.TableEntryRefSlotOffset:]) == descriptor {
+			return true
+		}
+	}
+	return false
+}
+
 func (in *Instance) hostFuncRefForDescriptor(descriptor uint64) *HostFuncRef {
 	funcIndex, ok := in.funcrefDescriptorIndex(descriptor)
 	if !ok || funcIndex < 0 || funcIndex >= in.c.NumImports || funcIndex >= len(in.c.Imports) {
