@@ -88,11 +88,40 @@ func newMemory(minPages, maxPages uint32, shared bool) (*Memory, error) {
 // CurrentBytes would panic there (slice bounds beyond the initial commit); this
 // mirrors what Instance.Read/Write already use via mem().
 func (m *Memory) Bytes() []byte {
+	end, ok := m.beginOwnerAccess()
+	if !ok {
+		return nil
+	}
+	defer end()
 	jm := m.jobMemory()
 	if jm == nil {
 		return nil
 	}
 	return jm.HostBytes()
+}
+
+func (m *Memory) beginOwnerAccess() (func(), bool) {
+	if m == nil {
+		return nil, false
+	}
+	s := m.state.Load()
+	if s == nil {
+		return func() {}, true
+	}
+	s.mu.Lock()
+	owner := s.owner
+	closed := s.closed || m.jm == nil
+	s.mu.Unlock()
+	if closed {
+		return nil, false
+	}
+	if owner == nil {
+		return func() {}, true
+	}
+	if err := owner.beginInvocation(); err != nil {
+		return nil, false
+	}
+	return owner.endInvocation, true
 }
 
 // Close releases a host-created memory after every importer closes. An exported

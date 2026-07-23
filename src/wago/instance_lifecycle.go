@@ -228,6 +228,9 @@ func (in *Instance) releaseResources() {
 	for table := in.table; table != nil; table = table.next {
 		table.releaseRetainedInstances()
 	}
+	for _, global := range in.globalCells {
+		global.instanceOwnerClosed(in)
+	}
 	unregisterHostControl(in)
 	if in.thunkMem != nil {
 		runtime.Unmap(in.thunkMem)
@@ -247,5 +250,12 @@ func (in *Instance) releaseResources() {
 }
 
 // Memory returns the instance's linear-memory object (instance-owned or the
-// host-imported one). Use Memory().Bytes() for the zero-copy byte view.
-func (in *Instance) Memory() *Memory { return in.memory }
+// host-imported one). Use Memory().Bytes() for the zero-copy byte view. A close
+// that wins the acquisition race returns nil instead of a dangling object.
+func (in *Instance) Memory() *Memory {
+	if in == nil || in.memory == nil || in.beginInvocation() != nil {
+		return nil
+	}
+	defer in.endInvocation()
+	return in.memory
+}

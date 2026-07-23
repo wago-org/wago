@@ -339,6 +339,18 @@ func (g *Global) Get() uint64 {
 	if g == nil || isReferenceValType(g.Type) {
 		return 0
 	}
+	end, ok := g.beginOwnerAccess()
+	if !ok {
+		return 0
+	}
+	defer end()
+	if g.owner != nil {
+		g.owner.mu.Lock()
+		defer g.owner.mu.Unlock()
+		if g.owner.closed || len(g.cell) < globalCellSize(g.Type) {
+			return 0
+		}
+	}
 	return readGlobalObject(g, g.Type)
 }
 
@@ -349,6 +361,18 @@ func (g *Global) GetV128() V128 {
 	if g == nil {
 		return V128{}
 	}
+	end, ok := g.beginOwnerAccess()
+	if !ok {
+		return V128{}
+	}
+	defer end()
+	if g.owner != nil {
+		g.owner.mu.Lock()
+		defer g.owner.mu.Unlock()
+		if g.owner.closed || len(g.cell) < globalCellSize(g.Type) {
+			return V128{}
+		}
+	}
 	return readGlobalObjectV128(g)
 }
 
@@ -358,6 +382,11 @@ func (g *Global) Set(bits uint64) error {
 	if g == nil {
 		return fmt.Errorf("global is nil")
 	}
+	end, ok := g.beginOwnerAccess()
+	if !ok {
+		return fmt.Errorf("global owner instance is closed")
+	}
+	defer end()
 	if !g.Mutable {
 		return fmt.Errorf("global is immutable")
 	}
@@ -367,6 +396,13 @@ func (g *Global) Set(bits uint64) error {
 	if isReferenceValType(g.Type) {
 		return fmt.Errorf("global is a reference type; use an instance typed accessor")
 	}
+	if g.owner != nil {
+		g.owner.mu.Lock()
+		defer g.owner.mu.Unlock()
+		if g.owner.closed || len(g.cell) < globalCellSize(g.Type) {
+			return fmt.Errorf("global storage is closed")
+		}
+	}
 	writeGlobalObject(g, g.Type, bits)
 	return nil
 }
@@ -374,21 +410,24 @@ func (g *Global) Set(bits uint64) error {
 // GetValue returns a reference global through its exact owner store. Numeric and
 // vector globals keep their existing Get/GetV128 accessors.
 func (g *Global) GetValue() (Value, error) {
-	if g == nil || len(g.cell) < 8 {
-		return Value{}, fmt.Errorf("global storage is closed")
-	}
-	if g.owner == nil {
+	if g == nil || g.owner == nil {
 		return Value{}, fmt.Errorf("global has no compatible reference owner")
 	}
+	end, ok := g.beginOwnerAccess()
+	if !ok {
+		return Value{}, fmt.Errorf("global owner instance is closed")
+	}
+	defer end()
 	o := g.owner
 	o.mu.Lock()
 	typ, store, source, closed := o.typ, o.store, o.instance, o.closed
 	consistent := g.Type == typ && g.Mutable == o.mutable
-	o.mu.Unlock()
-	if closed || !consistent || !isReferenceValType(typ) {
+	if closed || len(g.cell) < 8 || !consistent || !isReferenceValType(typ) {
+		o.mu.Unlock()
 		return Value{}, fmt.Errorf("global reference owner metadata is invalid")
 	}
 	bits := readGlobalObject(g, typ)
+	o.mu.Unlock()
 	if bits == 0 {
 		return Value{typ: typ}, nil
 	}
@@ -410,18 +449,20 @@ func (g *Global) GetValue() (Value, error) {
 
 // SetValue updates a mutable reference global after exact token validation.
 func (g *Global) SetValue(v Value) error {
-	if g == nil || len(g.cell) < 8 {
-		return fmt.Errorf("global storage is closed")
-	}
-	if g.owner == nil {
+	if g == nil || g.owner == nil {
 		return fmt.Errorf("global has no compatible reference owner")
 	}
+	end, ok := g.beginOwnerAccess()
+	if !ok {
+		return fmt.Errorf("global owner instance is closed")
+	}
+	defer end()
 	o := g.owner
 	o.mu.Lock()
+	defer o.mu.Unlock()
 	typ, mutable, store, closed := o.typ, o.mutable, o.store, o.closed
 	consistent := g.Type == typ && g.Mutable == mutable
-	o.mu.Unlock()
-	if closed || !consistent || !isReferenceValType(typ) {
+	if closed || len(g.cell) < 8 || !consistent || !isReferenceValType(typ) {
 		return fmt.Errorf("global reference owner metadata is invalid")
 	}
 	if v.typ != typ {
@@ -456,14 +497,59 @@ func (g *Global) SetV128(v V128) error {
 	if g == nil {
 		return fmt.Errorf("global is nil")
 	}
+	end, ok := g.beginOwnerAccess()
+	if !ok {
+		return fmt.Errorf("global owner instance is closed")
+	}
+	defer end()
 	if !g.Mutable {
 		return fmt.Errorf("global is immutable")
 	}
 	if g.Type != ValV128 {
 		return fmt.Errorf("global is %s, not v128", g.Type)
 	}
+	if g.owner != nil {
+		g.owner.mu.Lock()
+		defer g.owner.mu.Unlock()
+		if g.owner.closed || len(g.cell) < 16 {
+			return fmt.Errorf("global storage is closed")
+		}
+	}
 	writeGlobalObjectV128(g, v)
 	return nil
+}
+
+func (g *Global) beginOwnerAccess() (func(), bool) {
+	if g == nil || g.owner == nil || g.owner.instance == nil {
+		return func() {}, true
+	}
+	if err := g.owner.instance.beginInvocation(); err != nil {
+		return nil, false
+	}
+	return g.owner.instance.endInvocation, true
+}
+
+func (g *Global) instanceOwnerClosed(in *Instance) {
+	if g == nil || g.owner == nil || in == nil {
+		return
+	}
+	o := g.owner
+	var roots []*Instance
+	o.mu.Lock()
+	if o.instance != in || o.closed {
+		o.mu.Unlock()
+		return
+	}
+	o.closed = true
+	for root := range o.retained {
+		roots = append(roots, root)
+	}
+	o.retained = nil
+	g.cell = nil
+	o.mu.Unlock()
+	for _, root := range roots {
+		root.releaseResourceRoot()
+	}
 }
 
 // GlobalImport supplies an imported global value. Prefer a *Global for mutable

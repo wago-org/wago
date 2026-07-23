@@ -35,9 +35,10 @@ func (in *Instance) ExportedFunc(name string) (*InstanceExport, error) {
 	if in == nil {
 		return nil, fmt.Errorf("instance is nil")
 	}
-	if in.isLogicallyClosed() {
-		return nil, fmt.Errorf("instance is closed")
+	if err := in.beginInvocation(); err != nil {
+		return nil, err
 	}
+	defer in.endInvocation()
 	gfi, ok := in.c.Exports[name]
 	if !ok {
 		return nil, fmt.Errorf("no exported function %q", name)
@@ -155,7 +156,12 @@ func newHostTable(minSize, maxSize uint32, elementType ValType, store *reference
 // Size returns the table's current descriptor length. It reflects table.grow on
 // host-created, imported, and re-exported tables.
 func (t *Table) Size() int {
-	if t == nil || len(t.desc) < 4 {
+	if t == nil {
+		return 0
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.closed || len(t.desc) < 4 {
 		return 0
 	}
 	return int(binary.LittleEndian.Uint32(t.desc))
@@ -203,10 +209,7 @@ func (t *Table) validateImport(elementType ValType, store *referenceStore) error
 		return fmt.Errorf("table owner is closed")
 	}
 	if o.instance != nil {
-		o.instance.lifeMu.Lock()
-		closed := o.instance.closed || o.instance.resourcesClosed
-		o.instance.lifeMu.Unlock()
-		if closed {
+		if closed := o.instance.isLogicallyClosed(); closed {
 			return fmt.Errorf("table owner instance is closed")
 		}
 	}
@@ -371,9 +374,10 @@ func (in *Instance) ExportedTable(name string) (*Table, error) {
 	if in == nil || in.c == nil {
 		return nil, fmt.Errorf("instance has no table to export")
 	}
-	if in.isLogicallyClosed() {
-		return nil, fmt.Errorf("instance is closed")
+	if err := in.beginInvocation(); err != nil {
+		return nil, err
 	}
+	defer in.endInvocation()
 	tableIndex := 0
 	if in.c.hasTableExportMetadata {
 		var ok bool
@@ -429,9 +433,10 @@ func (in *Instance) ExportedMemory(name string) (*Memory, error) {
 	if in == nil || in.memory == nil {
 		return nil, fmt.Errorf("instance has no memory to export")
 	}
-	if in.isLogicallyClosed() {
-		return nil, fmt.Errorf("instance is closed")
+	if err := in.beginInvocation(); err != nil {
+		return nil, err
 	}
+	defer in.endInvocation()
 	if in.c.hasTableExportMetadata {
 		if kind, ok := in.c.tableExports[name]; !ok || kind != memoryExportSentinel {
 			return nil, fmt.Errorf("memory export %q not found", name)
@@ -457,9 +462,10 @@ func (in *Instance) ExportedGlobalObject(name string) (*Global, error) {
 	if in == nil {
 		return nil, fmt.Errorf("instance is nil")
 	}
-	if in.isLogicallyClosed() {
-		return nil, fmt.Errorf("instance is closed")
+	if err := in.beginInvocation(); err != nil {
+		return nil, err
 	}
+	defer in.endInvocation()
 	idx, ok := in.c.GlobalExports[name]
 	if !ok {
 		return nil, fmt.Errorf("no exported global %q", name)
@@ -468,11 +474,11 @@ func (in *Instance) ExportedGlobalObject(name string) (*Global, error) {
 		return nil, fmt.Errorf("exported global %q index %d out of range", name, idx)
 	}
 	g := in.globalCells[idx]
-	if idx < len(in.c.GlobalImports) || !isReferenceValType(g.Type) {
+	if idx < len(in.c.GlobalImports) {
 		return g, nil
 	}
 	store := in.refStore
-	if store == nil {
+	if isReferenceValType(g.Type) && store == nil {
 		var err error
 		store, err = in.referenceStoreForBoundary()
 		if err != nil {
