@@ -610,16 +610,20 @@ func (g *Global) SetValue(v Value) error {
 }
 
 // setValueNoLease is the already-leased counterpart used by Instance accessors.
+// Token validation and producer-root acquisition happen without globalOwner.mu.
+// The final write and retained-map reconciliation are one locked linearization
+// point; obsolete roots are released only after the container lock is dropped.
 func (g *Global) setValueNoLease(v Value) error {
 	if g == nil || g.owner == nil {
 		return fmt.Errorf("global has no compatible reference owner")
 	}
 	o := g.owner
 	o.mu.Lock()
-	defer o.mu.Unlock()
-	typ, mutable, store, closed := o.typ, o.mutable, o.store, o.closed
+	typ, mutable, store, containerOwner, closed := o.typ, o.mutable, o.store, o.instance, o.closed
 	consistent := g.Type == typ && g.Mutable == mutable
-	if closed || len(g.cell) < 8 || !consistent || !isReferenceValType(typ) {
+	valid := !closed && len(g.cell) >= 8 && consistent && isReferenceValType(typ)
+	o.mu.Unlock()
+	if !valid {
 		return fmt.Errorf("global reference owner metadata is invalid")
 	}
 	if v.typ != typ {
@@ -628,7 +632,9 @@ func (g *Global) setValueNoLease(v Value) error {
 	if !mutable {
 		return fmt.Errorf("global is immutable")
 	}
+
 	bits := v.bits
+	var owner *Instance
 	if bits != 0 {
 		if store == nil {
 			return fmt.Errorf("global has no compatible reference store")
@@ -643,9 +649,55 @@ func (g *Global) setValueNoLease(v Value) error {
 				return fmt.Errorf("invalid funcref token")
 			}
 			bits = descriptor
+			owner = store.retainDescriptorOwnerForFinalization(descriptor)
+			if owner == nil {
+				return fmt.Errorf("invalid funcref token owner")
+			}
+			if owner == containerOwner {
+				owner.releaseResourceRoot()
+				owner = nil
+			}
 		}
 	}
+
+	var release []*Instance
+	o.mu.Lock()
+	if o.closed || len(g.cell) < 8 || o.typ != typ || o.mutable != mutable || g.Type != typ || g.Mutable != mutable {
+		o.mu.Unlock()
+		if owner != nil {
+			owner.releaseResourceRoot()
+		}
+		return fmt.Errorf("global reference owner metadata is invalid")
+	}
 	writeGlobalObject(g, typ, bits)
+	if typ == ValFuncRef {
+		for root := range o.retained {
+			if root == owner {
+				continue
+			}
+			delete(o.retained, root)
+			release = append(release, root)
+		}
+		if owner != nil {
+			if o.retained == nil {
+				o.retained = make(map[*Instance]*retainedInstanceRoot)
+			}
+			state := o.retained[owner]
+			if state == nil {
+				state = &retainedInstanceRoot{}
+				o.retained[owner] = state
+				owner.nativeControlShared = true
+			} else {
+				release = append(release, owner)
+			}
+			state.precise = true
+			state.proxyDescriptors = nil
+		}
+	}
+	o.mu.Unlock()
+	for _, root := range release {
+		root.releaseResourceRoot()
+	}
 	return nil
 }
 

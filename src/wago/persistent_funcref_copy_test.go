@@ -423,7 +423,9 @@ func TestCrossRuntimePersistentFuncrefTableToGlobalRetainsProxy(t *testing.T) {
 	if err := destination.SetValue(ValueFuncRef(NullFuncRef())); err != nil {
 		t.Fatal(err)
 	}
-	scanGlobalAfterOverwrite(t, rtB, destination)
+	if got := globalRetainedCount(destination); got != 0 {
+		t.Fatalf("table-to-global retained roots after overwrite = %d, want 0", got)
+	}
 	assertRetainedInstanceState(t, "table-to-global writer after overwrite", writer, 0, false)
 	assertRetainedInstanceState(t, "table-to-global producer after overwrite", producer, 0, false)
 	_ = destination.Close()
