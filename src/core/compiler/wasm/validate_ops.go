@@ -56,11 +56,14 @@ func (v *funcValidator) step(in *Instruction) error {
 		_, err = v.popCtrl()
 		return err
 	case InstrIf:
-		if err := v.popExpect(I32); err != nil {
-			return err
-		}
+		// Resolve and validate the block type before inspecting operands. Invalid
+		// type indexes are declaration errors even when the condition stack is also
+		// malformed, matching the Core validation order.
 		ins, outs, err := v.blockSig(in.BlockType())
 		if err != nil {
+			return err
+		}
+		if err := v.popExpect(I32); err != nil {
 			return err
 		}
 		baseVals := append([]val(nil), v.vals...)
@@ -207,15 +210,17 @@ func (v *funcValidator) step(in *Instruction) error {
 		_, err := v.pop()
 		return err
 	case InstrSelect:
-		// The typed-select immediate is a result type constrained by the core
-		// spec to exactly one value type; len==0 is the untyped select form.
-		if len(in.ValTypes()) > 1 {
+		// The typed opcode (0x1c) always has an extension payload, including when
+		// its decoded result vector is empty. It requires exactly one value type;
+		// only the extension-free 0x1b form is the implicit numeric/vector select.
+		typedSelect := in.ext != nil
+		if typedSelect && len(in.ValTypes()) != 1 {
 			return v.verr(ErrTypeMismatch, "select type arity")
 		}
 		if err := v.popExpect(I32); err != nil {
 			return err
 		}
-		if len(in.ValTypes()) == 1 {
+		if typedSelect {
 			if err := v.popExpect(in.ValTypes()[0]); err != nil {
 				return err
 			}
@@ -252,13 +257,19 @@ func (v *funcValidator) step(in *Instruction) error {
 		if !ok {
 			return v.verr(ErrUnknownLocal, "")
 		}
+		if !v.localIsInitialized(in.Index, t) {
+			return v.verr(ErrUninitializedLocal, "")
+		}
 		v.push(t)
 	case InstrLocalSet:
 		t, ok := v.localType(in.Index)
 		if !ok {
 			return v.verr(ErrUnknownLocal, "")
 		}
-		return v.popExpect(t)
+		if err := v.popExpect(t); err != nil {
+			return err
+		}
+		v.initializeLocal(in.Index, t)
 	case InstrLocalTee:
 		t, ok := v.localType(in.Index)
 		if !ok {
@@ -267,6 +278,7 @@ func (v *funcValidator) step(in *Instruction) error {
 		if err := v.popExpect(t); err != nil {
 			return err
 		}
+		v.initializeLocal(in.Index, t)
 		v.push(t)
 	case InstrGlobalGet:
 		gt, ok := v.globalType(in.Index)

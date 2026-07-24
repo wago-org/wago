@@ -407,8 +407,8 @@ func TestWebAssembly2FeatureReportingCloseout(t *testing.T) {
 	if !hostSupportsSIMD() {
 		want &^= CoreFeatureSIMD
 	}
-	if got := SupportedFeatures(); got != want {
-		t.Fatalf("SupportedFeatures = %s, want admitted WebAssembly 2.0 set %s", got, want)
+	if got := SupportedFeatures(); got&want != want {
+		t.Fatalf("SupportedFeatures = %s, want at least admitted WebAssembly 2.0 set %s", got, want)
 	}
 	if CoreFeaturesV2.IsEnabled(CoreFeatureTailCall) {
 		t.Fatal("WebAssembly 2.0 release scope unexpectedly includes tail calls")

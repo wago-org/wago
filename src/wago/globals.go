@@ -1494,6 +1494,12 @@ func writeGlobalObjectV128(g *Global, v V128) {
 // token translation cannot expose an internal descriptor address. For v128
 // globals use GlobalV128.
 func (in *Instance) Global(name string) (uint64, error) {
+	if err := in.beginInvocation(); err != nil {
+		return 0, fmt.Errorf("global %q: %w", name, err)
+	}
+	defer in.endInvocation()
+	unlockNative := lockNativeExecutionForHostAccess()
+	defer unlockNative()
 	idx, err := in.exportedGlobalIndex(name)
 	if err != nil {
 		return 0, err
@@ -1510,6 +1516,12 @@ func (in *Instance) Global(name string) (uint64, error) {
 
 // GlobalV128 returns the current value of an exported v128 global.
 func (in *Instance) GlobalV128(name string) (V128, error) {
+	if err := in.beginInvocation(); err != nil {
+		return V128{}, fmt.Errorf("global %q: %w", name, err)
+	}
+	defer in.endInvocation()
+	unlockNative := lockNativeExecutionForHostAccess()
+	defer unlockNative()
 	idx, err := in.exportedGlobalIndex(name)
 	if err != nil {
 		return V128{}, err
@@ -1525,6 +1537,12 @@ func (in *Instance) GlobalV128(name string) (V128, error) {
 // interpreted as the global's type. Reference globals require SetGlobalValue so
 // opaque tokens are validated and translated. For v128 globals use SetGlobalV128.
 func (in *Instance) SetGlobal(name string, bits uint64) error {
+	if err := in.beginInvocation(); err != nil {
+		return fmt.Errorf("global %q: %w", name, err)
+	}
+	defer in.endInvocation()
+	unlockNative := lockNativeExecutionForHostAccess()
+	defer unlockNative()
 	idx, err := in.exportedGlobalIndex(name)
 	if err != nil {
 		return err
@@ -1545,6 +1563,12 @@ func (in *Instance) SetGlobal(name string, bits uint64) error {
 
 // SetGlobalV128 updates an exported mutable v128 global.
 func (in *Instance) SetGlobalV128(name string, v V128) error {
+	if err := in.beginInvocation(); err != nil {
+		return fmt.Errorf("global %q: %w", name, err)
+	}
+	defer in.endInvocation()
+	unlockNative := lockNativeExecutionForHostAccess()
+	defer unlockNative()
 	idx, err := in.exportedGlobalIndex(name)
 	if err != nil {
 		return err

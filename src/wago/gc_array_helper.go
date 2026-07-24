@@ -171,10 +171,10 @@ func (in *Instance) dispatchGCArrayHelper(helper uint32, args, results []uint64)
 			}
 			base := uintptr(unsafe.Pointer(&in.funcRefDescs[0]))
 			ptr := uintptr(identity)
-			if ptr < base+coreruntime.TableEntryBytes || ptr >= base+uintptr(len(in.funcRefDescs)) || (ptr-base)%coreruntime.TableEntryBytes != 0 {
+			if ptr < base+coreruntime.FuncRefDescBytes || ptr >= base+uintptr(len(in.funcRefDescs)) || (ptr-base)%coreruntime.FuncRefDescBytes != 0 {
 				panic(gcStructHelperError{err: fmt.Errorf("gc array.init_elem source %d has foreign function identity %#x", srcStart+i, identity)})
 			}
-			fidx := uint32((ptr-base)/coreruntime.TableEntryBytes - 1)
+			fidx := uint32((ptr-base)/coreruntime.FuncRefDescBytes - 1)
 			actual, err := in.c.functionRefExactType(fidx)
 			if err != nil || !valueTypeSubtype(actual, in.c.Types, want, in.c.Types) {
 				panic(gcStructHelperError{err: fmt.Errorf("gc array.init_elem source %d type mismatch: %v", srcStart+i, err)})

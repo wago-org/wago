@@ -46,15 +46,20 @@ func TestReferenceStoreResolvesNativeStructuralKeyCollisionsExactly(t *testing.T
 		t.Fatal("collision failure partially registered instance")
 	}
 
-	store.instanceClosed(first)
+	closeStoreInstance := func(in *Instance) {
+		store.instanceClosed(in)
+		store.instanceQuiesced(in)
+		store.resourceOwnerReleased(in)
+	}
+	closeStoreInstance(first)
 	if err := store.registerInstance(distinct); err == nil {
 		t.Fatal("collision admitted while equivalent owner remained live")
 	}
-	store.instanceClosed(equivalent)
+	closeStoreInstance(equivalent)
 	if err := store.registerInstance(distinct); err != nil {
-		t.Fatalf("type key was not released with final live owner: %v", err)
+		t.Fatalf("type key was not released with final physical owner: %v", err)
 	}
-	store.instanceClosed(distinct)
+	closeStoreInstance(distinct)
 }
 
 func scalarFunctionModule(param wasm.ValType) []byte {

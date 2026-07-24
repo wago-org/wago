@@ -540,13 +540,24 @@ func (in *Instance) reconcileFuncrefRoots() {
 			table.pruneRetainedInstances()
 		}
 	}
+	// Walk the local export-handle chain one link at a time under lifeMu, but
+	// reconcile only after releasing it. pruneRetainedInstances may drop a
+	// producer's final root and synchronously finalize that producer; its scan can
+	// retain this instance as a proxy, so holding lifeMu would invert the lock
+	// order. The chain remains physically owned for this active invocation, and
+	// per-link locking keeps concurrent lazy next-link publication race-free
+	// without allocating a snapshot on the call path.
 	in.lifeMu.Lock()
-	for table := in.table; table != nil; table = table.next {
+	table := in.table
+	in.lifeMu.Unlock()
+	for table != nil {
 		if table.owner != nil && table.owner.elementType == ValFuncRef && tables.add(table) {
 			table.pruneRetainedInstances()
 		}
+		in.lifeMu.Lock()
+		table = table.next
+		in.lifeMu.Unlock()
 	}
-	in.lifeMu.Unlock()
 }
 
 func (in *Instance) tableDescriptor(index int) []byte {

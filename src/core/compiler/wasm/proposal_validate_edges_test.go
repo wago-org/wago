@@ -35,11 +35,10 @@ func TestTypecheckNegativeDescriptorAndGC(t *testing.T) {
 	})
 	t.Run("ref.get_desc rejects types without descriptors", func(t *testing.T) {
 		m := &Module{
-			Types:     []RecType{structType(nil, TypeMetadata{}), ft(nil, nil)},
+			Types:     []RecType{structType(nil, TypeMetadata{}), ft([]ValType{refToType(0, false)}, nil)},
 			FuncTypes: []TypeIdx{{Index: 1}},
 			Code: []Func{{
-				Locals: Locals{Runs: []LocalRun{{Count: 1, Type: refToType(0, false)}}},
-				Body:   Expr{Instrs: []Instruction{{Kind: InstrLocalGet, Index: 0}, {Kind: InstrRefGetDesc, Index: 0}, {Kind: InstrDrop}}},
+				Body: Expr{Instrs: []Instruction{{Kind: InstrLocalGet, Index: 0}, {Kind: InstrRefGetDesc, Index: 0}, {Kind: InstrDrop}}},
 			}},
 		}
 		expectValidateErr(t, m, ErrTypeMismatch)
@@ -60,7 +59,7 @@ func TestTypecheckNegativeDescriptorAndGC(t *testing.T) {
 	})
 	t.Run("struct.new_default_desc rejects inexact descriptor operand", func(t *testing.T) {
 		m := descriptorModule(Instruction{Kind: InstrLocalGet, Index: 0}, Instruction{Kind: InstrStructNewDefaultDesc, Index: 0}, Instruction{Kind: InstrDrop})
-		m.Code[0].Locals = Locals{Runs: []LocalRun{{Count: 1, Type: refToType(1, false)}}}
+		m.Types[1] = ft([]ValType{refToType(1, false)}, nil)
 		expectValidateErr(t, m, ErrTypeMismatch)
 	})
 	t.Run("struct and array field stack effects", func(t *testing.T) {
@@ -247,22 +246,20 @@ func TestTypecheckNegativeControlTailAndCast(t *testing.T) {
 	})
 	t.Run("call_ref and return_call_ref", func(t *testing.T) {
 		m := &Module{
-			Types:     []RecType{ft([]ValType{I32}, []ValType{I64}), ft(nil, []ValType{I32}), ft(nil, nil)},
+			Types:     []RecType{ft([]ValType{I32}, []ValType{I64}), ft(nil, []ValType{I32}), ft([]ValType{refToType(0, false)}, nil)},
 			FuncTypes: []TypeIdx{{Index: 2}},
 			Code: []Func{{
-				Locals: Locals{Runs: []LocalRun{{Count: 1, Type: refToType(0, false)}}},
-				Body:   Expr{Instrs: []Instruction{{Kind: InstrI32Const}, {Kind: InstrLocalGet, Index: 0}, {Kind: InstrCallRef, Index: 0}, {Kind: InstrDrop}}},
+				Body: Expr{Instrs: []Instruction{{Kind: InstrI32Const}, {Kind: InstrLocalGet, Index: 0}, {Kind: InstrCallRef, Index: 0}, {Kind: InstrDrop}}},
 			}},
 		}
 		if err := ValidateModule(m); err != nil {
 			t.Fatalf("ValidateModule: %v", err)
 		}
 		bad := &Module{
-			Types:     []RecType{ft(nil, []ValType{I64}), ft(nil, []ValType{I32})},
+			Types:     []RecType{ft(nil, []ValType{I64}), ft([]ValType{refToType(0, false)}, []ValType{I32})},
 			FuncTypes: []TypeIdx{{Index: 1}},
 			Code: []Func{{
-				Locals: Locals{Runs: []LocalRun{{Count: 1, Type: refToType(0, false)}}},
-				Body:   Expr{Instrs: []Instruction{{Kind: InstrLocalGet, Index: 0}, {Kind: InstrReturnCallRef, Index: 0}}},
+				Body: Expr{Instrs: []Instruction{{Kind: InstrLocalGet, Index: 0}, {Kind: InstrReturnCallRef, Index: 0}}},
 			}},
 		}
 		expectValidateErr(t, bad, ErrTypeMismatch)

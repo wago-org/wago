@@ -166,8 +166,11 @@ func RequiresFuncRefDescriptorsFromFacts(m *wasm.Module, facts *ModuleFacts) boo
 		}
 	}
 	for i := range m.Elements {
-		e := &m.Elements[i]
-		if len(e.Kind.Funcs) != 0 || len(e.Kind.Exprs) != 0 {
+		// Legacy function-index payloads are intrinsically non-null funcrefs.
+		// Expression payloads require descriptors only when they actually contain
+		// ref.func, which AnalyzeModuleFacts records below. Null externref/funcref
+		// expressions and copied imported references need no local descriptor arena.
+		if len(m.Elements[i].Kind.Funcs) != 0 {
 			return true
 		}
 	}

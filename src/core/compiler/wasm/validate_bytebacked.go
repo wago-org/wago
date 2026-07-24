@@ -880,6 +880,7 @@ func (v *funcValidator) validateFuncDirect(body directCodeBody, ft *CompType, me
 			return err
 		}
 	}
+	v.resetLocalInitialization()
 	v.pushCtrl(ctrlFunc, nil, ft.Results)
 	v.rd.reset(body.body)
 	r := &v.rd
@@ -1161,11 +1162,13 @@ func (v *funcValidator) directPushCtrl(k ctrlKind, in, out []ValType) error {
 }
 
 func (v *funcValidator) directStartIf(bt BlockType) error {
-	if err := v.popExpect(I32); err != nil {
-		return err
-	}
+	// Validate the immediate before the operand stack so an out-of-scope type
+	// index is reported deterministically even when the condition is absent.
 	ins, outs, err := v.blockSig(bt)
 	if err != nil {
+		return err
+	}
+	if err := v.popExpect(I32); err != nil {
 		return err
 	}
 	return v.directPushCtrl(ctrlIf, ins, outs)
@@ -1229,7 +1232,7 @@ func (v *funcValidator) directElse() error {
 	if len(v.ctrls) >= maxInstructionNestingDepth {
 		return &DecodeError{Code: ErrInstructionNestingLimitExceeded}
 	}
-	v.ctrls = append(v.ctrls, ctrlFrame{kind: ctrlIf, in: f.in, out: f.out, height: f.height, ifSeenElse: true, ifThenHeight: thenHeight})
+	v.ctrls = append(v.ctrls, ctrlFrame{kind: ctrlIf, in: f.in, out: f.out, height: f.height, initHeight: f.initHeight, ifSeenElse: true, ifThenHeight: thenHeight})
 	v.pushAll(f.in)
 	return nil
 }

@@ -51,6 +51,21 @@ func runTailRaw(t *testing.T, m *wasm.Module, args ...uint64) ([]byte, error) {
 	return append([]byte(nil), resultBuf[:32]...), err
 }
 
+func TestDirectCrossTailABIAcceptsMixedBankVoidSignature(t *testing.T) {
+	ft := &wasm.CompType{Params: []wasm.ValType{wasm.I32, wasm.F32}}
+	if !sigFitsRegABI(ft) {
+		t.Fatal("test signature must fit the register ABI")
+	}
+	if !sigFitsDirectCrossTailABI(ft) {
+		t.Fatal("mixed-bank void tail import must use dynamic wrapper dispatch")
+	}
+
+	ft.Results = []wasm.ValType{wasm.F32}
+	if sigFitsDirectCrossTailABI(ft) {
+		t.Fatal("mixed-bank float result must remain gated without an exact result-record ABI")
+	}
+}
+
 func TestReturnCallDirectReusesFrameForDeepRecursion(t *testing.T) {
 	// (func (param i32) (result i32)
 	//   local.get 0; i32.eqz

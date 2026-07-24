@@ -261,7 +261,9 @@ type SubType struct {
 	HasPrefix bool // false for the compact CompTypeSubType form.
 }
 
-type RecType struct{ SubTypes []SubType }
+type RecType struct {
+	SubTypes []SubType
+}
 
 type DefType struct {
 	Rec        RecType

@@ -685,14 +685,14 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			binary.LittleEndian.PutUint64(entry, uint64(value.FuncIndex))
 			return nil
 		case ValFuncRef:
-			if writeTableEntry == nil {
-				return fmt.Errorf("funcref element has no descriptor arena")
-			}
 			if value.Null {
-				writeTableEntry(entry, nullFuncRefIndex)
-			} else {
-				writeTableEntry(entry, value.FuncIndex)
+				clear(entry)
+				return nil
 			}
+			if writeTableEntry == nil {
+				return fmt.Errorf("non-null funcref element has no descriptor arena")
+			}
+			writeTableEntry(entry, value.FuncIndex)
 			return nil
 		default:
 			return fmt.Errorf("unsupported element reference type %s", refType)

@@ -3624,7 +3624,8 @@ func (in *Instance) invokeLocalContext(li int, args []uint64, cancel context.Con
 
 // invokeAttachedLocalContext enters a producer retained by the caller's function
 // import attachment. The caller owns the invocation lease and active trap cell,
-// exactly as for a native dynamic import call.
+// exactly as for a native dynamic import call. attachedResult permits first-time
+// funcref tokenization to transfer the attachment's finalization lifetime.
 func (in *Instance) invokeAttachedLocalContext(li int, args []uint64, cancel context.Context, activeTrap []byte, attachedResult bool) ([]uint64, error) {
 	if li < 0 || li >= len(in.c.Funcs) || li >= len(in.c.Entry) {
 		return nil, fmt.Errorf("invalid function index %d", li)

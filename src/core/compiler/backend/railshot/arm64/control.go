@@ -354,6 +354,21 @@ func (f *fn) flushWideStack(roots []*elem) bool {
 	return true
 }
 
+// setDepth consumes the top operands while preserving the exact machine types
+// (and therefore slot widths) of the l values below them.
+func (f *fn) setDepth(l int) {
+	roots := f.rootsBottomToTop()
+	if l < 0 || l > len(roots) {
+		panic("arm64: invalid operand depth")
+	}
+	types := f.tmpTypes[:0]
+	for _, root := range roots[:l] {
+		types = append(types, root.st.typ)
+	}
+	f.tmpTypes = types
+	f.setDepthTypes(types)
+}
+
 func (f *fn) setDepthTypes(types []machineType) {
 	f.s.head.prev, f.s.head.next = f.s.head, f.s.head
 	slot := 0

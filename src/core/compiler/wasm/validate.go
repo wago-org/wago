@@ -221,16 +221,21 @@ func (v *moduleValidator) validateModule() error {
 		if err := v.validateTableType(t.Type); err != nil {
 			return err
 		}
+		hasInit := t.Init != nil
 		if v.direct != nil {
-			if i < len(v.direct.tableHasInit) && v.direct.tableHasInit[i] {
+			hasInit = i < len(v.direct.tableHasInit) && v.direct.tableHasInit[i]
+			if hasInit {
 				if err := v.validateConstExprDirect(v.direct.tableInits[i], RefVal(t.Type.Ref)); err != nil {
 					return err
 				}
 			}
-		} else if t.Init != nil {
+		} else if hasInit {
 			if err := v.validateConstExpr(*t.Init, RefVal(t.Type.Ref)); err != nil {
 				return err
 			}
+		}
+		if !hasInit && !t.Type.Ref.Nullable {
+			return v.err(ErrTypeMismatch, "non-defaultable table requires an initializer")
 		}
 	}
 	for _, mem := range v.m.Memories {
@@ -770,6 +775,10 @@ type ctrlFrame struct {
 	in, out     []ValType
 	height      int
 	unreachable bool
+	// initHeight is the local-initialization log watermark at control entry.
+	// Initializations performed inside a block do not escape that block; an
+	// else arm likewise restarts from the if entry state.
+	initHeight int
 
 	// Byte-backed binary validation does not build nested If instruction bodies,
 	// so it tracks then/else arms while streaming opcodes. ifThenHeight records
@@ -787,14 +796,20 @@ type funcValidator struct {
 	// Small inline backing stores cover the common straight-line function and
 	// const-expression cases without heap-allocating separate stack slices. Larger
 	// or deeply nested functions still grow normally and reuse that capacity.
-	valBuf           [2]val
-	ctrlBuf          [1]ctrlFrame
-	constResult      [1]ValType
-	localParams      []ValType
-	localRuns        []LocalRun
-	localCount       uint64
-	constOnly        bool
-	constGlobalLimit int // globals below this absolute index are visible to a const expression
+	valBuf      [2]val
+	ctrlBuf     [1]ctrlFrame
+	constResult [1]ValType
+	localParams []ValType
+	localRuns   []LocalRun
+	localCount  uint64
+	// Non-nullable reference locals have no default value. Track successful
+	// local.set/local.tee operations sparsely and roll them back at structured
+	// control boundaries. The map grows only with locals actually initialized by
+	// the function body, not with an attacker-controlled declared local count.
+	initializedLocals map[uint32]struct{}
+	localInitLog      []uint32
+	constOnly         bool
+	constGlobalLimit  int // globals below this absolute index are visible to a const expression
 	// rd is reused across bodies validated by this funcValidator so the byte
 	// cursor is not heap-allocated per function/const-expression.
 	rd reader
@@ -844,6 +859,7 @@ func (v *funcValidator) validateFunc(fn Func, ft *CompType) error {
 			return err
 		}
 	}
+	v.resetLocalInitialization()
 	v.pushCtrl(ctrlFunc, nil, ft.Results)
 	for _, in := range fn.Body.Instrs {
 		if err := v.step(&in); err != nil {
@@ -894,7 +910,7 @@ func (v *funcValidator) pushCtrl(k ctrlKind, in, out []ValType) error {
 	if err := v.popAll(in); err != nil {
 		return err
 	}
-	v.ctrls = append(v.ctrls, ctrlFrame{kind: k, in: in, out: out, height: len(v.vals)})
+	v.ctrls = append(v.ctrls, ctrlFrame{kind: k, in: in, out: out, height: len(v.vals), initHeight: len(v.localInitLog)})
 	v.pushAll(in)
 	return nil
 }
@@ -909,6 +925,7 @@ func (v *funcValidator) popCtrl() (ctrlFrame, error) {
 	if len(v.vals) != f.height {
 		return f, v.verr(ErrTypeMismatch, "leftover values")
 	}
+	v.restoreLocalInitialization(f.initHeight)
 	v.ctrls = v.ctrls[:len(v.ctrls)-1]
 	v.pushAll(f.out)
 	return f, nil
@@ -923,6 +940,45 @@ func (v *funcValidator) localType(idx uint32) (ValType, bool) {
 		return ValType{}, false
 	}
 	return LocalType(v.localParams, v.localRuns, idx)
+}
+
+func (v *funcValidator) resetLocalInitialization() {
+	if v.initializedLocals != nil {
+		clear(v.initializedLocals)
+	}
+	v.localInitLog = v.localInitLog[:0]
+}
+
+func (v *funcValidator) localIsInitialized(idx uint32, t ValType) bool {
+	// Function parameters are initialized by the caller. Numeric, vector, and
+	// nullable reference locals have a default value at function entry.
+	if uint64(idx) < uint64(len(v.localParams)) || t.Kind != ValRef || t.Ref.Nullable {
+		return true
+	}
+	_, ok := v.initializedLocals[idx]
+	return ok
+}
+
+func (v *funcValidator) initializeLocal(idx uint32, t ValType) {
+	if uint64(idx) < uint64(len(v.localParams)) || t.Kind != ValRef || t.Ref.Nullable {
+		return
+	}
+	if _, ok := v.initializedLocals[idx]; ok {
+		return
+	}
+	if v.initializedLocals == nil {
+		v.initializedLocals = make(map[uint32]struct{})
+	}
+	v.initializedLocals[idx] = struct{}{}
+	v.localInitLog = append(v.localInitLog, idx)
+}
+
+func (v *funcValidator) restoreLocalInitialization(height int) {
+	for len(v.localInitLog) > height {
+		last := len(v.localInitLog) - 1
+		delete(v.initializedLocals, v.localInitLog[last])
+		v.localInitLog = v.localInitLog[:last]
+	}
 }
 
 func (v *funcValidator) label(depth uint32) ([]ValType, error) {
