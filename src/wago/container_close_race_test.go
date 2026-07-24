@@ -55,23 +55,50 @@ func TestTableCloseVersusAttachValidation(t *testing.T) {
 
 func TestGlobalCloseSynchronization(t *testing.T) {
 	for i := 0; i < 100; i++ {
-		global := NewGlobalV128(V128{1, 2, 3}, true)
-		start := make(chan struct{})
-		var wg sync.WaitGroup
-		wg.Add(8)
-		go func() { defer wg.Done(); <-start; _ = global.Close() }()
-		go func() { defer wg.Done(); <-start; _ = global.Close() }()
-		go func() { defer wg.Done(); <-start; _ = global.Get() }()
-		go func() { defer wg.Done(); <-start; _ = global.GetV128() }()
-		go func() { defer wg.Done(); <-start; _, _ = global.GetValue() }()
-		go func() { defer wg.Done(); <-start; _ = global.Set(1) }()
-		go func() { defer wg.Done(); <-start; _ = global.SetV128(V128{9}) }()
-		go func() { defer wg.Done(); <-start; _ = global.SetValue(Value{}) }()
-		close(start)
-		wg.Wait()
-		if err := global.Close(); err != nil {
-			t.Fatal(err)
-		}
+		t.Run("scalar", func(t *testing.T) {
+			global := NewGlobalI64(1, true)
+			raceGlobalClose(t, global,
+				func() { _ = global.Get() },
+				func() { _ = global.Set(2) },
+			)
+		})
+		t.Run("v128", func(t *testing.T) {
+			global := NewGlobalV128(V128{1, 2, 3}, true)
+			raceGlobalClose(t, global,
+				func() { _ = global.GetV128() },
+				func() { _ = global.SetV128(V128{9}) },
+			)
+		})
+		t.Run("reference", func(t *testing.T) {
+			rt := NewRuntime()
+			global, err := rt.NewFuncRefGlobal(NullFuncRef(), true)
+			if err != nil {
+				t.Fatal(err)
+			}
+			raceGlobalClose(t, global,
+				func() { _, _ = global.GetValue() },
+				func() { _ = global.SetValue(ValueFuncRef(NullFuncRef())) },
+			)
+			if err := rt.Close(); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func raceGlobalClose(t *testing.T, global *Global, read, write func()) {
+	t.Helper()
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Add(4)
+	go func() { defer wg.Done(); <-start; _ = global.Close() }()
+	go func() { defer wg.Done(); <-start; _ = global.Close() }()
+	go func() { defer wg.Done(); <-start; read() }()
+	go func() { defer wg.Done(); <-start; write() }()
+	close(start)
+	wg.Wait()
+	if err := global.Close(); err != nil {
+		t.Fatal(err)
 	}
 }
 
