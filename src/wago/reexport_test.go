@@ -194,6 +194,88 @@ func TestImportedFunctionReexportUsesCallerInvocationLease(t *testing.T) {
 	}
 }
 
+func TestImportedFunctionReexportIssuesFirstFuncrefAfterProducerClose(t *testing.T) {
+	rt := NewRuntime()
+	producerMod, err := rt.Compile(funcrefCallableProducerModule())
+	if err != nil {
+		t.Fatalf("Compile producer: %v", err)
+	}
+	producer, err := rt.Instantiate(context.Background(), producerMod)
+	if err != nil {
+		t.Fatalf("Instantiate producer: %v", err)
+	}
+	get, err := producer.ExportedFunc("get")
+	if err != nil {
+		t.Fatalf("Export producer get: %v", err)
+	}
+	relayMod, err := rt.Compile(funcrefResultReexportModule())
+	if err != nil {
+		t.Fatalf("Compile relay: %v", err)
+	}
+	relay, err := rt.Instantiate(context.Background(), relayMod, WithImports(Imports{"env.get": get}))
+	if err != nil {
+		t.Fatalf("Instantiate relay: %v", err)
+	}
+	if err := producer.Close(); err != nil {
+		t.Fatalf("Close producer: %v", err)
+	}
+	if !producer.hasPhysicalResources() {
+		t.Fatal("producer resources closed while relay attachment was live")
+	}
+	rt.refStore.mu.Lock()
+	issuedBefore := len(rt.refStore.byToken)
+	rt.refStore.mu.Unlock()
+	if issuedBefore != 0 {
+		t.Fatalf("funcref tokens before delegated result = %d, want 0", issuedBefore)
+	}
+
+	out, err := relay.Invoke("get")
+	if err != nil || len(out) != 1 || out[0] == 0 {
+		t.Fatalf("delegated first funcref result after producer close = %v, %v", out, err)
+	}
+	if descriptor, ok := producer.localFuncrefDescriptor(0); !ok || out[0] == descriptor {
+		t.Fatalf("delegated result token %#x exposed descriptor %#x (ok=%v)", out[0], descriptor, ok)
+	}
+	consumerMod, err := rt.Compile(funcrefCallableConsumerModule())
+	if err != nil {
+		t.Fatalf("Compile consumer: %v", err)
+	}
+	consumer, err := rt.Instantiate(context.Background(), consumerMod)
+	if err != nil {
+		t.Fatalf("Instantiate consumer: %v", err)
+	}
+	got, err := consumer.Invoke("call", out[0])
+	if err != nil || len(got) != 1 || AsI32(got[0]) != 42 {
+		t.Fatalf("call delegated funcref token = %v, %v; want 42", got, err)
+	}
+	if err := relay.Close(); err != nil {
+		t.Fatalf("Close relay: %v", err)
+	}
+	if !producer.hasPhysicalResources() {
+		t.Fatal("token did not retain producer after relay attachment closed")
+	}
+	if err := consumer.Close(); err != nil {
+		t.Fatalf("Close consumer: %v", err)
+	}
+	if err := rt.Close(); err != nil {
+		t.Fatalf("Close runtime: %v", err)
+	}
+	if producer.hasPhysicalResources() || producer.resourceRefs != 0 {
+		t.Fatalf("producer after final token teardown: live=%v roots=%d", producer.hasPhysicalResources(), producer.resourceRefs)
+	}
+}
+
+func funcrefResultReexportModule() []byte {
+	imp := append(wasmtest.Name("env"), wasmtest.Name("get")...)
+	imp = append(imp, 0x00)
+	imp = append(imp, wasmtest.ULEB(0)...)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.FuncRef}))),
+		wasmtest.Section(2, wasmtest.Vec(imp)),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("get", 0, 0))),
+	)
+}
+
 func TestImportedFunctionReexportCanLinkAgain(t *testing.T) {
 	rt, producer, relay := instantiateImportedFunctionReexport(t)
 	defer closeImportedFunctionReexport(t, rt, producer, relay)

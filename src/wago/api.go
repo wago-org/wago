@@ -1741,7 +1741,7 @@ func (in *Instance) invoke(export string, args []uint64, cancel <-chan struct{})
 		// trap cell; the import attachment retains the producer's physical resources.
 		// Keep this Go-level re-export path identical so producer Close neither owns
 		// nor strands an invocation initiated through the relay.
-		return ex.inst.invokeAttachedLocalContext(ex.localIdx, args, cancel, in.trap)
+		return ex.inst.invokeAttachedLocalContext(ex.localIdx, args, cancel, in.trap, true)
 	}
 	if len(args) != ic.paramSlots {
 		return nil, fmt.Errorf("%s expects %d arg slot(s), got %d", export, ic.paramSlots, len(args))
@@ -1820,13 +1820,13 @@ func (in *Instance) invokeLocalContext(li int, args []uint64, cancel <-chan stru
 		return nil, fmt.Errorf("invoke function %d: %w", li, err)
 	}
 	defer in.endInvocation()
-	return in.invokeAttachedLocalContext(li, args, cancel, activeTrap)
+	return in.invokeAttachedLocalContext(li, args, cancel, activeTrap, false)
 }
 
 // invokeAttachedLocalContext enters a producer retained by the caller's function
 // import attachment. The caller owns the invocation lease and active trap cell,
 // exactly as for a native dynamic import call.
-func (in *Instance) invokeAttachedLocalContext(li int, args []uint64, cancel <-chan struct{}, activeTrap []byte) ([]uint64, error) {
+func (in *Instance) invokeAttachedLocalContext(li int, args []uint64, cancel <-chan struct{}, activeTrap []byte, attachedResult bool) ([]uint64, error) {
 	if li < 0 || li >= len(in.c.Funcs) || li >= len(in.c.Entry) {
 		return nil, fmt.Errorf("invalid function index %d", li)
 	}
@@ -1910,7 +1910,7 @@ func (in *Instance) invokeAttachedLocalContext(li int, args []uint64, cancel <-c
 		resSlot++
 	}
 	if hasReferenceValType(sig.Results) {
-		if err := in.translatePublicReferenceResults("function", out, sig.Results); err != nil {
+		if err := in.translatePublicReferenceResultsMode("function", out, sig.Results, attachedResult); err != nil {
 			return nil, err
 		}
 	}
@@ -2139,15 +2139,30 @@ func (in *Instance) marshalPublicReferenceArgs(subject string, values []uint64, 
 }
 
 func (in *Instance) translatePublicReferenceResults(subject string, values []uint64, types []ValType) error {
+	return in.translatePublicReferenceResultsMode(subject, values, types, false)
+}
+
+func (in *Instance) translatePublicReferenceResultsMode(subject string, values []uint64, types []ValType, attachedResult bool) error {
 	slot := 0
 	for i, typ := range types {
 		if typ == ValFuncRef && values[slot] != 0 {
-			store, err := in.funcrefStoreForEgress()
+			var store *referenceStore
+			var err error
+			if attachedResult {
+				store, err = in.funcrefStoreForAttachedEgress()
+			} else {
+				store, err = in.funcrefStoreForEgress()
+			}
 			if err != nil {
 				clear(values)
 				return fmt.Errorf("%s: invalid funcref result %d: %w", subject, i, err)
 			}
-			token, err := store.issue(in, values[slot])
+			var token uint64
+			if attachedResult {
+				token, err = store.issueAttachedResult(in, values[slot])
+			} else {
+				token, err = store.issue(in, values[slot])
+			}
 			if err != nil {
 				clear(values)
 				return fmt.Errorf("%s: invalid funcref result %d: %w", subject, i, err)

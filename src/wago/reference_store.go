@@ -208,6 +208,18 @@ func (s *referenceStore) closeRuntime() {
 }
 
 func (s *referenceStore) issue(source *Instance, descriptor uint64) (uint64, error) {
+	return s.issueMode(source, descriptor, false)
+}
+
+// issueAttachedResult is restricted to result egress from a function import
+// attachment. The caller's live attachment proves that a logically closed
+// producer is still physically retained, so first-time token issuance may take
+// over that lifetime with a finalization root.
+func (s *referenceStore) issueAttachedResult(source *Instance, descriptor uint64) (uint64, error) {
+	return s.issueMode(source, descriptor, true)
+}
+
+func (s *referenceStore) issueMode(source *Instance, descriptor uint64, attachedResult bool) (uint64, error) {
 	if descriptor == 0 {
 		return 0, nil
 	}
@@ -232,7 +244,13 @@ func (s *referenceStore) issue(source *Instance, descriptor uint64) (uint64, err
 	if entry := s.byIdentity[funcrefIdentity{descriptor: canonical}]; entry != nil {
 		return entry.token, nil
 	}
-	if !owner.retainResourceRoot() {
+	var retained bool
+	if attachedResult {
+		retained = owner.retainResourceRootForFinalization()
+	} else {
+		retained = owner.retainResourceRoot()
+	}
+	if !retained {
 		return 0, fmt.Errorf("funcref producer is closed")
 	}
 	token, err := s.newTokenLocked()
@@ -570,6 +588,25 @@ func (in *Instance) localFuncrefDescriptor(localIdx int) (uint64, bool) {
 
 func (in *Instance) funcrefStoreForEgress() (*referenceStore, error) {
 	return in.referenceStoreForBoundary()
+}
+
+// funcrefStoreForAttachedEgress returns the already-established store of a
+// producer reached through a live function import attachment. It never creates
+// a store after logical close: the attachment may preserve physical resources,
+// but it cannot establish a new cross-instance token domain retroactively.
+func (in *Instance) funcrefStoreForAttachedEgress() (*referenceStore, error) {
+	if in == nil {
+		return nil, fmt.Errorf("instance is nil")
+	}
+	in.lifeMu.Lock()
+	defer in.lifeMu.Unlock()
+	if in.resourcesClosed {
+		return nil, fmt.Errorf("instance resources are closed")
+	}
+	if in.refStore == nil {
+		return nil, fmt.Errorf("attached funcref producer has no compatible reference store")
+	}
+	return in.refStore, nil
 }
 
 func (in *Instance) referenceStoreForBoundary() (*referenceStore, error) {
