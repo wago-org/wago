@@ -33,6 +33,7 @@ type referenceStore struct {
 
 type referenceStoreInstance struct {
 	closeAccounted    bool
+	quiesced          bool
 	resourcesReleased bool
 }
 
@@ -86,7 +87,21 @@ func (s *referenceStore) instanceClosed(in *Instance) {
 				s.liveInstances--
 			}
 		}
-		if entry.resourcesReleased {
+		if entry.quiesced && entry.resourcesReleased {
+			delete(s.instances, in)
+		}
+	}
+	release = s.maybeReleaseEntriesLocked()
+	s.mu.Unlock()
+	releaseFuncrefEntries(release)
+}
+
+func (s *referenceStore) instanceQuiesced(in *Instance) {
+	var release []*funcrefTokenEntry
+	s.mu.Lock()
+	if entry := s.instances[in]; entry != nil {
+		entry.quiesced = true
+		if entry.closeAccounted && entry.resourcesReleased {
 			delete(s.instances, in)
 		}
 	}
@@ -100,7 +115,7 @@ func (s *referenceStore) resourceOwnerReleased(in *Instance) {
 	s.mu.Lock()
 	if entry := s.instances[in]; entry != nil {
 		entry.resourcesReleased = true
-		if entry.closeAccounted {
+		if entry.closeAccounted && entry.quiesced {
 			delete(s.instances, in)
 		}
 	}
@@ -109,11 +124,24 @@ func (s *referenceStore) resourceOwnerReleased(in *Instance) {
 	releaseFuncrefEntries(release)
 }
 
-func (s *referenceStore) maybeReleaseEntriesLocked() []*funcrefTokenEntry {
-	if s.runtimeClosed && s.liveInstances == 0 && s.liveObjects == 0 {
-		return s.releaseEntriesLocked()
+func (s *referenceStore) allClosedInstancesQuiescedLocked() bool {
+	for _, entry := range s.instances {
+		if entry.closeAccounted && !entry.quiesced {
+			return false
+		}
 	}
-	return nil
+	return true
+}
+
+func (s *referenceStore) canReleaseEntriesLocked() bool {
+	return s.runtimeClosed && s.liveInstances == 0 && s.liveObjects == 0 && s.allClosedInstancesQuiescedLocked()
+}
+
+func (s *referenceStore) maybeReleaseEntriesLocked() []*funcrefTokenEntry {
+	if !s.canReleaseEntriesLocked() {
+		return nil
+	}
+	return s.releaseEntriesLocked()
 }
 
 func (s *referenceStore) registerStoreObject() error {
@@ -358,6 +386,43 @@ func releaseFuncrefEntries(entries []*funcrefTokenEntry) {
 func (s *referenceStore) hasInstanceResourcesLocked(in *Instance) bool {
 	entry := s.instances[in]
 	return entry != nil && !entry.resourcesReleased
+}
+
+// retainDescriptorOwnerForFinalization resolves descriptor to the instance that
+// physically owns its descriptor bytes (or to an importer-owned proxy whose
+// attachment chain owns the callable producer) and acquires one resource root.
+//
+// Lock order for reference retention is referenceStore.mu -> Instance.lifeMu.
+// Container locks are never held while calling this method: callers snapshot
+// descriptor values first, resolve/retain here, and then adopt or release the
+// roots under the container lock. Physical teardown marks an instance released
+// in the store before unmapping descriptor state, so a candidate inspected while
+// holding store.mu remains either retainable or safely rejected.
+func (s *referenceStore) retainDescriptorOwnerForFinalization(descriptor uint64) *Instance {
+	if s == nil || descriptor == 0 {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if entry := s.byIdentity[funcrefIdentity{descriptor: descriptor}]; entry != nil {
+		if s.hasInstanceResourcesLocked(entry.owner) && entry.owner.retainResourceRootForFinalization() {
+			return entry.owner
+		}
+	}
+	for candidate, state := range s.instances {
+		if state.resourcesReleased || !candidate.reachesFuncrefDescriptor(descriptor) {
+			continue
+		}
+		owner, canonical, ok := s.canonicalFuncrefOwnerLocked(candidate, descriptor)
+		if !ok || canonical != descriptor || !s.hasInstanceResourcesLocked(owner) {
+			continue
+		}
+		if owner.retainResourceRootForFinalization() {
+			return owner
+		}
+	}
+	return nil
 }
 
 func (s *referenceStore) canonicalFuncrefOwnerLocked(source *Instance, descriptor uint64) (*Instance, uint64, bool) {

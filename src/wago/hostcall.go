@@ -229,7 +229,7 @@ func (h *HostFuncRef) Close() error {
 	// until releaseEntries drops the producer root and physical teardown detaches
 	// the importer. Every other retained-code path (for example an external table
 	// root without a token) continues to reject Close while importers remain.
-	closingLastTokenRoot := h.tokenLive && store.runtimeClosed && store.liveInstances == 0
+	closingLastTokenRoot := h.tokenLive && store.runtimeClosed && store.liveInstances == 0 && store.allClosedInstancesQuiescedLocked()
 	if h.importers != 0 && !closingLastTokenRoot {
 		count := h.importers
 		h.mu.Unlock()
@@ -248,9 +248,7 @@ func (h *HostFuncRef) Close() error {
 	if store.liveObjects > 0 {
 		store.liveObjects--
 	}
-	if store.runtimeClosed && store.liveInstances == 0 && store.liveObjects == 0 {
-		release = store.releaseEntriesLocked()
-	}
+	release = store.maybeReleaseEntriesLocked()
 	h.mu.Unlock()
 	store.mu.Unlock()
 	releaseFuncrefEntries(release)

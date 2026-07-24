@@ -195,6 +195,17 @@ func (in *Instance) tryFinalize() {
 	retainProducerRootsInImportedTablesForFinalization(in)
 	retainProducerRootsInImportedGlobalsForFinalization(in)
 
+	// Reference-token teardown may release roots needed by this instance, so the
+	// store is notified only after the invocation count is zero and every
+	// persistent table/global reference has been transferred. The notification is
+	// idempotent and deliberately precedes the final resource-root recheck.
+	in.lifeMu.Lock()
+	store := in.refStore
+	in.lifeMu.Unlock()
+	if store != nil {
+		store.instanceQuiesced(in)
+	}
+
 	in.lifeMu.Lock()
 	in.finalizing = false
 	if in.resourcesClosed || !in.closed || in.resourceRefs != 0 || in.invocationState.Load()&instanceInvocationCount != 0 {
@@ -202,7 +213,7 @@ func (in *Instance) tryFinalize() {
 		return
 	}
 	in.resourcesClosed = true // commit the one physical-release owner
-	store := in.refStore
+	store = in.refStore
 	in.lifeMu.Unlock()
 
 	if store != nil {
@@ -247,6 +258,25 @@ func (in *Instance) releaseResources() {
 		in.memory.detachImporter()
 	}
 	runtime.ReleaseEngine(in.eng)
+
+	// Reusable arenas and job-memory objects may immediately back a later
+	// instance. Keep the closed instance from retaining any stale view into that
+	// storage after every teardown step above has completed.
+	in.jm = nil
+	in.ar = nil
+	in.eng = nil
+	in.base = 0
+	in.nativeContext = 0
+	in.tableDescPtr = 0
+	in.tableDescLen = 0
+	in.globalCells = nil
+	in.globals = nil
+	in.funcRefDescs = nil
+	in.passiveDataDesc = nil
+	in.serArgs = nil
+	in.results = nil
+	in.trap = nil
+	in.resultVals = nil
 }
 
 // Memory returns the instance's linear-memory object (instance-owned or the

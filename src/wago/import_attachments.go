@@ -277,6 +277,18 @@ func retainProducerRootsInImportedGlobalsMode(in *Instance, finalization bool) b
 		} else {
 			rooted = provided.Global.retainProducerInstance(in)
 		}
+		if finalization && provided.Global.retainDescriptorOwnerForFinalization(in.refStore) {
+			rooted = true
+		}
+		for _, producer := range importedFuncrefProducerRoots(in) {
+			if finalization {
+				if provided.Global.retainProducerInstanceForFinalization(producer) {
+					rooted = true
+				}
+			} else if provided.Global.retainProducerInstance(producer) {
+				rooted = true
+			}
+		}
 		if rooted {
 			in.transferImportedGlobalAttachment(provided.Global)
 			retained = true
@@ -381,26 +393,71 @@ func retainProducerRootsInImportedTablesMode(in *Instance, finalization bool) bo
 		} else {
 			rooted = table.retainProducerInstance(in)
 		}
+		if finalization && table.retainDescriptorOwnersForFinalization(in.refStore) {
+			rooted = true
+		}
+		// A descriptor copied from another imported table/global or admitted as
+		// a public token need not occur in the writer's own funcRefDescs. Carry
+		// forward every source container's actual producer roots, while the store
+		// resolver above covers still-live token and canonical descriptor owners.
+		for _, producer := range importedFuncrefProducerRoots(in) {
+			if finalization {
+				if table.retainProducerInstanceForFinalization(producer) {
+					rooted = true
+				}
+			} else if table.retainProducerInstance(producer) {
+				rooted = true
+			}
+		}
 		if rooted {
 			in.transferImportedTableAttachment(table)
 			retained = true
 		}
-		// An active global.get element can copy a descriptor owned by an
-		// imported funcref global's producer directly into this table. Such a
-		// descriptor need not appear in the writer's own funcRefDescs, so retain
-		// the global's actual producer roots before detachImportedGlobals can
-		// release them.
-		for globalIndex := 0; globalIndex < len(in.c.GlobalImports) && globalIndex < len(in.globalCells); globalIndex++ {
-			for _, producer := range in.globalCells[globalIndex].funcrefProducerRoots() {
-				if finalization {
-					table.retainProducerInstanceForFinalization(producer)
-				} else {
-					table.retainProducerInstance(producer)
-				}
-			}
-		}
 	}
 	return retained
+}
+
+// importedFuncrefProducerRoots snapshots roots from every imported persistent
+// funcref container. Container locks are released before callers attempt any
+// destination retention, preserving the order container -> snapshot, then
+// referenceStore -> instance, then destination container.
+func importedFuncrefProducerRoots(in *Instance) []*Instance {
+	if in == nil || in.c == nil {
+		return nil
+	}
+	var roots []*Instance
+	seen := make(map[*Instance]struct{})
+	add := func(candidates []*Instance) {
+		for _, root := range candidates {
+			if root == nil {
+				continue
+			}
+			if _, ok := seen[root]; ok {
+				continue
+			}
+			seen[root] = struct{}{}
+			roots = append(roots, root)
+		}
+	}
+	var tables importDedup[*Table]
+	for tableIndex := 0; tableIndex < in.c.tableImportCount(); tableIndex++ {
+		def, _ := in.c.tableImportAt(tableIndex)
+		table, ok := in.imports.table(def.Key)
+		if ok && table != nil && tables.add(table) {
+			add(table.funcrefProducerRoots())
+		}
+	}
+	var globals importDedup[*Global]
+	for globalIndex, imp := range in.c.GlobalImports {
+		if imp.Type != ValFuncRef || globalIndex >= len(in.globalCells) {
+			continue
+		}
+		global := in.globalCells[globalIndex]
+		if global != nil && globals.add(global) {
+			add(global.funcrefProducerRoots())
+		}
+	}
+	return roots
 }
 
 func (in *Instance) tableDescriptor(index int) []byte {

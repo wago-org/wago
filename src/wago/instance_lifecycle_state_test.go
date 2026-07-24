@@ -6,73 +6,121 @@ import (
 	"testing"
 )
 
+func newReferenceStoreStateTest(t *testing.T) (*referenceStore, *Instance, *Instance) {
+	t.Helper()
+	store := newReferenceStore(false)
+	in := &Instance{}
+	if err := store.registerInstance(in); err != nil {
+		t.Fatalf("registerInstance: %v", err)
+	}
+	owner := &Instance{resourcesClosed: true, resourceRefs: 1}
+	entry := &funcrefTokenEntry{token: 1, owner: owner, descriptor: 1}
+	store.byToken = map[uint64]*funcrefTokenEntry{1: entry}
+	store.byIdentity = map[funcrefIdentity]*funcrefTokenEntry{{descriptor: 1}: entry}
+	return store, in, owner
+}
+
+func assertReferenceStoreStateFinal(t *testing.T, store *referenceStore, owner *Instance) {
+	t.Helper()
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	if store.liveInstances != 0 {
+		t.Fatalf("liveInstances = %d, want 0", store.liveInstances)
+	}
+	if len(store.instances) != 0 {
+		t.Fatalf("stale instance membership remains: %#v", store.instances)
+	}
+	if len(store.byToken) != 0 || len(store.byIdentity) != 0 {
+		t.Fatal("token maps remain after every release condition completed")
+	}
+	if owner.resourceRefs != 0 {
+		t.Fatalf("released token owner roots = %d, want 0", owner.resourceRefs)
+	}
+}
+
 func TestReferenceStoreCloseAccountingOrderIndependent(t *testing.T) {
-	cases := []struct {
+	type transition struct {
 		name string
 		run  func(*referenceStore, *Instance)
-	}{
-		{
-			name: "logical then physical",
-			run: func(store *referenceStore, in *Instance) {
-				store.instanceClosed(in)
-				store.instanceClosed(in)
-				store.resourceOwnerReleased(in)
-				store.resourceOwnerReleased(in)
-			},
-		},
-		{
-			name: "physical then logical",
-			run: func(store *referenceStore, in *Instance) {
-				store.resourceOwnerReleased(in)
-				store.resourceOwnerReleased(in)
-				store.instanceClosed(in)
-				store.instanceClosed(in)
-			},
-		},
-		{
-			name: "concurrent",
-			run: func(store *referenceStore, in *Instance) {
-				start := make(chan struct{})
-				var wg sync.WaitGroup
-				wg.Add(2)
-				go func() { defer wg.Done(); <-start; store.instanceClosed(in) }()
-				go func() { defer wg.Done(); <-start; store.resourceOwnerReleased(in) }()
-				close(start)
-				wg.Wait()
-			},
-		},
 	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			store := newReferenceStore(false)
-			in := &Instance{}
-			if err := store.registerInstance(in); err != nil {
-				t.Fatalf("registerInstance: %v", err)
+	logical := transition{"logical", (*referenceStore).instanceClosed}
+	quiesced := transition{"quiesced", (*referenceStore).instanceQuiesced}
+	physical := transition{"physical", (*referenceStore).resourceOwnerReleased}
+	orders := [][]transition{
+		{logical, quiesced, physical},
+		{logical, physical, quiesced},
+		{physical, logical, quiesced},
+		{physical, quiesced, logical},
+		{quiesced, logical, physical},
+		{quiesced, physical, logical},
+	}
+	for _, runtimeFirst := range []bool{true, false} {
+		for _, order := range orders {
+			name := order[0].name + "-" + order[1].name + "-" + order[2].name
+			if runtimeFirst {
+				name = "runtime-first/" + name
+			} else {
+				name = "runtime-last/" + name
 			}
-			owner := &Instance{resourcesClosed: true, resourceRefs: 1}
-			entry := &funcrefTokenEntry{token: 1, owner: owner, descriptor: 1}
-			store.byToken = map[uint64]*funcrefTokenEntry{1: entry}
-			store.byIdentity = map[funcrefIdentity]*funcrefTokenEntry{{descriptor: 1}: entry}
-			store.closeRuntime() // token cleanup must wait for both instance transitions
-			if len(store.byToken) != 1 {
-				t.Fatal("runtime close released entries while a logical instance remained")
-			}
+			t.Run(name, func(t *testing.T) {
+				store, in, owner := newReferenceStoreStateTest(t)
+				if runtimeFirst {
+					store.closeRuntime()
+				}
+				seenLogical, seenQuiesced := false, false
+				for _, step := range order {
+					step.run(store, in)
+					step.run(store, in) // every notification is idempotent
+					seenLogical = seenLogical || step.name == "logical"
+					seenQuiesced = seenQuiesced || step.name == "quiesced"
+					store.mu.Lock()
+					tokens := len(store.byToken)
+					live := store.liveInstances
+					store.mu.Unlock()
+					if runtimeFirst && (!seenLogical || !seenQuiesced) && tokens != 1 {
+						t.Fatalf("tokens released before logical close and quiescence after %s", step.name)
+					}
+					if live > 1 {
+						t.Fatalf("liveInstances underflow/overflow = %d", live)
+					}
+				}
+				if !runtimeFirst {
+					store.mu.Lock()
+					if len(store.byToken) != 1 {
+						t.Fatal("tokens released before Runtime.Close")
+					}
+					store.mu.Unlock()
+					store.closeRuntime()
+				}
+				assertReferenceStoreStateFinal(t, store, owner)
+			})
+		}
+	}
+}
 
-			tc.run(store, in)
-			if store.liveInstances != 0 {
-				t.Fatalf("liveInstances = %d, want 0", store.liveInstances)
-			}
-			if len(store.instances) != 0 {
-				t.Fatalf("instance membership remains after both transitions: %#v", store.instances)
-			}
-			if len(store.byToken) != 0 || len(store.byIdentity) != 0 {
-				t.Fatal("runtime-close token cleanup did not run after the final transition")
-			}
-			if owner.resourceRefs != 0 {
-				t.Fatalf("released token owner roots = %d, want 0", owner.resourceRefs)
-			}
-		})
+func TestReferenceStoreCloseAccountingConcurrentNotifications(t *testing.T) {
+	store, in, owner := newReferenceStoreStateTest(t)
+	store.closeRuntime()
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	for _, notify := range []func(){
+		func() { store.instanceClosed(in) },
+		func() { store.instanceQuiesced(in) },
+		func() { store.resourceOwnerReleased(in) },
+		func() { store.instanceClosed(in) },
+		func() { store.instanceQuiesced(in) },
+		func() { store.resourceOwnerReleased(in) },
+	} {
+		wg.Add(1)
+		go func(fn func()) {
+			defer wg.Done()
+			<-start
+			fn()
+		}(notify)
 	}
+	close(start)
+	wg.Wait()
+	assertReferenceStoreStateFinal(t, store, owner)
 }
 
 func TestInvocationLeaseStateMachine(t *testing.T) {

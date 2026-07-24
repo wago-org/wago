@@ -170,12 +170,12 @@ func (t *Table) Size() int {
 // Close releases a host-created table after every importer closes. Instance-owned
 // export handles remain no-ops; their producer instance owns the descriptor.
 func (t *Table) Close() error {
-	if t == nil || t.owner == nil || t.owner.arena == nil {
+	if t == nil || t.owner == nil {
 		return nil
 	}
 	o := t.owner
 	o.mu.Lock()
-	if o.closed {
+	if o.closed || o.arena == nil {
 		o.mu.Unlock()
 		return nil
 	}
@@ -187,11 +187,25 @@ func (t *Table) Close() error {
 	o.closed = true
 	arena, store := o.arena, o.store
 	o.arena = nil
+
+	// Lock order is tableOwner.mu -> Table.mu. Readers that need both use the
+	// same order; producer roots are released only after both locks are dropped,
+	// because releasing a root may re-enter instance finalization.
+	t.mu.Lock()
+	t.closed = true
+	t.desc = nil
+	roots := make([]*Instance, 0, len(t.retained))
+	for root := range t.retained {
+		roots = append(roots, root)
+	}
+	t.retained = nil
+	t.mu.Unlock()
 	o.mu.Unlock()
 
-	t.releaseRetainedInstances()
+	for _, root := range roots {
+		root.releaseResourceRoot()
+	}
 	err := arena.Close()
-	t.desc = nil
 	if store != nil {
 		store.storeObjectClosed()
 	}
@@ -199,7 +213,7 @@ func (t *Table) Close() error {
 }
 
 func (t *Table) validateImport(elementType ValType, store *referenceStore) error {
-	if t == nil || t.owner == nil || len(t.desc) < 8 {
+	if t == nil || t.owner == nil {
 		return fmt.Errorf("table descriptor is invalid")
 	}
 	o := t.owner
@@ -207,6 +221,12 @@ func (t *Table) validateImport(elementType ValType, store *referenceStore) error
 	defer o.mu.Unlock()
 	if o.closed {
 		return fmt.Errorf("table owner is closed")
+	}
+	t.mu.Lock()
+	validStorage := !t.closed && len(t.desc) >= 8
+	t.mu.Unlock()
+	if !validStorage {
+		return fmt.Errorf("table descriptor is invalid")
 	}
 	if o.instance != nil {
 		if closed := o.instance.isLogicallyClosed(); closed {
@@ -280,6 +300,12 @@ func (t *Table) retainProducerInstanceMode(in *Instance, finalization bool) bool
 	if t == nil || t.owner == nil || t.owner.elementType != ValFuncRef || in == nil {
 		return false
 	}
+	t.owner.mu.Lock()
+	selfOwned := t.owner.closed || t.owner.instance == in
+	t.owner.mu.Unlock()
+	if selfOwned {
+		return false
+	}
 	var retained bool
 	if finalization {
 		retained = in.retainResourceRootForFinalization()
@@ -345,6 +371,162 @@ func (t *Table) containsReachableFuncref(in *Instance) bool {
 	return false
 }
 
+func (t *Table) containsFuncrefDescriptor(descriptor uint64) bool {
+	if descriptor == 0 || len(t.desc) < 8 {
+		return false
+	}
+	size := int(binary.LittleEndian.Uint32(t.desc))
+	capacity := (len(t.desc) - 8) / coreruntime.TableEntryBytes
+	if size > capacity {
+		size = capacity
+	}
+	for slot := 0; slot < size; slot++ {
+		off := 8 + slot*coreruntime.TableEntryBytes + coreruntime.TableEntryRefSlotOffset
+		if binary.LittleEndian.Uint64(t.desc[off:]) == descriptor {
+			return true
+		}
+	}
+	return false
+}
+
+// funcrefProducerRoots snapshots the roots already known to make this table's
+// live descriptors callable. The descriptor owner itself is included for an
+// instance-owned exported table. No store lookup occurs while Table.mu is held.
+func (t *Table) funcrefProducerRoots() []*Instance {
+	if t == nil || t.owner == nil {
+		return nil
+	}
+	o := t.owner
+	o.mu.Lock()
+	if o.closed || o.elementType != ValFuncRef {
+		o.mu.Unlock()
+		return nil
+	}
+	instance := o.instance
+	t.mu.Lock()
+	roots := make([]*Instance, 0, len(t.retained)+1)
+	seen := make(map[*Instance]struct{}, len(t.retained)+1)
+	if !t.closed && instance != nil {
+		roots = append(roots, instance)
+		seen[instance] = struct{}{}
+	}
+	if !t.closed {
+		for root := range t.retained {
+			if root == nil {
+				continue
+			}
+			if _, ok := seen[root]; ok {
+				continue
+			}
+			seen[root] = struct{}{}
+			roots = append(roots, root)
+		}
+	}
+	t.mu.Unlock()
+	o.mu.Unlock()
+	return roots
+}
+
+// retainDescriptorOwnersForFinalization resolves the table's current refSlots
+// through the private store without holding a container lock, then adopts each
+// already-retained physical owner only if the descriptor is still installed.
+func (t *Table) retainDescriptorOwnersForFinalization(store *referenceStore) bool {
+	if t == nil || store == nil || t.owner == nil || t.owner.elementType != ValFuncRef {
+		return false
+	}
+	t.owner.mu.Lock()
+	containerOwner := t.owner.instance
+	ownerClosed := t.owner.closed
+	t.owner.mu.Unlock()
+	if ownerClosed {
+		return false
+	}
+	t.mu.Lock()
+	if t.closed || len(t.desc) < 8 {
+		t.mu.Unlock()
+		return false
+	}
+	descriptors := t.funcrefDescriptorsLocked()
+	t.mu.Unlock()
+
+	resolved := make(map[uint64]*Instance, len(descriptors))
+	for descriptor := range descriptors {
+		if owner := store.retainDescriptorOwnerForFinalization(descriptor); owner != nil {
+			resolved[descriptor] = owner
+		}
+	}
+
+	var release []*Instance
+	t.mu.Lock()
+	if t.closed || len(t.desc) < 8 {
+		t.mu.Unlock()
+		for _, owner := range resolved {
+			owner.releaseResourceRoot()
+		}
+		return false
+	}
+	current := t.funcrefDescriptorsLocked()
+	desired := make(map[*Instance]struct{}, len(resolved))
+	allResolved := true
+	for descriptor := range current {
+		owner := resolved[descriptor]
+		if owner == nil {
+			allResolved = false
+			continue
+		}
+		if owner != containerOwner {
+			desired[owner] = struct{}{}
+		}
+	}
+	for descriptor, owner := range resolved {
+		if _, live := current[descriptor]; !live || owner == containerOwner {
+			release = append(release, owner)
+			continue
+		}
+		if t.retained == nil {
+			t.retained = make(map[*Instance]struct{})
+		}
+		if _, exists := t.retained[owner]; exists {
+			release = append(release, owner)
+		} else {
+			t.retained[owner] = struct{}{}
+			owner.nativeControlShared = true
+		}
+	}
+	for root := range t.retained {
+		if _, keep := desired[root]; keep {
+			continue
+		}
+		if !allResolved && t.containsReachableFuncref(root) {
+			continue
+		}
+		delete(t.retained, root)
+		release = append(release, root)
+	}
+	retained := len(t.retained) != 0
+	t.mu.Unlock()
+	for _, root := range release {
+		root.releaseResourceRoot()
+	}
+	return retained
+}
+
+func (t *Table) funcrefDescriptorsLocked() map[uint64]struct{} {
+	size := int(binary.LittleEndian.Uint32(t.desc))
+	capacity := (len(t.desc) - 8) / coreruntime.TableEntryBytes
+	if size > capacity {
+		size = capacity
+	}
+	descriptors := make(map[uint64]struct{}, size)
+	for slot := 0; slot < size; slot++ {
+		off := 8 + slot*coreruntime.TableEntryBytes + coreruntime.TableEntryRefSlotOffset
+		if descriptor := binary.LittleEndian.Uint64(t.desc[off:]); descriptor != 0 {
+			descriptors[descriptor] = struct{}{}
+		}
+	}
+	return descriptors
+}
+
 func (t *Table) releaseRetainedInstances() {
 	if t == nil {
 		return
@@ -355,6 +537,7 @@ func (t *Table) releaseRetainedInstances() {
 		return
 	}
 	t.closed = true
+	t.desc = nil
 	roots := make([]*Instance, 0, len(t.retained))
 	for root := range t.retained {
 		roots = append(roots, root)
