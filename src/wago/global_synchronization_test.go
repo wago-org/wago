@@ -1,7 +1,10 @@
+//go:build ((linux && (amd64 || arm64)) || (darwin && arm64)) && !tinygo
+
 package wago
 
 import (
 	"context"
+	"encoding/binary"
 	"strings"
 	"sync"
 	"testing"
@@ -98,6 +101,17 @@ func (e *unexpectedGlobalValue) Error() string {
 	return "unexpected " + e.kind + " global value"
 }
 
+func synchronizationV128Slots(v V128) []uint64 {
+	return []uint64{binary.LittleEndian.Uint64(v[:8]), binary.LittleEndian.Uint64(v[8:])}
+}
+
+func synchronizationV128FromSlots(slots []uint64) V128 {
+	var v V128
+	binary.LittleEndian.PutUint64(v[:8], slots[0])
+	binary.LittleEndian.PutUint64(v[8:], slots[1])
+	return v
+}
+
 func TestGlobalSynchronizationV128HostVersusGuestDoesNotTear(t *testing.T) {
 	rt := NewRuntime()
 	var a, b V128
@@ -126,7 +140,7 @@ func TestGlobalSynchronizationV128HostVersusGuestDoesNotTear(t *testing.T) {
 			if i&1 != 0 {
 				value = b
 			}
-			if _, err := in.Invoke("write", v128Slots(value)...); err != nil {
+			if _, err := in.Invoke("write", synchronizationV128Slots(value)...); err != nil {
 				errCh <- err.Error()
 				return
 			}
@@ -135,7 +149,7 @@ func TestGlobalSynchronizationV128HostVersusGuestDoesNotTear(t *testing.T) {
 				errCh <- err.Error()
 				return
 			}
-			got := v128FromSlots(out)
+			got := synchronizationV128FromSlots(out)
 			if got != a && got != b {
 				errCh <- "guest observed torn v128"
 				return
