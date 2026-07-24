@@ -754,7 +754,7 @@ func (f *fn) realizeInlineRange(lo, hi int) {
 		switch {
 		case e.kind == ekValue && (e.st.kind == stLocalRef || e.st.kind == stLocalReg) && inRange(e.st.idx):
 			f.materializeByType(e)
-		case e.kind == ekValue && e.st.kind == stMemRef && inRange(e.st.memBorrow()):
+		case e.kind == ekValue && e.st.kind == stMemRef && (inRange(e.st.memBorrow()) || inRange(e.st.memAliasLocal())):
 			f.materializeByType(e)
 		case e.kind == ekDeferred && subtreeRefsLocalRange(e, lo, hi):
 			f.condense(e, regNone)

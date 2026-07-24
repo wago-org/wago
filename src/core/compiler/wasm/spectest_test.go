@@ -113,7 +113,14 @@ func TestSpecSuite(t *testing.T) {
 		}
 		name := strings.ReplaceAll(base, string(filepath.Separator), "_")
 		jsonPath := filepath.Join(tmp, name+".json")
-		out, err := exec.Command(wast2json, "--enable-all", wast, "-o", jsonPath).CombinedOutput()
+		args := []string{wast, "-o", jsonPath}
+		// Standardized 1.0/2.0 features are enabled by default. --enable-all also
+		// enables experimental encodings such as compact imports, so reserve it for
+		// the proposal aggregate instead of rewriting the pinned core corpora.
+		if version == "3.0" {
+			args = append([]string{"--enable-all"}, args...)
+		}
+		out, err := exec.Command(wast2json, args...).CombinedOutput()
 		if err != nil {
 			t.Errorf("%s: wast2json failed (%v): %s", base, err, out)
 			continue
@@ -161,9 +168,16 @@ func TestSpecSuite(t *testing.T) {
 				}
 			case "assert_invalid":
 				m, derr := DecodeModule(data)
-				if derr == nil && ValidateModule(m) == nil {
+				var verr error
+				if derr == nil {
+					verr = ValidateModule(m)
+				}
+				if derr == nil && verr == nil {
 					stats.assertionsFailed++
 					t.Errorf("%s.wast:%d invalid module ACCEPTED (expected: %s)", base, c.Line, c.Text)
+				} else if version == "2.0" && isUnsupportedValidation(verr) {
+					stats.assertionsFailed++
+					t.Errorf("%s.wast:%d Core 2 invalid module reached unsupported validation instead of being rejected as invalid: %v", base, c.Line, verr)
 				} else {
 					stats.assertionsPassed++
 				}
@@ -193,6 +207,13 @@ func TestSpecSuite(t *testing.T) {
 	}
 	if total.assertionsPassed+total.assertionsSkipped+total.assertionsFailed == 0 {
 		t.Errorf("no validation assertions were accounted — harness or corpus misconfigured")
+	}
+	if version == "2.0" {
+		const wantModules, wantAssertions, wantTextMalformed = 1600, 2880, 1077
+		if total.modulesPassed != wantModules || total.modulesFailed != 0 || total.modulesSkipped != 0 ||
+			total.assertionsPassed != wantAssertions || total.assertionsFailed != 0 || total.assertionsSkipped != wantTextMalformed {
+			t.Fatalf("WebAssembly 2.0 validation accounting = %+v, want modules %d/0/0 and assertions %d/0/%d", total, wantModules, wantAssertions, wantTextMalformed)
+		}
 	}
 }
 

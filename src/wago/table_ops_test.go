@@ -580,7 +580,7 @@ func TestTableInitUsesOriginalElementIndexAndElemDrop(t *testing.T) {
 		t.Fatalf("zero-length init after elem.drop: %v", err)
 	}
 	_, err = inst.Invoke("init")
-	tableTestExpectTrap(t, err, TrapLinMemOutOfBounds)
+	tableTestExpectTrap(t, err, TrapTableOutOfBounds)
 }
 
 func TestTableInitCopiesPassiveSegmentAndChecksBounds(t *testing.T) {
@@ -620,9 +620,9 @@ func TestTableInitCopiesPassiveSegmentAndChecksBounds(t *testing.T) {
 		t.Fatalf("zero-length init at table/segment boundary: %v", err)
 	}
 	_, err := inst.Invoke("init", I32(2), I32(0), I32(2))
-	tableTestExpectTrap(t, err, TrapLinMemOutOfBounds)
+	tableTestExpectTrap(t, err, TrapTableOutOfBounds)
 	_, err = inst.Invoke("init", I32(0), I32(1), I32(2))
-	tableTestExpectTrap(t, err, TrapLinMemOutOfBounds)
+	tableTestExpectTrap(t, err, TrapTableOutOfBounds)
 	if got := tableTestCallI32(t, inst, "callAt", I32(1)); got != 5 {
 		t.Fatalf("callAt(1) after trapped init = %d, want 5", got)
 	}
@@ -695,7 +695,7 @@ func TestTableCopyHandlesOverlapAndBounds(t *testing.T) {
 		inst := tableTestInstantiate(t, mod)
 		defer inst.Close()
 		_, err := inst.Invoke("copy", I32(2), I32(0), I32(3))
-		tableTestExpectTrap(t, err, TrapLinMemOutOfBounds)
+		tableTestExpectTrap(t, err, TrapTableOutOfBounds)
 		check(t, inst, 10, 20, 30, 40)
 	})
 }
@@ -2341,7 +2341,7 @@ func TestTableFillTrapWithMixedContentsIsAtomic(t *testing.T) {
 	}
 
 	_, err := inst.Invoke("fillOOB")
-	tableTestExpectTrap(t, err, TrapLinMemOutOfBounds)
+	tableTestExpectTrap(t, err, TrapTableOutOfBounds)
 	wantCalls := map[int32]int32{0: 10, 2: 30, 3: 20}
 	for idx, want := range wantCalls {
 		if got := tableTestCallI32(t, inst, "callAt", I32(idx)); got != want {
@@ -2387,7 +2387,7 @@ func TestTableCopyTrapWithMixedContentsIsAtomic(t *testing.T) {
 	}
 
 	_, err := inst.Invoke("copyOOB")
-	tableTestExpectTrap(t, err, TrapLinMemOutOfBounds)
+	tableTestExpectTrap(t, err, TrapTableOutOfBounds)
 	for idx, want := range map[int32]int32{0: 10, 2: 30, 3: 40} {
 		if got := tableTestCallI32(t, inst, "callAt", I32(idx)); got != want {
 			t.Fatalf("callAt(%d) after trapped copy = %d, want %d", idx, got, want)
@@ -2426,7 +2426,7 @@ func TestTableInitTrapWithNullExpressionsIsAtomic(t *testing.T) {
 	defer inst.Close()
 
 	_, err := inst.Invoke("initOOB")
-	tableTestExpectTrap(t, err, TrapLinMemOutOfBounds)
+	tableTestExpectTrap(t, err, TrapTableOutOfBounds)
 	for idx, want := range map[int32]int32{0: 10, 1: 20, 2: 10} {
 		if got := tableTestCallI32(t, inst, "callAt", I32(idx)); got != want {
 			t.Fatalf("callAt(%d) after trapped init = %d, want %d", idx, got, want)
@@ -2465,7 +2465,7 @@ func TestElemDropAfterPassiveNullExpressionSegment(t *testing.T) {
 		t.Fatalf("drop: %v", err)
 	}
 	_, err := inst.Invoke("init")
-	tableTestExpectTrap(t, err, TrapLinMemOutOfBounds)
+	tableTestExpectTrap(t, err, TrapTableOutOfBounds)
 	if _, err := inst.Invoke("zeroInit"); err != nil {
 		t.Fatalf("zero-length init after drop: %v", err)
 	}
@@ -2615,7 +2615,7 @@ func TestTableZeroLengthBoundaryAndHugeIndexCases(t *testing.T) {
 		t.Fatalf("zero-length table.init at table/segment boundary: %v", err)
 	}
 	_, err := inst.Invoke("fillHugeZero")
-	tableTestExpectTrap(t, err, TrapLinMemOutOfBounds)
+	tableTestExpectTrap(t, err, TrapTableOutOfBounds)
 	if got := tableTestCallI32(t, inst, "callAt", I32(0)); got != 81 {
 		t.Fatalf("callAt(0) after boundary cases = %d, want 81", got)
 	}
@@ -3542,7 +3542,7 @@ func TestTableGrowFillGetSetAndSize(t *testing.T) {
 		t.Fatalf("callAt(1) after trapped table.set = %d, want 10", got)
 	}
 	_, err = inst.Invoke("fillOOB")
-	tableTestExpectTrap(t, err, TrapLinMemOutOfBounds)
+	tableTestExpectTrap(t, err, TrapTableOutOfBounds)
 	if got := tableTestCallI32(t, inst, "callAt", I32(3)); got != 40 {
 		t.Fatalf("callAt(3) after trapped table.fill = %d, want 40", got)
 	}

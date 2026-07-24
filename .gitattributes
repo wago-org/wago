@@ -1,0 +1,2 @@
+# Pinned upstream fixtures are byte-identical, including source whitespace.
+testdata/wazero/** -whitespace

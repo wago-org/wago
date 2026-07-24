@@ -346,6 +346,8 @@ func TestConstantExpressionSupportForms(t *testing.T) {
 		{0xd0, 0x73, 0x0b},
 		{0xd0, 0x72, 0x0b},
 		{0xd2, 0x00, 0x0b},
+		{0x41, 0x00, 0x41, 0x01, 0x6a, 0x0b},
+		{0x42, 0x02, 0x42, 0x03, 0x7e, 0x0b},
 		v128,
 	} {
 		if err := all.constExpr(wasm.Expr{BodyBytes: body}, "constant"); err != nil {
@@ -360,6 +362,8 @@ func TestConstantExpressionSupportForms(t *testing.T) {
 		{Kind: wasm.InstrGlobalGet},
 		{Kind: wasm.InstrRefFunc},
 		{Kind: wasm.InstrV128Const},
+		{Kind: wasm.InstrI32Add},
+		{Kind: wasm.InstrI64Mul},
 	} {
 		if err := all.constExpr(wasm.Expr{Instrs: []wasm.Instruction{in}}, "constant"); err != nil {
 			t.Fatalf("valid instruction constant expression %s: %v", in.Kind, err)
@@ -375,9 +379,7 @@ func TestConstantExpressionSupportForms(t *testing.T) {
 		{"ref func disabled", supportPass{feat: Features{}}, wasm.Expr{BodyBytes: []byte{0xd2, 0x00, 0x0b}}},
 		{"invalid ref heap", all, wasm.Expr{BodyBytes: []byte{0xd0, 0x7f, 0x0b}}},
 		{"unknown opcode", all, wasm.Expr{BodyBytes: []byte{0x01, 0x0b}}},
-		{"multi instruction", all, wasm.Expr{BodyBytes: []byte{0x41, 0x00, 0x41, 0x00, 0x0b}}},
 		{"instruction form disabled", supportPass{feat: Features{}}, wasm.Expr{Instrs: []wasm.Instruction{{Kind: wasm.InstrV128Const}}}},
-		{"instruction form invalid", all, wasm.Expr{Instrs: []wasm.Instruction{{Kind: wasm.InstrI32Add}}}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if err := tc.pass.constExpr(tc.expr, "constant"); err == nil {

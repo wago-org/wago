@@ -178,7 +178,10 @@ type fn struct {
 	// copies it with a single MOV.16b instead of rebuilding it (MovImm×2/FMOV/INS).
 	vconsts []v128ConstReg
 
-	maxSpill      int  // high-water number of operand spill slots used
+	maxSpill int // high-water number of operand spill slots used
+	// spillFloor temporarily reserves a low spill-slot range while wide-stack
+	// canonicalization stages values above both their old homes and destinations.
+	spillFloor    int
 	subRspAt      int  // byte offset of the prologue's frame-alloc MOVZ (patched with frameSize)
 	addRspAt      int  // byte offset of the epilogue's frame-free MOVZ (patched with frameSize)
 	frameElided   bool // simple register-only internal entry leaves SP unchanged
@@ -323,19 +326,20 @@ type fn struct {
 // each compile. Embedding it keeps hot call sites terse while making ownership
 // and lifetime a single assignment instead of a list of parallel fields.
 type transient struct {
-	lsPool      [][]locState
-	endsPool    [][]int
-	tmpRoots    []*elem
-	tmpTypes    []machineType
-	tmpTypes2   []machineType
-	tmpRegs     []Reg
-	tmpSlots    []int
-	tmpMoves    []regMove
-	tmpLabels   []uint32
-	tmpDeferred []deferredArg
-	tmpGpCand   []gpCand
-	tmpInts     []int
-	edgeScratch []byte
+	lsPool        [][]locState
+	endsPool      [][]int
+	tmpRoots      []*elem
+	tmpTypes      []machineType
+	tmpTypes2     []machineType
+	tmpFlushTypes []machineType
+	tmpRegs       []Reg
+	tmpSlots      []int
+	tmpMoves      []regMove
+	tmpLabels     []uint32
+	tmpDeferred   []deferredArg
+	tmpGpCand     []gpCand
+	tmpInts       []int
+	edgeScratch   []byte
 }
 
 type storeForward struct {
@@ -391,7 +395,7 @@ type scratch struct {
 
 	retSites      []int
 	ctrl          []ctrlFrame
-	trapSites     [trapStackFence + 1][]int
+	trapSites     [trapTableOOB + 1][]int
 	branchTargets map[int]bool
 	transient
 }
@@ -703,18 +707,9 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 				opts.MemoryPressure()
 			}
 		}
-		asm := &a64.Asm{B: code}
-		for i := 0; i < n; i++ {
-			for _, rl := range relocs[i] {
-				site := entry[i] + rl.at
-				target := entry[rl.target]
-				if rl.internal {
-					target = internalEntry[rl.target]
-				}
-				asm.PatchBranch26(site, target)
-			}
+		if err := patchCallRelocs(code, entry, internalEntry, relocs); err != nil {
+			return nil, err
 		}
-		code = asm.B
 		if explainEnabled && ms != nil {
 			fmt.Fprint(os.Stderr, ms.String())
 		}
@@ -789,22 +784,30 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 		relocs[i] = r.relocs
 		code = append(code, states[r.worker].arena[r.start:r.end]...)
 	}
+	if err := patchCallRelocs(code, entry, internalEntry, relocs); err != nil {
+		return nil, err
+	}
+	if explainEnabled && ms != nil {
+		fmt.Fprint(os.Stderr, ms.String())
+	}
+	return &a64.CompiledModule{Code: code, Entry: entry, InternalEntry: internalEntry}, nil
+}
+
+func patchCallRelocs(code []byte, entry, internalEntry []int, relocs [][]callReloc) error {
 	asm := &a64.Asm{B: code}
-	for i := 0; i < n; i++ {
+	for i := range relocs {
 		for _, rl := range relocs[i] {
 			site := entry[i] + rl.at
 			target := entry[rl.target]
 			if rl.internal {
 				target = internalEntry[rl.target]
 			}
-			asm.PatchBranch26(site, target)
+			if !asm.PatchBranch26(site, target) {
+				return fmt.Errorf("arm64 direct call relocation from function %d at %#x to function %d at %#x exceeds BL range", i, site, rl.target, target)
+			}
 		}
 	}
-	code = asm.B
-	if explainEnabled && ms != nil {
-		fmt.Fprint(os.Stderr, ms.String())
-	}
-	return &a64.CompiledModule{Code: code, Entry: entry, InternalEntry: internalEntry}, nil
+	return nil
 }
 
 func firstFuncError(results []funcResult) (int, error) {
@@ -1282,7 +1285,7 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, int
 	// dropping every local/global VALUE pin frees the entire neutral file for
 	// scratch. Pinning is a pure speed optimization, so the unpinned compile is
 	// always correct.
-	if !pinLocals {
+	if !pinLocals || nLocals > 64 {
 		gpPool = nil
 	}
 	// Hot mutable-int globals share the GP pin pool with locals, holding their VALUE
@@ -1300,7 +1303,7 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, int
 		}
 	}
 	f.installModuleGlobals(modGlobals)
-	f.assignPinnedLocals(hints.localScore, globalScores, globalElig, gpPool, hasCall)
+	f.assignPinnedLocals(hints.localScore, globalScores, globalElig, gpPool, hasCall, pinLocals)
 	for i := range f.locals {
 		if r := f.locals[i].reg; r >= X2 && r <= X7 {
 			f.stats.peep("entry-arg-local-pin")
@@ -1474,7 +1477,7 @@ func withoutReg(pool []Reg, r Reg) []Reg {
 	return out
 }
 
-func (f *fn) assignPinnedLocals(scores, globalScores []uint32, globalElig []bool, gpPool []Reg, hasCall bool) {
+func (f *fn) assignPinnedLocals(scores, globalScores []uint32, globalElig []bool, gpPool []Reg, hasCall, pinLocals bool) {
 	f.locals = make([]localDef, f.nLocals)
 	for i := range f.locals {
 		f.locals[i] = localDef{reg: regNone, typ: f.localType[i], state: lsReg}
@@ -1595,6 +1598,11 @@ func (f *fn) assignPinnedLocals(scores, globalScores []uint32, globalElig []bool
 		if !deepFPPinsEnabled || floatParams > 4 {
 			fpPinLimit = 23
 		}
+	}
+	if !pinLocals || f.nLocals > 64 {
+		// Very wide signatures are cold ABI stress shapes, and an unpinned
+		// register-pressure retry must release the V-register pins as well as GP.
+		fpPinLimit = 0
 	}
 	for k, i := range fc {
 		if k >= fpPinLimit {

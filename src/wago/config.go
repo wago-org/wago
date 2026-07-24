@@ -35,6 +35,8 @@ const (
 	CoreFeatureSignExtensionOps
 	// CoreFeatureSIMD: the v128 vector instructions.
 	CoreFeatureSIMD
+	// CoreFeatureExtendedConst: integer add/sub/mul in constant expressions.
+	CoreFeatureExtendedConst
 	// CoreFeatureTailCall: return_call / return_call_indirect.
 	CoreFeatureTailCall
 )
@@ -50,7 +52,8 @@ const (
 		CoreFeatureNonTrappingFloatToIntConversion |
 		CoreFeatureReferenceTypes |
 		CoreFeatureSignExtensionOps |
-		CoreFeatureSIMD
+		CoreFeatureSIMD |
+		CoreFeatureExtendedConst
 
 	// coreFeaturesWago is the optional set wago's single-pass backend lowers
 	// today; it is the default and the ceiling WithCoreFeatures is validated
@@ -62,7 +65,8 @@ const (
 		CoreFeatureBulkMemoryOperations |
 		CoreFeatureNonTrappingFloatToIntConversion |
 		CoreFeatureReferenceTypes |
-		CoreFeatureSIMD
+		CoreFeatureSIMD |
+		CoreFeatureExtendedConst
 )
 
 // IsEnabled returns true if all bits in feature are set.
@@ -100,6 +104,7 @@ var featureNames = []struct {
 	{CoreFeatureReferenceTypes, "reference-types"},
 	{CoreFeatureSignExtensionOps, "sign-extension-ops"},
 	{CoreFeatureSIMD, "simd"},
+	{CoreFeatureExtendedConst, "extended-constant-expressions"},
 	{CoreFeatureTailCall, "tail-call"},
 }
 
@@ -345,6 +350,7 @@ func (c *RuntimeConfig) frontendFeatures() frontend.Features {
 		SaturatingTrunc: c.features.IsEnabled(CoreFeatureNonTrappingFloatToIntConversion),
 		ReferenceTypes:  c.features.IsEnabled(CoreFeatureReferenceTypes),
 		SIMD:            simd,
+		ExtendedConst:   c.features.IsEnabled(CoreFeatureExtendedConst),
 	}
 }
 

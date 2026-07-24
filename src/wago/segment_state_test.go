@@ -164,7 +164,7 @@ func TestActiveAndDeclarativeElementSegmentsStartDropped(t *testing.T) {
 					t.Fatalf("%s zero length: %v", name, err)
 				}
 				_, err := inst.Invoke(name, I32(1))
-				tableTestExpectTrap(t, err, TrapLinMemOutOfBounds)
+				tableTestExpectTrap(t, err, TrapTableOutOfBounds)
 			}
 			for _, name := range []string{"dropActive", "dropDeclarative"} {
 				if _, err := inst.Invoke(name); err != nil {

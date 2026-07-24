@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+
+	"github.com/wago-org/wago/testutil/wasmtest"
 )
 
 type hookExt struct {
@@ -334,5 +336,51 @@ func TestCapabilityAccessorsEnforceGrants(t *testing.T) {
 	}
 	if _, err := (*Registry)(nil).InstanceInvocation(); err == nil {
 		t.Fatal("nil registry access succeeded")
+	}
+}
+
+func TestAfterCloseBracketsLogicalCloseBeforePhysicalRelease(t *testing.T) {
+	var before, after int
+	var observedLogical, observedPhysical bool
+	rt := NewRuntime()
+	rt.hooks.beforeClose = append(rt.hooks.beforeClose, func(ctx *InstanceContext) {
+		before++
+		observedLogical = ctx.Instance.isLogicallyClosed()
+	})
+	rt.hooks.afterClose = append(rt.hooks.afterClose, func(ctx *InstanceContext) {
+		after++
+		ctx.Instance.lifeMu.Lock()
+		observedPhysical = ctx.Instance.resourcesClosed
+		ctx.Instance.lifeMu.Unlock()
+	})
+	mod, err := rt.Compile(wasmtest.Module())
+	if err != nil {
+		t.Fatal(err)
+	}
+	in, err := rt.Instantiate(context.Background(), mod)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !in.retainResourceRoot() {
+		t.Fatal("retain test resource root")
+	}
+	if err := in.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := in.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if before != 1 || after != 1 || !observedLogical || observedPhysical {
+		t.Fatalf("logical hook state: before=%d after=%d logical=%v physical=%v", before, after, observedLogical, observedPhysical)
+	}
+	if !in.hasPhysicalResources() {
+		t.Fatal("retained root did not defer physical release")
+	}
+	in.releaseResourceRoot()
+	if in.hasPhysicalResources() {
+		t.Fatal("physical release did not run after final root release")
+	}
+	if err := rt.Close(); err != nil {
+		t.Fatal(err)
 	}
 }

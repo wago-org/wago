@@ -24,6 +24,7 @@ type memoryState struct {
 	mu        sync.Mutex
 	owner     *Instance // non-nil for an instance-owned exported memory
 	importers int32
+	hasMax    bool // whether the JobMemory reservation is the declared Wasm maximum
 	shared    bool // true when multiple compatible instances may import this memory
 	closed    bool
 }
@@ -74,7 +75,9 @@ func newMemory(minPages, maxPages uint32, shared bool) (*Memory, error) {
 		return nil, err
 	}
 	m := &Memory{jm: jm}
-	m.state.Store(&memoryState{shared: shared})
+	// The host API defines maxPages == 0 as fixed memory, so every host-created
+	// memory has a declared maximum equal to the JobMemory reservation.
+	m.state.Store(&memoryState{hasMax: true, shared: shared})
 	return m, nil
 }
 
@@ -84,12 +87,30 @@ func newMemory(minPages, maxPages uint32, shared bool) (*Memory, error) {
 // capped at the initial commit while the grown pages live in the reservation.
 // CurrentBytes would panic there (slice bounds beyond the initial commit); this
 // mirrors what Instance.Read/Write already use via mem().
+//
+// The returned slice borrows mmap-backed storage: it is valid only while this
+// Memory and its owning Instance remain open. Bytes and every access through a
+// previously returned slice must not run concurrently with Memory.Close or
+// Instance.Close. A raw []byte cannot carry a lifetime-release callback, so
+// callers are responsible for that synchronization. After close is observable,
+// Bytes returns nil rather than exposing the stale mapping.
 func (m *Memory) Bytes() []byte {
-	jm := m.jobMemory()
-	if jm == nil {
+	if m == nil {
 		return nil
 	}
-	return jm.HostBytes()
+	s := m.state.Load()
+	if s == nil {
+		if m.jm == nil {
+			return nil
+		}
+		return m.jm.HostBytes()
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed || m.jm == nil || (s.owner != nil && s.owner.isLogicallyClosed()) {
+		return nil
+	}
+	return m.jm.HostBytes()
 }
 
 // Close releases a host-created memory after every importer closes. An exported
@@ -136,6 +157,9 @@ func (m *Memory) attachImporter() error {
 	if s.closed || m.jm == nil {
 		return fmt.Errorf("memory owner is closed")
 	}
+	if s.owner != nil && !s.shared {
+		return fmt.Errorf("memory has not been exported for import")
+	}
 	if !s.shared && s.importers != 0 {
 		return fmt.Errorf("memory is already used by another instance")
 	}
@@ -166,6 +190,34 @@ func (m *Memory) detachImporter() {
 	}
 }
 
+func (m *Memory) observeOwner(owner *Instance) error {
+	if m == nil || owner == nil {
+		return fmt.Errorf("memory owner is nil")
+	}
+	s := m.state.Load()
+	if s == nil {
+		fresh := &memoryState{}
+		if m.state.CompareAndSwap(nil, fresh) {
+			s = fresh
+		} else {
+			s = m.state.Load()
+		}
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed || m.jm == nil {
+		return fmt.Errorf("memory owner is closed")
+	}
+	if s.owner != nil && s.owner != owner {
+		return fmt.Errorf("memory already has a different producer owner")
+	}
+	s.owner = owner
+	if owner.c != nil {
+		s.hasMax = owner.c.MemHasMax
+	}
+	return nil
+}
+
 func (m *Memory) share(owner *Instance) error {
 	if m == nil {
 		return fmt.Errorf("memory is nil")
@@ -189,9 +241,41 @@ func (m *Memory) share(owner *Instance) error {
 			return fmt.Errorf("memory already has a different producer owner")
 		}
 		s.owner = owner
+		if owner.c != nil {
+			s.hasMax = owner.c.MemHasMax
+		}
 	}
 	s.shared = true
 	return nil
+}
+
+func formatMemoryMaximum(maxPages uint32, hasMax bool) string {
+	if !hasMax {
+		return "unbounded"
+	}
+	return fmt.Sprintf("%d", maxPages)
+}
+
+func (m *Memory) importLimits() (minPages, maxPages uint32, hasMax bool, ok bool) {
+	if m == nil {
+		return 0, 0, false, false
+	}
+	s := m.state.Load()
+	if s == nil {
+		return 0, 0, false, false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed || m.jm == nil {
+		return 0, 0, false, false
+	}
+	const pageBytes = 1 << 16
+	currentPages := uint32(len(m.jm.HostBytes()) / pageBytes)
+	maxPages = 0
+	if s.hasMax {
+		maxPages = m.jm.MaxPages()
+	}
+	return currentPages, maxPages, s.hasMax, true
 }
 
 func (m *Memory) importShape() (guarded, shared bool) {

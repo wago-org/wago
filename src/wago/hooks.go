@@ -60,18 +60,24 @@ func (h *HookRegistry) OnInstantiateError(fns ...func(*InstantiateContext, error
 	h.onInstantiateError = append(h.onInstantiateError, fns...)
 }
 
-// BeforeClose registers a callback run immediately before a Runtime-created
-// instance releases its resources. Close hooks run in reverse registration order
-// and do not fire for low-level package-level Instantiate instances. Each panic
-// is isolated, reported from Instance.Close, and does not skip later cleanup.
+// BeforeClose registers a callback at the start of a Runtime-created instance's
+// logical close, after the invocation-entry gate has been published. Close hooks
+// run in reverse registration order and do not fire for low-level package-level
+// Instantiate instances. Physical code, arena, memory, engine, and retained
+// import release may be deferred until active invocations and reference roots
+// reach zero. Each panic is isolated, reported from Instance.Close, and does not
+// skip later logical-close cleanup.
 func (h *HookRegistry) BeforeClose(fns ...func(*InstanceContext)) {
 	h.beforeClose = append(h.beforeClose, fns...)
 }
 
-// AfterClose registers a callback run after a Runtime-created instance releases
-// its resources. It shares Metadata with BeforeClose and runs in reverse
-// registration order. Instance.Close is concurrent-safe and idempotent, so these
-// hooks fire once; panics are isolated and returned as close errors.
+// AfterClose registers a callback at the end of a Runtime-created instance's
+// logical close. It shares Metadata with BeforeClose and runs in reverse
+// registration order. AfterClose does not guarantee that code, arena, memory,
+// engine, or retained import attachments have been physically released: active
+// invocations and retained reference roots may defer teardown. Instance.Close is
+// concurrent-safe and idempotent, so these hooks fire once; panics are isolated
+// and returned as close errors.
 func (h *HookRegistry) AfterClose(fns ...func(*InstanceContext)) {
 	h.afterClose = append(h.afterClose, fns...)
 }

@@ -526,11 +526,12 @@ multi-memory are not required for WebAssembly 2.0 completion.
   timing movement is retained as scheduler/frequency noise rather than attributed
   gains.
 - [x] WebAssembly 2.0 conformance gate with no feature-related skips. With WABT
-  1.0.36 available, the July 10, 2026 execution run reports 1,600 passed / 0
-  skipped modules and 48,248 passed / 0 failed / 0 skipped assertions. Every gap
-  reason is zero, and the Release 2 execution test now fails if any module or
-  assertion becomes skipped. `imports.wast` is fully green at 54 modules / 34
-  assertions; `data.wast` is 25 / 14; `linking.wast` is 21 / 90; and all
+  1.0.36 available, the July 23, 2026 audit run reports 1,600 passed / 0
+  skipped modules and 48,331 passed / 0 failed / 0 skipped assertions, including
+  all 83 unlinkable commands. Every gap reason is zero, and the Release 2
+  execution test now fails if any module or assertion becomes skipped.
+  `imports.wast` is fully green at 54 modules / 105 assertions; `data.wast` is 25
+  / 14; `linking.wast` is 21 / 102; and all
   previously documented reference/table files remain fully green.
 - [x] Close the 36 standard-import/re-export gaps. The harness binds the exact
   seven reflection-free no-op `spectest.print*` functions and creates one

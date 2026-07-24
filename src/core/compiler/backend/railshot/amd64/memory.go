@@ -26,6 +26,7 @@ const (
 	trapTruncOverflow = 11
 	trapInterrupted   = 12
 	trapStackFence    = 13
+	trapTableOOB      = 15
 )
 
 // Basedata fields at negative offsets from the linMem base (runtime/basedata.go).
@@ -110,7 +111,7 @@ func (f *fn) trapAlways(code uint32) {
 // emitTrapStubs emits one trap stub per trap code used by this function and
 // patches every recorded site to it. Called once, after the epilogue.
 func (f *fn) emitTrapStubs() {
-	for code := uint32(1); code <= trapStackFence; code++ { // deterministic order
+	for code := uint32(1); code <= trapTableOOB; code++ { // deterministic order
 		sites := f.sc.trapSites[code]
 		if len(sites) == 0 {
 			continue
@@ -479,11 +480,10 @@ func (f *fn) memoryInit(r *wasm.Reader) error {
 		return err
 	}
 	f.materializePendingLoads()
-	f.flush()
-	d := f.depth()
-	f.a.Load64(RDI, RSP, f.spillOff(d-3)) // dst offset
-	f.a.Load64(RSI, RSP, f.spillOff(d-2)) // src offset in passive segment
-	f.a.Load64(RCX, RSP, f.spillOff(d-1)) // n
+	types, argsSlot := f.flushSuffix(3)
+	f.a.Load64(RDI, RSP, f.spillOff(argsSlot))   // dst offset
+	f.a.Load64(RSI, RSP, f.spillOff(argsSlot+1)) // src offset in passive segment
+	f.a.Load64(RCX, RSP, f.spillOff(argsSlot+2)) // n
 
 	mb := f.memSizeReg
 	if mb == regNone {
@@ -504,7 +504,7 @@ func (f *fn) memoryInit(r *wasm.Reader) error {
 	f.a.Add64(RSI, R8)  // absolute src
 	f.a.RepMovsb()
 
-	f.setDepth(d - 3)
+	f.dropFlushedSuffix(types, 3)
 	return nil
 }
 
@@ -542,11 +542,10 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 		}
 	}
 	f.materializePendingLoads()
-	f.flush()
-	d := f.depth()
-	f.a.Load64(RDI, RSP, f.spillOff(d-3)) // dst offset
-	f.a.Load64(RSI, RSP, f.spillOff(d-2)) // src offset
-	f.a.Load64(RCX, RSP, f.spillOff(d-1)) // n
+	types, argsSlot := f.flushSuffix(3)
+	f.a.Load64(RDI, RSP, f.spillOff(argsSlot))   // dst offset
+	f.a.Load64(RSI, RSP, f.spillOff(argsSlot+1)) // src offset
+	f.a.Load64(RCX, RSP, f.spillOff(argsSlot+2)) // n
 
 	// Scratch in RDX/R8 only (never pinnable); R9 may hold a pinned local.
 	mb := f.memSizeReg
@@ -638,7 +637,7 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 		f.a.PatchRel32(j, f.a.Len())
 	}
 
-	f.setDepth(d - 3)
+	f.dropFlushedSuffix(types, 3)
 	return nil
 }
 
@@ -654,11 +653,10 @@ func (f *fn) memoryFill(r *wasm.Reader) error {
 		}
 	}
 	f.materializePendingLoads()
-	f.flush()
-	d := f.depth()
-	f.a.Load64(RDI, RSP, f.spillOff(d-3)) // dst offset
-	f.a.Load64(RAX, RSP, f.spillOff(d-2)) // AL = fill byte
-	f.a.Load64(RCX, RSP, f.spillOff(d-1)) // n
+	types, argsSlot := f.flushSuffix(3)
+	f.a.Load64(RDI, RSP, f.spillOff(argsSlot))   // dst offset
+	f.a.Load64(RAX, RSP, f.spillOff(argsSlot+1)) // AL = fill byte
+	f.a.Load64(RCX, RSP, f.spillOff(argsSlot+2)) // n
 
 	// Scratch in RDX/R8 only (never pinnable); R9 may hold a pinned local.
 	mb := f.memSizeReg
@@ -700,7 +698,7 @@ func (f *fn) memoryFill(r *wasm.Reader) error {
 	f.a.PatchRel32(skipRep, f.a.Len())
 	f.a.PatchRel32(fillDone, f.a.Len())
 
-	f.setDepth(d - 3)
+	f.dropFlushedSuffix(types, 3)
 	return nil
 }
 

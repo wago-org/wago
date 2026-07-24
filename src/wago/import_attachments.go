@@ -247,6 +247,14 @@ func detachImportedGlobals(in *Instance) {
 }
 
 func retainProducerRootsInImportedGlobals(in *Instance) bool {
+	return retainProducerRootsInImportedGlobalsMode(in, false)
+}
+
+func retainProducerRootsInImportedGlobalsForFinalization(in *Instance) bool {
+	return retainProducerRootsInImportedGlobalsMode(in, true)
+}
+
+func retainProducerRootsInImportedGlobalsMode(in *Instance, finalization bool) bool {
 	if in == nil || in.c == nil {
 		return false
 	}
@@ -263,7 +271,28 @@ func retainProducerRootsInImportedGlobals(in *Instance) bool {
 		if !seen.add(provided.Global) {
 			continue
 		}
-		if provided.Global.retainProducerInstance(in) {
+		var rooted bool
+		if finalization {
+			rooted = provided.Global.retainProducerInstanceForFinalization(in)
+		} else {
+			rooted = provided.Global.retainProducerInstance(in)
+		}
+		if finalization {
+			result := provided.Global.retainDescriptorOwnerForFinalization(in.refStore, in)
+			if result.retained {
+				rooted = true
+			}
+		}
+		for _, producer := range importedFuncrefProducerRoots(in) {
+			if finalization {
+				if provided.Global.retainProducerInstanceForFinalization(producer) {
+					rooted = true
+				}
+			} else if provided.Global.retainProducerInstance(producer) {
+				rooted = true
+			}
+		}
+		if rooted {
 			in.transferImportedGlobalAttachment(provided.Global)
 			retained = true
 		}
@@ -343,6 +372,14 @@ func detachImportedTables(in *Instance) {
 }
 
 func retainProducerRootsInImportedTables(in *Instance) bool {
+	return retainProducerRootsInImportedTablesMode(in, false)
+}
+
+func retainProducerRootsInImportedTablesForFinalization(in *Instance) bool {
+	return retainProducerRootsInImportedTablesMode(in, true)
+}
+
+func retainProducerRootsInImportedTablesMode(in *Instance, finalization bool) bool {
 	if in == nil || in.c == nil {
 		return false
 	}
@@ -350,12 +387,83 @@ func retainProducerRootsInImportedTables(in *Instance) bool {
 	for tableIndex := 0; tableIndex < in.c.tableImportCount(); tableIndex++ {
 		def, _ := in.c.tableImportAt(tableIndex)
 		table, ok := in.imports.table(def.Key)
-		if ok && table.retainProducerInstance(in) {
+		if !ok || table == nil {
+			continue
+		}
+		var rooted bool
+		if finalization {
+			rooted = table.retainProducerInstanceForFinalization(in)
+		} else {
+			rooted = table.retainProducerInstance(in)
+		}
+		if finalization {
+			result := table.retainDescriptorOwnersForFinalization(in.refStore, in)
+			if result.retained {
+				rooted = true
+			}
+		}
+		// A descriptor copied from another imported table/global or admitted as
+		// a public token need not occur in the writer's own funcRefDescs. Carry
+		// forward every source container's actual producer roots, while the store
+		// resolver above covers still-live token and canonical descriptor owners.
+		for _, producer := range importedFuncrefProducerRoots(in) {
+			if finalization {
+				if table.retainProducerInstanceForFinalization(producer) {
+					rooted = true
+				}
+			} else if table.retainProducerInstance(producer) {
+				rooted = true
+			}
+		}
+		if rooted {
 			in.transferImportedTableAttachment(table)
 			retained = true
 		}
 	}
 	return retained
+}
+
+// importedFuncrefProducerRoots snapshots roots from every imported persistent
+// funcref container. Container locks are released before callers attempt any
+// destination retention, preserving the order container -> snapshot, then
+// referenceStore -> instance, then destination container.
+func importedFuncrefProducerRoots(in *Instance) []*Instance {
+	if in == nil || in.c == nil {
+		return nil
+	}
+	var roots []*Instance
+	seen := make(map[*Instance]struct{})
+	add := func(candidates []*Instance) {
+		for _, root := range candidates {
+			if root == nil {
+				continue
+			}
+			if _, ok := seen[root]; ok {
+				continue
+			}
+			seen[root] = struct{}{}
+			roots = append(roots, root)
+		}
+	}
+	var tables importDedup[*Table]
+	for tableIndex := 0; tableIndex < in.c.tableImportCount(); tableIndex++ {
+		def, _ := in.c.tableImportAt(tableIndex)
+		table, ok := in.imports.table(def.Key)
+		if ok && table != nil && tables.add(table) {
+			add(table.funcrefProducerRoots())
+		}
+	}
+	var globals importDedup[*Global]
+	for globalIndex, imp := range in.c.GlobalImports {
+		if imp.Type != ValFuncRef || globalIndex >= len(in.globalCells) {
+			continue
+		}
+		global := in.globalCells[globalIndex]
+		if global != nil && globals.add(global) {
+			add(global.funcrefProducerRoots())
+		}
+	}
+	return roots
 }
 
 func (in *Instance) tableDescriptor(index int) []byte {

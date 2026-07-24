@@ -87,6 +87,10 @@ func marshalCompiled(c *Compiled) ([]byte, error) {
 	w.data(c.Data)
 	w.passiveData(c.PassiveData)
 	w.str(c.memoryImport)
+	w.bool(c.HasMemory)
+	w.u32(c.MemMinPages)
+	w.u32(c.MemMaxPages)
+	w.bool(c.MemHasMax)
 	w.bool(c.dynamicImports)
 	w.u8(uint8(compiledStructuralRequiredFeatures(c)))
 	w.gcTypeDescs(c.GCTypeDescs)
@@ -223,6 +227,7 @@ func (w *compiledWriter) offset(o OffsetInit) {
 	w.u32(o.Base)
 	w.bool(o.HasGlobal)
 	w.ivar(o.Global)
+	w.bytes(o.Expr)
 }
 func (w *compiledWriter) elems(v []ElemInit) error {
 	w.uvar(uint64(len(v)))
@@ -235,9 +240,13 @@ func (w *compiledWriter) elems(v []ElemInit) error {
 		w.offset(e.Offset)
 		w.uvar(uint64(len(e.Values)))
 		for _, value := range e.Values {
-			if value.Null {
+			switch {
+			case value.Null:
 				w.u8(0)
-			} else {
+			case value.HasGlobal:
+				w.u8(2)
+				w.u32(value.GlobalIndex)
+			default:
 				w.u8(1)
 				w.u32(value.FuncIndex)
 			}
@@ -266,6 +275,9 @@ func (w *compiledWriter) globals(v []GlobalDef) error {
 		}
 		w.bool(g.Mutable)
 		switch {
+		case len(g.InitExpr) != 0:
+			w.u8(3)
+			w.bytes(g.InitExpr)
 		case g.HasInitGlobal:
 			w.u8(1)
 			w.ivar(g.InitGlobal)
@@ -434,6 +446,22 @@ func unmarshalCompiled(c *Compiled, data []byte) error {
 	if err != nil {
 		return err
 	}
+	c.HasMemory, err = r.bool()
+	if err != nil {
+		return err
+	}
+	c.MemMinPages, err = r.u32()
+	if err != nil {
+		return err
+	}
+	c.MemMaxPages, err = r.u32()
+	if err != nil {
+		return err
+	}
+	c.MemHasMax, err = r.bool()
+	if err != nil {
+		return err
+	}
 	c.dynamicImports, err = r.bool()
 	if err != nil {
 		return err
@@ -461,7 +489,7 @@ const (
 	minStringIntMapBytes = minStringBytes + minVarintBytes
 	minNameAssocBytes    = minU32Bytes + minStringBytes
 	minFuncSigBytes      = minVarintBytes + minVarintBytes
-	minOffsetInitBytes   = minU32Bytes + 1 + minVarintBytes
+	minOffsetInitBytes   = minU32Bytes + 1 + minVarintBytes + minStringBytes
 	minElemInitBytes     = minU32Bytes + 1 + 1 + minOffsetInitBytes + minVarintBytes
 	minDataInitBytes     = minOffsetInitBytes + minStringBytes
 	minPassiveDataBytes  = minStringBytes
@@ -785,7 +813,14 @@ func (r *compiledReader) offset() (OffsetInit, error) {
 	if err != nil {
 		return OffsetInit{}, err
 	}
-	return OffsetInit{Base: base, HasGlobal: has, Global: glob}, nil
+	expr, err := r.bytes()
+	if err != nil {
+		return OffsetInit{}, err
+	}
+	if len(expr) == 0 {
+		expr = nil
+	}
+	return OffsetInit{Base: base, HasGlobal: has, Global: glob, Expr: expr}, nil
 }
 func (r *compiledReader) elems() ([]ElemInit, error) {
 	n, err := r.countElements("element segments", minElemInitBytes)
@@ -831,6 +866,12 @@ func (r *compiledReader) elems() ([]ElemInit, error) {
 				out[i].Values[j].Null = true
 			case 1:
 				out[i].Values[j].FuncIndex, err = r.u32()
+				if err != nil {
+					return nil, err
+				}
+			case 2:
+				out[i].Values[j].HasGlobal = true
+				out[i].Values[j].GlobalIndex, err = r.u32()
 				if err != nil {
 					return nil, err
 				}
@@ -916,6 +957,14 @@ func (r *compiledReader) globals() ([]GlobalDef, error) {
 			out[i].InitFunc, err = r.u32()
 			if err != nil {
 				return nil, err
+			}
+		case 3:
+			out[i].InitExpr, err = r.bytes()
+			if err != nil {
+				return nil, err
+			}
+			if len(out[i].InitExpr) == 0 {
+				return nil, fmt.Errorf("empty extended global initializer")
 			}
 		default:
 			return nil, fmt.Errorf("invalid global initializer kind %d", kind)

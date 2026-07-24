@@ -107,7 +107,8 @@ func TestJobMemoryHasTrapCellDetectsCrossInstanceOverwrite(t *testing.T) {
 }
 
 func TestTrapAndSlotFormattingHelpers(t *testing.T) {
-	if TrapDivZero.String() != "integer division by zero" || (&TrapError{Code: TrapDivZero}).Error() != "wasm trap: integer division by zero" {
+	if TrapDivZero.String() != "integer division by zero" || (&TrapError{Code: TrapDivZero}).Error() != "wasm trap: integer division by zero" ||
+		TrapTableOutOfBounds.String() != "table access out of bounds" {
 		t.Fatal("known trap formatting mismatch")
 	}
 	if got := TrapCode(99).String(); got != "trap(99)" {

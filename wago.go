@@ -156,6 +156,7 @@ const (
 	CapNetworkOutbound                         = impl.CapNetworkOutbound
 	CapTimerRead                               = impl.CapTimerRead
 	CoreFeatureBulkMemoryOperations            = impl.CoreFeatureBulkMemoryOperations
+	CoreFeatureExtendedConst                   = impl.CoreFeatureExtendedConst
 	CoreFeatureMultiValue                      = impl.CoreFeatureMultiValue
 	CoreFeatureMutableGlobal                   = impl.CoreFeatureMutableGlobal
 	CoreFeatureNonTrappingFloatToIntConversion = impl.CoreFeatureNonTrappingFloatToIntConversion
@@ -217,6 +218,7 @@ const (
 	TrapLinkedMemOutOfBounds                   = impl.TrapLinkedMemOutOfBounds
 	TrapNone                                   = impl.TrapNone
 	TrapStackFenceBreached                     = impl.TrapStackFenceBreached
+	TrapTableOutOfBounds                       = impl.TrapTableOutOfBounds
 	TrapTruncOverflow                          = impl.TrapTruncOverflow
 	TrapUnreachable                            = impl.TrapUnreachable
 	ValExternRef                               = impl.ValExternRef

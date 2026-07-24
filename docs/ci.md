@@ -18,7 +18,11 @@ the runner image lacks the tool.
 The three supported runtime targets run `make test`, which builds and tests every
 Go package, followed by `make test-corpus` with a bounded per-case timeout and
 `make simd` against the official SIMD proposal corpus. Their guard-page cells
-additionally run `make test-guard`. Darwin/amd64 is a native portability check
+additionally run `make test-guard`. A separate mandatory Linux/amd64 **Core v2
+conformance** job installs WABT, initializes the pinned `tests/spec-v2`
+submodule, and runs `make spec2`; it is included in the final `CI` aggregate, so
+it cannot be replaced by a skipped ordinary wrapper or an informational report.
+Darwin/amd64 is a native portability check
 for architecture-neutral compiler and encoder packages; wago does not yet
 implement its JIT ABI or signal-backed guard pages for that target, so runtime,
 corpus, and SIMD execution are deliberately excluded.
@@ -27,10 +31,11 @@ Linux/amd64 continues to host architecture-independent lint, TinyGo, coverage,
 and binary-size jobs. TinyGo mirrors the native matrix: Linux/amd64 and
 Linux/arm64 build, test, and smoke-run the CLI; Darwin/arm64 runs the runtime and
 public API suites; Darwin/amd64 runs the same portable compiler/encoder scope as
-Big Go. The CI card runs the WebAssembly 1.0, 2.0, and 3.0 suites
-for visibility without making their current gaps required checks. The final
-`CI` aggregation job is the stable branch-protection check and fails if any
-required matrix cell or supporting job fails.
+Big Go. The CI card runs broader WebAssembly 1.0, 2.0, and 3.0 summaries for
+visibility; those reports remain informational, while the dedicated exact Core
+v2 job is required. The final `CI` aggregation job is the stable
+branch-protection check and fails if any required matrix cell or supporting job,
+including Core v2 conformance, fails.
 
 Nightly, canary, and tagged release workflows attempt Linux, Darwin, and Windows
 CLI builds for both amd64 and arm64, then publish every successful binary with
@@ -54,4 +59,6 @@ make test
 make test-guard   # only on a supported guard-page target
 WAGO_CORPUS_TIMEOUT=20s make test-corpus
 make simd
+git submodule update --init tests/spec-v2
+make spec2        # exact mandatory Linux/amd64 Core v2 gate
 ```

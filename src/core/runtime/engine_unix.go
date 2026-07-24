@@ -111,10 +111,11 @@ func (e *Engine) StackLimit() uintptr {
 // so their addresses are stable across the call. It returns a *TrapError if the
 // wrapper set a non-zero trap code.
 //
-// The trap cell is zeroed and its pointer installed in basedata here, once per
-// entry, so generated code never passes or clears it: emitTrap (the only
-// consumer, cold) reads [linMem-abi.TrapCellPtrOffset], and function returns
-// carry no trap protocol at all (WARP's model).
+// The trap cell is cleared and its pointer installed in basedata here, once per
+// entry. A concurrently published TrapInterrupted is preserved so Instance.Close
+// cannot lose an interruption in the arm-before-entry race. Generated code reads
+// the cell through [linMem-abi.TrapCellPtrOffset]; function returns carry no trap
+// protocol (WARP's model).
 func (e *Engine) Call(code uintptr, serArgs, linMem, trap, results []byte) error {
 	installTrapCell(linMem, trap)
 	enterNative(code, slicePtr(serArgs), slicePtr(linMem), slicePtr(trap), slicePtr(results), e.stackTop)
@@ -142,14 +143,27 @@ func (e *Engine) CallPrepared(code uintptr, serArgs []byte, linMemBase uintptr, 
 	return nil
 }
 
-// installTrapCell zeroes the trap cell and writes its address into the
-// basedata trap-cell slot so generated code can reach it on the (cold) trap
-// path without any per-call plumbing.
+// installTrapCell clears any stale non-interrupt trap and writes the cell's
+// address into basedata. A concurrent close interruption wins the CAS reset and
+// remains visible at the first generated safepoint.
+func clearTrapUnlessInterrupted(trap []byte) {
+	if len(trap) < 4 {
+		return
+	}
+	cell := (*uint32)(unsafe.Pointer(&trap[0]))
+	for {
+		old := atomic.LoadUint32(cell)
+		if TrapCode(old) == TrapInterrupted || atomic.CompareAndSwapUint32(cell, old, 0) {
+			return
+		}
+	}
+}
+
 func installTrapCell(linMem, trap []byte) {
 	if len(trap) < 4 || len(linMem) == 0 {
 		return
 	}
-	storeTrap(trap, 0)
+	clearTrapUnlessInterrupted(trap)
 	*(*uint64)(unsafe.Pointer(uintptr(unsafe.Pointer(&linMem[0])) - abi.TrapCellPtrOffset)) = uint64(slicePtr(trap))
 }
 
@@ -182,7 +196,7 @@ func (e *Engine) CallWithHostBase(code uintptr, serArgs []byte, linMemBase uintp
 	if err := InitHostCtrlFrame(ctrl); err != nil {
 		return err
 	}
-	storeTrap(trap, 0)
+	clearTrapUnlessInterrupted(trap)
 	storeOffHeapU64(linMemBase-abi.TrapCellPtrOffset, uint64(slicePtr(trap)))
 	ctrlPtr := slicePtr(ctrl)
 	if e.hostScratchInUse {
@@ -229,7 +243,7 @@ func (e *Engine) callWithHostLoop(code uintptr, serArgs []byte, linMemBase uintp
 		if first {
 			enterNative(code, slicePtr(serArgs), linMemBase, slicePtr(trap), slicePtr(results), e.stackTop)
 		} else {
-			storeTrap(trap, 0) // clear the pending marker before resuming
+			clearTrapUnlessInterrupted(trap) // clear host-pending, but preserve concurrent Close interruption
 			prepareHostResume(ctrl, trap, e.stackTop, e.StackLimit())
 			resumeNative(ctrlPtr, e.stackTop)
 		}

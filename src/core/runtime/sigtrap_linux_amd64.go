@@ -176,7 +176,7 @@ func (e *Engine) CallGuarded(code uintptr, serArgs []byte, linMemBase uintptr, t
 		return fmt.Errorf("CallGuarded requires NewJobMemoryGuarded")
 	}
 	if len(trap) >= 4 {
-		trap[0], trap[1], trap[2], trap[3] = 0, 0, 0, 0
+		clearTrapUnlessInterrupted(trap)
 		j.putU64(abi.TrapCellPtrOffset, uint64(slicePtr(trap)))
 	}
 	enterNative(code, slicePtr(serArgs), linMemBase, slicePtr(trap), slicePtr(results), e.stackTop)

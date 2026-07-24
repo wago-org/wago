@@ -51,6 +51,71 @@ func regHeavyShiftChain(t *testing.T, nParams, depth int) *wasm.Module {
 	return m
 }
 
+func TestWrapperResultsUseSlotsWhenGlobalPinsReduceCapacity(t *testing.T) {
+	results := make([]wasm.ValType, 12)
+	for i := range results {
+		results[i] = wasm.I32
+	}
+	f := &fn{reserved: regMask(0).add(R12).add(R13).add(R14)}
+	if f.wrapperResultsFitRegisters(results) {
+		t.Fatal("12 integer wrapper results incorrectly fit after three module-global reservations")
+	}
+	if !f.wrapperResultsFitRegisters(results[:11]) {
+		t.Fatal("11 integer wrapper results should fit the remaining register file")
+	}
+
+	mixed := append(append([]wasm.ValType(nil), results[:11]...), wasm.F32)
+	if f.wrapperResultsFitRegisters(mixed) {
+		t.Fatal("scalar-float temporary GPR was not included in wrapper result pressure")
+	}
+}
+
+func TestCompileWrapperResultsWithThreePinnedGlobals(t *testing.T) {
+	results := make([]wasm.ValType, 12)
+	for i := range results {
+		results[i] = wasm.I32
+	}
+	calleeBody := make([]byte, 0, 12*2+1)
+	for i := range results {
+		calleeBody = append(calleeBody, 0x41, byte(i)) // i32.const i
+	}
+	calleeBody = append(calleeBody, 0x0b)
+
+	callerBody := make([]byte, 0, 256)
+	for global := byte(0); global < 3; global++ {
+		callerBody = append(callerBody, 0x03, 0x40) // loop void
+		for range 20 {                              // clear the extra module-global pin threshold
+			callerBody = append(callerBody, 0x23, global, 0x24, global)
+		}
+		callerBody = append(callerBody, 0x0b)
+	}
+	callerBody = append(callerBody, 0x10, 0x00, 0x0b) // call callee; end
+
+	zero := []byte{0x41, 0x00, 0x0b}
+	b := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, results))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0))),
+		wasmtest.Section(6, wasmtest.Vec(
+			wasmtest.GlobalEntry(wasm.I32, true, zero),
+			wasmtest.GlobalEntry(wasm.I32, true, zero),
+			wasmtest.GlobalEntry(wasm.I32, true, zero),
+		)),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 1))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(calleeBody), wasmtest.Code(callerBody))),
+	)
+	m, err := wasm.DecodeModule(b)
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	stats := &ModuleStats{}
+	if _, err := CompileModuleWith(m, CompileOptions{Stats: stats}); err != nil {
+		t.Fatalf("compile 12-result call with three pinned globals: %v", err)
+	}
+	if len(stats.ModuleGlobalPins) != 3 {
+		t.Fatalf("module-global pins = %d, want 3 to exercise reduced wrapper capacity", len(stats.ModuleGlobalPins))
+	}
+}
+
 // TestExecRegHeavyUnpinnedRetry is the regression for the register-allocator
 // exhaustion: a register-heavy nested-shift tree must compile (via the pinning-off
 // retry) instead of failing to link, and must still compute the right value.
