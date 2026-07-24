@@ -230,6 +230,243 @@ func TestPersistentFuncrefGlobalToGlobalRetainsActualProducer(t *testing.T) {
 	}
 }
 
+func assertRetainedInstanceState(t *testing.T, name string, in *Instance, wantRefs int, wantPhysical bool) {
+	t.Helper()
+	in.lifeMu.Lock()
+	refs, physical := in.resourceRefs, !in.resourcesClosed
+	in.lifeMu.Unlock()
+	if refs != int32(wantRefs) || physical != wantPhysical {
+		t.Fatalf("%s: roots=%d physical=%v, want roots=%d physical=%v", name, refs, physical, wantRefs, wantPhysical)
+	}
+}
+
+func instantiateTableCopyWriter(t *testing.T, rt *Runtime, source, destination *Table, body string) *Instance {
+	t.Helper()
+	wat := `(module
+		(import "env" "src" (table $src 1 1 funcref))
+		(import "env" "dst" (table $dst 1 1 funcref))
+		(func (export "copy") ` + body + `))`
+	var (
+		writer *Instance
+		err    error
+	)
+	if rt != nil {
+		module := mustCompileWat(rt, t, wat)
+		writer, err = rt.Instantiate(context.Background(), module, WithImports(Imports{"env.src": source, "env.dst": destination}))
+	} else {
+		compiled := MustCompile(watToWasmCA(t, wat))
+		t.Cleanup(func() { _ = compiled.Close() })
+		writer, err = Instantiate(compiled, Imports{"env.src": source, "env.dst": destination})
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := writer.Invoke("copy"); err != nil {
+		t.Fatal(err)
+	}
+	return writer
+}
+
+func localFuncrefTableProducerStoreless(t *testing.T, table *Table, value int32) *Instance {
+	t.Helper()
+	compiled := MustCompile(watToWasmCA(t, `(module
+		(import "env" "table" (table 1 1 funcref))
+		(func $target (result i32) (i32.const `+itoa32(value)+`))
+		(elem declare func $target)
+		(func (export "seed") (i32.const 0) (ref.func $target) (table.set 0)))`))
+	t.Cleanup(func() { _ = compiled.Close() })
+	in, err := Instantiate(compiled, Imports{"env.table": table})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := in.Invoke("seed"); err != nil {
+		t.Fatal(err)
+	}
+	return in
+}
+
+func TestCrossRuntimePersistentFuncrefTableCopiesRetainProxy(t *testing.T) {
+	for _, copyBody := range []struct {
+		name string
+		wat  string
+	}{
+		{"table.copy", `(i32.const 0) (i32.const 0) (i32.const 1) (table.copy $dst $src)`},
+		{"table.get-table.set", `(i32.const 0) (i32.const 0) (table.get $src) (table.set $dst)`},
+	} {
+		t.Run(copyBody.name, func(t *testing.T) {
+			rtA, rtB := NewRuntime(), NewRuntime()
+			source, _ := NewTable(1, 1)
+			destination, _ := NewTable(1, 1)
+			producer := localFuncrefTableProducer(rtA, t, source, 91)
+			writer := instantiateTableCopyWriter(t, rtB, source, destination, copyBody.wat)
+
+			if err := writer.Close(); err != nil {
+				t.Fatal(err)
+			}
+			assertRetainedInstanceState(t, "cross-runtime writer before producer close", writer, 2, true)
+			destination.mu.Lock()
+			retained := len(destination.retained)
+			destination.mu.Unlock()
+			if retained != 1 {
+				t.Fatalf("destination retained roots = %d, want one bounded proxy", retained)
+			}
+			if err := producer.Close(); err != nil {
+				t.Fatal(err)
+			}
+			assertRetainedInstanceState(t, "cross-runtime writer after precise resolution", writer, 0, false)
+			assertRetainedInstanceState(t, "cross-runtime producer before source close", producer, 2, true)
+			if err := source.Close(); err != nil {
+				t.Fatalf("source Close after precise transfer: %v", err)
+			}
+			assertRetainedInstanceState(t, "cross-runtime producer after source close", producer, 1, true)
+			forceReferenceGC()
+			caller := tableCaller(t, destination)
+			if got := tableTestCallI32(t, caller, "call"); got != 91 {
+				t.Fatalf("destination call = %d, want 91", got)
+			}
+			if err := caller.Close(); err != nil {
+				t.Fatal(err)
+			}
+			destination.mu.Lock()
+			retained = len(destination.retained)
+			destination.mu.Unlock()
+			if retained != 1 {
+				t.Fatalf("reader finalization grew proxy roots to %d, want 1", retained)
+			}
+			clearTableAndFinalizeRoots(t, destination)
+			assertRetainedInstanceState(t, "writer after overwrite", writer, 0, false)
+			assertRetainedInstanceState(t, "producer after overwrite", producer, 0, false)
+			_ = destination.Close()
+			_ = rtA.Close()
+			_ = rtB.Close()
+		})
+	}
+}
+
+func TestStorelessPersistentFuncrefTableCopyRetainsProxy(t *testing.T) {
+	source, _ := NewTable(1, 1)
+	destination, _ := NewTable(1, 1)
+	producer := localFuncrefTableProducerStoreless(t, source, 92)
+	writer := instantiateTableCopyWriter(t, nil, source, destination, `(i32.const 0) (i32.const 0) (table.get $src) (table.set $dst)`)
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if writer.refStore != nil {
+		t.Fatal("storeless writer unexpectedly allocated a reference store")
+	}
+	assertRetainedInstanceState(t, "storeless writer before producer close", writer, 2, true)
+	if err := producer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	assertRetainedInstanceState(t, "storeless writer after precise resolution", writer, 0, false)
+	assertRetainedInstanceState(t, "storeless producer before source close", producer, 2, true)
+	if err := source.Close(); err != nil {
+		t.Fatal(err)
+	}
+	assertRetainedInstanceState(t, "storeless producer after source close", producer, 1, true)
+	forceReferenceGC()
+	caller := tableCaller(t, destination)
+	if got := tableTestCallI32(t, caller, "call"); got != 92 {
+		t.Fatalf("destination call = %d, want 92", got)
+	}
+	_ = caller.Close()
+	clearTableAndFinalizeRoots(t, destination)
+	assertRetainedInstanceState(t, "storeless writer after overwrite", writer, 0, false)
+	assertRetainedInstanceState(t, "storeless producer after overwrite", producer, 0, false)
+	_ = destination.Close()
+}
+
+func TestCrossRuntimePersistentFuncrefTableToGlobalRetainsProxy(t *testing.T) {
+	rtA, rtB := NewRuntime(), NewRuntime()
+	source, _ := NewTable(1, 1)
+	destination, err := rtB.NewFuncRefGlobal(NullFuncRef(), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	producer := localFuncrefTableProducer(rtA, t, source, 93)
+	writerMod := mustCompileWat(rtB, t, `(module
+		(import "env" "src" (table 1 1 funcref))
+		(import "env" "dst" (global $dst (mut funcref)))
+		(func (export "copy") (i32.const 0) (table.get 0) (global.set $dst)))`)
+	writer, err := rtB.Instantiate(context.Background(), writerMod, WithImports(Imports{"env.src": source, "env.dst": destination}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := writer.Invoke("copy"); err != nil {
+		t.Fatal(err)
+	}
+	_ = writer.Close()
+	assertRetainedInstanceState(t, "table-to-global writer before producer close", writer, 2, true)
+	_ = producer.Close()
+	assertRetainedInstanceState(t, "table-to-global writer after precise resolution", writer, 0, false)
+	assertRetainedInstanceState(t, "table-to-global producer before source close", producer, 2, true)
+	if err := source.Close(); err != nil {
+		t.Fatalf("source Close after precise transfer: %v", err)
+	}
+	assertRetainedInstanceState(t, "table-to-global producer after source close", producer, 1, true)
+	forceReferenceGC()
+	readerMod := mustCompileWat(rtB, t, `(module
+		(type $target (func (result i32)))
+		(import "env" "g" (global (mut funcref)))
+		(table 1 funcref)
+		(func (export "call") (result i32)
+			(i32.const 0) (global.get 0) (table.set 0)
+			(i32.const 0) (call_indirect (type $target))))`)
+	reader, err := rtB.Instantiate(context.Background(), readerMod, WithImports(Imports{"env.g": destination}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := tableTestCallI32(t, reader, "call"); got != 93 {
+		t.Fatalf("global call = %d, want 93", got)
+	}
+	_ = reader.Close()
+	if err := destination.SetValue(ValueFuncRef(NullFuncRef())); err != nil {
+		t.Fatal(err)
+	}
+	scanGlobalAfterOverwrite(t, rtB, destination)
+	assertRetainedInstanceState(t, "table-to-global writer after overwrite", writer, 0, false)
+	assertRetainedInstanceState(t, "table-to-global producer after overwrite", producer, 0, false)
+	_ = destination.Close()
+	_ = rtA.Close()
+	_ = rtB.Close()
+}
+
+func TestPersistentFuncrefMixedSourceChainRetainsProxy(t *testing.T) {
+	rtA, rtB := NewRuntime(), NewRuntime()
+	source, _ := NewTable(1, 1)
+	intermediate, _ := NewTable(1, 1)
+	destination, _ := NewTable(1, 1)
+	producer := localFuncrefTableProducer(rtA, t, source, 94)
+	writerA := instantiateTableCopyWriter(t, rtA, source, intermediate, `(i32.const 0) (i32.const 0) (table.get $src) (table.set $dst)`)
+	writerB := instantiateTableCopyWriter(t, rtB, intermediate, destination, `(i32.const 0) (i32.const 0) (table.get $src) (table.set $dst)`)
+	_ = writerA.Close()
+	_ = writerB.Close()
+	_ = producer.Close()
+	assertRetainedInstanceState(t, "chain writer A", writerA, 0, false)
+	assertRetainedInstanceState(t, "chain writer B", writerB, 0, false)
+	assertRetainedInstanceState(t, "chain producer", producer, 3, true)
+	forceReferenceGC()
+	caller := tableCaller(t, destination)
+	if got := tableTestCallI32(t, caller, "call"); got != 94 {
+		t.Fatalf("chained destination call = %d, want 94", got)
+	}
+	_ = caller.Close()
+	clearTableAndFinalizeRoots(t, destination)
+	assertRetainedInstanceState(t, "chain writer B after overwrite", writerB, 0, false)
+	if err := intermediate.Close(); err != nil {
+		t.Fatal(err)
+	}
+	assertRetainedInstanceState(t, "chain writer A after intermediate close", writerA, 0, false)
+	assertRetainedInstanceState(t, "chain producer after intermediate close", producer, 1, true)
+	if err := source.Close(); err != nil {
+		t.Fatal(err)
+	}
+	assertRetainedInstanceState(t, "chain producer after source close", producer, 0, false)
+	_ = destination.Close()
+	_ = rtA.Close()
+	_ = rtB.Close()
+}
+
 func TestPersistentFuncrefPublicIngressAndCrossInstanceResult(t *testing.T) {
 	rt := NewRuntime()
 	destination, _ := NewTable(1, 1)

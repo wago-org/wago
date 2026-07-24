@@ -277,8 +277,11 @@ func retainProducerRootsInImportedGlobalsMode(in *Instance, finalization bool) b
 		} else {
 			rooted = provided.Global.retainProducerInstance(in)
 		}
-		if finalization && provided.Global.retainDescriptorOwnerForFinalization(in.refStore) {
-			rooted = true
+		if finalization {
+			result := provided.Global.retainDescriptorOwnerForFinalization(in.refStore, in)
+			if result.retained {
+				rooted = true
+			}
 		}
 		for _, producer := range importedFuncrefProducerRoots(in) {
 			if finalization {
@@ -393,8 +396,11 @@ func retainProducerRootsInImportedTablesMode(in *Instance, finalization bool) bo
 		} else {
 			rooted = table.retainProducerInstance(in)
 		}
-		if finalization && table.retainDescriptorOwnersForFinalization(in.refStore) {
-			rooted = true
+		if finalization {
+			result := table.retainDescriptorOwnersForFinalization(in.refStore, in)
+			if result.retained {
+				rooted = true
+			}
 		}
 		// A descriptor copied from another imported table/global or admitted as
 		// a public token need not occur in the writer's own funcRefDescs. Carry
