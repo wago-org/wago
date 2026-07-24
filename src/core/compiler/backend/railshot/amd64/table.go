@@ -180,7 +180,7 @@ func (f *fn) tableInit(r *wasm.Reader) error {
 	} else {
 		f.a.MovRegReg32(RDI, RDI)
 		f.a.LeaScaled(RDX, RDI, RCX, 0, 0)
-		f.trapUnlessLE(RDX, RAX)
+		f.trapTableUnlessLE(RDX, RAX)
 	}
 	// The destination entry stride is fixed by the table's type, and validation
 	// requires the element segment's type to be a subtype of the table's (same
@@ -195,7 +195,7 @@ func (f *fn) tableInit(r *wasm.Reader) error {
 	f.a.Load64(R8, RBX, -int32(offPassiveElemPtr))
 	f.a.Load32(RAX, R8, disp+8)
 	f.a.LeaScaled(RDX, RSI, RCX, 0, 0)
-	f.trapUnlessLE(RDX, RAX)
+	f.trapTableUnlessLE(RDX, RAX)
 	f.a.Load64(R8, R8, disp)
 	f.entryArrayAddr(RSI, R8, externref)
 	f.a.ShiftImm(4, RCX, entryStrideShift(externref), true)
@@ -256,7 +256,7 @@ func (f *fn) tableCopy(r *wasm.Reader) error {
 		f.trapIf(condA, trapIndirectOOB)
 	} else {
 		f.a.LeaScaled(RDX, RDI, RCX, 0, 0)
-		f.trapUnlessLE(RDX, RAX)
+		f.trapTableUnlessLE(RDX, RAX)
 	}
 	f.a.Load32(RAX, R9, 0)
 	if src64 {
@@ -267,7 +267,7 @@ func (f *fn) tableCopy(r *wasm.Reader) error {
 		f.trapIf(condA, trapIndirectOOB)
 	} else {
 		f.a.LeaScaled(RDX, RSI, RCX, 0, 0)
-		f.trapUnlessLE(RDX, RAX)
+		f.trapTableUnlessLE(RDX, RAX)
 	}
 	externref := f.tableIsExternref(dstTableIdx)
 	f.typedTableEntryAddr(RDI, R8, dstTableIdx)
@@ -321,7 +321,7 @@ func (f *fn) tableFill(r *wasm.Reader) error {
 		f.trapIf(condA, trapIndirectOOB)
 	} else {
 		f.a.LeaScaled(RDI, RDI, RCX, 0, 0)
-		f.trapUnlessLE(RDI, RDX)
+		f.trapTableUnlessLE(RDI, RDX)
 	}
 	f.a.Load64(RDI, RSP, f.spillOff(d-3))
 	f.canonicalizeTableOperand(RDI, tableIdx)
@@ -359,7 +359,7 @@ func (f *fn) externrefTableFill(tableIdx uint32) error {
 		f.a.MovRegReg32(RDI, RDI)
 		f.a.MovRegReg32(RCX, RCX)
 		f.a.LeaScaled(RSI, RDI, RCX, 0, 0)
-		f.trapUnlessLE(RSI, RDX)
+		f.trapTableUnlessLE(RSI, RDX)
 	}
 	f.a.Load64(RDI, RSP, f.spillOff(d-3))
 	if !addr64 {

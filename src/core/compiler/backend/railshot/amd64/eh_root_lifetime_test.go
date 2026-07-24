@@ -8,7 +8,7 @@ import (
 	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/testutil/wasmtest"
+	"github.com/wago-org/wago/tests/wasmtest"
 )
 
 func exceptionFuncrefRootLifetimeModule(payloadType []byte) []byte {
@@ -45,8 +45,11 @@ func exceptionFuncrefRootLifetimeModule(payloadType []byte) []byte {
 }
 
 func TestExceptionFuncrefRootsInitializeAndClear(t *testing.T) {
-	if got := unsafe.Sizeof(storage{}); got != 32 {
-		t.Fatalf("storage size = %d, want unchanged 32 bytes", got)
+	// Compiler-plugin custom values add one bounded type pointer and register
+	// slice to storage; keep the expanded hot structure at the measured 64-byte
+	// ceiling while EH roots continue to use the existing inline flag.
+	if got := unsafe.Sizeof(storage{}); got != 64 {
+		t.Fatalf("storage size = %d, want bounded 64 bytes", got)
 	}
 	m, err := wasm.DecodeModule(exceptionFuncrefRootLifetimeModule([]byte{0x64, 0x00}))
 	if err != nil {

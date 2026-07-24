@@ -67,6 +67,7 @@ func analyzeModuleRequirements(m *wasm.Module) moduleRequirements {
 	}
 	for _, g := range m.Globals {
 		out |= requiredFeaturesForValType(g.Type.Type)
+		out |= requiredFeaturesForConstExpr(g.Init, m.ImportedGlobalCount())
 	}
 	for _, ex := range m.Exports {
 		if ex.Index.Kind == wasm.ExternGlobal {
@@ -95,11 +96,20 @@ func analyzeModuleRequirements(m *wasm.Module) moduleRequirements {
 		if wasm.EqualValType(wasm.RefVal(table.Type.Ref), wasm.ExternRef) || table.Init != nil {
 			out |= CoreFeatureReferenceTypes
 		}
+		if table.Init != nil {
+			out |= requiredFeaturesForConstExpr(*table.Init, m.ImportedGlobalCount())
+		}
 		if table.Type.Limits.Addr64 {
 			out |= CoreFeatureTable64
 		}
 	}
 	for i, elem := range m.Elements {
+		if elem.Mode.Kind == wasm.ElemActive {
+			out |= requiredFeaturesForConstExpr(elem.Mode.Offset, m.ImportedGlobalCount())
+		}
+		for _, expr := range elem.Kind.Exprs {
+			out |= requiredFeaturesForConstExpr(expr, m.ImportedGlobalCount())
+		}
 		if elem.Mode.Kind != wasm.ElemActive {
 			out |= CoreFeatureBulkMemoryOperations
 		}
@@ -111,6 +121,9 @@ func analyzeModuleRequirements(m *wasm.Module) moduleRequirements {
 		}
 	}
 	for i, data := range m.Data {
+		if data.Mode.Kind == wasm.DataActive {
+			out |= requiredFeaturesForConstExpr(data.Mode.Offset, m.ImportedGlobalCount())
+		}
 		if data.Mode.Kind == wasm.DataPassive {
 			out |= CoreFeatureBulkMemoryOperations
 			dataStateCount = i + 1
@@ -131,6 +144,49 @@ func analyzeModuleRequirements(m *wasm.Module) moduleRequirements {
 		out |= CoreFeatureSIMD
 	}
 	return moduleRequirements{features: out, elemStateCount: elemStateCount, dataStateCount: dataStateCount}
+}
+
+func requiredFeaturesForConstExpr(expr wasm.Expr, importedGlobals int) CoreFeatures {
+	body := expr.BodyBytes
+	if len(body) == 0 {
+		encoded, err := wasm.EncodeExpr(expr)
+		if err != nil {
+			return 0
+		}
+		body = encoded
+	}
+	return requiredFeaturesForConstExprBytes(body, importedGlobals)
+}
+
+func requiredFeaturesForConstExprBytes(body []byte, importedGlobals int) CoreFeatures {
+	r := wasm.NewReader(body)
+	usesArithmetic, usesPriorLocal := false, false
+	for r.HasNext() {
+		op, err := r.Byte()
+		if err != nil {
+			break
+		}
+		imm, err := wasm.ClassifyInstructionImmediate(r, op)
+		if err != nil {
+			break
+		}
+		switch imm.Kind {
+		case wasm.InstrGlobalGet:
+			if int(imm.Index) >= importedGlobals {
+				usesPriorLocal = true
+			}
+		case wasm.InstrI32Add, wasm.InstrI32Sub, wasm.InstrI32Mul,
+			wasm.InstrI64Add, wasm.InstrI64Sub, wasm.InstrI64Mul:
+			usesArithmetic = true
+		}
+	}
+	if usesPriorLocal {
+		return CoreFeatureExtendedConstExpressions
+	}
+	if usesArithmetic {
+		return CoreFeatureExtendedConst
+	}
+	return 0
 }
 
 func requiredFeaturesForValTypes(types []wasm.ValType) CoreFeatures {
@@ -337,6 +393,7 @@ func compiledStructuralRequiredFeatures(c *Compiled) CoreFeatures {
 		}
 	}
 	for _, g := range c.Globals {
+		out |= requiredFeaturesForConstExprBytes(g.InitExpr, len(c.GlobalImports))
 		if isReferenceValType(g.Type) {
 			out |= CoreFeatureReferenceTypes
 		}
@@ -363,17 +420,22 @@ func compiledStructuralRequiredFeatures(c *Compiled) CoreFeatures {
 		}
 	}
 	for _, elem := range c.Elems {
+		out |= requiredFeaturesForConstExprBytes(elem.Offset.Expr, len(c.GlobalImports))
 		if elem.RefType == ValExternRef || elem.TableIndex != 0 {
 			out |= CoreFeatureReferenceTypes
 		}
 	}
 	for _, elem := range c.passiveElems {
+		out |= requiredFeaturesForConstExprBytes(elem.Offset.Expr, len(c.GlobalImports))
 		if elem.RefType == ValExternRef {
 			out |= CoreFeatureReferenceTypes
 		}
 		if elem.Mode != ElemModeActive {
 			out |= CoreFeatureBulkMemoryOperations
 		}
+	}
+	for _, data := range c.Data {
+		out |= requiredFeaturesForConstExprBytes(data.Offset.Expr, len(c.GlobalImports))
 	}
 	return out
 }

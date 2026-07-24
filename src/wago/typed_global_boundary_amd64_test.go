@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wago-org/wago/testutil/wasmtest"
+	"github.com/wago-org/wago/tests/wasmtest"
 )
 
 func typedMutableGlobalModule(typeDefs [][]byte, typeIndex uint32) []byte {

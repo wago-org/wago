@@ -5,7 +5,7 @@ package wago
 import (
 	"testing"
 
-	"github.com/wago-org/wago/testutil/wasmtest"
+	"github.com/wago-org/wago/tests/wasmtest"
 )
 
 func typedTableDynamicModule(typeDefs [][]byte, targetType uint32, imported bool) []byte {

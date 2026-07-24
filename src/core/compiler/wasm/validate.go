@@ -9,9 +9,10 @@ import (
 // them part of the default product claim. A feature may validate here while the
 // frontend/runtime still reject execution explicitly.
 type ValidationFeatures struct {
-	CompactImports bool
-	MultiMemory    bool
-	GCConstExpr    bool // internal staged admission for GC allocation/conversion constant expressions
+	CompactImports       bool
+	MultiMemory          bool
+	ExtendedConstGlobals bool // prior immutable local global.get in constant expressions
+	GCConstExpr          bool // internal staged admission for GC allocation/conversion constant expressions
 }
 
 // ValidateModule validates module-level indexes and typechecks function bodies.

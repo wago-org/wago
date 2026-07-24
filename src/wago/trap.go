@@ -35,4 +35,5 @@ const (
 	TrapCalledFnNotLinked    = wruntime.TrapCalledFnNotLinked
 	TrapNullReference        = wruntime.TrapNullReference
 	TrapCastFailure          = wruntime.TrapCastFailure
+	TrapTableOutOfBounds     = wruntime.TrapTableOutOfBounds
 )

@@ -587,7 +587,7 @@ func TestProgrammaticTableGrowAndConstExpressionSupport(t *testing.T) {
 	}
 	if err := (supportPass{m: &wasm.Module{}}).constExpr(wasm.Expr{BodyBytes: []byte{0x41, 0x00, 0x6a, 0x0b}}, "global 2 initializer"); err == nil {
 		t.Fatal("disabled extended const expression accepted")
-	} else if got, want := err.Error(), "unsupported const expression integer add/sub/mul (extended-const-expressions disabled) at global 2 initializer instruction 1"; got != want {
+	} else if got, want := err.Error(), "unsupported const expression integer add/sub/mul (extended-constant-expressions disabled) at global 2 initializer instruction 1"; got != want {
 		t.Fatalf("const expression diagnostic = %q, want %q", got, want)
 	}
 	for _, body := range [][]byte{

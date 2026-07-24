@@ -164,6 +164,7 @@ type fn struct {
 	// in its register (dirty), in both register+slot (clean), or only in its slot.
 	// Call-free functions keep locals permanently in registers (locals[].state unused).
 	usesCalls bool
+	usesWide  bool
 
 	// Register occupancy: regUser[r] is the value elem currently resident in
 	// physical register r, or nil if r is free. Only allocatable GPRs are tracked.
@@ -325,19 +326,20 @@ type fn struct {
 }
 
 type transient struct {
-	lsPool      [][]locState
-	endsPool    [][]int
-	tmpRoots    []*elem
-	tmpTypes    []machineType
-	tmpTypes2   []machineType
-	tmpRegs     []Reg
-	tmpSlots    []int
-	tmpMoves    []regMove
-	tmpLabels   []uint32
-	tmpDeferred []deferredArg
-	tmpBelow    []*elem
-	tmpGpCand   []gpCand
-	tmpInts     []int
+	lsPool        [][]locState
+	endsPool      [][]int
+	tmpRoots      []*elem
+	tmpTypes      []machineType
+	tmpTypes2     []machineType
+	tmpFlushTypes []machineType
+	tmpRegs       []Reg
+	tmpSlots      []int
+	tmpMoves      []regMove
+	tmpLabels     []uint32
+	tmpDeferred   []deferredArg
+	tmpBelow      []*elem
+	tmpGpCand     []gpCand
+	tmpInts       []int
 }
 
 // gpCand is a hot int local or global competing for a GP pin register, ranked by
@@ -603,7 +605,42 @@ type CompileOptions struct {
 	// "explain" dashboard, docs/no-ir-plan.md P1). Independent of WAGO_EXPLAIN,
 	// which prints the same dump to stderr. nil = no collection, zero overhead.
 	Stats *ModuleStats
+
+	// CustomInstructions contains validated recipes keyed by imported function
+	// index. Unsupported recipes remain ordinary host calls.
+	CustomInstructions map[uint32]CustomInstruction
 }
+
+type CustomInstructionOp = railcore.CustomInstructionOp
+type CustomInstructionNode = railcore.CustomInstructionNode
+type CustomInstruction = railcore.CustomInstruction
+
+const (
+	CustomInstructionInput  = railcore.CustomInstructionInput
+	CustomInstructionConst  = railcore.CustomInstructionConst
+	CustomInstructionAdd    = railcore.CustomInstructionAdd
+	CustomInstructionSub    = railcore.CustomInstructionSub
+	CustomInstructionMul    = railcore.CustomInstructionMul
+	CustomInstructionAnd    = railcore.CustomInstructionAnd
+	CustomInstructionOr     = railcore.CustomInstructionOr
+	CustomInstructionXor    = railcore.CustomInstructionXor
+	CustomInstructionShl    = railcore.CustomInstructionShl
+	CustomInstructionShrU   = railcore.CustomInstructionShrU
+	CustomInstructionShrS   = railcore.CustomInstructionShrS
+	CustomInstructionEq     = railcore.CustomInstructionEq
+	CustomInstructionNe     = railcore.CustomInstructionNe
+	CustomInstructionLtU    = railcore.CustomInstructionLtU
+	CustomInstructionLtS    = railcore.CustomInstructionLtS
+	CustomInstructionLeU    = railcore.CustomInstructionLeU
+	CustomInstructionLeS    = railcore.CustomInstructionLeS
+	CustomInstructionGtU    = railcore.CustomInstructionGtU
+	CustomInstructionGtS    = railcore.CustomInstructionGtS
+	CustomInstructionGeU    = railcore.CustomInstructionGeU
+	CustomInstructionGeS    = railcore.CustomInstructionGeS
+	CustomInstructionNot    = railcore.CustomInstructionNot
+	CustomInstructionIsZero = railcore.CustomInstructionIsZero
+	CustomInstructionSelect = railcore.CustomInstructionSelect
+)
 
 // DirectBackend adapts the direct wasm-to-amd64 compiler to the shared
 // backend-neutral codegen.Backend shape used by heap/GC lowering work.
@@ -749,7 +786,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		if explainEnabled && ms != nil {
 			fmt.Fprint(os.Stderr, ms.String())
 		}
-		return &amd64.CompiledModule{Code: code, Entry: entry, InternalEntry: internalEntry}, nil
+		return &amd64.CompiledModule{Code: code, Entry: entry, InternalEntry: internalEntry, RequiresAVX2: requiresAVX2, RequiresAVX512: requiresAVX512}, nil
 	}
 
 	return compileModuleParallel(m, opts, workers, codeCap, entry, internalEntry, relocs, allHints, modGlobals, inlineTargets, ms, guardMode, boundsFacts, importedFuncs)
@@ -840,7 +877,15 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	if explainEnabled && ms != nil {
 		fmt.Fprint(os.Stderr, ms.String())
 	}
-	return &amd64.CompiledModule{Code: code, Entry: entry, InternalEntry: internalEntry}, nil
+	requiresAVX2 := false
+	requiresAVX512 := false
+	for _, definition := range opts.CustomInstructions {
+		if lowering := pluginAMD64Lowering(definition); lowering != nil {
+			requiresAVX2 = requiresAVX2 || lowering.Features&plugincodegen.FeatureAVX2 != 0
+			requiresAVX512 = requiresAVX512 || lowering.Features&plugincodegen.FeatureAVX512 != 0
+		}
+	}
+	return &amd64.CompiledModule{Code: code, Entry: entry, InternalEntry: internalEntry, RequiresAVX2: requiresAVX2, RequiresAVX512: requiresAVX512}, nil
 }
 
 func firstFuncError(results []funcResult) (int, error) {
@@ -1065,7 +1110,7 @@ func immutableLocalTableEntries(m *wasm.Module, tableIdx uint32) bool {
 	}
 	if init := m.Tables[tableIdx].Init; init != nil {
 		ee, err := wasm.ParseElementExpr(*init)
-		if err != nil || (!ee.Null && int(ee.FuncIndex) < m.ImportedFuncCount()) {
+		if err != nil || ee.HasGlobal || (!ee.Null && int(ee.FuncIndex) < m.ImportedFuncCount()) {
 			return false
 		}
 	}
@@ -1084,7 +1129,7 @@ func immutableLocalTableEntries(m *wasm.Module, tableIdx uint32) bool {
 		default:
 			for _, expr := range e.Kind.Exprs {
 				ee, err := wasm.ParseElementExpr(expr)
-				if err != nil || (!ee.Null && (int(ee.FuncIndex) < m.ImportedFuncCount() || int(ee.FuncIndex)-m.ImportedFuncCount() >= len(m.Code))) {
+				if err != nil || ee.HasGlobal || (!ee.Null && (int(ee.FuncIndex) < m.ImportedFuncCount() || int(ee.FuncIndex)-m.ImportedFuncCount() >= len(m.Code))) {
 					return false
 				}
 			}

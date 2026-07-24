@@ -14,7 +14,7 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/frontend"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/runtime"
-	"github.com/wago-org/wago/testutil/wasmtest"
+	"github.com/wago-org/wago/tests/wasmtest"
 )
 
 func noMaxTable64Type() []byte { return []byte{0x70, 0x04, 0x00} }

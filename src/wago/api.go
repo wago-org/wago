@@ -7,6 +7,7 @@ import (
 	"fmt"
 	goruntime "runtime"
 	"sort"
+	"strings"
 	"sync/atomic"
 	"time"
 	"unsafe"
@@ -962,7 +963,12 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		features.ExceptionReferences = false
 	}
 	workers := functionWorkersForModule(m, cfg.functionWorkers)
-	validationFeatures := wasm.ValidationFeatures{CompactImports: features.MultiMemory, MultiMemory: features.MultiMemory, GCConstExpr: features.GCStructProducts || features.GCArrayProducts || features.GCI31Products}
+	validationFeatures := wasm.ValidationFeatures{
+		CompactImports:       features.MultiMemory,
+		MultiMemory:          features.MultiMemory,
+		ExtendedConstGlobals: features.ExtendedConstGlobals,
+		GCConstExpr:          features.GCStructProducts || features.GCArrayProducts || features.GCI31Products,
+	}
 	if err := wasm.ValidateModuleWithFeaturesAndWorkers(m, validationFeatures, workers); err != nil {
 		// Proposal-aware decoding can expose a structurally unsupported module to
 		// validation before the validator has complete proposal subtyping rules.
@@ -973,6 +979,25 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		}
 		return nil, fmt.Errorf("validate: %w", err)
 	}
+	var functionIndex uint32
+	for i := range m.Imports {
+		imp := &m.Imports[i]
+		if imp.Type.Kind != wasm.ExternFunc {
+			continue
+		}
+		if ins := instructions[imp.Module+"."+imp.Name]; ins != nil {
+			ft, ok := m.FuncSignature(functionIndex)
+			if !ok {
+				return nil, fmt.Errorf("compile: instruction import %q has no function signature", imp.Module+"."+imp.Name)
+			}
+			sig := FuncSig{Params: valTypesFromWasm(ft.Params), Results: valTypesFromWasm(ft.Results)}
+			if err := validateInstructionSignature(imp.Module+"."+imp.Name, ins.spec, sig); err != nil {
+				return nil, err
+			}
+		}
+		functionIndex++
+	}
+	customInstructions := resolveInstructionLowerings(m, instructions)
 	structuralProduct := stagedStructuralTypeProduct(0)
 	gcTypeSubtypingProduct := stagedGCTypeSubtypingProduct(0)
 	gcStructProduct := stagedGCStructProduct(0)
@@ -1191,25 +1216,6 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	if err := frontend.RejectUnsupportedWithFeaturesAndFacts(m, features, moduleFacts); err != nil {
 		return nil, fmt.Errorf("compile: %w", err)
 	}
-	var functionIndex uint32
-	for i := range m.Imports {
-		imp := &m.Imports[i]
-		if imp.Type.Kind != wasm.ExternFunc {
-			continue
-		}
-		if ins := instructions[imp.Module+"."+imp.Name]; ins != nil {
-			ft, ok := m.FuncSignature(functionIndex)
-			if !ok {
-				return nil, fmt.Errorf("compile: instruction import %q has no function signature", imp.Module+"."+imp.Name)
-			}
-			sig := FuncSig{Params: valTypesFromWasm(ft.Params), Results: valTypesFromWasm(ft.Results)}
-			if err := validateInstructionSignature(imp.Module+"."+imp.Name, ins.spec, sig); err != nil {
-				return nil, err
-			}
-		}
-		functionIndex++
-	}
-	customInstructions := resolveInstructionLowerings(m, instructions)
 	var unsafeDirectTailImports []uint64
 	if features.TailCalls {
 		unsafeDirectTailImports, err = unsafeDirectTailImportBitset(m)
@@ -1537,6 +1543,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 			c.MemMinPages = uint32(memory0.Min)
 		}
 		c.MemMaxPages = 65535 // default memory-0 reservation ceiling
+		c.MemHasMax = memory0.HasMax
 		if memory0.HasMax && memory0.Max < uint64(c.MemMaxPages) {
 			c.MemMaxPages = uint32(memory0.Max)
 		}
@@ -1731,6 +1738,24 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		compiled.codeCache.gcI31Product = gcI31Product
 	}
 	return compiled, nil
+}
+
+func isUnsupportedProposalError(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	for _, marker := range []string{
+		"tag section", "exception", "throw", "try_table",
+		"return_call", "tail call",
+		"reference instruction", "reference type", "ref func", "ref type ", "call_ref", "br_on_null", "br_on_non_null", "ref.as_non_null",
+		"shared memory", "atomic instruction", "atomic.",
+	} {
+		if strings.Contains(message, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 // effectiveCompileBoundsMode keeps zero-minimum memories correct on ARM64.
@@ -2851,7 +2876,7 @@ func (c *Compiled) validateCodecMetadata() error {
 		}
 	}
 	structural := compiledStructuralRequiredFeatures(c)
-	if unsupported := structural &^ CoreFeaturesV3; unsupported != 0 {
+	if unsupported := structural &^ (CoreFeaturesV3 | CoreFeatureExtendedConst); unsupported != 0 {
 		return fmt.Errorf("compiled metadata invalid: unknown required feature bits 0x%x", uint64(unsupported))
 	}
 	if err := c.validateMemoryMetadata(structural); err != nil {
@@ -3084,7 +3109,7 @@ func (c *Compiled) memoryDef(index int) memoryDef {
 	if index != 0 {
 		return memoryDef{}
 	}
-	def := memoryDef{ImportKey: c.memoryImport, Min: uint64(c.MemMinPages), Max: uint64(c.MemMaxPages), HasMax: c.MemMaxPages != 0}
+	def := memoryDef{ImportKey: c.memoryImport, Min: uint64(c.MemMinPages), Max: uint64(c.MemMaxPages), HasMax: c.MemHasMax}
 	return def
 }
 

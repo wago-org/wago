@@ -75,10 +75,11 @@ func TestExtendedConstValidationByteBackedAndAST(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DecodeModule: %v", err)
 	}
-	if err := ValidateModule(m); err != nil {
+	features := ValidationFeatures{ExtendedConstGlobals: true}
+	if err := ValidateModuleWithFeatures(m, features); err != nil {
 		t.Fatalf("ValidateModule byte-backed globals: %v", err)
 	}
-	if err := ValidateByteBackedModule(data); err != nil {
+	if err := ValidateByteBackedModuleWithFeatures(data, features); err != nil {
 		t.Fatalf("ValidateByteBackedModule: %v", err)
 	}
 
@@ -90,7 +91,7 @@ func TestExtendedConstValidationByteBackedAndAST(t *testing.T) {
 			{Type: GlobalType{Type: I32}, Init: Expr{Instrs: []Instruction{{Kind: InstrGlobalGet, Index: 2}, {Kind: InstrI32Const, I32: 2}, {Kind: InstrI32Mul}}}},
 		},
 	}
-	if err := ValidateModule(ast); err != nil {
+	if err := ValidateModuleWithFeatures(ast, features); err != nil {
 		t.Fatalf("ValidateModule AST globals: %v", err)
 	}
 }
@@ -151,13 +152,14 @@ func TestExtendedConstValidationRejectsStrictly(t *testing.T) {
 			extSection(6, extVec(extGlobalEntry(I32, false, []byte{0x41, 0, 0x0b}))),
 			extSection(11, extVec(dataEntry)),
 		)
+		features := ValidationFeatures{ExtendedConstGlobals: true}
 		for _, validate := range []func([]byte) error{func(b []byte) error {
 			m, err := DecodeModule(b)
 			if err != nil {
 				return err
 			}
-			return ValidateModule(m)
-		}, ValidateByteBackedModule} {
+			return ValidateModuleWithFeatures(m, features)
+		}, func(b []byte) error { return ValidateByteBackedModuleWithFeatures(b, features) }} {
 			if err := validate(data); err != nil {
 				t.Fatalf("prior immutable local-global offset validation = %v", err)
 			}

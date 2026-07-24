@@ -293,6 +293,21 @@ func (f *fn) flushWideStack(roots []*elem) bool {
 	return true
 }
 
+// setDepth consumes the top operands while preserving the exact machine types
+// (and therefore slot widths) of the l values below them.
+func (f *fn) setDepth(l int) {
+	roots := f.rootsBottomToTop()
+	if l < 0 || l > len(roots) {
+		panic("amd64: invalid operand depth")
+	}
+	types := f.tmpTypes[:0]
+	for _, root := range roots[:l] {
+		types = append(types, root.st.typ)
+	}
+	f.tmpTypes = types
+	f.setDepthTypes(types)
+}
+
 func (f *fn) setDepthTypes(types []machineType) {
 	f.s.head.prev, f.s.head.next = f.s.head, f.s.head
 	slot := 0
@@ -825,7 +840,7 @@ func (f *fn) opThrow(r *wasm.Reader) error {
 	f.a.JmpReg(RAX)
 	trapPos := f.a.Len()
 	f.a.PatchRel32(noHandler, trapPos)
-	f.emitTrap(trapUnhandledException)
+	f.trapAlways(trapUnhandledException)
 	f.unreachable = true
 	return nil
 }
@@ -852,7 +867,7 @@ func (f *fn) opThrowRef() error {
 	f.a.Load64(RAX, R11, ehTargetOff)
 	f.a.JmpReg(RAX)
 	f.a.PatchRel32(noHandler, f.a.Len())
-	f.emitTrap(trapUnhandledException)
+	f.trapAlways(trapUnhandledException)
 	f.unreachable = true
 	return nil
 }
@@ -958,7 +973,7 @@ func (f *fn) emitEHHandler(fr *ctrlFrame) {
 	f.a.Load64(RSP, R11, ehSavedRSPOff)
 	f.a.JmpReg(RAX)
 	f.a.PatchRel32(noPrevious, f.a.Len())
-	f.emitTrap(trapUnhandledException)
+	f.trapAlways(trapUnhandledException)
 
 	for i := 0; i < dispatchN; i++ {
 		clause := &fr.ehCatches[i]

@@ -81,6 +81,19 @@ func TestImmutableLocalTableCallIndirectSpecialization(t *testing.T) {
 	}
 }
 
+func TestImmutableLocalTableRejectsGlobalGetInitializer(t *testing.T) {
+	m := &wasm.Module{
+		Tables: []wasm.Table{{Type: wasm.TableType{Ref: wasm.AbsRef(wasm.HeapFunc)}}},
+		Elements: []wasm.Elem{{
+			Mode: wasm.ElemMode{Kind: wasm.ElemActive, Table: 0},
+			Kind: wasm.ElemKind{Kind: wasm.ElemTypedExprs, Ref: wasm.AbsRef(wasm.HeapFunc), Exprs: []wasm.Expr{{Instrs: []wasm.Instruction{{Kind: wasm.InstrGlobalGet, Index: 0}}}}},
+		}},
+	}
+	if immutableLocalTableEntries(m, 0) {
+		t.Fatal("global.get element initializer was misclassified as a same-module function")
+	}
+}
+
 func TestImmutableLocalTableMixedTypesKeepDynamicCheck(t *testing.T) {
 	i32 := []wasm.ValType{wasm.I32}
 	elem := []byte{0x00, 0x41, 0x00, 0x0b, 0x02, 0x00, 0x01}

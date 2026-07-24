@@ -28,7 +28,7 @@ func requireBoundedInstanceFootprint(t *testing.T, got uintptr) {
 	// Go 1.22 and Go 1.26 lay out synchronization primitives differently.
 	// Indexed-memory state adds one nil sidecar pointer; the two build layouts
 	// remain fixed and carry no slice headers for ordinary single-memory instances.
-	if got != 792 && got != 872 {
-		t.Fatalf("Instance size = %d, want supported 792- or 872-byte layout", got)
+	if got != 792 && got != 816 && got != 872 {
+		t.Fatalf("Instance size = %d, want supported 792-, 816-, or 872-byte layout", got)
 	}
 }

@@ -11,7 +11,7 @@ import (
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
-	"github.com/wago-org/wago/testutil/wasmtest"
+	"github.com/wago-org/wago/tests/wasmtest"
 )
 
 func indirectTailModule(t *testing.T) *wasm.Module {

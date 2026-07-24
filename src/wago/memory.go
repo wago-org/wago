@@ -135,6 +135,17 @@ func newMemory(minPages, maxPages uint32, shared bool) (*Memory, error) {
 // CurrentBytes would panic there (slice bounds beyond the initial commit); this
 // mirrors what Instance.Read/Write already use via mem().
 func (m *Memory) Bytes() []byte {
+	if m == nil {
+		return nil
+	}
+	if s := m.state.Load(); s != nil {
+		s.mu.Lock()
+		owner, closed := s.owner, s.has(memoryStateClosed)
+		s.mu.Unlock()
+		if closed || (owner != nil && owner.isLogicallyClosed()) {
+			return nil
+		}
+	}
 	jm := m.jobMemory()
 	if jm == nil {
 		return nil
@@ -185,6 +196,9 @@ func (m *Memory) attachImporter() error {
 	if s.has(memoryStateClosed) || m.jm == nil {
 		return fmt.Errorf("memory owner is closed")
 	}
+	if s.owner != nil && !s.has(memoryStateShared) {
+		return fmt.Errorf("memory has not been exported for import")
+	}
 	count := s.importerCount()
 	if !s.has(memoryStateShared) && count != 0 {
 		return fmt.Errorf("memory is already used by another instance")
@@ -217,6 +231,31 @@ func (m *Memory) detachImporter() {
 	if owner != nil {
 		owner.releaseResourceRoot()
 	}
+}
+
+func (m *Memory) observeOwner(owner *Instance) error {
+	if m == nil || owner == nil {
+		return fmt.Errorf("memory owner is nil")
+	}
+	s := m.state.Load()
+	if s == nil {
+		fresh := &memoryState{}
+		if m.state.CompareAndSwap(nil, fresh) {
+			s = fresh
+		} else {
+			s = m.state.Load()
+		}
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.has(memoryStateClosed) || m.jm == nil {
+		return fmt.Errorf("memory owner is closed")
+	}
+	if s.owner != nil && s.owner != owner {
+		return fmt.Errorf("memory already has a different producer owner")
+	}
+	s.owner = owner
+	return nil
 }
 
 func (m *Memory) share(owner *Instance, def memoryDef) error {

@@ -30,7 +30,8 @@ const (
 	trapNullReference      = 16
 	trapUnhandledException = 17
 	trapCastFailure        = 18
-	trapMax                = trapCastFailure
+	trapTableOOB           = 19
+	trapMax                = trapTableOOB
 )
 
 // Basedata fields at negative offsets from the linMem base (runtime/basedata.go).
@@ -712,6 +713,11 @@ func (f *fn) forwardStoredLoad(off uint32, size int, signed, wide bool) bool {
 func (f *fn) trapUnlessLE(t, mb Reg) {
 	f.a.Cmp64(t, mb)
 	f.trapIf(condA, trapMemOOB)
+}
+
+func (f *fn) trapTableUnlessLE(t, limit Reg) {
+	f.a.Cmp64(t, limit)
+	f.trapIf(condA, trapTableOOB)
 }
 
 // absoluteBulkAddr checks offset+n against one exact memory and turns offset

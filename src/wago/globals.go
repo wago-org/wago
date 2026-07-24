@@ -102,7 +102,7 @@ type globalOwner struct {
 	// retained holds writer instances whose reachable funcref is currently stored
 	// in this global's cell (funcref globals only). Each root preserves the writer's
 	// descriptor arena and transitive import attachments until overwrite or close.
-	retained map[*Instance]struct{}
+	retained map[*Instance]*retainedInstanceRoot
 }
 
 // NewGlobalI32/I64/F32/F64/V128 construct a host-owned wasm global of the named
@@ -141,7 +141,30 @@ func newGlobalInCell(t ValType, bits uint64, vec V128, mutable bool, cell []byte
 // preserving established transitive attachments. A later scan drops any root
 // no longer represented by the single live cell.
 func (g *Global) retainProducerInstance(in *Instance) bool {
-	if g == nil || g.owner == nil || g.owner.typ != ValFuncRef || in == nil || !in.retainResourceRoot() {
+	return g.retainProducerInstanceMode(in, false)
+}
+
+func (g *Global) retainProducerInstanceForFinalization(in *Instance) bool {
+	return g.retainProducerInstanceMode(in, true)
+}
+
+func (g *Global) retainProducerInstanceMode(in *Instance, finalization bool) bool {
+	if g == nil || g.owner == nil || g.owner.typ != ValFuncRef || in == nil {
+		return false
+	}
+	g.owner.mu.Lock()
+	selfOwned := g.owner.closed || g.owner.instance == in
+	g.owner.mu.Unlock()
+	if selfOwned {
+		return false
+	}
+	var retained bool
+	if finalization {
+		retained = in.retainResourceRootForFinalization()
+	} else {
+		retained = in.retainResourceRoot()
+	}
+	if !retained {
 		return false
 	}
 	o := g.owner
@@ -153,8 +176,14 @@ func (g *Global) retainProducerInstance(in *Instance) bool {
 		return false
 	}
 	current := readGlobalObject(g, ValFuncRef)
-	for root := range o.retained {
-		if !root.reachesFuncrefDescriptor(current) {
+	for root, state := range o.retained {
+		state.precise = state.precise && root.reachesFuncrefDescriptor(current)
+		for descriptor := range state.proxyDescriptors {
+			if descriptor != current {
+				delete(state.proxyDescriptors, descriptor)
+			}
+		}
+		if !state.precise && len(state.proxyDescriptors) == 0 {
 			delete(o.retained, root)
 			release = append(release, root)
 		}
@@ -168,11 +197,22 @@ func (g *Global) retainProducerInstance(in *Instance) bool {
 		return false
 	}
 	if o.retained == nil {
-		o.retained = make(map[*Instance]struct{})
+		o.retained = make(map[*Instance]*retainedInstanceRoot)
 	}
-	_, exists := o.retained[in]
+	state, exists := o.retained[in]
 	if !exists {
-		o.retained[in] = struct{}{}
+		state = &retainedInstanceRoot{}
+		o.retained[in] = state
+	}
+	state.precise = true
+	for root, retained := range o.retained {
+		if in.reachesFuncrefDescriptor(current) {
+			delete(retained.proxyDescriptors, current)
+		}
+		if !retained.precise && len(retained.proxyDescriptors) == 0 {
+			delete(o.retained, root)
+			release = append(release, root)
+		}
 	}
 	o.mu.Unlock()
 	if exists {
@@ -184,9 +224,156 @@ func (g *Global) retainProducerInstance(in *Instance) bool {
 	return true
 }
 
-// pruneRetainedInstances releases a closed producer after its descriptor has
-// been overwritten. The single cell is sampled only after native execution or a
-// completed host SetValue, so trapping global writes preserve the previous root.
+// funcrefProducerRoots snapshots the instances that keep the current global
+// descriptor reachable. Active element initialization can copy that descriptor
+// into a different shared owner, which must retain these actual producers before
+// the global importer detaches.
+func (g *Global) funcrefProducerRoots() []*Instance {
+	if g == nil || g.owner == nil {
+		return nil
+	}
+	o := g.owner
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if o.closed || o.typ != ValFuncRef {
+		return nil
+	}
+	roots := make([]*Instance, 0, len(o.retained)+1)
+	seen := make(map[*Instance]struct{}, len(o.retained)+1)
+	if o.instance != nil {
+		roots = append(roots, o.instance)
+		seen[o.instance] = struct{}{}
+	}
+	for root := range o.retained {
+		if root == nil {
+			continue
+		}
+		if _, ok := seen[root]; ok {
+			continue
+		}
+		seen[root] = struct{}{}
+		roots = append(roots, root)
+	}
+	return roots
+}
+
+// retainDescriptorOwnerForFinalization resolves the current cell descriptor
+// without holding globalOwner.mu across store or instance locks. If resolution
+// fails, proxy conservatively owns the descriptor through its existing import
+// attachment chain until overwrite, later precise resolution, or global close.
+func (g *Global) retainDescriptorOwnerForFinalization(store *referenceStore, proxy *Instance) descriptorRetentionResult {
+	if g == nil || g.owner == nil {
+		return descriptorRetentionResult{}
+	}
+	o := g.owner
+	o.mu.Lock()
+	if o.closed || o.typ != ValFuncRef || len(g.cell) < 8 {
+		o.mu.Unlock()
+		return descriptorRetentionResult{}
+	}
+	descriptor := readGlobalObject(g, ValFuncRef)
+	containerOwner := o.instance
+	o.mu.Unlock()
+
+	var owner *Instance
+	if descriptor != 0 && store != nil {
+		owner = store.retainDescriptorOwnerForFinalization(descriptor)
+	}
+	if owner != nil && owner == containerOwner {
+		owner.releaseResourceRoot()
+		owner = nil
+	}
+	unresolved := descriptor != 0 && owner == nil
+	proxyAcquired := unresolved && proxy != nil && proxy != containerOwner && proxy.retainResourceRootForFinalization()
+
+	var release []*Instance
+	o.mu.Lock()
+	if o.closed || len(g.cell) < 8 || readGlobalObject(g, ValFuncRef) != descriptor {
+		o.mu.Unlock()
+		if owner != nil {
+			owner.releaseResourceRoot()
+		}
+		if proxyAcquired {
+			proxy.releaseResourceRoot()
+		}
+		return descriptorRetentionResult{}
+	}
+	preciseCoverage := false
+	for root, state := range o.retained {
+		state.precise = root == owner || (unresolved && root.reachesFuncrefDescriptor(descriptor))
+		preciseCoverage = preciseCoverage || state.precise
+		for candidate := range state.proxyDescriptors {
+			if !unresolved || candidate != descriptor {
+				delete(state.proxyDescriptors, candidate)
+			}
+		}
+	}
+	if preciseCoverage {
+		for _, state := range o.retained {
+			delete(state.proxyDescriptors, descriptor)
+		}
+	}
+	if owner != nil {
+		if o.retained == nil {
+			o.retained = make(map[*Instance]*retainedInstanceRoot)
+		}
+		state := o.retained[owner]
+		if state == nil {
+			state = &retainedInstanceRoot{precise: true}
+			o.retained[owner] = state
+			owner.nativeControlShared = true
+		} else {
+			state.precise = true
+			release = append(release, owner)
+		}
+	}
+	if proxyAcquired {
+		covered := false
+		for root, state := range o.retained {
+			_, proxied := state.proxyDescriptors[descriptor]
+			if proxied || (state.precise && root.reachesFuncrefDescriptor(descriptor)) {
+				covered = true
+				break
+			}
+		}
+		if covered {
+			release = append(release, proxy)
+		} else {
+			if o.retained == nil {
+				o.retained = make(map[*Instance]*retainedInstanceRoot)
+			}
+			state := o.retained[proxy]
+			if state == nil {
+				state = &retainedInstanceRoot{}
+				o.retained[proxy] = state
+				proxy.nativeControlShared = true
+			} else {
+				release = append(release, proxy)
+			}
+			if state.proxyDescriptors == nil {
+				state.proxyDescriptors = make(map[uint64]struct{}, 1)
+			}
+			state.proxyDescriptors[descriptor] = struct{}{}
+		}
+	}
+	for root, state := range o.retained {
+		if !state.precise && len(state.proxyDescriptors) == 0 {
+			delete(o.retained, root)
+			release = append(release, root)
+		}
+	}
+	result := descriptorRetentionResult{retained: len(o.retained) != 0, unresolved: unresolved}
+	o.mu.Unlock()
+	for _, root := range release {
+		root.releaseResourceRoot()
+	}
+	return result
+}
+
+// NewFuncRefGlobal creates a host-owned funcref global bound to this Runtime's
+// exact reference store. The initial token must be null or have been issued by
+// the same Runtime. A non-null host-function token can originate only from an
+// explicit HostFuncRef owner; raw HostFunc descriptors remain fail-closed.
 func (g *Global) pruneRetainedInstances() {
 	if g == nil || g.owner == nil {
 		return
@@ -194,10 +381,16 @@ func (g *Global) pruneRetainedInstances() {
 	o := g.owner
 	var release []*Instance
 	o.mu.Lock()
-	if !o.closed && len(g.cell) >= 8 {
-		current := readGlobalObject(g, ValFuncRef)
-		for root := range o.retained {
-			if !root.ownsLocalFuncrefDescriptor(current) {
+	if !o.closed && len(g.cell) >= 8 && o.typ == ValFuncRef {
+		descriptor := readGlobalObject(g, ValFuncRef)
+		for root, state := range o.retained {
+			state.precise = descriptor != 0 && root.reachesFuncrefDescriptor(descriptor)
+			for candidate := range state.proxyDescriptors {
+				if candidate != descriptor {
+					delete(state.proxyDescriptors, candidate)
+				}
+			}
+			if !state.precise && len(state.proxyDescriptors) == 0 {
 				delete(o.retained, root)
 				release = append(release, root)
 			}
@@ -209,10 +402,6 @@ func (g *Global) pruneRetainedInstances() {
 	}
 }
 
-// NewFuncRefGlobal creates a host-owned funcref global bound to this Runtime's
-// exact reference store. The initial token must be null or have been issued by
-// the same Runtime. A non-null host-function token can originate only from an
-// explicit HostFuncRef owner; raw HostFunc descriptors remain fail-closed.
 func (rt *Runtime) NewFuncRefGlobal(initial FuncRef, mutable bool) (*Global, error) {
 	if rt == nil || rt.refStore == nil {
 		return nil, fmt.Errorf("wago: nil runtime")
@@ -318,6 +507,18 @@ func (g *Global) Get() uint64 {
 	if g == nil || isReferenceValType(g.Type) {
 		return 0
 	}
+	end, ok := g.beginOwnerAccess()
+	if !ok {
+		return 0
+	}
+	defer end()
+	if g.owner != nil {
+		g.owner.mu.Lock()
+		defer g.owner.mu.Unlock()
+		if g.owner.closed || len(g.cell) < 8 {
+			return 0
+		}
+	}
 	return readGlobalObject(g, g.Type)
 }
 
@@ -328,6 +529,18 @@ func (g *Global) GetV128() V128 {
 	if g == nil {
 		return V128{}
 	}
+	end, ok := g.beginOwnerAccess()
+	if !ok {
+		return V128{}
+	}
+	defer end()
+	if g.owner != nil {
+		g.owner.mu.Lock()
+		defer g.owner.mu.Unlock()
+		if g.owner.closed || len(g.cell) < 8 {
+			return V128{}
+		}
+	}
 	return readGlobalObjectV128(g)
 }
 
@@ -337,6 +550,11 @@ func (g *Global) Set(bits uint64) error {
 	if g == nil {
 		return fmt.Errorf("global is nil")
 	}
+	end, ok := g.beginOwnerAccess()
+	if !ok {
+		return fmt.Errorf("global owner instance is closed")
+	}
+	defer end()
 	if !g.Mutable {
 		return fmt.Errorf("global is immutable")
 	}
@@ -346,6 +564,13 @@ func (g *Global) Set(bits uint64) error {
 	if isReferenceValType(g.Type) {
 		return fmt.Errorf("global is a reference type; use an instance typed accessor")
 	}
+	if g.owner != nil {
+		g.owner.mu.Lock()
+		defer g.owner.mu.Unlock()
+		if g.owner.closed || len(g.cell) < 8 {
+			return fmt.Errorf("global storage is closed")
+		}
+	}
 	writeGlobalObject(g, g.Type, bits)
 	return nil
 }
@@ -353,6 +578,15 @@ func (g *Global) Set(bits uint64) error {
 // GetValue returns a reference global through its exact owner store. Numeric and
 // vector globals keep their existing Get/GetV128 accessors.
 func (g *Global) GetValue() (Value, error) {
+	end, ok := g.beginOwnerAccess()
+	if !ok {
+		return Value{}, fmt.Errorf("global owner instance is closed")
+	}
+	defer end()
+	return g.getValueNoLease()
+}
+
+func (g *Global) getValueNoLease() (Value, error) {
 	if g == nil || len(g.cell) < 8 {
 		return Value{}, fmt.Errorf("global storage is closed")
 	}
@@ -364,11 +598,12 @@ func (g *Global) GetValue() (Value, error) {
 	typ, store, source, closed := o.typ, o.store, o.instance, o.closed
 	exact, exactTypes, hasExact := o.valueType, o.types, o.hasValueType
 	consistent := g.Type == typ && g.Mutable == o.mutable
-	o.mu.Unlock()
-	if closed || !consistent || !isReferenceValType(typ) {
+	if closed || len(g.cell) < 8 || !consistent || !isReferenceValType(typ) {
+		o.mu.Unlock()
 		return Value{}, fmt.Errorf("global reference owner metadata is invalid")
 	}
 	bits := readGlobalObject(g, typ)
+	o.mu.Unlock()
 	if bits == 0 {
 		if hasExact && exact.Kind == ValueTypeReference && !exact.Ref.Nullable {
 			return Value{}, fmt.Errorf("global contains null for a non-null reference type")
@@ -399,6 +634,15 @@ func (g *Global) GetValue() (Value, error) {
 
 // SetValue updates a mutable reference global after exact token validation.
 func (g *Global) SetValue(v Value) error {
+	end, ok := g.beginOwnerAccess()
+	if !ok {
+		return fmt.Errorf("global owner instance is closed")
+	}
+	defer end()
+	return g.setValueNoLease(v)
+}
+
+func (g *Global) setValueNoLease(v Value) error {
 	if g == nil || len(g.cell) < 8 {
 		return fmt.Errorf("global storage is closed")
 	}
@@ -407,7 +651,7 @@ func (g *Global) SetValue(v Value) error {
 	}
 	o := g.owner
 	o.mu.Lock()
-	typ, mutable, store, closed := o.typ, o.mutable, o.store, o.closed
+	typ, mutable, store, containerOwner, closed := o.typ, o.mutable, o.store, o.instance, o.closed
 	exact, exactTypes, hasExact := o.valueType, o.types, o.hasValueType
 	consistent := g.Type == typ && g.Mutable == mutable
 	o.mu.Unlock()
@@ -421,6 +665,7 @@ func (g *Global) SetValue(v Value) error {
 		return fmt.Errorf("global is immutable")
 	}
 	bits := v.bits
+	var retainedOwner *Instance
 	if bits == 0 && hasExact && exact.Kind == ValueTypeReference && !exact.Ref.Nullable {
 		return fmt.Errorf("global requires a non-null reference value")
 	}
@@ -442,16 +687,53 @@ func (g *Global) SetValue(v Value) error {
 					return fmt.Errorf("funcref token does not match the global's exact structural type")
 				}
 			}
-			descriptor, ok := store.resolve(bits)
+			descriptor, owner, ok := store.resolveFuncrefTokenOwner(bits)
 			if !ok {
-				return fmt.Errorf("invalid funcref token")
+				return fmt.Errorf("invalid funcref token owner")
 			}
 			bits = descriptor
+			retainedOwner = owner
+			if retainedOwner == containerOwner {
+				retainedOwner.releaseResourceRoot()
+				retainedOwner = nil
+			}
 		}
+	}
+	var release []*Instance
+	o.mu.Lock()
+	if o.closed || len(g.cell) < 8 || o.typ != typ || o.mutable != mutable || g.Type != typ || g.Mutable != mutable {
+		o.mu.Unlock()
+		if retainedOwner != nil {
+			retainedOwner.releaseResourceRoot()
+		}
+		return fmt.Errorf("global reference owner metadata is invalid")
 	}
 	writeGlobalObject(g, typ, bits)
 	if typ == ValFuncRef {
-		g.pruneRetainedInstances()
+		for root := range o.retained {
+			if root == retainedOwner {
+				continue
+			}
+			delete(o.retained, root)
+			release = append(release, root)
+		}
+		if retainedOwner != nil {
+			if o.retained == nil {
+				o.retained = make(map[*Instance]*retainedInstanceRoot)
+			}
+			if state := o.retained[retainedOwner]; state != nil {
+				state.precise = true
+				state.proxyDescriptors = nil
+				release = append(release, retainedOwner)
+			} else {
+				o.retained[retainedOwner] = &retainedInstanceRoot{precise: true}
+				retainedOwner.nativeControlShared = true
+			}
+		}
+	}
+	o.mu.Unlock()
+	for _, root := range release {
+		root.releaseResourceRoot()
 	}
 	return nil
 }
@@ -461,14 +743,71 @@ func (g *Global) SetV128(v V128) error {
 	if g == nil {
 		return fmt.Errorf("global is nil")
 	}
+	end, ok := g.beginOwnerAccess()
+	if !ok {
+		return fmt.Errorf("global owner instance is closed")
+	}
+	defer end()
 	if !g.Mutable {
 		return fmt.Errorf("global is immutable")
 	}
 	if g.Type != ValV128 {
 		return fmt.Errorf("global is %s, not v128", g.Type)
 	}
+	if g.owner != nil {
+		g.owner.mu.Lock()
+		defer g.owner.mu.Unlock()
+		if g.owner.closed || len(g.cell) < 16 {
+			return fmt.Errorf("global storage is closed")
+		}
+	}
 	writeGlobalObjectV128(g, v)
 	return nil
+}
+
+func (g *Global) beginOwnerAccess() (func(), bool) {
+	if g == nil {
+		return nil, false
+	}
+	var owner *Instance
+	if g.owner != nil {
+		owner = g.owner.instance
+	}
+	if owner != nil {
+		if err := owner.beginInvocation(); err != nil {
+			return nil, false
+		}
+	}
+	unlockNative := lockNativeExecutionForHostAccess()
+	return func() {
+		unlockNative()
+		if owner != nil {
+			owner.endInvocation()
+		}
+	}, true
+}
+
+func (g *Global) instanceOwnerClosed(in *Instance) {
+	if g == nil || g.owner == nil || in == nil {
+		return
+	}
+	o := g.owner
+	var roots []*Instance
+	o.mu.Lock()
+	if o.instance != in || o.closed {
+		o.mu.Unlock()
+		return
+	}
+	o.closed = true
+	for root := range o.retained {
+		roots = append(roots, root)
+	}
+	o.retained = nil
+	g.cell = nil
+	o.mu.Unlock()
+	for _, root := range roots {
+		root.releaseResourceRoot()
+	}
 }
 
 // GlobalImport supplies an imported global value. Prefer a *Global for mutable
@@ -704,6 +1043,7 @@ type Compiled struct {
 	HasMemory   bool   // module declares memory 0; direct execution cache
 	MemMinPages uint32 // memory-0 initial size (pages); allocated at instantiate
 	MemMaxPages uint32 // memory-0 reservation ceiling; 0 means use the engine default
+	MemHasMax   bool   // memory-0 declaration/import has an explicit maximum
 	memoryDir   *compiledMemoryDirectory
 
 	HasStart       bool // module declares a start function to run at instantiate
@@ -1004,29 +1344,44 @@ func (g *Global) attachNumericImporter() error {
 }
 
 func (g *Global) validateReferenceImport(store *referenceStore) error {
-	if g == nil || g.owner == nil || len(g.cell) < 8 {
+	if g == nil || g.owner == nil {
 		return fmt.Errorf("reference global descriptor is invalid")
+	}
+	type retainedSnapshot struct {
+		root    *Instance
+		precise bool
+		proxy   bool
 	}
 	o := g.owner
 	o.mu.Lock()
-	defer o.mu.Unlock()
-	if o.closed {
+	if o.closed || len(g.cell) < 8 {
+		o.mu.Unlock()
 		return fmt.Errorf("reference global owner is closed")
 	}
 	if !isReferenceValType(o.typ) || o.typ != g.Type || o.mutable != g.Mutable {
+		o.mu.Unlock()
 		return fmt.Errorf("reference global owner metadata is inconsistent")
 	}
 	if store == nil || o.store == nil || o.store != store {
+		o.mu.Unlock()
 		return fmt.Errorf("reference global belongs to an incompatible reference store")
 	}
-	if o.instance != nil && !o.instance.hasPhysicalResources() {
+	typ, source := o.typ, o.instance
+	bits := readGlobalObject(g, typ)
+	retained := make([]retainedSnapshot, 0, len(o.retained))
+	for root, state := range o.retained {
+		_, proxy := state.proxyDescriptors[bits]
+		retained = append(retained, retainedSnapshot{root: root, precise: state.precise, proxy: proxy})
+	}
+	o.mu.Unlock()
+
+	if source != nil && !source.hasPhysicalResources() {
 		return fmt.Errorf("reference global owner instance is closed")
 	}
-	bits := readGlobalObject(g, o.typ)
 	if bits == 0 {
 		return nil
 	}
-	if o.typ == ValExternRef {
+	if typ == ValExternRef {
 		if _, ok := store.resolveExternref(bits); !ok {
 			return fmt.Errorf("reference global contains an invalid externref token")
 		}
@@ -1034,25 +1389,28 @@ func (g *Global) validateReferenceImport(store *referenceStore) error {
 	}
 	store.mu.Lock()
 	var ok bool
-	if o.instance == nil {
+	if source == nil {
 		entry := store.byIdentity[funcrefIdentity{descriptor: bits}]
 		ok = entry != nil && entry.descriptor == bits
-		if !ok {
-			// A failed or closed writer may have transferred its physical lifetime
-			// directly to this host-owned global without ever issuing a public token.
-			// Its retained descriptor chain is a valid same-store import root.
-			for root := range o.retained {
-				_, registered := store.instances[root]
-				if registered && root.refStore == store && root.hasPhysicalResources() && root.reachesFuncrefDescriptor(bits) {
-					ok = true
-					break
-				}
-			}
-		}
 	} else {
-		_, _, ok = store.canonicalFuncrefOwnerLocked(o.instance, bits)
+		_, _, ok = store.canonicalFuncrefOwnerLocked(source, bits)
 	}
 	store.mu.Unlock()
+	if !ok && source == nil {
+		// Store-neutral funcref descriptors may originate in another runtime or a
+		// package-level instance. A precise retained root validates the descriptor
+		// directly; an unresolved proxy validates the attachment chain that kept it
+		// callable. No container lock is held while instance lifetime is inspected.
+		for _, candidate := range retained {
+			if candidate.root == nil || !candidate.root.hasPhysicalResources() {
+				continue
+			}
+			if candidate.proxy || (candidate.precise && candidate.root.reachesFuncrefDescriptor(bits)) {
+				ok = true
+				break
+			}
+		}
+	}
 	if !ok {
 		return fmt.Errorf("reference global contains an invalid funcref descriptor")
 	}

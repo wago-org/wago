@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	corewasm "github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/testutil/wasmtest"
+	"github.com/wago-org/wago/tests/wasmtest"
 )
 
 func stagedExceptionFuncrefProductModule(payloadType []byte, elemFlags byte, refFunc byte, clearRoot bool) []byte {

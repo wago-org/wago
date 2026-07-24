@@ -273,7 +273,8 @@ func (v *funcValidator) step(in *Instruction) error {
 		if !ok {
 			return v.verr(ErrUnknownGlobal, "")
 		}
-		if v.constOnly && (int(in.Index) >= v.m.ImportedGlobalCount() || gt.Mutable) {
+		if v.constOnly && (gt.Mutable || int(in.Index) >= v.constGlobalLimit ||
+			(int(in.Index) >= v.m.ImportedGlobalCount() && !v.features.ExtendedConstGlobals)) {
 			return v.verr(ErrConstExprRequired, "global.get")
 		}
 		v.push(gt.Type)

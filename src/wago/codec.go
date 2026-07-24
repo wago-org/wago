@@ -857,6 +857,9 @@ func (r *compiledReader) memories(c *Compiled) error {
 		return err
 	}
 	c.MemMaxPages, err = r.u32()
+	if err == nil && len(c.memoryDir.defs) != 0 {
+		c.MemHasMax = c.memoryDir.defs[0].HasMax
+	}
 	return err
 }
 

@@ -186,7 +186,7 @@ func (e *Engine) CallWithHostBase(code uintptr, serArgs []byte, linMemBase uintp
 	if err := InitHostCtrlFrame(ctrl); err != nil {
 		return err
 	}
-	storeTrap(trap, 0)
+	clearTrapUnlessInterrupted(trap)
 	storeOffHeapU64(linMemBase-abi.TrapCellPtrOffset, uint64(slicePtr(trap)))
 	ctrlPtr := slicePtr(ctrl)
 	if e.hostScratchInUse {

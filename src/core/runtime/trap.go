@@ -31,6 +31,7 @@ const (
 	TrapNullReference        TrapCode = 16
 	TrapUnhandledException   TrapCode = 17
 	TrapCastFailure          TrapCode = 18
+	TrapTableOutOfBounds     TrapCode = 19
 )
 
 var trapMessages = map[TrapCode]string{
@@ -53,6 +54,7 @@ var trapMessages = map[TrapCode]string{
 	TrapNullReference:        "null reference",
 	TrapUnhandledException:   "unhandled WebAssembly exception",
 	TrapCastFailure:          "cast failure",
+	TrapTableOutOfBounds:     "table access out of bounds",
 }
 
 func (c TrapCode) String() string {

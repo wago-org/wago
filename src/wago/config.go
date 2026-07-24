@@ -70,8 +70,7 @@ const (
 		CoreFeatureNonTrappingFloatToIntConversion |
 		CoreFeatureReferenceTypes |
 		CoreFeatureSignExtensionOps |
-		CoreFeatureSIMD |
-		CoreFeatureExtendedConst
+		CoreFeatureSIMD
 
 	// CoreFeaturesV3 is the mandatory WebAssembly Core 3.0 release feature set.
 	// CoreFeatureSIMD represents both core and relaxed SIMD in wago's existing
@@ -90,7 +89,7 @@ const (
 	// coreFeaturesWago is the optional set wago's backend lowers and the ceiling
 	// validated by WithCoreFeatures. Core 3 features are opt-in so existing users
 	// retain the Release 2-compatible default behavior.
-	coreFeaturesWago = CoreFeaturesV3
+	coreFeaturesWago = CoreFeaturesV3 | CoreFeatureExtendedConst
 
 	defaultCoreFeatures = CoreFeatureMutableGlobal |
 		CoreFeatureSignExtensionOps |
@@ -99,7 +98,8 @@ const (
 		CoreFeatureNonTrappingFloatToIntConversion |
 		CoreFeatureReferenceTypes |
 		CoreFeatureSIMD |
-		CoreFeatureExtendedConst
+		CoreFeatureExtendedConst |
+		CoreFeatureExtendedConstExpressions
 )
 
 // IsEnabled returns true if all bits in feature are set.
@@ -238,6 +238,12 @@ func (c *RuntimeConfig) WithFeatures(features ...CoreFeatures) *RuntimeConfig {
 func (c *RuntimeConfig) WithFeature(feature CoreFeatures, enabled bool) *RuntimeConfig {
 	n := *c
 	n.features = n.features.SetEnabled(feature, enabled)
+	// The legacy arithmetic bit predates the Core 3 umbrella bit. Explicitly
+	// disabling it keeps the historical promise that extended-constant arithmetic
+	// is off, even when the default also enables prior immutable globals.
+	if !enabled && feature.IsEnabled(CoreFeatureExtendedConst) {
+		n.features &^= CoreFeatureExtendedConstExpressions
+	}
 	return &n
 }
 
@@ -425,7 +431,8 @@ func (c *RuntimeConfig) frontendFeatures() frontend.Features {
 		GCArrayProducts:         c.features.IsEnabled(CoreFeatureGC),
 		GCI31Products:           c.features.IsEnabled(CoreFeatureGC),
 		SIMD:                    simd,
-		ExtendedConst:           c.features.IsEnabled(CoreFeatureExtendedConst),
+		ExtendedConst:           c.features.IsEnabled(CoreFeatureExtendedConst) || c.features.IsEnabled(CoreFeatureExtendedConstExpressions),
+		ExtendedConstGlobals:    c.features.IsEnabled(CoreFeatureExtendedConstExpressions),
 	}
 }
 

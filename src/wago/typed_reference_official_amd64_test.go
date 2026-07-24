@@ -14,8 +14,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wago-org/wago/internal/spectest"
 	corewasm "github.com/wago-org/wago/src/core/compiler/wasm"
+	"github.com/wago-org/wago/tests/spectest"
 )
 
 const stagedTypedReferenceDeltaPath = "tests/spec-v3-staged-typed-reference.json"

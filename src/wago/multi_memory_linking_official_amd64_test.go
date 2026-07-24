@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wago-org/wago/testutil/wasmtest"
+	"github.com/wago-org/wago/tests/wasmtest"
 )
 
 func expectIndirectTrapAt(t *testing.T, in *Instance, index int32) {

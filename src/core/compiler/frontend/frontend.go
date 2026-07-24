@@ -63,13 +63,14 @@ type Features struct {
 	GCArrayProducts         bool // internal staged gate for exact collector-backed numeric array helper products
 	GCI31Products           bool // internal staged gate for exact non-allocating i31 products
 	SIMD                    bool // supported 0xfd v128 SIMD and relaxed-SIMD instructions
-	ExtendedConst           bool // i32/i64 add/sub/mul and prior immutable global.get in const expressions
+	ExtendedConst           bool // i32/i64 add/sub/mul in constant expressions
+	ExtendedConstGlobals    bool // prior immutable global.get in constant expressions
 }
 
 // AllFeatures is the full optional set wago's backend lowers today; it is the
 // default applied by RejectUnsupported.
 func AllFeatures() Features {
-	return Features{SignExtension: true, BulkMemory: true, SaturatingTrunc: true, ReferenceTypes: true, SIMD: true, ExtendedConst: true}
+	return Features{SignExtension: true, BulkMemory: true, SaturatingTrunc: true, ReferenceTypes: true, SIMD: true, ExtendedConst: true, ExtendedConstGlobals: true}
 }
 
 // RejectUnsupported rejects modules that require features not explicitly wired
@@ -161,6 +162,12 @@ func RequiresFuncRefDescriptorsFromFacts(m *wasm.Module, facts *ModuleFacts) boo
 	for tableIndex := 0; tableIndex < m.TableCount(); tableIndex++ {
 		tt, ok := m.TableType(uint32(tableIndex))
 		if !ok || !compactRefTableType(tt.Ref) {
+			return true
+		}
+	}
+	for i := range m.Elements {
+		e := &m.Elements[i]
+		if len(e.Kind.Funcs) != 0 || len(e.Kind.Exprs) != 0 {
 			return true
 		}
 	}
@@ -1584,13 +1591,13 @@ func (p supportPass) constExpr(e wasm.Expr, context string) error {
 		switch in.Kind {
 		case wasm.InstrI32Const, wasm.InstrI64Const, wasm.InstrF32Const, wasm.InstrF64Const:
 		case wasm.InstrGlobalGet:
-			if !p.feat.ExtendedConst && (p.m == nil || int(in.Index) >= p.m.ImportedGlobalCount()) {
+			if !p.feat.ExtendedConstGlobals && (p.m == nil || int(in.Index) >= p.m.ImportedGlobalCount()) {
 				return p.unsupported("const expression", "prior global.get (extended-const-expressions disabled)", instructionContext(context, i))
 			}
 		case wasm.InstrI32Add, wasm.InstrI32Sub, wasm.InstrI32Mul,
 			wasm.InstrI64Add, wasm.InstrI64Sub, wasm.InstrI64Mul:
 			if !p.feat.ExtendedConst {
-				return p.unsupported("const expression", in.Kind.String()+" (extended-const-expressions disabled)", instructionContext(context, i))
+				return p.unsupported("const expression", in.Kind.String()+" (extended-constant-expressions disabled)", instructionContext(context, i))
 			}
 		case wasm.InstrV128Const:
 			if !p.feat.SIMD {
@@ -1649,7 +1656,7 @@ func (p supportPass) constExprBytes(body []byte, context string) error {
 			if err != nil {
 				return err
 			}
-			if !p.feat.ExtendedConst && (p.m == nil || int(idx) >= p.m.ImportedGlobalCount()) {
+			if !p.feat.ExtendedConstGlobals && (p.m == nil || int(idx) >= p.m.ImportedGlobalCount()) {
 				return p.unsupported("const expression", "prior global.get (extended-const-expressions disabled)", ctx())
 			}
 		case 0x41:
@@ -1670,7 +1677,7 @@ func (p supportPass) constExprBytes(body []byte, context string) error {
 			}
 		case 0x6a, 0x6b, 0x6c, 0x7c, 0x7d, 0x7e:
 			if !p.feat.ExtendedConst {
-				return p.unsupported("const expression", "integer add/sub/mul (extended-const-expressions disabled)", ctx())
+				return p.unsupported("const expression", "integer add/sub/mul (extended-constant-expressions disabled)", ctx())
 			}
 		case 0xd0:
 			heap, err := r.S33()

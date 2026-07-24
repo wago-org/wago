@@ -86,9 +86,10 @@ func decodeValidateCore3Stage(b *testing.B, fixture core3StageFixture, data []by
 		b.Fatal(err)
 	}
 	validationFeatures := wasm.ValidationFeatures{
-		CompactImports: features.MultiMemory,
-		MultiMemory:    features.MultiMemory,
-		GCConstExpr:    features.GCStructProducts || features.GCArrayProducts || features.GCI31Products,
+		CompactImports:       features.MultiMemory,
+		MultiMemory:          features.MultiMemory,
+		ExtendedConstGlobals: features.ExtendedConst,
+		GCConstExpr:          features.GCStructProducts || features.GCArrayProducts || features.GCI31Products,
 	}
 	if err := wasm.ValidateModuleWithFeaturesAndWorkers(m, validationFeatures, 1); err != nil {
 		b.Fatal(err)

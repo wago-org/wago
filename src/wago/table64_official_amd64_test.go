@@ -13,9 +13,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wago-org/wago/internal/spectest"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/testutil/wasmtest"
+	"github.com/wago-org/wago/tests/spectest"
+	"github.com/wago-org/wago/tests/wasmtest"
 )
 
 const stagedTable64DeltaPath = "tests/spec-v3-staged-table64.json"

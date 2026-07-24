@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/testutil/wasmtest"
+	"github.com/wago-org/wago/tests/wasmtest"
 )
 
 func memoryImportEntry(module, name string, limits ...byte) []byte {

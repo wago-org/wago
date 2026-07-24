@@ -635,7 +635,27 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 				if len(entry) < runtime.TableEntryBytes {
 					return fmt.Errorf("funcref element global descriptor is truncated")
 				}
-				copy(entry, unsafe.Slice((*byte)(offHeapPtr(uintptr(bits))), runtime.TableEntryBytes))
+				descriptor := unsafe.Slice((*byte)(offHeapPtr(uintptr(bits))), runtime.FuncRefDescBytes)
+				copy(entry, descriptor[:runtime.TableEntryBytes])
+				// A canonical descriptor may select its producer's internal register-ABI
+				// entry. Once copied through an imported global into another instance's
+				// table, use the producer's offset-0 wrapper and explicit cross-instance
+				// home tag so ordinary call_indirect performs the required context switch.
+				global := globalCells[value.GlobalIndex]
+				if global.owner != nil && global.owner.instance != nil && global.owner.instance.nativeContext != nativeContextPtr {
+					producer := global.owner.instance
+					if fidx, ok := producer.funcrefDescriptorIndex(bits); ok {
+						li := fidx - producer.c.NumImports
+						if li >= 0 && li < len(producer.c.Entry) {
+							taggedHome, ok := abi.TagFuncRefHome(uint64(producer.jm.LinMemBase()), abi.FuncRefEntryCrossInstanceWrapper)
+							if !ok {
+								return fmt.Errorf("funcref element global producer home collides with descriptor tags")
+							}
+							binary.LittleEndian.PutUint64(entry[runtime.TableEntryCodePtrOffset:], uint64(producer.base)+uint64(producer.c.Entry[li]))
+							binary.LittleEndian.PutUint64(entry[runtime.TableEntryHomeLinMemOffset:], taggedHome)
+						}
+					}
+				}
 				return nil
 			case ValExternRef, ValAnyRef, ValI31Ref:
 				if len(entry) < 8 {
