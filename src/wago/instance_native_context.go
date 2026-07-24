@@ -37,6 +37,17 @@ func (in *Instance) bindNativeContext() {
 
 func (*executionLease) unlockExecution() { nativeExecutionMu.Unlock() }
 
+// lockNativeExecutionForHostAccess serializes direct host access to native-visible
+// global cells with guest execution without rebinding any instance context. Host
+// callbacks may call this safely because synchronous dispatch releases the native
+// execution lease before arbitrary Go code runs. Lock order while this guard is
+// held is nativeExecutionMu -> globalOwner.mu -> referenceStore.mu -> Instance.lifeMu;
+// no container lock may be held while acquiring the guard.
+func lockNativeExecutionForHostAccess() func() {
+	nativeExecutionMu.Lock()
+	return nativeExecutionMu.Unlock
+}
+
 func (in *Instance) callNativeAsync(entry uintptr, prepared bool) error {
 	return in.callNativeAsyncWithTrap(entry, prepared, in.trap)
 }
