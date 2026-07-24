@@ -371,24 +371,6 @@ func (t *Table) containsReachableFuncref(in *Instance) bool {
 	return false
 }
 
-func (t *Table) containsFuncrefDescriptor(descriptor uint64) bool {
-	if descriptor == 0 || len(t.desc) < 8 {
-		return false
-	}
-	size := int(binary.LittleEndian.Uint32(t.desc))
-	capacity := (len(t.desc) - 8) / coreruntime.TableEntryBytes
-	if size > capacity {
-		size = capacity
-	}
-	for slot := 0; slot < size; slot++ {
-		off := 8 + slot*coreruntime.TableEntryBytes + coreruntime.TableEntryRefSlotOffset
-		if binary.LittleEndian.Uint64(t.desc[off:]) == descriptor {
-			return true
-		}
-	}
-	return false
-}
-
 // funcrefProducerRoots snapshots the roots already known to make this table's
 // live descriptors callable. The descriptor owner itself is included for an
 // instance-owned exported table. No store lookup occurs while Table.mu is held.
