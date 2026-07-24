@@ -200,8 +200,7 @@ func (b *instanceBuilder) rollbackPreparedState() {
 	b.globalAttachments.detachAll()
 	b.tableAttachments.detachAll()
 	if b.registeredInstance != nil && b.registeredInstance.refStore != nil {
-		b.registeredInstance.refStore.instanceClosed(b.registeredInstance)
-		b.registeredInstance.refStore.resourceOwnerReleased(b.registeredInstance)
+		b.registeredInstance.refStore.abortRegisteredInstance(b.registeredInstance)
 	}
 	if b.collector != nil {
 		b.collector.Close()

@@ -98,6 +98,14 @@ func TestReferenceStoreCloseAccountingOrderIndependent(t *testing.T) {
 	}
 }
 
+func TestReferenceStoreAbortRegisteredInstanceIsTerminalAndIdempotent(t *testing.T) {
+	store, in, owner := newReferenceStoreStateTest(t)
+	store.closeRuntime()
+	store.abortRegisteredInstance(in)
+	store.abortRegisteredInstance(in)
+	assertReferenceStoreStateFinal(t, store, owner)
+}
+
 func TestReferenceStoreCloseAccountingConcurrentNotifications(t *testing.T) {
 	store, in, owner := newReferenceStoreStateTest(t)
 	store.closeRuntime()

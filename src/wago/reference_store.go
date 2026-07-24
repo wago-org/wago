@@ -77,6 +77,28 @@ func (s *referenceStore) registerInstance(in *Instance) error {
 	return nil
 }
 
+// abortRegisteredInstance atomically terminates store membership for an
+// instance whose instantiation failed after registration but before publication.
+// Such an instance can never run or retain references asynchronously, so all
+// three lifecycle notifications are committed under one store lock. The method
+// is idempotent and deliberately bypasses normal instance finalization.
+func (s *referenceStore) abortRegisteredInstance(in *Instance) {
+	var release []*funcrefTokenEntry
+	s.mu.Lock()
+	if entry := s.instances[in]; entry != nil {
+		if !entry.closeAccounted && s.liveInstances > 0 {
+			s.liveInstances--
+		}
+		entry.closeAccounted = true
+		entry.quiesced = true
+		entry.resourcesReleased = true
+		delete(s.instances, in)
+	}
+	release = s.maybeReleaseEntriesLocked()
+	s.mu.Unlock()
+	releaseFuncrefEntries(release)
+}
+
 func (s *referenceStore) instanceClosed(in *Instance) {
 	var release []*funcrefTokenEntry
 	s.mu.Lock()
