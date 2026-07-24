@@ -12,13 +12,16 @@ import (
 // argument and result buffers, and returned results remain valid only until the
 // next call on that instance.
 type PreparedFunction struct {
-	in          *Instance
-	export      string
-	entry       uintptr
-	paramSlots  int
-	resultSlots int
-	paramTypes  []ValType
-	resultWide  []bool
+	in                  *Instance
+	export              string
+	entry               uintptr
+	paramSlots          int
+	resultSlots         int
+	paramTypes          []ValType
+	resultTypes         []ValType
+	hasReferenceParams  bool
+	hasReferenceResults bool
+	resultWide          []bool
 }
 
 // PrepareFunction resolves a locally-defined function export once. The returned
@@ -38,15 +41,25 @@ func (in *Instance) PrepareFunction(export string) (*PreparedFunction, error) {
 			return nil, err
 		}
 	}
+	if ic.li < 0 {
+		return nil, fmt.Errorf("wago: prepare function %q: re-exported imports must use Invoke", export)
+	}
+	if in.c == nil || ic.li >= len(in.c.Entry) || ic.li >= len(in.c.Funcs) {
+		return nil, fmt.Errorf("wago: prepare function %q: local function index %d is out of range", export, ic.li)
+	}
+	sig := in.c.Funcs[ic.li]
 	wide := append([]bool(nil), ic.resultWide...)
 	return &PreparedFunction{
-		in:          in,
-		export:      export,
-		entry:       in.base + uintptr(in.c.Entry[ic.li]),
-		paramSlots:  ic.paramSlots,
-		resultSlots: ic.resultSlots,
-		paramTypes:  append([]ValType(nil), in.c.Funcs[ic.li].Params...),
-		resultWide:  wide,
+		in:                  in,
+		export:              export,
+		entry:               in.base + uintptr(in.c.Entry[ic.li]),
+		paramSlots:          ic.paramSlots,
+		resultSlots:         ic.resultSlots,
+		paramTypes:          append([]ValType(nil), sig.Params...),
+		resultTypes:         append([]ValType(nil), sig.Results...),
+		hasReferenceParams:  hasReferenceValType(sig.Params),
+		hasReferenceResults: hasReferenceValType(sig.Results),
+		resultWide:          wide,
 	}, nil
 }
 
@@ -64,7 +77,13 @@ func (fn *PreparedFunction) Invoke(args ...uint64) ([]uint64, error) {
 	if len(args) != fn.paramSlots {
 		return nil, fmt.Errorf("%s expects %d arg slot(s), got %d", fn.export, fn.paramSlots, len(args))
 	}
-	marshalPublicScalarArgs(in.serArgs, args, fn.paramTypes)
+	if fn.hasReferenceParams {
+		if err := in.marshalPublicReferenceArgs(fn.export, args, fn.paramTypes); err != nil {
+			return nil, err
+		}
+	} else {
+		marshalPublicScalarArgs(in.serArgs, args, fn.paramTypes)
+	}
 	if len(in.hostLog) > 0 {
 		binary.LittleEndian.PutUint32(in.hostLog, 0)
 	}
@@ -93,6 +112,11 @@ func (fn *PreparedFunction) Invoke(args ...uint64) ([]uint64, error) {
 		} else {
 			out[0] = uint64(binary.LittleEndian.Uint32(in.results))
 		}
+		if fn.hasReferenceResults {
+			if err := in.translatePublicReferenceResults(fn.export, out, fn.resultTypes); err != nil {
+				return nil, err
+			}
+		}
 		return out, nil
 	}
 	for i, wide := range fn.resultWide {
@@ -101,6 +125,11 @@ func (fn *PreparedFunction) Invoke(args ...uint64) ([]uint64, error) {
 			out[i] = binary.LittleEndian.Uint64(in.results[off:])
 		} else {
 			out[i] = uint64(binary.LittleEndian.Uint32(in.results[off:]))
+		}
+	}
+	if fn.hasReferenceResults {
+		if err := in.translatePublicReferenceResults(fn.export, out, fn.resultTypes); err != nil {
+			return nil, err
 		}
 	}
 	return out, nil
