@@ -1,4 +1,4 @@
-//go:build linux && amd64 && !tinygo
+//go:build linux && (amd64 || arm64) && !tinygo
 
 package wago
 
@@ -9,11 +9,10 @@ import (
 )
 
 func TestClosedInstanceMemoryAccessCannotReachReusedJobMemory(t *testing.T) {
-	c, err := Compile(nil, memprogWasm)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer c.Close()
+	rt := NewRuntime()
+	defer rt.Close()
+	mod := mustCompileWat(rt, t, `(module (memory 1 1))`)
+	c := mod.Compiled()
 	a, err := Instantiate(c)
 	if err != nil {
 		t.Fatal(err)

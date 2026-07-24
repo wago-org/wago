@@ -1,4 +1,4 @@
-//go:build linux && amd64 && !tinygo
+//go:build linux && (amd64 || arm64) && !tinygo
 
 package wago
 
@@ -158,6 +158,13 @@ func TestPreparedFunctionExternrefValidation(t *testing.T) {
 	_ = other.Close()
 }
 
+func preparedV128Slots(v V128) []uint64 {
+	return []uint64{
+		uint64(v[0]) | uint64(v[1])<<8 | uint64(v[2])<<16 | uint64(v[3])<<24 | uint64(v[4])<<32 | uint64(v[5])<<40 | uint64(v[6])<<48 | uint64(v[7])<<56,
+		uint64(v[8]) | uint64(v[9])<<8 | uint64(v[10])<<16 | uint64(v[11])<<24 | uint64(v[12])<<32 | uint64(v[13])<<40 | uint64(v[14])<<48 | uint64(v[15])<<56,
+	}
+}
+
 func TestPreparedFunctionMixedReferenceResultSlots(t *testing.T) {
 	rt := NewRuntime()
 	defer rt.Close()
@@ -196,7 +203,7 @@ func TestPreparedFunctionMixedReferenceResultSlots(t *testing.T) {
 		t.Fatal(err)
 	}
 	vec := V128{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}
-	vecSlots := v128Slots(vec)
+	vecSlots := preparedV128Slots(vec)
 	args := []uint64{fun[0], ext.token, I32(-7), I64(-9), F32(3.5), F64(-2.25), vecSlots[0], vecSlots[1]}
 	got, err := fn.Invoke(args...)
 	if err != nil {
