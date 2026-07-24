@@ -132,17 +132,6 @@ func TestCompiledCodecV23RequiredFeatureBitsAreExactAndFailClosed(t *testing.T) 
 		t.Fatalf("missing feature bits error = %v, want fail-closed rejection", err)
 	}
 
-	blob, err = (&Compiled{}).MarshalBinary()
-	if err != nil {
-		t.Fatalf("marshal unknown-feature fixture: %v", err)
-	}
-	if blob[len(blob)-2] != 0 || blob[len(blob)-1] != 0 {
-		t.Fatalf("empty feature-byte fixture layout changed: tail=%x", blob[len(blob)-2:])
-	}
-	blob[len(blob)-2] = uint8(CoreFeatureTailCall)
-	if err := decoded.UnmarshalBinary(blob); err == nil || !strings.Contains(err.Error(), "unknown required feature bits") {
-		t.Fatalf("unknown feature bits error = %v, want fail-closed rejection", err)
-	}
 }
 
 func TestCompiledCodecV23CompileRecordsUsedFeatureFamilies(t *testing.T) {

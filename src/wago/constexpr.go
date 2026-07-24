@@ -106,12 +106,12 @@ func evalConstExprBytesResolved(b []byte, want wasm.ValType, m *wasm.Module, res
 				return constExprResult{}, fmt.Errorf("const expression type %s, want %s", v.vtype, want)
 			}
 			out := constExprResult{bits: v.bits, v128: v.v128, vtype: v.vtype, GlobalIndex: -1, FuncIndex: v.funcIndex}
-			if v.unresolved {
-				if !extended && v.global >= 0 {
-					out.GlobalIndex = v.global
-				} else {
-					out.expr = append([]byte(nil), b...)
-				}
+			if extended {
+				// Preserve the expression even when every operand is literal so codec
+				// validation can infer and enforce its required feature bit.
+				out.expr = append([]byte(nil), b...)
+			} else if v.unresolved && v.global >= 0 {
+				out.GlobalIndex = v.global
 			}
 			return out, nil
 		case 0x23: // global.get

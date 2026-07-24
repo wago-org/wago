@@ -152,6 +152,7 @@ const (
 	CapNetworkOutbound                         = impl.CapNetworkOutbound
 	CapTimerRead                               = impl.CapTimerRead
 	CoreFeatureBulkMemoryOperations            = impl.CoreFeatureBulkMemoryOperations
+	CoreFeatureExtendedConst                   = impl.CoreFeatureExtendedConst
 	CoreFeatureMultiValue                      = impl.CoreFeatureMultiValue
 	CoreFeatureMutableGlobal                   = impl.CoreFeatureMutableGlobal
 	CoreFeatureNonTrappingFloatToIntConversion = impl.CoreFeatureNonTrappingFloatToIntConversion
