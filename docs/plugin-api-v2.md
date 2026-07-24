@@ -197,14 +197,19 @@ func (p *plugin) detach(ctx *wago.InstanceContext) {
 }
 ```
 
-`BeforeClose` is the authoritative disposal event. It receives the same instance
-identity delivered to successful instantiation and active caller resolution,
-plus the owning runtime, compiled module, direct/managed origin, and a metadata
-map shared with `AfterClose`. Hooks run in reverse registration order. Concurrent
-`Instance.Close` calls wait for one close operation; `BeforeClose`, Wago's own
-cleanup, and `AfterClose` each execute once. Each hook panic is recovered
-independently, remaining hooks and internal cleanup continue, and `Close` returns
-an aggregated error rather than silently losing the panic.
+`BeforeClose` is the authoritative **logical** disposal event. The invocation
+entry gate is already published when it runs, so no new public call can begin. It
+receives the same instance identity delivered to successful instantiation and
+active caller resolution, plus the owning runtime, compiled module,
+direct/managed origin, and a metadata map shared with `AfterClose`. `AfterClose`
+brackets the end of that same logical-close operation; it does not guarantee that
+native code, arena, memory, engine, or retained import attachments have already
+been physically released. Active invocations and persistent reference roots can
+defer that teardown until later. Hooks run in reverse registration order.
+Concurrent `Instance.Close` calls wait for one close operation; `BeforeClose`,
+Wago's logical cleanup, and `AfterClose` each execute once. Each hook panic is
+recovered independently, remaining hooks and internal cleanup continue, and
+`Close` returns an aggregated error rather than silently losing the panic.
 
 `CallerResolver` is deliberately available from the `host.imports` handle. It
 grants identity only and does **not** grant instance creation, invocation, close,
