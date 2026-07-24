@@ -54,10 +54,12 @@ func TestExportedNamesAndMustCompile(t *testing.T) {
 	mod := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
 		wasmtest.Section(3, wasmtest.Vec([]byte{0x00})),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),                   // memory min=1, no max
 		wasmtest.Section(6, wasmtest.Vec([]byte{0x7f, 0x00, 0x41, 0x07, 0x0b})), // global g: i32 const 7
 		wasmtest.Section(7, wasmtest.Vec(
 			wasmtest.ExportEntry("zed", 0, 0),
 			wasmtest.ExportEntry("abe", 0, 0),
+			wasmtest.ExportEntry("mem", 2, 0),
 			wasmtest.ExportEntry("g", 3, 0),
 		)),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x41, 0x00, 0x0b}))),

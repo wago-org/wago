@@ -200,7 +200,7 @@ func (b *instanceBuilder) rollbackPreparedState() {
 	b.globalAttachments.detachAll()
 	b.tableAttachments.detachAll()
 	if b.registeredInstance != nil && b.registeredInstance.refStore != nil {
-		b.registeredInstance.refStore.instanceClosed(b.registeredInstance)
+		b.registeredInstance.refStore.abortRegisteredInstance(b.registeredInstance)
 	}
 	if b.collector != nil {
 		b.collector.Close()
@@ -242,6 +242,15 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		if !ok {
 			runtime.ReleaseEngine(eng)
 			return nil, fmt.Errorf("missing imported memory %q", c.memoryImport)
+		}
+		actualMin, actualMax, actualHasMax, limitsOK := m.importLimits()
+		if !limitsOK {
+			runtime.ReleaseEngine(eng)
+			return nil, fmt.Errorf("imported memory %q is unavailable", c.memoryImport)
+		}
+		if actualMin < c.MemMinPages || (c.MemHasMax && (!actualHasMax || actualMax > c.MemMaxPages)) {
+			runtime.ReleaseEngine(eng)
+			return nil, fmt.Errorf("imported memory %q has incompatible limits min=%d max=%s; want min>=%d max<=%s", c.memoryImport, actualMin, formatMemoryMaximum(actualMax, actualHasMax), c.MemMinPages, formatMemoryMaximum(c.MemMaxPages, c.MemHasMax))
 		}
 		// A signals-based module elides inline bounds checks and relies on the
 		// guard-page fault, so the imported memory must be guard-page backed. Host
@@ -455,7 +464,31 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			copy(entry, funcRefDescs[off:off+runtime.TableEntryBytes])
 		}
 	}
+	var globalCells []*Global
 	writeElemEntry := func(entry []byte, refType ValType, value RefInit) error {
+		if value.HasGlobal {
+			if int(value.GlobalIndex) >= len(globalCells) || globalCells[value.GlobalIndex] == nil {
+				return fmt.Errorf("element global initializer index %d out of range", value.GlobalIndex)
+			}
+			global := globalCells[value.GlobalIndex]
+			if global.Type != normalizedElemRefType(refType) {
+				return fmt.Errorf("element global initializer type %s does not match %s", global.Type, refType)
+			}
+			bits := readGlobalObject(global, global.Type)
+			switch normalizedElemRefType(refType) {
+			case ValExternRef:
+				binary.LittleEndian.PutUint64(entry, bits)
+				return nil
+			case ValFuncRef:
+				if bits == 0 {
+					clear(entry)
+					return nil
+				}
+				desc := unsafe.Slice((*byte)(offHeapPtr(uintptr(bits))), runtime.TableEntryBytes)
+				copy(entry, desc)
+				return nil
+			}
+		}
 		switch normalizedElemRefType(refType) {
 		case ValExternRef:
 			if !value.Null {
@@ -464,14 +497,14 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			clear(entry)
 			return nil
 		case ValFuncRef:
+			if value.Null {
+				clear(entry)
+				return nil
+			}
 			if writeTableEntry == nil {
 				return fmt.Errorf("funcref element has no descriptor arena")
 			}
-			if value.Null {
-				writeTableEntry(entry, nullFuncRefIndex)
-			} else {
-				writeTableEntry(entry, value.FuncIndex)
-			}
+			writeTableEntry(entry, value.FuncIndex)
 			return nil
 		default:
 			return fmt.Errorf("unsupported element reference type %s", refType)
@@ -479,7 +512,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	}
 
 	var globals []byte
-	globalCells := make([]*Global, len(c.Globals))
+	globalCells = make([]*Global, len(c.Globals))
 	if len(c.Globals) > 0 {
 		globals = ar.Alloc(8 * len(c.Globals))
 		// One heap allocation backs every module-local global cell (a *Global into
@@ -512,6 +545,12 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 					}
 					bits = readGlobalObject(globalCells[g.InitGlobal], c.Globals[g.InitGlobal].Type)
 					vec = readGlobalObjectV128(globalCells[g.InitGlobal])
+				}
+				if len(g.InitExpr) != 0 {
+					bits, err = evalConstExprWithGlobalCells(g.InitExpr, g.Type, globalCells, c.Globals)
+					if err != nil {
+						return nil, fmt.Errorf("global %d extended initializer: %w", i, err)
+					}
 				}
 				cell = &localCells[i]
 				cell.Type, cell.Mutable, cell.cell = g.Type, g.Mutable, ar.Alloc(globalCellSize(g.Type))
@@ -640,6 +679,14 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 				}
 				elemBase = uint32(readGlobalObject(globalCells[el.Offset.Global], c.Globals[el.Offset.Global].Type))
 			}
+			if len(el.Offset.Expr) != 0 {
+				bits, err := evalConstExprWithGlobalCells(el.Offset.Expr, ValI32, globalCells, c.Globals)
+				if err != nil {
+					initErr = fmt.Errorf("element %d extended offset: %w", seg, err)
+					break
+				}
+				elemBase = uint32(bits)
+			}
 			end := uint64(elemBase) + uint64(len(el.Values))
 			if end > uint64(size) {
 				initErr = fmt.Errorf("active element segment %d out of bounds on table %d: offset %d + length %d > table size %d", seg, el.TableIndex, elemBase, len(el.Values), size)
@@ -652,6 +699,16 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 				if err := writeElemEntry(desc[off:off+entryBytes], el.RefType, value); err != nil {
 					initErr = fmt.Errorf("active element segment %d value %d: %w", seg, k, err)
 					break
+				}
+				if value.HasGlobal && normalizedElemRefType(el.RefType) == ValFuncRef {
+					if tableImport, imported := c.tableImportAt(int(el.TableIndex)); imported {
+						if table, ok := imports.table(tableImport.Key); ok && table != nil {
+							global := globalCells[value.GlobalIndex]
+							for _, producer := range global.funcrefProducerRoots() {
+								table.retainProducerInstance(producer)
+							}
+						}
+					}
 				}
 			}
 			if initErr != nil {
@@ -748,6 +805,14 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 					break
 				}
 				off = uint32(readGlobalObject(globalCells[d.Offset.Global], c.Globals[d.Offset.Global].Type))
+			}
+			if len(d.Offset.Expr) != 0 {
+				bits, err := evalConstExprWithGlobalCells(d.Offset.Expr, ValI32, globalCells, c.Globals)
+				if err != nil {
+					initErr = fmt.Errorf("data %d extended offset: %w", seg, err)
+					break
+				}
+				off = uint32(bits)
 			}
 			end := uint64(off) + uint64(len(d.Bytes))
 			if end > uint64(len(lin)) {

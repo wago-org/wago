@@ -835,8 +835,13 @@ func (f *fn) fload(r *wasm.Reader, f64 bool) error {
 	if f64 {
 		size = 8
 	}
+	addrLocal, addrOK := localAddressKey(f.s.back())
+	aliasLocal := -1
+	if addrOK {
+		aliasLocal = addrLocal
+	}
 	ea, eaOwned, borrow, disp := f.memAddr(off, size, true)
-	e := f.pushValue(fmemRefStorage(ea, disp, f64, borrow))
+	e := f.pushValue(fmemRefStorage(ea, disp, f64, borrow, aliasLocal))
 	if eaOwned {
 		f.regUser[ea] = e
 	}
@@ -857,9 +862,10 @@ func (f *fn) fstore(r *wasm.Reader, f64 bool) error {
 	}
 	xmm := f.materializeF(f.popValue())
 	f.fpinned = f.fpinned.add(xmm)
+	addrLocal, addrOK := localAddressKey(f.s.back())
 	ea, eaOwned, _, disp := f.memAddr(off, size, true)
 	f.pinned = f.pinned.add(ea)
-	f.materializePendingLoadsBeforeStore(ea, disp, size)
+	f.materializePendingLoadsBeforeStore(ea, addrLocal, addrOK, disp, size)
 	f.a.StrFIdx(linMemReg, ea, xmm, disp, f64)
 	f.pinned = f.pinned.remove(ea)
 	f.fpinned = f.fpinned.remove(xmm)

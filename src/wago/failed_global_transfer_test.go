@@ -149,12 +149,18 @@ func TestFailedInstantiationTransfersImportedGlobalRoots(t *testing.T) {
 		_ = caller.Close()
 		_ = global.SetValue(ValueFuncRef(NullFuncRef()))
 		scanGlobalAfterOverwrite(t, rt, global)
-		if !root.resourcesClosed {
-			t.Fatal("overwriting init-error global reference did not release root")
+		global.owner.mu.Lock()
+		retained := len(global.owner.retained)
+		global.owner.mu.Unlock()
+		if retained != 0 {
+			t.Fatalf("overwriting init-error global left %d retained container root(s)", retained)
 		}
 		_ = global.Close()
 		_ = producer.Close()
 		_ = rt.Close()
+		if !root.resourcesClosed {
+			t.Fatal("producer remained live after container and token roots were released")
+		}
 	})
 
 	t.Run("start trap", func(t *testing.T) {

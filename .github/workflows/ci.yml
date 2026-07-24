@@ -75,6 +75,20 @@ jobs:
       - name: Lint
         run: make lint
 
+  race:
+    name: Race detector / Linux amd64
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+      - name: Run focused runtime race suites
+        run: go test -race -count=1 ./src/wago ./src/core/runtime
+
   platform-test:
     name: ${{ matrix.name }}
     needs: changes
@@ -168,6 +182,36 @@ jobs:
       - name: SIMD execution suite
         if: matrix.runtime
         run: make simd
+
+  core-v2:
+    name: Core v2 conformance / ${{ matrix.name }}
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux amd64
+            runner: ubuntu-24.04
+          - name: Linux arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+
+      # This is the mandatory exact Release 2 gate, not the informational CI
+      # card summary. Provision the parser explicitly and fetch only the pinned
+      # WebAssembly/spec v2.0.0 submodule consumed by make spec2.
+      - name: Install WABT
+        run: sudo apt-get update && sudo apt-get install -y wabt
+      - name: Fetch pinned Core v2 corpus
+        run: git submodule update --init tests/spec-v2
+      - name: Run exact Core v2 validation and execution
+        run: make spec2
 
   tinygo:
     name: TinyGo / ${{ matrix.name }}
@@ -361,7 +405,7 @@ jobs:
   ci-ok:
     name: CI
     if: always()
-    needs: [changes, lint, platform-test, tinygo, coverage, size]
+    needs: [changes, lint, race, platform-test, core-v2, tinygo, coverage, size]
     runs-on: ubuntu-latest
     steps:
       - name: Verify no required job failed

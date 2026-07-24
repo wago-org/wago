@@ -235,6 +235,14 @@ func (m *ManagedInstance) ValidateVoidTableEntry(index uint32) error {
 	if in == nil {
 		return fmt.Errorf("wago: managed instance is closed")
 	}
+	if err := in.beginInvocation(); err != nil {
+		return fmt.Errorf("wago: managed instance validation: %w", err)
+	}
+	defer in.endInvocation()
+	return validateVoidTableEntry(in, index)
+}
+
+func validateVoidTableEntry(in *Instance, index uint32) error {
 	desc := in.tableDescriptor(0)
 	if len(desc) < 8 {
 		return fmt.Errorf("wago: instance has no table")
@@ -260,13 +268,17 @@ func (m *ManagedInstance) ValidateVoidTableEntry(index uint32) error {
 // InvokeVoidTable invokes a validated () -> () table entry on this managed
 // instance. Calls on one instance must be serialized by the owning plugin.
 func (m *ManagedInstance) InvokeVoidTable(ctx context.Context, index uint32) error {
-	if err := m.ValidateVoidTableEntry(index); err != nil {
-		return err
-	}
 	in := m.Instance()
 	manager := m.manager
 	if in == nil || manager == nil {
 		return fmt.Errorf("wago: managed instance is closed")
+	}
+	if err := in.beginInvocation(); err != nil {
+		return fmt.Errorf("wago: managed instance invocation: %w", err)
+	}
+	defer in.endInvocation()
+	if err := validateVoidTableEntry(in, index); err != nil {
+		return err
 	}
 	base, err := manager.ensureVoidDispatcher()
 	if err != nil {

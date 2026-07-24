@@ -61,6 +61,10 @@ func writeCompiledCodecPrefixAfterMemoryImport(t testing.TB, w *compiledWriter) 
 	w.data(nil)
 	w.passiveData(nil)
 	w.str("")     // memoryImport.
+	w.bool(false) // HasMemory.
+	w.u32(0)      // MemMinPages.
+	w.u32(0)      // MemMaxPages.
+	w.bool(false) // MemHasMax.
 	w.bool(false) // dynamicImports.
 	w.u8(0)       // requiredFeatures.
 }

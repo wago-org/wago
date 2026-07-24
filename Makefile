@@ -127,7 +127,10 @@ spec1: ## Run the WebAssembly 1.0 (MVP core) spec suite against x64 (needs wast2
 
 .PHONY: spec2
 spec2: ## Run the pinned official WebAssembly 2.0 core suite against x64 (needs wast2json)
-	$(call run-spec,2.0,$(SPEC2_DIR),test/core/i32.wast,tests/spec-v2)
+	@command -v wast2json >/dev/null 2>&1 || { echo "wast2json (wabt) not on PATH; install wabt (e.g. apt-get install wabt)"; exit 1; }
+	@test -f $(SPEC2_DIR)/test/core/i32.wast || git submodule update --init tests/spec-v2
+	go test -count=1 -run '^TestWazeroPortPinnedCoreV2Validation$$' -v ./src/core/compiler/wasm/
+	go test -count=1 -run '^TestWazeroPortPinnedCoreV2SpecExecution$$' -v ./src/wago/
 
 .PHONY: spec3
 spec3: ## Run the WebAssembly 3.0 proposal spec tests against x64 (needs wast2json)

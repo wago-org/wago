@@ -104,6 +104,12 @@ func (in *Instance) callInner(export string, slots []uint64, results []ValType, 
 // funcrefs are translated from internal descriptors to opaque store-owned tokens;
 // non-null externrefs are returned only after exact store validation.
 func (in *Instance) GlobalValue(name string) (Value, error) {
+	if err := in.beginInvocation(); err != nil {
+		return Value{}, fmt.Errorf("global %q: %w", name, err)
+	}
+	defer in.endInvocation()
+	unlockNative := lockNativeExecutionForHostAccess()
+	defer unlockNative()
 	idx, err := in.exportedGlobalIndex(name)
 	if err != nil {
 		return Value{}, err
@@ -114,7 +120,7 @@ func (in *Instance) GlobalValue(name string) (Value, error) {
 	}
 	cell := in.globalCells[idx]
 	if isReferenceValType(g.Type) && cell.owner != nil {
-		value, err := cell.GetValue()
+		value, err := cell.getValueNoLease()
 		if err != nil {
 			return Value{}, fmt.Errorf("global %q: %w", name, err)
 		}
@@ -143,6 +149,12 @@ func (in *Instance) GlobalValue(name string) (Value, error) {
 // non-null externref tokens are validated only through the instance's exact
 // reference store before native-visible storage.
 func (in *Instance) SetGlobalValue(name string, v Value) error {
+	if err := in.beginInvocation(); err != nil {
+		return fmt.Errorf("set global %q: %w", name, err)
+	}
+	defer in.endInvocation()
+	unlockNative := lockNativeExecutionForHostAccess()
+	defer unlockNative()
 	idx, err := in.exportedGlobalIndex(name)
 	if err != nil {
 		return err
@@ -156,7 +168,7 @@ func (in *Instance) SetGlobalValue(name string, v Value) error {
 	}
 	cell := in.globalCells[idx]
 	if isReferenceValType(g.Type) && cell.owner != nil {
-		if err := cell.SetValue(v); err != nil {
+		if err := cell.setValueNoLease(v); err != nil {
 			return fmt.Errorf("global %q: %w", name, err)
 		}
 		return nil

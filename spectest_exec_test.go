@@ -524,6 +524,8 @@ func (st *specState) assertTrap(c specCmd) (ok, skip bool, why string) {
 		matches = strings.Contains(msg, "interrupt")
 	case "out of bounds memory access", "out of bounds linear memory access":
 		matches = strings.Contains(msg, "linear memory") && strings.Contains(msg, "out of bounds")
+	case "out of bounds table access":
+		matches = strings.Contains(msg, "table") && strings.Contains(msg, "out of bounds")
 	case "indirect call type mismatch":
 		matches = strings.Contains(msg, "indirect call") && strings.Contains(msg, "wrong signature")
 	case "undefined element", "undefined", "uninitialized element", "uninitialized":

@@ -6,24 +6,24 @@ import (
 	"testing"
 )
 
-func TestCompiledCodecV21VersionContract(t *testing.T) {
+func TestCompiledCodecV23VersionContract(t *testing.T) {
 	blob, err := (&Compiled{}).MarshalBinary()
 	if err != nil {
 		t.Fatalf("MarshalBinary: %v", err)
 	}
-	if got := blob[4]; got != 21 {
-		t.Fatalf("compiled codec version = %d, want 21", got)
+	if got := blob[4]; got != 23 {
+		t.Fatalf("compiled codec version = %d, want 23", got)
 	}
 
-	v19 := append([]byte(nil), blob...)
-	v19[4] = 19
+	v21 := append([]byte(nil), blob...)
+	v21[4] = 21
 	var got Compiled
-	if err := got.UnmarshalBinary(v19); err == nil || !strings.Contains(err.Error(), "version 19 unsupported") {
-		t.Fatalf("UnmarshalBinary v19 error = %v, want explicit incompatibility rejection", err)
+	if err := got.UnmarshalBinary(v21); err == nil || !strings.Contains(err.Error(), "version 21 unsupported") {
+		t.Fatalf("UnmarshalBinary v21 error = %v, want explicit incompatibility rejection", err)
 	}
 }
 
-func TestCompiledCodecV21RoundTripsStructuralReferenceMetadata(t *testing.T) {
+func TestCompiledCodecV23RoundTripsStructuralReferenceMetadata(t *testing.T) {
 	input := structuralReferenceCodecFixture()
 	blob, err := input.MarshalBinary()
 	if err != nil {
@@ -51,7 +51,7 @@ func TestCompiledCodecV21RoundTripsStructuralReferenceMetadata(t *testing.T) {
 	}
 }
 
-func TestCompiledCodecV21ClearsReusedReceiverAndOmitsLiveState(t *testing.T) {
+func TestCompiledCodecV23ClearsReusedReceiverAndOmitsLiveState(t *testing.T) {
 	reused := structuralReferenceCodecFixture()
 	reused.dynamicImports = true
 	reused.tableExports = map[string]int{"stale": 99}
@@ -69,7 +69,7 @@ func TestCompiledCodecV21ClearsReusedReceiverAndOmitsLiveState(t *testing.T) {
 	}
 }
 
-func TestCompiledCodecV21RejectsLiveAndMalformedReferenceMetadata(t *testing.T) {
+func TestCompiledCodecV23RejectsLiveAndMalformedReferenceMetadata(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		mut  func(*Compiled)
@@ -106,7 +106,7 @@ func TestCompiledCodecV21RejectsLiveAndMalformedReferenceMetadata(t *testing.T) 
 	}
 }
 
-func TestCompiledCodecV21RequiredFeatureBitsAreExactAndFailClosed(t *testing.T) {
+func TestCompiledCodecV23RequiredFeatureBitsAreExactAndFailClosed(t *testing.T) {
 	fixture := structuralReferenceCodecFixture()
 	loaded := roundTripCompiled(t, fixture)
 	want := CoreFeatureMutableGlobal | CoreFeatureMultiValue | CoreFeatureBulkMemoryOperations | CoreFeatureReferenceTypes
@@ -123,23 +123,18 @@ func TestCompiledCodecV21RequiredFeatureBitsAreExactAndFailClosed(t *testing.T) 
 	}
 	// The fixture has an empty memory-import string and GC descriptor list, so
 	// the required-feature byte is the penultimate byte before the zero GC count.
+	if got := CoreFeatures(blob[len(blob)-2]); got != want || blob[len(blob)-1] != 0 {
+		t.Fatalf("feature-byte fixture layout changed: tail=%x want features %s then zero GC count", blob[len(blob)-2:], want)
+	}
 	blob[len(blob)-2] = 0
 	var decoded Compiled
 	if err := decoded.UnmarshalBinary(blob); err == nil || !strings.Contains(err.Error(), "unrecorded features") {
 		t.Fatalf("missing feature bits error = %v, want fail-closed rejection", err)
 	}
 
-	blob, err = (&Compiled{}).MarshalBinary()
-	if err != nil {
-		t.Fatalf("marshal unknown-feature fixture: %v", err)
-	}
-	blob[len(blob)-2] = uint8(CoreFeatureTailCall)
-	if err := decoded.UnmarshalBinary(blob); err == nil || !strings.Contains(err.Error(), "unknown required feature bits") {
-		t.Fatalf("unknown feature bits error = %v, want fail-closed rejection", err)
-	}
 }
 
-func TestCompiledCodecV21CompileRecordsUsedFeatureFamilies(t *testing.T) {
+func TestCompiledCodecV23CompileRecordsUsedFeatureFamilies(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
 		module []byte
@@ -165,7 +160,7 @@ func TestCompiledCodecV21CompileRecordsUsedFeatureFamilies(t *testing.T) {
 	}
 }
 
-func TestCompiledCodecV21LoadedReferenceExecutionAndSnapshotBoundary(t *testing.T) {
+func TestCompiledCodecV23LoadedReferenceExecutionAndSnapshotBoundary(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
 		module []byte

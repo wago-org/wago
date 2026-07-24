@@ -1759,9 +1759,10 @@ func (f *fn) v128Store(r *wasm.Reader) error {
 	v := f.popValue()
 	x := f.materializeV128(v)
 	f.fpinned = f.fpinned.add(x)
+	addrLocal, addrOK := localAddressKey(f.s.back())
 	ea, eaOwned, _, disp := f.memAddr(off, 16, true)
 	f.pinned = f.pinned.add(ea)
-	f.materializePendingLoadsBeforeStore(ea, disp, 16)
+	f.materializePendingLoadsBeforeStore(ea, addrLocal, addrOK, disp, 16)
 	f.a.StrQIdx(linMemReg, ea, x, disp)
 	f.pinned = f.pinned.remove(ea)
 	f.fpinned = f.fpinned.remove(x)
@@ -1842,9 +1843,10 @@ func (f *fn) v128StoreLane(r *wasm.Reader, sub uint32) error {
 	v := f.popValue()
 	x := f.materializeV128(v)
 	f.fpinned = f.fpinned.add(x)
+	addrLocal, addrOK := localAddressKey(f.s.back())
 	ea, eaOwned, _, disp := f.memAddr(off, size, true)
 	f.pinned = f.pinned.add(ea)
-	f.materializePendingLoadsBeforeStore(ea, disp, size)
+	f.materializePendingLoadsBeforeStore(ea, addrLocal, addrOK, disp, size)
 	t := f.allocReg(0)
 	switch size {
 	case 1:

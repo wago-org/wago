@@ -158,7 +158,7 @@ func (f *fn) allocSpillSlots(n int) int {
 // the next free slot index. (Simple bump within the current operand-stack extent;
 // slots are reclaimed as values are consumed.)
 func (f *fn) curSpillSlot() int {
-	used := 0
+	used := f.spillFloor
 	for e := f.s.head.next; e != f.s.head; e = e.next {
 		if e.kind == ekValue && e.st.kind == stSlot {
 			end := e.st.slot + e.st.typ.stackSlots()
@@ -300,7 +300,7 @@ func (f *fn) materializePendingLoads() {
 // registers establish a common base; static displacement ranges then provide a
 // complete alias proof. Different registers remain conservative because two
 // wasm addresses may hold the same offset.
-func (f *fn) materializePendingLoadsBeforeStore(base Reg, disp int32, size int) {
+func (f *fn) materializePendingLoadsBeforeStore(base Reg, baseLocal int, baseLocalOK bool, disp int32, size int) {
 	storeLo, storeHi := int64(disp), int64(disp)+int64(size)
 	for e := f.s.head.next; e != f.s.head; e = e.next {
 		if e.kind != ekValue || e.st.kind != stMemRef {
@@ -308,7 +308,8 @@ func (f *fn) materializePendingLoadsBeforeStore(base Reg, disp int32, size int) 
 		}
 		loadLo := int64(e.st.memDisp())
 		loadHi := loadLo + int64(e.st.memSize())
-		if e.st.reg == base && (loadHi <= storeLo || storeHi <= loadLo) {
+		sameBase := e.st.reg == base || baseLocalOK && e.st.memAliasLocal() == baseLocal
+		if sameBase && (loadHi <= storeLo || storeHi <= loadLo) {
 			f.stats.peep("alias-load-kept")
 			continue
 		}

@@ -255,7 +255,8 @@ func TestCoreFeaturesV2ReleaseScope(t *testing.T) {
 		CoreFeatureNonTrappingFloatToIntConversion |
 		CoreFeatureReferenceTypes |
 		CoreFeatureSignExtensionOps |
-		CoreFeatureSIMD
+		CoreFeatureSIMD |
+		CoreFeatureExtendedConst
 	if CoreFeaturesV2 != want {
 		t.Fatalf("CoreFeaturesV2 = %s, want WebAssembly 2.0 scope %s", CoreFeaturesV2, want)
 	}

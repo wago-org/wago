@@ -456,7 +456,16 @@ func runRelease2File(t *testing.T, base string) specExecStats {
 	if err := json.Unmarshal(raw, &sf); err != nil {
 		t.Fatal(err)
 	}
-	return runSpecExecFile(t, base, tmp, sf)
+	// This helper exists only for the module-instantiation gap inventory below.
+	// Keep unlinkable assertions in the full Core v2 gate, where they have their
+	// own exact accounting and cannot obscure the inventory's narrower purpose.
+	focused := specExecFile{Commands: make([]specExecCmd, 0, len(sf.Commands))}
+	for _, command := range sf.Commands {
+		if command.Type != "assert_unlinkable" {
+			focused.Commands = append(focused.Commands, command)
+		}
+	}
+	return runSpecExecFile(t, base, tmp, focused)
 }
 
 func TestRelease2InstantiateGapInventory(t *testing.T) {
@@ -640,7 +649,7 @@ func TestRelease2ImportedExternrefTableLinkingExecution(t *testing.T) {
 		}
 	}
 	stats := runSpecExecFile(t, "linking", tmp, focused)
-	want := specExecStats{modulesPassed: 2}
+	want := specExecStats{modulesPassed: 2, assertionsPassed: 2}
 	if stats != want {
 		t.Fatalf("linking externref-table execution stats = %+v, want %+v", stats, want)
 	}
@@ -808,7 +817,15 @@ func TestRelease2LinkingHasNoImportedFunctionReexportGaps(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	stats := runSpecExecFile(t, "linking", tmp, sf)
+	// This test inventories action/export gaps, not linking failures. The full
+	// Core v2 execution gate owns assert_unlinkable and its exact count.
+	focused := specExecFile{Commands: make([]specExecCmd, 0, len(sf.Commands))}
+	for _, command := range sf.Commands {
+		if command.Type != "assert_unlinkable" {
+			focused.Commands = append(focused.Commands, command)
+		}
+	}
+	stats := runSpecExecFile(t, "linking", tmp, focused)
 	if stats.absentExportSiteCount == 0 {
 		return
 	}
@@ -1300,9 +1317,12 @@ func runSpecExec(t *testing.T, wast2json, dir, version string, files []string) {
 	if total.assertionsPassed+total.assertionsSkipped+total.assertionsFailed == 0 {
 		t.Errorf("no execution assertions were accounted — harness or corpus misconfigured")
 	}
-	if version == "2.0" && (total.modulesSkipped != 0 || total.assertionsSkipped != 0) {
-		t.Errorf("WebAssembly 2.0 execution must have zero feature-related skips: modules=%d assertions=%d gaps %s",
-			total.modulesSkipped, total.assertionsSkipped, total.gapSummary())
+	if version == "2.0" {
+		const wantModules, wantAssertions = 1600, 48331
+		if total.modulesPassed != wantModules || total.modulesFailed != 0 || total.modulesSkipped != 0 ||
+			total.assertionsPassed != wantAssertions || total.assertionsFailed != 0 || total.assertionsSkipped != 0 {
+			t.Fatalf("WebAssembly 2.0 execution accounting = %+v, want modules %d/0/0 and assertions %d/0/0", total, wantModules, wantAssertions)
+		}
 	}
 }
 
@@ -1348,7 +1368,9 @@ func runSpecExecFile(t *testing.T, base, tmp string, sf specExecFile) (stats spe
 	rt := wago.NewRuntime(wago.WithRuntimeConfig(cfg))
 	defer func() {
 		for i := range live {
-			live[i].close()
+			if err := live[i].close(); err != nil {
+				t.Errorf("close spec module %d: %v", i, err)
+			}
 		}
 		if err := standardTable.Close(); err != nil {
 			t.Errorf("close spectest.table: %v", err)
@@ -1386,6 +1408,9 @@ func runSpecExecFile(t *testing.T, base, tmp string, sf specExecFile) (stats spe
 				t.Logf("%s.wast:%d module imports rejected: %v", base, c.Line, err)
 				stats.recordInstantiateGap(base, c.Line, err)
 				stats.skipModule(specGapInstantiateRejected)
+				if closeErr := compiled.Close(); closeErr != nil {
+					t.Errorf("%s.wast:%d close uninstantiated module: %v", base, c.Line, closeErr)
+				}
 				continue
 			}
 			in, err := rt.Instantiate(context.Background(), mod, wago.WithImports(imports))
@@ -1393,6 +1418,9 @@ func runSpecExecFile(t *testing.T, base, tmp string, sf specExecFile) (stats spe
 				t.Logf("%s.wast:%d module instantiate rejected: %v", base, c.Line, err)
 				stats.recordInstantiateGap(base, c.Line, err)
 				stats.skipModule(specGapInstantiateRejected)
+				if closeErr := compiled.Close(); closeErr != nil {
+					t.Errorf("%s.wast:%d close rejected module: %v", base, c.Line, closeErr)
+				}
 				continue
 			}
 			stats.modulesPassed++
@@ -1425,6 +1453,9 @@ func runSpecExecFile(t *testing.T, base, tmp string, sf specExecFile) (stats spe
 			imports, err := specImportsFor(compiled, registered, standardImports)
 			if err != nil {
 				stats.skipAssertion(specGapInstantiateRejected)
+				if closeErr := compiled.Close(); closeErr != nil {
+					t.Errorf("%s.wast:%d close import-rejected assertion module: %v", base, c.Line, closeErr)
+				}
 				continue
 			}
 			in, err := rt.Instantiate(context.Background(), mod, wago.WithImports(imports))
@@ -1433,6 +1464,41 @@ func runSpecExecFile(t *testing.T, base, tmp string, sf specExecFile) (stats spe
 				stats.assertionsFailed++
 				t.Errorf("%s.wast:%d expected module instantiation to trap: %s", base, c.Line, c.Text)
 				continue
+			}
+			if closeErr := compiled.Close(); closeErr != nil {
+				t.Errorf("%s.wast:%d close trapped assertion module: %v", base, c.Line, closeErr)
+			}
+			stats.assertionsPassed++
+		case "assert_unlinkable":
+			data, err := os.ReadFile(filepath.Join(tmp, c.Filename))
+			if err != nil {
+				stats.assertionsFailed++
+				t.Errorf("%s.wast:%d unlinkable module output %q is unavailable: %v", base, c.Line, c.Filename, err)
+				continue
+			}
+			mod, err := rt.Compile(data)
+			if err != nil {
+				stats.skipAssertion(specGapCompileRejected)
+				continue
+			}
+			compiled := mod.Compiled()
+			imports, importErr := specImportsFor(compiled, registered, standardImports)
+			if importErr != nil {
+				if closeErr := compiled.Close(); closeErr != nil {
+					t.Errorf("%s.wast:%d close unlinkable assertion module: %v", base, c.Line, closeErr)
+				}
+				stats.assertionsPassed++
+				continue
+			}
+			in, instantiateErr := rt.Instantiate(context.Background(), mod, wago.WithImports(imports))
+			if instantiateErr == nil {
+				live = append(live, specModule{inst: in, compiled: compiled})
+				stats.assertionsFailed++
+				t.Errorf("%s.wast:%d expected module linking to fail: %s", base, c.Line, c.Text)
+				continue
+			}
+			if closeErr := compiled.Close(); closeErr != nil {
+				t.Errorf("%s.wast:%d close unlinkable assertion module: %v", base, c.Line, closeErr)
 			}
 			stats.assertionsPassed++
 		case "assert_return", "action":
@@ -1595,11 +1661,19 @@ func (m specModule) matchExternref(got uint64, want specValue) bool {
 	return ok && value == id
 }
 
-func (m *specModule) close() {
+func (m *specModule) close() error {
+	var err error
 	if m.inst != nil {
-		m.inst.Close()
+		err = m.inst.Close()
 		m.inst = nil
 	}
+	if m.compiled != nil {
+		if closeErr := m.compiled.Close(); err == nil {
+			err = closeErr
+		}
+		m.compiled = nil
+	}
+	return err
 }
 
 type specActionOutcome struct {

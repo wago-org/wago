@@ -33,6 +33,11 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 		switch op {
 		case 0x00: // unreachable
 			if !f.unreachable {
+				// Deferred operations before unreachable have already executed in
+				// Wasm evaluation order and may trap (notably div/rem). Materialize
+				// them before emitting the explicit unreachable trap; otherwise the
+				// later trap incorrectly masks an earlier one.
+				f.flush()
 				f.trapAlways(trapUnreachable)
 				f.unreachable = true
 			}
