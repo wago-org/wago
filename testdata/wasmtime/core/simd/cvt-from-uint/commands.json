@@ -1,0 +1,9 @@
+{"source_filename": "testdata/wasmtime/wasm2/simd/cvt-from-uint/source.wast",
+ "commands": [
+  {"type": "module", "line": 6, "filename": "commands.0.wasm"}, 
+  {"type": "assert_return", "line": 33, "action": {"type": "invoke", "field": "i16x8.extend_low_i8x16_s", "args": [{"type": "v128", "lane_type": "i32", "value": ["0", "0", "0", "0"]}]}, "expected": [{"type": "v128", "lane_type": "f32", "value": ["0", "0", "0", "0"]}]}, 
+  {"type": "assert_return", "line": 36, "action": {"type": "invoke", "field": "i16x8.extend_low_i8x16_u", "args": [{"type": "v128", "lane_type": "i32", "value": ["0", "0", "0", "0"]}]}, "expected": [{"type": "v128", "lane_type": "f32", "value": ["0", "0", "0", "0"]}]}, 
+  {"type": "assert_return", "line": 39, "action": {"type": "invoke", "field": "i32x4.extend_low_i16x8_s", "args": [{"type": "v128", "lane_type": "i32", "value": ["0", "0", "0", "0"]}]}, "expected": [{"type": "v128", "lane_type": "f32", "value": ["0", "0", "0", "0"]}]}, 
+  {"type": "assert_return", "line": 42, "action": {"type": "invoke", "field": "i32x4.extend_low_i16x8_u", "args": [{"type": "v128", "lane_type": "i32", "value": ["0", "0", "0", "0"]}]}, "expected": [{"type": "v128", "lane_type": "f32", "value": ["0", "0", "0", "0"]}]}, 
+  {"type": "assert_return", "line": 45, "action": {"type": "invoke", "field": "i64x2.extend_low_i32x4_s", "args": [{"type": "v128", "lane_type": "i32", "value": ["0", "0", "0", "0"]}]}, "expected": [{"type": "v128", "lane_type": "f32", "value": ["0", "0", "0", "0"]}]}, 
+  {"type": "assert_return", "line": 48, "action": {"type": "invoke", "field": "i64x2.extend_low_i32x4_u", "args": [{"type": "v128", "lane_type": "i32", "value": ["0", "0", "0", "0"]}]}, "expected": [{"type": "v128", "lane_type": "f32", "value": ["0", "0", "0", "0"]}]}]}

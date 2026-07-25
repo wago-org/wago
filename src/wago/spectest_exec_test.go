@@ -172,6 +172,7 @@ type specExecCmd struct {
 	As       string      `json:"as"`
 	Action   specAction  `json:"action"`
 	Expected []specValue `json:"expected"`
+	Either   []specValue `json:"either"`
 	Text     string      `json:"text"`
 }
 
@@ -1349,10 +1350,16 @@ func spectestImports(table *wago.Table, memory *wago.Memory) wago.Imports {
 	}
 }
 
-// runSpecExecFile replays one .wast's commands. The "current" instance is the
-// most recently instantiated module; when a module is out of scope (nil inst),
-// its assertions are skipped until the next module command.
-func runSpecExecFile(t *testing.T, base, tmp string, sf specExecFile) (stats specExecStats) {
+// runSpecExecFile replays one .wast's commands with the default Release 2
+// compatibility configuration.
+func runSpecExecFile(t *testing.T, base, tmp string, sf specExecFile) specExecStats {
+	return runSpecExecFileWithConfig(t, base, tmp, sf, wago.NewRuntimeConfig())
+}
+
+// runSpecExecFileWithConfig replays one .wast's commands. The "current"
+// instance is the most recently instantiated module; when a module is out of
+// scope (nil inst), its assertions are skipped until the next module command.
+func runSpecExecFileWithConfig(t *testing.T, base, tmp string, sf specExecFile, cfg *wago.RuntimeConfig) (stats specExecStats) {
 	var cur specModule
 	var live []specModule
 	standardTable, err := wago.NewTable(10, 20)
@@ -1364,7 +1371,6 @@ func runSpecExecFile(t *testing.T, base, tmp string, sf specExecFile) (stats spe
 		_ = standardTable.Close()
 		t.Fatalf("create spectest.memory: %v", err)
 	}
-	cfg := wago.NewRuntimeConfig()
 	rt := wago.NewRuntime(wago.WithRuntimeConfig(cfg))
 	defer func() {
 		for i := range live {
@@ -1758,6 +1764,15 @@ func runReturnAssert(t *testing.T, base string, c specExecCmd, m specModule) (sp
 		t.Errorf("%s.wast:%d %s(%v): expected return, got trap: %v", base, c.Line, c.Action.Field, argValues(c.Action.Args), out.trap)
 		return specGapNone, false
 	}
+	if len(c.Either) != 0 {
+		for _, alternative := range c.Either {
+			if matchSpecResults(out.results, []specValue{alternative}, m) {
+				return specGapNone, true
+			}
+		}
+		t.Errorf("%s.wast:%d %s(%v): got=%#x, want one of %v", base, c.Line, c.Action.Field, argValues(c.Action.Args), out.results, c.Either)
+		return specGapNone, false
+	}
 	wantSlots := expectedResultSlots(c.Expected)
 	if len(out.results) != wantSlots {
 		t.Errorf("%s.wast:%d %s: result slot count got=%d want=%d", base, c.Line, c.Action.Field, len(out.results), wantSlots)
@@ -1777,6 +1792,25 @@ func runReturnAssert(t *testing.T, base string, c specExecCmd, m specModule) (sp
 		off += n
 	}
 	return specGapNone, true
+}
+
+func matchSpecResults(got []uint64, expected []specValue, m specModule) bool {
+	if len(got) != expectedResultSlots(expected) {
+		return false
+	}
+	for i, off := 0, 0; i < len(expected); i++ {
+		want := expected[i]
+		n := resultSlotCount(want)
+		matched := matchResult(got[off:off+n], want)
+		if want.Type == "externref" && n == 1 {
+			matched = m.matchExternref(got[off], want)
+		}
+		if !matched {
+			return false
+		}
+		off += n
+	}
+	return true
 }
 
 func runTrapAssert(t *testing.T, base string, c specExecCmd, m specModule) (specExecGapReason, bool) {

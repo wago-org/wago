@@ -1,0 +1,12 @@
+{"source_filename": "testdata/wasmtime/wasm2/linking-errors/source.wast",
+ "commands": [
+  {"type": "module", "line": 3, "name": "$m", "filename": "commands.0.wasm"}, 
+  {"type": "assert_unlinkable", "line": 17, "filename": "commands.1.wasm", "text": "incompatible import type for `m::g i32`", "module_type": "binary"}, 
+  {"type": "assert_unlinkable", "line": 22, "filename": "commands.2.wasm", "text": "expected global of type `i64`, found global of type `i32`", "module_type": "binary"}, 
+  {"type": "assert_unlinkable", "line": 26, "filename": "commands.3.wasm", "text": "expected mutable global, found immutable global", "module_type": "binary"}, 
+  {"type": "assert_unlinkable", "line": 30, "filename": "commands.4.wasm", "text": "expected immutable global, found mutable global", "module_type": "binary"}, 
+  {"type": "assert_unlinkable", "line": 35, "filename": "commands.5.wasm", "text": "expected table limits (min: 1, max: none) doesn't match provided table limits (min: 0, max: none)", "module_type": "binary"}, 
+  {"type": "assert_unlinkable", "line": 39, "filename": "commands.6.wasm", "text": "expected table of type `funcref`, found table of type `externref`", "module_type": "binary"}, 
+  {"type": "assert_unlinkable", "line": 44, "filename": "commands.7.wasm", "text": "expected memory limits (min: 1, max: none) doesn't match provided memory limits (min: 0, max: none)", "module_type": "binary"}, 
+  {"type": "assert_unlinkable", "line": 49, "filename": "commands.8.wasm", "text": "expected type `(func (param i32))`, found type `(func)`", "module_type": "binary"}, 
+  {"type": "assert_unlinkable", "line": 53, "filename": "commands.9.wasm", "text": "expected type `(func (param i32 i32) (result f64))`, found type `(func (param f32) (result i32 i64))`", "module_type": "binary"}]}

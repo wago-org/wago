@@ -1,0 +1,4 @@
+{"source_filename": "testdata/wasmtime/wasm2/simd/unaligned-load/source.wast",
+ "commands": [
+  {"type": "module", "line": 4, "filename": "commands.0.wasm"}, 
+  {"type": "assert_return", "line": 15, "action": {"type": "invoke", "field": "unaligned_load", "args": []}, "expected": [{"type": "v128", "lane_type": "i32", "value": ["1", "1", "1", "1"]}]}]}

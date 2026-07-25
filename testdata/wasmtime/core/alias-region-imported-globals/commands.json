@@ -1,0 +1,7 @@
+{"source_filename": "testdata/wasmtime/wasm2/alias-region-imported-globals/source.wast",
+ "commands": [
+  {"type": "module", "line": 5, "name": "$M", "filename": "commands.0.wasm"}, 
+  {"type": "register", "line": 8, "as": "M"}, 
+  {"type": "module", "line": 10, "filename": "commands.1.wasm"}, 
+  {"type": "assert_return", "line": 18, "action": {"type": "invoke", "field": "test", "args": [{"type": "i32", "value": "42"}]}, "expected": [{"type": "i32", "value": "42"}]}, 
+  {"type": "assert_return", "line": 19, "action": {"type": "invoke", "field": "test", "args": [{"type": "i32", "value": "3735928559"}]}, "expected": [{"type": "i32", "value": "3735928559"}]}]}

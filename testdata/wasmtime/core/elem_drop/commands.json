@@ -1,0 +1,4 @@
+{"source_filename": "testdata/wasmtime/wasm2/elem_drop/source.wast",
+ "commands": [
+  {"type": "module", "line": 4, "filename": "commands.0.wasm"}, 
+  {"type": "action", "line": 10, "action": {"type": "invoke", "field": "elem.drop non-passive element", "args": []}, "expected": []}]}

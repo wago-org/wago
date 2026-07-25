@@ -1,0 +1,4 @@
+{"source_filename": "testdata/wasmtime/wasm2/issue4840/source.wast",
+ "commands": [
+  {"type": "module", "line": 1, "filename": "commands.0.wasm"}, 
+  {"type": "assert_return", "line": 16, "action": {"type": "invoke", "field": "f", "args": [{"type": "f32", "value": "1067282596"}, {"type": "i32", "value": "2147483648"}]}, "expected": [{"type": "f64", "value": "4746794007248502784"}]}]}

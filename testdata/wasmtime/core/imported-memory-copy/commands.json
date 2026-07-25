@@ -1,0 +1,17 @@
+{"source_filename": "testdata/wasmtime/wasm2/imported-memory-copy/source.wast",
+ "commands": [
+  {"type": "module", "line": 3, "name": "$foreign", "filename": "commands.0.wasm"}, 
+  {"type": "register", "line": 8, "name": "$foreign", "as": "foreign"}, 
+  {"type": "module", "line": 10, "filename": "commands.1.wasm"}, 
+  {"type": "assert_return", "line": 97, "action": {"type": "invoke", "field": "is hello?", "args": [{"type": "i32", "value": "1000"}]}, "expected": [{"type": "i32", "value": "1"}]}, 
+  {"type": "assert_return", "line": 100, "action": {"type": "invoke", "field": "is olleh?", "args": [{"type": "i32", "value": "2000"}]}, "expected": [{"type": "i32", "value": "1"}]}, 
+  {"type": "action", "line": 104, "action": {"type": "invoke", "field": "memory.copy", "args": [{"type": "i32", "value": "500"}, {"type": "i32", "value": "1000"}, {"type": "i32", "value": "5"}]}, "expected": []}, 
+  {"type": "assert_return", "line": 106, "action": {"type": "invoke", "field": "is hello?", "args": [{"type": "i32", "value": "500"}]}, "expected": [{"type": "i32", "value": "1"}]}, 
+  {"type": "action", "line": 110, "action": {"type": "invoke", "field": "memory.copy", "args": [{"type": "i32", "value": "1500"}, {"type": "i32", "value": "1000"}, {"type": "i32", "value": "5"}]}, "expected": []}, 
+  {"type": "assert_return", "line": 112, "action": {"type": "invoke", "field": "is hello?", "args": [{"type": "i32", "value": "1500"}]}, "expected": [{"type": "i32", "value": "1"}]}, 
+  {"type": "action", "line": 116, "action": {"type": "invoke", "field": "memory.copy", "args": [{"type": "i32", "value": "1998"}, {"type": "i32", "value": "2000"}, {"type": "i32", "value": "5"}]}, "expected": []}, 
+  {"type": "assert_return", "line": 118, "action": {"type": "invoke", "field": "is olleh?", "args": [{"type": "i32", "value": "1998"}]}, "expected": [{"type": "i32", "value": "1"}]}, 
+  {"type": "action", "line": 122, "action": {"type": "invoke", "field": "memory.copy", "args": [{"type": "i32", "value": "2000"}, {"type": "i32", "value": "1998"}, {"type": "i32", "value": "5"}]}, "expected": []}, 
+  {"type": "assert_return", "line": 124, "action": {"type": "invoke", "field": "is olleh?", "args": [{"type": "i32", "value": "2000"}]}, "expected": [{"type": "i32", "value": "1"}]}, 
+  {"type": "action", "line": 128, "action": {"type": "invoke", "field": "memory.copy", "args": [{"type": "i32", "value": "2000"}, {"type": "i32", "value": "2000"}, {"type": "i32", "value": "5"}]}, "expected": []}, 
+  {"type": "assert_return", "line": 130, "action": {"type": "invoke", "field": "is olleh?", "args": [{"type": "i32", "value": "2000"}]}, "expected": [{"type": "i32", "value": "1"}]}]}

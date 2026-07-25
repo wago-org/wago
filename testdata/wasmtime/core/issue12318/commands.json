@@ -1,0 +1,5 @@
+{"source_filename": "testdata/wasmtime/wasm2/issue12318/source.wast",
+ "commands": [
+  {"type": "module", "line": 1, "filename": "commands.0.wasm"}, 
+  {"type": "assert_return", "line": 21, "action": {"type": "invoke", "field": "constants", "args": []}, "expected": [{"type": "i32", "value": "25"}]}, 
+  {"type": "assert_return", "line": 22, "action": {"type": "invoke", "field": "variables", "args": [{"type": "i32", "value": "24"}, {"type": "i32", "value": "1"}]}, "expected": [{"type": "i32", "value": "25"}]}]}

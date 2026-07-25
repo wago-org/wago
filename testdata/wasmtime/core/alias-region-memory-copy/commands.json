@@ -1,0 +1,4 @@
+{"source_filename": "testdata/wasmtime/wasm2/alias-region-memory-copy/source.wast",
+ "commands": [
+  {"type": "module", "line": 8, "filename": "commands.0.wasm"}, 
+  {"type": "assert_return", "line": 18, "action": {"type": "invoke", "field": "test", "args": []}, "expected": [{"type": "i32", "value": "43690"}]}]}

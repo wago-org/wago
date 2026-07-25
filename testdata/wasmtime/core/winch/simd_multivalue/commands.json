@@ -1,0 +1,8 @@
+{"source_filename": "testdata/wasmtime/wasm2/winch/simd_multivalue/source.wast",
+ "commands": [
+  {"type": "module", "line": 4, "filename": "commands.0.wasm"}, 
+  {"type": "assert_return", "line": 5, "action": {"type": "invoke", "field": "f", "args": [{"type": "v128", "lane_type": "i64", "value": ["2", "1"]}, {"type": "v128", "lane_type": "i64", "value": ["1", "2"]}]}, "expected": [{"type": "v128", "lane_type": "i64", "value": ["1", "2"]}, {"type": "v128", "lane_type": "i64", "value": ["2", "1"]}]}, 
+  {"type": "module", "line": 8, "filename": "commands.1.wasm"}, 
+  {"type": "assert_return", "line": 9, "action": {"type": "invoke", "field": "consts", "args": []}, "expected": [{"type": "v128", "lane_type": "i64", "value": ["0", "0"]}, {"type": "v128", "lane_type": "i64", "value": ["0", "0"]}]}, 
+  {"type": "module", "line": 12, "filename": "commands.2.wasm"}, 
+  {"type": "assert_return", "line": 19, "action": {"type": "invoke", "field": "not-first-nor-last", "args": [{"type": "v128", "lane_type": "i32", "value": ["1", "2", "3", "4"]}]}, "expected": [{"type": "i64", "value": "0"}, {"type": "v128", "lane_type": "i32", "value": ["1", "2", "3", "4"]}, {"type": "i64", "value": "0"}]}]}

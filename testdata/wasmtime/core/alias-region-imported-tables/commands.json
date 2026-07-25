@@ -1,0 +1,6 @@
+{"source_filename": "testdata/wasmtime/wasm2/alias-region-imported-tables/source.wast",
+ "commands": [
+  {"type": "module", "line": 7, "name": "$M", "filename": "commands.0.wasm"}, 
+  {"type": "register", "line": 16, "as": "M"}, 
+  {"type": "module", "line": 18, "filename": "commands.1.wasm"}, 
+  {"type": "assert_return", "line": 31, "action": {"type": "invoke", "field": "test", "args": []}, "expected": [{"type": "i32", "value": "99"}]}]}

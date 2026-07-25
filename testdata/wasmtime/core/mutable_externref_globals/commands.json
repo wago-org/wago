@@ -1,0 +1,6 @@
+{"source_filename": "testdata/wasmtime/wasm2/mutable_externref_globals/source.wast",
+ "commands": [
+  {"type": "module", "line": 7, "filename": "commands.0.wasm"}, 
+  {"type": "assert_return", "line": 13, "action": {"type": "invoke", "field": "get-mr", "args": []}, "expected": [{"type": "externref", "value": "null"}]}, 
+  {"type": "assert_return", "line": 14, "action": {"type": "invoke", "field": "set-mr", "args": [{"type": "externref", "value": "10"}]}, "expected": []}, 
+  {"type": "assert_return", "line": 15, "action": {"type": "invoke", "field": "get-mr", "args": []}, "expected": [{"type": "externref", "value": "10"}]}]}
