@@ -105,6 +105,17 @@ test-corpus: ## Corpus pipeline + differential execution in parent/child process
 	cd bench && go test -count=1 -run '^TestCorpus$$' .
 	cd bench && go test -count=1 -tags wago_guardpage -run '^TestCorpus$$' .
 
+WASMTIME_CHECKOUT ?= $(CURDIR)/.tmp/wasmtime-corpus-upstream
+WAST2JSON ?= wast2json
+
+.PHONY: wasmtime-corpus-check
+wasmtime-corpus-check: ## Verify pinned Wasmtime sources and WABT artifacts (WABT 1.0.41)
+	go run ./scripts/wasmtime-corpus -repo $(CURDIR) -wasmtime $(WASMTIME_CHECKOUT) -wast2json $(WAST2JSON)
+
+.PHONY: wasmtime-corpus-sync
+wasmtime-corpus-sync: ## Fetch pinned Wasmtime and refresh checked-in corpus artifacts
+	go run ./scripts/wasmtime-corpus -repo $(CURDIR) -wasmtime $(WASMTIME_CHECKOUT) -wast2json $(WAST2JSON) -fetch -write
+
 # Run the WebAssembly spec suites as native execution oracles for the x64
 # backend. The preserved MVP baseline is WebAssembly/testsuite at tests/spec;
 # Release 2.0 is independently pinned from WebAssembly/spec at tests/spec-v2,

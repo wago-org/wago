@@ -1,4 +1,4 @@
-//go:build (linux || darwin) && (amd64 || arm64) && !tinygo && !wago_guardpage
+//go:build ((linux && (amd64 || arm64)) || (darwin && arm64)) && !tinygo
 
 package wago
 

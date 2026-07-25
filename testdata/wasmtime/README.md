@@ -6,11 +6,15 @@ This directory contains portable WebAssembly core tests adapted from Wasmtime's
 - upstream: `github.com/bytecodealliance/wasmtime`
 - revision: `a5720e50d5ec9eab34eed690eee952abfdd0e3ba`
 - revision date: 2026-07-24
+- generator: WABT `wast2json` 1.0.41
+- machine-readable pin: `PROVENANCE.json`
 - license: Apache License 2.0 with LLVM exceptions; the upstream license is
   preserved in `testdata/wasmtime/LICENSE`
 
-`MANIFEST.tsv` is the exact applicability and port-mode ledger. The current port
-contains 104 upstream tests:
+`MANIFEST.tsv` is the exact applicability and port-mode ledger. Its test gate
+requires sorted, unique paths, a known coverage vocabulary, the expected artifact
+shape for each port mode, and a one-to-one mapping between manifest rows and
+`source.wast` files. The current port contains 104 upstream tests:
 
 - 54 feature-focused WebAssembly 2.0 regressions covering sign extension,
   non-trapping conversions, multi-value, reference types, bulk memory, and SIMD;
@@ -35,16 +39,48 @@ The Embenchen sources carry a prominent modification notice: Wago's standard
 WAST replay requires the named `$env` provider to be explicitly registered.
 No workload module was otherwise changed. Direct Go execution tests additionally
 run all four `_main` exports through a bounded legacy Emscripten host shim and
-verify exact output digests.
+verify exact output digests. The shim has no generic zero-result fallback:
+result-bearing imports fail unless their direct-workload behavior is modeled
+explicitly. In particular, `___syscall54` accepts only the known stdout/stderr
+`TCGETS` query; new imports or syscall shapes fail closed.
 
 The fixture tree contains 364 upstream or mechanically generated artifacts:
-104 WAST sources, 97 JSON command files, and 163 wasm modules. The replay-order
-path-and-content SHA-256 digest is
-`b3bbb1072672801a3ce89a12deb953b10a2fe4a2b690f67b9de54489f7c6b243`.
+104 WAST sources, 97 JSON command files, and 163 wasm modules. Its replay-order
+path-and-content SHA-256 is stored in `PROVENANCE.json`, so the importer and test
+harness share one updateable source of truth.
+
+Each `wast-json` fixture executes in a fresh test process with a hard deadline
+(`WAGO_WASMTIME_TIMEOUT`, default 20s). The child reports per-fixture module and
+assertion accounting, which is checked against the commands in that fixture;
+crashes, hangs, missing outcomes, failures, and skips are all hard errors. The
+same corpus runs under the normal explicit-bounds build and under
+`-tags wago_guardpage`.
+
 The Go replay and direct assertions live in
 `src/wago/wasmtime_core_port_test.go`. Portable Rust API, compiler, lifecycle,
-trap, and workload adaptations live in the other
-`src/wago/wasmtime_*_port_test.go` files.
+and trap adaptations are recorded in the machine-readable `RUST_PORTS.tsv`
+ledger and implemented in the other `src/wago/wasmtime_*_port_test.go` files.
 
-See `testdata/wasmtime/EXCLUSIONS.md` for the small set of Wasmtime-specific
-files that cannot preserve their upstream oracle in Wago.
+## Verify or update
+
+From the repository root, with WABT 1.0.41 available:
+
+```sh
+# Clone/fetch the exact Wasmtime revision, then verify sources and generated files.
+go run ./scripts/wasmtime-corpus -fetch
+
+# Refresh source.wast and wast-json artifacts, and update the fixture-tree digest.
+go run ./scripts/wasmtime-corpus -fetch -write
+```
+
+Unmodified sources are compared byte-for-byte with the pinned upstream checkout.
+The four Embenchen sources receive one deterministic transformation: insertion
+of `(register "env" $env)` plus the required modification notice. `wast-json`
+artifacts are regenerated and compared byte-for-byte with WABT 1.0.41. Direct
+fixtures retain their exact checked-in binaries because they contain malformed,
+thread, or metadata syntax WABT cannot serialize; those bytes remain protected
+by the fixture-tree digest.
+
+See `docs/wasmtime-corpus.md` for the maintenance workflow and
+`testdata/wasmtime/EXCLUSIONS.md` for the small set of Wasmtime-specific files
+that cannot preserve their upstream oracle in Wago.

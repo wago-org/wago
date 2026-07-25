@@ -1,4 +1,4 @@
-//go:build (linux || darwin) && (amd64 || arm64) && !tinygo && !wago_guardpage
+//go:build ((linux && (amd64 || arm64)) || (darwin && arm64)) && !tinygo
 
 package wago_test
 
@@ -41,8 +41,10 @@ func TestWasmtimePortRustFannkuchExecution(t *testing.T) {
 		{n: 7, want: 228},
 		{n: 9, want: 8629},
 	} {
-		got, err := in.Invoke("run_fannkuch", wago.I32(tc.n))
-		if err != nil || len(got) != 1 || wago.AsI32(got[0]) != tc.want {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		got, err := in.Call(ctx, "run_fannkuch", wago.ValueI32(tc.n))
+		cancel()
+		if err != nil || len(got) != 1 || got[0].Type() != wago.ValI32 || got[0].I32() != tc.want {
 			t.Fatalf("run_fannkuch(%d) = %v, %v; want %d", tc.n, got, err, tc.want)
 		}
 	}
@@ -90,7 +92,11 @@ func runWasmtimeEmbenchen(t *testing.T, name string) (int32, []byte) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	memory, err := wago.NewMemory(2, 2)
+	t.Cleanup(func() { _ = mod.Compiled().Close() })
+	if !mod.Compiled().MemHasMax || mod.Compiled().MemMinPages != 2 || mod.Compiled().MemMaxPages != 2 {
+		t.Fatalf("Emscripten workload memory limits = %d..%d (hasMax=%v), want 2..2", mod.Compiled().MemMinPages, mod.Compiled().MemMaxPages, mod.Compiled().MemHasMax)
+	}
+	memory, err := wago.NewMemory(mod.Compiled().MemMinPages, mod.Compiled().MemMaxPages)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -146,10 +152,28 @@ func runWasmtimeEmbenchen(t *testing.T, name string) (int32, []byte) {
 		importName := spec.Name
 		imports[spec.Key()] = wago.HostFunc(func(m wago.HostModule, params, results []uint64) {
 			switch importName {
-			case "abort", "_abort":
-				// The upstream WAST env stub defines these as no-op functions.
-			case "abortOnCannotGrowMemory":
-				panic(fmt.Errorf("unexpected Emscripten allocation abort"))
+			case "abort", "_abort", "_pthread_cleanup_pop", "_pthread_cleanup_push", "___setErrNo":
+				// The upstream WAST env provider defines these as no-op functions.
+			case "enlargeMemory", "abortOnCannotGrowMemory", "___syscall6", "___syscall140":
+				// The upstream provider defines these result-bearing stubs as
+				// unreachable. If a fixed workload starts calling one, do not
+				// silently manufacture a zero result and weaken the oracle.
+				panic(fmt.Errorf("unexpected Emscripten host call %q", importName))
+			case "___syscall54":
+				// These historical Emscripten workloads issue ioctl(fd,
+				// TCGETS, ...) while initializing stdout. Model only that known
+				// terminal query; any other syscall54 shape remains fail-closed.
+				mem := m.Memory()
+				args := uint32(params[1])
+				if uint32(params[0]) != 54 || uint64(args)+12 > uint64(len(mem)) {
+					panic(fmt.Errorf("unexpected Emscripten syscall54 parameters %v", params))
+				}
+				fd := binary.LittleEndian.Uint32(mem[args:])
+				op := binary.LittleEndian.Uint32(mem[args+4:])
+				if (fd != 1 && fd != 2) || op != 21505 {
+					panic(fmt.Errorf("unexpected Emscripten ioctl fd=%d op=%d", fd, op))
+				}
+				results[0] = 0
 			case "getTotalMemory":
 				results[0] = wago.I32(int32(len(m.Memory())))
 			case "_emscripten_memcpy_big":
@@ -170,9 +194,7 @@ func runWasmtimeEmbenchen(t *testing.T, name string) (int32, []byte) {
 				}
 				results[0] = uint64(total)
 			default:
-				if len(results) > 0 {
-					results[0] = 0
-				}
+				panic(fmt.Errorf("unsupported Emscripten host import %q", importName))
 			}
 		})
 	}

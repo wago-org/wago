@@ -1,4 +1,4 @@
-//go:build (linux || darwin) && (amd64 || arm64) && !tinygo && !wago_guardpage
+//go:build ((linux && (amd64 || arm64)) || (darwin && arm64)) && !tinygo
 
 package wago_test
 
@@ -8,35 +8,127 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/wago-org/wago/src/wago"
 )
 
 type wasmtimeWasm2Fixture struct {
 	path     string
-	features string
+	coverage string
 	mode     string
 }
 
+type wasmtimeProvenance struct {
+	UpstreamRepo                  string   `json:"upstream_repo"`
+	Revision                      string   `json:"revision"`
+	RevisionDate                  string   `json:"revision_date"`
+	SourceRoot                    string   `json:"source_root"`
+	WABTVersion                   string   `json:"wabt_version"`
+	LegacyCoreSourceFilenamePaths []string `json:"legacy_core_source_filenames"`
+	NormalizedWABTJSONFixtures    []string `json:"normalized_wabt_json_fixtures"`
+	FixtureTreeSHA256             string   `json:"fixture_tree_sha256"`
+}
+
+const wasmtimeFixtureOutcomeMarker = "WAGO_WASMTIME_FIXTURE_OUTCOME="
+
+type wasmtimeFixtureOutcome struct {
+	ModulesPassed     int `json:"modules_passed"`
+	ModulesSkipped    int `json:"modules_skipped"`
+	ModulesFailed     int `json:"modules_failed"`
+	AssertionsPassed  int `json:"assertions_passed"`
+	AssertionsSkipped int `json:"assertions_skipped"`
+	AssertionsFailed  int `json:"assertions_failed"`
+}
+
+func wasmtimeOutcomeFromStats(stats specExecStats) wasmtimeFixtureOutcome {
+	return wasmtimeFixtureOutcome{
+		ModulesPassed: stats.modulesPassed, ModulesSkipped: stats.modulesSkipped, ModulesFailed: stats.modulesFailed,
+		AssertionsPassed: stats.assertionsPassed, AssertionsSkipped: stats.assertionsSkipped, AssertionsFailed: stats.assertionsFailed,
+	}
+}
+
+func (o wasmtimeFixtureOutcome) stats() specExecStats {
+	return specExecStats{
+		modulesPassed: o.ModulesPassed, modulesSkipped: o.ModulesSkipped, modulesFailed: o.ModulesFailed,
+		assertionsPassed: o.AssertionsPassed, assertionsSkipped: o.AssertionsSkipped, assertionsFailed: o.AssertionsFailed,
+	}
+}
+
 func TestWasmtimePortCoreManifest(t *testing.T) {
+	provenance := loadWasmtimeProvenance(t)
+	if provenance.UpstreamRepo != "https://github.com/bytecodealliance/wasmtime.git" || provenance.SourceRoot != "tests/misc_testsuite" {
+		t.Fatalf("unexpected Wasmtime provenance origin: %+v", provenance)
+	}
+	if revision, err := hex.DecodeString(provenance.Revision); err != nil || len(revision) != 20 {
+		t.Fatalf("invalid Wasmtime revision %q", provenance.Revision)
+	}
+	if _, err := time.Parse("2006-01-02", provenance.RevisionDate); err != nil {
+		t.Fatalf("invalid Wasmtime revision date %q: %v", provenance.RevisionDate, err)
+	}
+	versionParts := strings.Split(provenance.WABTVersion, ".")
+	if len(versionParts) != 3 {
+		t.Fatalf("invalid WABT version %q", provenance.WABTVersion)
+	}
+	for _, part := range versionParts {
+		if _, err := strconv.ParseUint(part, 10, 32); err != nil {
+			t.Fatalf("invalid WABT version %q", provenance.WABTVersion)
+		}
+	}
 	fixtures := loadWasmtimeWasm2Manifest(t)
 	if len(fixtures) != 104 {
 		t.Fatalf("Wasmtime core manifest has %d entries, want 104", len(fixtures))
 	}
 
+	knownCoverage := map[string]bool{
+		"branch-hinting":                true,
+		"bulk-memory":                   true,
+		"compile-link-workload":         true,
+		"concurrent-instance-lifecycle": true,
+		"malformed-validation":          true,
+		"memory-reuse-bounds":           true,
+		"multi-value":                   true,
+		"nontrapping-float-to-int":      true,
+		"reference-types":               true,
+		"runtime-regression":            true,
+		"sign-extension":                true,
+		"simd":                          true,
+	}
 	modes := map[string]int{}
-	features := map[string]int{}
+	coverage := map[string]int{}
+	seen := map[string]bool{}
+	modeByPath := map[string]string{}
+	previous := ""
 	for _, fixture := range fixtures {
+		if fixture.path != filepath.ToSlash(filepath.Clean(fixture.path)) || strings.HasPrefix(fixture.path, "../") || !strings.HasSuffix(fixture.path, ".wast") {
+			t.Errorf("invalid Wasmtime manifest path %q", fixture.path)
+		}
+		if previous != "" && fixture.path <= previous {
+			t.Errorf("Wasmtime manifest paths are not strictly sorted: %q after %q", fixture.path, previous)
+		}
+		previous = fixture.path
+		if seen[fixture.path] {
+			t.Errorf("duplicate Wasmtime manifest path %q", fixture.path)
+		}
+		seen[fixture.path] = true
+		modeByPath[fixture.path] = fixture.mode
+
 		modes[fixture.mode]++
-		for _, feature := range strings.Split(fixture.features, ",") {
-			features[feature]++
+		for _, label := range strings.Split(fixture.coverage, ",") {
+			if !knownCoverage[label] {
+				t.Errorf("%s has unknown coverage label %q", fixture.path, label)
+			}
+			coverage[label]++
 		}
 		dir := wasmtimeWasm2FixtureDir(fixture.path)
 		if _, err := os.Stat(filepath.Join(dir, "source.wast")); err != nil {
@@ -47,14 +139,33 @@ func TestWasmtimePortCoreManifest(t *testing.T) {
 			if _, err := os.Stat(filepath.Join(dir, "commands.json")); err != nil {
 				t.Errorf("%s command fixture: %v", fixture.path, err)
 			}
+			if wasm, err := filepath.Glob(filepath.Join(dir, "commands.*.wasm")); err != nil || len(wasm) == 0 {
+				t.Errorf("%s generated modules = %v, %v; want at least one", fixture.path, wasm, err)
+			}
 		case "direct-go", "direct-invalid", "direct-concurrency":
-			if _, err := os.Stat(filepath.Join(dir, "module.0.wasm")); err != nil {
-				t.Errorf("%s direct module fixture: %v", fixture.path, err)
+			if wasm, err := filepath.Glob(filepath.Join(dir, "module.*.wasm")); err != nil || len(wasm) == 0 {
+				t.Errorf("%s direct modules = %v, %v; want at least one", fixture.path, wasm, err)
 			}
 		default:
 			t.Errorf("%s has unknown port mode %q", fixture.path, fixture.mode)
 		}
 	}
+	for name, paths := range map[string][]string{
+		"legacy core source filename": provenance.LegacyCoreSourceFilenamePaths,
+		"normalized WABT JSON":        provenance.NormalizedWABTJSONFixtures,
+	} {
+		previous = ""
+		for _, path := range paths {
+			if path <= previous {
+				t.Errorf("%s fixture paths are not strictly sorted: %q after %q", name, path, previous)
+			}
+			if modeByPath[path] != "wast-json" {
+				t.Errorf("%s fixture path %q is not a wast-json fixture", name, path)
+			}
+			previous = path
+		}
+	}
+
 	if modes["wast-json"] != 97 || modes["direct-go"] != 3 || modes["direct-invalid"] != 2 || modes["direct-concurrency"] != 2 || len(modes) != 4 {
 		t.Fatalf("Wasmtime core port modes = %v, want wast-json=97 direct-go=3 direct-invalid=2 direct-concurrency=2", modes)
 	}
@@ -67,8 +178,115 @@ func TestWasmtimePortCoreManifest(t *testing.T) {
 		"simd",
 		"branch-hinting",
 	} {
-		if features[feature] == 0 {
+		if coverage[feature] == 0 {
 			t.Errorf("Wasmtime core manifest has no %s tests", feature)
+		}
+	}
+
+	root := filepath.Clean("../../testdata/wasmtime/core")
+	if err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() || entry.Name() != "source.wast" {
+			return nil
+		}
+		rel, err := filepath.Rel(root, filepath.Dir(path))
+		if err != nil {
+			return err
+		}
+		manifestPath := filepath.ToSlash(rel) + ".wast"
+		if !seen[manifestPath] {
+			t.Errorf("orphan Wasmtime fixture source %q is not in MANIFEST.tsv", manifestPath)
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestWasmtimeRustPortLedger(t *testing.T) {
+	path := filepath.Clean("../../testdata/wasmtime/RUST_PORTS.tsv")
+	f, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+
+	knownTests := map[string]bool{
+		"TestWasmtimePortFailedInstantiationMemoryDoesNotLeak":      true,
+		"TestWasmtimePortLargeAddChainDoesNotOverflowCompilerStack": true,
+		"TestWasmtimePortMultiResultCallBoundaries":                 true,
+		"TestWasmtimePortParallelValidationErrorIsDeterministic":    true,
+		"TestWasmtimePortReusedFuncrefTableIsZeroed":                true,
+		"TestWasmtimePortReusedMemoryIsZeroed":                      true,
+		"TestWasmtimePortSameNamedImportDeclarationsRemainDistinct": true,
+		"TestWasmtimePortTrapsSurviveConcurrentGoroutines":          true,
+		"TestWasmtimePortV128TypedCallBoundaries":                   true,
+	}
+	var portSource strings.Builder
+	for _, sourcePath := range []string{
+		"wasmtime_api_port_test.go",
+		"wasmtime_remaining_port_test.go",
+	} {
+		data, err := os.ReadFile(sourcePath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		portSource.Write(data)
+	}
+	for testName := range knownTests {
+		if !strings.Contains(portSource.String(), "func "+testName+"(") {
+			t.Fatalf("Wasmtime Rust port ledger references missing Go test %s", testName)
+		}
+	}
+
+	seenScopes := map[string]bool{}
+	seenTests := map[string]bool{}
+	previous := ""
+	rows := 0
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		fields := strings.Split(line, "\t")
+		if len(fields) != 3 {
+			t.Fatalf("malformed Wasmtime Rust port ledger line %q", line)
+		}
+		scope, testName, adaptation := fields[0], fields[1], fields[2]
+		if previous != "" && scope <= previous {
+			t.Errorf("Wasmtime Rust port scopes are not strictly sorted: %q after %q", scope, previous)
+		}
+		previous = scope
+		if seenScopes[scope] {
+			t.Errorf("duplicate Wasmtime Rust port scope %q", scope)
+		}
+		if seenTests[testName] {
+			t.Errorf("duplicate Wasmtime local port test %q", testName)
+		}
+		seenScopes[scope], seenTests[testName] = true, true
+		if !strings.HasPrefix(scope, "tests/all/") || !strings.Contains(scope, ".rs::") {
+			t.Errorf("invalid Wasmtime Rust port scope %q", scope)
+		}
+		if !knownTests[testName] {
+			t.Errorf("unknown Wasmtime local port test %q", testName)
+		}
+		if strings.TrimSpace(adaptation) == "" {
+			t.Errorf("%s has no adaptation note", scope)
+		}
+		rows++
+	}
+	if err := scanner.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if rows != len(knownTests) || len(seenTests) != len(knownTests) {
+		t.Fatalf("Wasmtime Rust port ledger has %d rows covering %d tests, want %d", rows, len(seenTests), len(knownTests))
+	}
+	for testName := range knownTests {
+		if !seenTests[testName] {
+			t.Errorf("Wasmtime Rust port ledger is missing %s", testName)
 		}
 	}
 }
@@ -109,13 +327,23 @@ func TestWasmtimePortCoreFixtureTreeDigest(t *testing.T) {
 		_, _ = h.Write([]byte{0})
 	}
 	got := hex.EncodeToString(h.Sum(nil))
-	const want = "b3bbb1072672801a3ce89a12deb953b10a2fe4a2b690f67b9de54489f7c6b243"
+	want := loadWasmtimeProvenance(t).FixtureTreeSHA256
 	if got != want {
 		t.Fatalf("Wasmtime core fixture tree digest = %s, want %s", got, want)
 	}
 }
 
 func TestWasmtimePortCoreWastExecution(t *testing.T) {
+	if childFixture := os.Getenv("WAGO_WASMTIME_FIXTURE"); childFixture != "" {
+		stats := runWasmtimeWastFixtureInProcess(t, childFixture)
+		outcome, err := json.Marshal(wasmtimeOutcomeFromStats(stats))
+		if err != nil {
+			t.Fatal(err)
+		}
+		fmt.Printf("%s%s\n", wasmtimeFixtureOutcomeMarker, outcome)
+		return
+	}
+
 	var total specExecStats
 	for _, fixture := range loadWasmtimeWasm2Manifest(t) {
 		if fixture.mode != "wast-json" {
@@ -123,18 +351,14 @@ func TestWasmtimePortCoreWastExecution(t *testing.T) {
 		}
 		fixture := fixture
 		t.Run(strings.TrimSuffix(fixture.path, ".wast"), func(t *testing.T) {
-			dir := wasmtimeWasm2FixtureDir(fixture.path)
-			raw, err := os.ReadFile(filepath.Join(dir, "commands.json"))
-			if err != nil {
-				t.Fatal(err)
-			}
-			var sf specExecFile
-			if err := json.Unmarshal(raw, &sf); err != nil {
-				t.Fatalf("decode commands: %v", err)
-			}
-			stats := runSpecExecFile(t, fixture.path, dir, sf)
+			sf := loadWasmtimeWastCommands(t, fixture.path)
+			expected := expectedWasmtimeFixtureStats(t, fixture.path, sf)
+			stats := runWasmtimeWastFixtureChild(t, fixture.path)
 			if stats.modulesFailed != 0 || stats.modulesSkipped != 0 || stats.assertionsFailed != 0 || stats.assertionsSkipped != 0 {
 				t.Fatalf("Wasmtime fixture stats = %+v, want no failures or skips", stats)
+			}
+			if stats.modulesPassed != expected.modulesPassed || stats.assertionsPassed != expected.assertionsPassed {
+				t.Fatalf("Wasmtime fixture accounting = modules %d assertions %d, want %d and %d from commands.json", stats.modulesPassed, stats.assertionsPassed, expected.modulesPassed, expected.assertionsPassed)
 			}
 			total.add(stats)
 		})
@@ -142,6 +366,106 @@ func TestWasmtimePortCoreWastExecution(t *testing.T) {
 	if total.modulesPassed != 141 || total.assertionsPassed != 535 {
 		t.Fatalf("Wasmtime WAST totals = modules %d assertions %d, want 141 and 535", total.modulesPassed, total.assertionsPassed)
 	}
+}
+
+func loadWasmtimeWastCommands(t *testing.T, fixture string) specExecFile {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join(wasmtimeWasm2FixtureDir(fixture), "commands.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sf specExecFile
+	if err := json.Unmarshal(raw, &sf); err != nil {
+		t.Fatalf("decode %s commands: %v", fixture, err)
+	}
+	return sf
+}
+
+func runWasmtimeWastFixtureInProcess(t *testing.T, fixture string) specExecStats {
+	t.Helper()
+	found := false
+	for _, candidate := range loadWasmtimeWasm2Manifest(t) {
+		if candidate.path == fixture && candidate.mode == "wast-json" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("unknown Wasmtime wast-json fixture %q", fixture)
+	}
+	dir := wasmtimeWasm2FixtureDir(fixture)
+	return runSpecExecFile(t, fixture, dir, loadWasmtimeWastCommands(t, fixture))
+}
+
+func runWasmtimeWastFixtureChild(t *testing.T, fixture string) specExecStats {
+	t.Helper()
+	timeout := 20 * time.Second
+	if raw := os.Getenv("WAGO_WASMTIME_TIMEOUT"); raw != "" {
+		parsed, err := time.ParseDuration(raw)
+		if err != nil || parsed <= 0 {
+			t.Fatalf("invalid WAGO_WASMTIME_TIMEOUT %q", raw)
+		}
+		timeout = parsed
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestWasmtimePortCoreWastExecution$", "-test.count=1")
+	cmd.Env = append(os.Environ(), "WAGO_WASMTIME_FIXTURE="+fixture)
+	out, err := cmd.CombinedOutput()
+	if ctx.Err() == context.DeadlineExceeded {
+		t.Fatalf("Wasmtime fixture exceeded %s deadline\n%s", timeout, truncateWasmtimeChildOutput(out))
+	}
+	var outcome wasmtimeFixtureOutcome
+	found := false
+	for _, line := range strings.Split(string(out), "\n") {
+		payload, ok := strings.CutPrefix(line, wasmtimeFixtureOutcomeMarker)
+		if !ok {
+			continue
+		}
+		if decodeErr := json.Unmarshal([]byte(payload), &outcome); decodeErr != nil {
+			t.Fatalf("decode Wasmtime child outcome: %v\n%s", decodeErr, truncateWasmtimeChildOutput(out))
+		}
+		found = true
+		break
+	}
+	if err != nil {
+		t.Fatalf("Wasmtime fixture child failed: %v\n%s", err, truncateWasmtimeChildOutput(out))
+	}
+	if !found {
+		t.Fatalf("Wasmtime fixture child exited without an outcome (native crash or harness failure)\n%s", truncateWasmtimeChildOutput(out))
+	}
+	stats := outcome.stats()
+	if stats.modulesFailed != 0 || stats.modulesSkipped != 0 || stats.assertionsFailed != 0 || stats.assertionsSkipped != 0 {
+		t.Fatalf("Wasmtime fixture child reported failures or skips: %+v\n%s", stats, truncateWasmtimeChildOutput(out))
+	}
+	return stats
+}
+
+func expectedWasmtimeFixtureStats(t *testing.T, fixture string, sf specExecFile) specExecStats {
+	t.Helper()
+	var expected specExecStats
+	for _, command := range sf.Commands {
+		switch command.Type {
+		case "module":
+			expected.modulesPassed++
+		case "assert_return", "action", "assert_trap", "assert_exhaustion", "assert_uninstantiable", "assert_unlinkable":
+			expected.assertionsPassed++
+		case "register":
+			// Registration changes subsequent module resolution but is not itself
+			// an execution assertion.
+		default:
+			t.Fatalf("%s commands.json contains unaccounted command type %q at line %d", fixture, command.Type, command.Line)
+		}
+	}
+	return expected
+}
+
+func truncateWasmtimeChildOutput(out []byte) string {
+	const limit = 8 << 10
+	if len(out) <= limit {
+		return string(out)
+	}
+	return string(out[:limit]) + "\n... child output truncated ..."
 }
 
 func TestWasmtimePortBranchHints(t *testing.T) {
@@ -215,50 +539,18 @@ func TestWasmtimePortConcurrentInstanceDropOrder(t *testing.T) {
 			}
 			done <- err
 		}()
-		if err := <-done; err != nil {
+		select {
+		case err := <-done:
+			if err != nil {
+				_ = first.Close()
+				t.Fatalf("iteration %d threaded instantiate/drop: %v", i, err)
+			}
+		case <-time.After(5 * time.Second):
 			_ = first.Close()
-			t.Fatalf("iteration %d threaded instantiate/drop: %v", i, err)
+			t.Fatalf("iteration %d threaded instantiate/drop timed out", i)
 		}
 		if err := first.Close(); err != nil {
 			t.Fatalf("iteration %d close first module after threaded drop: %v", i, err)
-		}
-	}
-}
-
-func TestWasmtimePortMemoryReuseKeepsBounds(t *testing.T) {
-	growCode := compileWasmtimeWasm2DirectFixture(t, "pooling-oob-on-reuse.wast", 0)
-	defer growCode.Close()
-	oobCode := compileWasmtimeWasm2DirectFixture(t, "pooling-oob-on-reuse.wast", 1)
-	defer oobCode.Close()
-
-	for i := 0; i < 32; i++ {
-		done := make(chan error, 1)
-		go func() {
-			in, err := wago.Instantiate(growCode, wago.InstantiateOptions{})
-			if err == nil {
-				_, err = in.Invoke("grow")
-			}
-			if in != nil {
-				if closeErr := in.Close(); err == nil {
-					err = closeErr
-				}
-			}
-			done <- err
-		}()
-		if err := <-done; err != nil {
-			t.Fatalf("iteration %d grow/drop module: %v", i, err)
-		}
-
-		in, err := wago.Instantiate(oobCode, wago.InstantiateOptions{})
-		if err != nil {
-			t.Fatalf("iteration %d instantiate bounds module: %v", i, err)
-		}
-		if got, err := in.Invoke("read_oob"); err == nil {
-			_ = in.Close()
-			t.Fatalf("iteration %d stale grown bounds returned %v, want trap", i, got)
-		}
-		if err := in.Close(); err != nil {
-			t.Fatalf("iteration %d close bounds module: %v", i, err)
 		}
 	}
 }
@@ -270,7 +562,7 @@ func TestWasmtimePortReferenceTypesBasic(t *testing.T) {
 	assertWasmtimeResult(t, in, "func-is-not-null", []uint64{0})
 	assertWasmtimeResult(t, in, "call-indirect-0", []uint64{42})
 	assertWasmtimeResult(t, in, "call-indirect-1", []uint64{7})
-	assertWasmtimeTrap(t, in, "call-indirect-null")
+	assertWasmtimeTrapCode(t, in, "call-indirect-null", wago.TrapIndirectOutOfBounds)
 
 	f0 := assertWasmtimeSingleResult(t, in, "select-funcref", wago.I32(1))
 	f1 := assertWasmtimeSingleResult(t, in, "select-funcref", wago.I32(0))
@@ -284,13 +576,13 @@ func TestWasmtimePortReferenceTypesBasic(t *testing.T) {
 	assertWasmtimeResult(t, in, "table-get", []uint64{f0}, wago.I32(0))
 	assertWasmtimeResult(t, in, "table-get", []uint64{f1}, wago.I32(1))
 	assertWasmtimeResult(t, in, "table-get", []uint64{0}, wago.I32(2))
-	assertWasmtimeTrap(t, in, "table-get", wago.I32(10))
+	assertWasmtimeTrapCode(t, in, "table-get", wago.TrapIndirectOutOfBounds, wago.I32(10))
 
 	assertWasmtimeResult(t, in, "table-set-null", nil, wago.I32(0))
 	assertWasmtimeResult(t, in, "table-get", []uint64{0}, wago.I32(0))
 	assertWasmtimeResult(t, in, "table-set-ref", nil, wago.I32(0))
 	assertWasmtimeResult(t, in, "table-get", []uint64{f0}, wago.I32(0))
-	assertWasmtimeTrap(t, in, "table-set-null", wago.I32(10))
+	assertWasmtimeTrapCode(t, in, "table-set-null", wago.TrapIndirectOutOfBounds, wago.I32(10))
 
 	assertWasmtimeResult(t, in, "table-size", []uint64{10})
 	assertWasmtimeResult(t, in, "table-grow", []uint64{10}, wago.I32(5))
@@ -345,7 +637,7 @@ func TestWasmtimePortTableFill(t *testing.T) {
 	if get(9) != f2 {
 		t.Fatal("zero-length fill at table.size mutated the final entry")
 	}
-	assertWasmtimeTrap(t, in, "fill", wago.I32(8), wago.I32(0), wago.I32(3))
+	assertWasmtimeTrapCode(t, in, "fill", wago.TrapTableOutOfBounds, wago.I32(8), wago.I32(0), wago.I32(3))
 
 	t.Run("imported and local tables", func(t *testing.T) {
 		rt := wago.NewRuntime()
@@ -360,13 +652,29 @@ func TestWasmtimePortTableFill(t *testing.T) {
 		assertWasmtimeResult(t, consumer, "fill1", nil, wago.I32(0), 0, wago.I32(0))
 		assertWasmtimeResult(t, consumer, "fill1", nil, wago.I32(0), 0, wago.I32(1))
 		assertWasmtimeResult(t, consumer, "fill1", nil, wago.I32(1), 0, wago.I32(0))
-		assertWasmtimeTrap(t, consumer, "fill1", wago.I32(2), 0, wago.I32(0))
+		assertWasmtimeTrapCode(t, consumer, "fill1", wago.TrapTableOutOfBounds, wago.I32(2), 0, wago.I32(0))
 
 		for _, args := range [][3]int32{{0, 0, 0}, {0, 0, 1}, {0, 0, 2}, {1, 0, 0}, {1, 0, 1}, {2, 0, 0}} {
 			assertWasmtimeResult(t, consumer, "fill2", nil, wago.I32(args[0]), 0, wago.I32(args[2]))
 		}
-		assertWasmtimeTrap(t, consumer, "fill2", wago.I32(3), 0, wago.I32(0))
+		assertWasmtimeTrapCode(t, consumer, "fill2", wago.TrapTableOutOfBounds, wago.I32(3), 0, wago.I32(0))
 	})
+}
+
+func loadWasmtimeProvenance(t *testing.T) wasmtimeProvenance {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Clean("../../testdata/wasmtime/PROVENANCE.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var provenance wasmtimeProvenance
+	if err := json.Unmarshal(data, &provenance); err != nil {
+		t.Fatalf("decode Wasmtime provenance: %v", err)
+	}
+	if provenance.UpstreamRepo == "" || provenance.Revision == "" || provenance.RevisionDate == "" || provenance.SourceRoot == "" || provenance.WABTVersion == "" || provenance.FixtureTreeSHA256 == "" {
+		t.Fatalf("Wasmtime provenance has empty required fields: %+v", provenance)
+	}
+	return provenance
 }
 
 func loadWasmtimeWasm2Manifest(t *testing.T) []wasmtimeWasm2Fixture {
@@ -389,7 +697,7 @@ func loadWasmtimeWasm2Manifest(t *testing.T) []wasmtimeWasm2Fixture {
 		if len(fields) != 3 {
 			t.Fatalf("malformed Wasmtime manifest line %q", line)
 		}
-		fixtures = append(fixtures, wasmtimeWasm2Fixture{path: fields[0], features: fields[1], mode: fields[2]})
+		fixtures = append(fixtures, wasmtimeWasm2Fixture{path: fields[0], coverage: fields[1], mode: fields[2]})
 	}
 	if err := scanner.Err(); err != nil {
 		t.Fatal(err)
@@ -470,9 +778,17 @@ func assertWasmtimeResult(t *testing.T, in *wago.Instance, export string, want [
 	}
 }
 
-func assertWasmtimeTrap(t *testing.T, in *wago.Instance, export string, args ...uint64) {
+func assertWasmtimeTrapCode(t *testing.T, in *wago.Instance, export string, want wago.TrapCode, args ...uint64) {
 	t.Helper()
-	if got, err := in.Invoke(export, args...); err == nil {
-		t.Fatalf("%s%v returned %v, want trap", export, args, got)
+	got, err := in.Invoke(export, args...)
+	if err == nil {
+		t.Fatalf("%s%v returned %v, want %s", export, args, got, want)
+	}
+	var trap *wago.TrapError
+	if !errors.As(err, &trap) {
+		t.Fatalf("%s%v returned non-trap error %v, want %s", export, args, err, want)
+	}
+	if trap.Code != want {
+		t.Fatalf("%s%v trapped with %s, want %s", export, args, trap.Code, want)
 	}
 }

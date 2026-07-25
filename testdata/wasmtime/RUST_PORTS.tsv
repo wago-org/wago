@@ -1,0 +1,13 @@
+# upstream-scope	local-test	adaptation
+# The exact Wasmtime revision is recorded in PROVENANCE.json.
+# A scope ending in ::portable-* records a deliberately grouped API adaptation;
+# exact Rust test functions are used where the local test has a one-to-one oracle.
+tests/all/func.rs::portable-multi-result-call-boundaries	TestWasmtimePortMultiResultCallBoundaries	binary-builder API adaptation
+tests/all/func.rs::portable-v128-call-boundaries	TestWasmtimePortV128TypedCallBoundaries	binary-builder API adaptation
+tests/all/import_indexes.rs::same_import_names_still_distinct	TestWasmtimePortSameNamedImportDeclarationsRemainDistinct	metadata oracle plus call-site smoke test
+tests/all/module.rs::large_add_chain_no_stack_overflow	TestWasmtimePortLargeAddChainDoesNotOverflowCompilerStack	binary-builder compiler regression
+tests/all/module.rs::validate_deterministic	TestWasmtimePortParallelValidationErrorIsDeterministic	Go worker-count matrix
+tests/all/pooling_allocator.rs::memory_reset_if_instantiation_fails	TestWasmtimePortFailedInstantiationMemoryDoesNotLeak	Wago one-slot JobMemory cache adaptation
+tests/all/pooling_allocator.rs::memory_zeroed	TestWasmtimePortReusedMemoryIsZeroed	Wago one-slot JobMemory cache adaptation
+tests/all/pooling_allocator.rs::table_zeroed	TestWasmtimePortReusedFuncrefTableIsZeroed	Wago one-slot arena cache adaptation
+tests/all/traps.rs::multithreaded_traps	TestWasmtimePortTrapsSurviveConcurrentGoroutines	independent-instance goroutine stress preserving Instance call contract

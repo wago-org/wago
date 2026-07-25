@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"os"
@@ -1474,6 +1475,11 @@ func runSpecExecFileWithConfig(t *testing.T, base, tmp string, sf specExecFile, 
 			if closeErr := compiled.Close(); closeErr != nil {
 				t.Errorf("%s.wast:%d close trapped assertion module: %v", base, c.Line, closeErr)
 			}
+			if ok, why := specInstantiationFailureMatches(err, c.Text); !ok {
+				stats.assertionsFailed++
+				t.Errorf("%s.wast:%d expected instantiation failure %q: %s", base, c.Line, c.Text, why)
+				continue
+			}
 			stats.assertionsPassed++
 		case "assert_unlinkable":
 			data, err := os.ReadFile(filepath.Join(tmp, c.Filename))
@@ -1505,6 +1511,12 @@ func runSpecExecFileWithConfig(t *testing.T, base, tmp string, sf specExecFile, 
 			}
 			if closeErr := compiled.Close(); closeErr != nil {
 				t.Errorf("%s.wast:%d close unlinkable assertion module: %v", base, c.Line, closeErr)
+			}
+			var trap *wago.TrapError
+			if errors.As(instantiateErr, &trap) {
+				stats.assertionsFailed++
+				t.Errorf("%s.wast:%d expected link failure %q, got runtime trap %v", base, c.Line, c.Text, trap)
+				continue
 			}
 			stats.assertionsPassed++
 		case "assert_return", "action":
@@ -1826,7 +1838,139 @@ func runTrapAssert(t *testing.T, base string, c specExecCmd, m specModule) (spec
 		t.Errorf("%s.wast:%d %s(%v): expected trap %q, returned normally", base, c.Line, c.Action.Field, argValues(c.Action.Args), c.Text)
 		return specGapNone, false
 	}
+	if ok, why := specTrapMatches(out.trap, c.Text); !ok {
+		t.Errorf("%s.wast:%d %s(%v): expected trap %q: %s", base, c.Line, c.Action.Field, argValues(c.Action.Args), c.Text, why)
+		return specGapNone, false
+	}
 	return specGapNone, true
+}
+
+func specInstantiationFailureMatches(err error, want string) (bool, string) {
+	var trap *wago.TrapError
+	if errors.As(err, &trap) {
+		return specTrapMatches(err, want)
+	}
+	message := strings.ToLower(err.Error())
+	switch want {
+	case "out of bounds":
+		if strings.Contains(message, "out of bounds") && (strings.Contains(message, "data segment") || strings.Contains(message, "element segment")) {
+			return true, ""
+		}
+	case "out of bounds memory access", "out of bounds linear memory access":
+		if strings.Contains(message, "out of bounds") && strings.Contains(message, "data segment") {
+			return true, ""
+		}
+	case "out of bounds table access":
+		if strings.Contains(message, "out of bounds") && strings.Contains(message, "element segment") {
+			return true, ""
+		}
+	}
+	return false, fmt.Sprintf("got non-trap instantiation error %v", err)
+}
+
+// specTrapMatches translates the testsuite's stable assertion vocabulary to
+// Wago's native trap ABI. Unknown text is a harness failure: silently accepting
+// any trap would allow the right instruction to fail for the wrong reason.
+func specTrapMatches(err error, want string) (bool, string) {
+	var trap *wago.TrapError
+	if !errors.As(err, &trap) {
+		return false, fmt.Sprintf("got non-trap error %v", err)
+	}
+	want = strings.ToLower(strings.TrimSpace(want))
+	for _, base := range []string{"undefined element", "uninitialized element"} {
+		if suffix := strings.TrimPrefix(want, base+" "); suffix != want {
+			if _, parseErr := strconv.ParseUint(suffix, 10, 32); parseErr == nil {
+				want = base
+			}
+		}
+	}
+	matches := func(codes ...wago.TrapCode) bool {
+		for _, code := range codes {
+			if trap.Code == code {
+				return true
+			}
+		}
+		return false
+	}
+
+	var ok bool
+	switch want {
+	case "unreachable":
+		ok = matches(wago.TrapUnreachable)
+	case "builtin trap":
+		ok = matches(wago.TrapBuiltin)
+	case "out of bounds memory access", "out of bounds linear memory access":
+		ok = matches(wago.TrapLinMemOutOfBounds, wago.TrapLinkedMemOutOfBounds)
+	case "out of bounds":
+		// Some engine regression corpora retain this older generic spelling.
+		ok = matches(wago.TrapLinMemOutOfBounds, wago.TrapLinkedMemOutOfBounds, wago.TrapTableOutOfBounds, wago.TrapIndirectOutOfBounds)
+	case "out of bounds table access":
+		// Scalar table.get/table.set currently use the legacy indirect-table
+		// bounds code; bulk table operations use the dedicated table code.
+		ok = matches(wago.TrapTableOutOfBounds, wago.TrapIndirectOutOfBounds)
+	case "undefined element", "undefined", "uninitialized element", "uninitialized":
+		ok = matches(wago.TrapIndirectOutOfBounds, wago.TrapTableOutOfBounds)
+	case "indirect call type mismatch":
+		ok = matches(wago.TrapIndirectWrongSig)
+	case "integer divide by zero":
+		ok = matches(wago.TrapDivZero)
+	case "integer overflow":
+		ok = matches(wago.TrapDivOverflow, wago.TrapTruncOverflow)
+	case "invalid conversion to integer":
+		ok = matches(wago.TrapTruncOverflow)
+	case "call stack exhausted":
+		ok = matches(wago.TrapStackFenceBreached)
+	case "runtime interrupt request":
+		ok = matches(wago.TrapInterrupted)
+	case "unknown import", "called function not linked", "indirect call not linked":
+		ok = matches(wago.TrapCalledFnNotLinked, wago.TrapLinkedMemNotLinked)
+	case "failed to grow memory", "could not grow memory":
+		ok = matches(wago.TrapLinMemCouldNotExtend)
+	default:
+		return false, fmt.Sprintf("unknown expected trap text %q (actual %s)", want, trap.Code)
+	}
+	if !ok {
+		return false, fmt.Sprintf("got %s", trap.Code)
+	}
+	return true, ""
+}
+
+func TestSpecTrapMatching(t *testing.T) {
+	if ok, why := specInstantiationFailureMatches(errors.New("active data segment 0 out of bounds"), "out of bounds memory access"); !ok {
+		t.Fatalf("active data instantiation failure did not match: %s", why)
+	}
+	if ok, _ := specInstantiationFailureMatches(errors.New("active element segment 0 out of bounds"), "out of bounds memory access"); ok {
+		t.Fatal("element-segment error matched a memory-instantiation assertion")
+	}
+	if ok, why := specInstantiationFailureMatches(errors.New("active element segment 0 out of bounds"), "out of bounds"); !ok {
+		t.Fatalf("generic element instantiation failure did not match: %s", why)
+	}
+
+	for _, tc := range []struct {
+		name string
+		err  error
+		want string
+		ok   bool
+	}{
+		{name: "unreachable", err: &wago.TrapError{Code: wago.TrapUnreachable}, want: "unreachable", ok: true},
+		{name: "wrong code", err: &wago.TrapError{Code: wago.TrapDivZero}, want: "unreachable"},
+		{name: "memory", err: &wago.TrapError{Code: wago.TrapLinkedMemOutOfBounds}, want: "out of bounds memory access", ok: true},
+		{name: "table bulk", err: &wago.TrapError{Code: wago.TrapTableOutOfBounds}, want: "out of bounds table access", ok: true},
+		{name: "table scalar", err: &wago.TrapError{Code: wago.TrapIndirectOutOfBounds}, want: "out of bounds table access", ok: true},
+		{name: "undefined element", err: &wago.TrapError{Code: wago.TrapIndirectOutOfBounds}, want: "undefined element", ok: true},
+		{name: "indexed uninitialized element", err: &wago.TrapError{Code: wago.TrapIndirectOutOfBounds}, want: "uninitialized element 2", ok: true},
+		{name: "integer overflow division", err: &wago.TrapError{Code: wago.TrapDivOverflow}, want: "integer overflow", ok: true},
+		{name: "integer overflow conversion", err: &wago.TrapError{Code: wago.TrapTruncOverflow}, want: "integer overflow", ok: true},
+		{name: "non trap", err: errors.New("api failure"), want: "unreachable"},
+		{name: "unknown vocabulary", err: &wago.TrapError{Code: wago.TrapUnreachable}, want: "mystery trap"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, _ := specTrapMatches(tc.err, tc.want)
+			if got != tc.ok {
+				t.Fatalf("specTrapMatches(%v, %q) = %v, want %v", tc.err, tc.want, got, tc.ok)
+			}
+		})
+	}
 }
 
 func argValues(args []specValue) string {

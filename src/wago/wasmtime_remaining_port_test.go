@@ -1,4 +1,4 @@
-//go:build (linux || darwin) && (amd64 || arm64) && !tinygo && !wago_guardpage
+//go:build ((linux && (amd64 || arm64)) || (darwin && arm64)) && !tinygo
 
 package wago
 
@@ -6,9 +6,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
+	"sync"
 	"testing"
+	"time"
 
 	corewasm "github.com/wago-org/wago/src/core/compiler/wasm"
+	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/testutil/wasmtest"
 )
 
@@ -127,6 +132,66 @@ func TestWasmtimePortFailedInstantiationMemoryDoesNotLeak(t *testing.T) {
 	}
 }
 
+// Port of misc_testsuite/pooling-oob-on-reuse.wast. In addition to checking
+// the public trap behavior, require the one-slot cache to hand the exact grown
+// mapping to the smaller module so the stale-bounds regression cannot pass
+// vacuously after reuse is accidentally disabled.
+func TestWasmtimePortMemoryReuseKeepsBounds(t *testing.T) {
+	growCode := compileWasmtimeDirectFixture(t, "pooling-oob-on-reuse", 0)
+	defer growCode.Close()
+	oobCode := compileWasmtimeDirectFixture(t, "pooling-oob-on-reuse", 1)
+	defer oobCode.Close()
+
+	type growResult struct {
+		memory *coreruntime.JobMemory
+		err    error
+	}
+	for i := 0; i < 32; i++ {
+		done := make(chan growResult, 1)
+		go func() {
+			in, err := Instantiate(growCode)
+			if err == nil {
+				_, err = in.Invoke("grow")
+			}
+			var memory *coreruntime.JobMemory
+			if in != nil {
+				memory = in.jm
+				if closeErr := in.Close(); err == nil {
+					err = closeErr
+				}
+			}
+			done <- growResult{memory: memory, err: err}
+		}()
+		var grown growResult
+		select {
+		case grown = <-done:
+		case <-time.After(5 * time.Second):
+			t.Fatalf("iteration %d grow/drop module timed out", i)
+		}
+		if grown.err != nil {
+			t.Fatalf("iteration %d grow/drop module: %v", i, grown.err)
+		}
+
+		in, err := Instantiate(oobCode)
+		if err != nil {
+			t.Fatalf("iteration %d instantiate bounds module: %v", i, err)
+		}
+		if in.jm != grown.memory {
+			_ = in.Close()
+			t.Fatalf("iteration %d JobMemory was not reused: grown=%p bounds=%p", i, grown.memory, in.jm)
+		}
+		_, err = in.Invoke("read_oob")
+		var trap *TrapError
+		if !errors.As(err, &trap) || trap.Code != TrapLinMemOutOfBounds {
+			_ = in.Close()
+			t.Fatalf("iteration %d read_oob = %v, want TrapLinMemOutOfBounds", i, err)
+		}
+		if err := in.Close(); err != nil {
+			t.Fatalf("iteration %d close bounds module: %v", i, err)
+		}
+	}
+}
+
 // Port of tests/all/module.rs::large_add_chain_no_stack_overflow.
 func TestWasmtimePortLargeAddChainDoesNotOverflowCompilerStack(t *testing.T) {
 	const additions = 20_000
@@ -193,8 +258,11 @@ func TestWasmtimePortParallelValidationErrorIsDeterministic(t *testing.T) {
 	}
 }
 
-// Port of tests/all/import_indexes.rs::same_import_names_still_distinct.
-func TestWasmtimePortSameNamedImportsRemainDistinctByIndex(t *testing.T) {
+// Port of tests/all/import_indexes.rs::same_import_names_still_distinct. The
+// upstream oracle is import metadata identity; Wago's public Imports map binds
+// duplicate keys to one host value, so the execution below is only a call-site
+// smoke test and does not claim independently bindable duplicate imports.
+func TestWasmtimePortSameNamedImportDeclarationsRemainDistinct(t *testing.T) {
 	i32Result := wasmtest.FuncType(nil, []corewasm.ValType{corewasm.I32})
 	f32Result := wasmtest.FuncType(nil, []corewasm.ValType{corewasm.F32})
 	imports := [][]byte{
@@ -214,6 +282,7 @@ func TestWasmtimePortSameNamedImportsRemainDistinctByIndex(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer mod.Compiled().Close()
 	decls := mod.Imports()
 	if len(decls) != 2 || decls[0].Index != 0 || decls[1].Index != 1 || decls[0].Module != "" || decls[0].Name != "" || decls[1].Module != "" || decls[1].Name != "" || decls[0].Results[0] != ValI32 || decls[1].Results[0] != ValF32 {
 		t.Fatalf("same-named import metadata = %#v", decls)
@@ -239,12 +308,15 @@ func TestWasmtimePortSameNamedImportsRemainDistinctByIndex(t *testing.T) {
 		}
 	}
 	if calls != 4 {
-		t.Fatalf("host import calls = %d, want 4 distinct indexed dispatches", calls)
+		t.Fatalf("host import calls = %d, want 4", calls)
 	}
 }
 
-// Port of tests/all/traps.rs::multithreaded_traps.
-func TestWasmtimePortTrapsSurviveGoroutineMigration(t *testing.T) {
+// Port of tests/all/traps.rs::multithreaded_traps. The upstream case performs
+// one cross-thread handoff; this adaptation also runs independent instances in
+// parallel, preserving Instance's documented non-concurrent-call contract while
+// stressing process-wide trap state and post-trap recovery.
+func TestWasmtimePortTrapsSurviveConcurrentGoroutines(t *testing.T) {
 	mod := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(
 			wasmtest.FuncType(nil, nil),
@@ -260,38 +332,87 @@ func TestWasmtimePortTrapsSurviveGoroutineMigration(t *testing.T) {
 			wasmtest.Code([]byte{0x41, 0x07, 0x0b}),
 		)),
 	)
-	in, err := Instantiate(MustCompile(mod))
+	// Trap-state concurrency is independent of memory bounds. Force explicit
+	// mode so a guard-page build does not reserve one multi-gigabyte guard range
+	// per simultaneously live worker instance.
+	compiled, err := NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit).Compile(mod)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer in.Close()
-	assertUnreachable := func(where string) error {
-		_, err := in.Invoke("trap")
-		var trap *TrapError
-		if !errors.As(err, &trap) || trap.Code != TrapUnreachable {
-			return fmt.Errorf("%s trap = %v, want TrapUnreachable", where, err)
+	defer compiled.Close()
+
+	const workers = 10
+	instances := make([]*Instance, workers+1)
+	for i := range instances {
+		in, err := Instantiate(compiled)
+		if err != nil {
+			t.Fatalf("instantiate trap worker %d: %v", i, err)
 		}
-		return nil
+		instances[i] = in
+		defer in.Close()
 	}
-	if err := assertUnreachable("initial goroutine"); err != nil {
-		t.Fatal(err)
-	}
-	done := make(chan error, 1)
-	go func() {
-		if err := assertUnreachable("migrated goroutine"); err != nil {
-			done <- err
-			return
+
+	run := func(in *Instance, where string, iterations int) error {
+		for i := 0; i < iterations; i++ {
+			_, err := in.Invoke("trap")
+			var trap *TrapError
+			if !errors.As(err, &trap) || trap.Code != TrapUnreachable {
+				return fmt.Errorf("%s iteration %d trap = %v, want TrapUnreachable", where, i, err)
+			}
 		}
 		got, err := in.Invoke("value")
 		if err != nil || len(got) != 1 || AsI32(got[0]) != 7 {
-			done <- fmt.Errorf("post-trap value = %v, %v; want 7", got, err)
-			return
+			return fmt.Errorf("%s post-trap value = %v, %v; want 7", where, got, err)
 		}
-		done <- nil
+		return nil
+	}
+
+	start := make(chan struct{})
+	errCh := make(chan error, workers)
+	var wg sync.WaitGroup
+	wg.Add(workers)
+	for i := 0; i < workers; i++ {
+		i := i
+		go func() {
+			defer wg.Done()
+			<-start
+			if err := run(instances[i], fmt.Sprintf("worker %d", i), 100); err != nil {
+				errCh <- err
+			}
+		}()
+	}
+	close(start)
+	if err := run(instances[workers], "caller", 1_000); err != nil {
+		t.Error(err)
+	}
+	workersDone := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(workersDone)
 	}()
-	if err := <-done; err != nil {
+	select {
+	case <-workersDone:
+	case <-time.After(10 * time.Second):
+		t.Fatal("concurrent trap workers timed out")
+	}
+	close(errCh)
+	for err := range errCh {
+		t.Error(err)
+	}
+}
+
+func compileWasmtimeDirectFixture(t *testing.T, fixture string, module int) *Compiled {
+	t.Helper()
+	path := filepath.Join("../../testdata/wasmtime/core", fixture, fmt.Sprintf("module.%d.wasm", module))
+	data, err := os.ReadFile(path)
+	if err != nil {
 		t.Fatal(err)
 	}
+	compiled, err := Compile(nil, data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return compiled
 }
 
 func wasmtimeReuseMemoryModule(failing bool) []byte {

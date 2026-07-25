@@ -75,6 +75,34 @@ jobs:
       - name: Lint
         run: make lint
 
+  wasmtime-corpus:
+    name: Wasmtime corpus provenance
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+      - name: Build pinned WABT
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake jq ninja-build
+          version="$(jq -r .wabt_version testdata/wasmtime/PROVENANCE.json)"
+          test -n "$version" && test "$version" != null
+          git clone --depth=1 --branch "$version" --recurse-submodules https://github.com/WebAssembly/wabt.git .tmp/wabt
+          cmake -S .tmp/wabt -B .tmp/wabt/build -G Ninja -DBUILD_TESTS=OFF
+          cmake --build .tmp/wabt/build --target wast2json
+      - name: Verify pinned Wasmtime sources and generated artifacts
+        run: |
+          go run ./scripts/wasmtime-corpus \
+            -repo "$PWD" \
+            -wasmtime "$PWD/.tmp/wasmtime-corpus-upstream" \
+            -wast2json "$PWD/.tmp/wabt/build/wast2json" \
+            -fetch
+
   race:
     name: Race detector / Linux amd64
     needs: changes
@@ -405,7 +433,7 @@ jobs:
   ci-ok:
     name: CI
     if: always()
-    needs: [changes, lint, race, platform-test, core-v2, tinygo, coverage, size]
+    needs: [changes, lint, wasmtime-corpus, race, platform-test, core-v2, tinygo, coverage, size]
     runs-on: ubuntu-latest
     steps:
       - name: Verify no required job failed

@@ -1,0 +1,26 @@
+{
+  "upstream_repo": "https://github.com/bytecodealliance/wasmtime.git",
+  "revision": "a5720e50d5ec9eab34eed690eee952abfdd0e3ba",
+  "revision_date": "2026-07-24",
+  "source_root": "tests/misc_testsuite",
+  "wabt_version": "1.0.41",
+  "legacy_core_source_filenames": [
+    "winch/br_table.wast",
+    "winch/float-comparison.wast",
+    "winch/global.wast",
+    "winch/imported_globals_fuzzbug.wast",
+    "winch/issue-10613.wast",
+    "winch/issue-10751.wast",
+    "winch/issue-12423.wast",
+    "winch/memory_offsets.wast",
+    "winch/misc.wast",
+    "winch/oob.wast",
+    "winch/oob_extend.wast",
+    "winch/select.wast",
+    "winch/use-innermost-frame.wast"
+  ],
+  "normalized_wabt_json_fixtures": [
+    "winch/use-innermost-frame.wast"
+  ],
+  "fixture_tree_sha256": "b3bbb1072672801a3ce89a12deb953b10a2fe4a2b690f67b9de54489f7c6b243"
+}
