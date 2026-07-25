@@ -132,6 +132,11 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: false
+      # Several amd64 runtime tests discover the pinned Core 3 checkout before
+      # deciding whether an unavailable conversion tool makes the case skippable.
+      # Fetch the corpus so the race lane reports races rather than checkout noise.
+      - name: Initialize Release 3 suite
+        run: git submodule update --init --depth=1 tests/spec-v3
       - name: Run focused runtime race suites
         run: go test -race -count=1 ./src/wago ./src/core/runtime
 

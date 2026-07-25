@@ -20,9 +20,12 @@ packages. Windows downloads the checksum-pinned official WABT archive because
 the project does not publish a Chocolatey package; Windows 11 ARM runs that x64
 tool through its application emulation layer. Linux/amd64 and coverage
 additionally initialize the pinned `tests/spec-v3` submodule, build the
-interpreter from that exact checkout, and export its path and revision. This is
-the authoritative fallback for exception-handling source forms that WABT 1.0.41
-cannot parse; other matrix cells avoid the large OCaml setup.
+interpreter from that exact checkout, and export its path and revision. The
+focused Linux/amd64 race lane initializes the same submodule without building
+the conversion tools: supplementary tests may then skip for an unavailable
+tool, but corpus discovery cannot obscure a real race with a missing-checkout
+failure. This is the authoritative fallback for exception-handling source forms
+that WABT 1.0.41 cannot parse; other matrix cells avoid the large OCaml setup.
 
 The six supported runtime targets build and test every Go package, including the
 integrated regression corpus, followed by the corpus matrix with a bounded
