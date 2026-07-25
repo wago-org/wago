@@ -4,7 +4,6 @@ package wago_test
 
 import (
 	"context"
-	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -25,6 +24,7 @@ import (
 	"time"
 
 	"github.com/wago-org/wago/internal/wasmtimecorpus"
+	"github.com/wago-org/wago/internal/wasmtimetest"
 	"github.com/wago-org/wago/src/wago"
 )
 
@@ -38,11 +38,7 @@ type wasmtimeProvenance = wasmtimecorpus.Provenance
 
 const (
 	wasmtimeFixtureOutcomeMarker = "WAGO_WASMTIME_FIXTURE_OUTCOME="
-	wasmtimeChildProtocol        = "1"
 	wasmtimeFixtureEnv           = "WAGO_WASMTIME_FIXTURE"
-	wasmtimePortTestEnv          = "WAGO_WASMTIME_PORT_TEST"
-	wasmtimeChildProtocolEnv     = "WAGO_WASMTIME_CHILD_PROTOCOL"
-	wasmtimeChildNonceEnv        = "WAGO_WASMTIME_CHILD_NONCE"
 )
 
 type wasmtimeFixtureOutcome struct {
@@ -59,7 +55,7 @@ type wasmtimeFixtureOutcome struct {
 
 func wasmtimeOutcomeFromStats(fixture, nonce string, stats specExecStats) wasmtimeFixtureOutcome {
 	return wasmtimeFixtureOutcome{
-		Protocol: wasmtimeChildProtocol, Fixture: fixture, Nonce: nonce,
+		Protocol: wasmtimetest.Protocol, Fixture: fixture, Nonce: nonce,
 		ModulesPassed: stats.modulesPassed, ModulesSkipped: stats.modulesSkipped, ModulesFailed: stats.modulesFailed,
 		AssertionsPassed: stats.assertionsPassed, AssertionsSkipped: stats.assertionsSkipped, AssertionsFailed: stats.assertionsFailed,
 	}
@@ -128,6 +124,13 @@ func TestWasmtimePortCoreManifest(t *testing.T) {
 	}
 
 	root := filepath.Clean("../../testdata/wasmtime/core")
+	parsed, err := wasmtimecorpus.LoadManifest(filepath.Clean("../../testdata/wasmtime/MANIFEST.tsv"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasmtimecorpus.ValidateCorpusTree(root, parsed); err != nil {
+		t.Fatalf("Wasmtime corpus tree: %v", err)
+	}
 	if err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -154,28 +157,34 @@ func TestWasmtimeRustPortLedger(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	knownTests := discoverWasmtimeRustPortTests(t)
-
-	seenTests := map[string]bool{}
+	documented := discoverWasmtimeRustPortTests(t)
+	ledger := map[string]map[string]bool{}
 	for _, port := range ports {
-		if !knownTests[port.LocalTest] {
-			t.Errorf("unknown Wasmtime local port test %q", port.LocalTest)
+		if ledger[port.LocalTest] == nil {
+			ledger[port.LocalTest] = map[string]bool{}
 		}
-		seenTests[port.LocalTest] = true
+		ledger[port.LocalTest][port.Scope] = true
 	}
-	if len(seenTests) != len(knownTests) {
-		t.Fatalf("Wasmtime Rust port ledger covers %d local tests, want %d", len(seenTests), len(knownTests))
+	for testName, scopes := range documented {
+		for scope := range scopes {
+			if !ledger[testName][scope] {
+				t.Errorf("Go documentation maps %s to %s, but RUST_PORTS.tsv does not", testName, scope)
+			}
+		}
 	}
-	for testName := range knownTests {
-		if !seenTests[testName] {
-			t.Errorf("Wasmtime Rust port ledger is missing %s", testName)
+	for testName, scopes := range ledger {
+		for scope := range scopes {
+			if !documented[testName][scope] {
+				t.Errorf("RUST_PORTS.tsv maps %s to %s, but its Go documentation does not", testName, scope)
+			}
 		}
 	}
 }
 
-func discoverWasmtimeRustPortTests(t *testing.T) map[string]bool {
+func discoverWasmtimeRustPortTests(t *testing.T) map[string]map[string]bool {
 	t.Helper()
-	ported := map[string]bool{}
+	ported := map[string]map[string]bool{}
+	scopeRE := regexp.MustCompile(`tests/all/[A-Za-z0-9_./-]+\.rs::[A-Za-z_][A-Za-z0-9_]*`)
 	matches, err := filepath.Glob("wasmtime_*_port_test.go")
 	if err != nil {
 		t.Fatal(err)
@@ -190,8 +199,15 @@ func discoverWasmtimeRustPortTests(t *testing.T) map[string]bool {
 			if !ok || fn.Recv != nil || !strings.HasPrefix(fn.Name.Name, "TestWasmtimePort") || fn.Doc == nil {
 				continue
 			}
-			if strings.Contains(fn.Doc.Text(), "tests/all/") {
-				ported[fn.Name.Name] = true
+			scopes := scopeRE.FindAllString(fn.Doc.Text(), -1)
+			if len(scopes) == 0 {
+				continue
+			}
+			if ported[fn.Name.Name] == nil {
+				ported[fn.Name.Name] = map[string]bool{}
+			}
+			for _, scope := range scopes {
+				ported[fn.Name.Name][scope] = true
 			}
 		}
 	}
@@ -199,6 +215,29 @@ func discoverWasmtimeRustPortTests(t *testing.T) map[string]bool {
 		t.Fatal("no Go tests documented as Wasmtime tests/all ports")
 	}
 	return ported
+}
+
+func TestWasmtimeUpstreamInventoryLedger(t *testing.T) {
+	entries, err := wasmtimecorpus.LoadInventory(filepath.Clean("../../testdata/wasmtime/UPSTREAM_INVENTORY.tsv"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	upstream := make([]string, len(entries))
+	statusCounts := map[string]int{}
+	for i, entry := range entries {
+		upstream[i] = entry.Path
+		statusCounts[entry.Status]++
+	}
+	parsed, err := wasmtimecorpus.LoadManifest(filepath.Clean("../../testdata/wasmtime/MANIFEST.tsv"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasmtimecorpus.ValidateInventory(entries, parsed, upstream); err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 324 || statusCounts[wasmtimecorpus.InventoryPorted] != 104 || statusCounts[wasmtimecorpus.InventoryExcluded] != 4 || statusCounts[wasmtimecorpus.InventoryOutOfScope] != 216 {
+		t.Fatalf("Wasmtime upstream inventory = total %d statuses %v, want total=324 ported=104 excluded=4 out-of-scope=216", len(entries), statusCounts)
+	}
 }
 
 func TestWasmtimeDirectArtifactLedger(t *testing.T) {
@@ -285,7 +324,7 @@ func TestWasmtimePortCoreFixtureTreeDigest(t *testing.T) {
 
 func TestWasmtimePortCoreWastExecution(t *testing.T) {
 	if childFixture := os.Getenv(wasmtimeFixtureEnv); childFixture != "" {
-		nonce := requireWasmtimeChildProtocol(t)
+		nonce := wasmtimetest.RequireProtocol(t)
 		stats := runWasmtimeWastFixtureInProcess(t, childFixture)
 		outcome, err := json.Marshal(wasmtimeOutcomeFromStats(childFixture, nonce, stats))
 		if err != nil {
@@ -311,12 +350,6 @@ func TestWasmtimePortCoreWastExecution(t *testing.T) {
 			if stats.modulesPassed != expected.modulesPassed || stats.assertionsPassed != expected.assertionsPassed {
 				t.Fatalf("Wasmtime fixture accounting = modules %d assertions %d, want %d and %d from commands.json", stats.modulesPassed, stats.assertionsPassed, expected.modulesPassed, expected.assertionsPassed)
 			}
-			if testing.CoverMode() != "" {
-				covered := runWasmtimeWastFixtureInProcess(t, fixture.path)
-				if covered.modulesPassed != stats.modulesPassed || covered.assertionsPassed != stats.assertionsPassed || covered.modulesFailed != 0 || covered.assertionsFailed != 0 || covered.modulesSkipped != 0 || covered.assertionsSkipped != 0 {
-					t.Fatalf("coverage replay stats = %+v, isolated stats = %+v", covered, stats)
-				}
-			}
 			total.add(stats)
 		})
 	}
@@ -327,13 +360,17 @@ func TestWasmtimePortCoreWastExecution(t *testing.T) {
 
 func loadWasmtimeWastCommands(t *testing.T, fixture string) specExecFile {
 	t.Helper()
-	raw, err := os.ReadFile(filepath.Join(wasmtimeCoreFixtureDir(fixture), "commands.json"))
+	dir := wasmtimeCoreFixtureDir(fixture)
+	raw, err := os.ReadFile(filepath.Join(dir, "commands.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
+	if _, err := wasmtimecorpus.ValidateWASTJSONFixture(dir); err != nil {
+		t.Fatalf("validate %s command graph: %v", fixture, err)
+	}
 	var sf specExecFile
-	if err := json.Unmarshal(raw, &sf); err != nil {
-		t.Fatalf("decode %s commands: %v", fixture, err)
+	if err := wasmtimetest.DecodeStrictJSON(raw, &sf); err != nil {
+		t.Fatalf("decode %s commands strictly: %v", fixture, err)
 	}
 	return sf
 }
@@ -354,164 +391,50 @@ func runWasmtimeWastFixtureInProcess(t *testing.T, fixture string) specExecStats
 	return runSpecExecFile(t, fixture, dir, loadWasmtimeWastCommands(t, fixture))
 }
 
-func requireWasmtimeChildProtocol(t *testing.T) string {
-	t.Helper()
-	if got := os.Getenv(wasmtimeChildProtocolEnv); got != wasmtimeChildProtocol {
-		t.Fatalf("invalid Wasmtime child protocol %q", got)
-	}
-	nonce := os.Getenv(wasmtimeChildNonceEnv)
-	decoded, err := hex.DecodeString(nonce)
-	if err != nil || len(decoded) != 16 {
-		t.Fatalf("invalid Wasmtime child nonce %q", nonce)
-	}
-	return nonce
-}
-
-func newWasmtimeChildNonce(t *testing.T) string {
-	t.Helper()
-	var nonce [16]byte
-	if _, err := rand.Read(nonce[:]); err != nil {
-		t.Fatal(err)
-	}
-	return hex.EncodeToString(nonce[:])
-}
-
-func wasmtimeChildEnvironment(overrides map[string]string) []string {
-	blocked := map[string]bool{
-		wasmtimeFixtureEnv:       true,
-		wasmtimePortTestEnv:      true,
-		wasmtimeChildProtocolEnv: true,
-		wasmtimeChildNonceEnv:    true,
-	}
-	env := make([]string, 0, len(os.Environ())+len(overrides))
-	for _, item := range os.Environ() {
-		key, _, _ := strings.Cut(item, "=")
-		if !blocked[key] {
-			env = append(env, item)
-		}
-	}
-	keys := make([]string, 0, len(overrides))
-	for key := range overrides {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	for _, key := range keys {
-		env = append(env, key+"="+overrides[key])
-	}
-	return env
-}
-
-func wasmtimeTestTimeout(t *testing.T, fallback time.Duration) time.Duration {
-	t.Helper()
-	if raw := os.Getenv("WAGO_WASMTIME_TIMEOUT"); raw != "" {
-		parsed, err := time.ParseDuration(raw)
-		if err != nil || parsed <= 0 {
-			t.Fatalf("invalid WAGO_WASMTIME_TIMEOUT %q", raw)
-		}
-		return parsed
-	}
-	return fallback
-}
-
 func runWasmtimeIsolatedPortTest(t *testing.T) bool {
 	t.Helper()
-	if target := os.Getenv(wasmtimePortTestEnv); target != "" {
-		requireWasmtimeChildProtocol(t)
-		if target != t.Name() {
-			t.Skip("different isolated Wasmtime subtest")
-			return true
-		}
-		return false
-	}
-
-	timeout := wasmtimeTestTimeout(t, 30*time.Second)
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-	top := strings.SplitN(t.Name(), "/", 2)[0]
-	nonce := newWasmtimeChildNonce(t)
-	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^"+regexp.QuoteMeta(top)+"$", "-test.count=1")
-	cmd.Env = wasmtimeChildEnvironment(map[string]string{
-		wasmtimePortTestEnv:      t.Name(),
-		wasmtimeChildProtocolEnv: wasmtimeChildProtocol,
-		wasmtimeChildNonceEnv:    nonce,
-	})
-	out, err := cmd.CombinedOutput()
-	if ctx.Err() == context.DeadlineExceeded {
-		t.Fatalf("isolated Wasmtime test exceeded %s deadline\n%s", timeout, truncateWasmtimeChildOutput(out))
-	}
-	if err != nil {
-		t.Fatalf("isolated Wasmtime test failed: %v\n%s", err, truncateWasmtimeChildOutput(out))
-	}
-	return testing.CoverMode() == ""
-}
-
-func TestWasmtimeChildEnvironmentReplacesProtocolKeys(t *testing.T) {
-	for _, key := range []string{wasmtimeFixtureEnv, wasmtimePortTestEnv, wasmtimeChildProtocolEnv, wasmtimeChildNonceEnv} {
-		t.Setenv(key, "stale")
-	}
-	env := wasmtimeChildEnvironment(map[string]string{
-		wasmtimeFixtureEnv:       "add.wast",
-		wasmtimeChildProtocolEnv: wasmtimeChildProtocol,
-		wasmtimeChildNonceEnv:    strings.Repeat("a", 32),
-	})
-	counts := map[string]int{}
-	values := map[string]string{}
-	for _, item := range env {
-		key, value, _ := strings.Cut(item, "=")
-		if key == wasmtimeFixtureEnv || key == wasmtimePortTestEnv || key == wasmtimeChildProtocolEnv || key == wasmtimeChildNonceEnv {
-			counts[key]++
-			values[key] = value
-		}
-	}
-	if counts[wasmtimeFixtureEnv] != 1 || values[wasmtimeFixtureEnv] != "add.wast" ||
-		counts[wasmtimePortTestEnv] != 0 || counts[wasmtimeChildProtocolEnv] != 1 || counts[wasmtimeChildNonceEnv] != 1 {
-		t.Fatalf("child protocol environment counts=%v values=%v", counts, values)
-	}
+	return wasmtimetest.RunIsolated(t, wasmtimetest.Timeout(t, 30*time.Second))
 }
 
 func runWasmtimeWastFixtureChild(t *testing.T, fixture string) specExecStats {
 	t.Helper()
-	timeout := wasmtimeTestTimeout(t, 20*time.Second)
+	timeout := wasmtimetest.Timeout(t, 20*time.Second)
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	nonce := newWasmtimeChildNonce(t)
-	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestWasmtimePortCoreWastExecution$", "-test.count=1")
-	cmd.Env = wasmtimeChildEnvironment(map[string]string{
+	nonce := wasmtimetest.NewNonce(t)
+	args := []string{"-test.run=^TestWasmtimePortCoreWastExecution$", "-test.count=1"}
+	args = append(args, wasmtimetest.CoverageArgs()...)
+	cmd := exec.CommandContext(ctx, os.Args[0], args...)
+	wasmtimetest.PrepareCommand(cmd)
+	cmd.Env = wasmtimetest.ChildEnvironment(map[string]string{
 		wasmtimeFixtureEnv:       fixture,
-		wasmtimeChildProtocolEnv: wasmtimeChildProtocol,
-		wasmtimeChildNonceEnv:    nonce,
+		wasmtimetest.ProtocolEnv: wasmtimetest.Protocol,
+		wasmtimetest.NonceEnv:    nonce,
+		"WAGO_BOUNDS":            wasmtimetest.ExpectedBounds,
 	})
-	out, err := cmd.CombinedOutput()
+	capture := wasmtimetest.NewCapture(8<<10, wasmtimeFixtureOutcomeMarker)
+	cmd.Stdout, cmd.Stderr = capture, capture
+	err := cmd.Run()
 	if ctx.Err() == context.DeadlineExceeded {
-		t.Fatalf("Wasmtime fixture exceeded %s deadline\n%s", timeout, truncateWasmtimeChildOutput(out))
+		t.Fatalf("Wasmtime fixture exceeded %s deadline\n%s", timeout, capture.Output())
+	}
+	markers := capture.Markers()
+	if err != nil {
+		t.Fatalf("Wasmtime fixture child failed: %v\n%s", err, capture.Output())
+	}
+	if len(markers) != 1 {
+		t.Fatalf("Wasmtime fixture child emitted %d outcomes, want exactly one\n%s", len(markers), capture.Output())
 	}
 	var outcome wasmtimeFixtureOutcome
-	found := false
-	for _, line := range strings.Split(string(out), "\n") {
-		payload, ok := strings.CutPrefix(line, wasmtimeFixtureOutcomeMarker)
-		if !ok {
-			continue
-		}
-		if decodeErr := json.Unmarshal([]byte(payload), &outcome); decodeErr != nil {
-			t.Fatalf("decode Wasmtime child outcome: %v\n%s", decodeErr, truncateWasmtimeChildOutput(out))
-		}
-		if found {
-			t.Fatalf("Wasmtime fixture child emitted duplicate outcomes\n%s", truncateWasmtimeChildOutput(out))
-		}
-		found = true
+	if decodeErr := wasmtimetest.DecodeStrictJSON([]byte(markers[0]), &outcome); decodeErr != nil {
+		t.Fatalf("decode Wasmtime child outcome: %v\n%s", decodeErr, capture.Output())
 	}
-	if err != nil {
-		t.Fatalf("Wasmtime fixture child failed: %v\n%s", err, truncateWasmtimeChildOutput(out))
-	}
-	if !found {
-		t.Fatalf("Wasmtime fixture child exited without an outcome (native crash or harness failure)\n%s", truncateWasmtimeChildOutput(out))
-	}
-	if outcome.Protocol != wasmtimeChildProtocol || outcome.Fixture != fixture || outcome.Nonce != nonce {
-		t.Fatalf("Wasmtime fixture child outcome identity = protocol %q fixture %q nonce %q, want %q %q %q", outcome.Protocol, outcome.Fixture, outcome.Nonce, wasmtimeChildProtocol, fixture, nonce)
+	if outcome.Protocol != wasmtimetest.Protocol || outcome.Fixture != fixture || outcome.Nonce != nonce {
+		t.Fatalf("Wasmtime fixture child outcome identity = protocol %q fixture %q nonce %q, want %q %q %q", outcome.Protocol, outcome.Fixture, outcome.Nonce, wasmtimetest.Protocol, fixture, nonce)
 	}
 	stats := outcome.stats()
 	if stats.modulesFailed != 0 || stats.modulesSkipped != 0 || stats.assertionsFailed != 0 || stats.assertionsSkipped != 0 {
-		t.Fatalf("Wasmtime fixture child reported failures or skips: %+v\n%s", stats, truncateWasmtimeChildOutput(out))
+		t.Fatalf("Wasmtime fixture child reported failures or skips: %+v\n%s", stats, capture.Output())
 	}
 	return stats
 }
@@ -533,15 +456,6 @@ func expectedWasmtimeFixtureStats(t *testing.T, fixture string, sf specExecFile)
 		}
 	}
 	return expected
-}
-
-func truncateWasmtimeChildOutput(out []byte) string {
-	const limit = 8 << 10
-	if len(out) <= limit {
-		return string(out)
-	}
-	half := limit / 2
-	return string(out[:half]) + "\n... child output truncated ...\n" + string(out[len(out)-half:])
 }
 
 func TestWasmtimePortBranchHints(t *testing.T) {

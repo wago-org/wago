@@ -21,6 +21,10 @@ const (
 	ModeDirectGo          = "direct-go"
 	ModeDirectInvalid     = "direct-invalid"
 	ModeDirectConcurrency = "direct-concurrency"
+
+	InventoryPorted     = "ported"
+	InventoryExcluded   = "excluded"
+	InventoryOutOfScope = "out-of-scope"
 )
 
 var knownCoverage = map[string]bool{
@@ -65,11 +69,18 @@ type Fixture struct {
 }
 
 type RustPort struct {
-	Scope      string
-	File       string
-	Selector   string
-	LocalTest  string
-	Adaptation string
+	Scope        string
+	File         string
+	Selector     string
+	LocalTest    string
+	Adaptation   string
+	SourceSHA256 string
+}
+
+type InventoryEntry struct {
+	Path   string
+	Status string
+	Reason string
 }
 
 type DirectArtifact struct {
@@ -182,10 +193,15 @@ func LoadManifest(path string) ([]Fixture, error) {
 		if len(labels) == 0 {
 			return nil, fmt.Errorf("manifest line %d has no coverage labels", lineNo)
 		}
+		previousLabel := ""
 		for _, label := range labels {
 			if !knownCoverage[label] {
 				return nil, fmt.Errorf("manifest line %d has unknown coverage label %q", lineNo, label)
 			}
+			if label <= previousLabel {
+				return nil, fmt.Errorf("manifest line %d coverage labels are not strictly sorted: %q after %q", lineNo, label, previousLabel)
+			}
+			previousLabel = label
 		}
 		fixtures = append(fixtures, fixture)
 		seen[fixture.Path] = true
@@ -217,7 +233,7 @@ func LoadRustPorts(path string) ([]RustPort, error) {
 			continue
 		}
 		fields := strings.Split(line, "\t")
-		if len(fields) != 3 {
+		if len(fields) != 4 {
 			return nil, fmt.Errorf("rust port ledger line %d has %d fields", lineNo, len(fields))
 		}
 		file, selector, ok := strings.Cut(fields[0], "::")
@@ -239,7 +255,10 @@ func LoadRustPorts(path string) ([]RustPort, error) {
 		if strings.TrimSpace(fields[2]) == "" {
 			return nil, fmt.Errorf("rust port ledger line %d has no adaptation", lineNo)
 		}
-		ports = append(ports, RustPort{Scope: fields[0], File: file, Selector: selector, LocalTest: fields[1], Adaptation: fields[2]})
+		if err := validateHex("source_sha256", fields[3], 32); err != nil {
+			return nil, fmt.Errorf("rust port ledger line %d: %w", lineNo, err)
+		}
+		ports = append(ports, RustPort{Scope: fields[0], File: file, Selector: selector, LocalTest: fields[1], Adaptation: fields[2], SourceSHA256: fields[3]})
 		seen[fields[0]] = true
 		previous = fields[0]
 	}
@@ -250,6 +269,94 @@ func LoadRustPorts(path string) ([]RustPort, error) {
 		return nil, fmt.Errorf("rust port ledger has no entries")
 	}
 	return ports, nil
+}
+
+func LoadInventory(path string) ([]InventoryEntry, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	var entries []InventoryEntry
+	previous := ""
+	scanner := bufio.NewScanner(f)
+	for lineNo := 1; scanner.Scan(); lineNo++ {
+		line := scanner.Text()
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		fields := strings.Split(line, "\t")
+		if len(fields) != 3 {
+			return nil, fmt.Errorf("inventory line %d has %d fields", lineNo, len(fields))
+		}
+		if err := ValidateRelativePath(fields[0]); err != nil || !strings.HasSuffix(fields[0], ".wast") {
+			return nil, fmt.Errorf("inventory line %d has invalid path %q", lineNo, fields[0])
+		}
+		if fields[0] <= previous {
+			return nil, fmt.Errorf("inventory paths are not strictly sorted: %q after %q", fields[0], previous)
+		}
+		switch fields[1] {
+		case InventoryPorted, InventoryExcluded, InventoryOutOfScope:
+		default:
+			return nil, fmt.Errorf("inventory line %d has unknown status %q", lineNo, fields[1])
+		}
+		if strings.TrimSpace(fields[2]) == "" {
+			return nil, fmt.Errorf("inventory line %d has no reason", lineNo)
+		}
+		entries = append(entries, InventoryEntry{Path: fields[0], Status: fields[1], Reason: fields[2]})
+		previous = fields[0]
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+	if len(entries) == 0 {
+		return nil, fmt.Errorf("inventory has no entries")
+	}
+	return entries, nil
+}
+
+func ValidateInventory(entries []InventoryEntry, fixtures []Fixture, upstreamPaths []string) error {
+	fixtureSet := make(map[string]bool, len(fixtures))
+	for _, fixture := range fixtures {
+		fixtureSet[fixture.Path] = true
+	}
+	upstreamSet := make(map[string]bool, len(upstreamPaths))
+	previous := ""
+	for _, path := range upstreamPaths {
+		if err := ValidateRelativePath(path); err != nil || !strings.HasSuffix(path, ".wast") {
+			return fmt.Errorf("upstream inventory has invalid path %q", path)
+		}
+		if path <= previous {
+			return fmt.Errorf("upstream inventory paths are not strictly sorted: %q after %q", path, previous)
+		}
+		upstreamSet[path] = true
+		previous = path
+	}
+	classified := make(map[string]InventoryEntry, len(entries))
+	for _, entry := range entries {
+		if !upstreamSet[entry.Path] {
+			return fmt.Errorf("inventory path %q no longer exists upstream", entry.Path)
+		}
+		if entry.Status == InventoryPorted && !fixtureSet[entry.Path] {
+			return fmt.Errorf("ported inventory path %q is missing from MANIFEST.tsv", entry.Path)
+		}
+		if entry.Status != InventoryPorted && fixtureSet[entry.Path] {
+			return fmt.Errorf("manifest path %q is classified as %s", entry.Path, entry.Status)
+		}
+		classified[entry.Path] = entry
+	}
+	for path := range upstreamSet {
+		if _, ok := classified[path]; !ok {
+			return fmt.Errorf("upstream fixture %q is unclassified", path)
+		}
+	}
+	for path := range fixtureSet {
+		if entry, ok := classified[path]; !ok || entry.Status != InventoryPorted {
+			return fmt.Errorf("manifest path %q is not classified as ported", path)
+		}
+	}
+	return nil
 }
 
 func LoadDirectArtifacts(path string) ([]DirectArtifact, error) {

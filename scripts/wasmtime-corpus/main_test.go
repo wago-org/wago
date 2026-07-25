@@ -5,7 +5,9 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -65,6 +67,32 @@ func TestNormalizeWABTJSON(t *testing.T) {
 	}
 	if err := normalizeWABTJSON("winch/use-innermost-frame.wast", source, path); err == nil {
 		t.Fatal("already-valid normalized JSON was accepted as malformed input")
+	}
+}
+
+func FuzzNormalizeWABTJSONDoesNotPanic(f *testing.F) {
+	f.Add([]byte(`{"source_filename":"testdata/wasmtime/core/winch/use-innermost-frame/source.wast","commands":[]}`))
+	f.Add([]byte(`{"source_filename":"x", "commands":[{"type":"module","line":1,"filename":"commands.0.wasm"},{"type":"assert_trap","line":2,"action":{"type":"invoke","field":"main","args":[]},"text":"unreachable", "expected": [{}`))
+	f.Fuzz(func(t *testing.T, data []byte) {
+		path := filepath.Join(t.TempDir(), "commands.json")
+		if err := os.WriteFile(path, data, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		_ = normalizeWABTJSON("winch/use-innermost-frame.wast", "testdata/wasmtime/core/winch/use-innermost-frame/source.wast", path)
+	})
+}
+
+func TestFetchRevisionRejectsExistingCheckoutWithWrongOrigin(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "checkout")
+	if out, err := exec.Command("git", "init", root).CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v: %s", err, out)
+	}
+	if out, err := exec.Command("git", "-C", root, "remote", "add", "origin", "https://example.com/wrong.git").CombinedOutput(); err != nil {
+		t.Fatalf("git remote: %v: %s", err, out)
+	}
+	err := fetchRevision(root, provenance{UpstreamRepo: "https://example.com/right.git", Revision: strings.Repeat("a", 40)})
+	if err == nil || !strings.Contains(err.Error(), "refuse to fetch") {
+		t.Fatalf("wrong existing origin = %v", err)
 	}
 }
 
@@ -157,6 +185,91 @@ func TestCommitCorpusReplacesStagedTreeAndMetadata(t *testing.T) {
 	}
 	if data, err := os.ReadFile(metadata); err != nil || string(data) != "new" {
 		t.Fatalf("metadata = %q, %v", data, err)
+	}
+}
+
+func TestCommitCorpusRollsBackEveryPrecommitFailure(t *testing.T) {
+	stages := []string{
+		"read-metadata:meta", "create-temp:meta", "write-temp:meta", "sync-temp:meta", "close-temp:meta", "chmod-temp:meta",
+		"create-backup", "remove-backup-placeholder", "backup-core", "install-core", "commit-metadata:meta",
+	}
+	for _, stage := range stages {
+		t.Run(stage, func(t *testing.T) {
+			root := t.TempDir()
+			core := filepath.Join(root, "core")
+			staged := filepath.Join(root, "stage", "core")
+			if err := os.MkdirAll(core, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.MkdirAll(staged, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(core, "old"), []byte("old"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(staged, "new"), []byte("new"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			metadata := filepath.Join(root, "meta")
+			if err := os.WriteFile(metadata, []byte("old-meta"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			injected := errors.New("injected " + stage)
+			err := commitCorpusWithFailpoint(core, staged, map[string][]byte{metadata: []byte("new-meta")}, func(got string) error {
+				if got == stage {
+					return injected
+				}
+				return nil
+			})
+			if !errors.Is(err, injected) {
+				t.Fatalf("failure = %v, want injected error", err)
+			}
+			if data, readErr := os.ReadFile(filepath.Join(core, "old")); readErr != nil || string(data) != "old" {
+				t.Fatalf("core rollback = %q, %v", data, readErr)
+			}
+			if data, readErr := os.ReadFile(metadata); readErr != nil || string(data) != "old-meta" {
+				t.Fatalf("metadata rollback = %q, %v", data, readErr)
+			}
+			matches, globErr := filepath.Glob(filepath.Join(root, ".core-backup-*"))
+			if globErr != nil || len(matches) != 0 {
+				t.Fatalf("backup residue = %v, %v", matches, globErr)
+			}
+			matches, globErr = filepath.Glob(filepath.Join(root, ".meta-*"))
+			if globErr != nil || len(matches) != 0 {
+				t.Fatalf("metadata temp residue = %v, %v", matches, globErr)
+			}
+		})
+	}
+}
+
+func TestCommitCorpusSurfacesRollbackFailure(t *testing.T) {
+	root := t.TempDir()
+	core := filepath.Join(root, "core")
+	staged := filepath.Join(root, "stage", "core")
+	if err := os.MkdirAll(core, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(staged, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	_ = os.WriteFile(filepath.Join(core, "old"), []byte("old"), 0o644)
+	_ = os.WriteFile(filepath.Join(staged, "new"), []byte("new"), 0o644)
+	metadata := filepath.Join(root, "meta")
+	_ = os.WriteFile(metadata, []byte("old"), 0o644)
+	commitErr := errors.New("commit failed")
+	rollbackErr := errors.New("rollback failed")
+	err := commitCorpusWithFailpoint(core, staged, map[string][]byte{metadata: []byte("new")}, func(stage string) error {
+		switch stage {
+		case "commit-metadata:meta":
+			return commitErr
+		case "rollback-restore-core":
+			return rollbackErr
+		default:
+			return nil
+		}
+	})
+	if !errors.Is(err, commitErr) || !errors.Is(err, rollbackErr) {
+		t.Fatalf("joined failure = %v", err)
 	}
 }
 

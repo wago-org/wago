@@ -250,6 +250,28 @@ func wasmtimeEmbenchenSlice(memory []byte, offset, length uint32, what string) [
 	return memory[offset:uint32(end)]
 }
 
+func FuzzWasmtimeEmbenchenSliceBounds(f *testing.F) {
+	f.Add(uint32(0), uint32(0), uint16(0))
+	f.Add(uint32(65535), uint32(1), uint16(65535))
+	f.Add(^uint32(0), uint32(2), uint16(16))
+	f.Fuzz(func(t *testing.T, offset, length uint32, size uint16) {
+		memory := make([]byte, int(size))
+		valid := uint64(offset)+uint64(length) <= uint64(len(memory))
+		panicked := false
+		var got []byte
+		func() {
+			defer func() { panicked = recover() != nil }()
+			got = wasmtimeEmbenchenSlice(memory, offset, length, "fuzz")
+		}()
+		if valid && (panicked || len(got) != int(length)) {
+			t.Fatalf("valid range offset=%d length=%d size=%d panicked=%v len=%d", offset, length, size, panicked, len(got))
+		}
+		if !valid && !panicked {
+			t.Fatalf("invalid range offset=%d length=%d size=%d did not panic", offset, length, size)
+		}
+	})
+}
+
 func alignWasmtimeEmbenchen(value, alignment uint32) uint32 {
 	return (value + alignment - 1) &^ (alignment - 1)
 }

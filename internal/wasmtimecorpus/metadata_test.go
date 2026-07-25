@@ -55,7 +55,7 @@ func TestLoadManifestRejectsUnsafeOrUnsortedRows(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	write(t, "a.wast\truntime-regression\twast-json\nb.wast\tsimd\tdirect-go\n")
+	write(t, "a.wast\truntime-regression\twast-json\nb.wast\tbulk-memory,simd\tdirect-go\n")
 	fixtures, err := LoadManifest(path)
 	if err != nil || len(fixtures) != 2 {
 		t.Fatalf("valid manifest = %v, %v", fixtures, err)
@@ -65,6 +65,8 @@ func TestLoadManifestRejectsUnsafeOrUnsortedRows(t *testing.T) {
 		"/a.wast\truntime-regression\twast-json\n",
 		"b.wast\truntime-regression\twast-json\na.wast\truntime-regression\twast-json\n",
 		"a.wast\tunknown\twast-json\n",
+		"a.wast\tsimd,bulk-memory\twast-json\n",
+		"a.wast\tsimd,simd\twast-json\n",
 		"a.wast\truntime-regression\tunknown\n",
 	} {
 		write(t, data)
@@ -76,7 +78,8 @@ func TestLoadManifestRejectsUnsafeOrUnsortedRows(t *testing.T) {
 
 func TestLoadRustPortsRequiresExactSafeFunctionScopes(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "RUST_PORTS.tsv")
-	valid := "tests/all/func.rs::typed_v128\tTestWasmtimePortV128TypedCallBoundaries\ttyped API adaptation\n"
+	digest := strings.Repeat("a", 64)
+	valid := "tests/all/func.rs::typed_v128\tTestWasmtimePortV128TypedCallBoundaries\ttyped API adaptation\t" + digest + "\n"
 	if err := os.WriteFile(path, []byte(valid), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -85,9 +88,10 @@ func TestLoadRustPortsRequiresExactSafeFunctionScopes(t *testing.T) {
 		t.Fatalf("valid Rust ledger = %v, %v", ports, err)
 	}
 	for _, data := range []string{
-		"../func.rs::typed_v128\tTestWasmtimePortV128TypedCallBoundaries\tnote\n",
-		"tests/all/func.rs::portable-*\tTestWasmtimePortV128TypedCallBoundaries\tnote\n",
-		"tests/all/func.rs::typed_v128\tbad-test\tnote\n",
+		"../func.rs::typed_v128\tTestWasmtimePortV128TypedCallBoundaries\tnote\t" + digest + "\n",
+		"tests/all/func.rs::portable-*\tTestWasmtimePortV128TypedCallBoundaries\tnote\t" + digest + "\n",
+		"tests/all/func.rs::typed_v128\tbad-test\tnote\t" + digest + "\n",
+		"tests/all/func.rs::typed_v128\tTestWasmtimePortV128TypedCallBoundaries\tnote\tshort\n",
 	} {
 		if err := os.WriteFile(path, []byte(data), 0o644); err != nil {
 			t.Fatal(err)
@@ -95,6 +99,60 @@ func TestLoadRustPortsRequiresExactSafeFunctionScopes(t *testing.T) {
 		if _, err := LoadRustPorts(path); err == nil {
 			t.Fatalf("invalid Rust ledger was accepted: %q", data)
 		}
+	}
+}
+
+func TestLoadInventoryAndValidateCompleteness(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "UPSTREAM_INVENTORY.tsv")
+	valid := "a.wast\tported\tcovered\nb.wast\texcluded\tunsupported option\nc.wast\tout-of-scope\tproposal\n"
+	if err := os.WriteFile(path, []byte(valid), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := LoadInventory(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixtures := []Fixture{{Path: "a.wast", Coverage: "runtime-regression", Mode: ModeWASTJSON}}
+	if err := ValidateInventory(entries, fixtures, []string{"a.wast", "b.wast", "c.wast"}); err != nil {
+		t.Fatalf("valid inventory: %v", err)
+	}
+	for _, tc := range []struct {
+		name     string
+		data     string
+		upstream []string
+	}{
+		{name: "unsafe", data: "../a.wast\tported\tnote\n", upstream: []string{"a.wast"}},
+		{name: "unknown status", data: "a.wast\tmaybe\tnote\n", upstream: []string{"a.wast"}},
+		{name: "unclassified upstream", data: "a.wast\tported\tnote\n", upstream: []string{"a.wast", "b.wast"}},
+		{name: "stale entry", data: "a.wast\tported\tnote\nb.wast\texcluded\tnote\n", upstream: []string{"a.wast"}},
+		{name: "manifest excluded", data: "a.wast\texcluded\tnote\n", upstream: []string{"a.wast"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := os.WriteFile(path, []byte(tc.data), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			got, err := LoadInventory(path)
+			if err == nil {
+				err = ValidateInventory(got, fixtures, tc.upstream)
+			}
+			if err == nil {
+				t.Fatal("invalid inventory was accepted")
+			}
+		})
+	}
+}
+
+func TestRustFunctionSHA256IgnoresFunctionShapedCommentsAndLiterals(t *testing.T) {
+	source := []byte("// fn target() {}\nconst S: &str = r#\"fn target() {}\"#;\nfn target() { let c = '{'; /* } */ }\n")
+	got, err := RustFunctionSHA256(source, "target")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 64 {
+		t.Fatalf("digest = %q", got)
+	}
+	if _, err := RustFunctionSHA256([]byte("// fn target() {}"), "target"); err == nil {
+		t.Fatal("comment satisfied Rust function lookup")
 	}
 }
 
@@ -121,6 +179,16 @@ func TestLoadDirectArtifactsRejectsUnsafeOrMalformedRows(t *testing.T) {
 			t.Fatalf("invalid direct ledger was accepted: %q", data)
 		}
 	}
+}
+
+func FuzzValidateRelativePathAndRustScannerDoNotPanic(f *testing.F) {
+	for _, seed := range []string{"a.wast", "../a", "", "fn target() {}", `r#"fn target() {}"#`, "/* nested /* comment */ */ fn target() { '}' }"} {
+		f.Add(seed)
+	}
+	f.Fuzz(func(t *testing.T, input string) {
+		_ = ValidateRelativePath(input)
+		_, _ = RustFunctionSHA256([]byte(input), "target")
+	})
 }
 
 func TestValidateRelativePath(t *testing.T) {

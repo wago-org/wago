@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -423,6 +425,57 @@ func TestWasmtimePortTrapsSurviveConcurrentGoroutines(t *testing.T) {
 	for err := range errCh {
 		t.Error(err)
 	}
+}
+
+func TestWasmtimePortResourceFootprintRemainsBounded(t *testing.T) {
+	if runWasmtimeIsolatedPortTest(t) {
+		return
+	}
+	compiled, err := NewRuntimeConfig().Compile(wasmtimeReuseMemoryModule(false))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	run := func(iterations int) {
+		for i := 0; i < iterations; i++ {
+			in, err := Instantiate(compiled)
+			if err != nil {
+				t.Fatalf("iteration %d instantiate: %v", i, err)
+			}
+			if err := in.Close(); err != nil {
+				t.Fatalf("iteration %d close: %v", i, err)
+			}
+		}
+	}
+	run(8)
+	runtime.GC()
+	baseGoroutines := runtime.NumGoroutine()
+	baseFDs, baseMaps := wasmtimeProcessResourceCounts()
+	run(256)
+	runtime.GC()
+	time.Sleep(20 * time.Millisecond)
+	gotGoroutines := runtime.NumGoroutine()
+	gotFDs, gotMaps := wasmtimeProcessResourceCounts()
+	if gotGoroutines > baseGoroutines+2 {
+		t.Fatalf("goroutines grew from %d to %d after repeated instances", baseGoroutines, gotGoroutines)
+	}
+	if baseFDs >= 0 && gotFDs > baseFDs+1 {
+		t.Fatalf("file descriptors grew from %d to %d after repeated instances", baseFDs, gotFDs)
+	}
+	if baseMaps >= 0 && gotMaps > baseMaps+4 {
+		t.Fatalf("memory mappings grew from %d to %d after repeated instances", baseMaps, gotMaps)
+	}
+}
+
+func wasmtimeProcessResourceCounts() (fds, mappings int) {
+	fds, mappings = -1, -1
+	if entries, err := os.ReadDir("/proc/self/fd"); err == nil {
+		fds = len(entries)
+	}
+	if data, err := os.ReadFile("/proc/self/maps"); err == nil {
+		mappings = strings.Count(string(data), "\n")
+	}
+	return
 }
 
 func compileWasmtimeDirectFixture(t *testing.T, fixture string, module int) *Compiled {

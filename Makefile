@@ -87,23 +87,23 @@ lint-staticcheck:
 .PHONY: test
 test: ## Build and run the test suite (host)
 	go build ./...
-	go test -count=1 ./...
+	WAGO_BOUNDS=explicit go test -count=1 ./...
 
 .PHONY: test-guard
 test-guard: ## Guard-page (signals-based) tests: full public-API suite (incl. the SIGSEGV fault->trap path) + in-bounds differential
-	go test -count=1 -tags wago_guardpage ./src/wago/
-	cd bench && go test -count=1 -tags wago_guardpage -run 'TestCorpusDifferential|TestJsonAsGuardCorrect' .
+	WAGO_BOUNDS=signals go test -count=1 -tags wago_guardpage ./src/wago/
+	cd bench && WAGO_BOUNDS=signals go test -count=1 -tags wago_guardpage -run 'TestCorpusDifferential|TestJsonAsGuardCorrect' .
 
 .PHONY: test-native-arm64
 test-native-arm64: ## Native arm64 gate (run locally on your Mac): the checks CI used to run on the macOS/arm64 runner
-	go test ./src/core/encoder/arm64 ./src/core/compiler/backend/railshot/arm64 ./src/core/runtime ./src/wago -count=1
-	go test -tags wago_guardpage ./src/core/runtime ./src/wago -count=1 -v
+	WAGO_BOUNDS=explicit go test ./src/core/encoder/arm64 ./src/core/compiler/backend/railshot/arm64 ./src/core/runtime ./src/wago -count=1
+	WAGO_BOUNDS=signals go test -tags wago_guardpage ./src/core/runtime ./src/wago -count=1 -v
 	WAGO_CORPUS_TIMEOUT=20s $(MAKE) test-corpus
 
 .PHONY: test-corpus
 test-corpus: ## Corpus pipeline + differential execution in parent/child processes (WAGO_CORPUS_TIMEOUT=15s)
-	cd bench && go test -count=1 -run '^TestCorpus$$' .
-	cd bench && go test -count=1 -tags wago_guardpage -run '^TestCorpus$$' .
+	cd bench && WAGO_BOUNDS=explicit go test -count=1 -run '^TestCorpus$$' .
+	cd bench && WAGO_BOUNDS=signals go test -count=1 -tags wago_guardpage -run '^TestCorpus$$' .
 
 WASMTIME_CHECKOUT ?= $(CURDIR)/.tmp/wasmtime-corpus-upstream
 WAST2JSON ?= wast2json
@@ -111,6 +111,10 @@ WAST2JSON ?= wast2json
 .PHONY: wasmtime-corpus-check
 wasmtime-corpus-check: ## Verify pinned Wasmtime sources and exact WABT artifacts
 	go run ./scripts/wasmtime-corpus -repo $(CURDIR) -wasmtime $(WASMTIME_CHECKOUT) -wast2json $(WAST2JSON)
+
+.PHONY: wasmtime-stress
+wasmtime-stress: ## Repeat/shuffle Wasmtime lifecycle tests, optimizer matrix, guard mode, and fuzz targets
+	scripts/wasmtime-stress.sh
 
 .PHONY: wasmtime-corpus-sync
 wasmtime-corpus-sync: ## Fetch pinned Wasmtime and refresh checked-in corpus artifacts

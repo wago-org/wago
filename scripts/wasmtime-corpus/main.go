@@ -10,6 +10,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io/fs"
@@ -45,6 +46,8 @@ func run(repoRoot, wasmtimeRoot, wast2json string, fetch, write bool) error {
 	metadataRoot := filepath.Join(repoRoot, "testdata", "wasmtime")
 	provPath := filepath.Join(metadataRoot, "PROVENANCE.json")
 	manifestPath := filepath.Join(metadataRoot, "MANIFEST.tsv")
+	inventoryPath := filepath.Join(metadataRoot, "UPSTREAM_INVENTORY.tsv")
+	exclusionsPath := filepath.Join(metadataRoot, "EXCLUSIONS.md")
 	rustPortsPath := filepath.Join(metadataRoot, "RUST_PORTS.tsv")
 	directLedgerPath := filepath.Join(metadataRoot, "DIRECT_ARTIFACTS.tsv")
 	coreRoot := filepath.Join(metadataRoot, "core")
@@ -58,6 +61,10 @@ func run(repoRoot, wasmtimeRoot, wast2json string, fetch, write bool) error {
 		return err
 	}
 	if err := wasmtimecorpus.ValidateProvenanceFixtureSets(prov, fixtures); err != nil {
+		return err
+	}
+	inventory, err := wasmtimecorpus.LoadInventory(inventoryPath)
+	if err != nil {
 		return err
 	}
 	rustPorts, err := wasmtimecorpus.LoadRustPorts(rustPortsPath)
@@ -75,6 +82,19 @@ func run(repoRoot, wasmtimeRoot, wast2json string, fetch, write bool) error {
 	}
 	if err := verifyRevision(wasmtimeRoot, prov); err != nil {
 		return err
+	}
+	upstreamWAST, err := listUpstreamWAST(wasmtimeRoot, prov.SourceRoot)
+	if err != nil {
+		return err
+	}
+	if err := wasmtimecorpus.ValidateInventory(inventory, fixtures, upstreamWAST); err != nil {
+		return err
+	}
+	exclusionsData := renderExclusions(prov.Revision, inventory)
+	if !write {
+		if err := syncBytes(exclusionsPath, exclusionsData, false); err != nil {
+			return fmt.Errorf("generated exclusions documentation: %w", err)
+		}
 	}
 	if err := verifyWABTVersion(wast2json, prov.WABTVersion); err != nil {
 		return err
@@ -128,6 +148,9 @@ func run(repoRoot, wasmtimeRoot, wast2json string, fetch, write bool) error {
 			if err := syncWABTArtifacts(localDir, fixture.Path, source, wast2json, legacyCoreSourceFilename[fixture.Path], normalizedWABTJSON[fixture.Path], write); err != nil {
 				return fmt.Errorf("%s generated artifacts: %w", fixture.Path, err)
 			}
+			if _, err := wasmtimecorpus.ValidateWASTJSONFixture(localDir); err != nil {
+				return fmt.Errorf("%s command graph: %w", fixture.Path, err)
+			}
 			continue
 		}
 		entry := directByPath[fixture.Path]
@@ -136,6 +159,9 @@ func run(repoRoot, wasmtimeRoot, wast2json string, fetch, write bool) error {
 		}
 	}
 
+	if err := wasmtimecorpus.ValidateCorpusTree(workCore, fixtures); err != nil {
+		return fmt.Errorf("validate prospective corpus tree: %w", err)
+	}
 	digest, err := treeDigest(workCore)
 	if err != nil {
 		return err
@@ -157,6 +183,7 @@ func run(repoRoot, wasmtimeRoot, wast2json string, fetch, write bool) error {
 	if err := commitCorpus(coreRoot, workCore, map[string][]byte{
 		provPath:         provData,
 		directLedgerPath: directData,
+		exclusionsPath:   exclusionsData,
 	}); err != nil {
 		return err
 	}
@@ -174,11 +201,22 @@ func marshalProvenance(p provenance) ([]byte, error) {
 
 func fetchRevision(root string, p provenance) error {
 	if _, err := os.Stat(filepath.Join(root, ".git")); err != nil {
+		if !os.IsNotExist(err) {
+			return err
+		}
 		if err := os.MkdirAll(filepath.Dir(root), 0o755); err != nil {
 			return err
 		}
 		if out, err := exec.Command("git", "clone", "--filter=blob:none", "--no-checkout", p.UpstreamRepo, root).CombinedOutput(); err != nil {
 			return fmt.Errorf("git clone: %w: %s", err, strings.TrimSpace(string(out)))
+		}
+	} else {
+		out, err := exec.Command("git", "-C", root, "remote", "get-url", "origin").CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("inspect existing Wasmtime origin: %w: %s", err, strings.TrimSpace(string(out)))
+		}
+		if got := strings.TrimSuffix(strings.TrimSpace(string(out)), "/"); got != strings.TrimSuffix(p.UpstreamRepo, "/") {
+			return fmt.Errorf("refuse to fetch existing Wasmtime checkout with origin %q, want %q", got, p.UpstreamRepo)
 		}
 	}
 	if out, err := exec.Command("git", "-C", root, "fetch", "--depth=1", "origin", p.Revision).CombinedOutput(); err != nil {
@@ -191,7 +229,14 @@ func fetchRevision(root string, p provenance) error {
 }
 
 func verifyRevision(root string, p provenance) error {
-	out, err := exec.Command("git", "-C", root, "rev-parse", "HEAD").CombinedOutput()
+	out, err := exec.Command("git", "-C", root, "remote", "get-url", "origin").CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("inspect Wasmtime origin: %w: %s", err, strings.TrimSpace(string(out)))
+	}
+	if got := strings.TrimSuffix(strings.TrimSpace(string(out)), "/"); got != strings.TrimSuffix(p.UpstreamRepo, "/") {
+		return fmt.Errorf("wasmtime checkout origin = %q, want %q", got, p.UpstreamRepo)
+	}
+	out, err = exec.Command("git", "-C", root, "rev-parse", "HEAD").CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("inspect Wasmtime checkout: %w: %s", err, strings.TrimSpace(string(out)))
 	}
@@ -206,6 +251,35 @@ func verifyRevision(root string, p provenance) error {
 		return fmt.Errorf("wasmtime revision date = %s, want %s", got, p.RevisionDate)
 	}
 	return nil
+}
+
+func listUpstreamWAST(root, sourceRoot string) ([]string, error) {
+	base, err := joinUnder(root, sourceRoot)
+	if err != nil {
+		return nil, err
+	}
+	var paths []string
+	if err := filepath.WalkDir(base, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.Type()&os.ModeSymlink != 0 {
+			return fmt.Errorf("upstream inventory contains symlink %s", path)
+		}
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".wast") {
+			return nil
+		}
+		rel, err := filepath.Rel(base, path)
+		if err != nil {
+			return err
+		}
+		paths = append(paths, filepath.ToSlash(rel))
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	sort.Strings(paths)
+	return paths, nil
 }
 
 func verifyWABTVersion(wast2json, want string) error {
@@ -253,8 +327,12 @@ func verifyRustPorts(ports []wasmtimecorpus.RustPort, wasmtimeRoot string) error
 		if err != nil {
 			return fmt.Errorf("read Rust port source %s: %w", port.File, err)
 		}
-		if !bytes.Contains(source, []byte("fn "+port.Selector+"(")) {
-			return fmt.Errorf("rust port scope %s no longer names a function in the pinned source", port.Scope)
+		digest, err := wasmtimecorpus.RustFunctionSHA256(source, port.Selector)
+		if err != nil {
+			return fmt.Errorf("rust port scope %s: %w", port.Scope, err)
+		}
+		if digest != port.SourceSHA256 {
+			return fmt.Errorf("rust port scope %s source SHA-256 = %s, want %s; review the upstream function and update RUST_PORTS.tsv", port.Scope, digest, port.SourceSHA256)
 		}
 	}
 	return nil
@@ -314,6 +392,38 @@ func verifyDirectFixture(localDir string, upstreamSource []byte, entry *wasmtime
 	entry.SourceSHA256 = sourceDigest
 	entry.ArtifactsSHA256 = artifactDigest
 	return nil
+}
+
+func renderExclusions(revision string, inventory []wasmtimecorpus.InventoryEntry) []byte {
+	var excluded []wasmtimecorpus.InventoryEntry
+	reasons := map[string]int{}
+	counts := map[string]int{}
+	for _, entry := range inventory {
+		counts[entry.Status]++
+		switch entry.Status {
+		case wasmtimecorpus.InventoryExcluded:
+			excluded = append(excluded, entry)
+		case wasmtimecorpus.InventoryOutOfScope:
+			reasons[entry.Reason]++
+		}
+	}
+	var out strings.Builder
+	fmt.Fprintf(&out, "# Wasmtime core corpus exclusions\n\n")
+	fmt.Fprintf(&out, "This file is generated from `UPSTREAM_INVENTORY.tsv`; edit that ledger, not this document. At Wasmtime revision `%s`, all %d `.wast` files under the pinned source root are classified: %d ported, %d excluded portable cases, and %d out-of-scope proposal/component cases.\n\n", revision, len(inventory), counts[wasmtimecorpus.InventoryPorted], counts[wasmtimecorpus.InventoryExcluded], counts[wasmtimecorpus.InventoryOutOfScope])
+	out.WriteString("## Excluded portable core cases\n\n| Upstream file | Reason |\n|---|---|\n")
+	for _, entry := range excluded {
+		fmt.Fprintf(&out, "| `%s` | %s |\n", entry.Path, entry.Reason)
+	}
+	out.WriteString("\n## Out-of-scope categories\n\nEvery individual path is recorded in `UPSTREAM_INVENTORY.tsv`. These categories are separate feature corpora rather than silent exclusions.\n\n| Reason | Files |\n|---|---:|\n")
+	ordered := make([]string, 0, len(reasons))
+	for reason := range reasons {
+		ordered = append(ordered, reason)
+	}
+	sort.Strings(ordered)
+	for _, reason := range ordered {
+		fmt.Fprintf(&out, "| %s | %d |\n", reason, reasons[reason])
+	}
+	return []byte(out.String())
 }
 
 func marshalDirectArtifacts(entries []wasmtimecorpus.DirectArtifact) []byte {
@@ -536,8 +646,24 @@ func copyTree(src, dst string) error {
 	})
 }
 
+type corpusCommitFailpoint func(stage string) error
+
 func commitCorpus(coreRoot, stagedCore string, metadata map[string][]byte) error {
+	return commitCorpusWithFailpoint(coreRoot, stagedCore, metadata, nil)
+}
+
+func commitCorpusWithFailpoint(coreRoot, stagedCore string, metadata map[string][]byte, fail corpusCommitFailpoint) error {
+	trip := func(stage string) error {
+		if fail == nil {
+			return nil
+		}
+		return fail(stage)
+	}
 	paths := make([]string, 0, len(metadata))
+	for path := range metadata {
+		paths = append(paths, path)
+	}
+	sort.Strings(paths)
 	oldData := make(map[string][]byte, len(metadata))
 	temps := make(map[string]string, len(metadata))
 	defer func() {
@@ -545,19 +671,33 @@ func commitCorpus(coreRoot, stagedCore string, metadata map[string][]byte) error
 			_ = os.Remove(tmp)
 		}
 	}()
-	for path, data := range metadata {
-		paths = append(paths, path)
+	for _, path := range paths {
+		data := metadata[path]
+		if err := trip("read-metadata:" + filepath.Base(path)); err != nil {
+			return err
+		}
 		old, err := os.ReadFile(path)
 		if err != nil {
 			return err
 		}
 		oldData[path] = old
+		if err := trip("create-temp:" + filepath.Base(path)); err != nil {
+			return err
+		}
 		tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+"-*")
 		if err != nil {
 			return err
 		}
 		temps[path] = tmp.Name()
+		if err := trip("write-temp:" + filepath.Base(path)); err != nil {
+			tmp.Close()
+			return err
+		}
 		if _, err := tmp.Write(data); err != nil {
+			tmp.Close()
+			return err
+		}
+		if err := trip("sync-temp:" + filepath.Base(path)); err != nil {
 			tmp.Close()
 			return err
 		}
@@ -565,44 +705,101 @@ func commitCorpus(coreRoot, stagedCore string, metadata map[string][]byte) error
 			tmp.Close()
 			return err
 		}
+		if err := trip("close-temp:" + filepath.Base(path)); err != nil {
+			tmp.Close()
+			return err
+		}
 		if err := tmp.Close(); err != nil {
+			return err
+		}
+		if err := trip("chmod-temp:" + filepath.Base(path)); err != nil {
 			return err
 		}
 		if err := os.Chmod(tmp.Name(), 0o644); err != nil {
 			return err
 		}
 	}
-	sort.Strings(paths)
 
+	if err := trip("create-backup"); err != nil {
+		return err
+	}
 	backupParent, err := os.MkdirTemp(filepath.Dir(coreRoot), ".core-backup-")
 	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(backupParent)
+	if err := trip("remove-backup-placeholder"); err != nil {
 		return err
 	}
 	if err := os.Remove(backupParent); err != nil {
 		return err
 	}
+	if err := trip("backup-core"); err != nil {
+		return err
+	}
 	if err := os.Rename(coreRoot, backupParent); err != nil {
 		return err
 	}
-	rollbackCore := func() {
-		_ = os.RemoveAll(coreRoot)
-		_ = os.Rename(backupParent, coreRoot)
+	rollback := func() error {
+		var rollbackErr error
+		if err := trip("rollback-remove-new-core"); err != nil {
+			rollbackErr = errors.Join(rollbackErr, err)
+		} else if err := os.RemoveAll(coreRoot); err != nil {
+			rollbackErr = errors.Join(rollbackErr, err)
+		}
+		if err := trip("rollback-restore-core"); err != nil {
+			rollbackErr = errors.Join(rollbackErr, err)
+		} else if err := os.Rename(backupParent, coreRoot); err != nil {
+			rollbackErr = errors.Join(rollbackErr, err)
+		}
+		for _, restorePath := range paths {
+			if err := trip("rollback-metadata:" + filepath.Base(restorePath)); err != nil {
+				rollbackErr = errors.Join(rollbackErr, err)
+				continue
+			}
+			if err := atomicWriteFile(restorePath, oldData[restorePath], 0o644); err != nil {
+				rollbackErr = errors.Join(rollbackErr, err)
+			}
+		}
+		if err := syncDir(filepath.Dir(coreRoot)); err != nil {
+			rollbackErr = errors.Join(rollbackErr, err)
+		}
+		for _, restorePath := range paths {
+			if err := syncDir(filepath.Dir(restorePath)); err != nil {
+				rollbackErr = errors.Join(rollbackErr, err)
+			}
+		}
+		return rollbackErr
+	}
+	if err := trip("install-core"); err != nil {
+		return errors.Join(err, rollback())
 	}
 	if err := os.Rename(stagedCore, coreRoot); err != nil {
-		_ = os.Rename(backupParent, coreRoot)
-		return err
+		return errors.Join(err, rollback())
 	}
 	for _, path := range paths {
+		if err := trip("commit-metadata:" + filepath.Base(path)); err != nil {
+			return errors.Join(fmt.Errorf("commit metadata %s: %w", path, err), rollback())
+		}
 		if err := os.Rename(temps[path], path); err != nil {
-			rollbackCore()
-			for _, restorePath := range paths {
-				_ = atomicWriteFile(restorePath, oldData[restorePath], 0o644)
-			}
-			return fmt.Errorf("commit metadata %s: %w", path, err)
+			return errors.Join(fmt.Errorf("commit metadata %s: %w", path, err), rollback())
 		}
 		delete(temps, path)
 	}
-	_ = os.RemoveAll(backupParent)
+	if err := syncDir(filepath.Dir(coreRoot)); err != nil {
+		return errors.Join(err, rollback())
+	}
+	for _, path := range paths {
+		if err := syncDir(filepath.Dir(path)); err != nil {
+			return errors.Join(err, rollback())
+		}
+	}
+	if err := trip("remove-backup"); err != nil {
+		return err
+	}
+	if err := os.RemoveAll(backupParent); err != nil {
+		return err
+	}
 	return nil
 }
 

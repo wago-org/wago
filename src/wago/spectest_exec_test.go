@@ -166,19 +166,21 @@ type specAction struct {
 }
 
 type specExecCmd struct {
-	Type     string      `json:"type"`
-	Line     int         `json:"line"`
-	Filename string      `json:"filename"`
-	Name     string      `json:"name"`
-	As       string      `json:"as"`
-	Action   specAction  `json:"action"`
-	Expected []specValue `json:"expected"`
-	Either   []specValue `json:"either"`
-	Text     string      `json:"text"`
+	Type       string      `json:"type"`
+	Line       int         `json:"line"`
+	Filename   string      `json:"filename"`
+	Name       string      `json:"name"`
+	As         string      `json:"as"`
+	Action     specAction  `json:"action"`
+	Expected   []specValue `json:"expected"`
+	Either     []specValue `json:"either"`
+	Text       string      `json:"text"`
+	ModuleType string      `json:"module_type"`
 }
 
 type specExecFile struct {
-	Commands []specExecCmd `json:"commands"`
+	SourceFilename string        `json:"source_filename"`
+	Commands       []specExecCmd `json:"commands"`
 }
 
 type specExecGapReason uint8
@@ -1931,6 +1933,17 @@ func specTrapMatches(err error, want string) (bool, string) {
 		return false, fmt.Sprintf("got %s", trap.Code)
 	}
 	return true, ""
+}
+
+func FuzzSpecTrapMatchingDoesNotPanic(f *testing.F) {
+	for _, seed := range []string{"unreachable", "out of bounds memory access", "uninitialized element 2", "", strings.Repeat("x", 1024)} {
+		f.Add(seed, uint32(wago.TrapUnreachable))
+	}
+	f.Fuzz(func(t *testing.T, text string, code uint32) {
+		_, _ = specTrapMatches(&wago.TrapError{Code: wago.TrapCode(code)}, text)
+		_, _ = specTrapMatches(errors.New(text), text)
+		_, _ = specInstantiationFailureMatches(errors.New(text), text)
+	})
 }
 
 func TestSpecTrapMatching(t *testing.T) {

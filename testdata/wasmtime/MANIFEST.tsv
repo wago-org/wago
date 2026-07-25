@@ -2,7 +2,7 @@
 aarch64-extr.wast	runtime-regression	wast-json
 add.wast	runtime-regression	wast-json
 alias-region-imported-globals.wast	runtime-regression	wast-json
-alias-region-imported-tables.wast	reference-types,bulk-memory	wast-json
+alias-region-imported-tables.wast	bulk-memory,reference-types	wast-json
 alias-region-memory-copy.wast	bulk-memory	wast-json
 bit-and-conditions.wast	runtime-regression	wast-json
 br-table-fuzzbug.wast	sign-extension	wast-json
@@ -11,8 +11,8 @@ branch-hinting.wast	branch-hinting	direct-go
 call_indirect.wast	runtime-regression	wast-json
 control-flow.wast	runtime-regression	wast-json
 div-rem.wast	runtime-regression	wast-json
-elem-ref-null.wast	reference-types,bulk-memory	wast-json
-elem_drop.wast	reference-types,bulk-memory	wast-json
+elem-ref-null.wast	bulk-memory,reference-types	wast-json
+elem_drop.wast	bulk-memory,reference-types	wast-json
 embenchen_fannkuch.wast	compile-link-workload	wast-json
 embenchen_fasta.wast	compile-link-workload	wast-json
 embenchen_ifs.wast	compile-link-workload	wast-json
@@ -21,7 +21,7 @@ empty.wast	runtime-regression	wast-json
 export-large-signature.wast	runtime-regression	wast-json
 externref-id-function.wast	reference-types	wast-json
 externref-segment.wast	reference-types	wast-json
-externref-table-dropped-segment-issue-8281.wast	reference-types,bulk-memory	wast-json
+externref-table-dropped-segment-issue-8281.wast	bulk-memory,reference-types	wast-json
 f64-copysign.wast	runtime-regression	wast-json
 fib.wast	runtime-regression	wast-json
 float-round-doesnt-load-too-much.wast	runtime-regression	wast-json
@@ -64,7 +64,7 @@ simd/issue_3327_bnot_lowering.wast	simd	wast-json
 simd/load_splat_out_of_bounds.wast	simd	wast-json
 simd/replace-lane-preserve.wast	simd	wast-json
 simd/riscv64-replicated-imm5-works.wast	simd	wast-json
-simd/spillslot-size-fuzzbug.wast	simd,bulk-memory	wast-json
+simd/spillslot-size-fuzzbug.wast	bulk-memory,simd	wast-json
 simd/sse-cannot-fold-unaligned-loads.wast	simd	wast-json
 simd/unaligned-load.wast	simd	wast-json
 simd/v128-equal.wast	simd	wast-json
@@ -74,7 +74,7 @@ simple_ref_is_null.wast	reference-types	wast-json
 sink-float-but-dont-trap.wast	runtime-regression	wast-json
 stack_overflow.wast	runtime-regression	wast-json
 table_copy.wast	bulk-memory	wast-json
-table_copy_on_imported_tables.wast	reference-types,bulk-memory	wast-json
+table_copy_on_imported_tables.wast	bulk-memory,reference-types	wast-json
 table_grow_with_funcref.wast	reference-types	wast-json
 winch/br_table.wast	runtime-regression	wast-json
 winch/float-comparison.wast	runtime-regression	wast-json
@@ -95,7 +95,7 @@ winch/oob_table_grow.wast	reference-types	wast-json
 winch/ref-types-basic.wast	reference-types	direct-go
 winch/replace_lane.wast	simd	wast-json
 winch/select.wast	runtime-regression	wast-json
-winch/simd_multivalue.wast	simd,multi-value	wast-json
+winch/simd_multivalue.wast	multi-value,simd	wast-json
 winch/table-init-fuzz-bug.wast	bulk-memory	wast-json
 winch/table_fill.wast	reference-types	direct-go
 winch/table_get.wast	reference-types	wast-json

@@ -6,9 +6,20 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/wago-org/wago/internal/wasmtimetest"
 	corewasm "github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/testutil/wasmtest"
 )
+
+func TestWasmtimeCanonicalBoundsMode(t *testing.T) {
+	want := BoundsChecksExplicit
+	if wasmtimetest.ExpectedBounds == "signals" {
+		want = BoundsChecksSignalsBased
+	}
+	if got := NewRuntimeConfig().BoundsChecks(); got != want {
+		t.Fatalf("canonical Wasmtime bounds mode = %v, want %v; use make test or make test-guard", got, want)
+	}
+}
 
 // Port of tests/all/func.rs::typed_multiple_results and
 // tests/all/func.rs::wrap_multiple_results at the revision in PROVENANCE.json.
@@ -69,7 +80,7 @@ func TestWasmtimePortV128TypedCallBoundaries(t *testing.T) {
 		return
 	}
 	if !hostSupportsSIMD() {
-		t.Skip("host SIMD unavailable")
+		t.Fatal("supported Wasmtime corpus target lacks the required SIMD baseline")
 	}
 	one := wasmtest.FuncType([]corewasm.ValType{corewasm.V128}, []corewasm.ValType{corewasm.V128})
 	two := wasmtest.FuncType(

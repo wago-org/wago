@@ -22,7 +22,7 @@ cd "$root"
 # print "covered<TAB>total<TAB>pkg" per package, plus a final TOTAL row. The
 # merged profile repeats each block once per test binary, so dedup by block id.
 measure() {
-	(cd "$1" && go test -count=1 -covermode=atomic -coverpkg=./... -coverprofile="$2" ./... >/dev/null)
+	(cd "$1" && WAGO_BOUNDS=explicit go test -count=1 -covermode=atomic -coverpkg=./... -coverprofile="$2" ./... >/dev/null)
 	awk 'NR>1 {
 		key=$1; stmts[key]=$2+0; c=$3+0; if (c>max[key]) max[key]=c; seen[key]=1
 	}
