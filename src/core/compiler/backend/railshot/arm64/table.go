@@ -106,6 +106,11 @@ func (f *fn) entryArrayAddr(dst, base Reg, externref bool) {
 	f.a.Add64(dst, dst, base)
 }
 
+func (f *fn) trapTableUnlessLE(value, limit Reg) {
+	f.cmpRR(value, limit, true)
+	f.trapIf(condA, trapTableOOB)
+}
+
 func (f *fn) tableSize(r *wasm.Reader) error {
 	tableIdx, err := readSingleTableIndex(r)
 	if err != nil {
@@ -145,7 +150,7 @@ func (f *fn) tableInit(r *wasm.Reader) error {
 	f.loadTableDescriptor(X14, tableIdx)
 	f.ld32(X12, X14, 0)
 	f.leaScaled(X13, X9, X11, 0, 0, true)
-	f.trapUnlessLE(X13, X12)
+	f.trapTableUnlessLE(X13, X12)
 	externref := f.tableIsExternref(tableIdx)
 	f.typedTableEntryAddr(X9, X14, tableIdx)
 
@@ -153,7 +158,7 @@ func (f *fn) tableInit(r *wasm.Reader) error {
 	f.ld64(X14, linMemReg, -int32(offPassiveElemPtr))
 	f.ld32(X12, X14, disp+8)
 	f.leaScaled(X13, X10, X11, 0, 0, true)
-	f.trapUnlessLE(X13, X12)
+	f.trapTableUnlessLE(X13, X12)
 	f.ld64(X14, X14, disp)
 	f.entryArrayAddr(X10, X14, externref)
 	f.shiftImm(shLSL, X11, entryStrideShift(externref), true)
@@ -194,12 +199,12 @@ func (f *fn) tableCopy(r *wasm.Reader) error {
 	f.loadTableDescriptor(X14, dstTableIdx)
 	f.ld32(X12, X14, 0)
 	f.leaScaled(X13, X9, X11, 0, 0, true)
-	f.trapUnlessLE(X13, X12)
+	f.trapTableUnlessLE(X13, X12)
 	f.typedTableEntryAddr(X9, X14, dstTableIdx)
 	f.loadTableDescriptor(X14, srcTableIdx)
 	f.ld32(X12, X14, 0)
 	f.leaScaled(X13, X10, X11, 0, 0, true)
-	f.trapUnlessLE(X13, X12)
+	f.trapTableUnlessLE(X13, X12)
 	f.typedTableEntryAddr(X10, X14, srcTableIdx)
 	f.shiftImm(shLSL, X11, entryStrideShift(f.tableIsExternref(dstTableIdx)), true)
 	f.cmpRR(X9, X10, true)
@@ -241,7 +246,7 @@ func (f *fn) tableFill(r *wasm.Reader) error {
 	f.loadTableDescriptor(X14, tableIdx)
 	f.ld32(X13, X14, 0)
 	f.leaScaled(X9, X9, X11, 0, 0, true)
-	f.trapUnlessLE(X9, X13)
+	f.trapTableUnlessLE(X9, X13)
 	f.ld64(X9, SP, f.spillOff(d-3))
 	f.canonicalizeTableOperand(X9, tableIdx)
 	f.tableEntryAddr(X9, X14)
@@ -268,7 +273,7 @@ func (f *fn) externrefTableFill(tableIdx uint32) error {
 	f.loadTableDescriptor(X14, tableIdx)
 	f.ld32(X13, X14, 0)
 	f.leaScaled(X9, X9, X11, 0, 0, true)
-	f.trapUnlessLE(X9, X13)
+	f.trapTableUnlessLE(X9, X13)
 	f.ld64(X9, SP, f.spillOff(d-3))
 	f.typedTableEntryAddr(X9, X14, tableIdx)
 	f.fillExternrefEntries(X9, X11, X12)
