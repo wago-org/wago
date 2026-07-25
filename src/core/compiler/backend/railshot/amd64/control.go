@@ -150,19 +150,6 @@ func slotOfLogicalTypes(types []machineType, logical int) int {
 
 func (f *fn) currentLogicalTypes() []machineType { return f.logicalTypes(f.rootsBottomToTop()) }
 
-// flushSuffix canonicalizes the stack and returns its logical types plus the
-// physical slot where the last n logical operands begin. Logical depth and slot
-// depth differ whenever values below the suffix include v128.
-func (f *fn) flushSuffix(n int) ([]machineType, int) {
-	f.flush()
-	types := f.currentLogicalTypes()
-	return types, slotOfLogicalTypes(types, len(types)-n)
-}
-
-func (f *fn) dropFlushedSuffix(types []machineType, n int) {
-	f.setDepthTypes(types[:len(types)-n])
-}
-
 func (f *fn) moveBranchValues(fr *ctrlFrame, d, a int) {
 	types := f.currentLogicalTypes()
 	fromSlot := slotOfLogicalTypes(types, d-a)
