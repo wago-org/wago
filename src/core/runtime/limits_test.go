@@ -22,6 +22,23 @@ func TestInstantiateArenaNeedAccountsExplicitHostControlFrame(t *testing.T) {
 	}
 }
 
+func TestInstantiateArenaNeedAccountsV128GlobalCells(t *testing.T) {
+	scalar, err := InstantiateArenaNeed(InstantiateFootprint{GlobalCount: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	withV128, err := InstantiateArenaNeed(InstantiateFootprint{GlobalCount: 2, V128GlobalCount: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := withV128-scalar, 8; got != want {
+		t.Fatalf("one v128 global footprint delta = %d, want %d", got, want)
+	}
+	if _, err := InstantiateArenaNeed(InstantiateFootprint{GlobalCount: 1, V128GlobalCount: 2}); err == nil || !strings.Contains(err.Error(), "exceeds global count") {
+		t.Fatalf("excess v128 global count error = %v", err)
+	}
+}
+
 func TestInstantiateArenaNeedZeroLengthTableDescriptor(t *testing.T) {
 	base := InstantiateFootprint{}
 	withoutTable, err := InstantiateArenaNeed(base)

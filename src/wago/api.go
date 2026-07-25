@@ -3257,6 +3257,12 @@ func (c *Compiled) validateArenaFootprint() error {
 	if c.memoryDir != nil {
 		tagCount = len(c.memoryDir.ehTags)
 	}
+	v128GlobalCount := 0
+	for _, global := range c.Globals {
+		if global.Type == ValV128 {
+			v128GlobalCount++
+		}
+	}
 	tableSize, tableCapacity := c.TableSize, c.tableRuntimeCapacity(0)
 	var tableCaps []int
 	var tableEntryBytes []int
@@ -3294,6 +3300,7 @@ func (c *Compiled) validateArenaFootprint() error {
 		FuncRefCount:       funcRefCount,
 		TagCount:           tagCount,
 		GlobalCount:        len(c.Globals),
+		V128GlobalCount:    v128GlobalCount,
 		MemoryCount:        c.memoryCount(),
 		HasTable:           c.HasTable,
 		TableSize:          tableSize,

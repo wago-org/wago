@@ -85,6 +85,7 @@ type InstantiateFootprint struct {
 	FuncRefCount       int
 	TagCount           int // one 8-byte exact native identity per exception tag
 	GlobalCount        int
+	V128GlobalCount    int // globals whose cells require 16 bytes instead of the scalar/reference 8 bytes
 	MemoryCount        int // 16-byte native directory entries when greater than one
 	HasTable           bool
 	TableSize          int
@@ -104,8 +105,11 @@ type InstantiateFootprint struct {
 // during instance creation, plus a small alignment slack for the allocator's
 // 8-byte rounding before each allocation.
 func InstantiateArenaNeed(fp InstantiateFootprint) (int, error) {
-	if fp.FuncImportCount < 0 || fp.HostCallBytes < 0 || fp.FuncRefCount < 0 || fp.TagCount < 0 || fp.GlobalCount < 0 || fp.MemoryCount < 0 || fp.TableSize < 0 || fp.TableCapacity < 0 || fp.ImportedTableCount < 0 || fp.ElemCount < 0 || fp.PassiveElemCount < 0 || fp.PassiveElemBytes < 0 || fp.PassiveDataCount < 0 || fp.MaxParamSlots < 0 || fp.MaxResultSlots < 0 {
+	if fp.FuncImportCount < 0 || fp.HostCallBytes < 0 || fp.FuncRefCount < 0 || fp.TagCount < 0 || fp.GlobalCount < 0 || fp.V128GlobalCount < 0 || fp.MemoryCount < 0 || fp.TableSize < 0 || fp.TableCapacity < 0 || fp.ImportedTableCount < 0 || fp.ElemCount < 0 || fp.PassiveElemCount < 0 || fp.PassiveElemBytes < 0 || fp.PassiveDataCount < 0 || fp.MaxParamSlots < 0 || fp.MaxResultSlots < 0 {
 		return 0, fmt.Errorf("negative instantiate footprint input")
+	}
+	if fp.V128GlobalCount > fp.GlobalCount {
+		return 0, fmt.Errorf("v128 global count %d exceeds global count %d", fp.V128GlobalCount, fp.GlobalCount)
 	}
 	tableCaps := fp.TableCapacities
 	if len(tableCaps) == 0 {
@@ -184,7 +188,11 @@ func InstantiateArenaNeed(fp InstantiateFootprint) (int, error) {
 		return 0, fmt.Errorf("global count %d overflows arena allocation", fp.GlobalCount)
 	}
 	need += 8 * fp.GlobalCount // globals pointer table
-	need += 8 * fp.GlobalCount // worst-case cells for local/value-import globals
+	need += 8 * fp.GlobalCount // scalar/reference cells for local/value-import globals
+	if fp.V128GlobalCount > (maxInt()-need)/8 {
+		return 0, fmt.Errorf("v128 global count %d overflows arena allocation", fp.V128GlobalCount)
+	}
+	need += 8 * fp.V128GlobalCount // v128 cells are 16 bytes, eight above the base cell
 	if fp.MemoryCount > 1 {
 		if fp.MemoryCount > (maxInt()-need)/16 {
 			return 0, fmt.Errorf("memory count %d overflows directory allocation", fp.MemoryCount)

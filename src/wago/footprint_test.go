@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
+	"github.com/wago-org/wago/testutil/wasmtest"
 )
 
 func TestFunctionImportArenaNeedUsesConcreteBindingShape(t *testing.T) {
@@ -20,6 +21,18 @@ func TestFunctionImportArenaNeedUsesConcreteBindingShape(t *testing.T) {
 	syncWant := crossWant + coreruntime.HostCtrlFrameBytes
 	if got := compiled.arenaNeedForImports(Imports{"env.log": HostFunc(func(HostModule, []uint64, []uint64) {})}, true); got != syncWant {
 		t.Fatalf("sync host arena need = %d, want %d", got, syncWant)
+	}
+}
+
+func TestNoImportSynchronousArenaNeedIncludesControlFrame(t *testing.T) {
+	compiled := MustCompile(wasmtest.Module())
+	defer compiled.Close()
+	want := compiled.instantiateArenaNeed + coreruntime.HostCtrlFrameBytes
+	if got := compiled.arenaNeedForImports(nil, true); got != want {
+		t.Fatalf("no-import sync arena need = %d, want %d", got, want)
+	}
+	if got := compiled.arenaNeedForImports(nil, false); got != compiled.instantiateArenaNeed {
+		t.Fatalf("no-import async arena need = %d, want baseline %d", got, compiled.instantiateArenaNeed)
 	}
 }
 

@@ -145,15 +145,17 @@ func (b *instanceBuilder) validateCompiled() error {
 
 func (c *Compiled) arenaNeedForImports(imports Imports, syncMode bool) int {
 	need := c.instantiateArenaNeed
-	if len(c.Imports) == 0 {
-		return need
-	}
-	baselineHostBytes := runtime.HostCallLogBytes
+	baselineHostBytes := 0
 	if c.needsPublicFuncrefHostReentry() || c.usesGCStructHelpers() || c.usesGCArrayHelpers() {
 		baselineHostBytes = runtime.HostCtrlFrameBytes
+	} else if len(c.Imports) > 0 {
+		baselineHostBytes = runtime.HostCallLogBytes
 	}
 	actualHostBytes := 0
 	if syncMode {
+		// Runtime instantiation always installs the synchronous control frame,
+		// including for modules without function imports: public funcref calls and
+		// nested runtime entry share the same parked-host context.
 		actualHostBytes = runtime.HostCtrlFrameBytes
 	} else {
 		for _, key := range c.Imports {
