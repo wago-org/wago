@@ -466,12 +466,12 @@ func (rt *Runtime) NewExternRefGlobal(initial ExternRef, mutable bool) (*Global,
 // global importer closes. Instance-owned exported globals remain no-ops because
 // their producer instance owns the cell.
 func (g *Global) Close() error {
-	if g == nil || g.owner == nil || g.owner.arena == nil {
+	if g == nil || g.owner == nil {
 		return nil
 	}
 	o := g.owner
 	o.mu.Lock()
-	if o.closed {
+	if o.closed || o.arena == nil {
 		o.mu.Unlock()
 		return nil
 	}
@@ -483,17 +483,19 @@ func (g *Global) Close() error {
 	o.closed = true
 	arena, store := o.arena, o.store
 	o.arena = nil
+	g.cell = nil
 	roots := make([]*Instance, 0, len(o.retained))
 	for root := range o.retained {
 		roots = append(roots, root)
 	}
 	o.retained = nil
 	o.mu.Unlock()
+	// Root release may re-enter instance finalization, so it must not happen
+	// while globalOwner.mu is held.
 	for _, root := range roots {
 		root.releaseResourceRoot()
 	}
 	err := arena.Close()
-	g.cell = nil
 	if store != nil {
 		store.storeObjectClosed()
 	}
@@ -515,7 +517,7 @@ func (g *Global) Get() uint64 {
 	if g.owner != nil {
 		g.owner.mu.Lock()
 		defer g.owner.mu.Unlock()
-		if g.owner.closed || len(g.cell) < 8 {
+		if g.owner.closed || len(g.cell) < globalCellSize(g.Type) {
 			return 0
 		}
 	}
@@ -537,7 +539,7 @@ func (g *Global) GetV128() V128 {
 	if g.owner != nil {
 		g.owner.mu.Lock()
 		defer g.owner.mu.Unlock()
-		if g.owner.closed || len(g.cell) < 8 {
+		if g.owner.closed || len(g.cell) < globalCellSize(g.Type) {
 			return V128{}
 		}
 	}
@@ -567,7 +569,7 @@ func (g *Global) Set(bits uint64) error {
 	if g.owner != nil {
 		g.owner.mu.Lock()
 		defer g.owner.mu.Unlock()
-		if g.owner.closed || len(g.cell) < 8 {
+		if g.owner.closed || len(g.cell) < globalCellSize(g.Type) {
 			return fmt.Errorf("global storage is closed")
 		}
 	}
@@ -587,10 +589,7 @@ func (g *Global) GetValue() (Value, error) {
 }
 
 func (g *Global) getValueNoLease() (Value, error) {
-	if g == nil || len(g.cell) < 8 {
-		return Value{}, fmt.Errorf("global storage is closed")
-	}
-	if g.owner == nil {
+	if g == nil || g.owner == nil {
 		return Value{}, fmt.Errorf("global has no compatible reference owner")
 	}
 	o := g.owner
@@ -643,10 +642,7 @@ func (g *Global) SetValue(v Value) error {
 }
 
 func (g *Global) setValueNoLease(v Value) error {
-	if g == nil || len(g.cell) < 8 {
-		return fmt.Errorf("global storage is closed")
-	}
-	if g.owner == nil {
+	if g == nil || g.owner == nil {
 		return fmt.Errorf("global has no compatible reference owner")
 	}
 	o := g.owner
@@ -1264,15 +1260,25 @@ func (c *Compiled) validateImportedGlobal(key string, g *Global, imp GlobalImpor
 	if g == nil {
 		return fmt.Errorf("imported global %q is nil", key)
 	}
-	if len(g.cell) < globalCellSize(g.Type) {
-		return fmt.Errorf("imported global %q storage is closed", key)
-	}
 	actualType, actualMutable := g.Type, g.Mutable
+	var actual ValueTypeDescriptor
+	var actualTypes []DefinedTypeDescriptor
+	var hasExact bool
 	if g.owner != nil {
-		actualType, actualMutable = g.owner.typ, g.owner.mutable
+		o := g.owner
+		o.mu.Lock()
+		if o.closed || len(g.cell) < globalCellSize(o.typ) {
+			o.mu.Unlock()
+			return fmt.Errorf("imported global %q storage is closed", key)
+		}
+		actualType, actualMutable = o.typ, o.mutable
+		actual, actualTypes, hasExact = o.valueType, o.types, o.hasValueType
+		o.mu.Unlock()
 		if g.Type != actualType || g.Mutable != actualMutable {
 			return fmt.Errorf("imported global %q public metadata does not match its exact owner type", key)
 		}
+	} else if len(g.cell) < globalCellSize(g.Type) {
+		return fmt.Errorf("imported global %q storage is closed", key)
 	}
 	if actualType != imp.Type {
 		return fmt.Errorf("imported global %q has type %s, want %s", key, actualType, imp.Type)
@@ -1290,10 +1296,6 @@ func (c *Compiled) validateImportedGlobal(key string, g *Global, imp GlobalImpor
 	if err != nil {
 		return fmt.Errorf("imported global %q required type: %w", key, err)
 	}
-	o := g.owner
-	o.mu.Lock()
-	actual, actualTypes, hasExact := o.valueType, o.types, o.hasValueType
-	o.mu.Unlock()
 	if !hasExact {
 		actual, _ = valueTypeDescriptorFromValType(actualType)
 	}
@@ -1308,13 +1310,13 @@ func (c *Compiled) validateImportedGlobal(key string, g *Global, imp GlobalImpor
 }
 
 func (g *Global) validateNumericImport() error {
-	if g == nil || g.owner == nil || len(g.cell) < globalCellSize(g.Type) {
+	if g == nil || g.owner == nil {
 		return fmt.Errorf("numeric global descriptor is invalid")
 	}
 	o := g.owner
 	o.mu.Lock()
 	defer o.mu.Unlock()
-	if o.closed {
+	if o.closed || len(g.cell) < globalCellSize(o.typ) {
 		return fmt.Errorf("numeric global owner is closed")
 	}
 	if isReferenceValType(o.typ) || o.typ != g.Type || o.mutable != g.Mutable {

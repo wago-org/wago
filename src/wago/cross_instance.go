@@ -196,12 +196,12 @@ func (t *Table) Size() int {
 // Close releases a host-created table after every importer closes. Instance-owned
 // export handles remain no-ops; their producer instance owns the descriptor.
 func (t *Table) Close() error {
-	if t == nil || t.owner == nil || t.owner.arena == nil {
+	if t == nil || t.owner == nil {
 		return nil
 	}
 	o := t.owner
 	o.mu.Lock()
-	if o.closed {
+	if o.closed || o.arena == nil {
 		o.mu.Unlock()
 		return nil
 	}
@@ -213,11 +213,25 @@ func (t *Table) Close() error {
 	o.closed = true
 	arena, store := o.arena, o.store
 	o.arena = nil
+
+	// Lock order is tableOwner.mu -> Table.mu. Readers that need both use the
+	// same order; producer roots are released only after both locks are dropped,
+	// because releasing a root may re-enter instance finalization.
+	t.mu.Lock()
+	t.closed = true
+	t.desc = nil
+	roots := make([]*Instance, 0, len(t.retained))
+	for root := range t.retained {
+		roots = append(roots, root)
+	}
+	t.retained = nil
+	t.mu.Unlock()
 	o.mu.Unlock()
 
-	t.releaseRetainedInstances()
+	for _, root := range roots {
+		root.releaseResourceRoot()
+	}
 	err := arena.Close()
-	t.desc = nil
 	if store != nil {
 		store.storeObjectClosed()
 	}
@@ -225,7 +239,7 @@ func (t *Table) Close() error {
 }
 
 func (t *Table) validateImport(elementType ValType, exact ValueTypeDescriptor, types []DefinedTypeDescriptor, store *referenceStore, addr64 bool) error {
-	if t == nil || t.owner == nil || len(t.desc) < 8 {
+	if t == nil || t.owner == nil {
 		return fmt.Errorf("table descriptor is invalid")
 	}
 	o := t.owner
@@ -233,6 +247,12 @@ func (t *Table) validateImport(elementType ValType, exact ValueTypeDescriptor, t
 	defer o.mu.Unlock()
 	if o.closed {
 		return fmt.Errorf("table owner is closed")
+	}
+	t.mu.Lock()
+	validStorage := !t.closed && len(t.desc) >= 8
+	t.mu.Unlock()
+	if !validStorage {
+		return fmt.Errorf("table descriptor is invalid")
 	}
 	if o.instance != nil {
 		o.instance.lifeMu.Lock()
