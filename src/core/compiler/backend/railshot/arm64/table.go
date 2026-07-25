@@ -504,7 +504,7 @@ func (f *fn) checkedTableEntryAddr(idxReg Reg, tableIdx uint32) (entry Reg, tabl
 	f.ld32(ln, tbl, 0)
 	f.cmpRR(idxReg, ln, false) // was AluRR(0x39,…) — CMP idx,len (32-bit)
 	f.release(ln)
-	f.trapIf(condAE, trapIndirectOOB)
+	f.trapIf(condAE, trapTableOOB)
 	f.typedTableEntryAddr(idxReg, tbl, tableIdx)
 	f.pinned = f.pinned.remove(tbl)
 	f.pinned = f.pinned.remove(idxReg)

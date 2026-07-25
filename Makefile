@@ -109,7 +109,7 @@ WASMTIME_CHECKOUT ?= $(CURDIR)/.tmp/wasmtime-corpus-upstream
 WAST2JSON ?= wast2json
 
 .PHONY: wasmtime-corpus-check
-wasmtime-corpus-check: ## Verify pinned Wasmtime sources and WABT artifacts (WABT 1.0.41)
+wasmtime-corpus-check: ## Verify pinned Wasmtime sources and exact WABT artifacts
 	go run ./scripts/wasmtime-corpus -repo $(CURDIR) -wasmtime $(WASMTIME_CHECKOUT) -wast2json $(WAST2JSON)
 
 .PHONY: wasmtime-corpus-sync

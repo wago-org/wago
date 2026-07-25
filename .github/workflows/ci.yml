@@ -80,23 +80,41 @@ jobs:
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: false
-      - name: Build pinned WABT
+      - name: Install corpus build tools
         run: |
           sudo apt-get update
           sudo apt-get install -y cmake jq ninja-build
-          version="$(jq -r .wabt_version testdata/wasmtime/PROVENANCE.json)"
-          test -n "$version" && test "$version" != null
-          git clone --depth=1 --branch "$version" --recurse-submodules https://github.com/WebAssembly/wabt.git .tmp/wabt
+      - name: Read pinned WABT provenance
+        id: wabt
+        run: |
+          echo "repo=$(jq -r .wabt_repo testdata/wasmtime/PROVENANCE.json)" >> "$GITHUB_OUTPUT"
+          echo "revision=$(jq -r .wabt_revision testdata/wasmtime/PROVENANCE.json)" >> "$GITHUB_OUTPUT"
+      - name: Restore pinned WABT build
+        id: wabt-cache
+        uses: actions/cache@v4
+        with:
+          path: .tmp/wabt
+          key: wabt-${{ runner.os }}-${{ steps.wabt.outputs.revision }}
+      - name: Build pinned WABT
+        if: steps.wabt-cache.outputs.cache-hit != 'true'
+        run: |
+          git clone --filter=blob:none --no-checkout "${{ steps.wabt.outputs.repo }}" .tmp/wabt
+          git -C .tmp/wabt fetch --depth=1 origin "${{ steps.wabt.outputs.revision }}"
+          git -C .tmp/wabt checkout --detach "${{ steps.wabt.outputs.revision }}"
+          git -C .tmp/wabt submodule update --init --recursive
+          test "$(git -C .tmp/wabt rev-parse HEAD)" = "${{ steps.wabt.outputs.revision }}"
           cmake -S .tmp/wabt -B .tmp/wabt/build -G Ninja -DBUILD_TESTS=OFF
           cmake --build .tmp/wabt/build --target wast2json
       - name: Verify pinned Wasmtime sources and generated artifacts
         run: |
+          test "$(git -C .tmp/wabt rev-parse HEAD)" = "${{ steps.wabt.outputs.revision }}"
           go run ./scripts/wasmtime-corpus \
             -repo "$PWD" \
             -wasmtime "$PWD/.tmp/wasmtime-corpus-upstream" \

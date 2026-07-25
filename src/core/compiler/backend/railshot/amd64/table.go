@@ -490,7 +490,7 @@ func (f *fn) checkedTableEntryAddr(idxReg Reg, tableIdx uint32) (entry Reg, tabl
 	f.a.Load32(ln, tbl, 0)
 	f.a.AluRR(0x39, idxReg, ln, false)
 	f.release(ln)
-	f.trapIf(condAE, trapIndirectOOB)
+	f.trapIf(condAE, trapTableOOB)
 	f.typedTableEntryAddr(idxReg, tbl, tableIdx)
 	f.pinned = f.pinned.remove(tbl)
 	f.pinned = f.pinned.remove(idxReg)

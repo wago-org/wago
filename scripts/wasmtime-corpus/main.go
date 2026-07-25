@@ -15,26 +15,16 @@ import (
 	"io/fs"
 	"os"
 	"os/exec"
+	pathpkg "path"
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/wago-org/wago/internal/wasmtimecorpus"
 )
 
-type provenance struct {
-	UpstreamRepo                  string   `json:"upstream_repo"`
-	Revision                      string   `json:"revision"`
-	RevisionDate                  string   `json:"revision_date"`
-	SourceRoot                    string   `json:"source_root"`
-	WABTVersion                   string   `json:"wabt_version"`
-	LegacyCoreSourceFilenamePaths []string `json:"legacy_core_source_filenames"`
-	NormalizedWABTJSONFixtures    []string `json:"normalized_wabt_json_fixtures"`
-	FixtureTreeSHA256             string   `json:"fixture_tree_sha256"`
-}
-
-type fixture struct {
-	Path string
-	Mode string
-}
+type provenance = wasmtimecorpus.Provenance
+type fixture = wasmtimecorpus.Fixture
 
 func main() {
 	var (
@@ -52,8 +42,29 @@ func main() {
 }
 
 func run(repoRoot, wasmtimeRoot, wast2json string, fetch, write bool) error {
-	provPath := filepath.Join(repoRoot, "testdata", "wasmtime", "PROVENANCE.json")
-	prov, err := loadProvenance(provPath)
+	metadataRoot := filepath.Join(repoRoot, "testdata", "wasmtime")
+	provPath := filepath.Join(metadataRoot, "PROVENANCE.json")
+	manifestPath := filepath.Join(metadataRoot, "MANIFEST.tsv")
+	rustPortsPath := filepath.Join(metadataRoot, "RUST_PORTS.tsv")
+	directLedgerPath := filepath.Join(metadataRoot, "DIRECT_ARTIFACTS.tsv")
+	coreRoot := filepath.Join(metadataRoot, "core")
+
+	prov, err := wasmtimecorpus.LoadProvenance(provPath)
+	if err != nil {
+		return err
+	}
+	fixtures, err := wasmtimecorpus.LoadManifest(manifestPath)
+	if err != nil {
+		return err
+	}
+	if err := wasmtimecorpus.ValidateProvenanceFixtureSets(prov, fixtures); err != nil {
+		return err
+	}
+	rustPorts, err := wasmtimecorpus.LoadRustPorts(rustPortsPath)
+	if err != nil {
+		return err
+	}
+	directEntries, err := wasmtimecorpus.LoadDirectArtifacts(directLedgerPath)
 	if err != nil {
 		return err
 	}
@@ -68,28 +79,36 @@ func run(repoRoot, wasmtimeRoot, wast2json string, fetch, write bool) error {
 	if err := verifyWABTVersion(wast2json, prov.WABTVersion); err != nil {
 		return err
 	}
-	fixtures, err := loadManifest(filepath.Join(repoRoot, "testdata", "wasmtime", "MANIFEST.tsv"))
-	if err != nil {
+	if err := verifyRustPorts(rustPorts, wasmtimeRoot); err != nil {
 		return err
 	}
-	if err := verifyRustPorts(filepath.Join(repoRoot, "testdata", "wasmtime", "RUST_PORTS.tsv"), wasmtimeRoot); err != nil {
-		return err
+
+	workCore := coreRoot
+	var stageParent string
+	if write {
+		stageParent, err = os.MkdirTemp(metadataRoot, ".core-stage-")
+		if err != nil {
+			return err
+		}
+		defer os.RemoveAll(stageParent)
+		workCore = filepath.Join(stageParent, "core")
+		if err := copyTree(coreRoot, workCore); err != nil {
+			return fmt.Errorf("stage current core tree: %w", err)
+		}
 	}
-	fixtureModes := make(map[string]string, len(fixtures))
-	for _, fixture := range fixtures {
-		fixtureModes[fixture.Path] = fixture.Mode
-	}
-	legacyCoreSourceFilename, err := provenanceFixtureSet("legacy core source filename", prov.LegacyCoreSourceFilenamePaths, fixtureModes)
-	if err != nil {
-		return err
-	}
-	normalizedWABTJSON, err := provenanceFixtureSet("normalized WABT JSON", prov.NormalizedWABTJSONFixtures, fixtureModes)
+
+	legacyCoreSourceFilename := fixtureSet(prov.LegacyCoreSourceFilenamePaths)
+	normalizedWABTJSON := fixtureSet(prov.NormalizedWABTJSONFixtures)
+	directByPath, err := directArtifactIndex(fixtures, directEntries)
 	if err != nil {
 		return err
 	}
 
 	for _, fixture := range fixtures {
-		upstreamPath := filepath.Join(wasmtimeRoot, filepath.FromSlash(prov.SourceRoot), filepath.FromSlash(fixture.Path))
+		upstreamPath, err := joinUnder(wasmtimeRoot, pathJoin(prov.SourceRoot, fixture.Path))
+		if err != nil {
+			return err
+		}
 		upstream, err := os.ReadFile(upstreamPath)
 		if err != nil {
 			return fmt.Errorf("read upstream %s: %w", fixture.Path, err)
@@ -98,59 +117,59 @@ func run(repoRoot, wasmtimeRoot, wast2json string, fetch, write bool) error {
 		if err != nil {
 			return err
 		}
-		localDir := filepath.Join(repoRoot, "testdata", "wasmtime", "core", filepath.FromSlash(strings.TrimSuffix(fixture.Path, ".wast")))
-		if err := syncBytes(filepath.Join(localDir, "source.wast"), source, write); err != nil {
-			return fmt.Errorf("%s source: %w", fixture.Path, err)
+		localDir, err := joinUnder(workCore, strings.TrimSuffix(fixture.Path, ".wast"))
+		if err != nil {
+			return err
 		}
-		if fixture.Mode == "wast-json" {
+		if fixture.Mode == wasmtimecorpus.ModeWASTJSON {
+			if err := syncBytes(filepath.Join(localDir, "source.wast"), source, write); err != nil {
+				return fmt.Errorf("%s source: %w", fixture.Path, err)
+			}
 			if err := syncWABTArtifacts(localDir, fixture.Path, source, wast2json, legacyCoreSourceFilename[fixture.Path], normalizedWABTJSON[fixture.Path], write); err != nil {
 				return fmt.Errorf("%s generated artifacts: %w", fixture.Path, err)
 			}
+			continue
+		}
+		entry := directByPath[fixture.Path]
+		if err := verifyDirectFixture(localDir, source, entry, write); err != nil {
+			return fmt.Errorf("%s direct artifacts: %w", fixture.Path, err)
 		}
 	}
 
-	coreRoot := filepath.Join(repoRoot, "testdata", "wasmtime", "core")
-	digest, err := treeDigest(coreRoot)
+	digest, err := treeDigest(workCore)
 	if err != nil {
 		return err
 	}
-	if write {
-		prov.FixtureTreeSHA256 = digest
-		if err := writeProvenance(provPath, prov); err != nil {
-			return err
+	if !write {
+		if digest != prov.FixtureTreeSHA256 {
+			return fmt.Errorf("fixture tree SHA-256 = %s, want %s", digest, prov.FixtureTreeSHA256)
 		}
-		fmt.Printf("Wasmtime corpus refreshed: %d fixtures, tree %s\n", len(fixtures), digest)
+		fmt.Printf("Wasmtime corpus verified: %d fixtures, tree %s\n", len(fixtures), digest)
 		return nil
 	}
-	if digest != prov.FixtureTreeSHA256 {
-		return fmt.Errorf("fixture tree SHA-256 = %s, want %s", digest, prov.FixtureTreeSHA256)
+
+	prov.FixtureTreeSHA256 = digest
+	provData, err := marshalProvenance(prov)
+	if err != nil {
+		return err
 	}
-	fmt.Printf("Wasmtime corpus verified: %d fixtures, tree %s\n", len(fixtures), digest)
+	directData := marshalDirectArtifacts(directEntries)
+	if err := commitCorpus(coreRoot, workCore, map[string][]byte{
+		provPath:         provData,
+		directLedgerPath: directData,
+	}); err != nil {
+		return err
+	}
+	fmt.Printf("Wasmtime corpus refreshed: %d fixtures, tree %s\n", len(fixtures), digest)
 	return nil
 }
 
-func loadProvenance(path string) (provenance, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return provenance{}, err
-	}
-	var p provenance
-	if err := json.Unmarshal(data, &p); err != nil {
-		return provenance{}, fmt.Errorf("decode provenance: %w", err)
-	}
-	if p.UpstreamRepo == "" || p.Revision == "" || p.RevisionDate == "" || p.SourceRoot == "" || p.WABTVersion == "" || p.FixtureTreeSHA256 == "" {
-		return provenance{}, fmt.Errorf("provenance has empty required fields")
-	}
-	return p, nil
-}
-
-func writeProvenance(path string, p provenance) error {
+func marshalProvenance(p provenance) ([]byte, error) {
 	data, err := json.MarshalIndent(p, "", "  ")
 	if err != nil {
-		return err
+		return nil, err
 	}
-	data = append(data, '\n')
-	return os.WriteFile(path, data, 0o644)
+	return append(data, '\n'), nil
 }
 
 func fetchRevision(root string, p provenance) error {
@@ -194,73 +213,116 @@ func verifyWABTVersion(wast2json, want string) error {
 	if err != nil {
 		return fmt.Errorf("%s --version: %w: %s", wast2json, err, strings.TrimSpace(string(out)))
 	}
-	if !strings.Contains(string(out), want) {
-		return fmt.Errorf("wast2json version = %q, want %s", strings.TrimSpace(string(out)), want)
+	if got := strings.TrimSpace(string(out)); got != want {
+		return fmt.Errorf("wast2json version = %q, want exactly %q", got, want)
 	}
 	return nil
 }
 
-func loadManifest(path string) ([]fixture, error) {
-	data, err := os.ReadFile(path)
+func pathJoin(parts ...string) string {
+	return pathpkg.Join(parts...)
+}
+
+func joinUnder(root, relative string) (string, error) {
+	if err := wasmtimecorpus.ValidateRelativePath(relative); err != nil {
+		return "", err
+	}
+	rootAbs, err := filepath.Abs(root)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
-	var fixtures []fixture
-	for lineNo, line := range strings.Split(string(data), "\n") {
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		fields := strings.Split(line, "\t")
-		if len(fields) != 3 {
-			return nil, fmt.Errorf("manifest line %d has %d fields", lineNo+1, len(fields))
-		}
-		fixtures = append(fixtures, fixture{Path: fields[0], Mode: fields[2]})
+	joined := filepath.Join(rootAbs, filepath.FromSlash(relative))
+	rel, err := filepath.Rel(rootAbs, joined)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("path %q escapes root %q", relative, root)
 	}
-	return fixtures, nil
+	return joined, nil
 }
 
-func provenanceFixtureSet(name string, paths []string, fixtureModes map[string]string) (map[string]bool, error) {
+func fixtureSet(paths []string) map[string]bool {
 	set := make(map[string]bool, len(paths))
-	previous := ""
 	for _, path := range paths {
-		if path <= previous {
-			return nil, fmt.Errorf("%s fixture paths are not strictly sorted: %q after %q", name, path, previous)
-		}
-		if fixtureModes[path] != "wast-json" {
-			return nil, fmt.Errorf("%s fixture path %q is not a wast-json fixture", name, path)
-		}
 		set[path] = true
-		previous = path
 	}
-	return set, nil
+	return set
 }
 
-func verifyRustPorts(ledgerPath, wasmtimeRoot string) error {
-	data, err := os.ReadFile(ledgerPath)
+func verifyRustPorts(ports []wasmtimecorpus.RustPort, wasmtimeRoot string) error {
+	for _, port := range ports {
+		source, err := os.ReadFile(filepath.Join(wasmtimeRoot, filepath.FromSlash(port.File)))
+		if err != nil {
+			return fmt.Errorf("read Rust port source %s: %w", port.File, err)
+		}
+		if !bytes.Contains(source, []byte("fn "+port.Selector+"(")) {
+			return fmt.Errorf("rust port scope %s no longer names a function in the pinned source", port.Scope)
+		}
+	}
+	return nil
+}
+
+func directArtifactIndex(fixtures []fixture, entries []wasmtimecorpus.DirectArtifact) (map[string]*wasmtimecorpus.DirectArtifact, error) {
+	directModes := map[string]bool{
+		wasmtimecorpus.ModeDirectGo:          true,
+		wasmtimecorpus.ModeDirectInvalid:     true,
+		wasmtimecorpus.ModeDirectConcurrency: true,
+	}
+	modes := make(map[string]string, len(fixtures))
+	for _, fixture := range fixtures {
+		modes[fixture.Path] = fixture.Mode
+	}
+	indexed := make(map[string]*wasmtimecorpus.DirectArtifact, len(entries))
+	for i := range entries {
+		entry := &entries[i]
+		if !directModes[modes[entry.Path]] {
+			return nil, fmt.Errorf("direct artifact ledger path %q is not a direct fixture", entry.Path)
+		}
+		indexed[entry.Path] = entry
+	}
+	for _, fixture := range fixtures {
+		if directModes[fixture.Mode] && indexed[fixture.Path] == nil {
+			return nil, fmt.Errorf("direct artifact ledger is missing %q", fixture.Path)
+		}
+	}
+	return indexed, nil
+}
+
+func verifyDirectFixture(localDir string, upstreamSource []byte, entry *wasmtimecorpus.DirectArtifact, write bool) error {
+	localSource, err := os.ReadFile(filepath.Join(localDir, "source.wast"))
 	if err != nil {
 		return err
 	}
-	for lineNo, line := range strings.Split(string(data), "\n") {
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		fields := strings.Split(line, "\t")
-		if len(fields) != 3 {
-			return fmt.Errorf("rust port ledger line %d has %d fields", lineNo+1, len(fields))
-		}
-		file, selector, ok := strings.Cut(fields[0], "::")
-		if !ok {
-			return fmt.Errorf("rust port ledger line %d has invalid scope %q", lineNo+1, fields[0])
-		}
-		source, err := os.ReadFile(filepath.Join(wasmtimeRoot, filepath.FromSlash(file)))
-		if err != nil {
-			return fmt.Errorf("read Rust port source %s: %w", file, err)
-		}
-		if !strings.HasPrefix(selector, "portable-") && !bytes.Contains(source, []byte("fn "+selector+"(")) {
-			return fmt.Errorf("rust port scope %s no longer names a function in the pinned source", fields[0])
-		}
+	if !bytes.Equal(localSource, upstreamSource) {
+		return fmt.Errorf("upstream source changed; manually review and replace source.wast and module.*.wasm together before syncing")
 	}
+	sourceSum := sha256.Sum256(localSource)
+	sourceDigest := hex.EncodeToString(sourceSum[:])
+	artifactDigest, err := wasmtimecorpus.DirectArtifactsSHA256(localDir)
+	if err != nil {
+		return err
+	}
+	sourceChanged := sourceDigest != entry.SourceSHA256
+	artifactsChanged := artifactDigest != entry.ArtifactsSHA256
+	if !sourceChanged && !artifactsChanged {
+		return nil
+	}
+	if !write {
+		return fmt.Errorf("ledger hashes differ: source=%s artifacts=%s", sourceDigest, artifactDigest)
+	}
+	if sourceChanged && !artifactsChanged {
+		return fmt.Errorf("source changed but direct artifacts did not; rebuild or deliberately update the ledger after review")
+	}
+	entry.SourceSHA256 = sourceDigest
+	entry.ArtifactsSHA256 = artifactDigest
 	return nil
+}
+
+func marshalDirectArtifacts(entries []wasmtimecorpus.DirectArtifact) []byte {
+	var out strings.Builder
+	out.WriteString("# fixture-path\tsource-sha256\tmodule-artifacts-sha256\tadaptation\n")
+	for _, entry := range entries {
+		fmt.Fprintf(&out, "%s\t%s\t%s\t%s\n", entry.Path, entry.SourceSHA256, entry.ArtifactsSHA256, entry.Adaptation)
+	}
+	return []byte(out.String())
 }
 
 func adaptSource(path string, upstream []byte) ([]byte, error) {
@@ -279,19 +341,63 @@ func adaptSource(path string, upstream []byte) ([]byte, error) {
 	return append([]byte(notice), adapted...), nil
 }
 
+type normalizedWABTDocument struct {
+	SourceFilename string                  `json:"source_filename"`
+	Commands       []normalizedWABTCommand `json:"commands"`
+}
+
+type normalizedWABTCommand struct {
+	Type     string               `json:"type"`
+	Line     int                  `json:"line"`
+	Filename string               `json:"filename,omitempty"`
+	Action   normalizedWABTAction `json:"action,omitempty"`
+	Text     string               `json:"text,omitempty"`
+}
+
+type normalizedWABTAction struct {
+	Type  string            `json:"type"`
+	Field string            `json:"field"`
+	Args  []json.RawMessage `json:"args"`
+}
+
 func normalizeWABTJSON(fixturePath, sourceRel, commandsPath string) error {
-	var data []byte
-	switch fixturePath {
-	case "winch/use-innermost-frame.wast":
-		// WABT 1.0.41 emits malformed JSON for this deeply nested function's
-		// multi-result assert_trap (adjacent expected entries without commas).
-		// The assertion only observes the trap, so preserve the valid historical
-		// replay command with the unusable expected-result metadata omitted.
-		data = []byte(fmt.Sprintf("{\"source_filename\":%q,\"commands\":[\n  {\"type\":\"module\",\"line\":1,\"filename\":\"commands.0.wasm\"},\n  {\"type\":\"assert_trap\",\"line\":1944,\"action\":{\"type\":\"invoke\",\"field\":\"main\",\"args\":[]},\"text\":\"unreachable\"}\n]}\n", sourceRel))
-	default:
+	if fixturePath != "winch/use-innermost-frame.wast" {
 		return fmt.Errorf("no WABT JSON normalization is defined for %s", fixturePath)
 	}
-	return os.WriteFile(commandsPath, data, 0o644)
+	raw, err := os.ReadFile(commandsPath)
+	if err != nil {
+		return err
+	}
+	// WABT 1.0.41 emits malformed JSON for this deeply nested function's
+	// multi-result assert_trap: the expected entries are adjacent without
+	// commas. Remove only that unusable final field, then parse and validate all
+	// command metadata instead of hardcoding line numbers or action details.
+	marker := []byte(`, "expected": [`)
+	if bytes.Count(raw, marker) != 1 {
+		return fmt.Errorf("%s malformed expected-result marker count = %d, want 1; review or remove the normalization", fixturePath, bytes.Count(raw, marker))
+	}
+	prefix, _, _ := bytes.Cut(raw, marker)
+	repaired := append(append([]byte(nil), prefix...), []byte("}]}\n")...)
+	dec := json.NewDecoder(bytes.NewReader(repaired))
+	dec.DisallowUnknownFields()
+	var doc normalizedWABTDocument
+	if err := dec.Decode(&doc); err != nil {
+		return fmt.Errorf("repair %s commands JSON: %w", fixturePath, err)
+	}
+	if doc.SourceFilename != sourceRel || len(doc.Commands) != 2 ||
+		doc.Commands[0].Type != "module" || doc.Commands[0].Filename != "commands.0.wasm" ||
+		doc.Commands[1].Type != "assert_trap" || doc.Commands[1].Action.Type != "invoke" ||
+		doc.Commands[1].Action.Field == "" || len(doc.Commands[1].Action.Args) != 0 || doc.Commands[1].Text == "" {
+		return fmt.Errorf("%s repaired command shape changed: %+v", fixturePath, doc)
+	}
+	action, err := json.Marshal(doc.Commands[1].Action)
+	if err != nil {
+		return err
+	}
+	normalized := []byte(fmt.Sprintf("{\"source_filename\":%q,\"commands\":[\n  {\"type\":\"module\",\"line\":%d,\"filename\":%q},\n  {\"type\":\"assert_trap\",\"line\":%d,\"action\":%s,\"text\":%q}\n]}\n",
+		doc.SourceFilename, doc.Commands[0].Line, doc.Commands[0].Filename,
+		doc.Commands[1].Line, action, doc.Commands[1].Text))
+	return os.WriteFile(commandsPath, normalized, 0o644)
 }
 
 func syncWABTArtifacts(localDir, fixturePath string, source []byte, wast2json string, legacyCoreSourceFilename, normalizeJSON, write bool) error {
@@ -400,6 +506,128 @@ func syncBytes(path string, want []byte, write bool) error {
 		return fmt.Errorf("content differs; run with -write")
 	}
 	return nil
+}
+
+func copyTree(src, dst string) error {
+	return filepath.WalkDir(src, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(src, path)
+		if err != nil {
+			return err
+		}
+		target := filepath.Join(dst, rel)
+		if entry.Type()&os.ModeSymlink != 0 {
+			return fmt.Errorf("refuse to stage symlink %s", path)
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() {
+			return os.MkdirAll(target, info.Mode().Perm())
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		return os.WriteFile(target, data, info.Mode().Perm())
+	})
+}
+
+func commitCorpus(coreRoot, stagedCore string, metadata map[string][]byte) error {
+	paths := make([]string, 0, len(metadata))
+	oldData := make(map[string][]byte, len(metadata))
+	temps := make(map[string]string, len(metadata))
+	defer func() {
+		for _, tmp := range temps {
+			_ = os.Remove(tmp)
+		}
+	}()
+	for path, data := range metadata {
+		paths = append(paths, path)
+		old, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		oldData[path] = old
+		tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+"-*")
+		if err != nil {
+			return err
+		}
+		temps[path] = tmp.Name()
+		if _, err := tmp.Write(data); err != nil {
+			tmp.Close()
+			return err
+		}
+		if err := tmp.Sync(); err != nil {
+			tmp.Close()
+			return err
+		}
+		if err := tmp.Close(); err != nil {
+			return err
+		}
+		if err := os.Chmod(tmp.Name(), 0o644); err != nil {
+			return err
+		}
+	}
+	sort.Strings(paths)
+
+	backupParent, err := os.MkdirTemp(filepath.Dir(coreRoot), ".core-backup-")
+	if err != nil {
+		return err
+	}
+	if err := os.Remove(backupParent); err != nil {
+		return err
+	}
+	if err := os.Rename(coreRoot, backupParent); err != nil {
+		return err
+	}
+	rollbackCore := func() {
+		_ = os.RemoveAll(coreRoot)
+		_ = os.Rename(backupParent, coreRoot)
+	}
+	if err := os.Rename(stagedCore, coreRoot); err != nil {
+		_ = os.Rename(backupParent, coreRoot)
+		return err
+	}
+	for _, path := range paths {
+		if err := os.Rename(temps[path], path); err != nil {
+			rollbackCore()
+			for _, restorePath := range paths {
+				_ = atomicWriteFile(restorePath, oldData[restorePath], 0o644)
+			}
+			return fmt.Errorf("commit metadata %s: %w", path, err)
+		}
+		delete(temps, path)
+	}
+	_ = os.RemoveAll(backupParent)
+	return nil
+}
+
+func atomicWriteFile(path string, data []byte, mode os.FileMode) error {
+	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+"-*")
+	if err != nil {
+		return err
+	}
+	name := tmp.Name()
+	defer os.Remove(name)
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Chmod(name, mode); err != nil {
+		return err
+	}
+	return os.Rename(name, path)
 }
 
 func treeDigest(root string) (string, error) {

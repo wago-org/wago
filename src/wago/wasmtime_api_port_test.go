@@ -10,9 +10,12 @@ import (
 	"github.com/wago-org/wago/testutil/wasmtest"
 )
 
-// These tests port the portable call-boundary cases from Wasmtime's
-// tests/all/func.rs at revision a5720e50d5ec9eab34eed690eee952abfdd0e3ba.
+// Port of tests/all/func.rs::typed_multiple_results and
+// tests/all/func.rs::wrap_multiple_results at the revision in PROVENANCE.json.
 func TestWasmtimePortMultiResultCallBoundaries(t *testing.T) {
+	if runWasmtimeIsolatedPortTest(t) {
+		return
+	}
 	t.Run("wasm to wasm", func(t *testing.T) {
 		triple := wasmtest.FuncType(nil, []corewasm.ValType{corewasm.I32, corewasm.I32, corewasm.I32})
 		mod := wasmtest.Module(
@@ -60,7 +63,11 @@ func TestWasmtimePortMultiResultCallBoundaries(t *testing.T) {
 	})
 }
 
+// Port of tests/all/func.rs::typed_v128 at the revision in PROVENANCE.json.
 func TestWasmtimePortV128TypedCallBoundaries(t *testing.T) {
+	if runWasmtimeIsolatedPortTest(t) {
+		return
+	}
 	if !hostSupportsSIMD() {
 		t.Skip("host SIMD unavailable")
 	}

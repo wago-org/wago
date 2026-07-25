@@ -1,9 +1,8 @@
 # upstream-scope	local-test	adaptation
 # The exact Wasmtime revision is recorded in PROVENANCE.json.
-# A scope ending in ::portable-* records a deliberately grouped API adaptation;
-# exact Rust test functions are used where the local test has a one-to-one oracle.
-tests/all/func.rs::portable-multi-result-call-boundaries	TestWasmtimePortMultiResultCallBoundaries	binary-builder API adaptation
-tests/all/func.rs::portable-v128-call-boundaries	TestWasmtimePortV128TypedCallBoundaries	binary-builder API adaptation
+tests/all/func.rs::typed_multiple_results	TestWasmtimePortMultiResultCallBoundaries	binary-builder typed and array-style call adaptation
+tests/all/func.rs::typed_v128	TestWasmtimePortV128TypedCallBoundaries	binary-builder raw-slot V128 call adaptation
+tests/all/func.rs::wrap_multiple_results	TestWasmtimePortMultiResultCallBoundaries	binary-builder host/wasm multi-result adaptation
 tests/all/import_indexes.rs::same_import_names_still_distinct	TestWasmtimePortSameNamedImportDeclarationsRemainDistinct	metadata oracle plus call-site smoke test
 tests/all/module.rs::large_add_chain_no_stack_overflow	TestWasmtimePortLargeAddChainDoesNotOverflowCompilerStack	binary-builder compiler regression
 tests/all/module.rs::validate_deterministic	TestWasmtimePortParallelValidationErrorIsDeterministic	Go worker-count matrix

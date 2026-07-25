@@ -17,6 +17,9 @@ import (
 // TestWasmtimePortRustFannkuchExecution adds an execution oracle to Wasmtime's
 // compile-only misc_testsuite/rust_fannkuch.wast regression.
 func TestWasmtimePortRustFannkuchExecution(t *testing.T) {
+	if runWasmtimeIsolatedPortTest(t) {
+		return
+	}
 	data, err := os.ReadFile("../../testdata/wasmtime/core/rust_fannkuch/commands.0.wasm")
 	if err != nil {
 		t.Fatal(err)
@@ -66,6 +69,9 @@ func TestWasmtimePortEmbenchenExecution(t *testing.T) {
 		{name: "embenchen_primes", wantLen: 19, wantSHA256: "617eba5df661b7abf7aca6cbb07992f5a1f3660c6068be2a3becb4fa2fd76fc7"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			if runWasmtimeIsolatedPortTest(t) {
+				return
+			}
 			result, output := runWasmtimeEmbenchen(t, tc.name)
 			if result != tc.wantResult {
 				t.Fatalf("_main result = %d, want %d", result, tc.wantResult)
@@ -170,29 +176,44 @@ func runWasmtimeEmbenchen(t *testing.T, name string) (int32, []byte) {
 				}
 				fd := binary.LittleEndian.Uint32(mem[args:])
 				op := binary.LittleEndian.Uint32(mem[args+4:])
+				dst := binary.LittleEndian.Uint32(mem[args+8:])
 				if (fd != 1 && fd != 2) || op != 21505 {
 					panic(fmt.Errorf("unexpected Emscripten ioctl fd=%d op=%d", fd, op))
 				}
+				_ = wasmtimeEmbenchenSlice(mem, dst, 36, "ioctl TCGETS destination")
 				results[0] = 0
 			case "getTotalMemory":
 				results[0] = wago.I32(int32(len(m.Memory())))
 			case "_emscripten_memcpy_big":
 				dst, src, n := uint32(params[0]), uint32(params[1]), uint32(params[2])
-				copy(m.Memory()[dst:dst+n], m.Memory()[src:src+n])
+				mem := m.Memory()
+				copy(wasmtimeEmbenchenSlice(mem, dst, n, "memcpy destination"), wasmtimeEmbenchenSlice(mem, src, n, "memcpy source"))
 				results[0] = uint64(dst)
 			case "___syscall146":
 				mem := m.Memory()
 				args := uint32(params[1])
-				iov := binary.LittleEndian.Uint32(mem[args+4:])
-				count := binary.LittleEndian.Uint32(mem[args+8:])
-				total := uint32(0)
-				for i := uint32(0); i < count; i++ {
-					base := binary.LittleEndian.Uint32(mem[iov+i*8:])
-					n := binary.LittleEndian.Uint32(mem[iov+i*8+4:])
-					output = append(output, mem[base:base+n]...)
-					total += n
+				argBytes := wasmtimeEmbenchenSlice(mem, args, 12, "writev arguments")
+				iov := binary.LittleEndian.Uint32(argBytes[4:])
+				count := binary.LittleEndian.Uint32(argBytes[8:])
+				if count > 1024 {
+					panic(fmt.Errorf("unexpected Emscripten writev count %d", count))
 				}
-				results[0] = uint64(total)
+				iovBytes := wasmtimeEmbenchenSlice(mem, iov, count*8, "writev iovec array")
+				total := uint64(0)
+				for i := uint32(0); i < count; i++ {
+					base := binary.LittleEndian.Uint32(iovBytes[i*8:])
+					n := binary.LittleEndian.Uint32(iovBytes[i*8+4:])
+					chunk := wasmtimeEmbenchenSlice(mem, base, n, "writev chunk")
+					if uint64(len(output))+uint64(len(chunk)) > 1<<20 {
+						panic(fmt.Errorf("unexpected Emscripten output larger than 1 MiB"))
+					}
+					output = append(output, chunk...)
+					total += uint64(n)
+					if total > uint64(^uint32(0)) {
+						panic(fmt.Errorf("Emscripten writev result overflow"))
+					}
+				}
+				results[0] = total
 			default:
 				panic(fmt.Errorf("unsupported Emscripten host import %q", importName))
 			}
@@ -219,6 +240,14 @@ func runWasmtimeEmbenchen(t *testing.T, name string) (int32, []byte) {
 		t.Fatalf("_main result = %v, want one i32", got)
 	}
 	return got[0].I32(), output
+}
+
+func wasmtimeEmbenchenSlice(memory []byte, offset, length uint32, what string) []byte {
+	end := uint64(offset) + uint64(length)
+	if end > uint64(len(memory)) {
+		panic(fmt.Errorf("Emscripten %s range [%d,%d) exceeds memory size %d", what, offset, end, len(memory)))
+	}
+	return memory[offset:uint32(end)]
 }
 
 func alignWasmtimeEmbenchen(value, alignment uint32) uint32 {

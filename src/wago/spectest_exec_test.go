@@ -1905,9 +1905,7 @@ func specTrapMatches(err error, want string) (bool, string) {
 		// Some engine regression corpora retain this older generic spelling.
 		ok = matches(wago.TrapLinMemOutOfBounds, wago.TrapLinkedMemOutOfBounds, wago.TrapTableOutOfBounds, wago.TrapIndirectOutOfBounds)
 	case "out of bounds table access":
-		// Scalar table.get/table.set currently use the legacy indirect-table
-		// bounds code; bulk table operations use the dedicated table code.
-		ok = matches(wago.TrapTableOutOfBounds, wago.TrapIndirectOutOfBounds)
+		ok = matches(wago.TrapTableOutOfBounds)
 	case "undefined element", "undefined", "uninitialized element", "uninitialized":
 		ok = matches(wago.TrapIndirectOutOfBounds, wago.TrapTableOutOfBounds)
 	case "indirect call type mismatch":
@@ -1956,7 +1954,7 @@ func TestSpecTrapMatching(t *testing.T) {
 		{name: "wrong code", err: &wago.TrapError{Code: wago.TrapDivZero}, want: "unreachable"},
 		{name: "memory", err: &wago.TrapError{Code: wago.TrapLinkedMemOutOfBounds}, want: "out of bounds memory access", ok: true},
 		{name: "table bulk", err: &wago.TrapError{Code: wago.TrapTableOutOfBounds}, want: "out of bounds table access", ok: true},
-		{name: "table scalar", err: &wago.TrapError{Code: wago.TrapIndirectOutOfBounds}, want: "out of bounds table access", ok: true},
+		{name: "wrong table code", err: &wago.TrapError{Code: wago.TrapIndirectOutOfBounds}, want: "out of bounds table access"},
 		{name: "undefined element", err: &wago.TrapError{Code: wago.TrapIndirectOutOfBounds}, want: "undefined element", ok: true},
 		{name: "indexed uninitialized element", err: &wago.TrapError{Code: wago.TrapIndirectOutOfBounds}, want: "uninitialized element 2", ok: true},
 		{name: "integer overflow division", err: &wago.TrapError{Code: wago.TrapDivOverflow}, want: "integer overflow", ok: true},

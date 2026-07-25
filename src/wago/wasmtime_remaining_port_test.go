@@ -21,6 +21,9 @@ import (
 // tests/all at revision a5720e50d5ec9eab34eed690eee952abfdd0e3ba.
 // Port of tests/all/pooling_allocator.rs::memory_zeroed.
 func TestWasmtimePortReusedMemoryIsZeroed(t *testing.T) {
+	if runWasmtimeIsolatedPortTest(t) {
+		return
+	}
 	compiled, err := NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit).Compile(wasmtimeReuseMemoryModule(false))
 	if err != nil {
 		t.Fatal(err)
@@ -57,6 +60,9 @@ func TestWasmtimePortReusedMemoryIsZeroed(t *testing.T) {
 
 // Port of tests/all/pooling_allocator.rs::table_zeroed.
 func TestWasmtimePortReusedFuncrefTableIsZeroed(t *testing.T) {
+	if runWasmtimeIsolatedPortTest(t) {
+		return
+	}
 	compiled := MustCompile(wasmtimeReuseTableModule())
 	defer compiled.Close()
 	first, err := Instantiate(compiled)
@@ -91,6 +97,9 @@ func TestWasmtimePortReusedFuncrefTableIsZeroed(t *testing.T) {
 
 // Port of tests/all/pooling_allocator.rs::memory_reset_if_instantiation_fails.
 func TestWasmtimePortFailedInstantiationMemoryDoesNotLeak(t *testing.T) {
+	if runWasmtimeIsolatedPortTest(t) {
+		return
+	}
 	clean, err := NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit).Compile(wasmtimeReuseMemoryModule(false))
 	if err != nil {
 		t.Fatal(err)
@@ -137,6 +146,9 @@ func TestWasmtimePortFailedInstantiationMemoryDoesNotLeak(t *testing.T) {
 // mapping to the smaller module so the stale-bounds regression cannot pass
 // vacuously after reuse is accidentally disabled.
 func TestWasmtimePortMemoryReuseKeepsBounds(t *testing.T) {
+	if runWasmtimeIsolatedPortTest(t) {
+		return
+	}
 	growCode := compileWasmtimeDirectFixture(t, "pooling-oob-on-reuse", 0)
 	defer growCode.Close()
 	oobCode := compileWasmtimeDirectFixture(t, "pooling-oob-on-reuse", 1)
@@ -194,6 +206,9 @@ func TestWasmtimePortMemoryReuseKeepsBounds(t *testing.T) {
 
 // Port of tests/all/module.rs::large_add_chain_no_stack_overflow.
 func TestWasmtimePortLargeAddChainDoesNotOverflowCompilerStack(t *testing.T) {
+	if runWasmtimeIsolatedPortTest(t) {
+		return
+	}
 	const additions = 20_000
 	body := make([]byte, 0, 3+additions*3)
 	body = append(body, 0x42, 0x01) // i64.const 1
@@ -225,6 +240,9 @@ func TestWasmtimePortLargeAddChainDoesNotOverflowCompilerStack(t *testing.T) {
 
 // Port of tests/all/module.rs::validate_deterministic.
 func TestWasmtimePortParallelValidationErrorIsDeterministic(t *testing.T) {
+	if runWasmtimeIsolatedPortTest(t) {
+		return
+	}
 	const functions = 384
 	funcTypes := make([][]byte, functions)
 	bodies := make([][]byte, functions)
@@ -263,6 +281,9 @@ func TestWasmtimePortParallelValidationErrorIsDeterministic(t *testing.T) {
 // duplicate keys to one host value, so the execution below is only a call-site
 // smoke test and does not claim independently bindable duplicate imports.
 func TestWasmtimePortSameNamedImportDeclarationsRemainDistinct(t *testing.T) {
+	if runWasmtimeIsolatedPortTest(t) {
+		return
+	}
 	i32Result := wasmtest.FuncType(nil, []corewasm.ValType{corewasm.I32})
 	f32Result := wasmtest.FuncType(nil, []corewasm.ValType{corewasm.F32})
 	imports := [][]byte{
@@ -317,6 +338,9 @@ func TestWasmtimePortSameNamedImportDeclarationsRemainDistinct(t *testing.T) {
 // parallel, preserving Instance's documented non-concurrent-call contract while
 // stressing process-wide trap state and post-trap recovery.
 func TestWasmtimePortTrapsSurviveConcurrentGoroutines(t *testing.T) {
+	if runWasmtimeIsolatedPortTest(t) {
+		return
+	}
 	mod := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(
 			wasmtest.FuncType(nil, nil),
