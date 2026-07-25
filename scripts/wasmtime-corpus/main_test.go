@@ -96,6 +96,63 @@ func TestFetchRevisionRejectsExistingCheckoutWithWrongOrigin(t *testing.T) {
 	}
 }
 
+func TestFetchRevisionRejectsDirtyExistingCheckout(t *testing.T) {
+	root, p := newCommittedCheckout(t)
+	if err := os.WriteFile(filepath.Join(root, "tracked.wast"), []byte("modified\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitCommand(t, root, "add", "tracked.wast")
+
+	err := fetchRevision(root, p)
+	if err == nil || !strings.Contains(err.Error(), "tracked modifications") || !strings.Contains(err.Error(), "tracked.wast") {
+		t.Fatalf("dirty existing checkout = %v", err)
+	}
+}
+
+func TestVerifyRevisionRejectsDirtyCheckout(t *testing.T) {
+	root, p := newCommittedCheckout(t)
+	if err := os.WriteFile(filepath.Join(root, "tracked.wast"), []byte("modified\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	err := verifyRevision(root, p)
+	if err == nil || !strings.Contains(err.Error(), "tracked modifications") || !strings.Contains(err.Error(), "tracked.wast") {
+		t.Fatalf("dirty checkout verification = %v", err)
+	}
+}
+
+func newCommittedCheckout(t *testing.T) (string, provenance) {
+	t.Helper()
+	root := filepath.Join(t.TempDir(), "checkout")
+	gitCommand(t, "", "init", root)
+	gitCommand(t, root, "config", "user.name", "Wasmtime Corpus Test")
+	gitCommand(t, root, "config", "user.email", "wasmtime-corpus@example.invalid")
+	if err := os.WriteFile(filepath.Join(root, "tracked.wast"), []byte("original\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitCommand(t, root, "add", "tracked.wast")
+	gitCommand(t, root, "-c", "commit.gpgsign=false", "commit", "-m", "fixture")
+	upstream := "https://example.invalid/wasmtime.git"
+	gitCommand(t, root, "remote", "add", "origin", upstream)
+	return root, provenance{
+		UpstreamRepo: upstream,
+		Revision:     gitCommand(t, root, "rev-parse", "HEAD"),
+		RevisionDate: gitCommand(t, root, "show", "-s", "--format=%cs", "HEAD"),
+	}
+}
+
+func gitCommand(t *testing.T, root string, args ...string) string {
+	t.Helper()
+	if root != "" {
+		args = append([]string{"-C", root}, args...)
+	}
+	out, err := exec.Command("git", args...).CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %s: %v: %s", strings.Join(args, " "), err, out)
+	}
+	return strings.TrimSpace(string(out))
+}
+
 func TestVerifyWABTVersionIsExact(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("shell helper")

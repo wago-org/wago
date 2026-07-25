@@ -218,6 +218,9 @@ func fetchRevision(root string, p provenance) error {
 		if got := strings.TrimSuffix(strings.TrimSpace(string(out)), "/"); got != strings.TrimSuffix(p.UpstreamRepo, "/") {
 			return fmt.Errorf("refuse to fetch existing Wasmtime checkout with origin %q, want %q", got, p.UpstreamRepo)
 		}
+		if err := verifyCleanCheckout(root); err != nil {
+			return fmt.Errorf("refuse to fetch existing Wasmtime checkout: %w", err)
+		}
 	}
 	if out, err := exec.Command("git", "-C", root, "fetch", "--depth=1", "origin", p.Revision).CombinedOutput(); err != nil {
 		return fmt.Errorf("git fetch %s: %w: %s", p.Revision, err, strings.TrimSpace(string(out)))
@@ -236,6 +239,9 @@ func verifyRevision(root string, p provenance) error {
 	if got := strings.TrimSuffix(strings.TrimSpace(string(out)), "/"); got != strings.TrimSuffix(p.UpstreamRepo, "/") {
 		return fmt.Errorf("wasmtime checkout origin = %q, want %q", got, p.UpstreamRepo)
 	}
+	if err := verifyCleanCheckout(root); err != nil {
+		return err
+	}
 	out, err = exec.Command("git", "-C", root, "rev-parse", "HEAD").CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("inspect Wasmtime checkout: %w: %s", err, strings.TrimSpace(string(out)))
@@ -249,6 +255,17 @@ func verifyRevision(root string, p provenance) error {
 	}
 	if got := strings.TrimSpace(string(out)); got != p.RevisionDate {
 		return fmt.Errorf("wasmtime revision date = %s, want %s", got, p.RevisionDate)
+	}
+	return nil
+}
+
+func verifyCleanCheckout(root string) error {
+	out, err := exec.Command("git", "-C", root, "status", "--porcelain=v1", "--untracked-files=no", "--ignore-submodules=none").CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("inspect Wasmtime worktree: %w: %s", err, strings.TrimSpace(string(out)))
+	}
+	if dirty := strings.TrimSpace(string(out)); dirty != "" {
+		return fmt.Errorf("wasmtime checkout has tracked modifications:\n%s", dirty)
 	}
 	return nil
 }

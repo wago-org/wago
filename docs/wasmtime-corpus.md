@@ -46,7 +46,8 @@ make wasmtime-corpus-check \
   WAST2JSON=wast2json
 ```
 
-The check is byte-for-byte. It verifies the Wasmtime commit, exact WABT version,
+The check is byte-for-byte. It verifies the Wasmtime origin, commit, and clean
+tracked worktree before reading any upstream source, plus the exact WABT version,
 the complete upstream inventory, upstream sources, exact Rust-port functions and
 body hashes, direct source/artifact bindings, deterministic local adaptations,
 strict generated JSON/Wasm graphs, and final fixture-tree digest. CI checks out
@@ -70,9 +71,11 @@ trap text; an unexpected or already-fixed WABT shape fails closed.
 make wasmtime-corpus-sync WAST2JSON=wast2json
 ```
 
-The sync target fetches the pinned revision, stages a complete copy of the core
-tree, replaces unmodified sources from upstream, applies the deterministic
-Embenchen registration transformation, regenerates all `wast-json` artifacts,
+The sync target rejects an existing Wasmtime checkout with staged or unstaged
+tracked modifications before fetching or checking out the pin. It then fetches
+the pinned revision, stages a complete copy of the core tree, replaces unmodified
+sources from upstream, applies the deterministic Embenchen registration
+transformation, regenerates all `wast-json` artifacts,
 regenerates `EXCLUSIONS.md`, and updates the digest in `PROVENANCE.json`. The
 prospective tree is fully validated before replacement. Metadata writes are
 synced before rename; parent directories are synced after commit; rollback errors
