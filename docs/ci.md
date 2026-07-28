@@ -62,3 +62,12 @@ make simd
 git submodule update --init tests/spec-v2
 make spec2        # exact mandatory Linux/amd64 Core v2 gate
 ```
+
+The public website verification headline and coverage percentage use exactly
+five gates: the normal Go suite, guard-page tests, WebAssembly 1.0 execution,
+the pinned WebAssembly 2.0 validation plus execution gate, and the standalone
+SIMD proposal execution suite. Run `make verify-public` to regenerate
+`VERIFICATION.md`, `coverage.out`, and `coverage-report.md`. The verification
+headline counts each independently required gate's checks; the coverage report
+merges source blocks across all five gates and counts a block covered when any
+gate executes it.
