@@ -174,8 +174,12 @@ tinygo-test: ## Run the runtime + public-API suites under TinyGo
 	$(TINYGO) test -scheduler=$(TINYGO_SCHEDULER) ./src/core/runtime/ ./src/wago/
 
 .PHONY: cover
-cover: ## Run tests with cross-package coverage + per-package report (COVERPROFILE=path)
+cover: ## Run all five public gates with merged cross-package coverage
 	COVERPROFILE=$(COVERPROFILE) scripts/coverage.sh
+
+.PHONY: verify-public
+verify-public: ## Run/count SIMD, spec1, spec2, normal, and guard-page gates, then merge coverage
+	scripts/verification.sh
 
 # card-fragments produces the go-only section fragments (coverage/tests/spec).
 # The build-size fragment is produced separately (scripts/size-card.sh) since it
