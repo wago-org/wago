@@ -180,7 +180,6 @@ cover: ## Run all five public gates with merged cross-package coverage
 .PHONY: verify-public
 verify-public: ## Run/count SIMD, spec1, spec2, normal, and guard-page gates, then merge coverage
 	scripts/verification.sh
-	COVERPROFILE=$(COVERPROFILE) scripts/coverage.sh
 
 # card-fragments produces the go-only section fragments (coverage/tests/spec).
 # The build-size fragment is produced separately (scripts/size-card.sh) since it

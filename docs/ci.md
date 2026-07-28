@@ -70,4 +70,6 @@ SIMD proposal execution suite. Run `make verify-public` to regenerate
 `VERIFICATION.md`, `coverage.out`, and `coverage-report.md`. The verification
 headline counts each independently required gate's checks; the coverage report
 merges source blocks across all five gates and counts a block covered when any
-gate executes it.
+gate executes it. `VERIFICATION.md` also records the merged coverage percentage
+so consumers using a clean checkout do not depend on the ignored detailed
+coverage report.
