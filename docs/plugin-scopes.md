@@ -13,12 +13,17 @@ Wago separates plugin **intent** from compiled plugin **artifacts**.
 
 ```sh
 wago add wago-org/wasi
+wago add wago-org/wasi wago-org/workers
 ```
 
 `wago plugin add` is the equivalent grouped form. Remove a plugin with
 `wago rm wago-org/wasi` or `wago plugin remove wago-org/wasi`. Plugin commands
 use `add` and `remove`; `install` and `uninstall` are reserved for
 `wago version`.
+
+One `add` transaction may contain multiple packages. Wago resolves all direct
+requests, downloads them through Go modules, runs `go mod verify`, updates the
+manifest, and builds one plugin-aware runtime for the resulting dependency set.
 
 If the current directory has no `wago.json`, the command creates one. Inside a
 Git working tree it also adds `.wago/` to `.gitignore`. `wago init` performs

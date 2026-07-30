@@ -234,9 +234,13 @@ Initialize a project explicitly, or let `add` create `wago.json` automatically:
 ```bash
 wago init
 wago add wago-org/wasi
+wago add wago-org/wasi wago-org/workers  # install multiple packages together
 wago add --global wago-org/wasi  # shared outside projects with local manifests
 wago plugin add wago-org/wasi    # equivalent, fully grouped form
 ```
+
+`add` resolves, downloads, verifies, and builds all requested packages as one
+transaction, then prints their resolved versions and total elapsed time.
 
 Local plugins are isolated from the global set. A local `wago.json` wins without
 merging machine state; `wago run --global app.wasm` explicitly selects global
