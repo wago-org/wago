@@ -592,20 +592,6 @@ func stableReleaseNames(tags []string) []string {
 	return names
 }
 
-func remoteVersionNames(tags []string) []string {
-	names := []string{"canary", "nightly", "latest"}
-	names = append(names, stableReleaseNames(tags)...)
-	return names
-}
-
-func releaseTags(releases []remoteRelease) []string {
-	tags := make([]string, len(releases))
-	for i, release := range releases {
-		tags[i] = release.TagName
-	}
-	return tags
-}
-
 func releasePickerItems(releases []remoteRelease, channel string, now time.Time) []pickerItem {
 	items := make([]pickerItem, 0, len(releases))
 	for _, release := range releases {
@@ -745,17 +731,6 @@ func chooseInstallPicker(releases []remoteRelease, now time.Time, profileValue, 
 		return "", "", "", false
 	}
 	return parseInstalledSelection(p.selected())
-}
-
-func formatRemoteVersionList(tags []string) string {
-	var b strings.Builder
-	for i, name := range remoteVersionNames(tags) {
-		if i == 3 {
-			b.WriteByte('\n')
-		}
-		fmt.Fprintf(&b, " %s\n", name)
-	}
-	return b.String()
 }
 
 func chooseVersion(title string, versions []string) (string, bool) {

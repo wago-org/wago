@@ -69,7 +69,7 @@ func TestMetaAndVersionCommandConstructors(t *testing.T) {
 			t.Fatalf("invalid command descriptor: %#v", cmd)
 		}
 	}
-	if got := versionCommand(); len(got.Children) != 8 || got.Children[0].Name != "list" || got.Children[1].Name != "available" || got.Children[7].Name != "uninstall" {
+	if got := versionCommand(); len(got.Children) != 7 || got.Children[0].Name != "list" || got.Children[1].Name != "current" || got.Children[6].Name != "uninstall" {
 		t.Fatalf("version command tree = %#v", got.Children)
 	}
 
@@ -93,9 +93,9 @@ func TestMetaAndVersionCommandConstructors(t *testing.T) {
 	envCommand().Run(&Ctx{})
 	version := versionCommand()
 	version.Children[0].Run(&Ctx{})
+	version.Children[1].Run(&Ctx{})
 	version.Children[2].Run(&Ctx{})
-	version.Children[3].Run(&Ctx{})
-	version.Children[4].Run(&Ctx{Args: []string{"1.2.3"}})
+	version.Children[3].Run(&Ctx{Args: []string{"1.2.3"}})
 	_ = w.Close()
 	os.Stdout = old
 	out, err := io.ReadAll(r)
