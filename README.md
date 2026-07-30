@@ -47,10 +47,11 @@
 
 ## Installation
 
-The installer builds the CLI and Standard runtime from the public repository.
-It requires Go 1.22+ and prefers Git so the saved source retains repository
-metadata. If Git is unavailable or cannot fetch the requested ref, it downloads
-and unpacks GitHub's source zip using `curl` or `wget` plus `unzip` or Python:
+The installer builds only the runtime-independent manager from the public
+repository. It requires Go 1.22+ and prefers Git so the saved source retains
+repository metadata. If Git is unavailable or cannot fetch the requested ref,
+it downloads and unpacks GitHub's source zip using `curl` or `wget` plus
+`unzip` or Python:
 
 ```bash
 curl -fsSL https://wago.sh/install.sh | sh
@@ -78,6 +79,11 @@ Partial (preserve global plugin selections), Minimal (replace binaries while
 keeping state), or Cancel before replacing an existing manager. Reinstall-mode
 and shell/PATH choices use the same `○`/`◉`, arrow-key, Enter/right-arrow, and
 Escape interaction as the CLI.
+
+The bootstrap does not choose or install a runtime. On the first
+`wago run <file>` without an active runtime, the manager opens the same
+interactive flow as `wago version install`. After the user installs and
+activates a runtime, Wago continues the original run command.
 
 From a checkout, build the standard-Go manager:
 

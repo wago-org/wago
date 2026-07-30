@@ -2,14 +2,59 @@ package wago
 
 import (
 	"archive/zip"
+	"bytes"
 	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
 )
+
+func TestInstallerRadioPreservesTerminalNewlineProcessing(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("BSD script invocation exercises the macOS terminal behavior")
+	}
+	home := t.TempDir()
+	bin := filepath.Join(home, ".wago", "bin")
+	if err := os.MkdirAll(bin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(bin, "wago"), []byte("manager"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	transcript := filepath.Join(home, "terminal.log")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	command := exec.CommandContext(ctx, "script", "-q", transcript, "./install.sh")
+	command.Env = append(os.Environ(),
+		"HOME="+home,
+		"WAGO_BIN_DIR="+bin,
+		"WAGO_INTERNAL_REINSTALL_CHECK_ONLY=1",
+		"NO_COLOR=1",
+		"TERM=xterm",
+	)
+	command.Stdin = strings.NewReader("\x1b")
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("installer terminal session: %v\n%s", err, output)
+	}
+	data, err := os.ReadFile(transcript)
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := bytes.Index(data, []byte("How should it be reinstalled?"))
+	end := bytes.LastIndex(data, []byte("Cancelled."))
+	if start < 0 || end <= start {
+		t.Fatalf("terminal transcript missing radio frame:\n%s", data)
+	}
+	for i, value := range data[start:end] {
+		if value == '\n' && (i == 0 || data[start+i-1] != '\r') {
+			t.Fatalf("radio frame emitted LF without CR at byte %d; terminal output will staircase", i)
+		}
+	}
+}
 
 func TestInstallerDefaultsToWagoBin(t *testing.T) {
 	home := t.TempDir()
@@ -27,12 +72,17 @@ func TestInstallerDefaultsToWagoBin(t *testing.T) {
 	if !strings.Contains(string(output), want) {
 		t.Fatalf("installer output does not contain default executable %q:\n%s", want, output)
 	}
+	for _, unwanted := range []string{"profile", "runtime"} {
+		if strings.Contains(string(output), unwanted) {
+			t.Fatalf("manager-only installer output unexpectedly contains %q:\n%s", unwanted, output)
+		}
+	}
 }
 
 func TestInstallerAsksWhereToInstall(t *testing.T) {
 	home := t.TempDir()
 	tty := filepath.Join(home, "tty")
-	if err := os.WriteFile(tty, []byte("~/tools/wago\n"), 0o600); err != nil {
+	if err := os.WriteFile(tty, []byte("2\n~/tools/wago\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	command := exec.Command("sh", "install.sh")
@@ -48,10 +98,66 @@ func TestInstallerAsksWhereToInstall(t *testing.T) {
 		t.Fatalf("install directory prompt: %v\n%s", err, output)
 	}
 	text := string(output)
-	if !strings.Contains(text, "Where should Wago be installed?") ||
-		!strings.Contains(text, "Directory [~/.wago/bin]:") ||
+	if !strings.HasPrefix(text, "Welcome to Wago! Let's get you set up.\n\nWhere should Wago be installed?\n") ||
+		!strings.Contains(text, "› ◉ ~/.wago/bin") ||
+		!strings.Contains(text, "○ Custom") ||
+		!strings.Contains(text, "› ◉ Type a directory") ||
+		!strings.Contains(text, "tab/→ complete") ||
+		!strings.Contains(text, "Installing to: ~/tools/wago") ||
 		!strings.Contains(text, "bin=~/tools/wago") {
 		t.Fatalf("installer did not ask for its location:\n%s", text)
+	}
+}
+
+func TestInstallerCustomPathPreviewFiltersDirectories(t *testing.T) {
+	home := t.TempDir()
+	for _, name := range []string{"workspace", "worktree", "other", "workfile"} {
+		path := filepath.Join(home, name)
+		if name == "workfile" {
+			if err := os.WriteFile(path, []byte("not a directory"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			continue
+		}
+		if err := os.MkdirAll(path, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	command := exec.Command("sh", "install.sh")
+	command.Env = append(os.Environ(),
+		"HOME="+home,
+		"WAGO_INTERNAL_PATH_PREVIEW_ONLY=~/wor",
+		"NO_COLOR=1",
+	)
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("custom path preview: %v\n%s", err, output)
+	}
+	text := string(output)
+	for _, want := range []string{"~/workspace/", "~/worktree/"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("custom path preview missing %q:\n%s", want, text)
+		}
+	}
+	for _, unwanted := range []string{"~/other/", "~/workfile"} {
+		if strings.Contains(text, unwanted) {
+			t.Fatalf("custom path preview included %q:\n%s", unwanted, text)
+		}
+	}
+}
+
+func TestInstallerCustomPathLeftArrowReturnsToParent(t *testing.T) {
+	command := exec.Command("sh", "install.sh")
+	command.Env = append(os.Environ(),
+		"WAGO_INTERNAL_PATH_PARENT_ONLY=~/.agents/",
+		"NO_COLOR=1",
+	)
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("custom path parent: %v\n%s", err, output)
+	}
+	if got := strings.TrimSpace(string(output)); got != "~/" {
+		t.Fatalf("custom path parent = %q, want %q", got, "~/")
 	}
 }
 
@@ -98,6 +204,36 @@ func TestInstallerAsksBeforeReplacingExistingInstallation(t *testing.T) {
 	body, err := os.ReadFile(manager)
 	if err != nil || string(body) != "existing manager" {
 		t.Fatalf("cancelled reinstall changed manager: %q, %v", body, err)
+	}
+}
+
+func TestInstallerLogsSelectedReinstallMode(t *testing.T) {
+	home := t.TempDir()
+	bin := filepath.Join(home, ".wago", "bin")
+	if err := os.MkdirAll(bin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(bin, "wago"), []byte("manager"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	tty := filepath.Join(home, "tty")
+	if err := os.WriteFile(tty, []byte("\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	command := exec.Command("sh", "install.sh")
+	command.Env = append(os.Environ(),
+		"HOME="+home,
+		"WAGO_BIN_DIR="+bin,
+		"WAGO_INSTALL_TTY="+tty,
+		"WAGO_INTERNAL_REINSTALL_CHECK_ONLY=1",
+		"NO_COLOR=1",
+	)
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("select reinstall mode: %v\n%s", err, output)
+	}
+	if !strings.Contains(string(output), "Reinstall mode: Minimal") {
+		t.Fatalf("installer did not log selected reinstall mode:\n%s", output)
 	}
 }
 
@@ -262,8 +398,10 @@ func TestInstallerOffersPersistentPathSetupWhenAlreadyOnCurrentPath(t *testing.T
 	text := string(output)
 	if !strings.Contains(text, "Add Wago to your PATH?") ||
 		!strings.Contains(text, "› ◉ zsh") ||
+		!strings.Contains(text, "~/.zshrc  (current)") ||
 		!strings.Contains(text, "○ Not now") ||
-		!strings.Contains(text, "Added Wago to PATH in ~/.zshrc") {
+		!strings.Contains(text, "Adding to PATH: ~/.zshrc") ||
+		!strings.Contains(text, "Added Wago to PATH") {
 		t.Fatalf("installer trusted only the current process PATH:\n%s", text)
 	}
 }
@@ -308,8 +446,11 @@ func TestInstallerOffersCurrentShellPathSetupIdempotently(t *testing.T) {
 
 	output := run()
 	if !strings.Contains(output, "zsh") ||
-		!strings.Contains(output, "Added Wago to PATH in ~/.zshrc") ||
-		!strings.Contains(output, "Open a new shell to use wago or run source ~/.zshrc") {
+		!strings.Contains(output, "Adding to PATH: ~/.zshrc") ||
+		!strings.Contains(output, "Added Wago to PATH") ||
+		!strings.Contains(output, "Wago manager is ready!") ||
+		!strings.Contains(output, "Open a new shell, or run:\n  source ~/.zshrc") ||
+		!strings.Contains(output, "And then, install a version with:\n  wago version install") {
 		t.Fatalf("path setup output:\n%s", output)
 	}
 	config := filepath.Join(home, ".zshrc")
@@ -323,7 +464,7 @@ func TestInstallerOffersCurrentShellPathSetupIdempotently(t *testing.T) {
 	}
 
 	output = run()
-	if !strings.Contains(output, "already configured") {
+	if !strings.Contains(output, "PATH already configured") {
 		t.Fatalf("repeat path setup output:\n%s", output)
 	}
 	body, err = os.ReadFile(config)

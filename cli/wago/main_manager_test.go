@@ -53,6 +53,30 @@ func TestManagerLaunchesSelectedRunner(t *testing.T) {
 	}
 }
 
+func TestManagerRunRedirectsToVersionInstallWithoutSelectedRunner(t *testing.T) {
+	t.Setenv("WAGO_HOME", t.TempDir())
+	requests := make([]string, 0, 2)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte("[]"))
+	}))
+	defer server.Close()
+	t.Setenv("WAGO_RELEASE_API", server.URL)
+
+	oldArgs := os.Args
+	t.Cleanup(func() { os.Args = oldArgs })
+	os.Args = []string{"wago", "run", "module.wasm"}
+	main()
+
+	joined := strings.Join(requests, "\n")
+	for _, want := range []string{"/repos/wago-org/wago/releases", "/repos/wago-org/wago/commits"} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("first run did not enter version install; missing request %q in:\n%s", want, joined)
+		}
+	}
+}
+
 func TestManagerDelegatesTopLevelHelpWithManagerContext(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("WAGO_HOME", root)
