@@ -275,6 +275,15 @@ func (a *Asm) SubRsp(v int32) { a.emit(0x48, 0x81, 0xEC); a.imm32(v) }
 
 func (a *Asm) AluRR(rrOpcode byte, dst, src Reg, w bool) { a.alu(rrOpcode, dst, src, w) }
 
+// AluRR8 emits an 8-bit register ALU operation in r/m,reg form. A REX prefix is
+// required not only for extended registers but also for SPL/BPL/SIL/DIL.
+func (a *Asm) AluRR8(rrOpcode byte, dst, src Reg) {
+	if dst >= 4 || src >= 4 {
+		a.emit(rex(false, src >= 8, false, dst >= 8))
+	}
+	a.emit(rrOpcode, 0xC0|((byte(src)&7)<<3)|byte(dst&7))
+}
+
 func (a *Asm) AluRM(rmOpcode byte, dst, base Reg, disp int32, w bool) {
 	a.memOp(rmOpcode, byte(dst), base, disp, w)
 }

@@ -210,37 +210,92 @@ func (f *fn) memAddr(off uint32, size int, aliasPinned bool) (ea Reg, eaOwned bo
 	return ea, eaOwned, borrow, disp
 }
 
-// boundsCertCovers reports whether the active straight-line certificate already
+type boundsCert struct {
+	kind   uint8
+	idx    uint32
+	extent int32
+}
+
+// boundsCertCovers reports whether an active straight-line certificate already
 // proves this access in-bounds (P6.1): the same keyable source, with this
 // access's extent (off+size) within the proven extent. A check proves
 // source+extent <= memBytes; memBytes only ever grows, so a later access on the
 // same source value with a smaller-or-equal extent is in bounds. The certificate
-// is dropped by invalidateBoundsCert at flush/flushBelow (every call + control
-// join), memory.grow, and a set of the certified source — exactly the set that
-// makes the proving check dominate this one on every path, so eliding is sound.
+// set is dropped at flush/flushBelow (every call + control join) and memory.grow;
+// setting one certified source drops only that source's entry.
 func (f *fn) boundsCertCovers(kind uint8, idx uint32, extent int32) bool {
-	return kind != 0 && f.bcKind == kind && f.bcIdx == idx && extent <= f.bcExtent
+	if kind == 0 {
+		return false
+	}
+	if !multiBoundsCertEnabled {
+		c := &f.boundsCerts[0]
+		return c.kind == kind && c.idx == idx && extent <= c.extent
+	}
+	for i := range f.boundsCerts {
+		c := &f.boundsCerts[i]
+		if c.kind == kind && c.idx == idx {
+			return extent <= c.extent
+		}
+	}
+	return false
 }
 
-// boundsCertUpdate records the check about to be emitted: establish or extend the
-// single-entry certificate for a keyable source; an unkeyable (computed) base
-// ends the straight-line certificate.
+// boundsCertUpdate records the check about to be emitted. The tiny round-robin
+// set covers the common two/three-array loop while keeping compiler state fixed.
 func (f *fn) boundsCertUpdate(kind uint8, idx uint32, extent int32) {
-	if kind == 0 {
-		f.bcKind = 0
-		return
-	}
-	if f.bcKind == kind && f.bcIdx == idx {
-		if extent > f.bcExtent {
-			f.bcExtent = extent // same source, larger reach — extend the proven extent
+	if !multiBoundsCertEnabled {
+		c := &f.boundsCerts[0]
+		if kind == 0 {
+			*c = boundsCert{}
+		} else if c.kind == kind && c.idx == idx {
+			if extent > c.extent {
+				c.extent = extent
+			}
+		} else {
+			*c = boundsCert{kind: kind, idx: idx, extent: extent}
 		}
 		return
 	}
-	f.bcKind, f.bcIdx, f.bcExtent = kind, idx, extent
+	if kind == 0 {
+		return
+	}
+	for i := range f.boundsCerts {
+		c := &f.boundsCerts[i]
+		if c.kind == kind && c.idx == idx {
+			if extent > c.extent {
+				c.extent = extent
+			}
+			return
+		}
+	}
+	for i := range f.boundsCerts {
+		if f.boundsCerts[i].kind == 0 {
+			f.boundsCerts[i] = boundsCert{kind: kind, idx: idx, extent: extent}
+			return
+		}
+	}
+	i := int(f.nextBoundsCert) % len(f.boundsCerts)
+	f.boundsCerts[i] = boundsCert{kind: kind, idx: idx, extent: extent}
+	f.nextBoundsCert++
 }
 
-// invalidateBoundsCert drops the straight-line bounds certificate.
-func (f *fn) invalidateBoundsCert() { f.bcKind = 0 }
+// invalidateBoundsCert drops every straight-line bounds certificate.
+func (f *fn) invalidateBoundsCert() {
+	for i := range f.boundsCerts {
+		f.boundsCerts[i] = boundsCert{}
+	}
+	f.nextBoundsCert = 0
+}
+
+// invalidateBoundsCertFor drops the proof for one source whose value changed.
+func (f *fn) invalidateBoundsCertFor(kind uint8, idx uint32) {
+	for i := range f.boundsCerts {
+		c := &f.boundsCerts[i]
+		if c.kind == kind && c.idx == idx {
+			*c = boundsCert{}
+		}
+	}
+}
 
 // inLoop reports whether any enclosing control frame is a loop.
 func (f *fn) inLoop() bool {

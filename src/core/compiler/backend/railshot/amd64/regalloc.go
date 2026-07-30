@@ -19,7 +19,7 @@ func (f *fn) occupy(e *elem, r Reg) {
 		e.st.typ = e.typ
 	}
 	e.kind = ekValue
-	e.st.kind, e.st.reg = stReg, r
+	e.st.kind, e.st.reg, e.st.cval = stReg, r, 0
 }
 
 // pushReg pushes a register-resident value of the given type onto the operand

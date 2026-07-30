@@ -57,6 +57,10 @@ type funcHints struct {
 	// per enclosing loop level.
 	localScore  []uint32
 	globalScore []uint32
+	// entryInitialized marks locals (up to 64) whose first access in the
+	// function's straight-line entry prefix is local.set/tee. Their Wasm zero
+	// value cannot be observed, so the prologue may skip initializing them.
+	entryInitialized uint64
 
 	// globalElig[g]: global g is accessed inside a loop whose subtree contains NO
 	// call. Value-pinning such a global in a call-making function is a win: the
@@ -418,7 +422,7 @@ func scanBodyBytes(body []byte, nLocals int, nGlobals int, selfIdx uint32) (func
 func scanBodyBytesInto(body []byte, nLocals int, nGlobals int, selfIdx uint32, h funcHints, elig *globalEligibilityTracker) (funcHints, error) {
 	elig.reset()
 	r := wasm.ReaderFrom(body)
-	s := byteBodyScanner{r: byteScanReader{Reader: &r}, h: h, nLocals: nLocals, nGlobals: nGlobals, selfIdx: selfIdx, elig: elig}
+	s := byteBodyScanner{r: byteScanReader{Reader: &r}, h: h, nLocals: nLocals, nGlobals: nGlobals, selfIdx: selfIdx, elig: elig, entryPrefix: true}
 	called, term, err := s.scanExpr(0, 0, -1, false)
 	if err != nil {
 		return s.h, err
@@ -439,6 +443,9 @@ type byteBodyScanner struct {
 	nGlobals int
 	selfIdx  uint32
 	elig     *globalEligibilityTracker
+
+	entryPrefix bool
+	entrySeen   uint64
 }
 
 func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAtElse bool) (bool, byte, error) {
@@ -457,6 +464,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 		switch op {
 		case 0x00, 0x02, 0x03, 0x04, 0x05, 0x0c, 0x0d, 0x0e, 0x0f:
 			s.h.hasControlFlow = true
+			s.entryPrefix = false
 			if op == 0x03 {
 				s.h.hasLoop = true
 			}
@@ -548,6 +556,15 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			s.noteStackArenaOp(op, &imm)
 			idx := imm.Index
 			if int(idx) < s.nLocals {
+				if s.entryPrefix && idx < 64 {
+					bit := uint64(1) << idx
+					if s.entrySeen&bit == 0 {
+						s.entrySeen |= bit
+						if op != 0x20 {
+							s.h.entryInitialized |= bit
+						}
+					}
+				}
 				if op == 0x20 {
 					addHotness(s.h.localScore, idx, loopWeight(loopDepth))
 				} else {

@@ -98,6 +98,42 @@ func TestCodegenStatsPeepholes(t *testing.T) {
 	}
 }
 
+func TestLeaScaledIndexFoldsNestedALU(t *testing.T) {
+	i32 := []wasm.ValType{wasm.I32}
+	// ((x + 16) + (((y ^ 7) & 255) << 2)) is the table-address shape used by
+	// CRC kernels. The nested ALU index and base must still collapse the outer
+	// shift+add to one scaled-index LEA.
+	body := []byte{
+		0x00,
+		0x20, 0x00, 0x41, 0x10, 0x6a,
+		0x20, 0x01, 0x41, 0x07, 0x73, 0x41, 0xff, 0x01, 0x71,
+		0x41, 0x02, 0x74, 0x6a,
+		0x0b,
+	}
+	s := compileWithStats(t, mod1(t, []wasm.ValType{wasm.I32, wasm.I32}, i32, body), false).Funcs[0]
+	if got := s.Peephole["lea-scaled-index"]; got != 1 {
+		t.Fatalf("lea-scaled-index = %d, want 1 (all: %v)", got, s.Peephole)
+	}
+}
+
+func TestXorByteMaskFoldsLoad(t *testing.T) {
+	i32 := []wasm.ValType{wasm.I32}
+	// (x ^ i32.load8_u(addr)) & 255 keeps only the low byte. The load's MOVZX
+	// establishes zero upper bits, so the backend can use a low-byte XOR and
+	// omit the final AND.
+	body := []byte{
+		0x00,
+		0x20, 0x00,
+		0x20, 0x01, 0x2d, 0x00, 0x00,
+		0x73, 0x41, 0xff, 0x01, 0x71,
+		0x0b,
+	}
+	s := compileWithStats(t, modMem(t, 1, []wasm.ValType{wasm.I32, wasm.I32}, i32, body), false).Funcs[0]
+	if got := s.Peephole["xor-byte-mask"]; got != 1 {
+		t.Fatalf("xor-byte-mask = %d, want 1 (all: %v)", got, s.Peephole)
+	}
+}
+
 // TestCodegenStatsStoreAndBounds checks the immediate-store peephole and that the
 // bounds-check counter tracks the bounds mode: one inline check in explicit mode,
 // none in guard-page mode.
