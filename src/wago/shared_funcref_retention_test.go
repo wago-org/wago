@@ -28,8 +28,10 @@ func TestCloseSnapshotsPostHostFuncrefWritesAfterQuiescence(t *testing.T) {
 		t.Fatalf("NewFuncRefGlobal: %v", err)
 	}
 
-	entered := make(chan struct{})
-	releaseHost := make(chan struct{})
+	enteredBefore := make(chan struct{})
+	releaseBefore := make(chan struct{})
+	enteredAfter := make(chan struct{})
+	releaseAfter := make(chan struct{})
 	closePublished := make(chan struct{})
 	var writer *Instance
 	rt.hooks.beforeClose = append(rt.hooks.beforeClose, func(ctx *InstanceContext) {
@@ -47,19 +49,25 @@ func TestCloseSnapshotsPostHostFuncrefWritesAfterQuiescence(t *testing.T) {
 
 	writerCode := mustCompileWat(rt, t, `(module
 		(type $target (func (result i32)))
-		(import "env" "block" (func $block))
+		(import "env" "before" (func $before))
+		(import "env" "after" (func $after))
 		(import "env" "table" (table 1 1 funcref))
 		(import "env" "global" (global $global (mut funcref)))
 		(func $target (type $target) (result i32) (i32.const 77))
 		(elem declare func $target)
 		(func (export "write_after_host")
-			(call $block)
+			(call $before)
 			(i32.const 0) (ref.func $target) (table.set 0)
-			(ref.func $target) (global.set $global)))`)
+			(ref.func $target) (global.set $global)
+			(call $after)))`)
 	writer, err = rt.Instantiate(context.Background(), writerCode, WithImports(Imports{
-		"env.block": HostFunc(func(HostModule, []uint64, []uint64) {
-			close(entered)
-			<-releaseHost
+		"env.before": HostFunc(func(HostModule, []uint64, []uint64) {
+			close(enteredBefore)
+			<-releaseBefore
+		}),
+		"env.after": HostFunc(func(HostModule, []uint64, []uint64) {
+			close(enteredAfter)
+			<-releaseAfter
 		}),
 		"env.table":  table,
 		"env.global": global,
@@ -73,11 +81,13 @@ func TestCloseSnapshotsPostHostFuncrefWritesAfterQuiescence(t *testing.T) {
 		_, err := writer.Invoke("write_after_host")
 		callDone <- err
 	}()
-	<-entered
+	<-enteredBefore
+	close(releaseBefore)
+	<-enteredAfter // both shared funcref writes completed after the first host return
 	closeDone := make(chan error, 1)
 	go func() { closeDone <- writer.Close() }()
 	<-closePublished // exact barrier: no later invocation can enter
-	close(releaseHost)
+	close(releaseAfter)
 	if err := <-callDone; err == nil {
 		t.Fatal("host-parked invocation completed without the close interruption")
 	}

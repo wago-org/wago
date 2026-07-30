@@ -3,8 +3,6 @@ package wago
 import (
 	"errors"
 	"fmt"
-	"sync/atomic"
-	"unsafe"
 
 	"github.com/wago-org/wago/src/core/runtime"
 )
@@ -77,7 +75,7 @@ func (in *Instance) closeOnce() error {
 	activeInvocations := previousInvocations & instanceInvocationCount
 	in.lifeMu.Lock()
 	if activeInvocations != 0 && len(in.trap) >= 4 {
-		atomic.StoreUint32((*uint32)(unsafe.Pointer(&in.trap[0])), uint32(runtime.TrapInterrupted))
+		runtime.RequestInterruptAsync(in.trap)
 	}
 	in.lifeMu.Unlock()
 

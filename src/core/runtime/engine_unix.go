@@ -118,7 +118,17 @@ func (e *Engine) StackLimit() uintptr {
 // protocol (WARP's model).
 func (e *Engine) Call(code uintptr, serArgs, linMem, trap, results []byte) error {
 	installTrapCell(linMem, trap)
+	activation, err := beginInterruptActivation(trap)
+	if err != nil {
+		return err
+	}
+	defer activation.close()
+	if TrapCode(loadTrap(trap)) == TrapInterrupted {
+		return &TrapError{Code: TrapInterrupted}
+	}
+	activation.enterWasm()
 	enterNative(code, slicePtr(serArgs), slicePtr(linMem), slicePtr(trap), slicePtr(results), e.stackTop)
+	activation.leaveWasm()
 	if len(trap) >= 4 {
 		if tc := TrapCode(loadTrap(trap)); tc != TrapNone {
 			return &TrapError{Code: tc}
@@ -133,7 +143,18 @@ func (e *Engine) Call(code uintptr, serArgs, linMem, trap, results []byte) error
 // is consumed and cleared before returning, re-establishing the invariant for
 // the next call.
 func (e *Engine) CallPrepared(code uintptr, serArgs []byte, linMemBase uintptr, trap, results []byte) error {
+	activation, err := beginInterruptActivation(trap)
+	if err != nil {
+		return err
+	}
+	defer activation.close()
+	if TrapCode(loadTrap(trap)) == TrapInterrupted {
+		storeTrap(trap, 0)
+		return &TrapError{Code: TrapInterrupted}
+	}
+	activation.enterWasm()
 	enterNative(code, slicePtr(serArgs), linMemBase, slicePtr(trap), slicePtr(results), e.stackTop)
+	activation.leaveWasm()
 	if len(trap) >= 4 {
 		if tc := TrapCode(loadTrap(trap)); tc != TrapNone {
 			storeTrap(trap, 0)
@@ -228,6 +249,11 @@ func hostCtrlFrame(ptr uintptr) []byte {
 }
 
 func (e *Engine) callWithHostLoop(code uintptr, serArgs []byte, linMemBase uintptr, trap, results, ctrl []byte, ctrlPtr uintptr, host HostCall, argBuf, resBuf []uint64) error {
+	activation, err := beginInterruptActivation(trap)
+	if err != nil {
+		return err
+	}
+	defer activation.close()
 	// The host-call re-entry loop is intentionally unbounded: a single guest
 	// invocation may legitimately make an arbitrary number of host calls (e.g. a
 	// long-running rule that polls Date.now()/Math.random() in a loop). A fixed
@@ -241,12 +267,21 @@ func (e *Engine) callWithHostLoop(code uintptr, serArgs []byte, linMemBase uintp
 	// forever: both require the caller to arm a timeout, exactly as under wazero.
 	for first := true; ; first = false {
 		if first {
+			if TrapCode(loadTrap(trap)) == TrapInterrupted {
+				return &TrapError{Code: TrapInterrupted}
+			}
+			activation.enterWasm()
 			enterNative(code, slicePtr(serArgs), linMemBase, slicePtr(trap), slicePtr(results), e.stackTop)
 		} else {
 			clearTrapUnlessInterrupted(trap) // clear host-pending, but preserve concurrent Close interruption
+			if TrapCode(loadTrap(trap)) == TrapInterrupted {
+				return &TrapError{Code: TrapInterrupted}
+			}
 			prepareHostResume(ctrl, trap, e.stackTop, e.StackLimit())
+			activation.enterWasm()
 			resumeNative(ctrlPtr, e.stackTop)
 		}
+		activation.leaveWasm()
 		switch tc := loadTrap(trap); {
 		case tc == hostCallPending:
 			ctrlPtr = uintptr(binary.LittleEndian.Uint64(trap[8:]))
@@ -295,11 +330,18 @@ func MapCode(code []byte) (mem []byte, entry uintptr, err error) {
 	if err != nil {
 		return nil, 0, err
 	}
+	if err = registerExecutableCode(mem); err != nil {
+		_ = munmap(mem)
+		return nil, 0, err
+	}
 	return mem, slicePtr(mem), nil
 }
 
 // Unmap releases a mapping returned by MapCode.
-func Unmap(mem []byte) error { return munmap(mem) }
+func Unmap(mem []byte) error {
+	unregisterExecutableCode(mem)
+	return munmap(mem)
+}
 
 // slicePtr returns the address of the first element of an off-heap slice as a
 // uintptr. Safe only for mmap-backed slices, whose backing array the GC never
