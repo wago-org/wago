@@ -94,3 +94,48 @@ func TestEnsureBuildModuleCreatesReusableGoModule(t *testing.T) {
 		t.Fatalf("repeat go.mod = %q, %v; want unchanged", second, err)
 	}
 }
+
+func TestSyncBuildModuleRefreshesWagoSource(t *testing.T) {
+	buildDir := filepath.Join(t.TempDir(), "generated")
+	sourceRoot := t.TempDir()
+	first := filepath.Join(sourceRoot, "first")
+	second := filepath.Join(sourceRoot, "second")
+	for _, source := range []string{first, second} {
+		if err := os.MkdirAll(source, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(
+			filepath.Join(source, "go.mod"),
+			[]byte("module github.com/wago-org/wago\n\ngo 1.22\n"),
+			0o644,
+		); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	t.Setenv("WAGO_SRC", first)
+	changed, err := syncBuildModule(buildDir)
+	if err != nil || !changed {
+		t.Fatalf("initial sync = changed %v, err %v", changed, err)
+	}
+	body, err := os.ReadFile(filepath.Join(buildDir, "go.mod"))
+	if err != nil || !strings.Contains(string(body), filepath.ToSlash(first)) {
+		t.Fatalf("initial go.mod = %q, %v", body, err)
+	}
+
+	changed, err = syncBuildModule(buildDir)
+	if err != nil || changed {
+		t.Fatalf("repeat sync = changed %v, err %v", changed, err)
+	}
+
+	t.Setenv("WAGO_SRC", second)
+	changed, err = syncBuildModule(buildDir)
+	if err != nil || !changed {
+		t.Fatalf("source refresh = changed %v, err %v", changed, err)
+	}
+	body, err = os.ReadFile(filepath.Join(buildDir, "go.mod"))
+	if err != nil || !strings.Contains(string(body), filepath.ToSlash(second)) ||
+		strings.Contains(string(body), filepath.ToSlash(first)) {
+		t.Fatalf("refreshed go.mod = %q, %v", body, err)
+	}
+}
