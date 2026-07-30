@@ -602,9 +602,12 @@ func TestInstallPickerHidesImmutableChannelTagsAtTopLevel(t *testing.T) {
 		{TagName: "0.1.0", PublishedAt: "2026-06-01T12:00:00Z"},
 		{TagName: "canary"},
 	}
+	commits := []remoteCommit{{SHA: "cafef00123456789012345678901234567890123"}, {SHA: "deadbee123456789012345678901234567890123"}}
+	commits[0].Commit.Author.Date = "2026-07-28T00:48:44Z"
+	commits[1].Commit.Author.Date = "2026-07-27T00:48:44Z"
 	now := time.Date(2026, 7, 29, 12, 0, 0, 0, time.UTC)
-	items := versionPickerItems(releases, now)
-	if got, want := []string{items[0].children[0].value, items[0].children[1].value}, []string{"canary", "canary-cafef00"}; !slices.Equal(got, want) {
+	items := versionPickerItemsWithCommits(releases, commits, now)
+	if got, want := []string{items[0].children[0].value, items[0].children[1].value, items[0].children[2].value}, []string{"canary", canaryCommitTarget(commits[0].SHA), canaryCommitTarget(commits[1].SHA)}; !slices.Equal(got, want) {
 		t.Fatalf("canary picker children = %v, want %v", got, want)
 	}
 	if got, want := []string{items[2].children[0].value, items[2].children[1].value, items[2].children[2].value, items[2].children[3].value}, []string{"latest", "v0.2.0", "v0.1.4", "0.1.0"}; !slices.Equal(got, want) {
@@ -618,6 +621,9 @@ func TestInstallPickerHidesImmutableChannelTagsAtTopLevel(t *testing.T) {
 	if canary.label != "canary-cafef00" || canary.desc != "07/28/2026  1d ago" {
 		t.Fatalf("canary picker item = %#v", canary)
 	}
+	if got := canaryCommitVersion(canary.value); got != "canary-cafef00" {
+		t.Fatalf("canary commit install name = %q", got)
+	}
 	if got := releasePickerLabel("canary"); got != "canary" {
 		t.Fatalf("releasePickerLabel(canary) = %q", got)
 	}
@@ -625,10 +631,11 @@ func TestInstallPickerHidesImmutableChannelTagsAtTopLevel(t *testing.T) {
 
 func TestInstallPickerProfilePageReturnsToReleasePage(t *testing.T) {
 	releases := []remoteRelease{
-		{TagName: "canary-20260728-7d8c58a", PublishedAt: "2026-07-28T08:31:22Z"},
 		{TagName: "v0.2.0", PublishedAt: "2026-07-27T08:31:22Z"},
 	}
-	p := newPicker("Install Wago version", installPickerItems(releases, time.Now()))
+	commits := []remoteCommit{{SHA: "7d8c58a123456789012345678901234567890123"}}
+	commits[0].Commit.Author.Date = "2026-07-28T08:31:22Z"
+	p := newPicker("Install Wago version", installPickerItemsWithCommits(releases, commits, time.Now()))
 	p.apply(keyRight) // browse canary releases
 	p.apply(keyDown)  // choose the immutable canary build
 	if done, cancelled := p.apply(keyAccept); done || cancelled {
@@ -653,7 +660,7 @@ func TestInstallPickerProfilePageReturnsToReleasePage(t *testing.T) {
 		t.Fatalf("build accept = done %v, cancelled %v", done, cancelled)
 	}
 	version, profile, build, ok := parseInstalledSelection(p.selected())
-	if !ok || version != "canary-20260728-7d8c58a" || profile != wagopaths.ProfileLite || build != wagopaths.BuildTiny {
+	if !ok || version != canaryCommitTarget(commits[0].SHA) || profile != wagopaths.ProfileLite || build != wagopaths.BuildTiny {
 		t.Fatalf("install selection = %q, %q, %q, %v", version, profile, build, ok)
 	}
 }

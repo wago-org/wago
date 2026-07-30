@@ -618,6 +618,18 @@ type remoteRelease struct {
 	PublishedAt string `json:"published_at"`
 }
 
+type remoteCommit struct {
+	SHA    string `json:"sha"`
+	Commit struct {
+		Author struct {
+			Date string `json:"date"`
+		} `json:"author"`
+		Committer struct {
+			Date string `json:"date"`
+		} `json:"committer"`
+	} `json:"commit"`
+}
+
 // isRollingChannel reports whether ver names a rolling release channel rather
 // than a pinned, immutable version.
 func isRollingChannel(ver string) bool { return rollingChannels[ver] }
@@ -689,6 +701,56 @@ func releasePickerItems(releases []remoteRelease, channel string, now time.Time)
 	return items
 }
 
+func canaryCommitItems(commits []remoteCommit, now time.Time) []pickerItem {
+	items := make([]pickerItem, 0, len(commits))
+	seen := make(map[string]bool, len(commits))
+	for _, commit := range commits {
+		sha := strings.ToLower(strings.TrimSpace(commit.SHA))
+		if !validCommitSHA(sha) || seen[sha] {
+			continue
+		}
+		seen[sha] = true
+		published := commit.Commit.Author.Date
+		if published == "" {
+			published = commit.Commit.Committer.Date
+		}
+		items = append(items, pickerItem{
+			label: "canary-" + sha[:7],
+			desc:  releasePickerDescription(remoteRelease{PublishedAt: published}, now),
+			value: canaryCommitTarget(sha),
+		})
+	}
+	return items
+}
+
+func canaryCommitTarget(sha string) string {
+	return "canary@" + strings.ToLower(strings.TrimSpace(sha))
+}
+
+func canaryCommitSHA(target string) (string, bool) {
+	sha, found := strings.CutPrefix(target, "canary@")
+	return sha, found && validCommitSHA(sha)
+}
+
+func validCommitSHA(sha string) bool {
+	if len(sha) != 40 {
+		return false
+	}
+	for _, char := range sha {
+		if !strings.ContainsRune("0123456789abcdef", char) {
+			return false
+		}
+	}
+	return true
+}
+
+func canaryCommitVersion(target string) string {
+	if sha, ok := canaryCommitSHA(target); ok {
+		return "canary-" + sha[:7]
+	}
+	return target
+}
+
 func releasePickerLabel(tag string) string {
 	if isRollingChannel(tag) || tag == "latest" {
 		return tag
@@ -746,8 +808,8 @@ func releasePickerChildren(channel string, versions []pickerItem) []pickerItem {
 	return append(items, versions...)
 }
 
-func versionPickerItems(releases []remoteRelease, now time.Time) []pickerItem {
-	canary := releasePickerItems(releases, "canary", now)
+func versionPickerItemsWithCommits(releases []remoteRelease, commits []remoteCommit, now time.Time) []pickerItem {
+	canary := canaryCommitItems(commits, now)
 	nightly := releasePickerItems(releases, "nightly", now)
 	stable := releasePickerItems(releases, "", now)
 	items := []pickerItem{
@@ -758,8 +820,8 @@ func versionPickerItems(releases []remoteRelease, now time.Time) []pickerItem {
 	return append(items, stable...)
 }
 
-func installPickerItems(releases []remoteRelease, now time.Time) []pickerItem {
-	return addProfileChoices(versionPickerItems(releases, now))
+func installPickerItemsWithCommits(releases []remoteRelease, commits []remoteCommit, now time.Time) []pickerItem {
+	return addProfileChoices(versionPickerItemsWithCommits(releases, commits, now))
 }
 
 func addProfileChoices(items []pickerItem) []pickerItem {
@@ -790,16 +852,16 @@ func addProfileChoices(items []pickerItem) []pickerItem {
 	return items
 }
 
-func chooseInstallPicker(releases []remoteRelease, now time.Time, profileValue, buildValue string) (string, wagopaths.Profile, wagopaths.Build, bool) {
+func chooseInstallPicker(releases []remoteRelease, commits []remoteCommit, now time.Time, profileValue, buildValue string) (string, wagopaths.Profile, wagopaths.Build, bool) {
 	if profileValue != "" || buildValue != "" {
-		choice, ok := choosePicker("Install Wago version", versionPickerItems(releases, now))
+		choice, ok := choosePicker("Install Wago version", versionPickerItemsWithCommits(releases, commits, now))
 		if !ok {
 			return "", "", "", false
 		}
 		profile, build, ok := chooseInstallVariant(profileValue, buildValue)
 		return choice, profile, build, ok
 	}
-	p := newPicker("Install Wago version", installPickerItems(releases, now))
+	p := newPicker("Install Wago version", installPickerItemsWithCommits(releases, commits, now))
 	submitted, cancelled := runSelector(p)
 	if !submitted || cancelled {
 		return "", "", "", false
