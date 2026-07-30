@@ -17,56 +17,108 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
-	"github.com/wago-org/wago"
+	"github.com/wago-org/wago/internal/wagopaths"
 )
 
-func vmInstall(d wago.Dirs, ver string) {
-	dest := d.VersionBinary(ver)
-	existed := false
-	if fi, err := os.Stat(dest); err == nil && !fi.IsDir() {
+func vmInstall(d wagopaths.Dirs, ver string, profile wagopaths.Profile, build wagopaths.Build) {
+	installVersion(d, ver, profile, build, true, true)
+}
+
+func vmInstallForSwitch(d wagopaths.Dirs, ver string, profile wagopaths.Profile, build wagopaths.Build) {
+	installVersion(d, ver, profile, build, false, false)
+}
+
+func installVersion(d wagopaths.Dirs, ver string, profile wagopaths.Profile, build wagopaths.Build, offer, showLocation bool) {
+	dest := d.RuntimeBinary(ver, string(profile), string(build))
+	if installedPath, _, _, installed := installedRuntime(d, ver, profile, build); installed {
 		if !isRollingChannel(ver) {
-			fmt.Printf("wago %s already installed\n", ver)
+			fmt.Printf("%s %s is already installed\n", cyan("✓"), installedWagoLabel(ver, ver, profile, build))
+			if showLocation {
+				printDetail(os.Stdout, "location", displayPath(installedPath))
+			}
+			if offer {
+				offerUseInstalled(d, ver, profile, build)
+			}
 			return
 		}
-		existed = true
 	}
 	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
 		fatal("version install: %v", err)
 	}
-	if err := downloadBinary(releaseBase(), releaseDownloadVersion(ver), dest); err != nil {
+	progress := newInstallProgress(os.Stderr)
+	progress.title("Setting Up")
+	resolved := ver
+	if isRollingChannel(ver) {
+		progress.begin("resolving release")
+		var err error
+		resolved, err = latestChannelRelease(ver)
+		if err != nil {
+			progress.fail("could not resolve release")
+			fatal("version install: %v", err)
+		}
+		progress.done("resolved " + releasePickerLabel(resolved))
+	}
+	if err := downloadBinaryWithProgress(releaseBase(), resolved, profile, build, dest, progress); err != nil {
 		fatal("version install: %v", err)
 	}
-	verb := "installed"
-	if existed {
-		verb = "refreshed"
+	progress.finish("Installed " + installedWagoLabel(ver, resolved, profile, build))
+	if showLocation {
+		printDetail(progress.out, "location", displayPath(dest))
 	}
-	fmt.Printf("%s wago %s -> %s\n", verb, cyan(ver), dest)
+	if offer {
+		offerUseInstalled(d, ver, profile, build)
+	}
 }
 
 // vmInstallRequested keeps the lean/TinyGo command surface aligned with the
 // standard downloader without retaining net/http in the release binary.
-func vmInstallRequested(d wago.Dirs, args []string, latest, nightly, canary bool) {
+func vmInstallRequested(d wagopaths.Dirs, args []string, latest, nightly, canary bool, profileValue, buildValue string) {
 	if len(args) > 1 || (len(args) == 1 && (latest || nightly || canary)) || (latest && (nightly || canary)) || (nightly && canary) {
 		fatal("version install: choose one version or channel")
 	}
 	if len(args) == 0 && !latest && !nightly && !canary {
-		vmBrowse(d)
+		vmBrowse(d, profileValue, buildValue)
+		return
+	}
+	if _, err := requestedProfile(profileValue); err != nil {
+		fatal("version install: %v", err)
+	}
+	if _, err := requestedBuild(buildValue); err != nil {
+		fatal("version install: %v", err)
+	}
+	profile, build, ok := chooseInstallVariant(profileValue, buildValue)
+	if !ok {
 		return
 	}
 	if latest {
-		vmInstall(d, latestRelease())
+		vmInstall(d, latestRelease(), profile, build)
 		return
 	}
 	if nightly {
-		vmInstall(d, "nightly")
+		vmInstall(d, "nightly", profile, build)
 		return
 	}
 	if canary {
-		vmInstall(d, "canary")
+		vmInstall(d, "canary", profile, build)
 		return
 	}
-	vmInstall(d, args[0])
+	vmInstall(d, args[0], profile, build)
+}
+
+func requestedProfile(value string) (wagopaths.Profile, error) {
+	if value != "" {
+		return wagopaths.ParseProfile(value)
+	}
+	return wagopaths.ProfileStandard, nil
+}
+
+func requestedBuild(value string) (wagopaths.Build, error) {
+	if value != "" {
+		return wagopaths.ParseBuild(value)
+	}
+	return wagopaths.BuildNormal, nil
 }
 
 func latestRelease() string {
@@ -80,74 +132,50 @@ func latestRelease() string {
 	if err := json.Unmarshal(body, &release); err != nil || release.TagName == "" {
 		fatal("version latest: invalid GitHub response")
 	}
-	return strings.TrimPrefix(release.TagName, "v")
+	return release.TagName
 }
 
-func vmBrowse(d wago.Dirs) {
-	body, err := curlGetBytes(releaseAPI() + "/repos/wago-org/wago/releases")
+func vmBrowse(d wagopaths.Dirs, profileValue, buildValue string) {
+	body, err := curlGetBytes(releaseAPI() + "/repos/wago-org/wago/releases?per_page=100")
 	if err != nil {
 		fatal("version browse: %v", err)
 	}
-	var releases []struct {
-		TagName string `json:"tag_name"`
-	}
+	var releases []remoteRelease
 	if err := json.Unmarshal(body, &releases); err != nil {
 		fatal("version browse: unable to fetch releases")
 	}
-	choices := []string{"latest", "nightly", "canary"}
-	tags := make([]string, 0, len(releases))
-	for _, r := range releases {
-		tags = append(tags, r.TagName)
-	}
-	choices = append(choices, stableReleaseNames(tags)...)
-	for i, v := range choices {
-		fmt.Printf("  %d) %s\n", i+1, v)
-	}
-	fmt.Print("Install version: ")
-	var n int
-	if _, err := fmt.Fscan(os.Stdin, &n); err != nil || n < 1 || n > len(choices) {
-		fatal("version browse: invalid selection")
-	}
-	if choices[n-1] == "latest" {
-		vmInstall(d, latestRelease())
+	choice, profile, build, ok := chooseInstallPicker(releases, time.Now(), profileValue, buildValue)
+	if !ok {
 		return
 	}
-	vmInstall(d, choices[n-1])
+	if choice == "latest" {
+		vmInstall(d, latestRelease(), profile, build)
+		return
+	}
+	vmInstall(d, choice, profile, build)
 }
 
-func vmUpdate(d wago.Dirs, ver string) {
-	dest := d.VersionBinary(ver)
+func vmUpdate(d wagopaths.Dirs, ver string, profile wagopaths.Profile, build wagopaths.Build) {
+	dest := d.RuntimeBinary(ver, string(profile), string(build))
 	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
 		fatal("version update: %v", err)
 	}
-	if err := downloadBinary(releaseBase(), releaseDownloadVersion(ver), dest); err != nil {
+	if err := downloadBinary(releaseBase(), releaseDownloadVersion(ver), profile, build, dest); err != nil {
 		fatal("version update: %v", err)
 	}
 	fmt.Printf("updated wago %s -> %s\n", cyan(ver), dest)
 }
 
 func vmListRemote() {
-	body, err := curlGetBytes(releaseAPI() + "/repos/wago-org/wago/releases")
+	body, err := curlGetBytes(releaseAPI() + "/repos/wago-org/wago/releases?per_page=100")
 	if err != nil {
-		fatal("version list-remote: %v", err)
+		fatal("version list: %v", err)
 	}
-	var releases []struct {
-		TagName string `json:"tag_name"`
-	}
+	var releases []remoteRelease
 	if err := json.Unmarshal(body, &releases); err != nil {
-		fatal("version list-remote: %v", err)
+		fatal("version list: %v", err)
 	}
-	if len(releases) == 0 {
-		fmt.Println(dim("no releases published"))
-		return
-	}
-	tags := make([]string, 0, len(releases))
-	for _, r := range releases {
-		tags = append(tags, r.TagName)
-	}
-	for _, name := range remoteVersionNames(tags) {
-		fmt.Println(name)
-	}
+	fmt.Print(formatRemoteVersionList(releaseTags(releases)))
 }
 
 // releaseDownloadVersion resolves a rolling channel to its newest immutable
@@ -184,16 +212,37 @@ func latestChannelRelease(channel string) (string, error) {
 }
 
 // downloadBinary verifies the sibling SHA-256 before atomically replacing dest.
-func downloadBinary(baseURL, ver, dest string) error {
-	asset := versionAsset()
+func downloadBinary(baseURL, ver string, profile wagopaths.Profile, build wagopaths.Build, dest string) error {
+	return downloadBinaryWithProgress(baseURL, ver, profile, build, dest, nil)
+}
+
+func downloadBinaryWithProgress(baseURL, ver string, profile wagopaths.Profile, build wagopaths.Build, dest string, progress *installProgress) error {
+	asset := versionAsset(profile, build)
 	url := fmt.Sprintf("%s/%s/%s", strings.TrimRight(baseURL, "/"), ver, asset)
+	if progress != nil {
+		progress.begin("downloading " + asset)
+	}
 	body, err := curlGetBytes(url)
 	if err != nil {
+		if progress != nil {
+			progress.fail("download failed")
+		}
 		return err
+	}
+	if progress != nil {
+		progress.done("downloaded " + asset)
+		progress.begin("fetching checksum")
 	}
 	sumRaw, err := curlGetBytes(url + ".sha256")
 	if err != nil {
+		if progress != nil {
+			progress.fail("checksum download failed")
+		}
 		return fmt.Errorf("fetch checksum: %w", err)
+	}
+	if progress != nil {
+		progress.done("fetched checksum")
+		progress.begin("verifying SHA-256")
 	}
 	want := strings.TrimSpace(string(sumRaw))
 	if fields := strings.Fields(want); len(fields) > 0 {
@@ -201,16 +250,37 @@ func downloadBinary(baseURL, ver, dest string) error {
 	}
 	got := sha256.Sum256(body)
 	if !strings.EqualFold(hex.EncodeToString(got[:]), want) {
+		if progress != nil {
+			progress.fail("checksum verification failed")
+		}
 		return fmt.Errorf("checksum mismatch for %s (want %s, got %x)", asset, want, got)
+	}
+	if progress != nil {
+		progress.done("verified SHA-256")
+		progress.begin("installing executable")
 	}
 	tmp := dest + ".tmp"
 	if err := os.WriteFile(tmp, body, 0o755); err != nil {
+		if progress != nil {
+			progress.fail("could not write executable")
+		}
 		return err
 	}
-	return os.Rename(tmp, dest)
+	if err := os.Rename(tmp, dest); err != nil {
+		if progress != nil {
+			progress.fail("could not install executable")
+		}
+		return err
+	}
+	if progress != nil {
+		progress.done("installed executable")
+	}
+	return nil
 }
 
-func versionAsset() string { return "wago-" + runtime.GOOS + "-" + runtime.GOARCH }
+func versionAsset(profile wagopaths.Profile, build wagopaths.Build) string {
+	return "wago-runtime-" + string(profile) + "-" + string(build) + "-" + runtime.GOOS + "-" + runtime.GOARCH
+}
 
 // curlGetBytes runs curl without a shell: URL text is always one argument, so a
 // requested version cannot become an option or command. --location follows the

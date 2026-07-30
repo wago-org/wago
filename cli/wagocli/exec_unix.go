@@ -1,4 +1,4 @@
-//go:build !windows
+//go:build !windows && !wago_manager
 
 package wagocli
 

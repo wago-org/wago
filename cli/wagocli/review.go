@@ -1,3 +1,5 @@
+//go:build !wago_manager
+
 package wagocli
 
 import (
@@ -47,7 +49,8 @@ func reviewCapabilities(name string, required, granted []string) (chosen []strin
 	}
 	// Enter accepts the checked items; r clears and submits (grant nothing) — both
 	// return ok=true with the chosen set. Only esc cancels, leaving grants as-is.
-	if cancelled := runSelector(m); cancelled {
+	_, cancelled := runSelector(m)
+	if cancelled {
 		return nil, false
 	}
 	return m.chosen(), true

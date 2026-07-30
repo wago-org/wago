@@ -7,9 +7,9 @@ import (
 )
 
 func TestRegistryConfigAndCredentials(t *testing.T) {
-	config := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", config)
-	t.Setenv("HOME", filepath.Join(config, "home"))
+	root := t.TempDir()
+	t.Setenv("WAGO_HOME", root)
+	t.Setenv("HOME", filepath.Join(root, "home"))
 	t.Setenv("WAGO_REGISTRY", " https://api.example.test/ ")
 	t.Setenv("WAGO_TOKEN", "")
 
@@ -31,7 +31,7 @@ func TestRegistryConfigAndCredentials(t *testing.T) {
 	if got := packageURL("github.com/acme/wago_test"); got != "https://example.test/acme/test" {
 		t.Fatalf("packageURL = %q", got)
 	}
-	if got := credentialsPath(); got != filepath.Join(config, "wago", "credentials.json") {
+	if got := credentialsPath(); got != filepath.Join(root, "config", "credentials.json") {
 		t.Fatalf("credentialsPath = %q", got)
 	}
 	if creds, err := loadCredentials(); err != nil || len(creds) != 0 {
@@ -63,6 +63,7 @@ func TestRegistryConfigAndCredentials(t *testing.T) {
 }
 
 func TestRegistryConfigDefaultsAndMalformedCredentials(t *testing.T) {
+	t.Setenv("WAGO_HOME", "")
 	t.Setenv("XDG_CONFIG_HOME", "")
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("WAGO_REGISTRY", "")
@@ -93,7 +94,7 @@ func TestRegistryConfigDefaultsAndMalformedCredentials(t *testing.T) {
 
 func TestRegistryConfigRemainingBranches(t *testing.T) {
 	base := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", base)
+	t.Setenv("WAGO_HOME", base)
 	t.Setenv("HOME", "")
 	t.Setenv("WAGO_REGISTRY", "localhost:8080")
 	if got := frontendBase(); got != "localhost:8080" {
@@ -130,7 +131,7 @@ func TestRegistryConfigRemainingBranches(t *testing.T) {
 	if err := os.WriteFile(blocked, []byte("x"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("XDG_CONFIG_HOME", blocked)
+	t.Setenv("WAGO_HOME", blocked)
 	if err := writeCredentials(map[string]credential{}); err == nil {
 		t.Fatal("writeCredentials accepted a file as config directory")
 	}

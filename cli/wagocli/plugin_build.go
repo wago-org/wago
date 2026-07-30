@@ -1,3 +1,5 @@
+//go:build !wago_manager
+
 // The consume side of `wago add` / `wago plugin`: declaring plugin dependencies in wago.json,
 // pulling them in with `go get`, and building/running a custom wago that has them
 // compiled in. The build machinery itself lives in wagomodule.go.

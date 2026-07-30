@@ -22,10 +22,10 @@ func TestVersionSelectionAndOrderingHelpers(t *testing.T) {
 	if !isRollingChannel("canary") || isRollingChannel("1.2.3") || channelRelease("nightly-20260101") != "nightly" || channelRelease("v1.2.3") != "" {
 		t.Fatal("release channel detection mismatch")
 	}
-	if got := strings.Join(stableReleaseNames([]string{"v1.2.3", "canary-abcd", "", "nightly-2026"}), ","); got != "1.2.3" {
+	if got := strings.Join(stableReleaseNames([]string{"v1.2.3", "canary-abcd", "", "nightly-2026"}), ","); got != "v1.2.3" {
 		t.Fatalf("stable releases = %q", got)
 	}
-	if got := strings.Join(remoteVersionNames([]string{"v1.2.3", "canary-a", "canary-b", "nightly-x"}), ","); got != "1.2.3,canary,nightly" {
+	if got := strings.Join(remoteVersionNames([]string{"v1.2.3", "canary-a", "canary-b", "nightly-x"}), ","); got != "canary,nightly,latest,v1.2.3" {
 		t.Fatalf("remote releases = %q", got)
 	}
 	for _, tc := range []struct {

@@ -3,6 +3,7 @@ package wago
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -43,7 +44,16 @@ func TestDirsXDG(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", "/x/config")
 	t.Setenv("XDG_CACHE_HOME", "/x/cache")
 	t.Setenv("XDG_DATA_HOME", "/x/data")
+	t.Setenv("HOME", "/home/tester")
 	d := DirsFor("2.0.0")
+	if runtime.GOOS == "darwin" {
+		if d.Config != "/home/tester/.wago/config" ||
+			d.Cache != "/home/tester/.wago/cache/2.0.0" ||
+			d.Versions != "/home/tester/.wago/versions" {
+			t.Fatalf("Darwin dirs = %#v", d)
+		}
+		return
+	}
 	if d.Config != "/x/config/wago" {
 		t.Fatalf("Config = %q", d.Config)
 	}
@@ -62,6 +72,14 @@ func TestDirsHomeFallback(t *testing.T) {
 	t.Setenv("XDG_DATA_HOME", "")
 	t.Setenv("HOME", "/home/tester")
 	d := DirsFor("0.1.0")
+	if runtime.GOOS == "darwin" {
+		if d.Config != "/home/tester/.wago/config" ||
+			d.Cache != "/home/tester/.wago/cache/0.1.0" ||
+			d.Data != "/home/tester/.wago" {
+			t.Fatalf("Darwin dirs = %#v", d)
+		}
+		return
+	}
 	if d.Config != "/home/tester/.config/wago" {
 		t.Fatalf("Config = %q", d.Config)
 	}

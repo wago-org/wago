@@ -1,6 +1,6 @@
 #!/usr/bin/env sh
 # Emit the "Build size" section fragment for the CI card: the size of the
-# size-minimized TinyGo release CLI (`make build-release`), with a delta vs
+# size-minimized TinyGo Minimal runtime (`make build-runtime-minimal-tinygo`), with a delta vs
 # CARD_BASELINE_REF (e.g. origin/main) built in a throwaway worktree. Fragment
 # format matches the other producers: line 1 is the <summary>, the rest is the
 # body. Degrades to a placeholder when TinyGo is unavailable.
@@ -23,10 +23,9 @@ placeholder() {
 
 command -v tinygo >/dev/null 2>&1 || placeholder "TinyGo not installed"
 
-# build_size <dir>: build the release CLI in dir and echo its byte size (empty on
-# failure). The binary is written as <dir>/wago by `make build-release`.
+# build_size <dir>: build the Minimal runtime in dir and echo its byte size.
 build_size() {
-	( cd "$1" && make build-release >/dev/null 2>&1 && wc -c < wago ) 2>/dev/null | tr -d ' '
+	( cd "$1" && make build-runtime-minimal-tinygo >/dev/null 2>&1 && wc -c < wago-runtime-minimal-tiny ) 2>/dev/null | tr -d ' '
 }
 
 human() {
@@ -46,14 +45,14 @@ if [ -n "$baseline_ref" ] && git rev-parse --verify -q "$baseline_ref^{commit}" 
 	git worktree remove --force "$wt" 2>/dev/null || true
 fi
 
-summary="Build size: $(human "$cur") (TinyGo release CLI)"
+summary="Build size: $(human "$cur") (TinyGo Minimal runtime)"
 if [ "$have_base" = 1 ]; then
 	d=$((cur - base))
 	dkb=$(awk -v d="$d" 'BEGIN { printf (d==0 ? "—" : "%+.1f KB"), d/1024 }')
 	[ "$dkb" != "—" ] && summary="$summary (Δ ${dkb} vs main)"
-	body=$(printf '| Binary | Size | Δ vs main |\n|---|---|---|\n| wago (TinyGo release, stripped) | %s | %s |\n' "$(human "$cur")" "$dkb")
+	body=$(printf '| Binary | Size | Δ vs main |\n|---|---|---|\n| Wago Minimal runtime (TinyGo, stripped) | %s | %s |\n' "$(human "$cur")" "$dkb")
 else
-	body=$(printf '| Binary | Size |\n|---|---|\n| wago (TinyGo release, stripped) | %s |\n' "$(human "$cur")")
+	body=$(printf '| Binary | Size |\n|---|---|\n| Wago Minimal runtime (TinyGo, stripped) | %s |\n' "$(human "$cur")")
 fi
 
 printf '%s\n%s\n' "$summary" "$body" >"$report"

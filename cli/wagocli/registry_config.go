@@ -1,3 +1,5 @@
+//go:build !wago_manager
+
 package wagocli
 
 // Credentials store for the wago registry (plugins.wago.sh). This file is net-free
@@ -5,14 +7,16 @@ package wagocli
 // (-tags wago_lean) builds; the actual HTTP calls live in registry_net.go.
 //
 // Credentials are keyed by registry base URL so several registries can coexist.
-// They are stored at $XDG_CONFIG_HOME/wago/credentials.json (else
-// $HOME/.config/wago/credentials.json).
+// They use Wago's platform config directory: ~/.wago/config on macOS and the
+// XDG config directory on Linux, unless WAGO_HOME overrides both.
 
 import (
 	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/wago-org/wago/internal/wagopaths"
 )
 
 // defaultRegistry is the public registry API base used when WAGO_REGISTRY is unset.
@@ -91,11 +95,7 @@ func packageURL(module string) string {
 
 // credentialsPath returns the path to the credentials file.
 func credentialsPath() string {
-	dir := os.Getenv("XDG_CONFIG_HOME")
-	if dir == "" {
-		dir = filepath.Join(os.Getenv("HOME"), ".config")
-	}
-	return filepath.Join(dir, "wago", "credentials.json")
+	return filepath.Join(wagopaths.DirsFor(versionString()).Config, "credentials.json")
 }
 
 // loadCredentials reads the registry->credential map. A missing file yields an

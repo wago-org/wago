@@ -10,6 +10,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/wago-org/wago/internal/wagopaths"
 )
 
 func TestCurlGetBytes(t *testing.T) {
@@ -48,7 +50,7 @@ func TestLeanLatestChannelRelease(t *testing.T) {
 func TestLeanDownloadNightlyUsesHostAsset(t *testing.T) {
 	payload := []byte("fake nightly binary")
 	sum := sha256.Sum256(payload)
-	asset := versionAsset()
+	asset := versionAsset(wagopaths.ProfileMinimal, wagopaths.BuildTiny)
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -63,7 +65,7 @@ func TestLeanDownloadNightlyUsesHostAsset(t *testing.T) {
 	defer srv.Close()
 
 	dest := filepath.Join(t.TempDir(), "wago")
-	if err := downloadBinary(srv.URL, "nightly", dest); err != nil {
+	if err := downloadBinary(srv.URL, "nightly", wagopaths.ProfileMinimal, wagopaths.BuildTiny, dest); err != nil {
 		t.Fatalf("downloadBinary(nightly): %v", err)
 	}
 	got, err := os.ReadFile(dest)
