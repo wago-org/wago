@@ -51,6 +51,35 @@ func TestSelfUninstallModePickerUsesRadioButtonsAndDefaultsFull(t *testing.T) {
 	}
 }
 
+func TestSelfUninstallConfirmationUsesRadioButtonsAndDefaultsYes(t *testing.T) {
+	p := selfUninstallConfirmationPicker()
+	if got := p.selected(); got != "yes" {
+		t.Fatalf("default uninstall confirmation = %q, want yes", got)
+	}
+	frame := p.frame()
+	for _, want := range []string{
+		"Continue?",
+		"› ◉ Yes",
+		"○ No",
+		"enter/→ select",
+		"esc cancel",
+	} {
+		if !strings.Contains(frame, want) {
+			t.Fatalf("uninstall confirmation missing %q:\n%s", want, frame)
+		}
+	}
+}
+
+func TestSelfUninstallConfirmationDefaultsYesWithoutTTY(t *testing.T) {
+	var output bytes.Buffer
+	if !confirmSelfUninstallInteractive(strings.NewReader("\n"), &output, false) {
+		t.Fatal("empty uninstall confirmation did not default to yes")
+	}
+	if !strings.Contains(output.String(), "Continue? [Y/n]") {
+		t.Fatalf("non-interactive uninstall confirmation = %q", output.String())
+	}
+}
+
 func TestParseSelfUninstallMode(t *testing.T) {
 	for _, value := range []string{"full", "partial", "minimal"} {
 		mode, err := parseSelfUninstallMode(value)
@@ -94,7 +123,7 @@ func TestSelfUninstallRequiresConfirmationAndPreservesProjects(t *testing.T) {
 	}
 
 	var output bytes.Buffer
-	selfUninstall(dirs, manager, selfUninstallFull, false, strings.NewReader("\n"), &output)
+	selfUninstall(dirs, manager, selfUninstallFull, false, strings.NewReader("n\n"), &output)
 	if _, err := os.Stat(manager); err != nil {
 		t.Fatalf("cancelled uninstall removed manager: %v", err)
 	}
