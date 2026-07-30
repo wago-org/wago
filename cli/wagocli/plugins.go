@@ -38,12 +38,8 @@ func pluginList(asJSON bool) {
 	names := wago.RegisteredPluginNames()
 	if asJSON {
 		reports := make([]pluginReport, 0, len(names))
-		seen := make(map[string]struct{}, len(names))
 		for _, name := range names {
 			if ext, ok := wago.NewExtension(name); ok {
-				if !firstPluginIdentity(seen, name, ext.Info()) {
-					continue
-				}
 				reports = append(reports, buildPluginReport(name, ext))
 			}
 		}
@@ -55,7 +51,6 @@ func pluginList(asJSON bool) {
 		fmt.Printf("%s\n", dim("no plugins enabled ("+scope+")"))
 		return
 	}
-	seen := make(map[string]struct{}, len(names))
 	items := make([]pluginListItem, 0, len(names))
 	for _, name := range names {
 		ext, ok := wago.NewExtension(name)
@@ -63,9 +58,6 @@ func pluginList(asJSON bool) {
 			continue
 		}
 		info := ext.Info()
-		if !firstPluginIdentity(seen, name, info) {
-			continue
-		}
 		items = append(items, pluginListItem{name: name, version: info.Version})
 	}
 	fmt.Println(strings.Join(pluginListLines(scope, items), "\n"))
@@ -106,18 +98,6 @@ func pluginListLines(scope string, items []pluginListItem) []string {
 type pluginListItem struct {
 	name    string
 	version string
-}
-
-func firstPluginIdentity(seen map[string]struct{}, name string, info wago.ExtensionInfo) bool {
-	identity := info.ID
-	if identity == "" {
-		identity = name
-	}
-	if _, ok := seen[identity]; ok {
-		return false
-	}
-	seen[identity] = struct{}{}
-	return true
 }
 
 func pluginListEntry(name, version string) string {
