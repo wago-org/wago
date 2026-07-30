@@ -42,6 +42,9 @@ coverage-report.md
 ci-card/
 card.md
 
+# Per-project Wago build, cache, and local credential state
+.wago/
+
 # Claude Code ephemeral git worktrees (per-session; never committed). Excluded
 # from gofmt/lint walks too — see lint-fmt in the Makefile.
 .claude/worktrees/
