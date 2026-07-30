@@ -1,6 +1,7 @@
 package wagocli
 
 import (
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -20,7 +21,7 @@ func newTestSelect() *multiSelect {
 func TestMultiSelectFrame(t *testing.T) {
 	m := newTestSelect()
 	text := m.frame()
-	for _, want := range []string{"pick", "▸ ", "[x]", "wasi:stdio", "↑/↓ move"} {
+	for _, want := range []string{"pick", "› ", "[x]", "wasi:stdio", "↑/↓ move"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("frame missing %q:\n%s", want, text)
 		}
@@ -140,5 +141,36 @@ func TestDecodeKey(t *testing.T) {
 		if got := decodeKey(tc.in); got != tc.want {
 			t.Errorf("decodeKey(%v) = %d, want %d", tc.in, got, tc.want)
 		}
+	}
+}
+
+func TestMultiSelectRightSubmitsAndAllSelectsEveryItem(t *testing.T) {
+	m := &multiSelect{items: []selItem{{label: "canary"}, {label: "nightly"}}}
+	if done, cancelled := m.apply(keyAll); done || cancelled {
+		t.Fatalf("select all = done %v, cancelled %v", done, cancelled)
+	}
+	if got := strings.Join(m.chosen(), ","); got != "canary,nightly" {
+		t.Fatalf("chosen after all = %q", got)
+	}
+	if done, cancelled := m.apply(keyRight); !done || cancelled {
+		t.Fatalf("right submit = done %v, cancelled %v", done, cancelled)
+	}
+}
+
+func TestMultiSelectPaginatesAtWindowBoundary(t *testing.T) {
+	items := make([]selItem, pickerVisibleRows+2)
+	for i := range items {
+		items[i].label = fmt.Sprintf("version-%02d", i)
+	}
+	m := &multiSelect{title: "Versions", items: items}
+	for range pickerVisibleRows - 1 {
+		m.apply(keyDown)
+	}
+	if frame := m.frame(); !strings.Contains(frame, "version-00") || strings.Contains(frame, "version-15") {
+		t.Fatalf("multi-select changed page early:\n%s", frame)
+	}
+	m.apply(keyDown)
+	if frame := m.frame(); strings.Contains(frame, "version-14") || !strings.Contains(frame, "version-15") || !strings.Contains(frame, "↑ 15 more") {
+		t.Fatalf("multi-select did not page at boundary:\n%s", frame)
 	}
 }

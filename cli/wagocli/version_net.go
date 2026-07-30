@@ -177,6 +177,7 @@ func vmUpdate(d wagopaths.Dirs, ver string, profile wagopaths.Profile, build wag
 		fatal("version update: %v", err)
 	}
 	progress.finish("Updated " + installedWagoLabel(ver, resolved, profile, build))
+	offerUseUpdated(d, ver, profile, build)
 }
 
 func resolveRunnerVersion(ver string, progress *installProgress) (resolved string, sourceOnly bool, err error) {

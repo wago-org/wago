@@ -215,6 +215,10 @@ func offerUseInstalled(d wagopaths.Dirs, ver string, profile wagopaths.Profile, 
 	if activeVersion(d) == ver && activeProfile(d) == profile && activeBuild(d) == build {
 		return
 	}
+	offerUseInstallation(d, ver, profile, build)
+}
+
+func offerUseInstallation(d wagopaths.Dirs, ver string, profile wagopaths.Profile, build wagopaths.Build) {
 	use := false
 	if stdinIsTTY() {
 		p := useInstalledPicker(ver, profile, build)
@@ -234,6 +238,40 @@ func useInstalledPicker(ver string, profile wagopaths.Profile, build wagopaths.B
 		{label: "No", value: "no"},
 	})
 	return p
+}
+
+func updateChannelPicker(active string) *picker {
+	items := []pickerItem{
+		{label: "Canary", value: "canary"},
+		{label: "Nightly", value: "nightly"},
+	}
+	p := newPicker("Update Wago channel", items)
+	channel := active
+	if !isRollingChannel(channel) {
+		channel = channelRelease(channel)
+	}
+	if channel == "nightly" {
+		p.page().cursor = 1
+	}
+	return p
+}
+
+func chooseUpdateChannel(active string) (string, bool) {
+	p := updateChannelPicker(active)
+	submitted, cancelled := runSelector(p)
+	if cancelled {
+		return "", false
+	}
+	// Non-interactive callers cannot drive the selector; retain the selected
+	// default so scripts continue to refresh the active channel.
+	if !submitted {
+		return p.selected(), p.selected() != ""
+	}
+	return p.selected(), true
+}
+
+func offerUseUpdated(d wagopaths.Dirs, ver string, profile wagopaths.Profile, build wagopaths.Build) {
+	offerUseInstallation(d, ver, profile, build)
 }
 
 func promptYesNo(in io.Reader, out io.Writer, prompt string) bool {
@@ -375,16 +413,6 @@ func installedRuntimeValues(d wagopaths.Dirs, ver string) []runtimeValue {
 		}
 	}
 	return values
-}
-
-func installedProfileValues(d wagopaths.Dirs, ver string) []wagopaths.Profile {
-	var profiles []wagopaths.Profile
-	for _, profile := range wagopaths.Profiles {
-		if _, _, _, ok := installedRuntime(d, ver, profile, ""); ok {
-			profiles = append(profiles, profile)
-		}
-	}
-	return profiles
 }
 
 func installedSelectionValue(ver string, profile wagopaths.Profile, build wagopaths.Build) string {
@@ -532,6 +560,42 @@ func vmUninstall(d wagopaths.Dirs, ver string) {
 		_ = os.Remove(d.ConfigFile("active-build"))
 	}
 	fmt.Printf("uninstalled wago %s\n", ver)
+}
+
+func uninstallVersionPicker(d wagopaths.Dirs, versions []string) *multiSelect {
+	active := activeVersion(d)
+	items := make([]selItem, 0, len(versions))
+	for _, version := range versions {
+		desc := strings.Join(installedProfiles(d, version), ", ")
+		if version == active {
+			if desc != "" {
+				desc += " · "
+			}
+			desc += "current"
+		}
+		items = append(items, selItem{label: version, desc: desc})
+	}
+	return &multiSelect{
+		title:  "Uninstall Wago versions",
+		prompt: "↑/↓ move · space toggle · a all · enter/→ uninstall · esc cancel",
+		items:  items,
+	}
+}
+
+func vmChooseUninstall(d wagopaths.Dirs) {
+	versions := installedVersions(d)
+	if len(versions) == 0 {
+		fmt.Println(dim("no versions installed"))
+		return
+	}
+	m := uninstallVersionPicker(d, versions)
+	submitted, cancelled := runSelector(m)
+	if !submitted || cancelled {
+		return
+	}
+	for _, version := range m.chosen() {
+		vmUninstall(d, version)
+	}
 }
 
 // rollingChannels are version names whose build moves under a fixed name:
@@ -731,10 +795,6 @@ func chooseInstallPicker(releases []remoteRelease, now time.Time, profileValue, 
 		return "", "", "", false
 	}
 	return parseInstalledSelection(p.selected())
-}
-
-func chooseVersion(title string, versions []string) (string, bool) {
-	return choosePicker(title, pickerItems(versions))
 }
 
 // updateVersionTarget chooses the version refreshed by `wago version update`.

@@ -217,6 +217,98 @@ func TestUseInstalledPickerUsesRadioButtonsAndDefaultsYes(t *testing.T) {
 	}
 }
 
+func TestOfferUseUpdatedPromptsEvenWhenChannelIsCurrentAndDefaultsYes(t *testing.T) {
+	root := t.TempDir()
+	d := wagopaths.Dirs{
+		Config: filepath.Join(root, "config"), Data: filepath.Join(root, "data"),
+		Versions: filepath.Join(root, "data", "versions"), Cache: filepath.Join(root, "cache"),
+	}
+	path := d.RuntimeBinary("nightly", "standard", "normal")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("runtime"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := setActiveInstallation(d, "nightly", wagopaths.ProfileStandard, wagopaths.BuildNormal); err != nil {
+		t.Fatal(err)
+	}
+
+	oldStdin, oldStdout := os.Stdin, os.Stdout
+	inputRead, inputWrite, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	outputRead, outputWrite, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		os.Stdin, os.Stdout = oldStdin, oldStdout
+	})
+	if _, err := inputWrite.WriteString("\n"); err != nil {
+		t.Fatal(err)
+	}
+	_ = inputWrite.Close()
+	os.Stdin, os.Stdout = inputRead, outputWrite
+	offerUseUpdated(d, "nightly", wagopaths.ProfileStandard, wagopaths.BuildNormal)
+	_ = outputWrite.Close()
+	os.Stdin, os.Stdout = oldStdin, oldStdout
+	output, err := io.ReadAll(outputRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if text := string(output); !strings.Contains(text, "Use Wago Nightly (standard/normal) now? [Y/n]") || !strings.Contains(text, "Using Wago Nightly") {
+		t.Fatalf("updated-version prompt/output = %q", text)
+	}
+}
+
+func TestUpdateChannelPickerDefaultsToCurrentChannel(t *testing.T) {
+	p := updateChannelPicker("nightly")
+	if got := p.selected(); got != "nightly" {
+		t.Fatalf("selected channel = %q, want nightly", got)
+	}
+	frame := p.frame()
+	for _, want := range []string{"Update Wago channel", "Canary", "Nightly", "enter/→ select"} {
+		if !strings.Contains(frame, want) {
+			t.Fatalf("update picker missing %q:\n%s", want, frame)
+		}
+	}
+	if done, cancelled := p.apply(keyRight); !done || cancelled {
+		t.Fatalf("right submit = done %v, cancelled %v", done, cancelled)
+	}
+}
+
+func TestUninstallVersionPickerListsAllVersionsAndCurrent(t *testing.T) {
+	root := t.TempDir()
+	d := wagopaths.Dirs{
+		Config: filepath.Join(root, "config"), Data: filepath.Join(root, "data"),
+		Versions: filepath.Join(root, "data", "versions"), Cache: filepath.Join(root, "cache"),
+	}
+	for _, version := range []string{"canary", "nightly", "v0.2.0"} {
+		path := d.RuntimeBinary(version, "standard", "normal")
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("runtime"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := setActiveInstallation(d, "nightly", wagopaths.ProfileStandard, wagopaths.BuildNormal); err != nil {
+		t.Fatal(err)
+	}
+	m := uninstallVersionPicker(d, installedVersions(d))
+	if len(m.items) != 3 {
+		t.Fatalf("uninstall items = %d, want 3", len(m.items))
+	}
+	frame := m.frame()
+	for _, want := range []string{"Uninstall Wago versions", "canary", "nightly", "v0.2.0", "current", "space toggle", "a all", "enter/→ uninstall"} {
+		if !strings.Contains(frame, want) {
+			t.Fatalf("uninstall picker missing %q:\n%s", want, frame)
+		}
+	}
+}
+
 func TestInstalledVersionPickerShowsCurrentProfileAndBrowsesProfiles(t *testing.T) {
 	root := t.TempDir()
 	d := wagopaths.Dirs{
