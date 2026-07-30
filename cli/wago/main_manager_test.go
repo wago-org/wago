@@ -53,6 +53,56 @@ func TestManagerLaunchesSelectedRunner(t *testing.T) {
 	}
 }
 
+func TestManagerDelegatesTopLevelHelpWithManagerContext(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("WAGO_HOME", root)
+	config := filepath.Join(root, "config")
+	runner := filepath.Join(root, "data", "versions", "canary", "minimal", "wago-runner")
+	if err := os.MkdirAll(config, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(runner), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for name, value := range map[string]string{
+		"active-version": "canary\n",
+		"active-profile": "minimal\n",
+	} {
+		if err := os.WriteFile(filepath.Join(config, name), []byte(value), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	script := "#!/bin/sh\nprintf 'args:%s\\nmanager:%s\\nexecutable:%s\\n' \"$*\" \"$WAGO_MANAGER_VERSION\" \"$WAGO_MANAGER_EXECUTABLE\"\n"
+	if err := os.WriteFile(runner, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	oldArgs, oldVersion, oldStdout := os.Args, version, os.Stdout
+	t.Cleanup(func() {
+		os.Args, version, os.Stdout = oldArgs, oldVersion, oldStdout
+	})
+	read, write, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stdout = write
+	os.Args = []string{"wago", "--help"}
+	version = "manager-test"
+	main()
+	_ = write.Close()
+	output, err := io.ReadAll(read)
+	_ = read.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(output)
+	for _, want := range []string{"args:--help", "manager:manager-test", "executable:"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("delegated help missing %q:\n%s", want, text)
+		}
+	}
+}
+
 func TestManagerVersionUpgradesLegacyRunnerOutput(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("WAGO_HOME", root)

@@ -133,12 +133,30 @@ func usage(w *os.File) {
 // writeCommandList prints the top-level commands as an aligned name / arg-synopsis
 // / description table, sizing the name and arg columns to their widest entries.
 func writeCommandList(w *os.File) {
+	commands := topLevelHelpCommands()
 	nameW, argW := 0, 0
-	for _, c := range root.Children {
+	for _, c := range commands {
 		nameW = max(nameW, len(c.Name))
 		argW = max(argW, len(cmdArg(c)))
 	}
-	for _, c := range root.Children {
+	for _, c := range commands {
 		fmt.Fprintf(w, "  %-*s  %-*s  %s\n", nameW, c.Name, argW, cmdArg(c), c.Summary)
 	}
+}
+
+// topLevelHelpCommands presents the manager and selected runtime as one CLI.
+// The manager injects its executable path when it launches a runtime, so
+// stripped profiles can advertise manager-owned commands without implementing
+// them or carrying their networking dependencies.
+func topLevelHelpCommands() []*Cmd {
+	commands := append([]*Cmd(nil), root.Children...)
+	if os.Getenv("WAGO_MANAGER_EXECUTABLE") == "" {
+		return commands
+	}
+	for _, command := range []*Cmd{authCommand(), versionCommand()} {
+		if root.child(command.Name) == nil {
+			commands = append(commands, command)
+		}
+	}
+	return commands
 }
