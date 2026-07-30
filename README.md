@@ -120,6 +120,18 @@ wago version update --nightly
 wago version update --canary
 ```
 
+The manager updates independently from installed runtimes and stays on its
+current release track:
+
+```bash
+wago self update
+wago self uninstall
+```
+
+`wago self uninstall` asks for confirmation, then removes the manager,
+installed runtimes, global plugins, configuration, and caches. It does not
+remove project directories, local `.wago` builds, or `wago.json` files.
+
 ## Docs
 
 The high-level project docs live in this repo:

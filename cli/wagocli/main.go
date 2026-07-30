@@ -113,7 +113,7 @@ func usesPluginRuntime(args []string) bool {
 		return false
 	}
 	switch args[0] {
-	case "version", "auth", "init", "env",
+	case "version", "auth", "init", "self", "env",
 		"add", "rm": // build-management / meta: run on base
 		return false
 	case "plugin", "plugins":
@@ -186,7 +186,7 @@ func topLevelHelpCommands() []*Cmd {
 	if os.Getenv("WAGO_MANAGER_EXECUTABLE") == "" {
 		return commands
 	}
-	for _, command := range []*Cmd{initCommand(), authCommand(), versionCommand()} {
+	for _, command := range []*Cmd{initCommand(), authCommand(), versionCommand(), selfCommand()} {
 		if root.child(command.Name) == nil {
 			commands = append(commands, command)
 		}

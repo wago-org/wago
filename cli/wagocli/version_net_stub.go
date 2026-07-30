@@ -133,17 +133,25 @@ func requestedBuild(value string) (wagopaths.Build, error) {
 }
 
 func latestRelease() string {
-	body, err := curlGetBytes(releaseAPI() + "/repos/wago-org/wago/releases/latest")
+	release, err := latestStableRelease()
 	if err != nil {
 		fatal("version latest: %v", err)
+	}
+	return release
+}
+
+func latestStableRelease() (string, error) {
+	body, err := curlGetBytes(releaseAPI() + "/repos/wago-org/wago/releases/latest")
+	if err != nil {
+		return "", err
 	}
 	var release struct {
 		TagName string `json:"tag_name"`
 	}
 	if err := json.Unmarshal(body, &release); err != nil || release.TagName == "" {
-		fatal("version latest: invalid GitHub response")
+		return "", fmt.Errorf("GitHub returned an invalid latest release")
 	}
-	return release.TagName
+	return release.TagName, nil
 }
 
 func vmBrowse(d wagopaths.Dirs, profileValue, buildValue string) {
@@ -275,6 +283,45 @@ func latestChannelRelease(channel string) (string, error) {
 	return "", fmt.Errorf("no published %s release", channel)
 }
 
+func installManagerUpdate(channel, dest string, progress *installProgress) (string, error) {
+	var (
+		resolved string
+		err      error
+	)
+	switch channel {
+	case "latest":
+		if progress != nil {
+			progress.begin("resolving latest release")
+		}
+		resolved, err = latestStableRelease()
+	case "canary":
+		if progress != nil {
+			progress.begin("resolving main commit")
+		}
+		var sha string
+		sha, err = latestMainCommit()
+		resolved = canaryCommitVersion(canaryCommitTarget(sha))
+	default:
+		if progress != nil {
+			progress.begin("resolving release")
+		}
+		resolved, err = latestChannelRelease(channel)
+	}
+	if err != nil {
+		if progress != nil {
+			progress.fail("could not resolve release")
+		}
+		return "", err
+	}
+	if progress != nil {
+		progress.done("resolved " + releasePickerLabel(resolved))
+	}
+	if err := downloadReleaseAssetWithProgress(releaseBase(), resolved, managerAsset(), dest, progress); err != nil {
+		return "", err
+	}
+	return resolved, nil
+}
+
 // downloadBinary verifies the sibling SHA-256 before atomically replacing dest.
 func downloadBinary(baseURL, ver string, profile wagopaths.Profile, build wagopaths.Build, dest string) error {
 	return downloadBinaryWithProgress(baseURL, ver, profile, build, dest, nil)
@@ -282,6 +329,10 @@ func downloadBinary(baseURL, ver string, profile wagopaths.Profile, build wagopa
 
 func downloadBinaryWithProgress(baseURL, ver string, profile wagopaths.Profile, build wagopaths.Build, dest string, progress *installProgress) error {
 	asset := versionAsset(profile, build)
+	return downloadReleaseAssetWithProgress(baseURL, ver, asset, dest, progress)
+}
+
+func downloadReleaseAssetWithProgress(baseURL, ver, asset, dest string, progress *installProgress) error {
 	url := fmt.Sprintf("%s/%s/%s", strings.TrimRight(baseURL, "/"), ver, asset)
 	if progress != nil {
 		progress.begin("downloading " + asset)
@@ -344,6 +395,10 @@ func downloadBinaryWithProgress(baseURL, ver string, profile wagopaths.Profile, 
 
 func versionAsset(profile wagopaths.Profile, build wagopaths.Build) string {
 	return "wago-runtime-" + string(profile) + "-" + string(build) + "-" + runtime.GOOS + "-" + runtime.GOARCH
+}
+
+func managerAsset() string {
+	return "wago-" + runtime.GOOS + "-" + runtime.GOARCH
 }
 
 // curlGetBytes runs curl without a shell: URL text is always one argument, so a

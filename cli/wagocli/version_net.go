@@ -122,21 +122,29 @@ func requestedBuild(value string) (wagopaths.Build, error) {
 }
 
 func latestRelease() string {
-	resp, err := http.Get(releaseAPI() + "/repos/wago-org/wago/releases/latest")
+	release, err := latestStableRelease()
 	if err != nil {
 		fatal("version latest: %v", err)
 	}
+	return release
+}
+
+func latestStableRelease() (string, error) {
+	resp, err := http.Get(releaseAPI() + "/repos/wago-org/wago/releases/latest")
+	if err != nil {
+		return "", err
+	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		fatal("version latest: GitHub returned %s", resp.Status)
+		return "", fmt.Errorf("GitHub returned %s", resp.Status)
 	}
 	var release struct {
 		TagName string `json:"tag_name"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil || release.TagName == "" {
-		fatal("version latest: invalid GitHub response")
+		return "", errors.New("GitHub returned an invalid latest release")
 	}
-	return release.TagName
+	return release.TagName, nil
 }
 
 func vmBrowse(d wagopaths.Dirs, profileValue, buildValue string) {
@@ -272,6 +280,47 @@ func installRunnerPayload(ref string, profile wagopaths.Profile, build wagopaths
 	return buildRunnerSource(ref, profile, build, dest, progress)
 }
 
+func installManagerUpdate(channel, dest string, progress *installProgress) (string, error) {
+	var (
+		resolved   string
+		sourceOnly bool
+		err        error
+	)
+	if channel == "latest" {
+		if progress != nil {
+			progress.begin("resolving latest release")
+		}
+		resolved, err = latestStableRelease()
+		if err == nil && progress != nil {
+			progress.done("resolved " + releasePickerLabel(resolved))
+		}
+	} else {
+		resolved, sourceOnly, err = resolveRunnerVersion(channel, progress)
+	}
+	if err != nil {
+		return "", err
+	}
+	if !sourceOnly {
+		err = downloadReleaseAssetWithProgress(
+			releaseBase(),
+			canaryCommitVersion(resolved),
+			managerAsset(),
+			dest,
+			progress,
+		)
+		if err == nil {
+			return canaryCommitVersion(resolved), nil
+		}
+		if !releaseAssetUnavailable(err) {
+			return "", err
+		}
+	}
+	if err := buildManagerSource(resolved, dest, progress); err != nil {
+		return "", err
+	}
+	return canaryCommitVersion(resolved), nil
+}
+
 func latestMainCommit() (string, error) {
 	resp, err := http.Get(releaseAPI() + "/repos/wago-org/wago/commits/main")
 	if err != nil {
@@ -366,6 +415,10 @@ func downloadBinary(baseURL, ver string, profile wagopaths.Profile, build wagopa
 
 func downloadBinaryWithProgress(baseURL, ver string, profile wagopaths.Profile, build wagopaths.Build, dest string, progress *installProgress) error {
 	asset := versionAsset(profile, build)
+	return downloadReleaseAssetWithProgress(baseURL, ver, asset, dest, progress)
+}
+
+func downloadReleaseAssetWithProgress(baseURL, ver, asset, dest string, progress *installProgress) error {
 	url := fmt.Sprintf("%s/%s/%s", strings.TrimRight(baseURL, "/"), ver, asset)
 
 	if progress != nil {
@@ -441,6 +494,10 @@ func downloadBinaryWithProgress(baseURL, ver string, profile wagopaths.Profile, 
 
 func versionAsset(profile wagopaths.Profile, build wagopaths.Build) string {
 	return "wago-runtime-" + string(profile) + "-" + string(build) + "-" + runtime.GOOS + "-" + runtime.GOARCH
+}
+
+func managerAsset() string {
+	return "wago-" + runtime.GOOS + "-" + runtime.GOARCH
 }
 
 func httpGetBytes(url string) ([]byte, error) {

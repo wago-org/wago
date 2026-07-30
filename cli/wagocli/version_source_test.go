@@ -43,6 +43,41 @@ func TestMissingReleaseAssetFallsBackToSource(t *testing.T) {
 	}
 }
 
+func TestMissingManagerAssetFallsBackToSource(t *testing.T) {
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/repos/wago-org/wago/releases/latest" {
+			_, _ = w.Write([]byte(`{"tag_name":"v9.9.9"}`))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer api.Close()
+	releases := httptest.NewServer(http.NotFoundHandler())
+	defer releases.Close()
+	t.Setenv("WAGO_RELEASE_API", api.URL)
+	t.Setenv("WAGO_RELEASE_BASE", releases.URL)
+
+	old := buildManagerSource
+	t.Cleanup(func() { buildManagerSource = old })
+	var gotRef string
+	buildManagerSource = func(ref, dest string, _ *installProgress) error {
+		gotRef = ref
+		return os.WriteFile(dest, []byte("source manager"), 0o755)
+	}
+
+	dest := filepath.Join(t.TempDir(), "manager")
+	resolved, err := installManagerUpdate("latest", dest, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved != "v9.9.9" || gotRef != "v9.9.9" {
+		t.Fatalf("manager update = %q from %q", resolved, gotRef)
+	}
+	if body, err := os.ReadFile(dest); err != nil || string(body) != "source manager" {
+		t.Fatalf("installed source manager = %q, %v", body, err)
+	}
+}
+
 func TestChecksumMismatchDoesNotBuildFromSource(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, ".sha256") {

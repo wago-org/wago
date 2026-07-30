@@ -33,7 +33,7 @@ func TestUsageDocumentsCommandSurface(t *testing.T) {
 	}
 	// Every Standard command must be listed. Auth and version remain available
 	// here as well as in the separate manager so checkout/dev builds work.
-	for _, cmd := range []string{"run", "init", "add", "rm", "plugin", "auth", "module", "build", "validate", "version"} {
+	for _, cmd := range []string{"run", "init", "add", "rm", "plugin", "auth", "module", "build", "validate", "version", "self"} {
 		if !strings.Contains(text, cmd) {
 			t.Fatalf("usage text missing command %q:\n%s", cmd, text)
 		}
@@ -50,6 +50,10 @@ func TestUsageDocumentsCommandSurface(t *testing.T) {
 	if root.child("version") == nil {
 		t.Fatal("standard command tree does not register version")
 	}
+	self := root.child("self")
+	if self == nil || self.child("update") == nil || self.child("uninstall") == nil {
+		t.Fatal("standard command tree does not register self update/uninstall")
+	}
 	if strings.Contains(text, "test") {
 		t.Fatalf("usage should no longer mention test:\n%s", text)
 	}
@@ -62,7 +66,7 @@ func TestManagedRuntimeHelpIncludesManagerCommands(t *testing.T) {
 	t.Setenv("WAGO_MANAGER_EXECUTABLE", "/usr/local/bin/wago")
 
 	commands := topLevelHelpCommands()
-	if len(commands) != 4 || commands[0].Name != "run" || commands[1].Name != "init" || commands[2].Name != "auth" || commands[3].Name != "version" {
+	if len(commands) != 5 || commands[0].Name != "run" || commands[1].Name != "init" || commands[2].Name != "auth" || commands[3].Name != "version" || commands[4].Name != "self" {
 		t.Fatalf("managed minimal help commands = %#v", commands)
 	}
 	if len(root.Children) != 1 {
