@@ -44,9 +44,13 @@ var (
 	interruptInstallOnce sync.Once
 	interruptInstallErr  error
 	interruptSignal      uint32
-	interruptTrapPC      uintptr
-	interruptOldHandler  uintptr
 )
+
+//lint:ignore U1000 referenced from interrupt_linux_{amd64,arm64}.s
+var interruptTrapPC uintptr
+
+//lint:ignore U1000 referenced from interrupt_linux_{amd64,arm64}.s
+var interruptOldHandler uintptr
 
 const (
 	_ = uint(unsafe.Sizeof(interruptRequest{}) - 16)
@@ -354,7 +358,11 @@ func deleteInterruptTimer(timerID int32) {
 
 func HostInterruptSupported() bool { return true }
 
+//lint:ignore U1000 entry point referenced from assembly
 func interruptSigHandler()
+
+//lint:ignore U1000 landing pad referenced from assembly
 func nativeInterruptTrap()
+
 func addrInterruptSigHandler() uintptr
 func addrNativeInterruptTrap() uintptr

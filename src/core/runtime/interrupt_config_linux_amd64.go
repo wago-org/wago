@@ -9,5 +9,7 @@ func configureInterruptSigaction(act *interruptSigaction) {
 	act.restorer = addrInterruptSigRestorer()
 }
 
+//lint:ignore U1000 entry point referenced from assembly
 func interruptSigRestorer()
+
 func addrInterruptSigRestorer() uintptr
