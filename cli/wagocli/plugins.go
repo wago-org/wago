@@ -303,14 +303,14 @@ func pluginCapabilities(ext wago.Extension) []string {
 
 func loadPluginRuntime(cfg *wago.RuntimeConfig, list string) *wago.Runtime {
 	rt := wago.NewRuntime(wago.WithRuntimeConfig(cfg))
-	manifest, err := projectPlugins(".")
+	manifest, err := activePluginConfigs()
 	if err != nil {
 		fatal("plugins: %v", err)
 	}
-	// Always start with the packages declared in the local wago.json (each with
-	// its configured capabilities). --plugin adds any extra plugins on top rather
-	// than replacing the manifest; names are matched canonically (a leading
-	// "github.com/" is optional) and de-duplicated against the manifest.
+	// Start with the active package set's manifest (local wago.json when present,
+	// otherwise the version-scoped global manifest), including its configured
+	// capabilities. --plugin adds extras rather than replacing the manifest;
+	// names are matched canonically and de-duplicated against it.
 	selected := append([]wago.PluginConfig(nil), manifest...)
 	have := make(map[string]bool, len(manifest))
 	for _, item := range manifest {
@@ -330,4 +330,12 @@ func loadPluginRuntime(cfg *wago.RuntimeConfig, list string) *wago.Runtime {
 		}
 	}
 	return rt
+}
+
+func activePluginConfigs() ([]wago.PluginConfig, error) {
+	dir, deps, scope := activePluginSet()
+	if scope == "global" && len(deps) != 0 {
+		return projectPlugins(dir)
+	}
+	return projectPlugins(".")
 }
