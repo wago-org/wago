@@ -275,6 +275,15 @@ func (a *Asm) SubRsp(v int32) { a.emit(0x48, 0x81, 0xEC); a.imm32(v) }
 
 func (a *Asm) AluRR(rrOpcode byte, dst, src Reg, w bool) { a.alu(rrOpcode, dst, src, w) }
 
+// AluRR8 emits an 8-bit register ALU operation in r/m,reg form. A REX prefix is
+// required not only for extended registers but also for SPL/BPL/SIL/DIL.
+func (a *Asm) AluRR8(rrOpcode byte, dst, src Reg) {
+	if dst >= 4 || src >= 4 {
+		a.emit(rex(false, src >= 8, false, dst >= 8))
+	}
+	a.emit(rrOpcode, 0xC0|((byte(src)&7)<<3)|byte(dst&7))
+}
+
 func (a *Asm) AluRM(rmOpcode byte, dst, base Reg, disp int32, w bool) {
 	a.memOp(rmOpcode, byte(dst), base, disp, w)
 }
@@ -603,6 +612,23 @@ var nopSeqs = [10][]byte{
 // per iteration.
 func (a *Asm) Align16() {
 	pad := (16 - len(a.B)%16) % 16
+	a.nop(pad)
+}
+
+// AlignLoop normally preserves compact 16-byte loop alignment. If the entry
+// path has already reached the last eight bytes of a 32-byte fetch block, it
+// advances to offset eight in the next block; this leaves room for the header
+// compare/branch without placing the first wide ALU instruction on a boundary.
+func (a *Asm) AlignLoop() {
+	offset := len(a.B) % 32
+	pad := (16 - len(a.B)%16) % 16
+	if offset >= 24 {
+		pad = 32 - offset + 8
+	}
+	a.nop(pad)
+}
+
+func (a *Asm) nop(pad int) {
 	for pad > 0 {
 		n := pad
 		if n > 9 {

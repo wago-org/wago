@@ -115,6 +115,16 @@ func TestGoldenFloatLocalSink(t *testing.T) {
 	}
 }
 
+func TestGoldenFloatMemoryOperand(t *testing.T) {
+	// local.get 0; local.get 1; f64.load; f64.mul
+	m := modMem(t, 1, []wasm.ValType{wasm.F64, wasm.I32}, []wasm.ValType{wasm.F64},
+		[]byte{0x00, 0x20, 0x00, 0x20, 0x01, 0x2b, 0x03, 0x00, 0xa2, 0x0b})
+	d := disasm(t, compileCode(t, m, true))
+	if !strings.Contains(d, "vmulsd") || !strings.Contains(d, "[rbx") {
+		t.Errorf("expected three-operand `vmulsd xmm,xmm,[rbx+...]`, got:\n%s", d)
+	}
+}
+
 func TestGoldenFloatConstPreloadBeforeLoop(t *testing.T) {
 	// acc = 1; loop { acc *= 1.0000001; n-- }; return acc. The multiplier
 	// constant should be materialized before the loop header, not on every trip.

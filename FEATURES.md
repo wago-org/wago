@@ -55,8 +55,8 @@ Later proposals and engine/platform capabilities beyond the MVP.
 | Threads & atomics | ✓ | ⬜ planned |
 | Synchronous host-import results | ✓ | ✅ done |
 | Bounded function-pipeline parallelism | ✓ | ✅ done: validation and native codegen share one deterministic serial/adaptive/forced worker policy. The default is serial; `WithFunctionWorkers(0)` and CLI `-p` select adaptive mode, while explicit maxima remain capped by `GOMAXPROCS` and local-function count. |
-| Cooperative invocation cancellation | ✓ | ✅ done on amd64 and arm64: context cancellation and deadlines interrupt native execution at function-entry and loop-header safepoints; closing an active instance publishes the same interrupt request, including host-parked and prepared calls, while invocation leases defer unmapping until unwind completes. |
-| Architectures beyond linux/amd64 (arm64, macOS, Windows) | ✓ | 🚧 partial — Linux/arm64 and Darwin/arm64 have native CI for the encoder, backend, runtime/API, explicit and signal-backed guard-page bounds, and corpus correctness. ARM64 reference globals and heterogeneous indexed tables execute; amd64 cancellation polling and Windows remain planned. |
+| Invocation cancellation | ✓ | ✅ done on amd64 and arm64: Linux/amd64 and Linux/arm64 use a thread-directed reserved real-time signal, executable-range validation, and `ucontext` stack/PC rewriting, so generated Wasm contains no cancellation polls. Other targets use function-entry and loop-header safepoints. Closing an active instance publishes the same interruption request, while invocation leases defer unmapping until unwind completes. See `docs/linux-host-interrupt.md`. |
+| Architectures beyond linux/amd64 (arm64, macOS, Windows) | ✓ | 🚧 partial — Linux/arm64 and Darwin/arm64 have native CI for the encoder, backend, runtime/API, explicit and signal-backed guard-page bounds, and corpus correctness. ARM64 reference globals, heterogeneous indexed tables, and Linux asynchronous cancellation execute; Windows remains planned. |
 | Multi-memory | ✗ | ❌ not planned |
 | Exception handling proposal | ✗ | ❌ not planned |
 | Garbage collection proposal (wasm GC) | ✗ | ❌ not planned |

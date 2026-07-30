@@ -76,6 +76,43 @@ condense engine) with an on-the-fly whole-register-file allocator. Landed, in ro
 **MVP completeness** (old "completion batch"): memory.grow/size, trapping float→int
 truncation + trunc_sat, start function, multi-value, imported/mutable globals.
 
+**AMD64 corpus pass (2026-07-30)**
+- Float-local residency now uses WARP's eleven-register pool in call-making
+  functions as well as leaves; the existing dirty spill/lazy-reload protocol
+  preserves the caller-saved XMM pins.
+- Scalar `f32`/`f64` add and multiply fold deferred linear-memory operands into
+  non-destructive VEX instructions, avoiding a preserve-source move.
+- Explicit bounds mode keeps eight fixed-size, round-robin straight-line
+  certificates so interleaved array accesses do not evict one another.
+- AMD64 cancellation safepoints poll a direct basedata mirror. The runtime keeps
+  that cell synchronized with the stable trap buffer, including cross-instance
+  calls, without a cache or per-call allocation.
+- SIMD lowering now uses compact VEX encodings, immediate packed shifts, exact
+  rotate recognition, native/common-source shuffles, packed memory operands,
+  direct pinned-local sinks, live `local.tee` forwarding, and exact dead tee-store
+  elimination. These are bounded instruction-selection rules, not a value cache.
+- The byte-body scan identifies declared locals assigned before their first read
+  in the straight-line entry prefix, allowing their dead prologue zeroing to be
+  omitted. CRC-style table indices additionally use nested scaled-index LEA and
+  `(x ^ load8_u) & 255` lowers to `movzx` plus a low-byte XOR.
+
+On a Ryzen 7 7800X3D, Linux/amd64, Go 1.22.2, explicit-bounds `BenchmarkKernels` pinned
+to CPU 7 with `GOMAXPROCS=1` (`-count=6 -benchtime=1s`) measured median execution
+changes of nbody 295.7→281.0 µs (-5.0%), matmul 168.8→138.3 µs (-18.1%), and
+raytrace 412.1→383.5 µs (-6.9%). All remained 0 B/op and 0 allocs/op. The fixed
+footprint cost is 16 additional basedata bytes per memory and 8 additional trap
+buffer bytes per instance.
+
+The SIMD/integer follow-up was measured sequentially from separate worktrees at
+`origin/main` (`67ac1c25`) and this branch, one corpus at a time. Seven 2-second
+`BenchmarkExec` samples gave BLAKE SIMD 901.2→631.9 µs (-29.9% latency,
++42.6% throughput) and CRC32 20.416→16.447 µs (-19.4% latency, +24.1%
+throughput). Five 1-second samples gave JSON SIMD serialize 29.963→28.750 µs
+(-4.0%) and UTF SIMD 64.754→61.518 µs (-5.0%). Every result remained 0 B/op and
+0 allocs/op. The BLAKE SIMD result is also checked under both bounds modes and
+against wazero by the corpus runner; the lowering choices retain WARP's bounded
+register-residency model while using AVX's non-destructive three-operand forms.
+
 **Compile speed**: decoded modules keep byte-backed function bodies. The optional
 `scanBody` instruction walk is used only for programmatically constructed modules that
 provide decoded instructions; normal decoded modules use BodyBytes and first-N pinning.

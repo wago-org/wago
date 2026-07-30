@@ -67,9 +67,19 @@ var entryArgPinsEnabled = os.Getenv("WAGO_AMD64_NO_ENTRY_ARG_PINS") != "1"
 // disables it for A/B.
 var inlineCallFreeHintsEnabled = os.Getenv("WAGO_AMD64_NO_INLINE_CALLFREE") != "1"
 
-// extendedFPPinsEnabled lets a call-free function pin more than baseFPPins float
-// locals (into XMM8-10). Default ON; WAGO_AMD64_NO_EXTFPPINS=1 caps at baseFPPins.
+// extendedFPPinsEnabled lets a function use the WARP-sized float-local pin pool
+// beyond baseFPPins. Default ON; WAGO_AMD64_NO_EXTFPPINS=1 caps at baseFPPins.
 var extendedFPPinsEnabled = os.Getenv("WAGO_AMD64_NO_EXTFPPINS") != "1"
+
+// vexFloatMemEnabled folds a scalar float memory operand into a non-destructive
+// AVX operation, avoiding the legacy source-to-scratch copy for borrowed locals.
+// Default ON; WAGO_AMD64_NO_VEX_FLOAT_MEM=1 restores the two-operand sequence.
+var vexFloatMemEnabled = os.Getenv("WAGO_AMD64_NO_VEX_FLOAT_MEM") != "1"
+
+// multiBoundsCertEnabled keeps independent straight-line bounds proofs for a
+// small set of address sources. Default ON; WAGO_AMD64_SINGLE_BOUNDS_CERT=1
+// restores the original one-entry certificate for A/B.
+var multiBoundsCertEnabled = os.Getenv("WAGO_AMD64_SINGLE_BOUNDS_CERT") != "1"
 
 // v128LocalPinsEnabled keeps hot v128 locals in an XMM register for the whole
 // function instead of reloading them from the frame slot on every SIMD op — the
@@ -170,15 +180,16 @@ type fn struct {
 	maxSpill int // high-water number of operand spill slots used
 	// spillFloor temporarily reserves a low spill-slot range while wide-stack
 	// canonicalization stages values above both their old homes and destinations.
-	spillFloor    int
-	subRspAt      int  // byte offset of the prologue's SubRsp imm32 (patched with frameSize)
-	addRspAt      int  // byte offset of the epilogue's AddRsp imm32 (patched with frameSize)
-	guardMode     bool // elide inline bounds checks; rely on guard-page + SIGSEGV trap
-	boundsFacts   bool // P6.1 straight-line bounds-check elision enabled (explicit mode)
-	interruptible bool // emit context-cancellation polls at entries and loop headers
-	lazyZero      bool // defer declared-local zeroing for small call+memory functions
-	skipFence     bool // call-free leaf with a provably small frame: no stack-fence check
-	frameElided   bool // register-homed call-free reg-ABI leaf: frameSize is 0 (see elideRegisterOnlyFrame)
+	spillFloor       int
+	subRspAt         int    // byte offset of the prologue's SubRsp imm32 (patched with frameSize)
+	addRspAt         int    // byte offset of the epilogue's AddRsp imm32 (patched with frameSize)
+	guardMode        bool   // elide inline bounds checks; rely on guard-page + SIGSEGV trap
+	boundsFacts      bool   // P6.1 straight-line bounds-check elision enabled (explicit mode)
+	interruptible    bool   // emit context-cancellation polls at entries and loop headers
+	lazyZero         bool   // defer declared-local zeroing for small call+memory functions
+	entryInitialized uint64 // locals proven assigned before first entry-prefix read
+	skipFence        bool   // call-free leaf with a provably small frame: no stack-fence check
+	frameElided      bool   // register-homed call-free reg-ABI leaf: frameSize is 0 (see elideRegisterOnlyFrame)
 
 	// memSizeReg caches the linear-memory size in bytes ([RBX-bdCurBytes]) in a
 	// dedicated register for the whole module (WARP's REGS::memSize, which reserves
@@ -225,15 +236,12 @@ type fn struct {
 	globalCellReg Reg
 	globalCellIdx uint32
 
-	// Straight-line bounds-check certificate (P6.1). After a check proves
-	// source+bcExtent <= memBytes, a later access on the SAME address source with
-	// off+size <= bcExtent is in-bounds and needs no check. Keyed on the address
-	// SOURCE (a local/global index — a stable value), not a physical register.
-	// Invalidated at any flush (call/control boundary), memory.grow, and a set of
-	// the source. Currently count-only via stats (measurement; no codegen change).
-	bcKind   uint8  // 0 none, 1 local, 2 global
-	bcIdx    uint32 // address source index
-	bcExtent int32  // max off+size proven in-bounds on that source
+	// Straight-line bounds-check certificates (P6.1). Each entry records a stable
+	// local/global address source and the largest checked extent. Keeping a small
+	// set instead of one entry lets interleaved accesses to a few arrays reuse
+	// their independent proofs without growing state with the function's locals.
+	boundsCerts    [8]boundsCert
+	nextBoundsCert uint8
 
 	// globalReg[g] value-pins hot mutable-int global g in a register for the whole
 	// function, sharing the GP pin pool with hot locals (WARP's model). The value is
@@ -1156,7 +1164,7 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, int
 
 	sc.reset()
 	sc.asm.Grow(asmCapForBody(len(c.BodyBytes)))
-	f := &fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, transient: sc.transient, globalIdx: m.ImportedFuncCount() + funcIdx, customInstructions: custom, nParams: len(ft.Params), nLocals: nLocals, guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, regMerge: regMergeEnabled, globalCellReg: regNone, memSizeReg: regNone, immutableLocalTable: hints.immutableLocalTable, immutableTableType: hints.immutableTableType, immutableTableTyped: hints.immutableTableTyped, monomorphicTarget: hints.monomorphicTarget, importBindings: importBindings, stats: stats}
+	f := &fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, transient: sc.transient, globalIdx: m.ImportedFuncCount() + funcIdx, customInstructions: custom, nParams: len(ft.Params), nLocals: nLocals, guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, regMerge: regMergeEnabled, globalCellReg: regNone, memSizeReg: regNone, immutableLocalTable: hints.immutableLocalTable, immutableTableType: hints.immutableTableType, immutableTableTyped: hints.immutableTableTyped, monomorphicTarget: hints.monomorphicTarget, importBindings: importBindings, stats: stats, entryInitialized: hints.entryInitialized}
 	// Retain the (possibly grown) control-frame backing for the next function.
 	defer func() {
 		sc.ctrl = f.ctrl
@@ -1268,11 +1276,11 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, int
 		}
 	}
 	f.installModuleGlobals(modGlobals)
-	// Deeper FP local pinning: a call-free function extends the float pin pool past
-	// the base XMM12-15 into XMM8-10 (see pinnedFLocalRegs) — with no calls those
-	// operand registers are never clobbered.
+	// Deeper FP local pinning extends the float pin pool past XMM12-15 into the
+	// WARP-sized pool (see pinnedFLocalRegs). Call-making functions use the existing
+	// pinned-local spill/reload state machine to preserve these caller-saved regs.
 	fpPinLimit := baseFPPins
-	if extendedFPPinsEnabled && !hasCall {
+	if extendedFPPinsEnabled {
 		fpPinLimit = len(pinnedFLocalRegs)
 	}
 	if disableLocalPins {
@@ -1544,7 +1552,7 @@ func (f *fn) assignPinnedLocals(scores, globalScores []uint32, globalElig []bool
 			break
 		}
 		if pinnedFLocalRegs[k] < 12 {
-			f.stats.peep("deep-fp-local-pin") // extended (call-free) XMM8-10 pin
+			f.stats.peep("deep-fp-local-pin") // extended XMM8-10/XMM4-7 pin
 		}
 		f.locals[i].reg = pinnedFLocalRegs[k]
 		f.locals[i].isFloat = true
@@ -1749,6 +1757,9 @@ func (f *fn) zeroDeclaredLocals() {
 		a := f.a
 		a.XorSelf32(RAX)
 		for i := f.nParams; i < f.nLocals; i++ {
+			if i < 64 && f.entryInitialized&(uint64(1)<<uint(i)) != 0 {
+				continue
+			}
 			if pr, isFloat, ok := f.pinReg(i); ok && !isFloat {
 				a.XorSelf32(pr)
 			} else if ok && isFloat {
