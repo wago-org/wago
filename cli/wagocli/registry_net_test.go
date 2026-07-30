@@ -58,6 +58,31 @@ func TestRegistryHTTPHelpers(t *testing.T) {
 	}
 }
 
+func TestRecordRegistryInstall(t *testing.T) {
+	var gotMethod, gotPath, gotBody string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.EscapedPath()
+		data, _ := ioReadAll(r)
+		gotBody = string(data)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+	t.Setenv("WAGO_REGISTRY", server.URL)
+
+	recordRegistryInstall("github.com/acme/plugin", "v1.2.3")
+
+	if gotMethod != http.MethodPost {
+		t.Fatalf("method = %q, want POST", gotMethod)
+	}
+	if gotPath != "/api/packages/github.com%2Facme%2Fplugin/installs" {
+		t.Fatalf("path = %q", gotPath)
+	}
+	if gotBody != `{"version":"v1.2.3"}` {
+		t.Fatalf("body = %q", gotBody)
+	}
+}
+
 // ioReadAll makes the handler's read error irrelevant to the request assertions.
 func ioReadAll(r *http.Request) ([]byte, error) { return io.ReadAll(r.Body) }
 

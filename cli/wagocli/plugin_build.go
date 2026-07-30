@@ -136,6 +136,9 @@ func pkgAddMany(specs []string, o pkgOpts) {
 	} else {
 		progress.finish(fmt.Sprintf("Built Wago with %d package%s", len(packages), plural(len(packages))))
 	}
+	for _, pkg := range packages {
+		recordRegistryInstall(pkg.module, pkg.resolved)
+	}
 	// Then review capabilities — on a first install, or when the package's
 	// required capabilities have changed since the lockfile recorded them.
 	for _, pkg := range packages {

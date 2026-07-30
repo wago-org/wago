@@ -13,6 +13,7 @@ package wagocli
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -76,6 +77,30 @@ func apiRequest(method, path, token string, body any) (int, []byte, error) {
 		return resp.StatusCode, nil, err
 	}
 	return resp.StatusCode, data, nil
+}
+
+// recordRegistryInstall reports one successfully installed plugin to the public
+// registry. Metrics must never make `wago add` fail, and the short timeout keeps
+// full-module installs usable when the registry is offline.
+func recordRegistryInstall(module, version string) {
+	body, err := json.Marshal(map[string]string{"version": version})
+	if err != nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	path := "/api/packages/" + url.PathEscape(module) + "/installs"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, registryBase()+path, bytes.NewReader(body))
+	if err != nil {
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return
+	}
+	_, _ = io.Copy(io.Discard, resp.Body)
+	_ = resp.Body.Close()
 }
 
 // apiError extracts the {"error":...} message from a response body, falling back

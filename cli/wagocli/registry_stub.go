@@ -15,6 +15,8 @@ func resolveRegistryModule(string) (string, error) {
 	return "", errors.New("resolving a plugin name needs a full wago binary; pass the full module path")
 }
 
+func recordRegistryInstall(string, string) {}
+
 func leanUnavailable(cmd string) {
 	fatal("%s: registry commands need a full wago binary (this lean build cannot link net/http)", cmd)
 }
