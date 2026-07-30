@@ -30,11 +30,19 @@ func Main(v string) {
 	version = v
 	args := os.Args[1:]
 	if len(args) == 0 {
+		if hasActiveRunner() {
+			runActiveRunner(args)
+			return
+		}
 		managerUsage(os.Stderr)
 		os.Exit(2)
 	}
 	switch args[0] {
 	case "help", "-h", "--help":
+		if hasActiveRunner() {
+			runActiveRunner(args)
+			return
+		}
 		managerUsage(os.Stdout)
 		return
 	case "-v", "--version":
@@ -48,6 +56,11 @@ func Main(v string) {
 		return
 	}
 	runActiveRunner(args)
+}
+
+func hasActiveRunner() bool {
+	_, _, _, _, ok := activeRunner(wagopaths.DirsFor(versionString()))
+	return ok
 }
 
 func printManagerVersion() {
@@ -136,7 +149,10 @@ func runActiveRunner(args []string) {
 	}
 	cmd := exec.Command(path, args...)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
-	cmd.Env = os.Environ()
+	cmd.Env = append(os.Environ(),
+		"WAGO_MANAGER_VERSION="+versionString(),
+		"WAGO_MANAGER_EXECUTABLE="+executablePath(),
+	)
 	err := cmd.Run()
 	if err == nil {
 		return
@@ -149,18 +165,29 @@ func runActiveRunner(args []string) {
 }
 
 func managerUsage(w *os.File) {
-	fmt.Fprintf(w, "%s manages Wago versions and launches the selected runtime. (manager v%s)\n\n", bold("wago"), versionString())
+	fmt.Fprintf(w, "%s is a pure-Go (no cgo) WebAssembly engine. (v%s)\n\n", bold("wago"), versionString())
 	fmt.Fprintf(w, "%s wago [run] [...flags] <file> [...args]\n\n", bold("Usage:"))
-	fmt.Fprintf(w, "%s\n", bold("Manager commands:"))
-	fmt.Fprintf(w, "  %-12s %s\n", "version", "list, install, switch, update, and remove runtimes")
-	fmt.Fprintf(w, "  %-12s %s\n", "auth", "log in to the plugin registry and manage credentials")
-	fmt.Fprintf(w, "\n%s\n", bold("Runtime profiles:"))
-	for _, profile := range wagopaths.Profiles {
-		fmt.Fprintf(w, "  %-12s %s\n", titleProfile(profile), profile.Description())
+	fmt.Fprintf(w, "%s\n", bold("Commands:"))
+	commands := []struct {
+		name, args, summary string
+	}{
+		{"run", "<file> [args...]", "compile and execute an export   (default)"},
+		{"add", "<module>[@version]", "add a plugin: record it in wago.json, rebuild wago, review its capabilities"},
+		{"rm", "<name>", "remove a plugin from wago.json and rebuild"},
+		{"plugin", "<command>", "manage plugins: list, inspect, grant, update, publish"},
+		{"auth", "<command>", "authenticate to the registry (plugins.wago.sh)"},
+		{"module", "<command>", "inspect a module's imports and required capabilities"},
+		{"opts", "", "list compiler optimization knobs (--<knob> / --no-<knob> on run)"},
+		{"build", "", "not implemented"},
+		{"validate", "<file>", "decode and validate a module"},
+		{"version", "<command>", "manage Wago toolchain versions (list, switch, install, …)"},
 	}
-	fmt.Fprintf(w, "\n%s\n", bold("Runtime builds:"))
-	for _, build := range wagopaths.Builds {
-		fmt.Fprintf(w, "  %-12s %s\n", titleBuild(build), build.Description())
+	for _, command := range commands {
+		fmt.Fprintf(w, "  %-8s  %-19s  %s\n", command.name, command.args, command.summary)
 	}
-	fmt.Fprintf(w, "\nAll other commands are handled by the selected runtime.\n")
+	fmt.Fprintf(w, "\n%s\n", bold("Flags:"))
+	fmt.Fprintf(w, "  %-27s %s\n", "--version, -v", "print version and supported features")
+	fmt.Fprintf(w, "  %-27s %s\n", "--help, -h", "show this help")
+	fmt.Fprintf(w, "\n%-29s%s\n", "View the repo:", "https://github.com/wago-org/wago")
+	fmt.Fprintf(w, "%-29s%s\n", "View the registry:", "https://plugins.wago.sh")
 }

@@ -52,6 +52,21 @@ func TestUsageDocumentsCommandSurface(t *testing.T) {
 	}
 }
 
+func TestManagedRuntimeHelpIncludesManagerCommands(t *testing.T) {
+	oldRoot := root
+	root = &Cmd{Name: "wago", Children: []*Cmd{{Name: "run", Summary: "run a module"}}}
+	t.Cleanup(func() { root = oldRoot })
+	t.Setenv("WAGO_MANAGER_EXECUTABLE", "/usr/local/bin/wago")
+
+	commands := topLevelHelpCommands()
+	if len(commands) != 3 || commands[0].Name != "run" || commands[1].Name != "auth" || commands[2].Name != "version" {
+		t.Fatalf("managed minimal help commands = %#v", commands)
+	}
+	if len(root.Children) != 1 {
+		t.Fatalf("topLevelHelpCommands mutated runtime command tree: %#v", root.Children)
+	}
+}
+
 func TestValidateModuleBytesAcceptsEmptyModule(t *testing.T) {
 	// Magic + version is a valid empty WebAssembly module.
 	mod := []byte{'\x00', 'a', 's', 'm', 0x01, 0x00, 0x00, 0x00}
