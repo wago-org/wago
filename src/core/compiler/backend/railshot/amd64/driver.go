@@ -701,9 +701,7 @@ func (f *fn) tryFbinLocalSet(r *wasm.Reader, vop func(dst, s1, s2 Reg, f64 bool)
 		}
 		return false, nil
 	}
-	if f.bcKind == 1 && f.bcIdx == uint32(x) {
-		f.invalidateBoundsCert()
-	}
+	f.invalidateBoundsCertFor(1, uint32(x))
 	right := f.s.back()
 	if right == nil {
 		if err := r.JumpTo(save); err != nil {
@@ -890,9 +888,7 @@ func subtreeRefsLocal(e *elem, x int) bool {
 }
 
 func (f *fn) setLocal(x int, tee bool) {
-	if f.bcKind == 1 && f.bcIdx == uint32(x) {
-		f.invalidateBoundsCert() // the certified base local changed value
-	}
+	f.invalidateBoundsCertFor(1, uint32(x))
 	e := f.s.back()
 	if e != nil && e.kind == ekValue && e.st.typ == mtCustom {
 		panic("custom value cannot be stored in a Wasm local")

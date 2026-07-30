@@ -145,9 +145,7 @@ func (f *fn) globalSet(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
-	if f.bcKind == 2 && f.bcIdx == x {
-		f.invalidateBoundsCert() // the certified base global changed value
-	}
+	f.invalidateBoundsCertFor(2, x)
 	gt, ok := f.m.GlobalTypeByIndex(x)
 	if !ok {
 		return fmt.Errorf("amd64: unknown global %d", x)

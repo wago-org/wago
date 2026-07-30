@@ -533,9 +533,7 @@ func (f *fn) tryV128BinLocalSet(r *wasm.Reader, op func(dst, s1, s2 Reg)) bool {
 		_ = r.JumpTo(save)
 		return false
 	}
-	if f.bcKind == 1 && f.bcIdx == uint32(x) {
-		f.invalidateBoundsCert()
-	}
+	f.invalidateBoundsCertFor(1, uint32(x))
 	right := f.s.back()
 	if right == nil {
 		_ = r.JumpTo(save)

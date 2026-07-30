@@ -76,6 +76,25 @@ condense engine) with an on-the-fly whole-register-file allocator. Landed, in ro
 **MVP completeness** (old "completion batch"): memory.grow/size, trapping float→int
 truncation + trunc_sat, start function, multi-value, imported/mutable globals.
 
+**AMD64 corpus pass (2026-07-30)**
+- Float-local residency now uses WARP's eleven-register pool in call-making
+  functions as well as leaves; the existing dirty spill/lazy-reload protocol
+  preserves the caller-saved XMM pins.
+- Scalar `f32`/`f64` add and multiply fold deferred linear-memory operands into
+  non-destructive VEX instructions, avoiding a preserve-source move.
+- Explicit bounds mode keeps eight fixed-size, round-robin straight-line
+  certificates so interleaved array accesses do not evict one another.
+- AMD64 cancellation safepoints poll a direct basedata mirror. The runtime keeps
+  that cell synchronized with the stable trap buffer, including cross-instance
+  calls, without a cache or per-call allocation.
+
+On a Ryzen 7 7800X3D, Linux/amd64, Go 1.22.2, guarded `BenchmarkKernels` pinned
+to CPU 7 with `GOMAXPROCS=1` (`-count=6 -benchtime=1s`) measured median execution
+changes of nbody 295.7→281.0 µs (-5.0%), matmul 168.8→138.3 µs (-18.1%), and
+raytrace 412.1→383.5 µs (-6.9%). All remained 0 B/op and 0 allocs/op. The fixed
+footprint cost is 16 additional basedata bytes per memory and 8 additional trap
+buffer bytes per instance.
+
 **Compile speed**: decoded modules keep byte-backed function bodies. The optional
 `scanBody` instruction walk is used only for programmatically constructed modules that
 provide decoded instructions; normal decoded modules use BodyBytes and first-N pinning.

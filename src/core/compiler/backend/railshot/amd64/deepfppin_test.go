@@ -8,9 +8,9 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
-// sum5FloatModule is a call-free reg-ABI function with five f64 params
+// sum5FloatModule is a reg-ABI function with five f64 params
 // (a+b+c+d+e). Five hot float locals exceed the base four XMM pins (XMM12-15), so
-// the fifth spills into the extended call-free slot XMM8 — the deep-FP-pin path.
+// the fifth reaches the extended slot XMM8 — the deep-FP-pin path.
 func sum5FloatModule(t *testing.T) *wasm.Module {
 	f64 := wasm.F64
 	return mod1(t, []wasm.ValType{f64, f64, f64, f64, f64}, []wasm.ValType{f64}, []byte{
@@ -27,7 +27,7 @@ func TestDeepFPPinFires(t *testing.T) {
 	if s := compileWithStats(t, sum5FloatModule(t), false).Funcs[0]; s.Peephole["deep-fp-local-pin"] == 0 {
 		t.Fatalf("deep-fp-local-pin = 0, want >=1 (all: %v)", s.Peephole)
 	}
-	// Disabled: the fifth float local no longer reaches an XMM8-10 slot.
+	// Disabled: the fifth float local no longer reaches the extended pool.
 	saved := extendedFPPinsEnabled
 	extendedFPPinsEnabled = false
 	defer func() { extendedFPPinsEnabled = saved }()

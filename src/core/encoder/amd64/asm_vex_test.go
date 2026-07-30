@@ -15,6 +15,7 @@ func TestVexEncoding(t *testing.T) {
 	}{
 		{"vaddsd xmm0,xmm1,xmm2", func(a *Asm) { a.VFAdd(0, 1, 2, true) }, []byte{0xC4, 0xE1, 0x73, 0x58, 0xC2}},
 		{"vmulsd xmm0,xmm1,xmm2", func(a *Asm) { a.VFMul(0, 1, 2, true) }, []byte{0xC4, 0xE1, 0x73, 0x59, 0xC2}},
+		{"vmulsd xmm2,xmm12,[rbx+r13]", func(a *Asm) { a.VFMemIdx(0x59, 2, 12, RBX, R13, 0, true) }, []byte{0xC4, 0xA1, 0x1B, 0x59, 0x14, 0x2B}},
 		{"vsubss xmm0,xmm1,xmm2", func(a *Asm) { a.VFSub(0, 1, 2, false) }, []byte{0xC4, 0xE1, 0x72, 0x5C, 0xC2}},
 		{"vaddsd xmm8,xmm1,xmm2", func(a *Asm) { a.VFAdd(8, 1, 2, true) }, []byte{0xC4, 0x61, 0x73, 0x58, 0xC2}},
 		{"vaddsd xmm0,xmm1,xmm10", func(a *Asm) { a.VFAdd(0, 1, 10, true) }, []byte{0xC4, 0xC1, 0x73, 0x58, 0xC2}},

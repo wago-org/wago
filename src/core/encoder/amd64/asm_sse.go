@@ -175,6 +175,12 @@ func (a *Asm) VFSub(dst, s1, s2 Reg, f64 bool) { a.vex3RRR(vexPP(f64), 0x5C, dst
 func (a *Asm) VFMul(dst, s1, s2 Reg, f64 bool) { a.vex3RRR(vexPP(f64), 0x59, dst, s1, s2) }
 func (a *Asm) VFDiv(dst, s1, s2 Reg, f64 bool) { a.vex3RRR(vexPP(f64), 0x5E, dst, s1, s2) }
 
+// VFMemIdx emits scalar AVX arithmetic with a folded indexed memory operand:
+// dst = src1 <op> [base+index+disp].
+func (a *Asm) VFMemIdx(op byte, dst, src1, base, index Reg, disp int32, f64 bool) {
+	a.vex3MemIdx(vexMap0F, vexPP(f64), op, dst, src1, true, base, index, disp)
+}
+
 func packedPP(f64 bool) byte {
 	if f64 {
 		return 0b01 // 66 = packed double
