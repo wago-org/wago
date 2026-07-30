@@ -239,9 +239,8 @@ func TestAdditionalSIMDEncodings(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			var a Asm
 			tc.emit(&a)
-			want := compactVEXReference(tc.want)
-			if !bytes.Equal(a.B, want) {
-				t.Fatalf("encoding = %x, want %x", a.B, want)
+			if !bytes.Equal(a.B, tc.want) {
+				t.Fatalf("encoding = %x, want %x", a.B, tc.want)
 			}
 		})
 	}

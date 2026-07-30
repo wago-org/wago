@@ -50,9 +50,8 @@ func (a *Asm) FMov(dst, src Reg, f64 bool) { a.sseRR(sdPrefix(f64), 0x10, dst, s
 // operands directly and write a distinct destination, avoiding the movsd-to-scratch
 // that legacy 2-operand SSE needs to preserve an operand. wago already emits
 // LZCNT/TZCNT (BMI1/ABM, ~2013), which is newer than AVX (2011), so this raises no
-// effective ISA baseline. Prefer the compact 2-byte VEX form (0xC5) when the
-// 0F-map instruction has no extended r/m, base, or index register; otherwise
-// use the general 3-byte form (0xC4).
+// effective ISA baseline. Always use the 3-byte VEX form (0xC4) so instruction
+// layout stays stable across register choices.
 
 // vexPP is the VEX pp field for scalar F2 (f64) / F3 (f32) ops.
 func vexPP(f64 bool) byte {
@@ -91,11 +90,7 @@ func (a *Asm) vex3RRRMapL(opcodeMap, pp, op byte, dst, src1, src2 Reg, l byte) {
 		bBit = 0
 	}
 	vvvv := (^byte(src1)) & 0x0F
-	byte2 := (vvvv << 3) | ((l & 1) << 2) | (pp & 0x03) // W=0
-	if opcodeMap == vexMap0F && src2 < 8 {
-		a.emit(0xC5, (rBit<<7)|byte2, op, 0xC0|((byte(dst)&7)<<3)|byte(src2&7))
-		return
-	}
+	byte2 := (vvvv << 3) | ((l & 1) << 2) | (pp & 0x03)                // W=0
 	byte1 := (rBit << 7) | (1 << 6) | (bBit << 5) | (opcodeMap & 0x1F) // X̄=1
 	a.emit(0xC4, byte1, byte2, op, 0xC0|((byte(dst)&7)<<3)|byte(src2&7))
 }
@@ -124,11 +119,7 @@ func (a *Asm) vex3RRReservedL(opcodeMap, pp, op byte, reg, rm Reg, l byte) {
 	if rm >= 8 {
 		bBit = 0
 	}
-	byte2 := byte(0x78) | ((l & 1) << 2) | (pp & 0x03) // vvvv=1111, W=0
-	if opcodeMap == vexMap0F && rm < 8 {
-		a.emit(0xC5, (rBit<<7)|byte2, op, 0xC0|((byte(reg)&7)<<3)|byte(rm&7))
-		return
-	}
+	byte2 := byte(0x78) | ((l & 1) << 2) | (pp & 0x03)                 // vvvv=1111, W=0
 	byte1 := (rBit << 7) | (1 << 6) | (bBit << 5) | (opcodeMap & 0x1F) // X̄=1
 	a.emit(0xC4, byte1, byte2, op, 0xC0|((byte(reg)&7)<<3)|byte(rm&7))
 }
@@ -149,10 +140,6 @@ func (a *Asm) vex3MemPrefixL(opcodeMap, pp byte, reg Reg, src1 Reg, hasSrc1 bool
 		vvvv = (^byte(src1)) & 0x0F
 	}
 	byte2 := (vvvv << 3) | ((l & 1) << 2) | (pp & 0x03) // W=0
-	if opcodeMap == vexMap0F && base < 8 && (!indexed || index < 8) {
-		a.emit(0xC5, (rBit<<7)|byte2)
-		return
-	}
 	byte1 := (rBit << 7) | (xBit << 6) | (bBit << 5) | (opcodeMap & 0x1F)
 	a.emit(0xC4, byte1, byte2)
 }
@@ -569,13 +556,11 @@ func (a *Asm) vexShiftImmL(op, ext byte, dst, src Reg, imm, l byte) {
 	vvvv := (^byte(dst)) & 0x0F
 	byte2 := (vvvv << 3) | ((l & 1) << 2) | 0b01
 	modrm := byte(0xC0 | ((ext & 7) << 3) | byte(src&7))
-	if src < 8 {
-		// ModRM.reg is an opcode extension, so VEX.R is unused and may stay
-		// inverted/clear. With a low r/m register the 0F map fits VEX2.
-		a.emit(0xC5, 0x80|byte2, op, modrm, imm)
-		return
+	bBit := byte(1)
+	if src >= 8 {
+		bBit = 0
 	}
-	byte1 := byte(0xC1) // R̄=1, X̄=1, B̄=0, map=0F
+	byte1 := byte(0xC0) | bBit<<5 | vexMap0F // R̄=1, X̄=1, W=0
 	a.emit(0xC4, byte1, byte2, op, modrm, imm)
 }
 

@@ -6,9 +6,7 @@ import (
 )
 
 // Golden VEX byte encodings, cross-checked against the AVX spec / a reference
-// assembler. The table keeps the more explicit 3-byte reference form;
-// compactVEXReference derives the equivalent 2-byte form where the encoding
-// permits it.
+// assembler (3-byte VEX form).
 func TestVexEncoding(t *testing.T) {
 	cases := []struct {
 		name string
@@ -244,24 +242,8 @@ func TestVexEncoding(t *testing.T) {
 	for _, c := range cases {
 		a := &Asm{}
 		c.emit(a)
-		want := compactVEXReference(c.want)
-		if !bytes.Equal(a.B, want) {
-			t.Errorf("%s: got % x want % x", c.name, a.B, want)
+		if !bytes.Equal(a.B, c.want) {
+			t.Errorf("%s: got % x want % x", c.name, a.B, c.want)
 		}
 	}
-}
-
-func compactVEXReference(p []byte) []byte {
-	if len(p) < 3 || p[0] != 0xc4 {
-		return p
-	}
-	// VEX2 can represent map 0F with W=0 and no X/B extension bits.
-	if p[1]&0x7f != 0x61 || p[2]&0x80 != 0 {
-		return p
-	}
-	q := make([]byte, len(p)-1)
-	q[0] = 0xc5
-	q[1] = p[1]&0x80 | p[2]&0x7f
-	copy(q[2:], p[3:])
-	return q
 }
