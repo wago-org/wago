@@ -53,11 +53,10 @@ func Main(v string) {
 		printVersion()
 		return
 	}
-	// In a project (a wago.json declaring packages), transparently hand off to the
-	// project's own wago — .wago/bin/wago, built on demand — so every command runs
-	// with the local package set compiled in. With no project it stays on this
-	// (global) wago. Build-management and toolchain/meta commands are skipped so
-	// they don't rebuild circularly or need a project to run.
+	// Transparently hand off to the active plugin-aware wago build: a project's
+	// local build when its wago.json declares packages, otherwise the global build.
+	// Build-management and toolchain/meta commands are skipped so they don't
+	// rebuild circularly or need a plugin runtime to run.
 	prepareRunnerInvocation(args)
 	if cmd := root.child(args[0]); cmd != nil {
 		cmd.Dispatch("wago "+cmd.Name, args[1:])
@@ -74,13 +73,13 @@ func Main(v string) {
 	os.Exit(2)
 }
 
-// usesProjectBuild reports whether an invocation should hand off to the project's
-// local wago build. Most commands do (run, module, validate, and the pkg
-// introspection commands, so they see the local package set). Commands that
-// build/manage the package set — or are toolchain/meta and don't need packages —
-// stay on the invoked wago, so they neither rebuild circularly nor require a
-// project to run.
-func usesProjectBuild(args []string) bool {
+// usesPluginRuntime reports whether an invocation should hand off to the active
+// plugin-aware wago build. Most commands do (run, module, validate, and the
+// plugin introspection commands, so they see the compiled plugin set). Commands
+// that build/manage the package set — or are toolchain/meta and don't need
+// plugins — stay on the invoked wago, so they neither rebuild circularly nor
+// require a plugin runtime to run.
+func usesPluginRuntime(args []string) bool {
 	if len(args) == 0 {
 		return false
 	}

@@ -140,7 +140,7 @@ func parallelPolicy(parallel string) (int, error) {
 }
 
 func runExec(c *Ctx) {
-	// Main already handed off to a local project build (usesProjectBuild). Here we
+	// Main already handed off to the active plugin build (usesPluginRuntime). Here we
 	// also cover the global set, so `wago run` outside a project still picks up a
 	// globally-installed package set. No-op once inside a handed-off build.
 	prepareRunPlugins()
