@@ -5,18 +5,70 @@ package wagocli
 import (
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 
+	"github.com/wago-org/wago"
 	"github.com/wago-org/wago/internal/functionworkers"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
-// buildCommand is a placeholder for the not-yet-implemented AOT builder.
+// buildCommand precompiles raw wasm into Wago's host-specific .wago format.
 func buildCommand() *Cmd {
+	flags := append([]Flag{
+		{Name: "output", Short: "o", Arg: "<file>", Help: "output path (default: input name with .wago extension)"},
+		{Name: "bounds", Arg: "<mode>", Help: "bounds checks: defer (default) | all"},
+		parallelFlag(),
+	}, optKnobFlags()...)
+	flags = append(flags, runProfileFlags()...)
 	return &Cmd{
-		Name:    "build",
-		Summary: "not implemented",
-		Run:     func(*Ctx) { fatal("build: not implemented") },
+		Name:      "build",
+		Summary:   "precompile a WebAssembly module to a .wago artifact",
+		Args:      "<file>",
+		Flags:     flags,
+		Normalize: func(args []string) ([]string, error) { return normalizeParallelArgs(args, flags, false) },
+		Long:      ".wago artifacts are host-architecture-specific and must be rebuilt after incompatible Wago upgrades.",
+		Run:       buildExec,
 	}
+}
+
+func buildExec(c *Ctx) {
+	prepareRunPlugins()
+	applyOptFlags(c)
+	input := singleFileArg("build", c.Args)
+	source, err := os.ReadFile(input)
+	if err != nil {
+		fatal("build: %v", err)
+	}
+	if wago.IsCompiled(source) {
+		fatal("build: %s is already a .wago artifact", input)
+	}
+	cfg, err := runConfig(c.Str("bounds"), c.Str("parallel"))
+	if err != nil {
+		fatal("build: %v", err)
+	}
+	rt := loadRunRuntime(cfg, c.Str("plugin"))
+	defer rt.Close()
+	module, err := rt.Compile(source)
+	if err != nil {
+		fatal("build: %v", err)
+	}
+	artifact, err := module.Compiled().MarshalBinary()
+	if err != nil {
+		fatal("build: %v", err)
+	}
+	output := c.Str("output")
+	if output == "" {
+		ext := filepath.Ext(input)
+		output = strings.TrimSuffix(input, ext) + ".wago"
+	}
+	if filepath.Clean(output) == filepath.Clean(input) {
+		fatal("build: output path must differ from input")
+	}
+	if err := os.WriteFile(output, artifact, 0o644); err != nil {
+		fatal("build: %v", err)
+	}
+	fmt.Printf("%s built %s\n", cyan("✓"), output)
 }
 
 // validateCommand decodes and validates a module without running it.

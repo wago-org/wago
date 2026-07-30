@@ -46,19 +46,21 @@ func TestBuildModuleLocationAndSourceSelectionHelpers(t *testing.T) {
 		t.Fatal(err)
 	}
 	local, err := buildDirFor(false)
-	if err != nil || local != filepath.Join(currentDir, ".wago") {
+	wantLocal := filepath.Join(currentDir, ".wago", "builds", versionString(), "standard", "normal")
+	if err != nil || local != wantLocal {
 		t.Fatalf("local buildDirFor = %q, %v", local, err)
 	}
 	global, err := buildDirFor(true)
-	wantGlobal := filepath.Join(wago.DirsFor(versionString()).Versions, versionString(), "plugins")
+	dirs := wago.DirsFor(versionString())
+	wantGlobal := filepath.Join(dirs.Versions, versionString(), "standard", "normal", "plugins")
 	if err != nil || global != wantGlobal {
 		t.Fatalf("global buildDirFor = %q, %v; want %q", global, err, wantGlobal)
 	}
 	if source, err := depsSource(false); err != nil || source != "." {
 		t.Fatalf("local depsSource = %q, %v", source, err)
 	}
-	if source, err := depsSource(true); err != nil || source != global {
-		t.Fatalf("global depsSource = %q, %v; want %q", source, err, global)
+	if source, err := depsSource(true); err != nil || source != dirs.Data {
+		t.Fatalf("global depsSource = %q, %v; want %q", source, err, dirs.Data)
 	}
 	if got := registerImport("example.com/plugin"); got != "example.com/plugin/register" {
 		t.Fatalf("registerImport = %q", got)

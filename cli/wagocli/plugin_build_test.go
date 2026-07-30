@@ -34,8 +34,12 @@ func TestPluginListHandsOffToGlobalPluginRuntime(t *testing.T) {
 	if err := os.MkdirAll(buildDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
+	manifestDir := sharedGlobalPluginDir(wago.DirsFor(versionString()))
+	if err := os.MkdirAll(manifestDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	const plugin = "github.com/wago-org/wasi"
-	if _, err := addProjectDep(buildDir, plugin); err != nil {
+	if _, err := addProjectDep(manifestDir, plugin); err != nil {
 		t.Fatal(err)
 	}
 
@@ -100,11 +104,15 @@ func TestRunLoadsGlobalPluginConfiguration(t *testing.T) {
 	if err := os.MkdirAll(buildDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	const plugin = "github.com/wago-org/wasi"
-	if _, err := addProjectDep(buildDir, plugin); err != nil {
+	manifestDir := sharedGlobalPluginDir(wago.DirsFor(versionString()))
+	if err := os.MkdirAll(manifestDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := setPluginGrants(buildDir, "wago-org/wasi", []string{"wasi"}); err != nil {
+	const plugin = "github.com/wago-org/wasi"
+	if _, err := addProjectDep(manifestDir, plugin); err != nil {
+		t.Fatal(err)
+	}
+	if err := setPluginGrants(manifestDir, "wago-org/wasi", []string{"wasi"}); err != nil {
 		t.Fatal(err)
 	}
 

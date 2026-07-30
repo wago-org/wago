@@ -53,6 +53,13 @@ func Main(v string) {
 		printVersion()
 		return
 	}
+	// Help describes the invoked CLI, not a generated plugin artifact that may
+	// have been compiled by an older Wago. Resolve it before plugin handoff so
+	// every command advertises the current interface.
+	if cmd := root.child(args[0]); cmd != nil && commandWantsHelp(cmd, args[1:]) {
+		cmd.Dispatch("wago "+cmd.Name, args[1:])
+		return
+	}
 	// Transparently hand off to the active plugin-aware wago build: a project's
 	// local build when its wago.json declares packages, otherwise the global build.
 	// Build-management and toolchain/meta commands are skipped so they don't
@@ -73,6 +80,28 @@ func Main(v string) {
 	os.Exit(2)
 }
 
+func commandWantsHelp(command *Cmd, args []string) bool {
+	if len(command.Children) == 0 {
+		normalized := args
+		if command.Normalize != nil {
+			var err error
+			normalized, err = command.Normalize(args)
+			if err != nil {
+				return false
+			}
+		}
+		return wantsHelp(normalized, command.PassThrough, command.Flags)
+	}
+	if wantsHelp(args, true, command.Flags) {
+		return true
+	}
+	if len(args) == 0 {
+		return true
+	}
+	child := command.child(args[0])
+	return child != nil && commandWantsHelp(child, args[1:])
+}
+
 // usesPluginRuntime reports whether an invocation should hand off to the active
 // plugin-aware wago build. Most commands do (run, module, validate, and the
 // plugin introspection commands, so they see the compiled plugin set). Commands
@@ -84,15 +113,18 @@ func usesPluginRuntime(args []string) bool {
 		return false
 	}
 	switch args[0] {
-	case "version", "auth", "env", "opts",
-		"add", "install", "i", "rm", "remove", "uninstall": // build-management / meta: run on base
+	case "version", "auth", "init", "env", "opts",
+		"add", "rm": // build-management / meta: run on base
 		return false
 	case "plugin", "plugins":
-		if len(args) >= 2 {
-			switch args[1] {
-			case "update", "up", "upgrade", "grant", "publish", "unpublish", "deprecate":
-				return false
-			}
+		if len(args) < 2 {
+			return false
+		}
+		switch args[1] {
+		case "list", "ls", "inspect":
+			return true
+		default:
+			return false
 		}
 	}
 	return true
@@ -116,7 +148,8 @@ func looksLikeRunTarget(s string) bool {
 // flags live in each command's own `--help`. Output is monochrome (bold only).
 func usage(w *os.File) {
 	fmt.Fprintf(w, "%s is a pure-Go (no cgo) WebAssembly engine. (v%s)\n\n", bold("wago"), versionString())
-	fmt.Fprintf(w, "%s wago [run] [...flags] <file> [...args]\n\n", bold("Usage:"))
+	fmt.Fprintf(w, "%s wago <command> [flags]\n", bold("Usage:"))
+	fmt.Fprintf(w, "       wago [run] [flags] <file> [args...]\n\n")
 
 	fmt.Fprintf(w, "%s\n", bold("Commands:"))
 	writeCommandList(w)
@@ -153,7 +186,7 @@ func topLevelHelpCommands() []*Cmd {
 	if os.Getenv("WAGO_MANAGER_EXECUTABLE") == "" {
 		return commands
 	}
-	for _, command := range []*Cmd{authCommand(), versionCommand()} {
+	for _, command := range []*Cmd{initCommand(), authCommand(), versionCommand()} {
 		if root.child(command.Name) == nil {
 			commands = append(commands, command)
 		}

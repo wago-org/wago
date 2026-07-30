@@ -212,7 +212,7 @@ func vmUse(d wagopaths.Dirs, ver string, profile wagopaths.Profile, build wagopa
 }
 
 func vmSwitchTo(d wagopaths.Dirs, ver string, profile wagopaths.Profile, build wagopaths.Build) {
-	offerPluginTransfer(d, ver, profile, build)
+	migrateActiveGlobalPlugins(d)
 	vmUse(d, ver, profile, build)
 }
 
@@ -238,7 +238,7 @@ func offerUseInstallation(d wagopaths.Dirs, ver string, profile wagopaths.Profil
 }
 
 func finishVersionInstall(d wagopaths.Dirs, ver string, profile wagopaths.Profile, build wagopaths.Build) {
-	offerPluginTransfer(d, ver, profile, build)
+	migrateActiveGlobalPlugins(d)
 	offerUseInstalled(d, ver, profile, build)
 }
 

@@ -46,11 +46,12 @@ func pluginList(asJSON bool) {
 		printJSON(reports)
 		return
 	}
+	scope := selectedPluginScopeLabel()
 	if len(names) == 0 {
-		fmt.Println(dim("no plugins compiled into this binary"))
+		fmt.Printf("%s\n", dim("no plugins enabled ("+scope+")"))
 		return
 	}
-	fmt.Printf("%s\n", bold("plugins:"))
+	fmt.Printf("%s\n", bold("plugins ("+scope+"):"))
 	for _, name := range names {
 		ext, ok := wago.NewExtension(name)
 		if !ok {
@@ -73,6 +74,17 @@ func pluginList(asJSON bool) {
 			fmt.Printf("      %s\n", dim(info.Description))
 		}
 	}
+}
+
+func selectedPluginScopeLabel() string {
+	environment, err := resolvePluginEnvironment()
+	if err != nil {
+		return "active scope"
+	}
+	if environment.scope == "plain" {
+		return "global"
+	}
+	return environment.scope
 }
 
 // pluginInspect prints (or, with --json, emits) one plugin's full config: identity,
@@ -333,9 +345,12 @@ func loadPluginRuntime(cfg *wago.RuntimeConfig, list string) *wago.Runtime {
 }
 
 func activePluginConfigs() ([]wago.PluginConfig, error) {
-	dir, deps, scope := activePluginSet()
-	if scope == "global" && len(deps) != 0 {
-		return projectPlugins(dir)
+	environment, err := resolvePluginEnvironment()
+	if err != nil {
+		return nil, err
 	}
-	return projectPlugins(".")
+	if environment.scope == "bare" || environment.scope == "plain" {
+		return nil, nil
+	}
+	return projectPlugins(environment.manifestDir)
 }

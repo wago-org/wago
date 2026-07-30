@@ -217,26 +217,12 @@ func TestUseInstalledPickerUsesRadioButtonsAndDefaultsYes(t *testing.T) {
 	}
 }
 
-func TestPluginTransferCopiesConfigurationAndBuildsDestinationRuntime(t *testing.T) {
+func TestLegacyGlobalPluginsMigrateToSharedIntent(t *testing.T) {
 	root := t.TempDir()
 	d := wagopaths.Dirs{
 		Config: filepath.Join(root, "config"), Data: filepath.Join(root, "data"),
 		Versions: filepath.Join(root, "data", "versions"), Cache: filepath.Join(root, "cache"),
 	}
-	sourceRuntime := d.RuntimeBinary("canary", "standard", "normal")
-	targetRuntime := d.RuntimeBinary("nightly", "lite", "normal")
-	for _, path := range []string{sourceRuntime, targetRuntime} {
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(path, []byte("runtime"), 0o755); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := setActiveInstallation(d, "canary", wagopaths.ProfileStandard, wagopaths.BuildNormal); err != nil {
-		t.Fatal(err)
-	}
-
 	sourceDir := filepath.Join(d.Versions, "canary-source123", "plugins")
 	if err := os.MkdirAll(sourceDir, 0o755); err != nil {
 		t.Fatal(err)
@@ -250,91 +236,21 @@ func TestPluginTransferCopiesConfigurationAndBuildsDestinationRuntime(t *testing
 		t.Fatal(err)
 	}
 
-	oldInspect := inspectPluginRunnerRelease
-	inspectPluginRunnerRelease = func(path, fallback string) string {
-		switch path {
-		case sourceRuntime:
-			return "canary-source123"
-		case targetRuntime:
-			return "nightly-target456"
-		default:
-			return fallback
-		}
-	}
-	t.Cleanup(func() { inspectPluginRunnerRelease = oldInspect })
-
-	plan, ok := pluginTransferPlan(d, "nightly", wagopaths.ProfileLite, wagopaths.BuildNormal)
-	if !ok {
-		t.Fatal("expected plugin transfer plan")
-	}
-	if plan.sourceDir != sourceDir || plan.targetRuntime != targetRuntime ||
-		!slices.Equal(plan.dependencies, []string{"github.com/wago-org/wasi"}) {
-		t.Fatalf("plugin transfer plan = %+v", plan)
-	}
-
-	p := pluginTransferPicker(plan, "nightly", wagopaths.ProfileLite, wagopaths.BuildNormal)
-	if p.selected() != "yes" {
-		t.Fatalf("default transfer selection = %q, want yes", p.selected())
-	}
-	for _, want := range []string{
-		"Install plugins for Wago Nightly (lite/normal)?",
-		"› ◉ Yes", "Transfer 1 plugin from Wago Canary", "○ No",
-		"enter/→ select", "esc cancel",
-	} {
-		if !strings.Contains(p.frame(), want) {
-			t.Fatalf("plugin transfer picker missing %q:\n%s", want, p.frame())
-		}
-	}
-
-	t.Setenv("WAGO_BARE", "1")
-	t.Setenv("WAGO_GLOBAL", "")
-	t.Setenv("WAGO_PLUGIN_ACTIVE", "old")
-	var builtRuntime string
-	var builtEnv []string
-	var minimumPlugins int
-	oldBuild := buildTransferredRuntime
-	buildTransferredRuntime = func(path string, env []string, minimum int) error {
-		builtRuntime = path
-		builtEnv = append([]string(nil), env...)
-		minimumPlugins = minimum
-		return nil
-	}
-	t.Cleanup(func() { buildTransferredRuntime = oldBuild })
-
-	if err := transferPlugins(plan); err != nil {
+	if err := migrateLegacyGlobalPlugins(d, "canary-source123"); err != nil {
 		t.Fatal(err)
 	}
-	if builtRuntime != targetRuntime {
-		t.Fatalf("built runtime = %q, want %q", builtRuntime, targetRuntime)
-	}
-	if minimumPlugins != 1 {
-		t.Fatalf("minimum verified plugins = %d, want 1", minimumPlugins)
-	}
-	env := map[string]string{}
-	for _, entry := range builtEnv {
-		key, value, _ := strings.Cut(entry, "=")
-		env[key] = value
-	}
-	_, hasBare := env["WAGO_BARE"]
-	_, hasActive := env["WAGO_PLUGIN_ACTIVE"]
-	if env["WAGO_GLOBAL"] != "1" || hasBare || hasActive {
-		t.Fatalf("plugin build environment = WAGO_GLOBAL=%q WAGO_BARE present=%v WAGO_PLUGIN_ACTIVE present=%v", env["WAGO_GLOBAL"], hasBare, hasActive)
-	}
 	for name, want := range map[string][]byte{versionPluginManifest: manifest, "wago-lock.json": lock} {
-		got, err := os.ReadFile(filepath.Join(plan.targetDir, name))
+		got, err := os.ReadFile(filepath.Join(d.Data, name))
 		if err != nil || !bytes.Equal(got, want) {
-			t.Fatalf("transferred %s = %q, %v; want %q", name, got, err, want)
+			t.Fatalf("migrated %s = %q, %v; want %q", name, got, err, want)
 		}
 	}
-	if _, ok := pluginTransferPlan(d, "nightly", wagopaths.ProfileLite, wagopaths.BuildNormal); ok {
-		t.Fatal("destination with transferred plugins should not prompt again")
-	}
-	if _, ok := pluginTransferPlan(d, "nightly", wagopaths.ProfileMinimal, wagopaths.BuildNormal); ok {
-		t.Fatal("minimal runtime should not offer plugin transfer")
+	if _, err := os.Stat(filepath.Join(sourceDir, versionPluginManifest)); err != nil {
+		t.Fatalf("legacy manifest should remain recoverable: %v", err)
 	}
 }
 
-func TestPluginTransferParsesReleaseAndRejectsEmptyRuntime(t *testing.T) {
+func TestLegacyPluginReleaseParsing(t *testing.T) {
 	for _, test := range []struct {
 		name     string
 		output   string
@@ -350,12 +266,6 @@ func TestPluginTransferParsesReleaseAndRejectsEmptyRuntime(t *testing.T) {
 				t.Fatalf("release = %q, want %q", got, test.want)
 			}
 		})
-	}
-	if err := verifyTransferredPluginList([]byte("[]\n"), 1); err == nil || !strings.Contains(err.Error(), "found 0, want at least 1") {
-		t.Fatalf("empty plugin runtime verification = %v", err)
-	}
-	if err := verifyTransferredPluginList([]byte(`[{"plugin":"wago-org/wasi"}]`), 1); err != nil {
-		t.Fatalf("plugin runtime verification: %v", err)
 	}
 }
 

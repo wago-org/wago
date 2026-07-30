@@ -9,6 +9,7 @@
 package wagocli
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -26,25 +27,25 @@ import (
 // buildModuleName is the generated module's path. It never leaves the machine.
 const buildModuleName = "wago.local/build"
 
-// buildDirFor returns the .wago build directory: <cwd>/.wago by default, or
-// a version-scoped directory with --global. This keeps globally installed
-// plugins and their generated binaries isolated between toolchain versions.
+// buildDirFor returns the generated build directory for this exact Wago
+// version/profile/build. Manifests are shared at their scope; compiled artifacts
+// are never shared between toolchains.
 func buildDirFor(global bool) (string, error) {
 	if global {
-		return filepath.Join(wago.DirsFor(versionString()).Versions, versionString(), "plugins"), nil
+		return globalPluginBuildDir(), nil
 	}
-	wd, err := os.Getwd()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(wd, ".wago"), nil
+	return localPluginBuildDir()
 }
 
 // depsSource returns the directory whose wago.json holds the dependency list for a
-// build: the current directory locally, or the global build dir with --global.
+// build: the current directory locally, or shared Wago data with --global.
 func depsSource(global bool) (string, error) {
 	if global {
-		return buildDirFor(true)
+		dirs := wago.DirsFor(versionString())
+		if err := migrateLegacyGlobalPlugins(dirs, versionString()); err != nil {
+			return "", err
+		}
+		return sharedGlobalPluginDir(dirs), nil
 	}
 	return ".", nil
 }
@@ -264,16 +265,51 @@ func ensureBuiltBinary(dir string, deps []string, force, verbose bool) (bin stri
 	return bin, false, nil
 }
 
-// buildHash keys the built binary on the exact dependency set plus the toolchain.
+// buildHash keys the built binary on the exact dependency set, toolchain, and
+// Wago source used by the generated module. Including local source state keeps
+// `go run ./cli/wago` from handing commands to a stale plugin binary.
 func buildHash(deps []string) string {
 	sorted := append([]string(nil), deps...)
 	sort.Strings(sorted)
 	h := sha256.New()
 	fmt.Fprintf(h, "wago-build\x00%s\x00%s\x00%s\x00%s/%s\x00", versionString(), runnerProfile(), runtime.Version(), runtime.GOOS, runtime.GOARCH)
+	if src, ok := wagoSourceDir(); ok {
+		fmt.Fprintf(h, "source\x00%s\x00", localSourceFingerprint(src))
+	}
 	for _, d := range sorted {
 		fmt.Fprintf(h, "%s\x00", d)
 	}
 	return hex.EncodeToString(h.Sum(nil))[:16]
+}
+
+func localSourceFingerprint(src string) string {
+	h := sha256.New()
+	fmt.Fprint(h, filepath.Clean(src), "\x00")
+	for _, args := range [][]string{
+		{"rev-parse", "HEAD"},
+		{"diff", "--no-ext-diff", "--binary", "HEAD", "--", "."},
+	} {
+		command := exec.Command("git", append([]string{"-C", src}, args...)...)
+		if output, err := command.Output(); err == nil {
+			_, _ = h.Write(output)
+		}
+		_, _ = h.Write([]byte{0})
+	}
+	command := exec.Command("git", "-C", src, "ls-files", "--others", "--exclude-standard", "-z")
+	if output, err := command.Output(); err == nil {
+		for _, name := range bytes.Split(output, []byte{0}) {
+			if len(name) == 0 {
+				continue
+			}
+			_, _ = h.Write(name)
+			_, _ = h.Write([]byte{0})
+			if content, readErr := os.ReadFile(filepath.Join(src, filepath.FromSlash(string(name)))); readErr == nil {
+				_, _ = h.Write(content)
+			}
+			_, _ = h.Write([]byte{0})
+		}
+	}
+	return hex.EncodeToString(h.Sum(nil))
 }
 
 // wagoSourceDir returns a local wago checkout to build against, if one is

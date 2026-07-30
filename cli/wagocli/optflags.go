@@ -56,7 +56,7 @@ func applyOptFlags(c *Ctx) {
 func optsCommand() *Cmd {
 	return &Cmd{
 		Name:    "opts",
-		Summary: "list compiler optimization knobs (--<knob> / --no-<knob> on run)",
+		Summary: "show compiler optimization flags",
 		Long: "Each knob is a codegen optimization toggle. On `wago run`, force it with\n" +
 			"--<knob> or --no-<knob>. Defaults come from WAGO_* env vars, overridden by\n" +
 			"the flag. The state shown is the current default on this build.",
