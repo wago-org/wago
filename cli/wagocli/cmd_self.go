@@ -11,6 +11,14 @@ import (
 	"github.com/wago-org/wago/internal/wagopaths"
 )
 
+type selfUninstallMode string
+
+const (
+	selfUninstallFull    selfUninstallMode = "full"
+	selfUninstallPartial selfUninstallMode = "partial"
+	selfUninstallMinimal selfUninstallMode = "minimal"
+)
+
 func selfCommand() *Cmd {
 	return &Cmd{
 		Name:    "self",
@@ -25,14 +33,79 @@ func selfCommand() *Cmd {
 			},
 			{
 				Name:    "uninstall",
-				Summary: "remove Wago and all managed runtimes",
-				Flags:   []Flag{{Name: "yes", Short: "y", Bool: true, Help: "skip the confirmation prompt"}},
+				Summary: "remove Wago with a selectable cleanup scope",
+				Flags: []Flag{
+					{Name: "mode", Arg: "<full|partial|minimal>", Help: "choose what to remove (interactive by default)"},
+					{Name: "yes", Short: "y", Bool: true, Help: "skip confirmation (defaults to full mode)"},
+				},
 				Run: func(c *Ctx) {
-					selfUninstall(wagopaths.DirsFor(versionString()), selfExecutablePath(), c.Bool("yes"), os.Stdin, os.Stdout)
+					mode, ok := requestedSelfUninstallMode(c.Str("mode"), c.Bool("yes"))
+					if !ok {
+						fmt.Fprintln(os.Stdout, "Cancelled.")
+						return
+					}
+					selfUninstall(
+						wagopaths.DirsFor(versionString()),
+						selfExecutablePath(),
+						mode,
+						c.Bool("yes"),
+						os.Stdin,
+						os.Stdout,
+					)
 				},
 			},
 		},
 	}
+}
+
+func parseSelfUninstallMode(value string) (selfUninstallMode, error) {
+	mode := selfUninstallMode(strings.ToLower(strings.TrimSpace(value)))
+	switch mode {
+	case selfUninstallFull, selfUninstallPartial, selfUninstallMinimal:
+		return mode, nil
+	default:
+		return "", fmt.Errorf("unknown uninstall mode %q (want: full, partial, or minimal)", value)
+	}
+}
+
+func selfUninstallModePicker() *picker {
+	return newPicker("Choose uninstall mode", []pickerItem{
+		{
+			label: "Full", value: string(selfUninstallFull),
+			desc: "Remove everything, including plugins and settings",
+		},
+		{
+			label: "Partial", value: string(selfUninstallPartial),
+			desc: "Remove Wago; keep global plugins for reinstall",
+		},
+		{
+			label: "Minimal", value: string(selfUninstallMinimal),
+			desc: "Remove manager and PATH only",
+		},
+	})
+}
+
+func requestedSelfUninstallMode(value string, yes bool) (selfUninstallMode, bool) {
+	if value != "" {
+		mode, err := parseSelfUninstallMode(value)
+		if err != nil {
+			fatal("self uninstall: %v", err)
+		}
+		return mode, true
+	}
+	if yes || !stdinIsTTY() {
+		return selfUninstallFull, true
+	}
+	p := selfUninstallModePicker()
+	submitted, cancelled := runSelector(p)
+	if !submitted || cancelled {
+		return "", false
+	}
+	mode, err := parseSelfUninstallMode(p.selected())
+	if err != nil {
+		return "", false
+	}
+	return mode, true
 }
 
 func selfExecutablePath() string {
@@ -82,13 +155,20 @@ func selfUpdate(current, executable string) {
 	printDetail(progress.out, "location", displayPath(executable))
 }
 
-func selfUninstall(dirs wagopaths.Dirs, executable string, yes bool, in io.Reader, out io.Writer) {
-	targets := selfUninstallTargets(dirs, executable)
+func selfUninstall(
+	dirs wagopaths.Dirs,
+	executable string,
+	mode selfUninstallMode,
+	yes bool,
+	in io.Reader,
+	out io.Writer,
+) {
+	targets := selfUninstallTargets(dirs, executable, mode)
 	shellConfigs, err := installerPathConfigs()
 	if err != nil {
 		fatal("self uninstall: inspect shell configuration: %v", err)
 	}
-	fmt.Fprintln(out, bold("Uninstall Wago"))
+	fmt.Fprintf(out, "%s %s\n", bold("Uninstall Wago"), dim("("+string(mode)+")"))
 	for _, target := range targets {
 		printDetail(out, "remove", displayPath(target))
 	}
@@ -119,24 +199,37 @@ func selfUninstall(dirs wagopaths.Dirs, executable string, yes bool, in io.Reade
 		fatal("self uninstall: remove %s: %v", displayPath(executable), err)
 	}
 	if deferred {
-		fmt.Fprintln(out, cyan("✓"), "Wago data removed; the manager will be removed after restart")
+		fmt.Fprintln(out, cyan("✓"), "Wago cleanup complete; the manager will be removed after restart")
 		return
 	}
-	fmt.Fprintln(out, cyan("✓"), "Uninstalled Wago")
+	fmt.Fprintf(out, "%s Uninstalled Wago (%s)\n", cyan("✓"), mode)
 }
 
-func selfUninstallTargets(dirs wagopaths.Dirs, executable string) []string {
-	candidates := []string{dirs.Data, dirs.Config, filepath.Dir(dirs.Cache)}
-	if home, err := os.UserHomeDir(); err == nil && home != "" {
-		defaultRoot := filepath.Join(home, ".wago")
-		if pathContains(defaultRoot, executable) {
-			candidates = append(candidates, defaultRoot)
-		} else if _, err := os.Stat(defaultRoot); err == nil {
-			candidates = append(candidates, defaultRoot)
+func selfUninstallTargets(dirs wagopaths.Dirs, executable string, mode selfUninstallMode) []string {
+	var candidates []string
+	switch mode {
+	case selfUninstallFull:
+		candidates = append(candidates, dirs.Data, dirs.Config, filepath.Dir(dirs.Cache))
+		if home, err := os.UserHomeDir(); err == nil && home != "" {
+			defaultRoot := filepath.Join(home, ".wago")
+			if pathContains(defaultRoot, executable) {
+				candidates = append(candidates, defaultRoot)
+			} else if _, err := os.Stat(defaultRoot); err == nil {
+				candidates = append(candidates, defaultRoot)
+			}
 		}
-	}
-	if root := os.Getenv("WAGO_HOME"); root != "" {
-		candidates = append(candidates, root)
+		if root := os.Getenv("WAGO_HOME"); root != "" {
+			candidates = append(candidates, root)
+		}
+		candidates = append(candidates, selfInstalledSourcePath())
+	case selfUninstallPartial:
+		candidates = append(
+			candidates,
+			dirs.Versions,
+			dirs.Config,
+			filepath.Dir(dirs.Cache),
+			selfInstalledSourcePath(),
+		)
 	}
 	candidates = append(candidates, executable)
 
@@ -163,6 +256,24 @@ func selfUninstallTargets(dirs wagopaths.Dirs, executable string) []string {
 		}
 	}
 	return targets
+}
+
+func selfInstalledSourcePath() string {
+	source := os.Getenv("WAGO_SRC_DIR")
+	if source != "" {
+		if _, err := os.Stat(source); err == nil {
+			return source
+		}
+	} else {
+		home, err := os.UserHomeDir()
+		if err == nil && home != "" {
+			source = filepath.Join(home, ".wago", "src")
+			if _, err := os.Stat(source); err == nil {
+				return source
+			}
+		}
+	}
+	return ""
 }
 
 func installerPathConfigs() ([]string, error) {

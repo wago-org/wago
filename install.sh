@@ -9,6 +9,7 @@
 # Environment:
 #   WAGO_VERSION   git ref to build: branch, tag, or commit (default: main)
 #   WAGO_BIN_DIR   install directory (default: $HOME/.wago/bin)
+#   WAGO_REINSTALL_MODE full, partial, or minimal for an existing install
 #   WAGO_DRY_RUN   set to 1 to print what would happen and exit
 #   WAGO_NO_MODIFY_PATH set to 1 to never offer to edit shell startup files
 #   NO_COLOR       set to disable colored output
@@ -29,12 +30,15 @@ no_modify_path="${WAGO_NO_MODIFY_PATH:-0}"
 if [ -n "${WAGO_HOME:-}" ]; then
 	wago_data="$WAGO_HOME/data"
 	wago_config="$WAGO_HOME/config"
+	wago_cache="$WAGO_HOME/cache"
 elif [ "$(uname -s)" = "Darwin" ]; then
 	wago_data="$HOME/.wago"
 	wago_config="$HOME/.wago/config"
+	wago_cache="$HOME/.wago/cache"
 else
 	wago_data="${XDG_DATA_HOME:-$HOME/.local/share}/wago"
 	wago_config="${XDG_CONFIG_HOME:-$HOME/.config}/wago"
+	wago_cache="${XDG_CACHE_HOME:-$HOME/.cache}/wago"
 fi
 runner_dir="$wago_data/versions/$version/standard"
 
@@ -58,6 +62,10 @@ fi
 spinner_pid=""
 spinner_label=""
 tmp=""
+radio_saved_stty=""
+radio_tty=""
+radio_painted=0
+radio_lines=0
 
 stop_spinner() {
 	if [ -n "$spinner_pid" ]; then
@@ -136,6 +144,160 @@ display_path() {
 	esac
 }
 
+restore_radio_terminal() {
+	if [ -n "$radio_saved_stty" ] && [ -n "$radio_tty" ]; then
+		stty "$radio_saved_stty" <"$radio_tty" >/dev/null 2>&1 || true
+	fi
+	radio_saved_stty=""
+	radio_tty=""
+}
+
+clear_radio() {
+	if [ "$radio_painted" = "1" ] && [ "$is_tty" = "1" ]; then
+		printf '\033[%sA\033[J' "$radio_lines"
+	fi
+	radio_painted=0
+	radio_lines=0
+}
+
+render_radio() {
+	printf '%s%s%s\n' "$bold" "$radio_title" "$reset"
+	radio_label_width=$(printf '%s\n' "$radio_items" | awk -F '|' '
+		length($1) > width { width = length($1) }
+		END { print width + 0 }
+	')
+	radio_row=0
+	printf '%s\n' "$radio_items" | while IFS='|' read -r radio_label radio_desc radio_item_value; do
+		[ -n "$radio_label" ] || continue
+		radio_row=$((radio_row + 1))
+		radio_cursor_mark="  "
+		radio_choice_mark="○"
+		if [ "$radio_row" -eq "$radio_cursor" ]; then
+			radio_cursor_mark="${cyan}› ${reset}"
+			radio_choice_mark="${cyan}◉${reset}"
+		fi
+		printf '%s%s %-*s' "$radio_cursor_mark" "$radio_choice_mark" "$radio_label_width" "$radio_label"
+		if [ -n "$radio_desc" ]; then
+			printf '  %s%s%s' "$dim" "$radio_desc" "$reset"
+		fi
+		printf '\n'
+	done
+	printf '%s↑/↓ move · enter/→ select · esc cancel%s\n' "$dim" "$reset"
+	radio_lines=$((radio_count + 2))
+	radio_painted=1
+}
+
+finish_radio() {
+	restore_radio_terminal
+	clear_radio
+}
+
+radio_selected_value() {
+	radio_selected=$(printf '%s\n' "$radio_items" | sed -n "${radio_cursor}p")
+	radio_value=${radio_selected##*|}
+}
+
+radio_select_scripted() {
+	render_radio
+	radio_input=""
+	IFS= read -r radio_input <"$install_tty" || true
+	case "$radio_input" in
+		""|enter|right) ;;
+		esc|escape|q|Q) return 1 ;;
+		*[!0-9]*) return 1 ;;
+		*) radio_cursor=$radio_input ;;
+	esac
+	if [ "$radio_cursor" -lt 1 ] || [ "$radio_cursor" -gt "$radio_count" ]; then
+		return 1
+	fi
+	radio_selected_value
+	return 0
+}
+
+radio_select() {
+	radio_title=$1
+	radio_items=$2
+	radio_cursor=$3
+	radio_value=""
+	radio_count=$(printf '%s\n' "$radio_items" | awk 'NF { count++ } END { print count + 0 }')
+	[ "$radio_count" -gt 0 ] || return 1
+
+	if [ ! -c "$install_tty" ]; then
+		radio_select_scripted
+		return $?
+	fi
+
+	radio_tty=$install_tty
+	radio_saved_stty=$(stty -g <"$radio_tty" 2>/dev/null) || {
+		radio_saved_stty=""
+		radio_tty=""
+		return 1
+	}
+	if ! stty raw -echo <"$radio_tty" 2>/dev/null; then
+		restore_radio_terminal
+		return 1
+	fi
+	render_radio
+	radio_escape=$(printf '\033')
+	radio_return=$(printf '\r')
+	while :; do
+		radio_key=$(dd if="$radio_tty" bs=1 count=1 2>/dev/null || true)
+		case "$radio_key" in
+			""|"$radio_return"|l|L|">")
+				radio_selected_value
+				finish_radio
+				return 0
+				;;
+			k|K)
+				if [ "$radio_cursor" -gt 1 ]; then
+					radio_cursor=$((radio_cursor - 1))
+				fi
+				;;
+			j|J)
+				if [ "$radio_cursor" -lt "$radio_count" ]; then
+					radio_cursor=$((radio_cursor + 1))
+				fi
+				;;
+			q|Q)
+				finish_radio
+				return 1
+				;;
+			"$radio_escape")
+				stty min 0 time 1 <"$radio_tty" 2>/dev/null || true
+				radio_second=$(dd if="$radio_tty" bs=1 count=1 2>/dev/null || true)
+				radio_third=""
+				if [ "$radio_second" = "[" ]; then
+					radio_third=$(dd if="$radio_tty" bs=1 count=1 2>/dev/null || true)
+				fi
+				stty min 1 time 0 <"$radio_tty" 2>/dev/null || true
+				case "$radio_third" in
+					A)
+						if [ "$radio_cursor" -gt 1 ]; then
+							radio_cursor=$((radio_cursor - 1))
+						fi
+						;;
+					B)
+						if [ "$radio_cursor" -lt "$radio_count" ]; then
+							radio_cursor=$((radio_cursor + 1))
+						fi
+						;;
+					C)
+						radio_selected_value
+						finish_radio
+						return 0
+						;;
+					"")
+						finish_radio
+						return 1
+						;;
+				esac
+				;;
+		esac
+		clear_radio
+		render_radio
+	done
+}
+
 shell_config_file() {
 	case "$1" in
 		zsh)
@@ -174,6 +336,12 @@ $shell_name|"*|"$shell_name|"*) return 0 ;;
 	config_file=$(shell_config_file "$shell_name") || return 0
 	path_option_count=$((path_option_count + 1))
 	path_shells="${path_shells}${shell_name}|${config_file}
+"
+	path_desc=$(display_path "$config_file")
+	if [ "$shell_name" = "$current_shell" ]; then
+		path_desc="$path_desc  current"
+	fi
+	path_radio_items="${path_radio_items}${shell_name}|${path_desc}|${shell_name}
 "
 }
 
@@ -223,6 +391,7 @@ offer_path_setup() {
 
 	current_shell=${SHELL##*/}
 	path_shells=""
+	path_radio_items=""
 	path_option_count=0
 	path_option_add "$current_shell"
 	for shell_name in zsh bash fish nu; do
@@ -232,28 +401,14 @@ offer_path_setup() {
 		return 1
 	fi
 
-	printf '\n%sAdd Wago to your PATH?%s\n' "$bold" "$reset"
-	option_index=0
-	printf '%s' "$path_shells" | while IFS='|' read -r shell_name config_file; do
-		[ -n "$shell_name" ] || continue
-		option_index=$((option_index + 1))
-		current=""
-		[ "$shell_name" != "$current_shell" ] || current=" ${dim}current${reset}"
-		printf '  %d) %-8s %s%s\n' "$option_index" "$shell_name" "$(display_path "$config_file")" "$current"
-	done
-	skip_option=$((path_option_count + 1))
-	printf '  %d) Not now\n' "$skip_option"
-	printf 'Choose [1-%d] (default 1): ' "$skip_option"
-	choice=""
-	IFS= read -r choice <"$install_tty" || true
-	[ -n "$choice" ] || choice=1
-	case "$choice" in
-		*[!0-9]*|"") return 1 ;;
-	esac
-	if [ "$choice" -lt 1 ] || [ "$choice" -gt "$path_option_count" ]; then
+	path_radio_items="${path_radio_items}Not now||none"
+	if ! radio_select "Add Wago to your PATH?" "$path_radio_items" 1; then
 		return 1
 	fi
-	selected=$(printf '%s' "$path_shells" | sed -n "${choice}p")
+	if [ "$radio_value" = "none" ]; then
+		return 1
+	fi
+	selected=$(printf '%s' "$path_shells" | sed -n "/^${radio_value}|/p")
 	shell_name=${selected%%|*}
 	config_file=${selected#*|}
 	add_path_to_config "$shell_name" "$config_file"
@@ -286,8 +441,16 @@ choose_install_dir() {
 	fi
 }
 
-confirm_reinstall() {
+choose_reinstall_mode() {
+	reinstall_mode=minimal
 	[ -e "$bin_dir/wago" ] || return 0
+	if [ -n "${WAGO_REINSTALL_MODE:-}" ]; then
+		case "$WAGO_REINSTALL_MODE" in
+			full|partial|minimal) reinstall_mode=$WAGO_REINSTALL_MODE ;;
+			*) die "WAGO_REINSTALL_MODE must be full, partial, or minimal" ;;
+		esac
+		return 0
+	fi
 	if [ "$is_tty" != "1" ] && [ "${WAGO_INTERNAL_REINSTALL_CHECK_ONLY:-0}" != "1" ]; then
 		return 0
 	fi
@@ -296,15 +459,132 @@ confirm_reinstall() {
 		return 0
 	fi
 
-	printf '%sWago is already installed at %s.%s\n' \
+	printf '\n%sWago is already installed at %s.%s\n' \
 		"$bold" "$(display_path "$bin_dir/wago")" "$reset"
-	printf 'Reinstall? [Y/n] '
-	answer=""
-	IFS= read -r answer <"$install_tty" || true
-	case "$answer" in
-		n|N|no|NO|No) return 1 ;;
-		*) return 0 ;;
+	reinstall_items='Full|Reset everything, including plugins and settings|full
+Partial|Reset Wago but keep global plugins for reinstall|partial
+Minimal|Replace binaries and keep existing state|minimal'
+	if ! radio_select "How should it be reinstalled?" "$reinstall_items" 3; then
+		return 1
+	fi
+	reinstall_mode=$radio_value
+}
+
+remove_install_path() {
+	path=$1
+	[ ! -e "$path" ] || {
+		case "$path" in
+			""|"."|"/"|"$HOME") return 1 ;;
+		esac
+		rm -rf "$path"
+	}
+}
+
+remove_installer_path_block() {
+	config_file=$1
+	[ -f "$config_file" ] || return 0
+	path_config_index=$((path_config_index + 1))
+	config_tmp="$tmp/path-config-$path_config_index"
+	if ! awk '
+		{
+			lines[++count] = $0
+		}
+		END {
+			out = 0
+			for (i = 1; i <= count; i++) {
+				if (lines[i] ~ /^# Wago PATH: /) {
+					if (out > 0 && output[out] == "") {
+						out--
+					}
+					if (i < count) {
+						nextline = lines[i + 1]
+						if (nextline ~ /^export PATH=/) {
+							i++
+						} else if (nextline ~ /^fish_add_path --path /) {
+							i++
+						} else if (nextline ~ /^\$env\.PATH = \(\$env\.PATH \| prepend /) {
+							i++
+						}
+					}
+					continue
+				}
+				output[++out] = lines[i]
+			}
+			for (i = 1; i <= out; i++) {
+				print output[i]
+			}
+		}
+	' "$config_file" >"$config_tmp"; then
+		return 1
+	fi
+	if ! cat "$config_tmp" >"$config_file"; then
+		return 1
+	fi
+	rm -f "$config_tmp"
+}
+
+remove_installer_path_blocks() {
+	path_config_index=0
+	remove_installer_path_block "${ZDOTDIR:-$HOME}/.zshrc" &&
+		remove_installer_path_block "$HOME/.bashrc" &&
+		remove_installer_path_block "$HOME/.bash_profile" &&
+		remove_installer_path_block "${XDG_CONFIG_HOME:-$HOME/.config}/fish/config.fish" &&
+		remove_installer_path_block "${XDG_CONFIG_HOME:-$HOME/.config}/nushell/env.nu"
+}
+
+remove_full_wago_roots() {
+	remove_install_path "$HOME/.wago" || return 1
+	if [ -n "${WAGO_HOME:-}" ]; then
+		remove_install_path "$WAGO_HOME" || return 1
+	fi
+}
+
+apply_reinstall_cleanup() {
+	case "$reinstall_mode" in
+		full)
+			remove_install_path "$wago_data" &&
+				remove_install_path "$wago_config" &&
+				remove_install_path "$wago_cache" &&
+				remove_install_path "$src_dir" &&
+				rm -f "$bin_dir/wago" &&
+				remove_full_wago_roots &&
+				remove_installer_path_blocks
+			;;
+		partial)
+			remove_install_path "$wago_data/versions" &&
+				remove_install_path "$wago_config" &&
+				remove_install_path "$wago_cache" &&
+				remove_install_path "$src_dir" &&
+				rm -f "$bin_dir/wago" &&
+				remove_installer_path_blocks
+			;;
+		minimal)
+			return 0
+			;;
+		*)
+			return 1
+			;;
 	esac
+}
+
+report_reinstall_cleanup() {
+	case "$reinstall_mode" in
+		full) printf 'mode=full plugins=removed\n' ;;
+		partial) printf 'mode=partial plugins=preserved\n' ;;
+		minimal) printf 'mode=minimal state=preserved\n' ;;
+	esac
+}
+
+cancel_reinstall() {
+	printf 'Cancelled.\n'
+	exit 0
+}
+
+confirm_reinstall() {
+	if choose_reinstall_mode; then
+		return 0
+	fi
+	cancel_reinstall
 }
 
 run_with_timeout() {
@@ -409,6 +689,8 @@ fetch_wago_source() {
 
 cleanup() {
 	stop_spinner
+	restore_radio_terminal
+	clear_radio
 	if [ -n "$tmp" ] && [ -d "$tmp" ]; then
 		rm -rf "$tmp"
 	fi
@@ -436,9 +718,16 @@ if [ "${WAGO_INTERNAL_FETCH_ONLY:-0}" = "1" ]; then
 fi
 
 if [ "${WAGO_INTERNAL_REINSTALL_CHECK_ONLY:-0}" = "1" ]; then
-	if ! confirm_reinstall; then
-		printf 'Cancelled.\n'
-	fi
+	confirm_reinstall
+	report_reinstall_cleanup
+	exit 0
+fi
+
+if [ -n "${WAGO_INTERNAL_REINSTALL_CLEANUP_ONLY:-}" ]; then
+	tmp=$(mktemp -d 2>/dev/null || mktemp -d -t wago)
+	reinstall_mode=$WAGO_INTERNAL_REINSTALL_CLEANUP_ONLY
+	apply_reinstall_cleanup
+	report_reinstall_cleanup
 	exit 0
 fi
 
@@ -474,10 +763,7 @@ if [ "$dry_run" = "1" ]; then
 	exit 0
 fi
 
-if ! confirm_reinstall; then
-	printf 'Cancelled.\n'
-	exit 0
-fi
+confirm_reinstall
 
 # Source build needs the Go toolchain.
 progress_begin "checking Go toolchain"
@@ -522,6 +808,16 @@ else
 fi
 
 runner_dir="$wago_data/versions/$stamp/standard"
+
+if [ "$reinstall_mode" != "minimal" ]; then
+	progress_begin "cleaning existing Wago installation"
+	if apply_reinstall_cleanup; then
+		progress_done "cleaned existing Wago installation ($reinstall_mode)"
+	else
+		progress_fail "could not clean existing Wago installation"
+		die "reinstall cleanup failed"
+	fi
+fi
 
 progress_begin "installing Wago"
 if mkdir -p "$bin_dir" "$runner_dir" "$wago_config" &&
