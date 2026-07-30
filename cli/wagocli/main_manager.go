@@ -184,7 +184,6 @@ func managerUsage(w *os.File) {
 		{"plugin", "<command>", "add, remove, inspect, update, and publish plugins"},
 		{"auth", "<command>", "authenticate to the registry (plugins.wago.sh)"},
 		{"module", "<command>", "inspect a module's imports and required capabilities"},
-		{"opts", "", "show compiler optimization flags"},
 		{"build", "<file>", "precompile a WebAssembly module to a .wago artifact"},
 		{"validate", "<file>", "decode and validate a module"},
 		{"version", "<command>", "install, select, update, and remove Wago runtimes"},
