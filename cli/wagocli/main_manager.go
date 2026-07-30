@@ -180,8 +180,7 @@ func runActiveRunner(args []string) {
 
 func managerUsage(w *os.File) {
 	fmt.Fprintf(w, "%s is a pure-Go (no cgo) WebAssembly engine. (v%s)\n\n", bold("wago"), versionString())
-	fmt.Fprintf(w, "%s wago %s\n", bold("Usage:"), dim("<command> [flags]"))
-	fmt.Fprintf(w, "       wago %s\n\n", dim("[run] [flags] <file> [args...]"))
+	fmt.Fprintf(w, "%s wago %s\n\n", bold("Usage:"), dim("<command> [flags]"))
 	fmt.Fprintf(w, "%s\n", bold("Commands:"))
 	commands := []struct {
 		name, args, summary string

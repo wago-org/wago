@@ -149,8 +149,7 @@ func looksLikeRunTarget(s string) bool {
 // syntax is dimmed so command names and descriptions remain easy to scan.
 func usage(w *os.File) {
 	fmt.Fprintf(w, "%s is a pure-Go (no cgo) WebAssembly engine. (v%s)\n\n", bold("wago"), versionString())
-	fmt.Fprintf(w, "%s wago %s\n", bold("Usage:"), dim("<command> [flags]"))
-	fmt.Fprintf(w, "       wago %s\n\n", dim("[run] [flags] <file> [args...]"))
+	fmt.Fprintf(w, "%s wago %s\n\n", bold("Usage:"), dim("<command> [flags]"))
 
 	fmt.Fprintf(w, "%s\n", bold("Commands:"))
 	writeCommandList(w)
