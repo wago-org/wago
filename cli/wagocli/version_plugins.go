@@ -12,6 +12,10 @@ import (
 
 const versionPluginManifest = "wago.json"
 
+var runnerVersionOutput = func(path string) ([]byte, error) {
+	return exec.Command(path, "--version").Output()
+}
+
 func sharedGlobalPluginDir(d wagopaths.Dirs) string {
 	return d.Data
 }
@@ -67,7 +71,14 @@ func migrateActiveGlobalPlugins(d wagopaths.Dirs) {
 }
 
 func runnerRelease(path, fallback string) string {
-	output, err := exec.Command(path, "--version").Output()
+	if current, err := os.Executable(); err == nil {
+		currentInfo, currentErr := os.Stat(current)
+		pathInfo, pathErr := os.Stat(path)
+		if currentErr == nil && pathErr == nil && os.SameFile(currentInfo, pathInfo) {
+			return fallback
+		}
+	}
+	output, err := runnerVersionOutput(path)
 	if err != nil {
 		return fallback
 	}

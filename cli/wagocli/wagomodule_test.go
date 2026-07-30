@@ -32,6 +32,7 @@ func TestInstalledWagoSource(t *testing.T) {
 }
 
 func TestBuildModuleLocationAndSourceSelectionHelpers(t *testing.T) {
+	t.Setenv("WAGO_HOME", t.TempDir())
 	wd, err := os.Getwd()
 	if err != nil {
 		t.Fatal(err)
