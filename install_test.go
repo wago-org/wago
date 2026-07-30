@@ -295,9 +295,10 @@ func TestInstallerFullReinstallRemovesPluginsAndPathSetup(t *testing.T) {
 func TestInstallerPartialReinstallPreservesGlobalPlugins(t *testing.T) {
 	home := t.TempDir()
 	root := filepath.Join(home, ".wago")
+	data := filepath.Join(root, "data")
 	for _, path := range []string{
 		filepath.Join(root, "bin"),
-		filepath.Join(root, "versions", "canary"),
+		filepath.Join(data, "versions", "canary"),
 		filepath.Join(root, "config"),
 		filepath.Join(root, "cache", "canary"),
 		filepath.Join(root, "src"),
@@ -312,7 +313,7 @@ func TestInstallerPartialReinstallPreservesGlobalPlugins(t *testing.T) {
 		filepath.Join(root, "wago-lock.json"):                     "lock",
 		filepath.Join(root, "src", "go.mod"):                      "source",
 		filepath.Join(root, "config", "active-version"):           "canary",
-		filepath.Join(root, "versions", "canary", "wago-runtime"): "runtime",
+		filepath.Join(data, "versions", "canary", "wago-runtime"): "runtime",
 	} {
 		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 			t.Fatal(err)
@@ -328,6 +329,7 @@ func TestInstallerPartialReinstallPreservesGlobalPlugins(t *testing.T) {
 	command := exec.Command("sh", "install.sh")
 	command.Env = append(os.Environ(),
 		"HOME="+home,
+		"WAGO_HOME="+root,
 		"WAGO_INTERNAL_REINSTALL_CLEANUP_ONLY=partial",
 		"NO_COLOR=1",
 	)
@@ -348,7 +350,7 @@ func TestInstallerPartialReinstallPreservesGlobalPlugins(t *testing.T) {
 	}
 	for _, path := range []string{
 		filepath.Join(root, "bin", "wago"),
-		filepath.Join(root, "versions"),
+		filepath.Join(data, "versions"),
 		filepath.Join(root, "config"),
 		filepath.Join(root, "cache"),
 		filepath.Join(root, "src"),

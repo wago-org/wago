@@ -42,12 +42,6 @@ func plural(n int) string {
 	return "s"
 }
 
-// pkgAdd declares a plugin dependency: resolve its module path, `go get` it into
-// the .wago build module, and record it in wago.json's dependencies.
-func pkgAdd(modOrName string, o pkgOpts) {
-	pkgAddMany([]string{modOrName}, o)
-}
-
 func pkgAddMany(specs []string, o pkgOpts) {
 	started := time.Now()
 	progress := newInstallProgress(os.Stderr)
