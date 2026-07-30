@@ -57,6 +57,9 @@ func Main(v string) {
 	case "init":
 		initCommand().Dispatch("wago init", args[1:])
 		return
+	case "self":
+		selfCommand().Dispatch("wago self", args[1:])
+		return
 	}
 	runActiveRunner(args)
 }
@@ -184,6 +187,7 @@ func managerUsage(w *os.File) {
 		{"plugin", "<command>", "add, remove, inspect, update, and publish plugins"},
 		{"auth", "<command>", "authenticate to the registry (plugins.wago.sh)"},
 		{"module", "<command>", "inspect a module's imports and required capabilities"},
+		{"self", "<command>", "update or uninstall the Wago manager"},
 		{"build", "<file>", "precompile a WebAssembly module to a .wago artifact"},
 		{"validate", "<file>", "decode and validate a module"},
 		{"version", "<command>", "install, select, update, and remove Wago runtimes"},

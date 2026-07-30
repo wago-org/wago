@@ -14,6 +14,7 @@ func runnerCommands() []*Cmd {
 		pluginCommand(),
 		authCommand(),
 		moduleCommand(),
+		selfCommand(),
 		buildCommand(),
 		validateCommand(),
 		versionCommand(),

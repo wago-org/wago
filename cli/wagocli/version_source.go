@@ -12,7 +12,10 @@ import (
 	"github.com/wago-org/wago/internal/wagopaths"
 )
 
-var buildRunnerSource = buildRunnerFromSource
+var (
+	buildRunnerSource  = buildRunnerFromSource
+	buildManagerSource = buildManagerFromSource
+)
 
 func sourceRepository() string {
 	if value := os.Getenv("WAGO_SOURCE_REPO"); value != "" {
@@ -22,42 +25,11 @@ func sourceRepository() string {
 }
 
 func buildRunnerFromSource(ref string, profile wagopaths.Profile, build wagopaths.Build, dest string, progress *installProgress) error {
-	temp, err := os.MkdirTemp("", "wago-source-*")
+	temp, source, stamp, err := checkoutWagoSource(ref, progress)
 	if err != nil {
-		return fmt.Errorf("prepare source build: %w", err)
+		return err
 	}
 	defer os.RemoveAll(temp)
-
-	source := filepath.Join(temp, "src")
-	if progress != nil {
-		progress.begin("fetching source")
-	}
-	stamp := ref
-	if sha, canaryCommit := canaryCommitSHA(ref); canaryCommit {
-		stamp = canaryCommitVersion(ref)
-		commands := [][]string{
-			{"init", "--quiet", source},
-			{"-C", source, "remote", "add", "origin", sourceRepository()},
-			{"-C", source, "fetch", "--quiet", "--depth", "1", "origin", sha},
-			{"-C", source, "checkout", "--quiet", "--detach", "FETCH_HEAD"},
-		}
-		for _, args := range commands {
-			if output, err := runSourceCommand("", nil, "git", args...); err != nil {
-				if progress != nil {
-					progress.fail("could not fetch source")
-				}
-				return commandFailure("git "+args[0], err, output)
-			}
-		}
-	} else if output, err := runSourceCommand("", nil, "git", "clone", "--depth", "1", "--single-branch", "--branch", ref, "--", sourceRepository(), source); err != nil {
-		if progress != nil {
-			progress.fail("could not fetch source")
-		}
-		return commandFailure("git clone", err, output)
-	}
-	if progress != nil {
-		progress.done("fetched source")
-	}
 
 	tempRunner := dest + ".tmp"
 	if progress != nil {
@@ -99,6 +71,72 @@ func buildRunnerFromSource(ref string, profile wagopaths.Profile, build wagopath
 		return commandFailure("go build", err, output)
 	}
 	return finishSourceBuild(tempRunner, dest, progress, "built "+string(profile)+" runtime with Go")
+}
+
+func buildManagerFromSource(ref, dest string, progress *installProgress) error {
+	temp, source, stamp, err := checkoutWagoSource(ref, progress)
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(temp)
+
+	tempManager := dest + ".tmp"
+	if progress != nil {
+		progress.begin("building Wago manager from source")
+	}
+	args := []string{
+		"build", "-trimpath", "-tags", "wago_manager",
+		"-ldflags", "-s -w -X main.version=" + stamp,
+		"-o", tempManager, "./cli/wago",
+	}
+	output, err := runSourceCommand(source, append(os.Environ(), "CGO_ENABLED=0"), "go", args...)
+	if err != nil {
+		if progress != nil {
+			progress.fail("manager source build failed")
+		}
+		return commandFailure("go build", err, output)
+	}
+	return finishSourceBuild(tempManager, dest, progress, "built Wago manager with Go")
+}
+
+func checkoutWagoSource(ref string, progress *installProgress) (temp, source, stamp string, err error) {
+	temp, err = os.MkdirTemp("", "wago-source-*")
+	if err != nil {
+		return "", "", "", fmt.Errorf("prepare source build: %w", err)
+	}
+	source = filepath.Join(temp, "src")
+	if progress != nil {
+		progress.begin("fetching source")
+	}
+	stamp = ref
+	if sha, canaryCommit := canaryCommitSHA(ref); canaryCommit {
+		stamp = canaryCommitVersion(ref)
+		commands := [][]string{
+			{"init", "--quiet", source},
+			{"-C", source, "remote", "add", "origin", sourceRepository()},
+			{"-C", source, "fetch", "--quiet", "--depth", "1", "origin", sha},
+			{"-C", source, "checkout", "--quiet", "--detach", "FETCH_HEAD"},
+		}
+		for _, args := range commands {
+			if output, err := runSourceCommand("", nil, "git", args...); err != nil {
+				if progress != nil {
+					progress.fail("could not fetch source")
+				}
+				os.RemoveAll(temp)
+				return "", "", "", commandFailure("git "+args[0], err, output)
+			}
+		}
+	} else if output, err := runSourceCommand("", nil, "git", "clone", "--depth", "1", "--single-branch", "--branch", ref, "--", sourceRepository(), source); err != nil {
+		if progress != nil {
+			progress.fail("could not fetch source")
+		}
+		os.RemoveAll(temp)
+		return "", "", "", commandFailure("git clone", err, output)
+	}
+	if progress != nil {
+		progress.done("fetched source")
+	}
+	return temp, source, stamp, nil
 }
 
 func sourceBuildTag(profile wagopaths.Profile) string {

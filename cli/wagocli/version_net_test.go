@@ -162,6 +162,10 @@ func TestVersionAssetsIncludeProfileAndHost(t *testing.T) {
 			}
 		}
 	}
+	wantManager := "wago-" + runtime.GOOS + "-" + runtime.GOARCH
+	if got := managerAsset(); got != wantManager {
+		t.Fatalf("managerAsset() = %q, want %q", got, wantManager)
+	}
 }
 
 func TestCanonicalReleaseRef(t *testing.T) {
