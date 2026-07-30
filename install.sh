@@ -643,16 +643,24 @@ shell_single_quote() {
 	printf '%s' "$1" | sed "s/'/'\\\\''/g"
 }
 
+print_wago_ready() {
+	config_file=$1
+	printf '\n%sWago is ready!%s\n' "$bold" "$reset"
+	if have wago; then
+		printf 'Install a version with:\n  %swago version install%s\n' "$cyan" "$reset"
+		return
+	fi
+	printf 'Open a new shell, or run:\n  %ssource %s && wago version install%s\n' \
+		"$cyan" "$(display_path "$config_file")" "$reset"
+}
+
 add_path_to_config() {
 	shell_name=$1
 	config_file=$2
 	marker="# Wago PATH: $bin_dir"
 	if [ -f "$config_file" ] && grep -F "$marker" "$config_file" >/dev/null 2>&1; then
 		printf '%s✓%s PATH already configured\n' "$cyan" "$reset"
-		printf '\n%sWago manager is ready!%s\n' "$bold" "$reset"
-		printf 'Open a new shell, or run:\n  %ssource %s%s\n' \
-			"$cyan" "$(display_path "$config_file")" "$reset"
-		printf '\nAnd then, install a version with:\n  %swago version install%s\n' "$cyan" "$reset"
+		print_wago_ready "$config_file"
 		return 0
 	fi
 	if ! mkdir -p "$(dirname "$config_file")"; then
@@ -671,10 +679,7 @@ add_path_to_config() {
 		return 1
 	fi
 	printf '%s✓%s Added Wago to PATH\n' "$cyan" "$reset"
-	printf '\n%sWago manager is ready!%s\n' "$bold" "$reset"
-	printf 'Open a new shell, or run:\n  %ssource %s%s\n' \
-		"$cyan" "$(display_path "$config_file")" "$reset"
-	printf '\nAnd then, install a version with:\n  %swago version install%s\n' "$cyan" "$reset"
+	print_wago_ready "$config_file"
 }
 
 offer_path_setup() {
@@ -1089,7 +1094,7 @@ report_install_dir
 
 if [ "$dry_run" = "1" ]; then
 	detail "version" "$version"
-	detail "manager" "$(display_path "$bin_dir/wago")"
+	detail "command" "$(display_path "$bin_dir/wago")"
 	detail "source" "$(display_path "$src_dir")"
 	printf '%sNo changes made.%s\n' "$dim" "$reset"
 	exit 0
@@ -1117,15 +1122,15 @@ fi
 # No plugins are bundled: wago builds plugin-free (stdlib-only, so this builds
 # offline with no module downloads).
 stamp=$(git -C "$tmp/src" describe --tags --always 2>/dev/null || echo "$version")
-progress_begin "building Wago manager"
+progress_begin "building Wago"
 if (cd "$tmp/src" &&
 	CGO_ENABLED=0 go build -trimpath -tags wago_manager \
 		-ldflags "-s -w -X main.version=$stamp" -o "$tmp/wago" ./cli/wago) >"$tmp/manager.log" 2>&1; then
-	progress_done "built Wago manager"
+	progress_done "built Wago"
 else
-	progress_fail "manager build failed"
+	progress_fail "Wago build failed"
 	tail -n 20 "$tmp/manager.log" >&2 || true
-	die "could not build Wago manager"
+	die "could not build Wago"
 fi
 
 if [ "$reinstall_mode" != "minimal" ]; then
@@ -1141,7 +1146,7 @@ fi
 progress_begin "installing Wago"
 if mkdir -p "$bin_dir" &&
 	mv "$tmp/wago" "$bin_dir/wago"; then
-	progress_done "installed Wago manager"
+	progress_done "installed Wago"
 else
 	progress_fail "installation failed"
 	die "could not install Wago"
@@ -1170,8 +1175,8 @@ else
 	die "the installed Wago command did not start"
 fi
 
-progress_finish "Installed Wago manager $stamp"
-detail "Manager" "$(display_path "$bin_dir/wago")"
+progress_finish "Installed Wago $stamp"
+detail "Command" "$(display_path "$bin_dir/wago")"
 
 printf '\n'
 if ! offer_path_setup; then
