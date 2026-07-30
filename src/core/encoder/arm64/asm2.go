@@ -854,9 +854,17 @@ func (a *Asm) NeonSshrvD(dst, n, m Reg) { a.neon3(0x4E204400, 8, dst, n, m) } //
 func (a *Asm) NeonRev64S(dst, n Reg)       { a.word(0x4EA00800 | r(n)<<5 | r(dst)) } // REV64 Vd.4S,Vn.4S
 func (a *Asm) NeonXtnSfromD(dst, n Reg)    { a.word(0x0EA12800 | r(n)<<5 | r(dst)) } // XTN Vd.2S,Vn.2D
 func (a *Asm) NeonUaddlpDfromS(dst, n Reg) { a.word(0x6EA02800 | r(n)<<5 | r(dst)) } // UADDLP Vd.2D,Vn.4S
-func (a *Asm) NeonShlD(dst, n Reg, shift uint8) { // SHL Vd.2D,Vn.2D,#shift
-	imm := 64 + uint32(shift)
+func (a *Asm) neonLeftShift(bytes int, dst, n Reg, shift uint8) {
+	imm := uint32(bytes*8) + uint32(shift)
 	a.word(0x4F005400 | (imm&0x7F)<<16 | r(n)<<5 | r(dst))
+}
+func (a *Asm) NeonShlB(dst, n Reg, shift uint8) { a.neonLeftShift(1, dst, n, shift) }
+func (a *Asm) NeonShlH(dst, n Reg, shift uint8) { a.neonLeftShift(2, dst, n, shift) }
+func (a *Asm) NeonShlS(dst, n Reg, shift uint8) { a.neonLeftShift(4, dst, n, shift) }
+func (a *Asm) NeonShlD(dst, n Reg, shift uint8) { a.neonLeftShift(8, dst, n, shift) }
+func (a *Asm) NeonSliS(dst, n Reg, shift uint8) {
+	imm := 32 + uint32(shift)
+	a.word(0x6F005400 | (imm&0x7F)<<16 | r(n)<<5 | r(dst))
 }
 func (a *Asm) NeonUmlalDfromS(dst, n, m Reg) { // UMLAL Vd.2D,Vn.2S,Vm.2S (Vd += widen(n)*widen(m))
 	a.word(0x2EA08000 | r(m)<<16 | r(n)<<5 | r(dst))
@@ -867,19 +875,24 @@ func (a *Asm) neonRightShift(base uint32, bytes int, dst, n Reg, shift uint8) {
 	imm := 2*esize - uint32(shift)
 	a.word(base | (imm&0x7F)<<16 | r(n)<<5 | r(dst))
 }
+func (a *Asm) NeonSshrB(dst, n Reg, shift uint8) { a.neonRightShift(0x4F000400, 1, dst, n, shift) }
 func (a *Asm) NeonSshrH(dst, n Reg, shift uint8) { a.neonRightShift(0x4F000400, 2, dst, n, shift) }
 func (a *Asm) NeonSshrS(dst, n Reg, shift uint8) { a.neonRightShift(0x4F000400, 4, dst, n, shift) }
+func (a *Asm) NeonSshrD(dst, n Reg, shift uint8) { a.neonRightShift(0x4F000400, 8, dst, n, shift) }
 func (a *Asm) NeonUshrB(dst, n Reg, shift uint8) { a.neonRightShift(0x6F000400, 1, dst, n, shift) }
 func (a *Asm) NeonUshrH(dst, n Reg, shift uint8) { a.neonRightShift(0x6F000400, 2, dst, n, shift) }
 func (a *Asm) NeonUshrS(dst, n Reg, shift uint8) { a.neonRightShift(0x6F000400, 4, dst, n, shift) }
 func (a *Asm) NeonUshrD(dst, n Reg, shift uint8) { a.neonRightShift(0x6F000400, 8, dst, n, shift) }
+func (a *Asm) NeonRev32H(dst, n Reg)             { a.word(0x6E600800 | r(n)<<5 | r(dst)) }
 
 func (a *Asm) NeonZip1B(dst, n, m Reg) { a.neon3(0x4E003800, 1, dst, n, m) }
 func (a *Asm) NeonZip1H(dst, n, m Reg) { a.neon3(0x4E003800, 2, dst, n, m) }
 func (a *Asm) NeonZip1S(dst, n, m Reg) { a.neon3(0x4E003800, 4, dst, n, m) }
+func (a *Asm) NeonZip1D(dst, n, m Reg) { a.neon3(0x4E003800, 8, dst, n, m) }
 func (a *Asm) NeonZip2B(dst, n, m Reg) { a.neon3(0x4E007800, 1, dst, n, m) }
 func (a *Asm) NeonZip2H(dst, n, m Reg) { a.neon3(0x4E007800, 2, dst, n, m) }
 func (a *Asm) NeonZip2S(dst, n, m Reg) { a.neon3(0x4E007800, 4, dst, n, m) }
+func (a *Asm) NeonZip2D(dst, n, m Reg) { a.neon3(0x4E007800, 8, dst, n, m) }
 
 func neonImm5(bytes int, lane byte) uint32 {
 	return (uint32(lane) << uint(neonSize(bytes)+1)) | (1 << neonSize(bytes))
