@@ -236,17 +236,17 @@ func (c *Cmd) parse(path string, args []string) (*Ctx, error) {
 // -h/--help is always listed last.
 func (c *Cmd) printHelp(w *os.File, path string) {
 	var b strings.Builder
-	line := "Usage: " + path
+	fmt.Fprintf(&b, "%s %s", bold("Usage:"), path)
 	if len(c.Children) > 0 {
-		line += " <command>"
+		fmt.Fprintf(&b, " %s", dim("<command>"))
 	}
 	if c.Args != "" {
-		line += " " + c.Args
+		fmt.Fprintf(&b, " %s", dim(c.Args))
 	}
 	if len(c.Flags) > 0 {
-		line += " [flags]"
+		fmt.Fprintf(&b, " %s", dim("[flags]"))
 	}
-	fmt.Fprintf(&b, "%s\n", bold(line))
+	b.WriteByte('\n')
 	if c.Summary != "" {
 		fmt.Fprintf(&b, "\n%s\n", c.Summary)
 	}
@@ -258,7 +258,8 @@ func (c *Cmd) printHelp(w *os.File, path string) {
 			argW = max(argW, len(cmdArg(ch)))
 		}
 		for _, ch := range c.Children {
-			fmt.Fprintf(&b, "  %-*s  %-*s  %s\n", nameW, ch.Name, argW, cmdArg(ch), ch.Summary)
+			args := fmt.Sprintf("%-*s", argW, cmdArg(ch))
+			fmt.Fprintf(&b, "  %-*s  %s  %s\n", nameW, ch.Name, dim(args), ch.Summary)
 		}
 	}
 	// Flags, long form first, with -h/--help appended; the label column is sized
@@ -284,12 +285,40 @@ func (c *Cmd) printHelp(w *os.File, path string) {
 	}
 	fmt.Fprintf(&b, "\n%s\n", bold("Flags:"))
 	for i, l := range labels {
-		fmt.Fprintf(&b, "  %-*s  %s\n", w0, l, helps[i])
+		label := fmt.Sprintf("%-*s", w0, l)
+		fmt.Fprintf(&b, "  %s  %s\n", dimHelpSyntax(label), helps[i])
 	}
 	if c.Long != "" {
 		fmt.Fprintf(&b, "\n%s\n", strings.TrimRight(c.Long, "\n"))
 	}
 	fmt.Fprint(w, b.String())
+}
+
+// dimHelpSyntax styles metavariables embedded in otherwise literal flag text,
+// such as <file>, [flags], and --<no->color.
+func dimHelpSyntax(s string) string {
+	var b strings.Builder
+	for len(s) > 0 {
+		start := strings.IndexAny(s, "<[")
+		if start < 0 {
+			b.WriteString(s)
+			break
+		}
+		b.WriteString(s[:start])
+		close := byte('>')
+		if s[start] == '[' {
+			close = ']'
+		}
+		end := strings.IndexByte(s[start+1:], close)
+		if end < 0 {
+			b.WriteString(s[start:])
+			break
+		}
+		end += start + 1
+		b.WriteString(dim(s[start : end+1]))
+		s = s[end+1:]
+	}
+	return b.String()
 }
 
 // cmdArg is a command's positional synopsis for a command table: "<command>" for

@@ -42,7 +42,7 @@ func TestSelfUninstallModePickerUsesRadioButtonsAndDefaultsFull(t *testing.T) {
 		"○ Minimal",
 		"including plugins",
 		"keep global plugins",
-		"manager and PATH only",
+		"Wago command and PATH only",
 		"enter/→ select",
 	} {
 		if !strings.Contains(frame, want) {

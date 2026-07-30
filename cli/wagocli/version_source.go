@@ -82,7 +82,7 @@ func buildManagerFromSource(ref, dest string, progress *installProgress) error {
 
 	tempManager := dest + ".tmp"
 	if progress != nil {
-		progress.begin("building Wago manager from source")
+		progress.begin("building Wago from source")
 	}
 	args := []string{
 		"build", "-trimpath", "-tags", "wago_manager",
@@ -96,7 +96,7 @@ func buildManagerFromSource(ref, dest string, progress *installProgress) error {
 		}
 		return commandFailure("go build", err, output)
 	}
-	return finishSourceBuild(tempManager, dest, progress, "built Wago manager with Go")
+	return finishSourceBuild(tempManager, dest, progress, "built Wago with Go")
 }
 
 func checkoutWagoSource(ref string, progress *installProgress) (temp, source, stamp string, err error) {

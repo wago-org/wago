@@ -34,19 +34,11 @@ func Main(v string) {
 	version = v
 	args := os.Args[1:]
 	if len(args) == 0 {
-		if hasActiveRunner() {
-			runActiveRunner(args)
-			return
-		}
 		managerUsage(os.Stderr)
 		os.Exit(2)
 	}
 	switch args[0] {
 	case "help", "-h", "--help":
-		if hasActiveRunner() {
-			runActiveRunner(args)
-			return
-		}
 		managerUsage(os.Stdout)
 		return
 	case "-v", "--version":
@@ -188,26 +180,26 @@ func runActiveRunner(args []string) {
 
 func managerUsage(w *os.File) {
 	fmt.Fprintf(w, "%s is a pure-Go (no cgo) WebAssembly engine. (v%s)\n\n", bold("wago"), versionString())
-	fmt.Fprintf(w, "%s wago <command> [flags]\n", bold("Usage:"))
-	fmt.Fprintf(w, "       wago [run] [flags] <file> [args...]\n\n")
+	fmt.Fprintf(w, "%s wago %s\n", bold("Usage:"), dim("<command> [flags]"))
+	fmt.Fprintf(w, "       wago %s\n\n", dim("[run] [flags] <file> [args...]"))
 	fmt.Fprintf(w, "%s\n", bold("Commands:"))
 	commands := []struct {
 		name, args, summary string
 	}{
 		{"run", "<file> [args...]", "compile and execute a WebAssembly module (default)"},
 		{"init", "", "initialize a local Wago project"},
-		{"add", "<module>[@version]", "add and enable a plugin, then rebuild Wago"},
+		{"add", "<module>[@version]...", "add and enable plugins, then rebuild Wago"},
 		{"rm", "<name>", "remove and disable a plugin"},
 		{"plugin", "<command>", "add, remove, inspect, update, and publish plugins"},
 		{"auth", "<command>", "authenticate to the registry (plugins.wago.sh)"},
 		{"module", "<command>", "inspect a module's imports and required capabilities"},
-		{"self", "<command>", "update or uninstall the Wago manager"},
+		{"self", "<command>", "update or uninstall Wago"},
 		{"build", "<file>", "precompile a WebAssembly module to a .wago artifact"},
 		{"validate", "<file>", "decode and validate a module"},
 		{"version", "<command>", "install, select, update, and remove Wago runtimes"},
 	}
 	for _, command := range commands {
-		fmt.Fprintf(w, "  %-8s  %-19s  %s\n", command.name, command.args, command.summary)
+		fmt.Fprintf(w, "  %-8s  %s  %s\n", command.name, dim(fmt.Sprintf("%-19s", command.args)), command.summary)
 	}
 	fmt.Fprintf(w, "\n%s\n", bold("Flags:"))
 	fmt.Fprintf(w, "  %-27s %s\n", "--version, -v", "print version and supported features")
