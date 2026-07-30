@@ -69,7 +69,8 @@ func TestInstallerOffersCurrentShellPathSetupIdempotently(t *testing.T) {
 
 	output := run()
 	if !strings.Contains(output, "zsh") ||
-		!strings.Contains(output, "Added Wago to PATH in ~/.zshrc") {
+		!strings.Contains(output, "Added Wago to PATH in ~/.zshrc") ||
+		!strings.Contains(output, "Open a new shell to use wago or run source ~/.zshrc") {
 		t.Fatalf("path setup output:\n%s", output)
 	}
 	config := filepath.Join(home, ".zshrc")

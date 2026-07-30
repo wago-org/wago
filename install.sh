@@ -203,7 +203,8 @@ add_path_to_config() {
 		return 1
 	fi
 	printf '%s✓%s Added Wago to PATH in %s\n' "$cyan" "$reset" "$(display_path "$config_file")"
-	printf '%sOpen a new shell to use wago.%s\n' "$dim" "$reset"
+	printf '%sOpen a new shell to use wago or run %ssource %s%s\n' \
+		"$dim" "$reset" "$(display_path "$config_file")" "$reset"
 }
 
 offer_path_setup() {
