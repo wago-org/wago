@@ -191,14 +191,6 @@ func pickerWindow(page *pickerPage) (start, end int) {
 	return start, end
 }
 
-func pickerItems(values []string) []pickerItem {
-	items := make([]pickerItem, len(values))
-	for i, value := range values {
-		items[i] = pickerItem{label: value, value: value}
-	}
-	return items
-}
-
 func choosePicker(title string, items []pickerItem) (string, bool) {
 	if len(items) == 0 {
 		return "", false

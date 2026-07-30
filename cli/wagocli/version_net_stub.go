@@ -164,6 +164,7 @@ func vmUpdate(d wagopaths.Dirs, ver string, profile wagopaths.Profile, build wag
 		fatal("version update: %v", err)
 	}
 	fmt.Printf("updated wago %s -> %s\n", cyan(ver), dest)
+	offerUseUpdated(d, ver, profile, build)
 }
 
 // releaseDownloadVersion resolves a rolling channel to its newest immutable

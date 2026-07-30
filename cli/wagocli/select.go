@@ -54,7 +54,7 @@ type multiSelect struct {
 // apply advances the model by one key. It reports whether the interaction is
 // finished, and if so whether it was cancelled (esc) rather than submitted.
 // Enter always submits the checked items; r clears then submits (reject-all);
-// movement clamps at the ends; ← and → are intentionally inert.
+// movement clamps at the ends; → is an alternate submit key.
 func (m *multiSelect) apply(k selectKey) (done, cancelled bool) {
 	switch k {
 	case keyUp:
@@ -82,7 +82,7 @@ func (m *multiSelect) apply(k selectKey) (done, cancelled bool) {
 			m.items[i].on = false
 		}
 		return true, false
-	case keyAccept:
+	case keyAccept, keyRight:
 		return true, false
 	case keyCancel, keyQuit:
 		return true, true
@@ -162,10 +162,15 @@ func (m *multiSelect) frame() string {
 			labelW = len(it.label)
 		}
 	}
-	for i, it := range m.items {
+	start, end := multiSelectWindow(m)
+	if start > 0 {
+		fmt.Fprintf(&b, "%s\n", dim(fmt.Sprintf("  ↑ %d more", start)))
+	}
+	for i := start; i < end; i++ {
+		it := m.items[i]
 		cursor := "  "
 		if i == m.cursor {
-			cursor = cyan("▸ ")
+			cursor = cyan("› ")
 		}
 		box := "[ ]"
 		if it.on {
@@ -177,10 +182,25 @@ func (m *multiSelect) frame() string {
 		}
 		fmt.Fprintf(&b, "%s\n", line)
 	}
+	if remaining := len(m.items) - end; remaining > 0 {
+		fmt.Fprintf(&b, "%s\n", dim(fmt.Sprintf("  ↓ %d more", remaining)))
+	}
 	prompt := m.prompt
 	if prompt == "" {
 		prompt = "↑/↓ move · space toggle · enter accept · r reject all · esc cancel"
 	}
 	fmt.Fprintf(&b, "%s\n", dim(prompt))
 	return b.String()
+}
+
+func multiSelectWindow(m *multiSelect) (start, end int) {
+	if len(m.items) <= pickerVisibleRows {
+		return 0, len(m.items)
+	}
+	start = (m.cursor / pickerVisibleRows) * pickerVisibleRows
+	end = start + pickerVisibleRows
+	if end > len(m.items) {
+		end = len(m.items)
+	}
+	return start, end
 }

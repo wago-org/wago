@@ -69,7 +69,7 @@ func TestMetaAndVersionCommandConstructors(t *testing.T) {
 			t.Fatalf("invalid command descriptor: %#v", cmd)
 		}
 	}
-	if got := versionCommand(); len(got.Children) != 7 || got.Children[0].Name != "list" || got.Children[1].Name != "current" || got.Children[6].Name != "uninstall" {
+	if got := versionCommand(); len(got.Children) != 7 || got.Children[0].Name != "list" || got.Children[1].Name != "current" || got.Children[5].Args != "[channel]" || got.Children[6].Name != "uninstall" || got.Children[6].Args != "[version...]" {
 		t.Fatalf("version command tree = %#v", got.Children)
 	}
 

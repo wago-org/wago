@@ -81,7 +81,7 @@ func versionCommand() *Cmd {
 			{
 				Name:    "update",
 				Summary: "refresh an installed version or release channel",
-				Args:    "[version]",
+				Args:    "[channel]",
 				Flags: []Flag{
 					{Name: "nightly", Bool: true, Help: "refresh the latest nightly release"},
 					{Name: "canary", Bool: true, Help: "refresh the canary built from main"},
@@ -89,7 +89,15 @@ func versionCommand() *Cmd {
 					{Name: "build", Arg: "<name>", Help: "normal or tiny (default active)"},
 				},
 				Run: func(c *Ctx) {
-					ver, err := updateVersionTarget(activeVersion(dirs()), c.Args, c.Bool("nightly"), c.Bool("canary"))
+					args := c.Args
+					if len(args) == 0 && !c.Bool("nightly") && !c.Bool("canary") {
+						channel, ok := chooseUpdateChannel(activeVersion(dirs()))
+						if !ok {
+							return
+						}
+						args = []string{channel}
+					}
+					ver, err := updateVersionTarget(activeVersion(dirs()), args, c.Bool("nightly"), c.Bool("canary"))
 					if err != nil {
 						fatal("version update: %v", err)
 					}
@@ -114,9 +122,17 @@ func versionCommand() *Cmd {
 			},
 			{
 				Name: "uninstall", Aliases: []string{"remove", "rm"},
-				Summary: "remove an installed version",
-				Args:    "<version>",
-				Run:     func(c *Ctx) { vmUninstall(dirs(), c.one("<version>")) },
+				Summary: "select and remove installed versions",
+				Args:    "[version...]",
+				Run: func(c *Ctx) {
+					if len(c.Args) == 0 {
+						vmChooseUninstall(dirs())
+						return
+					}
+					for _, version := range c.Args {
+						vmUninstall(dirs(), version)
+					}
+				},
 			},
 		},
 	}
