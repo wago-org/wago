@@ -21,6 +21,11 @@ type pkgOpts struct {
 	verbose bool // stream the underlying `go` output
 }
 
+// handoffPluginProcess is the process-replacement boundary used after resolving
+// a plugin-aware Wago build. Tests replace it so selection can be verified
+// without replacing the test process.
+var handoffPluginProcess = execProcess
+
 // plural returns "s" unless n == 1.
 func plural(n int) string {
 	if n == 1 {
@@ -228,11 +233,12 @@ func pkgUpdate(target string, o pkgOpts) {
 	fmt.Printf("%s updated %d plugin%s  %s\n", cyan("✓"), len(targets), plural(len(targets)), bin)
 }
 
-// maybeReexecForPlugins transparently hands off to a custom wago binary with this
-// project's plugins compiled in — building it once (then cache hits), so `wago
-// run` "just works" with the declared dependencies. It's a no-op when nothing is
-// declared or when we're already running a plugin-built binary (WAGO_PLUGIN_ACTIVE).
-// A build failure degrades to a warning so the current binary still runs.
+// maybeReexecForPlugins transparently hands off to the active custom wago binary:
+// the local project's build when it declares plugins, otherwise the global
+// plugin build. It builds on demand after a cache miss, and is a no-op when
+// nothing is declared or we're already running a plugin-built binary
+// (WAGO_PLUGIN_ACTIVE). A build failure degrades to a warning so the current
+// binary still runs.
 func maybeReexecForPlugins() {
 	if os.Getenv("WAGO_PLUGIN_ACTIVE") != "" {
 		return
@@ -247,36 +253,7 @@ func maybeReexecForPlugins() {
 		return
 	}
 	env := append(os.Environ(), "WAGO_PLUGIN_ACTIVE="+buildHash(deps))
-	if err := execProcess(bin, append([]string{bin}, os.Args[1:]...), env); err != nil {
-		fatal("plugins: exec %s: %v", bin, err)
-	}
-}
-
-// maybeReexecLocal hands off to the project's local .wago/bin/wago (built on
-// demand) when the current directory has a wago.json declaring packages — so
-// every command runs with the project's packages compiled in. Unlike
-// maybeReexecForPlugins it never falls back to the global set: with no local
-// project it leaves the invoked (global) wago running. No-op inside an already
-// handed-off build (WAGO_PLUGIN_ACTIVE) or under WAGO_BARE.
-func maybeReexecLocal() {
-	if os.Getenv("WAGO_PLUGIN_ACTIVE") != "" || truthyEnv("WAGO_BARE") {
-		return
-	}
-	deps, _ := projectDeps(".")
-	if len(deps) == 0 {
-		return
-	}
-	dir, err := buildDirFor(false)
-	if err != nil {
-		return
-	}
-	bin, _, err := ensureBuiltBinary(dir, deps, false, false)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s could not build plugins (%v); running without them\n", dim("wago:"), err)
-		return
-	}
-	env := append(os.Environ(), "WAGO_PLUGIN_ACTIVE="+buildHash(deps))
-	if err := execProcess(bin, append([]string{bin}, os.Args[1:]...), env); err != nil {
+	if err := handoffPluginProcess(bin, append([]string{bin}, os.Args[1:]...), env); err != nil {
 		fatal("plugins: exec %s: %v", bin, err)
 	}
 }

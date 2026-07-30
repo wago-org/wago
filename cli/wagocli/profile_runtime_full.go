@@ -10,8 +10,8 @@ import (
 )
 
 func prepareRunnerInvocation(args []string) {
-	if usesProjectBuild(args) {
-		maybeReexecLocal()
+	if usesPluginRuntime(args) {
+		maybeReexecForPlugins()
 	}
 }
 

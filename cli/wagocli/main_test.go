@@ -116,7 +116,7 @@ func TestMetaAndVersionCommandConstructors(t *testing.T) {
 	validateCommand().Run(&Ctx{Args: []string{path}})
 }
 
-func TestProjectBuildAndRunTargetClassification(t *testing.T) {
+func TestPluginRuntimeAndRunTargetClassification(t *testing.T) {
 	for _, tc := range []struct {
 		args []string
 		want bool
@@ -127,8 +127,8 @@ func TestProjectBuildAndRunTargetClassification(t *testing.T) {
 		{[]string{"plugin", "list"}, true},
 		{[]string{"run", "x.wasm"}, true},
 	} {
-		if got := usesProjectBuild(tc.args); got != tc.want {
-			t.Fatalf("usesProjectBuild(%v) = %v, want %v", tc.args, got, tc.want)
+		if got := usesPluginRuntime(tc.args); got != tc.want {
+			t.Fatalf("usesPluginRuntime(%v) = %v, want %v", tc.args, got, tc.want)
 		}
 	}
 	for _, name := range []string{"module.wasm", "module.wago"} {
