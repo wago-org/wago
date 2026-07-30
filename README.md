@@ -66,10 +66,13 @@ Useful installer knobs are:
 | `WAGO_NO_MODIFY_PATH=1` | Never offer to edit a detected shell startup file. |
 | `NO_COLOR=1` | Disable colored installer output. |
 
-When the install directory is not already on `PATH`, an interactive install
-detects available shells and offers to update the current shell's startup file
-first. Installs without a controlling terminal print the manual PATH step
-without modifying shell configuration.
+An interactive install asks where to place the manager (default:
+`~/.wago/bin`), detects available shells, and offers to update a shell startup
+file. It offers persistent PATH setup even when the current process already has
+the install directory on `PATH`, so uninstalling and reinstalling from the same
+shell behaves like a fresh install. Installs without a controlling terminal use
+the default or `WAGO_BIN_DIR` and do not modify shell configuration. Re-running
+the interactive installer asks before replacing an existing manager.
 
 From a checkout, build the standard-Go manager:
 
@@ -137,8 +140,9 @@ wago self uninstall
 ```
 
 `wago self uninstall` asks for confirmation, then removes the manager,
-installed runtimes, global plugins, configuration, and caches. It does not
-remove project directories, local `.wago` builds, or `wago.json` files.
+installed runtimes, global plugins, configuration, caches, and installer-added
+shell PATH entries. It does not remove project directories, local `.wago`
+builds, or `wago.json` files.
 
 ## Docs
 

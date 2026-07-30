@@ -17,6 +17,8 @@ set -eu
 repo_url="${WAGO_REPO_URL:-https://github.com/wago-org/wago.git}"
 version="${WAGO_VERSION:-main}"
 archive_url="${WAGO_ARCHIVE_URL:-https://api.github.com/repos/wago-org/wago/zipball/$version}"
+bin_dir_explicit=0
+[ -z "${WAGO_BIN_DIR:-}" ] || bin_dir_explicit=1
 bin_dir="${WAGO_BIN_DIR:-$HOME/.wago/bin}"
 # The wago source is kept here so `wago pkg add` can build plugins while wago is
 # unpublished — the CLI looks for it at ~/.wago/src (see wagoModuleDir).
@@ -208,9 +210,6 @@ add_path_to_config() {
 }
 
 offer_path_setup() {
-	case ":$PATH:" in
-		*":$bin_dir:"*) return 0 ;;
-	esac
 	if [ "$no_modify_path" = "1" ]; then
 		return 1
 	fi
@@ -258,6 +257,54 @@ offer_path_setup() {
 	shell_name=${selected%%|*}
 	config_file=${selected#*|}
 	add_path_to_config "$shell_name" "$config_file"
+}
+
+choose_install_dir() {
+	[ "$bin_dir_explicit" = "0" ] || return 0
+	if [ "$is_tty" != "1" ] && [ "${WAGO_INTERNAL_INSTALL_DIR_ONLY:-0}" != "1" ]; then
+		return 0
+	fi
+	install_tty="${WAGO_INSTALL_TTY:-/dev/tty}"
+	if [ ! -r "$install_tty" ]; then
+		return 0
+	fi
+
+	printf '\n%sWhere should Wago be installed?%s\n' "$bold" "$reset"
+	printf 'Directory [%s]: ' "$(display_path "$bin_dir")"
+	answer=""
+	IFS= read -r answer <"$install_tty" || true
+	if [ -n "$answer" ]; then
+		case "$answer" in
+			"~") bin_dir=$HOME ;;
+			"~/"*) bin_dir="$HOME/${answer#\~/}" ;;
+			/*) bin_dir=$answer ;;
+			*) bin_dir="$(pwd)/$answer" ;;
+		esac
+		while [ "$bin_dir" != "/" ] && [ "${bin_dir%/}" != "$bin_dir" ]; do
+			bin_dir=${bin_dir%/}
+		done
+	fi
+}
+
+confirm_reinstall() {
+	[ -e "$bin_dir/wago" ] || return 0
+	if [ "$is_tty" != "1" ] && [ "${WAGO_INTERNAL_REINSTALL_CHECK_ONLY:-0}" != "1" ]; then
+		return 0
+	fi
+	install_tty="${WAGO_INSTALL_TTY:-/dev/tty}"
+	if [ ! -r "$install_tty" ]; then
+		return 0
+	fi
+
+	printf '%sWago is already installed at %s.%s\n' \
+		"$bold" "$(display_path "$bin_dir/wago")" "$reset"
+	printf 'Reinstall? [Y/n] '
+	answer=""
+	IFS= read -r answer <"$install_tty" || true
+	case "$answer" in
+		n|N|no|NO|No) return 1 ;;
+		*) return 0 ;;
+	esac
 }
 
 run_with_timeout() {
@@ -388,6 +435,19 @@ if [ "${WAGO_INTERNAL_FETCH_ONLY:-0}" = "1" ]; then
 	exit 0
 fi
 
+if [ "${WAGO_INTERNAL_REINSTALL_CHECK_ONLY:-0}" = "1" ]; then
+	if ! confirm_reinstall; then
+		printf 'Cancelled.\n'
+	fi
+	exit 0
+fi
+
+if [ "${WAGO_INTERNAL_INSTALL_DIR_ONLY:-0}" = "1" ]; then
+	choose_install_dir
+	printf 'bin=%s\n' "$(display_path "$bin_dir")"
+	exit 0
+fi
+
 go_version_ok() {
 	v=$(go env GOVERSION 2>/dev/null || go version | awk '{print $3}')
 	v=${v#go}
@@ -402,6 +462,8 @@ go_version_ok() {
 
 printf '%sSetting Up%s\n' "$bold" "$reset"
 
+choose_install_dir
+
 if [ "$dry_run" = "1" ]; then
 	detail "version" "$version"
 	detail "profile" "standard"
@@ -409,6 +471,11 @@ if [ "$dry_run" = "1" ]; then
 	detail "runtime" "$(display_path "$runner_dir/wago-runtime")"
 	detail "source" "$(display_path "$src_dir")"
 	printf '%sNo changes made.%s\n' "$dim" "$reset"
+	exit 0
+fi
+
+if ! confirm_reinstall; then
+	printf 'Cancelled.\n'
 	exit 0
 fi
 
@@ -495,12 +562,12 @@ progress_finish "Installed Wago $stamp (standard)"
 detail "manager" "$(display_path "$bin_dir/wago")"
 detail "runtime" "$(display_path "$runner_dir/wago-runtime")"
 
-case ":$PATH:" in
-	*":$bin_dir:"*) ;;
-	*)
-		if ! offer_path_setup; then
+if ! offer_path_setup; then
+	case ":$PATH:" in
+		*":$bin_dir:"*) ;;
+		*)
 			printf '\n%sNext step%s\n' "$bold" "$reset"
 			printf '  Add %s to PATH, then run %swago%s.\n' "$(display_path "$bin_dir")" "$cyan" "$reset"
-		fi
-		;;
-esac
+			;;
+	esac
+fi
