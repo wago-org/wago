@@ -372,21 +372,6 @@ func sigString(params, results []wago.ValType) string {
 	return sig + " -> " + strings.Join(rs, ", ")
 }
 
-// pluginCapabilities returns the capability names an extension declares, by
-// registering it on a throwaway runtime.
-func pluginCapabilities(ext wago.Extension) []string {
-	rt := wago.NewRuntime()
-	if err := rt.Use(ext); err != nil {
-		return nil
-	}
-	caps := rt.Capabilities()
-	out := make([]string, len(caps))
-	for i, c := range caps {
-		out[i] = string(c)
-	}
-	return out
-}
-
 func loadPluginRuntime(cfg *wago.RuntimeConfig, list string) *wago.Runtime {
 	rt := wago.NewRuntime(wago.WithRuntimeConfig(cfg))
 	manifest, err := activePluginConfigs()
