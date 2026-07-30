@@ -187,7 +187,7 @@ func (e *Engine) CallGuarded(code uintptr, serArgs []byte, linMemBase uintptr, t
 	if TrapCode(loadTrap(trap)) == TrapInterrupted {
 		return &TrapError{Code: TrapInterrupted}
 	}
-	activation.enterWasm()
+	activation.enterWasm(linMemBase)
 	enterNative(code, slicePtr(serArgs), linMemBase, slicePtr(trap), slicePtr(results), e.stackTop)
 	activation.leaveWasm()
 	if len(trap) >= 4 {

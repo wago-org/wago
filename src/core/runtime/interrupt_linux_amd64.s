@@ -4,7 +4,7 @@
 
 // SA_SIGINFO handler: DI=signal, SI=*siginfo, DX=*ucontext.
 // Linux amd64 ucontext has saved RBX at +128, RSP at +160, and RIP at +168.
-// interruptActivation is 32 bytes; state/tid/trap/ack occupy offsets 0/4/8/16.
+// interruptActivation is 40 bytes; state/tid/trap/ack/linMem occupy 0/4/8/16/32.
 TEXT ·interruptSigHandler(SB), NOSPLIT|NOFRAME, $0-0
 	MOVQ	DX, R8
 	MOVQ	$186, AX                    // SYS_gettid
@@ -24,7 +24,7 @@ runtime_miss:
 	MOVL	$0, 16(R9)                  // delivery missed Wasm; allow retry
 	RET	                                // our target is in runtime/entry/exit
 activation_next:
-	ADDQ	$32, R9
+	ADDQ	$40, R9
 	DECQ	R10
 	JNZ	activation_loop
 	CMPL	8(SI), $-6                  // SI_TKILL: Wago delivery raced activation
@@ -67,7 +67,7 @@ interrupt_match:
 	MOVQ	8(R9), AX                   // activation.trap
 	MOVL	$12, 0(AX)                  // TrapInterrupted
 	MOVL	$1, 16(R9)                  // acknowledgement
-	MOVQ	128(R8), AX                 // saved RBX = active linMem
+	MOVQ	32(R9), AX                  // activation.linMem
 	MOVQ	-24(AX), AX                 // trampoline's trap re-entry RSP
 	MOVQ	AX, 160(R8)                 // saved RSP
 	MOVQ	·interruptTrapPC(SB), AX

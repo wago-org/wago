@@ -126,8 +126,9 @@ func (e *Engine) Call(code uintptr, serArgs, linMem, trap, results []byte) error
 	if TrapCode(loadTrap(trap)) == TrapInterrupted {
 		return &TrapError{Code: TrapInterrupted}
 	}
-	activation.enterWasm()
-	enterNative(code, slicePtr(serArgs), slicePtr(linMem), slicePtr(trap), slicePtr(results), e.stackTop)
+	linMemBase := slicePtr(linMem)
+	activation.enterWasm(linMemBase)
+	enterNative(code, slicePtr(serArgs), linMemBase, slicePtr(trap), slicePtr(results), e.stackTop)
 	activation.leaveWasm()
 	if len(trap) >= 4 {
 		if tc := TrapCode(loadTrap(trap)); tc != TrapNone {
@@ -152,7 +153,7 @@ func (e *Engine) CallPrepared(code uintptr, serArgs []byte, linMemBase uintptr, 
 		storeTrap(trap, 0)
 		return &TrapError{Code: TrapInterrupted}
 	}
-	activation.enterWasm()
+	activation.enterWasm(linMemBase)
 	enterNative(code, slicePtr(serArgs), linMemBase, slicePtr(trap), slicePtr(results), e.stackTop)
 	activation.leaveWasm()
 	if len(trap) >= 4 {
@@ -270,7 +271,7 @@ func (e *Engine) callWithHostLoop(code uintptr, serArgs []byte, linMemBase uintp
 			if TrapCode(loadTrap(trap)) == TrapInterrupted {
 				return &TrapError{Code: TrapInterrupted}
 			}
-			activation.enterWasm()
+			activation.enterWasm(linMemBase)
 			enterNative(code, slicePtr(serArgs), linMemBase, slicePtr(trap), slicePtr(results), e.stackTop)
 		} else {
 			clearTrapUnlessInterrupted(trap) // clear host-pending, but preserve concurrent Close interruption
@@ -278,7 +279,7 @@ func (e *Engine) callWithHostLoop(code uintptr, serArgs []byte, linMemBase uintp
 				return &TrapError{Code: TrapInterrupted}
 			}
 			prepareHostResume(ctrl, trap, e.stackTop, e.StackLimit())
-			activation.enterWasm()
+			activation.enterWasm(linMemBase)
 			resumeNative(ctrlPtr, e.stackTop)
 		}
 		activation.leaveWasm()

@@ -1,4 +1,4 @@
-//go:build linux && amd64 && !tinygo
+//go:build linux && (amd64 || arm64) && !tinygo
 
 package wago
 
@@ -47,10 +47,10 @@ func TestPublicCompileOmitsCooperativeInterruptPolls(t *testing.T) {
 	}
 	defer public.Close()
 	if !bytes.Equal(public.Code, withoutPolls.Code) {
-		t.Fatal("public Linux/amd64 compilation retained cooperative interrupt instrumentation")
+		t.Fatal("public Linux compilation retained cooperative interrupt instrumentation")
 	}
 	if !wruntime.HostInterruptSupported() {
-		t.Fatal("Linux/amd64 build did not report asynchronous host interruption")
+		t.Fatal("Linux build did not report asynchronous host interruption")
 	}
 }
 

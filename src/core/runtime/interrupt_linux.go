@@ -1,4 +1,4 @@
-//go:build linux && amd64 && !tinygo
+//go:build linux && (amd64 || arm64) && !tinygo
 
 package runtime
 
@@ -15,6 +15,7 @@ import (
 const (
 	maxInterruptActivations = 64
 	maxExecutableCodeRanges = 4096
+	interruptDeadlineRetry  = 50 * time.Microsecond
 
 	interruptOutside   = uint32(0)
 	interruptRuntime   = uint32(1)
@@ -26,12 +27,14 @@ const (
 // The handler reads this table directly; fields and offsets are mirrored in
 // interrupt_linux_amd64.s.
 type interruptActivation struct {
-	state uint32
-	tid   uint32
-	trap  uintptr
-	ack   uint32
-	timer int32
-	armed uint32
+	state  uint32
+	tid    uint32
+	trap   uintptr
+	ack    uint32
+	timer  int32
+	armed  uint32
+	_      uint32
+	linMem uintptr
 }
 
 type executableCodeRange struct {
@@ -56,10 +59,12 @@ var (
 )
 
 const (
-	_ = uint(unsafe.Sizeof(interruptActivation{}) - 32)
-	_ = uint(32 - unsafe.Sizeof(interruptActivation{}))
+	_ = uint(unsafe.Sizeof(interruptActivation{}) - 40)
+	_ = uint(40 - unsafe.Sizeof(interruptActivation{}))
 	_ = uint(unsafe.Offsetof(interruptActivation{}.ack) - 16)
 	_ = uint(16 - unsafe.Offsetof(interruptActivation{}.ack))
+	_ = uint(unsafe.Offsetof(interruptActivation{}.linMem) - 32)
+	_ = uint(32 - unsafe.Offsetof(interruptActivation{}.linMem))
 	_ = uint(unsafe.Sizeof(executableCodeRange{}) - 16)
 	_ = uint(16 - unsafe.Sizeof(executableCodeRange{}))
 	_ = uint(unsafe.Sizeof(interruptSigevent{}) - 64)
@@ -80,9 +85,8 @@ type interruptSigaction struct {
 }
 
 const (
-	interruptSA_SIGINFO  = 0x00000004
-	interruptSA_RESTORER = 0x04000000
-	interruptSA_ONSTACK  = 0x08000000
+	interruptSA_SIGINFO = 0x00000004
+	interruptSA_ONSTACK = 0x08000000
 )
 
 func interruptRTSigaction(sig uintptr, act, old *interruptSigaction) error {
@@ -104,10 +108,10 @@ func installInterruptHandler() {
 	}
 	interruptOldHandler = old.handler
 	act := interruptSigaction{
-		handler:  addrInterruptSigHandler(),
-		flags:    interruptSA_SIGINFO | interruptSA_ONSTACK | interruptSA_RESTORER,
-		restorer: addrInterruptSigRestorer(),
+		handler: addrInterruptSigHandler(),
+		flags:   interruptSA_SIGINFO | interruptSA_ONSTACK,
 	}
+	configureInterruptSigaction(&act)
 	if err := interruptRTSigaction(sig, &act, nil); err != nil {
 		interruptInstallErr = fmt.Errorf("install reserved real-time signal %d: %w", sig, err)
 		return
@@ -132,6 +136,7 @@ func beginInterruptActivation(trap []byte) (*interruptActivation, error) {
 		if atomic.CompareAndSwapUint32(&a.state, interruptOutside, interruptRuntime) {
 			atomic.StoreUint32(&a.tid, tid)
 			atomic.StoreUintptr(&a.trap, trapPtr)
+			atomic.StoreUintptr(&a.linMem, 0)
 			atomic.StoreUint32(&a.ack, 0)
 			atomic.StoreUint32(&a.armed, 0)
 			if err := armActivationDeadline(a); err != nil {
@@ -148,8 +153,9 @@ func beginInterruptActivation(trap []byte) (*interruptActivation, error) {
 	return nil, fmt.Errorf("jit host interrupt: activation table full (%d)", maxInterruptActivations)
 }
 
-func (a *interruptActivation) enterWasm() {
+func (a *interruptActivation) enterWasm(linMem uintptr) {
 	if a != nil {
+		atomic.StoreUintptr(&a.linMem, linMem)
 		atomic.StoreUint32(&a.state, interruptWasm)
 	}
 }
@@ -157,6 +163,7 @@ func (a *interruptActivation) enterWasm() {
 func (a *interruptActivation) leaveWasm() {
 	if a != nil {
 		atomic.StoreUint32(&a.state, interruptRuntime)
+		atomic.StoreUintptr(&a.linMem, 0)
 	}
 }
 
@@ -169,6 +176,7 @@ func (a *interruptActivation) close() {
 		_, _, _ = syscall.RawSyscall(syscall.SYS_TIMER_DELETE, uintptr(uint32(a.timer)), 0, 0)
 	}
 	atomic.StoreUintptr(&a.trap, 0)
+	atomic.StoreUintptr(&a.linMem, 0)
 	atomic.StoreUint32(&a.tid, 0)
 	atomic.StoreUint32(&a.ack, 0)
 	atomic.StoreUint32(&a.state, interruptOutside)
@@ -217,6 +225,10 @@ func armActivationDeadline(a *interruptActivation) error {
 		return fmt.Errorf("jit host interrupt: timer_create: %w", errno)
 	}
 	spec := interruptItimerspec{
+		interval: interruptTimespec{
+			sec:  int64(interruptDeadlineRetry / time.Second),
+			nsec: int64(interruptDeadlineRetry % time.Second),
+		},
 		value: interruptTimespec{sec: int64(delay / time.Second), nsec: int64(delay % time.Second)},
 	}
 	_, _, errno = syscall.RawSyscall6(syscall.SYS_TIMER_SETTIME, uintptr(uint32(timerID)), 0,
@@ -392,8 +404,6 @@ func RequestInterruptAsync(trap []byte) {
 func HostInterruptSupported() bool { return true }
 
 func interruptSigHandler()
-func interruptSigRestorer()
 func nativeInterruptTrap()
 func addrInterruptSigHandler() uintptr
-func addrInterruptSigRestorer() uintptr
 func addrNativeInterruptTrap() uintptr

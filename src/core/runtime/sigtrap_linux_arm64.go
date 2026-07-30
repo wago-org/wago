@@ -130,7 +130,17 @@ func (e *Engine) CallGuarded(code uintptr, serArgs []byte, linMemBase uintptr, t
 		clearTrapUnlessInterrupted(trap)
 		j.putU64(abi.TrapCellPtrOffset, uint64(slicePtr(trap)))
 	}
+	activation, err := beginInterruptActivation(trap)
+	if err != nil {
+		return err
+	}
+	defer activation.close()
+	if TrapCode(loadTrap(trap)) == TrapInterrupted {
+		return &TrapError{Code: TrapInterrupted}
+	}
+	activation.enterWasm(linMemBase)
 	enterNative(code, slicePtr(serArgs), linMemBase, slicePtr(trap), slicePtr(results), e.stackTop)
+	activation.leaveWasm()
 	if len(trap) >= 4 {
 		if tc := TrapCode(uint32(trap[0]) | uint32(trap[1])<<8 | uint32(trap[2])<<16 | uint32(trap[3])<<24); tc != TrapNone {
 			return &TrapError{Code: tc}

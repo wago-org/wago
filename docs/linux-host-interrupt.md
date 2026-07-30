@@ -1,9 +1,9 @@
-# Linux/amd64 host interruption
+# Linux host interruption
 
-Linux/amd64 context cancellation and active-instance close use a
+Linux/amd64 and Linux/arm64 context cancellation and active-instance close use a
 thread-directed real-time signal plus `ucontext` rewriting. Public compilation
 therefore emits no interruption loads, counters, branches, or safepoints in
-generated Wasm. ARM64 retains cooperative function-entry and loop-header polls.
+generated Wasm on either architecture.
 
 ## Execution contract
 
@@ -52,19 +52,21 @@ Context-aware calls register their interruption callback with
 duration of the call. The retry callback starts only if cancellation or the
 deadline actually fires.
 
-Deadline contexts additionally arm a one-shot
+Deadline contexts additionally arm a
 `timer_create(CLOCK_MONOTONIC, SIGEV_THREAD_ID)` timer for the activation's
 Linux TID. Kernel delivery breaks an uninstrumented native loop even if the Go
-runtime is waiting for that loop during stop-the-world GC. The timer is deleted
-before the activation slot and trap storage are released. Explicit cancellation
-uses the `AfterFunc` path because it has no predetermined kernel deadline.
+runtime is waiting for that loop during stop-the-world GC. After the deadline,
+the timer retries at a short interval to close entry, exit, and host-return
+races, then is deleted before the activation slot and trap storage are released.
+Explicit cancellation uses the `AfterFunc` path because it has no predetermined
+kernel deadline.
 
 The mechanism deliberately moves cost to the host/native boundary. On the
 Linux/amd64 qualification host, the low-level one-operation call benchmark was
 about 0.38–0.39 microseconds per entry with activation publication and remained
-at zero allocations. Use a prepared/batched guest entry for tiny functions;
-long-running generated Wasm pays no interruption cost per instruction or loop
-iteration.
+at zero allocations. ARM64 must be measured independently. Use a
+prepared/batched guest entry for tiny functions; long-running generated Wasm
+pays no interruption cost per instruction or loop iteration.
 
 The handler never discards a host/runtime stack. If an import does not return,
 in-process cancellation cannot force it to unwind; physical instance resources
@@ -73,7 +75,7 @@ fallback for hosts that require a guaranteed kill of arbitrary native code.
 
 ## Validation
 
-Run the Linux/amd64-specific gates on a native machine:
+Run the Linux architecture-specific gates on native amd64 and arm64 machines:
 
 ```sh
 go test ./src/wago -run 'Test(CallContextInterruptsNativeLoop|InvokeContextInterruptsNativeLoop|InvokeContextInterruptsHostCallLoop|KernelDeadlineInterruptsDuringStopTheWorld|WazeroPortCloseInterruptsInfiniteInvocation|PublicCompileOmitsCooperativeInterruptPolls)$'

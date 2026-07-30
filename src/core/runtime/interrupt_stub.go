@@ -1,4 +1,4 @@
-//go:build !linux || !amd64 || tinygo
+//go:build !linux || (!amd64 && !arm64) || tinygo
 
 package runtime
 
@@ -7,7 +7,7 @@ import "time"
 type interruptActivation struct{}
 
 func beginInterruptActivation([]byte) (*interruptActivation, error) { return nil, nil }
-func (*interruptActivation) enterWasm()                             {}
+func (*interruptActivation) enterWasm(uintptr)                      {}
 func (*interruptActivation) leaveWasm()                             {}
 func (*interruptActivation) close()                                 {}
 
