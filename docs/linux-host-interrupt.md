@@ -1,0 +1,94 @@
+# Linux host interruption
+
+Linux/amd64 and Linux/arm64 context cancellation and active-instance close use a
+thread-directed real-time signal plus `ucontext` rewriting. Public compilation
+therefore emits no interruption loads, counters, branches, or safepoints in
+generated Wasm on either architecture.
+
+## Execution contract
+
+Ordinary native entries publish no activation and do not lock their goroutine
+to an OS thread. Generated Wasm already keeps its linear-memory base in a fixed
+register (RBX on amd64, X26 on arm64), and basedata stores the active trap-cell
+pointer at a fixed negative offset. The signal handler therefore derives all
+per-invocation state from the saved CPU context.
+
+`MapCode` publishes executable ranges into a fixed 4,096-entry table. It writes
+the range start last; `Unmap` clears it first. The signal handler therefore
+performs a bounded, read-only scan without allocation or locking.
+
+Wago reserves real-time signal 40. Go installs its dispatcher across the
+real-time range, so Wago preserves that handler and chains deliveries that are
+not its `tgkill` requests. The handler uses Go's per-thread alternate signal
+stack through `SA_ONSTACK`.
+
+For a saved PC in a registered code range, the handler:
+
+1. reads the fixed linear-memory register and its basedata trap pointer;
+2. matches that pointer against the bounded table of active cold requests;
+3. writes `TrapInterrupted` to the preallocated invocation trap cell;
+4. loads the trap re-entry stack pointer recorded by `enterNative`;
+5. rewrites the saved stack/program context to a landing pad; and
+6. returns through `rt_sigreturn`.
+
+The landing pad returns into the ordinary `enterNative` epilogue, which restores
+the Go stack and registers. Existing trap decoding then returns
+`context.Canceled`, `context.DeadlineExceeded`, or the interruption trap used by
+`Instance.Close`.
+
+## Races and host code
+
+An interruption request publishes its trap pointer in a fixed 64-entry table,
+enumerates `/proc/self/task`, and uses `tgkill(getpid(), tid, signal)` to
+broadcast to the process threads. Deliveries outside registered generated code
+return immediately. A generated-code delivery only commits when its basedata
+trap pointer matches the request, then acknowledges the matching table entry.
+This moves thread discovery and all registry traffic to the cold request side.
+
+The trap is stored before the broadcast. Entry and host-return boundaries
+preserve it, and cancellation retries close the small check-to-entry race.
+`Instance.Close` uses a bounded asynchronous retry whose stop function remains
+attached to the close state until physical resource release; stale retries
+therefore cannot outlive the arena containing the trap cell.
+
+Context-aware calls register their interruption callback with
+`context.AfterFunc`; they do not keep a watchdog goroutine blocked for the
+duration of the call. The retry callback starts only if cancellation or the
+deadline actually fires.
+
+Deadline contexts alone lock their goroutine for the duration of the call and
+arm a `timer_create(CLOCK_MONOTONIC, SIGEV_THREAD_ID)` timer for that Linux TID.
+Kernel delivery breaks an uninstrumented native loop even if the Go runtime is
+waiting for that loop during stop-the-world GC. After the deadline, the timer
+retries at a short interval and is deleted before the goroutine is unlocked.
+The timer reuses the request-table match, so nested Wasm entered by a host
+callback is not mistaken for the deadline's target. Cleanup blocks the reserved
+signal on the pinned thread, deletes the timer, drains a pending expiration,
+then unpublishes the request before unlocking the goroutine. Explicit
+cancellation uses the broadcast path because it has no predetermined kernel
+deadline.
+
+The mechanism deliberately moves cost to interruption. Ordinary host/native
+entries execute the same runtime path as the non-signal design, and generated
+Wasm pays no interruption cost per instruction or loop iteration. Deadline
+calls pay for thread locking and timer setup; explicit cancellation and close
+pay for request publication, task enumeration, and signal delivery.
+
+The handler never discards a host/runtime stack. If an import does not return,
+in-process cancellation cannot force it to unwind; physical instance resources
+remain protected by the invocation lease. A worker process remains the terminal
+fallback for hosts that require a guaranteed kill of arbitrary native code.
+
+## Validation
+
+Run the Linux architecture-specific gates on native amd64 and arm64 machines
+(qemu-user is also useful for arm64 context-layout regression coverage):
+
+```sh
+go test ./src/wago -run 'Test(CallContextInterruptsNativeLoop|InvokeContextInterruptsNativeLoop|InvokeContextInterruptsHostCallLoop|KernelDeadlineInterruptsDuringStopTheWorld|WazeroPortCloseInterruptsInfiniteInvocation|PublicCompileOmitsCooperativeInterruptPolls)$'
+go test ./src/core/runtime ./src/wago
+```
+
+The public-compile test compares the exact generated bytes against a backend
+compile with interruption disabled and verifies that the cooperative form is
+larger.

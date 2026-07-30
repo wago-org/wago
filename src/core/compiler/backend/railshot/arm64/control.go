@@ -554,6 +554,22 @@ func (f *fn) condBranchJump(fr *ctrlFrame, cc Cond) bool {
 	return false // cfFunc: the guarded form carries the singleRegResult load
 }
 
+const pollFreeLoopPhaseMaxLocals = 16
+
+// alignLoopHeader keeps poll-free loop bodies in the same half of a 32-byte
+// fetch block that the former four-instruction cooperative poll selected. The
+// padding precedes loopStart, so it executes only on initial entry and never on
+// a backedge. Large, loop-dense functions skip it: their extra code footprint
+// costs more than preserving the fetch phase.
+func (f *fn) alignLoopHeader() {
+	f.a.Align16()
+	if !f.interruptible && f.nLocals <= pollFreeLoopPhaseMaxLocals {
+		for range 4 {
+			f.a.Nop()
+		}
+	}
+}
+
 // --- control opcodes ---
 
 // scanLoopBody scans a loop body ahead from the reader's current position (the
@@ -698,7 +714,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 		}
 		f.flush()
 		if kind == cfLoop {
-			f.a.Align16() // loop-top alignment: the pad runs on entry, not per iteration
+			f.alignLoopHeader()
 			fr.loopStart = f.a.Len()
 			f.emitInterruptCheck()
 		}

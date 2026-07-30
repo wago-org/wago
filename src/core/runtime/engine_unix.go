@@ -244,6 +244,9 @@ func (e *Engine) callWithHostLoop(code uintptr, serArgs []byte, linMemBase uintp
 			enterNative(code, slicePtr(serArgs), linMemBase, slicePtr(trap), slicePtr(results), e.stackTop)
 		} else {
 			clearTrapUnlessInterrupted(trap) // clear host-pending, but preserve concurrent Close interruption
+			if TrapCode(loadTrap(trap)) == TrapInterrupted {
+				return &TrapError{Code: TrapInterrupted}
+			}
 			prepareHostResume(ctrl, trap, e.stackTop, e.StackLimit())
 			resumeNative(ctrlPtr, e.stackTop)
 		}
@@ -295,11 +298,18 @@ func MapCode(code []byte) (mem []byte, entry uintptr, err error) {
 	if err != nil {
 		return nil, 0, err
 	}
+	if err = registerExecutableCode(mem); err != nil {
+		_ = munmap(mem)
+		return nil, 0, err
+	}
 	return mem, slicePtr(mem), nil
 }
 
 // Unmap releases a mapping returned by MapCode.
-func Unmap(mem []byte) error { return munmap(mem) }
+func Unmap(mem []byte) error {
+	unregisterExecutableCode(mem)
+	return munmap(mem)
+}
 
 // slicePtr returns the address of the first element of an off-heap slice as a
 // uintptr. Safe only for mmap-backed slices, whose backing array the GC never
