@@ -47,15 +47,14 @@
 
 ## Installation
 
-During private development, the installer builds from source over SSH. You need
-read access to `git@github.com:wago-org/wago` and Go 1.22+:
+The installer builds the CLI and Standard runtime from the public repository.
+It requires `git` and Go 1.22+:
 
 ```bash
 curl -fsSL https://wago.sh/install.sh | sh
 ```
 
-The same command is intended to install a public prebuilt binary after the
-`v0.1.0` release. Until then, useful installer knobs are:
+Useful installer knobs are:
 
 | Variable | Meaning |
 |---|---|
@@ -64,11 +63,10 @@ The same command is intended to install a public prebuilt binary after the
 | `WAGO_DRY_RUN=1` | Print the source-build plan without installing. |
 | `NO_COLOR=1` | Disable colored installer output. |
 
-From a checkout:
+From a checkout, build the standard-Go manager:
 
 ```bash
-go build -o wago ./cli/wago
-go install ./cli/wago
+make build
 ```
 
 For library use:
@@ -77,12 +75,16 @@ For library use:
 go get github.com/wago-org/wago
 ```
 
-Nightly attempts binaries for Linux, macOS, and Windows on both amd64 and arm64.
-Every build that succeeds is published as `wago-<goos>-<goarch>` with a SHA-256
-checksum; targets without a native JIT port are omitted rather than blocking the
-nightly. Linux releases use the size-focused, no-cgo TinyGo build. `wago version
-install` and `wago version update` require the host's `curl` executable for HTTPS
-downloads.
+Canary and Nightly attempt complete CLI/runtime sets for Linux, macOS, and
+Windows on both amd64 and arm64. Each successful platform publishes the
+runtime-independent CLI as `wago-<goos>-<goarch>` plus Standard, Lite, and
+Minimal runtimes in Normal builds plus every feature-complete Tiny build
+supported by TinyGo on that platform. Linux publishes both builds of all three
+profiles. Runtime assets are named
+`wago-runtime-<profile>-<build>-<goos>-<goarch>`, all with SHA-256 checksums.
+A platform set is omitted if any required Normal binary is missing. The CLI
+uses standard Go's HTTP client. Normal runtimes use standard Go for speed; Tiny
+runtimes use TinyGo for a smaller executable.
 
 ### Toolchain channels
 
@@ -92,9 +94,21 @@ name resolves to its newest published release at install time:
 
 ```bash
 wago version install 0.1.0
+wago version install 0.1.0 --profile lite
+wago version install 0.1.0 --profile minimal --build tiny
 wago version install nightly  # latest successful nightly release
 wago version install canary   # most recent successful-CI build of main
 ```
+
+On macOS, Wago keeps versions, configuration, and caches under `~/.wago`.
+Linux keeps the XDG data/config/cache layout. `WAGO_HOME` overrides either
+platform default.
+
+If the selected release does not contain a runtime or checksum for the current
+platform, the manager clones that release tag and builds the selected
+profile/build from source. This fallback requires `git` plus Go for a Normal
+build or TinyGo for a Tiny build. Network failures and checksum mismatches do
+not fall back and remain hard errors.
 
 `wago version update` refreshes the active version, while a version argument or
 channel flag selects another target:
@@ -628,7 +642,8 @@ measurement, not a universal claim.
 
 ### Binary size
 
-From [docs/tinygo.md](docs/tinygo.md), linux/amd64 CLI size snapshots:
+From [docs/tinygo.md](docs/tinygo.md), historical linux/amd64 monolithic CLI
+size snapshots:
 
 | Build | Size |
 |---|---:|
@@ -637,8 +652,9 @@ From [docs/tinygo.md](docs/tinygo.md), linux/amd64 CLI size snapshots:
 | `tinygo build -no-debug -opt=z -gc=conservative` + `strip -s` | 0.43 MB |
 | Above plus UPX | 0.16 MB |
 
-`make build-release` uses the TinyGo size path. Build with `-scheduler=tasks` when
-using TinyGo; see the TinyGo doc for the foreign-stack and GC rationale.
+`make build-runtime-minimal-tinygo` builds the run-only size profile. Build with
+`-scheduler=tasks` when using TinyGo; see the TinyGo doc for the foreign-stack
+and GC rationale.
 
 ### Performance tuning
 
@@ -846,6 +862,9 @@ Builds:
 
 ```bash
 make build
+make build-runtime-standard
+make build-runtime-lite
+make build-runtime-minimal-tinygo
 make build-release
 make tinygo-build
 make tinygo-test

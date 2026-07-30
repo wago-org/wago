@@ -8,6 +8,7 @@ import (
 )
 
 func TestMainVersionDelegatesToCLI(t *testing.T) {
+	t.Setenv("WAGO_HOME", t.TempDir())
 	oldArgs, oldVersion, oldStdout := os.Args, version, os.Stdout
 	t.Cleanup(func() {
 		os.Args, version, os.Stdout = oldArgs, oldVersion, oldStdout

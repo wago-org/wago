@@ -120,15 +120,19 @@ func TestDecodeKey(t *testing.T) {
 		{[]byte{'a'}, keyAll},
 		{[]byte{'n'}, keyClear},
 		{[]byte{'r'}, keyReject},
-		{[]byte{'q'}, keyCancel},
-		{[]byte{3}, keyCancel},  // Ctrl-C
+		{[]byte{'q'}, keyQuit},
+		{[]byte{3}, keyQuit},    // Ctrl-C
 		{[]byte{27}, keyCancel}, // bare ESC
 		{[]byte{'j'}, keyDown},
 		{[]byte{'k'}, keyUp},
+		{[]byte{'h'}, keyLeft},
+		{[]byte{'<'}, keyLeft},
+		{[]byte{'l'}, keyRight},
+		{[]byte{'>'}, keyRight},
 		{[]byte{27, '[', 'A'}, keyUp},
 		{[]byte{27, '[', 'B'}, keyDown},
-		{[]byte{27, '[', 'C'}, keyNoop}, // → inert
-		{[]byte{27, '[', 'D'}, keyNoop}, // ← inert
+		{[]byte{27, '[', 'C'}, keyRight},
+		{[]byte{27, '[', 'D'}, keyLeft},
 		{[]byte{'x'}, keyNoop},
 		{nil, keyNoop},
 	}

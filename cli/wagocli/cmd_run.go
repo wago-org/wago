@@ -1,3 +1,5 @@
+//go:build !wago_manager
+
 package wagocli
 
 import (
@@ -16,10 +18,10 @@ import (
 func runCommand() *Cmd {
 	flags := append([]Flag{
 		{Name: "invoke", Short: "e", Arg: "<name>", Help: "exported function to call"},
-		{Name: "plugin", Arg: "<names>", Help: "comma-separated extra plugins to enable, on top of wago.json (see: wago plugin list)"},
 		{Name: "bounds", Arg: "<mode>", Help: "bounds checks: defer (default) | all"},
 		parallelFlag(),
 	}, optKnobFlags()...)
+	flags = append(flags, runProfileFlags()...)
 	return &Cmd{
 		Name:        "run",
 		Summary:     "compile and execute an export   (default)",
@@ -141,7 +143,7 @@ func runExec(c *Ctx) {
 	// Main already handed off to a local project build (usesProjectBuild). Here we
 	// also cover the global set, so `wago run` outside a project still picks up a
 	// globally-installed package set. No-op once inside a handed-off build.
-	maybeReexecForPlugins()
+	prepareRunPlugins()
 
 	applyOptFlags(c) // override codegen knobs before any module compiles
 
@@ -156,7 +158,7 @@ func runExec(c *Ctx) {
 	if err != nil {
 		fatal("run: %v", err)
 	}
-	rt := loadPluginRuntime(cfg, plugins)
+	rt := loadRunRuntime(cfg, plugins)
 	defer rt.Close()
 	mod := mustLoadModule(pos[0], rt)
 	comp := mod.Compiled()

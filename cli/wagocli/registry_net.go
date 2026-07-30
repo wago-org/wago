@@ -1,4 +1,4 @@
-//go:build !wago_lean
+//go:build !wago_lean && !wago_manager
 
 // Registry commands (login/logout/whoami/publish/unpublish/deprecate) for the
 // wago registry at plugins.wago.sh. This file imports net/http (and net, os/exec for

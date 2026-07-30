@@ -4,10 +4,9 @@ wago builds and runs under [TinyGo](https://tinygo.org) on `linux/amd64`,
 `linux/arm64`, and `darwin/arm64` with **no cgo**. The decode → validate →
 codegen → execute pipeline works end to end: the public `wago` API runs real
 modules (recursion, i64, floats, linear memory, host imports, `call_indirect`)
-identically to the standard toolchain. The CLI is additionally built and
-smoke-tested on both Linux architectures. TinyGo's Darwin standard library
-cannot currently link the CLI's `os/exec` paths, so Darwin/arm64 gates the
-runtime and public API directly.
+identically to the standard toolchain. Releases provide TinyGo builds of the
+Standard, Lite, and Minimal profiles alongside their standard-Go equivalents.
+The version manager is a separate standard-Go binary with native HTTPS support.
 
 ## Why this needs special handling
 
@@ -42,13 +41,13 @@ TinyGo on Linux links with LLVM `lld`. Make sure `ld.lld` is on `PATH`
 (`apt install lld`, or any LLVM toolchain).
 
 ```bash
-# Build the CLI. Two flags worth noting:
+# Build the Minimal/Tiny runtime. Two flags worth noting:
 #   -scheduler=tasks : use the cooperative scheduler (see "Scheduler" below)
 #   -o wago          : do NOT use a .bin output name — TinyGo treats .bin as a
 #                      firmware image and fails with "ROM segments are non-contiguous"
-tinygo build -scheduler=tasks -o wago ./cli/wago
+tinygo build -scheduler=tasks -tags wago_lean,wago_minimal -o wago-runtime-minimal-tiny ./cli/wago
 
-./wago run tests/testdata/fib.wasm --invoke fib 20   # => fib(20) = 6765
+./wago-runtime-minimal-tiny run tests/testdata/fib.wasm --invoke fib 20
 ```
 
 ## Scheduler: use `-scheduler=tasks`
@@ -72,15 +71,20 @@ precise stack maps.
 Via make:
 
 ```bash
-make build             # standard Go dev build -> ./wago
-make build-release     # size-minimized TinyGo release CLI (~0.43 MB) -> ./wago
-make tinygo-build      # TinyGo debug build (CI portability check) -> ./wago-tinygo
-make tinygo-test       # run the runtime + public-API suites under TinyGo
+make build                         # standard-Go CLI -> ./wago
+make build-runtime-standard        # everything runtime
+make build-runtime-lite            # run, build, and plugins
+make build-runtime-minimal         # standard-Go run-only runtime
+make build-runtime-minimal-tinygo  # TinyGo run-only runtime
+make build-release                 # CLI plus Normal/Tiny builds of all profiles
+make tinygo-build                  # TinyGo Minimal portability build
+make tinygo-test                   # runtime + public-API suites under TinyGo
 ```
 
 ## Binary size
 
-`cli/wago`, linux/amd64:
+Historical monolithic `cli/wago`, linux/amd64 measurements (remeasure the split
+CLI and runtime artifacts independently):
 
 | build | size |
 |---|---:|
@@ -89,7 +93,7 @@ make tinygo-test       # run the runtime + public-API suites under TinyGo
 | `tinygo build` (default — includes DWARF) | 2.3 MB |
 | `tinygo build -no-debug` | 0.68 MB |
 | `tinygo build -no-debug -opt=z -gc=conservative` | 0.62 MB |
-| &nbsp;&nbsp;+ `strip -s` (= `make build-release`) | **0.43 MB** |
+| &nbsp;&nbsp;+ `strip -s` | **0.43 MB** |
 | &nbsp;&nbsp;+ `upx --best --lzma` | **0.16 MB** |
 
 TinyGo's *default* build is no smaller than `go -s -w` because it ships debug
@@ -98,7 +102,7 @@ in order: `-no-debug`, then `strip -s` (drops the symbol table), then `upx`
 (roughly halves again, at a few-ms startup decompression cost). `-gc=leaking`
 saves only ~10 KB over `conservative` and leaks; `-panic=trap` saves ~20 KB but
 replaces panic messages with a bare `SIGILL` — neither is worth it, so
-`make build-release` uses neither.
+The Minimal-runtime recipe uses neither.
 
 The speed/size choice is small: the max-speed build (`-opt=2 -no-debug` + strip)
 is ~0.60 MB, vs 0.43 MB for `-opt=z`. TinyGo wins size at *every* opt level — even
@@ -148,9 +152,9 @@ in.WriteUint32Le(off, v)
 None of this touches the wasm execution path, which runs wago's own JIT-emitted
 machine code, not TinyGo-compiled Go.
 
-`make build-release` uses `-opt=z` (size); it is already at parity above. `-opt=2`
+`make build-runtime-minimal-tinygo` uses `-opt=z` (size); it is already at parity above. `-opt=2`
 trades ~size for a further ~15-20% on these wrappers and on compile-time Go (decode
-/ validate / codegen) — pass `make build-release` a different recipe if you want
+/ validate / codegen) — adjust the Minimal-runtime recipe if you want
 it. Reproduce: `tinygo test -scheduler=tasks -opt=2 -bench=. -run=^$ ./src/core/runtime/`.
 
 At max optimization for both toolchains (`go test -gcflags=all=-B` vs

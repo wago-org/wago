@@ -1,3 +1,5 @@
+//go:build !wago_manager
+
 // Package wagocli is the wago command implementation. It lives in an importable
 // package (rather than package main) so a generated .wago build module can link
 // wago together with plugins — the cli/wago binary is a thin shim that calls Main.
@@ -30,19 +32,7 @@ var root = buildRoot()
 // by `wago --help`.
 func buildRoot() *Cmd {
 	r := &Cmd{Name: "wago"}
-	r.Children = append(r.Children,
-		runCommand(),
-		addCommand(),
-		rmCommand(),
-		pluginCommand(),
-		authCommand(),
-		moduleCommand(),
-		envCommand(),
-		optsCommand(),
-		buildCommand(),
-		validateCommand(),
-		versionCommand(),
-	)
+	r.Children = append(r.Children, runnerCommands()...)
 	return r
 }
 
@@ -68,9 +58,7 @@ func Main(v string) {
 	// with the local package set compiled in. With no project it stays on this
 	// (global) wago. Build-management and toolchain/meta commands are skipped so
 	// they don't rebuild circularly or need a project to run.
-	if usesProjectBuild(args) {
-		maybeReexecLocal()
-	}
+	prepareRunnerInvocation(args)
 	if cmd := root.child(args[0]); cmd != nil {
 		cmd.Dispatch("wago "+cmd.Name, args[1:])
 		return
@@ -155,32 +143,3 @@ func writeCommandList(w *os.File) {
 		fmt.Fprintf(w, "  %-*s  %-*s  %s\n", nameW, c.Name, argW, cmdArg(c), c.Summary)
 	}
 }
-
-// ---- output helpers -----------------------------------------------------
-
-func fatal(format string, args ...any) {
-	fmt.Fprintf(os.Stderr, "%s "+format+"\n", append([]any{red("wago:")}, args...)...)
-	os.Exit(1)
-}
-
-var useColor = colorEnabled()
-
-func colorEnabled() bool {
-	if os.Getenv("NO_COLOR") != "" {
-		return false
-	}
-	fi, err := os.Stdout.Stat()
-	return err == nil && fi.Mode()&os.ModeCharDevice != 0
-}
-
-func paint(code, s string) string {
-	if !useColor {
-		return s
-	}
-	return "\x1b[" + code + "m" + s + "\x1b[0m"
-}
-
-func bold(s string) string { return paint("1", s) }
-func dim(s string) string  { return paint("2", s) }
-func red(s string) string  { return paint("31", s) }
-func cyan(s string) string { return paint("36", s) }

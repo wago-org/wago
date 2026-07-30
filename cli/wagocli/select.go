@@ -5,10 +5,9 @@ import (
 	"strings"
 )
 
-// select.go is a tiny, dependency-free multi-select: a cursor over a list of
-// toggleable rows. The model here is pure (no terminal I/O) so it's fully
-// unit-testable; the raw-mode driver that feeds it keypresses and paints frames
-// lives in select_unix.go / select_windows.go.
+// select.go is the dependency-free multi-select used for capability review.
+// The model is pure (no terminal I/O); the shared raw-mode driver that feeds it
+// keypresses and paints frames lives in select_unix.go / select_windows.go.
 
 // selItem is one toggleable row.
 type selItem struct {
@@ -29,12 +28,22 @@ const (
 	keyClear  // n
 	keyAccept // enter / return — submit the checked items
 	keyReject // r — clear everything and submit (grant nothing)
-	keyCancel // esc / q / ctrl-c — abort, make no change
+	keyCancel // esc — abort or navigate back
+	keyQuit   // q / ctrl-c — abort from any page
+	keyLeft
+	keyRight
 )
 
-// multiSelect is the pure picker state: a list plus a cursor. prompt overrides
-// the default footer hint. There is no selectable "reject" row — rejecting is a
-// footer key (r), so Enter can't accidentally reject.
+// selectorModel is implemented by both the capability multi-select and the
+// hierarchical single-choice picker.
+type selectorModel interface {
+	apply(selectKey) (done, cancelled bool)
+	frame() string
+}
+
+// multiSelect is the pure capability picker state: a list plus a cursor.
+// prompt overrides the default footer hint. Rejection is a footer key (r), not
+// a selectable row.
 type multiSelect struct {
 	title  string
 	prompt string
@@ -75,7 +84,7 @@ func (m *multiSelect) apply(k selectKey) (done, cancelled bool) {
 		return true, false
 	case keyAccept:
 		return true, false
-	case keyCancel:
+	case keyCancel, keyQuit:
 		return true, true
 	}
 	return false, false
@@ -111,12 +120,18 @@ func decodeKey(b []byte) selectKey {
 			return keyClear
 		case 'r', 'R':
 			return keyReject
-		case 'q', 'Q', 3, 27: // q, Ctrl-C, bare ESC
+		case 27:
 			return keyCancel
+		case 'q', 'Q', 3:
+			return keyQuit
 		case 'k', 'K':
 			return keyUp
 		case 'j', 'J':
 			return keyDown
+		case 'h', 'H', '<':
+			return keyLeft
+		case 'l', 'L', '>':
+			return keyRight
 		}
 	case len(b) >= 3 && b[0] == 27 && b[1] == '[':
 		switch b[2] {
@@ -124,8 +139,10 @@ func decodeKey(b []byte) selectKey {
 			return keyUp
 		case 'B':
 			return keyDown
-		case 'C', 'D': // → and ← — intentionally inert for now
-			return keyNoop
+		case 'C':
+			return keyRight
+		case 'D':
+			return keyLeft
 		}
 	}
 	return keyNoop

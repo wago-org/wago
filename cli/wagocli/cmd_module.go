@@ -1,3 +1,5 @@
+//go:build !wago_manager
+
 package wagocli
 
 // moduleCommand is the `wago module` group: inspect a module's imports and the

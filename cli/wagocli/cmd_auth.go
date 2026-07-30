@@ -1,3 +1,5 @@
+//go:build !wago_manager
+
 package wagocli
 
 // authCommand is the `wago auth` group: authenticate to the wago registry at

@@ -10,21 +10,20 @@ import (
 	"strings"
 )
 
-// runSelector drives the multi-select in raw terminal mode, repainting on each
-// keypress, and returns whether the user cancelled (esc). When stdin isn't an
-// interactive terminal, or raw mode can't be entered, it makes no changes and
-// returns false so the caller keeps the pre-seeded selection.
+// runSelector drives the selector in raw terminal mode, repainting on each
+// keypress. submitted is false when no interactive terminal is available;
+// cancelled reports an explicit escape or input failure.
 //
 // Raw mode is toggled with stty rather than a termios cgo/x-sys dependency, so
 // the CLI stays dependency-free; `stty -g` captures the exact prior settings so
 // they're restored precisely on exit.
-func runSelector(m *multiSelect) (cancelled bool) {
+func runSelector(m selectorModel) (submitted, cancelled bool) {
 	if !stdinIsTTY() {
-		return false
+		return false, false
 	}
 	restore, err := makeRaw()
 	if err != nil {
-		return false
+		return false, false
 	}
 	defer restore()
 
@@ -38,18 +37,26 @@ func runSelector(m *multiSelect) (cancelled bool) {
 		fmt.Fprint(os.Stderr, strings.ReplaceAll(f, "\n", "\r\n"))
 		prev = strings.Count(f, "\n")
 	}
+	clear := func() {
+		if prev > 0 {
+			fmt.Fprintf(os.Stderr, "\x1b[%dA\x1b[J", prev)
+			prev = 0
+		}
+	}
 	paint()
 
 	buf := make([]byte, 8)
 	for {
 		n, err := in.Read(buf)
 		if err != nil {
-			return true // read failure: treat like cancel
+			clear()
+			return false, true // read failure: treat like cancel
 		}
 		done, cancel := m.apply(decodeKey(buf[:n]))
 		paint()
 		if done {
-			return cancel
+			clear()
+			return !cancel, cancel
 		}
 	}
 }

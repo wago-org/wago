@@ -31,11 +31,15 @@ func TestUsageDocumentsCommandSurface(t *testing.T) {
 			t.Fatalf("usage text missing %q:\n%s", want, text)
 		}
 	}
-	// Every top-level command must be listed by name (plugin was folded into pkg).
+	// Every Standard command must be listed. Version remains available here as
+	// well as in the separate manager so checkout/dev builds keep the same CLI.
 	for _, cmd := range []string{"run", "add", "rm", "plugin", "auth", "module", "env", "build", "validate", "version"} {
 		if !strings.Contains(text, cmd) {
 			t.Fatalf("usage text missing command %q:\n%s", cmd, text)
 		}
+	}
+	if root.child("version") == nil {
+		t.Fatal("standard command tree does not register version")
 	}
 	if strings.Contains(text, "test") {
 		t.Fatalf("usage should no longer mention test:\n%s", text)
@@ -65,7 +69,7 @@ func TestMetaAndVersionCommandConstructors(t *testing.T) {
 			t.Fatalf("invalid command descriptor: %#v", cmd)
 		}
 	}
-	if got := versionCommand(); len(got.Children) != 8 || got.Children[0].Name != "list" || got.Children[7].Name != "list-remote" {
+	if got := versionCommand(); len(got.Children) != 8 || got.Children[0].Name != "list" || got.Children[1].Name != "list-installed" || got.Children[7].Name != "uninstall" {
 		t.Fatalf("version command tree = %#v", got.Children)
 	}
 
@@ -88,10 +92,10 @@ func TestMetaAndVersionCommandConstructors(t *testing.T) {
 	os.Stdout = w
 	envCommand().Run(&Ctx{})
 	version := versionCommand()
-	version.Children[0].Run(&Ctx{})
 	version.Children[1].Run(&Ctx{})
 	version.Children[2].Run(&Ctx{})
-	version.Children[3].Run(&Ctx{Args: []string{"1.2.3"}})
+	version.Children[3].Run(&Ctx{})
+	version.Children[4].Run(&Ctx{Args: []string{"1.2.3"}})
 	_ = w.Close()
 	os.Stdout = old
 	out, err := io.ReadAll(r)

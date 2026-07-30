@@ -149,25 +149,53 @@ TINYGO ?= tinygo
 # switched stack, so wago under TinyGo wants the cooperative scheduler. See
 # docs/tinygo.md.
 TINYGO_SCHEDULER ?= tasks
-# Stamped into the CLI via -ldflags -X (see cli/wago/main.go). release.yml passes
+# Stamped into the manager and runners via -ldflags -X. Release workflows pass
 # the git tag; 0.0.0 is the pre-release default until the first tag.
 WAGO_VERSION ?= 0.0.0
 
 .PHONY: build
-build: ## Build the CLI (standard Go) -> ./wago
-	go build -ldflags "-X main.version=$(WAGO_VERSION)" -o wago ./cli/wago
+build: build-manager ## Build the standard-Go manager -> ./wago
+
+.PHONY: build-manager
+build-manager: ## Build the runtime-independent manager with standard Go -> ./wago
+	CGO_ENABLED=0 go build -tags wago_manager -ldflags "-s -w -X main.version=$(WAGO_VERSION)" -o wago ./cli/wago
+
+.PHONY: build-runtime-standard
+build-runtime-standard: ## Build the everything runtime with standard Go
+	CGO_ENABLED=0 go build -ldflags "-s -w -X main.version=$(WAGO_VERSION)" -o wago-runtime-standard-normal ./cli/wago
+
+.PHONY: build-runtime-lite
+build-runtime-lite: ## Build the run/build/plugins runtime with standard Go
+	CGO_ENABLED=0 go build -tags wago_lite -ldflags "-s -w -X main.version=$(WAGO_VERSION)" -o wago-runtime-lite-normal ./cli/wago
+
+.PHONY: build-runtime-minimal
+build-runtime-minimal: ## Build the run-only runtime with standard Go
+	CGO_ENABLED=0 go build -tags wago_minimal -ldflags "-s -w -X main.version=$(WAGO_VERSION)" -o wago-runtime-minimal-normal ./cli/wago
+
+.PHONY: build-runtime-standard-tinygo
+build-runtime-standard-tinygo: ## Build the everything runtime with TinyGo
+	$(TINYGO) build -scheduler=$(TINYGO_SCHEDULER) -no-debug -opt=z -gc=conservative \
+		-ldflags "-X main.version=$(WAGO_VERSION)" -o wago-runtime-standard-tiny ./cli/wago
+
+.PHONY: build-runtime-lite-tinygo
+build-runtime-lite-tinygo: ## Build the run/build/plugins runtime with TinyGo
+	$(TINYGO) build -scheduler=$(TINYGO_SCHEDULER) -no-debug -opt=z -gc=conservative \
+		-tags wago_lite -ldflags "-X main.version=$(WAGO_VERSION)" -o wago-runtime-lite-tiny ./cli/wago
+
+.PHONY: build-runtime-minimal-tinygo
+build-runtime-minimal-tinygo: ## Build the run-only runtime with TinyGo
+	$(TINYGO) build -scheduler=$(TINYGO_SCHEDULER) -no-debug -opt=z -gc=conservative \
+		-tags wago_lean,wago_minimal \
+		-ldflags "-X main.version=$(WAGO_VERSION)" -o wago-runtime-minimal-tiny ./cli/wago
+	@echo "wago minimal/tiny $(WAGO_VERSION): $$(du -h wago-runtime-minimal-tiny | cut -f1)"
 
 .PHONY: build-release
-build-release: ## Size-minimized release CLI via TinyGo (no cgo, ~0.43 MB) -> ./wago
-	$(TINYGO) build -scheduler=$(TINYGO_SCHEDULER) -no-debug -opt=z -gc=conservative \
-		-tags wago_lean \
-		-ldflags "-X main.version=$(WAGO_VERSION)" -o wago ./cli/wago
-	strip -s wago
-	@echo "wago $(WAGO_VERSION): $$(du -h wago | cut -f1)"
+build-release: ## Build the host CLI plus all supported runtime profiles/builds
+	GOOS="$$(go env GOOS)" GOARCH="$$(go env GOARCH)" WAGO_VERSION="$(WAGO_VERSION)" scripts/build-release-assets.sh
 
 .PHONY: tinygo-build
-tinygo-build: ## Build the CLI with TinyGo (no cgo, debug) -> ./wago-tinygo  (see docs/tinygo.md)
-	$(TINYGO) build -scheduler=$(TINYGO_SCHEDULER) -tags wago_lean -o wago-tinygo ./cli/wago
+tinygo-build: ## Build the Minimal runtime with TinyGo (no cgo, debug) -> ./wago-tinygo
+	$(TINYGO) build -scheduler=$(TINYGO_SCHEDULER) -tags wago_lean,wago_minimal -o wago-tinygo ./cli/wago
 
 .PHONY: tinygo-test
 tinygo-test: ## Run the runtime + public-API suites under TinyGo

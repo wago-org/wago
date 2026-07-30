@@ -1,3 +1,5 @@
+//go:build !wago_manager
+
 package wagocli
 
 // The plugin command surface: top-level `wago add`/`wago rm` for the common

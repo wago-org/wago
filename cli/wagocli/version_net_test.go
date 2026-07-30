@@ -5,12 +5,15 @@ package wagocli
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
+
+	"github.com/wago-org/wago/internal/wagopaths"
 )
 
 func TestLatestChannelRelease(t *testing.T) {
@@ -30,17 +33,37 @@ func TestLatestChannelRelease(t *testing.T) {
 	}
 }
 
+func TestHTTPGetBytesReportsDownloadProgress(t *testing.T) {
+	payload := []byte("progress payload")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Length", fmt.Sprint(len(payload)))
+		_, _ = w.Write(payload)
+	}))
+	defer srv.Close()
+
+	var current, total int64
+	got, err := httpGetBytesProgress(srv.URL, func(c, t int64) {
+		current, total = c, t
+	})
+	if err != nil || string(got) != string(payload) {
+		t.Fatalf("httpGetBytesProgress = %q, %v", got, err)
+	}
+	if current != int64(len(payload)) || total != int64(len(payload)) {
+		t.Fatalf("download progress = %d/%d, want %d/%d", current, total, len(payload), len(payload))
+	}
+}
+
 func TestDownloadBinaryChecksum(t *testing.T) {
 	payload := []byte("fake wago binary bytes")
 	sum := sha256.Sum256(payload)
 	hexsum := hex.EncodeToString(sum[:])
-	asset := "wago-" + runtime.GOOS + "-" + runtime.GOARCH
+	asset := "wago-runtime-standard-normal-" + runtime.GOOS + "-" + runtime.GOARCH
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/0.9.0/" + asset, "/nightly/" + asset, "/canary/" + asset:
+		case "/v0.9.0/" + asset, "/nightly/" + asset, "/canary/" + asset:
 			w.Write(payload)
-		case "/0.9.0/" + asset + ".sha256", "/nightly/" + asset + ".sha256", "/canary/" + asset + ".sha256":
+		case "/v0.9.0/" + asset + ".sha256", "/nightly/" + asset + ".sha256", "/canary/" + asset + ".sha256":
 			w.Write([]byte(hexsum + "  " + asset + "\n"))
 		case "/bad/" + asset:
 			w.Write(payload)
@@ -53,13 +76,13 @@ func TestDownloadBinaryChecksum(t *testing.T) {
 	defer srv.Close()
 
 	dest := filepath.Join(t.TempDir(), "wago")
-	if err := downloadBinary(srv.URL, "0.9.0", dest); err != nil {
+	if err := downloadBinary(srv.URL, canonicalReleaseRef("0.9.0"), wagopaths.ProfileStandard, wagopaths.BuildNormal, dest); err != nil {
 		t.Fatalf("downloadBinary: %v", err)
 	}
 
 	for _, channel := range []string{"nightly", "canary"} {
 		dest := filepath.Join(t.TempDir(), "wago")
-		if err := downloadBinary(srv.URL, channel, dest); err != nil {
+		if err := downloadBinary(srv.URL, channel, wagopaths.ProfileStandard, wagopaths.BuildNormal, dest); err != nil {
 			t.Fatalf("downloadBinary(%q): %v", channel, err)
 		}
 		got, err := os.ReadFile(dest)
@@ -74,10 +97,34 @@ func TestDownloadBinaryChecksum(t *testing.T) {
 
 	// A checksum mismatch must fail and write nothing.
 	badDest := filepath.Join(t.TempDir(), "wago")
-	if err := downloadBinary(srv.URL, "bad", badDest); err == nil {
+	if err := downloadBinary(srv.URL, "bad", wagopaths.ProfileStandard, wagopaths.BuildNormal, badDest); err == nil {
 		t.Fatal("expected checksum mismatch error")
 	}
 	if _, err := os.Stat(badDest); !os.IsNotExist(err) {
 		t.Fatal("checksum mismatch must not write the destination file")
+	}
+}
+
+func TestVersionAssetsIncludeProfileAndHost(t *testing.T) {
+	for _, profile := range wagopaths.Profiles {
+		for _, build := range wagopaths.Builds {
+			want := "wago-runtime-" + string(profile) + "-" + string(build) + "-" + runtime.GOOS + "-" + runtime.GOARCH
+			if got := versionAsset(profile, build); got != want {
+				t.Fatalf("versionAsset(%s, %s) = %q, want %q", profile, build, got, want)
+			}
+		}
+	}
+}
+
+func TestCanonicalReleaseRef(t *testing.T) {
+	for input, want := range map[string]string{
+		"0.2.0":                   "v0.2.0",
+		"v0.2.0":                  "v0.2.0",
+		"main":                    "main",
+		"canary-20260729-deadbee": "canary-20260729-deadbee",
+	} {
+		if got := canonicalReleaseRef(input); got != want {
+			t.Fatalf("canonicalReleaseRef(%q) = %q, want %q", input, got, want)
+		}
 	}
 }

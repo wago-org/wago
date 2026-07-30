@@ -1,4 +1,4 @@
-//go:build wago_lean
+//go:build wago_lean && !wago_manager
 
 // Lean/TinyGo build: TinyGo cannot link net/http, so the registry-facing commands
 // (wago auth *, wago plugin publish/unpublish/deprecate) are stubbed. Use a full wago

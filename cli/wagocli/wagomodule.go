@@ -1,3 +1,5 @@
+//go:build !wago_manager
+
 // The .wago build module: a small generated Go module that compiles wago together
 // with a project's plugins into a custom binary. Each plugin is a normal Go module
 // dependency (added with `go get`, recorded in .wago/go.mod), blank-imported via
@@ -242,7 +244,12 @@ func ensureBuiltBinary(dir string, deps []string, force, verbose bool) (bin stri
 	// -buildvcs=false: the generated build module is a local throwaway; VCS
 	// stamping is meaningless and would otherwise fail when .wago sits inside an
 	// unrelated or partial git work tree.
-	for _, step := range [][]string{{"mod", "tidy"}, {"build", "-buildvcs=false", "-o", bin, "."}} {
+	buildStep := []string{"build", "-buildvcs=false"}
+	if tag := runnerBuildTag(); tag != "" {
+		buildStep = append(buildStep, "-tags", tag)
+	}
+	buildStep = append(buildStep, "-o", bin, ".")
+	for _, step := range [][]string{{"mod", "tidy"}, buildStep} {
 		if verbose {
 			fmt.Fprintf(os.Stderr, "%s go %s\n", dim("→"), strings.Join(step, " "))
 		}
@@ -262,7 +269,7 @@ func buildHash(deps []string) string {
 	sorted := append([]string(nil), deps...)
 	sort.Strings(sorted)
 	h := sha256.New()
-	fmt.Fprintf(h, "wago-build\x00%s\x00%s\x00%s/%s\x00", versionString(), runtime.Version(), runtime.GOOS, runtime.GOARCH)
+	fmt.Fprintf(h, "wago-build\x00%s\x00%s\x00%s\x00%s/%s\x00", versionString(), runnerProfile(), runtime.Version(), runtime.GOOS, runtime.GOARCH)
 	for _, d := range sorted {
 		fmt.Fprintf(h, "%s\x00", d)
 	}
