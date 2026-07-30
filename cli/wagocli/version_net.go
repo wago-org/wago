@@ -47,7 +47,7 @@ func installVersion(d wagopaths.Dirs, ver string, profile wagopaths.Profile, bui
 				printDetail(os.Stdout, "location", displayPath(installedPath))
 			}
 			if offer {
-				offerUseInstalled(d, ver, profile, build)
+				finishVersionInstall(d, ver, profile, build)
 			}
 			return
 		}
@@ -69,7 +69,7 @@ func installVersion(d wagopaths.Dirs, ver string, profile wagopaths.Profile, bui
 		printDetail(progress.out, "location", displayPath(dest))
 	}
 	if offer {
-		offerUseInstalled(d, ver, profile, build)
+		finishVersionInstall(d, ver, profile, build)
 	}
 }
 

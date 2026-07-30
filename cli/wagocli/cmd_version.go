@@ -60,7 +60,7 @@ func versionCommand() *Cmd {
 					if _, _, _, ok := installedRuntime(dirs(), c.one("[version]"), profile, build); !ok {
 						vmInstallForSwitch(dirs(), c.one("[version]"), profile, build)
 					}
-					vmUse(dirs(), c.one("[version]"), profile, build)
+					vmSwitchTo(dirs(), c.one("[version]"), profile, build)
 				},
 			},
 			{

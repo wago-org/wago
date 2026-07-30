@@ -211,6 +211,11 @@ func vmUse(d wagopaths.Dirs, ver string, profile wagopaths.Profile, build wagopa
 	fmt.Printf("%s\n", cyan("Using "+installedWagoLabel(ver, ver, profile, build)))
 }
 
+func vmSwitchTo(d wagopaths.Dirs, ver string, profile wagopaths.Profile, build wagopaths.Build) {
+	offerPluginTransfer(d, ver, profile, build)
+	vmUse(d, ver, profile, build)
+}
+
 func offerUseInstalled(d wagopaths.Dirs, ver string, profile wagopaths.Profile, build wagopaths.Build) {
 	if activeVersion(d) == ver && activeProfile(d) == profile && activeBuild(d) == build {
 		return
@@ -230,6 +235,11 @@ func offerUseInstallation(d wagopaths.Dirs, ver string, profile wagopaths.Profil
 	if use {
 		vmUse(d, ver, profile, build)
 	}
+}
+
+func finishVersionInstall(d wagopaths.Dirs, ver string, profile wagopaths.Profile, build wagopaths.Build) {
+	offerPluginTransfer(d, ver, profile, build)
+	offerUseInstalled(d, ver, profile, build)
 }
 
 func useInstalledPicker(ver string, profile wagopaths.Profile, build wagopaths.Build) *picker {
@@ -305,7 +315,7 @@ func vmChooseInstalled(d wagopaths.Dirs) {
 	if _, _, _, installed := installedRuntime(d, ver, profile, build); !installed {
 		vmInstallForSwitch(d, ver, profile, build)
 	}
-	vmUse(d, ver, profile, build)
+	vmSwitchTo(d, ver, profile, build)
 }
 
 func installedVersionPicker(d wagopaths.Dirs, vers []string) *picker {
