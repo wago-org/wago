@@ -16,6 +16,14 @@ const (
 
 func projectManifestPath(dir string) string { return filepath.Join(dir, projectFile) }
 
+func projectManifestDisplayPath(dir string) string {
+	path, err := filepath.Abs(projectManifestPath(dir))
+	if err != nil {
+		path = projectManifestPath(dir)
+	}
+	return displayPath(path)
+}
+
 // readProjectMap loads wago.json as a generic map so initialization and plugin
 // edits preserve fields owned by publishers and future schema versions.
 func readProjectMap(dir string) (map[string]any, error) {
@@ -28,7 +36,7 @@ func readProjectMap(dir string) (map[string]any, error) {
 	}
 	m := map[string]any{}
 	if err := json.Unmarshal(b, &m); err != nil {
-		return nil, fmt.Errorf("%s: %w", projectFile, err)
+		return nil, fmt.Errorf("%s: %w", projectManifestDisplayPath(dir), err)
 	}
 	return m, nil
 }
@@ -53,7 +61,7 @@ func initializeProject(dir string) (bool, error) {
 		m["dependencies"] = []any{}
 	}
 	if _, ok := m["plugins"]; !ok {
-		m["plugins"] = map[string]any{}
+		m["plugins"] = []any{}
 	}
 	return created, writeProjectMap(dir, m)
 }

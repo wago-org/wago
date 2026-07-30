@@ -3,6 +3,7 @@
 package wagocli
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -28,6 +29,12 @@ func resolvePluginEnvironment() (pluginEnvironment, error) {
 	local := truthyEnv(pluginScopeLocalEnv)
 	if local || !truthyEnv(pluginScopeGlobalEnv) {
 		if _, err := os.Stat(projectManifestPath(".")); local || err == nil {
+			if local && os.IsNotExist(err) {
+				return pluginEnvironment{}, fmt.Errorf(
+					"no local manifest at %s; run 'wago init' or omit --local to use global plugins",
+					projectManifestDisplayPath("."),
+				)
+			}
 			deps, readErr := projectDeps(".")
 			if readErr != nil {
 				return pluginEnvironment{}, readErr

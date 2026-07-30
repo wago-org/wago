@@ -5,9 +5,8 @@ package wagocli
 import "sort"
 
 // plugin_grants.go reads and writes the per-plugin capability grants in a
-// wago.json — the "plugins" object keyed by GitHub-relative ID (see #246), where
-// each entry carries a "capabilities" array of the privileged APIs that plugin is
-// allowed to use at runtime.
+// wago.json. Each entry in the "plugins" array has a GitHub-relative name and a
+// "capabilities" array of the privileged APIs that plugin may use at runtime.
 
 // pluginGrants returns the capabilities currently granted to plugin id in dir's
 // wago.json (nil when the plugin or its capabilities are absent).
@@ -16,8 +15,11 @@ func pluginGrants(dir, id string) []string {
 	if err != nil {
 		return nil
 	}
-	plugins, _ := m["plugins"].(map[string]any)
-	entry, _ := plugins[id].(map[string]any)
+	plugins, err := projectPluginMaps(m, dir)
+	if err != nil {
+		return nil
+	}
+	entry := projectPluginMap(plugins, id)
 	raw, _ := entry["capabilities"].([]any)
 	out := make([]string, 0, len(raw))
 	for _, v := range raw {
@@ -36,18 +38,18 @@ func setPluginGrants(dir, id string, caps []string) error {
 	if err != nil {
 		return err
 	}
-	plugins, _ := m["plugins"].(map[string]any)
-	if plugins == nil {
-		plugins = map[string]any{}
+	plugins, err := projectPluginMaps(m, dir)
+	if err != nil {
+		return err
 	}
-	entry, _ := plugins[id].(map[string]any)
+	entry := projectPluginMap(plugins, id)
 	if entry == nil {
-		entry = map[string]any{}
+		entry = map[string]any{"name": id}
+		plugins = append(plugins, entry)
 	}
 	sorted := append([]string(nil), caps...)
 	sort.Strings(sorted)
 	entry["capabilities"] = toAnySlice(sorted)
-	plugins[id] = entry
 	m["plugins"] = plugins
 	return writeProjectMap(dir, m)
 }

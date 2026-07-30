@@ -227,7 +227,7 @@ capabilities:
   "schema": "wago/v1",
   "dependencies": ["github.com/acme/wago-metrics"],
   "plugins": [{
-    "name": "github.com/acme/wago-metrics",
+    "name": "acme/wago-metrics",
     "capabilities": ["host.imports"]
   }]
 }
