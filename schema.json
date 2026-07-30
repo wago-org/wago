@@ -24,10 +24,10 @@
       "default": []
     },
     "plugins": {
-      "type": "object",
-      "description": "Plugins activated at runtime, keyed by GitHub-relative plugin ID.",
-      "propertyNames": { "$ref": "#/$defs/pluginName" },
-      "additionalProperties": { "$ref": "#/$defs/plugin" },
+      "type": "array",
+      "description": "Plugins activated at runtime and their explicit capability grants.",
+      "items": { "$ref": "#/$defs/plugin" },
+      "uniqueItems": true,
       "default": []
     },
     "module": {
@@ -191,8 +191,12 @@
     "plugin": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["capabilities"],
+      "required": ["name", "capabilities"],
       "properties": {
+        "name": {
+          "$ref": "#/$defs/pluginName",
+          "description": "GitHub-relative plugin ID, such as wago-org/wasi."
+        },
         "capabilities": {
           "oneOf": [
             {
@@ -301,12 +305,13 @@
       "$schema": "https://wago.sh/schema.json",
       "schema": "wago/v1",
       "dependencies": ["github.com/wago-org/workers"],
-      "plugins": {
-        "wago-org/workers": {
+      "plugins": [
+        {
+          "name": "wago-org/workers",
           "capabilities": ["instance.manage"],
           "config": { "maxWorkers": 8 }
         }
-      }
+      ]
     }
   ]
 }

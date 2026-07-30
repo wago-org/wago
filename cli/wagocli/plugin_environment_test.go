@@ -5,6 +5,7 @@ package wagocli
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/wago-org/wago"
@@ -90,6 +91,32 @@ func TestPluginEnvironmentKeepsLocalAndGlobalIsolated(t *testing.T) {
 	}
 	if environment.scope != "global" || len(environment.dependencies) != 1 {
 		t.Fatalf("explicit global environment = %+v", environment)
+	}
+}
+
+func TestPluginEnvironmentExplainsMissingExplicitLocalManifest(t *testing.T) {
+	t.Setenv("WAGO_HOME", t.TempDir())
+	t.Setenv("WAGO_GLOBAL", "")
+	t.Setenv("WAGO_LOCAL", "1")
+	t.Setenv("WAGO_BARE", "")
+
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	project := t.TempDir()
+	if err := os.Chdir(project); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(wd) })
+
+	_, err = resolvePluginEnvironment()
+	if err == nil {
+		t.Fatal("resolvePluginEnvironment succeeded without a local wago.json")
+	}
+	wantPath := filepath.Join(project, projectFile)
+	if got := err.Error(); !strings.Contains(got, wantPath) || !strings.Contains(got, "wago init") {
+		t.Fatalf("error = %q, want path %q and wago init recovery", got, wantPath)
 	}
 }
 

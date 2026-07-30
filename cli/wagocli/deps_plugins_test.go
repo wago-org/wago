@@ -13,11 +13,12 @@ func TestProjectPluginsParsesCapabilitiesAndOrdering(t *testing.T) {
 	dir := t.TempDir()
 	manifest := `{
   "dependencies": ["github.com/wago-org/workers"],
-  "plugins": {"wago-org/workers": {
+  "plugins": [{
+    "name": "wago-org/workers",
     "capabilities": ["instance.manage", "runtime.lifecycle"],
     "after": ["github.com/acme/wago-metrics"],
     "config": {"maxWorkers": 4}
-  }}
+  }]
 }`
 	if err := os.WriteFile(filepath.Join(dir, projectFile), []byte(manifest), 0o644); err != nil {
 		t.Fatal(err)
@@ -35,9 +36,29 @@ func TestProjectPluginsParsesCapabilitiesAndOrdering(t *testing.T) {
 	}
 }
 
+func TestProjectPluginsParsesDocumentedArrayShape(t *testing.T) {
+	dir := t.TempDir()
+	manifest := `{
+  "plugins": [{
+    "name": "wago-org/wasi",
+    "capabilities": ["host.imports"]
+  }]
+}`
+	if err := os.WriteFile(filepath.Join(dir, projectFile), []byte(manifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got, err := projectPlugins(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Name != "wago-org/wasi" {
+		t.Fatalf("projectPlugins = %#v", got)
+	}
+}
+
 func TestProjectPluginsParsesCapabilityBudgets(t *testing.T) {
 	dir := t.TempDir()
-	manifest := `{"plugins":{"wago-org/workers":{"capabilities":{"runtime.lifecycle":true,"instance.manage":{"maxInstances":3,"maxMemoryBytes":131072}}}}}`
+	manifest := `{"plugins":[{"name":"wago-org/workers","capabilities":{"runtime.lifecycle":true,"instance.manage":{"maxInstances":3,"maxMemoryBytes":131072}}}]}`
 	if err := os.WriteFile(filepath.Join(dir, projectFile), []byte(manifest), 0o644); err != nil {
 		t.Fatal(err)
 	}

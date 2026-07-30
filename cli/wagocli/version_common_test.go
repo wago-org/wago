@@ -227,7 +227,7 @@ func TestLegacyGlobalPluginsMigrateToSharedIntent(t *testing.T) {
 	if err := os.MkdirAll(sourceDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	manifest := []byte(`{"dependencies":["github.com/wago-org/wasi"],"plugins":{"wago-org/wasi":{"capabilities":["host.environment"]}}}`)
+	manifest := []byte(`{"dependencies":["github.com/wago-org/wasi"],"plugins":[{"name":"wago-org/wasi","capabilities":["host.environment"]}]}`)
 	lock := []byte(`{"plugins":{"wago-org/wasi":{"grantedCapabilities":["host.environment"]}}}`)
 	if err := os.WriteFile(filepath.Join(sourceDir, versionPluginManifest), manifest, 0o644); err != nil {
 		t.Fatal(err)

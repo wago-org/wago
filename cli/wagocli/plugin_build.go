@@ -256,8 +256,7 @@ func maybeReexecForPlugins() {
 	}
 	environment, err := resolvePluginEnvironment()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s could not resolve plugins (%v); running without them\n", dim("wago:"), err)
-		return
+		fatal("plugins: %v", err)
 	}
 	if len(environment.dependencies) == 0 {
 		return
