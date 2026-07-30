@@ -21,15 +21,12 @@ go_build() {
 
 manager="${release_out}/wago-${release_target}"
 standard_normal="${release_out}/wago-runtime-standard-normal-${release_target}"
-lite_normal="${release_out}/wago-runtime-lite-normal-${release_target}"
 minimal_normal="${release_out}/wago-runtime-minimal-normal-${release_target}"
 standard_tiny="${release_out}/wago-runtime-standard-tiny-${release_target}"
-lite_tiny="${release_out}/wago-runtime-lite-tiny-${release_target}"
 minimal_tiny="${release_out}/wago-runtime-minimal-tiny-${release_target}"
 
 go_build wago_manager "$manager"
 go_build "" "$standard_normal"
-go_build wago_lite "$lite_normal"
 go_build wago_minimal "$minimal_normal"
 
 tinygo_build() {
@@ -58,13 +55,12 @@ try_tinygo_build() {
 }
 
 try_tinygo_build "" "$standard_tiny"
-try_tinygo_build wago_lite "$lite_tiny"
 try_tinygo_build wago_lean,wago_minimal "$minimal_tiny"
 
 for asset in \
   "$manager" \
-  "$standard_normal" "$lite_normal" "$minimal_normal" \
-  "$standard_tiny" "$lite_tiny" "$minimal_tiny"; do
+  "$standard_normal" "$minimal_normal" \
+  "$standard_tiny" "$minimal_tiny"; do
   if [[ ! -s "$asset" ]]; then
     continue
   fi

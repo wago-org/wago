@@ -12,7 +12,6 @@ func TestProfiles(t *testing.T) {
 		want  Profile
 	}{
 		{"standard", ProfileStandard},
-		{"LITE", ProfileLite},
 		{" minimal ", ProfileMinimal},
 	} {
 		got, err := ParseProfile(tc.value)
@@ -20,11 +19,12 @@ func TestProfiles(t *testing.T) {
 			t.Fatalf("ParseProfile(%q) = %q, %v; want %q", tc.value, got, err, tc.want)
 		}
 	}
-	if _, err := ParseProfile("small"); err == nil {
-		t.Fatal("unknown profile accepted")
+	for _, invalid := range []string{"small", "lite"} {
+		if _, err := ParseProfile(invalid); err == nil {
+			t.Fatalf("unknown profile %q accepted", invalid)
+		}
 	}
 	if ProfileStandard.Description() != "Everything" ||
-		ProfileLite.Description() != "Run, build, and plugins" ||
 		ProfileMinimal.Description() != "Run only" {
 		t.Fatal("profile descriptions changed")
 	}
@@ -37,8 +37,8 @@ func TestRunnerBinarySeparatesProfiles(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		name += ".exe"
 	}
-	got := d.RunnerBinary("canary", string(ProfileLite))
-	want := filepath.Join(d.Versions, "canary", "lite", name)
+	got := d.RunnerBinary("canary", string(ProfileMinimal))
+	want := filepath.Join(d.Versions, "canary", "minimal", name)
 	if got != want {
 		t.Fatalf("RunnerBinary = %q, want %q", got, want)
 	}
@@ -46,19 +46,19 @@ func TestRunnerBinarySeparatesProfiles(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		legacyName += ".exe"
 	}
-	if got, want := d.LegacyRunnerBinary("canary", string(ProfileLite)), filepath.Join(d.Versions, "canary", "lite", legacyName); got != want {
+	if got, want := d.LegacyRunnerBinary("canary", string(ProfileMinimal)), filepath.Join(d.Versions, "canary", "minimal", legacyName); got != want {
 		t.Fatalf("LegacyRunnerBinary = %q, want %q", got, want)
 	}
 }
 
 func TestRuntimeBinarySeparatesProfilesAndBuilds(t *testing.T) {
 	d := Dirs{Versions: "/versions"}
-	got := d.RuntimeBinary("canary", string(ProfileLite), string(BuildTiny))
+	got := d.RuntimeBinary("canary", string(ProfileMinimal), string(BuildTiny))
 	name := "wago-runtime"
 	if runtime.GOOS == "windows" {
 		name += ".exe"
 	}
-	want := filepath.Join("/versions", "canary", "lite", "tiny", name)
+	want := filepath.Join("/versions", "canary", "minimal", "tiny", name)
 	if got != want {
 		t.Fatalf("RuntimeBinary = %q, want %q", got, want)
 	}

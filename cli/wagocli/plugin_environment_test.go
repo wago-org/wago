@@ -15,7 +15,7 @@ func TestPluginEnvironmentUsesSharedGlobalIntentAndToolchainBuild(t *testing.T) 
 	t.Setenv("WAGO_GLOBAL", "")
 	t.Setenv("WAGO_LOCAL", "")
 	t.Setenv("WAGO_BARE", "")
-	t.Setenv("WAGO_RUNTIME_PROFILE", "lite")
+	t.Setenv("WAGO_RUNTIME_PROFILE", "standard")
 	t.Setenv("WAGO_RUNTIME_BUILD", "tiny")
 
 	wd, err := os.Getwd()
@@ -42,7 +42,7 @@ func TestPluginEnvironmentUsesSharedGlobalIntentAndToolchainBuild(t *testing.T) 
 	if environment.scope != "global" || environment.manifestDir != dirs.Data {
 		t.Fatalf("global environment = %+v", environment)
 	}
-	wantBuild := filepath.Join(dirs.Versions, versionString(), "lite", "tiny", "plugins")
+	wantBuild := filepath.Join(dirs.Versions, versionString(), "standard", "tiny", "plugins")
 	if environment.buildDir != wantBuild {
 		t.Fatalf("global build dir = %q, want %q", environment.buildDir, wantBuild)
 	}

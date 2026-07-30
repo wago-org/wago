@@ -77,10 +77,10 @@ go get github.com/wago-org/wago
 
 Canary and Nightly attempt complete CLI/runtime sets for Linux, macOS, and
 Windows on both amd64 and arm64. Each successful platform publishes the
-runtime-independent CLI as `wago-<goos>-<goarch>` plus Standard, Lite, and
-Minimal runtimes in Normal builds plus every feature-complete Tiny build
-supported by TinyGo on that platform. Linux publishes both builds of all three
-profiles. Runtime assets are named
+runtime-independent CLI as `wago-<goos>-<goarch>` plus Standard and Minimal
+runtimes in Normal builds plus every feature-complete Tiny build
+supported by TinyGo on that platform. Linux publishes Normal and Tiny builds
+for both profiles. Runtime assets are named
 `wago-runtime-<profile>-<build>-<goos>-<goarch>`, all with SHA-256 checksums.
 A platform set is omitted if any required Normal binary is missing. The CLI
 uses standard Go's HTTP client. Normal runtimes use standard Go for speed; Tiny
@@ -94,7 +94,7 @@ name resolves to its newest published release at install time:
 
 ```bash
 wago version install 0.1.0
-wago version install 0.1.0 --profile lite
+wago version install 0.1.0 --profile standard
 wago version install 0.1.0 --profile minimal --build tiny
 wago version install nightly  # latest successful nightly release
 wago version install canary   # most recent successful-CI build of main
@@ -888,7 +888,6 @@ Builds:
 ```bash
 make build
 make build-runtime-standard
-make build-runtime-lite
 make build-runtime-minimal-tinygo
 make build-release
 make tinygo-build

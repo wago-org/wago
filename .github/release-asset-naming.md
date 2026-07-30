@@ -11,7 +11,6 @@ The CLI installs and switches runtimes for you. Runtime files use this naming sc
 Profiles:
 
 - `standard` — everything
-- `lite` — run, build, and plugins
 - `minimal` — run only
 
 Builds:
@@ -19,4 +18,4 @@ Builds:
 - `normal` — built with standard Go; choose this for the fastest runtime
 - `tiny` — built with TinyGo; choose this for a smaller executable
 
-For example, `wago-runtime-lite-tiny-linux-arm64` is the smaller Lite runtime for Linux arm64. Every binary has a sibling `.sha256` checksum. Normal builds are provided for every successful platform; Tiny builds are included where TinyGo supports all features required by that profile.
+For example, `wago-runtime-minimal-tiny-linux-arm64` is the smaller run-only runtime for Linux arm64. Every binary has a sibling `.sha256` checksum. Normal builds are provided for every successful platform; Tiny builds are included where TinyGo supports all features required by that profile.

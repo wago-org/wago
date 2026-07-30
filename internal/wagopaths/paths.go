@@ -15,14 +15,13 @@ type Build string
 
 const (
 	ProfileStandard Profile = "standard"
-	ProfileLite     Profile = "lite"
 	ProfileMinimal  Profile = "minimal"
 
 	BuildNormal Build = "normal"
 	BuildTiny   Build = "tiny"
 )
 
-var Profiles = []Profile{ProfileStandard, ProfileLite, ProfileMinimal}
+var Profiles = []Profile{ProfileStandard, ProfileMinimal}
 var Builds = []Build{BuildNormal, BuildTiny}
 
 func ParseProfile(value string) (Profile, error) {
@@ -32,15 +31,13 @@ func ParseProfile(value string) (Profile, error) {
 			return profile, nil
 		}
 	}
-	return "", fmt.Errorf("unknown profile %q (want: standard, lite, or minimal)", value)
+	return "", fmt.Errorf("unknown profile %q (want: standard or minimal)", value)
 }
 
 func (p Profile) Description() string {
 	switch p {
 	case ProfileStandard:
 		return "Everything"
-	case ProfileLite:
-		return "Run, build, and plugins"
 	case ProfileMinimal:
 		return "Run only"
 	default:

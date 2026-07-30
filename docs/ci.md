@@ -44,8 +44,8 @@ its SHA-256 checksum. A push to `main` becomes a canary only after that commit's
 Manual canary runs build the current `main` tip. Nightly and canary use unique
 never-retargeted prerelease tags; the CLI resolves the newest `nightly-*` or
 `canary-*` tag when a channel is installed. Every target publishes a
-standard-Go CLI plus Normal builds of the Standard, Lite, and Minimal runtimes.
-Linux also requires Tiny builds of all three profiles; other platforms publish
+standard-Go CLI plus Normal builds of the Standard and Minimal runtimes.
+Linux also requires Tiny builds of both profiles; other platforms publish
 each feature-complete Tiny profile supported by their TinyGo port. Normal favors
 runtime speed; Tiny favors executable size. Windows
 uses cross-compilation from a Windows amd64 runner for arm64. Unsupported native JIT targets are
@@ -53,9 +53,9 @@ best-effort: a failed target is omitted and does not block the release. Every
 channel uses `wago-<goos>-<goarch>` for the manager and
 `wago-runtime-<profile>-<build>-<goos>-<goarch>` for runtimes.
 Both the matrix job and publisher run `scripts/verify-channel-assets.sh`; an
-otherwise successful platform is rejected unless its CLI, all three Normal
-runtimes, and their checksums are present and valid. Linux additionally requires
-all three Tiny runtimes; optional Tiny assets on other platforms are verified
+otherwise successful platform is rejected unless its CLI, both Normal runtimes,
+and their checksums are present and valid. Linux additionally requires both
+Tiny runtimes; optional Tiny assets on other platforms are verified
 when present.
 When a runtime asset or checksum is omitted, the CLI builds that release tag
 from source on the user's host; checksum mismatches still fail closed.
