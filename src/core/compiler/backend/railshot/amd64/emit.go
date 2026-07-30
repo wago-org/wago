@@ -122,6 +122,9 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 	w := node.typ.is64()
 	left := node.arg0
 	right := node.arg1
+	if r := f.tryXorByteMask(node, left, right, dest); r != regNone {
+		return r
+	}
 
 	// Commutative reassociation (selectInstr): swap operands so the cheaper form
 	// falls out. (1) a constant left folds as an immediate rather than being loaded
@@ -262,6 +265,71 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 	return dest
 }
 
+// tryXorByteMask lowers `(x ^ i32.load8_u(...)) & 255` with an 8-bit XOR.
+// MOVZX has already cleared the destination's upper bits, so XORing only its low
+// byte produces the masked result directly and removes the 32-bit AND. CRC table
+// indices use this twice per inner iteration.
+func (f *fn) tryXorByteMask(node, left, right *elem, dest Reg) Reg {
+	if node.op != opAnd || node.typ != mtI32 {
+		return regNone
+	}
+	var xor *elem
+	switch {
+	case right.kind == ekValue && right.st.kind == stConst && right.st.cval == 255:
+		xor = left
+	case left.kind == ekValue && left.st.kind == stConst && left.st.cval == 255:
+		xor = right
+	default:
+		return regNone
+	}
+	if xor == nil || xor.kind != ekDeferred || xor.op != opXor || xor.typ != mtI32 {
+		return regNone
+	}
+	byteArg, other := xor.arg0, xor.arg1
+	isByteLoad := func(e *elem) bool {
+		return e != nil && e.kind == ekValue && e.st.kind == stMemRef &&
+			e.st.typ == mtI32 && e.st.memSize() == 1 && !e.st.memSigned()
+	}
+	if !isByteLoad(byteArg) {
+		byteArg, other = other, byteArg
+		if !isByteLoad(byteArg) {
+			return regNone
+		}
+	}
+	if other == nil || other.kind != ekValue {
+		return regNone
+	}
+	// The byte load may be the left operand. Only commute it past values whose
+	// materialization cannot trap, preserving Wasm's left-to-right trap order.
+	switch other.st.kind {
+	case stReg, stLocalReg, stGlobReg, stLocalRef, stGlobalRef, stSlot, stConst:
+	default:
+		return regNone
+	}
+	src, owned := f.materializeRead(other)
+	f.pinned = f.pinned.add(src)
+	out := dest
+	if out == regNone || out == src {
+		out = f.allocReg(maskOf(src))
+	}
+	f.condenseInto(byteArg, out) // movzx preserves a zero upper 24 bits.
+	f.a.AluRR8(0x30, out, src)   // xor out.low8, src.low8
+	f.pinned = f.pinned.remove(src)
+	if owned {
+		f.release(src)
+	}
+	if dest != regNone && out != dest {
+		f.a.MovRegReg32(dest, out)
+		f.release(out)
+		out = dest
+	}
+	f.stats.peep("xor-byte-mask")
+	f.consumeBlockBelow(node)
+	f.occupy(node, out)
+	node.op = opNone
+	return out
+}
+
 // shlByConst123 reports whether e is a deferred shl of node-typ t by a constant
 // masked count in 1..3 (an LEA-encodable scale), returning the count.
 func shlByConst123(e *elem, t machineType) (int, bool) {
@@ -282,32 +350,66 @@ func shlByConst123(e *elem, t machineType) (int, bool) {
 	return 0, false
 }
 
+// leaOperandSafe reports whether e can be materialized while another LEA input
+// is pinned. Keep this deliberately narrow: straight ALU trees and constant
+// shifts honor the allocator's pinned set, while div/rem and variable shifts
+// reserve fixed RAX/RDX/RCX roles that can displace an already-materialized
+// input. Values (including deferred memory loads) are safe.
+func leaOperandSafe(e *elem) bool {
+	if e == nil {
+		return false
+	}
+	if e.kind == ekValue {
+		return true
+	}
+	if e.kind != ekDeferred {
+		return false
+	}
+	if isBinALU(e.op) {
+		return leaOperandSafe(e.arg0) && leaOperandSafe(e.arg1)
+	}
+	if isShift(e.op) && e.arg1 != nil && e.arg1.kind == ekValue && e.arg1.st.kind == stConst {
+		return leaOperandSafe(e.arg0)
+	}
+	return false
+}
+
 // tryLeaScaledAdd lowers add(x, shl(y,k)) (either operand order) as a single
 // scaled-index LEA. Returns the result register, or regNone when the shape
 // doesn't match.
 func (f *fn) tryLeaScaledAdd(node, left, right *elem, dest Reg) Reg {
 	w := node.typ.is64()
-	shl, other := right, left
+	shl := right
 	k, ok := shlByConst123(shl, node.typ)
 	if !ok {
-		shl, other = left, right
+		shl = left
 		if k, ok = shlByConst123(shl, node.typ); !ok {
 			return regNone
 		}
 	}
-	// Only fuse when both the base and the shifted value are already concrete
-	// values: condensing a deferred operand here could hard-clobber RAX/RDX/RCX
-	// (div/shift) underneath the other operand. The AS address shape
-	// (local/global base + local index) is concrete by the time the add is built.
-	if other.kind != ekValue || shl.arg0 == nil || shl.arg0.kind != ekValue {
+	other := left
+	if shl == left {
+		other = right
+	}
+	// Materialize nested ALU address expressions too, but reject any subtree that
+	// can reserve fixed registers underneath the other live input. Materialize the
+	// base and the unshifted index in original Wasm operand order so deferred loads
+	// retain precise trap ordering.
+	if !leaOperandSafe(other) || !leaOperandSafe(shl.arg0) {
 		return regNone
 	}
-	// The index: read a pinned local in place (LEA never writes its sources);
-	// anything else materializes into an owned register.
-	y, yOwned := f.materializeRead(shl.arg0)
-	f.pinned = f.pinned.add(y) // survive the base's materialization
-	x, xOwned := f.materializeRead(other)
-	f.pinned = f.pinned.remove(y)
+	firstElem, secondElem := other, shl.arg0
+	if shl == left {
+		firstElem, secondElem = shl.arg0, other
+	}
+	first, firstOwned := f.materializeRead(firstElem)
+	f.pinned = f.pinned.add(first)
+	second, secondOwned := f.materializeRead(secondElem)
+	f.pinned = f.pinned.remove(first)
+	x, xOwned, y, yOwned := first, firstOwned, second, secondOwned
+	if shl == left {
+		x, xOwned, y, yOwned = second, secondOwned, first, firstOwned
+	}
 	if dest == regNone {
 		switch {
 		case xOwned:

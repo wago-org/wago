@@ -153,6 +153,12 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 			return err
 		}
 		x := uint32(int(x32) + f.localBase) // localBase remaps an inlined callee's locals; 0 otherwise
+		if f.localType[x] == mtV128 {
+			next, _ := r.Peek()
+			if f.forwardV128Local(int(x), next == 0xfd) {
+				break
+			}
+		}
 		if f.localConstZero(int(x)) {
 			if pr, _, ok := f.pinReg(int(x)); ok {
 				f.recoverLocal(int(x)) // materialize the lazy zero into the pinned register
@@ -171,7 +177,7 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 		if err != nil {
 			return err
 		}
-		f.setLocal(int(x)+f.localBase, op == 0x22) // localBase remaps an inlined callee's locals; 0 otherwise
+		f.setLocal(r, int(x)+f.localBase, op == 0x22) // localBase remaps an inlined callee's locals; 0 otherwise
 	case 0x23: // global.get
 		return f.globalGet(r)
 	case 0x24: // global.set
@@ -887,8 +893,64 @@ func subtreeRefsLocal(e *elem, x int) bool {
 	return false
 }
 
-func (f *fn) setLocal(x int, tee bool) {
+func (f *fn) v128TeeOverwritten(r *wasm.Reader, x int) bool {
+	save := r.Offset()
+	defer func() { _ = r.JumpTo(save) }()
+	readLocal := func(op byte) bool {
+		got, err := r.Byte()
+		if err != nil || got != op {
+			return false
+		}
+		idx, err := r.U32()
+		return err == nil && int(idx)+f.localBase == x
+	}
+	readSIMD := func(want uint32) bool {
+		prefix, err := r.Byte()
+		if err != nil || prefix != 0xfd {
+			return false
+		}
+		sub, err := r.U32()
+		return err == nil && sub == want
+	}
+	readOverwrite := func() bool {
+		op, err := r.Byte()
+		if err != nil || (op != 0x21 && op != 0x22) {
+			return false
+		}
+		idx, err := r.U32()
+		return err == nil && int(idx)+f.localBase == x
+	}
+
+	// (local.tee $x v); i32.const k; i32x4.shr_u;
+	// local.get $x; i32.const (32-k); i32x4.shl; v128.or; local.set/tee $x
+	if op, err := r.Byte(); err == nil && op == 0x41 {
+		right, e1 := r.I32()
+		if e1 == nil && readSIMD(173) && readLocal(0x20) {
+			if op, e2 := r.Byte(); e2 == nil && op == 0x41 {
+				left, e3 := r.I32()
+				if e3 == nil && (left&31) == ((32-(right&31))&31) &&
+					readSIMD(171) && readSIMD(80) && readOverwrite() {
+					return true
+				}
+			}
+		}
+	}
+	_ = r.JumpTo(save)
+
+	// (local.tee $x v); local.get $x; i8x16.shuffle <lanes>;
+	// local.set/tee $x
+	if !readLocal(0x20) || !readSIMD(13) {
+		return false
+	}
+	if _, err := r.Bytes(16); err != nil {
+		return false
+	}
+	return readOverwrite()
+}
+
+func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 	f.invalidateBoundsCertFor(1, uint32(x))
+	f.clearV128LocalAliases(x)
 	e := f.s.back()
 	if e != nil && e.kind == ekValue && e.st.typ == mtCustom {
 		panic("custom value cannot be stored in a Wasm local")
@@ -968,11 +1030,21 @@ func (f *fn) setLocal(x int, tee bool) {
 	}
 	if f.localType[x] == mtV128 {
 		xmm := f.materializeV128(e)
-		f.a.VMovdquStoreDisp(RSP, f.localOff(x), xmm)
+		elideStore := tee && f.v128TeeOverwritten(reader, x)
+		if !elideStore {
+			f.a.VMovdquStoreDisp(RSP, f.localOff(x), xmm)
+		} else {
+			f.stats.peep("simd-tee-store-elide")
+		}
 		f.locals[x].state = lsMem
 		if !tee {
 			f.erase(e)
 			f.releaseF(xmm)
+		} else {
+			// The tee result still owns xmm and aliases the just-stored local.
+			// Short SIMD peepholes use this to recognize a following local.get
+			// without promoting the local to a dedicated pin.
+			e.st.cval = int64(x + 1)
 		}
 		return
 	}

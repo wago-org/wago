@@ -50,8 +50,9 @@ func (a *Asm) FMov(dst, src Reg, f64 bool) { a.sseRR(sdPrefix(f64), 0x10, dst, s
 // operands directly and write a distinct destination, avoiding the movsd-to-scratch
 // that legacy 2-operand SSE needs to preserve an operand. wago already emits
 // LZCNT/TZCNT (BMI1/ABM, ~2013), which is newer than AVX (2011), so this raises no
-// effective ISA baseline. Always uses the 3-byte VEX form (0xC4) so every xmm0-15
-// combination encodes uniformly.
+// effective ISA baseline. Prefer the compact 2-byte VEX form (0xC5) when the
+// 0F-map instruction has no extended r/m, base, or index register; otherwise
+// use the general 3-byte form (0xC4).
 
 // vexPP is the VEX pp field for scalar F2 (f64) / F3 (f32) ops.
 func vexPP(f64 bool) byte {
@@ -89,9 +90,13 @@ func (a *Asm) vex3RRRMapL(opcodeMap, pp, op byte, dst, src1, src2 Reg, l byte) {
 	if src2 >= 8 {
 		bBit = 0
 	}
-	byte1 := (rBit << 7) | (1 << 6) | (bBit << 5) | (opcodeMap & 0x1F) // X̄=1
 	vvvv := (^byte(src1)) & 0x0F
 	byte2 := (vvvv << 3) | ((l & 1) << 2) | (pp & 0x03) // W=0
+	if opcodeMap == vexMap0F && src2 < 8 {
+		a.emit(0xC5, (rBit<<7)|byte2, op, 0xC0|((byte(dst)&7)<<3)|byte(src2&7))
+		return
+	}
+	byte1 := (rBit << 7) | (1 << 6) | (bBit << 5) | (opcodeMap & 0x1F) // X̄=1
 	a.emit(0xC4, byte1, byte2, op, 0xC0|((byte(dst)&7)<<3)|byte(src2&7))
 }
 
@@ -119,8 +124,12 @@ func (a *Asm) vex3RRReservedL(opcodeMap, pp, op byte, reg, rm Reg, l byte) {
 	if rm >= 8 {
 		bBit = 0
 	}
+	byte2 := byte(0x78) | ((l & 1) << 2) | (pp & 0x03) // vvvv=1111, W=0
+	if opcodeMap == vexMap0F && rm < 8 {
+		a.emit(0xC5, (rBit<<7)|byte2, op, 0xC0|((byte(reg)&7)<<3)|byte(rm&7))
+		return
+	}
 	byte1 := (rBit << 7) | (1 << 6) | (bBit << 5) | (opcodeMap & 0x1F) // X̄=1
-	byte2 := byte(0x78) | ((l & 1) << 2) | (pp & 0x03)                 // vvvv=1111, W=0
 	a.emit(0xC4, byte1, byte2, op, 0xC0|((byte(reg)&7)<<3)|byte(rm&7))
 }
 
@@ -135,12 +144,16 @@ func (a *Asm) vex3MemPrefixL(opcodeMap, pp byte, reg Reg, src1 Reg, hasSrc1 bool
 	if base >= 8 {
 		bBit = 0
 	}
-	byte1 := (rBit << 7) | (xBit << 6) | (bBit << 5) | (opcodeMap & 0x1F)
 	vvvv := byte(0x0F) // reserved vvvv=1111 for two-operand VEX memory moves
 	if hasSrc1 {
 		vvvv = (^byte(src1)) & 0x0F
 	}
 	byte2 := (vvvv << 3) | ((l & 1) << 2) | (pp & 0x03) // W=0
+	if opcodeMap == vexMap0F && base < 8 && (!indexed || index < 8) {
+		a.emit(0xC5, (rBit<<7)|byte2)
+		return
+	}
+	byte1 := (rBit << 7) | (xBit << 6) | (bBit << 5) | (opcodeMap & 0x1F)
 	a.emit(0xC4, byte1, byte2)
 }
 
@@ -167,6 +180,14 @@ func (a *Asm) vex3MemIdxL(opcodeMap, pp, op byte, reg Reg, src1 Reg, hasSrc1 boo
 	a.vex3MemPrefixL(opcodeMap, pp, reg, src1, hasSrc1, base, index, true, l)
 	a.emit(op)
 	a.sibAddr(reg, base, index, disp)
+}
+
+func (a *Asm) vex3MemRipPlaceholder(opcodeMap, pp, op byte, reg, src1 Reg) int {
+	a.vex3MemPrefixL(opcodeMap, pp, reg, src1, true, RAX, 0, false, 0)
+	a.emit(op, ((byte(reg)&7)<<3)|0x05) // mod=00, r/m=101: RIP + disp32
+	off := a.Len()
+	a.imm32(0)
+	return off
 }
 
 // Scalar float arithmetic, 3-operand: dst = src1 <op> src2.
@@ -525,14 +546,7 @@ func (a *Asm) vexShiftQwordImm(ext byte, dst, src Reg, imm byte) {
 }
 
 func (a *Asm) vexShiftQwordImmL(ext byte, dst, src Reg, imm, l byte) {
-	rBit, bBit := byte(1), byte(1) // inverted REX.R / REX.B; ModRM.reg is the fixed opcode extension.
-	if src >= 8 {
-		bBit = 0
-	}
-	byte1 := (rBit << 7) | (1 << 6) | (bBit << 5) | (vexMap0F & 0x1F) // X̄=1
-	vvvv := (^byte(dst)) & 0x0F
-	byte2 := (vvvv << 3) | ((l & 1) << 2) | 0b01
-	a.emit(0xC4, byte1, byte2, 0x73, 0xC0|((ext&7)<<3)|byte(src&7), imm)
+	a.vexShiftImmL(0x73, ext, dst, src, imm, l)
 }
 
 func (a *Asm) vexShiftWordImm(ext byte, dst, src Reg, imm byte) {
@@ -540,14 +554,7 @@ func (a *Asm) vexShiftWordImm(ext byte, dst, src Reg, imm byte) {
 }
 
 func (a *Asm) vexShiftWordImmL(ext byte, dst, src Reg, imm, l byte) {
-	rBit, bBit := byte(1), byte(1) // inverted REX.R / REX.B; ModRM.reg is the fixed opcode extension.
-	if src >= 8 {
-		bBit = 0
-	}
-	byte1 := (rBit << 7) | (1 << 6) | (bBit << 5) | (vexMap0F & 0x1F) // X̄=1
-	vvvv := (^byte(dst)) & 0x0F
-	byte2 := (vvvv << 3) | ((l & 1) << 2) | 0b01
-	a.emit(0xC4, byte1, byte2, 0x71, 0xC0|((ext&7)<<3)|byte(src&7), imm)
+	a.vexShiftImmL(0x71, ext, dst, src, imm, l)
 }
 
 func (a *Asm) vexShiftDwordImm(ext byte, dst, src Reg, imm byte) {
@@ -555,14 +562,21 @@ func (a *Asm) vexShiftDwordImm(ext byte, dst, src Reg, imm byte) {
 }
 
 func (a *Asm) vexShiftDwordImmL(ext byte, dst, src Reg, imm, l byte) {
-	rBit, bBit := byte(1), byte(1) // inverted REX.R / REX.B; ModRM.reg is the fixed opcode extension.
-	if src >= 8 {
-		bBit = 0
-	}
-	byte1 := (rBit << 7) | (1 << 6) | (bBit << 5) | (vexMap0F & 0x1F) // X̄=1
+	a.vexShiftImmL(0x72, ext, dst, src, imm, l)
+}
+
+func (a *Asm) vexShiftImmL(op, ext byte, dst, src Reg, imm, l byte) {
 	vvvv := (^byte(dst)) & 0x0F
 	byte2 := (vvvv << 3) | ((l & 1) << 2) | 0b01
-	a.emit(0xC4, byte1, byte2, 0x72, 0xC0|((ext&7)<<3)|byte(src&7), imm)
+	modrm := byte(0xC0 | ((ext & 7) << 3) | byte(src&7))
+	if src < 8 {
+		// ModRM.reg is an opcode extension, so VEX.R is unused and may stay
+		// inverted/clear. With a low r/m register the 0F map fits VEX2.
+		a.emit(0xC5, 0x80|byte2, op, modrm, imm)
+		return
+	}
+	byte1 := byte(0xC1) // R̄=1, X̄=1, B̄=0, map=0F
+	a.emit(0xC4, byte1, byte2, op, modrm, imm)
 }
 
 func (a *Asm) YPsrldImm(dst, src Reg, imm byte) { a.vexShiftDwordImmL(2, dst, src, imm, 1) }
@@ -574,7 +588,22 @@ func (a *Asm) VPadddMemDisp(dst, s1, base Reg, disp int32) {
 	a.vex3MemDisp(vexMap0F, 0b01, 0xFE, dst, s1, true, base, disp)
 }
 
-func (a *Asm) VPshufb(dst, s1, s2 Reg)    { a.vex3RRRMap(vexMap0F38, 0b01, 0x00, dst, s1, s2) }
+func (a *Asm) VPandMemDisp(dst, s1, base Reg, disp int32) {
+	a.vex3MemDisp(vexMap0F, 0b01, 0xDB, dst, s1, true, base, disp)
+}
+
+func (a *Asm) VPorMemDisp(dst, s1, base Reg, disp int32) {
+	a.vex3MemDisp(vexMap0F, 0b01, 0xEB, dst, s1, true, base, disp)
+}
+
+func (a *Asm) VPxorMemDisp(dst, s1, base Reg, disp int32) {
+	a.vex3MemDisp(vexMap0F, 0b01, 0xEF, dst, s1, true, base, disp)
+}
+
+func (a *Asm) VPshufb(dst, s1, s2 Reg) { a.vex3RRRMap(vexMap0F38, 0b01, 0x00, dst, s1, s2) }
+func (a *Asm) VPshufbRipPlaceholder(dst, s1 Reg) int {
+	return a.vex3MemRipPlaceholder(vexMap0F38, 0b01, 0x00, dst, s1)
+}
 func (a *Asm) VPhaddw(dst, s1, s2 Reg)    { a.vex3RRRMap(vexMap0F38, 0b01, 0x01, dst, s1, s2) }
 func (a *Asm) VPhaddd(dst, s1, s2 Reg)    { a.vex3RRRMap(vexMap0F38, 0b01, 0x02, dst, s1, s2) }
 func (a *Asm) VPmulhrsw(dst, s1, s2 Reg)  { a.vex3RRRMap(vexMap0F38, 0b01, 0x0B, dst, s1, s2) }

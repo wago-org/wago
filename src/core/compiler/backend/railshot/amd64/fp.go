@@ -31,7 +31,7 @@ func (f *fn) occupyF(e *elem, r Reg) {
 		e.st.typ = e.typ
 	}
 	e.kind = ekValue
-	e.st.kind, e.st.reg = stReg, r
+	e.st.kind, e.st.reg, e.st.cval = stReg, r, 0
 }
 
 func (f *fn) releaseF(r Reg) {

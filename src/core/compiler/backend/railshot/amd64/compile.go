@@ -180,15 +180,16 @@ type fn struct {
 	maxSpill int // high-water number of operand spill slots used
 	// spillFloor temporarily reserves a low spill-slot range while wide-stack
 	// canonicalization stages values above both their old homes and destinations.
-	spillFloor    int
-	subRspAt      int  // byte offset of the prologue's SubRsp imm32 (patched with frameSize)
-	addRspAt      int  // byte offset of the epilogue's AddRsp imm32 (patched with frameSize)
-	guardMode     bool // elide inline bounds checks; rely on guard-page + SIGSEGV trap
-	boundsFacts   bool // P6.1 straight-line bounds-check elision enabled (explicit mode)
-	interruptible bool // emit context-cancellation polls at entries and loop headers
-	lazyZero      bool // defer declared-local zeroing for small call+memory functions
-	skipFence     bool // call-free leaf with a provably small frame: no stack-fence check
-	frameElided   bool // register-homed call-free reg-ABI leaf: frameSize is 0 (see elideRegisterOnlyFrame)
+	spillFloor       int
+	subRspAt         int    // byte offset of the prologue's SubRsp imm32 (patched with frameSize)
+	addRspAt         int    // byte offset of the epilogue's AddRsp imm32 (patched with frameSize)
+	guardMode        bool   // elide inline bounds checks; rely on guard-page + SIGSEGV trap
+	boundsFacts      bool   // P6.1 straight-line bounds-check elision enabled (explicit mode)
+	interruptible    bool   // emit context-cancellation polls at entries and loop headers
+	lazyZero         bool   // defer declared-local zeroing for small call+memory functions
+	entryInitialized uint64 // locals proven assigned before first entry-prefix read
+	skipFence        bool   // call-free leaf with a provably small frame: no stack-fence check
+	frameElided      bool   // register-homed call-free reg-ABI leaf: frameSize is 0 (see elideRegisterOnlyFrame)
 
 	// memSizeReg caches the linear-memory size in bytes ([RBX-bdCurBytes]) in a
 	// dedicated register for the whole module (WARP's REGS::memSize, which reserves
@@ -1163,7 +1164,7 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, int
 
 	sc.reset()
 	sc.asm.Grow(asmCapForBody(len(c.BodyBytes)))
-	f := &fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, transient: sc.transient, globalIdx: m.ImportedFuncCount() + funcIdx, customInstructions: custom, nParams: len(ft.Params), nLocals: nLocals, guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, regMerge: regMergeEnabled, globalCellReg: regNone, memSizeReg: regNone, immutableLocalTable: hints.immutableLocalTable, immutableTableType: hints.immutableTableType, immutableTableTyped: hints.immutableTableTyped, monomorphicTarget: hints.monomorphicTarget, importBindings: importBindings, stats: stats}
+	f := &fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, transient: sc.transient, globalIdx: m.ImportedFuncCount() + funcIdx, customInstructions: custom, nParams: len(ft.Params), nLocals: nLocals, guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, regMerge: regMergeEnabled, globalCellReg: regNone, memSizeReg: regNone, immutableLocalTable: hints.immutableLocalTable, immutableTableType: hints.immutableTableType, immutableTableTyped: hints.immutableTableTyped, monomorphicTarget: hints.monomorphicTarget, importBindings: importBindings, stats: stats, entryInitialized: hints.entryInitialized}
 	// Retain the (possibly grown) control-frame backing for the next function.
 	defer func() {
 		sc.ctrl = f.ctrl
@@ -1756,6 +1757,9 @@ func (f *fn) zeroDeclaredLocals() {
 		a := f.a
 		a.XorSelf32(RAX)
 		for i := f.nParams; i < f.nLocals; i++ {
+			if i < 64 && f.entryInitialized&(uint64(1)<<uint(i)) != 0 {
+				continue
+			}
 			if pr, isFloat, ok := f.pinReg(i); ok && !isFloat {
 				a.XorSelf32(pr)
 			} else if ok && isFloat {
