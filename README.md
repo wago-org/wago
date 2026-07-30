@@ -48,7 +48,9 @@
 ## Installation
 
 The installer builds the CLI and Standard runtime from the public repository.
-It requires `git` and Go 1.22+:
+It requires Go 1.22+ and prefers Git so the saved source retains repository
+metadata. If Git is unavailable or cannot fetch the requested ref, it downloads
+and unpacks GitHub's source zip using `curl` or `wget` plus `unzip` or Python:
 
 ```bash
 curl -fsSL https://wago.sh/install.sh | sh
@@ -59,9 +61,15 @@ Useful installer knobs are:
 | Variable | Meaning |
 |---|---|
 | `WAGO_VERSION` | Git ref to build: branch, tag, or commit. Defaults to `main`. |
-| `WAGO_BIN_DIR` | Install directory. Defaults to `~/.local/bin`. |
+| `WAGO_BIN_DIR` | Install directory. Defaults to `~/.wago/bin`. |
 | `WAGO_DRY_RUN=1` | Print the source-build plan without installing. |
+| `WAGO_NO_MODIFY_PATH=1` | Never offer to edit a detected shell startup file. |
 | `NO_COLOR=1` | Disable colored installer output. |
+
+When the install directory is not already on `PATH`, an interactive install
+detects available shells and offers to update the current shell's startup file
+first. Installs without a controlling terminal print the manual PATH step
+without modifying shell configuration.
 
 From a checkout, build the standard-Go manager:
 
