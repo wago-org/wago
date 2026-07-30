@@ -12,10 +12,13 @@ package wagocli
 // addCommand is `wago add <plugin>`: install a plugin — record it in wago.json,
 // rebuild wago with it, and review its capabilities.
 func addCommand() *Cmd {
+	return pluginAddCommand()
+}
+
+func pluginAddCommand() *Cmd {
 	return &Cmd{
 		Name:    "add",
-		Aliases: []string{"install", "i"},
-		Summary: "add a plugin: record it in wago.json, rebuild wago, review its capabilities",
+		Summary: "add and enable a plugin, then rebuild Wago",
 		Args:    "<module>[@version]",
 		Flags:   []Flag{scopeGlobalFlag, scopeLocalFlag, forceFlag, verboseFlag},
 		Run: func(c *Ctx) {
@@ -28,12 +31,19 @@ func addCommand() *Cmd {
 	}
 }
 
-// rmCommand is `wago rm <plugin>`: remove a plugin from wago.json and rebuild.
+// rmCommand is `wago rm <plugin>`: remove a plugin from wago.json.
 func rmCommand() *Cmd {
+	command := pluginRemoveCommand()
+	command.Name = "rm"
+	command.Aliases = nil
+	return command
+}
+
+func pluginRemoveCommand() *Cmd {
 	return &Cmd{
-		Name:    "rm",
-		Aliases: []string{"remove", "uninstall"},
-		Summary: "remove a plugin from wago.json and rebuild",
+		Name:    "remove",
+		Aliases: []string{"rm"},
+		Summary: "remove and disable a plugin",
 		Args:    "<name>",
 		Flags:   []Flag{scopeGlobalFlag, scopeLocalFlag},
 		Run: func(c *Ctx) {
@@ -50,27 +60,29 @@ func pluginCommand() *Cmd {
 	return &Cmd{
 		Name:    "plugin",
 		Aliases: []string{"plugins"},
-		Summary: "manage plugins: list, inspect, grant, update, publish",
+		Summary: "add, remove, inspect, update, and publish plugins",
 		Children: []*Cmd{
+			pluginAddCommand(),
+			pluginRemoveCommand(),
 			{
 				Name: "list", Aliases: []string{"ls"},
-				Summary: "list the plugins installed in this wago",
-				Flags:   []Flag{jsonFlag},
+				Summary: "list plugins enabled for the selected scope",
+				Flags:   []Flag{scopeGlobalFlag, scopeLocalFlag, jsonFlag},
 				Run:     func(c *Ctx) { pluginList(c.Bool("json")) },
 			},
 			{
 				Name:    "inspect",
-				Summary: "show a plugin's imports and capabilities",
+				Summary: "show an enabled plugin's imports and capabilities",
 				Args:    "<name>",
-				Flags:   []Flag{jsonFlag},
+				Flags:   []Flag{scopeGlobalFlag, scopeLocalFlag, jsonFlag},
 				Run:     func(c *Ctx) { pluginInspect(c.one("<name>"), c.Bool("json")) },
 			},
 			{
 				Name:    "grant",
 				Summary: "review and edit a plugin's granted capabilities",
 				Args:    "<name>",
-				Flags:   []Flag{scopeGlobalFlag},
-				Run:     func(c *Ctx) { pkgGrant(c.one("<name>"), c.Bool("global")) },
+				Flags:   []Flag{scopeGlobalFlag, scopeLocalFlag},
+				Run:     func(c *Ctx) { pkgGrant(c.one("<name>"), scope(c)) },
 			},
 			{
 				Name: "update", Aliases: []string{"up", "upgrade"},
@@ -116,8 +128,8 @@ func pluginCommand() *Cmd {
 
 // Shared scope/build flags for add/rm/plugin.
 var (
-	scopeGlobalFlag = Flag{Name: "global", Short: "g", Bool: true, Help: "use the CLI-wide plugin set (~/.wago); default when the cwd has no wago.json"}
-	scopeLocalFlag  = Flag{Name: "local", Short: "l", Bool: true, Help: "use this project's wago.json (create one here if absent)"}
+	scopeGlobalFlag = Flag{Name: "global", Short: "g", Bool: true, Help: "use the shared user-wide plugins"}
+	scopeLocalFlag  = Flag{Name: "local", Short: "l", Bool: true, Help: "use this project's plugins"}
 	forceFlag       = Flag{Name: "force", Short: "f", Bool: true, Help: "ignore the build cache / fetch the latest version"}
 	verboseFlag     = Flag{Name: "verbose", Short: "v", Bool: true, Help: "stream the underlying go output"}
 )

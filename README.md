@@ -129,6 +129,7 @@ The high-level project docs live in this repo:
 - [ARCHITECTURE.md](ARCHITECTURE.md) — pipeline, runtime, ABI, and design notes.
 - [OPTIMIZATIONS.md](OPTIMIZATIONS.md) — current and planned codegen work.
 - [docs/plugin-api-v2.md](docs/plugin-api-v2.md) — capability-based plugin architecture.
+- [docs/plugin-scopes.md](docs/plugin-scopes.md) — local/global plugin intent and toolchain-isolated builds.
 - [docs/compiler-instruction-plugin-design.md](docs/compiler-instruction-plugin-design.md) — language-neutral custom instructions and native lowering.
 - [docs/wago-json.md](docs/wago-json.md) — manifest and schema reference.
 - [docs/function-workers.md](docs/function-workers.md) — parallel validation/codegen policy and tradeoffs.
@@ -173,22 +174,46 @@ wago validate tests/testdata/fib.wasm
 wago validate -p tests/testdata/large.wasm
 ```
 
-`wago build` is reserved for the future `.wago` product path and currently
-returns `not implemented`.
+Precompile a module into Wago's host-specific artifact format:
+
+```bash
+wago build app.wasm
+wago build app.wasm -o build/app.wago
+```
+
+The resulting `.wago` skips decode, validation, and compilation on later runs.
+Artifacts are architecture-specific and should be rebuilt after incompatible
+Wago upgrades.
 
 ### Inspect plugins and imports
+
+Initialize a project explicitly, or let `add` create `wago.json` automatically:
+
+```bash
+wago init
+wago add wago-org/wasi
+wago add --global wago-org/wasi  # shared outside projects with local manifests
+wago plugin add wago-org/wasi    # equivalent, fully grouped form
+```
+
+Local plugins are isolated from the global set. A local `wago.json` wins without
+merging machine state; `wago run --global app.wasm` explicitly selects global
+plugins and `wago run --bare app.wasm` disables both sets. Global intent is
+shared across Wago versions, while every version/profile/build compiles its own
+plugin runtime. See [docs/plugin-scopes.md](docs/plugin-scopes.md).
 
 The CLI can show which plugins are compiled into the binary and what imports a
 module needs:
 
 ```bash
 wago plugin list
+wago plugin list --global
 wago plugin inspect github.com/acme/wago-metrics
-wago plugin inspect github.com/acme/wago-metrics --json
+wago plugin inspect github.com/acme/wago-metrics --local --json
+wago plugin remove wago-org/wasi
 
 wago module imports app.wasm
 wago module capabilities app.wasm
-wago env
 wago version list
 ```
 

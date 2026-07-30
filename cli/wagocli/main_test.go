@@ -20,12 +20,12 @@ func TestUsageDocumentsCommandSurface(t *testing.T) {
 	b, _ := os.ReadFile(f.Name())
 	text := string(b)
 	for _, want := range []string{
-		"wago is a pure-Go",             // banner
-		"Usage: wago",                   // usage line
-		"compile and execute an export", // run
-		"not implemented",               // build
-		"decode and validate a module",  // validate
-		"github.com/wago-org/wago",      // footer
+		"wago is a pure-Go", // banner
+		"Usage: wago",       // usage line
+		"compile and execute a WebAssembly module", // run
+		"precompile a WebAssembly module",          // build
+		"decode and validate a module",             // validate
+		"github.com/wago-org/wago",                 // footer
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("usage text missing %q:\n%s", want, text)
@@ -33,7 +33,7 @@ func TestUsageDocumentsCommandSurface(t *testing.T) {
 	}
 	// Every Standard command must be listed. Auth and version remain available
 	// here as well as in the separate manager so checkout/dev builds work.
-	for _, cmd := range []string{"run", "add", "rm", "plugin", "auth", "module", "build", "validate", "version"} {
+	for _, cmd := range []string{"run", "init", "add", "rm", "plugin", "auth", "module", "build", "validate", "version"} {
 		if !strings.Contains(text, cmd) {
 			t.Fatalf("usage text missing command %q:\n%s", cmd, text)
 		}
@@ -59,7 +59,7 @@ func TestManagedRuntimeHelpIncludesManagerCommands(t *testing.T) {
 	t.Setenv("WAGO_MANAGER_EXECUTABLE", "/usr/local/bin/wago")
 
 	commands := topLevelHelpCommands()
-	if len(commands) != 3 || commands[0].Name != "run" || commands[1].Name != "auth" || commands[2].Name != "version" {
+	if len(commands) != 4 || commands[0].Name != "run" || commands[1].Name != "init" || commands[2].Name != "auth" || commands[3].Name != "version" {
 		t.Fatalf("managed minimal help commands = %#v", commands)
 	}
 	if len(root.Children) != 1 {
@@ -80,6 +80,33 @@ func TestValidateModuleBytesRejectsDecodeErrors(t *testing.T) {
 	err := validateModuleBytes(badMagic)
 	if err == nil || !strings.Contains(err.Error(), "decode") {
 		t.Fatalf("validateModuleBytes(bad magic) = %v, want decode error", err)
+	}
+}
+
+func TestBuildCommandWritesRunnableArtifact(t *testing.T) {
+	t.Setenv("WAGO_BARE", "1")
+	t.Setenv("WAGO_GLOBAL", "")
+	t.Setenv("WAGO_LOCAL", "")
+	dir := t.TempDir()
+	input := filepath.Join(dir, "empty.wasm")
+	if err := os.WriteFile(input, []byte{'\x00', 'a', 's', 'm', 1, 0, 0, 0}, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	buildCommand().Run(&Ctx{
+		Args:  []string{input},
+		strs:  map[string]string{},
+		bools: map[string]bool{},
+	})
+	output := filepath.Join(dir, "empty.wago")
+	artifact, err := os.ReadFile(output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !wago.IsCompiled(artifact) {
+		t.Fatalf("build output is not a .wago artifact: %x", artifact)
+	}
+	if _, err := wago.Load(artifact); err != nil {
+		t.Fatalf("load build output: %v", err)
 	}
 }
 
@@ -138,6 +165,10 @@ func TestPluginRuntimeAndRunTargetClassification(t *testing.T) {
 	}{
 		{nil, false},
 		{[]string{"version"}, false},
+		{[]string{"init"}, false},
+		{[]string{"add", "wago-org/wasi"}, false},
+		{[]string{"plugin", "add", "wago-org/wasi"}, false},
+		{[]string{"plugin", "remove", "wago-org/wasi"}, false},
 		{[]string{"plugin", "publish"}, false},
 		{[]string{"plugin", "list"}, true},
 		{[]string{"run", "x.wasm"}, true},
@@ -145,6 +176,13 @@ func TestPluginRuntimeAndRunTargetClassification(t *testing.T) {
 		if got := usesPluginRuntime(tc.args); got != tc.want {
 			t.Fatalf("usesPluginRuntime(%v) = %v, want %v", tc.args, got, tc.want)
 		}
+	}
+	if root.child("install") != nil || root.child("uninstall") != nil || root.child("remove") != nil {
+		t.Fatal("top-level plugin aliases collide with `wago version install/uninstall`")
+	}
+	plugins := pluginCommand()
+	if plugins.child("add") == nil || plugins.child("remove") == nil || plugins.child("rm") == nil {
+		t.Fatal("plugin group does not expose add/remove commands")
 	}
 	for _, name := range []string{"module.wasm", "module.wago"} {
 		if !looksLikeRunTarget(name) {
@@ -167,6 +205,24 @@ func TestPluginRuntimeAndRunTargetClassification(t *testing.T) {
 	useColor = true
 	if paint("31", "x") != "\x1b[31mx\x1b[0m" {
 		t.Fatal("enabled color paint changed")
+	}
+}
+
+func TestCommandHelpBypassesPluginRuntime(t *testing.T) {
+	if !commandWantsHelp(pluginCommand(), nil) {
+		t.Fatal("bare plugin group help was not recognized")
+	}
+	if !commandWantsHelp(pluginCommand(), []string{"--help"}) {
+		t.Fatal("plugin group help was not recognized")
+	}
+	if !commandWantsHelp(pluginCommand(), []string{"list", "--global", "--help"}) {
+		t.Fatal("nested plugin help was not recognized")
+	}
+	if !commandWantsHelp(runCommand(), []string{"--local", "--help"}) {
+		t.Fatal("run help before the module was not recognized")
+	}
+	if commandWantsHelp(runCommand(), []string{"module.wasm", "--help"}) {
+		t.Fatal("guest help after the module was intercepted")
 	}
 }
 

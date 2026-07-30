@@ -8,6 +8,7 @@ func runnerBuildTag() string { return "" }
 func runnerCommands() []*Cmd {
 	return []*Cmd{
 		runCommand(),
+		initCommand(),
 		addCommand(),
 		rmCommand(),
 		pluginCommand(),

@@ -72,7 +72,7 @@ func TestManagerDelegatesTopLevelHelpWithManagerContext(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	script := "#!/bin/sh\nprintf 'args:%s\\nmanager:%s\\nexecutable:%s\\n' \"$*\" \"$WAGO_MANAGER_VERSION\" \"$WAGO_MANAGER_EXECUTABLE\"\n"
+	script := "#!/bin/sh\nprintf 'args:%s\\nmanager:%s\\nexecutable:%s\\nprofile:%s\\nbuild:%s\\n' \"$*\" \"$WAGO_MANAGER_VERSION\" \"$WAGO_MANAGER_EXECUTABLE\" \"$WAGO_RUNTIME_PROFILE\" \"$WAGO_RUNTIME_BUILD\"\n"
 	if err := os.WriteFile(runner, []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -96,7 +96,7 @@ func TestManagerDelegatesTopLevelHelpWithManagerContext(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(output)
-	for _, want := range []string{"args:--help", "manager:manager-test", "executable:"} {
+	for _, want := range []string{"args:--help", "manager:manager-test", "executable:", "profile:minimal", "build:normal"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("delegated help missing %q:\n%s", want, text)
 		}
@@ -180,6 +180,42 @@ func TestManagerOwnsAuthWithoutSelectedRunner(t *testing.T) {
 	}
 	if got := strings.TrimSpace(string(output)); got != "not logged in (run: wago auth login)" {
 		t.Fatalf("manager auth output = %q", got)
+	}
+}
+
+func TestManagerOwnsInitWithoutSelectedRunner(t *testing.T) {
+	t.Setenv("WAGO_HOME", t.TempDir())
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	project := t.TempDir()
+	if err := os.Chdir(project); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(wd) })
+
+	oldArgs, oldStdout := os.Args, os.Stdout
+	t.Cleanup(func() { os.Args, os.Stdout = oldArgs, oldStdout })
+	read, write, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stdout = write
+	os.Args = []string{"wago", "init"}
+	main()
+	_ = write.Close()
+	output, err := io.ReadAll(read)
+	_ = read.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(output), "Initialized wago.json") {
+		t.Fatalf("manager init output = %q", output)
+	}
+	manifest, err := os.ReadFile(filepath.Join(project, "wago.json"))
+	if err != nil || !strings.Contains(string(manifest), `"schema": "wago/v1"`) {
+		t.Fatalf("manager init manifest = %q, %v", manifest, err)
 	}
 }
 

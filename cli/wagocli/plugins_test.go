@@ -150,24 +150,23 @@ func TestPluginReviewAndScopeHelpers(t *testing.T) {
 		t.Fatalf("hasFlag = %v, %v", found, rest)
 	}
 	for _, tc := range []struct {
-		global, local, manifest bool
-		want                    bool
-		err                     bool
+		global, local bool
+		want          bool
+		err           bool
 	}{
-		{true, false, true, true, false},
-		{false, true, false, false, false},
-		{false, false, true, false, false},
-		{false, false, false, true, false},
-		{true, true, false, false, true},
+		{true, false, true, false},
+		{false, true, false, false},
+		{false, false, false, false},
+		{true, true, false, true},
 	} {
-		got, err := scopeGlobal(tc.global, tc.local, tc.manifest)
+		got, err := scopeGlobal(tc.global, tc.local)
 		if got != tc.want || (err != nil) != tc.err {
-			t.Fatalf("scopeGlobal(%v,%v,%v) = %v,%v", tc.global, tc.local, tc.manifest, got, err)
+			t.Fatalf("scopeGlobal(%v,%v) = %v,%v", tc.global, tc.local, got, err)
 		}
 	}
 }
 
-func TestResolveScopeUsesCurrentProjectManifest(t *testing.T) {
+func TestResolveScopeDefaultsLocal(t *testing.T) {
 	wd, err := os.Getwd()
 	if err != nil {
 		t.Fatal(err)
@@ -177,13 +176,13 @@ func TestResolveScopeUsesCurrentProjectManifest(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.Chdir(wd) })
-	if !resolveScope(false, false) || !resolveScope(true, false) || resolveScope(false, true) {
-		t.Fatal("scope resolution without manifest changed")
+	if resolveScope(false, false) || !resolveScope(true, false) || resolveScope(false, true) {
+		t.Fatal("scope resolution should default local")
 	}
 	if err := os.WriteFile(projectFile, []byte("{}\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if resolveScope(false, false) || !resolveScope(true, false) || resolveScope(false, true) {
-		t.Fatal("scope resolution with manifest changed")
+		t.Fatal("scope resolution should not depend on manifest presence")
 	}
 }

@@ -6,19 +6,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 
 	"github.com/wago-org/wago"
 )
-
-// projectFile is the per-project manifest. The plugins to compile into a custom
-// wago live under its "dependencies" array, alongside any publish metadata — one
-// file, like package.json. Consuming a plugin doesn't require the publish fields;
-// a bare {"dependencies": [...]} is enough.
-const projectFile = "wago.json"
 
 // normalizeModuleRef canonicalizes a user-typed package reference to a full
 // module path: a bare "owner/repo" (whose first segment has no dot, so it's not a
@@ -43,31 +35,6 @@ func normalizeModuleRef(ref string) string {
 		}
 	}
 	return path + ver
-}
-
-const (
-	manifestSchemaURI = "https://wago.sh/schema.json"
-	manifestVersion   = "wago/v1"
-)
-
-// projectManifestPath returns the wago.json path in dir.
-func projectManifestPath(dir string) string { return filepath.Join(dir, projectFile) }
-
-// readProjectMap loads wago.json as a generic map (preserving unknown fields, so
-// a publisher's manifest round-trips), or an empty map when the file is absent.
-func readProjectMap(dir string) (map[string]any, error) {
-	b, err := os.ReadFile(projectManifestPath(dir))
-	if os.IsNotExist(err) {
-		return map[string]any{}, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	m := map[string]any{}
-	if err := json.Unmarshal(b, &m); err != nil {
-		return nil, fmt.Errorf("%s: %w", projectFile, err)
-	}
-	return m, nil
 }
 
 type projectPlugin struct {
@@ -164,15 +131,6 @@ func parsePluginCapabilities(name string, raw json.RawMessage) ([]wago.PluginCap
 	return caps, budgets, nil
 }
 
-// writeProjectMap writes wago.json with indented, key-sorted JSON (stable diffs).
-func writeProjectMap(dir string, m map[string]any) error {
-	b, err := json.MarshalIndent(m, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(projectManifestPath(dir), append(b, '\n'), 0o644)
-}
-
 // depsFromMap extracts the module paths under "dependencies".
 func depsFromMap(m map[string]any) []string {
 	raw, _ := m["dependencies"].([]any)
@@ -202,12 +160,7 @@ func addProjectDep(dir, module string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	if _, ok := m["$schema"]; !ok {
-		m["$schema"] = manifestSchemaURI
-	}
-	if _, ok := m["schema"]; !ok {
-		m["schema"] = manifestVersion
-	}
+	ensureProjectMetadata(m)
 	deps := depsFromMap(m)
 	for _, d := range deps {
 		if d == module {

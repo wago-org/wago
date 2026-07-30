@@ -13,7 +13,7 @@ import (
 	"github.com/wago-org/wago"
 )
 
-// runCommand is `wago run <file> [args...]`: compile and execute an export. It's
+// runCommand is `wago run <file> [args...]`: compile and execute a module. It's
 // PassThrough so everything after the .wasm file is handed to the guest verbatim.
 func runCommand() *Cmd {
 	flags := append([]Flag{
@@ -24,7 +24,7 @@ func runCommand() *Cmd {
 	flags = append(flags, runProfileFlags()...)
 	return &Cmd{
 		Name:        "run",
-		Summary:     "compile and execute an export   (default)",
+		Summary:     "compile and execute a WebAssembly module (default)",
 		Args:        "<file> [args...]",
 		PassThrough: true,
 		Normalize: func(args []string) ([]string, error) {

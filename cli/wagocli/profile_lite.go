@@ -9,6 +9,7 @@ func runnerCommands() []*Cmd {
 	return []*Cmd{
 		runCommand(),
 		buildCommand(),
+		initCommand(),
 		addCommand(),
 		rmCommand(),
 		pluginCommand(),

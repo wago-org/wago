@@ -54,3 +54,33 @@ func TestProjectPluginsParsesCapabilityBudgets(t *testing.T) {
 		t.Fatalf("budget = %#v", got[0].Budgets)
 	}
 }
+
+func TestInitializeProjectCreatesMinimalManifestAndPreservesFields(t *testing.T) {
+	dir := t.TempDir()
+	created, err := initializeProject(dir)
+	if err != nil || !created {
+		t.Fatalf("initializeProject first = %v, %v", created, err)
+	}
+	m, err := readProjectMap(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m["$schema"] != manifestSchemaURI || m["schema"] != manifestVersion {
+		t.Fatalf("initialized metadata = %#v", m)
+	}
+	if deps := depsFromMap(m); len(deps) != 0 {
+		t.Fatalf("initialized dependencies = %v", deps)
+	}
+	m["name"] = "example"
+	if err := writeProjectMap(dir, m); err != nil {
+		t.Fatal(err)
+	}
+	created, err = initializeProject(dir)
+	if err != nil || created {
+		t.Fatalf("initializeProject repeat = %v, %v", created, err)
+	}
+	m, _ = readProjectMap(dir)
+	if m["name"] != "example" {
+		t.Fatalf("repeat initialization discarded fields: %#v", m)
+	}
+}
