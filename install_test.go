@@ -66,7 +66,7 @@ func TestInstallerAsksBeforeReplacingExistingInstallation(t *testing.T) {
 		t.Fatal(err)
 	}
 	tty := filepath.Join(home, "tty")
-	if err := os.WriteFile(tty, []byte("n\n"), 0o600); err != nil {
+	if err := os.WriteFile(tty, []byte("esc\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -84,13 +84,145 @@ func TestInstallerAsksBeforeReplacingExistingInstallation(t *testing.T) {
 	}
 	text := string(output)
 	if !strings.Contains(text, "Wago is already installed at ~/.wago/bin/wago") ||
-		!strings.Contains(text, "Reinstall? [Y/n]") ||
+		!strings.Contains(text, "How should it be reinstalled?") ||
+		!strings.Contains(text, "Full     Reset everything, including plugins and settings") ||
+		!strings.Contains(text, "Partial  Reset Wago but keep global plugins for reinstall") ||
+		!strings.Contains(text, "Minimal  Replace binaries and keep existing state") ||
+		!strings.Contains(text, "○ Full") ||
+		!strings.Contains(text, "○ Partial") ||
+		!strings.Contains(text, "› ◉ Minimal") ||
+		!strings.Contains(text, "enter/→ select · esc cancel") ||
 		!strings.Contains(text, "Cancelled.") {
 		t.Fatalf("repeat install skipped confirmation:\n%s", text)
 	}
 	body, err := os.ReadFile(manager)
 	if err != nil || string(body) != "existing manager" {
 		t.Fatalf("cancelled reinstall changed manager: %q, %v", body, err)
+	}
+}
+
+func TestInstallerFullReinstallRemovesPluginsAndPathSetup(t *testing.T) {
+	home := t.TempDir()
+	root := filepath.Join(home, ".wago")
+	for _, path := range []string{
+		filepath.Join(root, "bin"),
+		filepath.Join(root, "versions", "canary"),
+		filepath.Join(root, "src"),
+	} {
+		if err := os.MkdirAll(path, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for path, body := range map[string]string{
+		filepath.Join(root, "bin", "wago"):                        "manager",
+		filepath.Join(root, "wago.json"):                          "plugins",
+		filepath.Join(root, "wago-lock.json"):                     "lock",
+		filepath.Join(root, "src", "go.mod"):                      "source",
+		filepath.Join(root, "versions", "canary", "wago-runtime"): "runtime",
+	} {
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	zshrc := filepath.Join(home, ".zshrc")
+	pathBlock := "export KEEP=1\n\n# Wago PATH: " + filepath.Join(root, "bin") +
+		"\nexport PATH='" + filepath.Join(root, "bin") + "':\"$PATH\"\n"
+	if err := os.WriteFile(zshrc, []byte(pathBlock), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	command := exec.Command("sh", "install.sh")
+	command.Env = append(os.Environ(),
+		"HOME="+home,
+		"WAGO_INTERNAL_REINSTALL_CLEANUP_ONLY=full",
+		"NO_COLOR=1",
+	)
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("full reinstall cleanup: %v\n%s", err, output)
+	}
+	if !strings.Contains(string(output), "mode=full plugins=removed") {
+		t.Fatalf("full reinstall cleanup output:\n%s", output)
+	}
+	if _, err := os.Stat(root); !os.IsNotExist(err) {
+		t.Fatalf("full reinstall kept Wago root: %v", err)
+	}
+	config, err := os.ReadFile(zshrc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := string(config), "export KEEP=1\n"; got != want {
+		t.Fatalf("full reinstall PATH cleanup = %q, want %q", got, want)
+	}
+}
+
+func TestInstallerPartialReinstallPreservesGlobalPlugins(t *testing.T) {
+	home := t.TempDir()
+	root := filepath.Join(home, ".wago")
+	for _, path := range []string{
+		filepath.Join(root, "bin"),
+		filepath.Join(root, "versions", "canary"),
+		filepath.Join(root, "config"),
+		filepath.Join(root, "cache", "canary"),
+		filepath.Join(root, "src"),
+	} {
+		if err := os.MkdirAll(path, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for path, body := range map[string]string{
+		filepath.Join(root, "bin", "wago"):                        "manager",
+		filepath.Join(root, "wago.json"):                          "plugins",
+		filepath.Join(root, "wago-lock.json"):                     "lock",
+		filepath.Join(root, "src", "go.mod"):                      "source",
+		filepath.Join(root, "config", "active-version"):           "canary",
+		filepath.Join(root, "versions", "canary", "wago-runtime"): "runtime",
+	} {
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	zshrc := filepath.Join(home, ".zshrc")
+	pathBlock := "# Wago PATH: " + filepath.Join(root, "bin") +
+		"\nexport PATH='" + filepath.Join(root, "bin") + "':\"$PATH\"\n"
+	if err := os.WriteFile(zshrc, []byte(pathBlock), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	command := exec.Command("sh", "install.sh")
+	command.Env = append(os.Environ(),
+		"HOME="+home,
+		"WAGO_INTERNAL_REINSTALL_CLEANUP_ONLY=partial",
+		"NO_COLOR=1",
+	)
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("partial reinstall cleanup: %v\n%s", err, output)
+	}
+	if !strings.Contains(string(output), "mode=partial plugins=preserved") {
+		t.Fatalf("partial reinstall cleanup output:\n%s", output)
+	}
+	for _, path := range []string{
+		filepath.Join(root, "wago.json"),
+		filepath.Join(root, "wago-lock.json"),
+	} {
+		if _, err := os.Stat(path); err != nil {
+			t.Fatalf("partial reinstall removed %s: %v", path, err)
+		}
+	}
+	for _, path := range []string{
+		filepath.Join(root, "bin", "wago"),
+		filepath.Join(root, "versions"),
+		filepath.Join(root, "config"),
+		filepath.Join(root, "cache"),
+		filepath.Join(root, "src"),
+	} {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatalf("partial reinstall kept %s: %v", path, err)
+		}
+	}
+	if config, err := os.ReadFile(zshrc); err != nil || len(config) != 0 {
+		t.Fatalf("partial reinstall PATH cleanup = %q, %v", config, err)
 	}
 }
 
@@ -129,6 +261,8 @@ func TestInstallerOffersPersistentPathSetupWhenAlreadyOnCurrentPath(t *testing.T
 	}
 	text := string(output)
 	if !strings.Contains(text, "Add Wago to your PATH?") ||
+		!strings.Contains(text, "› ◉ zsh") ||
+		!strings.Contains(text, "○ Not now") ||
 		!strings.Contains(text, "Added Wago to PATH in ~/.zshrc") {
 		t.Fatalf("installer trusted only the current process PATH:\n%s", text)
 	}

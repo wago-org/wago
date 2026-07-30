@@ -62,6 +62,7 @@ Useful installer knobs are:
 |---|---|
 | `WAGO_VERSION` | Git ref to build: branch, tag, or commit. Defaults to `main`. |
 | `WAGO_BIN_DIR` | Install directory. Defaults to `~/.wago/bin`. |
+| `WAGO_REINSTALL_MODE` | Existing-install cleanup: `full`, `partial`, or `minimal`. |
 | `WAGO_DRY_RUN=1` | Print the source-build plan without installing. |
 | `WAGO_NO_MODIFY_PATH=1` | Never offer to edit a detected shell startup file. |
 | `NO_COLOR=1` | Disable colored installer output. |
@@ -72,7 +73,11 @@ file. It offers persistent PATH setup even when the current process already has
 the install directory on `PATH`, so uninstalling and reinstalling from the same
 shell behaves like a fresh install. Installs without a controlling terminal use
 the default or `WAGO_BIN_DIR` and do not modify shell configuration. Re-running
-the interactive installer asks before replacing an existing manager.
+the interactive installer offers Full (reset everything, including plugins),
+Partial (preserve global plugin selections), Minimal (replace binaries while
+keeping state), or Cancel before replacing an existing manager. Reinstall-mode
+and shell/PATH choices use the same `○`/`◉`, arrow-key, Enter/right-arrow, and
+Escape interaction as the CLI.
 
 From a checkout, build the standard-Go manager:
 
@@ -139,10 +144,17 @@ wago self update
 wago self uninstall
 ```
 
-`wago self uninstall` asks for confirmation, then removes the manager,
-installed runtimes, global plugins, configuration, caches, and installer-added
-shell PATH entries. It does not remove project directories, local `.wago`
-builds, or `wago.json` files.
+`wago self uninstall` uses the shared `○`/`◉` selector:
+
+- **Full** removes the manager, runtimes, global plugins, configuration, caches,
+  source, and installer-added PATH entries.
+- **Partial** removes Wago but preserves the shared global plugin manifest and
+  lock file for a later reinstall.
+- **Minimal** removes only the manager and installer-added PATH entries.
+
+All modes preserve project directories, project-local `.wago` builds, and
+project `wago.json` files. For automation, pass
+`--mode full|partial|minimal`; `-y` skips confirmation and defaults to Full.
 
 ## Docs
 

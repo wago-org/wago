@@ -2,6 +2,7 @@ package wagocli
 
 import (
 	"bytes"
+	"io"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -25,6 +26,40 @@ func TestSelfUpdateChannelPreservesReleaseTrack(t *testing.T) {
 		if got := selfUpdateChannel(version); got != want {
 			t.Errorf("selfUpdateChannel(%q) = %q, want %q", version, got, want)
 		}
+	}
+}
+
+func TestSelfUninstallModePickerUsesRadioButtonsAndDefaultsFull(t *testing.T) {
+	p := selfUninstallModePicker()
+	if got := p.selected(); got != string(selfUninstallFull) {
+		t.Fatalf("default uninstall mode = %q, want %q", got, selfUninstallFull)
+	}
+	frame := p.frame()
+	for _, want := range []string{
+		"Choose uninstall mode",
+		"› ◉ Full",
+		"○ Partial",
+		"○ Minimal",
+		"including plugins",
+		"keep global plugins",
+		"manager and PATH only",
+		"enter/→ select",
+	} {
+		if !strings.Contains(frame, want) {
+			t.Fatalf("uninstall picker missing %q:\n%s", want, frame)
+		}
+	}
+}
+
+func TestParseSelfUninstallMode(t *testing.T) {
+	for _, value := range []string{"full", "partial", "minimal"} {
+		mode, err := parseSelfUninstallMode(value)
+		if err != nil || string(mode) != value {
+			t.Fatalf("parseSelfUninstallMode(%q) = %q, %v", value, mode, err)
+		}
+	}
+	if _, err := parseSelfUninstallMode("everything"); err == nil {
+		t.Fatal("unknown uninstall mode was accepted")
 	}
 }
 
@@ -59,13 +94,13 @@ func TestSelfUninstallRequiresConfirmationAndPreservesProjects(t *testing.T) {
 	}
 
 	var output bytes.Buffer
-	selfUninstall(dirs, manager, false, strings.NewReader("\n"), &output)
+	selfUninstall(dirs, manager, selfUninstallFull, false, strings.NewReader("\n"), &output)
 	if _, err := os.Stat(manager); err != nil {
 		t.Fatalf("cancelled uninstall removed manager: %v", err)
 	}
 
 	output.Reset()
-	selfUninstall(dirs, manager, true, strings.NewReader(""), &output)
+	selfUninstall(dirs, manager, selfUninstallFull, true, strings.NewReader(""), &output)
 	if _, err := os.Stat(manager); !os.IsNotExist(err) {
 		t.Fatalf("manager still exists after uninstall: %v", err)
 	}
@@ -119,7 +154,7 @@ func TestSelfUninstallTargetsOnlyManagedState(t *testing.T) {
 		Version: "canary",
 	}
 	manager := filepath.Join(home, ".local", "bin", "wago")
-	got := selfUninstallTargets(dirs, manager)
+	got := selfUninstallTargets(dirs, manager, selfUninstallFull)
 	want := []string{filepath.Join(home, ".wago"), manager}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("selfUninstallTargets() = %q, want %q", got, want)
@@ -137,7 +172,101 @@ func TestSelfUninstallTargetsCollapseCustomWagoHome(t *testing.T) {
 		Cache:  filepath.Join(root, "cache", "canary"),
 	}
 	manager := filepath.Join(root, "bin", "wago")
-	if got, want := selfUninstallTargets(dirs, manager), []string{root}; !reflect.DeepEqual(got, want) {
+	if got, want := selfUninstallTargets(dirs, manager, selfUninstallFull), []string{root}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("selfUninstallTargets(custom home) = %q, want %q", got, want)
+	}
+}
+
+func TestSelfUninstallPartialPreservesGlobalPlugins(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	root := filepath.Join(home, ".wago")
+	dirs := wagopaths.Dirs{
+		Data:     root,
+		Config:   filepath.Join(root, "config"),
+		Versions: filepath.Join(root, "versions"),
+		Cache:    filepath.Join(root, "cache", "canary"),
+	}
+	manager := filepath.Join(root, "bin", "wago")
+	for _, path := range []string{
+		filepath.Join(dirs.Versions, "canary"),
+		dirs.Config,
+		dirs.Cache,
+		filepath.Join(root, "src"),
+		filepath.Dir(manager),
+	} {
+		if err := os.MkdirAll(path, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for path, body := range map[string]string{
+		filepath.Join(root, versionPluginManifest):             "global plugins",
+		filepath.Join(root, "wago-lock.json"):                  "global lock",
+		filepath.Join(dirs.Config, "active-version"):           "canary",
+		filepath.Join(dirs.Versions, "canary", "wago-runtime"): "runtime",
+		filepath.Join(root, "src", "go.mod"):                   "source",
+		manager:                                                "manager",
+	} {
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	selfUninstall(dirs, manager, selfUninstallPartial, true, strings.NewReader(""), io.Discard)
+
+	for _, path := range []string{
+		filepath.Join(root, versionPluginManifest),
+		filepath.Join(root, "wago-lock.json"),
+	} {
+		if _, err := os.Stat(path); err != nil {
+			t.Fatalf("partial uninstall removed %s: %v", path, err)
+		}
+	}
+	for _, path := range []string{manager, dirs.Versions, dirs.Config, filepath.Dir(dirs.Cache), filepath.Join(root, "src")} {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatalf("partial uninstall kept %s: %v", path, err)
+		}
+	}
+}
+
+func TestSelfUninstallMinimalRemovesOnlyManager(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	root := filepath.Join(home, ".wago")
+	dirs := wagopaths.Dirs{
+		Data:     root,
+		Config:   filepath.Join(root, "config"),
+		Versions: filepath.Join(root, "versions"),
+		Cache:    filepath.Join(root, "cache", "canary"),
+	}
+	manager := filepath.Join(root, "bin", "wago")
+	runtime := filepath.Join(dirs.Versions, "canary", "wago-runtime")
+	for _, path := range []string{filepath.Dir(manager), filepath.Dir(runtime)} {
+		if err := os.MkdirAll(path, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, path := range []string{manager, runtime} {
+		if err := os.WriteFile(path, []byte(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	zshrc := filepath.Join(home, ".zshrc")
+	pathBlock := "# Wago PATH: " + filepath.Dir(manager) +
+		"\nexport PATH='" + filepath.Dir(manager) + "':\"$PATH\"\n"
+	if err := os.WriteFile(zshrc, []byte(pathBlock), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	selfUninstall(dirs, manager, selfUninstallMinimal, true, strings.NewReader(""), io.Discard)
+
+	if _, err := os.Stat(manager); !os.IsNotExist(err) {
+		t.Fatalf("minimal uninstall kept manager: %v", err)
+	}
+	if _, err := os.Stat(runtime); err != nil {
+		t.Fatalf("minimal uninstall removed runtime: %v", err)
+	}
+	if config, err := os.ReadFile(zshrc); err != nil || len(config) != 0 {
+		t.Fatalf("minimal uninstall PATH cleanup = %q, %v", config, err)
 	}
 }
