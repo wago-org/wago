@@ -32,14 +32,18 @@ func hasFlag(args []string, flag string) (bool, []string) {
 	return found, rest
 }
 
-// pluginList prints (or, with --json, emits) the plugins compiled into this binary:
-// id, version, capabilities, and a compatibility hint.
+// pluginList prints the enabled plugins as a compact package list. Full metadata
+// remains available through plugin inspect and --json.
 func pluginList(asJSON bool) {
 	names := wago.RegisteredPluginNames()
 	if asJSON {
 		reports := make([]pluginReport, 0, len(names))
+		seen := make(map[string]struct{}, len(names))
 		for _, name := range names {
 			if ext, ok := wago.NewExtension(name); ok {
+				if !firstPluginIdentity(seen, name, ext.Info()) {
+					continue
+				}
 				reports = append(reports, buildPluginReport(name, ext))
 			}
 		}
@@ -51,29 +55,99 @@ func pluginList(asJSON bool) {
 		fmt.Printf("%s\n", dim("no plugins enabled ("+scope+")"))
 		return
 	}
-	fmt.Printf("%s\n", bold("plugins ("+scope+"):"))
+	seen := make(map[string]struct{}, len(names))
+	items := make([]pluginListItem, 0, len(names))
 	for _, name := range names {
 		ext, ok := wago.NewExtension(name)
 		if !ok {
 			continue
 		}
 		info := ext.Info()
-		caps := pluginCapabilities(ext)
-		line := fmt.Sprintf("  %s  %s %s", cyan(name), dim(info.ID), info.Version)
-		if info.Private {
-			line += "  " + dim("private")
+		if !firstPluginIdentity(seen, name, info) {
+			continue
 		}
-		if s := compatSummary(info.Compat); s != "" {
-			line += "  " + dim(s)
+		items = append(items, pluginListItem{name: name, version: info.Version})
+	}
+	fmt.Println(strings.Join(pluginListLines(scope, items), "\n"))
+}
+
+func pluginListLines(scope string, items []pluginListItem) []string {
+	lines := []string{bold("Installed plugins (" + scope + ")"), ""}
+	groups := make(map[string][]pluginListItem)
+	var roots []string
+	for _, item := range items {
+		name := item.name
+		root := pluginPackageRoot(name)
+		if _, ok := groups[root]; !ok {
+			roots = append(roots, root)
 		}
-		if len(caps) > 0 {
-			line += "  " + dim("caps: "+strings.Join(caps, ", "))
+		groups[root] = append(groups[root], item)
+	}
+	for _, root := range roots {
+		items := groups[root]
+		version := items[0].version
+		for _, item := range items {
+			if item.name == root {
+				version = item.version
+				break
+			}
 		}
-		fmt.Println(line)
-		if info.Description != "" {
-			fmt.Printf("      %s\n", dim(info.Description))
+		lines = append(lines, pluginListEntry(root, version))
+		for _, item := range items {
+			if item.name == root {
+				continue
+			}
+			lines = append(lines, " "+dim("-")+" "+pluginListEntry(pluginChildName(root, item.name), item.version))
 		}
 	}
+	return lines
+}
+
+type pluginListItem struct {
+	name    string
+	version string
+}
+
+func firstPluginIdentity(seen map[string]struct{}, name string, info wago.ExtensionInfo) bool {
+	identity := info.ID
+	if identity == "" {
+		identity = name
+	}
+	if _, ok := seen[identity]; ok {
+		return false
+	}
+	seen[identity] = struct{}{}
+	return true
+}
+
+func pluginListEntry(name, version string) string {
+	if version == "" {
+		return cyan(name)
+	}
+	return cyan(name) + dim("@"+version)
+}
+
+func pluginPackageRoot(name string) string {
+	first := strings.IndexByte(name, '/')
+	if first < 0 {
+		return name
+	}
+	second := strings.IndexByte(name[first+1:], '/')
+	if second < 0 {
+		return name
+	}
+	return name[:first+1+second]
+}
+
+func pluginChildName(root, name string) string {
+	if !strings.HasPrefix(name, root+"/") {
+		return name
+	}
+	repo := root
+	if slash := strings.LastIndexByte(root, '/'); slash >= 0 {
+		repo = root[slash+1:]
+	}
+	return repo + strings.TrimPrefix(name, root)
 }
 
 func selectedPluginScopeLabel() string {

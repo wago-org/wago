@@ -136,6 +136,28 @@ func TestPluginPresentationHelpers(t *testing.T) {
 	if got := capString(wago.ImportSpec{}); got != "" {
 		t.Fatalf("empty capString = %q", got)
 	}
+	if got := pluginListEntry("wago-org/wasi", "1.0.0"); got != "wago-org/wasi@1.0.0" {
+		t.Fatalf("pluginListEntry = %q", got)
+	}
+	if got := pluginPackageRoot("wago-org/wasi/unstable"); got != "wago-org/wasi" {
+		t.Fatalf("pluginPackageRoot = %q", got)
+	}
+	if got := pluginChildName("wago-org/wasi", "wago-org/wasi/unstable"); got != "wasi/unstable" {
+		t.Fatalf("pluginChildName = %q", got)
+	}
+	lines := pluginListLines("global", []pluginListItem{
+		{name: "wago-org/wasi", version: "1.0.0"},
+		{name: "wago-org/wasi/unstable", version: "1.0.0"},
+	})
+	if got, want := strings.Join(lines, "\n"), "Installed plugins (global)\n\nwago-org/wasi@1.0.0\n - wasi/unstable@1.0.0"; got != want {
+		t.Fatalf("plugin list = %q, want %q", got, want)
+	}
+	seen := map[string]struct{}{}
+	info := wago.ExtensionInfo{ID: "github.com/wago-org/wasi/p1"}
+	if !firstPluginIdentity(seen, "wago-org/wasi", info) ||
+		firstPluginIdentity(seen, "wago-org/wasi/p1", info) {
+		t.Fatal("plugin list did not collapse aliases sharing one plugin ID")
+	}
 }
 
 func TestPluginReviewAndScopeHelpers(t *testing.T) {
