@@ -70,15 +70,39 @@ func TestChecksumMismatchDoesNotBuildFromSource(t *testing.T) {
 	}
 }
 
-func TestRollingChannelWithoutReleaseBuildsMain(t *testing.T) {
+func TestCanaryResolvesLatestMainCommit(t *testing.T) {
+	const sha = "deadbee123456789012345678901234567890123"
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(`[]`))
+		_, _ = w.Write([]byte(`{"sha":"` + sha + `"}`))
 	}))
 	defer server.Close()
 	t.Setenv("WAGO_RELEASE_API", server.URL)
 	ref, sourceOnly, err := resolveRunnerVersion("canary", nil)
-	if err != nil || ref != "main" || !sourceOnly {
+	if err != nil || ref != canaryCommitTarget(sha) || sourceOnly {
 		t.Fatalf("resolveRunnerVersion = %q, %v, %v", ref, sourceOnly, err)
+	}
+}
+
+func TestCanaryCommitMissingReleaseBuildsExactSource(t *testing.T) {
+	server := httptest.NewServer(http.NotFoundHandler())
+	defer server.Close()
+	t.Setenv("WAGO_RELEASE_BASE", server.URL)
+
+	old := buildRunnerSource
+	t.Cleanup(func() { buildRunnerSource = old })
+	const sha = "deadbee123456789012345678901234567890123"
+	target := canaryCommitTarget(sha)
+	var gotRef string
+	buildRunnerSource = func(ref string, _ wagopaths.Profile, _ wagopaths.Build, dest string, _ *installProgress) error {
+		gotRef = ref
+		return os.WriteFile(dest, []byte("source runner"), 0o755)
+	}
+	dest := filepath.Join(t.TempDir(), "runner")
+	if err := installRunnerPayload(target, wagopaths.ProfileStandard, wagopaths.BuildNormal, dest, false, nil); err != nil {
+		t.Fatal(err)
+	}
+	if gotRef != target {
+		t.Fatalf("source fallback ref = %q, want %q", gotRef, target)
 	}
 }
 
@@ -119,5 +143,36 @@ func TestSourceBuildTags(t *testing.T) {
 		sourceBuildTag(wagopaths.ProfileLite) != "wago_lite" ||
 		sourceBuildTag(wagopaths.ProfileMinimal) != "wago_minimal" {
 		t.Fatal("source build profile tags changed")
+	}
+}
+
+func TestBuildRunnerFromSourceChecksOutExactCanaryCommit(t *testing.T) {
+	old := runSourceCommand
+	t.Cleanup(func() { runSourceCommand = old })
+	const sha = "deadbee123456789012345678901234567890123"
+	var commands []string
+	runSourceCommand = func(_ string, _ []string, name string, args ...string) ([]byte, error) {
+		commands = append(commands, name+" "+strings.Join(args, " "))
+		if name == "go" {
+			output := args[slices.Index(args, "-o")+1]
+			return nil, os.WriteFile(output, []byte("built"), 0o755)
+		}
+		return nil, nil
+	}
+	dest := filepath.Join(t.TempDir(), "runner")
+	if err := buildRunnerFromSource(canaryCommitTarget(sha), wagopaths.ProfileStandard, wagopaths.BuildNormal, dest, nil); err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(commands, "\n")
+	for _, want := range []string{
+		"git init --quiet",
+		"git -C", "remote add origin",
+		"fetch --quiet --depth 1 origin " + sha,
+		"checkout --quiet --detach FETCH_HEAD",
+		"go build", "-X main.version=canary-deadbee",
+	} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("source commands missing %q:\n%s", want, joined)
+		}
 	}
 }
