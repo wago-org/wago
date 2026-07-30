@@ -32,10 +32,10 @@ func TestMissingReleaseAssetFallsBackToSource(t *testing.T) {
 	}
 
 	dest := filepath.Join(t.TempDir(), "runner")
-	if err := installRunnerPayload("v9.9.9", wagopaths.ProfileLite, wagopaths.BuildTiny, dest, false, nil); err != nil {
+	if err := installRunnerPayload("v9.9.9", wagopaths.ProfileMinimal, wagopaths.BuildTiny, dest, false, nil); err != nil {
 		t.Fatal(err)
 	}
-	if gotRef != "v9.9.9" || gotProfile != wagopaths.ProfileLite || gotBuild != wagopaths.BuildTiny {
+	if gotRef != "v9.9.9" || gotProfile != wagopaths.ProfileMinimal || gotBuild != wagopaths.BuildTiny {
 		t.Fatalf("source fallback = %q %q %q", gotRef, gotProfile, gotBuild)
 	}
 	if body, err := os.ReadFile(dest); err != nil || string(body) != "source runner" {
@@ -124,12 +124,12 @@ func TestBuildRunnerFromSourceUsesProfileTag(t *testing.T) {
 	}
 
 	dest := filepath.Join(t.TempDir(), "runner")
-	if err := buildRunnerFromSource("v1.2.3", wagopaths.ProfileLite, wagopaths.BuildNormal, dest, nil); err != nil {
+	if err := buildRunnerFromSource("v1.2.3", wagopaths.ProfileMinimal, wagopaths.BuildNormal, dest, nil); err != nil {
 		t.Fatal(err)
 	}
 	if len(commands) != 2 || !strings.Contains(commands[0], "git clone") ||
 		!strings.Contains(commands[0], "--branch v1.2.3") ||
-		!strings.Contains(commands[1], "-tags wago_lite") ||
+		!strings.Contains(commands[1], "-tags wago_minimal") ||
 		!strings.Contains(commands[1], "-X main.version=v1.2.3") {
 		t.Fatalf("source commands = %#v", commands)
 	}
@@ -140,7 +140,6 @@ func TestBuildRunnerFromSourceUsesProfileTag(t *testing.T) {
 
 func TestSourceBuildTags(t *testing.T) {
 	if sourceBuildTag(wagopaths.ProfileStandard) != "" ||
-		sourceBuildTag(wagopaths.ProfileLite) != "wago_lite" ||
 		sourceBuildTag(wagopaths.ProfileMinimal) != "wago_minimal" {
 		t.Fatal("source build profile tags changed")
 	}

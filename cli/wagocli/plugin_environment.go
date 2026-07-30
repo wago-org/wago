@@ -77,7 +77,7 @@ func pluginBuildVariant() string {
 
 func pluginBuildProfile() string {
 	switch value := strings.ToLower(strings.TrimSpace(os.Getenv("WAGO_RUNTIME_PROFILE"))); value {
-	case string(wagopaths.ProfileStandard), string(wagopaths.ProfileLite):
+	case string(wagopaths.ProfileStandard):
 		return value
 	}
 	return runnerProfile()

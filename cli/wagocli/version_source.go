@@ -103,8 +103,6 @@ func buildRunnerFromSource(ref string, profile wagopaths.Profile, build wagopath
 
 func sourceBuildTag(profile wagopaths.Profile) string {
 	switch profile {
-	case wagopaths.ProfileLite:
-		return "wago_lite"
 	case wagopaths.ProfileMinimal:
 		return "wago_minimal"
 	default:

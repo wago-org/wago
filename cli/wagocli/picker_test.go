@@ -59,7 +59,6 @@ func TestPickerAcceptPageReturnsWithLeftOrEscape(t *testing.T) {
 		acceptTitle: "Choose Wago profile",
 		acceptItems: []pickerItem{
 			{label: "Standard", value: "canary\x00standard"},
-			{label: "Lite", value: "canary\x00lite"},
 			{label: "Minimal", value: "canary\x00minimal"},
 		},
 	}})
@@ -79,7 +78,7 @@ func TestPickerAcceptPageReturnsWithLeftOrEscape(t *testing.T) {
 	}
 	p.apply(keyAccept)
 	p.apply(keyDown)
-	if done, cancelled := p.apply(keyAccept); !done || cancelled || p.selected() != "canary\x00lite" {
+	if done, cancelled := p.apply(keyAccept); !done || cancelled || p.selected() != "canary\x00minimal" {
 		t.Fatalf("profile accept = done %v, cancelled %v, selected %q", done, cancelled, p.selected())
 	}
 }
@@ -87,10 +86,10 @@ func TestPickerAcceptPageReturnsWithLeftOrEscape(t *testing.T) {
 func TestPickerRightSelectsLeaf(t *testing.T) {
 	p := newPicker("Choose Wago profile", []pickerItem{
 		{label: "Standard", value: "standard"},
-		{label: "Lite", value: "lite"},
+		{label: "Minimal", value: "minimal"},
 	})
 	p.apply(keyDown)
-	if done, cancelled := p.apply(keyRight); !done || cancelled || p.selected() != "lite" {
+	if done, cancelled := p.apply(keyRight); !done || cancelled || p.selected() != "minimal" {
 		t.Fatalf("right select = done %v, cancelled %v, selected %q", done, cancelled, p.selected())
 	}
 }

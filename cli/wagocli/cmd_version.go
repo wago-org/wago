@@ -34,7 +34,7 @@ func versionCommand() *Cmd {
 				Summary: "select a runtime, installing it when needed",
 				Args:    "[version]",
 				Flags: []Flag{
-					{Name: "profile", Arg: "<name>", Help: "standard, lite, or minimal"},
+					{Name: "profile", Arg: "<name>", Help: "standard or minimal"},
 					{Name: "build", Arg: "<name>", Help: "normal or tiny"},
 				},
 				Run: func(c *Ctx) {
@@ -71,7 +71,7 @@ func versionCommand() *Cmd {
 					{Name: "latest", Bool: true, Help: "install the latest release"},
 					{Name: "nightly", Bool: true, Help: "install nightly"},
 					{Name: "canary", Bool: true, Help: "install the latest canary"},
-					{Name: "profile", Arg: "<name>", Help: "standard, lite, or minimal"},
+					{Name: "profile", Arg: "<name>", Help: "standard or minimal"},
 					{Name: "build", Arg: "<name>", Help: "normal or tiny"},
 				},
 				Run: func(c *Ctx) {

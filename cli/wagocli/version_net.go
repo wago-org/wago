@@ -78,15 +78,15 @@ func vmInstallRequested(d wagopaths.Dirs, args []string, latest, nightly, canary
 	if len(args) > 1 || (len(args) == 1 && (latest || nightly || canary)) || (latest && (nightly || canary)) || (nightly && canary) {
 		fatal("version install: choose one version or channel")
 	}
-	if len(args) == 0 && !latest && !nightly && !canary {
-		vmBrowse(d, profileValue, buildValue)
-		return
-	}
 	if _, err := requestedProfile(profileValue); err != nil {
 		fatal("version install: %v", err)
 	}
 	if _, err := requestedBuild(buildValue); err != nil {
 		fatal("version install: %v", err)
+	}
+	if len(args) == 0 && !latest && !nightly && !canary {
+		vmBrowse(d, profileValue, buildValue)
+		return
 	}
 	profile, build, ok := chooseInstallVariant(profileValue, buildValue)
 	if !ok {
