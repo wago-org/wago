@@ -84,9 +84,16 @@ func selfUpdate(current, executable string) {
 
 func selfUninstall(dirs wagopaths.Dirs, executable string, yes bool, in io.Reader, out io.Writer) {
 	targets := selfUninstallTargets(dirs, executable)
+	shellConfigs, err := installerPathConfigs()
+	if err != nil {
+		fatal("self uninstall: inspect shell configuration: %v", err)
+	}
 	fmt.Fprintln(out, bold("Uninstall Wago"))
 	for _, target := range targets {
 		printDetail(out, "remove", displayPath(target))
+	}
+	for _, config := range shellConfigs {
+		printDetail(out, "clean PATH", displayPath(config))
 	}
 	fmt.Fprintln(out, dim("Projects and their wago.json files will not be changed."))
 	if !yes && !confirmNoDefault(in, out, "Continue?") {
@@ -94,6 +101,11 @@ func selfUninstall(dirs wagopaths.Dirs, executable string, yes bool, in io.Reade
 		return
 	}
 
+	for _, config := range shellConfigs {
+		if err := removeInstallerPathBlocks(config); err != nil {
+			fatal("self uninstall: clean PATH in %s: %v", displayPath(config), err)
+		}
+	}
 	for _, target := range targets {
 		if filepath.Clean(target) == filepath.Clean(executable) {
 			continue
@@ -116,7 +128,15 @@ func selfUninstall(dirs wagopaths.Dirs, executable string, yes bool, in io.Reade
 func selfUninstallTargets(dirs wagopaths.Dirs, executable string) []string {
 	candidates := []string{dirs.Data, dirs.Config, filepath.Dir(dirs.Cache)}
 	if home, err := os.UserHomeDir(); err == nil && home != "" {
-		candidates = append(candidates, filepath.Join(home, ".wago", "src"))
+		defaultRoot := filepath.Join(home, ".wago")
+		if pathContains(defaultRoot, executable) {
+			candidates = append(candidates, defaultRoot)
+		} else if _, err := os.Stat(defaultRoot); err == nil {
+			candidates = append(candidates, defaultRoot)
+		}
+	}
+	if root := os.Getenv("WAGO_HOME"); root != "" {
+		candidates = append(candidates, root)
 	}
 	candidates = append(candidates, executable)
 
@@ -143,6 +163,96 @@ func selfUninstallTargets(dirs wagopaths.Dirs, executable string) []string {
 		}
 	}
 	return targets
+}
+
+func installerPathConfigs() ([]string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return nil, err
+	}
+	xdgConfig := os.Getenv("XDG_CONFIG_HOME")
+	if xdgConfig == "" {
+		xdgConfig = filepath.Join(home, ".config")
+	}
+	zdotdir := os.Getenv("ZDOTDIR")
+	if zdotdir == "" {
+		zdotdir = home
+	}
+	candidates := []string{
+		filepath.Join(zdotdir, ".zshrc"),
+		filepath.Join(home, ".bashrc"),
+		filepath.Join(home, ".bash_profile"),
+		filepath.Join(xdgConfig, "fish", "config.fish"),
+		filepath.Join(xdgConfig, "nushell", "env.nu"),
+	}
+	var configs []string
+	seen := make(map[string]bool)
+	for _, candidate := range candidates {
+		candidate = filepath.Clean(candidate)
+		if seen[candidate] {
+			continue
+		}
+		seen[candidate] = true
+		data, err := os.ReadFile(candidate)
+		if os.IsNotExist(err) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		if hasInstallerPathBlock(data) {
+			configs = append(configs, candidate)
+		}
+	}
+	return configs, nil
+}
+
+func hasInstallerPathBlock(data []byte) bool {
+	for _, line := range strings.Split(string(data), "\n") {
+		if strings.HasPrefix(strings.TrimSuffix(line, "\r"), "# Wago PATH: ") {
+			return true
+		}
+	}
+	return false
+}
+
+func removeInstallerPathBlocks(path string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	lines := strings.SplitAfter(string(data), "\n")
+	filtered := make([]string, 0, len(lines))
+	changed := false
+	for i := 0; i < len(lines); i++ {
+		line := strings.TrimSuffix(strings.TrimSuffix(lines[i], "\n"), "\r")
+		if strings.HasPrefix(line, "# Wago PATH: ") {
+			changed = true
+			if len(filtered) > 0 && strings.TrimSpace(filtered[len(filtered)-1]) == "" {
+				filtered = filtered[:len(filtered)-1]
+			}
+			if i+1 < len(lines) && isInstallerPathCommand(lines[i+1]) {
+				i++
+			}
+			continue
+		}
+		filtered = append(filtered, lines[i])
+	}
+	if !changed {
+		return nil
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, []byte(strings.Join(filtered, "")), info.Mode().Perm())
+}
+
+func isInstallerPathCommand(line string) bool {
+	line = strings.TrimSpace(line)
+	return strings.HasPrefix(line, "export PATH=") ||
+		strings.HasPrefix(line, "fish_add_path --path ") ||
+		strings.HasPrefix(line, "$env.PATH = ($env.PATH | prepend ")
 }
 
 func pathContains(parent, child string) bool {
