@@ -309,7 +309,7 @@ func installManagerUpdate(channel, dest string, progress *installProgress) (stri
 			progress,
 		)
 		if err == nil {
-			return canaryCommitVersion(resolved), nil
+			return resolved, nil
 		}
 		if !releaseAssetUnavailable(err) {
 			return "", err
@@ -318,7 +318,7 @@ func installManagerUpdate(channel, dest string, progress *installProgress) (stri
 	if err := buildManagerSource(resolved, dest, progress); err != nil {
 		return "", err
 	}
-	return canaryCommitVersion(resolved), nil
+	return resolved, nil
 }
 
 func latestMainCommit() (string, error) {

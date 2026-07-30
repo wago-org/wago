@@ -29,6 +29,80 @@ func TestSelfUpdateChannelPreservesReleaseTrack(t *testing.T) {
 	}
 }
 
+func TestSelfUpdateRuntimeTargetFollowsActiveRollingChannel(t *testing.T) {
+	tests := []struct {
+		active   string
+		channel  string
+		resolved string
+		want     string
+	}{
+		{"canary", "canary", "canary@880e153000000000000000000000000000000000", "canary-880e153"},
+		{"canary-6342d5e", "canary", "canary@880e153000000000000000000000000000000000", "canary-880e153"},
+		{"nightly-20260729-6342d5e", "nightly", "nightly-20260730-880e153", "nightly-20260730-880e153"},
+		{"nightly", "canary", "canary@880e153000000000000000000000000000000000", ""},
+		{"v0.2.0", "latest", "v0.2.1", ""},
+	}
+	for _, test := range tests {
+		if got := selfUpdateRuntimeTarget(test.active, test.channel, test.resolved); got != test.want {
+			t.Errorf("selfUpdateRuntimeTarget(%q, %q, %q) = %q, want %q", test.active, test.channel, test.resolved, got, test.want)
+		}
+	}
+}
+
+func TestSelfUpdateRefreshesAndSelectsActiveRollingRuntime(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("HOME", root)
+	dirs := wagopaths.Dirs{
+		Config:   filepath.Join(root, ".wago", "config"),
+		Data:     filepath.Join(root, ".wago"),
+		Versions: filepath.Join(root, ".wago", "versions"),
+		Cache:    filepath.Join(root, ".wago", "cache", "canary-old"),
+		Version:  "canary-old",
+	}
+	if err := setActiveInstallation(dirs, "canary-6342d5e", wagopaths.ProfileStandard, wagopaths.BuildNormal); err != nil {
+		t.Fatal(err)
+	}
+
+	oldInstall, oldSync := installSelfRuntime, syncSelfSource
+	t.Cleanup(func() {
+		installSelfRuntime = oldInstall
+		syncSelfSource = oldSync
+	})
+	var installedRef, syncedRef, syncedDest string
+	installSelfRuntime = func(ref string, _ wagopaths.Profile, _ wagopaths.Build, dest string, _ bool, _ *installProgress) error {
+		installedRef = ref
+		if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+			return err
+		}
+		return os.WriteFile(dest, []byte("runtime"), 0o755)
+	}
+	syncSelfSource = func(ref, dest string, _ *installProgress) error {
+		syncedRef, syncedDest = ref, dest
+		return nil
+	}
+
+	const resolved = "canary@880e153000000000000000000000000000000000"
+	updated, err := updateActiveRuntimeForSelf(dirs, "canary", resolved, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !updated {
+		t.Fatal("active canary runtime was not updated")
+	}
+	if installedRef != resolved || syncedRef != resolved {
+		t.Fatalf("updated refs = runtime %q, source %q; want %q", installedRef, syncedRef, resolved)
+	}
+	if want := filepath.Join(root, ".wago", "src"); syncedDest != want {
+		t.Fatalf("source destination = %q, want %q", syncedDest, want)
+	}
+	if got := activeVersion(dirs); got != "canary-880e153" {
+		t.Fatalf("active version = %q, want canary-880e153", got)
+	}
+	if _, _, _, ok := installedRuntime(dirs, "canary-880e153", wagopaths.ProfileStandard, wagopaths.BuildNormal); !ok {
+		t.Fatal("updated runtime was not installed")
+	}
+}
+
 func TestSelfUninstallModePickerUsesRadioButtonsAndDefaultsFull(t *testing.T) {
 	p := selfUninstallModePicker()
 	if got := p.selected(); got != string(selfUninstallFull) {
