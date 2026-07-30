@@ -1,7 +1,6 @@
 package wagocli
 
 import (
-	"bufio"
 	"fmt"
 	"io"
 	"os"
@@ -83,6 +82,26 @@ func selfUninstallModePicker() *picker {
 			desc: "Remove manager and PATH only",
 		},
 	})
+}
+
+func selfUninstallConfirmationPicker() *picker {
+	return newPicker("Continue?", []pickerItem{
+		{label: "Yes", value: "yes"},
+		{label: "No", value: "no"},
+	})
+}
+
+func confirmSelfUninstall(in io.Reader, out io.Writer) bool {
+	return confirmSelfUninstallInteractive(in, out, stdinIsTTY())
+}
+
+func confirmSelfUninstallInteractive(in io.Reader, out io.Writer, interactive bool) bool {
+	if interactive {
+		p := selfUninstallConfirmationPicker()
+		submitted, cancelled := runSelector(p)
+		return submitted && !cancelled && p.selected() == "yes"
+	}
+	return promptYesNo(in, out, "Continue?")
 }
 
 func requestedSelfUninstallMode(value string, yes bool) (selfUninstallMode, bool) {
@@ -176,7 +195,7 @@ func selfUninstall(
 		printDetail(out, "clean PATH", displayPath(config))
 	}
 	fmt.Fprintln(out, dim("Projects and their wago.json files will not be changed."))
-	if !yes && !confirmNoDefault(in, out, "Continue?") {
+	if !yes && !confirmSelfUninstall(in, out) {
 		fmt.Fprintln(out, "Cancelled.")
 		return
 	}
@@ -386,15 +405,4 @@ func safeManagedPath(path string) bool {
 		clean != "." &&
 		clean != filepath.VolumeName(clean)+string(filepath.Separator) &&
 		(home == "" || clean != filepath.Clean(home))
-}
-
-func confirmNoDefault(in io.Reader, out io.Writer, prompt string) bool {
-	fmt.Fprintf(out, "%s [y/N] ", prompt)
-	line, _ := bufio.NewReader(in).ReadString('\n')
-	switch strings.ToLower(strings.TrimSpace(line)) {
-	case "y", "yes":
-		return true
-	default:
-		return false
-	}
 }
