@@ -34,6 +34,9 @@ func TestPluginListHandsOffToGlobalPluginRuntime(t *testing.T) {
 	if err := os.MkdirAll(buildDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
+	if err := ensureBuildModule(buildDir); err != nil {
+		t.Fatal(err)
+	}
 	manifestDir := sharedGlobalPluginDir(wago.DirsFor(versionString()))
 	if err := os.MkdirAll(manifestDir, 0o755); err != nil {
 		t.Fatal(err)

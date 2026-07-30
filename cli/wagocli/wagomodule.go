@@ -54,19 +54,24 @@ func depsSource(global bool) (string, error) {
 // the module's conventional `register` subpackage.
 func registerImport(module string) string { return module + "/register" }
 
-// ensureBuildModule creates the .wago module's go.mod if absent. It requires and
-// path-replaces wago to the local source, and mirrors wago's own filesystem
-// `replace`s (as absolute paths) so private / untagged sibling plugins resolve in
-// local development the same way they do for a wago checkout. Once wago is
-// published these local replaces simply won't exist and `go get` fetches releases.
+// ensureBuildModule creates or refreshes the .wago module. Refreshing matters
+// because a cached project build may have been created from a different Wago
+// checkout than the currently selected runtime.
 func ensureBuildModule(dir string) error {
+	_, err := syncBuildModule(dir)
+	return err
+}
+
+// syncBuildModule reconciles the generated module with the Wago source selected
+// for this invocation. changed reports whether go.mod changed, which invalidates
+// an otherwise matching executable cache entry.
+func syncBuildModule(dir string) (changed bool, err error) {
 	gomod := filepath.Join(dir, "go.mod")
-	if _, err := os.Stat(gomod); err == nil {
-		return nil
-	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return err
+		return false, err
 	}
+	before, readErr := os.ReadFile(gomod)
+	exists := readErr == nil
 	src, haveSrc := wagoSourceDir()
 	goVer := strings.TrimPrefix(runtime.Version(), "go")
 	if haveSrc {
@@ -74,10 +79,11 @@ func ensureBuildModule(dir string) error {
 			goVer = v
 		}
 	}
-	edits := [][]string{
-		{"mod", "init", buildModuleName},
-		{"mod", "edit", "-go=" + goVer},
+	var edits [][]string
+	if !exists {
+		edits = append(edits, []string{"mod", "init", buildModuleName})
 	}
+	edits = append(edits, []string{"mod", "edit", "-go=" + goVer})
 	if haveSrc {
 		// Local development: build against the wago checkout and mirror its
 		// filesystem replaces so private / untagged sibling plugins resolve.
@@ -88,6 +94,10 @@ func ensureBuildModule(dir string) error {
 		for _, r := range mirroredReplaces(src) {
 			edits = append(edits, []string{"mod", "edit", "-replace=" + r})
 		}
+	} else if exists {
+		// A generated module can outlive an installed source checkout. Do not
+		// leave it pinned to a stale local tree when it should use the proxy.
+		edits = append(edits, []string{"mod", "edit", "-dropreplace=github.com/wago-org/wago"})
 	}
 	// Otherwise wago is expected to be published: `go mod tidy` (in
 	// ensureBuiltBinary) resolves it from the module proxy — a globally-installed
@@ -96,11 +106,17 @@ func ensureBuildModule(dir string) error {
 		cmd := exec.Command("go", args...)
 		cmd.Dir = dir
 		if out, err := cmd.CombinedOutput(); err != nil {
-			os.Remove(gomod)
-			return fmt.Errorf("go %s: %v: %s", strings.Join(args, " "), err, strings.TrimSpace(string(out)))
+			if !exists {
+				os.Remove(gomod)
+			}
+			return false, fmt.Errorf("go %s: %v: %s", strings.Join(args, " "), err, strings.TrimSpace(string(out)))
 		}
 	}
-	return nil
+	after, err := os.ReadFile(gomod)
+	if err != nil {
+		return false, err
+	}
+	return !bytes.Equal(before, after), nil
 }
 
 // goModJSON is the subset of `go mod edit -json` we read.
@@ -223,15 +239,16 @@ func ensureBuiltBinary(dir string, deps []string, force, verbose bool) (bin stri
 	bin = filepath.Join(dir, "bin", "wago"+exeSuffix())
 	hashFile := bin + ".hash"
 	want := buildHash(deps)
-	if !force {
+	moduleChanged, err := syncBuildModule(dir)
+	if err != nil {
+		return "", false, err
+	}
+	if !force && !moduleChanged {
 		if b, err := os.ReadFile(hashFile); err == nil && strings.TrimSpace(string(b)) == want {
 			if _, err := os.Stat(bin); err == nil {
 				return bin, true, nil
 			}
 		}
-	}
-	if err := ensureBuildModule(dir); err != nil {
-		return "", false, err
 	}
 	if err := os.MkdirAll(filepath.Dir(bin), 0o755); err != nil {
 		return "", false, err
@@ -245,21 +262,31 @@ func ensureBuiltBinary(dir string, deps []string, force, verbose bool) (bin stri
 	// -buildvcs=false: the generated build module is a local throwaway; VCS
 	// stamping is meaningless and would otherwise fail when .wago sits inside an
 	// unrelated or partial git work tree.
+	staged := bin + ".tmp"
+	_ = os.Remove(staged)
 	buildStep := []string{"build", "-buildvcs=false"}
 	if tag := runnerBuildTag(); tag != "" {
 		buildStep = append(buildStep, "-tags", tag)
 	}
-	buildStep = append(buildStep, "-o", bin, ".")
+	buildStep = append(buildStep, "-o", staged, ".")
 	for _, step := range [][]string{{"mod", "tidy"}, buildStep} {
 		if verbose {
 			fmt.Fprintf(os.Stderr, "%s go %s\n", dim("→"), strings.Join(step, " "))
 		}
 		if err := goRun(dir, verbose, step...); err != nil {
+			_ = os.Remove(staged)
 			if step[0] == "mod" && !haveSrc {
 				return "", false, fmt.Errorf("go mod tidy: %w\n  (wago may not be published yet — set WAGO_SRC to a wago checkout to build from source)", err)
 			}
 			return "", false, fmt.Errorf("go %s: %w", step[0], err)
 		}
+	}
+	if runtime.GOOS == "windows" {
+		_ = os.Remove(bin)
+	}
+	if err := os.Rename(staged, bin); err != nil {
+		_ = os.Remove(staged)
+		return "", false, fmt.Errorf("install plugin build: %w", err)
 	}
 	_ = os.WriteFile(hashFile, []byte(want), 0o644)
 	return bin, false, nil
