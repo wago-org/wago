@@ -210,3 +210,48 @@ func TestBuildRunnerFromSourceChecksOutExactCanaryCommit(t *testing.T) {
 		}
 	}
 }
+
+func TestSyncInstalledSourceReplacesManagedCheckoutAtExactCanaryCommit(t *testing.T) {
+	old := runSourceCommand
+	t.Cleanup(func() { runSourceCommand = old })
+	const sha = "880e153000000000000000000000000000000000"
+	var commands []string
+	runSourceCommand = func(_ string, _ []string, name string, args ...string) ([]byte, error) {
+		commands = append(commands, name+" "+strings.Join(args, " "))
+		if name == "git" && len(args) >= 3 && args[0] == "init" {
+			source := args[len(args)-1]
+			if err := os.MkdirAll(source, 0o755); err != nil {
+				return nil, err
+			}
+			return nil, os.WriteFile(filepath.Join(source, "go.mod"), []byte("module github.com/wago-org/wago\n"), 0o644)
+		}
+		return nil, nil
+	}
+
+	root := t.TempDir()
+	dest := filepath.Join(root, "src")
+	if err := os.MkdirAll(dest, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dest, "old"), []byte("stale"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := syncInstalledSource(canaryCommitTarget(sha), dest, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dest, "old")); !os.IsNotExist(err) {
+		t.Fatalf("stale source survived update: %v", err)
+	}
+	if body, err := os.ReadFile(filepath.Join(dest, "go.mod")); err != nil || !strings.Contains(string(body), "github.com/wago-org/wago") {
+		t.Fatalf("updated source go.mod = %q, %v", body, err)
+	}
+	joined := strings.Join(commands, "\n")
+	for _, want := range []string{
+		"fetch --quiet --depth 1 origin " + sha,
+		"checkout --quiet --detach FETCH_HEAD",
+	} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("source update commands missing %q:\n%s", want, joined)
+		}
+	}
+}

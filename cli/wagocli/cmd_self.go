@@ -151,13 +151,62 @@ func selfUpdateChannel(current string) string {
 	return "canary"
 }
 
+func selfUpdateRuntimeTarget(active, channel, resolved string) string {
+	activeChannel := active
+	if !isRollingChannel(activeChannel) {
+		activeChannel = channelRelease(activeChannel)
+	}
+	if activeChannel == "" || activeChannel != channel {
+		return ""
+	}
+	return canaryCommitVersion(resolved)
+}
+
+var (
+	installSelfRuntime = installRunnerPayload
+	syncSelfSource     = syncInstalledSource
+)
+
+func updateActiveRuntimeForSelf(dirs wagopaths.Dirs, channel, resolved string, progress *installProgress) (bool, error) {
+	target := selfUpdateRuntimeTarget(activeVersion(dirs), channel, resolved)
+	if target == "" {
+		return false, nil
+	}
+	profile, build := activeProfile(dirs), activeBuild(dirs)
+	dest := dirs.RuntimeBinary(target, string(profile), string(build))
+	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+		return false, fmt.Errorf("prepare runtime: %w", err)
+	}
+	if err := installSelfRuntime(resolved, profile, build, dest, false, progress); err != nil {
+		return false, fmt.Errorf("update runtime: %w", err)
+	}
+	source, err := selfManagedSourcePath()
+	if err != nil {
+		return false, fmt.Errorf("locate plugin build source: %w", err)
+	}
+	if err := syncSelfSource(resolved, source, progress); err != nil {
+		return false, fmt.Errorf("update plugin build source: %w", err)
+	}
+	if err := setActiveInstallation(dirs, target, profile, build); err != nil {
+		return false, fmt.Errorf("select updated runtime: %w", err)
+	}
+	return true, nil
+}
+
 func selfUpdate(current, executable string) {
 	progress := newInstallProgress(os.Stderr)
 	progress.title("Updating Wago")
 	staged := executable + ".new"
 	_ = os.Remove(staged)
-	resolved, err := installManagerUpdate(selfUpdateChannel(current), staged, progress)
+	channel := selfUpdateChannel(current)
+	dirs := wagopaths.DirsFor(current)
+
+	resolved, err := installManagerUpdate(channel, staged, progress)
 	if err != nil {
+		_ = os.Remove(staged)
+		fatal("self update: %v", err)
+	}
+	if _, err := updateActiveRuntimeForSelf(dirs, channel, resolved, progress); err != nil {
 		_ = os.Remove(staged)
 		fatal("self update: %v", err)
 	}
@@ -167,11 +216,25 @@ func selfUpdate(current, executable string) {
 		fatal("self update: %v", err)
 	}
 	if deferred {
-		progress.finish("Wago " + releasePickerLabel(resolved) + " will be active after restart")
+		progress.finish("Wago " + releasePickerLabel(canaryCommitVersion(resolved)) + " will be active after restart")
 		return
 	}
-	progress.finish("Updated Wago to " + releasePickerLabel(resolved))
+	progress.finish("Updated Wago to " + releasePickerLabel(canaryCommitVersion(resolved)))
 	printDetail(progress.out, "location", displayPath(executable))
+}
+
+func selfManagedSourcePath() (string, error) {
+	if source := os.Getenv("WAGO_SRC_DIR"); source != "" {
+		return source, nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	if home == "" {
+		return "", fmt.Errorf("home directory is empty")
+	}
+	return filepath.Join(home, ".wago", "src"), nil
 }
 
 func selfUninstall(

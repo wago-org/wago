@@ -30,6 +30,13 @@ func vmInstallForSwitch(d wagopaths.Dirs, ver string, profile wagopaths.Profile,
 	installVersion(d, ver, profile, build, false, false)
 }
 
+func installRunnerPayload(ref string, profile wagopaths.Profile, build wagopaths.Build, dest string, sourceOnly bool, progress *installProgress) error {
+	if sourceOnly {
+		return fmt.Errorf("source builds are unavailable in the lean runtime")
+	}
+	return downloadBinaryWithProgress(releaseBase(), canaryCommitVersion(ref), profile, build, dest, progress)
+}
+
 func installVersion(d wagopaths.Dirs, ver string, profile wagopaths.Profile, build wagopaths.Build, offer, showLocation bool) {
 	installName := canaryCommitVersion(ver)
 	dest := d.RuntimeBinary(installName, string(profile), string(build))
@@ -300,7 +307,7 @@ func installManagerUpdate(channel, dest string, progress *installProgress) (stri
 		}
 		var sha string
 		sha, err = latestMainCommit()
-		resolved = canaryCommitVersion(canaryCommitTarget(sha))
+		resolved = canaryCommitTarget(sha)
 	default:
 		if progress != nil {
 			progress.begin("resolving release")
@@ -316,7 +323,7 @@ func installManagerUpdate(channel, dest string, progress *installProgress) (stri
 	if progress != nil {
 		progress.done("resolved " + releasePickerLabel(resolved))
 	}
-	if err := downloadReleaseAssetWithProgress(releaseBase(), resolved, managerAsset(), dest, progress); err != nil {
+	if err := downloadReleaseAssetWithProgress(releaseBase(), canaryCommitVersion(resolved), managerAsset(), dest, progress); err != nil {
 		return "", err
 	}
 	return resolved, nil

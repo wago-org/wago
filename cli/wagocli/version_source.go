@@ -100,7 +100,11 @@ func buildManagerFromSource(ref, dest string, progress *installProgress) error {
 }
 
 func checkoutWagoSource(ref string, progress *installProgress) (temp, source, stamp string, err error) {
-	temp, err = os.MkdirTemp("", "wago-source-*")
+	return checkoutWagoSourceIn("", ref, progress)
+}
+
+func checkoutWagoSourceIn(parent, ref string, progress *installProgress) (temp, source, stamp string, err error) {
+	temp, err = os.MkdirTemp(parent, ".wago-source-*")
 	if err != nil {
 		return "", "", "", fmt.Errorf("prepare source build: %w", err)
 	}
@@ -137,6 +141,57 @@ func checkoutWagoSource(ref string, progress *installProgress) (temp, source, st
 		progress.done("fetched source")
 	}
 	return temp, source, stamp, nil
+}
+
+func syncInstalledSource(ref, dest string, progress *installProgress) error {
+	parent := filepath.Dir(dest)
+	if err := os.MkdirAll(parent, 0o755); err != nil {
+		return err
+	}
+	temp, source, _, err := checkoutWagoSourceIn(parent, ref, progress)
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(temp)
+
+	backupRoot, err := os.MkdirTemp(parent, ".wago-source-backup-*")
+	if err != nil {
+		return fmt.Errorf("prepare source backup: %w", err)
+	}
+	defer os.RemoveAll(backupRoot)
+	backup := filepath.Join(backupRoot, "src")
+
+	if progress != nil {
+		progress.begin("updating plugin build source")
+	}
+	hadSource := false
+	if _, statErr := os.Lstat(dest); statErr == nil {
+		hadSource = true
+		if err := os.Rename(dest, backup); err != nil {
+			if progress != nil {
+				progress.fail("could not replace plugin build source")
+			}
+			return err
+		}
+	} else if !os.IsNotExist(statErr) {
+		if progress != nil {
+			progress.fail("could not inspect plugin build source")
+		}
+		return statErr
+	}
+	if err := os.Rename(source, dest); err != nil {
+		if hadSource {
+			_ = os.Rename(backup, dest)
+		}
+		if progress != nil {
+			progress.fail("could not replace plugin build source")
+		}
+		return err
+	}
+	if progress != nil {
+		progress.done("updated plugin build source")
+	}
+	return nil
 }
 
 func sourceBuildTag(profile wagopaths.Profile) string {
