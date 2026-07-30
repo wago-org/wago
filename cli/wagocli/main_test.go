@@ -44,6 +44,9 @@ func TestUsageDocumentsCommandSurface(t *testing.T) {
 	if root.child("env") != nil {
 		t.Fatal("standard command tree still registers removed env command")
 	}
+	if root.child("opts") != nil || strings.Contains(text, "show compiler optimization flags") {
+		t.Fatal("standard command tree still registers removed opts command")
+	}
 	if root.child("version") == nil {
 		t.Fatal("standard command tree does not register version")
 	}
@@ -371,18 +374,4 @@ func TestOptimizationFlagSurfaceAndListing(t *testing.T) {
 		t.Fatalf("--no-%s did not disable knob", name)
 	}
 
-	old := os.Stdout
-	r, w, err := os.Pipe()
-	if err != nil {
-		t.Fatal(err)
-	}
-	os.Stdout = w
-	optsCommand().Run(&Ctx{})
-	_ = w.Close()
-	os.Stdout = old
-	out, err := io.ReadAll(r)
-	_ = r.Close()
-	if err != nil || !strings.Contains(string(out), "KNOB") || !strings.Contains(string(out), name) {
-		t.Fatalf("opts output = %q, %v", out, err)
-	}
 }

@@ -34,7 +34,7 @@ func runCommand() *Cmd {
 		Long: "<file> is raw .wasm or a precompiled .wago. Args after the file are typed by the\n" +
 			"signature; override per-arg with a suffix:  42   7:i64   3.5:f64\n" +
 			"Use -p for adaptive validation/compile parallelism, or -p8 / -p 8 / --parallel=8 to\n" +
-			"force a worker maximum. Optimization knobs: see `wago opts`.",
+			"force a worker maximum. Optimization knobs are listed in `wago run --help`.",
 		Run: runExec,
 	}
 }

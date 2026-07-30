@@ -113,7 +113,7 @@ func usesPluginRuntime(args []string) bool {
 		return false
 	}
 	switch args[0] {
-	case "version", "auth", "init", "env", "opts",
+	case "version", "auth", "init", "env",
 		"add", "rm": // build-management / meta: run on base
 		return false
 	case "plugin", "plugins":
