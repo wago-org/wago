@@ -13,7 +13,7 @@ import (
 )
 
 // No plugin is bundled into the default binary. Plugins live in their own modules
-// and are compiled into a custom binary from wago.json's dependencies via `wago add
+// and are compiled into a custom binary from wago.json's plugin map via `wago add
 // build`; each self-registers through its `register` package. There is no
 // per-plugin code or build tag here.
 
@@ -358,9 +358,9 @@ func loadPluginRuntime(cfg *wago.RuntimeConfig, list string) *wago.Runtime {
 	if err != nil {
 		fatal("plugins: %v", err)
 	}
-	// Start with the active package set's manifest (local wago.json when present,
-	// otherwise the version-scoped global manifest), including its configured
-	// capabilities. --plugin adds extras rather than replacing the manifest;
+	// Start with the active package set (local wago.json when present, otherwise
+	// the version-scoped global manifest), including authority/config resolved
+	// from its lockfile. --plugin adds extras rather than replacing the manifest;
 	// names are matched canonically and de-duplicated against it.
 	selected := append([]wago.PluginConfig(nil), manifest...)
 	have := make(map[string]bool, len(manifest))

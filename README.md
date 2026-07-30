@@ -170,7 +170,7 @@ The high-level project docs live in this repo:
 - [ROADMAP.md](ROADMAP.md) — near-term engine and product roadmap.
 - [ARCHITECTURE.md](ARCHITECTURE.md) — pipeline, runtime, ABI, and design notes.
 - [OPTIMIZATIONS.md](OPTIMIZATIONS.md) — current and planned codegen work.
-- [docs/plugin-api-v2.md](docs/plugin-api-v2.md) — capability-based plugin architecture.
+- [docs/plugin-api.md](docs/plugin-api.md) — capability-based plugin architecture.
 - [docs/plugin-scopes.md](docs/plugin-scopes.md) — local/global plugin intent and toolchain-isolated builds.
 - [docs/compiler-instruction-plugin-design.md](docs/compiler-instruction-plugin-design.md) — language-neutral custom instructions and native lowering.
 - [docs/wago-json.md](docs/wago-json.md) — manifest and schema reference.
@@ -263,25 +263,22 @@ wago module capabilities app.wasm
 wago version list
 ```
 
-The standard CLI contains no plugins. Project dependencies are compiled into a
-custom binary, while `plugins` entries activate them and grant their Wago host
-capabilities:
+The standard CLI contains no plugins. Each `plugins` entry is both a
+version-constrained build dependency and a runtime activation. Reviewed
+capabilities and plugin-owned config are resolved into `wago-lock.json`:
 
 ```json
 {
-  "$schema": "https://wago.sh/schema.json",
-  "schema": "wago/v1",
-  "dependencies": ["github.com/acme/wago-metrics"],
-  "plugins": [{
-    "name": "acme/wago-metrics",
-    "capabilities": ["host.imports"]
-  }]
+  "$schema": "https://wago.sh/v0/schema.json",
+  "plugins": {
+    "acme/wago-metrics": "^0.0.0"
+  }
 }
 ```
 
 Load order is dependency-aware and deterministic; missing grants and cycles fail
 before any plugin contribution is committed. See
-[docs/plugin-api-v2.md](docs/plugin-api-v2.md).
+[docs/plugin-api.md](docs/plugin-api.md).
 The full manifest reference and editor schema are in
 [docs/wago-json.md](docs/wago-json.md) and [`schema.json`](schema.json).
 
@@ -532,11 +529,11 @@ func (randExt) Info() wago.ExtensionInfo {
 	return wago.ExtensionInfo{
 		ID:          "example.rand",
 		Name:        "Rand",
-		Version:     "1.0.0",
+		Version:     "0.0.0",
 		Description: "Pseudo-random numbers for guests.",
 		Stability:   wago.Experimental,
 		Compat: wago.Compatibility{
-			Engines: map[string]string{"wago": ">=0.1.0"},
+			Engines: map[string]string{"wago": "0.0.0"},
 		},
 	}
 }
@@ -626,7 +623,7 @@ for the listed subset. [FEATURES.md](FEATURES.md) is the source of truth.
 | Bounds checks | Explicit checks by default; signals/guard-page mode behind `-tags wago_guardpage` and `WAGO_BOUNDS=signals`. |
 | Runtime config | Done: immutable wazero-style `RuntimeConfig`, feature gating, memory page limit, bounds mode, deferred bounds-check facts. |
 | Synchronous host calls | Done: host imports can return results, including `v128`. |
-| Plugins | Done: open-source provenance, manifest-granted host capabilities, deterministic dependency/load ordering, transactional registration, host imports, hooks, and CLI inspection. |
+| Plugins | Done: open-source provenance, lockfile-recorded host capabilities, deterministic dependency/load ordering, transactional registration, host imports, hooks, and CLI inspection. |
 | Policy | Partial: capability allow/deny plus memory/table limits are enforced; invoke duration is reserved. |
 | Instance pools | Plugin-owned: pooling policy and idle-instance retention are intentionally absent from core. |
 | Actor/process layer | Plugin-owned: core provides only capability-gated managed instances; workers, PIDs, guest mailboxes, signals, monitoring, and supervision live outside the runtime. |

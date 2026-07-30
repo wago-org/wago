@@ -245,7 +245,9 @@ func TestManagerOwnsInitWithoutSelectedRunner(t *testing.T) {
 		t.Fatalf("manager init output = %q", output)
 	}
 	manifest, err := os.ReadFile(filepath.Join(project, "wago.json"))
-	if err != nil || !strings.Contains(string(manifest), `"schema": "wago/v1"`) {
+	if err != nil ||
+		!strings.Contains(string(manifest), `"$schema": "https://wago.sh/v0/schema.json"`) ||
+		strings.Contains(string(manifest), `"schema":`) {
 		t.Fatalf("manager init manifest = %q, %v", manifest, err)
 	}
 }

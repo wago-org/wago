@@ -32,7 +32,7 @@ func TestPluginEnvironmentUsesSharedGlobalIntentAndToolchainBuild(t *testing.T) 
 	if err := os.MkdirAll(dirs.Data, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := addProjectDep(dirs.Data, "github.com/wago-org/wasi"); err != nil {
+	if _, err := addProjectDep(dirs.Data, "github.com/wago-org/wasi", "^0.0.0"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -69,7 +69,7 @@ func TestPluginEnvironmentKeepsLocalAndGlobalIsolated(t *testing.T) {
 	if err := os.MkdirAll(dirs.Data, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := addProjectDep(dirs.Data, "github.com/wago-org/wasi"); err != nil {
+	if _, err := addProjectDep(dirs.Data, "github.com/wago-org/wasi", "^0.0.0"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := initializeProject("."); err != nil {

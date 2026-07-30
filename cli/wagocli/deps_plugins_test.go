@@ -1,6 +1,7 @@
 package wagocli
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -12,15 +13,22 @@ import (
 func TestProjectPluginsParsesCapabilitiesAndOrdering(t *testing.T) {
 	dir := t.TempDir()
 	manifest := `{
-  "dependencies": ["github.com/wago-org/workers"],
-  "plugins": [{
-    "name": "wago-org/workers",
-    "capabilities": ["instance.manage", "runtime.lifecycle"],
-    "after": ["github.com/acme/wago-metrics"],
-    "config": {"maxWorkers": 4}
-  }]
+  "plugins": {
+    "wago-org/workers": "^0.0.0"
+  }
 }`
 	if err := os.WriteFile(filepath.Join(dir, projectFile), []byte(manifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	lock := lockDoc{Packages: map[string]lockEntry{
+		"wago-org/workers": {
+			Version:              "0.0.0",
+			RequiredCapabilities: []string{"instance.manage", "runtime.lifecycle"},
+			Capabilities:         json.RawMessage(`["instance.manage","runtime.lifecycle"]`),
+			Config:               json.RawMessage(`{"maxWorkers":4}`),
+		},
+	}}
+	if err := writeLock(dir, lock); err != nil {
 		t.Fatal(err)
 	}
 	got, err := projectPlugins(dir)
@@ -28,21 +36,29 @@ func TestProjectPluginsParsesCapabilitiesAndOrdering(t *testing.T) {
 		t.Fatal(err)
 	}
 	wantCaps := []wago.PluginCapability{wago.PluginManagedInstances, wago.PluginRuntimeHooks}
-	if len(got) != 1 || got[0].Name != "wago-org/workers" || !reflect.DeepEqual(got[0].Capabilities, wantCaps) || !reflect.DeepEqual(got[0].After, []string{"github.com/acme/wago-metrics"}) {
+	if len(got) != 1 || got[0].Name != "wago-org/workers" || !reflect.DeepEqual(got[0].Capabilities, wantCaps) {
 		t.Fatalf("projectPlugins = %#v", got)
 	}
-	if string(got[0].Config) != `{"maxWorkers":4}` {
+	if !json.Valid(got[0].Config) || !reflect.DeepEqual(decodeJSON(t, got[0].Config), map[string]any{"maxWorkers": float64(4)}) {
 		t.Fatalf("config = %s", got[0].Config)
 	}
 }
 
-func TestProjectPluginsParsesDocumentedArrayShape(t *testing.T) {
+func decodeJSON(t *testing.T, raw []byte) any {
+	t.Helper()
+	var value any
+	if err := json.Unmarshal(raw, &value); err != nil {
+		t.Fatal(err)
+	}
+	return value
+}
+
+func TestProjectPluginsParsesDocumentedVersionMap(t *testing.T) {
 	dir := t.TempDir()
 	manifest := `{
-  "plugins": [{
-    "name": "wago-org/wasi",
-    "capabilities": ["host.imports"]
-  }]
+  "plugins": {
+    "wago-org/wasi": "^0.0.0"
+  }
 }`
 	if err := os.WriteFile(filepath.Join(dir, projectFile), []byte(manifest), 0o644); err != nil {
 		t.Fatal(err)
@@ -56,10 +72,35 @@ func TestProjectPluginsParsesDocumentedArrayShape(t *testing.T) {
 	}
 }
 
+func TestProjectPluginsRejectsLegacyManifestShape(t *testing.T) {
+	for _, manifest := range []string{
+		`{"schema":"wago/other","plugins":[]}`,
+		`{"dependencies":["github.com/wago-org/wasi"],"plugins":{"wago-org/wasi":"^0.0.0"}}`,
+		`{"plugins":[{"name":"wago-org/wasi","capabilities":[]}]}`,
+		`{"plugins":{"wago-org/wasi":"newest"}}`,
+	} {
+		dir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dir, projectFile), []byte(manifest), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := projectPlugins(dir); err == nil {
+			t.Fatalf("projectPlugins accepted legacy/invalid manifest: %s", manifest)
+		}
+	}
+}
+
 func TestProjectPluginsParsesCapabilityBudgets(t *testing.T) {
 	dir := t.TempDir()
-	manifest := `{"plugins":[{"name":"wago-org/workers","capabilities":{"runtime.lifecycle":true,"instance.manage":{"maxInstances":3,"maxMemoryBytes":131072}}}]}`
+	manifest := `{"plugins":{"wago-org/workers":"^0.0.0"}}`
 	if err := os.WriteFile(filepath.Join(dir, projectFile), []byte(manifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	lock := lockDoc{Packages: map[string]lockEntry{
+		"wago-org/workers": {
+			Capabilities: json.RawMessage(`{"runtime.lifecycle":true,"instance.manage":{"maxInstances":3,"maxMemoryBytes":131072}}`),
+		},
+	}}
+	if err := writeLock(dir, lock); err != nil {
 		t.Fatal(err)
 	}
 	got, err := projectPlugins(dir)
@@ -86,10 +127,13 @@ func TestInitializeProjectCreatesMinimalManifestAndPreservesFields(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if m["$schema"] != manifestSchemaURI || m["schema"] != manifestVersion {
+	if m["$schema"] != manifestSchemaURI {
 		t.Fatalf("initialized metadata = %#v", m)
 	}
-	if deps := depsFromMap(m); len(deps) != 0 {
+	if _, exists := m["schema"]; exists {
+		t.Fatalf("initialized manifest contains removed schema version: %#v", m)
+	}
+	if deps, err := projectDeps(dir); err != nil || len(deps) != 0 {
 		t.Fatalf("initialized dependencies = %v", deps)
 	}
 	m["name"] = "example"

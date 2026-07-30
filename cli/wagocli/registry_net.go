@@ -596,7 +596,6 @@ func registryPublish(c *Ctx) {
 		fatal("publish: resolving subpackage refs in %s: %v", manifestPath, err)
 	}
 	var mf struct {
-		Schema  string `json:"schema"`
 		Module  string `json:"module"`
 		Version string `json:"version"`
 	}

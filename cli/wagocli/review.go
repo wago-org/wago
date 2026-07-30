@@ -3,6 +3,7 @@
 package wagocli
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 )
@@ -57,7 +58,7 @@ func reviewCapabilities(name string, required, granted []string) (chosen []strin
 }
 
 // pkgGrant interactively edits which of a compiled-in plugin's requestable
-// capabilities are granted in the active wago.json (local or global per scope).
+// capabilities are granted in the active wago-lock.json (local or global per scope).
 func pkgGrant(name string, useGlobal bool) {
 	id := strings.TrimPrefix(strings.TrimSpace(name), "github.com/")
 	src, err := depsSource(useGlobal)
@@ -75,7 +76,11 @@ func pkgGrant(name string, useGlobal bool) {
 	if err != nil {
 		fatal("plugin grant: %v", err)
 	}
-	bin, _, err := ensureBuiltBinary(buildDir, deps, false, false)
+	changed, err := syncLockedPluginVersions(buildDir, src, false)
+	if err != nil {
+		fatal("plugin grant: %v", err)
+	}
+	bin, _, err := ensureBuiltBinary(buildDir, deps, changed, false)
 	if err != nil {
 		fatal("plugin grant: %v", err)
 	}
@@ -88,16 +93,21 @@ func pkgGrant(name string, useGlobal bool) {
 		fmt.Println(dim("no changes"))
 		return
 	}
-	if err := setPluginGrants(src, id, chosen); err != nil {
+	// Keep the lockfile snapshot in sync so a later install doesn't re-prompt.
+	lock, err := readLock(src)
+	if err != nil {
 		fatal("plugin grant: %v", err)
 	}
-	// Keep the lockfile snapshot in sync so a later install doesn't re-prompt.
-	lock := readLock(src)
 	entry := lock.Packages[id]
 	entry.RequiredCapabilities = required
-	entry.GrantedCapabilities = chosen
+	entry.Capabilities, err = json.Marshal(chosen)
+	if err != nil {
+		fatal("plugin grant: %v", err)
+	}
 	lock.Packages[id] = entry
-	_ = writeLock(src, lock)
+	if err := writeLock(src, lock); err != nil {
+		fatal("plugin grant: %v", err)
+	}
 	if len(chosen) == 0 {
 		fmt.Printf("%s %s now has no capability grants\n", cyan("✓"), id)
 		return
