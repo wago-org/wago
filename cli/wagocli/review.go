@@ -44,11 +44,11 @@ func reviewCapabilities(name string, required, granted []string) (chosen []strin
 	}
 	m := &multiSelect{
 		title:  fmt.Sprintf("Package %s wants to use the following capabilities:", name),
-		prompt: "↑/↓ move · space toggle · enter accept · r reject all · esc cancel",
+		prompt: "↑/↓ move · space toggle · enter/→ accept · r reject all · esc cancel",
 		items:  items,
 	}
-	// Enter accepts the checked items; r clears and submits (grant nothing) — both
-	// return ok=true with the chosen set. Only esc cancels, leaving grants as-is.
+	// Enter/right accepts the selected items; r clears and submits (grant
+	// nothing) — both return ok=true. Only esc cancels, leaving grants as-is.
 	_, cancelled := runSelector(m)
 	if cancelled {
 		return nil, false

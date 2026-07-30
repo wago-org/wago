@@ -13,7 +13,6 @@ func runnerCommands() []*Cmd {
 		pluginCommand(),
 		authCommand(),
 		moduleCommand(),
-		envCommand(),
 		optsCommand(),
 		buildCommand(),
 		validateCommand(),

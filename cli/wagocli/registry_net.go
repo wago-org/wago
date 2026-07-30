@@ -1,9 +1,9 @@
-//go:build !wago_lean && !wago_manager
+//go:build !wago_lean
 
 // Registry commands (login/logout/whoami/publish/unpublish/deprecate) for the
-// wago registry at plugins.wago.sh. This file imports net/http (and net, os/exec for
-// the browser login flow), so it is excluded from the size-optimized/TinyGo build
-// (-tags wago_lean); that build gets the fatal() stubs in registry_stub.go.
+// wago registry at plugins.wago.sh. This file imports net/http (and net, os/exec
+// for the browser login flow), so it is excluded from size-optimized/TinyGo
+// builds (-tags wago_lean). The standard-Go manager compiles it and owns auth.
 //
 // The credential store and URL helpers live in registry_config.go, which is
 // net-free and shared by both builds.
@@ -140,7 +140,11 @@ func registryLogin(c *Ctx) {
 	case link:
 		token = browserLogin(base)
 	default:
-		token = chooseLoginMethod(base)
+		var ok bool
+		token, ok = chooseLoginMethod(base)
+		if !ok {
+			return
+		}
 	}
 	me, err := fetchMe(token)
 	if err != nil {
@@ -155,21 +159,38 @@ func registryLogin(c *Ctx) {
 	fmt.Printf("%s Logged in as %s\n", cyan("✓"), bold(me.Login))
 }
 
-// chooseLoginMethod asks the user how to log in: a browser link on this machine
-// (loopback flow) or a one-time code entered on any device (device flow, for
-// remote/headless machines). It defaults to the browser link when there is no
-// answer (e.g. a non-interactive stdin).
-func chooseLoginMethod(base string) string {
-	fmt.Printf("How would you like to log in?\n\n")
-	fmt.Printf("  %s  open a browser link on this machine\n", bold("1) link"))
-	fmt.Printf("  %s  enter a one-time code at github.com/login/device (for remote/headless)\n", bold("2) code"))
-	fmt.Printf("\nChoose [1/2] (default 1): ")
-	line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
-	switch strings.TrimSpace(strings.ToLower(line)) {
-	case "2", "code", "c":
-		return githubDeviceLogin(base)
+func loginMethodPicker() *picker {
+	return newPicker("Choose login method", []pickerItem{
+		{
+			label: "Link",
+			desc:  "Open a browser link on this machine",
+			value: "link",
+		},
+		{
+			label: "Code",
+			desc:  "Use a one-time code on another device",
+			value: "code",
+		},
+	})
+}
+
+// chooseLoginMethod asks how to log in using the shared radio selector. Link is
+// selected by default and remains the fallback for non-interactive callers.
+func chooseLoginMethod(base string) (string, bool) {
+	p := loginMethodPicker()
+	submitted, cancelled := runSelector(p)
+	if cancelled {
+		return "", false
+	}
+	method := p.selected()
+	if !submitted {
+		method = "link"
+	}
+	switch method {
+	case "code":
+		return githubDeviceLogin(base), true
 	default:
-		return browserLogin(base)
+		return browserLogin(base), true
 	}
 }
 
@@ -297,11 +318,10 @@ func githubDeviceLogin(base string) string {
 		verifyURI = "https://github.com/login/device"
 	}
 
+	// Keep the terminal still so the code can be copied before the user opens a
+	// browser. Unlike Link login, the device flow never launches one itself.
 	fmt.Printf("\n  First, copy your one-time code:\n\n      %s\n\n", bold(dc.UserCode))
 	fmt.Printf("  Then open %s and enter it.\n", cyan(verifyURI))
-	if err := openBrowser(verifyURI); err == nil {
-		fmt.Printf("  %s\n", dim("(we also tried to open your browser)"))
-	}
 	fmt.Printf("\n%s Waiting for you to authorize on GitHub…\n", dim("→"))
 
 	// 3. Poll GitHub for the access token until the user authorizes or it expires.

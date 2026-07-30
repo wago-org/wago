@@ -205,3 +205,30 @@ func TestRegistrySessionCommandsAndOAuthHelpers(t *testing.T) {
 		t.Fatal("login success HTML missing confirmation")
 	}
 }
+
+func TestLoginMethodPickerDefaultsToLinkAndAcceptsRightArrow(t *testing.T) {
+	p := loginMethodPicker()
+	if got := p.selected(); got != "link" {
+		t.Fatalf("default login method = %q, want link", got)
+	}
+	frame := p.frame()
+	for _, want := range []string{
+		"Choose login method",
+		"Link", "Open a browser link on this machine",
+		"Code", "Use a one-time code on another device",
+		"◉", "○", "enter/→ select", "esc cancel",
+	} {
+		if !strings.Contains(frame, want) {
+			t.Fatalf("login picker missing %q:\n%s", want, frame)
+		}
+	}
+	if done, cancelled := p.apply(keyDown); done || cancelled {
+		t.Fatalf("down = done %v, cancelled %v", done, cancelled)
+	}
+	if got := p.selected(); got != "code" {
+		t.Fatalf("selected login method = %q, want code", got)
+	}
+	if done, cancelled := p.apply(keyRight); !done || cancelled {
+		t.Fatalf("right = done %v, cancelled %v", done, cancelled)
+	}
+}

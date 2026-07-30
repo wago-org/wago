@@ -43,8 +43,8 @@ func Main(v string) {
 	case "version":
 		versionCommand().Dispatch("wago version", args[1:])
 		return
-	case "env":
-		printManagerEnv()
+	case "auth":
+		authCommand().Dispatch("wago auth", args[1:])
 		return
 	}
 	runActiveRunner(args)
@@ -128,18 +128,6 @@ func executablePath() string {
 	return path
 }
 
-func printManagerEnv() {
-	d := wagopaths.DirsFor(versionString())
-	fmt.Printf("%s %s\n", dim("WAGO_MANAGER "), versionString())
-	fmt.Printf("%s %s\n", dim("WAGO_CONFIG  "), d.Config)
-	fmt.Printf("%s %s\n", dim("WAGO_DATA    "), d.Data)
-	fmt.Printf("%s %s\n", dim("WAGO_VERSIONS"), d.Versions)
-	fmt.Printf("%s %s\n", dim("WAGO_CACHE   "), d.Cache)
-	if path, _, _, _, ok := activeRunner(d); ok {
-		fmt.Printf("%s %s\n", dim("WAGO_RUNNER  "), path)
-	}
-}
-
 func runActiveRunner(args []string) {
 	d := wagopaths.DirsFor(versionString())
 	path, active, profile, build, ok := activeRunner(d)
@@ -165,7 +153,7 @@ func managerUsage(w *os.File) {
 	fmt.Fprintf(w, "%s wago [run] [...flags] <file> [...args]\n\n", bold("Usage:"))
 	fmt.Fprintf(w, "%s\n", bold("Manager commands:"))
 	fmt.Fprintf(w, "  %-12s %s\n", "version", "list, install, switch, update, and remove runtimes")
-	fmt.Fprintf(w, "  %-12s %s\n", "env", "print CLI and active-runtime paths")
+	fmt.Fprintf(w, "  %-12s %s\n", "auth", "log in to the plugin registry and manage credentials")
 	fmt.Fprintf(w, "\n%s\n", bold("Runtime profiles:"))
 	for _, profile := range wagopaths.Profiles {
 		fmt.Fprintf(w, "  %-12s %s\n", titleProfile(profile), profile.Description())

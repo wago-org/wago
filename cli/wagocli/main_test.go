@@ -31,12 +31,18 @@ func TestUsageDocumentsCommandSurface(t *testing.T) {
 			t.Fatalf("usage text missing %q:\n%s", want, text)
 		}
 	}
-	// Every Standard command must be listed. Version remains available here as
-	// well as in the separate manager so checkout/dev builds keep the same CLI.
-	for _, cmd := range []string{"run", "add", "rm", "plugin", "auth", "module", "env", "build", "validate", "version"} {
+	// Every Standard command must be listed. Auth and version remain available
+	// here as well as in the separate manager so checkout/dev builds work.
+	for _, cmd := range []string{"run", "add", "rm", "plugin", "auth", "module", "build", "validate", "version"} {
 		if !strings.Contains(text, cmd) {
 			t.Fatalf("usage text missing command %q:\n%s", cmd, text)
 		}
+	}
+	if root.child("auth") == nil {
+		t.Fatal("standalone standard command tree does not register auth")
+	}
+	if root.child("env") != nil {
+		t.Fatal("standard command tree still registers removed env command")
 	}
 	if root.child("version") == nil {
 		t.Fatal("standard command tree does not register version")
@@ -64,7 +70,7 @@ func TestValidateModuleBytesRejectsDecodeErrors(t *testing.T) {
 
 func TestMetaAndVersionCommandConstructors(t *testing.T) {
 	t.Setenv("WAGO_HOME", t.TempDir())
-	for _, cmd := range []*Cmd{envCommand(), buildCommand(), validateCommand(), versionCommand()} {
+	for _, cmd := range []*Cmd{buildCommand(), validateCommand(), versionCommand()} {
 		if cmd == nil || cmd.Name == "" || (cmd.Run == nil && len(cmd.Children) == 0) {
 			t.Fatalf("invalid command descriptor: %#v", cmd)
 		}
@@ -90,7 +96,6 @@ func TestMetaAndVersionCommandConstructors(t *testing.T) {
 		t.Fatal(err)
 	}
 	os.Stdout = w
-	envCommand().Run(&Ctx{})
 	version := versionCommand()
 	version.Children[0].Run(&Ctx{})
 	version.Children[1].Run(&Ctx{})
@@ -100,8 +105,8 @@ func TestMetaAndVersionCommandConstructors(t *testing.T) {
 	os.Stdout = old
 	out, err := io.ReadAll(r)
 	_ = r.Close()
-	if err != nil || !strings.Contains(string(out), "WAGO_VERSION") || !strings.Contains(string(out), "WAGO_CACHE") {
-		t.Fatalf("env output = %q, %v", out, err)
+	if err != nil || !strings.Contains(string(out), "1.2.3") {
+		t.Fatalf("version output = %q, %v", out, err)
 	}
 
 	path := t.TempDir() + "/empty.wasm"

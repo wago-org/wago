@@ -21,10 +21,13 @@ func newTestSelect() *multiSelect {
 func TestMultiSelectFrame(t *testing.T) {
 	m := newTestSelect()
 	text := m.frame()
-	for _, want := range []string{"pick", "› ", "[x]", "wasi:stdio", "↑/↓ move"} {
+	for _, want := range []string{"pick", "› ", "◉", "○", "wasi:stdio", "enter/→ accept"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("frame missing %q:\n%s", want, text)
 		}
+	}
+	if strings.Contains(text, "[x]") || strings.Contains(text, "[ ]") {
+		t.Fatalf("frame uses legacy checkbox glyphs:\n%s", text)
 	}
 	m.title = ""
 	m.prompt = "custom prompt"

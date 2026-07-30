@@ -4,6 +4,8 @@ package main
 
 import (
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -104,6 +106,71 @@ func TestManagerVersionUpgradesLegacyRunnerOutput(t *testing.T) {
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("manager report missing %q:\n%s", want, text)
+		}
+	}
+}
+
+func TestManagerOwnsAuthWithoutSelectedRunner(t *testing.T) {
+	t.Setenv("WAGO_HOME", t.TempDir())
+
+	oldArgs, oldStdout := os.Args, os.Stdout
+	t.Cleanup(func() { os.Args, os.Stdout = oldArgs, oldStdout })
+	read, write, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stdout = write
+	os.Args = []string{"wago", "auth", "whoami"}
+	main()
+	_ = write.Close()
+	output, err := io.ReadAll(read)
+	_ = read.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.TrimSpace(string(output)); got != "not logged in (run: wago auth login)" {
+		t.Fatalf("manager auth output = %q", got)
+	}
+}
+
+func TestManagerAuthLoginStoresCredentialWithoutSelectedRunner(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("WAGO_HOME", root)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/me" || r.Header.Get("Authorization") != "Bearer manager-token" {
+			http.Error(w, "bad request", http.StatusUnauthorized)
+			return
+		}
+		_, _ = w.Write([]byte(`{"login":"alice"}`))
+	}))
+	defer server.Close()
+	t.Setenv("WAGO_REGISTRY", server.URL)
+
+	oldArgs, oldStdout := os.Args, os.Stdout
+	t.Cleanup(func() { os.Args, os.Stdout = oldArgs, oldStdout })
+	read, write, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stdout = write
+	os.Args = []string{"wago", "auth", "login", "--token", "manager-token"}
+	main()
+	_ = write.Close()
+	output, err := io.ReadAll(read)
+	_ = read.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(output), "Logged in as alice") {
+		t.Fatalf("manager auth output = %q", output)
+	}
+	credentials, err := os.ReadFile(filepath.Join(root, "config", "credentials.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{server.URL, "manager-token", "alice"} {
+		if !strings.Contains(string(credentials), want) {
+			t.Fatalf("credentials missing %q: %s", want, credentials)
 		}
 	}
 }

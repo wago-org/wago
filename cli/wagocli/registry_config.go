@@ -1,10 +1,8 @@
-//go:build !wago_manager
-
 package wagocli
 
 // Credentials store for the wago registry (plugins.wago.sh). This file is net-free
-// (no net/http) so it compiles into both the full and the size-optimized
-// (-tags wago_lean) builds; the actual HTTP calls live in registry_net.go.
+// (no net/http) and is shared by the manager and runtime builds; the actual HTTP
+// calls live in registry_net.go.
 //
 // Credentials are keyed by registry base URL so several registries can coexist.
 // They use Wago's platform config directory: ~/.wago/config on macOS and the

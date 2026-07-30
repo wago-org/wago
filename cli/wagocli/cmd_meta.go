@@ -6,26 +6,9 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/wago-org/wago"
 	"github.com/wago-org/wago/internal/functionworkers"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
-
-// envCommand prints wago's resolved on-disk directories.
-func envCommand() *Cmd {
-	return &Cmd{
-		Name:    "env",
-		Summary: "print resolved config/cache/data directories",
-		Run: func(*Ctx) {
-			d := wago.DirsFor(versionString())
-			fmt.Printf("%s %s\n", dim("WAGO_VERSION"), d.Version)
-			fmt.Printf("%s %s\n", dim("WAGO_CONFIG  "), d.Config)
-			fmt.Printf("%s %s\n", dim("WAGO_DATA    "), d.Data)
-			fmt.Printf("%s %s\n", dim("WAGO_VERSIONS"), d.Versions)
-			fmt.Printf("%s %s\n", dim("WAGO_CACHE   "), d.Cache)
-		},
-	}
-}
 
 // buildCommand is a placeholder for the not-yet-implemented AOT builder.
 func buildCommand() *Cmd {
