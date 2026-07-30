@@ -13,11 +13,12 @@ func TestProjectPluginsParsesCapabilitiesAndOrdering(t *testing.T) {
 	dir := t.TempDir()
 	manifest := `{
   "dependencies": ["github.com/wago-org/workers"],
-  "plugins": {"wago-org/workers": {
+  "plugins": [{
+    "name": "wago-org/workers",
     "capabilities": ["instance.manage", "runtime.lifecycle"],
     "after": ["github.com/acme/wago-metrics"],
     "config": {"maxWorkers": 4}
-  }}
+  }]
 }`
 	if err := os.WriteFile(filepath.Join(dir, projectFile), []byte(manifest), 0o644); err != nil {
 		t.Fatal(err)
@@ -35,9 +36,29 @@ func TestProjectPluginsParsesCapabilitiesAndOrdering(t *testing.T) {
 	}
 }
 
+func TestProjectPluginsParsesDocumentedArrayShape(t *testing.T) {
+	dir := t.TempDir()
+	manifest := `{
+  "plugins": [{
+    "name": "wago-org/wasi",
+    "capabilities": ["host.imports"]
+  }]
+}`
+	if err := os.WriteFile(filepath.Join(dir, projectFile), []byte(manifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got, err := projectPlugins(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Name != "wago-org/wasi" {
+		t.Fatalf("projectPlugins = %#v", got)
+	}
+}
+
 func TestProjectPluginsParsesCapabilityBudgets(t *testing.T) {
 	dir := t.TempDir()
-	manifest := `{"plugins":{"wago-org/workers":{"capabilities":{"runtime.lifecycle":true,"instance.manage":{"maxInstances":3,"maxMemoryBytes":131072}}}}}`
+	manifest := `{"plugins":[{"name":"wago-org/workers","capabilities":{"runtime.lifecycle":true,"instance.manage":{"maxInstances":3,"maxMemoryBytes":131072}}}]}`
 	if err := os.WriteFile(filepath.Join(dir, projectFile), []byte(manifest), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -52,5 +73,35 @@ func TestProjectPluginsParsesCapabilityBudgets(t *testing.T) {
 	want := wago.CapabilityBudget{MaxInstances: 3, MaxMemoryBytes: 131072}
 	if got[0].Budgets[wago.PluginManagedInstances] != want {
 		t.Fatalf("budget = %#v", got[0].Budgets)
+	}
+}
+
+func TestInitializeProjectCreatesMinimalManifestAndPreservesFields(t *testing.T) {
+	dir := t.TempDir()
+	created, err := initializeProject(dir)
+	if err != nil || !created {
+		t.Fatalf("initializeProject first = %v, %v", created, err)
+	}
+	m, err := readProjectMap(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m["$schema"] != manifestSchemaURI || m["schema"] != manifestVersion {
+		t.Fatalf("initialized metadata = %#v", m)
+	}
+	if deps := depsFromMap(m); len(deps) != 0 {
+		t.Fatalf("initialized dependencies = %v", deps)
+	}
+	m["name"] = "example"
+	if err := writeProjectMap(dir, m); err != nil {
+		t.Fatal(err)
+	}
+	created, err = initializeProject(dir)
+	if err != nil || created {
+		t.Fatalf("initializeProject repeat = %v, %v", created, err)
+	}
+	m, _ = readProjectMap(dir)
+	if m["name"] != "example" {
+		t.Fatalf("repeat initialization discarded fields: %#v", m)
 	}
 }

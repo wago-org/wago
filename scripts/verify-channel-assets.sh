@@ -28,15 +28,13 @@ for manager in "${managers[@]}"; do
   assets=(
     "$manager"
     "wago-runtime-standard-normal-${target}"
-    "wago-runtime-lite-normal-${target}"
     "wago-runtime-minimal-normal-${target}"
   )
   tiny_assets=(
     "wago-runtime-standard-tiny-${target}"
-    "wago-runtime-lite-tiny-${target}"
     "wago-runtime-minimal-tiny-${target}"
   )
-  # TinyGo supports the subprocesses needed by Standard/Lite on Linux. Other
+  # TinyGo supports the subprocesses needed by Standard on Linux. Other
   # hosts still publish every Tiny profile their TinyGo port can build (notably
   # Minimal) without sacrificing the complete Normal set.
   if [[ "$target" == linux-* ]]; then

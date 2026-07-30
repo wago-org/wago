@@ -77,10 +77,10 @@ go get github.com/wago-org/wago
 
 Canary and Nightly attempt complete CLI/runtime sets for Linux, macOS, and
 Windows on both amd64 and arm64. Each successful platform publishes the
-runtime-independent CLI as `wago-<goos>-<goarch>` plus Standard, Lite, and
-Minimal runtimes in Normal builds plus every feature-complete Tiny build
-supported by TinyGo on that platform. Linux publishes both builds of all three
-profiles. Runtime assets are named
+runtime-independent CLI as `wago-<goos>-<goarch>` plus Standard and Minimal
+runtimes in Normal builds plus every feature-complete Tiny build
+supported by TinyGo on that platform. Linux publishes Normal and Tiny builds
+for both profiles. Runtime assets are named
 `wago-runtime-<profile>-<build>-<goos>-<goarch>`, all with SHA-256 checksums.
 A platform set is omitted if any required Normal binary is missing. The CLI
 uses standard Go's HTTP client. Normal runtimes use standard Go for speed; Tiny
@@ -94,7 +94,7 @@ name resolves to its newest published release at install time:
 
 ```bash
 wago version install 0.1.0
-wago version install 0.1.0 --profile lite
+wago version install 0.1.0 --profile standard
 wago version install 0.1.0 --profile minimal --build tiny
 wago version install nightly  # latest successful nightly release
 wago version install canary   # most recent successful-CI build of main
@@ -129,6 +129,7 @@ The high-level project docs live in this repo:
 - [ARCHITECTURE.md](ARCHITECTURE.md) — pipeline, runtime, ABI, and design notes.
 - [OPTIMIZATIONS.md](OPTIMIZATIONS.md) — current and planned codegen work.
 - [docs/plugin-api-v2.md](docs/plugin-api-v2.md) — capability-based plugin architecture.
+- [docs/plugin-scopes.md](docs/plugin-scopes.md) — local/global plugin intent and toolchain-isolated builds.
 - [docs/compiler-instruction-plugin-design.md](docs/compiler-instruction-plugin-design.md) — language-neutral custom instructions and native lowering.
 - [docs/wago-json.md](docs/wago-json.md) — manifest and schema reference.
 - [docs/function-workers.md](docs/function-workers.md) — parallel validation/codegen policy and tradeoffs.
@@ -173,22 +174,46 @@ wago validate tests/testdata/fib.wasm
 wago validate -p tests/testdata/large.wasm
 ```
 
-`wago build` is reserved for the future `.wago` product path and currently
-returns `not implemented`.
+Precompile a module into Wago's host-specific artifact format:
+
+```bash
+wago build app.wasm
+wago build app.wasm -o build/app.wago
+```
+
+The resulting `.wago` skips decode, validation, and compilation on later runs.
+Artifacts are architecture-specific and should be rebuilt after incompatible
+Wago upgrades.
 
 ### Inspect plugins and imports
+
+Initialize a project explicitly, or let `add` create `wago.json` automatically:
+
+```bash
+wago init
+wago add wago-org/wasi
+wago add --global wago-org/wasi  # shared outside projects with local manifests
+wago plugin add wago-org/wasi    # equivalent, fully grouped form
+```
+
+Local plugins are isolated from the global set. A local `wago.json` wins without
+merging machine state; `wago run --global app.wasm` explicitly selects global
+plugins and `wago run --bare app.wasm` disables both sets. Global intent is
+shared across Wago versions, while every version/profile/build compiles its own
+plugin runtime. See [docs/plugin-scopes.md](docs/plugin-scopes.md).
 
 The CLI can show which plugins are compiled into the binary and what imports a
 module needs:
 
 ```bash
 wago plugin list
+wago plugin list --global
 wago plugin inspect github.com/acme/wago-metrics
-wago plugin inspect github.com/acme/wago-metrics --json
+wago plugin inspect github.com/acme/wago-metrics --local --json
+wago plugin remove wago-org/wasi
 
 wago module imports app.wasm
 wago module capabilities app.wasm
-wago env
 wago version list
 ```
 
@@ -202,7 +227,7 @@ capabilities:
   "schema": "wago/v1",
   "dependencies": ["github.com/acme/wago-metrics"],
   "plugins": [{
-    "name": "github.com/acme/wago-metrics",
+    "name": "acme/wago-metrics",
     "capabilities": ["host.imports"]
   }]
 }
@@ -863,7 +888,6 @@ Builds:
 ```bash
 make build
 make build-runtime-standard
-make build-runtime-lite
 make build-runtime-minimal-tinygo
 make build-release
 make tinygo-build

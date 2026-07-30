@@ -60,7 +60,7 @@ func TestProfileInstallationState(t *testing.T) {
 		Config: filepath.Join(root, "config"), Data: filepath.Join(root, "data"),
 		Versions: filepath.Join(root, "data", "versions"), Cache: filepath.Join(root, "cache"),
 	}
-	for _, profile := range []wagopaths.Profile{wagopaths.ProfileLite, wagopaths.ProfileMinimal} {
+	for _, profile := range []wagopaths.Profile{wagopaths.ProfileStandard, wagopaths.ProfileMinimal} {
 		path := d.RunnerBinary("canary", string(profile))
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 			t.Fatal(err)
@@ -69,7 +69,7 @@ func TestProfileInstallationState(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if got := strings.Join(installedProfiles(d, "canary"), ","); got != "lite/normal,minimal/normal" {
+	if got := strings.Join(installedProfiles(d, "canary"), ","); got != "standard/normal,minimal/normal" {
 		t.Fatalf("installed profiles = %q", got)
 	}
 	if err := setActiveInstallation(d, "canary", wagopaths.ProfileMinimal, wagopaths.BuildNormal); err != nil {
@@ -88,7 +88,7 @@ func TestRuntimeBuildsInstallSideBySide(t *testing.T) {
 		Versions: filepath.Join(root, "data", "versions"), Cache: filepath.Join(root, "cache"),
 	}
 	for _, build := range wagopaths.Builds {
-		path := d.RuntimeBinary("canary", string(wagopaths.ProfileLite), string(build))
+		path := d.RuntimeBinary("canary", string(wagopaths.ProfileStandard), string(build))
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -96,14 +96,14 @@ func TestRuntimeBuildsInstallSideBySide(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := setActiveInstallation(d, "canary", wagopaths.ProfileLite, wagopaths.BuildTiny); err != nil {
+	if err := setActiveInstallation(d, "canary", wagopaths.ProfileStandard, wagopaths.BuildTiny); err != nil {
 		t.Fatal(err)
 	}
 	path, version, profile, build, ok := activeRunner(d)
-	if !ok || version != "canary" || profile != wagopaths.ProfileLite || build != wagopaths.BuildTiny {
+	if !ok || version != "canary" || profile != wagopaths.ProfileStandard || build != wagopaths.BuildTiny {
 		t.Fatalf("active runtime = %q, %q, %q, %q, %v", path, version, profile, build, ok)
 	}
-	if want := d.RuntimeBinary("canary", "lite", "tiny"); path != want {
+	if want := d.RuntimeBinary("canary", "standard", "tiny"); path != want {
 		t.Fatalf("active path = %q, want %q", path, want)
 	}
 }
@@ -114,7 +114,7 @@ func TestVersionUseDoesNotShowInstallationLocation(t *testing.T) {
 		Config: filepath.Join(root, "config"), Data: filepath.Join(root, "data"),
 		Versions: filepath.Join(root, "data", "versions"), Cache: filepath.Join(root, "cache"),
 	}
-	path := d.RunnerBinary("canary", string(wagopaths.ProfileLite))
+	path := d.RunnerBinary("canary", string(wagopaths.ProfileMinimal))
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -129,7 +129,7 @@ func TestVersionUseDoesNotShowInstallationLocation(t *testing.T) {
 	}
 	os.Stdout = write
 	t.Cleanup(func() { os.Stdout = oldStdout })
-	vmUse(d, "canary", wagopaths.ProfileLite, wagopaths.BuildNormal)
+	vmUse(d, "canary", wagopaths.ProfileMinimal, wagopaths.BuildNormal)
 	_ = write.Close()
 	os.Stdout = oldStdout
 	output, err := io.ReadAll(read)
@@ -137,7 +137,7 @@ func TestVersionUseDoesNotShowInstallationLocation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if text := string(output); !strings.Contains(text, "Using Wago Canary (lite/normal)") {
+	if text := string(output); !strings.Contains(text, "Using Wago Canary (minimal/normal)") {
 		t.Fatalf("version use output missing result:\n%s", text)
 	} else if strings.Contains(text, "location") || strings.Contains(text, path) {
 		t.Fatalf("version use unexpectedly showed installation location:\n%s", text)
@@ -214,6 +214,58 @@ func TestUseInstalledPickerUsesRadioButtonsAndDefaultsYes(t *testing.T) {
 	}
 	if strings.Contains(frame, "browse") {
 		t.Fatalf("flat radio picker should not advertise drill-down:\n%s", frame)
+	}
+}
+
+func TestLegacyGlobalPluginsMigrateToSharedIntent(t *testing.T) {
+	root := t.TempDir()
+	d := wagopaths.Dirs{
+		Config: filepath.Join(root, "config"), Data: filepath.Join(root, "data"),
+		Versions: filepath.Join(root, "data", "versions"), Cache: filepath.Join(root, "cache"),
+	}
+	sourceDir := filepath.Join(d.Versions, "canary-source123", "plugins")
+	if err := os.MkdirAll(sourceDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	manifest := []byte(`{"dependencies":["github.com/wago-org/wasi"],"plugins":[{"name":"wago-org/wasi","capabilities":["host.environment"]}]}`)
+	lock := []byte(`{"plugins":{"wago-org/wasi":{"grantedCapabilities":["host.environment"]}}}`)
+	if err := os.WriteFile(filepath.Join(sourceDir, versionPluginManifest), manifest, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sourceDir, "wago-lock.json"), lock, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := migrateLegacyGlobalPlugins(d, "canary-source123"); err != nil {
+		t.Fatal(err)
+	}
+	for name, want := range map[string][]byte{versionPluginManifest: manifest, "wago-lock.json": lock} {
+		got, err := os.ReadFile(filepath.Join(d.Data, name))
+		if err != nil || !bytes.Equal(got, want) {
+			t.Fatalf("migrated %s = %q, %v; want %q", name, got, err, want)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(sourceDir, versionPluginManifest)); err != nil {
+		t.Fatalf("legacy manifest should remain recoverable: %v", err)
+	}
+}
+
+func TestLegacyPluginReleaseParsing(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		output   string
+		fallback string
+		want     string
+	}{
+		{name: "diagnostic", output: "Wago\n  channel      canary\n  release      canary-20260729-7d8c58a\n", fallback: "canary", want: "canary-20260729-7d8c58a"},
+		{name: "legacy", output: "wago v0.2.0 (darwin/arm64)\n", fallback: "canary", want: "v0.2.0"},
+		{name: "fallback", output: "unknown\n", fallback: "nightly", want: "nightly"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := releaseFromVersionOutput([]byte(test.output), test.fallback); got != test.want {
+				t.Fatalf("release = %q, want %q", got, test.want)
+			}
+		})
 	}
 }
 
@@ -326,9 +378,8 @@ func TestInstalledVersionPickerShowsCurrentProfileAndBrowsesProfiles(t *testing.
 		}
 	}
 	installProfile("canary", wagopaths.ProfileStandard)
-	installProfile("canary", wagopaths.ProfileLite)
 	installProfile("nightly-20260725-c18b63d", wagopaths.ProfileMinimal)
-	if err := setActiveInstallation(d, "canary", wagopaths.ProfileLite, wagopaths.BuildNormal); err != nil {
+	if err := setActiveInstallation(d, "canary", wagopaths.ProfileStandard, wagopaths.BuildNormal); err != nil {
 		t.Fatal(err)
 	}
 
@@ -336,7 +387,7 @@ func TestInstalledVersionPickerShowsCurrentProfileAndBrowsesProfiles(t *testing.
 	frame := p.frame()
 	for _, want := range []string{
 		"Select installed Wago version",
-		"› ◉ canary          (lite/normal)     →  current",
+		"› ◉ canary          (standard/normal) →  current",
 		"current",
 		"○ nightly-c18b63d (minimal/normal)  →",
 		"→ select/browse",
@@ -350,19 +401,19 @@ func TestInstalledVersionPickerShowsCurrentProfileAndBrowsesProfiles(t *testing.
 	}
 	profiles := p.frame()
 	for _, want := range []string{
-		"Standard", "Lite", "Minimal",
-		"Everything", "Run, build, and plugins", "Run only",
+		"Standard", "Minimal",
+		"Everything", "Run only",
 		"current", "not installed", "←/esc back",
 	} {
 		if !strings.Contains(profiles, want) {
 			t.Fatalf("profile picker missing %q:\n%s", want, profiles)
 		}
 	}
-	if got, want := p.selected(), installedSelectionValue("canary", wagopaths.ProfileLite, wagopaths.BuildNormal); got != want {
+	if got, want := p.selected(), installedSelectionValue("canary", wagopaths.ProfileStandard, wagopaths.BuildNormal); got != want {
 		t.Fatalf("selected profile = %q, want %q", got, want)
 	}
-	p.apply(keyUp)
-	if got, want := p.selected(), installedSelectionValue("canary", wagopaths.ProfileStandard, wagopaths.BuildNormal); got != want {
+	p.apply(keyDown)
+	if got, want := p.selected(), installedSelectionValue("canary", wagopaths.ProfileMinimal, wagopaths.BuildNormal); got != want {
 		t.Fatalf("switched profile = %q, want %q", got, want)
 	}
 }
@@ -375,7 +426,7 @@ func TestInstalledWagoLabel(t *testing.T) {
 		build     wagopaths.Build
 		want      string
 	}{
-		{"canary", "canary-20260728-7d8c58a", wagopaths.ProfileLite, wagopaths.BuildTiny, "Wago Canary (7d8c58a/lite/tiny)"},
+		{"canary", "canary-20260728-7d8c58a", wagopaths.ProfileStandard, wagopaths.BuildTiny, "Wago Canary (7d8c58a/standard/tiny)"},
 		{"nightly-20260725-c18b63d", "nightly-20260725-c18b63d", wagopaths.ProfileMinimal, wagopaths.BuildNormal, "Wago Nightly (c18b63d/minimal/normal)"},
 		{"v0.2.0", "v0.2.0", wagopaths.ProfileStandard, wagopaths.BuildNormal, "Wago v0.2.0 (standard/normal)"},
 	}
@@ -460,9 +511,12 @@ func TestInstallPickerHidesImmutableChannelTagsAtTopLevel(t *testing.T) {
 		{TagName: "0.1.0", PublishedAt: "2026-06-01T12:00:00Z"},
 		{TagName: "canary"},
 	}
+	commits := []remoteCommit{{SHA: "cafef00123456789012345678901234567890123"}, {SHA: "deadbee123456789012345678901234567890123"}}
+	commits[0].Commit.Author.Date = "2026-07-28T00:48:44Z"
+	commits[1].Commit.Author.Date = "2026-07-27T00:48:44Z"
 	now := time.Date(2026, 7, 29, 12, 0, 0, 0, time.UTC)
-	items := versionPickerItems(releases, now)
-	if got, want := []string{items[0].children[0].value, items[0].children[1].value}, []string{"canary", "canary-cafef00"}; !slices.Equal(got, want) {
+	items := versionPickerItemsWithCommits(releases, commits, now)
+	if got, want := []string{items[0].children[0].value, items[0].children[1].value, items[0].children[2].value}, []string{"canary", canaryCommitTarget(commits[0].SHA), canaryCommitTarget(commits[1].SHA)}; !slices.Equal(got, want) {
 		t.Fatalf("canary picker children = %v, want %v", got, want)
 	}
 	if got, want := []string{items[2].children[0].value, items[2].children[1].value, items[2].children[2].value, items[2].children[3].value}, []string{"latest", "v0.2.0", "v0.1.4", "0.1.0"}; !slices.Equal(got, want) {
@@ -476,6 +530,9 @@ func TestInstallPickerHidesImmutableChannelTagsAtTopLevel(t *testing.T) {
 	if canary.label != "canary-cafef00" || canary.desc != "07/28/2026  1d ago" {
 		t.Fatalf("canary picker item = %#v", canary)
 	}
+	if got := canaryCommitVersion(canary.value); got != "canary-cafef00" {
+		t.Fatalf("canary commit install name = %q", got)
+	}
 	if got := releasePickerLabel("canary"); got != "canary" {
 		t.Fatalf("releasePickerLabel(canary) = %q", got)
 	}
@@ -483,10 +540,11 @@ func TestInstallPickerHidesImmutableChannelTagsAtTopLevel(t *testing.T) {
 
 func TestInstallPickerProfilePageReturnsToReleasePage(t *testing.T) {
 	releases := []remoteRelease{
-		{TagName: "canary-20260728-7d8c58a", PublishedAt: "2026-07-28T08:31:22Z"},
 		{TagName: "v0.2.0", PublishedAt: "2026-07-27T08:31:22Z"},
 	}
-	p := newPicker("Install Wago version", installPickerItems(releases, time.Now()))
+	commits := []remoteCommit{{SHA: "7d8c58a123456789012345678901234567890123"}}
+	commits[0].Commit.Author.Date = "2026-07-28T08:31:22Z"
+	p := newPicker("Install Wago version", installPickerItemsWithCommits(releases, commits, time.Now()))
 	p.apply(keyRight) // browse canary releases
 	p.apply(keyDown)  // choose the immutable canary build
 	if done, cancelled := p.apply(keyAccept); done || cancelled {
@@ -499,7 +557,7 @@ func TestInstallPickerProfilePageReturnsToReleasePage(t *testing.T) {
 		t.Fatalf("left did not return to release page: done %v, cancelled %v, pages %d", done, cancelled, len(p.pages))
 	}
 	p.apply(keyAccept)
-	p.apply(keyDown) // Lite
+	p.apply(keyDown) // Minimal
 	if done, cancelled := p.apply(keyAccept); done || cancelled {
 		t.Fatalf("profile accept unexpectedly finished picker")
 	}
@@ -511,7 +569,7 @@ func TestInstallPickerProfilePageReturnsToReleasePage(t *testing.T) {
 		t.Fatalf("build accept = done %v, cancelled %v", done, cancelled)
 	}
 	version, profile, build, ok := parseInstalledSelection(p.selected())
-	if !ok || version != "canary-20260728-7d8c58a" || profile != wagopaths.ProfileLite || build != wagopaths.BuildTiny {
+	if !ok || version != canaryCommitTarget(commits[0].SHA) || profile != wagopaths.ProfileMinimal || build != wagopaths.BuildTiny {
 		t.Fatalf("install selection = %q, %q, %q, %v", version, profile, build, ok)
 	}
 }

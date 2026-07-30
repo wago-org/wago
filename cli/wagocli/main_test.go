@@ -20,29 +20,53 @@ func TestUsageDocumentsCommandSurface(t *testing.T) {
 	b, _ := os.ReadFile(f.Name())
 	text := string(b)
 	for _, want := range []string{
-		"wago is a pure-Go",             // banner
-		"Usage: wago",                   // usage line
-		"compile and execute an export", // run
-		"not implemented",               // build
-		"decode and validate a module",  // validate
-		"github.com/wago-org/wago",      // footer
+		"wago is a pure-Go", // banner
+		"Usage: wago",       // usage line
+		"compile and execute a WebAssembly module", // run
+		"precompile a WebAssembly module",          // build
+		"decode and validate a module",             // validate
+		"github.com/wago-org/wago",                 // footer
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("usage text missing %q:\n%s", want, text)
 		}
 	}
-	// Every Standard command must be listed. Version remains available here as
-	// well as in the separate manager so checkout/dev builds keep the same CLI.
-	for _, cmd := range []string{"run", "add", "rm", "plugin", "auth", "module", "env", "build", "validate", "version"} {
+	// Every Standard command must be listed. Auth and version remain available
+	// here as well as in the separate manager so checkout/dev builds work.
+	for _, cmd := range []string{"run", "init", "add", "rm", "plugin", "auth", "module", "build", "validate", "version"} {
 		if !strings.Contains(text, cmd) {
 			t.Fatalf("usage text missing command %q:\n%s", cmd, text)
 		}
+	}
+	if root.child("auth") == nil {
+		t.Fatal("standalone standard command tree does not register auth")
+	}
+	if root.child("env") != nil {
+		t.Fatal("standard command tree still registers removed env command")
+	}
+	if root.child("opts") != nil || strings.Contains(text, "show compiler optimization flags") {
+		t.Fatal("standard command tree still registers removed opts command")
 	}
 	if root.child("version") == nil {
 		t.Fatal("standard command tree does not register version")
 	}
 	if strings.Contains(text, "test") {
 		t.Fatalf("usage should no longer mention test:\n%s", text)
+	}
+}
+
+func TestManagedRuntimeHelpIncludesManagerCommands(t *testing.T) {
+	oldRoot := root
+	root = &Cmd{Name: "wago", Children: []*Cmd{{Name: "run", Summary: "run a module"}}}
+	t.Cleanup(func() { root = oldRoot })
+	t.Setenv("WAGO_MANAGER_EXECUTABLE", "/usr/local/bin/wago")
+
+	commands := topLevelHelpCommands()
+	if len(commands) != 4 || commands[0].Name != "run" || commands[1].Name != "init" || commands[2].Name != "auth" || commands[3].Name != "version" {
+		t.Fatalf("managed minimal help commands = %#v", commands)
+	}
+	if len(root.Children) != 1 {
+		t.Fatalf("topLevelHelpCommands mutated runtime command tree: %#v", root.Children)
 	}
 }
 
@@ -62,9 +86,36 @@ func TestValidateModuleBytesRejectsDecodeErrors(t *testing.T) {
 	}
 }
 
+func TestBuildCommandWritesRunnableArtifact(t *testing.T) {
+	t.Setenv("WAGO_BARE", "1")
+	t.Setenv("WAGO_GLOBAL", "")
+	t.Setenv("WAGO_LOCAL", "")
+	dir := t.TempDir()
+	input := filepath.Join(dir, "empty.wasm")
+	if err := os.WriteFile(input, []byte{'\x00', 'a', 's', 'm', 1, 0, 0, 0}, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	buildCommand().Run(&Ctx{
+		Args:  []string{input},
+		strs:  map[string]string{},
+		bools: map[string]bool{},
+	})
+	output := filepath.Join(dir, "empty.wago")
+	artifact, err := os.ReadFile(output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !wago.IsCompiled(artifact) {
+		t.Fatalf("build output is not a .wago artifact: %x", artifact)
+	}
+	if _, err := wago.Load(artifact); err != nil {
+		t.Fatalf("load build output: %v", err)
+	}
+}
+
 func TestMetaAndVersionCommandConstructors(t *testing.T) {
 	t.Setenv("WAGO_HOME", t.TempDir())
-	for _, cmd := range []*Cmd{envCommand(), buildCommand(), validateCommand(), versionCommand()} {
+	for _, cmd := range []*Cmd{buildCommand(), validateCommand(), versionCommand()} {
 		if cmd == nil || cmd.Name == "" || (cmd.Run == nil && len(cmd.Children) == 0) {
 			t.Fatalf("invalid command descriptor: %#v", cmd)
 		}
@@ -90,7 +141,6 @@ func TestMetaAndVersionCommandConstructors(t *testing.T) {
 		t.Fatal(err)
 	}
 	os.Stdout = w
-	envCommand().Run(&Ctx{})
 	version := versionCommand()
 	version.Children[0].Run(&Ctx{})
 	version.Children[1].Run(&Ctx{})
@@ -100,8 +150,8 @@ func TestMetaAndVersionCommandConstructors(t *testing.T) {
 	os.Stdout = old
 	out, err := io.ReadAll(r)
 	_ = r.Close()
-	if err != nil || !strings.Contains(string(out), "WAGO_VERSION") || !strings.Contains(string(out), "WAGO_CACHE") {
-		t.Fatalf("env output = %q, %v", out, err)
+	if err != nil || !strings.Contains(string(out), "1.2.3") {
+		t.Fatalf("version output = %q, %v", out, err)
 	}
 
 	path := t.TempDir() + "/empty.wasm"
@@ -111,20 +161,31 @@ func TestMetaAndVersionCommandConstructors(t *testing.T) {
 	validateCommand().Run(&Ctx{Args: []string{path}})
 }
 
-func TestProjectBuildAndRunTargetClassification(t *testing.T) {
+func TestPluginRuntimeAndRunTargetClassification(t *testing.T) {
 	for _, tc := range []struct {
 		args []string
 		want bool
 	}{
 		{nil, false},
 		{[]string{"version"}, false},
+		{[]string{"init"}, false},
+		{[]string{"add", "wago-org/wasi"}, false},
+		{[]string{"plugin", "add", "wago-org/wasi"}, false},
+		{[]string{"plugin", "remove", "wago-org/wasi"}, false},
 		{[]string{"plugin", "publish"}, false},
 		{[]string{"plugin", "list"}, true},
 		{[]string{"run", "x.wasm"}, true},
 	} {
-		if got := usesProjectBuild(tc.args); got != tc.want {
-			t.Fatalf("usesProjectBuild(%v) = %v, want %v", tc.args, got, tc.want)
+		if got := usesPluginRuntime(tc.args); got != tc.want {
+			t.Fatalf("usesPluginRuntime(%v) = %v, want %v", tc.args, got, tc.want)
 		}
+	}
+	if root.child("install") != nil || root.child("uninstall") != nil || root.child("remove") != nil {
+		t.Fatal("top-level plugin aliases collide with `wago version install/uninstall`")
+	}
+	plugins := pluginCommand()
+	if plugins.child("add") == nil || plugins.child("remove") == nil || plugins.child("rm") == nil {
+		t.Fatal("plugin group does not expose add/remove commands")
 	}
 	for _, name := range []string{"module.wasm", "module.wago"} {
 		if !looksLikeRunTarget(name) {
@@ -147,6 +208,24 @@ func TestProjectBuildAndRunTargetClassification(t *testing.T) {
 	useColor = true
 	if paint("31", "x") != "\x1b[31mx\x1b[0m" {
 		t.Fatal("enabled color paint changed")
+	}
+}
+
+func TestCommandHelpBypassesPluginRuntime(t *testing.T) {
+	if !commandWantsHelp(pluginCommand(), nil) {
+		t.Fatal("bare plugin group help was not recognized")
+	}
+	if !commandWantsHelp(pluginCommand(), []string{"--help"}) {
+		t.Fatal("plugin group help was not recognized")
+	}
+	if !commandWantsHelp(pluginCommand(), []string{"list", "--global", "--help"}) {
+		t.Fatal("nested plugin help was not recognized")
+	}
+	if !commandWantsHelp(runCommand(), []string{"--local", "--help"}) {
+		t.Fatal("run help before the module was not recognized")
+	}
+	if commandWantsHelp(runCommand(), []string{"module.wasm", "--help"}) {
+		t.Fatal("guest help after the module was intercepted")
 	}
 }
 
@@ -295,18 +374,4 @@ func TestOptimizationFlagSurfaceAndListing(t *testing.T) {
 		t.Fatalf("--no-%s did not disable knob", name)
 	}
 
-	old := os.Stdout
-	r, w, err := os.Pipe()
-	if err != nil {
-		t.Fatal(err)
-	}
-	os.Stdout = w
-	optsCommand().Run(&Ctx{})
-	_ = w.Close()
-	os.Stdout = old
-	out, err := io.ReadAll(r)
-	_ = r.Close()
-	if err != nil || !strings.Contains(string(out), "KNOB") || !strings.Contains(string(out), name) {
-		t.Fatalf("opts output = %q, %v", out, err)
-	}
 }

@@ -5,6 +5,7 @@ package wagocli
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -30,6 +31,53 @@ func TestLatestChannelRelease(t *testing.T) {
 	got, err := latestChannelRelease("nightly")
 	if err != nil || got != "nightly-20260712-deadbee" {
 		t.Fatalf("latestChannelRelease(nightly) = %q, %v", got, err)
+	}
+}
+
+func TestMainCommitBrowsingPaginatesAndResolvesTip(t *testing.T) {
+	const tip = "deadbee123456789012345678901234567890123"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/repos/wago-org/wago/commits/main":
+			_ = json.NewEncoder(w).Encode(remoteCommit{SHA: tip})
+		case "/repos/wago-org/wago/commits":
+			page := r.URL.Query().Get("page")
+			count := 1
+			if page == "1" {
+				count = 100
+			}
+			commits := make([]remoteCommit, count)
+			for i := range commits {
+				commits[i].SHA = fmt.Sprintf("%040x", i+1)
+			}
+			_ = json.NewEncoder(w).Encode(commits)
+		case "/repos/wago-org/wago/releases":
+			count := 1
+			if r.URL.Query().Get("page") == "1" {
+				count = 100
+			}
+			releases := make([]remoteRelease, count)
+			for i := range releases {
+				releases[i].TagName = fmt.Sprintf("canary-%07x", i+1)
+			}
+			_ = json.NewEncoder(w).Encode(releases)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	t.Setenv("WAGO_RELEASE_API", srv.URL)
+
+	if got, err := latestMainCommit(); err != nil || got != tip {
+		t.Fatalf("latestMainCommit = %q, %v", got, err)
+	}
+	commits, err := fetchMainCommits()
+	if err != nil || len(commits) != 101 {
+		t.Fatalf("fetchMainCommits = %d commits, %v", len(commits), err)
+	}
+	releases, err := fetchReleases()
+	if err != nil || len(releases) != 101 {
+		t.Fatalf("fetchReleases = %d releases, %v", len(releases), err)
 	}
 }
 

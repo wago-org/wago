@@ -31,15 +31,16 @@ func vmInstallForSwitch(d wagopaths.Dirs, ver string, profile wagopaths.Profile,
 }
 
 func installVersion(d wagopaths.Dirs, ver string, profile wagopaths.Profile, build wagopaths.Build, offer, showLocation bool) {
-	dest := d.RuntimeBinary(ver, string(profile), string(build))
-	if installedPath, _, _, installed := installedRuntime(d, ver, profile, build); installed {
+	installName := canaryCommitVersion(ver)
+	dest := d.RuntimeBinary(installName, string(profile), string(build))
+	if installedPath, _, _, installed := installedRuntime(d, installName, profile, build); installed {
 		if !isRollingChannel(ver) {
-			fmt.Printf("%s %s is already installed\n", cyan("✓"), installedWagoLabel(ver, ver, profile, build))
+			fmt.Printf("%s %s is already installed\n", cyan("✓"), installedWagoLabel(installName, installName, profile, build))
 			if showLocation {
 				printDetail(os.Stdout, "location", displayPath(installedPath))
 			}
 			if offer {
-				offerUseInstalled(d, ver, profile, build)
+				finishVersionInstall(d, installName, profile, build)
 			}
 			return
 		}
@@ -50,7 +51,17 @@ func installVersion(d wagopaths.Dirs, ver string, profile wagopaths.Profile, bui
 	progress := newInstallProgress(os.Stderr)
 	progress.title("Setting Up")
 	resolved := ver
-	if isRollingChannel(ver) {
+	if ver == "canary" {
+		progress.begin("resolving main commit")
+		var err error
+		resolved, err = latestMainCommit()
+		if err != nil {
+			progress.fail("could not resolve main commit")
+			fatal("version install: %v", err)
+		}
+		resolved = canaryCommitTarget(resolved)
+		progress.done("resolved " + canaryCommitVersion(resolved))
+	} else if isRollingChannel(ver) {
 		progress.begin("resolving release")
 		var err error
 		resolved, err = latestChannelRelease(ver)
@@ -60,15 +71,15 @@ func installVersion(d wagopaths.Dirs, ver string, profile wagopaths.Profile, bui
 		}
 		progress.done("resolved " + releasePickerLabel(resolved))
 	}
-	if err := downloadBinaryWithProgress(releaseBase(), resolved, profile, build, dest, progress); err != nil {
+	if err := downloadBinaryWithProgress(releaseBase(), canaryCommitVersion(resolved), profile, build, dest, progress); err != nil {
 		fatal("version install: %v", err)
 	}
-	progress.finish("Installed " + installedWagoLabel(ver, resolved, profile, build))
+	progress.finish("Installed " + installedWagoLabel(installName, canaryCommitVersion(resolved), profile, build))
 	if showLocation {
 		printDetail(progress.out, "location", displayPath(dest))
 	}
 	if offer {
-		offerUseInstalled(d, ver, profile, build)
+		finishVersionInstall(d, installName, profile, build)
 	}
 }
 
@@ -78,15 +89,15 @@ func vmInstallRequested(d wagopaths.Dirs, args []string, latest, nightly, canary
 	if len(args) > 1 || (len(args) == 1 && (latest || nightly || canary)) || (latest && (nightly || canary)) || (nightly && canary) {
 		fatal("version install: choose one version or channel")
 	}
-	if len(args) == 0 && !latest && !nightly && !canary {
-		vmBrowse(d, profileValue, buildValue)
-		return
-	}
 	if _, err := requestedProfile(profileValue); err != nil {
 		fatal("version install: %v", err)
 	}
 	if _, err := requestedBuild(buildValue); err != nil {
 		fatal("version install: %v", err)
+	}
+	if len(args) == 0 && !latest && !nightly && !canary {
+		vmBrowse(d, profileValue, buildValue)
+		return
 	}
 	profile, build, ok := chooseInstallVariant(profileValue, buildValue)
 	if !ok {
@@ -136,15 +147,15 @@ func latestRelease() string {
 }
 
 func vmBrowse(d wagopaths.Dirs, profileValue, buildValue string) {
-	body, err := curlGetBytes(releaseAPI() + "/repos/wago-org/wago/releases?per_page=100")
+	releases, err := fetchReleases()
 	if err != nil {
-		fatal("version browse: %v", err)
+		fatal("version browse: unable to fetch releases: %v", err)
 	}
-	var releases []remoteRelease
-	if err := json.Unmarshal(body, &releases); err != nil {
-		fatal("version browse: unable to fetch releases")
+	commits, err := fetchMainCommits()
+	if err != nil {
+		fatal("version browse: unable to fetch main commits: %v", err)
 	}
-	choice, profile, build, ok := chooseInstallPicker(releases, time.Now(), profileValue, buildValue)
+	choice, profile, build, ok := chooseInstallPicker(releases, commits, time.Now(), profileValue, buildValue)
 	if !ok {
 		return
 	}
@@ -153,6 +164,25 @@ func vmBrowse(d wagopaths.Dirs, profileValue, buildValue string) {
 		return
 	}
 	vmInstall(d, choice, profile, build)
+}
+
+func fetchReleases() ([]remoteRelease, error) {
+	var releases []remoteRelease
+	for page := 1; ; page++ {
+		url := fmt.Sprintf("%s/repos/wago-org/wago/releases?per_page=100&page=%d", releaseAPI(), page)
+		body, err := curlGetBytes(url)
+		if err != nil {
+			return nil, err
+		}
+		var batch []remoteRelease
+		if err := json.Unmarshal(body, &batch); err != nil {
+			return nil, err
+		}
+		releases = append(releases, batch...)
+		if len(batch) < 100 {
+			return releases, nil
+		}
+	}
 }
 
 func vmUpdate(d wagopaths.Dirs, ver string, profile wagopaths.Profile, build wagopaths.Build) {
@@ -170,6 +200,16 @@ func vmUpdate(d wagopaths.Dirs, ver string, profile wagopaths.Profile, build wag
 // releaseDownloadVersion resolves a rolling channel to its newest immutable
 // prerelease tag. Stable versions are already immutable release tags.
 func releaseDownloadVersion(ver string) string {
+	if ver == "canary" {
+		sha, err := latestMainCommit()
+		if err != nil {
+			fatal("version canary: %v", err)
+		}
+		return canaryCommitVersion(canaryCommitTarget(sha))
+	}
+	if _, ok := canaryCommitSHA(ver); ok {
+		return canaryCommitVersion(ver)
+	}
 	if !isRollingChannel(ver) {
 		return ver
 	}
@@ -178,6 +218,41 @@ func releaseDownloadVersion(ver string) string {
 		fatal("version %s: %v", ver, err)
 	}
 	return tag
+}
+
+func latestMainCommit() (string, error) {
+	body, err := curlGetBytes(releaseAPI() + "/repos/wago-org/wago/commits/main")
+	if err != nil {
+		return "", err
+	}
+	var commit remoteCommit
+	if err := json.Unmarshal(body, &commit); err != nil {
+		return "", err
+	}
+	sha := strings.ToLower(commit.SHA)
+	if !validCommitSHA(sha) {
+		return "", fmt.Errorf("GitHub returned an invalid main commit")
+	}
+	return sha, nil
+}
+
+func fetchMainCommits() ([]remoteCommit, error) {
+	var commits []remoteCommit
+	for page := 1; ; page++ {
+		url := fmt.Sprintf("%s/repos/wago-org/wago/commits?sha=main&per_page=100&page=%d", releaseAPI(), page)
+		body, err := curlGetBytes(url)
+		if err != nil {
+			return nil, err
+		}
+		var batch []remoteCommit
+		if err := json.Unmarshal(body, &batch); err != nil {
+			return nil, err
+		}
+		commits = append(commits, batch...)
+		if len(batch) < 100 {
+			return commits, nil
+		}
+	}
 }
 
 func latestChannelRelease(channel string) (string, error) {

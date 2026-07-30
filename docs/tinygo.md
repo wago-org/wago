@@ -5,7 +5,7 @@ wago builds and runs under [TinyGo](https://tinygo.org) on `linux/amd64`,
 codegen → execute pipeline works end to end: the public `wago` API runs real
 modules (recursion, i64, floats, linear memory, host imports, `call_indirect`)
 identically to the standard toolchain. Releases provide TinyGo builds of the
-Standard, Lite, and Minimal profiles alongside their standard-Go equivalents.
+Standard and Minimal profiles alongside their standard-Go equivalents.
 The version manager is a separate standard-Go binary with native HTTPS support.
 
 ## Why this needs special handling
@@ -73,7 +73,6 @@ Via make:
 ```bash
 make build                         # standard-Go CLI -> ./wago
 make build-runtime-standard        # everything runtime
-make build-runtime-lite            # run, build, and plugins
 make build-runtime-minimal         # standard-Go run-only runtime
 make build-runtime-minimal-tinygo  # TinyGo run-only runtime
 make build-release                 # CLI plus Normal/Tiny builds of all profiles

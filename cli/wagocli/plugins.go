@@ -46,11 +46,12 @@ func pluginList(asJSON bool) {
 		printJSON(reports)
 		return
 	}
+	scope := selectedPluginScopeLabel()
 	if len(names) == 0 {
-		fmt.Println(dim("no plugins compiled into this binary"))
+		fmt.Printf("%s\n", dim("no plugins enabled ("+scope+")"))
 		return
 	}
-	fmt.Printf("%s\n", bold("plugins:"))
+	fmt.Printf("%s\n", bold("plugins ("+scope+"):"))
 	for _, name := range names {
 		ext, ok := wago.NewExtension(name)
 		if !ok {
@@ -73,6 +74,17 @@ func pluginList(asJSON bool) {
 			fmt.Printf("      %s\n", dim(info.Description))
 		}
 	}
+}
+
+func selectedPluginScopeLabel() string {
+	environment, err := resolvePluginEnvironment()
+	if err != nil {
+		return "active scope"
+	}
+	if environment.scope == "plain" {
+		return "global"
+	}
+	return environment.scope
 }
 
 // pluginInspect prints (or, with --json, emits) one plugin's full config: identity,
@@ -303,14 +315,14 @@ func pluginCapabilities(ext wago.Extension) []string {
 
 func loadPluginRuntime(cfg *wago.RuntimeConfig, list string) *wago.Runtime {
 	rt := wago.NewRuntime(wago.WithRuntimeConfig(cfg))
-	manifest, err := projectPlugins(".")
+	manifest, err := activePluginConfigs()
 	if err != nil {
 		fatal("plugins: %v", err)
 	}
-	// Always start with the packages declared in the local wago.json (each with
-	// its configured capabilities). --plugin adds any extra plugins on top rather
-	// than replacing the manifest; names are matched canonically (a leading
-	// "github.com/" is optional) and de-duplicated against the manifest.
+	// Start with the active package set's manifest (local wago.json when present,
+	// otherwise the version-scoped global manifest), including its configured
+	// capabilities. --plugin adds extras rather than replacing the manifest;
+	// names are matched canonically and de-duplicated against it.
 	selected := append([]wago.PluginConfig(nil), manifest...)
 	have := make(map[string]bool, len(manifest))
 	for _, item := range manifest {
@@ -330,4 +342,15 @@ func loadPluginRuntime(cfg *wago.RuntimeConfig, list string) *wago.Runtime {
 		}
 	}
 	return rt
+}
+
+func activePluginConfigs() ([]wago.PluginConfig, error) {
+	environment, err := resolvePluginEnvironment()
+	if err != nil {
+		return nil, err
+	}
+	if environment.scope == "bare" || environment.scope == "plain" {
+		return nil, nil
+	}
+	return projectPlugins(environment.manifestDir)
 }

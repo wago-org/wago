@@ -11,30 +11,30 @@ func versionCommand() *Cmd {
 	dirs := func() wagopaths.Dirs { return wagopaths.DirsFor(versionString()) }
 	return &Cmd{
 		Name:    "version",
-		Summary: "manage Wago toolchain versions (list, switch, install, …)",
+		Summary: "install, select, update, and remove Wago runtimes",
 		Children: []*Cmd{
 			{
 				Name: "list", Aliases: []string{"ls", "list-installed", "ls-installed", "list-local"},
-				Summary: "list locally installed versions",
+				Summary: "list installed runtime versions",
 				Run:     func(*Ctx) { vmList(dirs()) },
 			},
 			{
 				Name:    "current",
-				Summary: "print the active version",
+				Summary: "print the active runtime, profile, and build",
 				Run:     func(*Ctx) { vmCurrent(dirs()) },
 			},
 			{
 				Name:    "which",
-				Summary: "print the path to the active binary",
+				Summary: "print the active runtime executable path",
 				Run:     func(*Ctx) { vmWhich(dirs()) },
 			},
 			{
 				Name:    "switch",
 				Aliases: []string{"swap"},
-				Summary: "select an installed version (interactive with no argument)",
+				Summary: "select a runtime, installing it when needed",
 				Args:    "[version]",
 				Flags: []Flag{
-					{Name: "profile", Arg: "<name>", Help: "standard, lite, or minimal"},
+					{Name: "profile", Arg: "<name>", Help: "standard or minimal"},
 					{Name: "build", Arg: "<name>", Help: "normal or tiny"},
 				},
 				Run: func(c *Ctx) {
@@ -60,18 +60,18 @@ func versionCommand() *Cmd {
 					if _, _, _, ok := installedRuntime(dirs(), c.one("[version]"), profile, build); !ok {
 						vmInstallForSwitch(dirs(), c.one("[version]"), profile, build)
 					}
-					vmUse(dirs(), c.one("[version]"), profile, build)
+					vmSwitchTo(dirs(), c.one("[version]"), profile, build)
 				},
 			},
 			{
 				Name: "install", Aliases: []string{"add"},
-				Summary: "install a pinned version, release channel, or latest",
+				Summary: "browse and install a release or commit",
 				Args:    "[version]",
 				Flags: []Flag{
 					{Name: "latest", Bool: true, Help: "install the latest release"},
 					{Name: "nightly", Bool: true, Help: "install nightly"},
 					{Name: "canary", Bool: true, Help: "install the latest canary"},
-					{Name: "profile", Arg: "<name>", Help: "standard, lite, or minimal"},
+					{Name: "profile", Arg: "<name>", Help: "standard or minimal"},
 					{Name: "build", Arg: "<name>", Help: "normal or tiny"},
 				},
 				Run: func(c *Ctx) {
@@ -80,7 +80,7 @@ func versionCommand() *Cmd {
 			},
 			{
 				Name:    "update",
-				Summary: "refresh an installed version or release channel",
+				Summary: "update an installed release channel",
 				Args:    "[channel]",
 				Flags: []Flag{
 					{Name: "nightly", Bool: true, Help: "refresh the latest nightly release"},
@@ -122,7 +122,7 @@ func versionCommand() *Cmd {
 			},
 			{
 				Name: "uninstall", Aliases: []string{"remove", "rm"},
-				Summary: "select and remove installed versions",
+				Summary: "select and remove installed runtimes",
 				Args:    "[version...]",
 				Run: func(c *Ctx) {
 					if len(c.Args) == 0 {

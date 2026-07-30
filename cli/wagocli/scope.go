@@ -7,34 +7,64 @@ import (
 	"os"
 )
 
-// scopeGlobal is the pure decision behind the `wago add`/`wago plugin` commands' plugin-set
-// scope: given the explicit --global/--local flags and whether the current
-// directory has a wago.json, report whether to operate on the global set (or an
-// error for conflicting flags). With no flags it mirrors what `wago run` already
-// does (activePluginSet): a wago.json in the cwd selects the local project set,
-// and its absence falls back to the CLI-wide global set.
-func scopeGlobal(explicitGlobal, explicitLocal, cwdHasManifest bool) (bool, error) {
+const (
+	pluginScopeGlobalEnv = "WAGO_GLOBAL"
+	pluginScopeLocalEnv  = "WAGO_LOCAL"
+	pluginScopeBareEnv   = "WAGO_BARE"
+)
+
+// scopeGlobal is the pure decision behind commands that mutate a plugin set.
+// Mutations are local by default so `wago add` is reproducible and never changes
+// user-wide state merely because the current directory lacks a manifest.
+func scopeGlobal(explicitGlobal, explicitLocal bool) (bool, error) {
 	switch {
 	case explicitGlobal && explicitLocal:
 		return false, errors.New("choose either --global or --local, not both")
 	case explicitGlobal:
 		return true, nil
-	case explicitLocal:
-		return false, nil
-	case cwdHasManifest:
-		return false, nil // a project manifest is present — use it
 	default:
-		return true, nil // no local manifest — the global set is the default
+		return false, nil
 	}
 }
 
-// resolveScope applies scopeGlobal against the real filesystem, fataling on
-// conflicting flags. It returns whether to operate on the global plugin set.
+// resolveScope validates explicit flags and returns whether to mutate the shared
+// global plugin set.
 func resolveScope(explicitGlobal, explicitLocal bool) bool {
-	_, statErr := os.Stat(projectManifestPath("."))
-	useGlobal, err := scopeGlobal(explicitGlobal, explicitLocal, statErr == nil)
+	useGlobal, err := scopeGlobal(explicitGlobal, explicitLocal)
 	if err != nil {
 		fatal("pkg: %v", err)
 	}
 	return useGlobal
+}
+
+// selectPluginScope applies an explicit plugin scope to this invocation. With no
+// explicit flag it leaves the inherited/default scope alone: local when a
+// wago.json exists, otherwise global. The environment is the narrow seam shared
+// by the original process and any plugin-aware binary it hands off to.
+func selectPluginScope(global, local, bare bool) error {
+	selected := 0
+	for _, explicit := range []bool{global, local, bare} {
+		if explicit {
+			selected++
+		}
+	}
+	if selected > 1 {
+		return errors.New("choose only one of --local, --global, or --bare")
+	}
+	if selected == 0 {
+		return nil
+	}
+	for _, name := range []string{pluginScopeGlobalEnv, pluginScopeLocalEnv, pluginScopeBareEnv} {
+		if err := os.Unsetenv(name); err != nil {
+			return err
+		}
+	}
+	switch {
+	case global:
+		return os.Setenv(pluginScopeGlobalEnv, "1")
+	case local:
+		return os.Setenv(pluginScopeLocalEnv, "1")
+	default:
+		return os.Setenv(pluginScopeBareEnv, "1")
+	}
 }

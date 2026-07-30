@@ -47,6 +47,36 @@ func TestLeanLatestChannelRelease(t *testing.T) {
 	}
 }
 
+func TestLeanMainCommitBrowsing(t *testing.T) {
+	const sha = "deadbee123456789012345678901234567890123"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/repos/wago-org/wago/commits/main":
+			_, _ = w.Write([]byte(`{"sha":"` + sha + `"}`))
+		case "/repos/wago-org/wago/commits":
+			_, _ = w.Write([]byte(`[{"sha":"` + sha + `","commit":{"author":{"date":"2026-07-29T12:00:00Z"}}}]`))
+		case "/repos/wago-org/wago/releases":
+			_, _ = w.Write([]byte(`[{"tag_name":"v0.2.0"}]`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	t.Setenv("WAGO_RELEASE_API", srv.URL)
+
+	if got, err := latestMainCommit(); err != nil || got != sha {
+		t.Fatalf("latestMainCommit = %q, %v", got, err)
+	}
+	commits, err := fetchMainCommits()
+	if err != nil || len(commits) != 1 || commits[0].SHA != sha {
+		t.Fatalf("fetchMainCommits = %#v, %v", commits, err)
+	}
+	releases, err := fetchReleases()
+	if err != nil || len(releases) != 1 || releases[0].TagName != "v0.2.0" {
+		t.Fatalf("fetchReleases = %#v, %v", releases, err)
+	}
+}
+
 func TestLeanDownloadNightlyUsesHostAsset(t *testing.T) {
 	payload := []byte("fake nightly binary")
 	sum := sha256.Sum256(payload)

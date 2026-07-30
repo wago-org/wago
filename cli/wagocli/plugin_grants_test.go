@@ -12,7 +12,7 @@ func TestPluginGrantsRoundTrip(t *testing.T) {
 	// Seed a wago.json with a plugin entry that has other fields to preserve.
 	seed := `{
       "dependencies": ["github.com/wago-org/wasi"],
-      "plugins": {"wago-org/wasi": {"capabilities": ["wasi:stdio"], "after": ["x"]}}
+      "plugins": [{"name": "wago-org/wasi", "capabilities": ["wasi:stdio"], "after": ["x"]}]
     }`
 	if err := os.WriteFile(filepath.Join(dir, projectFile), []byte(seed), 0o644); err != nil {
 		t.Fatal(err)
@@ -30,7 +30,11 @@ func TestPluginGrantsRoundTrip(t *testing.T) {
 		t.Fatalf("updated grants: %v", got)
 	}
 	m, _ := readProjectMap(dir)
-	entry := m["plugins"].(map[string]any)["wago-org/wasi"].(map[string]any)
+	plugins, err := projectPluginMaps(m, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry := projectPluginMap(plugins, "wago-org/wasi")
 	if _, ok := entry["after"]; !ok {
 		t.Fatal("setPluginGrants dropped the plugin's other fields (after)")
 	}

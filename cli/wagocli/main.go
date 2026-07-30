@@ -53,11 +53,17 @@ func Main(v string) {
 		printVersion()
 		return
 	}
-	// In a project (a wago.json declaring packages), transparently hand off to the
-	// project's own wago — .wago/bin/wago, built on demand — so every command runs
-	// with the local package set compiled in. With no project it stays on this
-	// (global) wago. Build-management and toolchain/meta commands are skipped so
-	// they don't rebuild circularly or need a project to run.
+	// Help describes the invoked CLI, not a generated plugin artifact that may
+	// have been compiled by an older Wago. Resolve it before plugin handoff so
+	// every command advertises the current interface.
+	if cmd := root.child(args[0]); cmd != nil && commandWantsHelp(cmd, args[1:]) {
+		cmd.Dispatch("wago "+cmd.Name, args[1:])
+		return
+	}
+	// Transparently hand off to the active plugin-aware wago build: a project's
+	// local build when its wago.json declares packages, otherwise the global build.
+	// Build-management and toolchain/meta commands are skipped so they don't
+	// rebuild circularly or need a plugin runtime to run.
 	prepareRunnerInvocation(args)
 	if cmd := root.child(args[0]); cmd != nil {
 		cmd.Dispatch("wago "+cmd.Name, args[1:])
@@ -74,26 +80,51 @@ func Main(v string) {
 	os.Exit(2)
 }
 
-// usesProjectBuild reports whether an invocation should hand off to the project's
-// local wago build. Most commands do (run, module, validate, and the pkg
-// introspection commands, so they see the local package set). Commands that
-// build/manage the package set — or are toolchain/meta and don't need packages —
-// stay on the invoked wago, so they neither rebuild circularly nor require a
-// project to run.
-func usesProjectBuild(args []string) bool {
+func commandWantsHelp(command *Cmd, args []string) bool {
+	if len(command.Children) == 0 {
+		normalized := args
+		if command.Normalize != nil {
+			var err error
+			normalized, err = command.Normalize(args)
+			if err != nil {
+				return false
+			}
+		}
+		return wantsHelp(normalized, command.PassThrough, command.Flags)
+	}
+	if wantsHelp(args, true, command.Flags) {
+		return true
+	}
+	if len(args) == 0 {
+		return true
+	}
+	child := command.child(args[0])
+	return child != nil && commandWantsHelp(child, args[1:])
+}
+
+// usesPluginRuntime reports whether an invocation should hand off to the active
+// plugin-aware wago build. Most commands do (run, module, validate, and the
+// plugin introspection commands, so they see the compiled plugin set). Commands
+// that build/manage the package set — or are toolchain/meta and don't need
+// plugins — stay on the invoked wago, so they neither rebuild circularly nor
+// require a plugin runtime to run.
+func usesPluginRuntime(args []string) bool {
 	if len(args) == 0 {
 		return false
 	}
 	switch args[0] {
-	case "version", "auth", "env", "opts",
-		"add", "install", "i", "rm", "remove", "uninstall": // build-management / meta: run on base
+	case "version", "auth", "init", "env",
+		"add", "rm": // build-management / meta: run on base
 		return false
 	case "plugin", "plugins":
-		if len(args) >= 2 {
-			switch args[1] {
-			case "update", "up", "upgrade", "grant", "publish", "unpublish", "deprecate":
-				return false
-			}
+		if len(args) < 2 {
+			return false
+		}
+		switch args[1] {
+		case "list", "ls", "inspect":
+			return true
+		default:
+			return false
 		}
 	}
 	return true
@@ -117,7 +148,8 @@ func looksLikeRunTarget(s string) bool {
 // flags live in each command's own `--help`. Output is monochrome (bold only).
 func usage(w *os.File) {
 	fmt.Fprintf(w, "%s is a pure-Go (no cgo) WebAssembly engine. (v%s)\n\n", bold("wago"), versionString())
-	fmt.Fprintf(w, "%s wago [run] [...flags] <file> [...args]\n\n", bold("Usage:"))
+	fmt.Fprintf(w, "%s wago <command> [flags]\n", bold("Usage:"))
+	fmt.Fprintf(w, "       wago [run] [flags] <file> [args...]\n\n")
 
 	fmt.Fprintf(w, "%s\n", bold("Commands:"))
 	writeCommandList(w)
@@ -134,12 +166,30 @@ func usage(w *os.File) {
 // writeCommandList prints the top-level commands as an aligned name / arg-synopsis
 // / description table, sizing the name and arg columns to their widest entries.
 func writeCommandList(w *os.File) {
+	commands := topLevelHelpCommands()
 	nameW, argW := 0, 0
-	for _, c := range root.Children {
+	for _, c := range commands {
 		nameW = max(nameW, len(c.Name))
 		argW = max(argW, len(cmdArg(c)))
 	}
-	for _, c := range root.Children {
+	for _, c := range commands {
 		fmt.Fprintf(w, "  %-*s  %-*s  %s\n", nameW, c.Name, argW, cmdArg(c), c.Summary)
 	}
+}
+
+// topLevelHelpCommands presents the manager and selected runtime as one CLI.
+// The manager injects its executable path when it launches a runtime, so
+// stripped profiles can advertise manager-owned commands without implementing
+// them or carrying their networking dependencies.
+func topLevelHelpCommands() []*Cmd {
+	commands := append([]*Cmd(nil), root.Children...)
+	if os.Getenv("WAGO_MANAGER_EXECUTABLE") == "" {
+		return commands
+	}
+	for _, command := range []*Cmd{initCommand(), authCommand(), versionCommand()} {
+		if root.child(command.Name) == nil {
+			commands = append(commands, command)
+		}
+	}
+	return commands
 }

@@ -32,7 +32,24 @@ func buildRunnerFromSource(ref string, profile wagopaths.Profile, build wagopath
 	if progress != nil {
 		progress.begin("fetching source")
 	}
-	if output, err := runSourceCommand("", nil, "git", "clone", "--depth", "1", "--single-branch", "--branch", ref, "--", sourceRepository(), source); err != nil {
+	stamp := ref
+	if sha, canaryCommit := canaryCommitSHA(ref); canaryCommit {
+		stamp = canaryCommitVersion(ref)
+		commands := [][]string{
+			{"init", "--quiet", source},
+			{"-C", source, "remote", "add", "origin", sourceRepository()},
+			{"-C", source, "fetch", "--quiet", "--depth", "1", "origin", sha},
+			{"-C", source, "checkout", "--quiet", "--detach", "FETCH_HEAD"},
+		}
+		for _, args := range commands {
+			if output, err := runSourceCommand("", nil, "git", args...); err != nil {
+				if progress != nil {
+					progress.fail("could not fetch source")
+				}
+				return commandFailure("git "+args[0], err, output)
+			}
+		}
+	} else if output, err := runSourceCommand("", nil, "git", "clone", "--depth", "1", "--single-branch", "--branch", ref, "--", sourceRepository(), source); err != nil {
 		if progress != nil {
 			progress.fail("could not fetch source")
 		}
@@ -52,7 +69,7 @@ func buildRunnerFromSource(ref string, profile wagopaths.Profile, build wagopath
 		}
 		args := []string{
 			"build", "-scheduler=tasks", "-no-debug", "-opt=z", "-gc=conservative",
-			"-ldflags", "-X main.version=" + ref,
+			"-ldflags", "-X main.version=" + stamp,
 		}
 		if tags := sourceBuildTag(profile); tags != "" {
 			args = append(args, "-tags", tags)
@@ -69,7 +86,7 @@ func buildRunnerFromSource(ref string, profile wagopaths.Profile, build wagopath
 	}
 
 	tags := sourceBuildTag(profile)
-	args := []string{"build", "-trimpath", "-ldflags", "-s -w -X main.version=" + ref}
+	args := []string{"build", "-trimpath", "-ldflags", "-s -w -X main.version=" + stamp}
 	if tags != "" {
 		args = append(args, "-tags", tags)
 	}
@@ -86,8 +103,6 @@ func buildRunnerFromSource(ref string, profile wagopaths.Profile, build wagopath
 
 func sourceBuildTag(profile wagopaths.Profile) string {
 	switch profile {
-	case wagopaths.ProfileLite:
-		return "wago_lite"
 	case wagopaths.ProfileMinimal:
 		return "wago_minimal"
 	default:

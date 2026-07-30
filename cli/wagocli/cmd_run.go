@@ -13,7 +13,7 @@ import (
 	"github.com/wago-org/wago"
 )
 
-// runCommand is `wago run <file> [args...]`: compile and execute an export. It's
+// runCommand is `wago run <file> [args...]`: compile and execute a module. It's
 // PassThrough so everything after the .wasm file is handed to the guest verbatim.
 func runCommand() *Cmd {
 	flags := append([]Flag{
@@ -24,7 +24,7 @@ func runCommand() *Cmd {
 	flags = append(flags, runProfileFlags()...)
 	return &Cmd{
 		Name:        "run",
-		Summary:     "compile and execute an export   (default)",
+		Summary:     "compile and execute a WebAssembly module (default)",
 		Args:        "<file> [args...]",
 		PassThrough: true,
 		Normalize: func(args []string) ([]string, error) {
@@ -34,7 +34,7 @@ func runCommand() *Cmd {
 		Long: "<file> is raw .wasm or a precompiled .wago. Args after the file are typed by the\n" +
 			"signature; override per-arg with a suffix:  42   7:i64   3.5:f64\n" +
 			"Use -p for adaptive validation/compile parallelism, or -p8 / -p 8 / --parallel=8 to\n" +
-			"force a worker maximum. Optimization knobs: see `wago opts`.",
+			"force a worker maximum. Optimization knobs are listed in `wago run --help`.",
 		Run: runExec,
 	}
 }
@@ -140,7 +140,7 @@ func parallelPolicy(parallel string) (int, error) {
 }
 
 func runExec(c *Ctx) {
-	// Main already handed off to a local project build (usesProjectBuild). Here we
+	// Main already handed off to the active plugin build (usesPluginRuntime). Here we
 	// also cover the global set, so `wago run` outside a project still picks up a
 	// globally-installed package set. No-op once inside a handed-off build.
 	prepareRunPlugins()

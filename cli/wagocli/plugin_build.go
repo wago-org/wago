@@ -21,6 +21,11 @@ type pkgOpts struct {
 	verbose bool // stream the underlying `go` output
 }
 
+// handoffPluginProcess is the process-replacement boundary used after resolving
+// a plugin-aware Wago build. Tests replace it so selection can be verified
+// without replacing the test process.
+var handoffPluginProcess = execProcess
+
 // plural returns "s" unless n == 1.
 func plural(n int) string {
 	if n == 1 {
@@ -68,7 +73,15 @@ func pkgAdd(modOrName string, o pkgOpts) {
 		fatal("add: fetching %s: %v", getSpec, getErr)
 	}
 
-	src, _ := depsSource(o.global)
+	src, err := depsSource(o.global)
+	if err != nil {
+		fatal("add: %v", err)
+	}
+	if o.global {
+		if err := os.MkdirAll(src, 0o755); err != nil {
+			fatal("add: %v", err)
+		}
+	}
 	newly, err := addProjectDep(src, module)
 	if err != nil {
 		fatal("add: %v", err)
@@ -150,14 +163,14 @@ func inspectRequiredCapabilities(bin, id string) ([]string, error) {
 func pkgRemove(name string, global bool) {
 	src, err := depsSource(global)
 	if err != nil {
-		fatal("pkg uninstall: %v", err)
+		fatal("plugin remove: %v", err)
 	}
 	removed, module, err := removeProjectDep(src, name)
 	if err != nil {
-		fatal("pkg uninstall: %v", err)
+		fatal("plugin remove: %v", err)
 	}
 	if !removed {
-		fatal("pkg uninstall: %q is not a dependency in %s", name, projectManifestPath(src))
+		fatal("plugin remove: %q is not enabled in %s", name, projectManifestPath(src))
 	}
 	if buildDir, err := buildDirFor(global); err == nil {
 		if _, statErr := os.Stat(buildDir); statErr == nil {
@@ -165,7 +178,7 @@ func pkgRemove(name string, global bool) {
 			_ = writeBuildMain(buildDir, deps)
 		}
 	}
-	fmt.Printf("uninstalled %s\n", dim(module))
+	fmt.Printf("removed %s\n", dim(module))
 }
 
 // buildPlugins compiles (or reuses) the custom wago binary for deps, printing
@@ -192,18 +205,21 @@ func buildPlugins(buildDir string, deps []string, o pkgOpts) string {
 func pkgUpdate(target string, o pkgOpts) {
 	buildDir, err := buildDirFor(o.global)
 	if err != nil {
-		fatal("pkg update: %v", err)
+		fatal("plugin update: %v", err)
 	}
 	if err := ensureBuildModule(buildDir); err != nil {
-		fatal("pkg update: %v", err)
+		fatal("plugin update: %v", err)
 	}
-	src, _ := depsSource(o.global)
+	src, err := depsSource(o.global)
+	if err != nil {
+		fatal("plugin update: %v", err)
+	}
 	deps, err := projectDeps(src)
 	if err != nil {
-		fatal("pkg update: %v", err)
+		fatal("plugin update: %v", err)
 	}
 	if len(deps) == 0 {
-		fatal("pkg update: no dependencies to update (install one: wago add <module>)")
+		fatal("plugin update: no plugins to update (add one: wago add <module>)")
 	}
 	targets := deps
 	if target != "" {
@@ -217,97 +233,43 @@ func pkgUpdate(target string, o pkgOpts) {
 	for _, t := range targets {
 		fmt.Printf("%s %s %s\n", dim("→ updating"), t, dim("(latest)"))
 		if err := goUpdate(buildDir, t, o.verbose); err != nil {
-			fatal("pkg update: %s: %v", t, err)
+			fatal("plugin update: %s: %v", t, err)
 		}
 	}
 	_ = writeBuildMain(buildDir, deps)
 	bin, _, err := ensureBuiltBinary(buildDir, deps, true, o.verbose) // force rebuild after update
 	if err != nil {
-		fatal("pkg update: %v", err)
+		fatal("plugin update: %v", err)
 	}
 	fmt.Printf("%s updated %d plugin%s  %s\n", cyan("✓"), len(targets), plural(len(targets)), bin)
 }
 
-// maybeReexecForPlugins transparently hands off to a custom wago binary with this
-// project's plugins compiled in — building it once (then cache hits), so `wago
-// run` "just works" with the declared dependencies. It's a no-op when nothing is
-// declared or when we're already running a plugin-built binary (WAGO_PLUGIN_ACTIVE).
-// A build failure degrades to a warning so the current binary still runs.
+// maybeReexecForPlugins transparently hands off to the active custom wago binary:
+// the local project's build when it declares plugins, otherwise the global
+// plugin build. It builds on demand after a cache miss, and is a no-op when
+// nothing is declared or we're already running a plugin-built binary
+// (WAGO_PLUGIN_ACTIVE). A build failure degrades to a warning so the current
+// binary still runs.
 func maybeReexecForPlugins() {
 	if os.Getenv("WAGO_PLUGIN_ACTIVE") != "" {
 		return
 	}
-	buildDir, deps, _ := activePluginSet()
-	if len(deps) == 0 {
+	environment, err := resolvePluginEnvironment()
+	if err != nil {
+		fatal("plugins: %v", err)
+	}
+	if len(environment.dependencies) == 0 {
 		return
 	}
-	bin, _, err := ensureBuiltBinary(buildDir, deps, false, false)
+	bin, _, err := ensureBuiltBinary(environment.buildDir, environment.dependencies, false, false)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s could not build plugins (%v); running without them\n", dim("wago:"), err)
 		return
 	}
-	env := append(os.Environ(), "WAGO_PLUGIN_ACTIVE="+buildHash(deps))
-	if err := execProcess(bin, append([]string{bin}, os.Args[1:]...), env); err != nil {
+	env := append(os.Environ(), "WAGO_PLUGIN_ACTIVE="+buildHash(environment.dependencies))
+	if err := handoffPluginProcess(bin, append([]string{bin}, os.Args[1:]...), env); err != nil {
 		fatal("plugins: exec %s: %v", bin, err)
 	}
-}
-
-// maybeReexecLocal hands off to the project's local .wago/bin/wago (built on
-// demand) when the current directory has a wago.json declaring packages — so
-// every command runs with the project's packages compiled in. Unlike
-// maybeReexecForPlugins it never falls back to the global set: with no local
-// project it leaves the invoked (global) wago running. No-op inside an already
-// handed-off build (WAGO_PLUGIN_ACTIVE) or under WAGO_BARE.
-func maybeReexecLocal() {
-	if os.Getenv("WAGO_PLUGIN_ACTIVE") != "" || truthyEnv("WAGO_BARE") {
-		return
-	}
-	deps, _ := projectDeps(".")
-	if len(deps) == 0 {
-		return
-	}
-	dir, err := buildDirFor(false)
-	if err != nil {
-		return
-	}
-	bin, _, err := ensureBuiltBinary(dir, deps, false, false)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s could not build plugins (%v); running without them\n", dim("wago:"), err)
-		return
-	}
-	env := append(os.Environ(), "WAGO_PLUGIN_ACTIVE="+buildHash(deps))
-	if err := execProcess(bin, append([]string{bin}, os.Args[1:]...), env); err != nil {
-		fatal("plugins: exec %s: %v", bin, err)
-	}
-}
-
-// activePluginSet resolves which plugin set `wago run` uses here, and a scope
-// label ("bare"/"local"/"global"/"plain"). Order:
-//   - WAGO_BARE       → none (run the plain engine)
-//   - WAGO_GLOBAL     → the global set (~/.wago), ignoring the project
-//   - local (default) → cwd wago.json + ./.wago, if it declares deps
-//   - global          → ~/.wago, if it declares deps
-//   - else            → plain (no plugins)
-//
-// Local and global never merge — the more specific one wins, like npx preferring
-// a project's node_modules over a global install.
-func activePluginSet() (dir string, deps []string, scope string) {
-	if truthyEnv("WAGO_BARE") {
-		return "", nil, "bare"
-	}
-	if !truthyEnv("WAGO_GLOBAL") {
-		if ds, _ := projectDeps("."); len(ds) > 0 {
-			if d, err := buildDirFor(false); err == nil {
-				return d, ds, "local"
-			}
-		}
-	}
-	if d, err := buildDirFor(true); err == nil {
-		if ds, _ := projectDeps(d); len(ds) > 0 {
-			return d, ds, "global"
-		}
-	}
-	return "", nil, "plain"
 }
 
 // truthyEnv reports whether env var k is set to a truthy value.
@@ -326,32 +288,4 @@ func splitModuleVersion(spec string) (module, version string) {
 		return spec[:at], spec[at+1:]
 	}
 	return spec, ""
-}
-
-// ensureGitignore appends entry to ./.gitignore if not already present. Best
-// effort — a missing .gitignore is created only inside a git working tree.
-func ensureGitignore(entry string) {
-	const name = ".gitignore"
-	b, err := os.ReadFile(name)
-	if err == nil {
-		for _, line := range strings.Split(string(b), "\n") {
-			t := strings.TrimSpace(line)
-			if t == entry || t == strings.TrimRight(entry, "/") {
-				return
-			}
-		}
-		f, err := os.OpenFile(name, os.O_APPEND|os.O_WRONLY, 0o644)
-		if err != nil {
-			return
-		}
-		defer f.Close()
-		if len(b) > 0 && !strings.HasSuffix(string(b), "\n") {
-			_, _ = f.WriteString("\n")
-		}
-		_, _ = f.WriteString(entry + "\n")
-		return
-	}
-	if _, err := os.Stat(".git"); err == nil {
-		_ = os.WriteFile(name, []byte(entry+"\n"), 0o644)
-	}
 }

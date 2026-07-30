@@ -149,7 +149,7 @@ func decodeKey(b []byte) selectKey {
 }
 
 // frame renders the selector as plain text (the driver repaints it each key):
-// an optional title, the capability checkboxes, and a dim footer hint.
+// an optional title, radio-style selection marks, and a dim footer hint.
 func (m *multiSelect) frame() string {
 	var b strings.Builder
 	if m.title != "" {
@@ -172,11 +172,13 @@ func (m *multiSelect) frame() string {
 		if i == m.cursor {
 			cursor = cyan("› ")
 		}
-		box := "[ ]"
+		mark := "○"
 		if it.on {
-			box = cyan("[x]")
+			mark = cyan("◉")
+		} else if i == m.cursor {
+			mark = cyan(mark)
 		}
-		line := fmt.Sprintf("%s%s %-*s", cursor, box, labelW, it.label)
+		line := fmt.Sprintf("%s%s %-*s", cursor, mark, labelW, it.label)
 		if it.desc != "" {
 			line += "  " + dim(it.desc)
 		}
@@ -187,7 +189,7 @@ func (m *multiSelect) frame() string {
 	}
 	prompt := m.prompt
 	if prompt == "" {
-		prompt = "↑/↓ move · space toggle · enter accept · r reject all · esc cancel"
+		prompt = "↑/↓ move · space toggle · enter/→ accept · r reject all · esc cancel"
 	}
 	fmt.Fprintf(&b, "%s\n", dim(prompt))
 	return b.String()
