@@ -18,7 +18,7 @@ func addCommand() *Cmd {
 func pluginAddCommand() *Cmd {
 	return &Cmd{
 		Name:    "add",
-		Summary: "add and enable a plugin, then rebuild Wago",
+		Summary: "add and enable plugins, then rebuild Wago",
 		Args:    "<module>[@version]...",
 		Flags:   []Flag{scopeGlobalFlag, scopeLocalFlag, forceFlag, verboseFlag},
 		Run: func(c *Ctx) {

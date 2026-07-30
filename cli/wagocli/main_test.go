@@ -59,6 +59,36 @@ func TestUsageDocumentsCommandSurface(t *testing.T) {
 	}
 }
 
+func TestDimHelpSyntax(t *testing.T) {
+	old := useColor
+	useColor = true
+	t.Cleanup(func() { useColor = old })
+
+	got := dimHelpSyntax("--output <file> --<no->color [flags]")
+	want := "--output \x1b[2m<file>\x1b[0m --\x1b[2m<no->\x1b[0mcolor \x1b[2m[flags]\x1b[0m"
+	if got != want {
+		t.Fatalf("dimHelpSyntax = %q, want %q", got, want)
+	}
+
+	out, err := os.CreateTemp(t.TempDir(), "colored-help-*.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	usage(out)
+	if err := out.Close(); err != nil {
+		t.Fatal(err)
+	}
+	body, err := os.ReadFile(out.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, syntax := range []string{"<command> [flags]", "<module>[@version]..."} {
+		if !strings.Contains(string(body), "\x1b[2m"+syntax+"\x1b[0m") {
+			t.Fatalf("usage did not dim %q:\n%q", syntax, body)
+		}
+	}
+}
+
 func TestManagedRuntimeHelpIncludesManagerCommands(t *testing.T) {
 	oldRoot := root
 	root = &Cmd{Name: "wago", Children: []*Cmd{{Name: "run", Summary: "run a module"}}}

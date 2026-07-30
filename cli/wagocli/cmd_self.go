@@ -21,11 +21,11 @@ const (
 func selfCommand() *Cmd {
 	return &Cmd{
 		Name:    "self",
-		Summary: "update or uninstall the Wago manager",
+		Summary: "update or uninstall Wago",
 		Children: []*Cmd{
 			{
 				Name:    "update",
-				Summary: "update the Wago manager on its current release channel",
+				Summary: "update Wago on its current release channel",
 				Run: func(*Ctx) {
 					selfUpdate(versionString(), selfExecutablePath())
 				},
@@ -79,7 +79,7 @@ func selfUninstallModePicker() *picker {
 		},
 		{
 			label: "Minimal", value: string(selfUninstallMinimal),
-			desc: "Remove manager and PATH only",
+			desc: "Remove the Wago command and PATH only",
 		},
 	})
 }

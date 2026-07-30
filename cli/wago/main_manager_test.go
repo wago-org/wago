@@ -77,7 +77,7 @@ func TestManagerRunRedirectsToVersionInstallWithoutSelectedRunner(t *testing.T) 
 	}
 }
 
-func TestManagerDelegatesTopLevelHelpWithManagerContext(t *testing.T) {
+func TestManagerOwnsTopLevelHelp(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("WAGO_HOME", root)
 	config := filepath.Join(root, "config")
@@ -96,7 +96,7 @@ func TestManagerDelegatesTopLevelHelpWithManagerContext(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	script := "#!/bin/sh\nprintf 'args:%s\\nmanager:%s\\nexecutable:%s\\nprofile:%s\\nbuild:%s\\n' \"$*\" \"$WAGO_MANAGER_VERSION\" \"$WAGO_MANAGER_EXECUTABLE\" \"$WAGO_RUNTIME_PROFILE\" \"$WAGO_RUNTIME_BUILD\"\n"
+	script := "#!/bin/sh\nprintf 'stale runtime help\\n'\n"
 	if err := os.WriteFile(runner, []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -120,10 +120,17 @@ func TestManagerDelegatesTopLevelHelpWithManagerContext(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(output)
-	for _, want := range []string{"args:--help", "manager:manager-test", "executable:", "profile:minimal", "build:normal"} {
+	for _, want := range []string{
+		"Usage: wago <command> [flags]",
+		"update or uninstall Wago",
+		"View the registry:           https://plugins.wago.sh",
+	} {
 		if !strings.Contains(text, want) {
-			t.Fatalf("delegated help missing %q:\n%s", want, text)
+			t.Fatalf("manager help missing %q:\n%s", want, text)
 		}
+	}
+	if strings.Contains(text, "stale runtime help") {
+		t.Fatalf("top-level help delegated to the selected runtime:\n%s", text)
 	}
 }
 

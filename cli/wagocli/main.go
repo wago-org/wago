@@ -145,11 +145,12 @@ func looksLikeRunTarget(s string) bool {
 // Cmd.printHelp for per-command help): a one-line banner with the version, a
 // usage line, the command table (rendered from the registry so a new command
 // shows up automatically), the global flags, then a docs/repo footer. Per-command
-// flags live in each command's own `--help`. Output is monochrome (bold only).
+// flags live in each command's own `--help`. Headings are bold and argument
+// syntax is dimmed so command names and descriptions remain easy to scan.
 func usage(w *os.File) {
 	fmt.Fprintf(w, "%s is a pure-Go (no cgo) WebAssembly engine. (v%s)\n\n", bold("wago"), versionString())
-	fmt.Fprintf(w, "%s wago <command> [flags]\n", bold("Usage:"))
-	fmt.Fprintf(w, "       wago [run] [flags] <file> [args...]\n\n")
+	fmt.Fprintf(w, "%s wago %s\n", bold("Usage:"), dim("<command> [flags]"))
+	fmt.Fprintf(w, "       wago %s\n\n", dim("[run] [flags] <file> [args...]"))
 
 	fmt.Fprintf(w, "%s\n", bold("Commands:"))
 	writeCommandList(w)
@@ -173,7 +174,8 @@ func writeCommandList(w *os.File) {
 		argW = max(argW, len(cmdArg(c)))
 	}
 	for _, c := range commands {
-		fmt.Fprintf(w, "  %-*s  %-*s  %s\n", nameW, c.Name, argW, cmdArg(c), c.Summary)
+		args := fmt.Sprintf("%-*s", argW, cmdArg(c))
+		fmt.Fprintf(w, "  %-*s  %s  %s\n", nameW, c.Name, dim(args), c.Summary)
 	}
 }
 
