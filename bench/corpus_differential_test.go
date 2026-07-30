@@ -23,6 +23,9 @@ var corpusDifferentialCases = []struct {
 	want   uint64
 }{
 	{"blake-as.wasm", "_initialize", "hashN", []uint64{100}, 2973751372},
+	// The independently built SIMD implementation has a different accumulator
+	// result than the scalar module; TestCorpus also cross-checks it with wazero.
+	{"blake-as-simd.wasm", "_initialize", "hashN", []uint64{100}, 26497025},
 	{"utf-as.wasm", "_initialize", "convertN", []uint64{200}, 819200},
 	{"json-as.wasm", "_initialize", "serializeN", []uint64{64}, 6912},
 	{"json-as.wasm", "_initialize", "deserializeN", []uint64{64}, 542208},

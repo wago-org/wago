@@ -31,7 +31,7 @@ func (f *fn) occupyF(e *elem, r Reg) {
 		e.st.typ = e.typ
 	}
 	e.kind = ekValue
-	e.st.kind, e.st.reg = stReg, r
+	e.st.kind, e.st.reg, e.st.cval = stReg, r, 0
 }
 
 func (f *fn) releaseF(r Reg) {
@@ -364,19 +364,29 @@ func (f *fn) fbinMemRight(a, b *elem, memOp byte, f64 bool) {
 	dst := src
 	if !owned {
 		dst = f.allocFReg(maskOf(src))
-		f.a.FMov(dst, src, f64)
+		if !vexFloatMemEnabled {
+			f.a.FMov(dst, src, f64)
+		}
 	}
-	f.a.SseIdx(scalarFloatPrefix(f64), memOp, dst, RBX, b.st.reg, b.st.memDisp())
+	if vexFloatMemEnabled {
+		f.a.VFMemIdx(memOp, dst, src, RBX, b.st.reg, b.st.memDisp(), f64)
+	} else {
+		f.a.SseIdx(scalarFloatPrefix(f64), memOp, dst, RBX, b.st.reg, b.st.memDisp())
+	}
 	f.releaseMemRef(b.st)
 	f.pushFReg(dst, mtOf2(f64))
 }
 
 func (f *fn) fbinMemRightInto(dst Reg, a, b *elem, memOp byte, f64 bool) {
 	src, owned := f.operandRegF(a)
-	if dst != src {
+	if !vexFloatMemEnabled && dst != src {
 		f.a.FMov(dst, src, f64)
 	}
-	f.a.SseIdx(scalarFloatPrefix(f64), memOp, dst, RBX, b.st.reg, b.st.memDisp())
+	if vexFloatMemEnabled {
+		f.a.VFMemIdx(memOp, dst, src, RBX, b.st.reg, b.st.memDisp(), f64)
+	} else {
+		f.a.SseIdx(scalarFloatPrefix(f64), memOp, dst, RBX, b.st.reg, b.st.memDisp())
+	}
 	f.releaseMemRef(b.st)
 	if owned && dst != src {
 		f.releaseF(src)
