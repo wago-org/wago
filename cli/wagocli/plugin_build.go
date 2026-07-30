@@ -8,10 +8,12 @@ package wagocli
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"sort"
 	"strings"
+	"time"
 )
 
 // pkgOpts are the shared flags for the consume-side pkg commands.
@@ -19,6 +21,12 @@ type pkgOpts struct {
 	global  bool // operate on the ~/.wago set instead of the project
 	force   bool // ignore the build cache / fetch latest
 	verbose bool // stream the underlying `go` output
+}
+
+type packageInstall struct {
+	module    string
+	requested string
+	resolved  string
 }
 
 // handoffPluginProcess is the process-replacement boundary used after resolving
@@ -37,54 +45,79 @@ func plural(n int) string {
 // pkgAdd declares a plugin dependency: resolve its module path, `go get` it into
 // the .wago build module, and record it in wago.json's dependencies.
 func pkgAdd(modOrName string, o pkgOpts) {
-	module, version := splitModuleVersion(modOrName)
-	if !strings.Contains(module, "/") && !strings.Contains(module, ".") {
-		// A bare name: resolve its Go module path from the registry.
-		resolved, err := resolveRegistryModule(module)
-		if err != nil {
-			fatal("add: %v (or pass the full module path)", err)
-		}
-		module = resolved
+	pkgAddMany([]string{modOrName}, o)
+}
+
+func pkgAddMany(specs []string, o pkgOpts) {
+	started := time.Now()
+	progress := newInstallProgress(os.Stderr)
+	if o.verbose {
+		progress.tty = false
+	}
+	progress.title("Installing packages")
+	progress.begin("Resolving packages")
+	packages, err := resolvePackageInstalls(specs)
+	if err != nil {
+		progress.fail("Package resolution failed")
+		fatal("add: %v", err)
 	}
 
 	buildDir, err := buildDirFor(o.global)
 	if err != nil {
+		progress.fail("Package resolution failed")
 		fatal("add: %v", err)
 	}
 	if err := ensureBuildModule(buildDir); err != nil {
+		progress.fail("Package resolution failed")
 		fatal("add: %v", err)
 	}
-	getSpec := module
-	if version != "" {
-		getSpec += "@" + version
-	}
-	var getErr error
-	if o.force && version == "" {
-		fmt.Printf("%s %s %s\n", dim("→ fetching"), module, dim("(latest)"))
-		getErr = goUpdate(buildDir, module, o.verbose)
-	} else {
-		fmt.Printf("%s %s\n", dim("→ fetching"), getSpec)
-		getErr = goGetDep(buildDir, getSpec, o.verbose)
-	}
-	if getErr != nil {
-		if _, haveSrc := wagoSourceDir(); !haveSrc {
-			fatal("add: fetching %s: %v\n  (during dev, set WAGO_SRC to a wago checkout so sibling plugins resolve locally)", getSpec, getErr)
+	progress.done(fmt.Sprintf("Resolved %d package%s", len(packages), plural(len(packages))))
+
+	progress.begin("Downloading packages")
+	for _, pkg := range packages {
+		getSpec := pkg.module
+		if pkg.requested != "" {
+			getSpec += "@" + pkg.requested
 		}
-		fatal("add: fetching %s: %v", getSpec, getErr)
+		var getErr error
+		if o.force && pkg.requested == "" {
+			getErr = goUpdate(buildDir, pkg.module, o.verbose)
+		} else {
+			getErr = goGetDep(buildDir, getSpec, o.verbose)
+		}
+		if getErr != nil {
+			progress.fail("Package download failed")
+			if _, haveSrc := wagoSourceDir(); !haveSrc {
+				fatal("add: fetching %s: %v\n  (during dev, set WAGO_SRC to a wago checkout so sibling plugins resolve locally)", getSpec, getErr)
+			}
+			fatal("add: fetching %s: %v", getSpec, getErr)
+		}
 	}
+	progress.done(fmt.Sprintf("Downloaded %d package%s", len(packages), plural(len(packages))))
+
+	progress.begin("Verifying packages")
+	if err := goRun(buildDir, o.verbose, "mod", "verify"); err != nil {
+		progress.fail("Package verification failed")
+		fatal("add: verifying packages: %v", err)
+	}
+	progress.done("Verified package checksums")
 
 	src, err := depsSource(o.global)
 	if err != nil {
+		progress.fail("Package setup failed")
 		fatal("add: %v", err)
 	}
 	if o.global {
 		if err := os.MkdirAll(src, 0o755); err != nil {
+			progress.fail("Package setup failed")
 			fatal("add: %v", err)
 		}
 	}
-	newly, err := addProjectDep(src, module)
-	if err != nil {
-		fatal("add: %v", err)
+	for _, pkg := range packages {
+		if _, err := addProjectDep(src, pkg.module); err != nil {
+			progress.fail("Package setup failed")
+			fatal("add: %v", err)
+		}
 	}
 	if !o.global {
 		ensureGitignore(".wago/")
@@ -92,17 +125,59 @@ func pkgAdd(modOrName string, o pkgOpts) {
 	deps, _ := projectDeps(src)
 	_ = writeBuildMain(buildDir, deps) // keep the build module in sync
 
-	verb := "updated"
-	if newly {
-		verb = "installed"
-	}
-	fmt.Printf("%s %s\n", cyan(verb), dim(module))
 	// Rebuild the custom binary right away so the package is usable without a
 	// separate build step.
-	bin := buildPlugins(buildDir, deps, o)
+	progress.begin("Building packages")
+	bin, cached, err := buildPlugins(buildDir, deps, o)
+	if err != nil {
+		progress.fail("Package build failed")
+		fatal("build: %v", err)
+	}
+	elapsed := time.Since(started)
+	for i := range packages {
+		packages[i].resolved = installedModuleVersion(buildDir, packages[i].module, packages[i].requested)
+	}
+	if cached {
+		progress.finish(fmt.Sprintf("Reused Wago build with %d package%s", len(packages), plural(len(packages))))
+	} else {
+		progress.finish(fmt.Sprintf("Built Wago with %d package%s", len(packages), plural(len(packages))))
+	}
 	// Then review capabilities — on a first install, or when the package's
 	// required capabilities have changed since the lockfile recorded them.
-	reviewInstalledCapabilities(src, bin, module, version)
+	for _, pkg := range packages {
+		reviewInstalledCapabilities(src, bin, pkg.module, pkg.resolved)
+	}
+	printPackageInstallSummary(os.Stdout, packages, elapsed)
+}
+
+func resolvePackageInstalls(specs []string) ([]packageInstall, error) {
+	packages := make([]packageInstall, 0, len(specs))
+	seen := make(map[string]string, len(specs))
+	for _, spec := range specs {
+		module, version := splitModuleVersion(normalizeModuleRef(spec))
+		if module == "" {
+			return nil, fmt.Errorf("empty package name")
+		}
+		if !strings.Contains(module, "/") && !strings.Contains(module, ".") {
+			resolved, err := resolveRegistryModule(module)
+			if err != nil {
+				return nil, fmt.Errorf("%v (or pass the full module path)", err)
+			}
+			module = resolved
+		}
+		if previous, exists := seen[module]; exists {
+			if previous == version {
+				continue
+			}
+			return nil, fmt.Errorf("package %s requested more than once with conflicting versions", module)
+		}
+		seen[module] = version
+		packages = append(packages, packageInstall{module: module, requested: version})
+	}
+	if len(packages) == 0 {
+		return nil, fmt.Errorf("need at least one package")
+	}
+	return packages, nil
 }
 
 // reviewInstalledCapabilities fires the capability review for a just-installed
@@ -183,21 +258,64 @@ func pkgRemove(name string, global bool) {
 
 // buildPlugins compiles (or reuses) the custom wago binary for deps, printing
 // progress. Shared by pkg build and the auto-rebuild after pkg install.
-func buildPlugins(buildDir string, deps []string, o pkgOpts) string {
-	fmt.Printf("%s\n", bold(fmt.Sprintf("building wago with %d plugin%s:", len(deps), plural(len(deps)))))
-	for _, d := range deps {
-		fmt.Printf("  %s\n", dim(d))
+func buildPlugins(buildDir string, deps []string, o pkgOpts) (string, bool, error) {
+	if o.verbose {
+		fmt.Printf("%s\n", bold(fmt.Sprintf("building wago with %d plugin%s:", len(deps), plural(len(deps)))))
+		for _, d := range deps {
+			fmt.Printf("  %s\n", dim(d))
+		}
 	}
 	bin, cached, err := ensureBuiltBinary(buildDir, deps, o.force, o.verbose)
 	if err != nil {
-		fatal("build: %v", err)
+		return "", false, err
 	}
-	verb := "built"
-	if cached {
-		verb = "up to date"
+	if o.verbose {
+		verb := "built"
+		if cached {
+			verb = "up to date"
+		}
+		fmt.Printf("%s %s  %s\n", cyan("✓"), verb, bin)
 	}
-	fmt.Printf("%s %s  %s\n", cyan("✓"), verb, bin)
-	return bin
+	return bin, cached, nil
+}
+
+func installedModuleVersion(buildDir, module, requested string) string {
+	cmd := exec.Command("go", "list", "-m", "-f={{.Version}}", module)
+	cmd.Dir = buildDir
+	if output, err := cmd.Output(); err == nil {
+		if version := strings.TrimSpace(string(output)); version != "" {
+			return displayModuleVersion(version)
+		}
+	}
+	if requested != "" {
+		return displayModuleVersion(requested)
+	}
+	return "0.0.0"
+}
+
+func displayModuleVersion(version string) string {
+	version = strings.TrimPrefix(strings.TrimSpace(version), "v")
+	if version == "" || strings.HasPrefix(version, "0.0.0-") {
+		return "0.0.0"
+	}
+	return version
+}
+
+func packageInstallDuration(elapsed time.Duration) string {
+	if elapsed < time.Second {
+		return fmt.Sprintf("%.1fms", float64(elapsed)/float64(time.Millisecond))
+	}
+	return fmt.Sprintf("%.1fs", elapsed.Seconds())
+}
+
+func printPackageInstallSummary(out io.Writer, packages []packageInstall, elapsed time.Duration) {
+	fmt.Fprintln(out)
+	for _, pkg := range packages {
+		name := strings.TrimPrefix(pkg.module, "github.com/")
+		fmt.Fprintf(out, "%s %s@%s\n", cyan("+"), name, pkg.resolved)
+	}
+	fmt.Fprintf(out, "\n%d package%s installed [%s]\n",
+		len(packages), plural(len(packages)), packageInstallDuration(elapsed))
 }
 
 // pkgUpdate updates dependencies to their latest versions (go get -u) and

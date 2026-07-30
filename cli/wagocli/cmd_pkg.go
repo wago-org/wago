@@ -19,10 +19,13 @@ func pluginAddCommand() *Cmd {
 	return &Cmd{
 		Name:    "add",
 		Summary: "add and enable a plugin, then rebuild Wago",
-		Args:    "<module>[@version]",
+		Args:    "<module>[@version]...",
 		Flags:   []Flag{scopeGlobalFlag, scopeLocalFlag, forceFlag, verboseFlag},
 		Run: func(c *Ctx) {
-			pkgAdd(normalizeModuleRef(c.one("<module>[@version]")), pkgOpts{
+			if len(c.Args) == 0 {
+				fatal("add: need at least one <module>[@version]")
+			}
+			pkgAddMany(c.Args, pkgOpts{
 				global:  resolveScope(c.Bool("global"), c.Bool("local")),
 				force:   c.Bool("force"),
 				verbose: c.Bool("verbose"),
