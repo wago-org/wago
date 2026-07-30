@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 	"sync/atomic"
+	"time"
 	"unsafe"
 
 	"github.com/wago-org/wago/internal/functionworkers"
@@ -163,7 +164,7 @@ func compileWithConfigAndInstructions(cfg *RuntimeConfig, wasmBytes []byte, inst
 		dynamicBindings[i] = railshotImportBinding{Dynamic: true, ImportIndex: uint32(i)}
 	}
 	pressureAt, pressure := compileMemoryPressure(len(wasmBytes))
-	cm, err := railshotCompileModuleWith(m, railshotCompileOptions{Workers: workers, ElideBoundsChecks: elide, NoBoundsFacts: cfg.noDeferBounds, ImportBindings: dynamicBindings, Interruptible: true, MemoryPressureAt: pressureAt, MemoryPressure: pressure, CustomInstructions: customInstructions})
+	cm, err := railshotCompileModuleWith(m, railshotCompileOptions{Workers: workers, ElideBoundsChecks: elide, NoBoundsFacts: cfg.noDeferBounds, ImportBindings: dynamicBindings, Interruptible: !wruntime.HostInterruptSupported(), MemoryPressureAt: pressureAt, MemoryPressure: pressure, CustomInstructions: customInstructions})
 	if err != nil {
 		return nil, fmt.Errorf("compile: %w", err)
 	}
@@ -1687,13 +1688,15 @@ func (in *Instance) Invoke(export string, args ...uint64) ([]uint64, error) {
 
 // InvokeContext is like Invoke but honors context cancellation. If ctx is
 // cancelled or its deadline expires while the guest is executing, the call is
-// interrupted at the next native safepoint and returns ctx.Err() (e.g.
+// asynchronously interrupted on Linux/amd64 or stopped at the next native
+// safepoint on other supported targets, and returns ctx.Err() (e.g.
 // context.DeadlineExceeded) instead of blocking on a runaway guest.
 //
-// Native cancellation is available on amd64/arm64; on other architectures ctx
-// is only checked before the call begins. A nil or already-cancelled ctx is
-// handled up front; a Background context (Done() == nil) keeps Invoke's
-// zero-goroutine fast path.
+// Native cancellation is available on amd64/arm64; on Linux/amd64 it uses a
+// thread-directed signal and CPU-context rewrite with no generated-code polls.
+// Other supported targets use function-entry and loop-header safepoints. A nil
+// or already-cancelled ctx is handled up front; a Background context (Done() ==
+// nil) keeps Invoke's zero-goroutine fast path.
 //
 // This is the raw-uint64 sibling of Call, for callers that invoke by slot
 // values rather than typed Values (e.g. AssemblyScript rule dispatch).
@@ -1704,9 +1707,9 @@ func (in *Instance) InvokeContext(ctx context.Context, export string, args ...ui
 		}
 	}
 
-	var cancel <-chan struct{}
-	if nativeCancellationSupported() && ctx != nil {
-		cancel = ctx.Done()
+	var cancel context.Context
+	if nativeCancellationSupported() && ctx != nil && ctx.Done() != nil {
+		cancel = ctx
 	}
 
 	out, err := in.invoke(export, args, cancel)
@@ -1714,7 +1717,7 @@ func (in *Instance) InvokeContext(ctx context.Context, export string, args ...ui
 	return out, contextInterruptError(ctx, err)
 }
 
-func (in *Instance) invoke(export string, args []uint64, cancel <-chan struct{}) ([]uint64, error) {
+func (in *Instance) invoke(export string, args []uint64, cancel context.Context) ([]uint64, error) {
 	if err := in.beginInvocation(); err != nil {
 		return nil, fmt.Errorf("invoke %q: %w", export, err)
 	}
@@ -1815,7 +1818,7 @@ func (in *Instance) invokeLocal(li int, args []uint64) ([]uint64, error) {
 	return in.invokeLocalContext(li, args, nil, in.trap)
 }
 
-func (in *Instance) invokeLocalContext(li int, args []uint64, cancel <-chan struct{}, activeTrap []byte) ([]uint64, error) {
+func (in *Instance) invokeLocalContext(li int, args []uint64, cancel context.Context, activeTrap []byte) ([]uint64, error) {
 	if err := in.beginInvocation(); err != nil {
 		return nil, fmt.Errorf("invoke function %d: %w", li, err)
 	}
@@ -1826,7 +1829,7 @@ func (in *Instance) invokeLocalContext(li int, args []uint64, cancel <-chan stru
 // invokeAttachedLocalContext enters a producer retained by the caller's function
 // import attachment. The caller owns the invocation lease and active trap cell,
 // exactly as for a native dynamic import call.
-func (in *Instance) invokeAttachedLocalContext(li int, args []uint64, cancel <-chan struct{}, activeTrap []byte, attachedResult bool) ([]uint64, error) {
+func (in *Instance) invokeAttachedLocalContext(li int, args []uint64, cancel context.Context, activeTrap []byte, attachedResult bool) ([]uint64, error) {
 	if li < 0 || li >= len(in.c.Funcs) || li >= len(in.c.Entry) {
 		return nil, fmt.Errorf("invalid function index %d", li)
 	}
@@ -1917,10 +1920,8 @@ func (in *Instance) invokeAttachedLocalContext(li int, args []uint64, cancel <-c
 	return out, nil
 }
 
-// nativeCancellationSupported reports whether the railshot backend for this
-// GOARCH emits cooperative cancellation polls (function-entry and loop-header
-// trap-cell checks). Both the amd64 and arm64 backends do, so a context-aware
-// Call can arm the watcher on either.
+// nativeCancellationSupported reports whether this target has either
+// signal/context interruption or compiler-emitted cancellation polls.
 func nativeCancellationSupported() bool {
 	return goruntime.GOARCH == "amd64" || goruntime.GOARCH == "arm64"
 }
@@ -1929,35 +1930,38 @@ func nativeCancellationSupported() bool {
 // context-aware Call. Background contexts keep the zero-goroutine fast path.
 func noOpCancellationWatch() {}
 
-func (in *Instance) startCancellationWatch(cancel <-chan struct{}, activeTrap []byte) func() {
+func (in *Instance) startCancellationWatch(cancel context.Context, activeTrap []byte) func() {
 	if !nativeCancellationSupported() || cancel == nil || len(activeTrap) < 4 {
 		return func() {}
 	}
 	done := make(chan struct{})
 	stopped := make(chan struct{})
 	trap := (*uint32)(unsafe.Pointer(&activeTrap[0]))
-	go func() {
+	clearDeadline := noOpCancellationWatch
+	if deadline, ok := cancel.Deadline(); ok {
+		clearDeadline = wruntime.SetInterruptDeadline(activeTrap, deadline)
+	}
+	stopCallback := context.AfterFunc(cancel, func() {
 		defer close(stopped)
-		select {
-		case <-done:
-			return
-		case <-cancel:
-		}
-		// Keep publishing until native code observes the request. This closes the
-		// small arm-before-entry race where Engine.Call establishes a zero trap cell.
+		// Keep publishing until native code observes the request. Linux/amd64 also
+		// re-sends the thread-directed signal, closing entry/exit and host-return
+		// races without generated-code polls.
 		for {
-			atomic.StoreUint32(trap, uint32(wruntime.TrapInterrupted))
+			wruntime.RequestInterrupt(activeTrap)
 			select {
 			case <-done:
 				return
 			default:
-				goruntime.Gosched()
+				time.Sleep(50 * time.Microsecond)
 			}
 		}
-	}()
+	})
 	return func() {
+		clearDeadline()
 		close(done)
-		<-stopped
+		if !stopCallback() {
+			<-stopped
+		}
 		atomic.CompareAndSwapUint32(trap, uint32(wruntime.TrapInterrupted), 0)
 	}
 }

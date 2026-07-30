@@ -46,9 +46,9 @@ func (in *Instance) Call(ctx context.Context, export string, args ...Value) ([]V
 			return nil, fmt.Errorf("%s result %d is v128; use Invoke for v128 values", export, i)
 		}
 	}
-	var cancel <-chan struct{}
-	if nativeCancellationSupported() && ctx != nil {
-		cancel = ctx.Done()
+	var cancel context.Context
+	if nativeCancellationSupported() && ctx != nil && ctx.Done() != nil {
+		cancel = ctx
 	}
 
 	// Fast path: no runtime or no invoke hooks — invoke directly, zero overhead.
@@ -77,18 +77,23 @@ func (in *Instance) Call(ctx context.Context, export string, args ...Value) ([]V
 }
 
 func contextInterruptError(ctx context.Context, err error) error {
-	if err == nil || ctx == nil || ctx.Err() == nil {
+	if err == nil || ctx == nil {
 		return err
 	}
 	var trap *wruntime.TrapError
 	if errors.As(err, &trap) && trap.Code == wruntime.TrapInterrupted {
-		return ctx.Err()
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return ctxErr
+		}
+		if deadline, ok := ctx.Deadline(); ok && !time.Now().Before(deadline) {
+			return context.DeadlineExceeded
+		}
 	}
 	return err
 }
 
 // callInner performs the actual invocation and result decoding.
-func (in *Instance) callInner(export string, slots []uint64, results []ValType, cancel <-chan struct{}) ([]Value, error) {
+func (in *Instance) callInner(export string, slots []uint64, results []ValType, cancel context.Context) ([]Value, error) {
 	raw, err := in.invoke(export, slots, cancel)
 	if err != nil {
 		return nil, err
