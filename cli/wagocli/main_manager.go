@@ -15,6 +15,10 @@ import (
 )
 
 var version string
+var installRuntimeForFirstRun = func() {
+	fmt.Fprintln(os.Stderr, dim("No runtime selected. Opening `wago version install`…"))
+	versionCommand().Dispatch("wago version", []string{"install"})
+}
 
 func versionString() string {
 	if version == "" {
@@ -59,6 +63,16 @@ func Main(v string) {
 		return
 	case "self":
 		selfCommand().Dispatch("wago self", args[1:])
+		return
+	case "run":
+		runWithFirstRunInstall(args)
+		return
+	}
+	runActiveRunner(args)
+}
+
+func runWithFirstRunInstall(args []string) {
+	if !ensureFirstRunRuntime(hasActiveRunner, installRuntimeForFirstRun) {
 		return
 	}
 	runActiveRunner(args)

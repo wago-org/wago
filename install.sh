@@ -3,7 +3,7 @@
 #
 #   curl -fsSL https://wago.sh/install.sh | sh
 #
-# The bootstrap installer builds the CLI and Standard runtime from the public
+# The bootstrap installer builds the runtime-independent manager from the public
 # repository. It requires Go 1.22+; Git is preferred, with a zip fallback.
 #
 # Environment:
@@ -40,8 +40,6 @@ else
 	wago_config="${XDG_CONFIG_HOME:-$HOME/.config}/wago"
 	wago_cache="${XDG_CACHE_HOME:-$HOME/.cache}/wago"
 fi
-runner_dir="$wago_data/versions/$version/standard"
-
 # --- CLI-style output ------------------------------------------------------
 is_tty=0
 if [ -t 1 ] && [ "${TERM:-dumb}" != "dumb" ]; then
@@ -66,6 +64,7 @@ radio_saved_stty=""
 radio_tty=""
 radio_painted=0
 radio_lines=0
+install_input_open=0
 
 stop_spinner() {
 	if [ -n "$spinner_pid" ]; then
@@ -127,7 +126,9 @@ progress_retry() {
 	printf '%s→%s %s\n' "$dim" "$reset" "$*"
 }
 
-detail() { printf '  %s%-12s%s %s\n' "$dim" "$1" "$reset" "$2"; }
+detail() { printf '  %s%-8s%s %s\n' "$dim" "$1" "$reset" "$2"; }
+welcome() { printf "%sWelcome to Wago! Let's get you set up.%s\n\n" "$bold" "$reset"; }
+report_install_dir() { printf 'Installing to: %s\n\n' "$(display_path "$bin_dir")"; }
 die() {
 	stop_spinner
 	printf '%swago:%s %s\n' "$red" "$reset" "$*" >&2
@@ -167,7 +168,7 @@ render_radio() {
 		END { print width + 0 }
 	')
 	radio_row=0
-	printf '%s\n' "$radio_items" | while IFS='|' read -r radio_label radio_desc radio_item_value; do
+	printf '%s\n' "$radio_items" | while IFS='|' read -r radio_label radio_desc radio_item_value radio_status; do
 		[ -n "$radio_label" ] || continue
 		radio_row=$((radio_row + 1))
 		radio_cursor_mark="  "
@@ -176,9 +177,17 @@ render_radio() {
 			radio_cursor_mark="${cyan}› ${reset}"
 			radio_choice_mark="${cyan}◉${reset}"
 		fi
-		printf '%s%s %-*s' "$radio_cursor_mark" "$radio_choice_mark" "$radio_label_width" "$radio_label"
+		radio_label_style=""
+		if [ -n "$radio_status" ]; then
+			radio_label_style=$bold
+		fi
+		printf '%s%s %s%-*s%s' "$radio_cursor_mark" "$radio_choice_mark" \
+			"$radio_label_style" "$radio_label_width" "$radio_label" "$reset"
 		if [ -n "$radio_desc" ]; then
 			printf '  %s%s%s' "$dim" "$radio_desc" "$reset"
+		fi
+		if [ -n "$radio_status" ]; then
+			printf '  %s(%s)%s' "$dim" "$radio_status" "$reset"
 		fi
 		printf '\n'
 	done
@@ -192,15 +201,29 @@ finish_radio() {
 	clear_radio
 }
 
+read_install_line() {
+	install_line=""
+	if [ -c "$install_tty" ]; then
+		IFS= read -r install_line <"$install_tty" || true
+		return 0
+	fi
+	if [ "$install_input_open" = "0" ]; then
+		exec 9<"$install_tty"
+		install_input_open=1
+	fi
+	IFS= read -r install_line <&9 || true
+}
+
 radio_selected_value() {
 	radio_selected=$(printf '%s\n' "$radio_items" | sed -n "${radio_cursor}p")
-	radio_value=${radio_selected##*|}
+	radio_selected_label=$(printf '%s\n' "$radio_selected" | awk -F '|' '{ print $1 }')
+	radio_value=$(printf '%s\n' "$radio_selected" | awk -F '|' '{ print $3 }')
 }
 
 radio_select_scripted() {
 	render_radio
-	radio_input=""
-	IFS= read -r radio_input <"$install_tty" || true
+	read_install_line
+	radio_input=$install_line
 	case "$radio_input" in
 		""|enter|right) ;;
 		esc|escape|q|Q) return 1 ;;
@@ -233,7 +256,9 @@ radio_select() {
 		radio_tty=""
 		return 1
 	}
-	if ! stty raw -echo <"$radio_tty" 2>/dev/null; then
+	# Change input handling only. `stty raw` also disables output newline
+	# translation, which makes every repaint staircase to the right on macOS.
+	if ! stty -echo -icanon min 1 time 0 <"$radio_tty" 2>/dev/null; then
 		restore_radio_terminal
 		return 1
 	fi
@@ -298,6 +323,274 @@ radio_select() {
 	done
 }
 
+resolve_custom_path() {
+	case "$1" in
+		"~") printf '%s' "$HOME" ;;
+		"~/"*) printf '%s/%s' "$HOME" "${1#\~/}" ;;
+		/*) printf '%s' "$1" ;;
+		*) printf '%s/%s' "$(pwd)" "$1" ;;
+	esac
+}
+
+refresh_path_preview() {
+	path_preview=""
+	case "$path_editor_input" in
+		"")
+			path_parent=""
+			path_prefix=""
+			;;
+		"~")
+			path_parent=$HOME
+			path_prefix=""
+			;;
+		*/)
+			path_parent=$(resolve_custom_path "${path_editor_input%/}")
+			path_prefix=""
+			;;
+		*/*)
+			path_typed_parent=${path_editor_input%/*}
+			path_prefix=${path_editor_input##*/}
+			[ -n "$path_typed_parent" ] || path_typed_parent="/"
+			path_parent=$(resolve_custom_path "$path_typed_parent")
+			;;
+		*)
+			path_parent=$(pwd)
+			path_prefix=$path_editor_input
+			;;
+	esac
+	if [ -n "$path_parent" ] && [ -d "$path_parent" ]; then
+			path_preview=$(
+				find "$path_parent" -mindepth 1 -maxdepth 1 -type d -print 2>/dev/null |
+					awk -v prefix="$path_prefix" '
+						{
+							name = $0
+							sub(/^.*\//, "", name)
+							if (substr(name, 1, length(prefix)) == prefix) {
+								print $0
+							}
+						}
+					' |
+					while IFS= read -r path_candidate; do
+						printf '%s/\n' "$(display_path "$path_candidate")"
+					done |
+				LC_ALL=C sort |
+				head -5
+		)
+	fi
+	path_preview_count=$(printf '%s\n' "$path_preview" | awk 'NF { count++ } END { print count + 0 }')
+	if [ "$path_preview_count" -eq 0 ]; then
+		path_preview_cursor=0
+	elif [ "$path_preview_cursor" -lt 1 ] || [ "$path_preview_cursor" -gt "$path_preview_count" ]; then
+		path_preview_cursor=1
+	fi
+}
+
+render_path_editor() {
+	refresh_path_preview
+	printf '%sWhere should Wago be installed?%s\n' "$bold" "$reset"
+	if [ "$path_editor_focus" -eq 1 ]; then
+		printf '%s› %s◉%s %s\n' "$cyan" "$cyan" "$reset" "$(display_path "$bin_dir")"
+	else
+		printf '  ○ %s\n' "$(display_path "$bin_dir")"
+	fi
+	if [ "$path_editor_focus" -eq 2 ]; then
+		printf '%s› %s◉%s ' "$cyan" "$cyan" "$reset"
+		if [ -n "$path_editor_input" ]; then
+			printf '%s' "$path_editor_input"
+		else
+			printf '%sType a directory%s' "$dim" "$reset"
+		fi
+		printf '\n'
+	else
+		printf '  ○ Custom\n'
+	fi
+	path_preview_row=0
+	printf '%s\n' "$path_preview" | while IFS= read -r path_suggestion; do
+		[ -n "$path_suggestion" ] || continue
+		path_preview_row=$((path_preview_row + 1))
+		if [ "$path_preview_row" -eq "$path_preview_cursor" ]; then
+			printf '    %s› %s%s\n' "$cyan" "$path_suggestion" "$reset"
+		else
+			printf '      %s%s%s\n' "$dim" "$path_suggestion" "$reset"
+		fi
+	done
+	if [ "$path_editor_focus" -eq 1 ]; then
+		printf '%s↑/↓ move · enter/→ select · esc cancel%s\n' "$dim" "$reset"
+	else
+		printf '%s↑/↓ suggestions · type path · tab/→ complete · ← parent · enter select · esc cancel%s\n' "$dim" "$reset"
+	fi
+	radio_lines=$((path_preview_count + 4))
+	radio_painted=1
+}
+
+complete_path_preview() {
+	[ "$path_preview_cursor" -gt 0 ] || return 0
+	path_completion=$(printf '%s\n' "$path_preview" | sed -n "${path_preview_cursor}p")
+	[ -n "$path_completion" ] || return 0
+	path_editor_input=$path_completion
+	path_preview_cursor=1
+}
+
+path_editor_parent() {
+	path_parent_input=${path_editor_input%/}
+	case "$path_parent_input" in
+		"")
+			path_editor_focus=1
+			;;
+		"/")
+			path_editor_input="/"
+			;;
+		"~")
+			path_editor_input="~/"
+			;;
+		*/*)
+			path_editor_input=${path_parent_input%/*}
+			if [ -z "$path_editor_input" ]; then
+				path_editor_input="/"
+			elif [ "$path_editor_input" = "~" ]; then
+				path_editor_input="~/"
+			else
+				path_editor_input="${path_editor_input}/"
+			fi
+			;;
+		*)
+			path_editor_input=""
+			;;
+	esac
+	path_preview_cursor=1
+}
+
+path_editor_scripted() {
+	render_path_editor
+	read_install_line
+	case "$install_line" in
+		""|1|enter|right)
+			custom_path_value=$(display_path "$bin_dir")
+			return 0
+			;;
+		2|down|custom)
+			path_editor_focus=2
+			clear_radio
+			render_path_editor
+			read_install_line
+			;;
+		esc|escape|q|Q) return 1 ;;
+	esac
+	[ -n "$install_line" ] || return 1
+	custom_path_value=$install_line
+	return 0
+}
+
+path_editor() {
+	path_editor_input=""
+	path_editor_focus=1
+	path_preview_cursor=1
+	custom_path_value=""
+	if [ ! -c "$install_tty" ]; then
+		path_editor_scripted
+		return $?
+	fi
+
+	radio_tty=$install_tty
+	radio_saved_stty=$(stty -g <"$radio_tty" 2>/dev/null) || {
+		radio_saved_stty=""
+		radio_tty=""
+		return 1
+	}
+	if ! stty -echo -icanon min 1 time 0 <"$radio_tty" 2>/dev/null; then
+		restore_radio_terminal
+		return 1
+	fi
+	render_path_editor
+	path_escape=$(printf '\033')
+	path_return=$(printf '\r')
+	path_tab=$(printf '\t')
+	path_backspace=$(printf '\b')
+	path_delete=$(printf '\177')
+	while :; do
+		path_key=$(dd if="$radio_tty" bs=1 count=1 2>/dev/null || true)
+		case "$path_key" in
+			""|"$path_return")
+				if [ "$path_editor_focus" -eq 1 ]; then
+					custom_path_value=$(display_path "$bin_dir")
+					finish_radio
+					return 0
+				elif [ -n "$path_editor_input" ]; then
+					custom_path_value=$path_editor_input
+					finish_radio
+					return 0
+				fi
+				;;
+			"$path_tab")
+				if [ "$path_editor_focus" -eq 2 ]; then
+					complete_path_preview
+				fi
+				;;
+			"$path_backspace"|"$path_delete")
+				if [ "$path_editor_focus" -eq 2 ] && [ -n "$path_editor_input" ]; then
+					path_editor_input=${path_editor_input%?}
+					path_preview_cursor=1
+				fi
+				;;
+			"$path_escape")
+				stty min 0 time 1 <"$radio_tty" 2>/dev/null || true
+				path_second=$(dd if="$radio_tty" bs=1 count=1 2>/dev/null || true)
+				path_third=""
+				if [ "$path_second" = "[" ]; then
+					path_third=$(dd if="$radio_tty" bs=1 count=1 2>/dev/null || true)
+				fi
+				stty min 1 time 0 <"$radio_tty" 2>/dev/null || true
+				case "$path_third" in
+					A)
+						if [ "$path_editor_focus" -eq 2 ] && [ "$path_preview_cursor" -gt 1 ]; then
+							path_preview_cursor=$((path_preview_cursor - 1))
+						elif [ "$path_editor_focus" -eq 2 ]; then
+							path_editor_focus=1
+						fi
+						;;
+					B)
+						if [ "$path_editor_focus" -eq 1 ]; then
+							path_editor_focus=2
+						elif [ "$path_preview_cursor" -lt "$path_preview_count" ]; then
+							path_preview_cursor=$((path_preview_cursor + 1))
+						fi
+						;;
+					C)
+						if [ "$path_editor_focus" -eq 1 ]; then
+							custom_path_value=$(display_path "$bin_dir")
+							finish_radio
+							return 0
+						else
+							complete_path_preview
+						fi
+						;;
+					D)
+						if [ "$path_editor_focus" -eq 2 ]; then
+							path_editor_parent
+						fi
+						;;
+					"")
+						finish_radio
+						return 1
+						;;
+				esac
+				;;
+			*)
+				if [ "$path_editor_focus" -eq 2 ]; then
+					case "$path_key" in
+						[[:print:]])
+							path_editor_input="${path_editor_input}${path_key}"
+							path_preview_cursor=1
+							;;
+					esac
+				fi
+				;;
+		esac
+		clear_radio
+		render_path_editor
+	done
+}
+
 shell_config_file() {
 	case "$1" in
 		zsh)
@@ -338,10 +631,11 @@ $shell_name|"*|"$shell_name|"*) return 0 ;;
 	path_shells="${path_shells}${shell_name}|${config_file}
 "
 	path_desc=$(display_path "$config_file")
+	path_status=""
 	if [ "$shell_name" = "$current_shell" ]; then
-		path_desc="$path_desc  current"
+		path_status=current
 	fi
-	path_radio_items="${path_radio_items}${shell_name}|${path_desc}|${shell_name}
+	path_radio_items="${path_radio_items}${shell_name}|${path_desc}|${shell_name}|${path_status}
 "
 }
 
@@ -354,7 +648,11 @@ add_path_to_config() {
 	config_file=$2
 	marker="# Wago PATH: $bin_dir"
 	if [ -f "$config_file" ] && grep -F "$marker" "$config_file" >/dev/null 2>&1; then
-		printf '%s✓%s Wago is already configured in %s\n' "$cyan" "$reset" "$(display_path "$config_file")"
+		printf '%s✓%s PATH already configured\n' "$cyan" "$reset"
+		printf '\n%sWago manager is ready!%s\n' "$bold" "$reset"
+		printf 'Open a new shell, or run:\n  %ssource %s%s\n' \
+			"$cyan" "$(display_path "$config_file")" "$reset"
+		printf '\nAnd then, install a version with:\n  %swago version install%s\n' "$cyan" "$reset"
 		return 0
 	fi
 	if ! mkdir -p "$(dirname "$config_file")"; then
@@ -372,9 +670,11 @@ add_path_to_config() {
 	} >>"$config_file"; then
 		return 1
 	fi
-	printf '%s✓%s Added Wago to PATH in %s\n' "$cyan" "$reset" "$(display_path "$config_file")"
-	printf '%sOpen a new shell to use wago or run %ssource %s%s\n' \
-		"$dim" "$reset" "$(display_path "$config_file")" "$reset"
+	printf '%s✓%s Added Wago to PATH\n' "$cyan" "$reset"
+	printf '\n%sWago manager is ready!%s\n' "$bold" "$reset"
+	printf 'Open a new shell, or run:\n  %ssource %s%s\n' \
+		"$cyan" "$(display_path "$config_file")" "$reset"
+	printf '\nAnd then, install a version with:\n  %swago version install%s\n' "$cyan" "$reset"
 }
 
 offer_path_setup() {
@@ -406,11 +706,13 @@ offer_path_setup() {
 		return 1
 	fi
 	if [ "$radio_value" = "none" ]; then
+		printf 'PATH setup: skipped\n\n'
 		return 1
 	fi
 	selected=$(printf '%s' "$path_shells" | sed -n "/^${radio_value}|/p")
 	shell_name=${selected%%|*}
 	config_file=${selected#*|}
+	printf 'Adding to PATH: %s\n\n' "$(display_path "$config_file")"
 	add_path_to_config "$shell_name" "$config_file"
 }
 
@@ -424,11 +726,12 @@ choose_install_dir() {
 		return 0
 	fi
 
-	printf '\n%sWhere should Wago be installed?%s\n' "$bold" "$reset"
-	printf 'Directory [%s]: ' "$(display_path "$bin_dir")"
-	answer=""
-	IFS= read -r answer <"$install_tty" || true
-	if [ -n "$answer" ]; then
+	if path_editor; then
+		answer=$custom_path_value
+	else
+		return 1
+	fi
+	if [ "$answer" != "$(display_path "$bin_dir")" ]; then
 		case "$answer" in
 			"~") bin_dir=$HOME ;;
 			"~/"*) bin_dir="$HOME/${answer#\~/}" ;;
@@ -439,6 +742,7 @@ choose_install_dir() {
 			bin_dir=${bin_dir%/}
 		done
 	fi
+	return 0
 }
 
 choose_reinstall_mode() {
@@ -468,6 +772,7 @@ Minimal|Replace binaries and keep existing state|minimal'
 		return 1
 	fi
 	reinstall_mode=$radio_value
+	printf 'Reinstall mode: %s\n\n' "$radio_selected_label"
 }
 
 remove_install_path() {
@@ -691,6 +996,10 @@ cleanup() {
 	stop_spinner
 	restore_radio_terminal
 	clear_radio
+	if [ "$install_input_open" = "1" ]; then
+		exec 9<&-
+		install_input_open=0
+	fi
 	if [ -n "$tmp" ] && [ -d "$tmp" ]; then
 		rm -rf "$tmp"
 	fi
@@ -731,8 +1040,29 @@ if [ -n "${WAGO_INTERNAL_REINSTALL_CLEANUP_ONLY:-}" ]; then
 	exit 0
 fi
 
+if [ -n "${WAGO_INTERNAL_PATH_PREVIEW_ONLY:-}" ]; then
+	path_editor_input=$WAGO_INTERNAL_PATH_PREVIEW_ONLY
+	path_preview_cursor=1
+	refresh_path_preview
+	printf '%s\n' "$path_preview"
+	exit 0
+fi
+
+if [ -n "${WAGO_INTERNAL_PATH_PARENT_ONLY:-}" ]; then
+	path_editor_input=$WAGO_INTERNAL_PATH_PARENT_ONLY
+	path_editor_focus=2
+	path_editor_parent
+	printf '%s\n' "$path_editor_input"
+	exit 0
+fi
+
 if [ "${WAGO_INTERNAL_INSTALL_DIR_ONLY:-0}" = "1" ]; then
-	choose_install_dir
+	welcome
+	if ! choose_install_dir; then
+		printf 'Cancelled.\n'
+		exit 0
+	fi
+	report_install_dir
 	printf 'bin=%s\n' "$(display_path "$bin_dir")"
 	exit 0
 fi
@@ -749,15 +1079,17 @@ go_version_ok() {
 	[ "$major" -gt 1 ] || { [ "$major" -eq 1 ] && [ "$minor" -ge 22 ]; }
 }
 
-printf '%sSetting Up%s\n' "$bold" "$reset"
+welcome
 
-choose_install_dir
+if ! choose_install_dir; then
+	printf 'Cancelled.\n'
+	exit 0
+fi
+report_install_dir
 
 if [ "$dry_run" = "1" ]; then
 	detail "version" "$version"
-	detail "profile" "standard"
 	detail "manager" "$(display_path "$bin_dir/wago")"
-	detail "runtime" "$(display_path "$runner_dir/wago-runtime")"
 	detail "source" "$(display_path "$src_dir")"
 	printf '%sNo changes made.%s\n' "$dim" "$reset"
 	exit 0
@@ -796,19 +1128,6 @@ else
 	die "could not build Wago manager"
 fi
 
-progress_begin "building Standard runtime"
-if (cd "$tmp/src" &&
-	CGO_ENABLED=0 go build -trimpath \
-		-ldflags "-s -w -X main.version=$stamp" -o "$tmp/wago-runtime" ./cli/wago) >"$tmp/runtime.log" 2>&1; then
-	progress_done "built Standard runtime"
-else
-	progress_fail "runtime build failed"
-	tail -n 20 "$tmp/runtime.log" >&2 || true
-	die "could not build Standard runtime"
-fi
-
-runner_dir="$wago_data/versions/$stamp/standard"
-
 if [ "$reinstall_mode" != "minimal" ]; then
 	progress_begin "cleaning existing Wago installation"
 	if apply_reinstall_cleanup; then
@@ -820,12 +1139,9 @@ if [ "$reinstall_mode" != "minimal" ]; then
 fi
 
 progress_begin "installing Wago"
-if mkdir -p "$bin_dir" "$runner_dir" "$wago_config" &&
-	mv "$tmp/wago" "$bin_dir/wago" &&
-	mv "$tmp/wago-runtime" "$runner_dir/wago-runtime" &&
-	printf '%s\n' "$stamp" >"$wago_config/active-version" &&
-	printf '%s\n' "standard" >"$wago_config/active-profile"; then
-	progress_done "installed CLI and Standard runtime"
+if mkdir -p "$bin_dir" &&
+	mv "$tmp/wago" "$bin_dir/wago"; then
+	progress_done "installed Wago manager"
 else
 	progress_fail "installation failed"
 	die "could not install Wago"
@@ -854,10 +1170,10 @@ else
 	die "the installed Wago command did not start"
 fi
 
-progress_finish "Installed Wago $stamp (standard)"
-detail "manager" "$(display_path "$bin_dir/wago")"
-detail "runtime" "$(display_path "$runner_dir/wago-runtime")"
+progress_finish "Installed Wago manager $stamp"
+detail "Manager" "$(display_path "$bin_dir/wago")"
 
+printf '\n'
 if ! offer_path_setup; then
 	case ":$PATH:" in
 		*":$bin_dir:"*) ;;
