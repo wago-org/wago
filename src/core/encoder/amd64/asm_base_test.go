@@ -131,6 +131,17 @@ func TestAssemblerPatchingAndAlignment(t *testing.T) {
 	if a.Len()%16 != 0 {
 		t.Fatalf("aligned length = %d", a.Len())
 	}
+	var ordinary, late Asm
+	ordinary.B = make([]byte, 9)
+	ordinary.AlignLoop()
+	if ordinary.Len() != 16 {
+		t.Fatalf("ordinary loop-aligned length = %d, want 16", ordinary.Len())
+	}
+	late.B = make([]byte, 25)
+	late.AlignLoop()
+	if late.Len() != 40 {
+		t.Fatalf("late loop-aligned length = %d, want 40", late.Len())
+	}
 }
 
 func TestRemainingIntegerInstructionForms(t *testing.T) {

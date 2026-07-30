@@ -93,8 +93,9 @@ type instancePluginState struct {
 }
 
 type instanceCloseState struct {
-	done   chan struct{}
-	result error
+	done          chan struct{}
+	result        error
+	interruptStop func()
 }
 
 func (in *Instance) instantiateOrigin() InstantiateOrigin {

@@ -4,42 +4,18 @@
 
 // SA_SIGINFO handler: R0=signal, R1=*siginfo, R2=*ucontext.
 // Linux arm64 ucontext has saved X9 at +256, X26 at +392, SP at +432, and
-// PC at +440. interruptActivation is 40 bytes; state/tid/trap/ack/linMem
-// occupy offsets 0/4/8/16/32.
+// PC at +440. Generated Wasm pins linMem in X26; [linMem-104] is its active
+// trap pointer. interruptRequest is {trap uintptr, ack u32, refs u32}, 16 bytes.
 TEXT ·interruptSigHandler(SB), NOSPLIT|NOFRAME, $0-0
 	MOVD	R0, R3                      // preserve signal arguments for chaining
 	MOVD	R1, R4
 	MOVD	R2, R5
 	MOVD	R2, R7                      // saved ucontext
-	MOVD	$178, R8                    // SYS_gettid
-	SVC
-	MOVD	$·interruptActivations(SB), R9
-	MOVD	$64, R10
-activation_loop:
-	MOVWU	4(R9), R11
-	CMPW	R11, R0
-	BNE	activation_next
-	MOVWU	0(R9), R11
-	CMPW	$2, R11                    // interruptWasm
-	BEQ	activation_match
 	MOVW	8(R4), R11
-	CMPW	$-2, R11                   // SI_TIMER: preserve deadline across host park
-	BNE	runtime_miss
-	MOVD	8(R9), R11
-	MOVW	$12, R16
-	MOVW	R16, (R11)                 // TrapInterrupted, consumed at host boundary
-runtime_miss:
-	MOVW	ZR, 16(R9)                 // delivery missed Wasm; allow retry
-	RET
-activation_next:
-	ADD	$40, R9
-	SUB	$1, R10
-	CBNZ	R10, activation_loop
-	MOVW	8(R4), R11
-	CMPW	$-6, R11                   // SI_TKILL raced activation teardown
-	BEQ	handler_return
-	CMPW	$-2, R11                   // SI_TIMER after timer deletion/exit
-	BEQ	handler_return
+	CMPW	$-6, R11                   // only Wago's tgkill broadcast is ours
+	BEQ	check_pc
+	CMPW	$-2, R11                   // per-thread deadline timer
+	BEQ	check_pc
 	MOVD	·interruptOldHandler(SB), R11
 	CBZ	R11, handler_return
 	MOVD	R3, R0
@@ -49,11 +25,11 @@ activation_next:
 handler_return:
 	RET
 
-activation_match:
+check_pc:
 	MOVD	440(R7), R11               // saved PC
 	MOVD	$·executableCodeRanges(SB), R12
 	MOVWU	·executableCodeRangeLimit(SB), R13
-	CBZ	R13, range_miss
+	CBZ	R13, handler_return
 range_loop:
 	MOVD	0(R12), R14                // range.start
 	CBZ	R14, range_next
@@ -67,19 +43,27 @@ range_next:
 	ADD	$16, R12
 	SUB	$1, R13
 	CBNZ	R13, range_loop
-range_miss:
-	MOVW	ZR, 16(R9)                 // host/runtime PC; allow retry on re-entry
 	RET
 
 interrupt_match:
-	MOVW	$3, R16
-	MOVW	R16, 0(R9)                 // interruptUnwinding: reject duplicates
-	MOVD	8(R9), R11                 // activation.trap
+	MOVD	392(R7), R11               // saved X26 = linMem
+	CBZ	R11, handler_return
+	MOVD	-104(R11), R10             // active trap pointer
+	MOVD	$·interruptRequests(SB), R9
+	MOVD	$64, R12
+request_loop:
+	MOVD	0(R9), R13
+	CMP	R13, R10
+	BEQ	request_match
+	ADD	$16, R9
+	SUB	$1, R12
+	CBNZ	R12, request_loop
+	RET
+request_match:
 	MOVW	$12, R16
-	MOVW	R16, (R11)                 // TrapInterrupted
+	MOVW	R16, (R10)                 // TrapInterrupted
 	MOVW	$1, R16
-	MOVW	R16, 16(R9)                // acknowledgement
-	MOVD	32(R9), R11                // activation.linMem
+	MOVW	R16, 8(R9)                 // acknowledgement
 	MOVD	R11, 256(R7)               // saved X9 = linMem for landing pad
 	MOVD	·interruptTrapPC(SB), R11
 	MOVD	R11, 440(R7)               // saved PC = landing pad

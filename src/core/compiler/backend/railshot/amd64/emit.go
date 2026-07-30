@@ -81,10 +81,14 @@ func (f *fn) condenseConvert(node *elem, dest Reg) Reg {
 	// which can carry dirty upper bits — hence the producer-op whitelist.
 	cleanZExt := node.op == opZExt32 && node.arg0.kind == ekDeferred &&
 		node.arg0.typ == mtI32 && producesCleanI32(node.arg0.op)
-	src := f.materialize(node.arg0)
-	result := src
-	if dest != regNone && dest != src {
-		result = dest
+	src, srcOwned := f.materializeRead(node.arg0)
+	result := dest
+	if result == regNone {
+		if srcOwned {
+			result = src
+		} else {
+			result = f.allocReg(maskOf(src))
+		}
 	}
 	switch node.op {
 	case opZExt32:
@@ -102,7 +106,7 @@ func (f *fn) condenseConvert(node *elem, dest Reg) Reg {
 	case opSExt16:
 		f.a.Movsx16(result, src, node.typ.is64())
 	}
-	if result != src {
+	if srcOwned && result != src {
 		f.release(src)
 	}
 	f.consumeBlockBelow(node)

@@ -19,7 +19,10 @@ func RequestInterrupt(trap []byte) {
 	storeTrap(trap, uint32(TrapInterrupted))
 }
 
-func RequestInterruptAsync(trap []byte)             { RequestInterrupt(trap) }
+func RequestInterruptAsync(trap []byte) func() {
+	RequestInterrupt(trap)
+	return func() {}
+}
 func SetInterruptDeadline([]byte, time.Time) func() { return func() {} }
 
 // HostInterruptSupported reports whether this build can asynchronously unwind

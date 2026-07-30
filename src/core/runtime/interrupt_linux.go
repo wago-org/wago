@@ -4,7 +4,9 @@ package runtime
 
 import (
 	"fmt"
+	"os"
 	goruntime "runtime"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -13,28 +15,19 @@ import (
 )
 
 const (
-	maxInterruptActivations = 64
+	maxInterruptRequests    = 64
 	maxExecutableCodeRanges = 4096
 	interruptDeadlineRetry  = 50 * time.Microsecond
-
-	interruptOutside   = uint32(0)
-	interruptRuntime   = uint32(1)
-	interruptWasm      = uint32(2)
-	interruptUnwinding = uint32(3)
 )
 
-// interruptActivation is a signal-safe, fixed-address per-thread activation.
-// The handler reads this table directly; fields and offsets are mirrored in
-// interrupt_linux_amd64.s.
-type interruptActivation struct {
-	state  uint32
-	tid    uint32
-	trap   uintptr
-	ack    uint32
-	timer  int32
-	armed  uint32
-	_      uint32
-	linMem uintptr
+// interruptRequest is published only while a cold interruption request is
+// broadcasting. Generated Wasm keeps its linear-memory base in a fixed
+// register, so the signal handler obtains the active trap cell directly from
+// the saved CPU context and needs no per-invocation activation.
+type interruptRequest struct {
+	trap uintptr
+	ack  uint32
+	refs uint32
 }
 
 type executableCodeRange struct {
@@ -43,13 +36,10 @@ type executableCodeRange struct {
 }
 
 var (
-	interruptActivations     [maxInterruptActivations]interruptActivation
+	interruptRequests        [maxInterruptRequests]interruptRequest
 	executableCodeRanges     [maxExecutableCodeRanges]executableCodeRange
 	executableCodeRangeLimit uint32
 	executableCodeMu         sync.Mutex
-
-	interruptDeadlines  = make(map[uintptr]int64)
-	interruptDeadlineMu sync.Mutex
 
 	interruptInstallOnce sync.Once
 	interruptInstallErr  error
@@ -59,12 +49,10 @@ var (
 )
 
 const (
-	_ = uint(unsafe.Sizeof(interruptActivation{}) - 40)
-	_ = uint(40 - unsafe.Sizeof(interruptActivation{}))
-	_ = uint(unsafe.Offsetof(interruptActivation{}.ack) - 16)
-	_ = uint(16 - unsafe.Offsetof(interruptActivation{}.ack))
-	_ = uint(unsafe.Offsetof(interruptActivation{}.linMem) - 32)
-	_ = uint(32 - unsafe.Offsetof(interruptActivation{}.linMem))
+	_ = uint(unsafe.Sizeof(interruptRequest{}) - 16)
+	_ = uint(16 - unsafe.Sizeof(interruptRequest{}))
+	_ = uint(unsafe.Offsetof(interruptRequest{}.ack) - 8)
+	_ = uint(8 - unsafe.Offsetof(interruptRequest{}.ack))
 	_ = uint(unsafe.Sizeof(executableCodeRange{}) - 16)
 	_ = uint(16 - unsafe.Sizeof(executableCodeRange{}))
 	_ = uint(unsafe.Sizeof(interruptSigevent{}) - 64)
@@ -119,149 +107,13 @@ func installInterruptHandler() {
 	atomic.StoreUint32(&interruptSignal, uint32(sig))
 }
 
-func beginInterruptActivation(trap []byte) (*interruptActivation, error) {
-	interruptInstallOnce.Do(installInterruptHandler)
-	if interruptInstallErr != nil {
-		return nil, fmt.Errorf("jit host interrupt: %w", interruptInstallErr)
-	}
-	if len(trap) < 4 {
-		return nil, fmt.Errorf("jit host interrupt: trap cell requires at least 4 bytes")
-	}
-
-	goruntime.LockOSThread()
-	tid := uint32(syscall.Gettid())
-	trapPtr := slicePtr(trap)
-	for i := range interruptActivations {
-		a := &interruptActivations[i]
-		if atomic.CompareAndSwapUint32(&a.state, interruptOutside, interruptRuntime) {
-			atomic.StoreUint32(&a.tid, tid)
-			atomic.StoreUintptr(&a.trap, trapPtr)
-			atomic.StoreUintptr(&a.linMem, 0)
-			atomic.StoreUint32(&a.ack, 0)
-			atomic.StoreUint32(&a.armed, 0)
-			if err := armActivationDeadline(a); err != nil {
-				atomic.StoreUintptr(&a.trap, 0)
-				atomic.StoreUint32(&a.tid, 0)
-				atomic.StoreUint32(&a.state, interruptOutside)
-				goruntime.UnlockOSThread()
-				return nil, err
-			}
-			return a, nil
-		}
-	}
-	goruntime.UnlockOSThread()
-	return nil, fmt.Errorf("jit host interrupt: activation table full (%d)", maxInterruptActivations)
-}
-
-func (a *interruptActivation) enterWasm(linMem uintptr) {
-	if a != nil {
-		atomic.StoreUintptr(&a.linMem, linMem)
-		atomic.StoreUint32(&a.state, interruptWasm)
-	}
-}
-
-func (a *interruptActivation) leaveWasm() {
-	if a != nil {
-		atomic.StoreUint32(&a.state, interruptRuntime)
-		atomic.StoreUintptr(&a.linMem, 0)
-	}
-}
-
-func (a *interruptActivation) close() {
-	if a == nil {
-		return
-	}
-	atomic.StoreUint32(&a.state, interruptRuntime)
-	if atomic.SwapUint32(&a.armed, 0) != 0 {
-		_, _, _ = syscall.RawSyscall(syscall.SYS_TIMER_DELETE, uintptr(uint32(a.timer)), 0, 0)
-	}
-	atomic.StoreUintptr(&a.trap, 0)
-	atomic.StoreUintptr(&a.linMem, 0)
-	atomic.StoreUint32(&a.tid, 0)
-	atomic.StoreUint32(&a.ack, 0)
-	atomic.StoreUint32(&a.state, interruptOutside)
-	goruntime.UnlockOSThread()
-}
-
-type interruptSigevent struct {
-	value  uint64
-	signo  int32
-	notify int32
-	tid    int32
-	_      [44]byte
-}
-
-type interruptTimespec struct {
-	sec  int64
-	nsec int64
-}
-
-type interruptItimerspec struct {
-	interval interruptTimespec
-	value    interruptTimespec
-}
-
-func armActivationDeadline(a *interruptActivation) error {
-	trapPtr := atomic.LoadUintptr(&a.trap)
-	interruptDeadlineMu.Lock()
-	unixNano := interruptDeadlines[trapPtr]
-	interruptDeadlineMu.Unlock()
-	if unixNano == 0 {
-		return nil
-	}
-	delay := time.Until(time.Unix(0, unixNano))
-	if delay <= 0 {
-		delay = time.Nanosecond
-	}
-	event := interruptSigevent{
-		signo:  int32(atomic.LoadUint32(&interruptSignal)),
-		notify: 4, // SIGEV_THREAD_ID
-		tid:    int32(atomic.LoadUint32(&a.tid)),
-	}
-	var timerID int32
-	_, _, errno := syscall.RawSyscall(syscall.SYS_TIMER_CREATE, 1, /*CLOCK_MONOTONIC*/
-		uintptr(unsafe.Pointer(&event)), uintptr(unsafe.Pointer(&timerID)))
-	if errno != 0 {
-		return fmt.Errorf("jit host interrupt: timer_create: %w", errno)
-	}
-	spec := interruptItimerspec{
-		interval: interruptTimespec{
-			sec:  int64(interruptDeadlineRetry / time.Second),
-			nsec: int64(interruptDeadlineRetry % time.Second),
-		},
-		value: interruptTimespec{sec: int64(delay / time.Second), nsec: int64(delay % time.Second)},
-	}
-	_, _, errno = syscall.RawSyscall6(syscall.SYS_TIMER_SETTIME, uintptr(uint32(timerID)), 0,
-		uintptr(unsafe.Pointer(&spec)), 0, 0, 0)
-	if errno != 0 {
-		_, _, _ = syscall.RawSyscall(syscall.SYS_TIMER_DELETE, uintptr(uint32(timerID)), 0, 0)
-		return fmt.Errorf("jit host interrupt: timer_settime: %w", errno)
-	}
-	a.timer = timerID
-	atomic.StoreUint32(&a.armed, 1)
-	return nil
-}
-
-// SetInterruptDeadline associates a context deadline with the next activation
-// using trap. beginInterruptActivation converts it to a per-thread kernel timer.
-func SetInterruptDeadline(trap []byte, deadline time.Time) func() {
-	if len(trap) < 4 || deadline.IsZero() {
-		return func() {}
-	}
-	trapPtr := slicePtr(trap)
-	interruptDeadlineMu.Lock()
-	interruptDeadlines[trapPtr] = deadline.UnixNano()
-	interruptDeadlineMu.Unlock()
-	return func() {
-		interruptDeadlineMu.Lock()
-		delete(interruptDeadlines, trapPtr)
-		interruptDeadlineMu.Unlock()
-	}
-}
-
 func registerExecutableCode(mem []byte) error {
 	if len(mem) == 0 {
 		return fmt.Errorf("register executable code: empty mapping")
+	}
+	interruptInstallOnce.Do(installInterruptHandler)
+	if interruptInstallErr != nil {
+		return fmt.Errorf("jit host interrupt: %w", interruptInstallErr)
 	}
 	start := slicePtr(mem)
 	end := start + uintptr(len(mem))
@@ -304,10 +156,10 @@ func unregisterExecutableCode(mem []byte) {
 	}
 }
 
-// RequestInterrupt publishes the ordinary interruption trap and directs the
-// reserved real-time signal to the exact OS thread currently owning that cell.
-// The request performs a bounded retry; lifecycle and context callbacks use
-// RequestInterruptAsync when they must span a host park.
+// RequestInterrupt publishes the ordinary interruption trap, then broadcasts
+// Wago's reserved signal to the process threads. Only a thread whose saved PC
+// is generated Wasm and whose fixed linear-memory register names this trap cell
+// rewrites its CPU context; all other deliveries return immediately.
 func RequestInterrupt(trap []byte) {
 	storeTrap(trap, uint32(TrapInterrupted))
 	if len(trap) < 4 {
@@ -316,89 +168,188 @@ func RequestInterrupt(trap []byte) {
 	requestInterruptPointer(slicePtr(trap))
 }
 
-// requestInterruptPointer signals only while trapPtr is still owned by a
-// published activation. It never dereferences the trap address, so an async
-// Close retry cannot race arena release after activation teardown.
 func requestInterruptPointer(trapPtr uintptr) bool {
 	sig := atomic.LoadUint32(&interruptSignal)
 	if sig == 0 {
 		return false
 	}
-	pid := syscall.Getpid()
-	// A signal can be delivered in the few runtime instructions around native
-	// entry/exit or while a host import is parked. The handler clears ack in that
-	// case. Retry for a bounded window so Close closes ordinary entry/exit races
-	// without waiting indefinitely for a stuck host function.
-	for attempt := 0; attempt < 256; attempt++ {
-		found := false
-		for i := range interruptActivations {
-			a := &interruptActivations[i]
-			if atomic.LoadUintptr(&a.trap) != trapPtr {
-				continue
-			}
-			found = true
-			state := atomic.LoadUint32(&a.state)
-			if state == interruptRuntime || state == interruptOutside {
-				return true
-			}
-			if atomic.LoadUint32(&a.ack) == 1 {
-				return true
-			}
-			tid := atomic.LoadUint32(&a.tid)
-			if tid != 0 && atomic.CompareAndSwapUint32(&a.ack, 0, 2) {
-				_, _, errno := syscall.RawSyscall(syscall.SYS_TGKILL, uintptr(pid), uintptr(tid), uintptr(sig))
-				if errno != 0 {
-					atomic.StoreUint32(&a.ack, 0)
-				}
-			}
-			break
-		}
-		if !found {
-			return false
-		}
+	request := acquireInterruptRequest(trapPtr)
+	if request == nil {
+		return false
+	}
+	atomic.StoreUint32(&request.ack, 0)
+	broadcastInterruptSignal(sig)
+	for attempt := 0; attempt < 64 && atomic.LoadUint32(&request.ack) == 0; attempt++ {
 		goruntime.Gosched()
 	}
-	// A delivery can be lost to a concurrent signal-disposition/mask transition.
-	// Do not strand the activation in "sent"; the outer cancellation retry (or a
-	// later Close request) must be able to send again.
-	for i := range interruptActivations {
-		a := &interruptActivations[i]
-		if atomic.LoadUintptr(&a.trap) == trapPtr {
-			atomic.CompareAndSwapUint32(&a.ack, 2, 0)
-			return true
-		}
-	}
-	return false
+	acknowledged := atomic.LoadUint32(&request.ack) != 0
+	releaseInterruptRequest(request, trapPtr)
+	return acknowledged
 }
 
-// RequestInterruptAsync keeps retrying after a non-blocking lifecycle request,
-// including across an arbitrarily long host park. The goroutine exists only
-// after interruption is requested and exits when the activation acknowledges
-// or releases its slot.
-func RequestInterruptAsync(trap []byte) {
-	storeTrap(trap, uint32(TrapInterrupted))
-	if len(trap) < 4 {
+func acquireInterruptRequest(trapPtr uintptr) *interruptRequest {
+	start := int((trapPtr >> 4) & (maxInterruptRequests - 1))
+	for probe := 0; probe < maxInterruptRequests; probe++ {
+		request := &interruptRequests[(start+probe)&(maxInterruptRequests-1)]
+		owner := atomic.LoadUintptr(&request.trap)
+		if owner == trapPtr || (owner == 0 && atomic.CompareAndSwapUintptr(&request.trap, 0, trapPtr)) {
+			atomic.AddUint32(&request.refs, 1)
+			return request
+		}
+	}
+	return nil
+}
+
+func releaseInterruptRequest(request *interruptRequest, trapPtr uintptr) {
+	if atomic.AddUint32(&request.refs, ^uint32(0)) == 0 {
+		atomic.CompareAndSwapUintptr(&request.trap, trapPtr, 0)
+	}
+}
+
+func broadcastInterruptSignal(sig uint32) {
+	entries, err := os.ReadDir("/proc/self/task")
+	if err != nil {
 		return
 	}
+	pid := syscall.Getpid()
+	for _, entry := range entries {
+		tid, err := strconv.Atoi(entry.Name())
+		if err == nil {
+			_, _, _ = syscall.RawSyscall(syscall.SYS_TGKILL, uintptr(pid), uintptr(tid), uintptr(sig))
+		}
+	}
+}
+
+// RequestInterruptAsync covers the narrow check-to-native-entry race for
+// lifecycle interruption. A trap published during a host park is consumed at
+// the host boundary, so retries need only span native entry/exit transitions;
+// a host call that never returns still requires process isolation.
+func RequestInterruptAsync(trap []byte) func() {
+	storeTrap(trap, uint32(TrapInterrupted))
+	if len(trap) < 4 {
+		return func() {}
+	}
 	trapPtr := slicePtr(trap)
+	done := make(chan struct{})
+	stopped := make(chan struct{})
+	var stopOnce sync.Once
 	go func() {
-		for {
-			if !requestInterruptPointer(trapPtr) {
+		defer close(stopped)
+		retry := time.NewTicker(50 * time.Microsecond)
+		defer retry.Stop()
+		for attempt := 0; attempt < 256; attempt++ {
+			if requestInterruptPointer(trapPtr) {
 				return
 			}
-			for i := range interruptActivations {
-				a := &interruptActivations[i]
-				if atomic.LoadUintptr(&a.trap) != trapPtr {
-					continue
-				}
-				if atomic.LoadUint32(&a.ack) == 1 {
-					return
-				}
-				break
+			select {
+			case <-done:
+				return
+			case <-retry.C:
 			}
-			time.Sleep(50 * time.Microsecond)
 		}
 	}()
+	return func() {
+		stopOnce.Do(func() { close(done) })
+		<-stopped
+	}
+}
+
+type interruptSigevent struct {
+	value  uint64
+	signo  int32
+	notify int32
+	tid    int32
+	_      [44]byte
+}
+
+type interruptTimespec struct {
+	sec  int64
+	nsec int64
+}
+
+type interruptItimerspec struct {
+	interval interruptTimespec
+	value    interruptTimespec
+}
+
+// SetInterruptDeadline takes the slow path only for a context carrying an
+// actual deadline. Pinning that invocation lets a per-thread kernel timer keep
+// working even while Go is stopped for GC; ordinary calls execute none of this.
+func SetInterruptDeadline(trap []byte, deadline time.Time) func() {
+	if len(trap) < 4 || deadline.IsZero() {
+		return func() {}
+	}
+	goruntime.LockOSThread()
+	trapPtr := slicePtr(trap)
+	request := acquireInterruptRequest(trapPtr)
+	if request == nil {
+		goruntime.UnlockOSThread()
+		return func() {}
+	}
+	event := interruptSigevent{
+		signo:  int32(atomic.LoadUint32(&interruptSignal)),
+		notify: 4, // SIGEV_THREAD_ID
+		tid:    int32(syscall.Gettid()),
+	}
+	var timerID int32
+	_, _, errno := syscall.RawSyscall(syscall.SYS_TIMER_CREATE, 1, /* CLOCK_MONOTONIC */
+		uintptr(unsafe.Pointer(&event)), uintptr(unsafe.Pointer(&timerID)))
+	if errno != 0 {
+		releaseInterruptRequest(request, trapPtr)
+		goruntime.UnlockOSThread()
+		return func() {}
+	}
+	delay := time.Until(deadline)
+	if delay <= 0 {
+		delay = time.Nanosecond
+	}
+	spec := interruptItimerspec{
+		interval: interruptTimespec{
+			sec:  int64(interruptDeadlineRetry / time.Second),
+			nsec: int64(interruptDeadlineRetry % time.Second),
+		},
+		value: interruptTimespec{
+			sec:  int64(delay / time.Second),
+			nsec: int64(delay % time.Second),
+		},
+	}
+	_, _, errno = syscall.RawSyscall6(syscall.SYS_TIMER_SETTIME, uintptr(uint32(timerID)), 0,
+		uintptr(unsafe.Pointer(&spec)), 0, 0, 0)
+	if errno != 0 {
+		_, _, _ = syscall.RawSyscall(syscall.SYS_TIMER_DELETE, uintptr(uint32(timerID)), 0, 0)
+		releaseInterruptRequest(request, trapPtr)
+		goruntime.UnlockOSThread()
+		return func() {}
+	}
+	return func() {
+		deleteInterruptTimer(timerID)
+		releaseInterruptRequest(request, trapPtr)
+		goruntime.UnlockOSThread()
+	}
+}
+
+// deleteInterruptTimer blocks the reserved signal on the pinned target thread,
+// deletes the timer, and drains any already-pending expiration before the
+// deadline request is unpublished. A late timer signal therefore cannot affect
+// a later invocation that reuses the same trap address.
+func deleteInterruptTimer(timerID int32) {
+	sigset := uint64(1) << (interruptReservedSignal - 1)
+	var oldset uint64
+	_, _, errno := syscall.RawSyscall6(syscall.SYS_RT_SIGPROCMASK, 0, // SIG_BLOCK
+		uintptr(unsafe.Pointer(&sigset)), uintptr(unsafe.Pointer(&oldset)), 8, 0, 0)
+	_, _, _ = syscall.RawSyscall(syscall.SYS_TIMER_DELETE, uintptr(uint32(timerID)), 0, 0)
+	if errno == 0 {
+		var zero interruptTimespec
+		for {
+			_, _, waitErr := syscall.RawSyscall6(syscall.SYS_RT_SIGTIMEDWAIT,
+				uintptr(unsafe.Pointer(&sigset)), 0, uintptr(unsafe.Pointer(&zero)), 8, 0, 0)
+			if waitErr != 0 {
+				break
+			}
+		}
+		_, _, _ = syscall.RawSyscall6(syscall.SYS_RT_SIGPROCMASK, 2, // SIG_SETMASK
+			uintptr(unsafe.Pointer(&oldset)), 0, 8, 0, 0)
+	}
 }
 
 func HostInterruptSupported() bool { return true }

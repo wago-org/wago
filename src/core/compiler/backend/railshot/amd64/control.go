@@ -573,7 +573,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 		}
 		f.flush()
 		if kind == cfLoop {
-			f.a.Align16() // loop-top alignment: the pad runs on entry, not per iteration
+			f.a.AlignLoop() // padding runs on entry, not per iteration
 			fr.loopStart = f.a.Len()
 			f.emitInterruptCheck(RSI) // RSI freed by the flush() above; poll once per iteration
 		}

@@ -4,33 +4,14 @@
 
 // SA_SIGINFO handler: DI=signal, SI=*siginfo, DX=*ucontext.
 // Linux amd64 ucontext has saved RBX at +128, RSP at +160, and RIP at +168.
-// interruptActivation is 40 bytes; state/tid/trap/ack/linMem occupy 0/4/8/16/32.
+// Generated Wasm pins linMem in RBX; [linMem-104] is its active trap pointer.
+// interruptRequest is {trap uintptr, ack u32, refs u32}, 16 bytes.
 TEXT ·interruptSigHandler(SB), NOSPLIT|NOFRAME, $0-0
 	MOVQ	DX, R8
-	MOVQ	$186, AX                    // SYS_gettid
-	SYSCALL
-	LEAQ	·interruptActivations(SB), R9
-	MOVQ	$64, R10
-activation_loop:
-	CMPL	4(R9), AX
-	JNE	activation_next
-	CMPL	0(R9), $2                   // interruptWasm
-	JE	activation_match
-	CMPL	8(SI), $-2                  // SI_TIMER: preserve deadline across host park
-	JNE	runtime_miss
-	MOVQ	8(R9), AX
-	MOVL	$12, 0(AX)                  // TrapInterrupted, consumed at host boundary
-runtime_miss:
-	MOVL	$0, 16(R9)                  // delivery missed Wasm; allow retry
-	RET	                                // our target is in runtime/entry/exit
-activation_next:
-	ADDQ	$40, R9
-	DECQ	R10
-	JNZ	activation_loop
-	CMPL	8(SI), $-6                  // SI_TKILL: Wago delivery raced activation
-	JE	handler_return
-	CMPL	8(SI), $-2                  // SI_TIMER after timer deletion/activation exit
-	JE	handler_return
+	CMPL	8(SI), $-6                  // only Wago's tgkill broadcast is ours
+	JE	check_pc
+	CMPL	8(SI), $-2                  // per-thread deadline timer
+	JE	check_pc
 	MOVQ	·interruptOldHandler(SB), AX
 	TESTQ	AX, AX
 	JNZ	chain_old_handler
@@ -39,12 +20,12 @@ handler_return:
 chain_old_handler:
 	JMP	AX                           // preserve Go/os-signal behavior
 
-activation_match:
+check_pc:
 	MOVQ	168(R8), R11                // saved RIP
 	LEAQ	·executableCodeRanges(SB), R12
 	MOVL	·executableCodeRangeLimit(SB), R13
 	TESTQ	R13, R13
-	JZ	range_miss
+	JZ	handler_return
 range_loop:
 	MOVQ	0(R12), R14                 // range.start
 	TESTQ	R14, R14
@@ -58,16 +39,25 @@ range_next:
 	ADDQ	$16, R12
 	DECQ	R13
 	JNZ	range_loop
-range_miss:
-	MOVL	$0, 16(R9)                  // host/runtime PC; allow retry on re-entry
 	RET
 
 interrupt_match:
-	MOVL	$3, 0(R9)                   // interruptUnwinding: reject duplicates
-	MOVQ	8(R9), AX                   // activation.trap
-	MOVL	$12, 0(AX)                  // TrapInterrupted
-	MOVL	$1, 16(R9)                  // acknowledgement
-	MOVQ	32(R9), AX                  // activation.linMem
+	MOVQ	128(R8), AX                 // saved RBX = linMem
+	TESTQ	AX, AX
+	JZ	handler_return
+	MOVQ	-104(AX), R10               // active trap pointer
+	LEAQ	·interruptRequests(SB), R9
+	MOVQ	$64, R12
+request_loop:
+	CMPQ	0(R9), R10
+	JE	request_match
+	ADDQ	$16, R9
+	DECQ	R12
+	JNZ	request_loop
+	RET
+request_match:
+	MOVL	$12, 0(R10)                 // TrapInterrupted
+	MOVL	$1, 8(R9)                   // acknowledgement
 	MOVQ	-24(AX), AX                 // trampoline's trap re-entry RSP
 	MOVQ	AX, 160(R8)                 // saved RSP
 	MOVQ	·interruptTrapPC(SB), AX
