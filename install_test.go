@@ -377,6 +377,9 @@ func TestInstallerOffersPersistentPathSetupWhenAlreadyOnCurrentPath(t *testing.T
 	if err := os.WriteFile(zsh, []byte("#!/bin/sh\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(bin, "wago"), []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(tty, []byte("\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -401,7 +404,9 @@ func TestInstallerOffersPersistentPathSetupWhenAlreadyOnCurrentPath(t *testing.T
 		!strings.Contains(text, "~/.zshrc  (current)") ||
 		!strings.Contains(text, "○ Not now") ||
 		!strings.Contains(text, "Adding to PATH: ~/.zshrc") ||
-		!strings.Contains(text, "Added Wago to PATH") {
+		!strings.Contains(text, "Added Wago to PATH") ||
+		!strings.Contains(text, "Install a version with:\n  wago version install") ||
+		strings.Contains(text, "source ~/.zshrc") {
 		t.Fatalf("installer trusted only the current process PATH:\n%s", text)
 	}
 }
@@ -448,9 +453,9 @@ func TestInstallerOffersCurrentShellPathSetupIdempotently(t *testing.T) {
 	if !strings.Contains(output, "zsh") ||
 		!strings.Contains(output, "Adding to PATH: ~/.zshrc") ||
 		!strings.Contains(output, "Added Wago to PATH") ||
-		!strings.Contains(output, "Wago manager is ready!") ||
-		!strings.Contains(output, "Open a new shell, or run:\n  source ~/.zshrc") ||
-		!strings.Contains(output, "And then, install a version with:\n  wago version install") {
+		!strings.Contains(output, "Wago is ready!") ||
+		!strings.Contains(output, "Open a new shell, or run:\n  source ~/.zshrc && wago version install") ||
+		strings.Contains(output, "And then, install a version with:") {
 		t.Fatalf("path setup output:\n%s", output)
 	}
 	config := filepath.Join(home, ".zshrc")
