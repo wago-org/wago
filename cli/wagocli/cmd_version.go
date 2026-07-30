@@ -4,7 +4,7 @@ import "github.com/wago-org/wago/internal/wagopaths"
 
 // versionCommand is the `wago version` manager: list/switch/install wago toolchain
 // versions. The binary's own version is printed by `wago --version`. Management
-// (list-installed/use/current/which/uninstall) is net-free; available-version
+// (list/use/current/which/uninstall) is net-free; available-version
 // listing, install, and update use Go's HTTP client in the manager and the host
 // curl executable only in legacy lean runtime builds.
 func versionCommand() *Cmd {
@@ -14,14 +14,14 @@ func versionCommand() *Cmd {
 		Summary: "manage Wago toolchain versions (list, switch, install, …)",
 		Children: []*Cmd{
 			{
-				Name: "list", Aliases: []string{"ls", "list-remote", "ls-remote"},
-				Summary: "list versions available to install",
-				Run:     func(*Ctx) { vmListRemote() },
-			},
-			{
-				Name: "list-installed", Aliases: []string{"ls-installed", "list-local"},
+				Name: "list", Aliases: []string{"ls", "list-installed", "ls-installed", "list-local"},
 				Summary: "list locally installed versions",
 				Run:     func(*Ctx) { vmList(dirs()) },
+			},
+			{
+				Name: "available", Aliases: []string{"list-remote", "ls-remote"},
+				Summary: "list versions available to install",
+				Run:     func(*Ctx) { vmListRemote() },
 			},
 			{
 				Name:    "current",
