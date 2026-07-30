@@ -295,6 +295,73 @@ func (f *fn) i8x16Swizzle() {
 }
 
 func (f *fn) i8x16Shuffle(lanes [16]byte) {
+	// AssemblyScript spells BLAKE's per-i32 rotate-right-by-16 and -8 as
+	// one-input byte shuffles. Lower those masks directly: REV32.8H swaps the
+	// halfwords in every i32 lane, while USHR+SLI rotates every lane by 8.
+	// The second wasm operand is unselected by both masks, so only its consumed
+	// owned register (if any) needs releasing.
+	rotate16 := [16]byte{2, 3, 0, 1, 6, 7, 4, 5, 10, 11, 8, 9, 14, 15, 12, 13}
+	rotate8 := [16]byte{1, 2, 3, 0, 5, 6, 7, 4, 9, 10, 11, 8, 13, 14, 15, 12}
+	if lanes == rotate16 || lanes == rotate8 {
+		bElem := f.popValue()
+		if bElem.st.kind == stReg {
+			f.releaseF(bElem.st.reg)
+		}
+		aElem := f.popValue()
+		src, owned := f.operandRegV128(aElem)
+		f.fpinned = f.fpinned.add(src)
+		dst := f.allocFReg(maskOf(src))
+		if lanes == rotate16 {
+			f.a.NeonRev32H(dst, src)
+		} else {
+			f.a.NeonUshrS(dst, src, 8)
+			f.a.NeonSliS(dst, src, 24)
+		}
+		f.fpinned = f.fpinned.remove(src)
+		if owned {
+			f.releaseF(src)
+		}
+		f.stats.peep("simd-shuffle-rotr")
+		f.pushVReg(dst)
+		return
+	}
+
+	// BLAKE's message schedule also uses the four canonical ZIP masks. They map
+	// directly to ZIP1/ZIP2 at 64- or 32-bit lane widths.
+	zip1D := [16]byte{0, 1, 2, 3, 4, 5, 6, 7, 16, 17, 18, 19, 20, 21, 22, 23}
+	zip2D := [16]byte{8, 9, 10, 11, 12, 13, 14, 15, 24, 25, 26, 27, 28, 29, 30, 31}
+	zip1S := [16]byte{0, 1, 2, 3, 16, 17, 18, 19, 4, 5, 6, 7, 20, 21, 22, 23}
+	zip2S := [16]byte{8, 9, 10, 11, 24, 25, 26, 27, 12, 13, 14, 15, 28, 29, 30, 31}
+	if lanes == zip1D || lanes == zip2D || lanes == zip1S || lanes == zip2S {
+		bElem := f.popValue()
+		aElem := f.popValue()
+		xa, aOwned := f.operandRegV128(aElem)
+		f.fpinned = f.fpinned.add(xa)
+		xb, bOwned := f.operandRegV128(bElem)
+		f.fpinned = f.fpinned.add(xb)
+		dst := f.allocFReg(maskOf(xa, xb))
+		switch lanes {
+		case zip1D:
+			f.a.NeonZip1D(dst, xa, xb)
+		case zip2D:
+			f.a.NeonZip2D(dst, xa, xb)
+		case zip1S:
+			f.a.NeonZip1S(dst, xa, xb)
+		case zip2S:
+			f.a.NeonZip2S(dst, xa, xb)
+		}
+		f.fpinned = f.fpinned.remove(xa).remove(xb)
+		if bOwned {
+			f.releaseF(xb)
+		}
+		if aOwned {
+			f.releaseF(xa)
+		}
+		f.stats.peep("simd-shuffle-zip")
+		f.pushVReg(dst)
+		return
+	}
+
 	var aMask, bMask [16]byte
 	for i := range aMask {
 		aMask[i], bMask[i] = 0x80, 0x80
@@ -761,13 +828,23 @@ func (f *fn) v128I32x4ConvertToFloat(r *wasm.Reader, f64dst, signed bool) error 
 	return f.v128Unary(r, op)
 }
 
-func (f *fn) v128Shift(r *wasm.Reader, op func(dst, s1, s2 Reg), countMask int32, laneSize int, right bool) error {
+func (f *fn) v128Shift(r *wasm.Reader, op func(dst, s1, s2 Reg), opImm func(dst, src Reg, shift uint8), countMask int32, laneSize int, right bool) error {
 	if done, err := f.tryV128Sink2LocalSet(r, func(dst Reg) {
-		f.v128ShiftInto(dst, op, countMask, laneSize, right)
+		f.v128ShiftInto(dst, op, opImm, countMask, laneSize, right)
 	}); done || err != nil {
 		return err
 	}
 	countElem := f.popValue()
+	if countElem.st.kind == stConst {
+		value := f.popValue()
+		x := f.materializeV128(value)
+		if shift := uint8(countElem.st.cval & int64(countMask)); shift != 0 {
+			opImm(x, x, shift)
+		}
+		f.stats.peep("simd-shift-imm")
+		f.pushVReg(x)
+		return nil
+	}
 	count := f.materialize(countElem)
 	f.andImm(count, int64(countMask), false) // Wasm shifts use count modulo lane width.
 	if right {
@@ -793,8 +870,22 @@ func (f *fn) v128Shift(r *wasm.Reader, op func(dst, s1, s2 Reg), countMask int32
 // pinned dst (via fpinnedLocalMask) and the in-place source are protected, so it
 // can never alias either; the NEON shift reads both sources before writing dst,
 // so value==dst (the `x = x shl c` accumulator) is also correct.
-func (f *fn) v128ShiftInto(dst Reg, op func(dst, s1, s2 Reg), countMask int32, laneSize int, right bool) {
+func (f *fn) v128ShiftInto(dst Reg, op func(dst, s1, s2 Reg), opImm func(dst, src Reg, shift uint8), countMask int32, laneSize int, right bool) {
 	countElem := f.popValue()
+	if countElem.st.kind == stConst {
+		value := f.popValue()
+		src, owned := f.operandRegV128(value)
+		if shift := uint8(countElem.st.cval & int64(countMask)); shift != 0 {
+			opImm(dst, src, shift)
+		} else if dst != src {
+			f.a.NeonMov16b(dst, src)
+		}
+		if owned && dst != src {
+			f.releaseF(src)
+		}
+		f.stats.peep("simd-shift-imm")
+		return
+	}
 	count := f.materialize(countElem)
 	f.andImm(count, int64(countMask), false)
 	if right {
@@ -815,20 +906,20 @@ func (f *fn) v128ShiftInto(dst Reg, op func(dst, s1, s2 Reg), countMask int32, l
 	}
 }
 
-func (f *fn) i8x16Shift(r *wasm.Reader, op func(dst, s1, s2 Reg), right bool) error {
-	return f.v128Shift(r, op, 7, 1, right)
+func (f *fn) i8x16Shift(r *wasm.Reader, op func(dst, s1, s2 Reg), opImm func(dst, src Reg, shift uint8), right bool) error {
+	return f.v128Shift(r, op, opImm, 7, 1, right)
 }
 
-func (f *fn) i16x8Shift(r *wasm.Reader, op func(dst, s1, s2 Reg), right bool) error {
-	return f.v128Shift(r, op, 15, 2, right)
+func (f *fn) i16x8Shift(r *wasm.Reader, op func(dst, s1, s2 Reg), opImm func(dst, src Reg, shift uint8), right bool) error {
+	return f.v128Shift(r, op, opImm, 15, 2, right)
 }
 
-func (f *fn) i32x4Shift(r *wasm.Reader, op func(dst, s1, s2 Reg), right bool) error {
-	return f.v128Shift(r, op, 31, 4, right)
+func (f *fn) i32x4Shift(r *wasm.Reader, op func(dst, s1, s2 Reg), opImm func(dst, src Reg, shift uint8), right bool) error {
+	return f.v128Shift(r, op, opImm, 31, 4, right)
 }
 
-func (f *fn) i64x2Shift(r *wasm.Reader, op func(dst, s1, s2 Reg), right bool) error {
-	return f.v128Shift(r, op, 63, 8, right)
+func (f *fn) i64x2Shift(r *wasm.Reader, op func(dst, s1, s2 Reg), opImm func(dst, src Reg, shift uint8), right bool) error {
+	return f.v128Shift(r, op, opImm, 63, 8, right)
 }
 
 // i64x2.shr_s uses the same packed SSHL path as every other vector shift: SSHL.2D
@@ -2059,11 +2150,11 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 106: // f32x4.nearest
 		return f.v128FloatRound(r, false, roundNearest)
 	case 107: // i8x16.shl
-		return f.i8x16Shift(r, f.a.NeonUshlB, false)
+		return f.i8x16Shift(r, f.a.NeonUshlB, f.a.NeonShlB, false)
 	case 108: // i8x16.shr_s
-		return f.i8x16Shift(r, f.a.NeonSshrvB, true)
+		return f.i8x16Shift(r, f.a.NeonSshrvB, f.a.NeonSshrB, true)
 	case 109: // i8x16.shr_u
-		return f.i8x16Shift(r, f.a.NeonUshrvB, true)
+		return f.i8x16Shift(r, f.a.NeonUshrvB, f.a.NeonUshrB, true)
 	case 110: // i8x16.add
 		return f.v128Bin(r, f.a.NeonAddB)
 	case 111: // i8x16.add_sat_s
@@ -2115,11 +2206,11 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 138: // i16x8.extend_high_i8x16_u
 		return f.i16x8ExtendI8x16(r, false, true)
 	case 139: // i16x8.shl
-		return f.i16x8Shift(r, f.a.NeonUshlH, false)
+		return f.i16x8Shift(r, f.a.NeonUshlH, f.a.NeonShlH, false)
 	case 140: // i16x8.shr_s
-		return f.i16x8Shift(r, f.a.NeonSshrvH, true)
+		return f.i16x8Shift(r, f.a.NeonSshrvH, f.a.NeonSshrH, true)
 	case 141: // i16x8.shr_u
-		return f.i16x8Shift(r, f.a.NeonUshrvH, true)
+		return f.i16x8Shift(r, f.a.NeonUshrvH, f.a.NeonUshrH, true)
 	case 142: // i16x8.add
 		return f.v128Bin(r, f.a.NeonAddH)
 	case 143: // i16x8.add_sat_s
@@ -2163,11 +2254,11 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 170: // i32x4.extend_high_i16x8_u
 		return f.i32x4ExtendI16x8(r, false, true)
 	case 171: // i32x4.shl
-		return f.i32x4Shift(r, f.a.NeonUshlS, false)
+		return f.i32x4Shift(r, f.a.NeonUshlS, f.a.NeonShlS, false)
 	case 172: // i32x4.shr_s
-		return f.i32x4Shift(r, f.a.NeonSshrvS, true)
+		return f.i32x4Shift(r, f.a.NeonSshrvS, f.a.NeonSshrS, true)
 	case 173: // i32x4.shr_u
-		return f.i32x4Shift(r, f.a.NeonUshrvS, true)
+		return f.i32x4Shift(r, f.a.NeonUshrvS, f.a.NeonUshrS, true)
 	case 199: // i64x2.extend_low_i32x4_s
 		return f.i64x2ExtendI32x4(r, true, false)
 	case 200: // i64x2.extend_high_i32x4_s
@@ -2177,11 +2268,11 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 202: // i64x2.extend_high_i32x4_u
 		return f.i64x2ExtendI32x4(r, false, true)
 	case 203: // i64x2.shl
-		return f.i64x2Shift(r, f.a.NeonUshlD, false)
+		return f.i64x2Shift(r, f.a.NeonUshlD, f.a.NeonShlD, false)
 	case 204: // i64x2.shr_s
-		return f.i64x2Shift(r, f.a.NeonSshrvD, true)
+		return f.i64x2Shift(r, f.a.NeonSshrvD, f.a.NeonSshrD, true)
 	case 205: // i64x2.shr_u
-		return f.i64x2Shift(r, f.a.NeonUshrvD, true)
+		return f.i64x2Shift(r, f.a.NeonUshrvD, f.a.NeonUshrD, true)
 	case 174: // i32x4.add
 		return f.v128Bin(r, f.a.NeonAddS)
 	case 177: // i32x4.sub
