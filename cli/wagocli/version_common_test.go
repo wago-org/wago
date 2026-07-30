@@ -351,11 +351,8 @@ func TestUpdateVersionTarget(t *testing.T) {
 	}
 }
 
-func TestRemoteVersionNamesHideImmutableChannelTags(t *testing.T) {
+func TestInstallPickerHidesImmutableChannelTagsAtTopLevel(t *testing.T) {
 	tags := []string{"nightly-20260712-deadbee", "v0.1.4", "canary-cafef00", "nightly-20260711-abcdef0", "v0.2.0", "0.1.0", "canary"}
-	if got, want := remoteVersionNames(tags), []string{"canary", "nightly", "latest", "v0.2.0", "v0.1.4", "v0.1.0"}; !slices.Equal(got, want) {
-		t.Fatalf("remoteVersionNames = %v, want %v", got, want)
-	}
 	if got, want := stableReleaseNames(tags), []string{"v0.2.0", "v0.1.4", "v0.1.0"}; !slices.Equal(got, want) {
 		t.Fatalf("stableReleaseNames = %v, want %v", got, want)
 	}
@@ -389,9 +386,6 @@ func TestRemoteVersionNamesHideImmutableChannelTags(t *testing.T) {
 	}
 	if got := releasePickerLabel("canary"); got != "canary" {
 		t.Fatalf("releasePickerLabel(canary) = %q", got)
-	}
-	if got, want := formatRemoteVersionList(tags), " canary\n nightly\n latest\n\n v0.2.0\n v0.1.4\n v0.1.0\n"; got != want {
-		t.Fatalf("formatRemoteVersionList = %q, want %q", got, want)
 	}
 }
 

@@ -25,9 +25,6 @@ func TestVersionSelectionAndOrderingHelpers(t *testing.T) {
 	if got := strings.Join(stableReleaseNames([]string{"v1.2.3", "canary-abcd", "", "nightly-2026"}), ","); got != "v1.2.3" {
 		t.Fatalf("stable releases = %q", got)
 	}
-	if got := strings.Join(remoteVersionNames([]string{"v1.2.3", "canary-a", "canary-b", "nightly-x"}), ","); got != "canary,nightly,latest,v1.2.3" {
-		t.Fatalf("remote releases = %q", got)
-	}
 	for _, tc := range []struct {
 		active          string
 		args            []string

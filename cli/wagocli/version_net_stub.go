@@ -166,18 +166,6 @@ func vmUpdate(d wagopaths.Dirs, ver string, profile wagopaths.Profile, build wag
 	fmt.Printf("updated wago %s -> %s\n", cyan(ver), dest)
 }
 
-func vmListRemote() {
-	body, err := curlGetBytes(releaseAPI() + "/repos/wago-org/wago/releases?per_page=100")
-	if err != nil {
-		fatal("version list: %v", err)
-	}
-	var releases []remoteRelease
-	if err := json.Unmarshal(body, &releases); err != nil {
-		fatal("version list: %v", err)
-	}
-	fmt.Print(formatRemoteVersionList(releaseTags(releases)))
-}
-
 // releaseDownloadVersion resolves a rolling channel to its newest immutable
 // prerelease tag. Stable versions are already immutable release tags.
 func releaseDownloadVersion(ver string) string {

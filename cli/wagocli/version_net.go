@@ -1,6 +1,6 @@
 //go:build !wago_lean
 
-// The downloader (install / update / list-remote) pulls in net/http,
+// The downloader (install / update) pulls in net/http,
 // encoding/json, and crypto/sha256. It is excluded from the size-optimized
 // TinyGo build (-tags wago_lean), which lacks an ordinary host-network
 // transport; that build gets the stubs in version_net_stub.go. Version
@@ -177,22 +177,6 @@ func vmUpdate(d wagopaths.Dirs, ver string, profile wagopaths.Profile, build wag
 		fatal("version update: %v", err)
 	}
 	progress.finish("Updated " + installedWagoLabel(ver, resolved, profile, build))
-}
-
-func vmListRemote() {
-	resp, err := http.Get(releaseAPI() + "/repos/wago-org/wago/releases?per_page=100")
-	if err != nil {
-		fatal("version list: %v", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		fatal("version list: GitHub returned %s", resp.Status)
-	}
-	var releases []remoteRelease
-	if err := json.NewDecoder(resp.Body).Decode(&releases); err != nil {
-		fatal("version list: %v", err)
-	}
-	fmt.Print(formatRemoteVersionList(releaseTags(releases)))
 }
 
 func resolveRunnerVersion(ver string, progress *installProgress) (resolved string, sourceOnly bool, err error) {
