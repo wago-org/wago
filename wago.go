@@ -99,6 +99,8 @@ type (
 	ModuleMetadata              = impl.ModuleMetadata
 	OffsetInit                  = impl.OffsetInit
 	OptKnobInfo                 = impl.OptKnobInfo
+	PageSnapshot                = impl.PageSnapshot
+	PageSnapshotBinding         = impl.PageSnapshotBinding
 	PassiveDataInit             = impl.PassiveDataInit
 	PluginCapability            = impl.PluginCapability
 	PluginConfig                = impl.PluginConfig
@@ -252,6 +254,10 @@ func CapabilityDocs(docs string) CapabilityOption { return impl.CapabilityDocs(d
 
 func Capture(c *Compiled, opts SnapshotOptions) (*Snapshot, error) { return impl.Capture(c, opts) }
 
+func CapturePageSnapshot(in *Instance) (*PageSnapshot, *PageSnapshotBinding, error) {
+	return impl.CapturePageSnapshot(in)
+}
+
 func Compile(args ...any) (*Compiled, error) { return impl.Compile(args...) }
 
 func CompileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) {
@@ -283,6 +289,8 @@ func Instantiate(source Instantiable, opts ...any) (*Instance, error) {
 func IsCompiled(b []byte) bool { return impl.IsCompiled(b) }
 
 func IsGuardPageUnavailable(err error) bool { return impl.IsGuardPageUnavailable(err) }
+
+func IsPageSnapshotMemoryGrown(err error) bool { return impl.IsPageSnapshotMemoryGrown(err) }
 
 func IsSnapshot(b []byte) bool { return impl.IsSnapshot(b) }
 

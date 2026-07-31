@@ -76,11 +76,16 @@ func NewJobMemory(linBytes int) (*JobMemory, error) {
 // size cache up to maxBytes without any remap, so the base pointer never moves.
 func NewJobMemoryGrowable(initialBytes, maxBytes int) (*JobMemory, error) {
 	initialBytes, maxBytes, reserveBytes := normalizeMemorySizes(initialBytes, maxBytes)
-	mem, err := mmapRWReserve(basedataSize + reserveBytes)
+	// Keep linear memory page-aligned. Besides matching the guarded layout, this
+	// lets a captured image be restored with a fixed private file mapping: the
+	// kernel can then discard dirty pages on reset instead of copying the entire
+	// image back from Go memory.
+	linOff := roundUpPage(basedataSize)
+	mem, err := mmapRWReserve(linOff + reserveBytes)
 	if err != nil {
 		return nil, err
 	}
-	j := &JobMemory{mem: mem, linOff: basedataSize, linLen: reserveBytes}
+	j := &JobMemory{mem: mem, linOff: linOff, linLen: reserveBytes}
 	j.reset(initialBytes, maxBytes, reserveBytes, false)
 	return j, nil
 }
@@ -109,9 +114,8 @@ func normalizeMemorySizes(initialBytes, maxBytes int) (int, int, int) {
 
 func (j *JobMemory) reset(initialBytes, maxBytes, reserveBytes int, clearMem bool) {
 	if clearMem {
-		clear(j.mem[:basedataSize+reserveBytes])
+		clear(j.mem[:j.linOff+reserveBytes])
 	}
-	j.linOff = basedataSize
 	j.linLen = reserveBytes
 	j.reserveBase = 0
 	j.reserveLen = 0
@@ -131,7 +135,7 @@ func (j *JobMemory) reset(initialBytes, maxBytes, reserveBytes int, clearMem boo
 // instead of paying a fresh mmap+munmap of that range on every instantiate.
 func AcquireJobMemoryGrowable(initialBytes, maxBytes int) (*JobMemory, error) {
 	initialBytes, maxBytes, reserveBytes := normalizeMemorySizes(initialBytes, maxBytes)
-	need := basedataSize + reserveBytes
+	need := roundUpPage(basedataSize) + reserveBytes
 	jobMemoryCache.Lock()
 	j := jobMemoryCache.j
 	if j != nil && j.reserveBase == 0 && len(j.mem) >= need {
@@ -167,7 +171,7 @@ const jobMemoryReclaimThreshold = 384 << 10
 // with MADV_DONTNEED (mirrors the guard-page path's decommitGuarded, minus the
 // PROT_NONE re-arm — explicit bounds never fault, so the mapping stays RW).
 func (j *JobMemory) reclaimForReuse() error {
-	used := roundUpPage(basedataSize + j.curBytes())
+	used := roundUpPage(j.linOff + j.curBytes())
 	if used > len(j.mem) {
 		used = len(j.mem)
 	}
