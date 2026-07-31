@@ -15,20 +15,6 @@ func Channel(current string) string {
 	return "canary"
 }
 
-func RuntimeTarget(active, channel, resolved string) string {
-	activeChannel := active
-	if !rolling(activeChannel) {
-		activeChannel = pinnedChannel(activeChannel)
-	}
-	if activeChannel == "" || activeChannel != channel {
-		return ""
-	}
-	if sha, found := strings.CutPrefix(resolved, "canary@"); found && validCommit(sha) {
-		return "canary-" + sha[:7]
-	}
-	return resolved
-}
-
 func pinnedChannel(version string) string {
 	for _, channel := range []string{"canary", "nightly"} {
 		if strings.HasPrefix(version, channel+"-") {
@@ -40,16 +26,4 @@ func pinnedChannel(version string) string {
 
 func rolling(version string) bool {
 	return version == "canary" || version == "nightly"
-}
-
-func validCommit(sha string) bool {
-	if len(sha) != 40 {
-		return false
-	}
-	for _, character := range sha {
-		if !strings.ContainsRune("0123456789abcdef", character) {
-			return false
-		}
-	}
-	return true
 }

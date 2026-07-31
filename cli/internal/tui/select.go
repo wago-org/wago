@@ -28,7 +28,7 @@ const (
 	keyUp
 	keyDown
 	keyToggle // space
-	keyAll    // a
+	keyAll    // a toggles the whole list
 	keyClear  // n
 	keyAccept // enter / return — submit the checked items
 	keyReject // r — clear everything and submit (grant nothing)
@@ -84,8 +84,15 @@ func (m *MultiSelect) apply(k selectKey) (done, cancelled bool) {
 			m.Items[m.Cursor].On = !m.Items[m.Cursor].On
 		}
 	case keyAll:
+		allSelected := len(m.Items) > 0
+		for _, item := range m.Items {
+			if !item.On {
+				allSelected = false
+				break
+			}
+		}
 		for i := range m.Items {
-			m.Items[i].On = true
+			m.Items[i].On = !allSelected
 		}
 	case keyClear:
 		for i := range m.Items {

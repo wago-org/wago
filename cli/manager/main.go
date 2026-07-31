@@ -196,7 +196,7 @@ func managerUsage(w *os.File) {
 		{"init", "", "initialize a local Wago project"},
 		{"add", "<module>[@version]...", "add and enable plugins, then rebuild Wago"},
 		{"rm", "<name>", "remove and disable a plugin"},
-		{"plugin", "<command>", "install, update, verify, and publish plugins"},
+		{"plugin", "<command>", "install, update, and publish plugins"},
 		{"auth", "<command>", "authenticate to the registry (plugins.wago.sh)"},
 		{"module", "<command>", "inspect a module's imports and required capabilities"},
 		{"self", "<command>", "update or uninstall Wago"},

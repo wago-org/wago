@@ -8,6 +8,7 @@ import (
 	"github.com/wago-org/wago"
 	"github.com/wago-org/wago/cli/internal/command"
 	"github.com/wago-org/wago/cli/internal/handoff"
+	"github.com/wago-org/wago/cli/internal/pluginmenu"
 	"github.com/wago-org/wago/cli/internal/ui"
 	runtimeplugin "github.com/wago-org/wago/cli/runtime/internal/plugin"
 )
@@ -98,24 +99,9 @@ func entry(name, version string) string {
 }
 
 func packageRoot(name string) string {
-	first := strings.IndexByte(name, '/')
-	if first < 0 {
-		return name
-	}
-	second := strings.IndexByte(name[first+1:], '/')
-	if second < 0 {
-		return name
-	}
-	return name[:first+1+second]
+	return pluginmenu.Root(name)
 }
 
 func childName(root, name string) string {
-	if !strings.HasPrefix(name, root+"/") {
-		return name
-	}
-	repository := root
-	if slash := strings.LastIndexByte(root, '/'); slash >= 0 {
-		repository = root[slash+1:]
-	}
-	return repository + strings.TrimPrefix(name, root)
+	return pluginmenu.ChildLabel(root, name)
 }

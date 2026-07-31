@@ -325,7 +325,7 @@ func TestManagerOwnsInitWithoutSelectedRunner(t *testing.T) {
 		t.Fatal(err)
 	}
 	os.Stdout = write
-	os.Args = []string{"wago", "init"}
+	os.Args = []string{"wago", "init", "--quick"}
 	main()
 	_ = write.Close()
 	output, err := io.ReadAll(read)

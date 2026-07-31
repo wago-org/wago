@@ -36,6 +36,23 @@ func TestInitializeCreatesManifestAndPreservesFields(t *testing.T) {
 	}
 }
 
+func TestInitializeWithMergesWizardFields(t *testing.T) {
+	dir := t.TempDir()
+	if _, err := InitializeWith(dir, map[string]any{"name": "Demo"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := InitializeWith(dir, map[string]any{"description": "Example"}); err != nil {
+		t.Fatal(err)
+	}
+	manifest, err := Read(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if manifest["name"] != "Demo" || manifest["description"] != "Example" {
+		t.Fatalf("manifest = %#v", manifest)
+	}
+}
+
 func TestEnsureGitignoreIsIdempotent(t *testing.T) {
 	dir := t.TempDir()
 	oldDir, err := os.Getwd()

@@ -85,25 +85,67 @@ func fetchReleases() ([]remoteRelease, error) {
 	}
 }
 
-// vmUpdate fetches a fresh copy even when the version is already installed.
-// downloadBinary writes a sibling temporary file and renames it only after the
-// checksum succeeds, so a failed update leaves the installed binary intact.
-func vmUpdate(d wagopaths.Dirs, ver string, profile wagopaths.Profile, build wagopaths.Build, use string) {
+// vmUpdate resolves the moving channel before touching the installed runtime.
+// Matching commits are left intact unless force is set; replacements use a
+// sibling temporary file so a failed update preserves the installed binary.
+var (
+	resolveUpdateRunnerVersion = resolveRunnerVersion
+	installUpdateRunnerPayload = installRunnerPayload
+)
+
+func vmUpdate(d wagopaths.Dirs, ver string, profile wagopaths.Profile, build wagopaths.Build, use string, force bool) {
 	dest := d.RuntimeBinary(ver, string(profile), string(build))
 	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
 		fatal("version update: %v", err)
 	}
 	progress := managerprogress.NewProgress(os.Stderr)
 	progress.Title("Updating " + installedWagoLabel(ver, ver, profile, build))
-	resolved, sourceOnly, err := resolveRunnerVersion(ver, progress)
+	resolved, sourceOnly, err := resolveUpdateRunnerVersion(ver, progress)
 	if err != nil {
 		fatal("version update: %v", err)
 	}
-	if err := installRunnerPayload(resolved, profile, build, dest, sourceOnly, progress); err != nil {
+	if !force && installedCommitMatches(dest, resolved) {
+		progress.Finish(installedWagoLabel(ver, resolved, profile, build) + " is already up to date")
+		offerUseUpdated(d, ver, profile, build, use)
+		return
+	}
+	if err := installUpdateRunnerPayload(resolved, profile, build, dest, sourceOnly, progress); err != nil {
 		fatal("version update: %v", err)
 	}
 	progress.Finish("Updated " + installedWagoLabel(ver, resolved, profile, build))
 	offerUseUpdated(d, ver, profile, build, use)
+}
+
+func installedCommitMatches(path, resolved string) bool {
+	if _, err := os.Stat(path); err != nil {
+		return false
+	}
+	installed := RuntimeRelease(path, "")
+	installedCommit, resolvedCommit := commitFromVersion(installed), commitFromVersion(resolved)
+	if installedCommit == "" || resolvedCommit == "" {
+		return false
+	}
+	return strings.HasPrefix(installedCommit, resolvedCommit) || strings.HasPrefix(resolvedCommit, installedCommit)
+}
+
+func commitFromVersion(version string) string {
+	if sha, ok := canaryCommitSHA(version); ok {
+		return sha
+	}
+	if channelRelease(version) == "" {
+		return ""
+	}
+	parts := strings.Split(version, "-")
+	commit := parts[len(parts)-1]
+	if len(commit) < 7 {
+		return ""
+	}
+	for _, character := range strings.ToLower(commit) {
+		if !strings.ContainsRune("0123456789abcdef", character) {
+			return ""
+		}
+	}
+	return strings.ToLower(commit)
 }
 
 func resolveRunnerVersion(ver string, progress *managerprogress.Progress) (resolved string, sourceOnly bool, err error) {

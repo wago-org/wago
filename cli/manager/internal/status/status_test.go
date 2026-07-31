@@ -45,6 +45,36 @@ func TestInspectReportsActiveRuntime(t *testing.T) {
 	}
 }
 
+func TestInspectReportsManifestDirectory(t *testing.T) {
+	projectDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(projectDir, project.File), []byte("{}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	previous, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(projectDir); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(previous) })
+	resolvedProjectDir, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	report, err := Inspect(wagopaths.Dirs{Data: filepath.Join(t.TempDir(), "data")}, "canary", "/tmp/wago")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.ProjectDir != resolvedProjectDir {
+		t.Fatalf("project directory = %q, want %q", report.ProjectDir, resolvedProjectDir)
+	}
+	if report.ManifestPath != project.File {
+		t.Fatalf("manifest path = %q, want %q", report.ManifestPath, project.File)
+	}
+}
+
 func TestPrintKeepsStatusCompact(t *testing.T) {
 	var output bytes.Buffer
 	Print(&output, Report{
@@ -54,11 +84,12 @@ func TestPrintKeepsStatusCompact(t *testing.T) {
 		RuntimeBuild:   "normal",
 		RuntimePath:    "/tmp/wago-runtime",
 		Scope:          "local",
+		ProjectDir:     "/tmp/project",
 		ManifestPath:   "/tmp/project/wago.json",
 		Plugins:        2,
 		LockState:      "up to date",
 	})
-	for _, want := range []string{"Wago status", "nightly (standard/normal)", "local", "2 enabled", "up to date"} {
+	for _, want := range []string{"Wago status", "nightly (standard/normal)", "local", "directory", "/tmp/project", "2 enabled", "up to date"} {
 		if !strings.Contains(output.String(), want) {
 			t.Errorf("output does not contain %q:\n%s", want, output.String())
 		}

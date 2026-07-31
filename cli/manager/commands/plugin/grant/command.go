@@ -22,7 +22,7 @@ type Environment interface {
 
 func Command(environment Environment) *command.Cmd {
 	return &command.Cmd{
-		Name: "grant", Summary: "review and edit a plugin's granted capabilities", Args: "<name>",
+		Name: "grant", Summary: "review and edit a plugin's granted capabilities", Args: "[name]",
 		Flags: []command.Flag{
 			plugin.GlobalFlag(), plugin.LocalFlag(),
 			{Name: "allow", Arg: "<cap,...>", Help: "grant a comma-separated capability set without a prompt"},
@@ -46,7 +46,7 @@ func Command(environment Environment) *command.Cmd {
 				}
 			}
 			environment.Grant(Options{
-				Name: c.One("<name>"), Global: c.Bool("global"), Local: c.Bool("local"),
+				Name: c.Optional("[name]"), Global: c.Bool("global"), Local: c.Bool("local"),
 				Capabilities: capabilities, All: c.Bool("all"), DenyAll: c.Bool("deny-all"),
 			})
 		},

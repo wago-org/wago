@@ -3,26 +3,58 @@ package initcmd
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/wago-org/wago/cli/internal/command"
-	"github.com/wago-org/wago/cli/internal/project"
+	"github.com/wago-org/wago/cli/internal/tui"
 	"github.com/wago-org/wago/cli/internal/ui"
 )
 
 func Command() *command.Cmd {
 	return &command.Cmd{
-		Name: "init", Summary: "initialize a local Wago project",
-		Run: func(*command.Ctx) {
-			created, err := project.Initialize(".")
+		Name: "init", Summary: "initialize and configure a local Wago project",
+		Flags: []command.Flag{
+			{Name: "quick", Bool: true, Help: "create a minimal project without prompting"},
+			{Name: "full", Bool: true, Help: "configure project details and plugins"},
+			{Name: "kind", Arg: "<kind>", Help: "project kind: application or plugin"},
+			{Name: "name", Arg: "<name>", Help: "human-readable project name"},
+			{Name: "description", Arg: "<text>", Help: "project description"},
+			{Name: "plugins", Arg: "<spec,...>", Help: "initial plugin constraints"},
+			{Name: "module", Arg: "<path>", Help: "publishable Go module path"},
+			{Name: "version", Arg: "<version>", Help: "package semantic version"},
+			{Name: "license", Arg: "<spdx>", Help: "package SPDX license"},
+			{Name: "repository", Arg: "<url>", Help: "public HTTPS repository"},
+			{Name: "homepage", Arg: "<url>", Help: "project homepage"},
+			{Name: "category", Arg: "<slug>", Help: "registry category"},
+			{Name: "tags", Arg: "<tag,...>", Help: "registry discovery tags"},
+			{Name: "author", Arg: "<name>", Help: "package author"},
+			{Name: "stability", Arg: "<level>", Help: "experimental, stable, or deprecated"},
+			{Name: "yes", Short: "y", Bool: true, Help: "accept inferred defaults for omitted answers"},
+		},
+		Run: func(ctx *command.Ctx) {
+			result, err := run(ctx, os.Stdin, os.Stdout, tui.StdinIsTTY())
 			if err != nil {
 				ui.Fatal("init: %v", err)
 			}
-			project.EnsureGitignore(".wago/")
-			if created {
-				fmt.Println(ui.Cyan("Initialized wago.json"))
+			if result.Cancelled {
+				fmt.Println("Cancelled.")
 				return
 			}
-			fmt.Println(ui.Dim("wago.json already initialized"))
+			verb := "Updated"
+			if result.Created {
+				verb = "Initialized"
+			}
+			fmt.Printf("%s %s wago.json (%s setup)\n", ui.Cyan("✓"), verb, result.Mode)
+			if result.Plugins > 0 {
+				fmt.Printf("  %d plugin%s configured\n", result.Plugins, plural(result.Plugins))
+			}
 		},
 	}
+}
+
+func plural(count int) string {
+	if count == 1 {
+		return ""
+	}
+	return "s"
 }

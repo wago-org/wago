@@ -18,6 +18,7 @@ type AddRequest struct {
 type MutationRequest struct {
 	Name          string
 	Global, Local bool
+	Force         bool
 	Verbose       bool
 	Capabilities  []string
 	GrantAll      bool
@@ -58,14 +59,13 @@ func Grant(request MutationRequest) {
 func Update(request MutationRequest) {
 	pkgUpdate(normalizeModuleRef(request.Name), pkgOpts{
 		global:  mustMutationScope(request.Global, request.Local),
+		force:   request.Force,
 		verbose: request.Verbose,
 	})
 }
 
 func CheckOutdated(request MaintenanceRequest)  { Outdated(request) }
 func ShowTree(request MaintenanceRequest)       { Tree(request) }
-func ExplainWhy(request MaintenanceRequest)     { Why(request) }
-func VerifyState(request MaintenanceRequest)    { Verify(request) }
 func RebuildRuntime(request MaintenanceRequest) { Rebuild(request) }
 
 func mustMutationScope(global, local bool) bool {

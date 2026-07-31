@@ -60,6 +60,12 @@ func Write(dir string, manifest map[string]any) error {
 }
 
 func Initialize(dir string) (bool, error) {
+	return InitializeWith(dir, nil)
+}
+
+// InitializeWith creates or updates a manifest while preserving fields that
+// are not owned by the caller. Values replace fields with the same key.
+func InitializeWith(dir string, values map[string]any) (bool, error) {
 	_, statErr := os.Stat(Path(dir))
 	created := os.IsNotExist(statErr)
 	manifest, err := Read(dir)
@@ -69,6 +75,9 @@ func Initialize(dir string) (bool, error) {
 	EnsureMetadata(manifest)
 	if _, ok := manifest["plugins"]; !ok {
 		manifest["plugins"] = map[string]any{}
+	}
+	for key, value := range values {
+		manifest[key] = value
 	}
 	return created, Write(dir, manifest)
 }

@@ -3,9 +3,7 @@ package plugin
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 
 	"github.com/wago-org/wago/cli/internal/project"
@@ -59,59 +57,6 @@ func Tree(request MaintenanceRequest) {
 		}
 		fmt.Printf("  %s@%s  %s\n", requirement.ID, version, dim(requirement.Constraint))
 	}
-}
-
-func Why(request MaintenanceRequest) {
-	dir, _ := maintenanceSource(request)
-	requirements, lock := maintenanceState(dir)
-	id := strings.TrimPrefix(normalizeModuleRef(request.Name), "github.com/")
-	for _, requirement := range requirements {
-		if requirement.ID != id && requirement.Module != request.Name {
-			continue
-		}
-		entry := lock.Packages[requirement.ID]
-		fmt.Printf("%s is directly required by %s\n", requirement.ID, project.DisplayPath(dir))
-		fmt.Printf("  constraint  %s\n", requirement.Constraint)
-		resolved := "unresolved"
-		if strings.TrimSpace(entry.Version) != "" {
-			resolved = DisplayVersion(entry.Version)
-		}
-		fmt.Printf("  resolved    %s\n", resolved)
-		fmt.Printf("  capabilities %d granted\n", grantedCount(entry.Capabilities))
-		return
-	}
-	fatal("plugin why: %q is not enabled", request.Name)
-}
-
-func Verify(request MaintenanceRequest) {
-	dir, global := maintenanceSource(request)
-	requirements, lock := maintenanceState(dir)
-	seen := make(map[string]bool, len(requirements))
-	for _, requirement := range requirements {
-		seen[requirement.ID] = true
-		entry, ok := lock.Packages[requirement.ID]
-		if !ok || strings.TrimSpace(entry.Version) == "" {
-			fatal("plugin verify: %s is not pinned in %s", requirement.ID, project.LockPath(dir))
-		}
-		if len(entry.Capabilities) != 0 && !json.Valid(entry.Capabilities) {
-			fatal("plugin verify: %s has invalid capability state", requirement.ID)
-		}
-	}
-	for id := range lock.Packages {
-		if !seen[id] {
-			fatal("plugin verify: %s is locked but not declared in wago.json", id)
-		}
-	}
-	buildDir, err := buildDirFor(global)
-	if err != nil {
-		fatal("plugin verify: %v", err)
-	}
-	if _, err := os.Stat(filepath.Join(buildDir, "go.mod")); err == nil {
-		if err := pluginbuild.RunGo(buildDir, request.Verbose, "mod", "verify"); err != nil {
-			fatal("plugin verify: %v", err)
-		}
-	}
-	fmt.Printf("%s verified %d plugin%s and lockfile\n", cyan("✓"), len(requirements), plural(len(requirements)))
 }
 
 func Rebuild(request MaintenanceRequest) {
@@ -192,14 +137,4 @@ func latestModuleVersion(module, current string) (string, error) {
 		return report.Update.Version, nil
 	}
 	return report.Version, nil
-}
-
-func grantedCount(raw json.RawMessage) int {
-	var list []string
-	if json.Unmarshal(raw, &list) == nil {
-		return len(list)
-	}
-	var object map[string]json.RawMessage
-	_ = json.Unmarshal(raw, &object)
-	return len(object)
 }

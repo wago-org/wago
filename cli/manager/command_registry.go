@@ -18,8 +18,6 @@ import (
 	"github.com/wago-org/wago/cli/manager/commands/plugin/tree"
 	"github.com/wago-org/wago/cli/manager/commands/plugin/unpublish"
 	pluginupdate "github.com/wago-org/wago/cli/manager/commands/plugin/update"
-	"github.com/wago-org/wago/cli/manager/commands/plugin/verify"
-	"github.com/wago-org/wago/cli/manager/commands/plugin/why"
 	selfcmd "github.com/wago-org/wago/cli/manager/commands/self"
 	statuscmd "github.com/wago-org/wago/cli/manager/commands/status"
 	updatecmd "github.com/wago-org/wago/cli/manager/commands/update"
@@ -58,7 +56,7 @@ func topLevelRemoveCommand(environment commandEnvironment) *command.Cmd {
 }
 
 func managerPluginCommand(environment commandEnvironment) *command.Cmd {
-	return plugincmd.Command("install, update, verify, and publish plugins", []*command.Cmd{
+	return plugincmd.Command("install, update, and publish plugins", []*command.Cmd{
 		handoff.PluginListCommand(),
 		handoff.PluginInspectCommand(),
 		pluginadd.Command(environment),
@@ -67,9 +65,7 @@ func managerPluginCommand(environment commandEnvironment) *command.Cmd {
 		pluginupdate.Command(environment),
 		outdated.Command(environment),
 		tree.Command(environment),
-		why.Command(environment),
 		rebuild.Command(environment),
-		verify.Command(environment),
 		publish.Command(environment),
 		unpublish.Command(environment),
 		deprecate.Command(environment),
