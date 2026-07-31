@@ -110,6 +110,7 @@ type instanceBuilder struct {
 	imports Imports
 
 	collector           *gc.Collector
+	collectorShared     bool
 	success             bool
 	registeredInstance  *Instance
 	functionAttachments functionImportAttachments
@@ -183,6 +184,15 @@ func (b *instanceBuilder) prepareCollector() error {
 		gcConfig.Profile = gc.ProfileThroughput
 		gcConfig.DisableCollection = true
 	}
+	if b.opts.store != nil && !b.opts.store.private && b.c.usesGenericGCExecution() && !b.c.HasTable && !b.c.hasGCRefGlobals() {
+		collector, err := b.opts.store.acquireGCCollector(gcConfig, b.c.GCTypeDescs)
+		if err != nil {
+			return err
+		}
+		b.collector = collector
+		b.collectorShared = true
+		return nil
+	}
 	collector, err := gc.NewCollector(gcConfig, b.c.GCTypeDescs)
 	if err != nil {
 		return err
@@ -247,7 +257,11 @@ func (b *instanceBuilder) rollbackPreparedState() {
 		b.registeredInstance.refStore.instanceClosed(b.registeredInstance)
 	}
 	if b.collector != nil {
-		b.collector.Close()
+		if b.collectorShared && b.opts.store != nil && (b.registeredInstance == nil || b.registeredInstance.refStore == nil) {
+			b.opts.store.releaseUnclaimedGCCollector(b.collector)
+		} else if !b.collectorShared {
+			b.collector.Close()
+		}
 	}
 }
 
@@ -1176,7 +1190,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	if b.collector != nil && genericGCExecution {
 		public := in.publicGCState()
 		public.globalRoots = genericGCGlobalRoots
-		if c.genericGCBoundaryCollectionSafe() {
+		if c.genericGCBoundaryCollectionSafe() || (opts.restore != nil && len(opts.restore.gcGlobalRefs) != 0) {
 			for i, g := range c.Globals {
 				if !isGCRefValType(g.Type) || i >= len(globalCells) || globalCells[i] == nil {
 					continue
@@ -1201,6 +1215,11 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 					return nil, fmt.Errorf("global %d generic GC root: %w", i, err)
 				}
 				public.globalRoots = append(public.globalRoots, gcGlobalRootMapping{GlobalIndex: uint32(i), SlotIndex: slot})
+			}
+		}
+		if opts.restore != nil && len(opts.restore.gcGlobalRefs) != 0 {
+			if err := restoreGCHeapSnapshot(in, opts.restore); err != nil {
+				return nil, fmt.Errorf("snapshot GC heap: %w", err)
 			}
 		}
 	}

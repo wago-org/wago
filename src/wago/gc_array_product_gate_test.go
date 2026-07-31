@@ -30,7 +30,8 @@ func TestStagedGCArrayProductPlatformBoundsAndIdentityGate(t *testing.T) {
 	features.TypedFunctionReferences = true
 	features.GCArrayProducts = true
 	c, err := compileWithFrontendFeatures(cfg, data, features)
-	if goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64" {
+	arm64Explicit := goruntime.GOARCH == "arm64" && (goruntime.GOOS == "linux" || goruntime.GOOS == "darwin") && !guardPageBuilt
+	if (goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64") && !arm64Explicit {
 		if err == nil || !strings.Contains(err.Error(), "unsupported collector-backed array product staged execution on") {
 			t.Fatalf("platform compile = %v, want explicit array rejection", err)
 		}
@@ -43,7 +44,7 @@ func TestStagedGCArrayProductPlatformBoundsAndIdentityGate(t *testing.T) {
 		return
 	}
 	if err != nil {
-		t.Fatalf("linux/amd64 explicit compile: %v", err)
+		t.Fatalf("explicit GC array compile: %v", err)
 	}
 	_ = c.Close()
 

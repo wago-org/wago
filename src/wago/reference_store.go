@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math/bits"
+	"reflect"
 	"sync"
 	"unsafe"
 
@@ -35,12 +36,27 @@ type referenceStore struct {
 	externKey     uint64
 	externSeed    uint32
 	externrefs    []externrefSlot
+	gcDomains     *gcStoreDomain
+}
+
+// gcStoreDomain gives Runtime-owned WasmGC instances one compact-reference
+// address space. The initial bounded slice requires byte-for-byte equivalent
+// collector descriptor tables; incompatible modules reject before attachment.
+// This makes compact handles transferable across exact cross-instance function
+// signatures without copying objects or weakening identity.
+type gcStoreDomain struct {
+	collector *gc.Collector
+	config    gc.Config
+	types     []gc.TypeDesc
+	refs      uint32
+	next      *gcStoreDomain
 }
 
 type referenceStoreInstance struct {
 	closeAccounted    bool
 	quiesced          bool
 	resourcesReleased bool
+	gcDomain          *gcStoreDomain
 }
 
 type structuralTypeRegistration struct {
@@ -69,6 +85,7 @@ type gcRefTokenEntry struct {
 }
 
 type gcNativeFrameRoots struct {
+	owner                *Instance
 	base                 uintptr
 	offsets              []uint32
 	frameBytes           uint32
@@ -102,6 +119,7 @@ func (r *gcNativeFrameRoots) RangeRoots(fn func(gc.RootSlot) bool) {
 			}
 			callsite := &state.hostRootPlan.callsites[activation.callsite]
 			chain := gcNativeFrameRoots{
+				owner:                r.owner,
 				base:                 activation.base,
 				offsets:              callsite.offsets,
 				frameBytes:           callsite.frameBytes,
@@ -147,7 +165,10 @@ func (r *gcNativeTableRoots) RangeRoots(fn func(gc.RootSlot) bool) {
 }
 
 func (r *gcNativeFrameRoots) rangeChain(fn func(gc.RootSlot) bool) bool {
+	owner := r.owner
 	base, offsets, frameBytes := r.base, r.offsets, r.frameBytes
+	codeBase, codeBytes := r.codeBase, r.codeBytes
+	adapterReturnOffsets, callsites := r.adapterReturnOffsets, r.callsites
 	for depth := 0; ; depth++ {
 		if depth > 4096 {
 			panic(gcStructHelperError{err: fmt.Errorf("generic GC native frame chain exceeds 4096 frames")})
@@ -161,7 +182,7 @@ func (r *gcNativeFrameRoots) rangeChain(fn func(gc.RootSlot) bool) bool {
 				return false
 			}
 		}
-		if len(r.callsites) == 0 {
+		if len(callsites) == 0 {
 			return true
 		}
 		if base > ^uintptr(0)-uintptr(frameBytes) {
@@ -169,11 +190,21 @@ func (r *gcNativeFrameRoots) rangeChain(fn func(gc.RootSlot) bool) bool {
 		}
 		retWord := unsafe.Slice((*byte)(offHeapPtr(base+uintptr(frameBytes))), 8)
 		retPC := uintptr(binary.LittleEndian.Uint64(retWord))
-		if retPC < r.codeBase || retPC-r.codeBase >= r.codeBytes {
-			return true
+		if retPC < codeBase || retPC-codeBase >= codeBytes {
+			if owner == nil || owner.refStore == nil || !owner.refStore.ownsGCCollector(owner.gc) {
+				return true
+			}
+			foreign := owner.refStore.gcFrameOwner(retPC, owner.gc)
+			if foreign == nil {
+				panic(gcStructHelperError{err: fmt.Errorf("generic GC foreign return PC %#x has no Runtime GC-domain owner", retPC)})
+			}
+			owner = foreign
+			plan := foreign.c.genericGCFrameRoots()
+			codeBase, codeBytes = foreign.base, uintptr(len(foreign.c.Code))
+			adapterReturnOffsets, callsites = plan.adapterReturnOffsets, plan.callsites
 		}
-		rel := uint32(retPC - r.codeBase)
-		for _, adapterReturn := range r.adapterReturnOffsets {
+		rel := uint32(retPC - codeBase)
+		for _, adapterReturn := range adapterReturnOffsets {
 			if rel == adapterReturn {
 				return true
 			}
@@ -184,11 +215,11 @@ func (r *gcNativeFrameRoots) rangeChain(fn func(gc.RootSlot) bool) bool {
 		returnBase := base + uintptr(frameBytes) + 8
 		found := false
 		var stackAdjust uint32
-		for i := range r.callsites {
-			if r.callsites[i].returnOffset == rel {
-				offsets = r.callsites[i].offsets
-				frameBytes = r.callsites[i].frameBytes
-				stackAdjust = r.callsites[i].stackAdjust
+		for i := range callsites {
+			if callsites[i].returnOffset == rel {
+				offsets = callsites[i].offsets
+				frameBytes = callsites[i].frameBytes
+				stackAdjust = callsites[i].stackAdjust
 				found = true
 				break
 			}
@@ -232,6 +263,84 @@ type externrefSlot struct {
 
 func newReferenceStore(private bool) *referenceStore {
 	return &referenceStore{private: private, runtimeClosed: private}
+}
+
+func (s *referenceStore) ownsGCCollector(collector *gc.Collector) bool {
+	if s == nil || collector == nil {
+		return false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for domain := s.gcDomains; domain != nil; domain = domain.next {
+		if domain.collector == collector {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *referenceStore) gcFrameOwner(pc uintptr, collector *gc.Collector) *Instance {
+	if s == nil || collector == nil {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for candidate, state := range s.instances {
+		if state == nil || state.resourcesReleased || candidate == nil || candidate.gc != collector || candidate.c == nil || candidate.c.genericGCFrameRoots() == nil {
+			continue
+		}
+		if pc >= candidate.base && pc-candidate.base < uintptr(len(candidate.c.Code)) {
+			return candidate
+		}
+	}
+	return nil
+}
+
+func (s *referenceStore) releaseUnclaimedGCCollector(collector *gc.Collector) {
+	if s == nil || collector == nil {
+		return
+	}
+	s.mu.Lock()
+	var prev *gcStoreDomain
+	for domain := s.gcDomains; domain != nil; domain = domain.next {
+		if domain.collector == collector && domain.refs == 0 {
+			if prev == nil {
+				s.gcDomains = domain.next
+			} else {
+				prev.next = domain.next
+			}
+			s.mu.Unlock()
+			collector.Close()
+			return
+		}
+		prev = domain
+	}
+	s.mu.Unlock()
+}
+
+func (s *referenceStore) acquireGCCollector(config gc.Config, types []gc.TypeDesc) (*gc.Collector, error) {
+	if s == nil || s.private {
+		return nil, fmt.Errorf("wago: shared WasmGC ownership requires an explicit Runtime")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.runtimeClosed {
+		return nil, fmt.Errorf("wago: reference store is closed")
+	}
+	for domain := s.gcDomains; domain != nil; domain = domain.next {
+		if reflect.DeepEqual(domain.types, types) {
+			if !reflect.DeepEqual(domain.config, config) {
+				return nil, fmt.Errorf("wago: WasmGC collector configuration is incompatible with the matching Runtime GC domain")
+			}
+			return domain.collector, nil
+		}
+	}
+	collector, err := gc.NewCollector(config, types)
+	if err != nil {
+		return nil, err
+	}
+	s.gcDomains = &gcStoreDomain{collector: collector, config: config, types: append([]gc.TypeDesc(nil), types...), next: s.gcDomains}
+	return collector, nil
 }
 
 func (s *referenceStore) registerInstance(in *Instance) error {
@@ -294,8 +403,19 @@ func (s *referenceStore) registerInstance(in *Instance) error {
 		registered.refs++
 		s.typeKeys[key] = registered
 	}
+	var domain *gcStoreDomain
+	for candidate := s.gcDomains; candidate != nil; candidate = candidate.next {
+		if candidate.collector == in.gc {
+			domain = candidate
+			if domain.refs == ^uint32(0) {
+				return fmt.Errorf("wago: Runtime GC domain has too many instances")
+			}
+			domain.refs++
+			break
+		}
+	}
 	s.instanceTypes[in] = keys
-	s.instances[in] = &referenceStoreInstance{}
+	s.instances[in] = &referenceStoreInstance{gcDomain: domain}
 	s.liveInstances++
 	return nil
 }
@@ -317,20 +437,52 @@ func compiledFunctionSignature(c *Compiled, index int) (FuncSig, bool) {
 	return c.Funcs[local], true
 }
 
+func (s *referenceStore) releaseGCDomainLocked(entry *referenceStoreInstance) *gc.Collector {
+	if entry == nil || entry.gcDomain == nil {
+		return nil
+	}
+	domain := entry.gcDomain
+	entry.gcDomain = nil
+	if domain.refs > 0 {
+		domain.refs--
+	}
+	if domain.refs != 0 {
+		return nil
+	}
+	var prev *gcStoreDomain
+	for candidate := s.gcDomains; candidate != nil; candidate = candidate.next {
+		if candidate == domain {
+			if prev == nil {
+				s.gcDomains = candidate.next
+			} else {
+				prev.next = candidate.next
+			}
+			return domain.collector
+		}
+		prev = candidate
+	}
+	return nil
+}
+
 // abortRegisteredInstance terminates store membership for an instance whose
 // instantiation failed after registration but before publication.
 func (s *referenceStore) abortRegisteredInstance(in *Instance) {
 	var release referenceTokenEntries
+	var collector *gc.Collector
 	s.mu.Lock()
 	if entry := s.instances[in]; entry != nil {
 		if !entry.closeAccounted && s.liveInstances > 0 {
 			s.liveInstances--
 		}
+		collector = s.releaseGCDomainLocked(entry)
 		s.unregisterInstanceTypesLocked(in)
 		delete(s.instances, in)
 	}
 	release = s.maybeReleaseEntriesLocked()
 	s.mu.Unlock()
+	if collector != nil {
+		collector.Close()
+	}
 	releaseReferenceEntries(release)
 }
 
@@ -371,9 +523,11 @@ func (s *referenceStore) instanceQuiesced(in *Instance) {
 
 func (s *referenceStore) resourceOwnerReleased(in *Instance) {
 	var release referenceTokenEntries
+	var collector *gc.Collector
 	s.mu.Lock()
 	if entry := s.instances[in]; entry != nil {
 		entry.resourcesReleased = true
+		collector = s.releaseGCDomainLocked(entry)
 		if entry.closeAccounted && entry.quiesced {
 			s.unregisterInstanceTypesLocked(in)
 			delete(s.instances, in)
@@ -381,6 +535,9 @@ func (s *referenceStore) resourceOwnerReleased(in *Instance) {
 	}
 	release = s.maybeReleaseEntriesLocked()
 	s.mu.Unlock()
+	if collector != nil {
+		collector.Close()
+	}
 	releaseReferenceEntries(release)
 }
 
@@ -593,6 +750,10 @@ func (s *referenceStore) issueGCRef(source *Instance, ref gc.Ref, required Value
 	if source.c.stagedGCStructProduct() != stagedGCStructBasic && !admittedArray {
 		return 0, fmt.Errorf("public GC result ownership is outside an exact admitted struct/array product")
 	}
+	if s.ownsGCCollector(source.gc) {
+		unlock := lockNativeExecutionForHostAccess()
+		defer unlock()
+	}
 	state := source.publicGCState()
 	state.mu.Lock()
 	defer state.mu.Unlock()
@@ -685,6 +846,10 @@ func (s *referenceStore) releaseGCRef(source *Instance, token uint64) error {
 	state := source.existingPublicGCState()
 	if state == nil {
 		return fmt.Errorf("GC reference token owner state is unavailable")
+	}
+	if s.ownsGCCollector(source.gc) {
+		unlock := lockNativeExecutionForHostAccess()
+		defer unlock()
 	}
 	state.mu.Lock()
 	s.mu.Lock()
@@ -909,8 +1074,9 @@ func randomNonzeroUint64() (uint64, error) {
 }
 
 type referenceTokenEntries struct {
-	funcrefs []*funcrefTokenEntry
-	gcRefs   []gcRefTokenEntry
+	funcrefs   []*funcrefTokenEntry
+	gcRefs     []gcRefTokenEntry
+	collectors []*gc.Collector
 }
 
 func (s *referenceStore) releaseEntriesLocked() referenceTokenEntries {
@@ -934,6 +1100,10 @@ func (s *referenceStore) releaseEntriesLocked() referenceTokenEntries {
 	s.externrefs = nil
 	s.externKey = 0
 	s.externSeed = 0
+	for domain := s.gcDomains; domain != nil; domain = domain.next {
+		entries.collectors = append(entries.collectors, domain.collector)
+	}
+	s.gcDomains = nil
 	return entries
 }
 
@@ -957,6 +1127,9 @@ func releaseReferenceEntries(entries referenceTokenEntries) {
 			state.mu.Unlock()
 		}
 		entry.owner.releaseResourceRoot()
+	}
+	for _, collector := range entries.collectors {
+		collector.Close()
 	}
 }
 

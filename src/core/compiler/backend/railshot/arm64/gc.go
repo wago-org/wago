@@ -1,0 +1,490 @@
+//go:build arm64
+
+package arm64
+
+import (
+	"fmt"
+
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+)
+
+// GC helpers share the synchronous parked-host dispatch ABI with amd64. Keep
+// these values stable: src/wago dispatches them before ordinary imports.
+const (
+	gcStructDispatchBit        uint32 = 1 << 30
+	gcStructAllocDefault       uint32 = 1
+	gcStructGet                uint32 = 2
+	gcStructSet                uint32 = 3
+	gcStructGetS               uint32 = 4
+	gcStructGetU               uint32 = 5
+	gcStructRefTest            uint32 = 6
+	gcStructTableSet           uint32 = 7
+	gcAnyConvertExtern         uint32 = 8
+	gcExternConvertAny         uint32 = 9
+	gcStructRefCast            uint32 = 10
+	gcStructAllocOne           uint32 = 11
+	gcArrayAllocDefault        uint32 = 16
+	gcArrayGet                 uint32 = 17
+	gcArrayGetS                uint32 = 18
+	gcArrayGetU                uint32 = 19
+	gcArraySet                 uint32 = 20
+	gcArrayLen                 uint32 = 21
+	gcArrayAllocFixed          uint32 = 22
+	gcArrayAllocUniform        uint32 = 23
+	gcArrayAllocData           uint32 = 24
+	gcArrayAllocElem           uint32 = 25
+	gcArrayDropElem            uint32 = 26
+	gcArrayFill                uint32 = 27
+	gcArrayCopy                uint32 = 28
+	gcArrayInitData            uint32 = 29
+	gcArrayInitElem            uint32 = 30
+	gcArrayAllocFixedV128Spill uint32 = 31
+)
+
+func (f *fn) emitFB(r *wasm.Reader) error {
+	sub, err := r.U32()
+	if err != nil {
+		return err
+	}
+	if sub >= 6 && sub <= 19 {
+		return f.emitGCArray(sub, r)
+	}
+	if sub == 20 || sub == 21 { // ref.test / ref.test_null
+		heap, err := r.S33()
+		if err != nil {
+			return err
+		}
+		if !f.gcStructHelpers {
+			return fmt.Errorf("arm64: ref.test requires GC helpers")
+		}
+		f.pushValue(storage{kind: stConst, typ: mtI64, cval: heap})
+		nullable := int64(0)
+		if sub == 21 {
+			nullable = 1
+		}
+		f.pushValue(storage{kind: stConst, typ: mtI32, cval: nullable})
+		anyref := wasm.RefVal(wasm.Ref(true, wasm.AbsHeap(wasm.HeapAny), false))
+		return f.callGCStructHelper(gcStructRefTest, []wasm.ValType{anyref, wasm.I64, wasm.I32}, []wasm.ValType{wasm.I32})
+	}
+	if sub == 22 || sub == 23 { // ref.cast / ref.cast_null
+		heap, err := r.S33()
+		if err != nil {
+			return err
+		}
+		if !f.gcStructHelpers {
+			return fmt.Errorf("arm64: ref.cast requires GC helpers")
+		}
+		f.pushValue(storage{kind: stConst, typ: mtI64, cval: heap})
+		nullable := int64(0)
+		if sub == 23 {
+			nullable = 1
+		}
+		f.pushValue(storage{kind: stConst, typ: mtI32, cval: nullable})
+		anyref := wasm.RefVal(wasm.Ref(true, wasm.AbsHeap(wasm.HeapAny), false))
+		return f.callGCStructHelper(gcStructRefCast, []wasm.ValType{anyref, wasm.I64, wasm.I32}, []wasm.ValType{anyref})
+	}
+	if sub == 26 || sub == 27 {
+		if !f.gcStructHelpers {
+			return fmt.Errorf("arm64: extern conversion requires GC helpers")
+		}
+		if sub == 26 {
+			return f.callGCStructHelper(gcAnyConvertExtern, []wasm.ValType{wasm.ExternRef}, []wasm.ValType{wasm.AnyRef})
+		}
+		return f.callGCStructHelper(gcExternConvertAny, []wasm.ValType{wasm.AnyRef}, []wasm.ValType{wasm.ExternRef})
+	}
+	if sub >= 28 && sub <= 30 {
+		value := f.materialize(f.popValue())
+		switch sub {
+		case 28: // ref.i31
+			f.a.LslImm(value, value, 1, false)
+			if !f.a.OrrImm32(value, value, 1) {
+				panic("arm64: i31 tag immediate is not encodable")
+			}
+			f.pushReg(value, mtI64)
+		case 29: // i31.get_s
+			f.cmpImm(value, 0, false)
+			f.trapIf(condE, trapNullReference)
+			f.a.AsrImm(value, value, 1, false)
+			f.pushReg(value, mtI32)
+		case 30: // i31.get_u
+			f.cmpImm(value, 0, false)
+			f.trapIf(condE, trapNullReference)
+			f.a.LsrImm(value, value, 1, false)
+			f.pushReg(value, mtI32)
+		}
+		return nil
+	}
+	if !f.gcStructHelpers {
+		return fmt.Errorf("arm64: unsupported 0xfb opcode %d without GC struct helpers", sub)
+	}
+	switch sub {
+	case 0: // struct.new
+		typeIndex, err := r.U32()
+		if err != nil {
+			return err
+		}
+		st, ok := stagedStructType(f.m, typeIndex)
+		if !ok {
+			return fmt.Errorf("arm64: struct.new type %d is unavailable", typeIndex)
+		}
+		params := make([]wasm.ValType, 0, len(st.Comp.Fields)+1)
+		for _, field := range st.Comp.Fields {
+			valueType := field.Storage.Val
+			if field.Storage.Packed {
+				valueType = wasm.I32
+			}
+			params = append(params, valueType)
+		}
+		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
+		params = append(params, wasm.I32)
+		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
+		return f.callGCStructHelper(gcStructAllocOne, params, []wasm.ValType{result})
+	case 1: // struct.new_default
+		typeIndex, err := r.U32()
+		if err != nil {
+			return err
+		}
+		if _, ok := stagedStructType(f.m, typeIndex); !ok {
+			return fmt.Errorf("arm64: struct.new_default type %d is unavailable", typeIndex)
+		}
+		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
+		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
+		return f.callGCStructHelper(gcStructAllocDefault, []wasm.ValType{wasm.I32}, []wasm.ValType{result})
+	case 2, 3, 4:
+		typeIndex, err := r.U32()
+		if err != nil {
+			return err
+		}
+		fieldIndex, err := r.U32()
+		if err != nil {
+			return err
+		}
+		field, ok := stagedStructField(f.m, typeIndex, fieldIndex)
+		if !ok {
+			return fmt.Errorf("arm64: struct.get type %d field %d is unavailable", typeIndex, fieldIndex)
+		}
+		helper, resultType := uint32(gcStructGet), field.Storage.Val
+		if sub == 3 || sub == 4 {
+			if !field.Storage.Packed {
+				return fmt.Errorf("arm64: struct.get_s/u field is not packed")
+			}
+			resultType = wasm.I32
+			if sub == 3 {
+				helper = gcStructGetS
+			} else {
+				helper = gcStructGetU
+			}
+		} else if field.Storage.Packed {
+			return fmt.Errorf("arm64: plain struct.get cannot access a packed field")
+		}
+		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
+		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(fieldIndex)})
+		object := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
+		return f.callGCStructHelper(helper, []wasm.ValType{object, wasm.I32, wasm.I32}, []wasm.ValType{resultType})
+	case 5:
+		typeIndex, err := r.U32()
+		if err != nil {
+			return err
+		}
+		fieldIndex, err := r.U32()
+		if err != nil {
+			return err
+		}
+		field, ok := stagedStructField(f.m, typeIndex, fieldIndex)
+		if !ok || field.Mut != wasm.Var {
+			return fmt.Errorf("arm64: struct.set type %d field %d is unavailable or immutable", typeIndex, fieldIndex)
+		}
+		valueType := field.Storage.Val
+		if field.Storage.Packed {
+			valueType = wasm.I32
+		}
+		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
+		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(fieldIndex)})
+		object := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
+		return f.callGCStructHelper(gcStructSet, []wasm.ValType{object, valueType, wasm.I32, wasm.I32}, nil)
+	default:
+		return fmt.Errorf("arm64: unsupported staged 0xfb opcode %d", sub)
+	}
+}
+
+func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
+	if !f.gcArrayHelpers {
+		return fmt.Errorf("arm64: unsupported array opcode %d without GC array helpers", sub)
+	}
+	switch sub {
+	case 6: // array.new
+		typeIndex, err := r.U32()
+		if err != nil {
+			return err
+		}
+		field, ok := stagedArrayType(f.m, typeIndex)
+		if !ok {
+			return fmt.Errorf("arm64: array.new type %d is unavailable", typeIndex)
+		}
+		valueType := field.Storage.Val
+		if field.Storage.Packed {
+			valueType = wasm.I32
+		}
+		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
+		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
+		return f.callGCStructHelper(gcArrayAllocUniform, []wasm.ValType{valueType, wasm.I32, wasm.I32}, []wasm.ValType{result})
+	case 7: // array.new_default
+		typeIndex, err := r.U32()
+		if err != nil {
+			return err
+		}
+		if _, ok := stagedArrayType(f.m, typeIndex); !ok {
+			return fmt.Errorf("arm64: array.new_default type %d is unavailable", typeIndex)
+		}
+		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
+		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
+		return f.callGCStructHelper(gcArrayAllocDefault, []wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{result})
+	case 8: // array.new_fixed
+		typeIndex, err := r.U32()
+		if err != nil {
+			return err
+		}
+		count, err := r.U32()
+		if err != nil {
+			return err
+		}
+		field, ok := stagedArrayType(f.m, typeIndex)
+		if !ok {
+			return fmt.Errorf("arm64: array.new_fixed type %d is unavailable", typeIndex)
+		}
+		valueType := field.Storage.Val
+		if field.Storage.Packed {
+			valueType = wasm.I32
+		}
+		valueSlots := funcTypeSlots([]wasm.ValType{valueType})
+		if uint64(count)*uint64(valueSlots)+2 > maxSyncHostSlots {
+			if wasm.EqualValType(valueType, wasm.V128) {
+				result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
+				return f.callGCArrayFixedV128Spill(typeIndex, count, result)
+			}
+			return fmt.Errorf("arm64: array.new_fixed count %d exceeds helper slot bound", count)
+		}
+		params := make([]wasm.ValType, 0, int(count)+2)
+		for i := uint32(0); i < count; i++ {
+			params = append(params, valueType)
+		}
+		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
+		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(count)})
+		params = append(params, wasm.I32, wasm.I32)
+		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
+		return f.callGCStructHelper(gcArrayAllocFixed, params, []wasm.ValType{result})
+	case 9, 10: // array.new_data / array.new_elem
+		typeIndex, err := r.U32()
+		if err != nil {
+			return err
+		}
+		segmentIndex, err := r.U32()
+		if err != nil {
+			return err
+		}
+		field, ok := stagedArrayType(f.m, typeIndex)
+		if !ok {
+			return fmt.Errorf("arm64: array constructor type %d is unavailable", typeIndex)
+		}
+		helper := uint32(gcArrayAllocData)
+		if sub == 10 {
+			if field.Storage.Val.Kind != wasm.ValRef {
+				return fmt.Errorf("arm64: array.new_elem type %d is not a reference array", typeIndex)
+			}
+			helper = gcArrayAllocElem
+		} else if field.Storage.Val.Kind == wasm.ValRef {
+			return fmt.Errorf("arm64: array.new_data type %d has reference storage", typeIndex)
+		}
+		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
+		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(segmentIndex)})
+		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
+		return f.callGCStructHelper(helper, []wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32}, []wasm.ValType{result})
+	case 11, 12, 13:
+		typeIndex, err := r.U32()
+		if err != nil {
+			return err
+		}
+		field, ok := stagedArrayType(f.m, typeIndex)
+		if !ok {
+			return fmt.Errorf("arm64: array.get type %d is unavailable", typeIndex)
+		}
+		helper, resultType := uint32(gcArrayGet), field.Storage.Val
+		if sub == 12 || sub == 13 {
+			if !field.Storage.Packed {
+				return fmt.Errorf("arm64: array.get_s/u type %d is not packed", typeIndex)
+			}
+			resultType = wasm.I32
+			if sub == 12 {
+				helper = gcArrayGetS
+			} else {
+				helper = gcArrayGetU
+			}
+		} else if field.Storage.Packed {
+			return fmt.Errorf("arm64: plain array.get cannot access packed storage")
+		}
+		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
+		object := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
+		return f.callGCStructHelper(helper, []wasm.ValType{object, wasm.I32, wasm.I32}, []wasm.ValType{resultType})
+	case 14:
+		typeIndex, err := r.U32()
+		if err != nil {
+			return err
+		}
+		field, ok := stagedArrayType(f.m, typeIndex)
+		if !ok || field.Mut != wasm.Var {
+			return fmt.Errorf("arm64: array.set type %d is unavailable or immutable", typeIndex)
+		}
+		valueType := field.Storage.Val
+		if field.Storage.Packed {
+			valueType = wasm.I32
+		}
+		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
+		object := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
+		return f.callGCStructHelper(gcArraySet, []wasm.ValType{object, wasm.I32, valueType, wasm.I32}, nil)
+	case 15:
+		object := wasm.RefVal(wasm.Ref(true, wasm.AbsHeap(wasm.HeapArray), false))
+		return f.callGCStructHelper(gcArrayLen, []wasm.ValType{object}, []wasm.ValType{wasm.I32})
+	case 16:
+		typeIndex, err := r.U32()
+		if err != nil {
+			return err
+		}
+		field, ok := stagedArrayType(f.m, typeIndex)
+		if !ok || field.Mut != wasm.Var {
+			return fmt.Errorf("arm64: array.fill type %d is unavailable or immutable", typeIndex)
+		}
+		valueType := field.Storage.Val
+		if field.Storage.Packed {
+			valueType = wasm.I32
+		}
+		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
+		object := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
+		return f.callGCStructHelper(gcArrayFill, []wasm.ValType{object, wasm.I32, valueType, wasm.I32, wasm.I32}, nil)
+	case 17:
+		dstType, err := r.U32()
+		if err != nil {
+			return err
+		}
+		srcType, err := r.U32()
+		if err != nil {
+			return err
+		}
+		dstField, ok := stagedArrayType(f.m, dstType)
+		if !ok || dstField.Mut != wasm.Var {
+			return fmt.Errorf("arm64: array.copy destination is unavailable")
+		}
+		if _, ok := stagedArrayType(f.m, srcType); !ok {
+			return fmt.Errorf("arm64: array.copy source is unavailable")
+		}
+		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(dstType)})
+		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(srcType)})
+		dst := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: dstType}), false))
+		src := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: srcType}), false))
+		return f.callGCStructHelper(gcArrayCopy, []wasm.ValType{dst, wasm.I32, src, wasm.I32, wasm.I32, wasm.I32, wasm.I32}, nil)
+	case 18, 19:
+		typeIndex, err := r.U32()
+		if err != nil {
+			return err
+		}
+		segmentIndex, err := r.U32()
+		if err != nil {
+			return err
+		}
+		field, ok := stagedArrayType(f.m, typeIndex)
+		if !ok || field.Mut != wasm.Var {
+			return fmt.Errorf("arm64: array.init type %d is unavailable", typeIndex)
+		}
+		helper := uint32(gcArrayInitData)
+		if sub == 19 {
+			helper = gcArrayInitElem
+			if field.Storage.Val.Kind != wasm.ValRef {
+				return fmt.Errorf("arm64: array.init_elem requires reference storage")
+			}
+		}
+		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
+		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(segmentIndex)})
+		object := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
+		return f.callGCStructHelper(helper, []wasm.ValType{object, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32}, nil)
+	default:
+		return fmt.Errorf("arm64: unsupported array opcode %d", sub)
+	}
+}
+
+func (f *fn) callGCStructHelper(helper uint32, params, results []wasm.ValType) error {
+	payload, ok := shared.EncodeGCDispatch(helper, 0)
+	if !ok {
+		payload = helper
+	}
+	ft := &wasm.CompType{Kind: wasm.CompFunc, Params: params, Results: results}
+	return f.callHostSync(int(gcStructDispatchBit|payload), ft)
+}
+
+func (f *fn) callGCArrayFixedV128Spill(typeIndex, count uint32, resultType wasm.ValType) error {
+	roots := f.rootsBottomToTop()
+	if uint64(count) > uint64(len(roots)) {
+		return fmt.Errorf("arm64: array.new_fixed count %d exceeds operand depth %d", count, len(roots))
+	}
+	first := len(roots) - int(count)
+	firstSlot := 0
+	for i := 0; i < first; i++ {
+		typ := roots[i].st.typ
+		if roots[i].kind == ekDeferred && roots[i].typ != mtNone {
+			typ = roots[i].typ
+		}
+		firstSlot += typ.stackSlots()
+	}
+	f.flush()
+	ptr := f.allocReg(0)
+	f.a.LeaSP(ptr, f.spillOff(firstSlot))
+	f.pushReg(ptr, mtI64)
+	f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(count)})
+	f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
+	if err := f.callGCStructHelper(gcArrayAllocFixedV128Spill, []wasm.ValType{wasm.I64, wasm.I32, wasm.I32}, []wasm.ValType{resultType}); err != nil {
+		return err
+	}
+	result := f.materialize(f.popValue())
+	for i := uint32(0); i < count; i++ {
+		f.popValue()
+	}
+	f.pushReg(result, mtI64)
+	return nil
+}
+
+func stagedStructType(m *wasm.Module, typeIndex uint32) (wasm.SubType, bool) {
+	if m == nil {
+		return wasm.SubType{}, false
+	}
+	index := typeIndex
+	for _, group := range m.Types {
+		if index < uint32(len(group.SubTypes)) {
+			sub := group.SubTypes[index]
+			return sub, sub.Comp.Kind == wasm.CompStruct
+		}
+		index -= uint32(len(group.SubTypes))
+	}
+	return wasm.SubType{}, false
+}
+
+func stagedStructField(m *wasm.Module, typeIndex, fieldIndex uint32) (wasm.FieldType, bool) {
+	st, ok := stagedStructType(m, typeIndex)
+	if !ok || fieldIndex >= uint32(len(st.Comp.Fields)) {
+		return wasm.FieldType{}, false
+	}
+	return st.Comp.Fields[fieldIndex], true
+}
+
+func stagedArrayType(m *wasm.Module, typeIndex uint32) (wasm.FieldType, bool) {
+	if m == nil {
+		return wasm.FieldType{}, false
+	}
+	index := typeIndex
+	for _, group := range m.Types {
+		if index < uint32(len(group.SubTypes)) {
+			sub := group.SubTypes[index]
+			return sub.Comp.Array, sub.Comp.Kind == wasm.CompArray
+		}
+		index -= uint32(len(group.SubTypes))
+	}
+	return wasm.FieldType{}, false
+}

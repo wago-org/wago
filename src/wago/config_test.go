@@ -277,6 +277,7 @@ func TestCoreFeaturesV3ReleaseScopeAndAdmission(t *testing.T) {
 		t.Fatal("CoreFeaturesV3 must include the existing SIMD admission bit that also gates relaxed SIMD")
 	}
 	completeCore3Backend := runtime.GOOS == "linux" && runtime.GOARCH == "amd64"
+	arm64GCBackend := runtime.GOARCH == "arm64" && (runtime.GOOS == "linux" || runtime.GOOS == "darwin")
 	for _, tc := range []struct {
 		bit       CoreFeatures
 		name      string
@@ -284,8 +285,8 @@ func TestCoreFeaturesV3ReleaseScopeAndAdmission(t *testing.T) {
 	}{
 		{CoreFeatureTailCall, "tail-call", completeCore3Backend},
 		{CoreFeatureExtendedConstExpressions, "extended-const-expressions", true},
-		{CoreFeatureTypedFunctionReferences, "typed-function-references", completeCore3Backend},
-		{CoreFeatureGC, "gc", completeCore3Backend},
+		{CoreFeatureTypedFunctionReferences, "typed-function-references", completeCore3Backend || arm64GCBackend},
+		{CoreFeatureGC, "gc", completeCore3Backend || arm64GCBackend},
 		{CoreFeatureExceptionHandling, "exception-handling", completeCore3Backend},
 		{CoreFeatureMultiMemory, "multi-memory", completeCore3Backend},
 		{CoreFeatureMemory64, "memory64", completeCore3Backend},
@@ -367,13 +368,17 @@ func TestConfigValidateAndIntrospection(t *testing.T) {
 	}
 	wantFeatures := coreFeaturesWago
 	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
-		wantFeatures &^= CoreFeatureTailCall |
+		unsupported := CoreFeatureTailCall |
 			CoreFeatureTypedFunctionReferences |
 			CoreFeatureGC |
 			CoreFeatureExceptionHandling |
 			CoreFeatureMultiMemory |
 			CoreFeatureMemory64 |
 			CoreFeatureTable64
+		if runtime.GOARCH == "arm64" && (runtime.GOOS == "linux" || runtime.GOOS == "darwin") {
+			unsupported &^= CoreFeatureTypedFunctionReferences | CoreFeatureGC
+		}
+		wantFeatures &^= unsupported
 	}
 	if !hostSupportsSIMD() {
 		wantFeatures &^= CoreFeatureSIMD

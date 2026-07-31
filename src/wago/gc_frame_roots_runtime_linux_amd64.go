@@ -54,6 +54,7 @@ func (in *Instance) gcHelperRoots(ctrl uintptr, state *gcPublicState, safepointI
 			panic(gcStructHelperError{err: fmt.Errorf("generic GC frame-root offset %d contains non-compact reference %#x", off, bits)})
 		}
 	}
+	state.frameRoots.owner = in
 	state.frameRoots.base = base
 	state.frameRoots.offsets = offsets
 	state.frameRoots.frameBytes = frameBytes

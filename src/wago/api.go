@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"reflect"
 	goruntime "runtime"
 	"sort"
 	"strings"
@@ -1032,7 +1033,8 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 			product, ok = stagedGCStructGeneric, true
 		}
 		if ok {
-			if goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64" {
+			arm64GC := goruntime.GOARCH == "arm64" && (goruntime.GOOS == "linux" || goruntime.GOOS == "darwin") && cfg.boundsChecks == BoundsChecksExplicit
+			if (goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64") && !arm64GC {
 				return nil, fmt.Errorf("compile: unsupported collector-backed struct product staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
 			}
 			if cfg.boundsChecks == BoundsChecksSignalsBased && product != stagedGCStructGeneric {
@@ -1047,7 +1049,8 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 			product, ok = stagedGCArrayOpcodeProduct(m)
 		}
 		if ok {
-			if goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64" {
+			arm64GC := goruntime.GOARCH == "arm64" && (goruntime.GOOS == "linux" || goruntime.GOOS == "darwin") && cfg.boundsChecks == BoundsChecksExplicit
+			if (goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64") && !arm64GC {
 				return nil, fmt.Errorf("compile: unsupported collector-backed array product staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
 			}
 			if cfg.boundsChecks == BoundsChecksSignalsBased && product != stagedGCArrayProductGeneric {
@@ -1058,7 +1061,8 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	}
 	if features.GCI31Products && gcStructProduct != stagedGCStructRefTestAbstract && gcStructProduct != stagedGCStructExtern && gcStructProduct != stagedGCStructRefEq && gcStructProduct != stagedGCStructRefCastAbstract && gcStructProduct != stagedGCStructRefCastConcrete && gcStructProduct != stagedGCStructBrOnCastAbstract && gcStructProduct != stagedGCStructBrOnCastFailAbstract {
 		if product, ok := stagedGCI31ExecutionProduct(wasmBytes); ok {
-			if goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64" {
+			arm64GC := goruntime.GOARCH == "arm64" && (goruntime.GOOS == "linux" || goruntime.GOOS == "darwin") && cfg.boundsChecks == BoundsChecksExplicit
+			if (goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64") && !arm64GC {
 				return nil, fmt.Errorf("compile: unsupported i31 product staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
 			}
 			if cfg.boundsChecks == BoundsChecksSignalsBased {
@@ -1985,12 +1989,26 @@ func (c *Compiled) importsRequireSync(imports Imports, force bool) bool {
 // concrete targets into the per-instance dispatch table.
 func (c *Compiled) validateImportBindings(imports Imports, store *referenceStore) error {
 	ehNativeCalls := c.stagedFeatures().IsEnabled(CoreFeatureExceptionHandling) && len(c.Imports) != 0
+	moduleTransfersGC := false
+	for i := range c.Imports {
+		if i < len(c.importFuncSigs) && (hasValType(c.importFuncSigs[i].Params, ValAnyRef) || hasValType(c.importFuncSigs[i].Params, ValI31Ref) || hasValType(c.importFuncSigs[i].Results, ValAnyRef) || hasValType(c.importFuncSigs[i].Results, ValI31Ref)) {
+			moduleTransfersGC = true
+			break
+		}
+	}
 	gcSubtypeLinkProduct := c.stagedGCTypeSubtypingProduct()
 	gcSubtypeLinkConsumer := gcSubtypeLinkProduct.isLinkConsumer()
 	gcSubtypeLinkProvider := gcSubtypeLinkProduct.linkProviderProduct()
 	for i, key := range c.Imports {
+		sigHasGCRefs := i < len(c.importFuncSigs) && (hasValType(c.importFuncSigs[i].Params, ValAnyRef) || hasValType(c.importFuncSigs[i].Params, ValI31Ref) || hasValType(c.importFuncSigs[i].Results, ValAnyRef) || hasValType(c.importFuncSigs[i].Results, ValI31Ref))
 		ex, ok := imports[key].(*InstanceExport)
 		if !ok {
+			if sigHasGCRefs {
+				return fmt.Errorf("host import %q cannot transfer collector references; use a same-Runtime InstanceExport", key)
+			}
+			if moduleTransfersGC {
+				return fmt.Errorf("cross-instance GC modules require every function import to be a same-Runtime InstanceExport; import %q is a host boundary", key)
+			}
 			if gcSubtypeLinkConsumer {
 				return fmt.Errorf("cross-instance import %q requires the exact gc/type-subtyping link provider", key)
 			}
@@ -2021,6 +2039,17 @@ func (c *Compiled) validateImportBindings(imports Imports, store *referenceStore
 		if hasValType(sig.Params, ValExternRef) || hasValType(sig.Results, ValExternRef) {
 			if store == nil || ex.inst.refStore != store {
 				return fmt.Errorf("cross-instance externref import %q requires the same reference store", key)
+			}
+		}
+		if sigHasGCRefs {
+			if store == nil || ex.inst.refStore != store || ex.inst.gc == nil || !store.ownsGCCollector(ex.inst.gc) {
+				return fmt.Errorf("cross-instance GC import %q requires live instances in the same Runtime GC domain", key)
+			}
+			if !reflect.DeepEqual(c.GCTypeDescs, ex.inst.c.GCTypeDescs) {
+				return fmt.Errorf("cross-instance GC import %q requires an identical collector descriptor table", key)
+			}
+			if c.HasTable || ex.inst.c.HasTable || c.hasGCRefGlobals() || ex.inst.c.hasGCRefGlobals() || c.genericGCFrameRoots() == nil || ex.inst.c.genericGCFrameRoots() == nil {
+				return fmt.Errorf("cross-instance GC import %q requires global-free, table-free modules with exact native root maps", key)
 			}
 		}
 		if ehNativeCalls {

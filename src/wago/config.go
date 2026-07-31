@@ -345,13 +345,21 @@ func platformCoreFeatures() CoreFeatures {
 		// the linux/amd64 backend. Other runtime targets retain the portable
 		// Release 2 surface plus extended constant expressions and reject the
 		// incomplete families at configuration time.
-		supported &^= CoreFeatureTailCall |
+		unsupported := CoreFeatureTailCall |
 			CoreFeatureTypedFunctionReferences |
 			CoreFeatureGC |
 			CoreFeatureExceptionHandling |
 			CoreFeatureMultiMemory |
 			CoreFeatureMemory64 |
 			CoreFeatureTable64
+		// arm64 now lowers collector-backed struct/array/i31 operations through
+		// the parked synchronous helper ABI. Active native-frame collection stays
+		// disabled until arm64 stack maps are available, so execution remains
+		// bounded by the configured heap during one invocation.
+		if runtime.GOARCH == "arm64" && (runtime.GOOS == "linux" || runtime.GOOS == "darwin") {
+			unsupported &^= CoreFeatureGC | CoreFeatureTypedFunctionReferences
+		}
+		supported &^= unsupported
 	}
 	return supported
 }

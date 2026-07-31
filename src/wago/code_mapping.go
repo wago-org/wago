@@ -120,6 +120,18 @@ func (c *Compiled) genericGCFrameRoots() *compiledGCFrameRoots {
 	return c.validateMemo.gcFrameRoots
 }
 
+func (c *Compiled) hasGCRefGlobals() bool {
+	if c == nil {
+		return false
+	}
+	for _, global := range c.Globals {
+		if isGCRefValType(global.Type) {
+			return true
+		}
+	}
+	return false
+}
+
 func (c *Compiled) genericGCBoundaryCollectionSafe() bool {
 	if c == nil || !c.usesGenericGCExecution() || c.HasTable || len(c.Elems) != 0 || len(c.passiveElems) != 0 {
 		return false

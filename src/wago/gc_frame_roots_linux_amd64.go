@@ -11,8 +11,8 @@ import (
 	"github.com/wago-org/wago/src/core/nativeabi"
 )
 
-// newGCFrameRootPlan admits import/global/start/table/element/tag/EH-free local
-// call graphs with numeric native-call signatures and at most 64 collector roots
+// newGCFrameRootPlan admits bounded local/cross-instance call graphs whose native
+// ABI is register-bounded and has at most 64 collector roots
 // per function. Each function gets independent compile state so railshot workers
 // may populate maps in parallel.
 func newGCFrameRootPlan(m *wasm.Module, genericGC bool) *shared.GCModuleFrameRootPlan {
@@ -33,7 +33,7 @@ func newGCFrameRootPlan(m *wasm.Module, genericGC bool) *shared.GCModuleFrameRoo
 			return nil
 		}
 		ft, ok := m.FuncSignature(uint32(i))
-		if !ok || !gcFrameCallABI(ft) {
+		if !ok || !gcFrameCallABI(m, ft) {
 			return nil
 		}
 	}
@@ -64,12 +64,12 @@ func newGCFrameRootPlan(m *wasm.Module, genericGC bool) *shared.GCModuleFrameRoo
 			return nil
 		}
 		for _, t := range ft.Params {
-			if collectorFrameRefType(m, t) || frameFunctionRefType(m, t) {
+			if frameFunctionRefType(m, t) {
 				return nil
 			}
 		}
 		for _, t := range ft.Results {
-			if collectorFrameRefType(m, t) || frameFunctionRefType(m, t) {
+			if frameFunctionRefType(m, t) {
 				return nil
 			}
 		}
@@ -113,7 +113,7 @@ func newGCFrameRootPlan(m *wasm.Module, genericGC bool) *shared.GCModuleFrameRoo
 				callMasks, err = gcFrameLocalLiveness(m.Code[function].BodyBytes, plan.LocalIndexes, true)
 			}
 		}
-		if err != nil || (bodyUsesNativeCall(m.Code[function].BodyBytes) && !gcFrameCallABI(ft)) {
+		if err != nil || (bodyUsesNativeCall(m.Code[function].BodyBytes) && !gcFrameCallABI(m, ft)) {
 			return nil
 		}
 		if uint64(safepointBase)+uint64(len(liveMasks)) > uint64(shared.GCSafepointIDMax) {
@@ -220,7 +220,7 @@ func bodyHasUnsupportedNativeFrames(m *wasm.Module, body []byte, importedFunctio
 		}
 		if op == 0x14 || op == 0x15 {
 			ft, ok := m.TypeFunc(imm.Index)
-			if !ok || !gcFrameCallABI(ft) {
+			if !ok || !gcFrameCallABI(m, ft) {
 				return true
 			}
 		}
@@ -299,14 +299,14 @@ func bodyUsesNativeCall(body []byte) bool {
 	return false
 }
 
-func gcFrameCallABI(ft *wasm.CompType) bool {
+func gcFrameCallABI(m *wasm.Module, ft *wasm.CompType) bool {
 	if ft == nil || len(ft.Results) > 2 {
 		return false
 	}
 	gp, fp := 0, 0
 	for _, t := range ft.Params {
 		switch {
-		case wasm.EqualValType(t, wasm.I32), wasm.EqualValType(t, wasm.I64):
+		case wasm.EqualValType(t, wasm.I32), wasm.EqualValType(t, wasm.I64), collectorFrameRefType(m, t):
 			gp++
 		case wasm.EqualValType(t, wasm.F32), wasm.EqualValType(t, wasm.F64):
 			fp++
@@ -318,11 +318,14 @@ func gcFrameCallABI(ft *wasm.CompType) bool {
 		return false
 	}
 	for _, t := range ft.Results {
-		if !wasm.EqualValType(t, wasm.I32) && !wasm.EqualValType(t, wasm.I64) && !wasm.EqualValType(t, wasm.F32) && !wasm.EqualValType(t, wasm.F64) {
+		if !wasm.EqualValType(t, wasm.I32) && !wasm.EqualValType(t, wasm.I64) && !wasm.EqualValType(t, wasm.F32) && !wasm.EqualValType(t, wasm.F64) && !collectorFrameRefType(m, t) {
 			return false
 		}
 	}
-	return len(ft.Results) != 2 || ((wasm.EqualValType(ft.Results[0], wasm.I32) || wasm.EqualValType(ft.Results[0], wasm.I64)) && (wasm.EqualValType(ft.Results[1], wasm.I32) || wasm.EqualValType(ft.Results[1], wasm.I64)))
+	integerResult := func(t wasm.ValType) bool {
+		return wasm.EqualValType(t, wasm.I32) || wasm.EqualValType(t, wasm.I64) || collectorFrameRefType(m, t)
+	}
+	return len(ft.Results) != 2 || (integerResult(ft.Results[0]) && integerResult(ft.Results[1]))
 }
 
 func frameFunctionRefType(m *wasm.Module, t wasm.ValType) bool {

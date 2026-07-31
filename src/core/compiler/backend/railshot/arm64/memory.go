@@ -28,6 +28,7 @@ const (
 	trapTruncOverflow = 11
 	trapInterrupted   = 12
 	trapStackFence    = 13
+	trapNullReference = 16
 	trapTableOOB      = 19
 )
 

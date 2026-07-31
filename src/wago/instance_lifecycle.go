@@ -241,7 +241,9 @@ func (in *Instance) releaseResources() {
 			if table := in.existingGCRefTestTableState(); table != nil {
 				table.drop(in.gc)
 			}
-			in.gc.Close()
+			if in.refStore == nil || !in.refStore.ownsGCCollector(in.gc) {
+				in.gc.Close()
+			}
 		}
 		if state := in.existingPublicGCState(); state != nil {
 			state.mu.Lock()
