@@ -778,8 +778,8 @@ and GC rationale.
 |---|---|
 | `WAGO_BOUNDS=signals` | Use guard-page bounds checks when the binary was built with `-tags wago_guardpage`. |
 | `WAGO_BOUNDS=explicit` | Force inline explicit bounds checks. |
-| `--bounds defer` | CLI default: skip provably redundant explicit checks in straight-line regions. |
-| `--bounds all` | CLI A/B mode: check every explicit memory access. |
+| `--deferred-bounds-checking` | CLI default: skip provably redundant explicit checks in straight-line regions. |
+| `--no-deferred-bounds-checking` | CLI A/B mode: check every explicit memory access. |
 | `WAGO_NO_BOUNDS_FACTS=1` | Disable deferred bounds-check facts globally. |
 | `RuntimeConfig.WithFeature` | Accept or reject individual wasm feature families. |
 | `RuntimeConfig.WithMemoryLimitPages` | Cap declared linear memory in 64 KiB wasm pages. |

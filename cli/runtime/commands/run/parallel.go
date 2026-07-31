@@ -69,15 +69,8 @@ func NormalizeParallelArgs(args []string, flags []command.Flag, stopAtPositional
 	return normalized, nil
 }
 
-func Config(bounds, parallel string) (*wago.RuntimeConfig, error) {
-	config := wago.NewRuntimeConfig()
-	switch bounds {
-	case "", "defer":
-	case "all":
-		config = config.WithDeferBoundsChecks(false)
-	default:
-		return nil, fmt.Errorf("unknown --bounds %q (want: defer, all)", bounds)
-	}
+func Config(deferredBoundsChecking bool, parallel string) (*wago.RuntimeConfig, error) {
+	config := wago.NewRuntimeConfig().WithDeferBoundsChecks(deferredBoundsChecking)
 	workers, err := ParallelPolicy(parallel)
 	if err != nil {
 		return nil, err

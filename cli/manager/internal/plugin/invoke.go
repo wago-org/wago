@@ -85,7 +85,7 @@ func applyRunScope(args []string, environment Environment) error {
 			local = true
 		case "--bare":
 			bare = true
-		case "--invoke", "-e", "--bounds", "--plugin":
+		case "--invoke", "-e", "--plugin":
 			if index+1 < len(args) {
 				index++
 			}
