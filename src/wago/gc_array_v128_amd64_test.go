@@ -263,8 +263,12 @@ func TestGCVectorInitSnapshotReplay(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer compiled.Close()
-			if _, err := Capture(compiled, SnapshotOptions{Kind: SnapshotWarm, WarmFunc: "global"}); err == nil {
-				t.Fatal("warm/live GC snapshot unexpectedly succeeded")
+			warm, err := Capture(compiled, SnapshotOptions{Kind: SnapshotWarm, WarmFunc: "global"})
+			if err != nil {
+				t.Fatalf("warm/live GC snapshot: %v", err)
+			}
+			if warm.Kind() != SnapshotWarm {
+				t.Fatalf("warm snapshot kind = %v", warm.Kind())
 			}
 			snap, err := Capture(compiled, SnapshotOptions{Kind: SnapshotInit})
 			if err != nil {

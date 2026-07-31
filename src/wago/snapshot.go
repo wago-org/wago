@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/wago-org/wago/src/core/runtime"
+	"github.com/wago-org/wago/src/core/runtime/gc"
 )
 
 // SnapshotKind selects what state a Snapshot captures.
@@ -62,10 +63,12 @@ var defaultWarmFuncs = []string{"_start", "_instantiate"}
 // one back. A Snapshot is safe for concurrent use by Instantiate: it is
 // read-only after creation.
 //
-// Scope of this prototype: linear memory (current, possibly grown size), numeric
-// and vector module-local globals, and passive-data descriptor lengths are
-// captured. Reference globals are rejected until a live-state resolver exists.
-// Imported globals are not — their state is the host's. Tables are not snapshotted yet;
+// Scope: linear memory (current, possibly grown size), numeric/vector globals,
+// passive-data descriptor lengths, and reachable generic-WasmGC object graphs
+// rooted by owned local GC globals are captured. GC objects use stable snapshot
+// IDs and two-pass reconstruction, preserving cycles and sharing without
+// persisting compact collector handles. Imported globals are not captured —
+// their state is the host's. Non-GC reference globals and tables remain rejected;
 // Capture rejects modules with local or imported tables instead of silently losing
 // table.set/fill/grow/init/drop state. Only explicit-bounds modules are supported;
 // signals-based (guard-page) instances are rejected, matching Compiled.MarshalBinary.
@@ -84,6 +87,8 @@ type Snapshot struct {
 	memories        []memorySnap // one entry per owned local memory, in wasm index order
 	globals         []globalSnap // one entry per global cell, indexed by wasm global index
 	passiveDataLens []uint32     // current descriptor lengths, indexed by wasm data segment
+	gcGlobalRefs    []gcSnapshotRef
+	gcObjects       []gcObjectSnapshot
 }
 
 type memorySnap struct {
@@ -136,7 +141,11 @@ func Capture(c *Compiled, opts SnapshotOptions) (*Snapshot, error) {
 		}
 	}
 
-	return captureInstanceSnapshot(in, opts), nil
+	s := captureInstanceSnapshot(in, opts)
+	if err := captureGCHeapSnapshot(in, s); err != nil {
+		return nil, fmt.Errorf("wago: snapshot GC heap: %w", err)
+	}
+	return s, nil
 }
 
 // captureInstanceSnapshot copies the reusable state of an already-initialized
@@ -194,6 +203,17 @@ func runWarm(in *Instance, opts SnapshotOptions) error {
 		if name == "" {
 			return fmt.Errorf("wago: warm snapshot: no WarmFunc set and none of %v are exported", defaultWarmFuncs)
 		}
+	}
+	globalIndex, ok := in.c.Exports[name]
+	if !ok {
+		return fmt.Errorf("wago: warm function %q is not exported", name)
+	}
+	sig, ok := compiledFunctionSignature(in.c, globalIndex)
+	if !ok {
+		return fmt.Errorf("wago: warm function %q has no signature", name)
+	}
+	if hasReferenceValType(sig.Params) || hasReferenceValType(sig.Results) {
+		return fmt.Errorf("wago: warm function %q cannot transfer references across the snapshot boundary", name)
 	}
 	if _, err := in.Invoke(name, opts.WarmArgs...); err != nil {
 		return fmt.Errorf("wago: warm function %q: %w", name, err)
@@ -275,9 +295,9 @@ func validateSnapshotModule(c *Compiled) error {
 		return errors.New("wago: snapshot has no bound module")
 	}
 	required := c.requiredFeatures | compiledStructuralRequiredFeatures(c)
-	genericGCInit := required&CoreFeatureGC != 0 && genericGCInitSnapshotSafe(c)
-	if required&CoreFeatureGC != 0 && !genericGCInit {
-		return errors.New("wago: WasmGC reference products cannot be snapshotted until heap, root, and barrier state has a persisted resolver")
+	genericGCSnapshot := required&CoreFeatureGC != 0 && genericGCHeapSnapshotSafe(c)
+	if required&CoreFeatureGC != 0 && !genericGCSnapshot {
+		return errors.New("wago: WasmGC reference products cannot be snapshotted unless they use generic collector execution, owned local GC globals, and no tables")
 	}
 	if required&CoreFeatureExceptionHandling != 0 {
 		declarationOnlyLocalTags := c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 && c.tagImportCount() == 0 && len(c.Funcs) == 0
@@ -285,10 +305,10 @@ func validateSnapshotModule(c *Compiled) error {
 			return errors.New("wago: exception-handling snapshots require declaration-only local tags without functions, imports, or active native handlers")
 		}
 	}
-	if required&CoreFeatureTailCall != 0 || (required&CoreFeatureTypedFunctionReferences != 0 && !genericGCInit) {
+	if required&CoreFeatureTailCall != 0 || (required&CoreFeatureTypedFunctionReferences != 0 && !genericGCSnapshot) {
 		return errors.New("wago: typed function references and tail-call contexts cannot be snapshotted until descriptor owners and tail frames have a persisted resolver")
 	}
-	if !genericGCInit {
+	if !genericGCSnapshot {
 		if err := c.validateSnapshotReferenceGlobals(); err != nil {
 			return err
 		}
@@ -314,18 +334,12 @@ func validateSnapshotModule(c *Compiled) error {
 	return nil
 }
 
-// genericGCInitSnapshotSafe admits only replayable initialization snapshots.
-// No start or warm function has run, GC reference globals are immutable and
-// local, and restore rebuilds their object graph from persisted constant
-// expressions instead of copying compact handles from the capture collector.
+// genericGCInitSnapshotSafe recognizes legacy v3 replay-only WasmGC snapshots.
+// Version 4 captures explicit stable-ID heap graphs and does not need this
+// restriction.
 func genericGCInitSnapshotSafe(c *Compiled) bool {
-	if c == nil || !c.usesGenericGCExecution() || c.HasStart || len(c.Imports) != 0 || c.HasTable {
+	if !genericGCHeapSnapshotSafe(c) || c.HasStart || len(c.Imports) != 0 {
 		return false
-	}
-	for _, g := range c.GlobalImports {
-		if isReferenceValType(g.Type) {
-			return false
-		}
 	}
 	for _, g := range c.Globals {
 		if !isReferenceValType(g.Type) {
@@ -338,12 +352,28 @@ func genericGCInitSnapshotSafe(c *Compiled) bool {
 	return true
 }
 
+// genericGCHeapSnapshotSafe admits completed-invocation heap capture where every
+// collector object is reachable through owned module-local GC globals. Tables and
+// imported reference globals remain excluded because their mutable ownership lies
+// outside the instance being captured.
+func genericGCHeapSnapshotSafe(c *Compiled) bool {
+	if c == nil || !c.usesGenericGCExecution() || c.HasTable {
+		return false
+	}
+	for _, g := range c.GlobalImports {
+		if isGCRefValType(g.Type) {
+			return false
+		}
+	}
+	return true
+}
+
 func validateSnapshotKind(c *Compiled, kind SnapshotKind) error {
 	if c == nil {
 		return errors.New("wago: snapshot has no bound module")
 	}
-	if (c.requiredFeatures|compiledStructuralRequiredFeatures(c))&CoreFeatureGC != 0 && kind != SnapshotInit {
-		return errors.New("wago: WasmGC snapshots currently support replay-safe initialization state only; warm/live heap capture requires persisted roots and object identity")
+	if kind != SnapshotInit && kind != SnapshotWarm {
+		return fmt.Errorf("wago: snapshot kind %d is invalid", kind)
 	}
 	return nil
 }
@@ -374,7 +404,7 @@ func (s *Snapshot) Module() *Compiled { return s.c }
 func (s *Snapshot) Kind() SnapshotKind { return s.kind }
 
 const snapshotMagic = "WGSN"
-const snapshotVersion = 3
+const snapshotVersion = 4
 
 // MarshalBinary encodes the snapshot to a self-contained blob: the compiled
 // module followed by the captured memory and globals. Trailing zero bytes of
@@ -389,6 +419,11 @@ func (s *Snapshot) MarshalBinary() ([]byte, error) {
 	}
 	if err := validateSnapshotKind(s.c, s.kind); err != nil {
 		return nil, err
+	}
+	if (s.c.requiredFeatures|compiledStructuralRequiredFeatures(s.c))&CoreFeatureGC != 0 {
+		if err := validateGCSnapshot(s.c, s.globals, s.gcGlobalRefs, s.gcObjects); err != nil {
+			return nil, fmt.Errorf("wago: snapshot GC heap: %w", err)
+		}
 	}
 	cb, err := s.c.MarshalBinary()
 	if err != nil {
@@ -411,9 +446,13 @@ func (s *Snapshot) MarshalBinary() ([]byte, error) {
 	}
 
 	passiveDataLens := snapshotPassiveDataLens(s)
+	version := byte(3)
+	if (s.c.requiredFeatures|compiledStructuralRequiredFeatures(s.c))&CoreFeatureGC != 0 {
+		version = snapshotVersion
+	}
 	out := make([]byte, 0, len(snapshotMagic)+2+len(cb)+storedBytes+len(memories)*12+len(s.globals)*17+len(passiveDataLens)*5+40)
 	out = append(out, snapshotMagic...)
-	out = append(out, snapshotVersion, byte(s.kind))
+	out = append(out, version, byte(s.kind))
 	out = binary.AppendUvarint(out, uint64(len(cb)))
 	out = append(out, cb...)
 	out = binary.AppendUvarint(out, uint64(len(memories)))
@@ -436,6 +475,25 @@ func (s *Snapshot) MarshalBinary() ([]byte, error) {
 	out = binary.AppendUvarint(out, uint64(len(passiveDataLens)))
 	for _, n := range passiveDataLens {
 		out = binary.AppendUvarint(out, uint64(n))
+	}
+	if version >= 4 {
+		out = binary.AppendUvarint(out, uint64(len(s.gcGlobalRefs)))
+		for _, ref := range s.gcGlobalRefs {
+			out = append(out, ref.kind)
+			out = binary.LittleEndian.AppendUint32(out, ref.value)
+		}
+		out = binary.AppendUvarint(out, uint64(len(s.gcObjects)))
+		for _, object := range s.gcObjects {
+			out = binary.AppendUvarint(out, uint64(object.typeID))
+			out = binary.AppendUvarint(out, uint64(object.arrayLen))
+			out = binary.AppendUvarint(out, uint64(len(object.values)))
+			for _, value := range object.values {
+				out = append(out, byte(value.kind), value.ref.kind)
+				out = binary.LittleEndian.AppendUint32(out, value.ref.value)
+				out = binary.LittleEndian.AppendUint64(out, value.bits)
+				out = binary.LittleEndian.AppendUint64(out, value.bitsHi)
+			}
+		}
 	}
 	return out, nil
 }
@@ -511,6 +569,28 @@ func loadSnapshotWith(b []byte, loadCompiled func([]byte) (*Compiled, error)) (*
 			passiveDataLens[i] = uint32(v)
 		}
 	}
+	var gcGlobalRefs []gcSnapshotRef
+	var gcObjects []gcObjectSnapshot
+	if version >= 4 && len(rd.buf) != 0 {
+		gcGlobalRefs = make([]gcSnapshotRef, rd.count("GC global root", 5))
+		for i := range gcGlobalRefs {
+			gcGlobalRefs[i] = gcSnapshotRef{kind: rd.byte(), value: rd.u32()}
+		}
+		gcObjects = make([]gcObjectSnapshot, rd.count("GC object", 3))
+		for i := range gcObjects {
+			typeID := rd.uvarint()
+			arrayLen := rd.uvarint()
+			if typeID > uint64(^uint32(0)) || arrayLen > uint64(^uint32(0)) {
+				rd.err = fmt.Errorf("GC object %d type or length overflows u32", i)
+				break
+			}
+			values := make([]gcSnapshotValue, rd.count("GC object value", 22))
+			for j := range values {
+				values[j] = gcSnapshotValue{kind: gc.StorageKind(rd.byte()), ref: gcSnapshotRef{kind: rd.byte(), value: rd.u32()}, bits: rd.u64(), bitsHi: rd.u64()}
+			}
+			gcObjects[i] = gcObjectSnapshot{typeID: gc.TypeID(typeID), arrayLen: uint32(arrayLen), values: values}
+		}
+	}
 	if rd.err != nil {
 		return nil, fmt.Errorf("wago: invalid snapshot: %w", rd.err)
 	}
@@ -540,10 +620,24 @@ func loadSnapshotWith(b []byte, loadCompiled func([]byte) (*Compiled, error)) (*
 		_ = c.Close()
 		return nil, fmt.Errorf("wago: snapshot passive data: %w", err)
 	}
+	if (c.requiredFeatures|compiledStructuralRequiredFeatures(c))&CoreFeatureGC != 0 {
+		if version < 4 {
+			if !genericGCInitSnapshotSafe(c) {
+				_ = c.Close()
+				return nil, errors.New("wago: snapshot module: legacy WasmGC snapshots require replay-safe immutable initialization state")
+			}
+		} else if err := validateGCSnapshot(c, globals, gcGlobalRefs, gcObjects); err != nil {
+			_ = c.Close()
+			return nil, fmt.Errorf("wago: snapshot GC heap: %w", err)
+		}
+	} else if len(gcGlobalRefs) != 0 || len(gcObjects) != 0 {
+		_ = c.Close()
+		return nil, errors.New("wago: snapshot GC heap is present for a module without WasmGC")
+	}
 	for i := range memories {
 		memories[i].image = append([]byte(nil), memories[i].image...)
 	}
-	s := &Snapshot{c: c, kind: kind, memories: memories, globals: globals, passiveDataLens: passiveDataLens}
+	s := &Snapshot{c: c, kind: kind, memories: memories, globals: globals, passiveDataLens: passiveDataLens, gcGlobalRefs: gcGlobalRefs, gcObjects: gcObjects}
 	if len(memories) != 0 {
 		s.memPages, s.memory = memories[0].pages, memories[0].image
 	}
@@ -628,4 +722,20 @@ func (r *snapReader) byte() byte {
 		return 0
 	}
 	return b[0]
+}
+
+func (r *snapReader) u32() uint32 {
+	b := r.bytes(4)
+	if b == nil {
+		return 0
+	}
+	return binary.LittleEndian.Uint32(b)
+}
+
+func (r *snapReader) u64() uint64 {
+	b := r.bytes(8)
+	if b == nil {
+		return 0
+	}
+	return binary.LittleEndian.Uint64(b)
 }
