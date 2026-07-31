@@ -8,14 +8,12 @@ detection:
 
 ```json
 {
-  "$schema": "https://wago.sh/schema.json",
-  "schema": "wago/v1"
+  "$schema": "https://wago.sh/v0/schema.json"
 }
 ```
 
 The canonical schema is also committed as [`schema.json`](../schema.json).
-It uses JSON Schema draft 2020-12 and rejects unknown fields. Plugin-owned
-`config` is the deliberate exception: its shape belongs to that plugin.
+It uses JSON Schema draft 2020-12 and rejects unknown fields.
 
 Validate a manifest in CI with any draft-2020-12 validator. For example:
 
@@ -25,70 +23,64 @@ npx --yes --package ajv-cli@5 --package ajv-formats@3 \
   -s schema.json -d wago.json
 ```
 
-## Dependencies versus plugins
+## Plugin requirements
 
-These are intentionally separate:
-
-- `dependencies` lists public Go modules compiled into the generated Wago host.
-- `plugins` lists the compiled plugin registrations activated at runtime.
-- `plugins[].capabilities` grants privileged access to Wago integration APIs.
-
-Compiling code does not activate it, and activation does not grant authority.
+`plugins` maps GitHub-relative plugin IDs to semantic-version constraints. A
+single entry declares the Go module build dependency and activates its
+registration at runtime:
 
 ```json
 {
-  "$schema": "https://wago.sh/schema.json",
-  "schema": "wago/v1",
-  "dependencies": [
-    "github.com/wago-org/workers"
-  ],
-  "plugins": [
-    {
-      "name": "wago-org/workers",
-      "capabilities": ["instance.manage"]
-    }
-  ]
+  "$schema": "https://wago.sh/v0/schema.json",
+  "plugins": {
+    "wago-org/wasi": "^0.0.0",
+    "wago-org/workers": "^0.0.0"
+  }
 }
 ```
 
-`wago pkg add <module>` adds the module dependency and scaffolds a plugin entry
-with an empty capability list. Review the plugin source, then grant only the
-capabilities it needs.
+Wago expands `wago-org/wasi` to `github.com/wago-org/wasi` for the Go module
+build. `wago add <module>` resolves the installed version and writes a compatible
+caret constraint. Exact resolution and runtime authority are kept out of the
+manifest.
 
-## Plugin entries
+## `wago-lock.json`
 
-Each plugin entry supports:
-
-| Field | Required | Meaning |
-|---|:---:|---|
-| `name` | yes | GitHub-relative plugin ID, such as `wago-org/workers`. |
-| `capabilities` | yes | Explicit Wago host-integration grants. May be empty. |
-| `before` | no | Load this plugin before the named selected plugins. |
-| `after` | no | Load this plugin after the named selected plugins. |
-| `config` | no | Arbitrary plugin-owned JSON passed through `Registry.Config`. |
-
-Simple grants use an array. An object form attaches core-enforced limits to
-resource-owning capabilities while using `true` for unlimited grants:
+The lockfile records exact versions, the capabilities declared by the package,
+the subset reviewed and granted by the user, and opaque plugin configuration:
 
 ```json
 {
-  "name": "wago-org/workers",
-  "capabilities": {
-    "instance.manage": {
-      "maxInstances": 8,
-      "maxMemoryBytes": 4194304
+  "plugins": {
+    "wago-org/workers": {
+      "version": "0.0.0",
+      "requiredCapabilities": [
+        "instance.manage"
+      ],
+      "capabilities": {
+        "instance.manage": {
+          "maxInstances": 8,
+          "maxMemoryBytes": 4194304
+        }
+      },
+      "config": {
+        "maxWorkers": 8,
+        "maxQueueBytes": 1048576
+      }
     }
   }
 }
 ```
 
+Simple grants use a string array. The object form attaches core-enforced limits
+to resource-owning capabilities while using `true` for an unlimited grant.
 `maxInstances` limits simultaneously live managed instances.
 `maxMemoryBytes` rejects modules whose declared maximum memory exceeds the
 per-instance limit.
 
-Duplicate plugin names, duplicate capabilities, missing mandatory plugin
-dependencies, unknown capabilities, and load-order cycles are rejected before
-the plan commits.
+The lockfile is authority-bearing and parsed strictly. A malformed lockfile is
+an error instead of being silently ignored. Lock entries not selected by
+`wago.json` are ignored.
 
 ### Host-integration capabilities
 
@@ -112,24 +104,8 @@ module may use them.
 
 ## Load ordering
 
-Plugin packages may declare mandatory dependencies and default ordering. A
-project may add `before` and `after` constraints:
-
-```json
-{
-  "plugins": [
-    {
-      "name": "acme/wago-tracing",
-      "capabilities": ["instance.invoke"],
-      "before": ["acme/wago-metrics"]
-    },
-    {
-      "name": "acme/wago-metrics",
-      "capabilities": ["instance.invoke"]
-    }
-  ]
-}
-```
+Plugin packages declare mandatory dependencies and default `before`/`after`
+ordering in their compiled metadata.
 
 Wago resolves one directed acyclic graph. Mandatory dependencies must be
 selected. Missing optional `before`/`after` targets are ignored. Unrelated ready
@@ -138,23 +114,10 @@ run in reverse resolved order.
 
 ## Plugin configuration
 
-Wago does not interpret `config`:
-
-```json
-{
-  "name": "wago-org/workers",
-  "capabilities": ["instance.manage"],
-  "config": {
-    "maxWorkers": 8,
-    "maxQueueBytes": 1048576
-  }
-}
-```
-
-The plugin decodes this value through `Registry.Config`. Plugins may expose a
-schema through `ConfigSchemaProvider`; `wago plugin plan --json` includes it. A
-plugin must still reject invalid configuration during transactional
-registration.
+Wago does not interpret a lock entry's `config`. The plugin decodes it through
+`Registry.Config`. Plugins may expose a schema through `ConfigSchemaProvider`;
+`wago plugin plan --json` includes it. A plugin must still reject invalid
+configuration during transactional registration.
 
 Use `wago plugin check` in CI to validate compiled availability, provenance,
 grants, configuration registration, service dependencies, and load order. Use
@@ -162,15 +125,14 @@ grants, configuration registration, service dependencies, and load order. Use
 
 ## Publishing an open-source package
 
-When `module` is present, the schema also requires `schema`, `license`, and an
-HTTPS `repository`:
+When `module` is present, the schema also requires `license` and an HTTPS
+`repository`:
 
 ```json
 {
-  "$schema": "https://wago.sh/schema.json",
-  "schema": "wago/v1",
+  "$schema": "https://wago.sh/v0/schema.json",
   "module": "github.com/acme/wago-observability",
-  "version": "1.2.0",
+  "version": "0.0.0",
   "name": "Wago Observability",
   "short": "observability",
   "description": "Tracing and metrics plugins for Wago hosts.",
@@ -202,9 +164,7 @@ plugin planning.
 | Field | Purpose |
 |---|---|
 | `$schema` | Editor-facing JSON Schema URI. |
-| `schema` | Wago manifest format, currently `wago/v1`. |
-| `dependencies` | Go modules compiled into the custom host. |
-| `plugins` | Runtime plugin activation, grants, ordering, and config. |
+| `plugins` | GitHub-relative plugin IDs mapped to version constraints. |
 | `module` | Canonical Go module path for publishing. |
 | `version` | Semantic package version. |
 | `name`, `short`, `description` | Registry display and discovery metadata. |

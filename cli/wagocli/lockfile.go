@@ -3,24 +3,26 @@
 package wagocli
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
 )
 
-// lockfile.go maintains wago-lock.json, a record — next to wago.json — of what
-// each installed package required and was granted the last time it was installed.
-// It lets `wago add` decide when to (re)run the capability review: on a
-// first install, or when a package's required capabilities change.
+// lockfile.go maintains wago-lock.json, the resolved plugin state next to
+// wago.json. Version constraints remain user intent in the manifest; exact
+// versions, authority grants, and opaque plugin config live here.
 
 const lockFileName = "wago-lock.json"
 
 // lockEntry is a package's recorded state.
 type lockEntry struct {
-	Version              string   `json:"version,omitempty"`
-	RequiredCapabilities []string `json:"requiredCapabilities"`
-	GrantedCapabilities  []string `json:"grantedCapabilities"`
+	Version              string          `json:"version,omitempty"`
+	RequiredCapabilities []string        `json:"requiredCapabilities"`
+	Capabilities         json.RawMessage `json:"capabilities"`
+	Config               json.RawMessage `json:"config,omitempty"`
 }
 
 // lockDoc is the whole wago-lock.json document, keyed by canonical package id.
@@ -30,18 +32,26 @@ type lockDoc struct {
 
 func lockPath(dir string) string { return filepath.Join(dir, lockFileName) }
 
-// readLock loads dir's wago-lock.json, returning an empty (non-nil) doc when it's
-// absent or unreadable.
-func readLock(dir string) lockDoc {
+// readLock loads dir's wago-lock.json. Absence means no resolved state; malformed
+// authority-bearing state is rejected rather than silently disabling grants.
+func readLock(dir string) (lockDoc, error) {
 	d := lockDoc{Packages: map[string]lockEntry{}}
 	b, err := os.ReadFile(lockPath(dir))
+	if os.IsNotExist(err) {
+		return d, nil
+	}
 	if err != nil {
-		return d
+		return d, err
 	}
-	if json.Unmarshal(b, &d) != nil || d.Packages == nil {
-		return lockDoc{Packages: map[string]lockEntry{}}
+	decoder := json.NewDecoder(bytes.NewReader(b))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&d); err != nil {
+		return lockDoc{}, fmt.Errorf("%s: %w", displayPath(lockPath(dir)), err)
 	}
-	return d
+	if d.Packages == nil {
+		d.Packages = map[string]lockEntry{}
+	}
+	return d, nil
 }
 
 // writeLock writes dir's wago-lock.json with stable, sorted output.

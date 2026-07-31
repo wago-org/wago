@@ -42,7 +42,7 @@ func TestPluginListHandsOffToGlobalPluginRuntime(t *testing.T) {
 		t.Fatal(err)
 	}
 	const plugin = "github.com/wago-org/wasi"
-	if _, err := addProjectDep(manifestDir, plugin); err != nil {
+	if _, err := addProjectDep(manifestDir, plugin, "^0.0.0"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -112,7 +112,7 @@ func TestRunLoadsGlobalPluginConfiguration(t *testing.T) {
 		t.Fatal(err)
 	}
 	const plugin = "github.com/wago-org/wasi"
-	if _, err := addProjectDep(manifestDir, plugin); err != nil {
+	if _, err := addProjectDep(manifestDir, plugin, "^0.0.0"); err != nil {
 		t.Fatal(err)
 	}
 	if err := setPluginGrants(manifestDir, "wago-org/wasi", []string{"wasi"}); err != nil {

@@ -4,41 +4,30 @@ Wago plugins are open-source Go modules compiled into the host binary. A plugin
 can run ordinary Go code; Wago does not pretend to sandbox that code. Instead,
 the plugin API controls which privileged Wago integration surfaces the plugin
 may use. Consumers review the source dependency and grant only the integration
-powers they accept in `wago.json`.
+powers they accept. Grants are recorded in `wago-lock.json`.
 
 ## Manifest model
 
-`dependencies` controls what source modules are compiled into the custom Wago
-binary. `plugins` controls what is activated at runtime:
+`plugins` is the single source of package intent: its keys are GitHub-relative
+plugin IDs and its values are semantic-version constraints. Each entry is
+compiled into the custom Wago binary and activated at runtime:
 
 ```json
 {
-  "dependencies": [
-    "github.com/wago-org/workers",
-    "github.com/acme/wago-metrics"
-  ],
-  "plugins": [
-    {
-      "name": "acme/wago-metrics",
-      "capabilities": ["host.imports", "instance.invoke"],
-      "before": ["wago-org/workers"],
-      "config": {"sampleRate": 0.1}
-    },
-    {
-      "name": "wago-org/workers",
-      "capabilities": ["instance.manage"]
-    }
-  ]
+  "plugins": {
+    "acme/wago-metrics": "^0.0.0",
+    "wago-org/workers": "^0.0.0"
+  }
 }
 ```
 
-Compiling a dependency does not activate it. Activating a plugin does not grant
-it a capability. A plugin that exercises an ungranted API fails registration,
-and the complete plan commits nothing.
+Activation does not grant authority. Exact resolved versions, reviewed
+capabilities, and opaque plugin config live in `wago-lock.json`. A plugin that
+exercises an ungranted API fails registration, and the complete plan commits
+nothing.
 
-`wago pkg add` adds both the source dependency and a disabled-by-authority
-plugin entry with an empty capability list. The consumer must review the plugin
-and fill in its grants.
+`wago pkg add` adds the version-constrained plugin entry, resolves its exact
+version, reviews requested capabilities, and writes the result to the lockfile.
 
 The complete manifest field reference and JSON Schema are documented in
 [`wago-json.md`](wago-json.md).
@@ -68,8 +57,7 @@ a module may exercise them.
 ## Load order
 
 Each plugin may declare mandatory `requires` dependencies plus optional
-`before`/`after` constraints. A project's plugin entry may add `before` and
-`after` edges for local integration needs.
+`before`/`after` constraints in its package metadata.
 
 The runtime builds one directed graph:
 
@@ -95,9 +83,10 @@ instance.
 ## Open-source provenance
 
 Manifest-loaded plugins must declare an absolute HTTPS source repository and an
-SPDX license identifier. `Private` plugins are rejected. The Go module fetched
-under `dependencies` is the build input, so consumers can pin, mirror, audit,
-and reproduce the exact source compiled into their host.
+SPDX license identifier. `Private` plugins are rejected. The plugin key expands
+to its GitHub module path for the build, while the lockfile records the exact
+resolved version so consumers can pin, mirror, audit, and reproduce the source
+compiled into their host.
 
 Wago does not claim that provenance metadata is a security sandbox. A host that
 does not trust a plugin's Go source must not compile that plugin.
@@ -129,7 +118,7 @@ validates it without starting plugins.
 Each privileged surface also has a capability-specific handle (`HostImports`,
 `ModuleCompiler`, `InstanceInvocation`, and so on), so APIs obtained for one
 grant cannot be used to reach another. Resource-owning capabilities may carry
-core-enforced budgets in the manifest.
+core-enforced budgets in the lockfile.
 
 ## Exact-instance resource lifecycle
 

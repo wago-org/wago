@@ -10,8 +10,7 @@ import (
 
 const (
 	projectFile       = "wago.json"
-	manifestSchemaURI = "https://wago.sh/schema.json"
-	manifestVersion   = "wago/v1"
+	manifestSchemaURI = "https://wago.sh/v0/schema.json"
 )
 
 func projectManifestPath(dir string) string { return filepath.Join(dir, projectFile) }
@@ -57,11 +56,8 @@ func initializeProject(dir string) (bool, error) {
 		return false, err
 	}
 	ensureProjectMetadata(m)
-	if _, ok := m["dependencies"]; !ok {
-		m["dependencies"] = []any{}
-	}
 	if _, ok := m["plugins"]; !ok {
-		m["plugins"] = []any{}
+		m["plugins"] = map[string]any{}
 	}
 	return created, writeProjectMap(dir, m)
 }
@@ -69,9 +65,6 @@ func initializeProject(dir string) (bool, error) {
 func ensureProjectMetadata(m map[string]any) {
 	if _, ok := m["$schema"]; !ok {
 		m["$schema"] = manifestSchemaURI
-	}
-	if _, ok := m["schema"]; !ok {
-		m["schema"] = manifestVersion
 	}
 }
 

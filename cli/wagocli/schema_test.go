@@ -4,23 +4,17 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"reflect"
-	"sort"
 	"testing"
-
-	"github.com/wago-org/wago"
 )
 
-func TestWagoSchemaTracksPluginCapabilities(t *testing.T) {
+func TestWagoSchemaTracksPluginManifest(t *testing.T) {
 	b, err := os.ReadFile(filepath.Join("..", "..", "schema.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	var schema struct {
-		ID   string `json:"$id"`
-		Defs map[string]struct {
-			Enum []string `json:"enum"`
-		} `json:"$defs"`
+		ID         string                     `json:"$id"`
+		Properties map[string]json.RawMessage `json:"properties"`
 	}
 	if err := json.Unmarshal(b, &schema); err != nil {
 		t.Fatalf("invalid schema.json: %v", err)
@@ -28,19 +22,13 @@ func TestWagoSchemaTracksPluginCapabilities(t *testing.T) {
 	if schema.ID != manifestSchemaURI {
 		t.Fatalf("schema $id = %q", schema.ID)
 	}
-	got := append([]string(nil), schema.Defs["pluginCapability"].Enum...)
-	want := []string{
-		string(wago.PluginHostImports),
-		string(wago.PluginHostEnvironment),
-		string(wago.PluginRuntimeHooks),
-		string(wago.PluginCompileHooks),
-		string(wago.PluginInstanceHooks),
-		string(wago.PluginInvokeHooks),
-		string(wago.PluginManagedInstances),
+	if _, exists := schema.Properties["schema"]; exists {
+		t.Fatal("schema.json still exposes the removed manifest schema version field")
 	}
-	sort.Strings(got)
-	sort.Strings(want)
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("schema capabilities = %v, runtime capabilities = %v", got, want)
+	var plugins struct {
+		Type string `json:"type"`
+	}
+	if err := json.Unmarshal(schema.Properties["plugins"], &plugins); err != nil || plugins.Type != "object" {
+		t.Fatalf("plugins type = %q, %v; want object", plugins.Type, err)
 	}
 }

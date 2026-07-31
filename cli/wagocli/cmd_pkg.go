@@ -4,7 +4,7 @@ package wagocli
 
 // The plugin command surface: top-level `wago add`/`wago rm` for the common
 // install/remove, and `wago plugin` for the rest (list, inspect, grant, update,
-// publish). The consume side records dependencies in wago.json, `go get`s them
+// publish). The consume side records plugin constraints in wago.json, `go get`s them
 // into a generated .wago build module, and compiles a custom wago (see
 // plugin_build.go / wagomodule.go). The publish side talks to the registry and is
 // build-tagged (registry_net.go vs the lean registry_stub.go).
