@@ -162,6 +162,15 @@ func validateGCSnapshot(c *Compiled, globals []globalSnap, roots []gcSnapshotRef
 		}
 		return nil
 	}
+	reachable := make([]bool, len(objects))
+	queue := make([]uint32, 0, len(objects))
+	markObject := func(ref gcSnapshotRef) {
+		if ref.kind != gcSnapshotRefObject || reachable[ref.value-1] {
+			return
+		}
+		reachable[ref.value-1] = true
+		queue = append(queue, ref.value)
+	}
 	for i, ref := range roots {
 		if err := validateRef(ref); err != nil {
 			return fmt.Errorf("global %d: %w", i, err)
@@ -170,7 +179,12 @@ func validateGCSnapshot(c *Compiled, globals []globalSnap, roots []gcSnapshotRef
 			if ref.kind != gcSnapshotRefNull {
 				return fmt.Errorf("non-GC global %d carries a GC root", i)
 			}
+			continue
 		}
+		if c.Globals[i].Type == ValI31Ref && ref.kind == gcSnapshotRefObject {
+			return fmt.Errorf("i31 global %d carries an object reference", i)
+		}
+		markObject(ref)
 	}
 	for i, object := range objects {
 		desc, ok := snapshotGCDescriptor(c, object.typeID)
@@ -196,12 +210,33 @@ func validateGCSnapshot(c *Compiled, globals []globalSnap, roots []gcSnapshotRef
 				if err := validateRef(value.ref); err != nil {
 					return fmt.Errorf("object %d value %d: %w", i+1, j, err)
 				}
+				if value.kind == gc.StorageRef && value.ref.kind == gcSnapshotRefNull {
+					return fmt.Errorf("object %d value %d is null in non-null reference storage", i+1, j)
+				}
 			} else if value.ref.kind != 0 || value.ref.value != 0 {
 				return fmt.Errorf("object %d value %d has a reference payload for non-reference storage", i+1, j)
 			}
-			if (value.kind == gc.StorageFuncRef || value.kind == gc.StorageFuncRefNull || value.kind == gc.StorageExternRef || value.kind == gc.StorageExternRefNull) && value.bits != 0 {
-				return fmt.Errorf("object %d value %d contains a non-null non-collector reference", i+1, j)
+			if value.kind == gc.StorageFuncRef || value.kind == gc.StorageFuncRefNull || value.kind == gc.StorageExternRef || value.kind == gc.StorageExternRefNull {
+				if value.bits != 0 {
+					return fmt.Errorf("object %d value %d contains a non-null non-collector reference", i+1, j)
+				}
+				if value.kind == gc.StorageFuncRef || value.kind == gc.StorageExternRef {
+					return fmt.Errorf("object %d value %d is null in non-null opaque reference storage", i+1, j)
+				}
 			}
+		}
+	}
+	for pos := 0; pos < len(queue); pos++ {
+		object := objects[queue[pos]-1]
+		for _, value := range object.values {
+			if value.kind == gc.StorageRef || value.kind == gc.StorageRefNull {
+				markObject(value.ref)
+			}
+		}
+	}
+	for i, marked := range reachable {
+		if !marked {
+			return fmt.Errorf("object %d is unreachable from snapshot globals", i+1)
 		}
 	}
 	return nil
