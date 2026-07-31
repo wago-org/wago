@@ -15,7 +15,7 @@ const (
 	pageIsSwapped = uint64(1 << 4)
 	pagemapScan   = uintptr(0xc0606610)
 
-	dirtyRegionCapacity = 32
+	dirtyRegionCapacity = 16
 )
 
 type pageRegion struct {
@@ -45,29 +45,43 @@ type filePageSnapshotTracker struct {
 	size        uintptr
 	start       uintptr
 	end         uintptr
-	pagemap     int
-	regions     [dirtyRegionCapacity]pageRegion
 	enabled     bool
 	fallbackErr error
 }
 
+type pageSnapshotDirtyTracker = filePageSnapshotTracker
+
 func (s *filePageSnapshot) track(addr uintptr, size, start, end int) (pageSnapshotDirtyTracker, error) {
-	t := &filePageSnapshotTracker{
+	t := filePageSnapshotTracker{
 		snapshot: s,
 		addr:     addr,
 		size:     uintptr(size),
 		start:    addr + uintptr(start),
 		end:      addr + uintptr(end),
-		pagemap:  -1,
 	}
-	pagemap, err := syscall.Open("/proc/self/pagemap", syscall.O_RDONLY|syscall.O_CLOEXEC, 0)
+	_, err := s.pagemapFD()
 	if err != nil {
-		t.fallbackErr = fmt.Errorf("open pagemap: %w", err)
+		t.fallbackErr = err
 		return t, nil
 	}
-	t.pagemap = pagemap
 	t.enabled = true
 	return t, nil
+}
+
+func (s *filePageSnapshot) pagemapFD() (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return -1, errors.New("wago: page snapshot is closed")
+	}
+	if !s.pagemapTried {
+		s.pagemapTried = true
+		s.pagemap, s.pagemapErr = syscall.Open("/proc/self/pagemap", syscall.O_RDONLY|syscall.O_CLOEXEC, 0)
+		if s.pagemapErr != nil {
+			s.pagemapErr = fmt.Errorf("open pagemap: %w", s.pagemapErr)
+		}
+	}
+	return s.pagemap, s.pagemapErr
 }
 
 func (t *filePageSnapshotTracker) reset() error {
@@ -88,6 +102,7 @@ func (t *filePageSnapshotTracker) reset() error {
 }
 
 func (t *filePageSnapshotTracker) discardPrivateCOW() error {
+	var regions [dirtyRegionCapacity]pageRegion
 	start := t.start
 	end := t.end
 	for start < end {
@@ -95,27 +110,27 @@ func (t *filePageSnapshotTracker) discardPrivateCOW() error {
 			Size:              uint64(unsafe.Sizeof(pagemapScanArg{})),
 			Start:             uint64(start),
 			End:               uint64(end),
-			Vec:               uint64(uintptr(unsafe.Pointer(&t.regions[0]))),
-			VecLen:            uint64(len(t.regions)),
+			Vec:               uint64(uintptr(unsafe.Pointer(&regions[0]))),
+			VecLen:            uint64(len(regions)),
 			CategoryInverted:  pageIsFile,
 			CategoryMask:      pageIsFile,
 			CategoryAnyOfMask: pageIsPresent | pageIsSwapped,
-			ReturnMask:        pageIsFile | pageIsPresent | pageIsSwapped,
+			ReturnMask:        0,
 		}
 		count, _, errno := syscall.Syscall(
 			syscall.SYS_IOCTL,
-			uintptr(t.pagemap),
+			uintptr(t.snapshot.pagemap),
 			pagemapScan,
 			uintptr(unsafe.Pointer(&scan)),
 		)
 		if errno != 0 {
 			return errno
 		}
-		if count > uintptr(len(t.regions)) {
-			return fmt.Errorf("pagemap returned %d regions, capacity %d", count, len(t.regions))
+		if count > uintptr(len(regions)) {
+			return fmt.Errorf("pagemap returned %d regions, capacity %d", count, len(regions))
 		}
 		for i := 0; i < int(count); i++ {
-			region := t.regions[i]
+			region := regions[i]
 			if region.Start < uint64(t.start) || region.End > uint64(end) || region.Start >= region.End {
 				return fmt.Errorf("invalid private COW region [%#x,%#x)", region.Start, region.End)
 			}
@@ -156,11 +171,6 @@ func (t *filePageSnapshotTracker) disable() {
 
 func (t *filePageSnapshotTracker) close() error {
 	t.disable()
-	if t.pagemap >= 0 {
-		err := syscall.Close(t.pagemap)
-		t.pagemap = -1
-		return err
-	}
 	return nil
 }
 

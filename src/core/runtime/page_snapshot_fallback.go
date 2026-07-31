@@ -33,7 +33,7 @@ func (s *copiedPageSnapshot) discard(addr uintptr, size int) error {
 }
 
 func (s *copiedPageSnapshot) track(addr uintptr, size, _, _ int) (pageSnapshotDirtyTracker, error) {
-	return &copiedPageSnapshotTracker{snapshot: s, addr: addr, size: size}, nil
+	return copiedPageSnapshotTracker{snapshot: s, addr: addr, size: size}, nil
 }
 
 func (*copiedPageSnapshot) pageBacked() bool { return false }
@@ -51,6 +51,8 @@ type copiedPageSnapshotTracker struct {
 	addr     uintptr
 	size     int
 }
+
+type pageSnapshotDirtyTracker = copiedPageSnapshotTracker
 
 func (t *copiedPageSnapshotTracker) reset() error {
 	return t.snapshot.reset(t.addr, t.size)

@@ -10,9 +10,12 @@ import (
 )
 
 type filePageSnapshot struct {
-	mu     sync.RWMutex
-	file   *os.File
-	closed bool
+	mu           sync.RWMutex
+	file         *os.File
+	pagemap      int
+	pagemapTried bool
+	pagemapErr   error
+	closed       bool
 }
 
 func newPageSnapshotBacking(data []byte) (pageSnapshotBacking, error) {
@@ -35,7 +38,7 @@ func newPageSnapshotBacking(data []byte) (pageSnapshotBacking, error) {
 	if _, err = f.WriteAt(data, 0); err != nil {
 		return fail(fmt.Errorf("wago: write page snapshot: %w", err))
 	}
-	return &filePageSnapshot{file: f}, nil
+	return &filePageSnapshot{file: f, pagemap: -1}, nil
 }
 
 func (s *filePageSnapshot) reset(addr uintptr, size int) error {
@@ -88,5 +91,14 @@ func (s *filePageSnapshot) close() error {
 		return nil
 	}
 	s.closed = true
-	return s.file.Close()
+	var pagemapErr error
+	if s.pagemap >= 0 {
+		pagemapErr = syscall.Close(s.pagemap)
+		s.pagemap = -1
+	}
+	fileErr := s.file.Close()
+	if fileErr != nil {
+		return fileErr
+	}
+	return pagemapErr
 }

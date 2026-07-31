@@ -35,10 +35,7 @@ func TestFilePageSnapshotDirtyTrackerRestoresFullImageExactly(t *testing.T) {
 	}
 	defer tracker.close()
 	if !tracker.selective() {
-		if fileTracker, ok := tracker.(*filePageSnapshotTracker); ok {
-			t.Skipf("pagemap scan unavailable: %v", fileTracker.fallbackErr)
-		}
-		t.Skip("pagemap scan unavailable")
+		t.Skipf("pagemap scan unavailable: %v", tracker.fallbackErr)
 	}
 
 	for cycle := 0; cycle < 3; cycle++ {
@@ -116,10 +113,7 @@ func TestFilePageSnapshotDirtyTrackerRestoresOnlyTrackedRange(t *testing.T) {
 	}
 	defer tracker.close()
 	if !tracker.selective() {
-		if fileTracker, ok := tracker.(*filePageSnapshotTracker); ok {
-			t.Skipf("pagemap scan unavailable: %v", fileTracker.fallbackErr)
-		}
-		t.Skip("pagemap scan unavailable")
+		t.Skipf("pagemap scan unavailable: %v", tracker.fallbackErr)
 	}
 
 	for cycle := 0; cycle < 3; cycle++ {
@@ -172,10 +166,7 @@ func BenchmarkFilePageSnapshotDirty20MiB(b *testing.B) {
 	}
 	b.Cleanup(func() { _ = tracker.close() })
 	if !tracker.selective() {
-		if fileTracker, ok := tracker.(*filePageSnapshotTracker); ok {
-			b.Skipf("pagemap scan unavailable: %v", fileTracker.fallbackErr)
-		}
-		b.Skip("pagemap scan unavailable")
+		b.Skipf("pagemap scan unavailable: %v", tracker.fallbackErr)
 	}
 
 	b.ReportAllocs()
@@ -185,6 +176,36 @@ func BenchmarkFilePageSnapshotDirty20MiB(b *testing.B) {
 		memory[2<<20] = byte(i)
 		if err = tracker.reset(); err != nil {
 			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkFilePageSnapshotTrack20MiB(b *testing.B) {
+	const size = 20 << 20
+	backing, err := newPageSnapshotBacking(make([]byte, size))
+	if err != nil {
+		b.Fatalf("newPageSnapshotBacking: %v", err)
+	}
+	b.Cleanup(func() { _ = backing.close() })
+	memory, err := mmapRW(size)
+	if err != nil {
+		b.Fatalf("mmapRW: %v", err)
+	}
+	b.Cleanup(func() { _ = syscall.Munmap(memory) })
+	addr := uintptr(unsafe.Pointer(&memory[0]))
+	if err = backing.reset(addr, len(memory)); err != nil {
+		b.Fatalf("initial reset: %v", err)
+	}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for range b.N {
+		tracker, trackErr := backing.track(addr, len(memory), 0, len(memory))
+		if trackErr != nil {
+			b.Fatal(trackErr)
+		}
+		if closeErr := tracker.close(); closeErr != nil {
+			b.Fatal(closeErr)
 		}
 	}
 }

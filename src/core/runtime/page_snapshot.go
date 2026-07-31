@@ -21,6 +21,7 @@ type PageSnapshotDirtyTracker struct {
 	snapshot *PageSnapshot
 	job      *JobMemory
 	impl     pageSnapshotDirtyTracker
+	active   bool
 }
 
 // NewPageSnapshot captures data in an immutable page-backed image.
@@ -99,13 +100,13 @@ func (j *JobMemory) TrackPageSnapshotWrites(
 	if err != nil {
 		return nil, err
 	}
-	return &PageSnapshotDirtyTracker{snapshot: s, job: j, impl: impl}, nil
+	return &PageSnapshotDirtyTracker{snapshot: s, job: j, impl: impl, active: true}, nil
 }
 
 // DiscardDirtyToPageSnapshot restores only pages written since tracking began.
 // Globals and other instance state are restored by the higher-level binding.
 func (j *JobMemory) DiscardDirtyToPageSnapshot(t *PageSnapshotDirtyTracker) error {
-	if t == nil || t.snapshot == nil || t.impl == nil {
+	if t == nil || t.snapshot == nil || !t.active {
 		return errors.New("wago: nil page snapshot dirty tracker")
 	}
 	if t.job != j {
@@ -123,11 +124,11 @@ func (j *JobMemory) DiscardDirtyToPageSnapshot(t *PageSnapshotDirtyTracker) erro
 
 // Close releases per-mapping dirty tracking resources.
 func (t *PageSnapshotDirtyTracker) Close() error {
-	if t == nil || t.impl == nil {
+	if t == nil || !t.active {
 		return nil
 	}
 	err := t.impl.close()
-	t.impl = nil
+	t.active = false
 	return err
 }
 
@@ -135,7 +136,7 @@ func (t *PageSnapshotDirtyTracker) Close() error {
 // written since the previous reset. False means reset safely falls back to
 // discarding the complete snapshot mapping.
 func (t *PageSnapshotDirtyTracker) Selective() bool {
-	return t != nil && t.impl != nil && t.impl.selective()
+	return t != nil && t.active && t.impl.selective()
 }
 
 func (j *JobMemory) validatePageSnapshot(s *PageSnapshot) error {
@@ -162,10 +163,4 @@ type pageSnapshotBacking interface {
 	track(addr uintptr, size, start, end int) (pageSnapshotDirtyTracker, error)
 	pageBacked() bool
 	close() error
-}
-
-type pageSnapshotDirtyTracker interface {
-	reset() error
-	close() error
-	selective() bool
 }
