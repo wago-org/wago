@@ -22,20 +22,17 @@ and starts the 3,225,249-byte MoonBit Starshine CLI smoke payload (SHA-256
 `3a92309ca48f80594c88ea6c3508982d6fc34953c018ce31786382e08a18d046`). A
 separate checked-in MoonBit JSON source fixture builds a pinned 44,023-byte,
 import-free WasmGC module and verifies deterministic parse/stringify/reparse
-checksums through `make test-moonbit-json`. General generated code keeps
-collection disabled while native frames are active until exact frame-root
-publication is complete. For the table/element-free subset whose persistent GC
-references are owned globals, wago registers checked global roots and performs a
-zero-allocation full sweep between invocations; a single invocation remains
-bounded by the Throughput heap and exhausts explicitly. Codec v30 reloads generic
-struct/array helper admission, and replay-safe initialization snapshots rebuild
-immutable local GC globals from initializer expressions. Snapshot v4 captures reachable local-global WasmGC graphs with stable IDs,
-cycles, and sharing. Exact same-Runtime, descriptor-identical, global/table-free
-cross-instance calls transfer compact references through one shared collector
-and walk foreign caller frames. Arm64 explicit-bounds builds lower struct, array,
-and i31 helpers through the parked synchronous ABI; active-frame collection there
-remains bounded/disabled pending arm64 stack maps. Broader host ownership remains
-fail-closed.
+checksums through `make test-moonbit-json`. Linux/amd64 generated code publishes exact roots across the admitted local,
+indirect, reference, host-re-entry, EH, and same-Runtime cross-instance boundaries;
+Throughput and Tiny collectors may collect while those native frames are active.
+Codec v30 reloads and strictly validates the root metadata. Snapshot v4 captures
+reachable local-global WasmGC graphs with stable IDs, cycles, and sharing. Exact
+same-Runtime, descriptor-identical, global/table-free cross-instance calls transfer
+compact references through one shared collector and walk foreign caller frames.
+Arm64 explicit-bounds builds lower struct, array, and i31 helpers through the
+parked synchronous ABI; active-frame collection there remains bounded/disabled
+pending arm64 stack maps. Shared GC globals/tables, whole-domain snapshots, and
+broader host ownership remain fail-closed.
 See [docs/wasm3.md](docs/wasm3.md) for the implementation ledger.
 
 ## WebAssembly 1.0 (MVP)

@@ -1,6 +1,6 @@
 # WebAssembly 3.0 implementation status
 
-Last updated: 2026-07-16.
+Last updated: 2026-07-31.
 
 This document is the implementation ledger for the WebAssembly Core 3.0 effort.
 The primary product target is `linux/amd64`. A row is not complete merely because
@@ -160,6 +160,29 @@ Release 2 feature set plus extended constants; callers opt into Core 3 with
 | table64 | Complete i64 index/result, full-u64 limit, mixed-width copy/init, and malformed-LEB validation. | Local/imported funcref and externref tables, all table operations, indirect calls, metadata/codec, and `spectest.table64` execute. | ✅ Mandatory Core 3 table64 corpus gap-free. |
 | Text annotations | Text-format concern; no native execution semantics are required. | No runtime work planned unless tooling integration exposes a concrete need. | Not a native runtime feature. |
 | Deterministic profile | Separate optional profile, not part of the current Core 3.0 product claim. | No profile claim is made by this document. Deterministic relaxed-SIMD lowering does not by itself implement the full optional deterministic profile. | Optional/separate. |
+
+## Current hardening priorities
+
+The mandatory linux/amd64 explicit-bounds conformance milestone is complete. The
+remaining Core 3 work is product generalization rather than missing official
+opcode families:
+
+1. harden Runtime GC-domain lifecycle, rollback, multi-hop foreign-frame walking,
+   codec reload, snapshot-v4 validation, mixed graphs, and native arm64 execution;
+2. publish exact arm64 safepoints/callsites and walk parked native frames before
+   enabling collection during arm64 invocations;
+3. extend same-domain ownership to imported/exported GC globals and tables with
+   exact roots, barriers, aliases, rollback, and close ordering;
+4. extend snapshot-v4 roots to local GC tables and make restore publication fully
+   transactional, while rejecting partial capture of imported/shared domains;
+5. run the complete Core 3 suite under linux/amd64 signal-backed bounds and then
+   natively on linux/arm64 and darwin/arm64; and
+6. only after those correctness gates, measure and add direct checked JIT object
+   access as a replacement for common parked-helper operations.
+
+Historical iteration sections below retain the boundary statements that were true
+at each commit. They are not the current support matrix; use `FEATURES.md` and the
+table above for current status.
 
 ## Extended constant-expression implementation
 
