@@ -72,17 +72,53 @@ func (in *Instance) gcObjectTypeMatches(actual gc.TypeID, want uint32) bool {
 }
 
 func (in *Instance) dispatchGCStructHelper(helper uint32, args, results []uint64) {
+	in.dispatchGCStructHelperParked(0, helper, 0, args, results)
+}
+
+func gcHelperMayAllocate(helper uint32) bool {
+	switch helper {
+	case gcStructAllocDefault, gcStructAllocOne,
+		gcArrayAllocDefault, gcArrayAllocFixed, gcArrayAllocUniform,
+		gcArrayAllocData, gcArrayAllocElem, gcArrayAllocFixedV128Spill:
+		return true
+	default:
+		return false
+	}
+}
+
+func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint uint32, args, results []uint64) {
 	if in == nil || in.gc == nil {
 		panic(gcStructHelperError{err: fmt.Errorf("gc struct helper %d has no live collector", helper)})
 	}
 	state := in.publicGCState()
 	state.mu.Lock()
 	defer state.mu.Unlock()
-	structValue := func(typeID, fieldID uint32, bits uint64) gc.Value {
+	var frameRoots gc.RootSet = gc.EmptyRoots{}
+	if gcHelperMayAllocate(helper) {
+		frameRoots = in.gcHelperRoots(ctrl, state, safepoint)
+	}
+	structFieldKind := func(typeID, fieldID uint32) gc.StorageKind {
 		if int(typeID) >= len(in.c.GCTypeDescs) || int(fieldID) >= len(in.c.GCTypeDescs[typeID].Fields) || int(typeID) >= len(in.c.Types) || in.c.Types[typeID].Kind != CompositeTypeStruct || int(fieldID) >= len(in.c.Types[typeID].Fields) {
 			panic(gcStructHelperError{err: fmt.Errorf("gc struct field %d:%d is unavailable", typeID, fieldID)})
 		}
-		kind := in.c.GCTypeDescs[typeID].Fields[fieldID].Kind
+		return in.c.GCTypeDescs[typeID].Fields[fieldID].Kind
+	}
+	structValueSlots := func(typeID, fieldID uint32) int {
+		if structFieldKind(typeID, fieldID) == gc.StorageV128 {
+			return 2
+		}
+		return 1
+	}
+	structValue := func(typeID, fieldID uint32, words []uint64) gc.Value {
+		kind := structFieldKind(typeID, fieldID)
+		wantSlots := 1
+		if kind == gc.StorageV128 {
+			wantSlots = 2
+		}
+		if len(words) != wantSlots {
+			panic(gcStructHelperError{err: fmt.Errorf("gc struct field %d:%d value uses %d slot(s), want %d", typeID, fieldID, len(words), wantSlots)})
+		}
+		bits := words[0]
 		want := in.c.Types[typeID].Fields[fieldID].Storage.Value
 		if kind == gc.StorageFuncRef || kind == gc.StorageFuncRefNull {
 			if bits == 0 {
@@ -108,7 +144,11 @@ func (in *Instance) dispatchGCStructHelper(helper uint32, args, results []uint64
 			if kind == gc.StorageI8 || kind == gc.StorageI16 {
 				valueKind = gc.StorageI32
 			}
-			return gc.Value{Kind: valueKind, Bits: bits}
+			value := gc.Value{Kind: valueKind, Bits: bits}
+			if kind == gc.StorageV128 {
+				value.BitsHi = words[1]
+			}
+			return value
 		}
 		ref := gc.Ref(uint32(bits))
 		if ref.IsNull() {
@@ -141,7 +181,7 @@ func (in *Instance) dispatchGCStructHelper(helper uint32, args, results []uint64
 		// ref.test table product may retain prior objects only in checked collector
 		// table slots, and stores each returned ref before the next allocation.
 		// A non-nil empty frame-root set keeps stress collection explicit.
-		ref, err := in.gc.NewStructDefaultWithRoots(gc.TypeID(uint32(args[0])), gc.EmptyRoots{})
+		ref, err := in.gc.NewStructDefaultWithRoots(gc.TypeID(uint32(args[0])), frameRoots)
 		if err != nil {
 			panic(gcStructHelperError{err: err})
 		}
@@ -151,17 +191,27 @@ func (in *Instance) dispatchGCStructHelper(helper uint32, args, results []uint64
 			panic(gcStructHelperError{err: fmt.Errorf("gc struct alloc helper arity = %d/%d, want at-least-1/at-least-1", len(args), len(results))})
 		}
 		typeID := uint32(args[len(args)-1])
-		if int(typeID) >= len(in.c.GCTypeDescs) || len(in.c.GCTypeDescs[typeID].Fields) != len(args)-1 {
-			panic(gcStructHelperError{err: fmt.Errorf("gc struct type %d field count does not match %d initializer values", typeID, len(args)-1)})
+		if int(typeID) >= len(in.c.GCTypeDescs) || in.c.GCTypeDescs[typeID].Kind != gc.KindStruct {
+			panic(gcStructHelperError{err: fmt.Errorf("gc struct type %d is unavailable", typeID)})
 		}
-		if len(args)-1 > 63 {
-			panic(gcStructHelperError{err: fmt.Errorf("gc struct type %d exceeds 63 helper initializer values", typeID)})
+		fieldCount := len(in.c.GCTypeDescs[typeID].Fields)
+		if fieldCount > len(state.values) {
+			panic(gcStructHelperError{err: fmt.Errorf("gc struct type %d exceeds %d helper initializer values", typeID, len(state.values))})
 		}
-		values := state.values[:len(args)-1]
+		values := state.values[:fieldCount]
+		cursor := 0
 		for i := range values {
-			values[i] = structValue(typeID, uint32(i), args[i])
+			slots := structValueSlots(typeID, uint32(i))
+			if cursor+slots > len(args)-1 {
+				panic(gcStructHelperError{err: fmt.Errorf("gc struct type %d initializer slots end at %d, args = %d", typeID, cursor+slots, len(args))})
+			}
+			values[i] = structValue(typeID, uint32(i), args[cursor:cursor+slots])
+			cursor += slots
 		}
-		ref, err := in.gc.NewStructWithRoots(gc.TypeID(typeID), values, gc.EmptyRoots{})
+		if cursor != len(args)-1 {
+			panic(gcStructHelperError{err: fmt.Errorf("gc struct type %d initializer uses %d slots, args = %d", typeID, cursor, len(args))})
+		}
+		ref, err := in.gc.NewStructWithRoots(gc.TypeID(typeID), values, frameRoots)
 		if err != nil {
 			panic(gcStructHelperError{err: err})
 		}
@@ -211,6 +261,12 @@ func (in *Instance) dispatchGCStructHelper(helper uint32, args, results []uint64
 			}
 		default:
 			results[0] = value.Bits
+			if value.Kind == gc.StorageV128 {
+				if len(results) < 2 {
+					panic(gcStructHelperError{err: fmt.Errorf("gc struct.get v128 result arity = %d, want at least 2", len(results))})
+				}
+				results[1] = value.BitsHi
+			}
 		}
 	case gcStructRefTest:
 		if len(args) != 3 || len(results) < 1 {
@@ -292,15 +348,19 @@ func (in *Instance) dispatchGCStructHelper(helper uint32, args, results []uint64
 		}
 		results[0] = value
 	case gcStructSet:
-		if len(args) != 4 {
-			panic(gcStructHelperError{err: fmt.Errorf("gc struct set helper arity = %d, want 4", len(args))})
+		if len(args) < 4 {
+			panic(gcStructHelperError{err: fmt.Errorf("gc struct set helper arity = %d, want at least 4", len(args))})
 		}
 		ref := gc.Ref(uint32(args[0]))
 		if ref.IsNull() {
 			panic(gcStructHelperTrap{code: coreruntime.TrapNullReference})
 		}
-		typeID := uint32(args[2])
-		fieldID := uint32(args[3])
+		typeID := uint32(args[len(args)-2])
+		fieldID := uint32(args[len(args)-1])
+		valueSlots := structValueSlots(typeID, fieldID)
+		if len(args) != valueSlots+3 {
+			panic(gcStructHelperError{err: fmt.Errorf("gc struct set helper arity = %d, want %d", len(args), valueSlots+3)})
+		}
 		actual, err := in.gc.ObjectType(ref)
 		if err != nil {
 			panic(gcStructHelperError{err: err})
@@ -311,7 +371,7 @@ func (in *Instance) dispatchGCStructHelper(helper uint32, args, results []uint64
 		if int(typeID) >= len(in.c.GCTypeDescs) || int(fieldID) >= len(in.c.GCTypeDescs[typeID].Fields) {
 			panic(gcStructHelperError{err: fmt.Errorf("gc struct set field %d:%d is unavailable", typeID, fieldID)})
 		}
-		if err := in.gc.StructSet(ref, fieldID, structValue(typeID, fieldID, args[1])); err != nil {
+		if err := in.gc.StructSet(ref, fieldID, structValue(typeID, fieldID, args[1:1+valueSlots])); err != nil {
 			panic(gcStructHelperError{err: err})
 		}
 	default:

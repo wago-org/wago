@@ -8,13 +8,13 @@ import (
 	"testing"
 )
 
-func TestCompiledCodecV27VersionContract(t *testing.T) {
+func TestCompiledCodecV29VersionContract(t *testing.T) {
 	blob, err := (&Compiled{}).MarshalBinary()
 	if err != nil {
 		t.Fatalf("MarshalBinary: %v", err)
 	}
-	if got := blob[4]; got != 27 {
-		t.Fatalf("compiled codec version = %d, want 27", got)
+	if got := blob[4]; got != 29 {
+		t.Fatalf("compiled codec version = %d, want 29", got)
 	}
 
 	for _, version := range []byte{26, 25, 24, 23, 22} {
@@ -129,8 +129,8 @@ func TestCompiledCodecV21RequiredFeatureBitsAreExactAndFailClosed(t *testing.T) 
 	if err != nil {
 		t.Fatalf("marshal feature fixture: %v", err)
 	}
-	// The fixture has an empty memory-import string and GC descriptor list, so
-	// the required-feature uint64 immediately precedes the zero GC count.
+	// The fixture has an empty GC descriptor list and no frame-root map, so the
+	// required-feature uint64 immediately precedes the zero GC count.
 	binary.LittleEndian.PutUint64(blob[len(blob)-9:len(blob)-1], 0)
 	var decoded Compiled
 	if err := decoded.UnmarshalBinary(blob); err == nil || !strings.Contains(err.Error(), "unrecorded features") {
@@ -144,6 +144,15 @@ func TestCompiledCodecV21RequiredFeatureBitsAreExactAndFailClosed(t *testing.T) 
 	binary.LittleEndian.PutUint64(blob[len(blob)-9:len(blob)-1], uint64(CoreFeatureTailCall))
 	if err := decoded.UnmarshalBinary(blob); err == nil || !strings.Contains(err.Error(), "unknown required feature bits") {
 		t.Fatalf("unknown feature bits error = %v, want fail-closed rejection", err)
+	}
+
+	blob, err = (&Compiled{}).MarshalBinary()
+	if err != nil {
+		t.Fatalf("marshal forged generic-GC fixture: %v", err)
+	}
+	binary.LittleEndian.PutUint64(blob[len(blob)-9:len(blob)-1], compiledGCExecutionGenericArray)
+	if err := decoded.UnmarshalBinary(blob); err == nil || !strings.Contains(err.Error(), "require recorded GC heap metadata") {
+		t.Fatalf("forged generic GC execution error = %v, want fail-closed rejection", err)
 	}
 }
 

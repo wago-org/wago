@@ -5,8 +5,18 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/runtime/gc"
+)
+
+const (
+	// Codec-v29 internal execution bits share the persisted u64 requirement word
+	// but are stripped before exposing CoreFeatures. Public feature bits occupy
+	// the low range; reserving the top two bits avoids growing every artifact.
+	compiledGCExecutionGenericStruct uint64 = 1 << 62
+	compiledGCExecutionGenericArray  uint64 = 1 << 63
+	compiledGCExecutionMask                 = compiledGCExecutionGenericStruct | compiledGCExecutionGenericArray
 )
 
 func compiledMetadataUsesSIMD(c *Compiled) bool {
@@ -31,6 +41,20 @@ func compiledMetadataUsesSIMD(c *Compiled) bool {
 	for _, g := range c.Globals {
 		if g.Type == ValV128 {
 			return true
+		}
+	}
+	for _, typ := range c.Types {
+		switch typ.Kind {
+		case CompositeTypeStruct:
+			for _, field := range typ.Fields {
+				if !field.Storage.Packed && field.Storage.Value.Kind == ValueTypeV128 {
+					return true
+				}
+			}
+		case CompositeTypeArray:
+			if !typ.Array.Storage.Packed && typ.Array.Storage.Value.Kind == ValueTypeV128 {
+				return true
+			}
 		}
 	}
 	return false
@@ -97,8 +121,21 @@ func marshalCompiled(c *Compiled) ([]byte, error) {
 	w.stringIntMap(c.memoryExportMap())
 	w.bool(c.dynamicImports)
 	w.tags(c)
-	w.u64(uint64(compiledStructuralRequiredFeatures(c)))
+	required := uint64(compiledStructuralRequiredFeatures(c))
+	if c.stagedGCStructProduct() == stagedGCStructGeneric {
+		required |= compiledGCExecutionGenericStruct
+	}
+	if c.stagedGCArrayProduct() == stagedGCArrayProductGeneric {
+		required |= compiledGCExecutionGenericArray
+	}
+	w.u64(required)
 	w.gcTypeDescs(c.GCTypeDescs)
+	if err := validateCompiledGCFrameRoots(c, c.genericGCFrameRoots()); err != nil {
+		return nil, err
+	}
+	if rootMap := c.genericGCFrameRoots(); rootMap != nil {
+		w.gcFrameRoots(rootMap)
+	}
 	return w.buf, nil
 }
 
@@ -451,6 +488,27 @@ func (w *compiledWriter) globalImports(v []GlobalImportDef, c *Compiled) error {
 	}
 	return nil
 }
+func (w *compiledWriter) gcFrameRoots(rootMap *compiledGCFrameRoots) {
+	w.u32(rootMap.frameBytes)
+	w.u32(rootMap.adapterReturnOffset)
+	w.uvar(uint64(len(rootMap.safepoints)))
+	for i := range rootMap.safepoints {
+		w.u32(rootMap.safepoints[i].id)
+		w.uvar(uint64(len(rootMap.safepoints[i].offsets)))
+		for _, off := range rootMap.safepoints[i].offsets {
+			w.u32(off)
+		}
+	}
+	w.uvar(uint64(len(rootMap.callsites)))
+	for i := range rootMap.callsites {
+		w.u32(rootMap.callsites[i].returnOffset)
+		w.uvar(uint64(len(rootMap.callsites[i].offsets)))
+		for _, off := range rootMap.callsites[i].offsets {
+			w.u32(off)
+		}
+	}
+}
+
 func (w *compiledWriter) gcTypeDescs(v []gc.TypeDesc) {
 	w.uvar(uint64(len(v)))
 	for _, d := range v {
@@ -591,10 +649,48 @@ func unmarshalCompiled(c *Compiled, data []byte) error {
 	if err != nil {
 		return err
 	}
-	c.requiredFeatures = CoreFeatures(required)
+	gcExecution := required & compiledGCExecutionMask
+	c.requiredFeatures = CoreFeatures(required &^ compiledGCExecutionMask)
 	c.GCTypeDescs, err = r.gcTypeDescs()
 	if err != nil {
 		return err
+	}
+	var gcFrameRoots *compiledGCFrameRoots
+	if len(r.data) != 0 {
+		gcFrameRoots, err = r.gcFrameRoots()
+		if err != nil {
+			return err
+		}
+	}
+	if gcExecution != 0 {
+		if !c.requiredFeatures.IsEnabled(CoreFeatureGC) || !gc.HasHeapObjectTypes(c.GCTypeDescs) {
+			return fmt.Errorf("generic GC execution flags %#x require recorded GC heap metadata", gcExecution)
+		}
+		hasStruct, hasArray := false, false
+		for _, desc := range c.GCTypeDescs {
+			hasStruct = hasStruct || desc.Kind == gc.KindStruct
+			hasArray = hasArray || desc.Kind == gc.KindArray
+		}
+		if gcExecution&compiledGCExecutionGenericStruct != 0 && !hasStruct {
+			return fmt.Errorf("generic GC struct execution flag has no struct descriptor")
+		}
+		if gcExecution&compiledGCExecutionGenericArray != 0 && !hasArray {
+			return fmt.Errorf("generic GC array execution flag has no array descriptor")
+		}
+		c.ensureCodeCache()
+		c.codeCache.stagedFeatures |= CoreFeatureGC | CoreFeatureTypedFunctionReferences
+		if gcExecution&compiledGCExecutionGenericStruct != 0 {
+			c.codeCache.gcStructProduct = stagedGCStructGeneric
+		}
+		if gcExecution&compiledGCExecutionGenericArray != 0 {
+			c.codeCache.gcArrayProduct = stagedGCArrayProductGeneric
+		}
+	}
+	if gcFrameRoots != nil {
+		c.validateMemo = &validateMemo{gcFrameRoots: gcFrameRoots}
+		if err := validateCompiledGCFrameRoots(c, gcFrameRoots); err != nil {
+			return err
+		}
 	}
 	if len(r.data) != 0 {
 		return fmt.Errorf("trailing %d byte(s)", len(r.data))
@@ -1586,4 +1682,69 @@ func (r *compiledReader) gcTypeDescs() ([]gc.TypeDesc, error) {
 		}
 	}
 	return out, nil
+}
+
+func (r *compiledReader) gcFrameRoots() (*compiledGCFrameRoots, error) {
+	frameBytes, err := r.u32()
+	if err != nil {
+		return nil, err
+	}
+	adapterReturnOffset, err := r.u32()
+	if err != nil {
+		return nil, err
+	}
+	n, err := r.countElements("GC frame safepoints", 5)
+	if err != nil {
+		return nil, err
+	}
+	if n == 0 || uint64(n) > uint64(shared.GCSafepointIDMax) {
+		return nil, fmt.Errorf("GC frame safepoint count %d is invalid", n)
+	}
+	rootMap := &compiledGCFrameRoots{frameBytes: frameBytes, adapterReturnOffset: adapterReturnOffset, safepoints: make([]compiledGCFrameSafepoint, n)}
+	for i := range rootMap.safepoints {
+		rootMap.safepoints[i].id, err = r.u32()
+		if err != nil {
+			return nil, err
+		}
+		count, err := r.countElements("GC frame root offsets", 4)
+		if err != nil {
+			return nil, err
+		}
+		if count > gcNativeFrameRootLimit {
+			return nil, fmt.Errorf("GC frame safepoint %d root count %d exceeds %d", rootMap.safepoints[i].id, count, gcNativeFrameRootLimit)
+		}
+		rootMap.safepoints[i].offsets = make([]uint32, count)
+		for j := range rootMap.safepoints[i].offsets {
+			rootMap.safepoints[i].offsets[j], err = r.u32()
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+	callCount, err := r.countElements("GC frame callsites", 5)
+	if err != nil {
+		return nil, err
+	}
+	rootMap.callsites = make([]compiledGCFrameCallsite, callCount)
+	for i := range rootMap.callsites {
+		rootMap.callsites[i].returnOffset, err = r.u32()
+		if err != nil {
+			return nil, err
+		}
+		count, err := r.countElements("GC callsite root offsets", 4)
+		if err != nil {
+			return nil, err
+		}
+		if count > gcNativeFrameRootLimit {
+			return nil, fmt.Errorf("GC frame callsite %d root count %d exceeds %d", rootMap.callsites[i].returnOffset, count, gcNativeFrameRootLimit)
+		}
+		rootMap.callsites[i].offsets = make([]uint32, count)
+		for j := range rootMap.callsites[i].offsets {
+			rootMap.callsites[i].offsets[j], err = r.u32()
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+	return rootMap, nil
 }

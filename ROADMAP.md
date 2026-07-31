@@ -609,3 +609,34 @@ regression tests. Starshine remains the scale/startup benchmark; the JSON module
 is the deterministic execution gate. Its pinned production compile baseline is
 10.641 ms, with 0.276 ms decode, 1.380 ms validation, 0.170 ms instantiate, and
 4.733 ms for fresh instantiate plus one checked JSON run.
+
+## Iteration 77 first native WasmGC frame roots
+
+The first linux/amd64 native-root slice enabled collection inside one generated
+WasmGC invocation by publishing typed local qwords through parked RSP. Its
+branch-and-loop regression preserves a `struct<v128>` local across 1,000
+allocations under Throughput forced-major verification and Tiny incremental
+stress while keeping the warmed helper path allocation-free.
+
+## Iteration 78 liveness-exact safepoints and recursive frame walking
+
+The single-function product now computes exact local liveness over the validated
+structured Wasm CFG, assigns one compact ID per reachable allocation, and adds
+live hidden operand spills after canonical stack flushing. Dead locals disappear
+from site maps, hidden references survive control merges, and actual off-heap
+qwords remain mutable collector slots.
+
+Direct numeric self-recursion records native return PCs and the caller roots live
+at each callsite. The runtime walks recursive frames from parked RSP until the
+validated adapter return, preserving one object in each caller while the deepest
+frame performs 1,000 allocations under Throughput and Tiny stress. Direct
+self-tail calls discard each caller frame and therefore retain no callsite roots. Codec v29
+persists and strictly validates frame sizes, safepoint ordering, root alignment,
+callsite returns, and adapter termination. Forged metadata fails closed. Five
+500 ms samples measured 432.5-443.5 ns/op, 0 B/op, and 0 allocs/op. The expanded
+direct walker raises lazy `gcPublicState` from 1,560 to 1,648 bytes while the
+64-byte `compiledCodeCache` layout remains unchanged.
+
+Next work is multi-function frame identity, then stacked imported/host re-entry,
+non-self tail/EH root transfer, mutable global/table roots, and broader ownership. Those
+products remain collection-disabled until their complete root protocols exist.

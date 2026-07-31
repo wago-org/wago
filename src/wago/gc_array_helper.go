@@ -11,21 +11,22 @@ import (
 )
 
 const (
-	gcArrayAllocDefault uint32 = 16
-	gcArrayGet          uint32 = 17
-	gcArrayGetS         uint32 = 18
-	gcArrayGetU         uint32 = 19
-	gcArraySet          uint32 = 20
-	gcArrayLen          uint32 = 21
-	gcArrayAllocFixed   uint32 = 22
-	gcArrayAllocUniform uint32 = 23
-	gcArrayAllocData    uint32 = 24
-	gcArrayAllocElem    uint32 = 25
-	gcArrayDropElem     uint32 = 26
-	gcArrayFill         uint32 = 27
-	gcArrayCopy         uint32 = 28
-	gcArrayInitData     uint32 = 29
-	gcArrayInitElem     uint32 = 30
+	gcArrayAllocDefault        uint32 = 16
+	gcArrayGet                 uint32 = 17
+	gcArrayGetS                uint32 = 18
+	gcArrayGetU                uint32 = 19
+	gcArraySet                 uint32 = 20
+	gcArrayLen                 uint32 = 21
+	gcArrayAllocFixed          uint32 = 22
+	gcArrayAllocUniform        uint32 = 23
+	gcArrayAllocData           uint32 = 24
+	gcArrayAllocElem           uint32 = 25
+	gcArrayDropElem            uint32 = 26
+	gcArrayFill                uint32 = 27
+	gcArrayCopy                uint32 = 28
+	gcArrayInitData            uint32 = 29
+	gcArrayInitElem            uint32 = 30
+	gcArrayAllocFixedV128Spill uint32 = 31
 )
 
 func gcArrayElementStorage(kind gc.StorageKind) bool {
@@ -40,20 +41,32 @@ func gcArrayElementStorage(kind gc.StorageKind) bool {
 }
 
 func (in *Instance) dispatchGCHelper(helper uint32, args, results []uint64) {
+	in.dispatchGCHelperParked(0, helper, 0, args, results)
+}
+
+func (in *Instance) dispatchGCHelperParked(ctrl uintptr, helper, safepoint uint32, args, results []uint64) {
 	if helper < gcArrayAllocDefault {
-		in.dispatchGCStructHelper(helper, args, results)
+		in.dispatchGCStructHelperParked(ctrl, helper, safepoint, args, results)
 		return
 	}
-	in.dispatchGCArrayHelper(helper, args, results)
+	in.dispatchGCArrayHelperParked(ctrl, helper, safepoint, args, results)
 }
 
 func (in *Instance) dispatchGCArrayHelper(helper uint32, args, results []uint64) {
+	in.dispatchGCArrayHelperParked(0, helper, 0, args, results)
+}
+
+func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint uint32, args, results []uint64) {
 	if in == nil || in.gc == nil {
 		panic(gcStructHelperError{err: fmt.Errorf("gc array helper %d has no live collector", helper)})
 	}
 	state := in.publicGCState()
 	state.mu.Lock()
 	defer state.mu.Unlock()
+	var frameRoots gc.RootSet = gc.EmptyRoots{}
+	if gcHelperMayAllocate(helper) {
+		frameRoots = in.gcHelperRoots(ctrl, state, safepoint)
+	}
 
 	checkArray := func(ref gc.Ref, typeID uint32) {
 		if ref.IsNull() {
@@ -67,19 +80,39 @@ func (in *Instance) dispatchGCArrayHelper(helper uint32, args, results []uint64)
 			panic(gcStructHelperError{err: fmt.Errorf("gc array type = %d, want subtype of %d", actual, typeID)})
 		}
 	}
-	arrayValue := func(typeID uint32, bits uint64) gc.Value {
-		if int(typeID) >= len(in.c.GCTypeDescs) {
+	arrayElemKind := func(typeID uint32) gc.StorageKind {
+		if int(typeID) >= len(in.c.GCTypeDescs) || in.c.GCTypeDescs[typeID].Kind != gc.KindArray {
 			panic(gcStructHelperError{err: fmt.Errorf("gc array type %d is unavailable", typeID)})
 		}
-		kind := in.c.GCTypeDescs[typeID].Elem
+		return in.c.GCTypeDescs[typeID].Elem
+	}
+	arrayValueSlots := func(typeID uint32) int {
+		if arrayElemKind(typeID) == gc.StorageV128 {
+			return 2
+		}
+		return 1
+	}
+	arrayValue := func(typeID uint32, words []uint64) gc.Value {
+		kind := arrayElemKind(typeID)
 		if kind == gc.StorageRef || kind == gc.StorageRefNull {
 			panic(gcStructHelperError{err: fmt.Errorf("gc array reference elements remain outside the staged helper slice")})
+		}
+		wantSlots := 1
+		if kind == gc.StorageV128 {
+			wantSlots = 2
+		}
+		if len(words) != wantSlots {
+			panic(gcStructHelperError{err: fmt.Errorf("gc array type %d value uses %d slot(s), want %d", typeID, len(words), wantSlots)})
 		}
 		valueKind := kind
 		if kind == gc.StorageI8 || kind == gc.StorageI16 {
 			valueKind = gc.StorageI32
 		}
-		return gc.Value{Kind: valueKind, Bits: bits}
+		value := gc.Value{Kind: valueKind, Bits: words[0]}
+		if kind == gc.StorageV128 {
+			value.BitsHi = words[1]
+		}
+		return value
 	}
 	arrayRefValue := func(typeID uint32, bits uint64) gc.Value {
 		if int(typeID) >= len(in.c.Types) || in.c.Types[typeID].Kind != CompositeTypeArray || in.c.Types[typeID].Array.Storage.Value.Kind != ValueTypeReference {
@@ -108,14 +141,45 @@ func (in *Instance) dispatchGCArrayHelper(helper uint32, args, results []uint64)
 		}
 		return gc.RefValue(ref)
 	}
-	arrayStoredValue := func(typeID uint32, bits uint64) gc.Value {
-		if int(typeID) < len(in.c.GCTypeDescs) && (in.c.GCTypeDescs[typeID].Elem == gc.StorageRef || in.c.GCTypeDescs[typeID].Elem == gc.StorageRefNull) {
-			return arrayRefValue(typeID, bits)
+	arrayStoredValue := func(typeID uint32, words []uint64) gc.Value {
+		kind := arrayElemKind(typeID)
+		if kind == gc.StorageRef || kind == gc.StorageRefNull {
+			if len(words) != 1 {
+				panic(gcStructHelperError{err: fmt.Errorf("gc array reference value uses %d slots", len(words))})
+			}
+			return arrayRefValue(typeID, words[0])
 		}
-		return arrayValue(typeID, bits)
+		return arrayValue(typeID, words)
 	}
 
 	switch helper {
+	case gcArrayAllocFixedV128Spill:
+		if len(args) != 3 || len(results) < 1 {
+			panic(gcStructHelperError{err: fmt.Errorf("gc array alloc-fixed-v128-spill helper arity = %d/%d, want 3/at-least-1", len(args), len(results))})
+		}
+		ptr, count, typeID := uintptr(args[0]), uint32(args[1]), uint32(args[2])
+		if arrayElemKind(typeID) != gc.StorageV128 {
+			panic(gcStructHelperError{err: fmt.Errorf("gc array alloc-fixed-v128-spill type %d is not v128", typeID)})
+		}
+		byteLen := uint64(count) * 16
+		if count != 0 && ptr == 0 {
+			panic(gcStructHelperError{err: fmt.Errorf("gc array alloc-fixed-v128-spill has nil source")})
+		}
+		if byteLen > uint64(^uint(0)>>1) {
+			panic(gcStructHelperError{err: fmt.Errorf("gc array alloc-fixed-v128-spill byte length %d overflows int", byteLen)})
+		}
+		var data []byte
+		if byteLen != 0 {
+			data = unsafe.Slice((*byte)(offHeapPtr(ptr)), int(byteLen))
+		}
+		ref, err := in.gc.NewArrayDefaultWithRoots(gc.TypeID(typeID), count, frameRoots)
+		if err != nil {
+			panic(gcStructHelperError{err: err})
+		}
+		if err := in.gc.ArrayInitData(ref, 0, data, 0, count); err != nil {
+			panic(gcStructHelperError{err: err})
+		}
+		results[0] = uint64(ref)
 	case gcArrayInitElem:
 		if len(args) != 6 {
 			panic(gcStructHelperError{err: fmt.Errorf("gc array init-elem helper arity = %d, want 6", len(args))})
@@ -220,18 +284,18 @@ func (in *Instance) dispatchGCArrayHelper(helper uint32, args, results []uint64)
 			panic(gcStructHelperError{err: err})
 		}
 	case gcArrayFill:
-		if len(args) != 5 {
-			panic(gcStructHelperError{err: fmt.Errorf("gc array fill helper arity = %d, want 5", len(args))})
+		if len(args) < 5 {
+			panic(gcStructHelperError{err: fmt.Errorf("gc array fill helper arity = %d, want at least 5", len(args))})
 		}
-		ref, start, typeID := gc.Ref(uint32(args[0])), uint32(args[1]), uint32(args[4])
+		typeID := uint32(args[len(args)-1])
+		valueSlots := arrayValueSlots(typeID)
+		if len(args) != valueSlots+4 {
+			panic(gcStructHelperError{err: fmt.Errorf("gc array fill helper arity = %d, want %d", len(args), valueSlots+4)})
+		}
+		ref, start := gc.Ref(uint32(args[0])), uint32(args[1])
 		checkArray(ref, typeID)
-		var value gc.Value
-		if int(typeID) < len(in.c.GCTypeDescs) && (in.c.GCTypeDescs[typeID].Elem == gc.StorageRef || in.c.GCTypeDescs[typeID].Elem == gc.StorageRefNull) {
-			value = arrayRefValue(typeID, args[2])
-		} else {
-			value = arrayValue(typeID, args[2])
-		}
-		if err := in.gc.ArrayFill(ref, start, value, uint32(args[3])); err != nil {
+		value := arrayStoredValue(typeID, args[2:2+valueSlots])
+		if err := in.gc.ArrayFill(ref, start, value, uint32(args[2+valueSlots])); err != nil {
 			if strings.Contains(err.Error(), "index out of range") {
 				panic(gcStructHelperTrap{code: coreruntime.TrapBuiltin})
 			}
@@ -290,7 +354,7 @@ func (in *Instance) dispatchGCArrayHelper(helper uint32, args, results []uint64)
 			if length != 0 && entriesPtr == 0 {
 				panic(gcStructHelperError{err: fmt.Errorf("gc array element segment %d has no entries", elemIndex)})
 			}
-			ref, err := in.gc.NewArrayDefaultWithRoots(gc.TypeID(typeID), length, gc.EmptyRoots{})
+			ref, err := in.gc.NewArrayDefaultWithRoots(gc.TypeID(typeID), length, frameRoots)
 			if err != nil {
 				panic(gcStructHelperError{err: err})
 			}
@@ -302,7 +366,7 @@ func (in *Instance) dispatchGCArrayHelper(helper uint32, args, results []uint64)
 				} else {
 					bits = binary.LittleEndian.Uint64(entry)
 				}
-				if err := in.gc.ArraySet(ref, i, arrayStoredValue(typeID, bits)); err != nil {
+				if err := in.gc.ArraySet(ref, i, arrayStoredValue(typeID, []uint64{bits})); err != nil {
 					panic(gcStructHelperError{err: err})
 				}
 			}
@@ -321,6 +385,9 @@ func (in *Instance) dispatchGCArrayHelper(helper uint32, args, results []uint64)
 		if int(typeID) >= len(in.c.GCTypeDescs) || in.c.GCTypeDescs[typeID].Kind != gc.KindArray || (in.c.GCTypeDescs[typeID].Elem != gc.StorageRef && in.c.GCTypeDescs[typeID].Elem != gc.StorageRefNull) {
 			panic(gcStructHelperError{err: fmt.Errorf("gc array.new_elem type %d is not an admitted reference array", typeID)})
 		}
+		// The native-frame collection slice rejects element segments, so this
+		// product never has non-empty frameRoots. Any future broadening must
+		// combine them with these checked segment roots before allocation.
 		roots := &state.AllocRoots
 		clear(roots.Values[:])
 		roots.Count = uint8(length)
@@ -373,6 +440,8 @@ func (in *Instance) dispatchGCArrayHelper(helper uint32, args, results []uint64)
 			width = 4
 		case gc.StorageI64, gc.StorageF64:
 			width = 8
+		case gc.StorageV128:
+			width = 16
 		default:
 			panic(gcStructHelperError{err: fmt.Errorf("gc array.new_data type %d has unsupported storage %d", typeID, storage)})
 		}
@@ -392,35 +461,26 @@ func (in *Instance) dispatchGCArrayHelper(helper uint32, args, results []uint64)
 		if end > uint64(len(data)) {
 			panic(gcStructHelperError{err: fmt.Errorf("gc array.new_data segment %d descriptor length %d exceeds retained bytes %d", dataIndex, segmentLen, len(data))})
 		}
-		ref, err := in.gc.NewArrayDefaultWithRoots(gc.TypeID(typeID), length, gc.EmptyRoots{})
+		ref, err := in.gc.NewArrayDefaultWithRoots(gc.TypeID(typeID), length, frameRoots)
 		if err != nil {
 			panic(gcStructHelperError{err: err})
 		}
-		for i := uint32(0); i < length; i++ {
-			off := uint64(source) + uint64(i)*width
-			var bits uint64
-			switch width {
-			case 1:
-				bits = uint64(data[off])
-			case 2:
-				bits = uint64(binary.LittleEndian.Uint16(data[off : off+2]))
-			case 4:
-				bits = uint64(binary.LittleEndian.Uint32(data[off : off+4]))
-			case 8:
-				bits = binary.LittleEndian.Uint64(data[off : off+8])
-			}
-			if err := in.gc.ArraySet(ref, i, gc.Value{Kind: storage, Bits: bits}); err != nil {
-				panic(gcStructHelperError{err: err})
-			}
+		if err := in.gc.ArrayInitData(ref, 0, data[:segmentLen], source, length); err != nil {
+			panic(gcStructHelperError{err: err})
 		}
 		results[0] = uint64(ref)
 	case gcArrayAllocUniform:
-		if len(args) != 3 || len(results) < 1 {
-			panic(gcStructHelperError{err: fmt.Errorf("gc array alloc-uniform helper arity = %d/%d, want 3/at-least-1", len(args), len(results))})
+		if len(args) < 3 || len(results) < 1 {
+			panic(gcStructHelperError{err: fmt.Errorf("gc array alloc-uniform helper arity = %d/%d, want at least 3/at-least-1", len(args), len(results))})
 		}
-		typeID, length := uint32(args[2]), uint32(args[1])
-		value := arrayStoredValue(typeID, args[0])
-		ref, err := in.gc.NewArrayWithRoots(gc.TypeID(typeID), length, value, gc.EmptyRoots{})
+		typeID := uint32(args[len(args)-1])
+		valueSlots := arrayValueSlots(typeID)
+		if len(args) != valueSlots+2 {
+			panic(gcStructHelperError{err: fmt.Errorf("gc array alloc-uniform helper arity = %d, want %d", len(args), valueSlots+2)})
+		}
+		length := uint32(args[valueSlots])
+		value := arrayStoredValue(typeID, args[:valueSlots])
+		ref, err := in.gc.NewArrayWithRoots(gc.TypeID(typeID), length, value, frameRoots)
 		if err != nil {
 			panic(gcStructHelperError{err: err})
 		}
@@ -431,17 +491,19 @@ func (in *Instance) dispatchGCArrayHelper(helper uint32, args, results []uint64)
 		}
 		count := uint32(args[len(args)-1])
 		typeID := uint32(args[len(args)-2])
-		if int(count)+2 != len(args) {
-			panic(gcStructHelperError{err: fmt.Errorf("gc array alloc-fixed count = %d, args = %d", count, len(args))})
+		valueSlots := arrayValueSlots(typeID)
+		if uint64(count)*uint64(valueSlots)+2 != uint64(len(args)) {
+			panic(gcStructHelperError{err: fmt.Errorf("gc array alloc-fixed count = %d, value slots = %d, args = %d", count, valueSlots, len(args))})
 		}
-		if count > 62 {
-			panic(gcStructHelperError{err: fmt.Errorf("gc array alloc-fixed count %d exceeds helper bound 62", count)})
+		if count > uint32(len(state.values)) {
+			panic(gcStructHelperError{err: fmt.Errorf("gc array alloc-fixed count %d exceeds helper value bound %d", count, len(state.values))})
 		}
 		values := state.values[:count]
 		for i := uint32(0); i < count; i++ {
-			values[i] = arrayStoredValue(typeID, args[i])
+			start := int(i) * valueSlots
+			values[i] = arrayStoredValue(typeID, args[start:start+valueSlots])
 		}
-		ref, err := in.gc.NewArrayFixedWithRoots(gc.TypeID(typeID), values, gc.EmptyRoots{})
+		ref, err := in.gc.NewArrayFixedWithRoots(gc.TypeID(typeID), values, frameRoots)
 		if err != nil {
 			panic(gcStructHelperError{err: err})
 		}
@@ -450,7 +512,7 @@ func (in *Instance) dispatchGCArrayHelper(helper uint32, args, results []uint64)
 		if len(args) != 2 || len(results) < 1 {
 			panic(gcStructHelperError{err: fmt.Errorf("gc array alloc-default helper arity = %d/%d, want 2/at-least-1", len(args), len(results))})
 		}
-		ref, err := in.gc.NewArrayDefaultWithRoots(gc.TypeID(uint32(args[1])), uint32(args[0]), gc.EmptyRoots{})
+		ref, err := in.gc.NewArrayDefaultWithRoots(gc.TypeID(uint32(args[1])), uint32(args[0]), frameRoots)
 		if err != nil {
 			panic(gcStructHelperError{err: err})
 		}
@@ -492,20 +554,26 @@ func (in *Instance) dispatchGCArrayHelper(helper uint32, args, results []uint64)
 				results[0] = uint64(value.Ref)
 			} else {
 				results[0] = value.Bits
+				if value.Kind == gc.StorageV128 {
+					if len(results) < 2 {
+						panic(gcStructHelperError{err: fmt.Errorf("gc array get v128 result arity = %d, want at least 2", len(results))})
+					}
+					results[1] = value.BitsHi
+				}
 			}
 		}
 	case gcArraySet:
-		if len(args) != 4 {
-			panic(gcStructHelperError{err: fmt.Errorf("gc array set helper arity = %d, want 4", len(args))})
+		if len(args) < 4 {
+			panic(gcStructHelperError{err: fmt.Errorf("gc array set helper arity = %d, want at least 4", len(args))})
 		}
-		ref, typeID := gc.Ref(uint32(args[0])), uint32(args[3])
+		typeID := uint32(args[len(args)-1])
+		valueSlots := arrayValueSlots(typeID)
+		if len(args) != valueSlots+3 {
+			panic(gcStructHelperError{err: fmt.Errorf("gc array set helper arity = %d, want %d", len(args), valueSlots+3)})
+		}
+		ref := gc.Ref(uint32(args[0]))
 		checkArray(ref, typeID)
-		var value gc.Value
-		if int(typeID) < len(in.c.GCTypeDescs) && (in.c.GCTypeDescs[typeID].Elem == gc.StorageRef || in.c.GCTypeDescs[typeID].Elem == gc.StorageRefNull) {
-			value = arrayRefValue(typeID, args[2])
-		} else {
-			value = arrayValue(typeID, args[2])
-		}
+		value := arrayStoredValue(typeID, args[2:2+valueSlots])
 		if err := in.gc.ArraySet(ref, uint32(args[1]), value); err != nil {
 			if strings.Contains(err.Error(), "index out of range") {
 				panic(gcStructHelperTrap{code: coreruntime.TrapBuiltin})

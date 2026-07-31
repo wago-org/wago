@@ -68,9 +68,67 @@ type gcRefTokenEntry struct {
 	owner *Instance
 }
 
-// gcPublicState serializes collector access performed by the exact staged public
-// result owner. One reusable collector slot bounds each instance to one live
-// token while allowing release/reissue without growing root metadata.
+type gcNativeFrameRoots struct {
+	base                uintptr
+	offsets             []uint32
+	frameBytes          uint32
+	codeBase            uintptr
+	codeBytes           uintptr
+	adapterReturnOffset uint32
+	callsites           []compiledGCFrameCallsite
+}
+
+func (r *gcNativeFrameRoots) RangeRoots(fn func(gc.RootSlot) bool) {
+	base, offsets := r.base, r.offsets
+	for depth := 0; ; depth++ {
+		if depth > 4096 {
+			panic(gcStructHelperError{err: fmt.Errorf("generic GC native frame chain exceeds 4096 frames")})
+		}
+		for _, off := range offsets {
+			// gc.Ref is the low 32 bits of the validated little-endian native qword.
+			// Expose the actual off-heap word so a moving/reference-rewriting policy
+			// updates the parked frame rather than a copied scratch value.
+			slot := (*gc.Root)(offHeapPtr(base + uintptr(off)))
+			if !fn(slot) {
+				return
+			}
+		}
+		if len(r.callsites) == 0 {
+			return
+		}
+		if base > ^uintptr(0)-uintptr(r.frameBytes) {
+			panic(gcStructHelperError{err: fmt.Errorf("generic GC native frame address overflows")})
+		}
+		retWord := unsafe.Slice((*byte)(offHeapPtr(base+uintptr(r.frameBytes))), 8)
+		retPC := uintptr(binary.LittleEndian.Uint64(retWord))
+		if retPC < r.codeBase || retPC-r.codeBase >= r.codeBytes {
+			return
+		}
+		rel := uint32(retPC - r.codeBase)
+		if rel == r.adapterReturnOffset {
+			return
+		}
+		found := false
+		for i := range r.callsites {
+			if r.callsites[i].returnOffset == rel {
+				offsets = r.callsites[i].offsets
+				found = true
+				break
+			}
+		}
+		if !found {
+			panic(gcStructHelperError{err: fmt.Errorf("generic GC native return offset %d has no callsite map", rel)})
+		}
+		if base > ^uintptr(0)-uintptr(r.frameBytes)-8 {
+			panic(gcStructHelperError{err: fmt.Errorf("generic GC caller frame address overflows")})
+		}
+		base += uintptr(r.frameBytes) + 8
+	}
+}
+
+// gcPublicState serializes staged public-token, generic helper, and boundary-
+// collection access. One reusable collector slot bounds each instance to one
+// live public token while constructor and native-frame scratch remain fixed.
 type gcPublicState struct {
 	mu          sync.Mutex
 	token       uint64
@@ -79,7 +137,9 @@ type gcPublicState struct {
 	// values is the bounded synchronous-helper constructor scratch. Collector
 	// access is serialized by mu, so struct.new and array.new_fixed reuse it
 	// without per-allocation Go heap traffic.
-	values [63]gc.Value
+	values      [63]gc.Value
+	frameRoots  gcNativeFrameRoots    // exact parked native-frame roots; reused under mu
+	globalRoots []gcGlobalRootMapping // generic-GC safe-boundary roots; allocated only when needed
 }
 
 type externrefSlot struct {

@@ -69,8 +69,8 @@ func TestCompiledCodecRoundTripsReferenceSignatures(t *testing.T) {
 	if err != nil {
 		t.Fatalf("MarshalBinary: %v", err)
 	}
-	if blob[4] != wagoVersion || wagoVersion != 27 {
-		t.Fatalf("compiled codec version = %d, want exception-tag-directory version 27", blob[4])
+	if blob[4] != wagoVersion || wagoVersion != 29 {
+		t.Fatalf("compiled codec version = %d, want native-GC-root-map version 29", blob[4])
 	}
 	for _, version := range []byte{19, 20} {
 		oldVersion := append([]byte(nil), blob...)

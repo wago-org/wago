@@ -259,7 +259,7 @@ func generatedValidGCTypeDescs(t testing.TB, r *compiledFuzzBytes, count int) []
 				fields = []gc.StorageKind{}
 			}
 			if r.n(2) == 1 {
-				fields = append(fields, []gc.StorageKind{gc.StorageI32, gc.StorageRefNull, gc.StorageI64}[r.n(3)])
+				fields = append(fields, []gc.StorageKind{gc.StorageI32, gc.StorageRefNull, gc.StorageI64, gc.StorageV128}[r.n(4)])
 			}
 			d, err := gc.NewStructDesc(id, fields)
 			if err != nil {
@@ -267,7 +267,7 @@ func generatedValidGCTypeDescs(t testing.TB, r *compiledFuzzBytes, count int) []
 			}
 			descs = append(descs, d)
 		case 2:
-			d, err := gc.NewArrayDesc(id, []gc.StorageKind{gc.StorageI8, gc.StorageI32, gc.StorageRefNull}[r.n(3)])
+			d, err := gc.NewArrayDesc(id, []gc.StorageKind{gc.StorageI8, gc.StorageI32, gc.StorageRefNull, gc.StorageV128}[r.n(4)])
 			if err != nil {
 				t.Fatalf("array desc: %v", err)
 			}

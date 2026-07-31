@@ -1101,8 +1101,9 @@ func (c *Compiled) RequiresAVX2() bool { return c != nil && c.requiresAVX2 }
 func (c *Compiled) RequiresAVX512() bool { return c != nil && c.requiresAVX512 }
 
 type validateMemo struct {
-	once sync.Once
-	err  error
+	once         sync.Once
+	err          error
+	gcFrameRoots *compiledGCFrameRoots // immutable compiled/codec native safepoint and callsite map
 }
 
 // validateCached returns the metadata-validation result, running the full check

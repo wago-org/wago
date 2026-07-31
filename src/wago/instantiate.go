@@ -65,6 +65,9 @@ func Instantiate(source Instantiable, opts ...any) (*Instance, error) {
 		if err := validateSnapshotModule(s.c); err != nil {
 			return nil, err
 		}
+		if err := validateSnapshotKind(s.c, s.kind); err != nil {
+			return nil, err
+		}
 		return instantiateCore(s.c, InstantiateOptions{Imports: s.imports, GC: s.gc, restore: s})
 	case nil:
 		return nil, errors.New("wago: Instantiate: nil source")
@@ -173,10 +176,10 @@ func (b *instanceBuilder) prepareCollector() error {
 		return nil
 	}
 	gcConfig := b.opts.GC
-	if b.c.usesGenericGCExecution() {
-		// General generated WasmGC functions do not yet publish native frame
-		// roots at every helper safepoint. Keep execution sound and bounded by
-		// allocating from the fixed throughput heap without collection.
+	if b.c.usesGenericGCExecution() && b.c.genericGCFrameRoots() == nil {
+		// Generic products outside the validated native root-map slice still do
+		// not publish every native reference at allocating helper safepoints. Keep
+		// them stable and bounded rather than scanning an incomplete frame.
 		gcConfig.Profile = gc.ProfileThroughput
 		gcConfig.DisableCollection = true
 	}
@@ -704,6 +707,8 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	var globals []byte
 	var gcGlobalRoots [3]gcGlobalRootMapping
 	var gcGlobalRootCount uint8
+	var genericGCGlobalRoots []gcGlobalRootMapping
+	genericGCExecution := c.usesGenericGCExecution()
 	globalCells = make([]*Global, len(c.Globals))
 	if len(c.Globals) > 0 {
 		globals = ar.Alloc(8 * len(c.Globals))
@@ -725,7 +730,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			} else {
 				bits, vec := g.Bits, g.V128
 				if gcInit, ok := c.gcStructGlobalInit(i); ok {
-					if int(gcGlobalRootCount) >= len(gcGlobalRoots) {
+					if !genericGCExecution && int(gcGlobalRootCount) >= len(gcGlobalRoots) {
 						return nil, fmt.Errorf("global %d exceeds staged GC root mapping bound", i)
 					}
 					ref, slot, err := instantiateGCStructGlobal(b.collector, c.GCTypeDescs, gcInit)
@@ -733,10 +738,15 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 						return nil, fmt.Errorf("global %d GC struct initializer: %w", i, err)
 					}
 					bits = uint64(ref)
-					gcGlobalRoots[gcGlobalRootCount] = gcGlobalRootMapping{GlobalIndex: uint32(i), SlotIndex: slot}
-					gcGlobalRootCount++
+					mapping := gcGlobalRootMapping{GlobalIndex: uint32(i), SlotIndex: slot}
+					if genericGCExecution {
+						genericGCGlobalRoots = append(genericGCGlobalRoots, mapping)
+					} else {
+						gcGlobalRoots[gcGlobalRootCount] = mapping
+						gcGlobalRootCount++
+					}
 				} else if gcInit, ok := c.gcArrayGlobalInit(i); ok {
-					if int(gcGlobalRootCount) >= len(gcGlobalRoots) {
+					if !genericGCExecution && int(gcGlobalRootCount) >= len(gcGlobalRoots) {
 						return nil, fmt.Errorf("global %d exceeds staged GC root mapping bound", i)
 					}
 					ref, slot, err := instantiateGCArrayGlobal(b.collector, c.GCTypeDescs, gcInit, funcRefDescs)
@@ -744,8 +754,13 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 						return nil, fmt.Errorf("global %d GC array initializer: %w", i, err)
 					}
 					bits = uint64(ref)
-					gcGlobalRoots[gcGlobalRootCount] = gcGlobalRootMapping{GlobalIndex: uint32(i), SlotIndex: slot}
-					gcGlobalRootCount++
+					mapping := gcGlobalRootMapping{GlobalIndex: uint32(i), SlotIndex: slot}
+					if genericGCExecution {
+						genericGCGlobalRoots = append(genericGCGlobalRoots, mapping)
+					} else {
+						gcGlobalRoots[gcGlobalRootCount] = mapping
+						gcGlobalRootCount++
+					}
 				}
 				if g.HasInitFunc {
 					off := (int(g.InitFunc) + 1) * runtime.FuncRefDescBytes
@@ -792,6 +807,12 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			for i := len(importGlobals); i < len(globalCells) && i < len(opts.restore.globals); i++ {
 				gs := opts.restore.globals[i]
 				if globalCells[i] == nil {
+					continue
+				}
+				if gs.typ == ValAnyRef || gs.typ == ValI31Ref {
+					// Replay-safe generic-GC init snapshots reconstruct immutable
+					// object graphs from persisted initializer expressions. Compact
+					// handles from the closed capture collector are never reusable.
 					continue
 				}
 				writeGlobalObject(globalCells[i], gs.typ, gs.bits)
@@ -1151,6 +1172,37 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		state := in.ensurePluginState()
 		state.gcGlobalRoots = gcGlobalRoots
 		state.gcGlobalRootCount = gcGlobalRootCount
+	}
+	if b.collector != nil && genericGCExecution {
+		public := in.publicGCState()
+		public.globalRoots = genericGCGlobalRoots
+		if c.genericGCBoundaryCollectionSafe() {
+			for i, g := range c.Globals {
+				if !isGCRefValType(g.Type) || i >= len(globalCells) || globalCells[i] == nil {
+					continue
+				}
+				mapped := false
+				for _, mapping := range public.globalRoots {
+					if mapping.GlobalIndex == uint32(i) {
+						mapped = true
+						break
+					}
+				}
+				if mapped {
+					continue
+				}
+				bits := readGlobalObject(globalCells[i], g.Type)
+				ref := gc.Ref(uint32(bits))
+				if bits != uint64(ref) {
+					return nil, fmt.Errorf("global %d contains non-compact generic GC reference %#x", i, bits)
+				}
+				slot, err := b.collector.NewCheckedGlobalSlot(ref)
+				if err != nil {
+					return nil, fmt.Errorf("global %d generic GC root: %w", i, err)
+				}
+				public.globalRoots = append(public.globalRoots, gcGlobalRootMapping{GlobalIndex: uint32(i), SlotIndex: slot})
+			}
+		}
 	}
 	if gcArrayElements != nil {
 		in.ensurePluginState().gcArrayElements.Store(gcArrayElements)

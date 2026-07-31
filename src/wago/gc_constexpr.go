@@ -9,9 +9,10 @@ import (
 )
 
 type gcConstStackValue struct {
-	bits  uint64
-	ref   gc.Ref
-	isRef bool
+	bits   uint64
+	bitsHi uint64
+	ref    gc.Ref
+	isRef  bool
 }
 
 func gcConstStorageValue(kind gc.StorageKind, value gcConstStackValue) (gc.Value, error) {
@@ -28,7 +29,7 @@ func gcConstStorageValue(kind gc.StorageKind, value gcConstStackValue) (gc.Value
 	if kind == gc.StorageI8 || kind == gc.StorageI16 {
 		valueKind = gc.StorageI32
 	}
-	return gc.Value{Kind: valueKind, Bits: value.bits}, nil
+	return gc.Value{Kind: valueKind, Bits: value.bits, BitsHi: value.bitsHi}, nil
 }
 
 func evalCompiledGCConstExpr(expr []byte, collector *gc.Collector, c *Compiled, globalCells []*Global, current int, funcRefDescs []byte) (uint64, error) {
@@ -68,6 +69,14 @@ func evalCompiledGCConstExpr(expr []byte, collector *gc.Collector, c *Compiled, 
 				return 0, fmt.Errorf("global.get %d is unavailable", idx)
 			}
 			typ := c.Globals[idx].Type
+			if typ == ValV128 {
+				vec := readGlobalObjectV128(globalCells[idx])
+				stack = append(stack, gcConstStackValue{
+					bits:   binary.LittleEndian.Uint64(vec[:8]),
+					bitsHi: binary.LittleEndian.Uint64(vec[8:]),
+				})
+				break
+			}
 			bits := readGlobalObject(globalCells[idx], typ)
 			stack = append(stack, gcConstStackValue{bits: bits, ref: gc.Ref(uint32(bits)), isRef: isGCRefValType(typ)})
 		case 0x41:
@@ -94,6 +103,19 @@ func evalCompiledGCConstExpr(expr []byte, collector *gc.Collector, c *Compiled, 
 				return 0, err
 			}
 			stack = append(stack, gcConstStackValue{bits: binary.LittleEndian.Uint64(b)})
+		case 0xfd: // SIMD prefix
+			sub, err := r.U32()
+			if err != nil {
+				return 0, err
+			}
+			if sub != 12 { // v128.const
+				return 0, fmt.Errorf("unsupported SIMD constant expression opcode 0xfd %d", sub)
+			}
+			b, err := r.Bytes(16)
+			if err != nil {
+				return 0, err
+			}
+			stack = append(stack, gcConstStackValue{bits: binary.LittleEndian.Uint64(b[:8]), bitsHi: binary.LittleEndian.Uint64(b[8:])})
 		case 0xd0: // ref.null
 			if _, err := r.S33(); err != nil {
 				return 0, err

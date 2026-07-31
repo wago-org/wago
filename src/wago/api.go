@@ -1233,7 +1233,9 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		dynamicBindings[i] = railshotImportBinding{Dynamic: true, ImportIndex: uint32(i), EHTransfer: features.ExceptionHandling}
 	}
 	pressureAt, pressure := compileMemoryPressure(len(wasmBytes))
-	cm, err := railshotCompileModuleWith(m, railshotCompileOptions{Workers: workers, ElideBoundsChecks: elide, NoBoundsFacts: cfg.noDeferBounds, ImportBindings: dynamicBindings, GCTypeSubtypingRefTest: gcTypeSubtypingProduct.usesRefTest() || gcTypeSubtypingProduct.usesRuntimeFunctionIdentity(), GCStructHelpers: gcStructProduct.requiresHelpers(), GCArrayHelpers: gcArrayProduct.requiresHelpers() || gcStructProduct.requiresArrayHelpers(), Interruptible: !wruntime.HostInterruptSupported(), MemoryPressureAt: pressureAt, MemoryPressure: pressure, CustomInstructions: customInstructions})
+	genericGCExecution := gcStructProduct == stagedGCStructGeneric || gcArrayProduct == stagedGCArrayProductNewData || gcArrayProduct == stagedGCArrayProductNewElem || gcArrayProduct == stagedGCArrayProductGeneric
+	gcFrameRoots := newGCFrameRootPlan(m, genericGCExecution)
+	cm, err := railshotCompileModuleWith(m, railshotCompileOptions{Workers: workers, ElideBoundsChecks: elide, NoBoundsFacts: cfg.noDeferBounds, ImportBindings: dynamicBindings, GCTypeSubtypingRefTest: gcTypeSubtypingProduct.usesRefTest() || gcTypeSubtypingProduct.usesRuntimeFunctionIdentity(), GCStructHelpers: gcStructProduct.requiresHelpers(), GCArrayHelpers: gcArrayProduct.requiresHelpers() || gcStructProduct.requiresArrayHelpers(), GCFrameRoots: gcFrameRoots, Interruptible: !wruntime.HostInterruptSupported(), MemoryPressureAt: pressureAt, MemoryPressure: pressure, CustomInstructions: customInstructions})
 	if err != nil {
 		return nil, fmt.Errorf("compile: %w", err)
 	}
@@ -1707,6 +1709,20 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		c.Data = append(c.Data, init)
 	}
 	compiled := installCompiledFinalizer(c)
+	if validGCFrameRootPlan(gcFrameRoots) {
+		functionBase := uint32(0)
+		if len(compiled.Entry) != 0 && compiled.Entry[0] >= 0 {
+			functionBase = uint32(compiled.Entry[0])
+		}
+		rootMap := &compiledGCFrameRoots{frameBytes: gcFrameRoots.FrameBytes, adapterReturnOffset: functionBase + gcFrameRoots.AdapterReturnOffset, safepoints: make([]compiledGCFrameSafepoint, len(gcFrameRoots.Safepoints)), callsites: make([]compiledGCFrameCallsite, len(gcFrameRoots.Callsites))}
+		for i := range gcFrameRoots.Safepoints {
+			rootMap.safepoints[i] = compiledGCFrameSafepoint{id: gcFrameRoots.Safepoints[i].ID, offsets: append([]uint32(nil), gcFrameRoots.Safepoints[i].Offsets...)}
+		}
+		for i := range gcFrameRoots.Callsites {
+			rootMap.callsites[i] = compiledGCFrameCallsite{returnOffset: functionBase + gcFrameRoots.Callsites[i].ReturnOffset, offsets: append([]uint32(nil), gcFrameRoots.Callsites[i].Offsets...)}
+		}
+		compiled.validateMemo.gcFrameRoots = rootMap
+	}
 	if features.TypedFunctionReferences {
 		compiled.codeCache.stagedFeatures |= CoreFeatureTypedFunctionReferences
 	}
@@ -3380,14 +3396,12 @@ func (c *Compiled) validateDeferredOffsetGlobal(kind string, seg, idx int) error
 
 const wagoMagic = "WAGO"
 
-// Version 27 adds bounded exception-tag declarations, imports, and exports to
-// the version-26 indexed-memory, binding-independent import dispatch,
-// structural type, table, element, extended constant expression, feature, and
-// exact table32/table64 address-form metadata. Version 26 blobs are rejected
-// because they have no tag directory or export map. The codec never serializes
-// live owners, mappings, tokens, targets, active handlers, thunk addresses, or
-// store identity.
-const wagoVersion = 27
+// Version 29 adds validated per-safepoint native WasmGC frame-root metadata to
+// version 28's StorageV128 and 16-byte layout contract. Older blobs are rejected
+// so collection-enabled code cannot lose or misinterpret its parked-frame map.
+// The codec never serializes live owners, collector handles, mappings, tokens,
+// active handlers, thunk addresses, or store identity.
+const wagoVersion = 29
 
 // MarshalBinary serializes the precompiled module to a ".wago" blob.
 //
@@ -3543,6 +3557,9 @@ func (in *Instance) invoke(export string, args []uint64, cancel context.Context)
 	if ic.resultSlots > len(in.results)/8 {
 		return nil, fmt.Errorf("%s requires %d result slot(s), instance buffer has %d", export, ic.resultSlots, len(in.results)/8)
 	}
+	if err := in.collectGenericGCAtBoundary(); err != nil {
+		return nil, fmt.Errorf("%s GC boundary collection: %w", export, err)
+	}
 	if ic.hasFuncRefParams {
 		params, _, err := exactFuncSignatureView(in.c.Funcs[li], in.c.Types)
 		if err != nil {
@@ -3654,6 +3671,9 @@ func (in *Instance) invokeAttachedLocalContext(li int, args []uint64, cancel con
 	}
 	if resultSlots > len(in.results)/8 {
 		return nil, fmt.Errorf("requires %d result slot(s), instance buffer has %d", resultSlots, len(in.results)/8)
+	}
+	if err := in.collectGenericGCAtBoundary(); err != nil {
+		return nil, fmt.Errorf("function GC boundary collection: %w", err)
 	}
 	if hasReferenceValType(sig.Params) {
 		params, _, err := exactFuncSignatureView(sig, in.c.Types)

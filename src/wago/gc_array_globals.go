@@ -2,6 +2,7 @@ package wago
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -11,6 +12,12 @@ import (
 const (
 	maxGCArrayFixedElements    = 4
 	maxGCArrayBulkGlobalLength = 12
+)
+
+var (
+	errGenericGCRootState   = errors.New("generic GC boundary collection has no registered root state")
+	errGenericGCRootMapping = errors.New("generic GC boundary collection has an invalid global root mapping")
+	errGenericGCNonCompact  = errors.New("generic GC boundary collection found a non-compact reference")
 )
 
 type gcArrayGlobalInitMode uint8
@@ -279,6 +286,37 @@ func instantiateGCArrayGlobal(collector *gc.Collector, descs []gc.TypeDesc, init
 		return gc.Null(), 0, err
 	}
 	return ref, slot, nil
+}
+
+// collectGenericGCAtBoundary performs a full non-moving sweep only between
+// native invocations, when no unpublished frame reference exists. The admitted
+// slice has no GC tables/elements; all persistent object globals are checked
+// collector slots synchronized from their cells immediately before collection.
+// Allocation helpers remain collection-disabled inside an invocation.
+func (in *Instance) collectGenericGCAtBoundary() error {
+	if in == nil || in.gc == nil || in.c == nil || !in.c.genericGCBoundaryCollectionSafe() {
+		return nil
+	}
+	public := in.existingPublicGCState()
+	if public == nil {
+		return errGenericGCRootState
+	}
+	public.mu.Lock()
+	defer public.mu.Unlock()
+	for _, mapping := range public.globalRoots {
+		if int(mapping.GlobalIndex) >= len(in.globalCells) || in.globalCells[mapping.GlobalIndex] == nil {
+			return errGenericGCRootMapping
+		}
+		bits := readGlobalObject(in.globalCells[mapping.GlobalIndex], ValAnyRef)
+		ref := gc.Ref(uint32(bits))
+		if bits != uint64(ref) {
+			return errGenericGCNonCompact
+		}
+		if err := in.gc.SetGlobalSlot(mapping.SlotIndex, ref); err != nil {
+			return err
+		}
+	}
+	return in.gc.CollectFull(nil)
 }
 
 // reconcileGCGlobalRoots synchronizes the exact staged mutable GC global cells

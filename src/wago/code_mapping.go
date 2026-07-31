@@ -17,18 +17,22 @@ type compiledCodeCache struct {
 	collectorFreeStructuralMetadata bool                         // exact staged products use struct descriptors only for function identity
 	collectorFreeGCArrayMetadata    bool                         // exact staged array declaration/binding products allocate no collector
 	gcTypeSubtypingProduct          stagedGCTypeSubtypingProduct // exact first gc/type-subtyping no-object product; never serialized
-	gcStructProduct                 stagedGCStructProduct        // exact compile-only public GC ownership boundary; never serialized
-	gcArrayProduct                  stagedGCArrayProduct         // exact compile-only array boundary; never serialized
+	gcStructProduct                 stagedGCStructProduct        // exact products stay compile-only; codec v29 may restore generic helper admission
+	gcArrayProduct                  stagedGCArrayProduct         // exact products stay compile-only; codec v29 may restore generic helper admission
 	gcI31Product                    stagedGCI31Product           // exact non-allocating i31 boundary; never serialized
-	stagedFeatures                  CoreFeatures                 // compile-only admission; never serialized or publicly loaded
+	stagedFeatures                  CoreFeatures                 // exact admission is compile-only; codec v29 restores generic GC requirements
 }
 
 func installCompiledFinalizer(c *Compiled) *Compiled {
 	c.ensureCodeCache()
 	// Give this compiler/deserialize-produced module its own validation memo so
-	// Instantiate validates immutable compiler-produced metadata once. Hand-built
-	// Compiled values leave the memo nil and are validated on every use.
-	c.validateMemo = &validateMemo{}
+	// Instantiate validates immutable compiler-produced metadata once. Preserve
+	// a codec-decoded immutable native root map while resetting validation state.
+	var gcFrameRoots *compiledGCFrameRoots
+	if c.validateMemo != nil {
+		gcFrameRoots = c.validateMemo.gcFrameRoots
+	}
+	c.validateMemo = &validateMemo{gcFrameRoots: gcFrameRoots}
 	goruntime.SetFinalizer(c, func(c *Compiled) {
 		_ = c.Close()
 	})
@@ -85,6 +89,45 @@ func (c *Compiled) usesGenericGCExecution() bool {
 	}
 	arrayProduct := c.stagedGCArrayProduct()
 	return c.stagedGCStructProduct() == stagedGCStructGeneric || arrayProduct == stagedGCArrayProductNewData || arrayProduct == stagedGCArrayProductNewElem || arrayProduct == stagedGCArrayProductGeneric
+}
+
+// compiledGCFrameRoots is the immutable codec-v29 admission sidecar for bounded
+// per-site roots and direct self-recursive frame walking. Generic modules without
+// it remain collection-disabled during native execution.
+type compiledGCFrameSafepoint struct {
+	id      uint32
+	offsets []uint32
+}
+
+type compiledGCFrameCallsite struct {
+	returnOffset uint32
+	offsets      []uint32
+}
+
+type compiledGCFrameRoots struct {
+	frameBytes          uint32
+	adapterReturnOffset uint32
+	safepoints          []compiledGCFrameSafepoint
+	callsites           []compiledGCFrameCallsite
+}
+
+func (c *Compiled) genericGCFrameRoots() *compiledGCFrameRoots {
+	if c == nil || c.validateMemo == nil {
+		return nil
+	}
+	return c.validateMemo.gcFrameRoots
+}
+
+func (c *Compiled) genericGCBoundaryCollectionSafe() bool {
+	if c == nil || !c.usesGenericGCExecution() || c.HasTable || len(c.Elems) != 0 || len(c.passiveElems) != 0 {
+		return false
+	}
+	for _, g := range c.GlobalImports {
+		if g.Type == ValAnyRef || g.Type == ValI31Ref {
+			return false
+		}
+	}
+	return true
 }
 
 func (c *Compiled) stagedGCI31Product() stagedGCI31Product {

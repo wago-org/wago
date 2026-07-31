@@ -13,11 +13,17 @@ The mandatory pinned Core 3 corpus is complete, but that result is narrower than
 unrestricted compiler-generated WasmGC. The current linux/amd64 explicit-bounds
 path now admits struct and array helpers from validated opcode/type semantics
 rather than requiring an exact binary hash or export spelling. It supports
-multi-field and reference-bearing `struct.new`, reference `struct.set`, numeric
-and reference `array.new`/`array.new_fixed`, object-building global constant
+multi-field and reference-bearing `struct.new`, reference `struct.set`, numeric,
+`v128`, and reference `array.new`/`array.new_fixed`, object-building global constant
 expressions, indexed `ref.null`, opaque non-scanned 64-bit function/extern
-reference fields, and declared-subtype struct/array access. Constructor operands
-are mutable temporary roots across allocation.
+reference fields, and declared-subtype struct/array access. Pointer-free
+`Array<v128>` values preserve both 64-bit ABI slots through default, uniform, and
+fixed construction, get/set/fill/copy, and data-segment initialization. Fixed
+constructors that exceed the 64-slot control frame pass one pointer to contiguous
+off-heap native spill slots, removing the former 31-element vector limit without
+putting a Go pointer in native state. Vector struct fields use the same two-slot
+constructor/get/set protocol. Constructor
+operands are mutable temporary roots across allocation.
 
 This path compiles, links, and completes the start function of the 3,225,249-byte
 MoonBit Starshine CLI payload with SHA-256
@@ -38,22 +44,54 @@ It also exposed a backend bug where dead-code scanning failed to consume
 `0xfb` GC immediates; amd64 and arm64 now delegate those immediates to the
 canonical bytecode classifier.
 
-Exact native frame-root publication is still incomplete. General generated
-modules therefore force `ProfileThroughput` with collection disabled: objects
-remain stable in the configured bounded throughput heap, no incomplete root set
-is scanned, and heap exhaustion returns `gc: collection-disabled heap exhausted`
-instead of attempting an unsafe collection. `ThroughputHeapBytes` remains the
-hard bound (16 MiB by default and caller-configurable). This safety mode means
-Tiny/stress collection settings do not apply to the general path. Exact staged
-official products retain their existing collectors, roots, barriers, and stress
-coverage.
+Exact native frame-root publication is still incomplete for general generated
+modules. Those modules therefore force `ProfileThroughput` and keep collection
+disabled while a native invocation is active: objects remain stable, no
+incomplete frame-root set is scanned, and one invocation that exceeds
+`ThroughputHeapBytes` returns `gc: collection-disabled heap exhausted`.
+
+A bounded linux/amd64 slice now collects within an invocation. It requires one
+local function; no imports, globals, start, tables, element segments, tags,
+GC-reference parameters/results, indirect calls, non-self tail calls, or EH control; and
+at most 64 collector-reference roots at a site. Compile admission builds an exact
+structured-CFG local-liveness mask for every reachable allocation and direct
+self-call. The amd64 backend adds live hidden operand spills, assigns a compact
+safepoint ID in the GC dispatch word, records direct-call return PCs, and
+publishes final frame size. The synchronous control frame supplies parked RSP;
+Go validates the selected site and exposes actual off-heap qwords as mutable
+collector roots. Compact handles currently remain stable while object locations
+move, but collector updates still write through to the parked frames.
+
+The native walker follows validated return-PC maps through bounded direct
+self-recursion. Throughput collect-every-allocation/forced-major verification and
+Tiny collect/step-every-allocation preserve references in every recursive caller
+while the deepest frame performs 1,000 allocations. Dead locals are omitted,
+hidden operand roots survive control merges, and malformed IDs, offsets,
+call-sites, and adapter returns fail closed. Codec v29 persists and revalidates
+safepoint, liveness, spill, callsite, frame-size, and adapter-return metadata; it
+never persists collector handles or live frames. Five 500 ms samples of
+`BenchmarkGCSingleNativeFrameRoots` measured 432.5-443.5 ns/op, 0 B/op, and
+0 allocs/op on the Ryzen 7 8845HS host for boundary collection plus two parked
+allocating-helper transitions.
+
+For the table/element-free subset whose persistent GC references are module-local
+globals, instantiation separately registers every such global as a checked
+collector slot and `Invoke` performs a full non-moving sweep before entering the
+next native invocation. This boundary collection is zero-allocation after
+warm-up and reuses both object spans and free-list metadata instead of growing
+metadata per cycle. It reclaims across calls, not within a long-running call.
+Exact staged official products retain their existing collectors, roots, barriers,
+and stress coverage.
 
 The synchronous helper boundary is capped at 64 parameter/result slots. A lazy
-per-instance `gcPublicState` now includes one mutex-protected 63-value
-constructor scratch (1,032 bytes total on amd64), avoiding a per-constructor Go
-allocation. The synthetic declared-subtype construct/set/get benchmark measures
-383-416 ns/op with 0 allocs/op on the Ryzen 7 8845HS host; amortized B/op comes
-from bounded throughput backing growth.
+per-instance `gcPublicState` includes one mutex-protected 63-value constructor
+scratch, a bounded direct native-frame/root-chain adapter, and the generic-global
+root mapping (1,648 bytes total on amd64), avoiding per-constructor,
+per-root-publication, and per-boundary-collection Go allocations. On July 31,
+2026, five 500 ms samples of `BenchmarkGCArrayV128Set` measured 439.5-476.8 ns/op
+with 0 B/op and 0 allocs/op on the Ryzen 7 8845HS host. The path includes
+safe-boundary collection before each invocation and a parked helper transition;
+a direct JIT object-access path remains a future optimization.
 
 A pinned single-CPU benchmark pass on July 16, 2026 (Ryzen 7 8845HS, Go 1.24.4)
 measured the 44,023-byte MoonBit JSON module at 0.276 ms decode, 1.380 ms
@@ -65,12 +103,19 @@ and 31.7 ms for linked instantiate/start. The cold Starshine link/JIT allocated
 166.2 MB in 565,697 allocations; this and the 74.8 MB/448,851-allocation compile
 front half are explicit optimization targets rather than footprint claims.
 
-This is still not a general ownership or persistence claim. `.wago` reload does
-not reconstruct live generic helper admission/ownership, snapshots reject live
-WasmGC state, guard-page GC execution and non-amd64 native lowering remain
-closed, and arbitrary non-null GC values cannot cross host or cross-instance
-boundaries. Exact safepoint maps, frame-root updates, mutable global/table root
-coherence, and those lifecycle boundaries remain required.
+This is still not a general ownership or live-state persistence claim. Codec v29
+persists generic helper admission, vector layout, and the bounded native root-map
+contract, but not a live collector, compact handles, barriers, or object identity. Replay-safe
+`SnapshotInit` capture is admitted only for import-free/start-free generic-GC
+modules whose reference globals are immutable, local `anyref`/`i31ref` values
+with persisted initializer expressions; restore skips captured compact handles
+and reconstructs the graph by replaying those expressions. `SnapshotWarm` and
+all live/mutating heap capture remain rejected. Guard-page GC execution,
+non-amd64 native lowering, arbitrary cross-function call graphs, host/re-entrant
+calls, non-self tail/EH integration, and non-null GC values across host or cross-instance
+boundaries also remain closed. Multi-function frame identity, stacked host-call
+control, EH-root unioning, table-root coherence, and those lifecycle boundaries
+remain required.
 
 Iteration 38 wires one exact linux/amd64 numeric-local helper product;
 iteration 39 adds exact immutable GC-global roots, packed fields, and the numeric portion
@@ -166,7 +211,7 @@ The handle indirection lets the nursery move/promote objects while keeping exist
 
 - `TypeID` for module/runtime type identity.
 - descriptor kind: struct or array.
-- scalar storage kinds (`i8`, `i16`, `i32`, `i64`, `f32`, `f64`) and ref storage kinds.
+- scalar storage kinds (`i8`, `i16`, `i32`, `i64`, `f32`, `f64`), pointer-free 16-byte `v128`, and ref storage kinds.
 - struct field offsets.
 - array element size.
 - alignment.
@@ -183,7 +228,7 @@ Function component types keep their indexes stable by lowering to `gc.KindFunc` 
 
 Ref fields and ref array elements are fixed-width compact `Ref` slots. Recursive and mutually recursive references do not recursively expand object layout; the slot size is independent of the referenced type. Nullable and non-null refs have the same storage size and scan behavior. Mutability affects validation and code generation, not GC reachability, so it is not represented in the runtime descriptor layout.
 
-The first lowering rejects unsupported storage such as `v128` with clear errors. Numeric and packed numeric fields/arrays are pointer-free. Ref-typed fields/arrays are scanned exactly; scanner logic ignores `null` and `i31` values at runtime.
+Array elements and struct fields lower `v128` as 16-byte-aligned, pointer-free storage. Their helpers consume and produce two ABI slots. Scalar, packed, and vector numeric storage is pointer-free. Ref-typed fields/arrays are scanned exactly; scanner logic ignores `null` and `i31` values at runtime.
 
 Decoded function signatures stored in `wasm.Module` may contain recursive-local `TypeIdx{Rec: true}` values when the signature was decoded inside a recursive type group. Existing storage-aliasing helpers such as `TypeFunc` and `LocalFuncType` document that behavior. Metadata/codegen consumers that need flattened absolute module indexes must use `ResolvedTypeFunc` or `ResolvedLocalFuncType`, which return resolved copies without mutating module storage.
 
@@ -202,23 +247,24 @@ type ObjHeader struct {
 
 `TypeID` indexes the descriptor. `Size` is the total object size including the header. `Aux` currently stores array length and is reserved for forwarding metadata during copying. `Flags` stores generation/color/age/pointer-free/forwarding/large-object bits.
 
-Payload begins at `PayloadOffset == HeaderSize`, currently 16 bytes. Object sizes are 8-byte aligned. Heap memory stores header fields in little-endian byte arenas, not as Go object pointers.
+Payload begins at `PayloadOffset == HeaderSize`, currently 16 bytes. Logical object sizes remain at least 8-byte aligned; nursery, Throughput, and compatible Tiny allocations additionally align objects to the descriptor requirement through 16 bytes. Heap backing slices are explicitly aligned rather than relying on Go allocator alignment. Tiny configurations with 8-byte blocks reject descriptor tables containing 16-byte-aligned storage. Heap memory stores header fields in little-endian byte arenas, not as Go object pointers.
 
 ## Compiled metadata and instantiation
 
-Frontend lowering produces immutable descriptor metadata during compile. `Compiled.GCTypeDescs` stores the descriptor slice so `.wago` blobs can instantiate without re-decoding the Wasm type section. The descriptor slice index matches flattened `wasm.TypeIdx.Index`, including function sentinels used only to preserve indexes.
+Frontend lowering produces immutable descriptor metadata during compile. `Compiled.GCTypeDescs` stores the descriptor slice so `.wago` blobs can instantiate without re-decoding the Wasm type section. The descriptor slice index matches flattened `wasm.TypeIdx.Index`, including function sentinels used only to preserve indexes. Codec v29 retains the appended `StorageV128` kind and 16-byte layout contract and adds validated native safepoint/callsite root maps; older codec versions are rejected.
 
 Each `Instance` normally owns its own `gc.Collector` when its executable product can create or retain heap objects. Collectors are never shared across instances: nursery state, old-space state, roots, remembered sets, cards, and collection statistics are per-instance runtime state. MVP/non-GC modules keep `Instance.gc == nil` to avoid allocating an unused heap.
 
 Iteration 37 adds one deliberately narrower exception. Ten exact pinned `type-rec` products contain struct descriptors only because recursive struct definitions participate in function identity. Their functions, immutable globals, imports, and ordinary funcref tables carry only function descriptors; no struct/array value or GC opcode exists. A compile-only, non-serialized sidecar records that exact product proof and keeps `Instance.gc == nil` even though `gc.HasHeapObjectTypes` is true. Unknown binaries, arrays, mutable fields, additional state, public codec load, snapshots, guard mode, and arm64 remain closed. A codec-reloaded artifact does not inherit this live admission sidecar. This is metadata/function-identity execution, not WasmGC heap execution.
 
-General GC roots are not wired to native frames yet. Iteration 38 adds a separate exact
-numeric-local helper product with one allocation point and a proven empty live-ref set.
-Iteration 39 adds two collector-owned immutable global slots, not frame roots: each slot is
-installed before a later initializer allocation. Neither establishes general frame scanning.
-Later slices must connect exact safepoint maps, runtime allocation calls with non-empty live
-frame roots, mutable slot synchronization, and barrier emission to the instance-owned
-collector.
+Iteration 38 added a separate exact numeric-local helper product with one allocation point
+and a proven empty live-ref set. Iteration 39 added two collector-owned immutable global
+slots, not frame roots: each slot is installed before a later initializer allocation. The native-frame publication slice now records function-relative safepoint IDs, exact
+structured-CFG local liveness, hidden operand spills, and direct self-call return-PC maps for
+one linux/amd64 function. Codec v29 persists and revalidates that metadata, and the runtime
+walks recursive caller frames through actual mutable off-heap slots. Multi-function identity,
+imports/host re-entry, tail/EH integration, mutable slot synchronization, and broader
+barrier/ownership products remain later slices.
 
 ## Native exception-root map contract
 

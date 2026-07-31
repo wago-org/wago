@@ -111,6 +111,9 @@ func Capture(c *Compiled, opts SnapshotOptions) (*Snapshot, error) {
 	if err := validateSnapshotModule(c); err != nil {
 		return nil, err
 	}
+	if err := validateSnapshotKind(c, opts.Kind); err != nil {
+		return nil, err
+	}
 	in, err := instantiateCore(c, InstantiateOptions{Imports: opts.Imports, GC: opts.GC})
 	if err != nil {
 		return nil, err
@@ -272,7 +275,8 @@ func validateSnapshotModule(c *Compiled) error {
 		return errors.New("wago: snapshot has no bound module")
 	}
 	required := c.requiredFeatures | compiledStructuralRequiredFeatures(c)
-	if required&CoreFeatureGC != 0 {
+	genericGCInit := required&CoreFeatureGC != 0 && genericGCInitSnapshotSafe(c)
+	if required&CoreFeatureGC != 0 && !genericGCInit {
 		return errors.New("wago: WasmGC reference products cannot be snapshotted until heap, root, and barrier state has a persisted resolver")
 	}
 	if required&CoreFeatureExceptionHandling != 0 {
@@ -281,11 +285,13 @@ func validateSnapshotModule(c *Compiled) error {
 			return errors.New("wago: exception-handling snapshots require declaration-only local tags without functions, imports, or active native handlers")
 		}
 	}
-	if required&(CoreFeatureTypedFunctionReferences|CoreFeatureTailCall) != 0 {
+	if required&CoreFeatureTailCall != 0 || (required&CoreFeatureTypedFunctionReferences != 0 && !genericGCInit) {
 		return errors.New("wago: typed function references and tail-call contexts cannot be snapshotted until descriptor owners and tail frames have a persisted resolver")
 	}
-	if err := c.validateSnapshotReferenceGlobals(); err != nil {
-		return err
+	if !genericGCInit {
+		if err := c.validateSnapshotReferenceGlobals(); err != nil {
+			return err
+		}
 	}
 	if c.HasTable {
 		return errors.New("wago: modules with tables cannot be snapshotted yet")
@@ -304,6 +310,40 @@ func validateSnapshotModule(c *Compiled) error {
 	}
 	if c.memoryCount() > 1 && (len(c.Imports) != 0 || len(c.GlobalImports) != 0 || c.tableImportCount() != 0) {
 		return errors.New("wago: owned local modules with multiple memories and function, global, or table imports cannot be snapshotted; reject before retaining imports or running start")
+	}
+	return nil
+}
+
+// genericGCInitSnapshotSafe admits only replayable initialization snapshots.
+// No start or warm function has run, GC reference globals are immutable and
+// local, and restore rebuilds their object graph from persisted constant
+// expressions instead of copying compact handles from the capture collector.
+func genericGCInitSnapshotSafe(c *Compiled) bool {
+	if c == nil || !c.usesGenericGCExecution() || c.HasStart || len(c.Imports) != 0 || c.HasTable {
+		return false
+	}
+	for _, g := range c.GlobalImports {
+		if isReferenceValType(g.Type) {
+			return false
+		}
+	}
+	for _, g := range c.Globals {
+		if !isReferenceValType(g.Type) {
+			continue
+		}
+		if g.Mutable || (g.Type != ValAnyRef && g.Type != ValI31Ref) || len(g.InitExpr) == 0 {
+			return false
+		}
+	}
+	return true
+}
+
+func validateSnapshotKind(c *Compiled, kind SnapshotKind) error {
+	if c == nil {
+		return errors.New("wago: snapshot has no bound module")
+	}
+	if (c.requiredFeatures|compiledStructuralRequiredFeatures(c))&CoreFeatureGC != 0 && kind != SnapshotInit {
+		return errors.New("wago: WasmGC snapshots currently support replay-safe initialization state only; warm/live heap capture requires persisted roots and object identity")
 	}
 	return nil
 }
@@ -345,6 +385,9 @@ func (s *Snapshot) MarshalBinary() ([]byte, error) {
 		return nil, errors.New("wago: cannot marshal a snapshot with no bound module")
 	}
 	if err := validateSnapshotModule(s.c); err != nil {
+		return nil, err
+	}
+	if err := validateSnapshotKind(s.c, s.kind); err != nil {
 		return nil, err
 	}
 	cb, err := s.c.MarshalBinary()
@@ -477,6 +520,10 @@ func loadSnapshotWith(b []byte, loadCompiled func([]byte) (*Compiled, error)) (*
 		return nil, fmt.Errorf("wago: snapshot module: %w", err)
 	}
 	if err := validateSnapshotModule(c); err != nil {
+		_ = c.Close()
+		return nil, fmt.Errorf("wago: snapshot module: %w", err)
+	}
+	if err := validateSnapshotKind(c, kind); err != nil {
 		_ = c.Close()
 		return nil, fmt.Errorf("wago: snapshot module: %w", err)
 	}

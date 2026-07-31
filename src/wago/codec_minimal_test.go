@@ -138,6 +138,41 @@ func TestCompiledCodecRoundTripsMinimalGCDescriptor(t *testing.T) {
 	}
 }
 
+func TestCompiledCodecRoundTripsV128ArrayDescriptorAndSIMDRequirement(t *testing.T) {
+	desc, err := gc.NewArrayDesc(0, gc.StorageV128)
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := &Compiled{
+		Types: []DefinedTypeDescriptor{{
+			Final: true,
+			Kind:  CompositeTypeArray,
+			Array: FieldTypeDescriptor{Mutable: true, Storage: StorageTypeDescriptor{
+				Value: ValueTypeDescriptor{Kind: ValueTypeV128},
+			}},
+		}},
+		GCTypeDescs: []gc.TypeDesc{desc},
+	}
+	if got := compiledStructuralRequiredFeatures(input); got&CoreFeatureSIMD == 0 {
+		t.Fatalf("structural requirements = %#x, want SIMD", got)
+	}
+	blob, err := input.MarshalBinary()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got Compiled
+	if err := unmarshalCompiled(&got, blob[5:]); err != nil {
+		t.Fatal(err)
+	}
+	defer got.Close()
+	if len(got.GCTypeDescs) != 1 || got.GCTypeDescs[0].Elem != gc.StorageV128 || got.GCTypeDescs[0].ElemSize != 16 || got.GCTypeDescs[0].Align != 16 {
+		t.Fatalf("round-tripped v128 descriptor = %+v", got.GCTypeDescs)
+	}
+	if got.requiredFeatures&CoreFeatureSIMD == 0 {
+		t.Fatalf("round-tripped required features = %#x, want SIMD", got.requiredFeatures)
+	}
+}
+
 func TestCompiledCodecRoundTripsMixedGCDescriptors(t *testing.T) {
 	nilStruct, err := gc.NewStructDesc(1, nil)
 	if err != nil {
