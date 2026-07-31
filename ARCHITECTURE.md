@@ -51,7 +51,8 @@ WasmGC native helpers use stable compact references and bounded collector heaps.
 General generated modules still fail closed to a collection-disabled Throughput
 heap when exact native roots are not published. A bounded linux/amd64 slice
 admits in-invocation collection for local call graphs with numeric host imports,
-module-local GC globals, direct recursion, and no start/table/element/tag/EH state. A
+module-local GC globals, private immutable local-function tables, one private
+collector-reference table, direct recursion, and no start/tag/EH state. A
 structured-CFG dataflow pass computes exact local liveness per allocation and
 callsite; amd64 adds hidden operand spill offsets, compact safepoint IDs, frame
 size, adapter return, and recursive call return-PC maps. The synchronous helper
@@ -62,8 +63,11 @@ persists and strictly revalidates the map, including dynamic-import stack
 adjustments. Direct tail calls discard their caller frame. Numeric host callbacks
 use a bounded suspended-activation stack plus separate nested foreign stacks, and
 mutable module-local GC globals synchronize checked collector slots before every
-allocating helper. Indirect-call, EH, table-root, and non-null cross-instance GC
-products remain collection-disabled. Codec v30 persists generic helper admission and the 16-byte
+allocating helper. Private local `call_indirect` and `return_call_indirect` sites publish exact
+caller roots, while collector-reference table entries are scanned directly from
+the mutable off-heap descriptor. Generic struct/array execution is also admitted
+with guard-page bounds checks on linux/amd64. `call_ref`, EH, and non-null
+cross-instance GC products remain collection-disabled. Codec v30 persists generic helper admission and the 16-byte
 `v128` storage contract, but never live collector state. Initialization
 snapshots may replay immutable local GC initializer graphs; warm/live GC
 snapshots remain rejected.

@@ -634,7 +634,7 @@ Tiny stress. Direct tail calls discard each caller frame and retain no callsite 
 persists and strictly validates frame sizes, safepoint ordering, root alignment,
 callsite returns, and adapter termination. Forged metadata fails closed. Five
 500 ms samples measured 432.5-443.5 ns/op, 0 B/op, and 0 allocs/op. The expanded
-direct walker raises lazy `gcPublicState` from 1,560 to 2,408 bytes while the
+direct walker raises lazy `gcPublicState` from 1,560 to 2,432 bytes while the
 64-byte `compiledCodeCache` layout remains unchanged.
 
 ## Iteration 79 suspended host activations and mutable globals
@@ -650,10 +650,24 @@ across 1,000 allocations in a re-entered function, including codec reload.
 Generic module-local GC globals now synchronize their checked collector slots
 before every allocating helper as well as invocation-boundary collection, so a
 mutable global may retain an object throughout a long-running invocation.
-`gcPublicState` is 2,408 bytes on amd64; the state remains lazy and warmed helper
+`gcPublicState` is 2,432 bytes on amd64; the state remains lazy and warmed helper
 publication remains allocation-free.
 
-Next work is indirect-call frame identity, EH root unioning, GC table roots,
-non-null cross-instance collector ownership, guard-page execution, arm64
-lowering, and live heap snapshots. Those products remain collection-disabled
-until their complete root protocols exist.
+## Iteration 80 indirect calls, table roots, and guard execution
+
+Private immutable local-function tables now admit `call_indirect` with exact
+caller callsite maps and `return_call_indirect` with discarded caller frames.
+Imported/exported/mutable function tables remain outside the proof. One private
+mutable collector-reference table is scanned directly from its validated
+off-heap descriptor at invocation boundaries and allocating helper safepoints;
+collector rewrites update the actual table qwords. Tiny stress preserves table
+objects across 1,000 allocations and codec reload.
+
+Generic struct/array helpers and exact native frame roots now execute with
+linux/amd64 guard-page bounds checks. A tagged test performs 1,000 Tiny
+collect/step-every-allocation iterations and verifies a live `v128` object.
+`gcPublicState` is 2,432 bytes on amd64.
+
+Next work is `call_ref` target identity, EH root unioning, non-null
+cross-instance collector ownership, arm64 lowering, and live heap snapshots.
+Those products remain collection-disabled until their complete protocols exist.

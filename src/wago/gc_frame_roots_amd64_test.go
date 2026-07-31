@@ -60,6 +60,153 @@ func gcHiddenOperandRootModule() []byte {
 	)
 }
 
+func gcTableFrameRootModule() []byte {
+	structType := []byte{0x5f, 0x01, 0x7f, 0x01}
+	funcType := wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32})
+	table := []byte{0x63, 0x00, 0x00, 0x01} // one (ref null 0) slot
+	body := []byte{0x01, 0x01, 0x7f,
+		0x41, 0x00, 0x20, 0x00, 0xfb, 0x00, 0x00, 0x26, 0x00,
+		0x02, 0x40, 0x03, 0x40,
+		0x20, 0x01, 0x41, 0xe8, 0x07, 0x4f, 0x0d, 0x01,
+		0xfb, 0x01, 0x00, 0x1a,
+		0x20, 0x01, 0x41, 0x01, 0x6a, 0x21, 0x01, 0x0c, 0x00,
+		0x0b, 0x0b,
+		0x41, 0x00, 0x25, 0x00, 0xfb, 0x02, 0x00, 0x00, 0x0b}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(structType, funcType)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(4, wasmtest.Vec(table)),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func TestGCTableRootsInsideInvocation(t *testing.T) {
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcTableFrameRootModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	if compiled.genericGCFrameRoots() == nil {
+		t.Fatal("collector table module lost native collection admission")
+	}
+	for _, candidate := range []*Compiled{compiled, roundTripCompiled(t, compiled)} {
+		if candidate != compiled {
+			defer candidate.Close()
+		}
+		in, err := Instantiate(candidate, InstantiateOptions{GC: GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 64, TinyBlockBytes: 32, TinyCollectEveryAlloc: true, TinyStepEveryAlloc: true, VerifyAfterCollect: true}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, callErr := in.Invoke("run", 88)
+		if callErr != nil || !reflect.DeepEqual(got, []uint64{88}) {
+			in.Close()
+			t.Fatalf("run = %v, %v; want [88]", got, callErr)
+		}
+		in.Close()
+	}
+}
+
+func gcIndirectFrameRootModule() []byte {
+	structType := []byte{0x5f, 0x01, 0x7f, 0x01}
+	funcType := wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32})
+	target := []byte{0x01, 0x01, 0x7f,
+		0x02, 0x40, 0x03, 0x40,
+		0x20, 0x01, 0x41, 0xe8, 0x07, 0x4f, 0x0d, 0x01,
+		0xfb, 0x01, 0x00, 0x1a,
+		0x20, 0x01, 0x41, 0x01, 0x6a, 0x21, 0x01, 0x0c, 0x00,
+		0x0b, 0x0b, 0x41, 0x00, 0x0b}
+	caller := []byte{0x01, 0x01, 0x63, 0x00,
+		0x20, 0x00, 0xfb, 0x00, 0x00, 0x21, 0x01,
+		0x20, 0x00, 0x41, 0x00, 0x11, 0x01, 0x00, 0x1a,
+		0x20, 0x01, 0xfb, 0x02, 0x00, 0x00, 0x0b}
+	table := []byte{0x70, 0x00, 0x01}
+	elem := []byte{0x00, 0x41, 0x00, 0x0b, 0x01, 0x00}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(structType, funcType)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1), wasmtest.ULEB(1))),
+		wasmtest.Section(4, wasmtest.Vec(table)),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 1))),
+		wasmtest.Section(9, wasmtest.Vec(elem)),
+		wasmtest.Section(10, wasmtest.Vec(
+			append(wasmtest.ULEB(uint32(len(target))), target...),
+			append(wasmtest.ULEB(uint32(len(caller))), caller...),
+		)),
+	)
+}
+
+func TestGCIndirectNativeFrameRoots(t *testing.T) {
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcIndirectFrameRootModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	plan := compiled.genericGCFrameRoots()
+	if plan == nil || len(plan.callsites) != 1 || len(plan.callsites[0].offsets) != 1 {
+		t.Fatalf("indirect native root map = %+v", plan)
+	}
+	for _, candidate := range []*Compiled{compiled, roundTripCompiled(t, compiled)} {
+		if candidate != compiled {
+			defer candidate.Close()
+		}
+		in, err := Instantiate(candidate, InstantiateOptions{GC: GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 64, TinyBlockBytes: 32, TinyCollectEveryAlloc: true, TinyStepEveryAlloc: true, VerifyAfterCollect: true}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, callErr := in.Invoke("run", 77)
+		if callErr != nil || !reflect.DeepEqual(got, []uint64{77}) {
+			in.Close()
+			t.Fatalf("run = %v, %v; want [77]", got, callErr)
+		}
+		in.Close()
+	}
+}
+
+func gcTailIndirectFrameRootModule() []byte {
+	structType := []byte{0x5f, 0x01, 0x7f, 0x01}
+	funcType := wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32})
+	target := []byte{0x01, 0x01, 0x7f,
+		0x02, 0x40, 0x03, 0x40,
+		0x20, 0x01, 0x41, 0xe8, 0x07, 0x4f, 0x0d, 0x01,
+		0xfb, 0x01, 0x00, 0x1a,
+		0x20, 0x01, 0x41, 0x01, 0x6a, 0x21, 0x01, 0x0c, 0x00,
+		0x0b, 0x0b, 0x20, 0x00, 0x0b}
+	caller := []byte{0x00, 0x20, 0x00, 0x41, 0x00, 0x13, 0x01, 0x00, 0x0b}
+	table := []byte{0x70, 0x00, 0x01}
+	elem := []byte{0x00, 0x41, 0x00, 0x0b, 0x01, 0x00}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(structType, funcType)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1), wasmtest.ULEB(1))),
+		wasmtest.Section(4, wasmtest.Vec(table)),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 1))),
+		wasmtest.Section(9, wasmtest.Vec(elem)),
+		wasmtest.Section(10, wasmtest.Vec(
+			append(wasmtest.ULEB(uint32(len(target))), target...),
+			append(wasmtest.ULEB(uint32(len(caller))), caller...),
+		)),
+	)
+}
+
+func TestGCTailIndirectNativeFrameRoots(t *testing.T) {
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcTailIndirectFrameRootModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	plan := compiled.genericGCFrameRoots()
+	if plan == nil || len(plan.callsites) != 0 {
+		t.Fatalf("tail-indirect root map = %+v, want no retained caller callsite", plan)
+	}
+	in, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 32, TinyBlockBytes: 32, TinyCollectEveryAlloc: true, TinyStepEveryAlloc: true, VerifyAfterCollect: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	if got, err := in.Invoke("run", 66); err != nil || !reflect.DeepEqual(got, []uint64{66}) {
+		t.Fatalf("run = %v, %v; want [66]", got, err)
+	}
+}
+
 func gcMutableGlobalFrameRootModule() []byte {
 	structType := []byte{0x5f, 0x01, 0x7f, 0x01}
 	funcType := wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32})

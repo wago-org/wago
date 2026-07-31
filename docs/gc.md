@@ -52,9 +52,10 @@ incomplete frame-root set is scanned, and one invocation that exceeds
 
 A bounded linux/amd64 slice now collects within an invocation. It admits local
 call graphs, numeric host imports, module-local GC globals, direct tail calls,
-and at most 64 collector-reference roots at a site; start functions, tables,
-element segments, tags, GC-reference parameters/results, indirect calls, and EH
-control remain closed. Compile admission builds an exact structured-CFG
+and at most 64 collector-reference roots at a site; start functions, tags,
+GC-reference parameters/results, `call_ref`, and EH control remain closed.
+Private local-function tables admit direct and tail `call_indirect`; one private
+collector-reference table admits mutable entries scanned from its off-heap descriptor. Compile admission builds an exact structured-CFG
 local-liveness mask for every reachable allocation and direct call. The amd64 backend adds live hidden operand spills, assigns a compact
 safepoint ID in the GC dispatch word, records direct-call return PCs, and
 publishes final frame size. The synchronous control frame supplies parked RSP;
@@ -86,7 +87,7 @@ and stress coverage.
 The synchronous helper boundary is capped at 64 parameter/result slots. A lazy
 per-instance `gcPublicState` includes one mutex-protected 63-value constructor
 scratch, a bounded direct native-frame/root-chain adapter, and the generic-global
-root mapping (2,408 bytes total on amd64), avoiding per-constructor,
+root mapping (2,432 bytes total on amd64), avoiding per-constructor,
 per-root-publication, and per-boundary-collection Go allocations. On July 31,
 2026, five 500 ms samples of `BenchmarkGCArrayV128Set` measured 439.5-476.8 ns/op
 with 0 B/op and 0 allocs/op on the Ryzen 7 8845HS host. The path includes
@@ -113,9 +114,9 @@ and reconstructs the graph by replaying those expressions. `SnapshotWarm` and
 all live/mutating heap capture remain rejected. Numeric host imports may re-enter the same instance: codec-v30 callsites carry
 stack adjustments, a bounded eight-entry activation stack preserves control
 state, nested invocations borrow separate 4 MiB foreign stacks, and suspended
-outer frames remain roots during boundary and helper collection. Guard-page GC
-execution, non-amd64 native lowering, indirect calls, EH integration, and
-non-null GC values across host or cross-instance boundaries remain closed. EH
+outer frames remain roots during boundary and helper collection. Generic struct/array helpers and exact frame roots also execute under linux/amd64
+guard-page bounds checks. Non-amd64 native lowering, `call_ref`, EH integration,
+and non-null GC values across host or cross-instance boundaries remain closed. EH
 root unioning, table-root coherence, shared collector ownership, and those
 lifecycle boundaries remain required.
 
@@ -266,7 +267,9 @@ structured-CFG local liveness, hidden operand spills, and direct self-call retur
 linux/amd64 local functions. Codec v30 persists and revalidates that metadata, including
 caller stack adjustments, and the runtime walks cross-function, recursive, and suspended host
 activations through mutable off-heap slots. Mutable module-local global slots synchronize before
-allocation. Indirect calls, EH integration, and broader barrier/ownership products remain later slices.
+allocation. Private local `call_indirect` and tail-indirect calls now participate in exact frame walking,
+and one private mutable collector-reference table is scanned as actual off-heap root slots.
+`call_ref`, EH integration, and broader ownership products remain later slices.
 
 ## Native exception-root map contract
 

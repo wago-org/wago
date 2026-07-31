@@ -14,7 +14,11 @@ import (
 // per function. Each function gets independent compile state so railshot workers
 // may populate maps in parallel.
 func newGCFrameRootPlan(m *wasm.Module, genericGC bool) *shared.GCModuleFrameRootPlan {
-	if !genericGC || m == nil || len(m.Code) == 0 || m.Start != nil || m.TableCount() != 0 || len(m.Elements) != 0 || m.TagCount() != 0 {
+	if !genericGC || m == nil || len(m.Code) == 0 || m.Start != nil || m.TagCount() != 0 {
+		return nil
+	}
+	tablesSafe, collectorTable := gcFrameTablesSafe(m)
+	if !tablesSafe {
 		return nil
 	}
 	for i := range m.Imports {
@@ -30,7 +34,7 @@ func newGCFrameRootPlan(m *wasm.Module, genericGC bool) *shared.GCModuleFrameRoo
 	modulePlan := &shared.GCModuleFrameRootPlan{Functions: make([]*shared.GCFrameRootPlan, len(m.Code))}
 	var safepointBase uint32
 	for function := range m.Code {
-		if bodyHasUnsupportedNativeFrames(m.Code[function].BodyBytes, importedFunctions, len(m.Code)) {
+		if bodyHasUnsupportedNativeFrames(m.Code[function].BodyBytes, importedFunctions, len(m.Code), collectorTable) {
 			return nil
 		}
 		ft, ok := m.LocalFuncType(function)
@@ -96,7 +100,67 @@ func newGCFrameRootPlan(m *wasm.Module, genericGC bool) *shared.GCModuleFrameRoo
 	return modulePlan
 }
 
-func bodyHasUnsupportedNativeFrames(body []byte, importedFunctions, localFunctions int) bool {
+func gcFrameTablesSafe(m *wasm.Module) (safe, collector bool) {
+	if m.TableCount() == 0 {
+		return len(m.Elements) == 0, false
+	}
+	if m.ImportedTableCount() != 0 || len(m.Tables) != 1 {
+		return false, false
+	}
+	for _, export := range m.Exports {
+		if export.Index.Kind == wasm.ExternTable {
+			return false, false
+		}
+	}
+	ref := m.Tables[0].Type.Ref
+	functionTable := ref.Heap.Kind == wasm.HeapAbs && (ref.Heap.Abs == wasm.HeapFunc || ref.Heap.Abs == wasm.HeapNoFunc)
+	collectorTable := collectorFrameRefType(m, wasm.RefVal(ref))
+	if !functionTable && !collectorTable {
+		return false, false
+	}
+	if init := m.Tables[0].Init; init != nil {
+		ee, err := wasm.ParseElementExpr(*init)
+		if err != nil || ee.HasGlobal || (functionTable && !ee.Null && (int(ee.FuncIndex) < m.ImportedFuncCount() || int(ee.FuncIndex)-m.ImportedFuncCount() >= len(m.Code))) || (collectorTable && !ee.Null) {
+			return false, false
+		}
+	}
+	for i := range m.Elements {
+		e := &m.Elements[i]
+		if e.Mode.Kind != wasm.ElemActive || e.Mode.Table != 0 {
+			return false, false
+		}
+		if collectorTable {
+			for _, expr := range e.Kind.Exprs {
+				ee, err := wasm.ParseElementExpr(expr)
+				if err != nil || ee.HasGlobal || !ee.Null {
+					return false, false
+				}
+			}
+			if e.Kind.Kind == wasm.ElemFuncs {
+				return false, false
+			}
+			continue
+		}
+		switch e.Kind.Kind {
+		case wasm.ElemFuncs:
+			for _, idx := range e.Kind.Funcs {
+				if int(idx) < m.ImportedFuncCount() || int(idx)-m.ImportedFuncCount() >= len(m.Code) {
+					return false, false
+				}
+			}
+		default:
+			for _, expr := range e.Kind.Exprs {
+				ee, err := wasm.ParseElementExpr(expr)
+				if err != nil || ee.HasGlobal || (!ee.Null && (int(ee.FuncIndex) < m.ImportedFuncCount() || int(ee.FuncIndex)-m.ImportedFuncCount() >= len(m.Code))) {
+					return false, false
+				}
+			}
+		}
+	}
+	return true, collectorTable
+}
+
+func bodyHasUnsupportedNativeFrames(body []byte, importedFunctions, localFunctions int, collectorTable bool) bool {
 	r := wasm.NewReader(body)
 	for r.HasNext() {
 		op, err := r.Byte()
@@ -106,8 +170,12 @@ func bodyHasUnsupportedNativeFrames(body []byte, importedFunctions, localFunctio
 		switch op {
 		case 0x06, 0x07, 0x08, 0x09, 0x0a, 0x18, 0x19, 0x1f: // exception-handling control
 			return true
-		case 0x11, 0x13, 0x14, 0x15: // indirect/call_ref/tail-indirect families
+		case 0x14, 0x15: // call_ref families
 			return true
+		case 0x26: // table.set invalidates local function-target identity
+			if !collectorTable {
+				return true
+			}
 		}
 		imm, err := wasm.ClassifyInstructionImmediate(r, op)
 		if err != nil {
@@ -115,6 +183,12 @@ func bodyHasUnsupportedNativeFrames(body []byte, importedFunctions, localFunctio
 		}
 		if (op == 0x10 || op == 0x12) && int(imm.Index) >= importedFunctions+localFunctions {
 			return true
+		}
+		if op == 0xfc && !collectorTable {
+			switch imm.Subopcode {
+			case 12, 14, 15, 17: // table.init/copy/grow/fill
+				return true
+			}
 		}
 	}
 	return false

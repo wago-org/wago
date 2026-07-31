@@ -55,8 +55,8 @@ func validateCompiledGCFrameRoots(c *Compiled, rootMap *compiledGCFrameRoots) er
 	if c == nil || !c.usesGenericGCExecution() {
 		return fmt.Errorf("GC frame-root metadata requires generic GC execution")
 	}
-	if len(c.GlobalImports) != 0 || c.HasStart || c.HasTable || len(c.Elems) != 0 || len(c.passiveElems) != 0 || (c.memoryDir != nil && len(c.memoryDir.ehTags) != 0) || len(c.Funcs) == 0 {
-		return fmt.Errorf("GC frame-root metadata requires a global-import/start/table/element/tag-free local call graph")
+	if len(c.GlobalImports) != 0 || c.HasStart || !validCompiledGCFunctionTables(c) || (c.memoryDir != nil && len(c.memoryDir.ehTags) != 0) || len(c.Funcs) == 0 {
+		return fmt.Errorf("GC frame-root metadata requires a global-import/start/tag-free local call graph with private function tables")
 	}
 	if c.NumImports != len(c.Imports) || len(c.importFuncSigs) != len(c.Imports) {
 		return fmt.Errorf("GC frame-root metadata requires function-only imports")
@@ -108,6 +108,38 @@ func validateCompiledGCFrameRoots(c *Compiled, rootMap *compiledGCFrameRoots) er
 		previousID = safepoint.id
 	}
 	return nil
+}
+
+func validCompiledGCFunctionTables(c *Compiled) bool {
+	if c == nil || !c.HasTable {
+		return c != nil && len(c.Elems) == 0 && len(c.passiveElems) == 0
+	}
+	collectorTable := c.TableType == ValAnyRef || c.TableType == ValI31Ref
+	if c.tableImport != "" || len(c.tableExports) != 0 || len(c.passiveElems) != 0 || (c.TableType != 0 && c.TableType != ValFuncRef && !collectorTable) {
+		return false
+	}
+	if c.HasTableInitFunc && (collectorTable || int(c.TableInitFunc) < c.NumImports) {
+		return false
+	}
+	for i := range c.extraTables {
+		table := &c.extraTables[i]
+		if table.ImportKey != "" || table.Type != ValFuncRef || table.HasInitFunc && int(table.InitFunc) < c.NumImports {
+			return false
+		}
+	}
+	for i := range c.Elems {
+		elem := &c.Elems[i]
+		refType := normalizedElemRefType(elem.RefType)
+		if elem.Mode != ElemModeActive || int(elem.TableIndex) >= c.tableCount() || (!collectorTable && refType != ValFuncRef) || (collectorTable && refType != c.TableType) {
+			return false
+		}
+		for _, value := range elem.Values {
+			if value.HasGlobal || (collectorTable && !value.Null) || (!collectorTable && !value.Null && int(value.FuncIndex) < c.NumImports) {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func gcFramePublicCallABI(sig FuncSig) bool {

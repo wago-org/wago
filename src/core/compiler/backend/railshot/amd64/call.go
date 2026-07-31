@@ -1516,7 +1516,7 @@ func (f *fn) emitRegisterCall(localIdx int, ft *wasm.CompType, resHint int) {
 
 // emitRegisterCallVia emits either a direct internal rel32 call (localIdx >= 0)
 // or an indirect register call. Explicit operands avoid a closure per wasm call.
-func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, indirect Reg) {
+func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, indirect Reg) uint32 {
 	p, rN := len(ft.Params), len(ft.Results)
 	d := f.depth()
 	f.storePinnedGlobals(false) // spill value-pinned globals to their cells before the call (scratch is free here)
@@ -1586,11 +1586,14 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, i
 
 	// No environment passing: RBX (linMem) is a whole-module invariant and the
 	// trap cell pointer lives in basedata — the callee inherits both (WARP model).
+	var returnOffset uint32
 	if localIdx >= 0 {
 		site := f.a.CallRel32()
 		f.relocs = append(f.relocs, callReloc{at: site, target: localIdx, internal: true})
+		returnOffset = uint32(site + 4)
 	} else {
 		f.a.CallReg(indirect)
+		returnOffset = uint32(len(f.a.B))
 	}
 
 	// Capture the result(s) out of the return registers before the reload
@@ -1635,6 +1638,7 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, i
 			f.pushReg(reg, mtOf(ft.Results[i]))
 		}
 	}
+	return returnOffset
 }
 
 // emitMixedRegisterCall uses the register ABI for signatures containing floats.
@@ -2245,6 +2249,7 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 	table64 := tt.Limits.Addr64
 
 	idxReg := f.materialize(f.popValue()) // table32 uses i32; table64 uses full i64
+	rootOffsets, recordRoots := f.prepareGCFrameCallsite(len(ft.Params))
 	f.canonicalizeTableOperand(idxReg, tableIdx)
 	f.pinned = f.pinned.add(idxReg)
 	tbl := f.allocReg(0)
@@ -2298,7 +2303,10 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 		f.release(idxReg)
 		f.release(code)
 		f.stats.peep("monomorphic-call-indirect")
-		f.emitRegisterCall(tableHint.monomorphicTarget, ft, -1)
+		returnOffset := f.emitRegisterCallVia(ft, -1, tableHint.monomorphicTarget, regNone)
+		if recordRoots {
+			f.gcFrameRoots.Callsites = append(f.gcFrameRoots.Callsites, shared.GCFrameCallsitePlan{ReturnOffset: returnOffset, Offsets: rootOffsets})
+		}
 		return nil
 	}
 	if immutableTable && descriptorRegisterCall {
@@ -2316,7 +2324,10 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 		f.release(idxReg)
 		f.pinned = f.pinned.add(code)
 		f.stats.peep("immutable-local-call-indirect")
-		f.emitRegisterCallVia(ft, -1, -1, code)
+		returnOffset := f.emitRegisterCallVia(ft, -1, -1, code)
+		if recordRoots {
+			f.gcFrameRoots.Callsites = append(f.gcFrameRoots.Callsites, shared.GCFrameCallsitePlan{ReturnOffset: returnOffset, Offsets: rootOffsets})
+		}
 		f.pinned = f.pinned.remove(code)
 		f.release(code)
 		return nil

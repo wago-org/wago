@@ -77,6 +77,7 @@ type gcNativeFrameRoots struct {
 	adapterReturnOffsets []uint32
 	callsites            []compiledGCFrameCallsite
 	suspended            *gcPublicState
+	tableRoots           *gcNativeTableRoots
 }
 
 type gcHostActivation struct {
@@ -93,25 +94,53 @@ func (r *gcNativeFrameRoots) RangeRoots(fn func(gc.RootSlot) bool) {
 		return
 	}
 	state := r.suspended
-	if state == nil || state.hostRootPlan == nil {
+	if state != nil && state.hostRootPlan != nil {
+		for i := int(state.hostActivationCount) - 1; i >= 0; i-- {
+			activation := &state.hostActivations[i]
+			if int(activation.callsite) >= len(state.hostRootPlan.callsites) {
+				panic(gcStructHelperError{err: fmt.Errorf("generic GC host activation callsite %d is unavailable", activation.callsite)})
+			}
+			callsite := &state.hostRootPlan.callsites[activation.callsite]
+			chain := gcNativeFrameRoots{
+				base:                 activation.base,
+				offsets:              callsite.offsets,
+				frameBytes:           callsite.frameBytes,
+				codeBase:             state.hostCodeBase,
+				codeBytes:            state.hostCodeBytes,
+				adapterReturnOffsets: state.hostRootPlan.adapterReturnOffsets,
+				callsites:            state.hostRootPlan.callsites,
+			}
+			if !chain.rangeChain(fn) {
+				return
+			}
+		}
+	}
+	if r.tableRoots != nil {
+		r.tableRoots.RangeRoots(fn)
+	}
+}
+
+type gcNativeTableRoots struct {
+	desc  uintptr
+	bytes uintptr
+}
+
+func (r *gcNativeTableRoots) RangeRoots(fn func(gc.RootSlot) bool) {
+	if r == nil || r.desc == 0 || r.bytes < 8 {
 		return
 	}
-	for i := int(state.hostActivationCount) - 1; i >= 0; i-- {
-		activation := &state.hostActivations[i]
-		if int(activation.callsite) >= len(state.hostRootPlan.callsites) {
-			panic(gcStructHelperError{err: fmt.Errorf("generic GC host activation callsite %d is unavailable", activation.callsite)})
+	header := unsafe.Slice((*byte)(offHeapPtr(r.desc)), 8)
+	length := uint64(binary.LittleEndian.Uint32(header))
+	if length > uint64((r.bytes-8)/8) {
+		panic(gcStructHelperError{err: fmt.Errorf("generic GC table length %d exceeds descriptor capacity", length)})
+	}
+	for i := uint64(0); i < length; i++ {
+		addr := r.desc + 8 + uintptr(i*8)
+		word := binary.LittleEndian.Uint64(unsafe.Slice((*byte)(offHeapPtr(addr)), 8))
+		if word != uint64(gc.Ref(uint32(word))) {
+			panic(gcStructHelperError{err: fmt.Errorf("generic GC table root %d contains non-compact reference %#x", i, word)})
 		}
-		callsite := &state.hostRootPlan.callsites[activation.callsite]
-		chain := gcNativeFrameRoots{
-			base:                 activation.base,
-			offsets:              callsite.offsets,
-			frameBytes:           callsite.frameBytes,
-			codeBase:             state.hostCodeBase,
-			codeBytes:            state.hostCodeBytes,
-			adapterReturnOffsets: state.hostRootPlan.adapterReturnOffsets,
-			callsites:            state.hostRootPlan.callsites,
-		}
-		if !chain.rangeChain(fn) {
+		if !fn((*gc.Root)(offHeapPtr(addr))) {
 			return
 		}
 	}
@@ -193,6 +222,7 @@ type gcPublicState struct {
 	hostRootPlan        *compiledGCFrameRoots
 	hostCodeBase        uintptr
 	hostCodeBytes       uintptr
+	tableRoots          gcNativeTableRoots
 }
 
 type externrefSlot struct {

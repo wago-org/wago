@@ -1035,8 +1035,8 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 			if goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64" {
 				return nil, fmt.Errorf("compile: unsupported collector-backed struct product staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
 			}
-			if cfg.boundsChecks == BoundsChecksSignalsBased {
-				return nil, fmt.Errorf("compile: unsupported collector-backed struct product with signals-based bounds checks")
+			if cfg.boundsChecks == BoundsChecksSignalsBased && product != stagedGCStructGeneric {
+				return nil, fmt.Errorf("compile: unsupported bounded collector-backed struct product with signals-based bounds checks")
 			}
 			gcStructProduct = product
 		}
@@ -1050,8 +1050,8 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 			if goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64" {
 				return nil, fmt.Errorf("compile: unsupported collector-backed array product staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
 			}
-			if cfg.boundsChecks == BoundsChecksSignalsBased {
-				return nil, fmt.Errorf("compile: unsupported collector-backed array product with signals-based bounds checks")
+			if cfg.boundsChecks == BoundsChecksSignalsBased && product != stagedGCArrayProductGeneric {
+				return nil, fmt.Errorf("compile: unsupported bounded collector-backed array product with signals-based bounds checks")
 			}
 			gcArrayProduct = product
 		}

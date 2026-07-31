@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"unsafe"
 
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/src/core/runtime/gc"
@@ -321,10 +322,22 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 			panic(gcStructHelperError{err: fmt.Errorf("gc ref.test table-set helper args = %v, want index/ref/table", args)})
 		}
 		state := in.existingGCRefTestTableState()
-		if state == nil {
-			panic(gcStructHelperError{err: fmt.Errorf("gc ref.test table state is unavailable")})
-		}
 		table, index := args[2], args[0]
+		if state == nil {
+			if table != 0 || !in.c.HasTable || (in.c.TableType != ValAnyRef && in.c.TableType != ValI31Ref) || in.tableDescPtr == 0 || in.tableDescLen < 8 {
+				panic(gcStructHelperError{err: fmt.Errorf("gc ref.test table state is unavailable")})
+			}
+			descriptor := unsafe.Slice((*byte)(offHeapPtr(in.tableDescPtr)), in.tableDescLen)
+			if index >= uint64(binary.LittleEndian.Uint32(descriptor)) {
+				panic(gcStructHelperTrap{code: coreruntime.TrapIndirectOutOfBounds})
+			}
+			word := args[1]
+			if word != uint64(gc.Ref(uint32(word))) {
+				panic(gcStructHelperError{err: fmt.Errorf("generic GC table set contains non-compact reference %#x", word)})
+			}
+			binary.LittleEndian.PutUint64(descriptor[8+index*8:], word)
+			break
+		}
 		if table >= uint64(state.TableCount) || index >= uint64(binary.LittleEndian.Uint32(state.Descriptors[table])) {
 			panic(gcStructHelperTrap{code: coreruntime.TrapIndirectOutOfBounds})
 		}
