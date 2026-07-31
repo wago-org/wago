@@ -87,6 +87,12 @@ func (c *Cmd) Parse(path string, args []string) (*Ctx, error) {
 
 func (c *Cmd) AllFlags() []Flag {
 	flags := append([]Flag(nil), c.Flags...)
+	flags = append(flags, c.automationFlags()...)
+	return append(flags, c.Knobs...)
+}
+
+func (c *Cmd) automationFlags() []Flag {
+	var flags []Flag
 	if c.Supports(JSONOutput) {
 		flags = append(flags, Flag{Name: "json", Short: "j", Bool: true, Help: "emit machine-readable JSON"})
 	} else if c.Supports(DryRun) {

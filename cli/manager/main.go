@@ -180,7 +180,12 @@ func commandFromSpec(spec command.CommandSpec) *command.Cmd {
 		if flag.Name == "help" || flag.Name == "json" || flag.Name == "dry-run" || flag.Name == "no-input" || flag.Name == "locked" || flag.Name == "offline" {
 			continue
 		}
-		result.Flags = append(result.Flags, command.Flag{Name: flag.Name, Short: flag.Short, Bool: flag.Type == "boolean", Arg: flag.Value, Help: flag.Summary})
+		value := command.Flag{Name: flag.Name, Short: flag.Short, Bool: flag.Type == "boolean", Arg: flag.Value, Help: flag.Summary}
+		if flag.Category == "optimization" {
+			result.Knobs = append(result.Knobs, value)
+		} else {
+			result.Flags = append(result.Flags, value)
+		}
 	}
 	for _, child := range spec.Commands {
 		result.Children = append(result.Children, commandFromSpec(child))

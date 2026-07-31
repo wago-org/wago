@@ -24,16 +24,16 @@ func Command(environment Environment) *command.Cmd {
 		{Name: "output", Short: "o", Arg: "<file>", Help: "output path (default: input name with .wago extension)"},
 		runcmd.ParallelFlag(),
 	}
-	flags = append(flags, runcmd.DeferredBoundsCheckingFlags()...)
-	flags = append(flags, runcmd.OptimizationFlags()...)
 	flags = append(flags, environment.ProfileFlags()...)
+	knobs := append(runcmd.DeferredBoundsCheckingFlags(), runcmd.OptimizationFlags()...)
+	parserFlags := append(append([]command.Flag(nil), flags...), knobs...)
 	implementation := implementation{environment: environment}
 	return &command.Cmd{
 		Name: "build", Summary: "precompile a WebAssembly module to a .wago artifact",
 		Automation: command.DryRun,
-		Args:       "<file>", Flags: flags,
+		Args:       "<file>", Flags: flags, Knobs: knobs,
 		Normalize: func(args []string) ([]string, error) {
-			return runcmd.NormalizeParallelArgs(args, flags, false)
+			return runcmd.NormalizeParallelArgs(args, parserFlags, false)
 		},
 		Long: ".wago artifacts are host-architecture-specific and must be rebuilt after incompatible Wago upgrades.",
 		Run:  implementation.Run,

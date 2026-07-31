@@ -131,12 +131,13 @@ func TestAutomationFlagsAndCommandSchema(t *testing.T) {
 		Name: "inspect", Aliases: []string{"info"}, Summary: "inspect state", Args: "[name]",
 		Automation: JSONOutput | DryRun,
 		Flags:      []Flag{{Name: "global", Short: "g", Bool: true, Help: "use global state"}},
+		Knobs:      []Flag{{Name: "fast", Bool: true, Help: "enable fast mode"}},
 	}
-	ctx, err := cmd.Parse("wago inspect", []string{"--json", "--dry-run", "--no-input", "--locked", "--offline"})
+	ctx, err := cmd.Parse("wago inspect", []string{"--json", "--dry-run", "--no-input", "--locked", "--offline", "--fast"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !ctx.Bool("json") || !automation.DryRun() || !automation.NoInput() || !automation.Locked() || !automation.Offline() {
+	if !ctx.Bool("json") || !ctx.Bool("fast") || !automation.DryRun() || !automation.NoInput() || !automation.Locked() || !automation.Offline() {
 		t.Fatalf("automation flags were not applied: %#v", automation.Current())
 	}
 
@@ -160,6 +161,10 @@ func TestAutomationFlagsAndCommandSchema(t *testing.T) {
 		if !found {
 			t.Errorf("schema omits --%s: %#v", name, flags)
 		}
+	}
+	last := flags[len(flags)-1]
+	if last.Name != "fast" || last.Category != "optimization" {
+		t.Fatalf("trailing knob schema = %#v", last)
 	}
 }
 
