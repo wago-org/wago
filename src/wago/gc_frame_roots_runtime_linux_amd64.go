@@ -22,19 +22,19 @@ func (in *Instance) gcHelperRoots(ctrl uintptr, state *gcPublicState, safepointI
 	if plan == nil || ctrl == 0 {
 		return gc.EmptyRoots{}
 	}
-	var offsets []uint32
-	found := false
+	var safepoint *compiledGCFrameSafepoint
 	for i := range plan.safepoints {
 		if plan.safepoints[i].id == safepointID {
-			offsets = plan.safepoints[i].offsets
-			found = true
+			safepoint = &plan.safepoints[i]
 			break
 		}
 	}
-	if safepointID == 0 || !found {
+	if safepointID == 0 || safepoint == nil {
 		panic(gcStructHelperError{err: fmt.Errorf("generic GC frame-root safepoint %d is unavailable", safepointID)})
 	}
-	if state == nil || len(offsets) > gcNativeFrameRootLimit || plan.frameBytes < shared.AMD64FrameHeaderBytes {
+	offsets := safepoint.offsets
+	frameBytes := safepoint.frameBytes
+	if state == nil || len(offsets) > gcNativeFrameRootLimit || frameBytes < shared.AMD64FrameHeaderBytes {
 		panic(gcStructHelperError{err: fmt.Errorf("generic GC frame-root metadata is unavailable or oversized")})
 	}
 	ctrlHead := unsafe.Slice((*byte)(offHeapPtr(ctrl+abi.SyncHostCallSavedNativeSPOffset)), 8)
@@ -44,8 +44,8 @@ func (in *Instance) gcHelperRoots(ctrl uintptr, state *gcPublicState, safepointI
 	}
 	base := savedRSP + abi.AMD64CallReturnAddressBytes
 	for _, off := range offsets {
-		if off < shared.AMD64FrameHeaderBytes || off%8 != 0 || off > plan.frameBytes-8 || base > ^uintptr(0)-uintptr(off) {
-			panic(gcStructHelperError{err: fmt.Errorf("generic GC frame-root offset %d is outside frame size %d", off, plan.frameBytes)})
+		if off < shared.AMD64FrameHeaderBytes || off%8 != 0 || off > frameBytes-8 || base > ^uintptr(0)-uintptr(off) {
+			panic(gcStructHelperError{err: fmt.Errorf("generic GC frame-root offset %d is outside frame size %d", off, frameBytes)})
 		}
 		word := unsafe.Slice((*byte)(offHeapPtr(base+uintptr(off))), 8)
 		bits := binary.LittleEndian.Uint64(word)
@@ -56,10 +56,10 @@ func (in *Instance) gcHelperRoots(ctrl uintptr, state *gcPublicState, safepointI
 	}
 	state.frameRoots.base = base
 	state.frameRoots.offsets = offsets
-	state.frameRoots.frameBytes = plan.frameBytes
+	state.frameRoots.frameBytes = frameBytes
 	state.frameRoots.codeBase = in.base
 	state.frameRoots.codeBytes = uintptr(len(in.c.Code))
-	state.frameRoots.adapterReturnOffset = plan.adapterReturnOffset
+	state.frameRoots.adapterReturnOffsets = plan.adapterReturnOffsets
 	state.frameRoots.callsites = plan.callsites
 	return &state.frameRoots
 }

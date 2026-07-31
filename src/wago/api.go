@@ -1709,17 +1709,22 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		c.Data = append(c.Data, init)
 	}
 	compiled := installCompiledFinalizer(c)
-	if validGCFrameRootPlan(gcFrameRoots) {
-		functionBase := uint32(0)
-		if len(compiled.Entry) != 0 && compiled.Entry[0] >= 0 {
-			functionBase = uint32(compiled.Entry[0])
-		}
-		rootMap := &compiledGCFrameRoots{frameBytes: gcFrameRoots.FrameBytes, adapterReturnOffset: functionBase + gcFrameRoots.AdapterReturnOffset, safepoints: make([]compiledGCFrameSafepoint, len(gcFrameRoots.Safepoints)), callsites: make([]compiledGCFrameCallsite, len(gcFrameRoots.Callsites))}
-		for i := range gcFrameRoots.Safepoints {
-			rootMap.safepoints[i] = compiledGCFrameSafepoint{id: gcFrameRoots.Safepoints[i].ID, offsets: append([]uint32(nil), gcFrameRoots.Safepoints[i].Offsets...)}
-		}
-		for i := range gcFrameRoots.Callsites {
-			rootMap.callsites[i] = compiledGCFrameCallsite{returnOffset: functionBase + gcFrameRoots.Callsites[i].ReturnOffset, offsets: append([]uint32(nil), gcFrameRoots.Callsites[i].Offsets...)}
+	if validGCModuleFrameRootPlan(gcFrameRoots) {
+		rootMap := &compiledGCFrameRoots{}
+		for function, plan := range gcFrameRoots.Functions {
+			if plan == nil {
+				continue
+			}
+			functionBase := uint32(compiled.Entry[function])
+			if plan.AdapterReturnOffset != 0 {
+				rootMap.adapterReturnOffsets = append(rootMap.adapterReturnOffsets, functionBase+plan.AdapterReturnOffset)
+			}
+			for i := range plan.Safepoints {
+				rootMap.safepoints = append(rootMap.safepoints, compiledGCFrameSafepoint{id: plan.Safepoints[i].ID, frameBytes: plan.FrameBytes, offsets: append([]uint32(nil), plan.Safepoints[i].Offsets...)})
+			}
+			for i := range plan.Callsites {
+				rootMap.callsites = append(rootMap.callsites, compiledGCFrameCallsite{returnOffset: functionBase + plan.Callsites[i].ReturnOffset, frameBytes: plan.FrameBytes, offsets: append([]uint32(nil), plan.Callsites[i].Offsets...)})
+			}
 		}
 		compiled.validateMemo.gcFrameRoots = rootMap
 	}

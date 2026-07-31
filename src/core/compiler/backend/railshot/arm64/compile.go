@@ -600,7 +600,7 @@ type CompileOptions struct {
 
 	// GCFrameRoots is present for option parity only. arm64 GC execution remains
 	// rejected before code generation.
-	GCFrameRoots *shared.GCFrameRootPlan
+	GCFrameRoots *shared.GCModuleFrameRootPlan
 
 	// Codegen carries injectable runtime/heap dependencies for future WasmGC
 	// lowering. The current direct backend does not lower WasmGC opcodes yet, but

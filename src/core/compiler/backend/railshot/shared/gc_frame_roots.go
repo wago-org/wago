@@ -56,4 +56,18 @@ type GCFrameRootPlan struct {
 	Safepoints          []GCFrameSafepointPlan
 	Callsites           []GCFrameCallsitePlan
 	AdapterReturnOffset uint32
+	SafepointBase       uint32
+}
+
+// GCModuleFrameRootPlan owns one independent function plan per local function.
+// Distinct entries allow parallel code generation without shared mutation.
+type GCModuleFrameRootPlan struct {
+	Functions []*GCFrameRootPlan
+}
+
+func (p *GCModuleFrameRootPlan) Function(index int) *GCFrameRootPlan {
+	if p == nil || index < 0 || index >= len(p.Functions) {
+		return nil
+	}
+	return p.Functions[index]
 }

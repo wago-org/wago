@@ -626,17 +626,17 @@ live hidden operand spills after canonical stack flushing. Dead locals disappear
 from site maps, hidden references survive control merges, and actual off-heap
 qwords remain mutable collector slots.
 
-Direct numeric self-recursion records native return PCs and the caller roots live
-at each callsite. The runtime walks recursive frames from parked RSP until the
-validated adapter return, preserving one object in each caller while the deepest
-frame performs 1,000 allocations under Throughput and Tiny stress. Direct
-self-tail calls discard each caller frame and therefore retain no callsite roots. Codec v29
+Direct numeric local calls record native return PCs, caller frame sizes, and the
+roots live at each callsite. The runtime walks cross-function and recursive
+frames from parked RSP until a validated adapter return, preserving caller
+objects while the deepest frame performs 1,000 allocations under Throughput and
+Tiny stress. Direct tail calls discard each caller frame and retain no callsite roots. Codec v29
 persists and strictly validates frame sizes, safepoint ordering, root alignment,
 callsite returns, and adapter termination. Forged metadata fails closed. Five
 500 ms samples measured 432.5-443.5 ns/op, 0 B/op, and 0 allocs/op. The expanded
-direct walker raises lazy `gcPublicState` from 1,560 to 1,648 bytes while the
+direct walker raises lazy `gcPublicState` from 1,560 to 1,664 bytes while the
 64-byte `compiledCodeCache` layout remains unchanged.
 
-Next work is multi-function frame identity, then stacked imported/host re-entry,
-non-self tail/EH root transfer, mutable global/table roots, and broader ownership. Those
+Next work is stacked imported/host re-entry, indirect-call frame identity, EH
+root unioning, mutable global/table roots, and broader ownership. Those
 products remain collection-disabled until their complete root protocols exist.

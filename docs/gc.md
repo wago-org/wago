@@ -62,8 +62,8 @@ Go validates the selected site and exposes actual off-heap qwords as mutable
 collector roots. Compact handles currently remain stable while object locations
 move, but collector updates still write through to the parked frames.
 
-The native walker follows validated return-PC maps through bounded direct
-self-recursion. Throughput collect-every-allocation/forced-major verification and
+The native walker follows validated return-PC maps through bounded direct local
+call graphs and recursion. Throughput collect-every-allocation/forced-major verification and
 Tiny collect/step-every-allocation preserve references in every recursive caller
 while the deepest frame performs 1,000 allocations. Dead locals are omitted,
 hidden operand roots survive control merges, and malformed IDs, offsets,
@@ -86,7 +86,7 @@ and stress coverage.
 The synchronous helper boundary is capped at 64 parameter/result slots. A lazy
 per-instance `gcPublicState` includes one mutex-protected 63-value constructor
 scratch, a bounded direct native-frame/root-chain adapter, and the generic-global
-root mapping (1,648 bytes total on amd64), avoiding per-constructor,
+root mapping (1,664 bytes total on amd64), avoiding per-constructor,
 per-root-publication, and per-boundary-collection Go allocations. On July 31,
 2026, five 500 ms samples of `BenchmarkGCArrayV128Set` measured 439.5-476.8 ns/op
 with 0 B/op and 0 allocs/op on the Ryzen 7 8845HS host. The path includes
@@ -111,11 +111,10 @@ modules whose reference globals are immutable, local `anyref`/`i31ref` values
 with persisted initializer expressions; restore skips captured compact handles
 and reconstructs the graph by replaying those expressions. `SnapshotWarm` and
 all live/mutating heap capture remain rejected. Guard-page GC execution,
-non-amd64 native lowering, arbitrary cross-function call graphs, host/re-entrant
-calls, non-self tail/EH integration, and non-null GC values across host or cross-instance
-boundaries also remain closed. Multi-function frame identity, stacked host-call
-control, EH-root unioning, table-root coherence, and those lifecycle boundaries
-remain required.
+non-amd64 native lowering, imported/host re-entrant and indirect calls, EH
+integration, and non-null GC values across host or cross-instance boundaries
+also remain closed. Stacked host-call control, EH-root unioning, table-root
+coherence, and those lifecycle boundaries remain required.
 
 Iteration 38 wires one exact linux/amd64 numeric-local helper product;
 iteration 39 adds exact immutable GC-global roots, packed fields, and the numeric portion
@@ -261,9 +260,9 @@ Iteration 38 added a separate exact numeric-local helper product with one alloca
 and a proven empty live-ref set. Iteration 39 added two collector-owned immutable global
 slots, not frame roots: each slot is installed before a later initializer allocation. The native-frame publication slice now records function-relative safepoint IDs, exact
 structured-CFG local liveness, hidden operand spills, and direct self-call return-PC maps for
-one linux/amd64 function. Codec v29 persists and revalidates that metadata, and the runtime
-walks recursive caller frames through actual mutable off-heap slots. Multi-function identity,
-imports/host re-entry, tail/EH integration, mutable slot synchronization, and broader
+linux/amd64 local functions. Codec v29 persists and revalidates that metadata, and the runtime
+walks cross-function and recursive caller frames through actual mutable off-heap slots. Imported/
+host re-entry, indirect calls, EH integration, mutable slot synchronization, and broader
 barrier/ownership products remain later slices.
 
 ## Native exception-root map contract

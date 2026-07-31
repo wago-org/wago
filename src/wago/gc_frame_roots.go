@@ -8,30 +8,44 @@ import (
 
 const gcNativeFrameRootLimit = 64
 
-func validGCFrameRootPlan(plan *shared.GCFrameRootPlan) bool {
-	if plan == nil || !plan.Candidate || !plan.Exact || len(plan.Safepoints) == 0 || len(plan.LiveLocalMasks) != len(plan.Safepoints) || len(plan.LiveCallLocalMasks) != len(plan.Callsites) || plan.FrameBytes < shared.AMD64FrameHeaderBytes || len(plan.LocalIndexes) != len(plan.LocalOffsets) || len(plan.LocalOffsets) > gcNativeFrameRootLimit || (len(plan.Callsites) != 0 && plan.AdapterReturnOffset == 0) {
+func validGCModuleFrameRootPlan(module *shared.GCModuleFrameRootPlan) bool {
+	if module == nil || len(module.Functions) == 0 {
 		return false
 	}
-	if !validGCFrameOffsets(plan.LocalOffsets, plan.FrameBytes) {
-		return false
-	}
-	var previousReturn uint32
-	for i := range plan.Callsites {
-		callsite := &plan.Callsites[i]
-		if callsite.ReturnOffset == 0 || (i != 0 && callsite.ReturnOffset <= previousReturn) || len(callsite.Offsets) > gcNativeFrameRootLimit || !validGCFrameOffsets(callsite.Offsets, plan.FrameBytes) {
-			return false
-		}
-		previousReturn = callsite.ReturnOffset
-	}
+	totalSafepoints := 0
 	var previousID uint32
-	for i := range plan.Safepoints {
-		safepoint := &plan.Safepoints[i]
-		if safepoint.ID == 0 || safepoint.ID > shared.GCSafepointIDMax || (i != 0 && safepoint.ID <= previousID) || len(safepoint.Offsets) > gcNativeFrameRootLimit || !validGCFrameOffsets(safepoint.Offsets, plan.FrameBytes) {
+	for _, plan := range module.Functions {
+		if plan == nil || !plan.Candidate || !plan.Exact || len(plan.LiveLocalMasks) != len(plan.Safepoints) || len(plan.LiveCallLocalMasks) != len(plan.Callsites) || len(plan.LocalIndexes) != len(plan.LocalOffsets) || len(plan.LocalOffsets) > gcNativeFrameRootLimit {
 			return false
 		}
-		previousID = safepoint.ID
+		active := len(plan.Safepoints) != 0 || len(plan.Callsites) != 0
+		if active && plan.FrameBytes < shared.AMD64FrameHeaderBytes {
+			return false
+		}
+		if active && !validGCFrameOffsets(plan.LocalOffsets, plan.FrameBytes) {
+			return false
+		}
+		if len(plan.Callsites) != 0 && plan.AdapterReturnOffset == 0 {
+			return false
+		}
+		var previousReturn uint32
+		for i := range plan.Callsites {
+			callsite := &plan.Callsites[i]
+			if callsite.ReturnOffset == 0 || (i != 0 && callsite.ReturnOffset <= previousReturn) || len(callsite.Offsets) > gcNativeFrameRootLimit || !validGCFrameOffsets(callsite.Offsets, plan.FrameBytes) {
+				return false
+			}
+			previousReturn = callsite.ReturnOffset
+		}
+		for i := range plan.Safepoints {
+			safepoint := &plan.Safepoints[i]
+			if safepoint.ID == 0 || safepoint.ID > shared.GCSafepointIDMax || (totalSafepoints != 0 && safepoint.ID <= previousID) || len(safepoint.Offsets) > gcNativeFrameRootLimit || !validGCFrameOffsets(safepoint.Offsets, plan.FrameBytes) {
+				return false
+			}
+			previousID = safepoint.ID
+			totalSafepoints++
+		}
 	}
-	return true
+	return totalSafepoints != 0
 }
 
 func validateCompiledGCFrameRoots(c *Compiled, rootMap *compiledGCFrameRoots) error {
@@ -41,37 +55,46 @@ func validateCompiledGCFrameRoots(c *Compiled, rootMap *compiledGCFrameRoots) er
 	if c == nil || !c.usesGenericGCExecution() {
 		return fmt.Errorf("GC frame-root metadata requires generic GC execution")
 	}
-	if c.NumImports != 0 || len(c.Imports) != 0 || len(c.GlobalImports) != 0 || len(c.Globals) != 0 || c.HasStart || c.HasTable || len(c.Elems) != 0 || len(c.passiveElems) != 0 || (c.memoryDir != nil && len(c.memoryDir.ehTags) != 0) || len(c.Funcs) != 1 {
-		return fmt.Errorf("GC frame-root metadata requires one import/global/start/table/element/tag-free local function")
+	if c.NumImports != 0 || len(c.Imports) != 0 || len(c.GlobalImports) != 0 || len(c.Globals) != 0 || c.HasStart || c.HasTable || len(c.Elems) != 0 || len(c.passiveElems) != 0 || (c.memoryDir != nil && len(c.memoryDir.ehTags) != 0) || len(c.Funcs) == 0 {
+		return fmt.Errorf("GC frame-root metadata requires an import/global/start/table/element/tag-free local call graph")
 	}
-	for _, t := range c.Funcs[0].Params {
-		if t == ValAnyRef || t == ValI31Ref {
-			return fmt.Errorf("GC frame-root metadata rejects public GC-reference parameters")
+	for function := range c.Funcs {
+		for _, t := range c.Funcs[function].Params {
+			if t == ValAnyRef || t == ValI31Ref {
+				return fmt.Errorf("GC frame-root metadata rejects function %d GC-reference parameters", function)
+			}
+		}
+		for _, t := range c.Funcs[function].Results {
+			if t == ValAnyRef || t == ValI31Ref {
+				return fmt.Errorf("GC frame-root metadata rejects function %d GC-reference results", function)
+			}
 		}
 	}
-	for _, t := range c.Funcs[0].Results {
-		if t == ValAnyRef || t == ValI31Ref {
-			return fmt.Errorf("GC frame-root metadata rejects public GC-reference results")
+	if len(rootMap.safepoints) == 0 {
+		return fmt.Errorf("GC frame-root metadata has no safepoints")
+	}
+	var previousAdapter uint32
+	for i, off := range rootMap.adapterReturnOffsets {
+		if off == 0 || uint64(off) >= uint64(len(c.Code)) || (i != 0 && off <= previousAdapter) {
+			return fmt.Errorf("GC frame-root adapter return offset %d is invalid", off)
 		}
-	}
-	if rootMap.frameBytes < shared.AMD64FrameHeaderBytes || rootMap.frameBytes > 1<<31-1 || len(rootMap.safepoints) == 0 {
-		return fmt.Errorf("GC frame-root frame size %d or safepoint count %d is invalid", rootMap.frameBytes, len(rootMap.safepoints))
-	}
-	if len(rootMap.callsites) != 0 && (rootMap.adapterReturnOffset == 0 || uint64(rootMap.adapterReturnOffset) >= uint64(len(c.Code))) {
-		return fmt.Errorf("GC frame-root adapter return offset %d is invalid", rootMap.adapterReturnOffset)
+		previousAdapter = off
 	}
 	var previousReturn uint32
 	for i := range rootMap.callsites {
 		callsite := &rootMap.callsites[i]
-		if callsite.returnOffset == 0 || uint64(callsite.returnOffset) >= uint64(len(c.Code)) || (i != 0 && callsite.returnOffset <= previousReturn) || len(callsite.offsets) > gcNativeFrameRootLimit || !validGCFrameOffsets(callsite.offsets, rootMap.frameBytes) {
+		if callsite.frameBytes < shared.AMD64FrameHeaderBytes || callsite.frameBytes > 1<<31-1 || callsite.returnOffset == 0 || uint64(callsite.returnOffset) >= uint64(len(c.Code)) || (i != 0 && callsite.returnOffset <= previousReturn) || len(callsite.offsets) > gcNativeFrameRootLimit || !validGCFrameOffsets(callsite.offsets, callsite.frameBytes) {
 			return fmt.Errorf("GC frame-root callsite %d is malformed", callsite.returnOffset)
 		}
 		previousReturn = callsite.returnOffset
 	}
+	if len(rootMap.callsites) != 0 && len(rootMap.adapterReturnOffsets) == 0 {
+		return fmt.Errorf("GC frame-root callsites have no adapter termination offsets")
+	}
 	var previousID uint32
 	for i := range rootMap.safepoints {
 		safepoint := &rootMap.safepoints[i]
-		if safepoint.id == 0 || safepoint.id > shared.GCSafepointIDMax || (i != 0 && safepoint.id <= previousID) || len(safepoint.offsets) > gcNativeFrameRootLimit || !validGCFrameOffsets(safepoint.offsets, rootMap.frameBytes) {
+		if safepoint.frameBytes < shared.AMD64FrameHeaderBytes || safepoint.frameBytes > 1<<31-1 || safepoint.id == 0 || safepoint.id > shared.GCSafepointIDMax || (i != 0 && safepoint.id <= previousID) || len(safepoint.offsets) > gcNativeFrameRootLimit || !validGCFrameOffsets(safepoint.offsets, safepoint.frameBytes) {
 			return fmt.Errorf("GC frame-root safepoint %d is malformed", safepoint.id)
 		}
 		previousID = safepoint.id

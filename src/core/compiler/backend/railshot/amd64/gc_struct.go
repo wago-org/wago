@@ -398,7 +398,7 @@ func (f *fn) callGCStructHelper(helper uint32, params, results []wasm.ValType) e
 
 func (f *fn) recordGCFrameSafepoint(paramCount int) uint32 {
 	plan := f.gcFrameRoots
-	id := uint32(len(plan.Safepoints) + 1)
+	id := plan.SafepointBase + uint32(len(plan.Safepoints)+1)
 	if id == 0 || id > shared.GCSafepointIDMax {
 		plan.Exact = false
 		return 0

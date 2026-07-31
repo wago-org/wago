@@ -50,8 +50,8 @@ backend codegen.
 WasmGC native helpers use stable compact references and bounded collector heaps.
 General generated modules still fail closed to a collection-disabled Throughput
 heap because arbitrary native call graphs are not yet published. A bounded
-linux/amd64 slice admits in-invocation collection for one import/global/start/
-table/element/tag/EH-free local function, including direct self-recursion. A
+linux/amd64 slice admits in-invocation collection for import/global/start/table/
+element/tag/EH-free local call graphs, including direct recursion. A
 structured-CFG dataflow pass computes exact local liveness per allocation and
 callsite; amd64 adds hidden operand spill offsets, compact safepoint IDs, frame
 size, adapter return, and recursive call return-PC maps. The synchronous helper
@@ -59,8 +59,8 @@ control frame publishes parked RSP, and Go exposes validated off-heap slots from
 each walked frame directly as mutable collector roots. Throughput/Tiny stress
 collection and the root walker remain zero-allocation after warm-up. Codec v29
 persists and strictly revalidates the map; direct self-tail calls discard their
-caller frame, while unsupported multi-function, imported, host/re-entrant,
-non-self tail, and EH products remain collection-disabled. A separate
+caller frame, while unsupported imported, host/re-entrant, indirect-call, and EH
+products remain collection-disabled. A separate
 safe-boundary path registers persistent module-local GC globals and performs a
 non-moving full sweep before the next invocation when the module has no table or
 element storage. Codec v29 persists generic helper admission and the 16-byte

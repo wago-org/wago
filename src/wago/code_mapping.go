@@ -95,20 +95,21 @@ func (c *Compiled) usesGenericGCExecution() bool {
 // per-site roots and direct self-recursive frame walking. Generic modules without
 // it remain collection-disabled during native execution.
 type compiledGCFrameSafepoint struct {
-	id      uint32
-	offsets []uint32
+	id         uint32
+	frameBytes uint32
+	offsets    []uint32
 }
 
 type compiledGCFrameCallsite struct {
 	returnOffset uint32
+	frameBytes   uint32
 	offsets      []uint32
 }
 
 type compiledGCFrameRoots struct {
-	frameBytes          uint32
-	adapterReturnOffset uint32
-	safepoints          []compiledGCFrameSafepoint
-	callsites           []compiledGCFrameCallsite
+	adapterReturnOffsets []uint32
+	safepoints           []compiledGCFrameSafepoint
+	callsites            []compiledGCFrameCallsite
 }
 
 func (c *Compiled) genericGCFrameRoots() *compiledGCFrameRoots {

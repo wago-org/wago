@@ -59,6 +59,63 @@ func gcHiddenOperandRootModule() []byte {
 	)
 }
 
+func gcMultiFunctionFrameRootModule() []byte {
+	structType := []byte{0x5f, 0x01, 0x7f, 0x01}
+	funcType := wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32})
+	callerLocals := []byte{0x01, 0x01, 0x63, 0x00}
+	caller := append([]byte(nil), callerLocals...)
+	caller = append(caller,
+		0x20, 0x00, 0xfb, 0x00, 0x00, 0x21, 0x01, // root = struct.new(n)
+		0x20, 0x00, 0x10, 0x01, 0x1a, // call function 1; drop
+		0x20, 0x01, 0xfb, 0x02, 0x00, 0x00, 0x0b,
+	)
+	calleeLocals := []byte{0x01, 0x01, 0x7f}
+	callee := append([]byte(nil), calleeLocals...)
+	callee = append(callee,
+		0x02, 0x40, 0x03, 0x40,
+		0x20, 0x01, 0x41, 0xe8, 0x07, 0x4f, 0x0d, 0x01,
+		0xfb, 0x01, 0x00, 0x1a,
+		0x20, 0x01, 0x41, 0x01, 0x6a, 0x21, 0x01, 0x0c, 0x00,
+		0x0b, 0x0b, 0x41, 0x00, 0x0b,
+	)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(structType, funcType)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1), wasmtest.ULEB(1))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(
+			append(wasmtest.ULEB(uint32(len(caller))), caller...),
+			append(wasmtest.ULEB(uint32(len(callee))), callee...),
+		)),
+	)
+}
+
+func TestGCMultiFunctionNativeFrameRoots(t *testing.T) {
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcMultiFunctionFrameRootModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	plan := compiled.genericGCFrameRoots()
+	if plan == nil || len(plan.safepoints) != 2 || len(plan.callsites) != 1 || len(plan.adapterReturnOffsets) < 2 || plan.callsites[0].frameBytes == 0 || plan.safepoints[1].frameBytes == 0 {
+		t.Fatalf("multi-function native root map = %+v", plan)
+	}
+	cfg := GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 64, TinyBlockBytes: 32, TinyCollectEveryAlloc: true, TinyStepEveryAlloc: true, VerifyAfterCollect: true}
+	for _, candidate := range []*Compiled{compiled, roundTripCompiled(t, compiled)} {
+		if candidate != compiled {
+			defer candidate.Close()
+		}
+		in, err := Instantiate(candidate, InstantiateOptions{GC: cfg})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got, err := in.Invoke("run", 37); err != nil || !reflect.DeepEqual(got, []uint64{37}) {
+			in.Close()
+			t.Fatalf("run = %v, %v; want [37]", got, err)
+		}
+		in.Close()
+	}
+}
+
 func gcTailRecursiveFrameRootModule() []byte {
 	structType := []byte{0x5f, 0x01, 0x7f, 0x01}
 	locals := []byte{0x01, 0x01, 0x7f} // counter local 1
@@ -137,7 +194,7 @@ func TestGCRecursiveNativeFrameRoots(t *testing.T) {
 	}
 	defer compiled.Close()
 	plan := compiled.genericGCFrameRoots()
-	if plan == nil || len(plan.callsites) != 1 || plan.adapterReturnOffset == 0 || len(plan.callsites[0].offsets) != 1 {
+	if plan == nil || len(plan.callsites) != 1 || len(plan.adapterReturnOffsets) == 0 || len(plan.callsites[0].offsets) != 1 {
 		t.Fatalf("recursive native root map = %+v", plan)
 	}
 	profiles := []struct {
@@ -263,7 +320,7 @@ func TestGCSingleNativeFrameRootsCollectInsideInvocation(t *testing.T) {
 	}
 	defer compiled.Close()
 	plan := compiled.genericGCFrameRoots()
-	if plan == nil || len(plan.safepoints) != 2 || len(plan.safepoints[0].offsets) != 0 || len(plan.safepoints[1].offsets) != 1 || plan.safepoints[1].offsets[0] != 24 || plan.frameBytes == 0 {
+	if plan == nil || len(plan.safepoints) != 2 || len(plan.safepoints[0].offsets) != 0 || len(plan.safepoints[1].offsets) != 1 || plan.safepoints[1].offsets[0] != 24 || plan.safepoints[1].frameBytes == 0 {
 		t.Fatalf("native GC frame-root plan = %+v, want dead local omitted at site 1 and live local offset 24 at site 2", plan)
 	}
 	want := []uint64{0x0706050403020100, 0x0f0e0d0c0b0a0908}
@@ -379,7 +436,7 @@ func TestGCFrameRootCodecRejectsMalformedMetadata(t *testing.T) {
 		{name: "duplicate safepoint", module: gcSingleFrameRootModule(), mutate: func(root *compiledGCFrameRoots) { root.safepoints[1].id = root.safepoints[0].id }},
 		{name: "unaligned root", module: gcSingleFrameRootModule(), mutate: func(root *compiledGCFrameRoots) { root.safepoints[1].offsets[0]++ }},
 		{name: "zero callsite", module: gcRecursiveFrameRootModule(), mutate: func(root *compiledGCFrameRoots) { root.callsites[0].returnOffset = 0 }},
-		{name: "bad adapter", module: gcRecursiveFrameRootModule(), mutate: func(root *compiledGCFrameRoots) { root.adapterReturnOffset = uint32(len(root.callsites)) + 1<<30 }},
+		{name: "bad adapter", module: gcRecursiveFrameRootModule(), mutate: func(root *compiledGCFrameRoots) { root.adapterReturnOffsets[0] = uint32(len(root.callsites)) + 1<<30 }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			compiled, err := Compile(cfg, tc.module)

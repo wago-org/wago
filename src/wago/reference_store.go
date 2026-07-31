@@ -69,17 +69,17 @@ type gcRefTokenEntry struct {
 }
 
 type gcNativeFrameRoots struct {
-	base                uintptr
-	offsets             []uint32
-	frameBytes          uint32
-	codeBase            uintptr
-	codeBytes           uintptr
-	adapterReturnOffset uint32
-	callsites           []compiledGCFrameCallsite
+	base                 uintptr
+	offsets              []uint32
+	frameBytes           uint32
+	codeBase             uintptr
+	codeBytes            uintptr
+	adapterReturnOffsets []uint32
+	callsites            []compiledGCFrameCallsite
 }
 
 func (r *gcNativeFrameRoots) RangeRoots(fn func(gc.RootSlot) bool) {
-	base, offsets := r.base, r.offsets
+	base, offsets, frameBytes := r.base, r.offsets, r.frameBytes
 	for depth := 0; ; depth++ {
 		if depth > 4096 {
 			panic(gcStructHelperError{err: fmt.Errorf("generic GC native frame chain exceeds 4096 frames")})
@@ -96,22 +96,29 @@ func (r *gcNativeFrameRoots) RangeRoots(fn func(gc.RootSlot) bool) {
 		if len(r.callsites) == 0 {
 			return
 		}
-		if base > ^uintptr(0)-uintptr(r.frameBytes) {
+		if base > ^uintptr(0)-uintptr(frameBytes) {
 			panic(gcStructHelperError{err: fmt.Errorf("generic GC native frame address overflows")})
 		}
-		retWord := unsafe.Slice((*byte)(offHeapPtr(base+uintptr(r.frameBytes))), 8)
+		retWord := unsafe.Slice((*byte)(offHeapPtr(base+uintptr(frameBytes))), 8)
 		retPC := uintptr(binary.LittleEndian.Uint64(retWord))
 		if retPC < r.codeBase || retPC-r.codeBase >= r.codeBytes {
 			return
 		}
 		rel := uint32(retPC - r.codeBase)
-		if rel == r.adapterReturnOffset {
-			return
+		for _, adapterReturn := range r.adapterReturnOffsets {
+			if rel == adapterReturn {
+				return
+			}
 		}
+		if base > ^uintptr(0)-uintptr(frameBytes)-8 {
+			panic(gcStructHelperError{err: fmt.Errorf("generic GC caller frame address overflows")})
+		}
+		callerBase := base + uintptr(frameBytes) + 8
 		found := false
 		for i := range r.callsites {
 			if r.callsites[i].returnOffset == rel {
 				offsets = r.callsites[i].offsets
+				frameBytes = r.callsites[i].frameBytes
 				found = true
 				break
 			}
@@ -119,10 +126,7 @@ func (r *gcNativeFrameRoots) RangeRoots(fn func(gc.RootSlot) bool) {
 		if !found {
 			panic(gcStructHelperError{err: fmt.Errorf("generic GC native return offset %d has no callsite map", rel)})
 		}
-		if base > ^uintptr(0)-uintptr(r.frameBytes)-8 {
-			panic(gcStructHelperError{err: fmt.Errorf("generic GC caller frame address overflows")})
-		}
-		base += uintptr(r.frameBytes) + 8
+		base = callerBase
 	}
 }
 

@@ -7,4 +7,4 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
-func newGCFrameRootPlan(*wasm.Module, bool) *shared.GCFrameRootPlan { return nil }
+func newGCFrameRootPlan(*wasm.Module, bool) *shared.GCModuleFrameRootPlan { return nil }

@@ -489,11 +489,14 @@ func (w *compiledWriter) globalImports(v []GlobalImportDef, c *Compiled) error {
 	return nil
 }
 func (w *compiledWriter) gcFrameRoots(rootMap *compiledGCFrameRoots) {
-	w.u32(rootMap.frameBytes)
-	w.u32(rootMap.adapterReturnOffset)
+	w.uvar(uint64(len(rootMap.adapterReturnOffsets)))
+	for _, off := range rootMap.adapterReturnOffsets {
+		w.u32(off)
+	}
 	w.uvar(uint64(len(rootMap.safepoints)))
 	for i := range rootMap.safepoints {
 		w.u32(rootMap.safepoints[i].id)
+		w.u32(rootMap.safepoints[i].frameBytes)
 		w.uvar(uint64(len(rootMap.safepoints[i].offsets)))
 		for _, off := range rootMap.safepoints[i].offsets {
 			w.u32(off)
@@ -502,6 +505,7 @@ func (w *compiledWriter) gcFrameRoots(rootMap *compiledGCFrameRoots) {
 	w.uvar(uint64(len(rootMap.callsites)))
 	for i := range rootMap.callsites {
 		w.u32(rootMap.callsites[i].returnOffset)
+		w.u32(rootMap.callsites[i].frameBytes)
 		w.uvar(uint64(len(rootMap.callsites[i].offsets)))
 		for _, off := range rootMap.callsites[i].offsets {
 			w.u32(off)
@@ -1685,24 +1689,31 @@ func (r *compiledReader) gcTypeDescs() ([]gc.TypeDesc, error) {
 }
 
 func (r *compiledReader) gcFrameRoots() (*compiledGCFrameRoots, error) {
-	frameBytes, err := r.u32()
+	adapterCount, err := r.countElements("GC frame adapter returns", 4)
 	if err != nil {
 		return nil, err
 	}
-	adapterReturnOffset, err := r.u32()
-	if err != nil {
-		return nil, err
+	rootMap := &compiledGCFrameRoots{adapterReturnOffsets: make([]uint32, adapterCount)}
+	for i := range rootMap.adapterReturnOffsets {
+		rootMap.adapterReturnOffsets[i], err = r.u32()
+		if err != nil {
+			return nil, err
+		}
 	}
-	n, err := r.countElements("GC frame safepoints", 5)
+	n, err := r.countElements("GC frame safepoints", 9)
 	if err != nil {
 		return nil, err
 	}
 	if n == 0 || uint64(n) > uint64(shared.GCSafepointIDMax) {
 		return nil, fmt.Errorf("GC frame safepoint count %d is invalid", n)
 	}
-	rootMap := &compiledGCFrameRoots{frameBytes: frameBytes, adapterReturnOffset: adapterReturnOffset, safepoints: make([]compiledGCFrameSafepoint, n)}
+	rootMap.safepoints = make([]compiledGCFrameSafepoint, n)
 	for i := range rootMap.safepoints {
 		rootMap.safepoints[i].id, err = r.u32()
+		if err != nil {
+			return nil, err
+		}
+		rootMap.safepoints[i].frameBytes, err = r.u32()
 		if err != nil {
 			return nil, err
 		}
@@ -1721,13 +1732,17 @@ func (r *compiledReader) gcFrameRoots() (*compiledGCFrameRoots, error) {
 			}
 		}
 	}
-	callCount, err := r.countElements("GC frame callsites", 5)
+	callCount, err := r.countElements("GC frame callsites", 9)
 	if err != nil {
 		return nil, err
 	}
 	rootMap.callsites = make([]compiledGCFrameCallsite, callCount)
 	for i := range rootMap.callsites {
 		rootMap.callsites[i].returnOffset, err = r.u32()
+		if err != nil {
+			return nil, err
+		}
+		rootMap.callsites[i].frameBytes, err = r.u32()
 		if err != nil {
 			return nil, err
 		}
