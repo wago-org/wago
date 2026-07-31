@@ -32,7 +32,7 @@ func (s *copiedPageSnapshot) discard(addr uintptr, size int) error {
 	return s.reset(addr, size)
 }
 
-func (s *copiedPageSnapshot) track(addr uintptr, size, _ int) (pageSnapshotDirtyTracker, error) {
+func (s *copiedPageSnapshot) track(addr uintptr, size, _, _ int) (pageSnapshotDirtyTracker, error) {
 	return &copiedPageSnapshotTracker{snapshot: s, addr: addr, size: size}, nil
 }
 

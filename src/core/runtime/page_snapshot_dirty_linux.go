@@ -43,19 +43,21 @@ type filePageSnapshotTracker struct {
 	snapshot    *filePageSnapshot
 	addr        uintptr
 	size        uintptr
-	prefix      uintptr
+	start       uintptr
+	end         uintptr
 	pagemap     int
 	regions     [dirtyRegionCapacity]pageRegion
 	enabled     bool
 	fallbackErr error
 }
 
-func (s *filePageSnapshot) track(addr uintptr, size, prefix int) (pageSnapshotDirtyTracker, error) {
+func (s *filePageSnapshot) track(addr uintptr, size, start, end int) (pageSnapshotDirtyTracker, error) {
 	t := &filePageSnapshotTracker{
 		snapshot: s,
 		addr:     addr,
 		size:     uintptr(size),
-		prefix:   uintptr(prefix),
+		start:    addr + uintptr(start),
+		end:      addr + uintptr(end),
 		pagemap:  -1,
 	}
 	pagemap, err := syscall.Open("/proc/self/pagemap", syscall.O_RDONLY|syscall.O_CLOEXEC, 0)
@@ -77,7 +79,7 @@ func (t *filePageSnapshotTracker) reset() error {
 
 	if t.enabled {
 		if err := t.discardPrivateCOW(); err == nil {
-			return t.discardHeap()
+			return nil
 		}
 		t.disable()
 		return t.discardAll()
@@ -86,8 +88,8 @@ func (t *filePageSnapshotTracker) reset() error {
 }
 
 func (t *filePageSnapshotTracker) discardPrivateCOW() error {
-	start := t.addr
-	end := t.addr + t.prefix
+	start := t.start
+	end := t.end
 	for start < end {
 		scan := pagemapScanArg{
 			Size:              uint64(unsafe.Sizeof(pagemapScanArg{})),
@@ -114,7 +116,7 @@ func (t *filePageSnapshotTracker) discardPrivateCOW() error {
 		}
 		for i := 0; i < int(count); i++ {
 			region := t.regions[i]
-			if region.Start < uint64(t.addr) || region.End > uint64(end) || region.Start >= region.End {
+			if region.Start < uint64(t.start) || region.End > uint64(end) || region.Start >= region.End {
 				return fmt.Errorf("invalid private COW region [%#x,%#x)", region.Start, region.End)
 			}
 			if err := madviseSnapshotRange(uintptr(region.Start), uintptr(region.End-region.Start)); err != nil {
@@ -134,13 +136,6 @@ func (t *filePageSnapshotTracker) discardPrivateCOW() error {
 
 func (t *filePageSnapshotTracker) discardAll() error {
 	return madviseSnapshotRange(t.addr, t.size)
-}
-
-func (t *filePageSnapshotTracker) discardHeap() error {
-	if t.prefix >= t.size {
-		return nil
-	}
-	return madviseSnapshotRange(t.addr+t.prefix, t.size-t.prefix)
 }
 
 func madviseSnapshotRange(addr, size uintptr) error {

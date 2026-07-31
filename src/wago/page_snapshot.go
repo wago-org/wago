@@ -31,6 +31,7 @@ type PageSnapshot struct {
 	globals         []globalSnap
 	passiveDataLens []uint32
 	trackDirty      bool
+	dataEnd         uint64
 	cursor          uint64
 
 	mu      sync.Mutex
@@ -55,24 +56,33 @@ type PageSnapshotBinding struct {
 // CapturePageSnapshot captures the current state of an initialized instance,
 // creates the shared page image, and binds the source instance to it.
 func CapturePageSnapshot(in *Instance) (*PageSnapshot, *PageSnapshotBinding, error) {
-	return capturePageSnapshot(in, false, 0)
+	return capturePageSnapshot(in, false, 0, 0)
 }
 
 // CaptureStubPageSnapshot captures an initialized AssemblyScript stub module
-// after validating its bump allocator cursor. Restoring its globals therefore
-// rewinds the cursor while dirty-page tracking restores every memory mutation
-// made on either side of that cursor.
+// after validating its bump allocator cursor. Restoring its globals rewinds the
+// cursor while dirty-page tracking restores the initialized arena between the
+// end of static data and that cursor. Like AssemblyScript's __reset, memory
+// above the cursor is left untouched and becomes unreachable.
 func CaptureStubPageSnapshot(in *Instance) (*PageSnapshot, *PageSnapshotBinding, error) {
 	globals, err := CaptureStubGlobals(in)
 	if err != nil {
 		return nil, nil, err
 	}
-	return capturePageSnapshot(in, true, globals.Cursor())
+	dataEnd, err := activeDataEnd(in)
+	if err != nil {
+		return nil, nil, err
+	}
+	if dataEnd > globals.Cursor() {
+		return nil, nil, fmt.Errorf("wago: static data end %d exceeds AssemblyScript cursor %d", dataEnd, globals.Cursor())
+	}
+	return capturePageSnapshot(in, true, dataEnd, globals.Cursor())
 }
 
 func capturePageSnapshot(
 	in *Instance,
 	trackDirty bool,
+	dataEnd uint64,
 	cursor uint64,
 ) (*PageSnapshot, *PageSnapshotBinding, error) {
 	if err := validatePageSnapshotInstance(in); err != nil {
@@ -89,6 +99,7 @@ func capturePageSnapshot(
 		globals:         capturePageSnapshotGlobals(in),
 		passiveDataLens: capturePassiveDataLens(in),
 		trackDirty:      trackDirty,
+		dataEnd:         dataEnd,
 		cursor:          cursor,
 	}
 	binding, err := s.Bind(in)
@@ -97,6 +108,31 @@ func capturePageSnapshot(
 		return nil, nil, err
 	}
 	return s, binding, nil
+}
+
+// activeDataEnd returns AssemblyScript's __data_end without requiring the
+// compiler-generated constant to be exported. AssemblyScript lays out static
+// data in active segments and defines __data_end as their greatest end offset.
+func activeDataEnd(in *Instance) (uint64, error) {
+	var end uint64
+	for i, data := range in.c.Data {
+		offset := uint64(data.Offset.Base)
+		if data.Offset.HasGlobal {
+			idx := data.Offset.Global
+			if idx < 0 || idx >= len(in.c.Globals) || idx >= len(in.globalCells) || in.globalCells[idx] == nil {
+				return 0, fmt.Errorf("wago: data %d offset global %d out of range", i, idx)
+			}
+			offset = readGlobalObject(in.globalCells[idx], in.c.Globals[idx].Type)
+		}
+		dataEnd := offset + uint64(len(data.Bytes))
+		if dataEnd < offset {
+			return 0, fmt.Errorf("wago: data %d end overflows", i)
+		}
+		if dataEnd > end {
+			end = dataEnd
+		}
+	}
+	return end, nil
 }
 
 func validatePageSnapshotInstance(in *Instance) error {
@@ -148,6 +184,15 @@ func (s *PageSnapshot) Cursor() uint64 {
 	return s.cursor
 }
 
+// DataEnd returns the first byte after the module's static active data. Stub
+// reset restores memory from this boundary through Cursor.
+func (s *PageSnapshot) DataEnd() uint64 {
+	if s == nil {
+		return 0
+	}
+	return s.dataEnd
+}
+
 // SelectiveDirtyReset reports whether this binding can restore only pages
 // written since its previous reset. False means it safely uses full discard.
 func (b *PageSnapshotBinding) SelectiveDirtyReset() bool {
@@ -188,7 +233,7 @@ func (s *PageSnapshot) Bind(in *Instance) (*PageSnapshotBinding, error) {
 	}
 	if s.trackDirty {
 		var err error
-		b.dirtyTracker, err = in.jm.TrackPageSnapshotWrites(s.memory, s.cursor)
+		b.dirtyTracker, err = in.jm.TrackPageSnapshotWrites(s.memory, s.dataEnd, s.cursor)
 		if err != nil {
 			_ = b.Close()
 			return nil, err
@@ -221,8 +266,9 @@ func (in *Instance) passiveElementDescriptorBytes() []byte {
 // Reset discards dirty linear-memory pages in place and restores numeric
 // globals, local funcref table descriptors, and passive element/data drop
 // state. The first reset installs the shared private mapping; later stub resets
-// selectively discard dirty static pages plus the post-cursor heap, while other
-// snapshots discard the complete mapping.
+// selectively discard dirty initialized-arena pages, while other snapshots
+// discard the complete mapping. Post-cursor memory is deliberately retained,
+// matching AssemblyScript stub's __reset semantics.
 func (b *PageSnapshotBinding) Reset() error {
 	if b == nil || b.snapshot == nil || b.instance == nil || b.released.Load() {
 		return errors.New("wago: page snapshot binding is closed")

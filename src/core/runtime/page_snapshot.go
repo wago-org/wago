@@ -76,29 +76,26 @@ func (j *JobMemory) DiscardToPageSnapshot(s *PageSnapshot) error {
 }
 
 // TrackPageSnapshotWrites starts per-page write tracking on a JobMemory already
-// bound to s. prefixBytes identifies a static prefix requiring selective dirty
-// restoration; the remaining heap is discarded wholesale. Pass zero to track
-// the entire image selectively. The tracker belongs to this JobMemory and must
-// be closed before the mapping is released.
+// bound to s. Only pages intersecting [startBytes, endBytes) are restored. The
+// tracker belongs to this JobMemory and must be closed before the mapping is
+// released.
 func (j *JobMemory) TrackPageSnapshotWrites(
 	s *PageSnapshot,
-	prefixBytes uint64,
+	startBytes uint64,
+	endBytes uint64,
 ) (*PageSnapshotDirtyTracker, error) {
 	if err := j.validatePageSnapshot(s); err != nil {
 		return nil, err
 	}
-	if prefixBytes > uint64(s.size) {
+	if startBytes > endBytes || endBytes > uint64(s.size) {
 		return nil, ErrPageSnapshotSizeChanged
 	}
-	prefix := int(prefixBytes)
-	if prefix == 0 {
-		prefix = s.size
+	start := int(startBytes) &^ (pageSize - 1)
+	end := roundUpPage(int(endBytes))
+	if end > s.size {
+		end = s.size
 	}
-	prefix = roundUpPage(prefix)
-	if prefix > s.size {
-		prefix = s.size
-	}
-	impl, err := s.backing.track(j.LinMemBase(), s.size, prefix)
+	impl, err := s.backing.track(j.LinMemBase(), s.size, start, end)
 	if err != nil {
 		return nil, err
 	}
@@ -162,7 +159,7 @@ func (j *JobMemory) restorePageSnapshotSize(size int) {
 type pageSnapshotBacking interface {
 	reset(addr uintptr, size int) error
 	discard(addr uintptr, size int) error
-	track(addr uintptr, size, prefix int) (pageSnapshotDirtyTracker, error)
+	track(addr uintptr, size, start, end int) (pageSnapshotDirtyTracker, error)
 	pageBacked() bool
 	close() error
 }

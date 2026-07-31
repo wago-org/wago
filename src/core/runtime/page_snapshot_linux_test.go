@@ -44,7 +44,7 @@ func TestFilePageSnapshotDiscardRestoresPrivateMapping(t *testing.T) {
 	}
 }
 
-func TestFilePageSnapshotDirtyTrackerRestoresWrittenPages(t *testing.T) {
+func TestFilePageSnapshotDirtyTrackerRestoresOnlyTrackedRange(t *testing.T) {
 	want := make([]byte, pageSize*4)
 	for i := range want {
 		want[i] = byte(i*17 + 3)
@@ -64,27 +64,32 @@ func TestFilePageSnapshotDirtyTrackerRestoresWrittenPages(t *testing.T) {
 	if err = backing.reset(addr, len(memory)); err != nil {
 		t.Fatalf("reset: %v", err)
 	}
-	tracker, err := backing.track(addr, len(memory), pageSize*2)
+	tracker, err := backing.track(addr, len(memory), pageSize, pageSize*3)
 	if err != nil {
 		t.Fatalf("track: %v", err)
 	}
 	defer tracker.close()
 	if !tracker.selective() {
 		if fileTracker, ok := tracker.(*filePageSnapshotTracker); ok {
-			t.Skipf("asynchronous userfaultfd write tracking unavailable: %v", fileTracker.fallbackErr)
+			t.Skipf("pagemap scan unavailable: %v", fileTracker.fallbackErr)
 		}
-		t.Skip("asynchronous userfaultfd write tracking unavailable")
+		t.Skip("pagemap scan unavailable")
 	}
 
 	for cycle := 0; cycle < 3; cycle++ {
 		memory[13] ^= byte(cycle + 1)
-		memory[pageSize*3+29] ^= byte(cycle + 9)
+		outside := memory[13]
+		memory[pageSize*2+29] ^= byte(cycle + 9)
 		if err = tracker.reset(); err != nil {
 			t.Fatalf("tracked reset cycle %d: %v", cycle, err)
 		}
 		for i := range memory {
-			if memory[i] != want[i] {
-				t.Fatalf("tracked reset cycle %d byte %d: got %#x, want %#x", cycle, i, memory[i], want[i])
+			expected := want[i]
+			if i == 13 {
+				expected = outside
+			}
+			if memory[i] != expected {
+				t.Fatalf("tracked reset cycle %d byte %d: got %#x, want %#x", cycle, i, memory[i], expected)
 			}
 		}
 	}
@@ -115,23 +120,23 @@ func BenchmarkFilePageSnapshotDirty20MiB(b *testing.B) {
 	if err = backing.reset(addr, len(memory)); err != nil {
 		b.Fatalf("initial reset: %v", err)
 	}
-	tracker, err := backing.track(addr, len(memory), 8<<20)
+	tracker, err := backing.track(addr, len(memory), 1<<20, 8<<20)
 	if err != nil {
 		b.Fatalf("track: %v", err)
 	}
 	b.Cleanup(func() { _ = tracker.close() })
 	if !tracker.selective() {
 		if fileTracker, ok := tracker.(*filePageSnapshotTracker); ok {
-			b.Skipf("asynchronous userfaultfd write tracking unavailable: %v", fileTracker.fallbackErr)
+			b.Skipf("pagemap scan unavailable: %v", fileTracker.fallbackErr)
 		}
-		b.Skip("asynchronous userfaultfd write tracking unavailable")
+		b.Skip("pagemap scan unavailable")
 	}
 
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		memory[0] = byte(i)
-		memory[8<<20] = byte(i)
+		memory[2<<20] = byte(i)
 		if err = tracker.reset(); err != nil {
 			b.Fatal(err)
 		}
