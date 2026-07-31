@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/encoder/amd64"
 	"github.com/wago-org/wago/src/core/runtime"
@@ -928,6 +929,11 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	}
 	belowTypes = append(belowTypes, types[:d-p]...)
 	f.tmpTypes2 = belowTypes
+	belowGCRoots := f.tmpGCRoots2[:0]
+	for _, root := range roots[:d-p] {
+		belowGCRoots = append(belowGCRoots, root.kind == ekValue && root.st.gcRoot)
+	}
+	f.tmpGCRoots2 = belowGCRoots
 
 	f.flush()                   // operands to canonical slot-width slots
 	f.storePinnedGlobals(false) // coherence: the host may read the current values
@@ -959,9 +965,10 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 		ctrlSlot += mt.stackSlots()
 	}
 	// The parked-Go transition restores callee-saved GPRs, but System V XMM
-	// registers are caller-saved. After copying arguments out, store every dirty
-	// pinned local and mark it for lazy reload so float locals cannot retain
-	// clobbered values across the synchronous helper/host call.
+	// registers are caller-saved. Exact GC frame-root publication also requires
+	// lazy-zero reference locals to have concrete frame slots before RSP is
+	// published. Then store every dirty pinned local and mark it for lazy reload.
+	f.materializeGCFrameRootLocalsForCall(importIdx)
 	f.spillLocalsForCall()
 	f.a.StoreImm32Mem(R8, hcImportIdx, int32(importIdx))
 	// hcNArgs packs param slots (low 16) and result slots (high 16) so the Go
@@ -975,7 +982,7 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 
 	f.deriveModuleGlobals() // the host may have written global cells
 	f.derivePinnedGlobals()
-	f.setDepthTypes(belowTypes)
+	f.setDepthTypesWithGCRoots(belowTypes, belowGCRoots)
 
 	// Read results out of the control frame onto the operand stack, honoring
 	// slot-width result layout for v128 and mixed scalar/vector signatures.
@@ -1016,17 +1023,19 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 		ctrlSlot += rt.stackSlots()
 	}
 	for j := 0; j < rN; j++ {
+		var value *elem
 		switch rt := resTypes[j]; {
 		case rt.isV128():
 			f.fpinned = f.fpinned.remove(res[j])
-			f.pushVReg(res[j])
+			value = f.pushVReg(res[j])
 		case rt.isFloat():
 			f.fpinned = f.fpinned.remove(res[j])
-			f.pushFReg(res[j], rt)
+			value = f.pushFReg(res[j], rt)
 		default:
 			f.pinned = f.pinned.remove(res[j])
-			f.pushReg(res[j], rt)
+			value = f.pushReg(res[j], rt)
 		}
+		value.st.gcRoot = gcFrameRefType(f.m, ft.Results[j])
 	}
 	return nil
 }
@@ -1407,6 +1416,18 @@ func (f *fn) adoptWideWrapperResults(belowTypes []machineType, resultSlot int, r
 // callees use the fast register ABI (args/result in registers); others go
 // through the wrapper (rsp-buffer) ABI.
 func (f *fn) callInternal(localIdx int, ft *wasm.CompType, resHint int) error {
+	rootOffsets, recordRoots := f.prepareGCFrameCallsite(len(ft.Params))
+	relocBase := len(f.relocs)
+	finishRoots := func() {
+		if !recordRoots {
+			return
+		}
+		if len(f.relocs) != relocBase+1 {
+			f.gcFrameRoots.Exact = false
+			return
+		}
+		f.gcFrameRoots.Callsites = append(f.gcFrameRoots.Callsites, shared.GCFrameCallsitePlan{ReturnOffset: uint32(f.relocs[relocBase].at + 4), Offsets: rootOffsets})
+	}
 	if regABIEnabled && sigFitsRegABI(ft) {
 		if sigIsIntOnly(ft) {
 			f.stats.call(callKindRegisterABI)
@@ -1415,6 +1436,7 @@ func (f *fn) callInternal(localIdx int, ft *wasm.CompType, resHint int) error {
 			f.stats.call(callKindMixed)
 			f.emitMixedRegisterCall(localIdx, ft)
 		}
+		finishRoots()
 		return nil
 	}
 	f.stats.call(callKindWrapper)
@@ -1422,7 +1444,50 @@ func (f *fn) callInternal(localIdx int, ft *wasm.CompType, resHint int) error {
 		site := f.a.CallRel32()
 		f.relocs = append(f.relocs, callReloc{at: site, target: localIdx})
 	})
+	finishRoots()
 	return nil
+}
+
+func (f *fn) prepareGCFrameCallsite(paramCount int) ([]uint32, bool) {
+	plan := f.gcFrameRoots
+	if plan == nil || !plan.Candidate {
+		return nil, false
+	}
+	siteIndex := len(plan.Callsites)
+	if siteIndex >= len(plan.LiveCallLocalMasks) {
+		plan.Exact = false
+		return nil, false
+	}
+	roots := f.rootsBottomToTop()
+	if paramCount < 0 || paramCount > len(roots) {
+		plan.Exact = false
+		return nil, false
+	}
+	liveLocals := plan.LiveCallLocalMasks[siteIndex]
+	f.materializeGCFrameLocals(liveLocals)
+	offsets := make([]uint32, 0, len(plan.LocalOffsets))
+	for i, off := range plan.LocalOffsets {
+		if liveLocals&(uint64(1)<<uint(i)) != 0 {
+			offsets = append(offsets, off)
+		}
+	}
+	hidden := len(roots) - paramCount
+	slot := 0
+	for i, root := range roots {
+		if i < hidden && root.kind == ekValue && root.st.gcRoot {
+			off := f.spillOff(slot)
+			if off < 0 {
+				plan.Exact = false
+				return nil, false
+			}
+			offsets = append(offsets, uint32(off))
+		}
+		slot += rootMachineType(root).stackSlots()
+	}
+	if len(offsets) > 64 {
+		plan.Exact = false
+	}
+	return offsets, true
 }
 
 // emitRegisterCall lowers an internal call to a register-ABI function: the top p

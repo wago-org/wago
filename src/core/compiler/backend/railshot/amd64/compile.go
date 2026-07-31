@@ -318,6 +318,7 @@ type fn struct {
 	gcTypeSubtypingRefTest bool // exact local ref.func/ref.test products fold validated subtype results
 	gcStructHelpers        bool // exact staged numeric struct ops use the same parked Go re-entry frame
 	gcArrayHelpers         bool // exact staged numeric array ops use the same parked Go re-entry frame
+	gcFrameRoots           *shared.GCFrameRootPlan
 
 	// stats collects per-function codegen counters (docs/no-ir-plan.md P1). nil
 	// unless the caller requested collection, in which case every counter method
@@ -331,6 +332,8 @@ type transient struct {
 	tmpRoots      []*elem
 	tmpTypes      []machineType
 	tmpTypes2     []machineType
+	tmpGCRoots    []bool
+	tmpGCRoots2   []bool
 	tmpFlushTypes []machineType
 	tmpRegs       []Reg
 	tmpSlots      []int
@@ -463,8 +466,8 @@ type funcResult struct {
 // ([linMem-offTrapCellPtr], installed once per entry by the runtime) since only
 // the cold trap path reads it.
 const (
-	frameHdrBytes = 16 // spare + results ptr (keeps locals 16-aligned)
-	frResultsOff  = 8  // results buffer pointer
+	frameHdrBytes = shared.AMD64FrameHeaderBytes // spare + results ptr (keeps locals 16-aligned)
+	frResultsOff  = 8                            // results buffer pointer
 )
 
 func (f *fn) localOff(i int) int32 { return int32(frameHdrBytes + 8*f.localSlot[i]) }
@@ -594,6 +597,11 @@ type CompileOptions struct {
 	// GCArrayHelpers independently admits exact staged collector-backed array
 	// helper products selected by src/wago. It is compile-only and never serialized.
 	GCArrayHelpers bool
+
+	// GCFrameRoots is the optional exact single-frame GC root-publication plan.
+	// The backend verifies allocating helper stack shape and records final frame
+	// size. It is absent for ordinary modules and unsupported products.
+	GCFrameRoots *shared.GCFrameRootPlan
 
 	// Codegen carries injectable runtime/heap dependencies for broader WasmGC
 	// lowering. The exact staged numeric-struct helper path is selected separately
@@ -754,7 +762,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 				st = &CodegenStats{FuncIdx: i, Name: funcDisplayName(m, i, importedFuncs)}
 				ms.Funcs[i] = st
 			}
-			fnCode, rl, internalOff, err := compileFunc(m, i, guardMode, boundsFacts, opts.Interruptible, modGlobals, hints, opts.ImportBindings, opts.SyncHostCalls, opts.GCTypeSubtypingRefTest, opts.GCStructHelpers, opts.GCArrayHelpers, opts.CustomInstructions, st, inlineTargets, sc)
+			fnCode, rl, internalOff, err := compileFunc(m, i, guardMode, boundsFacts, opts.Interruptible, modGlobals, hints, opts.ImportBindings, opts.SyncHostCalls, opts.GCTypeSubtypingRefTest, opts.GCStructHelpers, opts.GCArrayHelpers, opts.CustomInstructions, opts.GCFrameRoots, st, inlineTargets, sc)
 			allHints[i] = funcHints{}
 			if err != nil {
 				return nil, fmt.Errorf("amd64: function %d: %w", i, err)
@@ -829,7 +837,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 				if ms != nil {
 					st = ms.Funcs[i]
 				}
-				fnCode, rl, internalOff, err := compileFunc(m, i, guardMode, boundsFacts, opts.Interruptible, modGlobals, allHints[i], opts.ImportBindings, opts.SyncHostCalls, opts.GCTypeSubtypingRefTest, opts.GCStructHelpers, opts.GCArrayHelpers, opts.CustomInstructions, st, inlineTargets, ws.scratch)
+				fnCode, rl, internalOff, err := compileFunc(m, i, guardMode, boundsFacts, opts.Interruptible, modGlobals, allHints[i], opts.ImportBindings, opts.SyncHostCalls, opts.GCTypeSubtypingRefTest, opts.GCStructHelpers, opts.GCArrayHelpers, opts.CustomInstructions, opts.GCFrameRoots, st, inlineTargets, ws.scratch)
 				allHints[i] = funcHints{}
 				if err != nil {
 					results[i].err = err
@@ -1260,7 +1268,14 @@ var errRegExhausted = errors.New("amd64: no register available to spill")
 // compileFunc compiles one function, retrying with local pinning disabled if the
 // first (pinned) attempt exhausts the register file. Pinning is a pure speed
 // optimization, so the unpinned recompile is always correct.
-func compileFunc(m *wasm.Module, funcIdx int, guardMode, boundsFacts, interruptible bool, modGlobals []moduleGlobalPin, hints funcHints, importBindings []ImportBinding, syncHostCalls, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers bool, custom map[uint32]CustomInstruction, stats *CodegenStats, inlineTargets map[int]*inlineTarget, sc *scratch) (code []byte, relocs []callReloc, internalOff int, err error) {
+func compileFunc(m *wasm.Module, funcIdx int, guardMode, boundsFacts, interruptible bool, modGlobals []moduleGlobalPin, hints funcHints, importBindings []ImportBinding, syncHostCalls, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers bool, custom map[uint32]CustomInstruction, gcFrameRoots *shared.GCFrameRootPlan, stats *CodegenStats, inlineTargets map[int]*inlineTarget, sc *scratch) (code []byte, relocs []callReloc, internalOff int, err error) {
+	if gcFrameRoots != nil && gcFrameRoots.Candidate {
+		gcFrameRoots.Exact = true
+		gcFrameRoots.Safepoints = gcFrameRoots.Safepoints[:0]
+		gcFrameRoots.Callsites = gcFrameRoots.Callsites[:0]
+		gcFrameRoots.FrameBytes = 0
+		gcFrameRoots.AdapterReturnOffset = 0
+	}
 	pinLocals := m.TagCount() == 0
 	if !pinLocals {
 		// The bounded EH handler restores an older native frame directly. Keep
@@ -1268,10 +1283,10 @@ func compileFunc(m *wasm.Module, funcIdx int, guardMode, boundsFacts, interrupti
 		// generalized to pinned registers.
 		modGlobals = nil
 	}
-	code, relocs, internalOff, err = compileFuncAttempt(m, funcIdx, guardMode, boundsFacts, interruptible, modGlobals, hints, importBindings, syncHostCalls, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers, custom, stats, pinLocals, inlineTargets, sc)
+	code, relocs, internalOff, err = compileFuncAttempt(m, funcIdx, guardMode, boundsFacts, interruptible, modGlobals, hints, importBindings, syncHostCalls, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers, custom, gcFrameRoots, stats, pinLocals, inlineTargets, sc)
 	if errors.Is(err, errRegExhausted) {
 		resetFuncStats(stats)
-		code, relocs, internalOff, err = compileFuncAttempt(m, funcIdx, guardMode, boundsFacts, interruptible, modGlobals, hints, importBindings, syncHostCalls, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers, custom, stats, false, inlineTargets, sc)
+		code, relocs, internalOff, err = compileFuncAttempt(m, funcIdx, guardMode, boundsFacts, interruptible, modGlobals, hints, importBindings, syncHostCalls, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers, custom, gcFrameRoots, stats, false, inlineTargets, sc)
 		if err == nil {
 			stats.setUnpinnedRetry()
 		}
@@ -1279,7 +1294,7 @@ func compileFunc(m *wasm.Module, funcIdx int, guardMode, boundsFacts, interrupti
 	return
 }
 
-func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, interruptible bool, modGlobals []moduleGlobalPin, hints funcHints, importBindings []ImportBinding, syncHostCalls, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers bool, custom map[uint32]CustomInstruction, stats *CodegenStats, pinLocals bool, inlineTargets map[int]*inlineTarget, sc *scratch) (code []byte, relocs []callReloc, internalOff int, err error) {
+func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, interruptible bool, modGlobals []moduleGlobalPin, hints funcHints, importBindings []ImportBinding, syncHostCalls, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers bool, custom map[uint32]CustomInstruction, gcFrameRoots *shared.GCFrameRootPlan, stats *CodegenStats, pinLocals bool, inlineTargets map[int]*inlineTarget, sc *scratch) (code []byte, relocs []callReloc, internalOff int, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			if _, ok := r.(regExhausted); ok {
@@ -1306,7 +1321,7 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, int
 	sc.reset()
 	sc.asm.Grow(asmCapForBody(len(c.BodyBytes)))
 	globalIdx := m.ImportedFuncCount() + funcIdx
-	f := &fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, transient: sc.transient, globalIdx: globalIdx, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: custom, nParams: len(ft.Params), nLocals: nLocals, guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, regMerge: regMergeEnabled && m.TagCount() == 0, globalCellReg: regNone, memSizeReg: regNone, immutableTables: hints.immutableTables, stagedTailDescriptors: hints.hasTailCall, importBindings: importBindings, stats: stats, entryInitialized: hints.entryInitialized}
+	f := &fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, transient: sc.transient, globalIdx: globalIdx, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: custom, nParams: len(ft.Params), nLocals: nLocals, guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, regMerge: regMergeEnabled && m.TagCount() == 0, globalCellReg: regNone, memSizeReg: regNone, immutableTables: hints.immutableTables, stagedTailDescriptors: hints.hasTailCall, importBindings: importBindings, stats: stats, entryInitialized: hints.entryInitialized, gcFrameRoots: gcFrameRoots}
 	// Retain the (possibly grown) control-frame backing for the next function.
 	defer func() {
 		sc.ctrl = f.ctrl
@@ -1480,6 +1495,10 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, int
 		}
 		f.emitV128ConstPool()
 		f.finalizeStats(len(f.a.B))
+		if gcFrameRoots != nil && gcFrameRoots.Candidate {
+			gcFrameRoots.FrameBytes = uint32(f.frameSize())
+			gcFrameRoots.AdapterReturnOffset = uint32(f.adapterReturnOff)
+		}
 		return f.a.B, f.relocs, internalOff, nil
 	}
 
@@ -1495,6 +1514,10 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, int
 	f.patchFrameSize()
 	f.emitV128ConstPool() // trailing rip-relative pool for v128 constants (after all code)
 	f.finalizeStats(len(f.a.B))
+	if gcFrameRoots != nil && gcFrameRoots.Candidate {
+		gcFrameRoots.FrameBytes = uint32(f.frameSize())
+		gcFrameRoots.AdapterReturnOffset = uint32(f.adapterReturnOff)
+	}
 	return f.a.B, f.relocs, 0, nil
 }
 

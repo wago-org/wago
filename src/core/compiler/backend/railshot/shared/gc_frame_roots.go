@@ -1,0 +1,59 @@
+package shared
+
+// AMD64FrameHeaderBytes is the stable local-slot base used by railshot amd64.
+// Root-map producers and consumers must use the same value.
+const AMD64FrameHeaderBytes = 16
+
+const (
+	// GCHelperIDBits reserves the low dispatch bits for the stable helper ID.
+	// Remaining low-30-bit payload bits identify an allocating safepoint; bits
+	// 30-31 remain the existing GC and host-funcref dispatch tags.
+	GCHelperIDBits     = 8
+	GCHelperIDMask     = uint32(1<<GCHelperIDBits) - 1
+	GCSafepointIDShift = GCHelperIDBits
+	GCSafepointIDMax   = uint32(1<<(30-GCSafepointIDShift)) - 1
+)
+
+func EncodeGCDispatch(helper, safepoint uint32) (uint32, bool) {
+	if helper > GCHelperIDMask || safepoint > GCSafepointIDMax {
+		return 0, false
+	}
+	return helper | safepoint<<GCSafepointIDShift, true
+}
+
+func DecodeGCDispatch(payload uint32) (helper, safepoint uint32) {
+	return payload & GCHelperIDMask, payload >> GCSafepointIDShift
+}
+
+// GCFrameSafepointPlan names the direct mutable native slots visible at one
+// allocating helper transition. Offsets are relative to post-prologue RSP and
+// include admitted local slots followed by live operand spill slots.
+type GCFrameSafepointPlan struct {
+	ID      uint32
+	Offsets []uint32
+}
+
+// GCFrameCallsitePlan names caller-frame roots at the native return PC after a
+// direct self-call. ReturnOffset is function-relative and stable in serialized
+// artifacts.
+type GCFrameCallsitePlan struct {
+	ReturnOffset uint32
+	Offsets      []uint32
+}
+
+// GCFrameRootPlan is an optional compile-time handshake for exact-typed native
+// roots in one candidate function. The caller precomputes collector-reference
+// local indexes/offsets; amd64 adds site-specific operand spills and final frame
+// size. It remains compile-only until the metadata contract is stabilized.
+type GCFrameRootPlan struct {
+	Candidate           bool
+	Exact               bool
+	FrameBytes          uint32
+	LocalIndexes        []uint32
+	LocalOffsets        []uint32
+	LiveLocalMasks      []uint64 // one exact local-liveness mask per reachable allocating site
+	LiveCallLocalMasks  []uint64 // one exact local-liveness mask per reachable direct self-call
+	Safepoints          []GCFrameSafepointPlan
+	Callsites           []GCFrameCallsitePlan
+	AdapterReturnOffset uint32
+}

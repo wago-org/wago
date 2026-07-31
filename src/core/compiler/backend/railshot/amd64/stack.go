@@ -113,6 +113,7 @@ type storage struct {
 	typ    machineType
 	reg    Reg
 	ehRoot bool // frame-relative rooted exception identity; clear the three-word record on drop
+	gcRoot bool // value may contain a collector-owned gc.Ref and must be mapped at safepoints
 	slot   int
 	idx    int   // local/global index for stLocalRef/stGlobalRef
 	cval   int64 // constant value/bits for stConst

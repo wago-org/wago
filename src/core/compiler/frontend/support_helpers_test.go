@@ -1,6 +1,7 @@
 package frontend
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -150,6 +151,8 @@ func TestModuleRequiresSIMDScansEveryModuleComponent(t *testing.T) {
 		m    *wasm.Module
 	}{
 		{"type", &wasm.Module{Types: []wasm.RecType{funcType}}},
+		{"struct field", &wasm.Module{Types: []wasm.RecType{{SubTypes: []wasm.SubType{{Comp: wasm.CompType{Kind: wasm.CompStruct, Fields: []wasm.FieldType{{Storage: wasm.StorageType{Val: wasm.V128}}}}}}}}}},
+		{"array element", &wasm.Module{Types: []wasm.RecType{{SubTypes: []wasm.SubType{{Comp: wasm.CompType{Kind: wasm.CompArray, Array: wasm.FieldType{Storage: wasm.StorageType{Val: wasm.V128}}}}}}}}},
 		{"function import", &wasm.Module{Types: []wasm.RecType{funcType}, Imports: []wasm.Import{{Type: wasm.ExternType{Kind: wasm.ExternFunc, Type: wasm.TypeIdx{Index: 0}}}}}},
 		{"global import", &wasm.Module{Imports: []wasm.Import{{Type: wasm.ExternType{Kind: wasm.ExternGlobal, Global: wasm.GlobalType{Type: wasm.V128}}}}}},
 		{"global type", &wasm.Module{Globals: []wasm.Global{{Type: wasm.GlobalType{Type: wasm.V128}}}}},
@@ -168,6 +171,16 @@ func TestModuleRequiresSIMDScansEveryModuleComponent(t *testing.T) {
 		if !ModuleRequiresSIMD(tc.m) {
 			t.Errorf("%s did not require SIMD", tc.name)
 		}
+	}
+}
+
+func TestSupportPassRejectsV128ArrayStorageWhenSIMDDisabled(t *testing.T) {
+	m := &wasm.Module{Types: []wasm.RecType{{SubTypes: []wasm.SubType{{
+		Comp: wasm.CompType{Kind: wasm.CompArray, Array: wasm.FieldType{Storage: wasm.StorageType{Val: wasm.V128}}},
+	}}}}}
+	err := RejectUnsupportedWithFeatures(m, Features{TypedFunctionReferences: true, GCArrayProducts: true})
+	if err == nil || !strings.Contains(err.Error(), "simd disabled") {
+		t.Fatalf("v128 array SIMD-disabled error = %v", err)
 	}
 }
 

@@ -9,21 +9,22 @@ import (
 )
 
 const (
-	gcArrayAllocDefault uint32 = 16
-	gcArrayGet          uint32 = 17
-	gcArrayGetS         uint32 = 18
-	gcArrayGetU         uint32 = 19
-	gcArraySet          uint32 = 20
-	gcArrayLen          uint32 = 21
-	gcArrayAllocFixed   uint32 = 22
-	gcArrayAllocUniform uint32 = 23
-	gcArrayAllocData    uint32 = 24
-	gcArrayAllocElem    uint32 = 25
-	gcArrayDropElem     uint32 = 26
-	gcArrayFill         uint32 = 27
-	gcArrayCopy         uint32 = 28
-	gcArrayInitData     uint32 = 29
-	gcArrayInitElem     uint32 = 30
+	gcArrayAllocDefault        uint32 = 16
+	gcArrayGet                 uint32 = 17
+	gcArrayGetS                uint32 = 18
+	gcArrayGetU                uint32 = 19
+	gcArraySet                 uint32 = 20
+	gcArrayLen                 uint32 = 21
+	gcArrayAllocFixed          uint32 = 22
+	gcArrayAllocUniform        uint32 = 23
+	gcArrayAllocData           uint32 = 24
+	gcArrayAllocElem           uint32 = 25
+	gcArrayDropElem            uint32 = 26
+	gcArrayFill                uint32 = 27
+	gcArrayCopy                uint32 = 28
+	gcArrayInitData            uint32 = 29
+	gcArrayInitElem            uint32 = 30
+	gcArrayAllocFixedV128Spill uint32 = 31
 )
 
 func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
@@ -97,12 +98,18 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		if !ok {
 			return fmt.Errorf("amd64: array.new_fixed type %d is unavailable", typeIndex)
 		}
-		if count > maxSyncHostSlots-2 {
-			return fmt.Errorf("amd64: array.new_fixed count %d exceeds helper slot bound %d", count, maxSyncHostSlots-2)
-		}
 		valueType := field.Storage.Val
 		if field.Storage.Packed {
 			valueType = wasm.I32
+		}
+		valueSlots := funcTypeSlots([]wasm.ValType{valueType})
+		if uint64(count)*uint64(valueSlots)+2 > maxSyncHostSlots {
+			if wasm.EqualValType(valueType, wasm.V128) {
+				result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
+				return f.callGCArrayFixedV128Spill(typeIndex, count, result)
+			}
+			maxValues := (maxSyncHostSlots - 2) / valueSlots
+			return fmt.Errorf("amd64: array.new_fixed count %d of %s exceeds helper slot bound %d values", count, valueType, maxValues)
 		}
 		params := make([]wasm.ValType, 0, int(count)+2)
 		for i := uint32(0); i < count; i++ {
@@ -247,6 +254,43 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 	default:
 		return fmt.Errorf("amd64: unsupported staged array opcode %d", sub)
 	}
+}
+
+// callGCArrayFixedV128Spill handles vector fixed constructors whose flattened
+// values do not fit in the 64-slot synchronous control frame. The values are
+// already resident in contiguous canonical foreign-stack spill slots. Pass one
+// off-heap pointer to those slots, then discard the logical operands after the
+// helper returns the constructed reference. The parked helper copies the bytes
+// before native execution resumes; no Go pointer enters native state.
+func (f *fn) callGCArrayFixedV128Spill(typeIndex, count uint32, resultType wasm.ValType) error {
+	roots := f.rootsBottomToTop()
+	if uint64(count) > uint64(len(roots)) {
+		return fmt.Errorf("amd64: array.new_fixed count %d exceeds operand depth %d", count, len(roots))
+	}
+	first := len(roots) - int(count)
+	firstSlot := 0
+	for i := 0; i < first; i++ {
+		typ := roots[i].st.typ
+		if roots[i].kind == ekDeferred && roots[i].typ != mtNone {
+			typ = roots[i].typ
+		}
+		firstSlot += typ.stackSlots()
+	}
+	f.flush()
+	ptr := f.allocReg(0)
+	f.a.LeaRsp(ptr, f.spillOff(firstSlot))
+	f.pushReg(ptr, mtI64)
+	f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(count)})
+	f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
+	if err := f.callGCStructHelper(gcArrayAllocFixedV128Spill, []wasm.ValType{wasm.I64, wasm.I32, wasm.I32}, []wasm.ValType{resultType}); err != nil {
+		return err
+	}
+	result := f.materialize(f.popValue())
+	for i := uint32(0); i < count; i++ {
+		f.popValue()
+	}
+	f.pushReg(result, mtI64)
+	return nil
 }
 
 func stagedArrayType(m *wasm.Module, typeIndex uint32) (wasm.FieldType, bool) {

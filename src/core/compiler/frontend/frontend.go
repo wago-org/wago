@@ -496,6 +496,20 @@ func (p supportPass) types() error {
 				return p.unsupported("gc type", "subtyping metadata (gc disabled)", ctx)
 			}
 			if st.Comp.Kind != wasm.CompFunc {
+				if !p.feat.SIMD {
+					switch st.Comp.Kind {
+					case wasm.CompStruct:
+						for fi := range st.Comp.Fields {
+							if storageTypeRequiresSIMD(st.Comp.Fields[fi].Storage) {
+								return p.unsupported("v128", "simd disabled", fmt.Sprintf("%s field %d", ctx, fi))
+							}
+						}
+					case wasm.CompArray:
+						if storageTypeRequiresSIMD(st.Comp.Array.Storage) {
+							return p.unsupported("v128", "simd disabled", ctx+" array element")
+						}
+					}
+				}
 				if (p.feat.StructuralTypeProducts || p.feat.GCTypeSubtypingProducts) && (st.Comp.Kind == wasm.CompStruct || st.Comp.Kind == wasm.CompArray) {
 					continue
 				}
@@ -2260,6 +2274,18 @@ func ModuleNonCodeRequiresSIMD(m *wasm.Module) bool {
 			if compValTypesRequireSIMD(comp.Params) || compValTypesRequireSIMD(comp.Results) {
 				return true
 			}
+			switch comp.Kind {
+			case wasm.CompStruct:
+				for k := range comp.Fields {
+					if storageTypeRequiresSIMD(comp.Fields[k].Storage) {
+						return true
+					}
+				}
+			case wasm.CompArray:
+				if storageTypeRequiresSIMD(comp.Array.Storage) {
+					return true
+				}
+			}
 		}
 	}
 	p := supportPass{m: m}
@@ -2315,6 +2341,10 @@ func compValTypesRequireSIMD(vs []wasm.ValType) bool {
 
 func valTypeRequiresSIMD(v wasm.ValType) bool {
 	return v.Kind == wasm.ValVec && wasm.EqualValType(v, wasm.V128)
+}
+
+func storageTypeRequiresSIMD(s wasm.StorageType) bool {
+	return !s.Packed && valTypeRequiresSIMD(s.Val)
 }
 
 func exprRequiresSIMD(e wasm.Expr) bool {

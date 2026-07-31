@@ -100,7 +100,7 @@ func TestLowerMixedStructRefOffsets(t *testing.T) {
 }
 
 func TestLowerArraysPointerFreeAndPointerful(t *testing.T) {
-	types := []wasm.StorageType{packed(wasm.PackI8), packed(wasm.PackI16), val(wasm.I32), val(wasm.I64), val(wasm.F32), val(wasm.F64)}
+	types := []wasm.StorageType{packed(wasm.PackI8), packed(wasm.PackI16), val(wasm.I32), val(wasm.I64), val(wasm.F32), val(wasm.F64), val(wasm.V128)}
 	var subs []wasm.SubType
 	for _, typ := range types {
 		subs = append(subs, arr(typ))
@@ -114,6 +114,10 @@ func TestLowerArraysPointerFreeAndPointerful(t *testing.T) {
 		if descs[i].HasRefs {
 			t.Fatalf("array %d unexpectedly pointerful", i)
 		}
+	}
+	vec := descs[len(types)-1]
+	if vec.Elem != gc.StorageV128 || vec.ElemSize != 16 || vec.Align != 16 {
+		t.Fatalf("v128 array descriptor = %+v", vec)
 	}
 	if !descs[len(types)].HasRefs || !descs[len(types)+1].HasRefs {
 		t.Fatal("ref arrays should be pointerful")
@@ -258,10 +262,20 @@ func TestLowerFunctionTypesAreSentinels(t *testing.T) {
 	}
 }
 
-func TestLowerErrors(t *testing.T) {
-	if _, err := LowerGCTypeDescs([]wasm.RecType{{SubTypes: []wasm.SubType{st(field(val(wasm.V128)))}}}); err == nil {
-		t.Fatal("expected v128 error")
+func TestLowerV128StructField(t *testing.T) {
+	descs, err := LowerGCTypeDescs([]wasm.RecType{{SubTypes: []wasm.SubType{st(
+		field(val(wasm.I32)), field(val(wasm.V128)), field(val(wasm.I64)),
+	)}}})
+	if err != nil {
+		t.Fatal(err)
 	}
+	d := descs[0]
+	if d.HasRefs || d.Align != 16 || d.Size != 48 || d.Fields[1].Kind != gc.StorageV128 || d.Fields[1].Offset != 16 || d.Fields[2].Offset != 32 {
+		t.Fatalf("v128 struct descriptor = %+v", d)
+	}
+}
+
+func TestLowerErrors(t *testing.T) {
 	child := st(field(val(wasm.I32)))
 	child.Supers = []wasm.TypeIdx{{Index: 9}}
 	if _, err := LowerGCTypeDescs([]wasm.RecType{{SubTypes: []wasm.SubType{child}}}); err == nil {

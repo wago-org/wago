@@ -15,6 +15,15 @@ const (
 	FuncRefEntryHostThunk
 )
 
+// SyncHostCallSavedNativeSPOffset is the byte offset of the parked native RSP
+// in the synchronous helper control frame. On amd64 it points at the CALL
+// return address; the caller's stable frame base is one return-address word
+// above it.
+const (
+	SyncHostCallSavedNativeSPOffset = 0
+	AMD64CallReturnAddressBytes     = 8
+)
+
 // Basedata offsets are byte distances below the linear-memory base.
 const (
 	// MemoryDirPtrOffset points at 16-byte indexed-memory entries

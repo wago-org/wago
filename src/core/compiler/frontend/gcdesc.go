@@ -145,7 +145,10 @@ func lowerGCValType(v wasm.ValType, resolver gcTypeResolver) (gc.StorageKind, er
 			return 0, fmt.Errorf("unsupported numeric storage %d", v.Num)
 		}
 	case wasm.ValVec:
-		return 0, fmt.Errorf("unsupported v128 storage")
+		if wasm.EqualValType(v, wasm.V128) {
+			return gc.StorageV128, nil
+		}
+		return 0, fmt.Errorf("unsupported vector storage")
 	case wasm.ValRef:
 		opaque := gc.StorageKind(0)
 		if v.Ref.Heap.Kind == wasm.HeapTypeIndex {
