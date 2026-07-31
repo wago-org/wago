@@ -30,6 +30,8 @@ type PageSnapshot struct {
 	memory          *coreruntime.PageSnapshot
 	globals         []globalSnap
 	passiveDataLens []uint32
+	trackDirty      bool
+	cursor          uint64
 
 	mu      sync.Mutex
 	refs    int
@@ -40,18 +42,39 @@ type PageSnapshot struct {
 // PageSnapshotBinding resets one instance to a shared PageSnapshot. It is not
 // safe to reset concurrently with calls into that instance.
 type PageSnapshotBinding struct {
-	snapshot    *PageSnapshot
-	instance    *Instance
-	table       []byte
-	passiveElem []byte
-	passiveData []byte
-	memoryBound bool
-	released    atomic.Bool
+	snapshot     *PageSnapshot
+	instance     *Instance
+	table        []byte
+	passiveElem  []byte
+	passiveData  []byte
+	memoryBound  bool
+	dirtyTracker *coreruntime.PageSnapshotDirtyTracker
+	released     atomic.Bool
 }
 
 // CapturePageSnapshot captures the current state of an initialized instance,
 // creates the shared page image, and binds the source instance to it.
 func CapturePageSnapshot(in *Instance) (*PageSnapshot, *PageSnapshotBinding, error) {
+	return capturePageSnapshot(in, false, 0)
+}
+
+// CaptureStubPageSnapshot captures an initialized AssemblyScript stub module
+// after validating its bump allocator cursor. Restoring its globals therefore
+// rewinds the cursor while dirty-page tracking restores every memory mutation
+// made on either side of that cursor.
+func CaptureStubPageSnapshot(in *Instance) (*PageSnapshot, *PageSnapshotBinding, error) {
+	globals, err := CaptureStubGlobals(in)
+	if err != nil {
+		return nil, nil, err
+	}
+	return capturePageSnapshot(in, true, globals.Cursor())
+}
+
+func capturePageSnapshot(
+	in *Instance,
+	trackDirty bool,
+	cursor uint64,
+) (*PageSnapshot, *PageSnapshotBinding, error) {
 	if err := validatePageSnapshotInstance(in); err != nil {
 		return nil, nil, err
 	}
@@ -65,6 +88,8 @@ func CapturePageSnapshot(in *Instance) (*PageSnapshot, *PageSnapshotBinding, err
 		memory:          memory,
 		globals:         capturePageSnapshotGlobals(in),
 		passiveDataLens: capturePassiveDataLens(in),
+		trackDirty:      trackDirty,
+		cursor:          cursor,
 	}
 	binding, err := s.Bind(in)
 	if err != nil {
@@ -114,6 +139,21 @@ func (s *PageSnapshot) PageBacked() bool {
 	return s != nil && s.memory != nil && s.memory.PageBacked()
 }
 
+// Cursor returns the validated post-initialization AssemblyScript stub bump
+// allocator cursor, or zero for snapshots without cursor tracking.
+func (s *PageSnapshot) Cursor() uint64 {
+	if s == nil {
+		return 0
+	}
+	return s.cursor
+}
+
+// SelectiveDirtyReset reports whether this binding can restore only pages
+// written since its previous reset. False means it safely uses full discard.
+func (b *PageSnapshotBinding) SelectiveDirtyReset() bool {
+	return b != nil && b.dirtyTracker != nil && b.dirtyTracker.Selective()
+}
+
 // Bind attaches an initialized instance of the same compiled module to the
 // snapshot and immediately restores it to the captured state.
 func (s *PageSnapshot) Bind(in *Instance) (*PageSnapshotBinding, error) {
@@ -146,6 +186,14 @@ func (s *PageSnapshot) Bind(in *Instance) (*PageSnapshotBinding, error) {
 		_ = b.Close()
 		return nil, err
 	}
+	if s.trackDirty {
+		var err error
+		b.dirtyTracker, err = in.jm.TrackPageSnapshotWrites(s.memory, s.cursor)
+		if err != nil {
+			_ = b.Close()
+			return nil, err
+		}
+	}
 	return b, nil
 }
 
@@ -172,8 +220,9 @@ func (in *Instance) passiveElementDescriptorBytes() []byte {
 
 // Reset discards dirty linear-memory pages in place and restores numeric
 // globals, local funcref table descriptors, and passive element/data drop
-// state. The first reset installs the shared private mapping; later resets use
-// MADV_DONTNEED on supported systems to avoid replacing that mapping.
+// state. The first reset installs the shared private mapping; later stub resets
+// selectively discard dirty static pages plus the post-cursor heap, while other
+// snapshots discard the complete mapping.
 func (b *PageSnapshotBinding) Reset() error {
 	if b == nil || b.snapshot == nil || b.instance == nil || b.released.Load() {
 		return errors.New("wago: page snapshot binding is closed")
@@ -184,7 +233,9 @@ func (b *PageSnapshotBinding) Reset() error {
 	// bindings reset independent instances and must not serialize on shared
 	// snapshot state.
 	var err error
-	if b.memoryBound {
+	if b.dirtyTracker != nil {
+		err = b.instance.jm.DiscardDirtyToPageSnapshot(b.dirtyTracker)
+	} else if b.memoryBound {
 		err = b.instance.jm.DiscardToPageSnapshot(s.memory)
 	} else {
 		err = b.instance.jm.ResetToPageSnapshot(s.memory)
@@ -237,6 +288,11 @@ func (b *PageSnapshotBinding) Close() error {
 	if b == nil || b.snapshot == nil || !b.released.CompareAndSwap(false, true) {
 		return nil
 	}
+	var trackerErr error
+	if b.dirtyTracker != nil {
+		trackerErr = b.dirtyTracker.Close()
+		b.dirtyTracker = nil
+	}
 	s := b.snapshot
 	s.mu.Lock()
 	s.refs--
@@ -246,9 +302,11 @@ func (b *PageSnapshotBinding) Close() error {
 	}
 	s.mu.Unlock()
 	if closeNow {
-		return s.memory.Close()
+		if err := s.memory.Close(); err != nil {
+			return err
+		}
 	}
-	return nil
+	return trackerErr
 }
 
 // Close releases the backing after all live bindings close. It is safe to call

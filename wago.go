@@ -263,6 +263,10 @@ func CapturePageSnapshot(in *Instance) (*PageSnapshot, *PageSnapshotBinding, err
 
 func CaptureStubGlobals(in *Instance) (*GlobalsSnapshot, error) { return impl.CaptureStubGlobals(in) }
 
+func CaptureStubPageSnapshot(in *Instance) (*PageSnapshot, *PageSnapshotBinding, error) {
+	return impl.CaptureStubPageSnapshot(in)
+}
+
 func Compile(args ...any) (*Compiled, error) { return impl.Compile(args...) }
 
 func CompileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) {
