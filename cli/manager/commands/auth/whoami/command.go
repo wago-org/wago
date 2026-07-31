@@ -10,6 +10,7 @@ type Environment interface {
 func Command(environment Environment) *command.Cmd {
 	return &command.Cmd{
 		Name: "whoami", Aliases: []string{"who"}, Summary: "print the logged-in account",
-		Run: func(*command.Ctx) { environment.Whoami() },
+		Automation: command.JSONOutput,
+		Run:        func(*command.Ctx) { environment.Whoami() },
 	}
 }

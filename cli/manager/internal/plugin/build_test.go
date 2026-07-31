@@ -3,9 +3,11 @@ package plugin
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/wago-org/wago"
+	"github.com/wago-org/wago/cli/internal/automation"
 	"github.com/wago-org/wago/cli/internal/project"
 	pluginbuild "github.com/wago-org/wago/cli/manager/internal/plugin/build"
 	"github.com/wago-org/wago/internal/wagopaths"
@@ -63,6 +65,25 @@ func TestPluginRuntimeBinaryResolvesGlobalBuild(t *testing.T) {
 	}
 	if !configured || got != bin {
 		t.Fatalf("plugin runtime = %q, %v; want %q, true", got, configured, bin)
+	}
+}
+
+func TestLockedPluginResolutionRequiresPinnedVersionsBeforeBuilding(t *testing.T) {
+	automation.Reset()
+	t.Cleanup(automation.Reset)
+	manifestDir := t.TempDir()
+	if _, err := project.AddDependency(manifestDir, "github.com/wago-org/wasi", "^1.0.0"); err != nil {
+		t.Fatal(err)
+	}
+	buildDir := filepath.Join(t.TempDir(), "not-created")
+	t.Setenv(automation.EnvLocked, "1")
+
+	_, err := syncLockedPluginVersions(buildDir, manifestDir, false)
+	if err == nil || !strings.Contains(err.Error(), "wago-org/wasi") {
+		t.Fatalf("locked resolution error = %v", err)
+	}
+	if _, err := os.Stat(buildDir); !os.IsNotExist(err) {
+		t.Fatalf("locked resolution touched build state: %v", err)
 	}
 }
 

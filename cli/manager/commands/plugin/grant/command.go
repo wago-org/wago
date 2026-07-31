@@ -4,6 +4,7 @@ package grant
 import (
 	"strings"
 
+	"github.com/wago-org/wago/cli/internal/automation"
 	"github.com/wago-org/wago/cli/internal/command"
 	"github.com/wago-org/wago/cli/internal/ui"
 	plugin "github.com/wago-org/wago/cli/manager/commands/plugin"
@@ -23,6 +24,7 @@ type Environment interface {
 func Command(environment Environment) *command.Cmd {
 	return &command.Cmd{
 		Name: "grant", Summary: "review and edit a plugin's granted capabilities", Args: "[name]",
+		Automation: command.DryRun,
 		Flags: []command.Flag{
 			plugin.GlobalFlag(), plugin.LocalFlag(),
 			{Name: "allow", Arg: "<cap,...>", Help: "grant a comma-separated capability set without a prompt"},
@@ -30,6 +32,7 @@ func Command(environment Environment) *command.Cmd {
 			{Name: "deny-all", Bool: true, Help: "remove every grant without a prompt"},
 		},
 		Run: func(c *command.Ctx) {
+			name := c.Optional("[name]")
 			selected := 0
 			for _, explicit := range []bool{c.Str("allow") != "", c.Bool("all"), c.Bool("deny-all")} {
 				if explicit {
@@ -37,7 +40,10 @@ func Command(environment Environment) *command.Cmd {
 				}
 			}
 			if selected > 1 {
-				ui.Fatal("plugin grant: choose only one of --allow, --all, or --deny-all")
+				ui.Usage("plugin grant: choose only one of --allow, --all, or --deny-all")
+			}
+			if automation.NoInput() && (name == "" || selected == 0) {
+				ui.Usage("plugin grant: --no-input requires [name] and --allow, --all, or --deny-all")
 			}
 			var capabilities []string
 			for _, value := range strings.Split(c.Str("allow"), ",") {
@@ -46,7 +52,7 @@ func Command(environment Environment) *command.Cmd {
 				}
 			}
 			environment.Grant(Options{
-				Name: c.Optional("[name]"), Global: c.Bool("global"), Local: c.Bool("local"),
+				Name: name, Global: c.Bool("global"), Local: c.Bool("local"),
 				Capabilities: capabilities, All: c.Bool("all"), DenyAll: c.Bool("deny-all"),
 			})
 		},

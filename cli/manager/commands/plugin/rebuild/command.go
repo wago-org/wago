@@ -17,9 +17,10 @@ type Environment interface {
 
 func Command(environment Environment) *command.Cmd {
 	return &command.Cmd{
-		Name:    "rebuild",
-		Aliases: []string{"build"},
-		Summary: "rebuild the plugin-enabled runtime from the lockfile",
+		Name:       "rebuild",
+		Aliases:    []string{"build"},
+		Summary:    "rebuild the plugin-enabled runtime from the lockfile",
+		Automation: command.DryRun,
 		Flags: []command.Flag{
 			plugin.GlobalFlag(),
 			plugin.LocalFlag(),

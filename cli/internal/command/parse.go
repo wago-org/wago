@@ -3,6 +3,8 @@ package command
 import (
 	"fmt"
 	"strings"
+
+	"github.com/wago-org/wago/cli/internal/automation"
 )
 
 // WantsHelp reports whether help appears before positional pass-through begins.
@@ -31,7 +33,7 @@ func WantsHelp(args []string, passThrough bool, flags []Flag) bool {
 // and first-positional pass-through for guest arguments.
 func (c *Cmd) Parse(path string, args []string) (*Ctx, error) {
 	ctx := &Ctx{Cmd: c, Path: path, strs: map[string]string{}, bools: map[string]bool{}}
-	lookup := flagLookup(c.Flags)
+	lookup := flagLookup(c.AllFlags())
 	raw, passThrough := false, false
 	for index := 0; index < len(args); index++ {
 		arg := args[index]
@@ -69,7 +71,35 @@ func (c *Cmd) Parse(path string, args []string) (*Ctx, error) {
 			return nil, fmt.Errorf("flag --%s needs a value", flag.Name)
 		}
 	}
+	options := automation.Options{
+		JSON: ctx.Bool("json"), NoInput: ctx.Bool("no-input"), DryRun: ctx.Bool("dry-run"),
+		Locked: ctx.Bool("locked"), Offline: ctx.Bool("offline"),
+	}
+	automation.Configure(automation.Merge(options))
+	if automation.JSON() && !c.Supports(JSONOutput) && !(automation.DryRun() && c.Supports(DryRun)) {
+		return nil, fmt.Errorf("--json is not supported by %s", c.Label(path))
+	}
+	if automation.DryRun() && !c.Supports(DryRun) {
+		return nil, fmt.Errorf("--dry-run is not supported by %s", c.Label(path))
+	}
 	return ctx, nil
+}
+
+func (c *Cmd) AllFlags() []Flag {
+	flags := append([]Flag(nil), c.Flags...)
+	if c.Supports(JSONOutput) {
+		flags = append(flags, Flag{Name: "json", Short: "j", Bool: true, Help: "emit machine-readable JSON"})
+	} else if c.Supports(DryRun) {
+		flags = append(flags, Flag{Name: "json", Short: "j", Bool: true, Help: "emit the --dry-run plan as JSON"})
+	}
+	if c.Supports(DryRun) {
+		flags = append(flags, Flag{Name: "dry-run", Bool: true, Help: "show the plan without changing anything"})
+	}
+	return append(flags,
+		Flag{Name: "no-input", Bool: true, Help: "never prompt; fail when required input is missing"},
+		Flag{Name: "locked", Bool: true, Help: "fail rather than change wago-lock.json or wago.json"},
+		Flag{Name: "offline", Bool: true, Help: "use only installed and cached resources"},
+	)
 }
 
 func flagLookup(flags []Flag) map[string]*Flag {

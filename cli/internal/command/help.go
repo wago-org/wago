@@ -22,7 +22,7 @@ func InvocationWantsHelp(cmd *Cmd, args []string) bool {
 		}
 		return WantsHelp(normalized, cmd.PassThrough, cmd.Flags)
 	}
-	if WantsHelp(args, true, cmd.Flags) || len(args) == 0 {
+	if WantsHelp(args, true, cmd.AllFlags()) || len(args) == 0 {
 		return true
 	}
 	child := cmd.Child(args[0])
@@ -38,7 +38,7 @@ func (c *Cmd) PrintHelp(output io.Writer, path string) {
 	if c.Args != "" {
 		fmt.Fprintf(&text, " %s", ui.Dim(c.Args))
 	}
-	if len(c.Flags) > 0 {
+	if len(c.AllFlags()) > 0 {
 		fmt.Fprintf(&text, " %s", ui.Dim("[flags]"))
 	}
 	text.WriteByte('\n')
@@ -48,7 +48,7 @@ func (c *Cmd) PrintHelp(output io.Writer, path string) {
 	if len(c.Children) > 0 {
 		writeChildren(&text, c.Children)
 	}
-	writeFlags(&text, c.Flags)
+	writeFlags(&text, c.AllFlags())
 	if c.Long != "" {
 		fmt.Fprintf(&text, "\n%s\n", strings.TrimRight(c.Long, "\n"))
 	}

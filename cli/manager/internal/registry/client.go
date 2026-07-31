@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"net/url"
 	"time"
+
+	"github.com/wago-org/wago/cli/internal/automation"
 )
 
 // errUnauthorized marks a 401 from the registry (used to distinguish "not logged
@@ -29,6 +31,9 @@ type meResponse struct {
 // bearer token (when non-empty) and an optional JSON body, returning the status
 // code and raw response bytes.
 func apiRequest(method, path, token string, body any) (int, []byte, error) {
+	if err := automation.RequireOnline("registry request"); err != nil {
+		return 0, nil, err
+	}
 	var reader io.Reader
 	if body != nil {
 		b, err := json.Marshal(body)
@@ -63,6 +68,9 @@ func apiRequest(method, path, token string, body any) (int, []byte, error) {
 // registry. Metrics must never make `wago add` fail, and the short timeout keeps
 // full-module installs usable when the registry is offline.
 func recordRegistryInstall(module, version string) {
+	if automation.Offline() {
+		return
+	}
 	body, err := json.Marshal(map[string]string{"version": version})
 	if err != nil {
 		return

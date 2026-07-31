@@ -17,7 +17,3 @@ func GlobalFlag() command.Flag {
 func LocalFlag() command.Flag {
 	return command.Flag{Name: "local", Short: "l", Bool: true, Help: "use this project's plugins"}
 }
-
-func JSONFlag() command.Flag {
-	return command.Flag{Name: "json", Short: "j", Bool: true, Help: "emit machine-readable JSON"}
-}

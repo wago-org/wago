@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+
+	"github.com/wago-org/wago/cli/internal/automation"
 )
 
 const LockFile = "wago-lock.json"
@@ -47,6 +49,9 @@ func ReadLock(dir string) (LockDocument, error) {
 }
 
 func WriteLock(dir string, document LockDocument) error {
+	if automation.Locked() {
+		return fmt.Errorf("locked mode prevents changing %s", displayFilePath(LockPath(dir)))
+	}
 	if document.Packages == nil {
 		document.Packages = map[string]LockEntry{}
 	}

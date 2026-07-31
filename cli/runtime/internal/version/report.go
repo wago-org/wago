@@ -7,6 +7,7 @@ import (
 	"runtime"
 
 	"github.com/wago-org/wago"
+	"github.com/wago-org/wago/cli/internal/automation"
 	"github.com/wago-org/wago/cli/internal/handoff"
 	"github.com/wago-org/wago/cli/internal/ui"
 )
@@ -14,6 +15,20 @@ import (
 func Print(release, defaultProfile, defaultBuild, plugins string) {
 	executable := runnerExecutablePath()
 	launch := handoff.FromEnvironment()
+	guardPages := "unavailable"
+	if wago.GuardPageSupported() {
+		guardPages = "available"
+	}
+	if automation.JSON() {
+		ui.PrintJSON(map[string]any{
+			"channel": diagnosticChannel(launch.RuntimeChannel, release), "release": release,
+			"profile": fallback(launch.RuntimeProfile, defaultProfile), "build": fallback(launch.RuntimeBuild, defaultBuild),
+			"platform": runtime.GOOS + "/" + runtime.GOARCH, "toolchain": runtime.Compiler + " " + runtime.Version(),
+			"managerVersion": launch.ManagerVersion, "managerPath": launch.ManagerExecutable,
+			"runtimePath": executable, "plugins": plugins, "features": fmt.Sprint(wago.SupportedFeatures()), "guardPages": guardPages,
+		})
+		return
+	}
 
 	fmt.Printf("%s\n", ui.Bold("Wago"))
 	printVersionDetail("channel", diagnosticChannel(launch.RuntimeChannel, release))
@@ -32,10 +47,6 @@ func Print(release, defaultProfile, defaultBuild, plugins string) {
 	printVersionDetail("runtime", executable)
 	printVersionDetail("plugins", plugins)
 	printVersionDetail("features", fmt.Sprint(wago.SupportedFeatures()))
-	guardPages := "unavailable"
-	if wago.GuardPageSupported() {
-		guardPages = "available"
-	}
 	printVersionDetail("guard pages", guardPages)
 }
 

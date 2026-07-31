@@ -3,6 +3,7 @@ package version
 import (
 	"fmt"
 
+	"github.com/wago-org/wago/cli/internal/automation"
 	"github.com/wago-org/wago/internal/wagopaths"
 )
 
@@ -67,11 +68,18 @@ func (t Toolchain) Update(request UpdateRequest) {
 	args := request.Args
 	active := activeVersion(t.Dirs)
 	if len(args) == 0 && !request.Nightly && !request.Canary {
-		channel, ok := chooseUpdateChannel(active)
-		if !ok {
-			return
+		if automation.NoInput() {
+			if !isRollingChannel(active) {
+				fatal("version update: --no-input requires [channel], --nightly, or --canary when the active runtime is pinned")
+			}
+			args = []string{active}
+		} else {
+			channel, ok := chooseUpdateChannel(active)
+			if !ok {
+				return
+			}
+			args = []string{channel}
 		}
-		args = []string{channel}
 	}
 	name, err := updateVersionTarget(active, args, request.Nightly, request.Canary)
 	if err != nil {

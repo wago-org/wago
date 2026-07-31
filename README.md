@@ -168,6 +168,40 @@ Shell completion can be printed or installed with
 `wago config completions zsh|bash|fish [--install]`; the installer offers this
 after PATH setup.
 
+### Automation and agents
+
+Every interactive workflow has a flag-only form. Put global policy flags before
+the command or between command levels, before the first positional argument:
+
+```bash
+wago --no-input version install --canary --profile standard --build normal --use
+wago update --all --no-input --dry-run --json
+wago cache clean --all --no-input --dry-run
+wago --offline status --json
+```
+
+`--no-input` never opens a selector or confirmation prompt and returns a usage
+error when a required choice is missing. `--dry-run` prints the planned mutation
+without writing state. `--locked` prevents changes to `wago.json` and
+`wago-lock.json`. `--offline` blocks HTTP, source checkout, and module-proxy
+access while still allowing installed runtimes and Go's local module cache.
+The equivalent environment variables are `WAGO_NONINTERACTIVE=1`,
+`WAGO_DRY_RUN=1`, `WAGO_LOCKED=1`, `WAGO_OFFLINE=1`, and `WAGO_JSON=1`.
+
+Read commands advertise `--json` in their help. Discover the complete command
+and flag interface without scraping terminal help:
+
+```bash
+wago commands --json
+wago help --json
+wago status --json
+wago version list --json
+```
+
+Machine-readable failures are written to stderr as an `error` object with a
+stable `code`, `message`, and optional `hint`. Usage errors exit 2; operational
+failures exit 1; successful commands exit 0.
+
 The manager updates independently from installed runtimes and stays on its
 current release track:
 

@@ -8,6 +8,8 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+
+	"github.com/wago-org/wago/cli/internal/automation"
 )
 
 // runSelector drives the selector in raw terminal mode, repainting on each
@@ -63,6 +65,9 @@ func Run(m selectorModel) (submitted, cancelled bool) {
 
 // stdinIsTTY reports whether standard input is an interactive terminal.
 func StdinIsTTY() bool {
+	if automation.NoInput() {
+		return false
+	}
 	fi, err := os.Stdin.Stat()
 	return err == nil && (fi.Mode()&os.ModeCharDevice) != 0
 }

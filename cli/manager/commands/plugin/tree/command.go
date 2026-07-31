@@ -16,9 +16,10 @@ type Environment interface {
 
 func Command(environment Environment) *command.Cmd {
 	return &command.Cmd{
-		Name:    "tree",
-		Summary: "show declared and locked plugins",
-		Flags:   []command.Flag{plugin.GlobalFlag(), plugin.LocalFlag()},
+		Name:       "tree",
+		Summary:    "show declared and locked plugins",
+		Automation: command.JSONOutput,
+		Flags:      []command.Flag{plugin.GlobalFlag(), plugin.LocalFlag()},
 		Run: func(ctx *command.Ctx) {
 			environment.PluginTree(Options{Global: ctx.Bool("global"), Local: ctx.Bool("local")})
 		},

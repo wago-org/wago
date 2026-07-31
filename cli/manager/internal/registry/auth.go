@@ -12,7 +12,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/wago-org/wago/cli/internal/automation"
 	"github.com/wago-org/wago/cli/internal/tui"
+	"github.com/wago-org/wago/cli/internal/ui"
 )
 
 func registryLogin(options LoginRequest) {
@@ -299,16 +301,28 @@ func registryLogout() {
 func registryWhoami() {
 	token := resolveToken()
 	if token == "" {
+		if automation.JSON() {
+			ui.PrintJSON(map[string]any{"authenticated": false, "registry": registryBase()})
+			return
+		}
 		fmt.Println("not logged in (run: wago auth login)")
 		return
 	}
 	me, err := fetchMe(token)
 	if err != nil {
 		if errors.Is(err, errUnauthorized) {
+			if automation.JSON() {
+				ui.PrintJSON(map[string]any{"authenticated": false, "registry": registryBase()})
+				return
+			}
 			fmt.Println("not logged in (run: wago auth login)")
 			return
 		}
 		fatal("whoami: %v", err)
+	}
+	if automation.JSON() {
+		ui.PrintJSON(map[string]any{"authenticated": true, "registry": registryBase(), "login": me.Login})
+		return
 	}
 	fmt.Println(me.Login)
 }

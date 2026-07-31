@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/wago-org/wago/cli/internal/automation"
 	"github.com/wago-org/wago/cli/internal/command"
 	"github.com/wago-org/wago/cli/internal/tui"
 	"github.com/wago-org/wago/cli/internal/ui"
@@ -13,6 +14,7 @@ import (
 func Command() *command.Cmd {
 	return &command.Cmd{
 		Name: "init", Summary: "initialize and configure a local Wago project",
+		Automation: command.DryRun,
 		Flags: []command.Flag{
 			{Name: "quick", Short: "q", Bool: true, Help: "create a minimal project without prompting"},
 			{Name: "full", Short: "f", Bool: true, Help: "configure project details and plugins"},
@@ -32,6 +34,16 @@ func Command() *command.Cmd {
 			{Name: "yes", Short: "y", Bool: true, Help: "accept inferred defaults for omitted answers"},
 		},
 		Run: func(ctx *command.Ctx) {
+			if automation.Locked() && !automation.DryRun() {
+				ui.Fatal("init: --locked prevents changing wago.json")
+			}
+			if automation.NoInput() && !ctx.Bool("quick") && !ctx.Bool("full") {
+				ui.Usage("init: --no-input requires --quick or --full")
+			}
+			if automation.DryRun() {
+				automation.PrintPlan("initialize project", map[string]any{"quick": ctx.Bool("quick"), "full": ctx.Bool("full"), "kind": ctx.Str("kind"), "name": ctx.Str("name"), "plugins": ctx.Str("plugins")})
+				return
+			}
 			result, err := run(ctx, os.Stdin, os.Stdout, tui.StdinIsTTY())
 			if err != nil {
 				ui.Fatal("init: %v", err)

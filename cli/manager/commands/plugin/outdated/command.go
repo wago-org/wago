@@ -16,9 +16,10 @@ type Environment interface {
 
 func Command(environment Environment) *command.Cmd {
 	return &command.Cmd{
-		Name:    "outdated",
-		Summary: "list plugins with newer releases",
-		Flags:   []command.Flag{plugin.GlobalFlag(), plugin.LocalFlag()},
+		Name:       "outdated",
+		Summary:    "list plugins with newer releases",
+		Automation: command.JSONOutput,
+		Flags:      []command.Flag{plugin.GlobalFlag(), plugin.LocalFlag()},
 		Run: func(ctx *command.Ctx) {
 			environment.OutdatedPlugins(Options{Global: ctx.Bool("global"), Local: ctx.Bool("local")})
 		},

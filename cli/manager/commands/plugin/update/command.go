@@ -19,6 +19,7 @@ func Command(environment Environment) *command.Cmd {
 	return &command.Cmd{
 		Name: "update", Aliases: []string{"up", "upgrade"},
 		Summary: "update plugins to their latest versions, then rebuild", Args: "[module]",
+		Automation: command.DryRun,
 		Flags: []command.Flag{
 			plugin.GlobalFlag(), plugin.LocalFlag(),
 			{Name: "force", Short: "f", Bool: true, Help: "update and rebuild even when commit hashes match"},

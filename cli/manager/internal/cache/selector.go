@@ -37,7 +37,7 @@ func CleanPicker(dirs wagopaths.Dirs) (*tui.MultiSelect, error) {
 // the domain selection used by Clean.
 func ChooseClean(dirs wagopaths.Dirs) (Selection, bool, error) {
 	if !tui.StdinIsTTY() {
-		return Selection{}, false, errors.New("interactive selection needs a terminal; pass --downloads, --builds, or --all with --yes")
+		return Selection{}, false, errors.New("interactive selection needs a terminal; pass --downloads, --builds, or --all")
 	}
 	picker, err := CleanPicker(dirs)
 	if err != nil {

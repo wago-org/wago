@@ -6,7 +6,9 @@ import (
 	"os/exec"
 	"strings"
 
+	"github.com/wago-org/wago/cli/internal/automation"
 	"github.com/wago-org/wago/cli/internal/project"
+	"github.com/wago-org/wago/cli/internal/ui"
 	pluginbuild "github.com/wago-org/wago/cli/manager/internal/plugin/build"
 )
 
@@ -19,6 +21,12 @@ type MaintenanceRequest struct {
 func Outdated(request MaintenanceRequest) {
 	dir, _ := maintenanceSource(request)
 	requirements, lock := maintenanceState(dir)
+	type report struct {
+		Plugin  string `json:"plugin"`
+		Current string `json:"current"`
+		Latest  string `json:"latest"`
+	}
+	var reports []report
 	found := false
 	for _, requirement := range requirements {
 		current := strings.TrimPrefix(lock.Packages[requirement.ID].Version, "v")
@@ -31,7 +39,15 @@ func Outdated(request MaintenanceRequest) {
 			continue
 		}
 		found = true
+		reports = append(reports, report{Plugin: requirement.ID, Current: current, Latest: latest})
+		if automation.JSON() {
+			continue
+		}
 		fmt.Printf("%s  %s -> %s\n", requirement.ID, current, latest)
+	}
+	if automation.JSON() {
+		ui.PrintJSON(reports)
+		return
 	}
 	if !found {
 		fmt.Println(dim("all plugins are up to date"))
@@ -45,7 +61,15 @@ func Tree(request MaintenanceRequest) {
 	if global {
 		scope = "global"
 	}
-	fmt.Printf("Plugins (%s)\n", scope)
+	type entry struct {
+		Plugin     string `json:"plugin"`
+		Version    string `json:"version"`
+		Constraint string `json:"constraint"`
+	}
+	entries := make([]entry, 0, len(requirements))
+	if !automation.JSON() {
+		fmt.Printf("Plugins (%s)\n", scope)
+	}
 	for _, requirement := range requirements {
 		lockedVersion := strings.TrimSpace(lock.Packages[requirement.ID].Version)
 		version := "unresolved"
@@ -55,7 +79,14 @@ func Tree(request MaintenanceRequest) {
 		if requirement.Constraint == "" {
 			requirement.Constraint = "latest"
 		}
+		entries = append(entries, entry{Plugin: requirement.ID, Version: version, Constraint: requirement.Constraint})
+		if automation.JSON() {
+			continue
+		}
 		fmt.Printf("  %s@%s  %s\n", requirement.ID, version, dim(requirement.Constraint))
+	}
+	if automation.JSON() {
+		ui.PrintJSON(map[string]any{"scope": scope, "plugins": entries})
 	}
 }
 
@@ -122,6 +153,7 @@ func latestModuleVersion(module, current string) (string, error) {
 		target += "@" + current
 	}
 	command := exec.Command("go", "list", "-m", "-u", "-json", target)
+	automation.ConfigureCommand(command)
 	output, err := command.Output()
 	if err != nil {
 		return "", err

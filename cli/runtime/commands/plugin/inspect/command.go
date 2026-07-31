@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/wago-org/wago"
+	"github.com/wago-org/wago/cli/internal/automation"
 	"github.com/wago-org/wago/cli/internal/command"
 	"github.com/wago-org/wago/cli/internal/handoff"
 	"github.com/wago-org/wago/cli/internal/pluginmenu"
@@ -22,6 +23,9 @@ func Command() *command.Cmd {
 func run(c *command.Ctx) {
 	name := c.Optional("[name]")
 	if name == "" {
+		if automation.NoInput() {
+			ui.Usage("plugin inspect: --no-input requires [name]")
+		}
 		name = selectPlugin()
 		if name == "" {
 			return
@@ -32,7 +36,7 @@ func run(c *command.Ctx) {
 		ui.Fatal("plugin inspect: unknown plugin %q (see: wago plugin list)", name)
 	}
 	result := runtimeplugin.BuildReport(name, extension)
-	if c.Bool("json") {
+	if automation.JSON() {
 		ui.PrintJSON(result)
 		return
 	}

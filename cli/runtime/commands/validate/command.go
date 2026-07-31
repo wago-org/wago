@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/wago-org/wago/cli/internal/automation"
 	"github.com/wago-org/wago/cli/internal/command"
 	"github.com/wago-org/wago/cli/internal/ui"
 	runcmd "github.com/wago-org/wago/cli/runtime/commands/run"
@@ -17,6 +18,7 @@ func Command() *command.Cmd {
 	return &command.Cmd{
 		Name: "validate", Aliases: []string{"check"}, Summary: "decode and validate a module",
 		Args: "<file>", Flags: flags,
+		Automation: command.JSONOutput,
 		Normalize: func(args []string) ([]string, error) {
 			return runcmd.NormalizeParallelArgs(args, flags, false)
 		},
@@ -27,7 +29,7 @@ func Command() *command.Cmd {
 
 func run(c *command.Ctx) {
 	if len(c.Args) != 1 {
-		ui.Fatal("validate: need exactly one <file>")
+		ui.Usage("validate: need exactly one <file>")
 	}
 	src, err := os.ReadFile(c.Args[0])
 	if err != nil {
@@ -35,10 +37,13 @@ func run(c *command.Ctx) {
 	}
 	policy, err := runcmd.ParallelPolicy(c.Str("parallel"))
 	if err != nil {
-		ui.Fatal("validate: %v", err)
+		ui.Usage("validate: %v", err)
 	}
 	if err := ModuleBytesWithPolicy(src, policy); err != nil {
 		ui.Fatal("%v", err)
+	}
+	if automation.JSON() {
+		ui.PrintJSON(map[string]any{"valid": true, "file": c.Args[0], "bytes": len(src), "workers": policy})
 	}
 }
 

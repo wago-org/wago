@@ -1,6 +1,7 @@
 package manager
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -9,8 +10,10 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/wago-org/wago/cli/internal/automation"
 	"github.com/wago-org/wago/cli/internal/command"
 	"github.com/wago-org/wago/cli/internal/handoff"
+	"github.com/wago-org/wago/cli/internal/ui"
 	versioninstall "github.com/wago-org/wago/cli/manager/commands/version/install"
 	managerplugin "github.com/wago-org/wago/cli/manager/internal/plugin"
 	managerversion "github.com/wago-org/wago/cli/manager/internal/version"
@@ -38,16 +41,32 @@ func versionString() string {
 func Main(v string) {
 	version = v
 	managerplugin.ConfigureManagerVersion(versionString())
-	args := os.Args[1:]
+	args, err := automation.ParseLeading(os.Args[1:])
+	if err != nil {
+		ui.Usage("%v", err)
+	}
 	if len(args) == 0 {
+		if automation.JSON() {
+			ui.Usage("missing command")
+		}
 		managerUsage(os.Stderr)
 		os.Exit(2)
 	}
 	switch args[0] {
 	case "help", "-h", "--help":
+		parseTopAutomation(args[1:])
+		if automation.JSON() {
+			writeManagerSchema()
+			return
+		}
 		managerUsage(os.Stdout)
 		return
+	case "commands":
+		parseTopAutomation(args[1:])
+		writeManagerSchema()
+		return
 	case "-v", "--version":
+		parseTopAutomation(args[1:])
 		printManagerVersion()
 		return
 	case "run":
@@ -55,19 +74,134 @@ func Main(v string) {
 		return
 	}
 	if cmd := managerRoot.Child(args[0]); cmd != nil {
+		childArgs := args[1:]
+		if cmd.Name == "plugin" {
+			var err error
+			childArgs, err = automation.ParseLeading(childArgs)
+			if err != nil {
+				ui.Usage("plugin: %v", err)
+			}
+		}
 		if cmd.Name == "plugin" &&
-			handoff.RuntimeOwnsPluginCommand(args[1:]) &&
-			!command.InvocationWantsHelp(cmd, args[1:]) {
-			runActiveRunner(args)
+			handoff.RuntimeOwnsPluginCommand(childArgs) &&
+			!command.InvocationWantsHelp(cmd, childArgs) {
+			runActiveRunner(append([]string{args[0]}, childArgs...))
 			return
 		}
-		cmd.Dispatch("wago "+cmd.Name, args[1:])
+		cmd.Dispatch("wago "+cmd.Name, childArgs)
 		return
 	}
 	runActiveRunner(args)
 }
 
+func parseTopAutomation(args []string) {
+	remaining, err := automation.ParseLeading(args)
+	if err != nil {
+		ui.Usage("%v", err)
+	}
+	if len(remaining) != 0 {
+		ui.Usage("unexpected argument %q", remaining[0])
+	}
+}
+
+func writeManagerSchema() {
+	root := &command.Cmd{Name: "wago", Children: append([]*command.Cmd(nil), managerRoot.Children...)}
+	root.Children = append(root.Children, runtimeSchemaCommands()...)
+	if err := command.WriteSchema(os.Stdout, root); err != nil {
+		ui.Fatal("commands: %v", err)
+	}
+}
+
+func runtimeSchemaCommands() []*command.Cmd {
+	if commands := activeRuntimeSchemaCommands(); len(commands) != 0 {
+		return commands
+	}
+	parallel := command.Flag{Name: "parallel", Short: "p", Arg: "[workers]", Help: "parallel function validation and compilation"}
+	pluginFlags := []command.Flag{
+		{Name: "plugin", Arg: "<names>", Help: "comma-separated extra plugins to enable"},
+		{Name: "local", Bool: true, Help: "use this project's plugins"},
+		{Name: "global", Bool: true, Help: "use shared user-wide plugins"},
+		{Name: "bare", Bool: true, Help: "run without plugins"},
+	}
+	runFlags := []command.Flag{
+		{Name: "invoke", Short: "e", Arg: "<name>", Help: "exported function to call"},
+		{Name: "watch", Short: "w", Bool: true, Help: "rerun when the module changes"},
+		{Name: "watch-interval", Arg: "<duration>", Help: "watch polling interval"},
+		parallel,
+	}
+	runFlags = append(runFlags, pluginFlags...)
+	buildFlags := append([]command.Flag{{Name: "output", Short: "o", Arg: "<file>", Help: "output path"}, parallel}, pluginFlags...)
+	return []*command.Cmd{
+		{Name: "run", Summary: "compile and execute a WebAssembly module (default)", Args: "<file> [args...]", Flags: runFlags, PassThrough: true},
+		{Name: "module", Summary: "inspect a module's imports and required capabilities", Children: []*command.Cmd{
+			{Name: "imports", Summary: "list a module's imports", Args: "<file>", Automation: command.JSONOutput},
+			{Name: "capabilities", Aliases: []string{"caps"}, Summary: "list required capabilities", Args: "<file>", Automation: command.JSONOutput},
+		}},
+		{Name: "build", Summary: "precompile a WebAssembly module", Args: "<file>", Flags: buildFlags, Automation: command.DryRun},
+		{Name: "validate", Aliases: []string{"check"}, Summary: "decode and validate a module", Args: "<file>", Flags: []command.Flag{parallel}, Automation: command.JSONOutput},
+	}
+}
+
+func activeRuntimeSchemaCommands() []*command.Cmd {
+	d := wagopaths.DirsFor(versionString())
+	path, active, profile, build, ok := managerversion.ActiveRunner(d)
+	if !ok {
+		return nil
+	}
+	cmd := exec.Command(path, "commands", "--json")
+	cmd.Env = automation.Environment((handoff.Metadata{
+		ManagerVersion: versionString(), ManagerExecutable: executablePath(),
+		RuntimeChannel: active, RuntimeProfile: string(profile), RuntimeBuild: string(build),
+	}).Environment(os.Environ()))
+	output, err := cmd.Output()
+	if err != nil {
+		return nil
+	}
+	var schema command.CommandSchema
+	if json.Unmarshal(output, &schema) != nil {
+		return nil
+	}
+	wanted := map[string]bool{"run": true, "module": true, "build": true, "validate": true}
+	var commands []*command.Cmd
+	for _, spec := range schema.Commands {
+		if wanted[spec.Name] {
+			commands = append(commands, commandFromSpec(spec))
+		}
+	}
+	return commands
+}
+
+func commandFromSpec(spec command.CommandSpec) *command.Cmd {
+	result := &command.Cmd{
+		Name: spec.Name, Aliases: append([]string(nil), spec.Aliases...), Summary: spec.Summary,
+		Args: spec.Arguments, PassThrough: spec.PassThrough,
+	}
+	for _, flag := range spec.Flags {
+		if flag.Name == "help" || flag.Name == "json" || flag.Name == "dry-run" || flag.Name == "no-input" || flag.Name == "locked" || flag.Name == "offline" {
+			continue
+		}
+		result.Flags = append(result.Flags, command.Flag{Name: flag.Name, Short: flag.Short, Bool: flag.Type == "boolean", Arg: flag.Value, Help: flag.Summary})
+	}
+	for _, child := range spec.Commands {
+		result.Children = append(result.Children, commandFromSpec(child))
+	}
+	for _, flag := range spec.Flags {
+		switch flag.Name {
+		case "json":
+			if !strings.Contains(flag.Summary, "--dry-run") {
+				result.Automation |= command.JSONOutput
+			}
+		case "dry-run":
+			result.Automation |= command.DryRun
+		}
+	}
+	return result
+}
+
 func runWithFirstRunInstall(args []string) {
+	if !hasActiveRunner() && automation.NoInput() {
+		ui.FailHint(1, "runtime_not_installed", "wago version install --canary --profile standard --build normal --use", "no active runtime is selected")
+	}
 	if !versioninstall.EnsureRuntime(hasActiveRunner, installRuntimeForFirstRun) {
 		return
 	}
@@ -81,6 +215,15 @@ func hasActiveRunner() bool {
 
 func printManagerVersion() {
 	d := wagopaths.DirsFor(versionString())
+	if automation.JSON() {
+		path, active, profile, build, ok := managerversion.ActiveRunner(d)
+		ui.PrintJSON(map[string]any{
+			"managerVersion": versionString(), "managerPath": executablePath(),
+			"runtimeSelected": ok, "runtimeVersion": active, "runtimeProfile": string(profile), "runtimeBuild": string(build), "runtimePath": path,
+			"platform": runtime.GOOS + "/" + runtime.GOARCH, "toolchain": runtime.Compiler + " " + runtime.Version(),
+		})
+		return
+	}
 	if path, active, profile, build, ok := managerversion.ActiveRunner(d); ok {
 		command := exec.Command(path, "--version")
 		command.Env = (handoff.Metadata{
@@ -160,7 +303,7 @@ func runActiveRunner(args []string) {
 	d := wagopaths.DirsFor(versionString())
 	path, active, profile, build, ok := managerversion.ActiveRunner(d)
 	if !ok {
-		fatal("no active runtime; install one with `wago version install`")
+		ui.FatalHint("wago version install", "no active runtime is selected")
 	}
 	path, err := managerplugin.Resolve(path, profile, args, commandEnvironment{})
 	if err != nil {
@@ -168,10 +311,10 @@ func runActiveRunner(args []string) {
 	}
 	cmd := exec.Command(path, args...)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
-	cmd.Env = (handoff.Metadata{
+	cmd.Env = automation.Environment((handoff.Metadata{
 		ManagerVersion: versionString(), ManagerExecutable: executablePath(),
 		RuntimeChannel: active, RuntimeProfile: string(profile), RuntimeBuild: string(build),
-	}).Environment(os.Environ())
+	}).Environment(os.Environ()))
 	err = cmd.Run()
 	if err == nil {
 		return
@@ -205,6 +348,7 @@ func managerUsage(w *os.File) {
 		{"version", "<command>", "install, select, update, and remove Wago runtimes"},
 		{"cache", "<command>", "inspect and clean regenerable Wago data"},
 		{"config", "<command>", "configure Wago"},
+		{"commands", "", "describe the command interface as JSON"},
 	}
 	nameWidth, argsWidth := 0, 0
 	for _, command := range commands {
@@ -217,6 +361,11 @@ func managerUsage(w *os.File) {
 	fmt.Fprintf(w, "\n%s\n", bold("Flags:"))
 	fmt.Fprintf(w, "  %-27s %s\n", "--version, -v", "print version and supported features")
 	fmt.Fprintf(w, "  %-27s %s\n", "--help, -h", "show this help")
+	fmt.Fprintf(w, "  %-27s %s\n", "--json, -j", "emit machine-readable JSON when supported")
+	fmt.Fprintf(w, "  %-27s %s\n", "--no-input", "never prompt; fail when input is missing")
+	fmt.Fprintf(w, "  %-27s %s\n", "--dry-run", "show supported mutation plans")
+	fmt.Fprintf(w, "  %-27s %s\n", "--locked", "do not change project manifests or lockfiles")
+	fmt.Fprintf(w, "  %-27s %s\n", "--offline", "use only installed and cached resources")
 	fmt.Fprintf(w, "\n%-29s%s\n", "View the repo:", "https://github.com/wago-org/wago")
 	fmt.Fprintf(w, "%-29s%s\n", "View the registry:", "https://plugins.wago.sh")
 }

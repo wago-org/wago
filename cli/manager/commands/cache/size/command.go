@@ -11,9 +11,10 @@ type Environment interface {
 
 func Command(environment Environment) *command.Cmd {
 	return &command.Cmd{
-		Name:    "size",
-		Summary: "show cache disk usage",
-		Flags:   cacheoptions.Flags(),
+		Name:       "size",
+		Summary:    "show cache disk usage",
+		Automation: command.JSONOutput,
+		Flags:      cacheoptions.Flags(),
 		Run: func(ctx *command.Ctx) {
 			selection := cacheoptions.Selected(ctx)
 			if !selection.Downloads && !selection.Builds {

@@ -121,7 +121,7 @@ func assertRuntimeCommandTreeNamesUnique(t *testing.T, parent *command.Cmd, path
 			}
 		}
 		shorts := make(map[string]string)
-		for _, flag := range child.Flags {
+		for _, flag := range child.AllFlags() {
 			if flag.Short == "" {
 				continue
 			}

@@ -20,6 +20,8 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/wago-org/wago/cli/internal/automation"
+
 	"github.com/wago-org/wago/cli/internal/ui"
 )
 
@@ -86,6 +88,7 @@ func syncBuildModule(dir string) (changed bool, err error) {
 	// wago needs no source checkout to build a project's plugins.
 	for _, args := range edits {
 		cmd := exec.Command("go", args...)
+		automation.ConfigureCommand(cmd)
 		cmd.Dir = dir
 		if out, err := cmd.CombinedOutput(); err != nil {
 			if !exists {
@@ -112,6 +115,7 @@ type goModJSON struct {
 
 func readGoMod(dir string) (goModJSON, bool) {
 	cmd := exec.Command("go", "mod", "edit", "-json")
+	automation.ConfigureCommand(cmd)
 	cmd.Dir = dir
 	data, err := cmd.Output()
 	if err != nil {
@@ -176,6 +180,7 @@ func RunGo(dir string, verbose bool, args ...string) error {
 	cmd := exec.Command("go", args...)
 	cmd.Dir = dir
 	cmd.Env = os.Environ()
+	automation.ConfigureCommand(cmd)
 	if verbose {
 		cmd.Stdout = os.Stderr
 		cmd.Stderr = os.Stderr
@@ -343,7 +348,9 @@ func ModuleDir() (string, error) {
 		return d, nil
 	}
 	// Inside a wago checkout (e.g. hacking on wago itself)? Use it.
-	if out, err := exec.Command("go", "env", "GOMOD").Output(); err == nil {
+	command := exec.Command("go", "env", "GOMOD")
+	automation.ConfigureCommand(command)
+	if out, err := command.Output(); err == nil {
 		gomod := strings.TrimSpace(string(out))
 		if gomod != "" && gomod != os.DevNull {
 			if b, err := os.ReadFile(gomod); err == nil && strings.Contains(string(b), "module github.com/wago-org/wago") {

@@ -31,7 +31,7 @@ func (c *Ctx) Bool(name string) bool  { return c.bools[name] }
 
 func (c *Ctx) One(what string) string {
 	if len(c.Args) != 1 {
-		ui.Fatal("%s: need exactly one %s", strings.TrimPrefix(c.Path, "wago "), what)
+		ui.Usage("%s: need exactly one %s", strings.TrimPrefix(c.Path, "wago "), what)
 	}
 	return c.Args[0]
 }
@@ -43,7 +43,7 @@ func (c *Ctx) Optional(what string) string {
 	case 1:
 		return c.Args[0]
 	default:
-		ui.Fatal("%s: accepts at most one %s", strings.TrimPrefix(c.Path, "wago "), what)
+		ui.Usage("%s: accepts at most one %s", strings.TrimPrefix(c.Path, "wago "), what)
 		return ""
 	}
 }

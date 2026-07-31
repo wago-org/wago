@@ -5,7 +5,9 @@ import (
 	"os"
 	"time"
 
+	"github.com/wago-org/wago/cli/internal/automation"
 	"github.com/wago-org/wago/cli/internal/project"
+	"github.com/wago-org/wago/cli/internal/ui"
 	authlogin "github.com/wago-org/wago/cli/manager/commands/auth/login"
 	cacheclean "github.com/wago-org/wago/cli/manager/commands/cache/clean"
 	cacheoptions "github.com/wago-org/wago/cli/manager/commands/cache/options"
@@ -46,6 +48,10 @@ func (e commandEnvironment) Status() {
 }
 
 func (commandEnvironment) Completions(options configcompletions.Options) {
+	if automation.DryRun() {
+		automation.PrintPlan("configure shell completions", map[string]any{"shell": options.Shell, "install": options.Install, "output": options.Output, "rc": options.RC})
+		return
+	}
 	if options.Install || options.Output != "" {
 		path, err := managerconfig.InstallCompletion(options.Shell, options.Output, options.RC)
 		if err != nil {
@@ -61,7 +67,14 @@ func (commandEnvironment) Completions(options configcompletions.Options) {
 	fmt.Print(script)
 }
 
-func (e commandEnvironment) CacheDir() { fmt.Println(displayPath(managercache.DownloadDir(e.dirs()))) }
+func (e commandEnvironment) CacheDir() {
+	path := managercache.DownloadDir(e.dirs())
+	if automation.JSON() {
+		ui.PrintJSON(map[string]string{"path": path})
+		return
+	}
+	fmt.Println(displayPath(path))
+}
 func cacheSelection(selection cacheoptions.Selection) managercache.Selection {
 	return managercache.Selection{Downloads: selection.Downloads, Builds: selection.Builds}
 }
@@ -69,6 +82,13 @@ func (e commandEnvironment) CacheSize(selection cacheoptions.Selection) {
 	bytes, err := managercache.Size(managercache.Paths(e.dirs(), cacheSelection(selection)))
 	if err != nil {
 		fatal("cache size: %v", err)
+	}
+	if automation.JSON() {
+		ui.PrintJSON(map[string]any{
+			"bytes": bytes, "formatted": managercache.FormatBytes(bytes),
+			"downloads": selection.Downloads, "builds": selection.Builds,
+		})
+		return
 	}
 	fmt.Println(managercache.FormatBytes(bytes))
 }
@@ -90,6 +110,10 @@ func (e commandEnvironment) CacheClean(options cacheclean.Options) {
 			return
 		}
 	}
+	if automation.DryRun() {
+		automation.PrintPlan("clean cache", map[string]any{"downloads": selection.Downloads, "builds": selection.Builds})
+		return
+	}
 	result, err := managercache.Clean(e.dirs(), selection)
 	if err != nil {
 		fatal("cache clean: %v", err)
@@ -101,6 +125,10 @@ func (e commandEnvironment) CacheClean(options cacheclean.Options) {
 	fmt.Printf("Cleaned %d cache location%s (%s)\n", result.Removed, suffix, managercache.FormatBytes(result.Bytes))
 }
 func (e commandEnvironment) CachePrune(options cacheprune.Options) {
+	if automation.DryRun() {
+		automation.PrintPlan("prune cache", map[string]any{"minimumAgeDays": options.Days})
+		return
+	}
 	result, err := managercache.Prune(e.dirs(), time.Duration(options.Days)*24*time.Hour)
 	if err != nil {
 		fatal("cache prune: %v", err)
@@ -113,15 +141,41 @@ func (e commandEnvironment) CachePrune(options cacheprune.Options) {
 }
 
 func (commandEnvironment) Login(options authlogin.Options) {
+	if automation.DryRun() {
+		method := "interactive"
+		switch {
+		case options.Link:
+			method = "link"
+		case options.Code:
+			method = "code"
+		case options.Token != "":
+			method = "token"
+		case options.WithToken:
+			method = "stdin-token"
+		}
+		automation.PrintPlan("log in", map[string]any{"registry": "plugins.wago.sh", "method": method})
+		return
+	}
 	registry.Login(registry.LoginRequest{
 		Link: options.Link, Code: options.Code, WithToken: options.WithToken, Token: options.Token,
 	})
 }
 
-func (commandEnvironment) Logout() { registry.Logout() }
+func (commandEnvironment) Logout() {
+	if automation.DryRun() {
+		automation.PrintPlan("log out", map[string]any{"registry": "plugins.wago.sh"})
+		return
+	}
+	registry.Logout()
+}
 func (commandEnvironment) Whoami() { registry.Whoami() }
 
 func (commandEnvironment) Add(options pluginadd.Options) {
+	requireUnlocked("add plugins")
+	if automation.DryRun() {
+		automation.PrintPlan("add plugins", map[string]any{"packages": options.Modules, "scope": scopeName(options.Global, options.Local), "force": options.Force})
+		return
+	}
 	managerplugin.Add(managerplugin.AddRequest{
 		Modules: options.Modules, Global: options.Global, Local: options.Local,
 		Force: options.Force, Verbose: options.Verbose,
@@ -130,10 +184,20 @@ func (commandEnvironment) Add(options pluginadd.Options) {
 }
 
 func (commandEnvironment) Remove(options pluginremove.Options) {
+	requireUnlocked("remove a plugin")
+	if automation.DryRun() {
+		automation.PrintPlan("remove plugin", map[string]any{"package": options.Name, "scope": scopeName(options.Global, options.Local)})
+		return
+	}
 	managerplugin.Remove(managerplugin.MutationRequest{Name: options.Name, Global: options.Global, Local: options.Local})
 }
 
 func (commandEnvironment) Grant(options grant.Options) {
+	requireUnlocked("change plugin grants")
+	if automation.DryRun() {
+		automation.PrintPlan("change plugin grants", map[string]any{"package": options.Name, "scope": scopeName(options.Global, options.Local), "capabilities": options.Capabilities, "all": options.All, "denyAll": options.DenyAll})
+		return
+	}
 	managerplugin.Grant(managerplugin.MutationRequest{
 		Name: options.Name, Global: options.Global, Local: options.Local,
 		Capabilities: options.Capabilities, GrantAll: options.All, DenyAll: options.DenyAll,
@@ -141,6 +205,11 @@ func (commandEnvironment) Grant(options grant.Options) {
 }
 
 func (commandEnvironment) UpdatePlugins(options pluginupdate.Options) {
+	requireUnlocked("update plugins")
+	if automation.DryRun() {
+		automation.PrintPlan("update plugins", map[string]any{"package": options.Module, "scope": scopeName(options.Global, options.Local), "force": options.Force})
+		return
+	}
 	managerplugin.Update(managerplugin.MutationRequest{
 		Name: options.Module, Global: options.Global, Local: options.Local,
 		Force: options.Force, Verbose: options.Verbose,
@@ -157,10 +226,18 @@ func (commandEnvironment) PluginTree(options pluginTree.Options) {
 	managerplugin.ShowTree(maintenanceRequest("", options.Global, options.Local, false))
 }
 func (commandEnvironment) RebuildPlugins(options pluginrebuild.Options) {
+	if automation.DryRun() {
+		automation.PrintPlan("rebuild plugin runtime", map[string]any{"scope": scopeName(options.Global, options.Local)})
+		return
+	}
 	managerplugin.RebuildRuntime(maintenanceRequest("", options.Global, options.Local, options.Verbose))
 }
 
 func (commandEnvironment) Publish(options publish.Options) {
+	if automation.DryRun() {
+		automation.PrintPlan("publish plugin", map[string]any{"manifest": options.Manifest, "commit": options.Commit, "category": options.Category, "tags": options.Tags})
+		return
+	}
 	registry.Publish(registry.PublishRequest{
 		Manifest: options.Manifest, Commit: options.Commit, Notes: options.Notes,
 		Category: options.Category, Tags: options.Tags,
@@ -168,10 +245,18 @@ func (commandEnvironment) Publish(options publish.Options) {
 }
 
 func (commandEnvironment) Unpublish(options unpublish.Options) {
+	if automation.DryRun() {
+		automation.PrintPlan("unpublish plugin", map[string]any{"target": options.Target})
+		return
+	}
 	registry.Unpublish(registry.UnpublishRequest{Target: options.Target, Yes: options.Yes})
 }
 
 func (commandEnvironment) Deprecate(options deprecate.Options) {
+	if automation.DryRun() {
+		automation.PrintPlan("change plugin deprecation", map[string]any{"target": options.Target, "message": options.Message, "undo": options.Undo})
+		return
+	}
 	registry.Deprecate(registry.DeprecateRequest{
 		Target: options.Target, Message: options.Message, Undo: options.Undo,
 	})
@@ -201,9 +286,17 @@ func (e commandEnvironment) List()    { e.toolchain().List() }
 func (e commandEnvironment) Current() { e.toolchain().Current() }
 func (e commandEnvironment) Which()   { e.toolchain().Which() }
 func (e commandEnvironment) Switch(version, profile, build string) {
+	if automation.DryRun() {
+		automation.PrintPlan("switch runtime", map[string]any{"version": version, "profile": profile, "build": build, "installIfMissing": true})
+		return
+	}
 	e.toolchain().Switch(version, profile, build)
 }
 func (e commandEnvironment) InstallRequested(options versioninstall.Options) {
+	if automation.DryRun() {
+		automation.PrintPlan("install runtime", map[string]any{"versions": options.Versions, "latest": options.Latest, "nightly": options.Nightly, "canary": options.Canary, "profile": options.Profile, "build": options.Build, "use": options.Use})
+		return
+	}
 	e.toolchain().Install(managerversion.InstallRequest{
 		Versions: options.Versions, Latest: options.Latest, Nightly: options.Nightly, Canary: options.Canary,
 		Profile: options.Profile, Build: options.Build,
@@ -211,20 +304,45 @@ func (e commandEnvironment) InstallRequested(options versioninstall.Options) {
 	})
 }
 func (e commandEnvironment) UpdateVersion(args []string, nightly, canary, force bool, profile, build, use string) {
+	if automation.DryRun() {
+		automation.PrintPlan("update runtime", map[string]any{"versions": args, "nightly": nightly, "canary": canary, "force": force, "profile": profile, "build": build, "use": use})
+		return
+	}
 	e.toolchain().Update(managerversion.UpdateRequest{
 		Args: args, Nightly: nightly, Canary: canary, Force: force, Profile: profile, Build: build, Use: use,
 	})
 }
 func (e commandEnvironment) UninstallVersions(versions []string) {
+	if automation.DryRun() {
+		automation.PrintPlan("uninstall runtimes", map[string]any{"versions": versions})
+		return
+	}
 	e.toolchain().Uninstall(versions)
 }
-func (e commandEnvironment) UninstallAllVersions() { e.toolchain().UninstallAll() }
+func (e commandEnvironment) UninstallAllVersions() {
+	if automation.DryRun() {
+		automation.PrintPlan("uninstall runtimes", map[string]any{"all": true})
+		return
+	}
+	e.toolchain().UninstallAll()
+}
 
 func (commandEnvironment) Update(force bool) {
+	if automation.DryRun() {
+		automation.PrintPlan("update Wago", map[string]any{"component": "manager", "force": force})
+		return
+	}
 	managerself.Update(versionString(), managerself.ExecutablePath(), force)
 }
 
 func (e commandEnvironment) UpdateEverything(options updatecmd.Options) {
+	if options.Plugins {
+		requireUnlocked("update plugins")
+	}
+	if automation.DryRun() {
+		automation.PrintPlan("update Wago", map[string]any{"manager": options.Manager, "runtime": options.Runtime, "plugins": options.Plugins, "channel": options.Channel, "profile": options.Profile, "build": options.Build, "scope": scopeName(options.Global, options.Local), "force": options.Force, "use": options.Use})
+		return
+	}
 	activeRuntime := managerversion.ActiveVersion(e.dirs())
 	if options.Manager {
 		managerself.Update(versionString(), managerself.ExecutablePath(), options.Force)
@@ -273,6 +391,10 @@ func (commandEnvironment) Cancelled() {
 }
 
 func (commandEnvironment) UninstallSelf(mode string, yes bool) {
+	if automation.DryRun() {
+		automation.PrintPlan("uninstall Wago", map[string]any{"mode": mode, "confirmed": yes})
+		return
+	}
 	managerself.Uninstall(
 		wagopaths.DirsFor(versionString()),
 		managerself.ExecutablePath(),
@@ -281,4 +403,20 @@ func (commandEnvironment) UninstallSelf(mode string, yes bool) {
 		os.Stdin,
 		os.Stdout,
 	)
+}
+
+func scopeName(global, local bool) string {
+	if global {
+		return "global"
+	}
+	if local {
+		return "local"
+	}
+	return "auto"
+}
+
+func requireUnlocked(action string) {
+	if automation.Locked() && !automation.DryRun() {
+		ui.Fatal("--locked prevents %s because it changes wago.json or wago-lock.json", action)
+	}
 }

@@ -10,6 +10,8 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
+
+	"github.com/wago-org/wago/cli/internal/automation"
 )
 
 const SuccessHTML = `<!doctype html><html><head><meta charset="utf-8">` +
@@ -20,6 +22,9 @@ const SuccessHTML = `<!doctype html><html><head><meta charset="utf-8">` +
 
 // PostForm sends a GitHub OAuth form request and decodes its JSON response.
 func PostForm(endpoint string, form url.Values, output any) error {
+	if err := automation.RequireOnline("authentication request"); err != nil {
+		return err
+	}
 	request, err := http.NewRequest(http.MethodPost, endpoint, strings.NewReader(form.Encode()))
 	if err != nil {
 		return err
@@ -39,6 +44,9 @@ func PostForm(endpoint string, form url.Values, output any) error {
 }
 
 func OpenBrowser(target string) error {
+	if err := automation.RequireOnline("browser authentication"); err != nil {
+		return err
+	}
 	var command *exec.Cmd
 	switch runtime.GOOS {
 	case "darwin":

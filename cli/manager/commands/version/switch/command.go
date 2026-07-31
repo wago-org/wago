@@ -2,8 +2,10 @@
 package switchcmd
 
 import (
+	"github.com/wago-org/wago/cli/internal/automation"
 	"github.com/wago-org/wago/cli/internal/command"
 	"github.com/wago-org/wago/cli/internal/ui"
+	"github.com/wago-org/wago/internal/wagopaths"
 )
 
 type Environment interface {
@@ -13,8 +15,9 @@ type Environment interface {
 func Command(environment Environment) *command.Cmd {
 	return &command.Cmd{
 		Name: "switch", Aliases: []string{"use", "swap"},
-		Summary: "select a runtime, installing it when needed",
-		Args:    "[version]",
+		Summary:    "select a runtime, installing it when needed",
+		Automation: command.DryRun,
+		Args:       "[version]",
 		Flags: []command.Flag{
 			{Name: "version", Short: "v", Arg: "<version>", Help: "runtime release or channel to select"},
 			{Name: "profile", Short: "p", Arg: "<name>", Help: "standard or minimal"},
@@ -24,9 +27,22 @@ func Command(environment Environment) *command.Cmd {
 			version := c.Optional("[version]")
 			if value := c.Str("version"); value != "" {
 				if version != "" {
-					ui.Fatal("version switch: use [version] or --version, not both")
+					ui.Usage("version switch: use [version] or --version, not both")
 				}
 				version = value
+			}
+			if automation.NoInput() && version == "" {
+				ui.Usage("version switch: --no-input requires [version] or --version")
+			}
+			if value := c.Str("profile"); value != "" {
+				if _, err := wagopaths.ParseProfile(value); err != nil {
+					ui.Usage("version switch: %v", err)
+				}
+			}
+			if value := c.Str("build"); value != "" {
+				if _, err := wagopaths.ParseBuild(value); err != nil {
+					ui.Usage("version switch: %v", err)
+				}
 			}
 			environment.Switch(version, c.Str("profile"), c.Str("build"))
 		},

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/wago-org/wago/cli/internal/automation"
 	"github.com/wago-org/wago/cli/internal/pluginmenu"
 	"github.com/wago-org/wago/cli/internal/project"
 	"github.com/wago-org/wago/cli/internal/tui"
@@ -23,6 +24,9 @@ import (
 func reviewCapabilities(name string, required, granted []string) (chosen []string, ok bool) {
 	if len(required) == 0 {
 		return nil, true
+	}
+	if automation.NoInput() {
+		fatal("plugin: --no-input requires --allow, --allow-all, or --deny-all when %s requests capabilities", name)
 	}
 	grantedSet := map[string]bool{}
 	for _, g := range granted {

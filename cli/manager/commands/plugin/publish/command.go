@@ -14,6 +14,7 @@ type Environment interface {
 func Command(environment Environment) *command.Cmd {
 	return &command.Cmd{
 		Name: "publish", Summary: "publish a plugin from wago.json",
+		Automation: command.DryRun,
 		Flags: []command.Flag{
 			{Name: "manifest", Short: "m", Arg: "<p>", Help: "manifest path (default wago.json)"},
 			{Name: "commit", Short: "c", Arg: "<c>", Help: "commit SHA (default: git HEAD)"},

@@ -6,6 +6,8 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/wago-org/wago/cli/internal/automation"
+	"github.com/wago-org/wago/cli/internal/ui"
 	"github.com/wago-org/wago/internal/wagopaths"
 )
 
@@ -140,6 +142,33 @@ func setActiveVersion(d wagopaths.Dirs, ver string) error {
 
 func vmList(d wagopaths.Dirs) {
 	vers := installedVersions(d)
+	if automation.JSON() {
+		type installation struct {
+			Profile string `json:"profile"`
+			Build   string `json:"build"`
+			Path    string `json:"path"`
+		}
+		type versionReport struct {
+			Version       string         `json:"version"`
+			Active        bool           `json:"active"`
+			Installations []installation `json:"installations"`
+		}
+		reports := make([]versionReport, 0, len(vers))
+		active := activeVersion(d)
+		for _, version := range vers {
+			report := versionReport{Version: version, Active: version == active}
+			for _, profile := range wagopaths.Profiles {
+				for _, build := range wagopaths.Builds {
+					if path, _, _, ok := installedRuntime(d, version, profile, build); ok {
+						report.Installations = append(report.Installations, installation{Profile: string(profile), Build: string(build), Path: path})
+					}
+				}
+			}
+			reports = append(reports, report)
+		}
+		ui.PrintJSON(reports)
+		return
+	}
 	if len(vers) == 0 {
 		fmt.Println(dim("no versions installed; try: wago version install <ver>"))
 		return
@@ -175,6 +204,14 @@ func installedProfiles(d wagopaths.Dirs, ver string) []string {
 }
 
 func vmCurrent(d wagopaths.Dirs) {
+	if automation.JSON() {
+		version := activeVersion(d)
+		ui.PrintJSON(map[string]any{
+			"active": version != "", "version": version,
+			"profile": string(activeProfile(d)), "build": string(activeBuild(d)),
+		})
+		return
+	}
 	if a := activeVersion(d); a != "" {
 		fmt.Printf("%s %s %s\n", a, activeProfile(d), activeBuild(d))
 		return
@@ -190,6 +227,10 @@ func vmWhich(d wagopaths.Dirs) {
 	path, _, _, _, ok := activeRunner(d)
 	if !ok {
 		fatal("version which: active runtime is not installed")
+	}
+	if automation.JSON() {
+		ui.PrintJSON(map[string]string{"path": path, "version": a, "profile": string(activeProfile(d)), "build": string(activeBuild(d))})
+		return
 	}
 	fmt.Println(path)
 }
