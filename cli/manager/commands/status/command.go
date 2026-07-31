@@ -10,6 +10,7 @@ type Environment interface {
 func Command(environment Environment) *command.Cmd {
 	return &command.Cmd{
 		Name:    "status",
+		Aliases: []string{"st"},
 		Summary: "show the active runtime, project, plugins, and lockfile",
 		Run:     func(*command.Ctx) { environment.Status() },
 	}

@@ -50,6 +50,85 @@ func TestManagerCommandRegistry(t *testing.T) {
 	}
 }
 
+func TestManagerCommandAliases(t *testing.T) {
+	tests := []struct {
+		path    []string
+		aliases []string
+	}{
+		{[]string{"status"}, []string{"st"}},
+		{[]string{"update"}, []string{"up", "upgrade"}},
+		{[]string{"plugin"}, []string{"plugins"}},
+		{[]string{"plugin", "list"}, []string{"ls"}},
+		{[]string{"plugin", "inspect"}, []string{"info", "show"}},
+		{[]string{"plugin", "remove"}, []string{"rm"}},
+		{[]string{"plugin", "update"}, []string{"up", "upgrade"}},
+		{[]string{"plugin", "rebuild"}, []string{"build"}},
+		{[]string{"version", "list"}, []string{"ls"}},
+		{[]string{"version", "current"}, []string{"active"}},
+		{[]string{"version", "which"}, []string{"path"}},
+		{[]string{"version", "switch"}, []string{"use", "swap"}},
+		{[]string{"version", "install"}, []string{"add"}},
+		{[]string{"version", "update"}, []string{"up", "upgrade"}},
+		{[]string{"version", "uninstall"}, []string{"remove", "rm"}},
+		{[]string{"auth", "whoami"}, []string{"who"}},
+		{[]string{"self", "update"}, []string{"up", "upgrade"}},
+		{[]string{"cache", "clean"}, []string{"clear"}},
+		{[]string{"config", "completions"}, []string{"completion"}},
+	}
+	for _, test := range tests {
+		parent := managerRoot
+		for _, name := range test.path[:len(test.path)-1] {
+			parent = parent.Child(name)
+			if parent == nil {
+				t.Fatalf("missing command path %q", strings.Join(test.path, " "))
+			}
+		}
+		want := parent.Child(test.path[len(test.path)-1])
+		for _, alias := range test.aliases {
+			if got := parent.Child(alias); got != want {
+				t.Errorf("%s alias %q resolved to %#v, want %#v", strings.Join(test.path, " "), alias, got, want)
+			}
+		}
+	}
+	assertCommandTreeNamesUnique(t, managerRoot, "wago")
+}
+
+func assertCommandTreeNamesUnique(t *testing.T, parent *command.Cmd, path string) {
+	t.Helper()
+	children := make(map[string]string)
+	for _, child := range parent.Children {
+		childPath := path + " " + child.Name
+		for _, name := range append([]string{child.Name}, child.Aliases...) {
+			if previous, ok := children[name]; ok {
+				t.Errorf("command name or alias %q is shared by %s and %s", name, previous, childPath)
+			} else {
+				children[name] = childPath
+			}
+		}
+		flags := make(map[string]string)
+		shorts := make(map[string]string)
+		for _, flag := range child.Flags {
+			if previous, ok := flags[flag.Name]; ok {
+				t.Errorf("%s flags --%s and --%s share a name", childPath, previous, flag.Name)
+			} else {
+				flags[flag.Name] = flag.Name
+			}
+			if flag.Short == "" {
+				continue
+			}
+			if len(flag.Short) != 1 {
+				t.Errorf("%s flag --%s has non-single-letter short form %q", childPath, flag.Name, flag.Short)
+			}
+			if previous, ok := shorts[flag.Short]; ok {
+				t.Errorf("%s flags --%s and --%s share -%s", childPath, previous, flag.Name, flag.Short)
+			} else {
+				shorts[flag.Short] = flag.Name
+			}
+		}
+		assertCommandTreeNamesUnique(t, child, childPath)
+	}
+}
+
 func TestAddCommandAcceptsMultiplePackages(t *testing.T) {
 	command := managerRoot.Child("add")
 	if command.Args != "<module>[@version]..." {

@@ -21,7 +21,7 @@ type Environment interface {
 func Command(environment Environment) *command.Cmd {
 	flags := append([]command.Flag{
 		{Name: "output", Short: "o", Arg: "<file>", Help: "output path (default: input name with .wago extension)"},
-		{Name: "bounds", Arg: "<mode>", Help: "bounds checks: defer (default) | all"},
+		{Name: "bounds", Short: "b", Arg: "<mode>", Help: "bounds checks: defer (default) | all"},
 		runcmd.ParallelFlag(),
 	}, runcmd.OptimizationFlags()...)
 	flags = append(flags, environment.ProfileFlags()...)

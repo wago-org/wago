@@ -20,9 +20,9 @@ func Command(environment Environment) *command.Cmd {
 		Name:    "login",
 		Summary: "log in to the registry",
 		Flags: []command.Flag{
-			{Name: "link", Bool: true, Help: "log in via a browser link on this machine"},
-			{Name: "code", Bool: true, Help: "log in with a one-time code (headless/remote)"},
-			{Name: "token", Arg: "<t>", Help: "use this API token directly"},
+			{Name: "link", Short: "l", Bool: true, Help: "log in via a browser link on this machine"},
+			{Name: "code", Short: "c", Bool: true, Help: "log in with a one-time code (headless/remote)"},
+			{Name: "token", Short: "t", Arg: "<t>", Help: "use this API token directly"},
 			{Name: "with-token", Bool: true, Help: "read an API token from stdin (for CI)"},
 		},
 		Long: "With no flag, login asks whether to use a browser link or a one-time code.",

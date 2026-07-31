@@ -78,6 +78,66 @@ func TestRuntimeCommandAndRunTargetClassification(t *testing.T) {
 	}
 }
 
+func TestRuntimeCommandAliases(t *testing.T) {
+	tests := []struct {
+		path    []string
+		aliases []string
+	}{
+		{[]string{"plugin"}, []string{"plugins"}},
+		{[]string{"plugin", "list"}, []string{"ls"}},
+		{[]string{"plugin", "inspect"}, []string{"info", "show"}},
+		{[]string{"module"}, []string{"mod"}},
+		{[]string{"module", "capabilities"}, []string{"caps"}},
+		{[]string{"validate"}, []string{"check"}},
+	}
+	for _, test := range tests {
+		parent := root
+		for _, name := range test.path[:len(test.path)-1] {
+			parent = parent.Child(name)
+			if parent == nil {
+				t.Fatalf("missing command path %q", strings.Join(test.path, " "))
+			}
+		}
+		want := parent.Child(test.path[len(test.path)-1])
+		for _, alias := range test.aliases {
+			if got := parent.Child(alias); got != want {
+				t.Errorf("%s alias %q resolved to %#v, want %#v", strings.Join(test.path, " "), alias, got, want)
+			}
+		}
+	}
+	assertRuntimeCommandTreeNamesUnique(t, root, "wago")
+}
+
+func assertRuntimeCommandTreeNamesUnique(t *testing.T, parent *command.Cmd, path string) {
+	t.Helper()
+	children := make(map[string]string)
+	for _, child := range parent.Children {
+		childPath := path + " " + child.Name
+		for _, name := range append([]string{child.Name}, child.Aliases...) {
+			if previous, ok := children[name]; ok {
+				t.Errorf("command name or alias %q is shared by %s and %s", name, previous, childPath)
+			} else {
+				children[name] = childPath
+			}
+		}
+		shorts := make(map[string]string)
+		for _, flag := range child.Flags {
+			if flag.Short == "" {
+				continue
+			}
+			if len(flag.Short) != 1 {
+				t.Errorf("%s flag --%s has non-single-letter short form %q", childPath, flag.Name, flag.Short)
+			}
+			if previous, ok := shorts[flag.Short]; ok {
+				t.Errorf("%s flags --%s and --%s share -%s", childPath, previous, flag.Name, flag.Short)
+			} else {
+				shorts[flag.Short] = flag.Name
+			}
+		}
+		assertRuntimeCommandTreeNamesUnique(t, child, childPath)
+	}
+}
+
 func TestCommandHelpBypassesPluginRuntime(t *testing.T) {
 	if !command.InvocationWantsHelp(root.Child("plugin"), nil) {
 		t.Fatal("bare plugin group help was not recognized")

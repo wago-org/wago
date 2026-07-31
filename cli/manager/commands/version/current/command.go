@@ -9,7 +9,7 @@ type Environment interface {
 
 func Command(environment Environment) *command.Cmd {
 	return &command.Cmd{
-		Name: "current", Summary: "print the active runtime, profile, and build",
+		Name: "current", Aliases: []string{"active"}, Summary: "print the active runtime, profile, and build",
 		Run: func(*command.Ctx) { environment.Current() },
 	}
 }

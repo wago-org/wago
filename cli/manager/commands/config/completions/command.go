@@ -16,10 +16,11 @@ type Environment interface {
 func Command(environment Environment) *command.Cmd {
 	return &command.Cmd{
 		Name:    "completions",
+		Aliases: []string{"completion"},
 		Summary: "print or install shell completions",
 		Args:    "<shell>",
 		Flags: []command.Flag{
-			{Name: "install", Bool: true, Help: "install completion for the selected shell"},
+			{Name: "install", Short: "i", Bool: true, Help: "install completion for the selected shell"},
 			{Name: "output", Short: "o", Arg: "<file>", Help: "write to a specific file"},
 			{Name: "rc", Arg: "<file>", Help: "shell startup file to configure with --install"},
 		},

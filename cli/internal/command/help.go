@@ -74,7 +74,11 @@ func writeFlags(text *strings.Builder, flags []Flag) {
 	for index := 0; index < len(flags); index++ {
 		flag := flags[index]
 		if flag.Bool && index+1 < len(flags) && flags[index+1].Name == "no-"+flag.Name && flags[index+1].Bool {
-			labels = append(labels, "--<no->"+flag.Name)
+			label := "--<no->" + flag.Name
+			if flag.Short != "" {
+				label += ", -" + flag.Short
+			}
+			labels = append(labels, label)
 			descriptions = append(descriptions, flag.Help)
 			index++
 			continue

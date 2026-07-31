@@ -21,7 +21,7 @@ func Command(environment Environment) *command.Cmd {
 		Name:    "prune",
 		Summary: "remove caches unused by installed runtimes",
 		Flags: []command.Flag{
-			{Name: "days", Arg: "<n>", Help: "minimum age in days (default 30)"},
+			{Name: "days", Short: "d", Arg: "<n>", Help: "minimum age in days (default 30)"},
 			{Name: "yes", Short: "y", Bool: true, Help: "confirm pruning"},
 		},
 		Run: func(ctx *command.Ctx) {

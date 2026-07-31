@@ -12,13 +12,13 @@ type Environment interface {
 
 func Command(environment Environment) *command.Cmd {
 	return &command.Cmd{
-		Name: "switch", Aliases: []string{"swap"},
+		Name: "switch", Aliases: []string{"use", "swap"},
 		Summary: "select a runtime, installing it when needed",
 		Args:    "[version]",
 		Flags: []command.Flag{
-			{Name: "version", Arg: "<version>", Help: "runtime release or channel to select"},
-			{Name: "profile", Arg: "<name>", Help: "standard or minimal"},
-			{Name: "build", Arg: "<name>", Help: "normal or tiny"},
+			{Name: "version", Short: "v", Arg: "<version>", Help: "runtime release or channel to select"},
+			{Name: "profile", Short: "p", Arg: "<name>", Help: "standard or minimal"},
+			{Name: "build", Short: "b", Arg: "<name>", Help: "normal or tiny"},
 		},
 		Run: func(c *command.Ctx) {
 			version := c.Optional("[version]")

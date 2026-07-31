@@ -20,8 +20,8 @@ func Command(environment Environment) *command.Cmd {
 	return &command.Cmd{
 		Name: "deprecate", Summary: "deprecate a plugin/version", Args: "<name>[@version]",
 		Flags: []command.Flag{
-			{Name: "message", Arg: "<m>", Help: "deprecation notice"},
-			{Name: "undo", Bool: true, Help: "reverse a deprecation"},
+			{Name: "message", Short: "m", Arg: "<m>", Help: "deprecation notice"},
+			{Name: "undo", Short: "u", Bool: true, Help: "reverse a deprecation"},
 		},
 		Run: func(c *command.Ctx) {
 			if len(c.Args) != 1 {
