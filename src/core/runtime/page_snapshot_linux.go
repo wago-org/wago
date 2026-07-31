@@ -62,6 +62,23 @@ func (s *filePageSnapshot) reset(addr uintptr, size int) error {
 	return nil
 }
 
+func (s *filePageSnapshot) discard(addr uintptr, size int) error {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.closed {
+		return fmt.Errorf("wago: page snapshot is closed")
+	}
+	if _, _, errno := syscall.Syscall(
+		syscall.SYS_MADVISE,
+		addr,
+		uintptr(size),
+		syscall.MADV_DONTNEED,
+	); errno != 0 {
+		return fmt.Errorf("wago: discard private page snapshot pages: %w", errno)
+	}
+	return nil
+}
+
 func (*filePageSnapshot) pageBacked() bool { return true }
 
 func (s *filePageSnapshot) close() error {

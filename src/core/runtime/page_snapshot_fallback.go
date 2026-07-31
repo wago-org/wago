@@ -28,6 +28,10 @@ func (s *copiedPageSnapshot) reset(addr uintptr, size int) error {
 	return nil
 }
 
+func (s *copiedPageSnapshot) discard(addr uintptr, size int) error {
+	return s.reset(addr, size)
+}
+
 func (*copiedPageSnapshot) pageBacked() bool { return false }
 
 func (s *copiedPageSnapshot) close() error {

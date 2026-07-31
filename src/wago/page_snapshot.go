@@ -45,6 +45,7 @@ type PageSnapshotBinding struct {
 	table       []byte
 	passiveElem []byte
 	passiveData []byte
+	memoryBound bool
 	released    atomic.Bool
 }
 
@@ -107,7 +108,8 @@ func capturePageSnapshotGlobals(in *Instance) []globalSnap {
 	return globals
 }
 
-// PageBacked reports whether this target resets with MAP_PRIVATE page remaps.
+// PageBacked reports whether this target resets with MAP_PRIVATE file-backed
+// pages.
 func (s *PageSnapshot) PageBacked() bool {
 	return s != nil && s.memory != nil && s.memory.PageBacked()
 }
@@ -168,19 +170,29 @@ func (in *Instance) passiveElementDescriptorBytes() []byte {
 	)
 }
 
-// Reset discards dirty linear-memory pages and restores numeric globals, local
-// funcref table descriptors, and passive element/data drop state.
+// Reset discards dirty linear-memory pages in place and restores numeric
+// globals, local funcref table descriptors, and passive element/data drop
+// state. The first reset installs the shared private mapping; later resets use
+// MADV_DONTNEED on supported systems to avoid replacing that mapping.
 func (b *PageSnapshotBinding) Reset() error {
 	if b == nil || b.snapshot == nil || b.instance == nil || b.released.Load() {
 		return errors.New("wago: page snapshot binding is closed")
 	}
 	s := b.snapshot
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.closed {
-		return errors.New("wago: page snapshot is closed")
+	// A live binding owns one snapshot reference, so Close cannot release the
+	// backing while Reset is running. Avoid the snapshot lifecycle mutex here:
+	// bindings reset independent instances and must not serialize on shared
+	// snapshot state.
+	var err error
+	if b.memoryBound {
+		err = b.instance.jm.DiscardToPageSnapshot(s.memory)
+	} else {
+		err = b.instance.jm.ResetToPageSnapshot(s.memory)
+		if err == nil {
+			b.memoryBound = true
+		}
 	}
-	if err := b.instance.jm.ResetToPageSnapshot(s.memory); err != nil {
+	if err != nil {
 		return err
 	}
 	for i, snap := range s.globals {

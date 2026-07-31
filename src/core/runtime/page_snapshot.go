@@ -9,7 +9,7 @@ var ErrPageSnapshotSizeChanged = errors.New("wago: linear memory size changed af
 
 // PageSnapshot is an immutable linear-memory image. On supported systems it is
 // held in an unlinked file and mapped MAP_PRIVATE into every bound JobMemory,
-// allowing clean pages to be shared and dirty pages to be discarded by remap.
+// allowing clean pages to be shared and dirty pages to be discarded in place.
 type PageSnapshot struct {
 	backing pageSnapshotBacking
 	size    int
@@ -24,7 +24,7 @@ func NewPageSnapshot(data []byte) (*PageSnapshot, error) {
 	return &PageSnapshot{backing: backing, size: len(data)}, nil
 }
 
-// PageBacked reports whether reset uses private fixed mappings on this target.
+// PageBacked reports whether reset uses private file-backed pages on this target.
 func (s *PageSnapshot) PageBacked() bool {
 	return s != nil && s.backing != nil && s.backing.pageBacked()
 }
@@ -42,6 +42,32 @@ func (s *PageSnapshot) Close() error {
 // private view of s. The stable linear-memory base required by native code does
 // not change.
 func (j *JobMemory) ResetToPageSnapshot(s *PageSnapshot) error {
+	if err := j.validatePageSnapshot(s); err != nil {
+		return err
+	}
+	if err := s.backing.reset(j.LinMemBase(), s.size); err != nil {
+		return err
+	}
+	j.restorePageSnapshotSize(s.size)
+	return nil
+}
+
+// DiscardToPageSnapshot restores a JobMemory that is already privately mapped
+// to s. Linux can discard the mapping's private COW pages in place, avoiding
+// mmap/MAP_FIXED and VMA replacement on every request. Other targets fall back
+// to copying the immutable image.
+func (j *JobMemory) DiscardToPageSnapshot(s *PageSnapshot) error {
+	if err := j.validatePageSnapshot(s); err != nil {
+		return err
+	}
+	if err := s.backing.discard(j.LinMemBase(), s.size); err != nil {
+		return err
+	}
+	j.restorePageSnapshotSize(s.size)
+	return nil
+}
+
+func (j *JobMemory) validatePageSnapshot(s *PageSnapshot) error {
 	if s == nil || s.backing == nil {
 		return errors.New("wago: nil page snapshot")
 	}
@@ -51,16 +77,17 @@ func (j *JobMemory) ResetToPageSnapshot(s *PageSnapshot) error {
 	if s.size > j.linLen {
 		return ErrPageSnapshotSizeChanged
 	}
-	if err := s.backing.reset(j.LinMemBase(), s.size); err != nil {
-		return err
-	}
-	j.putU32(offActualLinMemByteSize, uint32(s.size))
-	j.putU32(offLinMemWasmSize, uint32(s.size/65536))
 	return nil
+}
+
+func (j *JobMemory) restorePageSnapshotSize(size int) {
+	j.putU32(offActualLinMemByteSize, uint32(size))
+	j.putU32(offLinMemWasmSize, uint32(size/65536))
 }
 
 type pageSnapshotBacking interface {
 	reset(addr uintptr, size int) error
+	discard(addr uintptr, size int) error
 	pageBacked() bool
 	close() error
 }
