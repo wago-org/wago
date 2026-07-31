@@ -73,6 +73,7 @@ lint-generate:
 .PHONY: lint-vet
 lint-vet:
 	go vet ./...
+	go vet -tags wago_runtime ./cli/...
 
 # staticcheck is enforced in CI (installed before `make lint`); locally it is
 # optional — skip with a hint rather than fail when it is not installed.
@@ -80,6 +81,7 @@ lint-vet:
 lint-staticcheck:
 	@if command -v staticcheck >/dev/null 2>&1; then \
 		staticcheck ./...; \
+		staticcheck -tags wago_runtime ./cli/...; \
 	else \
 		echo "make: staticcheck not found, skipping (go install honnef.co/go/tools/cmd/staticcheck@2024.1.1)"; \
 	fi
@@ -87,7 +89,9 @@ lint-staticcheck:
 .PHONY: test
 test: ## Build and run the test suite (host)
 	go build ./...
+	go build -tags wago_runtime ./cli/...
 	go test -count=1 ./...
+	go test -count=1 -tags wago_runtime ./cli/...
 
 .PHONY: test-guard
 test-guard: ## Guard-page (signals-based) tests: full public-API suite (incl. the SIGSEGV fault->trap path) + in-bounds differential
@@ -158,25 +162,26 @@ build: build-manager ## Build the standard-Go manager -> ./wago
 
 .PHONY: build-manager
 build-manager: ## Build the runtime-independent manager with standard Go -> ./wago
-	CGO_ENABLED=0 go build -tags wago_manager -ldflags "-s -w -X main.version=$(WAGO_VERSION)" -o wago ./cli/wago
+	CGO_ENABLED=0 go build -ldflags "-s -w -X main.version=$(WAGO_VERSION)" -o wago ./cli/wago
 
 .PHONY: build-runtime-standard
 build-runtime-standard: ## Build the everything runtime with standard Go
-	CGO_ENABLED=0 go build -ldflags "-s -w -X main.version=$(WAGO_VERSION)" -o wago-runtime-standard-normal ./cli/wago
+	CGO_ENABLED=0 go build -tags wago_runtime -ldflags "-s -w -X main.version=$(WAGO_VERSION)" -o wago-runtime-standard-normal ./cli/wago
 
 .PHONY: build-runtime-minimal
 build-runtime-minimal: ## Build the run-only runtime with standard Go
-	CGO_ENABLED=0 go build -tags wago_minimal -ldflags "-s -w -X main.version=$(WAGO_VERSION)" -o wago-runtime-minimal-normal ./cli/wago
+	CGO_ENABLED=0 go build -tags wago_runtime,wago_minimal -ldflags "-s -w -X main.version=$(WAGO_VERSION)" -o wago-runtime-minimal-normal ./cli/wago
 
 .PHONY: build-runtime-standard-tinygo
 build-runtime-standard-tinygo: ## Build the everything runtime with TinyGo
 	$(TINYGO) build -scheduler=$(TINYGO_SCHEDULER) -no-debug -opt=z -gc=conservative \
+		-tags wago_runtime \
 		-ldflags "-X main.version=$(WAGO_VERSION)" -o wago-runtime-standard-tiny ./cli/wago
 
 .PHONY: build-runtime-minimal-tinygo
 build-runtime-minimal-tinygo: ## Build the run-only runtime with TinyGo
 	$(TINYGO) build -scheduler=$(TINYGO_SCHEDULER) -no-debug -opt=z -gc=conservative \
-		-tags wago_lean,wago_minimal \
+		-tags wago_runtime,wago_lean,wago_minimal \
 		-ldflags "-X main.version=$(WAGO_VERSION)" -o wago-runtime-minimal-tiny ./cli/wago
 	@echo "wago minimal/tiny $(WAGO_VERSION): $$(du -h wago-runtime-minimal-tiny | cut -f1)"
 
@@ -186,7 +191,7 @@ build-release: ## Build the host CLI plus all supported runtime profiles/builds
 
 .PHONY: tinygo-build
 tinygo-build: ## Build the Minimal runtime with TinyGo (no cgo, debug) -> ./wago-tinygo
-	$(TINYGO) build -scheduler=$(TINYGO_SCHEDULER) -tags wago_lean,wago_minimal -o wago-tinygo ./cli/wago
+	$(TINYGO) build -scheduler=$(TINYGO_SCHEDULER) -tags wago_runtime,wago_lean,wago_minimal -o wago-tinygo ./cli/wago
 
 .PHONY: tinygo-test
 tinygo-test: ## Run the runtime + public-API suites under TinyGo

@@ -12,11 +12,12 @@ mkdir -p "$release_out"
 go_build() {
   local tags="$1"
   local output="$2"
+  local package="$3"
   local -a args=(build -trimpath -ldflags="-s -w -X main.version=${WAGO_VERSION}")
   if [[ -n "$tags" ]]; then
     args+=(-tags "$tags")
   fi
-  CGO_ENABLED=0 GOOS="$GOOS" GOARCH="$GOARCH" go "${args[@]}" -o "$output" ./cli/wago
+  CGO_ENABLED=0 GOOS="$GOOS" GOARCH="$GOARCH" go "${args[@]}" -o "$output" "$package"
 }
 
 manager="${release_out}/wago-${release_target}"
@@ -25,13 +26,14 @@ minimal_normal="${release_out}/wago-runtime-minimal-normal-${release_target}"
 standard_tiny="${release_out}/wago-runtime-standard-tiny-${release_target}"
 minimal_tiny="${release_out}/wago-runtime-minimal-tiny-${release_target}"
 
-go_build wago_manager "$manager"
-go_build "" "$standard_normal"
-go_build wago_minimal "$minimal_normal"
+go_build "" "$manager" ./cli/wago
+go_build wago_runtime "$standard_normal" ./cli/wago
+go_build wago_runtime,wago_minimal "$minimal_normal" ./cli/wago
 
 tinygo_build() {
   local tags="$1"
   local output="$2"
+  local package="$3"
   local -a args=(
     build -scheduler="${TINYGO_SCHEDULER:-tasks}" -no-debug -opt=z -gc=conservative
     -ldflags "-X main.version=${WAGO_VERSION}"
@@ -39,13 +41,14 @@ tinygo_build() {
   if [[ -n "$tags" ]]; then
     args+=(-tags "$tags")
   fi
-  GOOS="$GOOS" GOARCH="$GOARCH" tinygo "${args[@]}" -o "$output" ./cli/wago
+  GOOS="$GOOS" GOARCH="$GOARCH" tinygo "${args[@]}" -o "$output" "$package"
 }
 
 try_tinygo_build() {
   local tags="$1"
   local output="$2"
-  if tinygo_build "$tags" "$output"; then
+  local package="$3"
+  if tinygo_build "$tags" "$output" "$package"; then
     return 0
   fi
   rm -f "$output"
@@ -54,8 +57,8 @@ try_tinygo_build() {
   return 0
 }
 
-try_tinygo_build "" "$standard_tiny"
-try_tinygo_build wago_lean,wago_minimal "$minimal_tiny"
+try_tinygo_build wago_runtime "$standard_tiny" ./cli/wago
+try_tinygo_build wago_runtime,wago_lean,wago_minimal "$minimal_tiny" ./cli/wago
 
 for asset in \
   "$manager" \

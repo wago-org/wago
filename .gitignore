@@ -5,8 +5,11 @@
 # Built CLI binaries (make build / build-release / tinygo-build) + release assets
 /wago
 wago-tinygo
-wago-linux-amd64
-wago-linux-amd64.sha256
+wago-runtime-standard-normal
+wago-runtime-minimal-normal
+wago-runtime-standard-tiny
+wago-runtime-minimal-tiny
+/wago-*-*
 
 # Editor / OS
 .DS_Store

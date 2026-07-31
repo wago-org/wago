@@ -1,0 +1,15 @@
+// Package whoami defines wago auth whoami.
+package whoami
+
+import "github.com/wago-org/wago/cli/internal/command"
+
+type Environment interface {
+	Whoami()
+}
+
+func Command(environment Environment) *command.Cmd {
+	return &command.Cmd{
+		Name: "whoami", Summary: "print the logged-in account",
+		Run: func(*command.Ctx) { environment.Whoami() },
+	}
+}

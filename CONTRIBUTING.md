@@ -13,6 +13,7 @@ cd wago
 go test ./...
 go build -o wago ./cli/wago
 ./wago version
+go build -tags wago_runtime -o wago-runtime ./cli/wago
 ./scripts/install-hooks.sh
 ```
 
@@ -30,7 +31,10 @@ go test -bench .
 wago.go                          public API facade, generated (re-exports src/wago)
 src/wago                         public API implementation
 internal/genfacade               generator for wago.go
-cli/wago                         CLI
+cli/wago                         build-tagged manager/runtime entrypoint
+cli/manager                      manager implementation and command tree
+cli/runtime                      runtime implementation and command tree
+cli/internal                     shared CLI primitives
 src/core/compiler/wasm           decoder + validator
 src/core/compiler/backend/railshot  single-pass x86-64 codegen
 src/core/runtime                 mmap, foreign stack, trap plumbing
@@ -96,11 +100,12 @@ For CLI-facing changes, also build and exercise the examples:
 
 ```bash
 go build -o wago ./cli/wago
-./wago run tests/testdata/fib.wasm 30
-./wago run -e hypot tests/testdata/fprog.wasm 3.0 4.0
-./wago compile -o /tmp/fib.wago tests/testdata/fib.wasm
-./wago run /tmp/fib.wago 30
-./wago validate tests/testdata/fib.wasm
+go build -tags wago_runtime -o wago-runtime ./cli/wago
+./wago-runtime run tests/testdata/fib.wasm 30
+./wago-runtime run -e hypot tests/testdata/fprog.wasm 3.0 4.0
+./wago-runtime build -o /tmp/fib.wago tests/testdata/fib.wasm
+./wago-runtime run /tmp/fib.wago 30
+./wago-runtime validate tests/testdata/fib.wasm
 ```
 
 When adding behavior, add the smallest fixture that proves it. Prefer readable
