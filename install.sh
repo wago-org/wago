@@ -1124,7 +1124,7 @@ fi
 stamp=$(git -C "$tmp/src" describe --tags --always 2>/dev/null || echo "$version")
 progress_begin "building Wago"
 if (cd "$tmp/src" &&
-	CGO_ENABLED=0 go build -trimpath -tags wago_manager \
+	CGO_ENABLED=0 go build -trimpath \
 		-ldflags "-s -w -X main.version=$stamp" -o "$tmp/wago" ./cli/wago) >"$tmp/manager.log" 2>&1; then
 	progress_done "built Wago"
 else

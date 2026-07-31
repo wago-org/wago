@@ -45,7 +45,8 @@ TinyGo on Linux links with LLVM `lld`. Make sure `ld.lld` is on `PATH`
 #   -scheduler=tasks : use the cooperative scheduler (see "Scheduler" below)
 #   -o wago          : do NOT use a .bin output name — TinyGo treats .bin as a
 #                      firmware image and fails with "ROM segments are non-contiguous"
-tinygo build -scheduler=tasks -tags wago_lean,wago_minimal -o wago-runtime-minimal-tiny ./cli/wago
+tinygo build -scheduler=tasks -tags wago_runtime,wago_lean,wago_minimal \
+  -o wago-runtime-minimal-tiny ./cli/wago
 
 ./wago-runtime-minimal-tiny run tests/testdata/fib.wasm --invoke fib 20
 ```

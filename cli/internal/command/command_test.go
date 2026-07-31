@@ -1,0 +1,101 @@
+package command
+
+import (
+	"strings"
+	"testing"
+)
+
+func TestParseAndHelpRecognition(t *testing.T) {
+	leaf := &Cmd{
+		Name: "leaf",
+		Flags: []Flag{
+			{Name: "output", Short: "o", Arg: "<file>"},
+			{Name: "verbose", Short: "v", Bool: true},
+		},
+	}
+
+	ctx, err := leaf.Parse("wago leaf", []string{"--output=result", "-v", "first", "--", "-not-a-flag"})
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if got := ctx.Str("output"); got != "result" || !ctx.Bool("verbose") {
+		t.Fatalf("parsed flags = output %q verbose %v", got, ctx.Bool("verbose"))
+	}
+	if got := strings.Join(ctx.Args, ","); got != "first,-not-a-flag" {
+		t.Fatalf("positionals = %q", got)
+	}
+	if _, err := leaf.Parse("wago leaf", []string{"-o"}); err == nil {
+		t.Fatal("missing value accepted")
+	}
+	if _, err := leaf.Parse("wago leaf", []string{"--unknown"}); err == nil {
+		t.Fatal("unknown flag accepted")
+	}
+	if _, err := leaf.Parse("wago leaf", []string{"--verbose=yes"}); err == nil {
+		t.Fatal("boolean inline value accepted")
+	}
+
+	if WantsHelp([]string{"module.wasm", "--help"}, true, leaf.Flags) {
+		t.Fatal("guest --help treated as command help")
+	}
+	if !WantsHelp([]string{"--help", "module.wasm"}, true, leaf.Flags) ||
+		WantsHelp([]string{"--", "--help"}, false, leaf.Flags) {
+		t.Fatal("help recognition mismatch")
+	}
+	if !WantsHelp([]string{"-o", "result", "--help"}, true, leaf.Flags) {
+		t.Fatal("help after a separated flag value was missed")
+	}
+	if WantsHelp([]string{"-o", "--help", "module.wasm"}, true, leaf.Flags) {
+		t.Fatal("a value equal to --help was treated as command help")
+	}
+
+	group := &Cmd{Name: "root", Children: []*Cmd{{Name: "child", Aliases: []string{"c"}}}}
+	if group.Child("child") == nil || group.Child("c") == nil || group.Child("missing") != nil {
+		t.Fatal("child lookup mismatch")
+	}
+}
+
+func TestDispatchSuccessfulPaths(t *testing.T) {
+	var got *Ctx
+	leaf := &Cmd{
+		Name:  "leaf",
+		Flags: []Flag{{Name: "name", Short: "n", Arg: "<name>"}},
+		Run:   func(ctx *Ctx) { got = ctx },
+	}
+	root := &Cmd{Name: "root", Children: []*Cmd{leaf}}
+
+	root.Dispatch("wago", nil)
+	root.Dispatch("wago", []string{"--help"})
+	root.Dispatch("wago", []string{"leaf", "-n", "value", "argument"})
+
+	if got == nil || got.Path != "wago leaf" || got.Str("name") != "value" || got.One("argument") != "argument" {
+		t.Fatalf("dispatched context = %#v", got)
+	}
+	if got.Optional("argument") != "argument" {
+		t.Fatal("optional argument mismatch")
+	}
+	if got := (&Ctx{}).Optional("argument"); got != "" {
+		t.Fatalf("empty optional argument = %q", got)
+	}
+	if got := root.Label("wago leaf"); got != "leaf" {
+		t.Fatalf("label = %q", got)
+	}
+}
+
+func TestInvocationWantsHelpFollowsCommandTree(t *testing.T) {
+	run := &Cmd{
+		Name:        "run",
+		PassThrough: true,
+		Flags:       []Flag{{Name: "output", Short: "o", Arg: "<file>"}},
+	}
+	root := &Cmd{Name: "wago", Children: []*Cmd{run}}
+
+	if !InvocationWantsHelp(root, nil) {
+		t.Fatal("empty group invocation should show help")
+	}
+	if !InvocationWantsHelp(root, []string{"run", "-o", "result", "--help"}) {
+		t.Fatal("nested help after a flag value was missed")
+	}
+	if InvocationWantsHelp(root, []string{"run", "module.wasm", "--help"}) {
+		t.Fatal("guest help after pass-through was intercepted")
+	}
+}
