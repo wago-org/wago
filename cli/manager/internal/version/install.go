@@ -9,15 +9,15 @@ import (
 	"github.com/wago-org/wago/internal/wagopaths"
 )
 
-func vmInstall(d wagopaths.Dirs, ver string, profile wagopaths.Profile, build wagopaths.Build) {
-	installVersion(d, ver, profile, build, true, true)
+func vmInstall(d wagopaths.Dirs, ver string, profile wagopaths.Profile, build wagopaths.Build, use string) {
+	installVersion(d, ver, profile, build, true, true, use)
 }
 
 func vmInstallForSwitch(d wagopaths.Dirs, ver string, profile wagopaths.Profile, build wagopaths.Build) {
-	installVersion(d, ver, profile, build, false, false)
+	installVersion(d, ver, profile, build, false, false, "no")
 }
 
-func installVersion(d wagopaths.Dirs, ver string, profile wagopaths.Profile, build wagopaths.Build, offer, showLocation bool) {
+func installVersion(d wagopaths.Dirs, ver string, profile wagopaths.Profile, build wagopaths.Build, offer, showLocation bool, use string) {
 	installName := canaryCommitVersion(ver)
 	dest := d.RuntimeBinary(installName, string(profile), string(build))
 	if installedPath, _, _, installed := installedRuntime(d, installName, profile, build); installed {
@@ -30,7 +30,7 @@ func installVersion(d wagopaths.Dirs, ver string, profile wagopaths.Profile, bui
 				printDetail(os.Stdout, "location", displayPath(installedPath))
 			}
 			if offer {
-				finishVersionInstall(d, installName, profile, build)
+				finishVersionInstall(d, installName, profile, build, use)
 			}
 			return
 		}
@@ -52,11 +52,11 @@ func installVersion(d wagopaths.Dirs, ver string, profile wagopaths.Profile, bui
 		printDetail(progress.Writer(), "location", displayPath(dest))
 	}
 	if offer {
-		finishVersionInstall(d, installName, profile, build)
+		finishVersionInstall(d, installName, profile, build, use)
 	}
 }
 
-func vmInstallRequested(d wagopaths.Dirs, args []string, latest, nightly, canary bool, profileValue, buildValue string) {
+func vmInstallRequested(d wagopaths.Dirs, args []string, latest, nightly, canary bool, profileValue, buildValue, use string) {
 	if len(args) > 1 || (len(args) == 1 && (latest || nightly || canary)) || (latest && (nightly || canary)) || (nightly && canary) {
 		fatal("version install: choose one version or channel")
 	}
@@ -67,7 +67,7 @@ func vmInstallRequested(d wagopaths.Dirs, args []string, latest, nightly, canary
 		fatal("version install: %v", err)
 	}
 	if len(args) == 0 && !latest && !nightly && !canary {
-		vmBrowse(d, profileValue, buildValue)
+		vmBrowse(d, profileValue, buildValue, use)
 		return
 	}
 	profile, build, ok := chooseInstallVariant(profileValue, buildValue)
@@ -75,18 +75,18 @@ func vmInstallRequested(d wagopaths.Dirs, args []string, latest, nightly, canary
 		return
 	}
 	if latest {
-		vmInstall(d, latestRelease(), profile, build)
+		vmInstall(d, latestRelease(), profile, build, use)
 		return
 	}
 	if nightly {
-		vmInstall(d, "nightly", profile, build)
+		vmInstall(d, "nightly", profile, build, use)
 		return
 	}
 	if canary {
-		vmInstall(d, "canary", profile, build)
+		vmInstall(d, "canary", profile, build, use)
 		return
 	}
-	vmInstall(d, args[0], profile, build)
+	vmInstall(d, args[0], profile, build, use)
 }
 
 func requestedProfile(value string) (wagopaths.Profile, error) {

@@ -86,3 +86,16 @@ func TestRuntimePathForInvocationLeavesMinimalRuntimeAlone(t *testing.T) {
 		t.Fatalf("minimal runtime path = %q, want %q", got, base)
 	}
 }
+
+func TestCapabilityReviewPinsVersionEvenWhenPluginCannotBeInspected(t *testing.T) {
+	dir := t.TempDir()
+	reviewInstalledCapabilities(dir, filepath.Join(dir, "missing-runtime"), "github.com/wago-org/wasi", "v1.2.3", pkgOpts{})
+
+	lock, err := project.ReadLock(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := lock.Packages["wago-org/wasi"].Version; got != "v1.2.3" {
+		t.Fatalf("locked version = %q", got)
+	}
+}

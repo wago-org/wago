@@ -166,7 +166,7 @@ func TestInstallShowsInstallationLocation(t *testing.T) {
 	}
 	os.Stdout = write
 	t.Cleanup(func() { os.Stdout = oldStdout })
-	installVersion(d, "v0.2.0", wagopaths.ProfileStandard, wagopaths.BuildNormal, false, true)
+	installVersion(d, "v0.2.0", wagopaths.ProfileStandard, wagopaths.BuildNormal, false, true, "no")
 	_ = write.Close()
 	os.Stdout = oldStdout
 	output, err := io.ReadAll(read)
@@ -252,7 +252,7 @@ func TestOfferUseUpdatedPromptsEvenWhenChannelIsCurrentAndDefaultsYes(t *testing
 	}
 	_ = inputWrite.Close()
 	os.Stdin, os.Stdout = inputRead, outputWrite
-	offerUseUpdated(d, "nightly", wagopaths.ProfileStandard, wagopaths.BuildNormal)
+	offerUseUpdated(d, "nightly", wagopaths.ProfileStandard, wagopaths.BuildNormal, "")
 	_ = outputWrite.Close()
 	os.Stdin, os.Stdout = oldStdin, oldStdout
 	output, err := io.ReadAll(outputRead)

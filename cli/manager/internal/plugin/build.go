@@ -21,9 +21,12 @@ import (
 
 // pkgOpts are the shared flags for the consume-side pkg commands.
 type pkgOpts struct {
-	global  bool // operate on the ~/.wago set instead of the project
-	force   bool // ignore the build cache / fetch latest
-	verbose bool // stream the underlying `go` output
+	global       bool // operate on the ~/.wago set instead of the project
+	force        bool // ignore the build cache / fetch latest
+	verbose      bool // stream the underlying `go` output
+	capabilities []string
+	grantAll     bool
+	denyAll      bool
 }
 
 func pkgAddMany(specs []string, o pkgOpts) {
@@ -125,7 +128,7 @@ func pkgAddMany(specs []string, o pkgOpts) {
 	// Then review capabilities — on a first install, or when the package's
 	// required capabilities have changed since the lockfile recorded them.
 	for _, pkg := range packages {
-		reviewInstalledCapabilities(src, bin, pkg.Module, pkg.Exact)
+		reviewInstalledCapabilities(src, bin, pkg.Module, pkg.Exact, o)
 	}
 	summary := make([]SummaryPackage, len(packages))
 	for index, pkg := range packages {
@@ -137,18 +140,22 @@ func pkgAddMany(specs []string, o pkgOpts) {
 // reviewInstalledCapabilities fires the capability review for a just-installed
 // package when it's new or its required capabilities changed since wago-lock.json
 // last recorded them, then persists the grant in wago-lock.json.
-func reviewInstalledCapabilities(src, bin, module, version string) {
+func reviewInstalledCapabilities(src, bin, module, version string, options pkgOpts) {
 	id := strings.TrimPrefix(module, "github.com/")
-	required, err := inspectRequiredCapabilities(bin, id)
-	if err != nil {
-		return // the package exposes no inspectable plugin, or inspect failed — skip
-	}
 	lock, err := project.ReadLock(src)
 	if err != nil {
 		fatal("add: reading plugin lock: %v", err)
 	}
 	entry, existed := lock.Packages[id]
-	if existed && project.SameStringSet(entry.RequiredCapabilities, required) {
+	entry.Version = version
+	lock.Packages[id] = entry
+	required, err := inspectRequiredCapabilities(bin, id)
+	if err != nil {
+		_ = project.WriteLock(src, lock)
+		return // still pin the resolved module when it exposes no inspectable plugin
+	}
+	explicit := options.capabilities != nil || options.grantAll || options.denyAll
+	if existed && !explicit && project.SameStringSet(entry.RequiredCapabilities, required) {
 		entry.Version = version
 		lock.Packages[id] = entry
 		_ = project.WriteLock(src, lock)
@@ -164,7 +171,7 @@ func reviewInstalledCapabilities(src, bin, module, version string) {
 		_ = project.WriteLock(src, lock)
 		return
 	}
-	chosen, ok := reviewCapabilities(id, required, project.Grants(src, id))
+	chosen, ok := chooseCapabilities(id, required, project.Grants(src, id), options.capabilities, options.grantAll, options.denyAll)
 	if !ok {
 		// Cancelled (esc): don't record, so the next install re-prompts.
 		fmt.Printf("%s capability review skipped — set them anytime: wago plugin grant %s\n", dim("!"), id)

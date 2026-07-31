@@ -28,10 +28,13 @@ Manager-only workflows live under `cli/manager/internal`:
 
 ```text
 cli/manager/internal/
+  cache/     regenerable download/build cache inspection and cleanup
+  config/    persistent user configuration and shell completion installation
   plugin/    plugin lifecycle, capability review, migration, and custom runtimes
   progress/  live status for long-running manager transactions
   registry/  credentials, OAuth, resolution, publishing, and registry HTTP
   self/      manager update, replacement, and uninstall
+  status/    read-only manager, runtime, project, plugin, and lock reporting
   tui/       radio, drill-down, and multi-select terminal interaction
   version/   installed runtime state, discovery, download, source fallback, selection
 ```
@@ -97,12 +100,23 @@ registry requests are domain-owned values assembled by the root environment
 adapter. Command packages do not coordinate download, build, migration, or
 installation steps.
 
+All interactive manager workflows also expose flags for automation. A command
+without enough information may open a selector, but CI and scripts can always
+provide the version, profile, build, scope, confirmation, and capability policy
+directly. `wago update` coordinates manager, rolling runtime, and plugin updates;
+the narrower `self update`, `version update`, and `plugin update` commands remain
+available for explicit control.
+
 ## Runtime profiles and builds
 
 Standard runtimes expose `run`, `build`, `validate`, `module`, and plugin
 inspection. Minimal runtimes expose only `run`. A plugin-aware runtime is a
 standard runtime build whose generated entrypoint imports plugin registration
 packages; it does not become a third CLI role.
+
+`run --watch` is runtime-owned. It relaunches the same runtime executable when
+the input module changes, preserving guest arguments and plugin selection made
+by the manager handoff.
 
 The manager is the default Go build. Runtime builds require the `wago_runtime`
 tag so an entrypoint cannot silently produce the wrong role:

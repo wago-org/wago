@@ -191,19 +191,28 @@ func managerUsage(w *os.File) {
 		name, args, summary string
 	}{
 		{"run", "<file> [args...]", "compile and execute a WebAssembly module (default)"},
+		{"status", "", "show the active runtime, project, plugins, and lockfile"},
+		{"update", "", "update Wago, the active runtime, and plugins"},
 		{"init", "", "initialize a local Wago project"},
 		{"add", "<module>[@version]...", "add and enable plugins, then rebuild Wago"},
 		{"rm", "<name>", "remove and disable a plugin"},
-		{"plugin", "<command>", "add, remove, inspect, update, and publish plugins"},
+		{"plugin", "<command>", "install, update, verify, and publish plugins"},
 		{"auth", "<command>", "authenticate to the registry (plugins.wago.sh)"},
 		{"module", "<command>", "inspect a module's imports and required capabilities"},
 		{"self", "<command>", "update or uninstall Wago"},
 		{"build", "<file>", "precompile a WebAssembly module to a .wago artifact"},
 		{"validate", "<file>", "decode and validate a module"},
 		{"version", "<command>", "install, select, update, and remove Wago runtimes"},
+		{"cache", "<command>", "inspect and clean regenerable Wago data"},
+		{"config", "<command>", "configure Wago"},
+	}
+	nameWidth, argsWidth := 0, 0
+	for _, command := range commands {
+		nameWidth = max(nameWidth, len(command.name))
+		argsWidth = max(argsWidth, len(command.args))
 	}
 	for _, command := range commands {
-		fmt.Fprintf(w, "  %-8s  %s  %s\n", command.name, dim(fmt.Sprintf("%-19s", command.args)), command.summary)
+		fmt.Fprintf(w, "  %-*s  %s  %s\n", nameWidth, command.name, dim(fmt.Sprintf("%-*s", argsWidth, command.args)), command.summary)
 	}
 	fmt.Fprintf(w, "\n%s\n", bold("Flags:"))
 	fmt.Fprintf(w, "  %-27s %s\n", "--version, -v", "print version and supported features")

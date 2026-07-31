@@ -15,7 +15,7 @@ import (
 
 func TestManagerOwnsPluginLifecycleAndDelegatesIntrospection(t *testing.T) {
 	plugins := managerRoot.Child("plugin")
-	for _, name := range []string{"add", "remove", "grant", "update", "publish", "unpublish", "deprecate"} {
+	for _, name := range []string{"add", "remove", "grant", "update", "outdated", "tree", "why", "rebuild", "verify", "publish", "unpublish", "deprecate"} {
 		if plugins.Child(name) == nil {
 			t.Fatalf("manager plugin group is missing %q", name)
 		}
@@ -37,11 +37,28 @@ func TestManagerCommandRegistry(t *testing.T) {
 	for _, command := range managerRoot.Children {
 		names = append(names, command.Name)
 	}
-	if got := strings.Join(names, ","); got != "version,auth,init,add,rm,plugin,self" {
+	if got := strings.Join(names, ","); got != "status,update,version,auth,init,add,rm,plugin,self,cache,config" {
 		t.Fatalf("manager commands = %q", got)
 	}
 	if managerRoot.Child("plugins") == nil {
 		t.Fatal("manager command registry does not resolve plugin alias")
+	}
+}
+
+func TestCoordinatedUpdateOnlyReusesMatchingSelfUpdate(t *testing.T) {
+	for _, test := range []struct {
+		active, manager, explicit string
+		want                      bool
+	}{
+		{active: "canary", manager: "canary-a052caa", want: true},
+		{active: "canary-a052caa", manager: "canary-f57480c", want: true},
+		{active: "nightly", manager: "canary-a052caa", want: false},
+		{active: "canary", manager: "canary-a052caa", explicit: "nightly", want: false},
+		{active: "v0.2.0", manager: "v0.2.0", want: false},
+	} {
+		if got := selfUpdatesRuntime(test.active, test.manager, test.explicit); got != test.want {
+			t.Errorf("selfUpdatesRuntime(%q, %q, %q) = %v, want %v", test.active, test.manager, test.explicit, got, test.want)
+		}
 	}
 }
 

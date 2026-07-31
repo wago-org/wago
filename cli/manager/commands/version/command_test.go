@@ -9,13 +9,14 @@ import (
 
 type testEnvironment struct{}
 
-func (testEnvironment) List()                                              {}
-func (testEnvironment) Current()                                           {}
-func (testEnvironment) Which()                                             {}
-func (testEnvironment) Switch(string, string, string)                      {}
-func (testEnvironment) InstallRequested(install.Options)                   {}
-func (testEnvironment) UpdateVersion([]string, bool, bool, string, string) {}
-func (testEnvironment) UninstallVersions([]string)                         {}
+func (testEnvironment) List()                                                      {}
+func (testEnvironment) Current()                                                   {}
+func (testEnvironment) Which()                                                     {}
+func (testEnvironment) Switch(string, string, string)                              {}
+func (testEnvironment) InstallRequested(install.Options)                           {}
+func (testEnvironment) UpdateVersion([]string, bool, bool, string, string, string) {}
+func (testEnvironment) UninstallVersions([]string)                                 {}
+func (testEnvironment) UninstallAllVersions()                                      {}
 
 func TestCommandTree(t *testing.T) {
 	cmd := Command(testEnvironment{})
