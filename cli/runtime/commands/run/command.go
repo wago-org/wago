@@ -20,13 +20,14 @@ type Environment interface {
 }
 
 func Command(environment Environment) *command.Cmd {
-	flags := append([]command.Flag{
+	flags := []command.Flag{
 		{Name: "invoke", Short: "e", Arg: "<name>", Help: "exported function to call"},
-		{Name: "bounds", Short: "b", Arg: "<mode>", Help: "bounds checks: defer (default) | all"},
 		{Name: "watch", Short: "w", Bool: true, Help: "rerun when the module changes"},
 		{Name: "watch-interval", Arg: "<duration>", Help: "watch polling interval (default 200ms)"},
 		ParallelFlag(),
-	}, OptimizationFlags()...)
+	}
+	flags = append(flags, DeferredBoundsCheckingFlags()...)
+	flags = append(flags, OptimizationFlags()...)
 	flags = append(flags, environment.ProfileFlags()...)
 	implementation := implementation{environment: environment}
 	return &command.Cmd{
@@ -56,12 +57,16 @@ func (cmd implementation) Run(ctx *command.Ctx) {
 		return
 	}
 	ApplyOptimizationFlags(ctx)
+	deferredBoundsChecking, err := DeferredBoundsChecking(ctx)
+	if err != nil {
+		ui.Fatal("run: %v", err)
+	}
 	positionals := ctx.Args
 	if len(positionals) == 0 {
 		ui.Fatal("run: need a <file>")
 	}
 	wago.SetGuestArgs(positionals)
-	config, err := Config(ctx.Str("bounds"), ctx.Str("parallel"))
+	config, err := Config(deferredBoundsChecking, ctx.Str("parallel"))
 	if err != nil {
 		ui.Fatal("run: %v", err)
 	}

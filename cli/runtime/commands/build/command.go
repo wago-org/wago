@@ -19,11 +19,12 @@ type Environment interface {
 }
 
 func Command(environment Environment) *command.Cmd {
-	flags := append([]command.Flag{
+	flags := []command.Flag{
 		{Name: "output", Short: "o", Arg: "<file>", Help: "output path (default: input name with .wago extension)"},
-		{Name: "bounds", Short: "b", Arg: "<mode>", Help: "bounds checks: defer (default) | all"},
 		runcmd.ParallelFlag(),
-	}, runcmd.OptimizationFlags()...)
+	}
+	flags = append(flags, runcmd.DeferredBoundsCheckingFlags()...)
+	flags = append(flags, runcmd.OptimizationFlags()...)
 	flags = append(flags, environment.ProfileFlags()...)
 	implementation := implementation{environment: environment}
 	return &command.Cmd{
@@ -43,6 +44,10 @@ type implementation struct {
 
 func (cmd implementation) Run(c *command.Ctx) {
 	runcmd.ApplyOptimizationFlags(c)
+	deferredBoundsChecking, err := runcmd.DeferredBoundsChecking(c)
+	if err != nil {
+		ui.Fatal("build: %v", err)
+	}
 	input := singleFileArg(c.Args)
 	source, err := os.ReadFile(input)
 	if err != nil {
@@ -51,7 +56,7 @@ func (cmd implementation) Run(c *command.Ctx) {
 	if wago.IsCompiled(source) {
 		ui.Fatal("build: %s is already a .wago artifact", input)
 	}
-	cfg, err := runcmd.Config(c.Str("bounds"), c.Str("parallel"))
+	cfg, err := runcmd.Config(deferredBoundsChecking, c.Str("parallel"))
 	if err != nil {
 		ui.Fatal("build: %v", err)
 	}

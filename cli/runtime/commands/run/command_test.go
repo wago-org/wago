@@ -131,12 +131,12 @@ func TestLoadModuleAndResolveExport(t *testing.T) {
 func TestRunParallelFlagForms(t *testing.T) {
 	cmd := Command(testEnvironment{})
 	for _, tc := range []struct {
-		name         string
-		args         []string
-		wantParallel string
-		wantInvoke   string
-		wantBounds   string
-		wantPlugin   string
+		name           string
+		args           []string
+		wantParallel   string
+		wantInvoke     string
+		wantNoDeferred bool
+		wantPlugin     string
 	}{
 		{name: "bare short", args: []string{"-p", "module.wasm"}, wantParallel: "auto"},
 		{name: "joined short", args: []string{"-p8", "module.wasm"}, wantParallel: "8"},
@@ -145,7 +145,7 @@ func TestRunParallelFlagForms(t *testing.T) {
 		{name: "bare long", args: []string{"--parallel", "module.wasm"}, wantParallel: "auto"},
 		{name: "equal long", args: []string{"--parallel=8", "module.wasm"}, wantParallel: "8"},
 		{name: "after separated invoke", args: []string{"-e", "add", "-p8", "module.wasm"}, wantParallel: "8", wantInvoke: "add"},
-		{name: "after separated bounds", args: []string{"--bounds", "all", "-p", "module.wasm"}, wantParallel: "auto", wantBounds: "all"},
+		{name: "after bounds knob", args: []string{"--no-deferred-bounds-checking", "-p", "module.wasm"}, wantParallel: "auto", wantNoDeferred: true},
 		{name: "after separated plugin", args: []string{"--plugin", "wasi", "--parallel=4", "module.wasm"}, wantParallel: "4", wantPlugin: "wasi"},
 		{name: "parallel-looking invoke value", args: []string{"-e", "-p8", "module.wasm"}, wantInvoke: "-p8"},
 	} {
@@ -164,8 +164,8 @@ func TestRunParallelFlagForms(t *testing.T) {
 			if got := ctx.Str("invoke"); got != tc.wantInvoke {
 				t.Fatalf("invoke = %q, want %q (normalized %v)", got, tc.wantInvoke, args)
 			}
-			if got := ctx.Str("bounds"); got != tc.wantBounds {
-				t.Fatalf("bounds = %q, want %q (normalized %v)", got, tc.wantBounds, args)
+			if got := ctx.Bool("no-deferred-bounds-checking"); got != tc.wantNoDeferred {
+				t.Fatalf("no deferred bounds checking = %v, want %v (normalized %v)", got, tc.wantNoDeferred, args)
 			}
 			if got := ctx.Str("plugin"); got != tc.wantPlugin {
 				t.Fatalf("plugin = %q, want %q (normalized %v)", got, tc.wantPlugin, args)
@@ -200,7 +200,7 @@ func TestRunConfigParallelism(t *testing.T) {
 		{"1", 1},
 		{"8", 8},
 	} {
-		cfg, err := Config("", tc.parallel)
+		cfg, err := Config(true, tc.parallel)
 		if err != nil {
 			t.Fatalf("parallel %q: %v", tc.parallel, err)
 		}
@@ -209,13 +209,41 @@ func TestRunConfigParallelism(t *testing.T) {
 		}
 	}
 	for _, value := range []string{"-1", "many"} {
-		if _, err := Config("", value); err == nil {
+		if _, err := Config(true, value); err == nil {
 			t.Fatalf("parallel %q accepted", value)
 		}
 	}
-	cfg, err := Config("all", "8")
+	cfg, err := Config(false, "8")
 	if err != nil || cfg.DeferBoundsChecks() {
 		t.Fatalf("combined config = %v, %v", cfg, err)
+	}
+}
+
+func TestDeferredBoundsCheckingFlags(t *testing.T) {
+	cmd := Command(testEnvironment{})
+	for _, tc := range []struct {
+		args []string
+		want bool
+	}{
+		{nil, true},
+		{[]string{"--deferred-bounds-checking"}, true},
+		{[]string{"--no-deferred-bounds-checking"}, false},
+	} {
+		ctx, err := cmd.Parse("wago run", tc.args)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := DeferredBoundsChecking(ctx)
+		if err != nil || got != tc.want {
+			t.Fatalf("DeferredBoundsChecking(%v) = %v, %v; want %v", tc.args, got, err, tc.want)
+		}
+	}
+	ctx, err := cmd.Parse("wago run", []string{"--deferred-bounds-checking", "--no-deferred-bounds-checking"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := DeferredBoundsChecking(ctx); err == nil {
+		t.Fatal("conflicting deferred bounds checking flags accepted")
 	}
 }
 
@@ -231,7 +259,7 @@ func TestRunExecValueMode(t *testing.T) {
 		t.Fatal(err)
 	}
 	implementation{environment: testEnvironment{}}.Run(command.NewContext([]string{path}, nil, nil))
-	implementation{environment: testEnvironment{}}.Run(command.NewContext([]string{path}, map[string]string{"bounds": "all"}, nil))
+	implementation{environment: testEnvironment{}}.Run(command.NewContext([]string{path}, nil, map[string]bool{"no-deferred-bounds-checking": true}))
 }
 
 func TestRunExecProgramMode(t *testing.T) {
