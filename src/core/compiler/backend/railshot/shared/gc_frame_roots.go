@@ -38,6 +38,7 @@ type GCFrameSafepointPlan struct {
 // artifacts.
 type GCFrameCallsitePlan struct {
 	ReturnOffset uint32
+	StackAdjust  uint32
 	Offsets      []uint32
 }
 

@@ -293,6 +293,30 @@ func instantiateGCArrayGlobal(collector *gc.Collector, descs []gc.TypeDesc, init
 // slice has no GC tables/elements; all persistent object globals are checked
 // collector slots synchronized from their cells immediately before collection.
 // Allocation helpers remain collection-disabled inside an invocation.
+func (in *Instance) syncGenericGCGlobalRootsLocked(public *gcPublicState) error {
+	if in == nil || in.gc == nil || public == nil {
+		return nil
+	}
+	for _, mapping := range public.globalRoots {
+		if int(mapping.GlobalIndex) >= len(in.globalCells) || in.globalCells[mapping.GlobalIndex] == nil {
+			return errGenericGCRootMapping
+		}
+		typ := ValAnyRef
+		if int(mapping.GlobalIndex) < len(in.c.Globals) {
+			typ = in.c.Globals[mapping.GlobalIndex].Type
+		}
+		bits := readGlobalObject(in.globalCells[mapping.GlobalIndex], typ)
+		ref := gc.Ref(uint32(bits))
+		if bits != uint64(ref) {
+			return errGenericGCNonCompact
+		}
+		if err := in.gc.SetGlobalSlot(mapping.SlotIndex, ref); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (in *Instance) collectGenericGCAtBoundary() error {
 	if in == nil || in.gc == nil || in.c == nil || !in.c.genericGCBoundaryCollectionSafe() {
 		return nil
@@ -303,18 +327,12 @@ func (in *Instance) collectGenericGCAtBoundary() error {
 	}
 	public.mu.Lock()
 	defer public.mu.Unlock()
-	for _, mapping := range public.globalRoots {
-		if int(mapping.GlobalIndex) >= len(in.globalCells) || in.globalCells[mapping.GlobalIndex] == nil {
-			return errGenericGCRootMapping
-		}
-		bits := readGlobalObject(in.globalCells[mapping.GlobalIndex], ValAnyRef)
-		ref := gc.Ref(uint32(bits))
-		if bits != uint64(ref) {
-			return errGenericGCNonCompact
-		}
-		if err := in.gc.SetGlobalSlot(mapping.SlotIndex, ref); err != nil {
-			return err
-		}
+	if err := in.syncGenericGCGlobalRootsLocked(public); err != nil {
+		return err
+	}
+	if public.hostActivationCount != 0 {
+		public.frameRoots = gcNativeFrameRoots{suspended: public}
+		return in.gc.CollectFull(&public.frameRoots)
 	}
 	return in.gc.CollectFull(nil)
 }

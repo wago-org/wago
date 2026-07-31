@@ -13,7 +13,7 @@ on amd64 and arm64. Linux and Darwin/arm64 additionally support signal-backed
 guard-page bounds checks; all six targets support explicit bounds checks and
 cooperative cancellation safepoints.
 
-<!-- artifact:codec-version 29 -->
+<!-- artifact:codec-version 30 -->
 
 **CPU baseline: modern x86-64 with SSSE3/SSE4.1 plus AVX/VEX.128 XMM encodings.** The backend emits
 some instructions beyond original x86-64 without a CPUID gate or fallback:
@@ -49,21 +49,21 @@ backend codegen.
 
 WasmGC native helpers use stable compact references and bounded collector heaps.
 General generated modules still fail closed to a collection-disabled Throughput
-heap because arbitrary native call graphs are not yet published. A bounded
-linux/amd64 slice admits in-invocation collection for import/global/start/table/
-element/tag/EH-free local call graphs, including direct recursion. A
+heap when exact native roots are not published. A bounded linux/amd64 slice
+admits in-invocation collection for local call graphs with numeric host imports,
+module-local GC globals, direct recursion, and no start/table/element/tag/EH state. A
 structured-CFG dataflow pass computes exact local liveness per allocation and
 callsite; amd64 adds hidden operand spill offsets, compact safepoint IDs, frame
 size, adapter return, and recursive call return-PC maps. The synchronous helper
 control frame publishes parked RSP, and Go exposes validated off-heap slots from
 each walked frame directly as mutable collector roots. Throughput/Tiny stress
-collection and the root walker remain zero-allocation after warm-up. Codec v29
-persists and strictly revalidates the map; direct self-tail calls discard their
-caller frame, while unsupported imported, host/re-entrant, indirect-call, and EH
-products remain collection-disabled. A separate
-safe-boundary path registers persistent module-local GC globals and performs a
-non-moving full sweep before the next invocation when the module has no table or
-element storage. Codec v29 persists generic helper admission and the 16-byte
+collection and the root walker remain zero-allocation after warm-up. Codec v30
+persists and strictly revalidates the map, including dynamic-import stack
+adjustments. Direct tail calls discard their caller frame. Numeric host callbacks
+use a bounded suspended-activation stack plus separate nested foreign stacks, and
+mutable module-local GC globals synchronize checked collector slots before every
+allocating helper. Indirect-call, EH, table-root, and non-null cross-instance GC
+products remain collection-disabled. Codec v30 persists generic helper admission and the 16-byte
 `v128` storage contract, but never live collector state. Initialization
 snapshots may replay immutable local GC initializer graphs; warm/live GC
 snapshots remain rejected.

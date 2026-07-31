@@ -14,13 +14,23 @@ import (
 // per function. Each function gets independent compile state so railshot workers
 // may populate maps in parallel.
 func newGCFrameRootPlan(m *wasm.Module, genericGC bool) *shared.GCModuleFrameRootPlan {
-	if !genericGC || m == nil || len(m.Code) == 0 || len(m.Imports) != 0 || len(m.Globals) != 0 || m.Start != nil || m.TableCount() != 0 || len(m.Elements) != 0 || m.TagCount() != 0 {
+	if !genericGC || m == nil || len(m.Code) == 0 || m.Start != nil || m.TableCount() != 0 || len(m.Elements) != 0 || m.TagCount() != 0 {
 		return nil
 	}
+	for i := range m.Imports {
+		if m.Imports[i].Type.Kind != wasm.ExternFunc {
+			return nil
+		}
+		ft, ok := m.FuncSignature(uint32(i))
+		if !ok || !gcFrameCallABI(ft) {
+			return nil
+		}
+	}
+	importedFunctions := m.ImportedFuncCount()
 	modulePlan := &shared.GCModuleFrameRootPlan{Functions: make([]*shared.GCFrameRootPlan, len(m.Code))}
 	var safepointBase uint32
 	for function := range m.Code {
-		if bodyHasUnsupportedNativeFrames(m.Code[function].BodyBytes, len(m.Code)) {
+		if bodyHasUnsupportedNativeFrames(m.Code[function].BodyBytes, importedFunctions, len(m.Code)) {
 			return nil
 		}
 		ft, ok := m.LocalFuncType(function)
@@ -86,7 +96,7 @@ func newGCFrameRootPlan(m *wasm.Module, genericGC bool) *shared.GCModuleFrameRoo
 	return modulePlan
 }
 
-func bodyHasUnsupportedNativeFrames(body []byte, localFunctions int) bool {
+func bodyHasUnsupportedNativeFrames(body []byte, importedFunctions, localFunctions int) bool {
 	r := wasm.NewReader(body)
 	for r.HasNext() {
 		op, err := r.Byte()
@@ -103,7 +113,7 @@ func bodyHasUnsupportedNativeFrames(body []byte, localFunctions int) bool {
 		if err != nil {
 			return true
 		}
-		if (op == 0x10 || op == 0x12) && int(imm.Index) >= localFunctions {
+		if (op == 0x10 || op == 0x12) && int(imm.Index) >= importedFunctions+localFunctions {
 			return true
 		}
 	}

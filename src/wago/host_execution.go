@@ -65,6 +65,7 @@ func (root *Instance) dispatchSynchronousHostCall(ctrl uintptr, importIdx uint32
 	// lease. The deferred reacquire covers normal return, HostExit, validation
 	// panics, and arbitrary host panics. Rebind the exact parked callee because a
 	// nested wasm entry may have replaced its shared basedata context.
+	activation := active.pushGCHostActivation(ctrl, importIdx)
 	epoch := nativeExecutionEpoch
 	nativeExecutionMu.Unlock()
 	defer func() {
@@ -78,5 +79,6 @@ func (root *Instance) dispatchSynchronousHostCall(ctrl uintptr, importIdx uint32
 			}
 		}
 	}()
+	defer active.popGCHostActivation(activation)
 	active.hostCall(ctrl, importIdx, args, results)
 }

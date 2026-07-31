@@ -17,10 +17,10 @@ type compiledCodeCache struct {
 	collectorFreeStructuralMetadata bool                         // exact staged products use struct descriptors only for function identity
 	collectorFreeGCArrayMetadata    bool                         // exact staged array declaration/binding products allocate no collector
 	gcTypeSubtypingProduct          stagedGCTypeSubtypingProduct // exact first gc/type-subtyping no-object product; never serialized
-	gcStructProduct                 stagedGCStructProduct        // exact products stay compile-only; codec v29 may restore generic helper admission
-	gcArrayProduct                  stagedGCArrayProduct         // exact products stay compile-only; codec v29 may restore generic helper admission
+	gcStructProduct                 stagedGCStructProduct        // exact products stay compile-only; codec v30 may restore generic helper admission
+	gcArrayProduct                  stagedGCArrayProduct         // exact products stay compile-only; codec v30 may restore generic helper admission
 	gcI31Product                    stagedGCI31Product           // exact non-allocating i31 boundary; never serialized
-	stagedFeatures                  CoreFeatures                 // exact admission is compile-only; codec v29 restores generic GC requirements
+	stagedFeatures                  CoreFeatures                 // exact admission is compile-only; codec v30 restores generic GC requirements
 }
 
 func installCompiledFinalizer(c *Compiled) *Compiled {
@@ -91,8 +91,8 @@ func (c *Compiled) usesGenericGCExecution() bool {
 	return c.stagedGCStructProduct() == stagedGCStructGeneric || arrayProduct == stagedGCArrayProductNewData || arrayProduct == stagedGCArrayProductNewElem || arrayProduct == stagedGCArrayProductGeneric
 }
 
-// compiledGCFrameRoots is the immutable codec-v29 admission sidecar for bounded
-// per-site roots and direct self-recursive frame walking. Generic modules without
+// compiledGCFrameRoots is the immutable codec-v30 admission sidecar for bounded
+// per-site roots, local call graphs, and suspended host activations. Generic modules without
 // it remain collection-disabled during native execution.
 type compiledGCFrameSafepoint struct {
 	id         uint32
@@ -103,6 +103,7 @@ type compiledGCFrameSafepoint struct {
 type compiledGCFrameCallsite struct {
 	returnOffset uint32
 	frameBytes   uint32
+	stackAdjust  uint32
 	offsets      []uint32
 }
 

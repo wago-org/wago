@@ -901,6 +901,11 @@ func funcTypeSlots(ts []wasm.ValType) int {
 func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	f.stats.call(callKindHostSync)
 	p, rN := len(ft.Params), len(ft.Results)
+	var rootOffsets []uint32
+	recordRoots := false
+	if uint32(importIdx)&gcStructDispatchBit == 0 {
+		rootOffsets, recordRoots = f.prepareGCFrameCallsite(p)
+	}
 	paramSlots := funcTypeSlots(ft.Params)
 	resultSlots := funcTypeSlots(ft.Results)
 	if paramSlots > maxSyncHostSlots || resultSlots > maxSyncHostSlots {
@@ -978,6 +983,9 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	// Park at the host call. Like the wrapper path, no post-call trap check: a
 	// trap unwinds the whole native tree in one jump (it never returns here).
 	f.a.CallMem(R8, hcTrampoline)
+	if recordRoots {
+		f.gcFrameRoots.Callsites = append(f.gcFrameRoots.Callsites, shared.GCFrameCallsitePlan{ReturnOffset: uint32(len(f.a.B)), Offsets: rootOffsets})
+	}
 	f.reloadLocalsForCall() // old model: restore caller-saved R9..R11 local pins
 
 	f.deriveModuleGlobals() // the host may have written global cells
@@ -1173,6 +1181,7 @@ func (f *fn) copyInstanceContext(dst, src Reg) {
 // callee entry, home memory, and target/caller contexts from the import dispatch
 // cell; the immediate form remains only for focused backend callers.
 func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
+	rootOffsets, recordRoots := f.prepareGCFrameCallsite(len(ft.Params))
 	kind := callKindCrossInstance
 	if b.Dynamic {
 		kind = callKindImportDispatch
@@ -1261,11 +1270,16 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 	f.a.Load64(RAX, RBX, -offTrapCellPtr)
 	f.a.Store64(RSI, -offTrapCellPtr, RAX)
 
+	stackAdjust := uint32(6 * 8)
 	if b.Dynamic {
 		f.a.CallReg(R11)
+		stackAdjust += 2 * 8
 	} else {
 		f.a.MovImm64(RAX, b.CalleeEntry)
 		f.a.CallReg(RAX)
+	}
+	if recordRoots {
+		f.gcFrameRoots.Callsites = append(f.gcFrameRoots.Callsites, shared.GCFrameCallsitePlan{ReturnOffset: uint32(len(f.a.B)), StackAdjust: stackAdjust, Offsets: rootOffsets})
 	}
 
 	if b.Dynamic {
@@ -1453,7 +1467,8 @@ func (f *fn) prepareGCFrameCallsite(paramCount int) ([]uint32, bool) {
 	if plan == nil || !plan.Candidate {
 		return nil, false
 	}
-	siteIndex := len(plan.Callsites)
+	siteIndex := f.gcCallsiteIndex
+	f.gcCallsiteIndex++
 	if siteIndex >= len(plan.LiveCallLocalMasks) {
 		plan.Exact = false
 		return nil, false

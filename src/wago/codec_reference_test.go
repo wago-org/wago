@@ -13,8 +13,8 @@ func TestCompiledCodecV29VersionContract(t *testing.T) {
 	if err != nil {
 		t.Fatalf("MarshalBinary: %v", err)
 	}
-	if got := blob[4]; got != 29 {
-		t.Fatalf("compiled codec version = %d, want 29", got)
+	if got := blob[4]; got != 30 {
+		t.Fatalf("compiled codec version = %d, want 30", got)
 	}
 
 	for _, version := range []byte{26, 25, 24, 23, 22} {

@@ -26,7 +26,7 @@ type gcLiveNode struct {
 	targets    []int
 	use, def   uint64
 	allocation bool
-	directCall bool
+	nativeCall bool
 	succ       []int
 }
 
@@ -94,7 +94,7 @@ func gcFrameLocalLiveness(body []byte, indexes []uint32, calls bool) ([]uint64, 
 				node.def = uint64(1) << bit
 			}
 		}
-		node.directCall = imm.Kind == wasm.InstrCall
+		node.nativeCall = imm.Kind == wasm.InstrCall || imm.Kind == wasm.InstrCallIndirect
 		if op == 0xfb {
 			switch imm.Subopcode {
 			case 0, 1, 6, 7, 8, 9, 10: // struct.new*, array.new*
@@ -242,7 +242,7 @@ func gcFrameLocalLiveness(body []byte, indexes []uint32, calls bool) ([]uint64, 
 	}
 	masks := make([]uint64, 0)
 	for i := range nodes {
-		if reachable[i] && ((!calls && nodes[i].allocation) || (calls && nodes[i].directCall)) {
+		if reachable[i] && ((!calls && nodes[i].allocation) || (calls && nodes[i].nativeCall)) {
 			masks = append(masks, liveIn[i])
 		}
 	}

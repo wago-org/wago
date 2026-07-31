@@ -664,6 +664,25 @@ func (in *Instance) callNativeSync(entry uintptr) error {
 // callNativeSyncWithTrap is the host-capable form used when a Go-level
 // re-export delegates execution while retaining the outer caller's trap cell.
 func (in *Instance) callNativeSyncWithTrap(entry uintptr, activeTrap []byte) (err error) {
+	var outerEngine *runtime.Engine
+	if state := in.existingPublicGCState(); state != nil {
+		state.mu.Lock()
+		reentrant := state.hostActivationCount != 0
+		state.mu.Unlock()
+		if reentrant {
+			reentryEngine, acquireErr := runtime.AcquireEngine()
+			if acquireErr != nil {
+				return fmt.Errorf("wago: acquire nested Wasm engine: %w", acquireErr)
+			}
+			outerEngine, in.eng = in.eng, reentryEngine
+			defer func() {
+				in.eng = outerEngine
+				if releaseErr := runtime.ReleaseEngine(reentryEngine); err == nil && releaseErr != nil {
+					err = releaseErr
+				}
+			}()
+		}
+	}
 	locked, err := in.beginNativeEntry()
 	if err != nil {
 		return err

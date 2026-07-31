@@ -319,6 +319,7 @@ type fn struct {
 	gcStructHelpers        bool // exact staged numeric struct ops use the same parked Go re-entry frame
 	gcArrayHelpers         bool // exact staged numeric array ops use the same parked Go re-entry frame
 	gcFrameRoots           *shared.GCFrameRootPlan
+	gcCallsiteIndex        int
 
 	// stats collects per-function codegen counters (docs/no-ir-plan.md P1). nil
 	// unless the caller requested collection, in which case every counter method

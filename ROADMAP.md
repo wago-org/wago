@@ -630,13 +630,30 @@ Direct numeric local calls record native return PCs, caller frame sizes, and the
 roots live at each callsite. The runtime walks cross-function and recursive
 frames from parked RSP until a validated adapter return, preserving caller
 objects while the deepest frame performs 1,000 allocations under Throughput and
-Tiny stress. Direct tail calls discard each caller frame and retain no callsite roots. Codec v29
+Tiny stress. Direct tail calls discard each caller frame and retain no callsite roots. Codec v30
 persists and strictly validates frame sizes, safepoint ordering, root alignment,
 callsite returns, and adapter termination. Forged metadata fails closed. Five
 500 ms samples measured 432.5-443.5 ns/op, 0 B/op, and 0 allocs/op. The expanded
-direct walker raises lazy `gcPublicState` from 1,560 to 1,664 bytes while the
+direct walker raises lazy `gcPublicState` from 1,560 to 2,408 bytes while the
 64-byte `compiledCodeCache` layout remains unchanged.
 
-Next work is stacked imported/host re-entry, indirect-call frame identity, EH
-root unioning, mutable global/table roots, and broader ownership. Those
-products remain collection-disabled until their complete root protocols exist.
+## Iteration 79 suspended host activations and mutable globals
+
+Numeric host imports now record dynamic-wrapper stack adjustments and preserve
+up to eight suspended activations. Each nested callback borrows a separate
+foreign execution stack, while the outer control header and exact native roots
+remain parked. Boundary and allocating-helper collections scan every suspended
+activation. Codec v30 persists and validates the new callsite shape. Throughput
+forced-major and Tiny collect-every-allocation stress preserve an outer struct
+across 1,000 allocations in a re-entered function, including codec reload.
+
+Generic module-local GC globals now synchronize their checked collector slots
+before every allocating helper as well as invocation-boundary collection, so a
+mutable global may retain an object throughout a long-running invocation.
+`gcPublicState` is 2,408 bytes on amd64; the state remains lazy and warmed helper
+publication remains allocation-free.
+
+Next work is indirect-call frame identity, EH root unioning, GC table roots,
+non-null cross-instance collector ownership, guard-page execution, arm64
+lowering, and live heap snapshots. Those products remain collection-disabled
+until their complete root protocols exist.

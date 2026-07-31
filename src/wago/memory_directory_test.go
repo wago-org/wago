@@ -26,8 +26,8 @@ func TestCompiledIndexedMemoryDirectoryCodecAndMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatalf("MarshalBinary: %v", err)
 	}
-	if blob[4] != 29 {
-		t.Fatalf("codec version = %d, want 29", blob[4])
+	if blob[4] != 30 {
+		t.Fatalf("codec version = %d, want 30", blob[4])
 	}
 	var got Compiled
 	if err := unmarshalCompiled(&got, blob[5:]); err != nil {

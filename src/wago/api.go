@@ -1723,7 +1723,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 				rootMap.safepoints = append(rootMap.safepoints, compiledGCFrameSafepoint{id: plan.Safepoints[i].ID, frameBytes: plan.FrameBytes, offsets: append([]uint32(nil), plan.Safepoints[i].Offsets...)})
 			}
 			for i := range plan.Callsites {
-				rootMap.callsites = append(rootMap.callsites, compiledGCFrameCallsite{returnOffset: functionBase + plan.Callsites[i].ReturnOffset, frameBytes: plan.FrameBytes, offsets: append([]uint32(nil), plan.Callsites[i].Offsets...)})
+				rootMap.callsites = append(rootMap.callsites, compiledGCFrameCallsite{returnOffset: functionBase + plan.Callsites[i].ReturnOffset, frameBytes: plan.FrameBytes, stackAdjust: plan.Callsites[i].StackAdjust, offsets: append([]uint32(nil), plan.Callsites[i].Offsets...)})
 			}
 		}
 		compiled.validateMemo.gcFrameRoots = rootMap
@@ -3406,7 +3406,7 @@ const wagoMagic = "WAGO"
 // so collection-enabled code cannot lose or misinterpret its parked-frame map.
 // The codec never serializes live owners, collector handles, mappings, tokens,
 // active handlers, thunk addresses, or store identity.
-const wagoVersion = 29
+const wagoVersion = 30
 
 // MarshalBinary serializes the precompiled module to a ".wago" blob.
 //

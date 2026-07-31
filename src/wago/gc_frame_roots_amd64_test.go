@@ -4,6 +4,7 @@ package wago
 
 import (
 	"encoding/binary"
+	"fmt"
 	"reflect"
 	goruntime "runtime"
 	"testing"
@@ -57,6 +58,128 @@ func gcHiddenOperandRootModule() []byte {
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
 	)
+}
+
+func gcMutableGlobalFrameRootModule() []byte {
+	structType := []byte{0x5f, 0x01, 0x7f, 0x01}
+	funcType := wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32})
+	global := []byte{0x63, 0x00, 0x01, 0xd0, 0x00, 0x0b} // (mut (ref null 0)) = ref.null 0
+	body := []byte{0x01, 0x01, 0x7f,
+		0x20, 0x00, 0xfb, 0x00, 0x00, 0x24, 0x00,
+		0x02, 0x40, 0x03, 0x40,
+		0x20, 0x01, 0x41, 0xe8, 0x07, 0x4f, 0x0d, 0x01,
+		0xfb, 0x01, 0x00, 0x1a,
+		0x20, 0x01, 0x41, 0x01, 0x6a, 0x21, 0x01, 0x0c, 0x00,
+		0x0b, 0x0b,
+		0x23, 0x00, 0xfb, 0x02, 0x00, 0x00, 0x0b}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(structType, funcType)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(6, wasmtest.Vec(global)),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func TestGCMutableGlobalRootsInsideInvocation(t *testing.T) {
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcMutableGlobalFrameRootModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	if compiled.genericGCFrameRoots() == nil {
+		t.Fatal("mutable-global module lost native collection admission")
+	}
+	for _, cfg := range []GCConfig{
+		{Profile: GCProfileThroughput, StressNurseryBytes: 64, CollectEveryAlloc: true, ForceMajorEveryMinor: true, VerifyAfterCollect: true, ThroughputHeapBytes: 4096, ThroughputPageBytes: 4096},
+		{Profile: GCProfileTiny, TinyHeapBytes: 64, TinyBlockBytes: 32, TinyCollectEveryAlloc: true, TinyStepEveryAlloc: true, VerifyAfterCollect: true},
+	} {
+		in, err := Instantiate(compiled, InstantiateOptions{GC: cfg})
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, callErr := in.Invoke("run", 123)
+		if callErr != nil || !reflect.DeepEqual(got, []uint64{123}) {
+			in.Close()
+			t.Fatalf("run = %v, %v; want [123]", got, callErr)
+		}
+		in.Close()
+	}
+}
+
+func gcHostReentryFrameRootModule() []byte {
+	structType := []byte{0x5f, 0x01, 0x7f, 0x01}
+	hostType := wasmtest.FuncType(nil, []wasm.ValType{wasm.I32})
+	outerType := wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32})
+	outerLocals := []byte{0x01, 0x01, 0x63, 0x00}
+	outer := append([]byte(nil), outerLocals...)
+	outer = append(outer,
+		0x20, 0x00, 0xfb, 0x00, 0x00, 0x21, 0x01,
+		0x10, 0x00, 0x1a,
+		0x20, 0x01, 0xfb, 0x02, 0x00, 0x00, 0x0b,
+	)
+	innerLocals := []byte{0x01, 0x01, 0x7f}
+	inner := append([]byte(nil), innerLocals...)
+	inner = append(inner,
+		0x02, 0x40, 0x03, 0x40,
+		0x20, 0x00, 0x41, 0xe8, 0x07, 0x4f, 0x0d, 0x01,
+		0xfb, 0x01, 0x00, 0x1a,
+		0x20, 0x00, 0x41, 0x01, 0x6a, 0x21, 0x00, 0x0c, 0x00,
+		0x0b, 0x0b, 0x41, 0x00, 0x0b,
+	)
+	imp := append(append(wasmtest.Name("env"), wasmtest.Name("reenter")...), 0x00)
+	imp = append(imp, wasmtest.ULEB(1)...)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(structType, hostType, outerType)),
+		wasmtest.Section(2, wasmtest.Vec(imp)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2), wasmtest.ULEB(1))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("outer", 0, 1), wasmtest.ExportEntry("inner", 0, 2))),
+		wasmtest.Section(10, wasmtest.Vec(
+			append(wasmtest.ULEB(uint32(len(outer))), outer...),
+			append(wasmtest.ULEB(uint32(len(inner))), inner...),
+		)),
+	)
+}
+
+func TestGCHostReentryNativeFrameRoots(t *testing.T) {
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcHostReentryFrameRootModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	plan := compiled.genericGCFrameRoots()
+	if plan == nil || len(plan.callsites) != 1 || len(plan.callsites[0].offsets) != 1 {
+		t.Fatalf("host re-entry native root map = %+v", plan)
+	}
+	profiles := []GCConfig{
+		{Profile: GCProfileThroughput, StressNurseryBytes: 64, CollectEveryAlloc: true, ForceMajorEveryMinor: true, VerifyAfterCollect: true, ThroughputHeapBytes: 4096, ThroughputPageBytes: 4096},
+		{Profile: GCProfileTiny, TinyHeapBytes: 64, TinyBlockBytes: 32, TinyCollectEveryAlloc: true, TinyStepEveryAlloc: true, VerifyAfterCollect: true},
+	}
+	reloaded := roundTripCompiled(t, compiled)
+	defer reloaded.Close()
+	for _, candidate := range []*Compiled{compiled, reloaded} {
+		for _, cfg := range profiles {
+			var in *Instance
+			calls := 0
+			in, err = Instantiate(candidate, InstantiateOptions{GC: cfg, Imports: Imports{"env.reenter": HostFunc(func(_ HostModule, _, results []uint64) {
+				calls++
+				got, callErr := in.Invoke("inner")
+				if callErr != nil || !reflect.DeepEqual(got, []uint64{0}) {
+					panic(fmt.Sprintf("inner = %v, %v", got, callErr))
+				}
+				results[0] = 0
+			})}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, callErr := in.Invoke("outer", 91)
+			if callErr != nil || !reflect.DeepEqual(got, []uint64{91}) || calls != 1 {
+				in.Close()
+				t.Fatalf("outer = %v, %v, calls %d; want [91], nil, 1", got, callErr, calls)
+			}
+			in.Close()
+		}
+	}
 }
 
 func gcMultiFunctionFrameRootModule() []byte {

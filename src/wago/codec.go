@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	// Codec-v29 internal execution bits share the persisted u64 requirement word
+	// Codec-v30 internal execution bits share the persisted u64 requirement word
 	// but are stripped before exposing CoreFeatures. Public feature bits occupy
 	// the low range; reserving the top two bits avoids growing every artifact.
 	compiledGCExecutionGenericStruct uint64 = 1 << 62
@@ -506,6 +506,7 @@ func (w *compiledWriter) gcFrameRoots(rootMap *compiledGCFrameRoots) {
 	for i := range rootMap.callsites {
 		w.u32(rootMap.callsites[i].returnOffset)
 		w.u32(rootMap.callsites[i].frameBytes)
+		w.u32(rootMap.callsites[i].stackAdjust)
 		w.uvar(uint64(len(rootMap.callsites[i].offsets)))
 		for _, off := range rootMap.callsites[i].offsets {
 			w.u32(off)
@@ -1732,7 +1733,7 @@ func (r *compiledReader) gcFrameRoots() (*compiledGCFrameRoots, error) {
 			}
 		}
 	}
-	callCount, err := r.countElements("GC frame callsites", 9)
+	callCount, err := r.countElements("GC frame callsites", 13)
 	if err != nil {
 		return nil, err
 	}
@@ -1743,6 +1744,10 @@ func (r *compiledReader) gcFrameRoots() (*compiledGCFrameRoots, error) {
 			return nil, err
 		}
 		rootMap.callsites[i].frameBytes, err = r.u32()
+		if err != nil {
+			return nil, err
+		}
+		rootMap.callsites[i].stackAdjust, err = r.u32()
 		if err != nil {
 			return nil, err
 		}

@@ -31,7 +31,7 @@ func validGCModuleFrameRootPlan(module *shared.GCModuleFrameRootPlan) bool {
 		var previousReturn uint32
 		for i := range plan.Callsites {
 			callsite := &plan.Callsites[i]
-			if callsite.ReturnOffset == 0 || (i != 0 && callsite.ReturnOffset <= previousReturn) || len(callsite.Offsets) > gcNativeFrameRootLimit || !validGCFrameOffsets(callsite.Offsets, plan.FrameBytes) {
+			if callsite.ReturnOffset == 0 || (i != 0 && callsite.ReturnOffset <= previousReturn) || callsite.StackAdjust%8 != 0 || callsite.StackAdjust > 1<<20 || len(callsite.Offsets) > gcNativeFrameRootLimit || !validGCFrameOffsets(callsite.Offsets, plan.FrameBytes) {
 				return false
 			}
 			previousReturn = callsite.ReturnOffset
@@ -55,8 +55,16 @@ func validateCompiledGCFrameRoots(c *Compiled, rootMap *compiledGCFrameRoots) er
 	if c == nil || !c.usesGenericGCExecution() {
 		return fmt.Errorf("GC frame-root metadata requires generic GC execution")
 	}
-	if c.NumImports != 0 || len(c.Imports) != 0 || len(c.GlobalImports) != 0 || len(c.Globals) != 0 || c.HasStart || c.HasTable || len(c.Elems) != 0 || len(c.passiveElems) != 0 || (c.memoryDir != nil && len(c.memoryDir.ehTags) != 0) || len(c.Funcs) == 0 {
-		return fmt.Errorf("GC frame-root metadata requires an import/global/start/table/element/tag-free local call graph")
+	if len(c.GlobalImports) != 0 || c.HasStart || c.HasTable || len(c.Elems) != 0 || len(c.passiveElems) != 0 || (c.memoryDir != nil && len(c.memoryDir.ehTags) != 0) || len(c.Funcs) == 0 {
+		return fmt.Errorf("GC frame-root metadata requires a global-import/start/table/element/tag-free local call graph")
+	}
+	if c.NumImports != len(c.Imports) || len(c.importFuncSigs) != len(c.Imports) {
+		return fmt.Errorf("GC frame-root metadata requires function-only imports")
+	}
+	for i := range c.importFuncSigs {
+		if !gcFramePublicCallABI(c.importFuncSigs[i]) {
+			return fmt.Errorf("GC frame-root metadata rejects import %d signature", i)
+		}
 	}
 	for function := range c.Funcs {
 		for _, t := range c.Funcs[function].Params {
@@ -83,7 +91,7 @@ func validateCompiledGCFrameRoots(c *Compiled, rootMap *compiledGCFrameRoots) er
 	var previousReturn uint32
 	for i := range rootMap.callsites {
 		callsite := &rootMap.callsites[i]
-		if callsite.frameBytes < shared.AMD64FrameHeaderBytes || callsite.frameBytes > 1<<31-1 || callsite.returnOffset == 0 || uint64(callsite.returnOffset) >= uint64(len(c.Code)) || (i != 0 && callsite.returnOffset <= previousReturn) || len(callsite.offsets) > gcNativeFrameRootLimit || !validGCFrameOffsets(callsite.offsets, callsite.frameBytes) {
+		if callsite.frameBytes < shared.AMD64FrameHeaderBytes || callsite.frameBytes > 1<<31-1 || callsite.returnOffset == 0 || uint64(callsite.returnOffset) >= uint64(len(c.Code)) || (i != 0 && callsite.returnOffset <= previousReturn) || callsite.stackAdjust%8 != 0 || callsite.stackAdjust > 1<<20 || len(callsite.offsets) > gcNativeFrameRootLimit || !validGCFrameOffsets(callsite.offsets, callsite.frameBytes) {
 			return fmt.Errorf("GC frame-root callsite %d is malformed", callsite.returnOffset)
 		}
 		previousReturn = callsite.returnOffset
@@ -100,6 +108,32 @@ func validateCompiledGCFrameRoots(c *Compiled, rootMap *compiledGCFrameRoots) er
 		previousID = safepoint.id
 	}
 	return nil
+}
+
+func gcFramePublicCallABI(sig FuncSig) bool {
+	if len(sig.Results) > 2 {
+		return false
+	}
+	gp, fp := 0, 0
+	for _, t := range sig.Params {
+		switch t {
+		case ValI32, ValI64:
+			gp++
+		case ValF32, ValF64:
+			fp++
+		default:
+			return false
+		}
+	}
+	if gp > 7 || fp > 8 {
+		return false
+	}
+	for _, t := range sig.Results {
+		if t != ValI32 && t != ValI64 && t != ValF32 && t != ValF64 {
+			return false
+		}
+	}
+	return len(sig.Results) != 2 || ((sig.Results[0] == ValI32 || sig.Results[0] == ValI64) && (sig.Results[1] == ValI32 || sig.Results[1] == ValI64))
 }
 
 func validGCFrameOffsets(offsets []uint32, frameBytes uint32) bool {

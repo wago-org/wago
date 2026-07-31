@@ -76,9 +76,48 @@ type gcNativeFrameRoots struct {
 	codeBytes            uintptr
 	adapterReturnOffsets []uint32
 	callsites            []compiledGCFrameCallsite
+	suspended            *gcPublicState
 }
 
+type gcHostActivation struct {
+	base         uintptr
+	ctrl         uintptr
+	callsite     uint32
+	savedControl [8]uint64
+}
+
+const gcHostActivationLimit = 8
+
 func (r *gcNativeFrameRoots) RangeRoots(fn func(gc.RootSlot) bool) {
+	if !r.rangeChain(fn) {
+		return
+	}
+	state := r.suspended
+	if state == nil || state.hostRootPlan == nil {
+		return
+	}
+	for i := int(state.hostActivationCount) - 1; i >= 0; i-- {
+		activation := &state.hostActivations[i]
+		if int(activation.callsite) >= len(state.hostRootPlan.callsites) {
+			panic(gcStructHelperError{err: fmt.Errorf("generic GC host activation callsite %d is unavailable", activation.callsite)})
+		}
+		callsite := &state.hostRootPlan.callsites[activation.callsite]
+		chain := gcNativeFrameRoots{
+			base:                 activation.base,
+			offsets:              callsite.offsets,
+			frameBytes:           callsite.frameBytes,
+			codeBase:             state.hostCodeBase,
+			codeBytes:            state.hostCodeBytes,
+			adapterReturnOffsets: state.hostRootPlan.adapterReturnOffsets,
+			callsites:            state.hostRootPlan.callsites,
+		}
+		if !chain.rangeChain(fn) {
+			return
+		}
+	}
+}
+
+func (r *gcNativeFrameRoots) rangeChain(fn func(gc.RootSlot) bool) bool {
 	base, offsets, frameBytes := r.base, r.offsets, r.frameBytes
 	for depth := 0; ; depth++ {
 		if depth > 4096 {
@@ -90,11 +129,11 @@ func (r *gcNativeFrameRoots) RangeRoots(fn func(gc.RootSlot) bool) {
 			// updates the parked frame rather than a copied scratch value.
 			slot := (*gc.Root)(offHeapPtr(base + uintptr(off)))
 			if !fn(slot) {
-				return
+				return false
 			}
 		}
 		if len(r.callsites) == 0 {
-			return
+			return true
 		}
 		if base > ^uintptr(0)-uintptr(frameBytes) {
 			panic(gcStructHelperError{err: fmt.Errorf("generic GC native frame address overflows")})
@@ -102,23 +141,25 @@ func (r *gcNativeFrameRoots) RangeRoots(fn func(gc.RootSlot) bool) {
 		retWord := unsafe.Slice((*byte)(offHeapPtr(base+uintptr(frameBytes))), 8)
 		retPC := uintptr(binary.LittleEndian.Uint64(retWord))
 		if retPC < r.codeBase || retPC-r.codeBase >= r.codeBytes {
-			return
+			return true
 		}
 		rel := uint32(retPC - r.codeBase)
 		for _, adapterReturn := range r.adapterReturnOffsets {
 			if rel == adapterReturn {
-				return
+				return true
 			}
 		}
 		if base > ^uintptr(0)-uintptr(frameBytes)-8 {
 			panic(gcStructHelperError{err: fmt.Errorf("generic GC caller frame address overflows")})
 		}
-		callerBase := base + uintptr(frameBytes) + 8
+		returnBase := base + uintptr(frameBytes) + 8
 		found := false
+		var stackAdjust uint32
 		for i := range r.callsites {
 			if r.callsites[i].returnOffset == rel {
 				offsets = r.callsites[i].offsets
 				frameBytes = r.callsites[i].frameBytes
+				stackAdjust = r.callsites[i].stackAdjust
 				found = true
 				break
 			}
@@ -126,7 +167,10 @@ func (r *gcNativeFrameRoots) RangeRoots(fn func(gc.RootSlot) bool) {
 		if !found {
 			panic(gcStructHelperError{err: fmt.Errorf("generic GC native return offset %d has no callsite map", rel)})
 		}
-		base = callerBase
+		if returnBase > ^uintptr(0)-uintptr(stackAdjust) {
+			panic(gcStructHelperError{err: fmt.Errorf("generic GC caller stack adjustment overflows")})
+		}
+		base = returnBase + uintptr(stackAdjust)
 	}
 }
 
@@ -141,9 +185,14 @@ type gcPublicState struct {
 	// values is the bounded synchronous-helper constructor scratch. Collector
 	// access is serialized by mu, so struct.new and array.new_fixed reuse it
 	// without per-allocation Go heap traffic.
-	values      [63]gc.Value
-	frameRoots  gcNativeFrameRoots    // exact parked native-frame roots; reused under mu
-	globalRoots []gcGlobalRootMapping // generic-GC safe-boundary roots; allocated only when needed
+	values              [63]gc.Value
+	frameRoots          gcNativeFrameRoots    // exact parked native-frame roots; reused under mu
+	globalRoots         []gcGlobalRootMapping // generic-GC safe-boundary roots; allocated only when needed
+	hostActivations     [gcHostActivationLimit]gcHostActivation
+	hostActivationCount uint8
+	hostRootPlan        *compiledGCFrameRoots
+	hostCodeBase        uintptr
+	hostCodeBytes       uintptr
 }
 
 type externrefSlot struct {
