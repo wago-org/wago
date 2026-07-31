@@ -11,8 +11,37 @@ import (
 	"testing"
 
 	projectconfig "github.com/wago-org/wago/cli/internal/project"
+	managerprogress "github.com/wago-org/wago/cli/manager/internal/progress"
 	"github.com/wago-org/wago/internal/wagopaths"
 )
+
+func TestSelfUpdateSkipsMatchingManagerCommit(t *testing.T) {
+	executable := filepath.Join(t.TempDir(), "wago")
+	if err := os.WriteFile(executable, []byte("manager"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	oldResolve, oldInstall := resolveManagerUpdate, installManagerPayload
+	t.Cleanup(func() {
+		resolveManagerUpdate, installManagerPayload = oldResolve, oldInstall
+	})
+	resolveManagerUpdate = func(string, *managerprogress.Progress) (string, bool, error) {
+		return "canary@2ff00ddd12345678901234567890123456789012", false, nil
+	}
+	installs := 0
+	installManagerPayload = func(_ string, dest string, _ bool, _ *managerprogress.Progress) error {
+		installs++
+		return os.WriteFile(dest, []byte("updated manager"), 0o755)
+	}
+
+	selfUpdate("canary-2ff00dd", executable, false)
+	if installs != 0 {
+		t.Fatalf("matching manager update installed %d payloads, want 0", installs)
+	}
+	selfUpdate("canary-2ff00dd", executable, true)
+	if installs != 1 {
+		t.Fatalf("forced manager update installed %d payloads, want 1", installs)
+	}
+}
 
 func TestSelfUninstallModePickerUsesRadioButtonsAndDefaultsFull(t *testing.T) {
 	p := selfUninstallModePicker()

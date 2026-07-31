@@ -84,15 +84,28 @@ func selfExecutablePath() string {
 	return path
 }
 
-func selfUpdate(current, executable string) {
+var (
+	resolveManagerUpdate  = managerversion.ResolveManagerUpdate
+	installManagerPayload = managerversion.InstallManagerPayload
+)
+
+func selfUpdate(current, executable string, force bool) {
 	progress := managerprogress.NewProgress(os.Stderr)
 	progress.Title("Updating Wago")
 	staged := executable + ".new"
 	_ = os.Remove(staged)
 	channel := Channel(current)
 
-	resolved, err := managerversion.InstallManagerUpdate(channel, staged, progress)
+	resolved, sourceOnly, err := resolveManagerUpdate(channel, progress)
 	if err != nil {
+		_ = os.Remove(staged)
+		fatal("self update: %v", err)
+	}
+	if !force && managerversion.SameRelease(current, resolved) {
+		progress.Finish("Wago is already up to date (" + managerversion.DisplayRelease(resolved) + ")")
+		return
+	}
+	if err := installManagerPayload(resolved, staged, sourceOnly, progress); err != nil {
 		_ = os.Remove(staged)
 		fatal("self update: %v", err)
 	}

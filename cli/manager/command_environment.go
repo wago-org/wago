@@ -220,14 +220,14 @@ func (e commandEnvironment) UninstallVersions(versions []string) {
 }
 func (e commandEnvironment) UninstallAllVersions() { e.toolchain().UninstallAll() }
 
-func (commandEnvironment) Update() {
-	managerself.Update(versionString(), managerself.ExecutablePath())
+func (commandEnvironment) Update(force bool) {
+	managerself.Update(versionString(), managerself.ExecutablePath(), force)
 }
 
 func (e commandEnvironment) UpdateEverything(options updatecmd.Options) {
 	activeRuntime := managerversion.ActiveVersion(e.dirs())
 	if options.Manager {
-		managerself.Update(versionString(), managerself.ExecutablePath())
+		managerself.Update(versionString(), managerself.ExecutablePath(), options.Force)
 	}
 	if options.Runtime {
 		channel := options.Channel
@@ -235,7 +235,7 @@ func (e commandEnvironment) UpdateEverything(options updatecmd.Options) {
 			channel = activeRuntime
 		}
 		if channel == "canary" || channel == "nightly" {
-			e.toolchain().Update(managerversion.UpdateRequest{Args: []string{channel}, Profile: options.Profile, Build: options.Build, Use: options.Use})
+			e.toolchain().Update(managerversion.UpdateRequest{Args: []string{channel}, Profile: options.Profile, Build: options.Build, Use: options.Use, Force: options.Force})
 		} else {
 			fmt.Fprintln(os.Stdout, dim("runtime is pinned; skipping channel update"))
 		}
@@ -258,7 +258,7 @@ func (e commandEnvironment) UpdateEverything(options updatecmd.Options) {
 		if len(dependencies) == 0 {
 			fmt.Fprintln(os.Stdout, dim("no plugins enabled; skipping plugin update"))
 		} else {
-			managerplugin.Update(managerplugin.MutationRequest{Global: global, Local: local, Verbose: options.Verbose})
+			managerplugin.Update(managerplugin.MutationRequest{Global: global, Local: local, Verbose: options.Verbose, Force: options.Force})
 		}
 	}
 }

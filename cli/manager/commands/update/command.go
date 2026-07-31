@@ -20,6 +20,7 @@ type Options struct {
 	Components
 	Channel, Profile, Build string
 	Global, Local, Verbose  bool
+	Force                   bool
 	Use                     string
 }
 
@@ -43,6 +44,7 @@ func commandWithSelector(environment Environment, selectComponents componentSele
 			{Name: "runtime", Bool: true, Help: "update the active release channel"},
 			{Name: "plugins", Bool: true, Help: "update enabled plugins"},
 			{Name: "all", Bool: true, Help: "update manager, runtime, and plugins"},
+			{Name: "force", Short: "f", Bool: true, Help: "update even when installed commits match"},
 			{Name: "channel", Arg: "<name>", Help: "runtime channel: canary or nightly"},
 			{Name: "profile", Arg: "<name>", Help: "runtime profile"},
 			{Name: "build", Arg: "<name>", Help: "runtime build"},
@@ -83,7 +85,7 @@ func commandWithSelector(environment Environment, selectComponents componentSele
 			environment.UpdateEverything(Options{
 				Components: components,
 				Channel:    ctx.Str("channel"), Profile: ctx.Str("profile"), Build: ctx.Str("build"),
-				Global: ctx.Bool("global"), Local: ctx.Bool("local"), Verbose: ctx.Bool("verbose"), Use: use,
+				Global: ctx.Bool("global"), Local: ctx.Bool("local"), Verbose: ctx.Bool("verbose"), Force: ctx.Bool("force"), Use: use,
 			})
 		},
 	}

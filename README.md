@@ -146,6 +146,10 @@ Channel updates compare the resolved and installed commit hashes before
 downloading. Matching runtimes are left untouched; pass `--force` to reinstall
 the selected profile and build anyway.
 
+Manager updates use the same revision check. `wago update` and
+`wago self update` leave an already-current manager untouched; pass `--force`
+to repair or reinstall it deliberately.
+
 `wago status` gives a compact view of the manager, active runtime, selected
 project scope, plugins, and lockfile. `wago update` opens a selector for the
 manager, rolling runtime, and enabled plugins. Use `wago update manager`,

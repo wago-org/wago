@@ -26,14 +26,14 @@ func TestCommandWithoutTargetsUsesSelector(t *testing.T) {
 func TestCommandCanUpdateOneComponentWithoutTUI(t *testing.T) {
 	environment := &testEnvironment{}
 	cmd := Command(environment)
-	context, err := cmd.Parse("wago update", []string{"--runtime", "--channel", "nightly", "--profile", "minimal", "--build", "tiny", "--no-use"})
+	context, err := cmd.Parse("wago update", []string{"--runtime", "--channel", "nightly", "--profile", "minimal", "--build", "tiny", "--no-use", "--force"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	cmd.Run(context)
 
 	options := environment.options
-	if options.Manager || !options.Runtime || options.Plugins || options.Channel != "nightly" || options.Profile != "minimal" || options.Build != "tiny" || options.Use != "no" {
+	if options.Manager || !options.Runtime || options.Plugins || !options.Force || options.Channel != "nightly" || options.Profile != "minimal" || options.Build != "tiny" || options.Use != "no" {
 		t.Fatalf("options = %#v", options)
 	}
 }
