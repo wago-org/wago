@@ -28,7 +28,8 @@ func IsPageSnapshotMemoryGrown(err error) bool {
 type PageSnapshot struct {
 	c               *Compiled
 	memory          *coreruntime.PageSnapshot
-	globals         []globalSnap
+	scalarGlobals   []scalarGlobalSnap
+	vectorGlobals   []vectorGlobalSnap
 	passiveDataLens []uint32
 	trackDirty      bool
 	dataEnd         uint64
@@ -40,17 +41,30 @@ type PageSnapshot struct {
 	closed  bool
 }
 
+type scalarGlobalSnap struct {
+	index int
+	bits  uint64
+}
+
+type vectorGlobalSnap struct {
+	index int
+	vec   V128
+}
+
 // PageSnapshotBinding resets one instance to a shared PageSnapshot. It is not
 // safe to reset concurrently with calls into that instance.
 type PageSnapshotBinding struct {
-	snapshot     *PageSnapshot
-	instance     *Instance
-	table        []byte
-	passiveElem  []byte
-	passiveData  []byte
-	memoryBound  bool
-	dirtyTracker *coreruntime.PageSnapshotDirtyTracker
-	released     atomic.Bool
+	snapshot        *PageSnapshot
+	instance        *Instance
+	tableLive       []byte
+	table           []byte
+	passiveElemLive []byte
+	passiveElem     []byte
+	passiveDataLive []byte
+	passiveData     []byte
+	memoryBound     bool
+	dirtyTracker    *coreruntime.PageSnapshotDirtyTracker
+	released        atomic.Bool
 }
 
 // CapturePageSnapshot captures the current state of an initialized instance,
@@ -93,10 +107,12 @@ func capturePageSnapshot(
 	if err != nil {
 		return nil, nil, err
 	}
+	scalarGlobals, vectorGlobals := captureMutablePageSnapshotGlobals(in)
 	s := &PageSnapshot{
 		c:               in.c,
 		memory:          memory,
-		globals:         capturePageSnapshotGlobals(in),
+		scalarGlobals:   scalarGlobals,
+		vectorGlobals:   vectorGlobals,
 		passiveDataLens: capturePassiveDataLens(in),
 		trackDirty:      trackDirty,
 		dataEnd:         dataEnd,
@@ -108,6 +124,35 @@ func capturePageSnapshot(
 		return nil, nil, err
 	}
 	return s, binding, nil
+}
+
+func captureMutablePageSnapshotGlobals(in *Instance) ([]scalarGlobalSnap, []vectorGlobalSnap) {
+	localStart := len(in.c.GlobalImports)
+	var scalarCount, vectorCount int
+	for i := localStart; i < len(in.c.Globals); i++ {
+		if in.c.Globals[i].Mutable {
+			if in.c.Globals[i].Type == ValV128 {
+				vectorCount++
+			} else {
+				scalarCount++
+			}
+		}
+	}
+	scalars := make([]scalarGlobalSnap, 0, scalarCount)
+	vectors := make([]vectorGlobalSnap, 0, vectorCount)
+	for i := localStart; i < len(in.c.Globals) && i < len(in.globalCells); i++ {
+		def := in.c.Globals[i]
+		g := in.globalCells[i]
+		if !def.Mutable || g == nil {
+			continue
+		}
+		if def.Type == ValV128 {
+			vectors = append(vectors, vectorGlobalSnap{index: i, vec: readGlobalObjectV128(g)})
+		} else {
+			scalars = append(scalars, scalarGlobalSnap{index: i, bits: readGlobalObject(g, def.Type)})
+		}
+	}
+	return scalars, vectors
 }
 
 // activeDataEnd returns AssemblyScript's __data_end without requiring the
@@ -220,12 +265,26 @@ func (s *PageSnapshot) Bind(in *Instance) (*PageSnapshotBinding, error) {
 	s.refs++
 	s.mu.Unlock()
 
+	table := in.tableDescriptorBytes()
+	passiveElem := in.passiveElementDescriptorBytes()
 	b := &PageSnapshotBinding{
-		snapshot:    s,
-		instance:    in,
-		table:       append([]byte(nil), in.tableDescriptorBytes()...),
-		passiveElem: append([]byte(nil), in.passiveElementDescriptorBytes()...),
-		passiveData: append([]byte(nil), in.passiveDataDesc...),
+		snapshot:        s,
+		instance:        in,
+		tableLive:       table,
+		table:           append([]byte(nil), table...),
+		passiveElemLive: passiveElem,
+		passiveElem:     append([]byte(nil), passiveElem...),
+		passiveDataLive: in.passiveDataDesc,
+		passiveData:     append([]byte(nil), in.passiveDataDesc...),
+	}
+	// Pointer fields are instance-local, but drop-state lengths belong to the
+	// shared snapshot. Bake those lengths into this binding's descriptor image
+	// once instead of rebuilding them on every reset.
+	for i, n := range s.passiveDataLens {
+		off := i*coreruntime.PassiveDataDescBytes + 8
+		if off+4 <= len(b.passiveData) {
+			binary.LittleEndian.PutUint32(b.passiveData[off:], n)
+		}
 	}
 	if err := b.Reset(); err != nil {
 		_ = b.Close()
@@ -291,40 +350,15 @@ func (b *PageSnapshotBinding) Reset() error {
 	if err != nil {
 		return err
 	}
-	for i, snap := range s.globals {
-		if i >= len(b.instance.globalCells) {
-			break
-		}
-		if g := b.instance.globalCells[i]; g != nil {
-			if snap.typ == ValV128 {
-				writeGlobalObjectV128(g, snap.vec)
-			} else {
-				writeGlobalObject(g, snap.typ, snap.bits)
-			}
-		}
+	for _, snap := range s.scalarGlobals {
+		binary.LittleEndian.PutUint64(b.instance.globalCells[snap.index].cell, snap.bits)
 	}
-	if table := b.instance.tableDescriptorBytes(); len(table) != len(b.table) {
-		return fmt.Errorf("wago: table descriptor size changed: got %d, want %d", len(table), len(b.table))
-	} else {
-		copy(table, b.table)
+	for _, snap := range s.vectorGlobals {
+		copy(b.instance.globalCells[snap.index].cell, snap.vec[:])
 	}
-	passiveElem := b.instance.passiveElementDescriptorBytes()
-	if len(passiveElem) != len(b.passiveElem) {
-		return fmt.Errorf("wago: passive element descriptor size changed: got %d, want %d", len(passiveElem), len(b.passiveElem))
-	}
-	copy(passiveElem, b.passiveElem)
-	if len(b.instance.passiveDataDesc) != len(b.passiveData) {
-		return fmt.Errorf("wago: passive data descriptor size changed: got %d, want %d", len(b.instance.passiveDataDesc), len(b.passiveData))
-	}
-	copy(b.instance.passiveDataDesc, b.passiveData)
-	// Preserve compatibility with older descriptors whose pointer fields are
-	// rebuilt per instance but whose drop state is represented only by length.
-	for i, n := range s.passiveDataLens {
-		off := i*coreruntime.PassiveDataDescBytes + 8
-		if off+4 <= len(b.instance.passiveDataDesc) {
-			binary.LittleEndian.PutUint32(b.instance.passiveDataDesc[off:], n)
-		}
-	}
+	copy(b.tableLive, b.table)
+	copy(b.passiveElemLive, b.passiveElem)
+	copy(b.passiveDataLive, b.passiveData)
 	return nil
 }
 
