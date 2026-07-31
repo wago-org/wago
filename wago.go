@@ -59,6 +59,7 @@ type (
 	GlobalImport                = impl.GlobalImport
 	GlobalImportDef             = impl.GlobalImportDef
 	GlobalMetadata              = impl.GlobalMetadata
+	GlobalsSnapshot             = impl.GlobalsSnapshot
 	GuardPageUnavailableError   = impl.GuardPageUnavailableError
 	Handle                      = impl.Handle
 	HandleTable                 = impl.HandleTable
@@ -253,6 +254,8 @@ func BitsFromUint32(width int32, value uint32) (Bits, error) {
 func CapabilityDocs(docs string) CapabilityOption { return impl.CapabilityDocs(docs) }
 
 func Capture(c *Compiled, opts SnapshotOptions) (*Snapshot, error) { return impl.Capture(c, opts) }
+
+func CaptureGlobals(in *Instance) (*GlobalsSnapshot, error) { return impl.CaptureGlobals(in) }
 
 func CapturePageSnapshot(in *Instance) (*PageSnapshot, *PageSnapshotBinding, error) {
 	return impl.CapturePageSnapshot(in)
