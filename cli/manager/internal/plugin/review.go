@@ -45,9 +45,31 @@ func reviewCapabilities(name string, required, granted []string) (chosen []strin
 	return m.Chosen(), true
 }
 
+func chooseCapabilities(name string, required, granted, requested []string, grantAll, denyAll bool) ([]string, bool) {
+	switch {
+	case grantAll:
+		return append([]string(nil), required...), true
+	case denyAll:
+		return []string{}, true
+	case requested != nil:
+		allowed := make(map[string]bool, len(required))
+		for _, capability := range required {
+			allowed[capability] = true
+		}
+		for _, capability := range requested {
+			if !allowed[capability] {
+				fatal("plugin: %s does not request %q", name, capability)
+			}
+		}
+		return append([]string(nil), requested...), true
+	default:
+		return reviewCapabilities(name, required, granted)
+	}
+}
+
 // pkgGrant interactively edits which of a compiled-in plugin's requestable
 // capabilities are granted in the active wago-lock.json (local or global per scope).
-func pkgGrant(name string, useGlobal bool) {
+func pkgGrant(name string, useGlobal bool, requested []string, grantAll, denyAll bool) {
 	id := strings.TrimPrefix(strings.TrimSpace(name), "github.com/")
 	src, err := depsSource(useGlobal)
 	if err != nil {
@@ -76,7 +98,7 @@ func pkgGrant(name string, useGlobal bool) {
 	if err != nil {
 		fatal("plugin grant: inspecting %s: %v", id, err)
 	}
-	chosen, ok := reviewCapabilities(id, required, project.Grants(src, id))
+	chosen, ok := chooseCapabilities(id, required, project.Grants(src, id), requested, grantAll, denyAll)
 	if !ok {
 		fmt.Println(dim("no changes"))
 		return

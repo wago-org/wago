@@ -14,12 +14,14 @@ type InstallRequest struct {
 	Versions                []string
 	Latest, Nightly, Canary bool
 	Profile, Build          string
+	Use                     string
 }
 
 type UpdateRequest struct {
 	Args            []string
 	Nightly, Canary bool
 	Profile, Build  string
+	Use             string
 }
 
 func (t Toolchain) List()            { vmList(t.Dirs) }
@@ -31,6 +33,7 @@ func (t Toolchain) Install(request InstallRequest) {
 	vmInstallRequested(
 		t.Dirs, request.Versions, request.Latest, request.Nightly, request.Canary,
 		request.Profile, request.Build,
+		request.Use,
 	)
 }
 
@@ -89,7 +92,13 @@ func (t Toolchain) Update(request UpdateRequest) {
 	if name == "" {
 		fatal("version update: %v", fmt.Errorf("no release channel selected"))
 	}
-	vmUpdate(t.Dirs, name, profile, build)
+	vmUpdate(t.Dirs, name, profile, build, request.Use)
+}
+
+func (t Toolchain) UninstallAll() {
+	for _, name := range installedVersions(t.Dirs) {
+		vmUninstall(t.Dirs, name)
+	}
 }
 
 func (t Toolchain) Uninstall(names []string) {

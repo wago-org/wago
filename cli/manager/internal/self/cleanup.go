@@ -47,6 +47,11 @@ func Targets(dirs wagopaths.Dirs, executable string, mode Mode) []string {
 	case Partial:
 		candidates = append(candidates, dirs.Versions, dirs.Config, filepath.Dir(dirs.Cache), InstalledSourcePath())
 	}
+	if completion := fishCompletionPath(); completion != "" {
+		if _, err := os.Stat(completion); err == nil {
+			candidates = append(candidates, completion)
+		}
+	}
 	candidates = append(candidates, executable)
 
 	var targets []string
@@ -124,7 +129,7 @@ func InstallerPathConfigs() ([]string, error) {
 		if err != nil {
 			return nil, err
 		}
-		if hasInstallerPathBlock(data) {
+		if hasInstallerShellBlock(data) {
 			configs = append(configs, candidate)
 		}
 	}
@@ -141,12 +146,12 @@ func RemoveInstallerPathBlocks(path string) error {
 	changed := false
 	for i := 0; i < len(lines); i++ {
 		line := strings.TrimSuffix(strings.TrimSuffix(lines[i], "\n"), "\r")
-		if strings.HasPrefix(line, "# Wago PATH: ") {
+		if strings.HasPrefix(line, "# Wago PATH: ") || line == "# Wago completions" {
 			changed = true
 			if len(filtered) > 0 && strings.TrimSpace(filtered[len(filtered)-1]) == "" {
 				filtered = filtered[:len(filtered)-1]
 			}
-			if i+1 < len(lines) && isInstallerPathCommand(lines[i+1]) {
+			if i+1 < len(lines) && (isInstallerPathCommand(lines[i+1]) || isCompletionCommand(lines[i+1])) {
 				i++
 			}
 			continue
@@ -171,13 +176,31 @@ func RemoveManagedPath(path string) error {
 	return os.RemoveAll(clean)
 }
 
-func hasInstallerPathBlock(data []byte) bool {
+func hasInstallerShellBlock(data []byte) bool {
 	for _, line := range strings.Split(string(data), "\n") {
-		if strings.HasPrefix(strings.TrimSuffix(line, "\r"), "# Wago PATH: ") {
+		line = strings.TrimSuffix(line, "\r")
+		if strings.HasPrefix(line, "# Wago PATH: ") || line == "# Wago completions" {
 			return true
 		}
 	}
 	return false
+}
+
+func isCompletionCommand(line string) bool {
+	line = strings.TrimSpace(line)
+	return strings.HasPrefix(line, ". '") && strings.HasSuffix(line, "'") && strings.Contains(line, "/.wago/completions/wago.")
+}
+
+func fishCompletionPath() string {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return ""
+	}
+	root := os.Getenv("XDG_CONFIG_HOME")
+	if root == "" {
+		root = filepath.Join(home, ".config")
+	}
+	return filepath.Join(root, "fish", "completions", "wago.fish")
 }
 
 func isInstallerPathCommand(line string) bool {

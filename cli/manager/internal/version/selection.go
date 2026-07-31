@@ -11,14 +11,14 @@ import (
 	"github.com/wago-org/wago/internal/wagopaths"
 )
 
-func offerUseInstalled(d wagopaths.Dirs, ver string, profile wagopaths.Profile, build wagopaths.Build) {
-	if activeVersion(d) == ver && activeProfile(d) == profile && activeBuild(d) == build {
+func offerUseInstallation(d wagopaths.Dirs, ver string, profile wagopaths.Profile, build wagopaths.Build, mode string) {
+	if mode == "yes" {
+		vmUse(d, ver, profile, build)
 		return
 	}
-	offerUseInstallation(d, ver, profile, build)
-}
-
-func offerUseInstallation(d wagopaths.Dirs, ver string, profile wagopaths.Profile, build wagopaths.Build) {
+	if mode == "no" {
+		return
+	}
 	use := false
 	if tui.StdinIsTTY() {
 		p := useInstalledPicker(ver, profile, build)
@@ -32,8 +32,11 @@ func offerUseInstallation(d wagopaths.Dirs, ver string, profile wagopaths.Profil
 	}
 }
 
-func finishVersionInstall(d wagopaths.Dirs, ver string, profile wagopaths.Profile, build wagopaths.Build) {
-	offerUseInstalled(d, ver, profile, build)
+func finishVersionInstall(d wagopaths.Dirs, ver string, profile wagopaths.Profile, build wagopaths.Build, mode string) {
+	if activeVersion(d) == ver && activeProfile(d) == profile && activeBuild(d) == build {
+		return
+	}
+	offerUseInstallation(d, ver, profile, build, mode)
 }
 
 func useInstalledPicker(ver string, profile wagopaths.Profile, build wagopaths.Build) *tui.Picker {
@@ -74,8 +77,8 @@ func chooseUpdateChannel(active string) (string, bool) {
 	return p.Selected(), true
 }
 
-func offerUseUpdated(d wagopaths.Dirs, ver string, profile wagopaths.Profile, build wagopaths.Build) {
-	offerUseInstallation(d, ver, profile, build)
+func offerUseUpdated(d wagopaths.Dirs, ver string, profile wagopaths.Profile, build wagopaths.Build, mode string) {
+	offerUseInstallation(d, ver, profile, build, mode)
 }
 
 func promptYesNo(in io.Reader, out io.Writer, prompt string) bool {

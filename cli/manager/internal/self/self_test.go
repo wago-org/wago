@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -190,7 +191,7 @@ func TestSelfUninstallRequiresConfirmationAndPreservesProjects(t *testing.T) {
 
 func TestRemoveInstallerPathBlocksPreservesUnrelatedLines(t *testing.T) {
 	config := filepath.Join(t.TempDir(), ".zshrc")
-	body := "# Wago PATH: /old/wago/bin\nexport KEEP=1\n"
+	body := "# Wago PATH: /old/wago/bin\nexport KEEP=1\n\n# Wago completions\n. '/old/.wago/completions/wago.zsh'\n"
 	if err := os.WriteFile(config, []byte(body), 0o640); err != nil {
 		t.Fatal(err)
 	}
@@ -227,6 +228,23 @@ func TestSelfUninstallTargetsOnlyManagedState(t *testing.T) {
 	want := []string{filepath.Join(home, ".wago"), manager}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("selfUninstallTargets() = %q, want %q", got, want)
+	}
+}
+
+func TestSelfUninstallRemovesInstalledFishCompletion(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	completion := filepath.Join(home, ".config", "fish", "completions", "wago.fish")
+	if err := os.MkdirAll(filepath.Dir(completion), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(completion, []byte("completion"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	dirs := wagopaths.Dirs{Data: filepath.Join(home, ".wago"), Cache: filepath.Join(home, ".wago", "cache", "canary")}
+	targets := Targets(dirs, filepath.Join(home, ".wago", "bin", "wago"), Minimal)
+	if !slices.Contains(targets, completion) {
+		t.Fatalf("targets = %q, missing fish completion", targets)
 	}
 }
 

@@ -142,6 +142,20 @@ wago version update --nightly
 wago version update --canary
 ```
 
+`wago status` gives a compact view of the manager, active runtime, selected
+project scope, plugins, and lockfile. `wago update` coordinates the manager,
+rolling runtime, and enabled plugins; use `--self`, `--runtime`, or `--plugins`
+to update only one layer. Every selector-backed version command also accepts
+explicit `--version`, `--channel`, `--profile`, `--build`, `--use`, and
+confirmation flags for scripts and CI.
+
+Regenerable state is visible through `wago cache dir` and `wago cache size`.
+Use `wago cache prune --days 30 --yes` for old entries, or select downloads and
+plugin builds explicitly with `wago cache clean --downloads|--builds --yes`.
+Shell completion can be printed or installed with
+`wago config completions zsh|bash|fish [--install]`; the installer offers this
+after PATH setup.
+
 The manager updates independently from installed runtimes and stays on its
 current release track:
 
@@ -189,6 +203,7 @@ default command, so `wago file.wasm ...` works too.
 wago run tests/testdata/fib.wasm 30
 wago run -e hypot tests/testdata/fprog.wasm 3.0 4.0
 wago tests/testdata/fib.wasm 30
+wago run --watch build/app.wasm
 ```
 
 Arguments are typed from the export signature. Override one argument with a
@@ -237,10 +252,15 @@ wago add wago-org/wasi
 wago add wago-org/wasi wago-org/workers  # install multiple packages together
 wago add --global wago-org/wasi  # shared outside projects with local manifests
 wago plugin add wago-org/wasi    # equivalent, fully grouped form
+wago add wago-org/wasi --allow-all  # one-shot capability approval
 ```
 
 `add` resolves, downloads, verifies, and builds all requested packages as one
 transaction, then prints their resolved versions and total elapsed time.
+Exact resolved versions are pinned in `wago-lock.json`. Use
+`wago plugin outdated`, `wago plugin update`, `wago plugin tree`,
+`wago plugin why <name>`, `wago plugin verify`, and `wago plugin rebuild` to
+inspect and maintain that reproducible plugin runtime.
 
 Local plugins are isolated from the global set. A local `wago.json` wins without
 merging machine state; `wago run --global app.wasm` explicitly selects global

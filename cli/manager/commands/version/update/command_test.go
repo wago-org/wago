@@ -10,12 +10,14 @@ type testEnvironment struct {
 	args            []string
 	nightly, canary bool
 	profile, build  string
+	use             string
 }
 
-func (e *testEnvironment) UpdateVersion(args []string, nightly, canary bool, profile, build string) {
+func (e *testEnvironment) UpdateVersion(args []string, nightly, canary bool, profile, build, use string) {
 	e.args = append([]string(nil), args...)
 	e.nightly, e.canary = nightly, canary
 	e.profile, e.build = profile, build
+	e.use = use
 }
 
 func TestRunDelegatesInteractiveSelectionWhenTargetIsOmitted(t *testing.T) {

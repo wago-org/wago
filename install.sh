@@ -12,6 +12,7 @@
 #   WAGO_REINSTALL_MODE full, partial, or minimal for an existing install
 #   WAGO_DRY_RUN   set to 1 to print what would happen and exit
 #   WAGO_NO_MODIFY_PATH set to 1 to never offer to edit shell startup files
+#   WAGO_NO_COMPLETIONS set to 1 to skip shell completion setup
 #   NO_COLOR       set to disable colored output
 set -eu
 
@@ -26,6 +27,7 @@ bin_dir="${WAGO_BIN_DIR:-$HOME/.wago/bin}"
 src_dir="${WAGO_SRC_DIR:-$HOME/.wago/src}"
 dry_run="${WAGO_DRY_RUN:-0}"
 no_modify_path="${WAGO_NO_MODIFY_PATH:-0}"
+no_completions="${WAGO_NO_COMPLETIONS:-0}"
 
 if [ -n "${WAGO_HOME:-}" ]; then
 	wago_data="$WAGO_HOME/data"
@@ -660,7 +662,7 @@ add_path_to_config() {
 	marker="# Wago PATH: $bin_dir"
 	if [ -f "$config_file" ] && grep -F "$marker" "$config_file" >/dev/null 2>&1; then
 		printf '%s✓%s PATH already configured\n' "$cyan" "$reset"
-		print_wago_ready "$config_file"
+		[ "${WAGO_INTERNAL_PATH_SETUP_ONLY:-0}" != "1" ] || print_wago_ready "$config_file"
 		return 0
 	fi
 	if ! mkdir -p "$(dirname "$config_file")"; then
@@ -679,7 +681,7 @@ add_path_to_config() {
 		return 1
 	fi
 	printf '%s✓%s Added Wago to PATH\n' "$cyan" "$reset"
-	print_wago_ready "$config_file"
+	[ "${WAGO_INTERNAL_PATH_SETUP_ONLY:-0}" != "1" ] || print_wago_ready "$config_file"
 }
 
 offer_path_setup() {
@@ -717,8 +719,30 @@ offer_path_setup() {
 	selected=$(printf '%s' "$path_shells" | sed -n "/^${radio_value}|/p")
 	shell_name=${selected%%|*}
 	config_file=${selected#*|}
+	configured_shell=$shell_name
+	configured_file=$config_file
 	printf 'Adding to PATH: %s\n\n' "$(display_path "$config_file")"
 	add_path_to_config "$shell_name" "$config_file"
+}
+
+offer_completion_setup() {
+	[ "$no_completions" != "1" ] || return 1
+	case "${configured_shell:-}" in zsh|bash|fish) ;; *) return 1 ;; esac
+	completion_items='Yes|Enable command completion|yes
+No||no'
+	if ! radio_select "Enable Wago completions for $configured_shell?" "$completion_items" 1; then
+		return 1
+	fi
+	if [ "$radio_value" != "yes" ]; then
+		printf 'Completions: skipped\n\n'
+		return 1
+	fi
+	if "$bin_dir/wago" config completions "$configured_shell" --install --rc "$configured_file" >/dev/null; then
+		printf '%s✓%s Enabled Wago completions for %s\n' "$cyan" "$reset" "$configured_shell"
+		return 0
+	fi
+	printf '%s!%s Could not enable Wago completions\n' "$dim" "$reset"
+	return 1
 }
 
 choose_install_dir() {
@@ -1187,4 +1211,7 @@ if ! offer_path_setup; then
 			printf '  Add %s to PATH, then run %swago%s.\n' "$(display_path "$bin_dir")" "$cyan" "$reset"
 			;;
 	esac
+else
+	offer_completion_setup || true
+	print_wago_ready "$configured_file"
 fi

@@ -23,6 +23,8 @@ func Command(environment Environment) *command.Cmd {
 	flags := append([]command.Flag{
 		{Name: "invoke", Short: "e", Arg: "<name>", Help: "exported function to call"},
 		{Name: "bounds", Arg: "<mode>", Help: "bounds checks: defer (default) | all"},
+		{Name: "watch", Short: "w", Bool: true, Help: "rerun when the module changes"},
+		{Name: "watch-interval", Arg: "<duration>", Help: "watch polling interval (default 200ms)"},
 		ParallelFlag(),
 	}, OptimizationFlags()...)
 	flags = append(flags, environment.ProfileFlags()...)
@@ -46,6 +48,13 @@ type implementation struct {
 }
 
 func (cmd implementation) Run(ctx *command.Ctx) {
+	if ctx.Bool("watch") {
+		if len(ctx.Args) == 0 {
+			ui.Fatal("run: need a <file>")
+		}
+		watchModule(ctx.Args[0], ctx.Str("watch-interval"))
+		return
+	}
 	ApplyOptimizationFlags(ctx)
 	positionals := ctx.Args
 	if len(positionals) == 0 {

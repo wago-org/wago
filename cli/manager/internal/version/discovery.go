@@ -40,7 +40,7 @@ func latestStableRelease() (string, error) {
 	return release.TagName, nil
 }
 
-func vmBrowse(d wagopaths.Dirs, profileValue, buildValue string) {
+func vmBrowse(d wagopaths.Dirs, profileValue, buildValue, use string) {
 	releases, err := fetchReleases()
 	if err != nil {
 		fatal("version browse: unable to fetch releases: %v", err)
@@ -54,10 +54,10 @@ func vmBrowse(d wagopaths.Dirs, profileValue, buildValue string) {
 		return
 	}
 	if choice == "latest" {
-		vmInstall(d, latestRelease(), profile, build)
+		vmInstall(d, latestRelease(), profile, build, use)
 		return
 	}
-	vmInstall(d, choice, profile, build)
+	vmInstall(d, choice, profile, build, use)
 }
 
 func fetchReleases() ([]remoteRelease, error) {
@@ -88,7 +88,7 @@ func fetchReleases() ([]remoteRelease, error) {
 // vmUpdate fetches a fresh copy even when the version is already installed.
 // downloadBinary writes a sibling temporary file and renames it only after the
 // checksum succeeds, so a failed update leaves the installed binary intact.
-func vmUpdate(d wagopaths.Dirs, ver string, profile wagopaths.Profile, build wagopaths.Build) {
+func vmUpdate(d wagopaths.Dirs, ver string, profile wagopaths.Profile, build wagopaths.Build, use string) {
 	dest := d.RuntimeBinary(ver, string(profile), string(build))
 	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
 		fatal("version update: %v", err)
@@ -103,7 +103,7 @@ func vmUpdate(d wagopaths.Dirs, ver string, profile wagopaths.Profile, build wag
 		fatal("version update: %v", err)
 	}
 	progress.Finish("Updated " + installedWagoLabel(ver, resolved, profile, build))
-	offerUseUpdated(d, ver, profile, build)
+	offerUseUpdated(d, ver, profile, build, use)
 }
 
 func resolveRunnerVersion(ver string, progress *managerprogress.Progress) (resolved string, sourceOnly bool, err error) {
