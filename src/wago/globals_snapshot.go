@@ -37,8 +37,8 @@ func CaptureStubGlobals(in *Instance) (*GlobalsSnapshot, error) {
 	if err != nil {
 		return nil, err
 	}
-	if _, err = in.Invoke("__reset"); err != nil {
-		return nil, fmt.Errorf("wago: invoke AssemblyScript __reset: %w", err)
+	if _, err = in.Invoke("__host_reset_cursor"); err != nil {
+		return nil, fmt.Errorf("wago: invoke AssemblyScript cursor reset: %w", err)
 	}
 	defer snapshot.Restore(in) //nolint:errcheck // best-effort restoration on the diagnostic path
 
