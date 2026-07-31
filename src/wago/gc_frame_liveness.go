@@ -1,5 +1,3 @@
-//go:build linux && amd64
-
 package wago
 
 import (
@@ -37,7 +35,7 @@ type gcLiveFrame struct {
 	endNode  int
 }
 
-// gcFrameLocalLiveness computes exact backwards local liveness over the
+// gcFrameLocalLiveness computes architecture-independent exact backwards local liveness over the
 // validated structured Wasm CFG. Only the at-most-64 collector-reference locals
 // in indexes participate, so each dataflow state is one uint64 and loops converge
 // without per-node heap bitsets.

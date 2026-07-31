@@ -25,9 +25,6 @@ func validGCModuleFrameRootPlan(module *shared.GCModuleFrameRootPlan) bool {
 		if active && !validGCFrameOffsets(plan.LocalOffsets, plan.FrameBytes) {
 			return false
 		}
-		if len(plan.Callsites) != 0 && plan.AdapterReturnOffset == 0 {
-			return false
-		}
 		var previousReturn uint32
 		for i := range plan.Callsites {
 			callsite := &plan.Callsites[i]
@@ -66,18 +63,6 @@ func validateCompiledGCFrameRoots(c *Compiled, rootMap *compiledGCFrameRoots) er
 			return fmt.Errorf("GC frame-root metadata rejects import %d signature", i)
 		}
 	}
-	for function := range c.Funcs {
-		for _, t := range c.Funcs[function].Params {
-			if t == ValAnyRef || t == ValI31Ref {
-				return fmt.Errorf("GC frame-root metadata rejects function %d GC-reference parameters", function)
-			}
-		}
-		for _, t := range c.Funcs[function].Results {
-			if t == ValAnyRef || t == ValI31Ref {
-				return fmt.Errorf("GC frame-root metadata rejects function %d GC-reference results", function)
-			}
-		}
-	}
 	if len(rootMap.safepoints) == 0 {
 		return fmt.Errorf("GC frame-root metadata has no safepoints")
 	}
@@ -95,9 +80,6 @@ func validateCompiledGCFrameRoots(c *Compiled, rootMap *compiledGCFrameRoots) er
 			return fmt.Errorf("GC frame-root callsite %d is malformed", callsite.returnOffset)
 		}
 		previousReturn = callsite.returnOffset
-	}
-	if len(rootMap.callsites) != 0 && len(rootMap.adapterReturnOffsets) == 0 {
-		return fmt.Errorf("GC frame-root callsites have no adapter termination offsets")
 	}
 	var previousID uint32
 	for i := range rootMap.safepoints {
@@ -166,7 +148,7 @@ func gcFramePublicCallABI(sig FuncSig) bool {
 	gp, fp := 0, 0
 	for _, t := range sig.Params {
 		switch t {
-		case ValI32, ValI64:
+		case ValI32, ValI64, ValAnyRef, ValI31Ref:
 			gp++
 		case ValF32, ValF64:
 			fp++
@@ -177,12 +159,15 @@ func gcFramePublicCallABI(sig FuncSig) bool {
 	if gp > 7 || fp > 8 {
 		return false
 	}
+	integerResult := func(t ValType) bool {
+		return t == ValI32 || t == ValI64 || t == ValAnyRef || t == ValI31Ref
+	}
 	for _, t := range sig.Results {
-		if t != ValI32 && t != ValI64 && t != ValF32 && t != ValF64 {
+		if !integerResult(t) && t != ValF32 && t != ValF64 {
 			return false
 		}
 	}
-	return len(sig.Results) != 2 || ((sig.Results[0] == ValI32 || sig.Results[0] == ValI64) && (sig.Results[1] == ValI32 || sig.Results[1] == ValI64))
+	return len(sig.Results) != 2 || (integerResult(sig.Results[0]) && integerResult(sig.Results[1]))
 }
 
 func validGCFrameOffsets(offsets []uint32, frameBytes uint32) bool {
