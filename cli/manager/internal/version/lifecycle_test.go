@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/wago-org/wago"
-	"github.com/wago-org/wago/cli/manager/internal/tui"
+	"github.com/wago-org/wago/cli/internal/tui"
 	"github.com/wago-org/wago/internal/wagopaths"
 )
 
@@ -303,7 +303,7 @@ func TestUninstallVersionPickerListsAllVersionsAndCurrent(t *testing.T) {
 		t.Fatalf("uninstall items = %d, want 3", len(m.Items))
 	}
 	frame := m.Frame()
-	for _, want := range []string{"Uninstall Wago versions", "canary", "nightly", "v0.2.0", "current", "space toggle", "a all", "enter/→ uninstall"} {
+	for _, want := range []string{"Uninstall Wago versions", "canary", "nightly", "v0.2.0", "current", "space toggle", "a toggle all", "enter/→ uninstall"} {
 		if !strings.Contains(frame, want) {
 			t.Fatalf("uninstall picker missing %q:\n%s", want, frame)
 		}

@@ -22,6 +22,7 @@ type Report struct {
 	RuntimeBuild   string
 	RuntimePath    string
 	Scope          string
+	ProjectDir     string
 	ManifestPath   string
 	LockPath       string
 	LockState      string
@@ -41,6 +42,10 @@ func Inspect(dirs wagopaths.Dirs, managerVersion, managerPath string) (Report, e
 	report.Scope = project.ScopeLabel(scope)
 	if scope.Name == "bare" {
 		return report, nil
+	}
+	report.ProjectDir, err = filepath.Abs(scope.ManifestDir)
+	if err != nil {
+		return Report{}, err
 	}
 	report.ManifestPath = project.Path(scope.ManifestDir)
 	report.LockPath = project.LockPath(scope.ManifestDir)
@@ -78,6 +83,7 @@ func Print(out io.Writer, report Report) {
 	}
 	ui.Detail(out, "scope", report.Scope)
 	if report.ManifestPath != "" {
+		ui.Detail(out, "directory", ui.DisplayPath(report.ProjectDir))
 		ui.Detail(out, "project", ui.DisplayPath(report.ManifestPath))
 		ui.Detail(out, "plugins", fmt.Sprintf("%d enabled", report.Plugins))
 		ui.Detail(out, "lockfile", report.LockState)

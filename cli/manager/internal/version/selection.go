@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/wago-org/wago/cli/manager/internal/tui"
+	"github.com/wago-org/wago/cli/internal/tui"
 	"github.com/wago-org/wago/internal/wagopaths"
 )
 
@@ -367,7 +367,7 @@ func uninstallVersionPicker(d wagopaths.Dirs, versions []string) *tui.MultiSelec
 	}
 	return &tui.MultiSelect{
 		Title:  "Uninstall Wago versions",
-		Prompt: "↑/↓ move · space toggle · a all · enter/→ uninstall · esc cancel",
+		Prompt: "↑/↓ move · space toggle · a toggle all · enter/→ uninstall · esc cancel",
 		Items:  items,
 	}
 }

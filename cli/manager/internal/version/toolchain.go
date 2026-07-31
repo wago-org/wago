@@ -20,6 +20,7 @@ type InstallRequest struct {
 type UpdateRequest struct {
 	Args            []string
 	Nightly, Canary bool
+	Force           bool
 	Profile, Build  string
 	Use             string
 }
@@ -92,7 +93,7 @@ func (t Toolchain) Update(request UpdateRequest) {
 	if name == "" {
 		fatal("version update: %v", fmt.Errorf("no release channel selected"))
 	}
-	vmUpdate(t.Dirs, name, profile, build, request.Use)
+	vmUpdate(t.Dirs, name, profile, build, request.Use, request.Force)
 }
 
 func (t Toolchain) UninstallAll() {

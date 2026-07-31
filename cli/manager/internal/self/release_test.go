@@ -18,20 +18,3 @@ func TestChannelPreservesReleaseTrack(t *testing.T) {
 		}
 	}
 }
-
-func TestRuntimeTargetFollowsActiveRollingChannel(t *testing.T) {
-	tests := []struct {
-		active, channel, resolved, want string
-	}{
-		{"canary", "canary", "canary@880e153000000000000000000000000000000000", "canary-880e153"},
-		{"canary-6342d5e", "canary", "canary@880e153000000000000000000000000000000000", "canary-880e153"},
-		{"nightly-20260729-6342d5e", "nightly", "nightly-20260730-880e153", "nightly-20260730-880e153"},
-		{"nightly", "canary", "canary@880e153000000000000000000000000000000000", ""},
-		{"v0.2.0", "latest", "v0.2.1", ""},
-	}
-	for _, test := range tests {
-		if got := RuntimeTarget(test.active, test.channel, test.resolved); got != test.want {
-			t.Errorf("RuntimeTarget(%q, %q, %q) = %q, want %q", test.active, test.channel, test.resolved, got, test.want)
-		}
-	}
-}

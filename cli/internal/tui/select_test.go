@@ -66,6 +66,10 @@ func TestMultiSelectToggleAllNone(t *testing.T) {
 	if got := m.Chosen(); len(got) != 3 {
 		t.Fatalf("keyAll should select all, got %v", got)
 	}
+	m.apply(keyAll)
+	if got := m.Chosen(); got != nil {
+		t.Fatalf("keyAll should clear an entirely selected list, got %v", got)
+	}
 }
 
 func TestMultiSelectAcceptCancel(t *testing.T) {

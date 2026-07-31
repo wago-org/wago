@@ -7,7 +7,7 @@ import (
 )
 
 type Environment interface {
-	UpdateVersion(args []string, nightly, canary bool, profile, build, use string)
+	UpdateVersion(args []string, nightly, canary, force bool, profile, build, use string)
 }
 
 func Command(environment Environment) *command.Cmd {
@@ -19,6 +19,7 @@ func Command(environment Environment) *command.Cmd {
 			{Name: "channel", Arg: "<name>", Help: "canary or nightly"},
 			{Name: "nightly", Bool: true, Help: "refresh the latest nightly release"},
 			{Name: "canary", Bool: true, Help: "refresh the canary built from main"},
+			{Name: "force", Short: "f", Bool: true, Help: "reinstall even when the commit matches"},
 			{Name: "profile", Arg: "<name>", Help: "profile to refresh (default active)"},
 			{Name: "build", Arg: "<name>", Help: "normal or tiny (default active)"},
 			{Name: "use", Bool: true, Help: "make the updated runtime active without prompting"},
@@ -43,7 +44,7 @@ func Command(environment Environment) *command.Cmd {
 				use = "no"
 			}
 			environment.UpdateVersion(
-				args, c.Bool("nightly"), c.Bool("canary"), c.Str("profile"), c.Str("build"), use,
+				args, c.Bool("nightly"), c.Bool("canary"), c.Bool("force"), c.Str("profile"), c.Str("build"), use,
 			)
 		},
 	}

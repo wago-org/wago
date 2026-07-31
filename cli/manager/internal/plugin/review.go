@@ -5,9 +5,10 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/wago-org/wago/cli/internal/pluginmenu"
 	"github.com/wago-org/wago/cli/internal/project"
+	"github.com/wago-org/wago/cli/internal/tui"
 	pluginbuild "github.com/wago-org/wago/cli/manager/internal/plugin/build"
-	"github.com/wago-org/wago/cli/manager/internal/tui"
 )
 
 // reviewCapabilities presents a plugin's requestable capabilities in an
@@ -75,7 +76,18 @@ func pkgGrant(name string, useGlobal bool, requested []string, grantAll, denyAll
 	if err != nil {
 		fatal("plugin grant: %v", err)
 	}
-	deps, _ := project.Dependencies(src)
+	deps, err := project.Dependencies(src)
+	if err != nil {
+		fatal("plugin grant: %v", err)
+	}
+	if id == "" {
+		selected, ok := chooseGrantPlugin(src, deps)
+		if !ok {
+			fmt.Println("Cancelled.")
+			return
+		}
+		id = selected
+	}
 	if !ContainsDependency(deps, id) {
 		fatal("plugin grant: %q is not installed — run `wago add %s` first", name, name)
 	}
@@ -123,4 +135,28 @@ func pkgGrant(name string, useGlobal bool, requested []string, grantAll, denyAll
 		return
 	}
 	fmt.Printf("%s granted %s: %s\n", cyan("✓"), id, strings.Join(chosen, ", "))
+}
+
+func chooseGrantPlugin(src string, dependencies []string) (string, bool) {
+	if len(dependencies) == 0 {
+		fatal("plugin grant: no plugins enabled")
+	}
+	lock, err := project.ReadLock(src)
+	if err != nil {
+		fatal("plugin grant: %v", err)
+	}
+	packages := make([]pluginmenu.Package, 0, len(dependencies))
+	for _, dependency := range dependencies {
+		id := strings.TrimPrefix(dependency, "github.com/")
+		version := strings.TrimSpace(lock.Packages[id].Version)
+		if version == "" {
+			version = "unresolved"
+		} else {
+			version = DisplayVersion(version)
+		}
+		packages = append(packages, pluginmenu.Package{
+			Name: id, Version: version,
+		})
+	}
+	return pluginmenu.Select("Select installed plugin", packages)
 }

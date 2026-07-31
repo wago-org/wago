@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/wago-org/wago/cli/manager/internal/tui"
+	"github.com/wago-org/wago/cli/internal/tui"
 	"github.com/wago-org/wago/internal/wagopaths"
 )
 

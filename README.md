@@ -142,16 +142,24 @@ wago version update --nightly
 wago version update --canary
 ```
 
+Channel updates compare the resolved and installed commit hashes before
+downloading. Matching runtimes are left untouched; pass `--force` to reinstall
+the selected profile and build anyway.
+
 `wago status` gives a compact view of the manager, active runtime, selected
-project scope, plugins, and lockfile. `wago update` coordinates the manager,
-rolling runtime, and enabled plugins; use `--self`, `--runtime`, or `--plugins`
-to update only one layer. Every selector-backed version command also accepts
+project scope, plugins, and lockfile. `wago update` opens a selector for the
+manager, rolling runtime, and enabled plugins. Use `wago update manager`,
+`wago update runtime`, or `wago update plugins` for a one-shot update; the
+matching `--manager`, `--runtime`, `--plugins`, and `--all` flags are also
+available for scripts and CI. Every selector-backed version command also accepts
 explicit `--version`, `--channel`, `--profile`, `--build`, `--use`, and
 confirmation flags for scripts and CI.
 
 Regenerable state is visible through `wago cache dir` and `wago cache size`.
-Use `wago cache prune --days 30 --yes` for old entries, or select downloads and
-plugin builds explicitly with `wago cache clean --downloads|--builds --yes`.
+`wago cache clean` opens a size-aware multi-selector with every category enabled
+by default. For automation, use `wago cache clean --all` or select
+`--downloads` and `--builds` explicitly. Use
+`wago cache prune --days 30 --yes` for old entries.
 Shell completion can be printed or installed with
 `wago config completions zsh|bash|fish [--install]`; the installer offers this
 after PATH setup.
@@ -248,6 +256,8 @@ Initialize a project explicitly, or let `add` create `wago.json` automatically:
 
 ```bash
 wago init
+wago init --quick
+wago init --full --kind application --name demo --plugins wago-org/wasi
 wago add wago-org/wasi
 wago add wago-org/wasi wago-org/workers  # install multiple packages together
 wago add --global wago-org/wasi  # shared outside projects with local manifests
@@ -255,12 +265,21 @@ wago plugin add wago-org/wasi    # equivalent, fully grouped form
 wago add wago-org/wasi --allow-all  # one-shot capability approval
 ```
 
+Interactive `wago init` first offers Quick and Full setup. Quick creates the
+minimal schema-backed manifest. Full setup configures an application or a
+publishable plugin package, including project metadata, initial version
+constraints, and the open-source registry metadata required for publishing.
+Every answer has a matching flag; use `--full --yes` for inferred defaults in
+scripts. Exact plugin versions and capability grants remain lockfile-owned.
+
 `add` resolves, downloads, verifies, and builds all requested packages as one
 transaction, then prints their resolved versions and total elapsed time.
 Exact resolved versions are pinned in `wago-lock.json`. Use
-`wago plugin outdated`, `wago plugin update`, `wago plugin tree`,
-`wago plugin why <name>`, `wago plugin verify`, and `wago plugin rebuild` to
-inspect and maintain that reproducible plugin runtime.
+`wago plugin outdated`, `wago plugin update`, `wago plugin tree`, and
+`wago plugin rebuild` to
+inspect and maintain that reproducible plugin runtime. `plugin update` compares
+the installed, locked, and latest commit hashes and skips the rebuild when they
+already match; pass `--force` to update and rebuild anyway.
 
 Local plugins are isolated from the global set. A local `wago.json` wins without
 merging machine state; `wago run --global app.wasm` explicitly selects global
@@ -282,6 +301,11 @@ wago module imports app.wasm
 wago module capabilities app.wasm
 wago version list
 ```
+
+Run `wago plugin inspect` or `wago plugin grant` without a package name to open
+the installed-package selector. The inspect selector groups subpackages under
+their root package; press → to browse them and ← or Esc to return. Selectors
+page in groups of 15 entries.
 
 The standard CLI contains no plugins. Each `plugins` entry is both a
 version-constrained build dependency and a runtime activation. Reviewed

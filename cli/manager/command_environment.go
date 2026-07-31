@@ -21,8 +21,6 @@ import (
 	pluginTree "github.com/wago-org/wago/cli/manager/commands/plugin/tree"
 	"github.com/wago-org/wago/cli/manager/commands/plugin/unpublish"
 	pluginupdate "github.com/wago-org/wago/cli/manager/commands/plugin/update"
-	pluginverify "github.com/wago-org/wago/cli/manager/commands/plugin/verify"
-	pluginwhy "github.com/wago-org/wago/cli/manager/commands/plugin/why"
 	updatecmd "github.com/wago-org/wago/cli/manager/commands/update"
 	versioninstall "github.com/wago-org/wago/cli/manager/commands/version/install"
 	managercache "github.com/wago-org/wago/cli/manager/internal/cache"
@@ -75,7 +73,24 @@ func (e commandEnvironment) CacheSize(selection cacheoptions.Selection) {
 	fmt.Println(managercache.FormatBytes(bytes))
 }
 func (e commandEnvironment) CacheClean(options cacheclean.Options) {
-	result, err := managercache.Clean(e.dirs(), cacheSelection(options.Selection))
+	selection := cacheSelection(options.Selection)
+	if !selection.Downloads && !selection.Builds {
+		var submitted bool
+		var err error
+		selection, submitted, err = managercache.ChooseClean(e.dirs())
+		if err != nil {
+			fatal("cache clean: %v", err)
+		}
+		if !submitted {
+			fmt.Println("Cancelled.")
+			return
+		}
+		if !selection.Downloads && !selection.Builds {
+			fmt.Println("No caches selected.")
+			return
+		}
+	}
+	result, err := managercache.Clean(e.dirs(), selection)
 	if err != nil {
 		fatal("cache clean: %v", err)
 	}
@@ -127,7 +142,8 @@ func (commandEnvironment) Grant(options grant.Options) {
 
 func (commandEnvironment) UpdatePlugins(options pluginupdate.Options) {
 	managerplugin.Update(managerplugin.MutationRequest{
-		Name: options.Module, Global: options.Global, Local: options.Local, Verbose: options.Verbose,
+		Name: options.Module, Global: options.Global, Local: options.Local,
+		Force: options.Force, Verbose: options.Verbose,
 	})
 }
 
@@ -140,14 +156,8 @@ func (commandEnvironment) OutdatedPlugins(options pluginoutdated.Options) {
 func (commandEnvironment) PluginTree(options pluginTree.Options) {
 	managerplugin.ShowTree(maintenanceRequest("", options.Global, options.Local, false))
 }
-func (commandEnvironment) WhyPlugin(options pluginwhy.Options) {
-	managerplugin.ExplainWhy(maintenanceRequest(options.Name, options.Global, options.Local, false))
-}
 func (commandEnvironment) RebuildPlugins(options pluginrebuild.Options) {
 	managerplugin.RebuildRuntime(maintenanceRequest("", options.Global, options.Local, options.Verbose))
-}
-func (commandEnvironment) VerifyPlugins(options pluginverify.Options) {
-	managerplugin.VerifyState(maintenanceRequest("", options.Global, options.Local, options.Verbose))
 }
 
 func (commandEnvironment) Publish(options publish.Options) {
@@ -200,9 +210,9 @@ func (e commandEnvironment) InstallRequested(options versioninstall.Options) {
 		Use: options.Use,
 	})
 }
-func (e commandEnvironment) UpdateVersion(args []string, nightly, canary bool, profile, build, use string) {
+func (e commandEnvironment) UpdateVersion(args []string, nightly, canary, force bool, profile, build, use string) {
 	e.toolchain().Update(managerversion.UpdateRequest{
-		Args: args, Nightly: nightly, Canary: canary, Profile: profile, Build: build, Use: use,
+		Args: args, Nightly: nightly, Canary: canary, Force: force, Profile: profile, Build: build, Use: use,
 	})
 }
 func (e commandEnvironment) UninstallVersions(versions []string) {
@@ -216,14 +226,10 @@ func (commandEnvironment) Update() {
 
 func (e commandEnvironment) UpdateEverything(options updatecmd.Options) {
 	activeRuntime := managerversion.ActiveVersion(e.dirs())
-	runtimeHandledBySelf := options.Self && selfUpdatesRuntime(activeRuntime, versionString(), options.Channel)
-	if options.Self {
+	if options.Manager {
 		managerself.Update(versionString(), managerself.ExecutablePath())
 	}
-	// Self-update refreshes the active release-channel runtime along with the
-	// manager when both use the same channel. Update separately when the active
-	// runtime follows another channel or the user explicitly selected one.
-	if options.Runtime && !runtimeHandledBySelf {
+	if options.Runtime {
 		channel := options.Channel
 		if channel == "" {
 			channel = activeRuntime
@@ -255,11 +261,6 @@ func (e commandEnvironment) UpdateEverything(options updatecmd.Options) {
 			managerplugin.Update(managerplugin.MutationRequest{Global: global, Local: local, Verbose: options.Verbose})
 		}
 	}
-}
-
-func selfUpdatesRuntime(activeRuntime, managerVersion, explicitChannel string) bool {
-	return explicitChannel == "" &&
-		managerself.RuntimeTarget(activeRuntime, managerself.Channel(managerVersion), "matched") != ""
 }
 
 func (commandEnvironment) RequestedMode(value string, yes bool) (string, bool) {

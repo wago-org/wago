@@ -7,8 +7,8 @@ import (
 )
 
 type Options struct {
-	Module                 string
-	Global, Local, Verbose bool
+	Module                        string
+	Global, Local, Force, Verbose bool
 }
 
 type Environment interface {
@@ -21,6 +21,7 @@ func Command(environment Environment) *command.Cmd {
 		Summary: "update plugins to their latest versions, then rebuild", Args: "[module]",
 		Flags: []command.Flag{
 			plugin.GlobalFlag(), plugin.LocalFlag(),
+			{Name: "force", Short: "f", Bool: true, Help: "update and rebuild even when commit hashes match"},
 			{Name: "verbose", Short: "v", Bool: true, Help: "stream the underlying go output"},
 		},
 		Run: func(c *command.Ctx) {
@@ -28,6 +29,7 @@ func Command(environment Environment) *command.Cmd {
 				Module:  c.Optional("[module]"),
 				Global:  c.Bool("global"),
 				Local:   c.Bool("local"),
+				Force:   c.Bool("force"),
 				Verbose: c.Bool("verbose"),
 			})
 		},

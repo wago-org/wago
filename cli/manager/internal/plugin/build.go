@@ -326,9 +326,6 @@ func pkgUpdate(target string, o pkgOpts) {
 	if err != nil {
 		fatal("plugin update: %v", err)
 	}
-	if err := pluginbuild.EnsureModule(buildDir); err != nil {
-		fatal("plugin update: %v", err)
-	}
 	src, err := depsSource(o.global)
 	if err != nil {
 		fatal("plugin update: %v", err)
@@ -339,6 +336,10 @@ func pkgUpdate(target string, o pkgOpts) {
 	}
 	if len(deps) == 0 {
 		fatal("plugin update: no plugins to update (add one: wago add <module>)")
+	}
+	lock, err := project.ReadLock(src)
+	if err != nil {
+		fatal("plugin update: %v", err)
 	}
 	targets := deps
 	if target != "" {
@@ -351,7 +352,31 @@ func pkgUpdate(target string, o pkgOpts) {
 		}
 		targets = []string{target}
 	}
+	pending := make([]string, 0, len(targets))
 	for _, t := range targets {
+		id := strings.TrimPrefix(t, "github.com/")
+		current, haveCurrent := currentModuleExactVersion(buildDir, t)
+		locked := lock.Packages[id].Version
+		if !o.force && haveCurrent && locked != "" {
+			latest, err := latestModuleVersion(t, current)
+			if err != nil {
+				fatal("plugin update: resolve latest %s: %v", t, err)
+			}
+			if !pluginUpdateRequired(current, locked, latest, false) {
+				fmt.Printf("%s %s is already up to date (%s)\n", cyan("✓"), id, shortModuleRevision(latest))
+				continue
+			}
+		}
+		pending = append(pending, t)
+	}
+	if len(pending) == 0 {
+		return
+	}
+	if err := pluginbuild.EnsureModule(buildDir); err != nil {
+		fatal("plugin update: %v", err)
+	}
+	for _, t := range pending {
+		id := strings.TrimPrefix(t, "github.com/")
 		fmt.Printf("%s %s %s\n", dim("→ updating"), t, dim("(latest)"))
 		if err := pluginbuild.Update(buildDir, t, o.verbose); err != nil {
 			fatal("plugin update: %s: %v", t, err)
@@ -360,11 +385,6 @@ func pkgUpdate(target string, o pkgOpts) {
 		if _, err := project.AddDependency(src, t, "^"+DisplayVersion(exact)); err != nil {
 			fatal("plugin update: recording %s: %v", t, err)
 		}
-		lock, err := project.ReadLock(src)
-		if err != nil {
-			fatal("plugin update: %v", err)
-		}
-		id := strings.TrimPrefix(t, "github.com/")
 		entry := lock.Packages[id]
 		entry.Version = exact
 		lock.Packages[id] = entry
@@ -376,7 +396,51 @@ func pkgUpdate(target string, o pkgOpts) {
 	if err != nil {
 		fatal("plugin update: %v", err)
 	}
-	fmt.Printf("%s updated %d plugin%s  %s\n", cyan("✓"), len(targets), plural(len(targets)), bin)
+	fmt.Printf("%s updated %d plugin%s  %s\n", cyan("✓"), len(pending), plural(len(pending)), bin)
+}
+
+func pluginUpdateRequired(current, locked, latest string, force bool) bool {
+	if force {
+		return true
+	}
+	return !sameModuleRevision(current, latest) || !sameModuleRevision(locked, latest)
+}
+
+func sameModuleRevision(left, right string) bool {
+	leftRevision, rightRevision := moduleRevision(left), moduleRevision(right)
+	if leftRevision != "" && rightRevision != "" {
+		return leftRevision == rightRevision
+	}
+	return strings.TrimSpace(left) == strings.TrimSpace(right)
+}
+
+func shortModuleRevision(version string) string {
+	revision := moduleRevision(version)
+	if len(revision) > 7 {
+		return revision[:7]
+	}
+	if revision != "" {
+		return revision
+	}
+	return DisplayVersion(version)
+}
+
+func moduleRevision(version string) string {
+	version = strings.TrimSpace(strings.TrimSuffix(version, "+incompatible"))
+	index := strings.LastIndexByte(version, '-')
+	if index < 0 || index == len(version)-1 {
+		return ""
+	}
+	revision := version[index+1:]
+	if len(revision) < 7 || len(revision) > 40 {
+		return ""
+	}
+	for _, character := range revision {
+		if !strings.ContainsRune("0123456789abcdef", character) {
+			return ""
+		}
+	}
+	return revision
 }
 
 // pluginRuntimeBinary resolves the local or global plugin-aware runtime for the

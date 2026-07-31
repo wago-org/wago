@@ -8,6 +8,7 @@ import (
 	"github.com/wago-org/wago"
 	"github.com/wago-org/wago/cli/internal/command"
 	"github.com/wago-org/wago/cli/internal/handoff"
+	"github.com/wago-org/wago/cli/internal/pluginmenu"
 	"github.com/wago-org/wago/cli/internal/ui"
 	runtimeplugin "github.com/wago-org/wago/cli/runtime/internal/plugin"
 )
@@ -19,7 +20,13 @@ func Command() *command.Cmd {
 }
 
 func run(c *command.Ctx) {
-	name := c.One("<name>")
+	name := c.Optional("[name]")
+	if name == "" {
+		name = selectPlugin()
+		if name == "" {
+			return
+		}
+	}
 	extension, ok := wago.NewExtension(name)
 	if !ok {
 		ui.Fatal("plugin inspect: unknown plugin %q (see: wago plugin list)", name)
@@ -72,4 +79,25 @@ func run(c *command.Ctx) {
 			fmt.Printf("        %s\n", ui.Dim(spec.Docs))
 		}
 	}
+}
+
+func selectPlugin() string {
+	names := wago.RegisteredPluginNames()
+	if len(names) == 0 {
+		ui.Fatal("plugin inspect: no plugins enabled")
+	}
+	packages := make([]pluginmenu.Package, 0, len(names))
+	for _, name := range names {
+		extension, ok := wago.NewExtension(name)
+		if !ok {
+			continue
+		}
+		packages = append(packages, pluginmenu.Package{Name: name, Version: extension.Info().Version})
+	}
+	selected, ok := pluginmenu.Select("Select installed plugin", packages)
+	if !ok {
+		fmt.Println("Cancelled.")
+		return ""
+	}
+	return selected
 }

@@ -15,7 +15,7 @@ func PluginListCommand() *command.Cmd {
 // PluginInspectCommand describes the runtime-owned plugin inspect command.
 func PluginInspectCommand() *command.Cmd {
 	return &command.Cmd{
-		Name: "inspect", Summary: "show an enabled plugin's imports and capabilities", Args: "<name>",
+		Name: "inspect", Summary: "show an enabled plugin's imports and capabilities", Args: "[name]",
 		Flags: pluginInspectionFlags(),
 	}
 }

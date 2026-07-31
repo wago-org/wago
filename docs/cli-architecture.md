@@ -21,6 +21,7 @@ cli/internal/
   command/   command tree, parsing, dispatch, and help rendering
   handoff/   manager-to-runtime launch metadata and routing rules
   project/   wago.json, plugin intent, and local/global/bare scope
+  tui/       shared radio, drill-down, and multi-select terminal interaction
   ui/        non-interactive output primitives
 ```
 
@@ -35,7 +36,6 @@ cli/manager/internal/
   registry/  credentials, OAuth, resolution, publishing, and registry HTTP
   self/      manager update, replacement, and uninstall
   status/    read-only manager, runtime, project, plugin, and lock reporting
-  tui/       radio, drill-down, and multi-select terminal interaction
   version/   installed runtime state, discovery, download, source fallback, selection
 ```
 
@@ -103,9 +103,10 @@ installation steps.
 All interactive manager workflows also expose flags for automation. A command
 without enough information may open a selector, but CI and scripts can always
 provide the version, profile, build, scope, confirmation, and capability policy
-directly. `wago update` coordinates manager, rolling runtime, and plugin updates;
-the narrower `self update`, `version update`, and `plugin update` commands remain
-available for explicit control.
+directly. Bare `wago update` opens an all-selected multi-choice screen for the
+manager, rolling runtime, and plugins. Positional targets and matching flags
+provide one-shot updates; the narrower `self update`, `version update`, and
+`plugin update` commands remain available for explicit control.
 
 ## Runtime profiles and builds
 

@@ -83,11 +83,9 @@ an error instead of being silently ignored. Lock entries not selected by
 `wago.json` are ignored.
 
 `wago add` and `wago plugin update` resolve manifest constraints and write exact
-module versions here. `wago plugin verify` checks that every declared plugin is
-pinned and verifies the Go module checksums used by the generated runtime.
-`wago plugin outdated` reports newer module versions without changing either
-file, while `wago plugin rebuild` reproduces the plugin runtime from the locked
-versions.
+module versions here. `wago plugin outdated` reports newer module versions
+without changing either file, while `wago plugin rebuild` reproduces the plugin
+runtime from the locked versions.
 
 ### Host-integration capabilities
 
