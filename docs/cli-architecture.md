@@ -78,6 +78,10 @@ internal domain package; an internal package must never import a command
 package. Architecture tests enforce both that dependency direction and the
 manager/runtime compile seam.
 
+Command descriptors keep ordinary options in `Flags` and backend optimization
+switches in `Knobs`. Parsing treats both identically, while help and command
+schemas always place `Knobs` last, after plugin, automation, and help flags.
+
 The root packages contain only entrypoint behavior, command composition,
 environment adapters, forwarding, and top-level output:
 

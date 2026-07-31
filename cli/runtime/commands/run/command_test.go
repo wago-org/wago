@@ -63,6 +63,14 @@ func TestHelpCollapsesBooleanPairs(t *testing.T) {
 		!strings.Contains(text, "-p8 / -p 8 / --parallel=8") {
 		t.Fatalf("run help did not document function parallelism:\n%s", text)
 	}
+	pluginIndex := strings.Index(text, "--plugin <name>")
+	helpIndex := strings.Index(text, "--help, -h")
+	deferredIndex := strings.Index(text, "--<no->deferred-bounds-checking")
+	optimizationFlags := OptimizationFlags()
+	lastKnobIndex := strings.Index(text, "--<no->"+optimizationFlags[len(optimizationFlags)-2].Name)
+	if pluginIndex < 0 || helpIndex < pluginIndex || deferredIndex < helpIndex || lastKnobIndex < deferredIndex {
+		t.Fatalf("optimization knobs are not the trailing flag group:\n%s", text)
+	}
 }
 
 func TestHelpRecognitionAfterSeparatedParallelism(t *testing.T) {

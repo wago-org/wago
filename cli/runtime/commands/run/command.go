@@ -26,15 +26,15 @@ func Command(environment Environment) *command.Cmd {
 		{Name: "watch-interval", Arg: "<duration>", Help: "watch polling interval (default 200ms)"},
 		ParallelFlag(),
 	}
-	flags = append(flags, DeferredBoundsCheckingFlags()...)
-	flags = append(flags, OptimizationFlags()...)
 	flags = append(flags, environment.ProfileFlags()...)
+	knobs := append(DeferredBoundsCheckingFlags(), OptimizationFlags()...)
+	parserFlags := append(append([]command.Flag(nil), flags...), knobs...)
 	implementation := implementation{environment: environment}
 	return &command.Cmd{
 		Name: "run", Summary: "compile and execute a WebAssembly module (default)",
-		Args: "<file> [args...]", Flags: flags, PassThrough: true,
+		Args: "<file> [args...]", Flags: flags, Knobs: knobs, PassThrough: true,
 		Normalize: func(args []string) ([]string, error) {
-			return NormalizeParallelArgs(args, flags, true)
+			return NormalizeParallelArgs(args, parserFlags, true)
 		},
 		Long: "<file> is raw .wasm or a precompiled .wago. Args after the file are typed by the\n" +
 			"signature; override per-arg with a suffix:  42   7:i64   3.5:f64\n" +

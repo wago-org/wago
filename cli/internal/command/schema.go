@@ -23,11 +23,12 @@ type CommandSpec struct {
 }
 
 type FlagSpec struct {
-	Name    string `json:"name"`
-	Short   string `json:"short,omitempty"`
-	Type    string `json:"type"`
-	Value   string `json:"value,omitempty"`
-	Summary string `json:"summary,omitempty"`
+	Name     string `json:"name"`
+	Short    string `json:"short,omitempty"`
+	Type     string `json:"type"`
+	Value    string `json:"value,omitempty"`
+	Summary  string `json:"summary,omitempty"`
+	Category string `json:"category,omitempty"`
 }
 
 func Describe(root *Cmd) CommandSchema {
@@ -57,14 +58,25 @@ func WriteSchema(out io.Writer, root *Cmd) error {
 func describeChildren(children []*Cmd) []CommandSpec {
 	result := make([]CommandSpec, 0, len(children))
 	for _, child := range children {
-		flags := append(child.AllFlags(), Flag{Name: "help", Short: "h", Bool: true, Help: "show this help"})
 		spec := CommandSpec{
 			Name: child.Name, Aliases: append([]string(nil), child.Aliases...),
 			Summary: child.Summary, Arguments: child.Args, PassThrough: child.PassThrough,
 			Commands: describeChildren(child.Children),
 		}
-		spec.Flags = describeFlags(flags)
+		spec.Flags = describeCommandFlags(child)
 		result = append(result, spec)
+	}
+	return result
+}
+
+func describeCommandFlags(cmd *Cmd) []FlagSpec {
+	flags := append([]Flag(nil), cmd.Flags...)
+	flags = append(flags, cmd.automationFlags()...)
+	flags = append(flags, Flag{Name: "help", Short: "h", Bool: true, Help: "show this help"})
+	result := describeFlags(flags)
+	for _, flag := range describeFlags(cmd.Knobs) {
+		flag.Category = "optimization"
+		result = append(result, flag)
 	}
 	return result
 }

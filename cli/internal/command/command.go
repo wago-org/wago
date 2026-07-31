@@ -18,6 +18,7 @@ type Cmd struct {
 	Args        string
 	Long        string
 	Flags       []Flag
+	Knobs       []Flag
 	PassThrough bool
 	Normalize   func([]string) ([]string, error)
 	Run         func(*Ctx)

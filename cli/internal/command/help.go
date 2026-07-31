@@ -48,7 +48,7 @@ func (c *Cmd) PrintHelp(output io.Writer, path string) {
 	if len(c.Children) > 0 {
 		writeChildren(&text, c.Children)
 	}
-	writeFlags(&text, c.AllFlags())
+	writeFlags(&text, c.displayFlags())
 	if c.Long != "" {
 		fmt.Fprintf(&text, "\n%s\n", strings.TrimRight(c.Long, "\n"))
 	}
@@ -69,8 +69,8 @@ func writeChildren(text *strings.Builder, children []*Cmd) {
 }
 
 func writeFlags(text *strings.Builder, flags []Flag) {
-	labels := make([]string, 0, len(flags)+1)
-	descriptions := make([]string, 0, len(flags)+1)
+	labels := make([]string, 0, len(flags))
+	descriptions := make([]string, 0, len(flags))
 	for index := 0; index < len(flags); index++ {
 		flag := flags[index]
 		if flag.Bool && index+1 < len(flags) && flags[index+1].Name == "no-"+flag.Name && flags[index+1].Bool {
@@ -86,8 +86,6 @@ func writeFlags(text *strings.Builder, flags []Flag) {
 		labels = append(labels, flagLabel(flag))
 		descriptions = append(descriptions, flag.Help)
 	}
-	labels = append(labels, "--help, -h")
-	descriptions = append(descriptions, "show this help")
 	width := 0
 	for _, label := range labels {
 		width = max(width, len(label))
@@ -97,6 +95,13 @@ func writeFlags(text *strings.Builder, flags []Flag) {
 		label = fmt.Sprintf("%-*s", width, label)
 		fmt.Fprintf(text, "  %s  %s\n", DimHelpSyntax(label, ui.Dim), descriptions[index])
 	}
+}
+
+func (c *Cmd) displayFlags() []Flag {
+	flags := append([]Flag(nil), c.Flags...)
+	flags = append(flags, c.automationFlags()...)
+	flags = append(flags, Flag{Name: "help", Short: "h", Bool: true, Help: "show this help"})
+	return append(flags, c.Knobs...)
 }
 
 func DimHelpSyntax(value string, style func(string) string) string {
