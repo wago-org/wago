@@ -89,7 +89,7 @@ and stress coverage.
 The synchronous helper boundary is capped at 64 parameter/result slots. A lazy
 per-instance `gcPublicState` includes one mutex-protected 63-value constructor
 scratch, a bounded direct native-frame/root-chain adapter, and the generic-global
-root mapping (2,432 bytes total on amd64), avoiding per-constructor,
+root mapping plus cross-code-owner identity (2,440 bytes total on amd64), avoiding per-constructor,
 per-root-publication, and per-boundary-collection Go allocations. On July 31,
 2026, five 500 ms samples of `BenchmarkGCArrayV128Set` measured 439.5-476.8 ns/op
 with 0 B/op and 0 allocs/op on the Ryzen 7 8845HS host. The path includes
@@ -106,22 +106,33 @@ and 31.7 ms for linked instantiate/start. The cold Starshine link/JIT allocated
 166.2 MB in 565,697 allocations; this and the 74.8 MB/448,851-allocation compile
 front half are explicit optimization targets rather than footprint claims.
 
-This is still not a general ownership or live-state persistence claim. Codec v30
-persists generic helper admission, vector layout, and the bounded native root-map
-contract, but not a live collector, compact handles, barriers, or object identity. Replay-safe
-`SnapshotInit` capture is admitted only for import-free/start-free generic-GC
-modules whose reference globals are immutable, local `anyref`/`i31ref` values
-with persisted initializer expressions; restore skips captured compact handles
-and reconstructs the graph by replaying those expressions. `SnapshotWarm` and
-all live/mutating heap capture remain rejected. Numeric host imports may re-enter the same instance: codec-v30 callsites carry
+Codec v30 persists generic helper admission, vector layout, and bounded native
+root maps; compact handles remain process-local. Snapshot format v4 separately
+serializes every object reachable from owned local GC globals using one-based
+stable IDs, exact type IDs, array lengths, and typed field/element payloads.
+Capture rejects non-null funcref/externref object fields. Restore validates the
+complete graph before allocation, clears replayed initializer roots, allocates
+all objects under a temporary root slice, and then fills references, preserving
+cycles and shared identity without reusing handles. Both `SnapshotInit` and
+`SnapshotWarm` support this bounded table-free graph product.
+
+Numeric host imports may re-enter the same instance: codec-v30 callsites carry
 stack adjustments, a bounded eight-entry activation stack preserves control
 state, nested invocations borrow separate 4 MiB foreign stacks, and suspended
-outer frames remain roots during boundary and helper collection. Generic struct/array helpers and exact frame roots also execute under linux/amd64
-guard-page bounds checks. Local-only `call_ref` and EH root unioning are covered
-on linux/amd64; unsupported descriptor ingress and malformed fixed-root maps fail
-closed. Non-amd64 native lowering and non-null GC values across host or
-cross-instance boundaries remain closed. Shared collector ownership and those
-lifecycle boundaries remain required.
+outer frames remain roots during boundary and helper collection. A bounded
+same-Runtime cross-instance product additionally gives descriptor-identical,
+global/table-free generic-GC modules one collector. Exact GC-reference
+parameters/results retain identity, and the native walker switches code/root-map
+ownership when a return PC enters another live instance. Host reference transfer,
+incompatible collector configurations/descriptors, and mixed host/cross-instance
+import graphs reject transactionally.
+
+Generic struct/array helpers and exact frame roots execute under linux/amd64
+guard-page bounds checks. Linux and Darwin arm64 explicit-bounds builds now lower
+struct, array, and i31 operations through the same synchronous helper ABI. Arm64
+currently keeps collection disabled while native frames are active until its
+frame-map walker is implemented; bounded exhaustion remains explicit rather than
+scanning unproved roots.
 
 Iteration 38 wires one exact linux/amd64 numeric-local helper product;
 iteration 39 adds exact immutable GC-global roots, packed fields, and the numeric portion

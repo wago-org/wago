@@ -634,7 +634,7 @@ Tiny stress. Direct tail calls discard each caller frame and retain no callsite 
 persists and strictly validates frame sizes, safepoint ordering, root alignment,
 callsite returns, and adapter termination. Forged metadata fails closed. Five
 500 ms samples measured 432.5-443.5 ns/op, 0 B/op, and 0 allocs/op. The expanded
-direct walker raises lazy `gcPublicState` from 1,560 to 2,432 bytes while the
+direct walker raises lazy `gcPublicState` from 1,560 to 2,440 bytes while the
 64-byte `compiledCodeCache` layout remains unchanged.
 
 ## Iteration 79 suspended host activations and mutable globals
@@ -650,7 +650,7 @@ across 1,000 allocations in a re-entered function, including codec reload.
 Generic module-local GC globals now synchronize their checked collector slots
 before every allocating helper as well as invocation-boundary collection, so a
 mutable global may retain an object throughout a long-running invocation.
-`gcPublicState` is 2,432 bytes on amd64; the state remains lazy and warmed helper
+`gcPublicState` is 2,440 bytes on amd64; the state remains lazy and warmed helper
 publication remains allocation-free.
 
 ## Iteration 80 indirect calls, table roots, and guard execution
@@ -666,7 +666,7 @@ objects across 1,000 allocations and codec reload.
 Generic struct/array helpers and exact native frame roots now execute with
 linux/amd64 guard-page bounds checks. A tagged test performs 1,000 Tiny
 collect/step-every-allocation iterations and verifies a live `v128` object.
-`gcPublicState` is 2,432 bytes on amd64.
+`gcPublicState` is 2,440 bytes on amd64.
 
 ## Iteration 81 local call-ref and EH root unioning
 

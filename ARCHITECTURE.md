@@ -70,11 +70,15 @@ with guard-page bounds checks on linux/amd64. Local-only `call_ref` and
 `return_call_ref` are admitted when no function descriptor can enter through a
 parameter, result, global, import, or mutable/exported table. EH functions use
 conservative all-local masks plus fixed GC-payload record offsets; record
-initialization and clearing remain part of the native EH lowering. Non-null
-cross-instance GC products remain collection-disabled. Codec v30 persists generic helper admission and the 16-byte
-`v128` storage contract, but never live collector state. Initialization
-snapshots may replay immutable local GC initializer graphs; warm/live GC
-snapshots remain rejected.
+initialization and clearing remain part of the native EH lowering. A bounded
+same-Runtime cross-instance slice gives descriptor-identical, global/table-free
+modules one collector, transfers compact GC references without copying, and
+switches root-map ownership across foreign return PCs. Codec v30 persists helper
+admission and the 16-byte `v128` storage contract, but never compact handles.
+Snapshot v4 persists reachable local-global object graphs with stable IDs and
+two-pass cycle/sharing reconstruction. Arm64 explicit-bounds builds lower
+struct/array/i31 helpers through the synchronous ABI; active-frame collection on
+arm64 remains disabled until exact stack maps are available.
 
 ---
 
