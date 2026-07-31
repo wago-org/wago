@@ -3,10 +3,56 @@
 package runtime
 
 import (
+	"bytes"
 	"syscall"
 	"testing"
 	"unsafe"
 )
+
+func TestFilePageSnapshotDirtyTrackerRestoresFullImageExactly(t *testing.T) {
+	want := make([]byte, pageSize*3)
+	for i := range want {
+		want[i] = byte(i*29 + 11)
+	}
+	backing, err := newPageSnapshotBacking(want)
+	if err != nil {
+		t.Fatalf("newPageSnapshotBacking: %v", err)
+	}
+	defer backing.close()
+
+	memory, err := mmapRW(len(want))
+	if err != nil {
+		t.Fatalf("mmapRW: %v", err)
+	}
+	defer syscall.Munmap(memory)
+	addr := uintptr(unsafe.Pointer(&memory[0]))
+	if err = backing.reset(addr, len(memory)); err != nil {
+		t.Fatalf("reset: %v", err)
+	}
+	tracker, err := backing.track(addr, len(memory), 0, len(memory))
+	if err != nil {
+		t.Fatalf("track: %v", err)
+	}
+	defer tracker.close()
+	if !tracker.selective() {
+		if fileTracker, ok := tracker.(*filePageSnapshotTracker); ok {
+			t.Skipf("pagemap scan unavailable: %v", fileTracker.fallbackErr)
+		}
+		t.Skip("pagemap scan unavailable")
+	}
+
+	for cycle := 0; cycle < 3; cycle++ {
+		memory[17] ^= byte(cycle + 1)
+		memory[pageSize+31] ^= byte(cycle + 3)
+		memory[len(memory)-1] ^= byte(cycle + 5)
+		if err = tracker.reset(); err != nil {
+			t.Fatalf("tracked reset cycle %d: %v", cycle, err)
+		}
+		if !bytes.Equal(memory, want) {
+			t.Fatalf("tracked reset cycle %d did not restore the exact image", cycle)
+		}
+	}
+}
 
 func TestFilePageSnapshotDiscardRestoresPrivateMapping(t *testing.T) {
 	want := make([]byte, pageSize*2)
@@ -120,7 +166,7 @@ func BenchmarkFilePageSnapshotDirty20MiB(b *testing.B) {
 	if err = backing.reset(addr, len(memory)); err != nil {
 		b.Fatalf("initial reset: %v", err)
 	}
-	tracker, err := backing.track(addr, len(memory), 1<<20, 8<<20)
+	tracker, err := backing.track(addr, len(memory), 0, len(memory))
 	if err != nil {
 		b.Fatalf("track: %v", err)
 	}

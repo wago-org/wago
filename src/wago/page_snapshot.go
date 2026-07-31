@@ -61,9 +61,9 @@ func CapturePageSnapshot(in *Instance) (*PageSnapshot, *PageSnapshotBinding, err
 
 // CaptureStubPageSnapshot captures an initialized AssemblyScript stub module
 // after validating its bump allocator cursor. Restoring its globals rewinds the
-// cursor while dirty-page tracking restores the initialized arena between the
-// end of static data and that cursor. Like AssemblyScript's __reset, memory
-// above the cursor is left untouched and becomes unreachable.
+// cursor while dirty-page tracking restores every changed linear-memory page.
+// The result is byte-exact even when the module mutates static data or leaves
+// stale bytes above the rewound cursor.
 func CaptureStubPageSnapshot(in *Instance) (*PageSnapshot, *PageSnapshotBinding, error) {
 	globals, err := CaptureStubGlobals(in)
 	if err != nil {
@@ -233,7 +233,7 @@ func (s *PageSnapshot) Bind(in *Instance) (*PageSnapshotBinding, error) {
 	}
 	if s.trackDirty {
 		var err error
-		b.dirtyTracker, err = in.jm.TrackPageSnapshotWrites(s.memory, s.dataEnd, s.cursor)
+		b.dirtyTracker, err = in.jm.TrackPageSnapshotWrites(s.memory, 0, uint64(len(in.memory.Bytes())))
 		if err != nil {
 			_ = b.Close()
 			return nil, err
@@ -266,9 +266,8 @@ func (in *Instance) passiveElementDescriptorBytes() []byte {
 // Reset discards dirty linear-memory pages in place and restores numeric
 // globals, local funcref table descriptors, and passive element/data drop
 // state. The first reset installs the shared private mapping; later stub resets
-// selectively discard dirty initialized-arena pages, while other snapshots
-// discard the complete mapping. Post-cursor memory is deliberately retained,
-// matching AssemblyScript stub's __reset semantics.
+// selectively discard every private dirty page, while other snapshots discard
+// the complete mapping.
 func (b *PageSnapshotBinding) Reset() error {
 	if b == nil || b.snapshot == nil || b.instance == nil || b.released.Load() {
 		return errors.New("wago: page snapshot binding is closed")
