@@ -121,11 +121,16 @@ func installedCommitMatches(path, resolved string) bool {
 		return false
 	}
 	installed := RuntimeRelease(path, "")
-	installedCommit, resolvedCommit := commitFromVersion(installed), commitFromVersion(resolved)
-	if installedCommit == "" || resolvedCommit == "" {
-		return false
+	return sameRelease(installed, resolved)
+}
+
+func sameRelease(installed, resolved string) bool {
+	if installed != "" && installed == resolved {
+		return true
 	}
-	return strings.HasPrefix(installedCommit, resolvedCommit) || strings.HasPrefix(resolvedCommit, installedCommit)
+	installedCommit, resolvedCommit := commitFromVersion(installed), commitFromVersion(resolved)
+	return installedCommit != "" && resolvedCommit != "" &&
+		(strings.HasPrefix(installedCommit, resolvedCommit) || strings.HasPrefix(resolvedCommit, installedCommit))
 }
 
 func commitFromVersion(version string) string {
@@ -216,11 +221,17 @@ func installRunnerPayload(ref string, profile wagopaths.Profile, build wagopaths
 }
 
 func installManagerUpdate(channel, dest string, progress *managerprogress.Progress) (string, error) {
-	var (
-		resolved   string
-		sourceOnly bool
-		err        error
-	)
+	resolved, sourceOnly, err := resolveManagerUpdate(channel, progress)
+	if err != nil {
+		return "", err
+	}
+	if err := installManagerPayload(resolved, dest, sourceOnly, progress); err != nil {
+		return "", err
+	}
+	return resolved, nil
+}
+
+func resolveManagerUpdate(channel string, progress *managerprogress.Progress) (resolved string, sourceOnly bool, err error) {
 	if channel == "latest" {
 		if progress != nil {
 			progress.Begin("resolving latest release")
@@ -233,10 +244,14 @@ func installManagerUpdate(channel, dest string, progress *managerprogress.Progre
 		resolved, sourceOnly, err = resolveRunnerVersion(channel, progress)
 	}
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
+	return resolved, sourceOnly, nil
+}
+
+func installManagerPayload(resolved, dest string, sourceOnly bool, progress *managerprogress.Progress) error {
 	if !sourceOnly {
-		err = downloadReleaseAssetWithProgress(
+		err := downloadReleaseAssetWithProgress(
 			releaseBase(),
 			canaryCommitVersion(resolved),
 			managerAsset(),
@@ -244,16 +259,16 @@ func installManagerUpdate(channel, dest string, progress *managerprogress.Progre
 			progress,
 		)
 		if err == nil {
-			return resolved, nil
+			return nil
 		}
 		if !releaseAssetUnavailable(err) {
-			return "", err
+			return err
 		}
 	}
 	if err := buildManagerSource(resolved, dest, progress); err != nil {
-		return "", err
+		return err
 	}
-	return resolved, nil
+	return nil
 }
 
 func latestMainCommit() (string, error) {

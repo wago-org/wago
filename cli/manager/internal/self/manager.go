@@ -11,8 +11,8 @@ func ExecutablePath() string {
 	return selfExecutablePath()
 }
 
-func Update(current, executable string) {
-	selfUpdate(current, executable)
+func Update(current, executable string, force bool) {
+	selfUpdate(current, executable, force)
 }
 
 func RequestedMode(value string, yes bool) (Mode, bool) {

@@ -25,6 +25,14 @@ func InstallManagerUpdate(channel, dest string, progress *managerprogress.Progre
 	return installManagerUpdate(channel, dest, progress)
 }
 
+func ResolveManagerUpdate(channel string, progress *managerprogress.Progress) (string, bool, error) {
+	return resolveManagerUpdate(channel, progress)
+}
+
+func InstallManagerPayload(resolved, dest string, sourceOnly bool, progress *managerprogress.Progress) error {
+	return installManagerPayload(resolved, dest, sourceOnly, progress)
+}
+
 func InstallRunnerPayload(ref string, profile wagopaths.Profile, build wagopaths.Build, dest string, sourceOnly bool, progress *managerprogress.Progress) error {
 	return installRunnerPayload(ref, profile, build, dest, sourceOnly, progress)
 }
@@ -47,4 +55,8 @@ func PromptYesNo(in io.Reader, out io.Writer, prompt string) bool {
 
 func DisplayRelease(ref string) string {
 	return releasePickerLabel(canaryCommitVersion(ref))
+}
+
+func SameRelease(installed, resolved string) bool {
+	return sameRelease(installed, resolved)
 }
