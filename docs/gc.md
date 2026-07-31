@@ -52,8 +52,10 @@ incomplete frame-root set is scanned, and one invocation that exceeds
 
 A bounded linux/amd64 slice now collects within an invocation. It admits local
 call graphs, numeric host imports, module-local GC globals, direct tail calls,
-and at most 64 collector-reference roots at a site; start functions, tags,
-GC-reference parameters/results, `call_ref`, and EH control remain closed.
+and at most 64 collector-reference roots at a site; start functions and
+GC-reference parameters/results remain closed. Local-only `call_ref` and
+`return_call_ref` are admitted when descriptor ingress is impossible. EH
+functions use conservative local masks and fixed rooted payload records.
 Private local-function tables admit direct and tail `call_indirect`; one private
 collector-reference table admits mutable entries scanned from its off-heap descriptor. Compile admission builds an exact structured-CFG
 local-liveness mask for every reachable allocation and direct call. The amd64 backend adds live hidden operand spills, assigns a compact
@@ -115,9 +117,10 @@ all live/mutating heap capture remain rejected. Numeric host imports may re-ente
 stack adjustments, a bounded eight-entry activation stack preserves control
 state, nested invocations borrow separate 4 MiB foreign stacks, and suspended
 outer frames remain roots during boundary and helper collection. Generic struct/array helpers and exact frame roots also execute under linux/amd64
-guard-page bounds checks. Non-amd64 native lowering, `call_ref`, EH integration,
-and non-null GC values across host or cross-instance boundaries remain closed. EH
-root unioning, table-root coherence, shared collector ownership, and those
+guard-page bounds checks. Local-only `call_ref` and EH root unioning are covered
+on linux/amd64; unsupported descriptor ingress and malformed fixed-root maps fail
+closed. Non-amd64 native lowering and non-null GC values across host or
+cross-instance boundaries remain closed. Shared collector ownership and those
 lifecycle boundaries remain required.
 
 Iteration 38 wires one exact linux/amd64 numeric-local helper product;
@@ -269,7 +272,9 @@ caller stack adjustments, and the runtime walks cross-function, recursive, and s
 activations through mutable off-heap slots. Mutable module-local global slots synchronize before
 allocation. Private local `call_indirect` and tail-indirect calls now participate in exact frame walking,
 and one private mutable collector-reference table is scanned as actual off-heap root slots.
-`call_ref`, EH integration, and broader ownership products remain later slices.
+Local-only `call_ref`/tail-ref and EH fixed GC-payload roots now participate in
+collection. Cross-instance collector ownership and broader persistence products
+remain later slices.
 
 ## Native exception-root map contract
 

@@ -5,8 +5,10 @@ package wago
 import (
 	"math"
 
+	railamd64 "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64"
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"github.com/wago-org/wago/src/core/nativeabi"
 )
 
 // newGCFrameRootPlan admits import/global/start/table/element/tag/EH-free local
@@ -14,12 +16,17 @@ import (
 // per function. Each function gets independent compile state so railshot workers
 // may populate maps in parallel.
 func newGCFrameRootPlan(m *wasm.Module, genericGC bool) *shared.GCModuleFrameRootPlan {
-	if !genericGC || m == nil || len(m.Code) == 0 || m.Start != nil || m.TagCount() != 0 {
+	if !genericGC || m == nil || len(m.Code) == 0 || m.Start != nil {
 		return nil
 	}
 	tablesSafe, collectorTable := gcFrameTablesSafe(m)
 	if !tablesSafe {
 		return nil
+	}
+	for i := range m.Globals {
+		if frameFunctionRefType(m, m.Globals[i].Type.Type) {
+			return nil
+		}
 	}
 	for i := range m.Imports {
 		if m.Imports[i].Type.Kind != wasm.ExternFunc {
@@ -31,10 +38,25 @@ func newGCFrameRootPlan(m *wasm.Module, genericGC bool) *shared.GCModuleFrameRoo
 		}
 	}
 	importedFunctions := m.ImportedFuncCount()
+	ehMaps, err := railamd64.BuildExceptionRootMaps(m)
+	if err != nil {
+		return nil
+	}
+	fixedRoots := make([][]uint32, len(m.Code))
+	for i := range ehMaps {
+		if int(ehMaps[i].LocalFunction) >= len(fixedRoots) {
+			return nil
+		}
+		for _, slot := range ehMaps[i].Slots {
+			if slot.Kind == nativeabi.RootGCRef {
+				fixedRoots[ehMaps[i].LocalFunction] = append(fixedRoots[ehMaps[i].LocalFunction], slot.Offset)
+			}
+		}
+	}
 	modulePlan := &shared.GCModuleFrameRootPlan{Functions: make([]*shared.GCFrameRootPlan, len(m.Code))}
 	var safepointBase uint32
 	for function := range m.Code {
-		if bodyHasUnsupportedNativeFrames(m.Code[function].BodyBytes, importedFunctions, len(m.Code), collectorTable) {
+		if bodyHasUnsupportedNativeFrames(m, m.Code[function].BodyBytes, importedFunctions, len(m.Code), collectorTable) {
 			return nil
 		}
 		ft, ok := m.LocalFuncType(function)
@@ -42,16 +64,16 @@ func newGCFrameRootPlan(m *wasm.Module, genericGC bool) *shared.GCModuleFrameRoo
 			return nil
 		}
 		for _, t := range ft.Params {
-			if collectorFrameRefType(m, t) {
+			if collectorFrameRefType(m, t) || frameFunctionRefType(m, t) {
 				return nil
 			}
 		}
 		for _, t := range ft.Results {
-			if collectorFrameRefType(m, t) {
+			if collectorFrameRefType(m, t) || frameFunctionRefType(m, t) {
 				return nil
 			}
 		}
-		plan := &shared.GCFrameRootPlan{Candidate: true, Exact: true, SafepointBase: safepointBase}
+		plan := &shared.GCFrameRootPlan{Candidate: true, Exact: true, SafepointBase: safepointBase, FixedOffsets: fixedRoots[function]}
 		slot, local := 0, uint32(0)
 		add := func(t wasm.ValType) bool {
 			if collectorFrameRefType(m, t) {
@@ -81,11 +103,16 @@ func newGCFrameRootPlan(m *wasm.Module, genericGC bool) *shared.GCModuleFrameRoo
 				}
 			}
 		}
-		liveMasks, err := gcFrameLocalLiveness(m.Code[function].BodyBytes, plan.LocalIndexes, false)
-		if err != nil {
-			return nil
+		var liveMasks, callMasks []uint64
+		var err error
+		if bodyUsesEH(m.Code[function].BodyBytes) {
+			liveMasks, callMasks, err = gcFrameConservativeMasks(m.Code[function].BodyBytes, len(plan.LocalIndexes))
+		} else {
+			liveMasks, err = gcFrameLocalLiveness(m.Code[function].BodyBytes, plan.LocalIndexes, false)
+			if err == nil {
+				callMasks, err = gcFrameLocalLiveness(m.Code[function].BodyBytes, plan.LocalIndexes, true)
+			}
 		}
-		callMasks, err := gcFrameLocalLiveness(m.Code[function].BodyBytes, plan.LocalIndexes, true)
 		if err != nil || (bodyUsesNativeCall(m.Code[function].BodyBytes) && !gcFrameCallABI(ft)) {
 			return nil
 		}
@@ -102,7 +129,18 @@ func newGCFrameRootPlan(m *wasm.Module, genericGC bool) *shared.GCModuleFrameRoo
 
 func gcFrameTablesSafe(m *wasm.Module) (safe, collector bool) {
 	if m.TableCount() == 0 {
-		return len(m.Elements) == 0, false
+		for i := range m.Elements {
+			e := &m.Elements[i]
+			if e.Mode.Kind != wasm.ElemDeclarative || e.Kind.Kind != wasm.ElemFuncs {
+				return false, false
+			}
+			for _, idx := range e.Kind.Funcs {
+				if int(idx) < m.ImportedFuncCount() || int(idx)-m.ImportedFuncCount() >= len(m.Code) {
+					return false, false
+				}
+			}
+		}
+		return true, false
 	}
 	if m.ImportedTableCount() != 0 || len(m.Tables) != 1 {
 		return false, false
@@ -160,7 +198,7 @@ func gcFrameTablesSafe(m *wasm.Module) (safe, collector bool) {
 	return true, collectorTable
 }
 
-func bodyHasUnsupportedNativeFrames(body []byte, importedFunctions, localFunctions int, collectorTable bool) bool {
+func bodyHasUnsupportedNativeFrames(m *wasm.Module, body []byte, importedFunctions, localFunctions int, collectorTable bool) bool {
 	r := wasm.NewReader(body)
 	for r.HasNext() {
 		op, err := r.Byte()
@@ -168,10 +206,6 @@ func bodyHasUnsupportedNativeFrames(body []byte, importedFunctions, localFunctio
 			return true
 		}
 		switch op {
-		case 0x06, 0x07, 0x08, 0x09, 0x0a, 0x18, 0x19, 0x1f: // exception-handling control
-			return true
-		case 0x14, 0x15: // call_ref families
-			return true
 		case 0x26: // table.set invalidates local function-target identity
 			if !collectorTable {
 				return true
@@ -184,6 +218,12 @@ func bodyHasUnsupportedNativeFrames(body []byte, importedFunctions, localFunctio
 		if (op == 0x10 || op == 0x12) && int(imm.Index) >= importedFunctions+localFunctions {
 			return true
 		}
+		if op == 0x14 || op == 0x15 {
+			ft, ok := m.TypeFunc(imm.Index)
+			if !ok || !gcFrameCallABI(ft) {
+				return true
+			}
+		}
 		if op == 0xfc && !collectorTable {
 			switch imm.Subopcode {
 			case 12, 14, 15, 17: // table.init/copy/grow/fill
@@ -192,6 +232,54 @@ func bodyHasUnsupportedNativeFrames(body []byte, importedFunctions, localFunctio
 		}
 	}
 	return false
+}
+
+func bodyUsesEH(body []byte) bool {
+	r := wasm.NewReader(body)
+	for r.HasNext() {
+		op, err := r.Byte()
+		if err != nil {
+			return true
+		}
+		switch op {
+		case 0x06, 0x07, 0x08, 0x09, 0x0a, 0x18, 0x19, 0x1f:
+			return true
+		}
+		if _, err := wasm.ClassifyInstructionImmediate(r, op); err != nil {
+			return true
+		}
+	}
+	return false
+}
+
+func gcFrameConservativeMasks(body []byte, localRoots int) (allocations, calls []uint64, err error) {
+	var mask uint64
+	if localRoots >= 64 {
+		mask = ^uint64(0)
+	} else if localRoots > 0 {
+		mask = uint64(1)<<uint(localRoots) - 1
+	}
+	r := wasm.NewReader(body)
+	for r.HasNext() {
+		op, readErr := r.Byte()
+		if readErr != nil {
+			return nil, nil, readErr
+		}
+		imm, readErr := wasm.ClassifyInstructionImmediate(r, op)
+		if readErr != nil {
+			return nil, nil, readErr
+		}
+		if op == 0xfb {
+			switch imm.Subopcode {
+			case 0, 1, 6, 7, 8, 9, 10:
+				allocations = append(allocations, mask)
+			}
+		}
+		if op == 0x10 || op == 0x11 || op == 0x14 {
+			calls = append(calls, mask)
+		}
+	}
+	return allocations, calls, nil
 }
 
 func bodyUsesNativeCall(body []byte) bool {
@@ -204,7 +292,7 @@ func bodyUsesNativeCall(body []byte) bool {
 		if _, err := wasm.ClassifyInstructionImmediate(r, op); err != nil {
 			return true
 		}
-		if op == 0x10 || op == 0x12 {
+		if op == 0x10 || op == 0x12 || op == 0x14 || op == 0x15 {
 			return true
 		}
 	}
@@ -235,6 +323,24 @@ func gcFrameCallABI(ft *wasm.CompType) bool {
 		}
 	}
 	return len(ft.Results) != 2 || ((wasm.EqualValType(ft.Results[0], wasm.I32) || wasm.EqualValType(ft.Results[0], wasm.I64)) && (wasm.EqualValType(ft.Results[1], wasm.I32) || wasm.EqualValType(ft.Results[1], wasm.I64)))
+}
+
+func frameFunctionRefType(m *wasm.Module, t wasm.ValType) bool {
+	if t.Kind != wasm.ValRef {
+		return false
+	}
+	switch t.Ref.Heap.Kind {
+	case wasm.HeapAbs:
+		return t.Ref.Heap.Abs == wasm.HeapFunc || t.Ref.Heap.Abs == wasm.HeapNoFunc
+	case wasm.HeapTypeIndex:
+		ft, ok := m.ResolvedTypeFunc(t.Ref.Heap.Type.Index)
+		return ok && ft != nil
+	case wasm.HeapDefType:
+		def := t.Ref.Heap.Def
+		return def != nil && def.Index < uint32(len(def.Rec.SubTypes)) && def.Rec.SubTypes[def.Index].Comp.Kind == wasm.CompFunc
+	default:
+		return false
+	}
 }
 
 func collectorFrameRefType(m *wasm.Module, t wasm.ValType) bool {

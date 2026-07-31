@@ -668,6 +668,20 @@ linux/amd64 guard-page bounds checks. A tagged test performs 1,000 Tiny
 collect/step-every-allocation iterations and verifies a live `v128` object.
 `gcPublicState` is 2,432 bytes on amd64.
 
-Next work is `call_ref` target identity, EH root unioning, non-null
-cross-instance collector ownership, arm64 lowering, and live heap snapshots.
-Those products remain collection-disabled until their complete protocols exist.
+## Iteration 81 local call-ref and EH root unioning
+
+`call_ref` and `return_call_ref` now enter the collection-enabled subset when all
+function descriptors are proven same-module: no function-reference parameters,
+results, globals, imports, or mutable/exported function tables may feed the
+site. Non-tail calls persist the internal return PC; tail-ref calls discard the
+caller frame.
+
+EH functions use conservative all-reference-local masks at allocation/call
+sites and merge the backend's fixed GC-payload record offsets into each map.
+The native EH lowering zero-initializes records before use, copies caught
+payloads into them, and clears dropped records. Numeric `try_table` Tiny stress
+preserves an outer object across 1,000 allocations, including codec reload.
+
+Next work is non-null cross-instance collector ownership, arm64 lowering, and
+live heap snapshots. Those products remain closed until their complete ownership
+and persistence protocols exist.

@@ -4,6 +4,7 @@ package amd64
 
 import (
 	"fmt"
+	"sort"
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -433,6 +434,8 @@ func (f *fn) recordGCFrameSafepoint(paramCount int) uint32 {
 		}
 		slot += rootMachineType(root).stackSlots()
 	}
+	offsets = append(offsets, plan.FixedOffsets...)
+	sort.Slice(offsets, func(i, j int) bool { return offsets[i] < offsets[j] })
 	if len(offsets) > 64 {
 		plan.Exact = false
 	}

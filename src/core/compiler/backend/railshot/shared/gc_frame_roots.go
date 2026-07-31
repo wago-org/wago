@@ -52,6 +52,7 @@ type GCFrameRootPlan struct {
 	FrameBytes          uint32
 	LocalIndexes        []uint32
 	LocalOffsets        []uint32
+	FixedOffsets        []uint32 // conservative always-live roots such as EH payload records
 	LiveLocalMasks      []uint64 // one exact local-liveness mask per reachable allocating site
 	LiveCallLocalMasks  []uint64 // one exact local-liveness mask per reachable direct self-call
 	Safepoints          []GCFrameSafepointPlan

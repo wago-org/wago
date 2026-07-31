@@ -5,6 +5,7 @@ package amd64
 import (
 	"fmt"
 	"os"
+	"sort"
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -1499,6 +1500,8 @@ func (f *fn) prepareGCFrameCallsite(paramCount int) ([]uint32, bool) {
 		}
 		slot += rootMachineType(root).stackSlots()
 	}
+	offsets = append(offsets, plan.FixedOffsets...)
+	sort.Slice(offsets, func(i, j int) bool { return offsets[i] < offsets[j] })
 	if len(offsets) > 64 {
 		plan.Exact = false
 	}
@@ -1853,6 +1856,7 @@ func (f *fn) callRef(r *wasm.Reader) error {
 	}
 
 	ref := f.materialize(f.popValue())
+	rootOffsets, recordRoots := f.prepareGCFrameCallsite(len(ft.Params))
 	f.pinned = f.pinned.add(ref)
 	f.a.TestSelf(ref, true)
 	f.trapIf(condE, trapIndirectOOB)
@@ -1891,7 +1895,10 @@ func (f *fn) callRef(r *wasm.Reader) error {
 		wrapper := f.a.JccPlaceholder(condNE)
 		f.stripDescriptorHomeTags(home)
 		f.pinned = f.pinned.remove(home)
-		f.emitRegisterCallVia(ft, -1, -1, code)
+		returnOffset := f.emitRegisterCallVia(ft, -1, -1, code)
+		if recordRoots {
+			f.gcFrameRoots.Callsites = append(f.gcFrameRoots.Callsites, shared.GCFrameCallsitePlan{ReturnOffset: returnOffset, Offsets: rootOffsets})
+		}
 		f.pinned = f.pinned.remove(code)
 		f.release(code)
 		done := f.a.JmpPlaceholder()

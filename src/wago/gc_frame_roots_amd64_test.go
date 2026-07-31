@@ -60,6 +60,119 @@ func gcHiddenOperandRootModule() []byte {
 	)
 }
 
+func gcEHFrameRootModule() []byte {
+	structType := []byte{0x5f, 0x01, 0x7f, 0x01}
+	tagType := wasmtest.FuncType([]wasm.ValType{wasm.I32}, nil)
+	funcType := wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32})
+	tag := []byte{0x00, 0x01}
+	body := []byte{0x02, 0x01, 0x63, 0x00, 0x01, 0x7f,
+		0x20, 0x00, 0xfb, 0x00, 0x00, 0x21, 0x01,
+		0x02, 0x7f,
+		0x1f, 0x40, 0x01, 0x00, 0x00, 0x00,
+		0x41, 0x07, 0x08, 0x00,
+		0x0b, 0x41, 0x00, 0x0b, 0x1a,
+		0x02, 0x40, 0x03, 0x40,
+		0x20, 0x02, 0x41, 0xe8, 0x07, 0x4f, 0x0d, 0x01,
+		0xfb, 0x01, 0x00, 0x1a,
+		0x20, 0x02, 0x41, 0x01, 0x6a, 0x21, 0x02, 0x0c, 0x00,
+		0x0b, 0x0b,
+		0x20, 0x01, 0xfb, 0x02, 0x00, 0x00, 0x0b}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(structType, tagType, funcType)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2))),
+		wasmtest.Section(13, wasmtest.Vec(tag)),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func TestGCEHNativeFrameRoots(t *testing.T) {
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcEHFrameRootModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	if compiled.genericGCFrameRoots() == nil {
+		t.Fatal("EH module lost native collection admission")
+	}
+	for _, candidate := range []*Compiled{compiled, roundTripCompiled(t, compiled)} {
+		if candidate != compiled {
+			defer candidate.Close()
+		}
+		in, err := Instantiate(candidate, InstantiateOptions{GC: GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 64, TinyBlockBytes: 32, TinyCollectEveryAlloc: true, TinyStepEveryAlloc: true, VerifyAfterCollect: true}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, callErr := in.Invoke("run", 44)
+		if callErr != nil || !reflect.DeepEqual(got, []uint64{44}) {
+			in.Close()
+			t.Fatalf("run = %v, %v; want [44]", got, callErr)
+		}
+		in.Close()
+	}
+}
+
+func gcCallRefFrameRootModule(tail bool) []byte {
+	structType := []byte{0x5f, 0x01, 0x7f, 0x01}
+	funcType := wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32})
+	target := []byte{0x01, 0x01, 0x7f,
+		0x02, 0x40, 0x03, 0x40,
+		0x20, 0x01, 0x41, 0xe8, 0x07, 0x4f, 0x0d, 0x01,
+		0xfb, 0x01, 0x00, 0x1a,
+		0x20, 0x01, 0x41, 0x01, 0x6a, 0x21, 0x01, 0x0c, 0x00,
+		0x0b, 0x0b, 0x20, 0x00, 0x0b}
+	caller := []byte{0x01, 0x01, 0x63, 0x00,
+		0x20, 0x00, 0xfb, 0x00, 0x00, 0x21, 0x01,
+		0x20, 0x00, 0xd2, 0x00}
+	if tail {
+		caller = append(caller, 0x15, 0x01, 0x0b)
+	} else {
+		caller = append(caller, 0x14, 0x01, 0x1a, 0x20, 0x01, 0xfb, 0x02, 0x00, 0x00, 0x0b)
+	}
+	declared := []byte{0x03, 0x00, 0x01, 0x00}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(structType, funcType)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1), wasmtest.ULEB(1))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 1))),
+		wasmtest.Section(9, wasmtest.Vec(declared)),
+		wasmtest.Section(10, wasmtest.Vec(
+			append(wasmtest.ULEB(uint32(len(target))), target...),
+			append(wasmtest.ULEB(uint32(len(caller))), caller...),
+		)),
+	)
+}
+
+func TestGCCallRefNativeFrameRoots(t *testing.T) {
+	for _, tail := range []bool{false, true} {
+		compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcCallRefFrameRootModule(tail))
+		if err != nil {
+			t.Fatal(err)
+		}
+		plan := compiled.genericGCFrameRoots()
+		wantCallsites := 1
+		if tail {
+			wantCallsites = 0
+		}
+		if plan == nil || len(plan.callsites) != wantCallsites {
+			compiled.Close()
+			t.Fatalf("call_ref tail=%v root map = %+v", tail, plan)
+		}
+		in, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 64, TinyBlockBytes: 32, TinyCollectEveryAlloc: true, TinyStepEveryAlloc: true, VerifyAfterCollect: true}})
+		if err != nil {
+			compiled.Close()
+			t.Fatal(err)
+		}
+		got, callErr := in.Invoke("run", 55)
+		if callErr != nil || !reflect.DeepEqual(got, []uint64{55}) {
+			in.Close()
+			compiled.Close()
+			t.Fatalf("call_ref tail=%v = %v, %v; want [55]", tail, got, callErr)
+		}
+		in.Close()
+		compiled.Close()
+	}
+}
+
 func gcTableFrameRootModule() []byte {
 	structType := []byte{0x5f, 0x01, 0x7f, 0x01}
 	funcType := wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32})

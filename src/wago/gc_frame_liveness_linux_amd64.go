@@ -94,7 +94,7 @@ func gcFrameLocalLiveness(body []byte, indexes []uint32, calls bool) ([]uint64, 
 				node.def = uint64(1) << bit
 			}
 		}
-		node.nativeCall = imm.Kind == wasm.InstrCall || imm.Kind == wasm.InstrCallIndirect
+		node.nativeCall = imm.Kind == wasm.InstrCall || imm.Kind == wasm.InstrCallIndirect || imm.Kind == wasm.InstrCallRef
 		if op == 0xfb {
 			switch imm.Subopcode {
 			case 0, 1, 6, 7, 8, 9, 10: // struct.new*, array.new*

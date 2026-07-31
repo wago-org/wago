@@ -66,7 +66,11 @@ mutable module-local GC globals synchronize checked collector slots before every
 allocating helper. Private local `call_indirect` and `return_call_indirect` sites publish exact
 caller roots, while collector-reference table entries are scanned directly from
 the mutable off-heap descriptor. Generic struct/array execution is also admitted
-with guard-page bounds checks on linux/amd64. `call_ref`, EH, and non-null
+with guard-page bounds checks on linux/amd64. Local-only `call_ref` and
+`return_call_ref` are admitted when no function descriptor can enter through a
+parameter, result, global, import, or mutable/exported table. EH functions use
+conservative all-local masks plus fixed GC-payload record offsets; record
+initialization and clearing remain part of the native EH lowering. Non-null
 cross-instance GC products remain collection-disabled. Codec v30 persists generic helper admission and the 16-byte
 `v128` storage contract, but never live collector state. Initialization
 snapshots may replay immutable local GC initializer graphs; warm/live GC
