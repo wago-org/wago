@@ -32,15 +32,15 @@ func TestProjectDepsRoundTrip(t *testing.T) {
 	}
 
 	// Add creates the file and records the module.
-	newly, err := addProjectDep(dir, "github.com/acme/wago-timer")
+	newly, err := addProjectDep(dir, "github.com/acme/wago-timer", "^0.0.0")
 	if err != nil || !newly {
 		t.Fatalf("addProjectDep = %v, %v (want true, nil)", newly, err)
 	}
 	// Adding again is idempotent.
-	if newly, _ := addProjectDep(dir, "github.com/acme/wago-timer"); newly {
+	if newly, _ := addProjectDep(dir, "github.com/acme/wago-timer", "^0.0.0"); newly {
 		t.Fatal("second addProjectDep reported newly-added")
 	}
-	addProjectDep(dir, "github.com/acme/wago-redis")
+	addProjectDep(dir, "github.com/acme/wago-redis", "^0.0.0")
 
 	deps, err := projectDeps(dir)
 	if err != nil {
@@ -64,11 +64,11 @@ func TestProjectDepsRoundTrip(t *testing.T) {
 // Adding a dependency preserves unrelated wago.json fields (publish metadata).
 func TestAddProjectDepPreservesFields(t *testing.T) {
 	dir := t.TempDir()
-	seed := `{"schema":"wago-plugin/v1","module":"github.com/me/thing","version":"1.2.3"}`
+	seed := `{"module":"github.com/me/thing","version":"0.0.0"}`
 	if err := os.WriteFile(filepath.Join(dir, projectFile), []byte(seed), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := addProjectDep(dir, "github.com/acme/wago-timer"); err != nil {
+	if _, err := addProjectDep(dir, "github.com/acme/wago-timer", "^0.0.0"); err != nil {
 		t.Fatal(err)
 	}
 	b, _ := os.ReadFile(filepath.Join(dir, projectFile))
@@ -76,17 +76,17 @@ func TestAddProjectDepPreservesFields(t *testing.T) {
 	if err := json.Unmarshal(b, &m); err != nil {
 		t.Fatal(err)
 	}
-	if m["module"] != "github.com/me/thing" || m["version"] != "1.2.3" || m["schema"] != "wago-plugin/v1" {
+	if m["module"] != "github.com/me/thing" || m["version"] != "0.0.0" {
 		t.Fatalf("publish fields not preserved: %v", m)
 	}
-	if deps := depsFromMap(m); len(deps) != 1 || deps[0] != "github.com/acme/wago-timer" {
+	if deps, err := projectDeps(dir); err != nil || len(deps) != 1 || deps[0] != "github.com/acme/wago-timer" {
 		t.Fatalf("dependency not added: %v", deps)
 	}
 	if m["$schema"] != manifestSchemaURI {
 		t.Fatalf("schema URI = %v, want %s", m["$schema"], manifestSchemaURI)
 	}
-	plugins, err := projectPluginMaps(m, dir)
-	if err != nil || projectPluginMap(plugins, "acme/wago-timer") == nil {
+	plugins, ok := m["plugins"].(map[string]any)
+	if !ok || plugins["acme/wago-timer"] != "^0.0.0" {
 		t.Fatalf("plugin authority scaffold not added: %v", m["plugins"])
 	}
 }

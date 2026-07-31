@@ -1,6 +1,7 @@
 package wagocli
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -9,12 +10,18 @@ import (
 
 func TestPluginGrantsRoundTrip(t *testing.T) {
 	dir := t.TempDir()
-	// Seed a wago.json with a plugin entry that has other fields to preserve.
-	seed := `{
-      "dependencies": ["github.com/wago-org/wasi"],
-      "plugins": [{"name": "wago-org/wasi", "capabilities": ["wasi:stdio"], "after": ["x"]}]
-    }`
+	seed := `{"plugins":{"wago-org/wasi":"^0.0.0","wago-org/new":"^0.0.0"}}`
 	if err := os.WriteFile(filepath.Join(dir, projectFile), []byte(seed), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	lock := lockDoc{Packages: map[string]lockEntry{
+		"wago-org/wasi": {
+			Version:      "0.0.0",
+			Capabilities: json.RawMessage(`["wasi:stdio"]`),
+			Config:       json.RawMessage(`{"dir":"/tmp"}`),
+		},
+	}}
+	if err := writeLock(dir, lock); err != nil {
 		t.Fatal(err)
 	}
 
@@ -29,14 +36,13 @@ func TestPluginGrantsRoundTrip(t *testing.T) {
 	if got := pluginGrants(dir, "wago-org/wasi"); !reflect.DeepEqual(got, []string{"wasi:clock", "wasi:random"}) {
 		t.Fatalf("updated grants: %v", got)
 	}
-	m, _ := readProjectMap(dir)
-	plugins, err := projectPluginMaps(m, dir)
+	updated, err := readLock(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	entry := projectPluginMap(plugins, "wago-org/wasi")
-	if _, ok := entry["after"]; !ok {
-		t.Fatal("setPluginGrants dropped the plugin's other fields (after)")
+	entry := updated.Packages["wago-org/wasi"]
+	if entry.Version != "0.0.0" || !reflect.DeepEqual(decodeJSON(t, entry.Config), map[string]any{"dir": "/tmp"}) {
+		t.Fatal("setPluginGrants dropped the plugin's resolved version or config")
 	}
 
 	// A plugin with no entry yet: absent grants, then created on set.

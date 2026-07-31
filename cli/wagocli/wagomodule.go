@@ -37,8 +37,8 @@ func buildDirFor(global bool) (string, error) {
 	return localPluginBuildDir()
 }
 
-// depsSource returns the directory whose wago.json holds the dependency list for a
-// build: the current directory locally, or shared Wago data with --global.
+// depsSource returns the directory whose wago.json holds the plugin requirements
+// for a build: the current directory locally, or shared Wago data with --global.
 func depsSource(global bool) (string, error) {
 	if global {
 		dirs := wago.DirsFor(versionString())

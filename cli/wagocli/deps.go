@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -37,55 +38,82 @@ func normalizeModuleRef(ref string) string {
 	return path + ver
 }
 
-type projectPlugin struct {
-	Name         string          `json:"name"`
-	Capabilities json.RawMessage `json:"capabilities,omitempty"`
-	Before       []string        `json:"before,omitempty"`
-	After        []string        `json:"after,omitempty"`
-	Config       json.RawMessage `json:"config,omitempty"`
+type projectPluginRequirement struct {
+	ID         string
+	Module     string
+	Constraint string
 }
 
-// projectPlugins reads the manifest's enabled plugin plan. Dependencies decide
-// what is compiled into the custom binary; plugins decide what is activated and
-// exactly which privileged Wago APIs each one may exercise.
-func projectPlugins(dir string) ([]wago.PluginConfig, error) {
-	m, err := readProjectMap(dir)
-	if err != nil {
-		return nil, err
+var (
+	pluginIDPattern         = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*/[a-z0-9][a-z0-9._/-]*$`)
+	pluginConstraintPattern = regexp.MustCompile(`^(?:\*|[~^]?v?[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?)$`)
+)
+
+// projectPluginRequirements reads the manifest's plugin version constraints.
+// Plugin IDs are GitHub-relative; their module paths are used as build inputs.
+func projectPluginRequirements(m map[string]any, dir string) ([]projectPluginRequirement, error) {
+	if _, legacy := m["schema"]; legacy {
+		return nil, fmt.Errorf("%s: schema was removed; use $schema with %q for editor tooling", projectManifestDisplayPath(dir), manifestSchemaURI)
+	}
+	if _, legacy := m["dependencies"]; legacy {
+		return nil, fmt.Errorf("%s: dependencies was removed; declare versioned entries under plugins", projectManifestDisplayPath(dir))
 	}
 	raw, ok := m["plugins"]
 	if !ok {
 		return nil, nil
 	}
-	if _, ok := raw.([]any); !ok {
-		return nil, fmt.Errorf("%s: plugins must be an array of plugin objects", projectManifestDisplayPath(dir))
+	values, ok := raw.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("%s: plugins must be an object mapping plugin IDs to version constraints", projectManifestDisplayPath(dir))
 	}
-	b, err := json.Marshal(raw)
+	out := make([]projectPluginRequirement, 0, len(values))
+	for id, rawConstraint := range values {
+		id = strings.TrimSpace(id)
+		if !pluginIDPattern.MatchString(id) {
+			return nil, fmt.Errorf("%s: plugin ID %q must be GitHub-relative, such as wago-org/wasi", projectManifestDisplayPath(dir), id)
+		}
+		constraint, ok := rawConstraint.(string)
+		if !ok || !pluginConstraintPattern.MatchString(strings.TrimSpace(constraint)) {
+			return nil, fmt.Errorf("%s: plugin %q has invalid version constraint %q", projectManifestDisplayPath(dir), id, rawConstraint)
+		}
+		out = append(out, projectPluginRequirement{
+			ID:         id,
+			Module:     "github.com/" + id,
+			Constraint: strings.TrimSpace(constraint),
+		})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out, nil
+}
+
+// projectPlugins combines wago.json's selected plugins with the resolved
+// authority and opaque configuration recorded in wago-lock.json.
+func projectPlugins(dir string) ([]wago.PluginConfig, error) {
+	m, err := readProjectMap(dir)
 	if err != nil {
-		return nil, fmt.Errorf("%s: plugins: %w", projectManifestDisplayPath(dir), err)
+		return nil, err
 	}
-	var entries []projectPlugin
-	decoder := json.NewDecoder(bytes.NewReader(b))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&entries); err != nil {
-		return nil, fmt.Errorf("%s: invalid plugins array: %w", projectManifestDisplayPath(dir), err)
+	requirements, err := projectPluginRequirements(m, dir)
+	if err != nil {
+		return nil, err
 	}
-	out := make([]wago.PluginConfig, 0, len(entries))
-	seen := make(map[string]struct{}, len(entries))
-	for _, entry := range entries {
-		name := strings.TrimSpace(entry.Name)
-		if name == "" {
-			return nil, fmt.Errorf("%s: plugin name is empty", projectManifestDisplayPath(dir))
-		}
-		if _, duplicate := seen[name]; duplicate {
-			return nil, fmt.Errorf("%s: plugin %q is listed more than once", projectManifestDisplayPath(dir), name)
-		}
-		seen[name] = struct{}{}
-		caps, budgets, err := parsePluginCapabilities(name, entry.Capabilities)
+	lock, err := readLock(dir)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]wago.PluginConfig, 0, len(requirements))
+	for _, requirement := range requirements {
+		entry := lock.Packages[requirement.ID]
+		caps, budgets, err := parsePluginCapabilities(requirement.ID, entry.Capabilities)
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", projectManifestDisplayPath(dir), err)
 		}
-		out = append(out, wago.PluginConfig{Name: name, Capabilities: caps, Budgets: budgets, Before: entry.Before, After: entry.After, Config: entry.Config})
+		out = append(out, wago.PluginConfig{
+			Name:         requirement.ID,
+			Capabilities: caps,
+			Budgets:      budgets,
+			Config:       append(json.RawMessage(nil), entry.Config...),
+		})
 	}
 	return out, nil
 }
@@ -136,53 +164,49 @@ func parsePluginCapabilities(name string, raw json.RawMessage) ([]wago.PluginCap
 	return caps, budgets, nil
 }
 
-// depsFromMap extracts the module paths under "dependencies".
-func depsFromMap(m map[string]any) []string {
-	raw, _ := m["dependencies"].([]any)
-	out := make([]string, 0, len(raw))
-	for _, v := range raw {
-		if s, ok := v.(string); ok && strings.TrimSpace(s) != "" {
-			out = append(out, s)
-		}
-	}
-	return out
-}
-
-// projectDeps returns the module paths declared under "dependencies" in dir's
-// wago.json (empty when there is no file or no dependencies).
+// projectDeps returns module paths derived from the plugin IDs in wago.json.
 func projectDeps(dir string) ([]string, error) {
 	m, err := readProjectMap(dir)
 	if err != nil {
 		return nil, err
 	}
-	return depsFromMap(m), nil
+	requirements, err := projectPluginRequirements(m, dir)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]string, len(requirements))
+	for i := range requirements {
+		out[i] = requirements[i].Module
+	}
+	return out, nil
 }
 
-// addProjectDep adds module to wago.json's dependencies (idempotent), creating the
-// file if absent. Returns whether it was newly added.
-func addProjectDep(dir, module string) (bool, error) {
+// addProjectDep adds or updates a plugin version constraint in wago.json.
+func addProjectDep(dir, module, constraint string) (bool, error) {
+	if !strings.HasPrefix(module, "github.com/") {
+		return false, fmt.Errorf("plugin module %q must be hosted on github.com", module)
+	}
+	if !pluginConstraintPattern.MatchString(constraint) {
+		return false, fmt.Errorf("plugin %q has invalid version constraint %q", strings.TrimPrefix(module, "github.com/"), constraint)
+	}
 	m, err := readProjectMap(dir)
 	if err != nil {
 		return false, err
 	}
 	ensureProjectMetadata(m)
-	deps := depsFromMap(m)
-	for _, d := range deps {
-		if d == module {
-			return false, nil
-		}
+	raw, ok := m["plugins"]
+	if !ok {
+		raw = map[string]any{}
 	}
-	deps = append(deps, module)
-	sort.Strings(deps)
-	m["dependencies"] = toAnySlice(deps)
+	plugins, ok := raw.(map[string]any)
+	if !ok {
+		return false, fmt.Errorf("%s: plugins must be an object mapping plugin IDs to version constraints", projectManifestDisplayPath(dir))
+	}
 	name := strings.TrimPrefix(module, "github.com/")
-	plugins, err := projectPluginMaps(m, dir)
-	if err != nil {
-		return false, err
+	if current, exists := plugins[name]; exists && current == constraint {
+		return false, nil
 	}
-	if projectPluginMap(plugins, name) == nil {
-		plugins = append(plugins, map[string]any{"name": name, "capabilities": []any{}})
-	}
+	plugins[name] = constraint
 	m["plugins"] = plugins
 	return true, writeProjectMap(dir, m)
 }
@@ -193,64 +217,34 @@ func removeProjectDep(dir, name string) (removed bool, module string, err error)
 	if err != nil {
 		return false, "", err
 	}
-	deps := depsFromMap(m)
-	for i, d := range deps {
-		if d == name {
-			deps = append(append([]string{}, deps[:i]...), deps[i+1:]...)
-			m["dependencies"] = toAnySlice(deps)
-			plugins, pluginErr := projectPluginMaps(m, dir)
-			if pluginErr != nil {
-				return false, "", pluginErr
-			}
-			id := strings.TrimPrefix(d, "github.com/")
-			for j, entry := range plugins {
-				if entry["name"] == id {
-					plugins = append(plugins[:j], plugins[j+1:]...)
-					break
-				}
-			}
-			m["plugins"] = plugins
-			return true, d, writeProjectMap(dir, m)
+	requirements, err := projectPluginRequirements(m, dir)
+	if err != nil {
+		return false, "", err
+	}
+	id := strings.TrimPrefix(name, "github.com/")
+	var matchedModule string
+	for _, requirement := range requirements {
+		if requirement.ID == id || requirement.Module == name {
+			matchedModule = requirement.Module
+			break
 		}
 	}
-	return false, "", nil
-}
-
-func projectPluginMaps(m map[string]any, dir string) ([]map[string]any, error) {
-	raw, ok := m["plugins"]
-	if !ok {
-		return []map[string]any{}, nil
+	if matchedModule == "" {
+		return false, "", nil
 	}
-	values, ok := raw.([]any)
-	if !ok {
-		return nil, fmt.Errorf("%s: plugins must be an array of plugin objects", projectManifestDisplayPath(dir))
+	delete(m["plugins"].(map[string]any), id)
+	if err := writeProjectMap(dir, m); err != nil {
+		return false, "", err
 	}
-	entries := make([]map[string]any, 0, len(values))
-	for i, value := range values {
-		entry, ok := value.(map[string]any)
-		if !ok {
-			return nil, fmt.Errorf("%s: plugins[%d] must be an object", projectManifestDisplayPath(dir), i)
-		}
-		entries = append(entries, entry)
+	lock, lockErr := readLock(dir)
+	if lockErr != nil {
+		return false, "", lockErr
 	}
-	return entries, nil
-}
-
-func projectPluginMap(entries []map[string]any, id string) map[string]any {
-	for _, entry := range entries {
-		if entry["name"] == id {
-			return entry
-		}
+	delete(lock.Packages, id)
+	if err := writeLock(dir, lock); err != nil {
+		return false, "", err
 	}
-	return nil
-}
-
-func toAnySlice(ss []string) []any {
-	out := make([]any, len(ss))
-	for i, s := range ss {
-		out[i] = s
-	}
-	return out
+	return true, matchedModule, nil
 }
 
 // deriveName is retained for registry display plumbing; plugin identities are
