@@ -24,6 +24,8 @@ func (c *Collector) loadValue(r Ref, off uint64, k StorageKind) (Value, error) {
 		return Value{Kind: k, Bits: uint64(binary.LittleEndian.Uint32(b[off:]))}, nil
 	case StorageI64, StorageF64, StorageFuncRef, StorageFuncRefNull, StorageExternRef, StorageExternRefNull:
 		return Value{Kind: k, Bits: binary.LittleEndian.Uint64(b[off:])}, nil
+	case StorageV128:
+		return Value{Kind: k, Bits: binary.LittleEndian.Uint64(b[off:]), BitsHi: binary.LittleEndian.Uint64(b[off+8:])}, nil
 	case StorageRef, StorageRefNull:
 		return Value{Kind: k, Ref: Ref(binary.LittleEndian.Uint32(b[off:]))}, nil
 	}
@@ -51,6 +53,9 @@ func (c *Collector) storeValue(r Ref, d TypeDesc, off uint64, k StorageKind, v V
 		binary.LittleEndian.PutUint32(b[off:], uint32(v.Bits))
 	case StorageI64, StorageF64, StorageFuncRef, StorageFuncRefNull, StorageExternRef, StorageExternRefNull:
 		binary.LittleEndian.PutUint64(b[off:], v.Bits)
+	case StorageV128:
+		binary.LittleEndian.PutUint64(b[off:], v.Bits)
+		binary.LittleEndian.PutUint64(b[off+8:], v.BitsHi)
 	case StorageRef, StorageRefNull:
 		binary.LittleEndian.PutUint32(b[off:], uint32(v.Ref))
 	default:
@@ -69,6 +74,9 @@ func storeValueUnchecked(dst []byte, off uint64, k StorageKind, v Value) {
 		binary.LittleEndian.PutUint32(dst[off:], uint32(v.Bits))
 	case StorageI64, StorageF64, StorageFuncRef, StorageFuncRefNull, StorageExternRef, StorageExternRefNull:
 		binary.LittleEndian.PutUint64(dst[off:], v.Bits)
+	case StorageV128:
+		binary.LittleEndian.PutUint64(dst[off:], v.Bits)
+		binary.LittleEndian.PutUint64(dst[off+8:], v.BitsHi)
 	case StorageRef, StorageRefNull:
 		binary.LittleEndian.PutUint32(dst[off:], uint32(v.Ref))
 	default:
@@ -98,7 +106,7 @@ func checkValueCompatible(k StorageKind, v Value) error {
 		if v.Kind != StorageI32 && v.Kind != k {
 			return fmt.Errorf("gc: value kind %d incompatible with packed storage %d", v.Kind, k)
 		}
-	case StorageI32, StorageI64, StorageF32, StorageF64,
+	case StorageI32, StorageI64, StorageF32, StorageF64, StorageV128,
 		StorageFuncRef, StorageExternRef:
 		if v.Kind != k {
 			return fmt.Errorf("gc: value kind %d incompatible with storage %d", v.Kind, k)

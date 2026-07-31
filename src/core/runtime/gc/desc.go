@@ -31,6 +31,9 @@ const (
 	StorageFuncRefNull
 	StorageExternRef
 	StorageExternRefNull
+	// StorageV128 is a pointer-free 16-byte SIMD value. Keep it appended so
+	// existing serialized storage-kind values retain their numeric identity.
+	StorageV128
 )
 
 type FieldDesc struct {
@@ -121,6 +124,8 @@ func storageLayout(k StorageKind) (alignBytes, size uint32, err error) {
 		return 4, 4, nil
 	case StorageI64, StorageF64, StorageFuncRef, StorageFuncRefNull, StorageExternRef, StorageExternRefNull:
 		return 8, 8, nil
+	case StorageV128:
+		return 16, 16, nil
 	default:
 		return 0, 0, fmt.Errorf("gc: unknown storage kind %d", k)
 	}
@@ -135,7 +140,12 @@ func isOpaqueRefKind(k StorageKind) bool {
 func isAnyReferenceStorage(k StorageKind) bool { return isCollectorRefKind(k) || isOpaqueRefKind(k) }
 
 func isNumericStorage(k StorageKind) bool {
-	return !isAnyReferenceStorage(k) && k >= StorageI8 && k <= StorageF64
+	switch k {
+	case StorageI8, StorageI16, StorageI32, StorageI64, StorageF32, StorageF64, StorageV128:
+		return true
+	default:
+		return false
+	}
 }
 
 func isNullableReferenceStorage(k StorageKind) bool {

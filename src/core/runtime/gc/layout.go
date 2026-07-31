@@ -26,7 +26,30 @@ const (
 const HeaderSize = uint32(unsafe.Sizeof(ObjHeader{}))
 const PayloadOffset = HeaderSize
 
-func Align8(v uint32) uint32 { return align(v, 8) }
+func Align8(v uint32) uint32  { return align(v, 8) }
+func Align16(v uint32) uint32 { return align(v, 16) }
+
+func makeAlignedBytes(size uint32, alignment uintptr) []byte {
+	if size == 0 {
+		return nil
+	}
+	raw := make([]byte, uint64(size)+uint64(alignment-1))
+	base := uintptr(unsafe.Pointer(&raw[0]))
+	delta := (alignment - base%alignment) % alignment
+	start := int(delta)
+	end := start + int(size)
+	return raw[start:end:end]
+}
+
+func requiredObjectAlignment(types []TypeDesc) uint32 {
+	alignment := uint32(8)
+	for _, d := range types {
+		if (d.Kind == KindStruct || d.Kind == KindArray) && d.Align > alignment {
+			alignment = d.Align
+		}
+	}
+	return alignment
+}
 func StructSize(d TypeDesc) (uint32, error) {
 	if d.Kind != KindStruct {
 		return 0, fmt.Errorf("gc: type %d is not a struct", d.ID)

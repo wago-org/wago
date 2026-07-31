@@ -32,6 +32,20 @@ func TestDescriptorsAndLayout(t *testing.T) {
 	if !rarr.ArrayElementsAreRefs() || rarr.ElemSize != 4 {
 		t.Fatalf("bad ref array %+v", rarr)
 	}
+	varr, err := NewArrayDesc(5, StorageV128)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if varr.HasRefs || !varr.PointerFree() || varr.ElemSize != 16 || varr.Align != 16 {
+		t.Fatalf("bad v128 array %+v", varr)
+	}
+	vstruct, err := NewStructDesc(6, []StorageKind{StorageI8, StorageV128, StorageI32})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if vstruct.Align != 16 || vstruct.Size != 48 || vstruct.Fields[1].Offset != 16 || vstruct.Fields[2].Offset != 32 {
+		t.Fatalf("bad v128 struct layout %+v", vstruct)
+	}
 	sz, _ := StructSize(pf)
 	if sz != Align8(HeaderSize+pf.Size) || sz%8 != 0 {
 		t.Fatalf("bad struct size %d", sz)

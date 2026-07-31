@@ -20,14 +20,15 @@ type throughputLargeFree struct {
 }
 
 type throughputHeap struct {
-	mem        []byte
-	limit      uint32
-	pageBytes  uint32
-	classLimit uint32
-	bump       uint32
-	freeHeads  []uint32
-	freeSlots  [][]throughputFreeSlot
-	largeFree  []throughputLargeFree
+	mem             []byte
+	limit           uint32
+	pageBytes       uint32
+	classLimit      uint32
+	bump            uint32
+	freeHeads       []uint32
+	freeRecordHeads []uint32 // reusable metadata records popped from freeHeads
+	freeSlots       [][]throughputFreeSlot
+	largeFree       []throughputLargeFree
 }
 
 func (h *throughputHeap) Init(cfg Config) error {
@@ -49,9 +50,11 @@ func (h *throughputHeap) Init(cfg Config) error {
 	h.mem = make([]byte, 0)
 	h.bump = 0
 	h.freeHeads = make([]uint32, len(throughputClassSizes))
+	h.freeRecordHeads = make([]uint32, len(throughputClassSizes))
 	h.freeSlots = make([][]throughputFreeSlot, len(throughputClassSizes))
 	for i := range h.freeHeads {
 		h.freeHeads[i] = throughputNoSlot
+		h.freeRecordHeads[i] = throughputNoSlot
 	}
 	return nil
 }
@@ -59,6 +62,7 @@ func (h *throughputHeap) Init(cfg Config) error {
 func (h *throughputHeap) Close() {
 	h.mem = nil
 	h.freeHeads = nil
+	h.freeRecordHeads = nil
 	h.freeSlots = nil
 	h.largeFree = nil
 	h.bump = 0
@@ -67,7 +71,7 @@ func (h *throughputHeap) Close() {
 func (h *throughputHeap) bytes(e handleEntry) []byte { return h.mem[e.off : e.off+e.size] }
 
 func (h *throughputHeap) alloc(size uint32, sp spaceKind) (handleEntry, error) {
-	allocSize := Align8(size)
+	allocSize := Align16(size)
 	if sp != spaceLarge && allocSize <= h.classLimit {
 		cls := h.classFor(allocSize)
 		if cls < 0 {
@@ -77,6 +81,8 @@ func (h *throughputHeap) alloc(size uint32, sp spaceKind) (handleEntry, error) {
 		if head := h.freeHeads[cls]; head != throughputNoSlot {
 			slot := h.freeSlots[cls][head]
 			h.freeHeads[cls] = slot.next
+			h.freeSlots[cls][head] = throughputFreeSlot{next: h.freeRecordHeads[cls]}
+			h.freeRecordHeads[cls] = head
 			return handleEntry{off: slot.off, size: size, allocSize: classSize, class: uint16(cls), space: sp}, nil
 		}
 		off, err := h.grow(classSize)
@@ -109,8 +115,14 @@ func (h *throughputHeap) free(e handleEntry) error {
 		return errors.New("gc: invalid throughput free span")
 	}
 	if int(e.class) < len(throughputClassSizes) && e.allocSize == throughputClassSizes[e.class] {
-		idx := uint32(len(h.freeSlots[e.class]))
-		h.freeSlots[e.class] = append(h.freeSlots[e.class], throughputFreeSlot{off: e.off, next: h.freeHeads[e.class]})
+		idx := h.freeRecordHeads[e.class]
+		if idx != throughputNoSlot {
+			h.freeRecordHeads[e.class] = h.freeSlots[e.class][idx].next
+			h.freeSlots[e.class][idx] = throughputFreeSlot{off: e.off, next: h.freeHeads[e.class]}
+		} else {
+			idx = uint32(len(h.freeSlots[e.class]))
+			h.freeSlots[e.class] = append(h.freeSlots[e.class], throughputFreeSlot{off: e.off, next: h.freeHeads[e.class]})
+		}
 		h.freeHeads[e.class] = idx
 		return nil
 	}
@@ -137,7 +149,7 @@ func supportedThroughputClassLimit(limit uint32) bool {
 }
 
 func (h *throughputHeap) grow(size uint32) (uint32, error) {
-	off := Align8(h.bump)
+	off := Align16(h.bump)
 	end := uint64(off) + uint64(size)
 	if end > uint64(h.limit) || end > uint64(^uint32(0)) {
 		return 0, errors.New("gc: throughput heap exhausted")
@@ -147,7 +159,7 @@ func (h *throughputHeap) grow(size uint32) (uint32, error) {
 		return 0, err
 	}
 	if needLen > uint64(len(h.mem)) {
-		newMem := make([]byte, int(needLen))
+		newMem := makeAlignedBytes(uint32(needLen), 16)
 		copy(newMem, h.mem)
 		h.mem = newMem
 	}
@@ -214,7 +226,7 @@ func (h *throughputHeap) verify(handles []handleEntry) error {
 		if e.space != spaceOld && e.space != spaceLarge {
 			return fmt.Errorf("gc: invalid throughput space for handle %d", i)
 		}
-		if e.allocSize == 0 || e.size > e.allocSize || e.off+e.allocSize < e.off || e.off+e.allocSize > memLen {
+		if e.allocSize == 0 || e.size > e.allocSize || e.off%16 != 0 || e.off+e.allocSize < e.off || e.off+e.allocSize > memLen {
 			return fmt.Errorf("gc: throughput handle %d out of bounds", i)
 		}
 		for _, s := range live {
@@ -234,7 +246,7 @@ func (h *throughputHeap) verify(handles []handleEntry) error {
 			}
 			seenIdx[idx] = true
 			slot := h.freeSlots[cls][idx]
-			if slot.off%8 != 0 || slot.off+classSize < slot.off || slot.off+classSize > memLen {
+			if slot.off%16 != 0 || slot.off+classSize < slot.off || slot.off+classSize > memLen {
 				return errors.New("gc: throughput class free span out of bounds")
 			}
 			if classSize > h.classLimit || h.classFor(classSize) != cls {
@@ -242,9 +254,15 @@ func (h *throughputHeap) verify(handles []handleEntry) error {
 			}
 			free = append(free, throughputLargeFree{off: slot.off, size: classSize})
 		}
+		for idx := h.freeRecordHeads[cls]; idx != throughputNoSlot; idx = h.freeSlots[cls][idx].next {
+			if int(idx) >= len(h.freeSlots[cls]) || seenIdx[idx] {
+				return errors.New("gc: malformed throughput free-record list")
+			}
+			seenIdx[idx] = true
+		}
 	}
 	for i, s := range h.largeFree {
-		if s.size == 0 || s.off%8 != 0 || s.off+s.size < s.off || s.off+s.size > memLen {
+		if s.size == 0 || s.off%16 != 0 || s.off+s.size < s.off || s.off+s.size > memLen {
 			return errors.New("gc: throughput large free span out of bounds")
 		}
 		if i > 0 && h.largeFree[i-1].off+h.largeFree[i-1].size >= s.off {

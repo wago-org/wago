@@ -144,7 +144,7 @@ func NewCollector(config Config, types []TypeDesc) (*Collector, error) {
 	if err := ValidateTypeDescs(types); err != nil {
 		return nil, err
 	}
-	c := &Collector{cfg: config, types: append([]TypeDesc(nil), types...), nursery: make([]byte, config.NurseryBytes), handles: []handleEntry{{}}}
+	c := &Collector{cfg: config, types: append([]TypeDesc(nil), types...), nursery: makeAlignedBytes(config.NurseryBytes, uintptr(requiredObjectAlignment(types))), handles: []handleEntry{{}}}
 	if err := c.initTypeIndex(); err != nil {
 		return nil, err
 	}

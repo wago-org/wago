@@ -56,6 +56,38 @@ func TestCollectionDisabledHeapIsBoundedAndStable(t *testing.T) {
 	}
 }
 
+func TestThroughputClassFreeMetadataIsReused(t *testing.T) {
+	c := newTestCollector(t, Config{
+		StressNurseryBytes:   64,
+		ThroughputHeapBytes:  4096,
+		ThroughputPageBytes:  4096,
+		ThroughputClassLimit: 4096,
+	})
+	root := Root(Null())
+	cls := -1
+	for i := 0; i < 1024; i++ {
+		obj, err := c.NewStructDefaultWithRoots(0, Slots{&root})
+		if err != nil {
+			t.Fatal(err)
+		}
+		root = Root(obj)
+		if err := c.CollectMinor(Slots{&root}); err != nil {
+			t.Fatal(err)
+		}
+		cls = int(c.entry(obj).class)
+		root = Root(Null())
+		if err := c.CollectFull(Slots{&root}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := len(c.throughput.freeSlots[cls]); got != 1 {
+		t.Fatalf("throughput free-record metadata grew to %d entries, want 1 reusable entry", got)
+	}
+	if err := c.Verify(nil); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestThroughputOldSpaceReuseAfterFullGC(t *testing.T) {
 	c := newTestCollector(t, Config{StressNurseryBytes: 96, ThroughputHeapBytes: 4096, ThroughputPageBytes: 4096})
 	a, _ := c.NewStructDefault(0)

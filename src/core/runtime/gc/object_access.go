@@ -348,8 +348,11 @@ func (c *Collector) fillArrayPayload(ref Ref, d TypeDesc, start uint32, value Va
 		return errRange
 	}
 	rangeBytes := payload[lo:hi]
-	var pattern [8]byte
-	binary.LittleEndian.PutUint64(pattern[:], value.Bits)
+	var pattern [16]byte
+	binary.LittleEndian.PutUint64(pattern[:8], value.Bits)
+	if d.Elem == StorageV128 {
+		binary.LittleEndian.PutUint64(pattern[8:], value.BitsHi)
+	}
 	if isCollectorRefKind(d.Elem) {
 		binary.LittleEndian.PutUint32(pattern[:4], uint32(value.Ref))
 	}
@@ -384,7 +387,7 @@ func (c *Collector) ArrayInitData(dst Ref, dstStart uint32, data []byte, srcStar
 		return errors.New("gc: data source out of range")
 	}
 	switch d.ElemSize {
-	case 1, 2, 4, 8:
+	case 1, 2, 4, 8, 16:
 	default:
 		return errors.New("gc: array.init_data element width is unsupported")
 	}

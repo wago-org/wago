@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"testing"
+	"unsafe"
 )
 
 func bulkTestTypes(t *testing.T) []TypeDesc {
@@ -158,6 +159,121 @@ func TestArrayInitDataPreflightWidthsAndAtomicity(t *testing.T) {
 	}
 }
 
+func TestV128ObjectPhysicalAlignment(t *testing.T) {
+	i8, err := NewArrayDesc(0, StorageI8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	vec, err := NewArrayDesc(1, StorageV128)
+	if err != nil {
+		t.Fatal(err)
+	}
+	profiles := []struct {
+		name string
+		cfg  Config
+	}{
+		{name: "nursery", cfg: Config{StressNurseryBytes: 128}},
+		{name: "collection-disabled", cfg: Config{DisableCollection: true, ThroughputHeapBytes: 4096, ThroughputPageBytes: 4096}},
+		{name: "tiny", cfg: Config{Profile: ProfileTiny, TinyHeapBytes: 128, TinyBlockBytes: 16}},
+	}
+	for _, tc := range profiles {
+		t.Run(tc.name, func(t *testing.T) {
+			c := newTestCollectorWithTypes(t, tc.cfg, []TypeDesc{i8, vec})
+			if _, err := c.NewArrayDefault(0, 1); err != nil {
+				t.Fatal(err)
+			}
+			ref, err := c.NewArrayDefault(1, 1)
+			if err != nil {
+				t.Fatal(err)
+			}
+			b := c.bytes(ref)
+			if uintptr(unsafe.Pointer(&b[0]))%16 != 0 || uintptr(unsafe.Pointer(&b[PayloadOffset]))%16 != 0 {
+				t.Fatalf("v128 object/payload are not 16-byte aligned: object=%p payload=%p", &b[0], &b[PayloadOffset])
+			}
+		})
+	}
+	if _, err := NewCollector(Config{Profile: ProfileTiny, TinyHeapBytes: 128, TinyBlockBytes: 8}, []TypeDesc{i8, vec}); err == nil {
+		t.Fatal("8-byte Tiny blocks admitted a 16-byte-aligned v128 type")
+	}
+}
+
+func TestV128ArrayConstructGetSetFillCopyAndInitData(t *testing.T) {
+	v128, err := NewArrayDesc(0, StorageV128)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := newTestCollectorWithTypes(t, Config{}, []TypeDesc{v128})
+	first := V128Value(0x0706050403020100, 0x0f0e0d0c0b0a0908)
+	second := V128Value(0x1716151413121110, 0x1f1e1d1c1b1a1918)
+	third := V128Value(0x2726252423222120, 0x2f2e2d2c2b2a2928)
+
+	arr, err := c.NewArrayWithRoots(0, 3, first, EmptyRoots{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := uint32(0); i < 3; i++ {
+		got, err := c.ArrayGet(arr, i)
+		if err != nil || got.Kind != StorageV128 || got.Bits != first.Bits || got.BitsHi != first.BitsHi {
+			t.Fatalf("uniform array[%d] = %+v, %v; want %+v", i, got, err, first)
+		}
+	}
+	if err := c.ArraySet(arr, 1, second); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.ArrayFill(arr, 0, second, 2); err != nil {
+		t.Fatal(err)
+	}
+	copyDst, err := c.NewArrayDefault(0, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.ArrayCopy(copyDst, 0, arr, 0, 3); err != nil {
+		t.Fatal(err)
+	}
+	for i, want := range []Value{second, second, first} {
+		got, err := c.ArrayGet(copyDst, uint32(i))
+		if err != nil || got.Bits != want.Bits || got.BitsHi != want.BitsHi {
+			t.Fatalf("copied array[%d] = %+v, %v; want %+v", i, got, err, want)
+		}
+	}
+	overlap, err := c.NewArrayFixedWithRoots(0, []Value{first, second, third}, EmptyRoots{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.ArrayCopy(overlap, 1, overlap, 0, 2); err != nil {
+		t.Fatal(err)
+	}
+	for i, want := range []Value{first, first, second} {
+		got, err := c.ArrayGet(overlap, uint32(i))
+		if err != nil || got.Bits != want.Bits || got.BitsHi != want.BitsHi {
+			t.Fatalf("overlap array[%d] = %+v, %v; want %+v", i, got, err, want)
+		}
+	}
+
+	data := make([]byte, 32)
+	binary.LittleEndian.PutUint64(data[0:8], first.Bits)
+	binary.LittleEndian.PutUint64(data[8:16], first.BitsHi)
+	binary.LittleEndian.PutUint64(data[16:24], second.Bits)
+	binary.LittleEndian.PutUint64(data[24:32], second.BitsHi)
+	if err := c.ArrayInitData(copyDst, 1, data, 0, 2); err != nil {
+		t.Fatal(err)
+	}
+	for i, want := range []Value{second, first, second} {
+		got, err := c.ArrayGet(copyDst, uint32(i))
+		if err != nil || got.Bits != want.Bits || got.BitsHi != want.BitsHi {
+			t.Fatalf("data array[%d] = %+v, %v; want %+v", i, got, err, want)
+		}
+	}
+	before, _ := c.ArrayGet(copyDst, 2)
+	if err := c.ArrayInitData(copyDst, 2, data[:15], 0, 1); err == nil {
+		t.Fatal("short v128 source initialized array")
+	}
+	after, _ := c.ArrayGet(copyDst, 2)
+	if after.Bits != before.Bits || after.BitsHi != before.BitsHi {
+		t.Fatalf("trapping v128 init mutated tail: before=%+v after=%+v", before, after)
+	}
+}
+
 func TestArrayInitWordsPreflightAndAtomicity(t *testing.T) {
 	i64, err := NewArrayDesc(0, StorageI64)
 	if err != nil {
@@ -190,7 +306,7 @@ func TestArrayInitWordsPreflightAndAtomicity(t *testing.T) {
 }
 
 func TestArrayCopyNumericStorageWidthsAndBitPatterns(t *testing.T) {
-	kinds := []StorageKind{StorageI8, StorageI16, StorageI32, StorageI64, StorageF32, StorageF64}
+	kinds := []StorageKind{StorageI8, StorageI16, StorageI32, StorageI64, StorageF32, StorageF64, StorageV128}
 	types := make([]TypeDesc, len(kinds))
 	for i, kind := range kinds {
 		var err error
@@ -205,8 +321,9 @@ func TestArrayCopyNumericStorageWidthsAndBitPatterns(t *testing.T) {
 		{Kind: StorageI64, Bits: 0xfedcba9876543210},
 		{Kind: StorageF32, Bits: 0x7fc12345},
 		{Kind: StorageF64, Bits: 0x7ff8123456789abc},
+		V128Value(0xfedcba9876543210, 0x0123456789abcdef),
 	}
-	masks := []uint64{0xff, 0xffff, 0xffffffff, ^uint64(0), 0xffffffff, ^uint64(0)}
+	masks := []uint64{0xff, 0xffff, 0xffffffff, ^uint64(0), 0xffffffff, ^uint64(0), ^uint64(0)}
 	for i, kind := range kinds {
 		t.Run(fmt.Sprintf("kind-%d", kind), func(t *testing.T) {
 			src, err := c.NewArrayDefault(TypeID(i), 4)
@@ -224,8 +341,8 @@ func TestArrayCopyNumericStorageWidthsAndBitPatterns(t *testing.T) {
 				t.Fatal(err)
 			}
 			got, err := c.ArrayGet(dst, 3)
-			if err != nil || got.Bits != values[i].Bits&masks[i] {
-				t.Fatalf("kind %d copied bits = %#x, %v; want %#x", kind, got.Bits, err, values[i].Bits&masks[i])
+			if err != nil || got.Bits != values[i].Bits&masks[i] || got.BitsHi != values[i].BitsHi {
+				t.Fatalf("kind %d copied bits = %#x/%#x, %v; want %#x/%#x", kind, got.Bits, got.BitsHi, err, values[i].Bits&masks[i], values[i].BitsHi)
 			}
 			if err := c.ArrayCopy(dst, 4, src, 4, 0); err != nil {
 				t.Fatalf("kind %d zero-length end copy: %v", kind, err)

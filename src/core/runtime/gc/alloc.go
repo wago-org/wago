@@ -57,19 +57,29 @@ func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, err
 		sp = spaceLarge
 		off = e.off
 	} else {
-		if size > uint32(len(c.nursery))-c.nurseryBump {
+		objectAlign := d.Align
+		if objectAlign < 8 {
+			objectAlign = 8
+		}
+		nurseryOffset := func() (uint32, bool) {
+			off := align(c.nurseryBump, objectAlign)
+			return off, off <= uint32(len(c.nursery)) && size <= uint32(len(c.nursery))-off
+		}
+		var fits bool
+		off, fits = nurseryOffset()
+		if !fits {
 			if roots == nil {
 				return Null(), errors.New("gc: nursery exhausted and no roots were supplied")
 			}
 			if err := c.CollectMinor(roots); err != nil {
 				return Null(), err
 			}
-			if size > uint32(len(c.nursery))-c.nurseryBump {
+			off, fits = nurseryOffset()
+			if !fits {
 				return Null(), errors.New("gc: nursery exhausted without roots")
 			}
 		}
-		off = c.nurseryBump
-		c.nurseryBump += size
+		c.nurseryBump = off + size
 	}
 	if sp == spaceNursery {
 		e = handleEntry{off: off, size: size, allocSize: size, space: sp}

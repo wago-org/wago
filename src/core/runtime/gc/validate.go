@@ -41,7 +41,7 @@ func ValidateTypeDescs(descs []TypeDesc) error {
 			if d.Elem != 0 || d.ElemSize != 0 {
 				return fmt.Errorf("gc: struct descriptor %d has array metadata", i)
 			}
-			if d.Align == 0 || d.Align > 8 || d.Align&(d.Align-1) != 0 {
+			if d.Align == 0 || d.Align > 16 || d.Align&(d.Align-1) != 0 {
 				return fmt.Errorf("gc: struct descriptor %d has invalid align %d", i, d.Align)
 			}
 			if _, err := StructSize(d); err != nil {
