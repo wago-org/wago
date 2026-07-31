@@ -108,6 +108,22 @@ manager, rolling runtime, and plugins. Positional targets and matching flags
 provide one-shot updates; the narrower `self update`, `version update`, and
 `plugin update` commands remain available for explicit control.
 
+Shared automation policy lives in `cli/internal/automation`. The manager parses
+global policy once and forwards it to a runtime through `WAGO_*` environment
+variables, so a manager-to-runtime handoff preserves `--json`, `--no-input`,
+`--dry-run`, `--locked`, and `--offline`. Command descriptors explicitly opt in
+to JSON output and dry-run planning; unsupported combinations fail instead of
+silently falling back to human output or performing a mutation.
+
+`wago commands --json` and `wago help --json` serialize the command tree from
+the same descriptors used for parsing and help. When a runtime is active, the
+manager merges that binary's schema so profile-specific commands and backend
+knobs stay exact; an installation-free fallback describes the stable runtime
+surface. Keep this schema additive and machine-readable: arguments remain
+syntax strings, flags include their type and aliases, and nested commands retain
+the public command hierarchy. Errors use exit 2 for invalid invocation and exit
+1 for operational failure.
+
 ## Runtime profiles and builds
 
 Standard runtimes expose `run`, `build`, `validate`, `module`, and plugin

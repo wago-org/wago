@@ -10,7 +10,8 @@ type Environment interface {
 func Command(environment Environment) *command.Cmd {
 	return &command.Cmd{
 		Name: "update", Aliases: []string{"up", "upgrade"}, Summary: "update Wago on its current release channel",
-		Flags: []command.Flag{{Name: "force", Short: "f", Bool: true, Help: "reinstall even when the commit matches"}},
-		Run:   func(ctx *command.Ctx) { environment.Update(ctx.Bool("force")) },
+		Automation: command.DryRun,
+		Flags:      []command.Flag{{Name: "force", Short: "f", Bool: true, Help: "reinstall even when the commit matches"}},
+		Run:        func(ctx *command.Ctx) { environment.Update(ctx.Bool("force")) },
 	}
 }

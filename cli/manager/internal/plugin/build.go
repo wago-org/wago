@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/wago-org/wago/cli/internal/automation"
 	"github.com/wago-org/wago/cli/internal/project"
 	pluginbuild "github.com/wago-org/wago/cli/manager/internal/plugin/build"
 	managerprogress "github.com/wago-org/wago/cli/manager/internal/progress"
@@ -151,14 +152,14 @@ func reviewInstalledCapabilities(src, bin, module, version string, options pkgOp
 	lock.Packages[id] = entry
 	required, err := inspectRequiredCapabilities(bin, id)
 	if err != nil {
-		_ = project.WriteLock(src, lock)
+		persistLock(src, lock)
 		return // still pin the resolved module when it exposes no inspectable plugin
 	}
 	explicit := options.capabilities != nil || options.grantAll || options.denyAll
 	if existed && !explicit && project.SameStringSet(entry.RequiredCapabilities, required) {
 		entry.Version = version
 		lock.Packages[id] = entry
-		_ = project.WriteLock(src, lock)
+		persistLock(src, lock)
 		return // already reviewed this exact capability set
 	}
 	if len(required) == 0 {
@@ -168,7 +169,7 @@ func reviewInstalledCapabilities(src, bin, module, version string, options pkgOp
 			Capabilities:         json.RawMessage("[]"),
 			Config:               entry.Config,
 		}
-		_ = project.WriteLock(src, lock)
+		persistLock(src, lock)
 		return
 	}
 	chosen, ok := chooseCapabilities(id, required, project.Grants(src, id), options.capabilities, options.grantAll, options.denyAll)
@@ -187,9 +188,15 @@ func reviewInstalledCapabilities(src, bin, module, version string, options pkgOp
 		Capabilities:         capabilities,
 		Config:               entry.Config,
 	}
-	_ = project.WriteLock(src, lock)
+	persistLock(src, lock)
 	if len(chosen) == 0 {
 		fmt.Printf("%s no capabilities granted — %s may not function; grant later: wago plugin grant %s\n", dim("!"), id, id)
+	}
+}
+
+func persistLock(src string, lock project.LockDocument) {
+	if err := project.WriteLock(src, lock); err != nil && automation.Locked() {
+		fatal("locked mode: %v", err)
 	}
 }
 
@@ -197,7 +204,9 @@ func reviewInstalledCapabilities(src, bin, module, version string, options pkgOp
 // required capabilities (the current process usually doesn't have the package
 // compiled in). Returns them sorted.
 func inspectRequiredCapabilities(bin, id string) ([]string, error) {
-	out, err := exec.Command(bin, "plugin", "inspect", id, "--json").Output()
+	command := exec.Command(bin, "plugin", "inspect", id, "--json")
+	automation.ConfigureCommand(command)
+	out, err := command.Output()
 	if err != nil {
 		return nil, err
 	}
@@ -269,6 +278,7 @@ func installedModuleExactVersion(buildDir, module, requested string) string {
 
 func currentModuleExactVersion(buildDir, module string) (string, bool) {
 	cmd := exec.Command("go", "list", "-m", "-f={{.Version}}", module)
+	automation.ConfigureCommand(cmd)
 	cmd.Dir = buildDir
 	if output, err := cmd.Output(); err == nil {
 		if version := strings.TrimSpace(string(output)); version != "" {
@@ -279,15 +289,22 @@ func currentModuleExactVersion(buildDir, module string) (string, bool) {
 }
 
 func syncLockedPluginVersions(buildDir, manifestDir string, verbose bool) (bool, error) {
-	if err := pluginbuild.EnsureModule(buildDir); err != nil {
-		return false, err
-	}
 	requirements, err := project.Requirements(manifestDir)
 	if err != nil {
 		return false, err
 	}
 	lock, err := project.ReadLock(manifestDir)
 	if err != nil {
+		return false, err
+	}
+	if automation.Locked() {
+		for _, requirement := range requirements {
+			if strings.TrimSpace(lock.Packages[requirement.ID].Version) == "" {
+				return false, fmt.Errorf("locked mode requires %s in %s", requirement.ID, project.LockPath(manifestDir))
+			}
+		}
+	}
+	if err := pluginbuild.EnsureModule(buildDir); err != nil {
 		return false, err
 	}
 	changed := false

@@ -107,7 +107,7 @@ func assertCommandTreeNamesUnique(t *testing.T, parent *command.Cmd, path string
 		}
 		flags := make(map[string]string)
 		shorts := make(map[string]string)
-		for _, flag := range child.Flags {
+		for _, flag := range child.AllFlags() {
 			if previous, ok := flags[flag.Name]; ok {
 				t.Errorf("%s flags --%s and --%s share a name", childPath, previous, flag.Name)
 			} else {

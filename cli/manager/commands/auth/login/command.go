@@ -2,6 +2,7 @@
 package login
 
 import (
+	"github.com/wago-org/wago/cli/internal/automation"
 	"github.com/wago-org/wago/cli/internal/command"
 	"github.com/wago-org/wago/cli/internal/ui"
 )
@@ -17,8 +18,9 @@ type Environment interface {
 
 func Command(environment Environment) *command.Cmd {
 	return &command.Cmd{
-		Name:    "login",
-		Summary: "log in to the registry",
+		Name:       "login",
+		Summary:    "log in to the registry",
+		Automation: command.DryRun,
 		Flags: []command.Flag{
 			{Name: "link", Short: "l", Bool: true, Help: "log in via a browser link on this machine"},
 			{Name: "code", Short: "c", Bool: true, Help: "log in with a one-time code (headless/remote)"},
@@ -33,8 +35,17 @@ func Command(environment Environment) *command.Cmd {
 				Token:     c.Str("token"),
 				WithToken: c.Bool("with-token"),
 			}
-			if options.Code && options.Link {
-				ui.Fatal("login: choose either --code or --link, not both")
+			methods := 0
+			for _, selected := range []bool{options.Code, options.Link, options.Token != "", options.WithToken} {
+				if selected {
+					methods++
+				}
+			}
+			if methods > 1 {
+				ui.Usage("login: choose only one of --code, --link, --token, or --with-token")
+			}
+			if automation.NoInput() && !options.Code && !options.Link && options.Token == "" && !options.WithToken {
+				ui.Usage("auth login: --no-input requires --link, --code, --token, or --with-token")
 			}
 			environment.Login(options)
 		},

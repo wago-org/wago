@@ -19,13 +19,14 @@ type Environment interface {
 func Command(environment Environment) *command.Cmd {
 	return &command.Cmd{
 		Name: "deprecate", Summary: "deprecate a plugin/version", Args: "<name>[@version]",
+		Automation: command.DryRun,
 		Flags: []command.Flag{
 			{Name: "message", Short: "m", Arg: "<m>", Help: "deprecation notice"},
 			{Name: "undo", Short: "u", Bool: true, Help: "reverse a deprecation"},
 		},
 		Run: func(c *command.Ctx) {
 			if len(c.Args) != 1 {
-				ui.Fatal("deprecate: need <module-or-short>[@version]")
+				ui.Usage("deprecate: need <module-or-short>[@version]")
 			}
 			environment.Deprecate(Options{
 				Target: c.Args[0], Message: c.Str("message"), Undo: c.Bool("undo"),

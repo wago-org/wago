@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/wago-org/wago/cli/internal/automation"
 	managerprogress "github.com/wago-org/wago/cli/manager/internal/progress"
 	"github.com/wago-org/wago/internal/wagopaths"
 )
@@ -103,6 +104,9 @@ func checkoutWagoSource(ref string, progress *managerprogress.Progress) (temp, s
 }
 
 func checkoutWagoSourceIn(parent, ref string, progress *managerprogress.Progress) (temp, source, stamp string, err error) {
+	if err := automation.RequireOnline("source checkout"); err != nil {
+		return "", "", "", err
+	}
 	temp, err = os.MkdirTemp(parent, ".wago-source-*")
 	if err != nil {
 		return "", "", "", fmt.Errorf("prepare source build: %w", err)

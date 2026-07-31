@@ -17,9 +17,9 @@ func TestRunOwnsLoginFlagParsing(t *testing.T) {
 	Command(environment).Run(command.NewContext(
 		nil,
 		map[string]string{"token": "secret"},
-		map[string]bool{"with-token": true},
+		nil,
 	))
-	if environment.options.Token != "secret" || !environment.options.WithToken {
+	if environment.options.Token != "secret" || environment.options.WithToken {
 		t.Fatalf("options = %#v", environment.options)
 	}
 }

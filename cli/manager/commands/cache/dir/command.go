@@ -8,8 +8,9 @@ type Environment interface {
 
 func Command(environment Environment) *command.Cmd {
 	return &command.Cmd{
-		Name:    "dir",
-		Summary: "print the global cache directory",
-		Run:     func(*command.Ctx) { environment.CacheDir() },
+		Name:       "dir",
+		Summary:    "print the global cache directory",
+		Automation: command.JSONOutput,
+		Run:        func(*command.Ctx) { environment.CacheDir() },
 	}
 }

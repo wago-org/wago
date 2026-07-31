@@ -51,7 +51,7 @@ type implementation struct {
 func (cmd implementation) Run(ctx *command.Ctx) {
 	if ctx.Bool("watch") {
 		if len(ctx.Args) == 0 {
-			ui.Fatal("run: need a <file>")
+			ui.Usage("run: need a <file>")
 		}
 		watchModule(ctx.Args[0], ctx.Str("watch-interval"))
 		return
@@ -59,16 +59,16 @@ func (cmd implementation) Run(ctx *command.Ctx) {
 	ApplyOptimizationFlags(ctx)
 	deferredBoundsChecking, err := DeferredBoundsChecking(ctx)
 	if err != nil {
-		ui.Fatal("run: %v", err)
+		ui.Usage("run: %v", err)
 	}
 	positionals := ctx.Args
 	if len(positionals) == 0 {
-		ui.Fatal("run: need a <file>")
+		ui.Usage("run: need a <file>")
 	}
 	wago.SetGuestArgs(positionals)
 	config, err := Config(deferredBoundsChecking, ctx.Str("parallel"))
 	if err != nil {
-		ui.Fatal("run: %v", err)
+		ui.Usage("run: %v", err)
 	}
 	runtime := cmd.environment.LoadRuntime(config, ctx.Str("plugin"))
 	defer runtime.Close()

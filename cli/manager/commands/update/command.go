@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/wago-org/wago/cli/internal/automation"
 	"github.com/wago-org/wago/cli/internal/command"
 	"github.com/wago-org/wago/cli/internal/ui"
 	plugin "github.com/wago-org/wago/cli/manager/commands/plugin"
+	"github.com/wago-org/wago/internal/wagopaths"
 )
 
 type Components struct {
@@ -36,10 +38,11 @@ type componentSelector func() (Components, bool, error)
 
 func commandWithSelector(environment Environment, selectComponents componentSelector) *command.Cmd {
 	return &command.Cmd{
-		Name:    "update",
-		Aliases: []string{"up", "upgrade"},
-		Summary: "update Wago, the active runtime, and plugins",
-		Args:    "[target...]",
+		Name:       "update",
+		Aliases:    []string{"up", "upgrade"},
+		Summary:    "update Wago, the active runtime, and plugins",
+		Automation: command.DryRun,
+		Args:       "[target...]",
 		Flags: []command.Flag{
 			{Name: "manager", Short: "m", Bool: true, Help: "update the Wago manager"},
 			{Name: "runtime", Short: "r", Bool: true, Help: "update the active release channel"},
@@ -57,17 +60,33 @@ func commandWithSelector(environment Environment, selectComponents componentSele
 		},
 		Run: func(ctx *command.Ctx) {
 			if ctx.Bool("global") && ctx.Bool("local") {
-				ui.Fatal("update: choose --global or --local")
+				ui.Usage("update: choose --global or --local")
 			}
 			use := "yes"
 			if ctx.Bool("no-use") {
 				use = "no"
 			}
 			if ctx.Bool("use") && ctx.Bool("no-use") {
-				ui.Fatal("update: choose --use or --no-use")
+				ui.Usage("update: choose --use or --no-use")
+			}
+			if channel := ctx.Str("channel"); channel != "" && channel != "canary" && channel != "nightly" {
+				ui.Usage("update: --channel must be canary or nightly")
+			}
+			if value := ctx.Str("profile"); value != "" {
+				if _, err := wagopaths.ParseProfile(value); err != nil {
+					ui.Usage("update: %v", err)
+				}
+			}
+			if value := ctx.Str("build"); value != "" {
+				if _, err := wagopaths.ParseBuild(value); err != nil {
+					ui.Usage("update: %v", err)
+				}
 			}
 			components, explicit := componentsFromContext(ctx)
 			if !explicit {
+				if automation.NoInput() {
+					ui.Usage("update: --no-input requires manager, runtime, plugins, or --all")
+				}
 				var submitted bool
 				var err error
 				components, submitted, err = selectComponents()
@@ -114,7 +133,7 @@ func componentsFromContext(ctx *command.Ctx) (Components, bool) {
 		case "all":
 			components = allComponents()
 		default:
-			ui.Fatal("update: unknown target %q; choose manager, runtime, plugins, or all", raw)
+			ui.Usage("update: unknown target %q; choose manager, runtime, plugins, or all", raw)
 		}
 		explicit = true
 	}

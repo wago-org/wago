@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/wago-org/wago/cli/internal/automation"
 	managerprogress "github.com/wago-org/wago/cli/manager/internal/progress"
 	"github.com/wago-org/wago/internal/wagopaths"
 )
@@ -130,6 +131,9 @@ func httpGetBytes(url string) ([]byte, error) {
 }
 
 func httpGetBytesProgress(url string, progress func(current, total int64)) ([]byte, error) {
+	if err := automation.RequireOnline("release download"); err != nil {
+		return nil, err
+	}
 	resp, err := http.Get(url)
 	if err != nil {
 		return nil, err

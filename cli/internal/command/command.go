@@ -22,7 +22,17 @@ type Cmd struct {
 	Normalize   func([]string) ([]string, error)
 	Run         func(*Ctx)
 	Children    []*Cmd
+	Automation  Features
 }
+
+type Features uint8
+
+const (
+	JSONOutput Features = 1 << iota
+	DryRun
+)
+
+func (c *Cmd) Supports(feature Features) bool { return c.Automation&feature != 0 }
 
 // Child finds a direct subcommand by its canonical name or alias.
 func (c *Cmd) Child(name string) *Cmd {

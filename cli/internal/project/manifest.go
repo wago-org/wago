@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/wago-org/wago/cli/internal/automation"
 )
 
 const (
@@ -52,6 +54,9 @@ func Read(dir string) (map[string]any, error) {
 }
 
 func Write(dir string, manifest map[string]any) error {
+	if automation.Locked() {
+		return fmt.Errorf("locked mode prevents changing %s", DisplayPath(dir))
+	}
 	data, err := json.MarshalIndent(manifest, "", "  ")
 	if err != nil {
 		return err

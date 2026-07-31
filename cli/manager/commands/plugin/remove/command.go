@@ -19,7 +19,8 @@ func Command(environment Environment) *command.Cmd {
 	return &command.Cmd{
 		Name: "remove", Aliases: []string{"rm"},
 		Summary: "remove and disable a plugin", Args: "<name>",
-		Flags: []command.Flag{plugin.GlobalFlag(), plugin.LocalFlag()},
+		Automation: command.DryRun,
+		Flags:      []command.Flag{plugin.GlobalFlag(), plugin.LocalFlag()},
 		Run: func(c *command.Ctx) {
 			environment.Remove(Options{
 				Name: c.One("<name>"), Global: c.Bool("global"), Local: c.Bool("local"),

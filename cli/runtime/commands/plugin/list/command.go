@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/wago-org/wago"
+	"github.com/wago-org/wago/cli/internal/automation"
 	"github.com/wago-org/wago/cli/internal/command"
 	"github.com/wago-org/wago/cli/internal/handoff"
 	"github.com/wago-org/wago/cli/internal/pluginmenu"
@@ -30,7 +31,7 @@ type implementation struct {
 
 func (cmd implementation) Run(c *command.Ctx) {
 	names := wago.RegisteredPluginNames()
-	if c.Bool("json") {
+	if automation.JSON() {
 		reports := make([]runtimeplugin.Report, 0, len(names))
 		for _, name := range names {
 			if extension, ok := wago.NewExtension(name); ok {

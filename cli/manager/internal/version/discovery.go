@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/wago-org/wago/cli/internal/automation"
 	managerprogress "github.com/wago-org/wago/cli/manager/internal/progress"
 	"github.com/wago-org/wago/internal/wagopaths"
 )
@@ -23,6 +24,9 @@ func latestRelease() string {
 }
 
 func latestStableRelease() (string, error) {
+	if err := automation.RequireOnline("release discovery"); err != nil {
+		return "", err
+	}
 	resp, err := http.Get(releaseAPI() + "/repos/wago-org/wago/releases/latest")
 	if err != nil {
 		return "", err
@@ -61,6 +65,9 @@ func vmBrowse(d wagopaths.Dirs, profileValue, buildValue, use string) {
 }
 
 func fetchReleases() ([]remoteRelease, error) {
+	if err := automation.RequireOnline("release discovery"); err != nil {
+		return nil, err
+	}
 	var releases []remoteRelease
 	for page := 1; ; page++ {
 		url := fmt.Sprintf("%s/repos/wago-org/wago/releases?per_page=100&page=%d", releaseAPI(), page)
@@ -272,6 +279,9 @@ func installManagerPayload(resolved, dest string, sourceOnly bool, progress *man
 }
 
 func latestMainCommit() (string, error) {
+	if err := automation.RequireOnline("main commit discovery"); err != nil {
+		return "", err
+	}
 	resp, err := http.Get(releaseAPI() + "/repos/wago-org/wago/commits/main")
 	if err != nil {
 		return "", err
@@ -291,6 +301,9 @@ func latestMainCommit() (string, error) {
 }
 
 func fetchMainCommits() ([]remoteCommit, error) {
+	if err := automation.RequireOnline("main commit discovery"); err != nil {
+		return nil, err
+	}
 	var commits []remoteCommit
 	for page := 1; ; page++ {
 		url := fmt.Sprintf("%s/repos/wago-org/wago/commits?sha=main&per_page=100&page=%d", releaseAPI(), page)
@@ -316,6 +329,9 @@ func fetchMainCommits() ([]remoteCommit, error) {
 }
 
 func latestChannelRelease(channel string) (string, error) {
+	if err := automation.RequireOnline("release channel discovery"); err != nil {
+		return "", err
+	}
 	resp, err := http.Get(releaseAPI() + "/repos/wago-org/wago/releases?per_page=100")
 	if err != nil {
 		return "", err

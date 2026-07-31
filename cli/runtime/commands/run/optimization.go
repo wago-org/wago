@@ -52,7 +52,7 @@ func ApplyOptimizationFlags(ctx *command.Ctx) {
 	for _, knob := range wago.OptKnobs() {
 		on, off := ctx.Bool(knob.Name), ctx.Bool("no-"+knob.Name)
 		if on && off {
-			ui.Fatal("run: conflicting --%s and --no-%s", knob.Name, knob.Name)
+			ui.Usage("run: conflicting --%s and --no-%s", knob.Name, knob.Name)
 		}
 		switch {
 		case on:

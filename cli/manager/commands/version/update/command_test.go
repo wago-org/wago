@@ -33,12 +33,11 @@ func TestRunDelegatesInteractiveSelectionWhenTargetIsOmitted(t *testing.T) {
 func TestRunForwardsOptions(t *testing.T) {
 	environment := &testEnvironment{}
 	Command(environment).Run(command.NewContext(
-		[]string{"nightly"},
+		nil,
 		map[string]string{"profile": "minimal", "build": "tiny"},
-		map[string]bool{"nightly": true, "canary": true, "force": true},
+		map[string]bool{"canary": true, "force": true},
 	))
-	if len(environment.args) != 1 || environment.args[0] != "nightly" ||
-		!environment.nightly || !environment.canary || !environment.force ||
+	if len(environment.args) != 0 || environment.nightly || !environment.canary || !environment.force ||
 		environment.profile != "minimal" || environment.build != "tiny" {
 		t.Fatalf("update = %#v", environment)
 	}

@@ -2,8 +2,11 @@ package command
 
 import (
 	"bytes"
+	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/wago-org/wago/cli/internal/automation"
 )
 
 func TestParseAndHelpRecognition(t *testing.T) {
@@ -56,6 +59,8 @@ func TestParseAndHelpRecognition(t *testing.T) {
 }
 
 func TestDispatchSuccessfulPaths(t *testing.T) {
+	automation.Reset()
+	t.Cleanup(automation.Reset)
 	var got *Ctx
 	leaf := &Cmd{
 		Name:  "leaf",
@@ -66,13 +71,16 @@ func TestDispatchSuccessfulPaths(t *testing.T) {
 
 	root.Dispatch("wago", nil)
 	root.Dispatch("wago", []string{"--help"})
-	root.Dispatch("wago", []string{"leaf", "-n", "value", "argument"})
+	root.Dispatch("wago", []string{"--offline", "leaf", "-n", "value", "argument"})
 
 	if got == nil || got.Path != "wago leaf" || got.Str("name") != "value" || got.One("argument") != "argument" {
 		t.Fatalf("dispatched context = %#v", got)
 	}
 	if got.Optional("argument") != "argument" {
 		t.Fatal("optional argument mismatch")
+	}
+	if !automation.Offline() {
+		t.Fatal("group-level automation flag was not preserved for the leaf")
 	}
 	if got := (&Ctx{}).Optional("argument"); got != "" {
 		t.Fatalf("empty optional argument = %q", got)
@@ -113,5 +121,56 @@ func TestHelpShowsShortFormForPairedBooleanFlags(t *testing.T) {
 	cmd.PrintHelp(&output, "wago update")
 	if !strings.Contains(output.String(), "--<no->use, -u") {
 		t.Fatalf("paired flag help omits short form:\n%s", output.String())
+	}
+}
+
+func TestAutomationFlagsAndCommandSchema(t *testing.T) {
+	automation.Reset()
+	t.Cleanup(automation.Reset)
+	cmd := &Cmd{
+		Name: "inspect", Aliases: []string{"info"}, Summary: "inspect state", Args: "[name]",
+		Automation: JSONOutput | DryRun,
+		Flags:      []Flag{{Name: "global", Short: "g", Bool: true, Help: "use global state"}},
+	}
+	ctx, err := cmd.Parse("wago inspect", []string{"--json", "--dry-run", "--no-input", "--locked", "--offline"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ctx.Bool("json") || !automation.DryRun() || !automation.NoInput() || !automation.Locked() || !automation.Offline() {
+		t.Fatalf("automation flags were not applied: %#v", automation.Current())
+	}
+
+	var output bytes.Buffer
+	if err := WriteSchema(&output, &Cmd{Name: "wago", Children: []*Cmd{cmd}}); err != nil {
+		t.Fatal(err)
+	}
+	var schema CommandSchema
+	if err := json.Unmarshal(output.Bytes(), &schema); err != nil {
+		t.Fatalf("schema is not JSON: %v\n%s", err, output.String())
+	}
+	if schema.SchemaVersion != 1 || len(schema.Flags) == 0 || len(schema.Commands) != 1 || schema.Commands[0].Name != "inspect" {
+		t.Fatalf("schema = %#v", schema)
+	}
+	flags := schema.Commands[0].Flags
+	for _, name := range []string{"global", "json", "dry-run", "no-input", "locked", "offline"} {
+		found := false
+		for _, flag := range flags {
+			found = found || flag.Name == name
+		}
+		if !found {
+			t.Errorf("schema omits --%s: %#v", name, flags)
+		}
+	}
+}
+
+func TestUnsupportedAutomationOutputIsRejected(t *testing.T) {
+	automation.Reset()
+	t.Cleanup(automation.Reset)
+	cmd := &Cmd{Name: "plain"}
+	if _, err := cmd.Parse("wago plain", []string{"--json"}); err == nil {
+		t.Fatal("unsupported --json was accepted")
+	}
+	if _, err := cmd.Parse("wago plain", []string{"--dry-run"}); err == nil {
+		t.Fatal("unsupported --dry-run was accepted")
 	}
 }

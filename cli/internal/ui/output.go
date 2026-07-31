@@ -2,11 +2,14 @@
 package ui
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/wago-org/wago/cli/internal/automation"
 )
 
 var useColor = colorEnabled()
@@ -32,8 +35,42 @@ func Red(s string) string  { return paint("31", s) }
 func Cyan(s string) string { return paint("36", s) }
 
 func Fatal(format string, args ...any) {
-	fmt.Fprintf(os.Stderr, "%s "+format+"\n", append([]any{Red("wago:")}, args...)...)
-	os.Exit(1)
+	Fail(1, "operational_error", format, args...)
+}
+
+func Usage(format string, args ...any) {
+	Fail(2, "usage_error", format, args...)
+}
+
+func FatalHint(hint, format string, args ...any) {
+	FailHint(1, "operational_error", hint, format, args...)
+}
+
+func UsageHint(hint, format string, args ...any) {
+	FailHint(2, "usage_error", hint, format, args...)
+}
+
+func Fail(exitCode int, code, format string, args ...any) {
+	FailHint(exitCode, code, "", format, args...)
+}
+
+func FailHint(exitCode int, code, hint, format string, args ...any) {
+	message := fmt.Sprintf(format, args...)
+	if automation.JSON() {
+		details := map[string]any{"code": code, "message": message}
+		if hint != "" {
+			details["hint"] = hint
+		}
+		_ = json.NewEncoder(os.Stderr).Encode(map[string]any{
+			"error": details,
+		})
+	} else {
+		fmt.Fprintf(os.Stderr, "%s %s\n", Red("wago:"), message)
+		if hint != "" {
+			fmt.Fprintf(os.Stderr, "%s %s\n", Dim("hint:"), hint)
+		}
+	}
+	os.Exit(exitCode)
 }
 
 func Detail(out io.Writer, label, value string) {

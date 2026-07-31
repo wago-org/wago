@@ -14,7 +14,7 @@ func watchModule(path, intervalValue string) {
 	if intervalValue != "" {
 		parsed, err := time.ParseDuration(intervalValue)
 		if err != nil || parsed <= 0 {
-			ui.Fatal("run: --watch-interval must be a positive duration")
+			ui.Usage("run: --watch-interval must be a positive duration")
 		}
 		interval = parsed
 	}

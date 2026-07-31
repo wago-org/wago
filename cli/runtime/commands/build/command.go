@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/wago-org/wago"
+	"github.com/wago-org/wago/cli/internal/automation"
 	"github.com/wago-org/wago/cli/internal/command"
 	"github.com/wago-org/wago/cli/internal/ui"
 	runcmd "github.com/wago-org/wago/cli/runtime/commands/run"
@@ -29,7 +30,8 @@ func Command(environment Environment) *command.Cmd {
 	implementation := implementation{environment: environment}
 	return &command.Cmd{
 		Name: "build", Summary: "precompile a WebAssembly module to a .wago artifact",
-		Args: "<file>", Flags: flags,
+		Automation: command.DryRun,
+		Args:       "<file>", Flags: flags,
 		Normalize: func(args []string) ([]string, error) {
 			return runcmd.NormalizeParallelArgs(args, flags, false)
 		},
@@ -46,9 +48,18 @@ func (cmd implementation) Run(c *command.Ctx) {
 	runcmd.ApplyOptimizationFlags(c)
 	deferredBoundsChecking, err := runcmd.DeferredBoundsChecking(c)
 	if err != nil {
-		ui.Fatal("build: %v", err)
+		ui.Usage("build: %v", err)
 	}
 	input := singleFileArg(c.Args)
+	output := c.Str("output")
+	if output == "" {
+		ext := filepath.Ext(input)
+		output = strings.TrimSuffix(input, ext) + ".wago"
+	}
+	if automation.DryRun() {
+		automation.PrintPlan("build artifact", map[string]any{"input": input, "output": output, "parallel": c.Str("parallel"), "deferredBoundsChecking": deferredBoundsChecking})
+		return
+	}
 	source, err := os.ReadFile(input)
 	if err != nil {
 		ui.Fatal("build: %v", err)
@@ -58,7 +69,7 @@ func (cmd implementation) Run(c *command.Ctx) {
 	}
 	cfg, err := runcmd.Config(deferredBoundsChecking, c.Str("parallel"))
 	if err != nil {
-		ui.Fatal("build: %v", err)
+		ui.Usage("build: %v", err)
 	}
 	rt := cmd.environment.LoadRuntime(cfg, c.Str("plugin"))
 	defer rt.Close()
@@ -70,13 +81,8 @@ func (cmd implementation) Run(c *command.Ctx) {
 	if err != nil {
 		ui.Fatal("build: %v", err)
 	}
-	output := c.Str("output")
-	if output == "" {
-		ext := filepath.Ext(input)
-		output = strings.TrimSuffix(input, ext) + ".wago"
-	}
 	if filepath.Clean(output) == filepath.Clean(input) {
-		ui.Fatal("build: output path must differ from input")
+		ui.Usage("build: output path must differ from input")
 	}
 	if err := os.WriteFile(output, artifact, 0o644); err != nil {
 		ui.Fatal("build: %v", err)
@@ -86,7 +92,7 @@ func (cmd implementation) Run(c *command.Ctx) {
 
 func singleFileArg(args []string) string {
 	if len(args) != 1 {
-		ui.Fatal("build: need exactly one <file>")
+		ui.Usage("build: need exactly one <file>")
 	}
 	return args[0]
 }

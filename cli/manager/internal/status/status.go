@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/wago-org/wago/cli/internal/automation"
 	"github.com/wago-org/wago/cli/internal/project"
 	"github.com/wago-org/wago/cli/internal/ui"
 	managerversion "github.com/wago-org/wago/cli/manager/internal/version"
@@ -15,18 +16,18 @@ import (
 )
 
 type Report struct {
-	ManagerVersion string
-	ManagerPath    string
-	RuntimeVersion string
-	RuntimeProfile string
-	RuntimeBuild   string
-	RuntimePath    string
-	Scope          string
-	ProjectDir     string
-	ManifestPath   string
-	LockPath       string
-	LockState      string
-	Plugins        int
+	ManagerVersion string `json:"managerVersion"`
+	ManagerPath    string `json:"managerPath"`
+	RuntimeVersion string `json:"runtimeVersion,omitempty"`
+	RuntimeProfile string `json:"runtimeProfile,omitempty"`
+	RuntimeBuild   string `json:"runtimeBuild,omitempty"`
+	RuntimePath    string `json:"runtimePath,omitempty"`
+	Scope          string `json:"scope"`
+	ProjectDir     string `json:"projectDirectory,omitempty"`
+	ManifestPath   string `json:"manifestPath,omitempty"`
+	LockPath       string `json:"lockPath,omitempty"`
+	LockState      string `json:"lockState"`
+	Plugins        int    `json:"plugins"`
 }
 
 func Inspect(dirs wagopaths.Dirs, managerVersion, managerPath string) (Report, error) {
@@ -73,6 +74,10 @@ func Inspect(dirs wagopaths.Dirs, managerVersion, managerPath string) (Report, e
 }
 
 func Print(out io.Writer, report Report) {
+	if automation.JSON() {
+		ui.PrintJSON(report)
+		return
+	}
 	fmt.Fprintln(out, ui.Bold("Wago status"))
 	ui.Detail(out, "manager", value(report.ManagerVersion, report.ManagerPath))
 	if report.RuntimeVersion == "" {
