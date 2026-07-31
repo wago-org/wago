@@ -15,7 +15,7 @@ import (
 func Command() *command.Cmd {
 	flags := []command.Flag{runcmd.ParallelFlag()}
 	return &command.Cmd{
-		Name: "validate", Summary: "decode and validate a module",
+		Name: "validate", Aliases: []string{"check"}, Summary: "decode and validate a module",
 		Args: "<file>", Flags: flags,
 		Normalize: func(args []string) ([]string, error) {
 			return runcmd.NormalizeParallelArgs(args, flags, false)

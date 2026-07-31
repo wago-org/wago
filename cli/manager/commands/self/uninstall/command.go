@@ -13,7 +13,7 @@ func Command(environment Environment) *command.Cmd {
 	return &command.Cmd{
 		Name: "uninstall", Summary: "remove Wago with a selectable cleanup scope",
 		Flags: []command.Flag{
-			{Name: "mode", Arg: "<full|partial|minimal>", Help: "choose what to remove (interactive by default)"},
+			{Name: "mode", Short: "m", Arg: "<full|partial|minimal>", Help: "choose what to remove (interactive by default)"},
 			{Name: "yes", Short: "y", Bool: true, Help: "skip confirmation (defaults to full mode)"},
 		},
 		Run: func(c *command.Ctx) {

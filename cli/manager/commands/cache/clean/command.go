@@ -16,6 +16,7 @@ type Environment interface {
 func Command(environment Environment) *command.Cmd {
 	return &command.Cmd{
 		Name:    "clean",
+		Aliases: []string{"clear"},
 		Summary: "remove selected regenerable caches",
 		Flags:   cacheoptions.Flags(),
 		Run: func(ctx *command.Ctx) {

@@ -26,7 +26,7 @@ func Command(environment Environment) *command.Cmd {
 		Flags: []command.Flag{
 			plugin.GlobalFlag(), plugin.LocalFlag(),
 			{Name: "allow", Arg: "<cap,...>", Help: "grant a comma-separated capability set without a prompt"},
-			{Name: "all", Bool: true, Help: "grant every requested capability without a prompt"},
+			{Name: "all", Short: "a", Bool: true, Help: "grant every requested capability without a prompt"},
 			{Name: "deny-all", Bool: true, Help: "remove every grant without a prompt"},
 		},
 		Run: func(c *command.Ctx) {

@@ -22,7 +22,7 @@ type Environment interface {
 func Command(environment Environment) *command.Cmd {
 	flags := append([]command.Flag{
 		{Name: "invoke", Short: "e", Arg: "<name>", Help: "exported function to call"},
-		{Name: "bounds", Arg: "<mode>", Help: "bounds checks: defer (default) | all"},
+		{Name: "bounds", Short: "b", Arg: "<mode>", Help: "bounds checks: defer (default) | all"},
 		{Name: "watch", Short: "w", Bool: true, Help: "rerun when the module changes"},
 		{Name: "watch-interval", Arg: "<duration>", Help: "watch polling interval (default 200ms)"},
 		ParallelFlag(),

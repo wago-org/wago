@@ -19,5 +19,5 @@ func LocalFlag() command.Flag {
 }
 
 func JSONFlag() command.Flag {
-	return command.Flag{Name: "json", Bool: true, Help: "emit machine-readable JSON"}
+	return command.Flag{Name: "json", Short: "j", Bool: true, Help: "emit machine-readable JSON"}
 }

@@ -27,7 +27,7 @@ func TestCommandTree(t *testing.T) {
 	if got := strings.Join(names, ","); got != "list,current,which,switch,install,update,uninstall" {
 		t.Fatalf("version commands = %q", got)
 	}
-	if cmd.Children[3].Aliases[0] != "swap" || cmd.Children[4].Aliases[0] != "add" {
+	if got := strings.Join(cmd.Children[3].Aliases, ","); got != "use,swap" || cmd.Children[4].Aliases[0] != "add" {
 		t.Fatalf("version aliases = switch:%v install:%v", cmd.Children[3].Aliases, cmd.Children[4].Aliases)
 	}
 }

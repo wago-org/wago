@@ -9,7 +9,7 @@ type Environment interface {
 
 func Command(environment Environment) *command.Cmd {
 	return &command.Cmd{
-		Name: "which", Summary: "print the active runtime executable path",
+		Name: "which", Aliases: []string{"path"}, Summary: "print the active runtime executable path",
 		Run: func(*command.Ctx) { environment.Which() },
 	}
 }

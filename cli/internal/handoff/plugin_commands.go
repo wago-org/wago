@@ -15,7 +15,7 @@ func PluginListCommand() *command.Cmd {
 // PluginInspectCommand describes the runtime-owned plugin inspect command.
 func PluginInspectCommand() *command.Cmd {
 	return &command.Cmd{
-		Name: "inspect", Summary: "show an enabled plugin's imports and capabilities", Args: "[name]",
+		Name: "inspect", Aliases: []string{"info", "show"}, Summary: "show an enabled plugin's imports and capabilities", Args: "[name]",
 		Flags: pluginInspectionFlags(),
 	}
 }
@@ -24,6 +24,6 @@ func pluginInspectionFlags() []command.Flag {
 	return []command.Flag{
 		{Name: "global", Short: "g", Bool: true, Help: "use the shared user-wide plugins"},
 		{Name: "local", Short: "l", Bool: true, Help: "use this project's plugins"},
-		{Name: "json", Bool: true, Help: "emit machine-readable JSON"},
+		{Name: "json", Short: "j", Bool: true, Help: "emit machine-readable JSON"},
 	}
 }

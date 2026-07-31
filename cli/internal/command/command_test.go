@@ -1,6 +1,7 @@
 package command
 
 import (
+	"bytes"
 	"strings"
 	"testing"
 )
@@ -97,5 +98,20 @@ func TestInvocationWantsHelpFollowsCommandTree(t *testing.T) {
 	}
 	if InvocationWantsHelp(root, []string{"run", "module.wasm", "--help"}) {
 		t.Fatal("guest help after pass-through was intercepted")
+	}
+}
+
+func TestHelpShowsShortFormForPairedBooleanFlags(t *testing.T) {
+	cmd := &Cmd{
+		Name: "update",
+		Flags: []Flag{
+			{Name: "use", Short: "u", Bool: true, Help: "activate the result"},
+			{Name: "no-use", Bool: true, Help: "leave the active result unchanged"},
+		},
+	}
+	var output bytes.Buffer
+	cmd.PrintHelp(&output, "wago update")
+	if !strings.Contains(output.String(), "--<no->use, -u") {
+		t.Fatalf("paired flag help omits short form:\n%s", output.String())
 	}
 }

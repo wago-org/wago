@@ -15,11 +15,11 @@ func Command(environment Environment) *command.Cmd {
 	return &command.Cmd{
 		Name: "publish", Summary: "publish a plugin from wago.json",
 		Flags: []command.Flag{
-			{Name: "manifest", Arg: "<p>", Help: "manifest path (default wago.json)"},
-			{Name: "commit", Arg: "<c>", Help: "commit SHA (default: git HEAD)"},
-			{Name: "notes", Arg: "<s>", Help: "release notes"},
+			{Name: "manifest", Short: "m", Arg: "<p>", Help: "manifest path (default wago.json)"},
+			{Name: "commit", Short: "c", Arg: "<c>", Help: "commit SHA (default: git HEAD)"},
+			{Name: "notes", Short: "n", Arg: "<s>", Help: "release notes"},
 			{Name: "category", Arg: "<c>", Help: "plugin category"},
-			{Name: "tags", Arg: "<a,b>", Help: "comma-separated tags"},
+			{Name: "tags", Short: "t", Arg: "<a,b>", Help: "comma-separated tags"},
 		},
 		Run: func(c *command.Ctx) {
 			environment.Publish(Options{
