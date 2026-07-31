@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"unsafe"
@@ -34,6 +35,8 @@ type PageSnapshot struct {
 	trackDirty      bool
 	dataEnd         uint64
 	cursor          uint64
+	selectiveAt     int
+	selectiveReset  atomic.Bool
 
 	mu      sync.Mutex
 	refs    int
@@ -117,6 +120,7 @@ func capturePageSnapshot(
 		trackDirty:      trackDirty,
 		dataEnd:         dataEnd,
 		cursor:          cursor,
+		selectiveAt:     max(1, runtime.GOMAXPROCS(0)*2),
 	}
 	binding, err := s.Bind(in)
 	if err != nil {
@@ -263,6 +267,7 @@ func (s *PageSnapshot) Bind(in *Instance) (*PageSnapshotBinding, error) {
 		return nil, errors.New("wago: page snapshot is closed")
 	}
 	s.refs++
+	s.selectiveReset.Store(s.refs > s.selectiveAt)
 	s.mu.Unlock()
 
 	table := in.tableDescriptorBytes()
@@ -324,9 +329,11 @@ func (in *Instance) passiveElementDescriptorBytes() []byte {
 
 // Reset discards dirty linear-memory pages in place and restores numeric
 // globals, local funcref table descriptors, and passive element/data drop
-// state. The first reset installs the shared private mapping; later stub resets
-// selectively discard every private dirty page, while other snapshots discard
-// the complete mapping.
+// state. The first reset installs the shared private mapping. Later stub resets
+// use the cheaper complete discard while the bound pool fits within twice
+// GOMAXPROCS, then retain hot clean pages and selectively discard private dirty
+// pages once the pool is oversubscribed. Other snapshots always discard the
+// complete mapping.
 func (b *PageSnapshotBinding) Reset() error {
 	if b == nil || b.snapshot == nil || b.instance == nil || b.released.Load() {
 		return errors.New("wago: page snapshot binding is closed")
@@ -337,7 +344,7 @@ func (b *PageSnapshotBinding) Reset() error {
 	// bindings reset independent instances and must not serialize on shared
 	// snapshot state.
 	var err error
-	if b.dirtyTracker != nil {
+	if b.dirtyTracker != nil && s.selectiveReset.Load() {
 		err = b.instance.jm.DiscardDirtyToPageSnapshot(b.dirtyTracker)
 	} else if b.memoryBound {
 		err = b.instance.jm.DiscardToPageSnapshot(s.memory)
@@ -375,6 +382,7 @@ func (b *PageSnapshotBinding) Close() error {
 	s := b.snapshot
 	s.mu.Lock()
 	s.refs--
+	s.selectiveReset.Store(s.refs > s.selectiveAt)
 	closeNow := s.closing && s.refs == 0 && !s.closed
 	if closeNow {
 		s.closed = true
