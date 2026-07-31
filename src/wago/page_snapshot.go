@@ -19,7 +19,8 @@ func IsPageSnapshotMemoryGrown(err error) bool {
 
 // PageSnapshot is immutable post-initialization module state suitable for
 // binding to multiple instances. Linear memory is file-backed on supported
-// systems; numeric globals and passive-data state are restored alongside it.
+// systems; numeric globals, local funcref tables, and passive segment state are
+// restored alongside it.
 //
 // Tables are supported because each binding captures and restores its own
 // instance-local table descriptors. This avoids copying one instance's native
@@ -42,6 +43,7 @@ type PageSnapshotBinding struct {
 	snapshot    *PageSnapshot
 	instance    *Instance
 	table       []byte
+	passiveElem []byte
 	passiveData []byte
 	released    atomic.Bool
 }
@@ -77,6 +79,17 @@ func validatePageSnapshotInstance(in *Instance) error {
 	}
 	if !in.ownsMem {
 		return errors.New("wago: cannot page-snapshot imported or shared memory")
+	}
+	for i, g := range in.c.GlobalImports {
+		if g.Mutable {
+			return fmt.Errorf("wago: cannot page-snapshot mutable imported global %d (%s.%s)", i, g.Module, g.Name)
+		}
+	}
+	if in.c.tableImportCount() != 0 {
+		return errors.New("wago: cannot page-snapshot imported or shared tables")
+	}
+	if in.c.hasExternrefTable() {
+		return errors.New("wago: cannot page-snapshot externref tables")
 	}
 	if err := in.c.validateSnapshotReferenceGlobals(); err != nil {
 		return err
@@ -124,6 +137,7 @@ func (s *PageSnapshot) Bind(in *Instance) (*PageSnapshotBinding, error) {
 		snapshot:    s,
 		instance:    in,
 		table:       append([]byte(nil), in.tableDescriptorBytes()...),
+		passiveElem: append([]byte(nil), in.passiveElementDescriptorBytes()...),
 		passiveData: append([]byte(nil), in.passiveDataDesc...),
 	}
 	if err := b.Reset(); err != nil {
@@ -140,8 +154,22 @@ func (in *Instance) tableDescriptorBytes() []byte {
 	return unsafe.Slice((*byte)(offHeapPtr(in.tableDescPtr)), in.tableDescLen)
 }
 
-// Reset discards dirty linear-memory pages and restores globals, table
-// descriptors, and passive-data drop state.
+func (in *Instance) passiveElementDescriptorBytes() []byte {
+	if in == nil || in.c == nil || in.jm == nil || len(in.c.passiveElems) == 0 {
+		return nil
+	}
+	ptr := in.jm.CaptureInstanceContext().PassiveElemPtr
+	if ptr == 0 {
+		return nil
+	}
+	return unsafe.Slice(
+		(*byte)(offHeapPtr(ptr)),
+		len(in.c.passiveElems)*coreruntime.PassiveElemDescBytes,
+	)
+}
+
+// Reset discards dirty linear-memory pages and restores numeric globals, local
+// funcref table descriptors, and passive element/data drop state.
 func (b *PageSnapshotBinding) Reset() error {
 	if b == nil || b.snapshot == nil || b.instance == nil || b.released.Load() {
 		return errors.New("wago: page snapshot binding is closed")
@@ -172,6 +200,11 @@ func (b *PageSnapshotBinding) Reset() error {
 	} else {
 		copy(table, b.table)
 	}
+	passiveElem := b.instance.passiveElementDescriptorBytes()
+	if len(passiveElem) != len(b.passiveElem) {
+		return fmt.Errorf("wago: passive element descriptor size changed: got %d, want %d", len(passiveElem), len(b.passiveElem))
+	}
+	copy(passiveElem, b.passiveElem)
 	if len(b.instance.passiveDataDesc) != len(b.passiveData) {
 		return fmt.Errorf("wago: passive data descriptor size changed: got %d, want %d", len(b.instance.passiveDataDesc), len(b.passiveData))
 	}
