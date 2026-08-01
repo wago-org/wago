@@ -775,11 +775,6 @@ func (v *funcValidator) checkSharedMemArg(ma MemArg, natural uint32) (ValType, e
 	return addr, nil
 }
 
-type memeff struct {
-	t     ValType
-	align uint32
-}
-
 // opEffect is a precomputed stack effect for the simple numeric/mem instructions,
 // collapsing the per-instruction cascade of map lookups (unary → binaryOps →
 // compare → test → conversions → loads → stores) into one array index — the

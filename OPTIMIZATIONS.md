@@ -71,13 +71,23 @@ stripped TinyGo release falls 1,941,720→1,926,360 bytes (**−15,360**; gzip-9
 TinyGo `wago version` median startup falls 0.478→0.462 ms (**−3.4%**, n=150).
 Populated-entry counts and exact 948-byte storage are test-locked.
 
-**Campaign total:** from `19d000ba` through dense prefix decoding, the stripped
-TinyGo release shrinks 1,983,792→1,926,360 bytes (**−57,432, −2.9%**), gzip-9
-shrinks 899,459→882,596 bytes, and `.bss` shrinks 133,888→10,960 bytes
-(**−122,928, −91.8%**). Across 200/150 randomized subprocess samples, TinyGo
-`wago version` median startup falls 0.549→0.462 ms (**−16.0%**) and mean falls
-0.534→0.434 ms (**−18.7%**), while `BenchmarkDecodeValidate` remains **6.3%**
-below the pre-campaign median.
+**Compact atomic validation (2026-08-01).** The seven load and seven store
+validation effects now share two-byte array entries instead of full `ValType`
+map values. `BenchmarkValidateAtomicEffects` improves 12,320.5→10,400 ns/op
+(**−15.6%**, 224 lookups/op, 12 one-second samples). The stripped TinyGo release
+falls 1,926,360→1,923,896 bytes (**−2,464**; gzip-9 882,596→882,035), `.bss`
+falls 10,960→9,040 bytes, and the stripped Go lean CLI falls
+6,443,156→6,439,060 bytes. TinyGo startup shifts 0.453→0.449 ms median
+(**−0.8%**, n=150). Layout, effect identity, range rejection, and counts are
+test-locked.
+
+**Campaign total:** from `19d000ba` through compact atomic validation, the
+stripped TinyGo release shrinks 1,983,792→1,923,896 bytes
+(**−59,896, −3.0%**), gzip-9 shrinks 899,459→882,035 bytes, and `.bss` shrinks
+133,888→9,040 bytes (**−124,848, −93.2%**). Randomized subprocess samples put
+TinyGo `wago version` median startup near 0.449 ms versus 0.549 ms before the
+campaign (**−18.2%**); `BenchmarkDecodeValidate` remains **6.3%** below the
+pre-campaign median.
 
 The backend (`src/core/compiler/backend/railshot`) is the full WARP-architecture port: a
 single-pass x86-64 codegen over a valent-block operand stack (deferred-action trees,

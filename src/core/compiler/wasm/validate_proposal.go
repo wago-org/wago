@@ -194,95 +194,118 @@ func (v *funcValidator) stepAtomic(in Instruction) error {
 		v.push(I32)
 		return nil
 	}
-	if eff, ok := atomicLoadEffects[in.Kind]; ok {
-		addr, err := v.checkSharedMemArg(in.MemArg(), eff.align)
+	if eff, ok := lookupAtomicEffect(atomicLoadEffects[:], InstrI32AtomicLoad, in.Kind); ok {
+		addr, err := v.checkSharedMemArg(in.MemArg(), uint32(eff.align))
 		if err != nil {
 			return err
 		}
 		if err := v.popExpect(addr); err != nil {
 			return err
 		}
-		v.push(eff.t)
+		v.push(eff.typ.valType())
 		return nil
 	}
-	if eff, ok := atomicStoreEffects[in.Kind]; ok {
-		addr, err := v.checkSharedMemArg(in.MemArg(), eff.align)
+	if eff, ok := lookupAtomicEffect(atomicLoadEffects[:], InstrI32AtomicStore, in.Kind); ok {
+		addr, err := v.checkSharedMemArg(in.MemArg(), uint32(eff.align))
 		if err != nil {
 			return err
 		}
-		if err := v.popExpect(eff.t); err != nil {
+		if err := v.popExpect(eff.typ.valType()); err != nil {
 			return err
 		}
 		return v.popExpect(addr)
 	}
 	if in.Kind == InstrAtomicRmw {
 		eff := atomicRmwEffect(in.AtomicOp)
-		addr, err := v.checkSharedMemArg(in.MemArg(), eff.align)
+		typ := eff.typ.valType()
+		addr, err := v.checkSharedMemArg(in.MemArg(), uint32(eff.align))
 		if err != nil {
 			return err
 		}
-		if err := v.popExpect(eff.t); err != nil {
+		if err := v.popExpect(typ); err != nil {
 			return err
 		}
 		if err := v.popExpect(addr); err != nil {
 			return err
 		}
-		v.push(eff.t)
+		v.push(typ)
 		return nil
 	}
 	if in.Kind == InstrAtomicCmpxchg {
 		eff := atomicCmpxchgEffect(in.AtomicOp)
-		addr, err := v.checkSharedMemArg(in.MemArg(), eff.align)
+		typ := eff.typ.valType()
+		addr, err := v.checkSharedMemArg(in.MemArg(), uint32(eff.align))
 		if err != nil {
 			return err
 		}
-		if err := v.popExpect(eff.t); err != nil {
+		if err := v.popExpect(typ); err != nil {
 			return err
 		}
-		if err := v.popExpect(eff.t); err != nil {
+		if err := v.popExpect(typ); err != nil {
 			return err
 		}
 		if err := v.popExpect(addr); err != nil {
 			return err
 		}
-		v.push(eff.t)
+		v.push(typ)
 		return nil
 	}
 	return v.verr(ErrUnsupportedValidationOpcode, in.Kind.String())
 }
 
-var atomicLoadEffects = map[InstrKind]memeff{InstrI32AtomicLoad: {I32, 2}, InstrI64AtomicLoad: {I64, 3}, InstrI32AtomicLoad8U: {I32, 0}, InstrI32AtomicLoad16U: {I32, 1}, InstrI64AtomicLoad8U: {I64, 0}, InstrI64AtomicLoad16U: {I64, 1}, InstrI64AtomicLoad32U: {I64, 2}}
-var atomicStoreEffects = map[InstrKind]memeff{InstrI32AtomicStore: {I32, 2}, InstrI64AtomicStore: {I64, 3}, InstrI32AtomicStore8: {I32, 0}, InstrI32AtomicStore16: {I32, 1}, InstrI64AtomicStore8: {I64, 0}, InstrI64AtomicStore16: {I64, 1}, InstrI64AtomicStore32: {I64, 2}}
+type atomicEffect struct {
+	typ   effectValue
+	align uint8
+}
 
-func atomicRmwEffect(op uint32) memeff {
+var atomicLoadEffects = [...]atomicEffect{
+	{typ: effectI32, align: 2},
+	{typ: effectI64, align: 3},
+	{typ: effectI32},
+	{typ: effectI32, align: 1},
+	{typ: effectI64},
+	{typ: effectI64, align: 1},
+	{typ: effectI64, align: 2},
+}
+
+func lookupAtomicEffect(table []atomicEffect, first, kind InstrKind) (atomicEffect, bool) {
+	index := uint32(kind) - uint32(first)
+	if index >= uint32(len(table)) {
+		return atomicEffect{}, false
+	}
+	return table[index], true
+}
+
+func atomicRmwEffect(op uint32) atomicEffect {
 	if op == 0 {
 		op = 30
 	}
 	pos := (op - 30) % 7
 	if pos == 0 {
-		return memeff{I32, 2}
+		return atomicEffect{typ: effectI32, align: 2}
 	}
 	if pos == 1 {
-		return memeff{I64, 3}
+		return atomicEffect{typ: effectI64, align: 3}
 	}
 	if pos == 2 || pos == 3 {
-		return memeff{I32, pos - 2}
+		return atomicEffect{typ: effectI32, align: uint8(pos - 2)}
 	}
-	return memeff{I64, pos - 4}
+	return atomicEffect{typ: effectI64, align: uint8(pos - 4)}
 }
-func atomicCmpxchgEffect(op uint32) memeff {
+
+func atomicCmpxchgEffect(op uint32) atomicEffect {
 	if op == 0 {
 		op = 72
 	}
 	switch op {
 	case 72:
-		return memeff{I32, 2}
+		return atomicEffect{typ: effectI32, align: 2}
 	case 73:
-		return memeff{I64, 3}
+		return atomicEffect{typ: effectI64, align: 3}
 	case 74, 75:
-		return memeff{I32, op - 74}
+		return atomicEffect{typ: effectI32, align: uint8(op - 74)}
 	default:
-		return memeff{I64, op - 76}
+		return atomicEffect{typ: effectI64, align: uint8(op - 76)}
 	}
 }
 

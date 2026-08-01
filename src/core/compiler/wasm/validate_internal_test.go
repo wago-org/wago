@@ -146,14 +146,47 @@ func TestValidatorCoverageSIMDOpcodeFamilies(t *testing.T) {
 func TestValidationEffectTablesStayCompact(t *testing.T) {
 	for name, size := range map[string]uintptr{
 		"opEffect":         unsafe.Sizeof(opEffect{}),
+		"atomicEffect":     unsafe.Sizeof(atomicEffect{}),
 		"simdEffect":       unsafe.Sizeof(simdEffect{}),
 		"simdMemEffect":    unsafe.Sizeof(simdMemEffect{}),
 		"simdScalarEffect": unsafe.Sizeof(simdScalarEffect{}),
 		"simdLaneLimit":    unsafe.Sizeof(simdLaneLimit{}),
 	} {
-		if size != 4 {
-			t.Errorf("%s size = %d, want 4", name, size)
+		want := uintptr(4)
+		if name == "atomicEffect" {
+			want = 2
 		}
+		if size != want {
+			t.Errorf("%s size = %d, want %d", name, size, want)
+		}
+	}
+	if len(atomicLoadEffects) != 7 {
+		t.Fatalf("atomic effect count = %d, want 7", len(atomicLoadEffects))
+	}
+	wantAtomic := [...]atomicEffect{
+		{typ: effectI32, align: 2},
+		{typ: effectI64, align: 3},
+		{typ: effectI32},
+		{typ: effectI32, align: 1},
+		{typ: effectI64},
+		{typ: effectI64, align: 1},
+		{typ: effectI64, align: 2},
+	}
+	for i, want := range wantAtomic {
+		load, ok := lookupAtomicEffect(atomicLoadEffects[:], InstrI32AtomicLoad, InstrI32AtomicLoad+InstrKind(i))
+		if !ok || load != want {
+			t.Errorf("atomic load effect %d = (%v, %v), want (%v, true)", i, load, ok, want)
+		}
+		store, ok := lookupAtomicEffect(atomicLoadEffects[:], InstrI32AtomicStore, InstrI32AtomicStore+InstrKind(i))
+		if !ok || store != want {
+			t.Errorf("atomic store effect %d = (%v, %v), want (%v, true)", i, store, ok, want)
+		}
+	}
+	if _, ok := lookupAtomicEffect(atomicLoadEffects[:], InstrI32AtomicLoad, InstrI32AtomicLoad-1); ok {
+		t.Error("atomic effect lookup accepted a kind below its range")
+	}
+	if _, ok := lookupAtomicEffect(atomicLoadEffects[:], InstrI32AtomicStore, InstrI32AtomicStore+InstrKind(len(atomicLoadEffects))); ok {
+		t.Error("atomic effect lookup accepted a kind above its range")
 	}
 	const wantSIMDSourceEntries = 268
 	if got := len(simdLoads) + len(simdMemLane) + len(simdLaneLimits) + len(simdSplat) + len(simdExtract) + len(simdReplace) + len(simdShift) + len(simdUnary) + len(simdBinary) + len(simdTernary); got != wantSIMDSourceEntries {
