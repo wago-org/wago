@@ -27,6 +27,7 @@ func Command(environment Environment) *command.Cmd {
 		{Name: "invoke", Short: "e", Arg: "<name>", Help: "exported function to call"},
 		{Name: "watch", Short: "w", Bool: true, Help: "rerun when the module changes"},
 		{Name: "watch-interval", Arg: "<duration>", Help: "watch polling interval (default 200ms)"},
+		{Name: "core", Arg: "<version>", Help: "WebAssembly core feature set: 2 (default) | 3"},
 		ParallelFlag(),
 	}
 	flags = append(flags, environment.ProfileFlags()...)
@@ -41,8 +42,9 @@ func Command(environment Environment) *command.Cmd {
 		},
 		Long: "<file> is raw .wasm or a precompiled .wago. Args after the file are typed by the\n" +
 			"signature; override per-arg with a suffix:  42   7:i64   3.5:f64\n" +
-			"Use -p for adaptive validation/compile parallelism, or -p8 / -p 8 / --parallel=8 to\n" +
-			"force a worker maximum. Optimization knobs are listed in `wago run --help`.",
+			"Use --core 3 for the complete opt-in WebAssembly Core 3 feature set. Use -p for\n" +
+			"adaptive validation/compile parallelism, or -p8 / -p 8 / --parallel=8 to force a\n" +
+			"worker maximum. Optimization knobs are listed in `wago run --help`.",
 		Run: implementation.Run,
 	}
 }
@@ -78,7 +80,7 @@ func (cmd implementation) Run(ctx *command.Ctx) {
 		ui.Usage("run: need a <file>")
 	}
 	wago.SetGuestArgs(positionals)
-	config, err := Config(deferredBoundsChecking, ResolveParallel(ctx.Str("parallel"), defaults, configured))
+	config, err := Config(ctx.Str("core"), deferredBoundsChecking, ResolveParallel(ctx.Str("parallel"), defaults, configured))
 	if err != nil {
 		ui.Usage("run: %v", err)
 	}

@@ -61,7 +61,7 @@ in full — 57/57 applicable files, 0 failing assertions (see [SPECTEST.md](SPEC
 - [x] Instance slot reuse (lower instantiate cost — explicit #105, guard-page #108)
 
 **Tooling**
-- [x] `wago` CLI: `run` / `validate` / `version`, typed args
+- [x] `wago` CLI: `run` / `validate` / `version`, typed args, and explicit `--core 3` opt-in while preserving the Release 2 default
 - [x] Public API: `Run`/`RunValues`, `Compile`/`Compiled`, `Instance`, plus
   opt-in serial/adaptive/forced function-worker policy for validation and codegen
 - [x] Workers plugin: the separate `github.com/wago-org/workers` extension
