@@ -207,6 +207,7 @@ func TestSelfUninstallTargetsOnlyManagedState(t *testing.T) {
 func TestSelfUninstallRemovesInstalledFishCompletion(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", "")
 	completion := filepath.Join(home, ".config", "fish", "completions", "wago.fish")
 	if err := os.MkdirAll(filepath.Dir(completion), 0o755); err != nil {
 		t.Fatal(err)
