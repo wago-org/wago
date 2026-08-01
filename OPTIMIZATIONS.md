@@ -132,13 +132,22 @@ TinyGo release falls 1,920,320→1,919,680 bytes (**−640**; gzip-9
 879,409→878,931); the stripped Go lean CLI remains 6,430,868 bytes. Exact amd64
 and ARM64 encoding identity and 24/12-byte storage are test-locked.
 
-**Campaign total:** from `19d000ba` through dense backend ALU metadata, the
-stripped TinyGo release shrinks 1,983,792→1,919,680 bytes
-(**−64,112, −3.2%**), gzip-9 shrinks 899,459→878,931 bytes, and `.bss` shrinks
-133,888→6,544 bytes (**−127,344, −95.1%**). The latest stable randomized
-subprocess median for TinyGo `wago version` is about 0.4 ms versus the
-pre-campaign 0.549 ms; `BenchmarkDecodeValidate` remains **6.3%** below the
-pre-campaign median.
+**Fixed runtime metadata without maps (2026-08-01).** Trap-code strings now use
+a 20-entry array, and the 12 reserved `wago_*` import namespaces use a static
+string switch. Across 256 lookups, trap formatting improves 1,289→250.9 ns/op
+(**5.1×**) and reserved-module classification improves 1,944.5→394.6 ns/op
+(**4.9×**, 12 one-second samples), both allocation-free. The stripped TinyGo
+release falls 1,919,680→1,918,600 bytes (**−1,080**; gzip-9 878,931→878,298),
+`.bss` falls 6,544→5,824 bytes, and the stripped Go lean CLI remains 6,430,868
+bytes. Exact trap messages, 320-byte storage, and reserved/non-reserved names
+are test-locked.
+
+**Campaign total:** from `19d000ba` through fixed runtime metadata, the stripped
+TinyGo release shrinks 1,983,792→1,918,600 bytes (**−65,192, −3.3%**), gzip-9
+shrinks 899,459→878,298 bytes, and `.bss` shrinks 133,888→5,824 bytes
+(**−128,064, −95.6%**). The latest stable randomized subprocess median for
+TinyGo `wago version` is about 0.4 ms versus the pre-campaign 0.549 ms;
+`BenchmarkDecodeValidate` remains **6.3%** below the pre-campaign median.
 
 The backend (`src/core/compiler/backend/railshot`) is the full WARP-architecture port: a
 single-pass x86-64 codegen over a valent-block operand stack (deferred-action trees,

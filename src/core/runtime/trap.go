@@ -34,7 +34,7 @@ const (
 	TrapTableOutOfBounds     TrapCode = 19
 )
 
-var trapMessages = map[TrapCode]string{
+var trapMessages = [...]string{
 	TrapNone:                 "no trap",
 	TrapUnreachable:          "unreachable instruction executed",
 	TrapBuiltin:              "builtin.trap executed",
@@ -58,8 +58,8 @@ var trapMessages = map[TrapCode]string{
 }
 
 func (c TrapCode) String() string {
-	if m, ok := trapMessages[c]; ok {
-		return m
+	if uint32(c) < uint32(len(trapMessages)) && trapMessages[c] != "" {
+		return trapMessages[c]
 	}
 	return fmt.Sprintf("trap(%d)", uint32(c))
 }

@@ -24,15 +24,6 @@ const (
 	AllowTestOverrides
 )
 
-// reservedModules are standard wago_* extension namespaces. Their
-// implementations live in plugins; a per-call import may not shadow one unless
-// the override policy allows it.
-var reservedModules = map[string]struct{}{
-	"wago_process": {}, "wago_mailbox": {}, "wago_timer": {}, "wago_metrics": {},
-	"wago_log": {}, "wago_fs": {}, "wago_net": {}, "wago_http": {}, "wago_kv": {},
-	"wago_crypto": {}, "wago_debug": {}, "wago_runtime": {},
-}
-
 // Runtime is the high-level entry point: extensions register capabilities and
 // host imports into it, and it threads those through Compile/Instantiate. The
 // package-level Compile/Instantiate remain available as the low-level API.
@@ -546,8 +537,14 @@ func (rt *Runtime) scopedHostCalls() bool {
 }
 
 func isReserved(module string) bool {
-	_, ok := reservedModules[module]
-	return ok
+	switch module {
+	case "wago_process", "wago_mailbox", "wago_timer", "wago_metrics",
+		"wago_log", "wago_fs", "wago_net", "wago_http", "wago_kv",
+		"wago_crypto", "wago_debug", "wago_runtime":
+		return true
+	default:
+		return false
+	}
 }
 
 // missingImportError explains an unsatisfied function import and hints at the
