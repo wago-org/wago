@@ -9,6 +9,7 @@ testdata/moonbit-json-smoke/_build/
 
 # Built CLI binaries (make build / build-release / tinygo-build) + release assets
 /wago
+/wago-engine
 wago-tinygo
 wago-runtime-standard-normal
 wago-runtime-minimal-normal

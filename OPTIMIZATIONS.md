@@ -63,14 +63,24 @@ slice (**+13,472, +0.68%**). The subsequent bounded foreign-clone API brings the
 combined candidate to 2,000,232 bytes (**+976 bytes further**).
 
 **Release unwind-table removal (2026-08-01).** TinyGo `-no-debug` Linux
-releases do not use DWARF `.eh_frame` data for panic text or wago's native
-trap/signal path. Removing that allocated section during the existing strip step
-shrinks the full CLI from **2,000,088 to 1,741,968 bytes** (**−258,120,
-−12.9%**) and removes the same mapped read-only bytes. A no-unwind panic probe
-still prints its message and exits through the expected abort path; Core 3 `fib`
-and malformed-module diagnostics are unchanged. Across 200 randomized cached
-`wago --version` subprocesses per binary, startup is flat within noise (median
-898.2 vs 899.4 µs), so this is a pure footprint win with no measured speed cost.
+releases do not use DWARF `.eh_frame` data for panic text or Wago's native
+trap/signal path. In the historical monolithic CLI, removing that allocated
+section shrank **2,000,192 to 1,742,072 bytes** (**−258,120, −12.9%**) and
+removed the same mapped read-only bytes. A no-unwind panic probe still printed
+its message and exited through the expected abort path; Core 3 `fib` and
+malformed-module diagnostics were unchanged. Across 200 randomized cached
+`wago --version` subprocesses per binary, startup was flat within noise (median
+898.2 vs 899.4 µs). The split release pipeline now applies the same stripping to
+Linux Tiny runtime assets; their profile-specific sizes must be measured
+independently.
+
+**Execution-only CLI prototype (2026-08-01).** The superseded monolithic
+`wago_engine` experiment measured **1,529,176 bytes** versus **1,742,072 bytes**
+for the full CLI (**−212,896, −12.2%**) while retaining the Core 3 execution
+engine. In the split CLI architecture, `make build-engine` is only a diagnostic
+alias for the existing run-only `wago_runtime,wago_lean,wago_minimal` product.
+The complete plugin-capable Standard runtime remains the authoritative product,
+and split artifacts require fresh size measurements.
 
 **Dense byte-backed section tracking (2026-08-01).** The byte-backed decoder
 now tracks the standard-section ID set in one `uint16` instead of a hash map. A

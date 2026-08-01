@@ -76,6 +76,7 @@ make build                         # standard-Go CLI -> ./wago
 make build-runtime-standard        # everything runtime
 make build-runtime-minimal         # standard-Go run-only runtime
 make build-runtime-minimal-tinygo  # TinyGo run-only runtime
+make build-engine                  # diagnostic Minimal/Tiny runtime -> ./wago-engine
 make build-release                 # CLI plus Normal/Tiny builds of all profiles
 make tinygo-build                  # TinyGo Minimal portability build
 make tinygo-test                   # runtime + public-API suites under TinyGo
@@ -84,7 +85,9 @@ make tinygo-test                   # runtime + public-API suites under TinyGo
 ## Binary size
 
 Historical monolithic `cli/wago`, linux/amd64 measurements (remeasure the split
-CLI and runtime artifacts independently). Current Linux release packaging also
+CLI and runtime artifacts independently). `make build-engine` is now a diagnostic
+alias for the current run-only Minimal/Tiny profile, not a separate authoritative
+product. Current Linux release packaging also
 removes TinyGo's unused `.eh_frame` and `.eh_frame_hdr` sections from each Tiny
 runtime asset after linking; manager and Normal runtime artifacts are unchanged:
 

@@ -267,6 +267,16 @@ build-runtime-minimal-tinygo: ## Build the run-only runtime with TinyGo
 build-release: ## Build the host CLI plus all supported runtime profiles/builds
 	GOOS="$$(go env GOOS)" GOARCH="$$(go env GOARCH)" WAGO_VERSION="$(WAGO_VERSION)" scripts/build-release-assets.sh
 
+.PHONY: build-engine
+build-engine: ## Diagnostic run-only Minimal/Tiny runtime -> ./wago-engine
+	$(TINYGO) build -scheduler=$(TINYGO_SCHEDULER) -no-debug -opt=z -gc=conservative \
+		-tags wago_runtime,wago_lean,wago_minimal \
+		-ldflags "-X main.version=$(WAGO_VERSION)" -o wago-engine ./cli/wago
+	@if [ "$$(go env GOOS)" = linux ]; then \
+		strip -s --remove-section=.eh_frame --remove-section=.eh_frame_hdr wago-engine; \
+	fi
+	@echo "wago-engine $(WAGO_VERSION): $$(du -h wago-engine | cut -f1)"
+
 .PHONY: tinygo-build
 tinygo-build: ## Build the Minimal runtime with TinyGo (no cgo, debug) -> ./wago-tinygo
 	$(TINYGO) build -scheduler=$(TINYGO_SCHEDULER) -tags wago_runtime,wago_lean,wago_minimal -o wago-tinygo ./cli/wago
