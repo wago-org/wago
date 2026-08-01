@@ -201,11 +201,11 @@ bounds/platform qualification rather than missing official opcode families:
    Runtime domains now canonicalize recursive structural identities across reordered
    or additional module-local type graphs; helpers, host tokens, initializers, and
    snapshots translate through immutable per-instance local/domain maps;
-2. preserve the exact non-tail polymorphic local `call_indirect` and same-domain
-   foreign `call_ref` return-path maps, then broaden the remaining foreign reference
-   tail shapes while preserving completed type-checked, collection-safe `GCRef` host
-   ingress and bounded 64-token result retention with transactional multi-result
-   rollback;
+2. preserve the exact non-tail polymorphic local `call_indirect`, same-domain
+   foreign `call_ref` return-path maps, and discarded-frame exact-import
+   `return_call_ref`; then broaden polymorphic foreign tail shapes while preserving
+   completed type-checked, collection-safe `GCRef` host ingress and bounded 64-token
+   result retention with transactional multi-result rollback;
 3. preserve the completed heterogeneous shared-table attachment, growth, rollback,
    codec, and close-order proofs while extending ownership to unproved foreign shapes;
 4. preserve the completed snapshot-v5 single-table and snapshot-v6 heterogeneous

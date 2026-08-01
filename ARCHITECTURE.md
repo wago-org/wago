@@ -104,9 +104,10 @@ exact. ARM64 `try_table`, `throw`, `throw_ref`, function subtype identity, index
 multi-memory, memory64, and table64 are part of the explicit-bounds Core 3
 product. Polymorphic local `call_indirect` and same-domain foreign `call_ref`
 publish each possible native return PC; cross-instance wrapper paths carry their
-64-byte save-area adjustment into frame walking. Foreign reference tails and
-other reference-call shapes remain collection-disabled when exact ownership is
-unproved.
+64-byte save-area adjustment into frame walking. Exact imported `ref.func`
+provenance uses the bounded cross-instance tail transfer for `return_call_ref`
+and retains no caller frame. Polymorphic foreign tails and other reference-call
+shapes remain fail-closed when exact ownership is unproved.
 
 ---
 

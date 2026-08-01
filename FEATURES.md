@@ -51,9 +51,11 @@ mutable/shared GC globals, local/shared collector tables, indirect/reference cal
 discarded-frame proper tails, and fixed EH payload records. Native ARM64 also
 publishes every native return path for polymorphic local `call_indirect` and
 same-domain foreign `call_ref`, including the 64-byte cross-instance wrapper save
-area. Dynamic indirect tails, function-subtype checks, multi-memory, memory64,
-table64, `try_table`, `throw`, and `throw_ref` execute. Foreign reference tails and
-other shapes with unproved ownership remain collection-disabled. Multiple
+area. Exact imported `ref.func` provenance also lowers `return_call_ref` through
+the existing bounded cross-instance tail transfer without retaining the caller
+frame. Dynamic indirect tails, function-subtype checks, multi-memory, memory64,
+table64, `try_table`, `throw`, and `throw_ref` execute. Polymorphic foreign tails
+and other shapes with unproved ownership remain fail-closed. Multiple
 heterogeneous imported/exported collector-reference tables share exact alias roots,
 growth, attachment rollback, codec reload, and close ordering. Exhaustive ordered
 Runtime domains can now be persisted through `CaptureDomain`/`DomainSnapshot`: one

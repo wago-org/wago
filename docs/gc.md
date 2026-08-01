@@ -173,9 +173,10 @@ frame, so no dead caller roots are retained. A direct immutable-root visitor kee
 warmed Throughput/Tiny recursive collection allocation-free. ARM64 polymorphic
 local `call_indirect` and same-domain foreign `call_ref` publish every possible
 internal, wrapper, and cross-instance return PC; foreign wrapper maps account for
-the 64-byte saved caller-invariant area. Foreign reference tails and other shapes
-with unproved ownership stay collection-disabled rather than scanning approximate
-roots.
+the 64-byte saved caller-invariant area. An exact imported `ref.func`
+`return_call_ref` uses the existing bounded cross-instance tail transfer and
+retains no caller frame. Polymorphic foreign tails and other shapes with unproved
+ownership stay fail-closed rather than scanning approximate roots.
 
 Iteration 38 wires one exact linux/amd64 numeric-local helper product;
 iteration 39 adds exact immutable GC-global roots, packed fields, and the numeric portion
@@ -2008,7 +2009,8 @@ Tests exercise tiny nurseries, collect-every-alloc, exact scanning, cycles, root
   host activation, EH payload, persistent global/table slot, and foreign frame has
   proven ownership and mutable root storage. ARM64 polymorphic local indirect calls
   and same-domain foreign `call_ref` now satisfy that proof for non-tail calls;
-  foreign reference tails and other unproved shapes remain collection-disabled
+  exact imported `ref.func` tails discard the caller through the bounded foreign
+  transfer. Polymorphic foreign tails and other unproved shapes remain fail-closed
   instead of scanning an approximate root set.
 - Imported/exported mutable and immutable GC globals participate in exact
   canonical Runtime collector domains. Module-local flattened type indexes translate

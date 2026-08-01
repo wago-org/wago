@@ -280,6 +280,41 @@ func arm64GCPolymorphicIndirectModule() []byte {
 	)
 }
 
+func arm64GCForeignTailProviderModule() []byte {
+	structType := []byte{0x5f, 0x01, 0x7f, 0x01}
+	readType := []byte{0x60, 0x01, 0x63, 0x00, 0x01, 0x7f}
+	body := []byte{0x01, 0x01, 0x7f,
+		0x02, 0x40, 0x03, 0x40,
+		0x20, 0x01, 0x41, 0xe8, 0x07, 0x4f, 0x0d, 0x01,
+		0xfb, 0x01, 0x00, 0x1a,
+		0x20, 0x01, 0x41, 0x01, 0x6a, 0x21, 0x01, 0x0c, 0x00,
+		0x0b, 0x0b, 0x20, 0x00, 0xfb, 0x02, 0x00, 0x00, 0x0b}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(structType, readType)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("read", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func arm64GCForeignTailConsumerModule() []byte {
+	structType := []byte{0x5f, 0x01, 0x7f, 0x01}
+	readType := []byte{0x60, 0x01, 0x63, 0x00, 0x01, 0x7f}
+	runType := wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32})
+	imp := append(append(wasmtest.Name("provider"), wasmtest.Name("read")...), 0x00)
+	imp = append(imp, wasmtest.ULEB(1)...)
+	body := []byte{0x00, 0x20, 0x00, 0xfb, 0x00, 0x00, 0xd2, 0x00, 0x15, 0x01, 0x0b}
+	declared := []byte{0x03, 0x00, 0x01, 0x00}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(structType, readType, runType)),
+		wasmtest.Section(2, wasmtest.Vec(imp)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 1))),
+		wasmtest.Section(9, wasmtest.Vec(declared)),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
 func arm64GCCrossProviderModule() []byte {
 	structType := []byte{0x5f, 0x01, 0x7f, 0x01}
 	refCallType := []byte{0x60, 0x01, 0x63, 0x00, 0x01, 0x63, 0x00}
@@ -770,7 +805,7 @@ func TestGCArm64ForeignCallRefRoots(t *testing.T) {
 	}
 	defer consumerCode.Close()
 	plan := consumerCode.genericGCFrameRoots()
-	if plan == nil || len(plan.callsites) != 3 {
+	if plan == nil || len(plan.callsites) != 2 {
 		t.Fatalf("foreign call_ref root plan = %+v", plan)
 	}
 	adjusted := 0
@@ -818,6 +853,73 @@ func TestGCArm64ForeignCallRefRoots(t *testing.T) {
 		}
 		for i := 0; i < 10; i++ {
 			want := uint64(900 + i)
+			got, callErr := consumer.Invoke("run", want)
+			if callErr != nil || !reflect.DeepEqual(got, []uint64{want}) {
+				consumer.Close()
+				provider.Close()
+				store.closeRuntime()
+				t.Fatalf("profile %d run %d = %v, %v", profileIndex, i, got, callErr)
+			}
+		}
+		if err := consumer.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if err := provider.Close(); err != nil {
+			t.Fatal(err)
+		}
+		store.closeRuntime()
+	}
+}
+
+func TestGCArm64ForeignReturnCallRef(t *testing.T) {
+	cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2 | CoreFeatureTailCall | CoreFeatureTypedFunctionReferences | CoreFeatureGC)
+	providerCode, err := Compile(cfg, arm64GCForeignTailProviderModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer providerCode.Close()
+	consumerCode, err := Compile(cfg, arm64GCForeignTailConsumerModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer consumerCode.Close()
+	if providerCode.genericGCFrameRoots() == nil || consumerCode.genericGCFrameRoots() == nil {
+		t.Fatal("foreign return_call_ref modules lost exact roots")
+	}
+	if got := len(consumerCode.genericGCFrameRoots().callsites); got != 0 {
+		t.Fatalf("foreign return_call_ref retained %d caller callsites", got)
+	}
+	profiles := []GCConfig{
+		{Profile: GCProfileThroughput, StressNurseryBytes: 64, CollectEveryAlloc: true, ForceMajorEveryMinor: true, VerifyAfterCollect: true, ThroughputHeapBytes: 4096, ThroughputPageBytes: 4096},
+		{Profile: GCProfileTiny, TinyHeapBytes: 128, TinyBlockBytes: 32, TinyCollectEveryAlloc: true, TinyStepEveryAlloc: true, VerifyAfterCollect: true},
+	}
+	for profileIndex, profile := range profiles {
+		store := newReferenceStore(false)
+		provider, err := instantiateCore(providerCode, InstantiateOptions{GC: profile, store: store})
+		if err != nil {
+			store.closeRuntime()
+			t.Fatal(err)
+		}
+		export, err := provider.ExportedFunc("read")
+		if err != nil {
+			provider.Close()
+			store.closeRuntime()
+			t.Fatal(err)
+		}
+		consumer, err := instantiateCore(consumerCode, InstantiateOptions{GC: profile, store: store, Imports: Imports{"provider.read": export}})
+		if err != nil {
+			provider.Close()
+			store.closeRuntime()
+			t.Fatal(err)
+		}
+		if provider.gc != consumer.gc {
+			consumer.Close()
+			provider.Close()
+			store.closeRuntime()
+			t.Fatal("foreign return_call_ref modules do not share a collector")
+		}
+		for i := 0; i < 10; i++ {
+			want := uint64(1000 + profileIndex*10 + i)
 			got, callErr := consumer.Invoke("run", want)
 			if callErr != nil || !reflect.DeepEqual(got, []uint64{want}) {
 				consumer.Close()

@@ -468,7 +468,31 @@ func (f *fn) returnCallRef(r *wasm.Reader) error {
 	if !ok {
 		return fmt.Errorf("return_call_ref: type %d exceeds bounded native identity", typeIdx)
 	}
-	ref := f.materialize(f.popValue())
+	refValue := f.popValue()
+	if refValue.kind == ekValue && refValue.st.kind == stFuncRef && refValue.st.idx >= 0 && refValue.st.idx < f.m.ImportedFuncCount() {
+		importIndex := refValue.st.idx
+		if f.importBindings != nil && importIndex < len(f.importBindings) {
+			binding := f.importBindings[importIndex]
+			if binding.Dynamic || binding.CrossInstance {
+				if slots := funcTypeSlots(ft.Params); slots > abi.TailArgsSlots {
+					return fmt.Errorf("return_call_ref: type %d requires %d wrapper argument slots, limit %d", typeIdx, slots, abi.TailArgsSlots)
+				}
+				f.stats.call("tail-ref-foreign")
+				return f.emitTailDynamicImportJump(ft, binding)
+			}
+		}
+		var callErr error
+		if f.syncHostCalls || len(ft.Results) != 0 {
+			callErr = f.callHostSync(importIndex, ft)
+		} else {
+			callErr = f.callHost(importIndex, ft)
+		}
+		if callErr != nil {
+			return callErr
+		}
+		return f.opReturn()
+	}
+	ref := f.materialize(refValue)
 	f.pinned = f.pinned.add(ref)
 	f.cmpImm(ref, 0, true)
 	f.trapIf(condE, trapIndirectOOB)

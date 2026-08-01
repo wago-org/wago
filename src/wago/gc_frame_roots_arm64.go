@@ -287,10 +287,7 @@ func arm64GCFrameBodySafe(m *wasm.Module, body []byte, collectorTable bool) bool
 			if !ok || !arm64GCFrameCallABI(m, ft) {
 				return false
 			}
-		case 0x15: // local typed-reference tail call
-			if m.ImportedFuncCount() != 0 {
-				return false
-			}
+		case 0x15: // local or exact imported typed-reference tail call
 			ft, ok := m.TypeFunc(imm.Index)
 			if !ok || funcTypeSlotsForRoots(ft.Params) > abi.TailArgsSlots {
 				return false

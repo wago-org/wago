@@ -122,8 +122,10 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   Warmed recursive Throughput/Tiny collection remains allocation-free by using a
   direct immutable-root visitor. Polymorphic local `call_indirect` and same-domain
   foreign `call_ref` now publish every internal/wrapper/cross-instance return path,
-  including the wrapper save-area stack adjustment. Foreign reference tails and
-  other shapes with unproved ownership remain collection-disabled.
+  including the wrapper save-area stack adjustment. Exact imported `ref.func`
+  provenance performs a discarded-frame cross-instance `return_call_ref` through
+  the bounded tail transfer. Polymorphic foreign tails and other shapes with
+  unproved ownership remain fail-closed.
 - [x] **Shared GC globals:** imported/exported mutable and immutable collector-reference
   globals share canonical structurally compatible Runtime domains. Collection scans every live alias
   cell directly, checked slots preserve barrier/card state, and rollback, codec,
