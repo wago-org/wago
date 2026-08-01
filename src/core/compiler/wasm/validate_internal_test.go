@@ -64,7 +64,8 @@ func TestValidatorCoverageCoreOpcodeFamilies(t *testing.T) {
 }
 
 func TestValidatorCoverageSIMDOpcodeFamilies(t *testing.T) {
-	for k := range simdLoads {
+	for _, effect := range simdLoads {
+		k := effect.kind
 		t.Run(k.String(), func(t *testing.T) {
 			m := modWithFunc(nil, []ValType{V128}, Instruction{Kind: InstrI32Const}, Instruction{Kind: k})
 			m.Memories = []MemType{{Limits: Limits{Min: 1}}}
@@ -73,7 +74,8 @@ func TestValidatorCoverageSIMDOpcodeFamilies(t *testing.T) {
 			}
 		})
 	}
-	for k := range simdMemLane {
+	for _, effect := range simdMemLane {
+		k := effect.kind
 		t.Run(k.String(), func(t *testing.T) {
 			body := []Instruction{{Kind: InstrI32Const}, {Kind: InstrV128Const}, {Kind: k}}
 			results := []ValType{V128}
@@ -87,35 +89,38 @@ func TestValidatorCoverageSIMDOpcodeFamilies(t *testing.T) {
 			}
 		})
 	}
-	for k, scalar := range simdSplat {
+	for _, effect := range simdSplat {
+		k, scalar := effect.kind, effect.scalar.valType()
 		t.Run(k.String(), func(t *testing.T) {
 			if err := ValidateModule(modWithFunc(nil, []ValType{V128}, constFor(scalar), Instruction{Kind: k})); err != nil {
 				t.Fatalf("ValidateModule: %v", err)
 			}
 		})
 	}
-	for k, scalar := range simdExtract {
+	for _, effect := range simdExtract {
+		k, scalar := effect.kind, effect.scalar.valType()
 		t.Run(k.String(), func(t *testing.T) {
 			if err := ValidateModule(modWithFunc(nil, []ValType{scalar}, Instruction{Kind: InstrV128Const}, Instruction{Kind: k})); err != nil {
 				t.Fatalf("ValidateModule: %v", err)
 			}
 		})
 	}
-	for k, scalar := range simdReplace {
+	for _, effect := range simdReplace {
+		k, scalar := effect.kind, effect.scalar.valType()
 		t.Run(k.String(), func(t *testing.T) {
 			if err := ValidateModule(modWithFunc(nil, []ValType{V128}, Instruction{Kind: InstrV128Const}, constFor(scalar), Instruction{Kind: k})); err != nil {
 				t.Fatalf("ValidateModule: %v", err)
 			}
 		})
 	}
-	for k := range simdShift {
+	for _, k := range simdShift {
 		t.Run(k.String(), func(t *testing.T) {
 			if err := ValidateModule(modWithFunc(nil, []ValType{V128}, Instruction{Kind: InstrV128Const}, Instruction{Kind: InstrI32Const}, Instruction{Kind: k})); err != nil {
 				t.Fatalf("ValidateModule: %v", err)
 			}
 		})
 	}
-	for k := range simdUnary {
+	for _, k := range simdUnary {
 		t.Run(k.String(), func(t *testing.T) {
 			body := []Instruction{{Kind: InstrV128Const}, {Kind: k}}
 			if k == InstrI8x16Swizzle {
@@ -126,8 +131,8 @@ func TestValidatorCoverageSIMDOpcodeFamilies(t *testing.T) {
 			}
 		})
 	}
-	for k := range simdBinary {
-		if _, isShift := simdShift[k]; isShift {
+	for _, k := range simdBinary {
+		if simdEffects[k].cat == simdEffShift {
 			continue
 		}
 		t.Run(k.String(), func(t *testing.T) {
@@ -139,11 +144,20 @@ func TestValidatorCoverageSIMDOpcodeFamilies(t *testing.T) {
 }
 
 func TestValidationEffectTablesStayCompact(t *testing.T) {
-	if got := unsafe.Sizeof(opEffect{}); got != 4 {
-		t.Fatalf("opEffect size = %d, want 4", got)
+	for name, size := range map[string]uintptr{
+		"opEffect":         unsafe.Sizeof(opEffect{}),
+		"simdEffect":       unsafe.Sizeof(simdEffect{}),
+		"simdMemEffect":    unsafe.Sizeof(simdMemEffect{}),
+		"simdScalarEffect": unsafe.Sizeof(simdScalarEffect{}),
+		"simdLaneLimit":    unsafe.Sizeof(simdLaneLimit{}),
+	} {
+		if size != 4 {
+			t.Errorf("%s size = %d, want 4", name, size)
+		}
 	}
-	if got := unsafe.Sizeof(simdEffect{}); got != 4 {
-		t.Fatalf("simdEffect size = %d, want 4", got)
+	const wantSIMDSourceEntries = 268
+	if got := len(simdLoads) + len(simdMemLane) + len(simdLaneLimits) + len(simdSplat) + len(simdExtract) + len(simdReplace) + len(simdShift) + len(simdUnary) + len(simdBinary) + len(simdTernary); got != wantSIMDSourceEntries {
+		t.Fatalf("SIMD source effect entries = %d, want %d", got, wantSIMDSourceEntries)
 	}
 }
 

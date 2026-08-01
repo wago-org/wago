@@ -50,6 +50,17 @@ Go `wago_lean` CLI falls 6,496,440→6,475,960 bytes. In 150 randomized subproce
 samples, `wago version` median startup fell 1.251→1.216 ms (**−2.8%**) and mean
 fell 1.212→1.166 ms (**−3.8%**); validation allocations remain unchanged.
 
+**Compact SIMD source metadata (2026-08-01).** Ten SIMD load/lane/scalar/limit/
+unary/binary/ternary maps now use four-byte descriptor arrays and compact
+instruction-kind lists while retaining the existing admission/effect cross-check.
+The stripped TinyGo release falls another 1,958,080→1,941,720 bytes
+(**−16,360**; gzip-9 894,216→889,055), with `.text` down 12,485 bytes, `.data`
+down 3,768, and `.bss` down 6,336. The stripped Go lean CLI falls
+6,475,960→6,459,576 bytes. Across 150 randomized TinyGo subprocess samples,
+`wago version` median startup falls 0.507→0.470 ms (**−7.2%**) and mean falls
+0.481→0.448 ms (**−6.8%**). All compact source/effect layouts and the 268-entry
+inventory are test-locked.
+
 The backend (`src/core/compiler/backend/railshot`) is the full WARP-architecture port: a
 single-pass x86-64 codegen over a valent-block operand stack (deferred-action trees,
 condense engine) with an on-the-fly whole-register-file allocator. Landed, in rough order:
