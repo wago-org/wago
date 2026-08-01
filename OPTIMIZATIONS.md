@@ -69,6 +69,14 @@ with 864→776 B/op and 9→6 allocs/op; the larger decode+validate watchpoint r
 within noise. The stripped TinyGo release falls 2,000,232→2,000,024 bytes
 (**−208 bytes**).
 
+**Allocation-free SIMD feature detection (2026-08-01).** Linux SIMD admission
+now scans exact `/proc/cpuinfo` tokens directly and returns after the first
+complete flag set instead of lowercasing, splitting, and hashing the whole file.
+On a 16-processor synthetic image the token pass measures **236.6–240.2 ns/op**,
+0 B/op, and 0 allocs/op versus **22.05–22.44 µs/op**, 22,408 B/op, and 9
+allocs/op. The scanner adds 64 bytes after the section-tracking change, leaving
+the combined stripped TinyGo release at 2,000,088 bytes: still **144 bytes below**
+the 2,000,232-byte starting point.
 
 **Compact validator effect tables (2026-08-01).** Numeric and SIMD validation
 lookup entries now store four one-byte fields instead of embedding full recursive

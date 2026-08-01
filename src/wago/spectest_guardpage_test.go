@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/wago-org/wago/testutil/wasmtest"
+	"github.com/wago-org/wago/tests/wasmtest"
 )
 
 func TestSpecExecRetiresUnreferencedCurrentGuardMemory(t *testing.T) {
