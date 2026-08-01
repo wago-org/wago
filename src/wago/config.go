@@ -356,9 +356,9 @@ func platformCoreFeatures() CoreFeatures {
 		// parked synchronous helper ABI. Exact roots cover locals, hidden spills,
 		// direct/recursive calls, direct host re-entry, same-domain foreign calls,
 		// mutable local GC globals, one private collector table, monomorphic private
-		// call_indirect, and local call_ref. Tail calls and EH remain unavailable at
-		// the platform feature gate; polymorphic/foreign reference calls remain
-		// collection-disabled.
+		// call_indirect, local call_ref, proper tails, multi-memory, memory64, and
+		// table64. EH remains unavailable at the platform feature gate;
+		// polymorphic/foreign reference calls remain collection-disabled.
 		if runtime.GOARCH == "arm64" && (runtime.GOOS == "linux" || runtime.GOOS == "darwin") {
 			unsupported &^= CoreFeatureTailCall | CoreFeatureGC | CoreFeatureTypedFunctionReferences | CoreFeatureMultiMemory | CoreFeatureMemory64 | CoreFeatureTable64
 		}

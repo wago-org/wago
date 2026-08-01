@@ -169,9 +169,9 @@ opcode families:
 
 1. harden Runtime GC-domain lifecycle, rollback, multi-hop foreign-frame walking,
    codec reload, snapshot-v4 validation, mixed graphs, and native arm64 execution;
-2. broaden arm64 beyond direct/recursive, host-re-entry, same-domain foreign,
-   monomorphic-indirect, local-call-ref, local-global, and private-table roots by
-   adding tail/EH lowering plus polymorphic and foreign reference calls;
+2. add arm64 EH lowering and exact exception-payload roots, then broaden the
+   existing direct/recursive/host/foreign/tail root product to polymorphic and
+   foreign reference calls;
 3. extend same-domain ownership to imported/exported GC globals and tables with
    exact roots, barriers, aliases, rollback, and close ordering;
 4. extend snapshot-v4 roots to local GC tables and make restore publication fully

@@ -108,10 +108,10 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   graph, malformed snapshot, fuzz, and native-arm64 execution coverage.
 - 🚧 **Arm64 exact GC roots:** exact local/hidden-spill maps now walk direct and
   recursive calls, suspended direct-host activations, same-domain foreign frames,
-  monomorphic private `call_indirect`, and local `call_ref`; mutable local GC
-  globals and one private collector table are persistent roots. Tail calls and EH
-  remain outside the arm64 feature gate, while polymorphic/foreign reference calls
-  remain collection-disabled.
+  monomorphic private `call_indirect`, local `call_ref`, and discarded-frame
+  proper tails; mutable local GC globals and one private collector table are
+  persistent roots. EH remains outside the arm64 feature gate, while
+  polymorphic/foreign reference calls remain collection-disabled.
 - [ ] **Shared GC state:** extend same-domain ownership to imported/exported GC
   globals and tables with exact roots, barriers, aliases, rollback, and close order;
   keep host tokens and incompatible domains fail-closed until explicitly owned.
@@ -203,7 +203,8 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   primary Core 3 product.
 - [x] Multi-memory, memory64, and table64 — mandatory Core 3 execution, metadata,
   codec, linking, traps, and official tests are complete on linux/amd64 explicit
-  bounds. Guard-page and arm64 parity remain tracked as product work above.
+  bounds. Linux/Darwin arm64 explicit-bounds execution is implemented with native
+  CI coverage; full official-suite qualification and guard-page parity remain.
 - [x] Reference-types product completion: signatures, locals, control,
   local/imported/shared globals, host ABI, explicit host funcref ownership/egress,
   typed 8-byte externref tables/elements, every `table.*` operation, multiple

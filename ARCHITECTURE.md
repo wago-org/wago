@@ -81,9 +81,10 @@ struct/array/i31 helpers through the synchronous ABI. The bounded arm64
 native-root product publishes liveness-exact locals and hidden spills from
 parked SP, then follows saved-LR callsites through direct/recursive calls,
 suspended direct-host activations, and same-domain foreign frames. Mutable local
-GC globals, one private collector table, monomorphic private `call_indirect`, and
-local `call_ref` are exact. Tail/EH lowering and polymorphic or foreign reference
-calls remain outside the admitted arm64 product.
+GC globals, one private collector table, monomorphic private `call_indirect`,
+local `call_ref`, and discarded-frame direct/indirect/reference tails are exact.
+EH lowering and polymorphic or foreign reference calls remain outside the
+admitted arm64 GC product.
 
 ---
 

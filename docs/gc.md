@@ -135,9 +135,11 @@ roots; saved-LR walking spans direct/recursive calls, suspended direct-host
 activations (including sync-thunk records), and same-domain foreign instances.
 Mutable local GC globals synchronize checked collector slots, one private
 collector-reference table is scanned directly, and monomorphic private
-`call_indirect` plus local `call_ref` publish exact caller maps. Tail-call and EH
-lowering remain outside the arm64 platform feature set; polymorphic or foreign
-reference calls stay collection-disabled rather than scanning unproved roots.
+`call_indirect` plus local `call_ref` publish exact caller maps. Proper tail
+transfers discard the current frame, including dynamic host and same-domain
+foreign direct tails, so no dead caller roots are retained. EH remains outside
+the arm64 platform feature set; polymorphic or foreign reference calls stay
+collection-disabled rather than scanning unproved roots.
 
 Iteration 38 wires one exact linux/amd64 numeric-local helper product;
 iteration 39 adds exact immutable GC-global roots, packed fields, and the numeric portion
