@@ -1027,7 +1027,6 @@ For the full internal tour, see [ARCHITECTURE.md](ARCHITECTURE.md) and
   tests/spec/                          WebAssembly spec submodule
   bench/                               benchmark corpus, charts, cross-engine comparisons
   docs/                                design notes, performance plans, workflow docs
-  warp/                                reference C++ WARP tree
 ```
 
 ## Development
@@ -1083,7 +1082,8 @@ Please see [CONTRIBUTING.md](CONTRIBUTING.md). The short version:
 
 Wago is licensed under [Apache-2.0](LICENSE).
 
-The reference [warp/](warp/) tree keeps its original license headers.
+The external [WARP reference implementation](https://github.com/wago-org/warp)
+keeps its original license headers.
 
 ## Contact
 

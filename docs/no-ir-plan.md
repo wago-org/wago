@@ -89,7 +89,8 @@ execution path. Railshot is the one and only backend.** The prior framing
 - **Store queue beyond a one-entry combining window** — no; V6 is already the
   delicate edge of what trap semantics allow.
 - **`memory.size` micro-optimization** — skip until it shows up in a profile.
-- **Deleting `warp/` or `ir/`** — no. Reference axis + future oracle.
+- **Deleting the external WARP reference axis or `ir/`** — no. They remain useful
+  as reference and future oracle, respectively.
 
 ## 2. Phase plan
 
@@ -399,6 +400,6 @@ P8 runs in parallel whenever exec-perf work is blocked or a feature is wanted;
    P8.1 (sync host imports) is the single highest-value item in this file.
 ```
 
-Pitfalls: VB §12 applies verbatim (branch before first edit; warp/ submodule
-stays dirty; wat idx = wago idx + 1; short commit subjects; explicit merge
-consent; layout-luck discipline).
+Pitfalls: VB §12 applies verbatim (branch before first edit; keep external WARP
+checkouts outside this repository; wat idx = wago idx + 1; short commit subjects;
+explicit merge consent; layout-luck discipline).

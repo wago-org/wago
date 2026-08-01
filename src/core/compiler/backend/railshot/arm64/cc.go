@@ -14,7 +14,7 @@
 // (src/core/encoder/arm64.Asm), and the runtime (engine/MapCode/JobMemory/trampoline).
 // It targets wago's runtime ABI, not WARP's binary format.
 //
-// Derived from WARP (github: the warp/ submodule), Apache-2.0.
+// Derived from WARP (github.com/wago-org/warp), Apache-2.0.
 package arm64
 
 import a64 "github.com/wago-org/wago/src/core/encoder/arm64"
