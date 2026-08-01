@@ -184,7 +184,7 @@ func decodeDirectModule(data []byte) (*directModule, error) {
 		return nil, &DecodeError{Code: ErrBadVersion, Offset: 4}
 	}
 	dm := &directModule{}
-	lastOrder := 0
+	var lastOrder uint8
 	seen := map[byte]bool{}
 	var sub reader
 	for r.has() {
@@ -203,7 +203,7 @@ func decodeDirectModule(data []byte) (*directModule, error) {
 		}
 		end := r.off()
 		if id != secCustom {
-			ord, ok := sectionOrder[id]
+			ord, ok := lookupSectionOrder(id)
 			if !ok {
 				return nil, &DecodeError{Code: ErrInvalidSection, Offset: start - 1, SectionID: id, SectionStart: start, SectionEnd: end}
 			}

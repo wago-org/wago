@@ -20,10 +20,18 @@ const (
 // Section order includes proposal sections by decode position, not numeric id:
 // tag is decoded after memory and before globals, while data_count is decoded
 // before code. IDs above 13 are reserved by the WebAssembly 2.0 core format.
-var sectionOrder = map[byte]int{
+var sectionOrder = [...]uint8{
 	secType: 1, secImport: 2, secFunction: 3, secTable: 4, secMemory: 5,
 	secTag: 6, secGlobal: 7, secExport: 8, secStart: 9,
 	secElement: 10, secDataCount: 11, secCode: 12, secData: 13,
+}
+
+func lookupSectionOrder(id byte) (uint8, bool) {
+	if int(id) >= len(sectionOrder) {
+		return 0, false
+	}
+	order := sectionOrder[id]
+	return order, order != 0
 }
 
 // DecodeModule decodes a WebAssembly binary into the compact module

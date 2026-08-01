@@ -21,7 +21,7 @@ func decodeModuleASTForTest(data []byte) (*Module, error) {
 		return nil, &DecodeError{Code: ErrBadVersion, Offset: 4}
 	}
 	m := &Module{}
-	lastOrder := 0
+	var lastOrder uint8
 	seen := map[byte]bool{}
 	seenName := false
 	for r.has() {
@@ -40,7 +40,7 @@ func decodeModuleASTForTest(data []byte) (*Module, error) {
 		}
 		end := r.off()
 		if id != secCustom {
-			ord, ok := sectionOrder[id]
+			ord, ok := lookupSectionOrder(id)
 			if !ok {
 				return nil, &DecodeError{Code: ErrInvalidSection, Offset: start - 1, SectionID: id, SectionStart: start, SectionEnd: end}
 			}

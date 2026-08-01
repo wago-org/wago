@@ -93,11 +93,20 @@ falls 6,439,060→6,434,964 bytes. TinyGo startup falls 0.423→0.396 ms median
 (**−6.4%**, n=150). Admission/snapshot parity, out-of-range rejection, and the
 zero-allocation scan are test-locked.
 
-**Campaign total:** from `19d000ba` through allocation-free SIMD admission, the
-stripped TinyGo release shrinks 1,983,792→1,921,848 bytes
-(**−61,944, −3.1%**), gzip-9 shrinks 899,459→880,352 bytes, and `.bss` shrinks
-133,888→6,896 bytes (**−126,992, −94.8%**). The latest randomized subprocess
-median for TinyGo `wago version` is 0.396 ms versus the pre-campaign 0.549 ms;
+**Dense section ordering (2026-08-01).** The 13 standard section IDs now use a
+14-byte direct-order table instead of a hash map. Thirteen lookups improve
+192.05→6.0265 ns/op (**31.9×**), while a synthetic module containing every
+standard section decodes in 1,028.5→822.1 ns/op (**−20.1%**, 12 one-second
+samples). The stripped TinyGo release falls 1,921,848→1,920,272 bytes
+(**−1,576**; gzip-9 880,352→879,889), `.bss` falls 6,896→6,544 bytes, and the
+stripped Go lean CLI falls 6,434,964→6,430,868 bytes. Exact order identity,
+reserved/custom rejection, and 14-byte storage are test-locked.
+
+**Campaign total:** from `19d000ba` through dense section ordering, the stripped
+TinyGo release shrinks 1,983,792→1,920,272 bytes (**−63,520, −3.2%**), gzip-9
+shrinks 899,459→879,889 bytes, and `.bss` shrinks 133,888→6,544 bytes
+(**−127,344, −95.1%**). The latest stable randomized subprocess median for
+TinyGo `wago version` is about 0.4 ms versus the pre-campaign 0.549 ms;
 `BenchmarkDecodeValidate` remains **6.3%** below the pre-campaign median.
 
 The backend (`src/core/compiler/backend/railshot`) is the full WARP-architecture port: a
