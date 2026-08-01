@@ -111,13 +111,17 @@ root maps; compact handles remain process-local. Snapshot format v4 separately
 serializes every object reachable from owned local GC globals using one-based
 stable IDs, exact type IDs, array lengths, and typed field/element payloads.
 Snapshot v5 adds the live length and entries of one owned local collector-reference
-table. Global, table, struct-field, and array-element roots are checked against
-exact structural subtyping before allocation. Capture rejects non-null
+table. Snapshot v6 extends that record to multiple heterogeneous local tables with
+one indexed live-entry vector per table. Global, table, struct-field, and
+array-element roots are checked against exact structural subtyping before allocation.
+Capture rejects non-null
 funcref/externref object fields. Restore validates the complete graph before
 allocation, clears replayed initializer roots and table entries, allocates all
 objects under a temporary root slice, and then fills and barrier-publishes
 references, preserving cycles and shared identity without reusing handles. Both
 `SnapshotInit` and `SnapshotWarm` support this bounded local-root graph product.
+GC-reference function imports remain rejected because they join another collector
+owner and require atomic whole-domain capture.
 
 Numeric host imports may re-enter the same instance: codec-v30 callsites carry
 stack adjustments, a bounded eight-entry activation stack preserves control
@@ -1993,10 +1997,11 @@ Tests exercise tiny nurseries, collect-every-alloc, exact scanning, cycles, root
   growth/close coverage, and attachment rollback.
 - Host-held GC values remain explicit bounded tokens. Untyped `uint64` values are
   never accepted as transferable compact collector handles.
-- Snapshot v5 roots include owned local GC globals and one owned local
-  collector-reference table, with table growth state, cycles/sharing, deterministic
-  repeated capture, malformed graph rejection, exact root/field subtype checks,
-  and near-capacity restore rollback. Whole-domain shared snapshots remain planned.
+- Snapshot v5 roots include owned local GC globals and one owned local collector
+  table; snapshot v6 extends this to multiple heterogeneous local tables with indexed
+  growth state, cross-table cycles/sharing, deterministic repeated capture, malformed
+  graph rejection, exact root/field subtype checks, and near-capacity restore rollback.
+  Whole-domain shared snapshots remain planned.
 - Minor collection promotes marked nursery survivors through handles rather than
   implementing a final copying nursery/root-update path. The Throughput allocator
   reuses freed memory but does not yet implement full Immix line/block marking or

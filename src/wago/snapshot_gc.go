@@ -85,28 +85,36 @@ func captureGCHeapSnapshot(in *Instance, s *Snapshot) error {
 		s.globals[i].bits = 0
 	}
 
-	if in.c.HasTable {
-		desc := in.tableDescriptor(0)
-		if len(desc) < 8 {
-			return fmt.Errorf("collector-reference table descriptor is unavailable")
-		}
-		length := uint64(binary.LittleEndian.Uint32(desc))
-		capacity := uint64((len(desc) - 8) / 8)
-		if length > capacity {
-			return fmt.Errorf("collector-reference table length %d exceeds capacity %d", length, capacity)
-		}
-		s.gcTableRefs = make([]gcSnapshotRef, int(length))
-		for i := uint64(0); i < length; i++ {
-			bits := binary.LittleEndian.Uint64(desc[8+i*8:])
-			ref := gc.Ref(uint32(bits))
-			if bits != uint64(ref) {
-				return fmt.Errorf("table slot %d contains non-compact GC reference %#x", i, bits)
+	if tableCount := in.c.tableCount(); tableCount != 0 {
+		tables := make([][]gcSnapshotRef, tableCount)
+		for tableIndex := 0; tableIndex < tableCount; tableIndex++ {
+			desc := in.tableDescriptor(tableIndex)
+			if len(desc) < 8 {
+				return fmt.Errorf("collector-reference table %d descriptor is unavailable", tableIndex)
 			}
-			encoded, err := encodeRef(ref)
-			if err != nil {
-				return fmt.Errorf("table slot %d: %w", i, err)
+			length := uint64(binary.LittleEndian.Uint32(desc))
+			capacity := uint64((len(desc) - 8) / 8)
+			if length > capacity {
+				return fmt.Errorf("collector-reference table %d length %d exceeds capacity %d", tableIndex, length, capacity)
 			}
-			s.gcTableRefs[i] = encoded
+			tables[tableIndex] = make([]gcSnapshotRef, int(length))
+			for i := uint64(0); i < length; i++ {
+				bits := binary.LittleEndian.Uint64(desc[8+i*8:])
+				ref := gc.Ref(uint32(bits))
+				if bits != uint64(ref) {
+					return fmt.Errorf("table %d slot %d contains non-compact GC reference %#x", tableIndex, i, bits)
+				}
+				encoded, err := encodeRef(ref)
+				if err != nil {
+					return fmt.Errorf("table %d slot %d: %w", tableIndex, i, err)
+				}
+				tables[tableIndex][i] = encoded
+			}
+		}
+		if tableCount == 1 {
+			s.gcTableRefs = tables[0]
+		} else {
+			s.gcTableRoots = tables
 		}
 	}
 
@@ -162,7 +170,7 @@ func captureGCHeapSnapshot(in *Instance, s *Snapshot) error {
 	return nil
 }
 
-func validateGCSnapshot(c *Compiled, globals []globalSnap, roots, tableRoots []gcSnapshotRef, objects []gcObjectSnapshot) error {
+func validateGCSnapshot(c *Compiled, globals []globalSnap, roots []gcSnapshotRef, tableRoots [][]gcSnapshotRef, objects []gcObjectSnapshot) error {
 	if c == nil {
 		return fmt.Errorf("snapshot has no bound module")
 	}
@@ -247,33 +255,41 @@ func validateGCSnapshot(c *Compiled, globals []globalSnap, roots, tableRoots []g
 		}
 		markObject(ref)
 	}
-	if c.HasTable {
-		if c.tableCount() != 1 || c.tableImportCount() != 0 || !isGCRefValType(c.tableElementType(0)) {
-			return fmt.Errorf("GC table roots require one owned local collector-reference table")
+	if tableCount := c.tableCount(); tableCount != 0 {
+		if c.tableImportCount() != 0 {
+			return fmt.Errorf("GC table roots require owned local collector-reference tables")
 		}
-		def := c.tableDef(0)
-		if len(tableRoots) < def.Size {
-			return fmt.Errorf("GC table root count %d is below declared minimum %d", len(tableRoots), def.Size)
+		if len(tableRoots) != tableCount {
+			return fmt.Errorf("GC table root set count %d does not match module table count %d", len(tableRoots), tableCount)
 		}
-		capacity := c.tableRuntimeCapacity(0)
-		if len(tableRoots) > capacity {
-			return fmt.Errorf("GC table root count %d exceeds runtime capacity %d", len(tableRoots), capacity)
-		}
-		required, err := c.tableExactType(0)
-		if err != nil {
-			return fmt.Errorf("GC table exact type: %w", err)
-		}
-		for i, ref := range tableRoots {
-			if err := validateRef(ref); err != nil {
-				return fmt.Errorf("table slot %d: %w", i, err)
+		for tableIndex, roots := range tableRoots {
+			if !isGCRefValType(c.tableElementType(tableIndex)) {
+				return fmt.Errorf("GC table %d has a non-collector element type", tableIndex)
 			}
-			if err := validateTypedRef(ref, required); err != nil {
-				return fmt.Errorf("table slot %d: %w", i, err)
+			def := c.tableDef(tableIndex)
+			if len(roots) < def.Size {
+				return fmt.Errorf("GC table %d root count %d is below declared minimum %d", tableIndex, len(roots), def.Size)
 			}
-			markObject(ref)
+			capacity := c.tableRuntimeCapacity(tableIndex)
+			if len(roots) > capacity {
+				return fmt.Errorf("GC table %d root count %d exceeds runtime capacity %d", tableIndex, len(roots), capacity)
+			}
+			required, err := c.tableExactType(tableIndex)
+			if err != nil {
+				return fmt.Errorf("GC table %d exact type: %w", tableIndex, err)
+			}
+			for i, ref := range roots {
+				if err := validateRef(ref); err != nil {
+					return fmt.Errorf("table %d slot %d: %w", tableIndex, i, err)
+				}
+				if err := validateTypedRef(ref, required); err != nil {
+					return fmt.Errorf("table %d slot %d: %w", tableIndex, i, err)
+				}
+				markObject(ref)
+			}
 		}
 	} else if len(tableRoots) != 0 {
-		return fmt.Errorf("snapshot has %d GC table roots for a module without a table", len(tableRoots))
+		return fmt.Errorf("snapshot has %d GC table root sets for a module without a table", len(tableRoots))
 	}
 	for i, object := range objects {
 		desc, ok := snapshotGCDescriptor(c, object.typeID)
@@ -349,10 +365,11 @@ func validateGCSnapshot(c *Compiled, globals []globalSnap, roots, tableRoots []g
 }
 
 func restoreGCHeapSnapshot(in *Instance, s *Snapshot) error {
-	if in == nil || in.gc == nil || s == nil || (len(s.gcGlobalRefs) == 0 && len(s.gcTableRefs) == 0 && len(s.gcObjects) == 0) {
+	tableRoots := snapshotGCTableRoots(s)
+	if in == nil || in.gc == nil || s == nil || (len(s.gcGlobalRefs) == 0 && len(tableRoots) == 0 && len(s.gcObjects) == 0) {
 		return nil
 	}
-	if err := validateGCSnapshot(in.c, s.globals, s.gcGlobalRefs, s.gcTableRefs, s.gcObjects); err != nil {
+	if err := validateGCSnapshot(in.c, s.globals, s.gcGlobalRefs, tableRoots, s.gcObjects); err != nil {
 		return err
 	}
 	public := in.publicGCState()
@@ -379,18 +396,19 @@ func restoreGCHeapSnapshot(in *Instance, s *Snapshot) error {
 		}
 	}
 
-	var tableDesc []byte
-	if in.c.HasTable {
-		tableDesc = in.tableDescriptor(0)
+	tableDescs := make([][]byte, len(tableRoots))
+	for tableIndex, roots := range tableRoots {
+		tableDesc := in.tableDescriptor(tableIndex)
 		if len(tableDesc) < 8 {
-			return fmt.Errorf("GC table descriptor is unavailable")
+			return fmt.Errorf("GC table %d descriptor is unavailable", tableIndex)
 		}
 		capacity := (len(tableDesc) - 8) / 8
-		if len(s.gcTableRefs) > capacity {
-			return fmt.Errorf("GC table root count %d exceeds descriptor capacity %d", len(s.gcTableRefs), capacity)
+		if len(roots) > capacity {
+			return fmt.Errorf("GC table %d root count %d exceeds descriptor capacity %d", tableIndex, len(roots), capacity)
 		}
-		binary.LittleEndian.PutUint32(tableDesc, uint32(len(s.gcTableRefs)))
+		binary.LittleEndian.PutUint32(tableDesc, uint32(len(roots)))
 		clear(tableDesc[8:])
+		tableDescs[tableIndex] = tableDesc
 	}
 
 	refs := make(gc.RefSliceRoots, len(s.gcObjects))
@@ -461,10 +479,12 @@ func restoreGCHeapSnapshot(in *Instance, s *Snapshot) error {
 			return fmt.Errorf("GC global %d has no checked collector root", i)
 		}
 	}
-	for i, encoded := range s.gcTableRefs {
-		ref := decodeRef(encoded)
-		binary.LittleEndian.PutUint64(tableDesc[8+i*8:], uint64(ref))
-		in.gc.WriteBarrierRoot(ref)
+	for tableIndex, roots := range tableRoots {
+		for i, encoded := range roots {
+			ref := decodeRef(encoded)
+			binary.LittleEndian.PutUint64(tableDescs[tableIndex][8+i*8:], uint64(ref))
+			in.gc.WriteBarrierRoot(ref)
+		}
 	}
 	return nil
 }

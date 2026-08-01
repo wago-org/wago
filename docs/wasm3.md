@@ -198,13 +198,14 @@ bounds/platform qualification rather than missing official opcode families:
 
 1. preserve the completed Runtime GC-domain lifecycle, rollback, multi-hop
    foreign-frame walking, codec reload, and shared-global/table call coexistence
-   while hardening snapshot-v5 validation and mixed graphs;
+   while preserving snapshot-v5/v6 validation and mixed local-table graphs;
 2. broaden the exact direct/recursive/host/foreign/tail/EH root product to
    polymorphic and foreign reference calls;
 3. preserve the completed heterogeneous shared-table attachment, growth, rollback,
    codec, and close-order proofs while extending ownership to unproved foreign shapes;
-4. preserve the completed snapshot-v5 local-table, deterministic-repeat, and
-   near-capacity rollback proofs while designing atomic whole-domain capture;
+4. preserve the completed snapshot-v5 single-table and snapshot-v6 heterogeneous
+   multi-table deterministic-repeat, subtype, and near-capacity rollback proofs
+   while designing atomic whole-domain capture;
 5. keep the complete linux/amd64 explicit and signal-backed suites plus native
    Linux/Darwin arm64 explicit-bounds conformance mandatory in CI, and broaden
    arm64 bounds-mode/native workload qualification; and

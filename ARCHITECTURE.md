@@ -82,7 +82,8 @@ retain the same foreign-frame ownership across compiled-code codec reload. Codec
 admission and the 16-byte `v128` storage contract, but never compact handles.
 Snapshot v4 persists reachable local-global object graphs with stable IDs and
 two-pass cycle/sharing reconstruction; snapshot v5 adds one owned local
-collector-reference table, growth state, barriers, and exact structural root
+collector-reference table, while snapshot v6 adds multiple heterogeneous local
+tables with indexed lengths, barriers, sharing, and exact structural root
 validation. Arm64 explicit-bounds builds lower
 struct/array/i31 and dynamic cast/test helpers through the synchronous ABI. The
 bounded arm64 native-root product publishes liveness-exact locals and hidden

@@ -61,6 +61,198 @@ func gcTableSnapshotModule() []byte {
 	)
 }
 
+func gcMultiTableSnapshotModule() []byte {
+	struct0 := []byte{0x5f, 0x01, 0x7f, 0x01}
+	struct1 := []byte{0x5f, 0x02, 0x63, 0x00, 0x01, 0x7f, 0x01}
+	warmType := wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32}, nil)
+	readType := wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32})
+	resultType := wasmtest.FuncType(nil, []wasm.ValType{wasm.I32})
+	table0 := []byte{0x63, 0x00, 0x01, 0x01, 0x02}
+	table1 := []byte{0x63, 0x01, 0x01, 0x01, 0x03}
+	warm := []byte{
+		0x01, 0x01, 0x63, 0x00,
+		0x41, 0x00,
+		0x20, 0x00, 0xfb, 0x00, 0x00,
+		0x22, 0x02, 0x26, 0x00,
+		0xd0, 0x01, 0x41, 0x01, 0xfc, 0x0f, 0x01, 0x1a,
+		0x41, 0x01,
+		0x20, 0x02, 0x20, 0x01, 0xfb, 0x00, 0x01,
+		0x26, 0x01,
+		0xd0, 0x00, 0x21, 0x02,
+		0x41, 0x09, 0xfb, 0x00, 0x00, 0x1a,
+		0x0b,
+	}
+	read0 := []byte{0x00, 0x20, 0x00, 0x25, 0x00, 0xfb, 0x02, 0x00, 0x00, 0x0b}
+	read1 := []byte{0x00, 0x20, 0x00, 0x25, 0x01, 0xfb, 0x02, 0x01, 0x01, 0x0b}
+	same := []byte{0x00, 0x41, 0x00, 0x25, 0x00, 0x41, 0x01, 0x25, 0x01, 0xfb, 0x02, 0x01, 0x00, 0xd3, 0x0b}
+	size0 := []byte{0x00, 0xfc, 0x10, 0x00, 0x0b}
+	size1 := []byte{0x00, 0xfc, 0x10, 0x01, 0x0b}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(struct0, struct1, warmType, readType, resultType)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2), wasmtest.ULEB(3), wasmtest.ULEB(3), wasmtest.ULEB(4), wasmtest.ULEB(4), wasmtest.ULEB(4))),
+		wasmtest.Section(4, wasmtest.Vec(table0, table1)),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("warm", byte(wasm.ExternFunc), 0),
+			wasmtest.ExportEntry("read0", byte(wasm.ExternFunc), 1),
+			wasmtest.ExportEntry("read1", byte(wasm.ExternFunc), 2),
+			wasmtest.ExportEntry("same", byte(wasm.ExternFunc), 3),
+			wasmtest.ExportEntry("size0", byte(wasm.ExternFunc), 4),
+			wasmtest.ExportEntry("size1", byte(wasm.ExternFunc), 5),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			append(wasmtest.ULEB(uint32(len(warm))), warm...),
+			append(wasmtest.ULEB(uint32(len(read0))), read0...),
+			append(wasmtest.ULEB(uint32(len(read1))), read1...),
+			append(wasmtest.ULEB(uint32(len(same))), same...),
+			append(wasmtest.ULEB(uint32(len(size0))), size0...),
+			append(wasmtest.ULEB(uint32(len(size1))), size1...),
+		)),
+	)
+}
+
+func TestGCWarmSnapshotPreservesMultipleHeterogeneousLocalTables(t *testing.T) {
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithBoundsChecks(BoundsChecksExplicit), gcMultiTableSnapshotModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	for _, tc := range []struct {
+		name string
+		gc   GCConfig
+	}{
+		{name: "throughput", gc: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, ForceMajorEveryMinor: true, VerifyAfterCollect: true, StressBarriers: true}},
+		{name: "tiny", gc: GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 256, TinyBlockBytes: 16, TinyCollectEveryAlloc: true, TinyStepEveryAlloc: true, TinyStepBudget: 1, VerifyAfterCollect: true, StressBarriers: true}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			opts := SnapshotOptions{Kind: SnapshotWarm, WarmFunc: "warm", WarmArgs: []uint64{41, 83}, GC: tc.gc}
+			snapshot, err := Capture(compiled, opts)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(snapshot.gcTableRefs) != 0 || len(snapshot.gcTableRoots) != 2 || len(snapshot.gcTableRoots[0]) != 1 || len(snapshot.gcTableRoots[1]) != 2 || len(snapshot.gcObjects) != 2 {
+				t.Fatalf("captured multi-table roots/objects = %v/%v/%d", snapshot.gcTableRefs, snapshot.gcTableRoots, len(snapshot.gcObjects))
+			}
+			if snapshot.gcTableRoots[0][0] != (gcSnapshotRef{kind: gcSnapshotRefObject, value: 1}) || snapshot.gcTableRoots[1][0] != (gcSnapshotRef{}) || snapshot.gcTableRoots[1][1] != (gcSnapshotRef{kind: gcSnapshotRefObject, value: 2}) {
+				t.Fatalf("captured multi-table root identity = %v", snapshot.gcTableRoots)
+			}
+			if got := snapshot.gcObjects[1].values[0].ref; got != snapshot.gcTableRoots[0][0] {
+				t.Fatalf("cross-table shared object = %v, want %v", got, snapshot.gcTableRoots[0][0])
+			}
+			blob, err := snapshot.MarshalBinary()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(blob) < 5 || blob[4] != snapshotVersion {
+				t.Fatalf("multi-table snapshot version = %v, want %d", blob[:5], snapshotVersion)
+			}
+			repeated, err := Capture(compiled, opts)
+			if err != nil {
+				t.Fatal(err)
+			}
+			repeatedBlob, err := repeated.MarshalBinary()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(blob, repeatedBlob) {
+				t.Fatal("repeated multi-table capture was not deterministic")
+			}
+			loaded, err := LoadSnapshot(blob)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer loaded.Module().Close()
+			roundTripBlob, err := loaded.MarshalBinary()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(blob, roundTripBlob) {
+				t.Fatal("snapshot-v6 codec round-trip changed the encoded graph")
+			}
+			if _, err := LoadSnapshot(blob[:len(blob)-1]); err == nil {
+				t.Fatal("truncated snapshot-v6 blob loaded")
+			}
+			if _, err := LoadSnapshot(append(append([]byte(nil), blob...), 0)); err == nil || !strings.Contains(err.Error(), "trailing snapshot bytes") {
+				t.Fatalf("snapshot-v6 trailing byte error = %v", err)
+			}
+			for _, source := range []Instantiable{snapshot, loaded} {
+				in, err := Instantiate(source)
+				if err != nil {
+					t.Fatal(err)
+				}
+				for name, want := range map[string][]uint64{"size0": {1}, "size1": {2}, "same": {1}} {
+					got, callErr := in.Invoke(name)
+					if callErr != nil || !reflect.DeepEqual(got, want) {
+						in.Close()
+						t.Fatalf("restored %s = %v, %v; want %v", name, got, callErr, want)
+					}
+				}
+				for _, read := range []struct {
+					name string
+					arg  uint64
+					want uint64
+				}{{"read0", 0, 41}, {"read1", 1, 83}} {
+					got, callErr := in.Invoke(read.name, read.arg)
+					if callErr != nil || !reflect.DeepEqual(got, []uint64{read.want}) {
+						in.Close()
+						t.Fatalf("restored %s = %v, %v; want %d", read.name, got, callErr, read.want)
+					}
+				}
+				if err := in.Close(); err != nil {
+					t.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
+func TestGCSnapshotRejectsGCReferenceFunctionImportDomain(t *testing.T) {
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithBoundsChecks(BoundsChecksExplicit), gcCrossInstancePersistentConsumerModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	if _, err := Capture(compiled, SnapshotOptions{}); err == nil || !strings.Contains(err.Error(), "GC-reference function imports require whole-domain capture ownership") {
+		t.Fatalf("Capture error = %v, want whole-domain function-import rejection", err)
+	}
+}
+
+func TestGCWarmSnapshotRejectsMalformedMultipleLocalTableRoots(t *testing.T) {
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithBoundsChecks(BoundsChecksExplicit), gcMultiTableSnapshotModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	valid, err := Capture(compiled, SnapshotOptions{Kind: SnapshotWarm, WarmFunc: "warm", WarmArgs: []uint64{41, 83}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cases := []struct {
+		name string
+		edit func(*Snapshot)
+		want string
+	}{
+		{name: "table count", edit: func(s *Snapshot) { s.gcTableRoots = s.gcTableRoots[:1] }, want: "does not match module table count"},
+		{name: "below second minimum", edit: func(s *Snapshot) { s.gcTableRoots[1] = nil }, want: "table 1 root count 0 is below declared minimum"},
+		{name: "wrong heterogeneous type", edit: func(s *Snapshot) { s.gcTableRoots[1][1] = s.gcTableRoots[0][0] }, want: "table 1 slot 1: reference does not match declared structural type"},
+		{name: "unreachable second object", edit: func(s *Snapshot) { s.gcTableRoots[1][1] = gcSnapshotRef{} }, want: "object 2 is unreachable from snapshot roots"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			candidate := *valid
+			candidate.gcGlobalRefs = append([]gcSnapshotRef(nil), valid.gcGlobalRefs...)
+			candidate.gcTableRoots = make([][]gcSnapshotRef, len(valid.gcTableRoots))
+			for i := range valid.gcTableRoots {
+				candidate.gcTableRoots[i] = append([]gcSnapshotRef(nil), valid.gcTableRoots[i]...)
+			}
+			candidate.gcObjects = append([]gcObjectSnapshot(nil), valid.gcObjects...)
+			tc.edit(&candidate)
+			if _, err := candidate.MarshalBinary(); err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("MarshalBinary error = %v, want %q", err, tc.want)
+			}
+		})
+	}
+}
+
 func TestGCWarmSnapshotPreservesLocalTableRootsGrowthCyclesAndSharing(t *testing.T) {
 	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithBoundsChecks(BoundsChecksExplicit), gcTableSnapshotModule())
 	if err != nil {
@@ -97,8 +289,8 @@ func TestGCWarmSnapshotPreservesLocalTableRootsGrowthCyclesAndSharing(t *testing
 			if !bytes.Equal(blob, repeatedBlob) {
 				t.Fatal("repeated table-root capture was not deterministic")
 			}
-			if len(blob) < 5 || blob[4] != snapshotVersion {
-				t.Fatalf("snapshot version = %v, want %d", blob[:5], snapshotVersion)
+			if len(blob) < 5 || blob[4] != 5 {
+				t.Fatalf("single-table snapshot version = %v, want 5", blob[:5])
 			}
 			loaded, err := LoadSnapshot(blob)
 			if err != nil {

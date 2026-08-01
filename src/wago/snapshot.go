@@ -15,7 +15,7 @@ type SnapshotKind uint8
 
 const (
 	// SnapshotInit captures the module immediately after instantiation: initialized
-	// memory, globals, and an admitted owned collector-reference table, with the
+	// memory, globals, and admitted owned collector-reference tables, with the
 	// start function (if any) already run. No additional warm function is executed.
 	SnapshotInit SnapshotKind = iota
 	// SnapshotWarm additionally runs a warm-up function before capturing, so the
@@ -53,9 +53,9 @@ var defaultWarmFuncs = []string{"_start", "_instantiate"}
 // values, and passive-data drop state — from which fresh instances can be created
 // in that exact state without re-running data-segment init or the start function.
 // It also carries the imports and GC config used at capture, so restored
-// instances need none of their own. One owned local collector-reference table is
+// instances need none of their own. Owned local collector-reference tables are
 // captured with the reachable WasmGC graph; imported/shared, opaque-reference,
-// function-reference, and multiple-table products remain rejected.
+// and function-reference table products remain rejected.
 //
 // The default representation lives in local memory (Instance-independent heap
 // copies). MarshalBinary/WriteFile convert it to a self-contained blob (embedding
@@ -65,12 +65,13 @@ var defaultWarmFuncs = []string{"_start", "_instantiate"}
 //
 // Scope: linear memory (current, possibly grown size), numeric/vector globals,
 // passive-data descriptor lengths, and reachable generic-WasmGC object graphs
-// rooted by owned local GC globals and one owned local collector-reference table
-// are captured. GC objects use stable snapshot IDs and two-pass reconstruction,
+// rooted by owned local GC globals and owned local collector-reference tables are
+// captured. GC objects use stable snapshot IDs and two-pass reconstruction,
 // preserving cycles and sharing without persisting compact collector handles.
 // Imported globals and tables are not captured — their state is owned outside the
-// instance. Non-GC reference globals, opaque/function-reference tables, multiple
-// tables, and passive element state remain rejected. Only explicit-bounds modules are supported;
+// instance. GC-reference function imports also require whole-domain capture ownership.
+// Non-GC reference globals, opaque/function-reference tables, and passive element
+// state remain rejected. Only explicit-bounds modules are supported;
 // signals-based (guard-page) instances are rejected, matching Compiled.MarshalBinary.
 type Snapshot struct {
 	// c is the module the snapshot restores against, kept for the in-memory path.
@@ -88,7 +89,8 @@ type Snapshot struct {
 	globals         []globalSnap // one entry per global cell, indexed by wasm global index
 	passiveDataLens []uint32     // current descriptor lengths, indexed by wasm data segment
 	gcGlobalRefs    []gcSnapshotRef
-	gcTableRefs     []gcSnapshotRef // live entries of the one admitted local GC table
+	gcTableRefs     []gcSnapshotRef   // snapshot-v5 compatibility: live entries of table 0
+	gcTableRoots    [][]gcSnapshotRef // snapshot-v6: one live-entry slice per local GC table
 	gcObjects       []gcObjectSnapshot
 }
 
@@ -104,8 +106,8 @@ type globalSnap struct {
 }
 
 // Snapshot instantiates c under opts, optionally runs a warm function, and
-// captures the resulting memory and globals into a reusable Snapshot. The
-// temporary capture instance is closed before returning; the snapshot is
+// captures the resulting memory, globals, tables, and GC graph into a reusable
+// Snapshot. The temporary capture instance is closed before returning; the snapshot is
 // independent of it.
 func Capture(c *Compiled, opts SnapshotOptions) (*Snapshot, error) {
 	if c == nil {
@@ -268,6 +270,19 @@ func snapshotMemories(s *Snapshot) []memorySnap {
 	return nil
 }
 
+func snapshotGCTableRoots(s *Snapshot) [][]gcSnapshotRef {
+	if s == nil {
+		return nil
+	}
+	if len(s.gcTableRoots) != 0 {
+		return s.gcTableRoots
+	}
+	if s.c != nil && s.c.tableCount() == 1 {
+		return [][]gcSnapshotRef{s.gcTableRefs}
+	}
+	return nil
+}
+
 func validateSnapshotMemories(c *Compiled, memories []memorySnap) error {
 	if c == nil {
 		return errors.New("snapshot has no bound module")
@@ -296,9 +311,12 @@ func validateSnapshotModule(c *Compiled) error {
 		return errors.New("wago: snapshot has no bound module")
 	}
 	required := c.requiredFeatures | compiledStructuralRequiredFeatures(c)
+	if required&CoreFeatureGC != 0 && snapshotHasGCFunctionImports(c) {
+		return errors.New("wago: WasmGC snapshots with GC-reference function imports require whole-domain capture ownership")
+	}
 	genericGCSnapshot := required&CoreFeatureGC != 0 && genericGCHeapSnapshotSafe(c)
 	if required&CoreFeatureGC != 0 && !genericGCSnapshot {
-		return errors.New("wago: WasmGC reference products cannot be snapshotted unless they use generic collector execution with owned local GC globals and at most one owned collector-reference table")
+		return errors.New("wago: WasmGC reference products cannot be snapshotted unless they use generic collector execution with owned local GC globals and owned collector-reference tables")
 	}
 	if required&CoreFeatureExceptionHandling != 0 {
 		declarationOnlyLocalTags := c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 && c.tagImportCount() == 0 && len(c.Funcs) == 0
@@ -315,7 +333,7 @@ func validateSnapshotModule(c *Compiled) error {
 		}
 	}
 	if c.HasTable && !genericGCSnapshot {
-		return errors.New("wago: modules with these tables cannot be snapshotted; only one owned local collector-reference table without passive elements is supported")
+		return errors.New("wago: modules with these tables cannot be snapshotted; only owned local collector-reference tables without passive elements are supported")
 	}
 	for i := 0; i < c.memoryCount(); i++ {
 		def := c.memoryDef(i)
@@ -354,12 +372,35 @@ func genericGCInitSnapshotSafe(c *Compiled) bool {
 }
 
 // genericGCHeapSnapshotSafe admits completed-invocation heap capture where every
-// collector object is reachable through owned module-local GC globals and, when
-// present, one owned local collector-reference table. Imported reference storage,
-// multiple tables, opaque table entries, and passive element lifecycle state stay
-// outside the captured ownership boundary.
+// collector object is reachable through owned module-local GC globals and owned
+// local collector-reference tables. Imported reference storage, opaque table
+// entries, and passive element lifecycle state stay outside the captured ownership
+// boundary.
+func snapshotHasGCFunctionImports(c *Compiled) bool {
+	if c == nil {
+		return false
+	}
+	for i := range c.Imports {
+		if i >= len(c.importFuncSigs) {
+			return true
+		}
+		sig := c.importFuncSigs[i]
+		for _, typ := range sig.Params {
+			if isGCRefValType(typ) {
+				return true
+			}
+		}
+		for _, typ := range sig.Results {
+			if isGCRefValType(typ) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func genericGCHeapSnapshotSafe(c *Compiled) bool {
-	if c == nil || !c.usesGenericGCExecution() {
+	if c == nil || !c.usesGenericGCExecution() || snapshotHasGCFunctionImports(c) {
 		return false
 	}
 	for _, g := range c.GlobalImports {
@@ -370,8 +411,13 @@ func genericGCHeapSnapshotSafe(c *Compiled) bool {
 	if !c.HasTable {
 		return true
 	}
-	if c.tableCount() != 1 || c.tableImportCount() != 0 || !isGCRefValType(c.tableElementType(0)) || len(c.passiveElems) != 0 {
+	if c.tableImportCount() != 0 || len(c.passiveElems) != 0 {
 		return false
+	}
+	for i := 0; i < c.tableCount(); i++ {
+		if !isGCRefValType(c.tableElementType(i)) {
+			return false
+		}
 	}
 	return validCompiledGCFunctionTables(c)
 }
@@ -412,7 +458,7 @@ func (s *Snapshot) Module() *Compiled { return s.c }
 func (s *Snapshot) Kind() SnapshotKind { return s.kind }
 
 const snapshotMagic = "WGSN"
-const snapshotVersion = 5
+const snapshotVersion = 6
 
 // MarshalBinary encodes the snapshot to a self-contained blob: the compiled
 // module followed by the captured memory and globals. Trailing zero bytes of
@@ -429,7 +475,7 @@ func (s *Snapshot) MarshalBinary() ([]byte, error) {
 		return nil, err
 	}
 	if (s.c.requiredFeatures|compiledStructuralRequiredFeatures(s.c))&CoreFeatureGC != 0 {
-		if err := validateGCSnapshot(s.c, s.globals, s.gcGlobalRefs, s.gcTableRefs, s.gcObjects); err != nil {
+		if err := validateGCSnapshot(s.c, s.globals, s.gcGlobalRefs, snapshotGCTableRoots(s), s.gcObjects); err != nil {
 			return nil, fmt.Errorf("wago: snapshot GC heap: %w", err)
 		}
 	}
@@ -457,7 +503,9 @@ func (s *Snapshot) MarshalBinary() ([]byte, error) {
 	version := byte(3)
 	if (s.c.requiredFeatures|compiledStructuralRequiredFeatures(s.c))&CoreFeatureGC != 0 {
 		version = 4
-		if s.c.HasTable {
+		if s.c.tableCount() == 1 {
+			version = 5
+		} else if s.c.tableCount() > 1 {
 			version = snapshotVersion
 		}
 	}
@@ -493,11 +541,22 @@ func (s *Snapshot) MarshalBinary() ([]byte, error) {
 			out = append(out, ref.kind)
 			out = binary.LittleEndian.AppendUint32(out, ref.value)
 		}
-		if version >= 5 {
-			out = binary.AppendUvarint(out, uint64(len(s.gcTableRefs)))
-			for _, ref := range s.gcTableRefs {
+		if version == 5 {
+			roots := snapshotGCTableRoots(s)[0]
+			out = binary.AppendUvarint(out, uint64(len(roots)))
+			for _, ref := range roots {
 				out = append(out, ref.kind)
 				out = binary.LittleEndian.AppendUint32(out, ref.value)
+			}
+		} else if version >= 6 {
+			tables := snapshotGCTableRoots(s)
+			out = binary.AppendUvarint(out, uint64(len(tables)))
+			for _, roots := range tables {
+				out = binary.AppendUvarint(out, uint64(len(roots)))
+				for _, ref := range roots {
+					out = append(out, ref.kind)
+					out = binary.LittleEndian.AppendUint32(out, ref.value)
+				}
 			}
 		}
 		out = binary.AppendUvarint(out, uint64(len(s.gcObjects)))
@@ -589,16 +648,25 @@ func loadSnapshotWith(b []byte, loadCompiled func([]byte) (*Compiled, error)) (*
 	}
 	var gcGlobalRefs []gcSnapshotRef
 	var gcTableRefs []gcSnapshotRef
+	var gcTableRoots [][]gcSnapshotRef
 	var gcObjects []gcObjectSnapshot
 	if version >= 4 {
 		gcGlobalRefs = make([]gcSnapshotRef, rd.count("GC global root", 5))
 		for i := range gcGlobalRefs {
 			gcGlobalRefs[i] = gcSnapshotRef{kind: rd.byte(), value: rd.u32()}
 		}
-		if version >= 5 {
+		if version == 5 {
 			gcTableRefs = make([]gcSnapshotRef, rd.count("GC table root", 5))
 			for i := range gcTableRefs {
 				gcTableRefs[i] = gcSnapshotRef{kind: rd.byte(), value: rd.u32()}
+			}
+		} else if version >= 6 {
+			gcTableRoots = make([][]gcSnapshotRef, rd.count("GC table", 1))
+			for i := range gcTableRoots {
+				gcTableRoots[i] = make([]gcSnapshotRef, rd.count(fmt.Sprintf("GC table %d root", i), 5))
+				for j := range gcTableRoots[i] {
+					gcTableRoots[i][j] = gcSnapshotRef{kind: rd.byte(), value: rd.u32()}
+				}
 			}
 		}
 		gcObjects = make([]gcObjectSnapshot, rd.count("GC object", 3))
@@ -657,18 +725,27 @@ func loadSnapshotWith(b []byte, loadCompiled func([]byte) (*Compiled, error)) (*
 		} else if c.HasTable && version < 5 {
 			_ = c.Close()
 			return nil, errors.New("wago: snapshot module: collector-reference table state requires snapshot version 5")
-		} else if err := validateGCSnapshot(c, globals, gcGlobalRefs, gcTableRefs, gcObjects); err != nil {
+		} else if c.tableCount() > 1 && version < 6 {
 			_ = c.Close()
-			return nil, fmt.Errorf("wago: snapshot GC heap: %w", err)
+			return nil, errors.New("wago: snapshot module: multiple collector-reference tables require snapshot version 6")
+		} else {
+			tables := gcTableRoots
+			if version == 5 {
+				tables = [][]gcSnapshotRef{gcTableRefs}
+			}
+			if err := validateGCSnapshot(c, globals, gcGlobalRefs, tables, gcObjects); err != nil {
+				_ = c.Close()
+				return nil, fmt.Errorf("wago: snapshot GC heap: %w", err)
+			}
 		}
-	} else if len(gcGlobalRefs) != 0 || len(gcTableRefs) != 0 || len(gcObjects) != 0 {
+	} else if len(gcGlobalRefs) != 0 || len(gcTableRefs) != 0 || len(gcTableRoots) != 0 || len(gcObjects) != 0 {
 		_ = c.Close()
 		return nil, errors.New("wago: snapshot GC heap is present for a module without WasmGC")
 	}
 	for i := range memories {
 		memories[i].image = append([]byte(nil), memories[i].image...)
 	}
-	s := &Snapshot{c: c, kind: kind, memories: memories, globals: globals, passiveDataLens: passiveDataLens, gcGlobalRefs: gcGlobalRefs, gcTableRefs: gcTableRefs, gcObjects: gcObjects}
+	s := &Snapshot{c: c, kind: kind, memories: memories, globals: globals, passiveDataLens: passiveDataLens, gcGlobalRefs: gcGlobalRefs, gcTableRefs: gcTableRefs, gcTableRoots: gcTableRoots, gcObjects: gcObjects}
 	if len(memories) != 0 {
 		s.memPages, s.memory = memories[0].pages, memories[0].image
 	}
