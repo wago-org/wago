@@ -10,6 +10,7 @@ import (
 	"github.com/wago-org/wago"
 	"github.com/wago-org/wago/cli/internal/command"
 	"github.com/wago-org/wago/cli/internal/ui"
+	"github.com/wago-org/wago/cli/runtime/internal/artifactcache"
 )
 
 // Environment supplies only profile-specific flags, optimization knobs, and
@@ -17,6 +18,7 @@ import (
 type Environment interface {
 	ProfileFlags() []command.Flag
 	LoadRuntime(*wago.RuntimeConfig, string) *wago.Runtime
+	ArtifactCache() artifactcache.Cache
 }
 
 func Command(environment Environment) *command.Cmd {
@@ -82,7 +84,7 @@ func (cmd implementation) Run(ctx *command.Ctx) {
 	config = ApplyFeatureDefaults(config, defaults, configured)
 	runtime := cmd.environment.LoadRuntime(config, ctx.Str("plugin"))
 	defer runtime.Close()
-	module := mustLoadModule(positionals[0], runtime)
+	module := mustLoadModule(positionals[0], config, runtime, cmd.environment.ArtifactCache())
 	compiled := module.Compiled()
 	export := mustResolveExport(compiled, ctx.Str("invoke"))
 

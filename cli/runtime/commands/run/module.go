@@ -7,9 +7,10 @@ import (
 
 	"github.com/wago-org/wago"
 	"github.com/wago-org/wago/cli/internal/ui"
+	"github.com/wago-org/wago/cli/runtime/internal/artifactcache"
 )
 
-func mustLoadModule(file string, runtime *wago.Runtime) *wago.Module {
+func mustLoadModule(file string, config *wago.RuntimeConfig, runtime *wago.Runtime, cache artifactcache.Cache) *wago.Module {
 	source, err := os.ReadFile(file)
 	if err != nil {
 		ui.Fatal("%v", err)
@@ -25,7 +26,7 @@ func mustLoadModule(file string, runtime *wago.Runtime) *wago.Module {
 		}
 		return module
 	}
-	module, err := runtime.Compile(source)
+	module, err := cache.LoadOrCompile(source, config, runtime)
 	if err != nil {
 		ui.Fatal("%v", err)
 	}

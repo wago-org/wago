@@ -160,6 +160,10 @@ explicit `--version`, `--channel`, `--profile`, `--build`, `--use`, and
 confirmation flags for scripts and CI.
 
 Regenerable state is visible through `wago cache dir` and `wago cache size`.
+Running raw Wasm automatically reuses a `.wago` artifact keyed by the module,
+exact runtime executable, target, effective compiler configuration, and
+optimization knobs. Non-serializable guard-page or wide-SIMD builds simply run
+without writing an artifact.
 `wago cache clean` opens a size-aware multi-selector with every category enabled
 by default. For automation, use `wago cache clean --all` or select
 `--downloads` and `--builds` explicitly. Use
@@ -662,8 +666,10 @@ compiled, err = wago.Load(wasmBytes) // raw wasm, compiled on load
 Codec v23 includes binding-independent imported-call dispatch metadata, so
 function-import modules can be serialized before concrete host or instance
 bindings are known. Live target addresses and runtime identity are never stored.
-The CLI can run an existing `.wago` blob, but producing stable, cache-keyed
-artifacts from the CLI is still on the roadmap.
+`wago build` writes an explicit artifact, while `wago run` maintains the same
+format as a best-effort automatic cache. Cache keys include the source bytes,
+the exact runtime executable (including compiled plugins), target platform,
+runtime compiler configuration, and optimization knobs.
 
 ## Feature Support
 
@@ -709,7 +715,7 @@ for the listed subset. [FEATURES.md](FEATURES.md) is the source of truth.
 | Policy | Partial: capability allow/deny plus memory/table limits are enforced; invoke duration is reserved. |
 | Instance pools | Plugin-owned: pooling policy and idle-instance retention are intentionally absent from core. |
 | Actor/process layer | Plugin-owned: core provides only capability-gated managed instances; workers, PIDs, guest mailboxes, signals, monitoring, and supervision live outside the runtime. |
-| `.wago` blobs | Go API serialization/loading works; CLI build/cache productization is planned. |
+| `.wago` blobs | Go API and `wago build` serialization/loading work; `wago run` transparently caches compatible artifacts and `wago cache` inspects or removes regenerable state. |
 | Version management | Local list/use/current/which/uninstall path is present; network install is build-dependent. |
 | TinyGo | Supported on linux/amd64 with `-scheduler=tasks`; release builds are size-focused. |
 

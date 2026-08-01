@@ -130,8 +130,10 @@ codegen rationale is **[OPTIMIZATIONS.md](OPTIMIZATIONS.md)**. Summary of the tw
   bindings, and producer/consumer close order. The official Release 2 execution
   harness remains zero-skip at 1,600 modules / 48,331 assertions, including all 83 unlinkable assertions.
 - [ ] `call_indirect` inline caches behind a table epoch
-- [ ] `.wago` productization: cache keys (module hash + compiler version + CPU features
-  + bounds mode + ABI) and a compile/run/inspect CLI
+- [x] `.wago` productization: `wago build` creates explicit artifacts and
+  `wago run` reuses an automatic cache keyed by the module, exact runtime
+  executable, GOOS/GOARCH, effective feature/bounds/memory configuration, and
+  optimization knobs. `wago cache` owns inspection, pruning, and cleanup.
 
 ## Verification & quality
 
