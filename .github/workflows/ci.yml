@@ -353,12 +353,18 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: Linux amd64
+          - name: Linux amd64 / explicit
             runner: ubuntu-24.04
-          - name: Linux arm64
+            target: spec3
+          - name: Linux amd64 / signals
+            runner: ubuntu-24.04
+            target: spec3-signals
+          - name: Linux arm64 / explicit
             runner: ubuntu-24.04-arm
-          - name: Darwin arm64
+            target: spec3
+          - name: Darwin arm64 / explicit
             runner: macos-15
+            target: spec3
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
@@ -377,7 +383,7 @@ jobs:
       - name: Fetch pinned Core v3 corpus
         run: git submodule update --init tests/spec-v3
       - name: Run exact Core v3 validation and execution
-        run: make spec3
+        run: make ${{ matrix.target }}
 
   tinygo:
     name: TinyGo / ${{ matrix.name }}

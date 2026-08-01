@@ -1248,9 +1248,14 @@ func TestStagedMemory64AdmissionGatesAndMemory32CodeStability(t *testing.T) {
 	features.Memory64 = true
 	max2 := uint64(2)
 	for name, module := range map[string][]byte{"local": boundedMemory64Module(max2), "import": memory64ImportModule(1, &max2)} {
-		if _, err := compileWithFrontendFeatures(cfg, module, features); err == nil || !strings.Contains(err.Error(), "signals-based") {
-			t.Fatalf("guard %s memory64 error = %v", name, err)
+		compiled, err := compileWithFrontendFeatures(cfg, module, features)
+		if err != nil {
+			t.Fatalf("signal-backed %s memory64 compile = %v", name, err)
 		}
+		if compiled.boundsMode != BoundsChecksSignalsBased {
+			t.Fatalf("signal-backed %s memory64 mode = %v", name, compiled.boundsMode)
+		}
+		_ = compiled.Close()
 	}
 
 	ordinary := wasmtest.Module(

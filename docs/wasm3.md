@@ -70,23 +70,19 @@ order.
 ### Linux/amd64 signal-backed qualification
 
 `make spec3-signals` runs the same strict zero-gap harness with
-`-tags wago_guardpage` and `WAGO_BOUNDS=signals`. Signal-backed tails, typed
-references, the complete official GC family, exception handling, and table64 now
-execute alongside the previously qualified scalar/SIMD/bulk/table surface.
+`-tags wago_guardpage` and `WAGO_BOUNDS=signals`. Every Core 3 family now executes
+under this linux/amd64 product: **2,226 modules and 58,038 assertions pass with
+zero failures, skips, or gap categories**.
 
-The current full-suite signal-backed baseline is deliberately still red:
+The final memory families use a deliberate hybrid. Memory 0 memory32 accesses may
+elide inline checks and fault against the guarded reservation. Indexed nonzero
+memories retain explicit checks against their directory entries, but every owned
+memory is guard-backed so an exported nonzero memory can safely become memory 0
+of another signal-backed instance. Memory64 retains carry-safe full-u64 explicit
+checks even in signal mode, avoiding reliance on a finite guard reservation for
+arbitrary 64-bit addresses.
 
-- 2,027 modules pass and 199 are skipped;
-- 55,770 assertions pass, one fails, and 2,267 are skipped;
-- gaps are 210 compile rejections, three instantiation rejections, and 2,253
-  unavailable-module actions;
-- every remaining unsupported compile is either indexed multi-memory (63) or
-  memory64 (133); and
-- the one assertion failure is `multi-memory/linking0`, whose rejected
-  multi-memory instantiation cannot perform the spec-required earlier imported
-  table mutation before its later active-data trap.
-
-The qualification run also found and fixed two guard-specific lifecycle bugs.
+The qualification campaign also found and fixed two guard-specific lifecycle bugs.
 The spec harness now retires an unnamed, unregistered current instance before the
 next module command, so files with more than 256 transient modules do not exhaust
 the bounded guard registry. The Linux/amd64 signal handler now lazily commits the
@@ -167,10 +163,10 @@ compatibility change without adding safety, so `CoreFeaturesV3` documents relaxe
 SIMD through the existing bit.
 
 `CoreFeaturesV3` is both the Release 3 description and the implementation ceiling
-on linux/amd64 plus Linux/Darwin arm64 explicit-bounds products. Linux/amd64
-signal-backed builds admit every family except indexed multi-memory and memory64.
-`SupportedFeatures()` reports the executable build/host set. The full suite is
-green natively on linux/amd64 and under Linux/arm64 QEMU; native Linux/Darwin
+on linux/amd64 explicit and signal-backed products plus Linux/Darwin arm64
+explicit-bounds products. `SupportedFeatures()` reports the executable build/host
+set. The full suite is green in both linux/amd64 bounds modes and under
+Linux/arm64 QEMU explicit bounds; native Linux/Darwin
 arm64 conformance runs are required by CI. The compatibility default deliberately remains the
 Release 2 feature set plus extended constants; callers opt into Core 3 with
 `WithCoreFeatures(CoreFeaturesV3)`, and the versioned spec harness does so when
@@ -188,8 +184,8 @@ Release 2 feature set plus extended constants; callers opt into Core 3 with
 | Typed function references | Complete recursive/indexed structural validation for signatures, tables, elements, globals, casts/tests, null branches, and `call_ref`. | Canonical descriptors, subtype-aware calls/linking, reference ownership, codec metadata, and cross-instance retention execute. | ✅ Core 3 official typed-reference and recursive-type files gap-free. |
 | GC | Complete recursive type, subtype, struct/array/i31, conversion, cast/test/branch, constant-expression, data/element initialization, and malformed/invalid validation. | Throughput/Tiny collectors, exact roots/barriers, bounded helpers, subtype identity, linking, reference publication, and array data/element constructors execute on linux/amd64 explicit and signal-backed bounds plus arm64 explicit bounds. | ✅ Mandatory Core 3 GC corpus gap-free on those products; ownership and snapshot limits remain documented in `docs/gc.md`. |
 | Exception handling | Complete validation for tags, `throw`, `throw_ref`, `try_table`, exception references, catch payloads/depths, and malformed forms. | Arbitrary bounded tag directories, imported/exported tags, rooted exception values, nested/cross-instance handlers, tails, linking, and codec metadata execute on linux/amd64 explicit and signal-backed bounds plus arm64 explicit bounds. | ✅ Core 3 exception files gap-free on those products. |
-| Multi-memory | Complete indexed immediate and compact-import validation with Release 2 defaults preserved. | Indexed scalar/SIMD/bulk/data operations, imports/exports, snapshots for owned state, and generalized shared-memory basedata serialization execute. | ✅ Complete 42-file family and full Core 3 suite gap-free. |
-| memory64 | Complete i64 address, full-u64 limit/offset, mixed-width, data, scalar, SIMD, and bulk validation. | Bounded amd64/arm64 execution preserves exact declarations, checks full-width arithmetic before mutation, and rejects oversized grow deltas without illegal shift encodings. | ✅ Mandatory Core 3 memory64 corpus gap-free. |
+| Multi-memory | Complete indexed immediate and compact-import validation with Release 2 defaults preserved. | Indexed scalar/SIMD/bulk/data operations, imports/exports, snapshots for owned state, and generalized shared-memory basedata serialization execute. Linux/amd64 signal mode retains explicit checks for nonzero directory entries and guard-backs every owned memory for export/re-import safety. | ✅ Complete 42-file family and full Core 3 suite gap-free under linux/amd64 explicit and signal-backed bounds plus arm64 explicit bounds. |
+| memory64 | Complete i64 address, full-u64 limit/offset, mixed-width, data, scalar, SIMD, and bulk validation. | Bounded amd64/arm64 execution preserves exact declarations, checks full-width arithmetic before mutation, and rejects oversized grow deltas without illegal shift encodings. Linux/amd64 signal mode intentionally retains the same full-u64 explicit checks. | ✅ Mandatory Core 3 memory64 corpus gap-free under linux/amd64 explicit and signal-backed bounds plus arm64 explicit bounds. |
 | table64 | Complete i64 index/result, full-u64 limit, mixed-width copy/init, and malformed-LEB validation. | Local/imported funcref and externref tables, all table operations, indirect calls, metadata/codec, and `spectest.table64` execute under linux/amd64 explicit and signal-backed bounds plus arm64 explicit bounds. | ✅ Mandatory Core 3 table64 corpus gap-free on those products. |
 | Text annotations | Text-format concern; no native execution semantics are required. | No runtime work planned unless tooling integration exposes a concrete need. | Not a native runtime feature. |
 | Deterministic profile | Separate optional profile, not part of the current Core 3.0 product claim. | No profile claim is made by this document. Deterministic relaxed-SIMD lowering does not by itself implement the full optional deterministic profile. | Optional/separate. |
@@ -208,10 +204,10 @@ bounds/platform qualification rather than missing official opcode families:
    exact roots, barriers, aliases, rollback, and close ordering;
 4. extend snapshot-v4 roots to local GC tables and make restore publication fully
    transactional, while rejecting partial capture of imported/shared domains;
-5. complete linux/amd64 signal-backed indexed multi-memory and memory64, then
-   keep the full signal-backed suite and native Linux/Darwin arm64 explicit-bounds
-   conformance mandatory in CI; and
-6. only after those correctness gates, measure and add direct checked JIT object
+5. keep the complete linux/amd64 explicit and signal-backed suites plus native
+   Linux/Darwin arm64 explicit-bounds conformance mandatory in CI, and broaden
+   arm64 bounds-mode/native workload qualification; and
+6. after those correctness gates, measure and add direct checked JIT object
    access as a replacement for common parked-helper operations.
 
 Historical iteration sections below retain the boundary statements that were true

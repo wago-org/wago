@@ -204,7 +204,7 @@ spec3: wabt spec-interpreter ## Run the pinned official WebAssembly 3.0 core sui
 		go test -count=1 -run TestSpecSuiteExec -v ./src/wago/
 
 .PHONY: spec3-signals
-spec3-signals: wabt spec-interpreter ## Run Core 3 with linux/amd64 signal-backed bounds (hard-red until parity)
+spec3-signals: wabt spec-interpreter ## Run zero-gap Core 3 with linux/amd64 signal-backed bounds
 	@wast2json="$$(scripts/bootstrap-wabt.sh --print-path)"; \
 		interpreter="$$(scripts/bootstrap-spec-interpreter.sh --print-path)"; \
 		interpreter_revision="$$(scripts/bootstrap-spec-interpreter.sh --print-revision)"; \

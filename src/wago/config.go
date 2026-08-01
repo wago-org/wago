@@ -155,10 +155,11 @@ const (
 	// BoundsChecksExplicit emits an inline bounds check on every access. The
 	// default; needs no signal handler.
 	BoundsChecksExplicit BoundsCheckMode = iota
-	// BoundsChecksSignalsBased elides the inline check and relies on a guard-page
-	// mapping plus a SIGSEGV/SIGBUS handler (see docs/guardpage-spike.md). Faster
-	// on memory-heavy code, but installs process-wide signal handlers and requires
-	// a binary built with the `wago_guardpage` tag.
+	// BoundsChecksSignalsBased elides eligible memory-0 memory32 checks and relies
+	// on a guard-page mapping plus a SIGSEGV/SIGBUS handler (see
+	// docs/guardpage-spike.md). Indexed nonzero memories and memory64 retain
+	// explicit checks. The mode is faster on memory-heavy code, but installs
+	// process-wide signal handlers and requires a `wago_guardpage` build.
 	BoundsChecksSignalsBased
 )
 
@@ -264,8 +265,9 @@ func (c *RuntimeConfig) WithBoundsChecks(mode BoundsCheckMode) *RuntimeConfig {
 
 // WithDeferBoundsChecks controls whether the compiler skips a bounds check that a
 // prior check in the same straight-line region already proved safe (explicit mode
-// only; guard-page mode has no inline checks). On by default — pass false to bounds-
-// check every memory access, e.g. for A/B testing or maximal defensiveness. The
+// only; signal mode uses its fixed hybrid policy). On by default — pass false to
+// bounds-check every eligible explicit-mode memory access, e.g. for A/B testing or
+// maximal defensiveness. The
 // WAGO_NO_BOUNDS_FACTS=1 env var disables it globally.
 func (c *RuntimeConfig) WithDeferBoundsChecks(enabled bool) *RuntimeConfig {
 	n := *c

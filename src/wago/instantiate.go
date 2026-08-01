@@ -321,8 +321,9 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 				return nil, fmt.Errorf("imported memory %q limits: %w", c.memoryImport, err)
 			}
 		}
-		// A signals-based module elides inline bounds checks and relies on the
-		// guard-page fault, so the imported memory must be guard-page backed. Host
+		// A signals-based module may elide memory-0 memory32 bounds checks and rely
+		// on the guard-page fault, so its primary imported memory must be
+		// guard-page backed. Host
 		// NewMemory and guard-page instance owners provide one only in a
 		// wago_guardpage build; reject a plain mapping (e.g. an explicit-bounds
 		// owner's memory, or a deserialized signals-based module in a default binary).
@@ -414,7 +415,17 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		if i < len(restoreMemories) && uint64(restoreMemories[i].pages) > initialPages {
 			initialPages = uint64(restoreMemories[i].pages)
 		}
-		secondaryJM, allocErr := runtime.AcquireJobMemoryGrowable(int(initialPages)*65536, int(maxPages)*65536)
+		var secondaryJM *runtime.JobMemory
+		var allocErr error
+		if c.boundsMode == BoundsChecksSignalsBased {
+			// Every owned memory in a signals-based instance uses the guarded
+			// representation, even though indexed-memory accesses retain explicit
+			// checks. An exported nonzero memory may become memory 0 of another
+			// signals-based instance, where guard-backed ownership is mandatory.
+			secondaryJM, allocErr = newGuardedJobMemory(int(initialPages)*65536, int(maxPages)*65536)
+		} else {
+			secondaryJM, allocErr = runtime.AcquireJobMemoryGrowable(int(initialPages)*65536, int(maxPages)*65536)
+		}
 		if allocErr != nil {
 			closeMem()
 			runtime.ReleaseEngine(eng)

@@ -124,11 +124,12 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
 - [ ] **Snapshot root expansion:** cover every storage kind and mixed struct/array
   graph, then add local GC tables and transactional restore. Shared/imported domain
   snapshots remain rejected until whole-domain ownership can be captured.
-- 🚧 **Product parity:** the complete explicit-bounds Core 3 suite is green on
-  linux/amd64 and Linux/arm64 QEMU. Linux/amd64 signal-backed tails, typed
-  references, GC, exception handling, and table64 are green; indexed multi-memory
-  and memory64 are the remaining signal-backed families. Native Linux/Darwin
-  arm64 are mandatory CI cells.
+- [x] **Linux/amd64 bounds-mode parity:** explicit and signal-backed Core 3 both
+  pass 2,226 modules and 58,038 assertions with zero failures, skips, or gaps.
+  Signal mode keeps explicit directory checks for nonzero memories and full-u64
+  checks for memory64 while using guard-backed owned mappings. Native Linux/Darwin
+  arm64 explicit-bounds runs remain mandatory CI cells; broader arm64 bounds-mode
+  qualification continues separately.
 - [ ] **GC hot paths:** after the correctness matrix is complete, add measured
   direct checked JIT object access while retaining helper slow paths.
 
@@ -212,9 +213,10 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   primary Core 3 product.
 - [x] Multi-memory, memory64, and table64 — mandatory Core 3 execution, metadata,
   codec, linking, traps, and official tests are complete on linux/amd64 explicit
-  bounds. Linux/Darwin arm64 explicit-bounds execution is implemented; the full
-  official suite passes under Linux/arm64 QEMU and native Linux/Darwin arm64 runs
-  are required in CI. Guard-page parity remains.
+  and signal-backed bounds. Linux/Darwin arm64 explicit-bounds execution is
+  implemented; the full official suite passes under Linux/arm64 QEMU and native
+  Linux/Darwin arm64 runs are required in CI. Broader arm64 guard-page parity
+  remains a platform-qualification item.
 - [x] Reference-types product completion: signatures, locals, control,
   local/imported/shared globals, host ABI, explicit host funcref ownership/egress,
   typed 8-byte externref tables/elements, every `table.*` operation, multiple

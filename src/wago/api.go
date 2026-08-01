@@ -1071,8 +1071,8 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		if !((goruntime.GOOS == "linux" && goruntime.GOARCH == "amd64") || ((goruntime.GOOS == "linux" || goruntime.GOOS == "darwin") && goruntime.GOARCH == "arm64")) {
 			return nil, fmt.Errorf("compile: unsupported memory multi-memory staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
 		}
-		if cfg.boundsChecks == BoundsChecksSignalsBased {
-			return nil, fmt.Errorf("compile: unsupported memory multi-memory with signals-based bounds checks")
+		if cfg.boundsChecks == BoundsChecksSignalsBased && goruntime.GOARCH != "amd64" {
+			return nil, fmt.Errorf("compile: unsupported memory multi-memory with signals-based bounds checks on %s/%s", goruntime.GOOS, goruntime.GOARCH)
 		}
 	}
 	if features.TailCalls && requiredByModule.IsEnabled(CoreFeatureTailCall) && !((goruntime.GOOS == "linux" && goruntime.GOARCH == "amd64") || ((goruntime.GOOS == "linux" || goruntime.GOOS == "darwin") && goruntime.GOARCH == "arm64")) {
@@ -1176,8 +1176,8 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		if !((goruntime.GOOS == "linux" && goruntime.GOARCH == "amd64") || ((goruntime.GOOS == "linux" || goruntime.GOOS == "darwin") && goruntime.GOARCH == "arm64")) {
 			return nil, fmt.Errorf("compile: unsupported memory memory64 staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
 		}
-		if cfg.boundsChecks == BoundsChecksSignalsBased {
-			return nil, fmt.Errorf("compile: unsupported memory memory64 with signals-based bounds checks")
+		if cfg.boundsChecks == BoundsChecksSignalsBased && goruntime.GOARCH != "amd64" {
+			return nil, fmt.Errorf("compile: unsupported memory memory64 with signals-based bounds checks on %s/%s", goruntime.GOOS, goruntime.GOARCH)
 		}
 		if m.MemCount() != 1 || (m.ImportedMemCount() != 0 && len(m.Memories) != 0) {
 			return nil, fmt.Errorf("compile: staged memory64 requires exactly one local or imported memory and rejects multi-memory shapes")

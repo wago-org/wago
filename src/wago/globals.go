@@ -1048,8 +1048,9 @@ type Compiled struct {
 	StartImportIdx int  // its imported-function index (valid when HasStart && StartIsImport)
 
 	// boundsMode records how this code was compiled: BoundsChecksSignalsBased
-	// means the inline checks were elided and execution requires a guard-page
-	// memory + trap handler (Instantiate wires this up). Not serialized:
+	// means eligible memory-0 memory32 checks were elided and execution requires
+	// a guard-page memory + trap handler (Instantiate wires this up). Indexed
+	// memories and memory64 may still contain explicit checks. Not serialized:
 	// MarshalBinary rejects signals-based modules, so a loaded Compiled is always
 	// explicit-checks.
 	boundsMode BoundsCheckMode
