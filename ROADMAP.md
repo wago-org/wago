@@ -139,9 +139,10 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   and near-capacity restore rollback on amd64 and Linux/ARM64.
 - [ ] **Whole-domain snapshots:** imported/shared collector domains remain rejected
   until complete domain ownership and atomic multi-instance publication can be captured.
-- [x] **Bounded host-held GC results:** generic struct/array results issue one opaque
-  `GCRef` token per producer, retain exact Runtime/store ownership after producer close,
-  and reject stale or cross-producer release.
+- [x] **Bounded host-held GC results:** generic struct/array results issue up to 64
+  opaque `GCRef` tokens per producer, atomically roll back partial multi-result egress,
+  reuse released checked slots, retain exact Runtime/store ownership after producer
+  close, and reject stale/cross-producer release.
 - [x] **Host GC token ingress:** non-null `GCRef` arguments re-enter only the exact
   collector domain after structural subtype validation, use up to 64 reusable checked
   roots, survive concurrent release after staging, and reject stale/foreign tokens.

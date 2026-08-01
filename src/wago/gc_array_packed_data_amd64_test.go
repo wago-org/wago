@@ -63,8 +63,12 @@ func TestStagedGCArrayPackedDataOfficialProduct(t *testing.T) {
 			if !ok || owner != in || exact.Kind != ValueTypeReference || !exact.Ref.Exact || !exact.Ref.Heap.Defined || exact.Ref.Heap.TypeIndex != 0 {
 				t.Fatalf("packed exact token = %#v owner=%p ok=%v", exact, owner, ok)
 			}
-			if _, err := in.Invoke("new"); err == nil || !strings.Contains(err.Error(), "one live token") {
-				t.Fatalf("second live packed token = %v", err)
+			secondRaw, err := in.Invoke("new")
+			if err != nil || len(secondRaw) != 1 || secondRaw[0] == 0 || secondRaw[0] == token {
+				t.Fatalf("second live packed token = %v, %v", secondRaw, err)
+			}
+			if err := in.ReleaseGCRef(ValueOf(ValAnyRef, secondRaw[0]).GCRef()); err != nil {
+				t.Fatal(err)
 			}
 			if err := in.ReleaseGCRef(ValueOf(ValAnyRef, token).GCRef()); err != nil {
 				t.Fatal(err)

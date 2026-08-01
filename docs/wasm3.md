@@ -201,7 +201,8 @@ bounds/platform qualification rather than missing official opcode families:
    while preserving snapshot-v5/v6 validation and mixed local-table graphs;
 2. broaden the exact direct/recursive/host/foreign/tail/EH root product to
    polymorphic and foreign reference calls while preserving completed type-checked,
-   collection-safe `GCRef` result retention and host ingress;
+   collection-safe `GCRef` host ingress and bounded 64-token result retention with
+   transactional multi-result rollback;
 3. preserve the completed heterogeneous shared-table attachment, growth, rollback,
    codec, and close-order proofs while extending ownership to unproved foreign shapes;
 4. preserve the completed snapshot-v5 single-table and snapshot-v6 heterogeneous

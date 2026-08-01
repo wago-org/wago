@@ -76,8 +76,17 @@ func TestStagedGCStructPublicTokenBoundedReuseAndRejection(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, exactResults, _ := exactFuncSignatureView(in.c.Funcs[0], in.c.Types)
-	if _, issueErr := store.issueGCRef(in, ref, exactResults[0]); issueErr == nil || !strings.Contains(issueErr.Error(), "one live token") {
-		t.Fatalf("second live GC token error = %v", issueErr)
+	secondToken, issueErr := store.issueGCRef(in, ref, exactResults[0])
+	if issueErr != nil {
+		t.Fatalf("second live GC token: %v", issueErr)
+	}
+	secondRef := GCRef{token: secondToken}
+	_, secondEntry := issueStagedGCStructToken(t, in)
+	if secondEntry.slot == firstEntry.slot {
+		t.Fatalf("simultaneous public GC tokens alias root slot %d", firstEntry.slot)
+	}
+	if err := in.ReleaseGCRef(GCRef{token: secondEntry.token}); err != nil {
+		t.Fatal(err)
 	}
 
 	otherCompiled, other := instantiateStagedGCStructBasic(t, GCConfig{})
@@ -93,14 +102,17 @@ func TestStagedGCStructPublicTokenBoundedReuseAndRejection(t *testing.T) {
 		t.Fatalf("stale token release error = %v", err)
 	}
 
-	second, secondEntry := issueStagedGCStructToken(t, in)
-	if secondEntry.slot != firstEntry.slot {
-		t.Fatalf("public GC root slot grew from %d to %d instead of reusing its bounded slot", firstEntry.slot, secondEntry.slot)
+	third, thirdEntry := issueStagedGCStructToken(t, in)
+	if thirdEntry.slot != firstEntry.slot {
+		t.Fatalf("public GC root slot grew from %d to %d instead of reusing its bounded slot", firstEntry.slot, thirdEntry.slot)
 	}
-	if second.token == first.token {
+	if third.token == first.token {
 		t.Fatal("released GC token was reused without a generation/random identity change")
 	}
-	if err := in.ReleaseGCRef(second); err != nil {
+	if err := in.ReleaseGCRef(secondRef); err != nil {
+		t.Fatal(err)
+	}
+	if err := in.ReleaseGCRef(third); err != nil {
 		t.Fatal(err)
 	}
 }

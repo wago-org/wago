@@ -88,12 +88,16 @@ and stress coverage.
 
 The synchronous helper boundary is capped at 64 parameter/result slots. A lazy
 per-instance `gcPublicState` includes one mutex-protected 63-value constructor
-scratch, 64 reusable host-ingress root slots, a bounded direct native-frame/root-chain
-adapter, and the generic-global root mapping plus cross-code-owner identity (2,672
-bytes total on amd64), avoiding per-constructor, per-root-publication, and
+scratch, 64 reusable host-result roots, 64 reusable host-ingress roots, a bounded
+direct native-frame/root-chain adapter, and the generic-global root mapping plus
+cross-code-owner identity (3,440 bytes total on amd64); each live result token adds
+one 48-byte `gcRefTokenEntry` map value plus map overhead. The fixed state avoids
+per-constructor, per-root-publication, and
 per-boundary-collection Go allocations. On August 1, 2026, warmed same-domain
 `GCRef` ingress measured 0 Go allocations per call after its first checked root
-slot was created. On July 31, 2026, five 500 ms samples of `BenchmarkGCArrayV128Set` measured 439.5-476.8 ns/op
+slot was created. Five benchmark samples of issue/use/release measured 574.1-584.8
+ns/op for the basic struct product and 688.8-697.3 ns/op for the fixed numeric array
+product, both at 0 B/op and 0 allocs/op. On July 31, 2026, five 500 ms samples of `BenchmarkGCArrayV128Set` measured 439.5-476.8 ns/op
 with 0 B/op and 0 allocs/op on the Ryzen 7 8845HS host. The path includes
 safe-boundary collection before each invocation and a parked helper transition;
 a direct JIT object-access path remains a future optimization.
@@ -1997,11 +2001,14 @@ Tests exercise tiny nurseries, collect-every-alloc, exact scanning, cycles, root
   roots and checked slots preserve barrier/card state. Multiple heterogeneous
   imported/exported GC tables participate with direct indexed alias roots,
   growth/close coverage, and attachment rollback.
-- Generic struct/array results may be retained as one opaque `GCRef` token per
-  producer. The token roots the object, retains exact Runtime/store and producer
-  ownership after producer close, rejects stale/cross-producer release, and must be
-  released explicitly. Non-null tokens re-enter only the exact collector domain after
-  structural subtype validation. Up to 64 reusable checked argument slots keep staged
+- Generic struct/array results may be retained as up to 64 opaque `GCRef` tokens per
+  producer. Each token has an independent checked root, retains exact Runtime/store
+  and producer ownership after producer close, rejects stale/cross-producer release,
+  reuses released slots without reusing token identity, and must be released explicitly.
+  Multi-result translation rolls back every token issued by the failing result boundary,
+  so a capacity or validation error cannot strand an unreachable retained object.
+  Non-null tokens re-enter only the exact collector domain after structural subtype
+  validation. Up to 64 reusable checked argument slots keep staged
   values rooted until return, including concurrent release after staging; shared-domain
   collector mutation is serialized independently of parked host transitions. Untyped
   `uint64` values are never accepted as compact collector handles.

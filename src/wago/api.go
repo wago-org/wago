@@ -4091,7 +4091,22 @@ func (in *Instance) translatePublicReferenceResults(subject string, values []uin
 	return in.translatePublicReferenceResultsMode(subject, values, types, exact, false)
 }
 
-func (in *Instance) translatePublicReferenceResultsMode(subject string, values []uint64, types []ValType, exact []ValueTypeDescriptor, attachedResult bool) error {
+func (in *Instance) translatePublicReferenceResultsMode(subject string, values []uint64, types []ValType, exact []ValueTypeDescriptor, attachedResult bool) (err error) {
+	var issuedGCRefs [gcPublicSlotLimit]struct {
+		store *referenceStore
+		token uint64
+	}
+	issuedGCRefCount := 0
+	defer func() {
+		if err == nil {
+			return
+		}
+		for i := issuedGCRefCount - 1; i >= 0; i-- {
+			if releaseErr := issuedGCRefs[i].store.releaseGCRef(in, issuedGCRefs[i].token); releaseErr != nil {
+				err = fmt.Errorf("%w; rollback GC result token: %v", err, releaseErr)
+			}
+		}
+	}()
 	slot := 0
 	for i, typ := range types {
 		if typ == ValFuncRef {
@@ -4195,6 +4210,11 @@ func (in *Instance) translatePublicReferenceResultsMode(subject string, values [
 					clear(values)
 					return fmt.Errorf("%s: own non-null anyref result %d: %w", subject, i, err)
 				}
+				issuedGCRefs[issuedGCRefCount] = struct {
+					store *referenceStore
+					token uint64
+				}{store: store, token: token}
+				issuedGCRefCount++
 				values[slot] = token
 			}
 		}

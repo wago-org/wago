@@ -79,11 +79,12 @@ type funcrefTokenEntry struct {
 }
 
 type gcRefTokenEntry struct {
-	token uint64
-	ref   gc.Ref
-	slot  uint32
-	exact ValueTypeDescriptor
-	owner *Instance
+	token      uint64
+	ref        gc.Ref
+	slot       uint32
+	ownerIndex uint8
+	exact      ValueTypeDescriptor
+	owner      *Instance
 }
 
 const (
@@ -305,17 +306,20 @@ func (r *gcNativeFrameRoots) rangeChain(fn func(gc.RootSlot) bool, sink gc.RootR
 	}
 }
 
+const gcPublicSlotLimit = 64
+
 // gcPublicState serializes public-token, generic helper, and boundary-collection
-// access. One reusable result slot bounds each producer to one live public token;
-// fixed argument-root slots keep token ingress allocation-free after first use.
+// access. Fixed result and argument slots bound host-held references while keeping
+// token egress and ingress allocation-free after first use.
 type gcPublicState struct {
 	mu                sync.Mutex
-	token             uint64
-	slot              uint32
-	slotCreated       bool
+	resultTokenCount  uint8
+	resultRootsMade   uint8
+	resultTokens      [gcPublicSlotLimit]uint64
+	resultRootSlots   [gcPublicSlotLimit]uint32
 	argumentRootCount uint8
 	argumentRootsMade uint8
-	argumentRootSlots [64]uint32
+	argumentRootSlots [gcPublicSlotLimit]uint32
 	// values is the bounded synchronous-helper constructor scratch. Collector
 	// access is serialized by mu, so struct.new and array.new_fixed reuse it
 	// without per-allocation Go heap traffic.
@@ -926,8 +930,15 @@ func (s *referenceStore) issueGCRef(source *Instance, ref gc.Ref, required Value
 	state := source.publicGCState()
 	state.mu.Lock()
 	defer state.mu.Unlock()
-	if state.token != 0 {
-		return 0, fmt.Errorf("public GC result owner already has one live token")
+	if int(state.resultTokenCount) >= len(state.resultTokens) {
+		return 0, fmt.Errorf("public GC result token count exceeds %d", len(state.resultTokens))
+	}
+	ownerIndex := uint8(0)
+	for ownerIndex < state.resultRootsMade && state.resultTokens[ownerIndex] != 0 {
+		ownerIndex++
+	}
+	if int(ownerIndex) >= len(state.resultTokens) {
+		return 0, fmt.Errorf("public GC result token count exceeds %d", len(state.resultTokens))
 	}
 	if source.gc == nil {
 		return 0, fmt.Errorf("public GC result has no live collector")
@@ -969,20 +980,26 @@ func (s *referenceStore) issueGCRef(source *Instance, ref gc.Ref, required Value
 		}
 	}()
 
-	if !state.slotCreated {
-		slot, slotErr := source.gc.NewCheckedGlobalSlot(ref)
+	var slot uint32
+	if ownerIndex == state.resultRootsMade {
+		var slotErr error
+		slot, slotErr = source.gc.NewCheckedGlobalSlot(ref)
 		if slotErr != nil {
 			return 0, fmt.Errorf("root public GC result: %w", slotErr)
 		}
-		state.slot, state.slotCreated = slot, true
-	} else if err := source.gc.SetGlobalSlot(state.slot, ref); err != nil {
-		return 0, fmt.Errorf("root public GC result: %w", err)
+		state.resultRootSlots[ownerIndex] = slot
+		state.resultRootsMade++
+	} else {
+		slot = state.resultRootSlots[ownerIndex]
+		if err := source.gc.SetGlobalSlot(slot, ref); err != nil {
+			return 0, fmt.Errorf("root public GC result: %w", err)
+		}
 	}
 
 	s.mu.Lock()
 	if _, registered = s.instances[source]; !registered {
 		s.mu.Unlock()
-		_ = source.gc.SetGlobalSlot(state.slot, gc.Null())
+		_ = source.gc.SetGlobalSlot(slot, gc.Null())
 		return 0, fmt.Errorf("public GC result producer is closed")
 	}
 	token, err := s.newTokenLocked()
@@ -990,12 +1007,13 @@ func (s *referenceStore) issueGCRef(source *Instance, ref gc.Ref, required Value
 		if s.gcByToken == nil {
 			s.gcByToken = make(map[uint64]gcRefTokenEntry)
 		}
-		s.gcByToken[token] = gcRefTokenEntry{token: token, ref: ref, slot: state.slot, exact: exact, owner: source}
-		state.token = token
+		s.gcByToken[token] = gcRefTokenEntry{token: token, ref: ref, slot: slot, ownerIndex: ownerIndex, exact: exact, owner: source}
+		state.resultTokens[ownerIndex] = token
+		state.resultTokenCount++
 	}
 	s.mu.Unlock()
 	if err != nil {
-		_ = source.gc.SetGlobalSlot(state.slot, gc.Null())
+		_ = source.gc.SetGlobalSlot(slot, gc.Null())
 		return 0, err
 	}
 	rollbackRoot = false
@@ -1026,7 +1044,8 @@ func (s *referenceStore) releaseGCRef(source *Instance, token uint64) error {
 	state.mu.Lock()
 	s.mu.Lock()
 	entry, ok = s.gcByToken[token]
-	if !ok || entry.owner != source || state.token != token || !state.slotCreated || state.slot != entry.slot {
+	ownerIndex := entry.ownerIndex
+	if !ok || entry.owner != source || state.resultTokenCount == 0 || ownerIndex >= state.resultRootsMade || state.resultTokens[ownerIndex] != token || state.resultRootSlots[ownerIndex] != entry.slot {
 		s.mu.Unlock()
 		state.mu.Unlock()
 		return fmt.Errorf("invalid or stale GC reference token")
@@ -1042,7 +1061,8 @@ func (s *referenceStore) releaseGCRef(source *Instance, token uint64) error {
 		return fmt.Errorf("release GC reference token: %w", err)
 	}
 	delete(s.gcByToken, token)
-	state.token = 0
+	state.resultTokens[ownerIndex] = 0
+	state.resultTokenCount--
 	s.mu.Unlock()
 	state.mu.Unlock()
 	source.releaseResourceRoot()
@@ -1115,7 +1135,8 @@ func (s *referenceStore) stageGCRefArgument(target *Instance, token uint64, requ
 	ownerRecord := s.instances[owner]
 	targetRecord := s.instances[target]
 	s.mu.Unlock()
-	if !ok || current.owner != owner || current.ref != entry.ref || current.slot != entry.slot || ownerState.token != token || !ownerState.slotCreated || ownerState.slot != entry.slot {
+	ownerIndex := current.ownerIndex
+	if !ok || current.owner != owner || current.ref != entry.ref || current.slot != entry.slot || ownerIndex >= ownerState.resultRootsMade || ownerState.resultTokens[ownerIndex] != token || ownerState.resultRootSlots[ownerIndex] != entry.slot {
 		return gc.Null(), fmt.Errorf("invalid or stale GC reference token")
 	}
 	if ownerRecord == nil || ownerRecord.resourcesReleased || targetRecord == nil || targetRecord.resourcesReleased || owner.refStore != s || target.refStore != s || owner.gc == nil || owner.gc != target.gc {
@@ -1385,11 +1406,15 @@ func releaseReferenceEntries(entries referenceTokenEntries) {
 		state := entry.owner.existingPublicGCState()
 		if state != nil {
 			state.mu.Lock()
-			if state.token == entry.token && state.slotCreated && state.slot == entry.slot {
+			ownerIndex := entry.ownerIndex
+			if ownerIndex < state.resultRootsMade && state.resultTokens[ownerIndex] == entry.token && state.resultRootSlots[ownerIndex] == entry.slot {
 				if entry.owner.gc != nil {
 					_ = entry.owner.gc.SetGlobalSlot(entry.slot, gc.Null())
 				}
-				state.token = 0
+				state.resultTokens[ownerIndex] = 0
+				if state.resultTokenCount != 0 {
+					state.resultTokenCount--
+				}
 			}
 			state.mu.Unlock()
 		}

@@ -21,6 +21,7 @@ func gcGenericPublicTokenModule() []byte {
 	arrayRead := []byte{0x60, 0x01, 0x64, 0x01, 0x01, 0x7f}
 	pairRead := []byte{0x60, 0x02, 0x64, 0x00, 0x64, 0x00, 0x01, 0x7f}
 	anyRead := []byte{0x60, 0x01, 0x6e, 0x01, 0x7f}
+	pairResult := []byte{0x60, 0x00, 0x02, 0x64, 0x00, 0x64, 0x01}
 	newStruct := []byte{0x00, 0x41, 0x2a, 0xfb, 0x00, 0x00, 0x0b}
 	newArray := []byte{0x00, 0x41, 0x07, 0x41, 0x02, 0xfb, 0x06, 0x01, 0x0b}
 	readPrefix := []byte{0x01, 0x01, 0x7f,
@@ -39,9 +40,10 @@ func gcGenericPublicTokenModule() []byte {
 		0x20, 0x01, 0xfb, 0x02, 0x00, 0x00,
 		0x6a, 0x0b)
 	readAny := append(append([]byte(nil), readPrefix...), 0x20, 0x00, 0xd1, 0x0b)
+	newPair := []byte{0x00, 0x41, 0x2a, 0xfb, 0x00, 0x00, 0x41, 0x07, 0x41, 0x02, 0xfb, 0x06, 0x01, 0x0b}
 	return wasmtest.Module(
-		wasmtest.Section(1, wasmtest.Vec(structType, arrayType, structResult, arrayResult, structRead, arrayRead, pairRead, anyRead)),
-		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2), wasmtest.ULEB(3), wasmtest.ULEB(4), wasmtest.ULEB(5), wasmtest.ULEB(6), wasmtest.ULEB(4), wasmtest.ULEB(7))),
+		wasmtest.Section(1, wasmtest.Vec(structType, arrayType, structResult, arrayResult, structRead, arrayRead, pairRead, anyRead, pairResult)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2), wasmtest.ULEB(3), wasmtest.ULEB(4), wasmtest.ULEB(5), wasmtest.ULEB(6), wasmtest.ULEB(4), wasmtest.ULEB(7), wasmtest.ULEB(8))),
 		wasmtest.Section(7, wasmtest.Vec(
 			wasmtest.ExportEntry("new_struct", byte(wasm.ExternFunc), 0),
 			wasmtest.ExportEntry("new_array", byte(wasm.ExternFunc), 1),
@@ -50,6 +52,7 @@ func gcGenericPublicTokenModule() []byte {
 			wasmtest.ExportEntry("read_pair", byte(wasm.ExternFunc), 4),
 			wasmtest.ExportEntry("read_struct_fast", byte(wasm.ExternFunc), 5),
 			wasmtest.ExportEntry("read_any", byte(wasm.ExternFunc), 6),
+			wasmtest.ExportEntry("new_pair", byte(wasm.ExternFunc), 7),
 		)),
 		wasmtest.Section(10, wasmtest.Vec(
 			append(wasmtest.ULEB(uint32(len(newStruct))), newStruct...),
@@ -59,6 +62,7 @@ func gcGenericPublicTokenModule() []byte {
 			append(wasmtest.ULEB(uint32(len(readPair))), readPair...),
 			append(wasmtest.ULEB(uint32(len(readStructFast))), readStructFast...),
 			append(wasmtest.ULEB(uint32(len(readAny))), readAny...),
+			append(wasmtest.ULEB(uint32(len(newPair))), newPair...),
 		)),
 	)
 }
@@ -133,10 +137,12 @@ func TestGenericGCResultsIssueBoundedHostTokens(t *testing.T) {
 						in.Close()
 						t.Fatalf("cleared argument roots = %+v", state)
 					}
-					if _, err := in.Invoke("new_array"); err == nil || !strings.Contains(err.Error(), "already has one live token") {
+					values, err := in.Call(context.Background(), "new_array")
+					if err != nil || len(values) != 1 || values[0].Type() != ValAnyRef || values[0].GCRef().IsNull() || values[0].Bits()>>32 == 0 {
 						in.Close()
-						t.Fatalf("second live generic token error = %v", err)
+						t.Fatalf("second live new_array = %v, %v; want typed opaque token", values, err)
 					}
+					arrayRef := values[0].GCRef()
 					if err := in.ReleaseGCRef(structRef); err != nil {
 						in.Close()
 						t.Fatal(err)
@@ -145,12 +151,6 @@ func TestGenericGCResultsIssueBoundedHostTokens(t *testing.T) {
 						in.Close()
 						t.Fatalf("stale GC token ingress = %v", err)
 					}
-					values, err := in.Call(context.Background(), "new_array")
-					if err != nil || len(values) != 1 || values[0].Type() != ValAnyRef || values[0].GCRef().IsNull() || values[0].Bits()>>32 == 0 {
-						in.Close()
-						t.Fatalf("new_array = %v, %v; want typed opaque token", values, err)
-					}
-					arrayRef := values[0].GCRef()
 					if got, err := in.Call(context.Background(), "read_array", ValueGCRef(arrayRef)); err != nil || len(got) != 1 || got[0].I32() != 7 {
 						in.Close()
 						t.Fatalf("read_array Call = %v, %v", got, err)
@@ -167,6 +167,106 @@ func TestGenericGCResultsIssueBoundedHostTokens(t *testing.T) {
 				})
 			}
 		})
+	}
+}
+
+func TestGenericGCMultiResultIssuesIndependentTokens(t *testing.T) {
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcGenericPublicTokenModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	in, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 128, TinyBlockBytes: 16, TinyCollectEveryAlloc: true, VerifyAfterCollect: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	values, err := in.Call(context.Background(), "new_pair")
+	if err != nil || len(values) != 2 || values[0].GCRef().IsNull() || values[1].GCRef().IsNull() || values[0].Bits() == values[1].Bits() {
+		t.Fatalf("new_pair = %v, %v", values, err)
+	}
+	if got, err := in.Call(context.Background(), "read_struct", ValueGCRef(values[0].GCRef())); err != nil || len(got) != 1 || got[0].I32() != 42 {
+		t.Fatalf("read pair struct = %v, %v", got, err)
+	}
+	if got, err := in.Call(context.Background(), "read_array", ValueGCRef(values[1].GCRef())); err != nil || len(got) != 1 || got[0].I32() != 7 {
+		t.Fatalf("read pair array = %v, %v", got, err)
+	}
+	if err := in.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if !in.hasPhysicalResources() {
+		t.Fatal("two live result tokens did not retain producer resources")
+	}
+	if err := in.ReleaseGCRef(values[1].GCRef()); err != nil {
+		t.Fatal(err)
+	}
+	if !in.hasPhysicalResources() {
+		t.Fatal("first of two releases dropped producer resources")
+	}
+	if err := in.ReleaseGCRef(values[0].GCRef()); err != nil {
+		t.Fatal(err)
+	}
+	if in.hasPhysicalResources() {
+		t.Fatal("last result-token release retained producer resources")
+	}
+}
+
+func TestGenericGCResultTokenLimitAndReuse(t *testing.T) {
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcGenericPublicTokenModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	in, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{VerifyAfterCollect: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	refs := make([]GCRef, gcPublicSlotLimit)
+	for i := range refs {
+		bits, err := in.Invoke("new_struct")
+		if err != nil || len(bits) != 1 {
+			t.Fatalf("issue token %d = %v, %v", i, bits, err)
+		}
+		refs[i] = ValueOf(ValAnyRef, bits[0]).GCRef()
+	}
+	state := in.existingPublicGCState()
+	if state == nil || int(state.resultTokenCount) != gcPublicSlotLimit || int(state.resultRootsMade) != gcPublicSlotLimit {
+		t.Fatalf("full result-token state = %+v", state)
+	}
+	if _, err := in.Invoke("new_struct"); err == nil || !strings.Contains(err.Error(), "exceeds 64") {
+		t.Fatalf("65th live result token error = %v", err)
+	}
+	const released = 17
+	releasedSlot := state.resultRootSlots[released]
+	if err := in.ReleaseGCRef(refs[released]); err != nil {
+		t.Fatal(err)
+	}
+	refs[released] = GCRef{}
+	if !in.gc.GlobalSlot(releasedSlot).IsNull() {
+		t.Fatal("released result root remains non-null")
+	}
+	if _, err := in.Invoke("new_pair"); err == nil || !strings.Contains(err.Error(), "exceeds 64") {
+		t.Fatalf("two-result capacity error = %v", err)
+	}
+	if state.resultTokenCount != gcPublicSlotLimit-1 || !in.gc.GlobalSlot(releasedSlot).IsNull() {
+		t.Fatalf("failed multi-result rollback state = %+v", state)
+	}
+	bits, err := in.Invoke("new_array")
+	if err != nil || len(bits) != 1 {
+		t.Fatalf("reissue into released slot = %v, %v", bits, err)
+	}
+	refs[released] = ValueOf(ValAnyRef, bits[0]).GCRef()
+	if state.resultTokenCount != gcPublicSlotLimit || state.resultRootsMade != gcPublicSlotLimit || state.resultRootSlots[released] != releasedSlot {
+		t.Fatalf("reused result-token state = %+v", state)
+	}
+	for i, ref := range refs {
+		if err := in.ReleaseGCRef(ref); err != nil {
+			t.Fatalf("release token %d: %v", i, err)
+		}
+	}
+	if state.resultTokenCount != 0 {
+		t.Fatalf("live result token count = %d, want 0", state.resultTokenCount)
 	}
 }
 
