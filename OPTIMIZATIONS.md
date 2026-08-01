@@ -62,6 +62,16 @@ The stripped TinyGo release grows 1,985,784→1,999,256 bytes for this productio
 slice (**+13,472, +0.68%**). The subsequent bounded foreign-clone API brings the
 combined candidate to 2,000,232 bytes (**+976 bytes further**).
 
+**Release unwind-table removal (2026-08-01).** TinyGo `-no-debug` Linux
+releases do not use DWARF `.eh_frame` data for panic text or wago's native
+trap/signal path. Removing that allocated section during the existing strip step
+shrinks the full CLI from **2,000,088 to 1,741,968 bytes** (**−258,120,
+−12.9%**) and removes the same mapped read-only bytes. A no-unwind panic probe
+still prints its message and exits through the expected abort path; Core 3 `fib`
+and malformed-module diagnostics are unchanged. Across 200 randomized cached
+`wago --version` subprocesses per binary, startup is flat within noise (median
+898.2 vs 899.4 µs), so this is a pure footprint win with no measured speed cost.
+
 **Dense byte-backed section tracking (2026-08-01).** The byte-backed decoder
 now tracks the standard-section ID set in one `uint16` instead of a hash map. A
 13-section module decodes in **348.0–359.9 ns/op** versus **796.9–809.5 ns/op**,
@@ -201,8 +211,9 @@ release falls 1,919,680→1,918,600 bytes (**−1,080**; gzip-9 878,931→878,29
 bytes. Exact trap messages, 320-byte storage, and reserved/non-reserved names
 are test-locked.
 
-**Campaign total:** from `19d000ba` through fixed runtime metadata, the stripped
-TinyGo release shrinks 1,983,792→1,918,600 bytes (**−65,192, −3.3%**), gzip-9
+**Earlier metadata campaign total:** from `19d000ba` through fixed runtime
+metadata, the stripped TinyGo release shrank 1,983,792→1,918,600 bytes
+(**−65,192, −3.3%**), gzip-9
 shrinks 899,459→878,298 bytes, and `.bss` shrinks 133,888→5,824 bytes
 (**−128,064, −95.6%**). The latest stable randomized subprocess median for
 TinyGo `wago version` is about 0.4 ms versus the pre-campaign 0.549 ms;

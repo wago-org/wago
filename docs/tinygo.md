@@ -84,7 +84,9 @@ make tinygo-test                   # runtime + public-API suites under TinyGo
 ## Binary size
 
 Historical monolithic `cli/wago`, linux/amd64 measurements (remeasure the split
-CLI and runtime artifacts independently):
+CLI and runtime artifacts independently). Current Linux release packaging also
+removes TinyGo's unused `.eh_frame` and `.eh_frame_hdr` sections from each Tiny
+runtime asset after linking; manager and Normal runtime artifacts are unchanged:
 
 | build | size |
 |---|---:|
