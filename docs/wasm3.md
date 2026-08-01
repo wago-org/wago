@@ -1,6 +1,6 @@
 # WebAssembly 3.0 implementation status
 
-Last updated: 2026-07-31.
+Last updated: 2026-08-01.
 
 This document is the implementation ledger for the WebAssembly Core 3.0 effort.
 The primary product target is `linux/amd64`. A row is not complete merely because
@@ -169,8 +169,8 @@ opcode families:
 
 1. harden Runtime GC-domain lifecycle, rollback, multi-hop foreign-frame walking,
    codec reload, snapshot-v4 validation, mixed graphs, and native arm64 execution;
-2. publish exact arm64 safepoints/callsites and walk parked native frames before
-   enabling collection during arm64 invocations;
+2. broaden the first exact arm64 local-root safepoints to hidden operands,
+   callsites, recursive/foreign frame walking, globals, tables, and EH;
 3. extend same-domain ownership to imported/exported GC globals and tables with
    exact roots, barriers, aliases, rollback, and close ordering;
 4. extend snapshot-v4 roots to local GC tables and make restore publication fully
