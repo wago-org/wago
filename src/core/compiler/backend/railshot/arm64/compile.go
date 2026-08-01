@@ -258,7 +258,9 @@ type fn struct {
 	moduleGlobal []bool
 
 	// Control-flow state (Phase 3).
-	ctrl                []ctrlFrame // open block/loop/if frames; ctrl[0] is the function frame
+	ctrl                []ctrlFrame // open block/loop/if/try frames; ctrl[0] is the function frame
+	ehTryDepth          int         // live reachable try_table records; bounded by maxEHTryRecords
+	ehRootCount         int         // fixed exception-root records assigned in this function
 	branchHints         []wasm.BranchHint
 	branchHintLocalDecl uint32
 	branchHintUnlikely  bool
@@ -313,6 +315,7 @@ type fn struct {
 	gcArrayHelpers  bool
 	gcFrameRoots    *shared.GCFrameRootPlan
 	gcCallsiteIndex int
+	moduleEH        bool // reserve the handler register and fixed EH frame area
 
 	// stats collects per-function codegen counters (docs/no-ir-plan.md P1). nil
 	// unless the caller requested collection, in which case every counter method
@@ -478,7 +481,21 @@ const (
 )
 
 func (f *fn) localOff(i int) int32 { return int32(frameHdrBytes + 8*f.localSlot[i]) }
-func (f *fn) spillOff(k int) int32 { return int32(frameHdrBytes + 8*f.nLocalSlots + 8*k) }
+func (f *fn) ehFrameBytes() int {
+	if f.moduleEH {
+		return (maxEHTryRecords*ehRecordSlots + maxEHRootRecords*ehRootSlots) * 8
+	}
+	return 0
+}
+func (f *fn) ehRecordOff(index int) int32 {
+	return int32(frameHdrBytes + 8*f.nLocalSlots + index*ehRecordSlots*8)
+}
+func (f *fn) ehRootOff(index int) int32 {
+	return int32(frameHdrBytes + 8*f.nLocalSlots + maxEHTryRecords*ehRecordSlots*8 + index*ehRootSlots*8)
+}
+func (f *fn) spillOff(k int) int32 {
+	return int32(frameHdrBytes + 8*f.nLocalSlots + f.ehFrameBytes() + 8*k)
+}
 
 // frameSize is a multiple of 16: AArch64 requires SP 16-byte aligned at all times.
 // Unlike amd64 there is no "+8 bias" — a BL writes the return address into LR
@@ -489,11 +506,11 @@ func (f *fn) frameSize() int {
 	if f.frameElided {
 		return 0
 	}
-	return align16(frameHdrBytes + 8*f.nLocalSlots + 8*f.maxSpill)
+	return align16(frameHdrBytes + 8*f.nLocalSlots + f.ehFrameBytes() + 8*f.maxSpill)
 }
 
 func (f *fn) elideRegisterOnlyFrame() bool {
-	if !f.singleRegResult || f.usesCalls || f.maxSpill != 0 || len(f.localType) != f.nLocals {
+	if f.moduleEH || !f.singleRegResult || f.usesCalls || f.maxSpill != 0 || len(f.localType) != f.nLocals {
 		return false
 	}
 	// The frame reserves slots for locals and operand spills. A call-free leaf with
@@ -944,6 +961,7 @@ func computeModuleHints(m *wasm.Module, nGlobals, importedFuncs int) ([]funcHint
 	if nGlobals > 0 && n > 0 {
 		agg = make([]int64, nGlobals)
 	}
+	moduleEH := m.TagCount() != 0
 	localAt := 0
 	for i := range m.Code {
 		nLocals := localCounts[i]
@@ -956,12 +974,18 @@ func computeModuleHints(m *wasm.Module, nGlobals, importedFuncs int) ([]funcHint
 			return nil, nil, fmt.Errorf("function %d hints: %w", i, err)
 		}
 		localAt += nLocals
+		moduleEH = moduleEH || h.moduleEH
 		allHints[i] = h
 		for g := 0; g < nGlobals; g++ {
 			agg[g] += int64(h.globalScore[g])
 		}
 	}
-	immutableLocalTable := immutableLocalTableEnabled && importedFuncs == 0 &&
+	if moduleEH {
+		for i := range allHints {
+			allHints[i].moduleEH = true
+		}
+	}
+	immutableLocalTable := immutableLocalTableEnabled &&
 		m.ImportedTableCount() == 0 && len(m.Tables) == 1 && !moduleExportsTable(m)
 	if immutableLocalTable {
 		for i := range allHints {
@@ -1217,7 +1241,7 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, int
 	sc.asm.DenseIdxDisp = hints.memOps >= 8
 	sc.asm.Grow(asmCapForBody(len(c.BodyBytes)))
 	globalIdx := m.ImportedFuncCount() + funcIdx
-	f := &fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, transient: sc.transient, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: customInstructions, nParams: len(ft.Params), nLocals: nLocals, guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, gcStructHelpers: gcStructHelpers, gcArrayHelpers: gcArrayHelpers, gcFrameRoots: gcFrameRoots, regMerge: regMergeEnabled, globalCellReg: regNone, memSizeReg: regNone, immutableLocalTable: hints.immutableLocalTable, immutableTableType: hints.immutableTableType, immutableTableTyped: hints.immutableTableTyped, monomorphicTarget: hints.monomorphicTarget, importBindings: importBindings, stats: stats, branchHints: m.BranchHintsForFunc(uint32(globalIdx)), branchHintLocalDecl: c.LocalDeclBytes, calleePreservesPins: calleePreservesPins}
+	f := &fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, transient: sc.transient, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: customInstructions, nParams: len(ft.Params), nLocals: nLocals, guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, gcStructHelpers: gcStructHelpers, gcArrayHelpers: gcArrayHelpers, gcFrameRoots: gcFrameRoots, moduleEH: hints.moduleEH, regMerge: regMergeEnabled, globalCellReg: regNone, memSizeReg: regNone, immutableLocalTable: hints.immutableLocalTable, immutableTableType: hints.immutableTableType, immutableTableTyped: hints.immutableTableTyped, monomorphicTarget: hints.monomorphicTarget, importBindings: importBindings, stats: stats, branchHints: m.BranchHintsForFunc(uint32(globalIdx)), branchHintLocalDecl: c.LocalDeclBytes, calleePreservesPins: calleePreservesPins}
 	defer func() {
 		sc.ctrl = f.ctrl
 		sc.transient = f.transient
@@ -1273,6 +1297,12 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, int
 	}
 	regABI := regABIEnabled && sigFitsRegABI(ft)
 	gpPool := gpPinPool(regABI, f.nParams, !hasCall)
+	if f.moduleEH {
+		// X22 carries the active handler across every local call in an
+		// exception-enabled module. Cross-instance call paths save it explicitly.
+		gpPool = withoutReg(gpPool, ehReg)
+		f.reserved = f.reserved.add(ehReg)
+	}
 	if leafScratchPinsEnabled && !hasCall {
 		// X12/X13 are fixed only by loop-region promotion, and X14 only by
 		// bulk/table helpers. A straight-line scalar leaf can spend them on three

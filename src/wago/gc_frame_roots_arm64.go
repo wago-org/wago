@@ -5,8 +5,10 @@ package wago
 import (
 	"math"
 
+	railarm64 "github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64"
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"github.com/wago-org/wago/src/core/nativeabi"
 	"github.com/wago-org/wago/src/core/runtime/abi"
 )
 
@@ -28,13 +30,34 @@ func newGCFrameRootPlan(m *wasm.Module, genericGC bool) *shared.GCModuleFrameRoo
 			return nil
 		}
 	}
+	funcImport := uint32(0)
 	for i := range m.Imports {
-		if m.Imports[i].Type.Kind != wasm.ExternFunc {
+		switch m.Imports[i].Type.Kind {
+		case wasm.ExternFunc:
+			ft, ok := m.FuncSignature(funcImport)
+			funcImport++
+			if !ok || !arm64GCFrameCallABI(m, ft) {
+				return nil
+			}
+		case wasm.ExternTag:
+			// Tags carry no independently rooted instance storage.
+		default:
 			return nil
 		}
-		ft, ok := m.FuncSignature(uint32(i))
-		if !ok || !arm64GCFrameCallABI(m, ft) {
+	}
+	ehMaps, err := railarm64.BuildExceptionRootMaps(m)
+	if err != nil {
+		return nil
+	}
+	fixedRoots := make([][]uint32, len(m.Code))
+	for i := range ehMaps {
+		if int(ehMaps[i].LocalFunction) >= len(fixedRoots) {
 			return nil
+		}
+		for _, slot := range ehMaps[i].Slots {
+			if slot.Kind == nativeabi.RootGCRef {
+				fixedRoots[ehMaps[i].LocalFunction] = append(fixedRoots[ehMaps[i].LocalFunction], slot.Offset)
+			}
 		}
 	}
 	module := &shared.GCModuleFrameRootPlan{Functions: make([]*shared.GCFrameRootPlan, len(m.Code))}
@@ -49,7 +72,7 @@ func newGCFrameRootPlan(m *wasm.Module, genericGC bool) *shared.GCModuleFrameRoo
 				return nil
 			}
 		}
-		plan := &shared.GCFrameRootPlan{Candidate: true, Exact: true, SafepointBase: safepointBase}
+		plan := &shared.GCFrameRootPlan{Candidate: true, Exact: true, SafepointBase: safepointBase, FixedOffsets: fixedRoots[function]}
 		slot, local := 0, uint32(0)
 		add := func(t wasm.ValType) bool {
 			if arm64CollectorFrameRefType(m, t) {
@@ -82,12 +105,16 @@ func newGCFrameRootPlan(m *wasm.Module, genericGC bool) *shared.GCModuleFrameRoo
 		if !arm64GCFrameBodySafe(m, m.Code[function].BodyBytes, collectorTable) {
 			return nil
 		}
-		liveMasks, err := gcFrameLocalLiveness(m.Code[function].BodyBytes, plan.LocalIndexes, false)
-		if err != nil || uint64(safepointBase)+uint64(len(liveMasks)) > uint64(shared.GCSafepointIDMax) {
-			return nil
+		var liveMasks, callMasks []uint64
+		if arm64BodyUsesEH(m.Code[function].BodyBytes) {
+			liveMasks, callMasks, err = arm64GCFrameConservativeMasks(m.Code[function].BodyBytes, len(plan.LocalIndexes))
+		} else {
+			liveMasks, err = gcFrameLocalLiveness(m.Code[function].BodyBytes, plan.LocalIndexes, false)
+			if err == nil {
+				callMasks, err = gcFrameLocalLiveness(m.Code[function].BodyBytes, plan.LocalIndexes, true)
+			}
 		}
-		callMasks, err := gcFrameLocalLiveness(m.Code[function].BodyBytes, plan.LocalIndexes, true)
-		if err != nil {
+		if err != nil || uint64(safepointBase)+uint64(len(liveMasks)) > uint64(shared.GCSafepointIDMax) {
 			return nil
 		}
 		plan.LiveLocalMasks = liveMasks
@@ -244,11 +271,59 @@ func arm64GCFrameBodySafe(m *wasm.Module, body []byte, collectorTable bool) bool
 					return false
 				}
 			}
-		case 0x06, 0x07, 0x08, 0x09, 0x0a, 0x18, 0x19, 0x1f: // EH
+		case 0x06, 0x07, 0x09, 0x18, 0x19: // legacy EH forms are not lowered
 			return false
 		}
 	}
 	return true
+}
+
+func arm64BodyUsesEH(body []byte) bool {
+	r := wasm.NewReader(body)
+	for r.HasNext() {
+		op, err := r.Byte()
+		if err != nil {
+			return true
+		}
+		switch op {
+		case 0x06, 0x07, 0x08, 0x09, 0x0a, 0x18, 0x19, 0x1f:
+			return true
+		}
+		if _, err := wasm.ClassifyInstructionImmediate(r, op); err != nil {
+			return true
+		}
+	}
+	return false
+}
+
+func arm64GCFrameConservativeMasks(body []byte, localRoots int) (allocations, calls []uint64, err error) {
+	var mask uint64
+	if localRoots >= 64 {
+		mask = ^uint64(0)
+	} else if localRoots > 0 {
+		mask = uint64(1)<<uint(localRoots) - 1
+	}
+	r := wasm.NewReader(body)
+	for r.HasNext() {
+		op, readErr := r.Byte()
+		if readErr != nil {
+			return nil, nil, readErr
+		}
+		imm, readErr := wasm.ClassifyInstructionImmediate(r, op)
+		if readErr != nil {
+			return nil, nil, readErr
+		}
+		if op == 0xfb {
+			switch imm.Subopcode {
+			case 0, 1, 6, 7, 8, 9, 10:
+				allocations = append(allocations, mask)
+			}
+		}
+		if op == 0x10 || op == 0x11 || op == 0x14 {
+			calls = append(calls, mask)
+		}
+	}
+	return allocations, calls, nil
 }
 
 func arm64GCFunctionTableMonomorphic(m *wasm.Module) bool {

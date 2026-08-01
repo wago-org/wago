@@ -246,7 +246,14 @@ func (f *fn) returnCall(r *wasm.Reader) error {
 	return nil
 }
 
+func (f *fn) discardEHHandlersForTail() {
+	if f.ehTryDepth != 0 {
+		f.ld64(ehReg, SP, f.ehRecordOff(0)+ehPrevOff)
+	}
+}
+
 func (f *fn) emitTailFrameRelease() {
+	f.discardEHHandlersForTail()
 	at := f.a.Len()
 	f.tailFrameSites = append(f.tailFrameSites, at)
 	f.a.Movz64(X16, 0, 0)
@@ -518,8 +525,8 @@ func (f *fn) returnCallIndirect(r *wasm.Reader) error {
 	if !tailResultABICompatible(f.ft.Results, ft.Results) {
 		return fmt.Errorf("return_call_indirect: type %d result shape differs from caller", typeIdx)
 	}
-	if tableIdx != 0 || !f.immutableLocalTable || f.monomorphicTarget < 0 {
-		return fmt.Errorf("return_call_indirect: arm64 requires one immutable monomorphic local table")
+	if tableIdx != 0 || !f.immutableLocalTable {
+		return fmt.Errorf("return_call_indirect: table %d is not a private immutable local funcref table", tableIdx)
 	}
 	canon, ok := f.m.StructuralTypeKeyChecked(typeIdx)
 	if !ok {
@@ -552,23 +559,36 @@ func (f *fn) returnCallIndirect(r *wasm.Reader) error {
 		f.release(got)
 		f.trapIf(condNE, trapIndirectSig)
 	}
+	home := f.allocReg(maskOf(idx, code))
+	f.ld64(home, idx, runtime.TableEntryHomeLinMemOffset)
+	kind := f.descriptorEntryKind(home, maskOf(idx, code, home))
+	f.stripDescriptorHomeTags(home)
+	f.cmpRR(home, linMemReg, true)
+	f.trapIf(condNE, trapTailUnsupported)
+	registerTail := regABIEnabled && sigFitsRegABI(ft)
+	wantKind := uint32(abi.FuncRefLocalWrapperTagValue)
+	if registerTail {
+		wantKind = uint32(abi.FuncRefInternalTagValue)
+	}
+	f.cmpImm(kind, wantKind, true)
+	f.trapIf(condNE, trapTailUnsupported)
+	f.release(kind)
+	f.release(home)
 	f.pinned = f.pinned.remove(idx)
 	f.release(idx)
+	f.st64(linMemReg, -int32(offSpillRegion), code)
 	f.release(code)
-	target := f.monomorphicTarget
-	if regABIEnabled && sigFitsRegABI(ft) {
-		f.emitTailRegisterJump(ft, func() {
-			site := f.a.Branch()
-			f.relocs = append(f.relocs, callReloc{at: site, target: target, internal: true})
-		})
+	jump := func() {
+		f.ld64(X16, linMemReg, -int32(offSpillRegion))
+		f.a.Br(X16)
+	}
+	if registerTail {
+		f.emitTailRegisterJump(ft, jump)
 	} else {
 		if slots := funcTypeSlots(ft.Params); slots > abi.TailArgsSlots {
 			return fmt.Errorf("return_call_indirect: type %d requires %d wrapper argument slots, limit %d", typeIdx, slots, abi.TailArgsSlots)
 		}
-		f.emitTailWrapperJump(ft, func() {
-			site := f.a.Branch()
-			f.relocs = append(f.relocs, callReloc{at: site, target: target})
-		})
+		f.emitTailWrapperJump(ft, jump)
 	}
 	f.unreachable = true
 	return nil
@@ -1021,12 +1041,12 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 	f.a.LeaSP(X3, f.spillOff(resultSlot)) // results = &slot-width top
 
 	// Preserve the caller's module-invariant registers (linMemReg=linMem, X27=memSize,
-	// X23-X25=module globals) plus one pad (3 STP pairs = 48 bytes → SP stays
-	// 16-aligned for the callee's offset-0 entry, which STP-pushes its own frame
-	// record). BL writes LR (no stack push), so no return-address bias is needed.
+	// X23-X25=module globals), and X22=the active EH record (3 STP pairs =
+	// 48 bytes, so SP stays 16-aligned). An exception-enabled callee inherits X22;
+	// a non-EH callee may use it as a local pin, so restore it on normal return.
 	f.a.StpPre(linMemReg, X24, SP, -16)
 	f.a.StpPre(X25, X23, SP, -16)
-	f.a.StpPre(X27, X9, SP, -16) // X9 = alignment pad
+	f.a.StpPre(X27, ehReg, SP, -16)
 
 	if b.Dynamic {
 		if b.ImportIndex > uint32((1<<31-1-runtime.ImportDispatchCallerContextOffset)/runtime.ImportDispatchEntryBytes) {
@@ -1070,7 +1090,7 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 	if b.Dynamic {
 		f.a.LdpPost(X16, X17, SP, 16) // caller context + saved target
 	}
-	f.a.LdpPost(X27, X9, SP, 16) // X9 = alignment pad
+	f.a.LdpPost(X27, ehReg, SP, 16)
 	f.a.LdpPost(X25, X23, SP, 16)
 	f.a.LdpPost(linMemReg, X24, SP, 16)
 	if b.Dynamic {
@@ -1894,7 +1914,7 @@ func (f *fn) emitIndirectCallHomeAware(ft *wasm.CompType, homeReg, targetContext
 	f.a.PatchBranch19(jne, f.a.Len()) // the false edge is a B.cond (imm19)
 	f.a.StpPre(linMemReg, X24, SP, -16)
 	f.a.StpPre(X25, X23, SP, -16)
-	f.a.StpPre(X27, X9, SP, -16) // X9 = alignment pad
+	f.a.StpPre(X27, ehReg, SP, -16)
 	f.a.StpPre(X13, X12, SP, -16)
 	f.copyInstanceContext(X11, X12)
 	f.ld64(X9, linMemReg, -int32(offTrapHandlerPtr))
@@ -1909,7 +1929,7 @@ func (f *fn) emitIndirectCallHomeAware(ft *wasm.CompType, homeReg, targetContext
 	f.ld64(X16, linMemReg, -int32(offSpillRegion)) // linMemReg unchanged by the pushes
 	f.a.Blr(X16)
 	f.a.LdpPost(X13, X12, SP, 16)
-	f.a.LdpPost(X27, X9, SP, 16)
+	f.a.LdpPost(X27, ehReg, SP, 16)
 	f.a.LdpPost(X25, X23, SP, 16)
 	f.a.LdpPost(linMemReg, X24, SP, 16)
 	f.copyInstanceContext(linMemReg, X13)

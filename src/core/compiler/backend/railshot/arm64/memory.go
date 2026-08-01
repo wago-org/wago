@@ -19,17 +19,20 @@ import (
 // Trap codes — must match jit.TrapCode / the values the engine reads (identical
 // to the amd64 twin's table).
 const (
-	trapUnreachable   = 1
-	trapMemOOB        = 3
-	trapIndirectOOB   = 5
-	trapIndirectSig   = 6
-	trapDivZero       = 9
-	trapDivOverflow   = 10
-	trapTruncOverflow = 11
-	trapInterrupted   = 12
-	trapStackFence    = 13
-	trapNullReference = 16
-	trapTableOOB      = 19
+	trapUnreachable        = 1
+	trapMemOOB             = 3
+	trapIndirectOOB        = 5
+	trapIndirectSig        = 6
+	trapDivZero            = 9
+	trapDivOverflow        = 10
+	trapTruncOverflow      = 11
+	trapInterrupted        = 12
+	trapStackFence         = 13
+	trapTailUnsupported    = 15
+	trapNullReference      = 16
+	trapUnhandledException = 17
+	trapCastFailure        = 18
+	trapTableOOB           = 19
 )
 
 // Basedata fields at negative offsets from the linMem base (runtime/basedata.go).

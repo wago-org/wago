@@ -1074,7 +1074,8 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	if features.NullReferenceProducts {
 		if _, shapeErr := stagedNullReferenceProductShape(m); shapeErr == nil {
 			nullReferenceProduct = true
-			if goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64" {
+			arm64Null := goruntime.GOARCH == "arm64" && (goruntime.GOOS == "linux" || goruntime.GOOS == "darwin") && cfg.boundsChecks == BoundsChecksExplicit
+			if (goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64") && !arm64Null {
 				return nil, fmt.Errorf("compile: unsupported null-reference product staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
 			}
 			if cfg.boundsChecks == BoundsChecksSignalsBased {
@@ -1094,7 +1095,8 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		return nil, fmt.Errorf("compile: unsupported instruction tail-call staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
 	}
 	if features.ExceptionHandling {
-		if goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64" {
+		arm64EH := goruntime.GOARCH == "arm64" && (goruntime.GOOS == "linux" || goruntime.GOOS == "darwin")
+		if (goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64") && !arm64EH {
 			return nil, fmt.Errorf("compile: unsupported exception handling staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
 		}
 		if cfg.boundsChecks == BoundsChecksSignalsBased {

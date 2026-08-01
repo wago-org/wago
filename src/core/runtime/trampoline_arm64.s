@@ -38,6 +38,7 @@ TEXT ·enterNative(SB), NOSPLIT, $0-48
 	STP (R29, R30), 88(R10)
 
 	MOVD R10, RSP
+	MOVD ZR, R22                  // no active wasm exception handler at outer entry
 	MOVD ZR, R29
 
 	MOVD R10, -24(R1)

@@ -56,22 +56,76 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		if err != nil {
 			return err
 		}
+		nullable := sub == 21
+		if heap == -16 || heap == -17 || heap == -13 || heap == -14 { // func, extern, nofunc, noextern
+			value := f.materialize(f.popValue())
+			switch {
+			case heap == -16 || heap == -17:
+				if nullable {
+					f.a.MovImm32(value, 1)
+				} else {
+					f.cmpImm(value, 0, true)
+					f.a.Cset32(value, condNE)
+				}
+			case nullable:
+				f.cmpImm(value, 0, true)
+				f.a.Cset32(value, condE)
+			default:
+				f.a.MovImm32(value, 0)
+			}
+			f.pushReg(value, mtI32)
+			return nil
+		}
 		if !f.gcStructHelpers {
 			return fmt.Errorf("arm64: ref.test requires GC helpers")
 		}
 		f.pushValue(storage{kind: stConst, typ: mtI64, cval: heap})
-		nullable := int64(0)
-		if sub == 21 {
-			nullable = 1
+		nullableFlag := int64(0)
+		if nullable {
+			nullableFlag = 1
 		}
-		f.pushValue(storage{kind: stConst, typ: mtI32, cval: nullable})
+		f.pushValue(storage{kind: stConst, typ: mtI32, cval: nullableFlag})
 		anyref := wasm.RefVal(wasm.Ref(true, wasm.AbsHeap(wasm.HeapAny), false))
 		return f.callGCStructHelper(gcStructRefTest, []wasm.ValType{anyref, wasm.I64, wasm.I32}, []wasm.ValType{wasm.I32})
+	}
+	if sub == 24 || sub == 25 { // br_on_cast / br_on_cast_fail
+		return f.emitGCBranchCast(sub, r)
 	}
 	if sub == 22 || sub == 23 { // ref.cast / ref.cast_null
 		heap, err := r.S33()
 		if err != nil {
 			return err
+		}
+		if !moduleHasCollectorTypes(f.m) {
+			value := f.popValue()
+			gcRoot := value.st.gcRoot
+			ref := f.materialize(value)
+			nullable := sub == 23
+			var done int
+			if nullable {
+				f.cmpImm(ref, 0, true)
+				done = f.a.Bcond(condE)
+			} else {
+				f.cmpImm(ref, 0, true)
+				f.trapIf(condE, trapCastFailure)
+			}
+			switch heap {
+			case -20, -19, -18: // i31, eq, any
+				tag := f.allocReg(maskOf(ref))
+				f.a.AndImm64(tag, ref, 1)
+				f.cmpImm(tag, 0, true)
+				f.release(tag)
+				f.trapIf(condE, trapCastFailure)
+			case -15, -21, -22: // none, struct, array: no non-null inhabitant without collector types
+				f.trapAlways(trapCastFailure)
+			default:
+				return fmt.Errorf("arm64: ref.cast heap %d requires a live collector", heap)
+			}
+			if nullable {
+				f.a.PatchBranch19(done, f.a.Len())
+			}
+			f.pushReg(ref, mtI64).st.gcRoot = gcRoot
+			return nil
 		}
 		if !f.gcStructHelpers {
 			return fmt.Errorf("arm64: ref.cast requires GC helpers")
@@ -98,7 +152,7 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		value := f.materialize(f.popValue())
 		switch sub {
 		case 28: // ref.i31
-			f.a.LslImm(value, value, 1, false)
+			f.a.LslImm(value, value, 1, true)
 			if !f.a.OrrImm32(value, value, 1) {
 				panic("arm64: i31 tag immediate is not encodable")
 			}
@@ -106,12 +160,12 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		case 29: // i31.get_s
 			f.cmpImm(value, 0, false)
 			f.trapIf(condE, trapNullReference)
-			f.a.AsrImm(value, value, 1, false)
+			f.a.AsrImm(value, value, 1, true)
 			f.pushReg(value, mtI32)
 		case 30: // i31.get_u
 			f.cmpImm(value, 0, false)
 			f.trapIf(condE, trapNullReference)
-			f.a.LsrImm(value, value, 1, false)
+			f.a.LsrImm(value, value, 1, true)
 			f.pushReg(value, mtI32)
 		}
 		return nil
@@ -410,6 +464,60 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 	default:
 		return fmt.Errorf("arm64: unsupported array opcode %d", sub)
 	}
+}
+
+func moduleHasCollectorTypes(m *wasm.Module) bool {
+	for i := range m.Types {
+		for j := range m.Types[i].SubTypes {
+			switch m.Types[i].SubTypes[j].Comp.Kind {
+			case wasm.CompStruct, wasm.CompArray:
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (f *fn) emitGCBranchCast(sub uint32, r *wasm.Reader) error {
+	if !f.gcStructHelpers {
+		return fmt.Errorf("arm64: unsupported staged branch cast without GC helpers")
+	}
+	flags, err := r.Byte()
+	if err != nil {
+		return err
+	}
+	if flags > 3 {
+		return fmt.Errorf("arm64: invalid staged branch-cast flags %d", flags)
+	}
+	depth, err := r.U32()
+	if err != nil {
+		return err
+	}
+	if _, err := r.S33(); err != nil { // validated source heap type
+		return err
+	}
+	target, err := r.S33()
+	if err != nil {
+		return err
+	}
+	original := f.popValue()
+	gcRoot := original.st.gcRoot
+	value := f.materialize(original)
+	copyReg := f.allocReg(maskOf(value))
+	f.a.MovReg64(copyReg, value)
+	f.pushReg(value, mtI64).st.gcRoot = gcRoot
+	f.pushReg(copyReg, mtI64).st.gcRoot = gcRoot
+	f.pushValue(storage{kind: stConst, typ: mtI64, cval: target})
+	nullable := int64(0)
+	if flags&2 != 0 {
+		nullable = 1
+	}
+	f.pushValue(storage{kind: stConst, typ: mtI32, cval: nullable})
+	anyref := wasm.RefVal(wasm.Ref(true, wasm.AbsHeap(wasm.HeapAny), false))
+	if err := f.callGCStructHelper(gcStructRefTest, []wasm.ValType{anyref, wasm.I64, wasm.I32}, []wasm.ValType{wasm.I32}); err != nil {
+		return err
+	}
+	return f.brOnCastResult(depth, sub == 24)
 }
 
 func (f *fn) callGCStructHelper(helper uint32, params, results []wasm.ValType) error {

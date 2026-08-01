@@ -46,6 +46,7 @@ type funcHints struct {
 	usesBulkMem    bool // memory.copy/fill (explicit LDRB/STRB copy/fill loop clobbers X16/X17 + call scratch)
 	mutatesTable   bool // table.set/init/copy/grow/fill; excludes immutable local-table call_indirect specialization
 	hasControlFlow bool // control opcode relevant to inline splice framing
+	moduleEH       bool // module-wide: reserve the active exception-handler register
 
 	// immutableLocalTable is derived after the one-pass per-function scans have
 	// been aggregated. The table must also be private (an exported table can be
@@ -463,7 +464,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			return true, 0, err
 		}
 		switch op {
-		case 0x00, 0x02, 0x03, 0x04, 0x05, 0x0c, 0x0d, 0x0e, 0x0f:
+		case 0x00, 0x02, 0x03, 0x04, 0x05, 0x0c, 0x0d, 0x0e, 0x0f, 0x1f:
 			s.h.hasControlFlow = true
 			if op == 0x03 {
 				s.h.hasLoop = true
@@ -595,6 +596,12 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				return true, 0, err
 			}
 			s.noteStackArenaOp(op, &imm)
+			if op == 0xfb {
+				// Collector-backed GC instructions may enter the synchronous Go
+				// helper bridge. Preserve LR and use call-safe local state for the
+				// whole family; direct-only subopcodes pay only the frame-record cost.
+				s.h.hasCall, subHasCall = true, true
+			}
 			if imm.TouchesMemory {
 				s.h.touchesMemory = true
 				s.h.memOps++
@@ -603,6 +610,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				s.h.usesBulkMem = true
 			}
 		case 0x1f: // try_table: blocktype, catch vector, body
+			s.h.moduleEH = true
 			s.h.stackArenaNodes += 2 // entry flush/rebuild allowance.
 			if err := wasm.SkipInstructionImmediate(s.r.Reader, op); err != nil {
 				return true, 0, err
@@ -615,6 +623,14 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				return true, term, s.r.err(wasm.ErrInvalidInstruction, s.r.off()-1)
 			}
 			subHasCall = subHasCall || calls
+		case 0x08, 0x0a: // throw, throw_ref
+			s.h.moduleEH = true
+			var imm wasm.InstructionImmediate
+			err := s.classifyInstructionInto(op, &imm)
+			if err != nil {
+				return true, 0, err
+			}
+			s.noteStackArenaOp(op, &imm)
 		default:
 			var imm wasm.InstructionImmediate
 			err := s.classifyInstructionInto(op, &imm)
@@ -646,7 +662,15 @@ func (s *byteBodyScanner) branchHintAt(offset uint32) (bool, bool) {
 }
 
 func (s *byteBodyScanner) classifyInstructionInto(op byte, imm *wasm.InstructionImmediate) error {
+	start := s.r.Offset()
 	err := wasm.ClassifyInstructionImmediateInto(s.r.Reader, op, imm)
+	if err != nil {
+		// Validation has already fixed each memarg's address width. Retry the
+		// hint-only walk with a u64 memarg so valid memory64 offsets do not become
+		// false malformed-LEB compile failures; non-memory immediates fail equally.
+		s.r.JumpTo(start)
+		err = wasm.ClassifyInstructionImmediateIntoWithMemarg64(s.r.Reader, op, imm, true)
+	}
 	if err == nil && isTableMutation(imm.Kind) {
 		s.h.mutatesTable = true
 	}

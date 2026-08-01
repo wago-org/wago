@@ -6,13 +6,13 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
-func TestGenericStructHelpersIgnoreAbstractOpsWithoutStructTypes(t *testing.T) {
+func TestGenericStructHelpersAdmitAbstractOpsWithoutStructTypes(t *testing.T) {
 	m := &wasm.Module{
 		Types: []wasm.RecType{{SubTypes: []wasm.SubType{{Comp: wasm.CompType{Kind: wasm.CompFunc}}}}},
 		Code:  []wasm.Func{{BodyBytes: []byte{0xfb, 0x14, 0x6c, 0x0b}}}, // ref.test i31; end
 	}
-	if moduleUsesGenericGCStructHelpers(m) {
-		t.Fatal("abstract i31 ref.test without struct types selected generic struct helpers")
+	if !moduleUsesGenericGCStructHelpers(m) {
+		t.Fatal("abstract i31 ref.test without struct types did not select dynamic reference helpers")
 	}
 	m.Types = append(m.Types, wasm.RecType{SubTypes: []wasm.SubType{{Comp: wasm.CompType{Kind: wasm.CompStruct}}}})
 	if !moduleUsesGenericGCStructHelpers(m) {

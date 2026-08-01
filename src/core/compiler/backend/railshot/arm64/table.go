@@ -542,6 +542,15 @@ func (f *fn) refIsNull() {
 	f.pushReg(ref, mtI32)
 }
 
+func (f *fn) refAsNonNull() {
+	value := f.popValue()
+	root := value.st.gcRoot
+	ref := f.materialize(value)
+	f.cmpImm(ref, 0, true)
+	f.trapIf(condE, trapNullReference)
+	f.pushReg(ref, mtI64).st.gcRoot = root
+}
+
 func (f *fn) refEq() {
 	right := f.materialize(f.popValue())
 	f.pinned = f.pinned.add(right)
