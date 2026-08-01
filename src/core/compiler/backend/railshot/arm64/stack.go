@@ -63,6 +63,7 @@ type storageKind uint8
 const (
 	stInvalid   storageKind = iota
 	stConst                 // an immediate; cval holds the value/bits
+	stFuncRef               // exact staged local ref.func provenance; idx = function index
 	stReg                   // a physical register the value OWNS; reg holds it
 	stSlot                  // a frame stack slot; slot holds the SP-relative slot index
 	stLocalRef              // a frame-resident local read (lazy); idx = local index

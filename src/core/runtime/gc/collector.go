@@ -115,6 +115,7 @@ type Collector struct {
 	globalSlots      []Ref
 	tableSlots       []Ref
 	stats            Stats
+	rootMarkMode     uint8
 	closed           bool
 }
 

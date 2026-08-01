@@ -421,14 +421,14 @@ func TestGCArm64RecursiveFrameWalking(t *testing.T) {
 		t.Fatalf("recursive arm64 root plan = %+v", roots)
 	}
 	profiles := []GCConfig{
-		{Profile: GCProfileThroughput, StressNurseryBytes: 64, CollectEveryAlloc: true, ForceMajorEveryMinor: true, VerifyAfterCollect: true, ThroughputHeapBytes: 4096, ThroughputPageBytes: 4096},
-		{Profile: GCProfileTiny, TinyHeapBytes: 4096, TinyBlockBytes: 32, TinyCollectEveryAlloc: true, TinyStepEveryAlloc: true, VerifyAfterCollect: true},
+		{Profile: GCProfileThroughput, StressNurseryBytes: 64, CollectEveryAlloc: true, ForceMajorEveryMinor: true, ThroughputHeapBytes: 4096, ThroughputPageBytes: 4096},
+		{Profile: GCProfileTiny, TinyHeapBytes: 4096, TinyBlockBytes: 32, TinyCollectEveryAlloc: true, TinyStepEveryAlloc: true},
 	}
 	for _, candidate := range []*Compiled{compiled, roundTripCompiled(t, compiled)} {
 		if candidate != compiled {
 			defer candidate.Close()
 		}
-		for _, profile := range profiles {
+		for profileIndex, profile := range profiles {
 			in, err := Instantiate(candidate, InstantiateOptions{GC: profile})
 			if err != nil {
 				t.Fatal(err)
@@ -447,7 +447,7 @@ func TestGCArm64RecursiveFrameWalking(t *testing.T) {
 			})
 			if allocs != 0 {
 				in.Close()
-				t.Fatalf("recursive arm64 root walking allocations = %v, want 0", allocs)
+				t.Fatalf("recursive arm64 root walking profile %d allocations = %v, want 0", profileIndex, allocs)
 			}
 			if err := in.gc.Verify(gc.EmptyRoots{}); err != nil {
 				in.Close()

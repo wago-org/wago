@@ -967,9 +967,10 @@ func TestStagedMultiMemoryNativeContextProductAndGates(t *testing.T) {
 		t.Fatalf("codec v27 structural same-memory module: %v", err)
 	}
 	var loaded Compiled
-	if err := loaded.UnmarshalBinary(blob); err == nil || !strings.Contains(err.Error(), "required feature") {
-		t.Fatalf("public reload of staged multi-memory module = %v, want feature gate", err)
+	if err := loaded.UnmarshalBinary(blob); err != nil {
+		t.Fatalf("public reload of multi-memory module: %v", err)
 	}
+	defer loaded.Close()
 	if _, err := Capture(chain.middleCompiled, SnapshotOptions{}); err == nil || !strings.Contains(err.Error(), "imported or shared") {
 		t.Fatalf("same-memory native snapshot = %v, want imported/shared rejection", err)
 	}

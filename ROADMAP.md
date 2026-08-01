@@ -90,8 +90,9 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
 
 **WebAssembly 3.0** (primary conformance complete; product hardening continues)
 - [x] Pin and execute the complete official `WebAssembly/spec` `wg-3.0` corpus.
-  The linux/amd64 explicit-bounds `CoreFeaturesV3` product passes all 2,226 modules
-  and 58,038 assertions with zero failures, skips, or gap categories.
+  Linux/amd64 native and Linux/arm64 QEMU explicit-bounds `CoreFeaturesV3` runs
+  pass all 2,226 modules and 58,038 assertions with zero failures, skips, or gap
+  categories; native Linux/Darwin arm64 runs are now required in CI.
 - [x] Complete mandatory extended constants, relaxed SIMD, tails, typed function
   references, GC, exception handling, multi-memory, memory64, and table64 on the
   primary product. Release 1/2 defaults remain unchanged; Core 3 is opt-in.
@@ -106,20 +107,23 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
 - 🚧 **Iteration 82 — hardening the new ownership and persistence boundaries:** add
   independent-domain, rollback, multi-hop, codec, close-order, moving-root, mixed
   graph, malformed snapshot, fuzz, and native-arm64 execution coverage.
-- 🚧 **Arm64 exact GC roots:** exact local/hidden-spill maps now walk direct and
-  recursive calls, suspended direct-host activations, same-domain foreign frames,
-  monomorphic private `call_indirect`, local `call_ref`, and discarded-frame
-  proper tails; mutable local GC globals and one private collector table are
-  persistent roots. EH remains outside the arm64 feature gate, while
-  polymorphic/foreign reference calls remain collection-disabled.
+- [x] **Arm64 Core 3 explicit-bounds parity:** exact local/hidden-spill maps walk
+  direct and recursive calls, suspended direct-host activations, same-domain
+  foreign frames, indirect/reference calls, discarded-frame proper tails, and
+  fixed EH payload roots. Dynamic indirect tails, function-subtype tests/casts,
+  indexed memory operations, `try_table`, `throw`, and `throw_ref` are admitted.
+  Warmed recursive Throughput/Tiny collection remains allocation-free by using a
+  direct immutable-root visitor. Polymorphic/foreign reference calls remain
+  collection-disabled where exact ownership is unproved.
 - [ ] **Shared GC state:** extend same-domain ownership to imported/exported GC
   globals and tables with exact roots, barriers, aliases, rollback, and close order;
   keep host tokens and incompatible domains fail-closed until explicitly owned.
 - [ ] **Snapshot root expansion:** cover every storage kind and mixed struct/array
   graph, then add local GC tables and transactional restore. Shared/imported domain
   snapshots remain rejected until whole-domain ownership can be captured.
-- [ ] **Product parity:** make the complete Core 3 suite green under linux/amd64
-  signal-backed bounds and then natively on linux/arm64 and darwin/arm64.
+- 🚧 **Product parity:** the complete explicit-bounds Core 3 suite is green on
+  linux/amd64 and Linux/arm64 QEMU. Native Linux/Darwin arm64 are mandatory CI
+  cells; linux/amd64 signal-backed Core 3 qualification remains.
 - [ ] **GC hot paths:** after the correctness matrix is complete, add measured
   direct checked JIT object access while retaining helper slow paths.
 

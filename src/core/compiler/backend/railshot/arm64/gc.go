@@ -8,6 +8,7 @@ import (
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"github.com/wago-org/wago/src/core/runtime"
 )
 
 // GC helpers share the synchronous parked-host dispatch ABI with amd64. Keep
@@ -57,6 +58,20 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 			return err
 		}
 		nullable := sub == 21
+		if f.gcTypeSubtypingRefTest && heap >= 0 {
+			value := f.popValue()
+			if value.kind != ekValue || value.st.kind != stFuncRef || value.st.idx < 0 || value.st.idx >= len(f.m.FuncTypes) {
+				return fmt.Errorf("arm64: staged function ref.test lost exact local ref.func provenance")
+			}
+			actual := wasm.Ref(false, wasm.IndexedHeap(f.m.FuncTypes[value.st.idx]), false)
+			required := wasm.Ref(nullable, wasm.IndexedHeap(wasm.TypeIdx{Index: uint32(heap)}), false)
+			matched := int64(0)
+			if f.m.ReferenceTypeSubtype(actual, required) {
+				matched = 1
+			}
+			f.pushValue(storage{kind: stConst, typ: mtI32, cval: matched})
+			return nil
+		}
 		if heap == -16 || heap == -17 || heap == -13 || heap == -14 { // func, extern, nofunc, noextern
 			value := f.materialize(f.popValue())
 			switch {
@@ -95,6 +110,14 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		heap, err := r.S33()
 		if err != nil {
 			return err
+		}
+		if f.gcTypeSubtypingRefTest && heap >= 0 {
+			value := f.popValue()
+			gcRoot := value.st.gcRoot
+			ref := f.materialize(value)
+			f.emitLocalFunctionSubtypeIdentityCheck(ref, uint32(heap), sub == 23, trapCastFailure)
+			f.pushReg(ref, mtI64).st.gcRoot = gcRoot
+			return nil
 		}
 		if !moduleHasCollectorTypes(f.m) {
 			value := f.popValue()
@@ -463,6 +486,42 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		return f.callGCStructHelper(helper, []wasm.ValType{object, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32}, nil)
 	default:
 		return fmt.Errorf("arm64: unsupported array opcode %d", sub)
+	}
+}
+
+func (f *fn) emitLocalFunctionSubtypeIdentityCheck(value Reg, targetType uint32, nullable bool, trapCode uint32) {
+	var success [16]int
+	nsuccess := 0
+	if nullable {
+		f.cmpImm(value, 0, true)
+		success[nsuccess] = f.a.Bcond(condE)
+		nsuccess++
+	}
+	base := f.allocReg(maskOf(value))
+	f.ld64(base, linMemReg, -int32(offFuncRefDescPtr))
+	candidate := f.allocReg(maskOf(value).add(base))
+	required := wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: targetType}), false)
+	for i, sourceType := range f.m.FuncTypes {
+		actual := wasm.Ref(false, wasm.IndexedHeap(sourceType), false)
+		if !f.m.ReferenceTypeSubtype(actual, required) {
+			continue
+		}
+		if nsuccess == len(success) {
+			f.trapAlways(trapCode)
+			break
+		}
+		f.a.MovReg64(candidate, base)
+		f.leaDisp(candidate, candidate, int32((i+1)*runtime.FuncRefDescBytes), true)
+		f.cmpRR(value, candidate, true)
+		success[nsuccess] = f.a.Bcond(condE)
+		nsuccess++
+	}
+	f.release(candidate)
+	f.release(base)
+	f.trapAlways(trapCode)
+	done := f.a.Len()
+	for i := 0; i < nsuccess; i++ {
+		f.a.PatchBranch19(success[i], done)
 	}
 }
 

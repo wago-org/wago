@@ -35,9 +35,10 @@ func TestCompiledIndexedMemoryDirectoryCodecAndMetadata(t *testing.T) {
 	}
 	got.memoryDir.exactExports = true
 	var public Compiled
-	if err := public.UnmarshalBinary(blob); err == nil || !strings.Contains(err.Error(), "unknown required feature bits") {
-		t.Fatalf("public unsupported multi-memory load error = %v", err)
+	if err := public.UnmarshalBinary(blob); err != nil {
+		t.Fatalf("public multi-memory load: %v", err)
 	}
+	defer public.Close()
 	if !reflect.DeepEqual(got.memoryDir.defs, c.memoryDir.defs) || !reflect.DeepEqual(got.memoryDir.exports, c.memoryDir.exports) {
 		t.Fatalf("memory directory changed: memories=%#v exports=%#v", got.memoryDir.defs, got.memoryDir.exports)
 	}

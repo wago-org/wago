@@ -326,9 +326,10 @@ func TestStagedMemory64LocalExecutionAndProductRoundTrip(t *testing.T) {
 		t.Fatalf("marshal staged memory64: %v", err)
 	}
 	var public Compiled
-	if err := public.UnmarshalBinary(blob); err == nil || !strings.Contains(err.Error(), "unknown required feature bits") {
-		t.Fatalf("public memory64 codec load error = %v", err)
+	if err := public.UnmarshalBinary(blob); err != nil {
+		t.Fatalf("public memory64 codec load: %v", err)
 	}
+	defer public.Close()
 	t.Logf("staged memory64 product: wasm=%d code=%d codec=%d reservation=%d bytes", len(module), len(compiled.Code), len(blob), 3*65536)
 	var loaded Compiled
 	if err := unmarshalCompiled(&loaded, blob[5:]); err != nil {

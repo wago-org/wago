@@ -171,9 +171,12 @@ func TestStagedOwnedMultiMemorySnapshotRoundTrip(t *testing.T) {
 	if len(blob) >= (2+3)*65536 {
 		t.Fatalf("zero-tail-trimmed snapshot blob = %d bytes, want less than full %d-byte memory images", len(blob), (2+3)*65536)
 	}
-	if _, err := LoadSnapshot(blob); err == nil || !strings.Contains(err.Error(), "unknown required feature bits") {
-		t.Fatalf("public multi-memory snapshot load error = %v, want fail-closed feature rejection", err)
+	publicLoaded, err := LoadSnapshot(blob)
+	if err != nil {
+		t.Fatalf("public multi-memory snapshot load: %v", err)
 	}
+	defer publicLoaded.c.Close()
+	assertOwnedMultiMemorySnapshotState(t, publicLoaded)
 	loaded, err := loadStagedMultiMemorySnapshot(blob)
 	if err != nil {
 		t.Fatalf("staged load owned multi-memory snapshot: %v", err)

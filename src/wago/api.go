@@ -1007,7 +1007,8 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	nullReferenceProduct := false
 	if features.StructuralTypeProducts && hasStructuralHeapTypes(m) {
 		if product, shapeErr := stagedStructuralTypeProductShape(m); shapeErr == nil && stagedStructuralTypeProductPinned(wasmBytes, product) {
-			if goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64" {
+			arm64Structural := goruntime.GOARCH == "arm64" && (goruntime.GOOS == "linux" || goruntime.GOOS == "darwin") && cfg.boundsChecks == BoundsChecksExplicit
+			if (goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64") && !arm64Structural {
 				return nil, fmt.Errorf("compile: unsupported collector-free structural product staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
 			}
 			if cfg.boundsChecks == BoundsChecksSignalsBased {
@@ -1018,7 +1019,8 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	}
 	if features.GCTypeSubtypingProducts {
 		if product, shapeErr := stagedGCTypeSubtypingProductShape(m); shapeErr == nil && stagedGCTypeSubtypingProductPinned(wasmBytes, product) {
-			if goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64" {
+			arm64GC := goruntime.GOARCH == "arm64" && (goruntime.GOOS == "linux" || goruntime.GOOS == "darwin") && cfg.boundsChecks == BoundsChecksExplicit
+			if (goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64") && !arm64GC {
 				return nil, fmt.Errorf("compile: unsupported gc/type-subtyping product staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
 			}
 			if cfg.boundsChecks == BoundsChecksSignalsBased {
@@ -2450,6 +2452,10 @@ func (c *Compiled) validate() error {
 	if c.stagedTable64 {
 		staged |= CoreFeatureTable64
 	}
+	// Indexed-memory/table address forms are completely described by persisted
+	// metadata and native code. Once the current platform advertises the family,
+	// codec reload does not need the original compile-only classifier marker.
+	staged |= required & platformCoreFeatures() & (CoreFeatureMultiMemory | CoreFeatureMemory64 | CoreFeatureTable64)
 	if c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 {
 		staged |= CoreFeatureExceptionHandling
 		importCount := 0

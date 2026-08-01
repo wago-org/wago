@@ -115,7 +115,15 @@ type gcHostActivation struct {
 const gcHostActivationLimit = 8
 
 func (r *gcNativeFrameRoots) RangeRoots(fn func(gc.RootSlot) bool) {
-	if !r.rangeChain(fn) {
+	r.walk(fn, nil)
+}
+
+func (r *gcNativeFrameRoots) RangeRootRefs(sink gc.RootRefSink) {
+	r.walk(nil, sink)
+}
+
+func (r *gcNativeFrameRoots) walk(fn func(gc.RootSlot) bool, sink gc.RootRefSink) {
+	if !r.rangeChain(fn, sink) {
 		return
 	}
 	state := r.suspended
@@ -138,13 +146,13 @@ func (r *gcNativeFrameRoots) RangeRoots(fn func(gc.RootSlot) bool) {
 				adapterReturnOffsets: state.hostRootPlan.adapterReturnOffsets,
 				callsites:            state.hostRootPlan.callsites,
 			}
-			if !chain.rangeChain(fn) {
+			if !chain.rangeChain(fn, sink) {
 				return
 			}
 		}
 	}
 	if r.tableRoots != nil {
-		r.tableRoots.RangeRoots(fn)
+		r.tableRoots.walk(fn, sink)
 	}
 }
 
@@ -154,6 +162,14 @@ type gcNativeTableRoots struct {
 }
 
 func (r *gcNativeTableRoots) RangeRoots(fn func(gc.RootSlot) bool) {
+	r.walk(fn, nil)
+}
+
+func (r *gcNativeTableRoots) RangeRootRefs(sink gc.RootRefSink) {
+	r.walk(nil, sink)
+}
+
+func (r *gcNativeTableRoots) walk(fn func(gc.RootSlot) bool, sink gc.RootRefSink) {
 	if r == nil || r.desc == 0 || r.bytes < 8 {
 		return
 	}
@@ -168,13 +184,18 @@ func (r *gcNativeTableRoots) RangeRoots(fn func(gc.RootSlot) bool) {
 		if word != uint64(gc.Ref(uint32(word))) {
 			panic(gcStructHelperError{err: fmt.Errorf("generic GC table root %d contains non-compact reference %#x", i, word)})
 		}
-		if !fn((*gc.Root)(offHeapPtr(addr))) {
+		slot := (*gc.Root)(offHeapPtr(addr))
+		if sink != nil {
+			if !sink.VisitRootRef(slot.GetRef()) {
+				return
+			}
+		} else if !fn(slot) {
 			return
 		}
 	}
 }
 
-func (r *gcNativeFrameRoots) rangeChain(fn func(gc.RootSlot) bool) bool {
+func (r *gcNativeFrameRoots) rangeChain(fn func(gc.RootSlot) bool, sink gc.RootRefSink) bool {
 	owner := r.owner
 	base, offsets, frameBytes := r.base, r.offsets, r.frameBytes
 	codeBase, codeBytes := r.codeBase, r.codeBytes
@@ -188,7 +209,11 @@ func (r *gcNativeFrameRoots) rangeChain(fn func(gc.RootSlot) bool) bool {
 			// Expose the actual off-heap word so a moving/reference-rewriting policy
 			// updates the parked frame rather than a copied scratch value.
 			slot := (*gc.Root)(offHeapPtr(base + uintptr(off)))
-			if !fn(slot) {
+			if sink != nil {
+				if !sink.VisitRootRef(slot.GetRef()) {
+					return false
+				}
+			} else if !fn(slot) {
 				return false
 			}
 		}

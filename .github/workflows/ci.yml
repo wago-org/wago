@@ -345,6 +345,40 @@ jobs:
       - name: Run exact Core v2 validation and execution
         run: make spec2
 
+  core-v3:
+    name: Core v3 conformance / ${{ matrix.name }}
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux amd64
+            runner: ubuntu-24.04
+          - name: Linux arm64
+            runner: ubuntu-24.04-arm
+          - name: Darwin arm64
+            runner: macos-15
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+      - name: Install Release 3 interpreter toolchain
+        run: |
+          if [ "${{ runner.os }}" = Linux ]; then
+            sudo apt-get update
+            sudo apt-get install -y ocaml-nox ocaml-dune menhir
+          else
+            brew install ocaml dune menhir
+          fi
+      - name: Fetch pinned Core v3 corpus
+        run: git submodule update --init tests/spec-v3
+      - name: Run exact Core v3 validation and execution
+        run: make spec3
+
   tinygo:
     name: TinyGo / ${{ matrix.name }}
     needs: changes

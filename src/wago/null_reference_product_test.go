@@ -129,7 +129,8 @@ func TestStagedNullReferenceProductPlatformAndBoundsGate(t *testing.T) {
 	features.TypedFunctionReferences = true
 	features.NullReferenceProducts = true
 	c, err := compileWithFrontendFeatures(cfg, stagedFirstNullReferenceModule(false), features)
-	if goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64" {
+	arm64 := goruntime.GOARCH == "arm64" && (goruntime.GOOS == "linux" || goruntime.GOOS == "darwin")
+	if (goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64") && !arm64 {
 		if err == nil || !strings.Contains(err.Error(), "unsupported null-reference product staged execution on") {
 			t.Fatalf("platform compile = %v, want explicit platform rejection", err)
 		}
@@ -142,7 +143,7 @@ func TestStagedNullReferenceProductPlatformAndBoundsGate(t *testing.T) {
 		return
 	}
 	if err != nil {
-		t.Fatalf("linux/amd64 explicit compile: %v", err)
+		t.Fatalf("explicit compile: %v", err)
 	}
 	_ = c.Close()
 }

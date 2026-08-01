@@ -1244,6 +1244,24 @@ func TestSpecSuiteExec(t *testing.T) {
 		version = "1.0"
 	}
 	dir, files := resolveSpecPlan(t, dir, version)
+	if filter := strings.TrimSpace(os.Getenv("WAGO_SPEC_FILES")); filter != "" {
+		wanted := make(map[string]struct{})
+		for _, name := range strings.Split(filter, ",") {
+			if name = strings.TrimSpace(strings.TrimSuffix(name, ".wast")); name != "" {
+				wanted[name] = struct{}{}
+			}
+		}
+		filtered := files[:0]
+		for _, name := range files {
+			if _, ok := wanted[name]; ok {
+				filtered = append(filtered, name)
+			}
+		}
+		files = filtered
+		if len(files) == 0 {
+			t.Fatalf("WAGO_SPEC_FILES=%q matched no %s spec files", filter, version)
+		}
+	}
 	wast2json, err := resolveWast2JSON()
 	if err != nil {
 		if version == "3.0" || os.Getenv("WAGO_WAST2JSON") != "" {

@@ -1137,7 +1137,7 @@ func (f *fn) memoryGrow(r *wasm.Reader) error {
 	failDelta := -1
 	if memory64 {
 		high := f.allocReg(maskOf(delta))
-		f.a.LsrImm(high, delta, 32, true)
+		f.a.LsrImm(high, delta, 32, false)
 		f.cmpImm(high, 0, true)
 		failDelta = f.a.Bcond(condNE)
 		f.release(high)
@@ -1300,6 +1300,18 @@ func (f *fn) bulkBoundsCheck(base Reg, n int, memoryIndex uint32) {
 	f.pinned = f.pinned.remove(base)
 }
 
+func (f *fn) indexedMemoryBase(memoryIndex uint32, avoid regMask) (Reg, bool) {
+	if memoryIndex == 0 {
+		return linMemReg, false
+	}
+	dir := f.allocReg(avoid)
+	f.ld64(dir, linMemReg, -int32(offMemoryDirPtr))
+	base := f.allocReg(avoid.add(dir))
+	f.ld64(base, dir, int32(memoryIndex)*16)
+	f.release(dir)
+	return base, true
+}
+
 // memoryFillConst lowers memory.fill with a small constant length as unrolled
 // stores of a byte-replicated pattern — no flush, no fill-loop startup.
 func (f *fn) memoryFillConst(n int, memoryIndex uint32) {
@@ -1328,9 +1340,17 @@ func (f *fn) memoryFillConst(n int, memoryIndex uint32) {
 		f.a.MovReg32(dst, dst)
 	}
 	f.bulkBoundsCheck(dst, n, memoryIndex)
+	avoid := maskOf(dst)
+	if pat != regNone {
+		avoid = avoid.add(pat)
+	}
+	base, baseOwned := f.indexedMemoryBase(memoryIndex, avoid)
 	var chunkBuf [8][2]int
 	for _, c := range bulkChunks(n, &chunkBuf) {
-		f.a.StoreIdx(linMemReg, dst, pat, int32(c[0]), c[1])
+		f.a.StoreIdx(base, dst, pat, int32(c[0]), c[1])
+	}
+	if baseOwned {
+		f.release(base)
 	}
 	if pat != regNone {
 		f.pinned = f.pinned.remove(pat)
@@ -1358,20 +1378,30 @@ func (f *fn) memoryCopyConst(n int, dstMemory, srcMemory uint32) {
 	}
 	f.bulkBoundsCheck(dst, n, dstMemory)
 	f.bulkBoundsCheck(src, n, srcMemory)
+	avoid := maskOf(src, dst)
+	srcBase, srcBaseOwned := f.indexedMemoryBase(srcMemory, avoid)
+	avoid = avoid.add(srcBase)
+	dstBase, dstBaseOwned := f.indexedMemoryBase(dstMemory, avoid)
+	avoid = avoid.add(dstBase)
 	var chunkBuf [8][2]int
 	chunks := bulkChunks(n, &chunkBuf)
 	var regBuf [8]Reg
 	regs := regBuf[:len(chunks)]
-	avoid := maskOf(src, dst)
 	for i, c := range chunks {
 		r := f.allocReg(avoid)
-		f.a.LoadIdx(r, linMemReg, src, int32(c[0]), c[1], false, c[1] == 8)
+		f.a.LoadIdx(r, srcBase, src, int32(c[0]), c[1], false, c[1] == 8)
 		regs[i] = r
 		avoid = avoid.add(r)
 	}
 	for i, c := range chunks {
-		f.a.StoreIdx(linMemReg, dst, regs[i], int32(c[0]), c[1])
+		f.a.StoreIdx(dstBase, dst, regs[i], int32(c[0]), c[1])
 		f.release(regs[i])
+	}
+	if dstBaseOwned {
+		f.release(dstBase)
+	}
+	if srcBaseOwned {
+		f.release(srcBase)
 	}
 	f.pinned = f.pinned.remove(src)
 	f.pinned = f.pinned.remove(dst)

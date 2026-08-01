@@ -163,15 +163,15 @@ func (t *globalEligibilityTracker) pop(frame int) {
 
 // scanFuncBody chooses the byte-backed scanner used for decoded modules, falling
 // back to the AST scanner for tests or callers that construct Func.Body directly.
-func scanFuncBody(fn wasm.Func, nLocals, nGlobals int, selfIdx uint32, branchHints []wasm.BranchHint) (funcHints, error) {
+func scanFuncBody(fn wasm.Func, nLocals, nGlobals int, selfIdx uint32, branchHints []wasm.BranchHint, m *wasm.Module) (funcHints, error) {
 	h := newFuncHints(nLocals, nGlobals)
 	elig := newGlobalEligibilityTracker(nGlobals)
-	return scanFuncBodyInto(fn, nLocals, nGlobals, selfIdx, branchHints, h, &elig)
+	return scanFuncBodyInto(fn, nLocals, nGlobals, selfIdx, branchHints, h, &elig, m)
 }
 
-func scanFuncBodyInto(fn wasm.Func, nLocals, nGlobals int, selfIdx uint32, branchHints []wasm.BranchHint, h funcHints, elig *globalEligibilityTracker) (funcHints, error) {
+func scanFuncBodyInto(fn wasm.Func, nLocals, nGlobals int, selfIdx uint32, branchHints []wasm.BranchHint, h funcHints, elig *globalEligibilityTracker, m *wasm.Module) (funcHints, error) {
 	if len(fn.BodyBytes) != 0 {
-		return scanBodyBytesInto(fn.BodyBytes, fn.LocalDeclBytes, nLocals, nGlobals, selfIdx, branchHints, h, elig)
+		return scanBodyBytesInto(fn.BodyBytes, fn.LocalDeclBytes, nLocals, nGlobals, selfIdx, branchHints, h, elig, m)
 	}
 	return scanBodyInto(fn.Body, nLocals, nGlobals, selfIdx, h, elig), nil
 }
@@ -422,13 +422,13 @@ func scanBodyBytes(body []byte, nLocals int, nGlobals int, selfIdx uint32) (func
 func scanBodyBytesWithHints(body []byte, localDeclBytes uint32, nLocals int, nGlobals int, selfIdx uint32, branchHints []wasm.BranchHint) (funcHints, error) {
 	h := newFuncHints(nLocals, nGlobals)
 	elig := newGlobalEligibilityTracker(nGlobals)
-	return scanBodyBytesInto(body, localDeclBytes, nLocals, nGlobals, selfIdx, branchHints, h, &elig)
+	return scanBodyBytesInto(body, localDeclBytes, nLocals, nGlobals, selfIdx, branchHints, h, &elig, nil)
 }
 
-func scanBodyBytesInto(body []byte, localDeclBytes uint32, nLocals int, nGlobals int, selfIdx uint32, branchHints []wasm.BranchHint, h funcHints, elig *globalEligibilityTracker) (funcHints, error) {
+func scanBodyBytesInto(body []byte, localDeclBytes uint32, nLocals int, nGlobals int, selfIdx uint32, branchHints []wasm.BranchHint, h funcHints, elig *globalEligibilityTracker, m *wasm.Module) (funcHints, error) {
 	elig.reset()
 	r := wasm.ReaderFrom(body)
-	s := byteBodyScanner{r: byteScanReader{Reader: &r}, h: h, nLocals: nLocals, nGlobals: nGlobals, selfIdx: selfIdx, localDeclBytes: localDeclBytes, branchHints: branchHints, elig: elig}
+	s := byteBodyScanner{r: byteScanReader{Reader: &r}, h: h, nLocals: nLocals, nGlobals: nGlobals, selfIdx: selfIdx, localDeclBytes: localDeclBytes, branchHints: branchHints, elig: elig, m: m}
 	called, term, err := s.scanExpr(0, 0, -1, false, 1)
 	if err != nil {
 		return s.h, err
@@ -451,6 +451,7 @@ type byteBodyScanner struct {
 	localDeclBytes uint32
 	branchHints    []wasm.BranchHint
 	elig           *globalEligibilityTracker
+	m              *wasm.Module
 }
 
 func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAtElse bool, pathWeight int64) (bool, byte, error) {
@@ -662,12 +663,52 @@ func (s *byteBodyScanner) branchHintAt(offset uint32) (bool, bool) {
 }
 
 func (s *byteBodyScanner) classifyInstructionInto(op byte, imm *wasm.InstructionImmediate) error {
+	if op >= 0x28 && op <= 0x3e {
+		align, err := s.r.U32()
+		if err != nil {
+			return err
+		}
+		memoryIndex := uint32(0)
+		if align >= 64 && align < 128 {
+			memoryIndex, err = s.r.U32()
+			if err != nil {
+				return err
+			}
+			imm.HasMemIndex, imm.MemIndex = true, memoryIndex
+		}
+		memory64 := false
+		if s.m != nil {
+			if mt, ok := s.m.MemoryType(memoryIndex); ok {
+				memory64 = mt.Limits.Addr64
+			}
+		}
+		if memory64 {
+			_, err = s.r.U64()
+		} else {
+			_, err = s.r.U32()
+		}
+		imm.TouchesMemory = true
+		return err
+	}
+	if op == 0x3f || op == 0x40 {
+		index, err := s.r.U32()
+		if err != nil {
+			return err
+		}
+		imm.Index = index
+		imm.TouchesMemory = true
+		if op == 0x3f {
+			imm.Kind = wasm.InstrMemorySize
+		} else {
+			imm.Kind = wasm.InstrMemoryGrow
+		}
+		return nil
+	}
 	start := s.r.Offset()
 	err := wasm.ClassifyInstructionImmediateInto(s.r.Reader, op, imm)
 	if err != nil {
-		// Validation has already fixed each memarg's address width. Retry the
-		// hint-only walk with a u64 memarg so valid memory64 offsets do not become
-		// false malformed-LEB compile failures; non-memory immediates fail equally.
+		// SIMD memory immediates may carry u64 offsets. Validation has already
+		// established their shape, so a width retry is safe for this hint-only walk.
 		s.r.JumpTo(start)
 		err = wasm.ClassifyInstructionImmediateIntoWithMemarg64(s.r.Reader, op, imm, true)
 	}

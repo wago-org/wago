@@ -91,8 +91,11 @@ ledgers remain useful regression evidence, but the authoritative completion
 claim is now the zero-gap public `make spec3` run.
 
 `scripts/spec3-baseline.sh` refreshes this inventory and returns the `make spec3`
-status. Parser failures may reappear only as hard red entries if both pinned
-conversion paths fail; they can never be reclassified as skips.
+status. `WAGO_SPEC_FILES` accepts a comma-separated list of extensionless paths
+such as `gc/type-subtyping,memory64/load64` for focused native qualification; an
+empty match is a hard test failure. Parser failures may reappear only as hard red
+entries if both pinned conversion paths fail; they can never be reclassified as
+skips.
 
 ### Text-oracle footprint measurement
 
@@ -137,8 +140,10 @@ compatibility change without adding safety, so `CoreFeaturesV3` documents relaxe
 SIMD through the existing bit.
 
 `CoreFeaturesV3` is both the Release 3 description and the implementation ceiling
-on the primary linux/amd64 explicit-bounds product. `SupportedFeatures()` reports
-the executable build/host set. The compatibility default deliberately remains the
+on linux/amd64 plus Linux/Darwin arm64 explicit-bounds products.
+`SupportedFeatures()` reports the executable build/host set. The full suite is
+green natively on linux/amd64 and under Linux/arm64 QEMU; native Linux/Darwin
+arm64 conformance runs are required by CI. The compatibility default deliberately remains the
 Release 2 feature set plus extended constants; callers opt into Core 3 with
 `WithCoreFeatures(CoreFeaturesV3)`, and the versioned spec harness does so when
 `WAGO_SPEC_VERSION=3.0`. Unsupported build/platform requests return
@@ -151,33 +156,32 @@ Release 2 feature set plus extended constants; callers opt into Core 3 with
 |---|---|---|---|
 | Extended constant expressions | Basic Release 3 numeric extension is complete on AST and byte-backed paths: `i32`/`i64` add, sub, mul, imported globals, and earlier immutable local globals. Forward, mutable, mixed-type, stack-shape, unsupported-opcode, and local-global offset forms are rejected strictly. | Complete for the basic extended-const proposal. Literal arithmetic folds at compile time. Global-dependent scalar programs are persisted and evaluated during instantiation for globals and active data/element offsets. | ✅ Executable and enabled as `CoreFeatureExtendedConstExpressions`. GC-added constant instructions remain part of the GC row, not this completed basic proposal. |
 | Relaxed SIMD | Complete through `0xfd 275`, with reserved holes rejected. | Deterministic lowering is present on the documented linux/amd64 SIMD baseline. The Release 3 harness now honors official `either` result patterns; all 8 converted modules and 69 assertions pass with zero failures/skips. | ✅ Existing completed support, represented by `CoreFeatureSIMD`. |
-| Tail calls | Complete AST and byte-backed validation for direct, indirect, and typed-reference forms, including covariance and malformed immediates. | Direct, indirect, host, cross-instance, typed-reference, trap, and nested-tail paths execute on linux/amd64 explicit bounds. | ✅ Core 3 official files gap-free under explicit `CoreFeaturesV3` admission. |
+| Tail calls | Complete AST and byte-backed validation for direct, indirect, and typed-reference forms, including covariance and malformed immediates. | Direct, dynamic indirect, host, cross-instance, typed-reference, trap, subtype-result, and nested-tail paths execute on linux/amd64 and arm64 explicit bounds. | ✅ Core 3 official files gap-free under explicit `CoreFeaturesV3` admission. |
 | Typed function references | Complete recursive/indexed structural validation for signatures, tables, elements, globals, casts/tests, null branches, and `call_ref`. | Canonical descriptors, subtype-aware calls/linking, reference ownership, codec metadata, and cross-instance retention execute. | ✅ Core 3 official typed-reference and recursive-type files gap-free. |
-| GC | Complete recursive type, subtype, struct/array/i31, conversion, cast/test/branch, constant-expression, data/element initialization, and malformed/invalid validation. | Throughput/Tiny collectors, exact roots/barriers, bounded helpers, linking, reference publication, and array data/element constructors execute on linux/amd64 explicit bounds. | ✅ Mandatory Core 3 GC corpus gap-free; platform and bounded-footprint limits remain documented in `docs/gc.md`. |
-| Exception handling | Complete validation for tags, `throw`, `throw_ref`, `try_table`, exception references, catch payloads/depths, and malformed forms. | Arbitrary bounded tag directories, imported/exported tags, rooted exception values, nested handlers, tails, linking, and codec metadata execute. | ✅ Core 3 exception files gap-free. |
+| GC | Complete recursive type, subtype, struct/array/i31, conversion, cast/test/branch, constant-expression, data/element initialization, and malformed/invalid validation. | Throughput/Tiny collectors, exact roots/barriers, bounded helpers, subtype identity, linking, reference publication, and array data/element constructors execute on linux/amd64 and arm64 explicit bounds. | ✅ Mandatory Core 3 GC corpus gap-free; ownership and snapshot limits remain documented in `docs/gc.md`. |
+| Exception handling | Complete validation for tags, `throw`, `throw_ref`, `try_table`, exception references, catch payloads/depths, and malformed forms. | Arbitrary bounded tag directories, imported/exported tags, rooted exception values, nested/cross-instance handlers, tails, linking, and codec metadata execute on amd64 and arm64 explicit bounds. | ✅ Core 3 exception files gap-free. |
 | Multi-memory | Complete indexed immediate and compact-import validation with Release 2 defaults preserved. | Indexed scalar/SIMD/bulk/data operations, imports/exports, snapshots for owned state, and generalized shared-memory basedata serialization execute. | ✅ Complete 42-file family and full Core 3 suite gap-free. |
-| memory64 | Complete i64 address, full-u64 limit/offset, mixed-width, data, scalar, SIMD, and bulk validation. | Bounded linux/amd64 execution preserves exact declarations and checks full-width arithmetic before mutation. | ✅ Mandatory Core 3 memory64 corpus gap-free. |
+| memory64 | Complete i64 address, full-u64 limit/offset, mixed-width, data, scalar, SIMD, and bulk validation. | Bounded amd64/arm64 execution preserves exact declarations, checks full-width arithmetic before mutation, and rejects oversized grow deltas without illegal shift encodings. | ✅ Mandatory Core 3 memory64 corpus gap-free. |
 | table64 | Complete i64 index/result, full-u64 limit, mixed-width copy/init, and malformed-LEB validation. | Local/imported funcref and externref tables, all table operations, indirect calls, metadata/codec, and `spectest.table64` execute. | ✅ Mandatory Core 3 table64 corpus gap-free. |
 | Text annotations | Text-format concern; no native execution semantics are required. | No runtime work planned unless tooling integration exposes a concrete need. | Not a native runtime feature. |
 | Deterministic profile | Separate optional profile, not part of the current Core 3.0 product claim. | No profile claim is made by this document. Deterministic relaxed-SIMD lowering does not by itself implement the full optional deterministic profile. | Optional/separate. |
 
 ## Current hardening priorities
 
-The mandatory linux/amd64 explicit-bounds conformance milestone is complete. The
-remaining Core 3 work is product generalization rather than missing official
-opcode families:
+The mandatory linux/amd64 and arm64 explicit-bounds opcode products are complete.
+The remaining Core 3 work is ownership/persistence generalization and additional
+bounds/platform qualification rather than missing official opcode families:
 
 1. harden Runtime GC-domain lifecycle, rollback, multi-hop foreign-frame walking,
-   codec reload, snapshot-v4 validation, mixed graphs, and native arm64 execution;
-2. add arm64 EH lowering and exact exception-payload roots, then broaden the
-   existing direct/recursive/host/foreign/tail root product to polymorphic and
-   foreign reference calls;
+   codec reload, snapshot-v4 validation, and mixed graphs;
+2. broaden the exact direct/recursive/host/foreign/tail/EH root product to
+   polymorphic and foreign reference calls;
 3. extend same-domain ownership to imported/exported GC globals and tables with
    exact roots, barriers, aliases, rollback, and close ordering;
 4. extend snapshot-v4 roots to local GC tables and make restore publication fully
    transactional, while rejecting partial capture of imported/shared domains;
-5. run the complete Core 3 suite under linux/amd64 signal-backed bounds and then
-   natively on linux/arm64 and darwin/arm64; and
+5. complete linux/amd64 signal-backed Core 3 qualification and keep native
+   Linux/Darwin arm64 explicit-bounds conformance mandatory in CI; and
 6. only after those correctness gates, measure and add direct checked JIT object
    access as a replacement for common parked-helper operations.
 

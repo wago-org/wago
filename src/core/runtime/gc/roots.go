@@ -10,6 +10,14 @@ type RootSlot interface {
 
 type RootSet interface{ RangeRoots(func(RootSlot) bool) }
 
+// RootRefSink receives immutable root values without constructing RootSlot
+// interface values or escaping callback closures. Native frame walkers implement
+// DirectRootRefSet for allocation-free marking; moving/rewrite passes continue to
+// use RootSet.RangeRoots so they can update the underlying slots.
+type RootRefSink interface{ VisitRootRef(Ref) bool }
+
+type DirectRootRefSet interface{ RangeRootRefs(RootRefSink) }
+
 // EmptyRoots is an explicit non-nil root set for may-collect operations that
 // have proven no live refs. Its zero-sized value avoids allocating a slice
 // header merely to distinguish an exact empty set from a missing root set.

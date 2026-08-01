@@ -1,34 +1,24 @@
-//go:build arm64
+//go:build (linux || darwin) && arm64
 
 package wago
 
 import (
-	"errors"
-	"runtime"
-	"strings"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/wasmtest"
 )
 
-func TestArm64TailCallFeatureRemainsFailClosed(t *testing.T) {
-	if SupportedFeatures().IsEnabled(CoreFeatureTailCall) {
-		t.Error("arm64 must not advertise tail-call execution before backend parity")
-		return
+func TestArm64TailCallFeatureAdmission(t *testing.T) {
+	if !SupportedFeatures().IsEnabled(CoreFeatureTailCall) {
+		t.Fatal("arm64 explicit-bounds backend must advertise tail-call execution")
 	}
-	err := NewRuntimeConfig().WithFeature(CoreFeatureTailCall, true).Validate()
-	var unsupported *UnsupportedFeatureError
-	if !errors.As(err, &unsupported) {
-		t.Errorf("Validate error = %v, want UnsupportedFeatureError", err)
-		return
-	}
-	if unsupported.Requested != CoreFeatureTailCall || unsupported.Platform != runtime.GOOS+"/"+runtime.GOARCH {
-		t.Fatalf("unsupported tail-call metadata = %+v", unsupported)
+	if err := NewRuntimeConfig().WithFeature(CoreFeatureTailCall, true).Validate(); err != nil {
+		t.Fatalf("Validate tail-call feature: %v", err)
 	}
 }
 
-func TestStagedDirectTailCallsFailClosedOnArm64(t *testing.T) {
+func TestStagedDirectTailCallsCompileOnArm64(t *testing.T) {
 	module := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
 		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0))),
@@ -40,9 +30,9 @@ func TestStagedDirectTailCallsFailClosedOnArm64(t *testing.T) {
 	cfg := NewRuntimeConfig()
 	features := cfg.frontendFeatures()
 	features.TailCalls = true
-	_, err := compileWithFrontendFeatures(cfg, module, features)
-	want := "unsupported instruction tail-call staged execution on " + runtime.GOOS + "/arm64"
-	if err == nil || !strings.Contains(err.Error(), want) {
-		t.Fatalf("staged arm64 direct-tail error = %v, want %q", err, want)
+	compiled, err := compileWithFrontendFeatures(cfg, module, features)
+	if err != nil {
+		t.Fatalf("staged arm64 direct-tail compile: %v", err)
 	}
+	_ = compiled.Close()
 }

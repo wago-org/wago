@@ -276,8 +276,8 @@ func TestCoreFeaturesV3ReleaseScopeAndAdmission(t *testing.T) {
 	if !CoreFeaturesV3.IsEnabled(CoreFeatureSIMD) {
 		t.Fatal("CoreFeaturesV3 must include the existing SIMD admission bit that also gates relaxed SIMD")
 	}
-	completeCore3Backend := runtime.GOOS == "linux" && runtime.GOARCH == "amd64"
 	arm64GCBackend := runtime.GOARCH == "arm64" && (runtime.GOOS == "linux" || runtime.GOOS == "darwin")
+	completeCore3Backend := (runtime.GOOS == "linux" && runtime.GOARCH == "amd64") || arm64GCBackend
 	for _, tc := range []struct {
 		bit       CoreFeatures
 		name      string
@@ -287,7 +287,7 @@ func TestCoreFeaturesV3ReleaseScopeAndAdmission(t *testing.T) {
 		{CoreFeatureExtendedConstExpressions, "extended-const-expressions", true},
 		{CoreFeatureTypedFunctionReferences, "typed-function-references", completeCore3Backend || arm64GCBackend},
 		{CoreFeatureGC, "gc", completeCore3Backend || arm64GCBackend},
-		{CoreFeatureExceptionHandling, "exception-handling", completeCore3Backend},
+		{CoreFeatureExceptionHandling, "exception-handling", completeCore3Backend || arm64GCBackend},
 		{CoreFeatureMultiMemory, "multi-memory", completeCore3Backend || arm64GCBackend},
 		{CoreFeatureMemory64, "memory64", completeCore3Backend || arm64GCBackend},
 		{CoreFeatureTable64, "table64", completeCore3Backend || arm64GCBackend},
@@ -376,7 +376,7 @@ func TestConfigValidateAndIntrospection(t *testing.T) {
 			CoreFeatureMemory64 |
 			CoreFeatureTable64
 		if runtime.GOARCH == "arm64" && (runtime.GOOS == "linux" || runtime.GOOS == "darwin") {
-			unsupported &^= CoreFeatureTailCall | CoreFeatureTypedFunctionReferences | CoreFeatureGC | CoreFeatureMultiMemory | CoreFeatureMemory64 | CoreFeatureTable64
+			unsupported &^= CoreFeatureTailCall | CoreFeatureTypedFunctionReferences | CoreFeatureGC | CoreFeatureExceptionHandling | CoreFeatureMultiMemory | CoreFeatureMemory64 | CoreFeatureTable64
 		}
 		wantFeatures &^= unsupported
 	}

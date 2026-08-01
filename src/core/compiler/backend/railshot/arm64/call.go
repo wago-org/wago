@@ -114,7 +114,10 @@ func tailResultABICompatible(a, b []wasm.ValType) bool {
 		return false
 	}
 	for i := range a {
-		if !wasm.EqualValType(a[i], b[i]) {
+		// Validation has already proved result subtyping. Native tail transfer only
+		// needs the same physical register/slot class; all references are one i64
+		// descriptor word even when their heap type or nullability differs.
+		if mtOf(a[i]) != mtOf(b[i]) {
 			return false
 		}
 	}
@@ -525,9 +528,6 @@ func (f *fn) returnCallIndirect(r *wasm.Reader) error {
 	if !tailResultABICompatible(f.ft.Results, ft.Results) {
 		return fmt.Errorf("return_call_indirect: type %d result shape differs from caller", typeIdx)
 	}
-	if tableIdx != 0 || !f.immutableLocalTable {
-		return fmt.Errorf("return_call_indirect: table %d is not a private immutable local funcref table", tableIdx)
-	}
 	canon, ok := f.m.StructuralTypeKeyChecked(typeIdx)
 	if !ok {
 		return fmt.Errorf("return_call_indirect: type %d exceeds bounded native identity", typeIdx)
@@ -560,7 +560,7 @@ func (f *fn) returnCallIndirect(r *wasm.Reader) error {
 		f.trapIf(condNE, trapIndirectSig)
 	}
 	home := f.allocReg(maskOf(idx, code))
-	f.ld64(home, idx, runtime.TableEntryHomeLinMemOffset)
+	f.ld64(home, idx, 8+runtime.TableEntryHomeLinMemOffset)
 	kind := f.descriptorEntryKind(home, maskOf(idx, code, home))
 	f.stripDescriptorHomeTags(home)
 	f.cmpRR(home, linMemReg, true)
@@ -1689,7 +1689,14 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 	f.cmpImm(code, 0, true)
 	f.trapIf(condE, trapIndirectOOB) // null entry
 
-	if tableIdx == 0 && f.immutableTableTyped && f.immutableTableType == canon {
+	if f.gcTypeSubtypingRefTest {
+		f.pinned = f.pinned.add(code)
+		identity := f.allocReg(maskOf(idxReg, code))
+		f.ld64(identity, idxReg, 8+runtime.TableEntryRefSlotOffset)
+		f.emitLocalFunctionSubtypeIdentityCheck(identity, typeIdx, false, trapIndirectSig)
+		f.release(identity)
+		f.pinned = f.pinned.remove(code)
+	} else if tableIdx == 0 && f.immutableTableTyped && f.immutableTableType == canon {
 		f.stats.peep("immutable-table-type-check-elide")
 	} else {
 		got := f.allocReg(maskOf(code))

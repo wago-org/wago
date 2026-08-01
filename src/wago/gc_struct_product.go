@@ -204,6 +204,18 @@ func moduleUsesGenericGCStructHelpers(m *wasm.Module) bool {
 	if m == nil {
 		return false
 	}
+	hasStructType := false
+	for i := range m.Types {
+		for j := range m.Types[i].SubTypes {
+			if m.Types[i].SubTypes[j].Comp.Kind == wasm.CompStruct {
+				hasStructType = true
+				break
+			}
+		}
+		if hasStructType {
+			break
+		}
+	}
 	for i := range m.Code {
 		r := wasm.NewReader(m.Code[i].BodyBytes)
 		for r.HasNext() {
@@ -222,9 +234,9 @@ func moduleUsesGenericGCStructHelpers(m *wasm.Module) bool {
 			case wasm.InstrRefTest, wasm.InstrRefCast,
 				wasm.InstrBrOnCast, wasm.InstrBrOnCastFail,
 				wasm.InstrAnyConvertExtern, wasm.InstrExternConvertAny:
-				// Dynamic casts/tests cover abstract i31/eq/any and extern forms
-				// even when the module declares no concrete struct type.
-				return true
+				if hasStructType {
+					return true
+				}
 			}
 		}
 	}

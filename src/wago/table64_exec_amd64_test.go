@@ -623,9 +623,10 @@ func TestStagedTable64LocalGetSetSizeAndProductRoundTrip(t *testing.T) {
 		t.Fatalf("table64 codec version = %d, want 30", blob[4])
 	}
 	var public Compiled
-	if err := public.UnmarshalBinary(blob); err == nil || !strings.Contains(err.Error(), "unknown required feature bits") {
-		t.Fatalf("public table64 codec load error = %v", err)
+	if err := public.UnmarshalBinary(blob); err != nil {
+		t.Fatalf("public table64 codec load: %v", err)
 	}
+	defer public.Close()
 	var loaded Compiled
 	if err := unmarshalCompiled(&loaded, blob[5:]); err != nil {
 		t.Fatalf("decode table64 metadata: %v", err)

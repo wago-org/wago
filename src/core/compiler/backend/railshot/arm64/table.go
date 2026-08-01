@@ -526,6 +526,10 @@ func (f *fn) refFunc(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
+	if f.gcTypeSubtypingRefTest {
+		f.pushValue(storage{kind: stFuncRef, typ: mtI64, idx: int(idx)})
+		return nil
+	}
 	ref := f.allocReg(0)
 	f.ld64(ref, linMemReg, -int32(offFuncRefDescPtr))
 	f.cmpImm(ref, 0, true) // was TestSelf — CMP ref,#0 (SUBS XZR,ref,#0)

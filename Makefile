@@ -193,7 +193,7 @@ spec-interpreter: ## Bootstrap and verify the official Release 3 reference inter
 	@scripts/bootstrap-spec-interpreter.sh --verify
 
 .PHONY: spec3
-spec3: wabt spec-interpreter ## Run the pinned official WebAssembly 3.0 core suite against x64
+spec3: wabt spec-interpreter ## Run the pinned official WebAssembly 3.0 core suite on the current supported host
 	@wast2json="$$(scripts/bootstrap-wabt.sh --print-path)"; \
 		interpreter="$$(scripts/bootstrap-spec-interpreter.sh --print-path)"; \
 		interpreter_revision="$$(scripts/bootstrap-spec-interpreter.sh --print-revision)"; \
