@@ -309,14 +309,14 @@ type tableImportAttachments struct {
 	set importDedup[*Table]
 }
 
-func (a *tableImportAttachments) attach(table *Table, elementType ValType, exact ValueTypeDescriptor, types []DefinedTypeDescriptor, store *referenceStore, addr64 bool) error {
-	if err := table.validateImport(elementType, exact, types, store, addr64); err != nil {
+func (a *tableImportAttachments) attach(table *Table, elementType ValType, exact ValueTypeDescriptor, types []DefinedTypeDescriptor, store *referenceStore, collector *gc.Collector, addr64 bool) error {
+	if err := table.validateImportWithCollector(elementType, exact, types, store, collector, addr64); err != nil {
 		return err
 	}
 	if a.set.contains(table) {
 		return nil
 	}
-	if err := table.attachImporter(elementType, exact, types, store, addr64); err != nil {
+	if err := table.attachImporterWithCollector(elementType, exact, types, store, collector, addr64); err != nil {
 		return err
 	}
 	a.set.push(table)

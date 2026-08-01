@@ -74,8 +74,10 @@ initialization and clearing remain part of the native EH lowering. A bounded
 same-Runtime cross-instance slice gives descriptor-identical modules one
 collector, transfers compact GC references without copying, and switches root-map
 ownership across foreign return PCs. Mutable and immutable imported/exported GC
-globals use direct domain-wide alias-cell roots plus checked barrier slots; shared
-GC tables remain the next ownership boundary. Codec v30 persists helper
+globals use direct domain-wide alias-cell roots plus checked barrier slots. One
+bounded imported/exported collector-reference table uses the same domain-wide
+descriptor-root scan across growth and producer-first close; broader multi-table
+ownership remains pending. Codec v30 persists helper
 admission and the 16-byte `v128` storage contract, but never compact handles.
 Snapshot v4 persists reachable local-global object graphs with stable IDs and
 two-pass cycle/sharing reconstruction. Arm64 explicit-bounds builds lower

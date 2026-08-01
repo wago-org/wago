@@ -122,9 +122,11 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   globals share descriptor-identical Runtime domains. Collection scans every live alias
   cell directly, checked slots preserve barrier/card state, and rollback, codec,
   close-order, Throughput/Tiny, amd64, and ARM64 execution are covered.
-- [ ] **Shared GC tables:** extend the same ownership model to imported/exported
-  collector-reference tables with exact alias roots, growth/replacement, rollback,
-  and close order; keep host tokens and incompatible domains fail-closed.
+- 🚧 **Shared GC tables:** one bounded imported/exported collector-reference table
+  now shares direct alias roots, growth state, codec reload, and producer-first close
+  across descriptor-identical Runtime domains. Broaden this to multiple heterogeneous
+  GC tables and transactional replacement/rollback; keep incompatible domains
+  fail-closed.
 - [ ] **Snapshot root expansion:** cover every storage kind and mixed struct/array
   graph, then add local GC tables and transactional restore. Shared/imported domain
   snapshots remain rejected until whole-domain ownership can be captured.

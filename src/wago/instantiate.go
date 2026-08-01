@@ -184,7 +184,7 @@ func (b *instanceBuilder) prepareCollector() error {
 		gcConfig.Profile = gc.ProfileThroughput
 		gcConfig.DisableCollection = true
 	}
-	if b.opts.store != nil && !b.opts.store.private && b.c.usesGenericGCExecution() && b.c.sharedGCGlobalDomainSafe() {
+	if b.opts.store != nil && !b.opts.store.private && b.c.usesGenericGCExecution() && b.c.sharedGCPersistentDomainSafe() {
 		collector, err := b.opts.store.acquireGCCollector(gcConfig, b.c.GCTypeDescs)
 		if err != nil {
 			return err
@@ -881,7 +881,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 				if err != nil {
 					return nil, fmt.Errorf("imported table %q exact type: %w", importDef.Key, err)
 				}
-				if err := b.tableAttachments.attach(t, c.tableElementType(tableIndex), exact, c.Types, opts.store, def.Addr64); err != nil {
+				if err := b.tableAttachments.attach(t, c.tableElementType(tableIndex), exact, c.Types, opts.store, b.collector, def.Addr64); err != nil {
 					return nil, fmt.Errorf("imported table %q: %w", importDef.Key, err)
 				}
 				desc = t.desc

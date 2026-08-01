@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
+	"github.com/wago-org/wago/src/core/runtime/gc"
 )
 
 // InstanceExport is a handle to another instance's exported function, used as an
@@ -239,6 +240,10 @@ func (t *Table) Close() error {
 }
 
 func (t *Table) validateImport(elementType ValType, exact ValueTypeDescriptor, types []DefinedTypeDescriptor, store *referenceStore, addr64 bool) error {
+	return t.validateImportWithCollector(elementType, exact, types, store, nil, addr64)
+}
+
+func (t *Table) validateImportWithCollector(elementType ValType, exact ValueTypeDescriptor, types []DefinedTypeDescriptor, store *referenceStore, collector *gc.Collector, addr64 bool) error {
 	if t == nil || t.owner == nil {
 		return fmt.Errorf("table descriptor is invalid")
 	}
@@ -291,11 +296,44 @@ func (t *Table) validateImport(elementType ValType, exact ValueTypeDescriptor, t
 			return fmt.Errorf("externref table belongs to an incompatible reference store")
 		}
 	}
+	if isGCRefValType(elementType) {
+		source := o.instance
+		if source == nil || source.gc == nil || store == nil || collector == nil || source.gc != collector || source.refStore != store || !store.ownsGCCollector(collector) {
+			return fmt.Errorf("collector-reference table requires producer and importer in the same Runtime GC domain")
+		}
+		t.mu.Lock()
+		defer t.mu.Unlock()
+		size := uint64(binary.LittleEndian.Uint32(t.desc))
+		capacity := uint64((len(t.desc) - 8) / 8)
+		if size > capacity {
+			return fmt.Errorf("collector-reference table length %d exceeds capacity %d", size, capacity)
+		}
+		for i := uint64(0); i < size; i++ {
+			bits := binary.LittleEndian.Uint64(t.desc[8+i*8:])
+			ref := gc.Ref(uint32(bits))
+			if bits != uint64(ref) {
+				return fmt.Errorf("collector-reference table slot %d contains non-compact reference %#x", i, bits)
+			}
+			if ref.IsNull() || ref.IsI31() {
+				continue
+			}
+			if !ref.IsObj() {
+				return fmt.Errorf("collector-reference table slot %d contains invalid reference %#x", i, bits)
+			}
+			if _, err := collector.ObjectType(ref); err != nil {
+				return fmt.Errorf("collector-reference table slot %d contains stale or foreign object: %w", i, err)
+			}
+		}
+	}
 	return nil
 }
 
 func (t *Table) attachImporter(elementType ValType, exact ValueTypeDescriptor, types []DefinedTypeDescriptor, store *referenceStore, addr64 bool) error {
-	if err := t.validateImport(elementType, exact, types, store, addr64); err != nil {
+	return t.attachImporterWithCollector(elementType, exact, types, store, nil, addr64)
+}
+
+func (t *Table) attachImporterWithCollector(elementType ValType, exact ValueTypeDescriptor, types []DefinedTypeDescriptor, store *referenceStore, collector *gc.Collector, addr64 bool) error {
+	if err := t.validateImportWithCollector(elementType, exact, types, store, collector, addr64); err != nil {
 		return err
 	}
 	o := t.owner
@@ -745,7 +783,7 @@ func (in *Instance) ExportedTable(name string) (*Table, error) {
 	}
 	elementType := in.c.tableElementType(tableIndex)
 	store := in.refStore
-	if elementType == ValExternRef && store == nil {
+	if (elementType == ValExternRef || isGCRefValType(elementType)) && store == nil {
 		var err error
 		store, err = in.referenceStoreForBoundary()
 		if err != nil {

@@ -132,12 +132,20 @@ func (c *Compiled) hasGCRefGlobals() bool {
 	return false
 }
 
-// sharedGCGlobalDomainSafe admits same-Runtime collector-reference globals when
-// tables are absent. Every live instance cell in the descriptor-identical domain
-// is scanned directly at collection, so imported/exported aliases and mutable
-// stores publish the actual off-heap qword rather than a copied handle.
-func (c *Compiled) sharedGCGlobalDomainSafe() bool {
-	return c != nil && !c.HasTable
+// sharedGCPersistentDomainSafe admits same-Runtime collector-reference globals
+// and one collector-reference table. Every live instance cell/table descriptor
+// in the descriptor-identical domain is scanned directly at collection, so
+// imported/exported aliases publish actual off-heap qwords.
+func (c *Compiled) sharedGCPersistentDomainSafe() bool {
+	if c == nil || c.tableCount() > 1 {
+		return false
+	}
+	for i := 0; i < c.tableCount(); i++ {
+		if !isGCRefValType(c.tableElementType(i)) {
+			return false
+		}
+	}
+	return true
 }
 
 func (c *Compiled) genericGCBoundaryCollectionSafe() bool {

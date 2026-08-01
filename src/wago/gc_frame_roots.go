@@ -120,7 +120,24 @@ func validCompiledGCFunctionTables(c *Compiled) bool {
 		return true
 	}
 	collectorTable := c.TableType == ValAnyRef || c.TableType == ValI31Ref
-	if c.tableImport != "" || len(c.tableExports) != 0 || len(c.passiveElems) != 0 || (c.TableType != 0 && c.TableType != ValFuncRef && !collectorTable) {
+	if collectorTable {
+		if c.tableCount() != 1 || len(c.passiveElems) != 0 {
+			return false
+		}
+		for i := range c.Elems {
+			elem := &c.Elems[i]
+			if elem.Mode != ElemModeActive || elem.TableIndex != 0 || normalizedElemRefType(elem.RefType) != c.TableType {
+				return false
+			}
+			for _, value := range elem.Values {
+				if value.HasGlobal || !value.Null {
+					return false
+				}
+			}
+		}
+		return true
+	}
+	if c.tableImport != "" || len(c.tableExports) != 0 || len(c.passiveElems) != 0 || (c.TableType != 0 && c.TableType != ValFuncRef) {
 		return false
 	}
 	if c.HasTableInitFunc && (collectorTable || int(c.TableInitFunc) < c.NumImports) {

@@ -42,6 +42,10 @@ func newGCFrameRootPlan(m *wasm.Module, genericGC bool) *shared.GCModuleFrameRoo
 			if !collectorFrameRefType(m, global.Type) || frameFunctionRefType(m, global.Type) {
 				return nil
 			}
+		case wasm.ExternTable:
+			if m.TableCount() != 1 || !collectorFrameRefType(m, wasm.RefVal(m.Imports[i].Type.Table.Ref)) {
+				return nil
+			}
 		default:
 			return nil
 		}
@@ -150,6 +154,30 @@ func gcFrameTablesSafe(m *wasm.Module) (safe, collector bool) {
 			}
 		}
 		return true, false
+	}
+	if tableType, ok := m.TableType(0); ok && collectorFrameRefType(m, wasm.RefVal(tableType.Ref)) {
+		if m.TableCount() != 1 {
+			return false, false
+		}
+		if len(m.Tables) == 1 && m.Tables[0].Init != nil {
+			ee, err := wasm.ParseElementExpr(*m.Tables[0].Init)
+			if err != nil || ee.HasGlobal || !ee.Null {
+				return false, false
+			}
+		}
+		for i := range m.Elements {
+			e := &m.Elements[i]
+			if e.Mode.Kind != wasm.ElemActive || e.Mode.Table != 0 || e.Kind.Kind == wasm.ElemFuncs {
+				return false, false
+			}
+			for _, expr := range e.Kind.Exprs {
+				ee, err := wasm.ParseElementExpr(expr)
+				if err != nil || ee.HasGlobal || !ee.Null {
+					return false, false
+				}
+			}
+		}
+		return true, true
 	}
 	if m.ImportedTableCount() != 0 || len(m.Tables) != 1 {
 		return false, false

@@ -234,7 +234,7 @@ func TestGCSharedMutableGlobalAliasesPublishRootsAndBarriers(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer consumerCode.Close()
-	if !providerCode.sharedGCGlobalDomainSafe() || !consumerCode.sharedGCGlobalDomainSafe() || providerCode.genericGCFrameRoots() == nil || consumerCode.genericGCFrameRoots() == nil {
+	if !providerCode.sharedGCPersistentDomainSafe() || !consumerCode.sharedGCPersistentDomainSafe() || providerCode.genericGCFrameRoots() == nil || consumerCode.genericGCFrameRoots() == nil {
 		t.Fatal("mutable GC-global modules lost shared-global root admission")
 	}
 	store := newReferenceStore(false)

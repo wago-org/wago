@@ -127,8 +127,10 @@ enters another live instance. Imported/exported mutable and immutable GC globals
 share their actual off-heap cells: every live domain instance contributes those
 cells directly during collection, while checked slots retain barrier/card state.
 Codec reload, failed-domain rollback, producer-before-consumer close, Throughput,
-Tiny, amd64, and ARM64 execution are covered. Host reference transfer,
-incompatible collector configurations/descriptors, shared GC tables, and mixed
+Tiny, amd64, and ARM64 execution are covered. One bounded imported/exported
+collector-reference table also shares direct descriptor roots, table.grow state,
+codec reload, and producer-first close. Host reference transfer, incompatible
+collector configurations/descriptors, broader multi-table domains, and mixed
 unproved host/cross-instance import graphs reject transactionally.
 
 Generic struct/array helpers and exact frame roots execute under linux/amd64
@@ -1981,9 +1983,9 @@ Tests exercise tiny nurseries, collect-every-alloc, exact scanning, cycles, root
   instead of scanning an approximate root set.
 - Imported/exported mutable and immutable GC globals participate in exact
   descriptor-identical Runtime collector domains. Actual alias cells are domain
-  roots and checked slots preserve barrier/card state. Imported/exported GC tables
-  remain fail-closed pending alias-root registration, growth/replacement, rollback,
-  and close ordering.
+  roots and checked slots preserve barrier/card state. One bounded imported/exported
+  GC table participates with direct alias roots and growth/close coverage; multiple
+  heterogeneous GC tables and transactional replacement/rollback remain fail-closed.
 - Host-held GC values remain explicit bounded tokens. Untyped `uint64` values are
   never accepted as transferable compact collector handles.
 - Snapshot v4 roots are owned local GC globals. Local GC table roots,

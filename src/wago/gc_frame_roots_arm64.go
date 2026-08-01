@@ -15,7 +15,7 @@ import (
 // newGCFrameRootPlan admits the bounded exact arm64 collection product. It
 // supports liveness-exact collector locals, hidden operand spills, direct and
 // recursive calls, direct host re-entry, same-domain foreign calls, mutable local
-// GC globals, one private collector table, monomorphic call_indirect, and local
+// GC globals, one local or same-domain imported collector table, monomorphic call_indirect, and local
 // call_ref. Tail/EH and polymorphic or foreign reference calls remain fail-closed.
 func newGCFrameRootPlan(m *wasm.Module, genericGC bool) *shared.GCModuleFrameRootPlan {
 	if !genericGC || m == nil || len(m.Code) == 0 || m.Start != nil {
@@ -42,6 +42,10 @@ func newGCFrameRootPlan(m *wasm.Module, genericGC bool) *shared.GCModuleFrameRoo
 		case wasm.ExternGlobal:
 			global := m.Imports[i].Type.Global
 			if !arm64CollectorFrameRefType(m, global.Type) || arm64FunctionFrameRefType(m, global.Type) {
+				return nil
+			}
+		case wasm.ExternTable:
+			if m.TableCount() != 1 || !arm64CollectorFrameRefType(m, wasm.RefVal(m.Imports[i].Type.Table.Ref)) {
 				return nil
 			}
 		case wasm.ExternTag:
@@ -144,6 +148,30 @@ func arm64GCFrameTablesSafe(m *wasm.Module) (safe, collector bool) {
 			}
 		}
 		return true, false
+	}
+	if tableType, ok := m.TableType(0); ok && arm64CollectorFrameRefType(m, wasm.RefVal(tableType.Ref)) {
+		if m.TableCount() != 1 {
+			return false, false
+		}
+		if len(m.Tables) == 1 && m.Tables[0].Init != nil {
+			ee, err := wasm.ParseElementExpr(*m.Tables[0].Init)
+			if err != nil || ee.HasGlobal || !ee.Null {
+				return false, false
+			}
+		}
+		for i := range m.Elements {
+			e := &m.Elements[i]
+			if e.Mode.Kind != wasm.ElemActive || e.Mode.Table != 0 || e.Kind.Kind == wasm.ElemFuncs {
+				return false, false
+			}
+			for _, expr := range e.Kind.Exprs {
+				ee, err := wasm.ParseElementExpr(expr)
+				if err != nil || ee.HasGlobal || !ee.Null {
+					return false, false
+				}
+			}
+		}
+		return true, true
 	}
 	if m.ImportedTableCount() != 0 || len(m.Tables) != 1 {
 		return false, false

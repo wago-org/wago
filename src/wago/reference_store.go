@@ -152,7 +152,7 @@ func (r *gcNativeFrameRoots) walk(fn func(gc.RootSlot) bool, sink gc.RootRefSink
 		}
 	}
 	if r.owner != nil && r.owner.refStore != nil {
-		if !r.owner.refStore.rangeGCDomainGlobalRoots(r.owner.gc, fn, sink) {
+		if !r.owner.refStore.rangeGCDomainPersistentRoots(r.owner.gc, fn, sink) {
 			return
 		}
 	}
@@ -327,7 +327,7 @@ func (s *referenceStore) ownsGCCollector(collector *gc.Collector) bool {
 	return false
 }
 
-func (s *referenceStore) rangeGCDomainGlobalRoots(collector *gc.Collector, fn func(gc.RootSlot) bool, sink gc.RootRefSink) bool {
+func (s *referenceStore) rangeGCDomainPersistentRoots(collector *gc.Collector, fn func(gc.RootSlot) bool, sink gc.RootRefSink) bool {
 	if s == nil || collector == nil {
 		return true
 	}
@@ -353,6 +353,36 @@ func (s *referenceStore) rangeGCDomainGlobalRoots(collector *gc.Collector, fn fu
 				}
 			} else if !fn(slot) {
 				return false
+			}
+		}
+		for tableIndex := 0; tableIndex < candidate.c.tableCount(); tableIndex++ {
+			if !isGCRefValType(candidate.c.tableElementType(tableIndex)) {
+				continue
+			}
+			desc := candidate.tableDescriptor(tableIndex)
+			if len(desc) < 8 {
+				panic(gcStructHelperError{err: fmt.Errorf("Runtime GC-domain table %d descriptor is unavailable", tableIndex)})
+			}
+			length := uint64(binary.LittleEndian.Uint32(desc))
+			capacity := uint64((len(desc) - 8) / 8)
+			if length > capacity {
+				panic(gcStructHelperError{err: fmt.Errorf("Runtime GC-domain table %d length %d exceeds capacity %d", tableIndex, length, capacity)})
+			}
+			for slotIndex := uint64(0); slotIndex < length; slotIndex++ {
+				addr := 8 + slotIndex*8
+				bits := binary.LittleEndian.Uint64(desc[addr:])
+				ref := gc.Ref(uint32(bits))
+				if bits != uint64(ref) {
+					panic(gcStructHelperError{err: fmt.Errorf("Runtime GC-domain table %d slot %d contains non-compact reference %#x", tableIndex, slotIndex, bits)})
+				}
+				slot := (*gc.Root)(unsafe.Pointer(&desc[addr]))
+				if sink != nil {
+					if !sink.VisitRootRef(slot.GetRef()) {
+						return false
+					}
+				} else if !fn(slot) {
+					return false
+				}
 			}
 		}
 	}
