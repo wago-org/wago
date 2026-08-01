@@ -8,6 +8,13 @@ const (
 	defaultThroughputClassLimit = 32 << 10
 )
 
+// ValidateConfig rejects unsupported collector-profile combinations without
+// allocating heap backing storage.
+func ValidateConfig(cfg Config) error {
+	_, err := normalizeConfig(cfg)
+	return err
+}
+
 func normalizeConfig(cfg Config) (Config, error) {
 	switch cfg.Profile {
 	case ProfileThroughput:

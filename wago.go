@@ -32,6 +32,7 @@ type (
 	DataInit                  = impl.DataInit
 	DefinedTypeDescriptor     = impl.DefinedTypeDescriptor
 	Dirs                      = impl.Dirs
+	DomainSnapshot            = impl.DomainSnapshot
 	ElemInit                  = impl.ElemInit
 	ElemMode                  = impl.ElemMode
 	ExitError                 = impl.ExitError
@@ -293,6 +294,10 @@ func CapabilityDocs(docs string) CapabilityOption { return impl.CapabilityDocs(d
 
 func Capture(c *Compiled, opts SnapshotOptions) (*Snapshot, error) { return impl.Capture(c, opts) }
 
+func CaptureDomain(instances ...*Instance) (*DomainSnapshot, error) {
+	return impl.CaptureDomain(instances...)
+}
+
 func Compile(args ...any) (*Compiled, error) { return impl.Compile(args...) }
 
 func CompileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) {
@@ -323,11 +328,15 @@ func Instantiate(source Instantiable, opts ...any) (*Instance, error) {
 
 func IsCompiled(b []byte) bool { return impl.IsCompiled(b) }
 
+func IsDomainSnapshot(b []byte) bool { return impl.IsDomainSnapshot(b) }
+
 func IsGuardPageUnavailable(err error) bool { return impl.IsGuardPageUnavailable(err) }
 
 func IsSnapshot(b []byte) bool { return impl.IsSnapshot(b) }
 
 func Load(b []byte) (*Compiled, error) { return impl.Load(b) }
+
+func LoadDomainSnapshot(data []byte) (*DomainSnapshot, error) { return impl.LoadDomainSnapshot(data) }
 
 func LoadSnapshot(b []byte) (*Snapshot, error) { return impl.LoadSnapshot(b) }
 
@@ -383,6 +392,10 @@ func OptKnobs() []OptKnobInfo { return impl.OptKnobs() }
 
 func ProvideService(reg *Registry, name string, value any) error {
 	return impl.ProvideService(reg, name, value)
+}
+
+func ReadDomainSnapshotFile(path string) (*DomainSnapshot, error) {
+	return impl.ReadDomainSnapshotFile(path)
 }
 
 func ReadSnapshotFile(path string) (*Snapshot, error) { return impl.ReadSnapshotFile(path) }

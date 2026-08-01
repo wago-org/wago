@@ -30,6 +30,7 @@ type InstantiateOptions struct {
 	origin        InstantiateOrigin
 	pluginGC      *GCConfig
 	forceSyncHost bool
+	domainRestore bool
 }
 
 // Instantiable is the set of sources Instantiate accepts: a compiled module or a
@@ -190,7 +191,7 @@ func (b *instanceBuilder) prepareCollector() error {
 		if err != nil {
 			return err
 		}
-		collector, mapping, err := b.opts.store.acquireGCCollector(gcConfig, b.c, preferred)
+		collector, mapping, err := b.opts.store.acquireGCCollector(gcConfig, b.c, preferred, b.opts.domainRestore)
 		if err != nil {
 			return err
 		}

@@ -144,11 +144,16 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   collector descriptors append safely under the domain lock, codec-loaded modules and
   checked host tokens use the same mapping, and incompatible layouts/configurations
   remain fail-closed.
-- [ ] **Whole-domain snapshots:** after canonical domain identities land, capture every
-  participating instance, shared GC graph, imported global/table alias, and internal
-  function link under one quiesced Runtime-domain transaction. Restore must publish all
-  instances atomically or release the entire unpublished domain. Live public GC tokens,
-  external opaque references, and incomplete domains remain rejected initially.
+- [x] **Whole-domain snapshots:** `CaptureDomain` quiesces and exhaustively captures an
+  explicitly ordered Runtime collector domain: every member module/memory/global/table,
+  internal function/global/table import edge, alias identity, and one shared stable-ID GC
+  graph. `DomainSnapshot.Instantiate` restores acyclic internal links and publishes the
+  member slice only after graph reconstruction; any failure closes the unpublished domain.
+  The `WGDN` v1 blob persists compiled members, exact GC configuration, imports, aliases,
+  cycles, sharing, and heterogeneous canonical types; restore requires a Runtime without
+  an existing live GC domain. Live public GC tokens, active calls,
+  external imports, imported/shared memories, opaque references, passive elements, EH,
+  incomplete member sets, and cyclic instantiation graphs reject before publication.
 - [x] **Bounded host-held GC results:** generic struct/array results issue up to 64
   opaque `GCRef` tokens per producer, atomically roll back partial multi-result egress,
   reuse released checked slots, retain exact Runtime/store ownership after producer

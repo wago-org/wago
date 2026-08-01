@@ -208,8 +208,9 @@ bounds/platform qualification rather than missing official opcode families:
 3. preserve the completed heterogeneous shared-table attachment, growth, rollback,
    codec, and close-order proofs while extending ownership to unproved foreign shapes;
 4. preserve the completed snapshot-v5 single-table and snapshot-v6 heterogeneous
-   multi-table deterministic-repeat, subtype, and near-capacity rollback proofs
-   while completing atomic whole-domain capture and publication;
+   multi-table proofs plus `WGDN` v1 whole-domain capture: exhaustive ordered members,
+   internal function/global/table aliases, one shared stable-ID graph, exact GC config,
+   strict malformed-input validation, and atomic all-member publication;
 5. keep the complete linux/amd64 explicit and signal-backed suites plus native
    Linux/Darwin arm64 explicit-bounds conformance mandatory in CI, and broaden
    arm64 bounds-mode/native workload qualification; and

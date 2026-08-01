@@ -53,8 +53,11 @@ executes dynamic indirect tails, function-subtype checks, multi-memory, memory64
 table64, `try_table`, `throw`, and `throw_ref`. Polymorphic or foreign reference
 calls remain collection-disabled where exact ownership is unproved. Multiple
 heterogeneous imported/exported collector-reference tables share exact alias roots,
-growth, attachment rollback, codec reload, and close ordering; shared-domain snapshots
-and unrestricted host ownership remain fail-closed. Generic struct/array results may
+growth, attachment rollback, codec reload, and close ordering. Exhaustive ordered
+Runtime domains can now be persisted through `CaptureDomain`/`DomainSnapshot`: one
+stable-ID heap graph preserves imported global/table aliases and internal function links,
+and restore publishes all members transactionally. Incomplete/external domains and
+unrestricted host ownership remain fail-closed. Generic struct/array results may
 be retained as up to 64 opaque `GCRef` tokens per producer with exact store ownership,
 slot reuse, transactional multi-result rollback, and release after producer close.
 Tokens may re-enter the same collector domain through exact structural subtype checks and reusable checked argument roots; stale, foreign,

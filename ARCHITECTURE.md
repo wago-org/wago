@@ -84,7 +84,10 @@ struct/array results may leave the domain as up to 64 opaque retained `GCRef` to
 per producer. Partial multi-result issuance rolls back atomically; exact store/producer
 ownership survives producer close, and non-null tokens may re-enter the same collector
 domain through structural subtype checks plus reusable checked argument roots; stale
-and foreign tokens reject. Codec v30 persists helper admission and
+and foreign tokens reject. `CaptureDomain` separately quiesces an exhaustive ordered
+collector domain and persists every member, internal function/global/table edge, alias,
+and one stable-ID heap graph in `WGDN` v1; restore publishes the complete member slice
+only after transactional graph reconstruction. Codec v30 persists helper admission and
 the 16-byte `v128` storage contract, but never compact handles.
 Snapshot v4 persists reachable local-global object graphs with stable IDs and
 two-pass cycle/sharing reconstruction; snapshot v5 adds one owned local

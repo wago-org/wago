@@ -126,8 +126,17 @@ allocation, clears replayed initializer roots and table entries, allocates all
 objects under a temporary root slice, and then fills and barrier-publishes
 references, preserving cycles and shared identity without reusing handles. Both
 `SnapshotInit` and `SnapshotWarm` support this bounded local-root graph product.
-GC-reference function imports remain rejected because they join another collector
-owner and require atomic whole-domain capture.
+Single-module `Capture` continues to reject GC-reference function imports and imported
+GC storage. `CaptureDomain` is the corresponding complete-domain product: callers supply
+every live instance in stable order; capture quiesces native execution and the collector,
+proves the set exhaustive, records internal function/global/table edges and alias identity,
+and traverses one shared stable-ID object graph. `DomainSnapshot.Instantiate` restores an
+acyclic internal import graph privately into a Runtime without an existing GC domain,
+reconstructs the shared heap once, then returns the member slice only after success. `WGDN` version 1 persists compiled members, exact GC
+configuration, memory/global/passive-data state, roots, aliases, cycles, and sharing.
+Live public tokens, active calls, external imports, imported/shared memories, opaque
+references, passive elements, EH domains, incomplete sets, and cyclic instantiation
+graphs remain strict pre-publication rejections.
 
 Numeric host imports may re-enter the same instance: codec-v30 callsites carry
 stack adjustments, a bounded eight-entry activation stack preserves control
@@ -2018,7 +2027,8 @@ Tests exercise tiny nurseries, collect-every-alloc, exact scanning, cycles, root
   table; snapshot v6 extends this to multiple heterogeneous local tables with indexed
   growth state, cross-table cycles/sharing, deterministic repeated capture, malformed
   graph rejection, exact root/field subtype checks, and near-capacity restore rollback.
-  Whole-domain shared snapshots remain planned.
+  Whole-domain shared snapshots are complete through exhaustive ordered `WGDN` v1
+  domain capture and transactional restore; unsupported external or cyclic shapes reject.
 - Minor collection promotes marked nursery survivors through handles rather than
   implementing a final copying nursery/root-update path. The Throughput allocator
   reuses freed memory but does not yet implement full Immix line/block marking or
