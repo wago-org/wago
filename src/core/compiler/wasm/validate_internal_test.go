@@ -22,58 +22,44 @@ func constFor(t ValType) Instruction {
 }
 
 func TestValidatorCoverageCoreOpcodeFamilies(t *testing.T) {
-	for k, vt := range unary {
-		t.Run(k.String(), func(t *testing.T) {
-			if err := ValidateModule(modWithFunc(nil, []ValType{vt}, constFor(vt), Instruction{Kind: k})); err != nil {
+	const wantEffects = 151
+	count := 0
+	for rawKind, effect := range opEffects {
+		if effect.cat == effNone {
+			continue
+		}
+		count++
+		kind := InstrKind(rawKind)
+		a, b := effect.a.valType(), effect.b.valType()
+		t.Run(kind.String(), func(t *testing.T) {
+			var module *Module
+			switch effect.cat {
+			case effUnary:
+				module = modWithFunc(nil, []ValType{a}, constFor(a), Instruction{Kind: kind})
+			case effBinary:
+				module = modWithFunc(nil, []ValType{a}, constFor(a), constFor(a), Instruction{Kind: kind})
+			case effCompare:
+				module = modWithFunc(nil, []ValType{I32}, constFor(a), constFor(a), Instruction{Kind: kind})
+			case effTest:
+				module = modWithFunc(nil, []ValType{I32}, constFor(a), Instruction{Kind: kind})
+			case effConv:
+				module = modWithFunc(nil, []ValType{b}, constFor(a), Instruction{Kind: kind})
+			case effLoad:
+				module = modWithFunc(nil, []ValType{a}, Instruction{Kind: InstrI32Const}, Instruction{Kind: kind})
+				module.Memories = []MemType{{Limits: Limits{Min: 1}}}
+			case effStore:
+				module = modWithFunc(nil, nil, Instruction{Kind: InstrI32Const}, constFor(a), Instruction{Kind: kind})
+				module.Memories = []MemType{{Limits: Limits{Min: 1}}}
+			default:
+				t.Fatalf("unknown effect category %d", effect.cat)
+			}
+			if err := ValidateModule(module); err != nil {
 				t.Fatalf("ValidateModule: %v", err)
 			}
 		})
 	}
-	for k, vt := range binaryOps {
-		t.Run(k.String(), func(t *testing.T) {
-			if err := ValidateModule(modWithFunc(nil, []ValType{vt}, constFor(vt), constFor(vt), Instruction{Kind: k})); err != nil {
-				t.Fatalf("ValidateModule: %v", err)
-			}
-		})
-	}
-	for k, vt := range compare {
-		t.Run(k.String(), func(t *testing.T) {
-			if err := ValidateModule(modWithFunc(nil, []ValType{I32}, constFor(vt), constFor(vt), Instruction{Kind: k})); err != nil {
-				t.Fatalf("ValidateModule: %v", err)
-			}
-		})
-	}
-	for k, vt := range test {
-		t.Run(k.String(), func(t *testing.T) {
-			if err := ValidateModule(modWithFunc(nil, []ValType{I32}, constFor(vt), Instruction{Kind: k})); err != nil {
-				t.Fatalf("ValidateModule: %v", err)
-			}
-		})
-	}
-	for k, eff := range conversions {
-		t.Run(k.String(), func(t *testing.T) {
-			if err := ValidateModule(modWithFunc(nil, []ValType{eff.to}, constFor(eff.from), Instruction{Kind: k})); err != nil {
-				t.Fatalf("ValidateModule: %v", err)
-			}
-		})
-	}
-	for k, eff := range loads {
-		t.Run(k.String(), func(t *testing.T) {
-			m := modWithFunc(nil, []ValType{eff.t}, Instruction{Kind: InstrI32Const}, Instruction{Kind: k})
-			m.Memories = []MemType{{Limits: Limits{Min: 1}}}
-			if err := ValidateModule(m); err != nil {
-				t.Fatalf("ValidateModule: %v", err)
-			}
-		})
-	}
-	for k, eff := range stores {
-		t.Run(k.String(), func(t *testing.T) {
-			m := modWithFunc(nil, nil, Instruction{Kind: InstrI32Const}, constFor(eff.t), Instruction{Kind: k})
-			m.Memories = []MemType{{Limits: Limits{Min: 1}}}
-			if err := ValidateModule(m); err != nil {
-				t.Fatalf("ValidateModule: %v", err)
-			}
-		})
+	if count != wantEffects {
+		t.Fatalf("core opcode effects = %d, want %d", count, wantEffects)
 	}
 }
 

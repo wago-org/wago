@@ -39,6 +39,17 @@ to 295,616 bytes (**−7,440**). `go generate` derives the blob directly from th
 authoritative `InstrKind` enum; compile-time count assertions and name/offset
 coverage prevent stale generated metadata.
 
+**Map-free core validation metadata (2026-08-01).** The seven numeric unary,
+binary, compare, test, conversion, load, and store maps existed only to populate
+`opEffects` during package initialization. Compact range/list initialization now
+writes the same 151 tested effects directly and releases the source maps entirely.
+Against the packed-name baseline, the stripped TinyGo release falls from
+1,975,712 to 1,958,080 bytes (**−17,632**; gzip-9 898,167 to 894,216), `.data`
+falls 47,116→36,716 bytes, and `.bss` falls 44,176→22,368 bytes. The stripped
+Go `wago_lean` CLI falls 6,496,440→6,475,960 bytes. In 150 randomized subprocess
+samples, `wago version` median startup fell 1.251→1.216 ms (**−2.8%**) and mean
+fell 1.212→1.166 ms (**−3.8%**); validation allocations remain unchanged.
+
 The backend (`src/core/compiler/backend/railshot`) is the full WARP-architecture port: a
 single-pass x86-64 codegen over a valent-block operand stack (deferred-action trees,
 condense engine) with an on-the-fly whole-register-file allocator. Landed, in rough order:

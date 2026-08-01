@@ -775,22 +775,10 @@ func (v *funcValidator) checkSharedMemArg(ma MemArg, natural uint32) (ValType, e
 	return addr, nil
 }
 
-var unary = map[InstrKind]ValType{InstrI32Clz: I32, InstrI32Ctz: I32, InstrI32Popcnt: I32, InstrI64Clz: I64, InstrI64Ctz: I64, InstrI64Popcnt: I64, InstrF32Abs: F32, InstrF32Neg: F32, InstrF32Ceil: F32, InstrF32Floor: F32, InstrF32Trunc: F32, InstrF32Nearest: F32, InstrF32Sqrt: F32, InstrF64Abs: F64, InstrF64Neg: F64, InstrF64Ceil: F64, InstrF64Floor: F64, InstrF64Trunc: F64, InstrF64Nearest: F64, InstrF64Sqrt: F64, InstrI32Extend8S: I32, InstrI32Extend16S: I32, InstrI64Extend8S: I64, InstrI64Extend16S: I64, InstrI64Extend32S: I64}
-var binaryOps = map[InstrKind]ValType{InstrI32Add: I32, InstrI32Sub: I32, InstrI32Mul: I32, InstrI32DivS: I32, InstrI32DivU: I32, InstrI32RemS: I32, InstrI32RemU: I32, InstrI32And: I32, InstrI32Or: I32, InstrI32Xor: I32, InstrI32Shl: I32, InstrI32ShrS: I32, InstrI32ShrU: I32, InstrI32Rotl: I32, InstrI32Rotr: I32, InstrI64Add: I64, InstrI64Sub: I64, InstrI64Mul: I64, InstrI64DivS: I64, InstrI64DivU: I64, InstrI64RemS: I64, InstrI64RemU: I64, InstrI64And: I64, InstrI64Or: I64, InstrI64Xor: I64, InstrI64Shl: I64, InstrI64ShrS: I64, InstrI64ShrU: I64, InstrI64Rotl: I64, InstrI64Rotr: I64, InstrF32Add: F32, InstrF32Sub: F32, InstrF32Mul: F32, InstrF32Div: F32, InstrF32Min: F32, InstrF32Max: F32, InstrF32Copysign: F32, InstrF64Add: F64, InstrF64Sub: F64, InstrF64Mul: F64, InstrF64Div: F64, InstrF64Min: F64, InstrF64Max: F64, InstrF64Copysign: F64}
-var compare = map[InstrKind]ValType{InstrI32Eq: I32, InstrI32Ne: I32, InstrI32LtS: I32, InstrI32LtU: I32, InstrI32GtS: I32, InstrI32GtU: I32, InstrI32LeS: I32, InstrI32LeU: I32, InstrI32GeS: I32, InstrI32GeU: I32, InstrI64Eq: I64, InstrI64Ne: I64, InstrI64LtS: I64, InstrI64LtU: I64, InstrI64GtS: I64, InstrI64GtU: I64, InstrI64LeS: I64, InstrI64LeU: I64, InstrI64GeS: I64, InstrI64GeU: I64, InstrF32Eq: F32, InstrF32Ne: F32, InstrF32Lt: F32, InstrF32Gt: F32, InstrF32Le: F32, InstrF32Ge: F32, InstrF64Eq: F64, InstrF64Ne: F64, InstrF64Lt: F64, InstrF64Gt: F64, InstrF64Le: F64, InstrF64Ge: F64}
-var test = map[InstrKind]ValType{InstrI32Eqz: I32, InstrI64Eqz: I64}
-
-type conv struct{ from, to ValType }
-
-var conversions = map[InstrKind]conv{InstrI32WrapI64: {I64, I32}, InstrI32TruncF32S: {F32, I32}, InstrI32TruncF32U: {F32, I32}, InstrI32TruncF64S: {F64, I32}, InstrI32TruncF64U: {F64, I32}, InstrI64ExtendI32S: {I32, I64}, InstrI64ExtendI32U: {I32, I64}, InstrI64TruncF32S: {F32, I64}, InstrI64TruncF32U: {F32, I64}, InstrI64TruncF64S: {F64, I64}, InstrI64TruncF64U: {F64, I64}, InstrF32ConvertI32S: {I32, F32}, InstrF32ConvertI32U: {I32, F32}, InstrF32ConvertI64S: {I64, F32}, InstrF32ConvertI64U: {I64, F32}, InstrF32DemoteF64: {F64, F32}, InstrF64ConvertI32S: {I32, F64}, InstrF64ConvertI32U: {I32, F64}, InstrF64ConvertI64S: {I64, F64}, InstrF64ConvertI64U: {I64, F64}, InstrF64PromoteF32: {F32, F64}, InstrI32ReinterpretF32: {F32, I32}, InstrI64ReinterpretF64: {F64, I64}, InstrF32ReinterpretI32: {I32, F32}, InstrF64ReinterpretI64: {I64, F64}}
-
 type memeff struct {
 	t     ValType
 	align uint32
 }
-
-var loads = map[InstrKind]memeff{InstrI32Load: {I32, 2}, InstrI64Load: {I64, 3}, InstrF32Load: {F32, 2}, InstrF64Load: {F64, 3}, InstrI32Load8S: {I32, 0}, InstrI32Load8U: {I32, 0}, InstrI32Load16S: {I32, 1}, InstrI32Load16U: {I32, 1}, InstrI64Load8S: {I64, 0}, InstrI64Load8U: {I64, 0}, InstrI64Load16S: {I64, 1}, InstrI64Load16U: {I64, 1}, InstrI64Load32S: {I64, 2}, InstrI64Load32U: {I64, 2}}
-var stores = map[InstrKind]memeff{InstrI32Store: {I32, 2}, InstrI64Store: {I64, 3}, InstrF32Store: {F32, 2}, InstrF64Store: {F64, 3}, InstrI32Store8: {I32, 0}, InstrI32Store16: {I32, 1}, InstrI64Store8: {I64, 0}, InstrI64Store16: {I64, 1}, InstrI64Store32: {I64, 2}}
 
 // opEffect is a precomputed stack effect for the simple numeric/mem instructions,
 // collapsing the per-instruction cascade of map lookups (unary → binaryOps →
@@ -861,26 +849,68 @@ type opEffect struct {
 
 var opEffects [numInstrKinds]opEffect
 
+func setOpEffectRange(first, last InstrKind, effect opEffect) {
+	for kind := first; kind <= last; kind++ {
+		opEffects[kind] = effect
+	}
+}
+
+func setOpEffects(effect opEffect, kinds ...InstrKind) {
+	for _, kind := range kinds {
+		opEffects[kind] = effect
+	}
+}
+
 func init() {
-	for k, t := range unary {
-		opEffects[k] = opEffect{cat: effUnary, a: compactEffectValue(t)}
-	}
-	for k, t := range binaryOps {
-		opEffects[k] = opEffect{cat: effBinary, a: compactEffectValue(t)}
-	}
-	for k, t := range compare {
-		opEffects[k] = opEffect{cat: effCompare, a: compactEffectValue(t)}
-	}
-	for k, t := range test {
-		opEffects[k] = opEffect{cat: effTest, a: compactEffectValue(t)}
-	}
-	for k, c := range conversions {
-		opEffects[k] = opEffect{cat: effConv, a: compactEffectValue(c.from), b: compactEffectValue(c.to)}
-	}
-	for k, m := range loads {
-		opEffects[k] = opEffect{cat: effLoad, a: compactEffectValue(m.t), align: uint8(m.align)}
-	}
-	for k, m := range stores {
-		opEffects[k] = opEffect{cat: effStore, a: compactEffectValue(m.t), align: uint8(m.align)}
-	}
+	setOpEffects(opEffect{cat: effTest, a: effectI32}, InstrI32Eqz)
+	setOpEffects(opEffect{cat: effTest, a: effectI64}, InstrI64Eqz)
+	setOpEffectRange(InstrI32Eq, InstrI32GeU, opEffect{cat: effCompare, a: effectI32})
+	setOpEffectRange(InstrI64Eq, InstrI64GeU, opEffect{cat: effCompare, a: effectI64})
+	setOpEffectRange(InstrF32Eq, InstrF32Ge, opEffect{cat: effCompare, a: effectF32})
+	setOpEffectRange(InstrF64Eq, InstrF64Ge, opEffect{cat: effCompare, a: effectF64})
+
+	setOpEffectRange(InstrI32Clz, InstrI32Popcnt, opEffect{cat: effUnary, a: effectI32})
+	setOpEffectRange(InstrI64Clz, InstrI64Popcnt, opEffect{cat: effUnary, a: effectI64})
+	setOpEffectRange(InstrF32Abs, InstrF32Sqrt, opEffect{cat: effUnary, a: effectF32})
+	setOpEffectRange(InstrF64Abs, InstrF64Sqrt, opEffect{cat: effUnary, a: effectF64})
+	setOpEffectRange(InstrI32Extend8S, InstrI32Extend16S, opEffect{cat: effUnary, a: effectI32})
+	setOpEffectRange(InstrI64Extend8S, InstrI64Extend32S, opEffect{cat: effUnary, a: effectI64})
+
+	setOpEffectRange(InstrI32Add, InstrI32Rotr, opEffect{cat: effBinary, a: effectI32})
+	setOpEffectRange(InstrI64Add, InstrI64Rotr, opEffect{cat: effBinary, a: effectI64})
+	setOpEffectRange(InstrF32Add, InstrF32Copysign, opEffect{cat: effBinary, a: effectF32})
+	setOpEffectRange(InstrF64Add, InstrF64Copysign, opEffect{cat: effBinary, a: effectF64})
+
+	setOpEffects(opEffect{cat: effConv, a: effectI64, b: effectI32}, InstrI32WrapI64)
+	setOpEffects(opEffect{cat: effConv, a: effectF32, b: effectI32}, InstrI32TruncF32S, InstrI32TruncF32U, InstrI32ReinterpretF32)
+	setOpEffects(opEffect{cat: effConv, a: effectF64, b: effectI32}, InstrI32TruncF64S, InstrI32TruncF64U)
+	setOpEffects(opEffect{cat: effConv, a: effectI32, b: effectI64}, InstrI64ExtendI32S, InstrI64ExtendI32U)
+	setOpEffects(opEffect{cat: effConv, a: effectF32, b: effectI64}, InstrI64TruncF32S, InstrI64TruncF32U)
+	setOpEffects(opEffect{cat: effConv, a: effectF64, b: effectI64}, InstrI64TruncF64S, InstrI64TruncF64U, InstrI64ReinterpretF64)
+	setOpEffects(opEffect{cat: effConv, a: effectI32, b: effectF32}, InstrF32ConvertI32S, InstrF32ConvertI32U, InstrF32ReinterpretI32)
+	setOpEffects(opEffect{cat: effConv, a: effectI64, b: effectF32}, InstrF32ConvertI64S, InstrF32ConvertI64U)
+	setOpEffects(opEffect{cat: effConv, a: effectF64, b: effectF32}, InstrF32DemoteF64)
+	setOpEffects(opEffect{cat: effConv, a: effectI32, b: effectF64}, InstrF64ConvertI32S, InstrF64ConvertI32U)
+	setOpEffects(opEffect{cat: effConv, a: effectI64, b: effectF64}, InstrF64ConvertI64S, InstrF64ConvertI64U, InstrF64ReinterpretI64)
+	setOpEffects(opEffect{cat: effConv, a: effectF32, b: effectF64}, InstrF64PromoteF32)
+
+	setOpEffects(opEffect{cat: effLoad, a: effectI32, align: 2}, InstrI32Load)
+	setOpEffects(opEffect{cat: effLoad, a: effectI64, align: 3}, InstrI64Load)
+	setOpEffects(opEffect{cat: effLoad, a: effectF32, align: 2}, InstrF32Load)
+	setOpEffects(opEffect{cat: effLoad, a: effectF64, align: 3}, InstrF64Load)
+	setOpEffects(opEffect{cat: effLoad, a: effectI32}, InstrI32Load8S, InstrI32Load8U)
+	setOpEffects(opEffect{cat: effLoad, a: effectI32, align: 1}, InstrI32Load16S, InstrI32Load16U)
+	setOpEffects(opEffect{cat: effLoad, a: effectI64}, InstrI64Load8S, InstrI64Load8U)
+	setOpEffects(opEffect{cat: effLoad, a: effectI64, align: 1}, InstrI64Load16S, InstrI64Load16U)
+	setOpEffects(opEffect{cat: effLoad, a: effectI64, align: 2}, InstrI64Load32S, InstrI64Load32U)
+
+	setOpEffects(opEffect{cat: effStore, a: effectI32, align: 2}, InstrI32Store)
+	setOpEffects(opEffect{cat: effStore, a: effectI64, align: 3}, InstrI64Store)
+	setOpEffects(opEffect{cat: effStore, a: effectF32, align: 2}, InstrF32Store)
+	setOpEffects(opEffect{cat: effStore, a: effectF64, align: 3}, InstrF64Store)
+	setOpEffects(opEffect{cat: effStore, a: effectI32}, InstrI32Store8)
+	setOpEffects(opEffect{cat: effStore, a: effectI32, align: 1}, InstrI32Store16)
+	setOpEffects(opEffect{cat: effStore, a: effectI64}, InstrI64Store8)
+	setOpEffects(opEffect{cat: effStore, a: effectI64, align: 1}, InstrI64Store16)
+	setOpEffects(opEffect{cat: effStore, a: effectI64, align: 2}, InstrI64Store32)
 }
