@@ -179,18 +179,28 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   Direct/indirect/reference calls and discarded-frame `return_call_ref` translate
   compact arguments to temporary opaque tokens, validate typed token results, and
   retain bounded argument/result roots across parked host execution. Ordinary host
-  owners and foreign Runtime domains continue to reject.
-- [x] **Linux/amd64 bounds-mode parity:** explicit and signal-backed Core 3 both
-  pass 2,226 modules and 58,038 assertions with zero failures, skips, or gaps.
-  Signal mode keeps explicit directory checks for nonzero memories and full-u64
-  checks for memory64 while using guard-backed owned mappings. Native Linux/Darwin
-  arm64 explicit-bounds runs remain mandatory CI cells; broader arm64 bounds-mode
-  qualification continues separately.
-- [ ] **GC hot paths:** checked numeric compact-handle access is now measured at
-  roughly 3.9–4.6 ns versus 19–30 ns through collector methods and 302–539 ns through
-  current end-to-end helper exports. Production lowering remains gated on a versioned
-  native metadata view refreshed after allocation; reference stores and unproved
-  barriers remain helper-bound.
+  owners and direct foreign Runtime domains continue to reject.
+- [x] **Bounds-mode parity:** linux/amd64 explicit and signal-backed Core 3 pass
+  2,226 modules and 58,038 assertions with zero failures, skips, or gaps. ARM64
+  signal builds now admit exception handling, multi-memory, and memory64: memory 0
+  uses native guard faults while indexed memories and memory64 retain carry-safe
+  explicit checks. Native Linux/ARM64 and Darwin/ARM64 `spec3-signals` are mandatory
+  CI cells alongside their explicit-bounds cells.
+- [x] **Versioned native GC metadata and checked scalar hot paths:** collectors
+  publish one stable ABI-v1 view whose handle/heap pointers, lengths, and generation
+  refresh after every allocation and collection; each instance adds an immutable
+  local-to-domain type view at basedata offset 280. AMD64 final scalar struct/array
+  get/set lowering validates ABI version, handle kind/range, space range, object
+  extent, canonical type, and array index before direct access. Reference/v128,
+  non-final, bulk, and barrier-requiring operations remain helper-bound. Current
+  end-to-end set/get measurements are 228–230 ns for structs and 265–266 ns for
+  arrays, with 0 B/op and 0 allocs/op.
+- [x] **Bounded foreign-Runtime GC graph transfer:** `target.CloneGCRefFrom(source,
+  ref)` selects explicit transactional graph cloning rather than sharing compact
+  handles. It preserves cycles and internal sharing under 1,024-object, 65,536-value,
+  and 1 MiB payload bounds, remaps structurally equivalent target types, roots both
+  phases exactly, and rejects non-null funcref/externref payloads. The clone receives
+  new target identity; direct foreign-domain reference calls remain fail-closed.
 
 **Engine & performance** (no-ir-plan P1–P7, measured against P1's stats)
 <!-- roadmap:P1 status=done -->

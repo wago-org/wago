@@ -89,8 +89,9 @@ and stress coverage.
 The synchronous helper boundary is capped at 64 parameter/result slots. A lazy
 per-instance `gcPublicState` includes one mutex-protected 63-value constructor
 scratch, 64 reusable host-result roots, 64 reusable host-ingress roots, a bounded
-direct native-frame/root-chain adapter, and the generic-global root mapping plus
-cross-code-owner identity (3,440 bytes total on amd64); each live result token adds
+direct native-frame/root-chain adapter, one reusable foreign-clone handoff root,
+and the generic-global root mapping plus cross-code-owner identity (3,768 bytes
+total on amd64); each live result token adds
 one 48-byte `gcRefTokenEntry` map value plus map overhead. The fixed state avoids
 per-constructor, per-root-publication, and
 per-boundary-collection Go allocations. On August 1, 2026, warmed same-domain
@@ -98,9 +99,19 @@ per-boundary-collection Go allocations. On August 1, 2026, warmed same-domain
 slot was created. Five benchmark samples of issue/use/release measured 574.1-584.8
 ns/op for the basic struct product and 688.8-697.3 ns/op for the fixed numeric array
 product, both at 0 B/op and 0 allocs/op. On July 31, 2026, five 500 ms samples of `BenchmarkGCArrayV128Set` measured 439.5-476.8 ns/op
-with 0 B/op and 0 allocs/op on the Ryzen 7 8845HS host. The path includes
-safe-boundary collection before each invocation and a parked helper transition;
-a direct JIT object-access path remains a future optimization.
+with 0 B/op and 0 allocs/op on the Ryzen 7 8845HS host.
+
+AMD64 final scalar struct/array get/set operations now bypass the parked helper
+through native collector ABI v1. One collector-owned stable view publishes the
+relocatable handle-table pointer/count, five indexed heap-space descriptors, and a
+refresh generation; allocation and collection republish it in place. One
+instance-owned view publishes the immutable local-to-canonical type map at basedata
+offset 280. Generated code reloads every pointer per access and checks ABI version,
+handle tag/range, space range, object extent, exact canonical type, and array index
+before touching payload bytes. Non-final types, references, `v128`, bulk operations,
+and every store requiring a Tiny/Throughput barrier retain helper lowering. Current
+end-to-end measurements are 227.9–229.4 ns/op for struct set/get, 218.2–219.9 ns/op
+for struct get, and 265.2–265.6 ns/op for array set/get, all 0 B/op and 0 allocs/op.
 
 A pinned single-CPU benchmark pass on July 16, 2026 (Ryzen 7 8845HS, Go 1.24.4)
 measured the 44,023-byte MoonBit JSON module at 0.276 ms decode, 1.380 ms
@@ -196,6 +207,18 @@ parked direct/indirect/reference calls convert object arguments to temporary opa
 argument/result roots until the native lease is reacquired. Proper host tails discard
 the caller frame only after the same numeric domain check and reuse the wrapper result
 pointer without retaining the caller.
+
+Foreign Runtime transfer now has one explicit non-sharing model:
+`target.CloneGCRefFrom(source, ref)` captures the retained source root into stable
+object IDs, maps every object to a structurally equivalent target-local type, then
+allocates and populates the target graph in two rooted passes. Cycles and sharing are
+preserved inside the clone, but the result intentionally receives new target identity.
+Each call is bounded to 1,024 objects, 65,536 values, and 1 MiB of payload. Nulls,
+i31 immediates, numeric/vector payloads, and collector references transfer; non-null
+funcref/externref payloads reject because their stores remain independent. A reusable
+checked handoff root closes the gap between reconstruction and public-token issuance,
+and failure clears that root and performs a target collection. Direct compact-handle
+sharing and GC-bearing cross-Runtime calls remain rejected.
 
 Iteration 38 wires one exact linux/amd64 numeric-local helper product;
 iteration 39 adds exact immutable GC-global roots, packed fields, and the numeric portion

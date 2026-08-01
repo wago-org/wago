@@ -37,30 +37,27 @@ On linux/amd64 (Ryzen 7 8845HS, five samples), the collection-capable public
 `Invoke` benchmark measures **474.7–481.6 ns/op**, 0 B/op, and 0 allocs/op. Existing
 direct cross-instance `return_call` watchpoints remain **89.52–94.63 ns/op** across
 integer, mixed-float, and float-parameter/integer-result shapes, also allocation-free.
-The ownership check adds no collector metadata or basedata words. Stable domain
-identity and descriptor-tail scratch extend the off-heap native instance-context
-buffer from 72 to 104 bytes (**+32 bytes per instance**); the Go `InstanceContext`,
-table entries, funcref descriptors, and canonical 272-byte basedata remain unchanged.
+The ownership check itself adds no collector metadata or descriptor words. Stable
+domain identity and descriptor-tail scratch first extended the off-heap native
+instance-context buffer from 72 to 104 bytes. The checked-object work below adds the
+per-instance view pointer at byte 104, making the buffer 112 bytes (**+40 bytes from
+the original context**), and grows basedata from 272 to 288 bytes for its active slot.
 ARM64 uses the same bounded descriptor semantics but still has the existing
 spill/reload staging optimization headroom.
 
-**Checked direct WasmGC object-access measurement (2026-08-01).** A benchmark-only
-prototype now models the minimum compact-reference walk a direct JIT numeric field or
-array access still requires: live handle bounds/space validation, current heap selection,
-exact runtime type verification, array bounds, and payload access. On linux/amd64
-(Ryzen 7 8845HS, ten samples), checked struct get measures about **3.95 ns** versus
-**19.51 ns** through `Collector.StructGet` (**4.9×**), checked numeric struct set about
-**3.92 ns** versus **23.57 ns** (**6.0×**), checked array get about **4.55 ns** versus
-**22.76 ns** (**5.0×**), and checked numeric array set about **4.53 ns** versus
-**29.70 ns** (**6.6×**); every path remains 0 B/op and 0 allocs/op. End-to-end helper
-boundaries remain much larger (roughly 302–309 ns for one struct get, 412–430 ns for
-struct set/get, and 526–539 ns for array set/get), so the opportunity is real. This is
-not production admission yet: collector handle and heap slice addresses can relocate at
-allocation, and reference stores need the exact Tiny/Throughput write barriers. The
-production slice must publish a versioned native metadata view refreshed after every
-allocating helper, initially admit only statically numeric pointer-free fields/elements,
-and retain helper lowering for nullable/reference stores, bulk operations, or any
-unproved metadata lifetime.
+**Checked direct WasmGC object access (2026-08-01).** The measured prototype is now
+an AMD64 production path for final scalar struct/array get/set. Collector ABI v1
+publishes one stable 112-byte view containing the current relocatable handle table,
+five indexed heap-space descriptors, and a refresh generation; allocation and
+collection republish it in place. Each collector-backed instance retains one 32-byte
+native prefix with the immutable local-to-domain type map and publishes it at basedata
+offset 280. Generated accesses validate both ABI versions, handle tag/range, space,
+heap/object extent, exact canonical type, and array index. Numeric stores are
+pointer-free; non-final, reference, `v128`, bulk, and barrier-requiring paths stay on
+helpers. On linux/amd64 (Ryzen 7 8845HS, five samples), end-to-end struct set/get is
+**227.9–229.4 ns/op**, struct get **218.2–219.9 ns/op**, and array set/get
+**265.2–265.6 ns/op**, all 0 B/op and 0 allocs/op. The underlying checked metadata
+walk remains **4.05–4.71 ns** versus **20.26–29.82 ns** through collector methods.
 
 **Compact validator effect tables (2026-08-01).** Numeric and SIMD validation
 lookup entries now store four one-byte fields instead of embedding full recursive

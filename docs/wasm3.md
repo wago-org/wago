@@ -163,11 +163,12 @@ compatibility change without adding safety, so `CoreFeaturesV3` documents relaxe
 SIMD through the existing bit.
 
 `CoreFeaturesV3` is both the Release 3 description and the implementation ceiling
-on linux/amd64 explicit and signal-backed products plus Linux/Darwin arm64
-explicit-bounds products. `SupportedFeatures()` reports the executable build/host
-set. The full suite is green in both linux/amd64 bounds modes and under
-Linux/arm64 QEMU explicit bounds; native Linux/Darwin
-arm64 conformance runs are required by CI. The compatibility default deliberately remains the
+on linux/amd64 and Linux/Darwin arm64 explicit and signal-backed products.
+`SupportedFeatures()` reports the executable build/host set. The full suite is
+green in both linux/amd64 bounds modes and under Linux/arm64 QEMU explicit
+bounds; native Linux/Darwin arm64 explicit and `spec3-signals` conformance runs
+are required by CI. ARM64 signal mode guard-checks eligible memory-0 memory32
+accesses while indexed memories and memory64 retain explicit checks. The compatibility default deliberately remains the
 Release 2 feature set plus extended constants; callers opt into Core 3 with
 `WithCoreFeatures(CoreFeaturesV3)`, and the versioned spec harness does so when
 `WAGO_SPEC_VERSION=3.0`. Unsupported build/platform requests return
@@ -180,21 +181,21 @@ Release 2 feature set plus extended constants; callers opt into Core 3 with
 |---|---|---|---|
 | Extended constant expressions | Basic Release 3 numeric extension is complete on AST and byte-backed paths: `i32`/`i64` add, sub, mul, imported globals, and earlier immutable local globals. Forward, mutable, mixed-type, stack-shape, unsupported-opcode, and local-global offset forms are rejected strictly. | Complete for the basic extended-const proposal. Literal arithmetic folds at compile time. Global-dependent scalar programs are persisted and evaluated during instantiation for globals and active data/element offsets. | ✅ Executable and enabled as `CoreFeatureExtendedConstExpressions`. GC-added constant instructions remain part of the GC row, not this completed basic proposal. |
 | Relaxed SIMD | Complete through `0xfd 275`, with reserved holes rejected. | Deterministic lowering is present on the documented linux/amd64 SIMD baseline. The Release 3 harness now honors official `either` result patterns; all 8 converted modules and 69 assertions pass with zero failures/skips. | ✅ Existing completed support, represented by `CoreFeatureSIMD`. |
-| Tail calls | Complete AST and byte-backed validation for direct, indirect, and typed-reference forms, including covariance and malformed immediates. | Direct, dynamic indirect, host, cross-instance, typed-reference, trap, subtype-result, and nested-tail paths execute on linux/amd64 and arm64 explicit bounds. Descriptor-resolved `return_call_ref` covers local, host-wrapper, and retained same-Runtime cross-instance targets, including mutable/imported funcref tables. | ✅ Core 3 official files gap-free under explicit `CoreFeaturesV3` admission. GC-bearing host or foreign-domain reference transfer remains fail-closed. |
+| Tail calls | Complete AST and byte-backed validation for direct, indirect, and typed-reference forms, including covariance and malformed immediates. | Direct, dynamic indirect, host, cross-instance, typed-reference, trap, subtype-result, and nested-tail paths execute on linux/amd64 and arm64 in both bounds modes. Descriptor-resolved `return_call_ref` covers local, host-wrapper, and retained same-Runtime cross-instance targets, including mutable/imported funcref tables. | ✅ Core 3 official files gap-free under explicit `CoreFeaturesV3` admission. GC-bearing host or foreign-domain reference transfer remains fail-closed. |
 | Typed function references | Complete recursive/indexed structural validation for signatures, tables, elements, globals, casts/tests, null branches, and `call_ref`. | Canonical descriptors, subtype-aware calls/linking, reference ownership, codec metadata, mutable/imported funcref containers, passive/declarative elements, and cross-instance retention execute. | ✅ Core 3 official typed-reference and recursive-type files gap-free. |
-| GC | Complete recursive type, subtype, struct/array/i31, conversion, cast/test/branch, constant-expression, data/element initialization, and malformed/invalid validation. | Throughput/Tiny collectors, exact roots/barriers, bounded helpers, subtype identity, linking, reference publication, and array data/element constructors execute on linux/amd64 explicit and signal-backed bounds plus arm64 explicit bounds. | ✅ Mandatory Core 3 GC corpus gap-free on those products; ownership and snapshot limits remain documented in `docs/gc.md`. |
-| Exception handling | Complete validation for tags, `throw`, `throw_ref`, `try_table`, exception references, catch payloads/depths, and malformed forms. | Arbitrary bounded tag directories, imported/exported tags, rooted exception values, nested/cross-instance handlers, tails, linking, and codec metadata execute on linux/amd64 explicit and signal-backed bounds plus arm64 explicit bounds. | ✅ Core 3 exception files gap-free on those products. |
-| Multi-memory | Complete indexed immediate and compact-import validation with Release 2 defaults preserved. | Indexed scalar/SIMD/bulk/data operations, imports/exports, snapshots for owned state, and generalized shared-memory basedata serialization execute. Linux/amd64 signal mode retains explicit checks for nonzero directory entries and guard-backs every owned memory for export/re-import safety. | ✅ Complete 42-file family and full Core 3 suite gap-free under linux/amd64 explicit and signal-backed bounds plus arm64 explicit bounds. |
-| memory64 | Complete i64 address, full-u64 limit/offset, mixed-width, data, scalar, SIMD, and bulk validation. | Bounded amd64/arm64 execution preserves exact declarations, checks full-width arithmetic before mutation, and rejects oversized grow deltas without illegal shift encodings. Linux/amd64 signal mode intentionally retains the same full-u64 explicit checks. | ✅ Mandatory Core 3 memory64 corpus gap-free under linux/amd64 explicit and signal-backed bounds plus arm64 explicit bounds. |
-| table64 | Complete i64 index/result, full-u64 limit, mixed-width copy/init, and malformed-LEB validation. | Local/imported funcref and externref tables, all table operations, indirect calls, metadata/codec, and `spectest.table64` execute under linux/amd64 explicit and signal-backed bounds plus arm64 explicit bounds. | ✅ Mandatory Core 3 table64 corpus gap-free on those products. |
+| GC | Complete recursive type, subtype, struct/array/i31, conversion, cast/test/branch, constant-expression, data/element initialization, and malformed/invalid validation. | Throughput/Tiny collectors, exact roots/barriers, bounded helpers, subtype identity, linking, reference publication, array data/element constructors, and Runtime-owned GC host calls execute on linux/amd64 and arm64 in both bounds modes. | ✅ Mandatory Core 3 GC corpus gap-free on those products; ownership and snapshot limits remain documented in `docs/gc.md`. |
+| Exception handling | Complete validation for tags, `throw`, `throw_ref`, `try_table`, exception references, catch payloads/depths, and malformed forms. | Arbitrary bounded tag directories, imported/exported tags, rooted exception values, nested/cross-instance handlers, tails, linking, and codec metadata execute on linux/amd64 and arm64 in both bounds modes. | ✅ Core 3 exception files gap-free on those products. |
+| Multi-memory | Complete indexed immediate and compact-import validation with Release 2 defaults preserved. | Indexed scalar/SIMD/bulk/data operations, imports/exports, snapshots for owned state, and generalized shared-memory basedata serialization execute. Signal mode retains explicit checks for nonzero directory entries and guard-backs owned memory 0. | ✅ Complete 42-file family; linux/amd64 is gap-free in both modes and native ARM64 explicit/signal cells are mandatory. |
+| memory64 | Complete i64 address, full-u64 limit/offset, mixed-width, data, scalar, SIMD, and bulk validation. | Bounded amd64/arm64 execution preserves exact declarations, checks full-width arithmetic before mutation, and rejects oversized grow deltas without illegal shift encodings. Signal mode intentionally retains the same full-u64 explicit checks on both architectures. | ✅ Mandatory corpus gap-free under linux/amd64 in both modes; native ARM64 explicit/signal cells are mandatory. |
+| table64 | Complete i64 index/result, full-u64 limit, mixed-width copy/init, and malformed-LEB validation. | Local/imported funcref and externref tables, all table operations, indirect calls, metadata/codec, and `spectest.table64` execute under linux/amd64 and arm64 in both bounds modes. | ✅ Mandatory corpus gap-free on linux/amd64; native ARM64 explicit/signal cells are mandatory. |
 | Text annotations | Text-format concern; no native execution semantics are required. | No runtime work planned unless tooling integration exposes a concrete need. | Not a native runtime feature. |
 | Deterministic profile | Separate optional profile, not part of the current Core 3.0 product claim. | No profile claim is made by this document. Deterministic relaxed-SIMD lowering does not by itself implement the full optional deterministic profile. | Optional/separate. |
 
 ## Current hardening priorities
 
-The mandatory linux/amd64 and arm64 explicit-bounds opcode products are complete.
-The remaining Core 3 work is ownership/persistence generalization and additional
-bounds/platform qualification rather than missing official opcode families:
+The mandatory linux/amd64 and arm64 opcode products are complete in both bounds
+modes. Remaining work is collector maturity and optional optimization rather than
+missing official opcode families:
 
 1. preserve the completed Runtime GC-domain lifecycle, rollback, multi-hop
    foreign-frame walking, codec reload, and shared-global/table call coexistence.
@@ -216,27 +217,36 @@ bounds/platform qualification rather than missing official opcode families:
    stable-ID graph, exact GC config, reconstructible live passive funcref/i31/null and
    immutable-global GC payloads, strict malformed-input validation, and atomic
    all-member publication;
-5. keep the complete linux/amd64 explicit and signal-backed suites plus native
-   Linux/Darwin arm64 explicit-bounds conformance mandatory in CI, and broaden
-   arm64 bounds-mode/native workload qualification; and
-6. after those correctness gates, measure and add direct checked JIT object
-   access as a replacement for common parked-helper operations.
+5. keep linux/amd64 and native Linux/Darwin arm64 explicit plus signal-backed
+   conformance mandatory in CI; and
+6. preserve native collector ABI v1 and AMD64 checked final-scalar object access,
+   while extending direct paths only where metadata lifetime and barriers remain exact.
 
 The current descriptor-tail completion resolves runtime targets from their immutable
 funcref descriptors instead of relying on static `ref.func` provenance. Mutable and
 imported typed funcref tables can therefore select local, host-wrapper, or retained
 same-Runtime cross-instance targets at execution time. A stable numeric GC-domain
 identity in the native instance context distinguishes ownership even when two instances
-share one linear-memory base; ordinary GC-bearing host and foreign-domain transfers
-reject before frame discard. Explicit `Runtime.NewGCHostFuncRef` owners now bind to one
+share one linear-memory base; ordinary GC-bearing host and direct foreign-domain
+transfers reject before frame discard. Explicit `Runtime.NewGCHostFuncRef` owners now bind to one
 canonical Runtime collector domain and support direct, indirect, `call_ref`, and proper
 `return_call_ref` transfers through temporary opaque argument tokens plus bounded typed
 result roots. Throughput/Tiny collection stress, codec reload, target mutation,
 producer-first close, shared-memory context restoration, and cross-Runtime rejection are
 covered. On linux/amd64, five public-`Invoke` samples measure the mutable imported-table
 path at 474.7–481.6 ns/op with 0 B/op and 0 allocs/op; existing direct cross-instance tail
-watchpoints remain 89.52–94.63 ns/op and allocation-free. The native context grows by
-32 bytes per instance, from 72 to 104 bytes; basedata and descriptor layouts do not grow.
+watchpoints remain 89.52–94.63 ns/op and allocation-free. The native context is now
+112 bytes: the original 72-byte pointer prefix, 32 bytes of domain/tail metadata,
+and an eight-byte native GC-view pointer used during shared-memory context switches.
+Native collector ABI v1 also grows basedata from 272 to 288 bytes for the active view
+slot; descriptor layouts do not grow.
+
+Cross-Runtime object ownership uses explicit cloning rather than compact-handle sharing.
+`target.CloneGCRefFrom(source, ref)` captures one retained source graph, maps recursive
+structural types into the target, and reconstructs it transactionally under bounds of
+1,024 objects, 65,536 values, and 1 MiB payload. Cycles and internal sharing survive,
+but target identity is new. Non-null opaque references reject; direct foreign Runtime
+calls and tails remain fail-closed.
 
 `WGDN` v3 adds typed passive-element root vectors and same-domain memory64 aliases while
 strictly loading v1/v2. Live passive element state is admitted for available funcrefs,

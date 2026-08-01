@@ -9,7 +9,10 @@ backend code that emits loads from `JobMemory` basedata.
 `JobMemory` reserves basedata immediately before the linear-memory base. Offsets
 are addressed as negative displacements from the linear-memory pointer used by
 JIT code. Existing offsets must not move without re-deriving the runtime ABI and
-updating the guard tests.
+updating the guard tests. The current basedata size is 288 bytes. The fixed
+16-slot wrapper-tail bank remains `[linMem-272, linMem-144)`; the separately
+addressable native GC metadata pointer is at `[linMem-280]`, leaving the bank
+unchanged.
 
 The globals pointer lives at basedata offset `112` (`abi.GlobalsPtrOffset`, used
 by runtime layout and backend codegen). Backend `global.get`/`global.set` code
@@ -26,9 +29,10 @@ instance can never be used as a cross-instance callee.
 
 The remaining nine pointer fields are modeled as the 72-byte
 `runtime.InstanceContext` and captured when instantiation finishes. Native code
-addresses a 104-byte per-instance context buffer containing that pointer prefix,
-a stable numeric GC-domain identity at byte 72, and three descriptor-tail scratch
-words at bytes 80, 88, and 96. Capture initializes the metadata suffix to zero;
+addresses a 112-byte per-instance context buffer containing that pointer prefix,
+a stable numeric GC-domain identity at byte 72, three descriptor-tail scratch
+words at bytes 80, 88, and 96, and the per-instance native GC-view pointer at
+byte 104. Capture initializes the metadata suffix to zero;
 instantiation publishes the domain identity, and binding copies only the pointer
 prefix into basedata. Keeping tail scratch in the trailing context avoids aliasing
 EH tag directories or the basedata wrapper argument bank. Every public native entry
@@ -39,6 +43,32 @@ cross-instance call graph may rebind. This avoids recursive per-memory lock
 ordering and covers same-memory, different-memory, and cyclic call graphs.
 Linear-memory size/growth caches remain backing-owned, while trap and stack
 fields remain invocation-owned.
+
+## Native collector metadata ABI v1
+
+Collector-backed instances install a pointer at `abi.GCNativeViewPtrOffset = 280`.
+It addresses a 32-byte native prefix containing ABI version 1, a pointer to one
+collector-owned view, and an immutable local-type to canonical-domain `u32` map.
+The Go object retains that map through a typed trailing slice; native code sees
+only the fixed prefix.
+
+The shared collector view is 112 bytes: version/20-byte handle stride, current
+handle pointer/count, five directly indexed 16-byte space descriptors
+`{base u64, bytes u32, pad}`, and a refresh generation. Space zero is invalid;
+nursery, old, large, and Tiny match the stable one-byte `handleEntry.space`
+identity. The Collector republishes handle and heap pointers/counts and increments
+the generation after every successful allocation and every collection, including
+handle-table relocation. Close zeros all published backing pointers before the
+view lifetime ends. Native execution and collector mutation remain serialized,
+so readers never observe a partially refreshed view.
+
+AMD64 direct final-scalar struct/array accesses reload the view for each operation
+and validate both version words, handle tag/index, 20-byte entry stride, space
+index, heap/object range, exact canonical type, and array bounds. Numeric writes
+are pointer-free and need no collector barrier. Non-final types, collector or
+opaque references, `v128`, bulk operations, and every barrier-requiring store keep
+the synchronous helper ABI. The basedata increase is 16 bytes per `JobMemory`;
+`Instance` grows by one eight-byte retained view pointer on current amd64 builds.
 
 Direct imported calls load `{entry, homeLinMem, targetContext, callerContext}`
 from the per-instance dispatch table. Indirect calls recover `targetContext` from

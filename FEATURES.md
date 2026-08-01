@@ -13,8 +13,10 @@ describes the mandatory WebAssembly Core 3.0 scope, and `SupportedFeatures()`
 reports the executable build/host set. The compatibility default remains the
 Release 2 feature set plus completed extended constants; callers opt into the
 full Release 3 surface with `WithCoreFeatures(CoreFeaturesV3)`. On
-linux/amd64 and Linux/Darwin arm64 explicit-bounds builds, every Core 3 family is
-admitted. The pinned 258-file suite is green on linux/amd64 and under Linux/arm64
+linux/amd64 explicit/signal builds and Linux/Darwin arm64 explicit/signal builds,
+every Core 3 family is admitted. ARM64 signal mode uses guard faults for eligible
+memory-0 memory32 accesses and retains explicit checks for indexed memories and
+memory64; native `spec3-signals` cells are mandatory on both operating systems. The pinned 258-file suite is green on linux/amd64 and under Linux/arm64
 QEMU execution: **2,226 modules and 58,038 assertions passed, with zero failures,
 skips, or gap categories**. Native Linux/Darwin arm64 runs are mandatory CI gates.
 Linux/amd64 signal-backed builds now admit every Core 3 family and pass the same
@@ -74,8 +76,11 @@ and cross-domain tokens reject. `Runtime.NewGCHostFuncRef` additionally binds on
 explicit host owner to the first importing canonical Runtime GC domain. Direct,
 indirect, `call_ref`, and proper `return_call_ref` host transfers use temporary
 opaque argument tokens, exact typed result roots, bounded parked activations, and
-pre-discard domain checks; ordinary host owners and foreign Runtime domains remain
-fail-closed.
+pre-discard domain checks; ordinary host owners and direct foreign Runtime domains
+remain fail-closed. Explicit `target.CloneGCRefFrom(source, ref)` instead performs a
+bounded transactional graph clone across distinct Runtime stores, preserving cycles
+and internal sharing while assigning new target identity and rejecting non-null
+opaque store-owned payloads.
 See [docs/wasm3.md](docs/wasm3.md) for the implementation ledger.
 
 ## WebAssembly 1.0 (MVP)

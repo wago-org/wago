@@ -47,9 +47,9 @@ qword-lane sequences that mask shift counts modulo 64 and avoid SSE4.2 `pcmpgtq`
 Unsupported `0xfd` opcodes remain frontend errors instead of falling through to
 backend codegen.
 
-WasmGC native helpers use stable compact references and bounded collector heaps.
-General generated modules still fail closed to a collection-disabled Throughput
-heap when exact native roots are not published. A bounded linux/amd64 slice
+WasmGC uses stable compact references and bounded collector heaps. Generated
+modules collect only where exact native roots are published; unsupported root
+shapes remain fail-closed rather than using approximate scanning. A bounded linux/amd64 slice
 admits in-invocation collection for local call graphs with numeric host imports,
 module-local GC globals, private immutable local-function tables, one private
 collector-reference table, direct recursion, and no start/tag/EH state. A
@@ -84,7 +84,11 @@ struct/array results may leave the domain as up to 64 opaque retained `GCRef` to
 per producer. Partial multi-result issuance rolls back atomically; exact store/producer
 ownership survives producer close, and non-null tokens may re-enter the same collector
 domain through structural subtype checks plus reusable checked argument roots; stale
-and foreign tokens reject. `CaptureDomain` separately quiesces an exhaustive ordered
+and foreign tokens reject. Explicit cross-Runtime transfer uses
+`target.CloneGCRefFrom(source, ref)`: a bounded stable-ID graph clone maps
+structurally equivalent target types, preserves cycles/internal sharing, assigns
+new target identity, and rejects non-null opaque store-owned payloads. Direct
+cross-Runtime compact-handle sharing remains impossible. `CaptureDomain` separately quiesces an exhaustive ordered
 collector domain and persists every member, internal function/global/table edge,
 memory32/memory64 and tag aliases, typed live passive roots, and one stable-ID heap
 graph in `WGDN` v3 with strict v1/v2 loading; restore publishes the complete member
@@ -94,23 +98,28 @@ Snapshot v4 persists reachable local-global object graphs with stable IDs and
 two-pass cycle/sharing reconstruction; snapshot v5 adds one owned local
 collector-reference table, while snapshot v6 adds multiple heterogeneous local
 tables with indexed lengths, barriers, sharing, and exact structural root
-validation. Arm64 explicit-bounds builds lower
-struct/array/i31 and dynamic cast/test helpers through the synchronous ABI. The
+validation. AMD64 final scalar struct/array accesses use collector native ABI v1:
+a stable allocation/collection-refreshed view at basedata offset 280 validates
+handle, space, object extent, canonical type, and array bounds before direct payload
+access. Reference, vector, non-final, bulk, and barrier-requiring paths remain
+helper-bound. Arm64 builds lower struct/array/i31 and dynamic cast/test helpers
+through the synchronous ABI. The
 bounded arm64 native-root product publishes liveness-exact locals and hidden
 spills from parked SP, then follows saved-LR callsites through direct/recursive
 calls, suspended direct-host activations, and same-domain foreign frames. Mutable
 local/shared GC globals, local/shared collector tables, indirect/reference calls,
 discarded-frame direct/indirect/reference tails, and fixed EH payload records are
 exact. ARM64 `try_table`, `throw`, `throw_ref`, function subtype identity, indexed
-multi-memory, memory64, and table64 are part of the explicit-bounds Core 3
-product. Polymorphic local `call_indirect` and same-domain foreign `call_ref`
+multi-memory, memory64, and table64 are part of both ARM64 Core 3 bounds modes.
+Signal mode guard-checks eligible memory-0 memory32 accesses while indexed memories
+and memory64 retain explicit checks. Polymorphic local `call_indirect` and same-domain foreign `call_ref`
 publish each possible native return PC; cross-instance wrapper paths carry their
 64-byte save-area adjustment into frame walking. Descriptor-resolved `return_call_ref` uses bounded discarded-frame transfer for
 local internal, host-wrapper, and retained same-Runtime cross-instance targets,
 including mutable/imported funcref-table loads. GC-bearing typed tails compare the
 numeric collector-domain identities stored in trailing native instance-context
-metadata before the caller is discarded; host and foreign-domain GC transfers remain
-fail-closed when exact ownership is unproved.
+metadata before the caller is discarded; ordinary host and direct foreign-domain
+GC transfers remain fail-closed when exact ownership is unproved.
 
 ---
 
@@ -311,27 +320,34 @@ WARP's `basedataoffsets.hpp`:
 | 112 | globals pointer table |
 | 120 / 128 | passive element/data descriptor arrays |
 | 136 | imported-function dispatch table |
+| 280 | versioned per-instance native GC metadata view |
 
 Memory-size/growth fields belong to the memory backing. Nine pointer fields from
-40 and 80–136 form the 72-byte Go `InstanceContext`. Each instance owns a 104-byte
-native context buffer: those nine pointers followed by an immutable numeric GC-domain
-identity and three process-serialized descriptor-tail scratch words. Binding copies
-only the pointer prefix into basedata, so context metadata cannot alias EH tags or the
-wrapper argument bank. Shared-memory users serialize entry while rebinding, so one
+40 and 80–136 form the 72-byte Go `InstanceContext`. Each instance owns a 112-byte
+native context buffer: those nine pointers, an immutable numeric GC-domain identity,
+three process-serialized descriptor-tail scratch words, and the per-instance native
+GC-view pointer at byte 104. Binding copies the pointer prefix and GC-view pointer into
+basedata, so shared-memory context switches select the target module's canonical type
+map without aliasing EH tags or the wrapper argument bank. Shared-memory users serialize entry while rebinding, so one
 linear-memory mapping can safely serve instances with independent globals, tables,
 host state, segments, and import bindings. Direct and indirect cross-instance calls
 copy the target pointer context into its home basedata and restore the exact caller
 context on normal return.
 
-Mapping off-heap is essential: every native-visible address must be **stable**
-for the lifetime of execution (the Go GC must never move it).
+Every native-visible address must be stable for the duration in which native code
+can consume it. Most runtime state is off-heap. Native GC ABI v1 is the narrow
+exception: standard Go and the release TinyGo conservative collector are non-moving;
+typed Collector/Instance fields retain the view and backing slices, and generated code
+reloads relocatable slice pointers after every allocation/collection refresh rather
+than caching them across safepoints.
 
 ### Off-heap allocation
 
 `Arena` hands out stable, off-heap, 8-byte-aligned buffers for everything native
 code touches: the globals pointer table and cells, the table descriptor, the
-host-call log, and the per-call argument/result/trap slots. Native code never
-receives a Go heap pointer.
+host-call log, and the per-call argument/result/trap slots. Outside the explicitly
+versioned collector metadata exception above, native code never receives a Go heap
+pointer.
 
 ### Mapping code (W^X)
 
