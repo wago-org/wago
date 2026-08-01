@@ -115,7 +115,7 @@ func (m *MultiSelect) apply(k selectKey) (done, cancelled bool) {
 		return true, false
 	case keyAccept, keyRight:
 		return true, false
-	case keyCancel, keyQuit:
+	case keyLeft, keyCancel, keyQuit:
 		return true, true
 	}
 	return false, false
@@ -226,7 +226,7 @@ func (m *MultiSelect) frame() string {
 	}
 	prompt := m.Prompt
 	if prompt == "" {
-		prompt = "↑/↓ move · space toggle · enter/→ accept · r reject all · esc cancel"
+		prompt = "↑/↓ move · space toggle · enter/→ accept · r reject all · ←/esc cancel"
 	}
 	fmt.Fprintf(&b, "%s\n", ui.Dim(prompt))
 	return b.String()

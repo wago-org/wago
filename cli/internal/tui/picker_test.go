@@ -43,8 +43,8 @@ func TestPickerDrillDownSelectAndBack(t *testing.T) {
 	}
 }
 
-func TestPickerRootEscapeAndQuitCancel(t *testing.T) {
-	for _, key := range []selectKey{keyCancel, keyQuit} {
+func TestPickerRootLeftEscapeAndQuitCancel(t *testing.T) {
+	for _, key := range []selectKey{keyLeft, keyCancel, keyQuit} {
 		p := NewPicker("Pick", []Item{{Label: "one", Value: "one"}})
 		if done, cancelled := p.apply(key); !done || !cancelled {
 			t.Fatalf("key %d = done %v, cancelled %v", key, done, cancelled)

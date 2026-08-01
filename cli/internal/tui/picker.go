@@ -28,8 +28,8 @@ type pickerPage struct {
 }
 
 // picker is a dependency-free hierarchical single-choice TUI. pages is its
-// navigation stack; left or escape pops a nested page, while escape at the root
-// and q at any depth cancel.
+// navigation stack; left or escape pops a nested page, while either key at the
+// root and q at any depth cancel.
 type Picker struct {
 	pages []pickerPage
 }
@@ -69,7 +69,9 @@ func (p *Picker) apply(key selectKey) (done, cancelled bool) {
 			}
 		}
 	case keyLeft:
-		p.back()
+		if !p.back() {
+			return true, true
+		}
 	case keyCancel:
 		if p.back() {
 			return false, false
@@ -188,9 +190,9 @@ func (p *Picker) frame() string {
 	if len(p.pages) > 1 {
 		fmt.Fprintf(&b, "%s\n", ui.Dim("↑/↓ move · enter/→ select · ←/esc back · q cancel"))
 	} else if pickerHasChildren(page.items) {
-		fmt.Fprintf(&b, "%s\n", ui.Dim("↑/↓ move · enter select · → select/browse · esc cancel"))
+		fmt.Fprintf(&b, "%s\n", ui.Dim("↑/↓ move · enter select · → select/browse · ←/esc cancel"))
 	} else {
-		fmt.Fprintf(&b, "%s\n", ui.Dim("↑/↓ move · enter/→ select · esc cancel"))
+		fmt.Fprintf(&b, "%s\n", ui.Dim("↑/↓ move · enter/→ select · ←/esc cancel"))
 	}
 	return b.String()
 }

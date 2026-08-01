@@ -104,7 +104,7 @@ func chooseBooleans(title string, catalog []settings.BoolSetting, values map[str
 		name := setting.Key[strings.IndexByte(setting.Key, '.')+1:]
 		items = append(items, tui.SelectItem{Label: setting.Label, Description: setting.Description, On: values[name]})
 	}
-	selector := &tui.MultiSelect{Title: title, Items: items, Prompt: "↑/↓ move · space toggle · a all · enter/→ save · esc back"}
+	selector := &tui.MultiSelect{Title: title, Items: items, Prompt: "↑/↓ move · space toggle · a all · enter/→ save · ←/esc back"}
 	submitted, cancelled := tui.Run(selector)
 	if !submitted || cancelled {
 		return false
@@ -133,7 +133,7 @@ func chooseExperimental(config *settings.Config) bool {
 			Label: setting.Label, Description: description, On: setting.Available && config.Optimizations[name], Disabled: !setting.Available,
 		})
 	}
-	selector := &tui.MultiSelect{Title: "Experimental features (preview)", Items: items, Prompt: "↑/↓ move · space toggle available · enter/→ save · esc back"}
+	selector := &tui.MultiSelect{Title: "Experimental features (preview)", Items: items, Prompt: "↑/↓ move · space toggle available · enter/→ save · ←/esc back"}
 	submitted, cancelled := tui.Run(selector)
 	if !submitted || cancelled {
 		return false

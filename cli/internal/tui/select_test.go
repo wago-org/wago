@@ -101,6 +101,9 @@ func TestMultiSelectAcceptCancel(t *testing.T) {
 	if done, cancelled := m.apply(keyCancel); !done || !cancelled {
 		t.Fatalf("esc => done and cancelled; got done=%v cancelled=%v", done, cancelled)
 	}
+	if done, cancelled := m.apply(keyLeft); !done || !cancelled {
+		t.Fatalf("left => done and cancelled; got done=%v cancelled=%v", done, cancelled)
+	}
 	if done, _ := m.apply(keyNoop); done {
 		t.Fatalf("noop must not finish the interaction")
 	}
