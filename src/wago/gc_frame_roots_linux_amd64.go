@@ -150,7 +150,7 @@ func gcFrameTablesSafe(m *wasm.Module) (safe, collector bool) {
 	if m.TableCount() == 0 {
 		for i := range m.Elements {
 			e := &m.Elements[i]
-			if e.Mode.Kind != wasm.ElemDeclarative || e.Kind.Kind != wasm.ElemFuncs {
+			if (e.Mode.Kind != wasm.ElemDeclarative && e.Mode.Kind != wasm.ElemPassive) || e.Kind.Kind != wasm.ElemFuncs {
 				return false, false
 			}
 			for _, idx := range e.Kind.Funcs {

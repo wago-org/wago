@@ -209,7 +209,7 @@ bounds/platform qualification rather than missing official opcode families:
 3. preserve the completed heterogeneous shared-table attachment, growth, rollback,
    codec, and close-order proofs while extending ownership to unproved foreign shapes;
 4. preserve the completed snapshot-v5 single-table and snapshot-v6 heterogeneous
-   multi-table proofs plus `WGDN` v1 whole-domain capture: exhaustive ordered members,
+   multi-table proofs plus `WGDN` v2 whole-domain capture (v1 load-compatible): exhaustive ordered members,
    internal function/global/table/memory32/exception-tag aliases, immutable tag
    directories, one shared stable-ID graph, exact GC config, strict malformed-input validation, and
    atomic all-member publication;

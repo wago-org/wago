@@ -263,6 +263,90 @@ func TestDomainSnapshotRestoresInternalMemoryAlias(t *testing.T) {
 	}
 }
 
+func domainSnapshotDroppedElementModule() []byte {
+	structType := []byte{0x5f, 0x01, 0x7f, 0x01}
+	funcType := wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32})
+	body := []byte{0x01, 0x01, 0x63, 0x00,
+		0x20, 0x00, 0xfb, 0x00, 0x00, 0x21, 0x01,
+		0xfc, 0x0d, 0x00,
+		0x20, 0x01, 0xfb, 0x02, 0x00, 0x00,
+		0x0b}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(structType, funcType)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(9, wasmtest.Vec(tableTestPassiveElem(0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func TestDomainSnapshotRestoresDroppedPassiveElements(t *testing.T) {
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), domainSnapshotDroppedElementModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	if compiled.genericGCFrameRoots() == nil {
+		t.Fatal("dropped-element module lost exact roots")
+	}
+	profile := GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 128, TinyBlockBytes: 32, TinyCollectEveryAlloc: true, TinyStepEveryAlloc: true, VerifyAfterCollect: true}
+	store := newReferenceStore(false)
+	in, err := instantiateCore(compiled, InstantiateOptions{GC: profile, store: store})
+	if err != nil {
+		store.closeRuntime()
+		t.Fatal(err)
+	}
+	if _, err := CaptureDomain(in); err == nil || !strings.Contains(err.Error(), "passive element 0 is still live") {
+		in.Close()
+		store.closeRuntime()
+		t.Fatalf("live passive element capture error = %v", err)
+	}
+	if got, err := in.Invoke("run", 55); err != nil || !reflect.DeepEqual(got, []uint64{55}) {
+		in.Close()
+		store.closeRuntime()
+		t.Fatalf("drop run = %v, %v", got, err)
+	}
+	if lens := capturePassiveElemLens(in); !reflect.DeepEqual(lens, []uint32{0}) {
+		in.Close()
+		store.closeRuntime()
+		t.Fatalf("captured passive element lengths = %v", lens)
+	}
+	snapshot, err := CaptureDomain(in)
+	if err != nil {
+		in.Close()
+		store.closeRuntime()
+		t.Fatal(err)
+	}
+	blob, err := snapshot.MarshalBinary()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if blob[len(domainSnapshotMagic)] != 2 {
+		t.Fatalf("domain snapshot version = %d, want 2", blob[len(domainSnapshotMagic)])
+	}
+	if err := in.Close(); err != nil {
+		t.Fatal(err)
+	}
+	store.closeRuntime()
+	loaded, err := LoadDomainSnapshot(blob)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rt := NewRuntime()
+	defer rt.Close()
+	restored, err := loaded.Instantiate(rt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer restored[0].Close()
+	if lens := capturePassiveElemLens(restored[0]); !reflect.DeepEqual(lens, []uint32{0}) {
+		t.Fatalf("restored passive element lengths = %v", lens)
+	}
+	if got, err := restored[0].Invoke("run", 77); err != nil || !reflect.DeepEqual(got, []uint64{77}) {
+		t.Fatalf("restored drop run = %v, %v", got, err)
+	}
+}
+
 func TestDomainSnapshotRestoresSharedGCGraphAndAliases(t *testing.T) {
 	cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3)
 	providerCode, err := Compile(cfg, gcCrossInstancePersistentProviderModule())
@@ -305,6 +389,20 @@ func TestDomainSnapshotRestoresSharedGCGraphAndAliases(t *testing.T) {
 	blob, err := snapshot.MarshalBinary()
 	if err != nil {
 		t.Fatal(err)
+	}
+	legacy, err := snapshot.marshalBinaryVersion(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if legacy[len(domainSnapshotMagic)] != 1 {
+		t.Fatalf("legacy domain snapshot version = %d, want 1", legacy[len(domainSnapshotMagic)])
+	}
+	legacyLoaded, err := LoadDomainSnapshot(legacy)
+	if err != nil {
+		t.Fatalf("load WGDN v1 compatibility blob: %v", err)
+	}
+	for _, member := range legacyLoaded.members {
+		defer member.state.c.Close()
 	}
 	again, err := snapshot.MarshalBinary()
 	if err != nil || !bytes.Equal(blob, again) {

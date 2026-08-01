@@ -153,11 +153,12 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   internal function/global/table import edge, alias identity, and one shared stable-ID GC
   graph. `DomainSnapshot.Instantiate` restores acyclic internal links and publishes the
   member slice only after graph reconstruction; any failure closes the unpublished domain.
-  The `WGDN` v1 blob persists compiled members, exact GC configuration, imports, aliases,
-  cycles, sharing, and heterogeneous canonical types; restore requires a Runtime without
+  The `WGDN` v2 blob (retaining v1 load compatibility) persists compiled members, exact
+  GC configuration, imports, aliases, cycles, sharing, heterogeneous canonical types,
+  and dropped passive-element lifecycle state; restore requires a Runtime without
   an existing live GC domain. Live public GC tokens, active calls,
-  external imports, shared or memory64 memories, opaque references, passive elements,
-  incomplete member sets, and cyclic instantiation graphs reject before publication.
+  external imports, shared or memory64 memories, opaque references, live passive
+  elements, incomplete member sets, and cyclic instantiation graphs reject before publication.
   Same-domain imported memory32 and exception-tag aliases now preserve their exact owner
   and identity; memory links also preserve grown size and bytes. Completed EH state needs
   no extra mutable snapshot payload and restores through the compiled member.

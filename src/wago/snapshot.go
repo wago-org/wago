@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"unsafe"
 
 	"github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/src/core/runtime/gc"
@@ -88,6 +89,7 @@ type Snapshot struct {
 	memories        []memorySnap // one entry per owned local memory, in wasm index order
 	globals         []globalSnap // one entry per global cell, indexed by wasm global index
 	passiveDataLens []uint32     // current descriptor lengths, indexed by wasm data segment
+	passiveElemLens []uint32     // current descriptor lengths, indexed by wasm element segment
 	gcGlobalRefs    []gcSnapshotRef
 	gcTableRefs     []gcSnapshotRef   // snapshot-v5 compatibility: live entries of table 0
 	gcTableRoots    [][]gcSnapshotRef // snapshot-v6: one live-entry slice per local GC table
@@ -190,6 +192,7 @@ func captureInstanceSnapshot(in *Instance, opts SnapshotOptions) *Snapshot {
 		s.globals[i] = globalSnap{typ: g.Type, bits: readGlobalObject(g, g.Type), vec: readGlobalObjectV128(g)}
 	}
 	s.passiveDataLens = capturePassiveDataLens(in)
+	s.passiveElemLens = capturePassiveElemLens(in)
 	return s
 }
 
@@ -220,6 +223,52 @@ func runWarm(in *Instance, opts SnapshotOptions) error {
 	}
 	if _, err := in.Invoke(name, opts.WarmArgs...); err != nil {
 		return fmt.Errorf("wago: warm function %q: %w", name, err)
+	}
+	return nil
+}
+
+func capturePassiveElemLens(in *Instance) []uint32 {
+	if in == nil || in.c == nil || len(in.c.passiveElems) == 0 || in.jm == nil || in.jm.PassiveElemPtr() == 0 {
+		return nil
+	}
+	desc := unsafe.Slice((*byte)(offHeapPtr(in.jm.PassiveElemPtr())), runtime.PassiveElemDescBytes*len(in.c.passiveElems))
+	lens := make([]uint32, len(in.c.passiveElems))
+	for i := range lens {
+		lens[i] = binary.LittleEndian.Uint32(desc[i*runtime.PassiveElemDescBytes+8:])
+	}
+	return lens
+}
+
+func compiledPassiveElemLens(c *Compiled) []uint32 {
+	if c == nil || len(c.passiveElems) == 0 {
+		return nil
+	}
+	lens := make([]uint32, len(c.passiveElems))
+	for i := range c.passiveElems {
+		lens[i] = uint32(len(c.passiveElems[i].Values))
+	}
+	return lens
+}
+
+func snapshotPassiveElemLens(s *Snapshot) []uint32 {
+	if s == nil || s.c == nil || len(s.c.passiveElems) == 0 {
+		return nil
+	}
+	if len(s.passiveElemLens) == len(s.c.passiveElems) {
+		return s.passiveElemLens
+	}
+	return compiledPassiveElemLens(s.c)
+}
+
+func validatePassiveElemLens(c *Compiled, lens []uint32) error {
+	if c == nil || len(lens) != len(c.passiveElems) {
+		return fmt.Errorf("element count %d does not match module count %d", len(lens), len(c.passiveElems))
+	}
+	for i, length := range lens {
+		full := uint32(len(c.passiveElems[i].Values))
+		if length != 0 && length != full {
+			return fmt.Errorf("element %d length %d is neither live length %d nor dropped", i, length, full)
+		}
 	}
 	return nil
 }

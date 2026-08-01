@@ -132,13 +132,14 @@ every live instance in stable order; capture quiesces native execution and the c
 proves the set exhaustive, records internal function/global/table edges and alias identity,
 and traverses one shared stable-ID object graph. `DomainSnapshot.Instantiate` restores an
 acyclic internal import graph privately into a Runtime without an existing GC domain,
-reconstructs the shared heap once, then returns the member slice only after success. `WGDN` version 1 persists compiled members, exact GC
-configuration, memory/global/passive-data state, roots, aliases, cycles, and sharing.
+reconstructs the shared heap once, then returns the member slice only after success. `WGDN` version 2 persists compiled members, exact GC
+configuration, memory/global/passive-data state, dropped passive-element lengths, roots,
+aliases, cycles, and sharing while retaining version 1 load compatibility.
 Same-domain imported memory32 links preserve the owning member and restore one shared
 backing mapping after validating duplicate member images. Same-domain imported tags
 preserve the owning member's immutable native identity and structural tag type. Live
 public tokens, active calls, external imports, shared or memory64 memories, opaque
-references, passive elements, incomplete sets, and cyclic instantiation graphs remain
+references, live passive elements, incomplete sets, and cyclic instantiation graphs remain
 strict pre-publication rejections. Completed EH invocations carry no additional mutable
 snapshot state and round-trip through their compiled member and ordinary GC graph.
 
@@ -2037,8 +2038,9 @@ Tests exercise tiny nurseries, collect-every-alloc, exact scanning, cycles, root
   table; snapshot v6 extends this to multiple heterogeneous local tables with indexed
   growth state, cross-table cycles/sharing, deterministic repeated capture, malformed
   graph rejection, exact root/field subtype checks, and near-capacity restore rollback.
-  Whole-domain shared snapshots are complete through exhaustive ordered `WGDN` v1
-  domain capture and transactional restore; unsupported external or cyclic shapes reject.
+  Whole-domain shared snapshots use exhaustive ordered `WGDN` v2 domain capture and
+  transactional restore with v1 compatibility; dropped passive-element state restores,
+  while live/external or cyclic ownership shapes reject.
 - Minor collection promotes marked nursery survivors through handles rather than
   implementing a final copying nursery/root-update path. The Throughput allocator
   reuses freed memory but does not yet implement full Immix line/block marking or

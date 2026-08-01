@@ -108,7 +108,7 @@ func validCompiledGCFunctionTables(c *Compiled) bool {
 		}
 		for i := range c.passiveElems {
 			elem := &c.passiveElems[i]
-			if elem.Mode != ElemModeDeclarative || normalizedElemRefType(elem.RefType) != ValFuncRef {
+			if (elem.Mode != ElemModeDeclarative && elem.Mode != ElemModePassive) || normalizedElemRefType(elem.RefType) != ValFuncRef {
 				return false
 			}
 			for _, value := range elem.Values {

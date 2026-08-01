@@ -10,8 +10,9 @@ import (
 )
 
 const (
-	domainSnapshotMagic   = "WGDN"
-	domainSnapshotVersion = 1
+	domainSnapshotMagic      = "WGDN"
+	domainSnapshotVersionMin = 1
+	domainSnapshotVersion    = 2
 )
 
 // IsDomainSnapshot reports whether b starts with the whole-domain snapshot wire
@@ -23,10 +24,17 @@ func IsDomainSnapshot(b []byte) bool {
 // MarshalBinary encodes the complete member set, internal import graph, shared
 // stable-ID GC graph, and exact collector configuration.
 func (s *DomainSnapshot) MarshalBinary() ([]byte, error) {
+	return s.marshalBinaryVersion(domainSnapshotVersion)
+}
+
+func (s *DomainSnapshot) marshalBinaryVersion(version byte) ([]byte, error) {
+	if version < domainSnapshotVersionMin || version > domainSnapshotVersion {
+		return nil, fmt.Errorf("wago: domain snapshot version %d unsupported", version)
+	}
 	if err := validateDomainSnapshot(s); err != nil {
 		return nil, err
 	}
-	out := append([]byte(domainSnapshotMagic), domainSnapshotVersion)
+	out := append([]byte(domainSnapshotMagic), version)
 	out = appendDomainGCConfig(out, s.gc)
 	out = binary.AppendUvarint(out, uint64(len(s.members)))
 	for member, entry := range s.members {
@@ -55,6 +63,15 @@ func (s *DomainSnapshot) MarshalBinary() ([]byte, error) {
 		out = binary.AppendUvarint(out, uint64(len(passive)))
 		for _, length := range passive {
 			out = binary.AppendUvarint(out, uint64(length))
+		}
+		if version >= 2 {
+			elements := snapshotPassiveElemLens(entry.state)
+			out = binary.AppendUvarint(out, uint64(len(elements)))
+			for _, length := range elements {
+				out = binary.AppendUvarint(out, uint64(length))
+			}
+		} else if len(entry.state.c.passiveElems) != 0 {
+			return nil, fmt.Errorf("wago: domain snapshot v1 cannot encode member %d passive element state", member)
 		}
 		out = binary.AppendUvarint(out, uint64(len(entry.imports)))
 		for _, imp := range entry.imports {
@@ -104,8 +121,9 @@ func LoadDomainSnapshot(data []byte) (*DomainSnapshot, error) {
 	if !IsDomainSnapshot(data) {
 		return nil, errors.New("wago: not a domain snapshot blob")
 	}
-	if data[len(domainSnapshotMagic)] != domainSnapshotVersion {
-		return nil, fmt.Errorf("wago: domain snapshot version %d unsupported", data[len(domainSnapshotMagic)])
+	version := data[len(domainSnapshotMagic)]
+	if version < domainSnapshotVersionMin || version > domainSnapshotVersion {
+		return nil, fmt.Errorf("wago: domain snapshot version %d unsupported", version)
 	}
 	rd := &snapReader{buf: data[len(domainSnapshotMagic)+1:]}
 	cfg := readDomainGCConfig(rd)
@@ -152,6 +170,20 @@ func LoadDomainSnapshot(data []byte) (*DomainSnapshot, error) {
 			}
 			passive[i] = uint32(value)
 		}
+		var elements []uint32
+		if version >= 2 {
+			elements = make([]uint32, rd.count(fmt.Sprintf("member %d passive element", member), 1))
+			for i := range elements {
+				value := rd.uvarint()
+				if value > uint64(^uint32(0)) {
+					rd.err = fmt.Errorf("member %d passive element %d length overflows u32", member, i)
+					break
+				}
+				elements[i] = uint32(value)
+			}
+		} else {
+			elements = compiledPassiveElemLens(compiled)
+		}
 		imports := make([]domainSnapshotImport, rd.count(fmt.Sprintf("member %d import", member), 4))
 		for i := range imports {
 			imports[i].key = string(rd.sizedBytes(fmt.Sprintf("member %d import %d key", member, i)))
@@ -169,7 +201,7 @@ func LoadDomainSnapshot(data []byte) (*DomainSnapshot, error) {
 			tableRoots[i] = readDomainRefs(rd, fmt.Sprintf("member %d table %d root", member, i))
 		}
 		members[member] = domainSnapshotMember{
-			state:   &Snapshot{c: compiled, gc: cfg, kind: SnapshotInit, memories: memories, globals: globals, passiveDataLens: passive},
+			state:   &Snapshot{c: compiled, gc: cfg, kind: SnapshotInit, memories: memories, globals: globals, passiveDataLens: passive, passiveElemLens: elements},
 			imports: imports, globalRefs: globalRefs, tableRoots: tableRoots,
 		}
 		if len(memories) != 0 {

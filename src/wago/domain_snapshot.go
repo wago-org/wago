@@ -50,8 +50,8 @@ type domainGCObjectSnapshot struct {
 // CaptureDomain captures an exhaustive, explicitly ordered set of instances
 // sharing one Runtime GC collector. Calls are quiesced process-wide during the
 // copy. The initial product rejects active calls, live public GC tokens, external
-// imports, shared or memory64 memories, opaque references, passive elements,
-// imported exception tags, and an incomplete member list. Same-domain imported
+// imports, shared or memory64 memories, opaque references, live passive elements,
+// and an incomplete member list. Same-domain imported
 // memory32 aliases and exception-tag aliases are captured through their owning
 // member. Immutable tag directories carry no post-instantiation mutable state.
 func CaptureDomain(instances ...*Instance) (*DomainSnapshot, error) {
@@ -150,8 +150,15 @@ func validateDomainSnapshotMember(in *Instance) error {
 			return fmt.Errorf("memory %d is shared or memory64", i)
 		}
 	}
-	if len(in.c.passiveElems) != 0 {
-		return errors.New("passive element state is unsupported")
+	if lens := capturePassiveElemLens(in); len(lens) != 0 {
+		if err := validatePassiveElemLens(in.c, lens); err != nil {
+			return fmt.Errorf("passive element state: %w", err)
+		}
+		for i, length := range lens {
+			if length != 0 {
+				return fmt.Errorf("passive element %d is still live", i)
+			}
+		}
 	}
 	for i := range in.c.Globals {
 		if isReferenceValType(in.c.Globals[i].Type) && !isGCRefValType(in.c.Globals[i].Type) {
@@ -824,6 +831,14 @@ func validateDomainSnapshot(s *DomainSnapshot) error {
 		if err := validatePassiveDataLens(c, snapshotPassiveDataLens(entry.state)); err != nil {
 			return fmt.Errorf("wago: domain snapshot member %d passive data: %w", member, err)
 		}
+		if err := validatePassiveElemLens(c, snapshotPassiveElemLens(entry.state)); err != nil {
+			return fmt.Errorf("wago: domain snapshot member %d passive elements: %w", member, err)
+		}
+		for i, length := range snapshotPassiveElemLens(entry.state) {
+			if length != 0 {
+				return fmt.Errorf("wago: domain snapshot member %d passive element %d is still live", member, i)
+			}
+		}
 		if len(entry.tableRoots) != c.tableCount() {
 			return fmt.Errorf("wago: domain snapshot member %d table count mismatch", member)
 		}
@@ -1031,9 +1046,6 @@ func validateDomainSnapshotCompiledMember(c *Compiled) error {
 		if def.Shared || def.Addr64 {
 			return fmt.Errorf("memory %d is shared or memory64", i)
 		}
-	}
-	if len(c.passiveElems) != 0 {
-		return errors.New("passive element state is unsupported")
 	}
 	for i, global := range c.Globals {
 		if isReferenceValType(global.Type) && !isGCRefValType(global.Type) {

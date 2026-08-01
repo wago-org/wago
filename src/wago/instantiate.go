@@ -1030,6 +1030,13 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 
 	var gcArrayElements *gcArrayElementState
 	if initErr == nil && len(c.passiveElems) > 0 {
+		var restoreElemLens []uint32
+		if opts.restore != nil {
+			restoreElemLens = snapshotPassiveElemLens(opts.restore)
+			if err := validatePassiveElemLens(c, restoreElemLens); err != nil {
+				return nil, fmt.Errorf("snapshot passive elements: %w", err)
+			}
+		}
 		edesc := ar.Alloc(runtime.PassiveElemDescBytes * len(c.passiveElems))
 		for i, el := range c.passiveElems {
 			if len(el.Values) == 0 {
@@ -1048,7 +1055,11 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			}
 			off := i * runtime.PassiveElemDescBytes
 			binary.LittleEndian.PutUint64(edesc[off:], uint64(uintptr(unsafe.Pointer(&entries[0]))))
-			binary.LittleEndian.PutUint32(edesc[off+8:], uint32(len(el.Values)))
+			length := uint32(len(el.Values))
+			if opts.restore != nil {
+				length = restoreElemLens[i]
+			}
+			binary.LittleEndian.PutUint32(edesc[off+8:], length)
 		}
 		if initErr == nil && c.memoryDir != nil && c.memoryDir.gcArrayElement != nil {
 			seg := int(c.memoryDir.gcArrayElement.SegmentIndex)
@@ -1057,6 +1068,9 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			} else {
 				desc := edesc[seg*runtime.PassiveElemDescBytes : (seg+1)*runtime.PassiveElemDescBytes]
 				gcArrayElements, initErr = instantiateGCArrayElementSegment(b.collector, b.gcTypeMap, c.GCTypeDescs, c.memoryDir.gcArrayElement, desc)
+				if initErr == nil && opts.restore != nil && restoreElemLens[seg] == 0 {
+					gcArrayElements.drop(b.collector)
+				}
 			}
 		}
 		jm.SetPassiveElemPtr(uintptr(unsafe.Pointer(&edesc[0])))
