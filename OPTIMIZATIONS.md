@@ -114,12 +114,22 @@ within noise at 0.319→0.317 ms median (n=150). Reverse-map identity,
 `unreachable` opcode zero, typed-select exclusion, out-of-range rejection, and
 1,068-byte table storage are test-locked.
 
-**Campaign total:** from `19d000ba` through dense reverse encoding, the stripped
-TinyGo release shrinks 1,983,792→1,920,304 bytes (**−63,488, −3.2%**), gzip-9
-shrinks 899,459→879,411 bytes, and `.bss` shrinks 133,888→6,528 bytes
-(**−127,360, −95.1%**). The latest stable randomized subprocess median for
-TinyGo `wago version` is about 0.4 ms versus the pre-campaign 0.549 ms;
-`BenchmarkDecodeValidate` remains **6.3%** below the pre-campaign median.
+**Skip empty nested SIMD scans (2026-08-01).** The frontend now checks nested
+body/then/else lengths before recursive SIMD admission calls. On a flat
+256-instruction body, absent-SIMD scanning improves 1,635.5→573.25 ns/op
+(**−65.0%**) and last-position SIMD improves 1,638→576.45 ns/op (**−64.8%**),
+remaining at zero allocations. The stripped TinyGo ELF adds 16 bytes
+(1,920,304→1,920,320), gzip-9 shifts 879,411→879,409 bytes, and the stripped Go
+lean CLI remains 6,430,868 bytes. Existing byte-backed and structured nested
+expression coverage preserves recursive semantics.
+
+**Campaign total:** from `19d000ba` through empty nested-scan elision, the
+stripped TinyGo release shrinks 1,983,792→1,920,320 bytes
+(**−63,472, −3.2%**), gzip-9 shrinks 899,459→879,409 bytes, and `.bss` shrinks
+133,888→6,528 bytes (**−127,360, −95.1%**). The latest stable randomized
+subprocess median for TinyGo `wago version` is about 0.4 ms versus the
+pre-campaign 0.549 ms; `BenchmarkDecodeValidate` remains **6.3%** below the
+pre-campaign median.
 
 The backend (`src/core/compiler/backend/railshot`) is the full WARP-architecture port: a
 single-pass x86-64 codegen over a valent-block operand stack (deferred-action trees,

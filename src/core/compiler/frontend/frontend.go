@@ -2433,7 +2433,14 @@ func instrsRequireSIMD(instrs []wasm.Instruction) bool {
 		if wasm.IsSIMDValidationInstructionKind(in.Kind) {
 			return true
 		}
-		if exprRequiresSIMD(in.Body()) || instrsRequireSIMD(in.Then()) || instrsRequireSIMD(in.Else()) {
+		body := in.Body()
+		if (len(body.BodyBytes) != 0 || len(body.Instrs) != 0) && exprRequiresSIMD(body) {
+			return true
+		}
+		if then := in.Then(); len(then) != 0 && instrsRequireSIMD(then) {
+			return true
+		}
+		if otherwise := in.Else(); len(otherwise) != 0 && instrsRequireSIMD(otherwise) {
 			return true
 		}
 	}
