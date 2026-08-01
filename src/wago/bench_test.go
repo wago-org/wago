@@ -293,11 +293,19 @@ func BenchmarkSupportedFeatures(b *testing.B) {
 }
 
 func BenchmarkCompileSmallScalar(b *testing.B) {
+	benchmarkCompileSmallScalar(b, nil)
+}
+
+func BenchmarkCompileSmallScalarCore3(b *testing.B) {
+	benchmarkCompileSmallScalar(b, NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3))
+}
+
+func benchmarkCompileSmallScalar(b *testing.B, cfg *RuntimeConfig) {
 	mod := benchAddOneModule()
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		c, err := Compile(nil, mod)
+		c, err := Compile(cfg, mod)
 		if err != nil {
 			b.Fatal(err)
 		}

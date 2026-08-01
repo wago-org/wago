@@ -74,6 +74,16 @@ malformed-module diagnostics were unchanged. Across 200 randomized cached
 Linux Tiny runtime assets; their profile-specific sizes must be measured
 independently.
 
+**Retired Core 3 fixture-hash admission on structural products (2026-08-01).**
+Collector-free function-identity products now rely on their existing strict
+decoded structural proofs rather than additionally hashing historical
+spec-generated binaries. Non-GC modules also skip the large type-subtyping
+classifier entirely. On the original small-scalar Core 3 watchpoint, median
+compile time fell **11.619→11.333 µs/op** (**−2.5%**), with 42,701→42,541 B/op
+and 99→95 allocs/op. Historical monolithic full/engine releases each shrank by
+about **6.5 KiB**. Official Core 3 behavior and strict malformed/type validation
+remain unchanged; fixture identity is no longer a production gate.
+
 **Execution-only CLI prototype (2026-08-01).** The superseded monolithic
 `wago_engine` experiment measured **1,529,176 bytes** versus **1,742,072 bytes**
 for the full CLI (**−212,896, −12.2%**) while retaining the Core 3 execution

@@ -1005,7 +1005,9 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	gcI31Product := stagedGCI31Product(0)
 	nullReferenceProduct := false
 	if features.StructuralTypeProducts && hasStructuralHeapTypes(m) {
-		if product, shapeErr := stagedStructuralTypeProductShape(m); shapeErr == nil && stagedStructuralTypeProductPinned(wasmBytes, product) {
+		// Structural execution is shape-proven; historical suite hashes no longer
+		// define the product boundary now that Core 3 support is complete.
+		if product, shapeErr := stagedStructuralTypeProductShape(m); shapeErr == nil {
 			arm64Structural := goruntime.GOARCH == "arm64" && (goruntime.GOOS == "linux" || goruntime.GOOS == "darwin") && cfg.boundsChecks == BoundsChecksExplicit
 			if (goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64") && !arm64Structural {
 				return nil, fmt.Errorf("compile: unsupported collector-free structural product staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
@@ -1013,8 +1015,12 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 			structuralProduct = product
 		}
 	}
-	if features.GCTypeSubtypingProducts {
-		if product, shapeErr := stagedGCTypeSubtypingProductShape(m); shapeErr == nil && stagedGCTypeSubtypingProductPinned(wasmBytes, product) {
+	if features.GCTypeSubtypingProducts && requiredByModule.IsEnabled(CoreFeatureGC) {
+		// Core 3 type-subtyping execution is no longer tied to hashes of the
+		// historical spec fixtures. The structural classifier remains deliberately
+		// strict because it selects the collector-free function-identity lowering,
+		// but any module with that proven shape receives the same semantics.
+		if product, shapeErr := stagedGCTypeSubtypingProductShape(m); shapeErr == nil {
 			arm64GC := goruntime.GOARCH == "arm64" && (goruntime.GOOS == "linux" || goruntime.GOOS == "darwin") && cfg.boundsChecks == BoundsChecksExplicit
 			if (goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64") && !arm64GC {
 				return nil, fmt.Errorf("compile: unsupported gc/type-subtyping product staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
