@@ -102,10 +102,22 @@ samples). The stripped TinyGo release falls 1,921,848→1,920,272 bytes
 stripped Go lean CLI falls 6,434,964→6,430,868 bytes. Exact order identity,
 reserved/custom rejection, and 14-byte storage are test-locked.
 
-**Campaign total:** from `19d000ba` through dense section ordering, the stripped
-TinyGo release shrinks 1,983,792→1,920,272 bytes (**−63,520, −3.2%**), gzip-9
-shrinks 899,459→879,889 bytes, and `.bss` shrinks 133,888→6,544 bytes
-(**−127,344, −95.1%**). The latest stable randomized subprocess median for
+**Dense reverse encoding (2026-08-01).** The expression encoder now reverses
+simple and memory opcodes through two fixed byte arrays instead of hash maps.
+Encoding 256 simple instructions improves 4,890→1,186 ns/op (**4.1×**), and 256
+memory instructions improve 6,263.5→2,139 ns/op (**2.9×**, 12 one-second
+samples), with unchanged per-call allocations. This speed trade adds 32 bytes
+to the stripped TinyGo ELF (1,920,272→1,920,304) while reducing gzip-9
+879,889→879,411 bytes, `.text` by 860 bytes, and `.bss` by 16 bytes; the
+stripped Go lean CLI is unchanged at 6,430,868 bytes. TinyGo startup is flat
+within noise at 0.319→0.317 ms median (n=150). Reverse-map identity,
+`unreachable` opcode zero, typed-select exclusion, out-of-range rejection, and
+1,068-byte table storage are test-locked.
+
+**Campaign total:** from `19d000ba` through dense reverse encoding, the stripped
+TinyGo release shrinks 1,983,792→1,920,304 bytes (**−63,488, −3.2%**), gzip-9
+shrinks 899,459→879,411 bytes, and `.bss` shrinks 133,888→6,528 bytes
+(**−127,360, −95.1%**). The latest stable randomized subprocess median for
 TinyGo `wago version` is about 0.4 ms versus the pre-campaign 0.549 ms;
 `BenchmarkDecodeValidate` remains **6.3%** below the pre-campaign median.
 

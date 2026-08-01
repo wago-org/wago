@@ -6,11 +6,10 @@ import (
 	"math"
 )
 
-var simpleKindOpcode map[InstrKind]byte
-var memKindOpcode map[InstrKind]byte
+var simpleKindOpcode [numInstrKinds]byte
+var memKindOpcode [numInstrKinds]byte
 
 func init() {
-	simpleKindOpcode = make(map[InstrKind]byte, len(simpleOpcode))
 	for op, k := range simpleOpcode {
 		// InstrSelect shares opcode 0x1b in the decode table but encodes as
 		// either 0x1b (untyped) or 0x1c (typed, with a result-type vector), so it
@@ -19,7 +18,6 @@ func init() {
 			simpleKindOpcode[k] = byte(op)
 		}
 	}
-	memKindOpcode = make(map[InstrKind]byte, len(memOpcodeKind))
 	for op, k := range memOpcodeKind {
 		if k != InstrInvalid {
 			memKindOpcode[k] = byte(op)
@@ -40,6 +38,25 @@ func EncodeExpr(e Expr) ([]byte, error) {
 	return out, nil
 }
 
+func lookupSimpleOpcode(kind InstrKind) (byte, bool) {
+	if kind >= numInstrKinds {
+		return 0, false
+	}
+	if kind == InstrUnreachable {
+		return 0, true
+	}
+	op := simpleKindOpcode[kind]
+	return op, op != 0
+}
+
+func lookupMemOpcode(kind InstrKind) (byte, bool) {
+	if kind >= numInstrKinds {
+		return 0, false
+	}
+	op := memKindOpcode[kind]
+	return op, op != 0
+}
+
 func appendInstrs(out *[]byte, instrs []Instruction) error {
 	for _, in := range instrs {
 		if err := appendInstr(out, in); err != nil {
@@ -50,11 +67,11 @@ func appendInstrs(out *[]byte, instrs []Instruction) error {
 }
 
 func appendInstr(out *[]byte, in Instruction) error {
-	if op, ok := simpleKindOpcode[in.Kind]; ok {
+	if op, ok := lookupSimpleOpcode(in.Kind); ok {
 		*out = append(*out, op)
 		return nil
 	}
-	if op, ok := memKindOpcode[in.Kind]; ok {
+	if op, ok := lookupMemOpcode(in.Kind); ok {
 		*out = append(*out, op)
 		appendU32(out, in.MemArg().Align)
 		if err := appendU64AsU32(out, in.MemArg().Offset); err != nil {
