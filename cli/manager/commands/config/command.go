@@ -22,21 +22,24 @@ func Command(environment interface {
 	return &command.Cmd{
 		Name: "config", Summary: "configure Wago defaults and experimental features",
 		Automation: command.JSONOutput | command.DryRun,
-		Flags: []command.Flag{
-			{Name: "list", Short: "l", Bool: true, Help: "print the current configuration instead of opening the TUI"},
+		Flags: append([]command.Flag{
+			{Name: "list", Bool: true, Help: "print the current configuration instead of opening the TUI"},
 			{Name: "experimental", Short: "x", Bool: true, Help: "open or include the experimental feature preview"},
 			{Name: "enable", Short: "e", Arg: "<setting>", Help: "enable one feature or optimization"},
 			{Name: "disable", Short: "d", Arg: "<setting>", Help: "disable one feature or optimization"},
 			{Name: "set", Short: "s", Arg: "<key=value>", Help: "set one configuration value"},
-			{Name: "reset", Short: "r", Arg: "<setting>", Help: "restore one setting to its built-in default"},
-			{Name: "reset-all", Bool: true, Help: "restore every setting to built-in defaults"},
-		},
+			{Name: "reset", Short: "r", Arg: "<setting>", Help: "reset one setting in the selected scope"},
+			{Name: "reset-all", Bool: true, Help: "restore every setting in the selected scope"},
+		}, options.ScopeFlags()...),
 		Children: []*command.Cmd{
 			configlist.Command(environment), configget.Command(environment), configset.Command(environment),
 			configreset.Command(environment), completions.Command(environment),
 		},
 		Run: func(ctx *command.Ctx) {
 			request := options.Request{Action: options.Interactive, Experimental: ctx.Bool("experimental")}
+			if err := options.ApplyScope(ctx, &request); err != nil {
+				ui.Usage("config: %v", err)
+			}
 			actions := 0
 			if ctx.Bool("list") {
 				request.Action = options.List

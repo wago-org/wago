@@ -11,24 +11,21 @@ import (
 	"github.com/wago-org/wago/cli/internal/ui"
 )
 
-func Interactive(startExperimental bool) (bool, error) {
+func Interactive(config, reset settings.Config, scope string, startExperimental bool) (settings.Config, bool, error) {
 	if !tui.StdinIsTTY() {
-		return false, fmt.Errorf("interactive terminal required; use `wago config set <setting> <value>`")
-	}
-	config, err := settings.Load()
-	if err != nil {
-		return false, err
+		return config, false, fmt.Errorf("interactive terminal required; use `wago config set <setting> <value>`")
 	}
 	changed := false
 	if startExperimental {
 		changed = chooseExperimental(&config)
 	}
 	for {
-		selected, ok := tui.Choose("Configure Wago", rootItems(config))
+		selected, ok := tui.Choose("Configure Wago ("+scope+")", rootItems(config, scope))
 		if !ok {
 			break
 		}
 		var update bool
+		var err error
 		switch selected {
 		case "features":
 			update = chooseBooleans("WebAssembly features", settings.Features(), config.Features)
@@ -39,26 +36,22 @@ func Interactive(startExperimental bool) (bool, error) {
 		case "experimental":
 			update = chooseExperimental(&config)
 		case "reset":
-			update = confirmReset()
+			update = confirmReset(scope)
 			if update {
-				config = settings.Default()
+				config = settings.Clone(reset)
 			}
 		}
 		if err != nil {
-			return changed, err
+			return config, changed, err
 		}
 		changed = changed || update
 	}
-	if changed {
-		if err := settings.Save(config); err != nil {
-			return false, err
-		}
-	}
-	return changed, nil
+	return config, changed, nil
 }
 
-func Print(w io.Writer, config settings.Config, includeExperimental bool) {
-	fmt.Fprintln(w, ui.Bold("Wago configuration"))
+func Print(w io.Writer, config settings.Config, includeExperimental bool, scope, path string) {
+	fmt.Fprintf(w, "%s %s\n", ui.Bold("Wago configuration"), ui.Dim("("+scope+")"))
+	printValue(w, "location", path)
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, ui.Bold("Runtime defaults"))
 	printValue(w, "parallel", parallelLabel(config.Runtime.Parallel))
@@ -88,13 +81,17 @@ func Print(w io.Writer, config settings.Config, includeExperimental bool) {
 	}
 }
 
-func rootItems(config settings.Config) []tui.Item {
+func rootItems(config settings.Config, scope string) []tui.Item {
+	resetLabel, resetDescription := "Reset defaults", "restore built-in settings"
+	if scope == settings.ScopeLocal {
+		resetLabel, resetDescription = "Clear local overrides", "inherit global settings"
+	}
 	return []tui.Item{
 		{Label: "WebAssembly features", Meta: fmt.Sprintf("%d enabled", enabledCount(config.Features)), Value: "features", Description: "accepted module features"},
 		{Label: "Runtime defaults", Meta: parallelLabel(config.Runtime.Parallel), Value: "runtime", Description: "parallelism and bounds checks"},
 		{Label: "Optimizations", Meta: fmt.Sprintf("%d enabled", enabledStableOptimizations(config)), Value: "optimizations", Description: "stable compiler defaults"},
 		{Label: "Experimental preview", Meta: fmt.Sprintf("%d available", availableExperimental()), Value: "experimental", Description: "opt-in and planned features"},
-		{Label: "Reset defaults", Value: "reset", Description: "restore built-in settings"},
+		{Label: resetLabel, Value: "reset", Description: resetDescription},
 	}
 }
 
@@ -190,9 +187,13 @@ func chooseRuntime(config *settings.Config) (bool, error) {
 	return false, nil
 }
 
-func confirmReset() bool {
-	selected, ok := tui.Choose("Reset all Wago defaults?", []tui.Item{
-		{Label: "Yes", Value: "yes", Description: "restore every built-in default"},
+func confirmReset(scope string) bool {
+	title, description := "Reset all global Wago defaults?", "restore every built-in default"
+	if scope == settings.ScopeLocal {
+		title, description = "Clear all local Wago overrides?", "inherit global settings"
+	}
+	selected, ok := tui.Choose(title, []tui.Item{
+		{Label: "Yes", Value: "yes", Description: description},
 		{Label: "No", Value: "no", Description: "keep current settings"},
 	})
 	return ok && selected == "yes"

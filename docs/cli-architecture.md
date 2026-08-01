@@ -31,7 +31,7 @@ Manager-only workflows live under `cli/manager/internal`:
 ```text
 cli/manager/internal/
   cache/     regenerable download/build cache inspection and cleanup
-  config/    persistent user configuration and shell completion installation
+  config/    configuration TUI and shell completion installation
   plugin/    plugin lifecycle, capability review, migration, and custom runtimes
   progress/  live status for long-running manager transactions
   registry/  credentials, OAuth, resolution, publishing, and registry HTTP
@@ -63,11 +63,12 @@ an invocation live beside that contract and are tested independently. Runtime
 command descriptions needed for cohesive manager help also live there, so the
 manager never imports or links runtime command implementations.
 
-`cli/internal/settings` is the sole definition of user runtime defaults. The
-manager renders and mutates it through `wago config`; run, build, and validate
-read the same file. Runtime precedence is built-in/environment defaults, then
-saved settings, then explicit command flags. Unsupported proposal previews are
-catalog entries only and cannot be persisted as enabled features.
+`cli/internal/settings` is the sole definition of runtime defaults and their
+scope. Its `Target` interface hides the global settings file and sparse local
+`wago.json` adapter from command and TUI callers. Runtime precedence is
+built-in/environment defaults, global settings, local overrides, then explicit
+command flags. Unsupported proposal previews are catalog entries only and
+cannot be persisted as enabled features.
 
 ## Commands
 
