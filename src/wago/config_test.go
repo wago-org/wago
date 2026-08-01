@@ -283,7 +283,7 @@ func TestCoreFeaturesV3ReleaseScopeAndAdmission(t *testing.T) {
 		name      string
 		supported bool
 	}{
-		{CoreFeatureTailCall, "tail-call", completeCore3Backend},
+		{CoreFeatureTailCall, "tail-call", completeCore3Backend || arm64GCBackend},
 		{CoreFeatureExtendedConstExpressions, "extended-const-expressions", true},
 		{CoreFeatureTypedFunctionReferences, "typed-function-references", completeCore3Backend || arm64GCBackend},
 		{CoreFeatureGC, "gc", completeCore3Backend || arm64GCBackend},
@@ -376,7 +376,7 @@ func TestConfigValidateAndIntrospection(t *testing.T) {
 			CoreFeatureMemory64 |
 			CoreFeatureTable64
 		if runtime.GOARCH == "arm64" && (runtime.GOOS == "linux" || runtime.GOOS == "darwin") {
-			unsupported &^= CoreFeatureTypedFunctionReferences | CoreFeatureGC | CoreFeatureMultiMemory | CoreFeatureMemory64 | CoreFeatureTable64
+			unsupported &^= CoreFeatureTailCall | CoreFeatureTypedFunctionReferences | CoreFeatureGC | CoreFeatureMultiMemory | CoreFeatureMemory64 | CoreFeatureTable64
 		}
 		wantFeatures &^= unsupported
 	}

@@ -197,12 +197,12 @@ func arm64GCFrameBodySafe(m *wasm.Module, body []byte, collectorTable bool) bool
 			if !ok || !arm64GCFrameCallABI(m, ft) {
 				return false
 			}
-		case 0x12: // local direct tail call; the caller frame is discarded
-			if int(imm.Index) < m.ImportedFuncCount() || int(imm.Index)-m.ImportedFuncCount() >= len(m.Code) {
+		case 0x12: // direct tail call; the caller frame is discarded
+			if int(imm.Index) >= m.ImportedFuncCount()+len(m.Code) {
 				return false
 			}
 			ft, ok := m.FuncSignature(imm.Index)
-			if !ok || funcTypeSlotsForRoots(ft.Params) > abi.TailArgsSlots {
+			if !ok || !arm64GCFrameCallABI(m, ft) || funcTypeSlotsForRoots(ft.Params) > abi.TailArgsSlots {
 				return false
 			}
 		case 0x13: // monomorphic private-table tail call

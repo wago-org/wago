@@ -1090,7 +1090,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 			return nil, fmt.Errorf("compile: unsupported memory multi-memory with signals-based bounds checks")
 		}
 	}
-	if features.TailCalls && requiredByModule.IsEnabled(CoreFeatureTailCall) && (goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64") {
+	if features.TailCalls && requiredByModule.IsEnabled(CoreFeatureTailCall) && !((goruntime.GOOS == "linux" && goruntime.GOARCH == "amd64") || ((goruntime.GOOS == "linux" || goruntime.GOOS == "darwin") && goruntime.GOARCH == "arm64")) {
 		return nil, fmt.Errorf("compile: unsupported instruction tail-call staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
 	}
 	if features.ExceptionHandling {

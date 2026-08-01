@@ -184,16 +184,17 @@ type fn struct {
 	maxSpill int // high-water number of operand spill slots used
 	// spillFloor temporarily reserves a low spill-slot range while wide-stack
 	// canonicalization stages values above both their old homes and destinations.
-	spillFloor     int
-	subRspAt       int   // byte offset of the prologue's frame-alloc MOVZ (patched with frameSize)
-	addRspAt       int   // byte offset of the epilogue's frame-free MOVZ (patched with frameSize)
-	tailFrameSites []int // tail-transfer frame-free MOVZ sites (patched with frameSize)
-	frameElided    bool  // simple register-only internal entry leaves SP unchanged
-	guardMode      bool  // elide inline bounds checks; rely on guard-page + SIGSEGV trap
-	boundsFacts    bool  // P6.1 straight-line bounds-check elision enabled (explicit mode)
-	interruptible  bool  // emit context-cancellation polls at entries and loop headers
-	lazyZero       bool  // defer declared-local zeroing for small call+memory functions
-	skipFence      bool  // call-free leaf with a provably small frame: no stack-fence check
+	spillFloor       int
+	subRspAt         int   // byte offset of the prologue's frame-alloc MOVZ (patched with frameSize)
+	addRspAt         int   // byte offset of the epilogue's frame-free MOVZ (patched with frameSize)
+	tailFrameSites   []int // tail-transfer frame-free MOVZ sites (patched with frameSize)
+	frameElided      bool  // simple register-only internal entry leaves SP unchanged
+	adapterReturnOff int   // register-ABI wrapper continuation used by cross-tail reuse
+	guardMode        bool  // elide inline bounds checks; rely on guard-page + SIGSEGV trap
+	boundsFacts      bool  // P6.1 straight-line bounds-check elision enabled (explicit mode)
+	interruptible    bool  // emit context-cancellation polls at entries and loop headers
+	lazyZero         bool  // defer declared-local zeroing for small call+memory functions
+	skipFence        bool  // call-free leaf with a provably small frame: no stack-fence check
 
 	// memSizeReg caches the linear-memory size in bytes ([linMemReg-bdCurBytes]) in a
 	// dedicated register for the whole module (WARP's REGS::memSize=R27, which
@@ -1978,6 +1979,7 @@ func (f *fn) emitRegABI(c *wasm.Func) (int, error) {
 		f.ld64(X0, X0, x0ArgOff)
 	}
 	adapterCall := a.Bl() // BL internal entry; patched below
+	f.adapterReturnOff = adapterCall + 4
 	if f.gcFrameRoots != nil {
 		f.gcFrameRoots.AdapterReturnOffset = uint32(adapterCall + 4)
 	}

@@ -121,6 +121,10 @@ func tailResultABICompatible(a, b []wasm.ValType) bool {
 	return true
 }
 
+func sigFitsDirectCrossTailABI(ft *wasm.CompType) bool {
+	return sigFitsRegABI(ft) && len(ft.Results) <= 2
+}
+
 func (f *fn) callOp(r *wasm.Reader) error {
 	idx, err := r.U32()
 	if err != nil {
@@ -202,7 +206,25 @@ func (f *fn) returnCall(r *wasm.Reader) error {
 	}
 	imported := f.m.ImportedFuncCount()
 	if int(idx) < imported {
-		return fmt.Errorf("return_call: imported target %d is not supported by arm64 tail transfer", idx)
+		if f.importBindings != nil && int(idx) < len(f.importBindings) {
+			binding := f.importBindings[idx]
+			if binding.Dynamic || binding.CrossInstance {
+				if !sigFitsDirectCrossTailABI(f.ft) || !sigFitsDirectCrossTailABI(ft) {
+					return fmt.Errorf("return_call: imported target %d requires unsupported cross-instance tail ABI", idx)
+				}
+				return f.emitTailDynamicImportJump(ft, binding)
+			}
+		}
+		var callErr error
+		if f.syncHostCalls || len(ft.Results) != 0 {
+			callErr = f.callHostSync(int(idx), ft)
+		} else {
+			callErr = f.callHost(int(idx), ft)
+		}
+		if callErr != nil {
+			return callErr
+		}
+		return f.opReturn()
 	}
 	f.stats.call("tail-direct")
 	target := int(idx) - imported
@@ -296,6 +318,128 @@ func (f *fn) emitTailWrapperJump(ft *wasm.CompType, emitJump func()) {
 	f.a.MovReg64(X1, linMemReg)
 	f.emitTailFrameRelease()
 	emitJump()
+}
+
+// emitTailDynamicImportJump transfers a register-ABI tail call through the
+// runtime import-dispatch tuple. A target wrapper entered from another wrapper
+// reuses that wrapper's LR/result record; a direct internal caller receives one
+// fixed trampoline record that restores its instance context and result
+// registers. Repeated cross-instance tails therefore do not accumulate frames.
+func (f *fn) emitTailDynamicImportJump(ft *wasm.CompType, b ImportBinding) error {
+	if b.Dynamic && b.ImportIndex > uint32((1<<31-1-runtime.ImportDispatchCallerContextOffset)/runtime.ImportDispatchEntryBytes) {
+		return fmt.Errorf("return_call: import dispatch index %d overflows displacement", b.ImportIndex)
+	}
+	p := len(ft.Params)
+	roots := f.rootsBottomToTop()
+	if len(roots) < p {
+		panic("arm64 cross-tail operand underflow")
+	}
+	types := make([]machineType, len(roots))
+	for i, root := range roots {
+		types[i] = rootMachineType(root)
+	}
+	f.flush()
+	f.storePinnedGlobals(false)
+	f.storeModuleGlobals(X16)
+
+	if b.Dynamic {
+		disp := int32(b.ImportIndex * runtime.ImportDispatchEntryBytes)
+		f.ld64(X16, linMemReg, -int32(offImportDispatchPtr))
+		f.ld64(X10, X16, disp+runtime.ImportDispatchHomeLinMemOffset)
+		f.ld64(X11, X16, disp+runtime.ImportDispatchTargetContextOffset)
+		f.ld64(X17, X16, disp+runtime.ImportDispatchCodePtrOffset)
+		f.ld64(X12, X16, disp+runtime.ImportDispatchCallerContextOffset)
+	} else {
+		f.a.MovImm64(X10, b.CalleeLinMem)
+		f.a.MovImm64(X17, b.CalleeEntry)
+		f.ld64(X12, linMemReg, -int32(offFuncRefDescPtr))
+		f.ld64(X12, X12, runtime.FuncRefContextOffset)
+		f.ld64(X11, X10, -int32(offFuncRefDescPtr))
+		f.ld64(X11, X11, runtime.FuncRefContextOffset)
+	}
+	for _, reg := range []Reg{X10, X11, X12, X17} {
+		f.pinned = f.pinned.add(reg)
+	}
+	f.a.MovReg64(X0, X10)
+	f.leaDisp(X0, X0, -int32(abi.TailArgsOffset), true)
+	argBase := len(types) - p
+	dstSlot := 0
+	for i, typ := range ft.Params {
+		srcSlot := slotOfLogicalTypes(types, argBase+i)
+		n := mtOf(typ).stackSlots()
+		for j := 0; j < n; j++ {
+			f.ld64(X16, SP, f.spillOff(srcSlot+j))
+			f.st64(X0, int32((dstSlot+j)*8), X16)
+		}
+		dstSlot += n
+	}
+	for _, reg := range []Reg{X10, X11, X12, X17} {
+		f.pinned = f.pinned.remove(reg)
+	}
+	f.emitTailFrameRelease()
+
+	transfer := func() {
+		f.copyInstanceContext(X10, X11)
+		f.ld64(X9, linMemReg, -int32(offTrapHandlerPtr))
+		f.st64(X10, -int32(offTrapHandlerPtr), X9)
+		f.ld64(X9, linMemReg, -int32(offTrapStackReentry))
+		f.st64(X10, -int32(offTrapStackReentry), X9)
+		f.ld64(X9, linMemReg, -int32(offStackFence))
+		f.st64(X10, -int32(offStackFence), X9)
+		f.ld64(X9, linMemReg, -int32(offTrapCellPtr))
+		f.st64(X10, -int32(offTrapCellPtr), X9)
+		f.a.MovReg64(X0, X10)
+		f.leaDisp(X0, X0, -int32(abi.TailArgsOffset), true)
+		f.a.MovReg64(X1, X10)
+		f.ld64(X2, X10, -int32(offTrapCellPtr))
+		f.a.Br(X17)
+	}
+
+	// A register-ABI function entered through its own wrapper can discard the
+	// wrapper record as well, preserving the outer LR/results destination.
+	adapterPC := f.a.Adr(X16)
+	f.a.PatchAdr(adapterPC, f.adapterReturnOff)
+	f.cmpRR(LR, X16, true)
+	nested := f.a.Bcond(condNE)
+	f.a.LdpPost(LR, X3, SP, 16)
+	transfer()
+
+	f.a.PatchBranch19(nested, f.a.Len())
+	// [LR, caller linMem, caller context, pad, result0, result1, pad, pad].
+	f.a.SubSP64(64)
+	f.st64(SP, 0, LR)
+	f.st64(SP, 8, linMemReg)
+	f.st64(SP, 16, X12)
+	f.a.LeaSP(X3, 32)
+	trampolineADR := f.a.Adr(LR)
+	transfer()
+
+	trampoline := f.a.Len()
+	f.a.PatchAdr(trampolineADR, trampoline)
+	f.ld64(LR, SP, 0)
+	f.ld64(X10, SP, 8)
+	f.ld64(X11, SP, 16)
+	f.copyInstanceContext(X10, X11)
+	f.a.MovReg64(linMemReg, X10)
+	if f.memSizeReg != regNone {
+		f.ld32(f.memSizeReg, linMemReg, -bdCurBytes)
+	}
+	f.deriveModuleGlobals()
+	f.derivePinnedGlobals()
+	if len(ft.Results) > 0 {
+		if isFloatValType(ft.Results[0]) {
+			f.fld(0, SP, 32, wasm.EqualValType(ft.Results[0], wasm.F64))
+		} else {
+			f.ld64(X0, SP, 32)
+		}
+	}
+	if len(ft.Results) > 1 {
+		f.ld64(X1, SP, 40)
+	}
+	f.a.AddSP64(64)
+	f.a.Ret()
+	f.unreachable = true
+	return nil
 }
 
 func (f *fn) returnCallRef(r *wasm.Reader) error {
