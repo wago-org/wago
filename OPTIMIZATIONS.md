@@ -61,6 +61,14 @@ down 3,768, and `.bss` down 6,336. The stripped Go lean CLI falls
 0.481→0.448 ms (**−6.8%**). All compact source/effect layouts and the 268-entry
 inventory are test-locked.
 
+**Campaign total:** from `19d000ba` to `1a162990`, the stripped TinyGo release
+shrinks 1,983,792→1,941,720 bytes (**−42,072, −2.1%**), gzip-9 shrinks
+899,459→889,064 bytes, and `.bss` shrinks 133,888→16,032 bytes
+(**−117,856, −88.0%**). Across 200 randomized subprocess samples, TinyGo
+`wago version` median startup falls 0.549→0.477 ms (**−13.2%**) and mean falls
+0.534→0.466 ms (**−12.8%**), while `BenchmarkDecodeValidate` retains the first
+step's measured **5.7%** median improvement.
+
 The backend (`src/core/compiler/backend/railshot`) is the full WARP-architecture port: a
 single-pass x86-64 codegen over a valent-block operand stack (deferred-action trees,
 condense engine) with an on-the-fly whole-register-file allocator. Landed, in rough order:
