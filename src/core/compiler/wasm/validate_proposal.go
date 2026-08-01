@@ -731,52 +731,6 @@ func (v *funcValidator) stepBrOnCast(in Instruction) error {
 	return nil
 }
 
-var simdAll = func() map[InstrKind]struct{} {
-	m := map[InstrKind]struct{}{InstrV128Const: {}, InstrV128Store: {}}
-	for _, effect := range simdLoads {
-		m[effect.kind] = struct{}{}
-	}
-	for _, effect := range simdMemLane {
-		m[effect.kind] = struct{}{}
-	}
-	for _, effect := range simdSplat {
-		m[effect.kind] = struct{}{}
-	}
-	for _, effect := range simdExtract {
-		m[effect.kind] = struct{}{}
-	}
-	for _, effect := range simdReplace {
-		m[effect.kind] = struct{}{}
-	}
-	for _, kind := range simdUnary {
-		m[kind] = struct{}{}
-	}
-	for _, kind := range simdBinary {
-		m[kind] = struct{}{}
-	}
-	for _, kind := range simdTernary {
-		m[kind] = struct{}{}
-	}
-	for _, kind := range simdShift {
-		m[kind] = struct{}{}
-	}
-	m[InstrV128AnyTrue] = struct{}{}
-	m[InstrI8x16AllTrue] = struct{}{}
-	m[InstrI16x8AllTrue] = struct{}{}
-	m[InstrI32x4AllTrue] = struct{}{}
-	m[InstrI64x2AllTrue] = struct{}{}
-	m[InstrI8x16Bitmask] = struct{}{}
-	m[InstrI16x8Bitmask] = struct{}{}
-	m[InstrI32x4Bitmask] = struct{}{}
-	m[InstrI64x2Bitmask] = struct{}{}
-	m[InstrV128Bitselect] = struct{}{}
-	m[InstrI8x16RelaxedLaneselect] = struct{}{}
-	m[InstrI16x8RelaxedLaneselect] = struct{}{}
-	m[InstrI32x4RelaxedLaneselect] = struct{}{}
-	m[InstrI64x2RelaxedLaneselect] = struct{}{}
-	return m
-}()
-
 func (v *funcValidator) stepSIMD(in Instruction) error {
 	e := simdEffects[in.Kind]
 	if e.laneLimit != 0 && in.Lane >= e.laneLimit {
@@ -1306,14 +1260,23 @@ func init() {
 	}
 }
 
+// IsSIMDValidationInstructionKind reports whether wasm validation admits kind
+// as a SIMD instruction. It is allocation-free and shares the validator's
+// compact effect table.
+func IsSIMDValidationInstructionKind(kind InstrKind) bool {
+	return kind < numInstrKinds && simdEffects[kind].cat != simdNone
+}
+
 // SIMDValidationInstructionKinds returns an immutable snapshot of the SIMD
 // instruction kinds admitted by wasm validation. It is intended for downstream
 // support/admission parity checks; callers receive a copy so the validator's
 // internal tables cannot be mutated.
 func SIMDValidationInstructionKinds() map[InstrKind]struct{} {
-	out := make(map[InstrKind]struct{}, len(simdAll))
-	for k := range simdAll {
-		out[k] = struct{}{}
+	out := make(map[InstrKind]struct{}, 268)
+	for kind, effect := range simdEffects {
+		if effect.cat != simdNone {
+			out[InstrKind(kind)] = struct{}{}
+		}
 	}
 	return out
 }

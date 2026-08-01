@@ -2428,10 +2428,9 @@ func blockTypeBytesRequireSIMD(r *wasm.Reader) (uses bool, ok bool) {
 }
 
 func instrsRequireSIMD(instrs []wasm.Instruction) bool {
-	simdKinds := wasm.SIMDValidationInstructionKinds()
 	for i := range instrs {
 		in := &instrs[i]
-		if _, ok := simdKinds[in.Kind]; ok {
+		if wasm.IsSIMDValidationInstructionKind(in.Kind) {
 			return true
 		}
 		if exprRequiresSIMD(in.Body()) || instrsRequireSIMD(in.Then()) || instrsRequireSIMD(in.Else()) {

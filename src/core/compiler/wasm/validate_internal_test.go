@@ -195,19 +195,19 @@ func TestValidationEffectTablesStayCompact(t *testing.T) {
 }
 
 func TestSIMDEffectTableMatchesAdmissionSet(t *testing.T) {
-	for k := range simdAll {
-		if simdEffects[k].cat == simdNone {
-			t.Fatalf("%s is admitted by simdAll but has no validation effect", k)
+	admitted := SIMDValidationInstructionKinds()
+	for k, eff := range simdEffects {
+		kind := InstrKind(k)
+		_, inSnapshot := admitted[kind]
+		if got := IsSIMDValidationInstructionKind(kind); got != (eff.cat != simdNone) {
+			t.Fatalf("%s admission = %v, effect category = %d", kind, got, eff.cat)
+		}
+		if inSnapshot != (eff.cat != simdNone) {
+			t.Fatalf("%s snapshot admission = %v, effect category = %d", kind, inSnapshot, eff.cat)
 		}
 	}
-	for k, eff := range simdEffects {
-		if eff.cat == simdNone {
-			continue
-		}
-		kind := InstrKind(k)
-		if _, ok := simdAll[kind]; !ok {
-			t.Fatalf("%s has validation effect but is missing from simdAll", kind)
-		}
+	if IsSIMDValidationInstructionKind(numInstrKinds) {
+		t.Fatal("out-of-range instruction kind admitted as SIMD")
 	}
 }
 

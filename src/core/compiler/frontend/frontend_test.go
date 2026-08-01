@@ -8,6 +8,46 @@ import (
 	"github.com/wago-org/wago/tests/wasmtest"
 )
 
+func TestInstrsRequireSIMDIsAllocationFree(t *testing.T) {
+	instrs := make([]wasm.Instruction, 256)
+	for i := range instrs {
+		instrs[i].Kind = wasm.InstrNop
+	}
+	if allocs := testing.AllocsPerRun(1000, func() {
+		if instrsRequireSIMD(instrs) {
+			t.Fatal("non-SIMD instructions reported as SIMD")
+		}
+	}); allocs != 0 {
+		t.Fatalf("instrsRequireSIMD allocations = %v, want 0", allocs)
+	}
+	instrs[len(instrs)-1].Kind = wasm.InstrV128Const
+	if !instrsRequireSIMD(instrs) {
+		t.Fatal("SIMD instruction was not detected")
+	}
+}
+
+func BenchmarkInstrsRequireSIMD(b *testing.B) {
+	instrs := make([]wasm.Instruction, 256)
+	for i := range instrs {
+		instrs[i].Kind = wasm.InstrNop
+	}
+	b.Run("absent", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			if instrsRequireSIMD(instrs) {
+				b.Fatal("unexpected SIMD")
+			}
+		}
+	})
+	instrs[len(instrs)-1].Kind = wasm.InstrV128Const
+	b.Run("last", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			if !instrsRequireSIMD(instrs) {
+				b.Fatal("missing SIMD")
+			}
+		}
+	})
+}
+
 func TestDecodeValidateAcceptsSupportedMVPModule(t *testing.T) {
 	mod := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),

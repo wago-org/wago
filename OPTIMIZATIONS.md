@@ -81,13 +81,24 @@ falls 10,960→9,040 bytes, and the stripped Go lean CLI falls
 (**−0.8%**, n=150). Layout, effect identity, range rejection, and counts are
 test-locked.
 
-**Campaign total:** from `19d000ba` through compact atomic validation, the
-stripped TinyGo release shrinks 1,983,792→1,923,896 bytes
-(**−59,896, −3.0%**), gzip-9 shrinks 899,459→882,035 bytes, and `.bss` shrinks
-133,888→9,040 bytes (**−124,848, −93.2%**). Randomized subprocess samples put
-TinyGo `wago version` median startup near 0.449 ms versus 0.549 ms before the
-campaign (**−18.2%**); `BenchmarkDecodeValidate` remains **6.3%** below the
-pre-campaign median.
+**Allocation-free SIMD admission scans (2026-08-01).** The frontend now queries
+the validator's compact SIMD effect array directly instead of constructing a
+268-entry map at every recursive instruction-list scan. On a 256-instruction
+non-SIMD body, `BenchmarkInstrsRequireSIMD` improves 4,600,977→1,653.5 ns/op,
+2,097,833→0 B/op, and 2,307→0 allocs/op; finding SIMD in the last slot improves
+4,471,060.5→1,641 ns/op with the same zero-allocation result. The stripped
+TinyGo release falls 1,923,896→1,921,848 bytes (**−2,048**; gzip-9
+882,035→880,352), `.bss` falls 9,040→6,896 bytes, and the stripped Go lean CLI
+falls 6,439,060→6,434,964 bytes. TinyGo startup falls 0.423→0.396 ms median
+(**−6.4%**, n=150). Admission/snapshot parity, out-of-range rejection, and the
+zero-allocation scan are test-locked.
+
+**Campaign total:** from `19d000ba` through allocation-free SIMD admission, the
+stripped TinyGo release shrinks 1,983,792→1,921,848 bytes
+(**−61,944, −3.1%**), gzip-9 shrinks 899,459→880,352 bytes, and `.bss` shrinks
+133,888→6,896 bytes (**−126,992, −94.8%**). The latest randomized subprocess
+median for TinyGo `wago version` is 0.396 ms versus the pre-campaign 0.549 ms;
+`BenchmarkDecodeValidate` remains **6.3%** below the pre-campaign median.
 
 The backend (`src/core/compiler/backend/railshot`) is the full WARP-architecture port: a
 single-pass x86-64 codegen over a valent-block operand stack (deferred-action trees,
