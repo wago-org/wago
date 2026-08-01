@@ -161,3 +161,16 @@ jobs:
             --notes "$notes" \
             --prerelease \
             "${assets[@]}"
+      - name: Create documentation synchronization token
+        id: docs-sync-token
+        if: vars.DOCS_SYNC_APP_ID != ''
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.DOCS_SYNC_APP_ID }}
+          private-key: ${{ secrets.DOCS_SYNC_APP_PRIVATE_KEY }}
+          owner: wago-org
+          repositories: docs
+      - name: Synchronize canary documentation
+        env:
+          DOCS_SYNC_TOKEN: ${{ steps.docs-sync-token.outputs.token }}
+        run: scripts/dispatch-docs-release.sh canary "${{ needs.prepare.outputs.tag }}" "${{ needs.prepare.outputs.sha }}"

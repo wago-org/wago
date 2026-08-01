@@ -60,6 +60,19 @@ when present.
 When a runtime asset or checksum is omitted, the CLI builds that release tag
 from source on the user's host; checksum mismatches still fail closed.
 
+After a canary, nightly, or stable GitHub Release is published, its workflow
+dispatches a `code-release` event to `wago-org/docs`. The docs repository records
+canary provenance, snapshots nightly documentation, and promotes stable docs
+only from a nightly snapshot for the exact same Wago commit. Configure a GitHub
+App with Contents read/write access to `wago-org/docs`, install it for that
+repository, set its application ID as the `DOCS_SYNC_APP_ID` repository
+variable, and store its private key in the `DOCS_SYNC_APP_PRIVATE_KEY` secret.
+If the App is unavailable, publishing still succeeds and the docs repository's
+scheduled reconciler recovers the release within its next polling interval.
+
+`scripts/dispatch-docs-release_test.sh` verifies the dispatch payload and input
+validation without contacting GitHub.
+
 For a local native approximation, run:
 
 ```sh
