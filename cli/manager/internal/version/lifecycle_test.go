@@ -208,7 +208,7 @@ func TestUseInstalledPickerUsesRadioButtonsAndDefaultsYes(t *testing.T) {
 		t.Fatalf("default selection = %q, want yes", got)
 	}
 	frame := p.Frame()
-	for _, want := range []string{"Use Wago Canary (minimal/tiny) now?", "› ◉ Yes", "○ No", "↑/↓ move · enter/→ select · esc cancel"} {
+	for _, want := range []string{"Use Wago Canary (minimal/tiny) now?", "› ◉ Yes", "○ No", "↑/↓ move · enter/→ select · ←/esc cancel"} {
 		if !strings.Contains(frame, want) {
 			t.Fatalf("use picker missing %q:\n%s", want, frame)
 		}
