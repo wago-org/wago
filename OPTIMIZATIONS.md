@@ -61,13 +61,23 @@ down 3,768, and `.bss` down 6,336. The stripped Go lean CLI falls
 0.481→0.448 ms (**−6.8%**). All compact source/effect layouts and the 268-entry
 inventory are test-locked.
 
-**Campaign total:** from `19d000ba` to `1a162990`, the stripped TinyGo release
-shrinks 1,983,792→1,941,720 bytes (**−42,072, −2.1%**), gzip-9 shrinks
-899,459→889,064 bytes, and `.bss` shrinks 133,888→16,032 bytes
-(**−117,856, −88.0%**). Across 200 randomized subprocess samples, TinyGo
-`wago version` median startup falls 0.549→0.477 ms (**−13.2%**) and mean falls
-0.534→0.466 ms (**−12.8%**), while `BenchmarkDecodeValidate` retains the first
-step's measured **5.7%** median improvement.
+**Dense prefix decoding (2026-08-01).** The FC/FB/FE/FD subopcode maps now use
+six bounds-checked `InstrKind` arrays totaling 948 bytes. Ten one-second samples
+show median lookup wins of **5.7%** for FC, **3.6%** for FB, **7.9%** for FE
+memory, **21.3%** for core SIMD FD, and **25.2%** for relaxed-SIMD FD; end-to-end
+`BenchmarkDecodeValidate` improves 91,178→90,607.5 ns/op (**−0.6%**). The
+stripped TinyGo release falls 1,941,720→1,926,360 bytes (**−15,360**; gzip-9
+889,055→882,596), and the stripped Go lean CLI falls 6,447,252→6,443,156 bytes.
+TinyGo `wago version` median startup falls 0.478→0.462 ms (**−3.4%**, n=150).
+Populated-entry counts and exact 948-byte storage are test-locked.
+
+**Campaign total:** from `19d000ba` through dense prefix decoding, the stripped
+TinyGo release shrinks 1,983,792→1,926,360 bytes (**−57,432, −2.9%**), gzip-9
+shrinks 899,459→882,596 bytes, and `.bss` shrinks 133,888→10,960 bytes
+(**−122,928, −91.8%**). Across 200/150 randomized subprocess samples, TinyGo
+`wago version` median startup falls 0.549→0.462 ms (**−16.0%**) and mean falls
+0.534→0.434 ms (**−18.7%**), while `BenchmarkDecodeValidate` remains **6.3%**
+below the pre-campaign median.
 
 The backend (`src/core/compiler/backend/railshot`) is the full WARP-architecture port: a
 single-pass x86-64 codegen over a valent-block operand stack (deferred-action trees,

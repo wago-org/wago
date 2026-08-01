@@ -260,7 +260,7 @@ func classifyFCBytes(r *reader, imm *InstructionImmediate) error {
 	if err != nil {
 		return err
 	}
-	if k, ok := fcNoImm[sub]; ok {
+	if k, ok := lookupPrefixKind(fcNoImm[:], sub); ok {
 		imm.Kind = k
 		return nil
 	}
@@ -320,7 +320,7 @@ func classifyFBBytes(r *reader, imm *InstructionImmediate) error {
 	if err != nil {
 		return err
 	}
-	if k, ok := fbNoImm[sub]; ok {
+	if k, ok := lookupPrefixKind(fbNoImm[:], sub); ok {
 		imm.Kind = k
 		return nil
 	}
@@ -478,11 +478,11 @@ func classifyFDBytes(r *reader, imm *InstructionImmediate, memarg64 bool) error 
 		}
 		return nil
 	}
-	if k, ok := fdNoImm[sub]; ok {
+	if k, ok := lookupPrefixKind(fdNoImm[:], sub); ok {
 		imm.Kind = k
 		return nil
 	}
-	if k, ok := fdMem[sub]; ok {
+	if k, ok := lookupPrefixKind(fdMem[:], sub); ok {
 		imm.Kind = k
 		imm.TouchesMemory = true
 		if err = classifyMemArgBytes(r, imm, memarg64); err != nil {
@@ -494,7 +494,7 @@ func classifyFDBytes(r *reader, imm *InstructionImmediate, memarg64 bool) error 
 		}
 		return nil
 	}
-	if k, ok := fdLane[sub]; ok {
+	if k, ok := lookupPrefixKind(fdLane[:], sub); ok {
 		imm.Kind = k
 		_, err := r.byte()
 		return err
@@ -529,7 +529,7 @@ func classifyFEBytes(r *reader, imm *InstructionImmediate, memarg64 bool) error 
 		imm.Index2, err = r.u32()
 		return err
 	}
-	if k, ok := feMem[sub]; ok {
+	if k, ok := lookupPrefixKind(feMem[:], sub); ok {
 		imm.Kind = k
 		imm.TouchesMemory = true
 		return classifyMemArgBytes(r, imm, memarg64)
