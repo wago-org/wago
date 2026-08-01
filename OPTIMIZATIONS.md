@@ -30,6 +30,15 @@ reduces the release file from 1,983,792 to 1,983,216 bytes (gzip-9: 899,459 to
 The four-byte layouts are test-locked so later reference-type growth cannot
 silently re-inflate this hot table.
 
+**Packed instruction names (2026-08-01).** `InstrKind.String` now slices one
+5,834-byte name blob through generated `uint16` offsets instead of retaining 534
+independent string headers and relocations. With identical build flags/version,
+the stripped TinyGo release falls from 1,983,232 to 1,975,712 bytes
+(**−7,520 bytes**; gzip-9 898,906 to 898,167), and `.rodata` falls from 303,056
+to 295,616 bytes (**−7,440**). `go generate` derives the blob directly from the
+authoritative `InstrKind` enum; compile-time count assertions and name/offset
+coverage prevent stale generated metadata.
+
 The backend (`src/core/compiler/backend/railshot`) is the full WARP-architecture port: a
 single-pass x86-64 codegen over a valent-block operand stack (deferred-action trees,
 condense engine) with an on-the-fly whole-register-file allocator. Landed, in rough order:
