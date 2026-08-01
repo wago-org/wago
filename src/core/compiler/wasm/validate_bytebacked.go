@@ -185,7 +185,7 @@ func decodeDirectModule(data []byte) (*directModule, error) {
 	}
 	dm := &directModule{}
 	var lastOrder uint8
-	seen := map[byte]bool{}
+	var seen uint16 // standard section IDs are the dense range 1..13
 	var sub reader
 	for r.has() {
 		id, err := r.byte()
@@ -210,10 +210,11 @@ func decodeDirectModule(data []byte) (*directModule, error) {
 			if ord < lastOrder {
 				return nil, &DecodeError{Code: ErrSectionOrder, Offset: start - 1, SectionID: id, SectionStart: start, SectionEnd: end}
 			}
-			if seen[id] {
+			bit := uint16(1) << id
+			if seen&bit != 0 {
 				return nil, &DecodeError{Code: ErrDuplicateSection, Offset: start - 1, SectionID: id, SectionStart: start, SectionEnd: end}
 			}
-			seen[id] = true
+			seen |= bit
 			lastOrder = ord
 		}
 		sub.reset(payload)

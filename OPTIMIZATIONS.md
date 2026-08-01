@@ -62,6 +62,14 @@ The stripped TinyGo release grows 1,985,784→1,999,256 bytes for this productio
 slice (**+13,472, +0.68%**). The subsequent bounded foreign-clone API brings the
 combined candidate to 2,000,232 bytes (**+976 bytes further**).
 
+**Dense byte-backed section tracking (2026-08-01).** The byte-backed decoder
+now tracks the standard-section ID set in one `uint16` instead of a hash map. A
+13-section module decodes in **348.0–359.9 ns/op** versus **796.9–809.5 ns/op**,
+with 864→776 B/op and 9→6 allocs/op; the larger decode+validate watchpoint remains
+within noise. The stripped TinyGo release falls 2,000,232→2,000,024 bytes
+(**−208 bytes**).
+
+
 **Compact validator effect tables (2026-08-01).** Numeric and SIMD validation
 lookup entries now store four one-byte fields instead of embedding full recursive
 `ValType` descriptors. On linux/amd64 this shrinks `opEffects` and `simdEffects`
