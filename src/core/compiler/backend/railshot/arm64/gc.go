@@ -102,7 +102,7 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 			if !f.a.OrrImm32(value, value, 1) {
 				panic("arm64: i31 tag immediate is not encodable")
 			}
-			f.pushReg(value, mtI64)
+			f.pushReg(value, mtI64).st.gcRoot = f.tracksGCFrameRoots()
 		case 29: // i31.get_s
 			f.cmpImm(value, 0, false)
 			f.trapIf(condE, trapNullReference)
@@ -415,7 +415,7 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 func (f *fn) callGCStructHelper(helper uint32, params, results []wasm.ValType) error {
 	safepoint := uint32(0)
 	if f.gcFrameRoots != nil && f.gcFrameRoots.Candidate && arm64GCHelperMayAllocate(helper) {
-		safepoint = f.recordGCFrameSafepoint()
+		safepoint = f.recordGCFrameSafepoint(len(params))
 	}
 	payload, ok := shared.EncodeGCDispatch(helper, safepoint)
 	if !ok {
@@ -428,12 +428,17 @@ func (f *fn) callGCStructHelper(helper uint32, params, results []wasm.ValType) e
 	return f.callHostSync(int(gcStructDispatchBit|payload), ft)
 }
 
-func (f *fn) recordGCFrameSafepoint() uint32 {
+func (f *fn) recordGCFrameSafepoint(paramCount int) uint32 {
 	plan := f.gcFrameRoots
 	id := plan.SafepointBase + uint32(len(plan.Safepoints)+1)
 	if id == 0 || id > shared.GCSafepointIDMax {
 		plan.Exact = false
 		return 0
+	}
+	roots := f.rootsBottomToTop()
+	if paramCount < 0 || paramCount > len(roots) {
+		plan.Exact = false
+		return id
 	}
 	siteIndex := len(plan.Safepoints)
 	if siteIndex >= len(plan.LiveLocalMasks) {
@@ -448,12 +453,75 @@ func (f *fn) recordGCFrameSafepoint() uint32 {
 			offsets = append(offsets, off)
 		}
 	}
+	hidden := len(roots) - paramCount
+	slot := 0
+	for i, root := range roots {
+		if i < hidden && root.kind == ekValue && root.st.gcRoot {
+			off := f.spillOff(slot)
+			if off < 0 {
+				plan.Exact = false
+				return id
+			}
+			offsets = append(offsets, uint32(off))
+		}
+		slot += rootMachineType(root).stackSlots()
+	}
 	sort.Slice(offsets, func(i, j int) bool { return offsets[i] < offsets[j] })
 	if len(offsets) > 64 {
 		plan.Exact = false
 	}
 	plan.Safepoints = append(plan.Safepoints, shared.GCFrameSafepointPlan{ID: id, Offsets: offsets})
 	return id
+}
+
+func arm64GCFrameRefType(m *wasm.Module, t wasm.ValType) bool {
+	if t.Kind != wasm.ValRef {
+		return false
+	}
+	switch t.Ref.Heap.Kind {
+	case wasm.HeapAbs:
+		switch t.Ref.Heap.Abs {
+		case wasm.HeapAny, wasm.HeapEq, wasm.HeapI31, wasm.HeapStruct, wasm.HeapArray, wasm.HeapNone:
+			return true
+		default:
+			return false
+		}
+	case wasm.HeapDefType:
+		def := t.Ref.Heap.Def
+		if def == nil || def.Index >= uint32(len(def.Rec.SubTypes)) {
+			return true
+		}
+		kind := def.Rec.SubTypes[def.Index].Comp.Kind
+		return kind == wasm.CompStruct || kind == wasm.CompArray
+	case wasm.HeapTypeIndex:
+		index := t.Ref.Heap.Type.Index
+		for _, group := range m.Types {
+			if index < uint32(len(group.SubTypes)) {
+				kind := group.SubTypes[index].Comp.Kind
+				return kind == wasm.CompStruct || kind == wasm.CompArray
+			}
+			index -= uint32(len(group.SubTypes))
+		}
+		return true
+	default:
+		return true
+	}
+}
+
+func (f *fn) tracksGCFrameRoots() bool {
+	return f.gcFrameRoots != nil && f.gcFrameRoots.Candidate
+}
+
+func (f *fn) gcFrameLocal(index int) bool {
+	if !f.tracksGCFrameRoots() {
+		return false
+	}
+	for _, candidate := range f.gcFrameRoots.LocalIndexes {
+		if int(candidate) == index {
+			return true
+		}
+	}
+	return false
 }
 
 func arm64GCHelperMayAllocate(helper uint32) bool {

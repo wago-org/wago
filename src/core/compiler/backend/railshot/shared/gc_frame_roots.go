@@ -6,6 +6,12 @@ package shared
 const (
 	AMD64FrameHeaderBytes = 16
 	ARM64FrameHeaderBytes = 16
+
+	// ARM64SavedLROffset is the saved LR qword within the 16-byte FP/LR record
+	// immediately above a call-making function's reserved frame. Advancing to the
+	// caller consumes the complete record.
+	ARM64SavedLROffset    = 8
+	ARM64FrameRecordBytes = 16
 )
 
 const (
@@ -48,8 +54,9 @@ type GCFrameCallsitePlan struct {
 
 // GCFrameRootPlan is an optional compile-time handshake for exact-typed native
 // roots in one candidate function. The caller precomputes collector-reference
-// local indexes/offsets; amd64 adds site-specific operand spills and final frame
-// size. It remains compile-only until the metadata contract is stabilized.
+// local indexes/offsets; architecture backends add site-specific operand spills,
+// callsites, and final frame size. It remains compile-only until flattened into
+// the validated codec metadata.
 type GCFrameRootPlan struct {
 	Candidate           bool
 	Exact               bool

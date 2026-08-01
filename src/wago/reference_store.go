@@ -10,6 +10,7 @@ import (
 	"sync"
 	"unsafe"
 
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/src/core/runtime/abi"
 	"github.com/wago-org/wago/src/core/runtime/gc"
@@ -192,9 +193,10 @@ func (r *gcNativeFrameRoots) rangeChain(fn func(gc.RootSlot) bool) bool {
 		if len(callsites) == 0 {
 			return true
 		}
-		returnPCBias, callerFrameBias := uintptr(0), uintptr(8)
+		returnPCBias, callerFrameBias := uintptr(0), uintptr(abi.AMD64CallReturnAddressBytes)
 		if r.frameLayout == gcNativeFrameLayoutARM64 {
-			returnPCBias, callerFrameBias = 8, 16
+			returnPCBias = uintptr(shared.ARM64SavedLROffset)
+			callerFrameBias = uintptr(shared.ARM64FrameRecordBytes)
 		}
 		if base > ^uintptr(0)-uintptr(frameBytes)-returnPCBias {
 			panic(gcStructHelperError{err: fmt.Errorf("generic GC native frame address overflows")})

@@ -171,19 +171,21 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 			return err
 		}
 		x := uint32(int(x32) + f.localBase) // localBase remaps an inlined callee's locals; 0 otherwise
+		var value *elem
 		if f.localConstZero(int(x)) {
 			if pr, _, ok := f.pinReg(int(x)); ok {
 				f.recoverLocal(int(x)) // materialize the lazy zero into the pinned register
-				f.pushValue(storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: int(x)})
+				value = f.pushValue(storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: int(x)})
 			} else {
-				f.pushValue(zeroStorage(f.localType[x]))
+				value = f.pushValue(zeroStorage(f.localType[x]))
 			}
 		} else if pr, _, ok := f.pinReg(int(x)); ok {
 			f.recoverLocal(int(x)) // reload lazily if it was spilled around a call
-			f.pushValue(storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: int(x)})
+			value = f.pushValue(storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: int(x)})
 		} else {
-			f.pushValue(storage{kind: stLocalRef, typ: f.localType[x], idx: int(x)})
+			value = f.pushValue(storage{kind: stLocalRef, typ: f.localType[x], idx: int(x)})
 		}
+		value.st.gcRoot = f.gcFrameLocal(int(x))
 	case 0x21, 0x22: // local.set / local.tee
 		x, err := r.U32()
 		if err != nil {
@@ -959,6 +961,7 @@ func (f *fn) emitSelect() {
 	f.pinned = f.pinned.add(condReg)
 	b := f.popValue()
 	a := f.popValue()
+	gcRoot := (a.kind == ekValue && a.st.gcRoot) || (b.kind == ekValue && b.st.gcRoot)
 
 	// V registers have no CSEL fold worth branching around here, so for the
 	// value-copy cases we branch: skip the copy when cond != 0 (keep a). Scalar
@@ -1013,7 +1016,7 @@ func (f *fn) emitSelect() {
 	f.pinned = f.pinned.remove(bReg)
 	f.release(condReg)
 	f.release(bReg)
-	f.pushReg(aReg, mtI32OrWide(w))
+	f.pushReg(aReg, mtI32OrWide(w)).st.gcRoot = gcRoot
 }
 
 func mtI32OrWide(wide bool) machineType {
@@ -1046,6 +1049,7 @@ func (f *fn) trySelectOnFlags(cond *elem) bool {
 	// Materialize both branches into owned registers BEFORE the compare: their loads
 	// clobber flags harmlessly (the CMP comes after and sets them cleanly), and they
 	// are pinned so condensing the compare's operands cannot spill them.
+	gcRoot := (aRoot.kind == ekValue && aRoot.st.gcRoot) || (bRoot.kind == ekValue && bRoot.st.gcRoot)
 	aReg := f.materialize(aRoot)
 	f.pinned = f.pinned.add(aReg)
 	bReg := f.materialize(bRoot)
@@ -1058,7 +1062,7 @@ func (f *fn) trySelectOnFlags(cond *elem) bool {
 	f.release(bReg)
 	f.erase(bRoot)
 	f.erase(aRoot)
-	f.pushReg(aReg, mtI32OrWide(w))
+	f.pushReg(aReg, mtI32OrWide(w)).st.gcRoot = gcRoot
 	return true
 }
 

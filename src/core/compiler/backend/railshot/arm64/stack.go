@@ -122,6 +122,7 @@ type storage struct {
 	kind   storageKind
 	typ    machineType
 	reg    Reg
+	gcRoot bool // value may contain a collector-owned gc.Ref and must be mapped at safepoints
 	slot   int
 	idx    int   // local/global index for stLocalRef/stGlobalRef
 	cval   int64 // constant value/bits for stConst

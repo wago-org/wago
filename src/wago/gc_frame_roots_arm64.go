@@ -9,14 +9,11 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
-// newGCFrameRootPlan admits the first exact arm64 collection slice. It is
-// deliberately narrower than amd64: no wasm calls, tables, imports, EH, GC
-// globals, or collector-reference parameters/results. Allocating instructions
-// are limited to struct.new_default, whose result must be immediately stored in
-// a collector local or dropped. Collector locals cannot be read before the last
-// textual allocation. These restrictions prove that every collector reference
-// live at an allocating helper is in a mapped local slot; constructor arguments
-// and hidden operand roots are therefore absent in this initial arm64 product.
+// newGCFrameRootPlan admits the bounded exact arm64 collection product. It
+// supports liveness-exact collector locals, compiler-tracked hidden operand
+// spills, and direct local call chains. Imports, tables, EH, indirect/reference/
+// tail calls, GC globals, and collector/function-reference public signatures
+// remain fail-closed until their ownership and frame maps are implemented.
 func newGCFrameRootPlan(m *wasm.Module, genericGC bool) *shared.GCModuleFrameRootPlan {
 	if !genericGC || m == nil || len(m.Code) == 0 || m.Start != nil || len(m.Imports) != 0 || m.TableCount() != 0 {
 		return nil
@@ -68,38 +65,27 @@ func newGCFrameRootPlan(m *wasm.Module, genericGC bool) *shared.GCModuleFrameRoo
 				}
 			}
 		}
-		if !arm64GCFrameBodySafe(m, m.Code[function].BodyBytes, plan.LocalIndexes) {
+		if !arm64GCFrameBodySafe(m, m.Code[function].BodyBytes) {
 			return nil
 		}
 		liveMasks, err := gcFrameLocalLiveness(m.Code[function].BodyBytes, plan.LocalIndexes, false)
 		if err != nil || uint64(safepointBase)+uint64(len(liveMasks)) > uint64(shared.GCSafepointIDMax) {
 			return nil
 		}
+		callMasks, err := gcFrameLocalLiveness(m.Code[function].BodyBytes, plan.LocalIndexes, true)
+		if err != nil {
+			return nil
+		}
 		plan.LiveLocalMasks = liveMasks
+		plan.LiveCallLocalMasks = callMasks
 		module.Functions[function] = plan
 		safepointBase += uint32(len(liveMasks))
 	}
 	return module
 }
 
-type arm64GCFrameOp struct {
-	op       byte
-	kind     wasm.InstrKind
-	sub      uint32
-	index    uint32
-	alloc    bool
-	localSet bool
-	drop     bool
-}
-
-func arm64GCFrameBodySafe(m *wasm.Module, body []byte, collectorLocals []uint32) bool {
-	localRoot := make(map[uint32]bool, len(collectorLocals))
-	for _, index := range collectorLocals {
-		localRoot[index] = true
-	}
+func arm64GCFrameBodySafe(m *wasm.Module, body []byte) bool {
 	r := wasm.NewReader(body)
-	ops := make([]arm64GCFrameOp, 0, len(body)/2+1)
-	lastAllocation := -1
 	for r.HasNext() {
 		op, err := r.Byte()
 		if err != nil {
@@ -109,53 +95,50 @@ func arm64GCFrameBodySafe(m *wasm.Module, body []byte, collectorLocals []uint32)
 		if err != nil {
 			return false
 		}
-		record := arm64GCFrameOp{op: op, kind: imm.Kind, sub: imm.Subopcode, index: imm.Index, localSet: imm.Kind == wasm.InstrLocalSet, drop: op == 0x1a}
-		switch {
-		case op == 0xfb && imm.Subopcode == 1: // struct.new_default
-			record.alloc = true
-			lastAllocation = len(ops)
-		case op == 0xfb && imm.Subopcode == 2: // struct.get: only numeric fields
-			st, ok := arm64SnapshotStructType(m, imm.Index)
-			if !ok || imm.Index2 >= uint32(len(st.Comp.Fields)) || st.Comp.Fields[imm.Index2].Storage.Val.Kind == wasm.ValRef {
+		switch op {
+		case 0x10: // direct local call
+			if int(imm.Index) >= len(m.Code) {
 				return false
 			}
-		case op == 0xfb:
-			return false
-		case op == 0x10 || op == 0x11 || op == 0x12 || op == 0x13 || op == 0x14 || op == 0x15:
-			return false
-		case op == 0xd0 || op == 0xd2 || op == 0x25 || op == 0x26:
-			return false
-		case op == 0x06 || op == 0x07 || op == 0x08 || op == 0x09 || op == 0x0a || op == 0x18 || op == 0x19 || op == 0x1f:
-			return false
-		}
-		ops = append(ops, record)
-	}
-	if lastAllocation < 0 {
-		return true
-	}
-	for i, record := range ops {
-		if record.alloc {
-			if i+1 >= len(ops) || !(ops[i+1].drop || (ops[i+1].localSet && localRoot[ops[i+1].index])) {
+			ft, ok := m.FuncSignature(imm.Index)
+			if !ok || !arm64GCFrameCallABI(ft) {
 				return false
 			}
-		}
-		if i < lastAllocation && record.kind == wasm.InstrLocalGet && localRoot[record.index] {
+		case 0x11, 0x12, 0x13, 0x14, 0x15: // indirect, tail, and call_ref
+			return false
+		case 0x25, 0x26, 0xd2: // tables and ref.func
+			return false
+		case 0x06, 0x07, 0x08, 0x09, 0x0a, 0x18, 0x19, 0x1f: // EH
 			return false
 		}
 	}
 	return true
 }
 
-func arm64SnapshotStructType(m *wasm.Module, typeIndex uint32) (wasm.SubType, bool) {
-	index := typeIndex
-	for _, group := range m.Types {
-		if index < uint32(len(group.SubTypes)) {
-			sub := group.SubTypes[index]
-			return sub, sub.Comp.Kind == wasm.CompStruct
-		}
-		index -= uint32(len(group.SubTypes))
+func arm64GCFrameCallABI(ft *wasm.CompType) bool {
+	if ft == nil || len(ft.Results) > 2 {
+		return false
 	}
-	return wasm.SubType{}, false
+	gp, fp := 0, 0
+	for _, t := range ft.Params {
+		switch {
+		case wasm.EqualValType(t, wasm.I32), wasm.EqualValType(t, wasm.I64):
+			gp++
+		case wasm.EqualValType(t, wasm.F32), wasm.EqualValType(t, wasm.F64):
+			fp++
+		default:
+			return false
+		}
+	}
+	if gp > 8 || fp > 8 {
+		return false
+	}
+	for _, t := range ft.Results {
+		if !wasm.EqualValType(t, wasm.I32) && !wasm.EqualValType(t, wasm.I64) && !wasm.EqualValType(t, wasm.F32) && !wasm.EqualValType(t, wasm.F64) {
+			return false
+		}
+	}
+	return len(ft.Results) != 2 || ((wasm.EqualValType(ft.Results[0], wasm.I32) || wasm.EqualValType(ft.Results[0], wasm.I64)) && (wasm.EqualValType(ft.Results[1], wasm.I32) || wasm.EqualValType(ft.Results[1], wasm.I64)))
 }
 
 func arm64FunctionFrameRefType(m *wasm.Module, t wasm.ValType) bool {

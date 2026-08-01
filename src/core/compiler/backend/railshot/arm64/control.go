@@ -56,6 +56,9 @@ type ctrlFrame struct {
 	baseTypes       []machineType
 	paramTypes      []machineType
 	resultTypes     []machineType
+	baseGCRoots     []bool
+	paramGCRoots    []bool
+	resultGCRoots   []bool
 
 	// cfLoop only (P6.2 foundation): locals set anywhere in the loop body, and
 	// whether the body grows memory — from a scan-ahead at the loop header. A local
@@ -214,6 +217,52 @@ func slotOfLogicalTypes(types []machineType, logical int) int {
 
 func (f *fn) currentLogicalTypes() []machineType { return f.logicalTypes(f.rootsBottomToTop()) }
 
+func gcRootFlags(roots []*elem) []bool {
+	flags := make([]bool, len(roots))
+	for i, root := range roots {
+		flags[i] = root.kind == ekValue && root.st.gcRoot
+	}
+	return flags
+}
+
+func (f *fn) captureGCFrameShape(fr *ctrlFrame) {
+	if !f.tracksGCFrameRoots() {
+		return
+	}
+	roots := f.rootsBottomToTop()
+	if fr.height < 0 || fr.height+fr.paramN > len(roots) {
+		return
+	}
+	fr.baseGCRoots = gcRootFlags(roots[:fr.height])
+	fr.paramGCRoots = gcRootFlags(roots[fr.height : fr.height+fr.paramN])
+}
+
+func (f *fn) recordGCBranchResults(fr *ctrlFrame, n int) {
+	if !f.tracksGCFrameRoots() || n == 0 {
+		return
+	}
+	roots := f.rootsBottomToTop()
+	if n > len(roots) {
+		return
+	}
+	if len(fr.resultGCRoots) < n {
+		fr.resultGCRoots = make([]bool, n)
+	}
+	for i, root := range roots[len(roots)-n:] {
+		fr.resultGCRoots[i] = fr.resultGCRoots[i] || (root.kind == ekValue && root.st.gcRoot)
+	}
+}
+
+func frameGCRootFlags(base, suffix []bool) []bool {
+	if len(base)+len(suffix) == 0 {
+		return nil
+	}
+	flags := make([]bool, 0, len(base)+len(suffix))
+	flags = append(flags, base...)
+	flags = append(flags, suffix...)
+	return flags
+}
+
 // flushSuffix canonicalizes the stack and returns its logical types plus the
 // physical slot where the last n logical operands begin. Logical depth and slot
 // depth differ whenever values below the suffix include v128.
@@ -228,6 +277,9 @@ func (f *fn) dropFlushedSuffix(types []machineType, n int) {
 }
 
 func (f *fn) moveBranchValues(fr *ctrlFrame, d, a int) {
+	if fr.kind != cfLoop {
+		f.recordGCBranchResults(fr, a)
+	}
 	types := f.currentLogicalTypes()
 	fromSlot := slotOfLogicalTypes(types, d-a)
 	toSlot := slotsOfTypes(fr.baseTypes)
@@ -251,7 +303,15 @@ func (f *fn) flush() {
 	f.invalidateGlobalsCache() // the cached cell ptr must not span a call/control boundary
 	f.invalidateBoundsCert()   // bounds facts are valid only within a straight-line region
 	roots := f.rootsBottomToTop()
-	if f.flushWideStack(roots) {
+	var gcRoots []bool
+	if f.tracksGCFrameRoots() {
+		gcRoots = f.tmpGCRoots[:0]
+		for _, root := range roots {
+			gcRoots = append(gcRoots, root.kind == ekValue && root.st.gcRoot)
+		}
+		f.tmpGCRoots = gcRoots
+	}
+	if f.flushWideStack(roots, gcRoots) {
 		return
 	}
 	types := f.tmpTypes[:0]
@@ -296,13 +356,13 @@ func (f *fn) flush() {
 		slot++
 	}
 	f.tmpTypes = types
-	f.setDepthTypes(types)
+	f.setDepthTypesWithGCRoots(types, gcRoots)
 }
 
 // flushWideStack stages unusually wide operand stacks in a disjoint frame range
 // before copying them to canonical slots. This avoids overwriting earlier
 // allocation spills while the one-pass canonicalizer is still reloading them.
-func (f *fn) flushWideStack(roots []*elem) bool {
+func (f *fn) flushWideStack(roots []*elem, gcRoots []bool) bool {
 	const wideFlushSlots = 64
 
 	types := f.tmpFlushTypes[:0]
@@ -350,7 +410,7 @@ func (f *fn) flushWideStack(roots []*elem) bool {
 	f.spillFloor = oldFloor
 
 	f.moveSlots(stageBase, 0, total)
-	f.setDepthTypes(types)
+	f.setDepthTypesWithGCRoots(types, gcRoots)
 	return true
 }
 
@@ -362,18 +422,35 @@ func (f *fn) setDepth(l int) {
 		panic("arm64: invalid operand depth")
 	}
 	types := f.tmpTypes[:0]
+	var gcRoots []bool
+	if f.tracksGCFrameRoots() {
+		gcRoots = f.tmpGCRoots[:0]
+	}
 	for _, root := range roots[:l] {
 		types = append(types, root.st.typ)
+		if gcRoots != nil {
+			gcRoots = append(gcRoots, root.kind == ekValue && root.st.gcRoot)
+		}
 	}
 	f.tmpTypes = types
-	f.setDepthTypes(types)
+	if gcRoots != nil {
+		f.tmpGCRoots = gcRoots
+	}
+	f.setDepthTypesWithGCRoots(types, gcRoots)
 }
 
 func (f *fn) setDepthTypes(types []machineType) {
+	f.setDepthTypesWithGCRoots(types, nil)
+}
+
+func (f *fn) setDepthTypesWithGCRoots(types []machineType, gcRoots []bool) {
 	f.s.head.prev, f.s.head.next = f.s.head, f.s.head
 	slot := 0
-	for _, typ := range types {
-		f.pushValue(storage{kind: stSlot, typ: typ, slot: slot})
+	for i, typ := range types {
+		value := f.pushValue(storage{kind: stSlot, typ: typ, slot: slot})
+		if i < len(gcRoots) {
+			value.st.gcRoot = gcRoots[i]
+		}
 		slot += typ.stackSlots()
 	}
 	if slot > f.maxSpill {
@@ -500,6 +577,7 @@ func (f *fn) reconcileMerge1(fr *ctrlFrame) {
 // depth d-1; load it into mergeReg so the merge finds the value there. The slot
 // copy is left intact so a br_if fall-through still sees the value.
 func (f *fn) branchEdgeToMerge1(fr *ctrlFrame, d int) {
+	f.recordGCBranchResults(fr, 1)
 	slot := slotOfLogicalTypes(f.currentLogicalTypes(), d-1)
 	if fr.res0.isFloat() {
 		f.fld(mergeFReg, SP, f.spillOff(slot), fr.res0 == mtF64)
@@ -704,6 +782,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 			cc := f.condenseToFlags(cond)
 			fr.height = f.depth() - pN
 			fr.baseTypes = append([]machineType(nil), f.currentLogicalTypes()[:fr.height]...)
+			f.captureGCFrameShape(&fr)
 			fr.elseSite = f.a.Bcond(invertCond(cc)) // to else/end when false
 			f.ctrl = append(f.ctrl, fr)
 			return nil
@@ -711,6 +790,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 		creg, cOwned := f.materializeRead(f.popValue()) // the test only reads: a pinned local needs no copy
 		fr.height = f.depth() - pN
 		fr.baseTypes = append([]machineType(nil), f.currentLogicalTypes()[:fr.height]...)
+		f.captureGCFrameShape(&fr)
 		f.flush()
 		f.a.CmpImm32(creg, 0) // CMP creg, #0 — sets NZCV (no x86 test/flag side effect)
 		if cOwned {
@@ -720,6 +800,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 	} else {
 		fr.height = f.depth() - pN
 		fr.baseTypes = append([]machineType(nil), f.currentLogicalTypes()[:fr.height]...)
+		f.captureGCFrameShape(&fr)
 		if kind == cfLoop {
 			// Loop tops converge eagerly (all lsStackReg): hoists any post-call
 			// reload OUT of the body — a lazy (lsMem) loop target would push the
@@ -866,6 +947,7 @@ func (f *fn) opElse() error {
 		// The then-branch jumps to the if's end — a merge edge like any br
 		// (#68's root cause was skipping this). Converge to the end's recorded
 		// state; as the chronologically first end edge it usually fixes it.
+		f.recordGCBranchResults(fr, fr.resultN)
 		f.convergeEdgeTo(&fr.branchState)
 		if fr.regMerge1 {
 			f.reconcileMerge1(fr) // then-branch result → mergeReg
@@ -878,7 +960,7 @@ func (f *fn) opElse() error {
 	f.a.PatchBranch19(fr.elseSite, f.a.Len()) // the false edge is a B.cond (imm19)
 	fr.elseSite = -1
 	fr.hasElse = true
-	f.setDepthTypes(f.frameDepthTypes(fr.baseTypes, fr.paramTypes))
+	f.setDepthTypesWithGCRoots(f.frameDepthTypes(fr.baseTypes, fr.paramTypes), frameGCRootFlags(fr.baseGCRoots, fr.paramGCRoots))
 	// The else body is entered via the if's false edge: locals are exactly in the
 	// header-snapshot state (no code).
 	f.setLocalsState(fr.entryState)
@@ -926,6 +1008,7 @@ func (f *fn) opEnd() error {
 		f.releaseLoopPins(&fr)
 	}
 	if fallthroughReachable {
+		f.recordGCBranchResults(&fr, fr.resultN)
 		if fr.kind != cfLoop {
 			// Merge edge: converge to the end's recorded state (or fix it).
 			// A loop end is NOT a merge — br edges target the loop TOP — so the
@@ -940,6 +1023,12 @@ func (f *fn) opEnd() error {
 	}
 	// An if without else: the cond-false path reaches end with params == results.
 	if fr.kind == cfIf && !fr.hasElse && !fr.entryUnreach {
+		for i := 0; i < len(fr.paramGCRoots) && i < fr.resultN; i++ {
+			if len(fr.resultGCRoots) < fr.resultN {
+				fr.resultGCRoots = append(fr.resultGCRoots, make([]bool, fr.resultN-len(fr.resultGCRoots))...)
+			}
+			fr.resultGCRoots[i] = fr.resultGCRoots[i] || fr.paramGCRoots[i]
+		}
 		// The cond-false edge arrives in the header-snapshot state; if then-side
 		// edges fixed a stronger end state (or a regMerge1 passthrough needs its
 		// value in mergeReg), a stub on this edge converges it. The then
@@ -1025,14 +1114,18 @@ func (f *fn) opEnd() error {
 		if fr.regMerge1 {
 			// Every reaching edge left the result in the merge register (int→mergeReg,
 			// float→mergeFReg) and the operands below in canonical slots [0, height).
-			f.setDepthTypes(fr.baseTypes)
+			f.setDepthTypesWithGCRoots(fr.baseTypes, fr.baseGCRoots)
+			var result *elem
 			if fr.res0.isFloat() {
-				f.pushFReg(mergeFReg, fr.res0)
+				result = f.pushFReg(mergeFReg, fr.res0)
 			} else {
-				f.pushReg(mergeReg, fr.res0)
+				result = f.pushReg(mergeReg, fr.res0)
+			}
+			if len(fr.resultGCRoots) != 0 {
+				result.st.gcRoot = fr.resultGCRoots[0]
 			}
 		} else {
-			f.setDepthTypes(f.frameDepthTypes(fr.baseTypes, fr.resultTypes))
+			f.setDepthTypesWithGCRoots(f.frameDepthTypes(fr.baseTypes, fr.resultTypes), frameGCRootFlags(fr.baseGCRoots, fr.resultGCRoots))
 		}
 	}
 	// The popped frame no longer owns these temporary buffers. Recycle them for

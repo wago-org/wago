@@ -310,6 +310,7 @@ type fn struct {
 	gcStructHelpers bool
 	gcArrayHelpers  bool
 	gcFrameRoots    *shared.GCFrameRootPlan
+	gcCallsiteIndex int
 
 	// stats collects per-function codegen counters (docs/no-ir-plan.md P1). nil
 	// unless the caller requested collection, in which case every counter method
@@ -337,6 +338,8 @@ type transient struct {
 	tmpRoots      []*elem
 	tmpTypes      []machineType
 	tmpTypes2     []machineType
+	tmpGCRoots    []bool
+	tmpGCRoots2   []bool
 	tmpFlushTypes []machineType
 	tmpRegs       []Reg
 	tmpSlots      []int
@@ -600,9 +603,9 @@ type CompileOptions struct {
 	// GCArrayHelpers independently admits collector-backed array helper lowering.
 	GCArrayHelpers bool
 
-	// GCFrameRoots carries the bounded exact arm64 native-frame publication plan.
-	// The initial product publishes local slots at allocating helper safepoints;
-	// broader hidden-operand and caller-frame products remain fail-closed.
+	// GCFrameRoots carries the bounded exact arm64 native-frame publication plan:
+	// local and hidden-spill safepoint slots plus direct local caller maps. Broader
+	// indirect, reference, tail, imported, table, and EH products remain fail-closed.
 	GCFrameRoots *shared.GCModuleFrameRootPlan
 
 	// Codegen carries injectable runtime/heap dependencies for future WasmGC
