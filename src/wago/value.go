@@ -19,15 +19,18 @@ func ValueI64(v int64) Value   { return Value{ValI64, I64(v)} }
 func ValueF32(v float32) Value { return Value{ValF32, F32(v)} }
 func ValueF64(v float64) Value { return Value{ValF64, F64(v)} }
 
-// ValueFuncRef, ValueExternRef, and ValueI31Ref construct typed reference Values.
+// ValueFuncRef, ValueExternRef, ValueGCRef, and ValueI31Ref construct typed
+// reference Values.
 func ValueFuncRef(v FuncRef) Value     { return Value{ValFuncRef, v.token} }
 func ValueExternRef(v ExternRef) Value { return Value{ValExternRef, v.token} }
+func ValueGCRef(v GCRef) Value         { return Value{ValAnyRef, v.token} }
 func ValueI31Ref(v I31Ref) Value       { return Value{ValI31Ref, uint64(v.bits)} }
 
 // ValueOf builds a Value from raw ABI bits interpreted per t (i32/f32 in the
 // low 32 bits). Reference bits are opaque and must not be treated as or derived
 // from a Go/native pointer. Non-null funcref tokens are accepted only by the
-// Runtime store (or standalone private store) that issued them.
+// Runtime store (or standalone private store) that issued them. ValueGCRef is the
+// dedicated typed constructor for non-null collector-token ingress.
 func ValueOf(t ValType, bits uint64) Value { return Value{t, bits} }
 
 // Type returns the value's WebAssembly type.

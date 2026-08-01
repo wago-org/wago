@@ -86,6 +86,7 @@ func (fn *PreparedFunction) Invoke(args ...uint64) ([]uint64, error) {
 		return nil, fmt.Errorf("%s expects %d arg slot(s), got %d", fn.export, fn.paramSlots, len(args))
 	}
 	if fn.hasReferenceParams {
+		defer in.clearGCRefArgumentRoots()
 		if err := in.marshalPublicReferenceArgs(fn.export, args, fn.paramTypes, fn.paramExact); err != nil {
 			return nil, err
 		}

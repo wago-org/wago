@@ -409,6 +409,8 @@ func ValueF64(v float64) Value { return impl.ValueF64(v) }
 
 func ValueFuncRef(v FuncRef) Value { return impl.ValueFuncRef(v) }
 
+func ValueGCRef(v GCRef) Value { return impl.ValueGCRef(v) }
+
 func ValueI31Ref(v I31Ref) Value { return impl.ValueI31Ref(v) }
 
 func ValueI32(v int32) Value { return impl.ValueI32(v) }

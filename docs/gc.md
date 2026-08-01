@@ -88,10 +88,12 @@ and stress coverage.
 
 The synchronous helper boundary is capped at 64 parameter/result slots. A lazy
 per-instance `gcPublicState` includes one mutex-protected 63-value constructor
-scratch, a bounded direct native-frame/root-chain adapter, and the generic-global
-root mapping plus cross-code-owner identity (2,416 bytes total on amd64), avoiding per-constructor,
-per-root-publication, and per-boundary-collection Go allocations. On July 31,
-2026, five 500 ms samples of `BenchmarkGCArrayV128Set` measured 439.5-476.8 ns/op
+scratch, 64 reusable host-ingress root slots, a bounded direct native-frame/root-chain
+adapter, and the generic-global root mapping plus cross-code-owner identity (2,672
+bytes total on amd64), avoiding per-constructor, per-root-publication, and
+per-boundary-collection Go allocations. On August 1, 2026, warmed same-domain
+`GCRef` ingress measured 0 Go allocations per call after its first checked root
+slot was created. On July 31, 2026, five 500 ms samples of `BenchmarkGCArrayV128Set` measured 439.5-476.8 ns/op
 with 0 B/op and 0 allocs/op on the Ryzen 7 8845HS host. The path includes
 safe-boundary collection before each invocation and a parked helper transition;
 a direct JIT object-access path remains a future optimization.
@@ -1998,9 +2000,11 @@ Tests exercise tiny nurseries, collect-every-alloc, exact scanning, cycles, root
 - Generic struct/array results may be retained as one opaque `GCRef` token per
   producer. The token roots the object, retains exact Runtime/store and producer
   ownership after producer close, rejects stale/cross-producer release, and must be
-  released explicitly. Non-null token ingress remains fail-closed until typed
-  reinsertion roots and insertion barriers are complete. Untyped `uint64` values are
-  never accepted as transferable compact collector handles.
+  released explicitly. Non-null tokens re-enter only the exact collector domain after
+  structural subtype validation. Up to 64 reusable checked argument slots keep staged
+  values rooted until return, including concurrent release after staging; shared-domain
+  collector mutation is serialized independently of parked host transitions. Untyped
+  `uint64` values are never accepted as compact collector handles.
 - Snapshot v5 roots include owned local GC globals and one owned local collector
   table; snapshot v6 extends this to multiple heterogeneous local tables with indexed
   growth state, cross-table cycles/sharing, deterministic repeated capture, malformed

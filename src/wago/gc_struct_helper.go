@@ -90,6 +90,8 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 	if in == nil || in.gc == nil {
 		panic(gcStructHelperError{err: fmt.Errorf("gc struct helper %d has no live collector", helper)})
 	}
+	lockedDomain := in.lockGCCollector()
+	defer unlockGCCollector(lockedDomain)
 	state := in.publicGCState()
 	state.mu.Lock()
 	defer state.mu.Unlock()

@@ -288,11 +288,11 @@ func instantiateGCArrayGlobal(collector *gc.Collector, descs []gc.TypeDesc, init
 	return ref, slot, nil
 }
 
-// collectGenericGCAtBoundary performs a full non-moving sweep only between
-// native invocations, when no unpublished frame reference exists. The admitted
-// slice has no GC tables/elements; all persistent object globals are checked
-// collector slots synchronized from their cells immediately before collection.
-// Allocation helpers remain collection-disabled inside an invocation.
+// collectGenericGCAtBoundary performs a full collection only between native
+// invocations, when no unpublished frame reference exists. Persistent globals,
+// local/shared collector tables, retained tokens, and suspended frames are exact
+// roots. The process-wide native lease serializes collector mutation with token
+// issue, ingress, release, and cleanup.
 func (in *Instance) syncGenericGCGlobalRootsLocked(public *gcPublicState) error {
 	if in == nil || in.gc == nil || public == nil {
 		return nil
@@ -325,6 +325,10 @@ func (in *Instance) collectGenericGCAtBoundary() error {
 	if public == nil {
 		return errGenericGCRootState
 	}
+	unlockNative := lockNativeExecutionForHostAccess()
+	defer unlockNative()
+	lockedDomain := in.lockGCCollector()
+	defer unlockGCCollector(lockedDomain)
 	public.mu.Lock()
 	defer public.mu.Unlock()
 	if err := in.syncGenericGCGlobalRootsLocked(public); err != nil {

@@ -16,7 +16,8 @@ type V128 [16]byte
 // zero values are null. Tokens are not Go pointers, native code/data addresses,
 // or compact collector handles and callers must not interpret them as such.
 // Non-null GCRef values are issued only for exact collector-backed struct/array
-// results and must be released through Instance.ReleaseGCRef.
+// results, may re-enter their exact collector domain through ValueGCRef, and must
+// be released through Instance.ReleaseGCRef.
 //
 // I31Ref is deliberately separate: it is an immediate value, not an opaque
 // object token. Its private bits use the WasmGC low-bit tag, but only the typed

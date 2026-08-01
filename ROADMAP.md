@@ -142,8 +142,9 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
 - [x] **Bounded host-held GC results:** generic struct/array results issue one opaque
   `GCRef` token per producer, retain exact Runtime/store ownership after producer close,
   and reject stale or cross-producer release.
-- [ ] **Host GC token ingress:** add exact type-checked, collection-safe reinsertion
-  roots and insertion barriers before accepting non-null `GCRef` arguments.
+- [x] **Host GC token ingress:** non-null `GCRef` arguments re-enter only the exact
+  collector domain after structural subtype validation, use up to 64 reusable checked
+  roots, survive concurrent release after staging, and reject stale/foreign tokens.
 - [x] **Linux/amd64 bounds-mode parity:** explicit and signal-backed Core 3 both
   pass 2,226 modules and 58,038 assertions with zero failures, skips, or gaps.
   Signal mode keeps explicit directory checks for nonzero memories and full-u64

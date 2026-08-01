@@ -3583,6 +3583,7 @@ func (in *Instance) invoke(export string, args []uint64, cancel context.Context)
 		return nil, fmt.Errorf("%s GC boundary collection: %w", export, err)
 	}
 	if ic.hasFuncRefParams {
+		defer in.clearGCRefArgumentRoots()
 		params, _, err := exactFuncSignatureView(in.c.Funcs[li], in.c.Types)
 		if err != nil {
 			return nil, fmt.Errorf("%s exact parameters: %w", export, err)
@@ -3698,6 +3699,7 @@ func (in *Instance) invokeAttachedLocalContext(li int, args []uint64, cancel con
 		return nil, fmt.Errorf("function GC boundary collection: %w", err)
 	}
 	if hasReferenceValType(sig.Params) {
+		defer in.clearGCRefArgumentRoots()
 		params, _, err := exactFuncSignatureView(sig, in.c.Types)
 		if err != nil {
 			return nil, fmt.Errorf("function exact parameters: %w", err)
@@ -4048,6 +4050,15 @@ func (in *Instance) marshalPublicReferenceArgs(subject string, values []uint64, 
 					return fmt.Errorf("%s: invalid anyref token for argument %d: %w", subject, i, err)
 				}
 				bits = internal
+			} else if typ == ValAnyRef && bits != 0 {
+				if in.refStore == nil {
+					return fmt.Errorf("%s: invalid anyref token for argument %d", subject, i)
+				}
+				internal, err := in.refStore.stageGCRefArgument(in, bits, required)
+				if err != nil {
+					return fmt.Errorf("%s: invalid anyref token for argument %d: %w", subject, i, err)
+				}
+				bits = uint64(internal)
 			} else if bits != 0 {
 				return fmt.Errorf("%s: non-null %s argument %d is outside the null-only product", subject, typ, i)
 			}

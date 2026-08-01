@@ -79,8 +79,9 @@ heterogeneous imported/exported collector-reference tables use the same domain-w
 descriptor-root scan across growth, attachment rollback, and producer-first close.
 Exact cross-instance GC-reference calls coexist with those shared persistent roots and
 retain the same foreign-frame ownership across compiled-code codec reload. Generic struct/array results may leave the domain as one opaque retained `GCRef`
-token per producer; exact store/producer ownership survives producer close, while
-non-null token ingress remains fail-closed. Codec v30 persists helper admission and
+token per producer. Exact store/producer ownership survives producer close, and
+non-null tokens may re-enter the same collector domain through structural subtype
+checks plus reusable checked argument roots; stale and foreign tokens reject. Codec v30 persists helper admission and
 the 16-byte `v128` storage contract, but never compact handles.
 Snapshot v4 persists reachable local-global object graphs with stable IDs and
 two-pass cycle/sharing reconstruction; snapshot v5 adds one owned local
