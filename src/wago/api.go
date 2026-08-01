@@ -2032,8 +2032,8 @@ func (c *Compiled) validateImportBindings(imports Imports, store *referenceStore
 			if !reflect.DeepEqual(c.GCTypeDescs, ex.inst.c.GCTypeDescs) {
 				return fmt.Errorf("cross-instance GC import %q requires an identical collector descriptor table", key)
 			}
-			if c.HasTable || ex.inst.c.HasTable || c.hasGCRefGlobals() || ex.inst.c.hasGCRefGlobals() || c.genericGCFrameRoots() == nil || ex.inst.c.genericGCFrameRoots() == nil {
-				return fmt.Errorf("cross-instance GC import %q requires global-free, table-free modules with exact native root maps", key)
+			if c.genericGCFrameRoots() == nil || ex.inst.c.genericGCFrameRoots() == nil {
+				return fmt.Errorf("cross-instance GC import %q requires exact native root maps", key)
 			}
 		}
 		if ehNativeCalls {

@@ -132,7 +132,9 @@ cells directly during collection, while checked slots retain barrier/card state.
 Codec reload, failed-domain rollback, producer-before-consumer close, Throughput,
 Tiny, amd64, and ARM64 execution are covered. Multiple heterogeneous
 imported/exported collector-reference tables share direct indexed descriptor roots,
-table.grow state, attachment rollback, codec reload, and producer-first close.
+table.grow state, attachment rollback, codec reload, and producer-first close. Exact
+GC-reference function imports coexist with those shared globals and tables under
+Throughput/Tiny collection and retain foreign-frame roots after producer-first close.
 Host reference transfer, incompatible collector configurations/descriptors, and
 mixed unproved host/cross-instance import graphs reject transactionally.
 

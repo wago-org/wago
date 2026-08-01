@@ -196,8 +196,9 @@ The mandatory linux/amd64 and arm64 explicit-bounds opcode products are complete
 The remaining Core 3 work is ownership/persistence generalization and additional
 bounds/platform qualification rather than missing official opcode families:
 
-1. harden Runtime GC-domain lifecycle, rollback, multi-hop foreign-frame walking,
-   codec reload, snapshot-v5 validation, and mixed graphs;
+1. preserve the completed Runtime GC-domain lifecycle, rollback, multi-hop
+   foreign-frame walking, codec reload, and shared-global/table call coexistence
+   while hardening snapshot-v5 validation and mixed graphs;
 2. broaden the exact direct/recursive/host/foreign/tail/EH root product to
    polymorphic and foreign reference calls;
 3. preserve the completed heterogeneous shared-table attachment, growth, rollback,

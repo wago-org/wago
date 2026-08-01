@@ -129,6 +129,9 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   collector-reference tables share direct alias roots, growth state, indexed native
   roots, attachment rollback, codec reload, and producer-first close across
   descriptor-identical Runtime domains. Incompatible domains remain fail-closed.
+- [x] **Cross-instance persistent GC graphs:** exact GC-reference function imports
+  coexist with shared GC globals and heterogeneous tables under Throughput/Tiny
+  collection, codec reload, attachment rollback, and producer-first close.
 - [x] **Snapshot v5 local-root hardening:** one owned collector-reference table,
   mixed cycles/sharing, deterministic repeated capture, strict subtype validation,
   and near-capacity restore rollback are covered on amd64 and Linux/ARM64.

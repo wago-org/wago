@@ -77,7 +77,8 @@ ownership across foreign return PCs. Mutable and immutable imported/exported GC
 globals use direct domain-wide alias-cell roots plus checked barrier slots. Multiple
 heterogeneous imported/exported collector-reference tables use the same domain-wide
 descriptor-root scan across growth, attachment rollback, and producer-first close.
-Codec v30 persists helper
+Exact cross-instance GC-reference calls coexist with those shared persistent roots and
+retain the same foreign-frame ownership across compiled-code codec reload. Codec v30 persists helper
 admission and the 16-byte `v128` storage contract, but never compact handles.
 Snapshot v4 persists reachable local-global object graphs with stable IDs and
 two-pass cycle/sharing reconstruction; snapshot v5 adds one owned local
