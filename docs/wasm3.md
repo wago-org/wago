@@ -227,8 +227,11 @@ funcref descriptors instead of relying on static `ref.func` provenance. Mutable 
 imported typed funcref tables can therefore select local, host-wrapper, or retained
 same-Runtime cross-instance targets at execution time. A stable numeric GC-domain
 identity in the native instance context distinguishes ownership even when two instances
-share one linear-memory base; GC-bearing host and foreign-domain transfers reject before
-frame discard. Throughput/Tiny collection stress, codec reload, target mutation,
+share one linear-memory base; ordinary GC-bearing host and foreign-domain transfers
+reject before frame discard. Explicit `Runtime.NewGCHostFuncRef` owners now bind to one
+canonical Runtime collector domain and support direct, indirect, `call_ref`, and proper
+`return_call_ref` transfers through temporary opaque argument tokens plus bounded typed
+result roots. Throughput/Tiny collection stress, codec reload, target mutation,
 producer-first close, shared-memory context restoration, and cross-Runtime rejection are
 covered. On linux/amd64, five public-`Invoke` samples measure the mutable imported-table
 path at 474.7–481.6 ns/op with 0 B/op and 0 allocs/op; existing direct cross-instance tail

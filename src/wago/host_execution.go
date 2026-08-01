@@ -66,10 +66,21 @@ func (root *Instance) dispatchSynchronousHostCall(ctrl uintptr, importIdx uint32
 	// panics, and arbitrary host panics. Rebind the exact parked callee because a
 	// nested wasm entry may have replaced its shared basedata context.
 	activation := active.pushGCHostActivation(ctrl, importIdx)
+	if err := active.rootGCHostArguments(activation, importIdx, args); err != nil {
+		active.clearGCHostResultRoots(activation)
+		active.popGCHostActivation(activation)
+		panic(invalidHostReference{err: err})
+	}
 	epoch := nativeExecutionEpoch
 	nativeExecutionMu.Unlock()
+	// Keep the parked activation and any GC host-result roots published until the
+	// native execution lease is reacquired. A competing entry may collect while
+	// arbitrary host code runs, but cannot observe the unrooted handoff window
+	// between host result validation and the caller's resumed native frame.
+	defer active.popGCHostActivation(activation)
 	defer func() {
 		nativeExecutionMu.Lock()
+		active.clearGCHostResultRoots(activation)
 		// If no nested or competing public entry ran while host code owned the Go
 		// stack, the parked callee's basedata is still installed. Avoid rewriting
 		// all eight context words on this overwhelmingly common return path.
@@ -79,6 +90,5 @@ func (root *Instance) dispatchSynchronousHostCall(ctrl uintptr, importIdx uint32
 			}
 		}
 	}()
-	defer active.popGCHostActivation(activation)
 	active.hostCall(ctrl, importIdx, args, results)
 }

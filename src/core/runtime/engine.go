@@ -93,6 +93,15 @@ func (e *Engine) StackLimit() uintptr {
 	return uintptr(unsafe.Pointer(&e.stack[0])) + stackFenceMargin
 }
 
+// StackTop returns the exclusive high address of the current foreign stack.
+// Exact native frame walkers use it only to bound cold parked-wrapper scans.
+func (e *Engine) StackTop() uintptr {
+	if e == nil || len(e.stack) == 0 {
+		return 0
+	}
+	return uintptr(unsafe.Pointer(&e.stack[0])) + uintptr(len(e.stack))
+}
+
 // Call enters native code at code following WARP's WasmWrapper ABI. serArgs,
 // linMem, trap and results MUST be backed by off-heap memory (Arena/JobMemory)
 // so their addresses are stable across the call. It returns a *TrapError if the

@@ -18,8 +18,16 @@ type gcHostActivationToken struct {
 }
 
 func (in *Instance) pushGCHostActivation(ctrl uintptr, dispatch uint32) gcHostActivationToken {
-	if in == nil || ctrl == 0 || dispatch&gcStructDispatchBit != 0 || dispatch&hostFuncRefDispatchBit != 0 {
+	if in == nil || ctrl == 0 || dispatch&gcStructDispatchBit != 0 {
 		return gcHostActivationToken{}
+	}
+	gcBridge := false
+	if dispatch&hostFuncRefDispatchBit != 0 {
+		owner := in.refStore.hostFuncRef(dispatch)
+		if owner == nil || !owner.isGCBridge() {
+			return gcHostActivationToken{}
+		}
+		gcBridge = true
 	}
 	plan := in.c.genericGCFrameRoots()
 	if plan == nil {
@@ -31,29 +39,33 @@ func (in *Instance) pushGCHostActivation(ctrl uintptr, dispatch uint32) gcHostAc
 	if savedSP == 0 {
 		panic(gcStructHelperError{err: fmt.Errorf("generic GC arm64 host activation has invalid saved SP %#x", savedSP)})
 	}
+	findCallsite := func(pc uintptr) int {
+		if pc < in.base || pc-in.base >= uintptr(len(in.c.Code)) {
+			return -1
+		}
+		rel := uint32(pc - in.base)
+		for i := range plan.callsites {
+			if plan.callsites[i].returnOffset == rel {
+				return i
+			}
+		}
+		return -1
+	}
 	thunkAdjust := uintptr(0)
-	if retPC < in.base || retPC-in.base >= uintptr(len(in.c.Code)) {
+	callsite := findCallsite(retPC)
+	if callsite < 0 {
 		// Dynamic/owned sync thunks reserve 32 bytes and preserve their incoming
-		// module LR at SP+16 before parking through hostCallStub.
+		// module LR at SP+16. Their host-stub LR may itself be in the code blob but
+		// is not a logical Wasm callsite, so fall through to the saved module LR.
 		if savedSP > ^uintptr(0)-16 {
 			panic(gcStructHelperError{err: fmt.Errorf("generic GC arm64 host thunk frame overflows")})
 		}
 		retPC = uintptr(binary.LittleEndian.Uint64(unsafe.Slice((*byte)(offHeapPtr(savedSP+16)), 8)))
 		thunkAdjust = 32
-		if retPC < in.base || retPC-in.base >= uintptr(len(in.c.Code)) {
-			panic(gcStructHelperError{err: fmt.Errorf("generic GC arm64 host activation return PC %#x is outside module code", retPC)})
-		}
+		callsite = findCallsite(retPC)
 	}
-	rel := uint32(retPC - in.base)
-	callsite := -1
-	for i := range plan.callsites {
-		if plan.callsites[i].returnOffset == rel {
-			callsite = i
-			break
-		}
-	}
-	if callsite < 0 {
-		panic(gcStructHelperError{err: fmt.Errorf("generic GC arm64 host activation return offset %d has no callsite map", rel)})
+	if callsite < 0 && !gcBridge {
+		panic(gcStructHelperError{err: fmt.Errorf("generic GC arm64 host activation return PC %#x has no callsite map", retPC)})
 	}
 	state := in.publicGCState()
 	state.mu.Lock()
@@ -63,13 +75,17 @@ func (in *Instance) pushGCHostActivation(ctrl uintptr, dispatch uint32) gcHostAc
 	}
 	index := state.hostActivationCount
 	activation := &state.hostActivations[index]
-	adjust := thunkAdjust + uintptr(plan.callsites[callsite].stackAdjust)
-	if savedSP > ^uintptr(0)-adjust {
-		panic(gcStructHelperError{err: fmt.Errorf("generic GC arm64 host activation frame base overflows")})
-	}
-	activation.base = savedSP + adjust
 	activation.ctrl = ctrl
-	activation.callsite = uint32(callsite)
+	if callsite < 0 {
+		activation.noFrame = true
+	} else {
+		adjust := thunkAdjust + uintptr(plan.callsites[callsite].stackAdjust)
+		if savedSP > ^uintptr(0)-adjust {
+			panic(gcStructHelperError{err: fmt.Errorf("generic GC arm64 host activation frame base overflows")})
+		}
+		activation.base = savedSP + adjust
+		activation.callsite = uint32(callsite)
+	}
 	for i := range activation.savedControl {
 		activation.savedControl[i] = binary.LittleEndian.Uint64(control[i*8:])
 	}

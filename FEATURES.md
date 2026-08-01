@@ -70,7 +70,12 @@ incomplete/external domains, and unrestricted host ownership remain fail-closed.
 be retained as up to 64 opaque `GCRef` tokens per producer with exact store ownership,
 slot reuse, transactional multi-result rollback, and release after producer close.
 Tokens may re-enter the same collector domain through exact structural subtype checks and reusable checked argument roots; stale, foreign,
-and cross-domain tokens reject.
+and cross-domain tokens reject. `Runtime.NewGCHostFuncRef` additionally binds one
+explicit host owner to the first importing canonical Runtime GC domain. Direct,
+indirect, `call_ref`, and proper `return_call_ref` host transfers use temporary
+opaque argument tokens, exact typed result roots, bounded parked activations, and
+pre-discard domain checks; ordinary host owners and foreign Runtime domains remain
+fail-closed.
 See [docs/wasm3.md](docs/wasm3.md) for the implementation ledger.
 
 ## WebAssembly 1.0 (MVP)

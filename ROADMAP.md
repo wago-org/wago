@@ -174,6 +174,12 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
 - [x] **Host GC token ingress:** non-null `GCRef` arguments re-enter only the exact
   collector domain after structural subtype validation, use up to 64 reusable checked
   roots, survive concurrent release after staging, and reject stale/foreign tokens.
+- [x] **Runtime-owned GC host calls:** `Runtime.NewGCHostFuncRef` binds one explicit
+  host function to an exact canonical Runtime collector domain on first import.
+  Direct/indirect/reference calls and discarded-frame `return_call_ref` translate
+  compact arguments to temporary opaque tokens, validate typed token results, and
+  retain bounded argument/result roots across parked host execution. Ordinary host
+  owners and foreign Runtime domains continue to reject.
 - [x] **Linux/amd64 bounds-mode parity:** explicit and signal-backed Core 3 both
   pass 2,226 modules and 58,038 assertions with zero failures, skips, or gaps.
   Signal mode keeps explicit directory checks for nonzero memories and full-u64

@@ -228,7 +228,7 @@ func (b *instanceBuilder) attachImports() ([]*resolvedGlobalImport, error) {
 			if i >= len(b.c.importFuncSigs) {
 				return nil, fmt.Errorf("imported host funcref %q has no signature", key)
 			}
-			if err := b.hostAttachments.attach(value, b.opts.store, b.c.importFuncSigs[i]); err != nil {
+			if err := b.hostAttachments.attach(value, b.opts.store, b.c.importFuncSigs[i], b.collector, b.gcDomainID, b.c); err != nil {
 				return nil, fmt.Errorf("imported host funcref %q: %w", key, err)
 			}
 		}

@@ -1987,7 +1987,11 @@ func (c *Compiled) validateImportBindings(imports Imports, store *referenceStore
 		ex, ok := imports[key].(*InstanceExport)
 		if !ok {
 			if sigHasGCRefs {
-				return fmt.Errorf("host import %q cannot transfer collector references; use a same-Runtime InstanceExport", key)
+				owner, owned := imports[key].(*HostFuncRef)
+				if !owned || owner == nil || owner.gc == nil || store == nil || owner.store != store || c.genericGCFrameRoots() == nil {
+					return fmt.Errorf("host import %q cannot transfer collector references; use Runtime.NewGCHostFuncRef or a same-Runtime InstanceExport", key)
+				}
+				continue
 			}
 			if moduleTransfersGC {
 				return fmt.Errorf("cross-instance GC modules require every function import to be a same-Runtime InstanceExport; import %q is a host boundary", key)

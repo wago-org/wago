@@ -126,14 +126,14 @@ type hostFuncRefAttachments struct {
 	set importDedup[*HostFuncRef]
 }
 
-func (a *hostFuncRefAttachments) attach(owner *HostFuncRef, store *referenceStore, sig FuncSig) error {
+func (a *hostFuncRefAttachments) attach(owner *HostFuncRef, store *referenceStore, sig FuncSig, collector *gc.Collector, domainID uint64, c *Compiled) error {
 	if owner == nil {
 		return fmt.Errorf("host funcref owner is nil")
 	}
 	if a.set.contains(owner) {
-		return owner.validateImport(store, sig)
+		return owner.validateAttachedImporter(store, sig, collector, domainID, c)
 	}
-	if err := owner.attachImporter(store, sig); err != nil {
+	if err := owner.attachImporter(store, sig, collector, domainID, c); err != nil {
 		return err
 	}
 	a.set.push(owner)

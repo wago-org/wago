@@ -124,6 +124,7 @@ type gcHostActivation struct {
 	base         uintptr
 	ctrl         uintptr
 	callsite     uint32
+	noFrame      bool
 	savedControl gcHostSavedControl
 }
 
@@ -145,6 +146,9 @@ func (r *gcNativeFrameRoots) walk(fn func(gc.RootSlot) bool, sink gc.RootRefSink
 	if state != nil && state.hostRootPlan != nil {
 		for i := int(state.hostActivationCount) - 1; i >= 0; i-- {
 			activation := &state.hostActivations[i]
+			if activation.noFrame {
+				continue
+			}
 			if int(activation.callsite) >= len(state.hostRootPlan.callsites) {
 				panic(gcStructHelperError{err: fmt.Errorf("generic GC host activation callsite %d is unavailable", activation.callsite)})
 			}
@@ -337,14 +341,20 @@ type gcPublicState struct {
 	// values is the bounded synchronous-helper constructor scratch. Collector
 	// access is serialized by mu, so struct.new and array.new_fixed reuse it
 	// without per-allocation Go heap traffic.
-	values              [63]gc.Value
-	frameRoots          gcNativeFrameRoots    // exact parked native-frame roots; reused under mu
-	globalRoots         []gcGlobalRootMapping // generic-GC safe-boundary roots; allocated only when needed
-	hostActivations     [gcHostActivationLimit]gcHostActivation
-	hostActivationCount uint8
-	hostRootPlan        *compiledGCFrameRoots
-	hostCodeBase        uintptr
-	hostCodeBytes       uintptr
+	values                [63]gc.Value
+	frameRoots            gcNativeFrameRoots    // exact parked native-frame roots; reused under mu
+	globalRoots           []gcGlobalRootMapping // generic-GC safe-boundary roots; allocated only when needed
+	hostActivations       [gcHostActivationLimit]gcHostActivation
+	hostActivationCount   uint8
+	hostArgumentRootSlots [gcHostActivationLimit][7]uint32
+	hostArgumentRootsMade [gcHostActivationLimit]uint8
+	hostArgumentRootCount [gcHostActivationLimit]uint8
+	hostResultRootSlots   [gcHostActivationLimit][2]uint32
+	hostResultRootsMade   [gcHostActivationLimit]uint8
+	hostResultRootCount   [gcHostActivationLimit]uint8
+	hostRootPlan          *compiledGCFrameRoots
+	hostCodeBase          uintptr
+	hostCodeBytes         uintptr
 }
 
 type externrefSlot struct {
@@ -1040,7 +1050,7 @@ func (s *referenceStore) issueGCRef(source *Instance, ref gc.Ref, required Value
 	}
 	typeID, err := source.gc.ObjectType(ref)
 	if err != nil {
-		return 0, fmt.Errorf("public GC result object: %w", err)
+		return 0, fmt.Errorf("public GC result object %#x: %w", uint32(ref), err)
 	}
 	localType, ok := source.gcLocalType(typeID)
 	if !ok || int(localType) >= len(source.c.Types) {
@@ -1257,6 +1267,157 @@ func (s *referenceStore) stageGCRefArgument(target *Instance, token uint64, requ
 	}
 	targetState.argumentRootCount++
 	return current.ref, nil
+}
+
+func (in *Instance) rootGCHostArguments(token gcHostActivationToken, dispatch uint32, args []uint64) error {
+	state := token.state
+	if in == nil || state == nil || in.gc == nil || in.refStore == nil || dispatch&hostFuncRefDispatchBit == 0 {
+		return nil
+	}
+	owner := in.refStore.hostFuncRef(dispatch)
+	if owner == nil {
+		return fmt.Errorf("GC host argument owner is unavailable")
+	}
+	owner.mu.Lock()
+	if owner.gc == nil || owner.closed || owner.gc.collector != in.gc || owner.gc.domainID == 0 {
+		owner.mu.Unlock()
+		return fmt.Errorf("GC host argument owner is outside the active collector domain")
+	}
+	types := owner.sig.Params // immutable for the HostFuncRef lifetime
+	owner.mu.Unlock()
+
+	lockedDomain := in.lockGCCollector()
+	defer unlockGCCollector(lockedDomain)
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	slot := 0
+	for i, typ := range types {
+		if typ == ValV128 {
+			slot += 2
+			continue
+		}
+		if slot >= len(args) {
+			return fmt.Errorf("missing GC host argument slot %d", slot)
+		}
+		if typ == ValAnyRef || typ == ValI31Ref {
+			bits := args[slot]
+			ref := gc.Ref(uint32(bits))
+			if bits != 0 && (uint64(ref) != bits || (!ref.IsObj() && !ref.IsI31())) {
+				return fmt.Errorf("invalid compact GC host argument %d", i)
+			}
+			if ref.IsObj() {
+				index := token.index
+				count := state.hostArgumentRootCount[index]
+				if int(count) >= len(state.hostArgumentRootSlots[index]) {
+					return fmt.Errorf("GC host object argument count exceeds %d", len(state.hostArgumentRootSlots[index]))
+				}
+				if count == state.hostArgumentRootsMade[index] {
+					root, err := in.gc.NewCheckedGlobalSlot(ref)
+					if err != nil {
+						return fmt.Errorf("root GC host argument %d: %w", i, err)
+					}
+					state.hostArgumentRootSlots[index][count] = root
+					state.hostArgumentRootsMade[index]++
+				} else if err := in.gc.SetGlobalSlot(state.hostArgumentRootSlots[index][count], ref); err != nil {
+					return fmt.Errorf("root GC host argument %d: %w", i, err)
+				}
+				state.hostArgumentRootCount[index]++
+			}
+		}
+		slot++
+	}
+	return nil
+}
+
+func (s *referenceStore) stageGCHostResult(target *Instance, ctrl uintptr, token uint64, required ValueTypeDescriptor) (gc.Ref, error) {
+	if s == nil || target == nil || target.gc == nil || target.c == nil || ctrl == 0 || token == 0 {
+		return gc.Null(), fmt.Errorf("invalid GC host result token")
+	}
+	unlockNative := lockNativeExecutionForHostAccess()
+	defer unlockNative()
+	lockedDomain := target.lockGCCollector()
+	defer unlockGCCollector(lockedDomain)
+	s.mu.Lock()
+	entry, ok := s.gcByToken[token]
+	s.mu.Unlock()
+	if !ok || entry.owner == nil {
+		return gc.Null(), fmt.Errorf("invalid or stale GC host result token")
+	}
+	owner := entry.owner
+	ownerState := owner.existingPublicGCState()
+	if ownerState == nil {
+		return gc.Null(), fmt.Errorf("GC host result token owner state is unavailable")
+	}
+	targetState := target.publicGCState()
+	firstState, secondState := lockGCPublicStates(ownerState, targetState)
+	defer unlockGCPublicStates(firstState, secondState)
+
+	s.mu.Lock()
+	current, ok := s.gcByToken[token]
+	ownerRecord := s.instances[owner]
+	targetRecord := s.instances[target]
+	s.mu.Unlock()
+	ownerIndex := current.ownerIndex
+	if !ok || current.owner != owner || current.ref != entry.ref || current.slot != entry.slot || ownerIndex >= ownerState.resultRootsMade || ownerState.resultTokens[ownerIndex] != token || ownerState.resultRootSlots[ownerIndex] != entry.slot {
+		return gc.Null(), fmt.Errorf("invalid or stale GC host result token")
+	}
+	if ownerRecord == nil || ownerRecord.resourcesReleased || targetRecord == nil || targetRecord.resourcesReleased || owner.refStore != s || target.refStore != s || owner.gc == nil || owner.gc != target.gc {
+		return gc.Null(), fmt.Errorf("GC host result token belongs to a different collector domain")
+	}
+	if required.Kind != ValueTypeReference || !target.gcRefMatchesValueType(current.ref, required) {
+		return gc.Null(), fmt.Errorf("GC host result token does not match the required structural result type")
+	}
+	activation := -1
+	for i := int(targetState.hostActivationCount) - 1; i >= 0; i-- {
+		if targetState.hostActivations[i].ctrl == ctrl {
+			activation = i
+			break
+		}
+	}
+	if activation < 0 {
+		return gc.Null(), fmt.Errorf("GC host result has no active parked frame")
+	}
+	count := targetState.hostResultRootCount[activation]
+	if int(count) >= len(targetState.hostResultRootSlots[activation]) {
+		return gc.Null(), fmt.Errorf("GC host result count exceeds %d", len(targetState.hostResultRootSlots[activation]))
+	}
+	if count == targetState.hostResultRootsMade[activation] {
+		slot, err := target.gc.NewCheckedGlobalSlot(current.ref)
+		if err != nil {
+			return gc.Null(), fmt.Errorf("root GC host result: %w", err)
+		}
+		targetState.hostResultRootSlots[activation][count] = slot
+		targetState.hostResultRootsMade[activation]++
+	} else if err := target.gc.SetGlobalSlot(targetState.hostResultRootSlots[activation][count], current.ref); err != nil {
+		return gc.Null(), fmt.Errorf("root GC host result: %w", err)
+	}
+	targetState.hostResultRootCount[activation]++
+	return current.ref, nil
+}
+
+func (in *Instance) clearGCHostResultRoots(token gcHostActivationToken) {
+	state := token.state
+	if in == nil || state == nil || in.gc == nil || int(token.index) >= len(state.hostResultRootSlots) {
+		return
+	}
+	lockedDomain := in.lockGCCollector()
+	defer unlockGCCollector(lockedDomain)
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	argumentCount := state.hostArgumentRootCount[token.index]
+	for i := uint8(0); i < argumentCount; i++ {
+		if err := in.gc.SetGlobalSlot(state.hostArgumentRootSlots[token.index][i], gc.Null()); err != nil {
+			panic(gcStructHelperError{err: fmt.Errorf("clear GC host argument root %d: %w", i, err)})
+		}
+	}
+	state.hostArgumentRootCount[token.index] = 0
+	resultCount := state.hostResultRootCount[token.index]
+	for i := uint8(0); i < resultCount; i++ {
+		if err := in.gc.SetGlobalSlot(state.hostResultRootSlots[token.index][i], gc.Null()); err != nil {
+			panic(gcStructHelperError{err: fmt.Errorf("clear GC host result root %d: %w", i, err)})
+		}
+	}
+	state.hostResultRootCount[token.index] = 0
 }
 
 func (in *Instance) clearGCRefArgumentRoots() {

@@ -188,8 +188,14 @@ local internal entries, host wrappers, and retained same-Runtime cross-instance
 wrappers, including descriptors loaded from mutable/imported funcref tables. The
 native context carries stable numeric collector-domain identity separately from
 linear-memory ownership; GC-bearing typed tails compare those identities before
-frame discard. Host or foreign-domain GC transfer stays fail-closed rather than
-scanning approximate roots.
+frame discard. Ordinary host or foreign-domain GC transfer stays fail-closed rather
+than scanning approximate roots. An explicit `Runtime.NewGCHostFuncRef` is the bounded
+exception: first import binds the owner to one exact canonical Runtime collector domain;
+parked direct/indirect/reference calls convert object arguments to temporary opaque
+`GCRef` tokens, validate result tokens structurally, and hold per-activation checked
+argument/result roots until the native lease is reacquired. Proper host tails discard
+the caller frame only after the same numeric domain check and reuse the wrapper result
+pointer without retaining the caller.
 
 Iteration 38 wires one exact linux/amd64 numeric-local helper product;
 iteration 39 adds exact immutable GC-global roots, packed fields, and the numeric portion

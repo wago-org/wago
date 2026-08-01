@@ -149,7 +149,7 @@ func TestGCCallRefNativeFrameRoots(t *testing.T) {
 			t.Fatal(err)
 		}
 		plan := compiled.genericGCFrameRoots()
-		wantCallsites := 1
+		wantCallsites := 3 // internal, same-context wrapper, cross-context wrapper
 		if tail {
 			wantCallsites = 0
 		}

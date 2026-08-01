@@ -1157,6 +1157,16 @@ func hostIndirectSyncThunk(importIdx uint32, paramSlots, resultSlots int, useHom
 		a.Load64(RAX, R8, hcResults+int32(i*8))
 		a.Store64(RCX, int32(i*8), RAX)
 	}
+	// Descriptor-driven proper tails to Runtime-owned GC host thunks retain the
+	// caller's return address and therefore consume integer results through the
+	// register ABI. Keep the wrapper result stores above and additionally publish
+	// the first two slots in RAX/RDX; ordinary wrapper callers ignore them.
+	if resultSlots > 0 {
+		a.Load64(RAX, R8, hcResults)
+	}
+	if resultSlots > 1 {
+		a.Load64(RDX, R8, hcResults+8)
+	}
 	a.Pop(RBX)
 	a.Ret()
 	return a.B
@@ -1948,7 +1958,13 @@ func (f *fn) callRef(r *wasm.Reader) error {
 		f.a.Store64(RBX, -int32(offSpillRegion), code)
 		f.pinned = f.pinned.remove(code)
 		f.release(code)
-		f.emitIndirectCallHomeAware(ft, home, targetContext)
+		sameReturn, crossReturn := f.emitIndirectCallHomeAware(ft, home, targetContext)
+		if recordRoots {
+			f.gcFrameRoots.Callsites = append(f.gcFrameRoots.Callsites,
+				shared.GCFrameCallsitePlan{ReturnOffset: sameReturn, Offsets: rootOffsets},
+				shared.GCFrameCallsitePlan{ReturnOffset: crossReturn, StackAdjust: 64, Offsets: rootOffsets},
+			)
+		}
 		f.a.PatchRel32(done, f.a.Len())
 		return nil
 	}
@@ -1959,7 +1975,13 @@ func (f *fn) callRef(r *wasm.Reader) error {
 	f.release(kind)
 	f.a.Store64(RBX, -int32(offSpillRegion), code)
 	f.release(code)
-	f.emitIndirectCallHomeAware(ft, home, targetContext)
+	sameReturn, crossReturn := f.emitIndirectCallHomeAware(ft, home, targetContext)
+	if recordRoots {
+		f.gcFrameRoots.Callsites = append(f.gcFrameRoots.Callsites,
+			shared.GCFrameCallsitePlan{ReturnOffset: sameReturn, Offsets: rootOffsets},
+			shared.GCFrameCallsitePlan{ReturnOffset: crossReturn, StackAdjust: 64, Offsets: rootOffsets},
+		)
+	}
 	return nil
 }
 
@@ -2095,13 +2117,57 @@ func (f *fn) returnCallRef(r *wasm.Reader) error {
 	f.a.AluRI(cmpDigit, RDX, int32(abi.FuncRefCrossInstanceTagValue), true)
 	f.trapIf(condA, trapTailUnsupported)
 	if funcTypeCarriesGCRefs(f.m, ft) {
-		f.a.TestSelf(RDX, true) // host thunks cannot accept compact collector refs
-		f.trapIf(condE, trapTailUnsupported)
+		// Runtime-owned GC host thunks use the active caller context and can
+		// discard this frame without the cross-instance restoration record.
+		f.a.TestSelf(RDX, true)
+		notHost := f.a.JccPlaceholder(condNE)
+		f.emitTailHostWrapperJump(ft)
+
+		f.a.PatchRel32(notHost, f.a.Len())
+		f.locals = savedLocals
+		f.setDepthTypes(types)
 	}
 	f.emitTailCrossWrapperJump(ft)
 
 	f.unreachable = true
 	return nil
+}
+
+// emitTailHostWrapperJump transfers a proper tail to a Runtime-owned host thunk.
+// The current frame is discarded but its caller return address is retained, so
+// the thunk's register result returns directly to the root adapter or nested
+// caller. Arguments and the wrapper result scratch use the fixed basedata bank.
+func (f *fn) emitTailHostWrapperJump(ft *wasm.CompType) {
+	p := len(ft.Params)
+	roots := f.rootsBottomToTop()
+	types := make([]machineType, len(roots))
+	for i, root := range roots {
+		types[i] = rootMachineType(root)
+	}
+	f.flush()
+	f.storePinnedGlobals(false)
+	f.storeModuleGlobals(RDX)
+
+	f.a.MovReg64(RDI, RBX)
+	f.a.LeaDisp(RDI, RDI, -int32(abi.TailArgsOffset))
+	argBase := len(types) - p
+	for i := range ft.Params {
+		srcSlot := slotOfLogicalTypes(types, argBase+i)
+		f.a.Load64(RAX, RSP, f.spillOff(srcSlot))
+		f.a.Store64(RDI, int32(i*8), RAX)
+	}
+	// GC-reference descriptor tails use the wrapper ABI: the current frame owns
+	// the result pointer at frResultsOff. Preserve that pointer before discarding
+	// the frame so the host thunk writes directly to the root or caller buffer.
+	f.a.Load64(RCX, RSP, frResultsOff)
+	f.a.MovReg64(RSI, RBX)
+	f.a.Load64(R11, RBX, -int32(offFuncRefDescPtr))
+	f.a.Load64(R11, R11, runtime.FuncRefContextOffset)
+	f.a.Load64(R11, R11, runtime.InstanceContextTailCodeOffset)
+	frameSite := f.a.Len() + 3
+	f.a.AddRsp(0)
+	f.sc.tailFrameSites = append(f.sc.tailFrameSites, frameSite)
+	f.a.JmpReg(R11)
 }
 
 // emitTailCrossWrapperJump transfers a register-ABI activation to a retained
@@ -2457,7 +2523,10 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 		wrapper := f.a.JccPlaceholder(condNE)
 		f.stripDescriptorHomeTags(home)
 		f.pinned = f.pinned.remove(home)
-		f.emitRegisterCallVia(ft, -1, -1, code)
+		returnOffset := f.emitRegisterCallVia(ft, -1, -1, code)
+		if recordRoots {
+			f.gcFrameRoots.Callsites = append(f.gcFrameRoots.Callsites, shared.GCFrameCallsitePlan{ReturnOffset: returnOffset, Offsets: rootOffsets})
+		}
 		f.pinned = f.pinned.remove(code)
 		f.release(code)
 		done := f.a.JmpPlaceholder()
@@ -2471,7 +2540,13 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 		f.stripDescriptorHomeTags(home)
 		f.validateWrapperDescriptor(kind, home)
 		f.release(kind)
-		f.emitIndirectCallHomeAware(ft, home, targetContext)
+		sameReturn, crossReturn := f.emitIndirectCallHomeAware(ft, home, targetContext)
+		if recordRoots {
+			f.gcFrameRoots.Callsites = append(f.gcFrameRoots.Callsites,
+				shared.GCFrameCallsitePlan{ReturnOffset: sameReturn, Offsets: rootOffsets},
+				shared.GCFrameCallsitePlan{ReturnOffset: crossReturn, StackAdjust: 64, Offsets: rootOffsets},
+			)
+		}
 		f.a.PatchRel32(done, f.a.Len())
 		return nil
 	}
@@ -2484,7 +2559,13 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 	f.a.Store64(RBX, -int32(offSpillRegion), code)
 	f.release(code)
 
-	f.emitIndirectCallHomeAware(ft, home, targetContext)
+	sameReturn, crossReturn := f.emitIndirectCallHomeAware(ft, home, targetContext)
+	if recordRoots {
+		f.gcFrameRoots.Callsites = append(f.gcFrameRoots.Callsites,
+			shared.GCFrameCallsitePlan{ReturnOffset: sameReturn, Offsets: rootOffsets},
+			shared.GCFrameCallsitePlan{ReturnOffset: crossReturn, StackAdjust: 64, Offsets: rootOffsets},
+		)
+	}
 	return nil
 }
 
@@ -2496,7 +2577,7 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 // whole-module-invariant registers (RBX, R12-R15), copy the per-execution control
 // words caller→callee, and enter the callee's offset-0 entry with RSI = its linMem
 // (the same context-swap as emitCrossInstanceCall, selected at run time).
-func (f *fn) emitIndirectCallHomeAware(ft *wasm.CompType, homeReg, targetContextReg Reg) {
+func (f *fn) emitIndirectCallHomeAware(ft *wasm.CompType, homeReg, targetContextReg Reg) (sameReturn, crossReturn uint32) {
 	p := len(ft.Params)
 	roots := f.rootsBottomToTop()
 	d := len(roots)
@@ -2569,6 +2650,7 @@ func (f *fn) emitIndirectCallHomeAware(ft *wasm.CompType, homeReg, targetContext
 	// Same instance: RSI = caller linMem, call the entry directly.
 	f.a.MovReg64(RSI, RBX)
 	f.a.CallMem(RBX, -int32(offSpillRegion))
+	sameReturn = uint32(len(f.a.B))
 	jdone := f.a.JmpPlaceholder()
 	// Cross-instance: preserve the caller's invariants (+ one alignment pad), copy
 	// the control words caller→callee, enter with RSI = callee linMem, then restore.
@@ -2590,6 +2672,7 @@ func (f *fn) emitIndirectCallHomeAware(ft *wasm.CompType, homeReg, targetContext
 	f.a.Store64(R11, -offTrapCellPtr, RAX)
 	f.a.MovReg64(RSI, R11)
 	f.a.CallMem(RBX, -int32(offSpillRegion)) // RBX unchanged by the pushes
+	crossReturn = uint32(len(f.a.B))
 	f.a.Pop(R10)
 	f.a.Pop(R9)
 	f.a.Pop(RAX)
@@ -2608,6 +2691,7 @@ func (f *fn) emitIndirectCallHomeAware(ft *wasm.CompType, homeReg, targetContext
 	// Pop the args and publish results without imposing a physical-register
 	// arity limit on legal multi-value signatures.
 	f.finishWrapperResults(belowTypes, resultSlot, ft.Results)
+	return sameReturn, crossReturn
 }
 
 // emitWrapperCall sets up the wrapper ABI registers (RDI=args, RCX=results,

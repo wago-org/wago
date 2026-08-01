@@ -18,8 +18,16 @@ type gcHostActivationToken struct {
 }
 
 func (in *Instance) pushGCHostActivation(ctrl uintptr, dispatch uint32) gcHostActivationToken {
-	if in == nil || ctrl == 0 || dispatch&gcStructDispatchBit != 0 || dispatch&hostFuncRefDispatchBit != 0 {
+	if in == nil || ctrl == 0 || dispatch&gcStructDispatchBit != 0 {
 		return gcHostActivationToken{}
+	}
+	gcBridge := false
+	if dispatch&hostFuncRefDispatchBit != 0 {
+		owner := in.refStore.hostFuncRef(dispatch)
+		if owner == nil || !owner.isGCBridge() {
+			return gcHostActivationToken{}
+		}
+		gcBridge = true
 	}
 	plan := in.c.genericGCFrameRoots()
 	if plan == nil {
@@ -30,32 +38,46 @@ func (in *Instance) pushGCHostActivation(ctrl uintptr, dispatch uint32) gcHostAc
 	if savedRSP == 0 || savedRSP > ^uintptr(0)-abi.AMD64CallReturnAddressBytes {
 		panic(gcStructHelperError{err: fmt.Errorf("generic GC host activation has invalid saved RSP %#x", savedRSP)})
 	}
+	findCallsite := func(pc uintptr) int {
+		if pc < in.base || pc-in.base >= uintptr(len(in.c.Code)) {
+			return -1
+		}
+		rel := uint32(pc - in.base)
+		for i := range plan.callsites {
+			if plan.callsites[i].returnOffset == rel {
+				return i
+			}
+		}
+		return -1
+	}
 	returnSlot := savedRSP
 	retPC := uintptr(binary.LittleEndian.Uint64(unsafe.Slice((*byte)(offHeapPtr(returnSlot)), 8)))
-	if retPC < in.base || retPC-in.base >= uintptr(len(in.c.Code)) {
-		// Dynamic host-import thunks save RBX and the wrapper result pointer before
-		// parking. The module call's return address is therefore three qwords above
-		// the stub return address. Validate that address against this module before
-		// treating it as an activation boundary.
-		if savedRSP > ^uintptr(0)-24 {
-			panic(gcStructHelperError{err: fmt.Errorf("generic GC host activation wrapper stack overflows")})
-		}
-		returnSlot = savedRSP + 24
-		retPC = uintptr(binary.LittleEndian.Uint64(unsafe.Slice((*byte)(offHeapPtr(returnSlot)), 8)))
-		if retPC < in.base || retPC-in.base >= uintptr(len(in.c.Code)) {
-			panic(gcStructHelperError{err: fmt.Errorf("generic GC host activation return PC %#x is outside module code", retPC)})
-		}
-	}
-	rel := uint32(retPC - in.base)
-	callsite := -1
-	for i := range plan.callsites {
-		if plan.callsites[i].returnOffset == rel {
-			callsite = i
-			break
-		}
-	}
+	callsite := findCallsite(retPC)
 	if callsite < 0 {
-		panic(gcStructHelperError{err: fmt.Errorf("generic GC host activation return offset %d has no callsite map", rel)})
+		// Dynamic/ref-call host paths can add one or more bounded wrapper records
+		// above the host stub. Scan only the fixed wrapper envelope and accept a
+		// candidate solely when it equals a validated logical callsite return PC.
+		const wrapperScanBytes = uintptr(512)
+		stackTop := in.eng.StackTop()
+		if stackTop <= savedRSP+8 {
+			panic(gcStructHelperError{err: fmt.Errorf("generic GC host activation saved RSP %#x is outside the foreign stack", savedRSP)})
+		}
+		limit := wrapperScanBytes
+		if available := stackTop - savedRSP - 8; available < limit {
+			limit = available
+		}
+		limit &^= 7
+		for off := uintptr(8); off <= limit; off += 8 {
+			candidateSlot := savedRSP + off
+			candidatePC := uintptr(binary.LittleEndian.Uint64(unsafe.Slice((*byte)(offHeapPtr(candidateSlot)), 8)))
+			if candidate := findCallsite(candidatePC); candidate >= 0 {
+				returnSlot, retPC, callsite = candidateSlot, candidatePC, candidate
+				break
+			}
+		}
+	}
+	if callsite < 0 && !gcBridge {
+		panic(gcStructHelperError{err: fmt.Errorf("generic GC host activation return PC %#x has no callsite map in the bounded wrapper envelope", retPC)})
 	}
 	state := in.publicGCState()
 	state.mu.Lock()
@@ -65,12 +87,19 @@ func (in *Instance) pushGCHostActivation(ctrl uintptr, dispatch uint32) gcHostAc
 	}
 	index := state.hostActivationCount
 	activation := &state.hostActivations[index]
-	if returnSlot > ^uintptr(0)-abi.AMD64CallReturnAddressBytes-uintptr(plan.callsites[callsite].stackAdjust) {
-		panic(gcStructHelperError{err: fmt.Errorf("generic GC host activation frame base overflows")})
-	}
-	activation.base = returnSlot + abi.AMD64CallReturnAddressBytes + uintptr(plan.callsites[callsite].stackAdjust)
 	activation.ctrl = ctrl
-	activation.callsite = uint32(callsite)
+	if callsite < 0 {
+		// A proper tail to a Runtime-owned host thunk has already discarded the
+		// Wasm caller frame. Its compact arguments are rooted separately before the
+		// native lease is released, so there is no frame chain to walk.
+		activation.noFrame = true
+	} else {
+		if returnSlot > ^uintptr(0)-abi.AMD64CallReturnAddressBytes-uintptr(plan.callsites[callsite].stackAdjust) {
+			panic(gcStructHelperError{err: fmt.Errorf("generic GC host activation frame base overflows")})
+		}
+		activation.base = returnSlot + abi.AMD64CallReturnAddressBytes + uintptr(plan.callsites[callsite].stackAdjust)
+		activation.callsite = uint32(callsite)
+	}
 	for i := range activation.savedControl {
 		activation.savedControl[i] = binary.LittleEndian.Uint64(control[i*8:])
 	}

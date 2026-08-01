@@ -582,8 +582,16 @@ func (f *fn) returnCallRef(r *wasm.Reader) error {
 	}
 	f.validateWrapperDescriptor(X13, X10)
 	if arm64FuncTypeCarriesGCRefs(f.m, ft) {
+		// Runtime-owned GC host thunks use the active caller context and can
+		// reuse the ordinary wrapper-tail result pointer without a restoration
+		// record. Ordinary host descriptors fail the domain check above.
 		f.cmpImm(X13, uint32(abi.FuncRefHostThunkTagValue), true)
-		f.trapIf(condE, trapTailUnsupported)
+		notHost := f.a.Bcond(condNE)
+		f.emitTailWrapperJump(ft, func() { f.a.Br(X17) })
+
+		f.a.PatchBranch19(notHost, f.a.Len())
+		f.locals = savedLocals
+		f.setDepthTypesWithGCRoots(types, gcRoots)
 	}
 	f.emitTailDescriptorWrapperJump(ft)
 	f.unreachable = true
