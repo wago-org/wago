@@ -210,7 +210,7 @@ bounds/platform qualification rather than missing official opcode families:
    codec, and close-order proofs while extending ownership to unproved foreign shapes;
 4. preserve the completed snapshot-v5 single-table and snapshot-v6 heterogeneous
    multi-table proofs plus `WGDN` v1 whole-domain capture: exhaustive ordered members,
-   internal function/global/table/memory32 aliases, local immutable exception-tag
+   internal function/global/table/memory32/exception-tag aliases, immutable tag
    directories, one shared stable-ID graph, exact GC config, strict malformed-input validation, and
    atomic all-member publication;
 5. keep the complete linux/amd64 explicit and signal-backed suites plus native

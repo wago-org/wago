@@ -135,12 +135,12 @@ acyclic internal import graph privately into a Runtime without an existing GC do
 reconstructs the shared heap once, then returns the member slice only after success. `WGDN` version 1 persists compiled members, exact GC
 configuration, memory/global/passive-data state, roots, aliases, cycles, and sharing.
 Same-domain imported memory32 links preserve the owning member and restore one shared
-backing mapping after validating duplicate member images. Live public tokens, active
-calls, external imports, shared or memory64 memories, opaque references, passive
-elements, imported exception tags, incomplete sets, and cyclic
-instantiation graphs remain strict pre-publication rejections. Local immutable tag
-directories carry no completed-invocation mutable state; local EH modules therefore
-round-trip through their compiled member and ordinary GC graph.
+backing mapping after validating duplicate member images. Same-domain imported tags
+preserve the owning member's immutable native identity and structural tag type. Live
+public tokens, active calls, external imports, shared or memory64 memories, opaque
+references, passive elements, incomplete sets, and cyclic instantiation graphs remain
+strict pre-publication rejections. Completed EH invocations carry no additional mutable
+snapshot state and round-trip through their compiled member and ordinary GC graph.
 
 Numeric host imports may re-enter the same instance: codec-v30 callsites carry
 stack adjustments, a bounded eight-entry activation stack preserves control

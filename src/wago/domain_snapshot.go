@@ -37,6 +37,7 @@ const (
 	domainImportGlobal
 	domainImportTable
 	domainImportMemory
+	domainImportTag
 )
 
 type domainGCObjectSnapshot struct {
@@ -51,8 +52,8 @@ type domainGCObjectSnapshot struct {
 // copy. The initial product rejects active calls, live public GC tokens, external
 // imports, shared or memory64 memories, opaque references, passive elements,
 // imported exception tags, and an incomplete member list. Same-domain imported
-// memory32 aliases are captured through their owning member. Local immutable tag
-// directories carry no post-instantiation mutable state and are captured.
+// memory32 aliases and exception-tag aliases are captured through their owning
+// member. Immutable tag directories carry no post-instantiation mutable state.
 func CaptureDomain(instances ...*Instance) (*DomainSnapshot, error) {
 	if len(instances) == 0 {
 		return nil, errors.New("wago: domain snapshot requires at least one instance")
@@ -162,9 +163,6 @@ func validateDomainSnapshotMember(in *Instance) error {
 			return fmt.Errorf("table %d has opaque reference storage", i)
 		}
 	}
-	if in.c.tagImportCount() != 0 {
-		return errors.New("imported exception-tag ownership is unsupported")
-	}
 	return nil
 }
 
@@ -232,6 +230,27 @@ func captureDomainMemberImports(in *Instance, members []*Instance, indexes map[*
 		memoryLinks[def.ImportKey] = link
 		out = append(out, link)
 	}
+	tagLinks := make(map[string]domainSnapshotImport)
+	for tagIndex := 0; tagIndex < in.c.tagImportCount(); tagIndex++ {
+		def := in.c.memoryDir.ehTags[tagIndex]
+		tag, ok := in.imports.tag(def.ImportKey)
+		if !ok {
+			return nil, fmt.Errorf("tag import %q is external", def.ImportKey)
+		}
+		member, index, ok := findDomainOwnedTag(tag, members)
+		if !ok {
+			return nil, fmt.Errorf("tag import %q owner is outside the domain", def.ImportKey)
+		}
+		link := domainSnapshotImport{key: def.ImportKey, kind: domainImportTag, member: member, index: index}
+		if previous, duplicate := tagLinks[def.ImportKey]; duplicate {
+			if previous != link {
+				return nil, fmt.Errorf("tag import %q resolves inconsistently", def.ImportKey)
+			}
+			continue
+		}
+		tagLinks[def.ImportKey] = link
+		out = append(out, link)
+	}
 	return out, nil
 }
 
@@ -242,6 +261,19 @@ func findDomainOwnedGlobal(global *Global, members []*Instance) (uint32, uint32,
 				return uint32(member), uint32(i), true
 			}
 		}
+	}
+	return 0, 0, false
+}
+
+func findDomainOwnedTag(tag *Tag, members []*Instance) (uint32, uint32, bool) {
+	if tag == nil || tag.owner == nil || tag.index < 0 {
+		return 0, 0, false
+	}
+	for member, in := range members {
+		if in != tag.owner || in.c == nil || in.c.memoryDir == nil || tag.index >= len(in.c.memoryDir.ehTags) || in.c.memoryDir.ehTags[tag.index].ImportKey != "" {
+			continue
+		}
+		return uint32(member), uint32(tag.index), true
 	}
 	return 0, 0, false
 }
@@ -467,6 +499,12 @@ func (s *DomainSnapshot) Instantiate(rt *Runtime) ([]*Instance, error) {
 						return closeDomainRestore(restored, err)
 					}
 					imports[imp.key] = memory
+				case domainImportTag:
+					tag, err := owner.domainSnapshotTag(int(imp.index))
+					if err != nil {
+						return closeDomainRestore(restored, err)
+					}
+					imports[imp.key] = tag
 				default:
 					return closeDomainRestore(restored, fmt.Errorf("member %d has unknown import kind %d", i, imp.kind))
 				}
@@ -503,6 +541,31 @@ func (in *Instance) instanceMemoryAt(index int) (*Memory, bool) {
 		return nil, false
 	}
 	return in.memoryDir.memories[index], in.memoryDir.owns[index]
+}
+
+func (in *Instance) domainSnapshotTag(index int) (*Tag, error) {
+	if in == nil || in.c == nil || in.c.memoryDir == nil || index < 0 || index >= len(in.c.memoryDir.ehTags) {
+		return nil, fmt.Errorf("domain snapshot tag %d is unavailable", index)
+	}
+	def := in.c.memoryDir.ehTags[index]
+	if def.ImportKey != "" {
+		return nil, fmt.Errorf("domain snapshot tag %d is not locally owned", index)
+	}
+	state := in.ensurePluginState()
+	in.lifeMu.Lock()
+	defer in.lifeMu.Unlock()
+	if in.closed || in.resourcesClosed || state.tagIdentityBase == 0 {
+		return nil, fmt.Errorf("domain snapshot tag %d owner is unavailable", index)
+	}
+	if state.tagExports == nil {
+		state.tagExports = make(map[int]*Tag)
+	}
+	if tag := state.tagExports[index]; tag != nil {
+		return tag, nil
+	}
+	tag := &Tag{owner: in, index: index, typeIndex: def.TypeIndex, identity: uint64(state.tagIdentityBase + uintptr(index*8))}
+	state.tagExports[index] = tag
+	return tag, nil
 }
 
 func (in *Instance) domainSnapshotMemory(index int) (*Memory, error) {
@@ -800,7 +863,7 @@ func validateDomainSnapshot(s *DomainSnapshot) error {
 				mark(ref)
 			}
 		}
-		expectedImports := make(map[string]uint8, len(c.Imports)+len(c.GlobalImports)+c.tableImportCount()+c.memoryImportCount())
+		expectedImports := make(map[string]uint8, len(c.Imports)+len(c.GlobalImports)+c.tableImportCount()+c.memoryImportCount()+c.tagImportCount())
 		for _, key := range c.Imports {
 			expectedImports[key] = domainImportFunction
 		}
@@ -816,6 +879,9 @@ func validateDomainSnapshot(s *DomainSnapshot) error {
 			if def, imported := c.memoryImportAt(memoryIndex); imported {
 				expectedImports[def.ImportKey] = domainImportMemory
 			}
+		}
+		for tagIndex := 0; tagIndex < c.tagImportCount(); tagIndex++ {
+			expectedImports[c.memoryDir.ehTags[tagIndex].ImportKey] = domainImportTag
 		}
 		seenImports := make(map[string]uint8, len(entry.imports))
 		for _, imp := range entry.imports {
@@ -873,6 +939,20 @@ func validateDomainSnapshot(s *DomainSnapshot) error {
 					if !equalMemorySnapshots(snapshotMemories(entry.state)[i], snapshotMemories(targetEntry.state)[imp.index]) {
 						return fmt.Errorf("wago: domain snapshot member %d memory import %q does not preserve alias state", member, imp.key)
 					}
+				}
+			case domainImportTag:
+				if target.memoryDir == nil || int(imp.index) >= len(target.memoryDir.ehTags) || target.memoryDir.ehTags[imp.index].ImportKey != "" {
+					return fmt.Errorf("wago: domain snapshot member %d tag target is unavailable", member)
+				}
+				consumerTag := -1
+				for i := 0; i < c.tagImportCount(); i++ {
+					if c.memoryDir.ehTags[i].ImportKey == imp.key {
+						consumerTag = i
+						break
+					}
+				}
+				if consumerTag < 0 || !tagTypeEquivalent(target.memoryDir.ehTags[imp.index].TypeIndex, target.Types, c.memoryDir.ehTags[consumerTag].TypeIndex, c.Types) {
+					return fmt.Errorf("wago: domain snapshot member %d tag import %q does not preserve structural identity", member, imp.key)
 				}
 			default:
 				return fmt.Errorf("wago: domain snapshot member %d has unknown import kind %d", member, imp.kind)
@@ -964,9 +1044,6 @@ func validateDomainSnapshotCompiledMember(c *Compiled) error {
 		if !isGCRefValType(c.tableElementType(i)) {
 			return fmt.Errorf("table %d has opaque reference storage", i)
 		}
-	}
-	if c.tagImportCount() != 0 {
-		return errors.New("imported exception-tag ownership is unsupported")
 	}
 	return nil
 }
