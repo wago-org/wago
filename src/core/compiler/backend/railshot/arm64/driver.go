@@ -25,6 +25,7 @@ func (f *fn) body(code []byte) error {
 // and returns control to the caller's body.
 func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 	for len(f.ctrl) > minCtrl {
+		f.wasmPC = f.tracePCBase + uint32(r.Offset())
 		op, err := r.Byte()
 		if err != nil {
 			return err

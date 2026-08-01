@@ -388,16 +388,17 @@ func envDefaultOn(v string) bool {
 // inlineTarget is a callee that will be spliced at its call sites: a straight-line
 // leaf with an int-only register-ABI signature and a small body.
 type inlineTarget struct {
-	globalIdx   int           // global function index (what a `call` immediate names)
-	body        []byte        // the callee's expression bytecode (ends in the terminating `end`)
-	params      int           // param count (callee locals 0..params-1)
-	nLocals     int           // params + declared locals
-	localTypes  []machineType // length nLocals: the callee's local machine types
-	resultTypes []machineType // the callee's result machine types
-	res0        machineType   // first result type (mtNone if none) — for the single-result merge
-	touchesMem  bool          // the body has a linear-memory op (drives the caller's guard-page pin exclusion)
-	touchesGlob bool          // the body reads or writes a global
-	hasCtrl     bool          // the body has control flow → splice through a synthetic boundary frame
+	globalIdx      int // global function index (what a `call` immediate names)
+	localDeclBytes uint32
+	body           []byte        // the callee's expression bytecode (ends in the terminating `end`)
+	params         int           // param count (callee locals 0..params-1)
+	nLocals        int           // params + declared locals
+	localTypes     []machineType // length nLocals: the callee's local machine types
+	resultTypes    []machineType // the callee's result machine types
+	res0           machineType   // first result type (mtNone if none) — for the single-result merge
+	touchesMem     bool          // the body has a linear-memory op (drives the caller's guard-page pin exclusion)
+	touchesGlob    bool          // the body reads or writes a global
+	hasCtrl        bool          // the body has control flow → splice through a synthetic boundary frame
 }
 
 // buildInlineTargets returns the straight-line leaf inline candidates keyed by
@@ -466,16 +467,17 @@ func buildInlineTargets(m *wasm.Module, allHints []funcHints) map[int]*inlineTar
 			targets = map[int]*inlineTarget{}
 		}
 		targets[importedFuncs+i] = &inlineTarget{
-			globalIdx:   importedFuncs + i,
-			body:        body,
-			params:      facts.params,
-			nLocals:     len(lt),
-			localTypes:  lt,
-			resultTypes: rt,
-			res0:        res0,
-			touchesMem:  facts.touchesMem,
-			touchesGlob: facts.touchesGlobal,
-			hasCtrl:     facts.hasControlFlow,
+			globalIdx:      importedFuncs + i,
+			localDeclBytes: m.Code[i].LocalDeclBytes,
+			body:           body,
+			params:         facts.params,
+			nLocals:        len(lt),
+			localTypes:     lt,
+			resultTypes:    rt,
+			res0:           res0,
+			touchesMem:     facts.touchesMem,
+			touchesGlob:    facts.touchesGlobal,
+			hasCtrl:        facts.hasControlFlow,
 		}
 	}
 	return targets
@@ -644,7 +646,9 @@ func (f *fn) inlineCall(t *inlineTarget) error {
 	f.bindInlineParams(t, base)
 
 	old := f.localBase
+	oldTraceFunc, oldTraceBase, oldPC := f.traceFuncIdx, f.tracePCBase, f.wasmPC
 	f.localBase = base
+	f.traceFuncIdx, f.tracePCBase = uint32(t.globalIdx), t.localDeclBytes
 	var err error
 	if t.hasCtrl {
 		err = f.inlineBodyCtrl(t)
@@ -652,6 +656,7 @@ func (f *fn) inlineCall(t *inlineTarget) error {
 		err = f.inlineBody(t.body)
 	}
 	f.localBase = old
+	f.traceFuncIdx, f.tracePCBase, f.wasmPC = oldTraceFunc, oldTraceBase, oldPC
 	if err != nil {
 		return err
 	}
@@ -728,6 +733,7 @@ func (f *fn) inlineBodyCtrl(t *inlineTarget) error {
 func (f *fn) inlineBody(body []byte) error {
 	r := wasm.NewReader(body)
 	for {
+		f.wasmPC = f.tracePCBase + uint32(r.Offset())
 		op, err := r.Byte()
 		if err != nil {
 			return err

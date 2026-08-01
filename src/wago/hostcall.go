@@ -614,6 +614,7 @@ func (in *Instance) callNativeSync(entry uintptr) error {
 func (in *Instance) callNativeSyncWithTrap(entry uintptr, activeTrap []byte) (err error) {
 	locked := in.beginNativeEntry()
 	defer locked.unlockExecution()
+	defer func() { err = in.decorateTrap(err) }()
 	defer func() {
 		if r := recover(); r != nil {
 			if ex, ok := r.(HostExit); ok {

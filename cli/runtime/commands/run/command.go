@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/wago-org/wago"
 	"github.com/wago-org/wago/cli/internal/command"
@@ -127,7 +128,7 @@ func runStart(runtime *wago.Runtime, module *wago.Module, compiled *wago.Compile
 func trapReason(err error) string {
 	var trap *wago.TrapError
 	if errors.As(err, &trap) {
-		return trap.Code.String()
+		return strings.TrimPrefix(trap.Error(), "wasm trap: ")
 	}
 	return err.Error()
 }
