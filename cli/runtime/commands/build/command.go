@@ -45,8 +45,17 @@ type implementation struct {
 }
 
 func (cmd implementation) Run(c *command.Ctx) {
+	defaults, configured, err := runcmd.LoadDefaults()
+	if err != nil {
+		ui.Fatal("build: %v", err)
+	}
+	runcmd.ApplyOptimizationDefaults(defaults, configured)
 	runcmd.ApplyOptimizationFlags(c)
-	deferredBoundsChecking, err := runcmd.DeferredBoundsChecking(c)
+	deferredDefault := true
+	if configured {
+		deferredDefault = defaults.Runtime.DeferredBoundsChecking
+	}
+	deferredBoundsChecking, err := runcmd.DeferredBoundsChecking(c, deferredDefault)
 	if err != nil {
 		ui.Usage("build: %v", err)
 	}
@@ -67,10 +76,11 @@ func (cmd implementation) Run(c *command.Ctx) {
 	if wago.IsCompiled(source) {
 		ui.Fatal("build: %s is already a .wago artifact", input)
 	}
-	cfg, err := runcmd.Config(deferredBoundsChecking, c.Str("parallel"))
+	cfg, err := runcmd.Config(deferredBoundsChecking, runcmd.ResolveParallel(c.Str("parallel"), defaults, configured))
 	if err != nil {
 		ui.Usage("build: %v", err)
 	}
+	cfg = runcmd.ApplyFeatureDefaults(cfg, defaults, configured)
 	rt := cmd.environment.LoadRuntime(cfg, c.Str("plugin"))
 	defer rt.Close()
 	module, err := rt.Compile(source)

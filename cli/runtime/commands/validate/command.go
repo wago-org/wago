@@ -35,7 +35,11 @@ func run(c *command.Ctx) {
 	if err != nil {
 		ui.Fatal("%v", err)
 	}
-	policy, err := runcmd.ParallelPolicy(c.Str("parallel"))
+	defaults, configured, err := runcmd.LoadDefaults()
+	if err != nil {
+		ui.Fatal("validate: %v", err)
+	}
+	policy, err := runcmd.ParallelPolicy(runcmd.ResolveParallel(c.Str("parallel"), defaults, configured))
 	if err != nil {
 		ui.Usage("validate: %v", err)
 	}

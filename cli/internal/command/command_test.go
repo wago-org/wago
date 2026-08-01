@@ -107,6 +107,23 @@ func TestInvocationWantsHelpFollowsCommandTree(t *testing.T) {
 	if InvocationWantsHelp(root, []string{"run", "module.wasm", "--help"}) {
 		t.Fatal("guest help after pass-through was intercepted")
 	}
+	root.Run = func(*Ctx) {}
+	if InvocationWantsHelp(root, nil) {
+		t.Fatal("empty group invocation with a default action should not show help")
+	}
+}
+
+func TestHelpMarksDefaultGroupCommandOptional(t *testing.T) {
+	cmd := &Cmd{
+		Name:     "config",
+		Run:      func(*Ctx) {},
+		Children: []*Cmd{{Name: "list", Summary: "list settings"}},
+	}
+	var output bytes.Buffer
+	cmd.PrintHelp(&output, "wago config")
+	if !strings.Contains(output.String(), "[command]") || strings.Contains(output.String(), "<command>") {
+		t.Fatalf("default group usage does not mark command optional:\n%s", output.String())
+	}
 }
 
 func TestHelpShowsShortFormForPairedBooleanFlags(t *testing.T) {

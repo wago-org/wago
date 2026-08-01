@@ -72,6 +72,27 @@ func TestMultiSelectToggleAllNone(t *testing.T) {
 	}
 }
 
+func TestMultiSelectDisabledPreviewCannotBeSelected(t *testing.T) {
+	m := &MultiSelect{Items: []SelectItem{
+		{Label: "tail-calls", Description: "planned", Disabled: true},
+		{Label: "inline", Description: "available"},
+	}}
+	m.apply(keyToggle)
+	if m.Items[0].On {
+		t.Fatal("space selected a disabled preview")
+	}
+	m.apply(keyAll)
+	if m.Items[0].On || !m.Items[1].On {
+		t.Fatalf("select all changed disabled row or skipped selectable row: %#v", m.Items)
+	}
+	if got := m.Chosen(); !reflect.DeepEqual(got, []string{"inline"}) {
+		t.Fatalf("chosen = %v, want [inline]", got)
+	}
+	if frame := m.frame(); !strings.Contains(frame, "◌") || !strings.Contains(frame, "tail-calls") {
+		t.Fatalf("disabled preview is not rendered distinctly:\n%s", frame)
+	}
+}
+
 func TestMultiSelectAcceptCancel(t *testing.T) {
 	m := newTestSelect()
 	if done, cancelled := m.apply(keyAccept); !done || cancelled {
