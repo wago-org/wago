@@ -353,10 +353,12 @@ func platformCoreFeatures() CoreFeatures {
 			CoreFeatureMemory64 |
 			CoreFeatureTable64
 		// arm64 lowers collector-backed struct/array/i31 operations through the
-		// parked synchronous helper ABI. Exact local and hidden-spill roots plus
-		// direct local caller maps permit collection through recursive call chains.
-		// Imports, indirect/reference/tail calls, tables, EH, and GC globals remain
-		// collection-disabled and bounded during one invocation.
+		// parked synchronous helper ABI. Exact roots cover locals, hidden spills,
+		// direct/recursive calls, direct host re-entry, same-domain foreign calls,
+		// mutable local GC globals, one private collector table, monomorphic private
+		// call_indirect, and local call_ref. Tail calls and EH remain unavailable at
+		// the platform feature gate; polymorphic/foreign reference calls remain
+		// collection-disabled.
 		if runtime.GOARCH == "arm64" && (runtime.GOOS == "linux" || runtime.GOOS == "darwin") {
 			unsupported &^= CoreFeatureGC | CoreFeatureTypedFunctionReferences
 		}

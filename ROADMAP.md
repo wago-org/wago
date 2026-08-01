@@ -106,11 +106,12 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
 - 🚧 **Iteration 82 — hardening the new ownership and persistence boundaries:** add
   independent-domain, rollback, multi-hop, codec, close-order, moving-root, mixed
   graph, malformed snapshot, fuzz, and native-arm64 execution coverage.
-- 🚧 **Arm64 exact GC roots:** liveness-exact locals and compiler-tracked hidden
-  spills now publish from parked SP, persist through codec v30, and walk direct
-  local and recursive caller frames. Imports, indirect/reference/tail calls,
-  tables, EH, GC globals, host re-entry, and foreign-instance walking remain
-  collection-disabled until their exact ownership/maps land.
+- 🚧 **Arm64 exact GC roots:** exact local/hidden-spill maps now walk direct and
+  recursive calls, suspended direct-host activations, same-domain foreign frames,
+  monomorphic private `call_indirect`, and local `call_ref`; mutable local GC
+  globals and one private collector table are persistent roots. Tail calls and EH
+  remain outside the arm64 feature gate, while polymorphic/foreign reference calls
+  remain collection-disabled.
 - [ ] **Shared GC state:** extend same-domain ownership to imported/exported GC
   globals and tables with exact roots, barriers, aliases, rollback, and close order;
   keep host tokens and incompatible domains fail-closed until explicitly owned.
@@ -368,9 +369,9 @@ preserves an outer object across 1,000 allocations, including codec reload.
 Iteration 82 completed the first bounded forms of all three: exact same-Runtime
 collector domains for descriptor-identical global/table-free modules, arm64 helper
 lowering, and snapshot-v4 stable-ID heap graphs rooted by owned local GC globals.
-Arm64 now collects with liveness-exact local slots, compiler-tracked hidden
-operand spills, and direct local/recursive caller maps. Imports,
-indirect/reference/tail calls, host re-entry, foreign frames, tables, EH, and GC
-globals remain bounded and collection-disabled. Next work broadens those maps,
-then shared GC globals/tables, snapshot table roots, and full bounds/platform
-parity.
+Arm64 now collects through direct/recursive calls, suspended direct-host
+activations, same-domain foreign frames, monomorphic private `call_indirect`, and
+local `call_ref`, with mutable local GC globals and one private collector table.
+Tail/EH lowering and polymorphic or foreign reference calls remain separate
+platform work. Next work broadens those products, then shared GC globals/tables,
+snapshot table roots, and full bounds/platform parity.

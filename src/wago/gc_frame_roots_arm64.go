@@ -10,10 +10,10 @@ import (
 )
 
 // newGCFrameRootPlan admits the bounded exact arm64 collection product. It
-// supports liveness-exact collector locals, compiler-tracked hidden operand
-// spills, and direct local call chains. Imports, tables, EH, indirect/reference/
-// tail calls, GC globals, and collector/function-reference public signatures
-// remain fail-closed until their ownership and frame maps are implemented.
+// supports liveness-exact collector locals, hidden operand spills, direct and
+// recursive calls, direct host re-entry, same-domain foreign calls, mutable local
+// GC globals, one private collector table, monomorphic call_indirect, and local
+// call_ref. Tail/EH and polymorphic or foreign reference calls remain fail-closed.
 func newGCFrameRootPlan(m *wasm.Module, genericGC bool) *shared.GCModuleFrameRootPlan {
 	if !genericGC || m == nil || len(m.Code) == 0 || m.Start != nil {
 		return nil

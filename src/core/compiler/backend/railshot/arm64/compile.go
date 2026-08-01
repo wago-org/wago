@@ -603,9 +603,9 @@ type CompileOptions struct {
 	// GCArrayHelpers independently admits collector-backed array helper lowering.
 	GCArrayHelpers bool
 
-	// GCFrameRoots carries the bounded exact arm64 native-frame publication plan:
-	// local and hidden-spill safepoint slots plus direct local caller maps. Broader
-	// indirect, reference, tail, imported, table, and EH products remain fail-closed.
+	// GCFrameRoots carries exact arm64 local/hidden-spill safepoints and caller
+	// maps for direct, host, foreign, monomorphic-indirect, and local call_ref
+	// boundaries. Tail/EH and polymorphic/foreign reference calls remain fail-closed.
 	GCFrameRoots *shared.GCModuleFrameRootPlan
 
 	// Codegen carries injectable runtime/heap dependencies for future WasmGC

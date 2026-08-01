@@ -461,7 +461,7 @@ func TestGCArm64RecursiveFrameWalking(t *testing.T) {
 }
 
 func TestGCArm64CallRefFrameRoots(t *testing.T) {
-	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), arm64GCCallRefModule())
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2|CoreFeatureTypedFunctionReferences|CoreFeatureGC), arm64GCCallRefModule())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -490,7 +490,7 @@ func TestGCArm64CallRefFrameRoots(t *testing.T) {
 }
 
 func TestGCArm64IndirectFrameRoots(t *testing.T) {
-	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), arm64GCIndirectModule())
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2|CoreFeatureTypedFunctionReferences|CoreFeatureGC), arm64GCIndirectModule())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -519,7 +519,7 @@ func TestGCArm64IndirectFrameRoots(t *testing.T) {
 }
 
 func TestGCArm64MutableGlobalAndTableRoots(t *testing.T) {
-	features := CoreFeaturesV3
+	features := CoreFeaturesV2 | CoreFeatureTypedFunctionReferences | CoreFeatureGC
 	cases := []struct {
 		name string
 		code []byte
@@ -565,7 +565,7 @@ func TestGCArm64MutableGlobalAndTableRoots(t *testing.T) {
 }
 
 func TestGCArm64HostReentryRoots(t *testing.T) {
-	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), arm64GCHostReentryModule())
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2|CoreFeatureTypedFunctionReferences|CoreFeatureGC), arm64GCHostReentryModule())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -608,7 +608,7 @@ func TestGCArm64HostReentryRoots(t *testing.T) {
 }
 
 func TestGCArm64CrossInstanceRoots(t *testing.T) {
-	cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3)
+	cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2 | CoreFeatureTypedFunctionReferences | CoreFeatureGC)
 	providerCode, err := Compile(cfg, arm64GCCrossProviderModule())
 	if err != nil {
 		t.Fatal(err)

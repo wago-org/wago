@@ -78,10 +78,12 @@ admission and the 16-byte `v128` storage contract, but never compact handles.
 Snapshot v4 persists reachable local-global object graphs with stable IDs and
 two-pass cycle/sharing reconstruction. Arm64 explicit-bounds builds lower
 struct/array/i31 helpers through the synchronous ABI. The bounded arm64
-native-root product publishes liveness-exact locals and compiler-tracked hidden
-spills from parked SP, then follows saved-LR callsites through direct local and
-recursive caller frames. Imports, indirect/reference/tail calls, host re-entry,
-foreign frames, tables, EH, and GC globals remain collection-disabled.
+native-root product publishes liveness-exact locals and hidden spills from
+parked SP, then follows saved-LR callsites through direct/recursive calls,
+suspended direct-host activations, and same-domain foreign frames. Mutable local
+GC globals, one private collector table, monomorphic private `call_indirect`, and
+local `call_ref` are exact. Tail/EH lowering and polymorphic or foreign reference
+calls remain outside the admitted arm64 product.
 
 ---
 
