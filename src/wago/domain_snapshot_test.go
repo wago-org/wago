@@ -9,8 +9,85 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/runtime/gc"
+	"github.com/wago-org/wago/testutil/wasmtest"
 )
+
+func domainSnapshotLocalEHModule() []byte {
+	structType := []byte{0x5f, 0x01, 0x7f, 0x01}
+	tagType := wasmtest.FuncType([]wasm.ValType{wasm.I32}, nil)
+	funcType := wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32})
+	tag := []byte{0x00, 0x01}
+	body := []byte{0x02, 0x01, 0x63, 0x00, 0x01, 0x7f,
+		0x20, 0x00, 0xfb, 0x00, 0x00, 0x21, 0x01,
+		0x02, 0x7f,
+		0x1f, 0x40, 0x01, 0x00, 0x00, 0x00,
+		0x41, 0x07, 0x08, 0x00,
+		0x0b, 0x41, 0x00, 0x0b, 0x1a,
+		0xfb, 0x01, 0x00, 0x1a,
+		0x20, 0x01, 0xfb, 0x02, 0x00, 0x00, 0x0b}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(structType, tagType, funcType)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2))),
+		wasmtest.Section(13, wasmtest.Vec(tag)),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func TestDomainSnapshotRestoresLocalExceptionHandling(t *testing.T) {
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), domainSnapshotLocalEHModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	store := newReferenceStore(false)
+	profile := GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 128, TinyBlockBytes: 32, TinyCollectEveryAlloc: true, TinyStepEveryAlloc: true, VerifyAfterCollect: true}
+	in, err := instantiateCore(compiled, InstantiateOptions{GC: profile, store: store})
+	if err != nil {
+		store.closeRuntime()
+		t.Fatal(err)
+	}
+	if got, err := in.Invoke("run", 42); err != nil || !reflect.DeepEqual(got, []uint64{42}) {
+		in.Close()
+		store.closeRuntime()
+		t.Fatalf("pre-snapshot EH run = %v, %v", got, err)
+	}
+	snapshot, err := CaptureDomain(in)
+	if err != nil {
+		in.Close()
+		store.closeRuntime()
+		t.Fatal(err)
+	}
+	blob, err := snapshot.MarshalBinary()
+	if err != nil {
+		in.Close()
+		store.closeRuntime()
+		t.Fatal(err)
+	}
+	if err := in.Close(); err != nil {
+		t.Fatal(err)
+	}
+	store.closeRuntime()
+	loaded, err := LoadDomainSnapshot(blob)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rt := NewRuntime()
+	defer rt.Close()
+	restored, err := loaded.Instantiate(rt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(restored) != 1 {
+		t.Fatalf("restored EH members = %d, want 1", len(restored))
+	}
+	defer restored[0].Close()
+	if got, err := restored[0].Invoke("run", 77); err != nil || !reflect.DeepEqual(got, []uint64{77}) {
+		t.Fatalf("restored EH run = %v, %v", got, err)
+	}
+}
 
 func TestDomainSnapshotRestoresSharedGCGraphAndAliases(t *testing.T) {
 	cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3)

@@ -60,8 +60,9 @@ heterogeneous imported/exported collector-reference tables share exact alias roo
 growth, attachment rollback, codec reload, and close ordering. Exhaustive ordered
 Runtime domains can now be persisted through `CaptureDomain`/`DomainSnapshot`: one
 stable-ID heap graph preserves imported global/table aliases and internal function links,
-and restore publishes all members transactionally. Incomplete/external domains and
-unrestricted host ownership remain fail-closed. Generic struct/array results may
+and restore publishes all members transactionally. Local exception-tag directories are
+included because they add no completed-invocation mutable state; imported tags,
+incomplete/external domains, and unrestricted host ownership remain fail-closed. Generic struct/array results may
 be retained as up to 64 opaque `GCRef` tokens per producer with exact store ownership,
 slot reuse, transactional multi-result rollback, and release after producer close.
 Tokens may re-enter the same collector domain through exact structural subtype checks and reusable checked argument roots; stale, foreign,

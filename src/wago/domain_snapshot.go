@@ -47,8 +47,9 @@ type domainGCObjectSnapshot struct {
 // CaptureDomain captures an exhaustive, explicitly ordered set of instances
 // sharing one Runtime GC collector. Calls are quiesced process-wide during the
 // copy. The initial product rejects active calls, live public GC tokens, external
-// imports, imported/shared memories, opaque references, passive elements, and an
-// incomplete member list.
+// imports, imported/shared memories, opaque references, passive elements,
+// imported exception tags, and an incomplete member list. Local immutable tag
+// directories carry no post-instantiation mutable state and are captured.
 func CaptureDomain(instances ...*Instance) (*DomainSnapshot, error) {
 	if len(instances) == 0 {
 		return nil, errors.New("wago: domain snapshot requires at least one instance")
@@ -158,8 +159,8 @@ func validateDomainSnapshotMember(in *Instance) error {
 			return fmt.Errorf("table %d has opaque reference storage", i)
 		}
 	}
-	if in.c.tagImportCount() != 0 || in.c.stagedFeatures().IsEnabled(CoreFeatureExceptionHandling) {
-		return errors.New("exception-handling domains are unsupported")
+	if in.c.tagImportCount() != 0 {
+		return errors.New("imported exception-tag ownership is unsupported")
 	}
 	return nil
 }
@@ -874,8 +875,8 @@ func validateDomainSnapshotCompiledMember(c *Compiled) error {
 			return fmt.Errorf("table %d has opaque reference storage", i)
 		}
 	}
-	if c.tagImportCount() != 0 || c.stagedFeatures().IsEnabled(CoreFeatureExceptionHandling) {
-		return errors.New("exception-handling domains are unsupported")
+	if c.tagImportCount() != 0 {
+		return errors.New("imported exception-tag ownership is unsupported")
 	}
 	return nil
 }
