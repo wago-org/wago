@@ -362,9 +362,15 @@ jobs:
           - name: Linux arm64 / explicit
             runner: ubuntu-24.04-arm
             target: spec3
+          - name: Linux arm64 / signals
+            runner: ubuntu-24.04-arm
+            target: spec3-signals
           - name: Darwin arm64 / explicit
             runner: macos-15
             target: spec3
+          - name: Darwin arm64 / signals
+            runner: macos-15
+            target: spec3-signals
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4

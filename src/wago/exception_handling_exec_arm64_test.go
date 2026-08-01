@@ -429,9 +429,11 @@ func TestStagedExceptionHandlingProductAndPlatformGates(t *testing.T) {
 	cfg := NewRuntimeConfig().WithBoundsChecks(BoundsChecksSignalsBased)
 	features := cfg.frontendFeatures()
 	features.ExceptionHandling = true
-	if _, err := compileWithFrontendFeatures(cfg, stagedExceptionHandlingModule(), features); err == nil || !strings.Contains(err.Error(), "signals-based") {
-		t.Fatalf("guard-mode staged EH = %v", err)
+	guarded, err := compileWithFrontendFeatures(cfg, stagedExceptionHandlingModule(), features)
+	if err != nil {
+		t.Fatalf("guard-mode staged EH compile = %v", err)
 	}
+	_ = guarded.Close()
 
 	exported, err := compileWithFrontendFeatures(NewRuntimeConfig(), stagedExceptionHandlingTagExportModule(), features)
 	if err != nil {
