@@ -3,6 +3,7 @@
 package wago
 
 import (
+	"fmt"
 	"reflect"
 	"testing"
 
@@ -118,6 +119,166 @@ func arm64GCRecursiveModule() []byte {
 		wasmtest.Section(1, wasmtest.Vec(structType, funcType)),
 		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("recurse", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func arm64GCMutableGlobalModule() []byte {
+	structType := []byte{0x5f, 0x01, 0x7f, 0x01}
+	funcType := wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32})
+	global := []byte{0x63, 0x00, 0x01, 0xd0, 0x00, 0x0b}
+	body := []byte{0x01, 0x01, 0x7f,
+		0x20, 0x00, 0xfb, 0x00, 0x00, 0x24, 0x00,
+		0x02, 0x40, 0x03, 0x40,
+		0x20, 0x01, 0x41, 0xe8, 0x07, 0x4f, 0x0d, 0x01,
+		0xfb, 0x01, 0x00, 0x1a,
+		0x20, 0x01, 0x41, 0x01, 0x6a, 0x21, 0x01, 0x0c, 0x00,
+		0x0b, 0x0b,
+		0x23, 0x00, 0xfb, 0x02, 0x00, 0x00, 0x0b}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(structType, funcType)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(6, wasmtest.Vec(global)),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func arm64GCTableRootModule() []byte {
+	structType := []byte{0x5f, 0x01, 0x7f, 0x01}
+	funcType := wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32})
+	table := []byte{0x63, 0x00, 0x00, 0x01}
+	body := []byte{0x01, 0x01, 0x7f,
+		0x41, 0x00, 0x20, 0x00, 0xfb, 0x00, 0x00, 0x26, 0x00,
+		0x02, 0x40, 0x03, 0x40,
+		0x20, 0x01, 0x41, 0xe8, 0x07, 0x4f, 0x0d, 0x01,
+		0xfb, 0x01, 0x00, 0x1a,
+		0x20, 0x01, 0x41, 0x01, 0x6a, 0x21, 0x01, 0x0c, 0x00,
+		0x0b, 0x0b,
+		0x41, 0x00, 0x25, 0x00, 0xfb, 0x02, 0x00, 0x00, 0x0b}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(structType, funcType)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(4, wasmtest.Vec(table)),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func arm64GCHostReentryModule() []byte {
+	structType := []byte{0x5f, 0x01, 0x7f, 0x01}
+	hostType := wasmtest.FuncType(nil, []wasm.ValType{wasm.I32})
+	outerType := wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32})
+	outer := []byte{0x01, 0x01, 0x63, 0x00,
+		0x20, 0x00, 0xfb, 0x00, 0x00, 0x21, 0x01,
+		0x10, 0x00, 0x1a,
+		0x20, 0x01, 0xfb, 0x02, 0x00, 0x00, 0x0b}
+	inner := []byte{0x01, 0x01, 0x7f,
+		0x02, 0x40, 0x03, 0x40,
+		0x20, 0x00, 0x41, 0xe8, 0x07, 0x4f, 0x0d, 0x01,
+		0xfb, 0x01, 0x00, 0x1a,
+		0x20, 0x00, 0x41, 0x01, 0x6a, 0x21, 0x00, 0x0c, 0x00,
+		0x0b, 0x0b, 0x41, 0x00, 0x0b}
+	imp := append(append(wasmtest.Name("env"), wasmtest.Name("reenter")...), 0x00)
+	imp = append(imp, wasmtest.ULEB(1)...)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(structType, hostType, outerType)),
+		wasmtest.Section(2, wasmtest.Vec(imp)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2), wasmtest.ULEB(1))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("outer", 0, 1), wasmtest.ExportEntry("inner", 0, 2))),
+		wasmtest.Section(10, wasmtest.Vec(
+			append(wasmtest.ULEB(uint32(len(outer))), outer...),
+			append(wasmtest.ULEB(uint32(len(inner))), inner...),
+		)),
+	)
+}
+
+func arm64GCCallRefModule() []byte {
+	structType := []byte{0x5f, 0x01, 0x7f, 0x01}
+	funcType := wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32})
+	target := []byte{0x01, 0x01, 0x7f,
+		0x02, 0x40, 0x03, 0x40,
+		0x20, 0x01, 0x41, 0xe8, 0x07, 0x4f, 0x0d, 0x01,
+		0xfb, 0x01, 0x00, 0x1a,
+		0x20, 0x01, 0x41, 0x01, 0x6a, 0x21, 0x01, 0x0c, 0x00,
+		0x0b, 0x0b, 0x20, 0x00, 0x0b}
+	caller := []byte{0x01, 0x01, 0x63, 0x00,
+		0x20, 0x00, 0xfb, 0x00, 0x00, 0x21, 0x01,
+		0x20, 0x00, 0xd2, 0x00, 0x14, 0x01, 0x1a,
+		0x20, 0x01, 0xfb, 0x02, 0x00, 0x00, 0x0b}
+	declared := []byte{0x03, 0x00, 0x01, 0x00}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(structType, funcType)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1), wasmtest.ULEB(1))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 1))),
+		wasmtest.Section(9, wasmtest.Vec(declared)),
+		wasmtest.Section(10, wasmtest.Vec(
+			append(wasmtest.ULEB(uint32(len(target))), target...),
+			append(wasmtest.ULEB(uint32(len(caller))), caller...),
+		)),
+	)
+}
+
+func arm64GCIndirectModule() []byte {
+	structType := []byte{0x5f, 0x01, 0x7f, 0x01}
+	funcType := wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32})
+	target := []byte{0x01, 0x01, 0x7f,
+		0x02, 0x40, 0x03, 0x40,
+		0x20, 0x01, 0x41, 0xe8, 0x07, 0x4f, 0x0d, 0x01,
+		0xfb, 0x01, 0x00, 0x1a,
+		0x20, 0x01, 0x41, 0x01, 0x6a, 0x21, 0x01, 0x0c, 0x00,
+		0x0b, 0x0b, 0x41, 0x00, 0x0b}
+	caller := []byte{0x01, 0x01, 0x63, 0x00,
+		0x20, 0x00, 0xfb, 0x00, 0x00, 0x21, 0x01,
+		0x20, 0x00, 0x41, 0x00, 0x11, 0x01, 0x00, 0x1a,
+		0x20, 0x01, 0xfb, 0x02, 0x00, 0x00, 0x0b}
+	table := []byte{0x70, 0x00, 0x01}
+	elem := []byte{0x00, 0x41, 0x00, 0x0b, 0x01, 0x00}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(structType, funcType)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1), wasmtest.ULEB(1))),
+		wasmtest.Section(4, wasmtest.Vec(table)),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 1))),
+		wasmtest.Section(9, wasmtest.Vec(elem)),
+		wasmtest.Section(10, wasmtest.Vec(
+			append(wasmtest.ULEB(uint32(len(target))), target...),
+			append(wasmtest.ULEB(uint32(len(caller))), caller...),
+		)),
+	)
+}
+
+func arm64GCCrossProviderModule() []byte {
+	structType := []byte{0x5f, 0x01, 0x7f, 0x01}
+	refCallType := []byte{0x60, 0x01, 0x63, 0x00, 0x01, 0x63, 0x00}
+	runType := wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32})
+	body := []byte{0x01, 0x01, 0x7f,
+		0x02, 0x40, 0x03, 0x40,
+		0x20, 0x01, 0x41, 0xe8, 0x07, 0x4f, 0x0d, 0x01,
+		0xfb, 0x01, 0x00, 0x1a,
+		0x20, 0x01, 0x41, 0x01, 0x6a, 0x21, 0x01, 0x0c, 0x00,
+		0x0b, 0x0b, 0x20, 0x00, 0x0b}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(structType, refCallType, runType)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("retain", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func arm64GCCrossConsumerModule() []byte {
+	structType := []byte{0x5f, 0x01, 0x7f, 0x01}
+	refCallType := []byte{0x60, 0x01, 0x63, 0x00, 0x01, 0x63, 0x00}
+	runType := wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32})
+	imp := append(append(wasmtest.Name("provider"), wasmtest.Name("retain")...), 0x00)
+	imp = append(imp, wasmtest.ULEB(1)...)
+	body := []byte{0x01, 0x01, 0x63, 0x00,
+		0x20, 0x00, 0xfb, 0x00, 0x00, 0x21, 0x01,
+		0x20, 0x01, 0x10, 0x00, 0xfb, 0x02, 0x00, 0x00, 0x0b}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(structType, refCallType, runType)),
+		wasmtest.Section(2, wasmtest.Vec(imp)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 1))),
 		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
 	)
 }
@@ -295,6 +456,197 @@ func TestGCArm64RecursiveFrameWalking(t *testing.T) {
 			if err := in.Close(); err != nil {
 				t.Fatal(err)
 			}
+		}
+	}
+}
+
+func TestGCArm64CallRefFrameRoots(t *testing.T) {
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), arm64GCCallRefModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	plan := compiled.genericGCFrameRoots()
+	if plan == nil || len(plan.callsites) != 1 || len(plan.callsites[0].offsets) != 1 {
+		t.Fatalf("call_ref arm64 root map = %+v", plan)
+	}
+	for _, candidate := range []*Compiled{compiled, roundTripCompiled(t, compiled)} {
+		if candidate != compiled {
+			defer candidate.Close()
+		}
+		in, err := Instantiate(candidate, InstantiateOptions{GC: GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 64, TinyBlockBytes: 32, TinyCollectEveryAlloc: true, TinyStepEveryAlloc: true, VerifyAfterCollect: true}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, callErr := in.Invoke("run", 55)
+		if callErr != nil || !reflect.DeepEqual(got, []uint64{55}) {
+			in.Close()
+			t.Fatalf("run = %v, %v; want [55]", got, callErr)
+		}
+		if err := in.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestGCArm64IndirectFrameRoots(t *testing.T) {
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), arm64GCIndirectModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	plan := compiled.genericGCFrameRoots()
+	if plan == nil || len(plan.callsites) != 1 || len(plan.callsites[0].offsets) != 1 {
+		t.Fatalf("indirect arm64 root map = %+v", plan)
+	}
+	for _, candidate := range []*Compiled{compiled, roundTripCompiled(t, compiled)} {
+		if candidate != compiled {
+			defer candidate.Close()
+		}
+		in, err := Instantiate(candidate, InstantiateOptions{GC: GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 64, TinyBlockBytes: 32, TinyCollectEveryAlloc: true, TinyStepEveryAlloc: true, VerifyAfterCollect: true}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, callErr := in.Invoke("run", 77)
+		if callErr != nil || !reflect.DeepEqual(got, []uint64{77}) {
+			in.Close()
+			t.Fatalf("run = %v, %v; want [77]", got, callErr)
+		}
+		if err := in.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestGCArm64MutableGlobalAndTableRoots(t *testing.T) {
+	features := CoreFeaturesV3
+	cases := []struct {
+		name string
+		code []byte
+	}{
+		{name: "global", code: arm64GCMutableGlobalModule()},
+		{name: "table", code: arm64GCTableRootModule()},
+	}
+	profiles := []GCConfig{
+		{Profile: GCProfileThroughput, StressNurseryBytes: 64, CollectEveryAlloc: true, ForceMajorEveryMinor: true, VerifyAfterCollect: true, ThroughputHeapBytes: 4096, ThroughputPageBytes: 4096},
+		{Profile: GCProfileTiny, TinyHeapBytes: 64, TinyBlockBytes: 32, TinyCollectEveryAlloc: true, TinyStepEveryAlloc: true, VerifyAfterCollect: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(features), tc.code)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer compiled.Close()
+			if compiled.genericGCFrameRoots() == nil {
+				t.Fatal("persistent-root module lost exact arm64 admission")
+			}
+			for _, candidate := range []*Compiled{compiled, roundTripCompiled(t, compiled)} {
+				if candidate != compiled {
+					defer candidate.Close()
+				}
+				for _, profile := range profiles {
+					in, err := Instantiate(candidate, InstantiateOptions{GC: profile})
+					if err != nil {
+						t.Fatal(err)
+					}
+					got, callErr := in.Invoke("run", 88)
+					if callErr != nil || !reflect.DeepEqual(got, []uint64{88}) {
+						in.Close()
+						t.Fatalf("run = %v, %v; want [88]", got, callErr)
+					}
+					if err := in.Close(); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestGCArm64HostReentryRoots(t *testing.T) {
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), arm64GCHostReentryModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	plan := compiled.genericGCFrameRoots()
+	if plan == nil || len(plan.callsites) != 1 || len(plan.callsites[0].offsets) != 1 {
+		t.Fatalf("host re-entry arm64 root map = %+v", plan)
+	}
+	for _, candidate := range []*Compiled{compiled, roundTripCompiled(t, compiled)} {
+		if candidate != compiled {
+			defer candidate.Close()
+		}
+		for _, profile := range []GCConfig{
+			{Profile: GCProfileThroughput, StressNurseryBytes: 64, CollectEveryAlloc: true, ForceMajorEveryMinor: true, VerifyAfterCollect: true, ThroughputHeapBytes: 4096, ThroughputPageBytes: 4096},
+			{Profile: GCProfileTiny, TinyHeapBytes: 64, TinyBlockBytes: 32, TinyCollectEveryAlloc: true, TinyStepEveryAlloc: true, VerifyAfterCollect: true},
+		} {
+			var in *Instance
+			calls := 0
+			in, err = Instantiate(candidate, InstantiateOptions{GC: profile, Imports: Imports{"env.reenter": HostFunc(func(_ HostModule, _, results []uint64) {
+				calls++
+				got, callErr := in.Invoke("inner")
+				if callErr != nil || !reflect.DeepEqual(got, []uint64{0}) {
+					panic(fmt.Sprintf("inner = %v, %v", got, callErr))
+				}
+				results[0] = 0
+			})}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, callErr := in.Invoke("outer", 91)
+			if callErr != nil || !reflect.DeepEqual(got, []uint64{91}) || calls != 1 {
+				in.Close()
+				t.Fatalf("outer = %v, %v, calls %d", got, callErr, calls)
+			}
+			if err := in.Close(); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+}
+
+func TestGCArm64CrossInstanceRoots(t *testing.T) {
+	cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3)
+	providerCode, err := Compile(cfg, arm64GCCrossProviderModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer providerCode.Close()
+	consumerCode, err := Compile(cfg, arm64GCCrossConsumerModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer consumerCode.Close()
+	if providerCode.genericGCFrameRoots() == nil || consumerCode.genericGCFrameRoots() == nil {
+		t.Fatal("cross-instance modules lost exact arm64 admission")
+	}
+	store := newReferenceStore(false)
+	defer store.closeRuntime()
+	profile := GCConfig{Profile: GCProfileThroughput, StressNurseryBytes: 64, CollectEveryAlloc: true, ForceMajorEveryMinor: true, VerifyAfterCollect: true, ThroughputHeapBytes: 4096, ThroughputPageBytes: 4096}
+	provider, err := instantiateCore(providerCode, InstantiateOptions{GC: profile, store: store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer provider.Close()
+	export, err := provider.ExportedFunc("retain")
+	if err != nil {
+		t.Fatal(err)
+	}
+	consumer, err := instantiateCore(consumerCode, InstantiateOptions{GC: profile, store: store, Imports: Imports{"provider.retain": export}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer consumer.Close()
+	if provider.gc != consumer.gc {
+		t.Fatal("cross-instance arm64 modules do not share a collector")
+	}
+	for i := 0; i < 10; i++ {
+		want := uint64(700 + i)
+		got, callErr := consumer.Invoke("run", want)
+		if callErr != nil || !reflect.DeepEqual(got, []uint64{want}) {
+			t.Fatalf("run %d = %v, %v", i, got, callErr)
 		}
 	}
 }

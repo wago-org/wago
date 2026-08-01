@@ -1,4 +1,4 @@
-//go:build linux && amd64
+//go:build (linux || darwin) && arm64
 
 package wago
 
@@ -10,7 +10,7 @@ import (
 	"github.com/wago-org/wago/src/core/runtime/abi"
 )
 
-type gcHostSavedControl [8]uint64
+type gcHostSavedControl [abi.ARM64SyncHostCallSavedBytes / 8]uint64
 
 type gcHostActivationToken struct {
 	state *gcPublicState
@@ -25,25 +25,23 @@ func (in *Instance) pushGCHostActivation(ctrl uintptr, dispatch uint32) gcHostAc
 	if plan == nil {
 		return gcHostActivationToken{}
 	}
-	control := unsafe.Slice((*byte)(offHeapPtr(ctrl)), 64)
-	savedRSP := uintptr(binary.LittleEndian.Uint64(control[abi.SyncHostCallSavedNativeSPOffset:]))
-	if savedRSP == 0 || savedRSP > ^uintptr(0)-abi.AMD64CallReturnAddressBytes {
-		panic(gcStructHelperError{err: fmt.Errorf("generic GC host activation has invalid saved RSP %#x", savedRSP)})
+	control := unsafe.Slice((*byte)(offHeapPtr(ctrl)), abi.ARM64SyncHostCallSavedBytes)
+	savedSP := uintptr(binary.LittleEndian.Uint64(control[abi.SyncHostCallSavedNativeSPOffset:]))
+	retPC := uintptr(binary.LittleEndian.Uint64(control[abi.ARM64SyncHostCallSavedLROffset:]))
+	if savedSP == 0 {
+		panic(gcStructHelperError{err: fmt.Errorf("generic GC arm64 host activation has invalid saved SP %#x", savedSP)})
 	}
-	returnSlot := savedRSP
-	retPC := uintptr(binary.LittleEndian.Uint64(unsafe.Slice((*byte)(offHeapPtr(returnSlot)), 8)))
+	thunkAdjust := uintptr(0)
 	if retPC < in.base || retPC-in.base >= uintptr(len(in.c.Code)) {
-		// Dynamic host-import thunks save RBX and the wrapper result pointer before
-		// parking. The module call's return address is therefore three qwords above
-		// the stub return address. Validate that address against this module before
-		// treating it as an activation boundary.
-		if savedRSP > ^uintptr(0)-24 {
-			panic(gcStructHelperError{err: fmt.Errorf("generic GC host activation wrapper stack overflows")})
+		// Dynamic/owned sync thunks reserve 32 bytes and preserve their incoming
+		// module LR at SP+16 before parking through hostCallStub.
+		if savedSP > ^uintptr(0)-16 {
+			panic(gcStructHelperError{err: fmt.Errorf("generic GC arm64 host thunk frame overflows")})
 		}
-		returnSlot = savedRSP + 24
-		retPC = uintptr(binary.LittleEndian.Uint64(unsafe.Slice((*byte)(offHeapPtr(returnSlot)), 8)))
+		retPC = uintptr(binary.LittleEndian.Uint64(unsafe.Slice((*byte)(offHeapPtr(savedSP+16)), 8)))
+		thunkAdjust = 32
 		if retPC < in.base || retPC-in.base >= uintptr(len(in.c.Code)) {
-			panic(gcStructHelperError{err: fmt.Errorf("generic GC host activation return PC %#x is outside module code", retPC)})
+			panic(gcStructHelperError{err: fmt.Errorf("generic GC arm64 host activation return PC %#x is outside module code", retPC)})
 		}
 	}
 	rel := uint32(retPC - in.base)
@@ -55,7 +53,7 @@ func (in *Instance) pushGCHostActivation(ctrl uintptr, dispatch uint32) gcHostAc
 		}
 	}
 	if callsite < 0 {
-		panic(gcStructHelperError{err: fmt.Errorf("generic GC host activation return offset %d has no callsite map", rel)})
+		panic(gcStructHelperError{err: fmt.Errorf("generic GC arm64 host activation return offset %d has no callsite map", rel)})
 	}
 	state := in.publicGCState()
 	state.mu.Lock()
@@ -65,10 +63,11 @@ func (in *Instance) pushGCHostActivation(ctrl uintptr, dispatch uint32) gcHostAc
 	}
 	index := state.hostActivationCount
 	activation := &state.hostActivations[index]
-	if returnSlot > ^uintptr(0)-abi.AMD64CallReturnAddressBytes-uintptr(plan.callsites[callsite].stackAdjust) {
-		panic(gcStructHelperError{err: fmt.Errorf("generic GC host activation frame base overflows")})
+	adjust := thunkAdjust + uintptr(plan.callsites[callsite].stackAdjust)
+	if savedSP > ^uintptr(0)-adjust {
+		panic(gcStructHelperError{err: fmt.Errorf("generic GC arm64 host activation frame base overflows")})
 	}
-	activation.base = returnSlot + abi.AMD64CallReturnAddressBytes + uintptr(plan.callsites[callsite].stackAdjust)
+	activation.base = savedSP + adjust
 	activation.ctrl = ctrl
 	activation.callsite = uint32(callsite)
 	for i := range activation.savedControl {
@@ -92,7 +91,7 @@ func (in *Instance) popGCHostActivation(token gcHostActivationToken) {
 		panic(gcStructHelperError{err: fmt.Errorf("generic GC host activation stack is not LIFO")})
 	}
 	activation := &state.hostActivations[token.index]
-	control := unsafe.Slice((*byte)(offHeapPtr(activation.ctrl)), 64)
+	control := unsafe.Slice((*byte)(offHeapPtr(activation.ctrl)), abi.ARM64SyncHostCallSavedBytes)
 	for i, value := range activation.savedControl {
 		binary.LittleEndian.PutUint64(control[i*8:], value)
 	}

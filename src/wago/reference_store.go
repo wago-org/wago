@@ -96,6 +96,7 @@ type gcNativeFrameRoots struct {
 	offsets              []uint32
 	frameBytes           uint32
 	frameLayout          uint8
+	allowExternalReturn  bool
 	codeBase             uintptr
 	codeBytes            uintptr
 	adapterReturnOffsets []uint32
@@ -108,7 +109,7 @@ type gcHostActivation struct {
 	base         uintptr
 	ctrl         uintptr
 	callsite     uint32
-	savedControl [8]uint64
+	savedControl gcHostSavedControl
 }
 
 const gcHostActivationLimit = 8
@@ -131,6 +132,7 @@ func (r *gcNativeFrameRoots) RangeRoots(fn func(gc.RootSlot) bool) {
 				offsets:              callsite.offsets,
 				frameBytes:           callsite.frameBytes,
 				frameLayout:          r.frameLayout,
+				allowExternalReturn:  r.allowExternalReturn,
 				codeBase:             state.hostCodeBase,
 				codeBytes:            state.hostCodeBytes,
 				adapterReturnOffsets: state.hostRootPlan.adapterReturnOffsets,
@@ -209,6 +211,9 @@ func (r *gcNativeFrameRoots) rangeChain(fn func(gc.RootSlot) bool) bool {
 			}
 			foreign := owner.refStore.gcFrameOwner(retPC, owner.gc)
 			if foreign == nil {
+				if r.allowExternalReturn {
+					return true
+				}
 				panic(gcStructHelperError{err: fmt.Errorf("generic GC foreign return PC %#x has no Runtime GC-domain owner", retPC)})
 			}
 			owner = foreign

@@ -21,7 +21,11 @@ const (
 // BLR does not push LR, so the saved SP is already the stable frame base.
 const (
 	SyncHostCallSavedNativeSPOffset = 0
-	AMD64CallReturnAddressBytes     = 8
+	// ARM64 hostCallStub saves LR after the callee-saved GPR/FP state. The
+	// complete resumable register prefix ends immediately before hcTrampoline.
+	ARM64SyncHostCallSavedLROffset = 96
+	ARM64SyncHostCallSavedBytes    = 176
+	AMD64CallReturnAddressBytes    = 8
 )
 
 // Basedata offsets are byte distances below the linear-memory base.

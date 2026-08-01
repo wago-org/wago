@@ -15,11 +15,24 @@ import (
 // tail calls, GC globals, and collector/function-reference public signatures
 // remain fail-closed until their ownership and frame maps are implemented.
 func newGCFrameRootPlan(m *wasm.Module, genericGC bool) *shared.GCModuleFrameRootPlan {
-	if !genericGC || m == nil || len(m.Code) == 0 || m.Start != nil || len(m.Imports) != 0 || m.TableCount() != 0 {
+	if !genericGC || m == nil || len(m.Code) == 0 || m.Start != nil {
+		return nil
+	}
+	tablesSafe, collectorTable := arm64GCFrameTablesSafe(m)
+	if !tablesSafe {
 		return nil
 	}
 	for i := range m.Globals {
-		if arm64CollectorFrameRefType(m, m.Globals[i].Type.Type) {
+		if arm64FunctionFrameRefType(m, m.Globals[i].Type.Type) {
+			return nil
+		}
+	}
+	for i := range m.Imports {
+		if m.Imports[i].Type.Kind != wasm.ExternFunc {
+			return nil
+		}
+		ft, ok := m.FuncSignature(uint32(i))
+		if !ok || !arm64GCFrameCallABI(m, ft) {
 			return nil
 		}
 	}
@@ -31,7 +44,7 @@ func newGCFrameRootPlan(m *wasm.Module, genericGC bool) *shared.GCModuleFrameRoo
 			return nil
 		}
 		for _, t := range append(append([]wasm.ValType(nil), ft.Params...), ft.Results...) {
-			if arm64CollectorFrameRefType(m, t) || arm64FunctionFrameRefType(m, t) {
+			if arm64FunctionFrameRefType(m, t) {
 				return nil
 			}
 		}
@@ -65,7 +78,7 @@ func newGCFrameRootPlan(m *wasm.Module, genericGC bool) *shared.GCModuleFrameRoo
 				}
 			}
 		}
-		if !arm64GCFrameBodySafe(m, m.Code[function].BodyBytes) {
+		if !arm64GCFrameBodySafe(m, m.Code[function].BodyBytes, collectorTable) {
 			return nil
 		}
 		liveMasks, err := gcFrameLocalLiveness(m.Code[function].BodyBytes, plan.LocalIndexes, false)
@@ -84,7 +97,78 @@ func newGCFrameRootPlan(m *wasm.Module, genericGC bool) *shared.GCModuleFrameRoo
 	return module
 }
 
-func arm64GCFrameBodySafe(m *wasm.Module, body []byte) bool {
+func arm64GCFrameTablesSafe(m *wasm.Module) (safe, collector bool) {
+	if m.TableCount() == 0 {
+		for i := range m.Elements {
+			e := &m.Elements[i]
+			if e.Mode.Kind != wasm.ElemDeclarative || e.Kind.Kind != wasm.ElemFuncs {
+				return false, false
+			}
+			for _, idx := range e.Kind.Funcs {
+				if int(idx) < m.ImportedFuncCount() || int(idx)-m.ImportedFuncCount() >= len(m.Code) {
+					return false, false
+				}
+			}
+		}
+		return true, false
+	}
+	if m.ImportedTableCount() != 0 || len(m.Tables) != 1 {
+		return false, false
+	}
+	for _, export := range m.Exports {
+		if export.Index.Kind == wasm.ExternTable {
+			return false, false
+		}
+	}
+	ref := m.Tables[0].Type.Ref
+	functionTable := ref.Heap.Kind == wasm.HeapAbs && (ref.Heap.Abs == wasm.HeapFunc || ref.Heap.Abs == wasm.HeapNoFunc)
+	collectorTable := arm64CollectorFrameRefType(m, wasm.RefVal(ref))
+	if !functionTable && !collectorTable {
+		return false, false
+	}
+	if init := m.Tables[0].Init; init != nil {
+		ee, err := wasm.ParseElementExpr(*init)
+		if err != nil || ee.HasGlobal || (functionTable && !ee.Null && (int(ee.FuncIndex) < m.ImportedFuncCount() || int(ee.FuncIndex)-m.ImportedFuncCount() >= len(m.Code))) || (collectorTable && !ee.Null) {
+			return false, false
+		}
+	}
+	for i := range m.Elements {
+		e := &m.Elements[i]
+		if e.Mode.Kind != wasm.ElemActive || e.Mode.Table != 0 {
+			return false, false
+		}
+		if collectorTable {
+			for _, expr := range e.Kind.Exprs {
+				ee, err := wasm.ParseElementExpr(expr)
+				if err != nil || ee.HasGlobal || !ee.Null {
+					return false, false
+				}
+			}
+			if e.Kind.Kind == wasm.ElemFuncs {
+				return false, false
+			}
+			continue
+		}
+		switch e.Kind.Kind {
+		case wasm.ElemFuncs:
+			for _, idx := range e.Kind.Funcs {
+				if int(idx) < m.ImportedFuncCount() || int(idx)-m.ImportedFuncCount() >= len(m.Code) {
+					return false, false
+				}
+			}
+		default:
+			for _, expr := range e.Kind.Exprs {
+				ee, err := wasm.ParseElementExpr(expr)
+				if err != nil || ee.HasGlobal || (!ee.Null && (int(ee.FuncIndex) < m.ImportedFuncCount() || int(ee.FuncIndex)-m.ImportedFuncCount() >= len(m.Code))) {
+					return false, false
+				}
+			}
+		}
+	}
+	return true, collectorTable
+}
+
+func arm64GCFrameBodySafe(m *wasm.Module, body []byte, collectorTable bool) bool {
 	r := wasm.NewReader(body)
 	for r.HasNext() {
 		op, err := r.Byte()
@@ -96,18 +180,47 @@ func arm64GCFrameBodySafe(m *wasm.Module, body []byte) bool {
 			return false
 		}
 		switch op {
-		case 0x10: // direct local call
-			if int(imm.Index) >= len(m.Code) {
+		case 0x10: // direct local or imported call
+			if int(imm.Index) >= m.ImportedFuncCount()+len(m.Code) {
 				return false
 			}
 			ft, ok := m.FuncSignature(imm.Index)
-			if !ok || !arm64GCFrameCallABI(ft) {
+			if !ok || !arm64GCFrameCallABI(m, ft) {
 				return false
 			}
-		case 0x11, 0x12, 0x13, 0x14, 0x15: // indirect, tail, and call_ref
+		case 0x11: // one private immutable monomorphic function table
+			if collectorTable || !arm64GCFunctionTableMonomorphic(m) {
+				return false
+			}
+			ft, ok := m.TypeFunc(imm.Index)
+			if !ok || !arm64GCFrameCallABI(m, ft) {
+				return false
+			}
+		case 0x14: // local typed function reference
+			if m.ImportedFuncCount() != 0 {
+				return false
+			}
+			ft, ok := m.TypeFunc(imm.Index)
+			if !ok || !arm64GCFrameCallRefABI(ft) {
+				return false
+			}
+		case 0x12, 0x13, 0x15: // tail calls are not lowered by arm64 yet
 			return false
-		case 0x25, 0x26, 0xd2: // tables and ref.func
-			return false
+		case 0x26: // table.set invalidates local function-target identity
+			if !collectorTable {
+				return false
+			}
+		case 0xd2: // ref.func is safe only for a local function identity
+			if collectorTable || int(imm.Index) < m.ImportedFuncCount() || int(imm.Index)-m.ImportedFuncCount() >= len(m.Code) {
+				return false
+			}
+		case 0xfc:
+			if !collectorTable {
+				switch imm.Subopcode {
+				case 12, 14, 15, 17: // table.init/copy/grow/fill
+					return false
+				}
+			}
 		case 0x06, 0x07, 0x08, 0x09, 0x0a, 0x18, 0x19, 0x1f: // EH
 			return false
 		}
@@ -115,14 +228,70 @@ func arm64GCFrameBodySafe(m *wasm.Module, body []byte) bool {
 	return true
 }
 
-func arm64GCFrameCallABI(ft *wasm.CompType) bool {
+func arm64GCFunctionTableMonomorphic(m *wasm.Module) bool {
+	if m == nil || m.ImportedTableCount() != 0 || len(m.Tables) != 1 {
+		return false
+	}
+	target := int64(-1)
+	add := func(index uint32) bool {
+		if int(index) < m.ImportedFuncCount() || int(index)-m.ImportedFuncCount() >= len(m.Code) {
+			return false
+		}
+		if target < 0 {
+			target = int64(index)
+			return true
+		}
+		return target == int64(index)
+	}
+	if init := m.Tables[0].Init; init != nil {
+		ee, err := wasm.ParseElementExpr(*init)
+		if err != nil || ee.HasGlobal || (!ee.Null && !add(ee.FuncIndex)) {
+			return false
+		}
+	}
+	for i := range m.Elements {
+		e := &m.Elements[i]
+		if e.Mode.Kind != wasm.ElemActive || e.Mode.Table != 0 {
+			continue
+		}
+		if e.Kind.Kind == wasm.ElemFuncs {
+			for _, index := range e.Kind.Funcs {
+				if !add(uint32(index)) {
+					return false
+				}
+			}
+			continue
+		}
+		for _, expr := range e.Kind.Exprs {
+			ee, err := wasm.ParseElementExpr(expr)
+			if err != nil || ee.HasGlobal || (!ee.Null && !add(ee.FuncIndex)) {
+				return false
+			}
+		}
+	}
+	return target >= 0
+}
+
+func arm64GCFrameCallRefABI(ft *wasm.CompType) bool {
+	if ft == nil || len(ft.Results) > 2 || len(ft.Params) > 7 {
+		return false
+	}
+	for _, t := range append(append([]wasm.ValType(nil), ft.Params...), ft.Results...) {
+		if !wasm.EqualValType(t, wasm.I32) && !wasm.EqualValType(t, wasm.I64) {
+			return false
+		}
+	}
+	return true
+}
+
+func arm64GCFrameCallABI(m *wasm.Module, ft *wasm.CompType) bool {
 	if ft == nil || len(ft.Results) > 2 {
 		return false
 	}
 	gp, fp := 0, 0
 	for _, t := range ft.Params {
 		switch {
-		case wasm.EqualValType(t, wasm.I32), wasm.EqualValType(t, wasm.I64):
+		case wasm.EqualValType(t, wasm.I32), wasm.EqualValType(t, wasm.I64), arm64CollectorFrameRefType(m, t):
 			gp++
 		case wasm.EqualValType(t, wasm.F32), wasm.EqualValType(t, wasm.F64):
 			fp++
@@ -130,15 +299,18 @@ func arm64GCFrameCallABI(ft *wasm.CompType) bool {
 			return false
 		}
 	}
-	if gp > 8 || fp > 8 {
+	if gp > 7 || fp > 8 {
 		return false
 	}
+	integerResult := func(t wasm.ValType) bool {
+		return wasm.EqualValType(t, wasm.I32) || wasm.EqualValType(t, wasm.I64) || arm64CollectorFrameRefType(m, t)
+	}
 	for _, t := range ft.Results {
-		if !wasm.EqualValType(t, wasm.I32) && !wasm.EqualValType(t, wasm.I64) && !wasm.EqualValType(t, wasm.F32) && !wasm.EqualValType(t, wasm.F64) {
+		if !integerResult(t) && !wasm.EqualValType(t, wasm.F32) && !wasm.EqualValType(t, wasm.F64) {
 			return false
 		}
 	}
-	return len(ft.Results) != 2 || ((wasm.EqualValType(ft.Results[0], wasm.I32) || wasm.EqualValType(ft.Results[0], wasm.I64)) && (wasm.EqualValType(ft.Results[1], wasm.I32) || wasm.EqualValType(ft.Results[1], wasm.I64)))
+	return len(ft.Results) != 2 || (integerResult(ft.Results[0]) && integerResult(ft.Results[1]))
 }
 
 func arm64FunctionFrameRefType(m *wasm.Module, t wasm.ValType) bool {

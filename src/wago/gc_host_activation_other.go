@@ -1,6 +1,8 @@
-//go:build !linux || !amd64
+//go:build !(linux && amd64) && !((linux || darwin) && arm64)
 
 package wago
+
+type gcHostSavedControl [0]uint64
 
 type gcHostActivationToken struct{}
 

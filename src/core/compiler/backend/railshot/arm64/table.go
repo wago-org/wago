@@ -3,6 +3,8 @@
 package arm64
 
 import (
+	"fmt"
+
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	a64 "github.com/wago-org/wago/src/core/encoder/arm64"
 	"github.com/wago-org/wago/src/core/runtime"
@@ -65,9 +67,51 @@ func (f *fn) tableEntryAddr(dst, tbl Reg) {
 	f.leaDisp(dst, dst, 8, true)    // dst += 8 (skip the header to the entries array)
 }
 
+// tableIsExternref retains its historical name but reports every exact staged
+// 8-byte compact-reference table. Funcref descriptors remain 32 bytes.
 func (f *fn) tableIsExternref(tableIdx uint32) bool {
 	tt, ok := f.m.TableType(tableIdx)
-	return ok && wasm.EqualValType(wasm.RefVal(tt.Ref), wasm.ExternRef)
+	if !ok || tt.Ref.Exact {
+		return ok && wasm.EqualValType(wasm.RefVal(tt.Ref), wasm.ExternRef)
+	}
+	if tt.Ref.Heap.Kind == wasm.HeapTypeIndex {
+		sub, ok := stagedStructType(f.m, tt.Ref.Heap.Type.Index)
+		return ok && (sub.Comp.Kind == wasm.CompStruct || sub.Comp.Kind == wasm.CompArray)
+	}
+	if tt.Ref.Heap.Kind != wasm.HeapAbs {
+		return false
+	}
+	switch tt.Ref.Heap.Abs {
+	case wasm.HeapExtern, wasm.HeapAny, wasm.HeapEq, wasm.HeapI31, wasm.HeapStruct, wasm.HeapArray, wasm.HeapNone:
+		return true
+	default:
+		return false
+	}
+}
+
+func (f *fn) tableIsGCFrameRef(tableIdx uint32) bool {
+	tt, ok := f.m.TableType(tableIdx)
+	return ok && arm64GCFrameRefType(f.m, wasm.RefVal(tt.Ref))
+}
+
+func (f *fn) tableIsGCObjectRef(tableIdx uint32) bool {
+	tt, ok := f.m.TableType(tableIdx)
+	if !ok || tt.Ref.Exact {
+		return false
+	}
+	if tt.Ref.Heap.Kind == wasm.HeapTypeIndex {
+		sub, ok := stagedStructType(f.m, tt.Ref.Heap.Type.Index)
+		return ok && (sub.Comp.Kind == wasm.CompStruct || sub.Comp.Kind == wasm.CompArray)
+	}
+	if tt.Ref.Heap.Kind != wasm.HeapAbs {
+		return false
+	}
+	switch tt.Ref.Heap.Abs {
+	case wasm.HeapAny, wasm.HeapEq, wasm.HeapStruct, wasm.HeapArray, wasm.HeapNone:
+		return true
+	default:
+		return false
+	}
 }
 
 func (f *fn) tableAddr64(tableIdx uint32) bool {
@@ -426,7 +470,7 @@ func (f *fn) tableGet(r *wasm.Reader) error {
 	f.pinned = f.pinned.remove(entry)
 	f.release(entry)
 	f.release(tbl)
-	f.pushReg(slot, mtI64)
+	f.pushReg(slot, mtI64).st.gcRoot = f.tracksGCFrameRoots() && f.tableIsGCFrameRef(tableIdx)
 	return nil
 }
 
@@ -434,6 +478,18 @@ func (f *fn) tableSet(r *wasm.Reader) error {
 	tableIdx, err := readSingleTableIndex(r)
 	if err != nil {
 		return err
+	}
+	if f.gcStructHelpers && f.tableIsGCObjectRef(tableIdx) {
+		tt, ok := f.m.TableType(tableIdx)
+		if !ok {
+			return fmt.Errorf("arm64: GC table.set table %d type is unavailable", tableIdx)
+		}
+		indexType := wasm.I32
+		if tt.Limits.Addr64 {
+			indexType = wasm.I64
+		}
+		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(tableIdx)})
+		return f.callGCStructHelper(gcStructTableSet, []wasm.ValType{indexType, wasm.RefVal(tt.Ref), wasm.I32}, nil)
 	}
 	ref := f.materialize(f.popValue())
 	f.pinned = f.pinned.add(ref)

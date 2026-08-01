@@ -80,7 +80,11 @@ func (f *fn) globalGet(r *wasm.Reader) error {
 	}
 	cell := f.globalCellPtr(x) // cached, pinned — read the value into a separate reg
 	switch {
-	case wasm.EqualValType(gtv, wasm.I64) || gtv.Kind == wasm.ValRef:
+	case gtv.Kind == wasm.ValRef:
+		dst := f.allocReg(0)
+		f.ld64(dst, cell, 0)
+		f.pushReg(dst, mtI64).st.gcRoot = f.tracksGCFrameRoots() && arm64GCFrameRefType(f.m, gtv)
+	case wasm.EqualValType(gtv, wasm.I64):
 		dst := f.allocReg(0)
 		f.ld64(dst, cell, 0)
 		f.pushReg(dst, mtI64)

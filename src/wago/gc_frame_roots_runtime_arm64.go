@@ -52,18 +52,22 @@ func (in *Instance) gcHelperRoots(ctrl uintptr, state *gcPublicState, safepointI
 			panic(gcStructHelperError{err: fmt.Errorf("generic GC frame-root offset %d contains non-compact reference %#x", off, bits)})
 		}
 	}
-	// Cross-instance arm64 GC calls remain outside the admitted product. A return
-	// PC outside this module is therefore the native-entry termination boundary.
-	state.frameRoots.owner = nil
+	state.frameRoots.owner = in
 	state.frameRoots.base = base
 	state.frameRoots.offsets = offsets
 	state.frameRoots.frameBytes = frameBytes
 	state.frameRoots.frameLayout = gcNativeFrameLayoutARM64 // saved LR follows saved FP above the frame reserve
+	state.frameRoots.allowExternalReturn = true             // non-register public entries return directly to enterNative
 	state.frameRoots.codeBase = in.base
 	state.frameRoots.codeBytes = uintptr(len(in.c.Code))
 	state.frameRoots.adapterReturnOffsets = plan.adapterReturnOffsets
 	state.frameRoots.callsites = plan.callsites
 	state.frameRoots.suspended = state
-	state.frameRoots.tableRoots = nil
+	if in.c.HasTable && (in.c.TableType == ValAnyRef || in.c.TableType == ValI31Ref) {
+		state.tableRoots = gcNativeTableRoots{desc: in.tableDescPtr, bytes: uintptr(in.tableDescLen)}
+		state.frameRoots.tableRoots = &state.tableRoots
+	} else {
+		state.frameRoots.tableRoots = nil
+	}
 	return &state.frameRoots
 }
