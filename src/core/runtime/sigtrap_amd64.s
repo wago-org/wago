@@ -56,10 +56,13 @@ matched:
 	MOVL	-8(CX), R13             // R13 = curBytes (u32, zero-extended)
 	CMPQ	R13, R12
 	JLS	dotrap                  // curBytes <= off -> out of range -> trap
-	// Commit the 64 KiB wasm page containing the fault, then resume the access.
+	// Commit the 4 KiB Linux/x86 host page containing the fault, then resume the
+	// access. mmap only guarantees host-page alignment: rounding the absolute
+	// address to 64 KiB can move before a non-64-KiB-aligned reservation, make
+	// mprotect fail, and refault forever after memory.grow.
 	MOVQ	R8, DI
-	ANDQ	$-65536, DI             // align down to the 64 KiB wasm page
-	MOVQ	$65536, SI
+	ANDQ	$-4096, DI              // align down to the Linux/x86 host page
+	MOVQ	$4096, SI
 	MOVQ	$3, DX                  // PROT_READ|PROT_WRITE
 	MOVQ	$10, AX                 // SYS_mprotect
 	SYSCALL

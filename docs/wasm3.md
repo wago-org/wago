@@ -67,6 +67,33 @@ Generated command line numbers refer to the canonical binary script rather than
 the original source; this affects diagnostics only, not module bytes or command
 order.
 
+### Linux/amd64 signal-backed qualification
+
+`make spec3-signals` runs the same strict zero-gap harness with
+`-tags wago_guardpage` and `WAGO_BOUNDS=signals`. Signal-backed tails, typed
+references, the complete official GC family, exception handling, and table64 now
+execute alongside the previously qualified scalar/SIMD/bulk/table surface.
+
+The current full-suite signal-backed baseline is deliberately still red:
+
+- 2,027 modules pass and 199 are skipped;
+- 55,770 assertions pass, one fails, and 2,267 are skipped;
+- gaps are 210 compile rejections, three instantiation rejections, and 2,253
+  unavailable-module actions;
+- every remaining unsupported compile is either indexed multi-memory (63) or
+  memory64 (133); and
+- the one assertion failure is `multi-memory/linking0`, whose rejected
+  multi-memory instantiation cannot perform the spec-required earlier imported
+  table mutation before its later active-data trap.
+
+The qualification run also found and fixed two guard-specific lifecycle bugs.
+The spec harness now retires an unnamed, unregistered current instance before the
+next module command, so files with more than 256 transient modules do not exhaust
+the bounded guard registry. The Linux/amd64 signal handler now lazily commits the
+faulting 4 KiB host page after `memory.grow`; aligning the absolute fault address
+to 64 KiB could move before a merely host-page-aligned mmap reservation, make
+`mprotect` fail, and refault forever.
+
 The current schema-2 inventory at `tests/spec-v3-baseline.json` processes all 258
 files and reports:
 
@@ -140,7 +167,8 @@ compatibility change without adding safety, so `CoreFeaturesV3` documents relaxe
 SIMD through the existing bit.
 
 `CoreFeaturesV3` is both the Release 3 description and the implementation ceiling
-on linux/amd64 plus Linux/Darwin arm64 explicit-bounds products.
+on linux/amd64 plus Linux/Darwin arm64 explicit-bounds products. Linux/amd64
+signal-backed builds admit every family except indexed multi-memory and memory64.
 `SupportedFeatures()` reports the executable build/host set. The full suite is
 green natively on linux/amd64 and under Linux/arm64 QEMU; native Linux/Darwin
 arm64 conformance runs are required by CI. The compatibility default deliberately remains the
@@ -158,11 +186,11 @@ Release 2 feature set plus extended constants; callers opt into Core 3 with
 | Relaxed SIMD | Complete through `0xfd 275`, with reserved holes rejected. | Deterministic lowering is present on the documented linux/amd64 SIMD baseline. The Release 3 harness now honors official `either` result patterns; all 8 converted modules and 69 assertions pass with zero failures/skips. | ✅ Existing completed support, represented by `CoreFeatureSIMD`. |
 | Tail calls | Complete AST and byte-backed validation for direct, indirect, and typed-reference forms, including covariance and malformed immediates. | Direct, dynamic indirect, host, cross-instance, typed-reference, trap, subtype-result, and nested-tail paths execute on linux/amd64 and arm64 explicit bounds. | ✅ Core 3 official files gap-free under explicit `CoreFeaturesV3` admission. |
 | Typed function references | Complete recursive/indexed structural validation for signatures, tables, elements, globals, casts/tests, null branches, and `call_ref`. | Canonical descriptors, subtype-aware calls/linking, reference ownership, codec metadata, and cross-instance retention execute. | ✅ Core 3 official typed-reference and recursive-type files gap-free. |
-| GC | Complete recursive type, subtype, struct/array/i31, conversion, cast/test/branch, constant-expression, data/element initialization, and malformed/invalid validation. | Throughput/Tiny collectors, exact roots/barriers, bounded helpers, subtype identity, linking, reference publication, and array data/element constructors execute on linux/amd64 and arm64 explicit bounds. | ✅ Mandatory Core 3 GC corpus gap-free; ownership and snapshot limits remain documented in `docs/gc.md`. |
-| Exception handling | Complete validation for tags, `throw`, `throw_ref`, `try_table`, exception references, catch payloads/depths, and malformed forms. | Arbitrary bounded tag directories, imported/exported tags, rooted exception values, nested/cross-instance handlers, tails, linking, and codec metadata execute on amd64 and arm64 explicit bounds. | ✅ Core 3 exception files gap-free. |
+| GC | Complete recursive type, subtype, struct/array/i31, conversion, cast/test/branch, constant-expression, data/element initialization, and malformed/invalid validation. | Throughput/Tiny collectors, exact roots/barriers, bounded helpers, subtype identity, linking, reference publication, and array data/element constructors execute on linux/amd64 explicit and signal-backed bounds plus arm64 explicit bounds. | ✅ Mandatory Core 3 GC corpus gap-free on those products; ownership and snapshot limits remain documented in `docs/gc.md`. |
+| Exception handling | Complete validation for tags, `throw`, `throw_ref`, `try_table`, exception references, catch payloads/depths, and malformed forms. | Arbitrary bounded tag directories, imported/exported tags, rooted exception values, nested/cross-instance handlers, tails, linking, and codec metadata execute on linux/amd64 explicit and signal-backed bounds plus arm64 explicit bounds. | ✅ Core 3 exception files gap-free on those products. |
 | Multi-memory | Complete indexed immediate and compact-import validation with Release 2 defaults preserved. | Indexed scalar/SIMD/bulk/data operations, imports/exports, snapshots for owned state, and generalized shared-memory basedata serialization execute. | ✅ Complete 42-file family and full Core 3 suite gap-free. |
 | memory64 | Complete i64 address, full-u64 limit/offset, mixed-width, data, scalar, SIMD, and bulk validation. | Bounded amd64/arm64 execution preserves exact declarations, checks full-width arithmetic before mutation, and rejects oversized grow deltas without illegal shift encodings. | ✅ Mandatory Core 3 memory64 corpus gap-free. |
-| table64 | Complete i64 index/result, full-u64 limit, mixed-width copy/init, and malformed-LEB validation. | Local/imported funcref and externref tables, all table operations, indirect calls, metadata/codec, and `spectest.table64` execute. | ✅ Mandatory Core 3 table64 corpus gap-free. |
+| table64 | Complete i64 index/result, full-u64 limit, mixed-width copy/init, and malformed-LEB validation. | Local/imported funcref and externref tables, all table operations, indirect calls, metadata/codec, and `spectest.table64` execute under linux/amd64 explicit and signal-backed bounds plus arm64 explicit bounds. | ✅ Mandatory Core 3 table64 corpus gap-free on those products. |
 | Text annotations | Text-format concern; no native execution semantics are required. | No runtime work planned unless tooling integration exposes a concrete need. | Not a native runtime feature. |
 | Deterministic profile | Separate optional profile, not part of the current Core 3.0 product claim. | No profile claim is made by this document. Deterministic relaxed-SIMD lowering does not by itself implement the full optional deterministic profile. | Optional/separate. |
 
@@ -180,8 +208,9 @@ bounds/platform qualification rather than missing official opcode families:
    exact roots, barriers, aliases, rollback, and close ordering;
 4. extend snapshot-v4 roots to local GC tables and make restore publication fully
    transactional, while rejecting partial capture of imported/shared domains;
-5. complete linux/amd64 signal-backed Core 3 qualification and keep native
-   Linux/Darwin arm64 explicit-bounds conformance mandatory in CI; and
+5. complete linux/amd64 signal-backed indexed multi-memory and memory64, then
+   keep the full signal-backed suite and native Linux/Darwin arm64 explicit-bounds
+   conformance mandatory in CI; and
 6. only after those correctness gates, measure and add direct checked JIT object
    access as a replacement for common parked-helper operations.
 

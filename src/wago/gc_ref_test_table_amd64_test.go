@@ -194,9 +194,11 @@ func TestStagedGCRefTestTableProductClosure(t *testing.T) {
 	features := cfg.frontendFeatures()
 	features.TypedFunctionReferences = true
 	features.GCStructProducts = true
-	if _, err := compileWithFrontendFeatures(cfg, data, features); err == nil || !strings.Contains(err.Error(), "signals-based") {
-		t.Fatalf("guard compile = %v, want explicit rejection", err)
+	guarded, err := compileWithFrontendFeatures(cfg, data, features)
+	if err != nil {
+		t.Fatalf("guard compile: %v", err)
 	}
+	_ = guarded.Close()
 	unknown := append([]byte(nil), data...)
 	for i := 0; i+5 <= len(unknown); i++ {
 		if string(unknown[i:i+5]) == "right" {

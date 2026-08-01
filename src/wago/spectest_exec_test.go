@@ -1597,6 +1597,7 @@ func runSpecExecFile(t *testing.T, base, tmp string, sf specExecFile) specExecSt
 // scope (nil inst), its assertions are skipped until the next module command.
 func runSpecExecFileWithConfig(t *testing.T, base, tmp string, sf specExecFile, cfg *wago.RuntimeConfig) (stats specExecStats) {
 	var cur specModule
+	var curRetained bool
 	var live []specModule
 	standardTable, err := wago.NewTable(10, 20)
 	if err != nil {
@@ -1636,8 +1637,15 @@ func runSpecExecFileWithConfig(t *testing.T, base, tmp string, sf specExecFile, 
 	definitions := map[string][]byte{}
 	var latestDefinition []byte
 	standardImports := spectestImports(standardTable, standardTable64, standardMemory)
-	instantiate := func(data []byte, c specExecCmd) {
+	retireCurrent := func() {
+		if cur.inst != nil && !curRetained {
+			cur.close()
+		}
 		cur = specModule{}
+		curRetained = false
+	}
+	instantiate := func(data []byte, c specExecCmd) {
+		retireCurrent()
 		mod, err := rt.Compile(data)
 		if err != nil {
 			t.Logf("%s.wast:%d module compile rejected: %v", base, c.Line, err)
@@ -1664,6 +1672,7 @@ func runSpecExecFileWithConfig(t *testing.T, base, tmp string, sf specExecFile, 
 		live = append(live, cur)
 		if c.Name != "" {
 			named[c.Name] = cur
+			curRetained = true
 		}
 	}
 
@@ -1707,6 +1716,9 @@ func runSpecExecFileWithConfig(t *testing.T, base, tmp string, sf specExecFile, 
 			}
 			if m.inst != nil && c.As != "" {
 				registered[c.As] = m
+				if c.Name == "" {
+					curRetained = true
+				}
 			}
 		case "assert_uninstantiable":
 			data, err := os.ReadFile(filepath.Join(tmp, c.Filename))

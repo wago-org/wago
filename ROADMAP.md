@@ -125,8 +125,10 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   graph, then add local GC tables and transactional restore. Shared/imported domain
   snapshots remain rejected until whole-domain ownership can be captured.
 - 🚧 **Product parity:** the complete explicit-bounds Core 3 suite is green on
-  linux/amd64 and Linux/arm64 QEMU. Native Linux/Darwin arm64 are mandatory CI
-  cells; linux/amd64 signal-backed Core 3 qualification remains.
+  linux/amd64 and Linux/arm64 QEMU. Linux/amd64 signal-backed tails, typed
+  references, GC, exception handling, and table64 are green; indexed multi-memory
+  and memory64 are the remaining signal-backed families. Native Linux/Darwin
+  arm64 are mandatory CI cells.
 - [ ] **GC hot paths:** after the correctness matrix is complete, add measured
   direct checked JIT object access while retaining helper slow paths.
 

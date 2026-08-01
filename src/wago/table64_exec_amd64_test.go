@@ -2547,9 +2547,11 @@ func TestStagedTable64GatesAndTable32CodeStability(t *testing.T) {
 	cfg.boundsChecks = BoundsChecksSignalsBased
 	features := cfg.frontendFeatures()
 	features.Table64 = true
-	if _, err := compileWithFrontendFeatures(cfg, boundedTable64Module(4), features); err == nil || !strings.Contains(err.Error(), "signals-based") {
-		t.Fatalf("guard table64 error = %v", err)
+	guarded, err := compileWithFrontendFeatures(cfg, boundedTable64Module(4), features)
+	if err != nil {
+		t.Fatalf("guard table64 compile: %v", err)
 	}
+	_ = guarded.Close()
 
 	ordinary := table32GetSetGrowSizeFillModule()
 	base, err := Compile(nil, ordinary)

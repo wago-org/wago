@@ -1548,21 +1548,15 @@ func TestStagedGCTypeSubtypingProductPlatformAndBoundsGate(t *testing.T) {
 			features.TypedFunctionReferences = true
 			features.GCTypeSubtypingProducts = true
 			c, err := compileWithFrontendFeatures(cfg, data, features)
-			arm64 := goruntime.GOARCH == "arm64" && (goruntime.GOOS == "linux" || goruntime.GOOS == "darwin")
-			if (goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64") && !arm64 {
+			arm64Explicit := goruntime.GOARCH == "arm64" && (goruntime.GOOS == "linux" || goruntime.GOOS == "darwin") && !guardPageBuilt
+			if (goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64") && !arm64Explicit {
 				if err == nil || !strings.Contains(err.Error(), "unsupported gc/type-subtyping product staged execution on") {
 					t.Fatalf("platform compile = %v, want explicit platform rejection", err)
 				}
 				return
 			}
-			if guardPageBuilt {
-				if err == nil || !strings.Contains(err.Error(), "signals-based bounds checks") {
-					t.Fatalf("guard compile = %v, want explicit bounds rejection", err)
-				}
-				return
-			}
 			if err != nil {
-				t.Fatalf("explicit compile: %v", err)
+				t.Fatalf("supported compile: %v", err)
 			}
 			_ = c.Close()
 		})

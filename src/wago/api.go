@@ -1011,9 +1011,6 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 			if (goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64") && !arm64Structural {
 				return nil, fmt.Errorf("compile: unsupported collector-free structural product staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
 			}
-			if cfg.boundsChecks == BoundsChecksSignalsBased {
-				return nil, fmt.Errorf("compile: unsupported collector-free structural product with signals-based bounds checks")
-			}
 			structuralProduct = product
 		}
 	}
@@ -1022,9 +1019,6 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 			arm64GC := goruntime.GOARCH == "arm64" && (goruntime.GOOS == "linux" || goruntime.GOOS == "darwin") && cfg.boundsChecks == BoundsChecksExplicit
 			if (goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64") && !arm64GC {
 				return nil, fmt.Errorf("compile: unsupported gc/type-subtyping product staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
-			}
-			if cfg.boundsChecks == BoundsChecksSignalsBased {
-				return nil, fmt.Errorf("compile: unsupported gc/type-subtyping product with signals-based bounds checks")
 			}
 			gcTypeSubtypingProduct = product
 		}
@@ -1039,9 +1033,6 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 			if (goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64") && !arm64GC {
 				return nil, fmt.Errorf("compile: unsupported collector-backed struct product staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
 			}
-			if cfg.boundsChecks == BoundsChecksSignalsBased && product != stagedGCStructGeneric {
-				return nil, fmt.Errorf("compile: unsupported bounded collector-backed struct product with signals-based bounds checks")
-			}
 			gcStructProduct = product
 		}
 	}
@@ -1055,9 +1046,6 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 			if (goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64") && !arm64GC {
 				return nil, fmt.Errorf("compile: unsupported collector-backed array product staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
 			}
-			if cfg.boundsChecks == BoundsChecksSignalsBased && product != stagedGCArrayProductGeneric {
-				return nil, fmt.Errorf("compile: unsupported bounded collector-backed array product with signals-based bounds checks")
-			}
 			gcArrayProduct = product
 		}
 	}
@@ -1066,9 +1054,6 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 			arm64GC := goruntime.GOARCH == "arm64" && (goruntime.GOOS == "linux" || goruntime.GOOS == "darwin") && cfg.boundsChecks == BoundsChecksExplicit
 			if (goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64") && !arm64GC {
 				return nil, fmt.Errorf("compile: unsupported i31 product staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
-			}
-			if cfg.boundsChecks == BoundsChecksSignalsBased {
-				return nil, fmt.Errorf("compile: unsupported i31 product with signals-based bounds checks")
 			}
 			gcI31Product = product
 		}
@@ -1079,9 +1064,6 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 			arm64Null := goruntime.GOARCH == "arm64" && (goruntime.GOOS == "linux" || goruntime.GOOS == "darwin") && cfg.boundsChecks == BoundsChecksExplicit
 			if (goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64") && !arm64Null {
 				return nil, fmt.Errorf("compile: unsupported null-reference product staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
-			}
-			if cfg.boundsChecks == BoundsChecksSignalsBased {
-				return nil, fmt.Errorf("compile: unsupported null-reference product with signals-based bounds checks")
 			}
 		}
 	}
@@ -1101,7 +1083,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		if (goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64") && !arm64EH {
 			return nil, fmt.Errorf("compile: unsupported exception handling staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
 		}
-		if cfg.boundsChecks == BoundsChecksSignalsBased {
+		if arm64EH && cfg.boundsChecks == BoundsChecksSignalsBased {
 			return nil, fmt.Errorf("compile: unsupported exception handling with signals-based bounds checks")
 		}
 	}
@@ -1118,11 +1100,9 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		}
 	}
 	if features.Table64 && usesTable64 {
-		if !((goruntime.GOOS == "linux" && goruntime.GOARCH == "amd64") || ((goruntime.GOOS == "linux" || goruntime.GOOS == "darwin") && goruntime.GOARCH == "arm64")) {
+		arm64Table64 := (goruntime.GOOS == "linux" || goruntime.GOOS == "darwin") && goruntime.GOARCH == "arm64" && cfg.boundsChecks == BoundsChecksExplicit
+		if (goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64") && !arm64Table64 {
 			return nil, fmt.Errorf("compile: unsupported table table64 staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
-		}
-		if cfg.boundsChecks == BoundsChecksSignalsBased {
-			return nil, fmt.Errorf("compile: unsupported table table64 with signals-based bounds checks")
 		}
 		twoLocal := m.TableCount() == 2 && m.ImportedTableCount() == 0 && len(m.Tables) == 2
 		twoLocalDeclaration := stagedTwoLocalNoMaxTable64DeclarationShape(m)

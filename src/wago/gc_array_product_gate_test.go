@@ -37,14 +37,8 @@ func TestStagedGCArrayProductPlatformBoundsAndIdentityGate(t *testing.T) {
 		}
 		return
 	}
-	if guardPageBuilt {
-		if err == nil || !strings.Contains(err.Error(), "signals-based bounds checks") {
-			t.Fatalf("guard compile = %v, want explicit bounds rejection", err)
-		}
-		return
-	}
 	if err != nil {
-		t.Fatalf("explicit GC array compile: %v", err)
+		t.Fatalf("supported GC array compile: %v", err)
 	}
 	_ = c.Close()
 

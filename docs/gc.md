@@ -10,8 +10,8 @@ knobs, and tests.
 ## Current generated-payload boundary
 
 The mandatory pinned Core 3 corpus is complete, but that result is narrower than
-unrestricted compiler-generated WasmGC. The current linux/amd64 explicit-bounds
-path now admits struct and array helpers from validated opcode/type semantics
+unrestricted compiler-generated WasmGC. The current linux/amd64 explicit- and
+signal-backed paths admit struct and array helpers from validated opcode/type semantics
 rather than requiring an exact binary hash or export spelling. It supports
 multi-field and reference-bearing `struct.new`, reference `struct.set`, numeric,
 `v128`, and reference `array.new`/`array.new_fixed`, object-building global constant
@@ -1964,39 +1964,35 @@ Tests exercise tiny nurseries, collect-every-alloc, exact scanning, cycles, root
 
 ## Current limitations
 
-- The mandatory Core 3 WasmGC corpus is complete on linux/amd64 explicit bounds.
-  Recursive/subtyped type graphs, structs, arrays, i31, extern conversion,
-  equality, casts/tests/branches, fill/copy, data/element initialization,
-  constant expressions, linking, non-flat exports, and all invalid/unlinkable
-  cases execute or reject exactly. `gc/type-subtyping.wast` remains pinned at
-  170 commands / 45 modules / 29 assertions / 24 invalid / 8 unlinkable with
-  zero gates, and the full Release 3 suite is 2,226 modules / 58,038 assertions
-  with zero gaps. The implementation retains bounded arenas, transactional owner
-  retention, exact roots/barriers, and Tiny/Throughput collector stress proofs.
-- The parked-Go runtime-call ABI is proven for exact empty-frame-root numeric/packed
-  allocations, non-collecting numeric access/mutation/data initialization, exact local-funcref element
-  initialization, ordered immutable collector-rooted globals, per-instance passive descriptors, and one
-  result-token root installed only after the native call returns. General allocation with live frame refs,
-  passive-element compact-GC roots, reference field/element object+bulk barriers, and traps still need the
-  backend-neutral root-publication ABI before broader generated code can use objects.
-- Exact native safepoint maps are not connected to compiled frames yet.
-- Minor collection currently promotes marked nursery survivors through handles
-  rather than implementing a final copying nursery/root-update path.
-- The Throughput old/large allocator reuses freed memory, but full Immix
-  line/block marking, compaction, and more advanced fragmentation control remain
-  future work.
-- The Throughput heap currently uses growable Go byte slices, so native code
-  must not cache raw heap payload pointers; see `docs/runtime-abi.md`.
-- Tiny and Throughput profiles are connected to the Core 3 struct/array/table
-  helper paths, including immutable and passive roots, reference array barriers,
-  packed data/drop lifecycle, bounded public/conversion ownership, dynamic tests,
-  and compact equality under stress collection and deterministic Tiny
-  exhaustion. Snapshotting live collector/function ownership, guard-page GC
-  execution, and non-amd64 native lowering remain explicit fail-closed platform
-  boundaries rather than official linux/amd64 conformance gaps.
+- The mandatory Core 3 WasmGC corpus is complete on linux/amd64 explicit and
+  signal-backed bounds. Recursive/subtyped graphs, structs, arrays, i31, extern
+  conversion, equality, casts/tests/branches, bulk/data/element initialization,
+  linking, non-flat exports, and invalid/unlinkable cases execute or reject
+  exactly. Linux/Darwin arm64 explicit bounds is also complete under the platform
+  qualification described in `docs/wasm3.md`.
+- Exact collection is admitted only where every local, spill, callsite, suspended
+  host activation, EH payload, persistent global/table slot, and foreign frame has
+  proven ownership and mutable root storage. General generated functions that
+  cross polymorphic or foreign reference boundaries remain collection-disabled
+  instead of scanning an approximate root set.
+- Imported/exported GC globals and GC tables do not yet participate in shared
+  collector domains. Their aliasing, barriers, growth/replacement, rollback,
+  root registration, and close order remain fail-closed.
+- Host-held GC values remain explicit bounded tokens. Untyped `uint64` values are
+  never accepted as transferable compact collector handles.
+- Snapshot v4 roots are owned local GC globals. Local GC table roots,
+  whole-domain shared snapshots, and fully transactional publication under
+  near-capacity restore failure remain planned.
+- Minor collection promotes marked nursery survivors through handles rather than
+  implementing a final copying nursery/root-update path. The Throughput allocator
+  reuses freed memory but does not yet implement full Immix line/block marking or
+  compaction.
+- The Throughput heap uses growable Go byte slices, so generated code must not
+  cache raw payload pointers. Direct checked JIT object access will require a
+  measured stable access contract with helper slow paths retained.
 
-These limitations are intentional for this commit series: the runtime foundation
-is small, exact, typed, and no-cgo, giving later codegen work stable contracts.
+These boundaries keep the runtime exact, bounded, typed, and no-cgo while the
+remaining ownership and direct-access work is completed.
 
 ## Iteration 72 M8 duplicate recursive function linking
 
