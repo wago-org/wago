@@ -1,23 +1,24 @@
-//go:build arm64
+//go:build (linux || darwin) && arm64
 
 package wago
 
 import (
-	"runtime"
-	"strings"
 	"testing"
 
 	"github.com/wago-org/wago/tests/wasmtest"
 )
 
-func TestStagedTable64FailsClosedOnArm64(t *testing.T) {
+func TestStagedTable64AdmittedOnArm64(t *testing.T) {
 	module := wasmtest.Module(wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x05, 0x01, 0x02})))
 	cfg := NewRuntimeConfig()
 	features := cfg.frontendFeatures()
 	features.Table64 = true
-	_, err := compileWithFrontendFeatures(cfg, module, features)
-	want := "unsupported table table64 staged execution on " + runtime.GOOS + "/arm64"
-	if err == nil || !strings.Contains(err.Error(), want) {
-		t.Fatalf("staged table64 arm64 error = %v, want %q", err, want)
+	compiled, err := compileWithFrontendFeatures(cfg, module, features)
+	if err != nil {
+		t.Fatalf("compile table64 on arm64: %v", err)
+	}
+	defer compiled.Close()
+	if !compiled.requiredFeatures.IsEnabled(CoreFeatureTable64) || !compiled.TableAddr64 {
+		t.Fatalf("table64 metadata = features %s addr64=%v", compiled.requiredFeatures, compiled.TableAddr64)
 	}
 }

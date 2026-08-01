@@ -290,7 +290,7 @@ func TestCoreFeaturesV3ReleaseScopeAndAdmission(t *testing.T) {
 		{CoreFeatureExceptionHandling, "exception-handling", completeCore3Backend},
 		{CoreFeatureMultiMemory, "multi-memory", completeCore3Backend},
 		{CoreFeatureMemory64, "memory64", completeCore3Backend},
-		{CoreFeatureTable64, "table64", completeCore3Backend},
+		{CoreFeatureTable64, "table64", completeCore3Backend || arm64GCBackend},
 	} {
 		if got := SupportedFeatures().IsEnabled(tc.bit); got != tc.supported {
 			t.Errorf("SupportedFeatures admission for %s = %v, want %v", tc.name, got, tc.supported)
@@ -376,7 +376,7 @@ func TestConfigValidateAndIntrospection(t *testing.T) {
 			CoreFeatureMemory64 |
 			CoreFeatureTable64
 		if runtime.GOARCH == "arm64" && (runtime.GOOS == "linux" || runtime.GOOS == "darwin") {
-			unsupported &^= CoreFeatureTypedFunctionReferences | CoreFeatureGC
+			unsupported &^= CoreFeatureTypedFunctionReferences | CoreFeatureGC | CoreFeatureTable64
 		}
 		wantFeatures &^= unsupported
 	}
