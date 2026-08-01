@@ -106,11 +106,11 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
 - 🚧 **Iteration 82 — hardening the new ownership and persistence boundaries:** add
   independent-domain, rollback, multi-hop, codec, close-order, moving-root, mixed
   graph, malformed snapshot, fuzz, and native-arm64 execution coverage.
-- 🚧 **Arm64 exact GC roots:** the first call-free `struct.new_default` slice now
-  publishes liveness-exact local slots from parked SP, persists codec metadata,
-  and enables active-frame collection. Hidden operands, wasm calls, tables,
-  imports, EH, GC globals, recursive/foreign walking, and broader constructors
-  remain collection-disabled until their exact maps land.
+- 🚧 **Arm64 exact GC roots:** liveness-exact locals and compiler-tracked hidden
+  spills now publish from parked SP, persist through codec v30, and walk direct
+  local and recursive caller frames. Imports, indirect/reference/tail calls,
+  tables, EH, GC globals, host re-entry, and foreign-instance walking remain
+  collection-disabled until their exact ownership/maps land.
 - [ ] **Shared GC state:** extend same-domain ownership to imported/exported GC
   globals and tables with exact roots, barriers, aliases, rollback, and close order;
   keep host tokens and incompatible domains fail-closed until explicitly owned.
@@ -368,8 +368,9 @@ preserves an outer object across 1,000 allocations, including codec reload.
 Iteration 82 completed the first bounded forms of all three: exact same-Runtime
 collector domains for descriptor-identical global/table-free modules, arm64 helper
 lowering, and snapshot-v4 stable-ID heap graphs rooted by owned local GC globals.
-The first arm64 exact-root sub-slice now collects in call-free
-`struct.new_default` functions using liveness-exact local slots; unsupported
-hidden operands and caller frames remain bounded and collection-disabled. Next
-work broadens those maps, then shared GC globals/tables, snapshot table roots, and
-full bounds/platform parity.
+Arm64 now collects with liveness-exact local slots, compiler-tracked hidden
+operand spills, and direct local/recursive caller maps. Imports,
+indirect/reference/tail calls, host re-entry, foreign frames, tables, EH, and GC
+globals remain bounded and collection-disabled. Next work broadens those maps,
+then shared GC globals/tables, snapshot table roots, and full bounds/platform
+parity.

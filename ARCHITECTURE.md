@@ -77,10 +77,11 @@ switches root-map ownership across foreign return PCs. Codec v30 persists helper
 admission and the 16-byte `v128` storage contract, but never compact handles.
 Snapshot v4 persists reachable local-global object graphs with stable IDs and
 two-pass cycle/sharing reconstruction. Arm64 explicit-bounds builds lower
-struct/array/i31 helpers through the synchronous ABI. A first call-free
-`struct.new_default` slice publishes liveness-exact local slots from parked SP
-and collects during native execution; hidden operands and caller-frame products
-remain collection-disabled until their exact maps are available.
+struct/array/i31 helpers through the synchronous ABI. The bounded arm64
+native-root product publishes liveness-exact locals and compiler-tracked hidden
+spills from parked SP, then follows saved-LR callsites through direct local and
+recursive caller frames. Imports, indirect/reference/tail calls, host re-entry,
+foreign frames, tables, EH, and GC globals remain collection-disabled.
 
 ---
 

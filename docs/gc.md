@@ -129,13 +129,14 @@ import graphs reject transactionally.
 
 Generic struct/array helpers and exact frame roots execute under linux/amd64
 guard-page bounds checks. Linux and Darwin arm64 explicit-bounds builds lower
-struct, array, and i31 operations through the same synchronous helper ABI. The
-first exact arm64 slice admits call-free `struct.new_default` functions whose
-allocation results are immediately stored in collector locals or dropped. It
-publishes liveness-exact local slots from the host stub's parked SP and persists
-the resulting safepoints through codec v30. Hidden collector operands, wasm
-calls, imports, tables, EH, GC globals, and broader constructors still force
-collection-disabled bounded execution rather than scanning unproved roots.
+struct, array, and i31 operations through the same synchronous helper ABI. Arm64 now publishes liveness-exact local slots and compiler-tracked hidden
+operand spills from the host stub's parked SP. Direct local callsites persist
+the caller frame size, return PC, and exact local/spill roots through codec v30;
+the runtime reads saved LR from the FP/LR frame record and walks cross-function
+or recursive callers until the public adapter return. Imports,
+indirect/reference/tail calls, host re-entry, foreign-instance frames, tables,
+EH, and GC globals still force collection-disabled bounded execution rather than
+scanning unproved roots.
 
 Iteration 38 wires one exact linux/amd64 numeric-local helper product;
 iteration 39 adds exact immutable GC-global roots, packed fields, and the numeric portion
