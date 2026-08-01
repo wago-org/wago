@@ -82,8 +82,11 @@ in full — 57/57 applicable files, 0 failing assertions (see [SPECTEST.md](SPEC
   recursive-CTE aggregate workload against committed goldens on Darwin/arm64
 - [x] Reference globals, heterogeneous indexed table operations, and nonzero-table
   `call_indirect`, with native Linux/arm64 and Darwin/arm64 CI gates
+- [x] Explicit-bounds `CoreFeaturesV3`, including tails, typed references, WasmGC,
+  exception handling, multi-memory, memory64, and table64, with a zero-gap complete
+  official suite under Linux/arm64 QEMU and native Linux/Darwin arm64 CI gates
 
-## Next (near-term, linux/amd64)
+## Next (near-term)
 
 The optimization plan remains **[docs/no-ir-plan.md](docs/no-ir-plan.md)** and the
 Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
@@ -207,8 +210,9 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   primary Core 3 product.
 - [x] Multi-memory, memory64, and table64 — mandatory Core 3 execution, metadata,
   codec, linking, traps, and official tests are complete on linux/amd64 explicit
-  bounds. Linux/Darwin arm64 explicit-bounds execution is implemented with native
-  CI coverage; full official-suite qualification and guard-page parity remain.
+  bounds. Linux/Darwin arm64 explicit-bounds execution is implemented; the full
+  official suite passes under Linux/arm64 QEMU and native Linux/Darwin arm64 runs
+  are required in CI. Guard-page parity remains.
 - [x] Reference-types product completion: signatures, locals, control,
   local/imported/shared globals, host ABI, explicit host funcref ownership/egress,
   typed 8-byte externref tables/elements, every `table.*` operation, multiple
@@ -375,8 +379,10 @@ Iteration 82 completed the first bounded forms of all three: exact same-Runtime
 collector domains for descriptor-identical global/table-free modules, arm64 helper
 lowering, and snapshot-v4 stable-ID heap graphs rooted by owned local GC globals.
 Arm64 now collects through direct/recursive calls, suspended direct-host
-activations, same-domain foreign frames, monomorphic private `call_indirect`, and
-local `call_ref`, with mutable local GC globals and one private collector table.
-Tail/EH lowering and polymorphic or foreign reference calls remain separate
-platform work. Next work broadens those products, then shared GC globals/tables,
-snapshot table roots, and full bounds/platform parity.
+activations, same-domain foreign frames, subtype-checked indirect/reference calls,
+proper discarded-frame tails, and fixed EH payload records, with mutable local GC
+globals and one private collector table. Bounded `try_table`, `throw`, `throw_ref`,
+indexed multi-memory, memory64, and table64 execution complete the explicit-bounds
+Core 3 product. Polymorphic or foreign reference calls remain collection-disabled
+where exact ownership is unproved. Next work broadens shared GC globals/tables and
+snapshot roots, then completes signal-backed and broader native-platform parity.
