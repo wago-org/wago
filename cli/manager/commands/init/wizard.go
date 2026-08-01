@@ -16,11 +16,8 @@ import (
 )
 
 const (
-	modeQuick = "quick"
-	modeFull  = "full"
-
-	kindApplication = "application"
-	kindPlugin      = "plugin"
+	modeRun    = "run"
+	modePlugin = "plugin"
 )
 
 type result struct {
@@ -31,7 +28,7 @@ type result struct {
 }
 
 type answers struct {
-	kind, name, description, plugins               string
+	name, description, plugins                     string
 	module, version, license, repository, homepage string
 	category, tags, author, stability              string
 }
@@ -39,39 +36,32 @@ type answers struct {
 var errCancelled = errors.New("cancelled")
 
 func run(ctx *command.Ctx, in io.Reader, out io.Writer, interactive bool) (result, error) {
-	if ctx.Bool("quick") && ctx.Bool("full") {
-		return result{}, errors.New("choose --quick or --full")
+	mode, err := explicitMode(ctx)
+	if err != nil {
+		return result{}, err
 	}
-	configured := hasFullAnswers(ctx)
-	if ctx.Bool("quick") && configured {
-		return result{}, errors.New("--quick cannot be combined with full-setup answers")
-	}
-	mode := ""
-	switch {
-	case ctx.Bool("quick"):
-		mode = modeQuick
-	case ctx.Bool("full") || configured:
-		mode = modeFull
-	case !interactive:
-		mode = modeQuick
-	default:
-		selected, ok := chooseSetupMode()
-		if !ok {
-			return result{Cancelled: true}, nil
+	if mode == "" {
+		if !interactive {
+			mode = modeRun
+		} else {
+			selected, ok := chooseSetupMode()
+			if !ok {
+				return result{Cancelled: true}, nil
+			}
+			mode = selected
 		}
-		mode = selected
 	}
 
 	fields := map[string]any{}
 	pluginCount := 0
-	if mode == modeFull {
+	if mode == modePlugin {
 		manifest, err := project.Read(".")
 		if err != nil {
 			return result{}, err
 		}
 		values := answersFromContext(ctx)
 		if interactive && !ctx.Bool("yes") {
-			values, err = askFullSetup(in, out, values, manifest)
+			values, err = askPluginSetup(in, out, values, manifest)
 			if errors.Is(err, errCancelled) {
 				return result{Cancelled: true}, nil
 			}
@@ -79,7 +69,7 @@ func run(ctx *command.Ctx, in io.Reader, out io.Writer, interactive bool) (resul
 				return result{}, err
 			}
 		}
-		fields, pluginCount, err = fullManifest(values, manifest)
+		fields, pluginCount, err = pluginManifest(values, manifest)
 		if err != nil {
 			return result{}, err
 		}
@@ -93,9 +83,26 @@ func run(ctx *command.Ctx, in io.Reader, out io.Writer, interactive bool) (resul
 	return result{Mode: mode, Created: created, Plugins: pluginCount}, nil
 }
 
-func hasFullAnswers(ctx *command.Ctx) bool {
+func explicitMode(ctx *command.Ctx) (string, error) {
+	if ctx.Bool("run") && ctx.Bool("plugin") {
+		return "", errors.New("choose --run or --plugin")
+	}
+	configured := hasPluginAnswers(ctx)
+	if ctx.Bool("run") && configured {
+		return "", errors.New("--run cannot be combined with plugin setup options")
+	}
+	switch {
+	case ctx.Bool("plugin") || configured:
+		return modePlugin, nil
+	case ctx.Bool("run"):
+		return modeRun, nil
+	}
+	return "", nil
+}
+
+func hasPluginAnswers(ctx *command.Ctx) bool {
 	for _, name := range []string{
-		"kind", "name", "description", "plugins", "module", "version", "license",
+		"name", "description", "plugins", "module", "version", "license",
 		"repository", "homepage", "category", "tags", "author", "stability",
 	} {
 		if ctx.Str(name) != "" {
@@ -107,7 +114,7 @@ func hasFullAnswers(ctx *command.Ctx) bool {
 
 func answersFromContext(ctx *command.Ctx) answers {
 	return answers{
-		kind: ctx.Str("kind"), name: ctx.Str("name"), description: ctx.Str("description"), plugins: ctx.Str("plugins"),
+		name: ctx.Str("name"), description: ctx.Str("description"), plugins: ctx.Str("plugins"),
 		module: ctx.Str("module"), version: ctx.Str("version"), license: ctx.Str("license"), repository: ctx.Str("repository"),
 		homepage: ctx.Str("homepage"), category: ctx.Str("category"), tags: ctx.Str("tags"), author: ctx.Str("author"),
 		stability: ctx.Str("stability"),
@@ -115,16 +122,9 @@ func answersFromContext(ctx *command.Ctx) answers {
 }
 
 func setupModePicker() *tui.Picker {
-	return tui.NewPicker("How would you like to set up Wago?", []tui.Item{
-		{Label: "Quick", Value: modeQuick, Description: "Create a minimal project"},
-		{Label: "Full", Value: modeFull, Description: "Configure project details and plugins"},
-	})
-}
-
-func projectKindPicker() *tui.Picker {
-	return tui.NewPicker("What are you building?", []tui.Item{
-		{Label: "Application", Value: kindApplication, Description: "Run Wasm with Wago"},
-		{Label: "Plugin package", Value: kindPlugin, Description: "Publish a Wago plugin"},
+	return tui.NewPicker("What would you like to do?", []tui.Item{
+		{Label: "Run WebAssembly", Value: modeRun, Description: "Create a minimal Wago project"},
+		{Label: "Set up a plugin", Value: modePlugin, Description: "Configure a publishable Wago plugin"},
 	})
 }
 
@@ -136,9 +136,8 @@ func stabilityPicker() *tui.Picker {
 	})
 }
 
-func chooseSetupMode() (string, bool)   { return choose(setupModePicker()) }
-func chooseProjectKind() (string, bool) { return choose(projectKindPicker()) }
-func chooseStability() (string, bool)   { return choose(stabilityPicker()) }
+func chooseSetupMode() (string, bool) { return choose(setupModePicker()) }
+func chooseStability() (string, bool) { return choose(stabilityPicker()) }
 
 func choose(picker *tui.Picker) (string, bool) {
 	submitted, cancelled := tui.Run(picker)
@@ -148,22 +147,12 @@ func choose(picker *tui.Picker) (string, bool) {
 	return picker.Selected(), true
 }
 
-func askFullSetup(in io.Reader, out io.Writer, values answers, manifest map[string]any) (answers, error) {
+func askPluginSetup(in io.Reader, out io.Writer, values answers, manifest map[string]any) (answers, error) {
 	reader := bufio.NewReader(in)
-	if values.kind == "" {
-		selected, ok := chooseProjectKind()
-		if !ok {
-			return answers{}, errCancelled
-		}
-		values.kind = selected
-	}
 	defaults := inferDefaults(manifest)
 	values.name = ask(reader, out, "Project name", values.name, defaults.name)
 	values.description = ask(reader, out, "Description", values.description, defaults.description)
 	values.plugins = ask(reader, out, "Initial plugins (comma-separated)", values.plugins, defaults.plugins)
-	if values.kind != kindPlugin {
-		return values, nil
-	}
 	values.module = ask(reader, out, "Go module", values.module, defaults.module)
 	values.version = ask(reader, out, "Version", values.version, defaultValue(defaults.version, "0.0.0"))
 	values.license = ask(reader, out, "License (SPDX)", values.license, defaults.license)

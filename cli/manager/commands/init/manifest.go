@@ -17,11 +17,7 @@ var (
 	slugPattern       = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`)
 )
 
-func fullManifest(values answers, existing map[string]any) (map[string]any, int, error) {
-	values.kind = strings.ToLower(strings.TrimSpace(defaultValue(values.kind, kindApplication)))
-	if values.kind != kindApplication && values.kind != kindPlugin {
-		return nil, 0, fmt.Errorf("kind must be application or plugin")
-	}
+func pluginManifest(values answers, existing map[string]any) (map[string]any, int, error) {
 	values.name = strings.TrimSpace(defaultValue(values.name, inferDefaults(existing).name))
 	if values.name == "" || len(values.name) > 100 {
 		return nil, 0, fmt.Errorf("name must contain 1 to 100 characters")
@@ -35,10 +31,6 @@ func fullManifest(values answers, existing map[string]any) (map[string]any, int,
 	}
 	fields := map[string]any{"name": values.name, "plugins": plugins}
 	setOptional(fields, "description", values.description)
-	if values.kind == kindApplication {
-		return fields, len(plugins), nil
-	}
-
 	values.module = strings.TrimSpace(values.module)
 	if !validModule(values.module) {
 		return nil, 0, fmt.Errorf("plugin packages need a valid --module such as github.com/acme/wago-plugin")
