@@ -1083,7 +1083,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		}
 	}
 	if features.MultiMemory && m.MemCount() > 1 {
-		if goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64" {
+		if !((goruntime.GOOS == "linux" && goruntime.GOARCH == "amd64") || ((goruntime.GOOS == "linux" || goruntime.GOOS == "darwin") && goruntime.GOARCH == "arm64")) {
 			return nil, fmt.Errorf("compile: unsupported memory multi-memory staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
 		}
 		if cfg.boundsChecks == BoundsChecksSignalsBased {

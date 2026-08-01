@@ -288,7 +288,7 @@ func TestCoreFeaturesV3ReleaseScopeAndAdmission(t *testing.T) {
 		{CoreFeatureTypedFunctionReferences, "typed-function-references", completeCore3Backend || arm64GCBackend},
 		{CoreFeatureGC, "gc", completeCore3Backend || arm64GCBackend},
 		{CoreFeatureExceptionHandling, "exception-handling", completeCore3Backend},
-		{CoreFeatureMultiMemory, "multi-memory", completeCore3Backend},
+		{CoreFeatureMultiMemory, "multi-memory", completeCore3Backend || arm64GCBackend},
 		{CoreFeatureMemory64, "memory64", completeCore3Backend || arm64GCBackend},
 		{CoreFeatureTable64, "table64", completeCore3Backend || arm64GCBackend},
 	} {
@@ -376,7 +376,7 @@ func TestConfigValidateAndIntrospection(t *testing.T) {
 			CoreFeatureMemory64 |
 			CoreFeatureTable64
 		if runtime.GOARCH == "arm64" && (runtime.GOOS == "linux" || runtime.GOOS == "darwin") {
-			unsupported &^= CoreFeatureTypedFunctionReferences | CoreFeatureGC | CoreFeatureMemory64 | CoreFeatureTable64
+			unsupported &^= CoreFeatureTypedFunctionReferences | CoreFeatureGC | CoreFeatureMultiMemory | CoreFeatureMemory64 | CoreFeatureTable64
 		}
 		wantFeatures &^= unsupported
 	}

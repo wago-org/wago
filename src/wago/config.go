@@ -360,7 +360,7 @@ func platformCoreFeatures() CoreFeatures {
 		// the platform feature gate; polymorphic/foreign reference calls remain
 		// collection-disabled.
 		if runtime.GOARCH == "arm64" && (runtime.GOOS == "linux" || runtime.GOOS == "darwin") {
-			unsupported &^= CoreFeatureGC | CoreFeatureTypedFunctionReferences | CoreFeatureMemory64 | CoreFeatureTable64
+			unsupported &^= CoreFeatureGC | CoreFeatureTypedFunctionReferences | CoreFeatureMultiMemory | CoreFeatureMemory64 | CoreFeatureTable64
 		}
 		supported &^= unsupported
 	}

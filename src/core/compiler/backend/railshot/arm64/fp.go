@@ -823,13 +823,26 @@ func (f *fn) reinterpretFloatToInt(wide bool) {
 
 // fload / fstore reuse the integer bounds-checked effective-address path.
 func (f *fn) fload(r *wasm.Reader, f64 bool) error {
-	off, err := f.readMemory0Memarg(r)
+	memoryIndex, off, err := f.readMemArg(r)
 	if err != nil {
 		return err
 	}
 	size := 4
 	if f64 {
 		size = 8
+	}
+	if memoryIndex != 0 {
+		f.materializePendingLoads()
+		base, ea, disp := f.indexedMemAddr(memoryIndex, off, size)
+		x := f.allocFReg(0)
+		f.a.LdrFIdx(x, base, ea, disp, f64)
+		f.release(base)
+		f.release(ea)
+		f.pushFReg(x, mtF32)
+		if f64 {
+			f.s.back().st.typ = mtF64
+		}
+		return nil
 	}
 	addrLocal, addrOK := localAddressKey(f.s.back())
 	aliasLocal := -1
@@ -845,7 +858,7 @@ func (f *fn) fload(r *wasm.Reader, f64 bool) error {
 }
 
 func (f *fn) fstore(r *wasm.Reader, f64 bool) error {
-	off, err := f.readMemory0Memarg(r)
+	memoryIndex, off, err := f.readMemArg(r)
 	if err != nil {
 		return err
 	}
@@ -855,6 +868,16 @@ func (f *fn) fstore(r *wasm.Reader, f64 bool) error {
 	}
 	xmm := f.materializeF(f.popValue())
 	f.fpinned = f.fpinned.add(xmm)
+	if memoryIndex != 0 {
+		f.materializePendingLoads()
+		base, ea, disp := f.indexedMemAddr(memoryIndex, off, size)
+		f.a.StrFIdx(base, ea, xmm, disp, f64)
+		f.release(base)
+		f.release(ea)
+		f.fpinned = f.fpinned.remove(xmm)
+		f.releaseF(xmm)
+		return nil
+	}
 	addrLocal, addrOK := localAddressKey(f.s.back())
 	ea, eaOwned, _, disp := f.memAddr(off, size, true)
 	f.pinned = f.pinned.add(ea)
