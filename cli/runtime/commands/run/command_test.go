@@ -10,6 +10,7 @@ import (
 	"github.com/wago-org/wago"
 	"github.com/wago-org/wago/cli/internal/command"
 	"github.com/wago-org/wago/cli/internal/settings"
+	"github.com/wago-org/wago/cli/runtime/internal/artifactcache"
 )
 
 type testEnvironment struct{}
@@ -20,6 +21,7 @@ func (testEnvironment) ProfileFlags() []command.Flag {
 func (testEnvironment) LoadRuntime(cfg *wago.RuntimeConfig, _ string) *wago.Runtime {
 	return wago.NewRuntime(wago.WithRuntimeConfig(cfg))
 }
+func (testEnvironment) ArtifactCache() artifactcache.Cache { return artifactcache.Cache{} }
 
 func TestOptimizationFlags(t *testing.T) {
 	knobs := wago.OptKnobs()
@@ -117,7 +119,8 @@ func TestLoadModuleAndResolveExport(t *testing.T) {
 	}
 	rt := wago.NewRuntime()
 	defer rt.Close()
-	mod := mustLoadModule(path, rt)
+	config := wago.NewRuntimeConfig()
+	mod := mustLoadModule(path, config, rt, artifactcache.Cache{})
 	if got := mustResolveExport(mod.Compiled(), ""); got != "f" {
 		t.Fatalf("default export = %q", got)
 	}
@@ -132,7 +135,7 @@ func TestLoadModuleAndResolveExport(t *testing.T) {
 	if err := os.WriteFile(compiledPath, encoded, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if got := mustResolveExport(mustLoadModule(compiledPath, rt).Compiled(), "f"); got != "f" {
+	if got := mustResolveExport(mustLoadModule(compiledPath, config, rt, artifactcache.Cache{}).Compiled(), "f"); got != "f" {
 		t.Fatalf("loaded export = %q", got)
 	}
 }

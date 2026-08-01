@@ -89,6 +89,28 @@ func Prune(dirs wagopaths.Dirs, olderThan time.Duration) (Result, error) {
 	cutoff := time.Now().Add(-olderThan)
 	installed := installedNames(dirs.Versions)
 	var candidates []string
+	artifactRoot := filepath.Join(dirs.Cache, "modules")
+	err := filepath.WalkDir(artifactRoot, func(path string, entry fs.DirEntry, err error) error {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if entry.Type().IsRegular() && strings.HasSuffix(entry.Name(), ".wago") {
+			info, infoErr := entry.Info()
+			if infoErr != nil {
+				return infoErr
+			}
+			if info.ModTime().Before(cutoff) {
+				candidates = append(candidates, path)
+			}
+		}
+		return nil
+	})
+	if err != nil && !os.IsNotExist(err) {
+		return Result{}, err
+	}
 	entries, err := os.ReadDir(DownloadDir(dirs))
 	if err != nil && !os.IsNotExist(err) {
 		return Result{}, err

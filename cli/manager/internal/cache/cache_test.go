@@ -62,12 +62,22 @@ func TestPruneKeepsInstalledAndCurrentCaches(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(dirs.Versions, "installed"), 0o755); err != nil {
 		t.Fatal(err)
 	}
+	artifact := filepath.Join(dirs.Cache, "modules", "ab", "artifact.wago")
+	if err := os.MkdirAll(filepath.Dir(artifact), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(artifact, []byte("old artifact"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(artifact, old, old); err != nil {
+		t.Fatal(err)
+	}
 
 	result, err := Prune(dirs, 24*time.Hour)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Removed != 1 {
+	if result.Removed != 2 {
 		t.Fatalf("removed = %d", result.Removed)
 	}
 	for _, name := range []string{"canary", "installed"} {
@@ -77,6 +87,9 @@ func TestPruneKeepsInstalledAndCurrentCaches(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(DownloadDir(dirs), "unused")); !os.IsNotExist(err) {
 		t.Fatalf("unused cache still exists: %v", err)
+	}
+	if _, err := os.Stat(artifact); !os.IsNotExist(err) {
+		t.Fatalf("old artifact still exists: %v", err)
 	}
 }
 
