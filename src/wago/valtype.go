@@ -17,7 +17,9 @@ type V128 [16]byte
 // or compact collector handles and callers must not interpret them as such.
 // Non-null GCRef values are issued only for exact collector-backed struct/array
 // results, may re-enter their exact collector domain through ValueGCRef, and must
-// be released through Instance.ReleaseGCRef.
+// be released through Instance.ReleaseGCRef. Distinct Runtime stores never share
+// this token directly; Instance.CloneGCRefFrom performs an explicit bounded graph
+// copy and returns a new target-owned token.
 //
 // I31Ref is deliberately separate: it is an immediate value, not an opaque
 // object token. Its private bits use the WasmGC low-bit tag, but only the typed

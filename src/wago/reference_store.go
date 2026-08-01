@@ -338,6 +338,8 @@ type gcPublicState struct {
 	argumentRootCount uint8
 	argumentRootsMade uint8
 	argumentRootSlots [gcPublicSlotLimit]uint32
+	cloneRootSlot     uint32
+	cloneRootMade     bool
 	// values is the bounded synchronous-helper constructor scratch. Collector
 	// access is serialized by mu, so struct.new and array.new_fixed reuse it
 	// without per-allocation Go heap traffic.

@@ -62,6 +62,28 @@ func (c *Collector) NewStructWithRoots(typeID TypeID, values []Value, roots Root
 	return r, nil
 }
 
+// NewStructUninitializedWithRoots allocates a zeroed reconstruction object
+// without applying Wasm's defaultability rule. The object must remain in roots
+// and every non-null field must be initialized before it becomes observable or
+// before roots are released. Snapshot and cross-domain graph reconstruction use
+// this bounded two-pass primitive to restore cycles.
+func (c *Collector) NewStructUninitializedWithRoots(typeID TypeID, roots RootSet) (Ref, error) {
+	d, err := c.desc(typeID)
+	if err != nil {
+		return Null(), err
+	}
+	sz, err := StructSize(d)
+	if err != nil {
+		return Null(), err
+	}
+	r, err := c.alloc(d, sz, 0, roots)
+	if err != nil {
+		return Null(), err
+	}
+	c.zeroObjectPayload(r)
+	return r, nil
+}
+
 func (c *Collector) NewStructDefaultWithRoots(typeID TypeID, roots RootSet) (Ref, error) {
 	d, err := c.desc(typeID)
 	if err != nil {
@@ -194,6 +216,26 @@ func (c *Collector) NewRefArrayWithRoots(typeID TypeID, length uint32, init Root
 func (c *Collector) NewArrayDefault(typeID TypeID, length uint32) (Ref, error) {
 	return c.NewArrayDefaultWithRoots(typeID, length, nil)
 }
+
+// NewArrayUninitializedWithRoots is the array counterpart of
+// NewStructUninitializedWithRoots for transactional graph reconstruction.
+func (c *Collector) NewArrayUninitializedWithRoots(typeID TypeID, length uint32, roots RootSet) (Ref, error) {
+	d, err := c.desc(typeID)
+	if err != nil {
+		return Null(), err
+	}
+	sz, err := ArraySize(d, length)
+	if err != nil {
+		return Null(), err
+	}
+	r, err := c.alloc(d, sz, length, roots)
+	if err != nil {
+		return Null(), err
+	}
+	c.zeroObjectPayload(r)
+	return r, nil
+}
+
 func (c *Collector) NewArrayDefaultWithRoots(typeID TypeID, length uint32, roots RootSet) (Ref, error) {
 	d, err := c.desc(typeID)
 	if err != nil {

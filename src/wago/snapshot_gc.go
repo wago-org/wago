@@ -426,9 +426,9 @@ func restoreGCHeapSnapshot(in *Instance, s *Snapshot) error {
 			return fmt.Errorf("allocate object %d: module type %d has no Runtime-domain identity", i+1, object.typeID)
 		}
 		if desc.Kind == gc.KindStruct {
-			ref, err = in.gc.NewStructDefaultWithRoots(domainType, refs)
+			ref, err = in.gc.NewStructUninitializedWithRoots(domainType, refs)
 		} else {
-			ref, err = in.gc.NewArrayDefaultWithRoots(domainType, object.arrayLen, refs)
+			ref, err = in.gc.NewArrayUninitializedWithRoots(domainType, object.arrayLen, refs)
 		}
 		if err != nil {
 			return fmt.Errorf("allocate object %d: %w", i+1, err)

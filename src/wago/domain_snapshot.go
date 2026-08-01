@@ -766,9 +766,9 @@ func restoreDomainGCGraph(instances []*Instance, s *DomainSnapshot) error {
 		var ref gc.Ref
 		var err error
 		if desc.Kind == gc.KindStruct {
-			ref, err = collector.NewStructDefaultWithRoots(domainType, refs)
+			ref, err = collector.NewStructUninitializedWithRoots(domainType, refs)
 		} else {
-			ref, err = collector.NewArrayDefaultWithRoots(domainType, object.arrayLen, refs)
+			ref, err = collector.NewArrayUninitializedWithRoots(domainType, object.arrayLen, refs)
 		}
 		if err != nil {
 			return err
