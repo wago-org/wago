@@ -7,12 +7,14 @@ import (
 
 	"github.com/wago-org/wago/cli/internal/automation"
 	"github.com/wago-org/wago/cli/internal/project"
+	"github.com/wago-org/wago/cli/internal/settings"
 	"github.com/wago-org/wago/cli/internal/ui"
 	authlogin "github.com/wago-org/wago/cli/manager/commands/auth/login"
 	cacheclean "github.com/wago-org/wago/cli/manager/commands/cache/clean"
 	cacheoptions "github.com/wago-org/wago/cli/manager/commands/cache/options"
 	cacheprune "github.com/wago-org/wago/cli/manager/commands/cache/prune"
 	configcompletions "github.com/wago-org/wago/cli/manager/commands/config/completions"
+	configoptions "github.com/wago-org/wago/cli/manager/commands/config/options"
 	pluginadd "github.com/wago-org/wago/cli/manager/commands/plugin/add"
 	"github.com/wago-org/wago/cli/manager/commands/plugin/deprecate"
 	"github.com/wago-org/wago/cli/manager/commands/plugin/grant"
@@ -65,6 +67,83 @@ func (commandEnvironment) Completions(options configcompletions.Options) {
 		fatal("config completions: %v", err)
 	}
 	fmt.Print(script)
+}
+
+func (commandEnvironment) Configure(request configoptions.Request) {
+	config, err := settings.Load()
+	if err != nil {
+		fatal("config: %v", err)
+	}
+	switch request.Action {
+	case configoptions.Interactive:
+		changed, err := managerconfig.Interactive(request.Experimental)
+		if err != nil {
+			fatal("config: %v", err)
+		}
+		if changed {
+			fmt.Printf("%s Saved Wago defaults to %s\n", ui.Cyan("✓"), displayPath(settings.Path()))
+		}
+	case configoptions.List:
+		if automation.JSON() {
+			output := map[string]any{"path": settings.Path(), "settings": config}
+			if request.Experimental {
+				output["experimental"] = settings.Experimental()
+			}
+			ui.PrintJSON(output)
+			return
+		}
+		managerconfig.Print(os.Stdout, config, request.Experimental)
+	case configoptions.Get:
+		value, err := settings.Get(config, request.Key)
+		if err != nil {
+			fatal("config get: %v", err)
+		}
+		if automation.JSON() {
+			ui.PrintJSON(map[string]any{"key": settings.CanonicalKey(request.Key), "value": value})
+			return
+		}
+		fmt.Println(value)
+	case configoptions.Set:
+		key := settings.CanonicalKey(request.Key)
+		if err := settings.Set(&config, key, request.Value); err != nil {
+			fatal("config set: %v", err)
+		}
+		if automation.DryRun() {
+			automation.PrintPlan("change Wago default", map[string]any{"key": key, "value": request.Value})
+			return
+		}
+		if err := settings.Save(config); err != nil {
+			fatal("config set: %v", err)
+		}
+		value, _ := settings.Get(config, key)
+		if automation.JSON() {
+			ui.PrintJSON(map[string]any{"key": key, "value": value, "path": settings.Path()})
+			return
+		}
+		fmt.Printf("%s Set %s = %s\n", ui.Cyan("✓"), key, value)
+	case configoptions.Reset:
+		if automation.DryRun() {
+			automation.PrintPlan("reset Wago defaults", map[string]any{"key": request.Key, "all": request.All})
+			return
+		}
+		if request.All {
+			config = settings.Default()
+		} else if err := settings.Reset(&config, request.Key); err != nil {
+			fatal("config reset: %v", err)
+		}
+		if err := settings.Save(config); err != nil {
+			fatal("config reset: %v", err)
+		}
+		if automation.JSON() {
+			ui.PrintJSON(map[string]any{"key": settings.CanonicalKey(request.Key), "all": request.All, "path": settings.Path()})
+			return
+		}
+		if request.All {
+			fmt.Printf("%s Restored all Wago defaults\n", ui.Cyan("✓"))
+		} else {
+			fmt.Printf("%s Restored %s\n", ui.Cyan("✓"), settings.CanonicalKey(request.Key))
+		}
+	}
 }
 
 func (e commandEnvironment) CacheDir() {

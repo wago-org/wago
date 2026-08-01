@@ -885,7 +885,32 @@ esbuild. See [bench/README.md](bench/README.md) for the full map.
 
 ## Configuration
 
-Wago's runtime config is immutable. Every `WithXxx` method returns a copy:
+Run `wago config` to edit CLI runtime defaults interactively. The selector can
+toggle supported WebAssembly features, stable compiler optimizations, and
+available experimental optimizations; planned proposals are shown as disabled
+previews so they cannot create an invalid runtime configuration. Runtime
+parallelism and deferred bounds checking are configurable from the same menu.
+
+The equivalent one-shot commands are suitable for scripts and agents:
+
+```bash
+wago config list --experimental
+wago config get simd
+wago config set simd off
+wago config --enable inline
+wago config --set runtime.parallel=auto
+wago config reset simd
+wago config reset --all
+```
+
+Settings are stored in `~/.wago/config/settings.json` on macOS and the Wago XDG
+config directory on Linux. `WAGO_HOME` relocates Wago state and `WAGO_CONFIG`
+overrides this one file. Explicit `wago run`, `wago build`, and `wago validate`
+flags take precedence over saved defaults; without a settings file, existing
+environment-variable and built-in defaults are unchanged.
+
+For library users, Wago's runtime config is immutable. Every `WithXxx` method
+returns a copy:
 
 ```go
 cfg := wago.NewRuntimeConfig().
@@ -924,7 +949,7 @@ Useful commands:
 
 ```bash
 wago --version
-wago env
+wago status
 wago module imports app.wasm
 wago module capabilities app.wasm
 wago plugin inspect github.com/acme/wago-metrics --json

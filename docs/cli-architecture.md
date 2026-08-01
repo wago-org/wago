@@ -21,6 +21,7 @@ cli/internal/
   command/   command tree, parsing, dispatch, and help rendering
   handoff/   manager-to-runtime launch metadata and routing rules
   project/   wago.json, plugin intent, and local/global/bare scope
+  settings/  user runtime defaults, catalog, validation, and persistence
   tui/       shared radio, drill-down, and multi-select terminal interaction
   ui/        non-interactive output primitives
 ```
@@ -62,6 +63,12 @@ an invocation live beside that contract and are tested independently. Runtime
 command descriptions needed for cohesive manager help also live there, so the
 manager never imports or links runtime command implementations.
 
+`cli/internal/settings` is the sole definition of user runtime defaults. The
+manager renders and mutates it through `wago config`; run, build, and validate
+read the same file. Runtime precedence is built-in/environment defaults, then
+saved settings, then explicit command flags. Unsupported proposal previews are
+catalog entries only and cannot be persisted as enabled features.
+
 ## Commands
 
 Both CLIs mirror their public command tree in source:
@@ -81,6 +88,12 @@ manager/runtime compile seam.
 Command descriptors keep ordinary options in `Flags` and backend optimization
 switches in `Knobs`. Parsing treats both identically, while help and command
 schemas always place `Knobs` last, after plugin, automation, and help flags.
+
+`wago config` opens the shared selector UI. Stable WebAssembly features and
+compiler optimizations are toggleable, runtime parallelism and deferred bounds
+checking have editable defaults, and planned proposals appear in a disabled
+experimental preview. Every mutation also has a non-interactive `list`, `get`,
+`set`, or `reset` form.
 
 The root packages contain only entrypoint behavior, command composition,
 environment adapters, forwarding, and top-level output:

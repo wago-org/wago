@@ -56,8 +56,17 @@ func (cmd implementation) Run(ctx *command.Ctx) {
 		watchModule(ctx.Args[0], ctx.Str("watch-interval"))
 		return
 	}
+	defaults, configured, err := LoadDefaults()
+	if err != nil {
+		ui.Fatal("run: %v", err)
+	}
+	ApplyOptimizationDefaults(defaults, configured)
 	ApplyOptimizationFlags(ctx)
-	deferredBoundsChecking, err := DeferredBoundsChecking(ctx)
+	deferredDefault := true
+	if configured {
+		deferredDefault = defaults.Runtime.DeferredBoundsChecking
+	}
+	deferredBoundsChecking, err := DeferredBoundsChecking(ctx, deferredDefault)
 	if err != nil {
 		ui.Usage("run: %v", err)
 	}
@@ -66,10 +75,11 @@ func (cmd implementation) Run(ctx *command.Ctx) {
 		ui.Usage("run: need a <file>")
 	}
 	wago.SetGuestArgs(positionals)
-	config, err := Config(deferredBoundsChecking, ctx.Str("parallel"))
+	config, err := Config(deferredBoundsChecking, ResolveParallel(ctx.Str("parallel"), defaults, configured))
 	if err != nil {
 		ui.Usage("run: %v", err)
 	}
+	config = ApplyFeatureDefaults(config, defaults, configured)
 	runtime := cmd.environment.LoadRuntime(config, ctx.Str("plugin"))
 	defer runtime.Close()
 	module := mustLoadModule(positionals[0], runtime)

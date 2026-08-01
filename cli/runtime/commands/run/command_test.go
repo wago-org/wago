@@ -9,6 +9,7 @@ import (
 
 	"github.com/wago-org/wago"
 	"github.com/wago-org/wago/cli/internal/command"
+	"github.com/wago-org/wago/cli/internal/settings"
 )
 
 type testEnvironment struct{}
@@ -241,7 +242,7 @@ func TestDeferredBoundsCheckingFlags(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		got, err := DeferredBoundsChecking(ctx)
+		got, err := DeferredBoundsChecking(ctx, true)
 		if err != nil || got != tc.want {
 			t.Fatalf("DeferredBoundsChecking(%v) = %v, %v; want %v", tc.args, got, err, tc.want)
 		}
@@ -250,8 +251,34 @@ func TestDeferredBoundsCheckingFlags(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := DeferredBoundsChecking(ctx); err == nil {
+	if _, err := DeferredBoundsChecking(ctx, true); err == nil {
 		t.Fatal("conflicting deferred bounds checking flags accepted")
+	}
+}
+
+func TestDeferredBoundsCheckingUsesConfiguredDefaultAndCLIWins(t *testing.T) {
+	if got, err := DeferredBoundsChecking(command.NewContext(nil, nil, nil), false); err != nil || got {
+		t.Fatalf("configured default = %v, %v; want false", got, err)
+	}
+	if got, err := DeferredBoundsChecking(command.NewContext(nil, nil, map[string]bool{deferredBoundsCheckingFlag: true}), false); err != nil || !got {
+		t.Fatalf("explicit enable = %v, %v; want true", got, err)
+	}
+}
+
+func TestConfiguredFeaturesAndOptimizationsMatchRuntimeCatalog(t *testing.T) {
+	defaults := settings.Default()
+	config := ApplyFeatureDefaults(wago.NewRuntimeConfig(), defaults, true)
+	if config.CoreFeatures() != wago.NewRuntimeConfig().CoreFeatures() {
+		t.Fatalf("configured features = %s, want %s", config.CoreFeatures(), wago.NewRuntimeConfig().CoreFeatures())
+	}
+	known := map[string]bool{}
+	for _, setting := range settings.Optimizations() {
+		known[strings.TrimPrefix(setting.Key, "optimizations.")] = true
+	}
+	for _, knob := range wago.OptKnobs() {
+		if !known[knob.Name] {
+			t.Fatalf("runtime knob %q is missing from the settings catalog", knob.Name)
+		}
 	}
 }
 

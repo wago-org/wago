@@ -22,8 +22,11 @@ func InvocationWantsHelp(cmd *Cmd, args []string) bool {
 		}
 		return WantsHelp(normalized, cmd.PassThrough, cmd.Flags)
 	}
-	if WantsHelp(args, true, cmd.AllFlags()) || len(args) == 0 {
+	if WantsHelp(args, true, cmd.AllFlags()) {
 		return true
+	}
+	if len(args) == 0 {
+		return cmd.Run == nil
 	}
 	child := cmd.Child(args[0])
 	return child != nil && InvocationWantsHelp(child, args[1:])
@@ -33,7 +36,11 @@ func (c *Cmd) PrintHelp(output io.Writer, path string) {
 	var text strings.Builder
 	fmt.Fprintf(&text, "%s %s", ui.Bold("Usage:"), path)
 	if len(c.Children) > 0 {
-		fmt.Fprintf(&text, " %s", ui.Dim("<command>"))
+		command := "<command>"
+		if c.Run != nil {
+			command = "[command]"
+		}
+		fmt.Fprintf(&text, " %s", ui.Dim(command))
 	}
 	if c.Args != "" {
 		fmt.Fprintf(&text, " %s", ui.Dim(c.Args))
@@ -131,6 +138,9 @@ func DimHelpSyntax(value string, style func(string) string) string {
 
 func ArgSynopsis(command *Cmd) string {
 	if len(command.Children) > 0 {
+		if command.Run != nil {
+			return "[command]"
+		}
 		return "<command>"
 	}
 	return command.Args

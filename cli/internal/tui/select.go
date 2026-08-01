@@ -16,6 +16,7 @@ type SelectItem struct {
 	Label       string // machine value, e.g. a capability id "wasi:stdio"
 	Description string // one-line human description (may be empty)
 	On          bool   // currently selected
+	Disabled    bool   // visible preview row that cannot be toggled or selected
 }
 
 // selectKey is a normalized keypress the model understands.
@@ -80,23 +81,32 @@ func (m *MultiSelect) apply(k selectKey) (done, cancelled bool) {
 			m.Cursor++
 		}
 	case keyToggle:
-		if len(m.Items) > 0 {
+		if len(m.Items) > 0 && !m.Items[m.Cursor].Disabled {
 			m.Items[m.Cursor].On = !m.Items[m.Cursor].On
 		}
 	case keyAll:
-		allSelected := len(m.Items) > 0
+		allSelected, selectable := true, false
 		for _, item := range m.Items {
+			if item.Disabled {
+				continue
+			}
+			selectable = true
 			if !item.On {
 				allSelected = false
 				break
 			}
 		}
+		allSelected = allSelected && selectable
 		for i := range m.Items {
-			m.Items[i].On = !allSelected
+			if !m.Items[i].Disabled {
+				m.Items[i].On = !allSelected
+			}
 		}
 	case keyClear:
 		for i := range m.Items {
-			m.Items[i].On = false
+			if !m.Items[i].Disabled {
+				m.Items[i].On = false
+			}
 		}
 	case keyReject: // clear all, then submit — a deliberate "grant nothing"
 		for i := range m.Items {
@@ -115,7 +125,7 @@ func (m *MultiSelect) apply(k selectKey) (done, cancelled bool) {
 func (m *MultiSelect) Chosen() []string {
 	var out []string
 	for _, it := range m.Items {
-		if it.On {
+		if it.On && !it.Disabled {
 			out = append(out, it.Label)
 		}
 	}
@@ -194,12 +204,18 @@ func (m *MultiSelect) frame() string {
 			cursor = ui.Cyan("› ")
 		}
 		mark := "○"
-		if it.On {
+		if it.Disabled {
+			mark = ui.Dim("◌")
+		} else if it.On {
 			mark = ui.Cyan("◉")
 		} else if i == m.Cursor {
 			mark = ui.Cyan(mark)
 		}
-		line := fmt.Sprintf("%s%s %-*s", cursor, mark, labelW, it.Label)
+		label := it.Label
+		if it.Disabled {
+			label = ui.Dim(label)
+		}
+		line := fmt.Sprintf("%s%s %-*s", cursor, mark, labelW, label)
 		if it.Description != "" {
 			line += "  " + ui.Dim(it.Description)
 		}

@@ -16,7 +16,19 @@ func (c *Cmd) Dispatch(path string, args []string) {
 		if err != nil {
 			ui.Usage("%s: %v", c.Label(path), err)
 		}
-		if WantsHelp(args, true, c.Flags) || len(args) == 0 {
+		if WantsHelp(args, true, c.Flags) {
+			c.PrintHelp(os.Stdout, path)
+			return
+		}
+		if c.Run != nil && (len(args) == 0 || args[0] == "" || args[0][0] == '-') {
+			ctx, err := c.Parse(path, args)
+			if err != nil {
+				ui.Usage("%s: %v", c.Label(path), err)
+			}
+			c.Run(ctx)
+			return
+		}
+		if len(args) == 0 {
 			c.PrintHelp(os.Stdout, path)
 			return
 		}
