@@ -122,10 +122,11 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   Warmed recursive Throughput/Tiny collection remains allocation-free by using a
   direct immutable-root visitor. Polymorphic local `call_indirect` and same-domain
   foreign `call_ref` now publish every internal/wrapper/cross-instance return path,
-  including the wrapper save-area stack adjustment. Exact imported `ref.func`
-  provenance performs a discarded-frame cross-instance `return_call_ref` through
-  the bounded tail transfer. Polymorphic foreign tails and other shapes with
-  unproved ownership remain fail-closed.
+  including the wrapper save-area stack adjustment. Descriptor-resolved
+  `return_call_ref` performs bounded discarded-frame transfer to local internal,
+  host-wrapper, and retained same-Runtime cross-instance targets, including mutable
+  and imported funcref-table loads. GC-bearing typed tails require exact equal
+  collector-domain identities; host and foreign-domain GC transfers remain fail-closed.
 - [x] **Shared GC globals:** imported/exported mutable and immutable collector-reference
   globals share canonical structurally compatible Runtime domains. Collection scans every live alias
   cell directly, checked slots preserve barrier/card state, and rollback, codec,
@@ -155,10 +156,12 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   member slice only after graph reconstruction; any failure closes the unpublished domain.
   The `WGDN` v2 blob (retaining v1 load compatibility) persists compiled members, exact
   GC configuration, imports, aliases, cycles, sharing, heterogeneous canonical types,
-  and dropped passive-element lifecycle state; restore requires a Runtime without
-  an existing live GC domain. Live public GC tokens, active calls,
-  external imports, shared or memory64 memories, opaque references, live passive
-  elements, incomplete member sets, and cyclic instantiation graphs reject before publication.
+  and passive-element lifecycle/payload state; restore requires a Runtime without
+  an existing live GC domain. Live passive payloads are admitted when each value is a
+  reconstructible funcref, immediate i31, or null reference. Live public GC tokens,
+  active calls, external imports, shared or memory64 memories, opaque externrefs,
+  unsupported non-null collector payloads, global-dependent element expressions,
+  incomplete member sets, and cyclic instantiation graphs reject before publication.
   Same-domain imported memory32 and exception-tag aliases now preserve their exact owner
   and identity; memory links also preserve grown size and bytes. Completed EH state needs
   no extra mutable snapshot payload and restores through the compiled member.

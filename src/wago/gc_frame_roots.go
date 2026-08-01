@@ -102,69 +102,60 @@ func validCompiledGCFunctionTables(c *Compiled) bool {
 	if c == nil {
 		return false
 	}
-	if !c.HasTable {
-		if len(c.Elems) != 0 {
-			return false
-		}
-		for i := range c.passiveElems {
-			elem := &c.passiveElems[i]
-			if (elem.Mode != ElemModeDeclarative && elem.Mode != ElemModePassive) || normalizedElemRefType(elem.RefType) != ValFuncRef {
+	totalFuncs := c.NumImports + len(c.Funcs)
+	validValues := func(refType ValType, values []RefInit) bool {
+		refType = normalizedElemRefType(refType)
+		for _, value := range values {
+			if value.HasGlobal {
 				return false
 			}
-			for _, value := range elem.Values {
-				if value.HasGlobal || (!value.Null && int(value.FuncIndex) >= c.NumImports+len(c.Funcs)) {
+			if refType == ValFuncRef {
+				if !value.Null && int(value.FuncIndex) >= totalFuncs {
 					return false
 				}
+				continue
+			}
+			if refType == ValI31Ref {
+				if !value.Null && value.FuncIndex&1 == 0 {
+					return false
+				}
+				continue
+			}
+			if !isGCRefValType(refType) || !value.Null {
+				return false
 			}
 		}
 		return true
 	}
-	collectorTables := c.tableCount() != 0
 	for tableIndex := 0; tableIndex < c.tableCount(); tableIndex++ {
-		if !isGCRefValType(c.tableElementType(tableIndex)) {
-			collectorTables = false
-			break
-		}
-	}
-	if collectorTables {
-		if len(c.passiveElems) != 0 {
+		typ := c.tableElementType(tableIndex)
+		if typ != ValFuncRef && !isGCRefValType(typ) {
 			return false
 		}
-		for i := range c.Elems {
-			elem := &c.Elems[i]
-			if elem.Mode != ElemModeActive || int(elem.TableIndex) >= c.tableCount() || normalizedElemRefType(elem.RefType) != c.tableElementType(int(elem.TableIndex)) {
+		if tableIndex == 0 {
+			if c.HasTableInitFunc && (typ != ValFuncRef || int(c.TableInitFunc) >= totalFuncs) {
 				return false
 			}
-			for _, value := range elem.Values {
-				if value.HasGlobal || !value.Null {
-					return false
-				}
-			}
+			continue
 		}
-		return true
-	}
-	if c.tableImport != "" || len(c.tableExports) != 0 || len(c.passiveElems) != 0 || (c.TableType != 0 && c.TableType != ValFuncRef) {
-		return false
-	}
-	if c.HasTableInitFunc && int(c.TableInitFunc) >= c.NumImports+len(c.Funcs) {
-		return false
-	}
-	for i := range c.extraTables {
-		table := &c.extraTables[i]
-		if table.ImportKey != "" || table.Type != ValFuncRef || table.HasInitFunc && int(table.InitFunc) >= c.NumImports+len(c.Funcs) {
+		table := &c.extraTables[tableIndex-1]
+		if table.HasInitFunc && (typ != ValFuncRef || int(table.InitFunc) >= totalFuncs) {
 			return false
 		}
 	}
 	for i := range c.Elems {
 		elem := &c.Elems[i]
-		refType := normalizedElemRefType(elem.RefType)
-		if elem.Mode != ElemModeActive || int(elem.TableIndex) >= c.tableCount() || refType != ValFuncRef {
+		if elem.Mode != ElemModeActive || int(elem.TableIndex) >= c.tableCount() {
 			return false
 		}
-		for _, value := range elem.Values {
-			if value.HasGlobal || (!value.Null && int(value.FuncIndex) >= c.NumImports+len(c.Funcs)) {
-				return false
-			}
+		if normalizedElemRefType(elem.RefType) != c.tableElementType(int(elem.TableIndex)) || !validValues(elem.RefType, elem.Values) {
+			return false
+		}
+	}
+	for i := range c.passiveElems {
+		elem := &c.passiveElems[i]
+		if (elem.Mode != ElemModeDeclarative && elem.Mode != ElemModePassive) || !validValues(elem.RefType, elem.Values) {
+			return false
 		}
 	}
 	return true

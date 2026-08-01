@@ -452,6 +452,23 @@ func (f *fn) emitTailDynamicImportJump(ft *wasm.CompType, b ImportBinding) error
 	return nil
 }
 
+func arm64FuncTypeCarriesGCRefs(m *wasm.Module, ft *wasm.CompType) bool {
+	if ft == nil {
+		return false
+	}
+	for _, typ := range ft.Params {
+		if arm64GCFrameRefType(m, typ) {
+			return true
+		}
+	}
+	for _, typ := range ft.Results {
+		if arm64GCFrameRefType(m, typ) {
+			return true
+		}
+	}
+	return false
+}
+
 func (f *fn) returnCallRef(r *wasm.Reader) error {
 	typeIdx, err := r.U32()
 	if err != nil {
@@ -492,6 +509,10 @@ func (f *fn) returnCallRef(r *wasm.Reader) error {
 		}
 		return f.opReturn()
 	}
+
+	if slots := funcTypeSlots(ft.Params); slots > abi.TailArgsSlots {
+		return fmt.Errorf("return_call_ref: type %d requires %d wrapper argument slots, limit %d", typeIdx, slots, abi.TailArgsSlots)
+	}
 	ref := f.materialize(refValue)
 	f.pinned = f.pinned.add(ref)
 	f.cmpImm(ref, 0, true)
@@ -503,37 +524,161 @@ func (f *fn) returnCallRef(r *wasm.Reader) error {
 	f.checkCallType(ref, runtime.TableEntrySigKeyOffset, canon, maskOf(ref, code))
 	home := f.allocReg(maskOf(ref, code))
 	f.ld64(home, ref, runtime.TableEntryHomeLinMemOffset)
-	kind := f.descriptorEntryKind(home, maskOf(ref, code, home))
-	f.stripDescriptorHomeTags(home)
-	f.cmpRR(home, linMemReg, true)
-	f.trapIf(condNE, trapIndirectSig)
-	wantKind := uint32(abi.FuncRefLocalWrapperTagValue)
-	registerTail := regABIEnabled && sigFitsRegABI(ft)
-	if registerTail {
-		wantKind = uint32(abi.FuncRefInternalTagValue)
+	targetContext := f.allocReg(maskOf(ref, code, home))
+	f.ld64(targetContext, ref, runtime.FuncRefContextOffset)
+	f.cmpImm(targetContext, 0, true)
+	f.trapIf(condE, trapTailUnsupported)
+	if arm64FuncTypeCarriesGCRefs(f.m, ft) {
+		targetDomain := f.allocReg(maskOf(ref, code, home, targetContext))
+		f.ld64(targetDomain, targetContext, runtime.InstanceContextGCDomainOffset)
+		f.cmpImm(targetDomain, 0, true)
+		f.trapIf(condE, trapTailUnsupported)
+		callerDesc := f.allocReg(maskOf(ref, code, home, targetContext, targetDomain))
+		f.ld64(callerDesc, linMemReg, -int32(offFuncRefDescPtr))
+		f.cmpImm(callerDesc, 0, true)
+		f.trapIf(condE, trapTailUnsupported)
+		f.ld64(callerDesc, callerDesc, runtime.FuncRefContextOffset)
+		f.ld64(callerDesc, callerDesc, runtime.InstanceContextGCDomainOffset)
+		f.cmpRR(targetDomain, callerDesc, true)
+		f.release(callerDesc)
+		f.release(targetDomain)
+		f.trapIf(condNE, trapTailUnsupported)
 	}
-	f.cmpImm(kind, wantKind, true)
-	f.trapIf(condNE, trapIndirectSig)
-	f.release(kind)
-	f.release(home)
 	f.pinned = f.pinned.remove(ref)
 	f.release(ref)
-	f.st64(linMemReg, -int32(offSpillRegion), code)
+
+	roots := f.rootsBottomToTop()
+	types := make([]machineType, len(roots))
+	gcRoots := gcRootFlags(roots)
+	for i, root := range roots {
+		types[i] = rootMachineType(root)
+	}
+	f.pinned = f.pinned.add(code).add(home).add(targetContext)
+	f.flush()
+	savedLocals := append([]localDef(nil), f.locals...)
+	kind := f.descriptorEntryKind(home, maskOf(code, home, targetContext))
+	f.stripDescriptorHomeTags(home)
+	f.a.MovReg64(X17, code)
+	f.a.MovReg64(X10, home)
+	f.a.MovReg64(X11, targetContext)
+	f.a.MovReg64(X13, kind)
+	f.pinned = f.pinned.remove(code).remove(home).remove(targetContext)
 	f.release(code)
-	jump := func() {
-		f.ld64(X16, linMemReg, -int32(offSpillRegion))
-		f.a.Br(X16)
-	}
+	f.release(home)
+	f.release(targetContext)
+	f.release(kind)
+
+	registerTail := regABIEnabled && sigFitsRegABI(ft)
 	if registerTail {
-		f.emitTailRegisterJump(ft, jump)
-	} else {
-		if slots := funcTypeSlots(ft.Params); slots > abi.TailArgsSlots {
-			return fmt.Errorf("return_call_ref: type %d requires %d wrapper argument slots, limit %d", typeIdx, slots, abi.TailArgsSlots)
-		}
-		f.emitTailWrapperJump(ft, jump)
+		f.cmpImm(X13, uint32(abi.FuncRefInternalTagValue), true)
+		wrapper := f.a.Bcond(condNE)
+		f.cmpRR(X10, linMemReg, true)
+		f.trapIf(condNE, trapTailUnsupported)
+		f.emitTailRegisterJump(ft, func() { f.a.Br(X17) })
+
+		f.a.PatchBranch19(wrapper, f.a.Len())
+		f.locals = savedLocals
+		f.setDepthTypesWithGCRoots(types, gcRoots)
 	}
+	f.validateWrapperDescriptor(X13, X10)
+	if arm64FuncTypeCarriesGCRefs(f.m, ft) {
+		f.cmpImm(X13, uint32(abi.FuncRefHostThunkTagValue), true)
+		f.trapIf(condE, trapTailUnsupported)
+	}
+	f.emitTailDescriptorWrapperJump(ft)
 	f.unreachable = true
 	return nil
+}
+
+// emitTailDescriptorWrapperJump transfers the current activation through the
+// descriptor target held in X17(code), X10(home linmem), and X11(context). It
+// uses one fixed nested return record and therefore remains stack-bounded across
+// arbitrary mutable-table and imported-reference tail chains.
+func (f *fn) emitTailDescriptorWrapperJump(ft *wasm.CompType) {
+	p := len(ft.Params)
+	roots := f.rootsBottomToTop()
+	types := make([]machineType, len(roots))
+	for i, root := range roots {
+		types[i] = rootMachineType(root)
+	}
+	f.flush()
+	f.storePinnedGlobals(false)
+	f.storeModuleGlobals(X16)
+
+	f.ld64(X12, linMemReg, -int32(offFuncRefDescPtr))
+	f.ld64(X12, X12, runtime.FuncRefContextOffset)
+	f.a.MovReg64(X0, X10)
+	f.leaDisp(X0, X0, -int32(abi.TailArgsOffset), true)
+	argBase := len(types) - p
+	dstSlot := 0
+	for i, typ := range ft.Params {
+		srcSlot := slotOfLogicalTypes(types, argBase+i)
+		n := mtOf(typ).stackSlots()
+		for j := 0; j < n; j++ {
+			f.ld64(X16, SP, f.spillOff(srcSlot+j))
+			f.st64(X0, int32((dstSlot+j)*8), X16)
+		}
+		dstSlot += n
+	}
+	f.emitTailFrameRelease()
+
+	transfer := func() {
+		f.copyInstanceContext(X10, X11)
+		f.ld64(X9, linMemReg, -int32(offTrapHandlerPtr))
+		f.st64(X10, -int32(offTrapHandlerPtr), X9)
+		f.ld64(X9, linMemReg, -int32(offTrapStackReentry))
+		f.st64(X10, -int32(offTrapStackReentry), X9)
+		f.ld64(X9, linMemReg, -int32(offStackFence))
+		f.st64(X10, -int32(offStackFence), X9)
+		f.ld64(X9, linMemReg, -int32(offTrapCellPtr))
+		f.st64(X10, -int32(offTrapCellPtr), X9)
+		f.a.MovReg64(X0, X10)
+		f.leaDisp(X0, X0, -int32(abi.TailArgsOffset), true)
+		f.a.MovReg64(X1, X10)
+		f.ld64(X2, X10, -int32(offTrapCellPtr))
+		f.a.Br(X17)
+	}
+
+	adapterPC := f.a.Adr(X16)
+	f.a.PatchAdr(adapterPC, f.adapterReturnOff)
+	f.cmpRR(LR, X16, true)
+	nested := f.a.Bcond(condNE)
+	f.a.LdpPost(LR, X3, SP, 16)
+	transfer()
+
+	f.a.PatchBranch19(nested, f.a.Len())
+	f.a.SubSP64(64)
+	f.st64(SP, 0, LR)
+	f.st64(SP, 8, linMemReg)
+	f.st64(SP, 16, X12)
+	f.a.LeaSP(X3, 32)
+	trampolineADR := f.a.Adr(LR)
+	transfer()
+
+	trampoline := f.a.Len()
+	f.a.PatchAdr(trampolineADR, trampoline)
+	f.ld64(LR, SP, 0)
+	f.ld64(X10, SP, 8)
+	f.ld64(X11, SP, 16)
+	f.copyInstanceContext(X10, X11)
+	f.a.MovReg64(linMemReg, X10)
+	if f.memSizeReg != regNone {
+		f.ld32(f.memSizeReg, linMemReg, -bdCurBytes)
+	}
+	f.deriveModuleGlobals()
+	f.derivePinnedGlobals()
+	if len(ft.Results) > 0 {
+		if isFloatValType(ft.Results[0]) {
+			f.fld(0, SP, 32, wasm.EqualValType(ft.Results[0], wasm.F64))
+		} else {
+			f.ld64(X0, SP, 32)
+		}
+	}
+	if len(ft.Results) > 1 {
+		f.ld64(X1, SP, 40)
+	}
+	f.a.AddSP64(64)
+	f.a.Ret()
 }
 
 func (f *fn) returnCallIndirect(r *wasm.Reader) error {

@@ -19,14 +19,8 @@ func newGCFrameRootPlan(m *wasm.Module, genericGC bool) *shared.GCModuleFrameRoo
 	if !genericGC || m == nil || len(m.Code) == 0 || m.Start != nil {
 		return nil
 	}
-	tablesSafe, collectorTable := gcFrameTablesSafe(m)
-	if !tablesSafe {
+	if !gcFrameTablesSafe(m) {
 		return nil
-	}
-	for i := range m.Globals {
-		if frameFunctionRefType(m, m.Globals[i].Type.Type) {
-			return nil
-		}
 	}
 	funcImport := uint32(0)
 	for i := range m.Imports {
@@ -39,11 +33,12 @@ func newGCFrameRootPlan(m *wasm.Module, genericGC bool) *shared.GCModuleFrameRoo
 			}
 		case wasm.ExternGlobal:
 			global := m.Imports[i].Type.Global
-			if !collectorFrameRefType(m, global.Type) || frameFunctionRefType(m, global.Type) {
+			if !collectorFrameRefType(m, global.Type) && !frameFunctionRefType(m, global.Type) {
 				return nil
 			}
 		case wasm.ExternTable:
-			if !collectorFrameRefType(m, wasm.RefVal(m.Imports[i].Type.Table.Ref)) {
+			tableType := wasm.RefVal(m.Imports[i].Type.Table.Ref)
+			if !collectorFrameRefType(m, tableType) && !frameFunctionRefType(m, tableType) {
 				return nil
 			}
 		case wasm.ExternMem:
@@ -75,22 +70,12 @@ func newGCFrameRootPlan(m *wasm.Module, genericGC bool) *shared.GCModuleFrameRoo
 	modulePlan := &shared.GCModuleFrameRootPlan{Functions: make([]*shared.GCFrameRootPlan, len(m.Code))}
 	var safepointBase uint32
 	for function := range m.Code {
-		if bodyHasUnsupportedNativeFrames(m, m.Code[function].BodyBytes, importedFunctions, len(m.Code), collectorTable) {
+		if bodyHasUnsupportedNativeFrames(m, m.Code[function].BodyBytes, importedFunctions, len(m.Code)) {
 			return nil
 		}
 		ft, ok := m.LocalFuncType(function)
 		if !ok {
 			return nil
-		}
-		for _, t := range ft.Params {
-			if frameFunctionRefType(m, t) {
-				return nil
-			}
-		}
-		for _, t := range ft.Results {
-			if frameFunctionRefType(m, t) {
-				return nil
-			}
 		}
 		plan := &shared.GCFrameRootPlan{Candidate: true, Exact: true, SafepointBase: safepointBase, FixedOffsets: fixedRoots[function]}
 		slot, local := 0, uint32(0)
@@ -146,121 +131,88 @@ func newGCFrameRootPlan(m *wasm.Module, genericGC bool) *shared.GCModuleFrameRoo
 	return modulePlan
 }
 
-func gcFrameTablesSafe(m *wasm.Module) (safe, collector bool) {
-	if m.TableCount() == 0 {
-		for i := range m.Elements {
-			e := &m.Elements[i]
-			if (e.Mode.Kind != wasm.ElemDeclarative && e.Mode.Kind != wasm.ElemPassive) || e.Kind.Kind != wasm.ElemFuncs {
-				return false, false
-			}
-			for _, idx := range e.Kind.Funcs {
-				if int(idx) < m.ImportedFuncCount() || int(idx)-m.ImportedFuncCount() >= len(m.Code) {
-					return false, false
-				}
-			}
-		}
-		return true, false
+func gcFrameTablesSafe(m *wasm.Module) bool {
+	if m == nil {
+		return false
 	}
-	collectorTables := true
+	totalFuncs := m.ImportedFuncCount() + len(m.Code)
+	functionIndexOK := func(index uint32) bool { return int(index) < totalFuncs }
+	tableKinds := make([]uint8, m.TableCount()) // 1=funcref, 2=collector ref
 	for tableIndex := 0; tableIndex < m.TableCount(); tableIndex++ {
 		tableType, ok := m.TableType(uint32(tableIndex))
-		if !ok || !collectorFrameRefType(m, wasm.RefVal(tableType.Ref)) {
-			collectorTables = false
-			break
+		if !ok {
+			return false
+		}
+		typ := wasm.RefVal(tableType.Ref)
+		switch {
+		case frameFunctionRefType(m, typ):
+			tableKinds[tableIndex] = 1
+		case collectorFrameRefType(m, typ):
+			tableKinds[tableIndex] = 2
+		default:
+			return false
 		}
 	}
-	if collectorTables {
-		for i := range m.Tables {
-			if m.Tables[i].Init == nil {
-				continue
-			}
-			ee, err := wasm.ParseElementExpr(*m.Tables[i].Init)
-			if err != nil || ee.HasGlobal || !ee.Null {
-				return false, false
-			}
+	for i := range m.Tables {
+		if m.Tables[i].Init == nil {
+			continue
 		}
-		for i := range m.Elements {
-			e := &m.Elements[i]
-			if e.Mode.Kind != wasm.ElemActive || int(e.Mode.Table) >= m.TableCount() || e.Kind.Kind == wasm.ElemFuncs {
-				return false, false
-			}
-			for _, expr := range e.Kind.Exprs {
-				ee, err := wasm.ParseElementExpr(expr)
-				if err != nil || ee.HasGlobal || !ee.Null {
-					return false, false
-				}
-			}
-		}
-		return true, true
-	}
-	if m.ImportedTableCount() != 0 || len(m.Tables) != 1 {
-		return false, false
-	}
-	for _, export := range m.Exports {
-		if export.Index.Kind == wasm.ExternTable {
-			return false, false
-		}
-	}
-	ref := m.Tables[0].Type.Ref
-	functionTable := ref.Heap.Kind == wasm.HeapAbs && (ref.Heap.Abs == wasm.HeapFunc || ref.Heap.Abs == wasm.HeapNoFunc)
-	collectorTable := collectorFrameRefType(m, wasm.RefVal(ref))
-	if !functionTable && !collectorTable {
-		return false, false
-	}
-	if init := m.Tables[0].Init; init != nil {
-		ee, err := wasm.ParseElementExpr(*init)
-		if err != nil || ee.HasGlobal || (functionTable && !ee.Null && (int(ee.FuncIndex) < m.ImportedFuncCount() || int(ee.FuncIndex)-m.ImportedFuncCount() >= len(m.Code))) || (collectorTable && !ee.Null) {
-			return false, false
+		ee, err := wasm.ParseElementExpr(*m.Tables[i].Init)
+		kind := tableKinds[m.ImportedTableCount()+i]
+		if err != nil || ee.HasGlobal || (!ee.Null && (kind != 1 || !functionIndexOK(ee.FuncIndex))) {
+			return false
 		}
 	}
 	for i := range m.Elements {
 		e := &m.Elements[i]
-		if e.Mode.Kind != wasm.ElemActive || e.Mode.Table != 0 {
-			return false, false
+		if e.Mode.Kind != wasm.ElemActive && e.Mode.Kind != wasm.ElemPassive && e.Mode.Kind != wasm.ElemDeclarative {
+			return false
 		}
-		if collectorTable {
-			for _, expr := range e.Kind.Exprs {
-				ee, err := wasm.ParseElementExpr(expr)
-				if err != nil || ee.HasGlobal || !ee.Null {
-					return false, false
-				}
+		kind := uint8(0)
+		if e.Mode.Kind == wasm.ElemActive {
+			if int(e.Mode.Table) >= len(tableKinds) {
+				return false
 			}
-			if e.Kind.Kind == wasm.ElemFuncs {
-				return false, false
+			kind = tableKinds[e.Mode.Table]
+		} else if e.Kind.Kind == wasm.ElemFuncs || frameFunctionRefType(m, wasm.RefVal(e.Kind.Ref)) {
+			kind = 1
+		} else if collectorFrameRefType(m, wasm.RefVal(e.Kind.Ref)) {
+			kind = 2
+		} else {
+			return false
+		}
+		if e.Kind.Kind == wasm.ElemFuncs {
+			if kind != 1 {
+				return false
+			}
+			for _, index := range e.Kind.Funcs {
+				if !functionIndexOK(uint32(index)) {
+					return false
+				}
 			}
 			continue
 		}
-		switch e.Kind.Kind {
-		case wasm.ElemFuncs:
-			for _, idx := range e.Kind.Funcs {
-				if int(idx) < m.ImportedFuncCount() || int(idx)-m.ImportedFuncCount() >= len(m.Code) {
-					return false, false
-				}
+		for _, expr := range e.Kind.Exprs {
+			if kind == 2 && e.Kind.Ref.Heap.Kind == wasm.HeapAbs && e.Kind.Ref.Heap.Abs == wasm.HeapI31 {
+				// Validation and compileElemValues already proved each expression is
+				// an exact immediate i31; it carries no collector object root.
+				continue
 			}
-		default:
-			for _, expr := range e.Kind.Exprs {
-				ee, err := wasm.ParseElementExpr(expr)
-				if err != nil || ee.HasGlobal || (!ee.Null && (int(ee.FuncIndex) < m.ImportedFuncCount() || int(ee.FuncIndex)-m.ImportedFuncCount() >= len(m.Code))) {
-					return false, false
-				}
+			ee, err := wasm.ParseElementExpr(expr)
+			if err != nil || ee.HasGlobal || (!ee.Null && (kind != 1 || !functionIndexOK(ee.FuncIndex))) {
+				return false
 			}
 		}
 	}
-	return true, collectorTable
+	return true
 }
 
-func bodyHasUnsupportedNativeFrames(m *wasm.Module, body []byte, importedFunctions, localFunctions int, collectorTable bool) bool {
+func bodyHasUnsupportedNativeFrames(m *wasm.Module, body []byte, importedFunctions, localFunctions int) bool {
 	r := wasm.NewReader(body)
 	for r.HasNext() {
 		op, err := r.Byte()
 		if err != nil {
 			return true
-		}
-		switch op {
-		case 0x26: // table.set invalidates local function-target identity
-			if !collectorTable {
-				return true
-			}
 		}
 		imm, err := wasm.ClassifyInstructionImmediate(r, op)
 		if err != nil {
@@ -272,12 +224,6 @@ func bodyHasUnsupportedNativeFrames(m *wasm.Module, body []byte, importedFunctio
 		if op == 0x14 || op == 0x15 {
 			ft, ok := m.TypeFunc(imm.Index)
 			if !ok || !gcFrameCallABI(m, ft) {
-				return true
-			}
-		}
-		if op == 0xfc && !collectorTable {
-			switch imm.Subopcode {
-			case 12, 14, 15, 17: // table.init/copy/grow/fill
 				return true
 			}
 		}
@@ -357,7 +303,7 @@ func gcFrameCallABI(m *wasm.Module, ft *wasm.CompType) bool {
 	gp, fp := 0, 0
 	for _, t := range ft.Params {
 		switch {
-		case wasm.EqualValType(t, wasm.I32), wasm.EqualValType(t, wasm.I64), collectorFrameRefType(m, t):
+		case wasm.EqualValType(t, wasm.I32), wasm.EqualValType(t, wasm.I64), collectorFrameRefType(m, t), frameFunctionRefType(m, t):
 			gp++
 		case wasm.EqualValType(t, wasm.F32), wasm.EqualValType(t, wasm.F64):
 			fp++
@@ -369,12 +315,12 @@ func gcFrameCallABI(m *wasm.Module, ft *wasm.CompType) bool {
 		return false
 	}
 	for _, t := range ft.Results {
-		if !wasm.EqualValType(t, wasm.I32) && !wasm.EqualValType(t, wasm.I64) && !wasm.EqualValType(t, wasm.F32) && !wasm.EqualValType(t, wasm.F64) && !collectorFrameRefType(m, t) {
+		if !wasm.EqualValType(t, wasm.I32) && !wasm.EqualValType(t, wasm.I64) && !wasm.EqualValType(t, wasm.F32) && !wasm.EqualValType(t, wasm.F64) && !collectorFrameRefType(m, t) && !frameFunctionRefType(m, t) {
 			return false
 		}
 	}
 	integerResult := func(t wasm.ValType) bool {
-		return wasm.EqualValType(t, wasm.I32) || wasm.EqualValType(t, wasm.I64) || collectorFrameRefType(m, t)
+		return wasm.EqualValType(t, wasm.I32) || wasm.EqualValType(t, wasm.I64) || collectorFrameRefType(m, t) || frameFunctionRefType(m, t)
 	}
 	return len(ft.Results) != 2 || (integerResult(ft.Results[0]) && integerResult(ft.Results[1]))
 }

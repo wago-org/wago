@@ -112,6 +112,7 @@ type instanceBuilder struct {
 
 	collector           *gc.Collector
 	collectorShared     bool
+	gcDomainID          uint64
 	gcTypeMap           *gcTypeMapping
 	success             bool
 	registeredInstance  *Instance
@@ -197,6 +198,13 @@ func (b *instanceBuilder) prepareCollector() error {
 		}
 		b.collector = collector
 		b.collectorShared = true
+		b.gcDomainID = b.opts.store.gcDomainIdentity(collector)
+		if b.gcDomainID == 0 {
+			b.opts.store.releaseUnclaimedGCCollector(collector)
+			b.collector = nil
+			b.collectorShared = false
+			return fmt.Errorf("wago: Runtime GC domain has no native identity")
+		}
 		b.gcTypeMap = mapping
 		return nil
 	}
@@ -205,6 +213,7 @@ func (b *instanceBuilder) prepareCollector() error {
 		return err
 	}
 	b.collector = collector
+	b.gcDomainID = newGCDomainIdentity()
 	return nil
 }
 
@@ -1195,6 +1204,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		tableDescPtr = uintptr(unsafe.Pointer(&tableDesc[0]))
 	}
 	jm.CaptureInstanceContextBytes(nativeContext)
+	binary.LittleEndian.PutUint64(nativeContext[runtime.InstanceContextGCDomainOffset:], b.gcDomainID)
 	in := &Instance{
 		c: c, eng: eng, jm: jm, memory: memObj, ownsMem: ownsMem, ar: ar, base: base, hosts: imports.hostFuncs(), imports: imports, hostLog: hostLog, syncMode: syncMode, ctrl: ctrl, syncHosts: syncHosts, globals: globals, globalCells: globalCells, tableDescPtr: tableDescPtr, tableDescLen: len(tableDesc), funcRefDescs: funcRefDescs, passiveDataDesc: passiveDataDesc, thunkMem: thunkMem, gc: b.collector, gcTypeMap: b.gcTypeMap,
 		serArgs: serArgs, results: results, trap: trap, resultVals: make([]uint64, c.maxResultSlots), rt: opts.runtime,

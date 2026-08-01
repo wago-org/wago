@@ -75,15 +75,6 @@ const (
 	TailArgsOffset = 272
 	TailArgsSlots  = 16
 
-	// TailCrossCodeOffset, TailCrossHomeOffset, and TailCrossContextOffset are
-	// scratch slots at the high end of the wrapper-tail bank. A register-ABI
-	// return_call_ref uses them only while transferring a root adapter or one fixed
-	// nested return context into a retained cross-instance wrapper; wrapper-tail
-	// and cross-tail contexts are mutually exclusive.
-	TailCrossCodeOffset    = 152
-	TailCrossHomeOffset    = 160
-	TailCrossContextOffset = 168
-
 	// EHHandlerPtrOffset is retained as the cold-path reset slot for staged
 	// exception handling. Native amd64 execution carries the active handler in
 	// RBP so concurrent cross-instance throws do not share mutable basedata state.

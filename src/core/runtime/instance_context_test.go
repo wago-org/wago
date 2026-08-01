@@ -3,10 +3,37 @@
 package runtime
 
 import (
+	"encoding/binary"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/runtime/abi"
 )
+
+func TestInstanceContextBytesReserveNativeTailMetadata(t *testing.T) {
+	jm, err := NewJobMemory(65536)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer jm.Close()
+	buf := make([]byte, InstanceContextBytes)
+	for i := range buf {
+		buf[i] = 0xff
+	}
+	jm.CaptureInstanceContextBytes(buf)
+	for i, value := range buf[InstanceContextGCDomainOffset:] {
+		if value != 0 {
+			t.Fatalf("native context metadata byte %d = %#x, want zero", i, value)
+		}
+	}
+	binary.LittleEndian.PutUint64(buf[InstanceContextGCDomainOffset:], 7)
+	binary.LittleEndian.PutUint64(buf[InstanceContextTailCodeOffset:], 11)
+	binary.LittleEndian.PutUint64(buf[InstanceContextTailHomeOffset:], 13)
+	binary.LittleEndian.PutUint64(buf[InstanceContextTailTargetCtxOffset:], 17)
+	jm.BindInstanceContextBytes(buf)
+	if got := binary.LittleEndian.Uint64(buf[InstanceContextGCDomainOffset:]); got != 7 {
+		t.Fatalf("binding pointer context rewrote GC domain metadata: %d", got)
+	}
+}
 
 func TestInstanceContextRoundTripLeavesMemoryAndInvocationState(t *testing.T) {
 	jm, err := NewJobMemoryGrowable(65536, 4*65536)

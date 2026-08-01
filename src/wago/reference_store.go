@@ -8,6 +8,7 @@ import (
 	"math/bits"
 	"reflect"
 	"sync"
+	"sync/atomic"
 	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
@@ -46,6 +47,7 @@ type referenceStore struct {
 // recursive structural identities before they enter this collector.
 type gcStoreDomain struct {
 	mu        sync.Mutex
+	id        uint64
 	collector *gc.Collector
 	config    gc.Config
 	types     []gc.TypeDesc
@@ -53,6 +55,16 @@ type gcStoreDomain struct {
 	refs      uint32
 	claims    uint32 // prepared instantiations not yet registered
 	next      *gcStoreDomain
+}
+
+var nextGCDomainIdentity atomic.Uint64
+
+func newGCDomainIdentity() uint64 {
+	id := nextGCDomainIdentity.Add(1)
+	if id == 0 {
+		panic("wago: GC domain identity space exhausted")
+	}
+	return id
 }
 
 type referenceStoreInstance struct {
@@ -358,6 +370,20 @@ func (s *referenceStore) ownsGCCollector(collector *gc.Collector) bool {
 	return false
 }
 
+func (s *referenceStore) gcDomainIdentity(collector *gc.Collector) uint64 {
+	if s == nil || collector == nil {
+		return 0
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for domain := s.gcDomains; domain != nil; domain = domain.next {
+		if domain.collector == collector {
+			return domain.id
+		}
+	}
+	return 0
+}
+
 func (s *referenceStore) lockGCCollector(collector *gc.Collector) *gcStoreDomain {
 	if s == nil || collector == nil {
 		return nil
@@ -551,7 +577,7 @@ func (s *referenceStore) acquireGCCollector(config gc.Config, c *Compiled, prefe
 			s.mu.Unlock()
 			return nil, nil, err
 		}
-		selected = &gcStoreDomain{collector: collector, config: config, types: types, typeReps: reps, claims: 1, next: s.gcDomains}
+		selected = &gcStoreDomain{id: newGCDomainIdentity(), collector: collector, config: config, types: types, typeReps: reps, claims: 1, next: s.gcDomains}
 		s.gcDomains = selected
 		s.mu.Unlock()
 		return collector, mapping, nil

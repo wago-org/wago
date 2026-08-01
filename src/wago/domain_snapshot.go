@@ -151,13 +151,8 @@ func validateDomainSnapshotMember(in *Instance) error {
 		}
 	}
 	if lens := capturePassiveElemLens(in); len(lens) != 0 {
-		if err := validatePassiveElemLens(in.c, lens); err != nil {
+		if err := validateDomainPassiveElements(in.c, lens); err != nil {
 			return fmt.Errorf("passive element state: %w", err)
-		}
-		for i, length := range lens {
-			if length != 0 {
-				return fmt.Errorf("passive element %d is still live", i)
-			}
 		}
 	}
 	for i := range in.c.Globals {
@@ -168,6 +163,44 @@ func validateDomainSnapshotMember(in *Instance) error {
 	for i := 0; i < in.c.tableCount(); i++ {
 		if !isGCRefValType(in.c.tableElementType(i)) {
 			return fmt.Errorf("table %d has opaque reference storage", i)
+		}
+	}
+	return nil
+}
+
+func validateDomainPassiveElements(c *Compiled, lens []uint32) error {
+	if err := validatePassiveElemLens(c, lens); err != nil {
+		return err
+	}
+	totalFuncs := c.NumImports + len(c.Funcs)
+	for i, length := range lens {
+		if length == 0 {
+			continue
+		}
+		elem := &c.passiveElems[i]
+		refType := normalizedElemRefType(elem.RefType)
+		for valueIndex, value := range elem.Values {
+			if value.HasGlobal {
+				return fmt.Errorf("live element %d value %d depends on a reference global", i, valueIndex)
+			}
+			switch refType {
+			case ValFuncRef:
+				if !value.Null && int(value.FuncIndex) >= totalFuncs {
+					return fmt.Errorf("live element %d value %d has unavailable function %d", i, valueIndex, value.FuncIndex)
+				}
+			case ValExternRef:
+				if !value.Null {
+					return fmt.Errorf("live element %d value %d contains an opaque externref", i, valueIndex)
+				}
+			case ValI31Ref:
+				if !value.Null && value.FuncIndex&1 == 0 {
+					return fmt.Errorf("live element %d value %d contains an invalid i31 immediate", i, valueIndex)
+				}
+			default:
+				if !value.Null {
+					return fmt.Errorf("live element %d value %d has unsupported reference type %s", i, valueIndex, elem.RefType)
+				}
+			}
 		}
 	}
 	return nil
@@ -831,13 +864,8 @@ func validateDomainSnapshot(s *DomainSnapshot) error {
 		if err := validatePassiveDataLens(c, snapshotPassiveDataLens(entry.state)); err != nil {
 			return fmt.Errorf("wago: domain snapshot member %d passive data: %w", member, err)
 		}
-		if err := validatePassiveElemLens(c, snapshotPassiveElemLens(entry.state)); err != nil {
+		if err := validateDomainPassiveElements(c, snapshotPassiveElemLens(entry.state)); err != nil {
 			return fmt.Errorf("wago: domain snapshot member %d passive elements: %w", member, err)
-		}
-		for i, length := range snapshotPassiveElemLens(entry.state) {
-			if length != 0 {
-				return fmt.Errorf("wago: domain snapshot member %d passive element %d is still live", member, i)
-			}
 		}
 		if len(entry.tableRoots) != c.tableCount() {
 			return fmt.Errorf("wago: domain snapshot member %d table count mismatch", member)

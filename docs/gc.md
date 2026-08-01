@@ -133,14 +133,17 @@ proves the set exhaustive, records internal function/global/table edges and alia
 and traverses one shared stable-ID object graph. `DomainSnapshot.Instantiate` restores an
 acyclic internal import graph privately into a Runtime without an existing GC domain,
 reconstructs the shared heap once, then returns the member slice only after success. `WGDN` version 2 persists compiled members, exact GC
-configuration, memory/global/passive-data state, dropped passive-element lengths, roots,
-aliases, cycles, and sharing while retaining version 1 load compatibility.
+configuration, memory/global/passive-data state, passive-element lifecycle and
+reconstructible payloads, roots, aliases, cycles, and sharing while retaining version 1
+load compatibility. Live passive entries may contain available funcrefs, immediate i31
+values, or null references; their exact value sequence and dropped/live state round-trip.
 Same-domain imported memory32 links preserve the owning member and restore one shared
 backing mapping after validating duplicate member images. Same-domain imported tags
 preserve the owning member's immutable native identity and structural tag type. Live
 public tokens, active calls, external imports, shared or memory64 memories, opaque
-references, live passive elements, incomplete sets, and cyclic instantiation graphs remain
-strict pre-publication rejections. Completed EH invocations carry no additional mutable
+externrefs, unsupported non-null collector payloads, global-dependent element
+expressions, incomplete sets, and cyclic instantiation graphs remain strict
+pre-publication rejections. Completed EH invocations carry no additional mutable
 snapshot state and round-trip through their compiled member and ordinary GC graph.
 
 Numeric host imports may re-enter the same instance: codec-v30 callsites carry
@@ -178,10 +181,13 @@ frame, so no dead caller roots are retained. A direct immutable-root visitor kee
 warmed Throughput/Tiny recursive collection allocation-free. ARM64 polymorphic
 local `call_indirect` and same-domain foreign `call_ref` publish every possible
 internal, wrapper, and cross-instance return PC; foreign wrapper maps account for
-the 64-byte saved caller-invariant area. An exact imported `ref.func`
-`return_call_ref` uses the existing bounded cross-instance tail transfer and
-retains no caller frame. Polymorphic foreign tails and other shapes with unproved
-ownership stay fail-closed rather than scanning approximate roots.
+the 64-byte saved caller-invariant area. Descriptor-resolved `return_call_ref` uses bounded discarded-frame transfers for
+local internal entries, host wrappers, and retained same-Runtime cross-instance
+wrappers, including descriptors loaded from mutable/imported funcref tables. The
+native context carries stable numeric collector-domain identity separately from
+linear-memory ownership; GC-bearing typed tails compare those identities before
+frame discard. Host or foreign-domain GC transfer stays fail-closed rather than
+scanning approximate roots.
 
 Iteration 38 wires one exact linux/amd64 numeric-local helper product;
 iteration 39 adds exact immutable GC-global roots, packed fields, and the numeric portion
@@ -2013,10 +2019,12 @@ Tests exercise tiny nurseries, collect-every-alloc, exact scanning, cycles, root
 - Exact collection is admitted only where every local, spill, callsite, suspended
   host activation, EH payload, persistent global/table slot, and foreign frame has
   proven ownership and mutable root storage. ARM64 polymorphic local indirect calls
-  and same-domain foreign `call_ref` now satisfy that proof for non-tail calls;
-  exact imported `ref.func` tails discard the caller through the bounded foreign
-  transfer. Polymorphic foreign tails and other unproved shapes remain fail-closed
-  instead of scanning an approximate root set.
+  and same-domain foreign `call_ref` now satisfy that proof for non-tail calls.
+  Descriptor-resolved local, host-wrapper, and retained same-Runtime foreign
+  `return_call_ref` targets use bounded discarded-frame transfers, including mutable
+  and imported funcref-table loads. GC-bearing tails require exact collector-domain
+  identity; host and foreign-domain GC transfer remains fail-closed instead of
+  scanning an approximate root set.
 - Imported/exported mutable and immutable GC globals participate in exact
   canonical Runtime collector domains. Module-local flattened type indexes translate
   through immutable per-instance maps and are never cross-module identity. Actual alias cells are domain

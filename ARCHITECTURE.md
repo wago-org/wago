@@ -104,10 +104,12 @@ exact. ARM64 `try_table`, `throw`, `throw_ref`, function subtype identity, index
 multi-memory, memory64, and table64 are part of the explicit-bounds Core 3
 product. Polymorphic local `call_indirect` and same-domain foreign `call_ref`
 publish each possible native return PC; cross-instance wrapper paths carry their
-64-byte save-area adjustment into frame walking. Exact imported `ref.func`
-provenance uses the bounded cross-instance tail transfer for `return_call_ref`
-and retains no caller frame. Polymorphic foreign tails and other reference-call
-shapes remain fail-closed when exact ownership is unproved.
+64-byte save-area adjustment into frame walking. Descriptor-resolved `return_call_ref` uses bounded discarded-frame transfer for
+local internal, host-wrapper, and retained same-Runtime cross-instance targets,
+including mutable/imported funcref-table loads. GC-bearing typed tails compare the
+numeric collector-domain identities stored in trailing native instance-context
+metadata before the caller is discarded; host and foreign-domain GC transfers remain
+fail-closed when exact ownership is unproved.
 
 ---
 
@@ -309,13 +311,16 @@ WARP's `basedataoffsets.hpp`:
 | 120 / 128 | passive element/data descriptor arrays |
 | 136 | imported-function dispatch table |
 
-Memory-size/growth fields belong to the memory backing. The pointer subset from
-40 and 80–136 is modeled as a 64-byte `InstanceContext`, captured in the
-instance arena and rebound before every public native entry. Shared-memory users
-serialize entry while rebinding, so one linear-memory mapping can safely serve
-instances with independent globals, tables, host state, segments, and import
-bindings. Direct and indirect cross-instance calls copy the target context into
-its home basedata and restore the caller context on normal return.
+Memory-size/growth fields belong to the memory backing. Nine pointer fields from
+40 and 80–136 form the 72-byte Go `InstanceContext`. Each instance owns a 104-byte
+native context buffer: those nine pointers followed by an immutable numeric GC-domain
+identity and three process-serialized descriptor-tail scratch words. Binding copies
+only the pointer prefix into basedata, so context metadata cannot alias EH tags or the
+wrapper argument bank. Shared-memory users serialize entry while rebinding, so one
+linear-memory mapping can safely serve instances with independent globals, tables,
+host state, segments, and import bindings. Direct and indirect cross-instance calls
+copy the target pointer context into its home basedata and restore the exact caller
+context on normal return.
 
 Mapping off-heap is essential: every native-visible address must be **stable**
 for the lifetime of execution (the Go GC must never move it).

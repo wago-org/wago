@@ -180,8 +180,8 @@ Release 2 feature set plus extended constants; callers opt into Core 3 with
 |---|---|---|---|
 | Extended constant expressions | Basic Release 3 numeric extension is complete on AST and byte-backed paths: `i32`/`i64` add, sub, mul, imported globals, and earlier immutable local globals. Forward, mutable, mixed-type, stack-shape, unsupported-opcode, and local-global offset forms are rejected strictly. | Complete for the basic extended-const proposal. Literal arithmetic folds at compile time. Global-dependent scalar programs are persisted and evaluated during instantiation for globals and active data/element offsets. | ✅ Executable and enabled as `CoreFeatureExtendedConstExpressions`. GC-added constant instructions remain part of the GC row, not this completed basic proposal. |
 | Relaxed SIMD | Complete through `0xfd 275`, with reserved holes rejected. | Deterministic lowering is present on the documented linux/amd64 SIMD baseline. The Release 3 harness now honors official `either` result patterns; all 8 converted modules and 69 assertions pass with zero failures/skips. | ✅ Existing completed support, represented by `CoreFeatureSIMD`. |
-| Tail calls | Complete AST and byte-backed validation for direct, indirect, and typed-reference forms, including covariance and malformed immediates. | Direct, dynamic indirect, host, cross-instance, typed-reference, trap, subtype-result, and nested-tail paths execute on linux/amd64 and arm64 explicit bounds. | ✅ Core 3 official files gap-free under explicit `CoreFeaturesV3` admission. |
-| Typed function references | Complete recursive/indexed structural validation for signatures, tables, elements, globals, casts/tests, null branches, and `call_ref`. | Canonical descriptors, subtype-aware calls/linking, reference ownership, codec metadata, and cross-instance retention execute. | ✅ Core 3 official typed-reference and recursive-type files gap-free. |
+| Tail calls | Complete AST and byte-backed validation for direct, indirect, and typed-reference forms, including covariance and malformed immediates. | Direct, dynamic indirect, host, cross-instance, typed-reference, trap, subtype-result, and nested-tail paths execute on linux/amd64 and arm64 explicit bounds. Descriptor-resolved `return_call_ref` covers local, host-wrapper, and retained same-Runtime cross-instance targets, including mutable/imported funcref tables. | ✅ Core 3 official files gap-free under explicit `CoreFeaturesV3` admission. GC-bearing host or foreign-domain reference transfer remains fail-closed. |
+| Typed function references | Complete recursive/indexed structural validation for signatures, tables, elements, globals, casts/tests, null branches, and `call_ref`. | Canonical descriptors, subtype-aware calls/linking, reference ownership, codec metadata, mutable/imported funcref containers, passive/declarative elements, and cross-instance retention execute. | ✅ Core 3 official typed-reference and recursive-type files gap-free. |
 | GC | Complete recursive type, subtype, struct/array/i31, conversion, cast/test/branch, constant-expression, data/element initialization, and malformed/invalid validation. | Throughput/Tiny collectors, exact roots/barriers, bounded helpers, subtype identity, linking, reference publication, and array data/element constructors execute on linux/amd64 explicit and signal-backed bounds plus arm64 explicit bounds. | ✅ Mandatory Core 3 GC corpus gap-free on those products; ownership and snapshot limits remain documented in `docs/gc.md`. |
 | Exception handling | Complete validation for tags, `throw`, `throw_ref`, `try_table`, exception references, catch payloads/depths, and malformed forms. | Arbitrary bounded tag directories, imported/exported tags, rooted exception values, nested/cross-instance handlers, tails, linking, and codec metadata execute on linux/amd64 explicit and signal-backed bounds plus arm64 explicit bounds. | ✅ Core 3 exception files gap-free on those products. |
 | Multi-memory | Complete indexed immediate and compact-import validation with Release 2 defaults preserved. | Indexed scalar/SIMD/bulk/data operations, imports/exports, snapshots for owned state, and generalized shared-memory basedata serialization execute. Linux/amd64 signal mode retains explicit checks for nonzero directory entries and guard-backs every owned memory for export/re-import safety. | ✅ Complete 42-file family and full Core 3 suite gap-free under linux/amd64 explicit and signal-backed bounds plus arm64 explicit bounds. |
@@ -201,23 +201,44 @@ bounds/platform qualification rather than missing official opcode families:
    Runtime domains now canonicalize recursive structural identities across reordered
    or additional module-local type graphs; helpers, host tokens, initializers, and
    snapshots translate through immutable per-instance local/domain maps;
-2. preserve the exact non-tail polymorphic local `call_indirect`, same-domain
-   foreign `call_ref` return-path maps, and discarded-frame exact-import
-   `return_call_ref`; then broaden polymorphic foreign tail shapes while preserving
-   completed type-checked, collection-safe `GCRef` host ingress and bounded 64-token
-   result retention with transactional multi-result rollback;
-3. preserve the completed heterogeneous shared-table attachment, growth, rollback,
-   codec, and close-order proofs while extending ownership to unproved foreign shapes;
+2. preserve exact polymorphic local/foreign return-path maps and descriptor-resolved
+   discarded-frame `return_call_ref` for local, host-wrapper, and retained same-Runtime
+   cross-instance targets, including mutable/imported funcref tables. GC-bearing tails
+   continue to require exact collector-domain identity while type-checked,
+   collection-safe `GCRef` host ingress and bounded 64-token result retention retain
+   transactional multi-result rollback;
+3. preserve the completed heterogeneous shared-table attachment, mutation, growth,
+   rollback, codec, close-order, moving-collection, and foreign-Runtime rejection proofs;
 4. preserve the completed snapshot-v5 single-table and snapshot-v6 heterogeneous
    multi-table proofs plus `WGDN` v2 whole-domain capture (v1 load-compatible): exhaustive ordered members,
    internal function/global/table/memory32/exception-tag aliases, immutable tag
-   directories, one shared stable-ID graph, exact GC config, strict malformed-input validation, and
-   atomic all-member publication;
+   directories, one shared stable-ID graph, exact GC config, reconstructible live
+   passive funcref/i31/null payloads, strict malformed-input validation, and atomic
+   all-member publication;
 5. keep the complete linux/amd64 explicit and signal-backed suites plus native
    Linux/Darwin arm64 explicit-bounds conformance mandatory in CI, and broaden
    arm64 bounds-mode/native workload qualification; and
 6. after those correctness gates, measure and add direct checked JIT object
    access as a replacement for common parked-helper operations.
+
+The current descriptor-tail completion resolves runtime targets from their immutable
+funcref descriptors instead of relying on static `ref.func` provenance. Mutable and
+imported typed funcref tables can therefore select local, host-wrapper, or retained
+same-Runtime cross-instance targets at execution time. A stable numeric GC-domain
+identity in the native instance context distinguishes ownership even when two instances
+share one linear-memory base; GC-bearing host and foreign-domain transfers reject before
+frame discard. Throughput/Tiny collection stress, codec reload, target mutation,
+producer-first close, shared-memory context restoration, and cross-Runtime rejection are
+covered. On linux/amd64, five public-`Invoke` samples measure the mutable imported-table
+path at 474.7–481.6 ns/op with 0 B/op and 0 allocs/op; existing direct cross-instance tail
+watchpoints remain 89.52–94.63 ns/op and allocation-free. The native context grows by
+32 bytes per instance, from 72 to 104 bytes; basedata and descriptor layouts do not grow.
+
+`WGDN` v2 now admits live passive element state only when the compiled payload is fully
+reconstructible: available funcrefs, immediate i31 values, and null references. It
+preserves both payload and lifecycle across binary round trips. Global-dependent
+expressions, opaque non-null externrefs, unavailable functions, malformed i31 values,
+and unsupported non-null collector payloads remain strict pre-publication errors.
 
 Historical iteration sections below retain the boundary statements that were true
 at each commit. They are not the current support matrix; use `FEATURES.md` and the

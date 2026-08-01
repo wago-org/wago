@@ -185,8 +185,8 @@ func TestStagedTypedCrossInstanceReturnCallRefRootTransfer(t *testing.T) {
 	}
 	producer, consumer := instantiateTypedCrossTail(t)
 
-	if _, err := consumer.Invoke("run", I32(1)); err == nil || !strings.Contains(err.Error(), "unsupported context switch") {
-		t.Fatalf("cross-instance typed-tail context error = %v", err)
+	if got, err := consumer.Invoke("run", I32(1)); err != nil || len(got) != 1 || got[0] != 7 {
+		t.Fatalf("cross-instance typed tail = %v, %v; want 7", got, err)
 	}
 	if err := producer.Close(); err != nil {
 		t.Fatalf("logical producer close: %v", err)
@@ -197,15 +197,15 @@ func TestStagedTypedCrossInstanceReturnCallRefRootTransfer(t *testing.T) {
 	if producerReleased {
 		t.Fatal("cross-tail consumer did not retain producer resources")
 	}
-	if _, err := consumer.Invoke("run", I32(1)); err == nil || !strings.Contains(err.Error(), "unsupported context switch") {
-		t.Fatalf("cross-tail error after producer logical close = %v", err)
+	if got, err := consumer.Invoke("run", I32(1)); err != nil || len(got) != 1 || got[0] != 7 {
+		t.Fatalf("cross tail after producer logical close = %v, %v; want 7", got, err)
 	}
 
-	if _, err := consumer.Invoke("nested", I32(1)); err == nil || !strings.Contains(err.Error(), "unsupported context switch") {
-		t.Fatalf("nested cross-tail context error = %v", err)
+	if got, err := consumer.Invoke("nested", I32(1)); err != nil || len(got) != 1 || got[0] != 12 {
+		t.Fatalf("nested cross tail = %v, %v; want 12", got, err)
 	}
-	if _, err := consumer.Invoke("repeat", I32(1)); err == nil || !strings.Contains(err.Error(), "unsupported context switch") {
-		t.Fatalf("repeated cross-tail context error = %v", err)
+	if got, err := consumer.Invoke("repeat", I32(8)); err != nil || len(got) != 1 || got[0] != 7 {
+		t.Fatalf("repeated cross tail = %v, %v; want 7", got, err)
 	}
 	if _, err := consumer.Invoke("null", I32(1)); err == nil || !strings.Contains(err.Error(), "indirect call out of bounds") {
 		t.Fatalf("null cross-tail error = %v", err)
@@ -218,8 +218,8 @@ func TestStagedTypedCrossInstanceReturnCallRefRootTransfer(t *testing.T) {
 		t.Fatalf("wrong-key cross-tail error = %v", err)
 	}
 	binary.LittleEndian.PutUint64(desc[runtime.TableEntrySigKeyOffset:], oldKey)
-	if _, err := consumer.Invoke("run", I32(1)); err == nil || !strings.Contains(err.Error(), "unsupported context switch") {
-		t.Fatalf("cross tail did not recover to fail-closed context trap: %v", err)
+	if got, err := consumer.Invoke("run", I32(1)); err != nil || len(got) != 1 || got[0] != 7 {
+		t.Fatalf("cross tail did not recover after signature repair: %v, %v", got, err)
 	}
 
 	rt := NewRuntime()
@@ -234,8 +234,8 @@ func TestStagedTypedCrossInstanceReturnCallRefRootTransfer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("instantiate host typed-tail consumer: %v", err)
 	}
-	if _, err := hostConsumer.Invoke("run", I32(1)); err == nil || !strings.Contains(err.Error(), "unsupported context switch") {
-		t.Fatalf("host cross-tail context error = %v", err)
+	if got, err := hostConsumer.Invoke("run", I32(1)); err != nil || len(got) != 1 || got[0] != 2 {
+		t.Fatalf("host typed tail = %v, %v; want 2", got, err)
 	}
 	if err := hostConsumer.Close(); err != nil {
 		t.Fatal(err)
@@ -278,13 +278,13 @@ func TestStagedTypedCrossInstanceReturnCallRefTwoResults(t *testing.T) {
 	defer consumer.Close()
 	defer producer.Close()
 
-	if _, err := consumer.Invoke("nested", I32(1)); err == nil || !strings.Contains(err.Error(), "unsupported context switch") {
-		t.Fatalf("nested pair cross-tail context error = %v", err)
+	if got, err := consumer.Invoke("nested", I32(1)); err != nil || len(got) != 2 || got[0] != 7 || got[1] != 14 {
+		t.Fatalf("nested pair cross tail = %v, %v; want [7 14]", got, err)
 	}
 	if err := producer.Close(); err != nil {
 		t.Fatalf("logical producer close: %v", err)
 	}
-	if _, err := consumer.Invoke("run", I32(0)); err == nil || !strings.Contains(err.Error(), "unsupported context switch") {
-		t.Fatalf("pair cross-tail after producer close error = %v", err)
+	if got, err := consumer.Invoke("run", I32(0)); err != nil || len(got) != 2 || got[0] != 7 || got[1] != 9 {
+		t.Fatalf("pair cross tail after producer close = %v, %v; want [7 9]", got, err)
 	}
 }

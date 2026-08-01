@@ -132,16 +132,17 @@ func (c *Compiled) hasGCRefGlobals() bool {
 	return false
 }
 
-// sharedGCPersistentDomainSafe admits same-Runtime collector-reference globals
-// and collector-reference tables. Every live instance cell/table descriptor in
-// the descriptor-identical domain is scanned directly at collection, so
-// imported/exported aliases publish actual off-heap qwords.
+// sharedGCPersistentDomainSafe admits same-Runtime collector-reference state and
+// function-reference containers. Collector tables are scanned directly; funcref
+// containers carry no compact GC roots, while descriptor-driven GC-bearing calls
+// validate their immutable native domain identities before transfer.
 func (c *Compiled) sharedGCPersistentDomainSafe() bool {
 	if c == nil {
 		return false
 	}
 	for i := 0; i < c.tableCount(); i++ {
-		if !isGCRefValType(c.tableElementType(i)) {
+		typ := c.tableElementType(i)
+		if !isGCRefValType(typ) && typ != ValFuncRef {
 			return false
 		}
 	}

@@ -19,6 +19,20 @@ Legend: effort S/M/L · value ⬜ low · 🟦 medium · 🟩 high · ⭐ very hi
 
 ## What's in place (updated 2026-08-01)
 
+**Mutable imported-funcref proper tails (2026-08-01).** Descriptor-driven
+`return_call_ref` now tail-transfers through a mutable imported funcref table while
+preserving exact same-Runtime GC-domain ownership and zero-allocation invocation.
+On linux/amd64 (Ryzen 7 8845HS, five samples), the collection-capable public
+`Invoke` benchmark measures **474.7–481.6 ns/op**, 0 B/op, and 0 allocs/op. Existing
+direct cross-instance `return_call` watchpoints remain **89.52–94.63 ns/op** across
+integer, mixed-float, and float-parameter/integer-result shapes, also allocation-free.
+The ownership check adds no collector metadata or basedata words. Stable domain
+identity and descriptor-tail scratch extend the off-heap native instance-context
+buffer from 72 to 104 bytes (**+32 bytes per instance**); the Go `InstanceContext`,
+table entries, funcref descriptors, and canonical 272-byte basedata remain unchanged.
+ARM64 uses the same bounded descriptor semantics but still has the existing
+spill/reload staging optimization headroom.
+
 **Checked direct WasmGC object-access measurement (2026-08-01).** A benchmark-only
 prototype now models the minimum compact-reference walk a direct JIT numeric field or
 array access still requires: live handle bounds/space validation, current heap selection,

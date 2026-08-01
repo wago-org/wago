@@ -24,10 +24,16 @@ prepared-call fast path—must restore its own trap-cell pointer and engine fenc
 before entering native code. Bind-once prepared calls are valid only while an
 instance can never be used as a cross-instance callee.
 
-The remaining pointer fields are modeled as `runtime.InstanceContext` and
-captured when instantiation finishes. Every public native entry rebinds that
-context and refreshes its invocation control fields before execution. The
-current correctness-first execution lease serializes native execution
+The remaining nine pointer fields are modeled as the 72-byte
+`runtime.InstanceContext` and captured when instantiation finishes. Native code
+addresses a 104-byte per-instance context buffer containing that pointer prefix,
+a stable numeric GC-domain identity at byte 72, and three descriptor-tail scratch
+words at bytes 80, 88, and 96. Capture initializes the metadata suffix to zero;
+instantiation publishes the domain identity, and binding copies only the pointer
+prefix into basedata. Keeping tail scratch in the trailing context avoids aliasing
+EH tag directories or the basedata wrapper argument bank. Every public native entry
+rebinds the pointer context and refreshes its invocation control fields before
+execution. The current correctness-first execution lease serializes native execution
 process-wide: one public root owns every basedata region its direct or indirect
 cross-instance call graph may rebind. This avoids recursive per-memory lock
 ordering and covers same-memory, different-memory, and cyclic call graphs.

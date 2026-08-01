@@ -51,16 +51,19 @@ mutable/shared GC globals, local/shared collector tables, indirect/reference cal
 discarded-frame proper tails, and fixed EH payload records. Native ARM64 also
 publishes every native return path for polymorphic local `call_indirect` and
 same-domain foreign `call_ref`, including the 64-byte cross-instance wrapper save
-area. Exact imported `ref.func` provenance also lowers `return_call_ref` through
-the existing bounded cross-instance tail transfer without retaining the caller
-frame. Dynamic indirect tails, function-subtype checks, multi-memory, memory64,
-table64, `try_table`, `throw`, and `throw_ref` execute. Polymorphic foreign tails
-and other shapes with unproved ownership remain fail-closed. Multiple
-heterogeneous imported/exported collector-reference tables share exact alias roots,
-growth, attachment rollback, codec reload, and close ordering. Exhaustive ordered
-Runtime domains can now be persisted through `CaptureDomain`/`DomainSnapshot`: one
-stable-ID heap graph preserves imported global/table/memory32/tag aliases and internal
-function links, dropped passive-element lifecycle state, and restore publishes all members transactionally. Exception-tag
+area. Descriptor-resolved `return_call_ref` now lowers local internal targets, host
+wrappers, and retained same-Runtime cross-instance wrappers without retaining the
+caller frame, including targets loaded from mutable/imported funcref tables. GC-bearing
+typed tails compare exact collector-domain identities before discarding the caller;
+host or foreign-domain GC transfer remains fail-closed. Dynamic indirect tails,
+function-subtype checks, multi-memory, memory64, table64, `try_table`, `throw`, and
+`throw_ref` execute. Multiple heterogeneous imported/exported collector-reference
+tables share exact alias roots, growth, attachment rollback, codec reload, and close
+ordering. Exhaustive ordered Runtime domains can now be persisted through
+`CaptureDomain`/`DomainSnapshot`: one stable-ID heap graph preserves imported
+global/table/memory32/tag aliases and internal function links, dropped elements, and
+live passive elements whose payloads are reconstructible funcrefs, immediate i31
+values, or null references; restore publishes all members transactionally. Exception-tag
 directories add no completed-invocation mutable state; external tags,
 incomplete/external domains, and unrestricted host ownership remain fail-closed. Generic struct/array results may
 be retained as up to 64 opaque `GCRef` tokens per producer with exact store ownership,

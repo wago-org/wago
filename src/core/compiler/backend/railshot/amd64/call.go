@@ -144,6 +144,42 @@ func sigFitsReferenceResultRegABI(ft *wasm.CompType) bool {
 	return gp <= len(intArgRegs) && fp <= len(fpArgRegs)
 }
 
+// sigFitsTypedReferenceRegABI extends the physical register classification used
+// by return_call_ref to one-slot reference parameters/results. Ownership and GC
+// domain checks remain separate from this purely mechanical ABI predicate.
+func sigFitsTypedReferenceRegABI(ft *wasm.CompType) bool {
+	if ft == nil || len(ft.Results) > 2 {
+		return false
+	}
+	gp, fp := 0, 0
+	for _, typ := range ft.Params {
+		switch {
+		case isIntValType(typ), typ.Kind == wasm.ValRef:
+			gp++
+		case isFloatValType(typ):
+			fp++
+		default:
+			return false
+		}
+	}
+	if gp > len(intArgRegs) || fp > len(fpArgRegs) {
+		return false
+	}
+	for _, typ := range ft.Results {
+		if !isIntValType(typ) && !isFloatValType(typ) && typ.Kind != wasm.ValRef {
+			return false
+		}
+	}
+	if len(ft.Results) == 2 {
+		for _, typ := range ft.Results {
+			if isFloatValType(typ) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
 func tailResultABICompatible(a, b []wasm.ValType) bool {
 	if len(a) != len(b) {
 		return false
@@ -1928,12 +1964,27 @@ func (f *fn) callRef(r *wasm.Reader) error {
 }
 
 // returnCallRef tail-jumps through a typed funcref descriptor. Same-instance
-// internal descriptors keep the register-ABI path. A retained InstanceExport
-// descriptor may additionally transfer into the foreign offset-0 wrapper.
-// Root adapters discard their own continuation as before. Nested internal callers
-// reuse the released callee frame for one fixed return-context record whose
-// trampoline restores the caller instance and integer result registers. Wrapper
-// and host descriptors remain fail-closed.
+// internal descriptors keep the register-ABI path. Local, host, and retained
+// cross-instance wrappers use one bounded descriptor-driven transfer. GC-bearing
+// signatures additionally require the immutable target and caller descriptors to
+// name the exact same collector domain before the caller frame is discarded.
+func funcTypeCarriesGCRefs(m *wasm.Module, ft *wasm.CompType) bool {
+	if ft == nil {
+		return false
+	}
+	for _, t := range ft.Params {
+		if gcFrameRefType(m, t) {
+			return true
+		}
+	}
+	for _, t := range ft.Results {
+		if gcFrameRefType(m, t) {
+			return true
+		}
+	}
+	return false
+}
+
 func (f *fn) returnCallRef(r *wasm.Reader) error {
 	typeIdx, err := r.U32()
 	if err != nil {
@@ -1946,8 +1997,8 @@ func (f *fn) returnCallRef(r *wasm.Reader) error {
 	if !tailResultABICompatible(f.ft.Results, ft.Results) {
 		return fmt.Errorf("return_call_ref: type %d result shape differs from caller", typeIdx)
 	}
-	callerRegABI := sigFitsRegABI(f.ft) || (f.stagedTailDescriptors && sigFitsReferenceResultRegABI(f.ft))
-	targetRegABI := sigFitsRegABI(ft) || (f.stagedTailDescriptors && sigFitsReferenceResultRegABI(ft))
+	callerRegABI := sigFitsRegABI(f.ft) || (f.stagedTailDescriptors && sigFitsTypedReferenceRegABI(f.ft))
+	targetRegABI := sigFitsRegABI(ft) || (f.stagedTailDescriptors && sigFitsTypedReferenceRegABI(ft))
 	if !callerRegABI || !targetRegABI {
 		return fmt.Errorf("return_call_ref: caller or type %d requires unsupported reference tail ABI", typeIdx)
 	}
@@ -1972,15 +2023,35 @@ func (f *fn) returnCallRef(r *wasm.Reader) error {
 	f.a.Load64(targetContext, ref, runtime.FuncRefContextOffset)
 	f.a.TestSelf(targetContext, true)
 	f.trapIf(condE, trapTailUnsupported)
+	if funcTypeCarriesGCRefs(f.m, ft) {
+		targetDomain := f.allocReg(maskOf(ref, code, home, targetContext))
+		f.a.Load64(targetDomain, targetContext, runtime.InstanceContextGCDomainOffset)
+		f.a.TestSelf(targetDomain, true)
+		f.trapIf(condE, trapTailUnsupported)
+		callerDesc := f.allocReg(maskOf(ref, code, home, targetContext, targetDomain))
+		f.a.Load64(callerDesc, RBX, -int32(offFuncRefDescPtr))
+		f.a.TestSelf(callerDesc, true)
+		f.trapIf(condE, trapTailUnsupported)
+		f.a.Load64(callerDesc, callerDesc, runtime.FuncRefContextOffset)
+		f.a.Load64(callerDesc, callerDesc, runtime.InstanceContextGCDomainOffset)
+		f.a.Cmp64(targetDomain, callerDesc)
+		f.release(callerDesc)
+		f.release(targetDomain)
+		f.trapIf(condNE, trapTailUnsupported)
+	}
 	f.pinned = f.pinned.remove(ref)
 	f.release(ref)
 
-	// Preserve descriptor code, home, and context across either tail staging
-	// path. These slots share the wrapper-tail bank, but register-ABI and wrapper-
-	// tail contexts cannot coexist under the current explicit gates.
-	f.a.Store64(RBX, -int32(abi.TailCrossCodeOffset), code)
-	f.a.Store64(RBX, -int32(abi.TailCrossHomeOffset), home)
-	f.a.Store64(RBX, -int32(abi.TailCrossContextOffset), targetContext)
+	// Preserve descriptor code, home, and context in the caller's process-
+	// serialized native-context scratch. Keeping this outside basedata avoids
+	// aliasing EH tag metadata or wrapper-tail arguments.
+	tailContext := f.allocReg(maskOf(code, home, targetContext))
+	f.a.Load64(tailContext, RBX, -int32(offFuncRefDescPtr))
+	f.a.Load64(tailContext, tailContext, runtime.FuncRefContextOffset)
+	f.a.Store64(tailContext, runtime.InstanceContextTailCodeOffset, code)
+	f.a.Store64(tailContext, runtime.InstanceContextTailHomeOffset, home)
+	f.a.Store64(tailContext, runtime.InstanceContextTailTargetCtxOffset, targetContext)
+	f.release(tailContext)
 	f.release(code)
 	f.release(home)
 	f.release(targetContext)
@@ -1998,7 +2069,9 @@ func (f *fn) returnCallRef(r *wasm.Reader) error {
 
 	// Decode the complete three-bit kind, never one bit at a time: multi-tagged
 	// descriptors are invalid and must not inherit the ABI of the first set bit.
-	f.a.Load64(RAX, RBX, -int32(abi.TailCrossHomeOffset))
+	f.a.Load64(RAX, RBX, -int32(offFuncRefDescPtr))
+	f.a.Load64(RAX, RAX, runtime.FuncRefContextOffset)
+	f.a.Load64(RAX, RAX, runtime.InstanceContextTailHomeOffset)
 	f.a.MovReg64(RDX, RAX)
 	f.a.ShiftImm(5, RDX, abi.FuncRefEntryTagShift, true)
 	f.stripDescriptorHomeTags(RAX)
@@ -2007,20 +2080,24 @@ func (f *fn) returnCallRef(r *wasm.Reader) error {
 	f.a.Cmp64(RAX, RBX)
 	f.trapIf(condNE, trapTailUnsupported)
 	f.emitTailRegisterJump(ft, func() {
-		f.a.Load64(RSI, RBX, -int32(abi.TailCrossCodeOffset))
+		f.a.Load64(RSI, RBX, -int32(offFuncRefDescPtr))
+		f.a.Load64(RSI, RSI, runtime.FuncRefContextOffset)
+		f.a.Load64(RSI, RSI, runtime.InstanceContextTailCodeOffset)
 		f.a.JmpReg(RSI)
 	})
 
-	// Cross-instance wrapper tail transfer remains fail-closed under the
-	// process-wide native execution lease. Only a same-instance local wrapper may
-	// use the bounded wrapper transfer.
+	// Wrapper kinds host=0, local=1, and cross-instance=2 all share the
+	// descriptor-driven wrapper transfer. Values 3..7 are malformed or internal
+	// descriptors that failed the branch above.
 	f.a.PatchRel32(notInternal, f.a.Len())
 	f.locals = savedLocals
 	f.setDepthTypes(types)
-	f.a.AluRI(cmpDigit, RDX, int32(abi.FuncRefLocalWrapperTagValue), true)
-	f.trapIf(condNE, trapTailUnsupported) // cross-instance, host, and invalid tags
-	f.a.Cmp64(RAX, RBX)
-	f.trapIf(condNE, trapTailUnsupported)
+	f.a.AluRI(cmpDigit, RDX, int32(abi.FuncRefCrossInstanceTagValue), true)
+	f.trapIf(condA, trapTailUnsupported)
+	if funcTypeCarriesGCRefs(f.m, ft) {
+		f.a.TestSelf(RDX, true) // host thunks cannot accept compact collector refs
+		f.trapIf(condE, trapTailUnsupported)
+	}
 	f.emitTailCrossWrapperJump(ft)
 
 	f.unreachable = true
@@ -2030,10 +2107,11 @@ func (f *fn) returnCallRef(r *wasm.Reader) error {
 // emitTailCrossWrapperJump transfers a register-ABI activation to a retained
 // foreign offset-0 wrapper without retaining the current activation. A root
 // adapter drops its own [return-to-adapter, saved-results] words. A nested
-// internal caller replaces the released frame with one fixed 32-byte record:
-// [trampoline, caller linmem, result0, result1], followed by the caller's existing
-// return address. Repeated foreign tail transfers reuse the target wrappers and
-// this one non-tail caller record rather than accumulating native frames.
+// internal caller replaces the released frame with one fixed 48-byte record:
+// [trampoline, caller linmem, caller context, result0, result1, pad], followed by
+// the caller's existing return address. Repeated foreign tail transfers reuse the
+// target wrappers and this one non-tail caller record rather than accumulating
+// native frames.
 func (f *fn) emitTailCrossWrapperJump(ft *wasm.CompType) {
 	p := len(ft.Params)
 	roots := f.rootsBottomToTop()
@@ -2045,7 +2123,9 @@ func (f *fn) emitTailCrossWrapperJump(ft *wasm.CompType) {
 	f.storePinnedGlobals(false)
 	f.storeModuleGlobals(RDX)
 
-	f.a.Load64(R11, RBX, -int32(abi.TailCrossHomeOffset))
+	f.a.Load64(R8, RBX, -int32(offFuncRefDescPtr))
+	f.a.Load64(R8, R8, runtime.FuncRefContextOffset) // caller context + tail scratch
+	f.a.Load64(R11, R8, runtime.InstanceContextTailHomeOffset)
 	f.a.ShiftImm(4, R11, 3, true)
 	f.a.ShiftImm(5, R11, 3, true)
 	f.a.MovReg64(RDI, R11)
@@ -2074,7 +2154,7 @@ func (f *fn) emitTailCrossWrapperJump(ft *wasm.CompType) {
 	// Rebind the target instance's pointer context, then copy this execution's
 	// trap/fence words exactly like a non-tail cross-instance call before entering
 	// the target wrapper ABI.
-	f.a.Load64(R10, RBX, -int32(abi.TailCrossContextOffset))
+	f.a.Load64(R10, R8, runtime.InstanceContextTailTargetCtxOffset)
 	f.copyInstanceContext(R11, R10)
 	copyControl := func() {
 		f.a.Load64(RAX, RBX, -offTrapReentry)
@@ -2085,19 +2165,20 @@ func (f *fn) emitTailCrossWrapperJump(ft *wasm.CompType) {
 		f.a.Store64(R11, -offTrapCellPtr, RAX)
 	}
 	copyControl()
-	f.a.Load64(RAX, RBX, -int32(abi.TailCrossCodeOffset))
+	f.a.Load64(RAX, R8, runtime.InstanceContextTailCodeOffset)
 	f.a.MovReg64(RSI, R11)
 	f.a.AddRsp(16) // discard return-to-adapter and its saved results pointer
 	f.a.JmpReg(RAX)
 
 	f.a.PatchRel32(nested, f.a.Len())
-	f.a.SubRsp(32)
+	f.a.SubRsp(48)
 	trampolineSite := f.a.LeaRipPlaceholder(RAX)
 	f.a.Store64(RSP, 0, RAX)
 	f.a.Store64(RSP, 8, RBX)
-	f.a.LeaDisp(RCX, RSP, 16)
+	f.a.Store64(RSP, 16, R8)
+	f.a.LeaDisp(RCX, RSP, 24)
 	copyControl()
-	f.a.Load64(RAX, RBX, -int32(abi.TailCrossCodeOffset))
+	f.a.Load64(RAX, R8, runtime.InstanceContextTailCodeOffset)
 	f.a.MovReg64(RSI, R11)
 	f.a.JmpReg(RAX)
 
@@ -2106,22 +2187,24 @@ func (f *fn) emitTailCrossWrapperJump(ft *wasm.CompType) {
 	trampoline := f.a.Len()
 	f.a.PatchRel32(trampolineSite, trampoline)
 	f.a.Load64(RBX, RSP, 0)
+	f.a.Load64(R10, RSP, 8)
+	f.copyInstanceContext(RBX, R10)
 	if f.memSizeReg != regNone {
 		f.a.Load32(f.memSizeReg, RBX, -bdCurBytes)
 	}
 	f.deriveModuleGlobals()
 	if len(ft.Results) > 0 {
 		if mtOf(ft.Results[0]).isFloat() {
-			f.a.Load64(RAX, RSP, 8)
+			f.a.Load64(RAX, RSP, 16)
 			f.a.MovGprToXmm(0, RAX, true)
 		} else {
-			f.a.Load64(RAX, RSP, 8)
+			f.a.Load64(RAX, RSP, 16)
 		}
 	}
 	if len(ft.Results) > 1 {
-		f.a.Load64(RDX, RSP, 16)
+		f.a.Load64(RDX, RSP, 24)
 	}
-	f.a.AddRsp(24)
+	f.a.AddRsp(40)
 	f.a.Ret()
 }
 

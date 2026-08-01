@@ -299,7 +299,18 @@ type InstanceContext struct {
 	ImportDispatch uintptr
 }
 
-const InstanceContextBytes = 9 * 8
+const (
+	// InstanceContextGCDomainOffset is trailing immutable metadata, not a basedata
+	// pointer field. Native typed-reference tails compare it before transferring
+	// compact GC references across instance contexts. The following three words
+	// are process-serialized tail-transfer scratch, kept outside basedata so EH tag
+	// directories and the wrapper argument bank remain immutable.
+	InstanceContextGCDomainOffset      = 9 * 8
+	InstanceContextTailCodeOffset      = 10 * 8
+	InstanceContextTailHomeOffset      = 11 * 8
+	InstanceContextTailTargetCtxOffset = 12 * 8
+	InstanceContextBytes               = 13 * 8
+)
 
 // CaptureInstanceContext snapshots the per-instance pointer fields currently
 // installed in basedata.
@@ -341,6 +352,7 @@ func (j *JobMemory) CaptureInstanceContextBytes(dst []byte) {
 	for i, value := range [...]uintptr{ctx.CustomCtx, ctx.TablePtr, ctx.FuncRefDescPtr, ctx.PassiveElemPtr, ctx.GlobalsPtr, ctx.PassiveDataPtr, ctx.TableDirPtr, ctx.MemoryDirPtr, ctx.ImportDispatch} {
 		binary.LittleEndian.PutUint64(dst[i*8:], uint64(value))
 	}
+	clear(dst[InstanceContextGCDomainOffset:InstanceContextBytes])
 }
 
 // BindInstanceContextBytes restores a context captured by

@@ -5,6 +5,7 @@ package wago
 import (
 	"bytes"
 	"encoding/binary"
+	"encoding/hex"
 	"reflect"
 	"strings"
 	"testing"
@@ -280,7 +281,7 @@ func domainSnapshotDroppedElementModule() []byte {
 	)
 }
 
-func TestDomainSnapshotRestoresDroppedPassiveElements(t *testing.T) {
+func TestDomainSnapshotRestoresLiveAndDroppedPassiveElements(t *testing.T) {
 	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), domainSnapshotDroppedElementModule())
 	if err != nil {
 		t.Fatal(err)
@@ -296,11 +297,53 @@ func TestDomainSnapshotRestoresDroppedPassiveElements(t *testing.T) {
 		store.closeRuntime()
 		t.Fatal(err)
 	}
-	if _, err := CaptureDomain(in); err == nil || !strings.Contains(err.Error(), "passive element 0 is still live") {
+	if lens := capturePassiveElemLens(in); !reflect.DeepEqual(lens, []uint32{1}) {
 		in.Close()
 		store.closeRuntime()
-		t.Fatalf("live passive element capture error = %v", err)
+		t.Fatalf("initial passive element lengths = %v", lens)
 	}
+	liveSnapshot, err := CaptureDomain(in)
+	if err != nil {
+		in.Close()
+		store.closeRuntime()
+		t.Fatal(err)
+	}
+	liveBlob, err := liveSnapshot.MarshalBinary()
+	if err != nil {
+		t.Fatal(err)
+	}
+	liveLoaded, err := LoadDomainSnapshot(liveBlob)
+	if err != nil {
+		t.Fatal(err)
+	}
+	liveRT := NewRuntime()
+	liveRestored, err := liveLoaded.Instantiate(liveRT)
+	if err != nil {
+		liveRT.Close()
+		t.Fatal(err)
+	}
+	if lens := capturePassiveElemLens(liveRestored[0]); !reflect.DeepEqual(lens, []uint32{1}) {
+		liveRestored[0].Close()
+		liveRT.Close()
+		t.Fatalf("restored live passive element lengths = %v", lens)
+	}
+	if got, err := liveRestored[0].Invoke("run", 44); err != nil || !reflect.DeepEqual(got, []uint64{44}) {
+		liveRestored[0].Close()
+		liveRT.Close()
+		t.Fatalf("restored live-element run = %v, %v", got, err)
+	}
+	if lens := capturePassiveElemLens(liveRestored[0]); !reflect.DeepEqual(lens, []uint32{0}) {
+		liveRestored[0].Close()
+		liveRT.Close()
+		t.Fatalf("restored live element did not drop: %v", lens)
+	}
+	if err := liveRestored[0].Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := liveRT.Close(); err != nil {
+		t.Fatal(err)
+	}
+
 	if got, err := in.Invoke("run", 55); err != nil || !reflect.DeepEqual(got, []uint64{55}) {
 		in.Close()
 		store.closeRuntime()
@@ -344,6 +387,90 @@ func TestDomainSnapshotRestoresDroppedPassiveElements(t *testing.T) {
 	}
 	if got, err := restored[0].Invoke("run", 77); err != nil || !reflect.DeepEqual(got, []uint64{77}) {
 		t.Fatalf("restored drop run = %v, %v", got, err)
+	}
+}
+
+func TestDomainSnapshotRestoresLivePassiveI31ElementPayload(t *testing.T) {
+	const moduleHex = "0061736d01000000018980808000025e6c006000027f7f0382808080000101079b80808000011761727261792d6e65772d656c656d2d636f6e74656e74730000099c8080800001056c0441aa01fb1c0b41bb01fb1c0b41cc01fb1c0b41dd01fb1c0b0aa78080800001a1808080000101640041014102fb0a0000210020004100fb0b00fb1e20004101fb0b00fb1e0b"
+	module, err := hex.DecodeString(moduleHex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), module)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	if compiled.genericGCFrameRoots() == nil {
+		t.Fatalf("live i31 module lost exact roots: product=%s generic=%v", compiled.stagedGCArrayProduct(), compiled.usesGenericGCExecution())
+	}
+	store := newReferenceStore(false)
+	profile := GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 128, TinyBlockBytes: 16, TinyCollectEveryAlloc: true, TinyStepEveryAlloc: true, VerifyAfterCollect: true}
+	in, err := instantiateCore(compiled, InstantiateOptions{GC: profile, store: store})
+	if err != nil {
+		store.closeRuntime()
+		t.Fatal(err)
+	}
+	if lens := capturePassiveElemLens(in); !reflect.DeepEqual(lens, []uint32{4}) {
+		in.Close()
+		store.closeRuntime()
+		t.Fatalf("live i31 element lengths = %v", lens)
+	}
+	snapshot, err := CaptureDomain(in)
+	if err != nil {
+		in.Close()
+		store.closeRuntime()
+		t.Fatal(err)
+	}
+	blob, err := snapshot.MarshalBinary()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := in.Close(); err != nil {
+		t.Fatal(err)
+	}
+	store.closeRuntime()
+	loaded, err := LoadDomainSnapshot(blob)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rt := NewRuntime()
+	defer rt.Close()
+	restored, err := loaded.Instantiate(rt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer restored[0].Close()
+	got, err := restored[0].Invoke("array-new-elem-contents")
+	if err != nil || !reflect.DeepEqual(got, []uint64{187, 204}) {
+		t.Fatalf("restored live i31 element payload = %v, %v; want [187 204]", got, err)
+	}
+	if lens := capturePassiveElemLens(restored[0]); !reflect.DeepEqual(lens, []uint32{4}) {
+		t.Fatalf("array.new_elem consumed passive segment: %v", lens)
+	}
+}
+
+func TestDomainSnapshotLivePassiveElementAdmissionRejectsOpaqueOrMalformedValues(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		ref  ValType
+		init RefInit
+		want string
+	}{
+		{name: "externref", ref: ValExternRef, init: RefInit{FuncIndex: 1}, want: "opaque externref"},
+		{name: "invalid i31", ref: ValI31Ref, init: RefInit{FuncIndex: 2}, want: "invalid i31"},
+		{name: "foreign function", ref: ValFuncRef, init: RefInit{FuncIndex: 1}, want: "unavailable function"},
+		{name: "reference global", ref: ValFuncRef, init: RefInit{HasGlobal: true}, want: "reference global"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			compiled := &Compiled{passiveElems: []ElemInit{{Mode: ElemModePassive, RefType: tc.ref, Values: []RefInit{tc.init}}}}
+			if err := validateDomainPassiveElements(compiled, []uint32{1}); err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("live passive admission error = %v, want %q", err, tc.want)
+			}
+			if err := validateDomainPassiveElements(compiled, []uint32{0}); err != nil {
+				t.Fatalf("dropped passive element rejected: %v", err)
+			}
+		})
 	}
 }
 

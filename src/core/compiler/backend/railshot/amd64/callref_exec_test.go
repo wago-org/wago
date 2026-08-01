@@ -164,6 +164,7 @@ func runReturnCallRefRaw(t *testing.T, m *wasm.Module, n uint64, sigKey uint64, 
 	binary.LittleEndian.PutUint64(entry[coreruntime.TableEntryHomeLinMemOffset:], home)
 	binary.LittleEndian.PutUint64(entry[coreruntime.FuncRefContextOffset:], contextPtr)
 	jm.SetFuncRefDesc(uintptr(unsafe.Pointer(&descs[0])))
+	jm.CaptureInstanceContextBytes(context)
 
 	args := arena.Alloc(8)
 	binary.LittleEndian.PutUint64(args, n)
@@ -206,7 +207,7 @@ func TestCallRefInvokesLocalDescriptorAndMatchesTraps(t *testing.T) {
 	}
 }
 
-func TestReturnCallRefReusesFrameAndFailsClosed(t *testing.T) {
+func TestReturnCallRefReusesFrameAcrossInternalAndWrapperEntries(t *testing.T) {
 	m := returnCallRefModule(t, false)
 	wantSig := m.StructuralTypeKey(0)
 	out, err := runReturnCallRefRaw(t, m, 1_000_000, wantSig, true)
@@ -220,8 +221,8 @@ func TestReturnCallRefReusesFrameAndFailsClosed(t *testing.T) {
 	if _, err := runReturnCallRefRaw(t, m, 1, wantSig+1, true); err == nil || !strings.Contains(err.Error(), "wrong signature") {
 		t.Fatalf("wrong-signature return_call_ref trap = %v", err)
 	}
-	if _, err := runReturnCallRefRaw(t, m, 1, wantSig, false); err == nil || !strings.Contains(err.Error(), "unsupported context switch") {
-		t.Fatalf("wrapper return_call_ref trap = %v", err)
+	if out, err := runReturnCallRefRaw(t, m, 1_000_000, wantSig, false); err != nil || binary.LittleEndian.Uint32(out) != 7 {
+		t.Fatalf("wrapper return_call_ref = %v, %v; want 7", out, err)
 	}
 
 	nullModule := returnCallRefModule(t, true)
