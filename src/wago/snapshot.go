@@ -72,8 +72,10 @@ var defaultWarmFuncs = []string{"_start", "_instantiate"}
 // Imported globals and tables are not captured — their state is owned outside the
 // instance. GC-reference function imports also require whole-domain capture ownership.
 // Non-GC reference globals, opaque/function-reference tables, and passive element
-// state remain rejected. Only explicit-bounds modules are supported;
-// signals-based (guard-page) instances are rejected, matching Compiled.MarshalBinary.
+// state remain rejected. Owned memory32 and memory64 mappings are supported; imported
+// or shared memory still requires whole-domain or external ownership. Only
+// explicit-bounds modules are supported; signals-based (guard-page) instances are
+// rejected, matching Compiled.MarshalBinary.
 type Snapshot struct {
 	// c is the module the snapshot restores against, kept for the in-memory path.
 	// After a disk round-trip LoadSnapshot rebuilds it from the embedded blob.
@@ -386,9 +388,6 @@ func validateSnapshotModule(c *Compiled) error {
 	}
 	for i := 0; i < c.memoryCount(); i++ {
 		def := c.memoryDef(i)
-		if def.Addr64 {
-			return errors.New("wago: memory64 modules cannot be snapshotted until 64-bit address-form lifecycle metadata is admitted")
-		}
 		if def.ImportKey != "" || def.Shared {
 			if c.memoryCount() > 1 {
 				return errors.New("wago: modules with multiple memories that are imported or shared cannot be snapshotted; reject before retaining imports or mutating store state")

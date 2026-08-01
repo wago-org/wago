@@ -191,11 +191,22 @@ func arm64GCFrameTablesSafe(m *wasm.Module) bool {
 		}
 		for _, expr := range e.Kind.Exprs {
 			if kind == 2 && e.Kind.Ref.Heap.Kind == wasm.HeapAbs && e.Kind.Ref.Heap.Abs == wasm.HeapI31 {
-				// Exact i31 element expressions are immediate values, not object roots.
+				// Exact i31 element expressions are immediate or immutable-global
+				// values, not independent object roots.
 				continue
 			}
 			ee, err := wasm.ParseElementExpr(expr)
-			if err != nil || ee.HasGlobal || (!ee.Null && (kind != 1 || !functionIndexOK(ee.FuncIndex))) {
+			if err != nil {
+				return false
+			}
+			if ee.HasGlobal {
+				gt, ok := m.GlobalTypeByIndex(ee.GlobalIndex)
+				if !ok || gt.Mutable || !arm64CollectorFrameRefType(m, gt.Type) {
+					return false
+				}
+				continue
+			}
+			if !ee.Null && (kind != 1 || !functionIndexOK(ee.FuncIndex)) {
 				return false
 			}
 		}

@@ -195,11 +195,22 @@ func gcFrameTablesSafe(m *wasm.Module) bool {
 		for _, expr := range e.Kind.Exprs {
 			if kind == 2 && e.Kind.Ref.Heap.Kind == wasm.HeapAbs && e.Kind.Ref.Heap.Abs == wasm.HeapI31 {
 				// Validation and compileElemValues already proved each expression is
-				// an exact immediate i31; it carries no collector object root.
+				// an exact immediate i31 or immutable global value; neither adds an
+				// independent collector root beyond the global root.
 				continue
 			}
 			ee, err := wasm.ParseElementExpr(expr)
-			if err != nil || ee.HasGlobal || (!ee.Null && (kind != 1 || !functionIndexOK(ee.FuncIndex))) {
+			if err != nil {
+				return false
+			}
+			if ee.HasGlobal {
+				gt, ok := m.GlobalTypeByIndex(ee.GlobalIndex)
+				if !ok || gt.Mutable || !collectorFrameRefType(m, gt.Type) {
+					return false
+				}
+				continue
+			}
+			if !ee.Null && (kind != 1 || !functionIndexOK(ee.FuncIndex)) {
 				return false
 			}
 		}

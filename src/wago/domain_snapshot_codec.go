@@ -12,7 +12,7 @@ import (
 const (
 	domainSnapshotMagic      = "WGDN"
 	domainSnapshotVersionMin = 1
-	domainSnapshotVersion    = 2
+	domainSnapshotVersion    = 3
 )
 
 // IsDomainSnapshot reports whether b starts with the whole-domain snapshot wire
@@ -41,6 +41,13 @@ func (s *DomainSnapshot) marshalBinaryVersion(version byte) ([]byte, error) {
 		compiled, err := entry.state.c.MarshalBinary()
 		if err != nil {
 			return nil, fmt.Errorf("wago: domain snapshot member %d module: %w", member, err)
+		}
+		if version < 3 {
+			for i := 0; i < entry.state.c.memoryCount(); i++ {
+				if entry.state.c.memoryDef(i).Addr64 {
+					return nil, fmt.Errorf("wago: domain snapshot v%d cannot encode member %d memory64 state", version, member)
+				}
+			}
 		}
 		out = appendSized(out, compiled)
 		memories := snapshotMemories(entry.state)
@@ -72,6 +79,22 @@ func (s *DomainSnapshot) marshalBinaryVersion(version byte) ([]byte, error) {
 			}
 		} else if len(entry.state.c.passiveElems) != 0 {
 			return nil, fmt.Errorf("wago: domain snapshot v1 cannot encode member %d passive element state", member)
+		}
+		if version >= 3 {
+			roots := entry.elementRoots
+			if len(roots) == 0 {
+				roots = make([][]gcSnapshotRef, len(entry.state.c.passiveElems))
+			}
+			out = binary.AppendUvarint(out, uint64(len(roots)))
+			for _, refs := range roots {
+				out = appendDomainRefs(out, refs)
+			}
+		} else {
+			for _, refs := range entry.elementRoots {
+				if len(refs) != 0 {
+					return nil, fmt.Errorf("wago: domain snapshot v%d cannot encode member %d passive element roots", version, member)
+				}
+			}
 		}
 		out = binary.AppendUvarint(out, uint64(len(entry.imports)))
 		for _, imp := range entry.imports {
@@ -142,6 +165,13 @@ func LoadDomainSnapshot(data []byte) (*DomainSnapshot, error) {
 			return fail(fmt.Errorf("wago: domain snapshot member %d module: %w", member, err))
 		}
 		loaded = append(loaded, compiled)
+		if version < 3 {
+			for i := 0; i < compiled.memoryCount(); i++ {
+				if compiled.memoryDef(i).Addr64 {
+					return fail(fmt.Errorf("wago: domain snapshot v%d cannot decode member %d memory64 state", version, member))
+				}
+			}
+		}
 		memories := make([]memorySnap, rd.count(fmt.Sprintf("member %d memory", member), 2))
 		for i := range memories {
 			pages := rd.uvarint()
@@ -184,6 +214,13 @@ func LoadDomainSnapshot(data []byte) (*DomainSnapshot, error) {
 		} else {
 			elements = compiledPassiveElemLens(compiled)
 		}
+		var elementRoots [][]gcSnapshotRef
+		if version >= 3 {
+			elementRoots = make([][]gcSnapshotRef, rd.count(fmt.Sprintf("member %d passive element root", member), 1))
+			for i := range elementRoots {
+				elementRoots[i] = readDomainRefs(rd, fmt.Sprintf("member %d passive element %d root", member, i))
+			}
+		}
 		imports := make([]domainSnapshotImport, rd.count(fmt.Sprintf("member %d import", member), 4))
 		for i := range imports {
 			imports[i].key = string(rd.sizedBytes(fmt.Sprintf("member %d import %d key", member, i)))
@@ -201,8 +238,11 @@ func LoadDomainSnapshot(data []byte) (*DomainSnapshot, error) {
 			tableRoots[i] = readDomainRefs(rd, fmt.Sprintf("member %d table %d root", member, i))
 		}
 		members[member] = domainSnapshotMember{
-			state:   &Snapshot{c: compiled, gc: cfg, kind: SnapshotInit, memories: memories, globals: globals, passiveDataLens: passive, passiveElemLens: elements},
-			imports: imports, globalRefs: globalRefs, tableRoots: tableRoots,
+			state:        &Snapshot{c: compiled, gc: cfg, kind: SnapshotInit, memories: memories, globals: globals, passiveDataLens: passive, passiveElemLens: elements},
+			imports:      imports,
+			globalRefs:   globalRefs,
+			tableRoots:   tableRoots,
+			elementRoots: elementRoots,
 		}
 		if len(memories) != 0 {
 			members[member].state.memPages, members[member].state.memory = memories[0].pages, memories[0].image

@@ -2718,7 +2718,7 @@ func (c *Compiled) validate() error {
 	}
 	validateElementValues := func(kind string, seg int, elem ElemInit) error {
 		refType := normalizedElemRefType(elem.RefType)
-		if refType != ValFuncRef && refType != ValExternRef && refType != ValI31Ref && !(refType == ValAnyRef && len(elem.Values) == 0) {
+		if refType != ValFuncRef && refType != ValExternRef && refType != ValI31Ref && refType != ValAnyRef {
 			return fmt.Errorf("compiled metadata invalid: %s element %d has unsupported reference type %s", kind, seg, refType)
 		}
 		required, err := c.elemExactType(elem)

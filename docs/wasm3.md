@@ -210,10 +210,11 @@ bounds/platform qualification rather than missing official opcode families:
 3. preserve the completed heterogeneous shared-table attachment, mutation, growth,
    rollback, codec, close-order, moving-collection, and foreign-Runtime rejection proofs;
 4. preserve the completed snapshot-v5 single-table and snapshot-v6 heterogeneous
-   multi-table proofs plus `WGDN` v2 whole-domain capture (v1 load-compatible): exhaustive ordered members,
-   internal function/global/table/memory32/exception-tag aliases, immutable tag
-   directories, one shared stable-ID graph, exact GC config, reconstructible live
-   passive funcref/i31/null payloads, strict malformed-input validation, and atomic
+   multi-table proofs plus `WGDN` v3 whole-domain capture (strict v1/v2 load
+   compatibility): exhaustive ordered members, internal function/global/table/
+   memory32/memory64/exception-tag aliases, immutable tag directories, one shared
+   stable-ID graph, exact GC config, reconstructible live passive funcref/i31/null and
+   immutable-global GC payloads, strict malformed-input validation, and atomic
    all-member publication;
 5. keep the complete linux/amd64 explicit and signal-backed suites plus native
    Linux/Darwin arm64 explicit-bounds conformance mandatory in CI, and broaden
@@ -234,11 +235,15 @@ path at 474.7–481.6 ns/op with 0 B/op and 0 allocs/op; existing direct cross-i
 watchpoints remain 89.52–94.63 ns/op and allocation-free. The native context grows by
 32 bytes per instance, from 72 to 104 bytes; basedata and descriptor layouts do not grow.
 
-`WGDN` v2 now admits live passive element state only when the compiled payload is fully
-reconstructible: available funcrefs, immediate i31 values, and null references. It
-preserves both payload and lifecycle across binary round trips. Global-dependent
-expressions, opaque non-null externrefs, unavailable functions, malformed i31 values,
-and unsupported non-null collector payloads remain strict pre-publication errors.
+`WGDN` v3 adds typed passive-element root vectors and same-domain memory64 aliases while
+strictly loading v1/v2. Live passive element state is admitted for available funcrefs,
+immediate i31 values, null references, and exact GC/i31 values sourced from immutable
+internal GC globals. Stable object IDs preserve sharing between a global and its passive
+payload, and restore rewrites the off-heap segment entries only after graph reconstruction.
+Owned single-instance memory64 snapshots and internal memory64 aliases retain address
+form, grown pages, bytes, and one shared restored mapping. Opaque non-null externrefs,
+unavailable functions, malformed i31 values, independently owned collector payloads,
+shared memories, and cyclic ownership remain strict pre-publication errors.
 
 Historical iteration sections below retain the boundary statements that were true
 at each commit. They are not the current support matrix; use `FEATURES.md` and the

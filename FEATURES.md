@@ -61,9 +61,10 @@ function-subtype checks, multi-memory, memory64, table64, `try_table`, `throw`, 
 tables share exact alias roots, growth, attachment rollback, codec reload, and close
 ordering. Exhaustive ordered Runtime domains can now be persisted through
 `CaptureDomain`/`DomainSnapshot`: one stable-ID heap graph preserves imported
-global/table/memory32/tag aliases and internal function links, dropped elements, and
-live passive elements whose payloads are reconstructible funcrefs, immediate i31
-values, or null references; restore publishes all members transactionally. Exception-tag
+global/table/memory32/memory64/tag aliases and internal function links, dropped
+elements, and live passive elements whose payloads are reconstructible funcrefs,
+immediate i31 values, null references, or exact GC/i31 values read from immutable
+internal GC globals; restore publishes all members transactionally. Exception-tag
 directories add no completed-invocation mutable state; external tags,
 incomplete/external domains, and unrestricted host ownership remain fail-closed. Generic struct/array results may
 be retained as up to 64 opaque `GCRef` tokens per producer with exact store ownership,

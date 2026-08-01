@@ -85,9 +85,10 @@ per producer. Partial multi-result issuance rolls back atomically; exact store/p
 ownership survives producer close, and non-null tokens may re-enter the same collector
 domain through structural subtype checks plus reusable checked argument roots; stale
 and foreign tokens reject. `CaptureDomain` separately quiesces an exhaustive ordered
-collector domain and persists every member, internal function/global/table edge, alias,
-and one stable-ID heap graph in `WGDN` v1; restore publishes the complete member slice
-only after transactional graph reconstruction. Codec v30 persists helper admission and
+collector domain and persists every member, internal function/global/table edge,
+memory32/memory64 and tag aliases, typed live passive roots, and one stable-ID heap
+graph in `WGDN` v3 with strict v1/v2 loading; restore publishes the complete member
+slice only after transactional graph reconstruction. Codec v30 persists helper admission and
 the 16-byte `v128` storage contract, but never compact handles.
 Snapshot v4 persists reachable local-global object graphs with stable IDs and
 two-pass cycle/sharing reconstruction; snapshot v5 adds one owned local

@@ -154,16 +154,18 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   internal function/global/table import edge, alias identity, and one shared stable-ID GC
   graph. `DomainSnapshot.Instantiate` restores acyclic internal links and publishes the
   member slice only after graph reconstruction; any failure closes the unpublished domain.
-  The `WGDN` v2 blob (retaining v1 load compatibility) persists compiled members, exact
-  GC configuration, imports, aliases, cycles, sharing, heterogeneous canonical types,
-  and passive-element lifecycle/payload state; restore requires a Runtime without
-  an existing live GC domain. Live passive payloads are admitted when each value is a
-  reconstructible funcref, immediate i31, or null reference. Live public GC tokens,
-  active calls, external imports, shared or memory64 memories, opaque externrefs,
-  unsupported non-null collector payloads, global-dependent element expressions,
-  incomplete member sets, and cyclic instantiation graphs reject before publication.
-  Same-domain imported memory32 and exception-tag aliases now preserve their exact owner
-  and identity; memory links also preserve grown size and bytes. Completed EH state needs
+  The `WGDN` v3 blob (retaining strict v1/v2 load compatibility) persists compiled
+  members, exact GC configuration, imports, aliases, cycles, sharing, heterogeneous
+  canonical types, and passive-element lifecycle/payload state; restore requires a
+  Runtime without an existing live GC domain. Live passive payloads admit reconstructible
+  funcrefs, immediate i31 values, null references, and exact GC/i31 values read from
+  immutable internal GC globals; v3 stores those values as typed stable-ID roots and
+  validates identity against the captured global. Live public GC tokens, active calls,
+  external imports, shared memories, opaque externrefs, independently owned non-null
+  collector payloads, incomplete member sets, and cyclic instantiation graphs reject
+  before publication. Same-domain imported memory32/memory64 and exception-tag aliases
+  preserve their exact owner and identity; memory links also preserve address form,
+  grown size, and bytes. Completed EH state needs
   no extra mutable snapshot payload and restores through the compiled member.
 - [x] **Bounded host-held GC results:** generic struct/array results issue up to 64
   opaque `GCRef` tokens per producer, atomically roll back partial multi-result egress,

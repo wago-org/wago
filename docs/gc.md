@@ -132,18 +132,20 @@ every live instance in stable order; capture quiesces native execution and the c
 proves the set exhaustive, records internal function/global/table edges and alias identity,
 and traverses one shared stable-ID object graph. `DomainSnapshot.Instantiate` restores an
 acyclic internal import graph privately into a Runtime without an existing GC domain,
-reconstructs the shared heap once, then returns the member slice only after success. `WGDN` version 2 persists compiled members, exact GC
-configuration, memory/global/passive-data state, passive-element lifecycle and
-reconstructible payloads, roots, aliases, cycles, and sharing while retaining version 1
+reconstructs the shared heap once, then returns the member slice only after success. `WGDN` version 3 persists compiled members, exact GC
+configuration, memory/global/passive-data state, passive-element lifecycle and typed
+stable-ID payload roots, aliases, cycles, and sharing while retaining strict version 1/2
 load compatibility. Live passive entries may contain available funcrefs, immediate i31
-values, or null references; their exact value sequence and dropped/live state round-trip.
+values, null references, or exact GC/i31 values sourced from immutable internal GC
+globals; their value sequence, global identity, and dropped/live state round-trip.
 Same-domain imported memory32 links preserve the owning member and restore one shared
 backing mapping after validating duplicate member images. Same-domain imported tags
 preserve the owning member's immutable native identity and structural tag type. Live
-public tokens, active calls, external imports, shared or memory64 memories, opaque
-externrefs, unsupported non-null collector payloads, global-dependent element
-expressions, incomplete sets, and cyclic instantiation graphs remain strict
-pre-publication rejections. Completed EH invocations carry no additional mutable
+public tokens, active calls, external imports, shared memories, opaque externrefs,
+independently owned non-null collector payloads, incomplete sets, and cyclic
+instantiation graphs remain strict pre-publication rejections. Owned single-instance
+memory64 state and same-domain imported memory64 aliases preserve exact address form,
+grown pages, bytes, and alias identity. Completed EH invocations carry no additional mutable
 snapshot state and round-trip through their compiled member and ordinary GC graph.
 
 Numeric host imports may re-enter the same instance: codec-v30 callsites carry
@@ -2046,9 +2048,10 @@ Tests exercise tiny nurseries, collect-every-alloc, exact scanning, cycles, root
   table; snapshot v6 extends this to multiple heterogeneous local tables with indexed
   growth state, cross-table cycles/sharing, deterministic repeated capture, malformed
   graph rejection, exact root/field subtype checks, and near-capacity restore rollback.
-  Whole-domain shared snapshots use exhaustive ordered `WGDN` v2 domain capture and
-  transactional restore with v1 compatibility; dropped passive-element state restores,
-  while live/external or cyclic ownership shapes reject.
+  Whole-domain shared snapshots use exhaustive ordered `WGDN` v3 domain capture and
+  transactional restore with strict v1/v2 compatibility. Dropped and reconstructible
+  live passive state restores, including immutable-global GC/i31 payload identity;
+  external, independently owned, or cyclic ownership shapes reject.
 - Minor collection promotes marked nursery survivors through handles rather than
   implementing a final copying nursery/root-update path. The Throughput allocator
   reuses freed memory but does not yet implement full Immix line/block marking or

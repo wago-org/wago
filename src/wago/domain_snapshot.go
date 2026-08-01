@@ -5,7 +5,9 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"unsafe"
 
+	"github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/src/core/runtime/gc"
 )
 
@@ -19,10 +21,11 @@ type DomainSnapshot struct {
 }
 
 type domainSnapshotMember struct {
-	state      *Snapshot
-	imports    []domainSnapshotImport
-	globalRefs []gcSnapshotRef
-	tableRoots [][]gcSnapshotRef
+	state        *Snapshot
+	imports      []domainSnapshotImport
+	globalRefs   []gcSnapshotRef
+	tableRoots   [][]gcSnapshotRef
+	elementRoots [][]gcSnapshotRef
 }
 
 type domainSnapshotImport struct {
@@ -49,11 +52,13 @@ type domainGCObjectSnapshot struct {
 
 // CaptureDomain captures an exhaustive, explicitly ordered set of instances
 // sharing one Runtime GC collector. Calls are quiesced process-wide during the
-// copy. The initial product rejects active calls, live public GC tokens, external
-// imports, shared or memory64 memories, opaque references, live passive elements,
-// and an incomplete member list. Same-domain imported
-// memory32 aliases and exception-tag aliases are captured through their owning
-// member. Immutable tag directories carry no post-instantiation mutable state.
+// copy. The bounded product rejects active calls, live public GC tokens, external
+// imports, shared memories, opaque references, independently owned passive GC
+// payloads, and an incomplete member list. Same-domain imported memory32/memory64
+// aliases and exception-tag aliases are captured through their owning member.
+// Live passive GC values may depend on immutable internal GC globals; WGDN v3
+// persists their exact stable-ID roots. Immutable tag directories carry no
+// post-instantiation mutable state.
 func CaptureDomain(instances ...*Instance) (*DomainSnapshot, error) {
 	if len(instances) == 0 {
 		return nil, errors.New("wago: domain snapshot requires at least one instance")
@@ -146,8 +151,8 @@ func validateDomainSnapshotMember(in *Instance) error {
 	}
 	for i := 0; i < in.c.memoryCount(); i++ {
 		def := in.c.memoryDef(i)
-		if def.Shared || def.Addr64 {
-			return fmt.Errorf("memory %d is shared or memory64", i)
+		if def.Shared {
+			return fmt.Errorf("memory %d is shared", i)
 		}
 	}
 	if lens := capturePassiveElemLens(in); len(lens) != 0 {
@@ -179,9 +184,20 @@ func validateDomainPassiveElements(c *Compiled, lens []uint32) error {
 		}
 		elem := &c.passiveElems[i]
 		refType := normalizedElemRefType(elem.RefType)
+		required, err := c.elemExactType(*elem)
+		if err != nil {
+			return fmt.Errorf("live element %d exact type: %w", i, err)
+		}
 		for valueIndex, value := range elem.Values {
 			if value.HasGlobal {
-				return fmt.Errorf("live element %d value %d depends on a reference global", i, valueIndex)
+				if int(value.GlobalIndex) >= len(c.Globals) || c.Globals[value.GlobalIndex].Mutable || !isGCRefValType(c.Globals[value.GlobalIndex].Type) {
+					return fmt.Errorf("live element %d value %d reference global %d is unavailable, mutable, or externally owned", i, valueIndex, value.GlobalIndex)
+				}
+				actual, actualErr := c.globalExactType(int(value.GlobalIndex))
+				if actualErr != nil || !valueTypeSubtype(actual, c.Types, required, c.Types) {
+					return fmt.Errorf("live element %d value %d reference global type mismatch", i, valueIndex)
+				}
+				continue
 			}
 			switch refType {
 			case ValFuncRef:
@@ -198,7 +214,7 @@ func validateDomainPassiveElements(c *Compiled, lens []uint32) error {
 				}
 			default:
 				if !value.Null {
-					return fmt.Errorf("live element %d value %d has unsupported reference type %s", i, valueIndex, elem.RefType)
+					return fmt.Errorf("live element %d value %d has unsupported non-global reference type %s", i, valueIndex, elem.RefType)
 				}
 			}
 		}
@@ -416,6 +432,47 @@ func captureDomainGCGraph(instances []*Instance, out *DomainSnapshot) error {
 			}
 		}
 		out.members[member].tableRoots = tables
+
+		lens := snapshotPassiveElemLens(out.members[member].state)
+		elements := make([][]gcSnapshotRef, len(in.c.passiveElems))
+		if len(elements) != 0 {
+			descBase := in.jm.PassiveElemPtr()
+			if descBase == 0 {
+				return fmt.Errorf("member %d passive element descriptors are unavailable", member)
+			}
+			descBytes := runtime.PassiveElemDescBytes * len(elements)
+			descs := unsafe.Slice((*byte)(offHeapPtr(descBase)), descBytes)
+			for segment, elem := range in.c.passiveElems {
+				length := lens[segment]
+				needsRoots := false
+				for _, value := range elem.Values {
+					needsRoots = needsRoots || value.HasGlobal
+				}
+				if length == 0 || !needsRoots || !isGCRefValType(normalizedElemRefType(elem.RefType)) {
+					continue
+				}
+				off := segment * runtime.PassiveElemDescBytes
+				entryPtr := uintptr(binary.LittleEndian.Uint64(descs[off:]))
+				if entryPtr == 0 {
+					return fmt.Errorf("member %d passive element %d has no live payload", member, segment)
+				}
+				entries := unsafe.Slice((*byte)(offHeapPtr(entryPtr)), int(length)*8)
+				elements[segment] = make([]gcSnapshotRef, length)
+				for i := uint32(0); i < length; i++ {
+					bits := binary.LittleEndian.Uint64(entries[i*8:])
+					ref := gc.Ref(uint32(bits))
+					if bits != uint64(ref) {
+						return fmt.Errorf("member %d passive element %d value %d contains a non-compact reference", member, segment, i)
+					}
+					encoded, err := encode(ref)
+					if err != nil {
+						return fmt.Errorf("member %d passive element %d value %d: %w", member, segment, i, err)
+					}
+					elements[segment][i] = encoded
+				}
+			}
+		}
+		out.members[member].elementRoots = elements
 	}
 	for pos := 0; pos < len(queue); pos++ {
 		ref := queue[pos]
@@ -776,6 +833,28 @@ func restoreDomainGCGraph(instances []*Instance, s *DomainSnapshot) error {
 				collector.WriteBarrierRoot(ref)
 			}
 		}
+		if len(s.members[member].elementRoots) != 0 {
+			descBase := in.jm.PassiveElemPtr()
+			if len(in.c.passiveElems) != 0 && descBase == 0 {
+				return fmt.Errorf("member %d passive element descriptors are unavailable", member)
+			}
+			descBytes := runtime.PassiveElemDescBytes * len(in.c.passiveElems)
+			descs := unsafe.Slice((*byte)(offHeapPtr(descBase)), descBytes)
+			for segment, roots := range s.members[member].elementRoots {
+				if len(roots) == 0 {
+					continue
+				}
+				off := segment * runtime.PassiveElemDescBytes
+				entryPtr := uintptr(binary.LittleEndian.Uint64(descs[off:]))
+				if entryPtr == 0 {
+					return fmt.Errorf("member %d passive element %d has no payload storage", member, segment)
+				}
+				entries := unsafe.Slice((*byte)(offHeapPtr(entryPtr)), len(roots)*8)
+				for i, encoded := range roots {
+					binary.LittleEndian.PutUint64(entries[i*8:], uint64(decode(encoded)))
+				}
+			}
+		}
 	}
 	return nil
 }
@@ -864,8 +943,70 @@ func validateDomainSnapshot(s *DomainSnapshot) error {
 		if err := validatePassiveDataLens(c, snapshotPassiveDataLens(entry.state)); err != nil {
 			return fmt.Errorf("wago: domain snapshot member %d passive data: %w", member, err)
 		}
-		if err := validateDomainPassiveElements(c, snapshotPassiveElemLens(entry.state)); err != nil {
+		elementLens := snapshotPassiveElemLens(entry.state)
+		if err := validateDomainPassiveElements(c, elementLens); err != nil {
 			return fmt.Errorf("wago: domain snapshot member %d passive elements: %w", member, err)
+		}
+		if len(entry.elementRoots) != 0 && len(entry.elementRoots) != len(c.passiveElems) {
+			return fmt.Errorf("wago: domain snapshot member %d passive element root count mismatch", member)
+		}
+		if len(entry.elementRoots) == 0 {
+			for segment, length := range elementLens {
+				if length == 0 {
+					continue
+				}
+				for _, value := range c.passiveElems[segment].Values {
+					if value.HasGlobal {
+						return fmt.Errorf("wago: domain snapshot member %d passive element %d requires persisted global-dependent roots", member, segment)
+					}
+				}
+			}
+		} else {
+			for segment, elem := range c.passiveElems {
+				roots := entry.elementRoots[segment]
+				length := elementLens[segment]
+				refType := normalizedElemRefType(elem.RefType)
+				needsRoots := false
+				for _, value := range elem.Values {
+					needsRoots = needsRoots || value.HasGlobal
+				}
+				if length == 0 || !needsRoots || !isGCRefValType(refType) {
+					if len(roots) != 0 {
+						return fmt.Errorf("wago: domain snapshot member %d passive element %d has unexpected roots", member, segment)
+					}
+					continue
+				}
+				if len(roots) != int(length) || len(elem.Values) != int(length) {
+					return fmt.Errorf("wago: domain snapshot member %d passive element %d root length mismatch", member, segment)
+				}
+				required, err := c.elemExactType(elem)
+				if err != nil {
+					return fmt.Errorf("wago: domain snapshot member %d passive element %d exact type: %w", member, segment, err)
+				}
+				for i, ref := range roots {
+					if err := validateTyped(ref, required, c.Types); err != nil {
+						return fmt.Errorf("wago: domain snapshot member %d passive element %d value %d: %w", member, segment, i, err)
+					}
+					value := elem.Values[i]
+					switch {
+					case value.HasGlobal:
+						if int(value.GlobalIndex) >= len(entry.globalRefs) || ref != entry.globalRefs[value.GlobalIndex] {
+							return fmt.Errorf("wago: domain snapshot member %d passive element %d value %d does not preserve global identity", member, segment, i)
+						}
+					case value.Null:
+						if ref.kind != gcSnapshotRefNull {
+							return fmt.Errorf("wago: domain snapshot member %d passive element %d value %d is not null", member, segment, i)
+						}
+					case refType == ValI31Ref:
+						if ref.kind != gcSnapshotRefI31 || ref.value != value.FuncIndex {
+							return fmt.Errorf("wago: domain snapshot member %d passive element %d value %d changed i31 payload", member, segment, i)
+						}
+					default:
+						return fmt.Errorf("wago: domain snapshot member %d passive element %d value %d has unsupported independent ownership", member, segment, i)
+					}
+					mark(ref)
+				}
+			}
 		}
 		if len(entry.tableRoots) != c.tableCount() {
 			return fmt.Errorf("wago: domain snapshot member %d table count mismatch", member)
@@ -1071,8 +1212,8 @@ func validateDomainSnapshotCompiledMember(c *Compiled) error {
 	}
 	for i := 0; i < c.memoryCount(); i++ {
 		def := c.memoryDef(i)
-		if def.Shared || def.Addr64 {
-			return fmt.Errorf("memory %d is shared or memory64", i)
+		if def.Shared {
+			return fmt.Errorf("memory %d is shared", i)
 		}
 	}
 	for i, global := range c.Globals {

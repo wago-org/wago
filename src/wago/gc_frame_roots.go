@@ -107,7 +107,10 @@ func validCompiledGCFunctionTables(c *Compiled) bool {
 		refType = normalizedElemRefType(refType)
 		for _, value := range values {
 			if value.HasGlobal {
-				return false
+				if int(value.GlobalIndex) >= len(c.Globals) || c.Globals[value.GlobalIndex].Mutable || !isGCRefValType(c.Globals[value.GlobalIndex].Type) {
+					return false
+				}
+				continue
 			}
 			if refType == ValFuncRef {
 				if !value.Null && int(value.FuncIndex) >= totalFuncs {
