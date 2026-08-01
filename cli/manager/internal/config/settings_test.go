@@ -40,10 +40,20 @@ func TestExperimentalPreviewDisablesUnavailableProposals(t *testing.T) {
 
 func TestPrintIncludesExperimentalSectionOnRequest(t *testing.T) {
 	var output bytes.Buffer
-	Print(&output, settings.Default(), true, settings.ScopeLocal, "./wago.json")
-	for _, want := range []string{"Wago configuration", "WebAssembly features", "Compiler optimizations", "Experimental preview", "tail-call"} {
+	Print(&output, settings.Default(), true, settings.ScopeLocal, "./wago.json", []settings.Override{{Key: "features.simd", Base: "false", Value: "true"}})
+	for _, want := range []string{"Wago configuration", "WebAssembly features", "Compiler optimizations", "Experimental preview", "tail-call", "override"} {
 		if !strings.Contains(output.String(), want) {
 			t.Fatalf("output missing %q:\n%s", want, output.String())
+		}
+	}
+}
+
+func TestPrintDiffNamesInheritanceLayer(t *testing.T) {
+	var output bytes.Buffer
+	PrintDiff(&output, settings.ScopeLocal, []settings.Override{{Key: "features.simd", Base: "false", Value: "true"}})
+	for _, want := range []string{"Wago configuration differences", "features.simd", "global false", "local true"} {
+		if !strings.Contains(output.String(), want) {
+			t.Fatalf("diff missing %q:\n%s", want, output.String())
 		}
 	}
 }

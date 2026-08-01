@@ -32,6 +32,7 @@ func TestInspectReportsActiveRuntime(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv(project.BareEnv, "1")
+	t.Setenv("WAGO_CONFIG", filepath.Join(root, "settings.json"))
 
 	report, err := Inspect(dirs, "canary-abc1234", filepath.Join(root, "bin", "wago"))
 	if err != nil {
@@ -62,6 +63,7 @@ func TestInspectReportsManifestDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Setenv("WAGO_CONFIG", filepath.Join(t.TempDir(), "settings.json"))
 
 	report, err := Inspect(wagopaths.Dirs{Data: filepath.Join(t.TempDir(), "data")}, "canary", "/tmp/wago")
 	if err != nil {
@@ -78,18 +80,21 @@ func TestInspectReportsManifestDirectory(t *testing.T) {
 func TestPrintKeepsStatusCompact(t *testing.T) {
 	var output bytes.Buffer
 	Print(&output, Report{
-		ManagerVersion: "canary-abc1234",
-		RuntimeVersion: "nightly",
-		RuntimeProfile: "standard",
-		RuntimeBuild:   "normal",
-		RuntimePath:    "/tmp/wago-runtime",
-		Scope:          "local",
-		ProjectDir:     "/tmp/project",
-		ManifestPath:   "/tmp/project/wago.json",
-		Plugins:        2,
-		LockState:      "up to date",
+		ManagerVersion:  "canary-abc1234",
+		RuntimeVersion:  "nightly",
+		RuntimeProfile:  "standard",
+		RuntimeBuild:    "normal",
+		RuntimePath:     "/tmp/wago-runtime",
+		Scope:           "local",
+		ProjectDir:      "/tmp/project",
+		ManifestPath:    "/tmp/project/wago.json",
+		Plugins:         2,
+		LockState:       "up to date",
+		ConfigScope:     "local",
+		ConfigPath:      "/tmp/project/wago.json",
+		ConfigOverrides: 2,
 	})
-	for _, want := range []string{"Wago status", "nightly (standard/normal)", "local", "directory", "/tmp/project", "2 enabled", "up to date"} {
+	for _, want := range []string{"Wago status", "nightly (standard/normal)", "local", "2 overrides", "settings", "directory", "/tmp/project", "2 enabled", "up to date"} {
 		if !strings.Contains(output.String(), want) {
 			t.Errorf("output does not contain %q:\n%s", want, output.String())
 		}

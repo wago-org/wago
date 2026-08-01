@@ -10,24 +10,28 @@ import (
 
 	"github.com/wago-org/wago/cli/internal/automation"
 	"github.com/wago-org/wago/cli/internal/project"
+	"github.com/wago-org/wago/cli/internal/settings"
 	"github.com/wago-org/wago/cli/internal/ui"
 	managerversion "github.com/wago-org/wago/cli/manager/internal/version"
 	"github.com/wago-org/wago/internal/wagopaths"
 )
 
 type Report struct {
-	ManagerVersion string `json:"managerVersion"`
-	ManagerPath    string `json:"managerPath"`
-	RuntimeVersion string `json:"runtimeVersion,omitempty"`
-	RuntimeProfile string `json:"runtimeProfile,omitempty"`
-	RuntimeBuild   string `json:"runtimeBuild,omitempty"`
-	RuntimePath    string `json:"runtimePath,omitempty"`
-	Scope          string `json:"scope"`
-	ProjectDir     string `json:"projectDirectory,omitempty"`
-	ManifestPath   string `json:"manifestPath,omitempty"`
-	LockPath       string `json:"lockPath,omitempty"`
-	LockState      string `json:"lockState"`
-	Plugins        int    `json:"plugins"`
+	ManagerVersion  string `json:"managerVersion"`
+	ManagerPath     string `json:"managerPath"`
+	RuntimeVersion  string `json:"runtimeVersion,omitempty"`
+	RuntimeProfile  string `json:"runtimeProfile,omitempty"`
+	RuntimeBuild    string `json:"runtimeBuild,omitempty"`
+	RuntimePath     string `json:"runtimePath,omitempty"`
+	Scope           string `json:"scope"`
+	ProjectDir      string `json:"projectDirectory,omitempty"`
+	ManifestPath    string `json:"manifestPath,omitempty"`
+	LockPath        string `json:"lockPath,omitempty"`
+	LockState       string `json:"lockState"`
+	Plugins         int    `json:"plugins"`
+	ConfigScope     string `json:"configScope"`
+	ConfigPath      string `json:"configPath"`
+	ConfigOverrides int    `json:"configOverrides"`
 }
 
 func Inspect(dirs wagopaths.Dirs, managerVersion, managerPath string) (Report, error) {
@@ -41,6 +45,11 @@ func Inspect(dirs wagopaths.Dirs, managerVersion, managerPath string) (Report, e
 		return Report{}, err
 	}
 	report.Scope = project.ScopeLabel(scope)
+	config, err := settings.Open(project.Truthy(project.GlobalEnv), project.Truthy(project.LocalEnv))
+	if err != nil {
+		return Report{}, err
+	}
+	report.ConfigScope, report.ConfigPath, report.ConfigOverrides = config.Scope(), config.Path(), len(config.Overrides())
 	if scope.Name == "bare" {
 		return report, nil
 	}
@@ -87,6 +96,14 @@ func Print(out io.Writer, report Report) {
 		ui.Detail(out, "location", ui.DisplayPath(report.RuntimePath))
 	}
 	ui.Detail(out, "scope", report.Scope)
+	config := report.ConfigScope
+	if report.ConfigOverrides == 1 {
+		config += " (1 override)"
+	} else if report.ConfigOverrides > 1 {
+		config += fmt.Sprintf(" (%d overrides)", report.ConfigOverrides)
+	}
+	ui.Detail(out, "config", config)
+	ui.Detail(out, "settings", ui.DisplayPath(report.ConfigPath))
 	if report.ManifestPath != "" {
 		ui.Detail(out, "directory", ui.DisplayPath(report.ProjectDir))
 		ui.Detail(out, "project", ui.DisplayPath(report.ManifestPath))

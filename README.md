@@ -895,6 +895,7 @@ The equivalent one-shot commands are suitable for scripts and agents:
 
 ```bash
 wago config list --experimental
+wago config diff --local
 wago config get simd
 wago config set simd off
 wago config set simd off --global
@@ -909,6 +910,8 @@ In a directory with `wago.json`, `wago config` reads and writes sparse local
 overrides under its `settings` field. Elsewhere it uses the global configuration
 in `~/.wago/config/settings.json` on macOS or the Wago XDG config directory on
 Linux. Use `--local`, `-l` or `--global`, `-g` to choose explicitly.
+`wago config diff` shows only values changed by the selected layer, and
+`wago status` reports the active layer, override count, and settings file.
 `WAGO_HOME` relocates Wago state and `WAGO_CONFIG` overrides the global file.
 Precedence is built-in and environment defaults, then global settings, local
 overrides, and finally explicit `wago run`, `wago build`, or `wago validate`

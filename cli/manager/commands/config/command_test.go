@@ -53,7 +53,7 @@ func TestConfigRootFlagsProvideOneShotActions(t *testing.T) {
 
 func TestConfigKeepsCompletionSubcommand(t *testing.T) {
 	command := Command(&testEnvironment{})
-	if command.Child("completions") == nil || command.Child("ls") == nil || command.Child("set") == nil {
+	if command.Child("completions") == nil || command.Child("ls") == nil || command.Child("diff") == nil || command.Child("set") == nil {
 		t.Fatal("config command tree is incomplete")
 	}
 }
@@ -69,6 +69,7 @@ func TestConfigSubcommandsCarryScope(t *testing.T) {
 		{"get", []string{"simd", "--local"}, false, true},
 		{"set", []string{"simd", "off", "-g"}, true, false},
 		{"reset", []string{"simd", "-l"}, false, true},
+		{"diff", []string{"-g"}, true, false},
 	} {
 		environment := &testEnvironment{}
 		child := Command(environment).Child(test.command)

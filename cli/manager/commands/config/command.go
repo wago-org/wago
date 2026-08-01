@@ -8,6 +8,7 @@ import (
 	"github.com/wago-org/wago/cli/internal/command"
 	"github.com/wago-org/wago/cli/internal/ui"
 	"github.com/wago-org/wago/cli/manager/commands/config/completions"
+	configdiff "github.com/wago-org/wago/cli/manager/commands/config/diff"
 	configget "github.com/wago-org/wago/cli/manager/commands/config/get"
 	configlist "github.com/wago-org/wago/cli/manager/commands/config/list"
 	"github.com/wago-org/wago/cli/manager/commands/config/options"
@@ -32,7 +33,7 @@ func Command(environment interface {
 			{Name: "reset-all", Bool: true, Help: "restore every setting in the selected scope"},
 		}, options.ScopeFlags()...),
 		Children: []*command.Cmd{
-			configlist.Command(environment), configget.Command(environment), configset.Command(environment),
+			configlist.Command(environment), configdiff.Command(environment), configget.Command(environment), configset.Command(environment),
 			configreset.Command(environment), completions.Command(environment),
 		},
 		Run: func(ctx *command.Ctx) {
