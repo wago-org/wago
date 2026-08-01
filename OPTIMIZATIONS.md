@@ -70,9 +70,11 @@ removed the same mapped read-only bytes. A no-unwind panic probe still printed
 its message and exited through the expected abort path; Core 3 `fib` and
 malformed-module diagnostics were unchanged. Across 200 randomized cached
 `wago --version` subprocesses per binary, startup was flat within noise (median
-898.2 vs 899.4 µs). The split release pipeline now applies the same stripping to
-Linux Tiny runtime assets; their profile-specific sizes must be measured
-independently.
+898.2 vs 899.4 µs). Removing compiler comments and the now-unused ELF
+section-name/header table saved another 956 bytes in that historical product;
+ELF loading uses program headers. The split release pipeline now applies the same
+stripping to Linux Tiny runtime assets; their profile-specific sizes must be
+measured independently.
 
 **Retired Core 3 fixture-hash admission on structural products (2026-08-01).**
 Collector-free function-identity products now rely on their existing strict

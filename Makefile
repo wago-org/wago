@@ -273,7 +273,8 @@ build-engine: ## Diagnostic run-only Minimal/Tiny runtime -> ./wago-engine
 		-tags wago_runtime,wago_lean,wago_minimal \
 		-ldflags "-X main.version=$(WAGO_VERSION)" -o wago-engine ./cli/wago
 	@if [ "$$(go env GOOS)" = linux ]; then \
-		strip -s --remove-section=.eh_frame --remove-section=.eh_frame_hdr wago-engine; \
+		strip -s --strip-section-headers --remove-section=.eh_frame \
+			--remove-section=.eh_frame_hdr --remove-section=.comment wago-engine; \
 	fi
 	@echo "wago-engine $(WAGO_VERSION): $$(du -h wago-engine | cut -f1)"
 

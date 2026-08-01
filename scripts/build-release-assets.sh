@@ -67,7 +67,9 @@ try_tinygo_build wago_runtime,wago_lean,wago_minimal "$minimal_tiny" ./cli/wago
 if [[ "$GOOS" == "linux" ]]; then
   for asset in "$standard_tiny" "$minimal_tiny"; do
     if [[ -s "$asset" ]]; then
-      strip -s --remove-section=.eh_frame --remove-section=.eh_frame_hdr "$asset"
+      strip -s --strip-section-headers \
+        --remove-section=.eh_frame --remove-section=.eh_frame_hdr \
+        --remove-section=.comment "$asset"
     fi
   done
 fi

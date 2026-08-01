@@ -87,9 +87,10 @@ make tinygo-test                   # runtime + public-API suites under TinyGo
 Historical monolithic `cli/wago`, linux/amd64 measurements (remeasure the split
 CLI and runtime artifacts independently). `make build-engine` is now a diagnostic
 alias for the current run-only Minimal/Tiny profile, not a separate authoritative
-product. Current Linux release packaging also
-removes TinyGo's unused `.eh_frame` and `.eh_frame_hdr` sections from each Tiny
-runtime asset after linking; manager and Normal runtime artifacts are unchanged:
+product. Current Linux release packaging also removes TinyGo's unused
+`.eh_frame`, `.eh_frame_hdr`, and `.comment` sections and the now-unneeded ELF
+section header table from each Tiny runtime asset after linking; manager and
+Normal runtime artifacts are unchanged:
 
 | build | size |
 |---|---:|
@@ -109,8 +110,9 @@ saves only ~10 KB over `conservative` and leaks; `-panic=trap` saves ~20 KB but
 replaces panic messages with a bare `SIGILL` — neither is worth it, so the
 Minimal-runtime recipe uses neither.
 
-The biggest reliable levers are `wago_lean`, `-no-debug`, `-opt=z`, and `strip
--s`. `-gc=leaking` is not acceptable because it leaks, and `-panic=trap` replaces
+The biggest reliable levers are `wago_lean`, `-no-debug`, `-opt=z`, and stripping
+symbols plus unused Linux unwind/comment and section-header metadata.
+`-gc=leaking` is not acceptable because it leaks, and `-panic=trap` replaces
 useful panic diagnostics with a bare `SIGILL`, so `make build-release` uses
 neither. The `-opt=2` build is about 0.8 MiB larger than `-opt=z`; use it only when
 measured compile-time speed matters more than footprint. UPX was not available on
