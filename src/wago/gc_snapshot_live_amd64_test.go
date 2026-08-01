@@ -50,6 +50,7 @@ func cloneGCSnapshotForTest(s *Snapshot) *Snapshot {
 	clone.globals = append([]globalSnap(nil), s.globals...)
 	clone.passiveDataLens = append([]uint32(nil), s.passiveDataLens...)
 	clone.gcGlobalRefs = append([]gcSnapshotRef(nil), s.gcGlobalRefs...)
+	clone.gcTableRefs = append([]gcSnapshotRef(nil), s.gcTableRefs...)
 	clone.gcObjects = make([]gcObjectSnapshot, len(s.gcObjects))
 	for i, object := range s.gcObjects {
 		clone.gcObjects[i] = object

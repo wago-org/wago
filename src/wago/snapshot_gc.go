@@ -1,6 +1,7 @@
 package wago
 
 import (
+	"encoding/binary"
 	"fmt"
 
 	"github.com/wago-org/wago/src/core/runtime/gc"
@@ -84,6 +85,31 @@ func captureGCHeapSnapshot(in *Instance, s *Snapshot) error {
 		s.globals[i].bits = 0
 	}
 
+	if in.c.HasTable {
+		desc := in.tableDescriptor(0)
+		if len(desc) < 8 {
+			return fmt.Errorf("collector-reference table descriptor is unavailable")
+		}
+		length := uint64(binary.LittleEndian.Uint32(desc))
+		capacity := uint64((len(desc) - 8) / 8)
+		if length > capacity {
+			return fmt.Errorf("collector-reference table length %d exceeds capacity %d", length, capacity)
+		}
+		s.gcTableRefs = make([]gcSnapshotRef, int(length))
+		for i := uint64(0); i < length; i++ {
+			bits := binary.LittleEndian.Uint64(desc[8+i*8:])
+			ref := gc.Ref(uint32(bits))
+			if bits != uint64(ref) {
+				return fmt.Errorf("table slot %d contains non-compact GC reference %#x", i, bits)
+			}
+			encoded, err := encodeRef(ref)
+			if err != nil {
+				return fmt.Errorf("table slot %d: %w", i, err)
+			}
+			s.gcTableRefs[i] = encoded
+		}
+	}
+
 	for pos := 0; pos < len(queue); pos++ {
 		ref := queue[pos]
 		typeID, err := in.gc.ObjectType(ref)
@@ -136,7 +162,7 @@ func captureGCHeapSnapshot(in *Instance, s *Snapshot) error {
 	return nil
 }
 
-func validateGCSnapshot(c *Compiled, globals []globalSnap, roots []gcSnapshotRef, objects []gcObjectSnapshot) error {
+func validateGCSnapshot(c *Compiled, globals []globalSnap, roots, tableRoots []gcSnapshotRef, objects []gcObjectSnapshot) error {
 	if c == nil {
 		return fmt.Errorf("snapshot has no bound module")
 	}
@@ -162,6 +188,37 @@ func validateGCSnapshot(c *Compiled, globals []globalSnap, roots []gcSnapshotRef
 		}
 		return nil
 	}
+	validateTypedRef := func(ref gcSnapshotRef, required ValueTypeDescriptor) error {
+		if required.Kind != ValueTypeReference {
+			return fmt.Errorf("root has non-reference declared type")
+		}
+		if ref.kind == gcSnapshotRefNull {
+			if !required.Ref.Nullable {
+				return fmt.Errorf("null reference does not match non-null declared type")
+			}
+			return nil
+		}
+		actual := ValueTypeDescriptor{Kind: ValueTypeReference}
+		switch ref.kind {
+		case gcSnapshotRefI31:
+			actual.Ref = ReferenceTypeDescriptor{Exact: true, Heap: HeapTypeDescriptor{Abstract: AbstractHeapI31}}
+		case gcSnapshotRefObject:
+			if ref.value == 0 || uint64(ref.value) > uint64(len(objects)) {
+				return fmt.Errorf("object reference %d exceeds object count %d", ref.value, len(objects))
+			}
+			typeID := objects[ref.value-1].typeID
+			if uint64(typeID) >= uint64(len(c.Types)) {
+				return fmt.Errorf("object reference %d has unavailable structural type %d", ref.value, typeID)
+			}
+			actual.Ref = ReferenceTypeDescriptor{Exact: true, Heap: HeapTypeDescriptor{Defined: true, TypeIndex: uint32(typeID)}}
+		default:
+			return fmt.Errorf("unknown GC reference kind %d", ref.kind)
+		}
+		if !valueTypeSubtype(actual, c.Types, required, c.Types) {
+			return fmt.Errorf("reference does not match declared structural type")
+		}
+		return nil
+	}
 	reachable := make([]bool, len(objects))
 	queue := make([]uint32, 0, len(objects))
 	markObject := func(ref gcSnapshotRef) {
@@ -181,10 +238,42 @@ func validateGCSnapshot(c *Compiled, globals []globalSnap, roots []gcSnapshotRef
 			}
 			continue
 		}
-		if c.Globals[i].Type == ValI31Ref && ref.kind == gcSnapshotRefObject {
-			return fmt.Errorf("i31 global %d carries an object reference", i)
+		required, err := c.globalExactType(i)
+		if err != nil {
+			return fmt.Errorf("global %d exact type: %w", i, err)
+		}
+		if err := validateTypedRef(ref, required); err != nil {
+			return fmt.Errorf("global %d: %w", i, err)
 		}
 		markObject(ref)
+	}
+	if c.HasTable {
+		if c.tableCount() != 1 || c.tableImportCount() != 0 || !isGCRefValType(c.tableElementType(0)) {
+			return fmt.Errorf("GC table roots require one owned local collector-reference table")
+		}
+		def := c.tableDef(0)
+		if len(tableRoots) < def.Size {
+			return fmt.Errorf("GC table root count %d is below declared minimum %d", len(tableRoots), def.Size)
+		}
+		capacity := c.tableRuntimeCapacity(0)
+		if len(tableRoots) > capacity {
+			return fmt.Errorf("GC table root count %d exceeds runtime capacity %d", len(tableRoots), capacity)
+		}
+		required, err := c.tableExactType(0)
+		if err != nil {
+			return fmt.Errorf("GC table exact type: %w", err)
+		}
+		for i, ref := range tableRoots {
+			if err := validateRef(ref); err != nil {
+				return fmt.Errorf("table slot %d: %w", i, err)
+			}
+			if err := validateTypedRef(ref, required); err != nil {
+				return fmt.Errorf("table slot %d: %w", i, err)
+			}
+			markObject(ref)
+		}
+	} else if len(tableRoots) != 0 {
+		return fmt.Errorf("snapshot has %d GC table roots for a module without a table", len(tableRoots))
 	}
 	for i, object := range objects {
 		desc, ok := snapshotGCDescriptor(c, object.typeID)
@@ -198,10 +287,21 @@ func validateGCSnapshot(c *Compiled, globals []globalSnap, roots []gcSnapshotRef
 		if len(object.values) != want {
 			return fmt.Errorf("object %d value count %d does not match layout count %d", i+1, len(object.values), want)
 		}
+		if uint64(object.typeID) >= uint64(len(c.Types)) {
+			return fmt.Errorf("object %d has unavailable structural type %d", i+1, object.typeID)
+		}
+		structural := c.Types[object.typeID]
 		for j, value := range object.values {
 			wantKind := desc.Elem
+			var storage StorageTypeDescriptor
 			if desc.Kind == gc.KindStruct {
 				wantKind = desc.Fields[j].Kind
+				if j >= len(structural.Fields) {
+					return fmt.Errorf("object %d structural field %d is unavailable", i+1, j)
+				}
+				storage = structural.Fields[j].Storage
+			} else {
+				storage = structural.Array.Storage
 			}
 			if value.kind != wantKind {
 				return fmt.Errorf("object %d value %d kind %d does not match layout kind %d", i+1, j, value.kind, wantKind)
@@ -212,6 +312,12 @@ func validateGCSnapshot(c *Compiled, globals []globalSnap, roots []gcSnapshotRef
 				}
 				if value.kind == gc.StorageRef && value.ref.kind == gcSnapshotRefNull {
 					return fmt.Errorf("object %d value %d is null in non-null reference storage", i+1, j)
+				}
+				if storage.Packed || storage.Value.Kind != ValueTypeReference {
+					return fmt.Errorf("object %d value %d has no structural reference type", i+1, j)
+				}
+				if err := validateTypedRef(value.ref, storage.Value); err != nil {
+					return fmt.Errorf("object %d value %d: %w", i+1, j, err)
 				}
 			} else if value.ref.kind != 0 || value.ref.value != 0 {
 				return fmt.Errorf("object %d value %d has a reference payload for non-reference storage", i+1, j)
@@ -236,17 +342,17 @@ func validateGCSnapshot(c *Compiled, globals []globalSnap, roots []gcSnapshotRef
 	}
 	for i, marked := range reachable {
 		if !marked {
-			return fmt.Errorf("object %d is unreachable from snapshot globals", i+1)
+			return fmt.Errorf("object %d is unreachable from snapshot roots", i+1)
 		}
 	}
 	return nil
 }
 
 func restoreGCHeapSnapshot(in *Instance, s *Snapshot) error {
-	if in == nil || in.gc == nil || s == nil || len(s.gcGlobalRefs) == 0 {
+	if in == nil || in.gc == nil || s == nil || (len(s.gcGlobalRefs) == 0 && len(s.gcTableRefs) == 0 && len(s.gcObjects) == 0) {
 		return nil
 	}
-	if err := validateGCSnapshot(in.c, s.globals, s.gcGlobalRefs, s.gcObjects); err != nil {
+	if err := validateGCSnapshot(in.c, s.globals, s.gcGlobalRefs, s.gcTableRefs, s.gcObjects); err != nil {
 		return err
 	}
 	public := in.publicGCState()
@@ -271,6 +377,20 @@ func restoreGCHeapSnapshot(in *Instance, s *Snapshot) error {
 		if !found {
 			return fmt.Errorf("GC global %d has no checked collector root", i)
 		}
+	}
+
+	var tableDesc []byte
+	if in.c.HasTable {
+		tableDesc = in.tableDescriptor(0)
+		if len(tableDesc) < 8 {
+			return fmt.Errorf("GC table descriptor is unavailable")
+		}
+		capacity := (len(tableDesc) - 8) / 8
+		if len(s.gcTableRefs) > capacity {
+			return fmt.Errorf("GC table root count %d exceeds descriptor capacity %d", len(s.gcTableRefs), capacity)
+		}
+		binary.LittleEndian.PutUint32(tableDesc, uint32(len(s.gcTableRefs)))
+		clear(tableDesc[8:])
 	}
 
 	refs := make(gc.RefSliceRoots, len(s.gcObjects))
@@ -340,6 +460,11 @@ func restoreGCHeapSnapshot(in *Instance, s *Snapshot) error {
 		if !found {
 			return fmt.Errorf("GC global %d has no checked collector root", i)
 		}
+	}
+	for i, encoded := range s.gcTableRefs {
+		ref := decodeRef(encoded)
+		binary.LittleEndian.PutUint64(tableDesc[8+i*8:], uint64(ref))
+		in.gc.WriteBarrierSlot(gc.SlotTable, uint32(i), ref)
 	}
 	return nil
 }

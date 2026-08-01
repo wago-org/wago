@@ -105,6 +105,9 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   calls. Codec v30 persists and validates the native root metadata.
 - [x] Add snapshot v4 stable-ID heap graphs for objects reachable from owned local
   GC globals, preserving cycles and sharing without serializing compact handles.
+- [x] Add snapshot v5 roots for one owned local collector-reference table, including
+  persisted growth state, cycles/sharing with globals and object fields, strict
+  structural subtype validation, malformed-input rejection, and native ARM64 execution.
 - [x] Lower struct, array, i31, cast/test, and conversion helpers on linux/darwin
   arm64 through the synchronous parked-host ABI.
 - 🚧 **Iteration 82 — hardening the new ownership and persistence boundaries:** add
@@ -127,9 +130,11 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   across descriptor-identical Runtime domains. Broaden this to multiple heterogeneous
   GC tables and transactional replacement/rollback; keep incompatible domains
   fail-closed.
-- [ ] **Snapshot root expansion:** cover every storage kind and mixed struct/array
-  graph, then add local GC tables and transactional restore. Shared/imported domain
-  snapshots remain rejected until whole-domain ownership can be captured.
+- [x] **Snapshot v5 local-root hardening:** one owned collector-reference table,
+  mixed cycles/sharing, deterministic repeated capture, strict subtype validation,
+  and near-capacity restore rollback are covered on amd64 and Linux/ARM64.
+- [ ] **Whole-domain snapshots:** imported/shared collector domains remain rejected
+  until complete domain ownership and atomic multi-instance publication can be captured.
 - [x] **Linux/amd64 bounds-mode parity:** explicit and signal-backed Core 3 both
   pass 2,226 modules and 58,038 assertions with zero failures, skips, or gaps.
   Signal mode keeps explicit directory checks for nonzero memories and full-u64

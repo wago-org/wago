@@ -200,7 +200,7 @@ func TestStagedOwnedMultiMemorySnapshotRejectsMaliciousMetadata(t *testing.T) {
 	}
 	makeBlob := func(memories ...memorySnap) []byte {
 		out := append([]byte{}, snapshotMagic...)
-		out = append(out, snapshotVersion, byte(SnapshotInit))
+		out = append(out, 3, byte(SnapshotInit)) // non-GC snapshots use format v3
 		out = binary.AppendUvarint(out, uint64(len(blob)))
 		out = append(out, blob...)
 		out = binary.AppendUvarint(out, uint64(len(memories)))

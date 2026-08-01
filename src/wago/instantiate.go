@@ -1226,7 +1226,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			}
 			public.globalRoots = append(public.globalRoots, gcGlobalRootMapping{GlobalIndex: uint32(i), SlotIndex: slot})
 		}
-		if opts.restore != nil && len(opts.restore.gcGlobalRefs) != 0 {
+		if opts.restore != nil && (len(opts.restore.gcGlobalRefs) != 0 || len(opts.restore.gcTableRefs) != 0 || len(opts.restore.gcObjects) != 0) {
 			if err := restoreGCHeapSnapshot(in, opts.restore); err != nil {
 				return nil, fmt.Errorf("snapshot GC heap: %w", err)
 			}

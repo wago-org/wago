@@ -197,13 +197,13 @@ The remaining Core 3 work is ownership/persistence generalization and additional
 bounds/platform qualification rather than missing official opcode families:
 
 1. harden Runtime GC-domain lifecycle, rollback, multi-hop foreign-frame walking,
-   codec reload, snapshot-v4 validation, and mixed graphs;
+   codec reload, snapshot-v5 validation, and mixed graphs;
 2. broaden the exact direct/recursive/host/foreign/tail/EH root product to
    polymorphic and foreign reference calls;
 3. broaden the completed GC-global and bounded one-table shared-domain model to
    multiple heterogeneous GC tables with transactional replacement/rollback;
-4. extend snapshot-v4 roots to local GC tables and make restore publication fully
-   transactional, while rejecting partial capture of imported/shared domains;
+4. preserve the completed snapshot-v5 local-table, deterministic-repeat, and
+   near-capacity rollback proofs while designing atomic whole-domain capture;
 5. keep the complete linux/amd64 explicit and signal-backed suites plus native
    Linux/Darwin arm64 explicit-bounds conformance mandatory in CI, and broaden
    arm64 bounds-mode/native workload qualification; and
