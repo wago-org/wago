@@ -119,14 +119,20 @@ func validCompiledGCFunctionTables(c *Compiled) bool {
 		}
 		return true
 	}
-	collectorTable := c.TableType == ValAnyRef || c.TableType == ValI31Ref
-	if collectorTable {
-		if c.tableCount() != 1 || len(c.passiveElems) != 0 {
+	collectorTables := c.tableCount() != 0
+	for tableIndex := 0; tableIndex < c.tableCount(); tableIndex++ {
+		if !isGCRefValType(c.tableElementType(tableIndex)) {
+			collectorTables = false
+			break
+		}
+	}
+	if collectorTables {
+		if len(c.passiveElems) != 0 {
 			return false
 		}
 		for i := range c.Elems {
 			elem := &c.Elems[i]
-			if elem.Mode != ElemModeActive || elem.TableIndex != 0 || normalizedElemRefType(elem.RefType) != c.TableType {
+			if elem.Mode != ElemModeActive || int(elem.TableIndex) >= c.tableCount() || normalizedElemRefType(elem.RefType) != c.tableElementType(int(elem.TableIndex)) {
 				return false
 			}
 			for _, value := range elem.Values {
@@ -140,7 +146,7 @@ func validCompiledGCFunctionTables(c *Compiled) bool {
 	if c.tableImport != "" || len(c.tableExports) != 0 || len(c.passiveElems) != 0 || (c.TableType != 0 && c.TableType != ValFuncRef) {
 		return false
 	}
-	if c.HasTableInitFunc && (collectorTable || int(c.TableInitFunc) < c.NumImports) {
+	if c.HasTableInitFunc && int(c.TableInitFunc) < c.NumImports {
 		return false
 	}
 	for i := range c.extraTables {
@@ -152,11 +158,11 @@ func validCompiledGCFunctionTables(c *Compiled) bool {
 	for i := range c.Elems {
 		elem := &c.Elems[i]
 		refType := normalizedElemRefType(elem.RefType)
-		if elem.Mode != ElemModeActive || int(elem.TableIndex) >= c.tableCount() || (!collectorTable && refType != ValFuncRef) || (collectorTable && refType != c.TableType) {
+		if elem.Mode != ElemModeActive || int(elem.TableIndex) >= c.tableCount() || refType != ValFuncRef {
 			return false
 		}
 		for _, value := range elem.Values {
-			if value.HasGlobal || (collectorTable && !value.Null) || (!collectorTable && !value.Null && int(value.FuncIndex) < c.NumImports) {
+			if value.HasGlobal || (!value.Null && int(value.FuncIndex) < c.NumImports) {
 				return false
 			}
 		}

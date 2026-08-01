@@ -330,16 +330,10 @@ func (in *Instance) collectGenericGCAtBoundary() error {
 	if err := in.syncGenericGCGlobalRootsLocked(public); err != nil {
 		return err
 	}
-	hasTableRoots := in.c.HasTable && (in.c.TableType == ValAnyRef || in.c.TableType == ValI31Ref)
-	if hasTableRoots {
-		public.tableRoots = gcNativeTableRoots{desc: in.tableDescPtr, bytes: uintptr(in.tableDescLen)}
-	}
+	hasTableRoots := in.c.HasTable
 	hasDomainRoots := in.refStore != nil && in.refStore.ownsGCCollector(in.gc)
 	if public.hostActivationCount != 0 || hasTableRoots || hasDomainRoots {
 		public.frameRoots = gcNativeFrameRoots{owner: in, suspended: public}
-		if hasTableRoots {
-			public.frameRoots.tableRoots = &public.tableRoots
-		}
 		return in.gc.CollectFull(&public.frameRoots)
 	}
 	return in.gc.CollectFull(nil)

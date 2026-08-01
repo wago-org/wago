@@ -327,8 +327,8 @@ func TestStagedGCStructHelperFootprint(t *testing.T) {
 	if got := unsafe.Sizeof(compiledCodeCache{}); got != 64 {
 		t.Fatalf("compiledCodeCache size = %d, want 64", got)
 	}
-	if got := unsafe.Sizeof(gcPublicState{}); got != 2440 {
-		t.Fatalf("gcPublicState size = %d, want 2440", got)
+	if got := unsafe.Sizeof(gcPublicState{}); got != 2416 {
+		t.Fatalf("gcPublicState size = %d, want 2416", got)
 	}
 	var _ gc.Ref = 0 // keep the compact reference representation explicit in this proof.
 }

@@ -89,7 +89,7 @@ and stress coverage.
 The synchronous helper boundary is capped at 64 parameter/result slots. A lazy
 per-instance `gcPublicState` includes one mutex-protected 63-value constructor
 scratch, a bounded direct native-frame/root-chain adapter, and the generic-global
-root mapping plus cross-code-owner identity (2,440 bytes total on amd64), avoiding per-constructor,
+root mapping plus cross-code-owner identity (2,416 bytes total on amd64), avoiding per-constructor,
 per-root-publication, and per-boundary-collection Go allocations. On July 31,
 2026, five 500 ms samples of `BenchmarkGCArrayV128Set` measured 439.5-476.8 ns/op
 with 0 B/op and 0 allocs/op on the Ryzen 7 8845HS host. The path includes
@@ -130,11 +130,11 @@ enters another live instance. Imported/exported mutable and immutable GC globals
 share their actual off-heap cells: every live domain instance contributes those
 cells directly during collection, while checked slots retain barrier/card state.
 Codec reload, failed-domain rollback, producer-before-consumer close, Throughput,
-Tiny, amd64, and ARM64 execution are covered. One bounded imported/exported
-collector-reference table also shares direct descriptor roots, table.grow state,
-codec reload, and producer-first close. Host reference transfer, incompatible
-collector configurations/descriptors, broader multi-table domains, and mixed
-unproved host/cross-instance import graphs reject transactionally.
+Tiny, amd64, and ARM64 execution are covered. Multiple heterogeneous
+imported/exported collector-reference tables share direct indexed descriptor roots,
+table.grow state, attachment rollback, codec reload, and producer-first close.
+Host reference transfer, incompatible collector configurations/descriptors, and
+mixed unproved host/cross-instance import graphs reject transactionally.
 
 Generic struct/array helpers and exact frame roots execute under linux/amd64
 guard-page bounds checks. Linux and Darwin arm64 explicit-bounds builds lower
@@ -1986,9 +1986,9 @@ Tests exercise tiny nurseries, collect-every-alloc, exact scanning, cycles, root
   instead of scanning an approximate root set.
 - Imported/exported mutable and immutable GC globals participate in exact
   descriptor-identical Runtime collector domains. Actual alias cells are domain
-  roots and checked slots preserve barrier/card state. One bounded imported/exported
-  GC table participates with direct alias roots and growth/close coverage; multiple
-  heterogeneous GC tables and transactional replacement/rollback remain fail-closed.
+  roots and checked slots preserve barrier/card state. Multiple heterogeneous
+  imported/exported GC tables participate with direct indexed alias roots,
+  growth/close coverage, and attachment rollback.
 - Host-held GC values remain explicit bounded tokens. Untyped `uint64` values are
   never accepted as transferable compact collector handles.
 - Snapshot v5 roots include owned local GC globals and one owned local

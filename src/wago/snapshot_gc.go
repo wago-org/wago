@@ -464,7 +464,7 @@ func restoreGCHeapSnapshot(in *Instance, s *Snapshot) error {
 	for i, encoded := range s.gcTableRefs {
 		ref := decodeRef(encoded)
 		binary.LittleEndian.PutUint64(tableDesc[8+i*8:], uint64(ref))
-		in.gc.WriteBarrierSlot(gc.SlotTable, uint32(i), ref)
+		in.gc.WriteBarrierRoot(ref)
 	}
 	return nil
 }

@@ -102,7 +102,6 @@ type gcNativeFrameRoots struct {
 	adapterReturnOffsets []uint32
 	callsites            []compiledGCFrameCallsite
 	suspended            *gcPublicState
-	tableRoots           *gcNativeTableRoots
 }
 
 type gcHostActivation struct {
@@ -151,13 +150,15 @@ func (r *gcNativeFrameRoots) walk(fn func(gc.RootSlot) bool, sink gc.RootRefSink
 			}
 		}
 	}
-	if r.owner != nil && r.owner.refStore != nil {
+	domainRoots := false
+	if r.owner != nil && r.owner.refStore != nil && r.owner.refStore.ownsGCCollector(r.owner.gc) {
+		domainRoots = true
 		if !r.owner.refStore.rangeGCDomainPersistentRoots(r.owner.gc, fn, sink) {
 			return
 		}
 	}
-	if r.tableRoots != nil {
-		r.tableRoots.walk(fn, sink)
+	if !domainRoots && r.owner != nil {
+		_ = r.owner.rangeLocalGCTableRoots(fn, sink)
 	}
 }
 
@@ -174,9 +175,9 @@ func (r *gcNativeTableRoots) RangeRootRefs(sink gc.RootRefSink) {
 	r.walk(nil, sink)
 }
 
-func (r *gcNativeTableRoots) walk(fn func(gc.RootSlot) bool, sink gc.RootRefSink) {
+func (r *gcNativeTableRoots) walk(fn func(gc.RootSlot) bool, sink gc.RootRefSink) bool {
 	if r == nil || r.desc == 0 || r.bytes < 8 {
-		return
+		return true
 	}
 	header := unsafe.Slice((*byte)(offHeapPtr(r.desc)), 8)
 	length := uint64(binary.LittleEndian.Uint32(header))
@@ -192,12 +193,33 @@ func (r *gcNativeTableRoots) walk(fn func(gc.RootSlot) bool, sink gc.RootRefSink
 		slot := (*gc.Root)(offHeapPtr(addr))
 		if sink != nil {
 			if !sink.VisitRootRef(slot.GetRef()) {
-				return
+				return false
 			}
 		} else if !fn(slot) {
-			return
+			return false
 		}
 	}
+	return true
+}
+
+func (in *Instance) rangeLocalGCTableRoots(fn func(gc.RootSlot) bool, sink gc.RootRefSink) bool {
+	if in == nil || in.c == nil {
+		return true
+	}
+	for tableIndex := 0; tableIndex < in.c.tableCount(); tableIndex++ {
+		if !isGCRefValType(in.c.tableElementType(tableIndex)) {
+			continue
+		}
+		desc := in.tableDescriptor(tableIndex)
+		if len(desc) < 8 {
+			panic(gcStructHelperError{err: fmt.Errorf("generic GC table %d descriptor is unavailable", tableIndex)})
+		}
+		roots := gcNativeTableRoots{desc: uintptr(unsafe.Pointer(&desc[0])), bytes: uintptr(len(desc))}
+		if !roots.walk(fn, sink) {
+			return false
+		}
+	}
+	return true
 }
 
 func (r *gcNativeFrameRoots) rangeChain(fn func(gc.RootSlot) bool, sink gc.RootRefSink) bool {
@@ -301,7 +323,6 @@ type gcPublicState struct {
 	hostRootPlan        *compiledGCFrameRoots
 	hostCodeBase        uintptr
 	hostCodeBytes       uintptr
-	tableRoots          gcNativeTableRoots
 }
 
 type externrefSlot struct {

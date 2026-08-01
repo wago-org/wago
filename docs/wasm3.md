@@ -200,8 +200,8 @@ bounds/platform qualification rather than missing official opcode families:
    codec reload, snapshot-v5 validation, and mixed graphs;
 2. broaden the exact direct/recursive/host/foreign/tail/EH root product to
    polymorphic and foreign reference calls;
-3. broaden the completed GC-global and bounded one-table shared-domain model to
-   multiple heterogeneous GC tables with transactional replacement/rollback;
+3. preserve the completed heterogeneous shared-table attachment, growth, rollback,
+   codec, and close-order proofs while extending ownership to unproved foreign shapes;
 4. preserve the completed snapshot-v5 local-table, deterministic-repeat, and
    near-capacity rollback proofs while designing atomic whole-domain capture;
 5. keep the complete linux/amd64 explicit and signal-backed suites plus native

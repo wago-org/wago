@@ -42,6 +42,22 @@ func (c *Collector) WriteBarrierObject(parent Ref, child Ref) {
 	}
 }
 
+// WriteBarrierRoot publishes a child stored in an exact externally walked root
+// such as an off-heap native table descriptor. Throughput collections rescan
+// external roots directly; Tiny must shade stores made during an incremental
+// mark/remark/sweep cycle.
+func (c *Collector) WriteBarrierRoot(child Ref) {
+	if !child.IsObj() || !c.validObjectRef(child) || c.cfg.Profile != ProfileTiny {
+		return
+	}
+	switch c.tinyGC.state {
+	case tinyMark, tinyRemark:
+		c.tinyMarkRef(child)
+	case tinySweep:
+		c.tinyMarkRefNow(child)
+	}
+}
+
 // WriteBarrierSlot records supported non-heap roots (globals/tables) that
 // store young refs. Frame slots are intentionally unsupported until the runtime
 // has exact frame-root metadata; frame refs must be supplied through RootSet.

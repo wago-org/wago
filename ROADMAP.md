@@ -125,11 +125,10 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   globals share descriptor-identical Runtime domains. Collection scans every live alias
   cell directly, checked slots preserve barrier/card state, and rollback, codec,
   close-order, Throughput/Tiny, amd64, and ARM64 execution are covered.
-- 🚧 **Shared GC tables:** one bounded imported/exported collector-reference table
-  now shares direct alias roots, growth state, codec reload, and producer-first close
-  across descriptor-identical Runtime domains. Broaden this to multiple heterogeneous
-  GC tables and transactional replacement/rollback; keep incompatible domains
-  fail-closed.
+- [x] **Shared GC tables:** multiple heterogeneous imported/exported
+  collector-reference tables share direct alias roots, growth state, indexed native
+  roots, attachment rollback, codec reload, and producer-first close across
+  descriptor-identical Runtime domains. Incompatible domains remain fail-closed.
 - [x] **Snapshot v5 local-root hardening:** one owned collector-reference table,
   mixed cycles/sharing, deterministic repeated capture, strict subtype validation,
   and near-capacity restore rollback are covered on amd64 and Linux/ARM64.
@@ -395,8 +394,8 @@ collector domains for descriptor-identical global/table-free modules, arm64 help
 lowering, and snapshot-v4 stable-ID heap graphs rooted by owned local GC globals.
 Arm64 now collects through direct/recursive calls, suspended direct-host
 activations, same-domain foreign frames, subtype-checked indirect/reference calls,
-proper discarded-frame tails, and fixed EH payload records, with mutable local GC
-globals and one private collector table. Bounded `try_table`, `throw`, `throw_ref`,
+proper discarded-frame tails, and fixed EH payload records, with mutable/shared GC
+globals and local/shared collector tables. Bounded `try_table`, `throw`, `throw_ref`,
 indexed multi-memory, memory64, and table64 execution complete the explicit-bounds
 Core 3 product. Polymorphic or foreign reference calls remain collection-disabled
 where exact ownership is unproved. Next work broadens shared GC globals/tables and

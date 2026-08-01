@@ -64,11 +64,5 @@ func (in *Instance) gcHelperRoots(ctrl uintptr, state *gcPublicState, safepointI
 	state.frameRoots.adapterReturnOffsets = plan.adapterReturnOffsets
 	state.frameRoots.callsites = plan.callsites
 	state.frameRoots.suspended = state
-	if in.c.HasTable && (in.c.TableType == ValAnyRef || in.c.TableType == ValI31Ref) {
-		state.tableRoots = gcNativeTableRoots{desc: in.tableDescPtr, bytes: uintptr(in.tableDescLen)}
-		state.frameRoots.tableRoots = &state.tableRoots
-	} else {
-		state.frameRoots.tableRoots = nil
-	}
 	return &state.frameRoots
 }

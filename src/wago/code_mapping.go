@@ -133,11 +133,11 @@ func (c *Compiled) hasGCRefGlobals() bool {
 }
 
 // sharedGCPersistentDomainSafe admits same-Runtime collector-reference globals
-// and one collector-reference table. Every live instance cell/table descriptor
-// in the descriptor-identical domain is scanned directly at collection, so
+// and collector-reference tables. Every live instance cell/table descriptor in
+// the descriptor-identical domain is scanned directly at collection, so
 // imported/exported aliases publish actual off-heap qwords.
 func (c *Compiled) sharedGCPersistentDomainSafe() bool {
-	if c == nil || c.tableCount() > 1 {
+	if c == nil {
 		return false
 	}
 	for i := 0; i < c.tableCount(); i++ {

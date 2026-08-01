@@ -357,7 +357,7 @@ func platformCoreFeatures() CoreFeatures {
 		// arm64 lowers collector-backed struct/array/i31 operations through the
 		// parked synchronous helper ABI. Exact roots cover locals, hidden spills,
 		// direct/recursive calls, direct host re-entry, same-domain foreign calls,
-		// mutable/shared GC globals, one local or shared collector table, exact local subtype
+		// mutable/shared GC globals and local/shared collector tables, exact local subtype
 		// tests/casts, dynamic indirect calls and tails, exception handling, indexed
 		// multi-memory, memory64, and table64. Polymorphic/foreign reference calls
 		// remain collection-disabled where exact ownership is unproved.

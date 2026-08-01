@@ -74,10 +74,10 @@ initialization and clearing remain part of the native EH lowering. A bounded
 same-Runtime cross-instance slice gives descriptor-identical modules one
 collector, transfers compact GC references without copying, and switches root-map
 ownership across foreign return PCs. Mutable and immutable imported/exported GC
-globals use direct domain-wide alias-cell roots plus checked barrier slots. One
-bounded imported/exported collector-reference table uses the same domain-wide
-descriptor-root scan across growth and producer-first close; broader multi-table
-ownership remains pending. Codec v30 persists helper
+globals use direct domain-wide alias-cell roots plus checked barrier slots. Multiple
+heterogeneous imported/exported collector-reference tables use the same domain-wide
+descriptor-root scan across growth, attachment rollback, and producer-first close.
+Codec v30 persists helper
 admission and the 16-byte `v128` storage contract, but never compact handles.
 Snapshot v4 persists reachable local-global object graphs with stable IDs and
 two-pass cycle/sharing reconstruction; snapshot v5 adds one owned local
@@ -87,7 +87,7 @@ struct/array/i31 and dynamic cast/test helpers through the synchronous ABI. The
 bounded arm64 native-root product publishes liveness-exact locals and hidden
 spills from parked SP, then follows saved-LR callsites through direct/recursive
 calls, suspended direct-host activations, and same-domain foreign frames. Mutable
-local/shared GC globals, one local or shared collector table, indirect/reference calls,
+local/shared GC globals, local/shared collector tables, indirect/reference calls,
 discarded-frame direct/indirect/reference tails, and fixed EH payload records are
 exact. ARM64 `try_table`, `throw`, `throw_ref`, function subtype identity, indexed
 multi-memory, memory64, and table64 are part of the explicit-bounds Core 3
