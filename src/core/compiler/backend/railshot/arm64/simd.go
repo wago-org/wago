@@ -1717,10 +1717,7 @@ func (f *fn) v128ReplaceLane(kind uint32, lane byte) {
 }
 
 func (f *fn) v128Load(r *wasm.Reader) error {
-	if _, err := r.U32(); err != nil { // align
-		return err
-	}
-	off, err := r.U32()
+	off, err := f.readMemory0Memarg(r)
 	if err != nil {
 		return err
 	}
@@ -1735,10 +1732,7 @@ func (f *fn) v128Load(r *wasm.Reader) error {
 }
 
 func (f *fn) v128LoadExtend(r *wasm.Reader, sub uint32) error {
-	if _, err := r.U32(); err != nil { // align
-		return err
-	}
-	off, err := r.U32()
+	off, err := f.readMemory0Memarg(r)
 	if err != nil {
 		return err
 	}
@@ -1787,10 +1781,7 @@ func simdLoadSplatSize(sub uint32) int {
 }
 
 func (f *fn) v128LoadSplat(r *wasm.Reader, sub uint32) error {
-	if _, err := r.U32(); err != nil { // align
-		return err
-	}
-	off, err := r.U32()
+	off, err := f.readMemory0Memarg(r)
 	if err != nil {
 		return err
 	}
@@ -1818,10 +1809,7 @@ func simdLoadZeroSize(sub uint32) int {
 }
 
 func (f *fn) v128LoadZero(r *wasm.Reader, sub uint32) error {
-	if _, err := r.U32(); err != nil { // align
-		return err
-	}
-	off, err := r.U32()
+	off, err := f.readMemory0Memarg(r)
 	if err != nil {
 		return err
 	}
@@ -1840,10 +1828,7 @@ func (f *fn) v128LoadZero(r *wasm.Reader, sub uint32) error {
 }
 
 func (f *fn) v128Store(r *wasm.Reader) error {
-	if _, err := r.U32(); err != nil { // align
-		return err
-	}
-	off, err := r.U32()
+	off, err := f.readMemory0Memarg(r)
 	if err != nil {
 		return err
 	}
@@ -1879,10 +1864,7 @@ func simdLaneMemSize(sub uint32) int {
 }
 
 func (f *fn) v128LoadLane(r *wasm.Reader, sub uint32) error {
-	if _, err := r.U32(); err != nil { // align
-		return err
-	}
-	off, err := r.U32()
+	off, err := f.readMemory0Memarg(r)
 	if err != nil {
 		return err
 	}
@@ -1918,10 +1900,7 @@ func (f *fn) v128LoadLane(r *wasm.Reader, sub uint32) error {
 }
 
 func (f *fn) v128StoreLane(r *wasm.Reader, sub uint32) error {
-	if _, err := r.U32(); err != nil { // align
-		return err
-	}
-	off, err := r.U32()
+	off, err := f.readMemory0Memarg(r)
 	if err != nil {
 		return err
 	}

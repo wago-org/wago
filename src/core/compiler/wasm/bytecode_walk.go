@@ -49,6 +49,12 @@ func ClassifyInstructionImmediateIntoWithMemarg64(r *Reader, op byte, imm *Instr
 // Structural opcodes (block/loop/if/else/end/try_table) are accepted and only
 // their inline immediates are consumed.
 func SkipInstructionImmediate(r *Reader, op byte) error {
+	return SkipInstructionImmediateWithMemarg64(r, op, false)
+}
+
+// SkipInstructionImmediateWithMemarg64 is the memory-width-aware form used by
+// backends while traversing validated dead code.
+func SkipInstructionImmediateWithMemarg64(r *Reader, op byte, memarg64 bool) error {
 	var scratch InstructionImmediate
-	return ClassifyInstructionImmediateInto(r, op, &scratch)
+	return ClassifyInstructionImmediateIntoWithMemarg64(r, op, &scratch, memarg64)
 }

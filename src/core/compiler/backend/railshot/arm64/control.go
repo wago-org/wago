@@ -670,7 +670,7 @@ func (f *fn) alignLoopHeader() {
 // locals it sets and whether it grows memory, then restores the reader. Reuses
 // skipImmediates for operand skipping; br_table (not covered there) is handled
 // inline. Post-validation, so a decode error just ends the scan.
-func scanLoopBody(r *wasm.Reader) (setLocals map[uint32]bool, hasGrow, hasCall, hasNested, hasTable bool) {
+func scanLoopBody(r *wasm.Reader, memory64 bool) (setLocals map[uint32]bool, hasGrow, hasCall, hasNested, hasTable bool) {
 	start := r.Offset()
 	setLocals = map[uint32]bool{}
 	depth := 0
@@ -691,7 +691,7 @@ scan:
 			depth++
 		case 0x10, 0x11: // call / call_indirect
 			hasCall = true
-			if err := skipImmediates(r, op); err != nil {
+			if err := skipImmediatesWithMemory64(r, op, memory64); err != nil {
 				break scan
 			}
 		case 0x0b: // end
@@ -720,7 +720,7 @@ scan:
 				break scan
 			}
 		default:
-			if err := skipImmediates(r, op); err != nil {
+			if err := skipImmediatesWithMemory64(r, op, memory64); err != nil {
 				break scan
 			}
 		}
@@ -758,11 +758,11 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 	// of a frame slot. Excludes loops (params, back-edge) and multi-value.
 	fr.regMerge1 = f.regMerge && (kind == cfBlock || kind == cfIf) && rN == 1 && res0 != mtNone && res0 != mtV128
 	if kind == cfLoop && !f.unreachable {
-		fr.loopSetLocals, fr.loopHasGrow, fr.loopHasCall, fr.loopHasNested, fr.loopHasTable = scanLoopBody(r) // P6.2 + region-pin foundation (reader restored)
+		fr.loopSetLocals, fr.loopHasGrow, fr.loopHasCall, fr.loopHasNested, fr.loopHasTable = scanLoopBody(r, f.memoryAddr64(0)) // P6.2 + region-pin foundation (reader restored)
 		// P6.2 loop versioning: hoist invariant-base bounds checks out of the loop
 		// via a precheck + fast/slow bodies. Explicit mode only (guard has no inline
 		// check to elide) and not while already inside a versioned body.
-		if loopPrecheckEnabled && f.memSizeReg != regNone && !f.inVersionedLoop {
+		if loopPrecheckEnabled && !f.memoryAddr64(0) && f.memSizeReg != regNone && !f.inVersionedLoop {
 			if cands, elidable, hasGrow := scanLoopHoistable(r); len(cands) > 0 && !hasGrow && elidable >= loopPrecheckMinChecks {
 				if f.compileVersionedLoop(r, paramTypes, resultTypes, res0, cands) {
 					return nil
@@ -1406,6 +1406,13 @@ func (f *fn) opReturn() error {
 	sc.retSites = append(sc.retSites, f.a.Branch())
 	f.unreachable = true
 	return nil
+}
+
+func skipImmediatesWithMemory64(r *wasm.Reader, op byte, memory64 bool) error {
+	if memory64 {
+		return wasm.SkipInstructionImmediateWithMemarg64(r, op, true)
+	}
+	return skipImmediates(r, op)
 }
 
 // skipImmediates advances over a dead-code opcode's operands without emitting.

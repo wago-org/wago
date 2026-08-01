@@ -823,10 +823,7 @@ func (f *fn) reinterpretFloatToInt(wide bool) {
 
 // fload / fstore reuse the integer bounds-checked effective-address path.
 func (f *fn) fload(r *wasm.Reader, f64 bool) error {
-	if _, err := r.U32(); err != nil {
-		return err
-	}
-	off, err := r.U32()
+	off, err := f.readMemory0Memarg(r)
 	if err != nil {
 		return err
 	}
@@ -848,10 +845,7 @@ func (f *fn) fload(r *wasm.Reader, f64 bool) error {
 }
 
 func (f *fn) fstore(r *wasm.Reader, f64 bool) error {
-	if _, err := r.U32(); err != nil {
-		return err
-	}
-	off, err := r.U32()
+	off, err := f.readMemory0Memarg(r)
 	if err != nil {
 		return err
 	}

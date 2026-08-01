@@ -3,6 +3,8 @@
 package arm64
 
 import (
+	"fmt"
+
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 
 	a64 "github.com/wago-org/wago/src/core/encoder/arm64"
@@ -205,7 +207,11 @@ func (f *fn) emitTrapStubs() {
 // aliasPinned lets a pinned-local address be used in place (no copy) — only
 // valid when the access is emitted immediately (stores), not deferred (loads);
 // eaOwned reports whether the caller must release ea.
-func (f *fn) memAddr(off uint32, size int, aliasPinned bool) (ea Reg, eaOwned bool, borrow int, disp int32) {
+func (f *fn) memAddr(off uint64, size int, aliasPinned bool) (ea Reg, eaOwned bool, borrow int, disp int32) {
+	if f.memoryAddr64(0) {
+		return f.memAddr64(off, size)
+	}
+	off32 := uint32(off)
 	e := f.popValue()
 	// Bounds-certificate source: the address's stable value carrier (a local or
 	// global index), captured before materialization. A temp/computed base has no
@@ -220,7 +226,7 @@ func (f *fn) memAddr(off uint32, size int, aliasPinned bool) (ea Reg, eaOwned bo
 	disp = 0
 	borrow = -1
 	leaDisp := int32(size)
-	needAdd := int64(off)+int64(size) > 0x7FFFFFFF && off != 0
+	needAdd := int64(off32)+int64(size) > 0x7FFFFFFF && off32 != 0
 	if aliasPinned && !needAdd {
 		ea, eaOwned = f.materializeRead(e) // a pinned local's reg is read in place
 		if !eaOwned {
@@ -231,12 +237,12 @@ func (f *fn) memAddr(off uint32, size int, aliasPinned bool) (ea Reg, eaOwned bo
 	}
 	// ABI slots are 64-bit words; memory32 consumes only the low i32 bits.
 	f.a.MovReg32(ea, ea)
-	if int64(off)+int64(size) <= 0x7FFFFFFF {
-		disp = int32(off)
-		leaDisp = int32(off) + int32(size)
-	} else if off != 0 {
+	if int64(off32)+int64(size) <= 0x7FFFFFFF {
+		disp = int32(off32)
+		leaDisp = int32(off32) + int32(size)
+	} else if off32 != 0 {
 		t := f.allocReg(maskOf(ea))
-		f.a.MovImm64(t, uint64(uint32(off)))
+		f.a.MovImm64(t, uint64(off32))
 		f.a.Add64(ea, ea, t)
 		f.release(t)
 	}
@@ -283,6 +289,50 @@ func (f *fn) memAddr(off uint32, size int, aliasPinned bool) (ea Reg, eaOwned bo
 	f.release(t)
 	f.pinned = f.pinned.remove(ea)
 	return ea, eaOwned, borrow, disp
+}
+
+// memAddr64 checks full-width memory64 address and offset arithmetic. The
+// runtime allocation remains bounded to a zero-extended u32 byte length, but
+// neither u64 addition may wrap into that range.
+func (f *fn) memAddr64(off uint64, size int) (ea Reg, eaOwned bool, borrow int, disp int32) {
+	e := f.popValue()
+	ea, eaOwned = f.materialize(e), true
+	borrow, disp = -1, 0
+	if off != 0 {
+		t := f.allocReg(maskOf(ea))
+		f.a.MovImm64(t, off)
+		f.a.Adds64(ea, ea, t)
+		f.trapIf(condAE, trapMemOOB) // carry set
+		f.release(t)
+	}
+	f.pinned = f.pinned.add(ea)
+	end := f.allocReg(maskOf(ea))
+	f.a.MovImm64(end, uint64(size))
+	f.a.Adds64(end, ea, end)
+	f.trapIf(condAE, trapMemOOB)
+	if f.memSizeReg != regNone {
+		f.cmpRR(end, f.memSizeReg, true)
+	} else {
+		mb := f.allocReg(maskOf(end))
+		f.ld32(mb, linMemReg, -bdCurBytes)
+		f.cmpRR(end, mb, true)
+		f.release(mb)
+	}
+	f.trapIf(condA, trapMemOOB)
+	f.release(end)
+	f.pinned = f.pinned.remove(ea)
+	return ea, eaOwned, borrow, disp
+}
+
+func (f *fn) readMemory0Memarg(r *wasm.Reader) (uint64, error) {
+	if _, err := r.U32(); err != nil { // alignment
+		return 0, err
+	}
+	if f.memoryAddr64(0) {
+		return r.U64()
+	}
+	off, err := r.U32()
+	return uint64(off), err
 }
 
 // boundsCertCovers reports whether the active straight-line certificate already
@@ -346,14 +396,11 @@ func (f *fn) boundsHoistable(kind uint8, idx uint32) bool {
 // memLoad lowers a scalar load of `size` bytes. signed selects sign-extension;
 // wide selects an i64 result (so signed sub-width loads extend to all 64 bits).
 func (f *fn) memLoad(r *wasm.Reader, size int, signed, wide bool) error {
-	if _, err := r.U32(); err != nil { // align (unused)
-		return err
-	}
-	off, err := r.U32()
+	off, err := f.readMemory0Memarg(r)
 	if err != nil {
 		return err
 	}
-	if f.forwardStoredLoad(off, size, signed, wide) {
+	if !f.memoryAddr64(0) && f.forwardStoredLoad(off, size, signed, wide) {
 		return nil
 	}
 	f.invalidateStoreForward()
@@ -380,10 +427,7 @@ func (f *fn) memLoad(r *wasm.Reader, size int, signed, wide bool) error {
 
 // memStore lowers a scalar store of `size` bytes.
 func (f *fn) memStore(r *wasm.Reader, size int) error {
-	if _, err := r.U32(); err != nil { // align (unused)
-		return err
-	}
-	off, err := r.U32()
+	off, err := f.readMemory0Memarg(r)
 	if err != nil {
 		return err
 	}
@@ -430,7 +474,7 @@ func (f *fn) memStore(r *wasm.Reader, size int) error {
 	if eaOwned {
 		f.release(ea)
 	}
-	if f.storeForwardOK && vOwned && addrOK &&
+	if !f.memoryAddr64(0) && f.storeForwardOK && vOwned && addrOK &&
 		((size == 8 && vtyp == mtI64) || (size == 4 && vtyp == mtI32)) &&
 		f.nextLoadMatchesStore(r, addrLocal, off, size, vtyp) {
 		f.storeFwd = storeForward{valid: true, reg: vreg, typ: vtyp, local: addrLocal, offset: off, size: size}
@@ -446,7 +490,7 @@ func (f *fn) memStore(r *wasm.Reader, size int) error {
 // exact full-width load; the reader is restored, so normal one-pass lowering
 // still consumes every instruction exactly once. This captures accumulator +
 // address shapes without retaining hidden state across arbitrary expressions.
-func (f *fn) nextLoadMatchesStore(r *wasm.Reader, addrLocal int, off uint32, size int, typ machineType) bool {
+func (f *fn) nextLoadMatchesStore(r *wasm.Reader, addrLocal int, off uint64, size int, typ machineType) bool {
 	save := r.Offset()
 	defer func() { _ = r.JumpTo(save) }()
 	wantOp := byte(0x28) // i32.load
@@ -472,10 +516,7 @@ func (f *fn) nextLoadMatchesStore(r *wasm.Reader, addrLocal int, off uint32, siz
 		if op != wantOp || lastLocal != addrLocal {
 			return false
 		}
-		if _, err := r.U32(); err != nil { // alignment
-			return false
-		}
-		loadOff, err := r.U32()
+		loadOff, err := f.readMemory0Memarg(r)
 		return err == nil && loadOff == off
 	}
 	return false
@@ -516,7 +557,7 @@ func localAddressKey(e *elem) (int, bool) {
 	}
 }
 
-func (f *fn) forwardStoredLoad(off uint32, size int, signed, wide bool) bool {
+func (f *fn) forwardStoredLoad(off uint64, size int, signed, wide bool) bool {
 	c := f.storeFwd
 	if !c.valid || signed || c.offset != off || c.size != size ||
 		(size == 8 && (!wide || c.typ != mtI64)) ||
@@ -754,8 +795,12 @@ func (f *fn) memoryInit(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
-	if _, err := r.U32(); err != nil { // memidx, validated == 0
+	memoryIndex, err := r.U32()
+	if err != nil {
 		return err
+	}
+	if memoryIndex != 0 {
+		return fmt.Errorf("memory.init: indexed memory %d is not lowered", memoryIndex)
 	}
 	f.materializePendingLoads()
 	f.flush()
@@ -763,17 +808,12 @@ func (f *fn) memoryInit(r *wasm.Reader) error {
 	f.ld64(X9, SP, f.spillOff(d-3))  // dst offset
 	f.ld64(X10, SP, f.spillOff(d-2)) // src offset in passive segment
 	f.ld64(X11, SP, f.spillOff(d-1)) // n
-	f.a.MovReg32(X9, X9)
+	if !f.memoryAddr64(memoryIndex) {
+		f.a.MovReg32(X9, X9)
+	}
 	f.a.MovReg32(X10, X10)
 	f.a.MovReg32(X11, X11)
-
-	mb := f.memSizeReg
-	if mb == regNone {
-		mb = X13
-		f.ld32(X13, linMemReg, -int32(bdCurBytes)) // memBytes
-	}
-	f.leaScaled(X12, X9, X11, 0, 0, true) // dst + n
-	f.trapUnlessLE(X12, mb)
+	f.bulkDynamicBoundsCheck(X9, X11, memoryIndex)
 
 	disp := int32(dataIdx) * 16
 	f.ld64(X13, linMemReg, -int32(offPassiveDataPtr)) // descriptor array
@@ -818,11 +858,13 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
-	if top := f.s.back(); top != nil && top.kind == ekValue && top.st.kind == stConst {
-		if n := uint64(uint32(top.st.cval)); n <= 64 {
-			f.stats.peep("memcopy-unroll")
-			f.memoryCopyConst(int(n), dstMemory, srcMemory)
-			return nil
+	if !f.memoryAddr64(dstMemory) && !f.memoryAddr64(srcMemory) {
+		if top := f.s.back(); top != nil && top.kind == ekValue && top.st.kind == stConst {
+			if n := uint64(uint32(top.st.cval)); n <= 64 {
+				f.stats.peep("memcopy-unroll")
+				f.memoryCopyConst(int(n), dstMemory, srcMemory)
+				return nil
+			}
 		}
 	}
 	f.materializePendingLoads()
@@ -831,20 +873,17 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 	f.ld64(X9, SP, f.spillOff(d-3))  // dst offset
 	f.ld64(X10, SP, f.spillOff(d-2)) // src offset
 	f.ld64(X11, SP, f.spillOff(d-1)) // n
-	f.a.MovReg32(X9, X9)
-	f.a.MovReg32(X10, X10)
-	f.a.MovReg32(X11, X11)
-
-	// Scratch in X12/X13 only (never pinnable); X9-X11 hold dst/src/n.
-	mb := f.memSizeReg
-	if mb == regNone {
-		mb = X13
-		f.ld32(X13, linMemReg, -int32(bdCurBytes)) // memBytes
+	if !f.memoryAddr64(dstMemory) {
+		f.a.MovReg32(X9, X9)
 	}
-	f.leaScaled(X12, X9, X11, 0, 0, true) // dst + n
-	f.trapUnlessLE(X12, mb)
-	f.leaScaled(X12, X10, X11, 0, 0, true) // src + n
-	f.trapUnlessLE(X12, mb)
+	if !f.memoryAddr64(srcMemory) {
+		f.a.MovReg32(X10, X10)
+	}
+	if !f.memoryAddr64(dstMemory) || !f.memoryAddr64(srcMemory) {
+		f.a.MovReg32(X11, X11)
+	}
+	f.bulkDynamicBoundsCheck(X9, X11, dstMemory)
+	f.bulkDynamicBoundsCheck(X10, X11, srcMemory)
 
 	f.a.Add64(X9, X9, linMemReg)   // absolute dst
 	f.a.Add64(X10, X10, linMemReg) // absolute src
@@ -933,10 +972,12 @@ func (f *fn) memoryFill(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
-	if top := f.s.back(); top != nil && top.kind == ekValue && top.st.kind == stConst {
-		if n := uint64(uint32(top.st.cval)); n <= 64 {
-			f.memoryFillConst(int(n), memoryIndex)
-			return nil
+	if !f.memoryAddr64(memoryIndex) {
+		if top := f.s.back(); top != nil && top.kind == ekValue && top.st.kind == stConst {
+			if n := uint64(uint32(top.st.cval)); n <= 64 {
+				f.memoryFillConst(int(n), memoryIndex)
+				return nil
+			}
 		}
 	}
 	f.materializePendingLoads()
@@ -945,17 +986,11 @@ func (f *fn) memoryFill(r *wasm.Reader) error {
 	f.ld64(X9, SP, f.spillOff(d-3))  // dst offset
 	f.ld64(X14, SP, f.spillOff(d-2)) // fill byte (low 8 bits)
 	f.ld64(X11, SP, f.spillOff(d-1)) // n
-	f.a.MovReg32(X9, X9)
-	f.a.MovReg32(X11, X11)
-
-	// Scratch in X12/X13 only (never pinnable).
-	mb := f.memSizeReg
-	if mb == regNone {
-		mb = X13
-		f.ld32(X13, linMemReg, -int32(bdCurBytes))
+	if !f.memoryAddr64(memoryIndex) {
+		f.a.MovReg32(X9, X9)
+		f.a.MovReg32(X11, X11)
 	}
-	f.leaScaled(X12, X9, X11, 0, 0, true) // dst + n
-	f.trapUnlessLE(X12, mb)
+	f.bulkDynamicBoundsCheck(X9, X11, memoryIndex)
 
 	f.a.Add64(X9, X9, linMemReg) // absolute dst
 
@@ -993,12 +1028,20 @@ func (f *fn) memoryFill(r *wasm.Reader) error {
 
 // memorySize pushes the current linear-memory size in pages.
 func (f *fn) memorySize(r *wasm.Reader) error {
-	if _, err := r.Byte(); err != nil { // memory index (validated == 0)
+	memoryIndex, err := r.U32()
+	if err != nil {
 		return err
+	}
+	if memoryIndex != 0 {
+		return fmt.Errorf("memory.size: indexed memory %d is not lowered", memoryIndex)
 	}
 	out := f.allocReg(0)
 	f.ld32(out, linMemReg, -int32(bdCurPages))
-	f.pushReg(out, mtI32)
+	if f.memoryAddr64(memoryIndex) {
+		f.pushReg(out, mtI64)
+	} else {
+		f.pushReg(out, mtI32)
+	}
 	return nil
 }
 
@@ -1006,12 +1049,25 @@ func (f *fn) memorySize(r *wasm.Reader) error {
 // size in pages or -1 on failure. The reservation is mapped up front, so this is
 // a pure size-cache update (matching the amd64 twin); the base never moves.
 func (f *fn) memoryGrow(r *wasm.Reader) error {
-	if _, err := r.Byte(); err != nil { // memory index (validated == 0)
+	memoryIndex, err := r.U32()
+	if err != nil {
 		return err
+	}
+	if memoryIndex != 0 {
+		return fmt.Errorf("memory.grow: indexed memory %d is not lowered", memoryIndex)
 	}
 	f.invalidateBoundsCert() // memBytes changes; end the certificate conservatively
 	delta := f.materialize(f.popValue())
 	f.pinned = f.pinned.add(delta)
+	memory64 := f.memoryAddr64(memoryIndex)
+	failDelta := -1
+	if memory64 {
+		high := f.allocReg(maskOf(delta))
+		f.a.LsrImm(high, delta, 32, true)
+		f.cmpImm(high, 0, true)
+		failDelta = f.a.Bcond(condNE)
+		f.release(high)
+	}
 	res := f.allocReg(maskOf(delta))
 	f.ld32(res, linMemReg, -int32(bdCurPages)) // old pages — the success result
 	nw := f.allocReg(maskOf(delta).add(res))
@@ -1030,9 +1086,16 @@ func (f *fn) memoryGrow(r *wasm.Reader) error {
 	f.shiftImm(shLSL, mx, wasmPageLog, false) // bytes = pages << 16
 	f.st32(linMemReg, -int32(bdCurBytes), mx)
 	done := f.a.Branch()
+	if failDelta >= 0 {
+		f.a.PatchBranch19(failDelta, f.a.Len())
+	}
 	f.a.PatchBranch19(failOverflow, f.a.Len())
 	f.a.PatchBranch19(failMax, f.a.Len())
-	f.a.MovImm64(res, uint64(0xffffffff))
+	if memory64 {
+		f.a.MovImm64(res, ^uint64(0))
+	} else {
+		f.a.MovImm64(res, uint64(0xffffffff))
+	}
 	f.a.PatchBranch26(done, f.a.Len())
 	if f.memSizeReg != regNone {
 		f.ld32(f.memSizeReg, linMemReg, -int32(bdCurBytes)) // refresh the memBytes cache (both paths)
@@ -1041,7 +1104,11 @@ func (f *fn) memoryGrow(r *wasm.Reader) error {
 	f.release(delta)
 	f.release(nw)
 	f.release(mx)
-	f.pushReg(res, mtI32)
+	if memory64 {
+		f.pushReg(res, mtI64)
+	} else {
+		f.pushReg(res, mtI32)
+	}
 	return nil
 }
 
@@ -1081,6 +1148,18 @@ func (f *fn) memoryAddr64(memoryIndex uint32) bool {
 // bulkBoundsCheck emits `trap unless base+n <= memBytes` for an unrolled bulk
 // op. Constant paths always check, including signals-based mode: a zero-length
 // operation has no later load/store to fault and must still reject base > size.
+func (f *fn) bulkDynamicBoundsCheck(base, n Reg, memoryIndex uint32) {
+	f.a.Adds64(X12, base, n)
+	f.trapIf(condAE, trapMemOOB)
+	if f.memSizeReg != regNone && memoryIndex == 0 {
+		f.cmpRR(X12, f.memSizeReg, true)
+	} else {
+		f.ld32(X13, linMemReg, -int32(bdCurBytes))
+		f.cmpRR(X12, X13, true)
+	}
+	f.trapIf(condA, trapMemOOB)
+}
+
 func (f *fn) bulkBoundsCheck(base Reg, n int, memoryIndex uint32) {
 	f.pinned = f.pinned.add(base)
 	t := f.allocReg(0)

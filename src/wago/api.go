@@ -1189,7 +1189,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		}
 	}
 	if features.Memory64 && usesMemory64 {
-		if goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64" {
+		if !((goruntime.GOOS == "linux" && goruntime.GOARCH == "amd64") || ((goruntime.GOOS == "linux" || goruntime.GOOS == "darwin") && goruntime.GOARCH == "arm64")) {
 			return nil, fmt.Errorf("compile: unsupported memory memory64 staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
 		}
 		if cfg.boundsChecks == BoundsChecksSignalsBased {

@@ -357,7 +357,7 @@ type storeForward struct {
 	reg    Reg
 	typ    machineType
 	local  int
-	offset uint32
+	offset uint64
 	size   int
 }
 
