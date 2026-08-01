@@ -27,6 +27,9 @@ func TestWagoSchemaTracksPluginManifest(t *testing.T) {
 	if _, exists := schema.Properties["schema"]; exists {
 		t.Fatal("schema.json still exposes the removed manifest schema version field")
 	}
+	if _, exists := schema.Properties["settings"]; !exists {
+		t.Fatal("schema.json omits project-local runtime settings")
+	}
 	var plugins struct {
 		Type string `json:"type"`
 	}

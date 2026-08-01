@@ -897,17 +897,22 @@ The equivalent one-shot commands are suitable for scripts and agents:
 wago config list --experimental
 wago config get simd
 wago config set simd off
+wago config set simd off --global
+wago config set runtime.parallel auto --local
 wago config --enable inline
 wago config --set runtime.parallel=auto
 wago config reset simd
 wago config reset --all
 ```
 
-Settings are stored in `~/.wago/config/settings.json` on macOS and the Wago XDG
-config directory on Linux. `WAGO_HOME` relocates Wago state and `WAGO_CONFIG`
-overrides this one file. Explicit `wago run`, `wago build`, and `wago validate`
-flags take precedence over saved defaults; without a settings file, existing
-environment-variable and built-in defaults are unchanged.
+In a directory with `wago.json`, `wago config` reads and writes sparse local
+overrides under its `settings` field. Elsewhere it uses the global configuration
+in `~/.wago/config/settings.json` on macOS or the Wago XDG config directory on
+Linux. Use `--local`, `-l` or `--global`, `-g` to choose explicitly.
+`WAGO_HOME` relocates Wago state and `WAGO_CONFIG` overrides the global file.
+Precedence is built-in and environment defaults, then global settings, local
+overrides, and finally explicit `wago run`, `wago build`, or `wago validate`
+flags.
 
 For library users, Wago's runtime config is immutable. Every `WithXxx` method
 returns a copy:

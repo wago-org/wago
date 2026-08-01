@@ -23,6 +23,36 @@ npx --yes --package ajv-cli@5 --package ajv-formats@3 \
   -s schema.json -d wago.json
 ```
 
+## Local runtime settings
+
+`settings` contains sparse project overrides for `wago run`, `wago build`, and
+`wago validate`. They take precedence over the user's global configuration but
+remain below explicit command flags:
+
+```json
+{
+  "$schema": "https://wago.sh/v0/schema.json",
+  "settings": {
+    "features": {
+      "simd": false
+    },
+    "optimizations": {
+      "inline-loop-callees": true
+    },
+    "runtime": {
+      "parallel": "auto"
+    }
+  }
+}
+```
+
+Inside a project, `wago config` edits local overrides by default. Use
+`wago config --global` for user-wide defaults, or select scope explicitly in
+scripts with `--local`, `-l`, `--global`, or `-g`. Resetting a local setting
+removes its override so it inherits the global value again. This field is
+separate from opaque per-plugin `config`, which remains authority-bearing and
+lockfile-owned.
+
 ## Plugin requirements
 
 `plugins` maps GitHub-relative plugin IDs to semantic-version constraints. A
@@ -170,6 +200,7 @@ plugin planning.
 |---|---|
 | `$schema` | Editor-facing JSON Schema URI. |
 | `plugins` | GitHub-relative plugin IDs mapped to version constraints. |
+| `settings` | Sparse project-local runtime defaults layered over global settings. |
 | `module` | Canonical Go module path for publishing. |
 | `version` | Semantic package version. |
 | `name`, `short`, `description` | Registry display and discovery metadata. |

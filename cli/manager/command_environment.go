@@ -70,78 +70,98 @@ func (commandEnvironment) Completions(options configcompletions.Options) {
 }
 
 func (commandEnvironment) Configure(request configoptions.Request) {
-	config, err := settings.Load()
+	target, err := settings.Open(request.Global, request.Local)
 	if err != nil {
 		fatal("config: %v", err)
 	}
+	config := target.Config()
+	scope, path := target.Scope(), displayPath(target.Path())
 	switch request.Action {
 	case configoptions.Interactive:
-		changed, err := managerconfig.Interactive(request.Experimental)
+		updated, changed, err := managerconfig.Interactive(config, target.ResetBase(), scope, request.Experimental)
 		if err != nil {
 			fatal("config: %v", err)
 		}
 		if changed {
-			fmt.Printf("%s Saved Wago defaults to %s\n", ui.Cyan("✓"), displayPath(settings.Path()))
+			if err := target.Replace(updated); err != nil {
+				fatal("config: %v", err)
+			}
+			if automation.DryRun() {
+				automation.PrintPlan("change Wago configuration", map[string]any{"scope": scope, "path": target.Path(), "settings": updated})
+				return
+			}
+			if err := target.Save(); err != nil {
+				fatal("config: %v", err)
+			}
+			fmt.Printf("%s Saved Wago %s configuration to %s\n", ui.Cyan("✓"), scope, path)
 		}
 	case configoptions.List:
 		if automation.JSON() {
-			output := map[string]any{"path": settings.Path(), "settings": config}
+			output := map[string]any{"scope": scope, "path": target.Path(), "settings": config}
 			if request.Experimental {
 				output["experimental"] = settings.Experimental()
 			}
 			ui.PrintJSON(output)
 			return
 		}
-		managerconfig.Print(os.Stdout, config, request.Experimental)
+		managerconfig.Print(os.Stdout, config, request.Experimental, scope, path)
 	case configoptions.Get:
-		value, err := settings.Get(config, request.Key)
+		value, err := target.Get(request.Key)
 		if err != nil {
 			fatal("config get: %v", err)
 		}
 		if automation.JSON() {
-			ui.PrintJSON(map[string]any{"key": settings.CanonicalKey(request.Key), "value": value})
+			ui.PrintJSON(map[string]any{"scope": scope, "key": settings.CanonicalKey(request.Key), "value": value})
 			return
 		}
 		fmt.Println(value)
 	case configoptions.Set:
 		key := settings.CanonicalKey(request.Key)
-		if err := settings.Set(&config, key, request.Value); err != nil {
+		if err := target.Set(key, request.Value); err != nil {
 			fatal("config set: %v", err)
 		}
 		if automation.DryRun() {
-			automation.PrintPlan("change Wago default", map[string]any{"key": key, "value": request.Value})
+			automation.PrintPlan("change Wago default", map[string]any{"scope": scope, "path": target.Path(), "key": key, "value": request.Value})
 			return
 		}
-		if err := settings.Save(config); err != nil {
+		if err := target.Save(); err != nil {
 			fatal("config set: %v", err)
 		}
-		value, _ := settings.Get(config, key)
+		value, _ := target.Get(key)
 		if automation.JSON() {
-			ui.PrintJSON(map[string]any{"key": key, "value": value, "path": settings.Path()})
+			ui.PrintJSON(map[string]any{"scope": scope, "key": key, "value": value, "path": target.Path()})
 			return
 		}
-		fmt.Printf("%s Set %s = %s\n", ui.Cyan("✓"), key, value)
+		fmt.Printf("%s Set %s = %s (%s)\n", ui.Cyan("✓"), key, value, scope)
 	case configoptions.Reset:
 		if automation.DryRun() {
-			automation.PrintPlan("reset Wago defaults", map[string]any{"key": request.Key, "all": request.All})
+			automation.PrintPlan("reset Wago defaults", map[string]any{"scope": scope, "path": target.Path(), "key": request.Key, "all": request.All})
 			return
 		}
 		if request.All {
-			config = settings.Default()
-		} else if err := settings.Reset(&config, request.Key); err != nil {
+			target.ResetAll()
+		} else if err := target.Reset(request.Key); err != nil {
 			fatal("config reset: %v", err)
 		}
-		if err := settings.Save(config); err != nil {
+		if err := target.Save(); err != nil {
 			fatal("config reset: %v", err)
 		}
 		if automation.JSON() {
-			ui.PrintJSON(map[string]any{"key": settings.CanonicalKey(request.Key), "all": request.All, "path": settings.Path()})
+			ui.PrintJSON(map[string]any{"scope": scope, "key": settings.CanonicalKey(request.Key), "all": request.All, "path": target.Path()})
 			return
 		}
 		if request.All {
-			fmt.Printf("%s Restored all Wago defaults\n", ui.Cyan("✓"))
+			if scope == settings.ScopeLocal {
+				fmt.Printf("%s Cleared all local Wago overrides\n", ui.Cyan("✓"))
+			} else {
+				fmt.Printf("%s Restored all global Wago defaults\n", ui.Cyan("✓"))
+			}
 		} else {
-			fmt.Printf("%s Restored %s\n", ui.Cyan("✓"), settings.CanonicalKey(request.Key))
+			verb := "Restored"
+			if scope == settings.ScopeLocal {
+				verb = "Cleared override for"
+			}
+			fmt.Printf("%s %s %s\n", ui.Cyan("✓"), verb, settings.CanonicalKey(request.Key))
 		}
 	}
 }

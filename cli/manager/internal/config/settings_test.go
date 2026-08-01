@@ -9,9 +9,16 @@ import (
 )
 
 func TestRootItemsExposeConfigSections(t *testing.T) {
-	items := rootItems(settings.Default())
+	items := rootItems(settings.Default(), settings.ScopeGlobal)
 	if len(items) != 5 || items[0].Value != "features" || items[3].Value != "experimental" || items[4].Value != "reset" {
 		t.Fatalf("root items = %#v", items)
+	}
+}
+
+func TestLocalRootClearsOverrides(t *testing.T) {
+	items := rootItems(settings.Default(), settings.ScopeLocal)
+	if items[4].Label != "Clear local overrides" || !strings.Contains(items[4].Description, "inherit global") {
+		t.Fatalf("local reset item = %#v", items[4])
 	}
 }
 
@@ -33,7 +40,7 @@ func TestExperimentalPreviewDisablesUnavailableProposals(t *testing.T) {
 
 func TestPrintIncludesExperimentalSectionOnRequest(t *testing.T) {
 	var output bytes.Buffer
-	Print(&output, settings.Default(), true)
+	Print(&output, settings.Default(), true, settings.ScopeLocal, "./wago.json")
 	for _, want := range []string{"Wago configuration", "WebAssembly features", "Compiler optimizations", "Experimental preview", "tail-call"} {
 		if !strings.Contains(output.String(), want) {
 			t.Fatalf("output missing %q:\n%s", want, output.String())

@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/wago-org/wago/cli/internal/project"
 	"github.com/wago-org/wago/internal/wagopaths"
 )
 
@@ -62,7 +63,7 @@ func Path() string {
 
 func Load() (Config, error) { return LoadFile(Path()) }
 
-func LoadConfigured() (Config, bool, error) {
+func loadGlobalConfigured() (Config, bool, error) {
 	path := Path()
 	_, err := os.Stat(path)
 	if errors.Is(err, os.ErrNotExist) {
@@ -73,6 +74,14 @@ func LoadConfigured() (Config, bool, error) {
 	}
 	config, err := LoadFile(path)
 	return config, true, err
+}
+
+func LoadConfigured() (Config, bool, error) {
+	target, err := Open(project.Truthy(project.GlobalEnv), project.Truthy(project.LocalEnv))
+	if err != nil {
+		return Config{}, false, err
+	}
+	return target.Config(), target.Configured(), nil
 }
 
 func LoadFile(path string) (Config, error) {

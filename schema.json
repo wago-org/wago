@@ -18,6 +18,10 @@
       "additionalProperties": { "$ref": "#/$defs/versionConstraint" },
       "default": {}
     },
+    "settings": {
+      "$ref": "#/$defs/settings",
+      "description": "Project-local runtime defaults. These sparse overrides take precedence over the user's global Wago configuration."
+    },
     "module": {
       "$ref": "#/$defs/modulePath",
       "description": "Canonical Go module path when this manifest describes a publishable package."
@@ -136,6 +140,81 @@
     }
   ],
   "$defs": {
+    "settings": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "features": {
+          "type": "object",
+          "propertyNames": {
+            "enum": [
+              "bulk-memory-operations",
+              "extended-constant-expressions",
+              "multi-value",
+              "mutable-global",
+              "nontrapping-float-to-int-conversion",
+              "reference-types",
+              "sign-extension-ops",
+              "simd"
+            ]
+          },
+          "additionalProperties": { "type": "boolean" }
+        },
+        "optimizations": {
+          "type": "object",
+          "propertyNames": {
+            "enum": [
+              "bounds-facts",
+              "branch-fold",
+              "deep-fp-pins",
+              "entry-arg-pins",
+              "ext-fp-pins",
+              "frame-elide",
+              "frame-elide-reghomed",
+              "immutable-poly-fastpath",
+              "immutable-table",
+              "immutable-table-type",
+              "inline",
+              "inline-callfree",
+              "inline-loop-callees",
+              "leaf-scratch-pins",
+              "legacy-fp-pins",
+              "legacy-gp-pins",
+              "loop-precheck",
+              "loop-region-pins",
+              "multi-bounds-cert",
+              "olddest-rhs-sink",
+              "reg-abi",
+              "reg-merge",
+              "small-frame",
+              "st-flags",
+              "stack-fence",
+              "stack-reg",
+              "store-forward",
+              "store-load-fwd",
+              "tee-sink",
+              "three-op-sink",
+              "unary-sink",
+              "uxtw-add",
+              "v128-const-cache",
+              "v128-pins",
+              "v128-sink",
+              "vex-float-mem",
+              "x8-pin"
+            ]
+          },
+          "additionalProperties": { "type": "boolean" }
+        },
+        "runtime": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "parallel": { "type": "string", "pattern": "^(?:auto|[0-9]+)$" },
+            "deferredBoundsChecking": { "type": "boolean" }
+          }
+        }
+      }
+    },
     "modulePath": {
       "type": "string",
       "pattern": "^[A-Za-z0-9][A-Za-z0-9._~-]*(?:/[A-Za-z0-9][A-Za-z0-9._~-]*)+$",
@@ -206,6 +285,7 @@
           "propertyNames": { "$ref": "#/$defs/pluginName" },
           "additionalProperties": { "$ref": "#/$defs/versionConstraint" }
         },
+        "settings": { "$ref": "#/$defs/settings" },
         "subpackages": {
           "type": "array",
           "items": {

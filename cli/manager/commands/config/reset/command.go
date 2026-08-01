@@ -8,8 +8,8 @@ import (
 
 func Command(environment options.Environment) *command.Cmd {
 	return &command.Cmd{
-		Name: "reset", Summary: "restore built-in defaults", Args: "[setting]", Automation: command.JSONOutput | command.DryRun,
-		Flags: []command.Flag{{Name: "all", Short: "a", Bool: true, Help: "reset every setting"}},
+		Name: "reset", Summary: "reset settings in the selected scope", Args: "[setting]", Automation: command.JSONOutput | command.DryRun,
+		Flags: append([]command.Flag{{Name: "all", Short: "a", Bool: true, Help: "reset every setting"}}, options.ScopeFlags()...),
 		Run: func(ctx *command.Ctx) {
 			key := ctx.Optional("[setting]")
 			if key == "" && !ctx.Bool("all") {
@@ -18,7 +18,11 @@ func Command(environment options.Environment) *command.Cmd {
 			if key != "" && ctx.Bool("all") {
 				ui.Usage("config reset: choose <setting> or --all")
 			}
-			environment.Configure(options.Request{Action: options.Reset, Key: key, All: ctx.Bool("all")})
+			request := options.Request{Action: options.Reset, Key: key, All: ctx.Bool("all")}
+			if err := options.ApplyScope(ctx, &request); err != nil {
+				ui.Usage("config reset: %v", err)
+			}
+			environment.Configure(request)
 		},
 	}
 }
