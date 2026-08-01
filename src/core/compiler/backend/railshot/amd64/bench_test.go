@@ -30,6 +30,11 @@ func BenchmarkRailshotCompileMediumControl(b *testing.B) {
 	benchmarkCompileModule(b, m)
 }
 
+func BenchmarkRailshotCompileALUHeavy(b *testing.B) {
+	m := benchALUHeavyModule(b)
+	benchmarkCompileModule(b, m)
+}
+
 func BenchmarkRailshotCompileSIMDHeavy(b *testing.B) {
 	m := benchSIMDHeavyModule(b)
 	benchmarkCompileModule(b, m)
@@ -119,6 +124,20 @@ func benchSmallScalarModule(tb testing.TB) *wasm.Module {
 func benchMediumControlModule(tb testing.TB) *wasm.Module {
 	tb.Helper()
 	return benchDecodeValidateModule(tb, benchMediumControlModuleBytes())
+}
+
+func benchALUHeavyModule(tb testing.TB) *wasm.Module {
+	tb.Helper()
+	body := make([]byte, 0, 3+512*3)
+	body = append(body, 0x00, 0x41, 0x00) // no locals; i32.const 0
+	for range 512 {
+		body = append(body, 0x41, 0x01, 0x6a) // i32.const 1; i32.add
+	}
+	body = append(body, 0x0b)
+	return benchDecodeValidateModule(tb, benchModuleBytes([]benchFuncDef{{
+		results: []wasm.ValType{wasm.I32},
+		body:    body,
+	}}, false))
 }
 
 func benchSIMDHeavyModule(tb testing.TB) *wasm.Module {

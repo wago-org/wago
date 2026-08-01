@@ -123,10 +123,19 @@ remaining at zero allocations. The stripped TinyGo ELF adds 16 bytes
 lean CLI remains 6,430,868 bytes. Existing byte-backed and structured nested
 expression coverage preserves recursive semantics.
 
-**Campaign total:** from `19d000ba` through empty nested-scan elision, the
-stripped TinyGo release shrinks 1,983,792→1,920,320 bytes
-(**−63,472, −3.2%**), gzip-9 shrinks 899,459→879,409 bytes, and `.bss` shrinks
-133,888→6,528 bytes (**−127,360, −95.1%**). The latest stable randomized
+**Dense backend ALU metadata (2026-08-01).** amd64 and ARM64 now select the five
+basic integer ALU encodings through fixed arrays instead of hash maps. On amd64,
+256 lookups improve 2,783.5→344.05 ns/op (**8.1×**); a synthetic 512-add
+function compiles in 60,869→59,467 ns/op (**−2.3%** median, 12 one-second
+samples), while the medium-control compile benchmark remains flat. The stripped
+TinyGo release falls 1,920,320→1,919,680 bytes (**−640**; gzip-9
+879,409→878,931); the stripped Go lean CLI remains 6,430,868 bytes. Exact amd64
+and ARM64 encoding identity and 24/12-byte storage are test-locked.
+
+**Campaign total:** from `19d000ba` through dense backend ALU metadata, the
+stripped TinyGo release shrinks 1,983,792→1,919,680 bytes
+(**−64,112, −3.2%**), gzip-9 shrinks 899,459→878,931 bytes, and `.bss` shrinks
+133,888→6,544 bytes (**−127,344, −95.1%**). The latest stable randomized
 subprocess median for TinyGo `wago version` is about 0.4 ms versus the
 pre-campaign 0.549 ms; `BenchmarkDecodeValidate` remains **6.3%** below the
 pre-campaign median.
