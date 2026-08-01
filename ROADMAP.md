@@ -174,8 +174,11 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   checks for memory64 while using guard-backed owned mappings. Native Linux/Darwin
   arm64 explicit-bounds runs remain mandatory CI cells; broader arm64 bounds-mode
   qualification continues separately.
-- [ ] **GC hot paths:** after the correctness matrix is complete, add measured
-  direct checked JIT object access while retaining helper slow paths.
+- [ ] **GC hot paths:** checked numeric compact-handle access is now measured at
+  roughly 3.9–4.6 ns versus 19–30 ns through collector methods and 302–539 ns through
+  current end-to-end helper exports. Production lowering remains gated on a versioned
+  native metadata view refreshed after allocation; reference stores and unproved
+  barriers remain helper-bound.
 
 **Engine & performance** (no-ir-plan P1–P7, measured against P1's stats)
 <!-- roadmap:P1 status=done -->

@@ -1,0 +1,156 @@
+package gc
+
+import (
+	"encoding/binary"
+	"testing"
+)
+
+var objectAccessBenchSink uint64
+
+// checkedPrototypeBytes models the minimum metadata walk a direct JIT object
+// access would still need with compact moving references: validate the handle,
+// select its current space, bounds-check the entry, and prove the exact runtime
+// type before touching payload bytes. It deliberately uses no unsafe pointer and
+// is benchmark-only; production metadata remains collector-private.
+func checkedPrototypeBytes(c *Collector, ref Ref, expected TypeID) ([]byte, bool) {
+	if c == nil || c.closed || !ref.IsObj() {
+		return nil, false
+	}
+	h := handleOf(ref)
+	if h == 0 || int(h) >= len(c.handles) {
+		return nil, false
+	}
+	e := c.handles[h]
+	if e.space == spaceFree || e.size < HeaderSize {
+		return nil, false
+	}
+	var heap []byte
+	switch e.space {
+	case spaceNursery:
+		heap = c.nursery
+	case spaceOld, spaceLarge:
+		heap = c.throughput.mem
+	case spaceTiny:
+		heap = c.tiny.mem
+	default:
+		return nil, false
+	}
+	end := uint64(e.off) + uint64(e.size)
+	if end > uint64(len(heap)) {
+		return nil, false
+	}
+	object := heap[e.off:uint32(end)]
+	if TypeID(binary.LittleEndian.Uint32(object)) != expected {
+		return nil, false
+	}
+	return object, true
+}
+
+func BenchmarkCheckedGCObjectAccessPrototype(b *testing.B) {
+	structDesc, err := NewStructDesc(0, []StorageKind{StorageI32})
+	if err != nil {
+		b.Fatal(err)
+	}
+	arrayDesc, err := NewArrayDesc(1, StorageI32)
+	if err != nil {
+		b.Fatal(err)
+	}
+	c, err := NewCollector(Config{NurseryBytes: 1 << 20, DisableCollection: true}, []TypeDesc{structDesc, arrayDesc})
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.Cleanup(c.Close)
+	structRef, err := c.NewStructDefault(0)
+	if err != nil {
+		b.Fatal(err)
+	}
+	arrayRef, err := c.NewArrayDefault(1, 64)
+	if err != nil {
+		b.Fatal(err)
+	}
+	if err := c.StructSet(structRef, 0, I32Value(7)); err != nil {
+		b.Fatal(err)
+	}
+	if err := c.ArraySet(arrayRef, 31, I32Value(9)); err != nil {
+		b.Fatal(err)
+	}
+	fieldOffset := uint64(PayloadOffset + structDesc.Fields[0].Offset)
+	arrayOffset := uint64(PayloadOffset) + 31*uint64(arrayDesc.ElemSize)
+
+	b.Run("struct_get_api", func(b *testing.B) {
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			value, err := c.StructGet(structRef, 0)
+			if err != nil {
+				b.Fatal(err)
+			}
+			objectAccessBenchSink = value.Bits
+		}
+	})
+	b.Run("struct_get_checked_prototype", func(b *testing.B) {
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			object, ok := checkedPrototypeBytes(c, structRef, 0)
+			if !ok || fieldOffset+4 > uint64(len(object)) {
+				b.Fatal("checked struct access rejected")
+			}
+			objectAccessBenchSink = uint64(binary.LittleEndian.Uint32(object[fieldOffset:]))
+		}
+	})
+	b.Run("struct_set_api", func(b *testing.B) {
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			if err := c.StructSet(structRef, 0, I32Value(int32(i))); err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
+	b.Run("struct_set_checked_prototype", func(b *testing.B) {
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			object, ok := checkedPrototypeBytes(c, structRef, 0)
+			if !ok || fieldOffset+4 > uint64(len(object)) {
+				b.Fatal("checked struct access rejected")
+			}
+			binary.LittleEndian.PutUint32(object[fieldOffset:], uint32(i))
+		}
+	})
+	b.Run("array_get_api", func(b *testing.B) {
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			value, err := c.ArrayGet(arrayRef, 31)
+			if err != nil {
+				b.Fatal(err)
+			}
+			objectAccessBenchSink = value.Bits
+		}
+	})
+	b.Run("array_get_checked_prototype", func(b *testing.B) {
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			object, ok := checkedPrototypeBytes(c, arrayRef, 1)
+			if !ok || binary.LittleEndian.Uint32(object[8:]) <= 31 || arrayOffset+4 > uint64(len(object)) {
+				b.Fatal("checked array access rejected")
+			}
+			objectAccessBenchSink = uint64(binary.LittleEndian.Uint32(object[arrayOffset:]))
+		}
+	})
+	b.Run("array_set_api", func(b *testing.B) {
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			if err := c.ArraySet(arrayRef, 31, I32Value(int32(i))); err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
+	b.Run("array_set_checked_prototype", func(b *testing.B) {
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			object, ok := checkedPrototypeBytes(c, arrayRef, 1)
+			if !ok || binary.LittleEndian.Uint32(object[8:]) <= 31 || arrayOffset+4 > uint64(len(object)) {
+				b.Fatal("checked array access rejected")
+			}
+			binary.LittleEndian.PutUint32(object[arrayOffset:], uint32(i))
+		}
+	})
+}

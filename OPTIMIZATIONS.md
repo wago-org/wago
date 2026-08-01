@@ -19,6 +19,24 @@ Legend: effort S/M/L · value ⬜ low · 🟦 medium · 🟩 high · ⭐ very hi
 
 ## What's in place (updated 2026-08-01)
 
+**Checked direct WasmGC object-access measurement (2026-08-01).** A benchmark-only
+prototype now models the minimum compact-reference walk a direct JIT numeric field or
+array access still requires: live handle bounds/space validation, current heap selection,
+exact runtime type verification, array bounds, and payload access. On linux/amd64
+(Ryzen 7 8845HS, ten samples), checked struct get measures about **3.95 ns** versus
+**19.51 ns** through `Collector.StructGet` (**4.9×**), checked numeric struct set about
+**3.92 ns** versus **23.57 ns** (**6.0×**), checked array get about **4.55 ns** versus
+**22.76 ns** (**5.0×**), and checked numeric array set about **4.53 ns** versus
+**29.70 ns** (**6.6×**); every path remains 0 B/op and 0 allocs/op. End-to-end helper
+boundaries remain much larger (roughly 302–309 ns for one struct get, 412–430 ns for
+struct set/get, and 526–539 ns for array set/get), so the opportunity is real. This is
+not production admission yet: collector handle and heap slice addresses can relocate at
+allocation, and reference stores need the exact Tiny/Throughput write barriers. The
+production slice must publish a versioned native metadata view refreshed after every
+allocating helper, initially admit only statically numeric pointer-free fields/elements,
+and retain helper lowering for nullable/reference stores, bulk operations, or any
+unproved metadata lifetime.
+
 **Compact validator effect tables (2026-08-01).** Numeric and SIMD validation
 lookup entries now store four one-byte fields instead of embedding full recursive
 `ValType` descriptors. On linux/amd64 this shrinks `opEffects` and `simdEffects`
