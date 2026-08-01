@@ -58,6 +58,9 @@ helpers. On linux/amd64 (Ryzen 7 8845HS, five samples), end-to-end struct set/ge
 **227.9–229.4 ns/op**, struct get **218.2–219.9 ns/op**, and array set/get
 **265.2–265.6 ns/op**, all 0 B/op and 0 allocs/op. The underlying checked metadata
 walk remains **4.05–4.71 ns** versus **20.26–29.82 ns** through collector methods.
+The stripped TinyGo release grows 1,985,784→1,999,256 bytes for this production
+slice (**+13,472, +0.68%**). The subsequent bounded foreign-clone API brings the
+combined candidate to 2,000,232 bytes (**+976 bytes further**).
 
 **Compact validator effect tables (2026-08-01).** Numeric and SIMD validation
 lookup entries now store four one-byte fields instead of embedding full recursive
