@@ -16,9 +16,8 @@ func Command() *command.Cmd {
 		Name: "init", Summary: "initialize and configure a local Wago project",
 		Automation: command.DryRun,
 		Flags: []command.Flag{
-			{Name: "quick", Short: "q", Bool: true, Help: "create a minimal project without prompting"},
-			{Name: "full", Short: "f", Bool: true, Help: "configure project details and plugins"},
-			{Name: "kind", Short: "k", Arg: "<kind>", Help: "project kind: application or plugin"},
+			{Name: "run", Bool: true, Help: "create a minimal project for running WebAssembly"},
+			{Name: "plugin", Bool: true, Help: "configure a publishable Wago plugin"},
 			{Name: "name", Short: "n", Arg: "<name>", Help: "human-readable project name"},
 			{Name: "description", Short: "d", Arg: "<text>", Help: "project description"},
 			{Name: "plugins", Short: "p", Arg: "<spec,...>", Help: "initial plugin constraints"},
@@ -37,11 +36,15 @@ func Command() *command.Cmd {
 			if automation.Locked() && !automation.DryRun() {
 				ui.Fatal("init: --locked prevents changing wago.json")
 			}
-			if automation.NoInput() && !ctx.Bool("quick") && !ctx.Bool("full") {
-				ui.Usage("init: --no-input requires --quick or --full")
-			}
 			if automation.DryRun() {
-				automation.PrintPlan("initialize project", map[string]any{"quick": ctx.Bool("quick"), "full": ctx.Bool("full"), "kind": ctx.Str("kind"), "name": ctx.Str("name"), "plugins": ctx.Str("plugins")})
+				mode, err := explicitMode(ctx)
+				if err != nil {
+					ui.Usage("init: %v", err)
+				}
+				if mode == "" {
+					mode = modeRun
+				}
+				automation.PrintPlan("initialize project", map[string]any{"mode": mode, "name": ctx.Str("name"), "plugins": ctx.Str("plugins")})
 				return
 			}
 			result, err := run(ctx, os.Stdin, os.Stdout, tui.StdinIsTTY())
@@ -56,7 +59,11 @@ func Command() *command.Cmd {
 			if result.Created {
 				verb = "Initialized"
 			}
-			fmt.Printf("%s %s wago.json (%s setup)\n", ui.Cyan("✓"), verb, result.Mode)
+			target := "for running WebAssembly"
+			if result.Mode == modePlugin {
+				target = "for a Wago plugin"
+			}
+			fmt.Printf("%s %s wago.json %s\n", ui.Cyan("✓"), verb, target)
 			if result.Plugins > 0 {
 				fmt.Printf("  %d plugin%s configured\n", result.Plugins, plural(result.Plugins))
 			}

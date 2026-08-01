@@ -294,8 +294,8 @@ Initialize a project explicitly, or let `add` create `wago.json` automatically:
 
 ```bash
 wago init
-wago init --quick
-wago init --full --kind application --name demo --plugins wago-org/wasi
+wago init --run
+wago init --plugin --name clock --module github.com/acme/wago-clock --license MIT --yes
 wago add wago-org/wasi
 wago add wago-org/wasi wago-org/workers  # install multiple packages together
 wago add --global wago-org/wasi  # shared outside projects with local manifests
@@ -303,12 +303,12 @@ wago plugin add wago-org/wasi    # equivalent, fully grouped form
 wago add wago-org/wasi --allow-all  # one-shot capability approval
 ```
 
-Interactive `wago init` first offers Quick and Full setup. Quick creates the
-minimal schema-backed manifest. Full setup configures an application or a
-publishable plugin package, including project metadata, initial version
-constraints, and the open-source registry metadata required for publishing.
-Every answer has a matching flag; use `--full --yes` for inferred defaults in
-scripts. Exact plugin versions and capability grants remain lockfile-owned.
+Interactive `wago init` asks whether you want to run WebAssembly or set up a
+plugin. The run path immediately creates a minimal schema-backed manifest and
+does not require a project name. The plugin path collects the package and
+open-source registry metadata required for publishing. Every answer has a
+matching flag; use `--plugin --yes` to accept inferred defaults in scripts.
+Exact plugin versions and capability grants remain lockfile-owned.
 
 `add` resolves, downloads, verifies, and builds all requested packages as one
 transaction, then prints their resolved versions and total elapsed time.
