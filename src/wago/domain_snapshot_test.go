@@ -89,6 +89,155 @@ func TestDomainSnapshotRestoresLocalExceptionHandling(t *testing.T) {
 	}
 }
 
+func domainSnapshotMemoryProviderModule() []byte {
+	structType := []byte{0x5f, 0x01, 0x7f, 0x01}
+	refCallType := []byte{0x60, 0x01, 0x63, 0x00, 0x01, 0x63, 0x00}
+	runType := wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32})
+	tableType := []byte{0x63, 0x00, 0x01, 0x01, 0x02}
+	global := []byte{0x63, 0x00, 0x01, 0xd0, 0x00, 0x0b}
+	body := []byte{0x01, 0x01, 0x7f,
+		0x02, 0x40, 0x03, 0x40,
+		0x20, 0x01, 0x41, 0xe8, 0x07, 0x4f, 0x0d, 0x01,
+		0xfb, 0x01, 0x00, 0x1a,
+		0x20, 0x01, 0x41, 0x01, 0x6a, 0x21, 0x01, 0x0c, 0x00,
+		0x0b, 0x0b,
+		0x20, 0x00, 0x0b}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(structType, refCallType, runType)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(4, wasmtest.Vec(tableType)),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x01, 0x01, 0x02})),
+		wasmtest.Section(6, wasmtest.Vec(global)),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("retain", byte(wasm.ExternFunc), 0),
+			wasmtest.ExportEntry("t", byte(wasm.ExternTable), 0),
+			wasmtest.ExportEntry("mem", byte(wasm.ExternMem), 0),
+			wasmtest.ExportEntry("g", byte(wasm.ExternGlobal), 0),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func domainSnapshotMemoryConsumerModule() []byte {
+	structType := []byte{0x5f, 0x01, 0x7f, 0x01}
+	refCallType := []byte{0x60, 0x01, 0x63, 0x00, 0x01, 0x63, 0x00}
+	runType := wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32})
+	tableType := []byte{0x63, 0x00, 0x01, 0x01, 0x02}
+	funcImport := append(append(wasmtest.Name("provider"), wasmtest.Name("retain")...), byte(wasm.ExternFunc))
+	funcImport = append(funcImport, wasmtest.ULEB(1)...)
+	tableImport := append(append(wasmtest.Name("provider"), wasmtest.Name("t")...), byte(wasm.ExternTable))
+	tableImport = append(tableImport, tableType...)
+	memoryImport := append(append(wasmtest.Name("provider"), wasmtest.Name("mem")...), byte(wasm.ExternMem), 0x01, 0x01, 0x02)
+	globalImport := append(append(wasmtest.Name("provider"), wasmtest.Name("g")...), byte(wasm.ExternGlobal), 0x63, 0x00, 0x01)
+	body := []byte{0x01, 0x01, 0x63, 0x00,
+		0x20, 0x00, 0xfb, 0x00, 0x00, 0x24, 0x00,
+		0x41, 0x00,
+		0x20, 0x00, 0x41, 0x01, 0x6a, 0xfb, 0x00, 0x00,
+		0x22, 0x01, 0x26, 0x00,
+		0x20, 0x01, 0x10, 0x00, 0x1a,
+		0xd0, 0x00, 0x21, 0x01,
+		0x41, 0x09, 0xfb, 0x00, 0x00, 0x1a,
+		0x23, 0x00, 0xfb, 0x02, 0x00, 0x00,
+		0x41, 0x00, 0x25, 0x00, 0xfb, 0x02, 0x00, 0x00,
+		0x6a, 0x0b}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(structType, refCallType, runType)),
+		wasmtest.Section(2, wasmtest.Vec(funcImport, tableImport, memoryImport, globalImport)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 1))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func TestDomainSnapshotRestoresInternalMemoryAlias(t *testing.T) {
+	cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3)
+	providerCode, err := Compile(cfg, domainSnapshotMemoryProviderModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer providerCode.Close()
+	consumerCode, err := Compile(cfg, domainSnapshotMemoryConsumerModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer consumerCode.Close()
+	if providerCode.genericGCFrameRoots() == nil || consumerCode.genericGCFrameRoots() == nil {
+		t.Fatal("memory-linked domain modules lost exact roots")
+	}
+	store := newReferenceStore(false)
+	profile := GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 256, TinyBlockBytes: 32, TinyCollectEveryAlloc: true, TinyStepEveryAlloc: true, VerifyAfterCollect: true}
+	provider, err := instantiateCore(providerCode, InstantiateOptions{GC: profile, store: store})
+	if err != nil {
+		store.closeRuntime()
+		t.Fatal(err)
+	}
+	retain, _ := provider.ExportedFunc("retain")
+	table, _ := provider.ExportedTable("t")
+	memory, err := provider.ExportedMemory("mem")
+	if err != nil {
+		provider.Close()
+		store.closeRuntime()
+		t.Fatal(err)
+	}
+	global, _ := provider.ExportedGlobalObject("g")
+	copy(memory.Bytes()[19:25], "domain")
+	consumer, err := instantiateCore(consumerCode, InstantiateOptions{GC: profile, store: store, Imports: Imports{"provider.retain": retain, "provider.t": table, "provider.mem": memory, "provider.g": global}})
+	if err != nil {
+		provider.Close()
+		store.closeRuntime()
+		t.Fatal(err)
+	}
+	snapshot, err := CaptureDomain(consumer, provider)
+	if err != nil {
+		consumer.Close()
+		provider.Close()
+		store.closeRuntime()
+		t.Fatal(err)
+	}
+	corrupt := *snapshot
+	corrupt.members = append([]domainSnapshotMember(nil), snapshot.members...)
+	state := *corrupt.members[0].state
+	state.memories = append([]memorySnap(nil), state.memories...)
+	state.memories[0].image = append([]byte(nil), state.memories[0].image...)
+	state.memories[0].image[19] ^= 1
+	corrupt.members[0].state = &state
+	if _, err := corrupt.MarshalBinary(); err == nil || !strings.Contains(err.Error(), "memory import") || !strings.Contains(err.Error(), "alias state") {
+		t.Fatalf("corrupt memory alias error = %v", err)
+	}
+	blob, err := snapshot.MarshalBinary()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := consumer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := provider.Close(); err != nil {
+		t.Fatal(err)
+	}
+	store.closeRuntime()
+	loaded, err := LoadDomainSnapshot(blob)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rt := NewRuntime()
+	defer rt.Close()
+	restored, err := loaded.Instantiate(rt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer restored[0].Close()
+	defer restored[1].Close()
+	if restored[0].memory != restored[1].memory {
+		t.Fatal("restored imported memory does not alias its domain owner")
+	}
+	if got := string(restored[0].memory.Bytes()[19:25]); got != "domain" {
+		t.Fatalf("restored shared memory bytes = %q, want domain", got)
+	}
+	if got, err := restored[0].Invoke("run", 12); err != nil || !reflect.DeepEqual(got, []uint64{25}) {
+		t.Fatalf("restored memory consumer run = %v, %v", got, err)
+	}
+}
+
 func TestDomainSnapshotRestoresSharedGCGraphAndAliases(t *testing.T) {
 	cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3)
 	providerCode, err := Compile(cfg, gcCrossInstancePersistentProviderModule())

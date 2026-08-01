@@ -156,9 +156,10 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   The `WGDN` v1 blob persists compiled members, exact GC configuration, imports, aliases,
   cycles, sharing, and heterogeneous canonical types; restore requires a Runtime without
   an existing live GC domain. Live public GC tokens, active calls,
-  external imports, imported/shared memories, opaque references, passive elements,
+  external imports, shared or memory64 memories, opaque references, passive elements,
   imported exception tags, incomplete member sets, and cyclic instantiation graphs
-  reject before publication. Local exception-tag directories and completed EH state
+  reject before publication. Same-domain imported memory32 aliases now preserve one
+  owner, backing mapping, grown size, and byte image. Local exception-tag directories and completed EH state
   need no extra mutable snapshot payload and restore through the compiled member.
 - [x] **Bounded host-held GC results:** generic struct/array results issue up to 64
   opaque `GCRef` tokens per producer, atomically roll back partial multi-result egress,

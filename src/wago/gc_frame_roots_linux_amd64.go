@@ -46,6 +46,9 @@ func newGCFrameRootPlan(m *wasm.Module, genericGC bool) *shared.GCModuleFrameRoo
 			if !collectorFrameRefType(m, wasm.RefVal(m.Imports[i].Type.Table.Ref)) {
 				return nil
 			}
+		case wasm.ExternMem:
+			// Linear-memory imports add no collector roots. Snapshot and linking
+			// admission separately prove exact same-domain ownership.
 		default:
 			return nil
 		}

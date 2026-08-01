@@ -1,6 +1,7 @@
 package wago
 
 import (
+	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -35,6 +36,7 @@ const (
 	domainImportFunction uint8 = iota + 1
 	domainImportGlobal
 	domainImportTable
+	domainImportMemory
 )
 
 type domainGCObjectSnapshot struct {
@@ -47,8 +49,9 @@ type domainGCObjectSnapshot struct {
 // CaptureDomain captures an exhaustive, explicitly ordered set of instances
 // sharing one Runtime GC collector. Calls are quiesced process-wide during the
 // copy. The initial product rejects active calls, live public GC tokens, external
-// imports, imported/shared memories, opaque references, passive elements,
-// imported exception tags, and an incomplete member list. Local immutable tag
+// imports, shared or memory64 memories, opaque references, passive elements,
+// imported exception tags, and an incomplete member list. Same-domain imported
+// memory32 aliases are captured through their owning member. Local immutable tag
 // directories carry no post-instantiation mutable state and are captured.
 func CaptureDomain(instances ...*Instance) (*DomainSnapshot, error) {
 	if len(instances) == 0 {
@@ -142,8 +145,8 @@ func validateDomainSnapshotMember(in *Instance) error {
 	}
 	for i := 0; i < in.c.memoryCount(); i++ {
 		def := in.c.memoryDef(i)
-		if def.ImportKey != "" || def.Shared || def.Addr64 {
-			return fmt.Errorf("memory %d is imported, shared, or memory64", i)
+		if def.Shared || def.Addr64 {
+			return fmt.Errorf("memory %d is shared or memory64", i)
 		}
 	}
 	if len(in.c.passiveElems) != 0 {
@@ -205,6 +208,30 @@ func captureDomainMemberImports(in *Instance, members []*Instance, indexes map[*
 		}
 		out = append(out, domainSnapshotImport{key: def.Key, kind: domainImportTable, member: member, index: index})
 	}
+	memoryLinks := make(map[string]domainSnapshotImport)
+	for memoryIndex := 0; memoryIndex < in.c.memoryCount(); memoryIndex++ {
+		def, imported := in.c.memoryImportAt(memoryIndex)
+		if !imported {
+			continue
+		}
+		memory, ok := in.imports.memory(def.ImportKey)
+		if !ok || memory == nil {
+			return nil, fmt.Errorf("memory import %q is external", def.ImportKey)
+		}
+		member, index, ok := findDomainOwnedMemory(memory, members)
+		if !ok {
+			return nil, fmt.Errorf("memory import %q owner is outside the domain", def.ImportKey)
+		}
+		link := domainSnapshotImport{key: def.ImportKey, kind: domainImportMemory, member: member, index: index}
+		if previous, duplicate := memoryLinks[def.ImportKey]; duplicate {
+			if previous != link {
+				return nil, fmt.Errorf("memory import %q resolves inconsistently", def.ImportKey)
+			}
+			continue
+		}
+		memoryLinks[def.ImportKey] = link
+		out = append(out, link)
+	}
 	return out, nil
 }
 
@@ -212,6 +239,21 @@ func findDomainOwnedGlobal(global *Global, members []*Instance) (uint32, uint32,
 	for member, in := range members {
 		for i := len(in.c.GlobalImports); i < len(in.globalCells); i++ {
 			if in.globalCells[i] == global {
+				return uint32(member), uint32(i), true
+			}
+		}
+	}
+	return 0, 0, false
+}
+
+func findDomainOwnedMemory(memory *Memory, members []*Instance) (uint32, uint32, bool) {
+	for member, in := range members {
+		for i := 0; i < in.c.memoryCount(); i++ {
+			if _, imported := in.c.memoryImportAt(i); imported {
+				continue
+			}
+			candidate, owned := in.instanceMemoryAt(i)
+			if owned && candidate == memory {
 				return uint32(member), uint32(i), true
 			}
 		}
@@ -419,6 +461,12 @@ func (s *DomainSnapshot) Instantiate(rt *Runtime) ([]*Instance, error) {
 						return closeDomainRestore(restored, err)
 					}
 					imports[imp.key] = table
+				case domainImportMemory:
+					memory, err := owner.domainSnapshotMemory(int(imp.index))
+					if err != nil {
+						return closeDomainRestore(restored, err)
+					}
+					imports[imp.key] = memory
 				default:
 					return closeDomainRestore(restored, fmt.Errorf("member %d has unknown import kind %d", i, imp.kind))
 				}
@@ -442,6 +490,30 @@ func (s *DomainSnapshot) Instantiate(rt *Runtime) ([]*Instance, error) {
 		return closeDomainRestore(restored, fmt.Errorf("wago: restore domain GC graph: %w", err))
 	}
 	return restored, nil
+}
+
+func (in *Instance) instanceMemoryAt(index int) (*Memory, bool) {
+	if in == nil || in.c == nil || index < 0 || index >= in.c.memoryCount() {
+		return nil, false
+	}
+	if index == 0 {
+		return in.memory, in.ownsMem
+	}
+	if in.memoryDir == nil || index >= len(in.memoryDir.memories) || index >= len(in.memoryDir.owns) {
+		return nil, false
+	}
+	return in.memoryDir.memories[index], in.memoryDir.owns[index]
+}
+
+func (in *Instance) domainSnapshotMemory(index int) (*Memory, error) {
+	memory, owned := in.instanceMemoryAt(index)
+	if memory == nil || !owned {
+		return nil, fmt.Errorf("domain snapshot memory %d is unavailable", index)
+	}
+	if err := memory.share(in, in.c.memoryDef(index)); err != nil {
+		return nil, fmt.Errorf("domain snapshot memory %d: %w", index, err)
+	}
+	return memory, nil
 }
 
 func (in *Instance) domainSnapshotGlobal(index int) (*Global, error) {
@@ -728,7 +800,7 @@ func validateDomainSnapshot(s *DomainSnapshot) error {
 				mark(ref)
 			}
 		}
-		expectedImports := make(map[string]uint8, len(c.Imports)+len(c.GlobalImports)+c.tableImportCount())
+		expectedImports := make(map[string]uint8, len(c.Imports)+len(c.GlobalImports)+c.tableImportCount()+c.memoryImportCount())
 		for _, key := range c.Imports {
 			expectedImports[key] = domainImportFunction
 		}
@@ -738,6 +810,11 @@ func validateDomainSnapshot(s *DomainSnapshot) error {
 		for tableIndex := 0; tableIndex < c.tableCount(); tableIndex++ {
 			if def, imported := c.tableImportAt(tableIndex); imported {
 				expectedImports[def.Key] = domainImportTable
+			}
+		}
+		for memoryIndex := 0; memoryIndex < c.memoryCount(); memoryIndex++ {
+			if def, imported := c.memoryImportAt(memoryIndex); imported {
+				expectedImports[def.ImportKey] = domainImportMemory
 			}
 		}
 		seenImports := make(map[string]uint8, len(entry.imports))
@@ -783,6 +860,19 @@ func validateDomainSnapshot(s *DomainSnapshot) error {
 				}
 				if consumerTable < 0 || !equalGCSnapshotRefs(entry.tableRoots[consumerTable], targetEntry.tableRoots[imp.index]) {
 					return fmt.Errorf("wago: domain snapshot member %d table import %q does not preserve alias state", member, imp.key)
+				}
+			case domainImportMemory:
+				if int(imp.index) >= target.memoryCount() {
+					return fmt.Errorf("wago: domain snapshot member %d memory target is unavailable", member)
+				}
+				for i := 0; i < c.memoryCount(); i++ {
+					definition, imported := c.memoryImportAt(i)
+					if !imported || definition.ImportKey != imp.key {
+						continue
+					}
+					if !equalMemorySnapshots(snapshotMemories(entry.state)[i], snapshotMemories(targetEntry.state)[imp.index]) {
+						return fmt.Errorf("wago: domain snapshot member %d memory import %q does not preserve alias state", member, imp.key)
+					}
 				}
 			default:
 				return fmt.Errorf("wago: domain snapshot member %d has unknown import kind %d", member, imp.kind)
@@ -858,8 +948,8 @@ func validateDomainSnapshotCompiledMember(c *Compiled) error {
 	}
 	for i := 0; i < c.memoryCount(); i++ {
 		def := c.memoryDef(i)
-		if def.ImportKey != "" || def.Shared || def.Addr64 {
-			return fmt.Errorf("memory %d is imported, shared, or memory64", i)
+		if def.Shared || def.Addr64 {
+			return fmt.Errorf("memory %d is shared or memory64", i)
 		}
 	}
 	if len(c.passiveElems) != 0 {
@@ -879,6 +969,10 @@ func validateDomainSnapshotCompiledMember(c *Compiled) error {
 		return errors.New("imported exception-tag ownership is unsupported")
 	}
 	return nil
+}
+
+func equalMemorySnapshots(a, b memorySnap) bool {
+	return a.pages == b.pages && bytes.Equal(a.image, b.image)
 }
 
 func equalGCSnapshotRefs(a, b []gcSnapshotRef) bool {

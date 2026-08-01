@@ -134,8 +134,10 @@ and traverses one shared stable-ID object graph. `DomainSnapshot.Instantiate` re
 acyclic internal import graph privately into a Runtime without an existing GC domain,
 reconstructs the shared heap once, then returns the member slice only after success. `WGDN` version 1 persists compiled members, exact GC
 configuration, memory/global/passive-data state, roots, aliases, cycles, and sharing.
-Live public tokens, active calls, external imports, imported/shared memories, opaque
-references, passive elements, imported exception tags, incomplete sets, and cyclic
+Same-domain imported memory32 links preserve the owning member and restore one shared
+backing mapping after validating duplicate member images. Live public tokens, active
+calls, external imports, shared or memory64 memories, opaque references, passive
+elements, imported exception tags, incomplete sets, and cyclic
 instantiation graphs remain strict pre-publication rejections. Local immutable tag
 directories carry no completed-invocation mutable state; local EH modules therefore
 round-trip through their compiled member and ordinary GC graph.

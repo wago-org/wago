@@ -49,6 +49,9 @@ func newGCFrameRootPlan(m *wasm.Module, genericGC bool) *shared.GCModuleFrameRoo
 			if !arm64CollectorFrameRefType(m, wasm.RefVal(m.Imports[i].Type.Table.Ref)) {
 				return nil
 			}
+		case wasm.ExternMem:
+			// Linear-memory imports add no collector roots. Snapshot and linking
+			// admission separately prove exact same-domain ownership.
 		case wasm.ExternTag:
 			// Tags carry no independently rooted instance storage.
 		default:
