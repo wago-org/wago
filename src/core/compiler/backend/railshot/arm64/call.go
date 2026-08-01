@@ -109,6 +109,18 @@ func sigFitsRegABI(ft *wasm.CompType) bool {
 	return true
 }
 
+func tailResultABICompatible(a, b []wasm.ValType) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if !wasm.EqualValType(a[i], b[i]) {
+			return false
+		}
+	}
+	return true
+}
+
 func (f *fn) callOp(r *wasm.Reader) error {
 	idx, err := r.U32()
 	if err != nil {
@@ -170,6 +182,252 @@ func (f *fn) callOp(r *wasm.Reader) error {
 		}
 	}
 	return f.callInternal(int(idx)-imported, ft, hint)
+}
+
+// returnCall lowers local proper-tail calls. Register-ABI targets receive their
+// arguments directly in X/V registers; wider signatures use the fixed basedata
+// tail bank and jump to the target wrapper. Both paths release the current native
+// frame before branching, so recursive tail chains remain stack bounded.
+func (f *fn) returnCall(r *wasm.Reader) error {
+	idx, err := r.U32()
+	if err != nil {
+		return err
+	}
+	ft, ok := f.m.FuncSignature(idx)
+	if !ok {
+		return fmt.Errorf("return_call: unknown function %d", idx)
+	}
+	if !tailResultABICompatible(f.ft.Results, ft.Results) {
+		return fmt.Errorf("return_call: target %d result shape differs from caller", idx)
+	}
+	imported := f.m.ImportedFuncCount()
+	if int(idx) < imported {
+		return fmt.Errorf("return_call: imported target %d is not supported by arm64 tail transfer", idx)
+	}
+	f.stats.call("tail-direct")
+	target := int(idx) - imported
+	if regABIEnabled && sigFitsRegABI(ft) {
+		f.emitTailRegisterJump(ft, func() {
+			site := f.a.Branch()
+			f.relocs = append(f.relocs, callReloc{at: site, target: target, internal: true})
+		})
+	} else {
+		if slots := funcTypeSlots(ft.Params); slots > abi.TailArgsSlots {
+			return fmt.Errorf("return_call: target %d requires %d wrapper argument slots, limit %d", idx, slots, abi.TailArgsSlots)
+		}
+		f.emitTailWrapperJump(ft, func() {
+			site := f.a.Branch()
+			f.relocs = append(f.relocs, callReloc{at: site, target: target})
+		})
+	}
+	f.unreachable = true
+	return nil
+}
+
+func (f *fn) emitTailFrameRelease() {
+	at := f.a.Len()
+	f.tailFrameSites = append(f.tailFrameSites, at)
+	f.a.Movz64(X16, 0, 0)
+	f.a.Movk64(X16, 0, 1)
+	f.a.AddSPReg(X16)
+	if f.usesCalls {
+		f.a.LdpPost(FP, LR, SP, 16)
+	}
+}
+
+func (f *fn) emitTailRegisterJump(ft *wasm.CompType, emitJump func()) {
+	p := len(ft.Params)
+	roots := f.rootsBottomToTop()
+	if len(roots) < p {
+		panic("arm64 tail call operand underflow")
+	}
+	types := make([]machineType, len(roots))
+	for i, root := range roots {
+		types[i] = rootMachineType(root)
+	}
+	f.flush()
+	f.storePinnedGlobals(false)
+	f.storeModuleGlobals(X16)
+	argBase := len(types) - p
+	gp, fp := 0, 0
+	for i, typ := range ft.Params {
+		slot := slotOfLogicalTypes(types, argBase+i)
+		mt := mtOf(typ)
+		if mt.isFloat() {
+			f.fld(fpArgRegs[fp], SP, f.spillOff(slot), mt == mtF64)
+			fp++
+		} else {
+			f.ld64(intArgRegs[gp], SP, f.spillOff(slot))
+			gp++
+		}
+	}
+	f.emitTailFrameRelease()
+	emitJump()
+}
+
+func (f *fn) emitTailWrapperJump(ft *wasm.CompType, emitJump func()) {
+	p := len(ft.Params)
+	roots := f.rootsBottomToTop()
+	if len(roots) < p {
+		panic("arm64 tail wrapper operand underflow")
+	}
+	types := make([]machineType, len(roots))
+	for i, root := range roots {
+		types[i] = rootMachineType(root)
+	}
+	f.flush()
+	f.storePinnedGlobals(false)
+	f.storeModuleGlobals(X16)
+	f.a.MovReg64(X0, linMemReg)
+	f.leaDisp(X0, X0, -int32(abi.TailArgsOffset), true)
+	argBase := len(types) - p
+	dstSlot := 0
+	for i, typ := range ft.Params {
+		srcSlot := slotOfLogicalTypes(types, argBase+i)
+		n := mtOf(typ).stackSlots()
+		for j := 0; j < n; j++ {
+			f.ld64(X16, SP, f.spillOff(srcSlot+j))
+			f.st64(X0, int32((dstSlot+j)*8), X16)
+		}
+		dstSlot += n
+	}
+	f.ld64(X3, SP, frResultsOff)
+	f.ld64(X2, linMemReg, -int32(abi.TrapCellPtrOffset))
+	f.a.MovReg64(X1, linMemReg)
+	f.emitTailFrameRelease()
+	emitJump()
+}
+
+func (f *fn) returnCallRef(r *wasm.Reader) error {
+	typeIdx, err := r.U32()
+	if err != nil {
+		return err
+	}
+	ft, ok := f.m.TypeFunc(typeIdx)
+	if !ok {
+		return fmt.Errorf("return_call_ref: bad type %d", typeIdx)
+	}
+	if !tailResultABICompatible(f.ft.Results, ft.Results) {
+		return fmt.Errorf("return_call_ref: type %d result shape differs from caller", typeIdx)
+	}
+	canon, ok := f.m.StructuralTypeKeyChecked(typeIdx)
+	if !ok {
+		return fmt.Errorf("return_call_ref: type %d exceeds bounded native identity", typeIdx)
+	}
+	ref := f.materialize(f.popValue())
+	f.pinned = f.pinned.add(ref)
+	f.cmpImm(ref, 0, true)
+	f.trapIf(condE, trapIndirectOOB)
+	code := f.allocReg(0)
+	f.ld64(code, ref, runtime.TableEntryCodePtrOffset)
+	f.cmpImm(code, 0, true)
+	f.trapIf(condE, trapIndirectOOB)
+	f.checkCallType(ref, runtime.TableEntrySigKeyOffset, canon, maskOf(ref, code))
+	home := f.allocReg(maskOf(ref, code))
+	f.ld64(home, ref, runtime.TableEntryHomeLinMemOffset)
+	kind := f.descriptorEntryKind(home, maskOf(ref, code, home))
+	f.stripDescriptorHomeTags(home)
+	f.cmpRR(home, linMemReg, true)
+	f.trapIf(condNE, trapIndirectSig)
+	wantKind := uint32(abi.FuncRefLocalWrapperTagValue)
+	registerTail := regABIEnabled && sigFitsRegABI(ft)
+	if registerTail {
+		wantKind = uint32(abi.FuncRefInternalTagValue)
+	}
+	f.cmpImm(kind, wantKind, true)
+	f.trapIf(condNE, trapIndirectSig)
+	f.release(kind)
+	f.release(home)
+	f.pinned = f.pinned.remove(ref)
+	f.release(ref)
+	f.st64(linMemReg, -int32(offSpillRegion), code)
+	f.release(code)
+	jump := func() {
+		f.ld64(X16, linMemReg, -int32(offSpillRegion))
+		f.a.Br(X16)
+	}
+	if registerTail {
+		f.emitTailRegisterJump(ft, jump)
+	} else {
+		if slots := funcTypeSlots(ft.Params); slots > abi.TailArgsSlots {
+			return fmt.Errorf("return_call_ref: type %d requires %d wrapper argument slots, limit %d", typeIdx, slots, abi.TailArgsSlots)
+		}
+		f.emitTailWrapperJump(ft, jump)
+	}
+	f.unreachable = true
+	return nil
+}
+
+func (f *fn) returnCallIndirect(r *wasm.Reader) error {
+	typeIdx, err := r.U32()
+	if err != nil {
+		return err
+	}
+	tableIdx, err := r.U32()
+	if err != nil {
+		return err
+	}
+	ft, ok := f.m.TypeFunc(typeIdx)
+	if !ok {
+		return fmt.Errorf("return_call_indirect: bad type %d", typeIdx)
+	}
+	if !tailResultABICompatible(f.ft.Results, ft.Results) {
+		return fmt.Errorf("return_call_indirect: type %d result shape differs from caller", typeIdx)
+	}
+	if tableIdx != 0 || !f.immutableLocalTable || f.monomorphicTarget < 0 {
+		return fmt.Errorf("return_call_indirect: arm64 requires one immutable monomorphic local table")
+	}
+	canon, ok := f.m.StructuralTypeKeyChecked(typeIdx)
+	if !ok {
+		return fmt.Errorf("return_call_indirect: type %d exceeds bounded native identity", typeIdx)
+	}
+	idx := f.materialize(f.popValue())
+	f.canonicalizeTableOperand(idx, tableIdx)
+	f.pinned = f.pinned.add(idx)
+	tbl := f.allocReg(0)
+	f.loadTableDescriptor(tbl, tableIdx)
+	ln := f.allocReg(maskOf(tbl))
+	f.ld32(ln, tbl, 0)
+	f.cmpRR(idx, ln, f.tableAddr64(tableIdx))
+	f.release(ln)
+	f.trapIf(condAE, trapIndirectOOB)
+	f.a.LslImm(idx, idx, 5, true)
+	f.a.Add64(idx, idx, tbl)
+	f.release(tbl)
+	code := f.allocReg(maskOf(idx))
+	f.ld64(code, idx, 8)
+	f.cmpImm(code, 0, true)
+	f.trapIf(condE, trapIndirectOOB)
+	if !f.immutableTableTyped || f.immutableTableType != canon {
+		got := f.allocReg(maskOf(idx, code))
+		f.ld64(got, idx, 16)
+		want := f.allocReg(maskOf(idx, code, got))
+		f.a.MovImm64(want, canon)
+		f.cmpRR(got, want, true)
+		f.release(want)
+		f.release(got)
+		f.trapIf(condNE, trapIndirectSig)
+	}
+	f.pinned = f.pinned.remove(idx)
+	f.release(idx)
+	f.release(code)
+	target := f.monomorphicTarget
+	if regABIEnabled && sigFitsRegABI(ft) {
+		f.emitTailRegisterJump(ft, func() {
+			site := f.a.Branch()
+			f.relocs = append(f.relocs, callReloc{at: site, target: target, internal: true})
+		})
+	} else {
+		if slots := funcTypeSlots(ft.Params); slots > abi.TailArgsSlots {
+			return fmt.Errorf("return_call_indirect: type %d requires %d wrapper argument slots, limit %d", typeIdx, slots, abi.TailArgsSlots)
+		}
+		f.emitTailWrapperJump(ft, func() {
+			site := f.a.Branch()
+			f.relocs = append(f.relocs, callReloc{at: site, target: target})
+		})
+	}
+	f.unreachable = true
+	return nil
 }
 
 func (f *fn) emitCustomInstruction(custom railcore.CustomInstruction, ft *wasm.CompType) error {

@@ -7,6 +7,7 @@ import (
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"github.com/wago-org/wago/src/core/runtime/abi"
 )
 
 // newGCFrameRootPlan admits the bounded exact arm64 collection product. It
@@ -196,6 +197,22 @@ func arm64GCFrameBodySafe(m *wasm.Module, body []byte, collectorTable bool) bool
 			if !ok || !arm64GCFrameCallABI(m, ft) {
 				return false
 			}
+		case 0x12: // local direct tail call; the caller frame is discarded
+			if int(imm.Index) < m.ImportedFuncCount() || int(imm.Index)-m.ImportedFuncCount() >= len(m.Code) {
+				return false
+			}
+			ft, ok := m.FuncSignature(imm.Index)
+			if !ok || funcTypeSlotsForRoots(ft.Params) > abi.TailArgsSlots {
+				return false
+			}
+		case 0x13: // monomorphic private-table tail call
+			if imm.Index2 != 0 || collectorTable || !arm64GCFunctionTableMonomorphic(m) {
+				return false
+			}
+			ft, ok := m.TypeFunc(imm.Index)
+			if !ok || funcTypeSlotsForRoots(ft.Params) > abi.TailArgsSlots {
+				return false
+			}
 		case 0x14: // local typed function reference
 			if m.ImportedFuncCount() != 0 {
 				return false
@@ -204,8 +221,14 @@ func arm64GCFrameBodySafe(m *wasm.Module, body []byte, collectorTable bool) bool
 			if !ok || !arm64GCFrameCallRefABI(ft) {
 				return false
 			}
-		case 0x12, 0x13, 0x15: // tail calls are not lowered by arm64 yet
-			return false
+		case 0x15: // local typed-reference tail call
+			if m.ImportedFuncCount() != 0 {
+				return false
+			}
+			ft, ok := m.TypeFunc(imm.Index)
+			if !ok || funcTypeSlotsForRoots(ft.Params) > abi.TailArgsSlots {
+				return false
+			}
 		case 0x26: // table.set invalidates local function-target identity
 			if !collectorTable {
 				return false
@@ -270,6 +293,18 @@ func arm64GCFunctionTableMonomorphic(m *wasm.Module) bool {
 		}
 	}
 	return target >= 0
+}
+
+func funcTypeSlotsForRoots(ts []wasm.ValType) int {
+	n := 0
+	for _, t := range ts {
+		if wasm.EqualValType(t, wasm.V128) {
+			n += 2
+		} else {
+			n++
+		}
+	}
+	return n
 }
 
 func arm64GCFrameCallRefABI(ft *wasm.CompType) bool {

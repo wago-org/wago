@@ -184,15 +184,16 @@ type fn struct {
 	maxSpill int // high-water number of operand spill slots used
 	// spillFloor temporarily reserves a low spill-slot range while wide-stack
 	// canonicalization stages values above both their old homes and destinations.
-	spillFloor    int
-	subRspAt      int  // byte offset of the prologue's frame-alloc MOVZ (patched with frameSize)
-	addRspAt      int  // byte offset of the epilogue's frame-free MOVZ (patched with frameSize)
-	frameElided   bool // simple register-only internal entry leaves SP unchanged
-	guardMode     bool // elide inline bounds checks; rely on guard-page + SIGSEGV trap
-	boundsFacts   bool // P6.1 straight-line bounds-check elision enabled (explicit mode)
-	interruptible bool // emit context-cancellation polls at entries and loop headers
-	lazyZero      bool // defer declared-local zeroing for small call+memory functions
-	skipFence     bool // call-free leaf with a provably small frame: no stack-fence check
+	spillFloor     int
+	subRspAt       int   // byte offset of the prologue's frame-alloc MOVZ (patched with frameSize)
+	addRspAt       int   // byte offset of the epilogue's frame-free MOVZ (patched with frameSize)
+	tailFrameSites []int // tail-transfer frame-free MOVZ sites (patched with frameSize)
+	frameElided    bool  // simple register-only internal entry leaves SP unchanged
+	guardMode      bool  // elide inline bounds checks; rely on guard-page + SIGSEGV trap
+	boundsFacts    bool  // P6.1 straight-line bounds-check elision enabled (explicit mode)
+	interruptible  bool  // emit context-cancellation polls at entries and loop headers
+	lazyZero       bool  // defer declared-local zeroing for small call+memory functions
+	skipFence      bool  // call-free leaf with a provably small frame: no stack-fence check
 
 	// memSizeReg caches the linear-memory size in bytes ([linMemReg-bdCurBytes]) in a
 	// dedicated register for the whole module (WARP's REGS::memSize=R27, which
@@ -528,24 +529,31 @@ func (f *fn) allLocalsRegisterHomed() bool {
 
 func (f *fn) patchFrameAdjusts() {
 	size := f.frameSize()
+	addSites := append(f.tailFrameSites, f.addRspAt)
 	if smallFrameAdjustEnabled && size <= 4095 {
 		const nop = 0xD503201F
 		if size == 0 {
 			f.a.PatchU32(f.subRspAt, nop)
-			f.a.PatchU32(f.addRspAt, nop)
+			for _, at := range addSites {
+				f.a.PatchU32(at, nop)
+			}
 		} else {
 			f.a.PatchU32(f.subRspAt, 0xD10003FF|uint32(size)<<10) // SUB SP,SP,#size
-			f.a.PatchU32(f.addRspAt, 0x910003FF|uint32(size)<<10) // ADD SP,SP,#size
+			for _, at := range addSites {
+				f.a.PatchU32(at, 0x910003FF|uint32(size)<<10) // ADD SP,SP,#size
+			}
 			f.stats.peep("small-frame-adjust")
 		}
-		for _, at := range []int{f.subRspAt, f.addRspAt} {
+		for _, at := range append(addSites, f.subRspAt) {
 			f.a.PatchU32(at+4, nop)
 			f.a.PatchU32(at+8, nop)
 		}
 		return
 	}
 	f.a.PatchMovImm(f.subRspAt, uint32(size))
-	f.a.PatchMovImm(f.addRspAt, uint32(size))
+	for _, at := range addSites {
+		f.a.PatchMovImm(at, uint32(size))
+	}
 }
 
 // ImportBinding is shared by both Railshot architectures.
