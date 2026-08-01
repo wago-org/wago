@@ -53,6 +53,10 @@ func TestLocalSettingsOverrideGlobalAndResetToGlobal(t *testing.T) {
 	if value, _ := target.Get("simd"); value != "true" {
 		t.Fatalf("resolved local simd = %q", value)
 	}
+	overrides := target.Overrides()
+	if len(overrides) != 1 || overrides[0].Key != "features.simd" || overrides[0].Base != "false" || overrides[0].Value != "true" {
+		t.Fatalf("overrides = %#v", overrides)
+	}
 	t.Setenv(project.GlobalEnv, "1")
 	resolved, configured, err := LoadConfigured()
 	if err != nil {

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sort"
 
 	"github.com/wago-org/wago/cli/internal/project"
 )
@@ -36,6 +37,12 @@ type Target struct {
 	config     Config
 	configured bool
 	manifest   map[string]any
+}
+
+type Override struct {
+	Key   string `json:"key"`
+	Base  string `json:"base"`
+	Value string `json:"value"`
 }
 
 func Open(global, local bool) (*Target, error) {
@@ -99,6 +106,23 @@ func (target *Target) Reset(key string) error {
 }
 
 func (target *Target) ResetAll() { target.config = cloneConfig(target.base) }
+
+func (target *Target) Overrides() []Override {
+	keys := []string{"runtime.parallel", "runtime.deferred-bounds-checking"}
+	for _, setting := range AllBoolean() {
+		keys = append(keys, setting.Key)
+	}
+	sort.Strings(keys)
+	overrides := make([]Override, 0)
+	for _, key := range keys {
+		base, baseErr := Get(target.base, key)
+		value, valueErr := Get(target.config, key)
+		if baseErr == nil && valueErr == nil && base != value {
+			overrides = append(overrides, Override{Key: key, Base: base, Value: value})
+		}
+	}
+	return overrides
+}
 
 func (target *Target) Replace(config Config) error {
 	if err := Validate(config); err != nil {

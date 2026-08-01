@@ -14,6 +14,7 @@ const (
 	Get         Action = "get"
 	Set         Action = "set"
 	Reset       Action = "reset"
+	Diff        Action = "diff"
 )
 
 type Request struct {

@@ -49,23 +49,27 @@ func Interactive(config, reset settings.Config, scope string, startExperimental 
 	return config, changed, nil
 }
 
-func Print(w io.Writer, config settings.Config, includeExperimental bool, scope, path string) {
+func Print(w io.Writer, config settings.Config, includeExperimental bool, scope, path string, overrides []settings.Override) {
+	overridden := make(map[string]bool, len(overrides))
+	for _, override := range overrides {
+		overridden[override.Key] = true
+	}
 	fmt.Fprintf(w, "%s %s\n", ui.Bold("Wago configuration"), ui.Dim("("+scope+")"))
 	printValue(w, "location", path)
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, ui.Bold("Runtime defaults"))
-	printValue(w, "parallel", parallelLabel(config.Runtime.Parallel))
-	printValue(w, "deferred bounds checking", onOff(config.Runtime.DeferredBoundsChecking))
+	printSetting(w, "parallel", parallelLabel(config.Runtime.Parallel), "runtime.parallel", overridden)
+	printSetting(w, "deferred bounds checking", onOff(config.Runtime.DeferredBoundsChecking), "runtime.deferred-bounds-checking", overridden)
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, ui.Bold("WebAssembly features"))
 	for _, setting := range settings.Features() {
-		printValue(w, strings.TrimPrefix(setting.Key, "features."), onOff(config.Features[strings.TrimPrefix(setting.Key, "features.")]))
+		printSetting(w, strings.TrimPrefix(setting.Key, "features."), onOff(config.Features[strings.TrimPrefix(setting.Key, "features.")]), setting.Key, overridden)
 	}
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, ui.Bold("Compiler optimizations"))
 	for _, setting := range stableOptimizations() {
 		name := strings.TrimPrefix(setting.Key, "optimizations.")
-		printValue(w, name, onOff(config.Optimizations[name]))
+		printSetting(w, name, onOff(config.Optimizations[name]), setting.Key, overridden)
 	}
 	if includeExperimental {
 		fmt.Fprintln(w)
@@ -76,8 +80,29 @@ func Print(w io.Writer, config settings.Config, includeExperimental bool, scope,
 				name := strings.TrimPrefix(setting.Key, "optimizations.")
 				value = onOff(config.Optimizations[name])
 			}
-			printValue(w, strings.TrimPrefix(strings.TrimPrefix(setting.Key, "preview."), "optimizations."), value)
+			printSetting(w, strings.TrimPrefix(strings.TrimPrefix(setting.Key, "preview."), "optimizations."), value, setting.Key, overridden)
 		}
+	}
+}
+
+func PrintDiff(w io.Writer, scope string, overrides []settings.Override) {
+	base := "built-in"
+	if scope == settings.ScopeLocal {
+		base = "global"
+	}
+	fmt.Fprintf(w, "%s %s\n", ui.Bold("Wago configuration differences"), ui.Dim("("+scope+")"))
+	if len(overrides) == 0 {
+		fmt.Fprintf(w, "No %s overrides.\n", scope)
+		return
+	}
+	width := 0
+	for _, override := range overrides {
+		if len(override.Key) > width {
+			width = len(override.Key)
+		}
+	}
+	for _, override := range overrides {
+		fmt.Fprintf(w, "  %-*s  %s %s  %s %s\n", width, override.Key, ui.Dim(base), override.Base, scope, override.Value)
 	}
 }
 
@@ -259,4 +284,11 @@ func onOff(enabled bool) string {
 
 func printValue(w io.Writer, name, value string) {
 	fmt.Fprintf(w, "  %-42s %s\n", name, value)
+}
+
+func printSetting(w io.Writer, name, value, key string, overridden map[string]bool) {
+	if overridden[key] {
+		value += "  " + ui.Dim("override")
+	}
+	printValue(w, name, value)
 }

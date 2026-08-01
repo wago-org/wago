@@ -104,7 +104,14 @@ func (commandEnvironment) Configure(request configoptions.Request) {
 			ui.PrintJSON(output)
 			return
 		}
-		managerconfig.Print(os.Stdout, config, request.Experimental, scope, path)
+		managerconfig.Print(os.Stdout, config, request.Experimental, scope, path, target.Overrides())
+	case configoptions.Diff:
+		overrides := target.Overrides()
+		if automation.JSON() {
+			ui.PrintJSON(map[string]any{"scope": scope, "path": target.Path(), "overrides": overrides})
+			return
+		}
+		managerconfig.PrintDiff(os.Stdout, scope, overrides)
 	case configoptions.Get:
 		value, err := target.Get(request.Key)
 		if err != nil {
