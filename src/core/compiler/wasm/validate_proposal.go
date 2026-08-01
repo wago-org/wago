@@ -761,7 +761,7 @@ func (v *funcValidator) stepSIMD(in Instruction) error {
 	}
 	switch e.cat {
 	case simdEffLoad:
-		addr, err := v.checkMemArg(in.MemArg(), e.align)
+		addr, err := v.checkMemArg(in.MemArg(), uint32(e.align))
 		if err != nil {
 			return err
 		}
@@ -780,7 +780,7 @@ func (v *funcValidator) stepSIMD(in Instruction) error {
 		}
 		return v.popExpect(addr)
 	case simdEffMemLoadLane:
-		addr, err := v.checkMemArg(in.MemArg(), e.align)
+		addr, err := v.checkMemArg(in.MemArg(), uint32(e.align))
 		if err != nil {
 			return err
 		}
@@ -793,7 +793,7 @@ func (v *funcValidator) stepSIMD(in Instruction) error {
 		v.push(V128)
 		return nil
 	case simdEffMemStoreLane:
-		addr, err := v.checkMemArg(in.MemArg(), e.align)
+		addr, err := v.checkMemArg(in.MemArg(), uint32(e.align))
 		if err != nil {
 			return err
 		}
@@ -802,7 +802,7 @@ func (v *funcValidator) stepSIMD(in Instruction) error {
 		}
 		return v.popExpect(addr)
 	case simdEffSplat:
-		if err := v.popExpect(e.scalar); err != nil {
+		if err := v.popExpect(e.scalar.valType()); err != nil {
 			return err
 		}
 		v.push(V128)
@@ -811,10 +811,10 @@ func (v *funcValidator) stepSIMD(in Instruction) error {
 		if err := v.popExpect(V128); err != nil {
 			return err
 		}
-		v.push(e.scalar)
+		v.push(e.scalar.valType())
 		return nil
 	case simdEffReplace:
-		if err := v.popExpect(e.scalar); err != nil {
+		if err := v.popExpect(e.scalar.valType()); err != nil {
 			return err
 		}
 		if err := v.popExpect(V128); err != nil {
@@ -905,8 +905,8 @@ const (
 
 type simdEffect struct {
 	cat       simdEffectCat
-	scalar    ValType
-	align     uint32
+	scalar    effectValue
+	align     uint8
 	laneLimit LaneIdx
 }
 
@@ -938,7 +938,7 @@ var simdTernary = map[InstrKind]struct{}{InstrF32x4RelaxedMadd: {}, InstrF32x4Re
 
 func init() {
 	for k, eff := range simdLoads {
-		simdEffects[k] = simdEffect{cat: simdEffLoad, align: eff.align}
+		simdEffects[k] = simdEffect{cat: simdEffLoad, align: uint8(eff.align)}
 	}
 	simdEffects[InstrV128Store] = simdEffect{cat: simdEffStore}
 	for k, eff := range simdMemLane {
@@ -946,16 +946,16 @@ func init() {
 		if k >= InstrV128Store8Lane && k <= InstrV128Store64Lane {
 			cat = simdEffMemStoreLane
 		}
-		simdEffects[k] = simdEffect{cat: cat, align: eff.align}
+		simdEffects[k] = simdEffect{cat: cat, align: uint8(eff.align)}
 	}
 	for k, scalar := range simdSplat {
-		simdEffects[k] = simdEffect{cat: simdEffSplat, scalar: scalar}
+		simdEffects[k] = simdEffect{cat: simdEffSplat, scalar: compactEffectValue(scalar)}
 	}
 	for k, scalar := range simdExtract {
-		simdEffects[k] = simdEffect{cat: simdEffExtract, scalar: scalar}
+		simdEffects[k] = simdEffect{cat: simdEffExtract, scalar: compactEffectValue(scalar)}
 	}
 	for k, scalar := range simdReplace {
-		simdEffects[k] = simdEffect{cat: simdEffReplace, scalar: scalar}
+		simdEffects[k] = simdEffect{cat: simdEffReplace, scalar: compactEffectValue(scalar)}
 	}
 	for k := range simdShift {
 		simdEffects[k] = simdEffect{cat: simdEffShift}

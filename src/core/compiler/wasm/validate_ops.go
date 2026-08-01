@@ -13,21 +13,21 @@ func (v *funcValidator) step(in *Instruction) error {
 		}
 	}
 	if e := opEffects[in.Kind]; e.cat == effLoad {
-		addr, err := v.checkMemArg(in.MemArg(), e.align)
+		addr, err := v.checkMemArg(in.MemArg(), uint32(e.align))
 		if err != nil {
 			return err
 		}
 		if err := v.popExpect(addr); err != nil {
 			return err
 		}
-		v.push(e.a)
+		v.push(e.a.valType())
 		return nil
 	} else if e.cat == effStore {
-		addr, err := v.checkMemArg(in.MemArg(), e.align)
+		addr, err := v.checkMemArg(in.MemArg(), uint32(e.align))
 		if err != nil {
 			return err
 		}
-		if err := v.popExpect(e.a); err != nil {
+		if err := v.popExpect(e.a.valType()); err != nil {
 			return err
 		}
 		return v.popExpect(addr)
@@ -609,51 +609,52 @@ func sameValTypes(a, b []ValType) bool {
 func (v *funcValidator) stackEffect(in *Instruction) error {
 	k := in.Kind
 	if e := opEffects[k]; e.cat != effNone {
+		a := e.a.valType()
 		switch e.cat {
 		case effUnary:
-			if err := v.popExpect(e.a); err != nil {
+			if err := v.popExpect(a); err != nil {
 				return err
 			}
-			v.push(e.a)
+			v.push(a)
 		case effBinary:
-			if err := v.popExpect(e.a); err != nil {
+			if err := v.popExpect(a); err != nil {
 				return err
 			}
-			if err := v.popExpect(e.a); err != nil {
+			if err := v.popExpect(a); err != nil {
 				return err
 			}
-			v.push(e.a)
+			v.push(a)
 		case effCompare:
-			if err := v.popExpect(e.a); err != nil {
+			if err := v.popExpect(a); err != nil {
 				return err
 			}
-			if err := v.popExpect(e.a); err != nil {
+			if err := v.popExpect(a); err != nil {
 				return err
 			}
 			v.push(I32)
 		case effTest:
-			if err := v.popExpect(e.a); err != nil {
+			if err := v.popExpect(a); err != nil {
 				return err
 			}
 			v.push(I32)
 		case effConv:
-			if err := v.popExpect(e.a); err != nil {
+			if err := v.popExpect(a); err != nil {
 				return err
 			}
-			v.push(e.b)
+			v.push(e.b.valType())
 		case effLoad:
-			if err := v.checkMem(e.align); err != nil {
+			if err := v.checkMem(uint32(e.align)); err != nil {
 				return err
 			}
 			if err := v.popExpect(I32); err != nil {
 				return err
 			}
-			v.push(e.a)
+			v.push(a)
 		case effStore:
-			if err := v.checkMem(e.align); err != nil {
+			if err := v.checkMem(uint32(e.align)); err != nil {
 				return err
 			}
-			if err := v.popExpect(e.a); err != nil {
+			if err := v.popExpect(a); err != nil {
 				return err
 			}
 			return v.popExpect(I32)
@@ -809,34 +810,77 @@ const (
 	effStore               // checkMem(align); pop a; pop i32
 )
 
+// effectValue is the compact scalar/vector subset used by precomputed validator
+// effects. Storing a full ValType here made each table entry carry the complete
+// reference-type descriptor even though numeric and SIMD instructions only use
+// five primitive values.
+type effectValue uint8
+
+const (
+	effectNone effectValue = iota
+	effectI32
+	effectI64
+	effectF32
+	effectF64
+	effectV128
+)
+
+var effectValTypes = [...]ValType{
+	effectNone: {},
+	effectI32:  {Kind: ValNum, Num: NumI32},
+	effectI64:  {Kind: ValNum, Num: NumI64},
+	effectF32:  {Kind: ValNum, Num: NumF32},
+	effectF64:  {Kind: ValNum, Num: NumF64},
+	effectV128: {Kind: ValVec},
+}
+
+func compactEffectValue(t ValType) effectValue {
+	switch {
+	case equalValType(t, I32):
+		return effectI32
+	case equalValType(t, I64):
+		return effectI64
+	case equalValType(t, F32):
+		return effectF32
+	case equalValType(t, F64):
+		return effectF64
+	case equalValType(t, V128):
+		return effectV128
+	default:
+		panic("wasm: non-primitive validation effect")
+	}
+}
+
+func (t effectValue) valType() ValType { return effectValTypes[t] }
+
 type opEffect struct {
 	cat   opEffectCat
-	a, b  ValType
-	align uint32
+	a, b  effectValue
+	align uint8
 }
 
 var opEffects [numInstrKinds]opEffect
 
 func init() {
 	for k, t := range unary {
-		opEffects[k] = opEffect{cat: effUnary, a: t}
+		opEffects[k] = opEffect{cat: effUnary, a: compactEffectValue(t)}
 	}
 	for k, t := range binaryOps {
-		opEffects[k] = opEffect{cat: effBinary, a: t}
+		opEffects[k] = opEffect{cat: effBinary, a: compactEffectValue(t)}
 	}
 	for k, t := range compare {
-		opEffects[k] = opEffect{cat: effCompare, a: t}
+		opEffects[k] = opEffect{cat: effCompare, a: compactEffectValue(t)}
 	}
 	for k, t := range test {
-		opEffects[k] = opEffect{cat: effTest, a: t}
+		opEffects[k] = opEffect{cat: effTest, a: compactEffectValue(t)}
 	}
 	for k, c := range conversions {
-		opEffects[k] = opEffect{cat: effConv, a: c.from, b: c.to}
+		opEffects[k] = opEffect{cat: effConv, a: compactEffectValue(c.from), b: compactEffectValue(c.to)}
 	}
 	for k, m := range loads {
-		opEffects[k] = opEffect{cat: effLoad, a: m.t, align: m.align}
+		opEffects[k] = opEffect{cat: effLoad, a: compactEffectValue(m.t), align: uint8(m.align)}
 	}
 	for k, m := range stores {
-		opEffects[k] = opEffect{cat: effStore, a: m.t, align: m.align}
+		opEffects[k] = opEffect{cat: effStore, a: compactEffectValue(m.t), align: uint8(m.align)}
 	}
 }

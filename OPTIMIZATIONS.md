@@ -17,7 +17,18 @@ Legend: effort S/M/L · value ⬜ low · 🟦 medium · 🟩 high · ⭐ very hi
 
 ---
 
-## What's in place (updated 2026-07-03)
+## What's in place (updated 2026-08-01)
+
+**Compact validator effect tables (2026-08-01).** Numeric and SIMD validation
+lookup entries now store four one-byte fields instead of embedding full recursive
+`ValType` descriptors. On linux/amd64 this shrinks `opEffects` and `simdEffects`
+from 59,808 + 34,176 bytes to 2,136 + 2,136 bytes, cuts the stripped TinyGo
+release `.bss` from 133,888 to 44,176 bytes (**−89,712 bytes, −67.0%**), and
+reduces the release file from 1,983,792 to 1,983,216 bytes (gzip-9: 899,459 to
+898,903). Twelve 1-second `BenchmarkDecodeValidate` samples improved from a
+96,406 ns/op median to 90,917.5 ns/op (**−5.7%**) with allocations unchanged.
+The four-byte layouts are test-locked so later reference-type growth cannot
+silently re-inflate this hot table.
 
 The backend (`src/core/compiler/backend/railshot`) is the full WARP-architecture port: a
 single-pass x86-64 codegen over a valent-block operand stack (deferred-action trees,

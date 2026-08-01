@@ -3,6 +3,7 @@ package wasm
 import (
 	"errors"
 	"testing"
+	"unsafe"
 )
 
 func constFor(t ValType) Instruction {
@@ -148,6 +149,15 @@ func TestValidatorCoverageSIMDOpcodeFamilies(t *testing.T) {
 				t.Fatalf("ValidateModule: %v", err)
 			}
 		})
+	}
+}
+
+func TestValidationEffectTablesStayCompact(t *testing.T) {
+	if got := unsafe.Sizeof(opEffect{}); got != 4 {
+		t.Fatalf("opEffect size = %d, want 4", got)
+	}
+	if got := unsafe.Sizeof(simdEffect{}); got != 4 {
+		t.Fatalf("simdEffect size = %d, want 4", got)
 	}
 }
 
