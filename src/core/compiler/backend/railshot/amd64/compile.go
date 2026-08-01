@@ -1499,6 +1499,9 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, int
 		if gcFrameRoots != nil && gcFrameRoots.Candidate {
 			gcFrameRoots.FrameBytes = uint32(f.frameSize())
 			gcFrameRoots.AdapterReturnOffset = uint32(f.adapterReturnOff)
+			if f.gcCallsiteIndex != len(gcFrameRoots.LiveCallLocalMasks) {
+				gcFrameRoots.Exact = false
+			}
 		}
 		return f.a.B, f.relocs, internalOff, nil
 	}
@@ -1518,6 +1521,9 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, int
 	if gcFrameRoots != nil && gcFrameRoots.Candidate {
 		gcFrameRoots.FrameBytes = uint32(f.frameSize())
 		gcFrameRoots.AdapterReturnOffset = uint32(f.adapterReturnOff)
+		if f.gcCallsiteIndex != len(gcFrameRoots.LiveCallLocalMasks) {
+			gcFrameRoots.Exact = false
+		}
 	}
 	return f.a.B, f.relocs, 0, nil
 }

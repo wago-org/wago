@@ -120,8 +120,10 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   fixed EH payload roots. Dynamic indirect tails, function-subtype tests/casts,
   indexed memory operations, `try_table`, `throw`, and `throw_ref` are admitted.
   Warmed recursive Throughput/Tiny collection remains allocation-free by using a
-  direct immutable-root visitor. Polymorphic/foreign reference calls remain
-  collection-disabled where exact ownership is unproved.
+  direct immutable-root visitor. Polymorphic local `call_indirect` and same-domain
+  foreign `call_ref` now publish every internal/wrapper/cross-instance return path,
+  including the wrapper save-area stack adjustment. Foreign reference tails and
+  other shapes with unproved ownership remain collection-disabled.
 - [x] **Shared GC globals:** imported/exported mutable and immutable collector-reference
   globals share canonical structurally compatible Runtime domains. Collection scans every live alias
   cell directly, checked slots preserve barrier/card state, and rollback, codec,

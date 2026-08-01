@@ -49,9 +49,11 @@ helpers through the parked synchronous ABI. Exact roots cover locals, hidden
 spills, direct/recursive calls, direct host re-entry, same-domain foreign calls,
 mutable/shared GC globals, local/shared collector tables, indirect/reference calls,
 discarded-frame proper tails, and fixed EH payload records. Native ARM64 also
-executes dynamic indirect tails, function-subtype checks, multi-memory, memory64,
-table64, `try_table`, `throw`, and `throw_ref`. Polymorphic or foreign reference
-calls remain collection-disabled where exact ownership is unproved. Multiple
+publishes every native return path for polymorphic local `call_indirect` and
+same-domain foreign `call_ref`, including the 64-byte cross-instance wrapper save
+area. Dynamic indirect tails, function-subtype checks, multi-memory, memory64,
+table64, `try_table`, `throw`, and `throw_ref` execute. Foreign reference tails and
+other shapes with unproved ownership remain collection-disabled. Multiple
 heterogeneous imported/exported collector-reference tables share exact alias roots,
 growth, attachment rollback, codec reload, and close ordering. Exhaustive ordered
 Runtime domains can now be persisted through `CaptureDomain`/`DomainSnapshot`: one

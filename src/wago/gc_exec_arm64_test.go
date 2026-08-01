@@ -247,6 +247,39 @@ func arm64GCIndirectModule() []byte {
 	)
 }
 
+func arm64GCPolymorphicIndirectModule() []byte {
+	structType := []byte{0x5f, 0x01, 0x7f, 0x01}
+	targetType := wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32})
+	runType := wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32})
+	target := func(delta byte) []byte {
+		return []byte{0x01, 0x01, 0x7f,
+			0x02, 0x40, 0x03, 0x40,
+			0x20, 0x01, 0x41, 0xe8, 0x07, 0x4f, 0x0d, 0x01,
+			0xfb, 0x01, 0x00, 0x1a,
+			0x20, 0x01, 0x41, 0x01, 0x6a, 0x21, 0x01, 0x0c, 0x00,
+			0x0b, 0x0b, 0x20, 0x00, 0x41, delta, 0x6a, 0x0b}
+	}
+	caller := []byte{0x01, 0x01, 0x63, 0x00,
+		0x20, 0x00, 0xfb, 0x00, 0x00, 0x21, 0x02,
+		0x20, 0x00, 0x20, 0x01, 0x11, 0x01, 0x00, 0x1a,
+		0x20, 0x02, 0xfb, 0x02, 0x00, 0x00, 0x0b}
+	table := []byte{0x70, 0x00, 0x02}
+	elem := []byte{0x00, 0x41, 0x00, 0x0b, 0x02, 0x00, 0x01}
+	target0, target1 := target(0), target(1)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(structType, targetType, runType)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1), wasmtest.ULEB(1), wasmtest.ULEB(2))),
+		wasmtest.Section(4, wasmtest.Vec(table)),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 2))),
+		wasmtest.Section(9, wasmtest.Vec(elem)),
+		wasmtest.Section(10, wasmtest.Vec(
+			append(wasmtest.ULEB(uint32(len(target0))), target0...),
+			append(wasmtest.ULEB(uint32(len(target1))), target1...),
+			append(wasmtest.ULEB(uint32(len(caller))), caller...),
+		)),
+	)
+}
+
 func arm64GCCrossProviderModule() []byte {
 	structType := []byte{0x5f, 0x01, 0x7f, 0x01}
 	refCallType := []byte{0x60, 0x01, 0x63, 0x00, 0x01, 0x63, 0x00}
@@ -279,6 +312,27 @@ func arm64GCCrossConsumerModule() []byte {
 		wasmtest.Section(2, wasmtest.Vec(imp)),
 		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2))),
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 1))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func arm64GCCrossCallRefConsumerModule() []byte {
+	structType := []byte{0x5f, 0x01, 0x7f, 0x01}
+	refCallType := []byte{0x60, 0x01, 0x63, 0x00, 0x01, 0x63, 0x00}
+	runType := wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32})
+	imp := append(append(wasmtest.Name("provider"), wasmtest.Name("retain")...), 0x00)
+	imp = append(imp, wasmtest.ULEB(1)...)
+	body := []byte{0x01, 0x01, 0x63, 0x00,
+		0x20, 0x00, 0xfb, 0x00, 0x00, 0x21, 0x01,
+		0x20, 0x01, 0xd2, 0x00, 0x14, 0x01, 0x1a,
+		0x20, 0x01, 0xfb, 0x02, 0x00, 0x00, 0x0b}
+	declared := []byte{0x03, 0x00, 0x01, 0x00}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(structType, refCallType, runType)),
+		wasmtest.Section(2, wasmtest.Vec(imp)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 1))),
+		wasmtest.Section(9, wasmtest.Vec(declared)),
 		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
 	)
 }
@@ -518,6 +572,58 @@ func TestGCArm64IndirectFrameRoots(t *testing.T) {
 	}
 }
 
+func TestGCArm64PolymorphicIndirectFrameRoots(t *testing.T) {
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2|CoreFeatureTypedFunctionReferences|CoreFeatureGC), arm64GCPolymorphicIndirectModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	plan := compiled.genericGCFrameRoots()
+	if plan == nil || len(plan.callsites) != 3 {
+		t.Fatalf("polymorphic indirect arm64 root map = %+v", plan)
+	}
+	adjusted := 0
+	for _, site := range plan.callsites {
+		if len(site.offsets) != 1 {
+			t.Fatalf("polymorphic indirect roots = %+v", plan.callsites)
+		}
+		if site.stackAdjust == 64 {
+			adjusted++
+		} else if site.stackAdjust != 0 {
+			t.Fatalf("polymorphic indirect stack adjustment = %d", site.stackAdjust)
+		}
+	}
+	if adjusted != 1 {
+		t.Fatalf("polymorphic indirect adjusted sites = %d, want 1", adjusted)
+	}
+	profiles := []GCConfig{
+		{Profile: GCProfileThroughput, StressNurseryBytes: 64, CollectEveryAlloc: true, ForceMajorEveryMinor: true, VerifyAfterCollect: true, ThroughputHeapBytes: 4096, ThroughputPageBytes: 4096},
+		{Profile: GCProfileTiny, TinyHeapBytes: 128, TinyBlockBytes: 32, TinyCollectEveryAlloc: true, TinyStepEveryAlloc: true, VerifyAfterCollect: true},
+	}
+	for _, candidate := range []*Compiled{compiled, roundTripCompiled(t, compiled)} {
+		if candidate != compiled {
+			defer candidate.Close()
+		}
+		for profileIndex, profile := range profiles {
+			in, err := Instantiate(candidate, InstantiateOptions{GC: profile})
+			if err != nil {
+				t.Fatal(err)
+			}
+			for tableIndex := uint64(0); tableIndex < 2; tableIndex++ {
+				want := uint64(800 + profileIndex*10 + int(tableIndex))
+				got, callErr := in.Invoke("run", want, tableIndex)
+				if callErr != nil || !reflect.DeepEqual(got, []uint64{want}) {
+					in.Close()
+					t.Fatalf("profile %d table %d run = %v, %v", profileIndex, tableIndex, got, callErr)
+				}
+			}
+			if err := in.Close(); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+}
+
 func TestGCArm64MutableGlobalAndTableRoots(t *testing.T) {
 	features := CoreFeaturesV2 | CoreFeatureTypedFunctionReferences | CoreFeatureGC
 	cases := []struct {
@@ -648,6 +754,85 @@ func TestGCArm64CrossInstanceRoots(t *testing.T) {
 		if callErr != nil || !reflect.DeepEqual(got, []uint64{want}) {
 			t.Fatalf("run %d = %v, %v", i, got, callErr)
 		}
+	}
+}
+
+func TestGCArm64ForeignCallRefRoots(t *testing.T) {
+	cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2 | CoreFeatureTypedFunctionReferences | CoreFeatureGC)
+	providerCode, err := Compile(cfg, arm64GCCrossProviderModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer providerCode.Close()
+	consumerCode, err := Compile(cfg, arm64GCCrossCallRefConsumerModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer consumerCode.Close()
+	plan := consumerCode.genericGCFrameRoots()
+	if plan == nil || len(plan.callsites) != 3 {
+		t.Fatalf("foreign call_ref root plan = %+v", plan)
+	}
+	adjusted := 0
+	for _, site := range plan.callsites {
+		if len(site.offsets) != 1 {
+			t.Fatalf("foreign call_ref roots = %+v", plan.callsites)
+		}
+		if site.stackAdjust == 64 {
+			adjusted++
+		} else if site.stackAdjust != 0 {
+			t.Fatalf("foreign call_ref stack adjustment = %d", site.stackAdjust)
+		}
+	}
+	if adjusted != 1 {
+		t.Fatalf("foreign call_ref adjusted sites = %d, want 1", adjusted)
+	}
+	profiles := []GCConfig{
+		{Profile: GCProfileThroughput, StressNurseryBytes: 64, CollectEveryAlloc: true, ForceMajorEveryMinor: true, VerifyAfterCollect: true, ThroughputHeapBytes: 4096, ThroughputPageBytes: 4096},
+		{Profile: GCProfileTiny, TinyHeapBytes: 128, TinyBlockBytes: 32, TinyCollectEveryAlloc: true, TinyStepEveryAlloc: true, VerifyAfterCollect: true},
+	}
+	for profileIndex, profile := range profiles {
+		store := newReferenceStore(false)
+		provider, err := instantiateCore(providerCode, InstantiateOptions{GC: profile, store: store})
+		if err != nil {
+			store.closeRuntime()
+			t.Fatal(err)
+		}
+		export, err := provider.ExportedFunc("retain")
+		if err != nil {
+			provider.Close()
+			store.closeRuntime()
+			t.Fatal(err)
+		}
+		consumer, err := instantiateCore(consumerCode, InstantiateOptions{GC: profile, store: store, Imports: Imports{"provider.retain": export}})
+		if err != nil {
+			provider.Close()
+			store.closeRuntime()
+			t.Fatal(err)
+		}
+		if provider.gc != consumer.gc {
+			consumer.Close()
+			provider.Close()
+			store.closeRuntime()
+			t.Fatal("foreign call_ref modules do not share a collector")
+		}
+		for i := 0; i < 10; i++ {
+			want := uint64(900 + i)
+			got, callErr := consumer.Invoke("run", want)
+			if callErr != nil || !reflect.DeepEqual(got, []uint64{want}) {
+				consumer.Close()
+				provider.Close()
+				store.closeRuntime()
+				t.Fatalf("profile %d run %d = %v, %v", profileIndex, i, got, callErr)
+			}
+		}
+		if err := consumer.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if err := provider.Close(); err != nil {
+			t.Fatal(err)
+		}
+		store.closeRuntime()
 	}
 }
 

@@ -170,8 +170,11 @@ one private collector-reference table is scanned directly, and indirect/referenc
 calls, function subtype checks, proper tails, and fixed EH payload records publish
 exact maps. Dynamic host and same-domain foreign direct tails discard the current
 frame, so no dead caller roots are retained. A direct immutable-root visitor keeps
-warmed Throughput/Tiny recursive collection allocation-free. Polymorphic or
-foreign reference calls stay collection-disabled rather than scanning unproved
+warmed Throughput/Tiny recursive collection allocation-free. ARM64 polymorphic
+local `call_indirect` and same-domain foreign `call_ref` publish every possible
+internal, wrapper, and cross-instance return PC; foreign wrapper maps account for
+the 64-byte saved caller-invariant area. Foreign reference tails and other shapes
+with unproved ownership stay collection-disabled rather than scanning approximate
 roots.
 
 Iteration 38 wires one exact linux/amd64 numeric-local helper product;
@@ -2003,8 +2006,9 @@ Tests exercise tiny nurseries, collect-every-alloc, exact scanning, cycles, root
   qualification described in `docs/wasm3.md`.
 - Exact collection is admitted only where every local, spill, callsite, suspended
   host activation, EH payload, persistent global/table slot, and foreign frame has
-  proven ownership and mutable root storage. General generated functions that
-  cross polymorphic or foreign reference boundaries remain collection-disabled
+  proven ownership and mutable root storage. ARM64 polymorphic local indirect calls
+  and same-domain foreign `call_ref` now satisfy that proof for non-tail calls;
+  foreign reference tails and other unproved shapes remain collection-disabled
   instead of scanning an approximate root set.
 - Imported/exported mutable and immutable GC globals participate in exact
   canonical Runtime collector domains. Module-local flattened type indexes translate

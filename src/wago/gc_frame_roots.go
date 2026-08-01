@@ -15,7 +15,7 @@ func validGCModuleFrameRootPlan(module *shared.GCModuleFrameRootPlan) bool {
 	totalSafepoints := 0
 	var previousID uint32
 	for _, plan := range module.Functions {
-		if plan == nil || !plan.Candidate || !plan.Exact || len(plan.LiveLocalMasks) != len(plan.Safepoints) || len(plan.LiveCallLocalMasks) != len(plan.Callsites) || len(plan.LocalIndexes) != len(plan.LocalOffsets) || len(plan.LocalOffsets) > gcNativeFrameRootLimit {
+		if plan == nil || !plan.Candidate || !plan.Exact || len(plan.LiveLocalMasks) != len(plan.Safepoints) || len(plan.LocalIndexes) != len(plan.LocalOffsets) || len(plan.LocalOffsets) > gcNativeFrameRootLimit {
 			return false
 		}
 		active := len(plan.Safepoints) != 0 || len(plan.Callsites) != 0
@@ -112,7 +112,7 @@ func validCompiledGCFunctionTables(c *Compiled) bool {
 				return false
 			}
 			for _, value := range elem.Values {
-				if value.HasGlobal || (!value.Null && int(value.FuncIndex) < c.NumImports) {
+				if value.HasGlobal || (!value.Null && int(value.FuncIndex) >= c.NumImports+len(c.Funcs)) {
 					return false
 				}
 			}
@@ -146,12 +146,12 @@ func validCompiledGCFunctionTables(c *Compiled) bool {
 	if c.tableImport != "" || len(c.tableExports) != 0 || len(c.passiveElems) != 0 || (c.TableType != 0 && c.TableType != ValFuncRef) {
 		return false
 	}
-	if c.HasTableInitFunc && int(c.TableInitFunc) < c.NumImports {
+	if c.HasTableInitFunc && int(c.TableInitFunc) >= c.NumImports+len(c.Funcs) {
 		return false
 	}
 	for i := range c.extraTables {
 		table := &c.extraTables[i]
-		if table.ImportKey != "" || table.Type != ValFuncRef || table.HasInitFunc && int(table.InitFunc) < c.NumImports {
+		if table.ImportKey != "" || table.Type != ValFuncRef || table.HasInitFunc && int(table.InitFunc) >= c.NumImports+len(c.Funcs) {
 			return false
 		}
 	}
@@ -162,7 +162,7 @@ func validCompiledGCFunctionTables(c *Compiled) bool {
 			return false
 		}
 		for _, value := range elem.Values {
-			if value.HasGlobal || (!value.Null && int(value.FuncIndex) < c.NumImports) {
+			if value.HasGlobal || (!value.Null && int(value.FuncIndex) >= c.NumImports+len(c.Funcs)) {
 				return false
 			}
 		}

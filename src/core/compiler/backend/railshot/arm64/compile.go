@@ -1456,6 +1456,9 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, int
 		}
 		if f.gcFrameRoots != nil {
 			f.gcFrameRoots.FrameBytes = uint32(f.frameSize())
+			if f.gcCallsiteIndex != len(f.gcFrameRoots.LiveCallLocalMasks) {
+				f.gcFrameRoots.Exact = false
+			}
 		}
 		f.finalizePeepholes()
 		f.finalizeStats(len(f.a.B))
@@ -1473,6 +1476,9 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, int
 	f.patchFrameAdjusts()
 	if f.gcFrameRoots != nil {
 		f.gcFrameRoots.FrameBytes = uint32(f.frameSize())
+		if f.gcCallsiteIndex != len(f.gcFrameRoots.LiveCallLocalMasks) {
+			f.gcFrameRoots.Exact = false
+		}
 	}
 	f.finalizePeepholes()
 	f.finalizeStats(len(f.a.B))

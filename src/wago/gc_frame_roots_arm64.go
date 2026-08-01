@@ -14,9 +14,10 @@ import (
 
 // newGCFrameRootPlan admits the bounded exact arm64 collection product. It
 // supports liveness-exact collector locals, hidden operand spills, direct and
-// recursive calls, direct host re-entry, same-domain foreign calls, mutable local
-// GC globals, one local or same-domain imported collector table, monomorphic call_indirect, and local
-// call_ref. Tail/EH and polymorphic or foreign reference calls remain fail-closed.
+// recursive calls, direct host re-entry, same-domain foreign calls, mutable/shared
+// GC globals and collector tables, polymorphic call_indirect, and local or
+// same-domain foreign call_ref. Unsupported tail-reference ownership remains
+// fail-closed.
 func newGCFrameRootPlan(m *wasm.Module, genericGC bool) *shared.GCModuleFrameRootPlan {
 	if !genericGC || m == nil || len(m.Code) == 0 || m.Start != nil {
 		return nil
@@ -142,7 +143,7 @@ func arm64GCFrameTablesSafe(m *wasm.Module) (safe, collector bool) {
 				return false, false
 			}
 			for _, idx := range e.Kind.Funcs {
-				if int(idx) < m.ImportedFuncCount() || int(idx)-m.ImportedFuncCount() >= len(m.Code) {
+				if int(idx) >= m.ImportedFuncCount()+len(m.Code) {
 					return false, false
 				}
 			}
@@ -197,7 +198,7 @@ func arm64GCFrameTablesSafe(m *wasm.Module) (safe, collector bool) {
 	}
 	if init := m.Tables[0].Init; init != nil {
 		ee, err := wasm.ParseElementExpr(*init)
-		if err != nil || ee.HasGlobal || (functionTable && !ee.Null && (int(ee.FuncIndex) < m.ImportedFuncCount() || int(ee.FuncIndex)-m.ImportedFuncCount() >= len(m.Code))) || (collectorTable && !ee.Null) {
+		if err != nil || ee.HasGlobal || (functionTable && !ee.Null && int(ee.FuncIndex) >= m.ImportedFuncCount()+len(m.Code)) || (collectorTable && !ee.Null) {
 			return false, false
 		}
 	}
@@ -221,14 +222,14 @@ func arm64GCFrameTablesSafe(m *wasm.Module) (safe, collector bool) {
 		switch e.Kind.Kind {
 		case wasm.ElemFuncs:
 			for _, idx := range e.Kind.Funcs {
-				if int(idx) < m.ImportedFuncCount() || int(idx)-m.ImportedFuncCount() >= len(m.Code) {
+				if int(idx) >= m.ImportedFuncCount()+len(m.Code) {
 					return false, false
 				}
 			}
 		default:
 			for _, expr := range e.Kind.Exprs {
 				ee, err := wasm.ParseElementExpr(expr)
-				if err != nil || ee.HasGlobal || (!ee.Null && (int(ee.FuncIndex) < m.ImportedFuncCount() || int(ee.FuncIndex)-m.ImportedFuncCount() >= len(m.Code))) {
+				if err != nil || ee.HasGlobal || (!ee.Null && int(ee.FuncIndex) >= m.ImportedFuncCount()+len(m.Code)) {
 					return false, false
 				}
 			}
@@ -257,8 +258,8 @@ func arm64GCFrameBodySafe(m *wasm.Module, body []byte, collectorTable bool) bool
 			if !ok || !arm64GCFrameCallABI(m, ft) {
 				return false
 			}
-		case 0x11: // one private immutable monomorphic function table
-			if collectorTable || !arm64GCFunctionTableMonomorphic(m) {
+		case 0x11: // one private immutable function table
+			if imm.Index2 != 0 || collectorTable {
 				return false
 			}
 			ft, ok := m.TypeFunc(imm.Index)
@@ -281,12 +282,9 @@ func arm64GCFrameBodySafe(m *wasm.Module, body []byte, collectorTable bool) bool
 			if !ok || funcTypeSlotsForRoots(ft.Params) > abi.TailArgsSlots {
 				return false
 			}
-		case 0x14: // local typed function reference
-			if m.ImportedFuncCount() != 0 {
-				return false
-			}
+		case 0x14: // local or same-domain foreign typed function reference
 			ft, ok := m.TypeFunc(imm.Index)
-			if !ok || !arm64GCFrameCallRefABI(ft) {
+			if !ok || !arm64GCFrameCallABI(m, ft) {
 				return false
 			}
 		case 0x15: // local typed-reference tail call
@@ -301,8 +299,8 @@ func arm64GCFrameBodySafe(m *wasm.Module, body []byte, collectorTable bool) bool
 			if !collectorTable {
 				return false
 			}
-		case 0xd2: // ref.func is safe only for a local function identity
-			if collectorTable || int(imm.Index) < m.ImportedFuncCount() || int(imm.Index)-m.ImportedFuncCount() >= len(m.Code) {
+		case 0xd2: // ref.func may name any validated local or imported function
+			if collectorTable || int(imm.Index) >= m.ImportedFuncCount()+len(m.Code) {
 				return false
 			}
 		case 0xfc:

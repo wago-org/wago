@@ -1619,21 +1619,18 @@ func (f *fn) callRef(r *wasm.Reader) error {
 		f.st64(linMemReg, -int32(offSpillRegion), code)
 		f.pinned = f.pinned.remove(code)
 		f.release(code)
-		f.emitIndirectCallHomeAware(ft, home, targetContext)
+		f.emitIndirectCallHomeAware(ft, home, targetContext, rootOffsets, recordRoots)
 		f.a.PatchBranch26(done, f.a.Len())
 		return nil
 	}
 
-	if recordRoots {
-		f.gcFrameRoots.Exact = false
-	}
 	kind := f.descriptorEntryKind(home, maskOf(code, home, targetContext))
 	f.stripDescriptorHomeTags(home)
 	f.validateWrapperDescriptor(kind, home)
 	f.release(kind)
 	f.st64(linMemReg, -int32(offSpillRegion), code)
 	f.release(code)
-	f.emitIndirectCallHomeAware(ft, home, targetContext)
+	f.emitIndirectCallHomeAware(ft, home, targetContext, rootOffsets, recordRoots)
 	return nil
 }
 
@@ -1734,11 +1731,6 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 		}
 		return nil
 	}
-	if recordRoots {
-		// The admitted ARM64 root product requires the monomorphic path above. A
-		// future polymorphic/foreign table product must publish every emitted BLR.
-		f.gcFrameRoots.Exact = false
-	}
 	// NOTE: the polymorphic immutable-local fast path (register-ABI Blr of the
 	// entry's runtime code pointer) is disabled — it is incorrect for the stack
 	// fence. Under the register pressure of a large module it can enter a deeply
@@ -1804,7 +1796,10 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 		wrapper := f.a.Bcond(condNE)
 		f.stripDescriptorHomeTags(home)
 		f.pinned = f.pinned.remove(home)
-		f.emitRegisterCallVia(ft, -1, false, -1, code)
+		returnOffset := f.emitRegisterCallVia(ft, -1, false, -1, code)
+		if recordRoots {
+			f.gcFrameRoots.Callsites = append(f.gcFrameRoots.Callsites, shared.GCFrameCallsitePlan{ReturnOffset: returnOffset, Offsets: rootOffsets})
+		}
 		done := f.a.Branch()
 		f.a.PatchBranch19(wrapper, f.a.Len())
 		f.locals = savedLocals
@@ -1815,7 +1810,7 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 		f.stripDescriptorHomeTags(home)
 		f.validateWrapperDescriptor(kind, home)
 		f.release(kind)
-		f.emitIndirectCallHomeAware(ft, home, targetContext)
+		f.emitIndirectCallHomeAware(ft, home, targetContext, rootOffsets, recordRoots)
 		f.a.PatchBranch26(done, f.a.Len())
 		return nil
 	}
@@ -1828,7 +1823,7 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 	f.st64(linMemReg, -int32(offSpillRegion), code)
 	f.release(code)
 
-	f.emitIndirectCallHomeAware(ft, home, targetContext)
+	f.emitIndirectCallHomeAware(ft, home, targetContext, rootOffsets, recordRoots)
 	return nil
 }
 
@@ -1840,7 +1835,7 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 // whole-module-invariant registers (linMemReg, X23-X25, X27), copy the per-execution control
 // words caller→callee, and enter the callee's offset-0 entry with X1 = its linMem
 // (the same context-swap as emitCrossInstanceCall, selected at run time).
-func (f *fn) emitIndirectCallHomeAware(ft *wasm.CompType, homeReg, targetContextReg Reg) {
+func (f *fn) emitIndirectCallHomeAware(ft *wasm.CompType, homeReg, targetContextReg Reg, rootOffsets []uint32, recordRoots bool) {
 	p := len(ft.Params)
 	roots := f.rootsBottomToTop()
 	d := len(roots)
@@ -1915,6 +1910,9 @@ func (f *fn) emitIndirectCallHomeAware(ft *wasm.CompType, homeReg, targetContext
 	f.a.MovReg64(X1, linMemReg)
 	f.ld64(X16, linMemReg, -int32(offSpillRegion))
 	f.a.Blr(X16)
+	if recordRoots {
+		f.gcFrameRoots.Callsites = append(f.gcFrameRoots.Callsites, shared.GCFrameCallsitePlan{ReturnOffset: uint32(f.a.Len()), Offsets: rootOffsets})
+	}
 	jdone := f.a.Branch()
 	// Cross-instance: preserve the caller's invariants (+ one alignment pad), copy
 	// the control words caller→callee, enter with X1 = callee linMem, then restore.
@@ -1935,6 +1933,12 @@ func (f *fn) emitIndirectCallHomeAware(ft *wasm.CompType, homeReg, targetContext
 	f.a.MovReg64(X1, X11)
 	f.ld64(X16, linMemReg, -int32(offSpillRegion)) // linMemReg unchanged by the pushes
 	f.a.Blr(X16)
+	if recordRoots {
+		// Four 16-byte records preserve caller invariants while the foreign
+		// wrapper runs. Frame walking adds this adjustment to recover the
+		// caller's stable post-prologue SP.
+		f.gcFrameRoots.Callsites = append(f.gcFrameRoots.Callsites, shared.GCFrameCallsitePlan{ReturnOffset: uint32(f.a.Len()), StackAdjust: 64, Offsets: rootOffsets})
+	}
 	f.a.LdpPost(X13, X12, SP, 16)
 	f.a.LdpPost(X27, ehReg, SP, 16)
 	f.a.LdpPost(X25, X23, SP, 16)
