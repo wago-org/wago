@@ -118,7 +118,11 @@ codegen rationale is **[OPTIMIZATIONS.md](OPTIMIZATIONS.md)**. Summary of the tw
   function-entry and loop-header polls. Both Linux architectures return
   `context.Canceled`/`DeadlineExceeded`, and active-instance close uses the same
   trap. See `docs/linux-host-interrupt.md`.
-- [ ] Wasm-level stack traces on trap (trap site → func idx → wasm pc)
+- [x] Wasm-level trap source frames: generated cold edges report the logical
+  function (including inlined callees) and an exact Wasm PC when a function has
+  one site for that trap class. Shared multi-site stubs still report the
+  function without guessing a PC. Full caller-chain unwind metadata remains a
+  follow-up.
 - [x] WebAssembly 2.0 product closeout: `.wago` codec v23 persists structural
   reference globals, indexed typed tables/exports/elements, exact local/imported
   table-limit forms, and required-feature bits without serializing live runtime

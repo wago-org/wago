@@ -61,7 +61,7 @@ func (in *Instance) callNativeAsyncWithTrap(entry uintptr, prepared bool, active
 		if err := refreshNativeControl(true, in.eng, in.jm, activeTrap); err != nil {
 			return err
 		}
-		return in.eng.CallPrepared(entry, in.serArgs, in.jm.LinMemBase(), activeTrap, in.results)
+		return in.decorateTrap(in.eng.CallPrepared(entry, in.serArgs, in.jm.LinMemBase(), activeTrap, in.results))
 	}
-	return callNative(in.c, in.eng, in.jm, true, entry, in.serArgs, activeTrap, in.results)
+	return in.decorateTrap(callNative(in.c, in.eng, in.jm, true, entry, in.serArgs, activeTrap, in.results))
 }

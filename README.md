@@ -707,7 +707,7 @@ for the listed subset. [FEATURES.md](FEATURES.md) is the source of truth.
 
 | Area | Status |
 |---|---|
-| No-cgo execution | Done: W^X mmap, foreign-stack trampoline, trap-to-error path, zero-copy linear memory. |
+| No-cgo execution | Done: W^X mmap, foreign-stack trampoline, trap-to-error path with logical Wasm source frames, zero-copy linear memory. |
 | Bounds checks | Explicit checks by default; signals/guard-page mode behind `-tags wago_guardpage` and `WAGO_BOUNDS=signals`. |
 | Runtime config | Done: immutable wazero-style `RuntimeConfig`, feature gating, memory page limit, bounds mode, deferred bounds-check facts. |
 | Synchronous host calls | Done: host imports can return results, including `v128`. |

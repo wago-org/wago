@@ -106,6 +106,19 @@ func TestAutoHostsDoesNotOverrideRuntimeImports(t *testing.T) {
 	fn(nil, []uint64{wago.I32(4)}, nil)
 }
 
+func TestTrapReasonIncludesWasmFrame(t *testing.T) {
+	got := trapReason(&wago.TrapError{
+		Code: wago.TrapUnreachable,
+		Frames: []wago.TrapFrame{{
+			FunctionIndex: 2, FunctionName: "boom", ProgramCounter: 7, HasProgramCounter: true,
+		}},
+	})
+	if !strings.Contains(got, "unreachable instruction executed") ||
+		!strings.Contains(got, "at boom (func[2], wasm pc 0x7)") {
+		t.Fatalf("trap reason = %q", got)
+	}
+}
+
 func TestLoadModuleAndResolveExport(t *testing.T) {
 	// (module (func (export "f") (result i32) i32.const 7))
 	wasm := []byte{'\x00', 'a', 's', 'm', 1, 0, 0, 0,

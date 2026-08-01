@@ -11,10 +11,11 @@ const InstantiateArenaSize = 1 << 20
 
 const HostCallLogBytes = 8 + ((1<<16)/8)*8
 
-// TrapBufferBytes reserves the 4-byte trap code plus an 8-byte parked-host
-// control-frame pointer at offset 8. The host-call stub publishes the exact
-// active callee frame there before unwinding to Go.
-const TrapBufferBytes = 16
+// TrapBufferBytes reserves the 4-byte trap code, an 8-byte parked-host
+// control-frame pointer at offset 8, and an 8-byte packed Wasm source location
+// at offset 16. Generated cold trap edges write (function index + 1, bytecode
+// offset) there before unwinding; zero means no source location is available.
+const TrapBufferBytes = 24
 
 // Import dispatch entries bind already-compiled imported calls to one instance's
 // concrete host or cross-instance wrapper target.

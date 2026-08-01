@@ -63,16 +63,20 @@ const offTrapCellPtr = abi.TrapCellPtrOffset
 // Descriptors are runtime.PassiveDataDescBytes bytes: {ptr u64, len u32, pad u32}.
 const offPassiveDataPtr = abi.PassiveDataPtrOffset
 
-// emitTrap writes the trap code to the trap cell (via [linMem-offTrapCellPtr])
-// then unwinds the
+// emitTrap writes the logical Wasm PC from X17 and the function index argument,
+// then writes the trap code to the trap buffer (via [linMem-offTrapCellPtr]) and
+// unwinds the
 // ENTIRE native call tree in one jump: it restores SP to the entry SP the
 // trampoline recorded at [linMem-offTrapStackReentry] and RETs straight back into
 // enterNative (WARP's handler-jump model). This is what lets callers skip the
 // per-call "load *trap; test; branch" check — a trap never returns through an
 // intermediate frame. Terminal, so it may freely clobber the call scratch (and SP
 // last).
-func (f *fn) emitTrap(code uint32) {
+func (f *fn) emitTrap(code, function uint32) {
 	f.ld64(X9, linMemReg, -int32(offTrapCellPtr)) // X9 = &trapCell
+	f.a.MovImm64(X16, uint64(function+1))
+	f.st32(X9, 16, X16)
+	f.st32(X9, 20, X17)
 	if code == 0 {
 		f.st32(X9, 0, ZR)
 	} else {
@@ -115,7 +119,7 @@ func (f *fn) trapIf(cc Cond, code uint32) {
 	// A B.cond site (imm19, ±1 MiB); bit0 of the site offset is 0 (4-aligned), so
 	// emitTrapStubs uses it to tag Bcond vs Branch patch ranges (§6.2).
 	sc := f.scratchState()
-	sc.trapSites[code] = append(sc.trapSites[code], f.a.Bcond(cc))
+	sc.trapSites[code] = append(sc.trapSites[code], f.trapSite(f.a.Bcond(cc)))
 }
 
 // trapAlways is trapIf's unconditional form (`unreachable`): a single B to the
@@ -124,7 +128,11 @@ func (f *fn) trapIf(cc Cond, code uint32) {
 // PatchBranch19 range a B.cond site uses.
 func (f *fn) trapAlways(code uint32) {
 	sc := f.scratchState()
-	sc.trapSites[code] = append(sc.trapSites[code], f.a.Branch()|1)
+	sc.trapSites[code] = append(sc.trapSites[code], f.trapSite(f.a.Branch()|1))
+}
+
+func (f *fn) trapSite(branch int) trapSite {
+	return trapSite{branch: branch, function: f.traceFuncIdx, pc: f.wasmPC}
 }
 
 // emitTrapStubs emits one trap stub per trap code used by this function and
@@ -136,14 +144,55 @@ func (f *fn) emitTrapStubs() {
 			continue
 		}
 		f.stats.addTrapStub()
-		pos := f.a.Len()
-		f.storeModuleGlobals(X9) // post-trap global state stays observable (X9 is trap-path scratch)
-		f.emitTrap(code)
-		for _, s := range sites {
-			if s&1 != 0 {
-				f.a.PatchBranch26(s&^1, pos) // trapAlways: unconditional B (imm26)
-			} else {
-				f.a.PatchBranch19(s, pos) // trapIf: B.cond (imm19)
+		for group, first := range sites {
+			seen := false
+			for prior := 0; prior < group; prior++ {
+				seen = seen || sites[prior].function == first.function
+			}
+			if seen {
+				continue
+			}
+			count := 0
+			for _, site := range sites {
+				if site.function == first.function {
+					count++
+				}
+			}
+			commonJump := -1
+			for _, site := range sites {
+				if site.function != first.function {
+					continue
+				}
+				if count != 1 {
+					continue
+				}
+				pos := f.a.Len()
+				f.a.MovImm64(X17, uint64(site.pc))
+				commonJump = f.a.Branch()
+				if site.branch&1 != 0 {
+					f.a.PatchBranch26(site.branch&^1, pos)
+				} else {
+					f.a.PatchBranch19(site.branch, pos)
+				}
+			}
+			common := f.a.Len()
+			if count != 1 {
+				f.a.MovImm64(X17, uint64(^uint32(0)))
+				for _, site := range sites {
+					if site.function != first.function {
+						continue
+					}
+					if site.branch&1 != 0 {
+						f.a.PatchBranch26(site.branch&^1, common)
+					} else {
+						f.a.PatchBranch19(site.branch, common)
+					}
+				}
+			}
+			f.storeModuleGlobals(X9)
+			f.emitTrap(code, first.function)
+			if commonJump >= 0 {
+				f.a.PatchBranch26(commonJump, common)
 			}
 		}
 	}

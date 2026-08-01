@@ -140,6 +140,9 @@ type fn struct {
 	ft *wasm.CompType // this function's signature
 	transient
 	globalIdx          int
+	traceFuncIdx       uint32
+	tracePCBase        uint32
+	wasmPC             uint32
 	customInstructions map[uint32]CustomInstruction
 
 	nParams     int
@@ -395,10 +398,16 @@ type scratch struct {
 	// is indexed by trap code (a small dense enum), replacing a per-function map.
 	retSites     []int
 	brFoldSites  []int
-	trapSites    [trapTableOOB + 1][]int
+	trapSites    [trapTableOOB + 1][]trapSite
 	ctrl         []ctrlFrame // control-frame stack backing; reused across functions
 	pinnedLocals []int       // pinned-local index backing; reused across functions
 	transient
+}
+
+type trapSite struct {
+	branch   int
+	function uint32
+	pc       uint32
 }
 
 func newScratch() *scratch {
@@ -1164,7 +1173,8 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, int
 
 	sc.reset()
 	sc.asm.Grow(asmCapForBody(len(c.BodyBytes)))
-	f := &fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, transient: sc.transient, globalIdx: m.ImportedFuncCount() + funcIdx, customInstructions: custom, nParams: len(ft.Params), nLocals: nLocals, guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, regMerge: regMergeEnabled, globalCellReg: regNone, memSizeReg: regNone, immutableLocalTable: hints.immutableLocalTable, immutableTableType: hints.immutableTableType, immutableTableTyped: hints.immutableTableTyped, monomorphicTarget: hints.monomorphicTarget, importBindings: importBindings, stats: stats, entryInitialized: hints.entryInitialized}
+	globalIdx := m.ImportedFuncCount() + funcIdx
+	f := &fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, transient: sc.transient, globalIdx: globalIdx, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: custom, nParams: len(ft.Params), nLocals: nLocals, guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, regMerge: regMergeEnabled, globalCellReg: regNone, memSizeReg: regNone, immutableLocalTable: hints.immutableLocalTable, immutableTableType: hints.immutableTableType, immutableTableTyped: hints.immutableTableTyped, monomorphicTarget: hints.monomorphicTarget, importBindings: importBindings, stats: stats, entryInitialized: hints.entryInitialized}
 	// Retain the (possibly grown) control-frame backing for the next function.
 	defer func() {
 		sc.ctrl = f.ctrl

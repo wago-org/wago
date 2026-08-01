@@ -121,7 +121,7 @@ func (e *Engine) Call(code uintptr, serArgs, linMem, trap, results []byte) error
 	enterNative(code, slicePtr(serArgs), slicePtr(linMem), slicePtr(trap), slicePtr(results), e.stackTop)
 	if len(trap) >= 4 {
 		if tc := TrapCode(loadTrap(trap)); tc != TrapNone {
-			return &TrapError{Code: tc}
+			return trapErrorFromBuffer(tc, trap)
 		}
 	}
 	return nil
@@ -137,7 +137,7 @@ func (e *Engine) CallPrepared(code uintptr, serArgs []byte, linMemBase uintptr, 
 	if len(trap) >= 4 {
 		if tc := TrapCode(loadTrap(trap)); tc != TrapNone {
 			storeTrap(trap, 0)
-			return &TrapError{Code: tc}
+			return trapErrorFromBuffer(tc, trap)
 		}
 	}
 	return nil
@@ -154,6 +154,9 @@ func clearTrapUnlessInterrupted(trap []byte) {
 	for {
 		old := atomic.LoadUint32(cell)
 		if TrapCode(old) == TrapInterrupted || atomic.CompareAndSwapUint32(cell, old, 0) {
+			if len(trap) >= TrapBufferBytes {
+				clear(trap[16:24])
+			}
 			return
 		}
 	}
@@ -245,7 +248,7 @@ func (e *Engine) callWithHostLoop(code uintptr, serArgs []byte, linMemBase uintp
 		} else {
 			clearTrapUnlessInterrupted(trap) // clear host-pending, but preserve concurrent Close interruption
 			if TrapCode(loadTrap(trap)) == TrapInterrupted {
-				return &TrapError{Code: TrapInterrupted}
+				return trapErrorFromBuffer(TrapInterrupted, trap)
 			}
 			prepareHostResume(ctrl, trap, e.stackTop, e.StackLimit())
 			resumeNative(ctrlPtr, e.stackTop)
@@ -281,7 +284,7 @@ func (e *Engine) callWithHostLoop(code uintptr, serArgs []byte, linMemBase uintp
 			}
 			// loop: resumeNative continues native code after the host call
 		case tc != 0:
-			return &TrapError{Code: TrapCode(tc)}
+			return trapErrorFromBuffer(TrapCode(tc), trap)
 		default:
 			return nil
 		}
