@@ -60,6 +60,7 @@ func newTinyCollector(config Config, types []TypeDesc) (*Collector, error) {
 	c.tinyGC.state = tinyIdle
 	c.tinyGC.sweep = 1
 	c.tinyGC.color = []tinyColor{tinyWhite}
+	c.initNativeView()
 	return c, nil
 }
 
@@ -266,6 +267,7 @@ func (c *Collector) tinyAlloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref,
 	c.writeHeader(r, ObjHeader{TypeID: uint32(d.ID), Size: size, Aux: aux, Flags: flags})
 	c.tinyPostAlloc(r, d)
 	c.stats.Allocations++
+	c.refreshNativeView()
 	return r, nil
 }
 

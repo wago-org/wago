@@ -42,7 +42,7 @@ func requireBoundedInstanceFootprint(t *testing.T, got uintptr) {
 	// Indexed-memory state and canonical Runtime-domain GC type translation each
 	// add one nil sidecar pointer; ordinary single-memory instances retain no
 	// additional slice headers.
-	if got != 800 && got != 824 && got != 880 {
-		t.Fatalf("Instance size = %d, want supported 800-, 824-, or 880-byte layout", got)
+	if got != 808 && got != 832 && got != 888 {
+		t.Fatalf("Instance size = %d, want supported 808-, 832-, or 888-byte layout", got)
 	}
 }

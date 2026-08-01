@@ -38,6 +38,7 @@ const (
 	offImportDispatchPtr    = abi.ImportDispatchPtrOffset
 	offEHTagDirPtr          = abi.EHTagDirPtrOffset
 	offTailArgs             = abi.TailArgsOffset
+	offGCNativeViewPtr      = abi.GCNativeViewPtrOffset
 
 	basedataSize = abi.BasedataSize // keeps linMem 16-byte aligned after appending wago extension fields
 )
@@ -309,7 +310,10 @@ const (
 	InstanceContextTailCodeOffset      = 10 * 8
 	InstanceContextTailHomeOffset      = 11 * 8
 	InstanceContextTailTargetCtxOffset = 12 * 8
-	InstanceContextBytes               = 13 * 8
+	// InstanceContextGCNativeViewOffset carries the per-instance checked GC
+	// metadata pointer for context switches over shared linear-memory basedata.
+	InstanceContextGCNativeViewOffset = 13 * 8
+	InstanceContextBytes              = 14 * 8
 )
 
 // CaptureInstanceContext snapshots the per-instance pointer fields currently
@@ -372,6 +376,7 @@ func (j *JobMemory) BindInstanceContextBytes(src []byte) {
 		MemoryDirPtr:   uintptr(binary.LittleEndian.Uint64(src[56:])),
 		ImportDispatch: uintptr(binary.LittleEndian.Uint64(src[64:])),
 	})
+	j.SetGCNativeViewPtr(uintptr(binary.LittleEndian.Uint64(src[InstanceContextGCNativeViewOffset:])))
 }
 
 // ClearEHHandler removes any native-stack handler left behind when a non-EH
@@ -421,6 +426,12 @@ func (j *JobMemory) TableDirPtr() uintptr { return uintptr(j.getU64(offTableDirP
 
 // SetEHTagDirPtr writes the bounded exact exception-tag identity directory.
 func (j *JobMemory) SetEHTagDirPtr(v uintptr) { j.putU64(offEHTagDirPtr, uint64(v)) }
+
+// SetGCNativeViewPtr writes the versioned checked collector metadata view.
+func (j *JobMemory) SetGCNativeViewPtr(v uintptr) { j.putU64(offGCNativeViewPtr, uint64(v)) }
+
+// GCNativeViewPtr returns the installed checked collector metadata view.
+func (j *JobMemory) GCNativeViewPtr() uintptr { return uintptr(j.getU64(offGCNativeViewPtr)) }
 
 // ReserveRange returns the guard-page reservation [base, base+len) for the trap
 // handler's fault-address check (both zero in classic mode).

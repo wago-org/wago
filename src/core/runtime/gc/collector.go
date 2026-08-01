@@ -95,6 +95,7 @@ type handleEntry struct {
 
 type Collector struct {
 	cfg              Config
+	nativeView       *NativeCollectorView
 	types            []TypeDesc
 	typeIndex        []int
 	objectAlign      uint32
@@ -160,6 +161,7 @@ func NewCollector(config Config, types []TypeDesc) (*Collector, error) {
 	if err := c.throughput.Init(config); err != nil {
 		return nil, err
 	}
+	c.initNativeView()
 	return c, nil
 }
 
@@ -183,6 +185,7 @@ func (c *Collector) Close() {
 	c.slotCardSlot = nil
 	c.globalSlots = nil
 	c.tableSlots = nil
+	c.refreshNativeView()
 	c.tinyGC.color = nil
 	c.tinyGC.grayStack = nil
 }

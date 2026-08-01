@@ -1203,10 +1203,30 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	if len(tableDesc) != 0 {
 		tableDescPtr = uintptr(unsafe.Pointer(&tableDesc[0]))
 	}
+	var gcNativeTypes []gc.TypeID
+	var gcNativeView *gc.NativeInstanceView
+	if b.collector != nil && (genericGCExecution || c.usesGCStructHelpers() || c.usesGCArrayHelpers()) {
+		gcNativeTypes = make([]gc.TypeID, len(c.Types))
+		for local := range gcNativeTypes {
+			domain, ok := b.gcTypeMap.domain(uint32(local))
+			if !ok {
+				return nil, fmt.Errorf("instantiate: native GC type %d has no canonical domain mapping", local)
+			}
+			gcNativeTypes[local] = domain
+		}
+		gcNativeView = gc.NewNativeInstanceView(b.collector, gcNativeTypes)
+		if gcNativeView == nil {
+			return nil, fmt.Errorf("instantiate: native GC metadata view is unavailable")
+		}
+		jm.SetGCNativeViewPtr(uintptr(unsafe.Pointer(gcNativeView)))
+	}
 	jm.CaptureInstanceContextBytes(nativeContext)
 	binary.LittleEndian.PutUint64(nativeContext[runtime.InstanceContextGCDomainOffset:], b.gcDomainID)
+	if gcNativeView != nil {
+		binary.LittleEndian.PutUint64(nativeContext[runtime.InstanceContextGCNativeViewOffset:], uint64(uintptr(unsafe.Pointer(gcNativeView))))
+	}
 	in := &Instance{
-		c: c, eng: eng, jm: jm, memory: memObj, ownsMem: ownsMem, ar: ar, base: base, hosts: imports.hostFuncs(), imports: imports, hostLog: hostLog, syncMode: syncMode, ctrl: ctrl, syncHosts: syncHosts, globals: globals, globalCells: globalCells, tableDescPtr: tableDescPtr, tableDescLen: len(tableDesc), funcRefDescs: funcRefDescs, passiveDataDesc: passiveDataDesc, thunkMem: thunkMem, gc: b.collector, gcTypeMap: b.gcTypeMap,
+		c: c, eng: eng, jm: jm, memory: memObj, ownsMem: ownsMem, ar: ar, base: base, hosts: imports.hostFuncs(), imports: imports, hostLog: hostLog, syncMode: syncMode, ctrl: ctrl, syncHosts: syncHosts, globals: globals, globalCells: globalCells, tableDescPtr: tableDescPtr, tableDescLen: len(tableDesc), funcRefDescs: funcRefDescs, passiveDataDesc: passiveDataDesc, thunkMem: thunkMem, gc: b.collector, gcTypeMap: b.gcTypeMap, gcNativeView: gcNativeView,
 		serArgs: serArgs, results: results, trap: trap, resultVals: make([]uint64, c.maxResultSlots), rt: opts.runtime,
 		nativeContext: nativeContextPtr,
 	}

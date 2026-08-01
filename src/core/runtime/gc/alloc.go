@@ -26,6 +26,7 @@ func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, err
 		}
 		c.writeHeader(r, ObjHeader{TypeID: uint32(d.ID), Size: size, Aux: aux, Flags: flags})
 		c.stats.Allocations++
+		c.refreshNativeView()
 		return r, nil
 	}
 	if c.cfg.CollectEveryAlloc {
@@ -98,6 +99,7 @@ func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, err
 	}
 	c.writeHeader(r, ObjHeader{TypeID: uint32(d.ID), Size: size, Aux: aux, Flags: flags})
 	c.stats.Allocations++
+	c.refreshNativeView()
 	return r, nil
 }
 func (c *Collector) shouldAllocateLarge(size uint32) bool {

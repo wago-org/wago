@@ -123,6 +123,9 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		} else if field.Storage.Packed {
 			return fmt.Errorf("amd64: plain struct.get cannot access packed type %d field %d", typeIndex, fieldIndex)
 		}
+		if f.emitDirectGCStructGet(typeIndex, fieldIndex, helper) {
+			return nil
+		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(fieldIndex)})
 		object := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
@@ -146,6 +149,9 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		valueType := field.Storage.Val
 		if field.Storage.Packed {
 			valueType = wasm.I32
+		}
+		if f.emitDirectGCStructSet(typeIndex, fieldIndex) {
+			return nil
 		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(fieldIndex)})

@@ -1038,11 +1038,11 @@ func TestStagedMultiMemoryNativeContextProductAndGates(t *testing.T) {
 }
 
 func TestStagedMultiMemoryNativeContextAccounting(t *testing.T) {
-	if runtime.InstanceContextBytes != 104 {
-		t.Fatalf("native instance context = %d bytes, want 104", runtime.InstanceContextBytes)
+	if runtime.InstanceContextBytes != 112 {
+		t.Fatalf("native instance context = %d bytes, want 112", runtime.InstanceContextBytes)
 	}
-	if abi.BasedataSize != 272 {
-		t.Fatalf("basedata = %d bytes, want 272", abi.BasedataSize)
+	if abi.BasedataSize != 288 {
+		t.Fatalf("basedata = %d bytes, want 288", abi.BasedataSize)
 	}
 }
 

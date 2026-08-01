@@ -29,9 +29,13 @@ func TestInstanceContextBytesReserveNativeTailMetadata(t *testing.T) {
 	binary.LittleEndian.PutUint64(buf[InstanceContextTailCodeOffset:], 11)
 	binary.LittleEndian.PutUint64(buf[InstanceContextTailHomeOffset:], 13)
 	binary.LittleEndian.PutUint64(buf[InstanceContextTailTargetCtxOffset:], 17)
+	binary.LittleEndian.PutUint64(buf[InstanceContextGCNativeViewOffset:], 19)
 	jm.BindInstanceContextBytes(buf)
 	if got := binary.LittleEndian.Uint64(buf[InstanceContextGCDomainOffset:]); got != 7 {
 		t.Fatalf("binding pointer context rewrote GC domain metadata: %d", got)
+	}
+	if got := jm.GCNativeViewPtr(); got != 19 {
+		t.Fatalf("binding native context GC view = %d, want 19", got)
 	}
 }
 

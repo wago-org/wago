@@ -75,6 +75,11 @@ const (
 	TailArgsOffset = 272
 	TailArgsSlots  = 16
 
+	// GCNativeViewPtrOffset points at the versioned per-instance collector
+	// metadata view used by checked direct struct/array numeric accesses. It is
+	// outside the wrapper-tail argument bank so tail staging cannot overwrite it.
+	GCNativeViewPtrOffset = 280
+
 	// EHHandlerPtrOffset is retained as the cold-path reset slot for staged
 	// exception handling. Native amd64 execution carries the active handler in
 	// RBP so concurrent cross-instance throws do not share mutable basedata state.
@@ -103,8 +108,8 @@ const (
 	FuncRefHostThunkTagValue            = 0
 
 	// BasedataSize keeps the linear-memory base 16-byte aligned after the wago
-	// extension fields and the bounded wrapper-tail argument bank.
-	BasedataSize = TailArgsOffset
+	// extension fields, bounded wrapper-tail argument bank, and native GC view.
+	BasedataSize = 288
 )
 
 // TagFuncRefHome combines a canonical home pointer with one authoritative entry

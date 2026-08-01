@@ -9,6 +9,7 @@ func (c *Collector) CollectFull(roots RootSet) error {
 	if err := c.errIfClosed(); err != nil {
 		return err
 	}
+	defer c.refreshNativeView()
 	c.stats.FullCollections++
 	if c.cfg.Profile == ProfileTiny {
 		if err := c.tinyCollectFull(roots); err != nil {
@@ -33,6 +34,7 @@ func (c *Collector) CollectMinor(roots RootSet) error {
 	if err := c.errIfClosed(); err != nil {
 		return err
 	}
+	defer c.refreshNativeView()
 	c.stats.MinorCollections++
 	if c.cfg.Profile == ProfileTiny {
 		// Tiny is non-generational; minor collection is defined as a complete

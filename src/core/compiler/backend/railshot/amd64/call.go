@@ -1214,6 +1214,8 @@ func (f *fn) copyInstanceContext(dst, src Reg) {
 		f.a.Load64(RAX, src, int32(i*8))
 		f.a.Store64(dst, -off, RAX)
 	}
+	f.a.Load64(RAX, src, runtime.InstanceContextGCNativeViewOffset)
+	f.a.Store64(dst, -int32(abi.GCNativeViewPtrOffset), RAX)
 }
 
 // emitCrossInstanceCall lowers a call to an imported function that is bound to

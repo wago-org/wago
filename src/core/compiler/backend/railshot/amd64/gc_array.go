@@ -155,6 +155,9 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		} else if field.Storage.Packed {
 			return fmt.Errorf("amd64: plain array.get cannot access packed type %d", typeIndex)
 		}
+		if f.emitDirectGCArrayGet(typeIndex, helper) {
+			return nil
+		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		object := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
 		return f.callGCStructHelper(helper, []wasm.ValType{object, wasm.I32, wasm.I32}, []wasm.ValType{resultType})
@@ -173,6 +176,9 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		valueType := field.Storage.Val
 		if field.Storage.Packed {
 			valueType = wasm.I32
+		}
+		if f.emitDirectGCArraySet(typeIndex) {
+			return nil
 		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		object := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
