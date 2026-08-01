@@ -184,7 +184,7 @@ func (b *instanceBuilder) prepareCollector() error {
 		gcConfig.Profile = gc.ProfileThroughput
 		gcConfig.DisableCollection = true
 	}
-	if b.opts.store != nil && !b.opts.store.private && b.c.usesGenericGCExecution() && !b.c.HasTable && !b.c.hasGCRefGlobals() {
+	if b.opts.store != nil && !b.opts.store.private && b.c.usesGenericGCExecution() && b.c.sharedGCGlobalDomainSafe() {
 		collector, err := b.opts.store.acquireGCCollector(gcConfig, b.c.GCTypeDescs)
 		if err != nil {
 			return err
@@ -226,7 +226,7 @@ func (b *instanceBuilder) attachImports() ([]*resolvedGlobalImport, error) {
 		if global == nil || (!isReferenceValType(imp.Type) && global.owner == nil) {
 			continue
 		}
-		if err := b.globalAttachments.attach(global, b.opts.store); err != nil {
+		if err := b.globalAttachments.attach(global, b.opts.store, b.collector); err != nil {
 			return nil, fmt.Errorf("imported global %q.%q: %w", imp.Module, imp.Name, err)
 		}
 	}
@@ -1201,32 +1201,30 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	if b.collector != nil && genericGCExecution {
 		public := in.publicGCState()
 		public.globalRoots = genericGCGlobalRoots
-		if c.genericGCBoundaryCollectionSafe() || (opts.restore != nil && len(opts.restore.gcGlobalRefs) != 0) {
-			for i, g := range c.Globals {
-				if !isGCRefValType(g.Type) || i >= len(globalCells) || globalCells[i] == nil {
-					continue
-				}
-				mapped := false
-				for _, mapping := range public.globalRoots {
-					if mapping.GlobalIndex == uint32(i) {
-						mapped = true
-						break
-					}
-				}
-				if mapped {
-					continue
-				}
-				bits := readGlobalObject(globalCells[i], g.Type)
-				ref := gc.Ref(uint32(bits))
-				if bits != uint64(ref) {
-					return nil, fmt.Errorf("global %d contains non-compact generic GC reference %#x", i, bits)
-				}
-				slot, err := b.collector.NewCheckedGlobalSlot(ref)
-				if err != nil {
-					return nil, fmt.Errorf("global %d generic GC root: %w", i, err)
-				}
-				public.globalRoots = append(public.globalRoots, gcGlobalRootMapping{GlobalIndex: uint32(i), SlotIndex: slot})
+		for i, g := range c.Globals {
+			if !isGCRefValType(g.Type) || i >= len(globalCells) || globalCells[i] == nil {
+				continue
 			}
+			mapped := false
+			for _, mapping := range public.globalRoots {
+				if mapping.GlobalIndex == uint32(i) {
+					mapped = true
+					break
+				}
+			}
+			if mapped {
+				continue
+			}
+			bits := readGlobalObject(globalCells[i], g.Type)
+			ref := gc.Ref(uint32(bits))
+			if bits != uint64(ref) {
+				return nil, fmt.Errorf("global %d contains non-compact generic GC reference %#x", i, bits)
+			}
+			slot, err := b.collector.NewCheckedGlobalSlot(ref)
+			if err != nil {
+				return nil, fmt.Errorf("global %d generic GC root: %w", i, err)
+			}
+			public.globalRoots = append(public.globalRoots, gcGlobalRootMapping{GlobalIndex: uint32(i), SlotIndex: slot})
 		}
 		if opts.restore != nil && len(opts.restore.gcGlobalRefs) != 0 {
 			if err := restoreGCHeapSnapshot(in, opts.restore); err != nil {

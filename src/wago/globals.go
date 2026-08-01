@@ -1348,6 +1348,10 @@ func (g *Global) attachNumericImporter() error {
 }
 
 func (g *Global) validateReferenceImport(store *referenceStore) error {
+	return g.validateReferenceImportWithCollector(store, nil)
+}
+
+func (g *Global) validateReferenceImportWithCollector(store *referenceStore, collector *gc.Collector) error {
 	if g == nil || g.owner == nil {
 		return fmt.Errorf("reference global descriptor is invalid")
 	}
@@ -1381,6 +1385,25 @@ func (g *Global) validateReferenceImport(store *referenceStore) error {
 
 	if source != nil && !source.hasPhysicalResources() {
 		return fmt.Errorf("reference global owner instance is closed")
+	}
+	if isGCRefValType(typ) {
+		if source == nil || source.gc == nil || store == nil || collector == nil || source.gc != collector || source.refStore != store || !store.ownsGCCollector(collector) {
+			return fmt.Errorf("collector-reference global requires producer and importer in the same Runtime GC domain")
+		}
+		ref := gc.Ref(uint32(bits))
+		if bits != uint64(ref) {
+			return fmt.Errorf("collector-reference global contains non-compact reference %#x", bits)
+		}
+		if ref.IsNull() || ref.IsI31() {
+			return nil
+		}
+		if !ref.IsObj() {
+			return fmt.Errorf("collector-reference global contains invalid reference %#x", bits)
+		}
+		if _, err := collector.ObjectType(ref); err != nil {
+			return fmt.Errorf("collector-reference global contains stale or foreign object: %w", err)
+		}
+		return nil
 	}
 	if bits == 0 {
 		return nil
@@ -1422,7 +1445,11 @@ func (g *Global) validateReferenceImport(store *referenceStore) error {
 }
 
 func (g *Global) attachReferenceImporter(store *referenceStore) error {
-	if err := g.validateReferenceImport(store); err != nil {
+	return g.attachReferenceImporterWithCollector(store, nil)
+}
+
+func (g *Global) attachReferenceImporterWithCollector(store *referenceStore, collector *gc.Collector) error {
+	if err := g.validateReferenceImportWithCollector(store, collector); err != nil {
 		return err
 	}
 	o := g.owner

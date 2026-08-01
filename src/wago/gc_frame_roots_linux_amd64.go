@@ -28,12 +28,21 @@ func newGCFrameRootPlan(m *wasm.Module, genericGC bool) *shared.GCModuleFrameRoo
 			return nil
 		}
 	}
+	funcImport := uint32(0)
 	for i := range m.Imports {
-		if m.Imports[i].Type.Kind != wasm.ExternFunc {
-			return nil
-		}
-		ft, ok := m.FuncSignature(uint32(i))
-		if !ok || !gcFrameCallABI(m, ft) {
+		switch m.Imports[i].Type.Kind {
+		case wasm.ExternFunc:
+			ft, ok := m.FuncSignature(funcImport)
+			funcImport++
+			if !ok || !gcFrameCallABI(m, ft) {
+				return nil
+			}
+		case wasm.ExternGlobal:
+			global := m.Imports[i].Type.Global
+			if !collectorFrameRefType(m, global.Type) || frameFunctionRefType(m, global.Type) {
+				return nil
+			}
+		default:
 			return nil
 		}
 	}

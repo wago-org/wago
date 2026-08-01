@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"sync"
 	"unsafe"
+
+	"github.com/wago-org/wago/src/core/runtime/gc"
 )
 
 // importDedup is an insertion-ordered set of distinct comparable values — the
@@ -163,15 +165,15 @@ type globalImportAttachments struct {
 	set importDedup[*Global]
 }
 
-func (a *globalImportAttachments) attach(global *Global, store *referenceStore) error {
+func (a *globalImportAttachments) attach(global *Global, store *referenceStore, collector *gc.Collector) error {
 	if global == nil {
 		return fmt.Errorf("global is nil")
 	}
 	validate := global.validateNumericImport
 	attach := global.attachNumericImporter
 	if isReferenceValType(global.Type) {
-		validate = func() error { return global.validateReferenceImport(store) }
-		attach = func() error { return global.attachReferenceImporter(store) }
+		validate = func() error { return global.validateReferenceImportWithCollector(store, collector) }
+		attach = func() error { return global.attachReferenceImporterWithCollector(store, collector) }
 	}
 	if a.set.contains(global) {
 		return validate()

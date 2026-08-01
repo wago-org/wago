@@ -118,9 +118,13 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   Warmed recursive Throughput/Tiny collection remains allocation-free by using a
   direct immutable-root visitor. Polymorphic/foreign reference calls remain
   collection-disabled where exact ownership is unproved.
-- [ ] **Shared GC state:** extend same-domain ownership to imported/exported GC
-  globals and tables with exact roots, barriers, aliases, rollback, and close order;
-  keep host tokens and incompatible domains fail-closed until explicitly owned.
+- [x] **Shared GC globals:** imported/exported mutable and immutable collector-reference
+  globals share descriptor-identical Runtime domains. Collection scans every live alias
+  cell directly, checked slots preserve barrier/card state, and rollback, codec,
+  close-order, Throughput/Tiny, amd64, and ARM64 execution are covered.
+- [ ] **Shared GC tables:** extend the same ownership model to imported/exported
+  collector-reference tables with exact alias roots, growth/replacement, rollback,
+  and close order; keep host tokens and incompatible domains fail-closed.
 - [ ] **Snapshot root expansion:** cover every storage kind and mixed struct/array
   graph, then add local GC tables and transactional restore. Shared/imported domain
   snapshots remain rejected until whole-domain ownership can be captured.

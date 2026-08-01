@@ -151,6 +151,11 @@ func (r *gcNativeFrameRoots) walk(fn func(gc.RootSlot) bool, sink gc.RootRefSink
 			}
 		}
 	}
+	if r.owner != nil && r.owner.refStore != nil {
+		if !r.owner.refStore.rangeGCDomainGlobalRoots(r.owner.gc, fn, sink) {
+			return
+		}
+	}
 	if r.tableRoots != nil {
 		r.tableRoots.walk(fn, sink)
 	}
@@ -320,6 +325,38 @@ func (s *referenceStore) ownsGCCollector(collector *gc.Collector) bool {
 		}
 	}
 	return false
+}
+
+func (s *referenceStore) rangeGCDomainGlobalRoots(collector *gc.Collector, fn func(gc.RootSlot) bool, sink gc.RootRefSink) bool {
+	if s == nil || collector == nil {
+		return true
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for candidate, state := range s.instances {
+		if state == nil || state.resourcesReleased || candidate == nil || candidate.gc != collector || candidate.c == nil {
+			continue
+		}
+		for i, global := range candidate.globalCells {
+			if global == nil || i >= len(candidate.c.Globals) || !isGCRefValType(candidate.c.Globals[i].Type) || len(global.cell) < 8 {
+				continue
+			}
+			bits := binary.LittleEndian.Uint64(global.cell)
+			ref := gc.Ref(uint32(bits))
+			if bits != uint64(ref) {
+				panic(gcStructHelperError{err: fmt.Errorf("Runtime GC-domain global %d contains non-compact reference %#x", i, bits)})
+			}
+			slot := (*gc.Root)(unsafe.Pointer(&global.cell[0]))
+			if sink != nil {
+				if !sink.VisitRootRef(slot.GetRef()) {
+					return false
+				}
+			} else if !fn(slot) {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func (s *referenceStore) gcFrameOwner(pc uintptr, collector *gc.Collector) *Instance {

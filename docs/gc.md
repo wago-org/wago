@@ -120,12 +120,16 @@ Numeric host imports may re-enter the same instance: codec-v30 callsites carry
 stack adjustments, a bounded eight-entry activation stack preserves control
 state, nested invocations borrow separate 4 MiB foreign stacks, and suspended
 outer frames remain roots during boundary and helper collection. A bounded
-same-Runtime cross-instance product additionally gives descriptor-identical,
-global/table-free generic-GC modules one collector. Exact GC-reference
-parameters/results retain identity, and the native walker switches code/root-map
-ownership when a return PC enters another live instance. Host reference transfer,
-incompatible collector configurations/descriptors, and mixed host/cross-instance
-import graphs reject transactionally.
+same-Runtime cross-instance product additionally gives descriptor-identical
+generic-GC modules one collector. Exact GC-reference parameters/results retain
+identity, and the native walker switches code/root-map ownership when a return PC
+enters another live instance. Imported/exported mutable and immutable GC globals
+share their actual off-heap cells: every live domain instance contributes those
+cells directly during collection, while checked slots retain barrier/card state.
+Codec reload, failed-domain rollback, producer-before-consumer close, Throughput,
+Tiny, amd64, and ARM64 execution are covered. Host reference transfer,
+incompatible collector configurations/descriptors, shared GC tables, and mixed
+unproved host/cross-instance import graphs reject transactionally.
 
 Generic struct/array helpers and exact frame roots execute under linux/amd64
 guard-page bounds checks. Linux and Darwin arm64 explicit-bounds builds lower
@@ -1975,9 +1979,11 @@ Tests exercise tiny nurseries, collect-every-alloc, exact scanning, cycles, root
   proven ownership and mutable root storage. General generated functions that
   cross polymorphic or foreign reference boundaries remain collection-disabled
   instead of scanning an approximate root set.
-- Imported/exported GC globals and GC tables do not yet participate in shared
-  collector domains. Their aliasing, barriers, growth/replacement, rollback,
-  root registration, and close order remain fail-closed.
+- Imported/exported mutable and immutable GC globals participate in exact
+  descriptor-identical Runtime collector domains. Actual alias cells are domain
+  roots and checked slots preserve barrier/card state. Imported/exported GC tables
+  remain fail-closed pending alias-root registration, growth/replacement, rollback,
+  and close ordering.
 - Host-held GC values remain explicit bounded tokens. Untyped `uint64` values are
   never accepted as transferable compact collector handles.
 - Snapshot v4 roots are owned local GC globals. Local GC table roots,

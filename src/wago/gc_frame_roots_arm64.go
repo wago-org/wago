@@ -39,6 +39,11 @@ func newGCFrameRootPlan(m *wasm.Module, genericGC bool) *shared.GCModuleFrameRoo
 			if !ok || !arm64GCFrameCallABI(m, ft) {
 				return nil
 			}
+		case wasm.ExternGlobal:
+			global := m.Imports[i].Type.Global
+			if !arm64CollectorFrameRefType(m, global.Type) || arm64FunctionFrameRefType(m, global.Type) {
+				return nil
+			}
 		case wasm.ExternTag:
 			// Tags carry no independently rooted instance storage.
 		default:

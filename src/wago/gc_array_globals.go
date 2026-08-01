@@ -334,8 +334,9 @@ func (in *Instance) collectGenericGCAtBoundary() error {
 	if hasTableRoots {
 		public.tableRoots = gcNativeTableRoots{desc: in.tableDescPtr, bytes: uintptr(in.tableDescLen)}
 	}
-	if public.hostActivationCount != 0 || hasTableRoots {
-		public.frameRoots = gcNativeFrameRoots{suspended: public}
+	hasDomainRoots := in.refStore != nil && in.refStore.ownsGCCollector(in.gc)
+	if public.hostActivationCount != 0 || hasTableRoots || hasDomainRoots {
+		public.frameRoots = gcNativeFrameRoots{owner: in, suspended: public}
 		if hasTableRoots {
 			public.frameRoots.tableRoots = &public.tableRoots
 		}

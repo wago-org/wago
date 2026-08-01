@@ -200,8 +200,8 @@ bounds/platform qualification rather than missing official opcode families:
    codec reload, snapshot-v4 validation, and mixed graphs;
 2. broaden the exact direct/recursive/host/foreign/tail/EH root product to
    polymorphic and foreign reference calls;
-3. extend same-domain ownership to imported/exported GC globals and tables with
-   exact roots, barriers, aliases, rollback, and close ordering;
+3. extend the completed imported/exported GC-global domain model to shared GC
+   tables with exact alias roots, growth/replacement, rollback, and close ordering;
 4. extend snapshot-v4 roots to local GC tables and make restore publication fully
    transactional, while rejecting partial capture of imported/shared domains;
 5. keep the complete linux/amd64 explicit and signal-backed suites plus native

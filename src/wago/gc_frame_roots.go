@@ -52,11 +52,17 @@ func validateCompiledGCFrameRoots(c *Compiled, rootMap *compiledGCFrameRoots) er
 	if c == nil || !c.usesGenericGCExecution() {
 		return fmt.Errorf("GC frame-root metadata requires generic GC execution")
 	}
-	if len(c.GlobalImports) != 0 || c.HasStart || !validCompiledGCFunctionTables(c) || len(c.Funcs) == 0 {
-		return fmt.Errorf("GC frame-root metadata requires a global-import/start-free local call graph with private tables")
+	if c.HasStart || !validCompiledGCFunctionTables(c) || len(c.Funcs) == 0 {
+		return fmt.Errorf("GC frame-root metadata requires a start-free local call graph with private tables")
+	}
+	for i := range c.GlobalImports {
+		global := c.GlobalImports[i]
+		if !isGCRefValType(global.Type) {
+			return fmt.Errorf("GC frame-root metadata rejects global import %d", i)
+		}
 	}
 	if c.NumImports != len(c.Imports) || len(c.importFuncSigs) != len(c.Imports) {
-		return fmt.Errorf("GC frame-root metadata requires function-only imports")
+		return fmt.Errorf("GC frame-root metadata has inconsistent function imports")
 	}
 	for i := range c.importFuncSigs {
 		if !gcFramePublicCallABI(c.importFuncSigs[i]) {
