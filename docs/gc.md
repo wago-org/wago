@@ -133,8 +133,9 @@ Numeric host imports may re-enter the same instance: codec-v30 callsites carry
 stack adjustments, a bounded eight-entry activation stack preserves control
 state, nested invocations borrow separate 4 MiB foreign stacks, and suspended
 outer frames remain roots during boundary and helper collection. A bounded
-same-Runtime cross-instance product additionally gives descriptor-identical
-generic-GC modules one collector. Exact GC-reference parameters/results retain
+same-Runtime cross-instance product additionally canonicalizes recursive structural
+types across generic-GC modules and gives compatible reordered/additional local type
+graphs one collector. Exact GC-reference parameters/results retain
 identity, and the native walker switches code/root-map ownership when a return PC
 enters another live instance. Imported/exported mutable and immutable GC globals
 share their actual off-heap cells: every live domain instance contributes those
@@ -1997,7 +1998,8 @@ Tests exercise tiny nurseries, collect-every-alloc, exact scanning, cycles, root
   cross polymorphic or foreign reference boundaries remain collection-disabled
   instead of scanning an approximate root set.
 - Imported/exported mutable and immutable GC globals participate in exact
-  descriptor-identical Runtime collector domains. Actual alias cells are domain
+  canonical Runtime collector domains. Module-local flattened type indexes translate
+  through immutable per-instance maps and are never cross-module identity. Actual alias cells are domain
   roots and checked slots preserve barrier/card state. Multiple heterogeneous
   imported/exported GC tables participate with direct indexed alias roots,
   growth/close coverage, and attachment rollback.

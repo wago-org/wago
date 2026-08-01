@@ -97,6 +97,7 @@ type Collector struct {
 	cfg              Config
 	types            []TypeDesc
 	typeIndex        []int
+	objectAlign      uint32
 	nursery          []byte
 	nurseryBump      uint32
 	tiny             tinyHeap
@@ -145,7 +146,14 @@ func NewCollector(config Config, types []TypeDesc) (*Collector, error) {
 	if err := ValidateTypeDescs(types); err != nil {
 		return nil, err
 	}
-	c := &Collector{cfg: config, types: append([]TypeDesc(nil), types...), nursery: makeAlignedBytes(config.NurseryBytes, uintptr(requiredObjectAlignment(types))), handles: []handleEntry{{}}}
+	objectAlign := requiredObjectAlignment(types)
+	if objectAlign < 16 {
+		// Runtime GC domains may append canonically distinct module types after
+		// construction. Wasm storage alignment is capped at v128's 16 bytes, so
+		// reserving that alignment once avoids relocating a live nursery later.
+		objectAlign = 16
+	}
+	c := &Collector{cfg: config, types: append([]TypeDesc(nil), types...), objectAlign: objectAlign, nursery: makeAlignedBytes(config.NurseryBytes, uintptr(objectAlign)), handles: []handleEntry{{}}}
 	if err := c.initTypeIndex(); err != nil {
 		return nil, err
 	}
@@ -177,6 +185,39 @@ func (c *Collector) Close() {
 	c.tableSlots = nil
 	c.tinyGC.color = nil
 	c.tinyGC.grayStack = nil
+}
+
+// AddTypes appends immutable Runtime-domain type descriptors without relocating
+// live objects. Callers serialize this with allocation and collection. IDs must
+// be new, and any appended supertype must already exist or appear in the same
+// append batch.
+func (c *Collector) AddTypes(types []TypeDesc) error {
+	if c == nil || c.closed {
+		return errCollectorClosed
+	}
+	if len(types) == 0 {
+		return nil
+	}
+	combined := make([]TypeDesc, 0, len(c.types)+len(types))
+	combined = append(combined, c.types...)
+	combined = append(combined, types...)
+	if err := ValidateTypeDescs(combined); err != nil {
+		return err
+	}
+	requiredAlign := requiredObjectAlignment(combined)
+	if requiredAlign > c.objectAlign {
+		return errors.New("gc: appended type alignment exceeds collector backing alignment")
+	}
+	if c.cfg.Profile == ProfileTiny && requiredAlign > c.tiny.blockBytes {
+		return errors.New("gc: appended type alignment exceeds tiny block size")
+	}
+	oldTypes, oldIndex := c.types, c.typeIndex
+	c.types = combined
+	if err := c.initTypeIndex(); err != nil {
+		c.types, c.typeIndex = oldTypes, oldIndex
+		return err
+	}
+	return nil
 }
 
 func (c *Collector) errIfClosed() error {

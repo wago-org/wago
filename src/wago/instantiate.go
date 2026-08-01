@@ -111,6 +111,7 @@ type instanceBuilder struct {
 
 	collector           *gc.Collector
 	collectorShared     bool
+	gcTypeMap           *gcTypeMapping
 	success             bool
 	registeredInstance  *Instance
 	functionAttachments functionImportAttachments
@@ -185,12 +186,17 @@ func (b *instanceBuilder) prepareCollector() error {
 		gcConfig.DisableCollection = true
 	}
 	if b.opts.store != nil && !b.opts.store.private && b.c.usesGenericGCExecution() && b.c.sharedGCPersistentDomainSafe() {
-		collector, err := b.opts.store.acquireGCCollector(gcConfig, b.c.GCTypeDescs)
+		preferred, err := preferredGCCollectorFromImports(b.imports, b.opts.store)
+		if err != nil {
+			return err
+		}
+		collector, mapping, err := b.opts.store.acquireGCCollector(gcConfig, b.c, preferred)
 		if err != nil {
 			return err
 		}
 		b.collector = collector
 		b.collectorShared = true
+		b.gcTypeMap = mapping
 		return nil
 	}
 	collector, err := gc.NewCollector(gcConfig, b.c.GCTypeDescs)
@@ -758,7 +764,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 					if !genericGCExecution && int(gcGlobalRootCount) >= len(gcGlobalRoots) {
 						return nil, fmt.Errorf("global %d exceeds staged GC root mapping bound", i)
 					}
-					ref, slot, err := instantiateGCStructGlobal(b.collector, c.GCTypeDescs, gcInit)
+					ref, slot, err := instantiateGCStructGlobal(b.collector, b.gcTypeMap, c.GCTypeDescs, gcInit)
 					if err != nil {
 						return nil, fmt.Errorf("global %d GC struct initializer: %w", i, err)
 					}
@@ -774,7 +780,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 					if !genericGCExecution && int(gcGlobalRootCount) >= len(gcGlobalRoots) {
 						return nil, fmt.Errorf("global %d exceeds staged GC root mapping bound", i)
 					}
-					ref, slot, err := instantiateGCArrayGlobal(b.collector, c.GCTypeDescs, gcInit, funcRefDescs)
+					ref, slot, err := instantiateGCArrayGlobal(b.collector, b.gcTypeMap, c.GCTypeDescs, gcInit, funcRefDescs)
 					if err != nil {
 						return nil, fmt.Errorf("global %d GC array initializer: %w", i, err)
 					}
@@ -805,7 +811,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 					var value uint64
 					var err error
 					if g.Type == ValAnyRef || g.Type == ValI31Ref {
-						value, err = evalCompiledGCConstExpr(g.InitExpr, b.collector, c, globalCells, i, funcRefDescs)
+						value, err = evalCompiledGCConstExpr(g.InitExpr, b.collector, b.gcTypeMap, c, globalCells, i, funcRefDescs)
 					} else {
 						value, err = evalCompiledScalarConstExpr(g.InitExpr, g.Type, globalCells, c.Globals, constExprGlobalScope{context: constExprGlobalInitializer, limit: i})
 					}
@@ -1049,7 +1055,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 				initErr = fmt.Errorf("GC array element segment %d has no descriptor", seg)
 			} else {
 				desc := edesc[seg*runtime.PassiveElemDescBytes : (seg+1)*runtime.PassiveElemDescBytes]
-				gcArrayElements, initErr = instantiateGCArrayElementSegment(b.collector, c.GCTypeDescs, c.memoryDir.gcArrayElement, desc)
+				gcArrayElements, initErr = instantiateGCArrayElementSegment(b.collector, b.gcTypeMap, c.GCTypeDescs, c.memoryDir.gcArrayElement, desc)
 			}
 		}
 		jm.SetPassiveElemPtr(uintptr(unsafe.Pointer(&edesc[0])))
@@ -1175,7 +1181,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	}
 	jm.CaptureInstanceContextBytes(nativeContext)
 	in := &Instance{
-		c: c, eng: eng, jm: jm, memory: memObj, ownsMem: ownsMem, ar: ar, base: base, hosts: imports.hostFuncs(), imports: imports, hostLog: hostLog, syncMode: syncMode, ctrl: ctrl, syncHosts: syncHosts, globals: globals, globalCells: globalCells, tableDescPtr: tableDescPtr, tableDescLen: len(tableDesc), funcRefDescs: funcRefDescs, passiveDataDesc: passiveDataDesc, thunkMem: thunkMem, gc: b.collector,
+		c: c, eng: eng, jm: jm, memory: memObj, ownsMem: ownsMem, ar: ar, base: base, hosts: imports.hostFuncs(), imports: imports, hostLog: hostLog, syncMode: syncMode, ctrl: ctrl, syncHosts: syncHosts, globals: globals, globalCells: globalCells, tableDescPtr: tableDescPtr, tableDescLen: len(tableDesc), funcRefDescs: funcRefDescs, passiveDataDesc: passiveDataDesc, thunkMem: thunkMem, gc: b.collector, gcTypeMap: b.gcTypeMap,
 		serArgs: serArgs, results: results, trap: trap, resultVals: make([]uint64, c.maxResultSlots), rt: opts.runtime,
 		nativeContext: nativeContextPtr,
 	}

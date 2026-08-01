@@ -181,14 +181,18 @@ func (c *Compiled) gcStructGlobalInit(globalIndex int) (gcStructGlobalInit, bool
 	return gcStructGlobalInit{}, false
 }
 
-func instantiateGCStructGlobal(collector *gc.Collector, descs []gc.TypeDesc, init gcStructGlobalInit) (gc.Ref, uint32, error) {
+func instantiateGCStructGlobal(collector *gc.Collector, mapping *gcTypeMapping, descs []gc.TypeDesc, init gcStructGlobalInit) (gc.Ref, uint32, error) {
 	if collector == nil {
 		return gc.Null(), 0, fmt.Errorf("GC struct global has no live collector")
 	}
 	if int(init.TypeID) >= len(descs) || descs[init.TypeID].Kind != gc.KindStruct {
 		return gc.Null(), 0, fmt.Errorf("GC struct global type %d is unavailable", init.TypeID)
 	}
-	ref, err := collector.NewStructDefaultWithRoots(gc.TypeID(init.TypeID), gc.EmptyRoots{})
+	domainType, err := mappedGCType(mapping, init.TypeID)
+	if err != nil {
+		return gc.Null(), 0, err
+	}
+	ref, err := collector.NewStructDefaultWithRoots(domainType, gc.EmptyRoots{})
 	if err != nil {
 		return gc.Null(), 0, err
 	}

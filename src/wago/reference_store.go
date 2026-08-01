@@ -41,16 +41,16 @@ type referenceStore struct {
 }
 
 // gcStoreDomain gives Runtime-owned WasmGC instances one compact-reference
-// address space. The initial bounded slice requires byte-for-byte equivalent
-// collector descriptor tables; incompatible modules reject before attachment.
-// This makes compact handles transferable across exact cross-instance function
-// signatures without copying objects or weakening identity.
+// address space. Module-local type indexes are translated through canonical
+// recursive structural identities before they enter this collector.
 type gcStoreDomain struct {
 	mu        sync.Mutex
 	collector *gc.Collector
 	config    gc.Config
 	types     []gc.TypeDesc
+	typeReps  []gcDomainTypeRepresentative
 	refs      uint32
+	claims    uint32 // prepared instantiations not yet registered
 	next      *gcStoreDomain
 }
 
@@ -83,7 +83,8 @@ type gcRefTokenEntry struct {
 	ref        gc.Ref
 	slot       uint32
 	ownerIndex uint8
-	exact      ValueTypeDescriptor
+	exact      ValueTypeDescriptor // owner-local diagnostic identity
+	domainType gc.TypeID           // canonical collector-domain identity
 	owner      *Instance
 }
 
@@ -474,7 +475,14 @@ func (s *referenceStore) releaseUnclaimedGCCollector(collector *gc.Collector) {
 	s.mu.Lock()
 	var prev *gcStoreDomain
 	for domain := s.gcDomains; domain != nil; domain = domain.next {
-		if domain.collector == collector && domain.refs == 0 {
+		if domain.collector == collector {
+			if domain.claims > 0 {
+				domain.claims--
+			}
+			if domain.refs != 0 || domain.claims != 0 {
+				s.mu.Unlock()
+				return
+			}
 			if prev == nil {
 				s.gcDomains = domain.next
 			} else {
@@ -489,29 +497,81 @@ func (s *referenceStore) releaseUnclaimedGCCollector(collector *gc.Collector) {
 	s.mu.Unlock()
 }
 
-func (s *referenceStore) acquireGCCollector(config gc.Config, types []gc.TypeDesc) (*gc.Collector, error) {
+func (s *referenceStore) acquireGCCollector(config gc.Config, c *Compiled, preferred *gc.Collector) (*gc.Collector, *gcTypeMapping, error) {
 	if s == nil || s.private {
-		return nil, fmt.Errorf("wago: shared WasmGC ownership requires an explicit Runtime")
+		return nil, nil, fmt.Errorf("wago: shared WasmGC ownership requires an explicit Runtime")
 	}
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	if s.runtimeClosed {
-		return nil, fmt.Errorf("wago: reference store is closed")
+		s.mu.Unlock()
+		return nil, nil, fmt.Errorf("wago: reference store is closed")
 	}
-	for domain := s.gcDomains; domain != nil; domain = domain.next {
-		if reflect.DeepEqual(domain.types, types) {
-			if !reflect.DeepEqual(domain.config, config) {
-				return nil, fmt.Errorf("wago: WasmGC collector configuration is incompatible with the matching Runtime GC domain")
+	var selected *gcStoreDomain
+	if preferred != nil {
+		for domain := s.gcDomains; domain != nil; domain = domain.next {
+			if domain.collector == preferred {
+				selected = domain
+				break
 			}
-			return domain.collector, nil
+		}
+		if selected == nil {
+			s.mu.Unlock()
+			return nil, nil, fmt.Errorf("wago: imported WasmGC collector is not a live Runtime domain")
+		}
+		if !reflect.DeepEqual(selected.config, config) {
+			s.mu.Unlock()
+			return nil, nil, fmt.Errorf("wago: WasmGC collector configuration is incompatible with the imported Runtime GC domain")
+		}
+	} else {
+		for domain := s.gcDomains; domain != nil; domain = domain.next {
+			if !gcModuleFitsDomain(c, domain) {
+				continue
+			}
+			if !reflect.DeepEqual(domain.config, config) {
+				s.mu.Unlock()
+				return nil, nil, fmt.Errorf("wago: WasmGC collector configuration is incompatible with the matching Runtime GC domain")
+			}
+			selected = domain
+			break
 		}
 	}
-	collector, err := gc.NewCollector(config, types)
-	if err != nil {
-		return nil, err
+	if selected == nil {
+		mapping, types, reps, err := gcCanonicalTypePlan(c, nil, nil, true)
+		if err != nil {
+			s.mu.Unlock()
+			return nil, nil, err
+		}
+		collector, err := gc.NewCollector(config, types)
+		if err != nil {
+			s.mu.Unlock()
+			return nil, nil, err
+		}
+		selected = &gcStoreDomain{collector: collector, config: config, types: types, typeReps: reps, claims: 1, next: s.gcDomains}
+		s.gcDomains = selected
+		s.mu.Unlock()
+		return collector, mapping, nil
 	}
-	s.gcDomains = &gcStoreDomain{collector: collector, config: config, types: append([]gc.TypeDesc(nil), types...), next: s.gcDomains}
-	return collector, nil
+	if selected.claims == ^uint32(0) {
+		s.mu.Unlock()
+		return nil, nil, fmt.Errorf("wago: Runtime GC domain has too many pending instances")
+	}
+	selected.claims++
+	s.mu.Unlock()
+
+	selected.mu.Lock()
+	mapping, types, reps, err := gcCanonicalTypePlan(c, selected.typeReps, selected.types, preferred != nil)
+	if err == nil && len(types) > len(selected.types) {
+		err = selected.collector.AddTypes(types[len(selected.types):])
+	}
+	if err == nil {
+		selected.types, selected.typeReps = types, reps
+	}
+	selected.mu.Unlock()
+	if err != nil {
+		s.releaseUnclaimedGCCollector(selected.collector)
+		return nil, nil, err
+	}
+	return selected.collector, mapping, nil
 }
 
 func (s *referenceStore) registerInstance(in *Instance) error {
@@ -581,6 +641,10 @@ func (s *referenceStore) registerInstance(in *Instance) error {
 			if domain.refs == ^uint32(0) {
 				return fmt.Errorf("wago: Runtime GC domain has too many instances")
 			}
+			if domain.claims == 0 {
+				return fmt.Errorf("wago: Runtime GC domain registration has no prepared claim")
+			}
+			domain.claims--
 			domain.refs++
 			break
 		}
@@ -617,7 +681,7 @@ func (s *referenceStore) releaseGCDomainLocked(entry *referenceStoreInstance) *g
 	if domain.refs > 0 {
 		domain.refs--
 	}
-	if domain.refs != 0 {
+	if domain.refs != 0 || domain.claims != 0 {
 		return nil
 	}
 	var prev *gcStoreDomain
@@ -947,10 +1011,11 @@ func (s *referenceStore) issueGCRef(source *Instance, ref gc.Ref, required Value
 	if err != nil {
 		return 0, fmt.Errorf("public GC result object: %w", err)
 	}
-	if int(typeID) >= len(source.c.Types) {
-		return 0, fmt.Errorf("public GC result type %d is unavailable", typeID)
+	localType, ok := source.gcLocalType(typeID)
+	if !ok || int(localType) >= len(source.c.Types) {
+		return 0, fmt.Errorf("public GC result canonical type %d has no producer-local identity", typeID)
 	}
-	kind := source.c.Types[typeID].Kind
+	kind := source.c.Types[localType].Kind
 	if legacyStruct && kind != CompositeTypeStruct {
 		return 0, fmt.Errorf("public GC result type %d is not a struct", typeID)
 	}
@@ -961,10 +1026,10 @@ func (s *referenceStore) issueGCRef(source *Instance, ref gc.Ref, required Value
 		return 0, fmt.Errorf("public GC result type %d is not a struct or array", typeID)
 	}
 	exact := ValueTypeDescriptor{Kind: ValueTypeReference, Ref: ReferenceTypeDescriptor{
-		Exact: true, Heap: HeapTypeDescriptor{Defined: true, TypeIndex: uint32(typeID)},
+		Exact: true, Heap: HeapTypeDescriptor{Defined: true, TypeIndex: localType},
 	}}
-	if required.Kind != ValueTypeReference || !valueTypeSubtype(exact, source.c.Types, required, source.c.Types) {
-		return 0, fmt.Errorf("public GC result type %d does not match its exact structural result type", typeID)
+	if required.Kind != ValueTypeReference || !source.gcRefMatchesValueType(ref, required) {
+		return 0, fmt.Errorf("public GC result type %d does not match its exact structural result type", localType)
 	}
 
 	s.mu.Lock()
@@ -1007,7 +1072,7 @@ func (s *referenceStore) issueGCRef(source *Instance, ref gc.Ref, required Value
 		if s.gcByToken == nil {
 			s.gcByToken = make(map[uint64]gcRefTokenEntry)
 		}
-		s.gcByToken[token] = gcRefTokenEntry{token: token, ref: ref, slot: slot, ownerIndex: ownerIndex, exact: exact, owner: source}
+		s.gcByToken[token] = gcRefTokenEntry{token: token, ref: ref, slot: slot, ownerIndex: ownerIndex, exact: exact, domainType: typeID, owner: source}
 		state.resultTokens[ownerIndex] = token
 		state.resultTokenCount++
 	}
@@ -1142,7 +1207,7 @@ func (s *referenceStore) stageGCRefArgument(target *Instance, token uint64, requ
 	if ownerRecord == nil || ownerRecord.resourcesReleased || targetRecord == nil || targetRecord.resourcesReleased || owner.refStore != s || target.refStore != s || owner.gc == nil || owner.gc != target.gc {
 		return gc.Null(), fmt.Errorf("GC reference token belongs to a different collector domain")
 	}
-	if required.Kind != ValueTypeReference || !valueTypeSubtype(current.exact, owner.c.Types, required, target.c.Types) {
+	if required.Kind != ValueTypeReference || !target.gcRefMatchesValueType(current.ref, required) {
 		return gc.Null(), fmt.Errorf("GC reference token does not match the required structural argument type")
 	}
 	if int(targetState.argumentRootCount) >= len(targetState.argumentRootSlots) {

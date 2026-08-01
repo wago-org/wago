@@ -32,7 +32,7 @@ func gcConstStorageValue(kind gc.StorageKind, value gcConstStackValue) (gc.Value
 	return gc.Value{Kind: valueKind, Bits: value.bits, BitsHi: value.bitsHi}, nil
 }
 
-func evalCompiledGCConstExpr(expr []byte, collector *gc.Collector, c *Compiled, globalCells []*Global, current int, funcRefDescs []byte) (uint64, error) {
+func evalCompiledGCConstExpr(expr []byte, collector *gc.Collector, mapping *gcTypeMapping, c *Compiled, globalCells []*Global, current int, funcRefDescs []byte) (uint64, error) {
 	if c == nil {
 		return 0, fmt.Errorf("collector-backed constant expression has no compiled module")
 	}
@@ -161,7 +161,11 @@ func evalCompiledGCConstExpr(expr []byte, collector *gc.Collector, c *Compiled, 
 					}
 				}
 				stack = stack[:base]
-				ref, err := collector.NewStructWithRoots(gc.TypeID(typeID), values, gc.EmptyRoots{})
+				domainType, err := mappedGCType(mapping, typeID)
+				if err != nil {
+					return 0, err
+				}
+				ref, err := collector.NewStructWithRoots(domainType, values, gc.EmptyRoots{})
 				if err != nil {
 					return 0, err
 				}
@@ -174,7 +178,11 @@ func evalCompiledGCConstExpr(expr []byte, collector *gc.Collector, c *Compiled, 
 				if err != nil {
 					return 0, err
 				}
-				ref, err := collector.NewStructDefaultWithRoots(gc.TypeID(typeID), gc.EmptyRoots{})
+				domainType, err := mappedGCType(mapping, typeID)
+				if err != nil {
+					return 0, err
+				}
+				ref, err := collector.NewStructDefaultWithRoots(domainType, gc.EmptyRoots{})
 				if err != nil {
 					return 0, err
 				}
@@ -202,7 +210,11 @@ func evalCompiledGCConstExpr(expr []byte, collector *gc.Collector, c *Compiled, 
 				if err != nil {
 					return 0, err
 				}
-				ref, err := collector.NewArrayWithRoots(gc.TypeID(typeID), uint32(lengthValue.bits), init, gc.EmptyRoots{})
+				domainType, err := mappedGCType(mapping, typeID)
+				if err != nil {
+					return 0, err
+				}
+				ref, err := collector.NewArrayWithRoots(domainType, uint32(lengthValue.bits), init, gc.EmptyRoots{})
 				if err != nil {
 					return 0, err
 				}
@@ -219,7 +231,11 @@ func evalCompiledGCConstExpr(expr []byte, collector *gc.Collector, c *Compiled, 
 				if err != nil {
 					return 0, err
 				}
-				ref, err := collector.NewArrayDefaultWithRoots(gc.TypeID(typeID), uint32(lengthValue.bits), gc.EmptyRoots{})
+				domainType, err := mappedGCType(mapping, typeID)
+				if err != nil {
+					return 0, err
+				}
+				ref, err := collector.NewArrayDefaultWithRoots(domainType, uint32(lengthValue.bits), gc.EmptyRoots{})
 				if err != nil {
 					return 0, err
 				}
@@ -248,7 +264,11 @@ func evalCompiledGCConstExpr(expr []byte, collector *gc.Collector, c *Compiled, 
 					}
 				}
 				stack = stack[:base]
-				ref, err := collector.NewArrayFixedWithRoots(gc.TypeID(typeID), values, gc.EmptyRoots{})
+				domainType, err := mappedGCType(mapping, typeID)
+				if err != nil {
+					return 0, err
+				}
+				ref, err := collector.NewArrayFixedWithRoots(domainType, values, gc.EmptyRoots{})
 				if err != nil {
 					return 0, err
 				}

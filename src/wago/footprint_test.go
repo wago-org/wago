@@ -39,9 +39,10 @@ func TestNoImportSynchronousArenaNeedIncludesControlFrame(t *testing.T) {
 func requireBoundedInstanceFootprint(t *testing.T, got uintptr) {
 	t.Helper()
 	// Go 1.22 and Go 1.26 lay out synchronization primitives differently.
-	// Indexed-memory state adds one nil sidecar pointer; the two build layouts
-	// remain fixed and carry no slice headers for ordinary single-memory instances.
-	if got != 792 && got != 816 && got != 872 {
-		t.Fatalf("Instance size = %d, want supported 792-, 816-, or 872-byte layout", got)
+	// Indexed-memory state and canonical Runtime-domain GC type translation each
+	// add one nil sidecar pointer; ordinary single-memory instances retain no
+	// additional slice headers.
+	if got != 800 && got != 824 && got != 880 {
+		t.Fatalf("Instance size = %d, want supported 800-, 824-, or 880-byte layout", got)
 	}
 }

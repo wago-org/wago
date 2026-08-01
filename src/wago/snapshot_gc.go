@@ -120,10 +120,15 @@ func captureGCHeapSnapshot(in *Instance, s *Snapshot) error {
 
 	for pos := 0; pos < len(queue); pos++ {
 		ref := queue[pos]
-		typeID, err := in.gc.ObjectType(ref)
+		domainType, err := in.gc.ObjectType(ref)
 		if err != nil {
 			return fmt.Errorf("object %d type: %w", pos+1, err)
 		}
+		localType, mapped := in.gcLocalType(domainType)
+		if !mapped {
+			return fmt.Errorf("object %d canonical type %d has no snapshot-module identity", pos+1, domainType)
+		}
+		typeID := gc.TypeID(localType)
 		desc, ok := snapshotGCDescriptor(in.c, typeID)
 		if !ok || (desc.Kind != gc.KindStruct && desc.Kind != gc.KindArray) {
 			return fmt.Errorf("object %d has unavailable type %d", pos+1, typeID)
@@ -416,10 +421,14 @@ func restoreGCHeapSnapshot(in *Instance, s *Snapshot) error {
 		desc, _ := snapshotGCDescriptor(in.c, object.typeID)
 		var ref gc.Ref
 		var err error
+		domainType, mapped := in.gcDomainType(uint32(object.typeID))
+		if !mapped {
+			return fmt.Errorf("allocate object %d: module type %d has no Runtime-domain identity", i+1, object.typeID)
+		}
 		if desc.Kind == gc.KindStruct {
-			ref, err = in.gc.NewStructDefaultWithRoots(object.typeID, refs)
+			ref, err = in.gc.NewStructDefaultWithRoots(domainType, refs)
 		} else {
-			ref, err = in.gc.NewArrayDefaultWithRoots(object.typeID, object.arrayLen, refs)
+			ref, err = in.gc.NewArrayDefaultWithRoots(domainType, object.arrayLen, refs)
 		}
 		if err != nil {
 			return fmt.Errorf("allocate object %d: %w", i+1, err)

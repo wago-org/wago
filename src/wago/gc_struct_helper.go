@@ -33,42 +33,15 @@ type gcStructHelperTrap struct{ code coreruntime.TrapCode }
 func (e gcStructHelperError) Error() string { return e.err.Error() }
 
 func (in *Instance) gcObjectTypeMatches(actual gc.TypeID, want uint32) bool {
-	if uint32(actual) == want {
-		return true
-	}
-	if in == nil || in.c == nil || int(actual) >= len(in.c.Types) || int(want) >= len(in.c.Types) {
+	if in == nil || in.gc == nil {
 		return false
 	}
-	// Collector type IDs and helper immediates name the same validated module
-	// graph, so runtime compatibility is declared-index reachability. Avoid the
-	// general cross-module structural-equivalence machinery (and its maps) on this
-	// hot path.
-	var visit func(uint32, int) bool
-	visit = func(index uint32, depth int) bool {
-		if index == want {
-			return true
-		}
-		if int(index) >= len(in.c.Types) || depth >= len(in.c.Types) {
-			return false
-		}
-		for _, super := range in.c.Types[index].Supers {
-			if visit(super, depth+1) {
-				return true
-			}
-		}
+	required, ok := in.gcDomainType(want)
+	if !ok {
 		return false
 	}
-	if visit(uint32(actual), 0) {
-		return true
-	}
-	actualType := ValueTypeDescriptor{Kind: ValueTypeReference, Ref: ReferenceTypeDescriptor{
-		Exact: true,
-		Heap:  HeapTypeDescriptor{Defined: true, TypeIndex: uint32(actual)},
-	}}
-	wantType := ValueTypeDescriptor{Kind: ValueTypeReference, Ref: ReferenceTypeDescriptor{
-		Heap: HeapTypeDescriptor{Defined: true, TypeIndex: want},
-	}}
-	return valueTypeSubtype(actualType, in.c.Types, wantType, in.c.Types)
+	matched, err := in.gc.TypeSubtype(actual, required)
+	return err == nil && matched
 }
 
 func (in *Instance) dispatchGCStructHelper(helper uint32, args, results []uint64) {
@@ -162,17 +135,7 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 			}
 			return gc.RefValue(ref)
 		}
-		var actual ValueTypeDescriptor
-		if ref.IsI31() {
-			actual = ValueTypeDescriptor{Kind: ValueTypeReference, Ref: ReferenceTypeDescriptor{Exact: true, Heap: HeapTypeDescriptor{Abstract: AbstractHeapI31}}}
-		} else {
-			actualType, err := in.gc.ObjectType(ref)
-			if err != nil || int(actualType) >= len(in.c.Types) {
-				panic(gcStructHelperError{err: fmt.Errorf("gc struct reference field %d:%d bits %#x is invalid for %+v: %v", typeID, fieldID, bits, want.Ref, err)})
-			}
-			actual = ValueTypeDescriptor{Kind: ValueTypeReference, Ref: ReferenceTypeDescriptor{Exact: true, Heap: HeapTypeDescriptor{Defined: true, TypeIndex: uint32(actualType)}}}
-		}
-		if !valueTypeSubtype(actual, in.c.Types, want, in.c.Types) {
+		if !in.gcRefMatchesValueType(ref, want) {
 			panic(gcStructHelperError{err: fmt.Errorf("gc struct reference type does not match field %d:%d", typeID, fieldID)})
 		}
 		return gc.RefValue(ref)
@@ -186,7 +149,7 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 		// ref.test table product may retain prior objects only in checked collector
 		// table slots, and stores each returned ref before the next allocation.
 		// A non-nil empty frame-root set keeps stress collection explicit.
-		ref, err := in.gc.NewStructDefaultWithRoots(gc.TypeID(uint32(args[0])), frameRoots)
+		ref, err := in.gc.NewStructDefaultWithRoots(in.requireGCDomainType(uint32(args[0])), frameRoots)
 		if err != nil {
 			panic(gcStructHelperError{err: err})
 		}
@@ -216,7 +179,7 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 		if cursor != len(args)-1 {
 			panic(gcStructHelperError{err: fmt.Errorf("gc struct type %d initializer uses %d slots, args = %d", typeID, cursor, len(args))})
 		}
-		ref, err := in.gc.NewStructWithRoots(gc.TypeID(typeID), values, frameRoots)
+		ref, err := in.gc.NewStructWithRoots(in.requireGCDomainType(typeID), values, frameRoots)
 		if err != nil {
 			panic(gcStructHelperError{err: err})
 		}
@@ -277,7 +240,7 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 		if len(args) != 3 || len(results) < 1 {
 			panic(gcStructHelperError{err: fmt.Errorf("gc ref.test helper arity = %d/%d, want 3/at-least-1", len(args), len(results))})
 		}
-		target, err := gcDynamicRefTarget(int64(args[1]), args[2] != 0)
+		target, err := in.gcDynamicRefTarget(int64(args[1]), args[2] != 0)
 		if err != nil {
 			panic(gcStructHelperError{err: err})
 		}
@@ -299,7 +262,7 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 		if len(args) != 3 || len(results) < 1 {
 			panic(gcStructHelperError{err: fmt.Errorf("gc ref.cast helper arity = %d/%d, want 3/at-least-1", len(args), len(results))})
 		}
-		target, err := gcDynamicRefTarget(int64(args[1]), args[2] != 0)
+		target, err := in.gcDynamicRefTarget(int64(args[1]), args[2] != 0)
 		if err != nil {
 			panic(gcStructHelperError{err: err})
 		}
@@ -401,7 +364,7 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 	}
 }
 
-func gcDynamicRefTarget(heap int64, nullable bool) (gc.RefTestTarget, error) {
+func (in *Instance) gcDynamicRefTarget(heap int64, nullable bool) (gc.RefTestTarget, error) {
 	target := gc.RefTestTarget{Nullable: nullable}
 	switch heap {
 	case -15:
@@ -420,7 +383,11 @@ func gcDynamicRefTarget(heap int64, nullable bool) (gc.RefTestTarget, error) {
 		if heap < 0 || uint64(heap) > uint64(^uint32(0)) {
 			return gc.RefTestTarget{}, fmt.Errorf("gc dynamic reference heap type %d is unavailable", heap)
 		}
-		target.Kind, target.Type = gc.RefTestDefined, gc.TypeID(heap)
+		domain, ok := in.gcDomainType(uint32(heap))
+		if !ok {
+			return gc.RefTestTarget{}, fmt.Errorf("gc dynamic reference heap type %d has no Runtime-domain identity", heap)
+		}
+		target.Kind, target.Type = gc.RefTestDefined, domain
 	}
 	return target, nil
 }

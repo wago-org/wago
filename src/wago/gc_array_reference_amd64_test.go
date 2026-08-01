@@ -92,7 +92,7 @@ func TestStagedGCArrayReferenceElementSegmentRoots(t *testing.T) {
 			}
 			defer collector.Close()
 			descriptor := make([]byte, 16)
-			state, err := instantiateGCArrayElementSegment(collector, descs, init, descriptor)
+			state, err := instantiateGCArrayElementSegment(collector, nil, descs, init, descriptor)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -401,7 +401,7 @@ func TestStagedGCArrayReferenceElementSegmentTinyRollback(t *testing.T) {
 	}
 	defer collector.Close()
 	descriptor := make([]byte, 16)
-	if _, err := instantiateGCArrayElementSegment(collector, descs, init, descriptor); err == nil || !strings.Contains(err.Error(), "tiny heap exhausted") {
+	if _, err := instantiateGCArrayElementSegment(collector, nil, descs, init, descriptor); err == nil || !strings.Contains(err.Error(), "tiny heap exhausted") {
 		t.Fatalf("Tiny element rollback = %v", err)
 	}
 	if binary.LittleEndian.Uint32(descriptor[8:]) != 0 {

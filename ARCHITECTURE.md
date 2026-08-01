@@ -71,8 +71,9 @@ with guard-page bounds checks on linux/amd64. Local-only `call_ref` and
 parameter, result, global, import, or mutable/exported table. EH functions use
 conservative all-local masks plus fixed GC-payload record offsets; record
 initialization and clearing remain part of the native EH lowering. A bounded
-same-Runtime cross-instance slice gives descriptor-identical modules one
-collector, transfers compact GC references without copying, and switches root-map
+same-Runtime cross-instance slice gives structurally compatible modules one
+canonical collector domain, translates immutable module-local type indexes at helper
+and snapshot boundaries, transfers compact GC references without copying, and switches root-map
 ownership across foreign return PCs. Mutable and immutable imported/exported GC
 globals use direct domain-wide alias-cell roots plus checked barrier slots. Multiple
 heterogeneous imported/exported collector-reference tables use the same domain-wide

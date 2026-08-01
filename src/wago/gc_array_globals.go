@@ -222,7 +222,7 @@ func (c *Compiled) gcArrayGlobalInit(globalIndex int) (gcArrayGlobalInit, bool) 
 	return gcArrayGlobalInit{}, false
 }
 
-func instantiateGCArrayGlobal(collector *gc.Collector, descs []gc.TypeDesc, init gcArrayGlobalInit, funcRefDescs []byte) (gc.Ref, uint32, error) {
+func instantiateGCArrayGlobal(collector *gc.Collector, mapping *gcTypeMapping, descs []gc.TypeDesc, init gcArrayGlobalInit, funcRefDescs []byte) (gc.Ref, uint32, error) {
 	if collector == nil || int(init.TypeID) >= len(descs) || descs[init.TypeID].Kind != gc.KindArray {
 		return gc.Null(), 0, fmt.Errorf("GC array global type %d is unavailable", init.TypeID)
 	}
@@ -242,7 +242,11 @@ func instantiateGCArrayGlobal(collector *gc.Collector, descs []gc.TypeDesc, init
 	if kind == gc.StorageRef || kind == gc.StorageRefNull {
 		return gc.Null(), 0, fmt.Errorf("GC array global reference elements remain unsupported")
 	}
-	ref, err := collector.NewArrayDefaultWithRoots(gc.TypeID(init.TypeID), init.Length, gc.EmptyRoots{})
+	domainType, err := mappedGCType(mapping, init.TypeID)
+	if err != nil {
+		return gc.Null(), 0, err
+	}
+	ref, err := collector.NewArrayDefaultWithRoots(domainType, init.Length, gc.EmptyRoots{})
 	if err != nil {
 		return gc.Null(), 0, err
 	}

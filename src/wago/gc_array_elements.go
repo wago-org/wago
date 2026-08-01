@@ -141,7 +141,7 @@ func decodeStagedGCArrayElementValue(expr wasm.Expr, index uint32) (gcArrayEleme
 	return gcArrayElementValueInit{}, fmt.Errorf("missing array constructor")
 }
 
-func instantiateGCArrayElementSegment(collector *gc.Collector, descs []gc.TypeDesc, init *gcArrayElementInit, descriptor []byte) (*gcArrayElementState, error) {
+func instantiateGCArrayElementSegment(collector *gc.Collector, mapping *gcTypeMapping, descs []gc.TypeDesc, init *gcArrayElementInit, descriptor []byte) (*gcArrayElementState, error) {
 	if collector == nil || init == nil || init.Count != maxGCArrayElementValues || int(init.TypeID) >= len(descs) {
 		return nil, fmt.Errorf("GC array element initializer is unavailable")
 	}
@@ -155,7 +155,12 @@ func instantiateGCArrayElementSegment(collector *gc.Collector, descs []gc.TypeDe
 	state := &gcArrayElementState{Descriptor: descriptor, Count: init.Count}
 	for i := uint8(0); i < init.Count; i++ {
 		value := init.Values[i]
-		ref, err := collector.NewArrayDefaultWithRoots(gc.TypeID(init.TypeID), value.Length, gc.EmptyRoots{})
+		domainType, mapErr := mappedGCType(mapping, init.TypeID)
+		if mapErr != nil {
+			state.drop(collector)
+			return nil, mapErr
+		}
+		ref, err := collector.NewArrayDefaultWithRoots(domainType, value.Length, gc.EmptyRoots{})
 		if err != nil {
 			state.drop(collector)
 			return nil, err

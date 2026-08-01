@@ -43,6 +43,7 @@ type Instance struct {
 	passiveDataDesc        []byte        // per-instance data-segment descriptors; active slots start dropped
 	thunkMem               []byte        // executable mapping for host-func-in-table log thunks (nil if none)
 	gc                     *gc.Collector // nil for modules with no Wasm GC descriptors/runtime use
+	gcTypeMap              *gcTypeMapping
 	serArgs, results, trap []byte
 	resultVals             []uint64       // reusable Invoke result buffer (valid until the next call)
 	ic                     [4]invokeCache // tiny fixed export resolution cache

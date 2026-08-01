@@ -123,13 +123,13 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   direct immutable-root visitor. Polymorphic/foreign reference calls remain
   collection-disabled where exact ownership is unproved.
 - [x] **Shared GC globals:** imported/exported mutable and immutable collector-reference
-  globals share descriptor-identical Runtime domains. Collection scans every live alias
+  globals share canonical structurally compatible Runtime domains. Collection scans every live alias
   cell directly, checked slots preserve barrier/card state, and rollback, codec,
   close-order, Throughput/Tiny, amd64, and ARM64 execution are covered.
 - [x] **Shared GC tables:** multiple heterogeneous imported/exported
   collector-reference tables share direct alias roots, growth state, indexed native
   roots, attachment rollback, codec reload, and producer-first close across
-  descriptor-identical Runtime domains. Incompatible domains remain fail-closed.
+  canonical structurally compatible Runtime domains. Incompatible domains remain fail-closed.
 - [x] **Cross-instance persistent GC graphs:** exact GC-reference function imports
   coexist with shared GC globals and heterogeneous tables under Throughput/Tiny
   collection, codec reload, attachment rollback, and producer-first close.
@@ -137,8 +137,18 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   table; v6 preserves multiple heterogeneous local tables with indexed lengths,
   cross-table sharing, deterministic repeated capture, strict subtype validation,
   and near-capacity restore rollback on amd64 and Linux/ARM64.
-- [ ] **Whole-domain snapshots:** imported/shared collector domains remain rejected
-  until complete domain ownership and atomic multi-instance publication can be captured.
+- [x] **Cross-module canonical GC type identity:** Runtime domains canonicalize
+  recursive structural types and give every instance an immutable local/domain type
+  map. Structurally equivalent producer/consumer modules with reordered or additional
+  local types share one collector without treating raw module-local indexes as identity;
+  collector descriptors append safely under the domain lock, codec-loaded modules and
+  checked host tokens use the same mapping, and incompatible layouts/configurations
+  remain fail-closed.
+- [ ] **Whole-domain snapshots:** after canonical domain identities land, capture every
+  participating instance, shared GC graph, imported global/table alias, and internal
+  function link under one quiesced Runtime-domain transaction. Restore must publish all
+  instances atomically or release the entire unpublished domain. Live public GC tokens,
+  external opaque references, and incomplete domains remain rejected initially.
 - [x] **Bounded host-held GC results:** generic struct/array results issue up to 64
   opaque `GCRef` tokens per producer, atomically roll back partial multi-result egress,
   reuse released checked slots, retain exact Runtime/store ownership after producer
@@ -222,7 +232,9 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
 ## Bigger bets
 
 - [x] SIMD (`v128`) — complete for the documented linux/amd64 SSSE3/SSE4.1 + AVX/VEX.128 baseline: every decoded core SIMD opcode and deterministic relaxed SIMD opcode through 0xfd 275 is frontend-admitted, validator-admitted, and lowered by railshot; reserved proposal-table holes are invalid-decode tests. Public `[16]byte` (`wago.V128`) plumbing covers locals, params/results, control flow, globals, cross-instance imports, and host imports/results. The official SIMD proposal corpus passes via WABT `wast2json` (24,325 assertions, 0 skipped modules/assertions). Keep AVX2/FMA/VNNI optimizations behind future CPU gates. Current metrics: [`docs/simd-performance-2026-07.md`](docs/simd-performance-2026-07.md).
-- [ ] Threads & atomics
+- [ ] Threads & atomics — tabled until the remaining WasmGC cross-module ownership
+  and whole-domain snapshot correctness work is complete; actor/mailbox reference
+  transport remains plugin/product work rather than part of the Core 3 closeout.
 - [x] Tail calls (`return_call` / `return_call_indirect` / `return_call_ref`) —
   complete for the Core 3 linux/amd64 explicit-bounds product, including local,
   host, cross-instance, indirect, typed-reference, trap, and validation paths.

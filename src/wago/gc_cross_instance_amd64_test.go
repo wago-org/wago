@@ -3,10 +3,12 @@
 package wago
 
 import (
+	"context"
 	"reflect"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"github.com/wago-org/wago/src/core/runtime/gc"
 	"github.com/wago-org/wago/testutil/wasmtest"
 )
 
@@ -44,6 +46,25 @@ func gcCrossInstanceConsumerModule() []byte {
 		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2))),
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 1))),
 		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func gcCrossInstanceReorderedConsumerModule() []byte {
+	dummyType := wasmtest.FuncType(nil, nil)
+	structType := []byte{0x5f, 0x01, 0x7f, 0x01}
+	refCallType := []byte{0x60, 0x01, 0x63, 0x01, 0x01, 0x63, 0x01}
+	runType := wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32})
+	imp := append(append(wasmtest.Name("provider"), wasmtest.Name("retain")...), 0x00)
+	imp = append(imp, wasmtest.ULEB(2)...)
+	runBody := []byte{0x01, 0x01, 0x63, 0x01,
+		0x20, 0x00, 0xfb, 0x00, 0x01, 0x21, 0x01,
+		0x20, 0x01, 0x10, 0x00, 0xfb, 0x02, 0x01, 0x00, 0x0b}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(dummyType, structType, refCallType, runType)),
+		wasmtest.Section(2, wasmtest.Vec(imp)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(3))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 1))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(runBody))), runBody...))),
 	)
 }
 
@@ -151,6 +172,94 @@ func TestGCCrossInstanceSharedCollectorOwnership(t *testing.T) {
 		t.Fatal(err)
 	}
 	store.closeRuntime()
+}
+
+func TestGCCrossInstanceCanonicalTypesAcrossReorderedModules(t *testing.T) {
+	cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3)
+	providerCode, err := Compile(cfg, gcCrossInstanceProviderModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer providerCode.Close()
+	consumerCode, err := Compile(cfg, gcCrossInstanceReorderedConsumerModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer consumerCode.Close()
+	if reflect.DeepEqual(providerCode.GCTypeDescs, consumerCode.GCTypeDescs) {
+		t.Fatal("reordered modules unexpectedly have identical descriptor tables")
+	}
+
+	for _, codec := range []bool{false, true} {
+		t.Run(map[bool]string{false: "compiled", true: "codec"}[codec], func(t *testing.T) {
+			providerCandidate, consumerCandidate := providerCode, consumerCode
+			if codec {
+				providerCandidate = roundTripCompiled(t, providerCode)
+				consumerCandidate = roundTripCompiled(t, consumerCode)
+				defer providerCandidate.Close()
+				defer consumerCandidate.Close()
+			}
+			store := newReferenceStore(false)
+			defer store.closeRuntime()
+			gcConfig := GCConfig{Profile: GCProfileThroughput, StressNurseryBytes: 64, CollectEveryAlloc: true, ForceMajorEveryMinor: true, VerifyAfterCollect: true, ThroughputHeapBytes: 4096, ThroughputPageBytes: 4096}
+			provider, err := instantiateCore(providerCandidate, InstantiateOptions{GC: gcConfig, store: store})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer provider.Close()
+			export, err := provider.ExportedFunc("retain")
+			if err != nil {
+				t.Fatal(err)
+			}
+			consumer, err := instantiateCore(consumerCandidate, InstantiateOptions{GC: gcConfig, store: store, Imports: Imports{"provider.retain": export}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer consumer.Close()
+			if provider.gc != consumer.gc {
+				t.Fatal("structurally equivalent reordered modules did not share one collector")
+			}
+			if got, ok := provider.gcDomainType(0); !ok || got != 0 {
+				t.Fatalf("provider local type 0 maps to %d, %v; want domain 0", got, ok)
+			}
+			if got, ok := consumer.gcDomainType(1); !ok || got != 0 {
+				t.Fatalf("consumer local type 1 maps to %d, %v; want domain 0", got, ok)
+			}
+			for i := 0; i < 20; i++ {
+				want := uint64(4000 + i)
+				got, err := consumer.Invoke("run", want)
+				if err != nil || !reflect.DeepEqual(got, []uint64{want}) {
+					t.Fatalf("run %d = %v, %v", i, got, err)
+				}
+			}
+			domainType, ok := consumer.gcDomainType(1)
+			if !ok {
+				t.Fatal("consumer struct type has no canonical domain identity")
+			}
+			domain := consumer.lockGCCollector()
+			ref, err := consumer.gc.NewStructWithRoots(domainType, []gc.Value{{Kind: gc.StorageI32, Bits: 77}}, gc.EmptyRoots{})
+			unlockGCCollector(domain)
+			if err != nil {
+				t.Fatal(err)
+			}
+			required := ValueTypeDescriptor{Kind: ValueTypeReference, Ref: ReferenceTypeDescriptor{Heap: HeapTypeDescriptor{Defined: true, TypeIndex: 1}}}
+			token, err := store.issueGCRef(consumer, ref, required)
+			if err != nil {
+				t.Fatal(err)
+			}
+			consumerToken := GCRef{token: token}
+			returned, err := provider.Call(context.Background(), "retain", ValueGCRef(consumerToken))
+			if err != nil || len(returned) != 1 || returned[0].GCRef().token == 0 {
+				t.Fatalf("cross-module token ingress = %v, %v", returned, err)
+			}
+			if err := provider.ReleaseGCRef(returned[0].GCRef()); err != nil {
+				t.Fatal(err)
+			}
+			if err := consumer.ReleaseGCRef(consumerToken); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
 }
 
 func TestGCCrossInstanceMultiHopFrameRootsAndCodec(t *testing.T) {

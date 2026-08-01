@@ -128,17 +128,7 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 			}
 			return gc.RefValue(ref)
 		}
-		var actual ValueTypeDescriptor
-		if ref.IsI31() {
-			actual = ValueTypeDescriptor{Kind: ValueTypeReference, Ref: ReferenceTypeDescriptor{Exact: true, Heap: HeapTypeDescriptor{Abstract: AbstractHeapI31}}}
-		} else {
-			actualType, err := in.gc.ObjectType(ref)
-			if err != nil || int(actualType) >= len(in.c.Types) {
-				panic(gcStructHelperError{err: fmt.Errorf("gc array reference element is invalid: %v", err)})
-			}
-			actual = ValueTypeDescriptor{Kind: ValueTypeReference, Ref: ReferenceTypeDescriptor{Exact: true, Heap: HeapTypeDescriptor{Defined: true, TypeIndex: uint32(actualType)}}}
-		}
-		if !valueTypeSubtype(actual, in.c.Types, want, in.c.Types) {
+		if !in.gcRefMatchesValueType(ref, want) {
 			panic(gcStructHelperError{err: fmt.Errorf("gc array reference does not match destination type %d", typeID)})
 		}
 		return gc.RefValue(ref)
@@ -174,7 +164,7 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 		if byteLen != 0 {
 			data = unsafe.Slice((*byte)(offHeapPtr(ptr)), int(byteLen))
 		}
-		ref, err := in.gc.NewArrayDefaultWithRoots(gc.TypeID(typeID), count, frameRoots)
+		ref, err := in.gc.NewArrayDefaultWithRoots(in.requireGCDomainType(typeID), count, frameRoots)
 		if err != nil {
 			panic(gcStructHelperError{err: err})
 		}
@@ -356,7 +346,7 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 			if length != 0 && entriesPtr == 0 {
 				panic(gcStructHelperError{err: fmt.Errorf("gc array element segment %d has no entries", elemIndex)})
 			}
-			ref, err := in.gc.NewArrayDefaultWithRoots(gc.TypeID(typeID), length, frameRoots)
+			ref, err := in.gc.NewArrayDefaultWithRoots(in.requireGCDomainType(typeID), length, frameRoots)
 			if err != nil {
 				panic(gcStructHelperError{err: err})
 			}
@@ -408,9 +398,9 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 		var ref gc.Ref
 		var err error
 		if length == 0 {
-			ref, err = in.gc.NewArrayDefaultWithRoots(gc.TypeID(typeID), 0, roots)
+			ref, err = in.gc.NewArrayDefaultWithRoots(in.requireGCDomainType(typeID), 0, roots)
 		} else {
-			ref, err = in.gc.NewRefArrayWithRoots(gc.TypeID(typeID), length, &roots.Values[0], roots)
+			ref, err = in.gc.NewRefArrayWithRoots(in.requireGCDomainType(typeID), length, &roots.Values[0], roots)
 		}
 		if err != nil {
 			panic(gcStructHelperError{err: err})
@@ -463,7 +453,7 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 		if end > uint64(len(data)) {
 			panic(gcStructHelperError{err: fmt.Errorf("gc array.new_data segment %d descriptor length %d exceeds retained bytes %d", dataIndex, segmentLen, len(data))})
 		}
-		ref, err := in.gc.NewArrayDefaultWithRoots(gc.TypeID(typeID), length, frameRoots)
+		ref, err := in.gc.NewArrayDefaultWithRoots(in.requireGCDomainType(typeID), length, frameRoots)
 		if err != nil {
 			panic(gcStructHelperError{err: err})
 		}
@@ -482,7 +472,7 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 		}
 		length := uint32(args[valueSlots])
 		value := arrayStoredValue(typeID, args[:valueSlots])
-		ref, err := in.gc.NewArrayWithRoots(gc.TypeID(typeID), length, value, frameRoots)
+		ref, err := in.gc.NewArrayWithRoots(in.requireGCDomainType(typeID), length, value, frameRoots)
 		if err != nil {
 			panic(gcStructHelperError{err: err})
 		}
@@ -505,7 +495,7 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 			start := int(i) * valueSlots
 			values[i] = arrayStoredValue(typeID, args[start:start+valueSlots])
 		}
-		ref, err := in.gc.NewArrayFixedWithRoots(gc.TypeID(typeID), values, frameRoots)
+		ref, err := in.gc.NewArrayFixedWithRoots(in.requireGCDomainType(typeID), values, frameRoots)
 		if err != nil {
 			panic(gcStructHelperError{err: err})
 		}
@@ -514,7 +504,7 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 		if len(args) != 2 || len(results) < 1 {
 			panic(gcStructHelperError{err: fmt.Errorf("gc array alloc-default helper arity = %d/%d, want 2/at-least-1", len(args), len(results))})
 		}
-		ref, err := in.gc.NewArrayDefaultWithRoots(gc.TypeID(uint32(args[1])), uint32(args[0]), frameRoots)
+		ref, err := in.gc.NewArrayDefaultWithRoots(in.requireGCDomainType(uint32(args[1])), uint32(args[0]), frameRoots)
 		if err != nil {
 			panic(gcStructHelperError{err: err})
 		}

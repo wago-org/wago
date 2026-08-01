@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"reflect"
 	goruntime "runtime"
 	"sort"
 	"strings"
@@ -2029,9 +2028,10 @@ func (c *Compiled) validateImportBindings(imports Imports, store *referenceStore
 			if store == nil || ex.inst.refStore != store || ex.inst.gc == nil || !store.ownsGCCollector(ex.inst.gc) {
 				return fmt.Errorf("cross-instance GC import %q requires live instances in the same Runtime GC domain", key)
 			}
-			if !reflect.DeepEqual(c.GCTypeDescs, ex.inst.c.GCTypeDescs) {
-				return fmt.Errorf("cross-instance GC import %q requires an identical collector descriptor table", key)
-			}
+			// Module-local GC type indexes are canonicalized when the consumer joins
+			// the producer's Runtime collector domain. Signature validation above
+			// proves structural compatibility; raw descriptor-table equality is not
+			// cross-module type identity.
 			if c.genericGCFrameRoots() == nil || ex.inst.c.genericGCFrameRoots() == nil {
 				return fmt.Errorf("cross-instance GC import %q requires exact native root maps", key)
 			}

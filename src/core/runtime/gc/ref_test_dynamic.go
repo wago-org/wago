@@ -70,6 +70,37 @@ func (c *Collector) RefTest(r Ref, target RefTestTarget) (bool, error) {
 	return c.refTest(r, target, nil)
 }
 
+// TypeSubtype reports declared collector-domain subtype reachability without
+// requiring a live object. Both IDs must name validated descriptors.
+func (c *Collector) TypeSubtype(actual, required TypeID) (bool, error) {
+	if err := c.errIfClosed(); err != nil {
+		return false, err
+	}
+	dynamic, err := c.desc(actual)
+	if err != nil {
+		return false, err
+	}
+	want, err := c.desc(required)
+	if err != nil {
+		return false, err
+	}
+	if dynamic.Kind != want.Kind {
+		return false, nil
+	}
+	for {
+		if dynamic.ID == required {
+			return true, nil
+		}
+		if !dynamic.HasSuper {
+			return false, nil
+		}
+		dynamic, err = c.desc(dynamic.Super)
+		if err != nil {
+			return false, err
+		}
+	}
+}
+
 // RefTestCanonical applies the same dynamic test while comparing defined types
 // through a collector-bound canonicalization map.
 func (c *Collector) RefTestCanonical(r Ref, target RefTestTarget, canonical *TypeCanonicalization) (bool, error) {
