@@ -12,7 +12,13 @@ func Completion(shell string) (string, error) {
 	commands := "run init add rm plugin auth module self build validate version status update cache config"
 	switch strings.ToLower(strings.TrimSpace(shell)) {
 	case "zsh":
-		return "#compdef wago\n_arguments '1:command:(" + commands + ")' '*::args:->args'\n", nil
+		return "#compdef wago\n" +
+			"autoload -Uz compinit\n" +
+			"(( $+functions[compdef] )) || compinit\n" +
+			"_wago() {\n" +
+			"  _arguments '1:command:(" + commands + ")' '*::args:->args'\n" +
+			"}\n" +
+			"compdef _wago wago\n", nil
 	case "bash":
 		return "_wago_complete() { COMPREPLY=( $(compgen -W '" + commands + "' -- \"${COMP_WORDS[COMP_CWORD]}\") ); }\ncomplete -F _wago_complete wago\n", nil
 	case "fish":

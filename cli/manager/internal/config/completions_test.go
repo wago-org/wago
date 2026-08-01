@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -47,6 +48,24 @@ func TestInstallCompletionIsIdempotent(t *testing.T) {
 	}
 	if count := strings.Count(string(data), "# Wago completions"); count != 1 {
 		t.Fatalf("completion hook count = %d in %q", count, data)
+	}
+}
+
+func TestInstalledZshCompletionCanBeSourced(t *testing.T) {
+	zsh, err := exec.LookPath("zsh")
+	if err != nil {
+		t.Skip("zsh is not installed")
+	}
+	root := t.TempDir()
+	rc := filepath.Join(root, ".zshrc")
+	t.Setenv("HOME", root)
+	if _, err := InstallCompletion("zsh", "", rc); err != nil {
+		t.Fatal(err)
+	}
+	command := exec.Command(zsh, "-f", "-c", `. "$WAGO_TEST_ZSHRC"`)
+	command.Env = append(os.Environ(), "WAGO_TEST_ZSHRC="+rc)
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("source installed zsh completion: %v\n%s", err, output)
 	}
 }
 
