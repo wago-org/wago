@@ -1995,7 +1995,11 @@ Tests exercise tiny nurseries, collect-every-alloc, exact scanning, cycles, root
   roots and checked slots preserve barrier/card state. Multiple heterogeneous
   imported/exported GC tables participate with direct indexed alias roots,
   growth/close coverage, and attachment rollback.
-- Host-held GC values remain explicit bounded tokens. Untyped `uint64` values are
+- Generic struct/array results may be retained as one opaque `GCRef` token per
+  producer. The token roots the object, retains exact Runtime/store and producer
+  ownership after producer close, rejects stale/cross-producer release, and must be
+  released explicitly. Non-null token ingress remains fail-closed until typed
+  reinsertion roots and insertion barriers are complete. Untyped `uint64` values are
   never accepted as transferable compact collector handles.
 - Snapshot v5 roots include owned local GC globals and one owned local collector
   table; snapshot v6 extends this to multiple heterogeneous local tables with indexed

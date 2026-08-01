@@ -139,6 +139,11 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   and near-capacity restore rollback on amd64 and Linux/ARM64.
 - [ ] **Whole-domain snapshots:** imported/shared collector domains remain rejected
   until complete domain ownership and atomic multi-instance publication can be captured.
+- [x] **Bounded host-held GC results:** generic struct/array results issue one opaque
+  `GCRef` token per producer, retain exact Runtime/store ownership after producer close,
+  and reject stale or cross-producer release.
+- [ ] **Host GC token ingress:** add exact type-checked, collection-safe reinsertion
+  roots and insertion barriers before accepting non-null `GCRef` arguments.
 - [x] **Linux/amd64 bounds-mode parity:** explicit and signal-backed Core 3 both
   pass 2,226 modules and 58,038 assertions with zero failures, skips, or gaps.
   Signal mode keeps explicit directory checks for nonzero memories and full-u64

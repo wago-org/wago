@@ -874,12 +874,14 @@ func (s *referenceStore) issueGCRef(source *Instance, ref gc.Ref, required Value
 		return 0, fmt.Errorf("invalid non-null GC result")
 	}
 	if source.c == nil {
-		return 0, fmt.Errorf("public GC result ownership is outside an exact admitted struct/array product")
+		return 0, fmt.Errorf("public GC result ownership is outside exact collector execution")
 	}
 	arrayProduct := source.c.stagedGCArrayProduct()
 	admittedArray := arrayProduct == stagedGCArrayProductNumericDefault || arrayProduct == stagedGCArrayProductNumericFixed || arrayProduct == stagedGCArrayProductPackedData || arrayProduct == stagedGCArrayProductReferenceElements || arrayProduct == stagedGCArrayProductNewData || arrayProduct == stagedGCArrayProductNewElem
-	if source.c.stagedGCStructProduct() != stagedGCStructBasic && !admittedArray {
-		return 0, fmt.Errorf("public GC result ownership is outside an exact admitted struct/array product")
+	legacyStruct := source.c.stagedGCStructProduct() == stagedGCStructBasic
+	generic := source.c.usesGenericGCExecution() && source.c.genericGCFrameRoots() != nil
+	if !legacyStruct && !admittedArray && !generic {
+		return 0, fmt.Errorf("public GC result ownership is outside exact collector execution")
 	}
 	if s.ownsGCCollector(source.gc) {
 		unlock := lockNativeExecutionForHostAccess()
@@ -902,11 +904,14 @@ func (s *referenceStore) issueGCRef(source *Instance, ref gc.Ref, required Value
 		return 0, fmt.Errorf("public GC result type %d is unavailable", typeID)
 	}
 	kind := source.c.Types[typeID].Kind
-	if source.c.stagedGCStructProduct() == stagedGCStructBasic && kind != CompositeTypeStruct {
+	if legacyStruct && kind != CompositeTypeStruct {
 		return 0, fmt.Errorf("public GC result type %d is not a struct", typeID)
 	}
-	if admittedArray && kind != CompositeTypeArray {
+	if admittedArray && !generic && kind != CompositeTypeArray {
 		return 0, fmt.Errorf("public GC result type %d is not an array", typeID)
+	}
+	if generic && kind != CompositeTypeStruct && kind != CompositeTypeArray {
+		return 0, fmt.Errorf("public GC result type %d is not a struct or array", typeID)
 	}
 	exact := ValueTypeDescriptor{Kind: ValueTypeReference, Ref: ReferenceTypeDescriptor{
 		Exact: true, Heap: HeapTypeDescriptor{Defined: true, TypeIndex: uint32(typeID)},

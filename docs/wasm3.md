@@ -200,7 +200,8 @@ bounds/platform qualification rather than missing official opcode families:
    foreign-frame walking, codec reload, and shared-global/table call coexistence
    while preserving snapshot-v5/v6 validation and mixed local-table graphs;
 2. broaden the exact direct/recursive/host/foreign/tail/EH root product to
-   polymorphic and foreign reference calls;
+   polymorphic and foreign reference calls, and extend bounded result-only `GCRef`
+   tokens with type-checked collection-safe host ingress;
 3. preserve the completed heterogeneous shared-table attachment, growth, rollback,
    codec, and close-order proofs while extending ownership to unproved foreign shapes;
 4. preserve the completed snapshot-v5 single-table and snapshot-v6 heterogeneous
