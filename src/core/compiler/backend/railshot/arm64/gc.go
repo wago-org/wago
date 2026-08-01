@@ -4,6 +4,7 @@ package arm64
 
 import (
 	"fmt"
+	"sort"
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -412,12 +413,58 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 }
 
 func (f *fn) callGCStructHelper(helper uint32, params, results []wasm.ValType) error {
-	payload, ok := shared.EncodeGCDispatch(helper, 0)
+	safepoint := uint32(0)
+	if f.gcFrameRoots != nil && f.gcFrameRoots.Candidate && arm64GCHelperMayAllocate(helper) {
+		safepoint = f.recordGCFrameSafepoint()
+	}
+	payload, ok := shared.EncodeGCDispatch(helper, safepoint)
 	if !ok {
+		if f.gcFrameRoots != nil {
+			f.gcFrameRoots.Exact = false
+		}
 		payload = helper
 	}
 	ft := &wasm.CompType{Kind: wasm.CompFunc, Params: params, Results: results}
 	return f.callHostSync(int(gcStructDispatchBit|payload), ft)
+}
+
+func (f *fn) recordGCFrameSafepoint() uint32 {
+	plan := f.gcFrameRoots
+	id := plan.SafepointBase + uint32(len(plan.Safepoints)+1)
+	if id == 0 || id > shared.GCSafepointIDMax {
+		plan.Exact = false
+		return 0
+	}
+	siteIndex := len(plan.Safepoints)
+	if siteIndex >= len(plan.LiveLocalMasks) {
+		plan.Exact = false
+		return id
+	}
+	liveLocals := plan.LiveLocalMasks[siteIndex]
+	f.materializeGCFrameLocals(liveLocals)
+	offsets := make([]uint32, 0, len(plan.LocalOffsets))
+	for i, off := range plan.LocalOffsets {
+		if liveLocals&(uint64(1)<<uint(i)) != 0 {
+			offsets = append(offsets, off)
+		}
+	}
+	sort.Slice(offsets, func(i, j int) bool { return offsets[i] < offsets[j] })
+	if len(offsets) > 64 {
+		plan.Exact = false
+	}
+	plan.Safepoints = append(plan.Safepoints, shared.GCFrameSafepointPlan{ID: id, Offsets: offsets})
+	return id
+}
+
+func arm64GCHelperMayAllocate(helper uint32) bool {
+	switch helper {
+	case gcStructAllocDefault, gcStructAllocOne,
+		gcArrayAllocDefault, gcArrayAllocFixed, gcArrayAllocUniform,
+		gcArrayAllocData, gcArrayAllocElem, gcArrayAllocFixedV128Spill:
+		return true
+	default:
+		return false
+	}
 }
 
 func (f *fn) callGCArrayFixedV128Spill(typeIndex, count uint32, resultType wasm.ValType) error {

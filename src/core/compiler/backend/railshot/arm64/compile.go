@@ -309,6 +309,7 @@ type fn struct {
 	syncHostCalls   bool
 	gcStructHelpers bool
 	gcArrayHelpers  bool
+	gcFrameRoots    *shared.GCFrameRootPlan
 
 	// stats collects per-function codegen counters (docs/no-ir-plan.md P1). nil
 	// unless the caller requested collection, in which case every counter method
@@ -599,8 +600,9 @@ type CompileOptions struct {
 	// GCArrayHelpers independently admits collector-backed array helper lowering.
 	GCArrayHelpers bool
 
-	// GCFrameRoots is reserved for exact arm64 native-frame publication. Semantic
-	// helper execution is available before active-frame collection is admitted.
+	// GCFrameRoots carries the bounded exact arm64 native-frame publication plan.
+	// The initial product publishes local slots at allocating helper safepoints;
+	// broader hidden-operand and caller-frame products remain fail-closed.
 	GCFrameRoots *shared.GCModuleFrameRootPlan
 
 	// Codegen carries injectable runtime/heap dependencies for future WasmGC
@@ -724,7 +726,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 				st = &CodegenStats{FuncIdx: i, Name: funcDisplayName(m, i, importedFuncs)}
 				ms.Funcs[i] = st
 			}
-			fnCode, rl, internalOff, err := compileFunc(m, i, guardMode, boundsFacts, opts.Interruptible, modGlobals, hints, opts.ImportBindings, opts.SyncHostCalls, opts.GCStructHelpers, opts.GCArrayHelpers, opts.CustomInstructions, st, inlineTargets, calleePreservesPins, sc)
+			fnCode, rl, internalOff, err := compileFunc(m, i, guardMode, boundsFacts, opts.Interruptible, modGlobals, hints, opts.ImportBindings, opts.SyncHostCalls, opts.GCStructHelpers, opts.GCArrayHelpers, opts.GCFrameRoots.Function(i), opts.CustomInstructions, st, inlineTargets, calleePreservesPins, sc)
 			allHints[i] = funcHints{}
 			if err != nil {
 				return nil, fmt.Errorf("arm64: function %d: %w", i, err)
@@ -787,7 +789,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 				if ms != nil {
 					st = ms.Funcs[i]
 				}
-				fnCode, rl, internalOff, err := compileFunc(m, i, guardMode, boundsFacts, opts.Interruptible, modGlobals, allHints[i], opts.ImportBindings, opts.SyncHostCalls, opts.GCStructHelpers, opts.GCArrayHelpers, opts.CustomInstructions, st, inlineTargets, calleePreservesPins, ws.scratch)
+				fnCode, rl, internalOff, err := compileFunc(m, i, guardMode, boundsFacts, opts.Interruptible, modGlobals, allHints[i], opts.ImportBindings, opts.SyncHostCalls, opts.GCStructHelpers, opts.GCArrayHelpers, opts.GCFrameRoots.Function(i), opts.CustomInstructions, st, inlineTargets, calleePreservesPins, ws.scratch)
 				allHints[i] = funcHints{}
 				if err != nil {
 					results[i].err = err
@@ -1149,11 +1151,25 @@ var errRegExhausted = errors.New("arm64: no register available to spill")
 // compileFunc compiles one function, retrying with local pinning disabled if the
 // first (pinned) attempt exhausts the register file. Pinning is a pure speed
 // optimization, so the unpinned recompile is always correct.
-func compileFunc(m *wasm.Module, funcIdx int, guardMode, boundsFacts, interruptible bool, modGlobals []moduleGlobalPin, hints funcHints, importBindings []ImportBinding, syncHostCalls, gcStructHelpers, gcArrayHelpers bool, customInstructions map[uint32]railcore.CustomInstruction, stats *CodegenStats, inlineTargets map[int]*inlineTarget, calleePreservesPins []bool, sc *scratch) (code []byte, relocs []callReloc, internalOff int, err error) {
-	code, relocs, internalOff, err = compileFuncAttempt(m, funcIdx, guardMode, boundsFacts, interruptible, modGlobals, hints, importBindings, syncHostCalls, gcStructHelpers, gcArrayHelpers, customInstructions, stats, true, inlineTargets, calleePreservesPins, sc)
+func compileFunc(m *wasm.Module, funcIdx int, guardMode, boundsFacts, interruptible bool, modGlobals []moduleGlobalPin, hints funcHints, importBindings []ImportBinding, syncHostCalls, gcStructHelpers, gcArrayHelpers bool, gcFrameRoots *shared.GCFrameRootPlan, customInstructions map[uint32]railcore.CustomInstruction, stats *CodegenStats, inlineTargets map[int]*inlineTarget, calleePreservesPins []bool, sc *scratch) (code []byte, relocs []callReloc, internalOff int, err error) {
+	if gcFrameRoots != nil && gcFrameRoots.Candidate {
+		gcFrameRoots.Exact = true
+		gcFrameRoots.Safepoints = gcFrameRoots.Safepoints[:0]
+		gcFrameRoots.Callsites = gcFrameRoots.Callsites[:0]
+		gcFrameRoots.FrameBytes = 0
+		gcFrameRoots.AdapterReturnOffset = 0
+	}
+	code, relocs, internalOff, err = compileFuncAttempt(m, funcIdx, guardMode, boundsFacts, interruptible, modGlobals, hints, importBindings, syncHostCalls, gcStructHelpers, gcArrayHelpers, gcFrameRoots, customInstructions, stats, true, inlineTargets, calleePreservesPins, sc)
 	if errors.Is(err, errRegExhausted) {
 		resetFuncStats(stats)
-		code, relocs, internalOff, err = compileFuncAttempt(m, funcIdx, guardMode, boundsFacts, interruptible, modGlobals, hints, importBindings, syncHostCalls, gcStructHelpers, gcArrayHelpers, customInstructions, stats, false, inlineTargets, calleePreservesPins, sc)
+		if gcFrameRoots != nil && gcFrameRoots.Candidate {
+			gcFrameRoots.Exact = true
+			gcFrameRoots.Safepoints = gcFrameRoots.Safepoints[:0]
+			gcFrameRoots.Callsites = gcFrameRoots.Callsites[:0]
+			gcFrameRoots.FrameBytes = 0
+			gcFrameRoots.AdapterReturnOffset = 0
+		}
+		code, relocs, internalOff, err = compileFuncAttempt(m, funcIdx, guardMode, boundsFacts, interruptible, modGlobals, hints, importBindings, syncHostCalls, gcStructHelpers, gcArrayHelpers, gcFrameRoots, customInstructions, stats, false, inlineTargets, calleePreservesPins, sc)
 		if err == nil {
 			stats.setUnpinnedRetry()
 		}
@@ -1161,7 +1177,7 @@ func compileFunc(m *wasm.Module, funcIdx int, guardMode, boundsFacts, interrupti
 	return
 }
 
-func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, interruptible bool, modGlobals []moduleGlobalPin, hints funcHints, importBindings []ImportBinding, syncHostCalls, gcStructHelpers, gcArrayHelpers bool, customInstructions map[uint32]railcore.CustomInstruction, stats *CodegenStats, pinLocals bool, inlineTargets map[int]*inlineTarget, calleePreservesPins []bool, sc *scratch) (code []byte, relocs []callReloc, internalOff int, err error) {
+func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, interruptible bool, modGlobals []moduleGlobalPin, hints funcHints, importBindings []ImportBinding, syncHostCalls, gcStructHelpers, gcArrayHelpers bool, gcFrameRoots *shared.GCFrameRootPlan, customInstructions map[uint32]railcore.CustomInstruction, stats *CodegenStats, pinLocals bool, inlineTargets map[int]*inlineTarget, calleePreservesPins []bool, sc *scratch) (code []byte, relocs []callReloc, internalOff int, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			if _, ok := r.(regExhausted); ok {
@@ -1189,7 +1205,7 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, int
 	sc.asm.DenseIdxDisp = hints.memOps >= 8
 	sc.asm.Grow(asmCapForBody(len(c.BodyBytes)))
 	globalIdx := m.ImportedFuncCount() + funcIdx
-	f := &fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, transient: sc.transient, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: customInstructions, nParams: len(ft.Params), nLocals: nLocals, guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, gcStructHelpers: gcStructHelpers, gcArrayHelpers: gcArrayHelpers, regMerge: regMergeEnabled, globalCellReg: regNone, memSizeReg: regNone, immutableLocalTable: hints.immutableLocalTable, immutableTableType: hints.immutableTableType, immutableTableTyped: hints.immutableTableTyped, monomorphicTarget: hints.monomorphicTarget, importBindings: importBindings, stats: stats, branchHints: m.BranchHintsForFunc(uint32(globalIdx)), branchHintLocalDecl: c.LocalDeclBytes, calleePreservesPins: calleePreservesPins}
+	f := &fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, transient: sc.transient, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: customInstructions, nParams: len(ft.Params), nLocals: nLocals, guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, gcStructHelpers: gcStructHelpers, gcArrayHelpers: gcArrayHelpers, gcFrameRoots: gcFrameRoots, regMerge: regMergeEnabled, globalCellReg: regNone, memSizeReg: regNone, immutableLocalTable: hints.immutableLocalTable, immutableTableType: hints.immutableTableType, immutableTableTyped: hints.immutableTableTyped, monomorphicTarget: hints.monomorphicTarget, importBindings: importBindings, stats: stats, branchHints: m.BranchHintsForFunc(uint32(globalIdx)), branchHintLocalDecl: c.LocalDeclBytes, calleePreservesPins: calleePreservesPins}
 	defer func() {
 		sc.ctrl = f.ctrl
 		sc.transient = f.transient
@@ -1394,6 +1410,9 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, int
 		if err != nil {
 			return nil, nil, 0, err
 		}
+		if f.gcFrameRoots != nil {
+			f.gcFrameRoots.FrameBytes = uint32(f.frameSize())
+		}
 		f.finalizePeepholes()
 		f.finalizeStats(len(f.a.B))
 		return f.a.B, f.relocs, internalOff, nil
@@ -1408,6 +1427,9 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, int
 	f.epilogue()
 	f.emitTrapStubs()
 	f.patchFrameAdjusts()
+	if f.gcFrameRoots != nil {
+		f.gcFrameRoots.FrameBytes = uint32(f.frameSize())
+	}
 	f.finalizePeepholes()
 	f.finalizeStats(len(f.a.B))
 	return f.a.B, f.relocs, 0, nil
@@ -1944,7 +1966,10 @@ func (f *fn) emitRegABI(c *wasm.Func) (int, error) {
 	if x0ArgOff >= 0 {
 		f.ld64(X0, X0, x0ArgOff)
 	}
-	adapterCall := a.Bl()     // BL internal entry; patched below
+	adapterCall := a.Bl() // BL internal entry; patched below
+	if f.gcFrameRoots != nil {
+		f.gcFrameRoots.AdapterReturnOffset = uint32(adapterCall + 4)
+	}
 	a.LdpPost(LR, X3, SP, 16) // restore LR + results ptr
 	f.storeModuleGlobals(X2)  // Go exit: module-pinned registers → cells (X0 holds the result)
 	if rN == 1 {

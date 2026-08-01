@@ -156,6 +156,25 @@ func (f *fn) markLocalDirty(x int) {
 	}
 }
 
+func (f *fn) materializeGCFrameLocals(mask uint64) {
+	if f.gcFrameRoots == nil {
+		return
+	}
+	for i, index := range f.gcFrameRoots.LocalIndexes {
+		if mask&(uint64(1)<<uint(i)) == 0 {
+			continue
+		}
+		x := int(index)
+		if x < 0 || x >= f.nLocals {
+			f.gcFrameRoots.Exact = false
+			continue
+		}
+		if f.locals[x].state == lsConstZero {
+			f.materializeZeroLocal(x, true)
+		}
+	}
+}
+
 // spillLocalsForCall stores dirty pinned locals to their slots and marks all
 // pinned locals clobbered (lsMem) — the WARP save-before-call step. No reload
 // follows; the next read recovers lazily. Callers must emit this before a call.

@@ -15,10 +15,10 @@ const (
 	FuncRefEntryHostThunk
 )
 
-// SyncHostCallSavedNativeSPOffset is the byte offset of the parked native RSP
-// in the synchronous helper control frame. On amd64 it points at the CALL
-// return address; the caller's stable frame base is one return-address word
-// above it.
+// SyncHostCallSavedNativeSPOffset is the byte offset of the parked native stack
+// pointer in the synchronous helper control frame. On amd64 it points at the
+// CALL return address and the stable frame base is one word above it. On arm64
+// BLR does not push LR, so the saved SP is already the stable frame base.
 const (
 	SyncHostCallSavedNativeSPOffset = 0
 	AMD64CallReturnAddressBytes     = 8

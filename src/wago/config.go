@@ -352,9 +352,10 @@ func platformCoreFeatures() CoreFeatures {
 			CoreFeatureMultiMemory |
 			CoreFeatureMemory64 |
 			CoreFeatureTable64
-		// arm64 now lowers collector-backed struct/array/i31 operations through
-		// the parked synchronous helper ABI. Active native-frame collection stays
-		// disabled until arm64 stack maps are available, so execution remains
+		// arm64 lowers collector-backed struct/array/i31 operations through the
+		// parked synchronous helper ABI. A first exact local-root slice may collect
+		// in call-free struct.new_default functions; unsupported hidden operands,
+		// calls, tables, imports, EH, and GC globals remain collection-disabled and
 		// bounded by the configured heap during one invocation.
 		if runtime.GOARCH == "arm64" && (runtime.GOOS == "linux" || runtime.GOOS == "darwin") {
 			unsupported &^= CoreFeatureGC | CoreFeatureTypedFunctionReferences

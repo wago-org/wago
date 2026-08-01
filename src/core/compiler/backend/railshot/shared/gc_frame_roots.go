@@ -1,8 +1,12 @@
 package shared
 
-// AMD64FrameHeaderBytes is the stable local-slot base used by railshot amd64.
-// Root-map producers and consumers must use the same value.
-const AMD64FrameHeaderBytes = 16
+// AMD64FrameHeaderBytes and ARM64FrameHeaderBytes are the stable local-slot
+// bases used by the railshot native frames. Root-map producers and consumers
+// must use the matching architecture value.
+const (
+	AMD64FrameHeaderBytes = 16
+	ARM64FrameHeaderBytes = 16
+)
 
 const (
 	// GCHelperIDBits reserves the low dispatch bits for the stable helper ID.

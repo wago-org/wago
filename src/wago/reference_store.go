@@ -84,11 +84,17 @@ type gcRefTokenEntry struct {
 	owner *Instance
 }
 
+const (
+	gcNativeFrameLayoutAMD64 uint8 = iota
+	gcNativeFrameLayoutARM64
+)
+
 type gcNativeFrameRoots struct {
 	owner                *Instance
 	base                 uintptr
 	offsets              []uint32
 	frameBytes           uint32
+	frameLayout          uint8
 	codeBase             uintptr
 	codeBytes            uintptr
 	adapterReturnOffsets []uint32
@@ -123,6 +129,7 @@ func (r *gcNativeFrameRoots) RangeRoots(fn func(gc.RootSlot) bool) {
 				base:                 activation.base,
 				offsets:              callsite.offsets,
 				frameBytes:           callsite.frameBytes,
+				frameLayout:          r.frameLayout,
 				codeBase:             state.hostCodeBase,
 				codeBytes:            state.hostCodeBytes,
 				adapterReturnOffsets: state.hostRootPlan.adapterReturnOffsets,
@@ -185,10 +192,14 @@ func (r *gcNativeFrameRoots) rangeChain(fn func(gc.RootSlot) bool) bool {
 		if len(callsites) == 0 {
 			return true
 		}
-		if base > ^uintptr(0)-uintptr(frameBytes) {
+		returnPCBias, callerFrameBias := uintptr(0), uintptr(8)
+		if r.frameLayout == gcNativeFrameLayoutARM64 {
+			returnPCBias, callerFrameBias = 8, 16
+		}
+		if base > ^uintptr(0)-uintptr(frameBytes)-returnPCBias {
 			panic(gcStructHelperError{err: fmt.Errorf("generic GC native frame address overflows")})
 		}
-		retWord := unsafe.Slice((*byte)(offHeapPtr(base+uintptr(frameBytes))), 8)
+		retWord := unsafe.Slice((*byte)(offHeapPtr(base+uintptr(frameBytes)+returnPCBias)), 8)
 		retPC := uintptr(binary.LittleEndian.Uint64(retWord))
 		if retPC < codeBase || retPC-codeBase >= codeBytes {
 			if owner == nil || owner.refStore == nil || !owner.refStore.ownsGCCollector(owner.gc) {
@@ -209,10 +220,10 @@ func (r *gcNativeFrameRoots) rangeChain(fn func(gc.RootSlot) bool) bool {
 				return true
 			}
 		}
-		if base > ^uintptr(0)-uintptr(frameBytes)-8 {
+		if base > ^uintptr(0)-uintptr(frameBytes)-callerFrameBias {
 			panic(gcStructHelperError{err: fmt.Errorf("generic GC caller frame address overflows")})
 		}
-		returnBase := base + uintptr(frameBytes) + 8
+		returnBase := base + uintptr(frameBytes) + callerFrameBias
 		found := false
 		var stackAdjust uint32
 		for i := range callsites {

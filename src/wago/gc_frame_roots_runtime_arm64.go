@@ -1,4 +1,4 @@
-//go:build linux && amd64
+//go:build (linux || darwin) && arm64
 
 package wago
 
@@ -12,11 +12,10 @@ import (
 	"github.com/wago-org/wago/src/core/runtime/gc"
 )
 
-// gcHelperRoots publishes exact-typed collector-reference locals from the
-// parked native frame. hostCallStub saves RSP while it points at the helper-call
-// return address, so the function's stable frame base is savedRSP+8. The root
-// slots point directly at the off-heap frame, allowing collector rewrites even
-// though the current compact handle representation is stable.
+// gcHelperRoots publishes the first exact arm64 native-root slice. The arm64
+// host-call stub saves SP without pushing a return address; SP is therefore the
+// function's stable post-prologue frame base. The admitted planner currently has
+// no wasm callsites, so this adapter exposes only the parked allocating frame.
 func (in *Instance) gcHelperRoots(ctrl uintptr, state *gcPublicState, safepointID uint32) gc.RootSet {
 	plan := in.c.genericGCFrameRoots()
 	if plan == nil || ctrl == 0 {
@@ -34,17 +33,16 @@ func (in *Instance) gcHelperRoots(ctrl uintptr, state *gcPublicState, safepointI
 	}
 	offsets := safepoint.offsets
 	frameBytes := safepoint.frameBytes
-	if state == nil || len(offsets) > gcNativeFrameRootLimit || frameBytes < shared.AMD64FrameHeaderBytes {
-		panic(gcStructHelperError{err: fmt.Errorf("generic GC frame-root metadata is unavailable or oversized")})
+	if state == nil || len(offsets) > gcNativeFrameRootLimit || frameBytes < shared.ARM64FrameHeaderBytes {
+		panic(gcStructHelperError{err: fmt.Errorf("generic GC arm64 frame-root metadata is unavailable or oversized")})
 	}
 	ctrlHead := unsafe.Slice((*byte)(offHeapPtr(ctrl+abi.SyncHostCallSavedNativeSPOffset)), 8)
-	savedRSP := uintptr(binary.LittleEndian.Uint64(ctrlHead))
-	if savedRSP == 0 || savedRSP > ^uintptr(0)-abi.AMD64CallReturnAddressBytes {
-		panic(gcStructHelperError{err: fmt.Errorf("generic GC frame-root control has invalid saved RSP %#x", savedRSP)})
+	base := uintptr(binary.LittleEndian.Uint64(ctrlHead))
+	if base == 0 {
+		panic(gcStructHelperError{err: fmt.Errorf("generic GC frame-root control has invalid saved SP %#x", base)})
 	}
-	base := savedRSP + abi.AMD64CallReturnAddressBytes
 	for _, off := range offsets {
-		if off < shared.AMD64FrameHeaderBytes || off%8 != 0 || off > frameBytes-8 || base > ^uintptr(0)-uintptr(off) {
+		if off < shared.ARM64FrameHeaderBytes || off%8 != 0 || off > frameBytes-8 || base > ^uintptr(0)-uintptr(off) {
 			panic(gcStructHelperError{err: fmt.Errorf("generic GC frame-root offset %d is outside frame size %d", off, frameBytes)})
 		}
 		word := unsafe.Slice((*byte)(offHeapPtr(base+uintptr(off))), 8)
@@ -54,21 +52,16 @@ func (in *Instance) gcHelperRoots(ctrl uintptr, state *gcPublicState, safepointI
 			panic(gcStructHelperError{err: fmt.Errorf("generic GC frame-root offset %d contains non-compact reference %#x", off, bits)})
 		}
 	}
-	state.frameRoots.owner = in
+	state.frameRoots.owner = nil // initial arm64 slice has no wasm/cross-instance callers
 	state.frameRoots.base = base
 	state.frameRoots.offsets = offsets
 	state.frameRoots.frameBytes = frameBytes
-	state.frameRoots.frameLayout = gcNativeFrameLayoutAMD64
+	state.frameRoots.frameLayout = gcNativeFrameLayoutARM64 // saved LR follows saved FP above the frame reserve
 	state.frameRoots.codeBase = in.base
 	state.frameRoots.codeBytes = uintptr(len(in.c.Code))
 	state.frameRoots.adapterReturnOffsets = plan.adapterReturnOffsets
 	state.frameRoots.callsites = plan.callsites
 	state.frameRoots.suspended = state
-	if in.c.HasTable && (in.c.TableType == ValAnyRef || in.c.TableType == ValI31Ref) {
-		state.tableRoots = gcNativeTableRoots{desc: in.tableDescPtr, bytes: uintptr(in.tableDescLen)}
-		state.frameRoots.tableRoots = &state.tableRoots
-	} else {
-		state.frameRoots.tableRoots = nil
-	}
+	state.frameRoots.tableRoots = nil
 	return &state.frameRoots
 }
