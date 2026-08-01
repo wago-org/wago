@@ -58,8 +58,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        # The warp/ submodule is C++ and not needed to build or test the Go
-        # module, so we deliberately do not fetch submodules.
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}

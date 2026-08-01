@@ -3,8 +3,9 @@
 `wago` is a pure-Go (no-cgo) WebAssembly engine. It decodes, validates, and
 compiles wasm modules to native machine code with a single-pass backend, then
 executes that code directly from Go — no C toolchain, no cgo, no FFI. The
-host-boundary shape and runtime ABI are derived from [WARP](https://github.com/wasm-ecosystem/wasm-compiler),
-a C++ single-pass wasm engine (vendored at `warp/` as a reference submodule).
+host-boundary shape and runtime ABI are derived from
+[WARP](https://github.com/wago-org/warp), a C++ single-pass wasm engine maintained
+as a separate repository.
 
 <!-- architecture:targets linux/amd64 linux/arm64 darwin/arm64 -->
 The mature production target is **linux/amd64**. Native Railshot compilation and
@@ -104,7 +105,6 @@ tests/spec/                       WebAssembly spec testsuite (submodule, MVP-pin
 tests/testdata/                   small checked-in wasm fixtures
 spectest_exec_test.go             wasm 1.0 conformance harness (+ SPECTEST.md)
 bench/                            benchmarks vs wazero (separate Go module)
-warp/                             upstream C++ reference (submodule)
 ```
 
 The root module is dependency-free (stdlib only); `bench/` is a separate module
@@ -396,11 +396,11 @@ wago is an independent Go reimplementation that deliberately stays
 
 - the Valent-Block compilation approach,
 - the `[basedata | linear memory]` JobMemory layout and negative-offset fields
-  (verified against `warp/src/core/common/basedataoffsets.hpp`),
+  (verified against WARP's `src/core/common/basedataoffsets.hpp`),
 - the `WasmWrapper(serArgs, linMem, trap, results)` boundary shape.
 
-`warp/` is vendored as a submodule purely as a reference oracle; it is C++ and is
-not built or needed to build/test the Go module.
+WARP remains an external reference oracle; it is not vendored, built, or needed
+to build and test the Go module.
 
 ---
 

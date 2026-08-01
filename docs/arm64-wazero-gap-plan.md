@@ -27,8 +27,8 @@ to improve one of the listed gaps if it materially regresses those control rows.
 
 ## Current worktree state and recent work
 
-The worktree intentionally has uncommitted ARM64 work. Preserve it; in
-particular, `warp/` is intentionally dirty and must not be reset or cleaned.
+The worktree intentionally has uncommitted ARM64 work. Preserve it. Any patched
+WARP reference checkout should live outside this repository.
 
 Recent ARM64 changes include:
 

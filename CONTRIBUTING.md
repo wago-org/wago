@@ -40,7 +40,6 @@ src/core/compiler/backend/railshot  single-pass x86-64 codegen
 src/core/runtime                 mmap, foreign stack, trap plumbing
 tests/testdata                   small wasm fixtures
 bench                            wazero comparison benchmarks
-warp                             upstream C++ reference
 ```
 
 The root `wago.go` is generated: it re-exports every exported symbol of

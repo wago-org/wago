@@ -1,7 +1,8 @@
 # wago roadmap
 
 wago is a pure-Go (no cgo) single-pass WebAssembly engine — a from-scratch port
-of [WARP](warp/)'s design. Target today is **linux/amd64** with a modern CPU
+of [WARP](https://github.com/wago-org/warp)'s design. Target today is
+**linux/amd64** with a modern CPU
 baseline of SSSE3/SSE4.1 plus AVX/VEX.128 XMM encodings; AVX2/FMA/VNNI remain
 outside the baseline and require explicit feature gates. This file tracks what
 works and what's next at a glance.
@@ -169,5 +170,5 @@ codegen rationale is **[OPTIMIZATIONS.md](OPTIMIZATIONS.md)**. Summary of the tw
   only backend, and the ceiling is attacked incrementally instead
   (see [docs/no-ir-plan.md](docs/no-ir-plan.md) §0)
 - The wasm exception-handling / GC proposals; multi-memory
-- Re-implementing WARP's linker/disassembler/fuzzer (they live in `warp/` as the
+- Re-implementing WARP's linker/disassembler/fuzzer (WARP remains the external
   reference)

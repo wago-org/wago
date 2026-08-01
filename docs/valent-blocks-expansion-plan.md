@@ -499,7 +499,7 @@ block PRs; don't let it excuse NEW guard failures (diff against the known list).
   Loop-top `Align16` exists; internal-entry alignment too.
 - Branch (`perf/vb-<topic>`) BEFORE the first edit — an external checkpoint
   process has committed working-tree state to main mid-session before.
-- The `warp/` submodule is intentionally dirty — never stage or reset it.
+- Keep any independently cloned WARP reference checkout outside this repository.
 - wat function index = wago local index + 1 (`env.abort` import).
 - Short commit subjects, no bodies. PRs for everything, docs included.
 - Merges need an explicit user "yes"; a timed-out question is not consent.

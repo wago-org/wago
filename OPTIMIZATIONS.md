@@ -5,7 +5,7 @@ destroying the reason it exists* (fast compile, no cgo, tiny footprint, single p
 
 1. **Make the single-pass backend smarter** — better-informed choices inside the existing
    railshot tier.
-2. **Port what's still worth porting from WARP** (`warp/`) — the C++ reference engine the
+2. **Port what's still worth porting from [WARP](https://github.com/wago-org/warp)** — the C++ reference engine the
    backend is a port of. Used as a *reference axis*, not a target to clone.
 
 The headline architectural decision (see the end, **revised 2026-07-03**): **no IR on any

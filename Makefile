@@ -36,8 +36,7 @@ CARD_FILE ?= card.md
 
 # Current commit. `make bench` stamps it into the capture's first line so
 # bench-publish can refuse a capture taken at a different commit (unless FORCE=1).
-# Committed HEAD only — working-tree dirt (notably the always-dirty warp
-# submodule) is intentionally ignored.
+# Committed HEAD only — unrelated working-tree dirt is intentionally ignored.
 HEAD_HASH := $(shell git rev-parse HEAD 2>/dev/null)
 
 # Default goal: a bare `make` sets up a fresh clone by installing the git hooks
@@ -57,7 +56,7 @@ lint: lint-fmt lint-generate lint-vet lint-staticcheck ## Run all lint checks (h
 
 .PHONY: lint-fmt
 lint-fmt:
-	@unformatted="$$(gofmt -l . | grep -vE '^(warp|tests/spec|\.claude)/' || true)"; \
+	@unformatted="$$(gofmt -l . | grep -vE '^(tests/spec|\.claude)/' || true)"; \
 	if [ -n "$$unformatted" ]; then \
 		echo "::error::These files are not gofmt-ed:"; echo "$$unformatted"; exit 1; \
 	fi
