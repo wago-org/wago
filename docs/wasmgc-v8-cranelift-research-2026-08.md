@@ -482,7 +482,9 @@ of about 0.671→0.660 ms fresh and 0.763→0.725 ms sustained.
 
 Remaining order:
 
-1. Implement native bump allocation for the 1,038 live constructor transitions.
+1. Implement native bump allocation for the measured 1,026 fully initialized
+   `struct.new` transitions; only 12 `array.new_default` calls remain, with zero
+   struct-default or other-array allocations through 500 repeated calls.
 2. Keep the six remembered/card-creating mutations on the exact helper until a
    bounded metadata-growth path is proven worthwhile.
 3. Prototype a bounded field-value cache only if dynamic counters identify a hot

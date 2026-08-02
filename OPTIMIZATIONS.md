@@ -203,8 +203,12 @@ build, the median of fresh medians improves about **0.671→0.660 ms** and susta
 about **0.763→0.725 ms**, with host allocation unchanged. The plugin-complete
 stripped TinyGo candidate is **1,778,388 bytes**, 2,280 bytes smaller than the
 preceding old-struct candidate despite the 16-byte collector-view growth. The
-remaining six mutation helpers are precisely the metadata-creating cold stores;
-1,038 live allocation helpers are now the dominant next target.
+remaining six mutation helpers are precisely the metadata-creating cold stores.
+Tagged allocation-family counters split the remaining 1,038 calls into **1,026
+fully initialized `struct.new` helpers** and **12 `array.new_default` helpers**,
+with zero struct-default or other-array allocations; these counts remain exact
+through 500 calls. Native allocation should therefore specialize the initialized
+struct path first rather than introducing a broad allocator for twelve cold arrays.
 
 **WasmGC load-forwarding counters (2026-08-02).** AMD64 count-only facts report
 4,092 fused exact array accesses, 3,067 fused exact struct accesses, and 1,022

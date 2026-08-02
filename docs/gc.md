@@ -144,8 +144,11 @@ old/large struct path removes 426 of those transitions. ABI v2 existing-card arr
 reconciliation removes another 254, leaving 1,044 total: the same 1,038 allocations
 plus six mutations (four cardless/unremembered array stores and two unremembered
 old-to-young struct stores). These per-call counts remain exact through 100 and 500
-repeated invocations. Native bump allocation is therefore the remaining dominant
-executed-helper family rather than an inference from emitted cold fallbacks.
+repeated invocations. Allocation-family counters further split the remaining 1,038
+calls into 1,026 fully initialized `struct.new` transitions and 12
+`array.new_default` transitions, with zero struct-default or other-array calls.
+Native bump allocation can therefore target the initialized struct path first rather
+than being justified only by static constructor sites.
 
 Fully initialized helper-side `struct.new` prevalidates field kinds, ownership,
 subtyping, and nullability once, then passes raw helper ABI words directly to the

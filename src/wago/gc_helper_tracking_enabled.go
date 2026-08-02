@@ -12,6 +12,12 @@ type gcHelperCounter struct {
 	collector                         *gc.Collector
 	calls                             atomic.Uint64
 	allocCalls                        atomic.Uint64
+	structAllocCalls                  atomic.Uint64
+	arrayAllocCalls                   atomic.Uint64
+	structDefaultAllocCalls           atomic.Uint64
+	structInitializedAllocCalls       atomic.Uint64
+	arrayDefaultAllocCalls            atomic.Uint64
+	arrayOtherAllocCalls              atomic.Uint64
 	mutations                         atomic.Uint64
 	structMutations                   atomic.Uint64
 	arrayMutations                    atomic.Uint64
@@ -41,6 +47,21 @@ func recordSynchronousGCHelper(in *Instance, helper uint32, args []uint64) {
 	counter.calls.Add(1)
 	if gcHelperMayAllocate(helper) {
 		counter.allocCalls.Add(1)
+		if helper < gcArrayAllocDefault {
+			counter.structAllocCalls.Add(1)
+			if helper == gcStructAllocDefault {
+				counter.structDefaultAllocCalls.Add(1)
+			} else {
+				counter.structInitializedAllocCalls.Add(1)
+			}
+		} else {
+			counter.arrayAllocCalls.Add(1)
+			if helper == gcArrayAllocDefault {
+				counter.arrayDefaultAllocCalls.Add(1)
+			} else {
+				counter.arrayOtherAllocCalls.Add(1)
+			}
+		}
 	}
 	if gcHelperMayMutate(helper) {
 		counter.mutations.Add(1)
@@ -140,21 +161,27 @@ func snapshotGCHelperStats(collector *gc.Collector) GCHelperStats {
 		return GCHelperStats{}
 	}
 	return GCHelperStats{
-		Calls:                         counter.calls.Load(),
-		AllocationCalls:               counter.allocCalls.Load(),
-		MutationCalls:                 counter.mutations.Load(),
-		StructMutationCalls:           counter.structMutations.Load(),
-		ArrayMutationCalls:            counter.arrayMutations.Load(),
-		ReferenceMutationCalls:        counter.referenceMutations.Load(),
-		ParentNurseryMutationCalls:    counter.parentNurseryMutations.Load(),
-		ParentOldMutationCalls:        counter.parentOldMutations.Load(),
-		ParentLargeMutationCalls:      counter.parentLargeMutations.Load(),
-		ParentTinyMutationCalls:       counter.parentTinyMutations.Load(),
-		OldYoungRememberedCalls:       counter.oldYoungRememberedMutations.Load(),
-		OldYoungUnrememberedCalls:     counter.oldYoungUnrememberedMutations.Load(),
-		StructOldYoungRememberedCalls: counter.structOldYoungRememberedMutations.Load(),
-		ArrayOldYoungRememberedCalls:  counter.arrayOldYoungRememberedMutations.Load(),
-		ArrayCardPresentCalls:         counter.arrayCardPresentMutations.Load(),
-		ArrayCardCoveredCalls:         counter.arrayCardCoveredMutations.Load(),
+		Calls:                            counter.calls.Load(),
+		AllocationCalls:                  counter.allocCalls.Load(),
+		StructAllocationCalls:            counter.structAllocCalls.Load(),
+		ArrayAllocationCalls:             counter.arrayAllocCalls.Load(),
+		StructDefaultAllocationCalls:     counter.structDefaultAllocCalls.Load(),
+		StructInitializedAllocationCalls: counter.structInitializedAllocCalls.Load(),
+		ArrayDefaultAllocationCalls:      counter.arrayDefaultAllocCalls.Load(),
+		ArrayOtherAllocationCalls:        counter.arrayOtherAllocCalls.Load(),
+		MutationCalls:                    counter.mutations.Load(),
+		StructMutationCalls:              counter.structMutations.Load(),
+		ArrayMutationCalls:               counter.arrayMutations.Load(),
+		ReferenceMutationCalls:           counter.referenceMutations.Load(),
+		ParentNurseryMutationCalls:       counter.parentNurseryMutations.Load(),
+		ParentOldMutationCalls:           counter.parentOldMutations.Load(),
+		ParentLargeMutationCalls:         counter.parentLargeMutations.Load(),
+		ParentTinyMutationCalls:          counter.parentTinyMutations.Load(),
+		OldYoungRememberedCalls:          counter.oldYoungRememberedMutations.Load(),
+		OldYoungUnrememberedCalls:        counter.oldYoungUnrememberedMutations.Load(),
+		StructOldYoungRememberedCalls:    counter.structOldYoungRememberedMutations.Load(),
+		ArrayOldYoungRememberedCalls:     counter.arrayOldYoungRememberedMutations.Load(),
+		ArrayCardPresentCalls:            counter.arrayCardPresentMutations.Load(),
+		ArrayCardCoveredCalls:            counter.arrayCardCoveredMutations.Load(),
 	}
 }
