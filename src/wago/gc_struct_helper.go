@@ -13,18 +13,19 @@ import (
 // bit 31, and ordinary Wasm import indexes use neither. The amd64 backend mirrors
 // these compile-only constants.
 const (
-	gcStructDispatchBit  uint32 = 1 << 30
-	gcStructAllocDefault        = 1
-	gcStructGet                 = 2
-	gcStructSet                 = 3
-	gcStructGetS                = 4
-	gcStructGetU                = 5
-	gcStructRefTest             = 6
-	gcStructTableSet            = 7
-	gcAnyConvertExtern          = 8
-	gcExternConvertAny          = 9
-	gcStructRefCast             = 10
-	gcStructAllocOne            = 11
+	gcStructDispatchBit     uint32 = 1 << 30
+	gcStructAllocDefault           = 1
+	gcStructGet                    = 2
+	gcStructSet                    = 3
+	gcStructGetS                   = 4
+	gcStructGetU                   = 5
+	gcStructRefTest                = 6
+	gcStructTableSet               = 7
+	gcAnyConvertExtern             = 8
+	gcExternConvertAny             = 9
+	gcStructRefCast                = 10
+	gcStructAllocOne               = 11
+	gcStructFinalCastRefGet        = 12
 )
 
 type gcStructHelperError struct{ err error }
@@ -296,6 +297,43 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 			panic(gcStructHelperError{err: err})
 		}
 		results[0] = value
+	case gcStructFinalCastRefGet:
+		if len(args) != 4 || len(results) < 1 {
+			panic(gcStructHelperError{err: fmt.Errorf("gc final cast/get helper arity = %d/%d, want 4/at-least-1", len(args), len(results))})
+		}
+		bits, typeID, fieldID, nullable := args[0], uint32(args[1]), uint32(args[2]), args[3] != 0
+		ref := gc.Ref(uint32(bits))
+		if bits != uint64(ref) {
+			panic(gcStructHelperError{err: fmt.Errorf("gc final cast/get contains non-compact reference %#x", bits)})
+		}
+		if ref.IsNull() {
+			if nullable {
+				panic(gcStructHelperTrap{code: coreruntime.TrapNullReference})
+			}
+			panic(gcStructHelperTrap{code: coreruntime.TrapCastFailure})
+		}
+		if ref.IsI31() {
+			panic(gcStructHelperTrap{code: coreruntime.TrapCastFailure})
+		}
+		if int(typeID) >= len(in.c.Types) || int(typeID) >= len(in.c.GCTypeDescs) || !in.c.Types[typeID].Final || in.c.Types[typeID].Kind != CompositeTypeStruct || int(fieldID) >= len(in.c.Types[typeID].Fields) || int(fieldID) >= len(in.c.GCTypeDescs[typeID].Fields) {
+			panic(gcStructHelperError{err: fmt.Errorf("gc final cast/get field %d:%d is unavailable", typeID, fieldID)})
+		}
+		kind := in.c.GCTypeDescs[typeID].Fields[fieldID].Kind
+		if kind != gc.StorageRef && kind != gc.StorageRefNull {
+			panic(gcStructHelperError{err: fmt.Errorf("gc final cast/get field %d:%d is not a collector reference", typeID, fieldID)})
+		}
+		required, ok := in.gcDomainType(typeID)
+		if !ok {
+			panic(gcStructHelperError{err: fmt.Errorf("gc final cast/get type %d has no Runtime-domain identity", typeID)})
+		}
+		value, _, matched, err := in.gc.StructGetTyped(ref, required, true, fieldID)
+		if err != nil {
+			panic(gcStructHelperError{err: err})
+		}
+		if !matched {
+			panic(gcStructHelperTrap{code: coreruntime.TrapCastFailure})
+		}
+		results[0] = uint64(value.Ref)
 	case gcStructTableSet:
 		if len(args) != 3 {
 			panic(gcStructHelperError{err: fmt.Errorf("gc ref.test table-set helper args = %v, want index/ref/table", args)})

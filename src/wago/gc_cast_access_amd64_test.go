@@ -1,0 +1,119 @@
+//go:build linux && amd64 && !tinygo && !wago_guardpage
+
+package wago
+
+import (
+	"strings"
+	"testing"
+
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"github.com/wago-org/wago/testutil/wasmtest"
+)
+
+func gcFinalCastStructGetModule(body []byte) []byte {
+	// type 0: (struct (field (mut (ref null 0))))
+	structType := []byte{0x5f}
+	structType = append(structType, wasmtest.Vec([]byte{0x63, 0x00, 0x01})...)
+	// type 1: () -> i32
+	types := wasmtest.Section(1, wasmtest.Vec(structType, wasmtest.FuncType(nil, []wasm.ValType{wasm.I32})))
+	funcs := wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1)))
+	exports := wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0)))
+	code := wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body)))
+	return wasmtest.Module(types, funcs, exports, code)
+}
+
+func gcFinalCastStructGetBytes() []byte {
+	return gcFinalCastStructGetModule([]byte{
+		0xd0, 0x00, // ref.null type 0: initializer
+		0xfb, 0x00, 0x00, // struct.new type 0
+		0xfb, 0x16, 0x00, // ref.cast (ref type 0)
+		0xfb, 0x02, 0x00, 0x00, // struct.get type 0 field 0
+		0xd1, // ref.is_null
+		0x0b,
+	})
+}
+
+func TestGCFinalCastStructGet(t *testing.T) {
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcFinalCastStructGetBytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	instance, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	got, err := instance.Invoke("run")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0] != 1 {
+		t.Fatalf("run = %v, want [1]", got)
+	}
+}
+
+func TestGCFinalCastStructGetTrapOrder(t *testing.T) {
+	tests := []struct {
+		name string
+		body []byte
+		want string
+	}{
+		{
+			name: "nullable null reaches access",
+			body: []byte{0xd0, 0x00, 0xfb, 0x17, 0x00, 0xfb, 0x02, 0x00, 0x00, 0xd1, 0x0b},
+			want: "null reference",
+		},
+		{
+			name: "nonnullable null fails cast",
+			body: []byte{0xd0, 0x00, 0xfb, 0x16, 0x00, 0xfb, 0x02, 0x00, 0x00, 0xd1, 0x0b},
+			want: "cast failure",
+		},
+		{
+			name: "i31 fails cast",
+			body: []byte{0x41, 0x00, 0xfb, 0x1c, 0xfb, 0x16, 0x00, 0xfb, 0x02, 0x00, 0x00, 0xd1, 0x0b},
+			want: "cast failure",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcFinalCastStructGetModule(tc.body))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer compiled.Close()
+			instance, err := Instantiate(compiled, InstantiateOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer instance.Close()
+			if _, err := instance.Invoke("run"); err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("run error = %v, want %q", err, tc.want)
+			}
+		})
+	}
+}
+
+func BenchmarkGCFinalCastStructGet(b *testing.B) {
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcFinalCastStructGetBytes())
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer compiled.Close()
+	instance, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{ThroughputHeapBytes: 256 << 20}})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer instance.Close()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		got, err := instance.Invoke("run")
+		if err != nil {
+			b.Fatal(err)
+		}
+		if len(got) != 1 || got[0] != 1 {
+			b.Fatalf("run = %v, want [1]", got)
+		}
+	}
+}

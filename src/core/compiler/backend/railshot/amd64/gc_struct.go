@@ -16,18 +16,19 @@ import (
 // funcref dispatch. These values are mirrored at the src/wago dispatcher
 // boundary; they are compile-only ABI constants, not serialized product data.
 const (
-	gcStructDispatchBit  uint32 = 1 << 30
-	gcStructAllocDefault        = 1
-	gcStructGet                 = 2
-	gcStructSet                 = 3
-	gcStructGetS                = 4
-	gcStructGetU                = 5
-	gcStructRefTest             = 6
-	gcStructTableSet            = 7
-	gcAnyConvertExtern          = 8
-	gcExternConvertAny          = 9
-	gcStructRefCast             = 10
-	gcStructAllocOne            = 11
+	gcStructDispatchBit     uint32 = 1 << 30
+	gcStructAllocDefault           = 1
+	gcStructGet                    = 2
+	gcStructSet                    = 3
+	gcStructGetS                   = 4
+	gcStructGetU                   = 5
+	gcStructRefTest                = 6
+	gcStructTableSet               = 7
+	gcAnyConvertExtern             = 8
+	gcExternConvertAny             = 9
+	gcStructRefCast                = 10
+	gcStructAllocOne               = 11
+	gcStructFinalCastRefGet        = 12
 )
 
 func (f *fn) emitFB(r *wasm.Reader) error {
@@ -245,6 +246,11 @@ func (f *fn) emitGCI31Cast(sub uint32, r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
+	if f.gcStructHelpers && heap >= 0 {
+		if fused, err := f.tryFuseFinalCastRefGet(uint32(heap), sub == 23, r); fused || err != nil {
+			return err
+		}
+	}
 	if f.gcTypeSubtypingRefTest && heap >= 0 {
 		value := f.materialize(f.popValue())
 		f.emitLocalFunctionSubtypeIdentityCheck(value, uint32(heap), sub == 23, trapCastFailure)
@@ -286,6 +292,53 @@ func (f *fn) emitGCI31Cast(sub uint32, r *wasm.Reader) error {
 	}
 	f.pushReg(value, mtI64)
 	return nil
+}
+
+func (f *fn) tryFuseFinalCastRefGet(typeIndex uint32, nullable bool, r *wasm.Reader) (bool, error) {
+	st, ok := stagedStructType(f.m, typeIndex)
+	if !ok || !st.Final {
+		return false, nil
+	}
+	start := r.Offset()
+	op, err := r.Byte()
+	if err != nil {
+		return false, nil
+	}
+	if op != 0xfb {
+		_ = r.JumpTo(start)
+		return false, nil
+	}
+	sub, err := r.U32()
+	if err != nil {
+		return false, err
+	}
+	if sub != 2 { // plain struct.get only; packed fields cannot be references
+		_ = r.JumpTo(start)
+		return false, nil
+	}
+	accessType, err := r.U32()
+	if err != nil {
+		return false, err
+	}
+	fieldIndex, err := r.U32()
+	if err != nil {
+		return false, err
+	}
+	field, ok := stagedStructField(f.m, accessType, fieldIndex)
+	if !ok || accessType != typeIndex || field.Storage.Packed || field.Storage.Val.Kind != wasm.ValRef || !gcFrameRefType(f.m, field.Storage.Val) {
+		_ = r.JumpTo(start)
+		return false, nil
+	}
+	f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
+	f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(fieldIndex)})
+	if nullable {
+		f.pushValue(storage{kind: stConst, typ: mtI32, cval: 1})
+	} else {
+		f.pushValue(storage{kind: stConst, typ: mtI32})
+	}
+	anyref := wasm.RefVal(wasm.Ref(true, wasm.AbsHeap(wasm.HeapAny), false))
+	f.stats.peep("final-cast-ref-get-fuse")
+	return true, f.callGCStructHelper(gcStructFinalCastRefGet, []wasm.ValType{anyref, wasm.I32, wasm.I32, wasm.I32}, []wasm.ValType{field.Storage.Val})
 }
 
 func (f *fn) emitLocalFunctionSubtypeIdentityCheck(value Reg, targetType uint32, nullable bool, trapCode uint32) {

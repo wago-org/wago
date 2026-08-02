@@ -124,6 +124,30 @@ through a shared native stub that has equivalent metadata. The shared metadata/
 stub route is preferable because it also supports reference field/array access
 without duplicating a full handle check at thousands of static sites.
 
+### Fused final cast and reference-field read
+
+The first compiler-side fusion recognizes an adjacent final defined-type
+`ref.cast`/`ref.cast_null` followed by `struct.get` of a collector-reference
+field on the same concrete type. AMD64 and ARM64 now emit one non-allocating GC
+helper operation instead of materializing the cast result and making a second
+parked transition for the field access. The helper resolves the compact handle
+once through `StructGetTyped`, checks exact canonical final-type identity, and
+returns the reference field directly.
+
+The fused operation preserves sequence trap order: a null passed through
+`ref.cast_null` traps as a null access, while null under non-null `ref.cast`, an
+i31 value, or a mismatched object traps as cast failure. Open types, differing
+access types, scalar fields already eligible for direct AMD64 access, and
+non-adjacent operations remain on their existing paths.
+
+A pinned allocation-plus-cast-plus-reference-get workload improves from a
+**435.6 ns/op** median to **371.3 ns/op** (**-14.8%**), at 0 B/op and
+0 allocs/op. The same-session plugin-complete stripped TinyGo release grows
+**1,741,284→1,744,436 bytes** (**+3,152 bytes, +0.181%**). This is a bounded
+first fusion rather than an implicit whole-function IR; follow-up measurements
+should count matching sites in Dew and extend only the profitable adjacent
+array/set forms.
+
 ## Rejected experiment
 
 Inlining a complete checked native final-type `ref.cast` reduced the workload to
@@ -136,8 +160,10 @@ and increases instruction-cache pressure.
 
 The remaining approximately 40x Node gap is primarily architectural:
 
-- all 72,603 static GC helper sites remain synchronous native-to-Go transitions;
-- `ref.cast` alone accounts for 40,899 transitions;
+- most of the original 72,603 static GC helper sites remain synchronous
+  native-to-Go transitions; adjacent final cast/reference-get pairs now share
+  one transition, but the matching Dew site count still needs a fresh explain run;
+- unfused `ref.cast` sites account for the largest remaining transition family;
 - reference `struct.get`/`struct.set` and `array.get`/`array.set` contribute roughly
   19,400 more transitions;
 - `array.len` contributes 8,180 transitions;
@@ -149,11 +175,11 @@ The next measured options should be, in order:
 
 1. shared native GC check/access stubs so checked casts and reference reads do not
    duplicate large inline sequences;
-2. combined typed collector operations that resolve a handle once for final
-   struct/array access;
+2. measure matching Dew sites and extend the bounded adjacent cast/access fusion
+   only to profitable array and set forms;
 3. reusable caller-owned root-pair scratch for non-null constructor operands;
-4. direct native `array.len` and reference loads with the existing stable native
-   collector ABI; and
+4. versioned type-kind metadata plus direct/shared-stub `array.len` and reference
+   loads; and
 5. producer-side typed scratch locals to reduce redundant casts in generated Dew
    code, while retaining Wago correctness for arbitrary producers.
 
