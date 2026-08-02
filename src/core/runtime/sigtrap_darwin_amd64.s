@@ -52,7 +52,7 @@ scan:
 	SUBQ	BX, AX                  // fault - linMem
 	MOVL	-8(BX), CX              // current logical byte size
 	CMPQ	CX, AX
-	JCC	outofbounds             // curBytes <= off
+	JLS	outofbounds             // curBytes <= off
 
 	// Commit a grown-but-uncommitted 64 KiB wasm page and retry the access.
 	MOVQ	R8, DI
