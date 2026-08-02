@@ -356,6 +356,48 @@ func AnalyzeModuleFacts(m *wasm.Module) (*ModuleFacts, error) {
 			if err != nil {
 				return nil, fmt.Errorf("function %d facts: %w", functionIndex, err)
 			}
+			if _, ok := wasm.ImmediateFreeInstructionKind(op); ok {
+				continue
+			}
+			// Module facts observe only memory.grow, table.grow, and ref.func.
+			// Consume the dominant unrelated scalar immediates directly instead of
+			// constructing full instruction metadata for every local access, branch,
+			// call, and constant in the module.
+			switch op {
+			case 0x05, 0x0b: // else, end
+				continue
+			case 0x08, 0x0c, 0x0d, 0x10, 0x12, 0x14, 0x15, 0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0xd5, 0xd6:
+				if _, err := r.U32(); err != nil {
+					return nil, fmt.Errorf("function %d facts: %w", functionIndex, err)
+				}
+				continue
+			case 0xd2: // ref.func
+				if _, err := r.U32(); err != nil {
+					return nil, fmt.Errorf("function %d facts: %w", functionIndex, err)
+				}
+				facts.UsesRefFunc = true
+				continue
+			case 0x41:
+				if _, err := r.I32(); err != nil {
+					return nil, fmt.Errorf("function %d facts: %w", functionIndex, err)
+				}
+				continue
+			case 0x42:
+				if _, err := r.I64(); err != nil {
+					return nil, fmt.Errorf("function %d facts: %w", functionIndex, err)
+				}
+				continue
+			case 0x43:
+				if err := r.Step(4); err != nil {
+					return nil, fmt.Errorf("function %d facts: %w", functionIndex, err)
+				}
+				continue
+			case 0x44:
+				if err := r.Step(8); err != nil {
+					return nil, fmt.Errorf("function %d facts: %w", functionIndex, err)
+				}
+				continue
+			}
 			in, err := wasm.ClassifyInstructionImmediate(r, op)
 			if err != nil {
 				// The feature-aware support pass will validate/reject this body. Facts

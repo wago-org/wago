@@ -30,6 +30,21 @@ paths. `DomainSnapshot` remains 112 bytes; the per-member in-memory record grows
 80 to 104 bytes for one optional passive-root slice. Existing v1/v2 blobs remain
 loadable, while memory64 and global-dependent element ownership require v3.
 
+**Direct module-fact scalar scanning (2026-08-02).** `AnalyzeModuleFacts`
+needs only `memory.grow`, `table.grow`, and `ref.func`, but previously built full
+instruction metadata for every unrelated scalar operation. It now consumes
+immediate-free operations, constants, branches, calls, and local/global/table
+indices directly while preserving strict immediate validation; uncommon and
+fact-bearing forms retain the general classifier. On linux/amd64 (Ryzen 7
+8845HS, GOMAXPROCS=1, one pinned CPU), the 96 KiB scalar facts watchpoint improves
+from **1.073 ms to 209.0 µs median** (**−80.5%**), and the real 8.47 MiB esbuild
+body-facts stage improves **77.11→30.14 ms** (**−60.9%**), both with unchanged
+allocations. Across two surrounding seven-sample full esbuild runs, the pooled
+post-change median is **816.5 ms** versus the interposed **846.5 ms** baseline
+(**−3.5%**, allocations unchanged) despite host-frequency noise. A same-session
+plugin-complete stripped TinyGo A/B costs **352 bytes**
+(**1,736,916→1,737,268 bytes**, +0.020%).
+
 **Fast bytecode requirement summaries (2026-08-02).** Compiled-artifact
 feature discovery and other summary walkers used the full immediate classifier
 for every instruction, including immediate-free scalar ALU operations and common
