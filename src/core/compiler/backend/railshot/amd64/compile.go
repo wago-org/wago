@@ -29,6 +29,14 @@ import (
 // WAGO_REG_MERGE=0 restores the slot path — kept as the reference oracle for A/B.
 var regMergeEnabled = os.Getenv("WAGO_REG_MERGE") != "0"
 
+// deadGCNewEnabled removes fixed-size GC constructor trees whose result is
+// immediately dropped, including nested struct.new/array.new_fixed values that
+// flow untouched into a dropped outer struct. Allocation has no observable
+// identity once the complete tree is dead; initializer computations that may
+// trap are still forced in original order. WAGO_AMD64_NO_DEAD_GC_NEW=1 keeps
+// every constructor helper for differential A/B testing.
+var deadGCNewEnabled = os.Getenv("WAGO_AMD64_NO_DEAD_GC_NEW") != "1"
+
 // immutableLocalTableEnabled specializes call_indirect when the one-pass module
 // scan proves table 0 is a private, never-mutated table of same-module functions
 // (no home/tag fork, and a monomorphic table becomes a direct call). Default ON;

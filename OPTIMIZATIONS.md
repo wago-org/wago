@@ -136,9 +136,18 @@ path. A Binaryen type-flow oracle on Dew removed exactly 1,024 dead
 fresh median **0.94→0.63 ms**, host allocation **924,536→524,512 B/op**, and
 native code **7,479,004→7,112,416 bytes**. Heap2Local alone was neutral-to-slower
 and expanded the frame **24,808→82,152 bytes**, so broad scalar replacement is
-rejected as the next step. The measured order is now recursive dead-constructor
-elimination, structured exact/non-null facts and bounded GC load forwarding, then
-native bump allocation for the constructors that remain live. See
+rejected as the next step. Recursive dead-constructor elimination is now shipped
+on AMD64: a bounded postfix lookahead recognizes constructor values flowing
+untouched into an immediately dropped struct, while direct constructor/drop pairs
+are removed at the constructor. Non-trapping valent trees disappear completely;
+any deferred trap forces original bottom-to-top evaluation. Dense GC safepoint IDs
+are retired without becoming publishable native call sites. On Dew it fires exactly
+**2,048** times, cuts `hostsync` **8,188→6,140**, generated code
+**7,479,004→7,104,256 bytes**, fresh median about **0.94→0.62-0.67 ms**, and host
+allocation **924,536→524,512 B/op**. The stripped plugin-complete TinyGo binary is
+**1,776,700 bytes**, +2,512 bytes over the preceding 1,774,188-byte build. The next
+order is structured exact/non-null facts and bounded GC load forwarding, then native
+bump allocation for constructors that remain live. See
 `docs/wasmgc-v8-cranelift-research-2026-08.md`.
 
 **Release unwind-table removal (2026-08-01).** TinyGo `-no-debug` Linux

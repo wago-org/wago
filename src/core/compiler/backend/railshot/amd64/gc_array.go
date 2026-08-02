@@ -105,11 +105,17 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		valueSlots := funcTypeSlots([]wasm.ValType{valueType})
 		if uint64(count)*uint64(valueSlots)+2 > maxSyncHostSlots {
 			if wasm.EqualValType(valueType, wasm.V128) {
+				if f.skipDroppedGCConstructor(r, int(count)) || f.deferGCConstructorForDroppedStruct(r, int(count)) {
+					return nil
+				}
 				result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
 				return f.callGCArrayFixedV128Spill(typeIndex, count, result)
 			}
 			maxValues := (maxSyncHostSlots - 2) / valueSlots
 			return fmt.Errorf("amd64: array.new_fixed count %d of %s exceeds helper slot bound %d values", count, valueType, maxValues)
+		}
+		if f.skipDroppedGCConstructor(r, int(count)) || f.deferGCConstructorForDroppedStruct(r, int(count)) {
+			return nil
 		}
 		params := make([]wasm.ValType, 0, int(count)+2)
 		for i := uint32(0); i < count; i++ {

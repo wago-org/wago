@@ -350,25 +350,53 @@ complete old-to-young remembered-set/card update for Throughput and a correct
 incremental barrier for Tiny. Until those are proven, retain the current cold
 helper fallback.
 
-## 4. Recommended implementation order
+## 4. Implementation status and order
 
-1. Add count-only compiler stats for dead constructor trees, repeated proven
-   casts, repeated array lengths, same-field get/get, and set/get forwarding.
-2. Implement recursive dead `struct.new` + `array.new_fixed` elimination with a
-   kill switch and focused trap/evaluation-order tests.
-3. Re-run Dew fresh/sustained, generated-code, release-size, Core 3, race, and
-   ARM64 build gates.
-4. Implement structured exact/non-null local facts in count-only mode, then use
-   them for one proven redundant-cast/access case.
-5. Prototype a one-entry immutable-length or field-value cache if counters show
+### Completed: recursive dead constructor trees
+
+AMD64 now removes direct fixed-size constructor/drop pairs and uses bounded
+postfix lookahead to replace an inner `struct.new` or `array.new_fixed` result
+only when it flows untouched through push-only leaves into an immediately dropped
+outer struct. This remains a local valent-stack optimization, not a body IR.
+
+The implementation:
+
+- removes non-trapping initializer trees without emitting code;
+- forces any deferred trapping initializer in original bottom-to-top order;
+- preserves explicit/guard memory trap behavior;
+- retires the frontend's dense GC safepoint ID without creating a native callsite;
+- has `WAGO_AMD64_NO_DEAD_GC_NEW=1` for differential A/B;
+- changes allocation-forcing root tests to consume the allocated value through
+  `ref.is_null`, so the fixture cannot be optimized away.
+
+Measured on Dew:
+
+| Metric | Disabled | Enabled |
+| --- | ---: | ---: |
+| `gc-dead-new` | 0 | 2,048 |
+| `hostsync` | 8,188 | 6,140 |
+| native code | 7,479,004 B | 7,104,256 B |
+| fresh median | 0.93-1.04 ms | 0.62-0.67 ms |
+| host bytes/op | 924,536 | 524,512 |
+| host allocations/op | 90 | 68 |
+| sustained median | about 1.28 ms | about 0.92-1.03 ms |
+
+The plugin-complete stripped TinyGo candidate is 1,776,700 bytes and executes
+Dew, +2,512 bytes over the preceding 1,774,188-byte release candidate.
+
+Remaining order:
+
+1. Add structured exact/non-null local facts in count-only mode, then use them
+   for one proven repeated-cast/access case.
+2. Add count-only repeated array-length, same-field get/get, set/get forwarding,
+   and same-reference resolver-reuse counters.
+3. Prototype a one-entry immutable-length or field-value cache if counters show
    dynamic leverage.
-6. Only then implement native bump allocation for the constructor sites that
-   remain live.
-7. Keep broad Heap2Local/scalar replacement deferred unless a different
+4. Implement native bump allocation for the constructor sites that remain live.
+5. Keep broad Heap2Local/scalar replacement deferred unless a different
    workload shows a win that justifies frame growth and control-flow complexity.
 
-The key conclusion is that **native bump allocation remains worthwhile, but it
-is not the next isolated optimization**. The Dew oracle shows that eliminating
-recursively dead allocations first has a larger, lower-risk measured prize, and
-V8's typed/load analyses provide additional no-IR-compatible opportunities to
-reduce the validation work around the allocations and references that remain.
+The key conclusion remains that **native bump allocation is worthwhile, but it
+should optimize only live allocations**. V8's typed/load analyses provide the
+next no-IR-compatible opportunities to reduce validation work around the
+references and constructors that remain.

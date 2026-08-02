@@ -52,9 +52,10 @@ warmup:
 | Wago at `a21b7007` | 4.466 ms | 4.464 ms | interleaved A/B; fresh collector |
 | Wago at `802af7fc` | 3.679 ms | 3.701 ms | typed fusion and constructor scratch |
 | Wago after shared AMD64 native paths | 1.877 ms | 1.895 ms | interleaved A/B; fresh collector |
-| Wago after final-reference resolver and nursery stores | about 0.95 ms | about 0.98 ms | best controlled fresh runs; current workspace |
+| Wago after final-reference resolver and nursery stores | about 0.95 ms | about 0.98 ms | best controlled fresh runs |
+| Wago after recursive dead constructor elimination | about 0.64 ms | about 0.67 ms | four interleaved A/B runs; fresh collector |
 
-The latest controlled Wago result is therefore about 8.1x the hot Node median and 1.9x
+The latest controlled Wago result is therefore about 5.4x the hot Node median and 1.3x
 the fresh-instance Node median. The distinction matters: repeated Wago calls
 also expose old-heap growth and major-collection policy, while Node's hot result
 includes tiered optimized code.
@@ -332,6 +333,37 @@ native edge. The plugin-complete stripped TinyGo candidate is 1,774,188 bytes,
 up 13,032 bytes (+0.740%) from the 1,761,156-byte pre-pass release, and executes
 the artifact successfully.
 
+### Recursive dead constructor trees
+
+V8/Binaryen research identified 1,024 Dew suffixes where a fixed array initializes
+an outer struct and the outer result is immediately dropped. AMD64 now removes
+both allocations with bounded postfix lookahead rather than making them faster.
+Direct constructor/drop pairs are removed at the constructor. Inner constructors
+are replaced only when push-only intervening leaves cannot consume or expose the
+reference and the following outer `struct.new` is itself immediately dropped.
+
+Non-trapping valent trees disappear without code. If any initializer still carries
+a deferred trap, the compiler flushes bottom-to-top before removing the operands,
+preserving Wasm evaluation and trap order. The frontend's dense allocation-site
+safepoint ID is retained as an unpublishable retired entry so every later native
+safepoint keeps its exact identity. `WAGO_AMD64_NO_DEAD_GC_NEW=1` restores all
+constructor helpers for A/B.
+
+| Measurement | Disabled | Enabled | Change |
+| --- | ---: | ---: | ---: |
+| eliminated constructor sites | 0 | 2,048 | +2,048 |
+| static synchronous helper sites | 8,188 | 6,140 | -25.0% |
+| generated native code | 7,479,004 B | 7,104,256 B | -5.0% |
+| fresh median, stable range | 0.93-1.04 ms | 0.62-0.67 ms | about -34% |
+| fresh host allocation | 924,536 B/op | 524,512 B/op | -43.3% |
+| fresh host allocations | 90/op | 68/op | -24.4% |
+| sustained median | about 1.28 ms | 0.92-1.03 ms | about -24% |
+
+The plugin-complete stripped TinyGo candidate is **1,776,700 bytes**, +2,512
+bytes (+0.142%) over the preceding 1,774,188-byte build. It executes Dew
+successfully. The speed/host-allocation gain clearly justifies this small product
+cost.
+
 Two additional experiments were rejected:
 
 - specialized abstract-anyref struct/array stores preserved exact barriers but
@@ -350,16 +382,15 @@ and increases instruction-cache pressure.
 
 ## Remaining gap
 
-The remaining hot Node gap is primarily architectural. The optimized artifact's 8,188 synchronous helper sites are now distributed
-exactly as follows:
+The remaining hot Node gap is primarily architectural. The optimized artifact's
+6,140 synchronous helper sites are now distributed exactly as follows:
 
 | Helper family | Static sites | Share |
 | --- | ---: | ---: |
-| `struct.new` | 2,050 | 25.0% |
-| old/Tiny fallback `array.set` | 2,046 | 25.0% |
-| old/Tiny fallback reference `struct.set` | 2,044 | 25.0% |
-| `array.new_default` | 1,024 | 12.5% |
-| `array.new_fixed` | 1,024 | 12.5% |
+| old/Tiny fallback `array.set` | 2,046 | 33.3% |
+| old/Tiny fallback reference `struct.set` | 2,044 | 33.3% |
+| live `struct.new` | 1,026 | 16.7% |
+| `array.new_default` | 1,024 | 16.7% |
 
 The V8/Cranelift/Binaryen follow-up in
 [`wasmgc-v8-cranelift-research-2026-08.md`](wasmgc-v8-cranelift-research-2026-08.md)
@@ -372,14 +403,14 @@ broad scalar replacement is not the lesson.
 
 The next measured options should be, in order:
 
-1. add count-only facts for recursively dead constructor trees, repeated exact
-   casts, repeated array lengths, and same-field load/store forwarding;
-2. eliminate dead `struct.new`/`array.new_fixed` trees while preserving all
-   observable initializer evaluation and array-size traps;
-3. propagate compact structured exact/non-null local facts and use them to remove
-   proven repeated cast/type work;
+1. propagate compact structured exact/non-null local facts in count-only mode and
+   use them to remove proven repeated cast/type work;
+2. count repeated array lengths, same-field load/store forwarding, and short-lived
+   same-reference resolver reuse;
+3. add a bounded immutable-length or field-value forwarding window where counters
+   prove dynamic leverage;
 4. add native bump allocation plus one shared collection/handle slow path for the
-   constructor sites that remain live;
+   2,050 constructor sites that remain live;
 5. publish a bounded native remembered-set/card barrier so old/large parent writes
    can avoid the remaining write fallbacks while preserving Tiny incremental
    semantics and exact mutation;

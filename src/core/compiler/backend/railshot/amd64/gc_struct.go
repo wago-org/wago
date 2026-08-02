@@ -74,7 +74,11 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		if !ok {
 			return fmt.Errorf("amd64: struct.new type %d is unavailable", typeIndex)
 		}
-		params := make([]wasm.ValType, 0, len(st.Comp.Fields)+1)
+		fieldN := len(st.Comp.Fields)
+		if f.skipDroppedGCConstructor(r, fieldN) || f.deferGCConstructorForDroppedStruct(r, fieldN) {
+			return nil
+		}
+		params := make([]wasm.ValType, 0, fieldN+1)
 		for _, field := range st.Comp.Fields {
 			valueType := field.Storage.Val
 			if field.Storage.Packed {
@@ -93,6 +97,9 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		}
 		if _, ok := stagedStructType(f.m, typeIndex); !ok {
 			return fmt.Errorf("amd64: struct.new_default type %d is unavailable", typeIndex)
+		}
+		if f.skipDroppedGCConstructor(r, 0) || f.deferGCConstructorForDroppedStruct(r, 0) {
+			return nil
 		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
