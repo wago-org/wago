@@ -1364,7 +1364,14 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, int
 	sc.reset()
 	sc.asm.Grow(asmCapForBody(len(c.BodyBytes)))
 	globalIdx := m.ImportedFuncCount() + funcIdx
-	f := &fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, transient: sc.transient, globalIdx: globalIdx, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: custom, nParams: len(ft.Params), nLocals: nLocals, guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, regMerge: regMergeEnabled && m.TagCount() == 0, globalCellReg: regNone, memSizeReg: regNone, immutableTables: hints.immutableTables, stagedTailDescriptors: hints.hasTailCall, importBindings: importBindings, stats: stats, entryInitialized: hints.entryInitialized, gcFrameRoots: gcFrameRoots}
+	entryInitialized := hints.entryInitialized
+	if gcFrameRoots != nil && gcFrameRoots.Candidate {
+		// Conservative root maps may publish a reference local before its first
+		// Wasm assignment. Keep every declared slot zero-initialized so a reused
+		// foreign stack cannot expose a stale compact handle at that safepoint.
+		entryInitialized = 0
+	}
+	f := &fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, transient: sc.transient, globalIdx: globalIdx, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: custom, nParams: len(ft.Params), nLocals: nLocals, guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, regMerge: regMergeEnabled && m.TagCount() == 0, globalCellReg: regNone, memSizeReg: regNone, immutableTables: hints.immutableTables, stagedTailDescriptors: hints.hasTailCall, importBindings: importBindings, stats: stats, entryInitialized: entryInitialized, gcFrameRoots: gcFrameRoots}
 	// Retain the (possibly grown) control-frame backing for the next function.
 	defer func() {
 		sc.ctrl = f.ctrl
@@ -1491,7 +1498,10 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, int
 	if extendedFPPinsEnabled {
 		fpPinLimit = len(pinnedFLocalRegs)
 	}
-	f.assignPinnedLocals(hints.localScore, globalScores, globalElig, gpPool, fpPinLimit, v128LocalPinsEnabled && !hasCall)
+	if !pinLocals {
+		fpPinLimit = 0
+	}
+	f.assignPinnedLocals(hints.localScore, globalScores, globalElig, gpPool, fpPinLimit, pinLocals && v128LocalPinsEnabled && !hasCall)
 	if regABI && !hasCall && f.nParams > 4 {
 		for i := range f.locals {
 			if r := f.locals[i].reg; r == R9 || r == R10 || r == R11 {
