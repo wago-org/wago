@@ -161,15 +161,29 @@ jobs:
             runner: macos-15-intel
             goos: darwin
             goarch: amd64
-            runtime: false
+            runtime: true
             guard: false
-            corpus: false
+            corpus: true
           - name: Darwin / arm64
             runner: macos-15
             goos: darwin
             goarch: arm64
             runtime: true
             guard: true
+            corpus: true
+          - name: Windows / amd64
+            runner: windows-2025
+            goos: windows
+            goarch: amd64
+            runtime: true
+            guard: false
+            corpus: true
+          - name: Windows / arm64
+            runner: windows-11-arm
+            goos: windows
+            goarch: arm64
+            runtime: true
+            guard: false
             corpus: true
     runs-on: ${{ matrix.runner }}
     steps:
@@ -188,24 +202,40 @@ jobs:
       - name: Install wabt (macOS)
         if: runner.os == 'macOS'
         run: brew install wabt
+      - name: Install wabt (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: choco install wabt --yes --no-progress
 
       - name: Verify native runner
+        if: runner.os != 'Windows'
         run: |
           test "$(go env GOOS)" = "${{ matrix.goos }}"
           test "$(go env GOARCH)" = "${{ matrix.goarch }}"
           go version
           uname -a
 
+      - name: Verify native runner (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if ($(go env GOOS) -ne '${{ matrix.goos }}') { throw 'wrong GOOS' }
+          if ($(go env GOARCH) -ne '${{ matrix.goarch }}') { throw 'wrong GOARCH' }
+          go version
+          Get-ComputerInfo | Select-Object OsName, OsArchitecture
+
       - name: Build & test
-        if: matrix.runtime
+        if: matrix.runtime && runner.os != 'Windows'
         run: make test
 
-      # Darwin/amd64 is not yet a supported native runtime target. Keep its
-      # architecture-neutral compiler and encoder surface honest without
-      # implying that the JIT ABI is implemented there.
-      - name: Portable compiler tests
-        if: ${{ !matrix.runtime }}
-        run: go test -count=1 ./internal/... ./src/core/compiler/codegen ./src/core/compiler/ir ./src/core/compiler/wasm ./src/core/encoder/amd64 ./src/core/encoder/arm64
+      - name: Build & test (Windows)
+        if: matrix.runtime && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          go build ./...
+          go build -tags wago_runtime ./cli/...
+          go test -count=1 ./...
+          go test -count=1 -tags wago_runtime ./cli/...
 
       # Guard-page (signals-based) mode is behind a build tag, so `make test`
       # never exercises it — which is how a broken SIGSEGV fault->trap handler
@@ -216,18 +246,35 @@ jobs:
         run: make test-guard
 
       - name: Corpus correctness matrix
-        if: matrix.corpus
+        if: matrix.corpus && runner.os != 'Windows'
         env:
           WAGO_CORPUS_TIMEOUT: 20s
         run: make test-corpus
+
+      - name: Corpus correctness matrix (Windows)
+        if: matrix.corpus && runner.os == 'Windows'
+        shell: pwsh
+        working-directory: bench
+        env:
+          WAGO_CORPUS_TIMEOUT: 20s
+        run: go test -count=1 -run '^TestCorpus$' .
 
       - name: Fetch SIMD proposal suite
         if: matrix.runtime
         run: git submodule update --init tests/spec
 
       - name: SIMD execution suite
-        if: matrix.runtime
+        if: matrix.runtime && runner.os != 'Windows'
         run: make simd
+
+      - name: SIMD execution suite (Windows)
+        if: matrix.runtime && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          git submodule update --init tests/spec
+          $env:WAGO_SPECTEST_DIR = (Resolve-Path tests/spec)
+          $env:WAGO_SPEC_VERSION = 'simd'
+          go test -count=1 -run TestSpecSuiteExec -v ./src/wago/
 
   core-v2:
     name: Core v2 conformance / ${{ matrix.name }}
