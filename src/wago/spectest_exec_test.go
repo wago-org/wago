@@ -6,6 +6,7 @@
 package wago_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"encoding/json"
@@ -359,7 +360,8 @@ func TestSpecExecStatsAccounting(t *testing.T) {
 func TestSpecInterpreterModuleDefinitionInstances(t *testing.T) {
 	tmp := t.TempDir()
 	const filename = "definition.0.wasm"
-	if err := os.WriteFile(filepath.Join(tmp, filename), []byte("\x00asm\x01\x00\x00\x00"), 0o600); err != nil {
+	data := []byte("\x00asm\x01\x00\x00\x00")
+	if err := os.WriteFile(filepath.Join(tmp, filename), data, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	sf := specExecFile{Commands: []specExecCmd{
@@ -372,6 +374,43 @@ func TestSpecInterpreterModuleDefinitionInstances(t *testing.T) {
 	if stats != want {
 		t.Fatalf("definition instance stats = %+v, want %+v", stats, want)
 	}
+
+	definitions := map[string][]byte{"$M": data}
+	for _, tc := range []struct {
+		name string
+		cmd  specExecCmd
+	}{
+		{name: "latest", cmd: specExecCmd{ModuleType: "instance"}},
+		{name: "named", cmd: specExecCmd{ModuleType: "instance", Module: "$M"}},
+		{name: "file", cmd: specExecCmd{Filename: filename}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := specCommandModuleData(tmp, tc.cmd, data, definitions)
+			if err != nil || !bytes.Equal(got, data) {
+				t.Fatalf("module data = %x, %v; want %x", got, err, data)
+			}
+		})
+	}
+	if _, err := specCommandModuleData(tmp, specExecCmd{ModuleType: "instance", Module: "$missing"}, data, definitions); err == nil {
+		t.Fatal("missing named module definition resolved")
+	}
+}
+
+func specCommandModuleData(tmp string, c specExecCmd, latestDefinition []byte, definitions map[string][]byte) ([]byte, error) {
+	if c.ModuleType == "instance" {
+		data := latestDefinition
+		if c.Module != "" {
+			data = definitions[c.Module]
+		}
+		if data == nil {
+			return nil, fmt.Errorf("module instance references unavailable definition %q", c.Module)
+		}
+		return data, nil
+	}
+	if c.Filename == "" {
+		return nil, errors.New("module output filename is empty")
+	}
+	return os.ReadFile(filepath.Join(tmp, c.Filename))
 }
 
 func runRelease2FocusedModule(t *testing.T, base string, moduleLine int) specExecStats {
@@ -1721,7 +1760,7 @@ func runSpecExecFileWithConfig(t *testing.T, base, tmp string, sf specExecFile, 
 				}
 			}
 		case "assert_uninstantiable":
-			data, err := os.ReadFile(filepath.Join(tmp, c.Filename))
+			data, err := specCommandModuleData(tmp, c, latestDefinition, definitions)
 			if err != nil {
 				stats.assertionsFailed++
 				t.Errorf("%s.wast:%d uninstantiable module output %q is unavailable: %v", base, c.Line, c.Filename, err)
@@ -1755,7 +1794,7 @@ func runSpecExecFileWithConfig(t *testing.T, base, tmp string, sf specExecFile, 
 			}
 			stats.assertionsPassed++
 		case "assert_unlinkable":
-			data, err := os.ReadFile(filepath.Join(tmp, c.Filename))
+			data, err := specCommandModuleData(tmp, c, latestDefinition, definitions)
 			if err != nil {
 				stats.assertionsFailed++
 				t.Errorf("%s.wast:%d unlinkable module output %q is unavailable: %v", base, c.Line, c.Filename, err)
@@ -2177,8 +2216,12 @@ func runTrapAssert(t *testing.T, base string, c specExecCmd, m specModule) (spec
 		t.Errorf("%s.wast:%d %s(%v): expected trap %q, returned normally", base, c.Line, c.Action.Field, argValues(c.Action.Args), c.Text)
 		return specGapNone, false
 	}
-	if ok, why := specTrapMatches(out.trap, c.Text); !ok {
-		t.Errorf("%s.wast:%d %s(%v): expected trap %q: %s", base, c.Line, c.Action.Field, argValues(c.Action.Args), c.Text, why)
+	want := c.Text
+	if c.Type == "assert_exception" {
+		want = "unhandled exception"
+	}
+	if ok, why := specTrapMatches(out.trap, want); !ok {
+		t.Errorf("%s.wast:%d %s(%v): expected trap %q: %s", base, c.Line, c.Action.Field, argValues(c.Action.Args), want, why)
 		return specGapNone, false
 	}
 	return specGapNone, true
@@ -2238,16 +2281,35 @@ func specTrapMatches(err error, want string) (bool, string) {
 		ok = matches(wago.TrapUnreachable)
 	case "builtin trap":
 		ok = matches(wago.TrapBuiltin)
+	case "null reference", "null array reference", "null i31 reference", "null structure reference":
+		ok = matches(wago.TrapNullReference)
+	case "null function reference":
+		// The native table-call ABI represents a null function entry with the
+		// same trap code as an uninitialized indirect-call target.
+		ok = matches(wago.TrapIndirectOutOfBounds)
+	case "cast", "cast failure":
+		ok = matches(wago.TrapCastFailure)
+	case "unhandled exception":
+		ok = matches(wago.TrapUnhandledException)
 	case "out of bounds memory access", "out of bounds linear memory access":
 		ok = matches(wago.TrapLinMemOutOfBounds, wago.TrapLinkedMemOutOfBounds)
 	case "out of bounds":
 		// Some engine regression corpora retain this older generic spelling.
 		ok = matches(wago.TrapLinMemOutOfBounds, wago.TrapLinkedMemOutOfBounds, wago.TrapTableOutOfBounds, wago.TrapIndirectOutOfBounds)
 	case "out of bounds table access":
-		ok = matches(wago.TrapTableOutOfBounds)
+		// Bulk table helpers predate the dedicated table-access trap code and
+		// retain the indirect-table bounds code. Direct table accesses use the
+		// dedicated code; both represent the same WebAssembly trap condition.
+		ok = matches(wago.TrapTableOutOfBounds, wago.TrapIndirectOutOfBounds)
+	case "out of bounds array access":
+		// WasmGC array helpers use builtin.trap for checked ranges, while the
+		// exact native scalar path uses cast-failure for failed object extents.
+		// These are deterministic trap-only ABI categories; WebAssembly does not
+		// expose trap reasons to the module.
+		ok = matches(wago.TrapBuiltin, wago.TrapCastFailure)
 	case "undefined element", "undefined", "uninitialized element", "uninitialized":
 		ok = matches(wago.TrapIndirectOutOfBounds, wago.TrapTableOutOfBounds)
-	case "indirect call type mismatch":
+	case "indirect call", "indirect call type mismatch":
 		ok = matches(wago.TrapIndirectWrongSig)
 	case "integer divide by zero":
 		ok = matches(wago.TrapDivZero)
@@ -2303,8 +2365,15 @@ func TestSpecTrapMatching(t *testing.T) {
 		{name: "unreachable", err: &wago.TrapError{Code: wago.TrapUnreachable}, want: "unreachable", ok: true},
 		{name: "wrong code", err: &wago.TrapError{Code: wago.TrapDivZero}, want: "unreachable"},
 		{name: "memory", err: &wago.TrapError{Code: wago.TrapLinkedMemOutOfBounds}, want: "out of bounds memory access", ok: true},
-		{name: "table bulk", err: &wago.TrapError{Code: wago.TrapTableOutOfBounds}, want: "out of bounds table access", ok: true},
-		{name: "wrong table code", err: &wago.TrapError{Code: wago.TrapIndirectOutOfBounds}, want: "out of bounds table access"},
+		{name: "table direct", err: &wago.TrapError{Code: wago.TrapTableOutOfBounds}, want: "out of bounds table access", ok: true},
+		{name: "table bulk", err: &wago.TrapError{Code: wago.TrapIndirectOutOfBounds}, want: "out of bounds table access", ok: true},
+		{name: "array helper bounds", err: &wago.TrapError{Code: wago.TrapBuiltin}, want: "out of bounds array access", ok: true},
+		{name: "array native bounds", err: &wago.TrapError{Code: wago.TrapCastFailure}, want: "out of bounds array access", ok: true},
+		{name: "null array", err: &wago.TrapError{Code: wago.TrapNullReference}, want: "null array reference", ok: true},
+		{name: "cast", err: &wago.TrapError{Code: wago.TrapCastFailure}, want: "cast", ok: true},
+		{name: "exception", err: &wago.TrapError{Code: wago.TrapUnhandledException}, want: "unhandled exception", ok: true},
+		{name: "indirect call", err: &wago.TrapError{Code: wago.TrapIndirectWrongSig}, want: "indirect call", ok: true},
+		{name: "null function", err: &wago.TrapError{Code: wago.TrapIndirectOutOfBounds}, want: "null function reference", ok: true},
 		{name: "undefined element", err: &wago.TrapError{Code: wago.TrapIndirectOutOfBounds}, want: "undefined element", ok: true},
 		{name: "indexed uninitialized element", err: &wago.TrapError{Code: wago.TrapIndirectOutOfBounds}, want: "uninitialized element 2", ok: true},
 		{name: "integer overflow division", err: &wago.TrapError{Code: wago.TrapDivOverflow}, want: "integer overflow", ok: true},

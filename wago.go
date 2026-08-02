@@ -252,6 +252,7 @@ const (
 	TrapStackFenceBreached                     = impl.TrapStackFenceBreached
 	TrapTableOutOfBounds                       = impl.TrapTableOutOfBounds
 	TrapTruncOverflow                          = impl.TrapTruncOverflow
+	TrapUnhandledException                     = impl.TrapUnhandledException
 	TrapUnreachable                            = impl.TrapUnreachable
 	ValAnyRef                                  = impl.ValAnyRef
 	ValExnRef                                  = impl.ValExnRef
