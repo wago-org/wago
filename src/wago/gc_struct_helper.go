@@ -64,12 +64,24 @@ func gcHelperMayAllocate(helper uint32) bool {
 	}
 }
 
+func gcHelperMayMutate(helper uint32) bool {
+	switch helper {
+	case gcStructSet, gcStructTableSet,
+		gcArraySet, gcArrayDropElem, gcArrayFill, gcArrayCopy,
+		gcArrayInitData, gcArrayInitElem:
+		return true
+	default:
+		return false
+	}
+}
+
 func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint uint32, args, results []uint64) {
 	if in == nil || in.gc == nil {
 		panic(gcStructHelperError{err: fmt.Errorf("gc struct helper %d has no live collector", helper)})
 	}
 	lockedDomain := in.lockGCCollector()
 	defer unlockGCCollector(lockedDomain)
+	recordSynchronousGCHelper(in.gc, helper)
 	var state *gcPublicState
 	var frameRoots gc.RootSet = gc.EmptyRoots{}
 	if gcHelperMayAllocate(helper) {

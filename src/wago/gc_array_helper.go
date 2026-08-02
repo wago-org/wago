@@ -62,6 +62,7 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 	}
 	lockedDomain := in.lockGCCollector()
 	defer unlockGCCollector(lockedDomain)
+	recordSynchronousGCHelper(in.gc, helper)
 	var state *gcPublicState
 	var frameRoots gc.RootSet = gc.EmptyRoots{}
 	if gcHelperMayAllocate(helper) {

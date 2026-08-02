@@ -393,6 +393,13 @@ a standalone cast already proved by a constructor or prior successful cast.
 The plugin-complete stripped TinyGo candidate is **1,777,788 bytes**, +1,088
 bytes (+0.061%) over the dead-constructor build. It executes Dew successfully.
 
+A diagnostic `wago_gcstats` build enables executed-helper instrumentation through
+`Instance.SetGCHelperStatsTracking(true)` plus `Instance.GCHelperStats`; production builds
+compile the hook away. One fresh Dew invocation executes **1,724** of the
+6,140 emitted synchronous helper sites: **1,038 allocation helpers** and **686
+mutation fallbacks**. Those counts remain exactly 1,724/1,038/686 per call over
+100 and 500 repeated invocations. Tracking is disabled by default.
+
 Compiler-native count-only load facts now report 4,092 fused accesses with a prior
 exact array type, 3,067 with a prior exact struct type, and 1,022 repeated immutable
 `array.len` operations on the same unchanged local. Conservative same-field get/get

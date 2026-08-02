@@ -443,10 +443,21 @@ Two runtime prototypes were measured and reverted:
 
 The count-only metrics remain; both runtime transformations were removed.
 
+### Completed: executed synchronous-helper counters
+
+A diagnostic `wago_gcstats` build exposes
+`Instance.SetGCHelperStatsTracking(true)` and collector-domain counters through
+`Instance.GCHelperStats()`. Production builds compile the dispatch hook away. One fresh
+Dew call executes 1,724
+synchronous Go helper transitions: 1,038 allocation helpers and 686 mutation
+fallbacks, versus static `hostsync=6,140`. The exact same per-call counts persist
+through 100 and 500 repeated invocations. Native bump allocation and old-parent
+barrier work can therefore be evaluated against independent dynamic denominators.
+
 Remaining order:
 
-1. Instrument executed native/helper transitions so static opportunity counts can
-   be weighted by dynamic frequency.
+1. Instrument executed shared native stubs if finer dynamic weighting is needed;
+   synchronous helper transitions are now measured.
 2. Prototype a bounded field-value cache only if dynamic counters identify a hot
    same-field family on another workload; Dew has no conservative get/get or
    set/get candidates.

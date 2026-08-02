@@ -165,6 +165,17 @@ sustained medians improve about **0.90-0.93→0.80-0.86 ms**. The stripped
 plugin-complete TinyGo binary is **1,777,788 bytes**, +1,088 bytes over the dead-new
 build. `WAGO_AMD64_NO_GC_REF_FACTS=1` restores the validated cast path.
 
+**Executed WasmGC helper counters (2026-08-02).** Optional
+the diagnostic `wago_gcstats` build tag exposes
+`Instance.SetGCHelperStatsTracking(true)` and `Instance.GCHelperStats()`, separating total,
+allocation, and mutation transitions. Production builds compile the hook away.
+Fresh Dew executes 1,724 helpers (1,038 allocation,
+686 mutation) versus static `hostsync=6,140`; the per-call counts remain exact
+through 100 and 500 repeated calls. This supplies dynamic denominators for native
+bump allocation and old-parent barrier work. The production stripped TinyGo binary
+is **1,780,332 bytes**, +328 bytes over the count-only build; the tagged diagnostic
+product is not the authoritative release artifact.
+
 **WasmGC load-forwarding counters (2026-08-02).** AMD64 count-only facts report
 4,092 fused exact array accesses, 3,067 fused exact struct accesses, and 1,022
 repeated immutable `array.len` operations on the same unchanged exact local in

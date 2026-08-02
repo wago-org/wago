@@ -48,6 +48,7 @@ type (
 	FunctionMetadata          = impl.FunctionMetadata
 	GCAllocatorKind           = impl.GCAllocatorKind
 	GCConfig                  = impl.GCConfig
+	GCHelperStats             = impl.GCHelperStats
 	GCProfile                 = impl.GCProfile
 	GCRef                     = impl.GCRef
 	GCRuntimeKind             = impl.GCRuntimeKind

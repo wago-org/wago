@@ -123,6 +123,19 @@ end-to-end measurements are 227.9–229.4 ns/op for struct set/get, 218.2–219.
 for struct get, and 265.2–265.6 ns/op for array set/get; final cast/reference-struct
 get measures about 230–237 ns/op, all at 0 B/op and 0 allocs/op.
 
+Actual synchronous helper transitions can be measured without changing the default
+hot path by building with `-tags wago_gcstats`. That diagnostic product exposes
+`Instance.SetGCHelperStatsTracking(true)` and `Instance.GCHelperStats()`; production builds
+compile the helper hook away. One collector domain may be selected process-wide at
+a time; selecting another replaces it, and callers disable tracking after measurement
+to release the diagnostic reference. The counters separate total, allocation, and
+mutation helper calls. On one fresh
+Dew invocation after dead-constructor elimination and exact-reference propagation,
+static `hostsync=6,140` corresponds to 1,724 executed transitions: 1,038 allocating
+constructors and 686 mutation fallbacks. The same per-call counts remain stable over
+100 and 500 repeated invocations. This makes native bump allocation and old-parent
+barriers measurable independently instead of treating emitted cold fallbacks as hot.
+
 Fully initialized helper-side `struct.new` prevalidates field kinds, ownership,
 subtyping, and nullability once, then passes raw helper ABI words directly to the
 collector. A reusable word-root scratch exposes object-reference words as mutable
