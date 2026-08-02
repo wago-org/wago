@@ -1,10 +1,27 @@
 package wagopaths
 
 import (
+	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
 )
+
+func TestWindowsUsesWagoHome(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("WAGO_HOME", "")
+	dirs := dirsFor("canary", "windows")
+	want := filepath.Join(home, ".wago")
+	if dirs.Data != want || dirs.Config != filepath.Join(want, "config") || dirs.Versions != filepath.Join(want, "versions") {
+		t.Fatalf("Windows dirs = %#v, want root %q", dirs, want)
+	}
+
+	t.Setenv("HOME", "")
+	if userHome, err := os.UserHomeDir(); err == nil && userHome != "" && homeDir() != userHome {
+		t.Fatalf("homeDir fallback = %q, want %q", homeDir(), userHome)
+	}
+}
 
 func TestProfiles(t *testing.T) {
 	for _, tc := range []struct {

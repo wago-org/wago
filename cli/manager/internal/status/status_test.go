@@ -84,17 +84,17 @@ func TestPrintKeepsStatusCompact(t *testing.T) {
 		RuntimeVersion:  "nightly",
 		RuntimeProfile:  "standard",
 		RuntimeBuild:    "normal",
-		RuntimePath:     "/tmp/wago-runtime",
+		RuntimePath:     filepath.FromSlash("/tmp/wago-runtime"),
 		Scope:           "local",
-		ProjectDir:      "/tmp/project",
-		ManifestPath:    "/tmp/project/wago.json",
+		ProjectDir:      filepath.FromSlash("/tmp/project"),
+		ManifestPath:    filepath.FromSlash("/tmp/project/wago.json"),
 		Plugins:         2,
 		LockState:       "up to date",
 		ConfigScope:     "local",
-		ConfigPath:      "/tmp/project/wago.json",
+		ConfigPath:      filepath.FromSlash("/tmp/project/wago.json"),
 		ConfigOverrides: 2,
 	})
-	for _, want := range []string{"Wago status", "nightly (standard/normal)", "local", "2 overrides", "settings", "directory", "/tmp/project", "2 enabled", "up to date"} {
+	for _, want := range []string{"Wago status", "nightly (standard/normal)", "local", "2 overrides", "settings", "directory", filepath.FromSlash("/tmp/project"), "2 enabled", "up to date"} {
 		if !strings.Contains(output.String(), want) {
 			t.Errorf("output does not contain %q:\n%s", want, output.String())
 		}

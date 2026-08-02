@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -14,6 +15,14 @@ import (
 	managerprogress "github.com/wago-org/wago/cli/manager/internal/progress"
 	"github.com/wago-org/wago/internal/wagopaths"
 )
+
+func setTestHome(t *testing.T, home string) {
+	t.Helper()
+	t.Setenv("HOME", home)
+	if runtime.GOOS == "windows" {
+		t.Setenv("USERPROFILE", home)
+	}
+}
 
 func TestSelfUpdateSkipsMatchingManagerCommit(t *testing.T) {
 	executable := filepath.Join(t.TempDir(), "wago")
@@ -108,7 +117,7 @@ func TestParseSelfUninstallMode(t *testing.T) {
 
 func TestSelfUninstallRequiresConfirmationAndPreservesProjects(t *testing.T) {
 	root := t.TempDir()
-	t.Setenv("HOME", root)
+	setTestHome(t, root)
 	managed := filepath.Join(root, ".wago")
 	project := filepath.Join(root, "project")
 	manager := filepath.Join(managed, "bin", "wago")
@@ -182,14 +191,14 @@ func TestRemoveInstallerPathBlocksPreservesUnrelatedLines(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := info.Mode().Perm(), os.FileMode(0o640); got != want {
+	if got, want := info.Mode().Perm(), os.FileMode(0o640); runtime.GOOS != "windows" && got != want {
 		t.Fatalf("shell config mode = %v, want %v", got, want)
 	}
 }
 
 func TestSelfUninstallTargetsOnlyManagedState(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setTestHome(t, home)
 	dirs := wagopaths.Dirs{
 		Data:    filepath.Join(home, ".wago"),
 		Config:  filepath.Join(home, ".wago", "config"),
@@ -206,7 +215,7 @@ func TestSelfUninstallTargetsOnlyManagedState(t *testing.T) {
 
 func TestSelfUninstallRemovesInstalledFishCompletion(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setTestHome(t, home)
 	t.Setenv("XDG_CONFIG_HOME", "")
 	completion := filepath.Join(home, ".config", "fish", "completions", "wago.fish")
 	if err := os.MkdirAll(filepath.Dir(completion), 0o755); err != nil {
@@ -225,7 +234,7 @@ func TestSelfUninstallRemovesInstalledFishCompletion(t *testing.T) {
 func TestSelfUninstallTargetsCollapseCustomWagoHome(t *testing.T) {
 	home := t.TempDir()
 	root := filepath.Join(home, "custom-wago")
-	t.Setenv("HOME", home)
+	setTestHome(t, home)
 	t.Setenv("WAGO_HOME", root)
 	dirs := wagopaths.Dirs{
 		Data:   filepath.Join(root, "data"),
@@ -240,7 +249,7 @@ func TestSelfUninstallTargetsCollapseCustomWagoHome(t *testing.T) {
 
 func TestSelfUninstallPartialPreservesGlobalPlugins(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setTestHome(t, home)
 	root := filepath.Join(home, ".wago")
 	dirs := wagopaths.Dirs{
 		Data:     root,
@@ -292,7 +301,7 @@ func TestSelfUninstallPartialPreservesGlobalPlugins(t *testing.T) {
 
 func TestSelfUninstallMinimalRemovesOnlyManager(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setTestHome(t, home)
 	root := filepath.Join(home, ".wago")
 	dirs := wagopaths.Dirs{
 		Data:     root,
