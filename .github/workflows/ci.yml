@@ -205,7 +205,9 @@ jobs:
       - name: Install wabt (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
-        run: choco install wabt --yes --no-progress
+        # WABT does not publish a Chocolatey package. Its official Windows x64
+        # build runs natively on amd64 and through Windows 11 ARM emulation.
+        run: ./tests/scripts/install-wabt-windows.ps1
 
       - name: Verify native runner
         if: runner.os != 'Windows'
