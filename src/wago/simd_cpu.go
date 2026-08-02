@@ -1,9 +1,6 @@
 package wago
 
 import (
-	"os"
-	"runtime"
-	"strings"
 	"sync"
 )
 
@@ -28,22 +25,4 @@ func cachedSIMDHostFeatures() bool {
 
 func hostSupportsSIMD() bool { return simdHostFeaturesSupported() }
 
-func detectSIMDHostFeatures() bool {
-	if runtime.GOARCH == "arm64" {
-		return true
-	}
-	if runtime.GOARCH != "amd64" {
-		return false
-	}
-	data, err := os.ReadFile("/proc/cpuinfo")
-	if err != nil {
-		// Be conservative: without a reliable feature source, don't admit SIMD wasm.
-		return false
-	}
-	flags := strings.Fields(strings.ToLower(string(data)))
-	seen := map[string]bool{}
-	for _, f := range flags {
-		seen[f] = true
-	}
-	return seen["avx"] && seen["ssse3"] && seen["sse4_1"]
-}
+func detectSIMDHostFeatures() bool { return architectureSupportsSIMD() }

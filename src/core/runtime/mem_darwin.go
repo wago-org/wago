@@ -1,13 +1,14 @@
-//go:build darwin && arm64
+//go:build darwin && (amd64 || arm64)
 
 package runtime
 
 import (
+	"os"
 	"sync"
 	"syscall"
 )
 
-const pageSize = 16 << 10
+var pageSize = os.Getpagesize()
 
 func roundUpPage(n int) int {
 	if n <= 0 {
@@ -30,8 +31,8 @@ func mmapRWReserve(n int) ([]byte, error) {
 	return mmapRW(n)
 }
 
-// mmapExec maps executable code on Apple Silicon. MAP_JIT is required on many
-// hardened macOS configurations for JIT mappings; the mapping is writable only
+// mmapExec maps executable code on macOS. MAP_JIT is required on many hardened
+// configurations; the mapping is writable only
 // during the copy and then flipped to RX to preserve W^X at the syscall level.
 func mmapExec(code []byte) ([]byte, error) {
 	mem, err := syscall.Mmap(-1, 0, roundUpPage(len(code)),

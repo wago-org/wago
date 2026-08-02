@@ -1,4 +1,4 @@
-//go:build (linux && (amd64 || arm64)) || (darwin && arm64)
+//go:build (linux || darwin || windows) && (amd64 || arm64)
 
 package runtime
 
@@ -30,19 +30,6 @@ type Engine struct {
 	hostScratchInUse bool
 	hostArgs         [maxHostArity]uint64
 	hostResults      [maxHostArity]uint64
-}
-
-func loadTrap(trap []byte) uint32 {
-	if len(trap) < 4 {
-		return 0
-	}
-	return atomic.LoadUint32((*uint32)(unsafe.Pointer(&trap[0])))
-}
-
-func storeTrap(trap []byte, v uint32) {
-	if len(trap) >= 4 {
-		atomic.StoreUint32((*uint32)(unsafe.Pointer(&trap[0])), v)
-	}
 }
 
 const defaultStackBytes = 4 << 20 // 4 MiB foreign execution stack

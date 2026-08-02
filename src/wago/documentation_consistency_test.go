@@ -16,7 +16,7 @@ func TestRepositoryStatusDocuments(t *testing.T) {
 
 	architecture := readRepositoryDocument(t, root, "ARCHITECTURE.md")
 	for _, marker := range []string{
-		"<!-- architecture:targets linux/amd64 linux/arm64 darwin/arm64 -->",
+		"<!-- architecture:targets linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64 -->",
 		fmt.Sprintf("<!-- artifact:codec-version %d -->", wagoVersion),
 	} {
 		if !strings.Contains(architecture, marker) {

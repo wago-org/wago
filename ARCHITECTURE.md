@@ -7,11 +7,11 @@ host-boundary shape and runtime ABI are derived from
 [WARP](https://github.com/wago-org/warp), a C++ single-pass wasm engine maintained
 as a separate repository.
 
-<!-- architecture:targets linux/amd64 linux/arm64 darwin/arm64 -->
-The mature production target is **linux/amd64**. Native Railshot compilation and
-runtime support also exist for **linux/arm64** and **darwin/arm64**, with the
-remaining platform qualification tracked in [FEATURES.md](FEATURES.md) and the
-ARM64 documents under `docs/`.
+<!-- architecture:targets linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64 -->
+Railshot compilation and the native runtime support Linux, macOS, and Windows
+on amd64 and arm64. Linux and Darwin/arm64 additionally support signal-backed
+guard-page bounds checks; all six targets support explicit bounds checks and
+cooperative cancellation safepoints.
 
 <!-- artifact:codec-version 23 -->
 
@@ -429,9 +429,9 @@ to build and test the Go module.
 ## 16. Current scope & limitations
 
 - Wago is JIT-only; there is no interpreter tier.
-- **linux/amd64** is the mature production target. **linux/arm64** and
-  **darwin/arm64** have native compiler/runtime support but remain under platform
-  qualification; Windows is not supported.
+- Linux, macOS, and Windows on amd64 and arm64 execute the native JIT and are
+  required CI and release targets. Signal-backed guard pages remain specific to
+  Linux/amd64, Linux/arm64, and Darwin/arm64; other targets use explicit bounds.
 - WebAssembly 1.0 and the documented WebAssembly 2.0 feature set are complete on
   the supported amd64 baseline. Tail calls, threads/atomics, multi-memory,
   exception handling, and the Wasm GC proposal remain outside the current
