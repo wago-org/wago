@@ -61,32 +61,32 @@ jobs:
             goos: linux
             goarch: amd64
             target: linux-amd64
-            best_effort: true
+            best_effort: false
           - runner: ubuntu-24.04-arm
             goos: linux
             goarch: arm64
             target: linux-arm64
-            best_effort: true
+            best_effort: false
           - runner: macos-15-intel
             goos: darwin
             goarch: amd64
             target: darwin-amd64
-            best_effort: true
+            best_effort: false
           - runner: macos-15
             goos: darwin
             goarch: arm64
             target: darwin-arm64
-            best_effort: true
-          - runner: windows-2022
+            best_effort: false
+          - runner: windows-2025
             goos: windows
             goarch: amd64
             target: windows-amd64
-            best_effort: true
-          - runner: windows-2022
+            best_effort: false
+          - runner: windows-11-arm
             goos: windows
             goarch: arm64
             target: windows-arm64
-            best_effort: true
+            best_effort: false
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -146,7 +146,7 @@ jobs:
         run: |
           mapfile -t assets < <(find release -maxdepth 1 -type f -name 'wago-*' -print | sort)
           test "${#assets[@]}" -gt 0
-          notes=$(printf 'Automated canary build of main at `%s`. Unsupported targets are omitted. Unstable — may break without notice.\n\n' \
+          notes=$(printf 'Automated canary build of main at `%s`. All supported Normal targets are required; unsupported Tiny variants are omitted. Unstable — may break without notice.\n\n' \
             '${{ needs.prepare.outputs.sha }}'; sed -n '1,$p' .github/release-asset-naming.md)
           if gh release view "${{ needs.prepare.outputs.tag }}" --repo "${{ github.repository }}" >/dev/null 2>&1; then
             gh release upload "${{ needs.prepare.outputs.tag }}" --repo "${{ github.repository }}" --clobber "${assets[@]}"

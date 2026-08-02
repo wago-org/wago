@@ -8,27 +8,26 @@ the complete native platform matrix:
 |---|---|---|---:|---:|---:|---:|
 | `ubuntu-24.04` | Linux | amd64 | yes | yes | yes | yes |
 | `ubuntu-24.04-arm` | Linux | arm64 | yes | yes | yes | yes |
-| `macos-15-intel` | Darwin | amd64 | portable compiler/encoder | no | no | no |
+| `macos-15-intel` | Darwin | amd64 | yes | no | yes | yes |
 | `macos-15` | Darwin | arm64 | yes | yes | yes | yes |
+| `windows-2025` | Windows | amd64 | yes | no | yes | yes |
+| `windows-11-arm` | Windows | arm64 | yes | no | yes | yes |
 
 Each matrix cell asserts `go env GOOS` and `GOARCH` before testing. WABT is
 installed explicitly so tests that need `wat2wasm` do not silently skip because
 the runner image lacks the tool.
 
-The three supported runtime targets run `make test`, which builds and tests every
-Go package, including the integrated regression corpus, followed by
-`make test-corpus` with a bounded per-case timeout and
-`make simd` against the official SIMD proposal corpus. Their guard-page cells
+The six supported runtime targets build and test every Go package, including the
+integrated regression corpus, followed by the corpus matrix with a bounded
+per-case timeout and the official SIMD proposal corpus. Their guard-page cells
 additionally run `make test-guard`. A separate mandatory Linux/amd64 **Core v2
 conformance** job installs WABT, initializes the pinned `tests/spec-v2`
 submodule, and runs `make spec2`; it is included in the final `CI` aggregate, so
 it cannot be replaced by a skipped ordinary wrapper or an informational report.
 This is a tooling distinction, not a second test suite: `make spec2` selects
 the same package tests that ordinary `go test ./...` discovers.
-Darwin/amd64 is a native portability check
-for architecture-neutral compiler and encoder packages; wago does not yet
-implement its JIT ABI or signal-backed guard pages for that target, so runtime,
-corpus, and SIMD execution are deliberately excluded.
+Darwin/amd64 and both Windows targets use explicit bounds checks and cooperative
+cancellation safepoints; they do not claim signal-backed guard pages.
 
 Linux/amd64 continues to host architecture-independent lint, TinyGo, coverage,
 and binary-size jobs. TinyGo mirrors the native matrix: Linux/amd64 and
@@ -40,7 +39,7 @@ v2 job is required. The final `CI` aggregation job is the stable
 branch-protection check and fails if any required matrix cell or supporting job,
 including Core v2 conformance, fails.
 
-Nightly, canary, and tagged release workflows attempt Linux, Darwin, and Windows
+Nightly, canary, and tagged release workflows require Linux, Darwin, and Windows
 CLI builds for both amd64 and arm64, then publish every successful binary with
 its SHA-256 checksum. A push to `main` becomes a canary only after that commit's
 `CI` workflow succeeds; failed or cancelled CI runs do not publish a canary.
@@ -50,9 +49,9 @@ never-retargeted prerelease tags; the CLI resolves the newest `nightly-*` or
 standard-Go CLI plus Normal builds of the Standard and Minimal runtimes.
 Linux also requires Tiny builds of both profiles; other platforms publish
 each feature-complete Tiny profile supported by their TinyGo port. Normal favors
-runtime speed; Tiny favors executable size. Windows
-uses cross-compilation from a Windows amd64 runner for arm64. Unsupported native JIT targets are
-best-effort: a failed target is omitted and does not block the release. Every
+runtime speed; Tiny favors executable size. Windows uses a native Windows 11
+arm64 runner for arm64. A failed target blocks the release rather than silently
+omitting a supported platform. Every
 channel uses `wago-<goos>-<goarch>` for the manager and
 `wago-runtime-<profile>-<build>-<goos>-<goarch>` for runtimes.
 Both the matrix job and publisher run `scripts/verify-channel-assets.sh`; an

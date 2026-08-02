@@ -40,22 +40,22 @@ jobs:
             goos: darwin
             goarch: amd64
             target: darwin-amd64
-            best_effort: true
+            best_effort: false
           - runner: macos-15
             goos: darwin
             goarch: arm64
             target: darwin-arm64
-            best_effort: true
-          - runner: windows-2022
+            best_effort: false
+          - runner: windows-2025
             goos: windows
             goarch: amd64
             target: windows-amd64
-            best_effort: true
-          - runner: windows-2022
+            best_effort: false
+          - runner: windows-11-arm
             goos: windows
             goarch: arm64
             target: windows-arm64
-            best_effort: true
+            best_effort: false
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
