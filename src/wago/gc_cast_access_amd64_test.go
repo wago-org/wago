@@ -57,6 +57,44 @@ func TestGCFinalCastStructGet(t *testing.T) {
 	}
 }
 
+func TestGCFinalCastStructGetPreservesPinnedLocals(t *testing.T) {
+	structType := []byte{0x5f}
+	structType = append(structType, wasmtest.Vec([]byte{0x63, 0x00, 0x01})...)
+	params := []wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32}
+	types := wasmtest.Section(1, wasmtest.Vec(structType, wasmtest.FuncType(params, []wasm.ValType{wasm.I32})))
+	funcs := wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1)))
+	exports := wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0)))
+	body := []byte{
+		0x41, 0x05, 0x21, 0x04, // local 4 = 5
+		0x41, 0x06, 0x21, 0x05, // local 5 = 6
+		0x41, 0x07, 0x21, 0x06, // local 6 = 7
+		0xd0, 0x00,
+		0xfb, 0x00, 0x00, // struct.new type 0
+		0xfb, 0x16, 0x00, // ref.cast (ref type 0)
+		0xfb, 0x02, 0x00, 0x00, // struct.get type 0 field 0
+		0xd1, // ref.is_null
+	}
+	for i := byte(0); i < 7; i++ {
+		body = append(body, 0x20, i, 0x6a)
+	}
+	body = append(body, 0x0b)
+	fn := append([]byte{0x01, 0x03, 0x7f}, body...)
+	code := wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(fn))), fn...)))
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), wasmtest.Module(types, funcs, exports, code))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	instance, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	if got, err := instance.Invoke("run", 1, 2, 3, 4); err != nil || len(got) != 1 || got[0] != 29 {
+		t.Fatalf("run = %v, %v; want [29]", got, err)
+	}
+}
+
 func TestGCFinalCastStructGetTrapOrder(t *testing.T) {
 	tests := []struct {
 		name string
@@ -157,6 +195,54 @@ func TestGCFinalCastOnlyTrapOrder(t *testing.T) {
 			}
 			if err != nil || len(got) != 1 || got[0] != tc.want {
 				t.Fatalf("run = %v, %v; want [%d]", got, err, tc.want)
+			}
+		})
+	}
+}
+
+func gcNativeNurseryReferenceStoreBytes() []byte {
+	structType := []byte{0x5f}
+	structType = append(structType, wasmtest.Vec([]byte{0x6d, 0x01})...) // (field (mut eqref))
+	arrayType := []byte{0x5e, 0x6d, 0x01}                                // (array (mut eqref))
+	types := wasmtest.Section(1, wasmtest.Vec(structType, arrayType, wasmtest.FuncType(nil, []wasm.ValType{wasm.I32})))
+	funcs := wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2)))
+	exports := wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0)))
+	body := []byte{
+		0x02, 0x01, 0x63, 0x00, 0x01, 0x63, 0x01, // locals: (ref null 0), (ref null 1)
+		0xd0, 0x6d, 0xfb, 0x00, 0x00, 0x21, 0x00, // parent = struct.new 0 (ref.null eq)
+		0x20, 0x00, 0x41, 0x07, 0xfb, 0x1c, 0xfb, 0x05, 0x00, 0x00, // parent.field = i31(7)
+		0x20, 0x00, 0xfb, 0x02, 0x00, 0x00, 0x41, 0x07, 0xfb, 0x1c, 0xd3, // ref.eq(parent.field, i31(7))
+		0x41, 0x02, 0xfb, 0x07, 0x01, 0x21, 0x01, // array = array.new_default 1, length 2
+		0x20, 0x01, 0x41, 0x01, 0x41, 0x09, 0xfb, 0x1c, 0xfb, 0x0e, 0x01, // array[1] = i31(9)
+		0x20, 0x01, 0x41, 0x01, 0xfb, 0x0b, 0x01, 0x41, 0x09, 0xfb, 0x1c, 0xd3, // ref.eq(array[1], i31(9))
+		0x6a, 0x0b, // add; end
+	}
+	code := wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...)))
+	return wasmtest.Module(types, funcs, exports, code)
+}
+
+func TestGCNativeNurseryReferenceStoresPreserveFallbackProfiles(t *testing.T) {
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcNativeNurseryReferenceStoreBytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	profiles := []struct {
+		name string
+		gc   GCConfig
+	}{
+		{name: "throughput", gc: GCConfig{StressBarriers: true, VerifyAfterCollect: true}},
+		{name: "tiny fallback", gc: GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 128, TinyBlockBytes: 16, StressBarriers: true, VerifyAfterCollect: true}},
+	}
+	for _, tc := range profiles {
+		t.Run(tc.name, func(t *testing.T) {
+			instance, err := Instantiate(compiled, InstantiateOptions{GC: tc.gc})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer instance.Close()
+			if got, err := instance.Invoke("run"); err != nil || len(got) != 1 || got[0] != 2 {
+				t.Fatalf("run = %v, %v; want [2]", got, err)
 			}
 		})
 	}

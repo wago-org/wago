@@ -496,7 +496,7 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 			start := int(i) * valueSlots
 			values[i] = arrayStoredValue(typeID, args[start:start+valueSlots])
 		}
-		ref, err := in.gc.NewArrayFixedWithRoots(in.requireGCDomainType(typeID), values, frameRoots)
+		ref, err := in.gc.NewArrayFixedPrevalidatedWithRoots(in.requireGCDomainType(typeID), values, frameRoots)
 		if err != nil {
 			panic(gcStructHelperError{err: err})
 		}
@@ -505,7 +505,7 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 		if len(args) != 2 || len(results) < 1 {
 			panic(gcStructHelperError{err: fmt.Errorf("gc array alloc-default helper arity = %d/%d, want 2/at-least-1", len(args), len(results))})
 		}
-		ref, err := in.gc.NewArrayDefaultWithRoots(in.requireGCDomainType(uint32(args[1])), uint32(args[0]), frameRoots)
+		ref, err := in.gc.NewArrayDefaultPrevalidatedWithRoots(in.requireGCDomainType(uint32(args[1])), uint32(args[0]), frameRoots)
 		if err != nil {
 			panic(gcStructHelperError{err: err})
 		}

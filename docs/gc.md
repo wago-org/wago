@@ -104,14 +104,31 @@ with 0 B/op and 0 allocs/op on the Ryzen 7 8845HS host.
 AMD64 final scalar struct/array get/set operations now bypass the parked helper
 through native collector ABI v1. One collector-owned stable view publishes the
 relocatable handle-table pointer/count, five indexed heap-space descriptors, and a
-refresh generation; allocation and collection republish it in place. One
-instance-owned view publishes the immutable local-to-canonical type map at basedata
-offset 280. Generated code reloads every pointer per access and checks ABI version,
-handle tag/range, space range, object extent, exact canonical type, and array index
-before touching payload bytes. Non-final types, references, `v128`, bulk operations,
-and every store requiring a Tiny/Throughput barrier retain helper lowering. Current
+refresh generation; collection and relocating/large-space allocation republish the
+complete view, while ordinary nursery allocation updates only handle metadata and
+generation. One instance-owned view publishes the immutable local-to-canonical type
+map at basedata offset 280. Generated code reloads every pointer per access and
+checks ABI version, handle tag/range, space range, object extent, exact canonical
+type, and array index before touching payload bytes.
+
+Shared AMD64 stubs additionally cover final casts, final cast-plus-array-length,
+final reference-array reads, and final cast-plus-reference-struct reads. Final
+mutable `eqref`/`anyref` struct fields and arrays perform a checked direct store only
+when the parent is in Throughput nursery space; old/large/Tiny parents and malformed
+references take the unchanged helper with the full remembered-set or incremental
+barrier. Conditional lowering preserves hot pinned registers and emits local reloads
+only on the fallback edge. Non-final types, `v128`, bulk operations, and every write
+that cannot prove nursery ownership retain helper lowering. Current scalar
 end-to-end measurements are 227.9–229.4 ns/op for struct set/get, 218.2–219.9 ns/op
-for struct get, and 265.2–265.6 ns/op for array set/get, all 0 B/op and 0 allocs/op.
+for struct get, and 265.2–265.6 ns/op for array set/get; final cast/reference-struct
+get measures about 230–237 ns/op, all at 0 B/op and 0 allocs/op.
+
+Fully initialized helper-side `struct.new` prevalidates field kinds, ownership,
+subtyping, and nullability once, then passes raw helper ABI words directly to the
+collector. A reusable word-root scratch exposes object-reference words as mutable
+roots across a collecting allocation, after which the collector stores the raw
+numeric/reference/vector words without constructing an intermediate `[]Value`.
+The generic public constructors keep their complete independent validation.
 
 A pinned single-CPU benchmark pass on July 16, 2026 (Ryzen 7 8845HS, Go 1.24.4)
 measured the 44,023-byte MoonBit JSON module at 0.276 ms decode, 1.380 ms

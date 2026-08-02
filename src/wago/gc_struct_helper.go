@@ -93,8 +93,7 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 		}
 		return 1
 	}
-	structValue := func(typeID, fieldID uint32, words []uint64) gc.Value {
-		kind := structFieldKind(typeID, fieldID)
+	structValueKnown := func(typeID, fieldID uint32, kind gc.StorageKind, want ValueTypeDescriptor, words []uint64) gc.Value {
 		wantSlots := 1
 		if kind == gc.StorageV128 {
 			wantSlots = 2
@@ -103,7 +102,6 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 			panic(gcStructHelperError{err: fmt.Errorf("gc struct field %d:%d value uses %d slot(s), want %d", typeID, fieldID, len(words), wantSlots)})
 		}
 		bits := words[0]
-		want := in.c.Types[typeID].Fields[fieldID].Storage.Value
 		if kind == gc.StorageFuncRef || kind == gc.StorageFuncRefNull {
 			if bits == 0 {
 				if kind == gc.StorageFuncRef {
@@ -146,6 +144,10 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 		}
 		return gc.RefValue(ref)
 	}
+	structValue := func(typeID, fieldID uint32, words []uint64) gc.Value {
+		kind := structFieldKind(typeID, fieldID)
+		return structValueKnown(typeID, fieldID, kind, in.c.Types[typeID].Fields[fieldID].Storage.Value, words)
+	}
 	switch helper {
 	case gcStructAllocDefault:
 		if len(args) != 1 || len(results) < 1 {
@@ -168,24 +170,31 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 		if int(typeID) >= len(in.c.GCTypeDescs) || in.c.GCTypeDescs[typeID].Kind != gc.KindStruct {
 			panic(gcStructHelperError{err: fmt.Errorf("gc struct type %d is unavailable", typeID)})
 		}
-		fieldCount := len(in.c.GCTypeDescs[typeID].Fields)
-		if fieldCount > len(state.values) {
-			panic(gcStructHelperError{err: fmt.Errorf("gc struct type %d exceeds %d helper initializer values", typeID, len(state.values))})
-		}
-		values := state.values[:fieldCount]
+		descFields := in.c.GCTypeDescs[typeID].Fields
+		typeFields := in.c.Types[typeID].Fields
 		cursor := 0
-		for i := range values {
-			slots := structValueSlots(typeID, uint32(i))
+		for i := range descFields {
+			kind := descFields[i].Kind
+			slots := 1
+			if kind == gc.StorageV128 {
+				slots = 2
+			}
 			if cursor+slots > len(args)-1 {
 				panic(gcStructHelperError{err: fmt.Errorf("gc struct type %d initializer slots end at %d, args = %d", typeID, cursor+slots, len(args))})
 			}
-			values[i] = structValue(typeID, uint32(i), args[cursor:cursor+slots])
+			words := args[cursor : cursor+slots]
+			switch kind {
+			case gc.StorageRef, gc.StorageRefNull,
+				gc.StorageFuncRef, gc.StorageFuncRefNull,
+				gc.StorageExternRef, gc.StorageExternRefNull:
+				_ = structValueKnown(typeID, uint32(i), kind, typeFields[i].Storage.Value, words)
+			}
 			cursor += slots
 		}
 		if cursor != len(args)-1 {
 			panic(gcStructHelperError{err: fmt.Errorf("gc struct type %d initializer uses %d slots, args = %d", typeID, cursor, len(args))})
 		}
-		ref, err := in.gc.NewStructWithRootScratch(in.requireGCDomainType(typeID), values, frameRoots, &state.initializerRoots)
+		ref, err := in.gc.NewStructWordsPrevalidatedWithRootScratch(in.requireGCDomainType(typeID), args[:len(args)-1], frameRoots, &state.initializerRoots)
 		if err != nil {
 			panic(gcStructHelperError{err: err})
 		}

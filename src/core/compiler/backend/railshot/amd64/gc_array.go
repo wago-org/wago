@@ -185,6 +185,9 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		if f.emitDirectGCArraySet(typeIndex) {
 			return nil
 		}
+		if target, found := nativeGCFlatType(f.m, typeIndex); found && target.Final && field.Storage.Val.Kind == wasm.ValRef && field.Storage.Val.Ref.Heap.Kind == wasm.HeapAbs && (field.Storage.Val.Ref.Heap.Abs == wasm.HeapAny || field.Storage.Val.Ref.Heap.Abs == wasm.HeapEq) {
+			return f.emitNativeNurseryArrayRefSet(typeIndex, valueType)
+		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		object := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
 		return f.callGCStructHelper(gcArraySet, []wasm.ValType{object, wasm.I32, valueType, wasm.I32}, nil)

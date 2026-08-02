@@ -52,8 +52,9 @@ warmup:
 | Wago at `a21b7007` | 4.466 ms | 4.464 ms | interleaved A/B; fresh collector |
 | Wago at `802af7fc` | 3.679 ms | 3.701 ms | typed fusion and constructor scratch |
 | Wago after shared AMD64 native paths | 1.877 ms | 1.895 ms | interleaved A/B; fresh collector |
+| Wago after final-reference resolver and nursery stores | about 0.95 ms | about 0.98 ms | best controlled fresh runs; current workspace |
 
-The latest Wago result is therefore about 15.9x the hot Node median and 3.8x
+The latest controlled Wago result is therefore about 8.1x the hot Node median and 1.9x
 the fresh-instance Node median. The distinction matters: repeated Wago calls
 also expose old-heap growth and major-collection policy, while Node's hot result
 includes tiered optimized code.
@@ -284,6 +285,53 @@ retry still fails with the original bounded exhaustion error.
 The complete plugin-enabled stripped TinyGo binary grows
 **1,759,300→1,761,156 bytes** for this pass, **+1,856 bytes/+0.105%**.
 
+### Native final-reference resolution and nursery-safe writes
+
+A smaller native resolver now replaces the remaining 10,224 final
+cast-plus-reference-`struct.get` transitions. It repeats the complete collector
+ABI, compact-handle, heap-space, object-extent, and exact canonical final-type
+proof, returns the resolved header pointer, and performs the immediate
+constant-offset four-byte field load before any safepoint. A pinned-local
+regression test covers the out-of-line resolver. The focused final cast/get
+benchmark is approximately 230-237 ns/op at 0 B/op and 0 allocs/op.
+
+Reference writes use a narrower optimization than the previously rejected
+unconditional native barrier. Final `eqref`/`anyref` struct fields and arrays now
+probe one shared checked stub and store directly only when the parent is in the
+Throughput nursery. Nursery parents need neither old-to-young remembered-set
+publication nor Tiny incremental marking. Old/large/Tiny parents, invalid
+handles, and unsupported storage take the unchanged Go helper, retaining exact
+validation and barriers. The stub validates the child compact reference before
+mutation. Conditional lowering also restores pinned locals only on the cold Go
+fallback; the hot native edge skips both helper transition and local spill/reload.
+A dedicated Throughput/Tiny test caught and fixed both conditional-local-state
+merging and four-byte array-reference store width.
+
+Constructor helpers now validate descriptor kinds once, pass raw helper ABI words
+directly into a prevalidated collector constructor, and expose those mutable raw
+reference words through reusable exact root scratch if allocation collects. This
+removes the intermediate `[]gc.Value` conversion/store walk. Nursery allocation
+refreshes only native handle pointer/count/generation metadata; collection and
+large-space growth still refresh the complete space view. A focused allocation
+A/B measured about 55.6 ns versus 57.0 ns for full-view refresh.
+
+| Measurement | Before this pass | Current | Change |
+| --- | ---: | ---: | ---: |
+| generated native code | 8,960,336 B | 7,479,004 B | -16.5% |
+| final reference-read Go transitions | 10,224 | 0 | -100% |
+| static synchronous fallback sites | 18,412 | 8,188 | -55.5% |
+| fresh Dew median, stable pinned runs | about 1.33 ms | about 0.95 ms | about -29% |
+| 500-call sustained median | about 1.60-1.66 ms | about 1.28 ms | about -21% |
+| fresh host allocation | 924,512 B/op | 924,536 B/op | effectively unchanged |
+| fresh host allocations | 90/op | 90/op | unchanged |
+
+The remaining 8,188 static helper sites are 4,098 constructors plus 4,090 exact
+write fallbacks. The write calls remain in generated code because old/Tiny
+parents still require them, but nursery-heavy Dew execution usually takes the
+native edge. The plugin-complete stripped TinyGo candidate is 1,774,188 bytes,
+up 13,032 bytes (+0.740%) from the 1,761,156-byte pre-pass release, and executes
+the artifact successfully.
+
 Two additional experiments were rejected:
 
 - specialized abstract-anyref struct/array stores preserved exact barriers but
@@ -302,31 +350,28 @@ and increases instruction-cache pressure.
 
 ## Remaining gap
 
-The remaining hot Node gap is primarily architectural. The optimized artifact's
-18,412 synchronous helper sites are now distributed exactly as follows:
+The remaining hot Node gap is primarily architectural. The optimized artifact's 8,188 synchronous helper sites are now distributed
+exactly as follows:
 
 | Helper family | Static sites | Share |
 | --- | ---: | ---: |
-| final cast + reference `struct.get` | 10,224 | 55.5% |
-| `struct.new` | 2,050 | 11.1% |
-| barrier-bound `array.set` | 2,046 | 11.1% |
-| barrier-bound reference `struct.set` | 2,044 | 11.1% |
-| `array.new_default` | 1,024 | 5.6% |
-| `array.new_fixed` | 1,024 | 5.6% |
+| `struct.new` | 2,050 | 25.0% |
+| old/Tiny fallback `array.set` | 2,046 | 25.0% |
+| old/Tiny fallback reference `struct.set` | 2,044 | 25.0% |
+| `array.new_default` | 1,024 | 12.5% |
+| `array.new_fixed` | 1,024 | 12.5% |
 
-The native/Go helper loop remains the dominant sampled runtime family. The next
-measured options should be, in order:
+The next measured options should be, in order:
 
-1. reduce the 10,224 reference-field helper transitions without retaining the
-   regressed full native fused stub—candidates include a smaller resolver stub,
-   immutable per-site descriptor records, or a more specialized Go helper;
-2. publish a bounded native remembered-set/card barrier so the 4,090 reference
-   write sites can avoid Go while preserving nursery ownership and exact mutation;
-3. add native bump allocation plus one shared collection/handle slow path for the
+1. add native bump allocation plus one shared collection/handle slow path for the
    4,098 constructor sites;
+2. publish a bounded native remembered-set/card barrier so old/large parent writes
+   can avoid the remaining 4,090 fallback sites while preserving Tiny incremental
+   semantics and exact mutation;
+3. reduce raw constructor/root preparation and allocation metadata publication;
 4. mature the retained full-retry path into compacting or segmented old space and
    quantify worst-case pause behavior for larger live graphs;
-5. qualify the profitable shared native read/cast paths on ARM64; and
+5. qualify the profitable shared native read/cast/write paths on ARM64; and
 6. use producer-side typed scratch locals to reduce repeated dynamic checks while
    retaining Wago correctness for arbitrary producers.
 

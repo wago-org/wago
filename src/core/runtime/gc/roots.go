@@ -106,6 +106,62 @@ func (s *InitializerRootScratch) clear() {
 	s.first, s.values, s.fields, s.active = nil, nil, nil, false
 }
 
+// InitializerWordRootScratch is the raw-slot counterpart used by the Wasm
+// struct.new helper after it has prevalidated every field. Collector references
+// remain mutable in the parked helper argument slots across a moving collection.
+type InitializerWordRootScratch struct {
+	first  RootSet
+	words  []uint64
+	fields []FieldDesc
+	active bool
+}
+
+func (s *InitializerWordRootScratch) RangeRoots(fn func(RootSlot) bool) {
+	if s.first != nil {
+		keepGoing := true
+		s.first.RangeRoots(func(slot RootSlot) bool {
+			keepGoing = fn(slot)
+			return keepGoing
+		})
+		if !keepGoing {
+			return
+		}
+	}
+	cursor := 0
+	for _, field := range s.fields {
+		if cursor >= len(s.words) {
+			return
+		}
+		if isCollectorRefKind(field.Kind) && !fn(wordRootSlot{words: s.words, idx: cursor}) {
+			return
+		}
+		cursor++
+		if field.Kind == StorageV128 {
+			cursor++
+		}
+	}
+}
+
+func (s *InitializerWordRootScratch) prepare(first RootSet, words []uint64, fields []FieldDesc) bool {
+	if s == nil || s.active {
+		return false
+	}
+	s.first, s.words, s.fields, s.active = first, words, fields, true
+	return true
+}
+
+func (s *InitializerWordRootScratch) clear() {
+	s.first, s.words, s.fields, s.active = nil, nil, nil, false
+}
+
+type wordRootSlot struct {
+	words []uint64
+	idx   int
+}
+
+func (s wordRootSlot) GetRef() Ref  { return Ref(uint32(s.words[s.idx])) }
+func (s wordRootSlot) SetRef(r Ref) { s.words[s.idx] = uint64(r) }
+
 type valueRootSlot struct {
 	values []Value
 	idx    int

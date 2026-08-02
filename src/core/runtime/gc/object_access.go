@@ -24,6 +24,65 @@ func (c *Collector) NewStructWithRootScratch(typeID TypeID, values []Value, root
 	return c.newStructWithRoots(typeID, values, roots, scratch)
 }
 
+// NewStructWordsPrevalidatedWithRootScratch constructs directly from helper ABI
+// words after exact field validation. The mutable words are rooted and reread if
+// allocation moves an initializer object, avoiding an intermediate []Value walk.
+func (c *Collector) NewStructWordsPrevalidatedWithRootScratch(typeID TypeID, words []uint64, roots RootSet, scratch *InitializerWordRootScratch) (Ref, error) {
+	d, err := c.desc(typeID)
+	if err != nil {
+		return Null(), err
+	}
+	if d.Kind != KindStruct {
+		return Null(), errors.New("gc: struct initializer shape mismatch")
+	}
+	cursor := 0
+	hasObjectRefs := false
+	for _, field := range d.Fields {
+		if cursor >= len(words) {
+			return Null(), errors.New("gc: struct initializer word shape mismatch")
+		}
+		if isCollectorRefKind(field.Kind) {
+			hasObjectRefs = hasObjectRefs || Ref(uint32(words[cursor])).IsObj()
+		}
+		cursor++
+		if field.Kind == StorageV128 {
+			cursor++
+		}
+	}
+	if cursor != len(words) {
+		return Null(), errors.New("gc: struct initializer word shape mismatch")
+	}
+	if hasObjectRefs {
+		if !scratch.prepare(roots, words, d.Fields) {
+			return Null(), errors.New("gc: struct initializer word root scratch is already in use")
+		}
+		defer scratch.clear()
+		roots = scratch
+	}
+	sz := Align8(HeaderSize + d.Size)
+	r, err := c.alloc(d, sz, 0, roots)
+	if err != nil {
+		return Null(), err
+	}
+	payload := c.bytes(r)[PayloadOffset:]
+	cursor = 0
+	for _, field := range d.Fields {
+		slots := 1
+		if field.Kind == StorageV128 {
+			slots = 2
+		}
+		storeWordsUnchecked(payload, uint64(field.Offset), field.Kind, words[cursor:cursor+slots])
+		cursor += slots
+	}
+	if d.HasRefs && c.cfg.Profile != ProfileTiny {
+		h := handleOf(r)
+		if (c.handles[h].space == spaceOld || c.handles[h].space == spaceLarge) && c.handleContainsNurseryRef(h) {
+			c.remember(h)
+		}
+	}
+	return r, nil
+}
+
 func (c *Collector) newStructWithRoots(typeID TypeID, values []Value, roots RootSet, scratch *InitializerRootScratch) (Ref, error) {
 	d, err := c.desc(typeID)
 	if err != nil {
@@ -32,7 +91,7 @@ func (c *Collector) newStructWithRoots(typeID TypeID, values []Value, roots Root
 	if d.Kind != KindStruct || len(values) != len(d.Fields) {
 		return Null(), errors.New("gc: struct initializer shape mismatch")
 	}
-	hasRefs := false
+	hasRefs := d.HasRefs
 	hasObjectRefs := false
 	for i, field := range d.Fields {
 		if err := checkValueCompatible(field.Kind, values[i]); err != nil {
@@ -42,7 +101,6 @@ func (c *Collector) newStructWithRoots(typeID TypeID, values []Value, roots Root
 			if err := c.validateStoredRef(values[i].Ref, isNullableReferenceStorage(field.Kind)); err != nil {
 				return Null(), err
 			}
-			hasRefs = true
 			hasObjectRefs = hasObjectRefs || values[i].Ref.IsObj()
 		}
 	}
@@ -57,10 +115,9 @@ func (c *Collector) newStructWithRoots(typeID TypeID, values []Value, roots Root
 			roots = combineRootSets(roots, valueRootSet{values: values, fields: d.Fields})
 		}
 	}
-	sz, err := StructSize(d)
-	if err != nil {
-		return Null(), err
-	}
+	// Collector construction validates every descriptor and padded size, so this
+	// initialized-constructor hot path need not repeat overflow arithmetic.
+	sz := Align8(HeaderSize + d.Size)
 	r, err := c.alloc(d, sz, 0, roots)
 	if err != nil {
 		return Null(), err
@@ -134,6 +191,16 @@ func (c *Collector) NewArray(typeID TypeID, length uint32, init Value) (Ref, err
 // element. Reference operands are rooted across allocation and reread before
 // stores, matching the atomic operand lifetime required by array.new_fixed.
 func (c *Collector) NewArrayFixedWithRoots(typeID TypeID, values []Value, roots RootSet) (Ref, error) {
+	return c.newArrayFixedWithRoots(typeID, values, roots, false)
+}
+
+// NewArrayFixedPrevalidatedWithRoots is the runtime-helper counterpart after
+// exact element kind, collector ownership, subtype, and nullability validation.
+func (c *Collector) NewArrayFixedPrevalidatedWithRoots(typeID TypeID, values []Value, roots RootSet) (Ref, error) {
+	return c.newArrayFixedWithRoots(typeID, values, roots, true)
+}
+
+func (c *Collector) newArrayFixedWithRoots(typeID TypeID, values []Value, roots RootSet, prevalidated bool) (Ref, error) {
 	d, err := c.desc(typeID)
 	if err != nil {
 		return Null(), err
@@ -141,12 +208,16 @@ func (c *Collector) NewArrayFixedWithRoots(typeID TypeID, values []Value, roots 
 	if d.Kind != KindArray {
 		return Null(), errors.New("gc: not array")
 	}
+	hasObjectRefs := false
 	for i := range values {
-		if err := c.validateArrayStore(d, values[i]); err != nil {
-			return Null(), err
+		if !prevalidated {
+			if err := c.validateArrayStore(d, values[i]); err != nil {
+				return Null(), err
+			}
 		}
+		hasObjectRefs = hasObjectRefs || (isCollectorRefKind(d.Elem) && values[i].Ref.IsObj())
 	}
-	if isCollectorRefKind(d.Elem) && len(values) != 0 {
+	if hasObjectRefs {
 		roots = combineRootSets(roots, valueRootSet{values: values, all: true})
 	}
 	sz, err := ArraySize(d, uint32(len(values)))
@@ -260,11 +331,21 @@ func (c *Collector) NewArrayUninitializedWithRoots(typeID TypeID, length uint32,
 }
 
 func (c *Collector) NewArrayDefaultWithRoots(typeID TypeID, length uint32, roots RootSet) (Ref, error) {
+	return c.newArrayDefaultWithRoots(typeID, length, roots, false)
+}
+
+// NewArrayDefaultPrevalidatedWithRoots skips the repeated defaultability walk
+// after validated Wasm array.new_default lowering has already proved it.
+func (c *Collector) NewArrayDefaultPrevalidatedWithRoots(typeID TypeID, length uint32, roots RootSet) (Ref, error) {
+	return c.newArrayDefaultWithRoots(typeID, length, roots, true)
+}
+
+func (c *Collector) newArrayDefaultWithRoots(typeID TypeID, length uint32, roots RootSet, prevalidated bool) (Ref, error) {
 	d, err := c.desc(typeID)
 	if err != nil {
 		return Null(), err
 	}
-	if length != 0 {
+	if !prevalidated && length != 0 {
 		if err := checkDefaultable(d); err != nil {
 			return Null(), err
 		}

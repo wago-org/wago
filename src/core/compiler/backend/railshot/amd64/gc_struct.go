@@ -155,6 +155,11 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		if f.emitDirectGCStructSet(typeIndex, fieldIndex) {
 			return nil
 		}
+		if st, found := nativeGCFlatType(f.m, typeIndex); found && st.Final && field.Storage.Val.Kind == wasm.ValRef && field.Storage.Val.Ref.Heap.Kind == wasm.HeapAbs && (field.Storage.Val.Ref.Heap.Abs == wasm.HeapAny || field.Storage.Val.Ref.Heap.Abs == wasm.HeapEq) {
+			if off, size, final, layoutOK := nativeGCStructFieldLayout(f.m, typeIndex, fieldIndex); layoutOK && final && size == 4 {
+				return f.emitNativeNurseryStructRefSet(typeIndex, fieldIndex, off, field.Storage.Val)
+			}
+		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(fieldIndex)})
 		object := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
@@ -341,6 +346,13 @@ func (f *fn) tryFuseFinalCastStructGet(typeIndex uint32, nullable bool, r *wasm.
 		// run independently; this removes the Go transition at a measured code-size cost.
 		_ = r.JumpTo(start)
 		return false, nil
+	}
+	if nativeGCCollectorRefStorage(f.m, typeIndex, field.Storage) {
+		off, size, final, layoutOK := nativeGCStructFieldLayout(f.m, typeIndex, fieldIndex)
+		if layoutOK && final && size == 4 {
+			f.stats.peep("final-cast-struct-get-fuse")
+			return true, f.emitNativeFinalCastStructRefGet(typeIndex, off, nullable)
+		}
 	}
 	resultType := field.Storage.Val
 	if field.Storage.Packed {

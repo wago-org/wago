@@ -114,6 +114,20 @@ func (c *Collector) refreshNativeView() {
 	v.RefreshGeneration++
 }
 
+// refreshNativeHandles updates only allocation-mutated handle metadata. A
+// nursery allocation cannot relocate any heap-space backing, so rewriting all
+// five space descriptors on every hot allocation is redundant. Collection,
+// large-space growth, and Tiny allocation continue to publish the full view.
+func (c *Collector) refreshNativeHandles() {
+	if c == nil || c.nativeView == nil {
+		return
+	}
+	v := c.nativeView
+	v.Handles = sliceData(c.handles)
+	v.HandleCount = uint32(len(c.handles))
+	v.RefreshGeneration++
+}
+
 // NativeView returns the collector-owned stable metadata view. The returned
 // pointer becomes invalid only after Collector.Close; Close first zeros all
 // backing pointers and increments RefreshGeneration.

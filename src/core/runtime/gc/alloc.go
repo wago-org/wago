@@ -103,7 +103,11 @@ func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, err
 	}
 	c.writeHeader(r, ObjHeader{TypeID: uint32(d.ID), Size: size, Aux: aux, Flags: flags})
 	c.stats.Allocations++
-	c.refreshNativeView()
+	if sp == spaceNursery {
+		c.refreshNativeHandles()
+	} else {
+		c.refreshNativeView()
+	}
 	return r, nil
 }
 
