@@ -2,6 +2,25 @@ package wasm
 
 import "testing"
 
+func TestImmediateFreeInstructionKindMatchesDecodeTable(t *testing.T) {
+	for op, want := range simpleOpcode {
+		got, ok := ImmediateFreeInstructionKind(byte(op))
+		if ok != (want != InstrInvalid) || got != want {
+			t.Fatalf("opcode %#x: kind = %v, %v; want %v, %v", op, got, ok, want, want != InstrInvalid)
+		}
+		if !ok {
+			continue
+		}
+		imm, err := ClassifyInstructionImmediate(NewReader(nil), byte(op))
+		if err != nil {
+			t.Fatalf("opcode %#x fast classification: %v", op, err)
+		}
+		if imm.Kind != want {
+			t.Fatalf("opcode %#x classified as %v, want %v", op, imm.Kind, want)
+		}
+	}
+}
+
 func TestSkipInstructionImmediateRepresentativeFormats(t *testing.T) {
 	cases := []struct {
 		name string

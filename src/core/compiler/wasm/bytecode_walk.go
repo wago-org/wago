@@ -14,6 +14,15 @@ type InstructionImmediate struct {
 	UsesBulkMemory bool
 }
 
+// ImmediateFreeInstructionKind reports the decoded kind for an opcode whose
+// instruction has no encoded immediate. Bytecode summary walkers use this fast
+// path to avoid constructing a reader adapter and running the full classifier
+// for the common scalar ALU, comparison, conversion, and stack instructions.
+func ImmediateFreeInstructionKind(op byte) (InstrKind, bool) {
+	kind := simpleOpcode[op]
+	return kind, kind != InstrInvalid
+}
+
 // ClassifyInstructionImmediate consumes the immediates for op from r and returns
 // cheap metadata needed by bytecode walkers. The opcode byte itself must already
 // have been consumed. It validates immediate encodings and skips vector
@@ -37,6 +46,37 @@ func ClassifyInstructionImmediateInto(r *Reader, op byte, imm *InstructionImmedi
 // malformed-immediate checks remain identical to ClassifyInstructionImmediateInto.
 func ClassifyInstructionImmediateIntoWithMemarg64(r *Reader, op byte, imm *InstructionImmediate, memarg64 bool) error {
 	*imm = InstructionImmediate{}
+	if kind := simpleOpcode[op]; kind != InstrInvalid {
+		imm.Kind = kind
+		return nil
+	}
+	// Keep the common scalar immediate forms on the exported Reader. This avoids
+	// constructing the internal decoder adapter for the local/global accesses,
+	// calls, branches, and constants that dominate summary walks.
+	switch op {
+	case 0x05, 0x0b: // else, end
+		return nil
+	case 0x08, 0x0c, 0x0d, 0x10, 0x12, 0x14, 0x15, 0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0xd2, 0xd5, 0xd6:
+		idx, err := r.U32()
+		imm.Kind, imm.Index = oneIndexImmediateKind(op), idx
+		return err
+	case 0x41:
+		_, err := r.I32()
+		imm.Kind = InstrI32Const
+		return err
+	case 0x42:
+		_, err := r.I64()
+		imm.Kind = InstrI64Const
+		return err
+	case 0x43:
+		_, err := r.Bytes(4)
+		imm.Kind = InstrF32Const
+		return err
+	case 0x44:
+		_, err := r.Bytes(8)
+		imm.Kind = InstrF64Const
+		return err
+	}
 	ir := &reader{data: r.data, pos: r.pos}
 	_, err := classifyExprOpAfterOpcodeWithMemarg64(ir, op, imm, memarg64)
 	r.pos = ir.pos

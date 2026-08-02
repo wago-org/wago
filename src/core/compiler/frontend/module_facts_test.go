@@ -1,6 +1,7 @@
 package frontend
 
 import (
+	"bytes"
 	"reflect"
 	"testing"
 
@@ -58,6 +59,20 @@ func TestRejectUnsupportedWithFeaturesAndFactsUsesCallerAnalysis(t *testing.T) {
 	bad.TableGrowUsed = nil
 	if err := RejectUnsupportedWithFeaturesAndFacts(m, Features{ReferenceTypes: true}, &bad); err == nil {
 		t.Fatal("support pass ignored malformed caller-supplied facts and rescanned the module")
+	}
+}
+
+func BenchmarkAnalyzeModuleFactsScalarBody(b *testing.B) {
+	body := bytes.Repeat([]byte{0x41, 1, 0x41, 2, 0x6a, 0x1a}, 16<<10)
+	body = append(body, 0x0b)
+	m := &wasm.Module{Code: []wasm.Func{{BodyBytes: body}}}
+	b.SetBytes(int64(len(body)))
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := AnalyzeModuleFacts(m); err != nil {
+			b.Fatal(err)
+		}
 	}
 }
 

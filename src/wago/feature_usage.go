@@ -234,6 +234,73 @@ func requiredFeaturesAndSegmentCountsForBodyBytes(body []byte, elemStateCount, d
 		if err != nil {
 			break
 		}
+		if kind, ok := wasm.ImmediateFreeInstructionKind(op); ok {
+			out |= requiredFeaturesForInstructionKind(kind)
+			continue
+		}
+		// Scalar constants and one-index control/local/global operations dominate
+		// ordinary function bodies. The requirement pass only needs to consume
+		// their immediate (and, for proposal opcodes, set a feature bit), so avoid
+		// the general classifier and its reader adaptation on this hot path.
+		switch op {
+		case 0x05, 0x0b: // else, end
+			continue
+		case 0x0c, 0x0d, 0x10, 0x20, 0x21, 0x22, 0x23, 0x24: // br*, call, local.*, global.*
+			if _, err := r.U32(); err != nil {
+				return out
+			}
+			continue
+		case 0x08: // throw
+			if _, err := r.U32(); err != nil {
+				return out
+			}
+			out |= CoreFeatureExceptionHandling
+			continue
+		case 0x12: // return_call
+			if _, err := r.U32(); err != nil {
+				return out
+			}
+			out |= CoreFeatureTailCall
+			continue
+		case 0x14, 0xd5, 0xd6: // call_ref, br_on_null, br_on_non_null
+			if _, err := r.U32(); err != nil {
+				return out
+			}
+			out |= CoreFeatureReferenceTypes | CoreFeatureTypedFunctionReferences
+			continue
+		case 0x15: // return_call_ref
+			if _, err := r.U32(); err != nil {
+				return out
+			}
+			out |= CoreFeatureReferenceTypes | CoreFeatureTypedFunctionReferences | CoreFeatureTailCall
+			continue
+		case 0x25, 0x26, 0xd2: // table.get, table.set, ref.func
+			if _, err := r.U32(); err != nil {
+				return out
+			}
+			out |= CoreFeatureReferenceTypes
+			continue
+		case 0x41:
+			if _, err := r.I32(); err != nil {
+				return out
+			}
+			continue
+		case 0x42:
+			if _, err := r.I64(); err != nil {
+				return out
+			}
+			continue
+		case 0x43:
+			if err := r.Step(4); err != nil {
+				return out
+			}
+			continue
+		case 0x44:
+			if err := r.Step(8); err != nil {
+				return out
+			}
+			continue
+		}
 		if op == 0xfd {
 			out |= CoreFeatureSIMD
 		}
@@ -305,32 +372,38 @@ func requiredFeaturesAndSegmentCountsForBodyBytes(body []byte, elemStateCount, d
 			break
 		}
 		segmentStateCount(imm.Kind, imm.Index, imm.Index2, elemStateCount, dataStateCount)
-		switch imm.Kind {
-		case wasm.InstrI32Extend8S, wasm.InstrI32Extend16S, wasm.InstrI64Extend8S, wasm.InstrI64Extend16S, wasm.InstrI64Extend32S:
-			out |= CoreFeatureSignExtensionOps
-		case wasm.InstrMemoryInit, wasm.InstrMemoryCopy, wasm.InstrMemoryFill, wasm.InstrDataDrop,
-			wasm.InstrTableInit, wasm.InstrElemDrop, wasm.InstrTableCopy:
-			out |= CoreFeatureBulkMemoryOperations
-		case wasm.InstrTableGet, wasm.InstrTableSet, wasm.InstrTableGrow, wasm.InstrTableSize, wasm.InstrTableFill,
-			wasm.InstrRefNull, wasm.InstrRefIsNull, wasm.InstrRefFunc, wasm.InstrRefEq:
-			out |= CoreFeatureReferenceTypes
-		case wasm.InstrCallRef, wasm.InstrRefAsNonNull, wasm.InstrBrOnNull, wasm.InstrBrOnNonNull:
-			out |= CoreFeatureReferenceTypes | CoreFeatureTypedFunctionReferences
-		case wasm.InstrReturnCall, wasm.InstrReturnCallIndirect:
-			out |= CoreFeatureTailCall
-		case wasm.InstrReturnCallRef:
-			out |= CoreFeatureReferenceTypes | CoreFeatureTypedFunctionReferences | CoreFeatureTailCall
-		case wasm.InstrThrow, wasm.InstrThrowRef, wasm.InstrTryTable:
-			out |= CoreFeatureExceptionHandling
-		case wasm.InstrI32TruncSatF32S, wasm.InstrI32TruncSatF32U, wasm.InstrI32TruncSatF64S, wasm.InstrI32TruncSatF64U,
-			wasm.InstrI64TruncSatF32S, wasm.InstrI64TruncSatF32U, wasm.InstrI64TruncSatF64S, wasm.InstrI64TruncSatF64U:
-			out |= CoreFeatureNonTrappingFloatToIntConversion
-		}
+		out |= requiredFeaturesForInstructionKind(imm.Kind)
 		if imm.Kind == wasm.InstrCallIndirect && imm.Index2 != 0 {
 			out |= CoreFeatureReferenceTypes
 		}
 	}
 	return out
+}
+
+func requiredFeaturesForInstructionKind(kind wasm.InstrKind) CoreFeatures {
+	switch kind {
+	case wasm.InstrI32Extend8S, wasm.InstrI32Extend16S, wasm.InstrI64Extend8S, wasm.InstrI64Extend16S, wasm.InstrI64Extend32S:
+		return CoreFeatureSignExtensionOps
+	case wasm.InstrMemoryInit, wasm.InstrMemoryCopy, wasm.InstrMemoryFill, wasm.InstrDataDrop,
+		wasm.InstrTableInit, wasm.InstrElemDrop, wasm.InstrTableCopy:
+		return CoreFeatureBulkMemoryOperations
+	case wasm.InstrTableGet, wasm.InstrTableSet, wasm.InstrTableGrow, wasm.InstrTableSize, wasm.InstrTableFill,
+		wasm.InstrRefNull, wasm.InstrRefIsNull, wasm.InstrRefFunc, wasm.InstrRefEq:
+		return CoreFeatureReferenceTypes
+	case wasm.InstrCallRef, wasm.InstrRefAsNonNull, wasm.InstrBrOnNull, wasm.InstrBrOnNonNull:
+		return CoreFeatureReferenceTypes | CoreFeatureTypedFunctionReferences
+	case wasm.InstrReturnCall, wasm.InstrReturnCallIndirect:
+		return CoreFeatureTailCall
+	case wasm.InstrReturnCallRef:
+		return CoreFeatureReferenceTypes | CoreFeatureTypedFunctionReferences | CoreFeatureTailCall
+	case wasm.InstrThrow, wasm.InstrThrowRef, wasm.InstrTryTable:
+		return CoreFeatureExceptionHandling
+	case wasm.InstrI32TruncSatF32S, wasm.InstrI32TruncSatF32U, wasm.InstrI32TruncSatF64S, wasm.InstrI32TruncSatF64U,
+		wasm.InstrI64TruncSatF32S, wasm.InstrI64TruncSatF32U, wasm.InstrI64TruncSatF64S, wasm.InstrI64TruncSatF64U:
+		return CoreFeatureNonTrappingFloatToIntConversion
+	default:
+		return 0
+	}
 }
 
 func requiredFeaturesForHeapImmediate(heap int64) CoreFeatures {

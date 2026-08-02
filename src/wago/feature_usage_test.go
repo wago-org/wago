@@ -1,6 +1,7 @@
 package wago
 
 import (
+	"bytes"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -36,5 +37,44 @@ func TestRequiredFeaturesBodyScannerIgnoresSIMDByteInImmediate(t *testing.T) {
 	features := requiredFeaturesForBodyBytes([]byte{0x41, 0xfd, 0x00, 0x0b})
 	if features.IsEnabled(CoreFeatureSIMD) {
 		t.Fatalf("requiredFeaturesForBodyBytes = %s for scalar i32.const", features)
+	}
+}
+
+func TestRequiredFeaturesBodyScannerFastImmediatePaths(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		body []byte
+		want CoreFeatures
+	}{
+		{name: "throw", body: []byte{0x08, 0x00, 0x0b}, want: CoreFeatureExceptionHandling},
+		{name: "return_call", body: []byte{0x12, 0x00, 0x0b}, want: CoreFeatureTailCall},
+		{name: "call_ref", body: []byte{0x14, 0x00, 0x0b}, want: CoreFeatureReferenceTypes | CoreFeatureTypedFunctionReferences},
+		{name: "return_call_ref", body: []byte{0x15, 0x00, 0x0b}, want: CoreFeatureReferenceTypes | CoreFeatureTypedFunctionReferences | CoreFeatureTailCall},
+		{name: "table_get", body: []byte{0x25, 0x00, 0x0b}, want: CoreFeatureReferenceTypes},
+		{name: "ref_func", body: []byte{0xd2, 0x00, 0x0b}, want: CoreFeatureReferenceTypes},
+		{name: "sign_extension", body: []byte{0xc0, 0x0b}, want: CoreFeatureSignExtensionOps},
+		{name: "throw_ref", body: []byte{0x0a, 0x0b}, want: CoreFeatureExceptionHandling},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := requiredFeaturesForBodyBytes(tc.body); got != tc.want {
+				t.Fatalf("features = %s, want %s", got, tc.want)
+			}
+		})
+	}
+}
+
+func BenchmarkRequiredFeaturesScalarBody(b *testing.B) {
+	// A representative scalar stream: two immediate-bearing constants followed by
+	// two immediate-free ALU/stack instructions. The feature scanner must still
+	// consume every immediate exactly rather than searching raw opcode bytes.
+	body := bytes.Repeat([]byte{0x41, 1, 0x41, 2, 0x6a, 0x1a}, 16<<10)
+	body = append(body, 0x0b)
+	b.SetBytes(int64(len(body)))
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if got := requiredFeaturesForBodyBytes(body); got != 0 {
+			b.Fatalf("features = %s, want none", got)
+		}
 	}
 }

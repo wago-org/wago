@@ -30,6 +30,24 @@ paths. `DomainSnapshot` remains 112 bytes; the per-member in-memory record grows
 80 to 104 bytes for one optional passive-root slice. Existing v1/v2 blobs remain
 loadable, while memory64 and global-dependent element ownership require v3.
 
+**Fast bytecode requirement summaries (2026-08-02).** Compiled-artifact
+feature discovery and other summary walkers used the full immediate classifier
+for every instruction, including immediate-free scalar ALU operations and common
+constants/local/global accesses. The wasm walker now exposes the dense
+immediate-free opcode table and keeps common scalar immediates on the exported
+reader; feature discovery consumes those forms directly while preserving exact
+LEB validation and proposal classification. On linux/amd64 (Ryzen 7 8845HS,
+GOMAXPROCS=1, one pinned CPU, 10–12 one-second/one-iteration samples), a 96 KiB
+scalar requirement scan improves from a **1.198 ms to 238.8 µs median**
+(**−80.1%**, 0 B/op), `AnalyzeModuleFacts` on the same stream improves
+**1.154→1.073 ms** (**−7.0%**), and full esbuild decode+validate+compile improves
+**899.3→776.3 ms** (**−13.7%**) with unchanged allocation counts. The common
+walker fast paths cost 1,008 bytes in a same-session plugin-complete stripped
+TinyGo A/B build (**1,735,844→1,736,852 bytes**, +0.058%). Differential
+feature-family tests keep
+tail calls, typed references, exception handling, sign extension, SIMD, GC, and
+segment lifecycle detection exact.
+
 **Dense `br_table` compile scratch (2026-08-02).** Duplicate-heavy jump tables
 previously allocated a `map[uint32]int` per instruction to deduplicate branch
 stubs. Branch labels are bounded control-stack depths, so amd64 and ARM64 now
