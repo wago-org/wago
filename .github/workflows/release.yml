@@ -1,8 +1,7 @@
 name: Publish release
 
-# Version tags publish every successfully built CLI target. Linux uses TinyGo;
-# other targets use standard Go and remain best-effort until their native JIT
-# ports are complete.
+# Version tags publish a standard-Go CLI plus Normal and Tiny builds of every
+# runtime profile for each successful target.
 on:
   push:
     tags: ["v*"]
@@ -30,89 +29,64 @@ jobs:
           - runner: ubuntu-24.04
             goos: linux
             goarch: amd64
-            asset: wago-linux-amd64
-            builder: tinygo
+            target: linux-amd64
             best_effort: false
           - runner: ubuntu-24.04-arm
             goos: linux
             goarch: arm64
-            asset: wago-linux-arm64
-            builder: tinygo
+            target: linux-arm64
             best_effort: false
           - runner: macos-15-intel
             goos: darwin
             goarch: amd64
-            asset: wago-darwin-amd64
-            builder: go
+            target: darwin-amd64
             best_effort: true
           - runner: macos-15
             goos: darwin
             goarch: arm64
-            asset: wago-darwin-arm64
-            builder: go
+            target: darwin-arm64
             best_effort: true
           - runner: windows-2022
             goos: windows
             goarch: amd64
-            asset: wago-windows-amd64
-            builder: go
+            target: windows-amd64
             best_effort: true
           - runner: windows-2022
             goos: windows
             goarch: arm64
-            asset: wago-windows-arm64
-            builder: go
+            target: windows-arm64
             best_effort: true
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: false
       - uses: acifani/setup-tinygo@db56321a62b9a67922bb9ac8f9d085e218807bb3 # v2
-        if: matrix.builder == 'tinygo'
         with:
           tinygo-version: ${{ env.TINYGO_VERSION }}
           install-binaryen: false
       - name: Install lld
-        if: matrix.builder == 'tinygo'
+        if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y lld
-      - name: Build TinyGo release binary
-        if: matrix.builder == 'tinygo'
-        run: make build-release WAGO_VERSION="${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}"
-      - name: Build standard-Go release binary
-        if: matrix.builder == 'go'
+      - name: Build CLI and runtime profiles
         shell: bash
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          WAGO_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
         run: |
-          CGO_ENABLED=0 GOOS="${{ matrix.goos }}" GOARCH="${{ matrix.goarch }}" \
-            go build -trimpath -ldflags="-s -w -X main.version=${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}" \
-            -o wago ./cli/wago
-      - name: Package + checksum (Unix)
-        if: runner.os != 'Windows'
-        shell: bash
-        run: |
-          mv wago "${{ matrix.asset }}"
-          ./${{ matrix.asset }} version
-          if command -v sha256sum >/dev/null 2>&1; then
-            sha256sum "${{ matrix.asset }}" | tee "${{ matrix.asset }}.sha256"
-          else
-            shasum -a 256 "${{ matrix.asset }}" | tee "${{ matrix.asset }}.sha256"
-          fi
-      - name: Package + checksum (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          Move-Item wago "${{ matrix.asset }}"
-          $hash = (Get-FileHash -Algorithm SHA256 "${{ matrix.asset }}").Hash.ToLower()
-          "$hash  ${{ matrix.asset }}" | Set-Content -NoNewline -Encoding ascii "${{ matrix.asset }}.sha256"
+          scripts/build-release-assets.sh
       - name: Upload release files
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: release-${{ matrix.asset }}
+          name: release-${{ matrix.target }}
           path: |
-            ${{ matrix.asset }}
-            ${{ matrix.asset }}.sha256
+            wago-${{ matrix.target }}
+            wago-${{ matrix.target }}.sha256
+            wago-runtime-*-${{ matrix.target }}
+            wago-runtime-*-${{ matrix.target }}.sha256
           if-no-files-found: error
 
   publish:
@@ -120,35 +94,51 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - name: Download release files
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          pattern: release-wago-*
+          pattern: release-*
           merge-multiple: true
           path: release
       - name: Verify available release files
-        working-directory: release
         run: |
-          mapfile -t assets < <(find . -maxdepth 1 -type f -name 'wago-*' ! -name '*.sha256' -printf '%f\n' | sort)
-          test "${#assets[@]}" -gt 0
-          for asset in "${assets[@]}"; do
-            test -s "$asset"
-            sha256sum --check "$asset.sha256"
-          done
+          scripts/verify-channel-assets.sh release
       - name: Publish tagged GitHub release
         if: startsWith(github.ref, 'refs/tags/')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           mapfile -t assets < <(find release -maxdepth 1 -type f -name 'wago-*' -print | sort)
+          notes=$(sed -n '1,$p' .github/release-asset-naming.md)
           if gh release view "${{ github.ref_name }}" --repo "${{ github.repository }}" >/dev/null 2>&1; then
             gh release upload "${{ github.ref_name }}" --repo "${{ github.repository }}" --clobber "${assets[@]}"
+            existing=$(gh release view "${{ github.ref_name }}" --repo "${{ github.repository }}" --json body --jq .body)
+            case "$existing" in
+              *"Which file should I download?"*) notes="$existing" ;;
+              *) notes=$(printf '%s\n\n%s\n' "$existing" "$notes") ;;
+            esac
+            gh release edit "${{ github.ref_name }}" --repo "${{ github.repository }}" --notes "$notes"
           else
-            gh release create "${{ github.ref_name }}" --repo "${{ github.repository }}" --verify-tag --generate-notes "${assets[@]}"
+            gh release create "${{ github.ref_name }}" --repo "${{ github.repository }}" --verify-tag --generate-notes --notes "$notes" "${assets[@]}"
           fi
+      - name: Create documentation synchronization token
+        id: docs-sync-token
+        if: startsWith(github.ref, 'refs/tags/') && vars.DOCS_SYNC_APP_ID != ''
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349
+        with:
+          app-id: ${{ vars.DOCS_SYNC_APP_ID }}
+          private-key: ${{ secrets.DOCS_SYNC_APP_PRIVATE_KEY }}
+          owner: wago-org
+          repositories: docs
+      - name: Synchronize stable documentation
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          DOCS_SYNC_TOKEN: ${{ steps.docs-sync-token.outputs.token }}
+        run: scripts/dispatch-docs-release.sh release "${{ github.ref_name }}" "$(git rev-parse HEAD)"
       - name: Upload manual build artifacts
         if: github.event_name == 'workflow_dispatch'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: wago-release-files
           path: release

@@ -36,8 +36,7 @@ CARD_FILE ?= card.md
 
 # Current commit. `make bench` stamps it into the capture's first line so
 # bench-publish can refuse a capture taken at a different commit (unless FORCE=1).
-# Committed HEAD only — working-tree dirt (notably the always-dirty warp
-# submodule) is intentionally ignored.
+# Committed HEAD only — unrelated working-tree dirt is intentionally ignored.
 HEAD_HASH := $(shell git rev-parse HEAD 2>/dev/null)
 
 # Default goal: a bare `make` sets up a fresh clone by installing the git hooks
@@ -57,7 +56,7 @@ lint: lint-fmt lint-generate lint-vet lint-staticcheck ## Run all lint checks (h
 
 .PHONY: lint-fmt
 lint-fmt:
-	@unformatted="$$(gofmt -l . | grep -vE '^(warp|tests/spec|\.claude)/' || true)"; \
+	@unformatted="$$(gofmt -l . | grep -vE '^(tests/spec|\.claude)/' || true)"; \
 	if [ -n "$$unformatted" ]; then \
 		echo "::error::These files are not gofmt-ed:"; echo "$$unformatted"; exit 1; \
 	fi
@@ -73,6 +72,7 @@ lint-generate:
 .PHONY: lint-vet
 lint-vet:
 	go vet ./...
+	go vet -tags wago_runtime ./cli/...
 
 # staticcheck is enforced in CI (installed before `make lint`); locally it is
 # optional — skip with a hint rather than fail when it is not installed.
@@ -80,6 +80,7 @@ lint-vet:
 lint-staticcheck:
 	@if command -v staticcheck >/dev/null 2>&1; then \
 		staticcheck ./...; \
+		staticcheck -tags wago_runtime ./cli/...; \
 	else \
 		echo "make: staticcheck not found, skipping (go install honnef.co/go/tools/cmd/staticcheck@2024.1.1)"; \
 	fi
@@ -87,38 +88,40 @@ lint-staticcheck:
 .PHONY: test
 test: ## Build and run the test suite (host)
 	go build ./...
-	WAGO_BOUNDS=explicit go test -count=1 ./...
+	go build -tags wago_runtime ./cli/...
+	go test -count=1 ./...
+	go test -count=1 -tags wago_runtime ./cli/...
 
 .PHONY: test-guard
 test-guard: ## Guard-page (signals-based) tests: full public-API suite (incl. the SIGSEGV fault->trap path) + in-bounds differential
-	WAGO_BOUNDS=signals go test -count=1 -tags wago_guardpage ./src/wago/
-	cd bench && WAGO_BOUNDS=signals go test -count=1 -tags wago_guardpage -run 'TestCorpusDifferential|TestJsonAsGuardCorrect' .
+	go test -count=1 -tags wago_guardpage ./src/wago/
+	cd bench && go test -count=1 -tags wago_guardpage -run 'TestCorpusDifferential|TestJsonAsGuardCorrect' .
 
 .PHONY: test-native-arm64
 test-native-arm64: ## Native arm64 gate (run locally on your Mac): the checks CI used to run on the macOS/arm64 runner
-	WAGO_BOUNDS=explicit go test ./src/core/encoder/arm64 ./src/core/compiler/backend/railshot/arm64 ./src/core/runtime ./src/wago -count=1
-	WAGO_BOUNDS=signals go test -tags wago_guardpage ./src/core/runtime ./src/wago -count=1 -v
+	go test ./src/core/encoder/arm64 ./src/core/compiler/backend/railshot/arm64 ./src/core/runtime ./src/wago -count=1
+	go test -tags wago_guardpage ./src/core/runtime ./src/wago -count=1 -v
 	WAGO_CORPUS_TIMEOUT=20s $(MAKE) test-corpus
 
 .PHONY: test-corpus
 test-corpus: ## Corpus pipeline + differential execution in parent/child processes (WAGO_CORPUS_TIMEOUT=15s)
-	cd bench && WAGO_BOUNDS=explicit go test -count=1 -run '^TestCorpus$$' .
-	cd bench && WAGO_BOUNDS=signals go test -count=1 -tags wago_guardpage -run '^TestCorpus$$' .
+	cd bench && go test -count=1 -run '^TestCorpus$$' .
+	cd bench && go test -count=1 -tags wago_guardpage -run '^TestCorpus$$' .
 
-WASMTIME_CHECKOUT ?= $(CURDIR)/.tmp/wasmtime-corpus-upstream
+REGRESSION_UPSTREAM ?= $(CURDIR)/.tmp/regression-corpus-upstream
 WAST2JSON ?= wast2json
 
-.PHONY: wasmtime-corpus-check
-wasmtime-corpus-check: ## Verify pinned Wasmtime sources and exact WABT artifacts
-	go run ./scripts/wasmtime-corpus -repo $(CURDIR) -wasmtime $(WASMTIME_CHECKOUT) -wast2json $(WAST2JSON)
+.PHONY: regression-corpus-check
+regression-corpus-check: ## Verify pinned upstream sources and exact WABT artifacts
+	go run ./tests/tools/regression-corpus -repo $(CURDIR) -upstream $(REGRESSION_UPSTREAM) -wast2json $(WAST2JSON)
 
-.PHONY: wasmtime-stress
-wasmtime-stress: ## Repeat/shuffle Wasmtime lifecycle tests, optimizer matrix, guard mode, and fuzz targets
-	scripts/wasmtime-stress.sh
+.PHONY: regression-corpus-sync
+regression-corpus-sync: ## Fetch the pinned upstream revision and refresh regression artifacts
+	go run ./tests/tools/regression-corpus -repo $(CURDIR) -upstream $(REGRESSION_UPSTREAM) -wast2json $(WAST2JSON) -fetch -write
 
-.PHONY: wasmtime-corpus-sync
-wasmtime-corpus-sync: ## Fetch pinned Wasmtime and refresh checked-in corpus artifacts
-	go run ./scripts/wasmtime-corpus -repo $(CURDIR) -wasmtime $(WASMTIME_CHECKOUT) -wast2json $(WAST2JSON) -fetch -write
+.PHONY: regression-stress
+regression-stress: ## Repeat lifecycle tests, optimizer and guard modes, and fuzz targets
+	tests/scripts/regression-stress.sh
 
 # Run the WebAssembly spec suites as native execution oracles for the x64
 # backend. The preserved MVP baseline is WebAssembly/testsuite at tests/spec;
@@ -144,8 +147,8 @@ spec1: ## Run the WebAssembly 1.0 (MVP core) spec suite against x64 (needs wast2
 spec2: ## Run the pinned official WebAssembly 2.0 core suite against x64 (needs wast2json)
 	@command -v wast2json >/dev/null 2>&1 || { echo "wast2json (wabt) not on PATH; install wabt (e.g. apt-get install wabt)"; exit 1; }
 	@test -f $(SPEC2_DIR)/test/core/i32.wast || git submodule update --init tests/spec-v2
-	go test -count=1 -run '^TestWazeroPortPinnedCoreV2Validation$$' -v ./src/core/compiler/wasm/
-	go test -count=1 -run '^TestWazeroPortPinnedCoreV2SpecExecution$$' -v ./src/wago/
+	go test -count=1 -run '^TestCoreV2Validation$$' -v ./src/core/compiler/wasm/
+	go test -count=1 -run '^TestCoreV2SpecExecution$$' -v ./src/wago/
 
 .PHONY: spec3
 spec3: ## Run the WebAssembly 3.0 proposal spec tests against x64 (needs wast2json)
@@ -164,33 +167,57 @@ TINYGO ?= tinygo
 # switched stack, so wago under TinyGo wants the cooperative scheduler. See
 # docs/tinygo.md.
 TINYGO_SCHEDULER ?= tasks
-# Stamped into the CLI via -ldflags -X (see cli/wago/main.go). release.yml passes
+# Stamped into the manager and runners via -ldflags -X. Release workflows pass
 # the git tag; 0.0.0 is the pre-release default until the first tag.
 WAGO_VERSION ?= 0.0.0
 
 .PHONY: build
-build: ## Build the CLI (standard Go) -> ./wago
-	go build -ldflags "-X main.version=$(WAGO_VERSION)" -o wago ./cli/wago
+build: build-manager ## Build the standard-Go manager -> ./wago
+
+.PHONY: build-manager
+build-manager: ## Build the runtime-independent manager with standard Go -> ./wago
+	CGO_ENABLED=0 go build -ldflags "-s -w -X main.version=$(WAGO_VERSION)" -o wago ./cli/wago
+
+.PHONY: build-runtime-standard
+build-runtime-standard: ## Build the everything runtime with standard Go
+	CGO_ENABLED=0 go build -tags wago_runtime -ldflags "-s -w -X main.version=$(WAGO_VERSION)" -o wago-runtime-standard-normal ./cli/wago
+
+.PHONY: build-runtime-minimal
+build-runtime-minimal: ## Build the run-only runtime with standard Go
+	CGO_ENABLED=0 go build -tags wago_runtime,wago_minimal -ldflags "-s -w -X main.version=$(WAGO_VERSION)" -o wago-runtime-minimal-normal ./cli/wago
+
+.PHONY: build-runtime-standard-tinygo
+build-runtime-standard-tinygo: ## Build the everything runtime with TinyGo
+	$(TINYGO) build -scheduler=$(TINYGO_SCHEDULER) -no-debug -opt=z -gc=conservative \
+		-tags wago_runtime \
+		-ldflags "-X main.version=$(WAGO_VERSION)" -o wago-runtime-standard-tiny ./cli/wago
+
+.PHONY: build-runtime-minimal-tinygo
+build-runtime-minimal-tinygo: ## Build the run-only runtime with TinyGo
+	$(TINYGO) build -scheduler=$(TINYGO_SCHEDULER) -no-debug -opt=z -gc=conservative \
+		-tags wago_runtime,wago_lean,wago_minimal \
+		-ldflags "-X main.version=$(WAGO_VERSION)" -o wago-runtime-minimal-tiny ./cli/wago
+	@echo "wago minimal/tiny $(WAGO_VERSION): $$(du -h wago-runtime-minimal-tiny | cut -f1)"
 
 .PHONY: build-release
-build-release: ## Size-minimized release CLI via TinyGo (no cgo, ~0.43 MB) -> ./wago
-	$(TINYGO) build -scheduler=$(TINYGO_SCHEDULER) -no-debug -opt=z -gc=conservative \
-		-tags wago_lean \
-		-ldflags "-X main.version=$(WAGO_VERSION)" -o wago ./cli/wago
-	strip -s wago
-	@echo "wago $(WAGO_VERSION): $$(du -h wago | cut -f1)"
+build-release: ## Build the host CLI plus all supported runtime profiles/builds
+	GOOS="$$(go env GOOS)" GOARCH="$$(go env GOARCH)" WAGO_VERSION="$(WAGO_VERSION)" scripts/build-release-assets.sh
 
 .PHONY: tinygo-build
-tinygo-build: ## Build the CLI with TinyGo (no cgo, debug) -> ./wago-tinygo  (see docs/tinygo.md)
-	$(TINYGO) build -scheduler=$(TINYGO_SCHEDULER) -tags wago_lean -o wago-tinygo ./cli/wago
+tinygo-build: ## Build the Minimal runtime with TinyGo (no cgo, debug) -> ./wago-tinygo
+	$(TINYGO) build -scheduler=$(TINYGO_SCHEDULER) -tags wago_runtime,wago_lean,wago_minimal -o wago-tinygo ./cli/wago
 
 .PHONY: tinygo-test
 tinygo-test: ## Run the runtime + public-API suites under TinyGo
 	$(TINYGO) test -scheduler=$(TINYGO_SCHEDULER) ./src/core/runtime/ ./src/wago/
 
 .PHONY: cover
-cover: ## Run tests with cross-package coverage + per-package report (COVERPROFILE=path)
+cover: ## Run all five public gates with merged cross-package coverage
 	COVERPROFILE=$(COVERPROFILE) scripts/coverage.sh
+
+.PHONY: verify-public
+verify-public: ## Run/count SIMD, spec1, spec2, normal, and guard-page gates, then merge coverage
+	scripts/verification.sh
 
 # card-fragments produces the go-only section fragments (coverage/tests/spec).
 # The build-size fragment is produced separately (scripts/size-card.sh) since it

@@ -37,7 +37,7 @@ jobs:
       version: ${{ steps.version.outputs.version }}
       tag: ${{ steps.version.outputs.tag }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || 'main' }}
           fetch-depth: 1
@@ -60,91 +60,67 @@ jobs:
           - runner: ubuntu-24.04
             goos: linux
             goarch: amd64
-            asset: wago-linux-amd64
-            builder: tinygo
+            target: linux-amd64
             best_effort: true
           - runner: ubuntu-24.04-arm
             goos: linux
             goarch: arm64
-            asset: wago-linux-arm64
-            builder: tinygo
+            target: linux-arm64
             best_effort: true
           - runner: macos-15-intel
             goos: darwin
             goarch: amd64
-            asset: wago-darwin-amd64
-            builder: go
+            target: darwin-amd64
             best_effort: true
           - runner: macos-15
             goos: darwin
             goarch: arm64
-            asset: wago-darwin-arm64
-            builder: go
+            target: darwin-arm64
             best_effort: true
           - runner: windows-2022
             goos: windows
             goarch: amd64
-            asset: wago-windows-amd64
-            builder: go
+            target: windows-amd64
             best_effort: true
           - runner: windows-2022
             goos: windows
             goarch: arm64
-            asset: wago-windows-arm64
-            builder: go
+            target: windows-arm64
             best_effort: true
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: ${{ needs.prepare.outputs.sha }}
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: false
       - uses: acifani/setup-tinygo@db56321a62b9a67922bb9ac8f9d085e218807bb3 # v2
-        if: matrix.builder == 'tinygo'
         with:
           tinygo-version: ${{ env.TINYGO_VERSION }}
           install-binaryen: false
       - name: Install lld
-        if: matrix.builder == 'tinygo'
+        if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y lld
-      - name: Build TinyGo canary binary
-        if: matrix.builder == 'tinygo'
-        run: make build-release WAGO_VERSION="${{ needs.prepare.outputs.version }}"
-      - name: Build standard-Go canary binary
-        if: matrix.builder == 'go'
+      - name: Build CLI and runtime profiles
         shell: bash
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          WAGO_VERSION: ${{ needs.prepare.outputs.version }}
         run: |
-          CGO_ENABLED=0 GOOS="${{ matrix.goos }}" GOARCH="${{ matrix.goarch }}" \
-            go build -trimpath -ldflags="-s -w -X main.version=${{ needs.prepare.outputs.version }}" \
-            -o wago ./cli/wago
-      - name: Package + checksum (Unix)
-        if: runner.os != 'Windows'
-        shell: bash
-        run: |
-          mv wago "${{ matrix.asset }}"
-          ./${{ matrix.asset }} version
-          if command -v sha256sum >/dev/null 2>&1; then
-            sha256sum "${{ matrix.asset }}" | tee "${{ matrix.asset }}.sha256"
-          else
-            shasum -a 256 "${{ matrix.asset }}" | tee "${{ matrix.asset }}.sha256"
-          fi
-      - name: Package + checksum (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          Move-Item wago "${{ matrix.asset }}"
-          $hash = (Get-FileHash -Algorithm SHA256 "${{ matrix.asset }}").Hash.ToLower()
-          "$hash  ${{ matrix.asset }}" | Set-Content -NoNewline -Encoding ascii "${{ matrix.asset }}.sha256"
+          scripts/build-release-assets.sh
+          scripts/verify-channel-assets.sh . "${{ matrix.target }}"
       - name: Upload release files
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: canary-${{ matrix.asset }}
+          name: canary-${{ matrix.target }}
           path: |
-            ${{ matrix.asset }}
-            ${{ matrix.asset }}.sha256
+            wago-${{ matrix.target }}
+            wago-${{ matrix.target }}.sha256
+            wago-runtime-*-${{ matrix.target }}
+            wago-runtime-*-${{ matrix.target }}.sha256
           if-no-files-found: error
 
   publish:
@@ -152,28 +128,29 @@ jobs:
     needs: [prepare, build]
     runs-on: ubuntu-latest
     steps:
-      - name: Download release files
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
-          pattern: canary-wago-*
+          ref: ${{ needs.prepare.outputs.sha }}
+      - name: Download release files
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: canary-*
           merge-multiple: true
           path: release
       - name: Verify available release files
-        working-directory: release
         run: |
-          mapfile -t assets < <(find . -maxdepth 1 -type f -name 'wago-*' ! -name '*.sha256' -printf '%f\n' | sort)
-          test "${#assets[@]}" -gt 0
-          for asset in "${assets[@]}"; do
-            test -s "$asset"
-            sha256sum --check "$asset.sha256"
-          done
+          scripts/verify-channel-assets.sh release
       - name: Publish uniquely tagged canary release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           mapfile -t assets < <(find release -maxdepth 1 -type f -name 'wago-*' -print | sort)
           test "${#assets[@]}" -gt 0
+          notes=$(printf 'Automated canary build of main at `%s`. Unsupported targets are omitted. Unstable — may break without notice.\n\n' \
+            '${{ needs.prepare.outputs.sha }}'; sed -n '1,$p' .github/release-asset-naming.md)
           if gh release view "${{ needs.prepare.outputs.tag }}" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            gh release upload "${{ needs.prepare.outputs.tag }}" --repo "${{ github.repository }}" --clobber "${assets[@]}"
+            gh release edit "${{ needs.prepare.outputs.tag }}" --repo "${{ github.repository }}" --notes "$notes"
             echo "canary release already exists for ${{ needs.prepare.outputs.sha }}"
             exit 0
           fi
@@ -181,6 +158,19 @@ jobs:
             --repo "${{ github.repository }}" \
             --target "${{ needs.prepare.outputs.sha }}" \
             --title "Canary (${{ needs.prepare.outputs.version }})" \
-            --notes "Automated canary build of main at \`${{ needs.prepare.outputs.sha }}\`. Includes every successful platform build; unsupported targets are omitted. Unstable — may break without notice." \
+            --notes "$notes" \
             --prerelease \
             "${assets[@]}"
+      - name: Create documentation synchronization token
+        id: docs-sync-token
+        if: vars.DOCS_SYNC_APP_ID != ''
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349
+        with:
+          app-id: ${{ vars.DOCS_SYNC_APP_ID }}
+          private-key: ${{ secrets.DOCS_SYNC_APP_PRIVATE_KEY }}
+          owner: wago-org
+          repositories: docs
+      - name: Synchronize canary documentation
+        env:
+          DOCS_SYNC_TOKEN: ${{ steps.docs-sync-token.outputs.token }}
+        run: scripts/dispatch-docs-release.sh canary "${{ needs.prepare.outputs.tag }}" "${{ needs.prepare.outputs.sha }}"

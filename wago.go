@@ -128,6 +128,7 @@ type (
 	TableMetadata               = impl.TableMetadata
 	TrapCode                    = impl.TrapCode
 	TrapError                   = impl.TrapError
+	TrapFrame                   = impl.TrapFrame
 	UnsupportedFeatureError     = impl.UnsupportedFeatureError
 	UseOption                   = impl.UseOption
 	V128                        = impl.V128

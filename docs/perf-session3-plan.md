@@ -155,7 +155,7 @@ excuse NEW guard failures either (diff against the known-crashing test list).
 - Short commit subjects, no bodies (repo convention).
 - Merges need an explicit user yes. The auto-mode classifier blocks self-merges,
   correctly.
-- The `warp/` submodule is intentionally dirty — never stage or reset it.
+- Keep any independently cloned WARP reference checkout outside this repository.
 - wat function index = local index + 1 (`env.abort` import).
 - Re-run any surprising bench result 2–3× before believing it, then diff
   disassembly in both directions.

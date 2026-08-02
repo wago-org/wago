@@ -1,34 +1,26 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://wago.sh/schema.json",
+  "$id": "https://wago.sh/v0/schema.json",
   "title": "Wago project and plugin manifest",
-  "description": "Configures the Go modules compiled into a Wago host, the plugins activated at runtime, their explicitly granted Wago integration capabilities, and optional open-source package metadata.",
+  "description": "Declares version-constrained plugins compiled into and activated by a Wago host, plus optional open-source package metadata. Resolved versions, capabilities, and plugin config live in wago-lock.json.",
   "type": "object",
   "additionalProperties": false,
   "properties": {
     "$schema": {
       "type": "string",
       "format": "uri-reference",
-      "description": "JSON Schema URI used by editors. Recommended: https://wago.sh/schema.json."
-    },
-    "schema": {
-      "type": "string",
-      "enum": ["wago/v1", "wago-plugin/v1"],
-      "description": "Wago manifest format version. wago-plugin/v1 is accepted for compatibility; new manifests should use wago/v1."
-    },
-    "dependencies": {
-      "type": "array",
-      "description": "Open-source Go module paths compiled into the generated Wago host. Compilation does not activate or authorize a plugin.",
-      "items": { "$ref": "#/$defs/modulePath" },
-      "uniqueItems": true,
-      "default": []
+      "description": "JSON Schema URI used by editors. Recommended: https://wago.sh/v0/schema.json."
     },
     "plugins": {
       "type": "object",
-      "description": "Plugins activated at runtime, keyed by GitHub-relative plugin ID.",
+      "description": "GitHub-relative plugin IDs mapped to semantic-version constraints. Each key is also the plugin's build dependency and runtime activation.",
       "propertyNames": { "$ref": "#/$defs/pluginName" },
-      "additionalProperties": { "$ref": "#/$defs/plugin" },
-      "default": []
+      "additionalProperties": { "$ref": "#/$defs/versionConstraint" },
+      "default": {}
+    },
+    "settings": {
+      "$ref": "#/$defs/settings",
+      "description": "Project-local runtime defaults. These sparse overrides take precedence over the user's global Wago configuration."
     },
     "module": {
       "$ref": "#/$defs/modulePath",
@@ -142,13 +134,87 @@
   "allOf": [
     {
       "if": {
-        "required": ["schema", "module"],
-        "properties": { "schema": { "const": "wago/v1" } }
+        "required": ["module"]
       },
-      "then": { "required": ["schema", "license", "repository"] }
+      "then": { "required": ["license", "repository"] }
     }
   ],
   "$defs": {
+    "settings": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "features": {
+          "type": "object",
+          "propertyNames": {
+            "enum": [
+              "bulk-memory-operations",
+              "extended-constant-expressions",
+              "multi-value",
+              "mutable-global",
+              "nontrapping-float-to-int-conversion",
+              "reference-types",
+              "sign-extension-ops",
+              "simd"
+            ]
+          },
+          "additionalProperties": { "type": "boolean" }
+        },
+        "optimizations": {
+          "type": "object",
+          "propertyNames": {
+            "enum": [
+              "bounds-facts",
+              "branch-fold",
+              "deep-fp-pins",
+              "entry-arg-pins",
+              "ext-fp-pins",
+              "frame-elide",
+              "frame-elide-reghomed",
+              "immutable-poly-fastpath",
+              "immutable-table",
+              "immutable-table-type",
+              "inline",
+              "inline-callfree",
+              "inline-loop-callees",
+              "leaf-scratch-pins",
+              "legacy-fp-pins",
+              "legacy-gp-pins",
+              "loop-precheck",
+              "loop-region-pins",
+              "multi-bounds-cert",
+              "olddest-rhs-sink",
+              "reg-abi",
+              "reg-merge",
+              "small-frame",
+              "st-flags",
+              "stack-fence",
+              "stack-reg",
+              "store-forward",
+              "store-load-fwd",
+              "tee-sink",
+              "three-op-sink",
+              "unary-sink",
+              "uxtw-add",
+              "v128-const-cache",
+              "v128-pins",
+              "v128-sink",
+              "vex-float-mem",
+              "x8-pin"
+            ]
+          },
+          "additionalProperties": { "type": "boolean" }
+        },
+        "runtime": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "parallel": { "type": "string", "pattern": "^(?:auto|[0-9]+)$" },
+            "deferredBoundsChecking": { "type": "boolean" }
+          }
+        }
+      }
+    },
     "modulePath": {
       "type": "string",
       "pattern": "^[A-Za-z0-9][A-Za-z0-9._~-]*(?:/[A-Za-z0-9][A-Za-z0-9._~-]*)+$",
@@ -156,79 +222,13 @@
     },
     "pluginName": {
       "type": "string",
-      "pattern": "^[a-z0-9][a-z0-9._/-]*$",
+      "pattern": "^[a-z0-9][a-z0-9._-]*/[a-z0-9][a-z0-9._/-]*$",
       "maxLength": 100
     },
-    "pluginCapability": {
+    "versionConstraint": {
       "type": "string",
-      "enum": [
-        "host.imports",
-        "host.environment",
-        "runtime.lifecycle",
-        "module.compile",
-        "instance.lifecycle",
-        "instance.invoke",
-        "instance.manage"
-      ]
-    },
-    "capabilityBudget": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "maxInstances": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 4294967295,
-          "description": "Maximum number of simultaneously live instances owned through this capability."
-        },
-        "maxMemoryBytes": {
-          "type": "integer",
-          "minimum": 65536,
-          "description": "Maximum declared WebAssembly memory size per managed instance, in bytes."
-        }
-      }
-    },
-    "plugin": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["capabilities"],
-      "properties": {
-        "capabilities": {
-          "oneOf": [
-            {
-              "type": "array",
-              "items": { "$ref": "#/$defs/pluginCapability" },
-              "uniqueItems": true
-            },
-            {
-              "type": "object",
-              "propertyNames": { "$ref": "#/$defs/pluginCapability" },
-              "additionalProperties": {
-                "oneOf": [
-                  { "const": true },
-                  { "$ref": "#/$defs/capabilityBudget" }
-                ]
-              }
-            }
-          ],
-          "description": "Privileged Wago API surfaces granted to this plugin. Use an array for simple grants or an object to attach core-enforced resource budgets."
-        },
-        "before": {
-          "type": "array",
-          "items": { "$ref": "#/$defs/pluginName" },
-          "uniqueItems": true,
-          "description": "Optional ordering constraints. This plugin loads before selected targets; missing targets are ignored."
-        },
-        "after": {
-          "type": "array",
-          "items": { "$ref": "#/$defs/pluginName" },
-          "uniqueItems": true,
-          "description": "Optional ordering constraints. This plugin loads after selected targets; missing targets are ignored."
-        },
-        "config": {
-          "description": "Plugin-owned JSON configuration. Wago preserves and passes it to Registry.Config without interpreting its shape."
-        }
-      }
+      "pattern": "^(?:\\*|[~^]?v?[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?)$",
+      "description": "Semantic-version constraint. Pre-release Wago plugins currently use ^0.0.0."
     },
     "author": {
       "type": "object",
@@ -264,7 +264,6 @@
       "additionalProperties": false,
       "required": ["module", "name"],
       "properties": {
-        "schema": { "type": "string", "enum": ["wago/v1", "wago-plugin/v1"] },
         "module": { "$ref": "#/$defs/modulePath" },
         "version": { "type": "string", "pattern": "^v?[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$" },
         "name": { "type": "string", "minLength": 1, "maxLength": 100 },
@@ -281,8 +280,12 @@
         "engines": { "$ref": "#/$defs/engines" },
         "platforms": { "$ref": "#/$defs/platforms" },
         "private": { "const": false },
-        "dependencies": { "type": "array", "items": { "$ref": "#/$defs/modulePath" }, "uniqueItems": true },
-        "plugins": { "type": "array", "items": { "$ref": "#/$defs/plugin" }, "uniqueItems": true },
+        "plugins": {
+          "type": "object",
+          "propertyNames": { "$ref": "#/$defs/pluginName" },
+          "additionalProperties": { "$ref": "#/$defs/versionConstraint" }
+        },
+        "settings": { "$ref": "#/$defs/settings" },
         "subpackages": {
           "type": "array",
           "items": {
@@ -298,14 +301,9 @@
   },
   "examples": [
     {
-      "$schema": "https://wago.sh/schema.json",
-      "schema": "wago/v1",
-      "dependencies": ["github.com/wago-org/workers"],
+      "$schema": "https://wago.sh/v0/schema.json",
       "plugins": {
-        "wago-org/workers": {
-          "capabilities": ["instance.manage"],
-          "config": { "maxWorkers": 8 }
-        }
+        "wago-org/workers": "^0.0.0"
       }
     }
   ]

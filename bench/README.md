@@ -131,17 +131,10 @@ dropped in via manifest `path` entries (skipped if absent; see `corpus/fetch.sh`
 
 `compare_test.go` runs **wazero** (`CompileModule` + exec) over the same corpus,
 and `benchpub -warp <harness>` shells out to **WARP**'s native harness for both
-compile and exec. The harness is `vb_bench`, built from `warp/bench/main.cpp` —
-since `warp/` is a submodule, the bench tweak (take real `i32` args, time a proper
-exec loop with a DCE sink) lives as `bench/warp/bench-main.patch`.
-
-From a fresh clone, `make bench-warp` does everything: it checks out the `warp/`
-submodule (non-recursive — the x86-64 bench build needs none of WARP's own nested
-submodules; the softfloat one is for the TriCore backend only), applies the patch
-to a pristine harness, builds `vb_bench` with the fair-comparison config (eager
-allocation on, interruption off), and runs it over the corpus. Only `cmake` and a
-C++14 toolchain are required. `scripts/build-warp-bench.sh` is the build step on
-its own. Two extra charts are produced:
+compile and exec. Build `vb_bench` from an independent
+[WARP checkout](https://github.com/wago-org/warp), apply the same benchmark
+configuration used for the published comparison, and pass its path explicitly.
+Two extra charts are produced:
 
 - `compile-engines.svg` — compile time per module, wago vs wazero vs WARP. Where
   the backend can't compile a module yet, wago's **validate** time is shown
@@ -161,7 +154,7 @@ runs and reports average, median, and max duration for the validator path:
 ```bash
 cd bench
 go run ./cmd/validatestats -runs 30 -warmup 5         # full corpus
-go run ./cmd/validatestats -file ../tests/testdata/fib.wasm
+go run ./cmd/validatestats -file ../tests/fixtures/wasm/fib.wasm
 ```
 
 The measured path is the default serial `wago validate <file>` flow:

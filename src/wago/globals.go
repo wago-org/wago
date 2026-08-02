@@ -12,7 +12,7 @@ import (
 	"github.com/wago-org/wago/src/core/runtime/gc"
 )
 
-// Call arguments and results are raw uint64s, wazero-style: the function
+// Call arguments and results are raw uint64 value slots: the function
 // signature defines how each is interpreted (i32 in the low 32 bits, floats as
 // their IEEE-754 bits). These helpers encode a typed value into / decode it from
 // that representation.

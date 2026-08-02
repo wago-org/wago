@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wago-org/wago/testutil/wasmtest"
+	"github.com/wago-org/wago/tests/wasmtest"
 )
 
 type disposalTestPlugin struct {

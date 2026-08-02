@@ -6,7 +6,7 @@
 // small — the examples are about the wago Go API, not wasm authoring.
 package mods
 
-import "github.com/wago-org/wago/testutil/wasmtest"
+import "github.com/wago-org/wago/tests/wasmtest"
 
 // common opcodes
 const (

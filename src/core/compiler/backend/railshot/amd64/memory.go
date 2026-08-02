@@ -56,15 +56,18 @@ const offTrapCellPtr = abi.TrapCellPtrOffset
 // Descriptors are runtime.PassiveDataDescBytes bytes: {ptr u64, len u32, pad u32}.
 const offPassiveDataPtr = abi.PassiveDataPtrOffset
 
-// emitTrap writes the trap code to the trap cell (via [linMem-offTrapCellPtr])
-// then unwinds the
+// emitTrap writes the logical Wasm PC from RAX and the function index argument,
+// then writes the trap code to the trap buffer (via [linMem-offTrapCellPtr]) and
+// unwinds the
 // ENTIRE native call tree in one jump: it restores RSP to the entry SP the
 // trampoline recorded at [linMem-offTrapStackReentry] and RETs straight back into
 // enterNative (WARP's handler-jump model). This is what lets callers skip the
 // per-call "load *trap; test; branch" check — a trap never returns through an
 // intermediate frame. Terminal, so it may freely clobber RSI (and RSP last).
-func (f *fn) emitTrap(code uint32) {
+func (f *fn) emitTrap(code, function uint32) {
 	f.a.Load64(RSI, RBX, -offTrapCellPtr)
+	f.a.StoreImm32Mem(RSI, 16, int32(function+1))
+	f.a.Store32(RSI, 20, RAX)
 	f.a.StoreImm32Mem(RSI, 0, int32(code))
 	f.a.Load64(RSP, RBX, -offTrapStackReentry) // rsp = entry SP (trampoline's post-CALL SP)
 	f.a.Ret()                                  // pop enterNative's return address → back to Go
@@ -99,13 +102,17 @@ func (f *fn) trapIf(cc Cond, code uint32) {
 	if code == trapMemOOB {
 		f.stats.addBoundsCheck() // inline linear-memory OOB check (P6 elides these)
 	}
-	f.sc.trapSites[code] = append(f.sc.trapSites[code], f.a.JccPlaceholder(cc))
+	f.sc.trapSites[code] = append(f.sc.trapSites[code], f.trapSite(f.a.JccPlaceholder(cc)))
 }
 
 // trapAlways is trapIf's unconditional form (`unreachable`): a 5-byte jmp to the
 // shared stub instead of the inline 20-byte trap block.
 func (f *fn) trapAlways(code uint32) {
-	f.sc.trapSites[code] = append(f.sc.trapSites[code], f.a.JmpPlaceholder())
+	f.sc.trapSites[code] = append(f.sc.trapSites[code], f.trapSite(f.a.JmpPlaceholder()))
+}
+
+func (f *fn) trapSite(branch int) trapSite {
+	return trapSite{branch: branch, function: f.traceFuncIdx, pc: f.wasmPC}
 }
 
 // emitTrapStubs emits one trap stub per trap code used by this function and
@@ -117,11 +124,47 @@ func (f *fn) emitTrapStubs() {
 			continue
 		}
 		f.stats.addTrapStub()
-		pos := f.a.Len()
-		f.storeModuleGlobals(RSI) // post-trap global state stays observable (RSI is trap-path scratch)
-		f.emitTrap(code)
-		for _, s := range sites {
-			f.a.PatchRel32(s, pos)
+		for group, first := range sites {
+			seen := false
+			for prior := 0; prior < group; prior++ {
+				seen = seen || sites[prior].function == first.function
+			}
+			if seen {
+				continue
+			}
+			count := 0
+			for _, site := range sites {
+				if site.function == first.function {
+					count++
+				}
+			}
+			commonJump := -1
+			for _, site := range sites {
+				if site.function != first.function {
+					continue
+				}
+				if count != 1 {
+					continue
+				}
+				pos := f.a.Len()
+				f.a.MovImm32(RAX, int32(site.pc))
+				commonJump = f.a.JmpPlaceholder()
+				f.a.PatchRel32(site.branch, pos)
+			}
+			common := f.a.Len()
+			if count != 1 {
+				f.a.MovImm32(RAX, -1)
+				for _, site := range sites {
+					if site.function == first.function {
+						f.a.PatchRel32(site.branch, common)
+					}
+				}
+			}
+			f.storeModuleGlobals(RSI)
+			f.emitTrap(code, first.function)
+			if commonJump >= 0 {
+				f.a.PatchRel32(commonJump, common)
+			}
 		}
 	}
 }
@@ -210,37 +253,92 @@ func (f *fn) memAddr(off uint32, size int, aliasPinned bool) (ea Reg, eaOwned bo
 	return ea, eaOwned, borrow, disp
 }
 
-// boundsCertCovers reports whether the active straight-line certificate already
+type boundsCert struct {
+	kind   uint8
+	idx    uint32
+	extent int32
+}
+
+// boundsCertCovers reports whether an active straight-line certificate already
 // proves this access in-bounds (P6.1): the same keyable source, with this
 // access's extent (off+size) within the proven extent. A check proves
 // source+extent <= memBytes; memBytes only ever grows, so a later access on the
 // same source value with a smaller-or-equal extent is in bounds. The certificate
-// is dropped by invalidateBoundsCert at flush/flushBelow (every call + control
-// join), memory.grow, and a set of the certified source — exactly the set that
-// makes the proving check dominate this one on every path, so eliding is sound.
+// set is dropped at flush/flushBelow (every call + control join) and memory.grow;
+// setting one certified source drops only that source's entry.
 func (f *fn) boundsCertCovers(kind uint8, idx uint32, extent int32) bool {
-	return kind != 0 && f.bcKind == kind && f.bcIdx == idx && extent <= f.bcExtent
+	if kind == 0 {
+		return false
+	}
+	if !multiBoundsCertEnabled {
+		c := &f.boundsCerts[0]
+		return c.kind == kind && c.idx == idx && extent <= c.extent
+	}
+	for i := range f.boundsCerts {
+		c := &f.boundsCerts[i]
+		if c.kind == kind && c.idx == idx {
+			return extent <= c.extent
+		}
+	}
+	return false
 }
 
-// boundsCertUpdate records the check about to be emitted: establish or extend the
-// single-entry certificate for a keyable source; an unkeyable (computed) base
-// ends the straight-line certificate.
+// boundsCertUpdate records the check about to be emitted. The tiny round-robin
+// set covers the common two/three-array loop while keeping compiler state fixed.
 func (f *fn) boundsCertUpdate(kind uint8, idx uint32, extent int32) {
-	if kind == 0 {
-		f.bcKind = 0
-		return
-	}
-	if f.bcKind == kind && f.bcIdx == idx {
-		if extent > f.bcExtent {
-			f.bcExtent = extent // same source, larger reach — extend the proven extent
+	if !multiBoundsCertEnabled {
+		c := &f.boundsCerts[0]
+		if kind == 0 {
+			*c = boundsCert{}
+		} else if c.kind == kind && c.idx == idx {
+			if extent > c.extent {
+				c.extent = extent
+			}
+		} else {
+			*c = boundsCert{kind: kind, idx: idx, extent: extent}
 		}
 		return
 	}
-	f.bcKind, f.bcIdx, f.bcExtent = kind, idx, extent
+	if kind == 0 {
+		return
+	}
+	for i := range f.boundsCerts {
+		c := &f.boundsCerts[i]
+		if c.kind == kind && c.idx == idx {
+			if extent > c.extent {
+				c.extent = extent
+			}
+			return
+		}
+	}
+	for i := range f.boundsCerts {
+		if f.boundsCerts[i].kind == 0 {
+			f.boundsCerts[i] = boundsCert{kind: kind, idx: idx, extent: extent}
+			return
+		}
+	}
+	i := int(f.nextBoundsCert) % len(f.boundsCerts)
+	f.boundsCerts[i] = boundsCert{kind: kind, idx: idx, extent: extent}
+	f.nextBoundsCert++
 }
 
-// invalidateBoundsCert drops the straight-line bounds certificate.
-func (f *fn) invalidateBoundsCert() { f.bcKind = 0 }
+// invalidateBoundsCert drops every straight-line bounds certificate.
+func (f *fn) invalidateBoundsCert() {
+	for i := range f.boundsCerts {
+		f.boundsCerts[i] = boundsCert{}
+	}
+	f.nextBoundsCert = 0
+}
+
+// invalidateBoundsCertFor drops the proof for one source whose value changed.
+func (f *fn) invalidateBoundsCertFor(kind uint8, idx uint32) {
+	for i := range f.boundsCerts {
+		c := &f.boundsCerts[i]
+		if c.kind == kind && c.idx == idx {
+			*c = boundsCert{}
+		}
+	}
+}
 
 // inLoop reports whether any enclosing control frame is a loop.
 func (f *fn) inLoop() bool {

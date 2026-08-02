@@ -5,8 +5,11 @@
 # Built CLI binaries (make build / build-release / tinygo-build) + release assets
 /wago
 wago-tinygo
-wago-linux-amd64
-wago-linux-amd64.sha256
+wago-runtime-standard-normal
+wago-runtime-minimal-normal
+wago-runtime-standard-tiny
+wago-runtime-minimal-tiny
+/wago-*-*
 
 # Editor / OS
 .DS_Store
@@ -25,10 +28,6 @@ bench/.bench-run.txt
 # Staleness marker written by benchpub: commit the charted numbers reflect + when
 bench/.bench-stamp
 
-# Compiled wasm3 comparison harness (built by scripts/build-wasm3-bench.sh from
-# the committed harness.c + wasm3 submodule); the source is tracked, not the binary.
-bench/wasm3/wasm3_bench
-
 # Generated corpus sources — rebuilt by corpus/build.sh; the .wasm is committed
 bench/corpus/src/many_funcs.wat
 
@@ -41,6 +40,9 @@ coverage-report.md
 # CI info card artifacts (assembled by scripts/pr-card.sh)
 ci-card/
 card.md
+
+# Per-project Wago build, cache, and local credential state
+.wago/
 
 # Claude Code ephemeral git worktrees (per-session; never committed). Excluded
 # from gofmt/lint walks too — see lint-fmt in the Makefile.

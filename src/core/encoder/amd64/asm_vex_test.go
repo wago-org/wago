@@ -15,6 +15,7 @@ func TestVexEncoding(t *testing.T) {
 	}{
 		{"vaddsd xmm0,xmm1,xmm2", func(a *Asm) { a.VFAdd(0, 1, 2, true) }, []byte{0xC4, 0xE1, 0x73, 0x58, 0xC2}},
 		{"vmulsd xmm0,xmm1,xmm2", func(a *Asm) { a.VFMul(0, 1, 2, true) }, []byte{0xC4, 0xE1, 0x73, 0x59, 0xC2}},
+		{"vmulsd xmm2,xmm12,[rbx+r13]", func(a *Asm) { a.VFMemIdx(0x59, 2, 12, RBX, R13, 0, true) }, []byte{0xC4, 0xA1, 0x1B, 0x59, 0x14, 0x2B}},
 		{"vsubss xmm0,xmm1,xmm2", func(a *Asm) { a.VFSub(0, 1, 2, false) }, []byte{0xC4, 0xE1, 0x72, 0x5C, 0xC2}},
 		{"vaddsd xmm8,xmm1,xmm2", func(a *Asm) { a.VFAdd(8, 1, 2, true) }, []byte{0xC4, 0x61, 0x73, 0x58, 0xC2}},
 		{"vaddsd xmm0,xmm1,xmm10", func(a *Asm) { a.VFAdd(0, 1, 10, true) }, []byte{0xC4, 0xC1, 0x73, 0x58, 0xC2}},
@@ -133,6 +134,7 @@ func TestVexEncoding(t *testing.T) {
 		{"vpunpckhdq xmm0,xmm1,xmm2", func(a *Asm) { a.VPunpckhdq(0, 1, 2) }, []byte{0xC4, 0xE1, 0x71, 0x6A, 0xC2}},
 		{"vpunpckhdq xmm8,xmm1,xmm2", func(a *Asm) { a.VPunpckhdq(8, 1, 2) }, []byte{0xC4, 0x61, 0x71, 0x6A, 0xC2}},
 		{"vpunpckhdq xmm0,xmm1,xmm10", func(a *Asm) { a.VPunpckhdq(0, 1, 10) }, []byte{0xC4, 0xC1, 0x71, 0x6A, 0xC2}},
+		{"vpshufb xmm0,xmm1,[rip+disp32]", func(a *Asm) { a.VPshufbRipPlaceholder(0, 1) }, []byte{0xC4, 0xE2, 0x71, 0x00, 0x05, 0, 0, 0, 0}},
 		{"vpacksswb xmm0,xmm1,xmm2", func(a *Asm) { a.VPpacksswb(0, 1, 2) }, []byte{0xC4, 0xE1, 0x71, 0x63, 0xC2}},
 		{"vpacksswb xmm8,xmm1,xmm2", func(a *Asm) { a.VPpacksswb(8, 1, 2) }, []byte{0xC4, 0x61, 0x71, 0x63, 0xC2}},
 		{"vpacksswb xmm0,xmm1,xmm10", func(a *Asm) { a.VPpacksswb(0, 1, 10) }, []byte{0xC4, 0xC1, 0x71, 0x63, 0xC2}},

@@ -20,8 +20,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wago-org/wago/internal/spectest"
 	"github.com/wago-org/wago/src/wago"
+	"github.com/wago-org/wago/tests/spectest"
 )
 
 // coreFiles1_0 are the WebAssembly 1.0 (MVP) core testsuite .wast files whose

@@ -27,8 +27,8 @@ jobs:
     outputs:
       code: ${{ steps.derive.outputs.code }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: dorny/paths-filter@6852f92c20ea7fd3b0c25de3b5112db3a98da050 # v3
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: dorny/paths-filter@6852f92c20ea7fd3b0c25de3b5112db3a98da050
         id: filter
         with:
           # Avoid a separate PR-files API call; compare the checked-out merge
@@ -58,8 +58,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        # The warp/ submodule is C++ and not needed to build or test the Go
-        # module, so we deliberately do not fetch submodules.
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version: ${{ env.GO_VERSION }}
@@ -75,8 +73,8 @@ jobs:
       - name: Lint
         run: make lint
 
-  wasmtime-corpus:
-    name: Wasmtime corpus provenance
+  regression-corpus:
+    name: Regression corpus provenance
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-24.04
@@ -94,9 +92,9 @@ jobs:
       - name: Read pinned WABT provenance
         id: wabt
         run: |
-          go test ./internal/wasmtimecorpus
-          repo="$(jq -er '.wabt_repo | select(test("^https://[^[:space:]]+$"))' testdata/wasmtime/PROVENANCE.json)"
-          revision="$(jq -er '.wabt_revision | select(test("^[0-9a-f]{40}$"))' testdata/wasmtime/PROVENANCE.json)"
+          go test ./tests/regressioncorpus
+          repo="$(jq -er '.wabt_repo | select(test("^https://[^[:space:]]+$"))' tests/regressions/runtime/PROVENANCE.json)"
+          revision="$(jq -er '.wabt_revision | select(test("^[0-9a-f]{40}$"))' tests/regressions/runtime/PROVENANCE.json)"
           printf 'repo=%s\n' "$repo" >> "$GITHUB_OUTPUT"
           printf 'revision=%s\n' "$revision" >> "$GITHUB_OUTPUT"
       - name: Build pinned WABT from verified source
@@ -111,15 +109,15 @@ jobs:
           test -z "$(git -C .tmp/wabt submodule status --recursive | grep -E '^[+-U]' || true)"
           cmake -S .tmp/wabt -B .tmp/wabt/build -G Ninja -DBUILD_TESTS=OFF
           cmake --build .tmp/wabt/build --target wast2json
-      - name: Verify pinned Wasmtime sources and generated artifacts
+      - name: Verify pinned upstream sources and generated artifacts
         run: |
           test "$(git -C .tmp/wabt remote get-url origin)" = "${{ steps.wabt.outputs.repo }}"
           test "$(git -C .tmp/wabt rev-parse HEAD)" = "${{ steps.wabt.outputs.revision }}"
           test -z "$(git -C .tmp/wabt status --porcelain --untracked-files=no)"
           test -z "$(git -C .tmp/wabt submodule status --recursive | grep -E '^[+-U]' || true)"
-          go run ./scripts/wasmtime-corpus \
+          go run ./tests/tools/regression-corpus \
             -repo "$PWD" \
-            -wasmtime "$PWD/.tmp/wasmtime-corpus-upstream" \
+            -upstream "$PWD/.tmp/regression-corpus-upstream" \
             -wast2json "$PWD/.tmp/wabt/build/wast2json" \
             -fetch
 
@@ -129,13 +127,13 @@ jobs:
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: false
       - name: Run focused runtime race suites
-        run: WAGO_BOUNDS=explicit go test -race -count=1 ./src/wago ./src/core/runtime
+        run: go test -race -count=1 ./src/wago ./src/core/runtime
 
   platform-test:
     name: ${{ matrix.name }}
@@ -175,8 +173,8 @@ jobs:
             corpus: true
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version: ${{ env.GO_VERSION }}
           # No go.sum (stdlib-only module) -> nothing to cache; avoids a warning.
@@ -245,8 +243,8 @@ jobs:
             runner: ubuntu-24.04-arm
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: false
@@ -287,8 +285,8 @@ jobs:
             cli: false
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: false
@@ -329,7 +327,7 @@ jobs:
       - name: Smoke-run a real module
         if: matrix.cli
         run: |
-          out="$(./wago-tinygo run --invoke fib tests/testdata/fib.wasm 20)"
+          out="$(./wago-tinygo run --invoke fib tests/fixtures/wasm/fib.wasm 20)"
           echo "$out"
           test "$out" = "fib(20) = 6765"
 
@@ -343,8 +341,8 @@ jobs:
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version: ${{ env.GO_VERSION }}
           # No go.sum (stdlib-only module) -> nothing to cache; avoids a warning.
@@ -357,9 +355,8 @@ jobs:
 
       # Produce the coverage/tests/spec fragments. On PRs, CARD_BASELINE_REF
       # measures main in a worktree for the "Δ vs main" columns, so fetch main.
-      # The spec fragment runs last and initializes its own corpora, keeping
-      # known spec gaps informational instead of feeding them into coverage or
-      # ordinary test counts.
+      # Coverage merges the normal, guard-page, spec1, spec2, and SIMD gates.
+      # The spec card still renders its own per-version accounting afterward.
       - name: Produce card fragments
         env:
           CARD_BASELINE_REF: ${{ github.event_name == 'pull_request' && 'origin/main' || '' }}
@@ -370,14 +367,14 @@ jobs:
           make card-fragments
 
       - name: Upload card fragments
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: card-fragments
           path: ci-card
           if-no-files-found: error
 
       - name: Upload coverage profile
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: coverage
           path: coverage.out
@@ -389,13 +386,13 @@ jobs:
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: false
-      # TinyGo (+ lld) to build the size-minimized release CLI (make build-release).
-      - uses: acifani/setup-tinygo@db56321a62b9a67922bb9ac8f9d085e218807bb3 # v2
+      # TinyGo (+ lld) builds the size-minimized run-only release profile.
+      - uses: acifani/setup-tinygo@db56321a62b9a67922bb9ac8f9d085e218807bb3
         with:
           tinygo-version: "0.41.1"
       - name: Install lld
@@ -412,7 +409,7 @@ jobs:
           SIZE_REPORT=ci-card/size.md scripts/size-card.sh
 
       - name: Upload size fragment
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: card-size
           path: ci-card/size.md
@@ -428,14 +425,14 @@ jobs:
       contents: read
       pull-requests: write
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - name: Download card fragments
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: card-fragments
           path: ci-card
       - name: Download size fragment
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: card-size
           path: ci-card
@@ -453,7 +450,7 @@ jobs:
   ci-ok:
     name: CI
     if: always()
-    needs: [changes, lint, wasmtime-corpus, race, platform-test, core-v2, tinygo, coverage, size]
+    needs: [changes, lint, regression-corpus, race, platform-test, core-v2, tinygo, coverage, size]
     runs-on: ubuntu-latest
     steps:
       - name: Verify no required job failed

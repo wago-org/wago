@@ -9,9 +9,9 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/frontend"
 )
 
-// CoreFeatures is a bit set of WebAssembly Core specification features, modeled
-// on wazero's api.CoreFeatures. A RuntimeConfig carries the set it will accept;
-// modules using a disabled feature are rejected at compile time.
+// CoreFeatures is a bit set of WebAssembly Core specification features. A
+// RuntimeConfig carries the set it will accept; modules using a disabled feature
+// are rejected at compile time.
 type CoreFeatures uint64
 
 const (
@@ -41,7 +41,7 @@ const (
 	CoreFeatureTailCall
 )
 
-// Feature groups mirroring wazero's CoreFeaturesV1 / CoreFeaturesV2.
+// Feature groups for WebAssembly Core releases.
 const (
 	// CoreFeaturesV1 is the WebAssembly 1.0 (MVP) feature set.
 	CoreFeaturesV1 = CoreFeatureMutableGlobal
@@ -109,7 +109,6 @@ var featureNames = []struct {
 }
 
 // BoundsCheckMode selects how out-of-bounds linear-memory accesses are caught.
-// This is a wago-specific extension (wazero only does explicit checks).
 type BoundsCheckMode int
 
 const (
@@ -134,10 +133,8 @@ func (m BoundsCheckMode) String() string {
 	}
 }
 
-// RuntimeConfig configures compilation and execution. Modeled on wazero's
-// RuntimeConfig: it is immutable — every WithXxx returns a copy, so a base
-// config can be shared and specialised safely. wago-specific knobs (e.g.
-// WithBoundsChecks) extend the wazero-style surface.
+// RuntimeConfig configures compilation and execution. It is immutable — every
+// WithXxx returns a copy, so a base config can be shared and specialised safely.
 type RuntimeConfig struct {
 	features        CoreFeatures
 	maxMemoryPages  uint32

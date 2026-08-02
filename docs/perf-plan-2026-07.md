@@ -45,9 +45,9 @@ go test -tags wago_guardpage -run 'TestJsonAsGuard$' -count=1 -v
 # corpus exec (manifest args; run 2-3x, tight loops are layout-sensitive)
 WAGO_BOUNDS= go test -bench 'Exec/(sieve|memory_tree|blake-as|utf-as|fib_rec|linked_list|dispatch)' -benchtime 1s -count=1 -run NONE
 
-# WARP reference (bench main is locally patched — the warp/ submodule is intentionally dirty; do NOT reset it)
-warp/build-bench/bin/vb_bench $HOME/Code/AssemblyScript/json-as/build/wago-bench.swar.wasm serializeN 256
-#   per-unit = exec_ns / 256; rebuild: cmake --build warp/build-bench --target vb_bench -j
+# WARP reference (set WARP_DIR to an independent checkout with the benchmark patch)
+$WARP_DIR/build-bench/bin/vb_bench $HOME/Code/AssemblyScript/json-as/build/wago-bench.swar.wasm serializeN 256
+#   per-unit = exec_ns / 256; rebuild: cmake --build $WARP_DIR/build-bench --target vb_bench -j
 #   WARP compiles with LINEAR_MEMORY_BOUNDS_CHECKS=0 on Linux (passive) → compare against wago GUARD mode.
 
 # per-function profile (wago)
@@ -264,9 +264,8 @@ In descending value; each is independent:
   (e.g. store-all vs eager-reload) and run the matrix — complementary fingerprints
   localize the state machine bug; (3) write the minimal exec_test reproducing it,
   verify it FAILS with the fix reverted.
-- **The warp/ submodule is intentionally dirty** (patched bench main + code-dump
-  hack). Don't reset/clean it; the patch reference is bench/warp/bench-main.patch
-  (the dump addition is only in the working tree).
+- **Use an independent WARP checkout** for the patched benchmark harness and
+  code-dump support; do not place that working tree inside this repository.
 - **allocReg exhaustion degrades, not panics** (`allocRegOrNone` + spill-slot
   fallback in condenseBinary), but new fixed-role paths must still respect
   `f.reserved`/`f.pinnedLocalMask`/`f.pinned`; `spillIfUsed` bypasses `pinned` (div

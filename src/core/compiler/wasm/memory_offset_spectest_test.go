@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/wago-org/wago/internal/spectest"
+	"github.com/wago-org/wago/tests/spectest"
 )
 
 func TestRelease2MalformedMemoryOffsetSites(t *testing.T) {

@@ -14,7 +14,7 @@
 // (src/core/encoder/amd64.Asm), and the runtime (engine/MapCode/JobMemory/trampoline).
 // It targets wago's runtime ABI, not WARP's binary format.
 //
-// Derived from WARP (github: the warp/ submodule), Apache-2.0.
+// Derived from WARP (github.com/wago-org/warp), Apache-2.0.
 package amd64
 
 import "github.com/wago-org/wago/src/core/encoder/amd64"
@@ -96,14 +96,12 @@ var pinnedLocalRegs = []Reg{R12, R13, R14, R15}
 // pinnedFLocalRegs are XMM registers dedicated to hot float locals, in assignment
 // order. XMM registers are all caller-saved, so (like the GP pinned locals)
 // callers spill/reload them around calls. The first baseFPPins (XMM12-15) are the
-// call-making cap; a call-free function extends into XMM8-10 — never XMM11
-// (mergeFReg) — since with no calls those operand-pool registers are never
-// clobbered and hold more hot float locals. amd64 has only 16 XMM (vs arm64's 32
-// V), so every extra pin shrinks the float operand pool: the extension is
-// deliberately shallow and call-free-only.
-var pinnedFLocalRegs = []Reg{12, 13, 14, 15, 8, 9, 10}
+// stable base. The extended pool follows WARP's eleven-local policy while
+// leaving XMM0-3 plus XMM11 available for scratch and merge values. Calls use
+// the same lazy spill/reload state machine for every pinned XMM register.
+var pinnedFLocalRegs = []Reg{12, 13, 14, 15, 8, 9, 10, 7, 6, 5, 4}
 
-const baseFPPins = 4 // call-making cap (XMM12-15); call-free uses the full slice
+const baseFPPins = 4 // compatibility cap (XMM12-15); extended mode uses the full slice
 
 // isScratchGP reports whether r is one of the reserved scratch GPRs (the trailing
 // numScratchGP of gpAlloc).

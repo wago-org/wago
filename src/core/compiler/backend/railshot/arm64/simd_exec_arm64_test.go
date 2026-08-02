@@ -11,7 +11,7 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/src/core/runtime/arm64spike"
-	"github.com/wago-org/wago/testutil/wasmtest"
+	"github.com/wago-org/wago/tests/wasmtest"
 )
 
 func simdConst(v [16]byte) []byte {
@@ -549,6 +549,31 @@ func TestSIMDShuffleSwizzleExec(t *testing.T) {
 			t.Fatalf("comparison mask = %#x, want 0xffff", got)
 		}
 	})
+
+	a := i8x16Bytes(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15)
+	b := i8x16Bytes(100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115)
+	for name, lanes := range map[string][16]byte{
+		"shuffle-rotr16": {2, 3, 0, 1, 6, 7, 4, 5, 10, 11, 8, 9, 14, 15, 12, 13},
+		"shuffle-rotr8":  {1, 2, 3, 0, 5, 6, 7, 4, 9, 10, 11, 8, 13, 14, 15, 12},
+		"shuffle-zip1d":  {0, 1, 2, 3, 4, 5, 6, 7, 16, 17, 18, 19, 20, 21, 22, 23},
+		"shuffle-zip2d":  {8, 9, 10, 11, 12, 13, 14, 15, 24, 25, 26, 27, 28, 29, 30, 31},
+		"shuffle-zip1s":  {0, 1, 2, 3, 16, 17, 18, 19, 4, 5, 6, 7, 20, 21, 22, 23},
+		"shuffle-zip2s":  {8, 9, 10, 11, 24, 25, 26, 27, 12, 13, 14, 15, 28, 29, 30, 31},
+	} {
+		t.Run(name, func(t *testing.T) {
+			var want [16]byte
+			for i, lane := range lanes {
+				if lane < 16 {
+					want[i] = a[lane]
+				} else {
+					want[i] = b[lane-16]
+				}
+			}
+			if got := runArm64I32(t, simdShuffleCompareMaskBody(a, b, want, lanes)); got != 0xffff {
+				t.Fatalf("comparison mask = %#x, want 0xffff", got)
+			}
+		})
+	}
 
 	t.Run("i8x16.swizzle", func(t *testing.T) {
 		src := [16]byte{0, 11, 22, 33, 44, 55, 66, 77, 88, 99, 111, 122, 133, 144, 155, 166}

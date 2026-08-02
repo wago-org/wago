@@ -93,8 +93,9 @@ type instancePluginState struct {
 }
 
 type instanceCloseState struct {
-	done   chan struct{}
-	result error
+	done          chan struct{}
+	result        error
+	interruptStop func()
 }
 
 func (in *Instance) instantiateOrigin() InstantiateOrigin {
@@ -613,6 +614,7 @@ func (in *Instance) callNativeSync(entry uintptr) error {
 func (in *Instance) callNativeSyncWithTrap(entry uintptr, activeTrap []byte) (err error) {
 	locked := in.beginNativeEntry()
 	defer locked.unlockExecution()
+	defer func() { err = in.decorateTrap(err) }()
 	defer func() {
 		if r := recover(); r != nil {
 			if ex, ok := r.(HostExit); ok {

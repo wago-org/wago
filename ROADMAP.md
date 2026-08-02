@@ -1,7 +1,8 @@
 # wago roadmap
 
 wago is a pure-Go (no cgo) single-pass WebAssembly engine — a from-scratch port
-of [WARP](warp/)'s design. Target today is **linux/amd64** with a modern CPU
+of [WARP](https://github.com/wago-org/warp)'s design. Target today is
+**linux/amd64** with a modern CPU
 baseline of SSSE3/SSE4.1 plus AVX/VEX.128 XMM encodings; AVX2/FMA/VNNI remain
 outside the baseline and require explicit feature gates. This file tracks what
 works and what's next at a glance.
@@ -112,11 +113,17 @@ codegen rationale is **[OPTIMIZATIONS.md](OPTIMIZATIONS.md)**. Summary of the tw
 **Runtime & product** (no-ir-plan P8 — parallel track, feature value)
 - [x] **Synchronous host-import results** — returning host imports use the no-cgo
   re-entry protocol; `v128` host params/results use the same two-slot public ABI.
-- 🚧 Interruption / cooperative cancel: ARM64 `Call(ctx)` polls at function
-  entries and loop headers and returns `context.Canceled`/`DeadlineExceeded`;
-  amd64 native polling remains planned. The checkpoints also bound ARM64 Go-GC
-  stalls during long native loops.
-- [ ] Wasm-level stack traces on trap (trap site → func idx → wasm pc)
+- [x] Interruption / cancellation: Linux/amd64 and Linux/arm64 use
+  thread-directed real-time signals plus validated `ucontext` rewriting, with
+  zero interruption instrumentation in generated Wasm. Other targets retain
+  function-entry and loop-header polls. Both Linux architectures return
+  `context.Canceled`/`DeadlineExceeded`, and active-instance close uses the same
+  trap. See `docs/linux-host-interrupt.md`.
+- [x] Wasm-level trap source frames: generated cold edges report the logical
+  function (including inlined callees) and an exact Wasm PC when a function has
+  one site for that trap class. Shared multi-site stubs still report the
+  function without guessing a PC. Full caller-chain unwind metadata remains a
+  follow-up.
 - [x] WebAssembly 2.0 product closeout: `.wago` codec v23 persists structural
   reference globals, indexed typed tables/exports/elements, exact local/imported
   table-limit forms, and required-feature bits without serializing live runtime
@@ -128,8 +135,10 @@ codegen rationale is **[OPTIMIZATIONS.md](OPTIMIZATIONS.md)**. Summary of the tw
   bindings, and producer/consumer close order. The official Release 2 execution
   harness remains zero-skip at 1,600 modules / 48,331 assertions, including all 83 unlinkable assertions.
 - [ ] `call_indirect` inline caches behind a table epoch
-- [ ] `.wago` productization: cache keys (module hash + compiler version + CPU features
-  + bounds mode + ABI) and a compile/run/inspect CLI
+- [x] `.wago` productization: `wago build` creates explicit artifacts and
+  `wago run` reuses an automatic cache keyed by the module, exact runtime
+  executable, GOOS/GOARCH, effective feature/bounds/memory configuration, and
+  optimization knobs. `wago cache` owns inspection, pruning, and cleanup.
 
 ## Verification & quality
 
@@ -161,5 +170,5 @@ codegen rationale is **[OPTIMIZATIONS.md](OPTIMIZATIONS.md)**. Summary of the tw
   only backend, and the ceiling is attacked incrementally instead
   (see [docs/no-ir-plan.md](docs/no-ir-plan.md) §0)
 - The wasm exception-handling / GC proposals; multi-memory
-- Re-implementing WARP's linker/disassembler/fuzzer (they live in `warp/` as the
+- Re-implementing WARP's linker/disassembler/fuzzer (WARP remains the external
   reference)

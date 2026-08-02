@@ -121,7 +121,7 @@ func (e *Engine) Call(code uintptr, serArgs, linMem, trap, results []byte) error
 	enterNative(code, slicePtr(serArgs), slicePtr(linMem), slicePtr(trap), slicePtr(results), e.stackTop)
 	if len(trap) >= 4 {
 		if tc := TrapCode(loadTrap(trap)); tc != TrapNone {
-			return &TrapError{Code: tc}
+			return trapErrorFromBuffer(tc, trap)
 		}
 	}
 	return nil
@@ -137,7 +137,7 @@ func (e *Engine) CallPrepared(code uintptr, serArgs []byte, linMemBase uintptr, 
 	if len(trap) >= 4 {
 		if tc := TrapCode(loadTrap(trap)); tc != TrapNone {
 			storeTrap(trap, 0)
-			return &TrapError{Code: tc}
+			return trapErrorFromBuffer(tc, trap)
 		}
 	}
 	return nil
@@ -154,6 +154,9 @@ func clearTrapUnlessInterrupted(trap []byte) {
 	for {
 		old := atomic.LoadUint32(cell)
 		if TrapCode(old) == TrapInterrupted || atomic.CompareAndSwapUint32(cell, old, 0) {
+			if len(trap) >= TrapBufferBytes {
+				clear(trap[16:24])
+			}
 			return
 		}
 	}
@@ -172,8 +175,7 @@ func installTrapCell(linMem, trap []byte) {
 // normal enterNative; whenever native code parks at a host call (trap cell ==
 // hostCallPending), the bound host function is run here — on the goroutine stack,
 // in normal Go context, so arbitrary host code is safe (no foreign-stack /
-// morestack hazard) — and native code is resumed via resumeNative. This mirrors
-// wazero's host-call exec loop.
+// morestack hazard) — and native code is resumed via resumeNative.
 //
 // ctrl must point at an off-heap control frame of at least ctrlFrameSize bytes
 // whose address has been installed as the import ctx via JobMemory.SetCustomCtx.
@@ -238,12 +240,15 @@ func (e *Engine) callWithHostLoop(code uintptr, serArgs []byte, linMemBase uintp
 	// here as `tc != 0` — breaking the loop with the interrupt code rather than a
 	// synthetic "too many host calls" error. A guest with no deadline that spins
 	// on host calls forever is no different from one that spins on compute
-	// forever: both require the caller to arm a timeout, exactly as under wazero.
+	// forever: both require the caller to arm a timeout.
 	for first := true; ; first = false {
 		if first {
 			enterNative(code, slicePtr(serArgs), linMemBase, slicePtr(trap), slicePtr(results), e.stackTop)
 		} else {
 			clearTrapUnlessInterrupted(trap) // clear host-pending, but preserve concurrent Close interruption
+			if TrapCode(loadTrap(trap)) == TrapInterrupted {
+				return trapErrorFromBuffer(TrapInterrupted, trap)
+			}
 			prepareHostResume(ctrl, trap, e.stackTop, e.StackLimit())
 			resumeNative(ctrlPtr, e.stackTop)
 		}
@@ -278,7 +283,7 @@ func (e *Engine) callWithHostLoop(code uintptr, serArgs []byte, linMemBase uintp
 			}
 			// loop: resumeNative continues native code after the host call
 		case tc != 0:
-			return &TrapError{Code: TrapCode(tc)}
+			return trapErrorFromBuffer(TrapCode(tc), trap)
 		default:
 			return nil
 		}
@@ -295,11 +300,18 @@ func MapCode(code []byte) (mem []byte, entry uintptr, err error) {
 	if err != nil {
 		return nil, 0, err
 	}
+	if err = registerExecutableCode(mem); err != nil {
+		_ = munmap(mem)
+		return nil, 0, err
+	}
 	return mem, slicePtr(mem), nil
 }
 
 // Unmap releases a mapping returned by MapCode.
-func Unmap(mem []byte) error { return munmap(mem) }
+func Unmap(mem []byte) error {
+	unregisterExecutableCode(mem)
+	return munmap(mem)
+}
 
 // slicePtr returns the address of the first element of an off-heap slice as a
 // uintptr. Safe only for mmap-backed slices, whose backing array the GC never

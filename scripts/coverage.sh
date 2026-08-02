@@ -1,9 +1,10 @@
 #!/usr/bin/env sh
-# Run the test suite with cross-package coverage and render a compact per-package
-# report. Backs `make cover` and the CI coverage job. When COVER_BASELINE_REF is
-# set (e.g. origin/main) the report gains a "Δ vs main" column by measuring that
-# ref in a throwaway worktree. In GitHub Actions the report is appended to
-# $GITHUB_STEP_SUMMARY; it is always written to $COVER_REPORT for the PR comment.
+# Run the five public verification gates with cross-package coverage and render a
+# compact per-package report. Backs `make cover` and the CI coverage job. When
+# COVER_BASELINE_REF is set (e.g. origin/main) the report gains a "Δ vs main"
+# column by measuring that ref in a throwaway worktree. In GitHub Actions the
+# report is appended to $GITHUB_STEP_SUMMARY; it is always written to
+# $COVER_REPORT for the PR comment.
 set -eu
 
 profile="${COVERPROFILE:-coverage.out}"
@@ -18,11 +19,58 @@ root=$(git rev-parse --show-toplevel) || {
 }
 cd "$root"
 
-# measure <dir> <profile-out>: run coverage for the module rooted at <dir> and
-# print "covered<TAB>total<TAB>pkg" per package, plus a final TOTAL row. The
-# merged profile repeats each block once per test binary, so dedup by block id.
+# measure <dir> <profile-out>: run normal, guard-page, spec1, spec2, and SIMD
+# coverage for the module rooted at <dir>, merge by source block, and print
+# "covered<TAB>total<TAB>pkg" per package, plus a final TOTAL row.
 measure() {
-	(cd "$1" && WAGO_BOUNDS=explicit go test -count=1 -covermode=atomic -coverpkg=./... -coverprofile="$2" ./... >/dev/null)
+	dir=$1
+	out=$2
+	profiles=$(mktemp -d)
+	trap 'rm -rf "$profiles"' EXIT HUP INT TERM
+
+	command -v wast2json >/dev/null 2>&1 || {
+		printf 'coverage: wast2json (wabt) not on PATH\n' >&2
+		exit 1
+	}
+	[ -f "$dir/tests/spec/i32.wast" ] ||
+		git -C "$dir" submodule update --init tests/spec >/dev/null
+	[ -f "$dir/tests/spec-v2/test/core/i32.wast" ] ||
+		git -C "$dir" submodule update --init tests/spec-v2 >/dev/null
+
+	(cd "$dir" && go test -count=1 -covermode=atomic -coverpkg=./... \
+		-coverprofile="$profiles/normal.out" ./... >/dev/null)
+	(cd "$dir" && go test -count=1 -tags wago_guardpage -covermode=atomic \
+		-coverpkg=./... -coverprofile="$profiles/guard-root.out" ./src/wago/ >/dev/null)
+	(cd "$dir/bench" && go test -count=1 -tags wago_guardpage \
+		-run 'TestCorpusDifferential|TestJsonAsGuardCorrect' -covermode=atomic \
+		-coverpkg=github.com/wago-org/wago/... \
+		-coverprofile="$profiles/guard-bench.out" . >/dev/null)
+	(cd "$dir" && WAGO_SPECTEST_DIR="$dir/tests/spec" WAGO_SPEC_VERSION=1.0 \
+		go test -count=1 -run TestSpecSuiteExec -covermode=atomic -coverpkg=./... \
+		-coverprofile="$profiles/spec1.out" ./src/wago/ >/dev/null)
+	(cd "$dir" && go test -count=1 -run '^TestCoreV2Validation$' \
+		-covermode=atomic -coverpkg=./... -coverprofile="$profiles/spec2-validation.out" \
+		./src/core/compiler/wasm/ >/dev/null)
+	(cd "$dir" && WAGO_SPECTEST_DIR="$dir/tests/spec-v2" WAGO_SPEC_VERSION=2.0 \
+		go test -count=1 -run '^TestCoreV2SpecExecution$' \
+		-covermode=atomic -coverpkg=./... -coverprofile="$profiles/spec2-execution.out" \
+		./src/wago/ >/dev/null)
+	(cd "$dir" && WAGO_SPECTEST_DIR="$dir/tests/spec" WAGO_SPEC_VERSION=simd \
+		go test -count=1 -run TestSpecSuiteExec -covermode=atomic -coverpkg=./... \
+		-coverprofile="$profiles/simd.out" ./src/wago/ >/dev/null)
+
+	awk '
+		FNR == 1 { next }
+		{
+			key=$1; stmts[key]=$2+0; count=$3+0
+			if (count > max[key]) max[key]=count
+		}
+		END {
+			print "mode: atomic"
+			for (key in stmts) printf "%s %d %d\n", key, stmts[key], max[key]
+		}
+	' "$profiles"/*.out >"$out"
+
 	awk 'NR>1 {
 		key=$1; stmts[key]=$2+0; c=$3+0; if (c>max[key]) max[key]=c; seen[key]=1
 	}
@@ -35,7 +83,10 @@ measure() {
 		}
 		for (p in tot) printf "%d\t%d\t%s\n", cov[p], tot[p], p
 		printf "%d\t%d\tTOTAL\n", C, T
-	}' "$2"
+	}' "$out"
+
+	rm -rf "$profiles"
+	trap - EXIT HUP INT TERM
 }
 
 cur=$(mktemp)

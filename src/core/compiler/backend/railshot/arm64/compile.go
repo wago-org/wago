@@ -128,6 +128,9 @@ type fn struct {
 	m  *wasm.Module
 	ft *wasm.CompType // this function's signature
 	transient
+	traceFuncIdx       uint32
+	tracePCBase        uint32
+	wasmPC             uint32
 	customInstructions map[uint32]railcore.CustomInstruction
 
 	nParams     int
@@ -395,9 +398,15 @@ type scratch struct {
 
 	retSites      []int
 	ctrl          []ctrlFrame
-	trapSites     [trapTableOOB + 1][]int
+	trapSites     [trapTableOOB + 1][]trapSite
 	branchTargets map[int]bool
 	transient
+}
+
+type trapSite struct {
+	branch   int
+	function uint32
+	pc       uint32
 }
 
 // scratchState keeps low-level backend tests able to exercise an isolated fn.
@@ -1151,7 +1160,8 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, int
 	sc.reset()
 	sc.asm.DenseIdxDisp = hints.memOps >= 8
 	sc.asm.Grow(asmCapForBody(len(c.BodyBytes)))
-	f := &fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, transient: sc.transient, customInstructions: customInstructions, nParams: len(ft.Params), nLocals: nLocals, guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, regMerge: regMergeEnabled, globalCellReg: regNone, memSizeReg: regNone, immutableLocalTable: hints.immutableLocalTable, immutableTableType: hints.immutableTableType, immutableTableTyped: hints.immutableTableTyped, monomorphicTarget: hints.monomorphicTarget, importBindings: importBindings, stats: stats, branchHints: m.BranchHintsForFunc(uint32(m.ImportedFuncCount() + funcIdx)), branchHintLocalDecl: c.LocalDeclBytes, calleePreservesPins: calleePreservesPins}
+	globalIdx := m.ImportedFuncCount() + funcIdx
+	f := &fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, transient: sc.transient, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: customInstructions, nParams: len(ft.Params), nLocals: nLocals, guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, regMerge: regMergeEnabled, globalCellReg: regNone, memSizeReg: regNone, immutableLocalTable: hints.immutableLocalTable, immutableTableType: hints.immutableTableType, immutableTableTyped: hints.immutableTableTyped, monomorphicTarget: hints.monomorphicTarget, importBindings: importBindings, stats: stats, branchHints: m.BranchHintsForFunc(uint32(globalIdx)), branchHintLocalDecl: c.LocalDeclBytes, calleePreservesPins: calleePreservesPins}
 	defer func() {
 		sc.ctrl = f.ctrl
 		sc.transient = f.transient
@@ -1440,9 +1450,9 @@ func (f *fn) runBody(c *wasm.Func) error {
 // live in a call-clobbered register on top of the arg-register pins over-subscribed
 // the file: the call's arg-staging + setup ran out of free scratch and silently
 // corrupted a pinned local's value. The observable repro is sqlite's tokenizer —
-// every SQL keyword misreads as an identifier ("near \"SELECT\": syntax error") —
-// while wazero runs the same module correctly. Restricting pins to the callee-saved
-// block + the STACK_REG-managed X9/X10/X11 removes the hazard. See TestSyncSQLiteQuery.
+// every SQL keyword misreads as an identifier ("near \"SELECT\": syntax error").
+// Restricting pins to the callee-saved block plus the STACK_REG-managed
+// X9/X10/X11 removes the hazard. See TestSyncSQLiteQuery.
 //
 // X9/X10/X11 are still excluded in reg-ABI functions with >4 params (the internal
 // entry's incoming args would collide with the prologue's arg→pinned moves). X15

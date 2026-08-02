@@ -10,7 +10,7 @@ import (
 // BenchmarkCrossBoundaryCall measures the full host->wasm->host round-trip cost
 // of Engine.Call: marshal a pointer arg, switch to the foreign stack via the asm
 // trampoline, run native code (add1), switch back, and read the result + trap.
-// This is the cross-boundary latency that should rival wazero.
+// This is the end-to-end cross-boundary latency.
 func BenchmarkCrossBoundaryCall(b *testing.B) {
 	eng, err := NewEngine()
 	if err != nil {
