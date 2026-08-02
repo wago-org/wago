@@ -464,16 +464,27 @@ Dew removes 426 mutation transitions per call, leaving 1,298 total transitions:
 interleaved rounds produce median-of-medians changes of about 0.846→0.755 ms fresh
 and 0.880→0.839 ms sustained, with host allocation unchanged.
 
-The remaining 260 mutation transitions are 258 array stores and two struct stores
-that must create remembered membership. Of those array calls, 254 already have a
-remembered old parent; they remain helper-bound because exact native array-card
-reconciliation has not yet been published in ABI v1.
+The remaining 260 mutation transitions were 258 array stores and two struct stores
+that must create remembered membership. Of those array calls, 254 already had a
+remembered old parent and a valid object card.
+
+### Completed: existing-card old/large array stores
+
+Collector native ABI v2 preserves the 112-byte v1 prefix and appends object-card
+pointer/count metadata. The shared AMD64 final-reference array-store stub admits an
+old/large Throughput parent only when remembered membership and a validated card slot
+already exist. It can widen that stable interval in place, but never appends or
+relocates metadata. Cardless/unremembered and Tiny paths remain helper-bound. Dew
+removes another 254 mutation transitions, leaving 1,044 total: 1,038 allocation
+helpers and six metadata-creating mutations. Generated code grows by 226 bytes.
+Six interleaved rounds against the old-struct build show median-of-medians changes
+of about 0.671→0.660 ms fresh and 0.763→0.725 ms sustained.
 
 Remaining order:
 
-1. Design bounded native reconciliation for already-carded old/large array stores;
-   fallback must remain for card/remembered metadata growth and every Tiny state.
-2. Implement native bump allocation for the 1,038 live constructor transitions.
+1. Implement native bump allocation for the 1,038 live constructor transitions.
+2. Keep the six remembered/card-creating mutations on the exact helper until a
+   bounded metadata-growth path is proven worthwhile.
 3. Prototype a bounded field-value cache only if dynamic counters identify a hot
    same-field family on another workload; Dew has no conservative get/get or
    set/get candidates.

@@ -85,3 +85,31 @@ func TestGCExecutedHelperStatsTrackOldStructBarrierFallback(t *testing.T) {
 		t.Fatalf("remembered old-parent store stats = %+v, want second allocation without mutation fallback", stats)
 	}
 }
+
+func TestGCExecutedHelperStatsTrackOldArrayCardFallback(t *testing.T) {
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcNativeOldArrayReferenceStoreBytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	instance, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	if _, err := instance.Invoke("init"); err != nil {
+		t.Fatal(err)
+	}
+	array := corergc.Ref(uint32(readGlobalObject(instance.globalCells[0], instance.c.Globals[0].Type)))
+	if err := instance.gc.ForcePromote(array); err != nil {
+		t.Fatal(err)
+	}
+	instance.SetGCHelperStatsTracking(true)
+	defer instance.SetGCHelperStatsTracking(false)
+	if _, err := instance.Invoke("set_both"); err != nil {
+		t.Fatal(err)
+	}
+	if stats := instance.GCHelperStats(); stats.MutationCalls != 1 || stats.AllocationCalls != 0 {
+		t.Fatalf("two old-array stores stats = %+v, want only the first card fallback", stats)
+	}
+}

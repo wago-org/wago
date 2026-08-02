@@ -6,7 +6,7 @@ import "unsafe"
 // generated code. Native code must compare this value before following any
 // pointer. The view is refreshed in place whenever a growable backing slice can
 // relocate; callers must still serialize access with collector mutation.
-const NativeABIVersion uint32 = 1
+const NativeABIVersion uint32 = 2
 
 // Native handle-entry layout. These constants are part of NativeABIVersion and
 // are verified against handleEntry below.
@@ -14,6 +14,7 @@ const (
 	NativeHandleStride                = 20
 	NativeHandleOffsetOffset          = 0
 	NativeHandleSizeOffset            = 4
+	NativeHandleCardSlotOffset        = 12
 	NativeHandleSpaceOffset           = 18
 	NativeHandleRememberedOffset      = 19
 	NativeSpaceFree              byte = byte(spaceFree)
@@ -22,6 +23,10 @@ const (
 	NativeSpaceLarge             byte = byte(spaceLarge)
 	NativeSpaceTiny              byte = byte(spaceTiny)
 	NativeSpaceCount                  = 5
+	NativeObjectCardStride            = 12
+	NativeObjectCardHandleOffset      = 0
+	NativeObjectCardStartOffset       = 4
+	NativeObjectCardEndOffset         = 8
 )
 
 // NativeSpaceView names one collector heap backing. Space zero deliberately
@@ -47,6 +52,9 @@ type NativeCollectorView struct {
 	_                 uint32
 	Spaces            [NativeSpaceCount]NativeSpaceView
 	RefreshGeneration uint64
+	ObjectCards       uintptr
+	ObjectCardCount   uint32
+	_                 uint32
 }
 
 const (
@@ -59,7 +67,9 @@ const (
 	NativeSpaceBaseOffset             = 0
 	NativeSpaceBytesOffset            = 8
 	NativeViewRefreshGenerationOffset = 104
-	NativeCollectorViewSize           = 112
+	NativeViewObjectCardsOffset       = 112
+	NativeViewObjectCardCountOffset   = 120
+	NativeCollectorViewSize           = 128
 )
 
 // NativeInstanceView adds the immutable module-local to canonical-domain type
@@ -112,6 +122,20 @@ func (c *Collector) refreshNativeView() {
 	v.Spaces[NativeSpaceOld] = NativeSpaceView{Base: sliceData(c.throughput.mem), Bytes: uint32(len(c.throughput.mem))}
 	v.Spaces[NativeSpaceLarge] = v.Spaces[NativeSpaceOld]
 	v.Spaces[NativeSpaceTiny] = NativeSpaceView{Base: sliceData(c.tiny.mem), Bytes: uint32(len(c.tiny.mem))}
+	v.ObjectCards = sliceData(c.objectCards)
+	v.ObjectCardCount = uint32(len(c.objectCards))
+	v.RefreshGeneration++
+}
+
+// refreshNativeCards republishes the relocatable object-card backing after
+// append/remove/clear operations. In-place interval widening needs no refresh.
+func (c *Collector) refreshNativeCards() {
+	if c == nil || c.nativeView == nil {
+		return
+	}
+	v := c.nativeView
+	v.ObjectCards = sliceData(c.objectCards)
+	v.ObjectCardCount = uint32(len(c.objectCards))
 	v.RefreshGeneration++
 }
 

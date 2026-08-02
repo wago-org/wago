@@ -24,6 +24,8 @@ type gcHelperCounter struct {
 	oldYoungUnrememberedMutations     atomic.Uint64
 	structOldYoungRememberedMutations atomic.Uint64
 	arrayOldYoungRememberedMutations  atomic.Uint64
+	arrayCardPresentMutations         atomic.Uint64
+	arrayCardCoveredMutations         atomic.Uint64
 }
 
 var activeGCHelperCounter atomic.Pointer[gcHelperCounter]
@@ -71,6 +73,15 @@ func recordSynchronousGCHelper(in *Instance, helper uint32, args []uint64) {
 				counter.parentLargeMutations.Add(1)
 			case gc.DiagnosticSpaceTiny:
 				counter.parentTinyMutations.Add(1)
+			}
+			if helper == gcArraySet && len(args) >= 2 {
+				present, covered := in.gc.DiagnosticArrayCard(parent, uint32(args[1]))
+				if present {
+					counter.arrayCardPresentMutations.Add(1)
+				}
+				if covered {
+					counter.arrayCardCoveredMutations.Add(1)
+				}
 			}
 		}
 	}
@@ -143,5 +154,7 @@ func snapshotGCHelperStats(collector *gc.Collector) GCHelperStats {
 		OldYoungUnrememberedCalls:     counter.oldYoungUnrememberedMutations.Load(),
 		StructOldYoungRememberedCalls: counter.structOldYoungRememberedMutations.Load(),
 		ArrayOldYoungRememberedCalls:  counter.arrayOldYoungRememberedMutations.Load(),
+		ArrayCardPresentCalls:         counter.arrayCardPresentMutations.Load(),
+		ArrayCardCoveredCalls:         counter.arrayCardCoveredMutations.Load(),
 	}
 }

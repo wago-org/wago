@@ -436,7 +436,7 @@ func (f *fn) emitNativeBarrierSafeStructRefSet(typeIndex, fieldIndex, fieldOffse
 	return err
 }
 
-func (f *fn) emitNativeNurseryArrayRefSet(typeIndex uint32, valueType wasm.ValType) error {
+func (f *fn) emitNativeCardSafeArrayRefSet(typeIndex uint32, valueType wasm.ValType) error {
 	var savedLocals [16]locState
 	if len(f.pinnedLocals) > len(savedLocals) {
 		return fmt.Errorf("amd64: %d pinned locals exceed conditional GC store bound", len(f.pinnedLocals))
@@ -546,7 +546,7 @@ func (f *fn) emitNativeGCStubs() {
 	}
 	if len(f.sc.gcArrayRefSetStubSites) != 0 {
 		stub := f.a.Len()
-		f.emitNativeNurseryArrayRefSetStub()
+		f.emitNativeCardSafeArrayRefSetStub()
 		for _, site := range f.sc.gcArrayRefSetStubSites {
 			f.a.PatchRel32(site, stub)
 		}
@@ -1118,7 +1118,12 @@ func (f *fn) emitNativeBarrierSafeStructRefSetStub() {
 	a.Ret()
 }
 
-func (f *fn) emitNativeNurseryArrayRefSetStub() {
+// emitNativeCardSafeArrayRefSetStub extends nursery stores to Throughput
+// old/large arrays only when remembered membership and an existing object card
+// are already present. It may widen that stable card interval in place, but it
+// never grows collector metadata; cardless, unremembered, and Tiny stores retain
+// the exact helper fallback.
+func (f *fn) emitNativeCardSafeArrayRefSetStub() {
 	a := f.a
 	var preserve [3]bool
 	for _, local := range f.pinnedLocals {
@@ -1136,9 +1141,10 @@ func (f *fn) emitNativeNurseryArrayRefSetStub() {
 			a.Push(R9 + Reg(i))
 		}
 	}
+	a.Push(RAX)             // compact parent for object-card identity validation
 	a.MovRegReg32(RDI, RSI) // compact child
 	a.MovRegReg32(RSI, RCX) // array index
-	var fallback [12]int
+	var fallback [24]int
 	nfallback := 0
 	addFallback := func(site int) { fallback[nfallback], nfallback = site, nfallback+1 }
 
@@ -1181,10 +1187,14 @@ func (f *fn) emitNativeNurseryArrayRefSetStub() {
 	a.ShiftImm(5, R10, 16, false)
 	a.AluRI(4, R10, 0xff, false)
 	a.AluRI(cmpDigit, R10, int32(gc.NativeSpaceNursery), false)
-	addFallback(a.JccPlaceholder(condNE))
+	addFallback(a.JccPlaceholder(condB))
+	a.AluRI(cmpDigit, R10, int32(gc.NativeSpaceLarge), false)
+	addFallback(a.JccPlaceholder(condA))
 
-	a.Load64(R11, R8, int32(gc.NativeViewSpacesOffset+gc.NativeSpaceNursery*gc.NativeViewSpaceStride+gc.NativeSpaceBaseOffset))
-	a.Load32(R10, R8, int32(gc.NativeViewSpacesOffset+gc.NativeSpaceNursery*gc.NativeViewSpaceStride+gc.NativeSpaceBytesOffset))
+	a.MovRegReg32(RAX, R10)
+	a.ImulRI(RAX, gc.NativeViewSpaceStride, true)
+	a.LoadIdx(R11, R8, RAX, int32(gc.NativeViewSpacesOffset+gc.NativeSpaceBaseOffset), 8, false, true)
+	a.LoadIdx(R10, R8, RAX, int32(gc.NativeViewSpacesOffset+gc.NativeSpaceBytesOffset), 4, false, false)
 	a.Load32(RAX, R9, gc.NativeHandleOffsetOffset)
 	a.Cmp32(RAX, R10)
 	addFallback(a.JccPlaceholder(condA))
@@ -1209,6 +1219,8 @@ func (f *fn) emitNativeNurseryArrayRefSetStub() {
 	a.Load32(RCX, R11, 4)
 	a.Cmp64(R10, RCX)
 	f.trapIf(condA, trapCastFailure)
+	a.MovRegReg32(RCX, RSI)
+	a.ShiftImm(5, RCX, 2, false) // restore the logical array index for card metadata
 
 	a.TestSelf(RDI, false)
 	childValid := a.JccPlaceholder(condE)
@@ -1228,8 +1240,63 @@ func (f *fn) emitNativeNurseryArrayRefSetStub() {
 	a.AluRI(4, RAX, 0xff, false)
 	a.TestSelf(RAX, false)
 	addFallback(a.JccPlaceholder(condE))
-	a.PatchRel32(childValid, a.Len())
-	a.PatchRel32(childI31, a.Len())
+	a.AluRI(cmpDigit, RAX, int32(gc.NativeSpaceNursery), false)
+	childNotYoung := a.JccPlaceholder(condNE)
+	// A nursery child behind an old/large parent requires established remembered
+	// membership before the native path may update an existing card.
+	a.Load32(RAX, R9, 16)
+	a.ShiftImm(5, RAX, 16, false)
+	a.AluRI(4, RAX, 0xff, false)
+	a.AluRI(cmpDigit, RAX, int32(gc.NativeSpaceNursery), false)
+	parentNurseryYoungChild := a.JccPlaceholder(condE)
+	a.Load32(RAX, R9, 16)
+	a.ShiftImm(5, RAX, 24, false)
+	a.TestSelf(RAX, false)
+	addFallback(a.JccPlaceholder(condE))
+
+	cardCheck := a.Len()
+	a.PatchRel32(childValid, cardCheck)
+	a.PatchRel32(childI31, cardCheck)
+	a.PatchRel32(childNotYoung, cardCheck)
+	a.Load32(RAX, R9, 16)
+	a.ShiftImm(5, RAX, 16, false)
+	a.AluRI(4, RAX, 0xff, false)
+	a.AluRI(cmpDigit, RAX, int32(gc.NativeSpaceNursery), false)
+	parentNursery := a.JccPlaceholder(condE)
+
+	// Old/large arrays may proceed only when the helper has already allocated a
+	// valid card slot. Native code can then widen that stable interval without
+	// growing or relocating collector metadata.
+	a.Load32(RAX, R9, gc.NativeHandleCardSlotOffset)
+	a.TestSelf(RAX, false)
+	addFallback(a.JccPlaceholder(condE))
+	a.AluRI(5, RAX, 1, false)
+	a.AluRM(cmpRMcode, RAX, R8, gc.NativeViewObjectCardCountOffset, false)
+	addFallback(a.JccPlaceholder(condAE))
+	a.Load64(R10, R8, gc.NativeViewObjectCardsOffset)
+	a.TestSelf(R10, true)
+	addFallback(a.JccPlaceholder(condE))
+	a.ImulRI(RAX, gc.NativeObjectCardStride, true)
+	a.Add64(R10, RAX)
+	a.Load32(RAX, R10, gc.NativeObjectCardHandleOffset)
+	a.Load32(RDX, RSP, 0)
+	a.ShiftImm(5, RDX, 1, false)
+	a.Cmp32(RAX, RDX)
+	addFallback(a.JccPlaceholder(condNE))
+	a.Load32(RAX, R10, gc.NativeObjectCardStartOffset)
+	a.Cmp32(RCX, RAX)
+	startCovered := a.JccPlaceholder(condAE)
+	a.Store32(R10, gc.NativeObjectCardStartOffset, RCX)
+	a.PatchRel32(startCovered, a.Len())
+	a.Load32(RAX, R10, gc.NativeObjectCardEndOffset)
+	a.Cmp32(RCX, RAX)
+	endCovered := a.JccPlaceholder(condBE)
+	a.Store32(R10, gc.NativeObjectCardEndOffset, RCX)
+	a.PatchRel32(endCovered, a.Len())
+
+	store := a.Len()
+	a.PatchRel32(parentNurseryYoungChild, store)
+	a.PatchRel32(parentNursery, store)
 	a.StoreIdx(R11, RSI, RDI, int32(gc.PayloadOffset), 4)
 	a.MovImm32(RAX, 1)
 	done := a.JmpPlaceholder()
@@ -1240,6 +1307,7 @@ func (f *fn) emitNativeNurseryArrayRefSetStub() {
 	}
 	a.MovImm32(RAX, 0)
 	a.PatchRel32(done, a.Len())
+	a.Pop(RDX)
 	for i := len(preserve) - 1; i >= 0; i-- {
 		if preserve[i] {
 			a.Pop(R9 + Reg(i))

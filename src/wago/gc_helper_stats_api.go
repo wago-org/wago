@@ -17,6 +17,8 @@ type GCHelperStats struct {
 	OldYoungUnrememberedCalls     uint64
 	StructOldYoungRememberedCalls uint64
 	ArrayOldYoungRememberedCalls  uint64
+	ArrayCardPresentCalls         uint64
+	ArrayCardCoveredCalls         uint64
 }
 
 // GCHelperStats returns the current diagnostic helper counters. Only one

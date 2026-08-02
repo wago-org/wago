@@ -175,6 +175,7 @@ func (c *Collector) addObjectCardRange(h, start, end uint32) {
 	}
 	c.objectCards = append(c.objectCards, objectCard{handle: h, index: start, end: end})
 	e.cardSlot = uint32(len(c.objectCards))
+	c.refreshNativeCards()
 }
 
 func slotCardKey(kind SlotKind, index uint32) uint64 {
@@ -287,6 +288,7 @@ func (c *Collector) removeCardsForHandle(h uint32) {
 	if pos != last && moved.handle != 0 && int(moved.handle) < len(c.handles) {
 		c.handles[moved.handle].cardSlot = uint32(pos + 1)
 	}
+	c.refreshNativeCards()
 }
 func (c *Collector) clearCardMetadata() {
 	for _, card := range c.objectCards {
@@ -297,6 +299,7 @@ func (c *Collector) clearCardMetadata() {
 	c.objectCards = c.objectCards[:0]
 	c.slotCards = c.slotCards[:0]
 	clear(c.slotCardSlot)
+	c.refreshNativeCards()
 }
 
 func (c *Collector) RememberedCount() int { return len(c.remembered) }

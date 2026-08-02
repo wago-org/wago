@@ -102,23 +102,27 @@ product, both at 0 B/op and 0 allocs/op. On July 31, 2026, five 500 ms samples o
 with 0 B/op and 0 allocs/op on the Ryzen 7 8845HS host.
 
 AMD64 final scalar struct/array get/set operations now bypass the parked helper
-through native collector ABI v1. One collector-owned stable view publishes the
-relocatable handle-table pointer/count, five indexed heap-space descriptors, and a
-refresh generation; collection and relocating/large-space allocation republish the
-complete view, while ordinary nursery allocation updates only handle metadata and
-generation. One instance-owned view publishes the immutable local-to-canonical type
+through native collector ABI v2. Its 128-byte collector-owned stable view preserves
+the complete v1 handle/space/generation prefix and appends the current object-card
+pointer/count. Collection and relocating/large-space allocation republish the
+complete view; ordinary nursery allocation updates only handle metadata and
+generation, while card append/remove/clear republishes card metadata. One
+instance-owned view publishes the immutable local-to-canonical type
 map at basedata offset 280. Generated code reloads every pointer per access and
 checks ABI version, handle tag/range, space range, object extent, exact canonical
 type, and array index before touching payload bytes.
 
 Shared AMD64 stubs additionally cover final casts, final cast-plus-array-length,
 final reference-array reads, and final cast-plus-reference-struct reads. Final
-mutable `eqref`/`anyref` arrays perform a checked direct store only when the parent
-is in Throughput nursery space. Final mutable `eqref`/`anyref` struct fields also
-admit Throughput old/large parents when the validated child is not in nursery or
-the parent handle's stable remembered bit is already set. A nursery child behind
-an unremembered old/large struct, every Tiny parent, and malformed metadata retain
-the unchanged helper with the full remembered-set or incremental barrier. Conditional
+mutable `eqref`/`anyref` arrays perform a checked direct store in Throughput nursery
+space and may also admit old/large parents when remembered membership and a validated
+object-card slot already exist. The native path can widen that stable inclusive card
+interval in place, but never appends or relocates card metadata. Final mutable
+`eqref`/`anyref` struct fields admit Throughput old/large parents when the validated
+child is not in nursery or the parent handle's stable remembered bit is already set.
+A nursery child behind an unremembered old/large parent, a cardless old/large array,
+every Tiny parent, and malformed metadata retain the unchanged helper with the full
+remembered-set/card or incremental barrier. Conditional
 lowering preserves hot pinned registers and emits local reloads only on the fallback
 edge. Non-final types, `v128`, bulk operations, and barrier states that require
 metadata growth retain helper lowering. Current scalar
@@ -136,12 +140,12 @@ parent-space, and old-to-young remembered-state calls. Before the old-struct fas
 path, one fresh Dew invocation after dead-constructor elimination and exact-reference
 propagation mapped static `hostsync=6,140` to 1,724 executed transitions: 1,038
 allocating constructors and 686 mutation fallbacks, all with old parents. The checked
-old/large struct path removes 426 of those transitions, leaving 1,298 total: the same
-1,038 allocations plus 260 mutations (258 array and two old-to-young struct stores
-that must create remembered metadata). These per-call counts remain exact through
-100 and 500 repeated invocations. This makes native bump allocation and the remaining
-array-card barrier work independently measurable instead of treating emitted cold
-fallbacks as hot.
+old/large struct path removes 426 of those transitions. ABI v2 existing-card array
+reconciliation removes another 254, leaving 1,044 total: the same 1,038 allocations
+plus six mutations (four cardless/unremembered array stores and two unremembered
+old-to-young struct stores). These per-call counts remain exact through 100 and 500
+repeated invocations. Native bump allocation is therefore the remaining dominant
+executed-helper family rather than an inference from emitted cold fallbacks.
 
 Fully initialized helper-side `struct.new` prevalidates field kinds, ownership,
 subtyping, and nullability once, then passes raw helper ABI words directly to the

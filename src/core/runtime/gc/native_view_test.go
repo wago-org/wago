@@ -16,11 +16,18 @@ func TestNativeCollectorViewLayoutAndRefresh(t *testing.T) {
 	if got := unsafe.Offsetof(entry.size); got != NativeHandleSizeOffset {
 		t.Fatalf("handle size field = %d", got)
 	}
+	if got := unsafe.Offsetof(entry.cardSlot); got != NativeHandleCardSlotOffset {
+		t.Fatalf("handle card slot field = %d", got)
+	}
 	if got := unsafe.Offsetof(entry.space); got != NativeHandleSpaceOffset {
 		t.Fatalf("handle space field = %d", got)
 	}
 	if got := unsafe.Offsetof(entry.remembered); got != NativeHandleRememberedOffset {
 		t.Fatalf("handle remembered field = %d", got)
+	}
+	var card objectCard
+	if unsafe.Sizeof(card) != NativeObjectCardStride || unsafe.Offsetof(card.handle) != NativeObjectCardHandleOffset || unsafe.Offsetof(card.index) != NativeObjectCardStartOffset || unsafe.Offsetof(card.end) != NativeObjectCardEndOffset {
+		t.Fatalf("object card layout changed: size=%d handle=%d start=%d end=%d", unsafe.Sizeof(card), unsafe.Offsetof(card.handle), unsafe.Offsetof(card.index), unsafe.Offsetof(card.end))
 	}
 	var space NativeSpaceView
 	if unsafe.Sizeof(space) != NativeViewSpaceStride || unsafe.Offsetof(space.Base) != NativeSpaceBaseOffset || unsafe.Offsetof(space.Bytes) != NativeSpaceBytesOffset {
@@ -38,6 +45,8 @@ func TestNativeCollectorViewLayoutAndRefresh(t *testing.T) {
 		{"handle count", unsafe.Offsetof(view.HandleCount), NativeViewHandleCountOffset},
 		{"spaces", unsafe.Offsetof(view.Spaces), NativeViewSpacesOffset},
 		{"generation", unsafe.Offsetof(view.RefreshGeneration), NativeViewRefreshGenerationOffset},
+		{"object cards", unsafe.Offsetof(view.ObjectCards), NativeViewObjectCardsOffset},
+		{"object card count", unsafe.Offsetof(view.ObjectCardCount), NativeViewObjectCardCountOffset},
 	}
 	for _, check := range checks {
 		if check.got != check.want {
@@ -83,7 +92,7 @@ func TestNativeCollectorViewLayoutAndRefresh(t *testing.T) {
 			t.Fatalf("closed native view space %d retains backing: %+v", i, space)
 		}
 	}
-	if v.Handles != 0 || v.HandleCount != 0 {
-		t.Fatalf("closed native view retains handles: %+v", v)
+	if v.Handles != 0 || v.HandleCount != 0 || v.ObjectCards != 0 || v.ObjectCardCount != 0 {
+		t.Fatalf("closed native view retains handles/cards: %+v", v)
 	}
 }

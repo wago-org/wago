@@ -98,10 +98,12 @@ Snapshot v4 persists reachable local-global object graphs with stable IDs and
 two-pass cycle/sharing reconstruction; snapshot v5 adds one owned local
 collector-reference table, while snapshot v6 adds multiple heterogeneous local
 tables with indexed lengths, barriers, sharing, and exact structural root
-validation. AMD64 final scalar struct/array accesses use collector native ABI v1:
-a stable allocation/collection-refreshed view at basedata offset 280 validates
-handle, space, object extent, canonical type, and array bounds before direct payload
-access. Reference, vector, non-final, bulk, and barrier-requiring paths remain
+validation. AMD64 final scalar struct/array accesses use collector native ABI v2:
+a stable allocation/collection/card-refreshed view at basedata offset 280 validates
+handle, space, object extent, canonical type, array bounds, remembered membership,
+and any existing object-card interval before direct payload access. Final abstract
+reference stores may bypass helpers only when no metadata growth is required;
+vector, non-final, bulk, cardless/unremembered, and Tiny barrier paths remain
 helper-bound. Arm64 builds lower struct/array/i31 and dynamic cast/test helpers
 through the synchronous ABI. The
 bounded arm64 native-root product publishes liveness-exact locals and hidden
@@ -335,11 +337,11 @@ copy the target pointer context into its home basedata and restore the exact cal
 context on normal return.
 
 Every native-visible address must be stable for the duration in which native code
-can consume it. Most runtime state is off-heap. Native GC ABI v1 is the narrow
+can consume it. Most runtime state is off-heap. Native GC ABI v2 is the narrow
 exception: standard Go and the release TinyGo conservative collector are non-moving;
-typed Collector/Instance fields retain the view and backing slices, and generated code
-reloads relocatable slice pointers after every allocation/collection refresh rather
-than caching them across safepoints.
+typed Collector/Instance fields retain the view, heap/handle slices, and object-card
+backing, and generated code reloads relocatable slice pointers after allocation,
+collection, or card-backing refresh rather than caching them across safepoints.
 
 ### Off-heap allocation
 

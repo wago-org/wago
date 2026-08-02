@@ -44,7 +44,7 @@ ordering and covers same-memory, different-memory, and cyclic call graphs.
 Linear-memory size/growth caches remain backing-owned, while trap and stack
 fields remain invocation-owned.
 
-## Native collector metadata ABI v1
+## Native collector metadata ABI v2
 
 Collector-backed instances install a pointer at `abi.GCNativeViewPtrOffset = 280`.
 It addresses a 32-byte native prefix containing ABI version 1, a pointer to one
@@ -52,9 +52,10 @@ collector-owned view, and an immutable local-type to canonical-domain `u32` map.
 The Go object retains that map through a typed trailing slice; native code sees
 only the fixed prefix.
 
-The shared collector view is 112 bytes: version/20-byte handle stride, current
-handle pointer/count, five directly indexed 16-byte space descriptors
-`{base u64, bytes u32, pad}`, and a refresh generation. Space zero is invalid;
+The shared collector view is 128 bytes. ABI v2 preserves the complete 112-byte v1
+prefix—version/20-byte handle stride, current handle pointer/count, five directly
+indexed 16-byte space descriptors `{base u64, bytes u32, pad}`, and a refresh
+generation—and appends an object-card pointer/count. Space zero is invalid;
 nursery, old, large, and Tiny match the stable one-byte `handleEntry.space`
 identity at byte 18. The stable remembered bit at byte 19 is also native-readable;
 it is consulted only after complete handle/type/extent validation and never mutated
@@ -70,9 +71,11 @@ index, heap/object range, exact canonical type, and array bounds. Numeric writes
 are pointer-free and need no collector barrier. Final abstract-reference struct
 stores may also write an old/large Throughput parent when the child is non-young or
 the parent is already remembered; stores that must append remembered metadata and
-all Tiny stores retain the synchronous helper ABI. Reference-array old/large stores
-also remain helper-bound until native card reconciliation is complete. Non-final
-types, opaque references, `v128`, and bulk operations keep the helper ABI. The
+all Tiny stores retain the synchronous helper ABI. Final abstract-reference array
+stores may write an old/large parent only when remembered membership and a validated
+object-card slot already exist. Native code may widen that card's inclusive interval
+in place, but never appends or relocates card metadata. Cardless, unremembered, Tiny,
+non-final, opaque-reference, `v128`, and bulk paths keep the helper ABI. The
 basedata increase is 16 bytes per `JobMemory`;
 `Instance` grows by one eight-byte retained view pointer on current amd64 builds.
 

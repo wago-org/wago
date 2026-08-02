@@ -21,6 +21,24 @@ func (c *Collector) DiagnosticObjectStore(parent, child Ref) (parentSpace, child
 	return diagnosticSpace(entry.space), diagnosticRefSpace(c, child), entry.remembered
 }
 
+// DiagnosticArrayCard reports whether parent has a valid object-card entry and
+// whether its current inclusive dirty interval already covers index.
+func (c *Collector) DiagnosticArrayCard(parent Ref, index uint32) (present, covers bool) {
+	if c == nil || !parent.IsObj() || !c.validObjectRef(parent) {
+		return false, false
+	}
+	handle := handleOf(parent)
+	slot := c.handles[handle].cardSlot
+	if slot == 0 || !slotIndexOK(slot-1, len(c.objectCards)) {
+		return false, false
+	}
+	card := c.objectCards[slot-1]
+	if card.handle != handle || card.end < card.index {
+		return false, false
+	}
+	return true, index >= card.index && index <= card.end
+}
+
 func diagnosticRefSpace(c *Collector, ref Ref) uint8 {
 	if ref.IsNull() || ref.IsI31() {
 		return DiagnosticSpaceImmediate

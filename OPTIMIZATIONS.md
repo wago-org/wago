@@ -109,10 +109,10 @@ ARM64 uses the same bounded descriptor semantics but still has the existing
 spill/reload staging optimization headroom.
 
 **Checked direct WasmGC object access (2026-08-01).** The measured prototype is now
-an AMD64 production path for final scalar struct/array get/set. Collector ABI v1
-publishes one stable 112-byte view containing the current relocatable handle table,
-five indexed heap-space descriptors, and a refresh generation; allocation and
-collection republish it in place. Each collector-backed instance retains one 32-byte
+an AMD64 production path for final scalar struct/array get/set. Collector ABI v2
+publishes one stable 128-byte view preserving the v1 handle/space/generation prefix
+and appending object-card pointer/count metadata; allocation, collection, and card
+backing changes republish it in place. Each collector-backed instance retains one 32-byte
 native prefix with the immutable local-to-domain type map and publishes it at basedata
 offset 280. Generated accesses validate both ABI versions, handle tag/range, space,
 heap/object extent, exact canonical type, and array index. Numeric stores are
@@ -189,6 +189,22 @@ medians improves about **0.846→0.755 ms** and the median of sustained medians 
 TinyGo candidate is **1,780,668 bytes**, +336 bytes over the helper-counter build.
 The remaining 260 mutations are 258 array stores plus two unremembered old-to-young
 struct stores; native array-card reconciliation remains the next write-barrier target.
+
+**Existing-card old/large array reference stores (2026-08-02).** Collector native
+ABI v2 appends a stable object-card pointer/count to the prior 112-byte prefix. The
+shared AMD64 final-reference array-store stub now admits a Throughput old/large
+parent only when remembered membership and a valid preallocated card slot already
+exist. It widens that card interval in place and never grows collector metadata;
+cardless/unremembered and Tiny stores retain exact helper fallback. Dew removes
+another **254 mutation helpers per call**, reducing dynamic transitions
+**1,298→1,044** and mutations **260→6**. Generated code grows **226 bytes**
+(**6,957,095→6,957,321**). Across six interleaved rounds against the old-struct
+build, the median of fresh medians improves about **0.671→0.660 ms** and sustained
+about **0.763→0.725 ms**, with host allocation unchanged. The plugin-complete
+stripped TinyGo candidate is **1,778,388 bytes**, 2,280 bytes smaller than the
+preceding old-struct candidate despite the 16-byte collector-view growth. The
+remaining six mutation helpers are precisely the metadata-creating cold stores;
+1,038 live allocation helpers are now the dominant next target.
 
 **WasmGC load-forwarding counters (2026-08-02).** AMD64 count-only facts report
 4,092 fused exact array accesses, 3,067 fused exact struct accesses, and 1,022
