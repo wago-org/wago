@@ -159,12 +159,38 @@ func (h *throughputHeap) grow(size uint32) (uint32, error) {
 		return 0, err
 	}
 	if needLen > uint64(len(h.mem)) {
-		newMem := makeAlignedBytes(uint32(needLen), 16)
-		copy(newMem, h.mem)
-		h.mem = newMem
+		if err := h.growBacking(needLen); err != nil {
+			return 0, err
+		}
 	}
 	h.bump = uint32(end)
 	return off, nil
+}
+
+//go:noinline
+func (h *throughputHeap) growBacking(needed uint64) error {
+	reserve := needed
+	current, pageBytes, limit := uint64(len(h.mem)), uint64(h.pageBytes), uint64(h.limit)
+	if current >= 16*pageBytes {
+		step := current / 2
+		if step < pageBytes {
+			step = pageBytes
+		}
+		grown := align64(current+step, pageBytes)
+		if grown > limit {
+			grown = limit
+		}
+		if grown > reserve {
+			reserve = grown
+		}
+	}
+	if reserve > limit || reserve > uint64(^uint32(0)) || reserve > uint64(int(^uint(0)>>1)) {
+		return errors.New("gc: throughput heap reservation too large")
+	}
+	newMem := makeAlignedBytes(uint32(reserve), 16)
+	copy(newMem, h.mem)
+	h.mem = newMem
+	return nil
 }
 
 func throughputReservationLen(end uint64, pageBytes, limit uint32) (uint64, error) {

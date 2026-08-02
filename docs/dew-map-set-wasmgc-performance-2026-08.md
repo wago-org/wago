@@ -50,9 +50,10 @@ warmup:
 | Node hot same instance | 118.3 µs | 336.8 µs | 200 calls; p95 451.4 µs from GC |
 | Node fresh instance | 492.3 µs | 685.0 µs | first call per instance |
 | Wago at `a21b7007` | 4.466 ms | 4.464 ms | interleaved A/B; fresh collector |
-| Wago after the extensions below | 3.841 ms | 3.910 ms | interleaved A/B; fresh collector |
+| Wago at `802af7fc` | 3.679 ms | 3.701 ms | typed fusion and constructor scratch |
+| Wago after shared AMD64 native paths | 1.877 ms | 1.895 ms | interleaved A/B; fresh collector |
 
-The optimized Wago result is therefore about 32.5x the hot Node median and 7.8x
+The latest Wago result is therefore about 15.9x the hot Node median and 3.8x
 the fresh-instance Node median. The distinction matters: repeated Wago calls
 also expose old-heap growth and major-collection policy, while Node's hot result
 includes tiered optimized code.
@@ -208,6 +209,46 @@ about **2,062 to 10 per call**. The bounded cost is 72 bytes in `gcPublicState`
 (3,768→3,840 bytes) and 3,696 stripped TinyGo release bytes. Exact moving-GC
 rewrites remain covered by the existing atomic-constructor collection test.
 
+### Shared AMD64 native final-operation stubs
+
+The next pass keeps the complete handle, collector-ABI, heap-space, extent, and
+canonical-type proof out of line once per generated function. Static sites pass
+compact operands and immediates to shared native stubs while preserving only the
+R9-R11 pins actually reserved by that function. These stubs do not allocate or
+cross into Go, so they need no safepoint root publication.
+
+AMD64 now uses shared native paths for:
+
+- 8,180 final cast-plus-`array.len` pairs;
+- 13,803 remaining final defined `ref.cast` operations; and
+- 5,112 final reference-array reads.
+
+The 8,692 scalar cast/`struct.get` pairs are deliberately split again: the cast
+uses the shared native stub and the existing checked scalar access remains
+inline. This grows the artifact relative to the all-fused helper form, but removes
+8,692 additional Go transitions and remains smaller than the `802af7fc` artifact.
+ARM64 retains the exact helper paths pending native execution measurements.
+
+| Measurement | `802af7fc` | Shared native paths | Change |
+| --- | ---: | ---: | ---: |
+| generated native code | 10,635,974 B | 8,960,336 B | -15.8% |
+| synchronous Go helper sites | 54,199 | 18,412 | -66.0% |
+| shared native stub calls | 0 | 35,787 | new |
+| fresh artifact median | 3.679 ms | 1.877 ms | -49.0% |
+| isolated final cast | 319.3 ns | 225.4 ns | -29.4% |
+| isolated reference-array get | 489.4 ns | 433.1 ns | -11.5% |
+| scalar cast + `struct.get` | about 379 ns | about 288 ns | -24.0% |
+
+The generated artifact is now 33.6% smaller than the original 13,499,220-byte
+post-reference-fusion baseline. The complete plugin-enabled stripped TinyGo
+binary grows **1,751,444→1,759,092 bytes** for the native paths, then 208 bytes
+further for the retained old-space growth policy below.
+
+A native fused final cast/reference-field-load stub was also measured. Its
+isolated result was effectively neutral and the complete artifact regressed from
+about 3.52 ms to 3.83 ms despite lower code size, so that path was reverted. The
+optimized Go helper remains preferable for the 10,224 reference-field pairs.
+
 ## Rejected experiment
 
 Inlining a complete checked native final-type `ref.cast` reduced the workload to
@@ -219,45 +260,40 @@ and increases instruction-cache pressure.
 ## Remaining gap
 
 The remaining hot Node gap is primarily architectural. The optimized artifact's
-54,199 synchronous helper sites are now distributed exactly as follows:
+18,412 synchronous helper sites are now distributed exactly as follows:
 
 | Helper family | Static sites | Share |
 | --- | ---: | ---: |
-| final cast + `struct.get` | 18,916 | 34.9% |
-| remaining `ref.cast` | 13,803 | 25.5% |
-| final cast + `array.len` | 8,180 | 15.1% |
-| `array.get` | 5,112 | 9.4% |
-| `struct.new` | 2,050 | 3.8% |
-| helper-bound `array.set` | 2,046 | 3.8% |
-| helper-bound `struct.set` | 2,044 | 3.8% |
-| `array.new_default` | 1,024 | 1.9% |
-| `array.new_fixed` | 1,024 | 1.9% |
+| final cast + reference `struct.get` | 10,224 | 55.5% |
+| `struct.new` | 2,050 | 11.1% |
+| barrier-bound `array.set` | 2,046 | 11.1% |
+| barrier-bound reference `struct.set` | 2,044 | 11.1% |
+| `array.new_default` | 1,024 | 5.6% |
+| `array.new_fixed` | 1,024 | 5.6% |
 
-The first three rows are 75.5% of all remaining transitions. A merged profile of
-100 isolated artifact invocations attributes about 70% of sampled CPU to the
-native/Go helper loop, with `gcFinalDefinedRefCast` and descriptor resolution
-remaining visible top costs.
+The native/Go helper loop remains the dominant sampled runtime family. The next
+measured options should be, in order:
 
-The next measured options should be, in order:
+1. reduce the 10,224 reference-field helper transitions without retaining the
+   regressed full native fused stub—candidates include a smaller resolver stub,
+   immutable per-site descriptor records, or a more specialized Go helper;
+2. publish a bounded native remembered-set/card barrier so the 4,090 reference
+   write sites can avoid Go while preserving nursery ownership and exact mutation;
+3. add native bump allocation plus one shared collection/handle slow path for the
+   4,098 constructor sites;
+4. trigger bounded full reclamation before old throughput space is exhausted;
+5. qualify the profitable shared native read/cast paths on ARM64; and
+6. use producer-side typed scratch locals to reduce repeated dynamic checks while
+   retaining Wago correctness for arbitrary producers.
 
-1. shared native GC check/access stubs for the already-fused final struct reads
-   and array lengths, eliminating up to 27,096 Go transitions without restoring
-   duplicated inline checks;
-2. a shared final-cast stub for the remaining 13,803 casts, especially the
-   10,735 cast results followed by another local load and the 3,068 stored to a
-   local;
-3. shared/direct reference `array.get` and barrier-correct `array.set` paths;
-4. a collection slow path that can trigger bounded full reclamation before old
-   throughput space is exhausted; and
-5. producer-side typed scratch locals to reduce redundant casts in generated Dew
-   code, while retaining Wago correctness for arbitrary producers.
-
-A geometric throughput-backing growth prototype reduced 30-call host allocation
-from about 10.1 MiB to 1.1 MiB per call and improved sustained median time by
-roughly 18%, but regressed fresh calls by 5-8% and increased reserved backing.
-It was reverted. Any retry should keep the current cold/small-heap path unchanged,
-for example through segmented old space or a separately benchmarked cold growth
-stub.
+The old-space backing experiment was retained after moving it behind a genuinely
+cold helper. Growth remains exact while the backing is below 16 pages (1 MiB with
+the default 64 KiB page), then reserves at most 1.5x the current backing, capped
+by the configured heap limit. On the 30-call artifact run this reduces host
+allocation from about **10.1 MiB to 1.12 MiB per call** (**-88.9%**) and improves
+median time **2.784→1.987 ms** (**-28.6%**), while interleaved fresh-call medians
+remain effectively unchanged. The trade is up to 50% unused capacity only after
+the old backing is already hot and at least 1 MiB.
 
 Any native fast path must retain stale/forged-reference rejection, final/non-final
 subtyping semantics, moving-collector root publication, Tiny/Throughput parity,
