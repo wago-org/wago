@@ -62,6 +62,50 @@ type valueRootSet struct {
 	all    bool
 }
 
+// InitializerRootScratch is reusable caller-owned storage for composing exact
+// frame roots with struct initializer values across a collection-capable
+// allocation. It is configured and cleared by NewStructWithRootScratch and must
+// not be used concurrently.
+type InitializerRootScratch struct {
+	first  RootSet
+	values []Value
+	fields []FieldDesc
+	active bool
+}
+
+func (s *InitializerRootScratch) RangeRoots(fn func(RootSlot) bool) {
+	keepGoing := true
+	if s.first != nil {
+		s.first.RangeRoots(func(slot RootSlot) bool {
+			keepGoing = fn(slot)
+			return keepGoing
+		})
+	}
+	if !keepGoing {
+		return
+	}
+	for i := range s.values {
+		if i >= len(s.fields) || !isCollectorRefKind(s.fields[i].Kind) {
+			continue
+		}
+		if !fn(valueRootSlot{values: s.values, idx: i}) {
+			return
+		}
+	}
+}
+
+func (s *InitializerRootScratch) prepare(first RootSet, values []Value, fields []FieldDesc) bool {
+	if s == nil || s.active {
+		return false
+	}
+	s.first, s.values, s.fields, s.active = first, values, fields, true
+	return true
+}
+
+func (s *InitializerRootScratch) clear() {
+	s.first, s.values, s.fields, s.active = nil, nil, nil, false
+}
+
 type valueRootSlot struct {
 	values []Value
 	idx    int
@@ -110,6 +154,25 @@ func rangeRootRefs(roots RootSet, fn func(Ref) bool) bool {
 			}
 			if !fn(s.values[i].Ref) {
 				return true
+			}
+		}
+		return true
+	case *InitializerRootScratch:
+		keepGoing := true
+		if s.first != nil && !rangeRootRefs(s.first, func(r Ref) bool {
+			keepGoing = fn(r)
+			return keepGoing
+		}) {
+			keepGoing = visitFallback(s.first)
+		}
+		if keepGoing {
+			for i := range s.values {
+				if i >= len(s.fields) || !isCollectorRefKind(s.fields[i].Kind) {
+					continue
+				}
+				if !fn(s.values[i].Ref) {
+					break
+				}
 			}
 		}
 		return true

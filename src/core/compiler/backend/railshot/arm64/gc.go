@@ -26,7 +26,8 @@ const (
 	gcExternConvertAny         uint32 = 9
 	gcStructRefCast            uint32 = 10
 	gcStructAllocOne           uint32 = 11
-	gcStructFinalCastRefGet    uint32 = 12
+	gcStructFinalCastGet       uint32 = 12
+	gcStructFinalCastArrayLen  uint32 = 13
 	gcArrayAllocDefault        uint32 = 16
 	gcArrayGet                 uint32 = 17
 	gcArrayGetS                uint32 = 18
@@ -113,7 +114,10 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 			return err
 		}
 		if f.gcStructHelpers && heap >= 0 {
-			if fused, err := f.tryFuseFinalCastRefGet(uint32(heap), sub == 23, r); fused || err != nil {
+			if fused, err := f.tryFuseFinalCastStructGet(uint32(heap), sub == 23, r); fused || err != nil {
+				return err
+			}
+			if fused, err := f.tryFuseFinalCastArrayLen(uint32(heap), sub == 23, r); fused || err != nil {
 				return err
 			}
 		}
@@ -495,7 +499,7 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 	}
 }
 
-func (f *fn) tryFuseFinalCastRefGet(typeIndex uint32, nullable bool, r *wasm.Reader) (bool, error) {
+func (f *fn) tryFuseFinalCastStructGet(typeIndex uint32, nullable bool, r *wasm.Reader) (bool, error) {
 	st, ok := stagedStructType(f.m, typeIndex)
 	if !ok || !st.Final {
 		return false, nil
@@ -513,7 +517,7 @@ func (f *fn) tryFuseFinalCastRefGet(typeIndex uint32, nullable bool, r *wasm.Rea
 	if err != nil {
 		return false, err
 	}
-	if sub != 2 {
+	if sub < 2 || sub > 4 {
 		_ = r.JumpTo(start)
 		return false, nil
 	}
@@ -526,9 +530,13 @@ func (f *fn) tryFuseFinalCastRefGet(typeIndex uint32, nullable bool, r *wasm.Rea
 		return false, err
 	}
 	field, ok := stagedStructField(f.m, accessType, fieldIndex)
-	if !ok || accessType != typeIndex || field.Storage.Packed || field.Storage.Val.Kind != wasm.ValRef || !arm64GCFrameRefType(f.m, field.Storage.Val) {
+	if !ok || accessType != typeIndex || (sub == 2) == field.Storage.Packed {
 		_ = r.JumpTo(start)
 		return false, nil
+	}
+	resultType := field.Storage.Val
+	if field.Storage.Packed {
+		resultType = wasm.I32
 	}
 	f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 	f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(fieldIndex)})
@@ -537,9 +545,43 @@ func (f *fn) tryFuseFinalCastRefGet(typeIndex uint32, nullable bool, r *wasm.Rea
 	} else {
 		f.pushValue(storage{kind: stConst, typ: mtI32})
 	}
+	f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(sub - 2)})
 	anyref := wasm.RefVal(wasm.Ref(true, wasm.AbsHeap(wasm.HeapAny), false))
-	f.stats.peep("final-cast-ref-get-fuse")
-	return true, f.callGCStructHelper(gcStructFinalCastRefGet, []wasm.ValType{anyref, wasm.I32, wasm.I32, wasm.I32}, []wasm.ValType{field.Storage.Val})
+	f.stats.peep("final-cast-struct-get-fuse")
+	return true, f.callGCStructHelper(gcStructFinalCastGet, []wasm.ValType{anyref, wasm.I32, wasm.I32, wasm.I32, wasm.I32}, []wasm.ValType{resultType})
+}
+
+func (f *fn) tryFuseFinalCastArrayLen(typeIndex uint32, nullable bool, r *wasm.Reader) (bool, error) {
+	st, ok := stagedArraySubtype(f.m, typeIndex)
+	if !ok || !st.Final {
+		return false, nil
+	}
+	start := r.Offset()
+	op, err := r.Byte()
+	if err != nil {
+		return false, nil
+	}
+	if op != 0xfb {
+		_ = r.JumpTo(start)
+		return false, nil
+	}
+	sub, err := r.U32()
+	if err != nil {
+		return false, err
+	}
+	if sub != 15 {
+		_ = r.JumpTo(start)
+		return false, nil
+	}
+	f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
+	if nullable {
+		f.pushValue(storage{kind: stConst, typ: mtI32, cval: 1})
+	} else {
+		f.pushValue(storage{kind: stConst, typ: mtI32})
+	}
+	anyref := wasm.RefVal(wasm.Ref(true, wasm.AbsHeap(wasm.HeapAny), false))
+	f.stats.peep("final-cast-array-len-fuse")
+	return true, f.callGCStructHelper(gcStructFinalCastArrayLen, []wasm.ValType{anyref, wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32})
 }
 
 func (f *fn) emitLocalFunctionSubtypeIdentityCheck(value Reg, targetType uint32, nullable bool, trapCode uint32) {
@@ -795,6 +837,21 @@ func stagedStructType(m *wasm.Module, typeIndex uint32) (wasm.SubType, bool) {
 		if index < uint32(len(group.SubTypes)) {
 			sub := group.SubTypes[index]
 			return sub, sub.Comp.Kind == wasm.CompStruct
+		}
+		index -= uint32(len(group.SubTypes))
+	}
+	return wasm.SubType{}, false
+}
+
+func stagedArraySubtype(m *wasm.Module, typeIndex uint32) (wasm.SubType, bool) {
+	if m == nil {
+		return wasm.SubType{}, false
+	}
+	index := typeIndex
+	for _, group := range m.Types {
+		if index < uint32(len(group.SubTypes)) {
+			sub := group.SubTypes[index]
+			return sub, sub.Comp.Kind == wasm.CompArray
 		}
 		index -= uint32(len(group.SubTypes))
 	}

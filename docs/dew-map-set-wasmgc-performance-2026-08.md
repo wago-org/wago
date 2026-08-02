@@ -31,6 +31,32 @@ routes most casts, reference field/array operations, lengths, and allocations
 through the synchronous parked-Go GC helper ABI. The workload therefore stresses
 helper transitions rather than the public Invoke API.
 
+### Reproducible workspace artifact
+
+The August 2 workspace artifact is `dew-map-workload.wasm`, 712,494 bytes with
+SHA-256 `552690e6159ffeaa8da5d265bc29af4407fb4663622ebc83dfeb87233add6984`.
+Its source is `dew-map-workload.dew`, SHA-256
+`5d4765f989fc8c1a1c02cedf6f999e29db20a85e2a7eaadcc29d8cf4735e0575`.
+It exports import-free `main() -> ()` and reproduces the helper-heavy profile.
+
+Pinned execution-only measurements compile and instantiate outside the timed
+region. Wago uses a fresh 16 MiB Throughput collector instance per sample so old
+objects and collection phase do not bias one invocation. Node 26.3.0 is reported
+both after 100 same-instance warmups and with a fresh instance after module-code
+warmup:
+
+| Runtime mode | Median | Mean | Notes |
+| --- | ---: | ---: | --- |
+| Node hot same instance | 118.3 µs | 336.8 µs | 200 calls; p95 451.4 µs from GC |
+| Node fresh instance | 492.3 µs | 685.0 µs | first call per instance |
+| Wago at `a21b7007` | 4.466 ms | 4.464 ms | interleaved A/B; fresh collector |
+| Wago after the extensions below | 3.841 ms | 3.910 ms | interleaved A/B; fresh collector |
+
+The optimized Wago result is therefore about 32.5x the hot Node median and 7.8x
+the fresh-instance Node median. The distinction matters: repeated Wago calls
+also expose old-heap growth and major-collection policy, while Node's hot result
+includes tiered optimized code.
+
 ## Profiles and fixes
 
 A five-second CPU profile attributed 35.9% of the original runtime to
@@ -124,29 +150,63 @@ through a shared native stub that has equivalent metadata. The shared metadata/
 stub route is preferable because it also supports reference field/array access
 without duplicating a full handle check at thousands of static sites.
 
-### Fused final cast and reference-field read
+### Fused final casts with typed reads
 
-The first compiler-side fusion recognizes an adjacent final defined-type
-`ref.cast`/`ref.cast_null` followed by `struct.get` of a collector-reference
-field on the same concrete type. AMD64 and ARM64 now emit one non-allocating GC
-helper operation instead of materializing the cast result and making a second
-parked transition for the field access. The helper resolves the compact handle
-once through `StructGetTyped`, checks exact canonical final-type identity, and
-returns the reference field directly.
+The compiler-side fusion now recognizes adjacent final defined-type
+`ref.cast`/`ref.cast_null` followed by either:
 
-The fused operation preserves sequence trap order: a null passed through
-`ref.cast_null` traps as a null access, while null under non-null `ref.cast`, an
-i31 value, or a mismatched object traps as cast failure. Open types, differing
-access types, scalar fields already eligible for direct AMD64 access, and
-non-adjacent operations remain on their existing paths.
+- same-type `struct.get`, including scalar, reference, `v128`, and packed signed
+  or unsigned fields; or
+- `array.len` on the same concrete final array type.
 
-A pinned allocation-plus-cast-plus-reference-get workload improves from a
-**435.6 ns/op** median to **371.3 ns/op** (**-14.8%**), at 0 B/op and
-0 allocs/op. The same-session plugin-complete stripped TinyGo release grows
-**1,741,284→1,744,436 bytes** (**+3,152 bytes, +0.181%**). This is a bounded
-first fusion rather than an implicit whole-function IR; follow-up measurements
-should count matching sites in Dew and extend only the profitable adjacent
-array/set forms.
+AMD64 and ARM64 emit one non-allocating helper operation for each pair. The
+struct helper resolves the compact handle once through `StructGetTyped`; the
+array helper uses `ArrayLenTyped`. Both preserve exact canonical final-type
+identity and sequence trap order: null through `ref.cast_null` reaches the access
+and traps as null reference, while non-null cast of null, i31, or a mismatched
+object traps as cast failure. Open types, differing struct access types, and
+non-adjacent operations remain unchanged.
+
+The workspace artifact contains **18,916** cast-plus-`struct.get` pairs and
+**8,180** cast-plus-`array.len` pairs. Generalizing the struct fusion removes
+8,692 duplicated direct scalar access sequences. It does not reduce helper-call
+count for those scalar pairs, but reduces generated native code and hot local
+reloads. Adding cast-plus-length fusion removes 8,180 parked transitions.
+
+| Measurement | Before extension | After extension | Change |
+| --- | ---: | ---: | ---: |
+| generated native code | 13,499,220 B | 10,635,974 B | -21.2% |
+| synchronous helper sites | 62,379 | 54,199 | -13.1% |
+| artifact fresh-call median | 4.466 ms | 3.841 ms | -14.0% |
+| isolated cast + `array.len` | 381.5 ns | 294.3 ns | -22.9% |
+| collector typed length | 50.4 ns | 29.4 ns | -41.6% |
+
+The isolated scalar cast/get benchmark remains effectively neutral because the
+old sequence already used one cast helper followed by direct native scalar
+access. Its artifact-level value is code footprint and instruction-cache
+pressure: native code falls by about 2.21 MiB when all 18,916 struct pairs share
+the fused helper form.
+
+The initial reference-only fusion cost 3,152 plugin-complete TinyGo release
+bytes. General struct and array-length fusion add 3,312 more bytes in the paired
+build used here. The bounded fusion is still a bytecode peephole, not a stored
+instruction IR.
+
+### Reusable constructor roots
+
+This artifact performs 2,050 `struct.new` operations with live object-reference
+initializers. Composing frame roots and initializer roots through a temporary
+interface object caused approximately one Go allocation per constructor. A
+caller-owned `gc.InitializerRootScratch`, retained in the bounded
+`gcPublicState`, now publishes the same exact mutable roots without per-site heap
+traffic.
+
+On a fresh artifact call, host allocation changes from **1,023,008 B and 2,142
+allocations** to **924,512 B and 90 allocations**. Across 30 calls on one 256 MiB
+collector, warmed medians improve by about **3.3%** while allocations fall from
+about **2,062 to 10 per call**. The bounded cost is 72 bytes in `gcPublicState`
+(3,768→3,840 bytes) and 3,696 stripped TinyGo release bytes. Exact moving-GC
+rewrites remain covered by the existing atomic-constructor collection test.
 
 ## Rejected experiment
 
@@ -158,30 +218,46 @@ and increases instruction-cache pressure.
 
 ## Remaining gap
 
-The remaining approximately 40x Node gap is primarily architectural:
+The remaining hot Node gap is primarily architectural. The optimized artifact's
+54,199 synchronous helper sites are now distributed exactly as follows:
 
-- most of the original 72,603 static GC helper sites remain synchronous
-  native-to-Go transitions; adjacent final cast/reference-get pairs now share
-  one transition, but the matching Dew site count still needs a fresh explain run;
-- unfused `ref.cast` sites account for the largest remaining transition family;
-- reference `struct.get`/`struct.set` and `array.get`/`array.set` contribute roughly
-  19,400 more transitions;
-- `array.len` contributes 8,180 transitions;
-- several helper paths resolve the same compact handle and descriptor more than
-  once; and
-- the 14.6 MB generated function has substantial instruction-cache cost.
+| Helper family | Static sites | Share |
+| --- | ---: | ---: |
+| final cast + `struct.get` | 18,916 | 34.9% |
+| remaining `ref.cast` | 13,803 | 25.5% |
+| final cast + `array.len` | 8,180 | 15.1% |
+| `array.get` | 5,112 | 9.4% |
+| `struct.new` | 2,050 | 3.8% |
+| helper-bound `array.set` | 2,046 | 3.8% |
+| helper-bound `struct.set` | 2,044 | 3.8% |
+| `array.new_default` | 1,024 | 1.9% |
+| `array.new_fixed` | 1,024 | 1.9% |
+
+The first three rows are 75.5% of all remaining transitions. A merged profile of
+100 isolated artifact invocations attributes about 70% of sampled CPU to the
+native/Go helper loop, with `gcFinalDefinedRefCast` and descriptor resolution
+remaining visible top costs.
 
 The next measured options should be, in order:
 
-1. shared native GC check/access stubs so checked casts and reference reads do not
-   duplicate large inline sequences;
-2. measure matching Dew sites and extend the bounded adjacent cast/access fusion
-   only to profitable array and set forms;
-3. reusable caller-owned root-pair scratch for non-null constructor operands;
-4. versioned type-kind metadata plus direct/shared-stub `array.len` and reference
-   loads; and
+1. shared native GC check/access stubs for the already-fused final struct reads
+   and array lengths, eliminating up to 27,096 Go transitions without restoring
+   duplicated inline checks;
+2. a shared final-cast stub for the remaining 13,803 casts, especially the
+   10,735 cast results followed by another local load and the 3,068 stored to a
+   local;
+3. shared/direct reference `array.get` and barrier-correct `array.set` paths;
+4. a collection slow path that can trigger bounded full reclamation before old
+   throughput space is exhausted; and
 5. producer-side typed scratch locals to reduce redundant casts in generated Dew
    code, while retaining Wago correctness for arbitrary producers.
+
+A geometric throughput-backing growth prototype reduced 30-call host allocation
+from about 10.1 MiB to 1.1 MiB per call and improved sustained median time by
+roughly 18%, but regressed fresh calls by 5-8% and increased reserved backing.
+It was reverted. Any retry should keep the current cold/small-heap path unchanged,
+for example through segmented old space or a separately benchmarked cold growth
+stub.
 
 Any native fast path must retain stale/forged-reference rejection, final/non-final
 subtyping semantics, moving-collector root publication, Tiny/Throughput parity,
@@ -273,9 +349,11 @@ and lower them to one checked typed operation that:
 4. performs the field or array access; and
 5. returns the value without publishing an intermediate reference result.
 
-Apply the same fusion to cast-plus-`struct.set`, cast-plus-`array.len`,
-cast-plus-`array.get`, and cast-plus-`array.set`. Final types should use canonical
-type-ID equality; non-final types must retain complete subtype semantics.
+Final same-type cast-plus-`struct.get` and cast-plus-`array.len` are implemented
+as bounded bytecode peepholes on AMD64 and ARM64. Cast-plus-set and indexed array
+forms remain candidates because their extra operands usually occur between the
+cast and access. Final types use canonical type-ID equality; any future non-final
+fusion must retain complete subtype semantics.
 
 ### 5. Reuse decoded handles across adjacent non-allocating operations
 

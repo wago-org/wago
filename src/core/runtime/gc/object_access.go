@@ -14,6 +14,16 @@ func (c *Collector) NewStructDefault(typeID TypeID) (Ref, error) {
 // caller's values. Reference operands are published as temporary mutable roots
 // across a collection-triggering allocation and reread before object stores.
 func (c *Collector) NewStructWithRoots(typeID TypeID, values []Value, roots RootSet) (Ref, error) {
+	return c.newStructWithRoots(typeID, values, roots, nil)
+}
+
+// NewStructWithRootScratch is NewStructWithRoots with reusable caller-owned root
+// composition storage. The scratch must not be shared across concurrent calls.
+func (c *Collector) NewStructWithRootScratch(typeID TypeID, values []Value, roots RootSet, scratch *InitializerRootScratch) (Ref, error) {
+	return c.newStructWithRoots(typeID, values, roots, scratch)
+}
+
+func (c *Collector) newStructWithRoots(typeID TypeID, values []Value, roots RootSet, scratch *InitializerRootScratch) (Ref, error) {
 	d, err := c.desc(typeID)
 	if err != nil {
 		return Null(), err
@@ -36,7 +46,15 @@ func (c *Collector) NewStructWithRoots(typeID TypeID, values []Value, roots Root
 		}
 	}
 	if hasObjectRefs {
-		roots = combineRootSets(roots, valueRootSet{values: values, fields: d.Fields})
+		if scratch != nil {
+			if !scratch.prepare(roots, values, d.Fields) {
+				return Null(), errors.New("gc: struct initializer root scratch is already in use")
+			}
+			defer scratch.clear()
+			roots = scratch
+		} else {
+			roots = combineRootSets(roots, valueRootSet{values: values, fields: d.Fields})
+		}
 	}
 	sz, err := StructSize(d)
 	if err != nil {
@@ -279,6 +297,24 @@ func (c *Collector) ArrayLen(ref Ref) (uint32, error) {
 		return 0, errors.New("gc: not array")
 	}
 	return c.header(ref).Aux, nil
+}
+
+// ArrayLenTyped combines the dynamic type check and length load after resolving
+// the compact object handle once. exact is valid for final required types.
+func (c *Collector) ArrayLenTyped(ref Ref, required TypeID, exact bool) (length uint32, actual TypeID, matched bool, err error) {
+	d, err := c.refDesc(ref)
+	if err != nil {
+		return 0, 0, false, err
+	}
+	actual = d.ID
+	matched, err = c.typeDescSubtype(d, required, exact)
+	if err != nil || !matched {
+		return 0, actual, matched, err
+	}
+	if d.Kind != KindArray {
+		return 0, actual, true, errors.New("gc: not array")
+	}
+	return c.header(ref).Aux, actual, true, nil
 }
 func (c *Collector) StructGet(ref Ref, field uint32) (Value, error) {
 	d, e := c.refDesc(ref)

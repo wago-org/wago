@@ -13,19 +13,20 @@ import (
 // bit 31, and ordinary Wasm import indexes use neither. The amd64 backend mirrors
 // these compile-only constants.
 const (
-	gcStructDispatchBit     uint32 = 1 << 30
-	gcStructAllocDefault           = 1
-	gcStructGet                    = 2
-	gcStructSet                    = 3
-	gcStructGetS                   = 4
-	gcStructGetU                   = 5
-	gcStructRefTest                = 6
-	gcStructTableSet               = 7
-	gcAnyConvertExtern             = 8
-	gcExternConvertAny             = 9
-	gcStructRefCast                = 10
-	gcStructAllocOne               = 11
-	gcStructFinalCastRefGet        = 12
+	gcStructDispatchBit       uint32 = 1 << 30
+	gcStructAllocDefault             = 1
+	gcStructGet                      = 2
+	gcStructSet                      = 3
+	gcStructGetS                     = 4
+	gcStructGetU                     = 5
+	gcStructRefTest                  = 6
+	gcStructTableSet                 = 7
+	gcAnyConvertExtern               = 8
+	gcExternConvertAny               = 9
+	gcStructRefCast                  = 10
+	gcStructAllocOne                 = 11
+	gcStructFinalCastGet             = 12
+	gcStructFinalCastArrayLen        = 13
 )
 
 type gcStructHelperError struct{ err error }
@@ -184,7 +185,7 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 		if cursor != len(args)-1 {
 			panic(gcStructHelperError{err: fmt.Errorf("gc struct type %d initializer uses %d slots, args = %d", typeID, cursor, len(args))})
 		}
-		ref, err := in.gc.NewStructWithRoots(in.requireGCDomainType(typeID), values, frameRoots)
+		ref, err := in.gc.NewStructWithRootScratch(in.requireGCDomainType(typeID), values, frameRoots, &state.initializerRoots)
 		if err != nil {
 			panic(gcStructHelperError{err: err})
 		}
@@ -297,11 +298,11 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 			panic(gcStructHelperError{err: err})
 		}
 		results[0] = value
-	case gcStructFinalCastRefGet:
-		if len(args) != 4 || len(results) < 1 {
-			panic(gcStructHelperError{err: fmt.Errorf("gc final cast/get helper arity = %d/%d, want 4/at-least-1", len(args), len(results))})
+	case gcStructFinalCastGet:
+		if len(args) != 5 || len(results) < 1 {
+			panic(gcStructHelperError{err: fmt.Errorf("gc final cast/get helper arity = %d/%d, want 5/at-least-1", len(args), len(results))})
 		}
-		bits, typeID, fieldID, nullable := args[0], uint32(args[1]), uint32(args[2]), args[3] != 0
+		bits, typeID, fieldID, nullable, mode := args[0], uint32(args[1]), uint32(args[2]), args[3] != 0, uint32(args[4])
 		ref := gc.Ref(uint32(bits))
 		if bits != uint64(ref) {
 			panic(gcStructHelperError{err: fmt.Errorf("gc final cast/get contains non-compact reference %#x", bits)})
@@ -319,8 +320,8 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 			panic(gcStructHelperError{err: fmt.Errorf("gc final cast/get field %d:%d is unavailable", typeID, fieldID)})
 		}
 		kind := in.c.GCTypeDescs[typeID].Fields[fieldID].Kind
-		if kind != gc.StorageRef && kind != gc.StorageRefNull {
-			panic(gcStructHelperError{err: fmt.Errorf("gc final cast/get field %d:%d is not a collector reference", typeID, fieldID)})
+		if mode > 2 || (mode == 0 && (kind == gc.StorageI8 || kind == gc.StorageI16)) || (mode != 0 && kind != gc.StorageI8 && kind != gc.StorageI16) {
+			panic(gcStructHelperError{err: fmt.Errorf("gc final cast/get field %d:%d kind %d rejects mode %d", typeID, fieldID, kind, mode)})
 		}
 		required, ok := in.gcDomainType(typeID)
 		if !ok {
@@ -333,7 +334,65 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 		if !matched {
 			panic(gcStructHelperTrap{code: coreruntime.TrapCastFailure})
 		}
-		results[0] = uint64(value.Ref)
+		switch mode {
+		case 1:
+			if value.Kind == gc.StorageI8 {
+				results[0] = uint64(uint32(int32(int8(value.Bits))))
+			} else {
+				results[0] = uint64(uint32(int32(int16(value.Bits))))
+			}
+		case 2:
+			if value.Kind == gc.StorageI8 {
+				results[0] = uint64(uint32(uint8(value.Bits)))
+			} else {
+				results[0] = uint64(uint32(uint16(value.Bits)))
+			}
+		default:
+			if value.Kind == gc.StorageRef || value.Kind == gc.StorageRefNull {
+				results[0] = uint64(value.Ref)
+			} else {
+				results[0] = value.Bits
+				if value.Kind == gc.StorageV128 {
+					if len(results) < 2 {
+						panic(gcStructHelperError{err: fmt.Errorf("gc final cast/get v128 result arity = %d, want at least 2", len(results))})
+					}
+					results[1] = value.BitsHi
+				}
+			}
+		}
+	case gcStructFinalCastArrayLen:
+		if len(args) != 3 || len(results) < 1 {
+			panic(gcStructHelperError{err: fmt.Errorf("gc final cast/array.len helper arity = %d/%d, want 3/at-least-1", len(args), len(results))})
+		}
+		bits, typeID, nullable := args[0], uint32(args[1]), args[2] != 0
+		ref := gc.Ref(uint32(bits))
+		if bits != uint64(ref) {
+			panic(gcStructHelperError{err: fmt.Errorf("gc final cast/array.len contains non-compact reference %#x", bits)})
+		}
+		if ref.IsNull() {
+			if nullable {
+				panic(gcStructHelperTrap{code: coreruntime.TrapNullReference})
+			}
+			panic(gcStructHelperTrap{code: coreruntime.TrapCastFailure})
+		}
+		if ref.IsI31() {
+			panic(gcStructHelperTrap{code: coreruntime.TrapCastFailure})
+		}
+		if int(typeID) >= len(in.c.Types) || int(typeID) >= len(in.c.GCTypeDescs) || !in.c.Types[typeID].Final || in.c.Types[typeID].Kind != CompositeTypeArray || in.c.GCTypeDescs[typeID].Kind != gc.KindArray {
+			panic(gcStructHelperError{err: fmt.Errorf("gc final cast/array.len type %d is unavailable", typeID)})
+		}
+		required, ok := in.gcDomainType(typeID)
+		if !ok {
+			panic(gcStructHelperError{err: fmt.Errorf("gc final cast/array.len type %d has no Runtime-domain identity", typeID)})
+		}
+		length, _, matched, err := in.gc.ArrayLenTyped(ref, required, true)
+		if err != nil {
+			panic(gcStructHelperError{err: err})
+		}
+		if !matched {
+			panic(gcStructHelperTrap{code: coreruntime.TrapCastFailure})
+		}
+		results[0] = uint64(length)
 	case gcStructTableSet:
 		if len(args) != 3 {
 			panic(gcStructHelperError{err: fmt.Errorf("gc ref.test table-set helper args = %v, want index/ref/table", args)})

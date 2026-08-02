@@ -344,6 +344,7 @@ type gcPublicState struct {
 	// access is serialized by mu, so struct.new and array.new_fixed reuse it
 	// without per-allocation Go heap traffic.
 	values                [63]gc.Value
+	initializerRoots      gc.InitializerRootScratch
 	frameRoots            gcNativeFrameRoots    // exact parked native-frame roots; reused under mu
 	globalRoots           []gcGlobalRootMapping // generic-GC safe-boundary roots; allocated only when needed
 	hostActivations       [gcHostActivationLimit]gcHostActivation

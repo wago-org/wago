@@ -145,6 +145,34 @@ func BenchmarkTypedGCArrayAccess(b *testing.B) {
 		b.Fatal(err)
 	}
 
+	b.Run("len_separate_type_and_access", func(b *testing.B) {
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			actual, err := c.ObjectType(ref)
+			if err != nil {
+				b.Fatal(err)
+			}
+			matched, err := c.TypeSubtype(actual, 0)
+			if err != nil || !matched {
+				b.Fatalf("subtype = %v, %v", matched, err)
+			}
+			length, err := c.ArrayLen(ref)
+			if err != nil {
+				b.Fatal(err)
+			}
+			objectAccessBenchSink = uint64(length)
+		}
+	})
+	b.Run("len_combined_typed", func(b *testing.B) {
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			length, _, matched, err := c.ArrayLenTyped(ref, 0, false)
+			if err != nil || !matched {
+				b.Fatalf("typed len = %v, %v", matched, err)
+			}
+			objectAccessBenchSink = uint64(length)
+		}
+	})
 	b.Run("get_separate_type_and_access", func(b *testing.B) {
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {

@@ -144,6 +144,15 @@ func TestTypedArrayAccessChecksFinalAndOpenTypes(t *testing.T) {
 	if value, actual, matched, err := c.ArrayGetTyped(ref, 1, true, 1); err != nil || !matched || actual != 1 || value.I32() != 42 {
 		t.Fatalf("exact child get = value %+v actual %d matched %v err %v", value, actual, matched, err)
 	}
+	if length, actual, matched, err := c.ArrayLenTyped(ref, 0, false); err != nil || !matched || actual != 1 || length != 2 {
+		t.Fatalf("open typed len = length %d actual %d matched %v err %v", length, actual, matched, err)
+	}
+	if _, actual, matched, err := c.ArrayLenTyped(ref, 0, true); err != nil || matched || actual != 1 {
+		t.Fatalf("exact base len = actual %d matched %v err %v, want mismatch", actual, matched, err)
+	}
+	if length, actual, matched, err := c.ArrayLenTyped(ref, 1, true); err != nil || !matched || actual != 1 || length != 2 {
+		t.Fatalf("exact child len = length %d actual %d matched %v err %v", length, actual, matched, err)
+	}
 	if _, _, _, err := c.ArrayGetTyped(ref, 0, false, 2); err == nil {
 		t.Fatal("typed array get accepted out-of-range index")
 	}
@@ -197,7 +206,8 @@ func TestAtomicConstructorRefsSurviveAllocationCollection(t *testing.T) {
 	}
 	c.cfg.CollectEveryAlloc = true
 	values := []Value{RefValue(left), RefValue(right)}
-	pair, err := c.NewStructWithRoots(1, values, Slots{})
+	var initializerRoots InitializerRootScratch
+	pair, err := c.NewStructWithRootScratch(1, values, Slots{}, &initializerRoots)
 	if err != nil {
 		t.Fatal(err)
 	}
