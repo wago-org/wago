@@ -3,8 +3,6 @@ package plugins
 import (
 	"strings"
 	"testing"
-
-	"github.com/wago-org/wago/src/core/compiler/machinecode"
 )
 
 func portableAdd(_ InstructionContext, args []Bits) ([]Bits, error) {
@@ -72,35 +70,38 @@ func TestPrepareBuildsNativeInstruction(t *testing.T) {
 	}
 }
 
-func TestPrepareBuildsIndependentTargetLowerings(t *testing.T) {
-	amd64 := &machinecode.AMD64Lowering{
-		Compatibility: machinecode.AMD64CompatibilityManaged,
-		Managed:       func(machinecode.AMD64ManagedContext) error { return nil },
-	}
-	arm64 := &machinecode.ARM64Lowering{
-		Compatibility: machinecode.ARM64CompatibilityManaged,
-		Managed:       func(machinecode.ARM64ManagedContext) error { return nil },
-	}
+func TestPrepareSnapshotsCurrentTargetLowering(t *testing.T) {
+	lowering := testManagedLowering()
 	def, err := Prepare(InstructionSpec{
 		Module:  "example",
 		Name:    "raw",
 		Input:   []int32{32},
 		Handler: func(InstructionContext, []Bits) ([]Bits, error) { return nil, nil },
-		AMD64:   amd64,
-		ARM64:   arm64,
+		Codegen: lowering,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	amd64.Compatibility = 0
-	arm64.Compatibility = 0
+	invalidateTestLowering(lowering)
 	native, ok := def.Native()
-	if !ok || native.AMD64 == nil || native.ARM64 == nil {
-		t.Fatal("target declarations should produce native instruction lowerings")
+	if !ok || native.Codegen == nil {
+		t.Fatal("target declaration should produce a native instruction lowering")
 	}
-	if native.AMD64.Compatibility != machinecode.AMD64CompatibilityManaged ||
-		native.ARM64.Compatibility != machinecode.ARM64CompatibilityManaged {
+	if !testLoweringIsManaged(native.Codegen) {
 		t.Fatalf("Prepare did not detach target declarations: %+v", native)
+	}
+}
+
+func TestPrepareRejectsOtherArchitecture(t *testing.T) {
+	_, err := Prepare(InstructionSpec{
+		Module:  "example",
+		Name:    "wrong-target",
+		Input:   []int32{32},
+		Handler: func(InstructionContext, []Bits) ([]Bits, error) { return nil, nil },
+		Codegen: testWrongTargetLowering(),
+	})
+	if err == nil || !strings.Contains(err.Error(), "codegen in an ") {
+		t.Fatalf("wrong-target lowering error = %v", err)
 	}
 }
 
@@ -113,11 +114,8 @@ func TestPrepareBuildsCustomInstruction(t *testing.T) {
 	inputs := []CustomType{vector, vector}
 	def, err := Prepare(InstructionSpec{
 		Module: "example", Name: "v256.xor",
-		Custom: &CustomSignature{Inputs: inputs, Output: &output},
-		AMD64: &machinecode.AMD64Lowering{
-			Compatibility: machinecode.AMD64CompatibilityFullAccess,
-			Emit:          func(machinecode.AMD64Context) error { return nil },
-		},
+		Custom:  &CustomSignature{Inputs: inputs, Output: &output},
+		Codegen: testFullAccessLowering(),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -147,10 +145,7 @@ func TestPrepareRejectsInvalidDefinitions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	customAMD64 := &machinecode.AMD64Lowering{
-		Compatibility: machinecode.AMD64CompatibilityFullAccess,
-		Emit:          func(machinecode.AMD64Context) error { return nil },
-	}
+	customCodegen := testFullAccessLowering()
 	tests := []struct {
 		name string
 		spec InstructionSpec
@@ -182,7 +177,7 @@ func TestPrepareRejectsInvalidDefinitions(t *testing.T) {
 			name: "custom metadata length",
 			spec: InstructionSpec{
 				Module: "example", Name: "bad", Input: []int32{256},
-				Custom: &CustomSignature{}, AMD64: customAMD64,
+				Custom: &CustomSignature{}, Codegen: customCodegen,
 			},
 			want: "custom input metadata has 0 entries, want 1",
 		},
@@ -190,8 +185,8 @@ func TestPrepareRejectsInvalidDefinitions(t *testing.T) {
 			name: "custom width mismatch",
 			spec: InstructionSpec{
 				Module: "example", Name: "bad", Input: []int32{128},
-				Custom: &CustomSignature{Inputs: []CustomType{vector}},
-				AMD64:  customAMD64,
+				Custom:  &CustomSignature{Inputs: []CustomType{vector}},
+				Codegen: customCodegen,
 			},
 			want: "is 128 bits",
 		},
@@ -201,7 +196,7 @@ func TestPrepareRejectsInvalidDefinitions(t *testing.T) {
 				Module: "example", Name: "bad", Input: []int32{256},
 				Custom:  &CustomSignature{Inputs: []CustomType{vector}},
 				Handler: func(InstructionContext, []Bits) ([]Bits, error) { return nil, nil },
-				AMD64:   customAMD64,
+				Codegen: customCodegen,
 			},
 			want: "native-only and forbid Handler",
 		},

@@ -3,7 +3,6 @@ package wago
 import (
 	"fmt"
 
-	"github.com/wago-org/wago/src/core/compiler/machinecode"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	coreplugins "github.com/wago-org/wago/src/core/plugins"
 )
@@ -12,17 +11,6 @@ import (
 // Extension.Register.
 type CompilerRegistry struct{ reg *Registry }
 
-// Public aliases keep the existing extension interface source-compatible while
-// core/plugins owns the backend-neutral model and its implementation.
-type AMD64Features = machinecode.AMD64Features
-type AMD64Compatibility = machinecode.AMD64Compatibility
-type AMD64InstructionLowering = machinecode.AMD64Lowering
-type AMD64LoweringContext = machinecode.AMD64Context
-type AMD64ManagedLoweringContext = machinecode.AMD64ManagedContext
-type ARM64Compatibility = machinecode.ARM64Compatibility
-type ARM64InstructionLowering = machinecode.ARM64Lowering
-type ARM64LoweringContext = machinecode.ARM64Context
-type ARM64ManagedLoweringContext = machinecode.ARM64ManagedContext
 type InstructionSpec = coreplugins.InstructionSpec
 type InstructionHandler = coreplugins.InstructionHandler
 type InstructionContext = coreplugins.InstructionContext
@@ -43,13 +31,6 @@ const (
 	WasmV128      = coreplugins.WasmV128
 	WasmFuncRef   = coreplugins.WasmFuncRef
 	WasmExternRef = coreplugins.WasmExternRef
-
-	AMD64FeatureAVX2             = machinecode.AMD64FeatureAVX2
-	AMD64FeatureAVX512           = machinecode.AMD64FeatureAVX512
-	AMD64CompatibilityManaged    = machinecode.AMD64CompatibilityManaged
-	AMD64CompatibilityFullAccess = machinecode.AMD64CompatibilityFullAccess
-	ARM64CompatibilityManaged    = machinecode.ARM64CompatibilityManaged
-	ARM64CompatibilityFullAccess = machinecode.ARM64CompatibilityFullAccess
 )
 
 func NewBits(width int32, littleEndian []byte) (Bits, error) {

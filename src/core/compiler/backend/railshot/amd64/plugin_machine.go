@@ -5,7 +5,7 @@ package amd64
 import (
 	"fmt"
 
-	"github.com/wago-org/wago/src/core/compiler/machinecode"
+	plugincodegen "github.com/wago-org/wago/codegen/amd64"
 	x86 "github.com/wago-org/wago/src/core/encoder/amd64"
 	coreplugins "github.com/wago-org/wago/src/core/plugins"
 )
@@ -22,6 +22,11 @@ type pluginAMD64Context struct {
 	outputSet    bool
 	customOutput *coreplugins.CustomType
 	customRegs   []Reg
+}
+
+func pluginAMD64Lowering(instruction coreplugins.Instruction) *plugincodegen.Lowering {
+	lowering, _ := instruction.Codegen.(*plugincodegen.Lowering)
+	return lowering
 }
 
 func (c *pluginAMD64Context) Encoder() *x86.Asm { return c.f.a }
@@ -300,7 +305,7 @@ func (c *pluginAMD64Context) finish(resultWidth int32) {
 	}
 }
 
-func (f *fn) emitPluginAMD64(lowering *machinecode.AMD64Lowering, inputWidths []int32, resultWidth int32, resultCount int, customInputs []coreplugins.CustomType, customOutput *coreplugins.CustomType) error {
+func (f *fn) emitPluginAMD64(lowering *plugincodegen.Lowering, inputWidths []int32, resultWidth int32, resultCount int, customInputs []coreplugins.CustomType, customOutput *coreplugins.CustomType) error {
 	if len(customInputs) != 0 || customOutput != nil {
 		return f.emitPluginAMD64Custom(lowering, inputWidths, resultCount, customInputs, customOutput)
 	}
@@ -321,11 +326,11 @@ func (f *fn) emitPluginAMD64(lowering *machinecode.AMD64Lowering, inputWidths []
 		ctx.paramSlots[i] = e.st.slot
 	}
 	switch lowering.Compatibility {
-	case machinecode.AMD64CompatibilityManaged:
+	case plugincodegen.CompatibilityManaged:
 		if err := lowering.Managed(ctx); err != nil {
 			return err
 		}
-	case machinecode.AMD64CompatibilityFullAccess:
+	case plugincodegen.CompatibilityFullAccess:
 		if err := lowering.Emit(ctx); err != nil {
 			return err
 		}
@@ -340,14 +345,14 @@ func (f *fn) emitPluginAMD64(lowering *machinecode.AMD64Lowering, inputWidths []
 	}
 	f.setDepthTypes(types[:base])
 	ctx.finish(resultWidth)
-	if lowering.Features&(machinecode.AMD64FeatureAVX2|machinecode.AMD64FeatureAVX512) != 0 {
+	if lowering.Features&(plugincodegen.FeatureAVX2|plugincodegen.FeatureAVX512) != 0 {
 		f.usesWide = true
 	}
 	f.stats.call("custom-machine-code")
 	return nil
 }
 
-func (f *fn) emitPluginAMD64Custom(lowering *machinecode.AMD64Lowering, inputWidths []int32, resultCount int, customInputs []coreplugins.CustomType, customOutput *coreplugins.CustomType) error {
+func (f *fn) emitPluginAMD64Custom(lowering *plugincodegen.Lowering, inputWidths []int32, resultCount int, customInputs []coreplugins.CustomType, customOutput *coreplugins.CustomType) error {
 	paramCount := len(inputWidths)
 	if len(customInputs) != paramCount {
 		return fmt.Errorf("amd64 plugin custom signature has %d inputs, want %d", len(customInputs), paramCount)
@@ -379,11 +384,11 @@ func (f *fn) emitPluginAMD64Custom(lowering *machinecode.AMD64Lowering, inputWid
 		ctx.paramSlots[i] = e.st.slot
 	}
 	switch lowering.Compatibility {
-	case machinecode.AMD64CompatibilityManaged:
+	case plugincodegen.CompatibilityManaged:
 		if err := lowering.Managed(ctx); err != nil {
 			return err
 		}
-	case machinecode.AMD64CompatibilityFullAccess:
+	case plugincodegen.CompatibilityFullAccess:
 		if err := lowering.Emit(ctx); err != nil {
 			return err
 		}
@@ -431,7 +436,7 @@ func (f *fn) emitPluginAMD64Custom(lowering *machinecode.AMD64Lowering, inputWid
 			f.fregUser[reg] = e
 		}
 	}
-	if lowering.Features&(machinecode.AMD64FeatureAVX2|machinecode.AMD64FeatureAVX512) != 0 {
+	if lowering.Features&(plugincodegen.FeatureAVX2|plugincodegen.FeatureAVX512) != 0 {
 		f.usesWide = true
 	}
 	f.stats.call("custom-machine-code-custom")

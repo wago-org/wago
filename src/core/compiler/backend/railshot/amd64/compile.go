@@ -13,10 +13,10 @@ import (
 	"sync"
 	"sync/atomic"
 
+	plugincodegen "github.com/wago-org/wago/codegen/amd64"
 	railcore "github.com/wago-org/wago/src/core/compiler/backend/railshot"
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/codegen"
-	"github.com/wago-org/wago/src/core/compiler/machinecode"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/encoder/amd64"
 	"github.com/wago-org/wago/src/core/runtime/abi"
@@ -673,11 +673,11 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	requiresAVX2 := false
 	requiresAVX512 := false
 	for _, definition := range opts.CustomInstructions {
-		if definition.AMD64 != nil {
-			if definition.AMD64.Features&machinecode.AMD64FeatureAVX2 != 0 {
+		if lowering := pluginAMD64Lowering(definition); lowering != nil {
+			if lowering.Features&plugincodegen.FeatureAVX2 != 0 {
 				requiresAVX2 = true
 			}
-			if definition.AMD64.Features&machinecode.AMD64FeatureAVX512 != 0 {
+			if lowering.Features&plugincodegen.FeatureAVX512 != 0 {
 				requiresAVX512 = true
 			}
 		}

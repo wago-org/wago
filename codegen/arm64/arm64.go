@@ -1,13 +1,55 @@
-// Package arm64 exposes Wago's raw AArch64 encoder vocabulary to trusted
-// compiler plugins. Asm is the same encoder instance returned by
-// wago.ARM64LoweringContext.Encoder.
+// Package arm64 defines ARM64 plugin code generation. Plugin packages should
+// use it from a //go:build arm64 source file.
 package arm64
 
-import core "github.com/wago-org/wago/src/core/encoder/arm64"
+import (
+	"github.com/wago-org/wago/codegen"
+	core "github.com/wago-org/wago/src/core/encoder/arm64"
+)
 
 type Asm = core.Asm
 type Reg = core.Reg
 type Cond = core.Cond
+
+// Compatibility selects the trust contract of an ARM64 lowering.
+type Compatibility uint8
+
+const (
+	CompatibilityManaged Compatibility = iota + 1
+	CompatibilityFullAccess
+)
+
+// Lowering emits ARM64 instructions during compilation.
+type Lowering struct {
+	Compatibility Compatibility
+	Managed       func(ManagedContext) error
+	Emit          func(Context) error
+}
+
+func (*Lowering) Architecture() codegen.Architecture { return codegen.ARM64 }
+
+// ManagedContext exposes inputs and result placement without the raw encoder.
+type ManagedContext interface {
+	InputI32(index int) (Reg, error)
+	InputCustom(index int) ([]Reg, error)
+	Release(reg Reg)
+	ReleaseGP(reg Reg)
+	ReleaseVector(reg Reg)
+	OutputI32(reg Reg) error
+	OutputCustom(regs ...Reg) error
+}
+
+// Context exposes the raw ARM64 encoder and physical-register controls.
+type Context interface {
+	ManagedContext
+	Encoder() *Asm
+	AllocGP(exclude ...Reg) Reg
+	AllocVector(exclude ...Reg) Reg
+	ReserveGP(reg Reg) error
+	ReserveVector(reg Reg) error
+	MemoryBase() Reg
+	CheckedMemory(input int, offset uint32, size int) (base, index Reg, disp int32, err error)
+}
 
 const (
 	X0  = core.X0
