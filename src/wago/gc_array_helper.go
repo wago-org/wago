@@ -515,13 +515,23 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 			panic(gcStructHelperError{err: fmt.Errorf("gc array get helper arity = %d/%d, want 3/at-least-1", len(args), len(results))})
 		}
 		ref, typeID := gc.Ref(uint32(args[0])), uint32(args[2])
-		checkArray(ref, typeID)
-		value, err := in.gc.ArrayGet(ref, uint32(args[1]))
+		if ref.IsNull() {
+			panic(gcStructHelperTrap{code: coreruntime.TrapNullReference})
+		}
+		required, ok := in.gcDomainType(typeID)
+		if !ok {
+			panic(gcStructHelperError{err: fmt.Errorf("gc array type %d has no Runtime-domain identity", typeID)})
+		}
+		exact := int(typeID) < len(in.c.Types) && in.c.Types[typeID].Final
+		value, actual, matched, err := in.gc.ArrayGetTyped(ref, required, exact, uint32(args[1]))
 		if err != nil {
 			if strings.Contains(err.Error(), "index out of range") {
 				panic(gcStructHelperTrap{code: coreruntime.TrapBuiltin})
 			}
 			panic(gcStructHelperError{err: err})
+		}
+		if !matched {
+			panic(gcStructHelperError{err: fmt.Errorf("gc array type = %d, want subtype of %d", actual, typeID)})
 		}
 		switch helper {
 		case gcArrayGetS:
@@ -565,13 +575,24 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 			panic(gcStructHelperError{err: fmt.Errorf("gc array set helper arity = %d, want %d", len(args), valueSlots+3)})
 		}
 		ref := gc.Ref(uint32(args[0]))
-		checkArray(ref, typeID)
+		if ref.IsNull() {
+			panic(gcStructHelperTrap{code: coreruntime.TrapNullReference})
+		}
+		required, ok := in.gcDomainType(typeID)
+		if !ok {
+			panic(gcStructHelperError{err: fmt.Errorf("gc array type %d has no Runtime-domain identity", typeID)})
+		}
+		exact := int(typeID) < len(in.c.Types) && in.c.Types[typeID].Final
 		value := arrayStoredValue(typeID, args[2:2+valueSlots])
-		if err := in.gc.ArraySet(ref, uint32(args[1]), value); err != nil {
+		actual, matched, err := in.gc.ArraySetTyped(ref, required, exact, uint32(args[1]), value)
+		if err != nil {
 			if strings.Contains(err.Error(), "index out of range") {
 				panic(gcStructHelperTrap{code: coreruntime.TrapBuiltin})
 			}
 			panic(gcStructHelperError{err: err})
+		}
+		if !matched {
+			panic(gcStructHelperError{err: fmt.Errorf("gc array type = %d, want subtype of %d", actual, typeID)})
 		}
 	case gcArrayLen:
 		if len(args) != 1 || len(results) < 1 {

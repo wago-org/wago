@@ -66,6 +66,27 @@ func TestGCStructAccessAcceptsRuntimeSubtype(t *testing.T) {
 	}
 }
 
+func BenchmarkGCHelperCallPinnedState(b *testing.B) {
+	compiled := compileGCGeneralFixture(b, gcHelperCallerSavedLocalsHex)
+	defer compiled.Close()
+	instance, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{ThroughputHeapBytes: 256 << 20}})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer instance.Close()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		got, err := instance.Invoke("run")
+		if err != nil {
+			b.Fatal(err)
+		}
+		if len(got) != 1 || got[0] != 3 {
+			b.Fatalf("run = %v, want [3]", got)
+		}
+	}
+}
+
 func BenchmarkGCStructSubtypeSetGet(b *testing.B) {
 	compiled := compileGCGeneralFixture(b, gcSubtypeStructAccessHex)
 	defer compiled.Close()

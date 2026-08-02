@@ -46,6 +46,160 @@ func checkedPrototypeBytes(c *Collector, ref Ref, expected TypeID) ([]byte, bool
 	return object, true
 }
 
+func BenchmarkTypedGCStructAccess(b *testing.B) {
+	base, err := NewStructDesc(0, []StorageKind{StorageI32})
+	if err != nil {
+		b.Fatal(err)
+	}
+	base.Final = false
+	child, err := NewStructDesc(1, []StorageKind{StorageI32})
+	if err != nil {
+		b.Fatal(err)
+	}
+	child.HasSuper = true
+	child.Super = 0
+	c, err := NewCollector(Config{NurseryBytes: 1 << 20, DisableCollection: true}, []TypeDesc{base, child})
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.Cleanup(c.Close)
+	ref, err := c.NewStructDefault(1)
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	b.Run("get_separate_type_and_access", func(b *testing.B) {
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			actual, err := c.ObjectType(ref)
+			if err != nil {
+				b.Fatal(err)
+			}
+			matched, err := c.TypeSubtype(actual, 0)
+			if err != nil || !matched {
+				b.Fatalf("subtype = %v, %v", matched, err)
+			}
+			value, err := c.StructGet(ref, 0)
+			if err != nil {
+				b.Fatal(err)
+			}
+			objectAccessBenchSink = value.Bits
+		}
+	})
+	b.Run("get_combined_typed", func(b *testing.B) {
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			value, _, matched, err := c.StructGetTyped(ref, 0, false, 0)
+			if err != nil || !matched {
+				b.Fatalf("typed get = %v, %v", matched, err)
+			}
+			objectAccessBenchSink = value.Bits
+		}
+	})
+	b.Run("set_separate_type_and_access", func(b *testing.B) {
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			actual, err := c.ObjectType(ref)
+			if err != nil {
+				b.Fatal(err)
+			}
+			matched, err := c.TypeSubtype(actual, 0)
+			if err != nil || !matched {
+				b.Fatalf("subtype = %v, %v", matched, err)
+			}
+			if err := c.StructSet(ref, 0, I32Value(int32(i))); err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
+	b.Run("set_combined_typed", func(b *testing.B) {
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			_, matched, err := c.StructSetTyped(ref, 0, false, 0, I32Value(int32(i)))
+			if err != nil || !matched {
+				b.Fatalf("typed set = %v, %v", matched, err)
+			}
+		}
+	})
+}
+
+func BenchmarkTypedGCArrayAccess(b *testing.B) {
+	base, err := NewArrayDesc(0, StorageI32)
+	if err != nil {
+		b.Fatal(err)
+	}
+	base.Final = false
+	child, err := NewArrayDesc(1, StorageI32)
+	if err != nil {
+		b.Fatal(err)
+	}
+	child.HasSuper = true
+	child.Super = 0
+	c, err := NewCollector(Config{NurseryBytes: 1 << 20, DisableCollection: true}, []TypeDesc{base, child})
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.Cleanup(c.Close)
+	ref, err := c.NewArrayDefault(1, 8)
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	b.Run("get_separate_type_and_access", func(b *testing.B) {
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			actual, err := c.ObjectType(ref)
+			if err != nil {
+				b.Fatal(err)
+			}
+			matched, err := c.TypeSubtype(actual, 0)
+			if err != nil || !matched {
+				b.Fatalf("subtype = %v, %v", matched, err)
+			}
+			value, err := c.ArrayGet(ref, 3)
+			if err != nil {
+				b.Fatal(err)
+			}
+			objectAccessBenchSink = value.Bits
+		}
+	})
+	b.Run("get_combined_typed", func(b *testing.B) {
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			value, _, matched, err := c.ArrayGetTyped(ref, 0, false, 3)
+			if err != nil || !matched {
+				b.Fatalf("typed get = %v, %v", matched, err)
+			}
+			objectAccessBenchSink = value.Bits
+		}
+	})
+	b.Run("set_separate_type_and_access", func(b *testing.B) {
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			actual, err := c.ObjectType(ref)
+			if err != nil {
+				b.Fatal(err)
+			}
+			matched, err := c.TypeSubtype(actual, 0)
+			if err != nil || !matched {
+				b.Fatalf("subtype = %v, %v", matched, err)
+			}
+			if err := c.ArraySet(ref, 3, I32Value(int32(i))); err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
+	b.Run("set_combined_typed", func(b *testing.B) {
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			_, matched, err := c.ArraySetTyped(ref, 0, false, 3, I32Value(int32(i)))
+			if err != nil || !matched {
+				b.Fatalf("typed set = %v, %v", matched, err)
+			}
+		}
+	})
+}
+
 func BenchmarkCheckedGCObjectAccessPrototype(b *testing.B) {
 	structDesc, err := NewStructDesc(0, []StorageKind{StorageI32})
 	if err != nil {

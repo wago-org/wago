@@ -196,17 +196,18 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 		if ref.IsNull() {
 			panic(gcStructHelperTrap{code: coreruntime.TrapNullReference})
 		}
-		actual, err := in.gc.ObjectType(ref)
-		if err != nil {
-			panic(gcStructHelperError{err: err})
-		}
 		want := uint32(args[1])
-		if !in.gcObjectTypeMatches(actual, want) {
-			panic(gcStructHelperError{err: fmt.Errorf("gc struct get type = %d, want subtype of %d", actual, want)})
+		required, ok := in.gcDomainType(want)
+		if !ok {
+			panic(gcStructHelperError{err: fmt.Errorf("gc struct get type %d has no Runtime-domain identity", want)})
 		}
-		value, err := in.gc.StructGet(ref, uint32(args[2]))
+		exact := int(want) < len(in.c.Types) && in.c.Types[want].Final
+		value, actual, matched, err := in.gc.StructGetTyped(ref, required, exact, uint32(args[2]))
 		if err != nil {
 			panic(gcStructHelperError{err: err})
+		}
+		if !matched {
+			panic(gcStructHelperError{err: fmt.Errorf("gc struct get type = %d, want subtype of %d", actual, want)})
 		}
 		if value.Kind == gc.StorageRef || value.Kind == gc.StorageRefNull {
 			results[0] = uint64(value.Ref)
@@ -360,18 +361,20 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 		if len(args) != valueSlots+3 {
 			panic(gcStructHelperError{err: fmt.Errorf("gc struct set helper arity = %d, want %d", len(args), valueSlots+3)})
 		}
-		actual, err := in.gc.ObjectType(ref)
-		if err != nil {
-			panic(gcStructHelperError{err: err})
-		}
-		if !in.gcObjectTypeMatches(actual, typeID) {
-			panic(gcStructHelperError{err: fmt.Errorf("gc struct set type = %d, want subtype of %d", actual, typeID)})
-		}
 		if int(typeID) >= len(in.c.GCTypeDescs) || int(fieldID) >= len(in.c.GCTypeDescs[typeID].Fields) {
 			panic(gcStructHelperError{err: fmt.Errorf("gc struct set field %d:%d is unavailable", typeID, fieldID)})
 		}
-		if err := in.gc.StructSet(ref, fieldID, structValue(typeID, fieldID, args[1:1+valueSlots])); err != nil {
+		required, ok := in.gcDomainType(typeID)
+		if !ok {
+			panic(gcStructHelperError{err: fmt.Errorf("gc struct set type %d has no Runtime-domain identity", typeID)})
+		}
+		exact := int(typeID) < len(in.c.Types) && in.c.Types[typeID].Final
+		actual, matched, err := in.gc.StructSetTyped(ref, required, exact, fieldID, structValue(typeID, fieldID, args[1:1+valueSlots]))
+		if err != nil {
 			panic(gcStructHelperError{err: err})
+		}
+		if !matched {
+			panic(gcStructHelperError{err: fmt.Errorf("gc struct set type = %d, want subtype of %d", actual, typeID)})
 		}
 	default:
 		panic(gcStructHelperError{err: fmt.Errorf("unknown gc struct helper %d", helper)})

@@ -79,6 +79,76 @@ func TestAllocationStructArrayAccess(t *testing.T) {
 	}
 }
 
+func TestTypedStructAccessChecksFinalAndOpenTypes(t *testing.T) {
+	base, err := NewStructDesc(0, []StorageKind{StorageI32})
+	if err != nil {
+		t.Fatal(err)
+	}
+	base.Final = false
+	child, err := NewStructDesc(1, []StorageKind{StorageI32})
+	if err != nil {
+		t.Fatal(err)
+	}
+	child.HasSuper = true
+	child.Super = 0
+	c := newTestCollectorWithTypes(t, Config{}, []TypeDesc{base, child})
+	ref, err := c.NewStructDefault(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if actual, matched, err := c.StructSetTyped(ref, 0, false, 0, I32Value(42)); err != nil || !matched || actual != 1 {
+		t.Fatalf("open typed set = actual %d matched %v err %v", actual, matched, err)
+	}
+	value, actual, matched, err := c.StructGetTyped(ref, 0, false, 0)
+	if err != nil || !matched || actual != 1 || value.I32() != 42 {
+		t.Fatalf("open typed get = value %+v actual %d matched %v err %v", value, actual, matched, err)
+	}
+	if _, actual, matched, err := c.StructGetTyped(ref, 0, true, 0); err != nil || matched || actual != 1 {
+		t.Fatalf("exact base get = actual %d matched %v err %v, want mismatch", actual, matched, err)
+	}
+	if value, actual, matched, err := c.StructGetTyped(ref, 1, true, 0); err != nil || !matched || actual != 1 || value.I32() != 42 {
+		t.Fatalf("exact child get = value %+v actual %d matched %v err %v", value, actual, matched, err)
+	}
+	if _, _, _, err := c.StructGetTyped(ref, 99, true, 0); err == nil {
+		t.Fatal("exact typed get accepted unknown required type")
+	}
+}
+
+func TestTypedArrayAccessChecksFinalAndOpenTypes(t *testing.T) {
+	base, err := NewArrayDesc(0, StorageI32)
+	if err != nil {
+		t.Fatal(err)
+	}
+	base.Final = false
+	child, err := NewArrayDesc(1, StorageI32)
+	if err != nil {
+		t.Fatal(err)
+	}
+	child.HasSuper = true
+	child.Super = 0
+	c := newTestCollectorWithTypes(t, Config{}, []TypeDesc{base, child})
+	ref, err := c.NewArrayDefault(1, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if actual, matched, err := c.ArraySetTyped(ref, 0, false, 1, I32Value(42)); err != nil || !matched || actual != 1 {
+		t.Fatalf("open typed set = actual %d matched %v err %v", actual, matched, err)
+	}
+	value, actual, matched, err := c.ArrayGetTyped(ref, 0, false, 1)
+	if err != nil || !matched || actual != 1 || value.I32() != 42 {
+		t.Fatalf("open typed get = value %+v actual %d matched %v err %v", value, actual, matched, err)
+	}
+	if _, actual, matched, err := c.ArrayGetTyped(ref, 0, true, 1); err != nil || matched || actual != 1 {
+		t.Fatalf("exact base get = actual %d matched %v err %v, want mismatch", actual, matched, err)
+	}
+	if value, actual, matched, err := c.ArrayGetTyped(ref, 1, true, 1); err != nil || !matched || actual != 1 || value.I32() != 42 {
+		t.Fatalf("exact child get = value %+v actual %d matched %v err %v", value, actual, matched, err)
+	}
+	if _, _, _, err := c.ArrayGetTyped(ref, 0, false, 2); err == nil {
+		t.Fatal("typed array get accepted out-of-range index")
+	}
+}
+
 func TestArrayInitializerRefSurvivesAllocationCollection(t *testing.T) {
 	c := newTestCollector(t, Config{})
 	child, err := c.NewStructDefault(0)

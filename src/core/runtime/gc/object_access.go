@@ -294,6 +294,32 @@ func (c *Collector) StructGet(ref Ref, field uint32) (Value, error) {
 	f := d.Fields[field]
 	return c.loadValue(ref, uint64(PayloadOffset+f.Offset), f.Kind)
 }
+
+// StructGetTyped combines dynamic type checking and field access after resolving
+// the compact object handle once. exact is valid for final required types; open
+// types retain declared-super traversal. actual is returned for precise caller
+// diagnostics when matched is false.
+func (c *Collector) StructGetTyped(ref Ref, required TypeID, exact bool, field uint32) (value Value, actual TypeID, matched bool, err error) {
+	d, err := c.refDesc(ref)
+	if err != nil {
+		return Value{}, 0, false, err
+	}
+	actual = d.ID
+	matched, err = c.typeDescSubtype(d, required, exact)
+	if err != nil || !matched {
+		return Value{}, actual, matched, err
+	}
+	if d.Kind != KindStruct {
+		return Value{}, actual, true, errors.New("gc: not struct")
+	}
+	if field >= uint32(len(d.Fields)) {
+		return Value{}, actual, true, errors.New("gc: field out of range")
+	}
+	f := d.Fields[field]
+	value, err = c.loadValue(ref, uint64(PayloadOffset+f.Offset), f.Kind)
+	return value, actual, true, err
+}
+
 func (c *Collector) StructSet(ref Ref, field uint32, value Value) error {
 	d, e := c.refDesc(ref)
 	if e != nil {
@@ -318,6 +344,68 @@ func (c *Collector) StructSet(ref Ref, field uint32, value Value) error {
 	}
 	return c.storeValue(ref, d, uint64(PayloadOffset+f.Offset), f.Kind, value)
 }
+
+// StructSetTyped is StructGetTyped's mutation counterpart. It performs the
+// exact/open type test, value validation, write barrier, and store from one
+// resolved descriptor.
+func (c *Collector) StructSetTyped(ref Ref, required TypeID, exact bool, field uint32, value Value) (actual TypeID, matched bool, err error) {
+	d, err := c.refDesc(ref)
+	if err != nil {
+		return 0, false, err
+	}
+	actual = d.ID
+	matched, err = c.typeDescSubtype(d, required, exact)
+	if err != nil || !matched {
+		return actual, matched, err
+	}
+	if d.Kind != KindStruct {
+		return actual, true, errors.New("gc: not struct")
+	}
+	if field >= uint32(len(d.Fields)) {
+		return actual, true, errors.New("gc: field out of range")
+	}
+	f := d.Fields[field]
+	if err := checkValueCompatible(f.Kind, value); err != nil {
+		return actual, true, err
+	}
+	if isCollectorRefKind(f.Kind) {
+		if err := c.validateStoredRef(value.Ref, isNullableReferenceStorage(f.Kind)); err != nil {
+			return actual, true, err
+		}
+		c.WriteBarrierObject(ref, value.Ref)
+	}
+	return actual, true, c.storeValue(ref, d, uint64(PayloadOffset+f.Offset), f.Kind, value)
+}
+
+func (c *Collector) typeDescSubtype(dynamic TypeDesc, required TypeID, exact bool) (bool, error) {
+	if exact {
+		if dynamic.ID == required {
+			return true, nil
+		}
+		_, err := c.desc(required)
+		return false, err
+	}
+	want, err := c.desc(required)
+	if err != nil {
+		return false, err
+	}
+	if dynamic.Kind != want.Kind {
+		return false, nil
+	}
+	for {
+		if dynamic.ID == required {
+			return true, nil
+		}
+		if !dynamic.HasSuper {
+			return false, nil
+		}
+		dynamic, err = c.desc(dynamic.Super)
+		if err != nil {
+			return false, err
+		}
+	}
+}
+
 func (c *Collector) ArrayGet(ref Ref, index uint32) (Value, error) {
 	d, e := c.refDesc(ref)
 	if e != nil {
@@ -332,6 +420,29 @@ func (c *Collector) ArrayGet(ref Ref, index uint32) (Value, error) {
 	}
 	return c.loadValue(ref, uint64(PayloadOffset)+uint64(index)*uint64(d.ElemSize), d.Elem)
 }
+
+// ArrayGetTyped combines the dynamic array type test, bounds check, and element
+// load after one compact-handle resolution.
+func (c *Collector) ArrayGetTyped(ref Ref, required TypeID, exact bool, index uint32) (value Value, actual TypeID, matched bool, err error) {
+	d, err := c.refDesc(ref)
+	if err != nil {
+		return Value{}, 0, false, err
+	}
+	actual = d.ID
+	matched, err = c.typeDescSubtype(d, required, exact)
+	if err != nil || !matched {
+		return Value{}, actual, matched, err
+	}
+	if d.Kind != KindArray {
+		return Value{}, actual, true, errors.New("gc: not array")
+	}
+	if index >= c.header(ref).Aux {
+		return Value{}, actual, true, errors.New("gc: index out of range")
+	}
+	value, err = c.loadValue(ref, uint64(PayloadOffset)+uint64(index)*uint64(d.ElemSize), d.Elem)
+	return value, actual, true, err
+}
+
 func (c *Collector) ArraySet(ref Ref, index uint32, value Value) error {
 	d, e := c.refDesc(ref)
 	if e != nil {
@@ -348,6 +459,30 @@ func (c *Collector) ArraySet(ref Ref, index uint32, value Value) error {
 		return err
 	}
 	return c.storeArrayValue(ref, d, index, value)
+}
+
+// ArraySetTyped is ArrayGetTyped's mutation counterpart and retains reference
+// validation and write-barrier behavior through storeArrayValue.
+func (c *Collector) ArraySetTyped(ref Ref, required TypeID, exact bool, index uint32, value Value) (actual TypeID, matched bool, err error) {
+	d, err := c.refDesc(ref)
+	if err != nil {
+		return 0, false, err
+	}
+	actual = d.ID
+	matched, err = c.typeDescSubtype(d, required, exact)
+	if err != nil || !matched {
+		return actual, matched, err
+	}
+	if d.Kind != KindArray {
+		return actual, true, errors.New("gc: not array")
+	}
+	if index >= c.header(ref).Aux {
+		return actual, true, errors.New("gc: index out of range")
+	}
+	if err := c.validateArrayStore(d, value); err != nil {
+		return actual, true, err
+	}
+	return actual, true, c.storeArrayValue(ref, d, index, value)
 }
 
 // ArrayFill preflights the complete destination range and value before making

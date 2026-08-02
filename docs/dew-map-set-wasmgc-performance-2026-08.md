@@ -74,6 +74,56 @@ The load-factor comparison was rerun after these changes. The maximum load 1.0
 policy remained fastest: 5.283 ms, compared with 5.715 ms at 0.5, 6.587 ms at
 0.75, and 6.569 ms at 0.875.
 
+## Combined typed struct and array access
+
+The first item from the combined-operation track is now implemented for
+`struct.get`, `struct.set`, `array.get`, and `array.set`. Helper dispatch
+previously resolved the compact handle with `ObjectType`, traversed the subtype
+descriptors, and then resolved the same handle again in `StructGet`/`StructSet`
+or `ArrayGet`/`ArraySet`. The collector now combines the dynamic type check,
+container checks, bounds checks, and access from one resolved descriptor. Final
+required types use canonical type-ID equality; open types retain complete
+supertype traversal, and reference writes retain validation and barriers.
+
+Pinned single-CPU medians on the same Ryzen host are:
+
+| Operation | Separate checks | Combined typed access | Change |
+| --- | ---: | ---: | ---: |
+| collector struct get | 50.18 ns | 34.21 ns | -31.8% |
+| collector struct set | 60.10 ns | 36.75 ns | -38.9% |
+| collector array get | 56.48 ns | 41.51 ns | -26.5% |
+| collector array set | 65.09 ns | 42.33 ns | -35.0% |
+| native subtype struct set/get workload | 517.7 ns | 472.2 ns | -8.8% |
+| native reference-array get workload | 525.9 ns | 508.5 ns | -3.3% |
+| native v128-array set workload | 509.1 ns | 493.9 ns | -3.0% |
+
+All measurements remain at 0 B/op and 0 allocs/op. Same-session
+plugin-complete stripped TinyGo A/Bs measured **+1,584 bytes** for typed struct
+access and **+2,432 bytes** further for typed array access, for a combined
+**1,737,268→1,741,284 bytes** (**+4,016 bytes, +0.231%**). Internal GC helper
+lowering also skips redundant module-global cell synchronization because these
+helpers cannot observe or mutate numeric global cells and the module-pinned
+registers survive the parked transition. A pinned-state helper workload improves
+**364.2→353.6 ns/op** (**-2.9%**) with no additional release bytes. The
+native-to-Go helper transition still dominates the end-to-end result, so shared
+native access stubs and cast-plus-access fusion remain higher-leverage follow-ups.
+
+### Direct `array.len` assessment
+
+The existing native collector ABI can validate a compact handle, locate its
+current object, and compare an object header with a statically known canonical
+type. Plain `array.len`, however, has no type immediate and may receive any
+array subtype. The ABI does not currently publish canonical type-kind metadata,
+so native code cannot prove that the resolved object is an array before loading
+`ObjHeader.Aux`; omitting that proof would incorrectly interpret a struct header
+as an array length. No such unsafe fast path is retained.
+
+The bounded options are to publish a versioned dense canonical type-kind table,
+carry proven concrete array provenance into lowering, or route `array.len`
+through a shared native stub that has equivalent metadata. The shared metadata/
+stub route is preferable because it also supports reference field/array access
+without duplicating a full handle check at thousands of static sites.
+
 ## Rejected experiment
 
 Inlining a complete checked native final-type `ref.cast` reduced the workload to

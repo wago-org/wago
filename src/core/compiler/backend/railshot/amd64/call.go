@@ -937,6 +937,7 @@ func funcTypeSlots(ts []wasm.ValType) int {
 // instance's globals through their cells.
 func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	f.stats.call(callKindHostSync)
+	internalGC := uint32(importIdx)&gcStructDispatchBit != 0
 	p, rN := len(ft.Params), len(ft.Results)
 	var rootOffsets []uint32
 	recordRoots := false
@@ -978,8 +979,13 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	f.tmpGCRoots2 = belowGCRoots
 
 	f.flush()                   // operands to canonical slot-width slots
-	f.storePinnedGlobals(false) // coherence: the host may read the current values
-	f.storeModuleGlobals(RAX)
+	f.storePinnedGlobals(false) // coherence/preservation for value-pinned caller-saved globals
+	if !internalGC {
+		// Arbitrary host code may read or mutate module-global cells. Internal GC
+		// helpers cannot; their module-pinned registers are callee-saved across the
+		// parked transition, so avoid a redundant cell round trip at every GC op.
+		f.storeModuleGlobals(RAX)
+	}
 
 	// Marshal params into the control frame as wrapper-ABI slots. A v128 occupies
 	// two adjacent little-endian uint64 slots, exactly like Invoke and cross-
@@ -1025,7 +1031,9 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	}
 	f.reloadLocalsForCall() // old model: restore caller-saved R9..R11 local pins
 
-	f.deriveModuleGlobals() // the host may have written global cells
+	if !internalGC {
+		f.deriveModuleGlobals() // arbitrary host code may have written global cells
+	}
 	f.derivePinnedGlobals()
 	f.setDepthTypesWithGCRoots(belowTypes, belowGCRoots)
 

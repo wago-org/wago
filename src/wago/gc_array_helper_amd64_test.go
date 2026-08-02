@@ -343,6 +343,31 @@ func TestStagedGCArrayHelperFootprint(t *testing.T) {
 	}
 }
 
+func BenchmarkStagedGCArrayNumericFixedLen(b *testing.B) {
+	data, err := hex.DecodeString(stagedGCArrayNumericFixedHex)
+	if err != nil {
+		b.Fatal(err)
+	}
+	c, err := compileStagedGCArray(data)
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer c.Close()
+	in, err := instantiateCore(c, InstantiateOptions{})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer in.Close()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		got, err := in.Invoke("len")
+		if err != nil || len(got) != 1 || got[0] != 2 {
+			b.Fatalf("len = %v, %v; want [2]", got, err)
+		}
+	}
+}
+
 func BenchmarkStagedGCArrayNumericFixedSetGet(b *testing.B) {
 	data, err := hex.DecodeString(stagedGCArrayNumericFixedHex)
 	if err != nil {
