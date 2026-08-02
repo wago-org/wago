@@ -361,19 +361,31 @@ exactly as follows:
 | `array.new_default` | 1,024 | 12.5% |
 | `array.new_fixed` | 1,024 | 12.5% |
 
+The V8/Cranelift/Binaryen follow-up in
+[`wasmgc-v8-cranelift-research-2026-08.md`](wasmgc-v8-cranelift-research-2026-08.md)
+changes the order of the next measured options. A Binaryen type-flow oracle
+removed 1,024 recursively dead fixed-array-plus-struct constructor trees,
+reduced static synchronous helper sites 8,188→6,140, and improved fresh Wago
+execution about 0.94→0.63 ms while reducing host allocation 924,536→524,512
+B/op. Full Heap2Local by itself was neutral-to-slower and tripled the frame, so
+broad scalar replacement is not the lesson.
+
 The next measured options should be, in order:
 
-1. add native bump allocation plus one shared collection/handle slow path for the
-   4,098 constructor sites;
-2. publish a bounded native remembered-set/card barrier so old/large parent writes
-   can avoid the remaining 4,090 fallback sites while preserving Tiny incremental
+1. add count-only facts for recursively dead constructor trees, repeated exact
+   casts, repeated array lengths, and same-field load/store forwarding;
+2. eliminate dead `struct.new`/`array.new_fixed` trees while preserving all
+   observable initializer evaluation and array-size traps;
+3. propagate compact structured exact/non-null local facts and use them to remove
+   proven repeated cast/type work;
+4. add native bump allocation plus one shared collection/handle slow path for the
+   constructor sites that remain live;
+5. publish a bounded native remembered-set/card barrier so old/large parent writes
+   can avoid the remaining write fallbacks while preserving Tiny incremental
    semantics and exact mutation;
-3. reduce raw constructor/root preparation and allocation metadata publication;
-4. mature the retained full-retry path into compacting or segmented old space and
-   quantify worst-case pause behavior for larger live graphs;
-5. qualify the profitable shared native read/cast/write paths on ARM64; and
-6. use producer-side typed scratch locals to reduce repeated dynamic checks while
-   retaining Wago correctness for arbitrary producers.
+6. mature the retained full-retry path into compacting or segmented old space and
+   quantify worst-case pause behavior for larger live graphs; and
+7. qualify the profitable shared native read/cast/write paths on ARM64.
 
 The old-space backing experiment was retained after moving it behind a genuinely
 cold helper. Growth remains exact while the backing is below 16 pages (1 MiB with

@@ -125,6 +125,22 @@ The stripped TinyGo release grows 1,985,784→1,999,256 bytes for this productio
 slice (**+13,472, +0.68%**). The subsequent bounded foreign-clone API brings the
 combined candidate to 2,000,232 bytes (**+976 bytes further**).
 
+**V8/Cranelift/Binaryen WasmGC optimizer research (2026-08-02).** Current V8
+Turboshaft propagates path-sensitive exact/non-null facts, removes redundant
+casts/null checks, forwards struct fields and immutable array lengths, marks fresh
+allocations non-aliasing, and recursively removes dead allocation/store trees.
+Current Cranelift specializes static reference classes and its copying collector
+emits overflow-safe inline bump allocation with one cold collection/growth slow
+path. A Binaryen type-flow oracle on Dew removed exactly 1,024 dead
+`array.new_fixed` + `struct.new` trees: Wago `hostsync` fell **8,188→6,140**,
+fresh median **0.94→0.63 ms**, host allocation **924,536→524,512 B/op**, and
+native code **7,479,004→7,112,416 bytes**. Heap2Local alone was neutral-to-slower
+and expanded the frame **24,808→82,152 bytes**, so broad scalar replacement is
+rejected as the next step. The measured order is now recursive dead-constructor
+elimination, structured exact/non-null facts and bounded GC load forwarding, then
+native bump allocation for the constructors that remain live. See
+`docs/wasmgc-v8-cranelift-research-2026-08.md`.
+
 **Release unwind-table removal (2026-08-01).** TinyGo `-no-debug` Linux
 releases do not use DWARF `.eh_frame` data for panic text or Wago's native
 trap/signal path. In the historical monolithic CLI, removing that allocated
