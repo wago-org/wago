@@ -4,6 +4,7 @@ package runtime
 
 import (
 	"fmt"
+	"syscall"
 	"unsafe"
 
 	"github.com/wago-org/wago/src/core/runtime/abi"
@@ -22,15 +23,17 @@ const (
 
 var (
 	procAddVectoredExceptionHandler = kernel32.NewProc("AddVectoredExceptionHandler")
+	ntdll                           = syscall.NewLazyDLL("ntdll.dll")
+	procNtAllocateVirtualMemory     = ntdll.NewProc("NtAllocateVirtualMemory")
 	guardTrapExitHandlerJumpPC      uintptr
-	guardVirtualAllocPC             uintptr
+	guardNtAllocateVirtualMemoryPC  uintptr
 )
 
 func installWindowsExceptionHandler() error {
-	if err := procVirtualAlloc.Find(); err != nil {
-		return fmt.Errorf("resolve VirtualAlloc: %w", err)
+	if err := procNtAllocateVirtualMemory.Find(); err != nil {
+		return fmt.Errorf("resolve NtAllocateVirtualMemory: %w", err)
 	}
-	guardVirtualAllocPC = procVirtualAlloc.Addr()
+	guardNtAllocateVirtualMemoryPC = procNtAllocateVirtualMemory.Addr()
 	guardTrapExitHandlerJumpPC = addrNativeTrapExitHandlerJump()
 	handle, _, callErr := procAddVectoredExceptionHandler.Call(1, addrGuardExceptionHandler())
 	if handle == 0 {
