@@ -1,4 +1,6 @@
-package wasm
+//go:build (linux || darwin) && (amd64 || arm64) && !tinygo && !wago_guardpage
+
+package wago_test
 
 import (
 	"os"
@@ -6,11 +8,11 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/wago-org/wago/internal/spectest"
+	"github.com/wago-org/wago/tests/spectest"
 )
 
-func TestWazeroPortPinnedCoreV2Validation(t *testing.T) {
-	root := filepath.Clean("../../../../tests/spec-v2")
+func TestCoreV2SpecExecution(t *testing.T) {
+	root := filepath.Clean("../../tests/spec-v2")
 	if _, err := os.Stat(filepath.Join(root, "test", "core")); err != nil {
 		if os.IsNotExist(err) {
 			t.Skip("pinned Core v2 submodule is not initialized; run make spec2 for mandatory execution")
@@ -36,5 +38,5 @@ func TestWazeroPortPinnedCoreV2Validation(t *testing.T) {
 	}
 	t.Setenv("WAGO_SPECTEST_DIR", root)
 	t.Setenv("WAGO_SPEC_VERSION", "2.0")
-	TestSpecSuite(t)
+	TestSpecSuiteExec(t)
 }

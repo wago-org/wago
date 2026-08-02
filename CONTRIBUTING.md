@@ -10,7 +10,7 @@ Target today: **linux/amd64** with Go **1.22+**.
 ```bash
 git clone https://github.com/wago-org/wago
 cd wago
-go test ./...
+make test
 go build -o wago ./cli/wago
 ./wago version
 go build -tags wago_runtime -o wago-runtime ./cli/wago
@@ -38,8 +38,8 @@ cli/internal                     shared CLI primitives
 src/core/compiler/wasm           decoder + validator
 src/core/compiler/backend/railshot  single-pass x86-64 codegen
 src/core/runtime                 mmap, foreign stack, trap plumbing
-tests/testdata                   small wasm fixtures
-bench                            wazero comparison benchmarks
+tests                           shared harnesses, fixtures, corpora, and scripts
+bench                            runtime comparison benchmarks
 ```
 
 The root `wago.go` is generated: it re-exports every exported symbol of
@@ -49,6 +49,13 @@ the regenerated `wago.go`. CI fails if it is stale.
 
 Use [FEATURES.md](FEATURES.md) before adding feature work and
 [ROADMAP.md](ROADMAP.md) before reshuffling priorities.
+
+`make test` is the unified Go test surface. Wago-owned cases and applicable
+regressions adapted from upstream projects live together in their domain
+packages. The pinned Core v2 wrappers need WABT and `tests/spec-v2`; run
+`make spec2` when changing decoder, validator, linker, or execution semantics.
+See [tests/README.md](tests/README.md) for the complete test layout and fixture
+provenance.
 
 ## Development
 
@@ -100,15 +107,15 @@ For CLI-facing changes, also build and exercise the examples:
 ```bash
 go build -o wago ./cli/wago
 go build -tags wago_runtime -o wago-runtime ./cli/wago
-./wago-runtime run tests/testdata/fib.wasm 30
-./wago-runtime run -e hypot tests/testdata/fprog.wasm 3.0 4.0
-./wago-runtime build -o /tmp/fib.wago tests/testdata/fib.wasm
+./wago-runtime run tests/fixtures/wasm/fib.wasm 30
+./wago-runtime run -e hypot tests/fixtures/wasm/fprog.wasm 3.0 4.0
+./wago-runtime build -o /tmp/fib.wago tests/fixtures/wasm/fib.wasm
 ./wago-runtime run /tmp/fib.wago 30
-./wago-runtime validate tests/testdata/fib.wasm
+./wago-runtime validate tests/fixtures/wasm/fib.wasm
 ```
 
 When adding behavior, add the smallest fixture that proves it. Prefer readable
-WAT in the test or a tiny checked-in wasm fixture under `tests/testdata`.
+WAT in the test or a tiny checked-in wasm fixture under `tests/fixtures/wasm`.
 
 ### Spec conformance (wasm 1.0 / MVP)
 

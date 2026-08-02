@@ -2,9 +2,9 @@ package wasm
 
 import "testing"
 
-// TestWazeroPortRejectsRedundantControlTerminators ports validation fuzz
-// regressions from wazero/internal/wasm/func_validation_test.go at c0f3a4ec.
-func TestWazeroPortRejectsRedundantControlTerminators(t *testing.T) {
+// TestRejectsRedundantControlTerminators pins validation fuzz regressions for
+// malformed control flow.
+func TestRejectsRedundantControlTerminators(t *testing.T) {
 	tests := []struct {
 		name string
 		body []byte
@@ -34,7 +34,7 @@ func TestWazeroPortRejectsRedundantControlTerminators(t *testing.T) {
 	}
 }
 
-func TestWazeroPortDecodesLargeMixedResultSignature(t *testing.T) {
+func TestDecodesLargeMixedResultSignature(t *testing.T) {
 	results := make([]byte, 138)
 	for i := range results {
 		results[i] = 0x7b // v128

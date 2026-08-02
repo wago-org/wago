@@ -14,14 +14,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wago-org/wago/testutil/wasmtest"
+	"github.com/wago-org/wago/tests/wasmtest"
 )
 
-// These are the checked-in binary fixtures from wazero's engine integration
-// suite at revision 236c2458ed22010150de76c5397eca2c89af3b4f. Keep this
-// manifest exact so upstream fixture additions or accidental deletions require
-// an explicit applicability decision.
-func TestWazeroPortEngineFixtureManifest(t *testing.T) {
+// Keep this manifest exact so fixture additions or accidental deletions require
+// an explicit coverage decision.
+func TestEngineFixtureManifest(t *testing.T) {
 	want := []string{
 		"eh_br_orphan.wasm",
 		"eh_br_own_label.wasm",
@@ -47,7 +45,7 @@ func TestWazeroPortEngineFixtureManifest(t *testing.T) {
 		"unreachable.wasm",
 		"urem_regalloc.wasm",
 	}
-	dir := filepath.Join("..", "..", "testdata", "wazero", "engine")
+	dir := filepath.Join("..", "..", "tests", "regressions", "engine")
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		t.Fatalf("read engine fixtures: %v", err)
@@ -69,8 +67,8 @@ func TestWazeroPortEngineFixtureManifest(t *testing.T) {
 	}
 }
 
-func TestWazeroPortFixtureTreeDigest(t *testing.T) {
-	root := filepath.Join("..", "..", "testdata", "wazero")
+func TestFixtureTreeDigest(t *testing.T) {
+	root := filepath.Join("..", "..", "tests", "regressions")
 	paths := make([]string, 0, 941)
 	if err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
 		if err != nil {
@@ -90,7 +88,7 @@ func TestWazeroPortFixtureTreeDigest(t *testing.T) {
 	}
 	sort.Strings(paths)
 	if len(paths) != 941 {
-		t.Fatalf("wazero fixture tree has %d files, want 941", len(paths))
+		t.Fatalf("regression fixture tree has %d files, want 941", len(paths))
 	}
 	h := sha256.New()
 	artifactCount := 0
@@ -109,21 +107,21 @@ func TestWazeroPortFixtureTreeDigest(t *testing.T) {
 		_, _ = h.Write([]byte{0})
 	}
 	if artifactCount != 939 {
-		t.Fatalf("wazero fixture tree has %d upstream artifacts, want 939", artifactCount)
+		t.Fatalf("regression fixture tree has %d artifacts, want 939", artifactCount)
 	}
 	got := hex.EncodeToString(h.Sum(nil))
 	const want = "910700035d51ffc50d380261168120f8d97ef4f0fb42e9c6dfe0824a79b8037a"
 	if got != want {
-		t.Fatalf("wazero fixture tree digest = %s, want %s", got, want)
+		t.Fatalf("regression fixture tree digest = %s, want %s", got, want)
 	}
 }
 
 // Wago does not advertise the exception-handling proposal. These regression
 // binaries must therefore fail closed during validation, never reach codegen or
 // instantiation, and never be silently dropped from the port.
-func TestWazeroPortEngineBehaviorFixtures(t *testing.T) {
+func TestEngineBehaviorFixtures(t *testing.T) {
 	t.Run("overflow", func(t *testing.T) {
-		in := instantiateWazeroEngineFixture(t, "overflow.wasm", nil)
+		in := instantiateEngineFixture(t, "overflow.wasm", nil)
 		defer in.Close()
 		for _, export := range []string{"i32", "i64"} {
 			got, err := in.Invoke(export)
@@ -133,7 +131,7 @@ func TestWazeroPortEngineBehaviorFixtures(t *testing.T) {
 		}
 	})
 	t.Run("global_extend", func(t *testing.T) {
-		in := instantiateWazeroEngineFixture(t, "global_extend.wasm", nil)
+		in := instantiateEngineFixture(t, "global_extend.wasm", nil)
 		defer in.Close()
 		got, err := in.Invoke("extend")
 		if err != nil || len(got) != 1 || got[0] != math.MaxUint32 {
@@ -152,7 +150,7 @@ func TestWazeroPortEngineBehaviorFixtures(t *testing.T) {
 			binary.LittleEndian.PutUint64(mem[off:], params[1])
 			observed = mem
 		})}
-		in := instantiateWazeroEngineFixture(t, "host_memory.wasm", imports)
+		in := instantiateEngineFixture(t, "host_memory.wasm", imports)
 		defer in.Close()
 		got, err := in.Invoke("store_int", I32(1), math.MaxUint64)
 		if err != nil || len(got) != 1 || got[0] != 0 {
@@ -172,7 +170,7 @@ func TestWazeroPortEngineBehaviorFixtures(t *testing.T) {
 		imports := Imports{"env.host_func": HostFunc(func(_ HostModule, _, _ []uint64) {
 			_, nestedErr = in.Invoke("called_by_host_func")
 		})}
-		in = instantiateWazeroEngineFixture(t, "recursive.wasm", imports)
+		in = instantiateEngineFixture(t, "recursive.wasm", imports)
 		defer in.Close()
 		if _, err := in.Invoke("main", I32(1)); err != nil || nestedErr != nil {
 			t.Fatalf("recursive main = %v, nested = %v", err, nestedErr)
@@ -182,7 +180,7 @@ func TestWazeroPortEngineBehaviorFixtures(t *testing.T) {
 		if !requireStandardGoTestRuntime(t) {
 			return
 		}
-		in := instantiateWazeroEngineFixture(t, "unreachable.wasm", Imports{"host.cause_unreachable": HostFunc(func(_ HostModule, _, _ []uint64) {
+		in := instantiateEngineFixture(t, "unreachable.wasm", Imports{"host.cause_unreachable": HostFunc(func(_ HostModule, _, _ []uint64) {
 			panic(errors.New("panic in host function"))
 		})})
 		defer in.Close()
@@ -197,11 +195,11 @@ func TestWazeroPortEngineBehaviorFixtures(t *testing.T) {
 	t.Run("reftype_imports", func(t *testing.T) {
 		rt := NewRuntime()
 		defer rt.Close()
-		ref, err := rt.NewExternRef("wazero-reftype")
+		ref, err := rt.NewExternRef("regression-reftype")
 		if err != nil {
 			t.Fatal(err)
 		}
-		data, err := os.ReadFile(filepath.Join("..", "..", "testdata", "wazero", "engine", "reftype_imports.wasm"))
+		data, err := os.ReadFile(filepath.Join("..", "..", "tests", "regressions", "engine", "reftype_imports.wasm"))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -223,12 +221,12 @@ func TestWazeroPortEngineBehaviorFixtures(t *testing.T) {
 		if err != nil || len(got) != 1 || got[0] != ValueExternRef(ref).Bits() {
 			t.Fatalf("get_externref_by_host = %v, %v; want token %#x", got, err, ValueExternRef(ref).Bits())
 		}
-		if value, ok := rt.ExternRefValue(ref); !ok || value != "wazero-reftype" {
+		if value, ok := rt.ExternRefValue(ref); !ok || value != "regression-reftype" {
 			t.Fatalf("externref resolution = %#v, %v", value, ok)
 		}
 	})
 	t.Run("memory", func(t *testing.T) {
-		in := instantiateWazeroEngineFixture(t, "memory.wasm", nil)
+		in := instantiateEngineFixture(t, "memory.wasm", nil)
 		defer in.Close()
 		assert := func(export string, want uint64, args ...uint64) {
 			t.Helper()
@@ -254,9 +252,9 @@ func TestWazeroPortEngineBehaviorFixtures(t *testing.T) {
 	})
 }
 
-func instantiateWazeroEngineFixture(t *testing.T, name string, imports Imports) *Instance {
+func instantiateEngineFixture(t *testing.T, name string, imports Imports) *Instance {
 	t.Helper()
-	data, err := os.ReadFile(filepath.Join("..", "..", "testdata", "wazero", "engine", name))
+	data, err := os.ReadFile(filepath.Join("..", "..", "tests", "regressions", "engine", name))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -272,7 +270,7 @@ func instantiateWazeroEngineFixture(t *testing.T, name string, imports Imports) 
 	return in
 }
 
-func TestWazeroPortTailCallProposalFailsClosed(t *testing.T) {
+func TestTailCallProposalFailsClosed(t *testing.T) {
 	mod := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
 		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0))),
@@ -291,7 +289,7 @@ func TestWazeroPortTailCallProposalFailsClosed(t *testing.T) {
 	}
 }
 
-func TestWazeroPortTypedFunctionReferenceProposalFailsClosed(t *testing.T) {
+func TestTypedFunctionReferenceProposalFailsClosed(t *testing.T) {
 	mod := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
 		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0))),
@@ -314,8 +312,8 @@ func TestWazeroPortTypedFunctionReferenceProposalFailsClosed(t *testing.T) {
 	}
 }
 
-func TestWazeroPortExceptionHandlingFixturesFailClosed(t *testing.T) {
-	paths, err := filepath.Glob(filepath.Join("..", "..", "testdata", "wazero", "engine", "eh_*.wasm"))
+func TestExceptionHandlingFixturesFailClosed(t *testing.T) {
+	paths, err := filepath.Glob(filepath.Join("..", "..", "tests", "regressions", "engine", "eh_*.wasm"))
 	if err != nil {
 		t.Fatalf("glob exception fixtures: %v", err)
 	}

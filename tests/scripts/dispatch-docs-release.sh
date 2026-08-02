@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-repository_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+repository_root=$(git rev-parse --show-toplevel)
 test_root=$(mktemp -d)
 trap 'rm -rf "$test_root"' EXIT
 

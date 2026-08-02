@@ -7,8 +7,8 @@ import (
 	"testing"
 )
 
-func TestWazeroPortExtendedConstValidation(t *testing.T) {
-	root := filepath.Clean("../../../../testdata/wazero/extended-const")
+func TestExtendedConstValidation(t *testing.T) {
+	root := filepath.Clean("../../../../tests/regressions/extended-const")
 	var valid, invalid, malformedBinary, malformedText int
 	for _, base := range []string{"data", "elem", "global"} {
 		raw, err := os.ReadFile(filepath.Join(root, base+".json"))

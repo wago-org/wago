@@ -4,7 +4,7 @@ package wago
 
 import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/testutil/wasmtest"
+	"github.com/wago-org/wago/tests/wasmtest"
 )
 
 // signExtModule exports f(i32)->i32 = i32.extend8_s(local0).

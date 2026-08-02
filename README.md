@@ -34,7 +34,7 @@ Download a small module and run an exported function:
 
 ```sh
 curl -fsSLo fib.wasm \
-  https://raw.githubusercontent.com/wago-org/wago/main/tests/testdata/fib.wasm
+  https://raw.githubusercontent.com/wago-org/wago/main/tests/fixtures/wasm/fib.wasm
 wago run --invoke fib fib.wasm 20
 ```
 

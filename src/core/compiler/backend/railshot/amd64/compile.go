@@ -1411,8 +1411,8 @@ func (f *fn) runBody(c *wasm.Func) error {
 // in RDI/RSI on top of the arg-register pins over-subscribed the file: the call's
 // arg-staging + setup ran out of free scratch and silently corrupted a pinned
 // local's value. The observable repro is sqlite's tokenizer — every SQL keyword
-// misreads as an identifier ("near \"SELECT\": syntax error") — while wazero runs
-// the same module correctly. Excluding RDI/RSI removes the hazard; R9/R10/R11 pins
+// misreads as an identifier ("near \"SELECT\": syntax error"). Excluding RDI/RSI
+// removes the hazard; R9/R10/R11 pins
 // (which the STACK_REG spill/reload does handle) stay. See TestSyncSQLiteQuery.
 //
 // R9/R10/R11 are still excluded in reg-ABI functions with >4 params (the internal

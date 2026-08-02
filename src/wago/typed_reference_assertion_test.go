@@ -44,8 +44,8 @@ type proposalReplayCounts struct {
 	skipped        int
 }
 
-func TestWazeroPortTypedFunctionReferenceAssertionsReplayRegisteredProviders(t *testing.T) {
-	dir := filepath.Clean("../../testdata/wazero/spectest-proposals/typed-function-references")
+func TestTypedFunctionReferenceAssertionsReplayRegisteredProviders(t *testing.T) {
+	dir := filepath.Clean("../../tests/regressions/spectest-proposals/typed-function-references")
 	for _, tc := range []struct {
 		file string
 		want proposalReplayCounts
@@ -68,7 +68,7 @@ func replayProposalAssertionsFile(t *testing.T, dir, base string) (counts propos
 	if err != nil {
 		t.Fatal(err)
 	}
-	var sf wazeroProposalFile
+	var sf proposalFixtureFile
 	if err := json.Unmarshal(raw, &sf); err != nil {
 		t.Fatalf("decode %s.json: %v", base, err)
 	}
@@ -253,7 +253,7 @@ func replayProposalAssertionsFile(t *testing.T, dir, base string) (counts propos
 	return counts
 }
 
-func (s *proposalReplayState) replayAssertReturn(action wazeroProposalAction, expected []wazeroProposalValue) (bool, error) {
+func (s *proposalReplayState) replayAssertReturn(action proposalFixtureAction, expected []proposalFixtureValue) (bool, error) {
 	target := s.actionTarget(action)
 	if target == nil || target.inst == nil {
 		return false, nil
@@ -273,7 +273,7 @@ func (s *proposalReplayState) replayAssertReturn(action wazeroProposalAction, ex
 	return true, nil
 }
 
-func (s *proposalReplayState) replayAssertTrap(action wazeroProposalAction, want string) (bool, error) {
+func (s *proposalReplayState) replayAssertTrap(action proposalFixtureAction, want string) (bool, error) {
 	target := s.actionTarget(action)
 	if target == nil || target.inst == nil {
 		return false, nil
@@ -288,14 +288,14 @@ func (s *proposalReplayState) replayAssertTrap(action wazeroProposalAction, want
 	return true, nil
 }
 
-func (s *proposalReplayState) actionTarget(action wazeroProposalAction) *proposalReplayModule {
+func (s *proposalReplayState) actionTarget(action proposalFixtureAction) *proposalReplayModule {
 	if action.Module != "" {
 		return s.named[action.Module]
 	}
 	return s.current
 }
 
-func (s *proposalReplayState) executeAction(target *proposalReplayModule, action wazeroProposalAction) ([]uint64, error) {
+func (s *proposalReplayState) executeAction(target *proposalReplayModule, action proposalFixtureAction) ([]uint64, error) {
 	switch action.Type {
 	case "invoke":
 		args := make([]uint64, len(action.Args))
@@ -318,7 +318,7 @@ func (s *proposalReplayState) executeAction(target *proposalReplayModule, action
 	}
 }
 
-func (s *proposalReplayState) proposalValueBits(value wazeroProposalValue) (uint64, error) {
+func (s *proposalReplayState) proposalValueBits(value proposalFixtureValue) (uint64, error) {
 	switch value.Type {
 	case "i32":
 		v, err := strconv.ParseInt(value.Value, 10, 64)
@@ -348,7 +348,7 @@ func (s *proposalReplayState) proposalValueBits(value wazeroProposalValue) (uint
 	}
 }
 
-func (s *proposalReplayState) compareActionResult(inst *Instance, index int, got uint64, expected wazeroProposalValue) error {
+func (s *proposalReplayState) compareActionResult(inst *Instance, index int, got uint64, expected proposalFixtureValue) error {
 	if expected.Type != "externref" {
 		want, err := s.proposalValueBits(expected)
 		if err != nil {

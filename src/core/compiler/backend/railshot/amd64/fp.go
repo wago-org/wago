@@ -395,8 +395,8 @@ func (f *fn) fbinMemRightInto(dst Reg, a, b *elem, memOp byte, f64 bool) {
 
 // scalarFMinMaxInto implements wasm min/max for one scalar lane, which x86
 // minss/maxss get wrong on signed zeros and NaN. Branch on the ordered compare;
-// equal uses bitwise zero fixups, distinct ordered operands use packed min/max
-// like wazero, and unordered propagates a quiet NaN through scalar add.
+// equal uses bitwise zero fixups, distinct ordered operands use packed min/max,
+// and unordered propagates a quiet NaN through scalar add.
 func (f *fn) scalarFMinMaxInto(xa, xb Reg, f64, isMax bool) {
 	f.a.Ucomis(xa, xb, f64)
 	jnan := f.a.JccPlaceholder(condP)
@@ -420,14 +420,14 @@ func (f *fn) scalarFMinMaxInto(xa, xb Reg, f64, isMax bool) {
 		packedPrefix = 0x66
 	}
 	if isMax {
-		f.a.SseRR(packedPrefix, 0x5F, xa, xb, false) // maxps/pd, matching wazero
+		f.a.SseRR(packedPrefix, 0x5F, xa, xb, false) // maxps/pd
 	} else {
-		f.a.SseRR(packedPrefix, 0x5D, xa, xb, false) // minps/pd, matching wazero
+		f.a.SseRR(packedPrefix, 0x5D, xa, xb, false) // minps/pd
 	}
 	jdone2 := f.a.JmpPlaceholder()
 
 	f.a.PatchRel32(jnan, f.a.Len())
-	f.a.FAdd(xa, xb, f64) // NaN + x -> quiet NaN, matching wazero
+	f.a.FAdd(xa, xb, f64) // NaN + x -> quiet NaN.
 
 	f.a.PatchRel32(jdone, f.a.Len())
 	f.a.PatchRel32(jdone2, f.a.Len())

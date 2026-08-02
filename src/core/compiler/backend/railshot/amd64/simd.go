@@ -128,7 +128,7 @@ func (f *fn) v128ConstReg(lo, hi uint64) Reg {
 	// MOVDQU, instead of rebuilding the 128-bit immediate (3-4 ops). This is what
 	// makes real SIMD kernels — which use many constant tables/masks that overflow
 	// the reserved-register cache — competitive: one load per use, no register
-	// reserved. Mirrors wazero's rodata constant loads.
+	// reserved.
 	site := f.a.MovdquRipPlaceholder(x)
 	f.recordV128Const(lo, hi, site)
 	return x
@@ -894,7 +894,7 @@ func (f *fn) v128RelaxedMadd(f64, neg bool) {
 // TODO(simd): Vectorize signed packed trunc_sat with SSE/AVX where practical;
 // keep unsigned and saturating scalar fallback as the correctness baseline.
 // v128I32x4TruncSat lowers the saturating float->i32 conversions. The f32x4
-// forms use a fully vectorized branchless sequence (wazero/V8-proven); the
+// forms use a fully vectorized branchless sequence; the
 // f64x2 *_zero forms still use the per-lane scalar fallback below.
 func (f *fn) v128I32x4TruncSat(f64src, signed bool) {
 	switch {
@@ -910,7 +910,7 @@ func (f *fn) v128I32x4TruncSat(f64src, signed bool) {
 // v128TruncSatF64x2UnsignedZero lowers i32x4.trunc_sat_f64x2_u_zero: clamp to
 // [0, UINT32_MAX], round toward zero, then extract the low 32 bits via the 2^52
 // magic bias and a SHUFPS that packs lanes 0,2 and zeroes the upper half.
-// Branchless; mirrors wazero's f64x2 unsigned path.
+// The lowering is branchless.
 func (f *fn) v128TruncSatF64x2UnsignedZero() {
 	xx := f.materializeV128(f.popValue())
 	f.fpinned = f.fpinned.add(xx)
@@ -935,7 +935,7 @@ func (f *fn) v128TruncSatF64x2UnsignedZero() {
 // v128TruncSatF64x2SignedZero lowers i32x4.trunc_sat_f64x2_s_zero: clamp NaN to 0
 // and positive overflow to INT_MAX via MINPD against 2147483647.0, then narrow
 // with CVTTPD2DQ (which handles negative overflow and zeroes the upper 2 lanes).
-// Branchless; mirrors wazero's f64x2 signed path.
+// The lowering is branchless.
 func (f *fn) v128TruncSatF64x2SignedZero() {
 	xx := f.materializeV128(f.popValue())
 	f.fpinned = f.fpinned.add(xx)
@@ -957,8 +957,8 @@ func (f *fn) v128TruncSatF64x2SignedZero() {
 // v128TruncSatF32x4 lowers i32x4.trunc_sat_f32x4_{s,u} with no branches and no
 // per-lane extract/insert. CVTTPS2DQ yields 0x80000000 for NaN and out-of-range
 // lanes; the surrounding mask arithmetic patches NaN->0 and positive-overflow->
-// INT_MAX (signed) / clamps to [0, UINT32_MAX] (unsigned). Mirrors wazero's
-// lowerVFcvtToIntSat, translated to 3-operand VEX.
+// INT_MAX (signed) / clamps to [0, UINT32_MAX] (unsigned), translated to
+// 3-operand VEX.
 func (f *fn) v128TruncSatF32x4(signed bool) {
 	xx := f.materializeV128(f.popValue()) // owned; becomes the result
 	f.fpinned = f.fpinned.add(xx)

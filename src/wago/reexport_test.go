@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/testutil/wasmtest"
+	"github.com/wago-org/wago/tests/wasmtest"
 )
 
 func TestCompiledSignatureReportsImportedFunctionReexport(t *testing.T) {
@@ -112,7 +112,7 @@ func TestImportedFunctionReexportCloseInterruptsDelegatedExecution(t *testing.T)
 	close(release)
 	select {
 	case err := <-callDone:
-		requireWazeroInterruptedTrap(t, err)
+		requireInterruptedTrap(t, err)
 	case <-time.After(5 * time.Second):
 		t.Fatal("relay Close did not interrupt delegated producer execution")
 	}

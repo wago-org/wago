@@ -546,10 +546,10 @@ The CI-card renderer can also consume captured suite logs through
 its committed synthetic fixture with:
 
 ```sh
-scripts/spec-card_test.sh
+tests/scripts/spec-card.sh
 ```
 
-The files under `scripts/testdata/spec-card` are parser fixtures, not published
+The files under `tests/fixtures/spec-card` are parser fixtures, not published
 conformance counts. Real support claims must come from a fresh WABT-backed run.
 
 Both harnesses print per-file and total module/assertion pass, fail, and skip

@@ -279,7 +279,7 @@ jobs:
       - name: Smoke-run a real module
         if: matrix.cli
         run: |
-          out="$(./wago-tinygo run --invoke fib tests/testdata/fib.wasm 20)"
+          out="$(./wago-tinygo run --invoke fib tests/fixtures/wasm/fib.wasm 20)"
           echo "$out"
           test "$out" = "fib(20) = 6765"
 
