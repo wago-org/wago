@@ -162,7 +162,7 @@ jobs:
             goos: darwin
             goarch: amd64
             runtime: true
-            guard: false
+            guard: true
             corpus: true
           - name: Darwin / arm64
             runner: macos-15
@@ -176,14 +176,14 @@ jobs:
             goos: windows
             goarch: amd64
             runtime: true
-            guard: false
+            guard: true
             corpus: true
           - name: Windows / arm64
             runner: windows-11-arm
             goos: windows
             goarch: arm64
             runtime: true
-            guard: false
+            guard: true
             corpus: true
     runs-on: ${{ matrix.runner }}
     steps:
@@ -244,8 +244,20 @@ jobs:
       # stayed CI-invisible. This runs the fault->trap path plus in-bounds
       # differential correctness under the tag.
       - name: Guard-page trap tests
-        if: matrix.guard
+        if: matrix.guard && runner.os != 'Windows'
         run: make test-guard
+
+      - name: Guard-page trap tests (Windows)
+        if: matrix.guard && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          go test -count=1 -tags wago_guardpage ./src/wago/
+          Push-Location bench
+          try {
+            go test -count=1 -tags wago_guardpage -run 'TestCorpusDifferential|TestJsonAsGuardCorrect' .
+          } finally {
+            Pop-Location
+          }
 
       - name: Corpus correctness matrix
         if: matrix.corpus && runner.os != 'Windows'

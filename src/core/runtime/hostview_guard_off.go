@@ -1,4 +1,4 @@
-//go:build (linux || darwin || windows) && (amd64 || arm64) && (!wago_guardpage || windows || (darwin && amd64))
+//go:build (linux || darwin || windows) && (amd64 || arm64) && !wago_guardpage
 
 package runtime
 

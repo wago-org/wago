@@ -1,4 +1,4 @@
-//go:build wago_guardpage && darwin && arm64
+//go:build wago_guardpage && darwin && (amd64 || arm64)
 
 package runtime
 

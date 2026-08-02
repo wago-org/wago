@@ -74,6 +74,8 @@ in full — 57/57 applicable files, 0 failing assertions (see [SPECTEST.md](SPEC
 **Arm64 acceptance (in progress)**
 - [x] Parent/child corpus runner with hard per-case deadlines and explicit/guard/wazero outcomes
 - [x] Darwin/arm64 guard-page execution via synchronous SIGSEGV/SIGBUS context rewriting (Mach-port receiver avoided)
+- [x] Guard-page execution on all six native targets, including Darwin/amd64
+  signal-context rewriting and Windows vectored exception handling
 - [x] Verify json-as serialize/deserialize in explicit and guard modes and SQLite's
   recursive-CTE aggregate workload against committed goldens on Darwin/arm64
 - [x] Reference globals, heterogeneous indexed table operations, and nonzero-table
