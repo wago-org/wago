@@ -7,7 +7,7 @@ import (
 	"encoding/binary"
 	"fmt"
 
-	"github.com/wago-org/wago/src/core/compiler/machinecode"
+	"github.com/wago-org/wago/codegen"
 )
 
 // WasmType is a standard physical WebAssembly value type used to carry a
@@ -86,12 +86,10 @@ type InstructionSpec struct {
 	Handler InstructionHandler
 	Lower   InstructionLowerer
 	Custom  *CustomSignature
-	// AMD64 is an explicitly unsafe, fully trusted machine-code lowering. It may
-	// use Wago's real encoder or append arbitrary bytes through Encoder().B.
-	AMD64 *machinecode.AMD64Lowering
-	// ARM64 is the independent AArch64 lowering for the same logical
-	// instruction. The plugin owns its equivalence with AMD64 and any fallback.
-	ARM64 *machinecode.ARM64Lowering
+	// Codegen is the current target's trusted machine-code lowering. Plugins
+	// select it from architecture-tagged files using codegen/amd64 or
+	// codegen/arm64; portable Handler and Lower semantics remain shared.
+	Codegen codegen.Lowering
 }
 
 // InstructionHandler implements the portable semantics of an instruction.
@@ -401,8 +399,7 @@ type Instruction struct {
 	Nodes           []InstructionNode
 	Output          int
 	StackCompatible bool
-	AMD64           *machinecode.AMD64Lowering
-	ARM64           *machinecode.ARM64Lowering
+	Codegen         codegen.Lowering
 	InputWidths     []int32
 	ResultWidth     int32
 	CustomInputs    []CustomType
@@ -412,10 +409,9 @@ type Instruction struct {
 // Definition is a validated plugin instruction. It owns detached copies of the
 // caller-provided widths and machine-specific lowering declarations.
 type Definition struct {
-	Spec   InstructionSpec
-	recipe *instructionRecipe
-	amd64  *machinecode.AMD64Lowering
-	arm64  *machinecode.ARM64Lowering
+	Spec    InstructionSpec
+	recipe  *instructionRecipe
+	codegen codegen.Lowering
 }
 
 // Native selects the allocation-free subset compiler backends currently
@@ -430,18 +426,11 @@ func (d Definition) Native() (Instruction, bool) {
 			native.CustomOutput = &out
 		}
 	}
-	if d.amd64 != nil {
-		copy := *d.amd64
-		native.AMD64 = &copy
-	}
-	if d.arm64 != nil {
-		copy := *d.arm64
-		native.ARM64 = &copy
-	}
+	native.Codegen = cloneMachineCode(d.codegen)
 	if len(d.Spec.Output) == 1 {
 		native.ResultWidth = d.Spec.Output[0]
 	}
-	hasTarget := native.AMD64 != nil || native.ARM64 != nil
+	hasTarget := native.Codegen != nil
 	r := d.recipe
 	if r == nil || len(d.Spec.Output) != 1 || d.Spec.Output[0] > 32 {
 		return native, hasTarget
@@ -597,7 +586,7 @@ func Prepare(spec InstructionSpec) (Definition, error) {
 		if spec.Handler != nil {
 			return Definition{}, fmt.Errorf("wago: instruction %q.%q custom values are native-only and forbid Handler", spec.Module, spec.Name)
 		}
-		if spec.AMD64 == nil && spec.ARM64 == nil {
+		if spec.Codegen == nil {
 			return Definition{}, fmt.Errorf("wago: instruction %q.%q custom values require a native lowering", spec.Module, spec.Name)
 		}
 	}
@@ -605,68 +594,9 @@ func Prepare(spec InstructionSpec) (Definition, error) {
 	if err != nil {
 		return Definition{}, fmt.Errorf("wago: instruction %q.%q lowering: %w", spec.Module, spec.Name, err)
 	}
-	var amd64Lowering *machinecode.AMD64Lowering
-	var arm64Lowering *machinecode.ARM64Lowering
-	if spec.AMD64 != nil {
-		switch spec.AMD64.Compatibility {
-		case machinecode.AMD64CompatibilityManaged:
-			if spec.AMD64.Managed == nil || spec.AMD64.Emit != nil {
-				return Definition{}, fmt.Errorf("wago: instruction %q.%q managed amd64 lowering requires Managed and forbids Emit", spec.Module, spec.Name)
-			}
-		case machinecode.AMD64CompatibilityFullAccess:
-			if spec.AMD64.Emit == nil || spec.AMD64.Managed != nil {
-				return Definition{}, fmt.Errorf("wago: instruction %q.%q full-access amd64 lowering requires Emit and forbids Managed", spec.Module, spec.Name)
-			}
-		default:
-			return Definition{}, fmt.Errorf("wago: instruction %q.%q requires an explicit amd64 compatibility mode", spec.Module, spec.Name)
-		}
-		if spec.AMD64.Features & ^(machinecode.AMD64FeatureAVX2|machinecode.AMD64FeatureAVX512) != 0 {
-			return Definition{}, fmt.Errorf("wago: instruction %q.%q declares unsupported amd64 features %#x", spec.Module, spec.Name, spec.AMD64.Features)
-		}
-		if len(spec.Output) > 1 {
-			return Definition{}, fmt.Errorf("wago: instruction %q.%q amd64 lowering supports at most one direct output", spec.Module, spec.Name)
-		}
-		for i, width := range spec.Input {
-			if width > 32 && (spec.Custom == nil || spec.Custom.Inputs[i].IsZero()) {
-				return Definition{}, fmt.Errorf("wago: instruction %q.%q amd64 lowering only supports direct values up to 32 bits", spec.Module, spec.Name)
-			}
-		}
-		for _, width := range spec.Output {
-			if width > 32 && (spec.Custom == nil || spec.Custom.Output == nil) {
-				return Definition{}, fmt.Errorf("wago: instruction %q.%q amd64 lowering only supports direct values up to 32 bits", spec.Module, spec.Name)
-			}
-		}
-		copy := *spec.AMD64
-		amd64Lowering = &copy
-	}
-	if spec.ARM64 != nil {
-		switch spec.ARM64.Compatibility {
-		case machinecode.ARM64CompatibilityManaged:
-			if spec.ARM64.Managed == nil || spec.ARM64.Emit != nil {
-				return Definition{}, fmt.Errorf("wago: instruction %q.%q managed arm64 lowering requires Managed and forbids Emit", spec.Module, spec.Name)
-			}
-		case machinecode.ARM64CompatibilityFullAccess:
-			if spec.ARM64.Emit == nil || spec.ARM64.Managed != nil {
-				return Definition{}, fmt.Errorf("wago: instruction %q.%q full-access arm64 lowering requires Emit and forbids Managed", spec.Module, spec.Name)
-			}
-		default:
-			return Definition{}, fmt.Errorf("wago: instruction %q.%q requires an explicit arm64 compatibility mode", spec.Module, spec.Name)
-		}
-		if len(spec.Output) > 1 {
-			return Definition{}, fmt.Errorf("wago: instruction %q.%q arm64 lowering supports at most one direct output", spec.Module, spec.Name)
-		}
-		for i, width := range spec.Input {
-			if width > 32 && (spec.Custom == nil || spec.Custom.Inputs[i].IsZero()) {
-				return Definition{}, fmt.Errorf("wago: instruction %q.%q arm64 lowering only supports direct values up to 32 bits", spec.Module, spec.Name)
-			}
-		}
-		for _, width := range spec.Output {
-			if width > 32 && (spec.Custom == nil || spec.Custom.Output == nil) {
-				return Definition{}, fmt.Errorf("wago: instruction %q.%q arm64 lowering only supports direct values up to 32 bits", spec.Module, spec.Name)
-			}
-		}
-		copy := *spec.ARM64
-		arm64Lowering = &copy
+	lowering, err := prepareMachineCode(spec)
+	if err != nil {
+		return Definition{}, err
 	}
 	spec.Input = append([]int32(nil), spec.Input...)
 	spec.Output = append([]int32(nil), spec.Output...)
@@ -678,7 +608,23 @@ func Prepare(spec InstructionSpec) (Definition, error) {
 		}
 		spec.Custom = custom
 	}
-	spec.AMD64 = amd64Lowering
-	spec.ARM64 = arm64Lowering
-	return Definition{Spec: spec, recipe: recipe, amd64: amd64Lowering, arm64: arm64Lowering}, nil
+	spec.Codegen = lowering
+	return Definition{Spec: spec, recipe: recipe, codegen: lowering}, nil
+}
+
+func validateMachineCodeWidths(spec InstructionSpec, arch string) error {
+	if len(spec.Output) > 1 {
+		return fmt.Errorf("wago: instruction %q.%q %s lowering supports at most one direct output", spec.Module, spec.Name, arch)
+	}
+	for i, width := range spec.Input {
+		if width > 32 && (spec.Custom == nil || spec.Custom.Inputs[i].IsZero()) {
+			return fmt.Errorf("wago: instruction %q.%q %s lowering only supports direct values up to 32 bits", spec.Module, spec.Name, arch)
+		}
+	}
+	for _, width := range spec.Output {
+		if width > 32 && (spec.Custom == nil || spec.Custom.Output == nil) {
+			return fmt.Errorf("wago: instruction %q.%q %s lowering only supports direct values up to 32 bits", spec.Module, spec.Name, arch)
+		}
+	}
+	return nil
 }

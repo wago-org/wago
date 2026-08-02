@@ -5,7 +5,7 @@ package arm64
 import (
 	"fmt"
 
-	"github.com/wago-org/wago/src/core/compiler/machinecode"
+	plugincodegen "github.com/wago-org/wago/codegen/arm64"
 	a64 "github.com/wago-org/wago/src/core/encoder/arm64"
 	coreplugins "github.com/wago-org/wago/src/core/plugins"
 )
@@ -22,6 +22,11 @@ type pluginARM64Context struct {
 	outputSet    bool
 	customOutput *coreplugins.CustomType
 	customRegs   []Reg
+}
+
+func pluginARM64Lowering(instruction coreplugins.Instruction) *plugincodegen.Lowering {
+	lowering, _ := instruction.Codegen.(*plugincodegen.Lowering)
+	return lowering
 }
 
 func (c *pluginARM64Context) Encoder() *a64.Asm { return c.f.a }
@@ -248,7 +253,7 @@ func (c *pluginARM64Context) finish(resultWidth int32) {
 	}
 }
 
-func (f *fn) emitPluginARM64(lowering *machinecode.ARM64Lowering, inputWidths []int32, resultWidth int32, resultCount int, customInputs []coreplugins.CustomType, customOutput *coreplugins.CustomType) error {
+func (f *fn) emitPluginARM64(lowering *plugincodegen.Lowering, inputWidths []int32, resultWidth int32, resultCount int, customInputs []coreplugins.CustomType, customOutput *coreplugins.CustomType) error {
 	if len(customInputs) != 0 || customOutput != nil {
 		return f.emitPluginARM64Custom(lowering, inputWidths, resultCount, customInputs, customOutput)
 	}
@@ -269,11 +274,11 @@ func (f *fn) emitPluginARM64(lowering *machinecode.ARM64Lowering, inputWidths []
 		ctx.paramSlots[i] = e.st.slot
 	}
 	switch lowering.Compatibility {
-	case machinecode.ARM64CompatibilityManaged:
+	case plugincodegen.CompatibilityManaged:
 		if err := lowering.Managed(ctx); err != nil {
 			return err
 		}
-	case machinecode.ARM64CompatibilityFullAccess:
+	case plugincodegen.CompatibilityFullAccess:
 		if err := lowering.Emit(ctx); err != nil {
 			return err
 		}
@@ -292,7 +297,7 @@ func (f *fn) emitPluginARM64(lowering *machinecode.ARM64Lowering, inputWidths []
 	return nil
 }
 
-func (f *fn) emitPluginARM64Custom(lowering *machinecode.ARM64Lowering, inputWidths []int32, resultCount int, customInputs []coreplugins.CustomType, customOutput *coreplugins.CustomType) error {
+func (f *fn) emitPluginARM64Custom(lowering *plugincodegen.Lowering, inputWidths []int32, resultCount int, customInputs []coreplugins.CustomType, customOutput *coreplugins.CustomType) error {
 	paramCount := len(inputWidths)
 	if len(customInputs) != paramCount {
 		return fmt.Errorf("arm64 plugin custom signature has %d inputs, want %d", len(customInputs), paramCount)
@@ -324,11 +329,11 @@ func (f *fn) emitPluginARM64Custom(lowering *machinecode.ARM64Lowering, inputWid
 		ctx.paramSlots[i] = e.st.slot
 	}
 	switch lowering.Compatibility {
-	case machinecode.ARM64CompatibilityManaged:
+	case plugincodegen.CompatibilityManaged:
 		if err := lowering.Managed(ctx); err != nil {
 			return err
 		}
-	case machinecode.ARM64CompatibilityFullAccess:
+	case plugincodegen.CompatibilityFullAccess:
 		if err := lowering.Emit(ctx); err != nil {
 			return err
 		}

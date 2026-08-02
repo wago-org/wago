@@ -110,7 +110,7 @@ func (f *fn) callOp(r *wasm.Reader) error {
 	}
 	imported := f.m.ImportedFuncCount()
 	if int(idx) < imported && f.customInstructions != nil {
-		if custom, ok := f.customInstructions[idx]; ok && (custom.AMD64 != nil || len(custom.Nodes) != 0) {
+		if custom, ok := f.customInstructions[idx]; ok && (pluginAMD64Lowering(custom) != nil || len(custom.Nodes) != 0) {
 			return f.emitCustomInstruction(custom, ft)
 		}
 	}
@@ -163,8 +163,8 @@ func (f *fn) callOp(r *wasm.Reader) error {
 }
 
 func (f *fn) emitCustomInstruction(custom CustomInstruction, ft *wasm.CompType) error {
-	if custom.AMD64 != nil {
-		return f.emitPluginAMD64(custom.AMD64, custom.InputWidths, custom.ResultWidth, len(ft.Results), custom.CustomInputs, custom.CustomOutput)
+	if lowering := pluginAMD64Lowering(custom); lowering != nil {
+		return f.emitPluginAMD64(lowering, custom.InputWidths, custom.ResultWidth, len(ft.Results), custom.CustomInputs, custom.CustomOutput)
 	}
 	if len(ft.Results) != 1 || !wasm.EqualValType(ft.Results[0], wasm.I32) {
 		return fmt.Errorf("custom instruction %d must return one i32", f.globalIdx)
