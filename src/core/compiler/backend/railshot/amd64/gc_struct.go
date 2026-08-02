@@ -254,6 +254,9 @@ func (f *fn) emitGCI31Cast(sub uint32, r *wasm.Reader) error {
 		if fused, err := f.tryFuseFinalCastArrayLen(uint32(heap), sub == 23, r); fused || err != nil {
 			return err
 		}
+		if target, ok := nativeGCFlatType(f.m, uint32(heap)); ok && target.Final && (target.Comp.Kind == wasm.CompStruct || target.Comp.Kind == wasm.CompArray) {
+			return f.emitNativeFinalCast(uint32(heap), sub == 23)
+		}
 	}
 	if f.gcTypeSubtypingRefTest && heap >= 0 {
 		value := f.materialize(f.popValue())
@@ -333,6 +336,12 @@ func (f *fn) tryFuseFinalCastStructGet(typeIndex uint32, nullable bool, r *wasm.
 		_ = r.JumpTo(start)
 		return false, nil
 	}
+	if _, direct := directGCScalarStorage(field.Storage); direct {
+		// Let the shared native final-cast stub and existing direct scalar access
+		// run independently; this removes the Go transition at a measured code-size cost.
+		_ = r.JumpTo(start)
+		return false, nil
+	}
 	resultType := field.Storage.Val
 	if field.Storage.Packed {
 		resultType = wasm.I32
@@ -372,15 +381,8 @@ func (f *fn) tryFuseFinalCastArrayLen(typeIndex uint32, nullable bool, r *wasm.R
 		_ = r.JumpTo(start)
 		return false, nil
 	}
-	f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
-	if nullable {
-		f.pushValue(storage{kind: stConst, typ: mtI32, cval: 1})
-	} else {
-		f.pushValue(storage{kind: stConst, typ: mtI32})
-	}
-	anyref := wasm.RefVal(wasm.Ref(true, wasm.AbsHeap(wasm.HeapAny), false))
 	f.stats.peep("final-cast-array-len-fuse")
-	return true, f.callGCStructHelper(gcStructFinalCastArrayLen, []wasm.ValType{anyref, wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32})
+	return true, f.emitNativeFinalCastArrayLen(typeIndex, nullable)
 }
 
 func (f *fn) emitLocalFunctionSubtypeIdentityCheck(value Reg, targetType uint32, nullable bool, trapCode uint32) {

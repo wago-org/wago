@@ -404,13 +404,16 @@ type scratch struct {
 	// arrays are retained and reused across every function in the module instead of
 	// being reallocated per function; reset() only rewinds their lengths. trapSites
 	// is indexed by trap code (a small dense enum), replacing a per-function map.
-	retSites       []int
-	tailFrameSites []int // AddRsp imm32 sites emitted before tail jumps
-	brFoldSites    []int
-	trapSites      [trapMax + 1][]trapSite
-	ctrl           []ctrlFrame // control-frame stack backing; reused across functions
-	pinnedLocals   []int       // pinned-local index backing; reused across functions
-	brTableStubAt  []int       // duplicate-heavy jump-table target positions by control depth
+	retSites             []int
+	tailFrameSites       []int // AddRsp imm32 sites emitted before tail jumps
+	brFoldSites          []int
+	gcArrayLenStubSites  []int
+	gcFinalCastStubSites []int
+	gcArrayRefGetSites   []int
+	trapSites            [trapMax + 1][]trapSite
+	ctrl                 []ctrlFrame // control-frame stack backing; reused across functions
+	pinnedLocals         []int       // pinned-local index backing; reused across functions
+	brTableStubAt        []int       // duplicate-heavy jump-table target positions by control depth
 	transient
 }
 
@@ -430,6 +433,9 @@ func (sc *scratch) reset() {
 	sc.retSites = sc.retSites[:0]
 	sc.tailFrameSites = sc.tailFrameSites[:0]
 	sc.brFoldSites = sc.brFoldSites[:0]
+	sc.gcArrayLenStubSites = sc.gcArrayLenStubSites[:0]
+	sc.gcFinalCastStubSites = sc.gcFinalCastStubSites[:0]
+	sc.gcArrayRefGetSites = sc.gcArrayRefGetSites[:0]
 	sc.ctrl = sc.ctrl[:0]
 	for i := range sc.trapSites {
 		sc.trapSites[i] = sc.trapSites[i][:0]
@@ -1514,6 +1520,7 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, int
 		return nil, nil, 0, err
 	}
 	f.epilogue()
+	f.emitNativeGCStubs()
 	f.emitTrapStubs()
 	f.finalizeBranchFolds()
 	f.patchFrameSize()
@@ -2073,6 +2080,7 @@ func (f *fn) emitRegABI(c *wasm.Func) (int, error) {
 	f.addRspAt = a.Len() + 3
 	a.AddRsp(0) // undo the frame; imm32 patched after body
 	a.Ret()
+	f.emitNativeGCStubs()
 	f.emitTrapStubs()
 	f.finalizeBranchFolds()
 

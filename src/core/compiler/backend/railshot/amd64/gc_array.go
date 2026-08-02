@@ -158,6 +158,11 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		if f.emitDirectGCArrayGet(typeIndex, helper) {
 			return nil
 		}
+		if sub == 11 && field.Storage.Val.Kind == wasm.ValRef && gcFrameRefType(f.m, field.Storage.Val) {
+			if target, ok := nativeGCFlatType(f.m, typeIndex); ok && target.Final {
+				return f.emitNativeFinalArrayRefGet(typeIndex)
+			}
+		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		object := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
 		return f.callGCStructHelper(helper, []wasm.ValType{object, wasm.I32, wasm.I32}, []wasm.ValType{resultType})
