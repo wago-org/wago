@@ -18,6 +18,15 @@ TEXT ·addrLibcSigactionTrampoline(SB), NOSPLIT, $0-8
 //   mcontext64.ss.rip     = +144 (16-byte exception state + 128)
 // guardRegion is {start@0, end@8, linMem@16}, 32 bytes.
 TEXT ·guardSigHandler(SB), NOSPLIT|NOFRAME, $0-0
+	// Preserve every callee-saved register we use. libSystem's signal trampoline
+	// is an ordinary C caller even though sigreturn later restores the faulting
+	// register image.
+	SUBQ	$40, SP
+	MOVQ	BX, 0(SP)
+	MOVQ	R12, 8(SP)
+	MOVQ	R13, 16(SP)
+	MOVQ	R14, 24(SP)
+	MOVQ	R15, 32(SP)
 	MOVQ	DI, R12                 // preserve signal arguments for chaining
 	MOVQ	SI, R13
 	MOVQ	DX, R14
@@ -53,14 +62,18 @@ scan:
 	// Use libSystem rather than issuing SYSCALL directly. Rosetta's signal
 	// context bookkeeping requires its libc transition when an x86 handler
 	// changes page protection.
-	SUBQ	$8, SP                  // align the SysV call frame
 	CALL	libc_mprotect(SB)
-	ADDQ	$8, SP
 	TESTQ	AX, AX
 	JZ	resume
 	MOVL	$4, CX                  // TrapLinMemCouldNotExtend
 	JMP	settrap
 resume:
+	MOVQ	32(SP), R15
+	MOVQ	24(SP), R14
+	MOVQ	16(SP), R13
+	MOVQ	8(SP), R12
+	MOVQ	0(SP), BX
+	ADDQ	$40, SP
 	RET
 
 outofbounds:
@@ -72,6 +85,12 @@ settrap:
 	MOVL	CX, (AX)
 	MOVQ	·guardTrapExitHandlerJumpPC(SB), AX
 	MOVQ	AX, 144(R15)            // saved RIP = native trap-exit landing pad
+	MOVQ	32(SP), R15
+	MOVQ	24(SP), R14
+	MOVQ	16(SP), R13
+	MOVQ	8(SP), R12
+	MOVQ	0(SP), BX
+	ADDQ	$40, SP
 	RET
 
 next:
@@ -83,6 +102,12 @@ chain:
 	MOVQ	R12, DI
 	MOVQ	R13, SI
 	MOVQ	R14, DX
+	MOVQ	32(SP), R15
+	MOVQ	24(SP), R14
+	MOVQ	16(SP), R13
+	MOVQ	8(SP), R12
+	MOVQ	0(SP), BX
+	ADDQ	$40, SP
 	MOVQ	$10, AX                 // SIGBUS
 	CMPQ	DI, AX
 	JEQ	chainbus
