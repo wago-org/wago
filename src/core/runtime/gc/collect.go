@@ -9,6 +9,7 @@ func (c *Collector) CollectFull(roots RootSet) error {
 	if err := c.errIfClosed(); err != nil {
 		return err
 	}
+	c.discardNativeStructHandles()
 	defer c.refreshNativeView()
 	c.stats.FullCollections++
 	if c.cfg.Profile == ProfileTiny {
@@ -34,6 +35,7 @@ func (c *Collector) CollectMinor(roots RootSet) error {
 	if err := c.errIfClosed(); err != nil {
 		return err
 	}
+	c.discardNativeStructHandles()
 	defer c.refreshNativeView()
 	c.stats.MinorCollections++
 	if c.cfg.Profile == ProfileTiny {

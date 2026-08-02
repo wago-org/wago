@@ -19,6 +19,75 @@ type directGCScalar struct {
 	typ  machineType
 }
 
+type nativeGCStructAllocField struct {
+	offset   uint32
+	size     uint32
+	slot     uint32
+	ref      bool
+	nullable bool
+}
+
+func nativeGCStructAllocLayout(m *wasm.Module, typeIndex uint32) (fields []nativeGCStructAllocField, objectSize, objectAlign uint32, pointerFree bool, ok bool) {
+	if !nativeGCStructAllocEnabled {
+		return nil, 0, 0, false, false
+	}
+	st, found := nativeGCFlatType(m, typeIndex)
+	if !found || !st.Final || st.Comp.Kind != wasm.CompStruct {
+		return nil, 0, 0, false, false
+	}
+	fields = make([]nativeGCStructAllocField, 0, len(st.Comp.Fields))
+	var off, slot uint32
+	maxAlign := uint32(1)
+	pointerFree = true
+	for _, field := range st.Comp.Fields {
+		align, size, valid := nativeGCStorageLayout(m, typeIndex, field.Storage)
+		if !valid || field.Storage.Packed || align == 0 || off > math.MaxUint32-(align-1) {
+			return nil, 0, 0, false, false
+		}
+		off = (off + align - 1) &^ (align - 1)
+		entry := nativeGCStructAllocField{offset: off, size: size, slot: slot}
+		if field.Storage.Val.Kind == wasm.ValRef {
+			heap := field.Storage.Val.Ref.Heap
+			if heap.Kind != wasm.HeapAbs || (heap.Abs != wasm.HeapAny && heap.Abs != wasm.HeapEq) || size != 4 {
+				return nil, 0, 0, false, false
+			}
+			entry.ref = true
+			entry.nullable = field.Storage.Val.Ref.Nullable
+			pointerFree = false
+		} else if field.Storage.Val.Kind != wasm.ValNum && field.Storage.Val.Kind != wasm.ValVec {
+			return nil, 0, 0, false, false
+		}
+		fields = append(fields, entry)
+		if off > math.MaxUint32-size {
+			return nil, 0, 0, false, false
+		}
+		off += size
+		if align > maxAlign {
+			maxAlign = align
+		}
+		slot++
+		if size == 16 {
+			slot++
+		}
+		if slot+1 > 64 {
+			return nil, 0, 0, false, false
+		}
+	}
+	if off > math.MaxUint32-(maxAlign-1) {
+		return nil, 0, 0, false, false
+	}
+	payload := (off + maxAlign - 1) &^ (maxAlign - 1)
+	if payload > math.MaxUint32-gc.PayloadOffset-7 {
+		return nil, 0, 0, false, false
+	}
+	objectSize = (payload + gc.PayloadOffset + 7) &^ 7
+	objectAlign = maxAlign
+	if objectAlign < 8 {
+		objectAlign = 8
+	}
+	return fields, objectSize, objectAlign, pointerFree, true
+}
+
 func directGCScalarStorage(st wasm.StorageType) (directGCScalar, bool) {
 	if st.Packed {
 		switch st.Pack {
@@ -509,6 +578,18 @@ func (f *fn) emitNativeFinalArrayRefGet(typeIndex uint32) error {
 }
 
 func (f *fn) emitNativeGCStubs() {
+	if len(f.sc.gcStructAllocStubSites) != 0 {
+		stubs := make(map[uint32]int)
+		for _, site := range f.sc.gcStructAllocStubSites {
+			stub, found := stubs[site.typeIndex]
+			if !found {
+				stub = f.a.Len()
+				f.emitNativeStructAllocStub(site.typeIndex)
+				stubs[site.typeIndex] = stub
+			}
+			f.a.PatchRel32(site.site, stub)
+		}
+	}
 	if len(f.sc.gcArrayLenStubSites) != 0 {
 		stub := f.a.Len()
 		f.emitNativeFinalCastArrayLenStub()
@@ -551,6 +632,218 @@ func (f *fn) emitNativeGCStubs() {
 			f.a.PatchRel32(site, stub)
 		}
 	}
+}
+
+// emitNativeStructAllocStub consumes one collector-reserved handle identity and
+// advances the real nursery bump only after every constructor reference has been
+// validated. It writes the result directly to the synchronous control frame and
+// returns nonzero in RAX on success; zero selects the ordinary rooted helper.
+func (f *fn) emitNativeStructAllocStub(typeIndex uint32) {
+	fields, objectSize, objectAlign, pointerFree, ok := nativeGCStructAllocLayout(f.m, typeIndex)
+	if !ok {
+		panic("amd64: invalid native struct allocation layout")
+	}
+	a := f.a
+	var preserve [3]bool
+	for _, local := range f.pinnedLocals {
+		if reg := f.locals[local].reg; reg >= R9 && reg <= R11 {
+			preserve[reg-R9] = true
+		}
+	}
+	for _, reg := range f.globalReg {
+		if reg >= R9 && reg <= R11 {
+			preserve[reg-R9] = true
+		}
+	}
+	a.Push(R8)
+	for i, yes := range preserve {
+		if yes {
+			a.Push(R9 + Reg(i))
+		}
+	}
+	a.MovReg64(RDI, R8) // retain the synchronous control frame
+	fallback := make([]int, 0, 20+len(fields)*2)
+	addFallback := func(site int) { fallback = append(fallback, site) }
+
+	a.Load64(R8, RBX, -int32(abi.GCNativeViewPtrOffset))
+	a.TestSelf(R8, true)
+	addFallback(a.JccPlaceholder(condE))
+	a.Load32(RAX, R8, gc.NativeInstanceViewVersionOffset)
+	a.AluRI(cmpDigit, RAX, int32(gc.NativeABIVersion), false)
+	addFallback(a.JccPlaceholder(condNE))
+	a.Load32(RAX, R8, gc.NativeInstanceViewLocalTypeCountOffset)
+	a.AluRI(cmpDigit, RAX, int32(typeIndex), false)
+	addFallback(a.JccPlaceholder(condBE))
+	a.Load64(R10, R8, gc.NativeInstanceViewLocalTypesOffset)
+	a.Load32(RDX, R10, int32(typeIndex*4))
+	a.Load64(R8, R8, gc.NativeInstanceViewCollectorOffset)
+	a.TestSelf(R8, true)
+	addFallback(a.JccPlaceholder(condE))
+	a.Load32(RAX, R8, gc.NativeViewVersionOffset)
+	a.AluRI(cmpDigit, RAX, int32(gc.NativeABIVersion), false)
+	addFallback(a.JccPlaceholder(condNE))
+	a.Load32(RAX, R8, gc.NativeViewHandleStrideOffset)
+	a.AluRI(cmpDigit, RAX, gc.NativeHandleStride, false)
+	addFallback(a.JccPlaceholder(condNE))
+
+	a.Load64(R10, R8, gc.NativeViewStructAllocStateOffset)
+	a.TestSelf(R10, true)
+	addFallback(a.JccPlaceholder(condE))
+	a.Load64(RAX, R8, gc.NativeViewStructAllocEpochOffset)
+	a.TestSelf(RAX, true)
+	addFallback(a.JccPlaceholder(condE))
+	a.Load32(RDX, RAX, 0)
+	a.Load32(RAX, R10, gc.NativeStructAllocEpochOffset)
+	a.Cmp32(RAX, RDX)
+	addFallback(a.JccPlaceholder(condNE))
+	a.Load32(RCX, R10, gc.NativeStructAllocCursorOffset)
+	a.Load32(RAX, R10, gc.NativeStructAllocCountOffset)
+	a.AluRI(cmpDigit, RAX, gc.NativeStructAllocHandleCapacity, false)
+	addFallback(a.JccPlaceholder(condA))
+	a.Cmp32(RCX, RAX)
+	addFallback(a.JccPlaceholder(condAE))
+	a.LeaScaled(RAX, R10, RCX, 2, gc.NativeStructAllocHandlesOffset)
+	a.Load32(RSI, RAX, 0)
+	a.TestSelf(RSI, false)
+	addFallback(a.JccPlaceholder(condE))
+	a.MovRegReg32(RAX, RSI)
+	a.AluRM(cmpRMcode, RAX, R8, gc.NativeViewHandleCountOffset, false)
+	addFallback(a.JccPlaceholder(condAE))
+	a.Load64(R9, R8, gc.NativeViewHandlesOffset)
+	a.ImulRI(RAX, gc.NativeHandleStride, true)
+	a.Add64(R9, RAX)
+	a.Load32(RAX, R9, 16)
+	a.ShiftImm(5, RAX, 16, false)
+	a.AluRI(4, RAX, 0xff, false)
+	a.TestSelf(RAX, false)
+	addFallback(a.JccPlaceholder(condNE))
+
+	a.Load64(RAX, R8, gc.NativeViewNurseryBumpOffset)
+	a.TestSelf(RAX, true)
+	addFallback(a.JccPlaceholder(condE))
+	a.Load32(RCX, RAX, 0)
+	if objectAlign > 1 {
+		a.AluRI(0, RCX, int32(objectAlign-1), false)
+		a.AluRI(4, RCX, -int32(objectAlign), false)
+	}
+	a.Load32(RAX, R8, int32(gc.NativeViewSpacesOffset+gc.NativeSpaceNursery*gc.NativeViewSpaceStride+gc.NativeSpaceBytesOffset))
+	a.Cmp32(RCX, RAX)
+	addFallback(a.JccPlaceholder(condA))
+	a.Sub32(RAX, RCX)
+	a.AluRI(cmpDigit, RAX, int32(objectSize), false)
+	addFallback(a.JccPlaceholder(condB))
+	a.Load64(R11, R8, int32(gc.NativeViewSpacesOffset+gc.NativeSpaceNursery*gc.NativeViewSpaceStride+gc.NativeSpaceBaseOffset))
+	a.TestSelf(R11, true)
+	addFallback(a.JccPlaceholder(condE))
+	a.Add64(R11, RCX)
+	a.Load64(RAX, R8, gc.NativeViewAllocationCountOffset)
+	a.TestSelf(RAX, true)
+	addFallback(a.JccPlaceholder(condE))
+
+	for _, field := range fields {
+		if !field.ref {
+			continue
+		}
+		a.Load32(RAX, RDI, hcArgs+int32(field.slot*8))
+		a.TestSelf(RAX, false)
+		nullOK := -1
+		if field.nullable {
+			nullOK = a.JccPlaceholder(condE)
+		} else {
+			addFallback(a.JccPlaceholder(condE))
+		}
+		a.MovRegReg32(RDX, RAX)
+		a.AluRI(4, RDX, 1, false)
+		a.TestSelf(RDX, false)
+		i31OK := a.JccPlaceholder(condNE)
+		a.ShiftImm(5, RAX, 1, false)
+		a.AluRM(cmpRMcode, RAX, R8, gc.NativeViewHandleCountOffset, false)
+		addFallback(a.JccPlaceholder(condAE))
+		a.Load64(R10, R8, gc.NativeViewHandlesOffset)
+		a.ImulRI(RAX, gc.NativeHandleStride, true)
+		a.Add64(R10, RAX)
+		a.Load32(RAX, R10, 16)
+		a.ShiftImm(5, RAX, 16, false)
+		a.AluRI(4, RAX, 0xff, false)
+		a.TestSelf(RAX, false)
+		addFallback(a.JccPlaceholder(condE))
+		a.AluRI(cmpDigit, RAX, int32(gc.NativeSpaceTiny), false)
+		addFallback(a.JccPlaceholder(condA))
+		valid := a.Len()
+		if nullOK >= 0 {
+			a.PatchRel32(nullOK, valid)
+		}
+		a.PatchRel32(i31OK, valid)
+	}
+
+	// Complete object bytes before publishing the handle's nursery-space byte.
+	a.Load64(R10, R8, gc.NativeViewStructAllocStateOffset)
+	a.Load32(RDX, R10, gc.NativeStructAllocCursorOffset)
+	a.Load64(RAX, RBX, -int32(abi.GCNativeViewPtrOffset))
+	a.Load64(RAX, RAX, gc.NativeInstanceViewLocalTypesOffset)
+	a.Load32(RAX, RAX, int32(typeIndex*4))
+	a.Store32(R11, 0, RAX)
+	a.StoreImm32Mem(R11, 4, int32(objectSize))
+	a.StoreImm32Mem(R11, 8, 0)
+	flags := int32(0)
+	if pointerFree {
+		flags = int32(gc.FlagPointerFree)
+	}
+	a.StoreImm32Mem(R11, 12, flags)
+	for _, field := range fields {
+		disp := int32(gc.PayloadOffset + field.offset)
+		src := hcArgs + int32(field.slot*8)
+		switch field.size {
+		case 4:
+			a.Load32(RAX, RDI, src)
+			a.Store32(R11, disp, RAX)
+		case 8:
+			a.Load64(RAX, RDI, src)
+			a.Store64(R11, disp, RAX)
+		case 16:
+			a.Load64(RAX, RDI, src)
+			a.Store64(R11, disp, RAX)
+			a.Load64(RAX, RDI, src+8)
+			a.Store64(R11, disp+8, RAX)
+		default:
+			panic("amd64: unsupported native struct field size")
+		}
+	}
+	a.Store32(R9, gc.NativeHandleOffsetOffset, RCX)
+	a.StoreImm32Mem(R9, gc.NativeHandleSizeOffset, int32(objectSize))
+	a.StoreImm32Mem(R9, 8, int32(objectSize))
+	a.StoreImm32Mem(R9, gc.NativeHandleCardSlotOffset, 0)
+	a.Load64(RAX, R8, gc.NativeViewNurseryBumpOffset)
+	a.MovRegReg32(R10, RCX)
+	a.AluRI(0, R10, int32(objectSize), false)
+	a.Store32(RAX, 0, R10)
+	a.StoreImm32Mem(R9, 16, int32(gc.NativeSpaceNursery)<<16)
+	a.AluRI(0, RDX, 1, false)
+	a.Load64(R10, R8, gc.NativeViewStructAllocStateOffset)
+	a.Store32(R10, gc.NativeStructAllocCursorOffset, RDX)
+	a.Load64(R10, R8, gc.NativeViewAllocationCountOffset)
+	a.Load64(RAX, R10, 0)
+	a.AluRI(0, RAX, 1, true)
+	a.Store64(R10, 0, RAX)
+	a.MovRegReg32(RAX, RSI)
+	a.ShiftImm(4, RAX, 1, false)
+	a.Store64(RDI, hcResults, RAX)
+	done := a.JmpPlaceholder()
+
+	fallbackAt := a.Len()
+	for _, site := range fallback {
+		a.PatchRel32(site, fallbackAt)
+	}
+	a.MovImm32(RAX, 0)
+	a.PatchRel32(done, a.Len())
+	a.TestSelf(RAX, false) // RET and POP preserve flags for the caller's JNE
+	for i := len(preserve) - 1; i >= 0; i-- {
+		if preserve[i] {
+			a.Pop(R9 + Reg(i))
+		}
+	}
+	a.Pop(R8)
+	a.Ret()
 }
 
 // emitNativeFinalCastArrayLenStub emits one per-function checked native stub.

@@ -43,6 +43,38 @@ func TestGCExecutedHelperTransitionStats(t *testing.T) {
 	}
 }
 
+func TestGCExecutedHelperStatsTrackBatchedNativeStructAllocation(t *testing.T) {
+	if !hostSupportsSIMD() {
+		t.Skip("host SIMD unavailable")
+	}
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), v128StructModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	instance, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	fn, err := instance.PrepareFunction("new_get")
+	if err != nil {
+		t.Fatal(err)
+	}
+	instance.SetGCHelperStatsTracking(true)
+	defer instance.SetGCHelperStatsTracking(false)
+	for i := uint64(0); i < 65; i++ {
+		got, err := fn.Invoke(i, ^i)
+		if err != nil || len(got) != 2 || got[0] != i || got[1] != ^i {
+			t.Fatalf("constructor %d = %#x, %v", i, got, err)
+		}
+	}
+	stats := instance.GCHelperStats()
+	if stats.Calls != 67 || stats.AllocationCalls != 2 || stats.StructInitializedAllocationCalls != 2 {
+		t.Fatalf("batched allocation helper stats = %+v, want 65 v128 reads plus two 32-handle allocation refills", stats)
+	}
+}
+
 func TestGCExecutedHelperStatsTrackOldStructBarrierFallback(t *testing.T) {
 	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcNativeOldStructReferenceStoreBytes())
 	if err != nil {

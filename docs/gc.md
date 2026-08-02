@@ -102,11 +102,12 @@ product, both at 0 B/op and 0 allocs/op. On July 31, 2026, five 500 ms samples o
 with 0 B/op and 0 allocs/op on the Ryzen 7 8845HS host.
 
 AMD64 final scalar struct/array get/set operations now bypass the parked helper
-through native collector ABI v2. Its 128-byte collector-owned stable view preserves
-the complete v1 handle/space/generation prefix and appends the current object-card
-pointer/count. Collection and relocating/large-space allocation republish the
-complete view; ordinary nursery allocation updates only handle metadata and
-generation, while card append/remove/clear republishes card metadata. One
+through native collector ABI v3. Its 160-byte collector-owned stable view preserves
+the complete 128-byte v2 handle/space/generation/object-card prefix and appends
+allocation-state, epoch, nursery-bump, and semantic-counter pointers. Collection
+and relocating/large-space allocation republish the complete view; ordinary helper
+nursery allocation updates only handle metadata and generation, while card
+append/remove/clear republishes card metadata. One
 instance-owned view publishes the immutable local-to-canonical type
 map at basedata offset 280. Generated code reloads every pointer per access and
 checks ABI version, handle tag/range, space range, object extent, exact canonical
@@ -147,8 +148,18 @@ old-to-young struct stores). These per-call counts remain exact through 100 and 
 repeated invocations. Allocation-family counters further split the remaining 1,038
 calls into 1,026 fully initialized `struct.new` transitions and 12
 `array.new_default` transitions, with zero struct-default or other-array calls.
-Native bump allocation can therefore target the initialized struct path first rather
-than being justified only by static constructor sites.
+Native bump allocation therefore targets the initialized struct path rather than
+being justified only by static constructor sites. The retained AMD64 path reserves
+32 unpublished handle identities without reserving nursery bytes. Its generated
+stub validates the batch epoch, free handle, canonical final type, aligned physical
+extent, and every nullable/non-null compact-reference initializer before writing
+header/fields, advancing the real nursery bump, publishing the handle, and updating
+semantic allocation count. Collection and Close cancel and recycle unused identities.
+Tiny, collection-disabled, collect-every-allocation, unsupported layouts, malformed
+metadata, and nursery exhaustion retain the rooted helper. Dew falls to 50 executed
+helpers per call: 32 initialized structs, 12 default arrays, and six metadata-growing
+mutations; counts remain exact through 500 calls. The differential control is
+`WAGO_AMD64_NO_GC_NATIVE_ALLOC=1`.
 
 Fully initialized helper-side `struct.new` prevalidates field kinds, ownership,
 subtyping, and nullability once, then passes raw helper ABI words directly to the

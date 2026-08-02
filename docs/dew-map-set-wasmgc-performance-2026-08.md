@@ -441,9 +441,38 @@ helpers 1,044→736 and initialized-struct helpers 1,026→718. Generated code g
 524,512→522,528 B/op with the same 68 allocations. Six interleaved fresh rounds
 were effectively neutral/noisy (median-of-medians about 0.690→0.683 ms), and
 repeated execution trapped after collection because ticket lifecycle invalidation
-was not yet exact. No part of that prototype is retained. A future attempt must use
-transactional batches, explicit collection epochs, exact unused-handle recycling,
-and enough constructors per refill to amortize the shared native stub.
+was not yet exact. No part of that prototype is retained.
+
+The retained replacement reserves a transactional batch of 32 handle identities
+without consuming nursery bytes. Native collector ABI v3 exposes that fixed batch,
+an explicit collection epoch, the real nursery bump, and the semantic allocation
+counter after preserving the complete v2 prefix. The shared AMD64 constructor stub
+validates the epoch, free handle, canonical final type, aligned extent, and every
+compact-reference initializer before initializing bytes and publishing the handle.
+Collection and Close recycle every unused identity; helper fallback handles nursery
+exhaustion, Tiny, unsupported layouts, collect-every-allocation, malformed metadata,
+and all collection/growth work.
+
+| Measurement | Helper-only | Batched native allocation | Change |
+| --- | ---: | ---: | ---: |
+| executed helpers/call | 1,044 | 50 | -95.2% |
+| initialized-struct helpers/call | 1,026 | 32 | -96.9% |
+| array + mutation helpers/call | 18 | 18 | unchanged |
+| generated native code | 6,957,321 B | 6,976,191 B | +18,870 B (+0.27%) |
+| median of six fresh medians | 0.658 ms | 0.527 ms | -20.0% |
+| median of six sustained medians | 0.692 ms | 0.573 ms | -17.3% |
+| fresh host bytes/allocations | 524,512 B / 68 | 524,576 B / 69 | +64 B / +1 |
+
+The helper split remains exact through 500 calls. Sustained execution remains
+0 B/op and 0 allocs/op. The plugin-complete stripped TinyGo candidate is
+**1,787,076 bytes**, +8,688 bytes (+0.49%) over the 1,778,388-byte card-ABI build.
+The generated-code and release-size increases are retained because they buy a large,
+repeatable execution win while staying at or below 0.5% of each measured product.
+`WAGO_AMD64_NO_GC_NATIVE_ALLOC=1` restores the helper-only differential baseline.
+A 64-handle follow-up reduced initialized-struct refills 32→17 per call but was
+neutral sustained, made four-round fresh median-of-medians about 10% slower, added
+800 B/op and two host allocations, and grew fixed collector state by 128 bytes.
+The retained 32-handle batch is deliberately the smaller speed/footprint point.
 
 The individual wall-clock rounds remain frequency-sensitive; the table uses
 interleaved median-of-medians rather than selecting one favorable run.

@@ -42,6 +42,11 @@ var deadGCNewEnabled = os.Getenv("WAGO_AMD64_NO_DEAD_GC_NEW") != "1"
 // casts already proved by a successful prior cast or exact constructor.
 var exactGCRefFactsEnabled = os.Getenv("WAGO_AMD64_NO_GC_REF_FACTS") != "1"
 
+// nativeGCStructAllocEnabled consumes collector-reserved handle batches through
+// a checked nursery bump path. The rooted Go helper remains the collection and
+// refill path. Keep a differential kill switch while the path is qualified.
+var nativeGCStructAllocEnabled = os.Getenv("WAGO_AMD64_NO_GC_NATIVE_ALLOC") != "1"
+
 // immutableLocalTableEnabled specializes call_indirect when the one-pass module
 // scan proves table 0 is a private, never-mutated table of same-module functions
 // (no home/tag fork, and a monomorphic table becomes a direct call). Default ON;
@@ -336,6 +341,7 @@ type fn struct {
 	gcArrayHelpers         bool // exact staged numeric array ops use the same parked Go re-entry frame
 	gcFrameRoots           *shared.GCFrameRootPlan
 	gcCallsiteIndex        int
+	nativeStructAllocType  uint32 // type index + 1 for the next gcStructAllocOne call
 
 	// stats collects per-function codegen counters (docs/no-ir-plan.md P1). nil
 	// unless the caller requested collection, in which case every counter method
@@ -412,6 +418,11 @@ func asmCapForBody(bodyLen int) int {
 // function's compile — the emitted code is copied into the module buffer before
 // the next function runs — so reset-and-reuse replaces per-function allocation.
 // Compile is sequential, so a single scratch is shared safely.
+type gcStructAllocStubSite struct {
+	typeIndex uint32
+	site      int
+}
+
 type scratch struct {
 	stack *stack     // the valent-block operand stack
 	asm   *amd64.Asm // the x86-64 encoder byte buffer
@@ -429,6 +440,7 @@ type scratch struct {
 	gcStructRefGetStubSites []int
 	gcStructRefSetStubSites []int
 	gcArrayRefSetStubSites  []int
+	gcStructAllocStubSites  []gcStructAllocStubSite
 	trapSites               [trapMax + 1][]trapSite
 	ctrl                    []ctrlFrame // control-frame stack backing; reused across functions
 	pinnedLocals            []int       // pinned-local index backing; reused across functions
@@ -458,6 +470,7 @@ func (sc *scratch) reset() {
 	sc.gcStructRefGetStubSites = sc.gcStructRefGetStubSites[:0]
 	sc.gcStructRefSetStubSites = sc.gcStructRefSetStubSites[:0]
 	sc.gcArrayRefSetStubSites = sc.gcArrayRefSetStubSites[:0]
+	sc.gcStructAllocStubSites = sc.gcStructAllocStubSites[:0]
 	sc.ctrl = sc.ctrl[:0]
 	for i := range sc.trapSites {
 		sc.trapSites[i] = sc.trapSites[i][:0]

@@ -94,31 +94,33 @@ type handleEntry struct {
 }
 
 type Collector struct {
-	cfg              Config
-	nativeView       *NativeCollectorView
-	types            []TypeDesc
-	typeIndex        []int
-	objectAlign      uint32
-	nursery          []byte
-	nurseryBump      uint32
-	tiny             tinyHeap
-	tinyGC           tinyGC
-	throughput       throughputHeap
-	handles          []handleEntry // index 0 is never used; Ref stores index<<1.
-	freeHandles      []uint32
-	nurseryHandles   []uint32 // dense live nursery set; minor collection never scans all old handles
-	mark             []bool
-	markStack        []uint32
-	promotionScratch []plannedPromotion
-	remembered       []uint32
-	objectCards      []objectCard
-	slotCards        []slotCard
-	slotCardSlot     map[uint64]uint32 // one-based indexes in slotCards, allocated lazily
-	globalSlots      []Ref
-	tableSlots       []Ref
-	stats            Stats
-	rootMarkMode     uint8
-	closed           bool
+	cfg               Config
+	nativeView        *NativeCollectorView
+	nativeStructAlloc nativeStructAllocState
+	nativeAllocEpoch  uint32
+	types             []TypeDesc
+	typeIndex         []int
+	objectAlign       uint32
+	nursery           []byte
+	nurseryBump       uint32
+	tiny              tinyHeap
+	tinyGC            tinyGC
+	throughput        throughputHeap
+	handles           []handleEntry // index 0 is never used; Ref stores index<<1.
+	freeHandles       []uint32
+	nurseryHandles    []uint32 // dense live nursery set; minor collection never scans all old handles
+	mark              []bool
+	markStack         []uint32
+	promotionScratch  []plannedPromotion
+	remembered        []uint32
+	objectCards       []objectCard
+	slotCards         []slotCard
+	slotCardSlot      map[uint64]uint32 // one-based indexes in slotCards, allocated lazily
+	globalSlots       []Ref
+	tableSlots        []Ref
+	stats             Stats
+	rootMarkMode      uint8
+	closed            bool
 }
 
 const defaultNursery = 64 << 10
@@ -169,6 +171,7 @@ func NewCollector(config Config, types []TypeDesc) (*Collector, error) {
 // errCollectorClosed. It is idempotent; Stats remains safe for post-close
 // counters, while unchecked root-slot reads return null after slots are released.
 func (c *Collector) Close() {
+	c.discardNativeStructHandles()
 	c.closed = true
 	c.nursery = nil
 	c.tiny.Close()

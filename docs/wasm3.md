@@ -219,8 +219,9 @@ missing official opcode families:
    all-member publication;
 5. keep linux/amd64 and native Linux/Darwin arm64 explicit plus signal-backed
    conformance mandatory in CI; and
-6. preserve native collector ABI v2 and AMD64 checked final-scalar/object-card access,
-   while extending direct paths only where metadata lifetime and barriers remain exact.
+6. preserve native collector ABI v3, AMD64 checked final-scalar/object-card access,
+   and transactional batched final-struct allocation, while extending direct paths
+   only where metadata lifetime, collection epochs, roots, and barriers remain exact.
 
 The current descriptor-tail completion resolves runtime targets from their immutable
 funcref descriptors instead of relying on static `ref.func` provenance. Mutable and
@@ -238,9 +239,10 @@ path at 474.7–481.6 ns/op with 0 B/op and 0 allocs/op; existing direct cross-i
 watchpoints remain 89.52–94.63 ns/op and allocation-free. The native context is now
 112 bytes: the original 72-byte pointer prefix, 32 bytes of domain/tail metadata,
 and an eight-byte native GC-view pointer used during shared-memory context switches.
-Native collector ABI v2 retains the same basedata slot and grows only the shared
-collector view from 112 to 128 bytes by appending object-card pointer/count metadata;
-basedata remains 288 bytes and descriptor layouts do not grow.
+Native collector ABI v3 retains the same basedata slot and preserves the complete
+128-byte v2 prefix. The shared collector view grows to 160 bytes by appending pointers
+to a fixed 32-handle allocation batch, collection epoch, nursery bump, and semantic
+allocation counter; basedata remains 288 bytes and descriptor layouts do not grow.
 
 Cross-Runtime object ownership uses explicit cloning rather than compact-handle sharing.
 `target.CloneGCRefFrom(source, ref)` captures one retained source graph, maps recursive

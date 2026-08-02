@@ -217,10 +217,28 @@ constructor. It reduced executed helpers **1,044→736** and initialized-struct 
 reduced fresh host allocation by only 1,984 B/op with allocations unchanged, and was
 roughly neutral in six noisy fresh A/B rounds (median-of-medians about
 0.690→0.683 ms). More importantly, sustained repeated execution exposed a cast-failure
-lifecycle bug after collection. The complete prototype was reverted. A future
-allocator must use transactional batch reservation with an explicit collection epoch,
-exact cancellation/recycling, and enough tickets per refill to amortize the shared
-stub and marshaling cost; one speculative ticket is not an acceptable tradeoff.
+lifecycle bug after collection. The complete prototype was reverted.
+
+**Transactional batched native struct allocation (2026-08-02).** The retained
+replacement reserves 32 unpublished handle identities without consuming nursery
+bytes. Native collector ABI v3 preserves the 128-byte v2 prefix and appends pointers
+to the fixed 144-byte batch state, an explicit collection epoch, the real nursery
+bump, and the semantic allocation counter. Generated code validates the complete
+constructor before advancing the bump or publishing a handle; collection and Close
+recycle every unused identity. Tiny, collect-every-allocation, collection-disabled,
+unsupported, exhausted, and malformed cases retain the rooted helper. Dew helpers
+fall **1,044→50**: initialized structs **1,026→32**, arrays remain 12, and the six
+metadata-growing mutations remain unchanged. Generated code grows only **18,870
+bytes** (**6,957,321→6,976,191**, +0.27%). Across six interleaved rounds, fresh
+median-of-medians improves about **0.658→0.527 ms** (-20.0%) and sustained about
+**0.692→0.573 ms** (-17.3%). Fresh host cost is **524,576 B/op and 69 allocations**
+versus 524,512/68 disabled; sustained execution remains allocation-free. The
+plugin-complete stripped TinyGo binary is **1,787,076 bytes**, +8,688 (+0.49%).
+`WAGO_AMD64_NO_GC_NATIVE_ALLOC=1` restores helper-only allocation. A 64-handle
+batch was also measured and rejected: it cut initialized-struct refills 32→17 per
+call but made four-round fresh median-of-medians about 10% slower, added 800 B/op
+and two host allocations, increased fixed collector state by 128 bytes, and was
+neutral sustained. The retained 32-handle batch is the speed/footprint point.
 
 **WasmGC load-forwarding counters (2026-08-02).** AMD64 count-only facts report
 4,092 fused exact array accesses, 3,067 fused exact struct accesses, and 1,022

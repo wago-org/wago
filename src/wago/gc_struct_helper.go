@@ -211,6 +211,7 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 			panic(gcStructHelperError{err: err})
 		}
 		results[0] = uint64(ref)
+		in.prepareNativeStructHandles(typeID)
 	case gcStructGet, gcStructGetS, gcStructGetU:
 		if len(args) != 3 || len(results) < 1 {
 			panic(gcStructHelperError{err: fmt.Errorf("gc struct get helper arity = %d/%d, want 3/at-least-1", len(args), len(results))})

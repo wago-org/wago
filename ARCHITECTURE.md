@@ -98,10 +98,11 @@ Snapshot v4 persists reachable local-global object graphs with stable IDs and
 two-pass cycle/sharing reconstruction; snapshot v5 adds one owned local
 collector-reference table, while snapshot v6 adds multiple heterogeneous local
 tables with indexed lengths, barriers, sharing, and exact structural root
-validation. AMD64 final scalar struct/array accesses use collector native ABI v2:
-a stable allocation/collection/card-refreshed view at basedata offset 280 validates
-handle, space, object extent, canonical type, array bounds, remembered membership,
-and any existing object-card interval before direct payload access. Final abstract
+validation. AMD64 final scalar struct/array accesses and initialized final-struct
+allocation use collector native ABI v3: a stable allocation/collection/card-refreshed
+view at basedata offset 280 validates handle, space, object extent, canonical type,
+array bounds, remembered membership, any existing object-card interval, and the
+transactional native-allocation epoch before direct heap access. Final abstract
 reference stores may bypass helpers only when no metadata growth is required;
 vector, non-final, bulk, cardless/unremembered, and Tiny barrier paths remain
 helper-bound. Arm64 builds lower struct/array/i31 and dynamic cast/test helpers
@@ -337,11 +338,13 @@ copy the target pointer context into its home basedata and restore the exact cal
 context on normal return.
 
 Every native-visible address must be stable for the duration in which native code
-can consume it. Most runtime state is off-heap. Native GC ABI v2 is the narrow
+can consume it. Most runtime state is off-heap. Native GC ABI v3 is the narrow
 exception: standard Go and the release TinyGo conservative collector are non-moving;
-typed Collector/Instance fields retain the view, heap/handle slices, and object-card
-backing, and generated code reloads relocatable slice pointers after allocation,
-collection, or card-backing refresh rather than caching them across safepoints.
+typed Collector/Instance fields retain the view, heap/handle/card backing, fixed
+32-handle allocation state, epoch, nursery bump, and semantic counter. Generated
+code reloads relocatable slice pointers after helper allocation, collection, or
+card-backing refresh rather than caching them across safepoints. Native allocation
+reserves identities only; collection cancels unused reservations before tracing.
 
 ### Off-heap allocation
 
