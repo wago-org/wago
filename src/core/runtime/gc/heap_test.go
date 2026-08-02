@@ -114,6 +114,41 @@ func TestTypedStructAccessChecksFinalAndOpenTypes(t *testing.T) {
 	}
 }
 
+func TestFinalStructReferenceAccessChecksExactTypeAndField(t *testing.T) {
+	left, err := NewStructDesc(0, []StorageKind{StorageRefNull})
+	if err != nil {
+		t.Fatal(err)
+	}
+	right, err := NewStructDesc(1, []StorageKind{StorageRefNull})
+	if err != nil {
+		t.Fatal(err)
+	}
+	numeric, err := NewStructDesc(2, []StorageKind{StorageI32})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := newTestCollectorWithTypes(t, Config{}, []TypeDesc{left, right, numeric})
+	ref, err := c.NewStructDefault(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if value, matched, err := c.StructGetFinalRef(ref, 1, 0); err != nil || !matched || !value.IsNull() {
+		t.Fatalf("final ref get = %v, %v, %v; want null match", value, matched, err)
+	}
+	if _, matched, err := c.StructGetFinalRef(ref, 0, 0); err != nil || matched {
+		t.Fatalf("mismatched final ref get = %v, %v; want clean mismatch", matched, err)
+	}
+	if _, _, err := c.StructGetFinalRef(ref, 1, 1); err == nil {
+		t.Fatal("final ref get accepted out-of-range field")
+	}
+	if _, _, err := c.StructGetFinalRef(ref, 2, 0); err == nil {
+		t.Fatal("final ref get accepted numeric field")
+	}
+	if _, _, err := c.StructGetFinalRef(I31New(0), 1, 0); err == nil {
+		t.Fatal("final ref get accepted i31")
+	}
+}
+
 func TestTypedArrayAccessChecksFinalAndOpenTypes(t *testing.T) {
 	base, err := NewArrayDesc(0, StorageI32)
 	if err != nil {

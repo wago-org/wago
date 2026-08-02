@@ -5,6 +5,7 @@ import (
 	"sync"
 	"unsafe"
 
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 )
 
@@ -64,6 +65,19 @@ func (root *Instance) dispatchSynchronousHostCall(ctrl uintptr, importIdx uint32
 		// Internal GC helpers cannot re-enter Wasm or arbitrary host code. Keep the
 		// native execution lease while operating on the parked frame instead of
 		// paying the public host-call release/reacquire protocol at every GC opcode.
+		// Dispatch directly here: routing through hostCall would repeat the GC-bit
+		// branch and add an indirect closure call on every helper transition.
+		if importIdx&hostFuncRefDispatchBit != 0 {
+			panic(gcStructHelperError{err: fmt.Errorf("invalid overlapping GC/host dispatch index %#x", importIdx)})
+		}
+		if active.gc != nil {
+			helper, safepoint := shared.DecodeGCDispatch(importIdx &^ gcStructDispatchBit)
+			active.dispatchGCHelperParked(ctrl, helper, safepoint, args, results)
+			return
+		}
+		// Preserve the injected dispatcher path used by hardening tests and by a
+		// partially constructed instance so missing-collector diagnostics remain
+		// centralized in the configured host dispatcher.
 		active.hostCall(ctrl, importIdx, args, results)
 		return
 	}

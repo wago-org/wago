@@ -123,6 +123,42 @@ func BenchmarkTypedGCStructAccess(b *testing.B) {
 	})
 }
 
+func BenchmarkFinalGCStructReferenceGet(b *testing.B) {
+	desc, err := NewStructDesc(0, []StorageKind{StorageRefNull})
+	if err != nil {
+		b.Fatal(err)
+	}
+	c, err := NewCollector(Config{NurseryBytes: 1 << 20, DisableCollection: true}, []TypeDesc{desc})
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.Cleanup(c.Close)
+	ref, err := c.NewStructDefault(0)
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.Run("combined_typed", func(b *testing.B) {
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			value, _, matched, err := c.StructGetTyped(ref, 0, true, 0)
+			if err != nil || !matched {
+				b.Fatalf("typed get = %v, %v", matched, err)
+			}
+			objectAccessBenchSink = uint64(value.Ref)
+		}
+	})
+	b.Run("final_reference", func(b *testing.B) {
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			value, matched, err := c.StructGetFinalRef(ref, 0, 0)
+			if err != nil || !matched {
+				b.Fatalf("final ref get = %v, %v", matched, err)
+			}
+			objectAccessBenchSink = uint64(value)
+		}
+	})
+}
+
 func BenchmarkTypedGCArrayAccess(b *testing.B) {
 	base, err := NewArrayDesc(0, StorageI32)
 	if err != nil {

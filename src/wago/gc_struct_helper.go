@@ -327,6 +327,17 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 		if !ok {
 			panic(gcStructHelperError{err: fmt.Errorf("gc final cast/get type %d has no Runtime-domain identity", typeID)})
 		}
+		if mode == 0 && (kind == gc.StorageRef || kind == gc.StorageRefNull) {
+			value, matched, err := in.gc.StructGetFinalRef(ref, required, fieldID)
+			if err != nil {
+				panic(gcStructHelperError{err: err})
+			}
+			if !matched {
+				panic(gcStructHelperTrap{code: coreruntime.TrapCastFailure})
+			}
+			results[0] = uint64(value)
+			break
+		}
 		value, _, matched, err := in.gc.StructGetTyped(ref, required, true, fieldID)
 		if err != nil {
 			panic(gcStructHelperError{err: err})

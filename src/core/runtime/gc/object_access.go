@@ -3,6 +3,7 @@ package gc
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
 )
 
 func (c *Collector) NewStruct(typeID TypeID) (Ref, error) { return c.NewStructDefault(typeID) }
@@ -64,11 +65,13 @@ func (c *Collector) newStructWithRoots(typeID TypeID, values []Value, roots Root
 	if err != nil {
 		return Null(), err
 	}
-	c.zeroObjectPayload(r)
+	// Every field is written below; padding is not observable or scanned.
+	payload := c.bytes(r)[PayloadOffset:]
 	for i, field := range d.Fields {
-		if err := c.storeValue(r, d, uint64(PayloadOffset+field.Offset), field.Kind, values[i]); err != nil {
-			return Null(), err
-		}
+		// Shape, kind, compact-reference ownership, nullability, and complete
+		// object size were preflighted before allocation. Store directly so large
+		// fixed-shape constructors do not repeat those checks for every field.
+		storeValueUnchecked(payload, uint64(field.Offset), field.Kind, values[i])
 	}
 	// Initialization publishes the complete payload at once. A large allocation
 	// is born outside the nursery, so reconcile one remembered-set entry after all
@@ -354,6 +357,50 @@ func (c *Collector) StructGetTyped(ref Ref, required TypeID, exact bool, field u
 	f := d.Fields[field]
 	value, err = c.loadValue(ref, uint64(PayloadOffset+f.Offset), f.Kind)
 	return value, actual, true, err
+}
+
+// StructGetFinalRef is the exact-final reference-field counterpart of
+// StructGetTyped. It validates the required canonical descriptor once by pointer,
+// resolves the compact handle once, and loads the four-byte collector reference
+// directly. It deliberately does not perform declared-super traversal: callers
+// may use it only for statically final required struct types.
+func (c *Collector) StructGetFinalRef(ref Ref, required TypeID, field uint32) (value Ref, matched bool, err error) {
+	if err := c.errIfClosed(); err != nil {
+		return Null(), false, err
+	}
+	if int(required) >= len(c.typeIndex) || c.typeIndex[required] < 0 {
+		return Null(), false, fmt.Errorf("gc: unknown type id %d", required)
+	}
+	requiredDesc := &c.types[c.typeIndex[required]]
+	if !requiredDesc.Final || requiredDesc.Kind != KindStruct {
+		return Null(), false, errors.New("gc: final reference access requires final struct type")
+	}
+	if field >= uint32(len(requiredDesc.Fields)) {
+		return Null(), false, errors.New("gc: field out of range")
+	}
+	f := requiredDesc.Fields[field]
+	if !isCollectorRefKind(f.Kind) {
+		return Null(), false, errors.New("gc: field is not collector reference")
+	}
+	if !ref.IsObj() {
+		return Null(), false, errors.New("gc: ref is not object")
+	}
+	h := handleOf(ref)
+	if h == 0 || int(h) >= len(c.handles) || c.handles[h].space == spaceFree {
+		return Null(), false, errors.New("gc: invalid object ref")
+	}
+	b := c.bytes(ref)
+	if len(b) < int(HeaderSize) {
+		return Null(), false, errors.New("gc: object header out of bounds")
+	}
+	if TypeID(binary.LittleEndian.Uint32(b)) != required {
+		return Null(), false, nil
+	}
+	off := uint64(PayloadOffset) + uint64(f.Offset)
+	if off > uint64(len(b)) || uint64(len(b))-off < 4 {
+		return Null(), true, errors.New("gc: load out of bounds")
+	}
+	return Ref(binary.LittleEndian.Uint32(b[off:])), true, nil
 }
 
 func (c *Collector) StructSet(ref Ref, field uint32, value Value) error {
