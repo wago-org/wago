@@ -1,9 +1,52 @@
 package gc
 
 import (
+	"errors"
 	"strings"
 	"testing"
 )
+
+func TestAllocationMinorRetriesAfterFullOldSpaceReclamation(t *testing.T) {
+	c := newTestCollector(t, Config{
+		StressNurseryBytes:  8192,
+		ThroughputHeapBytes: 4096,
+		ThroughputPageBytes: 4096,
+		VerifyAfterCollect:  true,
+	})
+	var survivor Ref
+	for {
+		ref, err := c.NewStructDefault(1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := c.ForcePromote(ref); err != nil {
+			if !errors.Is(err, errThroughputHeapExhausted) {
+				t.Fatal(err)
+			}
+			survivor = ref
+			break
+		}
+	}
+	root := Root(survivor)
+	before := c.Stats()
+	promotionErr := c.CollectMinor(Slots{&root})
+	if !errors.Is(promotionErr, errThroughputHeapExhausted) {
+		t.Fatalf("initial promotion error = %v, want throughput exhaustion", promotionErr)
+	}
+	if err := c.retryAllocationMinorAfterPromotionFailure(Slots{&root}, promotionErr); err != nil {
+		t.Fatalf("allocation minor fallback: %v", err)
+	}
+	after := c.Stats()
+	if after.FullCollections != before.FullCollections+1 {
+		t.Fatalf("full collections = %d, want %d", after.FullCollections, before.FullCollections+1)
+	}
+	if got := c.entry(Ref(root)).space; got != spaceOld {
+		t.Fatalf("survivor space = %v, want old", got)
+	}
+	if err := c.Verify(Slots{&root}); err != nil {
+		t.Fatal(err)
+	}
+}
 
 func TestCollectMinorPromotionFailureLeavesNurserySurvivorsUnmoved(t *testing.T) {
 	c := newTestCollector(t, Config{

@@ -249,6 +249,49 @@ isolated result was effectively neutral and the complete artifact regressed from
 about 3.52 ms to 3.83 ms despite lower code size, so that path was reverted. The
 optimized Go helper remains preferable for the 10,224 reference-field pairs.
 
+### Specialized helper reads, constructors, and bounded reclamation
+
+A further helper pass retains the Go transition for reference-field reads but
+makes the transition materially cheaper:
+
+- internal GC dispatch now bypasses the ordinary host closure's duplicate
+  dispatch-bit branch and indirect call;
+- `StructGetFinalRef` validates one canonical final descriptor by pointer,
+  resolves one compact handle, and directly loads the four-byte reference;
+- fully initialized struct constructors use unchecked field stores only after
+  the existing complete shape, kind, ownership, nullability, and size preflight;
+- fully initialized struct payloads no longer clear bytes that are immediately
+  overwritten; layout padding is neither observable nor scanned; and
+- allocation-triggered promotion exhaustion performs one cold full collection
+  and retries the transactional minor promotion. Explicit `CollectMinor` keeps
+  its existing fail-closed transactional behavior.
+
+| Measurement | Before this pass | After | Change |
+| --- | ---: | ---: | ---: |
+| collector final reference-field read | about 44 ns | about 5.1 ns | -88% |
+| fused cast/reference-get invocation | about 349 ns | about 313 ns | -10% |
+| fresh Dew median, interleaved A/B | 2.068 ms | 1.772 ms | -14.3% |
+| 16 MiB sustained run | exhausts before 100 calls | 500 calls complete | bounded recovery |
+| 500-call sustained median | unavailable | 2.063 ms | new |
+| 500-call host allocation | unavailable | 146 KiB/call | new |
+
+The full-collection retry is entered only after the normal promotion path returns
+the typed throughput-exhaustion sentinel. The successful allocation path retains
+the original direct `CollectMinor` call and therefore showed no repeatable fresh
+regression. If the live graph itself exceeds the configured old-space limit, the
+retry still fails with the original bounded exhaustion error.
+
+The complete plugin-enabled stripped TinyGo binary grows
+**1,759,300→1,761,156 bytes** for this pass, **+1,856 bytes/+0.105%**.
+
+Two additional experiments were rejected:
+
+- specialized abstract-anyref struct/array stores preserved exact barriers but
+  improved a focused set/get benchmark by only about 1% and were neutral or
+  slower on the complete artifact; and
+- splitting final cast/get dispatch into another Go function regressed the
+  focused helper path by about 2%, so the switch case remains local.
+
 ## Rejected experiment
 
 Inlining a complete checked native final-type `ref.cast` reduced the workload to
@@ -281,7 +324,8 @@ measured options should be, in order:
    write sites can avoid Go while preserving nursery ownership and exact mutation;
 3. add native bump allocation plus one shared collection/handle slow path for the
    4,098 constructor sites;
-4. trigger bounded full reclamation before old throughput space is exhausted;
+4. mature the retained full-retry path into compacting or segmented old space and
+   quantify worst-case pause behavior for larger live graphs;
 5. qualify the profitable shared native read/cast paths on ARM64; and
 6. use producer-side typed scratch locals to reduce repeated dynamic checks while
    retaining Wago correctness for arbitrary producers.

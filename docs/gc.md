@@ -1551,6 +1551,21 @@ The additional nursery slice and scan counters bring the fixed `Collector` to 71
 
 Minor promotion plans use collector-owned reusable scratch in ascending handle order. Every success or rollback clears the used entries and resets the slice length, so no stale allocation record survives a collection. Allocation failure frees planned old-space entries in reverse order before publishing any move. A repeated allocate/promote/full-collect benchmark on linux/amd64 drops from 188.8–200.8 ns/op, 96–100 B/op, and 3 allocs/op to 178.8–189.1 ns/op, 72–81 B/op, and 2 allocs/op; the removed allocation is the per-minor promotion plan.
 
+Allocation-triggered minor collection treats old-space promotion exhaustion as a
+cold reclamation signal. Because promotion planning has published no move, the
+allocator may run one full collection with the same exact roots and retry the
+minor promotion transactionally. Direct callers of `CollectMinor` retain the
+original fail-closed error and unmoved-survivor contract. If the live graph still
+cannot fit, the retry returns the same bounded throughput-exhaustion error. A
+16 MiB Dew Map/Set instance that previously exhausted before 100 repeated calls
+completes 500 calls under this policy.
+
+The old/large backing grows exactly below 16 pages, then reserves at most 1.5x
+the current committed backing through a noinline cold helper, capped by
+`ThroughputHeapBytes`. This avoids repeated page-step copies without adding a
+hot fresh-allocation branch; unused reserved capacity appears only after the
+backing is already hot.
+
 Throughput heap growth is intentionally checked before touching the backing
 slice. Bump offsets, allocation ends, and page-rounded reservation lengths are
 computed wider than `uint32`; configurations or object sizes that would wrap the

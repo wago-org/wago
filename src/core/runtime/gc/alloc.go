@@ -34,7 +34,9 @@ func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, err
 			return Null(), errors.New("gc: allocation-triggered collection requires roots")
 		}
 		if err := c.CollectMinor(roots); err != nil {
-			return Null(), err
+			if err := c.retryAllocationMinorAfterPromotionFailure(roots, err); err != nil {
+				return Null(), err
+			}
 		}
 	}
 	sp := spaceNursery
@@ -73,7 +75,9 @@ func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, err
 				return Null(), errors.New("gc: nursery exhausted and no roots were supplied")
 			}
 			if err := c.CollectMinor(roots); err != nil {
-				return Null(), err
+				if err := c.retryAllocationMinorAfterPromotionFailure(roots, err); err != nil {
+					return Null(), err
+				}
 			}
 			off, fits = nurseryOffset()
 			if !fits {
@@ -102,6 +106,21 @@ func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, err
 	c.refreshNativeView()
 	return r, nil
 }
+
+//go:noinline
+func (c *Collector) retryAllocationMinorAfterPromotionFailure(roots RootSet, promotionErr error) error {
+	if !errors.Is(promotionErr, errThroughputHeapExhausted) {
+		return promotionErr
+	}
+	// Promotion planning is transactional: on exhaustion no nursery object has
+	// moved. Reclaim unreachable old/large objects with the exact allocation
+	// roots, then rerun the minor collection to promote the same survivors.
+	if err := c.CollectFull(roots); err != nil {
+		return err
+	}
+	return c.CollectMinor(roots)
+}
+
 func (c *Collector) shouldAllocateLarge(size uint32) bool {
 	// The large-object threshold is a policy preference, but nursery capacity is
 	// a hard safety boundary: an object that cannot fit in an empty nursery must

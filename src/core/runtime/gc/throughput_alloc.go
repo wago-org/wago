@@ -5,6 +5,8 @@ import (
 	"fmt"
 )
 
+var errThroughputHeapExhausted = errors.New("gc: throughput heap exhausted")
+
 const throughputNoSlot = ^uint32(0)
 
 var throughputClassSizes = [...]uint32{32, 48, 64, 96, 128, 192, 256, 384, 512, 768, 1024, 1536, 2048, 3072, 4096, 8192, 16384, 32768}
@@ -152,7 +154,7 @@ func (h *throughputHeap) grow(size uint32) (uint32, error) {
 	off := Align16(h.bump)
 	end := uint64(off) + uint64(size)
 	if end > uint64(h.limit) || end > uint64(^uint32(0)) {
-		return 0, errors.New("gc: throughput heap exhausted")
+		return 0, errThroughputHeapExhausted
 	}
 	needLen, err := throughputReservationLen(end, h.pageBytes, h.limit)
 	if err != nil {
