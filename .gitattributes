@@ -1,2 +1,5 @@
-# Pinned upstream fixtures are byte-identical, including source whitespace.
-tests/regressions/** -whitespace
+* text=auto eol=lf
+
+# Pinned upstream fixtures are byte-identical, including source whitespace and
+# line endings. Do not let Git's Windows checkout policy rewrite their bytes.
+tests/regressions/** -text -whitespace

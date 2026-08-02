@@ -3,6 +3,7 @@ package build
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -31,7 +32,11 @@ func TestBuildModuleFilesystemAndGoModHelpers(t *testing.T) {
 			t.Fatalf("%q not recognized as filesystem path", path)
 		}
 	}
-	if isFilesystemPath("example.test/mod") || registerImport("example.test/mod") != "example.test/mod/register" || exeSuffix() != "" {
+	wantSuffix := ""
+	if runtime.GOOS == "windows" {
+		wantSuffix = ".exe"
+	}
+	if isFilesystemPath("example.test/mod") || registerImport("example.test/mod") != "example.test/mod/register" || exeSuffix() != wantSuffix {
 		t.Fatal("module path helpers changed")
 	}
 
@@ -50,6 +55,9 @@ func TestBuildModuleFilesystemAndGoModHelpers(t *testing.T) {
 func TestInstalledSource(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	if runtime.GOOS == "windows" {
+		t.Setenv("USERPROFILE", home)
+	}
 	if dir := InstalledSource(); dir != "" {
 		t.Fatalf("no source yet: got %q", dir)
 	}

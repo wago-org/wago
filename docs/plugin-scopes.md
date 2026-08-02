@@ -54,7 +54,7 @@ projects with their own manifest:
 wago add --global wago-org/wasi
 ```
 
-Global intent is shared by installed Wago versions. On macOS it is
+Global intent is shared by installed Wago versions. On macOS and Windows it is
 `~/.wago/wago.json`; Linux uses Wago's XDG data directory. `WAGO_HOME`
 relocates the complete layout.
 

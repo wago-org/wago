@@ -15,7 +15,9 @@ the complete native platform matrix:
 
 Each matrix cell asserts `go env GOOS` and `GOARCH` before testing. WABT is
 installed explicitly so tests that need `wat2wasm` do not silently skip because
-the runner image lacks the tool.
+the runner image lacks the tool. Windows downloads the checksum-pinned official
+WABT archive because the project does not publish a Chocolatey package; Windows
+11 ARM runs that x64 tool through its application emulation layer.
 
 The six supported runtime targets build and test every Go package, including the
 integrated regression corpus, followed by the corpus matrix with a bounded

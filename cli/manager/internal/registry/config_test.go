@@ -3,6 +3,7 @@ package registry
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -43,7 +44,7 @@ func TestRegistryConfigAndCredentials(t *testing.T) {
 	if got := resolveToken(); got != "stored" {
 		t.Fatalf("stored resolveToken = %q", got)
 	}
-	if info, err := os.Stat(credentialsPath()); err != nil || info.Mode().Perm() != 0o600 {
+	if info, err := os.Stat(credentialsPath()); err != nil || runtime.GOOS != "windows" && info.Mode().Perm() != 0o600 {
 		t.Fatalf("credentials mode = %v, %v", info, err)
 	}
 	t.Setenv("WAGO_TOKEN", " environment ")
