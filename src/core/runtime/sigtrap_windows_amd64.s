@@ -39,22 +39,20 @@ scan:
 	CMPQ	CX, AX
 	JLS	outofbounds
 
-	// Commit the wasm page relative to linMem. linMem is host-page aligned but
-	// intentionally not required to share Windows' 64 KiB allocation alignment.
+	// Arrange a return through guardCommitPage. Allocating directly inside VEH
+	// leaves the reservation inaccessible on native Windows; the thunk runs only
+	// after exception dispatch has restored ordinary execution.
 	ANDQ	$-65536, AX
 	LEAQ	(BX)(AX*1), AX
-	MOVQ	AX, CX                  // allocation-aligned page address
-	MOVQ	$65536, DX
-	MOVQ	$0x1000, R8             // MEM_COMMIT
-	MOVQ	$4, R9                  // PAGE_READWRITE
-	SUBQ	$32, SP                 // Windows shadow space
-	MOVQ	·guardVirtualAllocPC(SB), AX
-	CALL	AX
-	ADDQ	$32, SP
-	TESTQ	AX, AX
-	JNZ	continued
-	MOVL	$4, CX
-	JMP	settrap
+	MOVQ	152(R15), R11           // saved RSP
+	SUBQ	$40, R11                // page + padding + retry PC
+	MOVQ	AX, 0(R11)
+	MOVQ	248(R15), AX            // faulting RIP
+	MOVQ	AX, 32(R11)             // RET target after the commit
+	MOVQ	R11, 152(R15)
+	LEAQ	·guardCommitPage(SB), AX
+	MOVQ	AX, 248(R15)
+	JMP	continued
 outofbounds:
 	MOVL	$3, CX
 settrap:
@@ -80,6 +78,63 @@ done:
 	POPQ	R12
 	POPQ	BX
 	RET
+
+// guardCommitPage runs outside exception dispatch with the faulting register
+// file restored. Preserve every Windows-volatile register the compiler can keep
+// live across a memory access, commit one Wasm page, then RET to the faulting
+// instruction saved by VEH. Entry SP points at {page, pad[3], retryPC}.
+TEXT ·guardCommitPage(SB), NOSPLIT|NOFRAME, $0-0
+	SUBQ	$200, SP                // 32 shadow + GP/flags + XMM0..5; call-aligned
+	MOVQ	AX, 32(SP)
+	MOVQ	CX, 40(SP)
+	MOVQ	DX, 48(SP)
+	MOVQ	R8, 56(SP)
+	MOVQ	R9, 64(SP)
+	MOVQ	R10, 72(SP)
+	MOVQ	R11, 80(SP)
+	PUSHFQ
+	POPQ	AX
+	MOVQ	AX, 88(SP)
+	MOVOU	X0, 96(SP)
+	MOVOU	X1, 112(SP)
+	MOVOU	X2, 128(SP)
+	MOVOU	X3, 144(SP)
+	MOVOU	X4, 160(SP)
+	MOVOU	X5, 176(SP)
+	MOVQ	200(SP), CX            // allocation-aligned page from VEH frame
+	MOVQ	$65536, DX
+	MOVQ	$0x1000, R8            // MEM_COMMIT
+	MOVQ	$4, R9                 // PAGE_READWRITE
+	MOVQ	·guardVirtualAllocPC(SB), AX
+	CALL	AX
+	TESTQ	AX, AX
+	JZ	commitfailed
+	MOVOU	96(SP), X0
+	MOVOU	112(SP), X1
+	MOVOU	128(SP), X2
+	MOVOU	144(SP), X3
+	MOVOU	160(SP), X4
+	MOVOU	176(SP), X5
+	MOVQ	88(SP), AX
+	PUSHQ	AX
+	POPFQ
+	MOVQ	32(SP), AX
+	MOVQ	40(SP), CX
+	MOVQ	48(SP), DX
+	MOVQ	56(SP), R8
+	MOVQ	64(SP), R9
+	MOVQ	72(SP), R10
+	MOVQ	80(SP), R11
+	ADDQ	$232, SP                // frame + header before retryPC
+	RET
+commitfailed:
+	MOVQ	-104(BX), AX
+	TESTQ	AX, AX
+	JZ	commitsearch
+	MOVL	$4, (AX)                // TrapLinMemCouldNotExtend
+	JMP	·nativeTrapExitHandlerJump(SB)
+commitsearch:
+	INT	$3                      // impossible without an active guarded call
 
 TEXT ·addrGuardExceptionHandler(SB), NOSPLIT, $0-8
 	LEAQ	·guardExceptionHandler(SB), AX
