@@ -39,6 +39,33 @@ func TestInstanceContextBytesReserveNativeTailMetadata(t *testing.T) {
 	}
 }
 
+func TestBindInstanceContextBytesAcceptsUnalignedSource(t *testing.T) {
+	jm, err := NewJobMemory(65536)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer jm.Close()
+
+	backing := make([]byte, InstanceContextBytes+1)
+	src := backing[1:]
+	for i := 0; i < InstanceContextGCDomainOffset/8; i++ {
+		binary.LittleEndian.PutUint64(src[i*8:], uint64(i+1))
+	}
+	binary.LittleEndian.PutUint64(src[InstanceContextGCNativeViewOffset:], 10)
+	jm.BindInstanceContextBytes(src)
+	want := InstanceContext{
+		CustomCtx: 1, TablePtr: 2, FuncRefDescPtr: 3, PassiveElemPtr: 4,
+		GlobalsPtr: 5, PassiveDataPtr: 6, TableDirPtr: 7, MemoryDirPtr: 8,
+		ImportDispatch: 9,
+	}
+	if got := jm.CaptureInstanceContext(); got != want {
+		t.Fatalf("InstanceContext = %+v, want %+v", got, want)
+	}
+	if got := jm.GCNativeViewPtr(); got != 10 {
+		t.Fatalf("GC native view = %d, want 10", got)
+	}
+}
+
 func TestInstanceContextRoundTripLeavesMemoryAndInvocationState(t *testing.T) {
 	jm, err := NewJobMemoryGrowable(65536, 4*65536)
 	if err != nil {

@@ -30,6 +30,20 @@ paths. `DomainSnapshot` remains 112 bytes; the per-member in-memory record grows
 80 to 104 bytes for one optional passive-root slice. Existing v1/v2 blobs remain
 loadable, while memory64 and global-dependent element ownership require v3.
 
+**Direct native-context rebinding (2026-08-02).** Every public native entry
+restores ten stable context pointers into basedata. The prior path decoded those
+bytes into an `InstanceContext` and then performed ten separate slice-backed
+setter operations. The native platforms now decode potentially unaligned source
+bytes safely but store directly into the already bounds-checked, naturally aligned
+off-heap basedata image. On linux/amd64 (Ryzen 7 8845HS, GOMAXPROCS=1, one pinned
+CPU, 15 one-second samples), `BenchmarkBindInstanceContextBytes` improves from a
+**11.24 to 2.987 ns/op median** (**−73.4%**). End-to-end prepared `tiny.add`
+invocation improves **47.87→39.24 ns/op** (**−18.0%**), remaining at 0 B/op and
+0 allocs/op. The plugin-complete stripped TinyGo release also falls
+**1,734,596→1,734,452 bytes** (**−144 bytes**). Unaligned-source, exact-field,
+race, full-suite, and Linux/Darwin ARM64 cross-build coverage preserve the
+112-byte context ABI and leave GC-domain/tail metadata untouched.
+
 **Mutable imported-funcref proper tails (2026-08-01).** Descriptor-driven
 `return_call_ref` now tail-transfers through a mutable imported funcref table while
 preserving exact same-Runtime GC-domain ownership and zero-allocation invocation.

@@ -365,18 +365,22 @@ func (j *JobMemory) BindInstanceContextBytes(src []byte) {
 	if len(src) < InstanceContextBytes {
 		panic("runtime: short instance context buffer")
 	}
-	j.BindInstanceContext(InstanceContext{
-		CustomCtx:      uintptr(binary.LittleEndian.Uint64(src[0:])),
-		TablePtr:       uintptr(binary.LittleEndian.Uint64(src[8:])),
-		FuncRefDescPtr: uintptr(binary.LittleEndian.Uint64(src[16:])),
-		PassiveElemPtr: uintptr(binary.LittleEndian.Uint64(src[24:])),
-		GlobalsPtr:     uintptr(binary.LittleEndian.Uint64(src[32:])),
-		PassiveDataPtr: uintptr(binary.LittleEndian.Uint64(src[40:])),
-		TableDirPtr:    uintptr(binary.LittleEndian.Uint64(src[48:])),
-		MemoryDirPtr:   uintptr(binary.LittleEndian.Uint64(src[56:])),
-		ImportDispatch: uintptr(binary.LittleEndian.Uint64(src[64:])),
-	})
-	j.SetGCNativeViewPtr(uintptr(binary.LittleEndian.Uint64(src[InstanceContextGCNativeViewOffset:])))
+	// These basedata destinations are naturally uint64-aligned. Store directly
+	// into the already bounds-checked basedata image instead of constructing an
+	// InstanceContext and taking ten separate slice/method bounds paths on every
+	// native entry. Source loads stay byte-based because callers may supply an
+	// arbitrarily aligned context slice.
+	base := unsafe.Pointer(&j.mem[j.linOff-basedataSize])
+	*(*uint64)(unsafe.Add(base, basedataSize-offCustomCtx)) = binary.LittleEndian.Uint64(src[0:])
+	*(*uint64)(unsafe.Add(base, basedataSize-offTablePtr)) = binary.LittleEndian.Uint64(src[8:])
+	*(*uint64)(unsafe.Add(base, basedataSize-offFuncRefDescPtr)) = binary.LittleEndian.Uint64(src[16:])
+	*(*uint64)(unsafe.Add(base, basedataSize-offPassiveElemPtr)) = binary.LittleEndian.Uint64(src[24:])
+	*(*uint64)(unsafe.Add(base, basedataSize-offGlobalsPtr)) = binary.LittleEndian.Uint64(src[32:])
+	*(*uint64)(unsafe.Add(base, basedataSize-offPassiveDataPtr)) = binary.LittleEndian.Uint64(src[40:])
+	*(*uint64)(unsafe.Add(base, basedataSize-offTableDirPtr)) = binary.LittleEndian.Uint64(src[48:])
+	*(*uint64)(unsafe.Add(base, basedataSize-offMemoryDirPtr)) = binary.LittleEndian.Uint64(src[56:])
+	*(*uint64)(unsafe.Add(base, basedataSize-offImportDispatchPtr)) = binary.LittleEndian.Uint64(src[64:])
+	*(*uint64)(unsafe.Add(base, basedataSize-offGCNativeViewPtr)) = binary.LittleEndian.Uint64(src[InstanceContextGCNativeViewOffset:])
 }
 
 // ClearEHHandler removes any native-stack handler left behind when a non-EH
