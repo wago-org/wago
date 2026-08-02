@@ -1172,7 +1172,7 @@ func (f *fn) opThrow(r *wasm.Reader) error {
 	f.a.AddImm64(SP, X17, 0)
 	f.a.Br(X16)
 	f.a.PatchBranch19(noHandler, f.a.Len())
-	f.emitTrap(trapUnhandledException)
+	f.trapAlways(trapUnhandledException)
 	f.unreachable = true
 	return nil
 }
@@ -1199,7 +1199,7 @@ func (f *fn) opThrowRef() error {
 	f.a.AddImm64(SP, X17, 0)
 	f.a.Br(X16)
 	f.a.PatchBranch19(noHandler, f.a.Len())
-	f.emitTrap(trapUnhandledException)
+	f.trapAlways(trapUnhandledException)
 	f.unreachable = true
 	return nil
 }
@@ -1311,7 +1311,7 @@ func (f *fn) emitEHHandler(fr *ctrlFrame) {
 	f.a.AddImm64(SP, X17, 0)
 	f.a.Br(X16)
 	f.a.PatchBranch19(noPrevious, f.a.Len())
-	f.emitTrap(trapUnhandledException)
+	f.trapAlways(trapUnhandledException)
 
 	for i := 0; i < dispatchN; i++ {
 		clause := &fr.ehCatches[i]
