@@ -42,16 +42,22 @@ scan:
 	// Commit the wasm page relative to linMem. linMem is host-page aligned but
 	// intentionally not required to share Windows' 64 KiB allocation alignment.
 	ANDQ	$-65536, AX
-	LEAQ	(BX)(AX*1), CX
-	MOVQ	$65536, DX
-	MOVQ	$0x1000, R8             // MEM_COMMIT
-	MOVQ	$4, R9                  // PAGE_READWRITE
-	SUBQ	$32, SP                 // Windows shadow space
-	MOVQ	·guardVirtualAllocPC(SB), AX
+	LEAQ	(BX)(AX*1), AX
+	SUBQ	$64, SP                 // shadow space, stack args, base and size
+	MOVQ	AX, 48(SP)
+	MOVQ	$65536, AX
+	MOVQ	AX, 56(SP)
+	MOVQ	$-1, CX                 // current process
+	LEAQ	48(SP), DX              // in/out base address
+	XORL	R8, R8                  // ZeroBits
+	LEAQ	56(SP), R9              // in/out region size
+	MOVQ	$0x1000, 32(SP)         // MEM_COMMIT
+	MOVQ	$4, 40(SP)              // PAGE_READWRITE
+	MOVQ	·guardNtAllocateVirtualMemoryPC(SB), AX
 	CALL	AX
-	ADDQ	$32, SP
+	ADDQ	$64, SP
 	TESTQ	AX, AX
-	JNZ	continued
+	JZ	continued                // NTSTATUS_SUCCESS
 	MOVL	$4, CX
 	JMP	settrap
 outofbounds:

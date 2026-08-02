@@ -43,12 +43,20 @@ scan:
 	MOVD	R1, R0
 	AND	$-65536, R0
 	ADD	R9, R0
+	SUB	$16, RSP
+	MOVD	R0, 0(RSP)
 	MOVD	$65536, R1
-	MOVD	$0x1000, R2             // MEM_COMMIT
-	MOVD	$4, R3                  // PAGE_READWRITE
-	MOVD	·guardVirtualAllocPC(SB), R16
+	MOVD	R1, 8(RSP)
+	MOVD	$-1, R0                 // current process
+	MOVD	RSP, R1                 // in/out base address
+	MOVD	$0, R2                  // ZeroBits
+	ADD	$8, RSP, R3             // in/out region size
+	MOVD	$0x1000, R4             // MEM_COMMIT
+	MOVD	$4, R5                  // PAGE_READWRITE
+	MOVD	·guardNtAllocateVirtualMemoryPC(SB), R16
 	BL	(R16)
-	CBNZ	R0, continued
+	ADD	$16, RSP
+	CBZ	R0, continued            // NTSTATUS_SUCCESS
 	MOVW	$4, R2
 	B	settrap
 outofbounds:
