@@ -48,11 +48,11 @@ measure() {
 	(cd "$dir" && WAGO_SPECTEST_DIR="$dir/tests/spec" WAGO_SPEC_VERSION=1.0 \
 		go test -count=1 -run TestSpecSuiteExec -covermode=atomic -coverpkg=./... \
 		-coverprofile="$profiles/spec1.out" ./src/wago/ >/dev/null)
-	(cd "$dir" && go test -count=1 -run '^TestWazeroPortPinnedCoreV2Validation$' \
+	(cd "$dir" && go test -count=1 -run '^TestCoreV2Validation$' \
 		-covermode=atomic -coverpkg=./... -coverprofile="$profiles/spec2-validation.out" \
 		./src/core/compiler/wasm/ >/dev/null)
 	(cd "$dir" && WAGO_SPECTEST_DIR="$dir/tests/spec-v2" WAGO_SPEC_VERSION=2.0 \
-		go test -count=1 -run '^TestWazeroPortPinnedCoreV2SpecExecution$' \
+		go test -count=1 -run '^TestCoreV2SpecExecution$' \
 		-covermode=atomic -coverpkg=./... -coverprofile="$profiles/spec2-execution.out" \
 		./src/wago/ >/dev/null)
 	(cd "$dir" && WAGO_SPECTEST_DIR="$dir/tests/spec" WAGO_SPEC_VERSION=simd \

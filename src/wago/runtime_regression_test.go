@@ -12,14 +12,13 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/testutil/wasmtest"
+	"github.com/wago-org/wago/tests/wasmtest"
 )
 
-const wazeroUremRegallocWasmBase64 = "AGFzbQEAAAABEgNgBH9/f38Bf2ABfwBgAn9/AAIWAQVyZXBybwx1cGRhdGVfbm9uY2UAAQMEAwIAAAUDAQARBgYBfwFBAAsHIQIPX19zdGFja19wb2ludGVyAwALZmlsbF9ibG9ja3MAAwq5CQMDAAALBABBEgutCQIafwt+IwAiBCEaIAQkACAAKAIQIhhBAnQiBEVFBEABQQYhGQJAAkACQAJAIAAoAggiEyAYQQN0IgcgEyAHSxsgBG4iCCAEbCIVIAJLIgYNACAIQQJ0IhRFDQMgACgCDCEJIBQgFSAVIBRwayIXS0UEQAEgFEEKdCEKQQAhCyABIQUDQCALIg5BAWohCyAXIBRrIRcgBSAKaiEFQQAhFkEAIQQDQCARQQQ2AtQIIBFBBDYCzAggEUHAADYCxAggESADNgLACCARIBY2AjwgESAONgJAIBEgEUHAAGo2AtAIIBEgEUE8ajYCyAggEUHAEGpBAEEB/AsAIBFBwAhqQQMgEUHAEGpBgAgQAiIZQf8BcUESRw0DIARBgAhqIQwgFkEBaiEWIBFBwBBqIQJBgAghBEEAIRNBgQEhBwNAIARBB00NBiAHQX9qIgdFDQUgEyACKQAANwMAIBNBAWohEyACIARBCCAEQQhJGyISaiECIAQgEmsiBA0ACyAMIgQgBEcNAAsgFCAXTQ0ACwtBEiEZIAlFDQBBACABIAYbIQ8gCEEDbCIXQX9qIQsgAC0AUCIErUIDgyEmQgEhJyAJrSEkIBWtIShCACEfIAAoAkRBEEYhGyAEIRADQCAfIiBCAXwhHyAbICBQIgxyIQ4gECAMcSEcQgAhIQNAICEhHiARQQFGBH9BAQUBIBwLIRYgHkIBfCEhIBhFRQRAASAeUCEdIAghAyAIIB6nbCEKIB4gIIRC/////w+DISVCACEiA0AgEUHAAGpBAEGACPwLACARQcAIakEAQYAI/AsAIBFBwBBqQQBBgAj8CwACfwJAAkAgFkVFBEABIBEgJjcD6AggESAkNwPgCCARICg3A9gIIBEgHjcD0AggESAiNwPICCARICA3A8AIICVQRQ0BDAILICVQDQELIBQgIqdsIApqIgcgHWohBEEAIRIgCiEGIBEMAQtBAiESIBQgIqdsQQJyIgchBEEBCyEAIBIgCE9FBEABIAYhCSAEQX9qIQQgASAHQQp0aiETICKnIQUDQAJAAkAgFkUEQAEgBCAVTw0BIA8gBEEKdGohAgwCCwJAIBJB/wBxIgINAAsgEUHAAGogAkEDdGohAgwBCwALIAIpAwAhIwJ/IAxFRQRAASAARUUEQAEgBSENIBJBf2oMAgsgIiAjQiCIpyAYcCINrVFFBEABIAYgEkVrDAILIAkgEmoMAQsgIiAjQiCIpyAYcCINrVFFBEABIBcgEkVrDAELIAsgEmoLIgIgA2ogI0L/////D4MiIyAjfkIgiCACrX5CIIinQX9zaiAUcCECAkACQAJAAkAgBCAVT0UEQAEgAiANIBRsaiAVTw0BIA5FBEABIAcgFU8NA0EAIQQDQCATIARqIgIgAikDACARQcAYaiAEaikDAIU3AwAgBEEIaiIEQYAIRw0ACwwFCyAHIBVJDQMACwALAAsACyABIAdBCnRqIBFBwBhqQYAI/AoAAAsgE0EAaiETIAciBEEBaiEHIBJBAWoiEiAISQ0ACwsgIkIBfCIiICdSDQALCyAhQgRSDQALIB8gJFINAAsLIBokACAZDwsACwALAAsACw=="
+const uremRegallocWasmBase64 = "AGFzbQEAAAABEgNgBH9/f38Bf2ABfwBgAn9/AAIWAQVyZXBybwx1cGRhdGVfbm9uY2UAAQMEAwIAAAUDAQARBgYBfwFBAAsHIQIPX19zdGFja19wb2ludGVyAwALZmlsbF9ibG9ja3MAAwq5CQMDAAALBABBEgutCQIafwt+IwAiBCEaIAQkACAAKAIQIhhBAnQiBEVFBEABQQYhGQJAAkACQAJAIAAoAggiEyAYQQN0IgcgEyAHSxsgBG4iCCAEbCIVIAJLIgYNACAIQQJ0IhRFDQMgACgCDCEJIBQgFSAVIBRwayIXS0UEQAEgFEEKdCEKQQAhCyABIQUDQCALIg5BAWohCyAXIBRrIRcgBSAKaiEFQQAhFkEAIQQDQCARQQQ2AtQIIBFBBDYCzAggEUHAADYCxAggESADNgLACCARIBY2AjwgESAONgJAIBEgEUHAAGo2AtAIIBEgEUE8ajYCyAggEUHAEGpBAEEB/AsAIBFBwAhqQQMgEUHAEGpBgAgQAiIZQf8BcUESRw0DIARBgAhqIQwgFkEBaiEWIBFBwBBqIQJBgAghBEEAIRNBgQEhBwNAIARBB00NBiAHQX9qIgdFDQUgEyACKQAANwMAIBNBAWohEyACIARBCCAEQQhJGyISaiECIAQgEmsiBA0ACyAMIgQgBEcNAAsgFCAXTQ0ACwtBEiEZIAlFDQBBACABIAYbIQ8gCEEDbCIXQX9qIQsgAC0AUCIErUIDgyEmQgEhJyAJrSEkIBWtIShCACEfIAAoAkRBEEYhGyAEIRADQCAfIiBCAXwhHyAbICBQIgxyIQ4gECAMcSEcQgAhIQNAICEhHiARQQFGBH9BAQUBIBwLIRYgHkIBfCEhIBhFRQRAASAeUCEdIAghAyAIIB6nbCEKIB4gIIRC/////w+DISVCACEiA0AgEUHAAGpBAEGACPwLACARQcAIakEAQYAI/AsAIBFBwBBqQQBBgAj8CwACfwJAAkAgFkVFBEABIBEgJjcD6AggESAkNwPgCCARICg3A9gIIBEgHjcD0AggESAiNwPICCARICA3A8AIICVQRQ0BDAILICVQDQELIBQgIqdsIApqIgcgHWohBEEAIRIgCiEGIBEMAQtBAiESIBQgIqdsQQJyIgchBEEBCyEAIBIgCE9FBEABIAYhCSAEQX9qIQQgASAHQQp0aiETICKnIQUDQAJAAkAgFkUEQAEgBCAVTw0BIA8gBEEKdGohAgwCCwJAIBJB/wBxIgINAAsgEUHAAGogAkEDdGohAgwBCwALIAIpAwAhIwJ/IAxFRQRAASAARUUEQAEgBSENIBJBf2oMAgsgIiAjQiCIpyAYcCINrVFFBEABIAYgEkVrDAILIAkgEmoMAQsgIiAjQiCIpyAYcCINrVFFBEABIBcgEkVrDAELIAsgEmoLIgIgA2ogI0L/////D4MiIyAjfkIgiCACrX5CIIinQX9zaiAUcCECAkACQAJAAkAgBCAVT0UEQAEgAiANIBRsaiAVTw0BIA5FBEABIAcgFU8NA0EAIQQDQCATIARqIgIgAikDACARQcAYaiAEaikDAIU3AwAgBEEIaiIEQYAIRw0ACwwFCyAHIBVJDQMACwALAAsACyABIAdBCnRqIBFBwBhqQYAI/AoAAAsgE0EAaiETIAciBEEBaiEHIBJBAWoiEiAISQ0ACwsgIkIBfCIiICdSDQALCyAhQgRSDQALIB8gJFINAAsLIBokACAZDwsACwALAAsACw=="
 
-// These runtime cases are ported from wazero's engine/adhoc_test.go and its
-// testdata modules at c0f3a4ec.
-func TestWazeroPortIntegerOverflowWraps(t *testing.T) {
+// These runtime cases pin arithmetic, memory, host-call, and ABI regressions.
+func TestIntegerOverflowWraps(t *testing.T) {
 	i32Min := append([]byte{0x41}, wasmtest.SLEB32(math.MinInt32)...)
 	i32Min = append(i32Min, 0x0b)
 	i64Min := append([]byte{0x42}, wasmtest.SLEB64(math.MinInt64)...)
@@ -42,7 +41,7 @@ func TestWazeroPortIntegerOverflowWraps(t *testing.T) {
 		)),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(i32Body), wasmtest.Code(i64Body))),
 	)
-	in := instantiateWazeroPortModule(t, mod)
+	in := instantiateRegressionModule(t, mod)
 	defer in.Close()
 	for _, name := range []string{"i32", "i64"} {
 		got, err := in.Invoke(name)
@@ -52,7 +51,7 @@ func TestWazeroPortIntegerOverflowWraps(t *testing.T) {
 	}
 }
 
-func TestWazeroPortGlobalI32UnsignedExtension(t *testing.T) {
+func TestGlobalI32UnsignedExtension(t *testing.T) {
 	init := append([]byte{0x41}, wasmtest.SLEB32(-1)...)
 	init = append(init, 0x0b)
 	mod := wasmtest.Module(
@@ -62,7 +61,7 @@ func TestWazeroPortGlobalI32UnsignedExtension(t *testing.T) {
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("extend", 0, 0))),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x23, 0x00, 0xad, 0x0b}))),
 	)
-	in := instantiateWazeroPortModule(t, mod)
+	in := instantiateRegressionModule(t, mod)
 	defer in.Close()
 	got, err := in.Invoke("extend")
 	if err != nil || len(got) != 1 || got[0] != math.MaxUint32 {
@@ -70,7 +69,7 @@ func TestWazeroPortGlobalI32UnsignedExtension(t *testing.T) {
 	}
 }
 
-func TestWazeroPortMemorySizeGrowAndBounds(t *testing.T) {
+func TestMemorySizeGrowAndBounds(t *testing.T) {
 	mod := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(
 			wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}),
@@ -91,7 +90,7 @@ func TestWazeroPortMemorySizeGrowAndBounds(t *testing.T) {
 			wasmtest.Code([]byte{0x20, 0x00, 0x42, 0x01, 0x37, 0x03, 0x00, 0x0b}),
 		)),
 	)
-	in := instantiateWazeroPortModule(t, mod)
+	in := instantiateRegressionModule(t, mod)
 	defer in.Close()
 	assertI32InvokeResult(t, in, "size", 0)
 	if _, err := in.Invoke("store", I32(0)); err == nil {
@@ -104,7 +103,7 @@ func TestWazeroPortMemorySizeGrowAndBounds(t *testing.T) {
 	}
 }
 
-func TestWazeroPortCompiledModuleInstantiationIsolation(t *testing.T) {
+func TestCompiledModuleInstantiationIsolation(t *testing.T) {
 	mod := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
 		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
@@ -142,7 +141,7 @@ func TestWazeroPortCompiledModuleInstantiationIsolation(t *testing.T) {
 	}
 }
 
-func TestWazeroPortHostFunctionSeesCallerMemory(t *testing.T) {
+func TestHostFunctionSeesCallerMemory(t *testing.T) {
 	funcImport := append(wasmtest.Name("host"), wasmtest.Name("store_int")...)
 	funcImport = append(funcImport, 0x00, 0x00) // function import, type 0
 	mod := wasmtest.Module(
@@ -186,7 +185,7 @@ func TestWazeroPortHostFunctionSeesCallerMemory(t *testing.T) {
 	}
 }
 
-func TestWazeroPortRecursiveHostReentry(t *testing.T) {
+func TestRecursiveHostReentry(t *testing.T) {
 	funcImport := append(wasmtest.Name("env"), wasmtest.Name("host_func")...)
 	funcImport = append(funcImport, 0x00, 0x00)
 	mainBody := []byte{
@@ -240,7 +239,7 @@ func TestWazeroPortRecursiveHostReentry(t *testing.T) {
 	}
 }
 
-func TestWazeroPortCallArityAndMultiResult(t *testing.T) {
+func TestCallArityAndMultiResult(t *testing.T) {
 	mod := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(
 			[]wasm.ValType{wasm.I64, wasm.I64}, []wasm.ValType{wasm.I64, wasm.I64},
@@ -249,7 +248,7 @@ func TestWazeroPortCallArityAndMultiResult(t *testing.T) {
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("func", 0, 0))),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, 0x20, 0x01, 0x0b}))),
 	)
-	in := instantiateWazeroPortModule(t, mod)
+	in := instantiateRegressionModule(t, mod)
 	defer in.Close()
 	got, err := in.Invoke("func", 1, 2)
 	if err != nil || len(got) != 2 || got[0] != 1 || got[1] != 2 {
@@ -263,13 +262,13 @@ func TestWazeroPortCallArityAndMultiResult(t *testing.T) {
 	}
 }
 
-func TestWazeroPortARM64UremRegalloc(t *testing.T) {
-	mod, err := base64.StdEncoding.DecodeString(wazeroUremRegallocWasmBase64)
+func TestARM64UremRegalloc(t *testing.T) {
+	mod, err := base64.StdEncoding.DecodeString(uremRegallocWasmBase64)
 	if err != nil {
 		t.Fatalf("decode upstream fixture: %v", err)
 	}
-	// Upstream grows the 17-page memory through wazero's host Memory.Grow API.
-	// Wago intentionally exposes growth only to wasm, so raise the encoded
+	// The original reproducer grows its 17-page memory through a host API. Wago
+	// intentionally exposes growth only to wasm, so raise the encoded
 	// initial size to 300 pages while leaving all function bytecode untouched.
 	oldMemorySection := []byte{0x05, 0x03, 0x01, 0x00, 0x11}
 	newMemorySection := []byte{0x05, 0x04, 0x01, 0x00, 0xac, 0x02}
@@ -306,21 +305,21 @@ func TestWazeroPortARM64UremRegalloc(t *testing.T) {
 	}
 }
 
-type wazeroCrossRuntimeImportExt struct{}
+type crossRuntimeImportExt struct{}
 
-func (wazeroCrossRuntimeImportExt) Info() ExtensionInfo {
-	return ExtensionInfo{ID: "test.wazero.cross-runtime", Version: "1.0.0", Stability: Stable}
+func (crossRuntimeImportExt) Info() ExtensionInfo {
+	return ExtensionInfo{ID: "test.cross-runtime", Version: "1.0.0", Stability: Stable}
 }
 
-func (wazeroCrossRuntimeImportExt) Register(reg *Registry) error {
+func (crossRuntimeImportExt) Register(reg *Registry) error {
 	reg.ImportModule("env").
 		Func("proxy", HostFunc(func(_ HostModule, p, r []uint64) { r[0] = p[1] })).
 		Params(ValI32, ValI64).Results(ValI64)
 	return nil
 }
 
-func TestWazeroPortHugeCallStackUnwindsToStartTrap(t *testing.T) {
-	mod, err := os.ReadFile(filepath.Join("..", "..", "testdata", "wazero", "engine", "huge_call_stack_unwind.wasm"))
+func TestHugeCallStackUnwindsToStartTrap(t *testing.T) {
+	mod, err := os.ReadFile(filepath.Join("..", "..", "tests", "regressions", "engine", "huge_call_stack_unwind.wasm"))
 	if err != nil {
 		t.Fatalf("read upstream fixture: %v", err)
 	}
@@ -339,7 +338,7 @@ func TestWazeroPortHugeCallStackUnwindsToStartTrap(t *testing.T) {
 	}
 }
 
-func TestWazeroPortCrossRuntimeInstantiationUsesStructuralImportTypes(t *testing.T) {
+func TestCrossRuntimeInstantiationUsesStructuralImportTypes(t *testing.T) {
 	funcImport := append(wasmtest.Name("env"), wasmtest.Name("proxy")...)
 	funcImport = append(funcImport, 0x00, 0x02) // function import, type index 2
 	mod := wasmtest.Module(
@@ -364,7 +363,7 @@ func TestWazeroPortCrossRuntimeInstantiationUsesStructuralImportTypes(t *testing
 
 	rt2 := NewRuntime()
 	defer rt2.Close()
-	if err := rt2.Use(wazeroCrossRuntimeImportExt{}); err != nil {
+	if err := rt2.Use(crossRuntimeImportExt{}); err != nil {
 		t.Fatalf("register runtime 2 import: %v", err)
 	}
 	in, err := rt2.Instantiate(context.Background(), compiled)
@@ -378,8 +377,8 @@ func TestWazeroPortCrossRuntimeInstantiationUsesStructuralImportTypes(t *testing
 	}
 }
 
-func TestWazeroPortHugeMixedValueStack(t *testing.T) {
-	mod, err := os.ReadFile(filepath.Join("..", "..", "testdata", "wazero", "engine", "hugestack.wasm"))
+func TestHugeMixedValueStack(t *testing.T) {
+	mod, err := os.ReadFile(filepath.Join("..", "..", "tests", "regressions", "engine", "hugestack.wasm"))
 	if err != nil {
 		t.Fatalf("read upstream fixture: %v", err)
 	}
@@ -420,7 +419,7 @@ func TestWazeroPortHugeMixedValueStack(t *testing.T) {
 	}
 }
 
-func instantiateWazeroPortModule(t *testing.T, mod []byte) *Instance {
+func instantiateRegressionModule(t *testing.T, mod []byte) *Instance {
 	t.Helper()
 	compiled, err := Compile(nil, mod)
 	if err != nil {

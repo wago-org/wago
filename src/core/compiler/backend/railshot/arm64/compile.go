@@ -1450,9 +1450,9 @@ func (f *fn) runBody(c *wasm.Func) error {
 // live in a call-clobbered register on top of the arg-register pins over-subscribed
 // the file: the call's arg-staging + setup ran out of free scratch and silently
 // corrupted a pinned local's value. The observable repro is sqlite's tokenizer —
-// every SQL keyword misreads as an identifier ("near \"SELECT\": syntax error") —
-// while wazero runs the same module correctly. Restricting pins to the callee-saved
-// block + the STACK_REG-managed X9/X10/X11 removes the hazard. See TestSyncSQLiteQuery.
+// every SQL keyword misreads as an identifier ("near \"SELECT\": syntax error").
+// Restricting pins to the callee-saved block plus the STACK_REG-managed
+// X9/X10/X11 removes the hazard. See TestSyncSQLiteQuery.
 //
 // X9/X10/X11 are still excluded in reg-ABI functions with >4 params (the internal
 // entry's incoming args would collide with the prologue's arg→pinned moves). X15

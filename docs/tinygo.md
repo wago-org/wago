@@ -48,7 +48,7 @@ TinyGo on Linux links with LLVM `lld`. Make sure `ld.lld` is on `PATH`
 tinygo build -scheduler=tasks -tags wago_runtime,wago_lean,wago_minimal \
   -o wago-runtime-minimal-tiny ./cli/wago
 
-./wago-runtime-minimal-tiny run tests/testdata/fib.wasm --invoke fib 20
+./wago-runtime-minimal-tiny run tests/fixtures/wasm/fib.wasm --invoke fib 20
 ```
 
 ## Scheduler: use `-scheduler=tasks`

@@ -16,12 +16,15 @@ installed explicitly so tests that need `wat2wasm` do not silently skip because
 the runner image lacks the tool.
 
 The three supported runtime targets run `make test`, which builds and tests every
-Go package, followed by `make test-corpus` with a bounded per-case timeout and
+Go package, including the integrated regression corpus, followed by
+`make test-corpus` with a bounded per-case timeout and
 `make simd` against the official SIMD proposal corpus. Their guard-page cells
 additionally run `make test-guard`. A separate mandatory Linux/amd64 **Core v2
 conformance** job installs WABT, initializes the pinned `tests/spec-v2`
 submodule, and runs `make spec2`; it is included in the final `CI` aggregate, so
 it cannot be replaced by a skipped ordinary wrapper or an informational report.
+This is a tooling distinction, not a second test suite: `make spec2` selects
+the same package tests that ordinary `go test ./...` discovers.
 Darwin/amd64 is a native portability check
 for architecture-neutral compiler and encoder packages; wago does not yet
 implement its JIT ABI or signal-backed guard pages for that target, so runtime,
@@ -70,7 +73,7 @@ variable, and store its private key in the `DOCS_SYNC_APP_PRIVATE_KEY` secret.
 If the App is unavailable, publishing still succeeds and the docs repository's
 scheduled reconciler recovers the release within its next polling interval.
 
-`scripts/dispatch-docs-release_test.sh` verifies the dispatch payload and input
+`tests/scripts/dispatch-docs-release.sh` verifies the dispatch payload and input
 validation without contacting GitHub.
 
 For a local native approximation, run:

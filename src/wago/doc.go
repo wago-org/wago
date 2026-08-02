@@ -13,8 +13,8 @@
 //
 // # Configuration
 //
-// RuntimeConfig tunes compilation, modeled on wazero's config: it is immutable,
-// so every WithXxx returns a copy and a base config can be shared safely. Compile
+// RuntimeConfig tunes compilation and is immutable, so every WithXxx returns a
+// copy and a base config can be shared safely. Compile
 // under a config with the fluent Compile method, CompileWithConfig, or
 // Compile(cfg, wasmBytes):
 //

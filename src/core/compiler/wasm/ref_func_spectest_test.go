@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wago-org/wago/internal/spectest"
+	"github.com/wago-org/wago/tests/spectest"
 )
 
 func TestRelease2RefFuncValidationSites(t *testing.T) {

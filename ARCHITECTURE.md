@@ -102,7 +102,12 @@ src/core/compiler/backend/railshot/  direct native codegen (Valent-Block)
 src/core/runtime/                 mmap, foreign stack, JobMemory, traps
 src/core/runtime/abi/             layout constants shared by codegen + runtime
 tests/spec/                       WebAssembly spec testsuite (submodule, MVP-pinned)
-tests/testdata/                   small checked-in wasm fixtures
+tests/spec-v2/                    WebAssembly 2.0 specification (submodule)
+tests/fixtures/                   small Wasm, benchmark, and parser fixtures
+tests/regressions/                pinned binary regression corpus
+tests/spectest/                   shared specification-test helpers
+tests/wasmtest/                   programmatic Wasm fixture builders
+tests/scripts/                    shell integration tests
 spectest_exec_test.go             wasm 1.0 conformance harness (+ SPECTEST.md)
 bench/                            benchmarks vs wazero (separate Go module)
 ```

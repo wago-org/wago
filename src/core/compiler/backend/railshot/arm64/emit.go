@@ -175,8 +175,8 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 	//   local.set $a (i32.add (local.get $b) (local.get $c))
 	//
 	// becomes ADD Wa, Wb, Wc rather than MOV Wa,Wb; ADD Wa,Wa,Wc.  This is the
-	// small, lifetime-aware part of wazero's allocator that fits Railshot's
-	// direct compiler: the source stays borrowed until this one instruction and
+	// lifetime-aware optimization that fits Railshot's direct compiler: the
+	// source stays borrowed until this one instruction and
 	// the destination's local lifetime begins immediately afterwards.  Restrict
 	// it to concrete RHS values so we never change deferred evaluation order or
 	// register-pressure behavior.

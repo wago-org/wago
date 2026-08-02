@@ -19,7 +19,7 @@ import (
 	"github.com/tetratelabs/wazero"
 	wago "github.com/wago-org/wago"
 	wasm "github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/testutil/wasmtest"
+	"github.com/wago-org/wago/tests/wasmtest"
 )
 
 const corpusChildMarker = "WAGO_CORPUS_OUTCOME="

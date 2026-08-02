@@ -12,14 +12,14 @@ import (
 	"time"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/testutil/wasmtest"
+	"github.com/wago-org/wago/tests/wasmtest"
 )
 
-func TestWazeroPortCallArityAndPreparedStack(t *testing.T) {
+func TestCallArityAndPreparedStack(t *testing.T) {
 	if !requireExternalWAT(t) {
 		return
 	}
-	in := mustInstantiateWazeroAdversarial(t, watToWasmCA(t, `(module
+	in := mustInstantiateAdversarial(t, watToWasmCA(t, `(module
   (func (export "add") (param i32 i32) (result i32)
     local.get 0
     local.get 1
@@ -43,7 +43,7 @@ func TestWazeroPortCallArityAndPreparedStack(t *testing.T) {
 	}
 }
 
-func TestWazeroPortImportedMutableGlobalUpdate(t *testing.T) {
+func TestImportedMutableGlobalUpdate(t *testing.T) {
 	if !requireExternalWAT(t) {
 		return
 	}
@@ -94,12 +94,12 @@ func TestWazeroPortImportedMutableGlobalUpdate(t *testing.T) {
 	}
 }
 
-func TestWazeroPortCallImportedHostFunctionIndirectly(t *testing.T) {
+func TestCallImportedHostFunctionIndirectly(t *testing.T) {
 	if !requireExternalWAT(t) {
 		return
 	}
 	calls := 0
-	in := mustInstantiateWazeroAdversarial(t, watToWasmCA(t, `(module
+	in := mustInstantiateAdversarial(t, watToWasmCA(t, `(module
   (type $host-type (func (param i32) (result i32)))
   (import "env" "host" (func $host (type $host-type)))
   (table 1 funcref)
@@ -118,7 +118,7 @@ func TestWazeroPortCallImportedHostFunctionIndirectly(t *testing.T) {
 	}
 }
 
-func TestWazeroPortMemoryGrowThroughHostReentry(t *testing.T) {
+func TestMemoryGrowThroughHostReentry(t *testing.T) {
 	type0 := wasmtest.FuncType(nil, nil)
 	imp := append(wasmtest.Name("env"), wasmtest.Name("reenter")...)
 	imp = append(imp, 0x00, 0x00)
@@ -161,7 +161,7 @@ func TestWazeroPortMemoryGrowThroughHostReentry(t *testing.T) {
 	}
 }
 
-func TestWazeroPortMemoryViewRemainsCoherentAcrossGrow(t *testing.T) {
+func TestMemoryViewRemainsCoherentAcrossGrow(t *testing.T) {
 	types := wasmtest.Vec(
 		wasmtest.FuncType([]wasm.ValType{wasm.I32}, nil),
 		wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}),
@@ -183,7 +183,7 @@ func TestWazeroPortMemoryViewRemainsCoherentAcrossGrow(t *testing.T) {
 			wasmtest.Code([]byte{0x41, 0x00, 0x28, 0x02, 0x00, 0x0b}),
 		)),
 	)
-	in := mustInstantiateWazeroAdversarial(t, mod, nil)
+	in := mustInstantiateAdversarial(t, mod, nil)
 	defer in.Close()
 	old := in.Memory().Bytes()
 	if _, err := in.Invoke("store", I32(0x11223344)); err != nil {
@@ -204,7 +204,7 @@ func TestWazeroPortMemoryViewRemainsCoherentAcrossGrow(t *testing.T) {
 	}
 }
 
-func requireWazeroInterruptedTrap(t *testing.T, err error) {
+func requireInterruptedTrap(t *testing.T, err error) {
 	t.Helper()
 	var trap *TrapError
 	if !errors.As(err, &trap) || trap.Code != TrapInterrupted {
@@ -212,12 +212,12 @@ func requireWazeroInterruptedTrap(t *testing.T, err error) {
 	}
 }
 
-func TestWazeroPortCloseWhileHostCallInFlight(t *testing.T) {
+func TestCloseWhileHostCallInFlight(t *testing.T) {
 	entered := make(chan struct{})
 	release := make(chan struct{})
 	var once sync.Once
-	mod := wazeroBlockingImportModule()
-	in := mustInstantiateWazeroAdversarial(t, mod, Imports{"env.block": HostFunc(func(_ HostModule, params, results []uint64) {
+	mod := blockingImportModule()
+	in := mustInstantiateAdversarial(t, mod, Imports{"env.block": HostFunc(func(_ HostModule, params, results []uint64) {
 		once.Do(func() { close(entered) })
 		<-release
 		results[0] = params[0]
@@ -249,7 +249,7 @@ func TestWazeroPortCloseWhileHostCallInFlight(t *testing.T) {
 	close(release)
 	select {
 	case err := <-callDone:
-		requireWazeroInterruptedTrap(t, err)
+		requireInterruptedTrap(t, err)
 	case <-time.After(5 * time.Second):
 		t.Fatal("in-flight call did not finish")
 	}
@@ -258,19 +258,19 @@ func TestWazeroPortCloseWhileHostCallInFlight(t *testing.T) {
 	}
 }
 
-func TestWazeroPortNestedHostPanicDoesNotCorruptRuntime(t *testing.T) {
+func TestNestedHostPanicDoesNotCorruptRuntime(t *testing.T) {
 	if !requireStandardGoTestRuntime(t) {
 		return
 	}
 	rt := NewRuntime()
 	defer rt.Close()
-	producerCode, err := rt.Compile(wazeroImportForwardModule("panic"))
+	producerCode, err := rt.Compile(importForwardModule("panic"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	producer, err := rt.Instantiate(context.Background(), producerCode, WithImports(Imports{"env.panic": HostFunc(func(_ HostModule, params, results []uint64) {
 		if AsI32(params[0]) == 0 {
-			panic(errors.New("wazero-port-host-panic"))
+			panic(errors.New("adversarial-host-panic"))
 		}
 		results[0] = I32(AsI32(params[0]) + 1)
 	})}))
@@ -282,7 +282,7 @@ func TestWazeroPortNestedHostPanicDoesNotCorruptRuntime(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	consumerCode, err := rt.Compile(wazeroForwardingImportModule())
+	consumerCode, err := rt.Compile(forwardingImportModule())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -295,7 +295,7 @@ func TestWazeroPortNestedHostPanicDoesNotCorruptRuntime(t *testing.T) {
 	func() {
 		defer func() {
 			r := recover()
-			if err, ok := r.(error); !ok || err.Error() != "wazero-port-host-panic" {
+			if err, ok := r.(error); !ok || err.Error() != "adversarial-host-panic" {
 				t.Fatalf("nested host panic = %T %v, want exact sentinel error", r, r)
 			}
 		}()
@@ -306,7 +306,7 @@ func TestWazeroPortNestedHostPanicDoesNotCorruptRuntime(t *testing.T) {
 	}
 }
 
-func TestWazeroPortCloseTableOwnerOrWriterKeepsEntriesCallable(t *testing.T) {
+func TestCloseTableOwnerOrWriterKeepsEntriesCallable(t *testing.T) {
 	if !requireExternalWAT(t) {
 		return
 	}
@@ -360,7 +360,7 @@ func TestWazeroPortCloseTableOwnerOrWriterKeepsEntriesCallable(t *testing.T) {
 	t.Run("close table owner", func(t *testing.T) {
 		rt := NewRuntime()
 		defer rt.Close()
-		owner, err := rt.Instantiate(context.Background(), mustCompileWazeroAdversarial(t, rt, initializedOwnerWAT))
+		owner, err := rt.Instantiate(context.Background(), mustCompileAdversarial(t, rt, initializedOwnerWAT))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -368,7 +368,7 @@ func TestWazeroPortCloseTableOwnerOrWriterKeepsEntriesCallable(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		consumer, err := rt.Instantiate(context.Background(), mustCompileWazeroAdversarial(t, rt, tableConsumerWAT), WithImports(Imports{"env.t": table}))
+		consumer, err := rt.Instantiate(context.Background(), mustCompileAdversarial(t, rt, tableConsumerWAT), WithImports(Imports{"env.t": table}))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -383,7 +383,7 @@ func TestWazeroPortCloseTableOwnerOrWriterKeepsEntriesCallable(t *testing.T) {
 	t.Run("close table writer", func(t *testing.T) {
 		rt := NewRuntime()
 		defer rt.Close()
-		owner, err := rt.Instantiate(context.Background(), mustCompileWazeroAdversarial(t, rt, tableOwnerWAT))
+		owner, err := rt.Instantiate(context.Background(), mustCompileAdversarial(t, rt, tableOwnerWAT))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -392,7 +392,7 @@ func TestWazeroPortCloseTableOwnerOrWriterKeepsEntriesCallable(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		writer, err := rt.Instantiate(context.Background(), mustCompileWazeroAdversarial(t, rt, tableWriterWAT), WithImports(Imports{"env.t": table}))
+		writer, err := rt.Instantiate(context.Background(), mustCompileAdversarial(t, rt, tableWriterWAT), WithImports(Imports{"env.t": table}))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -404,12 +404,12 @@ func TestWazeroPortCloseTableOwnerOrWriterKeepsEntriesCallable(t *testing.T) {
 	})
 }
 
-func TestWazeroPortCloseInterruptsInfiniteInvocation(t *testing.T) {
+func TestCloseInterruptsInfiniteInvocation(t *testing.T) {
 	if !requireExternalWAT(t) {
 		return
 	}
 	entered := make(chan struct{})
-	in := mustInstantiateWazeroAdversarial(t, watToWasmCA(t, `(module
+	in := mustInstantiateAdversarial(t, watToWasmCA(t, `(module
   (import "env" "entered" (func $entered))
   (func (export "infinite_loop")
     call $entered
@@ -431,13 +431,13 @@ func TestWazeroPortCloseInterruptsInfiniteInvocation(t *testing.T) {
 	}
 	select {
 	case err := <-callDone:
-		requireWazeroInterruptedTrap(t, err)
+		requireInterruptedTrap(t, err)
 	case <-time.After(5 * time.Second):
 		t.Fatal("Close did not interrupt the infinite invocation")
 	}
 }
 
-func TestWazeroPortHostCallbackClosesCallingModules(t *testing.T) {
+func TestHostCallbackClosesCallingModules(t *testing.T) {
 	for _, tc := range []struct {
 		name          string
 		closeProducer bool
@@ -452,7 +452,7 @@ func TestWazeroPortHostCallbackClosesCallingModules(t *testing.T) {
 			defer rt.Close()
 			var producer, consumer *Instance
 			var closeErr error
-			producerCode, err := rt.Compile(wazeroBlockingImportModule())
+			producerCode, err := rt.Compile(blockingImportModule())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -472,7 +472,7 @@ func TestWazeroPortHostCallbackClosesCallingModules(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			consumerCode, err := rt.Compile(wazeroForwardingImportModule())
+			consumerCode, err := rt.Compile(forwardingImportModule())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -485,7 +485,7 @@ func TestWazeroPortHostCallbackClosesCallingModules(t *testing.T) {
 				t.Fatalf("callback Close: %v", closeErr)
 			}
 			if tc.closeConsumer {
-				requireWazeroInterruptedTrap(t, err)
+				requireInterruptedTrap(t, err)
 			} else if err != nil || len(got) != 1 || AsI32(got[0]) != 5 {
 				t.Fatalf("call while only imported module closes = %v, %v; want 5", got, err)
 			}
@@ -505,10 +505,10 @@ func TestWazeroPortHostCallbackClosesCallingModules(t *testing.T) {
 	}
 }
 
-func TestWazeroPortCloseWhilePreparedCallInFlight(t *testing.T) {
+func TestCloseWhilePreparedCallInFlight(t *testing.T) {
 	entered := make(chan struct{})
 	release := make(chan struct{})
-	in := mustInstantiateWazeroAdversarial(t, wazeroBlockingImportModule(), Imports{"env.block": HostFunc(func(_ HostModule, params, results []uint64) {
+	in := mustInstantiateAdversarial(t, blockingImportModule(), Imports{"env.block": HostFunc(func(_ HostModule, params, results []uint64) {
 		close(entered)
 		<-release
 		results[0] = params[0]
@@ -536,7 +536,7 @@ func TestWazeroPortCloseWhilePreparedCallInFlight(t *testing.T) {
 	close(release)
 	select {
 	case err := <-callDone:
-		requireWazeroInterruptedTrap(t, err)
+		requireInterruptedTrap(t, err)
 	case <-time.After(5 * time.Second):
 		t.Fatal("prepared call did not finish")
 	}
@@ -545,7 +545,7 @@ func TestWazeroPortCloseWhilePreparedCallInFlight(t *testing.T) {
 	}
 }
 
-func TestWazeroPortCloseImportedOrImportingModuleWhileCallInFlight(t *testing.T) {
+func TestCloseImportedOrImportingModuleWhileCallInFlight(t *testing.T) {
 	for _, tc := range []struct {
 		name          string
 		closeProducer bool
@@ -561,7 +561,7 @@ func TestWazeroPortCloseImportedOrImportingModuleWhileCallInFlight(t *testing.T)
 			var once sync.Once
 			rt := NewRuntime()
 			defer rt.Close()
-			producerCode, err := rt.Compile(wazeroBlockingImportModule())
+			producerCode, err := rt.Compile(blockingImportModule())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -577,7 +577,7 @@ func TestWazeroPortCloseImportedOrImportingModuleWhileCallInFlight(t *testing.T)
 			if err != nil {
 				t.Fatal(err)
 			}
-			consumerCode, err := rt.Compile(wazeroForwardingImportModule())
+			consumerCode, err := rt.Compile(forwardingImportModule())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -613,7 +613,7 @@ func TestWazeroPortCloseImportedOrImportingModuleWhileCallInFlight(t *testing.T)
 			select {
 			case err := <-callDone:
 				if tc.closeConsumer {
-					requireWazeroInterruptedTrap(t, err)
+					requireInterruptedTrap(t, err)
 				} else if err != nil {
 					t.Fatalf("call while only imported module closes: %v", err)
 				}
@@ -626,11 +626,11 @@ func TestWazeroPortCloseImportedOrImportingModuleWhileCallInFlight(t *testing.T)
 	}
 }
 
-// This is the bounded-memory half of wazero's huge-binary regression: it keeps
-// the 40,000-function index/relocation layout while using small bodies. The
+// This bounded-memory huge-binary regression keeps the 40,000-function
+// index/relocation layout while using small bodies. The
 // arm64 backend's separate TestPatchCallRelocsRangeChecks pins BL displacement
 // boundaries without allocating the upstream test's hundreds-of-megabytes image.
-func TestWazeroPortManyFunctionRelocationLayout(t *testing.T) {
+func TestManyFunctionRelocationLayout(t *testing.T) {
 	const functionCount = 40000
 	const additions = 8
 	addBody := make([]byte, 0, additions*7+3)
@@ -666,7 +666,7 @@ func TestWazeroPortManyFunctionRelocationLayout(t *testing.T) {
 		)),
 		wasmtest.Section(10, wasmtest.Vec(codes...)),
 	)
-	in := mustInstantiateWazeroAdversarial(t, mod, nil)
+	in := mustInstantiateAdversarial(t, mod, nil)
 	defer in.Close()
 	for _, export := range []string{"first", "last"} {
 		got, err := in.Invoke(export, I32(0))
@@ -676,7 +676,7 @@ func TestWazeroPortManyFunctionRelocationLayout(t *testing.T) {
 	}
 }
 
-func TestWazeroPortRepeatedRuntimeCompileInstantiateDoesNotRetainHeap(t *testing.T) {
+func TestRepeatedRuntimeCompileInstantiateDoesNotRetainHeap(t *testing.T) {
 	mod := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
 		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
@@ -754,15 +754,15 @@ func TestWazeroPortRepeatedRuntimeCompileInstantiateDoesNotRetainHeap(t *testing
 	}
 }
 
-func wazeroBlockingImportModule() []byte {
-	return wazeroImportForwardModule("block")
+func blockingImportModule() []byte {
+	return importForwardModule("block")
 }
 
-func wazeroForwardingImportModule() []byte {
-	return wazeroImportForwardModule("target")
+func forwardingImportModule() []byte {
+	return importForwardModule("target")
 }
 
-func wazeroImportForwardModule(name string) []byte {
+func importForwardModule(name string) []byte {
 	sig := wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32})
 	imp := append(wasmtest.Name("env"), wasmtest.Name(name)...)
 	imp = append(imp, 0x00, 0x00)
@@ -775,7 +775,7 @@ func wazeroImportForwardModule(name string) []byte {
 	)
 }
 
-func mustCompileWazeroAdversarial(t *testing.T, rt *Runtime, wat string) *Module {
+func mustCompileAdversarial(t *testing.T, rt *Runtime, wat string) *Module {
 	t.Helper()
 	compiled, err := rt.Compile(watToWasmCA(t, wat))
 	if err != nil {
@@ -784,7 +784,7 @@ func mustCompileWazeroAdversarial(t *testing.T, rt *Runtime, wat string) *Module
 	return compiled
 }
 
-func mustInstantiateWazeroAdversarial(t *testing.T, mod []byte, imports Imports) *Instance {
+func mustInstantiateAdversarial(t *testing.T, mod []byte, imports Imports) *Instance {
 	t.Helper()
 	compiled, err := Compile(nil, mod)
 	if err != nil {

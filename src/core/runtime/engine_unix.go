@@ -175,8 +175,7 @@ func installTrapCell(linMem, trap []byte) {
 // normal enterNative; whenever native code parks at a host call (trap cell ==
 // hostCallPending), the bound host function is run here — on the goroutine stack,
 // in normal Go context, so arbitrary host code is safe (no foreign-stack /
-// morestack hazard) — and native code is resumed via resumeNative. This mirrors
-// wazero's host-call exec loop.
+// morestack hazard) — and native code is resumed via resumeNative.
 //
 // ctrl must point at an off-heap control frame of at least ctrlFrameSize bytes
 // whose address has been installed as the import ctx via JobMemory.SetCustomCtx.
@@ -241,7 +240,7 @@ func (e *Engine) callWithHostLoop(code uintptr, serArgs []byte, linMemBase uintp
 	// here as `tc != 0` — breaking the loop with the interrupt code rather than a
 	// synthetic "too many host calls" error. A guest with no deadline that spins
 	// on host calls forever is no different from one that spins on compute
-	// forever: both require the caller to arm a timeout, exactly as under wazero.
+	// forever: both require the caller to arm a timeout.
 	for first := true; ; first = false {
 		if first {
 			enterNative(code, slicePtr(serArgs), linMemBase, slicePtr(trap), slicePtr(results), e.stackTop)

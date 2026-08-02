@@ -8,39 +8,38 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/testutil/wasmtest"
+	"github.com/wago-org/wago/tests/wasmtest"
 )
 
-// TestWazeroPortManyParamsAndResults ports wazero's adversarial 100-value mixed
-// GP/FP/SIMD call graph from internal/integration_test/engine/adhoc_test.go. It
-// exercises 120 ABI slots per call, nested wrapper calls, reversed parameters,
+// TestManyParamsAndResults exercises an adversarial 100-value mixed GP/FP/SIMD
+// call graph: 120 ABI slots per call, nested wrapper calls, reversed parameters,
 // wide returns, and mixed arithmetic. Expectations are computed from WebAssembly
 // value semantics, not from Wago's output.
-func TestWazeroPortManyParamsAndResults(t *testing.T) {
-	mod, params := wazeroManyValuesModule()
-	in := instantiateWazeroPortModule(t, mod)
+func TestManyParamsAndResults(t *testing.T) {
+	mod, params := manyValuesModule()
+	in := instantiateRegressionModule(t, mod)
 	defer in.Close()
 
 	t.Run("many constants", func(t *testing.T) {
-		assertWazeroWideResults(t, in, "call_many_consts", nil, wazeroManyConstResults())
+		assertWideResults(t, in, "call_many_consts", nil, manyConstResults())
 	})
 	t.Run("last vector survives 100-value argument staging", func(t *testing.T) {
-		assertWazeroWideResults(t, in, "call_many_consts_and_pick_last_vector", nil,
+		assertWideResults(t, in, "call_many_consts_and_pick_last_vector", nil,
 			[]uint64{0x5f5f5f5f5f5f5f5f, 0x5f5f5f5f5f5f5f5f})
 	})
 	t.Run("swapper", func(t *testing.T) {
-		assertWazeroWideResults(t, in, "swapper", params, wazeroSwappedResults(params))
+		assertWideResults(t, in, "swapper", params, swappedResults(params))
 	})
 	t.Run("doubler", func(t *testing.T) {
-		assertWazeroWideResults(t, in, "doubler", params, wazeroDoubledResults(params))
+		assertWideResults(t, in, "doubler", params, doubledResults(params))
 	})
 	t.Run("nested main", func(t *testing.T) {
-		swapped := wazeroSwappedResults(params)
-		assertWazeroWideResults(t, in, "main", params, wazeroDoubledResults(swapped))
+		swapped := swappedResults(params)
+		assertWideResults(t, in, "main", params, doubledResults(swapped))
 	})
 }
 
-func assertWazeroWideResults(t *testing.T, in *Instance, export string, args, want []uint64) {
+func assertWideResults(t *testing.T, in *Instance, export string, args, want []uint64) {
 	t.Helper()
 	got, err := in.Invoke(export, args...)
 	if err != nil {
@@ -56,7 +55,7 @@ func assertWazeroWideResults(t *testing.T, in *Instance, export string, args, wa
 	}
 }
 
-func wazeroManyValuesModule() ([]byte, []uint64) {
+func manyValuesModule() ([]byte, []uint64) {
 	mainParams, mainResults := make([]wasm.ValType, 0, 100), make([]wasm.ValType, 0, 100)
 	swapParams, swapResults := make([]wasm.ValType, 0, 100), make([]wasm.ValType, 0, 100)
 	doubleParams, doubleResults := make([]wasm.ValType, 0, 100), make([]wasm.ValType, 0, 100)
@@ -157,7 +156,7 @@ func wazeroManyValuesModule() ([]byte, []uint64) {
 	return mod, params
 }
 
-func wazeroManyConstResults() []uint64 {
+func manyConstResults() []uint64 {
 	out := make([]uint64, 0, 120)
 	for i := byte(0); i < 100; i += 5 {
 		word32 := uint64(i) * 0x01010101
@@ -167,7 +166,7 @@ func wazeroManyConstResults() []uint64 {
 	return out
 }
 
-func wazeroSwappedResults(params []uint64) []uint64 {
+func swappedResults(params []uint64) []uint64 {
 	out := make([]uint64, 0, len(params))
 	for group := 19; group >= 0; group-- {
 		base := group * 6
@@ -182,7 +181,7 @@ func wazeroSwappedResults(params []uint64) []uint64 {
 	return out
 }
 
-func wazeroDoubledResults(params []uint64) []uint64 {
+func doubledResults(params []uint64) []uint64 {
 	out := make([]uint64, 0, len(params))
 	for group := 0; group < 20; group++ {
 		base := group * 6

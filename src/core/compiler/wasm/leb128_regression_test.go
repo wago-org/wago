@@ -5,9 +5,9 @@ import (
 	"testing"
 )
 
-// TestWazeroPortLEB128Decoding ports the decoder boundary tables from
-// wazero/internal/leb128/leb128_test.go at c0f3a4ec.
-func TestWazeroPortLEB128NoAlloc(t *testing.T) {
+// These cases pin signed, unsigned, malformed, and allocation-free LEB128
+// decoding at the Reader boundary.
+func TestLEB128NoAlloc(t *testing.T) {
 	data := []byte{0x80, 0x80, 0x80, 0x4f}
 	assertZero := func(name string, fn func() error) {
 		t.Helper()
@@ -26,7 +26,7 @@ func TestWazeroPortLEB128NoAlloc(t *testing.T) {
 	assertZero("i64", func() error { r := Reader{data: data}; _, err := r.I64(); return err })
 }
 
-func TestWazeroPortLEB128Decoding(t *testing.T) {
+func TestLEB128Decoding(t *testing.T) {
 	t.Run("u32", func(t *testing.T) {
 		tests := []struct {
 			in      []byte

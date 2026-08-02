@@ -7,13 +7,13 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/testutil/wasmtest"
+	"github.com/wago-org/wago/tests/wasmtest"
 )
 
-// Port of wazero's concurrent compilation, instantiation, and execution hammer.
-// Each worker builds distinct code and checks an exact arithmetic oracle; sharing
-// one Runtime makes registry/config/compiler races observable under -race.
-func TestWazeroPortConcurrentCompileInstantiateExecute(t *testing.T) {
+// Each worker builds distinct code and checks an exact arithmetic oracle;
+// sharing one Runtime makes registry/config/compiler races observable under
+// -race.
+func TestConcurrentCompileInstantiateExecute(t *testing.T) {
 	workers := 16
 	iterations := 50
 	if testing.Short() {

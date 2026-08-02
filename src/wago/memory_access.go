@@ -17,7 +17,7 @@ import (
 //
 // Each Read returns ok=false (and the zero value) when [offset, offset+size)
 // falls outside linear memory; each Write returns false and writes nothing. This
-// mirrors wazero's api.Memory bounds contract. Every public accessor also holds
+// uses an offset-plus-length bounds contract. Every public accessor also holds
 // an invocation lease, so Instance.Close cannot recycle the backing JobMemory
 // until an access that linearized first has completed.
 

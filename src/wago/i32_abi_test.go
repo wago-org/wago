@@ -5,14 +5,13 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/testutil/wasmtest"
+	"github.com/wago-org/wago/tests/wasmtest"
 )
 
-// TestWazeroPortI32UpperBits ports wazero's i32_upper_bits integration test at
-// c0f3a4ec. WebAssembly i32 operations must ignore dirty bits in the upper half
-// of public uint64 value slots, including address and zero-divisor checks.
-func TestWazeroPortI32UpperBits(t *testing.T) {
-	mod := wazeroI32UpperBitsModule()
+// WebAssembly i32 operations must ignore dirty bits in the upper half of public
+// uint64 value slots, including address and zero-divisor checks.
+func TestI32UpperBits(t *testing.T) {
+	mod := i32UpperBitsModule()
 	compiled, err := Compile(nil, mod)
 	if err != nil {
 		t.Fatalf("compile: %v", err)
@@ -100,7 +99,7 @@ func TestWazeroPortI32UpperBits(t *testing.T) {
 	}
 }
 
-func wazeroI32UpperBitsModule() []byte {
+func i32UpperBitsModule() []byte {
 	unary := wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32})
 	binary := wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32})
 	names := []string{

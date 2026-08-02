@@ -7,15 +7,15 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/testutil/wasmtest"
+	"github.com/wago-org/wago/tests/wasmtest"
 )
 
-// These focused cases pin the slot-width invariant exposed by wazero's huge
-// mixed stack: consuming call operands must preserve the logical types and the
-// two-slot width of a v128 value below them.
-func TestWazeroPortV128BelowRegisterCalls(t *testing.T) {
+// These focused cases pin the mixed-stack slot-width invariant: consuming call
+// operands must preserve the logical types and the two-slot width of a v128
+// value below them.
+func TestV128BelowRegisterCalls(t *testing.T) {
 	const lo, hi = uint64(0x0123456789abcdef), uint64(0xfedcba9876543210)
-	vec := wazeroStackWidthV128Const(lo, hi)
+	vec := stackWidthV128Const(lo, hi)
 
 	t.Run("integer register ABI", func(t *testing.T) {
 		caller := append([]byte(nil), vec...)
@@ -32,7 +32,7 @@ func TestWazeroPortV128BelowRegisterCalls(t *testing.T) {
 				wasmtest.Code(caller),
 			)),
 		)
-		assertWazeroStackWidthVector(t, mod, nil, lo, hi)
+		assertStackWidthVector(t, mod, nil, lo, hi)
 	})
 
 	t.Run("mixed register ABI", func(t *testing.T) {
@@ -54,7 +54,7 @@ func TestWazeroPortV128BelowRegisterCalls(t *testing.T) {
 				wasmtest.Code(caller),
 			)),
 		)
-		assertWazeroStackWidthVector(t, mod, nil, lo, hi)
+		assertStackWidthVector(t, mod, nil, lo, hi)
 	})
 
 	t.Run("void host call", func(t *testing.T) {
@@ -79,14 +79,14 @@ func TestWazeroPortV128BelowRegisterCalls(t *testing.T) {
 				t.Errorf("host params = %v, want [42]", params)
 			}
 		})}
-		assertWazeroStackWidthVector(t, mod, imports, lo, hi)
+		assertStackWidthVector(t, mod, imports, lo, hi)
 		if calls != 1 {
 			t.Fatalf("host calls = %d, want 1", calls)
 		}
 	})
 }
 
-func wazeroStackWidthV128Const(lo, hi uint64) []byte {
+func stackWidthV128Const(lo, hi uint64) []byte {
 	out := []byte{0xfd, 0x0c}
 	var bits [16]byte
 	binary.LittleEndian.PutUint64(bits[:8], lo)
@@ -94,7 +94,7 @@ func wazeroStackWidthV128Const(lo, hi uint64) []byte {
 	return append(out, bits[:]...)
 }
 
-func assertWazeroStackWidthVector(t *testing.T, mod []byte, imports Imports, wantLo, wantHi uint64) {
+func assertStackWidthVector(t *testing.T, mod []byte, imports Imports, wantLo, wantHi uint64) {
 	t.Helper()
 	compiled, err := Compile(nil, mod)
 	if err != nil {

@@ -10,34 +10,34 @@ import (
 	"testing"
 )
 
-type wazeroProposalValue struct {
+type proposalFixtureValue struct {
 	Type  string `json:"type"`
 	Value string `json:"value"`
 }
 
-type wazeroProposalAction struct {
-	Type   string                `json:"type"`
-	Module string                `json:"module"`
-	Field  string                `json:"field"`
-	Args   []wazeroProposalValue `json:"args"`
+type proposalFixtureAction struct {
+	Type   string                 `json:"type"`
+	Module string                 `json:"module"`
+	Field  string                 `json:"field"`
+	Args   []proposalFixtureValue `json:"args"`
 }
 
-type wazeroProposalFile struct {
+type proposalFixtureFile struct {
 	Commands []struct {
-		Type       string                `json:"type"`
-		Line       int                   `json:"line"`
-		Filename   string                `json:"filename"`
-		ModuleType string                `json:"module_type"`
-		Name       string                `json:"name"`
-		As         string                `json:"as"`
-		Action     wazeroProposalAction  `json:"action"`
-		Expected   []wazeroProposalValue `json:"expected"`
-		Text       string                `json:"text"`
+		Type       string                 `json:"type"`
+		Line       int                    `json:"line"`
+		Filename   string                 `json:"filename"`
+		ModuleType string                 `json:"module_type"`
+		Name       string                 `json:"name"`
+		As         string                 `json:"as"`
+		Action     proposalFixtureAction  `json:"action"`
+		Expected   []proposalFixtureValue `json:"expected"`
+		Text       string                 `json:"text"`
 	} `json:"commands"`
 }
 
-func TestWazeroPortUnsupportedProposalCorporaFailClosed(t *testing.T) {
-	root := filepath.Clean("../../testdata/wazero/spectest-proposals")
+func TestUnsupportedProposalCorporaFailClosed(t *testing.T) {
+	root := filepath.Clean("../../tests/regressions/spectest-proposals")
 	type proposalWant struct {
 		files, accepted, unsupported, invalid, negativeInstantiation, malformedBinary, malformedText int
 	}
@@ -69,7 +69,7 @@ func TestWazeroPortUnsupportedProposalCorporaFailClosed(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				var sf wazeroProposalFile
+				var sf proposalFixtureFile
 				if err := json.Unmarshal(raw, &sf); err != nil {
 					t.Fatalf("decode %s: %v", filepath.Base(jsonPath), err)
 				}

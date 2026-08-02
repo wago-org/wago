@@ -85,7 +85,7 @@ Run the Linux architecture-specific gates on native amd64 and arm64 machines
 (qemu-user is also useful for arm64 context-layout regression coverage):
 
 ```sh
-go test ./src/wago -run 'Test(CallContextInterruptsNativeLoop|InvokeContextInterruptsNativeLoop|InvokeContextInterruptsHostCallLoop|KernelDeadlineInterruptsDuringStopTheWorld|WazeroPortCloseInterruptsInfiniteInvocation|PublicCompileOmitsCooperativeInterruptPolls)$'
+go test ./src/wago -run 'Test(CallContextInterruptsNativeLoop|InvokeContextInterruptsNativeLoop|InvokeContextInterruptsHostCallLoop|KernelDeadlineInterruptsDuringStopTheWorld|CloseInterruptsInfiniteInvocation|PublicCompileOmitsCooperativeInterruptPolls)$'
 go test ./src/core/runtime ./src/wago
 ```
 

@@ -154,7 +154,7 @@ runs and reports average, median, and max duration for the validator path:
 ```bash
 cd bench
 go run ./cmd/validatestats -runs 30 -warmup 5         # full corpus
-go run ./cmd/validatestats -file ../tests/testdata/fib.wasm
+go run ./cmd/validatestats -file ../tests/fixtures/wasm/fib.wasm
 ```
 
 The measured path is the default serial `wago validate <file>` flow:

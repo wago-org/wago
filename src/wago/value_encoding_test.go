@@ -6,10 +6,9 @@ import (
 	"testing"
 )
 
-// These cases are ported from wazero/api/wasm_test.go at c0f3a4ec. Wago's
-// reference values are deliberately opaque, so wazero's uintptr externref
-// round-trip is represented by the null/reference-type assertions below.
-func TestWazeroPortValTypeString(t *testing.T) {
+// Wago's reference values are deliberately opaque, so reference round-trips
+// are represented by the null/reference-type assertions below.
+func TestValTypeString(t *testing.T) {
 	tests := []struct {
 		name string
 		in   ValType
@@ -33,7 +32,7 @@ func TestWazeroPortValTypeString(t *testing.T) {
 	}
 }
 
-func TestWazeroPortOpaqueNullReferences(t *testing.T) {
+func TestOpaqueNullReferences(t *testing.T) {
 	if !NullFuncRef().IsNull() {
 		t.Fatal("NullFuncRef is not null")
 	}
@@ -42,7 +41,7 @@ func TestWazeroPortOpaqueNullReferences(t *testing.T) {
 	}
 }
 
-func TestWazeroPortEncodeDecodeF32(t *testing.T) {
+func TestEncodeDecodeF32(t *testing.T) {
 	for _, v := range []float32{
 		0, 100, -100, 1, -1,
 		100.01234124, -100.01234124, 200.12315,
@@ -67,7 +66,7 @@ func TestWazeroPortEncodeDecodeF32(t *testing.T) {
 	}
 }
 
-func TestWazeroPortEncodeDecodeF64(t *testing.T) {
+func TestEncodeDecodeF64(t *testing.T) {
 	for _, v := range []float64{
 		0, 100, -100, 1, -1,
 		100.01234124, -100.01234124, 200.12315,
@@ -92,7 +91,7 @@ func TestWazeroPortEncodeDecodeF64(t *testing.T) {
 	}
 }
 
-func TestWazeroPortEncodeDecodeI32(t *testing.T) {
+func TestEncodeDecodeI32(t *testing.T) {
 	minI32 := int32(math.MinInt32)
 	for _, v := range []int32{0, 100, -100, 1, -1, math.MaxInt32, math.MinInt32} {
 		t.Run(fmt.Sprintf("%d", v), func(t *testing.T) {
@@ -123,7 +122,7 @@ func TestWazeroPortEncodeDecodeI32(t *testing.T) {
 	}
 }
 
-func TestWazeroPortEncodeDecodeI64(t *testing.T) {
+func TestEncodeDecodeI64(t *testing.T) {
 	for _, v := range []int64{0, 100, -100, 1, -1, math.MaxInt64, math.MinInt64} {
 		t.Run(fmt.Sprintf("%d", v), func(t *testing.T) {
 			if got := AsI64(I64(v)); got != v {
@@ -133,7 +132,7 @@ func TestWazeroPortEncodeDecodeI64(t *testing.T) {
 	}
 }
 
-func TestWazeroPortEncodeDecodeU32Slots(t *testing.T) {
+func TestEncodeDecodeU32Slots(t *testing.T) {
 	for _, v := range []uint32{0, 100, 1, 1 << 31, math.MaxInt32, math.MaxUint32} {
 		t.Run(fmt.Sprintf("%d", v), func(t *testing.T) {
 			encoded := I32(int32(v))
