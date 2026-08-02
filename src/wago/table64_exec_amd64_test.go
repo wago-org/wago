@@ -658,10 +658,10 @@ func TestStagedTable64LocalGetSetSizeAndProductRoundTrip(t *testing.T) {
 		}
 	}
 	for _, index := range []uint64{2, 1 << 32, ^uint64(0)} {
-		if _, err := in.Invoke("is_null", index); err == nil || !strings.Contains(err.Error(), "indirect call out of bounds") {
+		if _, err := in.Invoke("is_null", index); err == nil || !strings.Contains(err.Error(), "table access out of bounds") {
 			t.Fatalf("table64.get(%d) error = %v", index, err)
 		}
-		if _, err := in.Invoke("clear", index); err == nil || !strings.Contains(err.Error(), "indirect call out of bounds") {
+		if _, err := in.Invoke("clear", index); err == nil || !strings.Contains(err.Error(), "table access out of bounds") {
 			t.Fatalf("table64.set(%d) error = %v", index, err)
 		}
 	}
