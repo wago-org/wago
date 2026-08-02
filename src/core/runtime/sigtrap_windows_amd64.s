@@ -39,8 +39,10 @@ scan:
 	CMPQ	CX, AX
 	JLS	outofbounds
 
-	MOVQ	R14, CX
-	ANDQ	$-65536, CX
+	// Commit the wasm page relative to linMem. linMem is host-page aligned but
+	// intentionally not required to share Windows' 64 KiB allocation alignment.
+	ANDQ	$-65536, AX
+	LEAQ	(BX)(AX*1), CX
 	MOVQ	$65536, DX
 	MOVQ	$0x1000, R8             // MEM_COMMIT
 	MOVQ	$4, R9                  // PAGE_READWRITE

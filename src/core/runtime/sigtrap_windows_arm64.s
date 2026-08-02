@@ -40,8 +40,9 @@ scan:
 	CMP	R2, R1
 	BHS	outofbounds
 
-	MOVD	R21, R0
+	MOVD	R1, R0
 	AND	$-65536, R0
+	ADD	R9, R0
 	MOVD	$65536, R1
 	MOVD	$0x1000, R2             // MEM_COMMIT
 	MOVD	$4, R3                  // PAGE_READWRITE
