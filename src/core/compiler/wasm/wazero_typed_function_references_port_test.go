@@ -8,7 +8,7 @@ import (
 )
 
 func TestWazeroPortTypedFunctionReferenceValidationEdges(t *testing.T) {
-	root := filepath.Clean("../../../../testdata/wazero/spectest-proposals/typed-function-references")
+	root := filepath.Clean("../../../../tests/regressions/spectest-proposals/typed-function-references")
 	for _, tc := range []struct {
 		file string
 		code ValidationErrorCode
