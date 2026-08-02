@@ -1,0 +1,4 @@
+{"source_filename": "testdata/wasmtime/wasm2/mul16-negative/source.wast",
+ "commands": [
+  {"type": "module", "line": 1, "filename": "commands.0.wasm"}, 
+  {"type": "assert_return", "line": 10, "action": {"type": "invoke", "field": "mul16", "args": [{"type": "i32", "value": "100"}]}, "expected": [{"type": "i32", "value": "4294960028"}]}]}

@@ -1,0 +1,326 @@
+# upstream-path	status	reason
+# Exact inventory of every .wast under PROVENANCE.json source_root.
+aarch64-extr.wast	ported	portable core regression listed in MANIFEST.tsv
+add.wast	ported	portable core regression listed in MANIFEST.tsv
+alias-region-imported-globals.wast	ported	portable core regression listed in MANIFEST.tsv
+alias-region-imported-memories.wast	out-of-scope	multi-memory proposal is not supported
+alias-region-imported-tables.wast	ported	portable core regression listed in MANIFEST.tsv
+alias-region-memory-copy.wast	ported	portable core regression listed in MANIFEST.tsv
+big-memory-behavior.wast	excluded	classic memory exceeds Wago 65535-page executable ceiling
+bit-and-conditions.wast	ported	portable core regression listed in MANIFEST.tsv
+br-table-fuzzbug.wast	ported	portable core regression listed in MANIFEST.tsv
+branch-hinting-invalid.wast	ported	portable core regression listed in MANIFEST.tsv
+branch-hinting.wast	ported	portable core regression listed in MANIFEST.tsv
+call_indirect.wast	ported	portable core regression listed in MANIFEST.tsv
+canonicalize-nan-scalar.wast	excluded	Wasmtime-specific NaN canonicalization engine option
+component-model-threading/drop-subtask-on-separate-thread.wast	out-of-scope	component model threading is outside the core runtime
+component-model-threading/many-threads-indexed.wast	out-of-scope	component model threading is outside the core runtime
+component-model-threading/stackful-cancellation.wast	out-of-scope	component model threading is outside the core runtime
+component-model-threading/subtask-drop-multithreaded.wast	out-of-scope	component model threading is outside the core runtime
+component-model-threading/suspend-trap.wast	out-of-scope	component model threading is outside the core runtime
+component-model-threading/thread-new-indirect-multi-table.wast	out-of-scope	component model threading is outside the core runtime
+component-model-threading/threading-builtins.wast	out-of-scope	component model threading is outside the core runtime
+component-model-threading/threading-trap-in-post-return.wast	out-of-scope	component model threading is outside the core runtime
+component-model-threading/yield-cancellable.wast	out-of-scope	component model threading is outside the core runtime
+component-model/adapter.wast	out-of-scope	component model is outside the core runtime
+component-model/aliasing.wast	out-of-scope	component model is outside the core runtime
+component-model/async/async-builtins.wast	out-of-scope	component model is outside the core runtime
+component-model/async/backpressure-deadlock.wast	out-of-scope	component model is outside the core runtime
+component-model/async/backpressure-overflow.wast	out-of-scope	component model is outside the core runtime
+component-model/async/callback-yield-then-exit.wast	out-of-scope	component model is outside the core runtime
+component-model/async/cancel-host.wast	out-of-scope	component model is outside the core runtime
+component-model/async/cancel-sibling-subtask.wast	out-of-scope	component model is outside the core runtime
+component-model/async/cancel-starting-subtask-does-not-leak.wast	out-of-scope	component model is outside the core runtime
+component-model/async/cancel-sync-and-waitable.wast	out-of-scope	component model is outside the core runtime
+component-model/async/drop-deadlock.wast	out-of-scope	component model is outside the core runtime
+component-model/async/drop-host.wast	out-of-scope	component model is outside the core runtime
+component-model/async/drop-waitable-set-stackful.wast	out-of-scope	component model is outside the core runtime
+component-model/async/error-context.wast	out-of-scope	component model is outside the core runtime
+component-model/async/exceptions.wast	out-of-scope	component model is outside the core runtime
+component-model/async/fused.wast	out-of-scope	component model is outside the core runtime
+component-model/async/future-cancel-read-dropped.wast	out-of-scope	component model is outside the core runtime
+component-model/async/future-cancel-write-completed.wast	out-of-scope	component model is outside the core runtime
+component-model/async/future-cancel-write-dropped.wast	out-of-scope	component model is outside the core runtime
+component-model/async/future-drop-writable-after-notified-drop.wast	out-of-scope	component model is outside the core runtime
+component-model/async/future-read.wast	out-of-scope	component model is outside the core runtime
+component-model/async/futures-must-write.wast	out-of-scope	component model is outside the core runtime
+component-model/async/futures-must-write2.wast	out-of-scope	component model is outside the core runtime
+component-model/async/futures.wast	out-of-scope	component model is outside the core runtime
+component-model/async/intra-futures.wast	out-of-scope	component model is outside the core runtime
+component-model/async/intra-streams.wast	out-of-scope	component model is outside the core runtime
+component-model/async/join-during-sync-read.wast	out-of-scope	component model is outside the core runtime
+component-model/async/lift.wast	out-of-scope	component model is outside the core runtime
+component-model/async/lower.wast	out-of-scope	component model is outside the core runtime
+component-model/async/many-params-with-retptr.wast	out-of-scope	component model is outside the core runtime
+component-model/async/partial-stream-copies.wast	out-of-scope	component model is outside the core runtime
+component-model/async/reenter-during-yield.wast	out-of-scope	component model is outside the core runtime
+component-model/async/reentrance.wast	out-of-scope	component model is outside the core runtime
+component-model/async/stackful.wast	out-of-scope	component model is outside the core runtime
+component-model/async/stream-big-read-and-writes.wast	out-of-scope	component model is outside the core runtime
+component-model/async/stream-cancel-finished-op.wast	out-of-scope	component model is outside the core runtime
+component-model/async/stream-zero-ops.wast	out-of-scope	component model is outside the core runtime
+component-model/async/streams-massive-send.wast	out-of-scope	component model is outside the core runtime
+component-model/async/streams.wast	out-of-scope	component model is outside the core runtime
+component-model/async/subtask-wait.wast	out-of-scope	component model is outside the core runtime
+component-model/async/sync-and-async-waitable.wast	out-of-scope	component model is outside the core runtime
+component-model/async/sync-call-context-slots.wast	out-of-scope	component model is outside the core runtime
+component-model/async/sync-call-context-trap.wast	out-of-scope	component model is outside the core runtime
+component-model/async/sync-call-context.wast	out-of-scope	component model is outside the core runtime
+component-model/async/sync-streams.wast	out-of-scope	component model is outside the core runtime
+component-model/async/task-builtins.wast	out-of-scope	component model is outside the core runtime
+component-model/async/task-deletion.wast	out-of-scope	component model is outside the core runtime
+component-model/async/task-return-traps.wast	out-of-scope	component model is outside the core runtime
+component-model/async/trap-if-done.wast	out-of-scope	component model is outside the core runtime
+component-model/async/trap-if-transfer-in-waitable-set.wast	out-of-scope	component model is outside the core runtime
+component-model/async/wait-forever.wast	out-of-scope	component model is outside the core runtime
+component-model/async/wait-forever2.wast	out-of-scope	component model is outside the core runtime
+component-model/async/waitable-set-stale-entry.wast	out-of-scope	component model is outside the core runtime
+component-model/async/yield-when-cancelled.wast	out-of-scope	component model is outside the core runtime
+component-model/big-strings.wast	out-of-scope	component model is outside the core runtime
+component-model/enum_discriminant.wast	out-of-scope	component model is outside the core runtime
+component-model/enums.wast	out-of-scope	component model is outside the core runtime
+component-model/error-context-trap-in-post-return.wast	out-of-scope	component model is outside the core runtime
+component-model/exceptions.wast	out-of-scope	component model is outside the core runtime
+component-model/fixed_length_lists.wast	out-of-scope	component model is outside the core runtime
+component-model/gc/empty.wast	out-of-scope	component model is outside the core runtime
+component-model/implements-disabled.wast	out-of-scope	component model is outside the core runtime
+component-model/implements.wast	out-of-scope	component model is outside the core runtime
+component-model/import.wast	out-of-scope	component model is outside the core runtime
+component-model/instance.wast	out-of-scope	component model is outside the core runtime
+component-model/linking.wast	out-of-scope	component model is outside the core runtime
+component-model/map-types.wast	out-of-scope	component model is outside the core runtime
+component-model/memory64.wast	out-of-scope	component model is outside the core runtime
+component-model/modules.wast	out-of-scope	component model is outside the core runtime
+component-model/nested-many-instantiations.wast	out-of-scope	component model is outside the core runtime
+component-model/nested.wast	out-of-scope	component model is outside the core runtime
+component-model/resources.wast	out-of-scope	component model is outside the core runtime
+component-model/restrictions.wast	out-of-scope	component model is outside the core runtime
+component-model/simple.wast	out-of-scope	component model is outside the core runtime
+component-model/string-transcode-invalid.wast	out-of-scope	component model is outside the core runtime
+component-model/strings.wast	out-of-scope	component model is outside the core runtime
+component-model/tags.wast	out-of-scope	component model is outside the core runtime
+component-model/trap.wast	out-of-scope	component model is outside the core runtime
+component-model/types.wast	out-of-scope	component model is outside the core runtime
+control-flow.wast	ported	portable core regression listed in MANIFEST.tsv
+custom-page-sizes/custom-page-sizes-invalid.wast	out-of-scope	custom page sizes proposal is not supported
+custom-page-sizes/custom-page-sizes.wast	out-of-scope	custom page sizes proposal is not supported
+custom-page-sizes/max-size-invalid-shared-memory.wast	out-of-scope	custom page sizes proposal is not supported
+custom-page-sizes/max-size-invalid.wast	out-of-scope	custom page sizes proposal is not supported
+div-rem.wast	ported	portable core regression listed in MANIFEST.tsv
+elem-ref-null.wast	ported	portable core regression listed in MANIFEST.tsv
+elem_drop.wast	ported	portable core regression listed in MANIFEST.tsv
+embenchen_fannkuch.wast	ported	portable core regression listed in MANIFEST.tsv
+embenchen_fasta.wast	ported	portable core regression listed in MANIFEST.tsv
+embenchen_ifs.wast	ported	portable core regression listed in MANIFEST.tsv
+embenchen_primes.wast	ported	portable core regression listed in MANIFEST.tsv
+empty.wast	ported	portable core regression listed in MANIFEST.tsv
+export-large-signature.wast	ported	portable core regression listed in MANIFEST.tsv
+externref-id-function.wast	ported	portable core regression listed in MANIFEST.tsv
+externref-segment.wast	ported	portable core regression listed in MANIFEST.tsv
+externref-table-dropped-segment-issue-8281.wast	ported	portable core regression listed in MANIFEST.tsv
+f64-copysign.wast	ported	portable core regression listed in MANIFEST.tsv
+fib.wast	ported	portable core regression listed in MANIFEST.tsv
+float-round-doesnt-load-too-much.wast	ported	portable core regression listed in MANIFEST.tsv
+func-400-params.wast	ported	portable core regression listed in MANIFEST.tsv
+function-references/call_indirect.wast	out-of-scope	typed function references proposal is not supported
+function-references/instance.wast	out-of-scope	typed function references proposal is not supported
+function-references/table_fill.wast	out-of-scope	typed function references proposal is not supported
+function-references/table_get.wast	out-of-scope	typed function references proposal is not supported
+function-references/table_grow.wast	out-of-scope	typed function references proposal is not supported
+function-references/table_set.wast	out-of-scope	typed function references proposal is not supported
+gc/active-space-end-readonly.wast	out-of-scope	GC proposal is not supported
+gc/alias-region-array-copy.wast	out-of-scope	GC proposal is not supported
+gc/alias-region-table-copy.wast	out-of-scope	GC proposal is not supported
+gc/alloc-v128-struct.wast	out-of-scope	GC proposal is not supported
+gc/anyref_that_is_i31_barriers.wast	out-of-scope	GC proposal is not supported
+gc/array-alloc-too-large.wast	out-of-scope	GC proposal is not supported
+gc/array-copy-gc-refs.wast	out-of-scope	GC proposal is not supported
+gc/array-copy-inline.wast	out-of-scope	GC proposal is not supported
+gc/array-copy-non-gc-refs.wast	out-of-scope	GC proposal is not supported
+gc/array-copy-overwrite-i31.wast	out-of-scope	GC proposal is not supported
+gc/array-fill-gc-refs.wast	out-of-scope	GC proposal is not supported
+gc/array-fill-null-funcref.wast	out-of-scope	GC proposal is not supported
+gc/array-gc-refs.wast	out-of-scope	GC proposal is not supported
+gc/array-get-s.wast	out-of-scope	GC proposal is not supported
+gc/array-init-data.wast	out-of-scope	GC proposal is not supported
+gc/array-len.wast	out-of-scope	GC proposal is not supported
+gc/array-new-data-missing-stack-map.wast	out-of-scope	GC proposal is not supported
+gc/array-new-data.wast	out-of-scope	GC proposal is not supported
+gc/array-new-elem-missing-stack-map.wast	out-of-scope	GC proposal is not supported
+gc/array-new-elem.wast	out-of-scope	GC proposal is not supported
+gc/array-set.wast	out-of-scope	GC proposal is not supported
+gc/array-types.wast	out-of-scope	GC proposal is not supported
+gc/arrays-of-different-types.wast	out-of-scope	GC proposal is not supported
+gc/big-array-overflow.wast	out-of-scope	GC proposal is not supported
+gc/binary-tree.wast	out-of-scope	GC proposal is not supported
+gc/br-on-cast.wast	out-of-scope	GC proposal is not supported
+gc/br-on-null.wast	out-of-scope	GC proposal is not supported
+gc/bump-ptr-can-move.wast	out-of-scope	GC proposal is not supported
+gc/component-async-suspended-fiber-roots.wast	out-of-scope	GC proposal is not supported
+gc/const-expr-gc-simd.wast	out-of-scope	GC proposal is not supported
+gc/const-expr-gc.wast	out-of-scope	GC proposal is not supported
+gc/deeply-nested-struct-survives-gc.wast	out-of-scope	GC proposal is not supported
+gc/empty-struct.wast	out-of-scope	GC proposal is not supported
+gc/eval-const-expr-once.wast	out-of-scope	GC proposal is not supported
+gc/extern-any-conversion.wast	out-of-scope	GC proposal is not supported
+gc/externrefs-can-be-i31refs.wast	out-of-scope	GC proposal is not supported
+gc/func-refs-in-gc-heap.wast	out-of-scope	GC proposal is not supported
+gc/funcref-field.wast	out-of-scope	GC proposal is not supported
+gc/fuzz-segfault.wast	out-of-scope	GC proposal is not supported
+gc/gc-pressure.wast	out-of-scope	GC proposal is not supported
+gc/gc-ref-array-pressure.wast	out-of-scope	GC proposal is not supported
+gc/heap-data-ptr-readonly.wast	out-of-scope	GC proposal is not supported
+gc/i31-as-externref-in-passive-element-segment.wast	out-of-scope	GC proposal is not supported
+gc/i31ref-in-struct.wast	out-of-scope	GC proposal is not supported
+gc/i31ref-of-global-initializers.wast	out-of-scope	GC proposal is not supported
+gc/i31ref-tables.wast	out-of-scope	GC proposal is not supported
+gc/issue-10171.wast	out-of-scope	GC proposal is not supported
+gc/issue-10182.wast	out-of-scope	GC proposal is not supported
+gc/issue-10353.wast	out-of-scope	GC proposal is not supported
+gc/issue-10397.wast	out-of-scope	GC proposal is not supported
+gc/issue-10459.wast	out-of-scope	GC proposal is not supported
+gc/issue-10467.wast	out-of-scope	GC proposal is not supported
+gc/issue-11753.wast	out-of-scope	GC proposal is not supported
+gc/issue-13034.wast	out-of-scope	GC proposal is not supported
+gc/issue-13066.wast	out-of-scope	GC proposal is not supported
+gc/issue-13095.wast	out-of-scope	GC proposal is not supported
+gc/issue-13134.wast	out-of-scope	GC proposal is not supported
+gc/issue-13152.wast	out-of-scope	GC proposal is not supported
+gc/issue-13247.wast	out-of-scope	GC proposal is not supported
+gc/issue-13417.wast	out-of-scope	GC proposal is not supported
+gc/issue-13480.wast	out-of-scope	GC proposal is not supported
+gc/kotlin-benchmark-bug.wast	out-of-scope	GC proposal is not supported
+gc/linked-list.wast	out-of-scope	GC proposal is not supported
+gc/more-rec-groups-than-types.wast	out-of-scope	GC proposal is not supported
+gc/null-i31ref.wast	out-of-scope	GC proposal is not supported
+gc/packed-struct-fields.wast	out-of-scope	GC proposal is not supported
+gc/rec-group-funcs.wast	out-of-scope	GC proposal is not supported
+gc/ref-as-non-null.wast	out-of-scope	GC proposal is not supported
+gc/ref-eq.wast	out-of-scope	GC proposal is not supported
+gc/ref-test-readonly.wast	out-of-scope	GC proposal is not supported
+gc/ref-test.wast	out-of-scope	GC proposal is not supported
+gc/semispace-capacity.wast	out-of-scope	GC proposal is not supported
+gc/struct-instructions.wast	out-of-scope	GC proposal is not supported
+gc/struct-mixed-fields.wast	out-of-scope	GC proposal is not supported
+gc/struct-refs-survive-gc.wast	out-of-scope	GC proposal is not supported
+gc/struct-set-gc-ref.wast	out-of-scope	GC proposal is not supported
+gc/struct-types.wast	out-of-scope	GC proposal is not supported
+gc/struct-with-v128.wast	out-of-scope	GC proposal is not supported
+gc/v128-with-gc-ref.wast	out-of-scope	GC proposal is not supported
+imported-memory-copy.wast	ported	portable core regression listed in MANIFEST.tsv
+int-to-float-splat.wast	ported	portable core regression listed in MANIFEST.tsv
+issue11561.wast	out-of-scope	exception handling and GC proposals are not supported
+issue11748.wast	ported	portable core regression listed in MANIFEST.tsv
+issue12318.wast	ported	portable core regression listed in MANIFEST.tsv
+issue1809.wast	ported	portable core regression listed in MANIFEST.tsv
+issue4840.wast	ported	portable core regression listed in MANIFEST.tsv
+issue4857.wast	ported	portable core regression listed in MANIFEST.tsv
+issue4890.wast	ported	portable core regression listed in MANIFEST.tsv
+issue6562.wast	ported	portable core regression listed in MANIFEST.tsv
+issue694.wast	ported	portable core regression listed in MANIFEST.tsv
+linking-errors.wast	ported	portable core regression listed in MANIFEST.tsv
+many-results-with-exceptions.wast	out-of-scope	exception handling proposal is not supported
+many-results.wast	ported	portable core regression listed in MANIFEST.tsv
+many-return-values.wast	ported	portable core regression listed in MANIFEST.tsv
+many_table_gets_lead_to_gc.wast	ported	portable core regression listed in MANIFEST.tsv
+memory-combos.wast	out-of-scope	multi-memory, memory64, threads, and custom-page-size proposals are not supported
+memory-copy.wast	out-of-scope	multi-memory and memory64 proposal matrix is not supported
+memory64/bounds.wast	out-of-scope	memory64 proposal is not supported
+memory64/codegen.wast	out-of-scope	memory64 proposal is not supported
+memory64/linking-errors.wast	out-of-scope	memory64 proposal is not supported
+memory64/linking.wast	out-of-scope	memory64 proposal is not supported
+memory64/more-than-4gb.wast	out-of-scope	memory64 proposal is not supported
+memory64/multi-memory.wast	out-of-scope	memory64 proposal is not supported
+memory64/offsets.wast	out-of-scope	memory64 proposal is not supported
+memory64/simd.wast	out-of-scope	memory64 proposal is not supported
+memory64/table-too-big.wast	out-of-scope	memory64 proposal is not supported
+memory64/tables-without-bulk-memory.wast	out-of-scope	memory64 proposal is not supported
+memory64/threads.wast	out-of-scope	memory64 proposal is not supported
+memory_fill.wast	out-of-scope	multi-memory, memory64, and custom-page-size proposal matrix is not supported
+memory_init.wast	out-of-scope	multi-memory and memory64 proposal matrix is not supported
+misc_traps.wast	ported	portable core regression listed in MANIFEST.tsv
+mul16-negative.wast	ported	portable core regression listed in MANIFEST.tsv
+multi-memory/simple.wast	out-of-scope	multi-memory proposal is not supported
+mutable_externref_globals.wast	ported	portable core regression listed in MANIFEST.tsv
+no-mixup-stack-maps.wast	ported	portable core regression listed in MANIFEST.tsv
+no-opt-panic-dividing-by-zero.wast	ported	portable core regression listed in MANIFEST.tsv
+no-panic-on-invalid.wast	ported	portable core regression listed in MANIFEST.tsv
+no-panic.wast	ported	portable core regression listed in MANIFEST.tsv
+partial-init-memory-segment.wast	ported	portable core regression listed in MANIFEST.tsv
+partial-init-table-segment.wast	ported	portable core regression listed in MANIFEST.tsv
+pooling-drop-out-of-order.wast	ported	portable core regression listed in MANIFEST.tsv
+pooling-oob-on-reuse.wast	ported	portable core regression listed in MANIFEST.tsv
+rs2wasm-add-func.wast	ported	portable core regression listed in MANIFEST.tsv
+rust_fannkuch.wast	ported	portable core regression listed in MANIFEST.tsv
+shared-everything-threads/flags.wast	out-of-scope	shared-everything threads proposal is not supported
+simd/almost-extmul.wast	ported	portable core regression listed in MANIFEST.tsv
+simd/canonicalize-nan.wast	excluded	Wasmtime-specific SIMD NaN canonicalization engine option
+simd/cvt-from-uint.wast	ported	portable core regression listed in MANIFEST.tsv
+simd/edge-of-memory.wast	ported	portable core regression listed in MANIFEST.tsv
+simd/interesting-float-splat.wast	ported	portable core regression listed in MANIFEST.tsv
+simd/issue4807.wast	ported	portable core regression listed in MANIFEST.tsv
+simd/issue6725-no-egraph-panic.wast	ported	portable core regression listed in MANIFEST.tsv
+simd/issue_3173_select_v128.wast	ported	portable core regression listed in MANIFEST.tsv
+simd/issue_3327_bnot_lowering.wast	ported	portable core regression listed in MANIFEST.tsv
+simd/load_splat_out_of_bounds.wast	ported	portable core regression listed in MANIFEST.tsv
+simd/replace-lane-preserve.wast	ported	portable core regression listed in MANIFEST.tsv
+simd/riscv64-replicated-imm5-works.wast	ported	portable core regression listed in MANIFEST.tsv
+simd/spillslot-size-fuzzbug.wast	ported	portable core regression listed in MANIFEST.tsv
+simd/sse-cannot-fold-unaligned-loads.wast	ported	portable core regression listed in MANIFEST.tsv
+simd/unaligned-load.wast	ported	portable core regression listed in MANIFEST.tsv
+simd/v128-equal.wast	ported	portable core regression listed in MANIFEST.tsv
+simd/v128-select.wast	ported	portable core regression listed in MANIFEST.tsv
+simple-unreachable.wast	ported	portable core regression listed in MANIFEST.tsv
+simple_ref_is_null.wast	ported	portable core regression listed in MANIFEST.tsv
+sink-float-but-dont-trap.wast	ported	portable core regression listed in MANIFEST.tsv
+stack-args-exceptions.wast	out-of-scope	exception handling proposal is not supported
+stack-switching-and-gc.wast	out-of-scope	stack switching and GC proposals are not supported
+stack_overflow.wast	ported	portable core regression listed in MANIFEST.tsv
+table_copy.wast	ported	portable core regression listed in MANIFEST.tsv
+table_copy_on_imported_tables.wast	ported	portable core regression listed in MANIFEST.tsv
+table_grow_with_funcref.wast	ported	portable core regression listed in MANIFEST.tsv
+tail-call/loop-across-modules.wast	out-of-scope	tail calls proposal is not supported
+threads/LB.wast	out-of-scope	threads and atomics proposal is not supported
+threads/LB_atomic.wast	out-of-scope	threads and atomics proposal is not supported
+threads/MP.wast	out-of-scope	threads and atomics proposal is not supported
+threads/MP_atomic.wast	out-of-scope	threads and atomics proposal is not supported
+threads/MP_wait.wast	out-of-scope	threads and atomics proposal is not supported
+threads/SB.wast	out-of-scope	threads and atomics proposal is not supported
+threads/SB_atomic.wast	out-of-scope	threads and atomics proposal is not supported
+threads/atomics-end-of-memory.wast	out-of-scope	threads and atomics proposal is not supported
+threads/atomics_notify.wast	out-of-scope	threads and atomics proposal is not supported
+threads/atomics_wait_address.wast	out-of-scope	threads and atomics proposal is not supported
+threads/load-store-alignment.wast	out-of-scope	threads and atomics proposal is not supported
+threads/wait_notify.wast	out-of-scope	threads and atomics proposal is not supported
+traps-skip-catch-all.wast	out-of-scope	exception handling proposal is not supported
+wast-syntax.wast	excluded	Wasmtime-specific WAST module definition and instance syntax
+wide-arithmetic.wast	out-of-scope	wide arithmetic proposal is not supported
+winch/br_table.wast	ported	portable core regression listed in MANIFEST.tsv
+winch/float-comparison.wast	ported	portable core regression listed in MANIFEST.tsv
+winch/global.wast	ported	portable core regression listed in MANIFEST.tsv
+winch/imported_globals_fuzzbug.wast	ported	portable core regression listed in MANIFEST.tsv
+winch/issue-10331.wast	ported	portable core regression listed in MANIFEST.tsv
+winch/issue-10357.wast	ported	portable core regression listed in MANIFEST.tsv
+winch/issue-10460.wast	ported	portable core regression listed in MANIFEST.tsv
+winch/issue-10613.wast	ported	portable core regression listed in MANIFEST.tsv
+winch/issue-10751.wast	ported	portable core regression listed in MANIFEST.tsv
+winch/issue-12423.wast	ported	portable core regression listed in MANIFEST.tsv
+winch/issue-424666628.wast	ported	portable core regression listed in MANIFEST.tsv
+winch/memory_offsets.wast	ported	portable core regression listed in MANIFEST.tsv
+winch/misc.wast	ported	portable core regression listed in MANIFEST.tsv
+winch/oob.wast	ported	portable core regression listed in MANIFEST.tsv
+winch/oob_extend.wast	ported	portable core regression listed in MANIFEST.tsv
+winch/oob_table_grow.wast	ported	portable core regression listed in MANIFEST.tsv
+winch/ref-types-basic.wast	ported	portable core regression listed in MANIFEST.tsv
+winch/replace_lane.wast	ported	portable core regression listed in MANIFEST.tsv
+winch/rmw32_cmpxchg_u_wrap.wast	out-of-scope	threads and atomic memory operations are not supported
+winch/select.wast	ported	portable core regression listed in MANIFEST.tsv
+winch/simd_multivalue.wast	ported	portable core regression listed in MANIFEST.tsv
+winch/table-init-fuzz-bug.wast	ported	portable core regression listed in MANIFEST.tsv
+winch/table64.wast	out-of-scope	table64 and memory64 proposals are not supported
+winch/table_fill.wast	ported	portable core regression listed in MANIFEST.tsv
+winch/table_get.wast	ported	portable core regression listed in MANIFEST.tsv
+winch/table_grow.wast	ported	portable core regression listed in MANIFEST.tsv
+winch/table_set.wast	ported	portable core regression listed in MANIFEST.tsv
+winch/use-innermost-frame.wast	ported	portable core regression listed in MANIFEST.tsv
+winch/v128_load_lane_invalid_address.wast	ported	portable core regression listed in MANIFEST.tsv

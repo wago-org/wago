@@ -74,6 +74,9 @@ func TestFixtureTreeDigest(t *testing.T) {
 		if err != nil {
 			return err
 		}
+		if entry.IsDir() && path != root && entry.Name() == "runtime" {
+			return filepath.SkipDir
+		}
 		if entry.IsDir() {
 			return nil
 		}

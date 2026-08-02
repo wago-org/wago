@@ -2567,7 +2567,7 @@ func TestTableGetTrapDoesNotPerturbTable(t *testing.T) {
 	}
 	for i := 0; i < 3; i++ {
 		_, err := inst.Invoke("trapGet")
-		tableTestExpectTrap(t, err, TrapIndirectOutOfBounds)
+		tableTestExpectTrap(t, err, TrapTableOutOfBounds)
 	}
 	if got := tableTestCallI32(t, inst, "callAt", I32(0)); got != 71 {
 		t.Fatalf("callAt(0) after trapGet = %d, want 71", got)
@@ -3535,9 +3535,9 @@ func TestTableGrowFillGetSetAndSize(t *testing.T) {
 		t.Fatalf("callAt(1) after table.set func = %d, want 10", got)
 	}
 	_, err = inst.Invoke("getOOB")
-	tableTestExpectTrap(t, err, TrapIndirectOutOfBounds)
+	tableTestExpectTrap(t, err, TrapTableOutOfBounds)
 	_, err = inst.Invoke("setOOB")
-	tableTestExpectTrap(t, err, TrapIndirectOutOfBounds)
+	tableTestExpectTrap(t, err, TrapTableOutOfBounds)
 	if got := tableTestCallI32(t, inst, "callAt", I32(1)); got != 10 {
 		t.Fatalf("callAt(1) after trapped table.set = %d, want 10", got)
 	}

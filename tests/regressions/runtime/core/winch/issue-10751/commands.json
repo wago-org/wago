@@ -1,0 +1,4 @@
+{"source_filename": "testdata/wasmtime/core/winch/issue-10751/source.wast",
+ "commands": [
+  {"type": "module", "line": 1, "filename": "commands.0.wasm"}, 
+  {"type": "assert_return", "line": 35, "action": {"type": "invoke", "field": "main", "args": []}, "expected": [{"type": "i32", "value": "1"}, {"type": "i32", "value": "0"}]}]}

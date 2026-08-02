@@ -1,0 +1,6 @@
+{"source_filename": "testdata/wasmtime/core/winch/imported_globals_fuzzbug/source.wast",
+ "commands": [
+  {"type": "module", "line": 2, "name": "$a", "filename": "commands.0.wasm"}, 
+  {"type": "register", "line": 5, "as": "a"}, 
+  {"type": "module", "line": 7, "name": "$index", "filename": "commands.1.wasm"}, 
+  {"type": "assert_return", "line": 58, "action": {"type": "invoke", "field": "start", "args": []}, "expected": []}]}

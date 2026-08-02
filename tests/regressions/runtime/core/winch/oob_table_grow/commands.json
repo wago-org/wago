@@ -1,0 +1,4 @@
+{"source_filename": "testdata/wasmtime/wasm2/winch/oob_table_grow/source.wast",
+ "commands": [
+  {"type": "module", "line": 3, "filename": "commands.0.wasm"}, 
+  {"type": "assert_trap", "line": 13, "action": {"type": "invoke", "field": "exploit", "args": []}, "text": "out of bounds memory access", "expected": [{"type": "i32"}]}]}

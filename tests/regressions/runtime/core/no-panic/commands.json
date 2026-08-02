@@ -1,0 +1,4 @@
+{"source_filename": "testdata/wasmtime/wasm2/no-panic/source.wast",
+ "commands": [
+  {"type": "module", "line": 3, "filename": "commands.0.wasm"}, 
+  {"type": "module", "line": 16, "filename": "commands.1.wasm"}]}

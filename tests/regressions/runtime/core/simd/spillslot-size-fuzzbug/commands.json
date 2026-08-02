@@ -1,0 +1,4 @@
+{"source_filename": "testdata/wasmtime/wasm2/simd/spillslot-size-fuzzbug/source.wast",
+ "commands": [
+  {"type": "module", "line": 4, "filename": "commands.0.wasm"}, 
+  {"type": "assert_return", "line": 14, "action": {"type": "invoke", "field": "test", "args": []}, "expected": [{"type": "f32", "value": "0"}, {"type": "f32", "value": "0"}]}]}

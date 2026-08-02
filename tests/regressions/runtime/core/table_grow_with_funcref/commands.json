@@ -1,0 +1,6 @@
+{"source_filename": "testdata/wasmtime/wasm2/table_grow_with_funcref/source.wast",
+ "commands": [
+  {"type": "module", "line": 3, "filename": "commands.0.wasm"}, 
+  {"type": "assert_return", "line": 13, "action": {"type": "invoke", "field": "size", "args": []}, "expected": [{"type": "i32", "value": "0"}]}, 
+  {"type": "assert_return", "line": 14, "action": {"type": "invoke", "field": "grow-by-1", "args": []}, "expected": [{"type": "i32", "value": "0"}]}, 
+  {"type": "assert_return", "line": 15, "action": {"type": "invoke", "field": "size", "args": []}, "expected": [{"type": "i32", "value": "1"}]}]}
