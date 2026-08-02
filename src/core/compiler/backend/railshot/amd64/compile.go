@@ -163,7 +163,9 @@ type fn struct {
 	localType        []machineType // per-local machine type
 	localSlot        []int         // per-local frame slot in 8-byte units; v128 occupies two
 	localExactGCType []uint32      // exact non-null GC type + 1; zero means unknown
-	nLocalSlots      int           // total local frame slots in 8-byte units
+	gcLastArrayLen   gcArrayLenFact
+	gcLastField      gcStructFieldFact
+	nLocalSlots      int // total local frame slots in 8-byte units
 
 	// WARP-style per-local storage metadata. localType remains as the compact
 	// type table used by existing lowering; locals holds the assigned register and

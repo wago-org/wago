@@ -125,6 +125,7 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		if !ok {
 			return fmt.Errorf("amd64: struct.get type %d field %d is unavailable", typeIndex, fieldIndex)
 		}
+		f.observeGCStructGet(typeIndex, fieldIndex)
 		helper := uint32(gcStructGet)
 		resultType := field.Storage.Val
 		if sub == 3 || sub == 4 {
@@ -163,6 +164,8 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		if field.Mut != wasm.Var {
 			return fmt.Errorf("amd64: struct.set type %d field %d is immutable", typeIndex, fieldIndex)
 		}
+		valueRoot := f.s.back()
+		f.observeGCStructSet(baseOfValentBlock(valueRoot).prev, typeIndex, fieldIndex)
 		valueType := field.Storage.Val
 		if field.Storage.Packed {
 			valueType = wasm.I32
@@ -267,6 +270,7 @@ func (f *fn) emitGCI31Cast(sub uint32, r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
+	sourceLocal, hasSourceLocal := gcLocalProvenance(f.s.back())
 	finalTarget := false
 	knownExactTarget := false
 	if heap >= 0 {
@@ -282,9 +286,15 @@ func (f *fn) emitGCI31Cast(sub uint32, r *wasm.Reader) error {
 	}
 	if f.gcStructHelpers && heap >= 0 {
 		if fused, err := f.tryFuseFinalCastStructGet(uint32(heap), sub == 23, r); fused || err != nil {
+			if fused && knownExactTarget {
+				f.stats.peep("gc-known-struct-get")
+			}
 			return err
 		}
 		if fused, err := f.tryFuseFinalCastArrayLen(uint32(heap), sub == 23, r); fused || err != nil {
+			if fused && knownExactTarget {
+				f.stats.peep("gc-known-array-len")
+			}
 			return err
 		}
 		if knownExactTarget {
@@ -297,6 +307,9 @@ func (f *fn) emitGCI31Cast(sub uint32, r *wasm.Reader) error {
 			}
 			if sub == 22 {
 				f.markTopExactGCType(uint32(heap))
+				if hasSourceLocal {
+					markGCLocalProvenance(f.s.back(), sourceLocal)
+				}
 			}
 			return nil
 		}
@@ -322,6 +335,9 @@ func (f *fn) emitGCI31Cast(sub uint32, r *wasm.Reader) error {
 		}
 		if finalTarget && sub == 22 {
 			f.markTopExactGCType(uint32(heap))
+			if hasSourceLocal {
+				markGCLocalProvenance(f.s.back(), sourceLocal)
+			}
 		}
 		return nil
 	}
@@ -391,6 +407,7 @@ func (f *fn) tryFuseFinalCastStructGet(typeIndex uint32, nullable bool, r *wasm.
 		_ = r.JumpTo(start)
 		return false, nil
 	}
+	f.observeGCStructGet(typeIndex, fieldIndex)
 	if nativeGCCollectorRefStorage(f.m, typeIndex, field.Storage) {
 		off, size, final, layoutOK := nativeGCStructFieldLayout(f.m, typeIndex, fieldIndex)
 		if layoutOK && final && size == 4 {
@@ -437,6 +454,7 @@ func (f *fn) tryFuseFinalCastArrayLen(typeIndex uint32, nullable bool, r *wasm.R
 		_ = r.JumpTo(start)
 		return false, nil
 	}
+	f.observeGCArrayLen(typeIndex)
 	f.stats.peep("final-cast-array-len-fuse")
 	return true, f.emitNativeFinalCastArrayLen(typeIndex, nullable)
 }

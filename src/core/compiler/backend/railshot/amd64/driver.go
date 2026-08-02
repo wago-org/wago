@@ -103,14 +103,17 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 	case 0x0a: // throw_ref
 		return f.opThrowRef()
 	case 0x10: // call
+		f.invalidateGCMutableLoadFacts()
 		return f.callOp(r)
 	case 0x11: // call_indirect
+		f.invalidateGCMutableLoadFacts()
 		return f.callIndirect(r)
 	case 0x12: // return_call
 		return f.returnCall(r)
 	case 0x13: // return_call_indirect
 		return f.returnCallIndirect(r)
 	case 0x14: // call_ref
+		f.invalidateGCMutableLoadFacts()
 		return f.callRef(r)
 	case 0x15: // return_call_ref
 		return f.returnCallRef(r)
@@ -1002,6 +1005,7 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 	f.invalidateBoundsCertFor(1, uint32(x))
 	f.clearV128LocalAliases(x)
 	e := f.s.back()
+	f.invalidateGCLoadFactsForLocal(x)
 	exactType, hasExactType := f.setLocalExactGCType(x, e)
 	if e != nil && e.kind == ekValue && e.st.typ == mtCustom {
 		panic("custom value cannot be stored in a Wasm local")

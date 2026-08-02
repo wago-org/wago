@@ -413,12 +413,43 @@ Host allocation remains 524,512 B/op and 68 allocations/op. The stripped
 plugin-complete TinyGo binary is 1,777,788 bytes, +1,088 bytes over the preceding
 build.
 
+### Completed: bounded load-forwarding opportunity counters
+
+The compiler now reports conservative exact-local opportunities without changing
+machine code:
+
+| Counter | Dew sites |
+| --- | ---: |
+| fused accesses with a prior exact array type | 4,092 |
+| fused accesses with a prior exact struct type | 3,067 |
+| repeated immutable `array.len` on the same unchanged exact local | 1,022 |
+| same-field get/get forwarding | 0 |
+| same-field set/get forwarding | 0 |
+
+The field counters invalidate on local replacement, structured control, any
+struct write, and polymorphic calls. Cast-result provenance is retained only in
+otherwise-unused register-storage metadata so a following `struct.set` can be
+attributed to its source local without growing operand elements.
+
+Two runtime prototypes were measured and reverted:
+
+- a one-entry frame-slot array-length cache removed 1,022 native resolver calls
+  but grew generated code by 8,208 bytes. Fresh results were neutral/noisy and
+  sustained results were slower in three of four interleaved rounds;
+- separate exact-known array-length and struct-reference resolver stubs covered
+  4,092 and 3,067 sites and reduced generated code by 64,919 bytes, but fresh
+  and sustained execution remained neutral-to-slightly slower. Static sites are
+  therefore not sufficient evidence that those paths are dynamically hot.
+
+The count-only metrics remain; both runtime transformations were removed.
+
 Remaining order:
 
-1. Add count-only repeated array-length, same-field get/get, set/get forwarding,
-   and same-reference resolver-reuse counters.
-2. Prototype a one-entry immutable-length or field-value cache if counters show
-   dynamic leverage.
+1. Instrument executed native/helper transitions so static opportunity counts can
+   be weighted by dynamic frequency.
+2. Prototype a bounded field-value cache only if dynamic counters identify a hot
+   same-field family on another workload; Dew has no conservative get/get or
+   set/get candidates.
 3. Implement native bump allocation for the constructor sites that remain live.
 4. Keep broad Heap2Local/scalar replacement deferred unless a different
    workload shows a win that justifies frame growth and control-flow complexity.
