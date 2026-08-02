@@ -70,7 +70,9 @@ func (f *fn) allocFReg(avoid regMask) Reg {
 			return r
 		}
 	}
-	panic("amd64: no XMM register available to spill")
+	// Match GP exhaustion: compileFunc retries without local/global value pins,
+	// which frees the extended XMM pin pool under pathological expression pressure.
+	panic(regExhausted{})
 }
 
 // spillF evicts an XMM-resident float/vector value to a fresh frame slot.
