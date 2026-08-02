@@ -8,10 +8,10 @@ the complete native platform matrix:
 |---|---|---|---:|---:|---:|---:|
 | `ubuntu-24.04` | Linux | amd64 | yes | yes | yes | yes |
 | `ubuntu-24.04-arm` | Linux | arm64 | yes | yes | yes | yes |
-| `macos-15-intel` | Darwin | amd64 | yes | no | yes | yes |
+| `macos-15-intel` | Darwin | amd64 | yes | yes | yes | yes |
 | `macos-15` | Darwin | arm64 | yes | yes | yes | yes |
-| `windows-2025` | Windows | amd64 | yes | no | yes | yes |
-| `windows-11-arm` | Windows | arm64 | yes | no | yes | yes |
+| `windows-2025` | Windows | amd64 | yes | yes | yes | yes |
+| `windows-11-arm` | Windows | arm64 | yes | yes | yes | yes |
 
 Each matrix cell asserts `go env GOOS` and `GOARCH` before testing. WABT is
 installed explicitly so tests that need `wat2wasm` do not silently skip because
@@ -28,8 +28,9 @@ submodule, and runs `make spec2`; it is included in the final `CI` aggregate, so
 it cannot be replaced by a skipped ordinary wrapper or an informational report.
 This is a tooling distinction, not a second test suite: `make spec2` selects
 the same package tests that ordinary `go test ./...` discovers.
-Darwin/amd64 and both Windows targets use explicit bounds checks and cooperative
-cancellation safepoints; they do not claim signal-backed guard pages.
+All six targets run the shared single-P, parallel-fault, unrelated-fault
+chaining, public API, and corpus-differential guard-page gates. Windows runs the
+equivalent Go commands directly from PowerShell rather than through Make.
 
 Linux/amd64 continues to host architecture-independent lint, TinyGo, coverage,
 and binary-size jobs. TinyGo mirrors the native matrix: Linux/amd64 and

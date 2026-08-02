@@ -1,4 +1,4 @@
-//go:build darwin && arm64 && wago_guardpage
+//go:build wago_guardpage && (linux || darwin || windows) && (amd64 || arm64)
 
 package wago
 
@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-func instantiateDarwinGuardLoad(t *testing.T, c *Compiled) *Instance {
+func instantiatePlatformGuardLoad(t *testing.T, c *Compiled) *Instance {
 	t.Helper()
 	in, err := Instantiate(c, InstantiateOptions{})
 	if err != nil {
@@ -18,7 +18,7 @@ func instantiateDarwinGuardLoad(t *testing.T, c *Compiled) *Instance {
 	return in
 }
 
-func compileDarwinGuardLoad(t *testing.T) *Compiled {
+func compilePlatformGuardLoad(t *testing.T) *Compiled {
 	t.Helper()
 	c, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksSignalsBased), loadModule())
 	if err != nil {
@@ -27,14 +27,13 @@ func compileDarwinGuardLoad(t *testing.T) *Compiled {
 	return c
 }
 
-// TestDarwinGuardPageGOMAXPROCSOne proves fault delivery is synchronous on the
-// faulting thread. A Mach-port receiver implemented as a Go goroutine deadlocks
-// here because enterNative retains the only P while wasm executes.
-func TestDarwinGuardPageGOMAXPROCSOne(t *testing.T) {
+// TestGuardPageGOMAXPROCSOne proves fault delivery is synchronous on the
+// faulting thread and does not depend on a helper goroutine.
+func TestGuardPageGOMAXPROCSOne(t *testing.T) {
 	old := runtime.GOMAXPROCS(1)
 	defer runtime.GOMAXPROCS(old)
 
-	in := instantiateDarwinGuardLoad(t, compileDarwinGuardLoad(t))
+	in := instantiatePlatformGuardLoad(t, compilePlatformGuardLoad(t))
 	defer in.Close()
 	if _, err := in.Invoke("f", I32(1<<20)); err == nil {
 		t.Fatal("out-of-bounds load did not trap with GOMAXPROCS=1")
@@ -44,15 +43,15 @@ func TestDarwinGuardPageGOMAXPROCSOne(t *testing.T) {
 	}
 }
 
-// TestDarwinGuardPageParallelFaults checks that handler state comes only from
+// TestGuardPageParallelFaults checks that handler state comes only from
 // the faulting context and reservation registry. No per-call global identifies
 // the active instance, so independent guarded calls can fault concurrently.
-func TestDarwinGuardPageParallelFaults(t *testing.T) {
+func TestGuardPageParallelFaults(t *testing.T) {
 	const workers = 16
-	c := compileDarwinGuardLoad(t)
+	c := compilePlatformGuardLoad(t)
 	instances := make([]*Instance, workers)
 	for i := range instances {
-		instances[i] = instantiateDarwinGuardLoad(t, c)
+		instances[i] = instantiatePlatformGuardLoad(t, c)
 		defer instances[i].Close()
 	}
 
@@ -85,24 +84,24 @@ func TestDarwinGuardPageParallelFaults(t *testing.T) {
 }
 
 //go:noinline
-func causeDarwinNonWasmFault() {
+func causePlatformNonWasmFault() {
 	var p *byte
 	*p = 1
 }
 
-func recoverDarwinNonWasmFault() (recovered any) {
+func recoverPlatformNonWasmFault() (recovered any) {
 	defer func() { recovered = recover() }()
-	causeDarwinNonWasmFault()
+	causePlatformNonWasmFault()
 	return nil
 }
 
-// TestDarwinGuardPageChainsGoFaults verifies that an unrelated memory fault is
+// TestGuardPageChainsGoFaults verifies that an unrelated memory fault is
 // forwarded to the Go runtime's saved handler and remains a recoverable Go
 // panic instead of being swallowed or misreported as a wasm trap.
-func TestDarwinGuardPageChainsGoFaults(t *testing.T) {
-	in := instantiateDarwinGuardLoad(t, compileDarwinGuardLoad(t))
+func TestGuardPageChainsGoFaults(t *testing.T) {
+	in := instantiatePlatformGuardLoad(t, compilePlatformGuardLoad(t))
 	defer in.Close()
-	if got := recoverDarwinNonWasmFault(); got == nil {
+	if got := recoverPlatformNonWasmFault(); got == nil {
 		t.Fatal("nil-pointer fault was not delivered to the Go runtime")
 	}
 }

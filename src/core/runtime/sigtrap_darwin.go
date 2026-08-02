@@ -1,4 +1,4 @@
-//go:build darwin && arm64 && wago_guardpage
+//go:build darwin && (amd64 || arm64) && wago_guardpage
 
 package runtime
 
@@ -115,3 +115,4 @@ func libcSigactionTrampoline()
 func addrLibcSigactionTrampoline() uintptr
 
 //go:cgo_import_dynamic libc_sigaction sigaction "/usr/lib/libSystem.B.dylib"
+//go:cgo_import_dynamic libc_mprotect mprotect "/usr/lib/libSystem.B.dylib"

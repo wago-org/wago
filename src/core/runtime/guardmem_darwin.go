@@ -1,4 +1,4 @@
-//go:build darwin && arm64 && wago_guardpage
+//go:build darwin && (amd64 || arm64) && wago_guardpage
 
 package runtime
 
@@ -113,10 +113,13 @@ func (j *JobMemory) decommitGuarded() error {
 		return err
 	}
 	clear(lin)
-	if err := syscall.Mprotect(lin, syscall.PROT_NONE); err != nil {
+	// Reclaim while the range is writable. On Intel macOS madviseDontNeed
+	// deliberately clears the range because Rosetta's MADV_ZERO does not discard
+	// translated pages; doing that after PROT_NONE would fault in host code.
+	if err := madviseDontNeed(lin); err != nil {
 		return err
 	}
-	return madviseDontNeed(lin)
+	return syscall.Mprotect(lin, syscall.PROT_NONE)
 }
 
 func (j *JobMemory) rearmGuarded(linBytes, maxBytes int) error {
