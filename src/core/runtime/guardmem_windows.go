@@ -21,7 +21,10 @@ const (
 var guardReserveBytes = uintptr(roundUpPage(int(uintptr(basedataSize) + maxLinMemBytes + offsetGuardBytes)))
 
 func NewJobMemoryGuarded(linBytes, maxBytes int) (*JobMemory, error) {
-	linOff := roundUpPage(basedataSize)
+	// VirtualAlloc reserves on 64 KiB allocation-granularity boundaries. Keep
+	// linMem on the same boundary so every lazy 64 KiB Wasm-page commit names an
+	// allocation-aligned subrange of the reservation on both Windows targets.
+	linOff := wasmPageBytes
 	commit := linOff + linBytes
 	base, _, callErr := procVirtualAlloc.Call(0, guardReserveBytes, memReserve, pageNoAccess)
 	if base == 0 {
