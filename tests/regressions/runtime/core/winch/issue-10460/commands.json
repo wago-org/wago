@@ -1,0 +1,4 @@
+{"source_filename": "testdata/wasmtime/wasm2/winch/issue-10460/source.wast",
+ "commands": [
+  {"type": "module", "line": 2, "filename": "commands.0.wasm"}, 
+  {"type": "assert_return", "line": 11, "action": {"type": "invoke", "field": "x", "args": [{"type": "f32", "value": "1065353216"}, {"type": "f32", "value": "1073741824"}, {"type": "f32", "value": "1077936128"}, {"type": "f32", "value": "1082130432"}, {"type": "f32", "value": "1084227584"}, {"type": "f32", "value": "1086324736"}, {"type": "f32", "value": "1088421888"}, {"type": "f32", "value": "1090519040"}, {"type": "f32", "value": "1091567616"}, {"type": "v128", "lane_type": "i64", "value": ["10", "11"]}]}, "expected": [{"type": "v128", "lane_type": "i64", "value": ["10", "11"]}]}]}

@@ -1,0 +1,10 @@
+{"source_filename": "testdata/wasmtime/wasm2/simd/issue_3327_bnot_lowering/source.wast",
+ "commands": [
+  {"type": "module", "line": 5, "filename": "commands.0.wasm"}, 
+  {"type": "assert_return", "line": 12, "action": {"type": "invoke", "field": "v128_not", "args": []}, "expected": [{"type": "v128", "lane_type": "i32", "value": ["4294967295", "4294967295", "4294967295", "4294967295"]}]}, 
+  {"type": "module", "line": 15, "filename": "commands.1.wasm"}, 
+  {"type": "assert_return", "line": 34, "action": {"type": "invoke", "field": "", "args": []}, "either": [{"type": "i32", "value": "0"}, {"type": "i32", "value": "1"}]}, 
+  {"type": "module", "line": 37, "filename": "commands.2.wasm"}, 
+  {"type": "assert_return", "line": 46, "action": {"type": "invoke", "field": "1", "args": [{"type": "i32", "value": "0"}]}, "expected": [{"type": "i32", "value": "3"}]}, 
+  {"type": "module", "line": 48, "filename": "commands.3.wasm"}, 
+  {"type": "assert_return", "line": 61, "action": {"type": "invoke", "field": "x", "args": []}, "expected": [{"type": "v128", "lane_type": "i32", "value": ["33423870", "33423870", "33423870", "33423870"]}]}]}

@@ -1,0 +1,7 @@
+{"source_filename": "testdata/wasmtime/wasm2/simple_ref_is_null/source.wast",
+ "commands": [
+  {"type": "module", "line": 3, "filename": "commands.0.wasm"}, 
+  {"type": "assert_return", "line": 15, "action": {"type": "invoke", "field": "func_is_null", "args": [{"type": "funcref", "value": "null"}]}, "expected": [{"type": "i32", "value": "1"}]}, 
+  {"type": "assert_return", "line": 16, "action": {"type": "invoke", "field": "func_is_null_with_non_null_funcref", "args": []}, "expected": [{"type": "i32", "value": "0"}]}, 
+  {"type": "assert_return", "line": 18, "action": {"type": "invoke", "field": "extern_is_null", "args": [{"type": "externref", "value": "null"}]}, "expected": [{"type": "i32", "value": "1"}]}, 
+  {"type": "assert_return", "line": 19, "action": {"type": "invoke", "field": "extern_is_null", "args": [{"type": "externref", "value": "1"}]}, "expected": [{"type": "i32", "value": "0"}]}]}

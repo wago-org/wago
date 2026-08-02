@@ -1,0 +1,3 @@
+{"source_filename": "testdata/wasmtime/wasm2/externref-segment/source.wast",
+ "commands": [
+  {"type": "module", "line": 3, "filename": "commands.0.wasm"}]}

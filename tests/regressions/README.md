@@ -23,3 +23,6 @@ this README and the copied license) are pinned by SHA-256 digest
 Corresponding assertions live in `src/wago` and `src/core/compiler/wasm`.
 See `tests/README.md` for the test surface. Unsupported features remain
 complete, manifest-checked fail-closed corpora rather than skips.
+
+`runtime/` contains a second pinned source corpus with 104 runtime/compiler
+regressions and its own provenance, artifact digest, import tool, and license.

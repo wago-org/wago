@@ -108,6 +108,21 @@ test-corpus: ## Corpus pipeline + differential execution in parent/child process
 	cd bench && go test -count=1 -run '^TestCorpus$$' .
 	cd bench && go test -count=1 -tags wago_guardpage -run '^TestCorpus$$' .
 
+REGRESSION_UPSTREAM ?= $(CURDIR)/.tmp/regression-corpus-upstream
+WAST2JSON ?= wast2json
+
+.PHONY: regression-corpus-check
+regression-corpus-check: ## Verify pinned upstream sources and exact WABT artifacts
+	go run ./tests/tools/regression-corpus -repo $(CURDIR) -upstream $(REGRESSION_UPSTREAM) -wast2json $(WAST2JSON)
+
+.PHONY: regression-corpus-sync
+regression-corpus-sync: ## Fetch the pinned upstream revision and refresh regression artifacts
+	go run ./tests/tools/regression-corpus -repo $(CURDIR) -upstream $(REGRESSION_UPSTREAM) -wast2json $(WAST2JSON) -fetch -write
+
+.PHONY: regression-stress
+regression-stress: ## Repeat lifecycle tests, optimizer and guard modes, and fuzz targets
+	tests/scripts/regression-stress.sh
+
 # Run the WebAssembly spec suites as native execution oracles for the x64
 # backend. The preserved MVP baseline is WebAssembly/testsuite at tests/spec;
 # Release 2.0 is independently pinned from WebAssembly/spec at tests/spec-v2,

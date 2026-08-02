@@ -1,0 +1,4 @@
+{"source_filename": "testdata/wasmtime/wasm2/aarch64-extr/source.wast",
+ "commands": [
+  {"type": "module", "line": 1, "filename": "commands.0.wasm"}, 
+  {"type": "assert_return", "line": 11, "action": {"type": "invoke", "field": "a64-extr", "args": [{"type": "i32", "value": "65536"}, {"type": "i32", "value": "0"}]}, "expected": [{"type": "i32", "value": "65536"}]}]}

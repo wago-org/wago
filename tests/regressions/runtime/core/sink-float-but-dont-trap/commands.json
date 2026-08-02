@@ -1,0 +1,9 @@
+{"source_filename": "testdata/wasmtime/wasm2/sink-float-but-dont-trap/source.wast",
+ "commands": [
+  {"type": "module", "line": 1, "filename": "commands.0.wasm"}, 
+  {"type": "assert_return", "line": 45, "action": {"type": "invoke", "field": "select-with-sink", "args": [{"type": "i32", "value": "65528"}]}, "expected": [{"type": "f64", "value": "0"}]}, 
+  {"type": "assert_return", "line": 46, "action": {"type": "invoke", "field": "select-with-fcmp-and-sink", "args": [{"type": "i32", "value": "65528"}, {"type": "f64", "value": "0"}, {"type": "f64", "value": "0"}]}, "expected": [{"type": "f64", "value": "4607182418800017408"}]}, 
+  {"type": "assert_trap", "line": 48, "action": {"type": "invoke", "field": "select-with-sink", "args": [{"type": "i32", "value": "65529"}]}, "text": "out of bounds", "expected": [{"type": "f64"}]}, 
+  {"type": "assert_trap", "line": 49, "action": {"type": "invoke", "field": "select-with-fcmp-and-sink", "args": [{"type": "i32", "value": "65529"}, {"type": "f64", "value": "0"}, {"type": "f64", "value": "0"}]}, "text": "out of bounds", "expected": [{"type": "f64"}]}, 
+  {"type": "assert_trap", "line": 50, "action": {"type": "invoke", "field": "select-with-sink-other-way", "args": [{"type": "i32", "value": "65529"}]}, "text": "out of bounds", "expected": [{"type": "f64"}]}, 
+  {"type": "assert_trap", "line": 51, "action": {"type": "invoke", "field": "select-with-fcmp-and-sink-other-way", "args": [{"type": "i32", "value": "65529"}, {"type": "f64", "value": "0"}, {"type": "f64", "value": "0"}]}, "text": "out of bounds", "expected": [{"type": "f64"}]}]}

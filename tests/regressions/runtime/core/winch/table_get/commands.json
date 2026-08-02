@@ -1,0 +1,6 @@
+{"source_filename": "testdata/wasmtime/wasm2/winch/table_get/source.wast",
+ "commands": [
+  {"type": "module", "line": 3, "filename": "commands.0.wasm"}, 
+  {"type": "assert_return", "line": 12, "action": {"type": "invoke", "field": "get-funcref", "args": [{"type": "i32", "value": "0"}]}, "expected": [{"type": "funcref", "value": "null"}]}, 
+  {"type": "assert_trap", "line": 13, "action": {"type": "invoke", "field": "get-funcref", "args": [{"type": "i32", "value": "3"}]}, "text": "out of bounds table access", "expected": [{"type": "funcref"}]}, 
+  {"type": "assert_trap", "line": 14, "action": {"type": "invoke", "field": "get-funcref", "args": [{"type": "i32", "value": "4294967295"}]}, "text": "out of bounds table access", "expected": [{"type": "funcref"}]}]}

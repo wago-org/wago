@@ -1,0 +1,6 @@
+{"source_filename": "testdata/wasmtime/wasm2/simd/load_splat_out_of_bounds/source.wast",
+ "commands": [
+  {"type": "module", "line": 4, "filename": "commands.0.wasm"}, 
+  {"type": "assert_trap", "line": 15, "action": {"type": "invoke", "field": "x", "args": []}, "text": "out of bounds memory access", "expected": []}, 
+  {"type": "module", "line": 18, "filename": "commands.1.wasm"}, 
+  {"type": "assert_return", "line": 29, "action": {"type": "invoke", "field": "x", "args": []}, "expected": []}]}

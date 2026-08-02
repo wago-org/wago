@@ -1,0 +1,7 @@
+{"source_filename": "testdata/wasmtime/wasm2/float-round-doesnt-load-too-much/source.wast",
+ "commands": [
+  {"type": "module", "line": 1, "filename": "commands.0.wasm"}, 
+  {"type": "assert_return", "line": 25, "action": {"type": "invoke", "field": "ceil", "args": [{"type": "i32", "value": "65528"}]}, "expected": [{"type": "f64", "value": "0"}]}, 
+  {"type": "assert_return", "line": 26, "action": {"type": "invoke", "field": "trunc", "args": [{"type": "i32", "value": "65528"}]}, "expected": [{"type": "f64", "value": "0"}]}, 
+  {"type": "assert_return", "line": 27, "action": {"type": "invoke", "field": "floor", "args": [{"type": "i32", "value": "65528"}]}, "expected": [{"type": "f64", "value": "0"}]}, 
+  {"type": "assert_return", "line": 28, "action": {"type": "invoke", "field": "nearest", "args": [{"type": "i32", "value": "65528"}]}, "expected": [{"type": "f64", "value": "0"}]}]}

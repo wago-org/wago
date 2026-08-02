@@ -1,0 +1,12 @@
+{"source_filename": "testdata/wasmtime/wasm2/table_copy/source.wast",
+ "commands": [
+  {"type": "module", "line": 3, "filename": "commands.0.wasm"}, 
+  {"type": "assert_return", "line": 28, "action": {"type": "invoke", "field": "call", "args": [{"type": "i32", "value": "1"}, {"type": "i32", "value": "0"}, {"type": "i32", "value": "0"}, {"type": "i32", "value": "0"}]}, "expected": [{"type": "i32", "value": "1"}]}, 
+  {"type": "assert_return", "line": 33, "action": {"type": "invoke", "field": "call", "args": [{"type": "i32", "value": "0"}, {"type": "i32", "value": "1"}, {"type": "i32", "value": "0"}, {"type": "i32", "value": "1"}]}, "expected": [{"type": "i32", "value": "1"}]}, 
+  {"type": "assert_return", "line": 38, "action": {"type": "invoke", "field": "call", "args": [{"type": "i32", "value": "0"}, {"type": "i32", "value": "0"}, {"type": "i32", "value": "1"}, {"type": "i32", "value": "2"}]}, "expected": [{"type": "i32", "value": "1"}]}, 
+  {"type": "action", "line": 42, "action": {"type": "invoke", "field": "copy", "args": [{"type": "i32", "value": "0"}, {"type": "i32", "value": "4"}, {"type": "i32", "value": "3"}]}, "expected": []}, 
+  {"type": "assert_return", "line": 46, "action": {"type": "invoke", "field": "call", "args": [{"type": "i32", "value": "0"}, {"type": "i32", "value": "1"}, {"type": "i32", "value": "0"}, {"type": "i32", "value": "0"}]}, "expected": [{"type": "i32", "value": "1"}]}, 
+  {"type": "assert_return", "line": 51, "action": {"type": "invoke", "field": "call", "args": [{"type": "i32", "value": "0"}, {"type": "i32", "value": "0"}, {"type": "i32", "value": "1"}, {"type": "i32", "value": "1"}]}, "expected": [{"type": "i32", "value": "1"}]}, 
+  {"type": "assert_return", "line": 56, "action": {"type": "invoke", "field": "call", "args": [{"type": "i32", "value": "1"}, {"type": "i32", "value": "0"}, {"type": "i32", "value": "0"}, {"type": "i32", "value": "2"}]}, "expected": [{"type": "i32", "value": "1"}]}, 
+  {"type": "action", "line": 60, "action": {"type": "invoke", "field": "copy", "args": [{"type": "i32", "value": "7"}, {"type": "i32", "value": "0"}, {"type": "i32", "value": "2"}]}, "expected": []}, 
+  {"type": "assert_trap", "line": 64, "action": {"type": "invoke", "field": "copy", "args": [{"type": "i32", "value": "7"}, {"type": "i32", "value": "0"}, {"type": "i32", "value": "3"}]}, "text": "undefined element", "expected": []}]}

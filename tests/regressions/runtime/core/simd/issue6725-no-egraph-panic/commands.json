@@ -1,0 +1,4 @@
+{"source_filename": "testdata/wasmtime/wasm2/simd/issue6725-no-egraph-panic/source.wast",
+ "commands": [
+  {"type": "module", "line": 3, "filename": "commands.0.wasm"}, 
+  {"type": "module", "line": 11, "filename": "commands.1.wasm"}]}

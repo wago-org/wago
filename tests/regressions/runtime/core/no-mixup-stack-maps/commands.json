@@ -1,0 +1,5 @@
+{"source_filename": "testdata/wasmtime/wasm2/no-mixup-stack-maps/source.wast",
+ "commands": [
+  {"type": "module", "line": 3, "filename": "commands.0.wasm"}, 
+  {"type": "action", "line": 50, "action": {"type": "invoke", "field": "init", "args": [{"type": "externref", "value": "1"}]}, "expected": []}, 
+  {"type": "assert_return", "line": 51, "action": {"type": "invoke", "field": "run", "args": []}, "expected": [{"type": "i32", "value": "0"}]}]}

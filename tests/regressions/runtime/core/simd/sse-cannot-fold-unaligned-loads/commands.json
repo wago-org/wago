@@ -1,0 +1,4 @@
+{"source_filename": "testdata/wasmtime/wasm2/simd/sse-cannot-fold-unaligned-loads/source.wast",
+ "commands": [
+  {"type": "module", "line": 3, "filename": "commands.0.wasm"}, 
+  {"type": "assert_return", "line": 17, "action": {"type": "invoke", "field": "punpckhbw", "args": [{"type": "v128", "lane_type": "i64", "value": ["0", "0"]}, {"type": "i32", "value": "0"}]}, "expected": [{"type": "v128", "lane_type": "i64", "value": ["0", "0"]}]}]}

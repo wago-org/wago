@@ -1,0 +1,4 @@
+{"source_filename": "testdata/wasmtime/wasm2/simd/issue_3173_select_v128/source.wast",
+ "commands": [
+  {"type": "module", "line": 5, "filename": "commands.0.wasm"}, 
+  {"type": "assert_return", "line": 12, "action": {"type": "invoke", "field": "select_v128", "args": []}, "expected": [{"type": "v128", "lane_type": "i32", "value": ["0", "0", "0", "0"]}]}]}

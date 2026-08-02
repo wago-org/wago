@@ -1,0 +1,11 @@
+{"source_filename": "testdata/wasmtime/wasm2/winch/table_set/source.wast",
+ "commands": [
+  {"type": "module", "line": 3, "filename": "commands.0.wasm"}, 
+  {"type": "assert_return", "line": 20, "action": {"type": "invoke", "field": "get-funcref", "args": [{"type": "i32", "value": "0"}]}, "expected": [{"type": "funcref", "value": "null"}]}, 
+  {"type": "assert_return", "line": 21, "action": {"type": "invoke", "field": "set-funcref-from", "args": [{"type": "i32", "value": "0"}, {"type": "i32", "value": "1"}]}, "expected": []}, 
+  {"type": "assert_return", "line": 22, "action": {"type": "invoke", "field": "set-funcref", "args": [{"type": "i32", "value": "0"}, {"type": "funcref", "value": "null"}]}, "expected": []}, 
+  {"type": "assert_return", "line": 23, "action": {"type": "invoke", "field": "get-funcref", "args": [{"type": "i32", "value": "0"}]}, "expected": [{"type": "funcref", "value": "null"}]}, 
+  {"type": "assert_trap", "line": 25, "action": {"type": "invoke", "field": "set-funcref", "args": [{"type": "i32", "value": "3"}, {"type": "funcref", "value": "null"}]}, "text": "out of bounds table access", "expected": []}, 
+  {"type": "assert_trap", "line": 26, "action": {"type": "invoke", "field": "set-funcref", "args": [{"type": "i32", "value": "4294967295"}, {"type": "funcref", "value": "null"}]}, "text": "out of bounds table access", "expected": []}, 
+  {"type": "assert_trap", "line": 28, "action": {"type": "invoke", "field": "set-funcref-from", "args": [{"type": "i32", "value": "3"}, {"type": "i32", "value": "1"}]}, "text": "out of bounds table access", "expected": []}, 
+  {"type": "assert_trap", "line": 29, "action": {"type": "invoke", "field": "set-funcref-from", "args": [{"type": "i32", "value": "4294967295"}, {"type": "i32", "value": "1"}]}, "text": "out of bounds table access", "expected": []}]}

@@ -1,0 +1,10 @@
+{"source_filename": "testdata/wasmtime/wasm2/div-rem/source.wast",
+ "commands": [
+  {"type": "module", "line": 1, "filename": "commands.0.wasm"}, 
+  {"type": "assert_return", "line": 7, "action": {"type": "invoke", "field": "i32.div_s", "args": [{"type": "i32", "value": "4294967295"}, {"type": "i32", "value": "4294967295"}]}, "expected": [{"type": "i32", "value": "1"}]}, 
+  {"type": "module", "line": 9, "filename": "commands.1.wasm"}, 
+  {"type": "assert_return", "line": 15, "action": {"type": "invoke", "field": "i32.rem_s", "args": [{"type": "i32", "value": "123121"}, {"type": "i32", "value": "4294967295"}]}, "expected": [{"type": "i32", "value": "0"}]}, 
+  {"type": "module", "line": 17, "filename": "commands.2.wasm"}, 
+  {"type": "assert_return", "line": 23, "action": {"type": "invoke", "field": "i64.div_s", "args": [{"type": "i64", "value": "18446744073709551615"}, {"type": "i64", "value": "18446744073709551615"}]}, "expected": [{"type": "i64", "value": "1"}]}, 
+  {"type": "module", "line": 25, "filename": "commands.3.wasm"}, 
+  {"type": "assert_return", "line": 31, "action": {"type": "invoke", "field": "i64.rem_s", "args": [{"type": "i64", "value": "123121"}, {"type": "i64", "value": "18446744073709551615"}]}, "expected": [{"type": "i64", "value": "0"}]}]}

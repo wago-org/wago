@@ -1,0 +1,3 @@
+{"source_filename": "testdata/wasmtime/wasm2/export-large-signature/source.wast",
+ "commands": [
+  {"type": "module", "line": 1, "filename": "commands.0.wasm"}]}

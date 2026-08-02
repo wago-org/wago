@@ -1,0 +1,5 @@
+{"source_filename": "testdata/wasmtime/wasm2/simd/riscv64-replicated-imm5-works/source.wast",
+ "commands": [
+  {"type": "module", "line": 3, "filename": "commands.0.wasm"}, 
+  {"type": "assert_return", "line": 17, "action": {"type": "invoke", "field": "add_and_extract", "args": [{"type": "v128", "lane_type": "i32", "value": ["0", "0", "0", "0"]}]}, "expected": [{"type": "i32", "value": "16843009"}]}, 
+  {"type": "assert_return", "line": 19, "action": {"type": "invoke", "field": "sub_and_extract", "args": [{"type": "v128", "lane_type": "i32", "value": ["0", "0", "0", "0"]}]}, "expected": [{"type": "i32", "value": "4278124287"}]}]}

@@ -1,0 +1,14 @@
+{"source_filename": "testdata/wasmtime/wasm2/partial-init-memory-segment/source.wast",
+ "commands": [
+  {"type": "module", "line": 3, "name": "$m", "filename": "commands.0.wasm"}, 
+  {"type": "register", "line": 10, "name": "$m", "as": "m"}, 
+  {"type": "assert_uninstantiable", "line": 13, "filename": "commands.1.wasm", "text": "out of bounds", "module_type": "binary"}, 
+  {"type": "assert_return", "line": 27, "action": {"type": "invoke", "module": "$m", "field": "load", "args": [{"type": "i32", "value": "0"}]}, "expected": [{"type": "i32", "value": "97"}]}, 
+  {"type": "assert_return", "line": 28, "action": {"type": "invoke", "module": "$m", "field": "load", "args": [{"type": "i32", "value": "1"}]}, "expected": [{"type": "i32", "value": "98"}]}, 
+  {"type": "assert_return", "line": 29, "action": {"type": "invoke", "module": "$m", "field": "load", "args": [{"type": "i32", "value": "2"}]}, "expected": [{"type": "i32", "value": "99"}]}, 
+  {"type": "assert_return", "line": 32, "action": {"type": "invoke", "module": "$m", "field": "load", "args": [{"type": "i32", "value": "65530"}]}, "expected": [{"type": "i32", "value": "0"}]}, 
+  {"type": "assert_return", "line": 33, "action": {"type": "invoke", "module": "$m", "field": "load", "args": [{"type": "i32", "value": "65531"}]}, "expected": [{"type": "i32", "value": "0"}]}, 
+  {"type": "assert_return", "line": 34, "action": {"type": "invoke", "module": "$m", "field": "load", "args": [{"type": "i32", "value": "65532"}]}, "expected": [{"type": "i32", "value": "0"}]}, 
+  {"type": "assert_return", "line": 35, "action": {"type": "invoke", "module": "$m", "field": "load", "args": [{"type": "i32", "value": "65533"}]}, "expected": [{"type": "i32", "value": "0"}]}, 
+  {"type": "assert_return", "line": 36, "action": {"type": "invoke", "module": "$m", "field": "load", "args": [{"type": "i32", "value": "65534"}]}, "expected": [{"type": "i32", "value": "0"}]}, 
+  {"type": "assert_return", "line": 37, "action": {"type": "invoke", "module": "$m", "field": "load", "args": [{"type": "i32", "value": "65535"}]}, "expected": [{"type": "i32", "value": "0"}]}]}
