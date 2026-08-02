@@ -150,6 +150,21 @@ order is structured exact/non-null facts and bounded GC load forwarding, then na
 bump allocation for constructors that remain live. See
 `docs/wasmgc-v8-cranelift-research-2026-08.md`.
 
+**Structured exact WasmGC reference facts (2026-08-02).** AMD64 now retains one
+compact exact-non-null canonical type per reference local inside conservative
+straight-line structured regions. Constructors and successful non-null final casts
+produce facts; local copies preserve them, local writes replace/clear them, and
+control boundaries clear the table rather than building SSA merge state. Facts carry
+compact identity only and survive collection; no raw heap pointer is cached. Adjacent
+cast/access fusion remains higher priority, so facts remove only standalone repeated
+casts. Dew reports **7,158** `gc-ref-cast-elide` hits, `gcnative`
+**50,101→42,943**, flushes **91,011→83,853**, and native code
+**7,104,256→6,957,024 bytes**. Interleaved fresh medians improve about
+**0.60-0.61→0.57-0.58 ms** (roughly 5-6%) with host allocation unchanged;
+sustained medians improve about **0.90-0.93→0.80-0.86 ms**. The stripped
+plugin-complete TinyGo binary is **1,777,788 bytes**, +1,088 bytes over the dead-new
+build. `WAGO_AMD64_NO_GC_REF_FACTS=1` restores the validated cast path.
+
 **Release unwind-table removal (2026-08-01).** TinyGo `-no-debug` Linux
 releases do not use DWARF `.eh_frame` data for panic text or Wago's native
 trap/signal path. In the historical monolithic CLI, removing that allocated

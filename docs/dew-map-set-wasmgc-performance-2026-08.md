@@ -54,8 +54,9 @@ warmup:
 | Wago after shared AMD64 native paths | 1.877 ms | 1.895 ms | interleaved A/B; fresh collector |
 | Wago after final-reference resolver and nursery stores | about 0.95 ms | about 0.98 ms | best controlled fresh runs |
 | Wago after recursive dead constructor elimination | about 0.64 ms | about 0.67 ms | four interleaved A/B runs; fresh collector |
+| Wago after structured exact-reference facts | about 0.57 ms | about 0.58 ms | four interleaved A/B runs; fresh collector |
 
-The latest controlled Wago result is therefore about 5.4x the hot Node median and 1.3x
+The latest controlled Wago result is therefore about 4.8x the hot Node median and 1.2x
 the fresh-instance Node median. The distinction matters: repeated Wago calls
 also expose old-heap growth and major-collection policy, while Node's hot result
 includes tiered optimized code.
@@ -363,6 +364,34 @@ The plugin-complete stripped TinyGo candidate is **1,776,700 bytes**, +2,512
 bytes (+0.142%) over the preceding 1,774,188-byte build. It executes Dew
 successfully. The speed/host-allocation gain clearly justifies this small product
 cost.
+
+### Structured exact-reference facts
+
+AMD64 now carries one compact exact-non-null canonical type per GC reference local
+inside conservative straight-line structured regions. Exact constructors and
+successful non-null final casts establish facts; local copies preserve them;
+local writes replace or clear them. Blocks, loops, branches, `if`/`else`, exception
+regions, and returns clear the table rather than requiring SSA/phi state. The fact
+contains no raw pointer and remains valid across collection; resolved heap pointers
+are still reloaded and revalidated by access stubs.
+
+Adjacent final cast/access fusions run before cast elimination, preserving the
+profitable 8,180 array-length and 10,224 struct-get fused sites. Facts remove only
+a standalone cast already proved by a constructor or prior successful cast.
+`WAGO_AMD64_NO_GC_REF_FACTS=1` restores all casts for A/B.
+
+| Measurement | Facts disabled | Facts enabled | Change |
+| --- | ---: | ---: | ---: |
+| proven casts removed | 0 | 7,158 | +7,158 |
+| shared native GC calls | 50,101 | 42,943 | -14.3% |
+| flushes | 91,011 | 83,853 | -7.9% |
+| generated native code | 7,104,256 B | 6,957,024 B | -2.1% |
+| fresh median | 0.60-0.61 ms | 0.57-0.58 ms | about -5-6% |
+| sustained median | 0.90-0.93 ms | 0.80-0.86 ms | about -8-12% |
+| host bytes/allocations | 524,512 B / 68 | 524,512 B / 68 | unchanged |
+
+The plugin-complete stripped TinyGo candidate is **1,777,788 bytes**, +1,088
+bytes (+0.061%) over the dead-constructor build. It executes Dew successfully.
 
 Two additional experiments were rejected:
 

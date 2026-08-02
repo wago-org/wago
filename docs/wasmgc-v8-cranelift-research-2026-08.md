@@ -384,16 +384,43 @@ Measured on Dew:
 The plugin-complete stripped TinyGo candidate is 1,776,700 bytes and executes
 Dew, +2,512 bytes over the preceding 1,774,188-byte release candidate.
 
+### Completed: structured exact/non-null local facts
+
+AMD64 now stores one `typeIndex+1` exact-non-null fact per GC reference local.
+Constructor and successful final-cast values carry the same compact fact in the
+existing storage metadata, so `local.set`, `local.get`, and local copies transfer
+it without enlarging operand-stack elements. Local writes clear or replace the
+fact. Structured control boundaries clear all facts, deliberately choosing a
+sound conservative subset over SSA/phi state. Calls and collection do not clear
+type identity, but no raw object pointer is retained.
+
+Adjacent cast/access fusions remain first in lowering order. A standalone cast is
+removed only when the current compact value already carries the exact final type.
+`WAGO_AMD64_NO_GC_REF_FACTS=1` is the A/B oracle.
+
+Measured on Dew:
+
+| Metric | Facts disabled | Facts enabled |
+| --- | ---: | ---: |
+| `gc-ref-cast-elide` | 0 | 7,158 |
+| `gcnative` | 50,101 | 42,943 |
+| flushes | 91,011 | 83,853 |
+| native code | 7,104,256 B | 6,957,024 B |
+| fresh median | 0.60-0.61 ms | 0.57-0.58 ms |
+| sustained median | 0.90-0.93 ms | 0.80-0.86 ms |
+
+Host allocation remains 524,512 B/op and 68 allocations/op. The stripped
+plugin-complete TinyGo binary is 1,777,788 bytes, +1,088 bytes over the preceding
+build.
+
 Remaining order:
 
-1. Add structured exact/non-null local facts in count-only mode, then use them
-   for one proven repeated-cast/access case.
-2. Add count-only repeated array-length, same-field get/get, set/get forwarding,
+1. Add count-only repeated array-length, same-field get/get, set/get forwarding,
    and same-reference resolver-reuse counters.
-3. Prototype a one-entry immutable-length or field-value cache if counters show
+2. Prototype a one-entry immutable-length or field-value cache if counters show
    dynamic leverage.
-4. Implement native bump allocation for the constructor sites that remain live.
-5. Keep broad Heap2Local/scalar replacement deferred unless a different
+3. Implement native bump allocation for the constructor sites that remain live.
+4. Keep broad Heap2Local/scalar replacement deferred unless a different
    workload shows a win that justifies frame growth and control-flow complexity.
 
 The key conclusion remains that **native bump allocation is worthwhile, but it

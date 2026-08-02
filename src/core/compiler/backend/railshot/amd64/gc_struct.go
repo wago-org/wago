@@ -89,7 +89,11 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		params = append(params, wasm.I32)
 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
-		return f.callGCStructHelper(gcStructAllocOne, params, []wasm.ValType{result})
+		if err := f.callGCStructHelper(gcStructAllocOne, params, []wasm.ValType{result}); err != nil {
+			return err
+		}
+		f.markTopExactGCType(typeIndex)
+		return nil
 	case 1: // struct.new_default typeidx
 		typeIndex, err := r.U32()
 		if err != nil {
@@ -103,7 +107,11 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
-		return f.callGCStructHelper(gcStructAllocDefault, []wasm.ValType{wasm.I32}, []wasm.ValType{result})
+		if err := f.callGCStructHelper(gcStructAllocDefault, []wasm.ValType{wasm.I32}, []wasm.ValType{result}); err != nil {
+			return err
+		}
+		f.markTopExactGCType(typeIndex)
+		return nil
 	case 2, 3, 4: // struct.get / struct.get_s / struct.get_u typeidx fieldidx
 		typeIndex, err := r.U32()
 		if err != nil {
@@ -259,6 +267,19 @@ func (f *fn) emitGCI31Cast(sub uint32, r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
+	finalTarget := false
+	knownExactTarget := false
+	if heap >= 0 {
+		if target, ok := nativeGCFlatType(f.m, uint32(heap)); ok && target.Final {
+			finalTarget = true
+			if known, exact := exactGCType(f.s.back()); exact && known == uint32(heap) {
+				knownExactTarget = true
+			}
+			if sub == 22 { // a successful non-null cast refines the source local
+				f.refineTopLocalExactGCType(uint32(heap))
+			}
+		}
+	}
 	if f.gcStructHelpers && heap >= 0 {
 		if fused, err := f.tryFuseFinalCastStructGet(uint32(heap), sub == 23, r); fused || err != nil {
 			return err
@@ -266,8 +287,18 @@ func (f *fn) emitGCI31Cast(sub uint32, r *wasm.Reader) error {
 		if fused, err := f.tryFuseFinalCastArrayLen(uint32(heap), sub == 23, r); fused || err != nil {
 			return err
 		}
+		if knownExactTarget {
+			f.stats.peep("gc-ref-cast-elide")
+			return nil
+		}
 		if target, ok := nativeGCFlatType(f.m, uint32(heap)); ok && target.Final && (target.Comp.Kind == wasm.CompStruct || target.Comp.Kind == wasm.CompArray) {
-			return f.emitNativeFinalCast(uint32(heap), sub == 23)
+			if err := f.emitNativeFinalCast(uint32(heap), sub == 23); err != nil {
+				return err
+			}
+			if sub == 22 {
+				f.markTopExactGCType(uint32(heap))
+			}
+			return nil
 		}
 	}
 	if f.gcTypeSubtypingRefTest && heap >= 0 {
@@ -286,7 +317,13 @@ func (f *fn) emitGCI31Cast(sub uint32, r *wasm.Reader) error {
 			f.pushValue(storage{kind: stConst, typ: mtI32})
 		}
 		anyref := wasm.RefVal(wasm.Ref(true, wasm.AbsHeap(wasm.HeapAny), false))
-		return f.callGCStructHelper(gcStructRefCast, []wasm.ValType{anyref, wasm.I64, wasm.I32}, []wasm.ValType{anyref})
+		if err := f.callGCStructHelper(gcStructRefCast, []wasm.ValType{anyref, wasm.I64, wasm.I32}, []wasm.ValType{anyref}); err != nil {
+			return err
+		}
+		if finalTarget && sub == 22 {
+			f.markTopExactGCType(uint32(heap))
+		}
+		return nil
 	}
 	if heap != -20 { // i31
 		return fmt.Errorf("amd64: staged ref.cast heap %d is not i31", heap)

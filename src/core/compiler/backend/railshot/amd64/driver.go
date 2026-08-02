@@ -33,6 +33,7 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 		f.prepareStoreForward(op)
 		switch op {
 		case 0x00: // unreachable
+			f.clearLocalExactGCTypes()
 			if !f.unreachable {
 				// Deferred operations before unreachable have already executed in
 				// Wasm evaluation order and may trap (notably div/rem). Materialize
@@ -44,18 +45,25 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 			}
 		case 0x01: // nop
 		case 0x02, 0x03, 0x04: // block / loop / if
+			f.clearLocalExactGCTypes()
 			err = f.opBlock(r, op)
 		case 0x1f: // try_table
+			f.clearLocalExactGCTypes()
 			err = f.opTryTable(r)
 		case 0x05: // else
+			f.clearLocalExactGCTypes()
 			err = f.opElse()
 		case 0x0b: // end
+			f.clearLocalExactGCTypes()
 			err = f.opEnd()
 		case 0x0c, 0x0d: // br / br_if
+			f.clearLocalExactGCTypes()
 			err = f.opBr(r, op == 0x0d)
 		case 0x0e: // br_table
+			f.clearLocalExactGCTypes()
 			err = f.opBrTable(r)
 		case 0x0f: // return
+			f.clearLocalExactGCTypes()
 			err = f.opReturn()
 		default:
 			if f.unreachable {
@@ -203,6 +211,7 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 			value = f.pushValue(storage{kind: stLocalRef, typ: f.localType[x], idx: int(x)})
 		}
 		value.st.gcRoot = f.gcFrameLocal(int(x))
+		f.markLocalGetExactGCType(value, int(x))
 	case 0x21, 0x22: // local.set / local.tee
 		x, err := r.U32()
 		if err != nil {
@@ -993,6 +1002,7 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 	f.invalidateBoundsCertFor(1, uint32(x))
 	f.clearV128LocalAliases(x)
 	e := f.s.back()
+	exactType, hasExactType := f.setLocalExactGCType(x, e)
 	if e != nil && e.kind == ekValue && e.st.typ == mtCustom {
 		panic("custom value cannot be stored in a Wasm local")
 	}
@@ -1020,6 +1030,9 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 		f.markLocalDirty(x) // value now lives (only) in the register
 		if tee {
 			f.replaceStorage(e, storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: x}) // borrowed ref stays
+			if hasExactType {
+				markExactGCType(e, exactType)
+			}
 		} else {
 			f.erase(e)
 		}
@@ -1108,5 +1121,7 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 	if !tee {
 		f.erase(e)
 		f.release(r)
+	} else if hasExactType {
+		markExactGCType(e, exactType)
 	}
 }

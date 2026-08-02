@@ -47,7 +47,11 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
-		return f.callGCStructHelper(gcArrayAllocUniform, []wasm.ValType{valueType, wasm.I32, wasm.I32}, []wasm.ValType{result})
+		if err := f.callGCStructHelper(gcArrayAllocUniform, []wasm.ValType{valueType, wasm.I32, wasm.I32}, []wasm.ValType{result}); err != nil {
+			return err
+		}
+		f.markTopExactGCType(typeIndex)
+		return nil
 	case 10: // array.new_elem typeidx elemidx
 		typeIndex, err := r.U32()
 		if err != nil {
@@ -64,7 +68,11 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(elemIndex)})
 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
-		return f.callGCStructHelper(gcArrayAllocElem, []wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32}, []wasm.ValType{result})
+		if err := f.callGCStructHelper(gcArrayAllocElem, []wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32}, []wasm.ValType{result}); err != nil {
+			return err
+		}
+		f.markTopExactGCType(typeIndex)
+		return nil
 	case 9: // array.new_data typeidx dataidx
 		typeIndex, err := r.U32()
 		if err != nil {
@@ -84,7 +92,11 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(dataIndex)})
 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
-		return f.callGCStructHelper(gcArrayAllocData, []wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32}, []wasm.ValType{result})
+		if err := f.callGCStructHelper(gcArrayAllocData, []wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32}, []wasm.ValType{result}); err != nil {
+			return err
+		}
+		f.markTopExactGCType(typeIndex)
+		return nil
 	case 8: // array.new_fixed typeidx length
 		typeIndex, err := r.U32()
 		if err != nil {
@@ -125,7 +137,11 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(count)})
 		params = append(params, wasm.I32, wasm.I32)
 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
-		return f.callGCStructHelper(gcArrayAllocFixed, params, []wasm.ValType{result})
+		if err := f.callGCStructHelper(gcArrayAllocFixed, params, []wasm.ValType{result}); err != nil {
+			return err
+		}
+		f.markTopExactGCType(typeIndex)
+		return nil
 	case 7: // array.new_default typeidx
 		typeIndex, err := r.U32()
 		if err != nil {
@@ -136,7 +152,11 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
-		return f.callGCStructHelper(gcArrayAllocDefault, []wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{result})
+		if err := f.callGCStructHelper(gcArrayAllocDefault, []wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{result}); err != nil {
+			return err
+		}
+		f.markTopExactGCType(typeIndex)
+		return nil
 	case 11, 12, 13: // array.get / array.get_s / array.get_u
 		typeIndex, err := r.U32()
 		if err != nil {

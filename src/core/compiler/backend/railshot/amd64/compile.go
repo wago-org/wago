@@ -37,6 +37,11 @@ var regMergeEnabled = os.Getenv("WAGO_REG_MERGE") != "0"
 // every constructor helper for differential A/B testing.
 var deadGCNewEnabled = os.Getenv("WAGO_AMD64_NO_DEAD_GC_NEW") != "1"
 
+// exactGCRefFactsEnabled propagates exact non-null reference facts through
+// locals inside conservative straight-line structured regions. It removes only
+// casts already proved by a successful prior cast or exact constructor.
+var exactGCRefFactsEnabled = os.Getenv("WAGO_AMD64_NO_GC_REF_FACTS") != "1"
+
 // immutableLocalTableEnabled specializes call_indirect when the one-pass module
 // scan proves table 0 is a private, never-mutated table of same-module functions
 // (no home/tag fork, and a monomorphic table becomes a direct call). Default ON;
@@ -153,11 +158,12 @@ type fn struct {
 	wasmPC             uint32
 	customInstructions map[uint32]CustomInstruction
 
-	nParams     int
-	nLocals     int           // params + declared locals
-	localType   []machineType // per-local machine type
-	localSlot   []int         // per-local frame slot in 8-byte units; v128 occupies two
-	nLocalSlots int           // total local frame slots in 8-byte units
+	nParams          int
+	nLocals          int           // params + declared locals
+	localType        []machineType // per-local machine type
+	localSlot        []int         // per-local frame slot in 8-byte units; v128 occupies two
+	localExactGCType []uint32      // exact non-null GC type + 1; zero means unknown
+	nLocalSlots      int           // total local frame slots in 8-byte units
 
 	// WARP-style per-local storage metadata. localType remains as the compact
 	// type table used by existing lowering; locals holds the assigned register and
@@ -1357,6 +1363,7 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, int
 		f.memSizeReg = R15 // explicit bounds: R15 = memBytes for the whole module
 	}
 	f.localType = make([]machineType, nLocals)
+	f.localExactGCType = make([]uint32, nLocals)
 	i := 0
 	for _, p := range ft.Params {
 		f.localType[i] = mtOf(p)
