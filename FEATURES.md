@@ -1,8 +1,9 @@
 # wago feature support
 
-WebAssembly feature support for the pure-Go (no cgo) engine. Target today is
-**linux/amd64** with a documented modern CPU baseline: SSSE3/SSE4.1 plus
-AVX/VEX.128 XMM encodings, but not AVX2/FMA/VNNI unless explicitly feature-gated later. For
+WebAssembly feature support for the pure-Go (no cgo) engine. Linux, macOS, and
+Windows on amd64 and arm64 are supported. The amd64 backend has a documented
+modern CPU baseline: SSSE3/SSE4.1 plus AVX/VEX.128 XMM encodings, but not
+AVX2/FMA/VNNI unless explicitly feature-gated later. For
 the actionable plan behind the planned rows, see [ROADMAP.md](ROADMAP.md).
 
 Status: ✅ done · 🚧 partial · ⬜ planned · ❌ not planned.
@@ -56,7 +57,7 @@ Later proposals and engine/platform capabilities beyond the MVP.
 | Synchronous host-import results | ✓ | ✅ done |
 | Bounded function-pipeline parallelism | ✓ | ✅ done: validation and native codegen share one deterministic serial/adaptive/forced worker policy. The default is serial; `WithFunctionWorkers(0)` and CLI `-p` select adaptive mode, while explicit maxima remain capped by `GOMAXPROCS` and local-function count. |
 | Invocation cancellation | ✓ | ✅ done on amd64 and arm64: Linux/amd64 and Linux/arm64 use a thread-directed reserved real-time signal, executable-range validation, and `ucontext` stack/PC rewriting, so generated Wasm contains no cancellation polls. Other targets use function-entry and loop-header safepoints. Closing an active instance publishes the same interruption request, while invocation leases defer unmapping until unwind completes. See `docs/linux-host-interrupt.md`. |
-| Architectures beyond linux/amd64 (arm64, macOS, Windows) | ✓ | 🚧 partial — Linux/arm64 and Darwin/arm64 have native CI for the encoder, backend, runtime/API, explicit and signal-backed guard-page bounds, and corpus correctness. ARM64 reference globals, heterogeneous indexed tables, and Linux asynchronous cancellation execute; Windows remains planned. |
+| Linux, macOS, and Windows on amd64 and arm64 | ✓ | ✅ done — all six release targets execute the encoder, backend, runtime/API, explicit bounds, corpus, and SIMD suites in native CI. Linux/amd64, Linux/arm64, and Darwin/arm64 additionally support signal-backed guard pages and Linux uses signal-context asynchronous cancellation; the other targets use compiler-emitted cooperative safepoints. |
 | Multi-memory | ✗ | ❌ not planned |
 | Exception handling proposal | ✗ | ❌ not planned |
 | Garbage collection proposal (wasm GC) | ✗ | ❌ not planned |
