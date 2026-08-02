@@ -30,6 +30,22 @@ paths. `DomainSnapshot` remains 112 bytes; the per-member in-memory record grows
 80 to 104 bytes for one optional passive-root slice. Existing v1/v2 blobs remain
 loadable, while memory64 and global-dependent element ownership require v3.
 
+**Dense `br_table` compile scratch (2026-08-02).** Duplicate-heavy jump tables
+previously allocated a `map[uint32]int` per instruction to deduplicate branch
+stubs. Branch labels are bounded control-stack depths, so amd64 and ARM64 now
+reuse one dense position slice per compiler worker and initialize only depths
+used by the current table. On linux/amd64 (Ryzen 7 8845HS, GOMAXPROCS=1, one
+pinned CPU), the new 256-entry mixed-label watchpoint improves from a
+**505.9 to 458.5 µs/op median** (**−9.4%**, ten one-second samples); existing
+small duplicate/mixed watchpoints improve **75.41→72.68 µs** (**−3.6%**) and
+**118.45→113.13 µs** (**−4.5%**). The real esbuild codegen benchmark removes
+**8,335,959 B/op** (**80,910,800→72,574,841, −10.3%**) and **15,713 allocs/op**
+(**126,583→110,870, −12.4%**); median latency is within noise at
+414.4→412.6 ms. This focused compile-memory/synthetic-speed win costs 160 bytes
+in the plugin-complete stripped TinyGo release (1,734,452→1,734,612), leaving the
+combined context-binding plus jump-table changes 16 bytes above the prior
+1,734,596-byte release.
+
 **Direct native-context rebinding (2026-08-02).** Every public native entry
 restores ten stable context pointers into basedata. The prior path decoded those
 bytes into an `InstanceContext` and then performed ten separate slice-backed

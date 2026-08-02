@@ -1484,9 +1484,23 @@ func (f *fn) opBrTable(r *wasm.Reader) error {
 			f.unreachable = true
 			return nil
 		}
-		stubAt := map[uint32]int{}
+		// Branch labels are control-stack depths, so use one reusable dense scratch
+		// table instead of allocating a hash map for every duplicate-heavy br_table.
+		// Initialize only the labels used by this table; stale entries for other
+		// depths are unreachable until a later table initializes them.
+		stubAt := f.sc.brTableStubAt
+		if cap(stubAt) < len(f.ctrl) {
+			stubAt = make([]int, len(f.ctrl))
+		} else {
+			stubAt = stubAt[:len(f.ctrl)]
+		}
+		f.sc.brTableStubAt = stubAt
+		for _, lbl := range labels {
+			stubAt[lbl] = -1
+		}
+		stubAt[def] = -1
 		stub := func(lbl uint32) int {
-			if p, ok := stubAt[lbl]; ok {
+			if p := stubAt[lbl]; p >= 0 {
 				return p
 			}
 			p := f.a.Len()
@@ -1497,7 +1511,7 @@ func (f *fn) opBrTable(r *wasm.Reader) error {
 		for i, lbl := range labels {
 			f.a.PatchU32(tablePos+4*i, uint32(stub(lbl)-tablePos))
 		}
-		if p, ok := stubAt[def]; ok {
+		if p := stubAt[def]; p >= 0 {
 			f.a.PatchRel32(defSite, p)
 		} else {
 			f.a.PatchRel32(defSite, f.a.Len())

@@ -85,6 +85,15 @@ func BenchmarkRailshotCompileBrTableMixed(b *testing.B) {
 	benchmarkCompileModule(b, m)
 }
 
+func BenchmarkRailshotCompileBrTableLargeMixed(b *testing.B) {
+	labels := make([]uint32, 256)
+	for i := range labels {
+		labels[i] = uint32(i % 8)
+	}
+	m := benchDecodeValidateModule(b, benchBrTableModuleBytesFrom(labels, 7))
+	benchmarkCompileModule(b, m)
+}
+
 func BenchmarkRailshotEndToEndSIMDHeavy(b *testing.B) {
 	data := benchSIMDHeavyModuleBytes()
 	b.ReportAllocs()

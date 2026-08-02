@@ -410,6 +410,7 @@ type scratch struct {
 	trapSites      [trapMax + 1][]trapSite
 	ctrl           []ctrlFrame // control-frame stack backing; reused across functions
 	pinnedLocals   []int       // pinned-local index backing; reused across functions
+	brTableStubAt  []int       // duplicate-heavy jump-table target positions by control depth
 	transient
 }
 
