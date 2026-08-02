@@ -78,8 +78,9 @@ done:
 	RET
 
 // Entry SP points at {page, retryPC}. Preserve all allocator-visible volatile
-// GP/vector state around VirtualAlloc, then branch back to the faulting PC. X16
-// is the backend's dedicated call scratch and carries the retry target.
+// GP/vector state around VirtualAlloc, then branch back to the faulting PC. X17
+// is the backend's dedicated logical-PC scratch and carries the retry target;
+// X16 must be restored because memory lowering uses it as an address scratch.
 TEXT ·guardCommitPage(SB), NOSPLIT|NOFRAME, $0-0
 	SUB	$672, RSP
 	STP	(R0, R1), 0(RSP)
@@ -142,10 +143,10 @@ TEXT ·guardCommitPage(SB), NOSPLIT|NOFRAME, $0-0
 	LDP	80(RSP), (R10, R11)
 	LDP	96(RSP), (R12, R13)
 	LDP	112(RSP), (R14, R15)
-	MOVD	136(RSP), R17          // restore X17; X16 carries retry PC
-	MOVD	680(RSP), R16
+	MOVD	128(RSP), R16          // restore the memory-lowering scratch
+	MOVD	680(RSP), R17          // retry PC in the dedicated logical-PC scratch
 	ADD	$688, RSP
-	B	(R16)
+	B	(R17)
 commitfailed:
 	MOVD	-104(R26), R1
 	CBZ	R1, commitsearch
