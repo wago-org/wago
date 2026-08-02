@@ -56,7 +56,9 @@ The shared collector view is 112 bytes: version/20-byte handle stride, current
 handle pointer/count, five directly indexed 16-byte space descriptors
 `{base u64, bytes u32, pad}`, and a refresh generation. Space zero is invalid;
 nursery, old, large, and Tiny match the stable one-byte `handleEntry.space`
-identity. The Collector republishes handle and heap pointers/counts and increments
+identity at byte 18. The stable remembered bit at byte 19 is also native-readable;
+it is consulted only after complete handle/type/extent validation and never mutated
+by generated code. The Collector republishes handle and heap pointers/counts and increments
 the generation after every successful allocation and every collection, including
 handle-table relocation. Close zeros all published backing pointers before the
 view lifetime ends. Native execution and collector mutation remain serialized,
@@ -65,9 +67,13 @@ so readers never observe a partially refreshed view.
 AMD64 direct final-scalar struct/array accesses reload the view for each operation
 and validate both version words, handle tag/index, 20-byte entry stride, space
 index, heap/object range, exact canonical type, and array bounds. Numeric writes
-are pointer-free and need no collector barrier. Non-final types, collector or
-opaque references, `v128`, bulk operations, and every barrier-requiring store keep
-the synchronous helper ABI. The basedata increase is 16 bytes per `JobMemory`;
+are pointer-free and need no collector barrier. Final abstract-reference struct
+stores may also write an old/large Throughput parent when the child is non-young or
+the parent is already remembered; stores that must append remembered metadata and
+all Tiny stores retain the synchronous helper ABI. Reference-array old/large stores
+also remain helper-bound until native card reconciliation is complete. Non-final
+types, opaque references, `v128`, and bulk operations keep the helper ABI. The
+basedata increase is 16 bytes per `JobMemory`;
 `Instance` grows by one eight-byte retained view pointer on current amd64 builds.
 
 Direct imported calls load `{entry, homeLinMem, targetContext, callerContext}`

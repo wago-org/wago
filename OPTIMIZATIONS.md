@@ -165,16 +165,30 @@ sustained medians improve about **0.90-0.93→0.80-0.86 ms**. The stripped
 plugin-complete TinyGo binary is **1,777,788 bytes**, +1,088 bytes over the dead-new
 build. `WAGO_AMD64_NO_GC_REF_FACTS=1` restores the validated cast path.
 
-**Executed WasmGC helper counters (2026-08-02).** Optional
-the diagnostic `wago_gcstats` build tag exposes
-`Instance.SetGCHelperStatsTracking(true)` and `Instance.GCHelperStats()`, separating total,
-allocation, and mutation transitions. Production builds compile the hook away.
-Fresh Dew executes 1,724 helpers (1,038 allocation,
-686 mutation) versus static `hostsync=6,140`; the per-call counts remain exact
-through 100 and 500 repeated calls. This supplies dynamic denominators for native
-bump allocation and old-parent barrier work. The production stripped TinyGo binary
-is **1,780,332 bytes**, +328 bytes over the count-only build; the tagged diagnostic
-product is not the authoritative release artifact.
+**Executed WasmGC helper counters (2026-08-02).** The diagnostic
+`wago_gcstats` build tag exposes `Instance.SetGCHelperStatsTracking(true)` and
+`Instance.GCHelperStats()`, separating total, allocation, struct/array mutation,
+reference-mutation, parent-space, and remembered-state transitions. Production
+builds compile the hook away. Before old-struct specialization, fresh Dew executed
+1,724 helpers (1,038 allocation, 686 mutation) versus static `hostsync=6,140`;
+the per-call counts remained exact through 100 and 500 repeated calls. The
+production stripped TinyGo binary was **1,780,332 bytes**, +328 bytes over the
+count-only build; the tagged diagnostic product is not the authoritative release
+artifact.
+
+**Barrier-safe old/large struct reference stores (2026-08-02).** The shared AMD64
+final-reference-field store stub now admits a Throughput old/large parent when the
+validated child is non-young, or when a nursery child is written behind a parent
+whose stable remembered bit is already set. Stores that must append remembered
+metadata and every Tiny store still take the exact helper. Dew executes **426 fewer
+mutation helpers per call**, reducing dynamic transitions **1,724→1,298** while
+leaving the 1,038 allocation helpers unchanged. Generated code grows only **71 bytes**
+(**6,957,024→6,957,095**). Across six interleaved rounds, the median of fresh
+medians improves about **0.846→0.755 ms** and the median of sustained medians about
+**0.880→0.839 ms**, with host allocation unchanged. The plugin-complete stripped
+TinyGo candidate is **1,780,668 bytes**, +336 bytes over the helper-counter build.
+The remaining 260 mutations are 258 array stores plus two unremembered old-to-young
+struct stores; native array-card reconciliation remains the next write-barrier target.
 
 **WasmGC load-forwarding counters (2026-08-02).** AMD64 count-only facts report
 4,092 fused exact array accesses, 3,067 fused exact struct accesses, and 1,022

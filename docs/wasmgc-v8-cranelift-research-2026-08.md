@@ -447,23 +447,38 @@ The count-only metrics remain; both runtime transformations were removed.
 
 A diagnostic `wago_gcstats` build exposes
 `Instance.SetGCHelperStatsTracking(true)` and collector-domain counters through
-`Instance.GCHelperStats()`. Production builds compile the dispatch hook away. One fresh
-Dew call executes 1,724
-synchronous Go helper transitions: 1,038 allocation helpers and 686 mutation
-fallbacks, versus static `hostsync=6,140`. The exact same per-call counts persist
-through 100 and 500 repeated invocations. Native bump allocation and old-parent
-barrier work can therefore be evaluated against independent dynamic denominators.
+`Instance.GCHelperStats()`. Production builds compile the dispatch hook away. Before
+old-struct specialization, one fresh Dew call executed 1,724 synchronous Go helper
+transitions: 1,038 allocation helpers and 686 mutation fallbacks, versus static
+`hostsync=6,140`. All 686 mutations had old parents. The exact same per-call counts
+persisted through 100 and 500 repeated invocations.
+
+### Completed: barrier-safe old/large struct stores
+
+The shared AMD64 final-reference struct-store stub now admits a fully validated
+Throughput old/large parent when the child is non-young or the parent's stable
+remembered bit is already set. It never mutates remembered metadata: a nursery child
+behind an unremembered parent and every Tiny store still take the exact Go helper.
+Dew removes 426 mutation transitions per call, leaving 1,298 total transitions:
+1,038 allocations and 260 mutations. Generated code grows by 71 bytes. Six
+interleaved rounds produce median-of-medians changes of about 0.846→0.755 ms fresh
+and 0.880→0.839 ms sustained, with host allocation unchanged.
+
+The remaining 260 mutation transitions are 258 array stores and two struct stores
+that must create remembered membership. Of those array calls, 254 already have a
+remembered old parent; they remain helper-bound because exact native array-card
+reconciliation has not yet been published in ABI v1.
 
 Remaining order:
 
-1. Instrument executed shared native stubs if finer dynamic weighting is needed;
-   synchronous helper transitions are now measured.
-2. Prototype a bounded field-value cache only if dynamic counters identify a hot
+1. Design bounded native reconciliation for already-carded old/large array stores;
+   fallback must remain for card/remembered metadata growth and every Tiny state.
+2. Implement native bump allocation for the 1,038 live constructor transitions.
+3. Prototype a bounded field-value cache only if dynamic counters identify a hot
    same-field family on another workload; Dew has no conservative get/get or
    set/get candidates.
-3. Implement native bump allocation for the constructor sites that remain live.
-4. Keep broad Heap2Local/scalar replacement deferred unless a different
-   workload shows a win that justifies frame growth and control-flow complexity.
+4. Keep broad Heap2Local/scalar replacement deferred unless a different workload
+   shows a win that justifies frame growth and control-flow complexity.
 
 The key conclusion remains that **native bump allocation is worthwhile, but it
 should optimize only live allocations**. V8's typed/load analyses provide the

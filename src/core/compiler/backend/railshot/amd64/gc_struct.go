@@ -175,7 +175,7 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		}
 		if st, found := nativeGCFlatType(f.m, typeIndex); found && st.Final && field.Storage.Val.Kind == wasm.ValRef && field.Storage.Val.Ref.Heap.Kind == wasm.HeapAbs && (field.Storage.Val.Ref.Heap.Abs == wasm.HeapAny || field.Storage.Val.Ref.Heap.Abs == wasm.HeapEq) {
 			if off, size, final, layoutOK := nativeGCStructFieldLayout(f.m, typeIndex, fieldIndex); layoutOK && final && size == 4 {
-				return f.emitNativeNurseryStructRefSet(typeIndex, fieldIndex, off, field.Storage.Val)
+				return f.emitNativeBarrierSafeStructRefSet(typeIndex, fieldIndex, off, field.Storage.Val)
 			}
 		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})

@@ -394,11 +394,33 @@ The plugin-complete stripped TinyGo candidate is **1,777,788 bytes**, +1,088
 bytes (+0.061%) over the dead-constructor build. It executes Dew successfully.
 
 A diagnostic `wago_gcstats` build enables executed-helper instrumentation through
-`Instance.SetGCHelperStatsTracking(true)` plus `Instance.GCHelperStats`; production builds
-compile the hook away. One fresh Dew invocation executes **1,724** of the
-6,140 emitted synchronous helper sites: **1,038 allocation helpers** and **686
-mutation fallbacks**. Those counts remain exactly 1,724/1,038/686 per call over
-100 and 500 repeated invocations. Tracking is disabled by default.
+`Instance.SetGCHelperStatsTracking(true)` plus `Instance.GCHelperStats`; production
+builds compile the hook away. Before old-struct specialization, one fresh Dew
+invocation executed **1,724** of the 6,140 emitted synchronous helper sites:
+**1,038 allocation helpers** and **686 mutation fallbacks**, all with old parents.
+The counters additionally split struct/array mutations and old-to-young remembered
+state. Those baseline counts remained exact over 100 and 500 repeated invocations.
+Tracking is disabled by default.
+
+The shared AMD64 final-reference struct-store stub now admits a Throughput old/large
+parent when its validated child is non-young or the parent is already remembered.
+A nursery child behind an unremembered parent still takes the helper that appends
+remembered metadata; Tiny remains helper-only. This removes **426 mutation helper
+transitions per call**, leaving **1,298 total = 1,038 allocation + 260 mutation**.
+The 260 remaining mutations are 258 array stores and two unremembered old-to-young
+struct stores. Counts stay exact through 500 repeated calls.
+
+| Measurement | Before old-struct path | After | Change |
+| --- | ---: | ---: | ---: |
+| executed helpers/call | 1,724 | 1,298 | -24.7% |
+| mutation helpers/call | 686 | 260 | -62.1% |
+| generated native code | 6,957,024 B | 6,957,095 B | +71 B |
+| median of six fresh medians | 0.846 ms | 0.755 ms | -10.8% |
+| median of six sustained medians | 0.880 ms | 0.839 ms | -4.7% |
+| host bytes/allocations | 524,512 B / 68 | 524,512 B / 68 | unchanged |
+
+The individual wall-clock rounds remain frequency-sensitive; the table uses
+interleaved median-of-medians rather than selecting one favorable run.
 
 Compiler-native count-only load facts now report 4,092 fused accesses with a prior
 exact array type, 3,067 with a prior exact struct type, and 1,022 repeated immutable

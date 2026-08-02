@@ -11,16 +11,17 @@ const NativeABIVersion uint32 = 1
 // Native handle-entry layout. These constants are part of NativeABIVersion and
 // are verified against handleEntry below.
 const (
-	NativeHandleStride            = 20
-	NativeHandleOffsetOffset      = 0
-	NativeHandleSizeOffset        = 4
-	NativeHandleSpaceOffset       = 18
-	NativeSpaceFree          byte = byte(spaceFree)
-	NativeSpaceNursery       byte = byte(spaceNursery)
-	NativeSpaceOld           byte = byte(spaceOld)
-	NativeSpaceLarge         byte = byte(spaceLarge)
-	NativeSpaceTiny          byte = byte(spaceTiny)
-	NativeSpaceCount              = 5
+	NativeHandleStride                = 20
+	NativeHandleOffsetOffset          = 0
+	NativeHandleSizeOffset            = 4
+	NativeHandleSpaceOffset           = 18
+	NativeHandleRememberedOffset      = 19
+	NativeSpaceFree              byte = byte(spaceFree)
+	NativeSpaceNursery           byte = byte(spaceNursery)
+	NativeSpaceOld               byte = byte(spaceOld)
+	NativeSpaceLarge             byte = byte(spaceLarge)
+	NativeSpaceTiny              byte = byte(spaceTiny)
+	NativeSpaceCount                  = 5
 )
 
 // NativeSpaceView names one collector heap backing. Space zero deliberately

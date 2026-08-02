@@ -3,9 +3,20 @@ package wago
 // GCHelperStats reports executed synchronous Go helper transitions for one
 // tracked collector domain.
 type GCHelperStats struct {
-	Calls           uint64
-	AllocationCalls uint64
-	MutationCalls   uint64
+	Calls                         uint64
+	AllocationCalls               uint64
+	MutationCalls                 uint64
+	StructMutationCalls           uint64
+	ArrayMutationCalls            uint64
+	ReferenceMutationCalls        uint64
+	ParentNurseryMutationCalls    uint64
+	ParentOldMutationCalls        uint64
+	ParentLargeMutationCalls      uint64
+	ParentTinyMutationCalls       uint64
+	OldYoungRememberedCalls       uint64
+	OldYoungUnrememberedCalls     uint64
+	StructOldYoungRememberedCalls uint64
+	ArrayOldYoungRememberedCalls  uint64
 }
 
 // GCHelperStats returns the current diagnostic helper counters. Only one

@@ -113,12 +113,15 @@ type, and array index before touching payload bytes.
 
 Shared AMD64 stubs additionally cover final casts, final cast-plus-array-length,
 final reference-array reads, and final cast-plus-reference-struct reads. Final
-mutable `eqref`/`anyref` struct fields and arrays perform a checked direct store only
-when the parent is in Throughput nursery space; old/large/Tiny parents and malformed
-references take the unchanged helper with the full remembered-set or incremental
-barrier. Conditional lowering preserves hot pinned registers and emits local reloads
-only on the fallback edge. Non-final types, `v128`, bulk operations, and every write
-that cannot prove nursery ownership retain helper lowering. Current scalar
+mutable `eqref`/`anyref` arrays perform a checked direct store only when the parent
+is in Throughput nursery space. Final mutable `eqref`/`anyref` struct fields also
+admit Throughput old/large parents when the validated child is not in nursery or
+the parent handle's stable remembered bit is already set. A nursery child behind
+an unremembered old/large struct, every Tiny parent, and malformed metadata retain
+the unchanged helper with the full remembered-set or incremental barrier. Conditional
+lowering preserves hot pinned registers and emits local reloads only on the fallback
+edge. Non-final types, `v128`, bulk operations, and barrier states that require
+metadata growth retain helper lowering. Current scalar
 end-to-end measurements are 227.9–229.4 ns/op for struct set/get, 218.2–219.9 ns/op
 for struct get, and 265.2–265.6 ns/op for array set/get; final cast/reference-struct
 get measures about 230–237 ns/op, all at 0 B/op and 0 allocs/op.
@@ -128,13 +131,17 @@ hot path by building with `-tags wago_gcstats`. That diagnostic product exposes
 `Instance.SetGCHelperStatsTracking(true)` and `Instance.GCHelperStats()`; production builds
 compile the helper hook away. One collector domain may be selected process-wide at
 a time; selecting another replaces it, and callers disable tracking after measurement
-to release the diagnostic reference. The counters separate total, allocation, and
-mutation helper calls. On one fresh
-Dew invocation after dead-constructor elimination and exact-reference propagation,
-static `hostsync=6,140` corresponds to 1,724 executed transitions: 1,038 allocating
-constructors and 686 mutation fallbacks. The same per-call counts remain stable over
-100 and 500 repeated invocations. This makes native bump allocation and old-parent
-barriers measurable independently instead of treating emitted cold fallbacks as hot.
+to release the diagnostic reference. The counters separate total, allocation, struct/array mutation, reference-mutation,
+parent-space, and old-to-young remembered-state calls. Before the old-struct fast
+path, one fresh Dew invocation after dead-constructor elimination and exact-reference
+propagation mapped static `hostsync=6,140` to 1,724 executed transitions: 1,038
+allocating constructors and 686 mutation fallbacks, all with old parents. The checked
+old/large struct path removes 426 of those transitions, leaving 1,298 total: the same
+1,038 allocations plus 260 mutations (258 array and two old-to-young struct stores
+that must create remembered metadata). These per-call counts remain exact through
+100 and 500 repeated invocations. This makes native bump allocation and the remaining
+array-card barrier work independently measurable instead of treating emitted cold
+fallbacks as hot.
 
 Fully initialized helper-side `struct.new` prevalidates field kinds, ownership,
 subtyping, and nullability once, then passes raw helper ABI words directly to the

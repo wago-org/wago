@@ -398,7 +398,7 @@ func (f *fn) emitNativeFinalCastStructRefGet(typeIndex, fieldOffset uint32, null
 	return nil
 }
 
-func (f *fn) emitNativeNurseryStructRefSet(typeIndex, fieldIndex, fieldOffset uint32, valueType wasm.ValType) error {
+func (f *fn) emitNativeBarrierSafeStructRefSet(typeIndex, fieldIndex, fieldOffset uint32, valueType wasm.ValType) error {
 	var savedLocals [16]locState
 	if len(f.pinnedLocals) > len(savedLocals) {
 		return fmt.Errorf("amd64: %d pinned locals exceed conditional GC store bound", len(f.pinnedLocals))
@@ -539,7 +539,7 @@ func (f *fn) emitNativeGCStubs() {
 	}
 	if len(f.sc.gcStructRefSetStubSites) != 0 {
 		stub := f.a.Len()
-		f.emitNativeNurseryStructRefSetStub()
+		f.emitNativeBarrierSafeStructRefSetStub()
 		for _, site := range f.sc.gcStructRefSetStubSites {
 			f.a.PatchRel32(site, stub)
 		}
@@ -966,11 +966,12 @@ func (f *fn) emitNativeFinalCastStructRefResolverStub() {
 	a.Ret()
 }
 
-// emitNativeNurseryStructRefSetStub resolves an exact final struct only when the
-// parent currently lives in Throughput nursery space. Nursery stores need no
-// remembered-set or Tiny incremental barrier. The stub performs the checked
-// store and returns EAX=1; EAX=0 selects the exact Go helper fallback.
-func (f *fn) emitNativeNurseryStructRefSetStub() {
+// emitNativeBarrierSafeStructRefSetStub resolves an exact final struct in
+// Throughput nursery, old, or large space. Nursery stores need no barrier;
+// old/large stores proceed only for non-young children or an already remembered
+// parent. Tiny and stores that must grow the remembered set use the exact Go
+// helper fallback. The checked store returns EAX=1; EAX=0 selects that fallback.
+func (f *fn) emitNativeBarrierSafeStructRefSetStub() {
 	a := f.a
 	var preserve [3]bool
 	for _, local := range f.pinnedLocals {
@@ -990,7 +991,7 @@ func (f *fn) emitNativeNurseryStructRefSetStub() {
 	}
 	a.MovRegReg32(RDI, RSI) // compact child
 	a.MovRegReg32(RSI, RCX) // required parent extent
-	var fallback [10]int
+	var fallback [16]int
 	nfallback := 0
 	addFallback := func(site int) { fallback[nfallback], nfallback = site, nfallback+1 }
 
@@ -1033,10 +1034,16 @@ func (f *fn) emitNativeNurseryStructRefSetStub() {
 	a.ShiftImm(5, R10, 16, false)
 	a.AluRI(4, R10, 0xff, false)
 	a.AluRI(cmpDigit, R10, int32(gc.NativeSpaceNursery), false)
-	addFallback(a.JccPlaceholder(condNE))
+	addFallback(a.JccPlaceholder(condB))
+	a.AluRI(cmpDigit, R10, int32(gc.NativeSpaceLarge), false)
+	addFallback(a.JccPlaceholder(condA))
 
-	a.Load64(R11, R8, int32(gc.NativeViewSpacesOffset+gc.NativeSpaceNursery*gc.NativeViewSpaceStride+gc.NativeSpaceBaseOffset))
-	a.Load32(R10, R8, int32(gc.NativeViewSpacesOffset+gc.NativeSpaceNursery*gc.NativeViewSpaceStride+gc.NativeSpaceBytesOffset))
+	// Nursery, old, and large objects all have directly addressable metadata.
+	// Tiny remains helper-bound because its incremental barrier is stateful.
+	a.MovRegReg32(RAX, R10)
+	a.ImulRI(RAX, gc.NativeViewSpaceStride, true)
+	a.LoadIdx(R11, R8, RAX, int32(gc.NativeViewSpacesOffset+gc.NativeSpaceBaseOffset), 8, false, true)
+	a.LoadIdx(R10, R8, RAX, int32(gc.NativeViewSpacesOffset+gc.NativeSpaceBytesOffset), 4, false, false)
 	a.Load32(RAX, R9, gc.NativeHandleOffsetOffset)
 	a.Cmp32(RAX, R10)
 	addFallback(a.JccPlaceholder(condA))
@@ -1074,8 +1081,23 @@ func (f *fn) emitNativeNurseryStructRefSetStub() {
 	a.AluRI(4, RAX, 0xff, false)
 	a.TestSelf(RAX, false)
 	addFallback(a.JccPlaceholder(condE))
+	// Old/large parents may bypass the Go barrier when the child is not young,
+	// or when the parent is already conservatively remembered.
+	a.AluRI(cmpDigit, RAX, int32(gc.NativeSpaceNursery), false)
+	childNotYoung := a.JccPlaceholder(condNE)
+	a.Load32(RAX, R9, 16)
+	a.ShiftImm(5, RAX, 16, false)
+	a.AluRI(4, RAX, 0xff, false)
+	a.AluRI(cmpDigit, RAX, int32(gc.NativeSpaceNursery), false)
+	parentIsYoung := a.JccPlaceholder(condE)
+	a.Load32(RAX, R9, 16)
+	a.ShiftImm(5, RAX, 24, false)
+	a.TestSelf(RAX, false)
+	addFallback(a.JccPlaceholder(condE))
 	a.PatchRel32(childValid, a.Len())
 	a.PatchRel32(childI31, a.Len())
+	a.PatchRel32(childNotYoung, a.Len())
+	a.PatchRel32(parentIsYoung, a.Len())
 	a.Add64(R11, RSI)
 	a.Store32(R11, -4, RDI)
 	a.MovImm32(RCX, 1)

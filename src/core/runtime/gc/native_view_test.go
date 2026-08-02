@@ -19,6 +19,9 @@ func TestNativeCollectorViewLayoutAndRefresh(t *testing.T) {
 	if got := unsafe.Offsetof(entry.space); got != NativeHandleSpaceOffset {
 		t.Fatalf("handle space field = %d", got)
 	}
+	if got := unsafe.Offsetof(entry.remembered); got != NativeHandleRememberedOffset {
+		t.Fatalf("handle remembered field = %d", got)
+	}
 	var space NativeSpaceView
 	if unsafe.Sizeof(space) != NativeViewSpaceStride || unsafe.Offsetof(space.Base) != NativeSpaceBaseOffset || unsafe.Offsetof(space.Bytes) != NativeSpaceBytesOffset {
 		t.Fatalf("space view layout changed: size=%d base=%d bytes=%d", unsafe.Sizeof(space), unsafe.Offsetof(space.Base), unsafe.Offsetof(space.Bytes))

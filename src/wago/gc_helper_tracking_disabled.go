@@ -4,6 +4,6 @@ package wago
 
 import "github.com/wago-org/wago/src/core/runtime/gc"
 
-func recordSynchronousGCHelper(*gc.Collector, uint32)   {}
-func setGCHelperStatsTracking(*gc.Collector, bool)      {}
-func snapshotGCHelperStats(*gc.Collector) GCHelperStats { return GCHelperStats{} }
+func recordSynchronousGCHelper(*Instance, uint32, []uint64) {}
+func setGCHelperStatsTracking(*gc.Collector, bool)          {}
+func snapshotGCHelperStats(*gc.Collector) GCHelperStats     { return GCHelperStats{} }
