@@ -40,6 +40,9 @@ func (in *Instance) gcObjectTypeMatches(actual gc.TypeID, want uint32) bool {
 	if !ok {
 		return false
 	}
+	if int(want) < len(in.c.Types) && in.c.Types[want].Final {
+		return actual == required
+	}
 	matched, err := in.gc.TypeSubtype(actual, required)
 	return err == nil && matched
 }
@@ -65,11 +68,12 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 	}
 	lockedDomain := in.lockGCCollector()
 	defer unlockGCCollector(lockedDomain)
-	state := in.publicGCState()
-	state.mu.Lock()
-	defer state.mu.Unlock()
+	var state *gcPublicState
 	var frameRoots gc.RootSet = gc.EmptyRoots{}
 	if gcHelperMayAllocate(helper) {
+		state = in.publicGCState()
+		state.mu.Lock()
+		defer state.mu.Unlock()
 		if err := in.syncGenericGCGlobalRootsLocked(state); err != nil {
 			panic(gcStructHelperError{err: err})
 		}
@@ -262,6 +266,16 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 		if len(args) != 3 || len(results) < 1 {
 			panic(gcStructHelperError{err: fmt.Errorf("gc ref.cast helper arity = %d/%d, want 3/at-least-1", len(args), len(results))})
 		}
+		if value, handled, err := in.gcFinalDefinedRefCast(args[0], int64(args[1]), args[2] != 0); handled {
+			if errors.Is(err, gc.ErrCastFailure) {
+				panic(gcStructHelperTrap{code: coreruntime.TrapCastFailure})
+			}
+			if err != nil {
+				panic(gcStructHelperError{err: err})
+			}
+			results[0] = value
+			break
+		}
 		target, err := in.gcDynamicRefTarget(int64(args[1]), args[2] != 0)
 		if err != nil {
 			panic(gcStructHelperError{err: err})
@@ -362,6 +376,44 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 	default:
 		panic(gcStructHelperError{err: fmt.Errorf("unknown gc struct helper %d", helper)})
 	}
+}
+
+// gcFinalDefinedRefCast avoids repeated descriptor/subtype walks for final
+// local struct and array targets. Runtime-domain canonical IDs make equality the
+// complete subtype decision for a final target.
+func (in *Instance) gcFinalDefinedRefCast(bits uint64, heap int64, nullable bool) (uint64, bool, error) {
+	if in == nil || in.gc == nil || in.existingGCRefTestTableState() != nil || heap < 0 || uint64(heap) >= uint64(len(in.c.Types)) {
+		return 0, false, nil
+	}
+	type_ := in.c.Types[heap]
+	if !type_.Final || (type_.Kind != CompositeTypeStruct && type_.Kind != CompositeTypeArray) {
+		return 0, false, nil
+	}
+	ref := gc.Ref(uint32(bits))
+	if bits != uint64(ref) {
+		return 0, true, fmt.Errorf("gc ref.cast contains non-compact reference %#x", bits)
+	}
+	if ref.IsNull() {
+		if nullable {
+			return 0, true, nil
+		}
+		return 0, true, gc.ErrCastFailure
+	}
+	if ref.IsI31() {
+		return 0, true, gc.ErrCastFailure
+	}
+	actual, err := in.gc.ObjectType(ref)
+	if err != nil {
+		return 0, true, err
+	}
+	required, ok := in.gcDomainType(uint32(heap))
+	if !ok {
+		return 0, true, fmt.Errorf("gc dynamic reference heap type %d has no Runtime-domain identity", heap)
+	}
+	if actual != required {
+		return 0, true, gc.ErrCastFailure
+	}
+	return bits, true, nil
 }
 
 func (in *Instance) gcDynamicRefTarget(heap int64, nullable bool) (gc.RefTestTarget, error) {

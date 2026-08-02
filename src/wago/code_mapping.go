@@ -113,6 +113,34 @@ type compiledGCFrameRoots struct {
 	callsites            []compiledGCFrameCallsite
 }
 
+// safepointByID keeps the allocation-helper hot path O(1) for compiler-produced
+// dense IDs while retaining a bounded binary-search fallback for valid sparse
+// metadata loaded from older or externally produced codecs.
+func (r *compiledGCFrameRoots) safepointByID(id uint32) *compiledGCFrameSafepoint {
+	if r == nil || id == 0 {
+		return nil
+	}
+	if index := uint64(id - 1); index < uint64(len(r.safepoints)) {
+		safepoint := &r.safepoints[index]
+		if safepoint.id == id {
+			return safepoint
+		}
+	}
+	low, high := 0, len(r.safepoints)
+	for low < high {
+		middle := low + (high-low)/2
+		if r.safepoints[middle].id < id {
+			low = middle + 1
+		} else {
+			high = middle
+		}
+	}
+	if low < len(r.safepoints) && r.safepoints[low].id == id {
+		return &r.safepoints[low]
+	}
+	return nil
+}
+
 func (c *Compiled) genericGCFrameRoots() *compiledGCFrameRoots {
 	if c == nil || c.validateMemo == nil {
 		return nil

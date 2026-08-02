@@ -62,11 +62,12 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 	}
 	lockedDomain := in.lockGCCollector()
 	defer unlockGCCollector(lockedDomain)
-	state := in.publicGCState()
-	state.mu.Lock()
-	defer state.mu.Unlock()
+	var state *gcPublicState
 	var frameRoots gc.RootSet = gc.EmptyRoots{}
 	if gcHelperMayAllocate(helper) {
+		state = in.publicGCState()
+		state.mu.Lock()
+		defer state.mu.Unlock()
 		frameRoots = in.gcHelperRoots(ctrl, state, safepoint)
 	}
 

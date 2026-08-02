@@ -159,3 +159,50 @@ func TestGCNativeFrameRootsARM64ExternalReturnTerminates(t *testing.T) {
 	runtime.KeepAlive(frame)
 	runtime.KeepAlive(code)
 }
+
+func TestCompiledGCFrameRootsSafepointByID(t *testing.T) {
+	plan := &compiledGCFrameRoots{safepoints: []compiledGCFrameSafepoint{
+		{id: 1, frameBytes: 32},
+		{id: 2, frameBytes: 40},
+		{id: 4, frameBytes: 48},
+	}}
+	for _, tc := range []struct {
+		id   uint32
+		want uint32
+		ok   bool
+	}{
+		{id: 0},
+		{id: 1, want: 32, ok: true},
+		{id: 2, want: 40, ok: true},
+		{id: 3},
+		{id: 4, want: 48, ok: true},
+		{id: 5},
+	} {
+		got := plan.safepointByID(tc.id)
+		if !tc.ok {
+			if got != nil {
+				t.Fatalf("safepointByID(%d) = %+v, want nil", tc.id, got)
+			}
+			continue
+		}
+		if got == nil || got.id != tc.id || got.frameBytes != tc.want {
+			t.Fatalf("safepointByID(%d) = %+v, want id=%d frameBytes=%d", tc.id, got, tc.id, tc.want)
+		}
+	}
+}
+
+func BenchmarkCompiledGCFrameRootsSafepointByIDDense(b *testing.B) {
+	const count = 4096
+	plan := &compiledGCFrameRoots{safepoints: make([]compiledGCFrameSafepoint, count)}
+	for i := range plan.safepoints {
+		plan.safepoints[i].id = uint32(i + 1)
+	}
+	b.ReportAllocs()
+	var got *compiledGCFrameSafepoint
+	for i := 0; i < b.N; i++ {
+		got = plan.safepointByID(uint32(i%count + 1))
+	}
+	if got == nil {
+		b.Fatal("dense lookup returned nil")
+	}
+}

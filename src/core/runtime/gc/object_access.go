@@ -22,6 +22,7 @@ func (c *Collector) NewStructWithRoots(typeID TypeID, values []Value, roots Root
 		return Null(), errors.New("gc: struct initializer shape mismatch")
 	}
 	hasRefs := false
+	hasObjectRefs := false
 	for i, field := range d.Fields {
 		if err := checkValueCompatible(field.Kind, values[i]); err != nil {
 			return Null(), err
@@ -31,9 +32,10 @@ func (c *Collector) NewStructWithRoots(typeID TypeID, values []Value, roots Root
 				return Null(), err
 			}
 			hasRefs = true
+			hasObjectRefs = hasObjectRefs || values[i].Ref.IsObj()
 		}
 	}
-	if hasRefs {
+	if hasObjectRefs {
 		roots = combineRootSets(roots, valueRootSet{values: values, fields: d.Fields})
 	}
 	sz, err := StructSize(d)

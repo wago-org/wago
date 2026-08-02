@@ -21,13 +21,7 @@ func (in *Instance) gcHelperRoots(ctrl uintptr, state *gcPublicState, safepointI
 	if plan == nil || ctrl == 0 {
 		return gc.EmptyRoots{}
 	}
-	var safepoint *compiledGCFrameSafepoint
-	for i := range plan.safepoints {
-		if plan.safepoints[i].id == safepointID {
-			safepoint = &plan.safepoints[i]
-			break
-		}
-	}
+	safepoint := plan.safepointByID(safepointID)
 	if safepointID == 0 || safepoint == nil {
 		panic(gcStructHelperError{err: fmt.Errorf("generic GC frame-root safepoint %d is unavailable", safepointID)})
 	}

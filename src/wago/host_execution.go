@@ -60,6 +60,13 @@ func (root *Instance) dispatchSynchronousHostCall(ctrl uintptr, importIdx uint32
 	if active.hostCall == nil {
 		panic(invalidHostReference{err: fmt.Errorf("host control frame %x has no dispatcher", ctrl)})
 	}
+	if importIdx&gcStructDispatchBit != 0 {
+		// Internal GC helpers cannot re-enter Wasm or arbitrary host code. Keep the
+		// native execution lease while operating on the parked frame instead of
+		// paying the public host-call release/reacquire protocol at every GC opcode.
+		active.hostCall(ctrl, importIdx, args, results)
+		return
+	}
 
 	// Run arbitrary Go host code without the non-reentrant native execution
 	// lease. The deferred reacquire covers normal return, HostExit, validation
