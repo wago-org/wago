@@ -434,6 +434,17 @@ into **1,026 fully initialized `struct.new` calls** and **12
 `array.new_default` calls**, with no struct-default or other-array helper executions.
 The split remains identical per call through 500 repetitions.
 
+A one-ticket native nursery-allocation prototype was rejected. The helper path
+reserved one unpublished handle/extent for one later constructor, reducing total
+helpers 1,044→736 and initialized-struct helpers 1,026→718. Generated code grew
+6,957,321→6,992,108 bytes, however, while fresh host allocation improved only
+524,512→522,528 B/op with the same 68 allocations. Six interleaved fresh rounds
+were effectively neutral/noisy (median-of-medians about 0.690→0.683 ms), and
+repeated execution trapped after collection because ticket lifecycle invalidation
+was not yet exact. No part of that prototype is retained. A future attempt must use
+transactional batches, explicit collection epochs, exact unused-handle recycling,
+and enough constructors per refill to amortize the shared native stub.
+
 The individual wall-clock rounds remain frequency-sensitive; the table uses
 interleaved median-of-medians rather than selecting one favorable run.
 

@@ -210,6 +210,18 @@ with zero struct-default or other-array allocations; these counts remain exact
 through 500 calls. Native allocation should therefore specialize the initialized
 struct path first rather than introducing a broad allocator for twelve cold arrays.
 
+A one-ticket nursery prototype was measured and rejected. Each allocating helper
+reserved one unpublished free handle plus nursery extent for one subsequent native
+constructor. It reduced executed helpers **1,044→736** and initialized-struct helpers
+**1,026→718**, but grew generated code **6,957,321→6,992,108 bytes** (+34,787),
+reduced fresh host allocation by only 1,984 B/op with allocations unchanged, and was
+roughly neutral in six noisy fresh A/B rounds (median-of-medians about
+0.690→0.683 ms). More importantly, sustained repeated execution exposed a cast-failure
+lifecycle bug after collection. The complete prototype was reverted. A future
+allocator must use transactional batch reservation with an explicit collection epoch,
+exact cancellation/recycling, and enough tickets per refill to amortize the shared
+stub and marshaling cost; one speculative ticket is not an acceptable tradeoff.
+
 **WasmGC load-forwarding counters (2026-08-02).** AMD64 count-only facts report
 4,092 fused exact array accesses, 3,067 fused exact struct accesses, and 1,022
 repeated immutable `array.len` operations on the same unchanged exact local in
