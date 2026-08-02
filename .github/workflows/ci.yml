@@ -251,10 +251,10 @@ jobs:
         if: matrix.guard && runner.os == 'Windows'
         shell: pwsh
         run: |
-          go test -count=1 -tags wago_guardpage ./src/wago/
+          go test -v -count=1 -tags wago_guardpage ./src/wago/
           Push-Location bench
           try {
-            go test -count=1 -tags wago_guardpage -run 'TestCorpusDifferential|TestJsonAsGuardCorrect' .
+            go test -v -count=1 -tags wago_guardpage -run 'TestCorpusDifferential|TestJsonAsGuardCorrect' .
           } finally {
             Pop-Location
           }
