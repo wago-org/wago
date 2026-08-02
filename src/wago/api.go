@@ -1755,6 +1755,7 @@ func isUnsupportedProposalError(err error) bool {
 		"return_call", "tail call",
 		"reference instruction", "reference type", "ref func", "ref type ", "call_ref", "br_on_null", "br_on_non_null", "ref.as_non_null",
 		"shared memory", "atomic instruction", "atomic.",
+		"extended-constant-expressions", "extended-const-expressions",
 	} {
 		if strings.Contains(message, marker) {
 			return true
