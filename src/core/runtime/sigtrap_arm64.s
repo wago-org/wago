@@ -9,11 +9,12 @@
 //   sigcontext.pc = uc_mcontext + 8 + 31*8 + 8 = +440
 // guardRegion is {start@0, end@8, linMem@16, ownerLinMem@24}, 32 bytes.
 TEXT ·guardSigHandler(SB), NOSPLIT|NOFRAME, $0-0
+	MOVD	R2, R15                 // preserve *ucontext across mprotect arguments
 	MOVD	16(R1), R8              // R8 = siginfo->si_addr (fault address)
 	MOVD	$·guardRegions(SB), R10 // R10 = &guardRegions[0]
 	MOVD	$256, R11               // R11 = slots left (maxGuardRegions)
 scan:
-	MOVD	0(R10), R9              // region.start
+	LDAR	(R10), R9               // acquire region.start publication
 	CBZ	R9, next                // free slot
 	CMP	R9, R8
 	BLO	next                    // addr < start
@@ -23,7 +24,7 @@ scan:
 
 	MOVD	16(R10), R9             // region.linMem (fault-address base)
 	MOVD	24(R10), R14            // region.ownerLinMem (active primary)
-	MOVD	392(R2), R26            // saved X26 (arm64 primary linMem)
+	MOVD	392(R15), R26           // saved X26 (arm64 primary linMem)
 	CMP	R14, R26
 	BNE	next                    // mismatch -> not this reservation's wasm fault
 
@@ -42,15 +43,21 @@ scan:
 	MOVD	$3, R2                  // PROT_READ|PROT_WRITE
 	MOVD	$226, R8                // SYS_mprotect
 	SVC
+	CMP	$0, R0
+	BGE	resume
+	MOVW	$4, R13                 // TrapLinMemCouldNotExtend
+	B	settrap
+resume:
 	RET                             // -> kernel signal return: retry access
 
 dotrap:
-	MOVD	-104(R26), R12          // R12 = trap cell pointer
 	MOVW	$3, R13                 // TrapLinMemOutOfBounds
+settrap:
+	MOVD	-104(R26), R12          // R12 = trap cell pointer
 	MOVW	R13, (R12)
-	MOVD	R26, 256(R2)           // saved X9 = linMem for the landing pad
+	MOVD	R26, 256(R15)           // saved X9 = linMem for the landing pad
 	MOVD	·guardTrapExitHandlerJumpPC(SB), R9
-	MOVD	R9, 440(R2)             // saved PC = nativeTrapExitHandlerJump
+	MOVD	R9, 440(R15)            // saved PC = nativeTrapExitHandlerJump
 	RET                             // -> kernel signal return -> nativeTrapExitHandlerJump
 
 next:

@@ -18,6 +18,10 @@ import (
 const (
 	_ = uint(abi.TrapCellPtrOffset - 104)
 	_ = uint(104 - abi.TrapCellPtrOffset)
+	_ = uint(TrapLinMemOutOfBounds - 3)
+	_ = uint(3 - TrapLinMemOutOfBounds)
+	_ = uint(TrapLinMemCouldNotExtend - 4)
+	_ = uint(4 - TrapLinMemCouldNotExtend)
 )
 
 // Guard-page trap handler (EXPERIMENTAL). This is the arm64 twin of the amd64
@@ -50,7 +54,9 @@ func registerGuardRegion(start, end, linMem uintptr) error {
 			guardRegions[i].linMem = linMem
 			guardRegions[i].ownerLinMem = linMem
 			guardRegions[i].end = end
-			guardRegions[i].start = start
+			// Publish last; the ARM64 handler acquire-loads start before it
+			// consumes the remaining fields.
+			atomic.StoreUintptr(&guardRegions[i].start, start)
 			return nil
 		}
 	}
@@ -73,7 +79,9 @@ func unregisterGuardRegion(start uintptr) {
 	defer guardRegionMu.Unlock()
 	for i := range guardRegions {
 		if guardRegions[i].start == start {
-			guardRegions[i].start = 0
+			// Disable first so the handler cannot begin a new match while the
+			// remaining fields are cleared.
+			atomic.StoreUintptr(&guardRegions[i].start, 0)
 			guardRegions[i].end = 0
 			guardRegions[i].linMem = 0
 			guardRegions[i].ownerLinMem = 0

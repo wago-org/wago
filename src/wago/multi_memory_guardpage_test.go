@@ -9,8 +9,11 @@ import (
 	"github.com/wago-org/wago/tests/wasmtest"
 )
 
-func TestSignalIndexedMemoryGrowCommitsThroughPrimaryOwner(t *testing.T) {
-	addr := append([]byte{0x41}, wasmtest.SLEB32(65536)...)
+func TestSignalIndexedMemoryGrowCommitsWholeWasmPageThroughPrimaryOwner(t *testing.T) {
+	// Exercise the final byte of the grown page. ARM64 handlers commit a 64 KiB
+	// range, so this catches reservations whose linear-memory base is not aligned
+	// to that range rather than only checking the first byte after memory.grow.
+	addr := append([]byte{0x41}, wasmtest.SLEB32(2*65536-1)...)
 	body := []byte{0x41, 0x01, 0x40, 0x01, 0x1a} // grow memory 1 by one; drop old size
 	body = append(body, addr...)
 	body = append(body, 0x2d, 0x40, 0x01, 0x00, 0x0b) // i32.load8_u memory 1
@@ -40,7 +43,7 @@ func TestSignalIndexedMemoryGrowCommitsThroughPrimaryOwner(t *testing.T) {
 	defer in.Close()
 	got, err := in.Invoke("grow_load")
 	if err != nil || len(got) != 1 || got[0] != 0 {
-		t.Fatalf("grow then load indexed guarded memory = %v, %v; want [0]", got, err)
+		t.Fatalf("grow then load final byte of indexed guarded memory = %v, %v; want [0]", got, err)
 	}
 	memory1, err := in.ExportedMemory("memory1")
 	if err != nil {

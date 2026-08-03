@@ -18,20 +18,28 @@ const (
 	wasmPageBytes    = 1 << 16
 )
 
-var guardReserveBytes = uintptr(roundUpPage(int(uintptr(basedataSize) + maxLinMemBytes + offsetGuardBytes)))
+var guardReserveBytes = uintptr(roundUpPage(int(uintptr(basedataSize) + wasmPageBytes - 1 + maxLinMemBytes + offsetGuardBytes)))
+
+func guardedLinOff(base uintptr) int {
+	linMem := (base + uintptr(basedataSize) + wasmPageBytes - 1) &^ uintptr(wasmPageBytes-1)
+	return int(linMem - base)
+}
 
 func NewJobMemoryGuarded(linBytes, maxBytes int) (*JobMemory, error) {
-	linOff := roundUpPage(basedataSize)
-	commit := uintptr(linOff + linBytes)
 	mem, err := syscall.Mmap(-1, 0, int(guardReserveBytes), syscall.PROT_NONE, syscall.MAP_ANON|syscall.MAP_PRIVATE)
 	if err != nil {
 		return nil, fmt.Errorf("guard mmap reserve: %w", err)
 	}
+	base := uintptr(unsafe.Pointer(&mem[0]))
+	// The ARM64 signal handler commits a complete 64 KiB wasm page. Align the
+	// linear-memory base to that boundary rather than merely to the Darwin host
+	// page, and reserve one wasm page of slack for the adjustment.
+	linOff := guardedLinOff(base)
+	commit := uintptr(linOff + linBytes)
 	if err := syscall.Mprotect(mem[:commit], syscall.PROT_READ|syscall.PROT_WRITE); err != nil {
 		_ = syscall.Munmap(mem)
 		return nil, fmt.Errorf("guard mprotect commit: %w", err)
 	}
-	base := uintptr(unsafe.Pointer(&mem[0]))
 	j := &JobMemory{
 		mem:         mem[:commit],
 		linOff:      linOff,
@@ -132,7 +140,7 @@ func (j *JobMemory) rearmGuarded(linBytes, maxBytes int) error {
 	}
 	j.mem = j.mem[:j.linOff+linBytes]
 	j.linLen = linBytes
-	clear(j.mem[:j.linOff])
+	clear(j.mem[j.linOff-basedataSize : j.linOff])
 	j.putGuardedSizeCaches(linBytes, maxBytes)
 	return nil
 }
