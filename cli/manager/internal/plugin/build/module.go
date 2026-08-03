@@ -42,8 +42,10 @@ func registerImport(module string) string { return module + "/register" }
 // because a cached project build may have been created from a different Wago
 // checkout than the currently selected runtime.
 func EnsureModule(dir string) error {
-	_, err := syncBuildModule(dir)
-	return err
+	return withBuildLock(dir, func() error {
+		_, err := syncBuildModule(dir)
+		return err
+	})
 }
 
 // syncBuildModule reconciles the generated module with the Wago source selected
@@ -177,6 +179,10 @@ func isFilesystemPath(p string) bool {
 // otherwise it captures it and only surfaces it on failure (quiet success, like
 // npm). Errors include the tail of go's output for context.
 func RunGo(dir string, verbose bool, args ...string) error {
+	return withBuildLock(dir, func() error { return runGo(dir, verbose, args...) })
+}
+
+func runGo(dir string, verbose bool, args ...string) error {
 	cmd := exec.Command("go", args...)
 	cmd.Dir = dir
 	cmd.Env = os.Environ()
@@ -206,6 +212,10 @@ func Update(dir, target string, verbose bool) error {
 // writeBuildMain generates .wago/main.go: import wago's CLI as a library and
 // blank-import each dependency's register package.
 func WriteMain(dir string, deps []string, config Config) error {
+	return withBuildLock(dir, func() error { return writeMain(dir, deps, config) })
+}
+
+func writeMain(dir string, deps []string, config Config) error {
 	sorted := append([]string(nil), deps...)
 	sort.Strings(sorted)
 	var b strings.Builder
@@ -223,6 +233,14 @@ func WriteMain(dir string, deps []string, config Config) error {
 // ensureBuiltBinary builds (or reuses a cached) custom wago binary at
 // .wago/bin/wago for deps. cached reports a hash hit (deps + toolchain unchanged).
 func EnsureBinary(dir string, deps []string, force, verbose bool, config Config) (bin string, cached bool, err error) {
+	err = withBuildLock(dir, func() error {
+		bin, cached, err = ensureBinary(dir, deps, force, verbose, config)
+		return err
+	})
+	return bin, cached, err
+}
+
+func ensureBinary(dir string, deps []string, force, verbose bool, config Config) (bin string, cached bool, err error) {
 	bin = BinaryPath(dir)
 	hashFile := bin + ".hash"
 	want := Hash(deps, config)
@@ -240,7 +258,7 @@ func EnsureBinary(dir string, deps []string, force, verbose bool, config Config)
 	if err := os.MkdirAll(filepath.Dir(bin), 0o755); err != nil {
 		return "", false, err
 	}
-	if err := WriteMain(dir, deps, config); err != nil {
+	if err := writeMain(dir, deps, config); err != nil {
 		return "", false, err
 	}
 	// Resolve the import graph (fetch any published plugins; local replaces stay
@@ -260,7 +278,7 @@ func EnsureBinary(dir string, deps []string, force, verbose bool, config Config)
 		if verbose {
 			fmt.Fprintf(os.Stderr, "%s go %s\n", ui.Dim("→"), strings.Join(step, " "))
 		}
-		if err := RunGo(dir, verbose, step...); err != nil {
+		if err := runGo(dir, verbose, step...); err != nil {
 			_ = os.Remove(staged)
 			if step[0] == "mod" && !haveSrc {
 				return "", false, fmt.Errorf("go mod tidy: %w\n  (wago may not be published yet — set WAGO_SRC to a wago checkout to build from source)", err)
@@ -277,6 +295,22 @@ func EnsureBinary(dir string, deps []string, force, verbose bool, config Config)
 	}
 	_ = os.WriteFile(hashFile, []byte(want), 0o644)
 	return bin, false, nil
+}
+
+// ModuleVersion returns a module's selected version from a generated plugin
+// build module while excluding concurrent edits to that module.
+func ModuleVersion(dir, module string) (version string, ok bool) {
+	_ = withBuildLock(dir, func() error {
+		cmd := exec.Command("go", "list", "-m", "-f={{.Version}}", module)
+		automation.ConfigureCommand(cmd)
+		cmd.Dir = dir
+		if output, err := cmd.Output(); err == nil {
+			version = strings.TrimSpace(string(output))
+			ok = version != ""
+		}
+		return nil
+	})
+	return version, ok
 }
 
 func BinaryPath(dir string) string {
