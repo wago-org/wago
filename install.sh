@@ -120,6 +120,7 @@ progress_begin() {
 progress_done() {
 	stop_spinner
 	if [ "$is_tty" = "1" ] && [ -n "$installer_helper" ] && [ -x "$installer_helper" ]; then
+		printf '\r\033[2K'
 		"$installer_helper" status "done" "$*"
 		return
 	fi
@@ -133,6 +134,7 @@ progress_done() {
 progress_finish() {
 	stop_spinner
 	if [ "$is_tty" = "1" ] && [ -n "$installer_helper" ] && [ -x "$installer_helper" ]; then
+		printf '\r\033[2K'
 		"$installer_helper" status finish "$*"
 		return
 	fi
@@ -145,6 +147,7 @@ progress_finish() {
 progress_fail() {
 	stop_spinner
 	if [ "$is_tty" = "1" ] && [ -n "$installer_helper" ] && [ -x "$installer_helper" ]; then
+		printf '\r\033[2K'
 		"$installer_helper" status fail "$*"
 		return
 	fi
@@ -157,6 +160,7 @@ progress_fail() {
 progress_retry() {
 	stop_spinner
 	if [ "$is_tty" = "1" ] && [ -n "$installer_helper" ] && [ -x "$installer_helper" ]; then
+		printf '\r\033[2K'
 		"$installer_helper" status retry "$*"
 		return
 	fi
@@ -1258,6 +1262,17 @@ cleanup() {
 }
 trap cleanup EXIT
 trap 'exit 130' HUP INT TERM
+
+if [ "${WAGO_INTERNAL_PROGRESS_HANDOFF_ONLY:-0}" = "1" ]; then
+	tmp=$(mktemp -d 2>/dev/null || mktemp -d -t wago)
+	handoff_helper=$installer_helper
+	installer_helper=""
+	progress_begin "downloading Wago installer test"
+	sleep 0.1
+	installer_helper=$handoff_helper
+	progress_done "downloaded Wago installer test"
+	exit 0
+fi
 
 if [ "${WAGO_INTERNAL_PATH_SETUP_ONLY:-0}" = "1" ]; then
 	if ! offer_path_setup; then

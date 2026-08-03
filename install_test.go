@@ -134,6 +134,36 @@ func TestInstallerRadioPreservesTerminalNewlineProcessing(t *testing.T) {
 	}
 }
 
+func TestInstallerProgressRendererHandoffClearsSpinner(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("BSD script invocation exercises the macOS terminal behavior")
+	}
+	home := t.TempDir()
+	helper := filepath.Join(home, "installer-helper")
+	if err := os.WriteFile(helper, []byte("#!/bin/sh\n[ \"$1\" = status ] || exit 1\nprintf '✓ %s\\n' \"$3\"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	transcript := filepath.Join(home, "terminal.log")
+	command := exec.Command("script", "-q", transcript, "./install.sh")
+	command.Env = append(os.Environ(),
+		"HOME="+home,
+		"WAGO_INSTALLER="+helper,
+		"WAGO_INTERNAL_PROGRESS_HANDOFF_ONLY=1",
+		"NO_COLOR=1",
+		"TERM=xterm",
+	)
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("installer progress handoff: %v\n%s", err, output)
+	}
+	data, err := os.ReadFile(transcript)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "installer test✓") {
+		t.Fatalf("completion did not clear the spinner line:\n%s", data)
+	}
+}
+
 func TestInstallerDefaultsToWagoBin(t *testing.T) {
 	home := t.TempDir()
 	command := exec.Command("sh", "install.sh")
