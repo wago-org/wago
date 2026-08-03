@@ -14,11 +14,14 @@ the complete native platform matrix:
 | `windows-11-arm` | Windows | arm64 | yes | yes | yes | yes |
 
 Each matrix cell asserts `go env GOOS` and `GOARCH` before testing. Unix runtime
-jobs bootstrap the checksum-pinned WABT release and add its complete `bin`
-directory to `PATH`, so `wast2json` and `wat2wasm` do not depend on older runner
-packages. Windows downloads the checksum-pinned official WABT archive because
-the project does not publish a Chocolatey package; Windows 11 ARM runs that x64
-tool through its application emulation layer. Linux/amd64 and coverage
+jobs bootstrap checksum-pinned WABT 1.0.41 and add its complete `bin` directory
+to `PATH`, so `wast2json` and `wat2wasm` do not depend on older runner packages.
+Linux and Darwin/arm64 use upstream binary archives. Because upstream publishes
+no Darwin/amd64 binary for 1.0.41, that runner builds `wast2json` from the
+checksum-pinned release source with CMake. Windows downloads the checksum-pinned
+official WABT archive because the project does not publish a Chocolatey package;
+Windows 11 ARM runs that x64 tool through its application emulation layer.
+Linux/amd64 and coverage
 additionally initialize the pinned `tests/spec-v3` submodule, build the
 interpreter from that exact checkout, and export its path and revision. The
 focused Linux/amd64 race lane initializes the same submodule without building
