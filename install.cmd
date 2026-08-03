@@ -9,8 +9,13 @@ if defined WAGO_INSTALLER (
     echo wago: WAGO_INSTALLER does not exist: %WAGO_INSTALLER%>&2
     exit /b 1
   )
-  "%WAGO_INSTALLER%" %*
-  exit /b !ERRORLEVEL!
+  "%WAGO_INSTALLER%" install %*
+  set "installer_status=!ERRORLEVEL!"
+  if "!installer_status!"=="2" (
+    echo wago: this installer release predates the native install flow; wait for the channel to update and try again>&2
+    exit /b 1
+  )
+  exit /b !installer_status!
 )
 
 set "version=main"
@@ -56,9 +61,13 @@ if errorlevel 1 (
   exit /b 1
 )
 
-"!tmp_dir!\installer.exe" %*
+"!tmp_dir!\installer.exe" install %*
 set "installer_status=!ERRORLEVEL!"
 call :cleanup
+if "!installer_status!"=="2" (
+  echo wago: this installer release predates the native install flow; wait for the channel to update and try again>&2
+  exit /b 1
+)
 exit /b !installer_status!
 
 :target

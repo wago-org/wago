@@ -68,6 +68,23 @@ func TestShellBootstrapStopsCleanlyWhenInstallerIsUnavailable(t *testing.T) {
 	}
 }
 
+func TestShellBootstrapExplainsLegacyInstallerHandoff(t *testing.T) {
+	legacy := filepath.Join(t.TempDir(), "legacy-installer")
+	if err := os.WriteFile(legacy, []byte("#!/bin/sh\nexit 2\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	command := exec.Command("sh", "install.sh")
+	command.Env = append(os.Environ(), "WAGO_INSTALLER="+legacy)
+	output, err := command.CombinedOutput()
+	if err == nil {
+		t.Fatal("bootstrap unexpectedly accepted a legacy installer")
+	}
+	text := string(output)
+	if !strings.Contains(text, "installer release predates the native install flow") || !strings.Contains(text, "channel to update") {
+		t.Fatalf("legacy installer output:\n%s", output)
+	}
+}
+
 func TestBootstrapScriptsContainOnlyDeliveryLogic(t *testing.T) {
 	for _, path := range []string{"install.sh", "install.cmd"} {
 		data, err := os.ReadFile(path)

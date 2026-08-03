@@ -36,7 +36,7 @@ type radioItem struct {
 var version = "dev"
 
 func main() {
-	if len(os.Args) == 1 {
+	if len(os.Args) == 1 || (len(os.Args) == 2 && os.Args[1] == "install") {
 		if err := runInstaller(); err != nil {
 			s := colors()
 			fmt.Fprintf(os.Stderr, "\n%sWago could not be installed:%s %v\n", s.red, s.reset, err)

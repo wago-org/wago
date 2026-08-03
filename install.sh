@@ -105,9 +105,24 @@ verify_checksum() {
 	[ "$(printf '%s' "$actual" | tr 'A-F' 'a-f')" = "$expected" ]
 }
 
+run_installer() {
+	installer=$1
+	shift
+	if "$installer" install "$@"; then
+		return 0
+	else
+		status=$?
+	fi
+	if [ "$status" -eq 2 ]; then
+		die "this installer release predates the native install flow; wait for the channel to update and try again"
+	fi
+	return "$status"
+}
+
 if [ -n "${WAGO_INSTALLER:-}" ]; then
 	[ -x "$WAGO_INSTALLER" ] || die "WAGO_INSTALLER is not executable: $WAGO_INSTALLER"
-	exec "$WAGO_INSTALLER" "$@"
+	run_installer "$WAGO_INSTALLER" "$@"
+	exit $?
 fi
 
 tmp=$(mktemp -d 2>/dev/null || mktemp -d -t wago) || die "could not create a temporary directory"
@@ -123,4 +138,4 @@ if ! verify_checksum "$tmp/installer" "$tmp/installer.sha256"; then
 	die "the downloaded installer could not be verified; try again when the release service is available"
 fi
 chmod +x "$tmp/installer"
-"$tmp/installer" "$@"
+run_installer "$tmp/installer" "$@"
