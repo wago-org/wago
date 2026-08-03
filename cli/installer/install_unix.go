@@ -80,6 +80,12 @@ func pathTargets(home string) []pathTarget {
 	return targets
 }
 
+func pathSetupQuestion() string { return "Add Wago to your PATH?" }
+
+func pathSetupTargetMessage(target pathTarget, home string) string {
+	return "Adding to PATH: " + displayPath(target.configFile, home)
+}
+
 func addPath(binDir, configFile, shellName string) (bool, error) {
 	marker := "# Wago PATH: " + binDir
 	if data, err := os.ReadFile(configFile); err == nil && strings.Contains(string(data), marker) {

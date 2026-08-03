@@ -160,6 +160,58 @@ func TestInstallerScriptedInstallDirectoryAndReinstallMode(t *testing.T) {
 	}
 }
 
+func TestInstallerScriptedPathSetupKeepsStatusDetails(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell startup details are Unix-specific")
+	}
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("ZDOTDIR", home)
+	t.Setenv("SHELL", filepath.Join(string(os.PathSeparator), "bin", "zsh"))
+	t.Setenv("PATH", "")
+	t.Setenv("WAGO_PATH_SETUP", "0")
+	t.Setenv("NO_COLOR", "1")
+	var output bytes.Buffer
+	installer, err := newInstaller(&output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ready, configFile := installer.offerPathSetup()
+	if !ready || configFile != filepath.Join(home, ".zshrc") {
+		t.Fatalf("PATH setup = %v, %q", ready, configFile)
+	}
+	want := "Adding to PATH: ~/.zshrc\n\n✓ Added Wago to PATH\n"
+	if got := output.String(); got != want {
+		t.Fatalf("PATH setup output = %q, want %q", got, want)
+	}
+
+	output.Reset()
+	t.Setenv("WAGO_PATH_SETUP", "none")
+	installer, err = newInstaller(&output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	installer.offerPathSetup()
+	if got, want := output.String(), "PATH setup: skipped\n\n"; got != want {
+		t.Fatalf("skipped PATH output = %q, want %q", got, want)
+	}
+}
+
+func TestInstallerPromptWordingMatchesLegacyFlow(t *testing.T) {
+	want := "Add Wago to your PATH?"
+	if runtime.GOOS == "windows" {
+		want = "Add Wago to your user PATH?"
+	}
+	if got := pathSetupQuestion(); got != want {
+		t.Fatalf("PATH prompt = %q, want %q", got, want)
+	}
+	for mode, want := range map[string]string{"full": "Full", "partial": "Partial", "minimal": "Minimal"} {
+		if got := reinstallLabel(mode); got != want {
+			t.Fatalf("reinstall label %q = %q, want %q", mode, got, want)
+		}
+	}
+}
+
 func TestUnixPartialAndFullCleanupSemantics(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("shell startup cleanup is Unix-specific")
