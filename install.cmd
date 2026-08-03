@@ -306,7 +306,13 @@ if errorlevel 1 (
   set "manager_asset=!saved_manager_asset!"
   exit /b 0
 )
-call :progress_begin "downloading Wago installer !manager_release_tag!"
+set "ui_download_inline=0"
+if "%WAGO_NO_TUI%"=="1" (
+  call :progress_begin "downloading Wago installer !manager_release_tag!"
+) else (
+  <nul set /p "=... downloading Wago installer !manager_release_tag!"
+  set "ui_download_inline=1"
+)
 curl.exe -fsSL "!manager_url!" -o "!tmp_dir!\wago.download" >"!ui_tmp!\download.log" 2>&1
 if errorlevel 1 goto ui_download_failed
 curl.exe -fsSL "!manager_checksum_url!" -o "!tmp_dir!\manager.sha256" >>"!ui_tmp!\download.log" 2>&1
@@ -321,6 +327,7 @@ call :progress_done "downloaded Wago installer !manager_release_tag!"
 exit /b 0
 
 :ui_download_failed
+if "!ui_download_inline!"=="1" echo.
 call :progress_retry "installer executable unavailable; using basic prompts"
 set "manager_asset=!saved_manager_asset!"
 exit /b 0

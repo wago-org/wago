@@ -162,6 +162,10 @@ func spinner(stop, label string) {
 }
 
 func status(kind, label string) {
+	if stderrIsConsole() {
+		enableVirtualTerminal()
+		fmt.Fprint(os.Stderr, "\r\x1b[2K")
+	}
 	s := colors()
 	switch kind {
 	case "done", "finish":
