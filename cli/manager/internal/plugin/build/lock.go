@@ -1,0 +1,40 @@
+package build
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"time"
+)
+
+const (
+	buildLockPoll    = 50 * time.Millisecond
+	buildLockTimeout = 30 * time.Minute
+)
+
+// withBuildLock serializes access to a generated plugin build module across
+// Wago processes. Go deliberately refuses to overwrite go.mod when another
+// process changes it during `go mod edit`; keeping every module operation under
+// one portable mkdir lock also protects main.go and the cached binary/hash pair.
+func withBuildLock(dir string, fn func() error) error {
+	lockDir := dir + ".lock"
+	if err := os.MkdirAll(filepath.Dir(lockDir), 0o755); err != nil {
+		return err
+	}
+	deadline := time.Now().Add(buildLockTimeout)
+	for {
+		err := os.Mkdir(lockDir, 0o755)
+		if err == nil {
+			break
+		}
+		if !os.IsExist(err) {
+			return fmt.Errorf("lock plugin build: %w", err)
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("plugin build lock timed out; if no Wago process is running, remove %s", lockDir)
+		}
+		time.Sleep(buildLockPoll)
+	}
+	defer os.Remove(lockDir)
+	return fn()
+}

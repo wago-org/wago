@@ -277,15 +277,7 @@ func installedModuleExactVersion(buildDir, module, requested string) string {
 }
 
 func currentModuleExactVersion(buildDir, module string) (string, bool) {
-	cmd := exec.Command("go", "list", "-m", "-f={{.Version}}", module)
-	automation.ConfigureCommand(cmd)
-	cmd.Dir = buildDir
-	if output, err := cmd.Output(); err == nil {
-		if version := strings.TrimSpace(string(output)); version != "" {
-			return version, true
-		}
-	}
-	return "", false
+	return pluginbuild.ModuleVersion(buildDir, module)
 }
 
 func syncLockedPluginVersions(buildDir, manifestDir string, verbose bool) (bool, error) {
