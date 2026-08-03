@@ -596,6 +596,7 @@ func (f *fn) emitDynamicFunctionSubtypeTest(targetType uint32, nullable bool) er
 	if !ok {
 		return fmt.Errorf("arm64: function ref.test target type %d is unavailable", targetType)
 	}
+	savedLocals := append([]localDef(nil), f.locals...)
 	f.flush()
 	valueElem := f.s.back()
 	if valueElem == f.s.head || valueElem.kind != ekValue || valueElem.st.kind != stSlot {
@@ -688,6 +689,15 @@ func (f *fn) emitDynamicFunctionSubtypeTest(targetType uint32, nullable bool) er
 	funcref := wasm.RefVal(wasm.Ref(true, wasm.AbsHeap(wasm.HeapFunc), false))
 	if err := f.callGCStructHelper(gcFuncRefTest, []wasm.ValType{funcref, wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}); err != nil {
 		return err
+	}
+	if f.usesCalls {
+		for x := 0; x < f.nLocals; x++ {
+			local := savedLocals[x]
+			if local.reg != regNone && (local.state == lsReg || local.state == lsStackReg) {
+				f.loadLocalReg(x, local.reg, local.isFloat)
+			}
+		}
+		f.locals = savedLocals
 	}
 	f.flush()
 	result := f.s.back()

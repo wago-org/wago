@@ -165,6 +165,31 @@ func arm64GCTableRootModule() []byte {
 	)
 }
 
+func arm64GCInlinedCallBeforeHostCollectionModule() []byte {
+	structType := []byte{0x5f, 0x01, 0x7f, 0x01}
+	hostType := wasmtest.FuncType(nil, nil)
+	helperType := wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32})
+	runType := wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32})
+	imp := append(append(wasmtest.Name("env"), wasmtest.Name("gc")...), 0x00)
+	imp = append(imp, wasmtest.ULEB(1)...)
+	helper := []byte{0x20, 0x00, 0x0b}
+	run := []byte{0x01, 0x01, 0x63, 0x00,
+		0x20, 0x00, 0xfb, 0x00, 0x00, 0x21, 0x01,
+		0x20, 0x00, 0x10, 0x01, 0x1a,
+		0x10, 0x00,
+		0x20, 0x01, 0xfb, 0x02, 0x00, 0x00, 0x0b}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(structType, hostType, helperType, runType)),
+		wasmtest.Section(2, wasmtest.Vec(imp)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2), wasmtest.ULEB(3))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 2))),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code(helper),
+			append(wasmtest.ULEB(uint32(len(run))), run...),
+		)),
+	)
+}
+
 func arm64GCHostReentryModule() []byte {
 	structType := []byte{0x5f, 0x01, 0x7f, 0x01}
 	hostType := wasmtest.FuncType(nil, []wasm.ValType{wasm.I32})
@@ -556,8 +581,20 @@ func TestGCArm64CallRefFrameRoots(t *testing.T) {
 	}
 	defer compiled.Close()
 	plan := compiled.genericGCFrameRoots()
-	if plan == nil || len(plan.callsites) != 1 || len(plan.callsites[0].offsets) != 1 {
+	if plan == nil || len(plan.callsites) != 3 {
 		t.Fatalf("call_ref arm64 root map = %+v", plan)
+	}
+	adjusted := 0
+	for _, callsite := range plan.callsites {
+		if len(callsite.offsets) != 1 {
+			t.Fatalf("call_ref arm64 root map = %+v", plan)
+		}
+		if callsite.stackAdjust != 0 {
+			adjusted++
+		}
+	}
+	if adjusted != 1 {
+		t.Fatalf("call_ref arm64 adjusted paths = %d, want 1: %+v", adjusted, plan)
 	}
 	for _, candidate := range []*Compiled{compiled, roundTripCompiled(t, compiled)} {
 		if candidate != compiled {
@@ -702,6 +739,34 @@ func TestGCArm64MutableGlobalAndTableRoots(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestGCArm64InlinedCallKeepsLaterHostRootMapExact(t *testing.T) {
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), arm64GCInlinedCallBeforeHostCollectionModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	if roots := compiled.genericGCFrameRoots(); roots == nil || len(roots.callsites) == 0 {
+		t.Fatalf("inlined-call host root map = %+v", roots)
+	}
+	in, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{"env.gc": HostFunc(func(module HostModule, _, _ []uint64) {
+		collector, ok := module.(GCHostModule)
+		if !ok {
+			panic("host module has no collector")
+		}
+		if err := collector.CollectGC(); err != nil {
+			panic(err)
+		}
+	})}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	got, callErr := in.Invoke("run", 77)
+	if callErr != nil || !reflect.DeepEqual(got, []uint64{77}) {
+		t.Fatalf("run = %v, %v; want [77], nil", got, callErr)
 	}
 }
 

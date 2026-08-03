@@ -151,6 +151,7 @@ func (f *fn) callOp(r *wasm.Reader) error {
 	if f.inlineTargets != nil {
 		if t := f.inlineTargets[int(idx)]; t != nil {
 			if _, ok := f.inlineBase[int(idx)]; ok && !(t.inlineInLoopIsRegressive() && f.inCallSiteLoop()) {
+				f.consumeGCFrameCallsite()
 				return f.inlineCall(t)
 			}
 		}
@@ -1357,6 +1358,22 @@ func (f *fn) callInternal(localIdx int, ft *wasm.CompType, resHint int) error {
 	})
 	finishRoots()
 	return nil
+}
+
+// consumeGCFrameCallsite advances the source-level call-liveness stream for a
+// local call removed by inlining. The splice is a leaf and cannot suspend, so it
+// needs no native return-PC map, but later real calls must still use their own
+// source call masks.
+func (f *fn) consumeGCFrameCallsite() {
+	plan := f.gcFrameRoots
+	if plan == nil || !plan.Candidate {
+		return
+	}
+	if f.gcCallsiteIndex >= len(plan.LiveCallLocalMasks) {
+		plan.Exact = false
+		return
+	}
+	f.gcCallsiteIndex++
 }
 
 func (f *fn) prepareGCFrameCallsite(paramCount int) ([]uint32, bool) {
