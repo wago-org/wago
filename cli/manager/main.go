@@ -52,6 +52,7 @@ func Main(v string) {
 		managerUsage(os.Stderr)
 		os.Exit(2)
 	}
+	configureInvocationAutomation(args)
 	switch args[0] {
 	case "__complete":
 		for _, candidate := range command.Complete(managerCommandRoot(), args[1:]) {
@@ -99,6 +100,33 @@ func Main(v string) {
 	runActiveRunner(args)
 }
 
+// configureInvocationAutomation observes flags on runtime-owned commands before
+// the manager decides whether it can hand them to an active runtime. This keeps
+// pre-handoff errors and first-run behavior consistent with the runtime parser.
+func configureInvocationAutomation(args []string) {
+	root := &command.Cmd{
+		Name:     "wago",
+		Children: append(append([]*command.Cmd(nil), managerRoot.Children...), fallbackRuntimeSchemaCommands()...),
+	}
+	current, remaining := root, args
+	for len(current.Children) != 0 {
+		var err error
+		remaining, err = automation.ParseLeading(remaining)
+		if err != nil || len(remaining) == 0 {
+			return
+		}
+		child := current.Child(remaining[0])
+		if child == nil {
+			if current == root && (handoff.LooksLikeRuntimeTarget(remaining[0]) || strings.HasPrefix(remaining[0], "-")) {
+				command.ConfigureAutomation(root.Child("run"), remaining)
+			}
+			return
+		}
+		current, remaining = child, remaining[1:]
+	}
+	command.ConfigureAutomation(current, remaining)
+}
+
 func parseTopAutomation(args []string) {
 	remaining, err := automation.ParseLeading(args)
 	if err != nil {
@@ -125,6 +153,10 @@ func runtimeSchemaCommands() []*command.Cmd {
 	if commands := activeRuntimeSchemaCommands(); len(commands) != 0 {
 		return commands
 	}
+	return fallbackRuntimeSchemaCommands()
+}
+
+func fallbackRuntimeSchemaCommands() []*command.Cmd {
 	parallel := command.Flag{Name: "parallel", Short: "p", Arg: "[workers]", Help: "parallel function validation and compilation"}
 	pluginFlags := []command.Flag{
 		{Name: "plugin", Arg: "<names>", Help: "comma-separated extra plugins to enable"},

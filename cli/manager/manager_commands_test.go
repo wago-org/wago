@@ -1,6 +1,7 @@
 package manager
 
 import (
+	"bytes"
 	"io"
 	"os"
 	"path/filepath"
@@ -8,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/wago-org/wago/cli/internal/automation"
 	"github.com/wago-org/wago/cli/internal/command"
 	"github.com/wago-org/wago/cli/internal/handoff"
 	managerversion "github.com/wago-org/wago/cli/manager/internal/version"
@@ -15,6 +17,7 @@ import (
 )
 
 func TestManagerCompletionUsesFullCommandTree(t *testing.T) {
+	t.Setenv("WAGO_HOME", t.TempDir())
 	root := managerCommandRoot()
 	tests := []struct {
 		args []string
@@ -31,6 +34,72 @@ func TestManagerCompletionUsesFullCommandTree(t *testing.T) {
 			t.Errorf("Complete(%q) = %q, missing %q", test.args, got, test.want)
 		}
 	}
+}
+
+func TestManagerCommandSurfaceCoversEveryLeaf(t *testing.T) {
+	t.Setenv("WAGO_HOME", t.TempDir())
+	root := managerCommandRoot()
+	var leaves []string
+	checkCommandSurface(t, root, root, nil, &leaves)
+	want := strings.Join([]string{
+		"status", "update",
+		"version list", "version current", "version which", "version switch", "version install", "version update", "version uninstall",
+		"auth login", "auth logout", "auth whoami", "init", "add", "rm",
+		"plugin list", "plugin inspect", "plugin add", "plugin remove", "plugin grant", "plugin update", "plugin outdated", "plugin tree", "plugin rebuild", "plugin publish", "plugin unpublish", "plugin deprecate",
+		"self update", "self uninstall", "cache dir", "cache size", "cache prune", "cache clean",
+		"config list", "config diff", "config get", "config set", "config reset", "config completions",
+		"run", "module imports", "module capabilities", "build", "validate",
+	}, "\n")
+	if got := strings.Join(leaves, "\n"); got != want {
+		t.Fatalf("manager command leaves:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+func checkCommandSurface(t *testing.T, root, current *command.Cmd, path []string, leaves *[]string) {
+	t.Helper()
+	if len(path) != 0 {
+		var help bytes.Buffer
+		label := "wago " + strings.Join(path, " ")
+		current.PrintHelp(&help, label)
+		if !strings.Contains(help.String(), "Usage:") || !strings.Contains(help.String(), label) {
+			t.Errorf("%s help is incomplete:\n%s", label, help.String())
+		}
+		candidates := command.Complete(root, append(append([]string(nil), path...), "--"))
+		for _, flag := range current.AllFlags() {
+			if !slices.Contains(candidates, "--"+flag.Name) {
+				t.Errorf("%s completion omits --%s", label, flag.Name)
+			}
+		}
+	}
+	if len(current.Children) == 0 {
+		*leaves = append(*leaves, strings.Join(path, " "))
+		return
+	}
+	for _, child := range current.Children {
+		checkCommandSurface(t, root, child, append(path, child.Name), leaves)
+	}
+}
+
+func TestManagerCapturesForwardedAutomation(t *testing.T) {
+	tests := []struct {
+		args    []string
+		json    bool
+		noInput bool
+		offline bool
+	}{
+		{args: []string{"run", "--no-input", "module.wasm"}, noInput: true},
+		{args: []string{"module", "imports", "--json", "module.wasm"}, json: true},
+		{args: []string{"plugin", "list", "--json", "--offline"}, json: true, offline: true},
+	}
+	for _, test := range tests {
+		automation.Reset()
+		configureInvocationAutomation(test.args)
+		if automation.JSON() != test.json || automation.NoInput() != test.noInput || automation.Offline() != test.offline {
+			t.Errorf("configureInvocationAutomation(%q) = %#v", test.args, automation.Current())
+		}
+	}
+	automation.Reset()
+	t.Cleanup(automation.Reset)
 }
 
 func TestManagerOwnsPluginLifecycleAndDelegatesIntrospection(t *testing.T) {

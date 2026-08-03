@@ -85,6 +85,51 @@ func (c *Cmd) Parse(path string, args []string) (*Ctx, error) {
 	return ctx, nil
 }
 
+// ConfigureAutomation records automation flags from one command invocation
+// without executing it. Managers use this before handing runtime-owned commands
+// to another executable so pre-handoff errors honor --json and --no-input too.
+// For pass-through commands, flags after the first positional belong to the
+// guest and are deliberately ignored.
+func ConfigureAutomation(c *Cmd, args []string) {
+	options := automation.Merge(automation.FromEnv())
+	lookup := flagLookup(c.AllFlags())
+	raw, passThrough := false, false
+	for index := 0; index < len(args); index++ {
+		arg := args[index]
+		switch {
+		case raw || passThrough:
+			continue
+		case arg == "--":
+			raw = true
+			continue
+		case arg == "-" || arg == "" || arg[0] != '-':
+			passThrough = c.PassThrough
+			continue
+		}
+		name, _, inline := splitFlagValue(arg)
+		flag := lookup[name]
+		if flag == nil {
+			continue
+		}
+		switch flag.Name {
+		case "json":
+			options.JSON = true
+		case "no-input":
+			options.NoInput = true
+		case "dry-run":
+			options.DryRun = true
+		case "locked":
+			options.Locked = true
+		case "offline":
+			options.Offline = true
+		}
+		if !flag.Bool && !inline && index+1 < len(args) {
+			index++
+		}
+	}
+	automation.Configure(options)
+}
+
 func (c *Cmd) AllFlags() []Flag {
 	flags := append([]Flag(nil), c.Flags...)
 	flags = append(flags, c.automationFlags()...)

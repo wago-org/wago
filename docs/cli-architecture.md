@@ -10,7 +10,10 @@ The split is an implementation detail, not a split in the user experience. The
 manager owns releases, authentication, installation state, self-management,
 project setup, and plugin mutations. The runtime owns WebAssembly execution and
 commands that inspect compiled engine or plugin state. The manager forwards
-runtime commands without re-parsing their engine flags.
+runtime commands without re-parsing or consuming their engine flags. It does
+observe shared automation flags before handoff so errors raised by the manager
+itself still honor `--json`, `--no-input`, `--dry-run`, `--locked`, and
+`--offline`; pass-through arguments after a module path remain guest-owned.
 
 ## Domain boundaries
 
@@ -180,3 +183,8 @@ Prefer `make build-manager`, `make build-runtime-standard`, and
 go test ./cli/...
 go test -tags wago_runtime ./cli/...
 ```
+
+The manager and standard-runtime command-surface tests enumerate every leaf,
+render every help page, and require completion coverage for every declared
+flag. Update those inventories whenever a command is intentionally added,
+removed, or moved across the manager/runtime boundary.

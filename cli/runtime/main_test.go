@@ -3,7 +3,9 @@
 package runtime
 
 import (
+	"bytes"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 
@@ -45,6 +47,38 @@ func TestUsageDocumentsCommandSurface(t *testing.T) {
 	}
 	if strings.Contains(text, "test") {
 		t.Fatalf("usage should no longer mention test:\n%s", text)
+	}
+}
+
+func TestRuntimeCommandSurfaceCoversEveryLeaf(t *testing.T) {
+	var leaves []string
+	var walk func(*command.Cmd, []string)
+	walk = func(current *command.Cmd, path []string) {
+		if len(path) != 0 {
+			var help bytes.Buffer
+			label := "wago " + strings.Join(path, " ")
+			current.PrintHelp(&help, label)
+			if !strings.Contains(help.String(), "Usage:") || !strings.Contains(help.String(), label) {
+				t.Errorf("%s help is incomplete:\n%s", label, help.String())
+			}
+			candidates := command.Complete(root, append(append([]string(nil), path...), "--"))
+			for _, flag := range current.AllFlags() {
+				if !slices.Contains(candidates, "--"+flag.Name) {
+					t.Errorf("%s completion omits --%s", label, flag.Name)
+				}
+			}
+		}
+		if len(current.Children) == 0 {
+			leaves = append(leaves, strings.Join(path, " "))
+			return
+		}
+		for _, child := range current.Children {
+			walk(child, append(path, child.Name))
+		}
+	}
+	walk(root, nil)
+	if got, want := strings.Join(leaves, ","), "run,plugin list,plugin inspect,module imports,module capabilities,build,validate"; got != want {
+		t.Fatalf("runtime command leaves = %q, want %q", got, want)
 	}
 }
 
