@@ -240,6 +240,9 @@ func TestValidatorProposalCoverageArrayNewForms(t *testing.T) {
 			if tc.kind == InstrArrayNewFixed {
 				m.Code[0].Body.Instrs[len(m.Code[0].Body.Instrs)-1].Index2 = 2
 			}
+			if tc.kind == InstrArrayNewElem {
+				m.Types[0] = arrayType(field(FuncRef, Var))
+			}
 			if err := ValidateModule(m); err != nil {
 				t.Fatalf("ValidateModule: %v", err)
 			}
@@ -264,8 +267,33 @@ func TestValidatorProposalCoverageArrayNewForms(t *testing.T) {
 	})
 	t.Run("new_elem unknown segment", func(t *testing.T) {
 		m := arrayMod(InstrArrayNewElem, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrI32Const})
+		m.Types[0] = arrayType(field(FuncRef, Var))
 		m.Code[0].Body.Instrs[2].Index2 = 1
 		expectValidateErr(t, m, ErrUnknownTable)
+	})
+	t.Run("new_data rejects reference array", func(t *testing.T) {
+		m := arrayMod(InstrArrayNewData, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrI32Const})
+		m.Types[0] = arrayType(field(FuncRef, Var))
+		expectValidateErr(t, m, ErrTypeMismatch)
+	})
+	t.Run("new_elem rejects numeric array", func(t *testing.T) {
+		m := arrayMod(InstrArrayNewElem, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrI32Const})
+		expectValidateErr(t, m, ErrTypeMismatch)
+	})
+	t.Run("new_elem rejects incompatible segment", func(t *testing.T) {
+		m := arrayMod(InstrArrayNewElem, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrI32Const})
+		m.Types[0] = arrayType(field(ExternRef, Var))
+		expectValidateErr(t, m, ErrTypeMismatch)
+	})
+	t.Run("new_fixed unreachable maximum count is constant time", func(t *testing.T) {
+		m := &Module{
+			Types:     []RecType{arrayType(field(I32, Var)), ft(nil, []ValType{refToType(0, false)})},
+			FuncTypes: []TypeIdx{{Index: 1}},
+			Code:      []Func{{Body: Expr{Instrs: []Instruction{{Kind: InstrUnreachable}, {Kind: InstrArrayNewFixed, Index: 0, Index2: ^uint32(0)}}}}},
+		}
+		if err := ValidateModule(m); err != nil {
+			t.Fatalf("ValidateModule: %v", err)
+		}
 	})
 }
 
@@ -1475,7 +1503,8 @@ func TestValidatorCoverageLastPassBranches(t *testing.T) {
 		if err := coverageFuncValidatorWithStack(gm, I32, I32).step(&Instruction{Kind: InstrArrayNewData, Index: 0}); err != nil {
 			t.Fatalf("array.new_data success: %v", err)
 		}
-		if err := coverageFuncValidatorWithStack(gm, I32, I32).step(&Instruction{Kind: InstrArrayNewElem, Index: 0}); err != nil {
+		refGM := &Module{Types: []RecType{arrayType(field(FuncRef, Var))}, Elements: gm.Elements}
+		if err := coverageFuncValidatorWithStack(refGM, I32, I32).step(&Instruction{Kind: InstrArrayNewElem, Index: 0}); err != nil {
 			t.Fatalf("array.new_elem success: %v", err)
 		}
 		fv := coverageFuncValidator(&Module{}, nil)

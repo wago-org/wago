@@ -557,25 +557,9 @@ func (v *funcValidator) stepGC(in Instruction) error {
 		if field.Storage.Packed || field.Storage.Val.Kind != ValRef {
 			return v.verr(ErrTypeMismatch, "array.init_elem destination is not a reference array")
 		}
-		var elemRef RefType
-		if v.direct != nil {
-			if int(in.Index2) >= len(v.direct.elements) {
-				return v.verr(ErrUnknownTable, "array.init_elem")
-			}
-			var err error
-			elemRef, err = v.validateDirectElemPayload(v.direct.elements[in.Index2])
-			if err != nil {
-				return err
-			}
-		} else {
-			if int(in.Index2) >= len(v.m.Elements) {
-				return v.verr(ErrUnknownTable, "array.init_elem")
-			}
-			var err error
-			elemRef, err = v.validateElemPayload(v.m.Elements[in.Index2])
-			if err != nil {
-				return err
-			}
+		elemRef, err := v.elemRefType(in.Index2)
+		if err != nil {
+			return err
 		}
 		if !v.refSubtype(elemRef, field.Storage.Val.Ref) {
 			return v.verr(ErrTypeMismatch, "array.init_elem element type")
@@ -646,12 +630,28 @@ func (v *funcValidator) stepArrayNew(in Instruction) error {
 			return err
 		}
 	case InstrArrayNewFixed:
-		for i := uint32(0); i < in.Index2; i++ {
+		available := len(v.vals) - v.top().height
+		if uint64(in.Index2) > uint64(available) && !v.top().unreachable {
+			return v.verr(ErrTypeMismatch, "stack underflow")
+		}
+		count := available
+		if uint64(in.Index2) < uint64(count) {
+			count = int(in.Index2)
+		} else if uint64(in.Index2) > uint64(available) {
+			// The remaining operands are polymorphic bottom values. Validate only
+			// the concrete stack suffix so an untrusted u32 count cannot turn a
+			// tiny unreachable body into billions of validation iterations.
+			count = available
+		}
+		for range count {
 			if err := v.popExpect(elem); err != nil {
 				return err
 			}
 		}
 	case InstrArrayNewData:
+		if !f.Storage.Packed && f.Storage.Val.Kind == ValRef {
+			return v.verr(ErrTypeMismatch, "array type is not numeric or vector")
+		}
 		if int(in.Index2) >= len(v.m.Data) {
 			return v.verr(ErrInvalidDataCount, "array.new_data")
 		}
@@ -662,8 +662,15 @@ func (v *funcValidator) stepArrayNew(in Instruction) error {
 			return err
 		}
 	case InstrArrayNewElem:
-		if int(in.Index2) >= len(v.m.Elements) {
-			return v.verr(ErrUnknownTable, "array.new_elem")
+		if f.Storage.Packed || f.Storage.Val.Kind != ValRef {
+			return v.verr(ErrTypeMismatch, "array.new_elem destination is not a reference array")
+		}
+		elemRef, err := v.elemRefType(in.Index2)
+		if err != nil {
+			return err
+		}
+		if !v.refSubtype(elemRef, f.Storage.Val.Ref) {
+			return v.verr(ErrTypeMismatch, "array.new_elem element type")
 		}
 		if err := v.popExpect(I32); err != nil {
 			return err
