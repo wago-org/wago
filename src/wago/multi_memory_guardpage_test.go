@@ -10,6 +10,7 @@ import (
 )
 
 func TestSignalIndexedMemoryGrowCommitsWholeWasmPageThroughPrimaryOwner(t *testing.T) {
+	requireCompleteCore3Backend(t)
 	// Exercise the final byte of the grown page. ARM64 handlers commit a 64 KiB
 	// range, so this catches reservations whose linear-memory base is not aligned
 	// to that range rather than only checking the first byte after memory.grow.

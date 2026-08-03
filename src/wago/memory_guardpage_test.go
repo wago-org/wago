@@ -196,6 +196,7 @@ func activeDataImportedMemoryModule(offset int32, value byte) []byte {
 }
 
 func TestSignalsRequestedExplicitFallbackStillExportsGuardedSecondaryMemory(t *testing.T) {
+	requireCompleteCore3Backend(t)
 	module := wasmtest.Module(
 		wasmtest.Section(5, wasmtest.Vec(
 			[]byte{0x01, 0x00, 0x00}, // memory 0: min=0 max=0 (ARM64 explicit fallback)
