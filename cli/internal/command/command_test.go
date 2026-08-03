@@ -196,3 +196,20 @@ func TestUnsupportedAutomationOutputIsRejected(t *testing.T) {
 		t.Fatal("unsupported --dry-run was accepted")
 	}
 }
+
+func TestConfigureAutomationHonorsPassThroughBoundary(t *testing.T) {
+	automation.Reset()
+	t.Cleanup(automation.Reset)
+	run := &Cmd{
+		Name: "run", PassThrough: true, Automation: JSONOutput,
+		Flags: []Flag{{Name: "invoke", Short: "e", Arg: "<name>"}},
+	}
+
+	ConfigureAutomation(run, []string{"--json", "--offline", "-e", "main", "module.wasm", "--no-input"})
+	if !automation.JSON() || !automation.Offline() {
+		t.Fatalf("leading automation options = %#v", automation.Current())
+	}
+	if automation.NoInput() {
+		t.Fatal("guest --no-input after the module path was consumed")
+	}
+}

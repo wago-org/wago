@@ -113,7 +113,7 @@ func TestPluginEnvironmentExplainsMissingExplicitLocalManifest(t *testing.T) {
 	if err == nil {
 		t.Fatal("resolvePluginEnvironment succeeded without a local wago.json")
 	}
-	wantPath := filepath.Join(project, projectconfig.File)
+	wantPath := projectconfig.DisplayPath(project)
 	if got := err.Error(); !strings.Contains(got, wantPath) || !strings.Contains(got, "wago init") {
 		t.Fatalf("error = %q, want path %q and wago init recovery", got, wantPath)
 	}

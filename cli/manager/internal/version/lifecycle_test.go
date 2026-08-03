@@ -174,7 +174,7 @@ func TestInstallShowsInstallationLocation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"Wago v0.2.0 (standard/normal) is already installed", "location", path} {
+	for _, want := range []string{"Wago v0.2.0 (standard/normal) is already installed", "location", displayPath(path)} {
 		if !strings.Contains(string(output), want) {
 			t.Fatalf("version install output missing %q:\n%s", want, output)
 		}
