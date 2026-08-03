@@ -1066,12 +1066,25 @@ manager_release_target() {
 
 release_tag_from_json() {
 	release_prefix=$1
-	sed -n 's/^[[:space:]]*"tag_name":[[:space:]]*"\([^"]*\)".*/\1/p' "$tmp/releases.json" |
-		while IFS= read -r candidate; do
-			case "$candidate" in
-				"$release_prefix"-*) printf '%s\n' "$candidate"; break ;;
-			esac
-		done
+	awk -v prefix="$release_prefix-" '
+		/^[[:space:]]*"tag_name":[[:space:]]*"/ {
+			tag = $0
+			sub(/^[[:space:]]*"tag_name":[[:space:]]*"/, "", tag)
+			sub(/".*/, "", tag)
+			if (index(tag, prefix) == 1 && first == "") first = tag
+		}
+		/^[[:space:]]*"published_at":[[:space:]]*"/ {
+			published = $0
+			sub(/^[[:space:]]*"published_at":[[:space:]]*"/, "", published)
+			sub(/".*/, "", published)
+			if (index(tag, prefix) == 1 && (best == "" || published > best)) {
+				best = published
+				best_tag = tag
+			}
+			tag = ""
+		}
+		END { if (best_tag != "") print best_tag; else if (first != "") print first }
+	' "$tmp/releases.json"
 }
 
 resolve_manager_release() {

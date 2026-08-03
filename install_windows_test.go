@@ -24,7 +24,7 @@ func TestWindowsInstallerDownloadsChannelManagerRelease(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/releases":
-			_, _ = fmt.Fprintf(w, "[\n  {\n    \"tag_name\": \"%s\"\n  }\n]\n", tag)
+			_, _ = fmt.Fprintf(w, "[\n  {\n    \"tag_name\": \"canary-stale00\",\n    \"published_at\": \"2026-01-01T00:00:00Z\"\n  },\n  {\n    \"tag_name\": \"%s\",\n    \"published_at\": \"2026-08-02T00:00:00Z\"\n  }\n]\n", tag)
 		case "/releases/download/" + tag + "/wago-" + target:
 			_, _ = w.Write(payload)
 		case "/releases/download/" + tag + "/wago-" + target + ".sha256":
@@ -63,7 +63,7 @@ func TestWindowsInstallerDownloadsChannelInstallerRelease(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/releases":
-			_, _ = fmt.Fprintf(w, "[\n  {\n    \"tag_name\": \"%s\"\n  }\n]\n", tag)
+			_, _ = fmt.Fprintf(w, "[\n  {\n    \"tag_name\": \"nightly-stale00\",\n    \"published_at\": \"2026-01-01T00:00:00Z\"\n  },\n  {\n    \"tag_name\": \"%s\",\n    \"published_at\": \"2026-08-02T00:00:00Z\"\n  }\n]\n", tag)
 		case "/releases/download/" + tag + "/wago-installer-" + target:
 			_, _ = w.Write(payload)
 		case "/releases/download/" + tag + "/wago-installer-" + target + ".sha256":

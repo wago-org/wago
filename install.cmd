@@ -511,16 +511,34 @@ where curl.exe >nul 2>&1
 if errorlevel 1 exit /b 1
 curl.exe -fsSL "!release_api!?per_page=100" -o "!tmp_dir!\releases.json" >nul 2>&1
 if errorlevel 1 exit /b 1
-for /f "usebackq tokens=1,* delims=:" %%A in ("!tmp_dir!\releases.json") do if not defined manager_release_tag (
+set "release_first_tag="
+set "release_pending_tag="
+set "release_best_tag="
+set "release_best_published="
+for /f "usebackq tokens=1,* delims=:" %%A in ("!tmp_dir!\releases.json") do (
   set "release_key=%%A"
   set "release_key=!release_key: =!"
   set "release_key=!release_key:"=!"
   if /i "!release_key!"=="tag_name" (
     call :clean_release_candidate "%%B"
-    if /i "!release_prefix!"=="canary" if /i "!release_candidate:~0,7!"=="canary-" set "manager_release_tag=!release_candidate!"
-    if /i "!release_prefix!"=="nightly" if /i "!release_candidate:~0,8!"=="nightly-" set "manager_release_tag=!release_candidate!"
+    set "release_pending_tag="
+    if /i "!release_prefix!"=="canary" if /i "!release_candidate:~0,7!"=="canary-" set "release_pending_tag=!release_candidate!"
+    if /i "!release_prefix!"=="nightly" if /i "!release_candidate:~0,8!"=="nightly-" set "release_pending_tag=!release_candidate!"
+    if defined release_pending_tag if not defined release_first_tag set "release_first_tag=!release_pending_tag!"
+  )
+  if /i "!release_key!"=="published_at" if defined release_pending_tag (
+    call :clean_release_candidate "%%B"
+    if not defined release_best_published (
+      set "release_best_published=!release_candidate!"
+      set "release_best_tag=!release_pending_tag!"
+    ) else if "!release_candidate!" GTR "!release_best_published!" (
+      set "release_best_published=!release_candidate!"
+      set "release_best_tag=!release_pending_tag!"
+    )
+    set "release_pending_tag="
   )
 )
+if defined release_best_tag (set "manager_release_tag=!release_best_tag!") else set "manager_release_tag=!release_first_tag!"
 if not defined manager_release_tag exit /b 1
 goto resolve_manager_urls
 
