@@ -29,6 +29,7 @@ func gcConstExprRootingModule() []byte {
 }
 
 func TestGCConstExprRootsStackAndEarlierGlobals(t *testing.T) {
+	requireCompleteCore3Backend(t)
 	compiled, err := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).Compile(gcConstExprRootingModule())
 	if err != nil {
 		t.Fatalf("compile GC constant-expression rooting module: %v", err)
@@ -80,6 +81,7 @@ func gcConstExprFuncrefModule() []byte {
 }
 
 func TestGCConstExprStoresFunctionReferences(t *testing.T) {
+	requireCompleteCore3Backend(t)
 	compiled, err := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).Compile(gcConstExprFuncrefModule())
 	if err != nil {
 		t.Fatalf("compile function-reference GC constants: %v", err)
@@ -111,6 +113,7 @@ func TestGCConstExprStoresFunctionReferences(t *testing.T) {
 }
 
 func TestGCConstExprRootsEarlierElementEntries(t *testing.T) {
+	requireCompleteCore3Backend(t)
 	data, err := os.ReadFile("testdata/gc_constexpr_element_roots.wasm")
 	if err != nil {
 		t.Fatal(err)
@@ -132,6 +135,7 @@ func TestGCConstExprRootsEarlierElementEntries(t *testing.T) {
 }
 
 func TestCompiledCodecRejectsIllTypedGCConstExpr(t *testing.T) {
+	requireCompleteCore3Backend(t)
 	compiled, err := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).Compile(gcConstExprRootingModule())
 	if err != nil {
 		t.Fatal(err)

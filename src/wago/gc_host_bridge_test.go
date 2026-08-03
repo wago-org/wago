@@ -19,6 +19,7 @@ func gcHostBridgeModule(t testing.TB) []byte {
 }
 
 func TestRuntimeGCHostFuncRefCallAndTailOwnership(t *testing.T) {
+	requireCompleteCore3Backend(t)
 	cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3)
 	rt := NewRuntime(WithRuntimeConfig(cfg))
 	defer rt.Close()
@@ -73,6 +74,7 @@ func TestRuntimeGCHostFuncRefCallAndTailOwnership(t *testing.T) {
 }
 
 func TestRuntimeGCHostFuncRefRejectsUnownedAndForeignDomains(t *testing.T) {
+	requireCompleteCore3Backend(t)
 	cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3)
 	compiled, err := Compile(cfg, gcHostBridgeModule(t))
 	if err != nil {

@@ -130,6 +130,7 @@ func dirtyReturnCallIndirectModule() []byte {
 }
 
 func TestReturnCallIndirectCanonicalizesDirtySynchronousHostResult(t *testing.T) {
+	requireCompleteCore3Backend(t)
 	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithBoundsChecks(BoundsChecksExplicit), dirtyReturnCallIndirectModule())
 	if err != nil {
 		t.Fatal(err)
@@ -168,6 +169,7 @@ func table64ReturnCallIndirectWidthModule(index uint64) []byte {
 }
 
 func TestTable64ReturnCallIndirectPreservesFullIndexWidth(t *testing.T) {
+	requireCompleteCore3Backend(t)
 	cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithBoundsChecks(BoundsChecksExplicit)
 	for _, tc := range []struct {
 		name  string

@@ -3,6 +3,7 @@ package wago
 import (
 	"errors"
 	"reflect"
+	goruntime "runtime"
 	"strings"
 	"testing"
 )
@@ -35,10 +36,15 @@ func TestCompiledIndexedMemoryDirectoryCodecAndMetadata(t *testing.T) {
 	}
 	got.memoryDir.exactExports = true
 	var public Compiled
-	if err := public.UnmarshalBinary(blob); err != nil {
-		t.Fatalf("public multi-memory load: %v", err)
+	publicErr := public.UnmarshalBinary(blob)
+	if supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) {
+		if publicErr != nil {
+			t.Fatalf("public multi-memory load: %v", publicErr)
+		}
+		defer public.Close()
+	} else if publicErr == nil || !strings.Contains(publicErr.Error(), "unsupported feature(s) multi-memory") {
+		t.Fatalf("public multi-memory load on incomplete backend = %v, want feature rejection", publicErr)
 	}
-	defer public.Close()
 	if !reflect.DeepEqual(got.memoryDir.defs, c.memoryDir.defs) || !reflect.DeepEqual(got.memoryDir.exports, c.memoryDir.exports) {
 		t.Fatalf("memory directory changed: memories=%#v exports=%#v", got.memoryDir.defs, got.memoryDir.exports)
 	}

@@ -8,6 +8,7 @@ import (
 )
 
 func TestAbstractGCRefNullGlobalInitializers(t *testing.T) {
+	requireCompleteCore3Backend(t)
 	globals := make([][]byte, 0, 4)
 	for _, heap := range []byte{byte(wasm.HeapEq), byte(wasm.HeapI31), byte(wasm.HeapStruct), byte(wasm.HeapArray)} {
 		globals = append(globals, []byte{heap, 0x01, 0xd0, heap, 0x0b}) // (global (mut <heap>ref) (ref.null <heap>))
