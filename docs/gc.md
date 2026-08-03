@@ -237,7 +237,11 @@ mixed unproved host/cross-instance import graphs reject transactionally.
 Generic struct/array helpers and exact frame roots execute under linux/amd64
 guard-page bounds checks. Linux and Darwin arm64 explicit-bounds builds lower
 struct, array, i31, conversion, cast/test, and branch-cast operations through the
-same synchronous helper ABI. Arm64 publishes liveness-exact locals and hidden
+same synchronous helper ABI. Abstract `eq`/`i31`/`struct`/`array` null globals use
+ordinary zero-valued constant expressions. Indexed function-identity lowering is
+selected only for function heap targets; GC struct casts continue through collector
+supertype metadata, including final concrete closure structs cast to non-final bases.
+Arm64 publishes liveness-exact locals and hidden
 spills from parked SP. Codec v30 callsites carry caller frame size, return PC,
 stack adjustment, and exact roots; saved-LR walking spans direct/recursive calls,
 suspended direct-host activations (including sync-thunk records), and same-domain

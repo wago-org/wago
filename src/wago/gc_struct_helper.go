@@ -27,6 +27,7 @@ const (
 	gcStructAllocOne                 = 11
 	gcStructFinalCastGet             = 12
 	gcStructFinalCastArrayLen        = 13
+	gcFuncRefTest                    = 14
 )
 
 type gcStructHelperError struct{ err error }
@@ -76,10 +77,13 @@ func gcHelperMayMutate(helper uint32) bool {
 }
 
 func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint uint32, args, results []uint64) {
-	if in == nil || in.gc == nil {
+	if in == nil || (in.gc == nil && helper != gcFuncRefTest) {
 		panic(gcStructHelperError{err: fmt.Errorf("gc struct helper %d has no live collector", helper)})
 	}
-	lockedDomain := in.lockGCCollector()
+	var lockedDomain *gcStoreDomain
+	if in.gc != nil && helper != gcFuncRefTest {
+		lockedDomain = in.lockGCCollector()
+	}
 	defer unlockGCCollector(lockedDomain)
 	recordSynchronousGCHelper(in, helper, args)
 	var state *gcPublicState
@@ -161,6 +165,32 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 		return structValueKnown(typeID, fieldID, kind, in.c.Types[typeID].Fields[fieldID].Storage.Value, words)
 	}
 	switch helper {
+	case gcFuncRefTest:
+		if len(args) != 3 || len(results) < 1 {
+			panic(gcStructHelperError{err: fmt.Errorf("function ref.test helper arity = %d/%d, want 3/at-least-1", len(args), len(results))})
+		}
+		bits, targetType, nullable := args[0], uint32(args[1]), args[2] != 0
+		if int(targetType) >= len(in.c.Types) || in.c.Types[targetType].Kind != CompositeTypeFunction {
+			panic(gcStructHelperError{err: fmt.Errorf("function ref.test target type %d is unavailable", targetType)})
+		}
+		if bits == 0 {
+			if nullable {
+				results[0] = 1
+			} else {
+				results[0] = 0
+			}
+			break
+		}
+		actual, actualTypes, ok := in.attachedFuncrefExactType(bits)
+		if !ok && in.refStore != nil {
+			actual, actualTypes, ok = in.refStore.descriptorFuncrefExactType(in, bits)
+		}
+		want := ValueTypeDescriptor{Kind: ValueTypeReference, Ref: ReferenceTypeDescriptor{Nullable: nullable, Heap: HeapTypeDescriptor{Defined: true, TypeIndex: targetType}}}
+		if ok && valueTypeSubtype(actual, actualTypes, want, in.c.Types) {
+			results[0] = 1
+		} else {
+			results[0] = 0
+		}
 	case gcStructAllocDefault:
 		if len(args) != 1 || len(results) < 1 {
 			panic(gcStructHelperError{err: fmt.Errorf("gc struct alloc helper arity = %d/%d, want 1/at-least-1", len(args), len(results))})

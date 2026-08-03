@@ -238,8 +238,21 @@ missing official opcode families:
 The current descriptor-tail completion resolves runtime targets from their immutable
 funcref descriptors instead of relying on static `ref.func` provenance. Mutable and
 imported typed funcref tables can therefore select local, host-wrapper, or retained
-same-Runtime cross-instance targets at execution time. A stable numeric GC-domain
-identity in the native instance context distinguishes ownership even when two instances
+same-Runtime cross-instance targets at execution time. Canonical descriptors remain
+40 bytes. Modules containing dynamic indexed-function `ref.test` instead retain a
+compact four-byte exact declared type ID per function in a separately allocated,
+8-byte-aligned directory. AMD64 and ARM64 validate a loaded descriptor against the
+current arena, derive its function index, and compare that exact ID with the target's
+declared subtype set after `struct.get` or other dynamic storage. A foreign same-Runtime
+descriptor takes a cold full-metadata fallback through its canonical owner. This enables
+the Dewdrop closure pattern that branches between direct and environment-first
+signatures before `call_ref` without hash collisions, descriptor growth, or a larger
+instance-arena ceiling. The function-identity path is gated by a function heap target;
+eqref-transported closure objects continue through collector subtype checks, including
+casts from final concrete closure structs to declared non-final closure-base supertypes.
+Abstract `ref.null eq`, `ref.null i31`, `ref.null struct`, and `ref.null array` values are
+accepted in matching global constant expressions. Direct `ref.func` tests still fold
+statically, and prepared steady-state closure calls remain allocation-free. A stable numeric GC-domain identity in the native instance context distinguishes ownership even when two instances
 share one linear-memory base; ordinary GC-bearing host and direct foreign-domain
 transfers reject before frame discard. Explicit `Runtime.NewGCHostFuncRef` owners now bind to one
 canonical Runtime collector domain and support direct, indirect, `call_ref`, and proper

@@ -192,7 +192,7 @@ func (f *fn) materialize(e *elem) Reg {
 		f.a.Load64(r, RBX, -int32(offFuncRefDescPtr))
 		f.a.TestSelf(r, true)
 		f.trapIf(condE, trapIndirectOOB)
-		f.a.LeaDisp(r, r, int32((uint32(e.st.idx)+1)*runtime.TableEntryBytes))
+		f.a.LeaDisp(r, r, int32((uint32(e.st.idx)+1)*runtime.FuncRefDescBytes))
 		f.occupy(e, r)
 		return r
 	case stSlot:

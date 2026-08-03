@@ -148,6 +148,15 @@ func TestCompiledCodecV21RequiredFeatureBitsAreExactAndFailClosed(t *testing.T) 
 
 	blob, err = (&Compiled{}).MarshalBinary()
 	if err != nil {
+		t.Fatalf("marshal forged dynamic-ref.test fixture: %v", err)
+	}
+	binary.LittleEndian.PutUint64(blob[len(blob)-9:len(blob)-1], compiledGCExecutionDynamicFuncRefTest)
+	if err := decoded.UnmarshalBinary(blob); err == nil || !strings.Contains(err.Error(), "requires typed function descriptor metadata") {
+		t.Fatalf("forged dynamic ref.test execution error = %v, want fail-closed rejection", err)
+	}
+
+	blob, err = (&Compiled{}).MarshalBinary()
+	if err != nil {
 		t.Fatalf("marshal forged generic-GC fixture: %v", err)
 	}
 	binary.LittleEndian.PutUint64(blob[len(blob)-9:len(blob)-1], compiledGCExecutionGenericArray)

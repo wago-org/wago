@@ -2,6 +2,15 @@ package wago
 
 import "fmt"
 
+func gcCollectFrameRoots(in *Instance, public *gcPublicState, frameLayout uint8, allowExternalReturn bool) gcNativeFrameRoots {
+	return gcNativeFrameRoots{
+		owner:               in,
+		frameLayout:         frameLayout,
+		allowExternalReturn: allowExternalReturn,
+		suspended:           public,
+	}
+}
+
 // CollectGC performs one full collection for this instance's exact Runtime GC
 // domain. It is safe to call from a synchronous host import: parked native
 // activations, globals, tables, retained public references, and same-domain
@@ -26,6 +35,6 @@ func (in *Instance) CollectGC() error {
 	if err := in.syncGenericGCGlobalRootsLocked(public); err != nil {
 		return err
 	}
-	public.frameRoots = gcNativeFrameRoots{owner: in, suspended: public}
+	public.frameRoots = in.gcCollectFrameRoots(public)
 	return in.gc.CollectFull(&public.frameRoots)
 }

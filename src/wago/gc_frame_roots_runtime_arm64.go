@@ -12,6 +12,10 @@ import (
 	"github.com/wago-org/wago/src/core/runtime/gc"
 )
 
+func (in *Instance) gcCollectFrameRoots(public *gcPublicState) gcNativeFrameRoots {
+	return gcCollectFrameRoots(in, public, gcNativeFrameLayoutARM64, true)
+}
+
 // gcHelperRoots publishes exact arm64 native roots. The arm64
 // host-call stub saves SP without pushing a return address; SP is therefore the
 // function's stable post-prologue frame base. Exact direct callsites use the

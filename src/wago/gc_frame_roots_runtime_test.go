@@ -10,6 +10,32 @@ import (
 	"github.com/wago-org/wago/src/core/runtime/gc"
 )
 
+func TestGCCollectFrameRootsPreservesArchitectureBoundary(t *testing.T) {
+	in := &Instance{}
+	state := &gcPublicState{}
+	roots := gcCollectFrameRoots(in, state, gcNativeFrameLayoutARM64, true)
+	if roots.owner != in || roots.suspended != state || roots.frameLayout != gcNativeFrameLayoutARM64 || !roots.allowExternalReturn {
+		t.Fatalf("collect roots = %+v, want ARM64 owner/suspension boundary", roots)
+	}
+}
+
+func TestGCCollectFrameRootsUsesCurrentArchitecture(t *testing.T) {
+	wantLayout, wantExternal := uint8(gcNativeFrameLayoutAMD64), false
+	switch runtime.GOARCH {
+	case "amd64":
+	case "arm64":
+		wantLayout, wantExternal = gcNativeFrameLayoutARM64, true
+	default:
+		t.Skipf("native GC frame roots are unavailable on %s", runtime.GOARCH)
+	}
+	in := &Instance{}
+	state := &gcPublicState{}
+	roots := in.gcCollectFrameRoots(state)
+	if roots.owner != in || roots.suspended != state || roots.frameLayout != wantLayout || roots.allowExternalReturn != wantExternal {
+		t.Fatalf("collect roots = %+v, want layout=%d external=%v", roots, wantLayout, wantExternal)
+	}
+}
+
 func TestGCNativeFrameRootsARM64FrameRecordWalk(t *testing.T) {
 	frame := make([]byte, 160)
 	code := make([]byte, 256)

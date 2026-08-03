@@ -153,7 +153,7 @@ func (b *instanceBuilder) validateCompiled() error {
 func (c *Compiled) arenaNeedForImports(imports Imports, syncMode bool) int {
 	need := c.instantiateArenaNeed
 	baselineHostBytes := 0
-	if c.needsPublicFuncrefHostReentry() || c.usesGCStructHelpers() || c.usesGCArrayHelpers() {
+	if c.needsPublicFuncrefHostReentry() || c.usesGCStructHelpers() || c.usesGCArrayHelpers() || c.usesDynamicFuncRefTest() {
 		baselineHostBytes = runtime.HostCtrlFrameBytes
 	} else if len(c.Imports) > 0 {
 		baselineHostBytes = runtime.HostCallLogBytes
@@ -619,6 +619,22 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		selfLinMem := uint64(jm.LinMemBase())
 		funcRefDescs = ar.Alloc(runtime.FuncRefDescBytes * (len(c.FuncTypeID) + 1))
 		binary.LittleEndian.PutUint64(funcRefDescs[runtime.FuncRefContextOffset:], uint64(nativeContextPtr))
+		if c.usesDynamicFuncRefTest() {
+			typeIDBytes := (4*len(c.FuncTypeID) + 7) &^ 7
+			funcRefTypeIDs := ar.Alloc(typeIDBytes)
+			binary.LittleEndian.PutUint64(funcRefDescs[runtime.TableEntryCodePtrOffset:], uint64(uintptr(unsafe.Pointer(&funcRefTypeIDs[0]))))
+			for fidx := range c.FuncTypeID {
+				typeID := ^uint32(0)
+				if fidx < c.NumImports {
+					if fidx < len(c.importFuncSigs) && c.importFuncSigs[fidx].HasTypeIndex {
+						typeID = c.importFuncSigs[fidx].TypeIndex
+					}
+				} else if local := fidx - c.NumImports; local >= 0 && local < len(c.Funcs) && c.Funcs[local].HasTypeIndex {
+					typeID = c.Funcs[local].TypeIndex
+				}
+				binary.LittleEndian.PutUint32(funcRefTypeIDs[4*fidx:], typeID)
+			}
+		}
 		localFuncrefsMayEscape := c.tableImport != ""
 		if !localFuncrefsMayEscape {
 			for i := range c.extraTables {

@@ -1232,7 +1232,10 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	pressureAt, pressure := compileMemoryPressure(len(wasmBytes))
 	genericGCExecution := gcStructProduct == stagedGCStructGeneric || gcArrayProduct == stagedGCArrayProductNewData || gcArrayProduct == stagedGCArrayProductNewElem || gcArrayProduct == stagedGCArrayProductGeneric
 	gcFrameRoots := newGCFrameRootPlan(m, genericGCExecution)
-	gcFunctionRefTest := gcTypeSubtypingProduct.usesRefTest() || gcTypeSubtypingProduct.usesRuntimeFunctionIdentity() || moduleUsesIndexedFunctionRefTest(m)
+	indexedFunctionRefTest, indexedFunctionRefCast := moduleUsesIndexedFunctionRefTestOrCast(m)
+	indexedFunctionRefOps := indexedFunctionRefTest || indexedFunctionRefCast
+	dynamicFuncRefTest := indexedFunctionRefTest && !gcTypeSubtypingProduct.usesRefTest() && !gcTypeSubtypingProduct.usesRuntimeFunctionIdentity()
+	gcFunctionRefTest := gcTypeSubtypingProduct.usesRefTest() || gcTypeSubtypingProduct.usesRuntimeFunctionIdentity() || indexedFunctionRefOps
 	cm, err := railshotCompileModuleWith(m, railshotCompileOptions{Workers: workers, ElideBoundsChecks: elide, NoBoundsFacts: cfg.noDeferBounds, ImportBindings: dynamicBindings, GCTypeSubtypingRefTest: gcFunctionRefTest, GCStructHelpers: gcStructProduct.requiresHelpers(), GCArrayHelpers: gcArrayProduct.requiresHelpers() || gcStructProduct.requiresArrayHelpers(), GCFrameRoots: gcFrameRoots, Interruptible: !wruntime.HostInterruptSupported(), MemoryPressureAt: pressureAt, MemoryPressure: pressure, CustomInstructions: customInstructions})
 	if err != nil {
 		return nil, fmt.Errorf("compile: %w", err)
@@ -1492,7 +1495,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 			c.extraTables[i] = tableDef{ImportKey: def.Key, Size: int(def.Min), Max: def.Max, Type: def.Type, ValueTypeIndex: def.ValueTypeIndex, HasValueType: def.HasValueType, ImportHasMax: def.HasMax, Addr64: def.Addr64}
 		}
 	}
-	c.NeedsFuncRefDescs = frontend.RequiresFuncRefDescriptorsFromFacts(m, moduleFacts) || gcTypeSubtypingProduct.usesLinkFunctionIdentity()
+	c.NeedsFuncRefDescs = frontend.RequiresFuncRefDescriptorsFromFacts(m, moduleFacts) || gcTypeSubtypingProduct.usesLinkFunctionIdentity() || indexedFunctionRefOps
 	for i := range m.Tables {
 		tableIndex := importedTables + i
 		if m.Tables[i].Init == nil {
@@ -1764,6 +1767,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		compiled.codeCache.stagedFeatures |= CoreFeatureGC
 		compiled.codeCache.gcTypeSubtypingProduct = gcTypeSubtypingProduct
 	}
+	compiled.codeCache.dynamicFuncRefTest = dynamicFuncRefTest
 	if gcStructProduct != 0 {
 		compiled.codeCache.stagedFeatures |= CoreFeatureGC
 		compiled.codeCache.gcStructProduct = gcStructProduct
@@ -1991,7 +1995,7 @@ func asyncReplayable(sig FuncSig) bool {
 }
 
 func (c *Compiled) importsRequireSync(imports Imports, force bool) bool {
-	if force || forceSyncHostImports || c.needsPublicFuncrefHostReentry() || c.usesGCStructHelpers() || c.usesGCArrayHelpers() {
+	if force || forceSyncHostImports || c.needsPublicFuncrefHostReentry() || c.usesGCStructHelpers() || c.usesGCArrayHelpers() || c.usesDynamicFuncRefTest() {
 		return true
 	}
 	for _, key := range c.Imports {
@@ -3363,9 +3367,12 @@ func (c *Compiled) validateArenaFootprint() error {
 	if err != nil {
 		return fmt.Errorf("compiled metadata invalid: %w", err)
 	}
-	funcRefCount := 0
+	funcRefCount, funcRefTypeIDCount := 0, 0
 	if c.needsFuncRefDescs() {
 		funcRefCount = len(c.FuncTypeID) + 1
+		if c.usesDynamicFuncRefTest() {
+			funcRefTypeIDCount = len(c.FuncTypeID)
+		}
 	}
 	tagCount := 0
 	if c.memoryDir != nil {
@@ -3405,13 +3412,14 @@ func (c *Compiled) validateArenaFootprint() error {
 		passiveElemBytes += len(elem.Values) * stride
 	}
 	hostCallBytes := 0
-	if c.needsPublicFuncrefHostReentry() || c.usesGCStructHelpers() || c.usesGCArrayHelpers() {
+	if c.needsPublicFuncrefHostReentry() || c.usesGCStructHelpers() || c.usesGCArrayHelpers() || c.usesDynamicFuncRefTest() {
 		hostCallBytes = wruntime.HostCtrlFrameBytes
 	}
 	need, err := wruntime.InstantiateArenaNeed(wruntime.InstantiateFootprint{
 		FuncImportCount:    len(c.Imports),
 		HostCallBytes:      hostCallBytes,
 		FuncRefCount:       funcRefCount,
+		FuncRefTypeIDCount: funcRefTypeIDCount,
 		TagCount:           tagCount,
 		GlobalCount:        len(c.Globals),
 		V128GlobalCount:    v128GlobalCount,

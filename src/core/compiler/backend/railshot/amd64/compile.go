@@ -337,7 +337,7 @@ type fn struct {
 	// rather than the async log — the two share offCustomCtx and must not both be
 	// live. Computed once per module in compileFunc.
 	syncHostCalls          bool
-	gcTypeSubtypingRefTest bool // exact local ref.func/ref.test products fold validated subtype results
+	gcTypeSubtypingRefTest bool // typed function tests/casts resolve exact declared type identity after dynamic loads
 	gcStructHelpers        bool // exact staged numeric struct ops use the same parked Go re-entry frame
 	gcArrayHelpers         bool // exact staged numeric array ops use the same parked Go re-entry frame
 	gcFrameRoots           *shared.GCFrameRootPlan
@@ -630,8 +630,9 @@ type CompileOptions struct {
 	MemoryPressureAt int
 	MemoryPressure   func()
 
-	// GCTypeSubtypingRefTest admits only exact local ref.func/ref.test products
-	// selected by src/wago. It is compile-only and never serialized.
+	// GCTypeSubtypingRefTest admits typed function ref.test/ref.cast lowering.
+	// Direct ref.func values fold statically; dynamically loaded descriptors use
+	// exact per-function type IDs with a cold full-metadata fallback. It is compile-only.
 	GCTypeSubtypingRefTest bool
 
 	// GCStructHelpers admits only the exact staged collector-backed struct helper

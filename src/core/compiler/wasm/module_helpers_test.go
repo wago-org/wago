@@ -32,6 +32,30 @@ func TestTypeMetadataHelpersUseCanonicalFields(t *testing.T) {
 	}
 }
 
+func TestFunctionSubtypeTypeIndexesIncludeLoadedDynamicCandidates(t *testing.T) {
+	root := CompType{Kind: CompFunc, Params: []ValType{I32}, Results: []ValType{I32}}
+	other := CompType{Kind: CompFunc, Params: []ValType{I64}, Results: []ValType{I64}}
+	m := &Module{Types: []RecType{{SubTypes: []SubType{
+		{HasPrefix: true, Final: false, Comp: root},
+		{HasPrefix: true, Final: true, Supers: []TypeIdx{{Index: 0}}, Comp: root},
+		{Final: true, Comp: other},
+	}}}}
+	indexes, ok := m.FunctionSubtypeTypeIndexes(0)
+	if !ok || len(indexes) != 2 || indexes[0] != 0 || indexes[1] != 1 {
+		t.Fatalf("root subtype indexes = %#v, %v; want [0 1]", indexes, ok)
+	}
+	indexes, ok = m.FunctionSubtypeTypeIndexes(1)
+	if !ok || len(indexes) != 1 || indexes[0] != 1 {
+		t.Fatalf("final child subtype indexes = %#v, %v; want [1]", indexes, ok)
+	}
+	if indexes, ok = m.FunctionSubtypeTypeIndexes(2); !ok || len(indexes) != 1 || indexes[0] != 2 {
+		t.Fatalf("unrelated final subtype indexes = %#v, %v", indexes, ok)
+	}
+	if _, ok := m.FunctionSubtypeTypeIndexes(3); ok {
+		t.Fatal("out-of-range function subtype target resolved")
+	}
+}
+
 func TestLocalHelpersKeepRunsCompact(t *testing.T) {
 	params := []ValType{I32}
 	runs := []LocalRun{{Count: 1 << 30, Type: I64}, {Count: 2, Type: F32}}

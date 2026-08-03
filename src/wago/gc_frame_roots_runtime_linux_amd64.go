@@ -12,6 +12,10 @@ import (
 	"github.com/wago-org/wago/src/core/runtime/gc"
 )
 
+func (in *Instance) gcCollectFrameRoots(public *gcPublicState) gcNativeFrameRoots {
+	return gcCollectFrameRoots(in, public, gcNativeFrameLayoutAMD64, false)
+}
+
 // gcHelperRoots publishes exact-typed collector-reference locals from the
 // parked native frame. hostCallStub saves RSP while it points at the helper-call
 // return address, so the function's stable frame base is savedRSP+8. The root

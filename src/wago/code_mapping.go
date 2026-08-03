@@ -20,6 +20,7 @@ type compiledCodeCache struct {
 	gcStructProduct                 stagedGCStructProduct        // exact products stay compile-only; codec v30 may restore generic helper admission
 	gcArrayProduct                  stagedGCArrayProduct         // exact products stay compile-only; codec v30 may restore generic helper admission
 	gcI31Product                    stagedGCI31Product           // exact non-allocating i31 boundary; never serialized
+	dynamicFuncRefTest              bool                         // native indexed-function ref.test needs the compact per-function type directory
 	stagedFeatures                  CoreFeatures                 // exact admission is compile-only; codec v30 restores generic GC requirements
 }
 
@@ -37,6 +38,10 @@ func installCompiledFinalizer(c *Compiled) *Compiled {
 		_ = c.Close()
 	})
 	return c
+}
+
+func (c *Compiled) usesDynamicFuncRefTest() bool {
+	return c != nil && c.codeCache != nil && c.codeCache.dynamicFuncRefTest
 }
 
 func (c *Compiled) stagedFeatures() CoreFeatures {

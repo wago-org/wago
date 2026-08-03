@@ -434,6 +434,28 @@ func (m *Module) StructuralTypeKeyChecked(typeIdx uint32) (uint64, bool) {
 	return StructuralFuncTypeKey(ft), true
 }
 
+// FunctionSubtypeTypeIndexes returns every function type declared by this
+// module that is a subtype of targetType. Dynamic indexed-function ref.test uses
+// these exact local identities after a funcref has passed through storage and
+// no longer carries compile-time ref.func provenance.
+func (m *Module) FunctionSubtypeTypeIndexes(targetType uint32) ([]uint32, bool) {
+	if _, ok := m.TypeFunc(targetType); !ok {
+		return nil, false
+	}
+	required := Ref(false, IndexedHeap(TypeIdx{Index: targetType}), false)
+	indexes := make([]uint32, 0, 1)
+	for typeIndex := 0; typeIndex < m.flattenedTypeCount(); typeIndex++ {
+		if _, ok := m.TypeFunc(uint32(typeIndex)); !ok {
+			continue
+		}
+		actual := Ref(false, IndexedHeap(TypeIdx{Index: uint32(typeIndex)}), false)
+		if m.ReferenceTypeSubtype(actual, required) {
+			indexes = append(indexes, uint32(typeIndex))
+		}
+	}
+	return indexes, len(indexes) != 0
+}
+
 func (m *Module) typeInNonSingletonRecGroup(typeIdx uint32) bool {
 	_, group, ok := m.subtypeByTypeIdxWithRecGroup(TypeIdx{Index: typeIdx})
 	return ok && len(m.Types[group].SubTypes) > 1

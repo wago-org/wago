@@ -99,9 +99,28 @@ the canonical funcref descriptor referenced by the table entry. Both paths bind
 the target pointer context before crossing instances and restore the caller
 context after a normal return. A trap unwinds the native call tree before restore;
 the next serialized public entry always rebinds its own captured context first.
-Canonical funcref descriptors are 40 bytes: the 32-byte table payload plus an
-8-byte owning-context pointer. Table entries remain 32 bytes. A function importer
-retains each distinct producer instance until the importer's physical resource
+Canonical funcref descriptors remain 40 bytes: the 32-byte table payload plus an
+8-byte owning-context pointer. Table entries remain 32 bytes and their `refSlot`
+points back to the canonical descriptor. The call-signature key at byte 8 continues
+to govern `call_ref` and indirect-call compatibility.
+
+A module containing dynamic indexed-function `ref.test` additionally allocates an
+8-byte-aligned directory of four-byte exact declared type indexes, one per function.
+The otherwise-invalid null descriptor's code-pointer slot identifies this directory;
+valid descriptors and table entries are unchanged. AMD64 and ARM64 verify that a
+runtime descriptor belongs to the current arena, derive its function index, and test
+the exact type index against the target's declared subtype set. A same-Runtime
+foreign descriptor takes the cold synchronous fallback, which resolves its canonical
+owner and compares the full persisted structural type metadata. This keeps the local
+Dewdrop closure path collision-free and native while preserving cross-instance
+semantics without increasing the 40-byte descriptor or the strict 1 MiB instance-arena
+ceiling. The descriptor path is selected only when the indexed cast/test target is a
+function type; eqref-transported GC objects still use collector subtype metadata, so a
+concrete closure struct can cast to its declared non-final closure-base supertype.
+Abstract `eq`, `i31`, `struct`, and `array` null constant expressions remain ordinary
+zero reference values in globals and do not allocate collector identities. A function
+importer retains each distinct producer instance until the
+importer's physical resource
 release; logical close alone cannot release those roots when a table, global, or
 public token still retains the importer's descriptor arena. Imported HostFuncRef,
 reference-global, and table attachments follow the same physical-release rule.

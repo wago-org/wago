@@ -13,10 +13,11 @@ import (
 const (
 	// Codec-v30 internal execution bits share the persisted u64 requirement word
 	// but are stripped before exposing CoreFeatures. Public feature bits occupy
-	// the low range; reserving the top two bits avoids growing every artifact.
-	compiledGCExecutionGenericStruct uint64 = 1 << 62
-	compiledGCExecutionGenericArray  uint64 = 1 << 63
-	compiledGCExecutionMask                 = compiledGCExecutionGenericStruct | compiledGCExecutionGenericArray
+	// the low range; reserving the top three bits avoids growing every artifact.
+	compiledGCExecutionDynamicFuncRefTest uint64 = 1 << 61
+	compiledGCExecutionGenericStruct      uint64 = 1 << 62
+	compiledGCExecutionGenericArray       uint64 = 1 << 63
+	compiledGCExecutionMask                      = compiledGCExecutionDynamicFuncRefTest | compiledGCExecutionGenericStruct | compiledGCExecutionGenericArray
 )
 
 func compiledMetadataUsesSIMD(c *Compiled) bool {
@@ -127,6 +128,9 @@ func marshalCompiled(c *Compiled) ([]byte, error) {
 	}
 	if c.stagedGCArrayProduct() == stagedGCArrayProductGeneric {
 		required |= compiledGCExecutionGenericArray
+	}
+	if c.usesDynamicFuncRefTest() {
+		required |= compiledGCExecutionDynamicFuncRefTest
 	}
 	w.u64(required)
 	w.gcTypeDescs(c.GCTypeDescs)
@@ -673,27 +677,36 @@ func unmarshalCompiled(c *Compiled, data []byte) error {
 			return err
 		}
 	}
-	if gcExecution != 0 {
+	if gcExecution&compiledGCExecutionDynamicFuncRefTest != 0 {
+		if !c.requiredFeatures.IsEnabled(CoreFeatureTypedFunctionReferences) || len(c.FuncTypeID) == 0 || !c.needsFuncRefDescs() {
+			return fmt.Errorf("dynamic indexed-function ref.test execution flag requires typed function descriptor metadata")
+		}
+		c.ensureCodeCache()
+		c.codeCache.stagedFeatures |= CoreFeatureTypedFunctionReferences
+		c.codeCache.dynamicFuncRefTest = true
+	}
+	genericGCExecution := gcExecution & (compiledGCExecutionGenericStruct | compiledGCExecutionGenericArray)
+	if genericGCExecution != 0 {
 		if !c.requiredFeatures.IsEnabled(CoreFeatureGC) || !gc.HasHeapObjectTypes(c.GCTypeDescs) {
-			return fmt.Errorf("generic GC execution flags %#x require recorded GC heap metadata", gcExecution)
+			return fmt.Errorf("generic GC execution flags %#x require recorded GC heap metadata", genericGCExecution)
 		}
 		hasStruct, hasArray := false, false
 		for _, desc := range c.GCTypeDescs {
 			hasStruct = hasStruct || desc.Kind == gc.KindStruct
 			hasArray = hasArray || desc.Kind == gc.KindArray
 		}
-		if gcExecution&compiledGCExecutionGenericStruct != 0 && !hasStruct && !hasArray {
+		if genericGCExecution&compiledGCExecutionGenericStruct != 0 && !hasStruct && !hasArray {
 			return fmt.Errorf("generic GC reference-helper execution flag has no struct or array descriptor")
 		}
-		if gcExecution&compiledGCExecutionGenericArray != 0 && !hasArray {
+		if genericGCExecution&compiledGCExecutionGenericArray != 0 && !hasArray {
 			return fmt.Errorf("generic GC array execution flag has no array descriptor")
 		}
 		c.ensureCodeCache()
 		c.codeCache.stagedFeatures |= CoreFeatureGC | CoreFeatureTypedFunctionReferences
-		if gcExecution&compiledGCExecutionGenericStruct != 0 {
+		if genericGCExecution&compiledGCExecutionGenericStruct != 0 {
 			c.codeCache.gcStructProduct = stagedGCStructGeneric
 		}
-		if gcExecution&compiledGCExecutionGenericArray != 0 {
+		if genericGCExecution&compiledGCExecutionGenericArray != 0 {
 			c.codeCache.gcArrayProduct = stagedGCArrayProductGeneric
 		}
 	}

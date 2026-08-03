@@ -281,7 +281,12 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
 - [x] Typed function references — recursive structural typing, typed tables,
   elements and globals, `call_ref`, casts/tests, null branches, linking, ownership,
   codec metadata, and official invalid/unlinkable behavior are complete for the
-  primary Core 3 product.
+  primary Core 3 product. A compact exact per-function type-ID directory preserves
+  dynamic `ref.test` identity after GC-struct and other storage loads without growing
+  canonical descriptors, including eqref-transported direct/environment-first closures.
+  Indexed function-reference lowering is restricted to function heap types, so a concrete
+  closure struct still casts through its declared non-final struct supertype. Matching
+  `ref.null eq`/`i31`/`struct`/`array` global constant initializers are also admitted.
 - [x] Multi-memory, memory64, and table64 — mandatory Core 3 execution, metadata,
   codec, linking, traps, and official tests are complete on linux/amd64 explicit
   and signal-backed bounds. Linux/Darwin arm64 explicit-bounds execution is

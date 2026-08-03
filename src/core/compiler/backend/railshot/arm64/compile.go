@@ -621,8 +621,9 @@ type CompileOptions struct {
 	MemoryPressureAt int
 	MemoryPressure   func()
 
-	// GCTypeSubtypingRefTest admits exact local typed-function subtype tests and
-	// casts for the collector-free staged product.
+	// GCTypeSubtypingRefTest admits typed function subtype tests and casts.
+	// Direct ref.func values fold statically; dynamically loaded descriptors use
+	// exact per-function type IDs with a cold full-metadata fallback.
 	GCTypeSubtypingRefTest bool
 
 	// GCStructHelpers admits collector-backed struct helper lowering through the

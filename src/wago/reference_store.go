@@ -1541,6 +1541,47 @@ func instanceFuncrefExactType(owner *Instance, descriptor uint64) (ValueTypeDesc
 	return exact, owner.c.Types, true
 }
 
+// attachedFuncrefExactType resolves function identities that are physically
+// reachable from this instance without requiring a public reference store.
+// This covers local descriptors and direct function imports, including imports
+// whose refSlot points at a provider-owned canonical descriptor.
+func (in *Instance) attachedFuncrefExactType(descriptor uint64) (ValueTypeDescriptor, []DefinedTypeDescriptor, bool) {
+	if in == nil || in.c == nil || descriptor == 0 {
+		return ValueTypeDescriptor{}, nil, false
+	}
+	if index, ok := in.funcrefDescriptorIndex(descriptor); ok {
+		return in.attachedFunctionIndexExactType(index)
+	}
+	for index := 0; index < in.c.NumImports && index < len(in.c.Imports); index++ {
+		off := (index + 1) * coreruntime.FuncRefDescBytes
+		if off+coreruntime.FuncRefDescBytes > len(in.funcRefDescs) || binary.LittleEndian.Uint64(in.funcRefDescs[off+coreruntime.TableEntryRefSlotOffset:]) != descriptor {
+			continue
+		}
+		return in.attachedFunctionIndexExactType(index)
+	}
+	return ValueTypeDescriptor{}, nil, false
+}
+
+func (in *Instance) attachedFunctionIndexExactType(index int) (ValueTypeDescriptor, []DefinedTypeDescriptor, bool) {
+	if index < 0 || index >= len(in.c.FuncTypeID) {
+		return ValueTypeDescriptor{}, nil, false
+	}
+	if index >= in.c.NumImports {
+		exact, err := in.c.functionRefExactType(uint32(index))
+		return exact, in.c.Types, err == nil
+	}
+	if index >= len(in.c.Imports) {
+		return ValueTypeDescriptor{}, nil, false
+	}
+	if export, ok := in.imports[in.c.Imports[index]].(*InstanceExport); ok && export != nil && export.inst != nil && export.inst.c != nil && export.localIdx >= 0 {
+		providerIndex := export.inst.c.NumImports + export.localIdx
+		exact, err := export.inst.c.functionRefExactType(uint32(providerIndex))
+		return exact, export.inst.c.Types, err == nil
+	}
+	exact, err := in.c.functionRefExactType(uint32(index))
+	return exact, in.c.Types, err == nil
+}
+
 func (s *referenceStore) issueExternref(value any) (uint64, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

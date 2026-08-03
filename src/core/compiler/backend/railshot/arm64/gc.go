@@ -28,6 +28,7 @@ const (
 	gcStructAllocOne           uint32 = 11
 	gcStructFinalCastGet       uint32 = 12
 	gcStructFinalCastArrayLen  uint32 = 13
+	gcFuncRefTest              uint32 = 14
 	gcArrayAllocDefault        uint32 = 16
 	gcArrayGet                 uint32 = 17
 	gcArrayGetS                uint32 = 18
@@ -76,18 +77,7 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		}
 		_, targetIsFunc := f.m.TypeFunc(uint32(heap))
 		if f.gcTypeSubtypingRefTest && heap >= 0 && targetIsFunc {
-			value := f.popValue()
-			if value.kind != ekValue || value.st.kind != stFuncRef || value.st.idx < 0 || value.st.idx >= len(f.m.FuncTypes) {
-				return fmt.Errorf("arm64: staged function ref.test lost exact local ref.func provenance")
-			}
-			actual := wasm.Ref(false, wasm.IndexedHeap(f.m.FuncTypes[value.st.idx]), false)
-			required := wasm.Ref(nullable, wasm.IndexedHeap(wasm.TypeIdx{Index: uint32(heap)}), false)
-			matched := int64(0)
-			if f.m.ReferenceTypeSubtype(actual, required) {
-				matched = 1
-			}
-			f.pushValue(storage{kind: stConst, typ: mtI32, cval: matched})
-			return nil
+			return f.emitDynamicFunctionSubtypeTest(uint32(heap), nullable)
 		}
 		if heap == -16 || heap == -17 || heap == -13 || heap == -14 { // func, extern, nofunc, noextern
 			value := f.materialize(f.popValue())
@@ -137,12 +127,14 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 			}
 		}
 		if f.gcTypeSubtypingRefTest && heap >= 0 {
-			value := f.popValue()
-			gcRoot := value.st.gcRoot
-			ref := f.materialize(value)
-			f.emitLocalFunctionSubtypeIdentityCheck(ref, uint32(heap), sub == 23, trapCastFailure)
-			f.pushReg(ref, mtI64).st.gcRoot = gcRoot
-			return nil
+			if _, targetIsFunc := f.m.TypeFunc(uint32(heap)); targetIsFunc {
+				value := f.popValue()
+				gcRoot := value.st.gcRoot
+				ref := f.materialize(value)
+				f.emitLocalFunctionSubtypeIdentityCheck(ref, uint32(heap), sub == 23, trapCastFailure)
+				f.pushReg(ref, mtI64).st.gcRoot = gcRoot
+				return nil
+			}
 		}
 		if !moduleHasCollectorTypes(f.m) {
 			value := f.popValue()
@@ -599,39 +591,152 @@ func (f *fn) tryFuseFinalCastArrayLen(typeIndex uint32, nullable bool, r *wasm.R
 	return true, f.callGCStructHelper(gcStructFinalCastArrayLen, []wasm.ValType{anyref, wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32})
 }
 
+func (f *fn) emitDynamicFunctionSubtypeTest(targetType uint32, nullable bool) error {
+	subtypes, ok := f.m.FunctionSubtypeTypeIndexes(targetType)
+	if !ok {
+		return fmt.Errorf("arm64: function ref.test target type %d is unavailable", targetType)
+	}
+	f.flush()
+	valueElem := f.s.back()
+	if valueElem == f.s.head || valueElem.kind != ekValue || valueElem.st.kind != stSlot {
+		return fmt.Errorf("arm64: dynamic function ref.test lost canonical operand")
+	}
+	value := f.allocReg(0)
+	f.ld64(value, SP, f.spillOff(valueElem.st.slot))
+	f.cmpImm(value, 0, true)
+	nullSite := f.a.Bcond(condE)
+	base := f.allocReg(maskOf(value))
+	f.ld64(base, linMemReg, -int32(offFuncRefDescPtr))
+	f.cmpRR(value, base, true)
+	unknownSites := []int{f.a.Bcond(condBE)}
+	end := f.allocReg(maskOf(value, base))
+	f.a.MovImm64(end, uint64((f.m.ImportedFuncCount()+len(f.m.FuncTypes)+1)*runtime.FuncRefDescBytes))
+	f.a.Add64(end, base, end)
+	f.cmpRR(value, end, true)
+	unknownSites = append(unknownSites, f.a.Bcond(condAE))
+	f.a.Sub64(value, value, base)
+	f.a.MovImm64(end, runtime.FuncRefDescBytes)
+	quotient := f.allocReg(maskOf(value, base, end))
+	f.a.Udiv64(quotient, value, end)
+	remainder := f.allocReg(maskOf(value, base, end, quotient))
+	f.a.Msub64(remainder, quotient, end, value)
+	f.cmpImm(remainder, 0, true)
+	unknownSites = append(unknownSites, f.a.Bcond(condNE))
+	f.a.SubImm64(quotient, quotient, 1)
+	f.ld64(base, base, runtime.TableEntryCodePtrOffset)
+	f.cmpImm(base, 0, true)
+	unknownSites = append(unknownSites, f.a.Bcond(condE))
+	f.a.LslImm64(end, quotient, 2)
+	f.a.Add64(end, base, end)
+	f.ld32(quotient, end, 0)
+	trueSites := make([]int, 0, len(subtypes)+1)
+	for _, typeIndex := range subtypes {
+		f.a.MovImm32(end, int32(typeIndex))
+		f.cmpRR(quotient, end, false)
+		trueSites = append(trueSites, f.a.Bcond(condE))
+	}
+	f.a.MovImm32(end, -1)
+	f.cmpRR(quotient, end, false)
+	unknownSites = append(unknownSites, f.a.Bcond(condE))
+	falseSite := f.a.Branch()
+	trueLabel := f.a.Len()
+	if nullable && !f.a.PatchBranch19(nullSite, trueLabel) {
+		return fmt.Errorf("arm64: dynamic function ref.test nullable edge exceeds conditional branch range")
+	}
+	for _, site := range trueSites {
+		if !f.a.PatchBranch19(site, trueLabel) {
+			return fmt.Errorf("arm64: dynamic function ref.test subtype set exceeds conditional branch range")
+		}
+	}
+	f.a.MovImm32(quotient, 1)
+	classifiedTrue := f.a.Branch()
+	falseLabel := f.a.Len()
+	if !nullable && !f.a.PatchBranch19(nullSite, falseLabel) {
+		return fmt.Errorf("arm64: dynamic function ref.test null edge exceeds conditional branch range")
+	}
+	if !f.a.PatchBranch26(falseSite, falseLabel) {
+		return fmt.Errorf("arm64: dynamic function ref.test false edge exceeds branch range")
+	}
+	f.a.MovImm32(quotient, 0)
+	classifiedFalse := f.a.Branch()
+	unknownLabel := f.a.Len()
+	for _, site := range unknownSites {
+		if !f.a.PatchBranch19(site, unknownLabel) {
+			return fmt.Errorf("arm64: dynamic function ref.test unknown edge exceeds conditional branch range")
+		}
+	}
+	f.a.MovImm32(quotient, 2)
+	classDone := f.a.Len()
+	if !f.a.PatchBranch26(classifiedTrue, classDone) || !f.a.PatchBranch26(classifiedFalse, classDone) {
+		return fmt.Errorf("arm64: dynamic function ref.test classifier join exceeds branch range")
+	}
+	f.release(value)
+	f.release(base)
+	f.release(end)
+	f.release(remainder)
+	f.cmpImm(quotient, 2, false)
+	known := f.a.Bcond(condNE)
+	resultReg := quotient
+	f.release(quotient)
+
+	f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(targetType)})
+	if nullable {
+		f.pushValue(storage{kind: stConst, typ: mtI32, cval: 1})
+	} else {
+		f.pushValue(storage{kind: stConst, typ: mtI32})
+	}
+	funcref := wasm.RefVal(wasm.Ref(true, wasm.AbsHeap(wasm.HeapFunc), false))
+	if err := f.callGCStructHelper(gcFuncRefTest, []wasm.ValType{funcref, wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}); err != nil {
+		return err
+	}
+	f.flush()
+	result := f.s.back()
+	if result == f.s.head || result.kind != ekValue || result.st.kind != stSlot {
+		return fmt.Errorf("arm64: dynamic function ref.test lost canonical result")
+	}
+	done := f.a.Branch()
+	if !f.a.PatchBranch19(known, f.a.Len()) {
+		return fmt.Errorf("arm64: dynamic function ref.test known edge exceeds conditional branch range")
+	}
+	f.st32(SP, f.spillOff(result.st.slot), resultReg)
+	if !f.a.PatchBranch26(done, f.a.Len()) {
+		return fmt.Errorf("arm64: dynamic function ref.test result join exceeds branch range")
+	}
+	return nil
+}
+
 func (f *fn) emitLocalFunctionSubtypeIdentityCheck(value Reg, targetType uint32, nullable bool, trapCode uint32) {
-	var success [16]int
-	nsuccess := 0
+	success := make([]int, 0, f.m.ImportedFuncCount()+len(f.m.FuncTypes)+1)
 	if nullable {
 		f.cmpImm(value, 0, true)
-		success[nsuccess] = f.a.Bcond(condE)
-		nsuccess++
+		success = append(success, f.a.Bcond(condE))
 	}
 	base := f.allocReg(maskOf(value))
 	f.ld64(base, linMemReg, -int32(offFuncRefDescPtr))
 	candidate := f.allocReg(maskOf(value).add(base))
 	required := wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: targetType}), false)
-	for i, sourceType := range f.m.FuncTypes {
-		actual := wasm.Ref(false, wasm.IndexedHeap(sourceType), false)
-		if !f.m.ReferenceTypeSubtype(actual, required) {
+	total := f.m.ImportedFuncCount() + len(f.m.FuncTypes)
+	for functionIndex := 0; functionIndex < total; functionIndex++ {
+		sourceType, ok := f.m.FuncTypeIndex(uint32(functionIndex))
+		if !ok || !f.m.ReferenceTypeSubtype(wasm.Ref(false, wasm.IndexedHeap(sourceType), false), required) {
 			continue
 		}
-		if nsuccess == len(success) {
-			f.trapAlways(trapCode)
-			break
-		}
 		f.a.MovReg64(candidate, base)
-		f.leaDisp(candidate, candidate, int32((i+1)*runtime.FuncRefDescBytes), true)
+		f.leaDisp(candidate, candidate, int32((functionIndex+1)*runtime.FuncRefDescBytes), true)
 		f.cmpRR(value, candidate, true)
-		success[nsuccess] = f.a.Bcond(condE)
-		nsuccess++
+		success = append(success, f.a.Bcond(condE))
+		if functionIndex < f.m.ImportedFuncCount() {
+			f.ld64(candidate, candidate, runtime.TableEntryRefSlotOffset)
+			f.cmpRR(value, candidate, true)
+			success = append(success, f.a.Bcond(condE))
+		}
 	}
 	f.release(candidate)
 	f.release(base)
 	f.trapAlways(trapCode)
 	done := f.a.Len()
-	for i := 0; i < nsuccess; i++ {
-		f.a.PatchBranch19(success[i], done)
+	for _, site := range success {
+		f.a.PatchBranch19(site, done)
 	}
 }
 

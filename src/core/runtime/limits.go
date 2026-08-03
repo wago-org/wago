@@ -83,6 +83,7 @@ type InstantiateFootprint struct {
 	FuncImportCount    int
 	HostCallBytes      int // explicit sync control-frame bytes; zero selects the legacy async log for function imports
 	FuncRefCount       int
+	FuncRefTypeIDCount int // four-byte exact local type IDs for dynamic indexed-function ref.test
 	TagCount           int // one 8-byte exact native identity per exception tag
 	GlobalCount        int
 	V128GlobalCount    int // globals whose cells require 16 bytes instead of the scalar/reference 8 bytes
@@ -105,7 +106,7 @@ type InstantiateFootprint struct {
 // during instance creation, plus a small alignment slack for the allocator's
 // 8-byte rounding before each allocation.
 func InstantiateArenaNeed(fp InstantiateFootprint) (int, error) {
-	if fp.FuncImportCount < 0 || fp.HostCallBytes < 0 || fp.FuncRefCount < 0 || fp.TagCount < 0 || fp.GlobalCount < 0 || fp.V128GlobalCount < 0 || fp.MemoryCount < 0 || fp.TableSize < 0 || fp.TableCapacity < 0 || fp.ImportedTableCount < 0 || fp.ElemCount < 0 || fp.PassiveElemCount < 0 || fp.PassiveElemBytes < 0 || fp.PassiveDataCount < 0 || fp.MaxParamSlots < 0 || fp.MaxResultSlots < 0 {
+	if fp.FuncImportCount < 0 || fp.HostCallBytes < 0 || fp.FuncRefCount < 0 || fp.FuncRefTypeIDCount < 0 || fp.TagCount < 0 || fp.GlobalCount < 0 || fp.V128GlobalCount < 0 || fp.MemoryCount < 0 || fp.TableSize < 0 || fp.TableCapacity < 0 || fp.ImportedTableCount < 0 || fp.ElemCount < 0 || fp.PassiveElemCount < 0 || fp.PassiveElemBytes < 0 || fp.PassiveDataCount < 0 || fp.MaxParamSlots < 0 || fp.MaxResultSlots < 0 {
 		return 0, fmt.Errorf("negative instantiate footprint input")
 	}
 	if fp.V128GlobalCount > fp.GlobalCount {
@@ -164,6 +165,9 @@ func InstantiateArenaNeed(fp InstantiateFootprint) (int, error) {
 	if fp.FuncRefCount > maxInt()/FuncRefDescBytes {
 		return 0, fmt.Errorf("funcref descriptor count %d overflows arena allocation", fp.FuncRefCount)
 	}
+	if fp.FuncRefTypeIDCount > (maxInt()-7)/4 {
+		return 0, fmt.Errorf("funcref type-ID count %d overflows arena allocation", fp.FuncRefTypeIDCount)
+	}
 	argsBytes, err := SlotBytes(fp.MaxParamSlots)
 	if err != nil {
 		return 0, err
@@ -220,6 +224,11 @@ func InstantiateArenaNeed(fp InstantiateFootprint) (int, error) {
 		return 0, fmt.Errorf("funcref descriptor count %d overflows arena allocation", fp.FuncRefCount)
 	}
 	need += funcRefBytes
+	funcRefTypeIDBytes := (4*fp.FuncRefTypeIDCount + 7) &^ 7
+	if need > maxInt()-funcRefTypeIDBytes {
+		return 0, fmt.Errorf("funcref type-ID count %d overflows arena allocation", fp.FuncRefTypeIDCount)
+	}
+	need += funcRefTypeIDBytes
 	passiveElemBytes := fp.PassiveElemCount * PassiveElemDescBytes
 	if need > maxInt()-passiveElemBytes {
 		return 0, fmt.Errorf("passive element count %d overflows arena allocation", fp.PassiveElemCount)

@@ -30,6 +30,7 @@ const (
 	gcStructAllocOne                 = 11
 	gcStructFinalCastGet             = 12
 	gcStructFinalCastArrayLen        = 13
+	gcFuncRefTest                    = 14
 )
 
 func (f *fn) emitFB(r *wasm.Reader) error {
@@ -221,18 +222,7 @@ func (f *fn) emitGCI31Test(sub uint32, r *wasm.Reader) error {
 	}
 	_, targetIsFunc := f.m.TypeFunc(uint32(heap))
 	if f.gcTypeSubtypingRefTest && heap >= 0 && targetIsFunc {
-		value := f.popValue()
-		if value.kind != ekValue || value.st.kind != stFuncRef || value.st.idx < 0 || value.st.idx >= len(f.m.FuncTypes) {
-			return fmt.Errorf("amd64: staged function ref.test lost exact local ref.func provenance")
-		}
-		actual := wasm.Ref(false, wasm.IndexedHeap(f.m.FuncTypes[value.st.idx]), false)
-		required := wasm.Ref(nullable, wasm.IndexedHeap(wasm.TypeIdx{Index: uint32(heap)}), false)
-		matched := int64(0)
-		if f.m.ReferenceTypeSubtype(actual, required) {
-			matched = 1
-		}
-		f.pushValue(storage{kind: stConst, typ: mtI32, cval: matched})
-		return nil
+		return f.emitDynamicFunctionSubtypeTest(uint32(heap), nullable)
 	}
 	if heap == -16 || heap == -17 || heap == -13 || heap == -14 { // func, extern, nofunc, noextern
 		value := f.materialize(f.popValue())
@@ -342,10 +332,12 @@ func (f *fn) emitGCI31Cast(sub uint32, r *wasm.Reader) error {
 		}
 	}
 	if f.gcTypeSubtypingRefTest && heap >= 0 {
-		value := f.materialize(f.popValue())
-		f.emitLocalFunctionSubtypeIdentityCheck(value, uint32(heap), sub == 23, trapCastFailure)
-		f.pushReg(value, mtI64)
-		return nil
+		if _, targetIsFunc := f.m.TypeFunc(uint32(heap)); targetIsFunc {
+			value := f.materialize(f.popValue())
+			f.emitLocalFunctionSubtypeIdentityCheck(value, uint32(heap), sub == 23, trapCastFailure)
+			f.pushReg(value, mtI64)
+			return nil
+		}
 	}
 	if f.gcStructHelpers {
 		value := f.materialize(f.popValue())
@@ -486,39 +478,135 @@ func (f *fn) tryFuseFinalCastArrayLen(typeIndex uint32, nullable bool, r *wasm.R
 	return true, f.emitNativeFinalCastArrayLen(typeIndex, nullable)
 }
 
+func (f *fn) emitDynamicFunctionSubtypeTest(targetType uint32, nullable bool) error {
+	subtypes, ok := f.m.FunctionSubtypeTypeIndexes(targetType)
+	if !ok {
+		return fmt.Errorf("amd64: function ref.test target type %d is unavailable", targetType)
+	}
+	var savedLocals [16]locState
+	if len(f.pinnedLocals) > len(savedLocals) {
+		return fmt.Errorf("amd64: %d pinned locals exceed conditional function ref.test bound", len(f.pinnedLocals))
+	}
+	for i, local := range f.pinnedLocals {
+		savedLocals[i] = f.locals[local].state
+	}
+	f.flush()
+	value := f.s.back()
+	if value == f.s.head || value.kind != ekValue || value.st.kind != stSlot {
+		return fmt.Errorf("amd64: dynamic function ref.test lost canonical operand")
+	}
+	f.a.Load64(RAX, RSP, f.spillOff(value.st.slot))
+	f.a.TestSelf(RAX, true)
+	nullSite := f.a.JccPlaceholder(condE)
+	f.a.Load64(RCX, RBX, -int32(offFuncRefDescPtr))
+	f.cmpRR(RAX, RCX, true)
+	unknownSites := []int{f.a.JccPlaceholder(condBE)}
+	f.a.MovReg64(R8, RCX)
+	f.a.LeaDisp(R8, R8, int32((f.m.ImportedFuncCount()+len(f.m.FuncTypes)+1)*runtime.FuncRefDescBytes))
+	f.cmpRR(RAX, R8, true)
+	unknownSites = append(unknownSites, f.a.JccPlaceholder(condAE))
+	f.a.AluRR(aluTable[opSub].rr, RAX, RCX, true)
+	f.a.XorSelf32(RDX)
+	f.a.MovImm32(RSI, runtime.FuncRefDescBytes)
+	f.a.Div(RSI, true)
+	f.a.TestSelf(RDX, true)
+	unknownSites = append(unknownSites, f.a.JccPlaceholder(condNE))
+	f.a.AluRI(aluTable[opSub].digit, RAX, 1, true)
+	f.a.Load64(RCX, RCX, runtime.TableEntryCodePtrOffset)
+	f.a.TestSelf(RCX, true)
+	unknownSites = append(unknownSites, f.a.JccPlaceholder(condE))
+	f.a.LeaScaled(RDX, RCX, RAX, 2, 0)
+	f.a.Load32(RAX, RDX, 0)
+	trueSites := make([]int, 0, len(subtypes)+1)
+	for _, typeIndex := range subtypes {
+		f.a.AluRI(cmpDigit, RAX, int32(typeIndex), false)
+		trueSites = append(trueSites, f.a.JccPlaceholder(condE))
+	}
+	f.a.AluRI(cmpDigit, RAX, -1, false)
+	unknownSites = append(unknownSites, f.a.JccPlaceholder(condE))
+	falseSite := f.a.JmpPlaceholder()
+	trueLabel := f.a.Len()
+	if nullable {
+		f.a.PatchRel32(nullSite, trueLabel)
+	}
+	for _, site := range trueSites {
+		f.a.PatchRel32(site, trueLabel)
+	}
+	f.a.MovImm32(RAX, 1)
+	classified := f.a.JmpPlaceholder()
+	falseLabel := f.a.Len()
+	if !nullable {
+		f.a.PatchRel32(nullSite, falseLabel)
+	}
+	f.a.PatchRel32(falseSite, falseLabel)
+	f.a.MovImm32(RAX, 0)
+	classifiedFalse := f.a.JmpPlaceholder()
+	unknownLabel := f.a.Len()
+	for _, site := range unknownSites {
+		f.a.PatchRel32(site, unknownLabel)
+	}
+	f.a.MovImm32(RAX, 2)
+	classDone := f.a.Len()
+	f.a.PatchRel32(classified, classDone)
+	f.a.PatchRel32(classifiedFalse, classDone)
+	f.a.AluRI(cmpDigit, RAX, 2, false)
+	known := f.a.JccPlaceholder(condNE)
+
+	f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(targetType)})
+	if nullable {
+		f.pushValue(storage{kind: stConst, typ: mtI32, cval: 1})
+	} else {
+		f.pushValue(storage{kind: stConst, typ: mtI32})
+	}
+	funcref := wasm.RefVal(wasm.Ref(true, wasm.AbsHeap(wasm.HeapFunc), false))
+	if err := f.callGCStructHelper(gcFuncRefTest, []wasm.ValType{funcref, wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}); err != nil {
+		return err
+	}
+	f.reloadConditionalGCPinnedLocals(savedLocals[:len(f.pinnedLocals)])
+	f.flush()
+	result := f.s.back()
+	if result == f.s.head || result.kind != ekValue || result.st.kind != stSlot {
+		return fmt.Errorf("amd64: dynamic function ref.test lost canonical result")
+	}
+	done := f.a.JmpPlaceholder()
+	f.a.PatchRel32(known, f.a.Len())
+	f.a.Store32(RSP, f.spillOff(result.st.slot), RAX)
+	f.a.PatchRel32(done, f.a.Len())
+	return nil
+}
+
 func (f *fn) emitLocalFunctionSubtypeIdentityCheck(value Reg, targetType uint32, nullable bool, trapCode uint32) {
-	var success [16]int
-	nsuccess := 0
+	success := make([]int, 0, f.m.ImportedFuncCount()+len(f.m.FuncTypes)+1)
 	if nullable {
 		f.a.TestSelf(value, true)
-		success[nsuccess] = f.a.JccPlaceholder(condE)
-		nsuccess++
+		success = append(success, f.a.JccPlaceholder(condE))
 	}
 	base := f.allocReg(maskOf(value))
 	f.a.Load64(base, RBX, -int32(offFuncRefDescPtr))
 	candidate := f.allocReg(maskOf(value, base))
 	required := wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: targetType}), false)
-	for i, sourceType := range f.m.FuncTypes {
-		actual := wasm.Ref(false, wasm.IndexedHeap(sourceType), false)
-		if !f.m.ReferenceTypeSubtype(actual, required) {
+	total := f.m.ImportedFuncCount() + len(f.m.FuncTypes)
+	for functionIndex := 0; functionIndex < total; functionIndex++ {
+		sourceType, ok := f.m.FuncTypeIndex(uint32(functionIndex))
+		if !ok || !f.m.ReferenceTypeSubtype(wasm.Ref(false, wasm.IndexedHeap(sourceType), false), required) {
 			continue
 		}
-		if nsuccess == len(success) {
-			f.trapAlways(trapCode)
-			break
-		}
 		f.a.MovReg64(candidate, base)
-		f.a.LeaDisp(candidate, candidate, int32((i+1)*runtime.FuncRefDescBytes))
+		f.a.LeaDisp(candidate, candidate, int32((functionIndex+1)*runtime.FuncRefDescBytes))
 		f.cmpRR(value, candidate, true)
-		success[nsuccess] = f.a.JccPlaceholder(condE)
-		nsuccess++
+		success = append(success, f.a.JccPlaceholder(condE))
+		if functionIndex < f.m.ImportedFuncCount() {
+			f.a.Load64(candidate, candidate, runtime.TableEntryRefSlotOffset)
+			f.cmpRR(value, candidate, true)
+			success = append(success, f.a.JccPlaceholder(condE))
+		}
 	}
 	f.release(candidate)
 	f.release(base)
 	f.trapAlways(trapCode)
 	done := f.a.Len()
-	for i := 0; i < nsuccess; i++ {
-		f.a.PatchRel32(success[i], done)
+	for _, site := range success {
+		f.a.PatchRel32(site, done)
 	}
 }
 
