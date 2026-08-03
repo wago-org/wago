@@ -1080,6 +1080,12 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		// recognizers select optimizations, not semantic admission boundaries.
 		gcStructProduct = stagedGCStructGeneric
 	}
+	if goruntime.GOARCH == "arm64" && !gcStructProduct.requiresHelpers() && moduleUsesArm64GCRefTestHelper(m) {
+		// ARM64 lowers collector-reference ref.test through the generic checked
+		// helper. Provision the collector and helper dispatch even when a narrower
+		// metadata-only product recognized the module.
+		gcStructProduct = stagedGCStructGeneric
+	}
 	if features.NullReferenceProducts {
 		if _, shapeErr := stagedNullReferenceProductShape(m); shapeErr == nil {
 			nullReferenceProduct = true
@@ -1801,6 +1807,45 @@ func isUnsupportedProposalError(err error) bool {
 	} {
 		if strings.Contains(message, marker) {
 			return true
+		}
+	}
+	return false
+}
+
+func moduleUsesArm64GCRefTestHelper(m *wasm.Module) bool {
+	if m == nil {
+		return false
+	}
+	for i := range m.Code {
+		r := wasm.NewReader(m.Code[i].BodyBytes)
+		for r.HasNext() {
+			op, err := r.Byte()
+			if err != nil {
+				return false
+			}
+			if op == 0xfb {
+				peek := *r
+				sub, subErr := peek.U32()
+				if subErr != nil {
+					return false
+				}
+				if sub == 20 || sub == 21 {
+					heap, heapErr := peek.S33()
+					if heapErr != nil {
+						return false
+					}
+					if heap >= 0 {
+						if _, isFunc := m.TypeFunc(uint32(heap)); !isFunc {
+							return true
+						}
+					} else if heap != -16 && heap != -17 && heap != -13 && heap != -14 {
+						return true
+					}
+				}
+			}
+			if _, err := wasm.ClassifyInstructionImmediate(r, op); err != nil {
+				return false
+			}
 		}
 	}
 	return false

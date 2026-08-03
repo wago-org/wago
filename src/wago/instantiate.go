@@ -177,7 +177,8 @@ func (c *Compiled) arenaNeedForImports(imports Imports, syncMode bool) int {
 
 func (b *instanceBuilder) prepareCollector() error {
 	needsExternConversion := b.c.stagedGCStructProduct().requiresExternConversion()
-	if (!gc.HasHeapObjectTypes(b.c.GCTypeDescs) && !needsExternConversion) || (!needsExternConversion && (b.c.collectorFreeStructuralMetadata() || b.c.stagedGCTypeSubtypingProduct() != 0 || b.c.collectorFreeGCArrayMetadata())) {
+	needsHelpers := b.c.usesGCStructHelpers() || b.c.usesGCArrayHelpers()
+	if !needsHelpers && ((!gc.HasHeapObjectTypes(b.c.GCTypeDescs) && !needsExternConversion) || (!needsExternConversion && (b.c.collectorFreeStructuralMetadata() || b.c.stagedGCTypeSubtypingProduct() != 0 || b.c.collectorFreeGCArrayMetadata()))) {
 		return nil
 	}
 	gcConfig := b.opts.GC

@@ -165,6 +165,17 @@ func arm64GCTableRootModule() []byte {
 	)
 }
 
+func arm64GCTypeSubtypingRefTestModule() []byte {
+	funcType := []byte{0x60, 0x01, 0x6e, 0x01, 0x7f}   // (func (param anyref) (result i32))
+	body := []byte{0x20, 0x00, 0xfb, 0x15, 0x6e, 0x0b} // ref.test_null any
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(funcType)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("test", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+}
+
 func arm64GCInlinedCallBeforeHostCollectionModule() []byte {
 	structType := []byte{0x5f, 0x01, 0x7f, 0x01}
 	hostType := wasmtest.FuncType(nil, nil)
@@ -739,6 +750,26 @@ func TestGCArm64MutableGlobalAndTableRoots(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestGCArm64TypeSubtypingRefTestProvisionsHelpers(t *testing.T) {
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), arm64GCTypeSubtypingRefTestModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	if !compiled.usesGCStructHelpers() {
+		t.Fatal("arm64 ref.test did not provision checked GC helpers")
+	}
+	in, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	got, callErr := in.Invoke("test", 0)
+	if callErr != nil || !reflect.DeepEqual(got, []uint64{1}) {
+		t.Fatalf("ref.test null = %v, %v; want [1], nil", got, callErr)
 	}
 }
 
