@@ -4,6 +4,7 @@ package wago
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"encoding/hex"
 	"reflect"
@@ -1140,7 +1141,7 @@ func TestDomainSnapshotRejectsLiveTokensAndRestoresTransactionally(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	values, err := in.Call(t.Context(), "new_struct")
+	values, err := in.Call(context.Background(), "new_struct")
 	if err != nil {
 		t.Fatal(err)
 	}
