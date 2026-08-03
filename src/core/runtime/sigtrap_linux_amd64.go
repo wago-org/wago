@@ -18,6 +18,10 @@ import (
 const (
 	_ = uint(abi.TrapCellPtrOffset - 104)
 	_ = uint(104 - abi.TrapCellPtrOffset)
+	_ = uint(TrapLinMemOutOfBounds - 3)
+	_ = uint(3 - TrapLinMemOutOfBounds)
+	_ = uint(TrapLinMemCouldNotExtend - 4)
+	_ = uint(4 - TrapLinMemCouldNotExtend)
 )
 
 // Guard-page trap handler (EXPERIMENTAL). When linear memory is backed by a
@@ -36,8 +40,9 @@ const (
 //     acts if the frame's linMem matches that reservation's linMem base, which
 //     rejects the astronomically-unlikely case of a wild non-wasm pointer landing
 //     inside a live reservation.
-//   - It then writes TrapLinMemOutOfBounds to the frame's *trap and rewrites only
-//     the saved RIP to the ABI-specific trap exit: amd64 restores the trampoline's
+//   - It then writes TrapLinMemOutOfBounds, or TrapLinMemCouldNotExtend when a
+//     lazy page commit fails, to the frame's *trap and rewrites only the saved RIP
+//     to the ABI-specific trap exit: amd64 restores the trampoline's
 //     handler-jump re-entry SP and returns straight to enterNative; framed amd64
 //     performs the old one-frame `leave; ret` unwind.
 //

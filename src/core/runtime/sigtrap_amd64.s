@@ -14,6 +14,7 @@
 // REG_RBX=11 -> +128, REG_RSP=15 -> +160, REG_RIP=16 -> +168. guardRegion is
 // {start@0, end@8, linMem@16, ownerLinMem@24}, 32 bytes.
 TEXT ·guardSigHandler(SB), NOSPLIT|NOFRAME, $0-0
+	MOVQ	DX, R12                 // preserve *ucontext across mprotect arguments
 	MOVQ	16(SI), R8              // R8 = siginfo->si_addr (fault address)
 	LEAQ	·guardRegions(SB), R10  // R10 = &guardRegions[0]
 	MOVQ	$256, R11               // R11 = slots left (maxGuardRegions)
@@ -31,12 +32,12 @@ scan:
 	// pinned to linMem and the trap cell pointer lives at [linMem-TrapCellPtrOffset].
 	MOVQ	16(R10), R9             // region.linMem (fault-address base)
 	MOVQ	24(R10), R13            // region.ownerLinMem (active primary)
-	MOVQ	128(DX), AX             // AX = saved RBX (x64 primary linMem)
+	MOVQ	128(R12), AX            // AX = saved RBX (x64 primary linMem)
 	CMPQ	AX, R13
 	JE	match_x64
 
 	// Fall back to the framed amd64 ABI: [RBP-16] is linMem and [RBP-24] is trap.
-	MOVQ	120(DX), R15            // R15 = saved RBP (faulting frame)
+	MOVQ	120(R12), R15           // R15 = saved RBP (faulting frame)
 	MOVQ	-16(R15), CX            // CX = [RBP-16] = saved linMem
 	CMPQ	CX, R13
 	JNE	next                    // mismatch -> not this reservation's wasm fault
@@ -45,7 +46,7 @@ scan:
 
 match_x64:
 	MOVQ	AX, CX                  // CX = linMem
-	MOVQ	160(DX), R15            // R15 = saved RSP (frameless frame base)
+	MOVQ	160(R12), R15           // R15 = saved RSP (frameless frame base)
 	MOVQ	$1, R14                 // mode 1 = frameless x64
 
 matched:
@@ -53,30 +54,39 @@ matched:
 	// uncommitted page (off < current logical size), else trap a genuinely
 	// out-of-range access. R9 is the faulting memory base; CX is the active
 	// primary linMem used for trap/unwind state.
-	MOVQ	R8, R12
-	SUBQ	R9, R12                 // R12 = off (fault - region.linMem)
+	MOVQ	R8, AX
+	SUBQ	R9, AX                  // AX = off (fault - region.linMem)
 	MOVL	-8(R9), R13             // R13 = region curBytes (u32, zero-extended)
-	CMPQ	R13, R12
+	CMPQ	R13, AX
 	JLS	dotrap                  // curBytes <= off -> out of range -> trap
 	// Commit the 4 KiB Linux/x86 host page containing the fault, then resume the
 	// access. mmap only guarantees host-page alignment: rounding the absolute
 	// address to 64 KiB can move before a non-64-KiB-aligned reservation, make
 	// mprotect fail, and refault forever after memory.grow.
+	MOVQ	CX, R10                 // SYSCALL clobbers CX; retain primary linMem
 	MOVQ	R8, DI
 	ANDQ	$-4096, DI              // align down to the Linux/x86 host page
 	MOVQ	$4096, SI
 	MOVQ	$3, DX                  // PROT_READ|PROT_WRITE
 	MOVQ	$10, AX                 // SYS_mprotect
 	SYSCALL
+	TESTQ	AX, AX
+	JGE	resume
+	MOVQ	R10, CX                 // restore primary linMem for trap publication
+	MOVL	$4, R13                 // TrapLinMemCouldNotExtend
+	JMP	settrap
+resume:
 	RET                             // -> restorer -> rt_sigreturn: retry (now committed)
 dotrap:
-	// Confirmed wasm OOB. Record the trap and redirect RIP.
+	MOVL	$3, R13                 // TrapLinMemOutOfBounds
+settrap:
+	// Record the selected wasm trap and redirect RIP.
 	TESTQ	R14, R14
 	JNZ	dotrap_x64
 	MOVQ	-24(R15), CX            // CX = [RBP-24] = framed trap pointer
-	MOVL	$3, (CX)                // TrapLinMemOutOfBounds
+	MOVL	R13, (CX)
 	MOVQ	·guardTrapExitFramedPC(SB), R9
-	MOVQ	R9, 168(DX)             // saved RIP = nativeTrapExitFramed
+	MOVQ	R9, 168(R12)            // saved RIP = nativeTrapExitFramed
 	RET                             // -> restorer -> rt_sigreturn -> nativeTrapExitFramed
 dotrap_x64:
 	// The trap cell moved off the stack into basedata: [linMem-TrapCellPtrOffset]
@@ -84,9 +94,9 @@ dotrap_x64:
 	// through it, exactly as emitTrap does. (It was [RSP+0] under the pre-basedata
 	// ABI.) TrapCellPtrOffset is asserted == 104 in sigtrap_linux_amd64.go.
 	MOVQ	-104(CX), CX            // CX = trap cell pointer = [linMem - 104]
-	MOVL	$3, (CX)                // TrapLinMemOutOfBounds
+	MOVL	R13, (CX)
 	MOVQ	·guardTrapExitHandlerJumpPC(SB), R9
-	MOVQ	R9, 168(DX)             // saved RIP = nativeTrapExitHandlerJump
+	MOVQ	R9, 168(R12)            // saved RIP = nativeTrapExitHandlerJump
 	RET                             // -> restorer -> rt_sigreturn -> nativeTrapExit
 next:
 	ADDQ	$32, R10                // sizeof(guardRegion)
