@@ -100,8 +100,7 @@ func TestStagedStructuralTypeProductPlatformAndBoundsGate(t *testing.T) {
 	features.TypedFunctionReferences = true
 	features.StructuralTypeProducts = true
 	c, err := compileWithFrontendFeatures(cfg, data, features)
-	arm64Explicit := goruntime.GOARCH == "arm64" && (goruntime.GOOS == "linux" || goruntime.GOOS == "darwin") && !guardPageBuilt
-	if (goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64") && !arm64Explicit {
+	if !supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) {
 		if err == nil || !strings.Contains(err.Error(), "unsupported collector-free structural product staged execution on") {
 			t.Fatalf("platform compile = %v, want explicit platform rejection", err)
 		}

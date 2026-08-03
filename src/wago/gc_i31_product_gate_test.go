@@ -30,8 +30,7 @@ func TestStagedGCI31ProductPlatformBoundsAndIdentityGate(t *testing.T) {
 	features.TypedFunctionReferences = true
 	features.GCI31Products = true
 	c, err := compileWithFrontendFeatures(cfg, data, features)
-	arm64Explicit := goruntime.GOARCH == "arm64" && (goruntime.GOOS == "linux" || goruntime.GOOS == "darwin") && !guardPageBuilt
-	if (goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64") && !arm64Explicit {
+	if !supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) {
 		if err == nil || !strings.Contains(err.Error(), "unsupported i31 product staged execution on") {
 			t.Fatalf("platform compile = %v, want explicit i31 rejection", err)
 		}
