@@ -9,24 +9,46 @@ import (
 )
 
 func Completion(shell string) (string, error) {
-	commands := "run init add rm plugin auth module self build validate version status update cache config"
 	switch strings.ToLower(strings.TrimSpace(shell)) {
 	case "zsh":
 		return "#compdef wago\n" +
 			"autoload -Uz compinit\n" +
 			"(( $+functions[compdef] )) || compinit\n" +
 			"_wago() {\n" +
-			"  _arguments '1:command:(" + commands + ")' '*::args:->args'\n" +
+			"  local -a candidates\n" +
+			"  candidates=(\"${(@f)$(command wago __complete \"${(@)words[2,-1]}\")}\")\n" +
+			"  if (( ${#candidates} )); then\n" +
+			"    compadd -- \"${candidates[@]}\"\n" +
+			"  else\n" +
+			"    _files\n" +
+			"  fi\n" +
 			"}\n" +
 			"compdef _wago wago\n", nil
 	case "bash":
-		return "_wago_complete() { COMPREPLY=( $(compgen -W '" + commands + "' -- \"${COMP_WORDS[COMP_CWORD]}\") ); }\ncomplete -F _wago_complete wago\n", nil
+		return "_wago_complete() {\n" +
+			"  local candidate\n" +
+			"  COMPREPLY=()\n" +
+			"  while IFS= read -r candidate; do\n" +
+			"    COMPREPLY+=(\"$candidate\")\n" +
+			"  done < <(command wago __complete \"${COMP_WORDS[@]:1}\")\n" +
+			"  if (( ${#COMPREPLY[@]} == 0 )); then\n" +
+			"    compopt -o default 2>/dev/null || true\n" +
+			"  fi\n" +
+			"}\n" +
+			"complete -o bashdefault -o default -F _wago_complete wago\n", nil
 	case "fish":
-		var out strings.Builder
-		for _, name := range strings.Fields(commands) {
-			fmt.Fprintf(&out, "complete -c wago -f -n '__fish_use_subcommand' -a %s\n", name)
-		}
-		return out.String(), nil
+		return "function __wago_complete\n" +
+			"  set -l words (commandline -opc)\n" +
+			"  set -e words[1]\n" +
+			"  set -l current (commandline -ct)\n" +
+			"  set -l candidates (command wago __complete $words \"$current\")\n" +
+			"  if test (count $candidates) -gt 0\n" +
+			"    printf '%s\\n' $candidates\n" +
+			"  else\n" +
+			"    __fish_complete_path \"$current\"\n" +
+			"  end\n" +
+			"end\n" +
+			"complete -c wago -f -a '(__wago_complete)'\n", nil
 	default:
 		return "", fmt.Errorf("unsupported shell %q (want: zsh, bash, or fish)", shell)
 	}
