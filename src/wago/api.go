@@ -1732,6 +1732,9 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		c.Data = append(c.Data, init)
 	}
 	compiled := installCompiledFinalizer(c)
+	if guardPageBuilt && cfg.boundsChecks == BoundsChecksSignalsBased {
+		compiled.codeCache.flags |= compiledCacheGuardMemory
+	}
 	if validGCModuleFrameRootPlan(gcFrameRoots) {
 		rootMap := &compiledGCFrameRoots{}
 		for function, plan := range gcFrameRoots.Functions {
@@ -1776,7 +1779,9 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		compiled.codeCache.stagedFeatures |= CoreFeatureGC
 		compiled.codeCache.gcTypeSubtypingProduct = gcTypeSubtypingProduct
 	}
-	compiled.codeCache.dynamicFuncRefTest = dynamicFuncRefTest
+	if dynamicFuncRefTest {
+		compiled.codeCache.flags |= compiledCacheDynamicFuncRefTest
+	}
 	if gcStructProduct != 0 {
 		compiled.codeCache.stagedFeatures |= CoreFeatureGC
 		compiled.codeCache.gcStructProduct = gcStructProduct

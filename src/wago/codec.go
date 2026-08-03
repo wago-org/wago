@@ -683,7 +683,7 @@ func unmarshalCompiled(c *Compiled, data []byte) error {
 		}
 		c.ensureCodeCache()
 		c.codeCache.stagedFeatures |= CoreFeatureTypedFunctionReferences
-		c.codeCache.dynamicFuncRefTest = true
+		c.codeCache.flags |= compiledCacheDynamicFuncRefTest
 	}
 	genericGCExecution := gcExecution & (compiledGCExecutionGenericStruct | compiledGCExecutionGenericArray)
 	if genericGCExecution != 0 {

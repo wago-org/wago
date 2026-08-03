@@ -8,6 +8,13 @@ import (
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 )
 
+type compiledCodeCacheFlags uint8
+
+const (
+	compiledCacheDynamicFuncRefTest compiledCodeCacheFlags = 1 << iota
+	compiledCacheGuardMemory
+)
+
 type compiledCodeCache struct {
 	mu                              sync.Mutex
 	mem                             []byte
@@ -20,7 +27,7 @@ type compiledCodeCache struct {
 	gcStructProduct                 stagedGCStructProduct        // exact products stay compile-only; codec v30 may restore generic helper admission
 	gcArrayProduct                  stagedGCArrayProduct         // exact products stay compile-only; codec v30 may restore generic helper admission
 	gcI31Product                    stagedGCI31Product           // exact non-allocating i31 boundary; never serialized
-	dynamicFuncRefTest              bool                         // native indexed-function ref.test needs the compact per-function type directory
+	flags                           compiledCodeCacheFlags       // compact compile-only native dispatch and memory preferences
 	stagedFeatures                  CoreFeatures                 // exact admission is compile-only; codec v30 restores generic GC requirements
 }
 
@@ -41,7 +48,11 @@ func installCompiledFinalizer(c *Compiled) *Compiled {
 }
 
 func (c *Compiled) usesDynamicFuncRefTest() bool {
-	return c != nil && c.codeCache != nil && c.codeCache.dynamicFuncRefTest
+	return c != nil && c.codeCache != nil && c.codeCache.flags&compiledCacheDynamicFuncRefTest != 0
+}
+
+func (c *Compiled) prefersGuardMemory() bool {
+	return c != nil && c.codeCache != nil && c.codeCache.flags&compiledCacheGuardMemory != 0
 }
 
 func (c *Compiled) stagedFeatures() CoreFeatures {

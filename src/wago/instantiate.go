@@ -386,7 +386,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 				}
 			}
 		}
-		if c.boundsMode == BoundsChecksSignalsBased {
+		if c.boundsMode == BoundsChecksSignalsBased || c.prefersGuardMemory() {
 			jm, err = newGuardedJobMemory(initialBytes, maxBytes)
 		} else {
 			jm, err = runtime.AcquireJobMemoryGrowable(initialBytes, maxBytes)
@@ -453,8 +453,8 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		}
 		var secondaryJM *runtime.JobMemory
 		var allocErr error
-		if c.boundsMode == BoundsChecksSignalsBased {
-			// Every owned memory in a signals-based instance uses the guarded
+		if c.boundsMode == BoundsChecksSignalsBased || c.prefersGuardMemory() {
+			// Every owned memory requested by a signals-based configuration uses the guarded
 			// representation, even though indexed-memory accesses retain explicit
 			// checks. An exported nonzero memory may become memory 0 of another
 			// signals-based instance, where guard-backed ownership is mandatory.
