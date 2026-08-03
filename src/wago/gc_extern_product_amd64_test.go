@@ -59,9 +59,11 @@ func TestStagedGCExternProductBoundaryLifecycle(t *testing.T) {
 	guardFeatures.GCStructProducts = true
 	guardFeatures.GCArrayProducts = true
 	guardFeatures.GCI31Products = true
-	if _, err := compileWithFrontendFeatures(guardCfg, data, guardFeatures); err == nil || !strings.Contains(err.Error(), "signals-based") {
-		t.Fatalf("guard compile gate = %v", err)
+	guardCompiled, err := compileWithFrontendFeatures(guardCfg, data, guardFeatures)
+	if err != nil {
+		t.Fatalf("guard compile: %v", err)
 	}
+	guardCompiled.Close()
 	c, err := compileStagedGCExternAccounting(data)
 	if err != nil {
 		t.Fatal(err)

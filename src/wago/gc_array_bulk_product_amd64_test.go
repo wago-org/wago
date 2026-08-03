@@ -50,9 +50,11 @@ func TestStagedGCArrayBulkProductBoundary(t *testing.T) {
 			features := guardCfg.frontendFeatures()
 			features.TypedFunctionReferences = true
 			features.GCArrayProducts = true
-			if _, err := compileWithFrontendFeatures(guardCfg, data, features); err == nil || !strings.Contains(err.Error(), "signals-based") {
-				t.Fatalf("guard compile=%v, want explicit bulk-array rejection", err)
+			guardCompiled, err := compileWithFrontendFeatures(guardCfg, data, features)
+			if err != nil {
+				t.Fatalf("guard compile: %v", err)
 			}
+			guardCompiled.Close()
 
 			c, err := compileStagedGCArrayBulk(data)
 			if err != nil {

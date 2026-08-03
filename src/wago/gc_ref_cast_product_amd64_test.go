@@ -73,9 +73,11 @@ func TestStagedGCRefCastProductBoundaryLifecycle(t *testing.T) {
 		features.GCStructProducts = true
 		features.GCArrayProducts = true
 		features.GCI31Products = true
-		if _, err := compileWithFrontendFeatures(guardCfg, data, features); err == nil || !strings.Contains(err.Error(), "signals-based") {
-			t.Fatalf("%s guard compile gate = %v", class, err)
+		guardCompiled, err := compileWithFrontendFeatures(guardCfg, data, features)
+		if err != nil {
+			t.Fatalf("%s guard compile: %v", class, err)
 		}
+		guardCompiled.Close()
 	}
 
 	abstractCompiled, err := compileStagedGCRefCastProduct(abstract)

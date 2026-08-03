@@ -93,9 +93,11 @@ func TestStagedGCBrOnCastProductBoundaryLifecycle(t *testing.T) {
 			features.GCStructProducts = true
 			features.GCArrayProducts = class == stagedGCBrOnCastAbstract
 			features.GCI31Products = class == stagedGCBrOnCastAbstract
-			if _, err := compileWithFrontendFeatures(guardCfg, data, features); err == nil || !strings.Contains(err.Error(), "signals-based") {
-				t.Fatalf("%s %s guard compile gate = %v", base, class, err)
+			guardCompiled, err := compileWithFrontendFeatures(guardCfg, data, features)
+			if err != nil {
+				t.Fatalf("%s %s guard compile: %v", base, class, err)
 			}
+			guardCompiled.Close()
 		}
 	}
 

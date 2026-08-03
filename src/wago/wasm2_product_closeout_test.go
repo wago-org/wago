@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-func TestSnapshotProductsRejectCodecV23ReferenceState(t *testing.T) {
+func TestSnapshotProductsRejectReferenceState(t *testing.T) {
 	t.Setenv("WAGO_BOUNDS", "explicit")
 	for _, tc := range []struct {
 		name string
@@ -29,7 +29,7 @@ func TestSnapshotProductsRejectCodecV23ReferenceState(t *testing.T) {
 
 			blob := rawSnapshotBlobForCompiled(t, c)
 			if _, err := LoadSnapshot(blob); err == nil || !strings.Contains(err.Error(), tc.want) {
-				t.Fatalf("LoadSnapshot(codec-v23 %s module) = %v, want %q rejection", tc.name, err, tc.want)
+				t.Fatalf("LoadSnapshot(%s module) = %v, want %q rejection", tc.name, err, tc.want)
 			}
 		})
 	}
@@ -45,7 +45,7 @@ func rawSnapshotBlobForCompiled(t *testing.T, c *Compiled) []byte {
 		t.Fatalf("MarshalBinary compiled snapshot fixture: %v", err)
 	}
 	out := append([]byte{}, snapshotMagic...)
-	out = append(out, snapshotVersion, byte(SnapshotInit))
+	out = append(out, 3, byte(SnapshotInit))
 	out = binary.AppendUvarint(out, uint64(len(compiled)))
 	out = append(out, compiled...)
 	out = binary.AppendUvarint(out, 0) // memory count

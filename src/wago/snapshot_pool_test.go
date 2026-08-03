@@ -39,7 +39,7 @@ func TestCaptureRejectsTableModules(t *testing.T) {
 		t.Fatalf("compile: %v", err)
 	}
 	_, err = Capture(c, SnapshotOptions{Kind: SnapshotInit})
-	if err == nil || !strings.Contains(err.Error(), "modules with tables cannot be snapshotted yet") {
+	if err == nil || !strings.Contains(err.Error(), "modules with these tables cannot be snapshotted") {
 		t.Fatalf("Capture table module = %v, want clear table snapshot rejection", err)
 	}
 }

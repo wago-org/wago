@@ -720,7 +720,7 @@ func TestRelease2ImportedExternrefTableLinkingExecution(t *testing.T) {
 		}
 	}
 	stats := runSpecExecFile(t, "linking", tmp, focused)
-	want := specExecStats{modulesPassed: 2}
+	want := specExecStats{modulesPassed: 2, assertionsPassed: 2}
 	if stats != want {
 		t.Fatalf("linking externref-table execution stats = %+v, want %+v", stats, want)
 	}

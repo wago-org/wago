@@ -94,22 +94,14 @@ func stagedCompactConsumerRoundTrip(t *testing.T, data []byte, wantImports []str
 	if err := compiled.Close(); err != nil {
 		t.Fatalf("close source compact-import product: %v", err)
 	}
-	var public Compiled
-	if err := public.UnmarshalBinary(blob); err == nil || !strings.Contains(err.Error(), "unknown required feature bits") {
-		t.Fatalf("public compact-import product load error = %v, want fail-closed multi-memory rejection", err)
-	}
 	var loaded Compiled
-	if err := unmarshalCompiled(&loaded, blob[5:]); err != nil {
-		t.Fatalf("reload compact-import product: %v", err)
+	if err := loaded.UnmarshalBinary(blob); err != nil {
+		t.Fatalf("public reload compact-import product: %v", err)
 	}
 	if got := loaded.MemoryImports(); !equalStrings(got, wantImports) {
 		loaded.Close()
 		t.Fatalf("reloaded compact memory imports = %v, want %v", got, wantImports)
 	}
-	// The staged execution bit is deliberately not serialized: public codec load
-	// remains fail-closed until multi-memory is admitted. Reattach it explicitly
-	// for this bounded internal execution proof after metadata was decoded.
-	loaded.memoryDir.staged = true
 	return &loaded
 }
 
