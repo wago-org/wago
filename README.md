@@ -19,6 +19,17 @@
 curl -fsSL https://wago.sh/install.sh | sh
 ```
 
+On Windows, run this from Command Prompt. The installer provides the same
+interactive install-directory, reinstall, progress, and PATH flow without
+requiring script-execution policy changes. Both bootstrap scripts download the
+same checksummed Go installer for their platform; it drives the TUI while the
+script downloads the matching manager and source. Go is only needed when a
+release binary is unavailable and must be built from source:
+
+```bat
+curl.exe -fsSLo "%TEMP%\wago-install.cmd" https://raw.githubusercontent.com/wago-org/wago/main/install.cmd && call "%TEMP%\wago-install.cmd" && del "%TEMP%\wago-install.cmd"
+```
+
 For the Go package:
 
 ```sh

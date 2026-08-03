@@ -4,6 +4,10 @@ Start with the Wago CLI for your platform:
 
 `wago-<os>-<arch>`
 
+The curl bootstrap scripts use the matching installer executable:
+
+`wago-installer-<os>-<arch>`
+
 The CLI installs and switches runtimes for you. Runtime files use this naming scheme:
 
 `wago-runtime-<profile>-<build>-<os>-<arch>`

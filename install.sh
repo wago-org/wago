@@ -3,8 +3,9 @@
 #
 #   curl -fsSL https://wago.sh/install.sh | sh
 #
-# The bootstrap installer builds the runtime-independent manager from the public
-# repository. It requires Go 1.22+; Git is preferred, with a zip fallback.
+# The bootstrap downloads the checksummed installer and manager for the selected
+# release channel, then fetches matching source for plugin builds. Go 1.22+ is
+# required only when a release manager is unavailable and must be built.
 #
 # Environment:
 #   WAGO_VERSION   git ref to build: branch, tag, or commit (default: main)
@@ -19,6 +20,11 @@ set -eu
 repo_url="${WAGO_REPO_URL:-https://github.com/wago-org/wago.git}"
 version="${WAGO_VERSION:-main}"
 archive_url="${WAGO_ARCHIVE_URL:-https://api.github.com/repos/wago-org/wago/zipball/$version}"
+source_version=$version
+source_archive_url=$archive_url
+release_repo="${WAGO_RELEASE_REPO:-wago-org/wago}"
+release_api="${WAGO_RELEASES_API_URL:-https://api.github.com/repos/$release_repo/releases}"
+release_download_base="${WAGO_RELEASE_DOWNLOAD_BASE:-https://github.com/$release_repo/releases}"
 bin_dir_explicit=0
 [ -z "${WAGO_BIN_DIR:-}" ] || bin_dir_explicit=1
 bin_dir="${WAGO_BIN_DIR:-$HOME/.wago/bin}"
@@ -61,7 +67,10 @@ fi
 
 spinner_pid=""
 spinner_label=""
+spinner_stop=""
+spinner_count=0
 tmp=""
+installer_helper="${WAGO_INSTALLER:-}"
 radio_saved_stty=""
 radio_tty=""
 radio_painted=0
@@ -70,9 +79,15 @@ install_input_open=0
 
 stop_spinner() {
 	if [ -n "$spinner_pid" ]; then
-		kill "$spinner_pid" >/dev/null 2>&1 || true
+		if [ -n "$spinner_stop" ]; then
+			: >"$spinner_stop"
+		else
+			kill "$spinner_pid" >/dev/null 2>&1 || true
+		fi
 		wait "$spinner_pid" 2>/dev/null || true
 		spinner_pid=""
+		[ -z "$spinner_stop" ] || rm -f "$spinner_stop" "$spinner_stop.running"
+		spinner_stop=""
 	fi
 }
 
@@ -80,6 +95,13 @@ progress_begin() {
 	spinner_label=$*
 	stop_spinner
 	if [ "$is_tty" = "1" ]; then
+		if [ -n "$installer_helper" ] && [ -x "$installer_helper" ]; then
+			spinner_count=$((spinner_count + 1))
+			spinner_stop="$tmp/spinner-$spinner_count.stop"
+			"$installer_helper" spinner "$spinner_stop" "$spinner_label" &
+			spinner_pid=$!
+			return
+		fi
 		(
 			trap 'exit 0' HUP INT TERM
 			while :; do
@@ -97,6 +119,10 @@ progress_begin() {
 
 progress_done() {
 	stop_spinner
+	if [ "$is_tty" = "1" ] && [ -n "$installer_helper" ] && [ -x "$installer_helper" ]; then
+		"$installer_helper" status "done" "$*"
+		return
+	fi
 	if [ "$is_tty" = "1" ]; then
 		printf '\r\033[2K%s✓%s %s' "$cyan" "$reset" "$*"
 	else
@@ -106,6 +132,10 @@ progress_done() {
 
 progress_finish() {
 	stop_spinner
+	if [ "$is_tty" = "1" ] && [ -n "$installer_helper" ] && [ -x "$installer_helper" ]; then
+		"$installer_helper" status finish "$*"
+		return
+	fi
 	if [ "$is_tty" = "1" ]; then
 		printf '\r\033[2K'
 	fi
@@ -114,6 +144,10 @@ progress_finish() {
 
 progress_fail() {
 	stop_spinner
+	if [ "$is_tty" = "1" ] && [ -n "$installer_helper" ] && [ -x "$installer_helper" ]; then
+		"$installer_helper" status fail "$*"
+		return
+	fi
 	if [ "$is_tty" = "1" ]; then
 		printf '\r\033[2K'
 	fi
@@ -122,6 +156,10 @@ progress_fail() {
 
 progress_retry() {
 	stop_spinner
+	if [ "$is_tty" = "1" ] && [ -n "$installer_helper" ] && [ -x "$installer_helper" ]; then
+		"$installer_helper" status retry "$*"
+		return
+	fi
 	if [ "$is_tty" = "1" ]; then
 		printf '\r\033[2K'
 	fi
@@ -709,8 +747,20 @@ offer_path_setup() {
 	fi
 
 	path_radio_items="${path_radio_items}Not now||none"
-	if ! radio_select "Add Wago to your PATH?" "$path_radio_items" 1; then
-		return 1
+	if [ -n "$installer_helper" ] && [ -x "$installer_helper" ] &&
+		[ -z "${WAGO_INSTALL_TTY:-}" ] && [ "${WAGO_NO_TUI:-0}" != "1" ]; then
+		selection_file="$tmp/path-selection"
+		if WAGO_UI_RADIO_TITLE="Add Wago to your PATH?" \
+			WAGO_UI_RADIO_ITEMS="$path_radio_items" WAGO_UI_RADIO_CURSOR=0 \
+			"$installer_helper" radio "$selection_file" && [ -s "$selection_file" ]; then
+			radio_value=$(sed -n '1p' "$selection_file")
+		else
+			return 1
+		fi
+	else
+		if ! radio_select "Add Wago to your PATH?" "$path_radio_items" 1; then
+			return 1
+		fi
 	fi
 	if [ "$radio_value" = "none" ]; then
 		printf 'PATH setup: skipped\n\n'
@@ -730,8 +780,20 @@ offer_completion_setup() {
 	case "${configured_shell:-}" in zsh|bash|fish) ;; *) return 1 ;; esac
 	completion_items='Yes|Enable command completion|yes
 No||no'
-	if ! radio_select "Enable Wago completions for $configured_shell?" "$completion_items" 1; then
-		return 1
+	if [ -n "$installer_helper" ] && [ -x "$installer_helper" ] &&
+		[ -z "${WAGO_INSTALL_TTY:-}" ] && [ "${WAGO_NO_TUI:-0}" != "1" ]; then
+		selection_file="$tmp/completion-selection"
+		if WAGO_UI_RADIO_TITLE="Enable Wago completions for $configured_shell?" \
+			WAGO_UI_RADIO_ITEMS="$completion_items" WAGO_UI_RADIO_CURSOR=0 \
+			"$installer_helper" radio "$selection_file" && [ -s "$selection_file" ]; then
+			radio_value=$(sed -n '1p' "$selection_file")
+		else
+			return 1
+		fi
+	else
+		if ! radio_select "Enable Wago completions for $configured_shell?" "$completion_items" 1; then
+			return 1
+		fi
 	fi
 	if [ "$radio_value" != "yes" ]; then
 		printf 'Completions: skipped\n\n'
@@ -754,12 +816,23 @@ choose_install_dir() {
 	if [ ! -r "$install_tty" ]; then
 		return 0
 	fi
-
-	if path_editor; then
-		answer=$custom_path_value
+	if [ -n "$installer_helper" ] && [ -x "$installer_helper" ] &&
+		[ -z "${WAGO_INSTALL_TTY:-}" ] && [ "${WAGO_NO_TUI:-0}" != "1" ]; then
+		selection_file="$tmp/install-dir-selection"
+		if WAGO_UI_BIN_DIR="$bin_dir" WAGO_UI_CWD="$(pwd)" \
+			"$installer_helper" install-dir "$selection_file" && [ -s "$selection_file" ]; then
+			answer=$(sed -n '1p' "$selection_file")
+		else
+			return 1
+		fi
 	else
-		return 1
+		if path_editor; then
+			answer=$custom_path_value
+		else
+			return 1
+		fi
 	fi
+
 	if [ "$answer" != "$(display_path "$bin_dir")" ]; then
 		case "$answer" in
 			"~") bin_dir=$HOME ;;
@@ -794,6 +867,22 @@ choose_reinstall_mode() {
 
 	printf '\n%sWago is already installed at %s.%s\n' \
 		"$bold" "$(display_path "$bin_dir/wago")" "$reset"
+	if [ -n "$installer_helper" ] && [ -x "$installer_helper" ] &&
+		[ -z "${WAGO_INSTALL_TTY:-}" ] && [ "${WAGO_NO_TUI:-0}" != "1" ]; then
+		selection_file="$tmp/reinstall-selection"
+		if "$installer_helper" reinstall "$selection_file" && [ -s "$selection_file" ]; then
+			reinstall_mode=$(sed -n '1p' "$selection_file")
+			case "$reinstall_mode" in
+				full) radio_selected_label=Full ;;
+				partial) radio_selected_label=Partial ;;
+				minimal) radio_selected_label=Minimal ;;
+				*) return 1 ;;
+			esac
+			printf 'Reinstall mode: %s\n\n' "$radio_selected_label"
+			return 0
+		fi
+		return 1
+	fi
 	reinstall_items='Full|Reset everything, including plugins and settings|full
 Partial|Reset Wago but keep global plugins for reinstall|partial
 Minimal|Replace binaries and keep existing state|minimal'
@@ -945,14 +1034,148 @@ verify_installation() {
 	run_with_timeout "$verify_timeout" "$bin_dir/wago" self --help >/dev/null 2>&1
 }
 
+download_file() {
+	download_url=$1
+	download_output=$2
+	if have curl; then
+		curl -fsSL -o "$download_output" "$download_url"
+	elif have wget; then
+		wget -qO "$download_output" "$download_url"
+	else
+		return 1
+	fi
+}
+
+manager_release_target() {
+	case "$(uname -s)" in
+		Linux) manager_os=linux ;;
+		Darwin) manager_os=darwin ;;
+		*) return 1 ;;
+	esac
+	case "$(uname -m)" in
+		x86_64|amd64) manager_arch=amd64 ;;
+		aarch64|arm64) manager_arch=arm64 ;;
+		*) return 1 ;;
+	esac
+	printf '%s-%s' "$manager_os" "$manager_arch"
+}
+
+release_tag_from_json() {
+	release_prefix=$1
+	sed -n 's/^[[:space:]]*"tag_name":[[:space:]]*"\([^"]*\)".*/\1/p' "$tmp/releases.json" |
+		while IFS= read -r candidate; do
+			case "$candidate" in
+				"$release_prefix"-*) printf '%s\n' "$candidate"; break ;;
+			esac
+		done
+}
+
+resolve_manager_release() {
+	manager_release_tag=""
+	case "$manager_asset" in wago-installer-*) manager_override=0 ;; *) manager_override=1 ;; esac
+	if [ "$manager_override" = "1" ] && [ -n "${WAGO_MANAGER_URL:-}" ]; then
+		manager_release_tag=$version
+		manager_url=$WAGO_MANAGER_URL
+		manager_checksum_url="${WAGO_MANAGER_CHECKSUM_URL:-${WAGO_MANAGER_URL}.sha256}"
+		return 0
+	fi
+	case "$version" in
+		main|canary|nightly)
+			case "$version" in main) release_prefix=canary ;; *) release_prefix=$version ;; esac
+			download_file "$release_api?per_page=100" "$tmp/releases.json" >/dev/null 2>&1 || return 1
+			manager_release_tag=$(release_tag_from_json "$release_prefix")
+			[ -n "$manager_release_tag" ] || return 1
+			manager_release_path="download/$manager_release_tag"
+			;;
+		latest)
+			download_file "$release_api/latest" "$tmp/release.json" >/dev/null 2>&1 || return 1
+			manager_release_tag=$(sed -n 's/^[[:space:]]*"tag_name":[[:space:]]*"\([^"]*\)".*/\1/p' "$tmp/release.json" | head -1)
+			[ -n "$manager_release_tag" ] || return 1
+			manager_release_path="download/$manager_release_tag"
+			;;
+		v*|canary-*|nightly-*)
+			manager_release_tag=$version
+			manager_release_path="download/$manager_release_tag"
+			;;
+		*) return 1 ;;
+	esac
+	manager_url="$release_download_base/$manager_release_path/$manager_asset"
+	manager_checksum_url="${manager_url}.sha256"
+	if [ "$manager_override" = "1" ] && [ -n "${WAGO_MANAGER_CHECKSUM_URL:-}" ]; then
+		manager_checksum_url=$WAGO_MANAGER_CHECKSUM_URL
+	fi
+}
+
+verify_download_checksum() {
+	download_payload=$1
+	download_checksum=$2
+	expected=$(awk 'NR == 1 { print $1 }' "$download_checksum" | tr 'A-F' 'a-f')
+	case "$expected" in ""|*[!0-9A-Fa-f]*) return 1 ;; esac
+	[ "${#expected}" -eq 64 ] || return 1
+	if have sha256sum; then
+		actual=$(sha256sum "$download_payload" | awk '{ print $1 }')
+	elif have shasum; then
+		actual=$(shasum -a 256 "$download_payload" | awk '{ print $1 }')
+	elif have openssl; then
+		actual=$(openssl dgst -sha256 "$download_payload" | awk '{ print $NF }')
+	else
+		return 1
+	fi
+	actual=$(printf '%s' "$actual" | tr 'A-F' 'a-f')
+	[ "$actual" = "$expected" ]
+}
+
+download_installer_release() {
+	[ -z "$installer_helper" ] || return 0
+	installer_target=$(manager_release_target) || return 1
+	manager_asset="wago-installer-$installer_target"
+	resolve_manager_release || return 1
+	progress_begin "downloading Wago installer $manager_release_tag"
+	if download_file "$manager_url" "$tmp/wago-installer.download" >"$tmp/installer-download.log" 2>&1 &&
+		download_file "$manager_checksum_url" "$tmp/wago-installer.sha256" >>"$tmp/installer-download.log" 2>&1 &&
+		verify_download_checksum "$tmp/wago-installer.download" "$tmp/wago-installer.sha256"; then
+		chmod +x "$tmp/wago-installer.download"
+		installer_helper=$tmp/wago-installer.download
+		progress_done "downloaded Wago installer $manager_release_tag"
+		return 0
+	fi
+	progress_retry "installer executable unavailable; using shell TUI"
+	return 1
+}
+
+download_manager_release() {
+	manager_target=$(manager_release_target) || {
+		progress_retry "release manager unavailable; building from source"
+		return 1
+	}
+	manager_asset="wago-$manager_target"
+	resolve_manager_release || {
+		progress_retry "release manager unavailable; building from source"
+		return 1
+	}
+	progress_begin "downloading Wago manager $manager_release_tag"
+	if download_file "$manager_url" "$tmp/wago.download" >"$tmp/manager-download.log" 2>&1 &&
+		download_file "$manager_checksum_url" "$tmp/manager.sha256" >>"$tmp/manager-download.log" 2>&1 &&
+		verify_download_checksum "$tmp/wago.download" "$tmp/manager.sha256"; then
+		chmod +x "$tmp/wago.download"
+		mv "$tmp/wago.download" "$tmp/wago"
+		manager_method=release
+		progress_done "downloaded Wago manager $manager_release_tag"
+		return 0
+	fi
+	progress_retry "release manager unavailable; building from source"
+	[ ! -f "$tmp/manager-download.log" ] || tail -n 12 "$tmp/manager-download.log" >&2
+	return 1
+}
+
 fetch_source_with_git() {
 	have git || return 1
-	if git clone --depth 1 --branch "$version" "$repo_url" "$tmp/src" >"$tmp/git.log" 2>&1; then
+	if git clone --depth 1 --branch "$source_version" "$repo_url" "$tmp/src" >"$tmp/git.log" 2>&1; then
 		return 0
 	fi
 	rm -rf "$tmp/src"
 	if git clone "$repo_url" "$tmp/src" >>"$tmp/git.log" 2>&1 &&
-		git -C "$tmp/src" checkout -q "$version" >>"$tmp/git.log" 2>&1; then
+		git -C "$tmp/src" checkout -q "$source_version" >>"$tmp/git.log" 2>&1; then
 		return 0
 	fi
 	rm -rf "$tmp/src"
@@ -962,9 +1185,9 @@ fetch_source_with_git() {
 download_source_archive() {
 	archive="$tmp/wago-source.zip"
 	if have curl; then
-		curl -fsSL -o "$archive" "$archive_url" >"$tmp/archive.log" 2>&1
+		curl -fsSL -o "$archive" "$source_archive_url" >"$tmp/archive.log" 2>&1
 	elif have wget; then
-		wget -qO "$archive" "$archive_url" >"$tmp/archive.log" 2>&1
+		wget -qO "$archive" "$source_archive_url" >"$tmp/archive.log" 2>&1
 	else
 		printf 'neither curl nor wget is installed\n' >"$tmp/archive.log"
 		return 1
@@ -1055,6 +1278,25 @@ if [ "${WAGO_INTERNAL_FETCH_ONLY:-0}" = "1" ]; then
 	exit 0
 fi
 
+if [ "${WAGO_INTERNAL_MANAGER_ONLY:-0}" = "1" ]; then
+	tmp=$(mktemp -d 2>/dev/null || mktemp -d -t wago)
+	manager_method=source
+	if ! download_manager_release; then
+		exit 1
+	fi
+	printf 'manager=%s tag=%s\n' "$manager_method" "$manager_release_tag"
+	exit 0
+fi
+
+if [ "${WAGO_INTERNAL_INSTALLER_ONLY:-0}" = "1" ]; then
+	tmp=$(mktemp -d 2>/dev/null || mktemp -d -t wago)
+	if ! download_installer_release; then
+		exit 1
+	fi
+	printf 'installer=release tag=%s\n' "$manager_release_tag"
+	exit 0
+fi
+
 if [ "${WAGO_INTERNAL_REINSTALL_CHECK_ONLY:-0}" = "1" ]; then
 	confirm_reinstall
 	report_reinstall_cleanup
@@ -1086,6 +1328,7 @@ if [ -n "${WAGO_INTERNAL_PATH_PARENT_ONLY:-}" ]; then
 fi
 
 if [ "${WAGO_INTERNAL_INSTALL_DIR_ONLY:-0}" = "1" ]; then
+	tmp=$(mktemp -d 2>/dev/null || mktemp -d -t wago)
 	welcome
 	if ! choose_install_dir; then
 		printf 'Cancelled.\n'
@@ -1108,7 +1351,10 @@ go_version_ok() {
 	[ "$major" -gt 1 ] || { [ "$major" -eq 1 ] && [ "$minor" -ge 22 ]; }
 }
 
+tmp=$(mktemp -d 2>/dev/null || mktemp -d -t wago)
+
 welcome
+download_installer_release || true
 
 if ! choose_install_dir; then
 	printf 'Cancelled.\n'
@@ -1126,35 +1372,46 @@ fi
 
 confirm_reinstall
 
-# Source build needs the Go toolchain.
-progress_begin "checking Go toolchain"
-if have go && go_version_ok; then
-	progress_done "Go toolchain ready"
+manager_method=source
+manager_release_tag=""
+if download_manager_release; then
+	source_version=$manager_release_tag
+	source_archive_url="https://api.github.com/repos/$release_repo/zipball/$source_version"
+	[ -z "${WAGO_ARCHIVE_URL:-}" ] || source_archive_url=$WAGO_ARCHIVE_URL
 else
-	progress_fail "Go 1.22 or newer is required"
-	die "install Go 1.22+ and run the installer again"
+	# A source build is the compatibility path for unpublished refs, missing
+	# targets, unavailable release services, or checksum failures.
+	progress_begin "checking Go toolchain"
+	if have go && go_version_ok; then
+		progress_done "Go toolchain ready"
+	else
+		progress_fail "Go 1.22 or newer is required"
+		die "could not download a release manager; install Go 1.22+ and run the installer again"
+	fi
 fi
-
-tmp=$(mktemp -d 2>/dev/null || mktemp -d -t wago)
 
 # Prefer Git so installed source retains repository metadata. If Git is missing
 # or the requested ref cannot be cloned, use GitHub's zip archive instead.
 if ! fetch_wago_source; then
-	die "could not fetch $repo_url at $version with git or $archive_url"
+	die "could not fetch $repo_url at $source_version with git or $source_archive_url"
 fi
 
-# No plugins are bundled: wago builds plugin-free (stdlib-only, so this builds
-# offline with no module downloads).
-stamp=$(git -C "$tmp/src" describe --tags --always 2>/dev/null || echo "$version")
-progress_begin "building Wago"
-if (cd "$tmp/src" &&
-	CGO_ENABLED=0 go build -trimpath \
-		-ldflags "-s -w -X main.version=$stamp" -o "$tmp/wago" ./cli/wago) >"$tmp/manager.log" 2>&1; then
-	progress_done "built Wago"
+if [ "$manager_method" = "release" ]; then
+	stamp=$manager_release_tag
 else
-	progress_fail "Wago build failed"
-	tail -n 20 "$tmp/manager.log" >&2 || true
-	die "could not build Wago"
+	# No plugins are bundled: wago builds plugin-free (stdlib-only, so this
+	# builds offline with no module downloads).
+	stamp=$(git -C "$tmp/src" describe --tags --always 2>/dev/null || echo "$version")
+	progress_begin "building Wago"
+	if (cd "$tmp/src" &&
+		CGO_ENABLED=0 go build -trimpath \
+			-ldflags "-s -w -X main.version=$stamp" -o "$tmp/wago" ./cli/wago) >"$tmp/manager.log" 2>&1; then
+		progress_done "built Wago"
+	else
+		progress_fail "Wago build failed"
+		tail -n 20 "$tmp/manager.log" >&2 || true
+		die "could not build Wago"
+	fi
 fi
 
 if [ "$reinstall_mode" != "minimal" ]; then

@@ -137,6 +137,8 @@ jobs:
           path: |
             wago-${{ matrix.target }}
             wago-${{ matrix.target }}.sha256
+            wago-installer-${{ matrix.target }}
+            wago-installer-${{ matrix.target }}.sha256
             wago-runtime-*-${{ matrix.target }}
             wago-runtime-*-${{ matrix.target }}.sha256
           if-no-files-found: error
