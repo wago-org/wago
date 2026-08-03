@@ -4,6 +4,10 @@ package replace
 
 import "os"
 
+func StageRemoval(executable string, _ []string) (string, error) {
+	return executable, nil
+}
+
 func Executable(executable, staged string) (bool, error) {
 	return false, os.Rename(staged, executable)
 }
