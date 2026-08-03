@@ -1,4 +1,3 @@
-;; Wago port modification: register the named env provider explicitly so the standard WAST replay can resolve its imports.
 ;; copied from a historical cranelift-wasm test and provided here as proof that
 ;; this still compiles on various platforms and such
 
@@ -24,8 +23,6 @@
   (func (export "___syscall140") (param i32 i32) (result i32) unreachable)
   (func (export "___syscall146") (param i32 i32) (result i32) unreachable)
 )
-
-(register "env" $env)
 
 (module
   (type $0 (;0;) (func (param i32 i32 i32) (result i32)))

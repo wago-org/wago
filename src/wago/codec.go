@@ -395,6 +395,12 @@ func (w *compiledWriter) elems(v []ElemInit, c *Compiled) error {
 			switch {
 			case value.Null:
 				w.u8(0)
+			case len(value.Expr) != 0:
+				w.u8(4)
+				w.bytes(value.Expr)
+			case value.HasGlobal && value.I31Wrap:
+				w.u8(3)
+				w.u32(value.GlobalIndex)
 			case value.HasGlobal:
 				w.u8(2)
 				w.u32(value.GlobalIndex)
@@ -676,8 +682,8 @@ func unmarshalCompiled(c *Compiled, data []byte) error {
 			hasStruct = hasStruct || desc.Kind == gc.KindStruct
 			hasArray = hasArray || desc.Kind == gc.KindArray
 		}
-		if gcExecution&compiledGCExecutionGenericStruct != 0 && !hasStruct {
-			return fmt.Errorf("generic GC struct execution flag has no struct descriptor")
+		if gcExecution&compiledGCExecutionGenericStruct != 0 && !hasStruct && !hasArray {
+			return fmt.Errorf("generic GC reference-helper execution flag has no struct or array descriptor")
 		}
 		if gcExecution&compiledGCExecutionGenericArray != 0 && !hasArray {
 			return fmt.Errorf("generic GC array execution flag has no array descriptor")
@@ -1379,12 +1385,21 @@ func (r *compiledReader) elems(pool []ValueTypeDescriptor, types []DefinedTypeDe
 				if err != nil {
 					return nil, err
 				}
-			case 2:
+			case 2, 3:
 				out[i].Values[j].GlobalIndex, err = r.u32()
 				if err != nil {
 					return nil, err
 				}
 				out[i].Values[j].HasGlobal = true
+				out[i].Values[j].I31Wrap = tag == 3
+			case 4:
+				out[i].Values[j].Expr, err = r.bytes()
+				if err != nil {
+					return nil, err
+				}
+				if len(out[i].Values[j].Expr) == 0 {
+					return nil, fmt.Errorf("empty GC element initializer expression")
+				}
 			default:
 				return nil, fmt.Errorf("invalid element initializer tag %d", tag)
 			}

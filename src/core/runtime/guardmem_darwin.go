@@ -68,6 +68,7 @@ var jobMemoryGuardedCache struct {
 func init() {
 	guardReleaseHook = releaseGuardedJobMemory
 	guardCloseHook = unregisterGuardRegion
+	guardOwnerHook = setGuardRegionOwner
 }
 
 func AcquireJobMemoryGuarded(linBytes, maxBytes int) (*JobMemory, error) {
@@ -137,10 +138,10 @@ func (j *JobMemory) rearmGuarded(linBytes, maxBytes int) error {
 }
 
 type guardRegion struct {
-	start  uintptr
-	end    uintptr
-	linMem uintptr
-	_      uintptr
+	start       uintptr
+	end         uintptr
+	linMem      uintptr
+	ownerLinMem uintptr
 }
 
 const (
@@ -161,6 +162,7 @@ func registerGuardRegion(start, end, linMem uintptr) error {
 	for i := range guardRegions {
 		if guardRegions[i].start == 0 {
 			guardRegions[i].linMem = linMem
+			guardRegions[i].ownerLinMem = linMem
 			guardRegions[i].end = end
 			// Publish last; the signal handler acquire-loads start before it
 			// consumes the rest of the entry.
@@ -169,6 +171,17 @@ func registerGuardRegion(start, end, linMem uintptr) error {
 		}
 	}
 	return fmt.Errorf("guard region table full (%d)", maxGuardRegions)
+}
+
+func setGuardRegionOwner(start, ownerLinMem uintptr) {
+	guardRegionMu.Lock()
+	defer guardRegionMu.Unlock()
+	for i := range guardRegions {
+		if guardRegions[i].start == start {
+			atomic.StoreUintptr(&guardRegions[i].ownerLinMem, ownerLinMem)
+			return
+		}
+	}
 }
 
 func unregisterGuardRegion(start uintptr) {
@@ -181,6 +194,7 @@ func unregisterGuardRegion(start uintptr) {
 			atomic.StoreUintptr(&guardRegions[i].start, 0)
 			guardRegions[i].end = 0
 			guardRegions[i].linMem = 0
+			guardRegions[i].ownerLinMem = 0
 			return
 		}
 	}

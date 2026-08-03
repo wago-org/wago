@@ -1,6 +1,6 @@
 # WebAssembly 3.0 implementation status
 
-Last updated: 2026-08-01.
+Last updated: 2026-08-02.
 
 This document is the implementation ledger for the WebAssembly Core 3.0 effort.
 The primary product target is `linux/amd64`. A row is not complete merely because
@@ -71,7 +71,7 @@ order.
 
 `make spec3-signals` runs the same strict zero-gap harness with
 `-tags wago_guardpage` and `WAGO_BOUNDS=signals`. Every Core 3 family now executes
-under this linux/amd64 product: **2,226 modules and 58,038 assertions pass with
+under this linux/amd64 product: **2,226 modules and 58,238 assertions pass with
 zero failures, skips, or gap categories**.
 
 The final memory families use a deliberate hybrid. Memory 0 memory32 accesses may
@@ -96,11 +96,23 @@ files and reports:
 - 230 files converted directly by WABT and 28 through the official interpreter;
 - zero parser/tool failures and no excluded files;
 - **2,226 modules passed, 0 failed, and 0 skipped**;
-- **58,038 assertions passed, 0 failed, and 0 skipped**;
+- **58,238 assertions passed, 0 failed, and 0 skipped**;
 - every gap counter is zero: compile rejection, instantiation rejection,
   unavailable module, absent export, reference argument/result, and reference
   global;
 - all 258 files are green under explicit `CoreFeaturesV3` admission.
+
+An additional pinned Wasmtime corpus at `tests/regressions/wasmtime-core3`
+independently replays 103 applicable upstream fixtures: 215 module instances and
+690 assertions covering GC, typed function references, multi-memory, memory64,
+table64, exceptions, and SIMD interactions. Each fixture runs in an isolated
+process with explicit `CoreFeaturesV3` admission; isolated Wasmtime `thread`/`wait`
+Store-retirement graphs receive their own Runtime and collector domain. Another
+5 applicable files are preserved verbatim and mapped to equivalent Wago product tests in
+`ADAPTATIONS.tsv`; the pinned 369-file inventory has no pending Core 3 entries.
+Component-model execution, stack switching, threads/atomics, custom page sizes,
+wide arithmetic, and Wasmtime-specific NaN canonicalization remain outside the
+mandatory Core 3 port rather than being approximated.
 
 The final integration removes the former linking-state and feature-gate gaps.
 Release 3 mode enables typed references, GC, exceptions, tails, multi-memory,
@@ -5027,7 +5039,7 @@ Continue in this thread with small atomic commits. Recommended iteration 72:
 
 WebAssembly Core 3.0 is complete for the pinned official linux/amd64
 explicit-bounds product. `make spec3` exits successfully with 2,226 passing
-modules and 58,038 passing assertions, zero failed or skipped modules/assertions,
+modules and 58,238 passing assertions, zero failed or skipped modules/assertions,
 and zero gap counters. `tests/spec-v3-baseline.json` records the same zero-gap
 result. Release 1 and Release 2 compatibility defaults remain unchanged, and the
 runtime remains pure Go/no-cgo.

@@ -33,6 +33,14 @@ type ExternRefHostModule interface {
 	ExternRefValue(ExternRef) (any, bool)
 }
 
+// GCHostModule is the optional exact-collection surface implemented by HostModule
+// values from collector-backed instances. It is primarily useful for embedders
+// that provide an explicit guest-visible collection hook.
+type GCHostModule interface {
+	HostModule
+	CollectGC() error
+}
+
 // HostFunc is a host import in reflection-free slot (stack) form: it reads its
 // wasm params from params (i32/f32 in the low 32 bits) and writes its results
 // into results, with the calling instance's linear memory and externref store
@@ -154,7 +162,8 @@ func (in *Instance) beginHostCallScope() instanceHostModule {
 
 type staticHostModule struct{ in *Instance }
 
-func (h staticHostModule) Memory() []byte { return h.in.mem() }
+func (h staticHostModule) Memory() []byte   { return h.in.mem() }
+func (h staticHostModule) CollectGC() error { return h.in.CollectGC() }
 func (h staticHostModule) NewExternRef(value any) (ExternRef, error) {
 	return h.in.NewExternRef(value)
 }
@@ -527,6 +536,13 @@ func (h instanceHostModule) Memory() []byte {
 		return nil
 	}
 	return h.in.mem()
+}
+
+func (h instanceHostModule) CollectGC() error {
+	if !h.valid() {
+		return fmt.Errorf("wago: GC host module is outside its active callback: %w", ErrPermissionDenied)
+	}
+	return h.in.CollectGC()
 }
 func (h instanceHostModule) NewExternRef(value any) (ExternRef, error) {
 	if !h.valid() {

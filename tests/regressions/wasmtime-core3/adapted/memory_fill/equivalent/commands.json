@@ -1,0 +1,504 @@
+{
+  "commands": [
+    {
+      "filename": "commands.0.wasm",
+      "line": 7,
+      "type": "module"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "16"
+          }
+        ],
+        "field": "fill32",
+        "type": "invoke"
+      },
+      "expected": [],
+      "line": 33,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          }
+        ],
+        "field": "fill32",
+        "type": "invoke"
+      },
+      "expected": [],
+      "line": 34,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "65536"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          }
+        ],
+        "field": "fill32",
+        "type": "invoke"
+      },
+      "expected": [],
+      "line": 35,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "65536"
+          },
+          {
+            "type": "i32",
+            "value": "1"
+          }
+        ],
+        "field": "fill32",
+        "type": "invoke"
+      },
+      "line": 36,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "65535"
+          },
+          {
+            "type": "i32",
+            "value": "1"
+          }
+        ],
+        "field": "fill32",
+        "type": "invoke"
+      },
+      "expected": [],
+      "line": 37,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "65535"
+          },
+          {
+            "type": "i32",
+            "value": "2"
+          }
+        ],
+        "field": "fill32",
+        "type": "invoke"
+      },
+      "line": 38,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "-1"
+          }
+        ],
+        "field": "fill32",
+        "type": "invoke"
+      },
+      "line": 39,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "1"
+          },
+          {
+            "type": "i32",
+            "value": "-1"
+          }
+        ],
+        "field": "fill32",
+        "type": "invoke"
+      },
+      "line": 40,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "-1"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          }
+        ],
+        "field": "fill32",
+        "type": "invoke"
+      },
+      "line": 41,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "-1"
+          },
+          {
+            "type": "i32",
+            "value": "1"
+          }
+        ],
+        "field": "fill32",
+        "type": "invoke"
+      },
+      "line": 42,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "0"
+          },
+          {
+            "type": "i64",
+            "value": "16"
+          }
+        ],
+        "field": "fill64",
+        "type": "invoke"
+      },
+      "expected": [],
+      "line": 43,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "0"
+          },
+          {
+            "type": "i64",
+            "value": "0"
+          }
+        ],
+        "field": "fill64",
+        "type": "invoke"
+      },
+      "expected": [],
+      "line": 44,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "65536"
+          },
+          {
+            "type": "i64",
+            "value": "0"
+          }
+        ],
+        "field": "fill64",
+        "type": "invoke"
+      },
+      "expected": [],
+      "line": 45,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "65536"
+          },
+          {
+            "type": "i64",
+            "value": "1"
+          }
+        ],
+        "field": "fill64",
+        "type": "invoke"
+      },
+      "line": 46,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "65535"
+          },
+          {
+            "type": "i64",
+            "value": "1"
+          }
+        ],
+        "field": "fill64",
+        "type": "invoke"
+      },
+      "expected": [],
+      "line": 47,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "65535"
+          },
+          {
+            "type": "i64",
+            "value": "2"
+          }
+        ],
+        "field": "fill64",
+        "type": "invoke"
+      },
+      "line": 48,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "0"
+          },
+          {
+            "type": "i64",
+            "value": "-1"
+          }
+        ],
+        "field": "fill64",
+        "type": "invoke"
+      },
+      "line": 49,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "1"
+          },
+          {
+            "type": "i64",
+            "value": "-1"
+          }
+        ],
+        "field": "fill64",
+        "type": "invoke"
+      },
+      "line": 50,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "-1"
+          },
+          {
+            "type": "i64",
+            "value": "0"
+          }
+        ],
+        "field": "fill64",
+        "type": "invoke"
+      },
+      "line": 51,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "-1"
+          },
+          {
+            "type": "i64",
+            "value": "1"
+          }
+        ],
+        "field": "fill64",
+        "type": "invoke"
+      },
+      "line": 52,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          }
+        ],
+        "field": "fill-empty",
+        "type": "invoke"
+      },
+      "expected": [],
+      "line": 53,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "1"
+          }
+        ],
+        "field": "fill-empty",
+        "type": "invoke"
+      },
+      "line": 54,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "-1"
+          }
+        ],
+        "field": "fill-empty",
+        "type": "invoke"
+      },
+      "line": 55,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "1"
+          },
+          {
+            "type": "i32",
+            "value": "-1"
+          }
+        ],
+        "field": "fill-empty",
+        "type": "invoke"
+      },
+      "line": 56,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "-1"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          }
+        ],
+        "field": "fill-empty",
+        "type": "invoke"
+      },
+      "line": 57,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "-1"
+          },
+          {
+            "type": "i32",
+            "value": "1"
+          }
+        ],
+        "field": "fill-empty",
+        "type": "invoke"
+      },
+      "line": 58,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    }
+  ],
+  "source": "wasm-tools 1.251.0 json-from-wast"
+}

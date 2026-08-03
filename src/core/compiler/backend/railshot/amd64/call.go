@@ -497,7 +497,7 @@ func (f *fn) returnCall(r *wasm.Reader) error {
 		f.unreachable = true
 		return nil
 	}
-	if !regABIEnabled || !callerRegisterABI {
+	if !regABIEnabled || !callerRegisterABI || len(ft.Results) == 0 {
 		if slots := funcTypeSlots(ft.Params); slots > abi.TailArgsSlots {
 			return fmt.Errorf("return_call: target %d requires %d wrapper argument slots, limit %d", idx, slots, abi.TailArgsSlots)
 		}
@@ -506,7 +506,7 @@ func (f *fn) returnCall(r *wasm.Reader) error {
 		f.unreachable = true
 		return nil
 	}
-	return fmt.Errorf("return_call: register-ABI caller cannot tail-enter wrapper target %d", idx)
+	return fmt.Errorf("return_call: register-ABI caller cannot tail-enter result-bearing wrapper target %d", idx)
 }
 
 // emitTailWrapperJump marshals arguments into the fixed basedata tail bank,
@@ -921,6 +921,18 @@ func funcTypeSlots(ts []wasm.ValType) int {
 	return n
 }
 
+func (f *fn) gcFramePrefixRoots(roots []*elem, n int) []bool {
+	if n <= 0 {
+		return nil
+	}
+	flags := f.tmpGCRoots2[:0]
+	for _, root := range roots[:n] {
+		flags = append(flags, root.kind == ekValue && root.st.gcRoot)
+	}
+	f.tmpGCRoots2 = flags
+	return flags
+}
+
 // callHostSync lowers a call to a RETURNING imported (host) function via the
 // synchronous re-entry protocol (see src/core/runtime/hostcall_amd64.go). The p
 // params are marshaled into the off-heap control frame (at [linMem-offCustomCtx]);
@@ -974,11 +986,7 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	}
 	belowTypes = append(belowTypes, types[:d-p]...)
 	f.tmpTypes2 = belowTypes
-	belowGCRoots := f.tmpGCRoots2[:0]
-	for _, root := range roots[:d-p] {
-		belowGCRoots = append(belowGCRoots, root.kind == ekValue && root.st.gcRoot)
-	}
-	f.tmpGCRoots2 = belowGCRoots
+	belowGCRoots := f.gcFramePrefixRoots(roots, d-p)
 
 	f.flush()                   // operands to canonical slot-width slots
 	f.storePinnedGlobals(false) // coherence/preservation for value-pinned caller-saved globals
@@ -1280,6 +1288,7 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 	}
 	belowTypes = append(belowTypes, types[:d-p]...)
 	f.tmpTypes2 = belowTypes
+	belowGCRoots := f.gcFramePrefixRoots(roots, d-p)
 	resultSlot := slotTop
 	resultSlots := funcTypeSlots(ft.Results)
 
@@ -1376,18 +1385,22 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 
 	// Pop the args and publish results without imposing a physical-register
 	// arity limit on legal multi-value signatures.
-	f.finishWrapperResults(belowTypes, resultSlot, ft.Results)
+	f.finishWrapperResultsWithRoots(belowTypes, belowGCRoots, resultSlot, ft.Results)
 	return nil
 }
 
 func (f *fn) finishWrapperResults(belowTypes []machineType, resultSlot int, results []wasm.ValType) {
+	f.finishWrapperResultsWithRoots(belowTypes, nil, resultSlot, results)
+}
+
+func (f *fn) finishWrapperResultsWithRoots(belowTypes []machineType, belowGCRoots []bool, resultSlot int, results []wasm.ValType) {
 	const maxRegisterResults = 12
 	if len(results) > maxRegisterResults || !f.wrapperResultsFitRegisters(results) {
-		f.adoptWideWrapperResults(belowTypes, resultSlot, results)
+		f.adoptWideWrapperResults(belowTypes, belowGCRoots, resultSlot, results)
 		return
 	}
 
-	f.setDepthTypes(belowTypes)
+	f.setDepthTypesWithGCRoots(belowTypes, belowGCRoots)
 	resultN := len(results)
 	regs := f.tmpRegs[:0]
 	if cap(regs) < resultN {
@@ -1425,17 +1438,19 @@ func (f *fn) finishWrapperResults(belowTypes []machineType, resultSlot int, resu
 		resultSlotCursor += typ.stackSlots()
 	}
 	for i, typ := range types {
+		var value *elem
 		switch {
 		case typ.isV128():
 			f.fpinned = f.fpinned.remove(regs[i])
-			f.pushVReg(regs[i])
+			value = f.pushVReg(regs[i])
 		case typ.isFloat():
 			f.fpinned = f.fpinned.remove(regs[i])
-			f.pushFReg(regs[i], typ)
+			value = f.pushFReg(regs[i], typ)
 		default:
 			f.pinned = f.pinned.remove(regs[i])
-			f.pushReg(regs[i], typ)
+			value = f.pushReg(regs[i], typ)
 		}
+		value.st.gcRoot = gcFrameRefType(f.m, results[i])
 	}
 }
 
@@ -1477,7 +1492,7 @@ func (f *fn) wrapperResultsFitRegisters(results []wasm.ValType) bool {
 	return gpNeed <= gpAvail && fpNeed <= fpAvail
 }
 
-func (f *fn) adoptWideWrapperResults(belowTypes []machineType, resultSlot int, results []wasm.ValType) {
+func (f *fn) adoptWideWrapperResults(belowTypes []machineType, belowGCRoots []bool, resultSlot int, results []wasm.ValType) {
 	dstSlot := 0
 	for _, typ := range belowTypes {
 		dstSlot += typ.stackSlots()
@@ -1493,7 +1508,17 @@ func (f *fn) adoptWideWrapperResults(belowTypes []machineType, resultSlot int, r
 		types = append(types, mtOf(result))
 	}
 	f.tmpTypes = types
-	f.setDepthTypes(types)
+	if len(belowGCRoots) == 0 {
+		f.setDepthTypes(types)
+		return
+	}
+	gcRoots := f.tmpGCRoots[:0]
+	gcRoots = append(gcRoots, belowGCRoots...)
+	for _, result := range results {
+		gcRoots = append(gcRoots, gcFrameRefType(f.m, result))
+	}
+	f.tmpGCRoots = gcRoots
+	f.setDepthTypesWithGCRoots(types, gcRoots)
 }
 
 // callInternal lowers a direct call to another local function. Integer-only
@@ -1590,7 +1615,12 @@ func (f *fn) emitRegisterCall(localIdx int, ft *wasm.CompType, resHint int) {
 // or an indirect register call. Explicit operands avoid a closure per wasm call.
 func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, indirect Reg) uint32 {
 	p, rN := len(ft.Params), len(ft.Results)
-	d := f.depth()
+	allRoots := f.rootsBottomToTop()
+	d := len(allRoots)
+	allTypes := f.logicalTypes(allRoots)
+	belowTypes := append(f.tmpTypes2[:0], allTypes[:d-p]...)
+	f.tmpTypes2 = belowTypes
+	belowGCRoots := f.gcFramePrefixRoots(allRoots, d-p)
 	f.storePinnedGlobals(false) // spill value-pinned globals to their cells before the call (scratch is free here)
 
 	// Identify the p argument roots (top of stack), deepest first.
@@ -1653,8 +1683,9 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, i
 	}
 	f.tmpDeferred = deferred[:0]
 
-	// Consume the args; the operand model is now the k below-operands in slots.
-	f.setDepth(d - p)
+	// Consume the args while preserving collector identity for every value below
+	// the arguments. Those canonical slots remain live across the native call.
+	f.setDepthTypesWithGCRoots(belowTypes, belowGCRoots)
 
 	// No environment passing: RBX (linMem) is a whole-module invariant and the
 	// trap cell pointer lives in basedata — the callee inherits both (WARP model).
@@ -1702,12 +1733,14 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, i
 
 	if rN == 1 && resHint < 0 {
 		f.pinned = f.pinned.remove(resReg)
-		f.pushReg(resReg, mtOf(ft.Results[0]))
+		value := f.pushReg(resReg, mtOf(ft.Results[0]))
+		value.st.gcRoot = gcFrameRefType(f.m, ft.Results[0])
 	}
 	if rN == 2 {
 		for i, reg := range pairRes {
 			f.pinned = f.pinned.remove(reg)
-			f.pushReg(reg, mtOf(ft.Results[i]))
+			value := f.pushReg(reg, mtOf(ft.Results[i]))
+			value.st.gcRoot = gcFrameRefType(f.m, ft.Results[i])
 		}
 	}
 	return returnOffset
@@ -1719,7 +1752,12 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, i
 // (mirrors arm64's mixed staging). Only const/slot args are loaded from memory.
 func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 	p, rN := len(ft.Params), len(ft.Results)
-	d := f.depth()
+	allRoots := f.rootsBottomToTop()
+	d := len(allRoots)
+	allTypes := f.logicalTypes(allRoots)
+	belowTypes := append(f.tmpTypes2[:0], allTypes[:d-p]...)
+	f.tmpTypes2 = belowTypes
+	belowGCRoots := f.gcFramePrefixRoots(allRoots, d-p)
 
 	f.storePinnedGlobals(false) // spill value-pinned globals to their cells before the call
 
@@ -1826,7 +1864,7 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 			f.a.Load64(da.target, RSP, f.localOff(da.root.st.idx))
 		}
 	}
-	f.setDepth(d - p)
+	f.setDepthTypesWithGCRoots(belowTypes, belowGCRoots)
 
 	site := f.a.CallRel32()
 	f.relocs = append(f.relocs, callReloc{at: site, target: localIdx, internal: true})
@@ -2035,6 +2073,10 @@ func (f *fn) returnCallRef(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
+	return f.returnCallRefType(typeIdx, "tail-ref")
+}
+
+func (f *fn) returnCallRefType(typeIdx uint32, stat string) error {
 	ft, ok := f.m.TypeFunc(typeIdx)
 	if !ok {
 		return fmt.Errorf("return_call_ref: bad type %d", typeIdx)
@@ -2047,7 +2089,7 @@ func (f *fn) returnCallRef(r *wasm.Reader) error {
 	if !callerRegABI || !targetRegABI {
 		return fmt.Errorf("return_call_ref: caller or type %d requires unsupported reference tail ABI", typeIdx)
 	}
-	f.stats.call("tail-ref")
+	f.stats.call(stat)
 	canon, ok := f.m.StructuralTypeKeyChecked(typeIdx)
 	if !ok {
 		return fmt.Errorf("return_call_ref: type %d exceeds bounded native identity", typeIdx)
@@ -2326,8 +2368,29 @@ func (f *fn) returnCallIndirect(r *wasm.Reader) error {
 	if !registerTail && !wrapperTail {
 		return fmt.Errorf("return_call_indirect: caller or type %d requires unsupported indirect tail ABI", typeIdx)
 	}
-	tableHint, ok := f.immutableTable(tableIdx)
-	if !ok {
+	tableHint, immutableTable := f.immutableTable(tableIdx)
+	if f.stagedTailDescriptors && f.importBindings != nil && !immutableTable {
+		idxReg := f.materialize(f.popValue())
+		f.canonicalizeTableOperand(idxReg, tableIdx)
+		f.pinned = f.pinned.add(idxReg)
+		tbl := f.allocReg(0)
+		f.loadTableDescriptor(tbl, tableIdx)
+		f.pinned = f.pinned.add(tbl)
+		ln := f.allocReg(0)
+		f.a.Load32(ln, tbl, 0)
+		f.a.AluRR(0x39, idxReg, ln, f.tableAddr64(tableIdx))
+		f.release(ln)
+		f.trapIf(condAE, trapIndirectOOB)
+		f.a.ShiftImm(4, idxReg, 5, true)
+		f.a.AluRR(0x01, idxReg, tbl, true)
+		f.a.Load64(idxReg, idxReg, 8+runtime.TableEntryRefSlotOffset)
+		f.pinned = f.pinned.remove(tbl)
+		f.release(tbl)
+		f.pinned = f.pinned.remove(idxReg)
+		f.pushReg(idxReg, mtI64)
+		return f.returnCallRefType(typeIdx, "tail-indirect")
+	}
+	if !immutableTable {
 		return fmt.Errorf("return_call_indirect: table %d is not a private immutable local funcref table", tableIdx)
 	}
 	f.stats.call("tail-indirect")
@@ -2624,6 +2687,7 @@ func (f *fn) emitIndirectCallHomeAware(ft *wasm.CompType, homeReg, targetContext
 	}
 	belowTypes = append(belowTypes, types[:d-p]...)
 	f.tmpTypes2 = belowTypes
+	belowGCRoots := f.gcFramePrefixRoots(roots, d-p)
 	resultSlot := slotTop
 	resultSlots := 0
 	for _, rt := range ft.Results {
@@ -2713,7 +2777,7 @@ func (f *fn) emitIndirectCallHomeAware(ft *wasm.CompType, homeReg, targetContext
 
 	// Pop the args and publish results without imposing a physical-register
 	// arity limit on legal multi-value signatures.
-	f.finishWrapperResults(belowTypes, resultSlot, ft.Results)
+	f.finishWrapperResultsWithRoots(belowTypes, belowGCRoots, resultSlot, ft.Results)
 	return sameReturn, crossReturn
 }
 
@@ -2749,6 +2813,7 @@ func (f *fn) emitWrapperCall(ft *wasm.CompType, emitCall func()) {
 	}
 	belowTypes = append(belowTypes, types[:d-p]...)
 	f.tmpTypes2 = belowTypes
+	belowGCRoots := f.gcFramePrefixRoots(roots, d-p)
 	resultSlot := slotTop
 	resultSlots := 0
 	for _, rt := range ft.Results {
@@ -2784,5 +2849,5 @@ func (f *fn) emitWrapperCall(ft *wasm.CompType, emitCall func()) {
 
 	// Pop the args and publish results without imposing a physical-register
 	// arity limit on legal multi-value signatures.
-	f.finishWrapperResults(belowTypes, resultSlot, ft.Results)
+	f.finishWrapperResultsWithRoots(belowTypes, belowGCRoots, resultSlot, ft.Results)
 }

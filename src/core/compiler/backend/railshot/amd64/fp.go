@@ -107,7 +107,7 @@ func (f *fn) materializeF(e *elem) Reg {
 	case stReg:
 		return e.st.reg
 	case stConst:
-		if !f.usesCalls {
+		if !f.usesCalls && !f.syncHostCalls {
 			if c, ok := f.floatConstReg(e.st); ok {
 				x := f.allocFReg(maskOf(c))
 				f.a.FMov(x, c, e.st.typ == mtF64)
@@ -180,7 +180,7 @@ func (f *fn) floatConstReg(st storage) (Reg, bool) {
 }
 
 func (f *fn) preloadFloatConsts(code []byte) {
-	if f.usesCalls {
+	if f.usesCalls || f.syncHostCalls {
 		return
 	}
 	r := wasm.NewReader(code)
@@ -936,21 +936,21 @@ func (f *fn) fload(r *wasm.Reader, f64 bool) error {
 	if f64 {
 		size = 8
 	}
-	if f.memoryAddr64(memoryIndex) {
-		ea, eaOwned, borrow, disp := f.memAddr64(off, size)
-		e := f.pushValue(fmemRefStorage(ea, disp, f64, borrow))
-		if eaOwned {
-			f.regUser[ea] = e
-		}
-		return nil
-	}
 	if memoryIndex != 0 {
-		base, ea, disp := f.indexedMemAddr(memoryIndex, uint32(off), size)
+		base, ea, disp := f.indexedMemAddr(memoryIndex, off, size)
 		xmm := f.allocFReg(0)
 		f.a.FLoadIdx(xmm, base, ea, disp, f64)
 		f.release(base)
 		f.release(ea)
 		f.pushFReg(xmm, mtOf2(f64))
+		return nil
+	}
+	if f.memoryAddr64(0) {
+		ea, eaOwned, borrow, disp := f.memAddr64(off, size)
+		e := f.pushValue(fmemRefStorage(ea, disp, f64, borrow))
+		if eaOwned {
+			f.regUser[ea] = e
+		}
 		return nil
 	}
 	ea, eaOwned, borrow, disp := f.memAddr(uint32(off), size, true)
@@ -973,17 +973,17 @@ func (f *fn) fstore(r *wasm.Reader, f64 bool) error {
 	f.materializePendingLoads() // deferred loads must read pre-store memory
 	xmm := f.materializeF(f.popValue())
 	f.fpinned = f.fpinned.add(xmm)
-	if f.memoryAddr64(memoryIndex) {
+	if memoryIndex != 0 {
+		base, ea, disp := f.indexedMemAddr(memoryIndex, off, size)
+		f.a.FStoreIdx(base, ea, xmm, disp, f64)
+		f.release(base)
+		f.release(ea)
+	} else if f.memoryAddr64(0) {
 		ea, eaOwned, _, disp := f.memAddr64(off, size)
 		f.a.FStoreIdx(RBX, ea, xmm, disp, f64)
 		if eaOwned {
 			f.release(ea)
 		}
-	} else if memoryIndex != 0 {
-		base, ea, disp := f.indexedMemAddr(memoryIndex, uint32(off), size)
-		f.a.FStoreIdx(base, ea, xmm, disp, f64)
-		f.release(base)
-		f.release(ea)
 	} else {
 		ea, eaOwned, _, disp := f.memAddr(uint32(off), size, true)
 		f.a.FStoreIdx(RBX, ea, xmm, disp, f64)

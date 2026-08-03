@@ -164,6 +164,18 @@ active data initialization against an imported memory that grew before the new
 instance was created. `CurrentBytes` remains limited to the original committed
 Go slice and must not be used for that case.
 
+Each 32-byte guard-registry entry records both the faulting reservation's own
+`linMem` and the active primary `linMem` that owns indexed accesses during the
+current native entry. Memory 0 binds itself; `bindNativeContext` rebinds every
+indexed guarded memory to the invoking instance before execution. The signal or
+exception handler authenticates the saved RBX/X26 against that owner, but computes
+the fault offset and logical size against the indexed reservation. This permits a
+`memory.grow` followed by an indexed access in the same invocation to lazily
+commit the new page without weakening the explicit indexed bounds check or using
+the primary memory's size cache. Process-wide native execution serialization
+makes owner rebinding quiescent; the handler still reads published entries
+locklessly.
+
 On ARM64, the guard fault handler passes the faulting linear-memory base through
 saved `X9` when it replaces the faulting PC with the native trap-exit landing
 pad. The landing pad must not depend on the platform signal trampoline restoring
@@ -872,7 +884,7 @@ copying or serializing basedata images. Reference harness arguments/results
 externalize through exact store-owned tokens and release transient roots after
 comparison. These changes preserve no-cgo operation, transactional rollback,
 deduplicated producer retention, and fail-closed live snapshot/platform
-boundaries. The recorded conformance baseline is 2,226 modules and 58,038
+boundaries. The recorded conformance baseline is 2,226 modules and 58,238
 assertions passed with zero failures, skips, or gap counters.
 
 ## Iteration 75 generated WasmGC helper ABI

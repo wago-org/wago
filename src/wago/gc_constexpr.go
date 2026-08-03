@@ -9,10 +9,11 @@ import (
 )
 
 type gcConstStackValue struct {
-	bits   uint64
-	bitsHi uint64
-	ref    gc.Ref
-	isRef  bool
+	bits     uint64
+	bitsHi   uint64
+	ref      gc.Ref
+	isRef    bool
+	isExtern bool
 }
 
 func gcConstStorageValue(kind gc.StorageKind, value gcConstStackValue) (gc.Value, error) {
@@ -32,7 +33,7 @@ func gcConstStorageValue(kind gc.StorageKind, value gcConstStackValue) (gc.Value
 	return gc.Value{Kind: valueKind, Bits: value.bits, BitsHi: value.bitsHi}, nil
 }
 
-func evalCompiledGCConstExpr(expr []byte, collector *gc.Collector, mapping *gcTypeMapping, c *Compiled, globalCells []*Global, current int, funcRefDescs []byte) (uint64, error) {
+func evalCompiledGCConstExpr(expr []byte, collector *gc.Collector, mapping *gcTypeMapping, conversion *gcExternConversionState, c *Compiled, globalCells []*Global, current int, funcRefDescs []byte) (uint64, error) {
 	if c == nil {
 		return 0, fmt.Errorf("collector-backed constant expression has no compiled module")
 	}
@@ -59,8 +60,11 @@ func evalCompiledGCConstExpr(expr []byte, collector *gc.Collector, mapping *gcTy
 		}
 		switch op {
 		case 0x0b:
-			if r.BytesLeft() != 0 || len(stack) != 1 || !stack[0].isRef {
+			if r.BytesLeft() != 0 || len(stack) != 1 || (!stack[0].isRef && !stack[0].isExtern) {
 				return 0, fmt.Errorf("GC constant expression result stack has %d value(s)", len(stack))
+			}
+			if stack[0].isExtern {
+				return stack[0].bits, nil
 			}
 			return uint64(stack[0].ref), nil
 		case 0x23: // global.get
@@ -78,7 +82,7 @@ func evalCompiledGCConstExpr(expr []byte, collector *gc.Collector, mapping *gcTy
 				break
 			}
 			bits := readGlobalObject(globalCells[idx], typ)
-			stack = append(stack, gcConstStackValue{bits: bits, ref: gc.Ref(uint32(bits)), isRef: isGCRefValType(typ)})
+			stack = append(stack, gcConstStackValue{bits: bits, ref: gc.Ref(uint32(bits)), isRef: isGCRefValType(typ), isExtern: typ == ValExternRef})
 		case 0x41:
 			v, err := r.I32()
 			if err != nil {
@@ -117,10 +121,15 @@ func evalCompiledGCConstExpr(expr []byte, collector *gc.Collector, mapping *gcTy
 			}
 			stack = append(stack, gcConstStackValue{bits: binary.LittleEndian.Uint64(b[:8]), bitsHi: binary.LittleEndian.Uint64(b[8:])})
 		case 0xd0: // ref.null
-			if _, err := r.S33(); err != nil {
+			heap, err := r.S33()
+			if err != nil {
 				return 0, err
 			}
-			stack = append(stack, gcConstStackValue{ref: gc.Null(), isRef: true})
+			if heap == -17 || heap == -14 { // extern / noextern
+				stack = append(stack, gcConstStackValue{isExtern: true})
+			} else {
+				stack = append(stack, gcConstStackValue{ref: gc.Null(), isRef: true})
+			}
 		case 0xd2: // ref.func
 			idx, err := r.U32()
 			if err != nil {
@@ -273,6 +282,35 @@ func evalCompiledGCConstExpr(expr []byte, collector *gc.Collector, mapping *gcTy
 					return 0, err
 				}
 				stack = append(stack, gcConstStackValue{ref: ref, isRef: true})
+			case 26: // any.convert_extern
+				v, err := pop()
+				if err != nil {
+					return 0, err
+				}
+				if !v.isExtern || conversion == nil {
+					return 0, fmt.Errorf("any.convert_extern constant has no extern conversion owner")
+				}
+				bits, err := conversion.anyFromExtern(v.bits)
+				if err != nil {
+					return 0, err
+				}
+				if bits>>32 != 0 {
+					return 0, fmt.Errorf("any.convert_extern constant produced non-compact anyref %#x", bits)
+				}
+				stack = append(stack, gcConstStackValue{ref: gc.Ref(uint32(bits)), isRef: true})
+			case 27: // extern.convert_any
+				v, err := pop()
+				if err != nil {
+					return 0, err
+				}
+				if !v.isRef || conversion == nil {
+					return 0, fmt.Errorf("extern.convert_any constant has no GC conversion owner")
+				}
+				bits, err := conversion.externFromAny(uint64(v.ref))
+				if err != nil {
+					return 0, err
+				}
+				stack = append(stack, gcConstStackValue{bits: bits, isExtern: true})
 			case 28: // ref.i31
 				v, err := pop()
 				if err != nil {

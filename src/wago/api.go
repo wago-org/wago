@@ -958,7 +958,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		features.TailCalls = false
 		features.TypedTailCalls = false
 	}
-	if m.TagCount() == 0 {
+	if !requiredByModule.IsEnabled(CoreFeatureExceptionHandling) {
 		features.ExceptionHandling = false
 		features.ExceptionReferences = false
 	}
@@ -1062,6 +1062,28 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 			}
 			gcI31Product = product
 		}
+	}
+	if features.GCI31Products && requiredByModule.IsEnabled(CoreFeatureGC) && gcI31Product == 0 && !moduleHasGCHeapType(m) {
+		// Immediate i31 execution is complete and does not require a collector.
+		// Prefer the table/global initializer product when its structural proof
+		// succeeds; otherwise use the general non-allocating i31 lowering.
+		if _, initErr := stagedGCI31TableInitializer(m); initErr == nil {
+			gcI31Product = stagedGCI31ProductTableGlobalInitializer
+		} else {
+			gcI31Product = stagedGCI31ProductCore
+		}
+	}
+	if features.GCStructProducts && moduleUsesGCExternConversion(m) && !gcStructProduct.requiresExternConversion() {
+		// Conversion identity is an orthogonal runtime obligation. The extern
+		// product uses the same complete struct/array helpers while additionally
+		// provisioning the bounded anyref/externref identity bridge.
+		gcStructProduct = stagedGCStructExtern
+	}
+	if features.GCStructProducts && requiredByModule.IsEnabled(CoreFeatureGC) && moduleHasGCHeapType(m) && gcStructProduct == 0 && structuralProduct == 0 && gcTypeSubtypingProduct == 0 {
+		// Generic GC lowering is the complete Core 3 fallback for modules that do
+		// not match a narrower collector-free or specialized product. Product
+		// recognizers select optimizations, not semantic admission boundaries.
+		gcStructProduct = stagedGCStructGeneric
 	}
 	if features.NullReferenceProducts {
 		if _, shapeErr := stagedNullReferenceProductShape(m); shapeErr == nil {
@@ -1175,15 +1197,14 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		if !((goruntime.GOOS == "linux" && goruntime.GOARCH == "amd64") || ((goruntime.GOOS == "linux" || goruntime.GOOS == "darwin") && goruntime.GOARCH == "arm64")) {
 			return nil, fmt.Errorf("compile: unsupported memory memory64 staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
 		}
-		if m.MemCount() != 1 || (m.ImportedMemCount() != 0 && len(m.Memories) != 0) {
-			return nil, fmt.Errorf("compile: staged memory64 requires exactly one local or imported memory and rejects multi-memory shapes")
-		}
-		mt, ok := m.MemoryType(0)
-		if !ok {
-			return nil, fmt.Errorf("compile: staged memory64 memory type is unavailable")
-		}
-		if mt.Shared {
-			return nil, fmt.Errorf("compile: staged memory64 rejects shared memory")
+		for i := uint32(0); i < uint32(m.MemCount()); i++ {
+			mt, ok := m.MemoryType(i)
+			if !ok {
+				return nil, fmt.Errorf("compile: staged memory64 memory %d type is unavailable", i)
+			}
+			if mt.Limits.Addr64 && mt.Shared {
+				return nil, fmt.Errorf("compile: staged memory64 rejects shared memory %d", i)
+			}
 		}
 	}
 	gcDescs, err := frontend.BuildGCTypeDescs(m)
@@ -1219,7 +1240,8 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	pressureAt, pressure := compileMemoryPressure(len(wasmBytes))
 	genericGCExecution := gcStructProduct == stagedGCStructGeneric || gcArrayProduct == stagedGCArrayProductNewData || gcArrayProduct == stagedGCArrayProductNewElem || gcArrayProduct == stagedGCArrayProductGeneric
 	gcFrameRoots := newGCFrameRootPlan(m, genericGCExecution)
-	cm, err := railshotCompileModuleWith(m, railshotCompileOptions{Workers: workers, ElideBoundsChecks: elide, NoBoundsFacts: cfg.noDeferBounds, ImportBindings: dynamicBindings, GCTypeSubtypingRefTest: gcTypeSubtypingProduct.usesRefTest() || gcTypeSubtypingProduct.usesRuntimeFunctionIdentity(), GCStructHelpers: gcStructProduct.requiresHelpers(), GCArrayHelpers: gcArrayProduct.requiresHelpers() || gcStructProduct.requiresArrayHelpers(), GCFrameRoots: gcFrameRoots, Interruptible: !wruntime.HostInterruptSupported(), MemoryPressureAt: pressureAt, MemoryPressure: pressure, CustomInstructions: customInstructions})
+	gcFunctionRefTest := gcTypeSubtypingProduct.usesRefTest() || gcTypeSubtypingProduct.usesRuntimeFunctionIdentity() || moduleUsesIndexedFunctionRefTest(m)
+	cm, err := railshotCompileModuleWith(m, railshotCompileOptions{Workers: workers, ElideBoundsChecks: elide, NoBoundsFacts: cfg.noDeferBounds, ImportBindings: dynamicBindings, GCTypeSubtypingRefTest: gcFunctionRefTest, GCStructHelpers: gcStructProduct.requiresHelpers(), GCArrayHelpers: gcArrayProduct.requiresHelpers() || gcStructProduct.requiresArrayHelpers(), GCFrameRoots: gcFrameRoots, Interruptible: !wruntime.HostInterruptSupported(), MemoryPressureAt: pressureAt, MemoryPressure: pressure, CustomInstructions: customInstructions})
 	if err != nil {
 		return nil, fmt.Errorf("compile: %w", err)
 	}
@@ -1487,6 +1509,19 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		if c.memoryDir.gcI31TableInit != nil && c.memoryDir.gcI31TableInit.TableIndex == uint32(tableIndex) {
 			continue
 		}
+		initBody := m.Tables[i].Init.BodyBytes
+		if len(initBody) == 0 {
+			initBody, _ = wasm.EncodeExpr(*m.Tables[i].Init)
+		}
+		if _, matched, i31Err := evalI31ConstExprBytes(initBody, wasm.RefVal(m.Tables[i].Type.Ref), constExprCtx); matched && i31Err == nil {
+			def := c.tableDef(tableIndex)
+			values := make([]RefInit, def.Size)
+			for j := range values {
+				values[j] = RefInit{Expr: append([]byte(nil), initBody...)}
+			}
+			c.Elems = append(c.Elems, ElemInit{TableIndex: uint32(tableIndex), RefType: def.Type, ValueTypeIndex: def.ValueTypeIndex, HasValueType: def.HasValueType, Mode: ElemModeActive, Values: values})
+			continue
+		}
 		payload, err := funcrefExprPayload(*m.Tables[i].Init)
 		if err != nil {
 			body := m.Tables[i].Init.BodyBytes
@@ -1712,6 +1747,14 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		}
 		compiled.validateMemo.gcFrameRoots = rootMap
 	}
+	// GC/typed-reference admission follows validated source requirements; product
+	// classifiers below select representations and optimized paths. Exception
+	// modules with declared tags are inferred from persisted tag metadata, while
+	// tag-free catch_all/try_table modules need an explicit compile-only marker.
+	compiled.codeCache.stagedFeatures |= requiredByModule & (CoreFeatureGC | CoreFeatureTypedFunctionReferences)
+	if requiredByModule.IsEnabled(CoreFeatureExceptionHandling) && m.TagCount() == 0 {
+		compiled.codeCache.stagedFeatures |= CoreFeatureExceptionHandling
+	}
 	if features.TypedFunctionReferences {
 		compiled.codeCache.stagedFeatures |= CoreFeatureTypedFunctionReferences
 	}
@@ -1852,16 +1895,18 @@ func elementPayloads(m *wasm.Module, types []DefinedTypeDescriptor, constExprCtx
 			if op, err := r.Byte(); err == nil && op == 0x23 {
 				globalIndex, readErr := r.U32()
 				end, endErr := r.Byte()
-				gt, ok := m.GlobalTypeByIndex(globalIndex)
-				if readErr != nil || endErr != nil || end != 0x0b || r.BytesLeft() != 0 || !ok || gt.Mutable {
-					return 0, ValueTypeDescriptor{}, nil, fmt.Errorf("expression %d has invalid global.get initializer", i)
+				if readErr == nil && endErr == nil && end == 0x0b && r.BytesLeft() == 0 {
+					gt, ok := m.GlobalTypeByIndex(globalIndex)
+					if !ok || gt.Mutable {
+						return 0, ValueTypeDescriptor{}, nil, fmt.Errorf("expression %d has invalid global.get initializer", i)
+					}
+					globalType, err := valueTypeDescriptorInModule(m, gt.Type)
+					if err != nil || !valueTypeSubtype(globalType, types, exact, types) {
+						return 0, ValueTypeDescriptor{}, nil, fmt.Errorf("expression %d global type does not match segment type", i)
+					}
+					out[i] = RefInit{GlobalIndex: globalIndex, HasGlobal: true}
+					continue
 				}
-				globalType, err := valueTypeDescriptorInModule(m, gt.Type)
-				if err != nil || !valueTypeSubtype(globalType, types, exact, types) {
-					return 0, ValueTypeDescriptor{}, nil, fmt.Errorf("expression %d global type does not match segment type", i)
-				}
-				out[i] = RefInit{GlobalIndex: globalIndex, HasGlobal: true}
-				continue
 			}
 			if refType == ValI31Ref {
 				body := ex.BodyBytes
@@ -1873,10 +1918,28 @@ func elementPayloads(m *wasm.Module, types []DefinedTypeDescriptor, constExprCtx
 					}
 				}
 				result, matched, err := evalI31ConstExprBytes(body, wasm.RefVal(e.Kind.Ref), constExprCtx)
-				if err != nil || !matched || result.bits == 0 || result.bits>>32 != 0 || uint32(result.bits)&1 == 0 {
+				if err != nil || !matched {
 					return 0, ValueTypeDescriptor{}, nil, fmt.Errorf("expression %d is not an exact i31 initializer: %v", i, err)
 				}
+				if len(result.Expr) != 0 {
+					r := wasm.NewReader(result.Expr)
+					op, opErr := r.Byte()
+					globalIndex, indexErr := r.U32()
+					if opErr != nil || op != 0x23 || indexErr != nil {
+						return 0, ValueTypeDescriptor{}, nil, fmt.Errorf("expression %d has malformed i31 global initializer", i)
+					}
+					out[i] = RefInit{GlobalIndex: globalIndex, HasGlobal: true, I31Wrap: true}
+					continue
+				}
+				if result.bits == 0 || result.bits>>32 != 0 || uint32(result.bits)&1 == 0 {
+					return 0, ValueTypeDescriptor{}, nil, fmt.Errorf("expression %d has invalid i31 immediate", i)
+				}
 				out[i] = RefInit{FuncIndex: uint32(result.bits)}
+				continue
+			}
+			result, exprErr := evalConstExprBytesWithContext(body, wasm.RefVal(e.Kind.Ref), constExprCtx)
+			if exprErr == nil && len(result.Expr) != 0 {
+				out[i] = RefInit{Expr: append([]byte(nil), result.Expr...)}
 				continue
 			}
 			payload, err := wasm.ParseElementExpr(ex)
@@ -1997,9 +2060,9 @@ func (c *Compiled) validateImportBindings(imports Imports, store *referenceStore
 			if gcSubtypeLinkConsumer {
 				return fmt.Errorf("cross-instance import %q requires the exact gc/type-subtyping link provider", key)
 			}
-			if ehNativeCalls {
-				return fmt.Errorf("exception-handler transfer import %q requires a retained InstanceExport", key)
-			}
+			// Synchronous host imports already park and restore the active EH/GC
+			// control state. Only direct cross-instance native transfers need the
+			// retained InstanceExport checks below.
 			continue
 		}
 		if ex == nil || ex.inst == nil {
@@ -2018,7 +2081,7 @@ func (c *Compiled) validateImportBindings(imports Imports, store *referenceStore
 			return fmt.Errorf("cross-instance import %q signature mismatch: producer is outside the exact gc/type-subtyping link product", key)
 		}
 		sig := c.importFuncSigs[i]
-		if !sigMatches(sig, c.Types, ex, gcSubtypeLinkConsumer) {
+		if !sigMatches(sig, c.Types, ex, gcSubtypeLinkConsumer || c.stagedFeatures().IsEnabled(CoreFeatureTypedFunctionReferences)) {
 			return fmt.Errorf("cross-instance import %q signature mismatch", key)
 		}
 		if hasValType(sig.Params, ValExternRef) || hasValType(sig.Results, ValExternRef) {
@@ -2483,7 +2546,7 @@ func (c *Compiled) validate() error {
 	if len(c.extraTables) > 0 && !c.HasTable {
 		return fmt.Errorf("compiled metadata invalid: %d extra table(s) without table 0", len(c.extraTables))
 	}
-	if c.HasTable && c.TableType != 0 && c.TableType != ValFuncRef && c.TableType != ValExternRef && c.TableType != ValI31Ref && c.TableType != ValAnyRef {
+	if c.HasTable && c.TableType != 0 && c.TableType != ValFuncRef && c.TableType != ValExternRef && c.TableType != ValExnRef && c.TableType != ValI31Ref && c.TableType != ValAnyRef {
 		return fmt.Errorf("compiled metadata invalid: table 0 element type %s is unsupported", c.TableType)
 	}
 	for i, table := range c.extraTables {
@@ -2720,7 +2783,7 @@ func (c *Compiled) validate() error {
 	}
 	validateElementValues := func(kind string, seg int, elem ElemInit) error {
 		refType := normalizedElemRefType(elem.RefType)
-		if refType != ValFuncRef && refType != ValExternRef && refType != ValI31Ref && refType != ValAnyRef {
+		if refType != ValFuncRef && refType != ValExternRef && refType != ValExnRef && refType != ValI31Ref && refType != ValAnyRef {
 			return fmt.Errorf("compiled metadata invalid: %s element %d has unsupported reference type %s", kind, seg, refType)
 		}
 		required, err := c.elemExactType(elem)
@@ -2728,15 +2791,34 @@ func (c *Compiled) validate() error {
 			return fmt.Errorf("compiled metadata invalid: %s element %d exact type: %w", kind, seg, err)
 		}
 		for k, value := range elem.Values {
+			if len(value.Expr) != 0 {
+				if value.HasGlobal || value.Null || value.I31Wrap || value.FuncIndex != 0 {
+					return fmt.Errorf("compiled metadata invalid: %s element %d value %d has multiple initializer forms", kind, seg, k)
+				}
+				gcConstExpr := c.usesGenericGCExecution() || c.stagedGCStructProduct().requiresExternConversion() || c.stagedGCI31Product() != 0
+				if !gcConstExpr || (refType != ValAnyRef && refType != ValI31Ref && !(refType == ValExternRef && c.stagedGCStructProduct().requiresExternConversion())) || value.Expr[len(value.Expr)-1] != 0x0b {
+					return fmt.Errorf("compiled metadata invalid: %s element %d value %d has invalid GC expression", kind, seg, k)
+				}
+				continue
+			}
 			if value.HasGlobal {
 				if int(value.GlobalIndex) >= len(c.Globals) || c.Globals[value.GlobalIndex].Mutable {
 					return fmt.Errorf("compiled metadata invalid: %s element %d value %d global %d is unavailable or mutable", kind, seg, k, value.GlobalIndex)
+				}
+				if value.I31Wrap {
+					if refType != ValI31Ref || c.Globals[value.GlobalIndex].Type != ValI32 {
+						return fmt.Errorf("compiled metadata invalid: %s element %d value %d i31 global type mismatch", kind, seg, k)
+					}
+					continue
 				}
 				actual, actualErr := c.globalExactType(int(value.GlobalIndex))
 				if actualErr != nil || !valueTypeSubtype(actual, c.Types, required, c.Types) {
 					return fmt.Errorf("compiled metadata invalid: %s element %d value %d global type mismatch", kind, seg, k)
 				}
 				continue
+			}
+			if value.I31Wrap {
+				return fmt.Errorf("compiled metadata invalid: %s element %d value %d has i31 wrapper without global", kind, seg, k)
 			}
 			if value.Null {
 				if required.Kind != ValueTypeReference || !required.Ref.Nullable {
@@ -3045,7 +3127,7 @@ func (c *Compiled) needsFuncRefDescs() bool {
 }
 
 func normalizedElemRefType(t ValType) ValType {
-	if t == ValExternRef || t == ValAnyRef || t == ValI31Ref {
+	if t == ValExternRef || t == ValExnRef || t == ValAnyRef || t == ValI31Ref {
 		return t
 	}
 	return ValFuncRef
@@ -3053,7 +3135,7 @@ func normalizedElemRefType(t ValType) ValType {
 
 func normalizedTableElementType(t ValType) ValType {
 	switch t {
-	case ValExternRef, ValAnyRef, ValI31Ref:
+	case ValExternRef, ValExnRef, ValAnyRef, ValI31Ref:
 		return t
 	default:
 		return ValFuncRef
@@ -3069,7 +3151,7 @@ func (c *Compiled) tableElementType(index int) ValType {
 
 func elemEntryBytes(t ValType) int {
 	switch normalizedElemRefType(t) {
-	case ValExternRef, ValAnyRef, ValI31Ref:
+	case ValExternRef, ValExnRef, ValAnyRef, ValI31Ref:
 		return 8
 	default:
 		return wruntime.TableEntryBytes
@@ -3395,7 +3477,8 @@ func (c *Compiled) validateGlobalInitExpr(index int, g GlobalDef) error {
 	if len(g.InitExpr) == 0 {
 		return nil
 	}
-	if c.usesGenericGCExecution() && (g.Type == ValAnyRef || g.Type == ValI31Ref) {
+	gcConstExpr := c.usesGenericGCExecution() || c.stagedGCStructProduct().requiresExternConversion()
+	if gcConstExpr && (g.Type == ValAnyRef || g.Type == ValI31Ref || (g.Type == ValExternRef && c.stagedGCStructProduct().requiresExternConversion())) {
 		if g.InitExpr[len(g.InitExpr)-1] != 0x0b {
 			return fmt.Errorf("compiled metadata invalid: global %d GC initializer missing end", index)
 		}
@@ -3562,15 +3645,14 @@ func (in *Instance) invoke(export string, args []uint64, cancel context.Context)
 		if importIdx < 0 || importIdx >= len(in.c.Imports) {
 			return nil, fmt.Errorf("export %q imported function index %d has no binding", export, importIdx)
 		}
-		ex, ok := in.imports[in.c.Imports[importIdx]].(*InstanceExport)
-		if !ok || ex == nil || ex.inst == nil {
-			return nil, fmt.Errorf("export %q is an imported function without an InstanceExport owner", export)
+		if ex, ok := in.imports[in.c.Imports[importIdx]].(*InstanceExport); ok && ex != nil && ex.inst != nil {
+			// Native cross-instance calls carry only the caller's invocation lease and
+			// trap cell; the import attachment retains the producer's physical resources.
+			// Keep this Go-level re-export path identical so producer Close neither owns
+			// nor strands an invocation initiated through the relay.
+			return ex.inst.invokeAttachedLocalContext(ex.localIdx, args, cancel, in.trap, true)
 		}
-		// Native cross-instance calls carry only the caller's invocation lease and
-		// trap cell; the import attachment retains the producer's physical resources.
-		// Keep this Go-level re-export path identical so producer Close neither owns
-		// nor strands an invocation initiated through the relay.
-		return ex.inst.invokeAttachedLocalContext(ex.localIdx, args, cancel, in.trap, true)
+		return in.invokeReexportedHost(export, importIdx, args)
 	}
 	if len(args) != ic.paramSlots {
 		return nil, fmt.Errorf("%s expects %d arg slot(s), got %d", export, ic.paramSlots, len(args))
@@ -3877,6 +3959,62 @@ func (in *Instance) replayHostLog() (err error) {
 	return nil
 }
 
+func (in *Instance) invokeReexportedHost(export string, importIdx int, args []uint64) (results []uint64, err error) {
+	if importIdx < 0 || importIdx >= len(in.syncHosts) || in.syncHosts[importIdx] == nil || importIdx >= len(in.c.importFuncSigs) {
+		return nil, fmt.Errorf("export %q is an imported function without a callable host owner", export)
+	}
+	sig := in.c.importFuncSigs[importIdx]
+	for _, typ := range sig.Params {
+		if isReferenceValType(typ) {
+			return nil, fmt.Errorf("export %q re-exported host reference parameters require an owned host funcref", export)
+		}
+	}
+	for _, typ := range sig.Results {
+		if isReferenceValType(typ) {
+			return nil, fmt.Errorf("export %q re-exported host reference results require an owned host funcref", export)
+		}
+	}
+	paramSlots, slotErr := valTypesSlots(sig.Params)
+	if slotErr != nil {
+		return nil, fmt.Errorf("%s parameter slots: %w", export, slotErr)
+	}
+	resultSlots, slotErr := valTypesSlots(sig.Results)
+	if slotErr != nil {
+		return nil, fmt.Errorf("%s result slots: %w", export, slotErr)
+	}
+	if len(args) != paramSlots {
+		return nil, fmt.Errorf("%s expects %d arg slot(s), got %d", export, paramSlots, len(args))
+	}
+	params := append([]uint64(nil), args...)
+	results = make([]uint64, resultSlots)
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			switch value := recovered.(type) {
+			case HostExit:
+				err = &ExitError{Code: value.Code}
+				results = nil
+			case *HostExit:
+				if value == nil {
+					panic(recovered)
+				}
+				err = &ExitError{Code: value.Code}
+				results = nil
+			default:
+				panic(recovered)
+			}
+		}
+	}()
+	fn := in.syncHosts[importIdx]
+	if in.rt == nil || !in.rt.scopedHostCalls() {
+		fn(staticHostModule{in: in}, params, results)
+	} else {
+		caller := in.beginHostCallScope()
+		defer caller.scope.end(caller.generation)
+		fn(caller, params, results)
+	}
+	return results, nil
+}
+
 // fillInvokeCache resolves export and memoizes it so subsequent Invokes skip the
 // exports map probe. Local functions store their local index; an imported
 // InstanceExport stores -1-importIndex and forwards through its original owner.
@@ -3892,9 +4030,8 @@ func (in *Instance) fillInvokeCache(export string) (*invokeCache, error) {
 		if gfi >= len(in.c.Imports) {
 			return nil, fmt.Errorf("export %q imported function index %d has no binding", export, gfi)
 		}
-		ex, ok := in.imports[in.c.Imports[gfi]].(*InstanceExport)
-		if !ok || ex == nil || ex.inst == nil {
-			return nil, fmt.Errorf("export %q is an imported function without an InstanceExport owner", export)
+		if ex, ok := in.imports[in.c.Imports[gfi]].(*InstanceExport); (!ok || ex == nil || ex.inst == nil) && (gfi >= len(in.syncHosts) || in.syncHosts[gfi] == nil) {
+			return nil, fmt.Errorf("export %q is an imported function without a callable owner", export)
 		}
 		slot := &in.ic[int(in.icNext)%len(in.ic)]
 		in.icNext++
@@ -4202,12 +4339,21 @@ func (in *Instance) translatePublicReferenceResultsMode(subject string, values [
 					clear(values)
 					return fmt.Errorf("%s: invalid non-null anyref result %d", subject, i)
 				}
+				ref := gc.Ref(uint32(values[slot]))
+				if ref.IsI31() {
+					if !in.gcRefMatchesValueType(ref, required) {
+						clear(values)
+						return fmt.Errorf("%s: i31 anyref result %d does not match its exact type", subject, i)
+					}
+					slot++
+					continue
+				}
 				store, err := in.referenceStoreForBoundary()
 				if err != nil {
 					clear(values)
 					return fmt.Errorf("%s: own non-null anyref result %d: %w", subject, i, err)
 				}
-				token, err := store.issueGCRef(in, gc.Ref(uint32(values[slot])), required)
+				token, err := store.issueGCRef(in, ref, required)
 				if err != nil {
 					clear(values)
 					return fmt.Errorf("%s: own non-null anyref result %d: %w", subject, i, err)

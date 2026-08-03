@@ -1,0 +1,213 @@
+{
+  "commands": [
+    {
+      "filename": "commands.0.wasm",
+      "line": 1,
+      "name": "$M",
+      "type": "module_definition"
+    },
+    {
+      "line": 8,
+      "module": "$M",
+      "name": "$I1",
+      "type": "module_instance"
+    },
+    {
+      "line": 9,
+      "module": "$M",
+      "name": "$I2",
+      "type": "module_instance"
+    },
+    {
+      "as": "I1",
+      "line": 10,
+      "name": "$I1",
+      "type": "register"
+    },
+    {
+      "as": "I2",
+      "line": 11,
+      "name": "$I2",
+      "type": "register"
+    },
+    {
+      "filename": "commands.1.wasm",
+      "line": 12,
+      "type": "module_definition"
+    },
+    {
+      "line": 28,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "glob",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "0"
+        }
+      ],
+      "line": 29,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "tab",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "funcref",
+          "value": "null"
+        }
+      ],
+      "line": 30,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "mem",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "0"
+        }
+      ],
+      "line": 31,
+      "type": "assert_return"
+    },
+    {
+      "filename": "commands.2.wasm",
+      "line": 32,
+      "type": "module_definition"
+    },
+    {
+      "line": 48,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "glob",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "1"
+        }
+      ],
+      "line": 49,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "tab",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "funcref"
+        }
+      ],
+      "line": 50,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "mem",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "1"
+        }
+      ],
+      "line": 51,
+      "type": "assert_return"
+    },
+    {
+      "filename": "commands.3.wasm",
+      "line": 52,
+      "name": "$N",
+      "type": "module_definition"
+    },
+    {
+      "line": 60,
+      "module": "$N",
+      "name": "$I",
+      "type": "module_instance"
+    },
+    {
+      "as": "I",
+      "line": 61,
+      "name": "$I",
+      "type": "register"
+    },
+    {
+      "filename": "commands.4.wasm",
+      "line": 62,
+      "type": "module_definition"
+    },
+    {
+      "line": 78,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "glob",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "1"
+        }
+      ],
+      "line": 79,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "tab",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "funcref"
+        }
+      ],
+      "line": 80,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "mem",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "1"
+        }
+      ],
+      "line": 81,
+      "type": "assert_return"
+    }
+  ],
+  "source": "WebAssembly/spec interpreter 3.0.0"
+}

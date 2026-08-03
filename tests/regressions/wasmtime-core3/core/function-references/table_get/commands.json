@@ -1,0 +1,273 @@
+{
+  "commands": [
+    {
+      "filename": "commands.0.wasm",
+      "line": 1,
+      "type": "module_definition"
+    },
+    {
+      "line": 22,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "externref",
+            "value": "1"
+          }
+        ],
+        "field": "init",
+        "type": "invoke"
+      },
+      "line": 23,
+      "type": "action"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "0"
+          }
+        ],
+        "field": "get-externref",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "externref",
+          "value": "null"
+        }
+      ],
+      "line": 24,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "1"
+          }
+        ],
+        "field": "get-externref",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "externref",
+          "value": "1"
+        }
+      ],
+      "line": 25,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "0"
+          }
+        ],
+        "field": "get-funcref",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "funcref",
+          "value": "null"
+        }
+      ],
+      "line": 26,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "1"
+          }
+        ],
+        "field": "is_null-funcref",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "0"
+        }
+      ],
+      "line": 27,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "2"
+          }
+        ],
+        "field": "is_null-funcref",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "0"
+        }
+      ],
+      "line": 28,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "0"
+          }
+        ],
+        "field": "get-typed-and-call",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "5"
+        }
+      ],
+      "line": 29,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "2"
+          }
+        ],
+        "field": "get-externref",
+        "type": "invoke"
+      },
+      "line": 30,
+      "text": "out of bounds table access",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "3"
+          }
+        ],
+        "field": "get-funcref",
+        "type": "invoke"
+      },
+      "line": 34,
+      "text": "out of bounds table access",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "2"
+          }
+        ],
+        "field": "get-typed-func",
+        "type": "invoke"
+      },
+      "line": 38,
+      "text": "out of bounds table access",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "4294967295"
+          }
+        ],
+        "field": "get-externref",
+        "type": "invoke"
+      },
+      "line": 42,
+      "text": "out of bounds table access",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "4294967295"
+          }
+        ],
+        "field": "get-funcref",
+        "type": "invoke"
+      },
+      "line": 46,
+      "text": "out of bounds table access",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "4294967295"
+          }
+        ],
+        "field": "get-typed-func",
+        "type": "invoke"
+      },
+      "line": 50,
+      "text": "out of bounds table access",
+      "type": "assert_trap"
+    },
+    {
+      "filename": "commands.1.wasm",
+      "line": 54,
+      "module_type": "binary",
+      "text": "type mismatch",
+      "type": "assert_invalid"
+    },
+    {
+      "filename": "commands.2.wasm",
+      "line": 63,
+      "module_type": "binary",
+      "text": "type mismatch",
+      "type": "assert_invalid"
+    },
+    {
+      "filename": "commands.3.wasm",
+      "line": 72,
+      "module_type": "binary",
+      "text": "type mismatch",
+      "type": "assert_invalid"
+    },
+    {
+      "filename": "commands.4.wasm",
+      "line": 81,
+      "module_type": "binary",
+      "text": "type mismatch",
+      "type": "assert_invalid"
+    },
+    {
+      "filename": "commands.5.wasm",
+      "line": 90,
+      "module_type": "binary",
+      "text": "type mismatch",
+      "type": "assert_invalid"
+    }
+  ],
+  "source": "WebAssembly/spec interpreter 3.0.0"
+}

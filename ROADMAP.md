@@ -94,7 +94,7 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
 **WebAssembly 3.0** (primary conformance complete; product hardening continues)
 - [x] Pin and execute the complete official `WebAssembly/spec` `wg-3.0` corpus.
   Linux/amd64 native and Linux/arm64 QEMU explicit-bounds `CoreFeaturesV3` runs
-  pass all 2,226 modules and 58,038 assertions with zero failures, skips, or gap
+  pass all 2,226 modules and 58,238 assertions with zero failures, skips, or gap
   categories; native Linux/Darwin arm64 runs are now required in CI.
 - [x] Complete mandatory extended constants, relaxed SIMD, tails, typed function
   references, GC, exception handling, multi-memory, memory64, and table64 on the
@@ -181,7 +181,7 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   retain bounded argument/result roots across parked host execution. Ordinary host
   owners and direct foreign Runtime domains continue to reject.
 - [x] **Bounds-mode parity:** linux/amd64 explicit and signal-backed Core 3 pass
-  2,226 modules and 58,038 assertions with zero failures, skips, or gaps. ARM64
+  2,226 modules and 58,238 assertions with zero failures, skips, or gaps. ARM64
   signal builds now admit exception handling, multi-memory, and memory64: memory 0
   uses native guard faults while indexed memories and memory64 retain carry-safe
   explicit checks. Native Linux/ARM64 and Darwin/ARM64 `spec3-signals` are mandatory
@@ -319,7 +319,7 @@ Official `gc/type-subtyping.wast` is complete: 45 modules, 29 assertions, 24 inv
 
 The remaining feature families are integrated under explicit `CoreFeaturesV3`
 admission. The pinned official Release 3 suite completes at 2,226 passing modules
-and 58,038 passing assertions with zero failures, skips, or gap categories. The
+and 58,238 passing assertions with zero failures, skips, or gap categories. The
 final integration includes prior-local-global constant offsets, typed element
 initializers, generic `array.new_data`/`array.new_elem`, imported/exported tags,
 `spectest.table64`, shared-memory co-tenant serialization, and reference

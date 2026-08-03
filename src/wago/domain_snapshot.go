@@ -189,15 +189,34 @@ func validateDomainPassiveElements(c *Compiled, lens []uint32) error {
 			return fmt.Errorf("live element %d exact type: %w", i, err)
 		}
 		for valueIndex, value := range elem.Values {
+			if len(value.Expr) != 0 {
+				gcConstExpr := c.usesGenericGCExecution() || c.stagedGCStructProduct().requiresExternConversion() || c.stagedGCI31Product() != 0
+				if !gcConstExpr || (refType != ValAnyRef && refType != ValI31Ref && !(refType == ValExternRef && c.stagedGCStructProduct().requiresExternConversion())) || value.Expr[len(value.Expr)-1] != 0x0b {
+					return fmt.Errorf("live element %d value %d has invalid GC expression", i, valueIndex)
+				}
+				continue
+			}
 			if value.HasGlobal {
-				if int(value.GlobalIndex) >= len(c.Globals) || c.Globals[value.GlobalIndex].Mutable || !isGCRefValType(c.Globals[value.GlobalIndex].Type) {
-					return fmt.Errorf("live element %d value %d reference global %d is unavailable, mutable, or externally owned", i, valueIndex, value.GlobalIndex)
+				if int(value.GlobalIndex) >= len(c.Globals) || c.Globals[value.GlobalIndex].Mutable {
+					return fmt.Errorf("live element %d value %d reference global %d is unavailable or mutable", i, valueIndex, value.GlobalIndex)
+				}
+				if value.I31Wrap {
+					if refType != ValI31Ref || c.Globals[value.GlobalIndex].Type != ValI32 {
+						return fmt.Errorf("live element %d value %d i31 global type mismatch", i, valueIndex)
+					}
+					continue
+				}
+				if !isGCRefValType(c.Globals[value.GlobalIndex].Type) {
+					return fmt.Errorf("live element %d value %d reference global %d is externally owned", i, valueIndex, value.GlobalIndex)
 				}
 				actual, actualErr := c.globalExactType(int(value.GlobalIndex))
 				if actualErr != nil || !valueTypeSubtype(actual, c.Types, required, c.Types) {
 					return fmt.Errorf("live element %d value %d reference global type mismatch", i, valueIndex)
 				}
 				continue
+			}
+			if value.I31Wrap {
+				return fmt.Errorf("live element %d value %d has i31 wrapper without global", i, valueIndex)
 			}
 			switch refType {
 			case ValFuncRef:

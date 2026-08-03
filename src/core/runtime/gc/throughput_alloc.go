@@ -73,6 +73,9 @@ func (h *throughputHeap) Close() {
 func (h *throughputHeap) bytes(e handleEntry) []byte { return h.mem[e.off : e.off+e.size] }
 
 func (h *throughputHeap) alloc(size uint32, sp spaceKind) (handleEntry, error) {
+	if size > ^uint32(0)-15 {
+		return handleEntry{}, ErrAllocationTooLarge
+	}
 	allocSize := Align16(size)
 	if sp != spaceLarge && allocSize <= h.classLimit {
 		cls := h.classFor(allocSize)

@@ -46,6 +46,9 @@ func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, err
 		var err error
 		e, err = c.throughput.alloc(size, spaceLarge)
 		if err != nil {
+			if errors.Is(err, ErrAllocationTooLarge) {
+				return Null(), err
+			}
 			if roots == nil {
 				return Null(), errors.New("gc: large-object space exhausted and no roots were supplied")
 			}

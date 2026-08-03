@@ -60,7 +60,22 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 			return err
 		}
 		nullable := sub == 21
-		if f.gcTypeSubtypingRefTest && heap >= 0 {
+		if heap >= 0 {
+			top := f.s.back()
+			if _, targetIsFunc := f.m.TypeFunc(uint32(heap)); targetIsFunc && top != nil && top.kind == ekValue && top.st.kind == stFuncRef && top.st.idx >= 0 && top.st.idx < len(f.m.FuncTypes) {
+				f.popValue()
+				actual := wasm.Ref(false, wasm.IndexedHeap(f.m.FuncTypes[top.st.idx]), false)
+				required := wasm.Ref(nullable, wasm.IndexedHeap(wasm.TypeIdx{Index: uint32(heap)}), false)
+				matched := int64(0)
+				if f.m.ReferenceTypeSubtype(actual, required) {
+					matched = 1
+				}
+				f.pushValue(storage{kind: stConst, typ: mtI32, cval: matched})
+				return nil
+			}
+		}
+		_, targetIsFunc := f.m.TypeFunc(uint32(heap))
+		if f.gcTypeSubtypingRefTest && heap >= 0 && targetIsFunc {
 			value := f.popValue()
 			if value.kind != ekValue || value.st.kind != stFuncRef || value.st.idx < 0 || value.st.idx >= len(f.m.FuncTypes) {
 				return fmt.Errorf("arm64: staged function ref.test lost exact local ref.func provenance")

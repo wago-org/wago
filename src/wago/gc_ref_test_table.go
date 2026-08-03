@@ -78,7 +78,7 @@ func newGCRefTestTableState(collector *gc.Collector, descriptors [][]byte, rootT
 }
 
 func (s *gcRefTestTableState) attachConversion(conversion *gcExternConversionState) error {
-	if s == nil || conversion == nil || (s.TableCount != 1 && s.TableCount != 3) {
+	if s == nil || conversion == nil || (s.TableCount != 0 && s.TableCount != 1 && s.TableCount != 3) {
 		return fmt.Errorf("GC conversion table state is unavailable")
 	}
 	if s.Conversion != nil {

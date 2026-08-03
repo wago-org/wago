@@ -1,6 +1,7 @@
 package gc
 
 import (
+	"errors"
 	"fmt"
 	"unsafe"
 )
@@ -25,6 +26,10 @@ const (
 
 const HeaderSize = uint32(unsafe.Sizeof(ObjHeader{}))
 const PayloadOffset = HeaderSize
+
+// ErrAllocationTooLarge reports an object whose physical aligned extent cannot
+// be represented by the collector's uint32 heap ABI.
+var ErrAllocationTooLarge = errors.New("gc: allocation size too large")
 
 func Align8(v uint32) uint32  { return align(v, 8) }
 func Align16(v uint32) uint32 { return align(v, 16) }
@@ -56,7 +61,7 @@ func StructSize(d TypeDesc) (uint32, error) {
 	}
 	total := uint64(HeaderSize) + uint64(d.Size)
 	if total > uint64(^uint32(0)-7) {
-		return 0, fmt.Errorf("gc: struct size overflow")
+		return 0, fmt.Errorf("gc: struct size overflow: %w", ErrAllocationTooLarge)
 	}
 	return Align8(uint32(total)), nil
 }
@@ -67,7 +72,7 @@ func ArraySize(d TypeDesc, length uint32) (uint32, error) {
 	payload := uint64(d.ElemSize) * uint64(length)
 	total := uint64(HeaderSize) + payload
 	if total > uint64(^uint32(0)-7) {
-		return 0, fmt.Errorf("gc: array size overflow")
+		return 0, fmt.Errorf("gc: array size overflow: %w", ErrAllocationTooLarge)
 	}
 	return Align8(uint32(total)), nil
 }

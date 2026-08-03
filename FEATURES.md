@@ -17,10 +17,10 @@ linux/amd64 explicit/signal builds and Linux/Darwin arm64 explicit/signal builds
 every Core 3 family is admitted. ARM64 signal mode uses guard faults for eligible
 memory-0 memory32 accesses and retains explicit checks for indexed memories and
 memory64; native `spec3-signals` cells are mandatory on both operating systems. The pinned 258-file suite is green on linux/amd64 and under Linux/arm64
-QEMU execution: **2,226 modules and 58,038 assertions passed, with zero failures,
+QEMU execution: **2,226 modules and 58,238 assertions passed, with zero failures,
 skips, or gap categories**. Native Linux/Darwin arm64 runs are mandatory CI gates.
 Linux/amd64 signal-backed builds now admit every Core 3 family and pass the same
-**2,226 modules and 58,038 assertions with zero failures, skips, or gaps**.
+**2,226 modules and 58,238 assertions with zero failures, skips, or gaps**.
 Indexed nonzero memories retain explicit directory bounds checks, while memory64
 retains full-u64 explicit checks inside the signal-backed product.
 Release 1 and Release 2 defaults

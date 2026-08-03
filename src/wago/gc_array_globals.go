@@ -325,26 +325,7 @@ func (in *Instance) collectGenericGCAtBoundary() error {
 	if in == nil || in.gc == nil || in.c == nil || !in.c.genericGCBoundaryCollectionSafe() {
 		return nil
 	}
-	public := in.existingPublicGCState()
-	if public == nil {
-		return errGenericGCRootState
-	}
-	unlockNative := lockNativeExecutionForHostAccess()
-	defer unlockNative()
-	lockedDomain := in.lockGCCollector()
-	defer unlockGCCollector(lockedDomain)
-	public.mu.Lock()
-	defer public.mu.Unlock()
-	if err := in.syncGenericGCGlobalRootsLocked(public); err != nil {
-		return err
-	}
-	hasTableRoots := in.c.HasTable
-	hasDomainRoots := in.refStore != nil && in.refStore.ownsGCCollector(in.gc)
-	if public.hostActivationCount != 0 || hasTableRoots || hasDomainRoots {
-		public.frameRoots = gcNativeFrameRoots{owner: in, suspended: public}
-		return in.gc.CollectFull(&public.frameRoots)
-	}
-	return in.gc.CollectFull(nil)
+	return in.CollectGC()
 }
 
 // reconcileGCGlobalRoots synchronizes the exact staged mutable GC global cells

@@ -439,19 +439,30 @@ func (f *fn) readMemArg(r *wasm.Reader) (memoryIndex uint32, off uint64, err err
 	return memoryIndex, off, err
 }
 
-func (f *fn) indexedMemAddr(memoryIndex, off uint32, size int) (base, ea Reg, disp int32) {
+func (f *fn) indexedMemAddr(memoryIndex uint32, off uint64, size int) (base, ea Reg, disp int32) {
 	e := f.popValue()
 	ea = f.materialize(e)
-	if !f.memoryAddr64(memoryIndex) {
+	addr64 := f.memoryAddr64(memoryIndex)
+	if !addr64 {
 		f.a.MovRegReg32(ea, ea)
-	}
-	disp = int32(off)
-	if int64(off)+int64(size) > 0x7fffffff {
+		off32 := uint32(off)
+		disp = int32(off32)
+		if int64(off32)+int64(size) > 0x7fffffff {
+			t := f.allocReg(maskOf(ea))
+			f.a.MovImm32(t, int32(off32))
+			f.a.Add64(ea, t)
+			f.release(t)
+			disp = 0
+		}
+	} else if off != 0 {
+		// Indexed memory64 accesses need the same full-width carry proof as
+		// memory 0. Truncating the memarg or using a wrapping LEA would let
+		// addresses such as UINT64_MAX wrap into the finite reservation.
 		t := f.allocReg(maskOf(ea))
-		f.a.MovImm32(t, int32(off))
+		f.a.MovImm64(t, off)
 		f.a.Add64(ea, t)
+		f.trapIf(condB, trapMemOOB)
 		f.release(t)
-		disp = 0
 	}
 	f.pinned = f.pinned.add(ea)
 	base = f.allocReg(maskOf(ea))
@@ -461,7 +472,13 @@ func (f *fn) indexedMemAddr(memoryIndex, off uint32, size int) (base, ea Reg, di
 	f.a.Load32(mb, base, entry+8)
 	f.a.Load64(base, base, entry)
 	t := f.allocReg(maskOf(ea).add(base).add(mb))
-	f.a.LeaDisp(t, ea, disp+int32(size))
+	if addr64 {
+		f.a.MovReg64(t, ea)
+		f.a.AluRI(0, t, int32(size), true)
+		f.trapIf(condB, trapMemOOB)
+	} else {
+		f.a.LeaDisp(t, ea, disp+int32(size))
+	}
 	f.a.Cmp64(t, mb)
 	f.trapIf(condA, trapMemOOB)
 	f.release(t)
@@ -479,7 +496,7 @@ func (f *fn) memLoad(r *wasm.Reader, size int, signed, wide bool) error {
 	}
 	if memoryIndex != 0 {
 		f.invalidateStoreForward()
-		base, ea, disp := f.indexedMemAddr(memoryIndex, uint32(off), size)
+		base, ea, disp := f.indexedMemAddr(memoryIndex, off, size)
 		out := f.allocReg(maskOf(base).add(ea))
 		f.a.LoadIdx(out, base, ea, disp, size, signed, wide)
 		f.release(base)
@@ -530,7 +547,7 @@ func (f *fn) memStore(r *wasm.Reader, size int) error {
 		f.invalidateStoreForward()
 		value := f.materialize(f.popValue())
 		f.pinned = f.pinned.add(value)
-		base, ea, disp := f.indexedMemAddr(memoryIndex, uint32(off), size)
+		base, ea, disp := f.indexedMemAddr(memoryIndex, off, size)
 		f.a.StoreIdx(base, ea, value, disp, size)
 		f.release(base)
 		f.release(ea)

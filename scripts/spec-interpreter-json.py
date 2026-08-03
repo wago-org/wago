@@ -148,7 +148,7 @@ def unsigned_int(text, bits):
 
 def float_bits(text, bits):
     sign = 0
-    raw = text
+    raw = text.replace("_", "")
     if raw.startswith("-"):
         sign = 1
         raw = raw[1:]

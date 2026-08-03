@@ -119,7 +119,7 @@ type ModuleFacts struct {
 }
 
 const (
-	minOnlyTableGrowCapacity          uint64 = 64
+	minOnlyTableGrowCapacity          uint64 = 1024
 	minOnlyExternrefTableGrowCapacity uint64 = 1024
 	stagedTable64Max                  uint64 = 16384
 )
@@ -819,8 +819,10 @@ func (p supportPass) elements() error {
 }
 
 func (p supportPass) elementExpr(e wasm.Expr, context string) error {
-	if p.feat.GCI31Products && isGCI31ConstExpr(e) {
-		return p.constExpr(e, context)
+	if p.feat.GCI31Products || p.feat.GCStructProducts || p.feat.GCArrayProducts || p.feat.GCTypeSubtypingProducts {
+		if err := p.constExpr(e, context); err == nil {
+			return nil
+		}
 	}
 	body := e.BodyBytes
 	if len(body) == 0 {

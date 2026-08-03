@@ -196,11 +196,25 @@ func mappedGCType(mapping *gcTypeMapping, local uint32) (gc.TypeID, error) {
 }
 
 func (in *Instance) gcRefMatchesValueType(ref gc.Ref, required ValueTypeDescriptor) bool {
-	if in == nil || in.gc == nil || required.Kind != ValueTypeReference {
+	if in == nil || required.Kind != ValueTypeReference {
 		return false
 	}
 	if ref.IsNull() {
 		return required.Ref.Nullable
+	}
+	if ref.IsI31() {
+		if required.Ref.Heap.Defined {
+			return false
+		}
+		switch required.Ref.Heap.Abstract {
+		case AbstractHeapAny, AbstractHeapEq, AbstractHeapI31:
+			return true
+		default:
+			return false
+		}
+	}
+	if in.gc == nil {
+		return false
 	}
 	var target gc.RefTestTarget
 	target.Nullable = required.Ref.Nullable

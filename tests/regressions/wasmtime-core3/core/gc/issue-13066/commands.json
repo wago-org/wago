@@ -1,0 +1,49 @@
+{
+  "commands": [
+    {
+      "filename": "commands.0.wasm",
+      "line": 1,
+      "type": "module_definition"
+    },
+    {
+      "line": 13,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "gc",
+        "type": "invoke"
+      },
+      "expected": [],
+      "line": 14,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "init",
+        "type": "invoke"
+      },
+      "expected": [],
+      "line": 15,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "get_field",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "42"
+        }
+      ],
+      "line": 16,
+      "type": "assert_return"
+    }
+  ],
+  "source": "WebAssembly/spec interpreter 3.0.0"
+}

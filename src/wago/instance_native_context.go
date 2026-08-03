@@ -38,6 +38,8 @@ func (in *Instance) beginNativeEntry() (*executionLease, error) {
 func (in *Instance) bindNativeContext() error {
 	ctx := unsafe.Slice((*byte)(offHeapPtr(in.nativeContext)), wruntime.InstanceContextBytes)
 	in.jm.BindInstanceContextBytes(ctx)
+	primary := in.jm.LinMemBase()
+	in.jm.SetGuardOwner(primary)
 	return in.refreshMemoryDirectory()
 }
 
@@ -61,6 +63,7 @@ func (in *Instance) refreshMemoryDirectory() error {
 			return fmt.Errorf("indexed memory %d owner is closed", i)
 		}
 		entry := dir.native[i*16:]
+		jm.SetGuardOwner(in.jm.LinMemBase())
 		pages := jm.CurrentPages()
 		binary.LittleEndian.PutUint64(entry, uint64(jm.LinMemBase()))
 		binary.LittleEndian.PutUint32(entry[8:], pages<<16)

@@ -1,0 +1,811 @@
+{
+  "commands": [
+    {
+      "filename": "commands.0.wasm",
+      "line": 1,
+      "type": "module_definition"
+    },
+    {
+      "line": 10,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "1"
+          }
+        ],
+        "field": "get",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "externref",
+          "value": "null"
+        }
+      ],
+      "line": 11,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "2"
+          }
+        ],
+        "field": "get",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "externref",
+          "value": "null"
+        }
+      ],
+      "line": 12,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "3"
+          }
+        ],
+        "field": "get",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "externref",
+          "value": "null"
+        }
+      ],
+      "line": 13,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "4"
+          }
+        ],
+        "field": "get",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "externref",
+          "value": "null"
+        }
+      ],
+      "line": 14,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "5"
+          }
+        ],
+        "field": "get",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "externref",
+          "value": "null"
+        }
+      ],
+      "line": 15,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "2"
+          },
+          {
+            "type": "externref",
+            "value": "1"
+          },
+          {
+            "type": "i32",
+            "value": "3"
+          }
+        ],
+        "field": "fill",
+        "type": "invoke"
+      },
+      "expected": [],
+      "line": 16,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "1"
+          }
+        ],
+        "field": "get",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "externref",
+          "value": "null"
+        }
+      ],
+      "line": 17,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "2"
+          }
+        ],
+        "field": "get",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "externref",
+          "value": "1"
+        }
+      ],
+      "line": 18,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "3"
+          }
+        ],
+        "field": "get",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "externref",
+          "value": "1"
+        }
+      ],
+      "line": 19,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "4"
+          }
+        ],
+        "field": "get",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "externref",
+          "value": "1"
+        }
+      ],
+      "line": 20,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "5"
+          }
+        ],
+        "field": "get",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "externref",
+          "value": "null"
+        }
+      ],
+      "line": 21,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "4"
+          },
+          {
+            "type": "externref",
+            "value": "2"
+          },
+          {
+            "type": "i32",
+            "value": "2"
+          }
+        ],
+        "field": "fill",
+        "type": "invoke"
+      },
+      "expected": [],
+      "line": 22,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "3"
+          }
+        ],
+        "field": "get",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "externref",
+          "value": "1"
+        }
+      ],
+      "line": 23,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "4"
+          }
+        ],
+        "field": "get",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "externref",
+          "value": "2"
+        }
+      ],
+      "line": 24,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "5"
+          }
+        ],
+        "field": "get",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "externref",
+          "value": "2"
+        }
+      ],
+      "line": 25,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "6"
+          }
+        ],
+        "field": "get",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "externref",
+          "value": "null"
+        }
+      ],
+      "line": 26,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "4"
+          },
+          {
+            "type": "externref",
+            "value": "3"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          }
+        ],
+        "field": "fill",
+        "type": "invoke"
+      },
+      "expected": [],
+      "line": 27,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "3"
+          }
+        ],
+        "field": "get",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "externref",
+          "value": "1"
+        }
+      ],
+      "line": 28,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "4"
+          }
+        ],
+        "field": "get",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "externref",
+          "value": "2"
+        }
+      ],
+      "line": 29,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "5"
+          }
+        ],
+        "field": "get",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "externref",
+          "value": "2"
+        }
+      ],
+      "line": 30,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "8"
+          },
+          {
+            "type": "externref",
+            "value": "4"
+          },
+          {
+            "type": "i32",
+            "value": "2"
+          }
+        ],
+        "field": "fill",
+        "type": "invoke"
+      },
+      "expected": [],
+      "line": 31,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "7"
+          }
+        ],
+        "field": "get",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "externref",
+          "value": "null"
+        }
+      ],
+      "line": 32,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "8"
+          }
+        ],
+        "field": "get",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "externref",
+          "value": "4"
+        }
+      ],
+      "line": 33,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "9"
+          }
+        ],
+        "field": "get",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "externref",
+          "value": "4"
+        }
+      ],
+      "line": 34,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "9"
+          },
+          {
+            "type": "externref",
+            "value": "null"
+          },
+          {
+            "type": "i32",
+            "value": "1"
+          }
+        ],
+        "field": "fill",
+        "type": "invoke"
+      },
+      "expected": [],
+      "line": 35,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "8"
+          }
+        ],
+        "field": "get",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "externref",
+          "value": "4"
+        }
+      ],
+      "line": 38,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "9"
+          }
+        ],
+        "field": "get",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "externref",
+          "value": "null"
+        }
+      ],
+      "line": 39,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "10"
+          },
+          {
+            "type": "externref",
+            "value": "5"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          }
+        ],
+        "field": "fill",
+        "type": "invoke"
+      },
+      "expected": [],
+      "line": 40,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "9"
+          }
+        ],
+        "field": "get",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "externref",
+          "value": "null"
+        }
+      ],
+      "line": 41,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "8"
+          },
+          {
+            "type": "externref",
+            "value": "6"
+          },
+          {
+            "type": "i32",
+            "value": "3"
+          }
+        ],
+        "field": "fill",
+        "type": "invoke"
+      },
+      "line": 42,
+      "text": "out of bounds table access",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "7"
+          }
+        ],
+        "field": "get",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "externref",
+          "value": "null"
+        }
+      ],
+      "line": 46,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "8"
+          }
+        ],
+        "field": "get",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "externref",
+          "value": "4"
+        }
+      ],
+      "line": 47,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "9"
+          }
+        ],
+        "field": "get",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "externref",
+          "value": "null"
+        }
+      ],
+      "line": 48,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "11"
+          },
+          {
+            "type": "externref",
+            "value": "null"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          }
+        ],
+        "field": "fill",
+        "type": "invoke"
+      },
+      "line": 49,
+      "text": "out of bounds table access",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "11"
+          },
+          {
+            "type": "externref",
+            "value": "null"
+          },
+          {
+            "type": "i32",
+            "value": "10"
+          }
+        ],
+        "field": "fill",
+        "type": "invoke"
+      },
+      "line": 53,
+      "text": "out of bounds table access",
+      "type": "assert_trap"
+    },
+    {
+      "filename": "commands.1.wasm",
+      "line": 57,
+      "module_type": "binary",
+      "text": "type mismatch",
+      "type": "assert_invalid"
+    },
+    {
+      "filename": "commands.2.wasm",
+      "line": 66,
+      "module_type": "binary",
+      "text": "type mismatch",
+      "type": "assert_invalid"
+    },
+    {
+      "filename": "commands.3.wasm",
+      "line": 75,
+      "module_type": "binary",
+      "text": "type mismatch",
+      "type": "assert_invalid"
+    },
+    {
+      "filename": "commands.4.wasm",
+      "line": 84,
+      "module_type": "binary",
+      "text": "type mismatch",
+      "type": "assert_invalid"
+    },
+    {
+      "filename": "commands.5.wasm",
+      "line": 93,
+      "module_type": "binary",
+      "text": "type mismatch",
+      "type": "assert_invalid"
+    },
+    {
+      "filename": "commands.6.wasm",
+      "line": 102,
+      "module_type": "binary",
+      "text": "type mismatch",
+      "type": "assert_invalid"
+    },
+    {
+      "filename": "commands.7.wasm",
+      "line": 111,
+      "module_type": "binary",
+      "text": "type mismatch",
+      "type": "assert_invalid"
+    },
+    {
+      "filename": "commands.8.wasm",
+      "line": 120,
+      "module_type": "binary",
+      "text": "type mismatch",
+      "type": "assert_invalid"
+    },
+    {
+      "filename": "commands.9.wasm",
+      "line": 129,
+      "module_type": "binary",
+      "text": "type mismatch",
+      "type": "assert_invalid"
+    },
+    {
+      "filename": "commands.10.wasm",
+      "line": 138,
+      "module_type": "binary",
+      "text": "type mismatch",
+      "type": "assert_invalid"
+    }
+  ],
+  "source": "WebAssembly/spec interpreter 3.0.0"
+}

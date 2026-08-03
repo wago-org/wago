@@ -16,7 +16,7 @@ TEXT ·addrLibcSigactionTrampoline(SB), NOSPLIT, $0-8
 //   ucontext.uc_mcontext  = +48
 //   mcontext64.ss.rbx     = +24 (16-byte exception state + 8)
 //   mcontext64.ss.rip     = +144 (16-byte exception state + 128)
-// guardRegion is {start@0, end@8, linMem@16}, 32 bytes.
+// guardRegion is {start@0, end@8, linMem@16, ownerLinMem@24}, 32 bytes.
 TEXT ·guardSigHandler(SB), NOSPLIT|NOFRAME, $0-0
 	// Preserve every callee-saved register we use. libSystem's signal trampoline
 	// is an ordinary C caller even though sigreturn later restores the faulting
@@ -43,9 +43,10 @@ scan:
 	CMPQ	R8, R9
 	JCC	next                    // addr >= end
 
-	MOVQ	16(R10), BX             // region.linMem
+	MOVQ	16(R10), BX             // region.linMem (fault-address base)
 	MOVQ	48(R14), R15            // ucontext.uc_mcontext
-	CMPQ	24(R15), BX             // saved RBX is the pinned linMem
+	MOVQ	24(R10), AX             // region.ownerLinMem
+	CMPQ	24(R15), AX             // saved RBX is the primary linMem
 	JNE	next
 
 	MOVQ	R8, AX
@@ -79,7 +80,8 @@ resume:
 outofbounds:
 	MOVL	$3, CX                  // TrapLinMemOutOfBounds
 settrap:
-	MOVQ	-104(BX), AX            // basedata trap-cell pointer
+	MOVQ	24(R15), AX             // active primary linMem from saved RBX
+	MOVQ	-104(AX), AX            // basedata trap-cell pointer
 	TESTQ	AX, AX
 	JZ	chain
 	MOVL	CX, (AX)

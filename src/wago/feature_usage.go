@@ -34,6 +34,11 @@ func analyzeModuleRequirements(m *wasm.Module) moduleRequirements {
 	}
 
 	for _, rec := range m.Types {
+		if len(rec.SubTypes) != 1 {
+			// Empty and multi-member rec groups use the standardized recursive
+			// type-section grammar even when all members are plain functions.
+			out |= CoreFeatureTypedFunctionReferences
+		}
 		for _, sub := range rec.SubTypes {
 			if sub.HasPrefix || len(sub.Supers) != 0 {
 				out |= CoreFeatureGC
@@ -160,6 +165,7 @@ func requiredFeaturesForConstExpr(expr wasm.Expr, importedGlobals int) CoreFeatu
 
 func requiredFeaturesForConstExprBytes(body []byte, importedGlobals int) CoreFeatures {
 	r := wasm.NewReader(body)
+	var out CoreFeatures
 	usesArithmetic, usesPriorLocal := false, false
 	for r.HasNext() {
 		op, err := r.Byte()
@@ -170,6 +176,7 @@ func requiredFeaturesForConstExprBytes(body []byte, importedGlobals int) CoreFea
 		if err != nil {
 			break
 		}
+		out |= requiredFeaturesForInstructionKind(imm.Kind)
 		switch imm.Kind {
 		case wasm.InstrGlobalGet:
 			if int(imm.Index) >= importedGlobals {
@@ -181,12 +188,11 @@ func requiredFeaturesForConstExprBytes(body []byte, importedGlobals int) CoreFea
 		}
 	}
 	if usesPriorLocal {
-		return CoreFeatureExtendedConstExpressions
+		out |= CoreFeatureExtendedConstExpressions
+	} else if usesArithmetic {
+		out |= CoreFeatureExtendedConst
 	}
-	if usesArithmetic {
-		return CoreFeatureExtendedConst
-	}
-	return 0
+	return out
 }
 
 func requiredFeaturesForValTypes(types []wasm.ValType) CoreFeatures {
@@ -392,6 +398,10 @@ func requiredFeaturesForInstructionKind(kind wasm.InstrKind) CoreFeatures {
 		return CoreFeatureReferenceTypes
 	case wasm.InstrCallRef, wasm.InstrRefAsNonNull, wasm.InstrBrOnNull, wasm.InstrBrOnNonNull:
 		return CoreFeatureReferenceTypes | CoreFeatureTypedFunctionReferences
+	case wasm.InstrRefI31, wasm.InstrI31GetS, wasm.InstrI31GetU,
+		wasm.InstrRefTest, wasm.InstrRefCast, wasm.InstrBrOnCast, wasm.InstrBrOnCastFail,
+		wasm.InstrAnyConvertExtern, wasm.InstrExternConvertAny:
+		return CoreFeatureReferenceTypes | CoreFeatureGC
 	case wasm.InstrReturnCall, wasm.InstrReturnCallIndirect:
 		return CoreFeatureTailCall
 	case wasm.InstrReturnCallRef:

@@ -43,6 +43,7 @@ type funcHints struct {
 	// hasCall (an inline candidate is leaf), so no separate call-kind split is kept.
 	hasLoop        bool
 	hasControlFlow bool
+	moduleEH       bool
 
 	// immutableTables is derived after the one-pass per-function scans have been
 	// aggregated (computeModuleHints). Each admitted table is local, unexported,

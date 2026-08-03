@@ -200,22 +200,124 @@ const (
 // whose runtime/helper obligations are implemented. The synthetic numeric-local
 // product has one mutable i32 field, one allocation per invocation, no GC-valued
 // public boundary or global/table state, and returns only numeric values.
+func moduleUsesGCExternConversion(m *wasm.Module) bool {
+	if m == nil {
+		return false
+	}
+	usesExpr := func(expr wasm.Expr) bool {
+		for _, in := range expr.Instrs {
+			if in.Kind == wasm.InstrAnyConvertExtern || in.Kind == wasm.InstrExternConvertAny {
+				return true
+			}
+		}
+		r := wasm.NewReader(expr.BodyBytes)
+		for r.HasNext() {
+			op, err := r.Byte()
+			if err != nil {
+				return false
+			}
+			imm, err := wasm.ClassifyInstructionImmediate(r, op)
+			if err != nil {
+				return false
+			}
+			if imm.Kind == wasm.InstrAnyConvertExtern || imm.Kind == wasm.InstrExternConvertAny {
+				return true
+			}
+		}
+		return false
+	}
+	for i := range m.Code {
+		if usesExpr(wasm.Expr{BodyBytes: m.Code[i].BodyBytes}) {
+			return true
+		}
+	}
+	for i := range m.Globals {
+		if usesExpr(m.Globals[i].Init) {
+			return true
+		}
+	}
+	for i := range m.Tables {
+		if m.Tables[i].Init != nil && usesExpr(*m.Tables[i].Init) {
+			return true
+		}
+	}
+	for i := range m.Elements {
+		for _, expr := range m.Elements[i].Kind.Exprs {
+			if usesExpr(expr) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func moduleUsesIndexedFunctionRefTest(m *wasm.Module) bool {
+	if m == nil {
+		return false
+	}
+	for i := range m.Code {
+		r := wasm.NewReader(m.Code[i].BodyBytes)
+		for r.HasNext() {
+			op, err := r.Byte()
+			if err != nil {
+				return false
+			}
+			probe := *r
+			imm, err := wasm.ClassifyInstructionImmediate(r, op)
+			if err != nil {
+				return false
+			}
+			if op != 0xfb || imm.Kind != wasm.InstrRefTest {
+				continue
+			}
+			sub, err := probe.U32()
+			if err != nil || (sub != 20 && sub != 21) {
+				continue
+			}
+			heap, err := probe.S33()
+			if err == nil && heap >= 0 {
+				if _, ok := m.TypeFunc(uint32(heap)); ok {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+func moduleHasGCHeapType(m *wasm.Module) bool {
+	if m == nil {
+		return false
+	}
+	for i := range m.Types {
+		for j := range m.Types[i].SubTypes {
+			if kind := m.Types[i].SubTypes[j].Comp.Kind; kind == wasm.CompStruct || kind == wasm.CompArray {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func moduleHasGCStructType(m *wasm.Module) bool {
+	if m == nil {
+		return false
+	}
+	for i := range m.Types {
+		for j := range m.Types[i].SubTypes {
+			if m.Types[i].SubTypes[j].Comp.Kind == wasm.CompStruct {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func moduleUsesGenericGCStructHelpers(m *wasm.Module) bool {
 	if m == nil {
 		return false
 	}
-	hasStructType := false
-	for i := range m.Types {
-		for j := range m.Types[i].SubTypes {
-			if m.Types[i].SubTypes[j].Comp.Kind == wasm.CompStruct {
-				hasStructType = true
-				break
-			}
-		}
-		if hasStructType {
-			break
-		}
-	}
+	hasStructType := moduleHasGCStructType(m)
 	for i := range m.Code {
 		r := wasm.NewReader(m.Code[i].BodyBytes)
 		for r.HasNext() {

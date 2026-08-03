@@ -2337,6 +2337,55 @@ func TestStagedDeclarationOnlyMultiTable64Products(t *testing.T) {
 	}
 }
 
+func TestWasmtimeTable64TooBigFiniteFailureEquivalent(t *testing.T) {
+	const huge = uint64(0x2000_0000_0000_0000)
+
+	// Preserve the upstream declaration shape while proving that Wago rejects
+	// before attempting an overflowing descriptor allocation.
+	table := append([]byte{0x70, 0x04}, uleb64(huge)...)
+	if compiled, err := compileStagedTable64(wasmtest.Module(wasmtest.Section(4, wasmtest.Vec(table)))); err == nil {
+		compiled.Close()
+		t.Fatal("huge table64 minimum compiled instead of failing closed")
+	}
+
+	// Core table.grow reports unavailable capacity with the all-ones sentinel;
+	// Wasmtime's source instead expects its engine-specific host allocation trap.
+	// Keep the exact i64 delta and prove transactional failure and unchanged size.
+	growTable := []byte{0x70, 0x04, 0x00}
+	growModule := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType([]wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I64}),
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I64}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1))),
+		wasmtest.Section(4, wasmtest.Vec(growTable)),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("grow", 0, 0),
+			wasmtest.ExportEntry("size", 0, 1),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0xd0, 0x70, 0x20, 0x00, 0xfc, 0x0f, 0x00, 0x0b}),
+			wasmtest.Code([]byte{0xfc, 0x10, 0x00, 0x0b}),
+		)),
+	)
+	compiled, err := compileStagedTable64(growModule)
+	if err != nil {
+		t.Fatalf("compile finite-failure table64 module: %v", err)
+	}
+	defer compiled.Close()
+	in, err := instantiateCore(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatalf("instantiate finite-failure table64 module: %v", err)
+	}
+	defer in.Close()
+	if got, err := in.Invoke("grow", huge); err != nil || len(got) != 1 || got[0] != ^uint64(0) {
+		t.Fatalf("table64.grow(%#x) = %v, err=%v; want all-ones failure", huge, got, err)
+	}
+	if got, err := in.Invoke("size"); err != nil || len(got) != 1 || got[0] != 0 {
+		t.Fatalf("size after failed huge grow = %v, err=%v; want zero", got, err)
+	}
+}
+
 func TestStagedInertOversizedTable64DeclarationsPreserveExactMax(t *testing.T) {
 	for _, max := range []uint64{65536, 0xffff_ffff, 0x1_0000_0000, ^uint64(0)} {
 		t.Run(fmt.Sprintf("max_%x", max), func(t *testing.T) {

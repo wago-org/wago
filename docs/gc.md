@@ -2180,4 +2180,4 @@ products are no longer rejected merely for missing a pinned identity. Generic
 ranges, destination element type, and allocation bounds before publishing a
 collector reference. Reference argument/result conversion uses store-owned
 extern/any tokens and releases transient ownership after matching. The pinned
-full suite passes 2,226 modules and 58,038 assertions with zero gaps.
+full suite passes 2,226 modules and 58,238 assertions with zero gaps.

@@ -7,7 +7,7 @@
 //   ucontext.uc_mcontext = +176
 //   sigcontext.regs[26] = uc_mcontext + 8 + 26*8 = +392
 //   sigcontext.pc = uc_mcontext + 8 + 31*8 + 8 = +440
-// guardRegion is {start@0, end@8, linMem@16}, 32 bytes.
+// guardRegion is {start@0, end@8, linMem@16, ownerLinMem@24}, 32 bytes.
 TEXT ·guardSigHandler(SB), NOSPLIT|NOFRAME, $0-0
 	MOVD	16(R1), R8              // R8 = siginfo->si_addr (fault address)
 	MOVD	$·guardRegions(SB), R10 // R10 = &guardRegions[0]
@@ -21,15 +21,17 @@ scan:
 	CMP	R9, R8
 	BHS	next                    // addr >= end
 
-	MOVD	16(R10), R9             // region.linMem
-	MOVD	392(R2), R26            // saved X26 (arm64 linMem)
-	CMP	R9, R26
+	MOVD	16(R10), R9             // region.linMem (fault-address base)
+	MOVD	24(R10), R14            // region.ownerLinMem (active primary)
+	MOVD	392(R2), R26            // saved X26 (arm64 primary linMem)
+	CMP	R14, R26
 	BNE	next                    // mismatch -> not this reservation's wasm fault
 
-	// off = fault - linMem; curBytes = [linMem-8].
+	// off and curBytes belong to the faulting reservation, while X26 remains
+	// the active primary linMem used for trap/unwind state.
 	MOVD	R8, R12
-	SUB	R26, R12                // R12 = off (fault - linMem)
-	MOVWU	-8(R26), R13            // R13 = curBytes (u32, zero-extended)
+	SUB	R9, R12                 // R12 = off (fault - region.linMem)
+	MOVWU	-8(R9), R13             // R13 = region curBytes (u32, zero-extended)
 	CMP	R13, R12
 	BHS	dotrap                  // curBytes <= off -> out of range -> trap
 

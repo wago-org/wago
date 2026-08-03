@@ -30,8 +30,9 @@ scan:
 	MOVQ	8(R10), R9
 	CMPQ	R14, R9
 	JCC	next
-	MOVQ	16(R10), BX             // linMem
-	CMPQ	144(R15), BX            // CONTEXT.Rbx
+	MOVQ	16(R10), BX             // region.linMem (fault-address base)
+	MOVQ	24(R10), AX             // region.ownerLinMem
+	CMPQ	144(R15), AX            // CONTEXT.Rbx is the primary linMem
 	JNE	next
 	MOVQ	R14, AX
 	SUBQ	BX, AX
@@ -56,7 +57,8 @@ scan:
 outofbounds:
 	MOVL	$3, CX
 settrap:
-	MOVQ	-104(BX), AX
+	MOVQ	144(R15), AX            // active primary linMem
+	MOVQ	-104(AX), AX
 	TESTQ	AX, AX
 	JZ	search
 	MOVL	CX, (AX)

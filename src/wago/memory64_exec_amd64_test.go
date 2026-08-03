@@ -1276,8 +1276,12 @@ func TestStagedMemory64AdmissionGatesAndMemory32CodeStability(t *testing.T) {
 	multiFeatures := multiCfg.frontendFeatures()
 	multiFeatures.Memory64 = true
 	multiFeatures.MultiMemory = true
-	if _, err := compileWithFrontendFeatures(multiCfg, multi, multiFeatures); err == nil || !strings.Contains(err.Error(), "rejects multi-memory shapes") {
-		t.Fatalf("multi-memory memory64 error = %v", err)
+	multiCompiled, err := compileWithFrontendFeatures(multiCfg, multi, multiFeatures)
+	if err != nil {
+		t.Fatalf("multi-memory memory64 compile = %v", err)
+	}
+	if err := multiCompiled.Close(); err != nil {
+		t.Fatalf("close multi-memory memory64 module: %v", err)
 	}
 
 	cfg := NewRuntimeConfig()

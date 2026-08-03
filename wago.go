@@ -49,6 +49,7 @@ type (
 	GCAllocatorKind           = impl.GCAllocatorKind
 	GCConfig                  = impl.GCConfig
 	GCHelperStats             = impl.GCHelperStats
+	GCHostModule              = impl.GCHostModule
 	GCProfile                 = impl.GCProfile
 	GCRef                     = impl.GCRef
 	GCRuntimeKind             = impl.GCRuntimeKind

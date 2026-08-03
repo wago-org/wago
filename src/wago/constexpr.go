@@ -362,7 +362,10 @@ func evalI31ConstExprBytes(b []byte, want wasm.ValType, ctx *constExprCompileCon
 		return constExprResult{}, true, fmt.Errorf("i31 const expression missing end: %w", err)
 	}
 	if end != 0x0b || r.BytesLeft() != 0 {
-		return constExprResult{}, true, fmt.Errorf("i31 const expression has trailing bytes")
+		// The ref.i31 may be an operand of a longer validated GC constant
+		// expression (for example an extern/any conversion round trip). Let the
+		// general collector-backed evaluator preserve that complete program.
+		return constExprResult{}, false, nil
 	}
 	got.vtype = wasm.RefVal(wasm.Ref(false, wasm.AbsHeap(wasm.HeapI31), false))
 	if !constExprTypeMatches(got.vtype, want, ctx) {

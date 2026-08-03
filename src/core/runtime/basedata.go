@@ -441,9 +441,24 @@ func (j *JobMemory) GCNativeViewPtr() uintptr { return uintptr(j.getU64(offGCNat
 // handler's fault-address check (both zero in classic mode).
 func (j *JobMemory) ReserveRange() (base, length uintptr) { return j.reserveBase, j.reserveLen }
 
+// SetGuardOwner identifies the primary linMem currently executing accesses to
+// this guarded reservation. Memory 0 owns itself; indexed memories are rebound
+// to the invoking instance's primary linMem before native entry so a lazy-commit
+// fault can be authenticated without confusing the indexed base with RBX/X26.
+func (j *JobMemory) SetGuardOwner(ownerLinMem uintptr) {
+	if j != nil && j.reserveBase != 0 && guardOwnerHook != nil {
+		guardOwnerHook(j.reserveBase, ownerLinMem)
+	}
+}
+
 // guardCloseHook, set by the wago_guardpage build, removes a guarded reservation
 // from the trap handler's registry before it is unmapped. nil otherwise.
 var guardCloseHook func(reserveBase uintptr)
+
+// guardOwnerHook updates the active primary linMem associated with a guarded
+// reservation. Native execution serialization makes each update quiescent with
+// respect to Wasm, while handlers consume the published pointer locklessly.
+var guardOwnerHook func(reserveBase, ownerLinMem uintptr)
 
 // guardReleaseHook, set by the wago_guardpage build, offers a released guarded
 // reservation to the guard-page reuse cache (keeping its registry entry) instead

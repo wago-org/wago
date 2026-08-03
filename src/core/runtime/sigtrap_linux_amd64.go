@@ -5,6 +5,7 @@ package runtime
 import (
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"unsafe"
 
@@ -44,13 +45,13 @@ const (
 // in a Go asm stub installed via raw rt_sigaction.
 
 // guardRegion describes one live guarded reservation. Layout is read directly by
-// the asm handler: start@0, end@8, linMem@16, size 32 bytes. A zero start means
-// the slot is free.
+// the asm handler: start@0, end@8, linMem@16, ownerLinMem@24, size 32 bytes.
+// A zero start means the slot is free.
 type guardRegion struct {
-	start  uintptr
-	end    uintptr
-	linMem uintptr
-	_      uintptr // pad to 32 bytes for asm indexing
+	start       uintptr
+	end         uintptr
+	linMem      uintptr
+	ownerLinMem uintptr
 }
 
 const maxGuardRegions = 256
@@ -74,6 +75,7 @@ func registerGuardRegion(start, end, linMem uintptr) error {
 	for i := range guardRegions {
 		if guardRegions[i].start == 0 {
 			guardRegions[i].linMem = linMem
+			guardRegions[i].ownerLinMem = linMem
 			guardRegions[i].end = end
 			guardRegions[i].start = start // enable last
 			return nil
@@ -84,6 +86,17 @@ func registerGuardRegion(start, end, linMem uintptr) error {
 
 // unregisterGuardRegion frees a reservation's slot. start is cleared first so the
 // handler immediately stops matching it.
+func setGuardRegionOwner(start, ownerLinMem uintptr) {
+	guardRegionMu.Lock()
+	defer guardRegionMu.Unlock()
+	for i := range guardRegions {
+		if guardRegions[i].start == start {
+			atomic.StoreUintptr(&guardRegions[i].ownerLinMem, ownerLinMem)
+			return
+		}
+	}
+}
+
 func unregisterGuardRegion(start uintptr) {
 	guardRegionMu.Lock()
 	defer guardRegionMu.Unlock()
@@ -92,12 +105,16 @@ func unregisterGuardRegion(start uintptr) {
 			guardRegions[i].start = 0 // disable first
 			guardRegions[i].end = 0
 			guardRegions[i].linMem = 0
+			guardRegions[i].ownerLinMem = 0
 			return
 		}
 	}
 }
 
-func init() { guardCloseHook = unregisterGuardRegion }
+func init() {
+	guardCloseHook = unregisterGuardRegion
+	guardOwnerHook = setGuardRegionOwner
+}
 
 // nativeTrapExitFramed and nativeTrapExitHandlerJump are signal-rewrite landing
 // pads. Never called from Go.

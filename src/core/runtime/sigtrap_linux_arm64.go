@@ -5,6 +5,7 @@ package runtime
 import (
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"unsafe"
 
@@ -23,10 +24,10 @@ const (
 // handler, but arm64 has only the handler-jump ABI: linMem is pinned in X26 and
 // the trap-cell pointer lives in basedata at [linMem-TrapCellPtrOffset].
 type guardRegion struct {
-	start  uintptr
-	end    uintptr
-	linMem uintptr
-	_      uintptr
+	start       uintptr
+	end         uintptr
+	linMem      uintptr
+	ownerLinMem uintptr
 }
 
 const maxGuardRegions = 256
@@ -47,12 +48,24 @@ func registerGuardRegion(start, end, linMem uintptr) error {
 	for i := range guardRegions {
 		if guardRegions[i].start == 0 {
 			guardRegions[i].linMem = linMem
+			guardRegions[i].ownerLinMem = linMem
 			guardRegions[i].end = end
 			guardRegions[i].start = start
 			return nil
 		}
 	}
 	return fmt.Errorf("guard region table full (%d)", maxGuardRegions)
+}
+
+func setGuardRegionOwner(start, ownerLinMem uintptr) {
+	guardRegionMu.Lock()
+	defer guardRegionMu.Unlock()
+	for i := range guardRegions {
+		if guardRegions[i].start == start {
+			atomic.StoreUintptr(&guardRegions[i].ownerLinMem, ownerLinMem)
+			return
+		}
+	}
 }
 
 func unregisterGuardRegion(start uintptr) {
@@ -63,12 +76,16 @@ func unregisterGuardRegion(start uintptr) {
 			guardRegions[i].start = 0
 			guardRegions[i].end = 0
 			guardRegions[i].linMem = 0
+			guardRegions[i].ownerLinMem = 0
 			return
 		}
 	}
 }
 
-func init() { guardCloseHook = unregisterGuardRegion }
+func init() {
+	guardCloseHook = unregisterGuardRegion
+	guardOwnerHook = setGuardRegionOwner
+}
 
 func nativeTrapExitHandlerJump()
 

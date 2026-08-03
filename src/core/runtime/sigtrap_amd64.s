@@ -6,13 +6,13 @@
 // DX=*ucontext). Pure asm, no Go calls, no g use — runs on the signal alt-stack.
 // It derives everything per-fault (no per-call shared state): scan the live
 // reservation table for one containing the fault address, confirm the faulting
-// frame's linMem matches that reservation, then record a wasm out-of-bounds trap
+// frame's primary linMem owns that reservation, then record a wasm out-of-bounds trap
 // in the frame's *trap and redirect the saved RIP to the matching native trap
 // exit. Anything else chains to Go's saved handler.
 //
 // Linux amd64 ucontext: uc_mcontext.gregs at +40; REG_RBP=10 -> +120,
 // REG_RBX=11 -> +128, REG_RSP=15 -> +160, REG_RIP=16 -> +168. guardRegion is
-// {start@0, end@8, linMem@16}, 32 bytes.
+// {start@0, end@8, linMem@16, ownerLinMem@24}, 32 bytes.
 TEXT ·guardSigHandler(SB), NOSPLIT|NOFRAME, $0-0
 	MOVQ	16(SI), R8              // R8 = siginfo->si_addr (fault address)
 	LEAQ	·guardRegions(SB), R10  // R10 = &guardRegions[0]
@@ -29,15 +29,16 @@ scan:
 
 	// addr is inside this reservation. First try the frameless x64 ABI: RBX is
 	// pinned to linMem and the trap cell pointer lives at [linMem-TrapCellPtrOffset].
-	MOVQ	16(R10), R9             // region.linMem
-	MOVQ	128(DX), AX             // AX = saved RBX (x64 linMem)
-	CMPQ	AX, R9
+	MOVQ	16(R10), R9             // region.linMem (fault-address base)
+	MOVQ	24(R10), R13            // region.ownerLinMem (active primary)
+	MOVQ	128(DX), AX             // AX = saved RBX (x64 primary linMem)
+	CMPQ	AX, R13
 	JE	match_x64
 
 	// Fall back to the framed amd64 ABI: [RBP-16] is linMem and [RBP-24] is trap.
 	MOVQ	120(DX), R15            // R15 = saved RBP (faulting frame)
 	MOVQ	-16(R15), CX            // CX = [RBP-16] = saved linMem
-	CMPQ	CX, R9
+	CMPQ	CX, R13
 	JNE	next                    // mismatch -> not this reservation's wasm fault
 	XORL	R14, R14                // mode 0 = framed amd64
 	JMP	matched
@@ -50,10 +51,11 @@ match_x64:
 matched:
 	// Fault is in this reservation's wasm memory. Lazily commit a grown-but-
 	// uncommitted page (off < current logical size), else trap a genuinely
-	// out-of-range access. off = fault(R8) - linMem(CX); curBytes = [linMem-8].
+	// out-of-range access. R9 is the faulting memory base; CX is the active
+	// primary linMem used for trap/unwind state.
 	MOVQ	R8, R12
-	SUBQ	CX, R12                 // R12 = off (fault - linMem)
-	MOVL	-8(CX), R13             // R13 = curBytes (u32, zero-extended)
+	SUBQ	R9, R12                 // R12 = off (fault - region.linMem)
+	MOVL	-8(R9), R13             // R13 = region curBytes (u32, zero-extended)
 	CMPQ	R13, R12
 	JLS	dotrap                  // curBytes <= off -> out of range -> trap
 	// Commit the 4 KiB Linux/x86 host page containing the fault, then resume the

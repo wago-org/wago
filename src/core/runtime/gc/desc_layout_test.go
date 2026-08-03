@@ -1,6 +1,7 @@
 package gc
 
 import (
+	"errors"
 	"strings"
 	"testing"
 )
@@ -54,8 +55,23 @@ func TestDescriptorsAndLayout(t *testing.T) {
 	if asz != Align8(HeaderSize+6) || asz%8 != 0 {
 		t.Fatalf("bad array size %d", asz)
 	}
-	if _, err := ArraySize(arr, ^uint32(0)); err == nil {
-		t.Fatal("expected overflow")
+	if _, err := ArraySize(arr, ^uint32(0)); !errors.Is(err, ErrAllocationTooLarge) {
+		t.Fatalf("array size overflow = %v, want ErrAllocationTooLarge", err)
+	}
+	wide, err := NewArrayDesc(0, StorageI32)
+	if err != nil {
+		t.Fatal(err)
+	}
+	collector, err := NewCollector(Config{}, []TypeDesc{wide})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer collector.Close()
+	// This payload fits the eight-byte object-size rounding but not the
+	// throughput allocator's sixteen-byte physical extent. It previously wrapped
+	// Align16 and panicked while publishing the object header.
+	if _, err := collector.NewArrayDefault(0, 1_073_741_817); !errors.Is(err, ErrAllocationTooLarge) {
+		t.Fatalf("near-u32 array allocation = %v, want ErrAllocationTooLarge", err)
 	}
 	if got, err := NewStructDesc(5, []StorageKind{StorageI8, StorageRef, StorageI64, StorageRefNull}); err != nil {
 		t.Fatalf("mixed layout rejected: %v", err)

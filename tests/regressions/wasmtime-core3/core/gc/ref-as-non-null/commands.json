@@ -1,0 +1,141 @@
+{
+  "commands": [
+    {
+      "filename": "commands.0.wasm",
+      "line": 1,
+      "type": "module_definition"
+    },
+    {
+      "line": 10,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "non-null-struct",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "42"
+        }
+      ],
+      "line": 11,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "null-struct",
+        "type": "invoke"
+      },
+      "line": 12,
+      "text": "null reference",
+      "type": "assert_trap"
+    },
+    {
+      "filename": "commands.1.wasm",
+      "line": 13,
+      "type": "module_definition"
+    },
+    {
+      "line": 22,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "non-null-array",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "5"
+        }
+      ],
+      "line": 23,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "null-array",
+        "type": "invoke"
+      },
+      "line": 24,
+      "text": "null reference",
+      "type": "assert_trap"
+    },
+    {
+      "filename": "commands.2.wasm",
+      "line": 25,
+      "type": "module_definition"
+    },
+    {
+      "line": 33,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "non-null-any",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "1"
+        }
+      ],
+      "line": 34,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "null-any",
+        "type": "invoke"
+      },
+      "line": 35,
+      "text": "null reference",
+      "type": "assert_trap"
+    },
+    {
+      "filename": "commands.3.wasm",
+      "line": 36,
+      "type": "module_definition"
+    },
+    {
+      "line": 46,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "non-null-func",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "7"
+        }
+      ],
+      "line": 47,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "null-func",
+        "type": "invoke"
+      },
+      "line": 48,
+      "text": "null reference",
+      "type": "assert_trap"
+    }
+  ],
+  "source": "WebAssembly/spec interpreter 3.0.0"
+}

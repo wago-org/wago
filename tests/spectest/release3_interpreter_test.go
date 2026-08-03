@@ -49,6 +49,7 @@ func TestRelease3InterpreterBinaryScriptConverter(t *testing.T) {
 (assert_return
   (invoke $I "f" (i32.const 0xffffffff))
   (either (i32.const 0x1) (i32.const 0x2)))
+(assert_return (invoke $I "g") (f32.const 0x1.91eb_86p+1))
 `
 	if err := os.WriteFile(input, []byte(script), 0o600); err != nil {
 		t.Fatal(err)
@@ -64,7 +65,11 @@ func TestRelease3InterpreterBinaryScriptConverter(t *testing.T) {
 			Name     string `json:"name"`
 			Module   string `json:"module"`
 			Filename string `json:"filename"`
-			Either   []struct {
+			Expected []struct {
+				Type  string `json:"type"`
+				Value string `json:"value"`
+			} `json:"expected"`
+			Either []struct {
 				Type  string `json:"type"`
 				Value string `json:"value"`
 			} `json:"either"`
@@ -77,7 +82,7 @@ func TestRelease3InterpreterBinaryScriptConverter(t *testing.T) {
 	if err := json.Unmarshal(raw, &got); err != nil {
 		t.Fatal(err)
 	}
-	if got.Source != "WebAssembly/spec interpreter 3.0.0" || len(got.Commands) != 4 {
+	if got.Source != "WebAssembly/spec interpreter 3.0.0" || len(got.Commands) != 5 {
 		t.Fatalf("converted document = source %q commands %+v", got.Source, got.Commands)
 	}
 	if got.Commands[0].Type != "module_definition" || got.Commands[0].Name != "$M" || got.Commands[1].Type != "module_instance" || got.Commands[1].Name != "$I" || got.Commands[1].Module != "$M" {
@@ -85,6 +90,9 @@ func TestRelease3InterpreterBinaryScriptConverter(t *testing.T) {
 	}
 	if len(got.Commands[3].Either) != 2 || got.Commands[3].Either[1].Value != "2" {
 		t.Fatalf("either result patterns = %+v", got.Commands[3].Either)
+	}
+	if len(got.Commands[4].Expected) != 1 || got.Commands[4].Expected[0].Type != "f32" || got.Commands[4].Expected[0].Value != "1078523331" {
+		t.Fatalf("underscored hexadecimal float = %+v", got.Commands[4].Expected)
 	}
 	wasm, err := os.ReadFile(filepath.Join(dir, got.Commands[0].Filename))
 	if err != nil {

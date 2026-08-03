@@ -2,6 +2,7 @@ package wago
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"strings"
 	"unsafe"
@@ -144,6 +145,12 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 			return arrayRefValue(typeID, words[0])
 		}
 		return arrayValue(typeID, words)
+	}
+	panicArrayError := func(err error) {
+		if errors.Is(err, gc.ErrAllocationTooLarge) {
+			panic(gcStructHelperTrap{code: coreruntime.TrapBuiltin})
+		}
+		panic(gcStructHelperError{err: err})
 	}
 
 	switch helper {
@@ -476,7 +483,7 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 		value := arrayStoredValue(typeID, args[:valueSlots])
 		ref, err := in.gc.NewArrayWithRoots(in.requireGCDomainType(typeID), length, value, frameRoots)
 		if err != nil {
-			panic(gcStructHelperError{err: err})
+			panicArrayError(err)
 		}
 		results[0] = uint64(ref)
 	case gcArrayAllocFixed:
@@ -499,7 +506,7 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 		}
 		ref, err := in.gc.NewArrayFixedPrevalidatedWithRoots(in.requireGCDomainType(typeID), values, frameRoots)
 		if err != nil {
-			panic(gcStructHelperError{err: err})
+			panicArrayError(err)
 		}
 		results[0] = uint64(ref)
 	case gcArrayAllocDefault:
@@ -508,7 +515,7 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 		}
 		ref, err := in.gc.NewArrayDefaultPrevalidatedWithRoots(in.requireGCDomainType(uint32(args[1])), uint32(args[0]), frameRoots)
 		if err != nil {
-			panic(gcStructHelperError{err: err})
+			panicArrayError(err)
 		}
 		results[0] = uint64(ref)
 	case gcArrayGet, gcArrayGetS, gcArrayGetU:

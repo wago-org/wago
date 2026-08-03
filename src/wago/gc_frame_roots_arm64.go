@@ -197,6 +197,9 @@ func arm64GCFrameTablesSafe(m *wasm.Module) bool {
 			}
 			ee, err := wasm.ParseElementExpr(expr)
 			if err != nil {
+				if kind == 2 && gcFrameCollectorElementExprSafe(expr) {
+					continue
+				}
 				return false
 			}
 			if ee.HasGlobal {

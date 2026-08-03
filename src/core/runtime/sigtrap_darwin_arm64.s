@@ -17,7 +17,7 @@ TEXT ·addrLibcSigactionTrampoline(SB), NOSPLIT, $0-8
 //   mcontext64.ss.x[26]   = +224
 //   mcontext64.ss.pc      = +272
 //   mcontext64.ss.flags   = +284
-// guardRegion is {start@0, end@8, linMem@16}, 32 bytes.
+// guardRegion is {start@0, end@8, linMem@16, ownerLinMem@24}, 32 bytes.
 TEXT ·guardSigHandler(SB), NOSPLIT|NOFRAME, $0-0
 	MOVD	R0, R3                  // preserve signal arguments for chaining
 	MOVD	R1, R4
@@ -34,16 +34,18 @@ scan:
 	CMP	R9, R8
 	BHS	next                    // addr >= end
 
-	MOVD	16(R10), R9             // region.linMem
+	MOVD	16(R10), R9             // region.linMem (fault-address base)
 	MOVD	48(R2), R14             // ucontext.uc_mcontext
-	MOVD	224(R14), R26           // saved X26 (pinned linMem)
-	CMP	R9, R26
+	MOVD	224(R14), R26           // saved X26 (primary linMem)
+	MOVD	24(R10), R12            // region.ownerLinMem
+	CMP	R12, R26
 	BNE	next                    // not this reservation's wasm fault
 
-	// off = fault - linMem; curBytes = [linMem-8].
+	// Bounds belong to the faulting reservation; X26 remains the active primary
+	// linMem used for trap/unwind state.
 	MOVD	R8, R12
-	SUB	R26, R12                // R12 = fault - linMem
-	MOVWU	-8(R26), R13            // logical linear-memory size
+	SUB	R9, R12                 // R12 = fault - region.linMem
+	MOVWU	-8(R9), R13             // region logical linear-memory size
 	CMP	R13, R12
 	BHS	outofbounds             // curBytes <= off
 

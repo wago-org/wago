@@ -74,7 +74,7 @@ func TestFixtureTreeDigest(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		if entry.IsDir() && path != root && entry.Name() == "runtime" {
+		if entry.IsDir() && path != root && (entry.Name() == "runtime" || entry.Name() == "wasmtime-core3") {
 			return filepath.SkipDir
 		}
 		if entry.IsDir() {

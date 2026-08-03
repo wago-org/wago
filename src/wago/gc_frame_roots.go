@@ -4,9 +4,25 @@ import (
 	"fmt"
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
+	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
 const gcNativeFrameRootLimit = 64
+
+func gcFrameCollectorElementExprSafe(expr wasm.Expr) bool {
+	body := expr.BodyBytes
+	if len(body) == 0 {
+		encoded, err := wasm.EncodeExpr(expr)
+		if err != nil {
+			return false
+		}
+		body = encoded
+	}
+	// Module validation and elementPayloads perform the full type/opcode proof.
+	// Frame-root admission only needs to recognize the retained, single-result GC
+	// expression form so its passive slot can participate in persistent roots.
+	return len(body) != 0 && body[len(body)-1] == 0x0b
+}
 
 func validGCModuleFrameRootPlan(module *shared.GCModuleFrameRootPlan) bool {
 	if module == nil || len(module.Functions) == 0 {
@@ -106,11 +122,27 @@ func validCompiledGCFunctionTables(c *Compiled) bool {
 	validValues := func(refType ValType, values []RefInit) bool {
 		refType = normalizedElemRefType(refType)
 		for _, value := range values {
-			if value.HasGlobal {
-				if int(value.GlobalIndex) >= len(c.Globals) || c.Globals[value.GlobalIndex].Mutable || !isGCRefValType(c.Globals[value.GlobalIndex].Type) {
+			if len(value.Expr) != 0 {
+				if !c.usesGenericGCExecution() || (refType != ValAnyRef && refType != ValI31Ref) || value.Expr[len(value.Expr)-1] != 0x0b {
 					return false
 				}
 				continue
+			}
+			if value.HasGlobal {
+				if int(value.GlobalIndex) >= len(c.Globals) || c.Globals[value.GlobalIndex].Mutable {
+					return false
+				}
+				if value.I31Wrap {
+					if refType != ValI31Ref || c.Globals[value.GlobalIndex].Type != ValI32 {
+						return false
+					}
+				} else if !isGCRefValType(c.Globals[value.GlobalIndex].Type) {
+					return false
+				}
+				continue
+			}
+			if value.I31Wrap {
+				return false
 			}
 			if refType == ValFuncRef {
 				if !value.Null && int(value.FuncIndex) >= totalFuncs {

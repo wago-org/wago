@@ -474,6 +474,10 @@ func (f *fn) returnCallRef(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
+	return f.returnCallRefType(typeIdx)
+}
+
+func (f *fn) returnCallRefType(typeIdx uint32) error {
 	ft, ok := f.m.TypeFunc(typeIdx)
 	if !ok {
 		return fmt.Errorf("return_call_ref: bad type %d", typeIdx)
@@ -704,6 +708,25 @@ func (f *fn) returnCallIndirect(r *wasm.Reader) error {
 	}
 	if !tailResultABICompatible(f.ft.Results, ft.Results) {
 		return fmt.Errorf("return_call_indirect: type %d result shape differs from caller", typeIdx)
+	}
+	if f.stagedTailDescriptors && f.importBindings != nil && !f.immutableLocalTable {
+		idx := f.materialize(f.popValue())
+		f.canonicalizeTableOperand(idx, tableIdx)
+		f.pinned = f.pinned.add(idx)
+		tbl := f.allocReg(0)
+		f.loadTableDescriptor(tbl, tableIdx)
+		ln := f.allocReg(maskOf(tbl))
+		f.ld32(ln, tbl, 0)
+		f.cmpRR(idx, ln, f.tableAddr64(tableIdx))
+		f.release(ln)
+		f.trapIf(condAE, trapIndirectOOB)
+		f.a.LslImm(idx, idx, 5, true)
+		f.a.Add64(idx, idx, tbl)
+		f.ld64(idx, idx, 8+runtime.TableEntryRefSlotOffset)
+		f.release(tbl)
+		f.pinned = f.pinned.remove(idx)
+		f.pushReg(idx, mtI64)
+		return f.returnCallRefType(typeIdx)
 	}
 	canon, ok := f.m.StructuralTypeKeyChecked(typeIdx)
 	if !ok {

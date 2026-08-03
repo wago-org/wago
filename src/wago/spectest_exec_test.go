@@ -88,6 +88,7 @@ func wastNames(dir string) []string {
 type specValue struct {
 	Type     string          `json:"type"`
 	LaneType string          `json:"lane_type"` // wast2json's v128 lane type, e.g. i8/i16/i32/i64/f32/f64.
+	HeapType string          `json:"heap_type"` // spec interpreter reference expectation, e.g. func or extern.
 	Value    json.RawMessage `json:"value"`
 }
 
@@ -129,20 +130,23 @@ type specAction struct {
 }
 
 type specExecCmd struct {
-	Type       string      `json:"type"`
-	Line       int         `json:"line"`
-	Filename   string      `json:"filename"`
-	Name       string      `json:"name"`
-	Module     string      `json:"module"`
-	As         string      `json:"as"`
-	Action     specAction  `json:"action"`
-	Expected   []specValue `json:"expected"`
-	Either     []specValue `json:"either"`
-	Text       string      `json:"text"`
-	ModuleType string      `json:"module_type"`
+	Type       string        `json:"type"`
+	Line       int           `json:"line"`
+	Filename   string        `json:"filename"`
+	Name       string        `json:"name"`
+	Module     string        `json:"module"`
+	As         string        `json:"as"`
+	Thread     string        `json:"thread"`
+	Action     specAction    `json:"action"`
+	Expected   []specValue   `json:"expected"`
+	Either     []specValue   `json:"either"`
+	Text       string        `json:"text"`
+	ModuleType string        `json:"module_type"`
+	Commands   []specExecCmd `json:"commands"`
 }
 
 type specExecFile struct {
+	Source         string        `json:"source"`
 	SourceFilename string        `json:"source_filename"`
 	Commands       []specExecCmd `json:"commands"`
 }
@@ -942,11 +946,19 @@ func specArgSlots(v specValue) (slots []uint64, ok bool) {
 	if !ok {
 		return nil, false // structured non-v128 value — out of scope
 	}
-	n, err := strconv.ParseUint(s, 10, 64)
-	if err != nil {
+	n, ok := parseSpecScalarBits(s)
+	if !ok {
 		return nil, false // non-numeric (e.g. ref.null / externref) — out of scope
 	}
 	return []uint64{n}, true
+}
+
+func parseSpecScalarBits(s string) (uint64, bool) {
+	if n, err := strconv.ParseUint(s, 10, 64); err == nil {
+		return n, true
+	}
+	n, err := strconv.ParseInt(s, 10, 64)
+	return uint64(n), err == nil
 }
 
 // valueWidth64 reports whether a spec value type occupies a full 64-bit slot.
@@ -1004,8 +1016,8 @@ func matchResult(got []uint64, want specValue) bool {
 	case "nan:arithmetic":
 		return isNaNClass(got[0], want.Type, false)
 	}
-	wbits, err := strconv.ParseUint(s, 10, 64)
-	if err != nil {
+	wbits, ok := parseSpecScalarBits(s)
+	if !ok {
 		return false
 	}
 	if valueWidth64(want.Type) {
@@ -1634,7 +1646,11 @@ func runSpecExecFile(t *testing.T, base, tmp string, sf specExecFile) specExecSt
 // runSpecExecFileWithConfig replays one .wast's commands. The "current"
 // instance is the most recently instantiated module; when a module is out of
 // scope (nil inst), its assertions are skipped until the next module command.
-func runSpecExecFileWithConfig(t *testing.T, base, tmp string, sf specExecFile, cfg *wago.RuntimeConfig) (stats specExecStats) {
+func runSpecExecFileWithConfig(t *testing.T, base, tmp string, sf specExecFile, cfg *wago.RuntimeConfig) specExecStats {
+	return runSpecExecFileWithConfigAndImports(t, base, tmp, sf, cfg, nil)
+}
+
+func runSpecExecFileWithConfigAndImports(t *testing.T, base, tmp string, sf specExecFile, cfg *wago.RuntimeConfig, extraImports wago.Imports) (stats specExecStats) {
 	var cur specModule
 	var curRetained bool
 	var live []specModule
@@ -1674,8 +1690,12 @@ func runSpecExecFileWithConfig(t *testing.T, base, tmp string, sf specExecFile, 
 	named := map[string]specModule{}
 	registered := map[string]specModule{}
 	definitions := map[string][]byte{}
+	threads := map[string]bool{}
 	var latestDefinition []byte
 	standardImports := spectestImports(standardTable, standardTable64, standardMemory)
+	for key, value := range extraImports {
+		standardImports[key] = value
+	}
 	retireCurrent := func() {
 		if cur.inst != nil && !curRetained {
 			cur.close()
@@ -1711,12 +1731,34 @@ func runSpecExecFileWithConfig(t *testing.T, base, tmp string, sf specExecFile, 
 		live = append(live, cur)
 		if c.Name != "" {
 			named[c.Name] = cur
+			// Wasmtime's WAST harness permits named instances to satisfy imports
+			// without a separate register command. The import namespace omits the
+			// textual identifier's leading '$'. An explicit later registration may
+			// intentionally replace this alias.
+			registered[strings.TrimPrefix(c.Name, "$")] = cur
 			curRetained = true
 		}
 	}
 
 	for _, c := range sf.Commands {
 		switch c.Type {
+		case "thread":
+			if c.Name == "" || threads[c.Name] || len(c.Commands) == 0 {
+				t.Fatalf("%s.wast:%d invalid or duplicate thread %q", base, c.Line, c.Name)
+			}
+			// Wasmtime WAST threads execute in independent Stores. Replaying the
+			// nested command graph recursively gives it an independent Runtime and
+			// collector domain; returning closes every nested instance before a
+			// following wait observes completion. This is intentionally synchronous:
+			// the currently admitted thread fixtures have no inter-thread imports or
+			// communication, so scheduling cannot affect their semantics.
+			threadStats := runSpecExecFileWithConfigAndImports(t, base+"/thread:"+c.Name, tmp, specExecFile{Source: sf.Source, Commands: c.Commands}, cfg, extraImports)
+			stats.add(threadStats)
+			threads[c.Name] = true
+		case "wait":
+			if c.Thread == "" || !threads[c.Thread] {
+				t.Fatalf("%s.wast:%d wait references unknown thread %q", base, c.Line, c.Thread)
+			}
 		case "module_definition":
 			data, err := os.ReadFile(filepath.Join(tmp, c.Filename))
 			if err != nil {
@@ -2279,7 +2321,7 @@ func specTrapMatches(err error, want string) (bool, string) {
 	switch want {
 	case "unreachable":
 		ok = matches(wago.TrapUnreachable)
-	case "builtin trap":
+	case "builtin trap", "allocation size too large":
 		ok = matches(wago.TrapBuiltin)
 	case "null reference", "null array reference", "null i31 reference", "null structure reference":
 		ok = matches(wago.TrapNullReference)
@@ -2309,9 +2351,9 @@ func specTrapMatches(err error, want string) (bool, string) {
 		ok = matches(wago.TrapBuiltin, wago.TrapCastFailure)
 	case "undefined element", "undefined", "uninitialized element", "uninitialized":
 		ok = matches(wago.TrapIndirectOutOfBounds, wago.TrapTableOutOfBounds)
-	case "indirect call", "indirect call type mismatch":
+	case "call type mismatch", "indirect call", "indirect call type mismatch":
 		ok = matches(wago.TrapIndirectWrongSig)
-	case "integer divide by zero":
+	case "divide by zero", "integer divide by zero":
 		ok = matches(wago.TrapDivZero)
 	case "integer overflow":
 		ok = matches(wago.TrapDivOverflow, wago.TrapTruncOverflow)
@@ -2368,11 +2410,14 @@ func TestSpecTrapMatching(t *testing.T) {
 		{name: "table direct", err: &wago.TrapError{Code: wago.TrapTableOutOfBounds}, want: "out of bounds table access", ok: true},
 		{name: "table bulk", err: &wago.TrapError{Code: wago.TrapIndirectOutOfBounds}, want: "out of bounds table access", ok: true},
 		{name: "array helper bounds", err: &wago.TrapError{Code: wago.TrapBuiltin}, want: "out of bounds array access", ok: true},
+		{name: "array allocation", err: &wago.TrapError{Code: wago.TrapBuiltin}, want: "allocation size too large", ok: true},
 		{name: "array native bounds", err: &wago.TrapError{Code: wago.TrapCastFailure}, want: "out of bounds array access", ok: true},
 		{name: "null array", err: &wago.TrapError{Code: wago.TrapNullReference}, want: "null array reference", ok: true},
 		{name: "cast", err: &wago.TrapError{Code: wago.TrapCastFailure}, want: "cast", ok: true},
 		{name: "exception", err: &wago.TrapError{Code: wago.TrapUnhandledException}, want: "unhandled exception", ok: true},
 		{name: "indirect call", err: &wago.TrapError{Code: wago.TrapIndirectWrongSig}, want: "indirect call", ok: true},
+		{name: "call type mismatch", err: &wago.TrapError{Code: wago.TrapIndirectWrongSig}, want: "call type mismatch", ok: true},
+		{name: "divide by zero", err: &wago.TrapError{Code: wago.TrapDivZero}, want: "divide by zero", ok: true},
 		{name: "null function", err: &wago.TrapError{Code: wago.TrapIndirectOutOfBounds}, want: "null function reference", ok: true},
 		{name: "undefined element", err: &wago.TrapError{Code: wago.TrapIndirectOutOfBounds}, want: "undefined element", ok: true},
 		{name: "indexed uninitialized element", err: &wago.TrapError{Code: wago.TrapIndirectOutOfBounds}, want: "uninitialized element 2", ok: true},

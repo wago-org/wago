@@ -239,6 +239,36 @@ func (in *Instance) rangeLocalGCTableRoots(fn func(gc.RootSlot) bool, sink gc.Ro
 			return false
 		}
 	}
+	passiveBase := in.jm.PassiveElemPtr()
+	for i := range in.c.passiveElems {
+		elem := &in.c.passiveElems[i]
+		if elem.Mode != ElemModePassive || !isGCRefValType(normalizedElemRefType(elem.RefType)) {
+			continue
+		}
+		if passiveBase == 0 {
+			panic(gcStructHelperError{err: fmt.Errorf("generic GC passive element descriptor %d is unavailable", i)})
+		}
+		descAddr := passiveBase + uintptr(i*coreruntime.PassiveElemDescBytes)
+		desc := unsafe.Slice((*byte)(offHeapPtr(descAddr)), coreruntime.PassiveElemDescBytes)
+		entries := uintptr(binary.LittleEndian.Uint64(desc))
+		length := uint64(binary.LittleEndian.Uint32(desc[8:]))
+		if length > uint64(len(elem.Values)) {
+			panic(gcStructHelperError{err: fmt.Errorf("generic GC passive element %d length %d exceeds %d", i, length, len(elem.Values))})
+		}
+		if length != 0 && entries == 0 {
+			panic(gcStructHelperError{err: fmt.Errorf("generic GC passive element %d entries are unavailable", i)})
+		}
+		for j := uint64(0); j < length; j++ {
+			slot := (*gc.Root)(offHeapPtr(entries + uintptr(j*8)))
+			if sink != nil {
+				if !sink.VisitRootRef(slot.GetRef()) {
+					return false
+				}
+			} else if !fn(slot) {
+				return false
+			}
+		}
+	}
 	return true
 }
 
@@ -457,35 +487,8 @@ func (s *referenceStore) rangeGCDomainPersistentRoots(collector *gc.Collector, f
 				return false
 			}
 		}
-		for tableIndex := 0; tableIndex < candidate.c.tableCount(); tableIndex++ {
-			if !isGCRefValType(candidate.c.tableElementType(tableIndex)) {
-				continue
-			}
-			desc := candidate.tableDescriptor(tableIndex)
-			if len(desc) < 8 {
-				panic(gcStructHelperError{err: fmt.Errorf("Runtime GC-domain table %d descriptor is unavailable", tableIndex)})
-			}
-			length := uint64(binary.LittleEndian.Uint32(desc))
-			capacity := uint64((len(desc) - 8) / 8)
-			if length > capacity {
-				panic(gcStructHelperError{err: fmt.Errorf("Runtime GC-domain table %d length %d exceeds capacity %d", tableIndex, length, capacity)})
-			}
-			for slotIndex := uint64(0); slotIndex < length; slotIndex++ {
-				addr := 8 + slotIndex*8
-				bits := binary.LittleEndian.Uint64(desc[addr:])
-				ref := gc.Ref(uint32(bits))
-				if bits != uint64(ref) {
-					panic(gcStructHelperError{err: fmt.Errorf("Runtime GC-domain table %d slot %d contains non-compact reference %#x", tableIndex, slotIndex, bits)})
-				}
-				slot := (*gc.Root)(unsafe.Pointer(&desc[addr]))
-				if sink != nil {
-					if !sink.VisitRootRef(slot.GetRef()) {
-						return false
-					}
-				} else if !fn(slot) {
-					return false
-				}
-			}
+		if !candidate.rangeLocalGCTableRoots(fn, sink) {
+			return false
 		}
 	}
 	return true

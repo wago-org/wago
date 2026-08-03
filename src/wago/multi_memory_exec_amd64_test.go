@@ -167,6 +167,81 @@ func indexedGrowModule(imported bool) []byte {
 	return wasmtest.Module(sections...)
 }
 
+func indexedMemory64FloatModule(param wasm.ValType, storeOp, loadOp, align byte) []byte {
+	body := []byte{
+		0x20, 0x00, 0x20, 0x01, storeOp, align | 0x40, 0x01, 0x00,
+		0x20, 0x00, loadOp, align | 0x40, 0x01, 0x00, 0x0b,
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I64, param}, []wasm.ValType{param}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec(
+			[]byte{0x01, 0x01, 0x01}, // memory32 0: min=max=1
+			[]byte{0x05, 0x01, 0x02}, // memory64 1: min=1 max=2
+		)),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("run", 0, 0),
+			wasmtest.ExportEntry("m0", 2, 0),
+			wasmtest.ExportEntry("m1", 2, 1),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+}
+
+func TestIndexedMemory64FloatUsesSelectedBaseAndFullWidthBounds(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		typ         wasm.ValType
+		store, load byte
+		align       byte
+		bits        uint64
+	}{
+		{name: "f32", typ: wasm.F32, store: 0x38, load: 0x2a, align: 2, bits: uint64(math.Float32bits(-13.25))},
+		{name: "f64", typ: wasm.F64, store: 0x39, load: 0x2b, align: 3, bits: math.Float64bits(123.5)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := NewRuntimeConfig()
+			features := cfg.frontendFeatures()
+			features.MultiMemory = true
+			features.Memory64 = true
+			compiled, err := compileWithFrontendFeatures(cfg, indexedMemory64FloatModule(tc.typ, tc.store, tc.load, tc.align), features)
+			if err != nil {
+				t.Fatalf("compile: %v", err)
+			}
+			defer compiled.Close()
+			in, err := instantiateCore(compiled, InstantiateOptions{})
+			if err != nil {
+				t.Fatalf("instantiate: %v", err)
+			}
+			defer in.Close()
+			got, err := in.Invoke("run", I64(17), tc.bits)
+			if err != nil || len(got) != 1 || got[0] != tc.bits {
+				t.Fatalf("selected memory64 round trip = %v, %v; want %#x", got, err, tc.bits)
+			}
+			m0, _ := in.ExportedMemory("m0")
+			m1, _ := in.ExportedMemory("m1")
+			width := 4
+			if tc.typ == wasm.F64 {
+				width = 8
+			}
+			var m0Bits, m1Bits uint64
+			if width == 4 {
+				m0Bits = uint64(binary.LittleEndian.Uint32(m0.Bytes()[17:]))
+				m1Bits = uint64(binary.LittleEndian.Uint32(m1.Bytes()[17:]))
+			} else {
+				m0Bits = binary.LittleEndian.Uint64(m0.Bytes()[17:])
+				m1Bits = binary.LittleEndian.Uint64(m1.Bytes()[17:])
+			}
+			if m0Bits != 0 || m1Bits != tc.bits {
+				t.Fatalf("selected base bits m0=%#x m1=%#x, want 0/%#x", m0Bits, m1Bits, tc.bits)
+			}
+			if _, err := in.Invoke("run", ^uint64(0), tc.bits); err == nil {
+				t.Fatal("indexed memory64 UINT64_MAX access returned normally")
+			}
+		})
+	}
+}
+
 func TestStagedMultiMemoryScalarWidthsAndGrow(t *testing.T) {
 	tests := []struct {
 		name            string

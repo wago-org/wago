@@ -855,8 +855,10 @@ const (
 type RefInit struct {
 	FuncIndex   uint32
 	GlobalIndex uint32
+	Expr        []byte
 	Null        bool
 	HasGlobal   bool
+	I31Wrap     bool
 }
 
 // ElemInit is typed element-segment metadata. TableIndex names an active

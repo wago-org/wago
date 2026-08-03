@@ -176,7 +176,8 @@ func (c *Compiled) arenaNeedForImports(imports Imports, syncMode bool) int {
 }
 
 func (b *instanceBuilder) prepareCollector() error {
-	if !gc.HasHeapObjectTypes(b.c.GCTypeDescs) || b.c.collectorFreeStructuralMetadata() || b.c.stagedGCTypeSubtypingProduct() != 0 || b.c.collectorFreeGCArrayMetadata() {
+	needsExternConversion := b.c.stagedGCStructProduct().requiresExternConversion()
+	if (!gc.HasHeapObjectTypes(b.c.GCTypeDescs) && !needsExternConversion) || (!needsExternConversion && (b.c.collectorFreeStructuralMetadata() || b.c.stagedGCTypeSubtypingProduct() != 0 || b.c.collectorFreeGCArrayMetadata())) {
 		return nil
 	}
 	gcConfig := b.opts.GC
@@ -291,6 +292,24 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	c, opts, imports := b.c, b.opts, b.imports
 	restoreMemories := b.restoreMemories
 	syncMode := c.importsRequireSync(imports, opts.forceSyncHost)
+	needsExternConversion := c.stagedGCStructProduct().requiresExternConversion()
+	var conversionStore *referenceStore
+	var gcExternConversion *gcExternConversionState
+	if needsExternConversion {
+		conversionStore = opts.store
+		if conversionStore == nil {
+			conversionStore = newReferenceStore(true)
+		}
+		gcExternConversion, err = newGCExternConversionState(conversionStore, b.collector)
+		if err != nil {
+			return nil, err
+		}
+	}
+	defer func() {
+		if !b.success && gcExternConversion != nil {
+			_ = gcExternConversion.close()
+		}
+	}()
 	defer func() {
 		if !b.success {
 			b.rollbackPreparedState()
@@ -600,6 +619,15 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		selfLinMem := uint64(jm.LinMemBase())
 		funcRefDescs = ar.Alloc(runtime.FuncRefDescBytes * (len(c.FuncTypeID) + 1))
 		binary.LittleEndian.PutUint64(funcRefDescs[runtime.FuncRefContextOffset:], uint64(nativeContextPtr))
+		localFuncrefsMayEscape := c.tableImport != ""
+		if !localFuncrefsMayEscape {
+			for i := range c.extraTables {
+				if c.extraTables[i].ImportKey != "" {
+					localFuncrefsMayEscape = true
+					break
+				}
+			}
+		}
 		for fidx := 0; fidx < len(c.FuncTypeID); fidx++ {
 			off := (fidx + 1) * runtime.FuncRefDescBytes
 			var code, home uint64
@@ -609,7 +637,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 				code, home = uint64(base)+uint64(c.Entry[li]), selfLinMem
 				kind = abi.FuncRefEntryLocalWrapper
 				stagedTailRegABI := c.stagedFeatures().IsEnabled(CoreFeatureTailCall) && (funcSigLocalRegABI(c.Funcs[li]) || funcSigReferenceResultRegABI(c.Funcs[li]))
-				if li < len(c.InternalEntry) && c.InternalEntry[li] != c.Entry[li] && (funcSigIntRegABI(c.Funcs[li]) || stagedTailRegABI) {
+				if !localFuncrefsMayEscape && li < len(c.InternalEntry) && c.InternalEntry[li] != c.Entry[li] && (funcSigIntRegABI(c.Funcs[li]) || stagedTailRegABI) {
 					code = uint64(base) + uint64(c.InternalEntry[li])
 					kind = abi.FuncRefEntryInternal
 				}
@@ -667,9 +695,31 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	}
 	var globalCells []*Global
 	writeElemEntry := func(entry []byte, refType ValType, value RefInit) error {
+		if len(value.Expr) != 0 {
+			if normalizedElemRefType(refType) != ValAnyRef && normalizedElemRefType(refType) != ValI31Ref && !(normalizedElemRefType(refType) == ValExternRef && needsExternConversion) {
+				return fmt.Errorf("GC element expression has incompatible destination %s", refType)
+			}
+			if len(entry) < 8 {
+				return fmt.Errorf("GC element expression entry is truncated")
+			}
+			bits, err := evalCompiledGCConstExpr(value.Expr, b.collector, b.gcTypeMap, gcExternConversion, c, globalCells, len(globalCells), funcRefDescs)
+			if err != nil {
+				return err
+			}
+			binary.LittleEndian.PutUint64(entry, bits)
+			return nil
+		}
 		if value.HasGlobal {
 			if int(value.GlobalIndex) >= len(globalCells) || globalCells[value.GlobalIndex] == nil {
 				return fmt.Errorf("element global %d is unavailable", value.GlobalIndex)
+			}
+			if value.I31Wrap {
+				if normalizedElemRefType(refType) != ValI31Ref || len(entry) < 8 {
+					return fmt.Errorf("element global %d i31 wrapper has incompatible destination %s", value.GlobalIndex, refType)
+				}
+				bits := uint32(readGlobalObject(globalCells[value.GlobalIndex], ValI32))
+				binary.LittleEndian.PutUint64(entry, uint64(bits<<1|1))
+				return nil
 			}
 			bits := readGlobalObject(globalCells[value.GlobalIndex], normalizedElemRefType(refType))
 			switch normalizedElemRefType(refType) {
@@ -709,12 +759,18 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 				}
 				binary.LittleEndian.PutUint64(entry, bits)
 				return nil
+			case ValExnRef:
+				if bits != 0 {
+					return fmt.Errorf("non-null exception element globals require active handler ownership")
+				}
+				clear(entry)
+				return nil
 			default:
 				return fmt.Errorf("unsupported element global reference type %s", refType)
 			}
 		}
 		switch normalizedElemRefType(refType) {
-		case ValExternRef:
+		case ValExternRef, ValExnRef:
 			if !value.Null {
 				return fmt.Errorf("externref element contains a non-null initializer")
 			}
@@ -820,8 +876,8 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 				if len(g.InitExpr) != 0 {
 					var value uint64
 					var err error
-					if g.Type == ValAnyRef || g.Type == ValI31Ref {
-						value, err = evalCompiledGCConstExpr(g.InitExpr, b.collector, b.gcTypeMap, c, globalCells, i, funcRefDescs)
+					if g.Type == ValAnyRef || g.Type == ValI31Ref || (g.Type == ValExternRef && needsExternConversion) {
+						value, err = evalCompiledGCConstExpr(g.InitExpr, b.collector, b.gcTypeMap, gcExternConversion, c, globalCells, i, funcRefDescs)
 					} else {
 						value, err = evalCompiledScalarConstExpr(g.InitExpr, g.Type, globalCells, c.Globals, constExprGlobalScope{context: constExprGlobalInitializer, limit: i})
 					}
@@ -1286,6 +1342,12 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	if gcArrayElements != nil {
 		in.ensurePluginState().gcArrayElements.Store(gcArrayElements)
 	}
+	if gcRefTestTable == nil && needsExternConversion {
+		// Conversion-only modules need the same bounded identity owner without
+		// manufacturing a guest table. Table-bearing products populate descriptors
+		// above; the zero-table state owns only the conversion bridge.
+		gcRefTestTable = &gcRefTestTableState{}
+	}
 	if gcRefTestTable != nil {
 		in.ensurePluginState().gcRefTestTable.Store(gcRefTestTable)
 	}
@@ -1324,21 +1386,17 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			return nil, err
 		}
 		in.refStore = opts.store
-	}
-	if product := c.stagedGCStructProduct(); product.requiresExternConversion() {
-		if in.refStore == nil {
-			store := newReferenceStore(true)
-			if err := store.registerInstance(in); err != nil {
-				return nil, err
-			}
-			in.refStore = store
-		}
-		conversion, err := newGCExternConversionState(in.refStore, b.collector)
-		if err != nil {
+	} else if conversionStore != nil {
+		if err := conversionStore.registerInstance(in); err != nil {
 			return nil, err
 		}
-		if err := gcRefTestTable.attachConversion(conversion); err != nil {
-			_ = conversion.close()
+		in.refStore = conversionStore
+	}
+	if needsExternConversion {
+		if in.refStore == nil || gcExternConversion == nil || gcRefTestTable == nil {
+			return nil, fmt.Errorf("GC extern conversion ownership is unavailable")
+		}
+		if err := gcRefTestTable.attachConversion(gcExternConversion); err != nil {
 			return nil, err
 		}
 	}

@@ -233,7 +233,7 @@ func (f *fn) pinnedV128LocalCount() int {
 // emulation constants (read-only masks/tables, never loop-carried) are still
 // reserved. Mirrors preloadFloatConsts / arm64 preloadV128Consts.
 func (f *fn) preloadV128Consts(code []byte) {
-	if f.usesCalls || !v128ConstCacheEnabled {
+	if f.usesCalls || f.syncHostCalls || !v128ConstCacheEnabled {
 		return
 	}
 	highPressure := f.pinnedV128LocalCount() >= 2
@@ -2119,7 +2119,7 @@ func (f *fn) v128ReplaceLane(kind uint32, lane byte) {
 
 func (f *fn) simdMemAddr(memoryIndex uint32, off uint64, size int) (base, ea Reg, disp int32, baseOwned, eaOwned bool) {
 	if memoryIndex != 0 {
-		base, ea, disp = f.indexedMemAddr(memoryIndex, uint32(off), size)
+		base, ea, disp = f.indexedMemAddr(memoryIndex, off, size)
 		f.pinned = f.pinned.add(base).add(ea)
 		return base, ea, disp, true, true
 	}

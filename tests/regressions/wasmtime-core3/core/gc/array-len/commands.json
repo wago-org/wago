@@ -1,0 +1,123 @@
+{
+  "commands": [
+    {
+      "filename": "commands.0.wasm",
+      "line": 1,
+      "type": "module_definition"
+    },
+    {
+      "line": 19,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "len-zero",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "0"
+        }
+      ],
+      "line": 20,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "len-one",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "1"
+        }
+      ],
+      "line": 21,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "len-many",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "100"
+        }
+      ],
+      "line": 22,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "len-fixed",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "4"
+        }
+      ],
+      "line": 23,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "len-after-set",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "5"
+        }
+      ],
+      "line": 24,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "len-ref-array",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "7"
+        }
+      ],
+      "line": 25,
+      "type": "assert_return"
+    },
+    {
+      "filename": "commands.1.wasm",
+      "line": 26,
+      "type": "module_definition"
+    },
+    {
+      "line": 33,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "len-null",
+        "type": "invoke"
+      },
+      "line": 34,
+      "text": "null array reference",
+      "type": "assert_trap"
+    }
+  ],
+  "source": "WebAssembly/spec interpreter 3.0.0"
+}
