@@ -5,8 +5,9 @@ package arm64
 // SP-relative (and general base+disp) load/store helpers the port references as
 // f.ld64/ld32/st64/st32. disp is a signed byte offset: a non-negative,
 // size-aligned, imm12-scalable offset uses the scaled LDR/STR form; a small
-// signed offset uses LDUR/STUR; anything larger panics (not produced by the
-// current frame layout).
+// signed offset uses LDUR/STUR. Larger negative loads within the add/sub
+// immediate range materialize the address in the destination register; stores
+// must materialize an address explicitly so they cannot clobber a live source.
 
 func (f *fn) ldst(store bool, size int, rt, base Reg, disp int32) {
 	switch {
@@ -32,6 +33,13 @@ func (f *fn) ldst(store bool, size int, rt, base Reg, disp int32) {
 			f.a.Ldur64(rt, base, disp)
 		default:
 			f.a.Ldur32(rt, base, disp)
+		}
+	case !store && disp < -256 && disp >= -0xfff:
+		f.a.SubImm64(rt, base, uint32(-disp))
+		if size == 8 {
+			f.a.Load64(rt, rt, 0)
+		} else {
+			f.a.Load32(rt, rt, 0)
 		}
 	default:
 		panic("arm64 ldst: byte offset out of range for a single load/store")

@@ -1169,7 +1169,10 @@ func (f *fn) memoryGrow(r *wasm.Reader) error {
 	f.st32(base, -int32(bdCurPages), nw)
 	f.a.MovReg32(mx, nw)
 	f.shiftImm(shLSL, mx, wasmPageLog, true)
-	f.st64(base, -int32(bdCurBytes), mx)
+	cacheAddr := f.allocReg(avoid.add(nw).add(mx))
+	f.a.SubImm64(cacheAddr, base, uint32(bdCurBytes))
+	f.a.Store64(mx, cacheAddr, 0)
+	f.release(cacheAddr)
 	f.st32(base, -8, mx) // legacy u32 cache; wraps only at exactly 4 GiB
 	if dir != regNone {
 		f.st64(dir, entry+abi.MemoryDirCurrentBytesOffset, mx)
