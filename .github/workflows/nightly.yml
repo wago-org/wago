@@ -111,6 +111,7 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           cache: false
       - uses: acifani/setup-tinygo@db56321a62b9a67922bb9ac8f9d085e218807bb3 # v2
+        if: matrix.target != 'windows-arm64'
         with:
           tinygo-version: ${{ env.TINYGO_VERSION }}
           # Release builds do not use Binaryen. Its pinned package has no
