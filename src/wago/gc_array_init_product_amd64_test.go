@@ -50,9 +50,11 @@ func TestStagedGCArrayInitDataProductBoundary(t *testing.T) {
 			features := guardCfg.frontendFeatures()
 			features.TypedFunctionReferences = true
 			features.GCArrayProducts = true
-			if _, err := compileWithFrontendFeatures(guardCfg, data, features); err == nil || !strings.Contains(err.Error(), "signals-based") {
-				t.Fatalf("guard compile=%v, want explicit array-init rejection", err)
+			guardCompiled, err := compileWithFrontendFeatures(guardCfg, data, features)
+			if err != nil {
+				t.Fatalf("signal-mode array-init compile: %v", err)
 			}
+			_ = guardCompiled.Close()
 
 			c, err := compileStagedGCArrayInit(data)
 			if err != nil {
@@ -140,9 +142,11 @@ func TestStagedGCArrayInitElemProductBoundaryAndTinyLifecycle(t *testing.T) {
 	features := guardCfg.frontendFeatures()
 	features.TypedFunctionReferences = true
 	features.GCArrayProducts = true
-	if _, err := compileWithFrontendFeatures(guardCfg, data, features); err == nil || !strings.Contains(err.Error(), "signals-based") {
-		t.Fatalf("guard compile=%v, want explicit array-init rejection", err)
+	guardCompiled, err := compileWithFrontendFeatures(guardCfg, data, features)
+	if err != nil {
+		t.Fatalf("signal-mode array-init compile: %v", err)
 	}
+	_ = guardCompiled.Close()
 
 	c, err := compileStagedGCArrayInit(data)
 	if err != nil {
@@ -152,7 +156,7 @@ func TestStagedGCArrayInitElemProductBoundaryAndTinyLifecycle(t *testing.T) {
 	if got := c.stagedGCArrayProduct(); got != stagedGCArrayProductInitElem || !c.usesGCArrayHelpers() {
 		t.Fatalf("product/helper=%s/%v, want init-elem/true", got, c.usesGCArrayHelpers())
 	}
-	if len(c.GCTypeDescs) < 3 || c.GCTypeDescs[1].Elem != corergc.StorageI64 || c.GCTypeDescs[2].Elem != corergc.StorageI64 || c.GCTypeDescs[1].HasRefs || c.GCTypeDescs[2].HasRefs {
+	if len(c.GCTypeDescs) < 3 || c.GCTypeDescs[1].Elem != corergc.StorageFuncRef || c.GCTypeDescs[2].Elem != corergc.StorageFuncRefNull || c.GCTypeDescs[1].HasRefs || c.GCTypeDescs[2].HasRefs {
 		t.Fatalf("funcref array layouts=%+v", c.GCTypeDescs)
 	}
 	if _, err := Capture(c, SnapshotOptions{}); err == nil || !strings.Contains(err.Error(), "WasmGC") {
@@ -243,6 +247,33 @@ func TestStagedGCArrayInitElemProductBoundaryAndTinyLifecycle(t *testing.T) {
 		})
 	}
 	t.Logf("array-init elem product: wasm=%d code=%d codec=%d", len(data), len(c.Code), len(blob))
+}
+
+func TestGenericGCArrayInitElemExecutesWithoutFixtureHash(t *testing.T) {
+	data, err := os.ReadFile("testdata/gc_array_init_elem_generic.wasm")
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).Compile(data)
+	if err != nil {
+		t.Fatalf("compile generic array.init_elem: %v", err)
+	}
+	defer c.Close()
+	if got := c.stagedGCArrayProduct(); got != stagedGCArrayProductGeneric {
+		t.Fatalf("array product = %s, want generic", got)
+	}
+	if len(c.GCTypeDescs) < 2 || c.GCTypeDescs[1].Kind != corergc.KindArray || c.GCTypeDescs[1].Elem != corergc.StorageFuncRefNull || len(c.passiveElems) != 2 {
+		t.Fatalf("generic type/segment metadata = %+v/%d", c.GCTypeDescs, len(c.passiveElems))
+	}
+	in, err := instantiateCore(c, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, VerifyAfterCollect: true, StressBarriers: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	got, err := in.Invoke("run")
+	if err != nil || len(got) != 1 || got[0] != 1 {
+		t.Fatalf("generic array.init_elem result = %v, %v; want [1]", got, err)
+	}
 }
 
 func TestStagedGCArrayInitDataTinyLifecycle(t *testing.T) {

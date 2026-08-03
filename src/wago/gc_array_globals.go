@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/src/core/runtime/gc"
 )
 
@@ -246,42 +247,34 @@ func instantiateGCArrayGlobal(collector *gc.Collector, mapping *gcTypeMapping, d
 	if err != nil {
 		return gc.Null(), 0, err
 	}
-	ref, err := collector.NewArrayDefaultWithRoots(domainType, init.Length, gc.EmptyRoots{})
-	if err != nil {
-		return gc.Null(), 0, err
-	}
+	var ref gc.Ref
 	switch init.Mode {
 	case gcArrayGlobalInitDefault:
+		ref, err = collector.NewArrayDefaultWithRoots(domainType, init.Length, gc.EmptyRoots{})
 	case gcArrayGlobalInitUniform:
-		value := gc.Value{Kind: valueKind, Bits: init.Bits[0]}
-		for i := uint32(0); i < init.Length; i++ {
-			if err := collector.ArraySet(ref, i, value); err != nil {
-				return gc.Null(), 0, err
-			}
-		}
+		ref, err = collector.NewArrayWithRoots(domainType, init.Length, gc.Value{Kind: valueKind, Bits: init.Bits[0]}, gc.EmptyRoots{})
 	case gcArrayGlobalInitFixed:
+		var values [maxGCArrayFixedElements]gc.Value
 		for i := uint32(0); i < init.Length; i++ {
-			if err := collector.ArraySet(ref, i, gc.Value{Kind: valueKind, Bits: init.Bits[i]}); err != nil {
-				return gc.Null(), 0, err
-			}
+			values[i] = gc.Value{Kind: valueKind, Bits: init.Bits[i]}
 		}
+		ref, err = collector.NewArrayFixedWithRoots(domainType, values[:init.Length], gc.EmptyRoots{})
 	case gcArrayGlobalInitFuncUniform:
 		fidx := int(init.Bits[0])
-		off := (fidx + 1) * 32
-		if valueKind != gc.StorageI64 || fidx < 0 || off < 32 || off+32 > len(funcRefDescs) {
+		off := (fidx + 1) * coreruntime.FuncRefDescBytes
+		if (valueKind != gc.StorageFuncRef && valueKind != gc.StorageFuncRefNull) || fidx < 0 || off < coreruntime.FuncRefDescBytes || off+coreruntime.FuncRefDescBytes > len(funcRefDescs) {
 			return gc.Null(), 0, fmt.Errorf("GC array global function initializer %d is unavailable", fidx)
 		}
-		identity := binary.LittleEndian.Uint64(funcRefDescs[off+24:])
+		identity := binary.LittleEndian.Uint64(funcRefDescs[off+coreruntime.TableEntryRefSlotOffset:])
 		if identity == 0 {
 			return gc.Null(), 0, fmt.Errorf("GC array global function initializer %d has no identity", fidx)
 		}
-		for i := uint32(0); i < init.Length; i++ {
-			if err := collector.ArraySet(ref, i, gc.Value{Kind: gc.StorageI64, Bits: identity}); err != nil {
-				return gc.Null(), 0, err
-			}
-		}
+		ref, err = collector.NewArrayWithRoots(domainType, init.Length, gc.Value{Kind: valueKind, Bits: identity}, gc.EmptyRoots{})
 	default:
 		return gc.Null(), 0, fmt.Errorf("GC array global initializer mode %d is unavailable", init.Mode)
+	}
+	if err != nil {
+		return gc.Null(), 0, err
 	}
 	// Install the checked collector root before any later global initializer may
 	// allocate or collect. The native global cell receives the same stable handle.

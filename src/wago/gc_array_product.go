@@ -78,29 +78,12 @@ func (p stagedGCArrayProduct) metadataOnly() bool {
 	return p == stagedGCArrayProductDeclarations || p == stagedGCArrayProductBindings
 }
 
-func configureStagedGCArrayTypeDescs(product stagedGCArrayProduct, descs []gc.TypeDesc) error {
-	if product == stagedGCArrayProductNewElem {
-		// Preserve the decoded reference storage kind. Compact GC/i31 references
-		// are traced as StorageRef{Null}, while function/extern references use
-		// opaque non-scanned token kinds. Rewriting every reference array to i64
-		// loses both nullability and collector/barrier semantics.
-		return nil
-	}
-	if product != stagedGCArrayProductInitElem {
-		return nil
-	}
-	for _, typeID := range []gc.TypeID{1, 2} {
-		if int(typeID) >= len(descs) || descs[typeID].Kind != gc.KindArray {
-			return fmt.Errorf("init-elem array type %d is unavailable", typeID)
-		}
-		old := descs[typeID]
-		d, err := gc.NewArrayDesc(typeID, gc.StorageI64)
-		if err != nil {
-			return err
-		}
-		d.Final, d.Super, d.HasSuper = old.Final, old.Super, old.HasSuper
-		descs[typeID] = d
-	}
+func configureStagedGCArrayTypeDescs(_ stagedGCArrayProduct, descs []gc.TypeDesc) error {
+	// Keep decoded reference storage intact for every product. Compact GC/i31
+	// references remain traced, while function and extern references retain
+	// their opaque non-scanned storage kinds. array.init_elem now uses the same
+	// generic typed store path as array.new_elem instead of rewriting fixtures to
+	// an untyped i64 layout.
 	return gc.ValidateTypeDescs(descs)
 }
 

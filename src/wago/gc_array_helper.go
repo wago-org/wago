@@ -146,6 +146,37 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 		}
 		return arrayValue(typeID, words)
 	}
+	arrayElemSegment := func(elemIndex uint32) (entries uintptr, length uint32, entryBytes int) {
+		if int(elemIndex) >= len(in.c.passiveElems) || in.jm.PassiveElemPtr() == 0 {
+			panic(gcStructHelperError{err: fmt.Errorf("gc array element segment %d is unavailable", elemIndex)})
+		}
+		descOff := int(elemIndex) * coreruntime.PassiveElemDescBytes
+		desc := unsafe.Slice((*byte)(offHeapPtr(in.jm.PassiveElemPtr()+uintptr(descOff))), coreruntime.PassiveElemDescBytes)
+		length = binary.LittleEndian.Uint32(desc[8:])
+		if uint64(length) > uint64(len(in.c.passiveElems[elemIndex].Values)) {
+			panic(gcStructHelperError{err: fmt.Errorf("gc array element segment %d length %d exceeds retained entries %d", elemIndex, length, len(in.c.passiveElems[elemIndex].Values))})
+		}
+		entries = uintptr(binary.LittleEndian.Uint64(desc))
+		if length != 0 && entries == 0 {
+			panic(gcStructHelperError{err: fmt.Errorf("gc array element segment %d has no entries", elemIndex)})
+		}
+		entryBytes = elemEntryBytes(in.c.passiveElems[elemIndex].RefType)
+		return
+	}
+	arrayElemValue := func(typeID uint32, entries uintptr, entryBytes int, index uint32) gc.Value {
+		off := uint64(index) * uint64(entryBytes)
+		if off > uint64(^uintptr(0))-uint64(entries) {
+			panic(gcStructHelperError{err: fmt.Errorf("gc array element entry %d address overflows", index)})
+		}
+		entry := unsafe.Slice((*byte)(offHeapPtr(entries+uintptr(off))), entryBytes)
+		var bits uint64
+		if entryBytes == coreruntime.TableEntryBytes {
+			bits = binary.LittleEndian.Uint64(entry[coreruntime.TableEntryRefSlotOffset:])
+		} else {
+			bits = binary.LittleEndian.Uint64(entry)
+		}
+		return arrayStoredValue(typeID, []uint64{bits})
+	}
 	panicArrayError := func(err error) {
 		if errors.Is(err, gc.ErrAllocationTooLarge) {
 			panic(gcStructHelperTrap{code: coreruntime.TrapBuiltin})
@@ -188,13 +219,15 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 		ref, dstStart := gc.Ref(uint32(args[0])), uint32(args[1])
 		srcStart, length := uint32(args[2]), uint32(args[3])
 		typeID, elemIndex := uint32(args[4]), uint32(args[5])
-		if in.c.stagedGCArrayProduct() != stagedGCArrayProductInitElem || typeID != 2 || elemIndex != 0 {
-			panic(gcStructHelperError{err: fmt.Errorf("gc array.init_elem product/type/segment %s/%d/%d is unavailable", in.c.stagedGCArrayProduct(), typeID, elemIndex)})
+		product := in.c.stagedGCArrayProduct()
+		if product != stagedGCArrayProductInitElem && product != stagedGCArrayProductGeneric {
+			panic(gcStructHelperError{err: fmt.Errorf("gc array.init_elem product %s is unavailable", product)})
+		}
+		if int(typeID) >= len(in.c.GCTypeDescs) || in.c.GCTypeDescs[typeID].Kind != gc.KindArray || !gcArrayElementStorage(in.c.GCTypeDescs[typeID].Elem) {
+			panic(gcStructHelperError{err: fmt.Errorf("gc array.init_elem type %d is not a reference array", typeID)})
 		}
 		checkArray(ref, typeID)
-		if len(in.c.passiveElems) != 1 || len(in.c.Types) <= int(typeID) || in.c.Types[typeID].Kind != CompositeTypeArray {
-			panic(gcStructHelperError{err: fmt.Errorf("gc array.init_elem metadata is unavailable")})
-		}
+		entries, segmentLen, entryBytes := arrayElemSegment(elemIndex)
 		dstLen, err := in.gc.ArrayLen(ref)
 		if err != nil {
 			panic(gcStructHelperError{err: err})
@@ -202,58 +235,22 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 		if uint64(dstStart)+uint64(length) > uint64(dstLen) {
 			panic(gcStructHelperTrap{code: coreruntime.TrapBuiltin})
 		}
-		descPtr := in.jm.PassiveElemPtr()
-		if descPtr == 0 {
-			panic(gcStructHelperError{err: fmt.Errorf("gc array.init_elem has no passive descriptor")})
-		}
-		desc := unsafe.Slice((*byte)(offHeapPtr(descPtr)), coreruntime.PassiveElemDescBytes)
-		segmentLen := binary.LittleEndian.Uint32(desc[8:])
 		if uint64(srcStart)+uint64(length) > uint64(segmentLen) {
 			panic(gcStructHelperTrap{code: coreruntime.TrapIndirectOutOfBounds})
 		}
-		if length > 12 {
-			panic(gcStructHelperError{err: fmt.Errorf("gc array.init_elem length %d exceeds exact bound 12", length)})
-		}
-		entryPtr := uintptr(binary.LittleEndian.Uint64(desc))
-		if length != 0 && entryPtr == 0 {
-			panic(gcStructHelperError{err: fmt.Errorf("gc array.init_elem segment entries are unavailable")})
-		}
-		want := in.c.Types[typeID].Array.Storage.Value
-		var words [12]uint64
+		// Validate the complete source before publishing the first write so a
+		// malformed retained descriptor cannot leave a partially initialized array.
 		for i := uint32(0); i < length; i++ {
-			off := uint64(srcStart+i) * uint64(coreruntime.TableEntryBytes)
-			if off+coreruntime.TableEntryBytes > uint64(segmentLen)*uint64(coreruntime.TableEntryBytes) {
-				panic(gcStructHelperError{err: fmt.Errorf("gc array.init_elem source offset overflow")})
-			}
-			entry := unsafe.Slice((*byte)(offHeapPtr(entryPtr+uintptr(off))), coreruntime.TableEntryBytes)
-			identity := binary.LittleEndian.Uint64(entry[coreruntime.TableEntryRefSlotOffset:])
-			if identity == 0 {
-				if !want.Ref.Nullable {
-					panic(gcStructHelperError{err: fmt.Errorf("gc array.init_elem source %d is null for non-null destination", srcStart+i)})
-				}
-				words[i] = 0
-				continue
-			}
-			base := uintptr(unsafe.Pointer(&in.funcRefDescs[0]))
-			ptr := uintptr(identity)
-			if ptr < base+coreruntime.FuncRefDescBytes || ptr >= base+uintptr(len(in.funcRefDescs)) || (ptr-base)%coreruntime.FuncRefDescBytes != 0 {
-				panic(gcStructHelperError{err: fmt.Errorf("gc array.init_elem source %d has foreign function identity %#x", srcStart+i, identity)})
-			}
-			fidx := uint32((ptr-base)/coreruntime.FuncRefDescBytes - 1)
-			actual, err := in.c.functionRefExactType(fidx)
-			if err != nil || !valueTypeSubtype(actual, in.c.Types, want, in.c.Types) {
-				panic(gcStructHelperError{err: fmt.Errorf("gc array.init_elem source %d type mismatch: %v", srcStart+i, err)})
-			}
-			words[i] = identity
+			_ = arrayElemValue(typeID, entries, entryBytes, srcStart+i)
 		}
-		// This exact product stores local funcref descriptor identities in an i64
-		// payload. They are owned by the instance, not by the collector, so object,
-		// card, and collector bulk barriers are deliberately inapplicable.
-		if err := in.gc.ArrayInitWords(ref, dstStart, words[:length]); err != nil {
-			if strings.Contains(err.Error(), "range") {
-				panic(gcStructHelperTrap{code: coreruntime.TrapBuiltin})
+		for i := uint32(0); i < length; i++ {
+			value := arrayElemValue(typeID, entries, entryBytes, srcStart+i)
+			if err := in.gc.ArraySet(ref, dstStart+i, value); err != nil {
+				if strings.Contains(err.Error(), "range") {
+					panic(gcStructHelperTrap{code: coreruntime.TrapBuiltin})
+				}
+				panic(gcStructHelperError{err: err})
 			}
-			panic(gcStructHelperError{err: err})
 		}
 	case gcArrayInitData:
 		if len(args) != 6 {
@@ -341,33 +338,19 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 		source, length := uint32(args[0]), uint32(args[1])
 		typeID, elemIndex := uint32(args[2]), uint32(args[3])
 		if product := in.c.stagedGCArrayProduct(); product == stagedGCArrayProductNewElem || product == stagedGCArrayProductGeneric {
-			if int(elemIndex) >= len(in.c.passiveElems) || in.jm.PassiveElemPtr() == 0 || int(typeID) >= len(in.c.GCTypeDescs) || in.c.GCTypeDescs[typeID].Kind != gc.KindArray || !gcArrayElementStorage(in.c.GCTypeDescs[typeID].Elem) {
-				panic(gcStructHelperError{err: fmt.Errorf("gc array element segment/type %d/%d is unavailable", elemIndex, typeID)})
+			if int(typeID) >= len(in.c.GCTypeDescs) || in.c.GCTypeDescs[typeID].Kind != gc.KindArray || !gcArrayElementStorage(in.c.GCTypeDescs[typeID].Elem) {
+				panic(gcStructHelperError{err: fmt.Errorf("gc array element type %d is unavailable", typeID)})
 			}
-			descOff := int(elemIndex) * coreruntime.PassiveElemDescBytes
-			desc := unsafe.Slice((*byte)(offHeapPtr(in.jm.PassiveElemPtr()+uintptr(descOff))), coreruntime.PassiveElemDescBytes)
-			segmentLen := binary.LittleEndian.Uint32(desc[8:])
+			entries, segmentLen, entryBytes := arrayElemSegment(elemIndex)
 			if uint64(source)+uint64(length) > uint64(segmentLen) {
 				panic(gcStructHelperTrap{code: coreruntime.TrapIndirectOutOfBounds})
-			}
-			entryBytes := elemEntryBytes(in.c.passiveElems[elemIndex].RefType)
-			entriesPtr := uintptr(binary.LittleEndian.Uint64(desc))
-			if length != 0 && entriesPtr == 0 {
-				panic(gcStructHelperError{err: fmt.Errorf("gc array element segment %d has no entries", elemIndex)})
 			}
 			ref, err := in.gc.NewArrayDefaultWithRoots(in.requireGCDomainType(typeID), length, frameRoots)
 			if err != nil {
 				panic(gcStructHelperError{err: err})
 			}
 			for i := uint32(0); i < length; i++ {
-				entry := unsafe.Slice((*byte)(offHeapPtr(entriesPtr+uintptr(source+i)*uintptr(entryBytes))), entryBytes)
-				var bits uint64
-				if entryBytes == coreruntime.TableEntryBytes {
-					bits = binary.LittleEndian.Uint64(entry[coreruntime.TableEntryRefSlotOffset:])
-				} else {
-					bits = binary.LittleEndian.Uint64(entry)
-				}
-				if err := in.gc.ArraySet(ref, i, arrayStoredValue(typeID, []uint64{bits})); err != nil {
+				if err := in.gc.ArraySet(ref, i, arrayElemValue(typeID, entries, entryBytes, source+i)); err != nil {
 					panic(gcStructHelperError{err: err})
 				}
 			}
