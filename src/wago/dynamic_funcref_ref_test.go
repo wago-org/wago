@@ -9,7 +9,9 @@ import (
 	"testing"
 	"unsafe"
 
+	"github.com/wago-org/wago/src/core/compiler/wasm"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
+	"github.com/wago-org/wago/tests/wasmtest"
 )
 
 func compileDynamicFuncrefFixture(t testing.TB, filename string) *Compiled {
@@ -85,6 +87,80 @@ func TestDynamicIndexedFunctionRefTestCrossInstanceImport(t *testing.T) {
 		if err != nil || len(got) != 1 || got[0] != 1 {
 			t.Fatalf("%s = %v, %v; want [1], nil", name, got, err)
 		}
+	}
+}
+
+func gcStructImportedFuncrefProviderModule() []byte {
+	fn := wasmtest.FuncType(nil, []wasm.ValType{wasm.I32})
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(fn)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x41, 0x2a, 0x0b}))),
+	)
+}
+
+func gcStructImportedFuncrefConsumerModule() []byte {
+	fn := wasmtest.FuncType(nil, []wasm.ValType{wasm.I32})
+	box := []byte{0x5f, 0x01, byte(wasm.HeapFunc), 0x00} // (struct (field funcref))
+	imported := portableFuncImportEntry("env", "f", 0)
+	table := []byte{byte(wasm.HeapFunc), 0x00, 0x01} // (table 1 funcref)
+	body := []byte{
+		0x41, 0x00, // i32.const 0
+		0x25, 0x00, // table.get 0: provider-owned canonical descriptor
+		0xfb, 0x00, 0x01, // struct.new 1
+		0xfb, 0x02, 0x01, 0x00, // struct.get 1 0
+		0xd1, // ref.is_null
+		0x0b,
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(fn, box)),
+		wasmtest.Section(2, wasmtest.Vec(imported)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(4, wasmtest.Vec(table)),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 1))),
+		wasmtest.Section(9, wasmtest.Vec(tableTestActiveElem(0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+}
+
+func TestGCStructConstructorAcceptsImportedFuncrefFromTable(t *testing.T) {
+	cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithBoundsChecks(BoundsChecksExplicit)
+	providerCode, err := cfg.Compile(gcStructImportedFuncrefProviderModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer providerCode.Close()
+	consumerCode, err := cfg.Compile(gcStructImportedFuncrefConsumerModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer consumerCode.Close()
+
+	store := newReferenceStore(false)
+	defer store.closeRuntime()
+	provider, err := instantiateCore(providerCode, InstantiateOptions{store: store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer provider.Close()
+	f, err := provider.ExportedFunc("f")
+	if err != nil {
+		t.Fatal(err)
+	}
+	consumer, err := instantiateCore(consumerCode, InstantiateOptions{
+		store:   store,
+		Imports: Imports{"env.f": f},
+		GC:      GCConfig{CollectEveryAlloc: true, VerifyAfterCollect: true},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer consumer.Close()
+
+	got, err := consumer.Invoke("run")
+	if err != nil || len(got) != 1 || got[0] != 0 {
+		t.Fatalf("boxed imported table funcref = %v, %v; want [0]", got, err)
 	}
 }
 

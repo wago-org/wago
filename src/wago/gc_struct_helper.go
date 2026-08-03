@@ -125,7 +125,10 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 				}
 				return gc.Value{Kind: kind}
 			}
-			actual, actualTypes, ok := instanceFuncrefExactType(in, bits)
+			actual, actualTypes, ok := in.attachedFuncrefExactType(bits)
+			if !ok && in.refStore != nil {
+				actual, actualTypes, ok = in.refStore.descriptorFuncrefExactType(in, bits)
+			}
 			if !ok || !valueTypeSubtype(actual, actualTypes, want, in.c.Types) {
 				panic(gcStructHelperError{err: fmt.Errorf("gc struct funcref type does not match field %d:%d", typeID, fieldID)})
 			}
