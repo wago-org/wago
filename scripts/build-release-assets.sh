@@ -21,12 +21,14 @@ go_build() {
 }
 
 manager="${release_out}/wago-${release_target}"
+installer="${release_out}/wago-installer-${release_target}"
 standard_normal="${release_out}/wago-runtime-standard-normal-${release_target}"
 minimal_normal="${release_out}/wago-runtime-minimal-normal-${release_target}"
 standard_tiny="${release_out}/wago-runtime-standard-tiny-${release_target}"
 minimal_tiny="${release_out}/wago-runtime-minimal-tiny-${release_target}"
 
 go_build "" "$manager" ./cli/wago
+go_build "" "$installer" ./cli/installer
 go_build wago_runtime "$standard_normal" ./cli/wago
 go_build wago_runtime,wago_minimal "$minimal_normal" ./cli/wago
 
@@ -61,7 +63,7 @@ try_tinygo_build wago_runtime "$standard_tiny" ./cli/wago
 try_tinygo_build wago_runtime,wago_lean,wago_minimal "$minimal_tiny" ./cli/wago
 
 for asset in \
-  "$manager" \
+  "$manager" "$installer" \
   "$standard_normal" "$minimal_normal" \
   "$standard_tiny" "$minimal_tiny"; do
   if [[ ! -s "$asset" ]]; then

@@ -6,6 +6,10 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -14,6 +18,78 @@ import (
 	"testing"
 	"time"
 )
+
+func TestInstallerDownloadsChannelManagerRelease(t *testing.T) {
+	payload := []byte("released manager")
+	hash := fmt.Sprintf("%x", sha256.Sum256(payload))
+	target := runtime.GOOS + "-" + runtime.GOARCH
+	tag := "canary-deadbee"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/releases":
+			_, _ = fmt.Fprintf(w, "[\n  {\n    \"tag_name\": \"%s\"\n  }\n]\n", tag)
+		case "/releases/download/" + tag + "/wago-" + target:
+			_, _ = w.Write(payload)
+		case "/releases/download/" + tag + "/wago-" + target + ".sha256":
+			_, _ = fmt.Fprintf(w, "%s  wago-%s\n", hash, target)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	command := exec.Command("sh", "install.sh")
+	command.Env = append(os.Environ(),
+		"WAGO_VERSION=canary",
+		"WAGO_RELEASES_API_URL="+server.URL+"/releases",
+		"WAGO_RELEASE_DOWNLOAD_BASE="+server.URL+"/releases",
+		"WAGO_INTERNAL_MANAGER_ONLY=1",
+		"NO_COLOR=1",
+	)
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("release manager download: %v\n%s", err, output)
+	}
+	if !strings.Contains(string(output), "downloaded Wago manager "+tag) || !strings.Contains(string(output), "manager=release tag="+tag) {
+		t.Fatalf("release manager output:\n%s", output)
+	}
+}
+
+func TestInstallerDownloadsChannelInstallerRelease(t *testing.T) {
+	payload := []byte("released installer")
+	hash := fmt.Sprintf("%x", sha256.Sum256(payload))
+	target := runtime.GOOS + "-" + runtime.GOARCH
+	tag := "nightly-deadbee"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/releases":
+			_, _ = fmt.Fprintf(w, "[\n  {\n    \"tag_name\": \"%s\"\n  }\n]\n", tag)
+		case "/releases/download/" + tag + "/wago-installer-" + target:
+			_, _ = w.Write(payload)
+		case "/releases/download/" + tag + "/wago-installer-" + target + ".sha256":
+			_, _ = fmt.Fprintf(w, "%s  wago-installer-%s\n", hash, target)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	command := exec.Command("sh", "install.sh")
+	command.Env = append(os.Environ(),
+		"WAGO_VERSION=nightly",
+		"WAGO_RELEASES_API_URL="+server.URL+"/releases",
+		"WAGO_RELEASE_DOWNLOAD_BASE="+server.URL+"/releases",
+		"WAGO_INTERNAL_INSTALLER_ONLY=1",
+		"NO_COLOR=1",
+	)
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("release installer download: %v\n%s", err, output)
+	}
+	if !strings.Contains(string(output), "downloaded Wago installer "+tag) || !strings.Contains(string(output), "installer=release tag="+tag) {
+		t.Fatalf("release installer output:\n%s", output)
+	}
+}
 
 func TestInstallerRadioPreservesTerminalNewlineProcessing(t *testing.T) {
 	if runtime.GOOS != "darwin" {
