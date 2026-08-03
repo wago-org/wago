@@ -57,3 +57,17 @@ func TestEnvironmentRadioUsesConfiguredDefaultWithoutConsole(t *testing.T) {
 		t.Fatalf("environment radio = %q, %v; want two, true", value, ok)
 	}
 }
+
+func TestWriteSelectionUsesPortableNewline(t *testing.T) {
+	output := filepath.Join(t.TempDir(), "selection")
+	if err := writeSelection(output, "value"); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := string(data), "value\n"; got != want {
+		t.Fatalf("selection bytes = %q, want %q", got, want)
+	}
+}

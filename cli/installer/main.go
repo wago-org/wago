@@ -98,9 +98,13 @@ func main() {
 	if !ok {
 		os.Exit(1)
 	}
-	if err := os.WriteFile(output, []byte(value+"\r\n"), 0o600); err != nil {
+	if err := writeSelection(output, value); err != nil {
 		os.Exit(2)
 	}
+}
+
+func writeSelection(output, value string) error {
+	return os.WriteFile(output, []byte(value+"\n"), 0o600)
 }
 
 func environmentRadio() (string, bool) {
