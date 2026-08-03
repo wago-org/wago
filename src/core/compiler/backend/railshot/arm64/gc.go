@@ -63,7 +63,7 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		nullable := sub == 21
 		if heap >= 0 {
 			top := f.s.back()
-			if _, targetIsFunc := f.m.TypeFunc(uint32(heap)); targetIsFunc && top != nil && top.kind == ekValue && top.st.kind == stFuncRef && top.st.idx >= 0 && top.st.idx < len(f.m.FuncTypes) {
+			if _, targetIsFunc := f.m.TypeFunc(uint32(heap)); targetIsFunc && top != nil && top.kind == ekValue && top.st.kind == stFuncRef && top.st.idx >= f.m.ImportedFuncCount() && top.st.idx < len(f.m.FuncTypes) {
 				f.popValue()
 				actual := wasm.Ref(false, wasm.IndexedHeap(f.m.FuncTypes[top.st.idx]), false)
 				required := wasm.Ref(nullable, wasm.IndexedHeap(wasm.TypeIdx{Index: uint32(heap)}), false)

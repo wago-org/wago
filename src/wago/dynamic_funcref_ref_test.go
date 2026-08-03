@@ -88,6 +88,42 @@ func TestDynamicIndexedFunctionRefTestCrossInstanceImport(t *testing.T) {
 	}
 }
 
+func TestDynamicIndexedFunctionRefTestUsesBareProviderActualType(t *testing.T) {
+	providerCompiled := compileDynamicFuncrefFixture(t, "dynamic_funcref_import_bare_provider.wasm")
+	defer providerCompiled.Close()
+	provider, err := Instantiate(providerCompiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer provider.Close()
+	if len(provider.funcRefDescs) != 0 {
+		t.Fatalf("bare provider allocated %d descriptor bytes", len(provider.funcRefDescs))
+	}
+	export, err := provider.ExportedFunc("f")
+	if err != nil {
+		t.Fatal(err)
+	}
+	consumerCompiled := compileDynamicFuncrefFixture(t, "dynamic_funcref_import_proxy_consumer.wasm")
+	defer consumerCompiled.Close()
+	consumer, err := Instantiate(consumerCompiled, InstantiateOptions{Imports: Imports{"env.f": export}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer consumer.Close()
+
+	typeIDPtr := binary.LittleEndian.Uint64(consumer.funcRefDescs[coreruntime.TableEntryCodePtrOffset:])
+	typeIDs := unsafe.Slice((*byte)(offHeapPtr(uintptr(typeIDPtr))), 4*len(consumerCompiled.FuncTypeID))
+	if got := binary.LittleEndian.Uint32(typeIDs); got != ^uint32(0) {
+		t.Fatalf("imported proxy compact type ID = %d, want attachment fallback sentinel", got)
+	}
+	for _, name := range []string{"test_direct", "test_stored"} {
+		got, err := consumer.Invoke(name)
+		if err != nil || len(got) != 1 || got[0] != 1 {
+			t.Fatalf("%s = %v, %v; want actual provider subtype match", name, got, err)
+		}
+	}
+}
+
 func TestDynamicIndexedFunctionRefTestClosureDispatch(t *testing.T) {
 	wasmBytes, err := os.ReadFile("testdata/dynamic_funcref_ref_test.wasm")
 	if err != nil {

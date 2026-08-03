@@ -625,11 +625,10 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			binary.LittleEndian.PutUint64(funcRefDescs[runtime.TableEntryCodePtrOffset:], uint64(uintptr(unsafe.Pointer(&funcRefTypeIDs[0]))))
 			for fidx := range c.FuncTypeID {
 				typeID := ^uint32(0)
-				if fidx < c.NumImports {
-					if fidx < len(c.importFuncSigs) && c.importFuncSigs[fidx].HasTypeIndex {
-						typeID = c.importFuncSigs[fidx].TypeIndex
-					}
-				} else if local := fidx - c.NumImports; local >= 0 && local < len(c.Funcs) && c.Funcs[local].HasTypeIndex {
+				// Imported descriptors are local proxies. Their declared consumer type
+				// can be a strict supertype of the attached function's actual provider
+				// type, so force the cold attachment-aware classifier for proxy values.
+				if local := fidx - c.NumImports; local >= 0 && local < len(c.Funcs) && c.Funcs[local].HasTypeIndex {
 					typeID = c.Funcs[local].TypeIndex
 				}
 				binary.LittleEndian.PutUint32(funcRefTypeIDs[4*fidx:], typeID)

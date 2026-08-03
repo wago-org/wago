@@ -208,7 +208,7 @@ func (f *fn) emitGCI31Test(sub uint32, r *wasm.Reader) error {
 			f.pushValue(storage{kind: stConst, typ: mtI32, cval: matched})
 			return nil
 		}
-		if _, targetIsFunc := f.m.TypeFunc(uint32(heap)); targetIsFunc && top != nil && top.kind == ekValue && top.st.kind == stFuncRef && top.st.idx >= 0 && top.st.idx < len(f.m.FuncTypes) {
+		if _, targetIsFunc := f.m.TypeFunc(uint32(heap)); targetIsFunc && top != nil && top.kind == ekValue && top.st.kind == stFuncRef && top.st.idx >= f.m.ImportedFuncCount() && top.st.idx < len(f.m.FuncTypes) {
 			f.popValue()
 			actual := wasm.Ref(false, wasm.IndexedHeap(f.m.FuncTypes[top.st.idx]), false)
 			required := wasm.Ref(nullable, wasm.IndexedHeap(wasm.TypeIdx{Index: uint32(heap)}), false)
