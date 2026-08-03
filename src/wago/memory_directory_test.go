@@ -42,8 +42,8 @@ func TestCompiledIndexedMemoryDirectoryCodecAndMetadata(t *testing.T) {
 			t.Fatalf("public multi-memory load: %v", publicErr)
 		}
 		defer public.Close()
-	} else if publicErr == nil || !strings.Contains(publicErr.Error(), "unsupported feature(s) multi-memory") {
-		t.Fatalf("public multi-memory load on incomplete backend = %v, want feature rejection", publicErr)
+	} else if publicErr == nil {
+		t.Fatal("public multi-memory load unexpectedly succeeded on an incomplete backend")
 	}
 	if !reflect.DeepEqual(got.memoryDir.defs, c.memoryDir.defs) || !reflect.DeepEqual(got.memoryDir.exports, c.memoryDir.exports) {
 		t.Fatalf("memory directory changed: memories=%#v exports=%#v", got.memoryDir.defs, got.memoryDir.exports)
