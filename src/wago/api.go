@@ -2792,8 +2792,11 @@ func (c *Compiled) validate() error {
 					return fmt.Errorf("compiled metadata invalid: %s element %d value %d has multiple initializer forms", kind, seg, k)
 				}
 				gcConstExpr := c.usesGenericGCExecution() || c.stagedGCStructProduct().requiresExternConversion() || c.stagedGCI31Product() != 0
-				if !gcConstExpr || (refType != ValAnyRef && refType != ValI31Ref && !(refType == ValExternRef && c.stagedGCStructProduct().requiresExternConversion())) || value.Expr[len(value.Expr)-1] != 0x0b {
+				if !gcConstExpr || (refType != ValAnyRef && refType != ValI31Ref && !(refType == ValExternRef && c.stagedGCStructProduct().requiresExternConversion())) {
 					return fmt.Errorf("compiled metadata invalid: %s element %d value %d has invalid GC expression", kind, seg, k)
+				}
+				if err := c.validateGCConstExpr(value.Expr, required, len(c.Globals)); err != nil {
+					return fmt.Errorf("compiled metadata invalid: %s element %d value %d GC expression: %w", kind, seg, k, err)
 				}
 				continue
 			}
@@ -3479,8 +3482,12 @@ func (c *Compiled) validateGlobalInitExpr(index int, g GlobalDef) error {
 	}
 	gcConstExpr := c.usesGenericGCExecution() || c.stagedGCStructProduct().requiresExternConversion()
 	if gcConstExpr && (g.Type == ValAnyRef || g.Type == ValI31Ref || (g.Type == ValExternRef && c.stagedGCStructProduct().requiresExternConversion())) {
-		if g.InitExpr[len(g.InitExpr)-1] != 0x0b {
-			return fmt.Errorf("compiled metadata invalid: global %d GC initializer missing end", index)
+		want, err := c.globalExactType(index)
+		if err != nil {
+			return fmt.Errorf("compiled metadata invalid: global %d GC initializer type: %w", index, err)
+		}
+		if err := c.validateGCConstExpr(g.InitExpr, want, index); err != nil {
+			return fmt.Errorf("compiled metadata invalid: global %d GC initializer: %w", index, err)
 		}
 		return nil
 	}

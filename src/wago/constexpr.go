@@ -277,13 +277,6 @@ func evalNullExternConversionConstExpr(b []byte, want wasm.ValType) (constExprRe
 	if err != nil {
 		return constExprResult{}, true, err
 	}
-	end, err := r.Byte()
-	if err != nil {
-		return constExprResult{}, true, fmt.Errorf("GC conversion constant expression missing end: %w", err)
-	}
-	if end != 0x0b || r.BytesLeft() != 0 {
-		return constExprResult{}, true, fmt.Errorf("GC conversion constant expression has trailing instructions")
-	}
 	got := constExprResult{GlobalIndex: -1, FuncIndex: -1}
 	switch sub {
 	case 26: // any.convert_extern
@@ -298,6 +291,13 @@ func evalNullExternConversionConstExpr(b []byte, want wasm.ValType) (constExprRe
 		got.vtype = wasm.ExternRef
 	default:
 		return constExprResult{}, false, nil
+	}
+	end, err := r.Byte()
+	if err != nil {
+		return constExprResult{}, true, fmt.Errorf("GC conversion constant expression missing end: %w", err)
+	}
+	if end != 0x0b || r.BytesLeft() != 0 {
+		return constExprResult{}, true, fmt.Errorf("GC conversion constant expression has trailing instructions")
 	}
 	if !constExprTypeMatches(got.vtype, want, nil) {
 		return constExprResult{}, true, fmt.Errorf("const expression type %s, want %s", got.vtype, want)

@@ -709,7 +709,14 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		}
 	}
 	var globalCells []*Global
-	writeElemEntry := func(entry []byte, refType ValType, value RefInit) error {
+	var instantiationRoots gc.Slots
+	writeElemEntry := func(entry []byte, refType ValType, value RefInit) (err error) {
+		rootCompactEntry := normalizedElemRefType(refType) == ValAnyRef || normalizedElemRefType(refType) == ValI31Ref
+		defer func() {
+			if err == nil && rootCompactEntry && len(entry) >= 4 {
+				instantiationRoots = append(instantiationRoots, compactRefRootSlot(entry[:4]))
+			}
+		}()
 		if len(value.Expr) != 0 {
 			if normalizedElemRefType(refType) != ValAnyRef && normalizedElemRefType(refType) != ValI31Ref && !(normalizedElemRefType(refType) == ValExternRef && needsExternConversion) {
 				return fmt.Errorf("GC element expression has incompatible destination %s", refType)
@@ -717,7 +724,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			if len(entry) < 8 {
 				return fmt.Errorf("GC element expression entry is truncated")
 			}
-			bits, err := evalCompiledGCConstExpr(value.Expr, b.collector, b.gcTypeMap, gcExternConversion, c, globalCells, len(globalCells), funcRefDescs)
+			bits, err := evalCompiledGCConstExpr(value.Expr, b.collector, b.gcTypeMap, gcExternConversion, c, globalCells, len(globalCells), funcRefDescs, instantiationRoots)
 			if err != nil {
 				return err
 			}
@@ -892,7 +899,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 					var value uint64
 					var err error
 					if g.Type == ValAnyRef || g.Type == ValI31Ref || (g.Type == ValExternRef && needsExternConversion) {
-						value, err = evalCompiledGCConstExpr(g.InitExpr, b.collector, b.gcTypeMap, gcExternConversion, c, globalCells, i, funcRefDescs)
+						value, err = evalCompiledGCConstExpr(g.InitExpr, b.collector, b.gcTypeMap, gcExternConversion, c, globalCells, i, funcRefDescs, instantiationRoots)
 					} else {
 						value, err = evalCompiledScalarConstExpr(g.InitExpr, g.Type, globalCells, c.Globals, constExprGlobalScope{context: constExprGlobalInitializer, limit: i})
 					}
@@ -910,6 +917,29 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			}
 			globalCells[i] = cell
 			binary.LittleEndian.PutUint64(globals[i*8:], uint64(uintptr(unsafe.Pointer(&cell.cell[0]))))
+			if b.collector != nil && isGCRefValType(g.Type) && len(cell.cell) >= 4 {
+				// Keep the actual native cell mutable during the remainder of
+				// instantiation, before the completed Instance publishes its permanent
+				// global/table root views.
+				instantiationRoots = append(instantiationRoots, compactRefRootSlot(cell.cell[:4]))
+			}
+			if b.collector != nil && genericGCExecution && i >= len(importGlobals) && isGCRefValType(g.Type) {
+				mapped := false
+				for _, mapping := range genericGCGlobalRoots {
+					if mapping.GlobalIndex == uint32(i) {
+						mapped = true
+						break
+					}
+				}
+				if !mapped {
+					ref := gc.Ref(uint32(readGlobalObject(cell, g.Type)))
+					slot, err := b.collector.NewCheckedGlobalSlot(ref)
+					if err != nil {
+						return nil, fmt.Errorf("global %d generic GC root: %w", i, err)
+					}
+					genericGCGlobalRoots = append(genericGCGlobalRoots, gcGlobalRootMapping{GlobalIndex: uint32(i), SlotIndex: slot})
+				}
+			}
 		}
 		// Snapshot restore: replace each module-local global's freshly-initialized
 		// value with the captured one. Imported globals (the leading cells) keep the
