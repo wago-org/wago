@@ -753,7 +753,7 @@ offer_path_setup() {
 		if WAGO_UI_RADIO_TITLE="Add Wago to your PATH?" \
 			WAGO_UI_RADIO_ITEMS="$path_radio_items" WAGO_UI_RADIO_CURSOR=0 \
 			"$installer_helper" radio "$selection_file" && [ -s "$selection_file" ]; then
-			radio_value=$(sed -n '1p' "$selection_file")
+			radio_value=$(sed -n '1p' "$selection_file" | tr -d '\r')
 		else
 			return 1
 		fi
@@ -786,7 +786,7 @@ No||no'
 		if WAGO_UI_RADIO_TITLE="Enable Wago completions for $configured_shell?" \
 			WAGO_UI_RADIO_ITEMS="$completion_items" WAGO_UI_RADIO_CURSOR=0 \
 			"$installer_helper" radio "$selection_file" && [ -s "$selection_file" ]; then
-			radio_value=$(sed -n '1p' "$selection_file")
+			radio_value=$(sed -n '1p' "$selection_file" | tr -d '\r')
 		else
 			return 1
 		fi
@@ -821,7 +821,7 @@ choose_install_dir() {
 		selection_file="$tmp/install-dir-selection"
 		if WAGO_UI_BIN_DIR="$bin_dir" WAGO_UI_CWD="$(pwd)" \
 			"$installer_helper" install-dir "$selection_file" && [ -s "$selection_file" ]; then
-			answer=$(sed -n '1p' "$selection_file")
+			answer=$(sed -n '1p' "$selection_file" | tr -d '\r')
 		else
 			return 1
 		fi
@@ -871,7 +871,7 @@ choose_reinstall_mode() {
 		[ -z "${WAGO_INSTALL_TTY:-}" ] && [ "${WAGO_NO_TUI:-0}" != "1" ]; then
 		selection_file="$tmp/reinstall-selection"
 		if "$installer_helper" reinstall "$selection_file" && [ -s "$selection_file" ]; then
-			reinstall_mode=$(sed -n '1p' "$selection_file")
+			reinstall_mode=$(sed -n '1p' "$selection_file" | tr -d '\r')
 			case "$reinstall_mode" in
 				full) radio_selected_label=Full ;;
 				partial) radio_selected_label=Partial ;;
