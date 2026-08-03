@@ -109,6 +109,20 @@ func TestCmdInstallerDoesNotUsePowerShell(t *testing.T) {
 	}
 }
 
+func TestCmdInstallerParsesReleaseIndexWithoutCommandSubstitution(t *testing.T) {
+	cmdScript, err := os.ReadFile("install.cmd")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(cmdScript)
+	if strings.Contains(text, "in (`findstr") {
+		t.Fatal("CMD installer uses FOR /F command substitution, which Wine cmd.exe does not support")
+	}
+	if !strings.Contains(text, `in ("!tmp_dir!\releases.json")`) {
+		t.Fatal("CMD installer does not parse the downloaded release index directly")
+	}
+}
+
 func TestCmdInstallerRunsFromCurl(t *testing.T) {
 	if runtime.GOOS != "windows" {
 		t.Skip("cmd.exe is available on native Windows CI")
