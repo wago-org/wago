@@ -24,5 +24,5 @@
   "normalized_wabt_json_fixtures": [
     "winch/use-innermost-frame.wast"
   ],
-  "fixture_tree_sha256": "a1508fee636ab00c3e6e03ba48e2fa97c4b72c7a66989907a1a8553415fe3053"
+  "fixture_tree_sha256": "9545dbecbc2591722ec67e7ce5bd82ca24551000c26a639ec8116797922d994c"
 }

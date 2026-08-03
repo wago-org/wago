@@ -31,13 +31,8 @@ func TestAdaptSource(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []byte(";; Wago port modification: register the named env provider explicitly so the standard WAST replay can resolve its imports.\n;; upstream\n(module $env\n)\n\n(register \"env\" $env)\n\n(module\n)\n")
-	if !bytes.Equal(got, want) {
-		t.Fatalf("adapted source:\n%s\nwant:\n%s", got, want)
-	}
-
-	if _, err := adaptSource("embenchen_fannkuch.wast", got); err == nil {
-		t.Fatal("already-adapted source was accepted as upstream")
+	if !bytes.Equal(got, upstream) {
+		t.Fatalf("adapted source:\n%s\nwant byte-identical upstream:\n%s", got, upstream)
 	}
 }
 

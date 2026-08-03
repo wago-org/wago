@@ -1,1 +1,4 @@
-{"source_filename":"testdata/wasmtime/wasm2/embenchen_fasta/source.wast","commands":[{"type":"module","line":4,"name":"$env","filename":"commands.0.wasm"},{"type":"module","line":27,"filename":"commands.1.wasm"}]}
+{"source_filename": "testdata/wasmtime/wasm2/embenchen_fasta/source.wast",
+ "commands": [
+  {"type": "module", "line": 4, "name": "$env", "filename": "commands.0.wasm"}, 
+  {"type": "module", "line": 27, "filename": "commands.1.wasm"}]}
