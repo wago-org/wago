@@ -340,13 +340,17 @@ func (c *RuntimeConfig) String() string {
 // compile. Intersect a desired set with it to stay portable:
 //
 //	feats := want & wago.SupportedFeatures()
+func supportsCompleteCore3Backend(goos, goarch string) bool {
+	return (goos == "linux" && goarch == "amd64") ||
+		(goarch == "arm64" && (goos == "linux" || goos == "darwin"))
+}
+
 func platformCoreFeatures() CoreFeatures {
 	supported := coreFeaturesWago
-	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
-		// These Core 3 families currently have complete native lowering only in
-		// the linux/amd64 backend. Other runtime targets retain the portable
+	if !supportsCompleteCore3Backend(runtime.GOOS, runtime.GOARCH) {
+		// Targets outside linux/amd64 and Linux/Darwin arm64 retain the portable
 		// Release 2 surface plus extended constant expressions and reject the
-		// incomplete families at configuration time.
+		// incomplete Core 3 families at configuration time.
 		unsupported := CoreFeatureTailCall |
 			CoreFeatureTypedFunctionReferences |
 			CoreFeatureGC |
@@ -354,16 +358,6 @@ func platformCoreFeatures() CoreFeatures {
 			CoreFeatureMultiMemory |
 			CoreFeatureMemory64 |
 			CoreFeatureTable64
-		// arm64 lowers collector-backed struct/array/i31 operations through the
-		// parked synchronous helper ABI. Exact roots cover locals, hidden spills,
-		// direct/recursive calls, direct host re-entry, same-domain foreign calls,
-		// mutable/shared GC globals and local/shared collector tables, exact local subtype
-		// tests/casts, dynamic indirect calls and tails, exception handling, indexed
-		// multi-memory, memory64, and table64. Polymorphic/foreign reference calls
-		// remain collection-disabled where exact ownership is unproved.
-		if runtime.GOARCH == "arm64" && (runtime.GOOS == "linux" || runtime.GOOS == "darwin") {
-			unsupported &^= CoreFeatureTailCall | CoreFeatureGC | CoreFeatureTypedFunctionReferences | CoreFeatureExceptionHandling | CoreFeatureMultiMemory | CoreFeatureMemory64 | CoreFeatureTable64
-		}
 		supported &^= unsupported
 	}
 	return supported

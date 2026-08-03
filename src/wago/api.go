@@ -1008,8 +1008,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		// Structural execution is shape-proven; historical suite hashes no longer
 		// define the product boundary now that Core 3 support is complete.
 		if product, shapeErr := stagedStructuralTypeProductShape(m); shapeErr == nil {
-			arm64Structural := goruntime.GOARCH == "arm64" && (goruntime.GOOS == "linux" || goruntime.GOOS == "darwin") && cfg.boundsChecks == BoundsChecksExplicit
-			if (goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64") && !arm64Structural {
+			if !supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) {
 				return nil, fmt.Errorf("compile: unsupported collector-free structural product staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
 			}
 			structuralProduct = product
@@ -1021,8 +1020,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		// strict because it selects the collector-free function-identity lowering,
 		// but any module with that proven shape receives the same semantics.
 		if product, shapeErr := stagedGCTypeSubtypingProductShape(m); shapeErr == nil {
-			arm64GC := goruntime.GOARCH == "arm64" && (goruntime.GOOS == "linux" || goruntime.GOOS == "darwin") && cfg.boundsChecks == BoundsChecksExplicit
-			if (goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64") && !arm64GC {
+			if !supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) {
 				return nil, fmt.Errorf("compile: unsupported gc/type-subtyping product staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
 			}
 			gcTypeSubtypingProduct = product
@@ -1034,8 +1032,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 			product, ok = stagedGCStructGeneric, true
 		}
 		if ok {
-			arm64GC := goruntime.GOARCH == "arm64" && (goruntime.GOOS == "linux" || goruntime.GOOS == "darwin") && cfg.boundsChecks == BoundsChecksExplicit
-			if (goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64") && !arm64GC {
+			if !supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) {
 				return nil, fmt.Errorf("compile: unsupported collector-backed struct product staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
 			}
 			gcStructProduct = product
@@ -1047,8 +1044,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 			product, ok = stagedGCArrayOpcodeProduct(m)
 		}
 		if ok {
-			arm64GC := goruntime.GOARCH == "arm64" && (goruntime.GOOS == "linux" || goruntime.GOOS == "darwin") && cfg.boundsChecks == BoundsChecksExplicit
-			if (goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64") && !arm64GC {
+			if !supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) {
 				return nil, fmt.Errorf("compile: unsupported collector-backed array product staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
 			}
 			gcArrayProduct = product
@@ -1056,8 +1052,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	}
 	if features.GCI31Products && gcStructProduct != stagedGCStructRefTestAbstract && gcStructProduct != stagedGCStructExtern && gcStructProduct != stagedGCStructRefEq && gcStructProduct != stagedGCStructRefCastAbstract && gcStructProduct != stagedGCStructRefCastConcrete && gcStructProduct != stagedGCStructBrOnCastAbstract && gcStructProduct != stagedGCStructBrOnCastFailAbstract {
 		if product, ok := stagedGCI31ExecutionProduct(wasmBytes); ok {
-			arm64GC := goruntime.GOARCH == "arm64" && (goruntime.GOOS == "linux" || goruntime.GOOS == "darwin") && cfg.boundsChecks == BoundsChecksExplicit
-			if (goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64") && !arm64GC {
+			if !supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) {
 				return nil, fmt.Errorf("compile: unsupported i31 product staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
 			}
 			gcI31Product = product
@@ -1088,23 +1083,21 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	if features.NullReferenceProducts {
 		if _, shapeErr := stagedNullReferenceProductShape(m); shapeErr == nil {
 			nullReferenceProduct = true
-			arm64Null := goruntime.GOARCH == "arm64" && (goruntime.GOOS == "linux" || goruntime.GOOS == "darwin") && cfg.boundsChecks == BoundsChecksExplicit
-			if (goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64") && !arm64Null {
+			if !supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) {
 				return nil, fmt.Errorf("compile: unsupported null-reference product staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
 			}
 		}
 	}
 	if features.MultiMemory && m.MemCount() > 1 {
-		if !((goruntime.GOOS == "linux" && goruntime.GOARCH == "amd64") || ((goruntime.GOOS == "linux" || goruntime.GOOS == "darwin") && goruntime.GOARCH == "arm64")) {
+		if !supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) {
 			return nil, fmt.Errorf("compile: unsupported memory multi-memory staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
 		}
 	}
-	if features.TailCalls && requiredByModule.IsEnabled(CoreFeatureTailCall) && !((goruntime.GOOS == "linux" && goruntime.GOARCH == "amd64") || ((goruntime.GOOS == "linux" || goruntime.GOOS == "darwin") && goruntime.GOARCH == "arm64")) {
+	if features.TailCalls && requiredByModule.IsEnabled(CoreFeatureTailCall) && !supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) {
 		return nil, fmt.Errorf("compile: unsupported instruction tail-call staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
 	}
 	if features.ExceptionHandling {
-		arm64EH := goruntime.GOARCH == "arm64" && (goruntime.GOOS == "linux" || goruntime.GOOS == "darwin")
-		if (goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64") && !arm64EH {
+		if !supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) {
 			return nil, fmt.Errorf("compile: unsupported exception handling staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
 		}
 	}
@@ -1121,8 +1114,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		}
 	}
 	if features.Table64 && usesTable64 {
-		arm64Table64 := (goruntime.GOOS == "linux" || goruntime.GOOS == "darwin") && goruntime.GOARCH == "arm64" && cfg.boundsChecks == BoundsChecksExplicit
-		if (goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64") && !arm64Table64 {
+		if !supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) {
 			return nil, fmt.Errorf("compile: unsupported table table64 staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
 		}
 		twoLocal := m.TableCount() == 2 && m.ImportedTableCount() == 0 && len(m.Tables) == 2
@@ -1194,7 +1186,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		}
 	}
 	if features.Memory64 && usesMemory64 {
-		if !((goruntime.GOOS == "linux" && goruntime.GOARCH == "amd64") || ((goruntime.GOOS == "linux" || goruntime.GOOS == "darwin") && goruntime.GOARCH == "arm64")) {
+		if !supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) {
 			return nil, fmt.Errorf("compile: unsupported memory memory64 staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
 		}
 		for i := uint32(0); i < uint32(m.MemCount()); i++ {

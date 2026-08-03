@@ -276,21 +276,20 @@ func TestCoreFeaturesV3ReleaseScopeAndAdmission(t *testing.T) {
 	if !CoreFeaturesV3.IsEnabled(CoreFeatureSIMD) {
 		t.Fatal("CoreFeaturesV3 must include the existing SIMD admission bit that also gates relaxed SIMD")
 	}
-	arm64GCBackend := runtime.GOARCH == "arm64" && (runtime.GOOS == "linux" || runtime.GOOS == "darwin")
-	completeCore3Backend := (runtime.GOOS == "linux" && runtime.GOARCH == "amd64") || arm64GCBackend
+	completeCore3Backend := supportsCompleteCore3Backend(runtime.GOOS, runtime.GOARCH)
 	for _, tc := range []struct {
 		bit       CoreFeatures
 		name      string
 		supported bool
 	}{
-		{CoreFeatureTailCall, "tail-call", completeCore3Backend || arm64GCBackend},
+		{CoreFeatureTailCall, "tail-call", completeCore3Backend},
 		{CoreFeatureExtendedConstExpressions, "extended-const-expressions", true},
-		{CoreFeatureTypedFunctionReferences, "typed-function-references", completeCore3Backend || arm64GCBackend},
-		{CoreFeatureGC, "gc", completeCore3Backend || arm64GCBackend},
-		{CoreFeatureExceptionHandling, "exception-handling", completeCore3Backend || arm64GCBackend},
-		{CoreFeatureMultiMemory, "multi-memory", completeCore3Backend || arm64GCBackend},
-		{CoreFeatureMemory64, "memory64", completeCore3Backend || arm64GCBackend},
-		{CoreFeatureTable64, "table64", completeCore3Backend || arm64GCBackend},
+		{CoreFeatureTypedFunctionReferences, "typed-function-references", completeCore3Backend},
+		{CoreFeatureGC, "gc", completeCore3Backend},
+		{CoreFeatureExceptionHandling, "exception-handling", completeCore3Backend},
+		{CoreFeatureMultiMemory, "multi-memory", completeCore3Backend},
+		{CoreFeatureMemory64, "memory64", completeCore3Backend},
+		{CoreFeatureTable64, "table64", completeCore3Backend},
 	} {
 		if got := SupportedFeatures().IsEnabled(tc.bit); got != tc.supported {
 			t.Errorf("SupportedFeatures admission for %s = %v, want %v", tc.name, got, tc.supported)
@@ -312,6 +311,24 @@ func TestCoreFeaturesV3ReleaseScopeAndAdmission(t *testing.T) {
 		}
 		if unsupported.Requested != CoreFeaturesV3&^SupportedFeatures() {
 			t.Fatalf("unsupported Core 3 features = %s, want %s", unsupported.Requested, CoreFeaturesV3&^SupportedFeatures())
+		}
+	}
+}
+
+func TestCompleteCore3BackendPlatforms(t *testing.T) {
+	for _, tc := range []struct {
+		goos, goarch string
+		want         bool
+	}{
+		{goos: "linux", goarch: "amd64", want: true},
+		{goos: "linux", goarch: "arm64", want: true},
+		{goos: "darwin", goarch: "arm64", want: true},
+		{goos: "darwin", goarch: "amd64"},
+		{goos: "windows", goarch: "amd64"},
+		{goos: "windows", goarch: "arm64"},
+	} {
+		if got := supportsCompleteCore3Backend(tc.goos, tc.goarch); got != tc.want {
+			t.Errorf("supportsCompleteCore3Backend(%q, %q) = %v, want %v", tc.goos, tc.goarch, got, tc.want)
 		}
 	}
 }
