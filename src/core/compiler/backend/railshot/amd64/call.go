@@ -609,7 +609,7 @@ func (f *fn) emitTailDynamicImportJump(ft *wasm.CompType, b ImportBinding) {
 	f.a.Load64(R10, RSP, 8)
 	f.copyInstanceContext(RBX, R10)
 	if f.memSizeReg != regNone {
-		f.a.Load32(f.memSizeReg, RBX, -bdCurBytes)
+		f.a.Load64(f.memSizeReg, RBX, -bdCurBytes)
 	}
 	f.deriveModuleGlobals()
 	if len(ft.Results) > 0 {
@@ -687,7 +687,7 @@ func (f *fn) emitTailCrossDirectJump(ft *wasm.CompType, b ImportBinding) {
 	f.a.PatchRel32(trampolineSite, trampoline)
 	f.a.Load64(RBX, RSP, 0)
 	if f.memSizeReg != regNone {
-		f.a.Load32(f.memSizeReg, RBX, -bdCurBytes)
+		f.a.Load64(f.memSizeReg, RBX, -bdCurBytes)
 	}
 	f.deriveModuleGlobals()
 	if len(ft.Results) > 0 {
@@ -2321,7 +2321,7 @@ func (f *fn) emitTailCrossWrapperJump(ft *wasm.CompType) {
 	f.a.Load64(R10, RSP, 8)
 	f.copyInstanceContext(RBX, R10)
 	if f.memSizeReg != regNone {
-		f.a.Load32(f.memSizeReg, RBX, -bdCurBytes)
+		f.a.Load64(f.memSizeReg, RBX, -bdCurBytes)
 	}
 	f.deriveModuleGlobals()
 	if len(ft.Results) > 0 {

@@ -176,7 +176,7 @@ func (h *throughputHeap) grow(size uint32) (uint32, error) {
 func (h *throughputHeap) growBacking(needed uint64) error {
 	reserve := needed
 	current, pageBytes, limit := uint64(len(h.mem)), uint64(h.pageBytes), uint64(h.limit)
-	if current >= 16*pageBytes {
+	if current >= pageBytes {
 		step := current / 2
 		if step < pageBytes {
 			step = pageBytes

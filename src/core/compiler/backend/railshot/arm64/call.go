@@ -432,7 +432,7 @@ func (f *fn) emitTailDynamicImportJump(ft *wasm.CompType, b ImportBinding) error
 	f.copyInstanceContext(X10, X11)
 	f.a.MovReg64(linMemReg, X10)
 	if f.memSizeReg != regNone {
-		f.ld32(f.memSizeReg, linMemReg, -bdCurBytes)
+		f.ld64(f.memSizeReg, linMemReg, -bdCurBytes)
 	}
 	f.deriveModuleGlobals()
 	f.derivePinnedGlobals()
@@ -675,7 +675,7 @@ func (f *fn) emitTailDescriptorWrapperJump(ft *wasm.CompType) {
 	f.copyInstanceContext(X10, X11)
 	f.a.MovReg64(linMemReg, X10)
 	if f.memSizeReg != regNone {
-		f.ld32(f.memSizeReg, linMemReg, -bdCurBytes)
+		f.ld64(f.memSizeReg, linMemReg, -bdCurBytes)
 	}
 	f.deriveModuleGlobals()
 	f.derivePinnedGlobals()

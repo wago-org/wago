@@ -1886,7 +1886,7 @@ func (f *fn) prologue() {
 	if f.memSizeReg != regNone {
 		// Offset-0 entry: establish the module-wide memBytes cache. Direct wasm→wasm
 		// register-ABI calls skip this (the caller's value is valid by construction).
-		f.ld32(f.memSizeReg, linMemReg, -bdCurBytes)
+		f.ld64(f.memSizeReg, linMemReg, -bdCurBytes)
 	}
 	f.emitStackFenceCheck(linMemReg, X16)
 	f.emitInterruptCheck()
@@ -1996,7 +1996,7 @@ func (f *fn) emitRegABI(c *wasm.Func) (int, error) {
 	if f.memSizeReg != regNone {
 		// Offset-0 entry (from Go, or an indirect call): establish the module-wide
 		// memBytes cache before the internal entry runs (which relies on it).
-		f.ld32(f.memSizeReg, linMemReg, -bdCurBytes)
+		f.ld64(f.memSizeReg, linMemReg, -bdCurBytes)
 	}
 	f.deriveModuleGlobals()   // offset-0 entry: cells → module-pinned registers
 	a.StpPre(LR, X3, SP, -16) // save LR (BL clobbers it) + results ptr; keeps SP 16-aligned

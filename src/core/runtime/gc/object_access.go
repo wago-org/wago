@@ -191,16 +191,40 @@ func (c *Collector) NewArray(typeID TypeID, length uint32, init Value) (Ref, err
 // element. Reference operands are rooted across allocation and reread before
 // stores, matching the atomic operand lifetime required by array.new_fixed.
 func (c *Collector) NewArrayFixedWithRoots(typeID TypeID, values []Value, roots RootSet) (Ref, error) {
-	return c.newArrayFixedWithRoots(typeID, values, roots, false)
+	return c.newArrayFixedWithRoots(typeID, values, roots, false, false)
 }
 
 // NewArrayFixedPrevalidatedWithRoots is the runtime-helper counterpart after
 // exact element kind, collector ownership, subtype, and nullability validation.
 func (c *Collector) NewArrayFixedPrevalidatedWithRoots(typeID TypeID, values []Value, roots RootSet) (Ref, error) {
-	return c.newArrayFixedWithRoots(typeID, values, roots, true)
+	return c.newArrayFixedWithRoots(typeID, values, roots, true, false)
 }
 
-func (c *Collector) newArrayFixedWithRoots(typeID TypeID, values []Value, roots RootSet, prevalidated bool) (Ref, error) {
+// NewArrayFixedWithRootScratch removes interface-composition allocations for
+// repeated reference-array construction. scratch must be caller-owned and must
+// not be used concurrently.
+func (c *Collector) NewArrayFixedWithRootScratch(typeID TypeID, values []Value, roots RootSet, scratch *ArrayInitializerRootScratch) (Ref, error) {
+	return c.newArrayFixedWithRootScratch(typeID, values, roots, scratch, false)
+}
+
+// NewArrayFixedPrevalidatedWithRootScratch combines the validated runtime-helper
+// path with reusable root composition.
+func (c *Collector) NewArrayFixedPrevalidatedWithRootScratch(typeID TypeID, values []Value, roots RootSet, scratch *ArrayInitializerRootScratch) (Ref, error) {
+	return c.newArrayFixedWithRootScratch(typeID, values, roots, scratch, true)
+}
+
+func (c *Collector) newArrayFixedWithRootScratch(typeID TypeID, values []Value, roots RootSet, scratch *ArrayInitializerRootScratch, prevalidated bool) (Ref, error) {
+	if scratch == nil {
+		return c.newArrayFixedWithRoots(typeID, values, roots, prevalidated, false)
+	}
+	if !scratch.prepareFixed(roots, values) {
+		return Null(), errors.New("gc: array initializer root scratch is already active")
+	}
+	defer scratch.clear()
+	return c.newArrayFixedWithRoots(typeID, values, scratch, prevalidated, true)
+}
+
+func (c *Collector) newArrayFixedWithRoots(typeID TypeID, values []Value, roots RootSet, prevalidated, valuesRooted bool) (Ref, error) {
 	d, err := c.desc(typeID)
 	if err != nil {
 		return Null(), err
@@ -217,7 +241,7 @@ func (c *Collector) newArrayFixedWithRoots(typeID TypeID, values []Value, roots 
 		}
 		hasObjectRefs = hasObjectRefs || (isCollectorRefKind(d.Elem) && values[i].Ref.IsObj())
 	}
-	if hasObjectRefs {
+	if hasObjectRefs && !valuesRooted {
 		roots = combineRootSets(roots, valueRootSet{values: values, all: true})
 	}
 	sz, err := ArraySize(d, uint32(len(values)))
@@ -237,6 +261,43 @@ func (c *Collector) newArrayFixedWithRoots(typeID TypeID, values []Value, roots 
 	}
 	return r, nil
 }
+
+// NewArrayWithRootScratch is the allocation-free repeated-construction form of
+// NewArrayWithRoots for reference arrays. Numeric arrays ignore scratch.
+func (c *Collector) NewArrayWithRootScratch(typeID TypeID, length uint32, init Value, roots RootSet, scratch *ArrayInitializerRootScratch) (Ref, error) {
+	d, err := c.desc(typeID)
+	if err != nil {
+		return Null(), err
+	}
+	if !isCollectorRefKind(d.Elem) || !init.Ref.IsObj() || scratch == nil {
+		return c.NewArrayWithRoots(typeID, length, init, roots)
+	}
+	if err := checkValueCompatible(d.Elem, init); err != nil {
+		return Null(), err
+	}
+	if err := c.validateStoredRef(init.Ref, isNullableReferenceStorage(d.Elem)); err != nil {
+		return Null(), err
+	}
+	sz, err := ArraySize(d, length)
+	if err != nil {
+		return Null(), err
+	}
+	if !scratch.prepareUniform(roots, init.Ref) {
+		return Null(), errors.New("gc: array initializer root scratch is already active")
+	}
+	defer scratch.clear()
+	r, err := c.alloc(d, sz, length, scratch)
+	if err != nil {
+		return Null(), err
+	}
+	init.Ref = scratch.uniform
+	if err := c.fillArrayPayload(r, d, 0, init, length); err != nil {
+		return Null(), err
+	}
+	c.PostBulkWriteBarrier(r, 0, length)
+	return r, nil
+}
+
 func (c *Collector) NewArrayWithRoots(typeID TypeID, length uint32, init Value, roots RootSet) (Ref, error) {
 	d, err := c.desc(typeID)
 	if err != nil {

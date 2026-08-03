@@ -37,7 +37,7 @@ scan:
 	BNE	next
 	MOVD	R21, R1
 	SUB	R9, R1
-	MOVWU	-8(R9), R2
+	MOVD	-288(R9), R2
 	CMP	R2, R1
 	BHS	outofbounds
 

@@ -66,7 +66,8 @@ var (
 	guardRegionMu              sync.Mutex                   // serialises registry mutation only
 	guardTrapExitFramedPC      uintptr                      // entry of nativeTrapExitFramed
 	guardTrapExitHandlerJumpPC uintptr                      // entry of nativeTrapExitHandlerJump
-	guardOldHandler            uintptr                      // Go's previous SIGSEGV/SIGBUS handler
+	guardOldSEGVHandler        uintptr                      // previous SIGSEGV handler
+	guardOldBUSHandler         uintptr                      // previous SIGBUS handler
 
 	guardMu        sync.Mutex
 	guardInstalled bool
@@ -161,6 +162,42 @@ func rtSigaction(sig uintptr, act, old *kernelSigaction) error {
 	return nil
 }
 
+func installLinuxSignalHandlers(act *kernelSigaction, call func(uintptr, *kernelSigaction, *kernelSigaction) error) error {
+	var oldSEGV kernelSigaction
+	if err := call(uintptr(syscall.SIGSEGV), nil, &oldSEGV); err != nil {
+		return fmt.Errorf("read SIGSEGV handler: %w", err)
+	}
+	if oldSEGV.handler <= 1 {
+		return fmt.Errorf("install SIGSEGV handler: previous disposition %#x is not chainable", oldSEGV.handler)
+	}
+	var oldBUS kernelSigaction
+	if err := call(uintptr(syscall.SIGBUS), nil, &oldBUS); err != nil {
+		return fmt.Errorf("read SIGBUS handler: %w", err)
+	}
+	if oldBUS.handler <= 1 {
+		return fmt.Errorf("install SIGBUS handler: previous disposition %#x is not chainable", oldBUS.handler)
+	}
+
+	// Publish both predecessors before either replacement can receive a fault.
+	guardOldSEGVHandler = oldSEGV.handler
+	guardOldBUSHandler = oldBUS.handler
+	if err := call(uintptr(syscall.SIGSEGV), act, nil); err != nil {
+		guardOldSEGVHandler = 0
+		guardOldBUSHandler = 0
+		return fmt.Errorf("install SIGSEGV handler: %w", err)
+	}
+	if err := call(uintptr(syscall.SIGBUS), act, nil); err != nil {
+		rollback := call(uintptr(syscall.SIGSEGV), &oldSEGV, nil)
+		guardOldSEGVHandler = 0
+		guardOldBUSHandler = 0
+		if rollback != nil {
+			return fmt.Errorf("install SIGBUS handler: %w (restore SIGSEGV: %v)", err, rollback)
+		}
+		return fmt.Errorf("install SIGBUS handler: %w", err)
+	}
+	return nil
+}
+
 // InstallGuardTrapHandler installs the guard-page SIGSEGV/SIGBUS handler
 // (idempotent). Call once before any CallGuarded.
 func InstallGuardTrapHandler() error {
@@ -176,14 +213,8 @@ func InstallGuardTrapHandler() error {
 		flags:    _SA_SIGINFO | _SA_ONSTACK | _SA_RESTORER,
 		restorer: addrGuardSigRestorer(),
 	}
-	var old kernelSigaction
-	if err := rtSigaction(uintptr(syscall.SIGSEGV), &act, &old); err != nil {
-		return fmt.Errorf("install SIGSEGV handler: %w", err)
-	}
-	guardOldHandler = old.handler
-	var oldBus kernelSigaction
-	if err := rtSigaction(uintptr(syscall.SIGBUS), &act, &oldBus); err != nil {
-		return fmt.Errorf("install SIGBUS handler: %w", err)
+	if err := installLinuxSignalHandlers(&act, rtSigaction); err != nil {
+		return err
 	}
 	guardInstalled = true
 	return nil

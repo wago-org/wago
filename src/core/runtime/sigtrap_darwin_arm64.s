@@ -45,14 +45,16 @@ scan:
 	// linMem used for trap/unwind state.
 	MOVD	R8, R12
 	SUB	R9, R12                 // R12 = fault - region.linMem
-	MOVWU	-8(R9), R13             // region logical linear-memory size
+	MOVD	-288(R9), R13           // authoritative region logical byte size
 	CMP	R13, R12
 	BHS	outofbounds             // curBytes <= off
 
 	// Grown-but-uncommitted page. Commit the containing 64 KiB wasm page and
 	// return through libSystem's signal trampoline so the access is retried.
-	MOVD	R8, R0
-	AND	$-65536, R0             // page-aligned address
+	// Align the reservation-relative offset because linMem is only host-page aligned.
+	MOVD	R12, R0
+	AND	$-65536, R0
+	ADD	R9, R0
 	MOVD	$65536, R1
 	MOVD	$3, R2                  // PROT_READ|PROT_WRITE
 	MOVD	$74, R16                // SYS_mprotect

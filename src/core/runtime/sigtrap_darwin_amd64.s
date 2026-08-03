@@ -51,13 +51,14 @@ scan:
 
 	MOVQ	R8, AX
 	SUBQ	BX, AX                  // fault - linMem
-	MOVL	-8(BX), CX              // current logical byte size
+	MOVQ	-288(BX), CX            // authoritative current logical byte size
 	CMPQ	CX, AX
 	JLS	outofbounds             // curBytes <= off
 
 	// Commit a grown-but-uncommitted 64 KiB wasm page and retry the access.
-	MOVQ	R8, DI
-	ANDQ	$-65536, DI
+	// Align the reservation-relative offset because linMem is only host-page aligned.
+	ANDQ	$-65536, AX
+	LEAQ	(BX)(AX*1), DI
 	MOVQ	$65536, SI
 	MOVQ	$3, DX                  // PROT_READ|PROT_WRITE
 	// Use libSystem rather than issuing SYSCALL directly. Rosetta's signal

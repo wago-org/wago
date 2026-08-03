@@ -36,7 +36,7 @@ scan:
 	JNE	next
 	MOVQ	R14, AX
 	SUBQ	BX, AX
-	MOVL	-8(BX), CX
+	MOVQ	-288(BX), CX
 	CMPQ	CX, AX
 	JLS	outofbounds
 

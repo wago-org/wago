@@ -1,6 +1,10 @@
 package runtime
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/wago-org/wago/src/core/runtime/abi"
+)
 
 // InstantiateArenaSize is the maximum supported arena size for per-instance
 // runtime metadata: host-call log, globals, table descriptor, call buffers, and
@@ -87,7 +91,7 @@ type InstantiateFootprint struct {
 	TagCount           int // one 8-byte exact native identity per exception tag
 	GlobalCount        int
 	V128GlobalCount    int // globals whose cells require 16 bytes instead of the scalar/reference 8 bytes
-	MemoryCount        int // 16-byte native directory entries when greater than one
+	MemoryCount        int // abi.MemoryDirEntryBytes native entries when greater than one
 	HasTable           bool
 	TableSize          int
 	TableCapacity      int
@@ -198,10 +202,10 @@ func InstantiateArenaNeed(fp InstantiateFootprint) (int, error) {
 	}
 	need += 8 * fp.V128GlobalCount // v128 cells are 16 bytes, eight above the base cell
 	if fp.MemoryCount > 1 {
-		if fp.MemoryCount > (maxInt()-need)/16 {
+		if fp.MemoryCount > (maxInt()-need)/abi.MemoryDirEntryBytes {
 			return 0, fmt.Errorf("memory count %d overflows directory allocation", fp.MemoryCount)
 		}
-		need += 16 * fp.MemoryCount
+		need += abi.MemoryDirEntryBytes * fp.MemoryCount
 	}
 	if len(tableCaps) > 1 {
 		if len(tableCaps) > (maxInt()-need)/8 {

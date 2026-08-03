@@ -1246,7 +1246,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	if err != nil {
 		return nil, fmt.Errorf("type metadata: %w", err)
 	}
-	c := &Compiled{Code: code, Entry: entry, InternalEntry: internalEntry, NumImports: importedFuncs, Types: types, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, memoryDir: &compiledMemoryDirectory{exports: map[string]int{}, exactExports: true, staged: features.MultiMemory && (m.MemCount() > 1 || m.ImportedMemCount() > 0), stagedMemory64: features.Memory64 && usesMemory64}, boundsMode: boundsMode, stagedTable64: features.Table64 && usesTable64, GCTypeDescs: gcDescs, requiredFeatures: moduleRequiredFeatures(m), dynamicImports: importedFuncs > 0, customInstructions: customInstructions, requiresAVX2: cm.RequiresAVX2, requiresAVX512: cm.RequiresAVX512}
+	c := &Compiled{Code: code, Entry: entry, InternalEntry: internalEntry, NumImports: importedFuncs, Types: types, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, memoryDir: &compiledMemoryDirectory{exports: map[string]int{}, exactExports: true, staged: features.MultiMemory && (m.MemCount() > 1 || m.ImportedMemCount() > 0), stagedMemory64: features.Memory64 && usesMemory64}, boundsMode: boundsMode, stagedTable64: features.Table64 && usesTable64, GCTypeDescs: gcDescs, requiredFeatures: requiredByModule, dynamicImports: importedFuncs > 0, customInstructions: customInstructions, requiresAVX2: cm.RequiresAVX2, requiresAVX512: cm.RequiresAVX512}
 	typeConverter := newWasmTypeDescriptorConverter(m)
 	constExprCtx := &constExprCompileContext{module: m, types: c.Types, converter: typeConverter}
 	if gcI31Product == stagedGCI31ProductTableGlobalInitializer {
@@ -1558,7 +1558,10 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		if memory0.Min <= uint64(^uint32(0)) {
 			c.MemMinPages = uint32(memory0.Min)
 		}
-		c.MemMaxPages = 65535 // default memory-0 reservation ceiling
+		c.MemMaxPages = 65536 // full memory32 reservation ceiling
+		if memory0.Addr64 {
+			c.MemMaxPages = 65535 // staged memory64 keeps its finite product ceiling
+		}
 		c.MemHasMax = memory0.HasMax
 		if memory0.HasMax && memory0.Max < uint64(c.MemMaxPages) {
 			c.MemMaxPages = uint32(memory0.Max)
@@ -3510,12 +3513,13 @@ func (c *Compiled) validateDeferredOffsetGlobal(kind string, seg, idx int) error
 
 const wagoMagic = "WAGO"
 
-// Version 29 adds validated per-safepoint native WasmGC frame-root metadata to
-// version 28's StorageV128 and 16-byte layout contract. Older blobs are rejected
-// so collection-enabled code cannot lose or misinterpret its parked-frame map.
+// Version 30 added validated per-safepoint native WasmGC frame-root metadata.
+// Version 31 moves generated memory bounds to the u64 byte-size cache and widens
+// indexed-memory directory entries, so older native code must not be loaded by a
+// runtime using the new basedata ABI (or vice versa). Older blobs are rejected.
 // The codec never serializes live owners, collector handles, mappings, tokens,
 // active handlers, thunk addresses, or store identity.
-const wagoVersion = 30
+const wagoVersion = 31
 
 // MarshalBinary serializes the precompiled module to a ".wago" blob.
 //
@@ -3524,6 +3528,15 @@ const wagoVersion = 30
 // which a loaded blob has no way to record. Recompile from wasm with the desired
 // config at load time instead.
 func (c *Compiled) MarshalBinary() ([]byte, error) {
+	if c == nil {
+		return nil, errors.New("wago: compiled module is nil")
+	}
+	c.ensureCodeCache()
+	c.codeCache.mu.Lock()
+	defer c.codeCache.mu.Unlock()
+	if c.codeCache.closed {
+		return nil, errors.New("wago: compiled module is closed")
+	}
 	if c.boundsMode == BoundsChecksSignalsBased {
 		return nil, errors.New("wago: signals-based compiled modules cannot be serialized; recompile from wasm at load time")
 	}
@@ -3696,26 +3709,22 @@ func (in *Instance) invoke(export string, args []uint64, cancel context.Context)
 	if cancel != nil {
 		stopCancel = in.startCancellationWatch(cancel, in.trap)
 	}
+	defer stopCancel()
 	if in.syncMode {
 		if err := in.callNativeSync(entry); err != nil {
-			stopCancel()
 			return nil, err
 		}
 	} else {
 		if err := in.callNativeAsync(entry, false); err != nil {
-			stopCancel()
 			return nil, err
 		}
 		if err := in.replayHostLog(); err != nil {
-			stopCancel()
 			return nil, err
 		}
 	}
 	if err := in.reconcileGCGlobalRoots(); err != nil {
-		stopCancel()
 		return nil, err
 	}
-	stopCancel()
 	goruntime.KeepAlive(in)
 	goruntime.KeepAlive(in.c)
 	out := in.resultVals[:ic.resultSlots]
@@ -3815,26 +3824,22 @@ func (in *Instance) invokeAttachedLocalContext(li int, args []uint64, cancel con
 	if cancel != nil {
 		stopCancel = in.startCancellationWatch(cancel, activeTrap)
 	}
+	defer stopCancel()
 	if in.syncMode {
 		if err := in.callNativeSyncWithTrap(entry, activeTrap); err != nil {
-			stopCancel()
 			return nil, err
 		}
 	} else {
 		if err := in.callNativeAsyncWithTrap(entry, false, activeTrap); err != nil {
-			stopCancel()
 			return nil, err
 		}
 		if err := in.replayHostLog(); err != nil {
-			stopCancel()
 			return nil, err
 		}
 	}
 	if err := in.reconcileGCGlobalRoots(); err != nil {
-		stopCancel()
 		return nil, err
 	}
-	stopCancel()
 	goruntime.KeepAlive(in)
 	goruntime.KeepAlive(in.c)
 	out := in.resultVals[:resultSlots]
@@ -3897,20 +3902,26 @@ func (in *Instance) startCancellationWatch(cancel context.Context, activeTrap []
 	}
 	stopCallback := context.AfterFunc(cancel, func() {
 		defer close(stopped)
-		// Keep publishing until native code observes the request. Linux/amd64 also
-		// re-sends the thread-directed signal, closing entry/exit and host-return
-		// races without generated-code polls.
-		for {
+		// The trap cell remains armed until invocation cleanup, so retries only
+		// need to bridge native entry/exit races. Bound the process-wide signal
+		// broadcasts: a guest parked indefinitely in a host call will observe the
+		// trap when it returns, without scanning /proc/self/task forever.
+		retry := time.NewTicker(50 * time.Microsecond)
+		defer retry.Stop()
+		for attempt := 0; attempt < 256; attempt++ {
 			wruntime.RequestInterrupt(activeTrap)
 			select {
 			case <-done:
 				return
-			default:
-				time.Sleep(50 * time.Microsecond)
+			case <-retry.C:
 			}
 		}
 	})
+	var stopOnce atomic.Bool
 	return func() {
+		if !stopOnce.CompareAndSwap(false, true) {
+			return
+		}
 		clearDeadline()
 		close(done)
 		if !stopCallback() {

@@ -18,27 +18,28 @@ import (
 // ACTIVE_STACK_OVERFLOW_CHECK=1, BUILTIN_FUNCTIONS=0, no stacktrace,
 // STACKSIZE_LEFT_BEFORE_NATIVE_CALL=0).
 const (
-	offLinMemWasmSize       = 4                      // u32 (pages)
-	offActualLinMemByteSize = 8                      // u32 (bytes); memSize cache = this-8
-	offMaxLinMemPages       = 12                     // u32 (pages); wago extension: grow ceiling (reserved size)
-	offTrapHandlerPtr       = 16                     // u64
-	offTrapStackReentry     = 24                     // u64
-	offRuntimePtr           = 32                     // u64
-	offCustomCtx            = 40                     // u64 (V2 host-import ctx pointer)
-	offSpillRegion          = 48                     // 8B scratch
-	offJobMemoryDataPtrPtr  = 56                     // u64
-	offMemoryDirPtr         = abi.MemoryDirPtrOffset // u64: indexed memory directory
-	offStackFence           = 72                     // u64
-	offTablePtr             = 80                     // u64: indirect-call table descriptor (wago extension)
-	offFuncRefDescPtr       = abi.FuncRefDescPtrOffset
-	offPassiveElemPtr       = abi.PassiveElemPtrOffset
-	offGlobalsPtr           = abi.GlobalsPtrOffset
-	offPassiveDataPtr       = abi.PassiveDataPtrOffset
-	offTableDirPtr          = abi.TableDirPtrOffset
-	offImportDispatchPtr    = abi.ImportDispatchPtrOffset
-	offEHTagDirPtr          = abi.EHTagDirPtrOffset
-	offTailArgs             = abi.TailArgsOffset
-	offGCNativeViewPtr      = abi.GCNativeViewPtrOffset
+	offLinMemWasmSize         = 4                                // u32 (pages)
+	offActualLinMemByteSize   = 8                                // legacy u32 byte-size cache
+	offMaxLinMemPages         = 12                               // u32 (pages); grow ceiling
+	offActualLinMemByteSize64 = abi.ActualLinMemByteSize64Offset // authoritative u64 bytes
+	offTrapHandlerPtr         = 16                               // u64
+	offTrapStackReentry       = 24                               // u64
+	offRuntimePtr             = 32                               // u64
+	offCustomCtx              = 40                               // u64 (V2 host-import ctx pointer)
+	offSpillRegion            = 48                               // 8B scratch
+	offJobMemoryDataPtrPtr    = 56                               // u64
+	offMemoryDirPtr           = abi.MemoryDirPtrOffset           // u64: indexed memory directory
+	offStackFence             = 72                               // u64
+	offTablePtr               = 80                               // u64: indirect-call table descriptor (wago extension)
+	offFuncRefDescPtr         = abi.FuncRefDescPtrOffset
+	offPassiveElemPtr         = abi.PassiveElemPtrOffset
+	offGlobalsPtr             = abi.GlobalsPtrOffset
+	offPassiveDataPtr         = abi.PassiveDataPtrOffset
+	offTableDirPtr            = abi.TableDirPtrOffset
+	offImportDispatchPtr      = abi.ImportDispatchPtrOffset
+	offEHTagDirPtr            = abi.EHTagDirPtrOffset
+	offTailArgs               = abi.TailArgsOffset
+	offGCNativeViewPtr        = abi.GCNativeViewPtrOffset
 
 	basedataSize = abi.BasedataSize // keeps linMem 16-byte aligned after appending wago extension fields
 )
@@ -59,7 +60,7 @@ type JobMemory struct {
 }
 
 const (
-	maxClassicLinMemBytes        = 65535 * 65536
+	maxClassicLinMemBytes        = 65536 * 65536
 	minClassicLinMemReserveBytes = 65536
 )
 
@@ -89,8 +90,8 @@ func NewJobMemoryGrowable(initialBytes, maxBytes int) (*JobMemory, error) {
 }
 
 func normalizeMemorySizes(initialBytes, maxBytes int) (int, int, int) {
-	// 65536 pages is 4 GiB, whose byte size (2^32) does not fit the u32 size
-	// cache, so cap the logical size at 65535 pages (0xFFFF0000 bytes).
+	// memory32 is bounded at 65,536 pages (4 GiB). The authoritative byte-size
+	// cache is u64; the legacy u32 cache wraps only at this exact boundary.
 	if initialBytes > maxClassicLinMemBytes {
 		initialBytes = maxClassicLinMemBytes
 	}
@@ -119,6 +120,7 @@ func (j *JobMemory) reset(initialBytes, maxBytes, reserveBytes int, clearMem boo
 	j.reserveBase = 0
 	j.reserveLen = 0
 	j.putU32(offActualLinMemByteSize, uint32(initialBytes))
+	j.putU64(offActualLinMemByteSize64, uint64(initialBytes))
 	j.putU32(offLinMemWasmSize, uint32(initialBytes/65536))
 	j.putU32(offMaxLinMemPages, uint32(maxBytes/65536))
 }
@@ -183,7 +185,7 @@ func (j *JobMemory) reclaimForReuse() error {
 
 // curBytes is the current in-bounds linear-memory size, read from the cache that
 // native code maintains (memory.grow updates it without involving Go).
-func (j *JobMemory) curBytes() int { return int(j.getU32(offActualLinMemByteSize)) }
+func (j *JobMemory) curBytes() int { return int(j.getU64(offActualLinMemByteSize64)) }
 
 // CurrentPages and MaxPages expose the native size caches for exact import
 // matching and indexed-memory directory construction.
@@ -212,6 +214,7 @@ func (j *JobMemory) RestoreLinear(data []byte) {
 		clear(lin[n:old]) // drop grown/dirtied tail back to zero
 	}
 	j.putU32(offActualLinMemByteSize, uint32(n))
+	j.putU64(offActualLinMemByteSize64, uint64(n))
 	j.putU32(offLinMemWasmSize, uint32(n/65536))
 }
 

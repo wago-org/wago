@@ -30,11 +30,14 @@ const (
 
 // Basedata offsets are byte distances below the linear-memory base.
 const (
-	// MemoryDirPtrOffset points at 16-byte indexed-memory entries
-	// {base u64, current-bytes u32, current-pages u32}. Memory 0 keeps the direct
-	// RBX/basedata hot path; native code consults this directory only for nonzero
-	// indexes. Offset 64 was the unused WARP memory-helper slot.
-	MemoryDirPtrOffset = 64
+	// MemoryDirPtrOffset points at indexed-memory entries. Memory 0 keeps the
+	// direct RBX/basedata hot path; native code consults this directory only for
+	// nonzero indexes. Offset 64 was the unused WARP memory-helper slot.
+	MemoryDirPtrOffset          = 64
+	MemoryDirEntryBytes         = 24
+	MemoryDirBaseOffset         = 0
+	MemoryDirCurrentBytesOffset = 8  // u64: permits the full 4-GiB memory32 size
+	MemoryDirCurrentPagesOffset = 16 // u32
 	// FuncRefDescPtrOffset is the basedata slot holding the per-instance canonical
 	// funcref descriptor array used by table.set/fill/grow/ref.func lowering.
 	FuncRefDescPtrOffset = 88
@@ -106,6 +109,12 @@ const (
 	FuncRefCrossInstanceTagValue        = FuncRefCrossInstanceHomeTag >> FuncRefEntryTagShift
 	FuncRefLocalWrapperTagValue         = FuncRefLocalWrapperHomeTag >> FuncRefEntryTagShift
 	FuncRefHostThunkTagValue            = 0
+
+	// ActualLinMemByteSize64Offset is the authoritative u64 memory-0 byte-size
+	// cache. The legacy u32 cache at offset 8 remains populated for artifact and
+	// tooling compatibility, but explicit bounds checks use this field so a full
+	// 65,536-page memory32 is representable.
+	ActualLinMemByteSize64Offset = 288
 
 	// BasedataSize keeps the linear-memory base 16-byte aligned after the wago
 	// extension fields, bounded wrapper-tail argument bank, and native GC view.

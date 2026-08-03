@@ -70,6 +70,9 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 		state = in.publicGCState()
 		state.mu.Lock()
 		defer state.mu.Unlock()
+		if err := in.syncGenericGCGlobalRootsLocked(state); err != nil {
+			panic(gcStructHelperError{err: err})
+		}
 		frameRoots = in.gcHelperRoots(ctrl, state, safepoint)
 	}
 
@@ -345,7 +348,13 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 			if uint64(source)+uint64(length) > uint64(segmentLen) {
 				panic(gcStructHelperTrap{code: coreruntime.TrapIndirectOutOfBounds})
 			}
-			ref, err := in.gc.NewArrayDefaultWithRoots(in.requireGCDomainType(typeID), length, frameRoots)
+			// Validate every source value before allocation. This preserves the
+			// all-or-nothing behavior of array.new_elem while allowing non-null
+			// reference arrays, which cannot be created through default filling.
+			for i := uint32(0); i < length; i++ {
+				_ = arrayElemValue(typeID, entries, entryBytes, source+i)
+			}
+			ref, err := in.gc.NewArrayUninitializedWithRoots(in.requireGCDomainType(typeID), length, frameRoots)
 			if err != nil {
 				panic(gcStructHelperError{err: err})
 			}
@@ -464,7 +473,7 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 		}
 		length := uint32(args[valueSlots])
 		value := arrayStoredValue(typeID, args[:valueSlots])
-		ref, err := in.gc.NewArrayWithRoots(in.requireGCDomainType(typeID), length, value, frameRoots)
+		ref, err := in.gc.NewArrayWithRootScratch(in.requireGCDomainType(typeID), length, value, frameRoots, &state.arrayInitializerRoots)
 		if err != nil {
 			panicArrayError(err)
 		}
@@ -487,7 +496,7 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 			start := int(i) * valueSlots
 			values[i] = arrayStoredValue(typeID, args[start:start+valueSlots])
 		}
-		ref, err := in.gc.NewArrayFixedPrevalidatedWithRoots(in.requireGCDomainType(typeID), values, frameRoots)
+		ref, err := in.gc.NewArrayFixedPrevalidatedWithRootScratch(in.requireGCDomainType(typeID), values, frameRoots, &state.arrayInitializerRoots)
 		if err != nil {
 			panicArrayError(err)
 		}

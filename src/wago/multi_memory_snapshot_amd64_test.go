@@ -10,6 +10,7 @@ import (
 	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"github.com/wago-org/wago/src/core/runtime/abi"
 	"github.com/wago-org/wago/tests/wasmtest"
 )
 
@@ -130,16 +131,16 @@ func assertOwnedMultiMemorySnapshotState(t *testing.T, snapshot *Snapshot) {
 	if _, err := in.Invoke("init1"); err == nil {
 		t.Fatal("restored dropped passive data segment unexpectedly initialized memory")
 	}
-	if len(in.memoryDir.native) != 32 {
-		t.Fatalf("native memory directory bytes = %d, want 32", len(in.memoryDir.native))
+	if len(in.memoryDir.native) != 2*abi.MemoryDirEntryBytes {
+		t.Fatalf("native memory directory bytes = %d, want %d", len(in.memoryDir.native), 2*abi.MemoryDirEntryBytes)
 	}
 	for i, wantPages := range []uint32{2, 3} {
-		entry := in.memoryDir.native[i*16:]
-		if got := binary.LittleEndian.Uint32(entry[12:]); got != wantPages {
+		entry := in.memoryDir.native[i*abi.MemoryDirEntryBytes:]
+		if got := binary.LittleEndian.Uint32(entry[abi.MemoryDirCurrentPagesOffset:]); got != wantPages {
 			t.Fatalf("native memory directory %d pages = %d, want %d", i, got, wantPages)
 		}
-		if got := binary.LittleEndian.Uint32(entry[8:]); got != wantPages*65536 {
-			t.Fatalf("native memory directory %d bytes = %d, want %d", i, got, wantPages*65536)
+		if got := binary.LittleEndian.Uint64(entry[abi.MemoryDirCurrentBytesOffset:]); got != uint64(wantPages)*65536 {
+			t.Fatalf("native memory directory %d bytes = %d, want %d", i, got, uint64(wantPages)*65536)
 		}
 	}
 }

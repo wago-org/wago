@@ -41,6 +41,7 @@ func TestGuardedHostBytesTracksLogicalGrowth(t *testing.T) {
 	defer j.Close()
 
 	j.putU32(offActualLinMemByteSize, 5*page)
+	j.putU64(offActualLinMemByteSize64, 5*page)
 	if got := len(j.HostBytes()); got != 5*page {
 		t.Fatalf("HostBytes length after logical growth = %d, want %d", got, 5*page)
 	}
@@ -73,6 +74,7 @@ func TestGuardedJobMemoryReuse(t *testing.T) {
 	// Simulate a memory.grow to 3 pages and dirty a byte in the third page, as a
 	// faulting store would after growing the logical size.
 	j1.putU32(offActualLinMemByteSize, uint32(3*page))
+	j1.putU64(offActualLinMemByteSize64, uint64(3*page))
 	pokeByte(t, j1, 2*page+123, 0xCD)
 
 	// Release -> parked in the cache (decommitted + re-armed + zero-reclaimed).

@@ -56,17 +56,16 @@ matched:
 	// primary linMem used for trap/unwind state.
 	MOVQ	R8, AX
 	SUBQ	R9, AX                  // AX = off (fault - region.linMem)
-	MOVL	-8(R9), R13             // R13 = region curBytes (u32, zero-extended)
+	MOVQ	-288(R9), R13           // R13 = authoritative region curBytes (u64)
 	CMPQ	R13, AX
 	JLS	dotrap                  // curBytes <= off -> out of range -> trap
-	// Commit the 4 KiB Linux/x86 host page containing the fault, then resume the
-	// access. mmap only guarantees host-page alignment: rounding the absolute
-	// address to 64 KiB can move before a non-64-KiB-aligned reservation, make
-	// mprotect fail, and refault forever after memory.grow.
+	// Commit the complete 64 KiB wasm page containing the fault. Align the
+	// reservation-relative offset, not the absolute address: mmap guarantees
+	// linMem is host-page aligned but not necessarily 64-KiB aligned.
 	MOVQ	CX, R10                 // SYSCALL clobbers CX; retain primary linMem
-	MOVQ	R8, DI
-	ANDQ	$-4096, DI              // align down to the Linux/x86 host page
-	MOVQ	$4096, SI
+	ANDQ	$-65536, AX             // wasm-page-aligned offset from region.linMem
+	LEAQ	(R9)(AX*1), DI
+	MOVQ	$65536, SI
 	MOVQ	$3, DX                  // PROT_READ|PROT_WRITE
 	MOVQ	$10, AX                 // SYS_mprotect
 	SYSCALL
@@ -102,7 +101,12 @@ next:
 	ADDQ	$32, R10                // sizeof(guardRegion)
 	DECQ	R11
 	JNZ	scan
-	MOVQ	·guardOldHandler(SB), AX
+	CMPL	DI, $7                  // SIGBUS=7, SIGSEGV=11 on Linux
+	JE	chainbus
+	MOVQ	·guardOldSEGVHandler(SB), AX
+	JMP	AX
+chainbus:
+	MOVQ	·guardOldBUSHandler(SB), AX
 	JMP	AX
 
 // guardSigRestorer invokes rt_sigreturn (syscall 15) to restore the (rewritten)

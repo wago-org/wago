@@ -90,6 +90,9 @@ func NewSharedMemory(minPages, maxPages uint32) (*Memory, error) {
 }
 
 func newMemory(minPages, maxPages uint32, shared bool) (*Memory, error) {
+	if minPages > 65536 || maxPages > 65536 {
+		return nil, fmt.Errorf("wago: memory32 limit exceeds 65536 pages: minimum %d maximum %d", minPages, maxPages)
+	}
 	if maxPages != 0 && maxPages < minPages {
 		return nil, fmt.Errorf("wago: memory maximum %d < minimum %d", maxPages, minPages)
 	}

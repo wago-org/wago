@@ -280,12 +280,12 @@ func TestAcceptsMemoryImport(t *testing.T) {
 }
 
 func TestRejectUnsupportedImports(t *testing.T) {
-	t.Run("memory min above the 65535-page cap", func(t *testing.T) {
+	t.Run("memory min above the 65536-page cap", func(t *testing.T) {
 		memImport := append(wasmtest.Name("env"), wasmtest.Name("mem")...)
-		memImport = append(memImport, 0x02, 0x00, 0x80, 0x80, 0x04) // min 65536 pages (LEB)
+		memImport = append(memImport, 0x02, 0x00, 0x81, 0x80, 0x04) // min 65537 pages (LEB)
 		mod := wasmtest.Module(wasmtest.Section(2, wasmtest.Vec(memImport)))
 		_, err := DecodeValidate(mod)
-		assertErrContains(t, err, "exceeds 65535")
+		assertErrContains(t, err, "memory32 limit out of range")
 	})
 	t.Run("funcref table accepted", func(t *testing.T) {
 		// A funcref table import is accepted (cross-instance shared table).

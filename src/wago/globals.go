@@ -1122,10 +1122,10 @@ func (c *Compiled) validateCached() error {
 // memorySizeBytes returns the initial and maximum (grow ceiling) linear-memory
 // sizes in bytes for instantiation. A module without a declared memory still
 // gets one page (legacy behavior). An unbounded or oversized max is capped at
-// the engine ceiling (65535 pages, the largest u32-representable byte size).
+// the memory32 engine ceiling of 65,536 pages (4 GiB).
 func (c *Compiled) memorySizeBytes() (initial, max int) {
 	const pageBytes = 65536
-	const maxPagesCeil = 65535
+	const maxPagesCeil = 65536
 	if !c.HasMemory {
 		return pageBytes, pageBytes
 	}

@@ -57,10 +57,11 @@ func NewJobMemoryGuarded(linBytes, maxBytes int) (*JobMemory, error) {
 
 func (j *JobMemory) putGuardedSizeCaches(linBytes, maxBytes int) {
 	j.putU32(offActualLinMemByteSize, uint32(linBytes))
+	j.putU64(offActualLinMemByteSize64, uint64(linBytes))
 	j.putU32(offLinMemWasmSize, uint32(linBytes/wasmPageBytes))
 	maxPages := maxBytes / wasmPageBytes
-	if maxPages > 65535 {
-		maxPages = 65535
+	if maxPages > 65536 {
+		maxPages = 65536
 	}
 	if maxPages < linBytes/wasmPageBytes {
 		maxPages = linBytes / wasmPageBytes

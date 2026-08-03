@@ -96,7 +96,7 @@ func (c *Compiled) usesGenericGCExecution() bool {
 	return c.stagedGCStructProduct() == stagedGCStructGeneric || arrayProduct == stagedGCArrayProductNewData || arrayProduct == stagedGCArrayProductNewElem || arrayProduct == stagedGCArrayProductGeneric
 }
 
-// compiledGCFrameRoots is the immutable codec-v30 admission sidecar for bounded
+// compiledGCFrameRoots is the immutable codec-v31 admission sidecar for bounded
 // per-site roots, local call graphs, and suspended host activations. Generic modules without
 // it remain collection-disabled during native execution.
 type compiledGCFrameSafepoint struct {
@@ -211,11 +211,17 @@ func (c *Compiled) acquireCode() (uintptr, error) {
 		return 0, fmt.Errorf("compiled module is closed")
 	}
 	if cc.mem == nil {
+		codeLen := len(c.Code)
 		mem, base, err := coreruntime.MapCode(c.Code)
 		if err != nil {
 			return 0, err
 		}
 		cc.mem, cc.base = mem, base
+		// Keep one exact-length readable view of the machine code by moving Code
+		// onto the RX mapping. MapCode's mmap slice is page-rounded; exposing that
+		// padding would change codec bytes and binding-independent declarations.
+		// The original Go-heap backing can now be reclaimed.
+		c.Code = mem[:codeLen:codeLen]
 	}
 	cc.refs++
 	return cc.base, nil
@@ -235,6 +241,7 @@ func (c *Compiled) releaseCode() {
 		_ = coreruntime.Unmap(cc.mem)
 		cc.mem = nil
 		cc.base = 0
+		c.Code = nil
 	}
 }
 
@@ -252,11 +259,17 @@ func (c *Compiled) Close() error {
 	defer cc.mu.Unlock()
 	cc.closed = true
 	goruntime.SetFinalizer(c, nil)
-	if cc.refs != 0 || cc.mem == nil {
+	if cc.refs != 0 {
+		return nil
+	}
+	if cc.mem == nil {
+		// Preserve compiler-produced metadata so a later Instantiate reaches the
+		// authoritative closed check instead of failing earlier as malformed.
 		return nil
 	}
 	mem := cc.mem
 	cc.mem = nil
 	cc.base = 0
+	c.Code = nil
 	return coreruntime.Unmap(mem)
 }

@@ -1277,7 +1277,7 @@ func (f *fn) emitEHHandler(fr *ctrlFrame) {
 	}
 	f.ld64(linMemReg, SP, recordOff+ehSavedLinMemOff)
 	if f.memSizeReg != regNone {
-		f.ld32(f.memSizeReg, linMemReg, -bdCurBytes)
+		f.ld64(f.memSizeReg, linMemReg, -bdCurBytes)
 	}
 	f.deriveModuleGlobals()
 	f.derivePinnedGlobals()

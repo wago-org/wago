@@ -468,7 +468,7 @@ func TestGlobalSupportValidation(t *testing.T) {
 }
 
 func TestMemorySupportValidation(t *testing.T) {
-	valid := supportPass{m: &wasm.Module{Memories: []wasm.MemType{{Limits: wasm.Limits{Min: 65535}}}}}
+	valid := supportPass{m: &wasm.Module{Memories: []wasm.MemType{{Limits: wasm.Limits{Min: 65536}}}}}
 	if err := valid.memories(); err != nil {
 		t.Fatalf("valid memory: %v", err)
 	}
@@ -478,7 +478,7 @@ func TestMemorySupportValidation(t *testing.T) {
 	}{
 		{"shared", supportPass{m: &wasm.Module{Memories: []wasm.MemType{{Shared: true}}}}},
 		{"memory64", supportPass{m: &wasm.Module{Memories: []wasm.MemType{{Limits: wasm.Limits{Addr64: true}}}}}},
-		{"oversized", supportPass{m: &wasm.Module{Memories: []wasm.MemType{{Limits: wasm.Limits{Min: 65536}}}}}},
+		{"oversized", supportPass{m: &wasm.Module{Memories: []wasm.MemType{{Limits: wasm.Limits{Min: 65537}}}}}},
 		{"multiple local", supportPass{m: &wasm.Module{Memories: []wasm.MemType{{}, {}}}}},
 		{"import plus local", supportPass{m: &wasm.Module{Imports: []wasm.Import{{Type: wasm.ExternType{Kind: wasm.ExternMem}}}, Memories: []wasm.MemType{{}}}}},
 	} {

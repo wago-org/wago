@@ -37,10 +37,10 @@ const (
 
 // Basedata fields at negative offsets from the linMem base (runtime/basedata.go).
 const (
-	bdCurPages  = 4  // u32: current size in 64 KiB pages
-	bdCurBytes  = 8  // u32: current size in bytes (the bounds-check limit)
-	bdMaxPages  = 12 // u32: grow ceiling in pages
-	wasmPageLog = 16 // log2(65536)
+	bdCurPages  = 4                                // u32: current size in 64 KiB pages
+	bdCurBytes  = abi.ActualLinMemByteSize64Offset // u64: bounds-check limit
+	bdMaxPages  = 12                               // u32: grow ceiling in pages
+	wasmPageLog = 16                               // log2(65536)
 )
 
 // offTrapStackReentry is the linMem-relative slot (bytes below the linMem base)
@@ -62,8 +62,8 @@ const offTrapCellPtr = abi.TrapCellPtrOffset
 // Descriptors are runtime.PassiveDataDescBytes bytes: {ptr u64, len u32, pad u32}.
 const offPassiveDataPtr = abi.PassiveDataPtrOffset
 
-// offMemoryDirPtr points at 16-byte indexed-memory entries
-// {base u64, current-bytes u32, current-pages u32}. Memory 0 never uses it.
+// offMemoryDirPtr points at abi.MemoryDirEntryBytes indexed-memory entries.
+// Memory 0 never uses it.
 const offMemoryDirPtr = abi.MemoryDirPtrOffset
 
 // emitTrap writes the logical Wasm PC from RAX and the function index argument,
@@ -256,7 +256,7 @@ func (f *fn) memAddr(off uint32, size int, aliasPinned bool) (ea Reg, eaOwned bo
 		f.a.Cmp64(t, f.memSizeReg) // memBytes lives in a register (WARP REGS::memSize)
 	} else {
 		mb := f.allocReg(maskOf(t))
-		f.a.Load32(mb, RBX, -bdCurBytes) // memory size in bytes
+		f.a.Load64(mb, RBX, -bdCurBytes) // memory size in bytes
 		f.a.Cmp64(t, mb)
 		f.release(mb)
 	}
@@ -272,9 +272,9 @@ type boundsCert struct {
 	extent int32
 }
 
-// memAddr64 is the bounded memory64 counterpart to memAddr. The staged runtime
-// still reserves at most 65535 pages, but addresses and static offsets are full
-// u64 values. Both additions are checked for carry before comparing against the
+// memAddr64 is the bounded memory64 counterpart to memAddr. The staged memory64
+// runtime still reserves at most 65,535 pages, but addresses and static offsets
+// are full u64 values. Both additions are checked for carry before comparing against the
 // zero-extended byte-size cache, so wraparound cannot turn an OOB access valid.
 func (f *fn) memAddr64(off uint64, size int) (ea Reg, eaOwned bool, borrow int, disp int32) {
 	e := f.popValue()
@@ -296,7 +296,7 @@ func (f *fn) memAddr64(off uint64, size int) (ea Reg, eaOwned bool, borrow int, 
 		f.a.Cmp64(t, f.memSizeReg)
 	} else {
 		mb := f.allocReg(maskOf(t))
-		f.a.Load32(mb, RBX, -bdCurBytes)
+		f.a.Load64(mb, RBX, -bdCurBytes)
 		f.a.Cmp64(t, mb)
 		f.release(mb)
 	}
@@ -467,10 +467,10 @@ func (f *fn) indexedMemAddr(memoryIndex uint32, off uint64, size int) (base, ea 
 	f.pinned = f.pinned.add(ea)
 	base = f.allocReg(maskOf(ea))
 	f.a.Load64(base, RBX, -offMemoryDirPtr)
-	entry := int32(memoryIndex) * 16
+	entry := int32(memoryIndex) * abi.MemoryDirEntryBytes
 	mb := f.allocReg(maskOf(ea).add(base))
-	f.a.Load32(mb, base, entry+8)
-	f.a.Load64(base, base, entry)
+	f.a.Load64(mb, base, entry+abi.MemoryDirCurrentBytesOffset)
+	f.a.Load64(base, base, entry+abi.MemoryDirBaseOffset)
 	t := f.allocReg(maskOf(ea).add(base).add(mb))
 	if addr64 {
 		f.a.MovReg64(t, ea)
@@ -755,18 +755,18 @@ func (f *fn) absoluteBulkAddr(memoryIndex uint32, offset, n Reg) {
 		if f.memSizeReg != regNone {
 			f.trapUnlessLE(RDX, f.memSizeReg)
 		} else {
-			f.a.Load32(R8, RBX, -bdCurBytes)
+			f.a.Load64(R8, RBX, -bdCurBytes)
 			f.trapUnlessLE(RDX, R8)
 		}
 		f.a.Add64(offset, RBX)
 		return
 	}
-	entry := int32(memoryIndex) * 16
+	entry := int32(memoryIndex) * abi.MemoryDirEntryBytes
 	f.a.Load64(R8, RBX, -offMemoryDirPtr)
-	f.a.Load32(R8, R8, entry+8)
+	f.a.Load64(R8, R8, entry+abi.MemoryDirCurrentBytesOffset)
 	f.trapUnlessLE(RDX, R8)
 	f.a.Load64(R8, RBX, -offMemoryDirPtr)
-	f.a.Load64(R8, R8, entry)
+	f.a.Load64(R8, R8, entry+abi.MemoryDirBaseOffset)
 	f.a.Add64(offset, R8)
 }
 
@@ -1027,7 +1027,7 @@ func (f *fn) memorySize(r *wasm.Reader) error {
 	} else {
 		dir := f.allocReg(maskOf(out))
 		f.a.Load64(dir, RBX, -offMemoryDirPtr)
-		f.a.Load32(out, dir, int32(memoryIndex)*16+12)
+		f.a.Load32(out, dir, int32(memoryIndex)*abi.MemoryDirEntryBytes+abi.MemoryDirCurrentPagesOffset)
 		f.release(dir)
 	}
 	if f.memoryAddr64(memoryIndex) {
@@ -1066,7 +1066,7 @@ func (f *fn) memoryGrow(r *wasm.Reader) error {
 	if memoryIndex != 0 {
 		dir = f.allocReg(maskOf(delta).add(res))
 		f.a.Load64(dir, RBX, -offMemoryDirPtr)
-		entry = int32(memoryIndex) * 16
+		entry = int32(memoryIndex) * abi.MemoryDirEntryBytes
 		base = f.allocReg(maskOf(delta).add(res).add(dir))
 		f.a.Load64(base, dir, entry)
 	}
@@ -1085,13 +1085,14 @@ func (f *fn) memoryGrow(r *wasm.Reader) error {
 	failMax := f.a.JccPlaceholder(condA) // new > max
 	f.a.Store32(base, -bdCurPages, nw)
 	f.a.MovRegReg32(mx, nw)
-	f.a.ShiftImm(4, mx, wasmPageLog, false) // bytes = pages << 16 (digit 4 = shl)
-	f.a.Store32(base, -bdCurBytes, mx)
+	f.a.ShiftImm(4, mx, wasmPageLog, true) // bytes = uint64(pages) << 16
+	f.a.Store64(base, -bdCurBytes, mx)
+	f.a.Store32(base, -8, mx) // legacy u32 cache; wraps only at exactly 4 GiB
 	if memoryIndex != 0 {
 		// The directory caches form one semantic size pair. Publish them only after
 		// every overflow/maximum check succeeds; failure leaves both fields intact.
-		f.a.Store32(dir, entry+8, mx)
-		f.a.Store32(dir, entry+12, nw)
+		f.a.Store64(dir, entry+abi.MemoryDirCurrentBytesOffset, mx)
+		f.a.Store32(dir, entry+abi.MemoryDirCurrentPagesOffset, nw)
 	}
 	done := f.a.JmpPlaceholder()
 	if failDelta >= 0 {
@@ -1106,7 +1107,7 @@ func (f *fn) memoryGrow(r *wasm.Reader) error {
 	}
 	f.a.PatchRel32(done, f.a.Len())
 	if memoryIndex == 0 && f.memSizeReg != regNone {
-		f.a.Load32(f.memSizeReg, RBX, -bdCurBytes) // refresh the memory-0 cache (both paths)
+		f.a.Load64(f.memSizeReg, RBX, -bdCurBytes) // refresh the memory-0 cache (both paths)
 	}
 	f.pinned = f.pinned.remove(delta)
 	f.release(delta)
@@ -1178,14 +1179,14 @@ func (f *fn) bulkBoundsCheck(base Reg, n int, memoryIndex uint32) {
 			f.a.Cmp64(t, f.memSizeReg)
 		} else {
 			mb := f.allocReg(maskOf(t))
-			f.a.Load32(mb, RBX, -bdCurBytes)
+			f.a.Load64(mb, RBX, -bdCurBytes)
 			f.a.Cmp64(t, mb)
 			f.release(mb)
 		}
 	} else {
 		mb := f.allocReg(maskOf(t))
 		f.a.Load64(mb, RBX, -offMemoryDirPtr)
-		f.a.Load32(mb, mb, int32(memoryIndex)*16+8)
+		f.a.Load64(mb, mb, int32(memoryIndex)*abi.MemoryDirEntryBytes+abi.MemoryDirCurrentBytesOffset)
 		f.a.Cmp64(t, mb)
 		f.release(mb)
 	}

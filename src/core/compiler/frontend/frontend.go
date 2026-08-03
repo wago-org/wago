@@ -731,8 +731,14 @@ func (p supportPass) checkMemType(mem wasm.MemType, ctx string) error {
 	if mem.Limits.Addr64 && !p.feat.Memory64 {
 		return p.unsupported("memory", "memory64 (memory64 disabled)", ctx)
 	}
-	if mem.Limits.Min > 65535 {
-		return p.unsupported("memory", fmt.Sprintf("minimum %d pages exceeds 65535", mem.Limits.Min), ctx)
+	maxPages := uint64(65536)
+	if mem.Limits.Addr64 {
+		// The staged memory64 execution product remains bounded to the finite
+		// reservation used before the u64 memory-size-cache extension.
+		maxPages = 65535
+	}
+	if mem.Limits.Min > maxPages {
+		return p.unsupported("memory", fmt.Sprintf("minimum %d pages exceeds %d", mem.Limits.Min, maxPages), ctx)
 	}
 	return nil
 }

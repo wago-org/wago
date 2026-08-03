@@ -78,14 +78,15 @@ func NewJobMemoryGuarded(linBytes, maxBytes int) (*JobMemory, error) {
 // putGuardedSizeCaches writes the three basedata size caches native code reads:
 // the current byte size, the current wasm-page count, and the grow ceiling.
 // memory.grow raises the logical size (and thus the region the fault handler
-// commits on demand) up to maxBytes; cap at 65535 pages, since 65536 pages
-// (4 GiB) overflows the u32 byte-size cache.
+// commits on demand) up to the complete 65,536-page memory32 limit. The u64
+// byte-size cache represents the 4-GiB boundary exactly.
 func (j *JobMemory) putGuardedSizeCaches(linBytes, maxBytes int) {
 	j.putU32(offActualLinMemByteSize, uint32(linBytes))
+	j.putU64(offActualLinMemByteSize64, uint64(linBytes))
 	j.putU32(offLinMemWasmSize, uint32(linBytes/wasmPageBytes))
 	maxPages := maxBytes / wasmPageBytes
-	if maxPages > 65535 {
-		maxPages = 65535
+	if maxPages > 65536 {
+		maxPages = 65536
 	}
 	if maxPages < linBytes/wasmPageBytes {
 		maxPages = linBytes / wasmPageBytes

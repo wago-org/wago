@@ -32,13 +32,15 @@ scan:
 	// the active primary linMem used for trap/unwind state.
 	MOVD	R8, R12
 	SUB	R9, R12                 // R12 = off (fault - region.linMem)
-	MOVWU	-8(R9), R13             // R13 = region curBytes (u32, zero-extended)
+	MOVD	-288(R9), R13           // R13 = authoritative region curBytes (u64)
 	CMP	R13, R12
 	BHS	dotrap                  // curBytes <= off -> out of range -> trap
 
-	// Commit the 64 KiB wasm page containing the fault, then resume the access.
-	MOVD	R8, R0
-	AND	$-65536, R0             // align down to wasm page
+	// Commit the complete wasm page. Align the reservation-relative offset so
+	// a merely host-page-aligned linMem cannot move the mprotect range backward.
+	MOVD	R12, R0
+	AND	$-65536, R0
+	ADD	R9, R0
 	MOVD	$65536, R1
 	MOVD	$3, R2                  // PROT_READ|PROT_WRITE
 	MOVD	$226, R8                // SYS_mprotect
@@ -64,7 +66,12 @@ next:
 	ADD	$32, R10
 	SUB	$1, R11
 	CBNZ	R11, scan
-	MOVD	·guardOldHandler(SB), R9
+	CMPW	$7, R0                  // SIGBUS=7, SIGSEGV=11 on Linux
+	BEQ	chainbus
+	MOVD	·guardOldSEGVHandler(SB), R9
+	B	(R9)
+chainbus:
+	MOVD	·guardOldBUSHandler(SB), R9
 	B	(R9)
 
 // nativeTrapExitHandlerJump is the arm64/WARP landing pad. The signal handler

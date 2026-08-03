@@ -466,3 +466,24 @@ indexed multi-memory, memory64, and table64 execution complete the explicit-boun
 Core 3 product. Polymorphic or foreign reference calls remain collection-disabled
 where exact ownership is unproved. Next work broadens shared GC globals/tables and
 snapshot roots, then completes signal-backed and broader native-platform parity.
+
+## August 2026 wasm3 audit hardening
+
+- [x] Synchronize mutable generic-GC globals at allocating array-helper safepoints
+  and support non-defaultable non-null reference `array.new_elem` construction.
+- [x] Separate Linux SIGSEGV/SIGBUS predecessor chaining, publish handlers before
+  installation, roll back partial installs, and commit reservation-relative
+  64-KiB Wasm pages on guard growth faults.
+- [x] Make cancellation cleanup panic-safe and bound native signal retries while
+  guest execution is parked in host code.
+- [x] Execute the complete memory32 65,536-page boundary with u64 byte-size caches
+  while preserving u32 page counts; reject oversized host memory declarations.
+- [x] Remove the duplicate required-feature body scan, make reference-array root
+  composition allocation-free with reusable scratch, switch early Throughput
+  growth to geometric capacity, and release the duplicate Go-heap JIT code copy
+  after RX mapping.
+- [x] Keep default and guard-tag runtime/Wago suites green, including explicit-
+  bounds snapshot fixtures and cross-architecture compile gates.
+
+Measured details and regression coverage are in
+[`docs/wasm3-hardening-2026-08.md`](docs/wasm3-hardening-2026-08.md).

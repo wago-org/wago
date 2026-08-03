@@ -442,7 +442,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			memoryObjs[i] = memory
 			continue
 		}
-		maxPages := uint64(65535)
+		maxPages := uint64(65536)
 		if def.HasMax {
 			maxPages = def.Max
 		}
@@ -480,7 +480,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	nativeContext := ar.AllocNoZero(runtime.InstanceContextBytes)
 	nativeContextPtr := uintptr(unsafe.Pointer(&nativeContext[0]))
 	if memoryCount > 1 {
-		nativeMemoryDir = ar.Alloc(memoryCount * 16)
+		nativeMemoryDir = ar.Alloc(memoryCount * abi.MemoryDirEntryBytes)
 		for i, memory := range memoryObjs {
 			memoryJM := memory.jobMemory()
 			if memoryJM == nil {
@@ -489,10 +489,10 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 				runtime.ReleaseEngine(eng)
 				return nil, fmt.Errorf("memory %d owner closed during instantiation", i)
 			}
-			entry := nativeMemoryDir[i*16:]
-			binary.LittleEndian.PutUint64(entry, uint64(memoryJM.LinMemBase()))
-			binary.LittleEndian.PutUint32(entry[8:], uint32(len(memoryJM.HostBytes())))
-			binary.LittleEndian.PutUint32(entry[12:], memoryJM.CurrentPages())
+			entry := nativeMemoryDir[i*abi.MemoryDirEntryBytes:]
+			binary.LittleEndian.PutUint64(entry[abi.MemoryDirBaseOffset:], uint64(memoryJM.LinMemBase()))
+			binary.LittleEndian.PutUint64(entry[abi.MemoryDirCurrentBytesOffset:], uint64(len(memoryJM.HostBytes())))
+			binary.LittleEndian.PutUint32(entry[abi.MemoryDirCurrentPagesOffset:], memoryJM.CurrentPages())
 		}
 		jm.SetMemoryDirPtr(uintptr(unsafe.Pointer(&nativeMemoryDir[0])))
 	}

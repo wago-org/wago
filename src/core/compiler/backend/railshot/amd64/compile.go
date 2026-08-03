@@ -1963,7 +1963,7 @@ func (f *fn) prologue() {
 	if f.memSizeReg != regNone {
 		// Offset-0 entry: establish the module-wide memBytes cache. Direct wasm→wasm
 		// register-ABI calls skip this (the caller's value is valid by construction).
-		a.Load32(f.memSizeReg, RBX, -bdCurBytes)
+		a.Load64(f.memSizeReg, RBX, -bdCurBytes)
 	}
 	f.emitStackFenceCheck(RBX, RAX)
 	f.emitInterruptCheck(RAX) // RAX still free: params load below
@@ -2071,7 +2071,7 @@ func (f *fn) emitRegABI(c *wasm.Func) (int, error) {
 	if f.memSizeReg != regNone {
 		// Offset-0 entry (from Go, or an indirect call): establish the module-wide
 		// memBytes cache before the internal entry runs (which relies on it).
-		a.Load32(f.memSizeReg, RBX, -bdCurBytes)
+		a.Load64(f.memSizeReg, RBX, -bdCurBytes)
 	}
 	f.deriveModuleGlobals() // offset-0 entry: cells → module-pinned registers
 	a.Push(RCX)             // results ptr (also keeps RSP 16-aligned at the internal call)

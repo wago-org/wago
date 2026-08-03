@@ -7,6 +7,7 @@ import (
 	"unsafe"
 
 	wruntime "github.com/wago-org/wago/src/core/runtime"
+	"github.com/wago-org/wago/src/core/runtime/abi"
 )
 
 // nativeExecutionMu is the initial correctness execution lease: exactly one
@@ -51,7 +52,7 @@ func (in *Instance) refreshMemoryDirectory() error {
 	if dir == nil {
 		return nil
 	}
-	if len(dir.native) < len(dir.memories)*16 {
+	if len(dir.native) < len(dir.memories)*abi.MemoryDirEntryBytes {
 		return fmt.Errorf("indexed memory directory is truncated")
 	}
 	for i, memory := range dir.memories {
@@ -62,12 +63,12 @@ func (in *Instance) refreshMemoryDirectory() error {
 		if jm == nil {
 			return fmt.Errorf("indexed memory %d owner is closed", i)
 		}
-		entry := dir.native[i*16:]
+		entry := dir.native[i*abi.MemoryDirEntryBytes:]
 		jm.SetGuardOwner(in.jm.LinMemBase())
 		pages := jm.CurrentPages()
-		binary.LittleEndian.PutUint64(entry, uint64(jm.LinMemBase()))
-		binary.LittleEndian.PutUint32(entry[8:], pages<<16)
-		binary.LittleEndian.PutUint32(entry[12:], pages)
+		binary.LittleEndian.PutUint64(entry[abi.MemoryDirBaseOffset:], uint64(jm.LinMemBase()))
+		binary.LittleEndian.PutUint64(entry[abi.MemoryDirCurrentBytesOffset:], uint64(pages)<<16)
+		binary.LittleEndian.PutUint32(entry[abi.MemoryDirCurrentPagesOffset:], pages)
 	}
 	in.jm.SetMemoryDirPtr(uintptr(unsafe.Pointer(&dir.native[0])))
 	return nil

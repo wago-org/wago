@@ -2,14 +2,14 @@ package gc
 
 import "testing"
 
-func TestThroughputBackingGrowthStaysExactUntilHot(t *testing.T) {
+func TestThroughputBackingGrowthIsGeometricAfterFirstPage(t *testing.T) {
 	h := throughputHeap{pageBytes: 64 << 10, limit: 4 << 20}
 	h.mem = makeAlignedBytes(512<<10, 16)
 	if err := h.growBacking(576 << 10); err != nil {
 		t.Fatal(err)
 	}
-	if got := len(h.mem); got != 576<<10 {
-		t.Fatalf("small backing growth = %d, want %d", got, 576<<10)
+	if got := len(h.mem); got != 768<<10 {
+		t.Fatalf("small backing growth = %d, want %d", got, 768<<10)
 	}
 	h.mem = makeAlignedBytes(1<<20, 16)
 	if err := h.growBacking((1 << 20) + (64 << 10)); err != nil {

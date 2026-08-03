@@ -23,16 +23,12 @@ func BenchmarkArrayConstructors(b *testing.B) {
 			if err != nil {
 				b.Fatal(err)
 			}
-			slot, err := c.NewCheckedGlobalSlot(child)
-			if err != nil {
-				b.Fatal(err)
-			}
-			root := collectorGlobalRootSlot{collector: c, index: slot}
+			var scratch ArrayInitializerRootScratch
 			b.ReportAllocs()
 			b.SetBytes(int64(n * 4))
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				if _, err := c.NewRefArrayWithRoots(2, n, root, Slots{root}); err != nil {
+				if _, err := c.NewArrayWithRootScratch(2, n, RefValue(child), EmptyRoots{}, &scratch); err != nil {
 					b.Fatal(err)
 				}
 			}
@@ -43,20 +39,16 @@ func BenchmarkArrayConstructors(b *testing.B) {
 			if err != nil {
 				b.Fatal(err)
 			}
-			slot, err := c.NewCheckedGlobalSlot(child)
-			if err != nil {
-				b.Fatal(err)
-			}
 			values := make([]Value, n)
 			for i := range values {
 				values[i] = RefValue(child)
 			}
-			root := collectorGlobalRootSlot{collector: c, index: slot}
+			var scratch ArrayInitializerRootScratch
 			b.ReportAllocs()
 			b.SetBytes(int64(n * 4))
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				if _, err := c.NewArrayFixedWithRoots(2, values, Slots{root}); err != nil {
+				if _, err := c.NewArrayFixedWithRootScratch(2, values, EmptyRoots{}, &scratch); err != nil {
 					b.Fatal(err)
 				}
 			}

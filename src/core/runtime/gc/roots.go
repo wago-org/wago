@@ -62,6 +62,86 @@ type valueRootSet struct {
 	all    bool
 }
 
+// ArrayInitializerRootScratch is reusable caller-owned root composition for
+// reference array constructors. Compact Refs are stable handles, so collection
+// only needs their immutable values; the direct visitor avoids RootSlot boxing,
+// callback closures, and per-constructor Go allocations. It is not concurrent.
+type ArrayInitializerRootScratch struct {
+	first   RootSet
+	values  []Value
+	uniform Ref
+	mode    uint8 // 1 uniform, 2 fixed
+	active  bool
+}
+
+func (s *ArrayInitializerRootScratch) RangeRootRefs(sink RootRefSink) {
+	if s.first != nil {
+		if direct, ok := s.first.(DirectRootRefSet); ok {
+			direct.RangeRootRefs(sink)
+		} else if !rangeRootRefs(s.first, func(r Ref) bool { return sink.VisitRootRef(r) }) {
+			s.first.RangeRoots(func(slot RootSlot) bool { return sink.VisitRootRef(slot.GetRef()) })
+		}
+	}
+	switch s.mode {
+	case 1:
+		sink.VisitRootRef(s.uniform)
+	case 2:
+		for i := range s.values {
+			if !sink.VisitRootRef(s.values[i].Ref) {
+				return
+			}
+		}
+	}
+}
+
+func (s *ArrayInitializerRootScratch) RangeRoots(fn func(RootSlot) bool) {
+	if s.first != nil {
+		keepGoing := true
+		s.first.RangeRoots(func(slot RootSlot) bool {
+			keepGoing = fn(slot)
+			return keepGoing
+		})
+		if !keepGoing {
+			return
+		}
+	}
+	switch s.mode {
+	case 1:
+		fn(arrayUniformRootSlot{scratch: s})
+	case 2:
+		for i := range s.values {
+			if !fn(valueRootSlot{values: s.values, idx: i}) {
+				return
+			}
+		}
+	}
+}
+
+type arrayUniformRootSlot struct{ scratch *ArrayInitializerRootScratch }
+
+func (s arrayUniformRootSlot) GetRef() Ref  { return s.scratch.uniform }
+func (s arrayUniformRootSlot) SetRef(r Ref) { s.scratch.uniform = r }
+
+func (s *ArrayInitializerRootScratch) prepareUniform(first RootSet, ref Ref) bool {
+	if s == nil || s.active {
+		return false
+	}
+	s.first, s.uniform, s.mode, s.active = first, ref, 1, true
+	return true
+}
+
+func (s *ArrayInitializerRootScratch) prepareFixed(first RootSet, values []Value) bool {
+	if s == nil || s.active {
+		return false
+	}
+	s.first, s.values, s.mode, s.active = first, values, 2, true
+	return true
+}
+
+func (s *ArrayInitializerRootScratch) clear() {
+	s.first, s.values, s.uniform, s.mode, s.active = nil, nil, Null(), 0, false
+}
+
 // InitializerRootScratch is reusable caller-owned storage for composing exact
 // frame roots with struct initializer values across a collection-capable
 // allocation. It is configured and cleared by NewStructWithRootScratch and must

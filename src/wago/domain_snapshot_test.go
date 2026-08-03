@@ -16,6 +16,10 @@ import (
 	"github.com/wago-org/wago/tests/wasmtest"
 )
 
+func domainSnapshotConfig() *RuntimeConfig {
+	return NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithBoundsChecks(BoundsChecksExplicit)
+}
+
 func TestDomainSnapshotV3Footprint(t *testing.T) {
 	if got := unsafe.Sizeof(DomainSnapshot{}); got != 112 {
 		t.Fatalf("DomainSnapshot size = %d, want 112", got)
@@ -48,7 +52,7 @@ func domainSnapshotLocalEHModule() []byte {
 }
 
 func TestDomainSnapshotRestoresLocalExceptionHandling(t *testing.T) {
-	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), domainSnapshotLocalEHModule())
+	compiled, err := Compile(domainSnapshotConfig(), domainSnapshotLocalEHModule())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +115,7 @@ func snapshotMemory64Module(t testing.TB) []byte {
 }
 
 func TestMemory64SnapshotRoundTrip(t *testing.T) {
-	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), snapshotMemory64Module(t))
+	compiled, err := Compile(domainSnapshotConfig(), snapshotMemory64Module(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -156,7 +160,7 @@ func TestMemory64SnapshotRoundTrip(t *testing.T) {
 }
 
 func BenchmarkMemory64SnapshotInstantiate(b *testing.B) {
-	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), snapshotMemory64Module(b))
+	compiled, err := Compile(domainSnapshotConfig(), snapshotMemory64Module(b))
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -179,7 +183,7 @@ func BenchmarkMemory64SnapshotInstantiate(b *testing.B) {
 }
 
 func TestDomainSnapshotRestoresInternalMemory64Alias(t *testing.T) {
-	cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3)
+	cfg := domainSnapshotConfig()
 	providerCode, err := Compile(cfg, domainSnapshotMemoryProviderModuleWithAddr64(true))
 	if err != nil {
 		t.Fatal(err)
@@ -372,7 +376,7 @@ func domainSnapshotMemoryConsumerModuleWithAddr64(addr64 bool) []byte {
 }
 
 func TestDomainSnapshotRestoresInternalMemoryAlias(t *testing.T) {
-	cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3)
+	cfg := domainSnapshotConfig()
 	providerCode, err := Compile(cfg, domainSnapshotMemoryProviderModule())
 	if err != nil {
 		t.Fatal(err)
@@ -495,7 +499,7 @@ func domainSnapshotDroppedElementModule() []byte {
 }
 
 func TestDomainSnapshotRestoresLiveAndDroppedPassiveElements(t *testing.T) {
-	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), domainSnapshotDroppedElementModule())
+	compiled, err := Compile(domainSnapshotConfig(), domainSnapshotDroppedElementModule())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -655,7 +659,7 @@ func TestDomainSnapshotRestoresGlobalDependentPassiveElements(t *testing.T) {
 		for _, profile := range []GCProfile{GCProfileTiny, GCProfileThroughput} {
 			profileName := map[GCProfile]string{GCProfileTiny: "tiny", GCProfileThroughput: "throughput"}[profile]
 			t.Run(tc.name+"/"+profileName, func(t *testing.T) {
-				compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), domainSnapshotGlobalElementModule(t, tc.object))
+				compiled, err := Compile(domainSnapshotConfig(), domainSnapshotGlobalElementModule(t, tc.object))
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -730,7 +734,7 @@ func TestDomainSnapshotRestoresGlobalDependentPassiveElements(t *testing.T) {
 
 func TestDomainSnapshotRestoresImportedGlobalDependentPassiveElement(t *testing.T) {
 	providerModule, consumerModule := domainSnapshotImportedGlobalElementModules(t)
-	cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3)
+	cfg := domainSnapshotConfig()
 	providerCode, err := Compile(cfg, providerModule)
 	if err != nil {
 		t.Fatal(err)
@@ -806,7 +810,7 @@ func TestDomainSnapshotRestoresImportedGlobalDependentPassiveElement(t *testing.
 }
 
 func BenchmarkDomainSnapshotGlobalDependentElementInstantiate(b *testing.B) {
-	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), domainSnapshotGlobalElementModule(b, true))
+	compiled, err := Compile(domainSnapshotConfig(), domainSnapshotGlobalElementModule(b, true))
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -852,7 +856,7 @@ func TestDomainSnapshotRestoresLivePassiveI31ElementPayload(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), module)
+	compiled, err := Compile(domainSnapshotConfig(), module)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -931,7 +935,7 @@ func TestDomainSnapshotLivePassiveElementAdmissionRejectsOpaqueOrMalformedValues
 }
 
 func TestDomainSnapshotRestoresSharedGCGraphAndAliases(t *testing.T) {
-	cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3)
+	cfg := domainSnapshotConfig()
 	providerCode, err := Compile(cfg, gcCrossInstancePersistentProviderModule())
 	if err != nil {
 		t.Fatal(err)
@@ -1126,7 +1130,7 @@ func gcRefFromBits(t *testing.T, bits uint64) gc.Ref {
 }
 
 func TestDomainSnapshotRejectsLiveTokensAndRestoresTransactionally(t *testing.T) {
-	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcGenericPublicTokenModule())
+	compiled, err := Compile(domainSnapshotConfig(), gcGenericPublicTokenModule())
 	if err != nil {
 		t.Fatal(err)
 	}
