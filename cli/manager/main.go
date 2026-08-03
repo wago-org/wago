@@ -53,6 +53,11 @@ func Main(v string) {
 		os.Exit(2)
 	}
 	switch args[0] {
+	case "__complete":
+		for _, candidate := range command.Complete(managerCommandRoot(), args[1:]) {
+			fmt.Println(candidate)
+		}
+		return
 	case "help", "-h", "--help":
 		parseTopAutomation(args[1:])
 		if automation.JSON() {
@@ -105,11 +110,15 @@ func parseTopAutomation(args []string) {
 }
 
 func writeManagerSchema() {
-	root := &command.Cmd{Name: "wago", Children: append([]*command.Cmd(nil), managerRoot.Children...)}
-	root.Children = append(root.Children, runtimeSchemaCommands()...)
-	if err := command.WriteSchema(os.Stdout, root); err != nil {
+	if err := command.WriteSchema(os.Stdout, managerCommandRoot()); err != nil {
 		ui.Fatal("commands: %v", err)
 	}
+}
+
+func managerCommandRoot() *command.Cmd {
+	root := &command.Cmd{Name: "wago", Children: append([]*command.Cmd(nil), managerRoot.Children...)}
+	root.Children = append(root.Children, runtimeSchemaCommands()...)
+	return root
 }
 
 func runtimeSchemaCommands() []*command.Cmd {

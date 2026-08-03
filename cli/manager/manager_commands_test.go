@@ -4,6 +4,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -12,6 +13,25 @@ import (
 	managerversion "github.com/wago-org/wago/cli/manager/internal/version"
 	"github.com/wago-org/wago/internal/wagopaths"
 )
+
+func TestManagerCompletionUsesFullCommandTree(t *testing.T) {
+	root := managerCommandRoot()
+	tests := []struct {
+		args []string
+		want string
+	}{
+		{[]string{"version", ""}, "install"},
+		{[]string{"version", "install", "--p"}, "--profile"},
+		{[]string{"plugin", ""}, "publish"},
+		{[]string{"module", ""}, "capabilities"},
+		{[]string{"run", "--i"}, "--invoke"},
+	}
+	for _, test := range tests {
+		if got := command.Complete(root, test.args); !slices.Contains(got, test.want) {
+			t.Errorf("Complete(%q) = %q, missing %q", test.args, got, test.want)
+		}
+	}
+}
 
 func TestManagerOwnsPluginLifecycleAndDelegatesIntrospection(t *testing.T) {
 	plugins := managerRoot.Child("plugin")
