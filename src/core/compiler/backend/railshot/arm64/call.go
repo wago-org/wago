@@ -1177,13 +1177,19 @@ var instanceContextOffsets = [...]int32{
 	offImportDispatchPtr,
 }
 
+// copyInstanceContext runs only at flushed cross-instance transfer boundaries;
+// X8 and X9 are therefore free call-clobbered scratch registers. The GC native
+// view lives 280 bytes below linMem, outside STUR's signed 9-bit range, so form
+// that destination address explicitly without clobbering the live dispatch
+// pointer in X16 or target entry in X17.
 func (f *fn) copyInstanceContext(dst, src Reg) {
 	for i, off := range instanceContextOffsets {
 		f.ld64(X9, src, int32(i*8))
 		f.st64(dst, -off, X9)
 	}
 	f.ld64(X9, src, runtime.InstanceContextGCNativeViewOffset)
-	f.st64(dst, -int32(abi.GCNativeViewPtrOffset), X9)
+	f.a.SubImm64(X8, dst, uint32(abi.GCNativeViewPtrOffset))
+	f.a.Store64(X9, X8, 0)
 }
 
 // emitCrossInstanceCall lowers a call to an imported function that is bound to
