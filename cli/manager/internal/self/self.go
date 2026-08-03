@@ -153,6 +153,10 @@ func selfUninstall(
 			fatal("self uninstall: clean PATH in %s: %v", displayPath(config), err)
 		}
 	}
+	removalExecutable, err := selfreplace.StageRemoval(executable, targets)
+	if err != nil {
+		fatal("self uninstall: stage manager removal: %v", err)
+	}
 	for _, target := range targets {
 		if filepath.Clean(target) == filepath.Clean(executable) {
 			continue
@@ -161,7 +165,7 @@ func selfUninstall(
 			fatal("self uninstall: remove %s: %v", displayPath(target), err)
 		}
 	}
-	deferred, err := selfreplace.Remove(executable)
+	deferred, err := selfreplace.Remove(removalExecutable)
 	if err != nil {
 		fatal("self uninstall: remove %s: %v", displayPath(executable), err)
 	}
