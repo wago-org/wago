@@ -633,7 +633,6 @@ func (f *fn) emitTailDescriptorWrapperJump(ft *wasm.CompType) {
 		}
 		dstSlot += n
 	}
-	f.emitTailFrameRelease()
 
 	transfer := func() {
 		f.copyInstanceContext(X10, X11)
@@ -652,6 +651,18 @@ func (f *fn) emitTailDescriptorWrapperJump(ft *wasm.CompType) {
 		f.a.Br(X17)
 	}
 
+	// A wrapper-ABI caller has no adapter record below its frame. Preserve its
+	// original result destination from the frame header and tail-enter the target
+	// wrapper directly. Register-ABI callers still need the run-time adapter/direct
+	// distinction below because only adapter entry carries an outer X3 record.
+	if !regABIEnabled || !sigFitsRegABI(f.ft) {
+		f.ld64(X3, SP, frResultsOff)
+		f.emitTailFrameRelease()
+		transfer()
+		return
+	}
+
+	f.emitTailFrameRelease()
 	adapterPC := f.a.Adr(X16)
 	f.a.PatchAdr(adapterPC, f.adapterReturnOff)
 	f.cmpRR(LR, X16, true)
