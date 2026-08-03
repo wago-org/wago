@@ -3,14 +3,11 @@
 package wago
 
 import (
-	"encoding/binary"
 	"reflect"
 	"strings"
 	"testing"
-	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/tests/wasmtest"
 )
 
@@ -84,14 +81,6 @@ func gcMutableFuncrefTailConsumerModule() []byte {
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
 	)
-}
-
-func instanceNativeGCDomainID(in *Instance) uint64 {
-	if in == nil || in.nativeContext == 0 {
-		return 0
-	}
-	context := unsafe.Slice((*byte)(offHeapPtr(in.nativeContext)), coreruntime.InstanceContextBytes)
-	return binary.LittleEndian.Uint64(context[coreruntime.InstanceContextGCDomainOffset:])
 }
 
 func gcTailStressConfig(profile GCProfile) GCConfig {
