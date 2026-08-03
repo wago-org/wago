@@ -103,12 +103,8 @@ func evalConstExprBytesWithContext(b []byte, want wasm.ValType, ctx *constExprCo
 		return got, err
 	}
 	if isI31RefType(want) || isAnyRefType(want) {
-		got, matched, err := evalI31ConstExprBytes(b, want, ctx)
-		if matched {
-			return got, err
-		}
-		if isI31RefType(want) {
-			return constExprResult{}, fmt.Errorf("unsupported i31 const expression")
+		if got, matched, err := evalI31ConstExprBytes(b, want, ctx); matched && err == nil {
+			return got, nil
 		}
 	}
 	if want.Kind == wasm.ValRef && m != nil && len(b) != 0 && b[0] == 0xfb {
@@ -175,6 +171,14 @@ func evalConstExprBytesWithContext(b []byte, want wasm.ValType, ctx *constExprCo
 			got.vtype = wasm.RefVal(wasm.AbsRef(wasm.HeapNoExtern))
 		case -18: // any (0x6e): null GC-category reference
 			got.vtype = wasm.RefVal(wasm.AbsRef(wasm.HeapAny))
+		case -19: // eq (0x6d): null equality reference
+			got.vtype = wasm.RefVal(wasm.AbsRef(wasm.HeapEq))
+		case -20: // i31 (0x6c): null i31 reference
+			got.vtype = wasm.RefVal(wasm.AbsRef(wasm.HeapI31))
+		case -21: // struct (0x6b): null struct reference
+			got.vtype = wasm.RefVal(wasm.AbsRef(wasm.HeapStruct))
+		case -22: // array (0x6a): null array reference
+			got.vtype = wasm.RefVal(wasm.AbsRef(wasm.HeapArray))
 		case -15: // none (0x71): bottom null GC-category reference
 			got.vtype = wasm.RefVal(wasm.AbsRef(wasm.HeapNone))
 		case -23: // exn (0x69): null exception reference
