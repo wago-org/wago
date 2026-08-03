@@ -36,6 +36,14 @@ type radioItem struct {
 var version = "dev"
 
 func main() {
+	if len(os.Args) == 1 {
+		if err := runInstaller(); err != nil {
+			s := colors()
+			fmt.Fprintf(os.Stderr, "\n%sWago could not be installed:%s %v\n", s.red, s.reset, err)
+			os.Exit(1)
+		}
+		return
+	}
 	if len(os.Args) == 2 && (os.Args[1] == "version" || os.Args[1] == "--version") {
 		fmt.Println(version)
 		return
@@ -178,7 +186,11 @@ func status(kind, label string) {
 }
 
 func colors() style {
-	if os.Getenv("NO_COLOR") != "" {
+	return colorsFor(stderrIsConsole())
+}
+
+func colorsFor(isConsole bool) style {
+	if !isConsole || os.Getenv("NO_COLOR") != "" {
 		return style{}
 	}
 	return style{cyan: "\x1b[36m", red: "\x1b[31m", dim: "\x1b[2m", bold: "\x1b[1m", reset: "\x1b[0m"}
