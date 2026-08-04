@@ -985,17 +985,13 @@ type GlobalImportDef struct {
 	Mutable        bool
 }
 
-const memoryExportSentinel = -1
-
 type compiledTagDef struct {
 	ImportKey string
 	TypeIndex uint32
 }
 
 // Compiled is emitted machine code plus instantiate-time metadata. Function
-// exports remain isolated in the public Exports map; the private tableExports map
-// also uses memoryExportSentinel for memory names because Wasm export names are
-// unique across kinds.
+// exports remain isolated in the public Exports map.
 type Compiled struct {
 	Code  []byte
 	Entry []int // entry offset per local function
@@ -1014,7 +1010,7 @@ type Compiled struct {
 	GlobalImports          []GlobalImportDef // imported global entries, preceding local globals
 	Globals                []GlobalDef       // global entries in wasm global-index order
 	GlobalExports          map[string]int    // exported global name -> global index
-	tableExports           map[string]int    // exported table name -> index, or memoryExportSentinel for memory names
+	tableExports           map[string]int    // exported table name -> index
 	hasTableExportMetadata bool              // false only for legacy hand-built Compiled values
 
 	HasTable            bool    // true when table 0 is declared, even with minimum length 0
@@ -1349,6 +1345,7 @@ func (g *Global) attachNumericImporter() error {
 	return nil
 }
 
+//lint:ignore U1000 retained as the collector-free reference import validation entrypoint
 func (g *Global) validateReferenceImport(store *referenceStore) error {
 	return g.validateReferenceImportWithCollector(store, nil)
 }

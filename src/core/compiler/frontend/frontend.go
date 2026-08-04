@@ -2558,43 +2558,6 @@ func compactRefTableType(rt wasm.RefType) bool {
 	}
 }
 
-func isGCI31ConstExpr(e wasm.Expr) bool {
-	body := e.BodyBytes
-	if len(body) == 0 {
-		var err error
-		body, err = wasm.EncodeExpr(e)
-		if err != nil {
-			return false
-		}
-	}
-	r := wasm.NewReader(body)
-	op, err := r.Byte()
-	if err != nil {
-		return false
-	}
-	switch op {
-	case 0x41:
-		_, err = r.I32()
-	case 0x23:
-		_, err = r.U32()
-	default:
-		return false
-	}
-	if err != nil {
-		return false
-	}
-	prefix, err := r.Byte()
-	if err != nil || prefix != 0xfb {
-		return false
-	}
-	sub, err := r.U32()
-	if err != nil || sub != 28 {
-		return false
-	}
-	end, err := r.Byte()
-	return err == nil && end == 0x0b && r.BytesLeft() == 0
-}
-
 // isNullableAbsRef reports whether rt is a nullable reference to one of the
 // abstract heap types wago can lower as a null const value: the func and extern
 // families, including their nofunc/noextern bottoms. Validation accepts a bottom

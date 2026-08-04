@@ -1389,10 +1389,6 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 	return nil
 }
 
-func (f *fn) finishWrapperResults(belowTypes []machineType, resultSlot int, results []wasm.ValType) {
-	f.finishWrapperResultsWithRoots(belowTypes, nil, resultSlot, results)
-}
-
 func (f *fn) finishWrapperResultsWithRoots(belowTypes []machineType, belowGCRoots []bool, resultSlot int, results []wasm.ValType) {
 	const maxRegisterResults = 12
 	if len(results) > maxRegisterResults || !f.wrapperResultsFitRegisters(results) {

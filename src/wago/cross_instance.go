@@ -239,6 +239,7 @@ func (t *Table) Close() error {
 	return err
 }
 
+//lint:ignore U1000 retained as the collector-free table import validation entrypoint
 func (t *Table) validateImport(elementType ValType, exact ValueTypeDescriptor, types []DefinedTypeDescriptor, store *referenceStore, addr64 bool) error {
 	return t.validateImportWithCollector(elementType, exact, types, store, nil, addr64)
 }

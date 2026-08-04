@@ -151,7 +151,7 @@ func friendlyInstantiationError(err error) error {
 	if end < 0 {
 		return err
 	}
-	return fmt.Errorf("no installed plugin provides this host import\n\n  %s\n\nAdd a plugin that provides it.", importName[:end])
+	return fmt.Errorf("no installed plugin provides this host import\n\n  %s\n\nAdd a plugin that provides it", importName[:end])
 }
 
 func trapReason(err error) string {

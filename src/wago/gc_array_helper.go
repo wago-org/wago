@@ -41,6 +41,7 @@ func gcArrayElementStorage(kind gc.StorageKind) bool {
 	}
 }
 
+//lint:ignore U1000 retained as the unparked native helper entrypoint
 func (in *Instance) dispatchGCHelper(helper uint32, args, results []uint64) {
 	in.dispatchGCHelperParked(0, helper, 0, args, results)
 }

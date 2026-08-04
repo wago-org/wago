@@ -164,6 +164,7 @@ func (c *Compiled) genericGCFrameRoots() *compiledGCFrameRoots {
 	return c.validateMemo.gcFrameRoots
 }
 
+//lint:ignore U1000 retained for feature-gated GC global admission checks
 func (c *Compiled) hasGCRefGlobals() bool {
 	if c == nil {
 		return false

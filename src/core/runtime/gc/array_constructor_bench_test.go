@@ -55,17 +55,3 @@ func BenchmarkArrayConstructors(b *testing.B) {
 		})
 	}
 }
-
-type collectorGlobalRootSlot struct {
-	collector *Collector
-	index     uint32
-}
-
-func (s collectorGlobalRootSlot) GetRef() Ref {
-	r, _ := s.collector.CheckedGlobalSlot(s.index)
-	return r
-}
-
-func (s collectorGlobalRootSlot) SetRef(r Ref) {
-	_ = s.collector.SetGlobalSlot(s.index, r)
-}
