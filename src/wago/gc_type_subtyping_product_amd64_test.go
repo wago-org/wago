@@ -237,8 +237,8 @@ func TestStagedGCTypeSubtypingProductsCompile(t *testing.T) {
 	if got := unsafe.Sizeof(compiledCodeCache{}); got != 64 {
 		t.Fatalf("compiledCodeCache size = %d, want 64 bytes", got)
 	}
-	wantCodeBytes := []int{0, 0, 0, 0, 0, 0, 580, 540, 31, 31, 31, 31, 217, 217, 84, 84, 84, 84, 121, 370, 482, 84, 84, 8546, 1425, 1835, 31, 0, 31, 0}
-	wantCodecBytes := []int{349, 385, 347, 219, 238, 386, 967, 1076, 453, 611, 374, 709, 562, 816, 552, 710, 552, 473, 827, 708, 1018, 374, 454, 9044, 1722, 2193, 268, 237, 358, 237}
+	wantCodeBytes := []int{0, 0, 0, 0, 0, 0, 419, 391, 31, 31, 31, 31, 156, 156, 68, 68, 68, 68, 109, 263, 339, 68, 68, 6092, 1131, 1458, 31, 0, 31, 0}
+	wantCodecBytes := []int{349, 385, 347, 219, 238, 386, 806, 927, 453, 611, 374, 709, 501, 755, 535, 693, 535, 456, 815, 601, 875, 357, 437, 6588, 1428, 1816, 268, 237, 358, 237}
 	for i, pin := range stagedGCTypeSubtypingProductPins {
 		t.Run(pin.Filename, func(t *testing.T) {
 			data := stagedGCTypeSubtypingProductData(t, pin)
@@ -412,7 +412,7 @@ func TestStagedGCTypeSubtypingProductsCompile(t *testing.T) {
 			}
 			wantCode, wantCodec := 0, 0
 			if pin.Class == stagedGCTypeSubtypingNonFlatExport {
-				wantCode, wantCodec = 467, 888
+				wantCode, wantCodec = 371, 792
 			} else {
 				wantCode, wantCodec = wantCodeBytes[i], wantCodecBytes[i]
 			}
@@ -473,8 +473,8 @@ func TestStagedGCTypeSubtypingFirstLinkingClusterLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal unlinked consumer: %v", err)
 	}
-	if got := [6]int{len(providerData), len(providerCompiled.Code), len(providerBlob), len(consumerData), len(consumerCompiled.Code), len(consumerBlob)}; got != [6]int{103, 227, 482, 86, 0, 301} {
-		t.Fatalf("link product wasm/code/codec sizes = %v, want [103 227 482 86 0 301]", got)
+	if got := [6]int{len(providerData), len(providerCompiled.Code), len(providerBlob), len(consumerData), len(consumerCompiled.Code), len(consumerBlob)}; got != [6]int{103, 179, 434, 86, 0, 301} {
+		t.Fatalf("link product wasm/code/codec sizes = %v, want [103 179 434 86 0 301]", got)
 	}
 
 	instantiateProvider := func() (*Instance, map[string]*InstanceExport) {
@@ -1048,7 +1048,7 @@ func TestStagedGCTypeSubtypingRemainingProductsLifecycle(t *testing.T) {
 		wasm, code int
 		codec      int
 	}{
-		{m9ProviderCompiled, 136, 217, 690},
+		{m9ProviderCompiled, 136, 156, 629},
 		{m9ConsumerCompiled, 164, 0, 590},
 	} {
 		blob, err := marshalCompiled(item.c)
@@ -1221,7 +1221,7 @@ func TestStagedGCTypeSubtypingDuplicateRecursiveLinkingClusterLifecycle(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := [6]int{len(providerData), len(providerCompiled.Code), len(providerBlob), len(consumerData), len(consumerCompiled.Code), len(consumerBlob)}; got != [6]int{100, 217, 496, 92, 0, 316} {
+	if got := [6]int{len(providerData), len(providerCompiled.Code), len(providerBlob), len(consumerData), len(consumerCompiled.Code), len(consumerBlob)}; got != [6]int{100, 156, 435, 92, 0, 316} {
 		t.Fatalf("wasm/code/codec sizes = %v", got)
 	}
 	state := func(in *Instance) (int, bool) {

@@ -66,7 +66,42 @@ func rex(w, r, x, b bool) byte {
 	return v
 }
 
-// memOp requires a base that does not need a SIB byte.
+// addrMode selects the shortest ModRM displacement form. RBP/R13 cannot use
+// mod=00 with a zero displacement because r/m=101 denotes RIP-relative
+// addressing, so they use an explicit zero disp8 instead.
+func addrMode(base Reg, disp int32) byte {
+	if disp == 0 && base&7 != 5 {
+		return 0x00
+	}
+	if disp >= -128 && disp <= 127 {
+		return 0x40
+	}
+	return 0x80
+}
+
+func (a *Asm) emitDisp(mod byte, disp int32) {
+	switch mod {
+	case 0x40:
+		a.emit(byte(disp))
+	case 0x80:
+		a.imm32(disp)
+	}
+}
+
+// baseAddr emits ModRM, the required base-only SIB for RSP/R12, and the
+// shortest displacement selected by addrMode.
+func (a *Asm) baseAddr(regField byte, base Reg, disp int32) {
+	mod := addrMode(base, disp)
+	rm := byte(base & 7)
+	if rm == 4 {
+		a.emit(mod | ((regField & 7) << 3) | 0x04)
+		a.emit(0x24) // scale=0, index=none, base=RSP/R12
+	} else {
+		a.emit(mod | ((regField & 7) << 3) | rm)
+	}
+	a.emitDisp(mod, disp)
+}
+
 func (a *Asm) memOp(opcode byte, regField byte, base Reg, disp int32, w bool) {
 	rb := base >= 8
 	rr := regField >= 8
@@ -74,14 +109,7 @@ func (a *Asm) memOp(opcode byte, regField byte, base Reg, disp int32, w bool) {
 		a.emit(rex(w, rr, false, rb))
 	}
 	a.emit(opcode)
-	if base&7 == 4 { // RSP/R12 base: rm=100 means "SIB follows", so emit one
-		a.emit(0x80 | ((regField & 7) << 3) | 0x04) // mod=10, rm=100
-		a.emit(0x24)                                // SIB: scale=0, index=none(100), base=100
-		a.imm32(disp)
-		return
-	}
-	a.emit(0x80 | ((regField & 7) << 3) | byte(base&7)) // mod=10, disp32
-	a.imm32(disp)
+	a.baseAddr(regField, base, disp)
 }
 
 func (a *Asm) Push(r Reg) {
@@ -170,8 +198,7 @@ func (a *Asm) StoreImm32Mem(base Reg, disp int32, v int32) {
 		a.emit(rex(false, false, false, rb))
 	}
 	a.emit(0xC7)
-	a.emit(0x80 | byte(base&7)) // mod=10, reg=0
-	a.imm32(disp)
+	a.baseAddr(0, base, disp)
 	a.imm32(v)
 }
 
@@ -325,12 +352,7 @@ func (a *Asm) ImulRM(dst, base Reg, disp int32, w bool) {
 		a.emit(rex(w, dst >= 8, false, base >= 8))
 	}
 	a.emit(0x0F, 0xAF)
-	if base&7 == 4 { // RSP/R12 base: rm=100 means "SIB follows"
-		a.emit(0x80|((byte(dst)&7)<<3)|0x04, 0x24)
-	} else {
-		a.emit(0x80 | ((byte(dst) & 7) << 3) | byte(base&7))
-	}
-	a.imm32(disp)
+	a.baseAddr(byte(dst), base, disp)
 }
 
 func (a *Asm) ImulRI(dst Reg, imm int32, w bool) {
@@ -392,9 +414,7 @@ func (a *Asm) rspMem(opcode byte, reg byte, disp int32, w bool) {
 		a.emit(rex(w, rr, false, false))
 	}
 	a.emit(opcode)
-	a.emit(0x80 | ((reg & 7) << 3) | 0x04) // mod=10, rm=100 (SIB)
-	a.emit(0x24)                           // SIB: scale=0 index=none base=rsp
-	a.imm32(disp)
+	a.baseAddr(reg, RSP, disp)
 }
 
 func (a *Asm) StoreRsp32(disp int32, src Reg) { a.rspMem(0x89, byte(src), disp, false) }
@@ -432,9 +452,10 @@ func (a *Asm) LeaScaledW(dst, base, index Reg, scaleLog uint8, disp int8, w bool
 	if w || dst >= 8 || index >= 8 || base >= 8 {
 		a.emit(rex(w, dst >= 8, index >= 8, base >= 8))
 	}
-	a.emit(0x8D, 0x40|((byte(dst)&7)<<3)|0x04) // mod=01 disp8, rm=100 (SIB)
+	mod := addrMode(base, int32(disp))
+	a.emit(0x8D, mod|((byte(dst)&7)<<3)|0x04)
 	a.emit((scaleLog << 6) | ((byte(index) & 7) << 3) | byte(base&7))
-	a.emit(byte(disp))
+	a.emitDisp(mod, int32(disp))
 }
 
 // LeaDispW is `lea dst, [base + disp]` with an explicit destination width.
@@ -461,24 +482,13 @@ func (a *Asm) Cld()      { a.emit(0xFC) }       // clear direction flag (increme
 // vs zero-extension; wide selects a 64-bit destination (i64), so signed
 // sub-width loads sign-extend to all 64 bits instead of only 32. Unsigned loads
 // zero-extend to 64 regardless of wide (x86 movzx/32-bit mov clear the top).
-// sibAddr emits ModRM + SIB (+ disp32 when disp != 0) for a [base + index + disp]
-// operand (scale 1) with the given reg field. disp == 0 uses the compact mod=00
-// form; a folded wasm memarg offset uses mod=10 disp32.
+// sibAddr emits ModRM + SIB and the shortest displacement for a
+// [base + index + disp] operand (scale 1) with the given reg field.
 func (a *Asm) sibAddr(reg, base, index Reg, disp int32) {
-	mod := byte(0x00)
-	zeroDisp8 := disp == 0 && base&7 == 5 // mod=00 base=RBP/R13 means no base + disp32.
-	if zeroDisp8 {
-		mod = 0x40 // mod=01 with an explicit zero disp8 preserves RBP/R13 as base.
-	} else if disp != 0 {
-		mod = 0x80 // mod=10, disp32
-	}
+	mod := addrMode(base, disp)
 	a.emit(mod | ((byte(reg) & 7) << 3) | 0x04)     // ModRM rm=100 (SIB)
 	a.emit(((byte(index) & 7) << 3) | byte(base&7)) // SIB scale=0 index base
-	if zeroDisp8 {
-		a.emit(0)
-	} else if disp != 0 {
-		a.imm32(disp)
-	}
+	a.emitDisp(mod, disp)
 }
 
 func (a *Asm) LoadIdx(dst, base, index Reg, disp int32, size int, signed, wide bool) {
