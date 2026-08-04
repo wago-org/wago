@@ -20,6 +20,9 @@ func TestGCCollectFrameRootsPreservesArchitectureBoundary(t *testing.T) {
 }
 
 func TestGCCollectFrameRootsUsesCurrentArchitecture(t *testing.T) {
+	if !supportsCompleteCore3Backend(runtime.GOOS, runtime.GOARCH) {
+		t.Skipf("native GC frame roots are unavailable on %s/%s", runtime.GOOS, runtime.GOARCH)
+	}
 	wantLayout, wantExternal := uint8(gcNativeFrameLayoutAMD64), false
 	switch runtime.GOARCH {
 	case "amd64":

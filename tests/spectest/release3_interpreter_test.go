@@ -5,16 +5,28 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
 
 const release3Revision = "9d36019973201a19f9c9ebb0f10828b2fe2374aa"
 
+func scriptCommand(path string, args ...string) *exec.Cmd {
+	if runtime.GOOS == "windows" {
+		interpreter := "python"
+		if filepath.Ext(path) == ".sh" {
+			interpreter = "bash"
+		}
+		return exec.Command(interpreter, append([]string{path}, args...)...)
+	}
+	return exec.Command(path, args...)
+}
+
 func TestRelease3InterpreterBootstrapIsPinned(t *testing.T) {
 	repo := filepath.Clean("../..")
 	script := filepath.Join(repo, "scripts", "bootstrap-spec-interpreter.sh")
-	out, err := exec.Command(script, "--print-revision").CombinedOutput()
+	out, err := scriptCommand(script, "--print-revision").CombinedOutput()
 	if err != nil {
 		t.Fatalf("print official interpreter revision: %v: %s", err, out)
 	}
@@ -55,7 +67,7 @@ func TestRelease3InterpreterBinaryScriptConverter(t *testing.T) {
 		t.Fatal(err)
 	}
 	converter := filepath.Join(repo, "scripts", "spec-interpreter-json.py")
-	if out, err := exec.Command(converter, input, output).CombinedOutput(); err != nil {
+	if out, err := scriptCommand(converter, input, output).CombinedOutput(); err != nil {
 		t.Fatalf("convert binary script: %v: %s", err, out)
 	}
 	var got struct {
