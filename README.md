@@ -303,8 +303,10 @@ go test -bench . -benchmem
 
 Wago supports the WebAssembly 1.0 core language and the implemented
 WebAssembly 2.0 release features, including multi-value, reference types, bulk
-memory, extended constant expressions, and SIMD. Linux amd64 is the primary
-target; Linux arm64 and macOS arm64 have native runtime coverage.
+memory, extended constant expressions, and SIMD. Native runtime paths, CI, and
+release assets cover Linux, macOS, and Windows on amd64 and arm64. Linux amd64
+is the primary performance target; the complete opt-in Core 3 feature set is
+currently admitted on linux/amd64, linux/arm64, and darwin/arm64.
 
 Wago is JIT-only. Unsupported or disabled features fail during decode or
 validation.

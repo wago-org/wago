@@ -3,7 +3,10 @@
 `wago` is a small Go-first WebAssembly JIT. Keep changes direct, tested, and
 easy to audit.
 
-Target today: **linux/amd64** with Go **1.22+**.
+Primary performance and conformance target: **linux/amd64** with Go **1.22+**.
+Native runtime paths, CI, and release assets also cover Linux, macOS, and
+Windows on amd64 and arm64; see [FEATURES.md](FEATURES.md) for feature-level
+platform admission.
 
 ## Setup
 
@@ -36,7 +39,7 @@ cli/manager                      manager implementation and command tree
 cli/runtime                      runtime implementation and command tree
 cli/internal                     shared CLI primitives
 src/core/compiler/wasm           decoder + validator
-src/core/compiler/backend/railshot  single-pass x86-64 codegen
+src/core/compiler/backend/railshot  single-pass amd64 and arm64 codegen
 src/core/runtime                 mmap, foreign stack, trap plumbing
 tests                           shared harnesses, fixtures, corpora, and scripts
 bench                            runtime comparison benchmarks

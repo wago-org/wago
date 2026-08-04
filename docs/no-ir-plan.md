@@ -1,4 +1,10 @@
-# No-IR plan — railshot optimization & product roadmap (2026-07-03)
+# No-IR plan — historical railshot optimization & product plan (2026-07-03)
+
+> **Status: historical design record.** This document preserves the July 3,
+> 2026 no-IR decision and the original P0–P8 designs. It is not the current work
+> queue: [ROADMAP.md](../ROADMAP.md) and [OPTIMIZATIONS.md](../OPTIMIZATIONS.md)
+> track priorities and completion status. The no-IR architectural decision in
+> §0 remains current.
 
 Triage of an external repo review (LLM with GitHub read access; code/doc
 inspection only — no local build or bench run) against actual repo state,
@@ -326,8 +332,22 @@ differential-fuzzed old-vs-fused on accept/reject agreement. Keep the
 standalone validator as the API surface either way. Add compile-side stats
 (allocs, arena high-water) to P1's stats while in here.
 
-### P8. Runtime & product track (parallel; feature value, not exec perf)
-In order:
+### P8. Runtime & product track (original plan; feature value, not exec perf)
+
+The list below is retained as the original July plan. Current disposition:
+
+| Original item | Current disposition |
+|---|---|
+| Synchronous host-import results | Done; see [FEATURES.md](../FEATURES.md). |
+| WASI Preview 1 | Product/plugin work; the `wago-org/wasi` plugin owns it. |
+| Invocation cancellation | Done on amd64 and arm64; see [ROADMAP.md](../ROADMAP.md). |
+| Wasm trap source frames | Landed; full caller-chain unwind metadata remains follow-up work. |
+| Release 2 bulk/reference completion | Done; see [FEATURES.md](../FEATURES.md). |
+| `call_indirect` inline caches | Still planned. |
+| `.wago` productization | Done; see [ROADMAP.md](../ROADMAP.md). |
+| Arm64 backend | Done; see [FEATURES.md](../FEATURES.md). |
+
+Original priority order:
 1. **Sync host imports with results** (⭐ — the WASI unlock; runtime half
    already spiked per ARCHITECTURE §V2). Design per review §P1: host-call
    frame in basedata, HOST_CALL status back through the trampoline, Go invokes,
@@ -385,7 +405,10 @@ Existing: `WAGO_BOUNDS`, `WAGO_REG_MERGE`, `WAGO_Amd64_NOREGABI`,
 KNOWN: `src/wago` package tests segfault under `-tags wago_guardpage`
 (pre-existing, needs its own session — see `perf-session3-plan.md` §3).
 
-## 5. Sequencing (the review's closing advice, adjusted)
+## 5. Original sequencing (the review's closing advice, adjusted)
+
+This sequence is preserved for the rationale behind the original plan; it is
+not a current priority order.
 
 ```
 P0 docs (this PR + ROADMAP refresh)

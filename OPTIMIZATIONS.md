@@ -583,9 +583,10 @@ see R4.
 
 ## Remaining roadmap (priority-ordered)
 
-The detailed, phase-by-phase execution plan for everything below is
-**`docs/no-ir-plan.md`** (2026-07-03, incorporating an external repo review that was
-triaged against the tree). R-numbers here are stable labels; Pn are that plan's phases.
+The original phase-by-phase design record is **`docs/no-ir-plan.md`**
+(2026-07-03, incorporating an external repo review that was triaged against the
+tree). This document is authoritative for current optimization status;
+R-numbers remain stable labels and Pn identify the original plan phases.
 
 ### R0. `CodegenStats` + explain mode  · ✅ LANDED (`perf/codegen-stats`)
 Per-function counters (spills/flushes/condenses/store-forced deferred loads/bounds
@@ -645,17 +646,15 @@ V0 measurement discipline that found this is now doctrine: profile before chasin
 hypothesis (memory `wago-serialize-memcopy-win`; ≤0x18 perf bins). Serialize is now
 flat/GC-bound; no further wago-side lever identified.
 
-### R5. Runtime / infra from WARP (plan P8)
-| Item | Effort | Value | Notes |
-|---|:--:|:--:|---|
-| Sync host calls w/ return values (V2 imports) | L | ⭐ | runtime half spiked; biggest functional unlock (WASI). #111/#115 added typed params + host funcrefs; **results** still missing |
-| WASI preview 1 (minimal) | M | 🟩 | after sync imports |
-| Interruption / cooperative cancel | S–M | 🟩 | loop backedges + entries; same machinery as Go-GC safe points |
-| Wasm-level stack trace on trap | M | 🟩 | trap site → func idx → wasm pc |
-| Debug mode + bytecode→machine map | M | 🟦 | |
-| arm64 backend | L | 🟩¹ | WARP `backend/aarch64` as reference |
-
-¹ if Apple Silicon / arm64 Linux matters.
+### R5. Runtime / infrastructure status (original plan P8)
+| Item | Status | Notes |
+|---|:--:|---|
+| Sync host calls with return values | ✅ done | Synchronous parked-host dispatch supports results. |
+| WASI Preview 1 | plugin-owned | `wago-org/wasi` owns the product integration. |
+| Invocation cancellation | ✅ done | Native asynchronous cancellation on Linux amd64/arm64; cooperative safepoints elsewhere. |
+| Wasm-level trap source frames | 🚧 partial | Function and exact single-site Wasm PCs land; full caller-chain metadata remains follow-up work. |
+| Debug mode + bytecode→machine map | [ ] planned | No current product commitment. |
+| Arm64 backend | ✅ done | Native runtime paths, CI, and release assets cover all six supported OS/architecture targets. |
 
 ### R6. Measurement hardening → **promoted to R0**, see above.
 

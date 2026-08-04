@@ -12,8 +12,9 @@ Four companion docs go deeper:
   spec-feature status).
 - [OPTIMIZATIONS.md](OPTIMIZATIONS.md) — the optimization roadmap (what codegen work
   is landed / pending, and why).
-- [docs/no-ir-plan.md](docs/no-ir-plan.md) — the phased execution plan (P0–P8) that
-  the "Next" section below is a summary of.
+- [docs/no-ir-plan.md](docs/no-ir-plan.md) — the July 3, 2026 no-IR decision,
+  original P0–P8 plan, and its preserved design rationale. This roadmap is the
+  current source for priority and completion status.
 - [docs/wasm3.md](docs/wasm3.md) — the mandatory Core 3.0 implementation ledger,
   official suite pin, measurements, platform gates, and recursive slices.
 
@@ -88,8 +89,10 @@ in full — 57/57 applicable files, 0 failing assertions (see [SPECTEST.md](SPEC
 
 ## Next (near-term)
 
-The optimization plan remains **[docs/no-ir-plan.md](docs/no-ir-plan.md)** and the
-Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
+The no-IR decision and preserved phase designs are in
+**[docs/no-ir-plan.md](docs/no-ir-plan.md)**; this roadmap is authoritative for
+current optimization priorities. The Core 3.0 implementation ledger is
+**[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
 
 **WebAssembly 3.0** (primary conformance complete; product hardening continues)
 - [x] Pin and execute the complete official `WebAssembly/spec` `wg-3.0` corpus.
