@@ -1,0 +1,50 @@
+{
+  "commands": [
+    {
+      "filename": "commands.0.wasm",
+      "line": 1,
+      "name": "$A",
+      "type": "module_definition"
+    },
+    {
+      "line": 9,
+      "module": "$A",
+      "name": "$A",
+      "type": "module_instance"
+    },
+    {
+      "filename": "commands.1.wasm",
+      "line": 10,
+      "name": "$B",
+      "type": "module_definition"
+    },
+    {
+      "line": 19,
+      "module": "$B",
+      "name": "$B",
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "100000"
+          }
+        ],
+        "field": "g",
+        "module": "$B",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "42"
+        }
+      ],
+      "line": 20,
+      "type": "assert_return"
+    }
+  ],
+  "source": "WebAssembly/spec interpreter 3.0.0"
+}

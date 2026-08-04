@@ -13,12 +13,30 @@ func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, err
 	if err := c.errIfClosed(); err != nil {
 		return Null(), err
 	}
+	if c.cfg.DisableCollection {
+		e, err := c.throughput.alloc(size, spaceLarge)
+		if err != nil {
+			return Null(), fmt.Errorf("gc: collection-disabled heap exhausted: %w", err)
+		}
+		h := c.newHandle(e)
+		r := makeObjRef(h)
+		flags := uint32(FlagLarge)
+		if !d.HasRefs {
+			flags |= FlagPointerFree
+		}
+		c.writeHeader(r, ObjHeader{TypeID: uint32(d.ID), Size: size, Aux: aux, Flags: flags})
+		c.stats.Allocations++
+		c.refreshNativeView()
+		return r, nil
+	}
 	if c.cfg.CollectEveryAlloc {
 		if roots == nil {
 			return Null(), errors.New("gc: allocation-triggered collection requires roots")
 		}
 		if err := c.CollectMinor(roots); err != nil {
-			return Null(), err
+			if err := c.retryAllocationMinorAfterPromotionFailure(roots, err); err != nil {
+				return Null(), err
+			}
 		}
 	}
 	sp := spaceNursery
@@ -28,6 +46,9 @@ func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, err
 		var err error
 		e, err = c.throughput.alloc(size, spaceLarge)
 		if err != nil {
+			if errors.Is(err, ErrAllocationTooLarge) {
+				return Null(), err
+			}
 			if roots == nil {
 				return Null(), errors.New("gc: large-object space exhausted and no roots were supplied")
 			}
@@ -42,24 +63,39 @@ func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, err
 		sp = spaceLarge
 		off = e.off
 	} else {
-		if size > uint32(len(c.nursery))-c.nurseryBump {
+		objectAlign := d.Align
+		if objectAlign < 8 {
+			objectAlign = 8
+		}
+		nurseryOffset := func() (uint32, bool) {
+			off := align(c.nurseryBump, objectAlign)
+			return off, off <= uint32(len(c.nursery)) && size <= uint32(len(c.nursery))-off
+		}
+		var fits bool
+		off, fits = nurseryOffset()
+		if !fits {
 			if roots == nil {
 				return Null(), errors.New("gc: nursery exhausted and no roots were supplied")
 			}
 			if err := c.CollectMinor(roots); err != nil {
-				return Null(), err
+				if err := c.retryAllocationMinorAfterPromotionFailure(roots, err); err != nil {
+					return Null(), err
+				}
 			}
-			if size > uint32(len(c.nursery))-c.nurseryBump {
+			off, fits = nurseryOffset()
+			if !fits {
 				return Null(), errors.New("gc: nursery exhausted without roots")
 			}
 		}
-		off = c.nurseryBump
-		c.nurseryBump += size
+		c.nurseryBump = off + size
 	}
 	if sp == spaceNursery {
 		e = handleEntry{off: off, size: size, allocSize: size, space: sp}
 	}
 	h := c.newHandle(e)
+	if sp == spaceNursery {
+		c.nurseryHandles = append(c.nurseryHandles, h)
+	}
 	r := makeObjRef(h)
 	flags := uint32(0)
 	if !d.HasRefs {
@@ -70,8 +106,28 @@ func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, err
 	}
 	c.writeHeader(r, ObjHeader{TypeID: uint32(d.ID), Size: size, Aux: aux, Flags: flags})
 	c.stats.Allocations++
+	if sp == spaceNursery {
+		c.refreshNativeHandles()
+	} else {
+		c.refreshNativeView()
+	}
 	return r, nil
 }
+
+//go:noinline
+func (c *Collector) retryAllocationMinorAfterPromotionFailure(roots RootSet, promotionErr error) error {
+	if !errors.Is(promotionErr, errThroughputHeapExhausted) {
+		return promotionErr
+	}
+	// Promotion planning is transactional: on exhaustion no nursery object has
+	// moved. Reclaim unreachable old/large objects with the exact allocation
+	// roots, then rerun the minor collection to promote the same survivors.
+	if err := c.CollectFull(roots); err != nil {
+		return err
+	}
+	return c.CollectMinor(roots)
+}
+
 func (c *Collector) shouldAllocateLarge(size uint32) bool {
 	// The large-object threshold is a policy preference, but nursery capacity is
 	// a hard safety boundary: an object that cannot fit in an empty nursery must

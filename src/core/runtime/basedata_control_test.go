@@ -106,6 +106,20 @@ func TestJobMemoryHasTrapCellDetectsCrossInstanceOverwrite(t *testing.T) {
 	}
 }
 
+func TestTrapMessagesStayCompactAndComplete(t *testing.T) {
+	if got := unsafe.Sizeof(trapMessages); got != 320 {
+		t.Fatalf("trap message storage = %d bytes, want 320", got)
+	}
+	for code, message := range trapMessages {
+		if message == "" {
+			t.Fatalf("trap code %d has no message", code)
+		}
+		if got := TrapCode(code).String(); got != message {
+			t.Errorf("trap code %d string = %q, want %q", code, got, message)
+		}
+	}
+}
+
 func TestTrapAndSlotFormattingHelpers(t *testing.T) {
 	if TrapDivZero.String() != "integer division by zero" || (&TrapError{Code: TrapDivZero}).Error() != "wasm trap: integer division by zero" ||
 		TrapTableOutOfBounds.String() != "table access out of bounds" {

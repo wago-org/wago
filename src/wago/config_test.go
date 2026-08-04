@@ -170,13 +170,13 @@ func TestConfigDefaultAcceptsSupportedFeatures(t *testing.T) {
 }
 
 func TestConfigFeatureGatingRejects(t *testing.T) {
-	cfg := NewRuntimeConfig().WithCoreFeatures(coreFeaturesWago &^ CoreFeatureSignExtensionOps)
+	cfg := NewRuntimeConfig().WithCoreFeatures(platformCoreFeatures() &^ CoreFeatureSignExtensionOps)
 	_, err := Compile(cfg, signExtModule())
 	if err == nil || !strings.Contains(err.Error(), "sign-extension") {
 		t.Fatalf("disabling sign-extension should reject the module, got %v", err)
 	}
 
-	cfg = NewRuntimeConfig().WithCoreFeatures(coreFeaturesWago &^ CoreFeatureSIMD)
+	cfg = NewRuntimeConfig().WithCoreFeatures(platformCoreFeatures() &^ CoreFeatureSIMD)
 	_, err = Compile(cfg, simdModule())
 	if err == nil || !strings.Contains(err.Error(), "simd disabled") {
 		t.Fatalf("disabling SIMD should reject the module, got %v", err)
@@ -184,9 +184,9 @@ func TestConfigFeatureGatingRejects(t *testing.T) {
 }
 
 func TestConfigValidationRejectsUnsupported(t *testing.T) {
-	cfg := NewRuntimeConfig().WithFeature(CoreFeatureTailCall, true)
+	cfg := NewRuntimeConfig().WithFeature(CoreFeatures(uint64(1)<<63), true)
 	if _, err := Compile(cfg, signExtModule()); err == nil {
-		t.Fatal("enabling unsupported tail-call should error")
+		t.Fatal("enabling an unknown feature bit should error")
 	}
 }
 
@@ -255,10 +255,81 @@ func TestCoreFeaturesV2ReleaseScope(t *testing.T) {
 		CoreFeatureNonTrappingFloatToIntConversion |
 		CoreFeatureReferenceTypes |
 		CoreFeatureSignExtensionOps |
-		CoreFeatureSIMD |
-		CoreFeatureExtendedConst
+		CoreFeatureSIMD
 	if CoreFeaturesV2 != want {
 		t.Fatalf("CoreFeaturesV2 = %s, want WebAssembly 2.0 scope %s", CoreFeaturesV2, want)
+	}
+}
+
+func TestCoreFeaturesV3ReleaseScopeAndAdmission(t *testing.T) {
+	wasm3Only := CoreFeatureTailCall |
+		CoreFeatureExtendedConstExpressions |
+		CoreFeatureTypedFunctionReferences |
+		CoreFeatureGC |
+		CoreFeatureExceptionHandling |
+		CoreFeatureMultiMemory |
+		CoreFeatureMemory64 |
+		CoreFeatureTable64
+	if want := CoreFeaturesV2 | wasm3Only; CoreFeaturesV3 != want {
+		t.Fatalf("CoreFeaturesV3 = %s, want mandatory WebAssembly 3.0 scope %s", CoreFeaturesV3, want)
+	}
+	if !CoreFeaturesV3.IsEnabled(CoreFeatureSIMD) {
+		t.Fatal("CoreFeaturesV3 must include the existing SIMD admission bit that also gates relaxed SIMD")
+	}
+	completeCore3Backend := supportsCompleteCore3Backend(runtime.GOOS, runtime.GOARCH)
+	for _, tc := range []struct {
+		bit       CoreFeatures
+		name      string
+		supported bool
+	}{
+		{CoreFeatureTailCall, "tail-call", completeCore3Backend},
+		{CoreFeatureExtendedConstExpressions, "extended-const-expressions", true},
+		{CoreFeatureTypedFunctionReferences, "typed-function-references", completeCore3Backend},
+		{CoreFeatureGC, "gc", completeCore3Backend},
+		{CoreFeatureExceptionHandling, "exception-handling", completeCore3Backend},
+		{CoreFeatureMultiMemory, "multi-memory", completeCore3Backend},
+		{CoreFeatureMemory64, "memory64", completeCore3Backend},
+		{CoreFeatureTable64, "table64", completeCore3Backend},
+	} {
+		if got := SupportedFeatures().IsEnabled(tc.bit); got != tc.supported {
+			t.Errorf("SupportedFeatures admission for %s = %v, want %v", tc.name, got, tc.supported)
+		}
+		if got := tc.bit.String(); got != tc.name {
+			t.Errorf("%#x String() = %q, want %q", uint64(tc.bit), got, tc.name)
+		}
+	}
+
+	err := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).Validate()
+	if completeCore3Backend {
+		if err != nil {
+			t.Fatalf("CoreFeaturesV3 Validate = %v, want complete admission", err)
+		}
+	} else {
+		var unsupported *UnsupportedFeatureError
+		if !errors.As(err, &unsupported) {
+			t.Fatalf("CoreFeaturesV3 Validate = %v, want platform UnsupportedFeatureError", err)
+		}
+		if unsupported.Requested != CoreFeaturesV3&^SupportedFeatures() {
+			t.Fatalf("unsupported Core 3 features = %s, want %s", unsupported.Requested, CoreFeaturesV3&^SupportedFeatures())
+		}
+	}
+}
+
+func TestCompleteCore3BackendPlatforms(t *testing.T) {
+	for _, tc := range []struct {
+		goos, goarch string
+		want         bool
+	}{
+		{goos: "linux", goarch: "amd64", want: true},
+		{goos: "linux", goarch: "arm64", want: true},
+		{goos: "darwin", goarch: "arm64", want: true},
+		{goos: "darwin", goarch: "amd64"},
+		{goos: "windows", goarch: "amd64"},
+		{goos: "windows", goarch: "arm64"},
+	} {
+		if got := supportsCompleteCore3Backend(tc.goos, tc.goarch); got != tc.want {
+			t.Errorf("supportsCompleteCore3Backend(%q, %q) = %v, want %v", tc.goos, tc.goarch, got, tc.want)
+		}
 	}
 }
 
@@ -280,13 +351,14 @@ func TestCoreFeaturesBitset(t *testing.T) {
 
 func TestConfigTypedErrors(t *testing.T) {
 	// Unsupported feature -> *UnsupportedFeatureError naming it.
-	_, err := NewRuntimeConfig().WithFeature(CoreFeatureTailCall, true).Compile(signExtModule())
+	unknown := CoreFeatures(uint64(1) << 63)
+	_, err := NewRuntimeConfig().WithFeature(unknown, true).Compile(signExtModule())
 	var ufe *UnsupportedFeatureError
 	if !errors.As(err, &ufe) {
 		t.Fatalf("want *UnsupportedFeatureError, got %T: %v", err, err)
 	}
-	if !ufe.Requested.IsEnabled(CoreFeatureTailCall) {
-		t.Fatalf("error should name tail-call, got %v", ufe.Requested)
+	if ufe.Requested != unknown {
+		t.Fatalf("error should preserve unknown feature bit, got %#x", uint64(ufe.Requested))
 	}
 	// Signals-based without the build tag -> GuardPageUnavailableError (default build).
 	if !guardPageBuilt {
@@ -312,6 +384,19 @@ func TestConfigValidateAndIntrospection(t *testing.T) {
 		t.Fatal("deprecated compile-worker aliases must preserve the function-worker policy")
 	}
 	wantFeatures := coreFeaturesWago
+	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
+		unsupported := CoreFeatureTailCall |
+			CoreFeatureTypedFunctionReferences |
+			CoreFeatureGC |
+			CoreFeatureExceptionHandling |
+			CoreFeatureMultiMemory |
+			CoreFeatureMemory64 |
+			CoreFeatureTable64
+		if runtime.GOARCH == "arm64" && (runtime.GOOS == "linux" || runtime.GOOS == "darwin") {
+			unsupported &^= CoreFeatureTailCall | CoreFeatureTypedFunctionReferences | CoreFeatureGC | CoreFeatureExceptionHandling | CoreFeatureMultiMemory | CoreFeatureMemory64 | CoreFeatureTable64
+		}
+		wantFeatures &^= unsupported
+	}
 	if !hostSupportsSIMD() {
 		wantFeatures &^= CoreFeatureSIMD
 	}

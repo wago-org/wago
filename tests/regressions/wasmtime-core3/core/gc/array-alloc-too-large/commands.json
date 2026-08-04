@@ -1,0 +1,34 @@
+{
+  "commands": [
+    {
+      "filename": "commands.0.wasm",
+      "line": 1,
+      "type": "module_definition"
+    },
+    {
+      "line": 11,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "overflow-elems-size",
+        "type": "invoke"
+      },
+      "line": 12,
+      "text": "allocation size too large",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "overflow-add-base-size",
+        "type": "invoke"
+      },
+      "line": 13,
+      "text": "allocation size too large",
+      "type": "assert_trap"
+    }
+  ],
+  "source": "WebAssembly/spec interpreter 3.0.0"
+}

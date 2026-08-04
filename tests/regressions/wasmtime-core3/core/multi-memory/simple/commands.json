@@ -1,0 +1,499 @@
+{
+  "commands": [
+    {
+      "filename": "commands.0.wasm",
+      "line": 1,
+      "type": "module_definition"
+    },
+    {
+      "line": 13,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i64",
+            "value": "1"
+          }
+        ],
+        "field": "store1",
+        "type": "invoke"
+      },
+      "line": 14,
+      "type": "action"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i64",
+            "value": "2"
+          }
+        ],
+        "field": "store2",
+        "type": "invoke"
+      },
+      "line": 15,
+      "type": "action"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "0"
+          }
+        ],
+        "field": "load1",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i64",
+          "value": "1"
+        }
+      ],
+      "line": 16,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "0"
+          }
+        ],
+        "field": "load2",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i64",
+          "value": "2"
+        }
+      ],
+      "line": 17,
+      "type": "assert_return"
+    },
+    {
+      "filename": "commands.1.wasm",
+      "line": 18,
+      "name": "$a",
+      "type": "module_definition"
+    },
+    {
+      "line": 27,
+      "module": "$a",
+      "name": "$a",
+      "type": "module_instance"
+    },
+    {
+      "filename": "commands.2.wasm",
+      "line": 28,
+      "name": "$b",
+      "type": "module_definition"
+    },
+    {
+      "line": 37,
+      "module": "$b",
+      "name": "$b",
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i64",
+            "value": "1"
+          }
+        ],
+        "field": "store",
+        "module": "$a",
+        "type": "invoke"
+      },
+      "line": 38,
+      "type": "action"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i64",
+            "value": "2"
+          }
+        ],
+        "field": "store",
+        "module": "$b",
+        "type": "invoke"
+      },
+      "line": 39,
+      "type": "action"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "0"
+          }
+        ],
+        "field": "load",
+        "module": "$a",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i64",
+          "value": "1"
+        }
+      ],
+      "line": 40,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "0"
+          }
+        ],
+        "field": "load",
+        "module": "$b",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i64",
+          "value": "2"
+        }
+      ],
+      "line": 41,
+      "type": "assert_return"
+    },
+    {
+      "filename": "commands.3.wasm",
+      "line": 42,
+      "name": "$c",
+      "type": "module_definition"
+    },
+    {
+      "line": 55,
+      "module": "$c",
+      "name": "$c",
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i64",
+            "value": "1"
+          }
+        ],
+        "field": "store1",
+        "type": "invoke"
+      },
+      "line": 56,
+      "type": "action"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i64",
+            "value": "2"
+          }
+        ],
+        "field": "store2",
+        "type": "invoke"
+      },
+      "line": 57,
+      "type": "action"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "0"
+          }
+        ],
+        "field": "load1",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i64",
+          "value": "1"
+        }
+      ],
+      "line": 58,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "0"
+          }
+        ],
+        "field": "load2",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i64",
+          "value": "2"
+        }
+      ],
+      "line": 59,
+      "type": "assert_return"
+    },
+    {
+      "filename": "commands.4.wasm",
+      "line": 60,
+      "type": "module_definition"
+    },
+    {
+      "line": 71,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "size1",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "1"
+        }
+      ],
+      "line": 72,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "size2",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "2"
+        }
+      ],
+      "line": 73,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "3"
+          }
+        ],
+        "field": "grow1",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "1"
+        }
+      ],
+      "line": 74,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "4"
+          }
+        ],
+        "field": "grow1",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "4"
+        }
+      ],
+      "line": 75,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "1"
+          }
+        ],
+        "field": "grow1",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "8"
+        }
+      ],
+      "line": 76,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "1"
+          }
+        ],
+        "field": "grow2",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "2"
+        }
+      ],
+      "line": 77,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "1"
+          }
+        ],
+        "field": "grow2",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "3"
+        }
+      ],
+      "line": 78,
+      "type": "assert_return"
+    },
+    {
+      "filename": "commands.5.wasm",
+      "line": 79,
+      "type": "module_definition"
+    },
+    {
+      "line": 90,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "init1",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "1"
+        }
+      ],
+      "line": 91,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "init2",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "2"
+        }
+      ],
+      "line": 92,
+      "type": "assert_return"
+    },
+    {
+      "filename": "commands.6.wasm",
+      "line": 93,
+      "type": "module_definition"
+    },
+    {
+      "line": 102,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "fill1",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "16843009"
+        }
+      ],
+      "line": 103,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "fill2",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "514"
+        }
+      ],
+      "line": 104,
+      "type": "assert_return"
+    }
+  ],
+  "source": "WebAssembly/spec interpreter 3.0.0"
+}

@@ -1,0 +1,14 @@
+{
+  "upstream_repo": "https://github.com/bytecodealliance/wasmtime",
+  "revision": "e8ac8c27f19939bfb1d26d920368d8b6028a67a9",
+  "revision_date": "2026-08-01",
+  "source_root": "tests/misc_testsuite",
+  "interpreter_repo": "https://github.com/WebAssembly/spec",
+  "interpreter_revision": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+  "converter": "scripts/spec-interpreter-json.py",
+  "alternate_converter": "scripts/wasm-tools-wast-json.py",
+  "wasm_tools_version": "1.251.0",
+  "fixture_tree_sha256": "6a2e6d330333e2f43195997c94614dd2d699fc42955acf91f34890da9c20744d",
+  "adapted_tree_sha256": "1906c42949ddfb923c9cf65ed110a04a5adfc6ce1fc2c7f07b36ea4d292f088a",
+  "runtime_reuse_sha256": "7831ed38f24792a4ad1828c041d1ee4ca435ece3fdfe69b5bfb9b8f9291b789b"
+}

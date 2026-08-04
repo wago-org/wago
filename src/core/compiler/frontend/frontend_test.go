@@ -8,6 +8,46 @@ import (
 	"github.com/wago-org/wago/tests/wasmtest"
 )
 
+func TestInstrsRequireSIMDIsAllocationFree(t *testing.T) {
+	instrs := make([]wasm.Instruction, 256)
+	for i := range instrs {
+		instrs[i].Kind = wasm.InstrNop
+	}
+	if allocs := testing.AllocsPerRun(1000, func() {
+		if instrsRequireSIMD(instrs) {
+			t.Fatal("non-SIMD instructions reported as SIMD")
+		}
+	}); allocs != 0 {
+		t.Fatalf("instrsRequireSIMD allocations = %v, want 0", allocs)
+	}
+	instrs[len(instrs)-1].Kind = wasm.InstrV128Const
+	if !instrsRequireSIMD(instrs) {
+		t.Fatal("SIMD instruction was not detected")
+	}
+}
+
+func BenchmarkInstrsRequireSIMD(b *testing.B) {
+	instrs := make([]wasm.Instruction, 256)
+	for i := range instrs {
+		instrs[i].Kind = wasm.InstrNop
+	}
+	b.Run("absent", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			if instrsRequireSIMD(instrs) {
+				b.Fatal("unexpected SIMD")
+			}
+		}
+	})
+	instrs[len(instrs)-1].Kind = wasm.InstrV128Const
+	b.Run("last", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			if !instrsRequireSIMD(instrs) {
+				b.Fatal("missing SIMD")
+			}
+		}
+	})
+}
+
 func TestDecodeValidateAcceptsSupportedMVPModule(t *testing.T) {
 	mod := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
@@ -240,12 +280,12 @@ func TestAcceptsMemoryImport(t *testing.T) {
 }
 
 func TestRejectUnsupportedImports(t *testing.T) {
-	t.Run("memory min above the 65535-page cap", func(t *testing.T) {
+	t.Run("memory min above the 65536-page cap", func(t *testing.T) {
 		memImport := append(wasmtest.Name("env"), wasmtest.Name("mem")...)
-		memImport = append(memImport, 0x02, 0x00, 0x80, 0x80, 0x04) // min 65536 pages (LEB)
+		memImport = append(memImport, 0x02, 0x00, 0x81, 0x80, 0x04) // min 65537 pages (LEB)
 		mod := wasmtest.Module(wasmtest.Section(2, wasmtest.Vec(memImport)))
 		_, err := DecodeValidate(mod)
-		assertErrContains(t, err, "exceeds 65535")
+		assertErrContains(t, err, "memory32 limit out of range")
 	})
 	t.Run("funcref table accepted", func(t *testing.T) {
 		// A funcref table import is accepted (cross-instance shared table).
@@ -381,12 +421,12 @@ func TestRejectUnsupportedGC(t *testing.T) {
 	t.Run("struct type", func(t *testing.T) {
 		mod := wasmtest.Module(wasmtest.Section(1, wasmtest.Vec([]byte{0x5f, 0x00})))
 		_, err := DecodeValidate(mod)
-		assertErrContains(t, err, "unsupported gc type struct type at type 0")
+		assertErrContains(t, err, "unsupported gc type struct type (gc disabled) at type 0")
 	})
 	t.Run("array type", func(t *testing.T) {
 		mod := wasmtest.Module(wasmtest.Section(1, wasmtest.Vec([]byte{0x5e, 0x7f, 0x00})))
 		_, err := DecodeValidate(mod)
-		assertErrContains(t, err, "unsupported gc type array type at type 0")
+		assertErrContains(t, err, "unsupported gc type array type (gc disabled) at type 0")
 	})
 }
 
@@ -397,7 +437,7 @@ func TestRejectUnsupportedTagForms(t *testing.T) {
 			wasmtest.Section(13, wasmtest.Vec([]byte{0x00, 0x00})),
 		)
 		_, err := DecodeValidate(mod)
-		assertErrContains(t, err, "unsupported tag section at tag section")
+		assertErrContains(t, err, "unsupported exception handling tag section (exception-handling disabled) at tag section")
 	})
 }
 
@@ -1304,11 +1344,80 @@ func simdClassifiedKind(sub uint32, imm wasm.InstructionImmediate) wasm.InstrKin
 	}
 }
 
+func TestTypedFunctionReferenceGateRoutesCallRef(t *testing.T) {
+	indexed := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: 0}), false))
+	m := &wasm.Module{
+		Types: []wasm.RecType{
+			{SubTypes: []wasm.SubType{{Final: true, Comp: wasm.CompType{Kind: wasm.CompFunc, Params: []wasm.ValType{wasm.I32}, Results: []wasm.ValType{wasm.I32}}}}},
+			{SubTypes: []wasm.SubType{{Final: true, Comp: wasm.CompType{Kind: wasm.CompFunc, Params: []wasm.ValType{wasm.I32, indexed}, Results: []wasm.ValType{wasm.I32}}}}},
+		},
+		FuncTypes: []wasm.TypeIdx{{Index: 1}, {Index: 0}},
+		Code: []wasm.Func{
+			{BodyBytes: []byte{0x20, 0x00, 0x20, 0x01, 0x14, 0x00, 0x0b}},
+			{BodyBytes: []byte{0x20, 0x00, 0x0b}},
+		},
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatalf("ValidateModule: %v", err)
+	}
+	if err := RejectUnsupportedWithFeatures(m, AllFeatures()); err == nil || !strings.Contains(err.Error(), "typed-function-references disabled") {
+		t.Fatalf("default typed-reference gate error = %v", err)
+	}
+	feat := AllFeatures()
+	feat.TypedFunctionReferences = true
+	if err := RejectUnsupportedWithFeatures(m, feat); err != nil {
+		t.Fatalf("staged typed-reference support: %v", err)
+	}
+
+	recRef := func(index uint32) wasm.ValType {
+		return wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: index, Rec: true}), false))
+	}
+	recursive := &wasm.Module{Types: []wasm.RecType{{SubTypes: []wasm.SubType{
+		{Final: true, Comp: wasm.CompType{Kind: wasm.CompFunc, Params: []wasm.ValType{recRef(1)}}},
+		{Final: true, Comp: wasm.CompType{Kind: wasm.CompFunc, Params: []wasm.ValType{recRef(0)}}},
+	}}}}
+	if err := wasm.ValidateModule(recursive); err != nil {
+		t.Fatalf("ValidateModule recursive group: %v", err)
+	}
+	if err := RejectUnsupportedWithFeatures(recursive, feat); err != nil {
+		t.Fatalf("staged recursive function types: %v", err)
+	}
+
+	controls := &wasm.Module{
+		Types:     []wasm.RecType{{SubTypes: []wasm.SubType{{Final: true, Comp: wasm.CompType{Kind: wasm.CompFunc, Params: []wasm.ValType{wasm.FuncRef}}}}}},
+		FuncTypes: []wasm.TypeIdx{{Index: 0}},
+		Code: []wasm.Func{{BodyBytes: []byte{
+			0x20, 0x00, 0xd4, 0x1a,
+			0x02, 0x40, 0x20, 0x00, 0xd5, 0x00, 0x1a, 0x0b,
+			0x02, 0x64, 0x70, 0x20, 0x00, 0xd6, 0x00, 0x00, 0x0b, 0x1a,
+			0x0b,
+		}}},
+	}
+	if err := wasm.ValidateModule(controls); err != nil {
+		t.Fatalf("ValidateModule typed controls: %v", err)
+	}
+	if err := RejectUnsupportedWithFeatures(controls, AllFeatures()); err == nil || !strings.Contains(err.Error(), "typed-function-references disabled") {
+		t.Fatalf("default typed-control gate error = %v", err)
+	}
+	if err := RejectUnsupportedWithFeatures(controls, feat); err != nil {
+		t.Fatalf("staged typed-control support: %v", err)
+	}
+}
+
 func TestRejectUnsupportedProposalFeaturesDecodedByWasm3(t *testing.T) {
+	t.Run("tail call", func(t *testing.T) {
+		mod := wasmtest.Module(
+			wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+			wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+			wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x12, 0x00, 0x0b}))),
+		)
+		_, err := DecodeValidate(mod)
+		assertErrContains(t, err, "tail-call disabled")
+	})
 	t.Run("memory64", func(t *testing.T) {
 		mod := wasmtest.Module(wasmtest.Section(5, wasmtest.Vec([]byte{0x04, 0x00}))) // memory64 min 0
 		_, err := DecodeValidate(mod)
-		assertErrContains(t, err, "unsupported memory memory64 at memory 0")
+		assertErrContains(t, err, "unsupported memory memory64 (memory64 disabled) at memory 0")
 	})
 	t.Run("invalid simd instruction", func(t *testing.T) {
 		mod := wasmtest.Module(

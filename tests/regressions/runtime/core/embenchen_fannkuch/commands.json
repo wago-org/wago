@@ -1,5 +1,4 @@
 {"source_filename": "testdata/wasmtime/wasm2/embenchen_fannkuch/source.wast",
  "commands": [
-  {"type": "module", "line": 5, "name": "$env", "filename": "commands.0.wasm"}, 
-  {"type": "register", "line": 28, "name": "$env", "as": "env"}, 
-  {"type": "module", "line": 30, "filename": "commands.1.wasm"}]}
+  {"type": "module", "line": 4, "name": "$env", "filename": "commands.0.wasm"}, 
+  {"type": "module", "line": 27, "filename": "commands.1.wasm"}]}

@@ -10,6 +10,21 @@ type RootSlot interface {
 
 type RootSet interface{ RangeRoots(func(RootSlot) bool) }
 
+// RootRefSink receives immutable root values without constructing RootSlot
+// interface values or escaping callback closures. Native frame walkers implement
+// DirectRootRefSet for allocation-free marking; moving/rewrite passes continue to
+// use RootSet.RangeRoots so they can update the underlying slots.
+type RootRefSink interface{ VisitRootRef(Ref) bool }
+
+type DirectRootRefSet interface{ RangeRootRefs(RootRefSink) }
+
+// EmptyRoots is an explicit non-nil root set for may-collect operations that
+// have proven no live refs. Its zero-sized value avoids allocating a slice
+// header merely to distinguish an exact empty set from a missing root set.
+type EmptyRoots struct{}
+
+func (EmptyRoots) RangeRoots(func(RootSlot) bool) {}
+
 type Root Ref
 
 func (r *Root) GetRef() Ref  { return Ref(*r) }
@@ -34,6 +49,324 @@ func withExtraRoot(roots RootSet, extra RootSlot) RootSet {
 type extraRootSet struct {
 	roots RootSet
 	extra RootSlot
+}
+
+type combinedRootSet struct {
+	first  RootSet
+	second RootSet
+}
+
+type valueRootSet struct {
+	values []Value
+	fields []FieldDesc
+	all    bool
+}
+
+// ArrayInitializerRootScratch is reusable caller-owned root composition for
+// reference array constructors. Compact Refs are stable handles, so collection
+// only needs their immutable values; the direct visitor avoids RootSlot boxing,
+// callback closures, and per-constructor Go allocations. It is not concurrent.
+type ArrayInitializerRootScratch struct {
+	first   RootSet
+	values  []Value
+	uniform Ref
+	mode    uint8 // 1 uniform, 2 fixed
+	active  bool
+}
+
+func (s *ArrayInitializerRootScratch) RangeRootRefs(sink RootRefSink) {
+	if s.first != nil {
+		if direct, ok := s.first.(DirectRootRefSet); ok {
+			direct.RangeRootRefs(sink)
+		} else if !rangeRootRefs(s.first, func(r Ref) bool { return sink.VisitRootRef(r) }) {
+			s.first.RangeRoots(func(slot RootSlot) bool { return sink.VisitRootRef(slot.GetRef()) })
+		}
+	}
+	switch s.mode {
+	case 1:
+		sink.VisitRootRef(s.uniform)
+	case 2:
+		for i := range s.values {
+			if !sink.VisitRootRef(s.values[i].Ref) {
+				return
+			}
+		}
+	}
+}
+
+func (s *ArrayInitializerRootScratch) RangeRoots(fn func(RootSlot) bool) {
+	if s.first != nil {
+		keepGoing := true
+		s.first.RangeRoots(func(slot RootSlot) bool {
+			keepGoing = fn(slot)
+			return keepGoing
+		})
+		if !keepGoing {
+			return
+		}
+	}
+	switch s.mode {
+	case 1:
+		fn(arrayUniformRootSlot{scratch: s})
+	case 2:
+		for i := range s.values {
+			if !fn(valueRootSlot{values: s.values, idx: i}) {
+				return
+			}
+		}
+	}
+}
+
+type arrayUniformRootSlot struct{ scratch *ArrayInitializerRootScratch }
+
+func (s arrayUniformRootSlot) GetRef() Ref  { return s.scratch.uniform }
+func (s arrayUniformRootSlot) SetRef(r Ref) { s.scratch.uniform = r }
+
+func (s *ArrayInitializerRootScratch) prepareUniform(first RootSet, ref Ref) bool {
+	if s == nil || s.active {
+		return false
+	}
+	s.first, s.uniform, s.mode, s.active = first, ref, 1, true
+	return true
+}
+
+func (s *ArrayInitializerRootScratch) prepareFixed(first RootSet, values []Value) bool {
+	if s == nil || s.active {
+		return false
+	}
+	s.first, s.values, s.mode, s.active = first, values, 2, true
+	return true
+}
+
+func (s *ArrayInitializerRootScratch) clear() {
+	s.first, s.values, s.uniform, s.mode, s.active = nil, nil, Null(), 0, false
+}
+
+// InitializerRootScratch is reusable caller-owned storage for composing exact
+// frame roots with struct initializer values across a collection-capable
+// allocation. It is configured and cleared by NewStructWithRootScratch and must
+// not be used concurrently.
+type InitializerRootScratch struct {
+	first  RootSet
+	values []Value
+	fields []FieldDesc
+	active bool
+}
+
+func (s *InitializerRootScratch) RangeRoots(fn func(RootSlot) bool) {
+	keepGoing := true
+	if s.first != nil {
+		s.first.RangeRoots(func(slot RootSlot) bool {
+			keepGoing = fn(slot)
+			return keepGoing
+		})
+	}
+	if !keepGoing {
+		return
+	}
+	for i := range s.values {
+		if i >= len(s.fields) || !isCollectorRefKind(s.fields[i].Kind) {
+			continue
+		}
+		if !fn(valueRootSlot{values: s.values, idx: i}) {
+			return
+		}
+	}
+}
+
+func (s *InitializerRootScratch) prepare(first RootSet, values []Value, fields []FieldDesc) bool {
+	if s == nil || s.active {
+		return false
+	}
+	s.first, s.values, s.fields, s.active = first, values, fields, true
+	return true
+}
+
+func (s *InitializerRootScratch) clear() {
+	s.first, s.values, s.fields, s.active = nil, nil, nil, false
+}
+
+// InitializerWordRootScratch is the raw-slot counterpart used by the Wasm
+// struct.new helper after it has prevalidated every field. Collector references
+// remain mutable in the parked helper argument slots across a moving collection.
+type InitializerWordRootScratch struct {
+	first  RootSet
+	words  []uint64
+	fields []FieldDesc
+	active bool
+}
+
+func (s *InitializerWordRootScratch) RangeRoots(fn func(RootSlot) bool) {
+	if s.first != nil {
+		keepGoing := true
+		s.first.RangeRoots(func(slot RootSlot) bool {
+			keepGoing = fn(slot)
+			return keepGoing
+		})
+		if !keepGoing {
+			return
+		}
+	}
+	cursor := 0
+	for _, field := range s.fields {
+		if cursor >= len(s.words) {
+			return
+		}
+		if isCollectorRefKind(field.Kind) && !fn(wordRootSlot{words: s.words, idx: cursor}) {
+			return
+		}
+		cursor++
+		if field.Kind == StorageV128 {
+			cursor++
+		}
+	}
+}
+
+func (s *InitializerWordRootScratch) prepare(first RootSet, words []uint64, fields []FieldDesc) bool {
+	if s == nil || s.active {
+		return false
+	}
+	s.first, s.words, s.fields, s.active = first, words, fields, true
+	return true
+}
+
+func (s *InitializerWordRootScratch) clear() {
+	s.first, s.words, s.fields, s.active = nil, nil, nil, false
+}
+
+type wordRootSlot struct {
+	words []uint64
+	idx   int
+}
+
+func (s wordRootSlot) GetRef() Ref  { return Ref(uint32(s.words[s.idx])) }
+func (s wordRootSlot) SetRef(r Ref) { s.words[s.idx] = uint64(r) }
+
+type valueRootSlot struct {
+	values []Value
+	idx    int
+}
+
+func (s valueRootSlot) GetRef() Ref  { return s.values[s.idx].Ref }
+func (s valueRootSlot) SetRef(r Ref) { s.values[s.idx].Ref = r }
+
+func (s valueRootSet) RangeRoots(fn func(RootSlot) bool) {
+	for i := range s.values {
+		if !s.all && (i >= len(s.fields) || !isCollectorRefKind(s.fields[i].Kind)) {
+			continue
+		}
+		if !fn(valueRootSlot{values: s.values, idx: i}) {
+			return
+		}
+	}
+}
+
+func rangeRootRefs(roots RootSet, fn func(Ref) bool) bool {
+	if roots == nil {
+		return true
+	}
+	visitFallback := func(set RootSet) bool {
+		keepGoing := true
+		set.RangeRoots(func(slot RootSlot) bool {
+			keepGoing = fn(slot.GetRef())
+			return keepGoing
+		})
+		return keepGoing
+	}
+	switch s := roots.(type) {
+	case EmptyRoots:
+		return true
+	case Slots:
+		for _, slot := range s {
+			if !fn(slot.GetRef()) {
+				return true
+			}
+		}
+		return true
+	case valueRootSet:
+		for i := range s.values {
+			if !s.all && (i >= len(s.fields) || !isCollectorRefKind(s.fields[i].Kind)) {
+				continue
+			}
+			if !fn(s.values[i].Ref) {
+				return true
+			}
+		}
+		return true
+	case *InitializerRootScratch:
+		keepGoing := true
+		if s.first != nil && !rangeRootRefs(s.first, func(r Ref) bool {
+			keepGoing = fn(r)
+			return keepGoing
+		}) {
+			keepGoing = visitFallback(s.first)
+		}
+		if keepGoing {
+			for i := range s.values {
+				if i >= len(s.fields) || !isCollectorRefKind(s.fields[i].Kind) {
+					continue
+				}
+				if !fn(s.values[i].Ref) {
+					break
+				}
+			}
+		}
+		return true
+	case combinedRootSet:
+		keepGoing := true
+		if !rangeRootRefs(s.first, func(r Ref) bool {
+			keepGoing = fn(r)
+			return keepGoing
+		}) {
+			keepGoing = visitFallback(s.first)
+		}
+		if keepGoing && !rangeRootRefs(s.second, fn) {
+			visitFallback(s.second)
+		}
+		return true
+	case extraRootSet:
+		keepGoing := true
+		if !rangeRootRefs(s.roots, func(r Ref) bool {
+			keepGoing = fn(r)
+			return keepGoing
+		}) {
+			keepGoing = visitFallback(s.roots)
+		}
+		if keepGoing && s.extra != nil {
+			fn(s.extra.GetRef())
+		}
+		return true
+	case RefSliceRoots:
+		for i := range s {
+			if !fn(s[i]) {
+				return true
+			}
+		}
+		return true
+	default:
+		return false
+	}
+}
+
+func combineRootSets(first, second RootSet) RootSet {
+	if first == nil {
+		return second
+	}
+	if second == nil {
+		return first
+	}
+	return combinedRootSet{first: first, second: second}
+}
+
+func (s combinedRootSet) RangeRoots(fn func(RootSlot) bool) {
+	keepGoing := true
+	s.first.RangeRoots(func(slot RootSlot) bool {
+		keepGoing = fn(slot)
+		return keepGoing
+	})
+	if keepGoing {
+		s.second.RangeRoots(fn)
+	}
 }
 
 func (s extraRootSet) RangeRoots(fn func(RootSlot) bool) {

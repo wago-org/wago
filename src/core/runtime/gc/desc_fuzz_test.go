@@ -8,7 +8,7 @@ func FuzzTypeDescLayoutAndValidation(f *testing.F) {
 		{byte(StorageI8), byte(StorageI16), byte(StorageI32), byte(StorageI64)},
 		{byte(StorageRef), byte(StorageRefNull)},
 		{0, byte(StorageRef), 255},
-		{byte(StorageF32), byte(StorageF64), byte(StorageI8)},
+		{byte(StorageF32), byte(StorageF64), byte(StorageV128), byte(StorageI8)},
 	}
 	for _, seed := range seeds {
 		f.Add(seed)
@@ -22,7 +22,7 @@ func FuzzTypeDescLayoutAndValidation(f *testing.F) {
 		valid := true
 		hasRefs := false
 		for i, b := range data {
-			k := StorageKind(b % 10)
+			k := StorageKind(b % byte(StorageV128+1))
 			if b == 255 {
 				k = StorageKind(255)
 			}
@@ -30,7 +30,7 @@ func FuzzTypeDescLayoutAndValidation(f *testing.F) {
 			if _, _, err := storageLayout(k); err != nil {
 				valid = false
 			}
-			if isRefKind(k) {
+			if isCollectorRefKind(k) {
 				hasRefs = true
 			}
 		}
@@ -75,8 +75,8 @@ func FuzzTypeDescLayoutAndValidation(f *testing.F) {
 			if err != nil {
 				t.Fatalf("NewArrayDesc(%v): %v", k, err)
 			}
-			if ad.HasRefs != isRefKind(k) {
-				t.Fatalf("array HasRefs=%v, want %v", ad.HasRefs, isRefKind(k))
+			if ad.HasRefs != isCollectorRefKind(k) {
+				t.Fatalf("array HasRefs=%v, want %v", ad.HasRefs, isCollectorRefKind(k))
 			}
 			if err := ValidateTypeDescs([]TypeDesc{ad}); err != nil {
 				t.Fatalf("ValidateTypeDescs(array): %v", err)

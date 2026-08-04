@@ -30,13 +30,14 @@ scan:
 	MOVD	8(R23), R1
 	CMP	R1, R21
 	BHS	next
-	MOVD	16(R23), R9             // linMem
-	MOVD	216(R22), R1            // CONTEXT.X[26]
-	CMP	R1, R9
+	MOVD	16(R23), R9             // region.linMem (fault-address base)
+	MOVD	216(R22), R1            // CONTEXT.X[26] primary linMem
+	MOVD	24(R23), R2             // region.ownerLinMem
+	CMP	R1, R2
 	BNE	next
 	MOVD	R21, R1
 	SUB	R9, R1
-	MOVWU	-8(R9), R2
+	MOVD	-288(R9), R2
 	CMP	R2, R1
 	BHS	outofbounds
 
@@ -54,10 +55,11 @@ scan:
 outofbounds:
 	MOVW	$3, R2
 settrap:
-	MOVD	-104(R9), R1
-	CBZ	R1, search
-	MOVW	R2, (R1)
-	MOVD	R9, 80(R22)             // CONTEXT.X[9] for landing pad
+	MOVD	216(R22), R1            // active primary linMem
+	MOVD	-104(R1), R3
+	CBZ	R3, search
+	MOVW	R2, (R3)
+	MOVD	R1, 80(R22)             // CONTEXT.X[9] for landing pad
 	MOVD	·guardTrapExitHandlerJumpPC(SB), R1
 	MOVD	R1, 264(R22)            // CONTEXT.Pc
 continued:

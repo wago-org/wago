@@ -18,20 +18,28 @@ const (
 	wasmPageBytes    = 1 << 16
 )
 
-var guardReserveBytes = uintptr(roundUpPage(int(uintptr(basedataSize) + maxLinMemBytes + offsetGuardBytes)))
+var guardReserveBytes = uintptr(roundUpPage(int(uintptr(basedataSize) + wasmPageBytes - 1 + maxLinMemBytes + offsetGuardBytes)))
+
+func guardedLinOff(base uintptr) int {
+	linMem := (base + uintptr(basedataSize) + wasmPageBytes - 1) &^ uintptr(wasmPageBytes-1)
+	return int(linMem - base)
+}
 
 func NewJobMemoryGuarded(linBytes, maxBytes int) (*JobMemory, error) {
-	linOff := roundUpPage(basedataSize)
-	commit := uintptr(linOff + linBytes)
 	mem, err := syscall.Mmap(-1, 0, int(guardReserveBytes), syscall.PROT_NONE, syscall.MAP_ANON|syscall.MAP_PRIVATE)
 	if err != nil {
 		return nil, fmt.Errorf("guard mmap reserve: %w", err)
 	}
+	base := uintptr(unsafe.Pointer(&mem[0]))
+	// The ARM64 signal handler commits a complete 64 KiB wasm page. Align the
+	// linear-memory base to that boundary rather than merely to the Darwin host
+	// page, and reserve one wasm page of slack for the adjustment.
+	linOff := guardedLinOff(base)
+	commit := uintptr(linOff + linBytes)
 	if err := syscall.Mprotect(mem[:commit], syscall.PROT_READ|syscall.PROT_WRITE); err != nil {
 		_ = syscall.Munmap(mem)
 		return nil, fmt.Errorf("guard mprotect commit: %w", err)
 	}
-	base := uintptr(unsafe.Pointer(&mem[0]))
 	j := &JobMemory{
 		mem:         mem[:commit],
 		linOff:      linOff,
@@ -49,10 +57,11 @@ func NewJobMemoryGuarded(linBytes, maxBytes int) (*JobMemory, error) {
 
 func (j *JobMemory) putGuardedSizeCaches(linBytes, maxBytes int) {
 	j.putU32(offActualLinMemByteSize, uint32(linBytes))
+	j.putU64(offActualLinMemByteSize64, uint64(linBytes))
 	j.putU32(offLinMemWasmSize, uint32(linBytes/wasmPageBytes))
 	maxPages := maxBytes / wasmPageBytes
-	if maxPages > 65535 {
-		maxPages = 65535
+	if maxPages > 65536 {
+		maxPages = 65536
 	}
 	if maxPages < linBytes/wasmPageBytes {
 		maxPages = linBytes / wasmPageBytes
@@ -68,6 +77,7 @@ var jobMemoryGuardedCache struct {
 func init() {
 	guardReleaseHook = releaseGuardedJobMemory
 	guardCloseHook = unregisterGuardRegion
+	guardOwnerHook = setGuardRegionOwner
 }
 
 func AcquireJobMemoryGuarded(linBytes, maxBytes int) (*JobMemory, error) {
@@ -131,16 +141,16 @@ func (j *JobMemory) rearmGuarded(linBytes, maxBytes int) error {
 	}
 	j.mem = j.mem[:j.linOff+linBytes]
 	j.linLen = linBytes
-	clear(j.mem[:j.linOff])
+	clear(j.mem[j.linOff-basedataSize : j.linOff])
 	j.putGuardedSizeCaches(linBytes, maxBytes)
 	return nil
 }
 
 type guardRegion struct {
-	start  uintptr
-	end    uintptr
-	linMem uintptr
-	_      uintptr
+	start       uintptr
+	end         uintptr
+	linMem      uintptr
+	ownerLinMem uintptr
 }
 
 const (
@@ -161,6 +171,7 @@ func registerGuardRegion(start, end, linMem uintptr) error {
 	for i := range guardRegions {
 		if guardRegions[i].start == 0 {
 			guardRegions[i].linMem = linMem
+			guardRegions[i].ownerLinMem = linMem
 			guardRegions[i].end = end
 			// Publish last; the signal handler acquire-loads start before it
 			// consumes the rest of the entry.
@@ -169,6 +180,17 @@ func registerGuardRegion(start, end, linMem uintptr) error {
 		}
 	}
 	return fmt.Errorf("guard region table full (%d)", maxGuardRegions)
+}
+
+func setGuardRegionOwner(start, ownerLinMem uintptr) {
+	guardRegionMu.Lock()
+	defer guardRegionMu.Unlock()
+	for i := range guardRegions {
+		if guardRegions[i].start == start {
+			atomic.StoreUintptr(&guardRegions[i].ownerLinMem, ownerLinMem)
+			return
+		}
+	}
 }
 
 func unregisterGuardRegion(start uintptr) {
@@ -181,6 +203,7 @@ func unregisterGuardRegion(start uintptr) {
 			atomic.StoreUintptr(&guardRegions[i].start, 0)
 			guardRegions[i].end = 0
 			guardRegions[i].linMem = 0
+			guardRegions[i].ownerLinMem = 0
 			return
 		}
 	}

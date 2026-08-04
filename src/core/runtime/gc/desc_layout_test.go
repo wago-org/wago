@@ -1,6 +1,7 @@
 package gc
 
 import (
+	"errors"
 	"strings"
 	"testing"
 )
@@ -32,6 +33,20 @@ func TestDescriptorsAndLayout(t *testing.T) {
 	if !rarr.ArrayElementsAreRefs() || rarr.ElemSize != 4 {
 		t.Fatalf("bad ref array %+v", rarr)
 	}
+	varr, err := NewArrayDesc(5, StorageV128)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if varr.HasRefs || !varr.PointerFree() || varr.ElemSize != 16 || varr.Align != 16 {
+		t.Fatalf("bad v128 array %+v", varr)
+	}
+	vstruct, err := NewStructDesc(6, []StorageKind{StorageI8, StorageV128, StorageI32})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if vstruct.Align != 16 || vstruct.Size != 48 || vstruct.Fields[1].Offset != 16 || vstruct.Fields[2].Offset != 32 {
+		t.Fatalf("bad v128 struct layout %+v", vstruct)
+	}
 	sz, _ := StructSize(pf)
 	if sz != Align8(HeaderSize+pf.Size) || sz%8 != 0 {
 		t.Fatalf("bad struct size %d", sz)
@@ -40,8 +55,23 @@ func TestDescriptorsAndLayout(t *testing.T) {
 	if asz != Align8(HeaderSize+6) || asz%8 != 0 {
 		t.Fatalf("bad array size %d", asz)
 	}
-	if _, err := ArraySize(arr, ^uint32(0)); err == nil {
-		t.Fatal("expected overflow")
+	if _, err := ArraySize(arr, ^uint32(0)); !errors.Is(err, ErrAllocationTooLarge) {
+		t.Fatalf("array size overflow = %v, want ErrAllocationTooLarge", err)
+	}
+	wide, err := NewArrayDesc(0, StorageI32)
+	if err != nil {
+		t.Fatal(err)
+	}
+	collector, err := NewCollector(Config{}, []TypeDesc{wide})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer collector.Close()
+	// This payload fits the eight-byte object-size rounding but not the
+	// throughput allocator's sixteen-byte physical extent. It previously wrapped
+	// Align16 and panicked while publishing the object header.
+	if _, err := collector.NewArrayDefault(0, 1_073_741_817); !errors.Is(err, ErrAllocationTooLarge) {
+		t.Fatalf("near-u32 array allocation = %v, want ErrAllocationTooLarge", err)
 	}
 	if got, err := NewStructDesc(5, []StorageKind{StorageI8, StorageRef, StorageI64, StorageRefNull}); err != nil {
 		t.Fatalf("mixed layout rejected: %v", err)

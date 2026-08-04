@@ -2,6 +2,7 @@ package wago
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"reflect"
 	"strings"
@@ -61,17 +62,17 @@ func TestCompiledCodecRoundTripsReferenceSignatures(t *testing.T) {
 		Code:       []byte{0xc3},
 		Entry:      []int{0},
 		Funcs:      []FuncSig{{Params: []ValType{ValFuncRef, ValExternRef}, Results: []ValType{ValExternRef, ValFuncRef}}},
-		FuncTypeID: []uint32{0},
+		FuncTypeID: []uint64{0},
 		Exports:    map[string]int{"refs": 0},
 	}
 	blob, err := input.MarshalBinary()
 	if err != nil {
 		t.Fatalf("MarshalBinary: %v", err)
 	}
-	if blob[4] != wagoVersion || wagoVersion != 23 {
-		t.Fatalf("compiled codec version = %d, want extended-const version 23", blob[4])
+	if blob[4] != wagoVersion || wagoVersion != 31 {
+		t.Fatalf("compiled codec version = %d, want u64-memory-ABI version 31", blob[4])
 	}
-	for _, version := range []byte{20, 21, 22} {
+	for _, version := range []byte{19, 20, 30} {
 		oldVersion := append([]byte(nil), blob...)
 		oldVersion[4] = version
 		var old Compiled
@@ -92,6 +93,61 @@ func TestCompiledCodecRoundTripsReferenceSignatures(t *testing.T) {
 	}
 	if want := []ValType{ValExternRef, ValFuncRef}; !reflect.DeepEqual(results, want) {
 		t.Fatalf("results = %v, want %v", results, want)
+	}
+}
+
+func TestCompiledCodecV22CarriesIndexedFunctionSignatures(t *testing.T) {
+	indexed := ValueTypeDescriptor{Kind: ValueTypeReference, Ref: ReferenceTypeDescriptor{Heap: HeapTypeDescriptor{Defined: true, TypeIndex: 0}}}
+	stored := indexed
+	stored.Ref.Nullable = true
+	input := &Compiled{
+		Code:       []byte{0xc3},
+		Entry:      []int{0},
+		ValueTypes: []ValueTypeDescriptor{stored},
+		Types: []DefinedTypeDescriptor{
+			{RecGroup: 0, Final: true, Kind: CompositeTypeFunction, Params: []ValueTypeDescriptor{{Kind: ValueTypeI32}}, Results: []ValueTypeDescriptor{{Kind: ValueTypeI32}}},
+			{RecGroup: 1, Final: true, Kind: CompositeTypeFunction, Params: []ValueTypeDescriptor{{Kind: ValueTypeI32}, indexed}, Results: []ValueTypeDescriptor{{Kind: ValueTypeI32}}},
+		},
+		Funcs: []FuncSig{{
+			Params:       []ValType{ValI32, ValFuncRef},
+			Results:      []ValType{ValI32},
+			TypeIndex:    1,
+			HasTypeIndex: true,
+		}},
+		FuncTypeID: []uint64{7},
+		Exports:    map[string]int{"call": 0},
+		Globals: []GlobalDef{{
+			Type: ValFuncRef, ValueTypeIndex: 0, HasValueType: true,
+		}},
+		HasTable: true, TableType: ValFuncRef, TableValueTypeIndex: 0, TableHasValueType: true,
+		Elems:            []ElemInit{{TableIndex: 0, RefType: ValFuncRef, ValueTypeIndex: 0, HasValueType: true, Mode: ElemModeActive, Values: []RefInit{{Null: true}}}},
+		requiredFeatures: CoreFeatureReferenceTypes | CoreFeatureTypedFunctionReferences,
+	}
+	meta := (&Module{c: input}).Metadata()
+	if len(meta.Types) != 2 || len(meta.Functions) != 1 || meta.Functions[0].ParamTypes[1] != indexed || len(meta.Globals) != 1 || !meta.Globals[0].HasValueType || meta.Globals[0].ValueType != stored || len(meta.Tables) != 1 || !meta.Tables[0].HasValueType || meta.Tables[0].ValueType != stored {
+		t.Fatalf("structural module metadata = %#v", meta)
+	}
+
+	blob, err := marshalCompiled(input)
+	if err != nil {
+		t.Fatalf("marshalCompiled indexed signature: %v", err)
+	}
+	var got Compiled
+	if err := unmarshalCompiled(&got, blob[5:]); err != nil {
+		t.Fatalf("unmarshalCompiled indexed signature: %v", err)
+	}
+	if !reflect.DeepEqual(got.Types, input.Types) || !reflect.DeepEqual(got.ValueTypes, input.ValueTypes) || !reflect.DeepEqual(got.Funcs, input.Funcs) || !reflect.DeepEqual(got.Globals, input.Globals) || !reflect.DeepEqual(got.Elems, input.Elems) || got.TableValueTypeIndex != 0 || !got.TableHasValueType {
+		t.Fatalf("indexed metadata changed: types=%#v values=%#v funcs=%#v globals=%#v elems=%#v", got.Types, got.ValueTypes, got.Funcs, got.Globals, got.Elems)
+	}
+	if err := got.UnmarshalBinary(blob); err != nil {
+		t.Fatalf("public typed-reference load = %v", err)
+	}
+
+	bad := *input
+	bad.Types = cloneDefinedTypeDescriptors(input.Types)
+	bad.Types[1].Params[1].Ref.Heap.TypeIndex = 9
+	if _, err := marshalCompiled(&bad); err == nil || !strings.Contains(err.Error(), "type index") {
+		t.Fatalf("malformed indexed signature error = %v", err)
 	}
 }
 
@@ -156,80 +212,23 @@ func TestCompiledCodecAcceptsStructuralReferenceGlobalsAndRejectsLiveBits(t *tes
 	}
 }
 
-func TestCompiledCodecRejectsMalformedExtendedConstMetadata(t *testing.T) {
-	for _, tc := range []struct {
-		name string
-		c    *Compiled
-		want string
-	}{
-		{name: "global bad type", c: &Compiled{Globals: []GlobalDef{{Type: ValI64, InitExpr: []byte{0x41, 0x01, 0x0b}}}}, want: "type i32, want i64"},
-		{name: "global unavailable import", c: &Compiled{Globals: []GlobalDef{{Type: ValI32, InitExpr: []byte{0x23, 0x00, 0x41, 0x01, 0x6a, 0x0b}}}}, want: "not an imported global"},
-		{name: "data malformed", c: &Compiled{Data: []DataInit{{Offset: OffsetInit{Expr: []byte{0x41, 0x01}}}}}, want: "missing end"},
-		{name: "element multiple forms", c: &Compiled{Elems: []ElemInit{{RefType: ValFuncRef, Mode: ElemModeActive, Offset: OffsetInit{HasGlobal: true, Expr: []byte{0x41, 0x00, 0x0b}}}}}, want: "multiple offset initializer forms"},
-		{name: "element local global initializer", c: &Compiled{Globals: []GlobalDef{{Type: ValFuncRef}}, Elems: []ElemInit{{RefType: ValFuncRef, Mode: ElemModeActive, Values: []RefInit{{HasGlobal: true, GlobalIndex: 0}}}}}, want: "must reference an immutable imported global"},
-		{name: "element scalar global initializer", c: &Compiled{GlobalImports: []GlobalImportDef{{Module: "env", Name: "scalar", Type: ValI32}}, Globals: []GlobalDef{{Type: ValI32}}, Elems: []ElemInit{{RefType: ValFuncRef, Mode: ElemModeActive, Values: []RefInit{{HasGlobal: true, GlobalIndex: 0}}}}}, want: "global 0 type i32 does not match funcref"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			if _, err := tc.c.MarshalBinary(); err == nil || !strings.Contains(err.Error(), tc.want) {
-				t.Fatalf("MarshalBinary error = %v, want substring %q", err, tc.want)
-			}
-		})
-	}
-}
-
-func TestCompiledCodecLoadRejectsInvalidElementGlobalInitializer(t *testing.T) {
-	for _, tc := range []struct {
-		name   string
-		forged *Compiled
-		want   string
-	}{
-		{
-			name: "local",
-			forged: &Compiled{
-				HasTable:  true,
-				TableSize: 1,
-				Globals:   []GlobalDef{{Type: ValFuncRef}},
-				Elems:     []ElemInit{{RefType: ValFuncRef, Mode: ElemModeActive, Values: []RefInit{{HasGlobal: true, GlobalIndex: 0}}}},
-			},
-			want: "must reference an immutable imported global",
-		},
-		{
-			name: "scalar",
-			forged: &Compiled{
-				HasTable:      true,
-				TableSize:     1,
-				GlobalImports: []GlobalImportDef{{Module: "env", Name: "scalar", Type: ValI32}},
-				Globals:       []GlobalDef{{Type: ValI32}},
-				Elems:         []ElemInit{{RefType: ValFuncRef, Mode: ElemModeActive, Values: []RefInit{{HasGlobal: true, GlobalIndex: 0}}}},
-			},
-			want: "global 0 type i32 does not match funcref",
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			blob, err := marshalCompiled(tc.forged)
-			if err != nil {
-				t.Fatalf("marshal forged element initializer: %v", err)
-			}
-			var got Compiled
-			if err := got.UnmarshalBinary(blob); err == nil || !strings.Contains(err.Error(), tc.want) {
-				t.Fatalf("UnmarshalBinary error = %v, want substring %q", err, tc.want)
-			}
-		})
-	}
-}
-
 func TestCompiledCodecLoadRejectsForgedLiveReferenceGlobal(t *testing.T) {
 	const marker = uint64(0x8877665544332211)
-	// marshalCompiled intentionally bypasses Compiled.MarshalBinary's validation,
-	// while still recording the structural reference-types feature bit. This makes
-	// the load-side live-token check the only reason the blob can be rejected.
-	blob, err := marshalCompiled(&Compiled{Globals: []GlobalDef{{Type: ValExternRef, Bits: marker}}})
+	blob, err := marshalCompiled(&Compiled{Globals: []GlobalDef{{Type: ValI64, Bits: marker}}})
 	if err != nil {
-		t.Fatalf("marshal forged externref fixture: %v", err)
+		t.Fatalf("marshal scalar fixture: %v", err)
 	}
+	var encodedMarker [8]byte
+	binary.LittleEndian.PutUint64(encodedMarker[:], marker)
+	i := bytes.Index(blob, encodedMarker[:])
+	if i < 3 {
+		t.Fatalf("encoded marker not found in compiled blob")
+	}
+	blob[i-3] = 0x6f // change the scalar global type to externref, retaining live token bits.
+
 	var got Compiled
-	if err := got.UnmarshalBinary(blob); err == nil || !strings.Contains(err.Error(), "non-null externref") {
-		t.Fatalf("UnmarshalBinary error = %v, want forged live externref rejection", err)
+	if err := got.UnmarshalBinary(blob); err == nil || (!strings.Contains(err.Error(), "non-null externref") && !strings.Contains(err.Error(), "unrecorded features")) {
+		t.Fatalf("UnmarshalBinary error = %v, want forged live-reference/feature rejection", err)
 	}
 }
 

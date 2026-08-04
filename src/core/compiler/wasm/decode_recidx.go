@@ -10,6 +10,8 @@ func markRecursiveTypeIndexes(types []RecType) {
 	for gi := range types {
 		rt := &types[gi]
 		limit := base + uint32(len(rt.SubTypes))
+		// Every rectype, including the compact singleton form, opens recursive
+		// scope. The explicit 0x4e group form only changes the group cardinality.
 		for si := range rt.SubTypes {
 			markRecursiveSubTypeIndexes(&rt.SubTypes[si], base, limit)
 		}

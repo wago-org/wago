@@ -33,5 +33,8 @@ const (
 	TrapInterrupted          = wruntime.TrapInterrupted
 	TrapStackFenceBreached   = wruntime.TrapStackFenceBreached
 	TrapCalledFnNotLinked    = wruntime.TrapCalledFnNotLinked
+	TrapNullReference        = wruntime.TrapNullReference
+	TrapUnhandledException   = wruntime.TrapUnhandledException
+	TrapCastFailure          = wruntime.TrapCastFailure
 	TrapTableOutOfBounds     = wruntime.TrapTableOutOfBounds
 )

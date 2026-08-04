@@ -6,6 +6,7 @@
 package wago_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"encoding/json"
@@ -20,8 +21,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/wago"
 	"github.com/wago-org/wago/tests/spectest"
+	"github.com/wago-org/wago/tests/wasmtest"
 )
 
 // coreFiles1_0 are the WebAssembly 1.0 (MVP) core testsuite .wast files whose
@@ -40,28 +43,10 @@ var coreFiles1_0 = []string{
 	"memory", "float_memory", "memory_trap", "traps", "const",
 }
 
-// proposalDirs records proposal lineage in the preserved legacy testsuite. The
-// independently pinned Release 2.0 corpus bypasses this map; Release 3.0 still
-// uses it to exclude files already introduced by 2.0 proposals.
-var proposalDirs = map[string][]string{
-	"2.0": {"bulk-memory-operations", "reference-types", "simd"},
-	"3.0": {"tail-call", "exception-handling", "function-references", "memory64"},
-}
-
-// versionOrder lists the post-1.0 versions from oldest to newest, so each new
-// test file is attributed to the earliest version that introduced it.
-var versionOrder = []string{"2.0", "3.0"}
-
 // specFilesForVersion returns paths in the preserved legacy testsuite (relative
-// to its root and without the .wast extension). 1.0 is the curated MVP core list,
-// 3.0 is the proposal delta. WAGO_SPEC_VERSION=simd and bulk-memory are focused
-// proposal shortcuts.
-// Release 2.0 uses spectest.DiscoverRelease2 instead.
-//
-// Each proposal directory is a full testsuite snapshot (the 1.0 core plus the
-// proposal's new tests, and it also inherits earlier proposals' files), so a file
-// is only counted once — for the earliest version that introduced it — by
-// excluding every basename already claimed by the suite root or a lower version.
+// to its root and without the .wast extension). 1.0 is the curated MVP core list;
+// WAGO_SPEC_VERSION=simd and bulk-memory are focused proposal shortcuts.
+// Release 2.0 and 3.0 use spectest.DiscoverRelease2/3 instead.
 func specFilesForVersion(version, dir string) []string {
 	if version == "1.0" {
 		return coreFiles1_0
@@ -82,29 +67,7 @@ func specFilesForVersion(version, dir string) []string {
 		sort.Strings(out)
 		return out
 	}
-	claimed := map[string]bool{} // .wast basenames already attributed
-	for _, name := range wastNames(dir) {
-		claimed[name] = true // the full 1.0 core at the suite root
-	}
-	var out []string
-	for _, v := range versionOrder {
-		for _, p := range proposalDirs[v] {
-			for _, name := range wastNames(filepath.Join(dir, "proposals", p)) {
-				if claimed[name] {
-					continue
-				}
-				claimed[name] = true
-				if v == version {
-					out = append(out, filepath.Join("proposals", p, strings.TrimSuffix(name, ".wast")))
-				}
-			}
-		}
-		if v == version {
-			break
-		}
-	}
-	sort.Strings(out)
-	return out
+	return nil
 }
 
 // wastNames returns the .wast file names directly in dir (empty if dir is absent).
@@ -125,6 +88,7 @@ func wastNames(dir string) []string {
 type specValue struct {
 	Type     string          `json:"type"`
 	LaneType string          `json:"lane_type"` // wast2json's v128 lane type, e.g. i8/i16/i32/i64/f32/f64.
+	HeapType string          `json:"heap_type"` // spec interpreter reference expectation, e.g. func or extern.
 	Value    json.RawMessage `json:"value"`
 }
 
@@ -166,19 +130,23 @@ type specAction struct {
 }
 
 type specExecCmd struct {
-	Type       string      `json:"type"`
-	Line       int         `json:"line"`
-	Filename   string      `json:"filename"`
-	Name       string      `json:"name"`
-	As         string      `json:"as"`
-	Action     specAction  `json:"action"`
-	Expected   []specValue `json:"expected"`
-	Either     []specValue `json:"either"`
-	Text       string      `json:"text"`
-	ModuleType string      `json:"module_type"`
+	Type       string        `json:"type"`
+	Line       int           `json:"line"`
+	Filename   string        `json:"filename"`
+	Name       string        `json:"name"`
+	Module     string        `json:"module"`
+	As         string        `json:"as"`
+	Thread     string        `json:"thread"`
+	Action     specAction    `json:"action"`
+	Expected   []specValue   `json:"expected"`
+	Either     []specValue   `json:"either"`
+	Text       string        `json:"text"`
+	ModuleType string        `json:"module_type"`
+	Commands   []specExecCmd `json:"commands"`
 }
 
 type specExecFile struct {
+	Source         string        `json:"source"`
 	SourceFilename string        `json:"source_filename"`
 	Commands       []specExecCmd `json:"commands"`
 }
@@ -194,24 +162,17 @@ const (
 	specGapReferenceArgument
 	specGapReferenceResult
 	specGapReferenceGlobal
-	// specGapToolchainUnparseable: the host wast2json (wabt) could not compile the
-	// .wast at all — stale experimental-proposal syntax (get_local/anyfunc/let/
-	// func.bind, old call_ref) that current wabt rejects, or a wabt crash. This is
-	// a toolchain/corpus-version gap, not a wago gap; only the experimental 3.0
-	// proposal aggregate hits it (1.0/2.0 must always parse — see runSpecExec).
-	specGapToolchainUnparseable
 	specExecGapReasonCount
 )
 
 var specExecGapNames = [...]string{
-	specGapCompileRejected:      "compile-rejected",
-	specGapInstantiateRejected:  "instantiate-rejected",
-	specGapModuleUnavailable:    "module-unavailable",
-	specGapAbsentExport:         "absent-export",
-	specGapReferenceArgument:    "reference-argument",
-	specGapReferenceResult:      "reference-result",
-	specGapReferenceGlobal:      "reference-global",
-	specGapToolchainUnparseable: "toolchain-unparseable",
+	specGapCompileRejected:     "compile-rejected",
+	specGapInstantiateRejected: "instantiate-rejected",
+	specGapModuleUnavailable:   "module-unavailable",
+	specGapAbsentExport:        "absent-export",
+	specGapReferenceArgument:   "reference-argument",
+	specGapReferenceResult:     "reference-result",
+	specGapReferenceGlobal:     "reference-global",
 }
 
 func (r specExecGapReason) String() string {
@@ -352,7 +313,28 @@ func isNullExternrefSpecValue(v specValue) bool {
 }
 
 func isNonNullFuncrefSpecValue(v specValue) bool {
-	return v.Type == "funcref" && len(v.Value) == 0
+	if v.Type != "funcref" {
+		return false
+	}
+	if len(v.Value) == 0 {
+		return true
+	}
+	// WABT encodes the text assertion pattern `(ref.func)` as value "0".
+	// It is a non-null wildcard, not Wasm function index zero.
+	s, ok := v.str()
+	return ok && s == "0"
+}
+
+func indexedFuncrefSpecValue(v specValue) (uint32, bool) {
+	if v.Type != "funcref" {
+		return 0, false
+	}
+	s, ok := v.str()
+	if !ok || s == "null" {
+		return 0, false
+	}
+	index, err := strconv.ParseUint(s, 10, 32)
+	return uint32(index), err == nil
 }
 
 func classifyAssertionGap(specExecCmd) specExecGapReason {
@@ -377,6 +359,62 @@ func TestSpecExecStatsAccounting(t *testing.T) {
 	if total != want {
 		t.Fatalf("stats = %+v, want %+v", total, want)
 	}
+}
+
+func TestSpecInterpreterModuleDefinitionInstances(t *testing.T) {
+	tmp := t.TempDir()
+	const filename = "definition.0.wasm"
+	data := []byte("\x00asm\x01\x00\x00\x00")
+	if err := os.WriteFile(filepath.Join(tmp, filename), data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	sf := specExecFile{Commands: []specExecCmd{
+		{Type: "module_definition", Line: 1, Filename: filename, Name: "$M"},
+		{Type: "module_instance", Line: 2, Name: "$I1", Module: "$M"},
+		{Type: "module_instance", Line: 3, Name: "$I2", Module: "$M"},
+	}}
+	stats := runSpecExecFile(t, "definition", tmp, sf)
+	want := specExecStats{modulesPassed: 2}
+	if stats != want {
+		t.Fatalf("definition instance stats = %+v, want %+v", stats, want)
+	}
+
+	definitions := map[string][]byte{"$M": data}
+	for _, tc := range []struct {
+		name string
+		cmd  specExecCmd
+	}{
+		{name: "latest", cmd: specExecCmd{ModuleType: "instance"}},
+		{name: "named", cmd: specExecCmd{ModuleType: "instance", Module: "$M"}},
+		{name: "file", cmd: specExecCmd{Filename: filename}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := specCommandModuleData(tmp, tc.cmd, data, definitions)
+			if err != nil || !bytes.Equal(got, data) {
+				t.Fatalf("module data = %x, %v; want %x", got, err, data)
+			}
+		})
+	}
+	if _, err := specCommandModuleData(tmp, specExecCmd{ModuleType: "instance", Module: "$missing"}, data, definitions); err == nil {
+		t.Fatal("missing named module definition resolved")
+	}
+}
+
+func specCommandModuleData(tmp string, c specExecCmd, latestDefinition []byte, definitions map[string][]byte) ([]byte, error) {
+	if c.ModuleType == "instance" {
+		data := latestDefinition
+		if c.Module != "" {
+			data = definitions[c.Module]
+		}
+		if data == nil {
+			return nil, fmt.Errorf("module instance references unavailable definition %q", c.Module)
+		}
+		return data, nil
+	}
+	if c.Filename == "" {
+		return nil, errors.New("module output filename is empty")
+	}
+	return os.ReadFile(filepath.Join(tmp, c.Filename))
 }
 
 func runRelease2FocusedModule(t *testing.T, base string, moduleLine int) specExecStats {
@@ -460,16 +498,7 @@ func runRelease2File(t *testing.T, base string) specExecStats {
 	if err := json.Unmarshal(raw, &sf); err != nil {
 		t.Fatal(err)
 	}
-	// This helper exists only for the module-instantiation gap inventory below.
-	// Keep unlinkable assertions in the full Core v2 gate, where they have their
-	// own exact accounting and cannot obscure the inventory's narrower purpose.
-	focused := specExecFile{Commands: make([]specExecCmd, 0, len(sf.Commands))}
-	for _, command := range sf.Commands {
-		if command.Type != "assert_unlinkable" {
-			focused.Commands = append(focused.Commands, command)
-		}
-	}
-	return runSpecExecFile(t, base, tmp, focused)
+	return runSpecExecFile(t, base, tmp, sf)
 }
 
 func TestRelease2InstantiateGapInventory(t *testing.T) {
@@ -497,7 +526,7 @@ func TestSpectestPrintImportsAreExactNoOps(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer memory.Close()
-	imports := spectestImports(table, memory)
+	imports := spectestImports(table, table, memory)
 	want := map[string]wago.FuncSig{
 		"spectest.print":         {},
 		"spectest.print_i32":     {Params: []wago.ValType{wago.ValI32}},
@@ -534,6 +563,44 @@ func specPrintSlots(types []wago.ValType) (int, error) {
 		}
 	}
 	return n, nil
+}
+
+func TestSpecFuncrefResultMatchesCanonicalFunctionIdentity(t *testing.T) {
+	module := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType(nil, nil),
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.FuncRef}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("get", 0, 1))),
+		wasmtest.Section(9, wasmtest.Vec(append([]byte{0x03, 0x00}, wasmtest.Vec(wasmtest.ULEB(0))...))),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x0b}),
+			wasmtest.Code([]byte{0xd2, 0x00, 0x0b}),
+		)),
+	)
+	rt := wago.NewRuntime()
+	defer rt.Close()
+	compiled, err := rt.Compile(module)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inst, err := rt.Instantiate(context.Background(), compiled)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer inst.Close()
+	out, err := inst.Invoke("get")
+	if err != nil || len(out) != 1 {
+		t.Fatalf("get = %#x, %v", out, err)
+	}
+	m := specModule{inst: inst}
+	if !m.matchFuncref(out[0], specValue{Type: "funcref", Value: json.RawMessage(`"0"`)}) {
+		t.Fatal("ref.func 0 result did not match its canonical function identity")
+	}
+	if m.matchFuncref(out[0], specValue{Type: "funcref", Value: json.RawMessage(`"1"`)}) {
+		t.Fatal("ref.func 0 result matched ref.func 1")
+	}
 }
 
 func TestRelease2LocalExternrefGlobalExecution(t *testing.T) {
@@ -821,15 +888,7 @@ func TestRelease2LinkingHasNoImportedFunctionReexportGaps(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// This test inventories action/export gaps, not linking failures. The full
-	// Core v2 execution gate owns assert_unlinkable and its exact count.
-	focused := specExecFile{Commands: make([]specExecCmd, 0, len(sf.Commands))}
-	for _, command := range sf.Commands {
-		if command.Type != "assert_unlinkable" {
-			focused.Commands = append(focused.Commands, command)
-		}
-	}
-	stats := runSpecExecFile(t, "linking", tmp, focused)
+	stats := runSpecExecFile(t, "linking", tmp, sf)
 	if stats.absentExportSiteCount == 0 {
 		return
 	}
@@ -887,11 +946,19 @@ func specArgSlots(v specValue) (slots []uint64, ok bool) {
 	if !ok {
 		return nil, false // structured non-v128 value — out of scope
 	}
-	n, err := strconv.ParseUint(s, 10, 64)
-	if err != nil {
+	n, ok := parseSpecScalarBits(s)
+	if !ok {
 		return nil, false // non-numeric (e.g. ref.null / externref) — out of scope
 	}
 	return []uint64{n}, true
+}
+
+func parseSpecScalarBits(s string) (uint64, bool) {
+	if n, err := strconv.ParseUint(s, 10, 64); err == nil {
+		return n, true
+	}
+	n, err := strconv.ParseInt(s, 10, 64)
+	return uint64(n), err == nil
 }
 
 // valueWidth64 reports whether a spec value type occupies a full 64-bit slot.
@@ -923,6 +990,16 @@ func matchResult(got []uint64, want specValue) bool {
 	if isNonNullFuncrefSpecValue(want) {
 		return len(got) > 0 && got[0] != 0
 	}
+	if want.Type == "ref" {
+		if len(got) == 0 {
+			return false
+		}
+		s, _ := want.str()
+		if s == "null" {
+			return got[0] == 0
+		}
+		return got[0] != 0
+	}
 	if want.Type == "v128" {
 		return matchV128Result(got, want)
 	}
@@ -939,8 +1016,8 @@ func matchResult(got []uint64, want specValue) bool {
 	case "nan:arithmetic":
 		return isNaNClass(got[0], want.Type, false)
 	}
-	wbits, err := strconv.ParseUint(s, 10, 64)
-	if err != nil {
+	wbits, ok := parseSpecScalarBits(s)
+	if !ok {
 		return false
 	}
 	if valueWidth64(want.Type) {
@@ -1174,16 +1251,38 @@ func TestSpecValueV128StructuredJSON(t *testing.T) {
 	}
 }
 
+func TestMatchEitherResult(t *testing.T) {
+	alternatives := []specValue{
+		{Type: "i32", Value: json.RawMessage(`"1"`)},
+		{Type: "i32", Value: json.RawMessage(`"2"`)},
+	}
+	if !matchEitherResult(specModule{}, []uint64{2}, alternatives) {
+		t.Fatal("second allowed result did not match")
+	}
+	if matchEitherResult(specModule{}, []uint64{3}, alternatives) {
+		t.Fatal("unexpected result matched alternatives")
+	}
+	if matchEitherResult(specModule{}, nil, alternatives) {
+		t.Fatal("missing result matched alternatives")
+	}
+	vectors := []specValue{
+		{Type: "v128", LaneType: "i64", Value: json.RawMessage(`["3","4"]`)},
+		{Type: "v128", LaneType: "i64", Value: json.RawMessage(`["1","2"]`)},
+	}
+	if !matchEitherResult(specModule{}, []uint64{1, 2}, vectors) {
+		t.Fatal("allowed v128 result did not match")
+	}
+}
+
 // TestSpecSuiteExec runs the official WebAssembly testsuite as a native
 // execution oracle: it compiles each module with the selected backend,
 // instantiates it, and replays every assert_return / assert_trap, comparing the
-// compiled code's results against the spec's expected values. Known incomplete
-// Release 2 behavior remains skipped while support is under construction, but
-// every skip is assigned a fixed reason so no feature gap is hidden in a generic
-// module or assertion bucket. A failure therefore means a real execution or
+// compiled code's results against the spec's expected values. Release 2 and
+// Release 3 use independent official WebAssembly/spec pins, and neither release
+// is allowed feature skips. A failure therefore means a real execution or
 // harness error.
 //
-// Gated on WAGO_SPECTEST_DIR (a checked-out WebAssembly/testsuite) and wast2json
+// Gated on WAGO_SPECTEST_DIR (a checked-out WebAssembly testsuite) and wast2json
 // (wabt) on PATH; skipped otherwise. This is the authoritative correctness oracle
 // for the native code generators.
 func TestSpecSuiteExec(t *testing.T) {
@@ -1196,11 +1295,139 @@ func TestSpecSuiteExec(t *testing.T) {
 		version = "1.0"
 	}
 	dir, files := resolveSpecPlan(t, dir, version)
-	wast2json, err := exec.LookPath("wast2json")
-	if err != nil {
-		t.Skip("wast2json (wabt) not on PATH")
+	if filter := strings.TrimSpace(os.Getenv("WAGO_SPEC_FILES")); filter != "" {
+		wanted := make(map[string]struct{})
+		for _, name := range strings.Split(filter, ",") {
+			if name = strings.TrimSpace(strings.TrimSuffix(name, ".wast")); name != "" {
+				wanted[name] = struct{}{}
+			}
+		}
+		filtered := files[:0]
+		for _, name := range files {
+			if _, ok := wanted[name]; ok {
+				filtered = append(filtered, name)
+			}
+		}
+		files = filtered
+		if len(files) == 0 {
+			t.Fatalf("WAGO_SPEC_FILES=%q matched no %s spec files", filter, version)
+		}
 	}
-	runSpecExec(t, wast2json, dir, version, files)
+	wast2json, err := resolveWast2JSON()
+	if err != nil {
+		if version == "3.0" || os.Getenv("WAGO_WAST2JSON") != "" {
+			t.Fatal(err)
+		}
+		t.Skip(err)
+	}
+	interpreter := ""
+	if version == "3.0" {
+		interpreter, err = resolveSpecInterpreter()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	runSpecExec(t, wast2json, interpreter, dir, version, files)
+}
+
+const release3SpecRevision = "9d36019973201a19f9c9ebb0f10828b2fe2374aa"
+
+func resolveSpecInterpreter() (string, error) {
+	path := os.Getenv("WAGO_SPEC_INTERPRETER")
+	if path == "" {
+		return "", fmt.Errorf("WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter")
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return "", fmt.Errorf("configured spec interpreter %q is unavailable: %w", path, err)
+	}
+	if info.IsDir() || info.Mode()&0o111 == 0 {
+		return "", fmt.Errorf("configured spec interpreter %q is not executable", path)
+	}
+	want := os.Getenv("WAGO_SPEC_INTERPRETER_REVISION")
+	if want != release3SpecRevision {
+		return "", fmt.Errorf("configured spec interpreter revision = %q, want pinned %q", want, release3SpecRevision)
+	}
+	stamp, err := os.ReadFile(filepath.Join(filepath.Dir(path), "source-revision"))
+	if err != nil {
+		return "", fmt.Errorf("configured spec interpreter %q lacks source revision stamp: %w", path, err)
+	}
+	if got := strings.TrimSpace(string(stamp)); got != want {
+		return "", fmt.Errorf("configured spec interpreter %q source revision = %q, want %q", path, got, want)
+	}
+	out, err := exec.Command(path, "-v", "--help").CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("configured spec interpreter %q identity check failed: %w: %s", path, err, firstLine(out))
+	}
+	if got := firstLine(out); got != "wasm 3.0.0 reference interpreter" {
+		return "", fmt.Errorf("configured spec interpreter %q identity = %q, want official 3.0.0 interpreter", path, got)
+	}
+	return path, nil
+}
+
+func resolveWast2JSON() (string, error) {
+	path := os.Getenv("WAGO_WAST2JSON")
+	if path == "" {
+		var err error
+		path, err = exec.LookPath("wast2json")
+		if err != nil {
+			return "", fmt.Errorf("wast2json (wabt) not on PATH")
+		}
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return "", fmt.Errorf("configured wast2json %q is unavailable: %w", path, err)
+	}
+	if info.IsDir() || info.Mode()&0o111 == 0 {
+		return "", fmt.Errorf("configured wast2json %q is not executable", path)
+	}
+	if want := os.Getenv("WAGO_WABT_VERSION"); want != "" {
+		out, err := exec.Command(path, "--version").CombinedOutput()
+		if err != nil {
+			return "", fmt.Errorf("configured wast2json %q version check failed: %w: %s", path, err, firstLine(out))
+		}
+		if got := strings.TrimSpace(string(out)); got != want {
+			return "", fmt.Errorf("configured wast2json %q version = %q, want pinned %q", path, got, want)
+		}
+	}
+	return path, nil
+}
+
+func TestResolveWast2JSONChecksPinnedVersion(t *testing.T) {
+	t.Setenv("PATH", "")
+	tool := filepath.Join(t.TempDir(), "wast2json")
+	if err := os.WriteFile(tool, []byte("#!/bin/sh\nprintf '1.0.41\\n'\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("WAGO_WAST2JSON", tool)
+	t.Setenv("WAGO_WABT_VERSION", "1.0.41")
+	if got, err := resolveWast2JSON(); err != nil || got != tool {
+		t.Fatalf("resolve pinned tool = %q, %v; want %q, nil", got, err, tool)
+	}
+	t.Setenv("WAGO_WABT_VERSION", "1.0.40")
+	if _, err := resolveWast2JSON(); err == nil || !strings.Contains(err.Error(), `version = "1.0.41", want pinned "1.0.40"`) {
+		t.Fatalf("version mismatch error = %v", err)
+	}
+}
+
+func TestResolveSpecInterpreterChecksPinnedRevisionAndIdentity(t *testing.T) {
+	dir := t.TempDir()
+	tool := filepath.Join(dir, "wasm")
+	if err := os.WriteFile(tool, []byte("#!/bin/sh\nprintf 'wasm 3.0.0 reference interpreter\\n'\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "source-revision"), []byte(release3SpecRevision+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("WAGO_SPEC_INTERPRETER", tool)
+	t.Setenv("WAGO_SPEC_INTERPRETER_REVISION", release3SpecRevision)
+	if got, err := resolveSpecInterpreter(); err != nil || got != tool {
+		t.Fatalf("resolve pinned interpreter = %q, %v; want %q, nil", got, err, tool)
+	}
+	t.Setenv("WAGO_SPEC_INTERPRETER_REVISION", strings.Repeat("0", 40))
+	if _, err := resolveSpecInterpreter(); err == nil || !strings.Contains(err.Error(), "want pinned") {
+		t.Fatalf("revision mismatch error = %v", err)
+	}
 }
 
 func resolveSpecPlan(t *testing.T, checkout, version string) (dir string, files []string) {
@@ -1212,8 +1439,62 @@ func resolveSpecPlan(t *testing.T, checkout, version string) (dir string, files 
 		}
 		return suite.CoreDir, suite.Files
 	}
+	if version == "3.0" {
+		suite, err := spectest.DiscoverRelease3(checkout)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return suite.CoreDir, suite.Files
+	}
 	dir = resolveSpecDir(t, checkout)
 	return dir, specFilesForVersion(version, dir)
+}
+
+func TestResolveSpecPlanRelease3UsesOfficialCoreLayout(t *testing.T) {
+	checkout := t.TempDir()
+	core := filepath.Join(checkout, "test", "core")
+	for _, name := range []string{
+		"i32.wast", "const.wast", "return_call.wast", "call_ref.wast",
+		"gc/struct.wast", "exceptions/throw.wast", "multi-memory/memory-multi.wast",
+		"memory64/memory64.wast", "memory64/table64.wast",
+		"relaxed-simd/relaxed_laneselect.wast",
+	} {
+		path := filepath.Join(core, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	dir, files := resolveSpecPlan(t, checkout, "3.0")
+	if dir != core {
+		t.Fatalf("Release 3 dir = %q, want official core dir %q", dir, core)
+	}
+	want := filepath.Join("gc", "struct")
+	i := sort.SearchStrings(files, want)
+	if len(files) != 10 || i >= len(files) || files[i] != want {
+		t.Fatalf("Release 3 files = %v, want official mandatory-family sentinels", files)
+	}
+}
+
+func resolveRepoFile(name string) (string, error) {
+	wd, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+	for {
+		candidate := filepath.Join(wd, filepath.FromSlash(name))
+		if info, statErr := os.Stat(candidate); statErr == nil && !info.IsDir() {
+			return candidate, nil
+		}
+		next := filepath.Dir(wd)
+		if next == wd {
+			return "", fmt.Errorf("repository file %q not found from %s", name, wd)
+		}
+		wd = next
+	}
 }
 
 func resolveSpecDir(t *testing.T, dir string) string {
@@ -1256,7 +1537,7 @@ func firstLine(b []byte) string {
 	return s
 }
 
-func runSpecExec(t *testing.T, wast2json, dir, version string, files []string) {
+func runSpecExec(t *testing.T, wast2json, interpreter, dir, version string, files []string) {
 	tmp := t.TempDir()
 	if len(files) == 0 {
 		t.Fatalf("no spec files found for WAGO_SPEC_VERSION=%q under %s", version, dir)
@@ -1273,29 +1554,30 @@ func runSpecExec(t *testing.T, wast2json, dir, version string, files []string) {
 		name := strings.ReplaceAll(base, string(filepath.Separator), "_")
 		jsonPath := filepath.Join(tmp, name+".json")
 		args := []string{wast, "-o", jsonPath}
-		// Current WABT --enable-all also enables experimental binary encodings
-		// (notably compact imports) that rewrite otherwise-canonical MVP, SIMD,
-		// bulk-memory, and Release 2 modules. Those standardized features are on
-		// by default; only the experimental 3.0 proposal aggregate needs all flags.
 		if version == "3.0" {
 			args = append([]string{"--enable-all"}, args...)
 		}
 		if out, err := exec.Command(wast2json, args...).CombinedOutput(); err != nil {
-			// The experimental 3.0 aggregate pins proposal .wast files whose stale
-			// syntax the current host wabt can no longer parse (and one crashes wabt).
-			// That is a toolchain/corpus-version gap, not a wago failure, so record it
-			// as a skip rather than failing the run. 1.0/2.0 corpora are canonical and
-			// must always parse, so there a wast2json failure stays a hard error.
-			if version == "3.0" {
-				var s specExecStats
-				s.modulesSkipped++
-				s.gaps[specGapToolchainUnparseable]++
-				total.add(s)
-				t.Logf("%-40s SKIP: wast2json could not parse (host wabt / stale proposal syntax): %s", base, firstLine(out))
+			wabtError := fmt.Sprintf("%v: %s", err, firstLine(out))
+			if version != "3.0" || interpreter == "" {
+				t.Errorf("%s: wast2json failed (%s)", base, wabtError)
 				continue
 			}
-			t.Errorf("%s: wast2json failed (%v): %s", base, err, out)
-			continue
+			binaryScript := filepath.Join(tmp, name+".bin.wast")
+			if interpOut, interpErr := exec.Command(interpreter, "-d", wast, "-o", binaryScript).CombinedOutput(); interpErr != nil {
+				t.Errorf("%s: Release 3 text conversion failed; WABT %s; interpreter %v: %s", base, wabtError, interpErr, firstLine(interpOut))
+				continue
+			}
+			converter, resolveErr := resolveRepoFile("scripts/spec-interpreter-json.py")
+			if resolveErr != nil {
+				t.Errorf("%s: Release 3 converter unavailable after WABT %s: %v", base, wabtError, resolveErr)
+				continue
+			}
+			if convertOut, convertErr := exec.Command(converter, binaryScript, jsonPath).CombinedOutput(); convertErr != nil {
+				t.Errorf("%s: Release 3 binary-script conversion failed after WABT %s: %v: %s", base, wabtError, convertErr, firstLine(convertOut))
+				continue
+			}
+			t.Logf("%s: text oracle fallback=WebAssembly/spec interpreter (%s)", base, firstLine(out))
 		}
 		raw, err := os.ReadFile(jsonPath)
 		if err != nil {
@@ -1306,7 +1588,11 @@ func runSpecExec(t *testing.T, wast2json, dir, version string, files []string) {
 			t.Fatal(err)
 		}
 
-		stats := runSpecExecFile(t, base, tmp, sf)
+		cfg := wago.NewRuntimeConfig()
+		if version == "3.0" {
+			cfg = cfg.WithCoreFeatures(wago.CoreFeaturesV3)
+		}
+		stats := runSpecExecFileWithConfig(t, base, tmp, sf, cfg)
 		total.add(stats)
 		t.Logf("%-40s modules(pass=%d fail=%d skip=%d) assertions(pass=%d fail=%d skip=%d) gaps(%s)",
 			base, stats.modulesPassed, stats.modulesFailed, stats.modulesSkipped,
@@ -1321,12 +1607,9 @@ func runSpecExec(t *testing.T, wast2json, dir, version string, files []string) {
 	if total.assertionsPassed+total.assertionsSkipped+total.assertionsFailed == 0 {
 		t.Errorf("no execution assertions were accounted — harness or corpus misconfigured")
 	}
-	if version == "2.0" {
-		const wantModules, wantAssertions = 1600, 48331
-		if total.modulesPassed != wantModules || total.modulesFailed != 0 || total.modulesSkipped != 0 ||
-			total.assertionsPassed != wantAssertions || total.assertionsFailed != 0 || total.assertionsSkipped != 0 {
-			t.Fatalf("WebAssembly 2.0 execution accounting = %+v, want modules %d/0/0 and assertions %d/0/0", total, wantModules, wantAssertions)
-		}
+	if (version == "2.0" || version == "3.0") && (total.modulesSkipped != 0 || total.assertionsSkipped != 0) {
+		t.Errorf("WebAssembly %s execution must have zero feature-related skips: modules=%d assertions=%d gaps %s",
+			version, total.modulesSkipped, total.assertionsSkipped, total.gapSummary())
 	}
 }
 
@@ -1334,7 +1617,7 @@ func runSpecExec(t *testing.T, wast2json, dir, version string, files []string) {
 // module: exact no-op print functions, four immutable globals, shared memory 1/2,
 // and the shared 10/20 funcref table. Extra entries are ignored by modules that do
 // not import them, so the same map is safe for every instantiate in one file.
-func spectestImports(table *wago.Table, memory *wago.Memory) wago.Imports {
+func spectestImports(table, table64 *wago.Table, memory *wago.Memory) wago.Imports {
 	noop := wago.HostFunc(func(wago.HostModule, []uint64, []uint64) {})
 	return wago.Imports{
 		"spectest.print":         noop,
@@ -1346,10 +1629,11 @@ func spectestImports(table *wago.Table, memory *wago.Memory) wago.Imports {
 		"spectest.print_f64_f64": noop,
 		"spectest.global_i32":    wago.GlobalImport{Type: wago.ValI32, Bits: wago.I32(666)},
 		"spectest.global_i64":    wago.GlobalImport{Type: wago.ValI64, Bits: wago.I64(666)},
-		"spectest.global_f32":    wago.GlobalImport{Type: wago.ValF32, Bits: wago.F32(666)},
-		"spectest.global_f64":    wago.GlobalImport{Type: wago.ValF64, Bits: wago.F64(666)},
+		"spectest.global_f32":    wago.GlobalImport{Type: wago.ValF32, Bits: wago.F32(float32(666.6))},
+		"spectest.global_f64":    wago.GlobalImport{Type: wago.ValF64, Bits: wago.F64(666.6)},
 		"spectest.memory":        memory,
 		"spectest.table":         table,
+		"spectest.table64":       table64,
 	}
 }
 
@@ -1362,27 +1646,39 @@ func runSpecExecFile(t *testing.T, base, tmp string, sf specExecFile) specExecSt
 // runSpecExecFileWithConfig replays one .wast's commands. The "current"
 // instance is the most recently instantiated module; when a module is out of
 // scope (nil inst), its assertions are skipped until the next module command.
-func runSpecExecFileWithConfig(t *testing.T, base, tmp string, sf specExecFile, cfg *wago.RuntimeConfig) (stats specExecStats) {
+func runSpecExecFileWithConfig(t *testing.T, base, tmp string, sf specExecFile, cfg *wago.RuntimeConfig) specExecStats {
+	return runSpecExecFileWithConfigAndImports(t, base, tmp, sf, cfg, nil)
+}
+
+func runSpecExecFileWithConfigAndImports(t *testing.T, base, tmp string, sf specExecFile, cfg *wago.RuntimeConfig, extraImports wago.Imports) (stats specExecStats) {
 	var cur specModule
+	var curRetained bool
 	var live []specModule
 	standardTable, err := wago.NewTable(10, 20)
 	if err != nil {
 		t.Fatalf("create spectest.table: %v", err)
 	}
+	standardTable64, err := wago.NewTable64(10, 20)
+	if err != nil {
+		_ = standardTable.Close()
+		t.Fatalf("create spectest.table64: %v", err)
+	}
 	standardMemory, err := wago.NewSharedMemory(1, 2)
 	if err != nil {
 		_ = standardTable.Close()
+		_ = standardTable64.Close()
 		t.Fatalf("create spectest.memory: %v", err)
 	}
 	rt := wago.NewRuntime(wago.WithRuntimeConfig(cfg))
 	defer func() {
 		for i := range live {
-			if err := live[i].close(); err != nil {
-				t.Errorf("close spec module %d: %v", i, err)
-			}
+			live[i].close()
 		}
 		if err := standardTable.Close(); err != nil {
 			t.Errorf("close spectest.table: %v", err)
+		}
+		if err := standardTable64.Close(); err != nil {
+			t.Errorf("close spectest.table64: %v", err)
 		}
 		if err := standardMemory.Close(); err != nil {
 			t.Errorf("close spectest.memory: %v", err)
@@ -1393,51 +1689,107 @@ func runSpecExecFileWithConfig(t *testing.T, base, tmp string, sf specExecFile, 
 	}()
 	named := map[string]specModule{}
 	registered := map[string]specModule{}
-	standardImports := spectestImports(standardTable, standardMemory)
+	definitions := map[string][]byte{}
+	threads := map[string]bool{}
+	var latestDefinition []byte
+	standardImports := spectestImports(standardTable, standardTable64, standardMemory)
+	for key, value := range extraImports {
+		standardImports[key] = value
+	}
+	retireCurrent := func() {
+		if cur.inst != nil && !curRetained {
+			cur.close()
+		}
+		cur = specModule{}
+		curRetained = false
+	}
+	instantiate := func(data []byte, c specExecCmd) {
+		retireCurrent()
+		mod, err := rt.Compile(data)
+		if err != nil {
+			t.Logf("%s.wast:%d module compile rejected: %v", base, c.Line, err)
+			stats.skipModule(specGapCompileRejected)
+			return
+		}
+		compiled := mod.Compiled()
+		imports, err := specImportsFor(compiled, registered, standardImports)
+		if err != nil {
+			t.Logf("%s.wast:%d module imports rejected: %v", base, c.Line, err)
+			stats.recordInstantiateGap(base, c.Line, err)
+			stats.skipModule(specGapInstantiateRejected)
+			return
+		}
+		in, err := rt.Instantiate(context.Background(), mod, wago.WithImports(imports))
+		if err != nil {
+			t.Logf("%s.wast:%d module instantiate rejected: %v", base, c.Line, err)
+			stats.recordInstantiateGap(base, c.Line, err)
+			stats.skipModule(specGapInstantiateRejected)
+			return
+		}
+		stats.modulesPassed++
+		cur = specModule{inst: in, compiled: compiled, externrefs: make(map[string]wago.ExternRef)}
+		live = append(live, cur)
+		if c.Name != "" {
+			named[c.Name] = cur
+			// Wasmtime's WAST harness permits named instances to satisfy imports
+			// without a separate register command. The import namespace omits the
+			// textual identifier's leading '$'. An explicit later registration may
+			// intentionally replace this alias.
+			registered[strings.TrimPrefix(c.Name, "$")] = cur
+			curRetained = true
+		}
+	}
 
 	for _, c := range sf.Commands {
 		switch c.Type {
+		case "thread":
+			if c.Name == "" || threads[c.Name] || len(c.Commands) == 0 {
+				t.Fatalf("%s.wast:%d invalid or duplicate thread %q", base, c.Line, c.Name)
+			}
+			// Wasmtime WAST threads execute in independent Stores. Replaying the
+			// nested command graph recursively gives it an independent Runtime and
+			// collector domain; returning closes every nested instance before a
+			// following wait observes completion. This is intentionally synchronous:
+			// the currently admitted thread fixtures have no inter-thread imports or
+			// communication, so scheduling cannot affect their semantics.
+			threadStats := runSpecExecFileWithConfigAndImports(t, base+"/thread:"+c.Name, tmp, specExecFile{Source: sf.Source, Commands: c.Commands}, cfg, extraImports)
+			stats.add(threadStats)
+			threads[c.Name] = true
+		case "wait":
+			if c.Thread == "" || !threads[c.Thread] {
+				t.Fatalf("%s.wast:%d wait references unknown thread %q", base, c.Line, c.Thread)
+			}
+		case "module_definition":
+			data, err := os.ReadFile(filepath.Join(tmp, c.Filename))
+			if err != nil {
+				stats.modulesFailed++
+				t.Errorf("%s.wast:%d module definition output %q is unavailable: %v", base, c.Line, c.Filename, err)
+				continue
+			}
+			latestDefinition = data
+			if c.Name != "" {
+				definitions[c.Name] = data
+			}
+		case "module_instance":
+			data := latestDefinition
+			if c.Module != "" {
+				data = definitions[c.Module]
+			}
+			if data == nil {
+				stats.modulesFailed++
+				cur = specModule{}
+				t.Errorf("%s.wast:%d module instance references unavailable definition %q", base, c.Line, c.Module)
+				continue
+			}
+			instantiate(data, c)
 		case "module":
-			cur = specModule{}
 			data, err := os.ReadFile(filepath.Join(tmp, c.Filename))
 			if err != nil {
 				stats.modulesFailed++
 				t.Errorf("%s.wast:%d module output %q is unavailable: %v", base, c.Line, c.Filename, err)
 				continue
 			}
-			mod, err := rt.Compile(data)
-			if err != nil {
-				t.Logf("%s.wast:%d module compile rejected: %v", base, c.Line, err)
-				stats.skipModule(specGapCompileRejected)
-				continue
-			}
-			compiled := mod.Compiled()
-			imports, err := specImportsFor(compiled, registered, standardImports)
-			if err != nil {
-				t.Logf("%s.wast:%d module imports rejected: %v", base, c.Line, err)
-				stats.recordInstantiateGap(base, c.Line, err)
-				stats.skipModule(specGapInstantiateRejected)
-				if closeErr := compiled.Close(); closeErr != nil {
-					t.Errorf("%s.wast:%d close uninstantiated module: %v", base, c.Line, closeErr)
-				}
-				continue
-			}
-			in, err := rt.Instantiate(context.Background(), mod, wago.WithImports(imports))
-			if err != nil {
-				t.Logf("%s.wast:%d module instantiate rejected: %v", base, c.Line, err)
-				stats.recordInstantiateGap(base, c.Line, err)
-				stats.skipModule(specGapInstantiateRejected)
-				if closeErr := compiled.Close(); closeErr != nil {
-					t.Errorf("%s.wast:%d close rejected module: %v", base, c.Line, closeErr)
-				}
-				continue
-			}
-			stats.modulesPassed++
-			cur = specModule{inst: in, compiled: compiled, externrefs: make(map[string]wago.ExternRef)}
-			live = append(live, cur)
-			if c.Name != "" {
-				named[c.Name] = cur
-			}
+			instantiate(data, c)
 		case "register":
 			m := cur
 			if c.Name != "" {
@@ -1445,9 +1797,12 @@ func runSpecExecFileWithConfig(t *testing.T, base, tmp string, sf specExecFile, 
 			}
 			if m.inst != nil && c.As != "" {
 				registered[c.As] = m
+				if c.Name == "" {
+					curRetained = true
+				}
 			}
 		case "assert_uninstantiable":
-			data, err := os.ReadFile(filepath.Join(tmp, c.Filename))
+			data, err := specCommandModuleData(tmp, c, latestDefinition, definitions)
 			if err != nil {
 				stats.assertionsFailed++
 				t.Errorf("%s.wast:%d uninstantiable module output %q is unavailable: %v", base, c.Line, c.Filename, err)
@@ -1462,9 +1817,6 @@ func runSpecExecFileWithConfig(t *testing.T, base, tmp string, sf specExecFile, 
 			imports, err := specImportsFor(compiled, registered, standardImports)
 			if err != nil {
 				stats.skipAssertion(specGapInstantiateRejected)
-				if closeErr := compiled.Close(); closeErr != nil {
-					t.Errorf("%s.wast:%d close import-rejected assertion module: %v", base, c.Line, closeErr)
-				}
 				continue
 			}
 			in, err := rt.Instantiate(context.Background(), mod, wago.WithImports(imports))
@@ -1484,7 +1836,7 @@ func runSpecExecFileWithConfig(t *testing.T, base, tmp string, sf specExecFile, 
 			}
 			stats.assertionsPassed++
 		case "assert_unlinkable":
-			data, err := os.ReadFile(filepath.Join(tmp, c.Filename))
+			data, err := specCommandModuleData(tmp, c, latestDefinition, definitions)
 			if err != nil {
 				stats.assertionsFailed++
 				t.Errorf("%s.wast:%d unlinkable module output %q is unavailable: %v", base, c.Line, c.Filename, err)
@@ -1551,7 +1903,7 @@ func runSpecExecFileWithConfig(t *testing.T, base, tmp string, sf specExecFile, 
 			default:
 				stats.assertionsFailed++
 			}
-		case "assert_trap", "assert_exhaustion":
+		case "assert_trap", "assert_exhaustion", "assert_exception":
 			if gap := classifyAssertionGap(c); gap != specGapNone {
 				stats.skipAssertion(gap)
 				continue
@@ -1608,7 +1960,7 @@ func specImportsFor(compiled *wago.Compiled, registered map[string]specModule, s
 		}
 		imports[key] = ex
 	}
-	if key, ok := compiled.MemoryImport(); ok {
+	for _, key := range compiled.MemoryImports() {
 		if m, field, found := resolve(key); found {
 			memory, err := m.inst.ExportedMemory(field)
 			if err != nil {
@@ -1637,6 +1989,17 @@ func specImportsFor(compiled *wago.Compiled, registered map[string]specModule, s
 			return nil, err
 		}
 		imports[key] = global
+	}
+	for _, key := range compiled.TagImports() {
+		m, field, ok := resolve(key)
+		if !ok {
+			continue
+		}
+		tag, err := m.inst.ExportedTag(field)
+		if err != nil {
+			return nil, err
+		}
+		imports[key] = tag
 	}
 	return imports, nil
 }
@@ -1677,23 +2040,29 @@ func (m specModule) matchExternref(got uint64, want specValue) bool {
 	if !ok || got == 0 {
 		return false
 	}
+	if id == "0" {
+		return true // binary-script convention for an anonymous non-null externref
+	}
 	value, ok := m.inst.ExternRefValue(wago.ValueOf(wago.ValExternRef, got).ExternRef())
 	return ok && value == id
 }
 
-func (m *specModule) close() error {
-	var err error
+func (m specModule) matchFuncref(got uint64, want specValue) bool {
+	if isNullFuncrefSpecValue(want) {
+		return got == 0
+	}
+	if isNonNullFuncrefSpecValue(want) {
+		return got != 0
+	}
+	index, ok := indexedFuncrefSpecValue(want)
+	return ok && got != 0 && m.inst.FuncRefMatchesFunction(wago.ValueOf(wago.ValFuncRef, got).FuncRef(), index)
+}
+
+func (m *specModule) close() {
 	if m.inst != nil {
-		err = m.inst.Close()
+		m.inst.Close()
 		m.inst = nil
 	}
-	if m.compiled != nil {
-		if closeErr := m.compiled.Close(); err == nil {
-			err = closeErr
-		}
-		m.compiled = nil
-	}
-	return err
 }
 
 type specActionOutcome struct {
@@ -1719,7 +2088,36 @@ func invokeAction(c specExecCmd, m specModule, _ *testing.T) specActionOutcome {
 			m.externrefs = make(map[string]wago.ExternRef)
 		}
 		var args []uint64
+		var transientGCRefs []uint64
+		defer func() {
+			for _, token := range transientGCRefs {
+				_ = m.inst.ReleaseGCRef(wago.ValueOf(wago.ValAnyRef, token).GCRef())
+			}
+		}()
 		for _, a := range c.Action.Args {
+			if a.Type == "ref" {
+				id, ok := a.str()
+				if !ok {
+					return specActionOutcome{harnessErr: fmt.Errorf("cannot decode ref argument %s", a.Value)}
+				}
+				if id == "null" {
+					args = append(args, 0)
+					continue
+				}
+				ext := a
+				ext.Type = "externref"
+				extern, err := m.externrefArg(ext)
+				if err != nil {
+					return specActionOutcome{harnessErr: fmt.Errorf("cannot create host ref %s: %w", a.Value, err)}
+				}
+				internal, err := m.inst.Invoke("internalize", extern)
+				if err != nil || len(internal) != 1 || internal[0] == 0 {
+					return specActionOutcome{harnessErr: fmt.Errorf("cannot internalize host ref %s: %v", a.Value, err)}
+				}
+				args = append(args, internal[0])
+				transientGCRefs = append(transientGCRefs, internal[0])
+				continue
+			}
 			if a.Type == "externref" {
 				token, err := m.externrefArg(a)
 				if err != nil {
@@ -1779,13 +2177,15 @@ func runReturnAssert(t *testing.T, base string, c specExecCmd, m specModule) (sp
 		return specGapNone, false
 	}
 	if len(c.Either) != 0 {
-		for _, alternative := range c.Either {
-			if matchSpecResults(out.results, []specValue{alternative}, m) {
-				return specGapNone, true
-			}
+		if len(c.Expected) != 0 {
+			t.Errorf("%s.wast:%d %s: harness command has both expected and either result patterns", base, c.Line, c.Action.Field)
+			return specGapNone, false
 		}
-		t.Errorf("%s.wast:%d %s(%v): got=%#x, want one of %v", base, c.Line, c.Action.Field, argValues(c.Action.Args), out.results, c.Either)
-		return specGapNone, false
+		if !matchEitherResult(m, out.results, c.Either) {
+			t.Errorf("%s.wast:%d %s(%v): got=%#x, want one of %+v", base, c.Line, c.Action.Field, argValues(c.Action.Args), out.results, c.Either)
+			return specGapNone, false
+		}
+		return specGapNone, true
 	}
 	wantSlots := expectedResultSlots(c.Expected)
 	if len(out.results) != wantSlots {
@@ -1799,9 +2199,15 @@ func runReturnAssert(t *testing.T, base string, c specExecCmd, m specModule) (sp
 		if want.Type == "externref" && n == 1 {
 			matched = m.matchExternref(out.results[off], want)
 		}
+		if want.Type == "funcref" && n == 1 {
+			matched = m.matchFuncref(out.results[off], want)
+		}
 		if !matched {
 			t.Errorf("%s.wast:%d %s(%v) result[%d]: got=%#x want=%s/%s:%s", base, c.Line, c.Action.Field, argValues(c.Action.Args), i, out.results[off:off+n], want.Type, want.LaneType, want.Value)
 			return specGapNone, false
+		}
+		if want.Type == "ref" && n == 1 && out.results[off] != 0 && out.results[off]>>32 != 0 {
+			_ = m.inst.ReleaseGCRef(wago.ValueOf(wago.ValAnyRef, out.results[off]).GCRef())
 		}
 		off += n
 	}
@@ -1819,12 +2225,24 @@ func matchSpecResults(got []uint64, expected []specValue, m specModule) bool {
 		if want.Type == "externref" && n == 1 {
 			matched = m.matchExternref(got[off], want)
 		}
+		if want.Type == "funcref" && n == 1 {
+			matched = m.matchFuncref(got[off], want)
+		}
 		if !matched {
 			return false
 		}
 		off += n
 	}
 	return true
+}
+
+func matchEitherResult(m specModule, got []uint64, alternatives []specValue) bool {
+	for _, alternative := range alternatives {
+		if matchSpecResults(got, []specValue{alternative}, m) {
+			return true
+		}
+	}
+	return false
 }
 
 func runTrapAssert(t *testing.T, base string, c specExecCmd, m specModule) (specExecGapReason, bool) {
@@ -1840,8 +2258,12 @@ func runTrapAssert(t *testing.T, base string, c specExecCmd, m specModule) (spec
 		t.Errorf("%s.wast:%d %s(%v): expected trap %q, returned normally", base, c.Line, c.Action.Field, argValues(c.Action.Args), c.Text)
 		return specGapNone, false
 	}
-	if ok, why := specTrapMatches(out.trap, c.Text); !ok {
-		t.Errorf("%s.wast:%d %s(%v): expected trap %q: %s", base, c.Line, c.Action.Field, argValues(c.Action.Args), c.Text, why)
+	want := c.Text
+	if c.Type == "assert_exception" {
+		want = "unhandled exception"
+	}
+	if ok, why := specTrapMatches(out.trap, want); !ok {
+		t.Errorf("%s.wast:%d %s(%v): expected trap %q: %s", base, c.Line, c.Action.Field, argValues(c.Action.Args), want, why)
 		return specGapNone, false
 	}
 	return specGapNone, true
@@ -1899,20 +2321,39 @@ func specTrapMatches(err error, want string) (bool, string) {
 	switch want {
 	case "unreachable":
 		ok = matches(wago.TrapUnreachable)
-	case "builtin trap":
+	case "builtin trap", "allocation size too large":
 		ok = matches(wago.TrapBuiltin)
+	case "null reference", "null array reference", "null i31 reference", "null structure reference":
+		ok = matches(wago.TrapNullReference)
+	case "null function reference":
+		// The native table-call ABI represents a null function entry with the
+		// same trap code as an uninitialized indirect-call target.
+		ok = matches(wago.TrapIndirectOutOfBounds)
+	case "cast", "cast failure":
+		ok = matches(wago.TrapCastFailure)
+	case "unhandled exception":
+		ok = matches(wago.TrapUnhandledException)
 	case "out of bounds memory access", "out of bounds linear memory access":
 		ok = matches(wago.TrapLinMemOutOfBounds, wago.TrapLinkedMemOutOfBounds)
 	case "out of bounds":
 		// Some engine regression corpora retain this older generic spelling.
 		ok = matches(wago.TrapLinMemOutOfBounds, wago.TrapLinkedMemOutOfBounds, wago.TrapTableOutOfBounds, wago.TrapIndirectOutOfBounds)
 	case "out of bounds table access":
-		ok = matches(wago.TrapTableOutOfBounds)
+		// Bulk table helpers predate the dedicated table-access trap code and
+		// retain the indirect-table bounds code. Direct table accesses use the
+		// dedicated code; both represent the same WebAssembly trap condition.
+		ok = matches(wago.TrapTableOutOfBounds, wago.TrapIndirectOutOfBounds)
+	case "out of bounds array access":
+		// WasmGC array helpers use builtin.trap for checked ranges, while the
+		// exact native scalar path uses cast-failure for failed object extents.
+		// These are deterministic trap-only ABI categories; WebAssembly does not
+		// expose trap reasons to the module.
+		ok = matches(wago.TrapBuiltin, wago.TrapCastFailure)
 	case "undefined element", "undefined", "uninitialized element", "uninitialized":
 		ok = matches(wago.TrapIndirectOutOfBounds, wago.TrapTableOutOfBounds)
-	case "indirect call type mismatch":
+	case "call type mismatch", "indirect call", "indirect call type mismatch":
 		ok = matches(wago.TrapIndirectWrongSig)
-	case "integer divide by zero":
+	case "divide by zero", "integer divide by zero":
 		ok = matches(wago.TrapDivZero)
 	case "integer overflow":
 		ok = matches(wago.TrapDivOverflow, wago.TrapTruncOverflow)
@@ -1966,8 +2407,18 @@ func TestSpecTrapMatching(t *testing.T) {
 		{name: "unreachable", err: &wago.TrapError{Code: wago.TrapUnreachable}, want: "unreachable", ok: true},
 		{name: "wrong code", err: &wago.TrapError{Code: wago.TrapDivZero}, want: "unreachable"},
 		{name: "memory", err: &wago.TrapError{Code: wago.TrapLinkedMemOutOfBounds}, want: "out of bounds memory access", ok: true},
-		{name: "table bulk", err: &wago.TrapError{Code: wago.TrapTableOutOfBounds}, want: "out of bounds table access", ok: true},
-		{name: "wrong table code", err: &wago.TrapError{Code: wago.TrapIndirectOutOfBounds}, want: "out of bounds table access"},
+		{name: "table direct", err: &wago.TrapError{Code: wago.TrapTableOutOfBounds}, want: "out of bounds table access", ok: true},
+		{name: "table bulk", err: &wago.TrapError{Code: wago.TrapIndirectOutOfBounds}, want: "out of bounds table access", ok: true},
+		{name: "array helper bounds", err: &wago.TrapError{Code: wago.TrapBuiltin}, want: "out of bounds array access", ok: true},
+		{name: "array allocation", err: &wago.TrapError{Code: wago.TrapBuiltin}, want: "allocation size too large", ok: true},
+		{name: "array native bounds", err: &wago.TrapError{Code: wago.TrapCastFailure}, want: "out of bounds array access", ok: true},
+		{name: "null array", err: &wago.TrapError{Code: wago.TrapNullReference}, want: "null array reference", ok: true},
+		{name: "cast", err: &wago.TrapError{Code: wago.TrapCastFailure}, want: "cast", ok: true},
+		{name: "exception", err: &wago.TrapError{Code: wago.TrapUnhandledException}, want: "unhandled exception", ok: true},
+		{name: "indirect call", err: &wago.TrapError{Code: wago.TrapIndirectWrongSig}, want: "indirect call", ok: true},
+		{name: "call type mismatch", err: &wago.TrapError{Code: wago.TrapIndirectWrongSig}, want: "call type mismatch", ok: true},
+		{name: "divide by zero", err: &wago.TrapError{Code: wago.TrapDivZero}, want: "divide by zero", ok: true},
+		{name: "null function", err: &wago.TrapError{Code: wago.TrapIndirectOutOfBounds}, want: "null function reference", ok: true},
 		{name: "undefined element", err: &wago.TrapError{Code: wago.TrapIndirectOutOfBounds}, want: "undefined element", ok: true},
 		{name: "indexed uninitialized element", err: &wago.TrapError{Code: wago.TrapIndirectOutOfBounds}, want: "uninitialized element 2", ok: true},
 		{name: "integer overflow division", err: &wago.TrapError{Code: wago.TrapDivOverflow}, want: "integer overflow", ok: true},

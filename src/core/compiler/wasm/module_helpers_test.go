@@ -17,6 +17,43 @@ func TestTypeMetadataHelpersUseCanonicalFields(t *testing.T) {
 	if got := MemoryAddrType(MemType{Limits: Limits{Addr64: true}}); got != I64 {
 		t.Fatalf("MemoryAddrType = %s, want i64", got)
 	}
+	m := &Module{
+		Imports:  []Import{{Type: ExternType{Kind: ExternMem, Mem: MemType{Limits: Limits{Min: 1}}}}},
+		Memories: []MemType{{Limits: Limits{Min: 2, Addr64: true}}},
+	}
+	if mt, ok := m.MemoryType(0); !ok || mt.Limits.Min != 1 || mt.Limits.Addr64 {
+		t.Fatalf("imported MemoryType = %#v, %v", mt, ok)
+	}
+	if mt, ok := m.MemoryType(1); !ok || mt.Limits.Min != 2 || !mt.Limits.Addr64 {
+		t.Fatalf("local MemoryType = %#v, %v", mt, ok)
+	}
+	if _, ok := m.MemoryType(2); ok {
+		t.Fatal("out-of-range MemoryType resolved")
+	}
+}
+
+func TestFunctionSubtypeTypeIndexesIncludeLoadedDynamicCandidates(t *testing.T) {
+	root := CompType{Kind: CompFunc, Params: []ValType{I32}, Results: []ValType{I32}}
+	other := CompType{Kind: CompFunc, Params: []ValType{I64}, Results: []ValType{I64}}
+	m := &Module{Types: []RecType{{SubTypes: []SubType{
+		{HasPrefix: true, Final: false, Comp: root},
+		{HasPrefix: true, Final: true, Supers: []TypeIdx{{Index: 0}}, Comp: root},
+		{Final: true, Comp: other},
+	}}}}
+	indexes, ok := m.FunctionSubtypeTypeIndexes(0)
+	if !ok || len(indexes) != 2 || indexes[0] != 0 || indexes[1] != 1 {
+		t.Fatalf("root subtype indexes = %#v, %v; want [0 1]", indexes, ok)
+	}
+	indexes, ok = m.FunctionSubtypeTypeIndexes(1)
+	if !ok || len(indexes) != 1 || indexes[0] != 1 {
+		t.Fatalf("final child subtype indexes = %#v, %v; want [1]", indexes, ok)
+	}
+	if indexes, ok = m.FunctionSubtypeTypeIndexes(2); !ok || len(indexes) != 1 || indexes[0] != 2 {
+		t.Fatalf("unrelated final subtype indexes = %#v, %v", indexes, ok)
+	}
+	if _, ok := m.FunctionSubtypeTypeIndexes(3); ok {
+		t.Fatal("out-of-range function subtype target resolved")
+	}
 }
 
 func TestLocalHelpersKeepRunsCompact(t *testing.T) {
@@ -71,8 +108,11 @@ func TestModuleMetadataHelpers(t *testing.T) {
 			t.Fatalf("function signature %d = %#v, %v", idx, ft, ok)
 		}
 	}
-	if _, ok := m.FuncSignature(2); ok || m.CanonicalTypeID(2) != 0 || m.StructuralTypeID(2) != m.StructuralTypeID(0) {
+	if _, ok := m.FuncSignature(2); ok || m.CanonicalTypeID(2) != 0 || m.StructuralTypeID(2) == 0 || m.StructuralTypeID(2) == m.StructuralTypeID(0) {
 		t.Fatal("function signature IDs changed")
+	}
+	if m.StructuralTypeID(2) == m.StructuralTypeID(0) {
+		t.Fatal("structural signature ID collapsed distinct recursive-group membership")
 	}
 	if _, ok := m.LocalFuncType(-1); ok {
 		t.Fatal("negative local function index accepted")
@@ -420,16 +460,16 @@ func TestDecodeSignedTypeIndex(t *testing.T) {
 }
 
 func TestDecodeReferenceTypeEncodings(t *testing.T) {
-	if got, err := decodeRefType(newReader([]byte{0x63, 0x70})); err != nil || got != AbsRef(HeapFunc) {
+	if got, err := decodeRefType(newReader([]byte{0x63, 0x70})); err != nil || !EqualValType(RefVal(got), FuncRef) || got.Bare {
 		t.Fatalf("decodeRefType(nullable funcref) = %#v, %v", got, err)
 	}
-	if got, err := decodeRefType(newReader([]byte{0x64, 0x70})); err != nil || got.Nullable || got.Heap.Abs != HeapFunc {
+	if got, err := decodeRefType(newReader([]byte{0x64, 0x70})); err != nil || got.Nullable || got.Bare || got.Heap.Abs != HeapFunc {
 		t.Fatalf("decodeRefType(non-null funcref) = %#v, %v", got, err)
 	}
-	if got, err := decodeRefType(newReader([]byte{0x63, 0x62, 4})); err != nil || !got.Nullable || !got.Exact || got.Heap.Type != (TypeIdx{Index: 4}) {
+	if got, err := decodeRefType(newReader([]byte{0x63, 0x62, 4})); err != nil || !got.Nullable || !got.Exact || got.Bare || got.Heap.Type != (TypeIdx{Index: 4}) {
 		t.Fatalf("decodeRefType(exact index) = %#v, %v", got, err)
 	}
-	if got, err := decodeRefType(newReader([]byte{0x6f})); err != nil || got != AbsRef(HeapExtern) {
+	if got, err := decodeRefType(newReader([]byte{0x6f})); err != nil || !EqualValType(RefVal(got), ExternRef) || !got.Bare {
 		t.Fatalf("decodeRefType(shorthand externref) = %#v, %v", got, err)
 	}
 	for _, data := range [][]byte{nil, {0x63}, {0xff}} {

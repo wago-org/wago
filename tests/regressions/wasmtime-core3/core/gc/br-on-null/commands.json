@@ -1,0 +1,188 @@
+{
+  "commands": [
+    {
+      "filename": "commands.0.wasm",
+      "line": 1,
+      "type": "module_definition"
+    },
+    {
+      "line": 29,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "br-on-null-struct-null",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "0"
+        }
+      ],
+      "line": 30,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "br-on-null-struct-non-null",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "4294967295"
+        }
+      ],
+      "line": 31,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "br-on-null-array-null",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "0"
+        }
+      ],
+      "line": 32,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "br-on-null-array-non-null",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "4294967295"
+        }
+      ],
+      "line": 33,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "br-on-null-i31-null",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "0"
+        }
+      ],
+      "line": 34,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "br-on-null-i31-non-null",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "4294967295"
+        }
+      ],
+      "line": 35,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "br-on-null-yields-value",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "42"
+        }
+      ],
+      "line": 36,
+      "type": "assert_return"
+    },
+    {
+      "filename": "commands.1.wasm",
+      "line": 37,
+      "type": "module_definition"
+    },
+    {
+      "line": 56,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "br-on-non-null-struct-null",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "4294967295"
+        }
+      ],
+      "line": 57,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "br-on-non-null-struct-non-null",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "99"
+        }
+      ],
+      "line": 58,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "br-on-non-null-any-null",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "4294967295"
+        }
+      ],
+      "line": 59,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "br-on-non-null-any-non-null",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "1"
+        }
+      ],
+      "line": 60,
+      "type": "assert_return"
+    }
+  ],
+  "source": "WebAssembly/spec interpreter 3.0.0"
+}

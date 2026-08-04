@@ -19,6 +19,8 @@ type PreparedFunction struct {
 	resultSlots         int
 	paramTypes          []ValType
 	resultTypes         []ValType
+	paramExact          []ValueTypeDescriptor
+	resultExact         []ValueTypeDescriptor
 	hasReferenceParams  bool
 	hasReferenceResults bool
 	resultWide          []bool
@@ -48,6 +50,10 @@ func (in *Instance) PrepareFunction(export string) (*PreparedFunction, error) {
 		return nil, fmt.Errorf("wago: prepare function %q: local function index %d is out of range", export, ic.li)
 	}
 	sig := in.c.Funcs[ic.li]
+	params, results, err := exactFuncSignatureView(sig, in.c.Types)
+	if err != nil {
+		return nil, fmt.Errorf("wago: prepare function %q exact signature: %w", export, err)
+	}
 	wide := append([]bool(nil), ic.resultWide...)
 	return &PreparedFunction{
 		in:                  in,
@@ -57,6 +63,8 @@ func (in *Instance) PrepareFunction(export string) (*PreparedFunction, error) {
 		resultSlots:         ic.resultSlots,
 		paramTypes:          append([]ValType(nil), sig.Params...),
 		resultTypes:         append([]ValType(nil), sig.Results...),
+		paramExact:          append([]ValueTypeDescriptor(nil), params...),
+		resultExact:         append([]ValueTypeDescriptor(nil), results...),
 		hasReferenceParams:  hasReferenceValType(sig.Params),
 		hasReferenceResults: hasReferenceValType(sig.Results),
 		resultWide:          wide,
@@ -78,7 +86,8 @@ func (fn *PreparedFunction) Invoke(args ...uint64) ([]uint64, error) {
 		return nil, fmt.Errorf("%s expects %d arg slot(s), got %d", fn.export, fn.paramSlots, len(args))
 	}
 	if fn.hasReferenceParams {
-		if err := in.marshalPublicReferenceArgs(fn.export, args, fn.paramTypes); err != nil {
+		defer in.clearGCRefArgumentRoots()
+		if err := in.marshalPublicReferenceArgs(fn.export, args, fn.paramTypes, fn.paramExact); err != nil {
 			return nil, err
 		}
 	} else {
@@ -113,7 +122,7 @@ func (fn *PreparedFunction) Invoke(args ...uint64) ([]uint64, error) {
 			out[0] = uint64(binary.LittleEndian.Uint32(in.results))
 		}
 		if fn.hasReferenceResults {
-			if err := in.translatePublicReferenceResults(fn.export, out, fn.resultTypes); err != nil {
+			if err := in.translatePublicReferenceResults(fn.export, out, fn.resultTypes, fn.resultExact); err != nil {
 				return nil, err
 			}
 		}
@@ -128,7 +137,7 @@ func (fn *PreparedFunction) Invoke(args ...uint64) ([]uint64, error) {
 		}
 	}
 	if fn.hasReferenceResults {
-		if err := in.translatePublicReferenceResults(fn.export, out, fn.resultTypes); err != nil {
+		if err := in.translatePublicReferenceResults(fn.export, out, fn.resultTypes, fn.resultExact); err != nil {
 			return nil, err
 		}
 	}

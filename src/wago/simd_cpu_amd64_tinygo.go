@@ -2,10 +2,7 @@
 
 package wago
 
-import (
-	"os"
-	"strings"
-)
+import "os"
 
 // TinyGo cannot assemble the standard Go CPUID helper. Linux remains the only
 // amd64 TinyGo runtime target; /proc/cpuinfo includes AVX only when the kernel
@@ -15,10 +12,5 @@ func architectureSupportsSIMD() bool {
 	if err != nil {
 		return false
 	}
-	flags := strings.Fields(strings.ToLower(string(data)))
-	seen := map[string]bool{}
-	for _, flag := range flags {
-		seen[flag] = true
-	}
-	return seen["avx"] && seen["ssse3"] && seen["sse4_1"]
+	return simdCPUFlagsSupported(data)
 }

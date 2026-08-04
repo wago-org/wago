@@ -120,7 +120,9 @@ func (c *Collector) tinyStartMark(roots RootSet) {
 }
 
 func (c *Collector) tinyMarkRoots(roots RootSet) {
-	if roots != nil {
+	if direct, ok := roots.(DirectRootRefSet); ok {
+		c.markDirectRoots(direct, rootMarkTiny)
+	} else if roots != nil && !rangeRootRefs(roots, func(r Ref) bool { c.tinyMarkRef(r); return true }) {
 		roots.RangeRoots(func(s RootSlot) bool { c.tinyMarkRef(s.GetRef()); return true })
 	}
 	for _, r := range c.globalSlots {
@@ -198,7 +200,7 @@ func (c *Collector) scanObjectRefs(h uint32, visit func(Ref)) {
 	b := c.bytes(r)
 	if d.Kind == KindStruct {
 		for _, f := range d.Fields {
-			if isRefKind(f.Kind) {
+			if isCollectorRefKind(f.Kind) {
 				visit(Ref(binary.LittleEndian.Uint32(b[PayloadOffset+f.Offset:])))
 			}
 		}

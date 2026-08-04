@@ -1,0 +1,33 @@
+{
+  "commands": [
+    {
+      "filename": "commands.0.wasm",
+      "line": 1,
+      "type": "module_definition"
+    },
+    {
+      "line": 2,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "f",
+        "type": "invoke"
+      },
+      "line": 4,
+      "type": "action"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "f",
+        "type": "invoke"
+      },
+      "expected": [],
+      "line": 5,
+      "type": "assert_return"
+    }
+  ],
+  "source": "wasm-tools 1.251.0 json-from-wast"
+}

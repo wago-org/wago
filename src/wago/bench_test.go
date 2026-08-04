@@ -293,11 +293,19 @@ func BenchmarkSupportedFeatures(b *testing.B) {
 }
 
 func BenchmarkCompileSmallScalar(b *testing.B) {
+	benchmarkCompileSmallScalar(b, nil)
+}
+
+func BenchmarkCompileSmallScalarCore3(b *testing.B) {
+	benchmarkCompileSmallScalar(b, NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3))
+}
+
+func benchmarkCompileSmallScalar(b *testing.B, cfg *RuntimeConfig) {
 	mod := benchAddOneModule()
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		c, err := Compile(nil, mod)
+		c, err := Compile(cfg, mod)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -1117,7 +1125,7 @@ func BenchmarkInvokeTableGrowNull(b *testing.B) {
 		if err != nil {
 			b.Fatalf("Instantiate: %v", err)
 		}
-		batch := c.TableMax
+		batch := int(c.TableMax)
 		if remaining := b.N - done; batch > remaining {
 			batch = remaining
 		}
@@ -1334,27 +1342,6 @@ func BenchmarkInvokeHostFuncExternrefRoundTrip(b *testing.B) {
 	}
 }
 
-func BenchmarkInvokeReflectedHostFuncDirect(b *testing.B) {
-	if goruntime.Compiler == "tinygo" {
-		b.Skip("reflected host imports are unavailable under TinyGo")
-	}
-	c := benchMustCompile(b, benchReturningImportModule())
-	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.f": func(v int32) int32 { return v + 1 }}})
-	if err != nil {
-		b.Fatalf("Instantiate: %v", err)
-	}
-	defer in.Close()
-	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		res, err := in.Invoke("g", I32(int32(i)))
-		if err != nil {
-			b.Fatal(err)
-		}
-		benchResultSink = res
-	}
-}
-
 func BenchmarkInvokeHostFuncTableIndirect(b *testing.B) {
 	c := benchMustCompile(b, benchTableReturningImportModule())
 	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.f": HostFunc(func(_ HostModule, p, r []uint64) { r[0] = p[0] + 1 })}})
@@ -1392,27 +1379,6 @@ func BenchmarkInvokeLegacyHostFuncTableIndirect(b *testing.B) {
 	}
 	b.StopTimer()
 	benchIntSink = calls
-}
-
-func BenchmarkInvokeReflectedHostFuncTableIndirect(b *testing.B) {
-	if goruntime.Compiler == "tinygo" {
-		b.Skip("reflected host imports are unavailable under TinyGo")
-	}
-	c := benchMustCompile(b, benchTableReturningImportModule())
-	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.f": func(v int32) int32 { return v + 1 }}})
-	if err != nil {
-		b.Fatalf("Instantiate: %v", err)
-	}
-	defer in.Close()
-	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		res, err := in.Invoke("g", I32(int32(i)))
-		if err != nil {
-			b.Fatal(err)
-		}
-		benchResultSink = res
-	}
 }
 
 func BenchmarkInvokeHostFuncV128TableIndirect(b *testing.B) {

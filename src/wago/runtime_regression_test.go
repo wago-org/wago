@@ -103,6 +103,38 @@ func TestMemorySizeGrowAndBounds(t *testing.T) {
 	}
 }
 
+func TestWasmtimeBigMemoryBehavior(t *testing.T) {
+	// Exercise the architectural memory32 transition from 65,535 to 65,536
+	// pages: zero growth is observational, the final page succeeds exactly once,
+	// and later growth returns the all-ones sentinel.
+	limits := append([]byte{0x01}, wasmtest.ULEB(65535)...)
+	limits = append(limits, wasmtest.ULEB(65536)...)
+	mod := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}),
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1))),
+		wasmtest.Section(5, wasmtest.Vec(limits)),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("grow", 0, 0),
+			wasmtest.ExportEntry("size", 0, 1),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x20, 0x00, 0x40, 0x00, 0x0b}),
+			wasmtest.Code([]byte{0x3f, 0x00, 0x0b}),
+		)),
+	)
+	in := instantiateRegressionModule(t, mod)
+	defer in.Close()
+	assertI32InvokeResult(t, in, "grow", 65535, I32(0))
+	assertI32InvokeResult(t, in, "size", 65535)
+	assertI32InvokeResult(t, in, "grow", 65535, I32(1))
+	assertI32InvokeResult(t, in, "size", 65536)
+	assertI32InvokeResult(t, in, "grow", 65536, I32(0))
+	assertI32InvokeResult(t, in, "grow", -1, I32(1))
+}
+
 func TestCompiledModuleInstantiationIsolation(t *testing.T) {
 	mod := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),

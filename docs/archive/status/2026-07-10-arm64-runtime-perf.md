@@ -4,11 +4,11 @@
 > current branch. Consult `ARCHITECTURE.md`, `FEATURES.md`, and `ROADMAP.md` for
 > current repository state.
 
-Status date: 2026-07-10
-Branch: `jairus/arm64-runtime-perf`
-Commit: `9ac253b` (`docs: refresh arm64 acceptance status`)
-Upstream: local branch is 14 commits ahead of `origin/jairus/simd-perf` before publication under its new name.
-Scope: the primary repository only. Submodule contents and submodule working-tree state are excluded.
+Status date: 2026-07-15
+Branch: `wasm3`
+Code head before this report: `29821463` (`runtime: serialize imported global tenants`)
+Base lineage: originally `origin/main` at `2aac98e5`; completed WebAssembly 3.0 iteration commits are retained.
+Scope: the primary repository plus the independently pinned Release 3 submodule inventory.
 
 ## Executive summary
 
@@ -20,13 +20,14 @@ The repository is at a strong semantic milestone:
 - WebAssembly 2.0 runtime/product support is recorded as complete on the supported target, including reference types, multiple tables, bulk memory, multi-value, SIMD, reference-safe host APIs, compiled-artifact metadata, inspection, and snapshot restrictions.
 - The official Release 2 execution corpus is reported green at 1,600 modules and 48,248 assertions with zero gaps.
 - The core project remains dependency-light: the root module is standard-library-only at runtime.
-- Near-term work has shifted from semantic completion toward measurement-driven railshot optimization, interruption, stack traces, artifact productization, and additional targets.
+- WebAssembly 3.0 is an active bounded-recursion track. The pinned 258-file suite is at 144 green/114 red files, 1,691 passing/535 skipped modules, and 51,765 passing/5 failing/6,268 skipped assertions.
+- Near-term work combines mandatory WebAssembly 3.0 completion with measurement-driven railshot optimization, interruption, stack traces, artifact productization, and additional targets.
 
 The most important qualification is platform scope. Linux/amd64 remains the mature baseline, while this branch adds native Linux/arm64 and Darwin/arm64 execution, guard-page support, runtime/API coverage, corpus gates, reference globals, indexed tables, optimized calls, and cooperative cancellation. Some legacy amd64-only test tags still need to be made architecture-neutral before `go test ./...` is a universal ARM64 gate.
 
 ## Repository state
 
-- Git state before publishing this report, excluding submodules: implementation commits clean; this report and the ARM64 roadmap staged.
+- Git state before publishing this report, excluding submodules: exactly three iteration-18 code/test commits clean before the documentation commit.
 - Tracked primary-repository files, excluding submodule trees: 584.
 - Tracked Go files, excluding submodule trees: 377.
 - Root Go packages reported by `go list ./...`: 32.
@@ -35,7 +36,7 @@ The most important qualification is platform scope. Linux/amd64 remains the matu
 - Source TODO/FIXME/XXX markers outside submodules, graph output, and the planning ledger: 5.
 - No release tag was shown in the current checkout; installation documentation still describes `v0.1.0` as the future public-prebuilt transition.
 
-Recent development has concentrated on WebAssembly 2.0 closeout, package-manager commands, funcref table initialization, plugin installation/publishing, bulk memory, table operations, and railshot constant/flags optimizations.
+Recent development has concentrated on gap-free staged tail-call files, retained direct and typed cross-instance tail transitions including one exact mixed-float direct shape, bounded memory64 scalar/SIMD/data/copy/fill lifecycle, a first bounded table64 execution/product slice, finite shared-basedata ownership including imported numeric globals and one bounded imported table, complete Core 3 multi-memory family accounting, snapshot-v3 owned-local memory-set restoration, strict compact imports, codec v26, and the pinned Release 3 oracle while preserving the completed WebAssembly 2.0 product surface.
 
 ## Knowledge graph
 
@@ -90,10 +91,14 @@ Important architectural properties:
 
 ### Partial
 
+- WebAssembly 3.0 tail calls: amd64 local register/wrapper direct, tail-position host imports, retained integer and exact `(i32, f64) -> f64` cross-instance direct with a separate fixed root/nested return record, private-table indirect, tagged same-instance scalar-wrapper typed-reference, retained cross-instance root/nested typed-reference, and one canonical funcref-result milestone; public admission remains disabled. All three staged official files are gap-free: `return_call` 47 commands / 3 modules / 33 assertions / 11 invalid; `return_call_indirect` 79 / 3 / 49 / 16 invalid / 11 malformed; `return_call_ref` 51 / 5 / 35 / 11 invalid. Wider direct signatures, general tables, foreign-float/general reference results, snapshots, and arm64 remain explicit failures.
+- Typed function references: exact structural metadata/storage matching, `call_ref`, null-control lowering, exact public/host/global boundaries, harness identity, dynamic table lifecycle, and bounded 64-bit native structural keys are staged internally. Deliberate legacy 32-bit collisions separate; recursive/cross-instance keys agree; over-budget canonicalization fails closed without a global cache. Distinct `InstanceExport` producers are retained through consumer close; shifted cross-instance `call_ref` and root/nested `return_call_ref` survive producer logical close; null/wrong-key/host traps recover cleanly. Feature bits and snapshot gates remain exact. Broader tails, live reference snapshot state, public admission, remaining GC/reference instructions, and arm64 completion remain.
+- Multi-memory has strict staged AST/byte-backed validation, compact imports, exact product directories, codec v26, policy accounting, duplicate aliases, snapshot-v3 owned-local state, and a finite owner/tenant basedata serializer. Linux/amd64 explicit bounds executes every indexed scalar/SIMD/bulk/data form. The complete 42-file matrix is gap-free at 913 commands / 79 modules / 771 assertions. The serializer retains finite imported scalar-global pointers and one bounded imported funcref table under a null/get/set/size-only scan, with close-order/race/trap-atomicity proof. Local/reference/vector globals, local/multiple/wider-operation tables, native imported calls, host callbacks, snapshots, guard mode, public admission, and arm64 remain gated.
+- Memory64 now has one internal linux/amd64 explicit-bounds local slice: exact 64-bit metadata/codec limits, explicit max <=65,535 pages, `i64` size/grow, all 23 integer/float scalar operations, every SIMD memory load/store/extend/splat/zero/lane form, active data initialization, and `memory.copy`/`memory.fill`. Scalar/SIMD/data/bulk paths check u64 carry and exact end bounds; overlap is memmove-correct; trapping SIMD/bulk writes are atomic and memory32 SIMD/bulk code is unchanged. The six-file matrix remains 807 commands / 7 modules / 92 assertions / 36 gates / 530 blocked / 83 invalid / 59 malformed. Imports, shared/multi-memory, passive `memory.init`/`data.drop`, unbounded/excessive reservations, guard mode, public admission, snapshots, and arm64 remain gated. Table64 now executes one local explicit-max `size/get/set` slice with i64 indexes and codec-v26 metadata; imports, wider operations, public/product snapshots, guard mode, and arm64 remain gated. Exception handling and WasmGC retain non-product foundations.
 
 ### Planned
 
-- Tail calls.
+- Complete every mandatory WebAssembly Core 3.0 family and reach zero unexplained Release 3 failures/skips.
 - Threads and atomics.
 - Cooperative cancellation is implemented on ARM64 at function entries and loop headers; amd64 polling remains planned.
 - Wasm-level stack traces.
@@ -103,9 +108,6 @@ Important architectural properties:
 
 ### Explicit non-goals
 
-- Multi-memory.
-- Wasm exception handling.
-- Wasm GC.
 - An interpreter tier.
 - A separate SSA/IR execution tier.
 
@@ -122,9 +124,9 @@ Notable runtime/product behavior:
 - Explicit runtime stores bound reference identities and reject incompatible cross-store sharing.
 - Host funcrefs, reference globals, and externref tables have bounded owner APIs.
 - Shared memories, tables, globals, and cross-instance functions are supported subject to exact type/store compatibility.
-- Snapshot products reject table/reference-global modules; eligible small numeric-memory instances can use an in-place reset fast path.
+- Snapshot products reject table/reference-global modules; snapshot v3 internally preserves complete owned-local multi-memory sets while imported/shared/registered shapes and public multi-memory admission remain gated; eligible small numeric-memory instances can use an in-place reset fast path.
 - Module inspection returns deterministic index-ordered function/global/table metadata and exact limits/types.
-- Compiled artifact codec v20 persists structural WebAssembly 2.0 metadata without serializing live runtime identity.
+- Compiled artifact codec v26 persists structural WebAssembly 2.0 metadata, exact table address forms, extended constant-expression initializer programs, full-width required features, WebAssembly 3.0 recursive/indexed type descriptors, exact indexed-memory/data/address64 metadata, and 64-bit native type keys without serializing live runtime identity; typed-reference, multi-memory, memory64, and table64 public execution remain gated.
 
 ## CLI and packaging
 
@@ -194,6 +196,16 @@ Representative documented results versus wazero:
 - Stripped Go CLI: about 2.1 MB.
 - TinyGo size build: about 0.43 MB; about 0.16 MB with UPX in the recorded experiment.
 - Project stats snapshot reports zero cgo lines and 79% generated test coverage.
+
+Iteration 20 current-host watchpoints measured memory64 64-byte `memory.fill` at 40.14-41.75 ns/op, table64 `table.size` at 35.02-42.10 ns/op, and exact mixed-float direct cross-instance tails at 61.37-63.30 ns/op; all report 0 B/op and 0 allocations/op. Codec v26 preserves `Compiled=712` bytes while `tableDef` grows from 48 to 56 bytes for exact per-table address-form metadata. The complete staged multi-memory and tail matrices and the six-file memory64 accounting remain unchanged.
+
+Iteration 19 current-host watchpoints measured retained direct cross-instance tails at 60.97-61.67 ns/op, sole imported-table tenant calls at 108.7-109.5 ns/op, and memory64 `v128.load` at 35.03-35.82 ns/op; all report 0 B/op and 0 allocations/op. The complete staged multi-memory matrix remains 913 commands / 79 modules / 771 assertions with no gates or blocked commands, all three staged tail files remain gap-free, and the six-file memory64 accounting matrix remains 807 commands / 7 modules / 92 assertions / 36 feature gates / 530 blocked dependents / 83 invalid / 59 malformed.
+
+Iteration 18 current-host watchpoints measured imported-numeric-global tenants at 78.63-82.27 ns/op, canonical funcref-result tails at 97.15-99.04 ns/op, memory64 f64 load at 39.01-39.67 ns/op, and memory64 integer store/load at 38.13-40.92 ns/op; all report 0 B/op and 0 allocations/op.
+
+Iteration 17 current-host watchpoints measured executable shared-basedata owners at 80.14-87.47 ns/op, their staged tenants at 92.39-98.03 ns/op, the pre-existing non-executable registered tenant at 90.55-108.2 ns/op, memory64 f64 load at 35.68-36.56 ns/op, and memory64 integer store/load at 36.10-36.83 ns/op; all report 0 B/op and 0 allocations/op.
+
+Iteration 16 current-host watchpoints measured root cross-instance `return_call_ref` at 63.65-64.89 ns/op, nested continuation at 75.82-78.51 ns/op, and staged memory64 store/load at 36.73-37.33 ns/op; all report 0 B/op and 0 allocations/op. The original memory64 product fixture remains 144 Wasm bytes / 744 code bytes / 1,069 codec bytes / 196,608 reserved bytes; the 19-operation integer matrix is 502 Wasm bytes and 3,227 code bytes. The sparse snapshot-v3 fixture remains 198,339 bytes for 327,680 live bytes; `Snapshot=184`, `memorySnap=32`, `Compiled=712`, `Instance=792`, native descriptors=32, and basedata=256 bytes remain unchanged.
 
 These are point-in-time machine-specific measurements. Future hot-path or footprint claims should continue to include measured before/after data.
 

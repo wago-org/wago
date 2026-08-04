@@ -3,6 +3,7 @@ package wasm
 import (
 	"errors"
 	"testing"
+	"unsafe"
 )
 
 func constFor(t ValType) Instruction {
@@ -21,63 +22,50 @@ func constFor(t ValType) Instruction {
 }
 
 func TestValidatorCoverageCoreOpcodeFamilies(t *testing.T) {
-	for k, vt := range unary {
-		t.Run(k.String(), func(t *testing.T) {
-			if err := ValidateModule(modWithFunc(nil, []ValType{vt}, constFor(vt), Instruction{Kind: k})); err != nil {
+	const wantEffects = 151
+	count := 0
+	for rawKind, effect := range opEffects {
+		if effect.cat == effNone {
+			continue
+		}
+		count++
+		kind := InstrKind(rawKind)
+		a, b := effect.a.valType(), effect.b.valType()
+		t.Run(kind.String(), func(t *testing.T) {
+			var module *Module
+			switch effect.cat {
+			case effUnary:
+				module = modWithFunc(nil, []ValType{a}, constFor(a), Instruction{Kind: kind})
+			case effBinary:
+				module = modWithFunc(nil, []ValType{a}, constFor(a), constFor(a), Instruction{Kind: kind})
+			case effCompare:
+				module = modWithFunc(nil, []ValType{I32}, constFor(a), constFor(a), Instruction{Kind: kind})
+			case effTest:
+				module = modWithFunc(nil, []ValType{I32}, constFor(a), Instruction{Kind: kind})
+			case effConv:
+				module = modWithFunc(nil, []ValType{b}, constFor(a), Instruction{Kind: kind})
+			case effLoad:
+				module = modWithFunc(nil, []ValType{a}, Instruction{Kind: InstrI32Const}, Instruction{Kind: kind})
+				module.Memories = []MemType{{Limits: Limits{Min: 1}}}
+			case effStore:
+				module = modWithFunc(nil, nil, Instruction{Kind: InstrI32Const}, constFor(a), Instruction{Kind: kind})
+				module.Memories = []MemType{{Limits: Limits{Min: 1}}}
+			default:
+				t.Fatalf("unknown effect category %d", effect.cat)
+			}
+			if err := ValidateModule(module); err != nil {
 				t.Fatalf("ValidateModule: %v", err)
 			}
 		})
 	}
-	for k, vt := range binaryOps {
-		t.Run(k.String(), func(t *testing.T) {
-			if err := ValidateModule(modWithFunc(nil, []ValType{vt}, constFor(vt), constFor(vt), Instruction{Kind: k})); err != nil {
-				t.Fatalf("ValidateModule: %v", err)
-			}
-		})
-	}
-	for k, vt := range compare {
-		t.Run(k.String(), func(t *testing.T) {
-			if err := ValidateModule(modWithFunc(nil, []ValType{I32}, constFor(vt), constFor(vt), Instruction{Kind: k})); err != nil {
-				t.Fatalf("ValidateModule: %v", err)
-			}
-		})
-	}
-	for k, vt := range test {
-		t.Run(k.String(), func(t *testing.T) {
-			if err := ValidateModule(modWithFunc(nil, []ValType{I32}, constFor(vt), Instruction{Kind: k})); err != nil {
-				t.Fatalf("ValidateModule: %v", err)
-			}
-		})
-	}
-	for k, eff := range conversions {
-		t.Run(k.String(), func(t *testing.T) {
-			if err := ValidateModule(modWithFunc(nil, []ValType{eff.to}, constFor(eff.from), Instruction{Kind: k})); err != nil {
-				t.Fatalf("ValidateModule: %v", err)
-			}
-		})
-	}
-	for k, eff := range loads {
-		t.Run(k.String(), func(t *testing.T) {
-			m := modWithFunc(nil, []ValType{eff.t}, Instruction{Kind: InstrI32Const}, Instruction{Kind: k})
-			m.Memories = []MemType{{Limits: Limits{Min: 1}}}
-			if err := ValidateModule(m); err != nil {
-				t.Fatalf("ValidateModule: %v", err)
-			}
-		})
-	}
-	for k, eff := range stores {
-		t.Run(k.String(), func(t *testing.T) {
-			m := modWithFunc(nil, nil, Instruction{Kind: InstrI32Const}, constFor(eff.t), Instruction{Kind: k})
-			m.Memories = []MemType{{Limits: Limits{Min: 1}}}
-			if err := ValidateModule(m); err != nil {
-				t.Fatalf("ValidateModule: %v", err)
-			}
-		})
+	if count != wantEffects {
+		t.Fatalf("core opcode effects = %d, want %d", count, wantEffects)
 	}
 }
 
 func TestValidatorCoverageSIMDOpcodeFamilies(t *testing.T) {
-	for k := range simdLoads {
+	for _, effect := range simdLoads {
+		k := effect.kind
 		t.Run(k.String(), func(t *testing.T) {
 			m := modWithFunc(nil, []ValType{V128}, Instruction{Kind: InstrI32Const}, Instruction{Kind: k})
 			m.Memories = []MemType{{Limits: Limits{Min: 1}}}
@@ -86,7 +74,8 @@ func TestValidatorCoverageSIMDOpcodeFamilies(t *testing.T) {
 			}
 		})
 	}
-	for k := range simdMemLane {
+	for _, effect := range simdMemLane {
+		k := effect.kind
 		t.Run(k.String(), func(t *testing.T) {
 			body := []Instruction{{Kind: InstrI32Const}, {Kind: InstrV128Const}, {Kind: k}}
 			results := []ValType{V128}
@@ -100,35 +89,38 @@ func TestValidatorCoverageSIMDOpcodeFamilies(t *testing.T) {
 			}
 		})
 	}
-	for k, scalar := range simdSplat {
+	for _, effect := range simdSplat {
+		k, scalar := effect.kind, effect.scalar.valType()
 		t.Run(k.String(), func(t *testing.T) {
 			if err := ValidateModule(modWithFunc(nil, []ValType{V128}, constFor(scalar), Instruction{Kind: k})); err != nil {
 				t.Fatalf("ValidateModule: %v", err)
 			}
 		})
 	}
-	for k, scalar := range simdExtract {
+	for _, effect := range simdExtract {
+		k, scalar := effect.kind, effect.scalar.valType()
 		t.Run(k.String(), func(t *testing.T) {
 			if err := ValidateModule(modWithFunc(nil, []ValType{scalar}, Instruction{Kind: InstrV128Const}, Instruction{Kind: k})); err != nil {
 				t.Fatalf("ValidateModule: %v", err)
 			}
 		})
 	}
-	for k, scalar := range simdReplace {
+	for _, effect := range simdReplace {
+		k, scalar := effect.kind, effect.scalar.valType()
 		t.Run(k.String(), func(t *testing.T) {
 			if err := ValidateModule(modWithFunc(nil, []ValType{V128}, Instruction{Kind: InstrV128Const}, constFor(scalar), Instruction{Kind: k})); err != nil {
 				t.Fatalf("ValidateModule: %v", err)
 			}
 		})
 	}
-	for k := range simdShift {
+	for _, k := range simdShift {
 		t.Run(k.String(), func(t *testing.T) {
 			if err := ValidateModule(modWithFunc(nil, []ValType{V128}, Instruction{Kind: InstrV128Const}, Instruction{Kind: InstrI32Const}, Instruction{Kind: k})); err != nil {
 				t.Fatalf("ValidateModule: %v", err)
 			}
 		})
 	}
-	for k := range simdUnary {
+	for _, k := range simdUnary {
 		t.Run(k.String(), func(t *testing.T) {
 			body := []Instruction{{Kind: InstrV128Const}, {Kind: k}}
 			if k == InstrI8x16Swizzle {
@@ -139,8 +131,8 @@ func TestValidatorCoverageSIMDOpcodeFamilies(t *testing.T) {
 			}
 		})
 	}
-	for k := range simdBinary {
-		if _, isShift := simdShift[k]; isShift {
+	for _, k := range simdBinary {
+		if simdEffects[k].cat == simdEffShift {
 			continue
 		}
 		t.Run(k.String(), func(t *testing.T) {
@@ -151,20 +143,71 @@ func TestValidatorCoverageSIMDOpcodeFamilies(t *testing.T) {
 	}
 }
 
-func TestSIMDEffectTableMatchesAdmissionSet(t *testing.T) {
-	for k := range simdAll {
-		if simdEffects[k].cat == simdNone {
-			t.Fatalf("%s is admitted by simdAll but has no validation effect", k)
+func TestValidationEffectTablesStayCompact(t *testing.T) {
+	for name, size := range map[string]uintptr{
+		"opEffect":         unsafe.Sizeof(opEffect{}),
+		"atomicEffect":     unsafe.Sizeof(atomicEffect{}),
+		"simdEffect":       unsafe.Sizeof(simdEffect{}),
+		"simdMemEffect":    unsafe.Sizeof(simdMemEffect{}),
+		"simdScalarEffect": unsafe.Sizeof(simdScalarEffect{}),
+		"simdLaneLimit":    unsafe.Sizeof(simdLaneLimit{}),
+	} {
+		want := uintptr(4)
+		if name == "atomicEffect" {
+			want = 2
+		}
+		if size != want {
+			t.Errorf("%s size = %d, want %d", name, size, want)
 		}
 	}
+	if len(atomicLoadEffects) != 7 {
+		t.Fatalf("atomic effect count = %d, want 7", len(atomicLoadEffects))
+	}
+	wantAtomic := [...]atomicEffect{
+		{typ: effectI32, align: 2},
+		{typ: effectI64, align: 3},
+		{typ: effectI32},
+		{typ: effectI32, align: 1},
+		{typ: effectI64},
+		{typ: effectI64, align: 1},
+		{typ: effectI64, align: 2},
+	}
+	for i, want := range wantAtomic {
+		load, ok := lookupAtomicEffect(atomicLoadEffects[:], InstrI32AtomicLoad, InstrI32AtomicLoad+InstrKind(i))
+		if !ok || load != want {
+			t.Errorf("atomic load effect %d = (%v, %v), want (%v, true)", i, load, ok, want)
+		}
+		store, ok := lookupAtomicEffect(atomicLoadEffects[:], InstrI32AtomicStore, InstrI32AtomicStore+InstrKind(i))
+		if !ok || store != want {
+			t.Errorf("atomic store effect %d = (%v, %v), want (%v, true)", i, store, ok, want)
+		}
+	}
+	if _, ok := lookupAtomicEffect(atomicLoadEffects[:], InstrI32AtomicLoad, InstrI32AtomicLoad-1); ok {
+		t.Error("atomic effect lookup accepted a kind below its range")
+	}
+	if _, ok := lookupAtomicEffect(atomicLoadEffects[:], InstrI32AtomicStore, InstrI32AtomicStore+InstrKind(len(atomicLoadEffects))); ok {
+		t.Error("atomic effect lookup accepted a kind above its range")
+	}
+	const wantSIMDSourceEntries = 268
+	if got := len(simdLoads) + len(simdMemLane) + len(simdLaneLimits) + len(simdSplat) + len(simdExtract) + len(simdReplace) + len(simdShift) + len(simdUnary) + len(simdBinary) + len(simdTernary); got != wantSIMDSourceEntries {
+		t.Fatalf("SIMD source effect entries = %d, want %d", got, wantSIMDSourceEntries)
+	}
+}
+
+func TestSIMDEffectTableMatchesAdmissionSet(t *testing.T) {
+	admitted := SIMDValidationInstructionKinds()
 	for k, eff := range simdEffects {
-		if eff.cat == simdNone {
-			continue
-		}
 		kind := InstrKind(k)
-		if _, ok := simdAll[kind]; !ok {
-			t.Fatalf("%s has validation effect but is missing from simdAll", kind)
+		_, inSnapshot := admitted[kind]
+		if got := IsSIMDValidationInstructionKind(kind); got != (eff.cat != simdNone) {
+			t.Fatalf("%s admission = %v, effect category = %d", kind, got, eff.cat)
 		}
+		if inSnapshot != (eff.cat != simdNone) {
+			t.Fatalf("%s snapshot admission = %v, effect category = %d", kind, inSnapshot, eff.cat)
+		}
+	}
+	if IsSIMDValidationInstructionKind(numInstrKinds) {
+		t.Fatal("out-of-range instruction kind admitted as SIMD")
 	}
 }
 
@@ -197,6 +240,9 @@ func TestValidatorProposalCoverageArrayNewForms(t *testing.T) {
 			if tc.kind == InstrArrayNewFixed {
 				m.Code[0].Body.Instrs[len(m.Code[0].Body.Instrs)-1].Index2 = 2
 			}
+			if tc.kind == InstrArrayNewElem {
+				m.Types[0] = arrayType(field(FuncRef, Var))
+			}
 			if err := ValidateModule(m); err != nil {
 				t.Fatalf("ValidateModule: %v", err)
 			}
@@ -208,7 +254,7 @@ func TestValidatorProposalCoverageArrayNewForms(t *testing.T) {
 	})
 	t.Run("default rejects non-nullable reference element", func(t *testing.T) {
 		m := &Module{
-			Types:     []RecType{arrayType(field(refToType(0, false), Var)), ft(nil, nil)},
+			Types:     []RecType{arrayType(field(RefVal(Ref(false, IndexedHeap(TypeIdx{Index: 0, Rec: true}), false)), Var)), ft(nil, nil)},
 			FuncTypes: []TypeIdx{{Index: 1}},
 			Code:      []Func{{Body: Expr{Instrs: []Instruction{{Kind: InstrI32Const}, {Kind: InstrArrayNewDefault, Index: 0}, {Kind: InstrDrop}}}}},
 		}
@@ -221,8 +267,33 @@ func TestValidatorProposalCoverageArrayNewForms(t *testing.T) {
 	})
 	t.Run("new_elem unknown segment", func(t *testing.T) {
 		m := arrayMod(InstrArrayNewElem, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrI32Const})
+		m.Types[0] = arrayType(field(FuncRef, Var))
 		m.Code[0].Body.Instrs[2].Index2 = 1
 		expectValidateErr(t, m, ErrUnknownTable)
+	})
+	t.Run("new_data rejects reference array", func(t *testing.T) {
+		m := arrayMod(InstrArrayNewData, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrI32Const})
+		m.Types[0] = arrayType(field(FuncRef, Var))
+		expectValidateErr(t, m, ErrTypeMismatch)
+	})
+	t.Run("new_elem rejects numeric array", func(t *testing.T) {
+		m := arrayMod(InstrArrayNewElem, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrI32Const})
+		expectValidateErr(t, m, ErrTypeMismatch)
+	})
+	t.Run("new_elem rejects incompatible segment", func(t *testing.T) {
+		m := arrayMod(InstrArrayNewElem, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrI32Const})
+		m.Types[0] = arrayType(field(ExternRef, Var))
+		expectValidateErr(t, m, ErrTypeMismatch)
+	})
+	t.Run("new_fixed unreachable maximum count is constant time", func(t *testing.T) {
+		m := &Module{
+			Types:     []RecType{arrayType(field(I32, Var)), ft(nil, []ValType{refToType(0, false)})},
+			FuncTypes: []TypeIdx{{Index: 1}},
+			Code:      []Func{{Body: Expr{Instrs: []Instruction{{Kind: InstrUnreachable}, {Kind: InstrArrayNewFixed, Index: 0, Index2: ^uint32(0)}}}}},
+		}
+		if err := ValidateModule(m); err != nil {
+			t.Fatalf("ValidateModule: %v", err)
+		}
 	})
 }
 
@@ -259,14 +330,39 @@ func TestValidatorProposalCoverageGCBranches(t *testing.T) {
 			t.Fatalf("ValidateModule: %v", err)
 		}
 	})
-	t.Run("array copy init data init elem", func(t *testing.T) {
-		m := &Module{
-			Types:     []RecType{arrayType(field(I32, Var)), arrayType(field(I32, Var)), ft([]ValType{refToType(0, true), refToType(1, true)}, nil)},
+	t.Run("array bulk mutability and storage compatibility", func(t *testing.T) {
+		immutableFill := &Module{
+			Types:     []RecType{arrayType(packedField(PackI8, Const)), ft([]ValType{refToType(0, true)}, nil)},
+			FuncTypes: []TypeIdx{{Index: 1}},
+			Code: []Func{{Body: Expr{Instrs: []Instruction{
+				{Kind: InstrLocalGet, Index: 0}, {Kind: InstrI32Const}, {Kind: InstrI32Const}, {Kind: InstrI32Const}, {Kind: InstrArrayFill, Index: 0},
+			}}}},
+		}
+		expectValidateErr(t, immutableFill, ErrTypeMismatch)
+
+		mismatchedCopy := &Module{
+			Types: []RecType{
+				arrayType(packedField(PackI8, Var)), arrayType(packedField(PackI16, Const)),
+				ft([]ValType{refToType(0, true), refToType(1, true)}, nil),
+			},
 			FuncTypes: []TypeIdx{{Index: 2}},
 			Code: []Func{{Body: Expr{Instrs: []Instruction{
 				{Kind: InstrLocalGet, Index: 0}, {Kind: InstrI32Const}, {Kind: InstrLocalGet, Index: 1}, {Kind: InstrI32Const}, {Kind: InstrI32Const}, {Kind: InstrArrayCopy, Index: 0, Index2: 1},
-				{Kind: InstrLocalGet, Index: 0}, {Kind: InstrI32Const}, {Kind: InstrI32Const}, {Kind: InstrArrayInitData, Index: 0},
-				{Kind: InstrLocalGet, Index: 0}, {Kind: InstrI32Const}, {Kind: InstrI32Const}, {Kind: InstrArrayInitElem, Index: 0},
+			}}}},
+		}
+		expectValidateErr(t, mismatchedCopy, ErrTypeMismatch)
+	})
+	t.Run("array copy init data init elem", func(t *testing.T) {
+		m := &Module{
+			Types: []RecType{
+				arrayType(field(I32, Var)), arrayType(field(I32, Var)), arrayType(field(FuncRef, Var)),
+				ft([]ValType{refToType(0, true), refToType(1, true), refToType(2, true)}, nil),
+			},
+			FuncTypes: []TypeIdx{{Index: 3}},
+			Code: []Func{{Body: Expr{Instrs: []Instruction{
+				{Kind: InstrLocalGet, Index: 0}, {Kind: InstrI32Const}, {Kind: InstrLocalGet, Index: 1}, {Kind: InstrI32Const}, {Kind: InstrI32Const}, {Kind: InstrArrayCopy, Index: 0, Index2: 1},
+				{Kind: InstrLocalGet, Index: 0}, {Kind: InstrI32Const}, {Kind: InstrI32Const}, {Kind: InstrI32Const}, {Kind: InstrArrayInitData, Index: 0},
+				{Kind: InstrLocalGet, Index: 2}, {Kind: InstrI32Const}, {Kind: InstrI32Const}, {Kind: InstrI32Const}, {Kind: InstrArrayInitElem, Index: 2},
 			}}}},
 			DataCount: ptr(uint32(1)),
 			Data:      []Data{{Mode: DataMode{Kind: DataPassive}}},
@@ -544,6 +640,44 @@ func TestValidatorCoverageTryTableAndCastBranches(t *testing.T) {
 		)
 		if err := ValidateModule(fail); err != nil {
 			t.Fatalf("ValidateModule br_on_cast_fail: %v", err)
+		}
+	})
+	t.Run("br_on_cast nullable target refines failed edge non-null", func(t *testing.T) {
+		nonNullAny := RefVal(Ref(false, AbsHeap(HeapAny), false))
+		nullableStruct := RefVal(Ref(true, AbsHeap(HeapStruct), false))
+		inner := Instruction{Kind: InstrBlock, ext: &instrExt{
+			BlockType: BlockType{Kind: BlockVal, Val: nonNullAny},
+			Body: Expr{Instrs: []Instruction{
+				{Kind: InstrLocalGet, Index: 0},
+				{Kind: InstrBrOnCast, Index: 1, Cast: CastOp{SourceNullable: true, TargetNullable: true}, ext: &instrExt{HeapType: AbsHeap(HeapAny), HeapType2: AbsHeap(HeapStruct)}},
+			}},
+		}}
+		outer := Instruction{Kind: InstrBlock, ext: &instrExt{
+			BlockType: BlockType{Kind: BlockVal, Val: nullableStruct},
+			Body:      Expr{Instrs: []Instruction{inner, {Kind: InstrUnreachable}}},
+		}}
+		m := modWithFunc([]ValType{AnyRef}, nil, outer, Instruction{Kind: InstrDrop})
+		if err := ValidateModule(m); err != nil {
+			t.Fatalf("ValidateModule nullable br_on_cast refinement: %v", err)
+		}
+	})
+	t.Run("br_on_cast_fail nullable target refines branch edge non-null", func(t *testing.T) {
+		nonNullAny := RefVal(Ref(false, AbsHeap(HeapAny), false))
+		nullableStruct := RefVal(Ref(true, AbsHeap(HeapStruct), false))
+		inner := Instruction{Kind: InstrBlock, ext: &instrExt{
+			BlockType: BlockType{Kind: BlockVal, Val: nullableStruct},
+			Body: Expr{Instrs: []Instruction{
+				{Kind: InstrLocalGet, Index: 0},
+				{Kind: InstrBrOnCastFail, Index: 1, Cast: CastOp{SourceNullable: true, TargetNullable: true}, ext: &instrExt{HeapType: AbsHeap(HeapAny), HeapType2: AbsHeap(HeapStruct)}},
+			}},
+		}}
+		outer := Instruction{Kind: InstrBlock, ext: &instrExt{
+			BlockType: BlockType{Kind: BlockVal, Val: nonNullAny},
+			Body:      Expr{Instrs: []Instruction{inner, {Kind: InstrUnreachable}}},
+		}}
+		m := modWithFunc([]ValType{AnyRef}, nil, outer, Instruction{Kind: InstrDrop})
+		if err := ValidateModule(m); err != nil {
+			t.Fatalf("ValidateModule nullable br_on_cast_fail refinement: %v", err)
 		}
 	})
 }
@@ -984,7 +1118,8 @@ func TestValidatorCoverageMoreCoreStepBranches(t *testing.T) {
 		if err := ValidateModule(m); err != nil {
 			t.Fatalf("br_on_null success: %v", err)
 		}
-		m = modWithFunc(nil, nil, Instruction{Kind: InstrRefNull, ext: &instrExt{RefType: AbsRef(HeapEq)}}, Instruction{Kind: InstrBrOnNonNull, Index: 0}, Instruction{Kind: InstrDrop})
+		nonNullEq := RefVal(Ref(false, AbsHeap(HeapEq), false))
+		m = modWithFunc(nil, []ValType{nonNullEq}, Instruction{Kind: InstrRefNull, ext: &instrExt{RefType: AbsRef(HeapEq)}}, Instruction{Kind: InstrBrOnNonNull, Index: 0}, Instruction{Kind: InstrUnreachable})
 		if err := ValidateModule(m); err != nil {
 			t.Fatalf("br_on_non_null success: %v", err)
 		}
@@ -1037,7 +1172,7 @@ func TestValidatorCoverageGCAndSIMDNegativeBranches(t *testing.T) {
 		}
 	})
 	t.Run("struct and array constructor failures", func(t *testing.T) {
-		expectValidateErr(t, &Module{Types: []RecType{structType([]FieldType{field(refToType(0, false), Var)}, TypeMetadata{}), ft(nil, nil)}, FuncTypes: []TypeIdx{{Index: 1}}, Code: []Func{{Body: Expr{Instrs: []Instruction{{Kind: InstrStructNewDefault, Index: 0}, {Kind: InstrDrop}}}}}}, ErrTypeMismatch)
+		expectValidateErr(t, &Module{Types: []RecType{structType([]FieldType{field(RefVal(Ref(false, IndexedHeap(TypeIdx{Index: 0, Rec: true}), false)), Var)}, TypeMetadata{}), ft(nil, nil)}, FuncTypes: []TypeIdx{{Index: 1}}, Code: []Func{{Body: Expr{Instrs: []Instruction{{Kind: InstrStructNewDefault, Index: 0}, {Kind: InstrDrop}}}}}}, ErrTypeMismatch)
 		expectValidateErr(t, &Module{Types: []RecType{structType([]FieldType{field(I32, Var)}, TypeMetadata{}), ft(nil, nil)}, FuncTypes: []TypeIdx{{Index: 1}}, Code: []Func{{Body: Expr{Instrs: []Instruction{{Kind: InstrStructNew, Index: 0}, {Kind: InstrDrop}}}}}}, ErrTypeMismatch)
 		expectValidateErr(t, &Module{Types: []RecType{arrayType(field(I32, Var)), ft(nil, nil)}, FuncTypes: []TypeIdx{{Index: 1}}, Code: []Func{{Body: Expr{Instrs: []Instruction{{Kind: InstrArrayNewFixed, Index: 0, Index2: 1}, {Kind: InstrDrop}}}}}}, ErrTypeMismatch)
 	})
@@ -1139,7 +1274,9 @@ func TestValidatorCoverageMoreProposalBranches(t *testing.T) {
 		expectStepErr(t, coverageFuncValidator(m, nil), Instruction{Kind: InstrArrayInitData, Index: 1, Index2: 99}, ErrInvalidDataCount)
 		expectStepErr(t, coverageFuncValidatorWithStack(m, refToType(1, true), I32), Instruction{Kind: InstrArrayInitData, Index: 1}, ErrTypeMismatch)
 		expectStepErr(t, coverageFuncValidator(m, nil), Instruction{Kind: InstrArrayInitElem, Index: 99}, ErrUnknownType)
-		expectStepErr(t, coverageFuncValidator(m, nil), Instruction{Kind: InstrArrayInitElem, Index: 1, Index2: 99}, ErrUnknownTable)
+		refArrays := gcModule()
+		refArrays.Types = append(refArrays.Types, arrayType(field(FuncRef, Var)))
+		expectStepErr(t, coverageFuncValidator(refArrays, nil), Instruction{Kind: InstrArrayInitElem, Index: 5, Index2: 99}, ErrUnknownTable)
 		expectStepErr(t, coverageFuncValidatorWithStack(m, refToType(1, true), I32), Instruction{Kind: InstrArrayInitElem, Index: 1}, ErrTypeMismatch)
 	})
 	t.Run("constructors and br_on_cast branches", func(t *testing.T) {
@@ -1366,7 +1503,8 @@ func TestValidatorCoverageLastPassBranches(t *testing.T) {
 		if err := coverageFuncValidatorWithStack(gm, I32, I32).step(&Instruction{Kind: InstrArrayNewData, Index: 0}); err != nil {
 			t.Fatalf("array.new_data success: %v", err)
 		}
-		if err := coverageFuncValidatorWithStack(gm, I32, I32).step(&Instruction{Kind: InstrArrayNewElem, Index: 0}); err != nil {
+		refGM := &Module{Types: []RecType{arrayType(field(FuncRef, Var))}, Elements: gm.Elements}
+		if err := coverageFuncValidatorWithStack(refGM, I32, I32).step(&Instruction{Kind: InstrArrayNewElem, Index: 0}); err != nil {
 			t.Fatalf("array.new_elem success: %v", err)
 		}
 		fv := coverageFuncValidator(&Module{}, nil)

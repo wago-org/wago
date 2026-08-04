@@ -35,6 +35,24 @@ func TestValidateRefFuncRequiresDeclaration(t *testing.T) {
 	}
 }
 
+func TestValidateRefFuncCarriesDeclaredType(t *testing.T) {
+	binary := module(
+		section(secType,
+			0x02,
+			0x60, 0x01, 0x7f, 0x01, 0x7f, // type 0: (i32) -> i32
+			0x60, 0x00, 0x00, // type 1: () -> ()
+		),
+		section(secFunction, 0x02, 0x00, 0x01),
+		section(secElement, 0x01, 0x03, 0x00, 0x01, 0x00), // declare func 0
+		section(secCode,
+			0x02,
+			0x04, 0x00, 0x20, 0x00, 0x0b,
+			0x09, 0x01, 0x01, 0x63, 0x00, 0xd2, 0x00, 0x21, 0x00, 0x0b,
+		),
+	)
+	assertRefFuncValidationBothPaths(t, binary, true)
+}
+
 func TestValidateRefFuncDeclarationsOutsideFunctions(t *testing.T) {
 	cases := []struct {
 		name     string

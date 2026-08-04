@@ -4,7 +4,7 @@ package wasm
 // Instruction struct is ~56 bytes and this is the validator's innermost hot path,
 // so passing a value here shows up as runtime.duffcopy under profiling.
 func (v *funcValidator) step(in *Instruction) error {
-	if v.constOnly && !isConstInstruction(in.Kind) {
+	if v.constOnly && !isConstInstruction(in.Kind) && !(v.features.GCConstExpr && (in.Kind == InstrStructNew || in.Kind == InstrArrayNew || in.Kind == InstrArrayNewDefault || in.Kind == InstrRefI31 || in.Kind == InstrAnyConvertExtern || in.Kind == InstrExternConvertAny)) {
 		return v.verr(ErrConstExprRequired, in.Kind.String())
 	}
 	for _, t := range in.ValTypes() {
@@ -13,21 +13,21 @@ func (v *funcValidator) step(in *Instruction) error {
 		}
 	}
 	if e := opEffects[in.Kind]; e.cat == effLoad {
-		addr, err := v.checkMemArg(in.MemArg(), e.align)
+		addr, err := v.checkMemArg(in.MemArg(), uint32(e.align))
 		if err != nil {
 			return err
 		}
 		if err := v.popExpect(addr); err != nil {
 			return err
 		}
-		v.push(e.a)
+		v.push(e.a.valType())
 		return nil
 	} else if e.cat == effStore {
-		addr, err := v.checkMemArg(in.MemArg(), e.align)
+		addr, err := v.checkMemArg(in.MemArg(), uint32(e.align))
 		if err != nil {
 			return err
 		}
-		if err := v.popExpect(e.a); err != nil {
+		if err := v.popExpect(e.a.valType()); err != nil {
 			return err
 		}
 		return v.popExpect(addr)
@@ -56,11 +56,14 @@ func (v *funcValidator) step(in *Instruction) error {
 		_, err = v.popCtrl()
 		return err
 	case InstrIf:
-		if err := v.popExpect(I32); err != nil {
-			return err
-		}
+		// Resolve and validate the block type before inspecting operands. Invalid
+		// type indexes are declaration errors even when the condition stack is also
+		// malformed, matching the Core validation order.
 		ins, outs, err := v.blockSig(in.BlockType())
 		if err != nil {
+			return err
+		}
+		if err := v.popExpect(I32); err != nil {
 			return err
 		}
 		baseVals := append([]val(nil), v.vals...)
@@ -93,7 +96,7 @@ func (v *funcValidator) step(in *Instruction) error {
 			if err != nil {
 				return err
 			}
-		} else if !sameValTypes(ins, outs) {
+		} else if !v.sameValTypes(ins, outs) {
 			// With no else arm, the false path preserves the block inputs as the
 			// expression results. Accept only the shape the IR builder can model
 			// directly: identical input/output types.
@@ -166,7 +169,7 @@ func (v *funcValidator) step(in *Instruction) error {
 			return err
 		}
 		if in.Kind == InstrReturnCall {
-			if !sameValTypes(ft.Results, v.ctrls[0].out) {
+			if !v.matchValTypes(ft.Results, v.ctrls[0].out) {
 				return v.verr(ErrTypeMismatch, "return_call")
 			}
 			v.unreachable()
@@ -196,7 +199,7 @@ func (v *funcValidator) step(in *Instruction) error {
 			return err
 		}
 		if in.Kind == InstrReturnCallIndirect {
-			if !sameValTypes(ft.Results, v.ctrls[0].out) {
+			if !v.matchValTypes(ft.Results, v.ctrls[0].out) {
 				return v.verr(ErrTypeMismatch, "return_call_indirect")
 			}
 			v.unreachable()
@@ -207,15 +210,17 @@ func (v *funcValidator) step(in *Instruction) error {
 		_, err := v.pop()
 		return err
 	case InstrSelect:
-		// The typed-select immediate is a result type constrained by the core
-		// spec to exactly one value type; len==0 is the untyped select form.
-		if len(in.ValTypes()) > 1 {
+		// The typed opcode (0x1c) always has an extension payload, including when
+		// its decoded result vector is empty. It requires exactly one value type;
+		// only the extension-free 0x1b form is the implicit numeric/vector select.
+		typedSelect := in.ext != nil
+		if typedSelect && len(in.ValTypes()) != 1 {
 			return v.verr(ErrTypeMismatch, "select type arity")
 		}
 		if err := v.popExpect(I32); err != nil {
 			return err
 		}
-		if len(in.ValTypes()) == 1 {
+		if typedSelect {
 			if err := v.popExpect(in.ValTypes()[0]); err != nil {
 				return err
 			}
@@ -252,13 +257,19 @@ func (v *funcValidator) step(in *Instruction) error {
 		if !ok {
 			return v.verr(ErrUnknownLocal, "")
 		}
+		if !v.localIsInitialized(in.Index, t) {
+			return v.verr(ErrUninitializedLocal, "")
+		}
 		v.push(t)
 	case InstrLocalSet:
 		t, ok := v.localType(in.Index)
 		if !ok {
 			return v.verr(ErrUnknownLocal, "")
 		}
-		return v.popExpect(t)
+		if err := v.popExpect(t); err != nil {
+			return err
+		}
+		v.initializeLocal(in.Index, t)
 	case InstrLocalTee:
 		t, ok := v.localType(in.Index)
 		if !ok {
@@ -267,13 +278,15 @@ func (v *funcValidator) step(in *Instruction) error {
 		if err := v.popExpect(t); err != nil {
 			return err
 		}
+		v.initializeLocal(in.Index, t)
 		v.push(t)
 	case InstrGlobalGet:
 		gt, ok := v.globalType(in.Index)
 		if !ok {
 			return v.verr(ErrUnknownGlobal, "")
 		}
-		if v.constOnly && (int(in.Index) >= v.m.ImportedGlobalCount() || gt.Mutable) {
+		if v.constOnly && (gt.Mutable || int(in.Index) >= v.constGlobalLimit ||
+			(int(in.Index) >= v.m.ImportedGlobalCount() && !v.features.ExtendedConstGlobals)) {
 			return v.verr(ErrConstExprRequired, "global.get")
 		}
 		v.push(gt.Type)
@@ -318,13 +331,17 @@ func (v *funcValidator) step(in *Instruction) error {
 		}
 		v.push(RefVal(in.RefType()))
 	case InstrRefFunc:
-		if int(in.Index) >= v.m.FuncCount() {
+		typeIdx, ok := v.m.FuncTypeIndex(in.Index)
+		if !ok {
 			return v.verr(ErrUnknownFunc, "ref.func")
 		}
 		if !v.isDeclaredFunc(in.Index) {
 			return v.verr(ErrUnknownFunc, "undeclared function reference")
 		}
-		v.push(FuncRef)
+		// Core 3.0 gives ref.func the exact declared function type rather than
+		// collapsing it to the abstract funcref supertype. The reference is
+		// non-null and remains a subtype of funcref for Release 2 consumers.
+		v.push(RefVal(Ref(false, IndexedHeap(typeIdx), false)))
 	case InstrRefIsNull:
 		_, err := v.pop()
 		if err != nil {
@@ -385,17 +402,23 @@ func (v *funcValidator) step(in *Instruction) error {
 		if err != nil {
 			return err
 		}
-		if !x.unknown && x.t.Kind != ValRef {
+		if len(lt) == 0 || lt[len(lt)-1].Kind != ValRef || (!x.unknown && x.t.Kind != ValRef) {
 			return v.verr(ErrTypeMismatch, "br_on_non_null")
 		}
 		if !x.unknown {
 			x.t.Ref.Nullable = false
+			if !v.subtype(x.t, lt[len(lt)-1]) {
+				return v.verr(ErrTypeMismatch, x.t.String()+" is not "+lt[len(lt)-1].String())
+			}
 		}
-		v.vals = append(v.vals, x)
-		if err := v.popAll(lt); err != nil {
+		prefix := lt[:len(lt)-1]
+		if err := v.popAll(prefix); err != nil {
 			return err
 		}
-		v.pushAll(lt)
+		// A taken branch appends the non-null reference to the label payload.
+		// The null fallthrough consumes the reference and retains only the
+		// payload values that precede it.
+		v.pushAll(prefix)
 	case InstrMemoryInit:
 		if err := v.checkDataIndex(in.Index, "memory.init"); err != nil {
 			return err
@@ -544,6 +567,33 @@ func isImplicitSelectType(t ValType) bool {
 	return t.Kind == ValNum || t.Kind == ValVec
 }
 
+// matchValTypes reports whether actual values may flow to expected result
+// positions. Tail calls use this covariant relation: a non-null/indexed reference
+// result may satisfy a nullable/abstract caller result without requiring equality.
+func (v *funcValidator) matchValTypes(actual, expected []ValType) bool {
+	if len(actual) != len(expected) {
+		return false
+	}
+	for i := range actual {
+		if !v.subtype(actual[i], expected[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+func (v *funcValidator) sameValTypes(a, b []ValType) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if !v.subtype(a[i], b[i]) || !v.subtype(b[i], a[i]) {
+			return false
+		}
+	}
+	return true
+}
+
 func sameValTypes(a, b []ValType) bool {
 	if len(a) != len(b) {
 		return false
@@ -559,51 +609,52 @@ func sameValTypes(a, b []ValType) bool {
 func (v *funcValidator) stackEffect(in *Instruction) error {
 	k := in.Kind
 	if e := opEffects[k]; e.cat != effNone {
+		a := e.a.valType()
 		switch e.cat {
 		case effUnary:
-			if err := v.popExpect(e.a); err != nil {
+			if err := v.popExpect(a); err != nil {
 				return err
 			}
-			v.push(e.a)
+			v.push(a)
 		case effBinary:
-			if err := v.popExpect(e.a); err != nil {
+			if err := v.popExpect(a); err != nil {
 				return err
 			}
-			if err := v.popExpect(e.a); err != nil {
+			if err := v.popExpect(a); err != nil {
 				return err
 			}
-			v.push(e.a)
+			v.push(a)
 		case effCompare:
-			if err := v.popExpect(e.a); err != nil {
+			if err := v.popExpect(a); err != nil {
 				return err
 			}
-			if err := v.popExpect(e.a); err != nil {
+			if err := v.popExpect(a); err != nil {
 				return err
 			}
 			v.push(I32)
 		case effTest:
-			if err := v.popExpect(e.a); err != nil {
+			if err := v.popExpect(a); err != nil {
 				return err
 			}
 			v.push(I32)
 		case effConv:
-			if err := v.popExpect(e.a); err != nil {
+			if err := v.popExpect(a); err != nil {
 				return err
 			}
-			v.push(e.b)
+			v.push(e.b.valType())
 		case effLoad:
-			if err := v.checkMem(e.align); err != nil {
+			if err := v.checkMem(uint32(e.align)); err != nil {
 				return err
 			}
 			if err := v.popExpect(I32); err != nil {
 				return err
 			}
-			v.push(e.a)
+			v.push(a)
 		case effStore:
-			if err := v.checkMem(e.align); err != nil {
+			if err := v.checkMem(uint32(e.align)); err != nil {
 				return err
 			}
-			if err := v.popExpect(e.a); err != nil {
+			if err := v.popExpect(a); err != nil {
 				return err
 			}
 			return v.popExpect(I32)
@@ -724,23 +775,6 @@ func (v *funcValidator) checkSharedMemArg(ma MemArg, natural uint32) (ValType, e
 	return addr, nil
 }
 
-var unary = map[InstrKind]ValType{InstrI32Clz: I32, InstrI32Ctz: I32, InstrI32Popcnt: I32, InstrI64Clz: I64, InstrI64Ctz: I64, InstrI64Popcnt: I64, InstrF32Abs: F32, InstrF32Neg: F32, InstrF32Ceil: F32, InstrF32Floor: F32, InstrF32Trunc: F32, InstrF32Nearest: F32, InstrF32Sqrt: F32, InstrF64Abs: F64, InstrF64Neg: F64, InstrF64Ceil: F64, InstrF64Floor: F64, InstrF64Trunc: F64, InstrF64Nearest: F64, InstrF64Sqrt: F64, InstrI32Extend8S: I32, InstrI32Extend16S: I32, InstrI64Extend8S: I64, InstrI64Extend16S: I64, InstrI64Extend32S: I64}
-var binaryOps = map[InstrKind]ValType{InstrI32Add: I32, InstrI32Sub: I32, InstrI32Mul: I32, InstrI32DivS: I32, InstrI32DivU: I32, InstrI32RemS: I32, InstrI32RemU: I32, InstrI32And: I32, InstrI32Or: I32, InstrI32Xor: I32, InstrI32Shl: I32, InstrI32ShrS: I32, InstrI32ShrU: I32, InstrI32Rotl: I32, InstrI32Rotr: I32, InstrI64Add: I64, InstrI64Sub: I64, InstrI64Mul: I64, InstrI64DivS: I64, InstrI64DivU: I64, InstrI64RemS: I64, InstrI64RemU: I64, InstrI64And: I64, InstrI64Or: I64, InstrI64Xor: I64, InstrI64Shl: I64, InstrI64ShrS: I64, InstrI64ShrU: I64, InstrI64Rotl: I64, InstrI64Rotr: I64, InstrF32Add: F32, InstrF32Sub: F32, InstrF32Mul: F32, InstrF32Div: F32, InstrF32Min: F32, InstrF32Max: F32, InstrF32Copysign: F32, InstrF64Add: F64, InstrF64Sub: F64, InstrF64Mul: F64, InstrF64Div: F64, InstrF64Min: F64, InstrF64Max: F64, InstrF64Copysign: F64}
-var compare = map[InstrKind]ValType{InstrI32Eq: I32, InstrI32Ne: I32, InstrI32LtS: I32, InstrI32LtU: I32, InstrI32GtS: I32, InstrI32GtU: I32, InstrI32LeS: I32, InstrI32LeU: I32, InstrI32GeS: I32, InstrI32GeU: I32, InstrI64Eq: I64, InstrI64Ne: I64, InstrI64LtS: I64, InstrI64LtU: I64, InstrI64GtS: I64, InstrI64GtU: I64, InstrI64LeS: I64, InstrI64LeU: I64, InstrI64GeS: I64, InstrI64GeU: I64, InstrF32Eq: F32, InstrF32Ne: F32, InstrF32Lt: F32, InstrF32Gt: F32, InstrF32Le: F32, InstrF32Ge: F32, InstrF64Eq: F64, InstrF64Ne: F64, InstrF64Lt: F64, InstrF64Gt: F64, InstrF64Le: F64, InstrF64Ge: F64}
-var test = map[InstrKind]ValType{InstrI32Eqz: I32, InstrI64Eqz: I64}
-
-type conv struct{ from, to ValType }
-
-var conversions = map[InstrKind]conv{InstrI32WrapI64: {I64, I32}, InstrI32TruncF32S: {F32, I32}, InstrI32TruncF32U: {F32, I32}, InstrI32TruncF64S: {F64, I32}, InstrI32TruncF64U: {F64, I32}, InstrI64ExtendI32S: {I32, I64}, InstrI64ExtendI32U: {I32, I64}, InstrI64TruncF32S: {F32, I64}, InstrI64TruncF32U: {F32, I64}, InstrI64TruncF64S: {F64, I64}, InstrI64TruncF64U: {F64, I64}, InstrF32ConvertI32S: {I32, F32}, InstrF32ConvertI32U: {I32, F32}, InstrF32ConvertI64S: {I64, F32}, InstrF32ConvertI64U: {I64, F32}, InstrF32DemoteF64: {F64, F32}, InstrF64ConvertI32S: {I32, F64}, InstrF64ConvertI32U: {I32, F64}, InstrF64ConvertI64S: {I64, F64}, InstrF64ConvertI64U: {I64, F64}, InstrF64PromoteF32: {F32, F64}, InstrI32ReinterpretF32: {F32, I32}, InstrI64ReinterpretF64: {F64, I64}, InstrF32ReinterpretI32: {I32, F32}, InstrF64ReinterpretI64: {I64, F64}}
-
-type memeff struct {
-	t     ValType
-	align uint32
-}
-
-var loads = map[InstrKind]memeff{InstrI32Load: {I32, 2}, InstrI64Load: {I64, 3}, InstrF32Load: {F32, 2}, InstrF64Load: {F64, 3}, InstrI32Load8S: {I32, 0}, InstrI32Load8U: {I32, 0}, InstrI32Load16S: {I32, 1}, InstrI32Load16U: {I32, 1}, InstrI64Load8S: {I64, 0}, InstrI64Load8U: {I64, 0}, InstrI64Load16S: {I64, 1}, InstrI64Load16U: {I64, 1}, InstrI64Load32S: {I64, 2}, InstrI64Load32U: {I64, 2}}
-var stores = map[InstrKind]memeff{InstrI32Store: {I32, 2}, InstrI64Store: {I64, 3}, InstrF32Store: {F32, 2}, InstrF64Store: {F64, 3}, InstrI32Store8: {I32, 0}, InstrI32Store16: {I32, 1}, InstrI64Store8: {I64, 0}, InstrI64Store16: {I64, 1}, InstrI64Store32: {I64, 2}}
-
 // opEffect is a precomputed stack effect for the simple numeric/mem instructions,
 // collapsing the per-instruction cascade of map lookups (unary → binaryOps →
 // compare → test → conversions → loads → stores) into one array index — the
@@ -759,34 +793,119 @@ const (
 	effStore               // checkMem(align); pop a; pop i32
 )
 
+// effectValue is the compact scalar/vector subset used by precomputed validator
+// effects. Storing a full ValType here made each table entry carry the complete
+// reference-type descriptor even though numeric and SIMD instructions only use
+// five primitive values.
+type effectValue uint8
+
+const (
+	effectNone effectValue = iota
+	effectI32
+	effectI64
+	effectF32
+	effectF64
+	effectV128
+)
+
+var effectValTypes = [...]ValType{
+	effectNone: {},
+	effectI32:  {Kind: ValNum, Num: NumI32},
+	effectI64:  {Kind: ValNum, Num: NumI64},
+	effectF32:  {Kind: ValNum, Num: NumF32},
+	effectF64:  {Kind: ValNum, Num: NumF64},
+	effectV128: {Kind: ValVec},
+}
+
+func compactEffectValue(t ValType) effectValue {
+	switch {
+	case equalValType(t, I32):
+		return effectI32
+	case equalValType(t, I64):
+		return effectI64
+	case equalValType(t, F32):
+		return effectF32
+	case equalValType(t, F64):
+		return effectF64
+	case equalValType(t, V128):
+		return effectV128
+	default:
+		panic("wasm: non-primitive validation effect")
+	}
+}
+
+func (t effectValue) valType() ValType { return effectValTypes[t] }
+
 type opEffect struct {
 	cat   opEffectCat
-	a, b  ValType
-	align uint32
+	a, b  effectValue
+	align uint8
 }
 
 var opEffects [numInstrKinds]opEffect
 
+func setOpEffectRange(first, last InstrKind, effect opEffect) {
+	for kind := first; kind <= last; kind++ {
+		opEffects[kind] = effect
+	}
+}
+
+func setOpEffects(effect opEffect, kinds ...InstrKind) {
+	for _, kind := range kinds {
+		opEffects[kind] = effect
+	}
+}
+
 func init() {
-	for k, t := range unary {
-		opEffects[k] = opEffect{cat: effUnary, a: t}
-	}
-	for k, t := range binaryOps {
-		opEffects[k] = opEffect{cat: effBinary, a: t}
-	}
-	for k, t := range compare {
-		opEffects[k] = opEffect{cat: effCompare, a: t}
-	}
-	for k, t := range test {
-		opEffects[k] = opEffect{cat: effTest, a: t}
-	}
-	for k, c := range conversions {
-		opEffects[k] = opEffect{cat: effConv, a: c.from, b: c.to}
-	}
-	for k, m := range loads {
-		opEffects[k] = opEffect{cat: effLoad, a: m.t, align: m.align}
-	}
-	for k, m := range stores {
-		opEffects[k] = opEffect{cat: effStore, a: m.t, align: m.align}
-	}
+	setOpEffects(opEffect{cat: effTest, a: effectI32}, InstrI32Eqz)
+	setOpEffects(opEffect{cat: effTest, a: effectI64}, InstrI64Eqz)
+	setOpEffectRange(InstrI32Eq, InstrI32GeU, opEffect{cat: effCompare, a: effectI32})
+	setOpEffectRange(InstrI64Eq, InstrI64GeU, opEffect{cat: effCompare, a: effectI64})
+	setOpEffectRange(InstrF32Eq, InstrF32Ge, opEffect{cat: effCompare, a: effectF32})
+	setOpEffectRange(InstrF64Eq, InstrF64Ge, opEffect{cat: effCompare, a: effectF64})
+
+	setOpEffectRange(InstrI32Clz, InstrI32Popcnt, opEffect{cat: effUnary, a: effectI32})
+	setOpEffectRange(InstrI64Clz, InstrI64Popcnt, opEffect{cat: effUnary, a: effectI64})
+	setOpEffectRange(InstrF32Abs, InstrF32Sqrt, opEffect{cat: effUnary, a: effectF32})
+	setOpEffectRange(InstrF64Abs, InstrF64Sqrt, opEffect{cat: effUnary, a: effectF64})
+	setOpEffectRange(InstrI32Extend8S, InstrI32Extend16S, opEffect{cat: effUnary, a: effectI32})
+	setOpEffectRange(InstrI64Extend8S, InstrI64Extend32S, opEffect{cat: effUnary, a: effectI64})
+
+	setOpEffectRange(InstrI32Add, InstrI32Rotr, opEffect{cat: effBinary, a: effectI32})
+	setOpEffectRange(InstrI64Add, InstrI64Rotr, opEffect{cat: effBinary, a: effectI64})
+	setOpEffectRange(InstrF32Add, InstrF32Copysign, opEffect{cat: effBinary, a: effectF32})
+	setOpEffectRange(InstrF64Add, InstrF64Copysign, opEffect{cat: effBinary, a: effectF64})
+
+	setOpEffects(opEffect{cat: effConv, a: effectI64, b: effectI32}, InstrI32WrapI64)
+	setOpEffects(opEffect{cat: effConv, a: effectF32, b: effectI32}, InstrI32TruncF32S, InstrI32TruncF32U, InstrI32ReinterpretF32)
+	setOpEffects(opEffect{cat: effConv, a: effectF64, b: effectI32}, InstrI32TruncF64S, InstrI32TruncF64U)
+	setOpEffects(opEffect{cat: effConv, a: effectI32, b: effectI64}, InstrI64ExtendI32S, InstrI64ExtendI32U)
+	setOpEffects(opEffect{cat: effConv, a: effectF32, b: effectI64}, InstrI64TruncF32S, InstrI64TruncF32U)
+	setOpEffects(opEffect{cat: effConv, a: effectF64, b: effectI64}, InstrI64TruncF64S, InstrI64TruncF64U, InstrI64ReinterpretF64)
+	setOpEffects(opEffect{cat: effConv, a: effectI32, b: effectF32}, InstrF32ConvertI32S, InstrF32ConvertI32U, InstrF32ReinterpretI32)
+	setOpEffects(opEffect{cat: effConv, a: effectI64, b: effectF32}, InstrF32ConvertI64S, InstrF32ConvertI64U)
+	setOpEffects(opEffect{cat: effConv, a: effectF64, b: effectF32}, InstrF32DemoteF64)
+	setOpEffects(opEffect{cat: effConv, a: effectI32, b: effectF64}, InstrF64ConvertI32S, InstrF64ConvertI32U)
+	setOpEffects(opEffect{cat: effConv, a: effectI64, b: effectF64}, InstrF64ConvertI64S, InstrF64ConvertI64U, InstrF64ReinterpretI64)
+	setOpEffects(opEffect{cat: effConv, a: effectF32, b: effectF64}, InstrF64PromoteF32)
+
+	setOpEffects(opEffect{cat: effLoad, a: effectI32, align: 2}, InstrI32Load)
+	setOpEffects(opEffect{cat: effLoad, a: effectI64, align: 3}, InstrI64Load)
+	setOpEffects(opEffect{cat: effLoad, a: effectF32, align: 2}, InstrF32Load)
+	setOpEffects(opEffect{cat: effLoad, a: effectF64, align: 3}, InstrF64Load)
+	setOpEffects(opEffect{cat: effLoad, a: effectI32}, InstrI32Load8S, InstrI32Load8U)
+	setOpEffects(opEffect{cat: effLoad, a: effectI32, align: 1}, InstrI32Load16S, InstrI32Load16U)
+	setOpEffects(opEffect{cat: effLoad, a: effectI64}, InstrI64Load8S, InstrI64Load8U)
+	setOpEffects(opEffect{cat: effLoad, a: effectI64, align: 1}, InstrI64Load16S, InstrI64Load16U)
+	setOpEffects(opEffect{cat: effLoad, a: effectI64, align: 2}, InstrI64Load32S, InstrI64Load32U)
+
+	setOpEffects(opEffect{cat: effStore, a: effectI32, align: 2}, InstrI32Store)
+	setOpEffects(opEffect{cat: effStore, a: effectI64, align: 3}, InstrI64Store)
+	setOpEffects(opEffect{cat: effStore, a: effectF32, align: 2}, InstrF32Store)
+	setOpEffects(opEffect{cat: effStore, a: effectF64, align: 3}, InstrF64Store)
+	setOpEffects(opEffect{cat: effStore, a: effectI32}, InstrI32Store8)
+	setOpEffects(opEffect{cat: effStore, a: effectI32, align: 1}, InstrI32Store16)
+	setOpEffects(opEffect{cat: effStore, a: effectI64}, InstrI64Store8)
+	setOpEffects(opEffect{cat: effStore, a: effectI64, align: 1}, InstrI64Store16)
+	setOpEffects(opEffect{cat: effStore, a: effectI64, align: 2}, InstrI64Store32)
 }

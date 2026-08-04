@@ -90,6 +90,7 @@ const (
 	ErrUnknownTag
 	ErrUnknownLabel
 	ErrUnknownLocal
+	ErrUninitializedLocal
 	ErrImmutableGlobal
 	ErrInvalidAlignment
 	ErrInvalidSharedMemory
@@ -140,6 +141,8 @@ func (c ValidationErrorCode) String() string {
 		return "unknown label"
 	case ErrUnknownLocal:
 		return "unknown local"
+	case ErrUninitializedLocal:
+		return "uninitialized local"
 	case ErrImmutableGlobal:
 		return "immutable global"
 	case ErrInvalidAlignment:

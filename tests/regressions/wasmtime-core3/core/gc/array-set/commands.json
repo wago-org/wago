@@ -1,0 +1,241 @@
+{
+  "commands": [
+    {
+      "filename": "commands.0.wasm",
+      "line": 1,
+      "type": "module_definition"
+    },
+    {
+      "line": 17,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "set-and-get",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "42"
+        }
+      ],
+      "line": 18,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "overwrite",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "3"
+        }
+      ],
+      "line": 19,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "neighbours-untouched",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "0"
+        }
+      ],
+      "line": 20,
+      "type": "assert_return"
+    },
+    {
+      "filename": "commands.1.wasm",
+      "line": 21,
+      "type": "module_definition"
+    },
+    {
+      "line": 29,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "set-i64",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i64",
+          "value": "1311768467139281697"
+        }
+      ],
+      "line": 30,
+      "type": "assert_return"
+    },
+    {
+      "filename": "commands.2.wasm",
+      "line": 31,
+      "type": "module_definition"
+    },
+    {
+      "line": 39,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "set-f32",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "f32",
+          "value": "1078523331"
+        }
+      ],
+      "line": 40,
+      "type": "assert_return"
+    },
+    {
+      "filename": "commands.3.wasm",
+      "line": 41,
+      "type": "module_definition"
+    },
+    {
+      "line": 49,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "set-f64",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "f64",
+          "value": "4613303445313851803"
+        }
+      ],
+      "line": 50,
+      "type": "assert_return"
+    },
+    {
+      "filename": "commands.4.wasm",
+      "line": 51,
+      "type": "module_definition"
+    },
+    {
+      "line": 60,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "set-i8",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "382"
+        }
+      ],
+      "line": 61,
+      "type": "assert_return"
+    },
+    {
+      "filename": "commands.5.wasm",
+      "line": 62,
+      "type": "module_definition"
+    },
+    {
+      "line": 71,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "set-i16",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "65535"
+        }
+      ],
+      "line": 72,
+      "type": "assert_return"
+    },
+    {
+      "filename": "commands.6.wasm",
+      "line": 73,
+      "type": "module_definition"
+    },
+    {
+      "line": 82,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "set-gcref",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "77"
+        }
+      ],
+      "line": 83,
+      "type": "assert_return"
+    },
+    {
+      "filename": "commands.7.wasm",
+      "line": 84,
+      "type": "module_definition"
+    },
+    {
+      "line": 91,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "oob-set",
+        "type": "invoke"
+      },
+      "line": 92,
+      "text": "out of bounds array access",
+      "type": "assert_trap"
+    },
+    {
+      "filename": "commands.8.wasm",
+      "line": 93,
+      "type": "module_definition"
+    },
+    {
+      "line": 100,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "null-set",
+        "type": "invoke"
+      },
+      "line": 101,
+      "text": "null array reference",
+      "type": "assert_trap"
+    }
+  ],
+  "source": "WebAssembly/spec interpreter 3.0.0"
+}

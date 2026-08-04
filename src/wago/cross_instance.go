@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
+	"github.com/wago-org/wago/src/core/runtime/gc"
 )
 
 // InstanceExport is a handle to another instance's exported function, used as an
@@ -79,11 +80,6 @@ type Table struct {
 	retained map[*Instance]*retainedInstanceRoot
 }
 
-// retainedInstanceRoot describes why a persistent container owns one physical
-// instance root. precise is recomputed from descriptors reachable through that
-// instance. proxyDescriptors records unresolved non-null descriptors copied by
-// a closing writer whose attachment chain conservatively preserves their source.
-// The map remains bounded by the destination container's descriptor capacity.
 type retainedInstanceRoot struct {
 	precise          bool
 	proxyDescriptors map[uint64]struct{}
@@ -95,17 +91,21 @@ type descriptorRetentionResult struct {
 }
 
 type tableOwner struct {
-	mu          sync.Mutex
-	arena       *coreruntime.Arena
-	store       *referenceStore
-	instance    *Instance
-	elementType ValType
+	mu           sync.Mutex
+	arena        *coreruntime.Arena
+	store        *referenceStore
+	instance     *Instance
+	elementType  ValType
+	valueType    ValueTypeDescriptor
+	types        []DefinedTypeDescriptor
+	hasValueType bool
 	// declaredHasMax records whether the table's external Wasm type declares an
 	// explicit maximum. The runtime descriptor's capacity field is only an
 	// allocation reservation (a no-max table still gets a finite reserve), so
 	// import limit-matching must consult this instead of the descriptor: a table
 	// with no declared maximum cannot satisfy an import that requires one.
 	declaredHasMax bool
+	addr64         bool // exact table index/address form; host tables are table32
 	importers      int
 	closed         bool
 }
@@ -116,6 +116,18 @@ type tableOwner struct {
 // element segment. maxSize is the table.grow capacity; zero means minSize.
 func NewTable(minSize, maxSize uint32) (*Table, error) {
 	return newHostTable(minSize, maxSize, ValFuncRef, nil)
+}
+
+// NewTable64 creates a bounded host-owned funcref table with 64-bit Wasm
+// indices. Storage remains int-bounded and uses the same compact descriptor;
+// addr64 changes validation and index operands, not the host allocation model.
+func NewTable64(minSize, maxSize uint32) (*Table, error) {
+	t, err := newHostTable(minSize, maxSize, ValFuncRef, nil)
+	if err != nil {
+		return nil, err
+	}
+	t.owner.addr64 = true
+	return t, nil
 }
 
 // NewExternRefTable creates a runtime/store-owned externref table. The table's
@@ -227,7 +239,11 @@ func (t *Table) Close() error {
 	return err
 }
 
-func (t *Table) validateImport(elementType ValType, store *referenceStore) error {
+func (t *Table) validateImport(elementType ValType, exact ValueTypeDescriptor, types []DefinedTypeDescriptor, store *referenceStore, addr64 bool) error {
+	return t.validateImportWithCollector(elementType, exact, types, store, nil, addr64)
+}
+
+func (t *Table) validateImportWithCollector(elementType ValType, exact ValueTypeDescriptor, types []DefinedTypeDescriptor, store *referenceStore, collector *gc.Collector, addr64 bool) error {
 	if t == nil || t.owner == nil {
 		return fmt.Errorf("table descriptor is invalid")
 	}
@@ -244,12 +260,33 @@ func (t *Table) validateImport(elementType ValType, store *referenceStore) error
 		return fmt.Errorf("table descriptor is invalid")
 	}
 	if o.instance != nil {
-		if closed := o.instance.isLogicallyClosed(); closed {
+		o.instance.lifeMu.Lock()
+		closed := o.instance.closed || o.instance.resourcesClosed
+		o.instance.lifeMu.Unlock()
+		if closed {
 			return fmt.Errorf("table owner instance is closed")
 		}
 	}
+	if o.addr64 != addr64 {
+		providerBits, importBits := 32, 32
+		if o.addr64 {
+			providerBits = 64
+		}
+		if addr64 {
+			importBits = 64
+		}
+		return fmt.Errorf("table address form mismatch: provider is table%d, import requires table%d", providerBits, importBits)
+	}
 	if o.elementType != elementType {
 		return fmt.Errorf("table element type %s is incompatible with required %s", o.elementType, elementType)
+	}
+	actual := o.valueType
+	actualTypes := o.types
+	if !o.hasValueType {
+		actual, _ = valueTypeDescriptorFromValType(o.elementType)
+	}
+	if !valueTypeEquivalent(actual, actualTypes, exact, types) {
+		return fmt.Errorf("table exact element type is incompatible with required structural type")
 	}
 	if elementType == ValExternRef {
 		if store == nil {
@@ -259,11 +296,44 @@ func (t *Table) validateImport(elementType ValType, store *referenceStore) error
 			return fmt.Errorf("externref table belongs to an incompatible reference store")
 		}
 	}
+	if isGCRefValType(elementType) {
+		source := o.instance
+		if source == nil || source.gc == nil || store == nil || collector == nil || source.gc != collector || source.refStore != store || !store.ownsGCCollector(collector) {
+			return fmt.Errorf("collector-reference table requires producer and importer in the same Runtime GC domain")
+		}
+		t.mu.Lock()
+		defer t.mu.Unlock()
+		size := uint64(binary.LittleEndian.Uint32(t.desc))
+		capacity := uint64((len(t.desc) - 8) / 8)
+		if size > capacity {
+			return fmt.Errorf("collector-reference table length %d exceeds capacity %d", size, capacity)
+		}
+		for i := uint64(0); i < size; i++ {
+			bits := binary.LittleEndian.Uint64(t.desc[8+i*8:])
+			ref := gc.Ref(uint32(bits))
+			if bits != uint64(ref) {
+				return fmt.Errorf("collector-reference table slot %d contains non-compact reference %#x", i, bits)
+			}
+			if ref.IsNull() || ref.IsI31() {
+				continue
+			}
+			if !ref.IsObj() {
+				return fmt.Errorf("collector-reference table slot %d contains invalid reference %#x", i, bits)
+			}
+			if _, err := collector.ObjectType(ref); err != nil {
+				return fmt.Errorf("collector-reference table slot %d contains stale or foreign object: %w", i, err)
+			}
+		}
+	}
 	return nil
 }
 
-func (t *Table) attachImporter(elementType ValType, store *referenceStore) error {
-	if err := t.validateImport(elementType, store); err != nil {
+func (t *Table) attachImporter(elementType ValType, exact ValueTypeDescriptor, types []DefinedTypeDescriptor, store *referenceStore, addr64 bool) error {
+	return t.attachImporterWithCollector(elementType, exact, types, store, nil, addr64)
+}
+
+func (t *Table) attachImporterWithCollector(elementType ValType, exact ValueTypeDescriptor, types []DefinedTypeDescriptor, store *referenceStore, collector *gc.Collector, addr64 bool) error {
+	if err := t.validateImportWithCollector(elementType, exact, types, store, collector, addr64); err != nil {
 		return err
 	}
 	o := t.owner
@@ -624,6 +694,41 @@ func (t *Table) funcrefDescriptorsLocked() map[uint64]struct{} {
 	return descriptors
 }
 
+// pruneRetainedInstances reconciles precise and proxy roots after a completed
+// table mutation. Proxy descriptor sets remain bounded by live table capacity.
+func (t *Table) pruneRetainedInstances() {
+	if t == nil {
+		return
+	}
+	var release []*Instance
+	t.mu.Lock()
+	if !t.closed && len(t.desc) >= 8 {
+		current := t.funcrefDescriptorsLocked()
+		for root, state := range t.retained {
+			state.precise = false
+			for descriptor := range current {
+				if root.reachesFuncrefDescriptor(descriptor) {
+					state.precise = true
+					break
+				}
+			}
+			for descriptor := range state.proxyDescriptors {
+				if _, live := current[descriptor]; !live {
+					delete(state.proxyDescriptors, descriptor)
+				}
+			}
+			if !state.precise && len(state.proxyDescriptors) == 0 {
+				delete(t.retained, root)
+				release = append(release, root)
+			}
+		}
+	}
+	t.mu.Unlock()
+	for _, root := range release {
+		root.releaseResourceRoot()
+	}
+}
+
 func (t *Table) releaseRetainedInstances() {
 	if t == nil {
 		return
@@ -634,7 +739,6 @@ func (t *Table) releaseRetainedInstances() {
 		return
 	}
 	t.closed = true
-	t.desc = nil
 	roots := make([]*Instance, 0, len(t.retained))
 	for root := range t.retained {
 		roots = append(roots, root)
@@ -679,7 +783,7 @@ func (in *Instance) ExportedTable(name string) (*Table, error) {
 	}
 	elementType := in.c.tableElementType(tableIndex)
 	store := in.refStore
-	if elementType == ValExternRef && store == nil {
+	if (elementType == ValExternRef || isGCRefValType(elementType)) && store == nil {
 		var err error
 		store, err = in.referenceStoreForBoundary()
 		if err != nil {
@@ -693,43 +797,58 @@ func (in *Instance) ExportedTable(name string) (*Table, error) {
 			return table, nil
 		}
 	}
-	owner := &tableOwner{store: store, instance: in, elementType: elementType, declaredHasMax: in.c.tableDef(tableIndex).HasMax}
+	exact, err := in.c.tableExactType(tableIndex)
+	if err != nil {
+		in.lifeMu.Unlock()
+		return nil, fmt.Errorf("exported table %q exact type: %w", name, err)
+	}
+	owner := &tableOwner{store: store, instance: in, elementType: elementType, valueType: exact, types: in.c.Types, hasValueType: true, declaredHasMax: in.c.tableDef(tableIndex).HasMax, addr64: in.c.tableDef(tableIndex).Addr64}
 	table := &Table{desc: desc, owner: owner, next: in.table}
 	in.table = table
 	in.lifeMu.Unlock()
 	return table, nil
 }
 
-// ExportedMemory returns this instance's linear memory as a shared *Memory that
-// another instance can import (cross-instance memory linking): the two instances
-// then use the same underlying mapping, so stores and memory.grow are mutually
-// visible. An imported-memory export forwards the exact original *Memory owner;
-// it does not copy storage or create a relay lifetime. Because importers share one
-// basedata region, they may not declare private globals, tables, or passive data
-// state. Consumer attachments retain the original producer until the final
-// importer closes. Compiler-produced modules require the exact declared export
-// name; only legacy hand-built Compiled values retain the advisory-name fallback.
+// ExportedMemory returns the named linear memory as a shared *Memory that
+// another instance can import. Imported-memory exports forward the original
+// owner; local exports retain this producer until the final importer closes.
+// Compiler- and codec-produced modules resolve names exactly. Legacy hand-built
+// Compiled values retain the historical advisory memory-0 fallback.
 func (in *Instance) ExportedMemory(name string) (*Memory, error) {
-	if in == nil || in.memory == nil {
+	if in == nil || in.c == nil {
 		return nil, fmt.Errorf("instance has no memory to export")
 	}
 	if err := in.beginInvocation(); err != nil {
 		return nil, err
 	}
 	defer in.endInvocation()
-	if in.c.hasTableExportMetadata {
-		if kind, ok := in.c.tableExports[name]; !ok || kind != memoryExportSentinel {
-			return nil, fmt.Errorf("memory export %q not found", name)
+	memoryIndex := 0
+	if in.c.hasExactMemoryExports() {
+		var ok bool
+		memoryIndex, ok = in.c.memoryExportMap()[name]
+		if !ok {
+			return nil, fmt.Errorf("no exported memory %q", name)
 		}
 	}
+	var memory *Memory
+	owns := false
+	if memoryIndex == 0 {
+		memory, owns = in.memory, in.ownsMem
+	} else if in.memoryDir != nil && memoryIndex < len(in.memoryDir.memories) {
+		memory = in.memoryDir.memories[memoryIndex]
+		owns = memoryIndex < len(in.memoryDir.owns) && in.memoryDir.owns[memoryIndex]
+	}
+	if memory == nil {
+		return nil, fmt.Errorf("exported memory %q index %d is unavailable", name, memoryIndex)
+	}
 	var owner *Instance
-	if in.ownsMem {
+	if owns {
 		owner = in
 	}
-	if err := in.memory.share(owner); err != nil {
+	if err := memory.share(owner, in.c.memoryDef(memoryIndex)); err != nil {
 		return nil, fmt.Errorf("export memory %q: %w", name, err)
 	}
-	return in.memory, nil
+	return memory, nil
 }
 
 // ExportedGlobalObject returns this instance's exported global `name` as a
@@ -765,9 +884,13 @@ func (in *Instance) ExportedGlobalObject(name string) (*Global, error) {
 			return nil, fmt.Errorf("exported global %q reference store: %w", name, err)
 		}
 	}
+	exact, err := in.c.globalExactType(idx)
+	if err != nil {
+		return nil, fmt.Errorf("exported global %q exact type: %w", name, err)
+	}
 	in.lifeMu.Lock()
 	if g.owner == nil {
-		g.owner = &globalOwner{store: store, instance: in, typ: g.Type, mutable: g.Mutable}
+		g.owner = &globalOwner{store: store, instance: in, typ: g.Type, mutable: g.Mutable, valueType: exact, types: in.c.Types, hasValueType: true}
 	}
 	in.lifeMu.Unlock()
 	return g, nil

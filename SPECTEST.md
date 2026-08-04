@@ -1,4 +1,76 @@
-# wasm 1.0 (MVP) spec conformance
+# WebAssembly spec conformance
+
+## Release suites
+
+- WebAssembly 1.0 keeps the historical `tests/spec` execution report below.
+- WebAssembly 2.0 is independently pinned at `tests/spec-v2`; the execution
+  corpus is documented green at 1,600 modules and 48,248 assertions with zero
+  feature skips.
+- WebAssembly 3.0 is independently pinned at `tests/spec-v3` from
+  `WebAssembly/spec` tag `wg-3.0`, commit
+  `9d36019973201a19f9c9ebb0f10828b2fe2374aa`. `make spec3` discovers all 258
+  official core `.wast` files. WABT 1.0.41 remains the primary converter; the
+  official WebAssembly/spec 3.0.0 reference interpreter from the same exact pin
+  converts the 28 text files WABT cannot parse. Parser/tool failures remain hard.
+  The current red inventory has zero parser failures, 144 green and 114 red files,
+  modules pass=1,691/skip=535, and assertions pass=51,765/fail=5/skip=6,268.
+  Iteration 13 strictly decodes compact import groups, executes the actual pinned
+  imported grow/size and safe `linking0`-`3` modules under bounded staged gates,
+  preflights storage bindings, and adds retained cross-instance root
+  `return_call_ref`. Iteration 14 introduced the first safe staged multi-memory
+  delta. Iteration 15 replaces it with a complete schema-2 family matrix covering
+  all 41 pinned multi-memory files plus `simd_memory-multi`. Iteration 17 closes
+  its three basedata gates through a finite owner/tenant serializer proof: the
+  matrix is now gap-free at 913 commands, 79 modules, 771 assertions, 4 invalid,
+  22 unlinkable, and 20 uninstantiable cases, with zero feature rejects or blocked
+  commands. Public execution remains disabled, so the public schema-2
+  inventory remains byte-for-byte unchanged. All 69
+  Release 3 relaxed-SIMD assertions pass after
+  honoring official `either` result patterns. Iteration 5 moved `ref.func` and recursive type-equivalence
+  failures from validator mismatches to explicit typed-reference frontend gates.
+  Iteration 6 added structural public/codec metadata for indexed signatures,
+  globals, tables, and elements. Iteration 7 enforces exact staged storage/import
+  matching, lowers the null-control instructions internally, and fixes WABT's
+  value-`"0"` non-null funcref wildcard interpretation; `select` is now fully green.
+  Iteration 8 makes indexed/recursive runtime signature IDs structural and checks
+  exact typed funcrefs/nullability at public invocation and synchronous host
+  boundaries. Iteration 9 adds exact mutable-global boundaries, bounded producer
+  reconciliation, and staged multi-memory validation. Iteration 10 proves dynamic
+  typed table aliases/lifecycle and stages bounded local/imported memory-1 native
+  execution. Iteration 11 completes indexed scalar grow/load/store and bulk/data
+  lifecycle internally and replaces native 32-bit signature IDs with bounded
+  64-bit structural keys. Iteration 12 adds every indexed SIMD memory form,
+  bounded registered-memory co-tenants, retained cross-instance typed descriptors,
+  and fail-closed typed/tail artifact/snapshot metadata. Iteration 13 adds bounded
+  `0x7f`/`0x7e` import groups, official grow/size/linking state-order proofs,
+  shape-specific multi-memory snapshot rejection, and a fixed-frame retained
+  cross-instance root typed-tail transfer. Iteration 14 adds snapshot-v3 owned-local
+  multi-memory round trips and a fixed 32-byte nested typed-tail return context.
+  Iteration 15 accounts the complete multi-memory family and all 51 pinned
+  `return_call_ref` commands. Iteration 16 makes all 47 `return_call` commands green
+  (3 modules, 33 assertions, 11 invalid), accounts all 79 `return_call_indirect`
+  commands. Iteration 17 makes `return_call_indirect` fully green at 3 modules / 49
+  assertions / 16 invalid / 11 malformed and makes every multi-memory command gap-free.
+  Iteration 18 makes `return_call_ref` gap-free at 51 commands / 5 modules / 35
+  assertions / 11 invalid, admits active memory64 data initialization, and updates
+  the exact six-file memory64 accounting to 807 commands / 7 modules / 92 assertions /
+  36 explicit gates / 530 blocked dependents / 83 invalid / 59 malformed. A shared-
+  basedata tenant may additionally retain a finite imported numeric-global array.
+  Iteration 19 adds every bounded memory64 SIMD memory form without changing the
+  six-file totals, retained int-register cross-instance direct tails with root/nested
+  continuation and trap recovery, and one bounded imported funcref-table tenant
+  composition. Iteration 20 adds bounded memory64 `memory.copy`/`memory.fill`, opens
+  one local explicit-max table64 `size/get/set` execution/product slice with codec v26,
+  and admits exactly `(i32, f64) -> f64` through the separate direct cross-instance
+  tail record. The complete staged multi-memory/tail matrices and the six-file memory64
+  totals remain unchanged. Passive memory64 lifecycle, broader table64/direct-tail/
+  native-import contexts, and unsupported product/platform paths remain explicit.
+  Public typed-reference, multi-memory, compact-import, memory64, table64, and tail-call
+  execution remain disabled; the schema-2 totals remain byte-for-byte unchanged.
+  The machine-readable schema-2 inventory is `tests/spec-v3-baseline.json`; see
+  `docs/wasm3.md` for family grouping and caveats.
+
+## WebAssembly 1.0 (MVP)
 
 Generated by `go test -run TestSpecExec` against `tests/spec` (pinned pre-reference-types).
 Each file runs in an isolated subprocess; CRASH means the JIT faulted.

@@ -2,8 +2,42 @@
 // and the runtime implementation.
 package abi
 
+// FuncRefEntryKind is the native calling convention accepted by a funcref
+// descriptor's code pointer. The kind is encoded in the high bits of the home
+// word; the low bits remain the canonical home linear-memory pointer.
+type FuncRefEntryKind uint8
+
+const (
+	FuncRefEntryInvalid FuncRefEntryKind = iota
+	FuncRefEntryInternal
+	FuncRefEntryLocalWrapper
+	FuncRefEntryCrossInstanceWrapper
+	FuncRefEntryHostThunk
+)
+
+// SyncHostCallSavedNativeSPOffset is the byte offset of the parked native stack
+// pointer in the synchronous helper control frame. On amd64 it points at the
+// CALL return address and the stable frame base is one word above it. On arm64
+// BLR does not push LR, so the saved SP is already the stable frame base.
+const (
+	SyncHostCallSavedNativeSPOffset = 0
+	// ARM64 hostCallStub saves LR after the callee-saved GPR/FP state. The
+	// complete resumable register prefix ends immediately before hcTrampoline.
+	ARM64SyncHostCallSavedLROffset = 96
+	ARM64SyncHostCallSavedBytes    = 176
+	AMD64CallReturnAddressBytes    = 8
+)
+
 // Basedata offsets are byte distances below the linear-memory base.
 const (
+	// MemoryDirPtrOffset points at indexed-memory entries. Memory 0 keeps the
+	// direct RBX/basedata hot path; native code consults this directory only for
+	// nonzero indexes. Offset 64 was the unused WARP memory-helper slot.
+	MemoryDirPtrOffset          = 64
+	MemoryDirEntryBytes         = 24
+	MemoryDirBaseOffset         = 0
+	MemoryDirCurrentBytesOffset = 8  // u64: permits the full 4-GiB memory32 size
+	MemoryDirCurrentPagesOffset = 16 // u32
 	// FuncRefDescPtrOffset is the basedata slot holding the per-instance canonical
 	// funcref descriptor array used by table.set/fill/grow/ref.func lowering.
 	FuncRefDescPtrOffset = 88
@@ -37,7 +71,91 @@ const (
 	// ordered by Wasm function-import index.
 	ImportDispatchPtrOffset = 136
 
+	// TailArgsOffset is the end of a fixed 16-slot scratch bank used only while a
+	// wrapper-ABI tail call tears down the current frame and enters the next one.
+	// The bank occupies [linMem-272, linMem-144), immediately below the import-
+	// dispatch pointer, and is reused by every tail step without allocation.
+	TailArgsOffset = 272
+	TailArgsSlots  = 16
+
+	// GCNativeViewPtrOffset points at the versioned per-instance collector
+	// metadata view used by checked direct struct/array numeric accesses. It is
+	// outside the wrapper-tail argument bank so tail staging cannot overwrite it.
+	GCNativeViewPtrOffset = 280
+
+	// EHHandlerPtrOffset is retained as the cold-path reset slot for staged
+	// exception handling. Native amd64 execution carries the active handler in
+	// RBP so concurrent cross-instance throws do not share mutable basedata state.
+	EHHandlerPtrOffset = 152
+
+	// EHTagDirPtrOffset points at one exact 64-bit identity per declared/imported
+	// exception tag. The staged EH shape admits only register-ABI tails, so this
+	// otherwise-unused wrapper-tail slot cannot be overwritten by argument-bank use.
+	EHTagDirPtrOffset = 160
+
+	// FuncRefInternalHomeTag marks a descriptor whose code pointer is an internal
+	// register-ABI entry in the same instance. FuncRefCrossInstanceHomeTag marks a
+	// retained InstanceExport wrapper descriptor admitted by the bounded root or
+	// nested-tail context transfer. FuncRefLocalWrapperHomeTag distinguishes a
+	// same-instance wrapper descriptor from a host thunk that shares the caller's
+	// basedata. The low 61 bits remain the canonical home linear-memory pointer on
+	// supported linux/amd64 hosts.
+	FuncRefEntryTagShift                = 61
+	FuncRefInternalHomeTag       uint64 = 1 << 63
+	FuncRefCrossInstanceHomeTag  uint64 = 1 << 62
+	FuncRefLocalWrapperHomeTag   uint64 = 1 << 61
+	FuncRefHomeTagMask                  = FuncRefInternalHomeTag | FuncRefCrossInstanceHomeTag | FuncRefLocalWrapperHomeTag
+	FuncRefInternalTagValue             = FuncRefInternalHomeTag >> FuncRefEntryTagShift
+	FuncRefCrossInstanceTagValue        = FuncRefCrossInstanceHomeTag >> FuncRefEntryTagShift
+	FuncRefLocalWrapperTagValue         = FuncRefLocalWrapperHomeTag >> FuncRefEntryTagShift
+	FuncRefHostThunkTagValue            = 0
+
+	// ActualLinMemByteSize64Offset is the authoritative u64 memory-0 byte-size
+	// cache. The legacy u32 cache at offset 8 remains populated for artifact and
+	// tooling compatibility, but explicit bounds checks use this field so a full
+	// 65,536-page memory32 is representable.
+	ActualLinMemByteSize64Offset = 288
+
 	// BasedataSize keeps the linear-memory base 16-byte aligned after the wago
-	// extension fields appended to the WARP-compatible basedata layout.
-	BasedataSize = 144
+	// extension fields, bounded wrapper-tail argument bank, and native GC view.
+	BasedataSize = 288
 )
+
+// TagFuncRefHome combines a canonical home pointer with one authoritative entry
+// kind. It rejects pointers that collide with the reserved tag bits.
+func TagFuncRefHome(home uint64, kind FuncRefEntryKind) (uint64, bool) {
+	if home&FuncRefHomeTagMask != 0 {
+		return 0, false
+	}
+	switch kind {
+	case FuncRefEntryInternal:
+		return home | FuncRefInternalHomeTag, true
+	case FuncRefEntryLocalWrapper:
+		return home | FuncRefLocalWrapperHomeTag, true
+	case FuncRefEntryCrossInstanceWrapper:
+		return home | FuncRefCrossInstanceHomeTag, true
+	case FuncRefEntryHostThunk:
+		return home, true
+	default:
+		return 0, false
+	}
+}
+
+// DecodeFuncRefHome returns the exact entry kind and canonical home pointer.
+// Multiple simultaneous kind tags are invalid rather than being interpreted by
+// bit priority.
+func DecodeFuncRefHome(tagged uint64) (FuncRefEntryKind, uint64) {
+	home := tagged &^ FuncRefHomeTagMask
+	switch tagged & FuncRefHomeTagMask {
+	case FuncRefInternalHomeTag:
+		return FuncRefEntryInternal, home
+	case FuncRefLocalWrapperHomeTag:
+		return FuncRefEntryLocalWrapper, home
+	case FuncRefCrossInstanceHomeTag:
+		return FuncRefEntryCrossInstanceWrapper, home
+	case 0:
+		return FuncRefEntryHostThunk, home
+	default:
+		return FuncRefEntryInvalid, home
+	}
+}

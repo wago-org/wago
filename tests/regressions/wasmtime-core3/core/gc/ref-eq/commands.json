@@ -1,0 +1,335 @@
+{
+  "commands": [
+    {
+      "filename": "commands.0.wasm",
+      "line": 1,
+      "type": "module_definition"
+    },
+    {
+      "line": 15,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "init",
+        "type": "invoke"
+      },
+      "line": 16,
+      "type": "action"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          }
+        ],
+        "field": "eq",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "1"
+        }
+      ],
+      "line": 17,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "1"
+          }
+        ],
+        "field": "eq",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "1"
+        }
+      ],
+      "line": 18,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "1"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          }
+        ],
+        "field": "eq",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "1"
+        }
+      ],
+      "line": 19,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "2"
+          }
+        ],
+        "field": "eq",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "0"
+        }
+      ],
+      "line": 20,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "2"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          }
+        ],
+        "field": "eq",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "0"
+        }
+      ],
+      "line": 21,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "2"
+          },
+          {
+            "type": "i32",
+            "value": "2"
+          }
+        ],
+        "field": "eq",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "1"
+        }
+      ],
+      "line": 22,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "2"
+          },
+          {
+            "type": "i32",
+            "value": "3"
+          }
+        ],
+        "field": "eq",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "1"
+        }
+      ],
+      "line": 23,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "2"
+          },
+          {
+            "type": "i32",
+            "value": "4"
+          }
+        ],
+        "field": "eq",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "0"
+        }
+      ],
+      "line": 24,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "5"
+          },
+          {
+            "type": "i32",
+            "value": "9"
+          }
+        ],
+        "field": "eq",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "1"
+        }
+      ],
+      "line": 25,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "5"
+          },
+          {
+            "type": "i32",
+            "value": "6"
+          }
+        ],
+        "field": "eq",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "0"
+        }
+      ],
+      "line": 26,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "5"
+          },
+          {
+            "type": "i32",
+            "value": "7"
+          }
+        ],
+        "field": "eq",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "0"
+        }
+      ],
+      "line": 27,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "7"
+          },
+          {
+            "type": "i32",
+            "value": "8"
+          }
+        ],
+        "field": "eq",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "0"
+        }
+      ],
+      "line": 28,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "7"
+          },
+          {
+            "type": "i32",
+            "value": "7"
+          }
+        ],
+        "field": "eq",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "1"
+        }
+      ],
+      "line": 29,
+      "type": "assert_return"
+    }
+  ],
+  "source": "WebAssembly/spec interpreter 3.0.0"
+}

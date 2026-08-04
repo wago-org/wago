@@ -167,7 +167,9 @@ func runSuite(benchtime string, count int, includeISA bool) string {
 
 var (
 	headerRe = regexp.MustCompile(`^(goos|goarch|cpu):\s*(.+)$`)
-	benchRe  = regexp.MustCompile(`^Benchmark(\S+?)-\d+\s+\d+\s+(.+)$`)
+	// Go omits the trailing -N processor suffix when GOMAXPROCS=1. Accept both
+	// forms so pinned single-CPU captures remain publishable.
+	benchRe = regexp.MustCompile(`^Benchmark(\S+?)(?:-\d+)?\s+\d+\s+(.+)$`)
 )
 
 // parseRun parses `go test -bench -benchmem` output into a Run, taking the

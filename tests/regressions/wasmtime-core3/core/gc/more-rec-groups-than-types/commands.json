@@ -1,0 +1,14 @@
+{
+  "commands": [
+    {
+      "filename": "commands.0.wasm",
+      "line": 1,
+      "type": "module_definition"
+    },
+    {
+      "line": 6,
+      "type": "module_instance"
+    }
+  ],
+  "source": "WebAssembly/spec interpreter 3.0.0"
+}

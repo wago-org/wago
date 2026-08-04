@@ -25,7 +25,7 @@ type aluEnc struct {
 	comm bool
 }
 
-var aluTable = map[wOp]aluEnc{
+var aluTable = [...]aluEnc{
 	opAdd: {opAdd, true},
 	opSub: {opSub, false},
 	opAnd: {opAnd, true},

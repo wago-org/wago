@@ -1,0 +1,69 @@
+{
+  "commands": [
+    {
+      "filename": "commands.0.wasm",
+      "line": 1,
+      "name": "$export32",
+      "type": "module_definition"
+    },
+    {
+      "line": 5,
+      "module": "$export32",
+      "name": "$export32",
+      "type": "module_instance"
+    },
+    {
+      "filename": "commands.1.wasm",
+      "line": 6,
+      "name": "$export64",
+      "type": "module_definition"
+    },
+    {
+      "line": 10,
+      "module": "$export64",
+      "name": "$export64",
+      "type": "module_instance"
+    },
+    {
+      "filename": "commands.2.wasm",
+      "line": 11,
+      "type": "module_definition"
+    },
+    {
+      "line": 15,
+      "type": "module_instance"
+    },
+    {
+      "filename": "commands.3.wasm",
+      "line": 16,
+      "type": "module_definition"
+    },
+    {
+      "line": 20,
+      "type": "module_instance"
+    },
+    {
+      "filename": "commands.4.wasm",
+      "line": 21,
+      "type": "module_definition"
+    },
+    {
+      "line": 25,
+      "module_type": "instance",
+      "text": "memory types incompatible",
+      "type": "assert_unlinkable"
+    },
+    {
+      "filename": "commands.5.wasm",
+      "line": 26,
+      "type": "module_definition"
+    },
+    {
+      "line": 30,
+      "module_type": "instance",
+      "text": "memory types incompatible",
+      "type": "assert_unlinkable"
+    }
+  ],
+  "source": "WebAssembly/spec interpreter 3.0.0"
+}

@@ -13,34 +13,49 @@ the complete native platform matrix:
 | `windows-2025` | Windows | amd64 | yes | yes | yes | yes |
 | `windows-11-arm` | Windows | arm64 | yes | yes | yes | yes |
 
-Each matrix cell asserts `go env GOOS` and `GOARCH` before testing. WABT is
-installed explicitly so tests that need `wat2wasm` do not silently skip because
-the runner image lacks the tool. Windows downloads the checksum-pinned official
-WABT archive because the project does not publish a Chocolatey package; Windows
-11 ARM runs that x64 tool through its application emulation layer.
+Each matrix cell asserts `go env GOOS` and `GOARCH` before testing. Unix runtime
+jobs bootstrap checksum-pinned WABT 1.0.41 and add its complete `bin` directory
+to `PATH`, so `wast2json` and `wat2wasm` do not depend on older runner packages.
+Linux and Darwin/arm64 use upstream binary archives. Because upstream publishes
+no Darwin/amd64 binary for 1.0.41, that runner builds `wast2json` from the
+checksum-pinned release source with CMake. Windows downloads the checksum-pinned
+official WABT archive because the project does not publish a Chocolatey package;
+Windows 11 ARM runs that x64 tool through its application emulation layer.
+Linux/amd64 and coverage
+additionally initialize the pinned `tests/spec-v3` submodule, build the
+interpreter from that exact checkout, and export its path and revision. The
+focused Linux/amd64 race lane initializes the same submodule without building
+the conversion tools: supplementary tests may then skip for an unavailable
+tool, but corpus discovery cannot obscure a real race with a missing-checkout
+failure. This is the authoritative fallback for exception-handling source forms
+that WABT 1.0.41 cannot parse; other matrix cells avoid the large OCaml setup.
 
 The six supported runtime targets build and test every Go package, including the
 integrated regression corpus, followed by the corpus matrix with a bounded
 per-case timeout and the official SIMD proposal corpus. Their guard-page cells
-additionally run `make test-guard`. A separate mandatory Linux/amd64 **Core v2
-conformance** job installs WABT, initializes the pinned `tests/spec-v2`
-submodule, and runs `make spec2`; it is included in the final `CI` aggregate, so
-it cannot be replaced by a skipped ordinary wrapper or an informational report.
-This is a tooling distinction, not a second test suite: `make spec2` selects
-the same package tests that ordinary `go test ./...` discovers.
-All six targets run the shared single-P, parallel-fault, unrelated-fault
-chaining, public API, and corpus-differential guard-page gates. Windows runs the
-equivalent Go commands directly from PowerShell rather than through Make.
+additionally run `make test-guard`. A separate mandatory Linux amd64/arm64
+**Core v2 conformance** matrix initializes the pinned `tests/spec-v2` submodule
+and runs `make spec2`; it is included in the final `CI` aggregate, so it cannot
+be replaced by a skipped ordinary wrapper or an informational report. This is a
+tooling distinction, not a second test suite: `make spec2` selects package tests
+that ordinary `go test ./...` also discovers. All six targets run the shared
+single-P, parallel-fault, unrelated-fault chaining, public API, and
+corpus-differential guard-page gates. Windows runs the equivalent Go commands
+directly from PowerShell rather than through Make.
 
 Linux/amd64 continues to host architecture-independent lint, TinyGo, coverage,
 and binary-size jobs. TinyGo mirrors the native matrix: Linux/amd64 and
 Linux/arm64 build, test, and smoke-run the CLI; Darwin/arm64 runs the runtime and
 public API suites; Darwin/amd64 runs the same portable compiler/encoder scope as
-Big Go. The CI card runs broader WebAssembly 1.0, 2.0, and 3.0 summaries for
-visibility; those reports remain informational, while the dedicated exact Core
-v2 job is required. The final `CI` aggregation job is the stable
-branch-protection check and fails if any required matrix cell or supporting job,
-including Core v2 conformance, fails.
+Big Go. TinyGo runtime tests use verbose output so architecture-specific panics
+identify the active test instead of reporting only an anonymous package failure.
+`SupportedFeatures` and `RuntimeConfig.Validate` expose the complete Core 3
+families only on linux/amd64; other runtime targets reject backend-incomplete
+families before decoding or native lowering.
+The CI card runs the WebAssembly 1.0, 2.0, and 3.0 suites
+for visibility without making their current gaps required checks. The final
+`CI` aggregation job is the stable branch-protection check and fails if any
+required matrix cell or supporting job fails.
 
 Nightly, canary, and tagged release workflows require Linux, Darwin, and Windows
 CLI builds for both amd64 and arm64, then publish every successful binary with
@@ -78,7 +93,9 @@ scheduled reconciler recovers the release within its next polling interval.
 `tests/scripts/dispatch-docs-release.sh` verifies the dispatch payload and input
 validation without contacting GitHub.
 
-For a local native approximation, run:
+For a local native approximation, run the commands below. The formatting gate
+checks tracked Go files only, so toolchains or diagnostics retained under `.git/`
+do not contaminate `make lint`.
 
 ```sh
 make lint
@@ -86,8 +103,6 @@ make test
 make test-guard   # only on a supported guard-page target
 WAGO_CORPUS_TIMEOUT=20s make test-corpus
 make simd
-git submodule update --init tests/spec-v2
-make spec2        # exact mandatory Linux/amd64 Core v2 gate
 ```
 
 The public website verification headline and coverage percentage use exactly

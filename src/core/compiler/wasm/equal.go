@@ -14,7 +14,9 @@ func equalValType(a, b ValType) bool {
 }
 
 func equalRefType(a, b RefType) bool {
-	return a.Nullable == b.Nullable && a.Exact == b.Exact && a.Bare == b.Bare && equalHeapType(a.Heap, b.Heap)
+	// Bare records whether the binary used a one-byte shorthand such as
+	// funcref. It is encoding metadata, not part of WebAssembly type identity.
+	return a.Nullable == b.Nullable && a.Exact == b.Exact && equalHeapType(a.Heap, b.Heap)
 }
 
 func equalHeapType(a, b HeapType) bool {

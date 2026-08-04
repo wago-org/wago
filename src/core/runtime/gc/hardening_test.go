@@ -381,6 +381,34 @@ func TestTinySlotBarrierDuringRemarkKeepsStoredChildAlive(t *testing.T) {
 	}
 }
 
+func TestTinyExternalRootBarrierDuringRemarkKeepsStoredChildAlive(t *testing.T) {
+	c := newTinyTestCollector(t, Config{TinyHeapBytes: 1024})
+	parent, _ := c.NewStructDefault(1)
+	child, _ := c.NewStructDefault(0)
+	root := Root(parent)
+	if err := c.Step(Slots{&root}); err != nil {
+		t.Fatal(err)
+	}
+	for c.tinyGC.state == tinyMark {
+		if err := c.Step(Slots{&root}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if c.tinyGC.state != tinyRemark {
+		t.Fatalf("state=%v, want remark", c.tinyGC.state)
+	}
+	c.WriteBarrierRoot(child)
+	root = Root(Null())
+	for c.tinyGC.state != tinyIdle {
+		if err := c.Step(Slots{&root}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := c.StructGet(child, 0); err != nil {
+		t.Fatalf("external-root child was collected: %v", err)
+	}
+}
+
 func TestThroughputReservationLenDoesNotWrapPastUint32(t *testing.T) {
 	// Regression coverage for page-size configurations where uint32 alignment
 	// would wrap to a tiny reservation once the bump pointer crossed 2GiB.

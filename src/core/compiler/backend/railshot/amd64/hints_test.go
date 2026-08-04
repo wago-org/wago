@@ -56,6 +56,27 @@ func TestScanBodyBytesCallHints(t *testing.T) {
 	}
 }
 
+func TestScanBodyExceptionHandlingHint(t *testing.T) {
+	ast := scanBody(wasm.Expr{Instrs: []wasm.Instruction{{Kind: wasm.InstrThrow}}}, 0, 0, 0)
+	if !ast.moduleEH {
+		t.Fatal("AST throw did not mark exception handling")
+	}
+	bytes, err := scanBodyBytes([]byte{0x08, 0x00, 0x0b}, 0, 0, 0) // throw tag 0; end
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.moduleEH {
+		t.Fatal("bytecode throw did not mark exception handling")
+	}
+	plain, err := scanBodyBytes([]byte{0x41, 0x00, 0x1a, 0x0b}, 0, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plain.moduleEH {
+		t.Fatal("plain bytecode marked exception handling")
+	}
+}
+
 func TestScanBodyBytesStackArenaHintSkipsSIMDStores(t *testing.T) {
 	body := []byte{
 		0xfd, 0x0b, 0x04, 0x00, // v128.store align=16 offset=0

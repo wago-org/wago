@@ -7,13 +7,14 @@
 //   ucontext.uc_mcontext = +176
 //   sigcontext.regs[26] = uc_mcontext + 8 + 26*8 = +392
 //   sigcontext.pc = uc_mcontext + 8 + 31*8 + 8 = +440
-// guardRegion is {start@0, end@8, linMem@16}, 32 bytes.
+// guardRegion is {start@0, end@8, linMem@16, ownerLinMem@24}, 32 bytes.
 TEXT ·guardSigHandler(SB), NOSPLIT|NOFRAME, $0-0
+	MOVD	R2, R15                 // preserve *ucontext across mprotect arguments
 	MOVD	16(R1), R8              // R8 = siginfo->si_addr (fault address)
 	MOVD	$·guardRegions(SB), R10 // R10 = &guardRegions[0]
 	MOVD	$256, R11               // R11 = slots left (maxGuardRegions)
 scan:
-	MOVD	0(R10), R9              // region.start
+	LDAR	(R10), R9               // acquire region.start publication
 	CBZ	R9, next                // free slot
 	CMP	R9, R8
 	BLO	next                    // addr < start
@@ -21,41 +22,56 @@ scan:
 	CMP	R9, R8
 	BHS	next                    // addr >= end
 
-	MOVD	16(R10), R9             // region.linMem
-	MOVD	392(R2), R26            // saved X26 (arm64 linMem)
-	CMP	R9, R26
+	MOVD	16(R10), R9             // region.linMem (fault-address base)
+	MOVD	24(R10), R14            // region.ownerLinMem (active primary)
+	MOVD	392(R15), R26           // saved X26 (arm64 primary linMem)
+	CMP	R14, R26
 	BNE	next                    // mismatch -> not this reservation's wasm fault
 
-	// off = fault - linMem; curBytes = [linMem-8].
+	// off and curBytes belong to the faulting reservation, while X26 remains
+	// the active primary linMem used for trap/unwind state.
 	MOVD	R8, R12
-	SUB	R26, R12                // R12 = off (fault - linMem)
-	MOVWU	-8(R26), R13            // R13 = curBytes (u32, zero-extended)
+	SUB	R9, R12                 // R12 = off (fault - region.linMem)
+	MOVD	-288(R9), R13           // R13 = authoritative region curBytes (u64)
 	CMP	R13, R12
 	BHS	dotrap                  // curBytes <= off -> out of range -> trap
 
-	// Commit the 64 KiB wasm page containing the fault, then resume the access.
-	MOVD	R8, R0
-	AND	$-65536, R0             // align down to wasm page
+	// Commit the complete wasm page. Align the reservation-relative offset so
+	// a merely host-page-aligned linMem cannot move the mprotect range backward.
+	MOVD	R12, R0
+	AND	$-65536, R0
+	ADD	R9, R0
 	MOVD	$65536, R1
 	MOVD	$3, R2                  // PROT_READ|PROT_WRITE
 	MOVD	$226, R8                // SYS_mprotect
 	SVC
+	CMP	$0, R0
+	BGE	resume
+	MOVW	$4, R13                 // TrapLinMemCouldNotExtend
+	B	settrap
+resume:
 	RET                             // -> kernel signal return: retry access
 
 dotrap:
-	MOVD	-104(R26), R12          // R12 = trap cell pointer
 	MOVW	$3, R13                 // TrapLinMemOutOfBounds
+settrap:
+	MOVD	-104(R26), R12          // R12 = trap cell pointer
 	MOVW	R13, (R12)
-	MOVD	R26, 256(R2)           // saved X9 = linMem for the landing pad
+	MOVD	R26, 256(R15)           // saved X9 = linMem for the landing pad
 	MOVD	·guardTrapExitHandlerJumpPC(SB), R9
-	MOVD	R9, 440(R2)             // saved PC = nativeTrapExitHandlerJump
+	MOVD	R9, 440(R15)            // saved PC = nativeTrapExitHandlerJump
 	RET                             // -> kernel signal return -> nativeTrapExitHandlerJump
 
 next:
 	ADD	$32, R10
 	SUB	$1, R11
 	CBNZ	R11, scan
-	MOVD	·guardOldHandler(SB), R9
+	CMPW	$7, R0                  // SIGBUS=7, SIGSEGV=11 on Linux
+	BEQ	chainbus
+	MOVD	·guardOldSEGVHandler(SB), R9
+	B	(R9)
+chainbus:
+	MOVD	·guardOldBUSHandler(SB), R9
 	B	(R9)
 
 // nativeTrapExitHandlerJump is the arm64/WARP landing pad. The signal handler

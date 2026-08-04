@@ -1,0 +1,377 @@
+{
+  "commands": [
+    {
+      "filename": "commands.0.wasm",
+      "line": 1,
+      "name": "$tables_of_i31ref",
+      "type": "module_definition"
+    },
+    {
+      "line": 20,
+      "module": "$tables_of_i31ref",
+      "name": "$tables_of_i31ref",
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "size",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "3"
+        }
+      ],
+      "line": 21,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "0"
+          }
+        ],
+        "field": "get",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "999"
+        }
+      ],
+      "line": 22,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "1"
+          }
+        ],
+        "field": "get",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "888"
+        }
+      ],
+      "line": 23,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "2"
+          }
+        ],
+        "field": "get",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "777"
+        }
+      ],
+      "line": 24,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "2"
+          },
+          {
+            "type": "i32",
+            "value": "333"
+          }
+        ],
+        "field": "grow",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "3"
+        }
+      ],
+      "line": 25,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "size",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "5"
+        }
+      ],
+      "line": 29,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "3"
+          }
+        ],
+        "field": "get",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "333"
+        }
+      ],
+      "line": 30,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "4"
+          }
+        ],
+        "field": "get",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "333"
+        }
+      ],
+      "line": 31,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "2"
+          },
+          {
+            "type": "i32",
+            "value": "111"
+          },
+          {
+            "type": "i32",
+            "value": "2"
+          }
+        ],
+        "field": "fill",
+        "type": "invoke"
+      },
+      "line": 32,
+      "type": "action"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "2"
+          }
+        ],
+        "field": "get",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "111"
+        }
+      ],
+      "line": 33,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "3"
+          }
+        ],
+        "field": "get",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "111"
+        }
+      ],
+      "line": 34,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "3"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "2"
+          }
+        ],
+        "field": "copy",
+        "type": "invoke"
+      },
+      "line": 35,
+      "type": "action"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "3"
+          }
+        ],
+        "field": "get",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "999"
+        }
+      ],
+      "line": 36,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "4"
+          }
+        ],
+        "field": "get",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "888"
+        }
+      ],
+      "line": 37,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "1"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "3"
+          }
+        ],
+        "field": "init",
+        "type": "invoke"
+      },
+      "line": 38,
+      "type": "action"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "1"
+          }
+        ],
+        "field": "get",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "123"
+        }
+      ],
+      "line": 39,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "2"
+          }
+        ],
+        "field": "get",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "456"
+        }
+      ],
+      "line": 40,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "3"
+          }
+        ],
+        "field": "get",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "789"
+        }
+      ],
+      "line": 41,
+      "type": "assert_return"
+    }
+  ],
+  "source": "WebAssembly/spec interpreter 3.0.0"
+}

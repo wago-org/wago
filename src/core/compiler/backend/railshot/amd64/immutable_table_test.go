@@ -75,9 +75,22 @@ func TestImmutableLocalTableCallIndirectSpecialization(t *testing.T) {
 		t.Fatalf("exported-table hints: %v", err)
 	}
 	for i := range hints {
-		if hints[i].immutableLocalTable {
+		if _, ok := (&fn{immutableTables: hints[i].immutableTables}).immutableTable(0); ok {
 			t.Fatalf("function %d specialized an externally mutable exported table", i)
 		}
+	}
+}
+
+func TestImmutableLocalTableRejectsGlobalGetInitializer(t *testing.T) {
+	m := &wasm.Module{
+		Tables: []wasm.Table{{Type: wasm.TableType{Ref: wasm.AbsRef(wasm.HeapFunc)}}},
+		Elements: []wasm.Elem{{
+			Mode: wasm.ElemMode{Kind: wasm.ElemActive, Table: 0},
+			Kind: wasm.ElemKind{Kind: wasm.ElemTypedExprs, Ref: wasm.AbsRef(wasm.HeapFunc), Exprs: []wasm.Expr{{Instrs: []wasm.Instruction{{Kind: wasm.InstrGlobalGet, Index: 0}}}}},
+		}},
+	}
+	if immutableLocalTableEntries(m, 0) {
+		t.Fatal("global.get element initializer was misclassified as a same-module function")
 	}
 }
 
@@ -101,7 +114,7 @@ func TestImmutableLocalTableMixedTypesKeepDynamicCheck(t *testing.T) {
 	if err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if _, ok := immutableLocalTableType(m); ok {
+	if _, ok := immutableLocalTableType(m, 0); ok {
 		t.Fatal("mixed-signature table was classified as uniform")
 	}
 }

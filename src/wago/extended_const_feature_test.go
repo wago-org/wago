@@ -1,6 +1,7 @@
 package wago
 
 import (
+	"encoding/binary"
 	"strings"
 	"testing"
 
@@ -61,10 +62,10 @@ func TestExtendedConstRequiredFeatureSurvivesCodecAndFailsClosed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := CoreFeatures(blob[len(blob)-2]); got != CoreFeatureExtendedConst || blob[len(blob)-1] != 0 {
-		t.Fatalf("codec feature tail = %x, want extended-constant then zero GC count", blob[len(blob)-2:])
+	if got := CoreFeatures(binary.LittleEndian.Uint64(blob[len(blob)-9 : len(blob)-1])); got != CoreFeatureExtendedConst || blob[len(blob)-1] != 0 {
+		t.Fatalf("codec feature tail = %x, want u64 extended-constant mask then zero GC count", blob[len(blob)-9:])
 	}
-	blob[len(blob)-2] = 0
+	binary.LittleEndian.PutUint64(blob[len(blob)-9:len(blob)-1], 0)
 	var missing Compiled
 	if err := missing.UnmarshalBinary(blob); err == nil || !strings.Contains(err.Error(), "unrecorded features") {
 		t.Fatalf("missing extended-constant bit error = %v", err)

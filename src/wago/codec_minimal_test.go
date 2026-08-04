@@ -2,6 +2,7 @@ package wago
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/runtime/gc"
@@ -101,7 +102,7 @@ func TestCompiledCodecRoundTripsEmptyStrings(t *testing.T) {
 		Imports:        []string{""},
 		importFuncSigs: []FuncSig{{}},
 		Funcs:          []FuncSig{{}},
-		FuncTypeID:     []uint32{0, 0},
+		FuncTypeID:     []uint64{0, 0},
 		Exports:        map[string]int{"": 1},
 	}
 
@@ -135,6 +136,41 @@ func TestCompiledCodecRoundTripsMinimalGCDescriptor(t *testing.T) {
 	}
 	if len(gotDesc.Fields) != 0 {
 		t.Fatalf("GCTypeDescs[0].Fields length = %d, want 0", len(gotDesc.Fields))
+	}
+}
+
+func TestCompiledCodecRoundTripsV128ArrayDescriptorAndSIMDRequirement(t *testing.T) {
+	desc, err := gc.NewArrayDesc(0, gc.StorageV128)
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := &Compiled{
+		Types: []DefinedTypeDescriptor{{
+			Final: true,
+			Kind:  CompositeTypeArray,
+			Array: FieldTypeDescriptor{Mutable: true, Storage: StorageTypeDescriptor{
+				Value: ValueTypeDescriptor{Kind: ValueTypeV128},
+			}},
+		}},
+		GCTypeDescs: []gc.TypeDesc{desc},
+	}
+	if got := compiledStructuralRequiredFeatures(input); got&CoreFeatureSIMD == 0 {
+		t.Fatalf("structural requirements = %#x, want SIMD", got)
+	}
+	blob, err := input.MarshalBinary()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got Compiled
+	if err := unmarshalCompiled(&got, blob[5:]); err != nil {
+		t.Fatal(err)
+	}
+	defer got.Close()
+	if len(got.GCTypeDescs) != 1 || got.GCTypeDescs[0].Elem != gc.StorageV128 || got.GCTypeDescs[0].ElemSize != 16 || got.GCTypeDescs[0].Align != 16 {
+		t.Fatalf("round-tripped v128 descriptor = %+v", got.GCTypeDescs)
+	}
+	if got.requiredFeatures&CoreFeatureSIMD == 0 {
+		t.Fatalf("round-tripped required features = %#x, want SIMD", got.requiredFeatures)
 	}
 }
 
@@ -200,7 +236,16 @@ func roundTripCompiled(t testing.TB, input *Compiled) *Compiled {
 	}
 	var got Compiled
 	if err := got.UnmarshalBinary(encoded); err != nil {
-		t.Fatalf("UnmarshalBinary: %v", err)
+		// Staged products deliberately omit their private admission marker from the
+		// public artifact. Positive codec execution tests still need to exercise the
+		// strict payload decoder; dedicated tests separately assert that public load
+		// rejects the missing marker.
+		if !strings.Contains(err.Error(), "unknown required feature bits") {
+			t.Fatalf("UnmarshalBinary: %v", err)
+		}
+		if err := unmarshalCompiled(&got, encoded[5:]); err != nil {
+			t.Fatalf("private UnmarshalBinary: %v", err)
+		}
 	}
 	return &got
 }

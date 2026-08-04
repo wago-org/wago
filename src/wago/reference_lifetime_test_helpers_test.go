@@ -32,7 +32,7 @@ func assertRetainedInstanceState(t *testing.T, name string, in *Instance, wantRe
 	in.lifeMu.Lock()
 	refs, physical := in.resourceRefs, !in.resourcesClosed
 	in.lifeMu.Unlock()
-	if refs != int32(wantRefs) || physical != wantPhysical {
+	if refs != wantRefs || physical != wantPhysical {
 		t.Fatalf("%s: roots=%d physical=%v, want roots=%d physical=%v", name, refs, physical, wantRefs, wantPhysical)
 	}
 }
