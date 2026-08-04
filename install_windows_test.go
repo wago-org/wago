@@ -47,7 +47,7 @@ func TestCmdBootstrapExecutesNativeInstaller(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CMD bootstrap: %v\n%s", err, output)
 	}
-	for _, fragment := range []string{"Wago", "Install location", "Plan", "Dry run"} {
+	for _, fragment := range []string{"Welcome to wago!", "Where should Wago be installed? ROOT\\bin", "Plan", "Dry run"} {
 		if !strings.Contains(string(output), fragment) {
 			t.Fatalf("CMD bootstrap output missing %q:\n%s", fragment, output)
 		}

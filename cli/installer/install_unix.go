@@ -80,10 +80,10 @@ func pathTargets(home string) []pathTarget {
 	return targets
 }
 
-func pathSetupQuestion() string { return "Add Wago to your PATH?" }
+func pathSetupQuestion() string { return "Want to add Wago to PATH?" }
 
-func pathSetupTargetMessage(target pathTarget, home string) string {
-	return "Adding to PATH: " + displayPath(target.configFile, home)
+func pathSetupAnswer(target pathTarget, home string) string {
+	return displayPath(target.configFile, home)
 }
 
 func addPath(binDir, configFile, shellName string) (bool, error) {
