@@ -3,9 +3,12 @@ package manager
 import (
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/wago-org/wago/cli/internal/automation"
+	internalparallel "github.com/wago-org/wago/cli/internal/parallel"
 	"github.com/wago-org/wago/cli/internal/project"
 	"github.com/wago-org/wago/cli/internal/settings"
 	"github.com/wago-org/wago/cli/internal/ui"
@@ -13,6 +16,7 @@ import (
 	cacheclean "github.com/wago-org/wago/cli/manager/commands/cache/clean"
 	cacheoptions "github.com/wago-org/wago/cli/manager/commands/cache/options"
 	cacheprune "github.com/wago-org/wago/cli/manager/commands/cache/prune"
+	compilecmd "github.com/wago-org/wago/cli/manager/commands/compile"
 	configcompletions "github.com/wago-org/wago/cli/manager/commands/config/completions"
 	configoptions "github.com/wago-org/wago/cli/manager/commands/config/options"
 	pluginadd "github.com/wago-org/wago/cli/manager/commands/plugin/add"
@@ -30,8 +34,10 @@ import (
 	managercache "github.com/wago-org/wago/cli/manager/internal/cache"
 	managerconfig "github.com/wago-org/wago/cli/manager/internal/config"
 	managerplugin "github.com/wago-org/wago/cli/manager/internal/plugin"
+	managerprogress "github.com/wago-org/wago/cli/manager/internal/progress"
 	"github.com/wago-org/wago/cli/manager/internal/registry"
 	managerself "github.com/wago-org/wago/cli/manager/internal/self"
+	managerstandalone "github.com/wago-org/wago/cli/manager/internal/standalone"
 	managerstatus "github.com/wago-org/wago/cli/manager/internal/status"
 	managerversion "github.com/wago-org/wago/cli/manager/internal/version"
 	"github.com/wago-org/wago/internal/wagopaths"
@@ -40,6 +46,113 @@ import (
 // commandEnvironment adapts manager-owned domain modules to command packages.
 // Parsing, validation, and command-level orchestration stay in command.go.
 type commandEnvironment struct{}
+
+func (commandEnvironment) Compile(options compilecmd.Options) {
+	if err := managerplugin.Select(options.Global, options.Local, options.Bare); err != nil {
+		fatal("compile: %v", err)
+	}
+	target, err := managerstandalone.ParseTarget(options.Target)
+	if err != nil {
+		fatal("compile: %v", err)
+	}
+	core, err := standaloneCoreFeatures(options.Core)
+	if err != nil {
+		fatal("compile: %v", err)
+	}
+	output := options.Output
+	if output == "" {
+		output = managerstandalone.DefaultOutput(options.Input, target)
+	}
+	deferredBoundsChecking, functionWorkers, optimizations, err := standaloneRuntimeOptions(target.Arch, options)
+	if err != nil {
+		fatal("compile: %v", err)
+	}
+	if automation.DryRun() {
+		plan := map[string]any{
+			"input": options.Input, "output": output, "target": target.String(), "core": core,
+			"functionWorkers": functionWorkers, "deferredBoundsChecking": deferredBoundsChecking,
+		}
+		if options.Invoke != "" {
+			plan["invoke"] = options.Invoke
+		}
+		if options.Plugins != "" {
+			plan["plugins"] = options.Plugins
+		}
+		if len(optimizations) != 0 {
+			plan["optimizations"] = optimizations
+		}
+		automation.PrintPlan("build standalone executable", plan)
+		return
+	}
+	progress := managerprogress.NewProgress(os.Stderr)
+	if options.Verbose {
+		progress.DisableAnimation()
+	}
+	progress.Title("Compiling " + filepath.Base(options.Input))
+	progress.Begin("Building " + target.String())
+	result, err := managerstandalone.Build(managerstandalone.Request{
+		Input: options.Input, Output: output, Target: target, Invoke: options.Invoke, Core: core, Plugins: options.Plugins, Verbose: options.Verbose,
+		DeferredBoundsChecking: deferredBoundsChecking, FunctionWorkers: functionWorkers, Optimizations: optimizations,
+	})
+	if err != nil {
+		progress.Fail("Standalone build failed")
+		fatal("compile: %v", err)
+	}
+	progress.Finish("Built standalone executable")
+	fmt.Printf("\n%s\n", displayPath(result.Output))
+}
+
+func standaloneCoreFeatures(value string) (int, error) {
+	switch value {
+	case "", "2":
+		return 2, nil
+	case "3":
+		return 3, nil
+	default:
+		return 0, fmt.Errorf("unknown --core %q (want: 2, 3)", value)
+	}
+}
+
+func standaloneRuntimeOptions(arch string, options compilecmd.Options) (bool, int, map[string]bool, error) {
+	configured, hasConfig, err := settings.LoadConfigured()
+	if err != nil {
+		return false, 0, nil, err
+	}
+	deferred := true
+	if hasConfig {
+		deferred = configured.Runtime.DeferredBoundsChecking
+	}
+	if options.DeferredBoundsChecking != nil {
+		deferred = *options.DeferredBoundsChecking
+	}
+	parallel := options.Parallel
+	if parallel == "" && hasConfig {
+		parallel = configured.Runtime.Parallel
+	}
+	functionWorkers, err := internalparallel.Policy(parallel)
+	if err != nil {
+		return false, 0, nil, err
+	}
+	supported := map[string]bool{}
+	for _, knob := range settings.OptimizationsForArch(arch) {
+		supported[strings.TrimPrefix(knob.Key, "optimizations.")] = true
+	}
+	optimizations := map[string]bool{}
+	if hasConfig {
+		for name, enabled := range configured.Optimizations {
+			if supported[name] {
+				optimizations[name] = enabled
+			}
+		}
+	}
+	for name, enabled := range options.Optimizations {
+		if !supported[name] {
+			return false, 0, nil, fmt.Errorf("optimization %q is unavailable on %s", name, arch)
+		}
+		optimizations[name] = enabled
+	}
+	return deferred, functionWorkers, optimizations, nil
+}
 
 func (e commandEnvironment) Status() {
 	report, err := managerstatus.Inspect(e.dirs(), versionString(), executablePath())

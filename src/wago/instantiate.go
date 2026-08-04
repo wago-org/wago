@@ -755,7 +755,11 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 					return fmt.Errorf("funcref element global descriptor is truncated")
 				}
 				descriptor := unsafe.Slice((*byte)(offHeapPtr(uintptr(bits))), runtime.FuncRefDescBytes)
-				copy(entry, descriptor[:runtime.TableEntryBytes])
+				// Keep this explicit: Go 1.26.5 can ICE while lowering copy from
+				// this unsafe slice during Darwin/arm64 to AMD64 cross-builds.
+				for index := 0; index < runtime.TableEntryBytes; index++ {
+					entry[index] = descriptor[index]
+				}
 				// A canonical descriptor may select its producer's internal register-ABI
 				// entry. Once copied through an imported global into another instance's
 				// table, use the producer's offset-0 wrapper and explicit cross-instance

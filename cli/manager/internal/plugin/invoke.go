@@ -52,7 +52,7 @@ func ApplyScope(args []string, environment Environment) error {
 	}
 	if args[0] == "build" {
 		if err := environment.SelectScope(
-			hasBoolFlag(args[1:], "--global"),
+			hasBoolFlag(args[1:], "--global", "-g"),
 			hasBoolFlag(args[1:], "--local"),
 			hasBoolFlag(args[1:], "--bare"),
 		); err != nil {
@@ -79,13 +79,13 @@ func applyRunScope(args []string, environment Environment) error {
 			break
 		}
 		switch arg {
-		case "--global":
+		case "--global", "-g":
 			global = true
 		case "--local":
 			local = true
 		case "--bare":
 			bare = true
-		case "--invoke", "-e", "--plugin":
+		case "--invoke", "-e", "--plugin", "--plugins":
 			if index+1 < len(args) {
 				index++
 			}
