@@ -103,6 +103,37 @@ already executed. The stripped standard and minimal Go runtime binaries are both
 Reflection-free returning host benchmarks remain allocation-free at approximately
 176–191 ns/op for direct and table-indirect calls on the audit machine.
 
+### Complete benchmark refresh
+
+A complete current-host benchmark sweep was repeated on August 4, 2026 after the
+follow-on audit. The host was the same Linux/amd64 Ryzen 7 8845HS with Go 1.24.4,
+`GOMAXPROCS=1`, and `taskset -c 0`. Ordinary benchmarks used three 100 ms samples;
+the two cold-stage attribution benchmarks used five one-iteration samples as
+required by their setup model.
+
+The sweep enumerated all 306 top-level benchmarks available to the linux/amd64
+build: 272 in the root module and 34 in the separate `bench` module. It produced
+419 distinct root-module metric rows, 1,082 explicit-bounds corpus/ISA rows, and
+1,084 signals-based corpus/ISA rows. All 21 benchmarks that require WABT were
+rerun with the checksum-pinned WABT 1.0.41 tools on `PATH`; the eight Core 3 text
+products that WABT cannot parse used the checksum/revision-pinned official spec
+interpreter fallback. Each of those 21 benchmarks completed three samples.
+
+The ARM64-only branch-hint benchmark, ARM64 dropped-tree compiler benchmark, and
+ARM64 exception benchmarks were additionally executed under the local QEMU
+compiler/runtime gate. Their timings are not presented as native ARM64
+performance measurements. Ten optional benchmarks remain intentionally without
+numbers because their external payloads are unavailable: five pinned MoonBit
+JSON rows, four Starshine rows, and the out-of-tree SQL-injection fixture. They
+were explicitly enumerated and skipped rather than silently omitted.
+
+The benchmark publisher now accepts Go output both with and without the trailing
+`-N` processor suffix. Go omits that suffix at `GOMAXPROCS=1`; previously a
+pinned single-CPU capture was valid benchmark output but `benchpub` parsed zero
+rows. Tests cover suffix-free and suffixed samples plus container-row removal.
+Generated raw logs and charts remain local artifacts as required by
+`docs/codegen-benchmarks.md`.
+
 A stripped program that only loads a precompiled artifact links to approximately
 2.11 MB on linux/amd64, versus approximately 4.69 MB for a program that invokes
 the compiler. The existing package-level linker boundaries therefore already
