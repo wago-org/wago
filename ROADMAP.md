@@ -33,9 +33,9 @@ in full — 57/57 applicable files, 0 failing assertions (see [SPECTEST.md](SPEC
   deterministic parallel validation through the function-worker policy
 
 **Compiler backend (`src/core/compiler/backend/railshot`)**
-- [x] Single-pass x86-64 codegen with the WARP Valent-Block register allocator
-  (symbolic operand stack, deferred-action trees, whole-register-file allocation,
-  spill-to-canonical-slot)
+- [x] Single-pass amd64 and arm64 codegen with the WARP Valent-Block register
+  allocator (symbolic operand stack, deferred-action trees,
+  whole-register-file allocation, spill-to-canonical-slot)
 - [x] Value types **i32, i64, f32, f64** — arithmetic, bitwise, shifts/rotates,
   clz/ctz/popcnt, comparisons, conversions, reinterpret, `ceil`/`floor`/`trunc`/
   `nearest`/`copysign`, trapping float→int truncation, `trunc_sat`, sign-extension ops

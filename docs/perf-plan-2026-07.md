@@ -1,4 +1,9 @@
-# Perf continuation plan (2026-07-02 handoff)
+# Historical performance continuation plan — 2026-07-02
+
+> **Status: historical handoff.** The pending PRs, measurements, and priority
+> order below describe the July 2 sweep, not current work. See
+> [OPTIMIZATIONS.md](../OPTIMIZATIONS.md) and [ROADMAP.md](../ROADMAP.md) for
+> current optimization status.
 
 Execution plan for the next session(s), written at the end of the #87/#88/#89 sweep.
 Everything here is grounded in measurements from 2026-07-02 on the dev machine; re-verify

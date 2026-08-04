@@ -429,9 +429,11 @@ shrinks 899,459→878,298 bytes, and `.bss` shrinks 133,888→5,824 bytes
 TinyGo `wago version` is about 0.4 ms versus the pre-campaign 0.549 ms;
 `BenchmarkDecodeValidate` remains **6.3%** below the pre-campaign median.
 
-The backend (`src/core/compiler/backend/railshot`) is the full WARP-architecture port: a
-single-pass x86-64 codegen over a valent-block operand stack (deferred-action trees,
-condense engine) with an on-the-fly whole-register-file allocator. Landed, in rough order:
+The AMD64 backend (`src/core/compiler/backend/railshot/amd64`) is the full
+WARP-architecture port: single-pass x86-64 codegen over a valent-block operand
+stack (deferred-action trees, condense engine) with an on-the-fly
+whole-register-file allocator. ARM64 has an architecture-specific direct backend;
+see `docs/amd64-arm64-backend-status.md` for parity status. Landed, in rough order:
 
 **Storage model / register allocation**
 - **Register-ABI internal calls** (old P1) — args/results in registers between wasm

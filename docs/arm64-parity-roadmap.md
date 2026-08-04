@@ -1,9 +1,15 @@
-# ARM64 parity roadmap
+# Historical ARM64 parity roadmap — 2026-07-10
+
+> **Status: historical closeout plan.** ARM64 is merged on `main`; native runtime
+> paths, CI, and release assets now cover Linux, macOS, and Windows on amd64 and
+> arm64. For current feature admission, see [FEATURES.md](../FEATURES.md); for
+> current backend status, see
+> [amd64-arm64-backend-status.md](amd64-arm64-backend-status.md).
 
 Status date: 2026-07-10
-Primary target: Linux/arm64
-Secondary target: Darwin/arm64
-Implementation branch: `jairus/arm64-runtime-perf`
+Primary target at capture: Linux/arm64
+Secondary target at capture: Darwin/arm64
+Implementation branch at capture: `jairus/arm64-runtime-perf`
 
 ## Goal
 

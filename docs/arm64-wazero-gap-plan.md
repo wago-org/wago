@@ -1,4 +1,9 @@
-# ARM64 wazero-gap closure plan
+# Historical ARM64 wazero-gap closure plan
+
+> **Status: historical performance plan.** The Apple M4 measurements and work
+> ordering below describe the original ARM64 gap-closure effort. See
+> [amd64-arm64-backend-status.md](amd64-arm64-backend-status.md) and
+> [ROADMAP.md](../ROADMAP.md) for current status and priorities.
 
 ## Goal
 
