@@ -134,40 +134,29 @@ func (f *fn) emitTrapStubs() {
 			continue
 		}
 		f.stats.addTrapStub()
-		for group, first := range sites {
-			seen := false
-			for prior := 0; prior < group; prior++ {
-				seen = seen || sites[prior].function == first.function
+		// Inlining can interleave sites attributed to many source functions. Sort
+		// once so grouping and patching are linear instead of repeatedly rescanning
+		// the complete site list for every distinct function.
+		sortTrapSitesByFunction(sites)
+		for start := 0; start < len(sites); {
+			end := start + 1
+			for end < len(sites) && sites[end].function == sites[start].function {
+				end++
 			}
-			if seen {
-				continue
-			}
-			count := 0
-			for _, site := range sites {
-				if site.function == first.function {
-					count++
-				}
-			}
+			group := sites[start:end]
+			first := group[0]
 			commonJump := -1
-			for _, site := range sites {
-				if site.function != first.function {
-					continue
-				}
-				if count != 1 {
-					continue
-				}
+			if len(group) == 1 {
 				pos := f.a.Len()
-				f.a.MovImm32(RAX, int32(site.pc))
+				f.a.MovImm32(RAX, int32(first.pc))
 				commonJump = f.a.JmpPlaceholder()
-				f.a.PatchRel32(site.branch, pos)
+				f.a.PatchRel32(first.branch, pos)
 			}
 			common := f.a.Len()
-			if count != 1 {
+			if len(group) != 1 {
 				f.a.MovImm32(RAX, -1)
-				for _, site := range sites {
-					if site.function == first.function {
-						f.a.PatchRel32(site.branch, common)
-					}
+				for _, site := range group {
+					f.a.PatchRel32(site.branch, common)
 				}
 			}
 			f.storeModuleGlobals(RSI)
@@ -175,7 +164,37 @@ func (f *fn) emitTrapStubs() {
 			if commonJump >= 0 {
 				f.a.PatchRel32(commonJump, common)
 			}
+			start = end
 		}
+	}
+}
+
+// sortTrapSitesByFunction uses an allocation-free heap sort. The order within
+// one function is irrelevant: a singleton keeps its exact PC, while a shared
+// group deliberately records an ambiguous PC.
+func sortTrapSitesByFunction(sites []trapSite) {
+	sift := func(root, end int) {
+		for {
+			child := root*2 + 1
+			if child >= end {
+				return
+			}
+			if child+1 < end && sites[child].function < sites[child+1].function {
+				child++
+			}
+			if sites[root].function >= sites[child].function {
+				return
+			}
+			sites[root], sites[child] = sites[child], sites[root]
+			root = child
+		}
+	}
+	for root := len(sites)/2 - 1; root >= 0; root-- {
+		sift(root, len(sites))
+	}
+	for end := len(sites) - 1; end > 0; end-- {
+		sites[0], sites[end] = sites[end], sites[0]
+		sift(0, end)
 	}
 }
 
