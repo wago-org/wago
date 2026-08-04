@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -59,6 +60,23 @@ func TestOptimizationFlags(t *testing.T) {
 	ApplyOptimizationFlags(command.NewContext(nil, nil, map[string]bool{"no-" + name: true}))
 	if wago.OptKnobs()[0].On {
 		t.Fatalf("--no-%s did not disable knob", name)
+	}
+}
+
+func TestSettingsCatalogMatchesActiveBackendKnobs(t *testing.T) {
+	backend := map[string]bool{}
+	for _, knob := range wago.OptKnobs() {
+		backend[knob.Name] = true
+	}
+	catalog := settings.OptimizationsForArch(runtime.GOARCH)
+	if len(catalog) != len(backend) {
+		t.Fatalf("%s settings knobs = %d, backend knobs = %d", runtime.GOARCH, len(catalog), len(backend))
+	}
+	for _, knob := range catalog {
+		name := strings.TrimPrefix(knob.Key, "optimizations.")
+		if !backend[name] {
+			t.Errorf("settings catalog knob %q is missing from %s backend", name, runtime.GOARCH)
+		}
 	}
 }
 

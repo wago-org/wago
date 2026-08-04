@@ -3,17 +3,19 @@ package standalone
 import (
 	"os"
 	"testing"
+
+	"github.com/wago-org/wago"
 )
 
 func TestRunEmptyStartModule(t *testing.T) {
-	if code := Run(emptyStartModule(), nil, "", []string{"hello"}); code != 0 {
+	if code := Run(emptyStartModule(), nil, Options{DeferBoundsChecks: true}, []string{"hello"}); code != 0 {
 		t.Fatalf("exit code = %d, want 0", code)
 	}
 }
 
 func TestExecuteRequiresStartExport(t *testing.T) {
 	empty := []byte{'\x00', 'a', 's', 'm', 1, 0, 0, 0}
-	if err := execute(empty, nil, "", nil); err == nil || err.Error() != "module does not export _start" {
+	if err := execute(empty, nil, Options{DeferBoundsChecks: true}, nil); err == nil || err.Error() != "module does not export _start" {
 		t.Fatalf("execute error = %v", err)
 	}
 }
@@ -27,7 +29,7 @@ func TestExecuteInvokesExportWithTypedArgs(t *testing.T) {
 	os.Stdout = write
 	t.Cleanup(func() { os.Stdout = original })
 
-	if err := execute(addModule(), nil, "add", []string{"add", "20", "22"}); err != nil {
+	if err := execute(addModule(), nil, Options{Invoke: "add", DeferBoundsChecks: true}, []string{"add", "20", "22"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := write.Close(); err != nil {
@@ -44,8 +46,28 @@ func TestExecuteInvokesExportWithTypedArgs(t *testing.T) {
 }
 
 func TestExecuteRejectsWrongInvokeArguments(t *testing.T) {
-	err := execute(addModule(), nil, "add", []string{"add", "20"})
+	err := execute(addModule(), nil, Options{Invoke: "add", DeferBoundsChecks: true}, []string{"add", "20"})
 	if err == nil || err.Error() != "expected 2 arg(s), got 1" {
+		t.Fatalf("execute error = %v", err)
+	}
+}
+
+func TestExecuteAppliesOptimizationKnobs(t *testing.T) {
+	knob := wago.OptKnobs()[0]
+	t.Cleanup(func() { wago.SetOptKnob(knob.Name, knob.On) })
+	if err := execute(emptyStartModule(), nil, Options{
+		DeferBoundsChecks: true, OptimizationKnobs: map[string]bool{knob.Name: !knob.On},
+	}, []string{"hello"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := wago.OptKnobs()[0].On; got == knob.On {
+		t.Fatalf("optimization %s remained %v", knob.Name, got)
+	}
+}
+
+func TestExecuteRejectsUnknownOptimization(t *testing.T) {
+	err := execute(emptyStartModule(), nil, Options{OptimizationKnobs: map[string]bool{"not-a-knob": true}}, nil)
+	if err == nil || err.Error() != `unknown optimization "not-a-knob"` {
 		t.Fatalf("execute error = %v", err)
 	}
 }

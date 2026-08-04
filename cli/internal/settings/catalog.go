@@ -100,7 +100,11 @@ var arm64OptimizationSettings = []BoolSetting{
 func Features() []BoolSetting { return cloneSettings(featureSettings) }
 
 func Optimizations() []BoolSetting {
-	switch runtime.GOARCH {
+	return OptimizationsForArch(runtime.GOARCH)
+}
+
+func OptimizationsForArch(arch string) []BoolSetting {
+	switch arch {
 	case "amd64":
 		return cloneSettings(amd64OptimizationSettings)
 	case "arm64":
@@ -108,6 +112,22 @@ func Optimizations() []BoolSetting {
 	default:
 		return nil
 	}
+}
+
+// OptimizationCatalog returns the union of optimization settings supported by
+// every target architecture. Shared settings appear once, in stable order.
+func OptimizationCatalog() []BoolSetting {
+	items := append(cloneSettings(amd64OptimizationSettings), arm64OptimizationSettings...)
+	seen := make(map[string]bool, len(items))
+	result := make([]BoolSetting, 0, len(items))
+	for _, item := range items {
+		if seen[item.Key] {
+			continue
+		}
+		seen[item.Key] = true
+		result = append(result, item)
+	}
+	return result
 }
 
 func Experimental() []BoolSetting {

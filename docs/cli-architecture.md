@@ -64,10 +64,13 @@ runtime facade.
 cross-target builds. Its generated module embeds the Wasm command, imports the
 active plugins' registration packages, and records their resolved capability
 configuration. The generated entry point also records the selected `--invoke`
-export; `cli/internal/wasmcall` keeps its typed argument and result behavior in
-parity with `wago run`. The resulting executable imports `cli/standalone`, not
-the runtime CLI. GOOS/GOARCH select exactly one build-tagged Railshot backend,
-so an AMD64 executable does not link ARM64 codegen and vice versa.
+export and resolved compiler-knob overrides; `cli/internal/wasmcall` keeps its
+typed argument and result behavior in parity with `wago run`. The resulting
+executable imports `cli/standalone`, not the runtime CLI. The manager reads the
+architecture-neutral settings catalog, while the generated target applies the
+knobs through the selected runtime backend. GOOS/GOARCH select exactly one
+build-tagged Railshot backend, so an AMD64 executable does not link ARM64 codegen
+and vice versa.
 
 `cli/internal/handoff.Metadata` is the sole definition of launch metadata. It
 encodes and decodes the `WAGO_MANAGER_*` and `WAGO_RUNTIME_*` environment

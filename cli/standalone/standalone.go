@@ -13,12 +13,19 @@ import (
 	"github.com/wago-org/wago/cli/internal/wasmcall"
 )
 
+// Options is the compile-time runtime configuration baked into an executable.
+type Options struct {
+	Invoke            string
+	DeferBoundsChecks bool
+	OptimizationKnobs map[string]bool
+}
+
 // Run executes source as a command and returns its process exit code. Plugins
 // must already be linked into the executable through their register packages;
 // pluginConfig selects and configures those providers without reading files at
 // runtime.
-func Run(source, pluginConfig []byte, invoke string, args []string) int {
-	if err := execute(source, pluginConfig, invoke, args); err != nil {
+func Run(source, pluginConfig []byte, options Options, args []string) int {
+	if err := execute(source, pluginConfig, options, args); err != nil {
 		var exit *wago.ExitError
 		if errors.As(err, &exit) {
 			return int(exit.Code)
@@ -33,7 +40,7 @@ func Run(source, pluginConfig []byte, invoke string, args []string) int {
 	return 0
 }
 
-func execute(source, pluginConfig []byte, invoke string, args []string) error {
+func execute(source, pluginConfig []byte, options Options, args []string) error {
 	var plugins []wago.PluginConfig
 	if len(pluginConfig) != 0 {
 		if err := json.Unmarshal(pluginConfig, &plugins); err != nil {
@@ -41,7 +48,13 @@ func execute(source, pluginConfig []byte, invoke string, args []string) error {
 		}
 	}
 	wago.SetGuestArgs(args)
-	runtime := wago.NewRuntime()
+	for name, enabled := range options.OptimizationKnobs {
+		if !wago.SetOptKnob(name, enabled) {
+			return fmt.Errorf("unknown optimization %q", name)
+		}
+	}
+	config := wago.NewRuntimeConfig().WithDeferBoundsChecks(options.DeferBoundsChecks)
+	runtime := wago.NewRuntime(wago.WithRuntimeConfig(config))
 	defer runtime.Close()
 	if err := runtime.LoadPlugins(plugins); err != nil {
 		return err
@@ -50,6 +63,7 @@ func execute(source, pluginConfig []byte, invoke string, args []string) error {
 	if err != nil {
 		return err
 	}
+	invoke := options.Invoke
 	explicitInvoke := invoke != ""
 	if !explicitInvoke {
 		invoke = "_start"

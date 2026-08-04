@@ -40,12 +40,14 @@ func ParseTarget(value string) (Target, error) {
 }
 
 type Request struct {
-	Input, Output string
-	Invoke        string
-	Plugins       string
-	Target        Target
-	Verbose       bool
-	KeepSymbols   bool
+	Input, Output          string
+	Invoke                 string
+	Plugins                string
+	DeferredBoundsChecking bool
+	Optimizations          map[string]bool
+	Target                 Target
+	Verbose                bool
+	KeepSymbols            bool
 }
 
 type Result struct {
@@ -114,7 +116,7 @@ func Build(request Request) (Result, error) {
 	if err := os.WriteFile(filepath.Join(buildDir, "module.wasm"), source, 0o644); err != nil {
 		return Result{}, err
 	}
-	if err := os.WriteFile(filepath.Join(buildDir, "main.go"), mainSource(inputs.Dependencies, config, request.Invoke), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(buildDir, "main.go"), mainSource(inputs.Dependencies, config, request.Invoke, request.DeferredBoundsChecking, request.Optimizations), 0o644); err != nil {
 		return Result{}, err
 	}
 	environment := append(os.Environ(),
@@ -136,7 +138,7 @@ func Build(request Request) (Result, error) {
 	return Result{Output: output, Target: request.Target, Plugins: len(inputs.Dependencies)}, nil
 }
 
-func mainSource(dependencies []string, pluginConfig []byte, invoke string) []byte {
+func mainSource(dependencies []string, pluginConfig []byte, invoke string, deferredBoundsChecking bool, optimizations map[string]bool) []byte {
 	dependencies = append([]string(nil), dependencies...)
 	sort.Strings(dependencies)
 	var source bytes.Buffer
@@ -147,7 +149,17 @@ func mainSource(dependencies []string, pluginConfig []byte, invoke string) []byt
 	}
 	source.WriteString(")\n\n//go:embed module.wasm\nvar module []byte\n\n")
 	fmt.Fprintf(&source, "var pluginConfig = []byte(%q)\n\n", pluginConfig)
-	fmt.Fprintf(&source, "func main() { os.Exit(standalone.Run(module, pluginConfig, %q, os.Args)) }\n", invoke)
+	fmt.Fprintf(&source, "var options = standalone.Options{Invoke: %q, DeferBoundsChecks: %t, OptimizationKnobs: map[string]bool{", invoke, deferredBoundsChecking)
+	names := make([]string, 0, len(optimizations))
+	for name := range optimizations {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		fmt.Fprintf(&source, "%q: %t, ", name, optimizations[name])
+	}
+	source.WriteString("}}\n\n")
+	source.WriteString("func main() { os.Exit(standalone.Run(module, pluginConfig, options, os.Args)) }\n")
 	return source.Bytes()
 }
 

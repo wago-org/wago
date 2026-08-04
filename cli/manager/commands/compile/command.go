@@ -2,15 +2,21 @@
 package compile
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/wago-org/wago/cli/internal/command"
+	"github.com/wago-org/wago/cli/internal/settings"
 	"github.com/wago-org/wago/cli/internal/ui"
 )
+
+const deferredBoundsCheckingFlag = "deferred-bounds-checking"
 
 type Options struct {
 	Input, Output, Target, Invoke string
 	Plugins                       string
+	DeferredBoundsChecking        *bool
+	Optimizations                 map[string]bool
 	Global, Local, Bare           bool
 	Verbose                       bool
 }
@@ -20,6 +26,7 @@ type Environment interface {
 }
 
 func Command(environment Environment) *command.Cmd {
+	knobs := compileKnobFlags()
 	return &command.Cmd{
 		Name:       "compile",
 		Summary:    "build a standalone executable from a WebAssembly module",
@@ -36,6 +43,7 @@ func Command(environment Environment) *command.Cmd {
 			{Name: "bare", Bool: true, Help: "build without plugins"},
 			{Name: "verbose", Short: "v", Bool: true, Help: "show Go build output"},
 		},
+		Knobs: knobs,
 		Long: "The executable embeds the module and selected plugin configuration. By default it\n" +
 			"calls _start; use --invoke to bake in another exported function. Use --target\n" +
 			"linux/amd64, linux/arm64, darwin/amd64, darwin/arm64, windows/amd64,\n" +
@@ -45,14 +53,75 @@ func Command(environment Environment) *command.Cmd {
 				ui.Usage("compile: need exactly one <file>")
 			}
 			plugins := joinPluginLists(context.Str("plugin"), context.Str("plugins"))
+			deferred, optimizations := compileKnobOverrides(context)
 			environment.Compile(Options{
 				Input: context.Args[0], Output: context.Str("output"), Target: context.Str("target"), Invoke: context.Str("invoke"),
-				Plugins: plugins,
-				Global:  context.Bool("global"), Local: context.Bool("local"), Bare: context.Bool("bare"),
+				Plugins: plugins, DeferredBoundsChecking: deferred, Optimizations: optimizations,
+				Global: context.Bool("global"), Local: context.Bool("local"), Bare: context.Bool("bare"),
 				Verbose: context.Bool("verbose"),
 			})
 		},
 	}
+}
+
+func compileKnobFlags() []command.Flag {
+	configured, hasConfig, _ := settings.LoadConfigured()
+	deferred := true
+	if hasConfig {
+		deferred = configured.Runtime.DeferredBoundsChecking
+	}
+	flags := pairedFlag(deferredBoundsCheckingFlag, deferred, "skip provably redundant explicit bounds checks")
+	for _, knob := range settings.OptimizationCatalog() {
+		name := strings.TrimPrefix(knob.Key, "optimizations.")
+		on := knob.Default
+		if hasConfig {
+			if value, ok := configured.Optimizations[name]; ok {
+				on = value
+			}
+		}
+		flags = append(flags, pairedFlag(name, on, knob.Description)...)
+	}
+	return flags
+}
+
+func pairedFlag(name string, on bool, description string) []command.Flag {
+	state := "off"
+	if on {
+		state = "on"
+	}
+	return []command.Flag{
+		{Name: name, Bool: true, Help: fmt.Sprintf("(default: %s) %s", state, description)},
+		{Name: "no-" + name, Bool: true},
+	}
+}
+
+func compileKnobOverrides(context *command.Ctx) (*bool, map[string]bool) {
+	var deferred *bool
+	if value, set := pairedOverride(context, deferredBoundsCheckingFlag); set {
+		deferred = &value
+	}
+	overrides := map[string]bool{}
+	for _, knob := range settings.OptimizationCatalog() {
+		name := strings.TrimPrefix(knob.Key, "optimizations.")
+		if value, set := pairedOverride(context, name); set {
+			overrides[name] = value
+		}
+	}
+	return deferred, overrides
+}
+
+func pairedOverride(context *command.Ctx, name string) (bool, bool) {
+	on, off := context.Bool(name), context.Bool("no-"+name)
+	if on && off {
+		ui.Usage("compile: conflicting --%s and --no-%s", name, name)
+	}
+	if on {
+		return true, true
+	}
+	if off {
+		return false, true
+	}
+	return false, false
 }
 
 func joinPluginLists(values ...string) string {

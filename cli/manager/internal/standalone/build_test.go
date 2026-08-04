@@ -23,8 +23,10 @@ func TestParseTargetAndDefaultOutput(t *testing.T) {
 }
 
 func TestMainSourceBakesInvokeExport(t *testing.T) {
-	source := string(mainSource(nil, nil, "fib"))
-	if !strings.Contains(source, `standalone.Run(module, pluginConfig, "fib", os.Args)`) {
+	source := string(mainSource(nil, nil, "fib", false, map[string]bool{"inline": false}))
+	if !strings.Contains(source, `Invoke: "fib", DeferBoundsChecks: false`) ||
+		!strings.Contains(source, `"inline": false`) ||
+		!strings.Contains(source, `standalone.Run(module, pluginConfig, options, os.Args)`) {
 		t.Fatalf("generated main does not invoke fib:\n%s", source)
 	}
 }

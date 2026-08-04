@@ -86,7 +86,9 @@ different exported function; executable arguments are parsed from its typed Wasm
 signature just like `wago run --invoke`. The executable embeds Wago, the Wasm
 module, and the active local or global plugin configuration, so it runs without
 a Wago installation. Use `--bare`, `--local`, or `--global` to choose the plugin
-scope. Cross-builds support Darwin, Linux, and Windows on AMD64 and ARM64.
+scope. Compiler flags such as `--no-inline` and
+`--no-deferred-bounds-checking` are baked into the executable. Cross-builds
+support Darwin, Linux, and Windows on AMD64 and ARM64.
 
 Inspect its host requirements:
 
