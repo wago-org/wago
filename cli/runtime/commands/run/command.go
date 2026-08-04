@@ -126,12 +126,21 @@ func runStart(runtime *wago.Runtime, module *wago.Module) {
 }
 
 func friendlyInstantiationError(err error) error {
-	if errors.Is(err, wago.ErrMissingImport) &&
-		(strings.Contains(err.Error(), `"wasi_snapshot_preview1.`) ||
-			strings.Contains(err.Error(), `"wasi_unstable.`)) {
-		return fmt.Errorf("this module requires WASI support\n\nInstall it with:\n\n  wago add wago-org/wasi")
+	if !errors.Is(err, wago.ErrMissingImport) {
+		return err
 	}
-	return err
+	const prefix = `module imports "`
+	message := err.Error()
+	start := strings.Index(message, prefix)
+	if start < 0 {
+		return err
+	}
+	importName := message[start+len(prefix):]
+	end := strings.IndexByte(importName, '"')
+	if end < 0 {
+		return err
+	}
+	return fmt.Errorf("no installed plugin provides this host import\n\n  %s\n\nAdd a plugin that provides it.", importName[:end])
 }
 
 func trapReason(err error) string {
