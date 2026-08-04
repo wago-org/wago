@@ -96,7 +96,7 @@ func main() {
 			{"Minimal", "Replace binaries and keep existing state", "minimal", ""},
 		}, 2)
 	case "path":
-		value, ok = radio("Add Wago to your PATH?", []radioItem{
+		value, ok = radio(pathSetupQuestion(), []radioItem{
 			{"Command Prompt", "User PATH", "yes", "current"},
 			{"Not now", "", "none", ""},
 		}, 0)
@@ -205,7 +205,7 @@ func clear(lines int) {
 func radio(title string, items []radioItem, cursor int) (string, bool) {
 	c, interactive := openConsole()
 	if !interactive {
-		if title == "Add Wago to your PATH?" {
+		if title == pathSetupQuestion() {
 			return "", false
 		}
 		return items[cursor].value, true
