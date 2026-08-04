@@ -47,7 +47,7 @@ func TestWindowsSkippedPathSetupKeepsStatus(t *testing.T) {
 		t.Fatal(err)
 	}
 	installer.offerPathSetup()
-	if got, want := output.String(), "Want to add Wago to PATH? Not now\n\n"; got != want {
+	if got, want := output.String(), "\nWant to add Wago to PATH? Not now\n\n"; got != want {
 		t.Fatalf("skipped PATH output = %q, want %q", got, want)
 	}
 }
@@ -70,7 +70,6 @@ func TestWindowsWarmFinishAfterPathSetup(t *testing.T) {
 		"Sweet, we've installed Wago canary-deadbee at ~\\.wago\\bin\\wago.exe",
 		"Since we added it to your PATH just now, open a new terminal.",
 		"wago version install",
-		"Have fun!",
 	} {
 		if !strings.Contains(text, fragment) {
 			t.Fatalf("warm finish missing %q:\n%s", fragment, text)
