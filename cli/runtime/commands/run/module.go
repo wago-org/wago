@@ -1,7 +1,6 @@
 package run
 
 import (
-	"fmt"
 	"os"
 	"strings"
 
@@ -51,26 +50,4 @@ func mustResolveExport(compiled *wago.Compiled, requested string) string {
 	}
 	ui.Fatal("multiple exports; pass -e <name> (have: %s)", strings.Join(names, ", "))
 	return ""
-}
-
-func autoHosts(compiled *wago.Compiled, trace bool, provided wago.Imports) wago.Imports {
-	hosts := wago.Imports{}
-	for _, name := range compiled.Imports {
-		if _, ok := provided[name]; ok {
-			continue
-		}
-		importName := name
-		if trace {
-			hosts[importName] = wago.HostFunc(func(_ wago.HostModule, params, _ []uint64) {
-				var argument int32
-				if len(params) > 0 {
-					argument = wago.AsI32(params[0])
-				}
-				fmt.Printf("  %s %s(%d)\n", ui.Dim("host"), importName, argument)
-			})
-		} else {
-			hosts[importName] = wago.HostFunc(func(wago.HostModule, []uint64, []uint64) {})
-		}
-	}
-	return hosts
 }
