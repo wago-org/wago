@@ -33,7 +33,7 @@ func TestPluginListAcceptsSingularAndPluralFlags(t *testing.T) {
 }
 
 func TestOptimizationFlags(t *testing.T) {
-	knobs := wago.OptKnobs()
+	knobs := wago.NewRuntimeConfig().OptimizationInfos()
 	if len(knobs) == 0 {
 		t.Fatal("no optimization knobs")
 	}
@@ -47,25 +47,24 @@ func TestOptimizationFlags(t *testing.T) {
 			t.Fatalf("flag pair %d = %#v, %#v", index, flags[index*2], flags[index*2+1])
 		}
 	}
-	t.Cleanup(func() {
-		for _, knob := range knobs {
-			wago.SetOptKnob(knob.Name, knob.On)
-		}
-	})
 	name := knobs[0].Name
-	ApplyOptimizationFlags(command.NewContext(nil, nil, map[string]bool{name: true}))
-	if !wago.OptKnobs()[0].On {
+	base := wago.NewRuntimeConfig().WithOptimization(name, false)
+	enabled := ApplyOptimizationFlags(command.NewContext(nil, nil, map[string]bool{name: true}), base)
+	if !enabled.OptimizationInfos()[0].On {
 		t.Fatalf("--%s did not enable knob", name)
 	}
-	ApplyOptimizationFlags(command.NewContext(nil, nil, map[string]bool{"no-" + name: true}))
-	if wago.OptKnobs()[0].On {
+	disabled := ApplyOptimizationFlags(command.NewContext(nil, nil, map[string]bool{"no-" + name: true}), enabled)
+	if disabled.OptimizationInfos()[0].On {
 		t.Fatalf("--no-%s did not disable knob", name)
+	}
+	if base.OptimizationInfos()[0].On {
+		t.Fatal("optimization flags mutated the base runtime config")
 	}
 }
 
 func TestSettingsCatalogMatchesActiveBackendKnobs(t *testing.T) {
 	backend := map[string]bool{}
-	for _, knob := range wago.OptKnobs() {
+	for _, knob := range wago.NewRuntimeConfig().OptimizationInfos() {
 		backend[knob.Name] = true
 	}
 	catalog := settings.OptimizationsForArch(runtime.GOARCH)
@@ -339,7 +338,7 @@ func TestConfiguredFeaturesAndOptimizationsMatchRuntimeCatalog(t *testing.T) {
 	for _, setting := range settings.Optimizations() {
 		known[strings.TrimPrefix(setting.Key, "optimizations.")] = true
 	}
-	for _, knob := range wago.OptKnobs() {
+	for _, knob := range wago.NewRuntimeConfig().OptimizationInfos() {
 		if !known[knob.Name] {
 			t.Fatalf("runtime knob %q is missing from the settings catalog", knob.Name)
 		}

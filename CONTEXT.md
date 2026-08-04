@@ -23,3 +23,15 @@ _Avoid_: Current version, active binary
 **Runtime Handoff**:
 The invocation and metadata transferred from the Wago manager to an Active Runtime.
 _Avoid_: Dispatch environment, runner launch
+
+**Optimization Definition**:
+The stable name, description, maturity, default, and supported architectures of one configurable compiler optimization.
+_Avoid_: Knob metadata, optimization flag
+
+**Optimization Binding**:
+The architecture-specific code-generation control associated with an Optimization Definition.
+_Avoid_: Backend knob, boolean pointer
+
+**Optimization Selection**:
+The immutable set of enabled and disabled Optimization Definitions used for one runtime compilation configuration.
+_Avoid_: Global knobs, optimization state

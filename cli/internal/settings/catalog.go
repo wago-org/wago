@@ -1,4 +1,6 @@
 // Package settings owns Wago's user-configurable runtime defaults.
+//
+//go:generate go run ./cmd/genschema -schema ../../../schema.json
 package settings
 
 import (
@@ -17,6 +19,35 @@ type BoolSetting struct {
 	Default      bool   `json:"default"`
 	Experimental bool   `json:"experimental"`
 	Available    bool   `json:"available"`
+	kind         boolSettingKind
+	name         string
+}
+
+type boolSettingKind uint8
+
+const (
+	featureSettingKind boolSettingKind = iota + 1
+	optimizationSettingKind
+)
+
+// Name returns the setting name without its canonical section prefix.
+func (setting BoolSetting) Name() string { return setting.name }
+
+// Value reads this setting from config without exposing its storage section.
+func (setting BoolSetting) Value(config Config) bool {
+	if setting.kind == featureSettingKind {
+		return config.Features[setting.name]
+	}
+	return config.Optimizations[setting.name]
+}
+
+// SetValue writes this setting to config without exposing its storage section.
+func (setting BoolSetting) SetValue(config *Config, enabled bool) {
+	if setting.kind == featureSettingKind {
+		config.Features[setting.name] = enabled
+		return
+	}
+	config.Optimizations[setting.name] = enabled
 }
 
 func Features() []BoolSetting {
@@ -61,6 +92,16 @@ func Experimental() []BoolSetting {
 	for _, optimization := range Optimizations() {
 		if optimization.Experimental {
 			result = append(result, optimization)
+		}
+	}
+	return result
+}
+
+func StableOptimizations() []BoolSetting {
+	var result []BoolSetting
+	for _, setting := range Optimizations() {
+		if !setting.Experimental {
+			result = append(result, setting)
 		}
 	}
 	return result
@@ -121,6 +162,7 @@ func featureSetting(info wago.FeatureInfo) BoolSetting {
 	return BoolSetting{
 		Key: "features." + info.Name, Label: info.Label, Description: info.Description,
 		Default: info.Default, Experimental: info.Experimental, Available: info.Available,
+		kind: featureSettingKind, name: info.Name,
 	}
 }
 
@@ -128,7 +170,48 @@ func optimizationSetting(info wago.OptKnobInfo) BoolSetting {
 	return BoolSetting{
 		Key: "optimizations." + info.Name, Label: info.Label, Description: info.Desc,
 		Default: info.Default, Experimental: info.Experimental, Available: true,
+		kind: optimizationSettingKind, name: info.Name,
 	}
+}
+
+func validateValues(kind boolSettingKind, values map[string]bool) error {
+	prefix := "features."
+	label := "feature"
+	if kind == optimizationSettingKind {
+		prefix = "optimizations."
+		label = "optimization"
+	}
+	for name := range values {
+		setting, ok := Lookup(prefix + name)
+		if !ok || setting.kind != kind || !setting.Available {
+			return fmt.Errorf("unknown %s setting %q", label, name)
+		}
+	}
+	return nil
+}
+
+func ValidateFeatureValues(values map[string]bool) error {
+	return validateValues(featureSettingKind, values)
+}
+
+func ValidateOptimizationValues(values map[string]bool) error {
+	return validateValues(optimizationSettingKind, values)
+}
+
+// SchemaNames returns registered setting names grouped by manifest section.
+func SchemaNames() map[string][]string {
+	result := map[string][]string{"features": {}, "optimizations": {}}
+	for _, setting := range allKnownBoolean() {
+		section := "optimizations"
+		if setting.kind == featureSettingKind {
+			section = "features"
+		}
+		result[section] = append(result[section], setting.name)
+	}
+	for section := range result {
+		sort.Strings(result[section])
+	}
+	return result
 }
 
 func ParseBool(value string) (bool, error) {

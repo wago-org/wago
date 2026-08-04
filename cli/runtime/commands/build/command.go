@@ -49,8 +49,6 @@ func (cmd implementation) Run(c *command.Ctx) {
 	if err != nil {
 		ui.Fatal("build: %v", err)
 	}
-	runcmd.ApplyOptimizationDefaults(defaults, configured)
-	runcmd.ApplyOptimizationFlags(c)
 	deferredDefault := true
 	if configured {
 		deferredDefault = defaults.Runtime.DeferredBoundsChecking
@@ -85,6 +83,8 @@ func (cmd implementation) Run(c *command.Ctx) {
 		ui.Usage("build: %v", err)
 	}
 	cfg = runcmd.ApplyFeatureDefaults(cfg, defaults, configured)
+	cfg = runcmd.ApplyOptimizationDefaults(cfg, defaults, configured)
+	cfg = runcmd.ApplyOptimizationFlags(c, cfg)
 	rt := cmd.environment.LoadRuntime(cfg, runcmd.PluginList(c))
 	defer rt.Close()
 	module, err := rt.Compile(source)

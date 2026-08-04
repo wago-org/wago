@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/wago-org/wago/cli/internal/automation"
@@ -135,7 +134,7 @@ func standaloneRuntimeOptions(arch string, options compilecmd.Options) (bool, in
 	}
 	supported := map[string]bool{}
 	for _, knob := range settings.OptimizationsForArch(arch) {
-		supported[strings.TrimPrefix(knob.Key, "optimizations.")] = true
+		supported[knob.Name()] = true
 	}
 	optimizations := map[string]bool{}
 	if hasConfig {

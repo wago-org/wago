@@ -2,6 +2,7 @@ package standalone
 
 import (
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/wago-org/wago"
@@ -53,21 +54,19 @@ func TestExecuteRejectsWrongInvokeArguments(t *testing.T) {
 }
 
 func TestExecuteAppliesOptimizationKnobs(t *testing.T) {
-	knob := wago.OptKnobs()[0]
-	t.Cleanup(func() { wago.SetOptKnob(knob.Name, knob.On) })
-	if err := execute(emptyStartModule(), nil, Options{
-		DeferBoundsChecks: true, OptimizationKnobs: map[string]bool{knob.Name: !knob.On},
-	}, []string{"hello"}); err != nil {
+	knob := wago.NewRuntimeConfig().OptimizationInfos()[0]
+	config, err := runtimeConfig(Options{DeferBoundsChecks: true, OptimizationKnobs: map[string]bool{knob.Name: !knob.On}})
+	if err != nil {
 		t.Fatal(err)
 	}
-	if got := wago.OptKnobs()[0].On; got == knob.On {
+	if got := config.OptimizationInfos()[0].On; got == knob.On {
 		t.Fatalf("optimization %s remained %v", knob.Name, got)
 	}
 }
 
 func TestExecuteRejectsUnknownOptimization(t *testing.T) {
 	err := execute(emptyStartModule(), nil, Options{OptimizationKnobs: map[string]bool{"not-a-knob": true}}, nil)
-	if err == nil || err.Error() != `unknown optimization "not-a-knob"` {
+	if err == nil || !strings.Contains(err.Error(), `unknown`) || !strings.Contains(err.Error(), `not-a-knob`) {
 		t.Fatalf("execute error = %v", err)
 	}
 }

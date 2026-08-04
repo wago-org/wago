@@ -50,11 +50,6 @@ func execute(source, pluginConfig []byte, options Options, args []string) error 
 		}
 	}
 	wago.SetGuestArgs(args)
-	for name, enabled := range options.OptimizationKnobs {
-		if !wago.SetOptKnob(name, enabled) {
-			return fmt.Errorf("unknown optimization %q", name)
-		}
-	}
 	config, err := runtimeConfig(options)
 	if err != nil {
 		return err
@@ -112,12 +107,16 @@ func execute(source, pluginConfig []byte, options Options, args []string) error 
 
 func runtimeConfig(options Options) (*wago.RuntimeConfig, error) {
 	config := wago.NewRuntimeConfig().WithDeferBoundsChecks(options.DeferBoundsChecks).WithFunctionWorkers(options.FunctionWorkers)
+	config = config.WithOptimizations(options.OptimizationKnobs)
 	switch options.Core {
 	case 0, 2:
 	case 3:
 		config = config.WithCoreFeatures(wago.CoreFeaturesV3)
 	default:
 		return nil, fmt.Errorf("unknown WebAssembly core feature set %d", options.Core)
+	}
+	if err := config.Validate(); err != nil {
+		return nil, err
 	}
 	return config, nil
 }

@@ -65,8 +65,6 @@ func (cmd implementation) Run(ctx *command.Ctx) {
 	if err != nil {
 		ui.Fatal("run: %v", err)
 	}
-	ApplyOptimizationDefaults(defaults, configured)
-	ApplyOptimizationFlags(ctx)
 	deferredDefault := true
 	if configured {
 		deferredDefault = defaults.Runtime.DeferredBoundsChecking
@@ -85,6 +83,8 @@ func (cmd implementation) Run(ctx *command.Ctx) {
 		ui.Usage("run: %v", err)
 	}
 	config = ApplyFeatureDefaults(config, defaults, configured)
+	config = ApplyOptimizationDefaults(config, defaults, configured)
+	config = ApplyOptimizationFlags(ctx, config)
 	runtime := cmd.environment.LoadRuntime(config, PluginList(ctx))
 	defer runtime.Close()
 	module := mustLoadModule(positionals[0], config, runtime, cmd.environment.ArtifactCache())

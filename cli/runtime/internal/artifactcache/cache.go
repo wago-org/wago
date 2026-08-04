@@ -80,7 +80,7 @@ func (cache Cache) path(source []byte, config *wago.RuntimeConfig) (string, bool
 	if err != nil {
 		return "", false
 	}
-	knobs := wago.OptKnobs()
+	knobs := config.OptimizationInfos()
 	sig := signature{
 		Source:             sha256.Sum256(source),
 		Runtime:            identity,

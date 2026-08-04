@@ -43,49 +43,49 @@ func DeferredBoundsChecking(ctx *command.Ctx, defaultValue bool) (bool, error) {
 
 // OptimizationFlags exposes every backend knob as --<name>/--no-<name>.
 func OptimizationFlags() []command.Flag {
-	knobs := wago.OptKnobs()
+	knobs := settings.Optimizations()
 	configured, hasConfig, _ := settings.LoadConfigured()
 	flags := make([]command.Flag, 0, len(knobs)*2)
 	for _, knob := range knobs {
 		state := "off"
-		on := knob.On
+		on := knob.Default
 		if hasConfig {
-			if value, ok := configured.Optimizations[knob.Name]; ok {
-				on = value
-			}
+			on = knob.Value(configured)
 		}
 		if on {
 			state = "on"
 		}
 		flags = append(flags,
-			command.Flag{Name: knob.Name, Bool: true, Help: fmt.Sprintf("(default: %s) %s", state, knob.Desc)},
-			command.Flag{Name: "no-" + knob.Name, Bool: true},
+			command.Flag{Name: knob.Name(), Bool: true, Help: fmt.Sprintf("(default: %s) %s", state, knob.Description)},
+			command.Flag{Name: "no-" + knob.Name(), Bool: true},
 		)
 	}
 	return flags
 }
 
 // ApplyOptimizationFlags applies explicit CLI overrides before compilation.
-func ApplyOptimizationFlags(ctx *command.Ctx) {
-	for _, knob := range wago.OptKnobs() {
+func ApplyOptimizationFlags(ctx *command.Ctx, config *wago.RuntimeConfig) *wago.RuntimeConfig {
+	for _, knob := range config.OptimizationInfos() {
 		on, off := ctx.Bool(knob.Name), ctx.Bool("no-"+knob.Name)
 		if on && off {
 			ui.Usage("run: conflicting --%s and --no-%s", knob.Name, knob.Name)
 		}
 		switch {
 		case on:
-			wago.SetOptKnob(knob.Name, true)
+			config = config.WithOptimization(knob.Name, true)
 		case off:
-			wago.SetOptKnob(knob.Name, false)
+			config = config.WithOptimization(knob.Name, false)
 		}
 	}
+	return config
 }
 
-func ApplyOptimizationDefaults(config settings.Config, configured bool) {
+func ApplyOptimizationDefaults(runtimeConfig *wago.RuntimeConfig, config settings.Config, configured bool) *wago.RuntimeConfig {
 	if !configured {
-		return
+		return runtimeConfig
 	}
 	for name, enabled := range config.Optimizations {
-		wago.SetOptKnob(name, enabled)
+		runtimeConfig = runtimeConfig.WithOptimization(name, enabled)
 	}
+	return runtimeConfig
 }

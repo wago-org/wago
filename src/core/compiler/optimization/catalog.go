@@ -2,6 +2,11 @@
 // backends, the CLI, configuration, and standalone cross-compilation.
 package optimization
 
+import (
+	"fmt"
+	"sync"
+)
+
 // Definition describes one user-configurable compiler optimization.
 // Register new optimizations here, then bind them to their backend boolean in
 // that backend's knobs.go. Every config and CLI surface is derived from this
@@ -13,6 +18,145 @@ type Definition struct {
 	Default       bool
 	Experimental  bool
 	Architectures []string
+}
+
+// Info describes one optimization and its selected state.
+type Info struct {
+	Name         string `json:"name"`
+	Label        string `json:"label"`
+	Desc         string `json:"description"`
+	On           bool   `json:"on"`
+	Default      bool   `json:"default"`
+	Experimental bool   `json:"experimental"`
+}
+
+// BindingSpec associates a registered optimization with the boolean currently
+// consumed by one architecture backend. Inverted preserves public "on means
+// enabled" semantics for legacy negative controls.
+type BindingSpec struct {
+	Name     string
+	Value    *bool
+	Inverted bool
+}
+
+// Bind creates an ordinary architecture binding.
+func Bind(name string, value *bool) BindingSpec { return BindingSpec{Name: name, Value: value} }
+
+// BindInverted creates a binding whose implementation boolean disables the
+// optimization when true.
+func BindInverted(name string, value *bool) BindingSpec {
+	return BindingSpec{Name: name, Value: value, Inverted: true}
+}
+
+type binding struct {
+	definition Definition
+	value      *bool
+	inverted   bool
+}
+
+// Bindings owns the complete, ordered set of bindings for one architecture.
+// NewBindings panics on missing, duplicate, unknown, or nil bindings so an
+// advertised optimization cannot reach execution without an implementation.
+type Bindings struct {
+	mu      sync.Mutex
+	arch    string
+	entries []binding
+	index   map[string]int
+}
+
+func NewBindings(arch string, specs ...BindingSpec) *Bindings {
+	byName := make(map[string]BindingSpec, len(specs))
+	for _, spec := range specs {
+		if spec.Value == nil {
+			panic(fmt.Sprintf("%s optimization binding %q has a nil value", arch, spec.Name))
+		}
+		if _, exists := byName[spec.Name]; exists {
+			panic(fmt.Sprintf("%s optimization binding %q is duplicated", arch, spec.Name))
+		}
+		if _, ok := Lookup(arch, spec.Name); !ok {
+			panic(fmt.Sprintf("%s optimization binding %q is not registered", arch, spec.Name))
+		}
+		byName[spec.Name] = spec
+	}
+	definitions := ForArch(arch)
+	bindings := &Bindings{arch: arch, entries: make([]binding, 0, len(definitions)), index: make(map[string]int, len(definitions))}
+	for _, definition := range definitions {
+		spec, ok := byName[definition.Name]
+		if !ok {
+			panic(fmt.Sprintf("%s optimization %q has no backend binding", arch, definition.Name))
+		}
+		bindings.entries = append(bindings.entries, binding{definition: definition, value: spec.Value, inverted: spec.Inverted})
+		bindings.index[definition.Name] = len(bindings.entries) - 1
+		delete(byName, definition.Name)
+	}
+	return bindings
+}
+
+// Infos returns current binding values in catalog order.
+func (b *Bindings) Infos() []Info {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.infosLocked()
+}
+
+func (b *Bindings) infosLocked() []Info {
+	result := make([]Info, len(b.entries))
+	for index, entry := range b.entries {
+		on := *entry.value
+		if entry.inverted {
+			on = !on
+		}
+		result[index] = info(entry.definition, on)
+	}
+	return result
+}
+
+// Set changes one binding's process default. RuntimeConfig selections should be
+// preferred; this remains for low-level backend tests and compatibility.
+func (b *Bindings) Set(name string, on bool) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	index, ok := b.index[name]
+	if !ok {
+		return false
+	}
+	entry := b.entries[index]
+	if entry.inverted {
+		on = !on
+	}
+	*entry.value = on
+	return true
+}
+
+// Apply installs overrides for one compile and returns a function that restores
+// the process defaults and releases the compile lock.
+func (b *Bindings) Apply(overrides map[string]bool) (func(), error) {
+	b.mu.Lock()
+	before := make([]bool, len(b.entries))
+	for index, entry := range b.entries {
+		before[index] = *entry.value
+	}
+	for name, on := range overrides {
+		index, ok := b.index[name]
+		if !ok {
+			for index, entry := range b.entries {
+				*entry.value = before[index]
+			}
+			b.mu.Unlock()
+			return nil, fmt.Errorf("unknown %s optimization %q", b.arch, name)
+		}
+		entry := b.entries[index]
+		if entry.inverted {
+			on = !on
+		}
+		*entry.value = on
+	}
+	return func() {
+		for index, entry := range b.entries {
+			*entry.value = before[index]
+		}
+		b.mu.Unlock()
+	}, nil
 }
 
 var catalog = []Definition{
@@ -95,6 +239,26 @@ func All() []Definition {
 	return result
 }
 
+// InfosForArch returns built-in selection values for an architecture.
+func InfosForArch(arch string) []Info {
+	definitions := ForArch(arch)
+	result := make([]Info, len(definitions))
+	for index, definition := range definitions {
+		result[index] = info(definition, definition.Default)
+	}
+	return result
+}
+
+// Infos returns every definition once with its built-in selection value.
+func Infos() []Info {
+	definitions := All()
+	result := make([]Info, len(definitions))
+	for index, definition := range definitions {
+		result[index] = info(definition, definition.Default)
+	}
+	return result
+}
+
 // Lookup returns a registered optimization for arch.
 func Lookup(arch, name string) (Definition, bool) {
 	for _, definition := range catalog {
@@ -117,4 +281,11 @@ func supports(definition Definition, arch string) bool {
 func clone(definition Definition) Definition {
 	definition.Architectures = append([]string(nil), definition.Architectures...)
 	return definition
+}
+
+func info(definition Definition, on bool) Info {
+	return Info{
+		Name: definition.Name, Label: definition.Label, Desc: definition.Description,
+		On: on, Default: definition.Default, Experimental: definition.Experimental,
+	}
 }

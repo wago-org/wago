@@ -590,6 +590,10 @@ type ImportBinding = shared.ImportBinding
 
 // CompileOptions configures direct wasm-to-amd64 compilation.
 type CompileOptions struct {
+	// Optimizations is the complete selection for this compilation. nil uses the
+	// backend's environment-derived process defaults.
+	Optimizations map[string]bool
+
 	// Workers forces the maximum number of per-function compiler workers.
 	// Values <= 1 retain the exact serial fast path. Values > 1 are capped by
 	// runtime.GOMAXPROCS(0) and the module's local-function count.
@@ -723,6 +727,11 @@ func CompileModule(m *wasm.Module) (*amd64.CompiledModule, error) {
 // inline linear-memory bounds check, relying on a guard-page mapping + SIGSEGV
 // handler (the caller must back memory with runtime guard pages).
 func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModule, error) {
+	restoreOptimizations, err := optimizationBindings.Apply(opts.Optimizations)
+	if err != nil {
+		return nil, fmt.Errorf("amd64: %w", err)
+	}
+	defer restoreOptimizations()
 	guardMode := opts.ElideBoundsChecks
 	// P6.1 elision is on unless disabled per-compile (opts) or globally (env).
 	boundsFacts := boundsFactsEnabled && !opts.NoBoundsFacts

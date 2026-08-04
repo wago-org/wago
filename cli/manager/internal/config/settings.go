@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io"
 	"strconv"
-	"strings"
 
 	"github.com/wago-org/wago/cli/internal/settings"
 	"github.com/wago-org/wago/cli/internal/tui"
@@ -28,11 +27,11 @@ func Interactive(config, reset settings.Config, scope string, startExperimental 
 		var err error
 		switch selected {
 		case "features":
-			update = chooseBooleans("WebAssembly features", settings.Features(), config.Features)
+			update = chooseBooleans("WebAssembly features", settings.Features(), &config)
 		case "runtime":
 			update, err = chooseRuntime(&config)
 		case "optimizations":
-			update = chooseBooleans("Compiler optimizations", stableOptimizations(), config.Optimizations)
+			update = chooseBooleans("Compiler optimizations", settings.StableOptimizations(), &config)
 		case "experimental":
 			update = chooseExperimental(&config)
 		case "reset":
@@ -63,13 +62,12 @@ func Print(w io.Writer, config settings.Config, includeExperimental bool, scope,
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, ui.Bold("WebAssembly features"))
 	for _, setting := range settings.Features() {
-		printSetting(w, strings.TrimPrefix(setting.Key, "features."), onOff(config.Features[strings.TrimPrefix(setting.Key, "features.")]), setting.Key, overridden)
+		printSetting(w, setting.Name(), onOff(setting.Value(config)), setting.Key, overridden)
 	}
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, ui.Bold("Compiler optimizations"))
-	for _, setting := range stableOptimizations() {
-		name := strings.TrimPrefix(setting.Key, "optimizations.")
-		printSetting(w, name, onOff(config.Optimizations[name]), setting.Key, overridden)
+	for _, setting := range settings.StableOptimizations() {
+		printSetting(w, setting.Name(), onOff(setting.Value(config)), setting.Key, overridden)
 	}
 	if includeExperimental {
 		fmt.Fprintln(w)
@@ -77,9 +75,9 @@ func Print(w io.Writer, config settings.Config, includeExperimental bool, scope,
 		for _, setting := range settings.Experimental() {
 			value := "unavailable"
 			if setting.Available {
-				value = onOff(booleanValue(config, setting))
+				value = onOff(setting.Value(config))
 			}
-			printSetting(w, settingName(setting), value, setting.Key, overridden)
+			printSetting(w, setting.Name(), value, setting.Key, overridden)
 		}
 	}
 }
@@ -113,17 +111,16 @@ func rootItems(config settings.Config, scope string) []tui.Item {
 	return []tui.Item{
 		{Label: "WebAssembly features", Meta: fmt.Sprintf("%d enabled", enabledCount(config.Features)), Value: "features", Description: "accepted module features"},
 		{Label: "Runtime defaults", Meta: parallelLabel(config.Runtime.Parallel), Value: "runtime", Description: "parallelism and bounds checks"},
-		{Label: "Optimizations", Meta: fmt.Sprintf("%d enabled", enabledStableOptimizations(config)), Value: "optimizations", Description: "stable compiler defaults"},
+		{Label: "Optimizations", Meta: fmt.Sprintf("%d enabled", enabledSettings(config, settings.StableOptimizations())), Value: "optimizations", Description: "stable compiler defaults"},
 		{Label: "Experimental preview", Meta: fmt.Sprintf("%d available", availableExperimental()), Value: "experimental", Description: "opt-in and planned features"},
 		{Label: resetLabel, Value: "reset", Description: resetDescription},
 	}
 }
 
-func chooseBooleans(title string, catalog []settings.BoolSetting, values map[string]bool) bool {
+func chooseBooleans(title string, catalog []settings.BoolSetting, config *settings.Config) bool {
 	items := make([]tui.SelectItem, 0, len(catalog))
 	for _, setting := range catalog {
-		name := setting.Key[strings.IndexByte(setting.Key, '.')+1:]
-		items = append(items, tui.SelectItem{Label: setting.Label, Description: setting.Description, On: values[name]})
+		items = append(items, tui.SelectItem{Label: setting.Label, Description: setting.Description, On: setting.Value(*config)})
 	}
 	selector := &tui.MultiSelect{Title: title, Items: items, Prompt: "↑/↓ move · space toggle · a all · enter/→ save · ←/esc back"}
 	submitted, cancelled := tui.Run(selector)
@@ -132,9 +129,8 @@ func chooseBooleans(title string, catalog []settings.BoolSetting, values map[str
 	}
 	changed := false
 	for index, setting := range catalog {
-		name := setting.Key[strings.IndexByte(setting.Key, '.')+1:]
-		if values[name] != selector.Items[index].On {
-			values[name] = selector.Items[index].On
+		if setting.Value(*config) != selector.Items[index].On {
+			setting.SetValue(config, selector.Items[index].On)
 			changed = true
 		}
 	}
@@ -150,7 +146,7 @@ func chooseExperimental(config *settings.Config) bool {
 			description += " · planned"
 		}
 		items = append(items, tui.SelectItem{
-			Label: setting.Label, Description: description, On: setting.Available && booleanValue(*config, setting), Disabled: !setting.Available,
+			Label: setting.Label, Description: description, On: setting.Available && setting.Value(*config), Disabled: !setting.Available,
 		})
 	}
 	selector := &tui.MultiSelect{Title: "Experimental features (preview)", Items: items, Prompt: "↑/↓ move · space toggle available · enter/→ save · ←/esc back"}
@@ -163,8 +159,8 @@ func chooseExperimental(config *settings.Config) bool {
 		if !setting.Available {
 			continue
 		}
-		if booleanValue(*config, setting) != selector.Items[index].On {
-			setBooleanValue(config, setting, selector.Items[index].On)
+		if setting.Value(*config) != selector.Items[index].On {
+			setting.SetValue(config, selector.Items[index].On)
 			changed = true
 		}
 	}
@@ -221,16 +217,6 @@ func confirmReset(scope string) bool {
 	return ok && selected == "yes"
 }
 
-func stableOptimizations() []settings.BoolSetting {
-	var stable []settings.BoolSetting
-	for _, setting := range settings.Optimizations() {
-		if !setting.Experimental {
-			stable = append(stable, setting)
-		}
-	}
-	return stable
-}
-
 func enabledCount(values map[string]bool) int {
 	count := 0
 	for _, enabled := range values {
@@ -241,10 +227,10 @@ func enabledCount(values map[string]bool) int {
 	return count
 }
 
-func enabledStableOptimizations(config settings.Config) int {
+func enabledSettings(config settings.Config, catalog []settings.BoolSetting) int {
 	count := 0
-	for _, setting := range stableOptimizations() {
-		if config.Optimizations[strings.TrimPrefix(setting.Key, "optimizations.")] {
+	for _, setting := range catalog {
+		if setting.Value(config) {
 			count++
 		}
 	}
@@ -259,27 +245,6 @@ func availableExperimental() int {
 		}
 	}
 	return count
-}
-
-func settingName(setting settings.BoolSetting) string {
-	return setting.Key[strings.IndexByte(setting.Key, '.')+1:]
-}
-
-func booleanValue(config settings.Config, setting settings.BoolSetting) bool {
-	name := settingName(setting)
-	if strings.HasPrefix(setting.Key, "features.") {
-		return config.Features[name]
-	}
-	return config.Optimizations[name]
-}
-
-func setBooleanValue(config *settings.Config, setting settings.BoolSetting, enabled bool) {
-	name := settingName(setting)
-	if strings.HasPrefix(setting.Key, "features.") {
-		config.Features[name] = enabled
-		return
-	}
-	config.Optimizations[name] = enabled
 }
 
 func parallelLabel(value string) string {

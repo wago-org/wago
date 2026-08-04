@@ -55,18 +55,24 @@ func TestCacheKeyIncludesRuntimeAndCompilerConfiguration(t *testing.T) {
 	dir := t.TempDir()
 	base := wago.NewRuntimeConfig().WithBoundsChecks(wago.BoundsChecksExplicit)
 	featureOff := base.WithFeature(wago.CoreFeatureSIMD, false)
+	knob := base.OptimizationInfos()[0]
+	optimizationOff := base.WithOptimization(knob.Name, !knob.On)
 
 	basePath, ok := (Cache{Dir: dir, Identity: []byte("runtime-a")}).path(source, base)
 	if !ok {
 		t.Fatal("base cache key unavailable")
 	}
 	featurePath, _ := (Cache{Dir: dir, Identity: []byte("runtime-a")}).path(source, featureOff)
+	optimizationPath, _ := (Cache{Dir: dir, Identity: []byte("runtime-a")}).path(source, optimizationOff)
 	runtimePath, _ := (Cache{Dir: dir, Identity: []byte("runtime-b")}).path(source, base)
 	if basePath == featurePath {
 		t.Fatal("feature configuration did not change artifact key")
 	}
 	if basePath == runtimePath {
 		t.Fatal("runtime identity did not change artifact key")
+	}
+	if basePath == optimizationPath {
+		t.Fatal("optimization selection did not change artifact key")
 	}
 }
 
