@@ -147,7 +147,7 @@ func (f *fn) discardGCConstructorOperands(n int) {
 	}
 	dead := roots[len(roots)-n:]
 	for _, root := range dead {
-		if !f.gcTreeDiscardable(root) {
+		if !f.treeDiscardable(root) {
 			// Preserve deferred trap order. flush walks all roots bottom-to-top,
 			// exactly like the constructor helper call this replaces.
 			f.flush()
@@ -158,48 +158,6 @@ func (f *fn) discardGCConstructorOperands(n int) {
 		}
 	}
 	for i := len(dead) - 1; i >= 0; i-- {
-		f.discardGCTree(dead[i])
+		f.discardTree(dead[i])
 	}
-}
-
-func (f *fn) gcTreeDiscardable(e *elem) bool {
-	if e == nil || e.kind == ekSkip || e.kind == ekBlock {
-		return false
-	}
-	if e.kind == ekDeferred {
-		return !isDivRem(e.op) && f.gcTreeDiscardable(e.arg0) &&
-			(e.arg1 == nil || f.gcTreeDiscardable(e.arg1))
-	}
-	if e.st.ehRoot {
-		return false
-	}
-	// In guard mode the deferred load itself is the bounds trap. Explicit mode
-	// has already emitted the check, so the unconsumed load is side-effect free.
-	return e.st.kind != stMemRef || !f.guardMode
-}
-
-func (f *fn) discardGCTree(e *elem) {
-	if e.kind == ekDeferred {
-		if e.arg1 != nil {
-			f.discardGCTree(e.arg1)
-		}
-		f.discardGCTree(e.arg0)
-		f.erase(e)
-		return
-	}
-	switch e.st.kind {
-	case stReg:
-		if e.st.typ == mtCustom {
-			for _, reg := range e.st.vregs {
-				f.releaseF(reg)
-			}
-		} else if e.st.typ.isXMM() {
-			f.releaseF(e.st.reg)
-		} else {
-			f.release(e.st.reg)
-		}
-	case stMemRef:
-		f.releaseMemRef(e.st)
-	}
-	f.erase(e)
 }

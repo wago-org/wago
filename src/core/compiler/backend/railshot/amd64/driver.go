@@ -119,47 +119,7 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 		return f.returnCallRef(r)
 
 	case 0x1a: // drop
-		e := f.popValue()
-		if e.st.ehRoot {
-			root, owned := f.materializeRead(e)
-			zero := f.allocReg(maskOf(root))
-			f.a.XorSelf32(zero)
-			for off := int32(0); off < ehRootSlots*8; off += 8 {
-				f.a.Store64(root, off, zero)
-			}
-			f.release(zero)
-			if owned {
-				f.release(root)
-			}
-			f.stats.peep("eh-root-clear")
-			break
-		}
-		switch e.st.kind {
-		case stReg:
-			if e.st.typ == mtCustom {
-				for _, reg := range e.st.vregs {
-					f.releaseF(reg)
-				}
-			} else if e.st.typ.isXMM() {
-				f.releaseF(e.st.reg)
-			} else {
-				f.release(e.st.reg)
-			}
-		case stMemRef:
-			// In guard-page mode the load itself is the OOB trap, so a dropped load
-			// must still be emitted; with explicit checks the bounds check already ran.
-			if f.guardMode {
-				if e.st.typ.isFloat() {
-					x := f.allocFReg(0)
-					f.loadFMemRef(x, e.st)
-					f.releaseF(x)
-				} else {
-					r := f.memRefValue(e.st) // never write a borrowed address register
-					f.release(r)
-				}
-			}
-			f.releaseMemRef(e.st)
-		}
+		f.dropValue()
 	case 0x1b: // select
 		f.emitSelect()
 	case 0x1c: // select t (typed) — consume the declared result types
