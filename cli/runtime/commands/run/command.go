@@ -85,7 +85,7 @@ func (cmd implementation) Run(ctx *command.Ctx) {
 		ui.Usage("run: %v", err)
 	}
 	config = ApplyFeatureDefaults(config, defaults, configured)
-	runtime := cmd.environment.LoadRuntime(config, ctx.Str("plugin"))
+	runtime := cmd.environment.LoadRuntime(config, PluginList(ctx))
 	defer runtime.Close()
 	module := mustLoadModule(positionals[0], config, runtime, cmd.environment.ArtifactCache())
 	compiled := module.Compiled()
@@ -107,6 +107,17 @@ func (cmd implementation) Run(ctx *command.Ctx) {
 		ui.Fatal("%s %s", ui.Red("trap:"), trapReason(err))
 	}
 	fmt.Println(format(export, values, result, params, results))
+}
+
+// PluginList combines the singular and plural spellings of the plugin flag.
+func PluginList(ctx *command.Ctx) string {
+	values := make([]string, 0, 2)
+	for _, name := range []string{"plugin", "plugins"} {
+		if value := strings.TrimSpace(ctx.Str(name)); value != "" {
+			values = append(values, value)
+		}
+	}
+	return strings.Join(values, ",")
 }
 
 func runStart(runtime *wago.Runtime, module *wago.Module) {

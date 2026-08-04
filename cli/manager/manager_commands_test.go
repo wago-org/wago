@@ -42,7 +42,7 @@ func TestManagerCommandSurfaceCoversEveryLeaf(t *testing.T) {
 	var leaves []string
 	checkCommandSurface(t, root, root, nil, &leaves)
 	want := strings.Join([]string{
-		"status", "update",
+		"status", "compile", "update",
 		"version list", "version current", "version which", "version switch", "version install", "version update", "version uninstall",
 		"auth login", "auth logout", "auth whoami", "init", "add", "rm",
 		"plugin list", "plugin inspect", "plugin add", "plugin remove", "plugin grant", "plugin update", "plugin outdated", "plugin tree", "plugin rebuild", "plugin publish", "plugin unpublish", "plugin deprecate",
@@ -131,7 +131,7 @@ func TestManagerCommandRegistry(t *testing.T) {
 	for _, command := range managerRoot.Children {
 		names = append(names, command.Name)
 	}
-	if got := strings.Join(names, ","); got != "status,update,version,auth,init,add,rm,plugin,self,cache,config" {
+	if got := strings.Join(names, ","); got != "status,compile,update,version,auth,init,add,rm,plugin,self,cache,config" {
 		t.Fatalf("manager commands = %q", got)
 	}
 	if managerRoot.Child("plugins") == nil {
