@@ -71,3 +71,17 @@ func TestWriteSelectionUsesPortableNewline(t *testing.T) {
 		t.Fatalf("selection bytes = %q, want %q", got, want)
 	}
 }
+
+func TestColorsAreDisabledWithoutConsole(t *testing.T) {
+	t.Setenv("NO_COLOR", "")
+	if got := colorsFor(false); got != (style{}) {
+		t.Fatalf("redirected output style = %#v, want no ANSI styling", got)
+	}
+}
+
+func TestNoColorDisablesConsoleStyling(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	if got := colorsFor(true); got != (style{}) {
+		t.Fatalf("NO_COLOR style = %#v, want no ANSI styling", got)
+	}
+}
