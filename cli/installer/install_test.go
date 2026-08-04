@@ -212,6 +212,111 @@ func TestInstallerPromptWordingMatchesWarmFlow(t *testing.T) {
 	}
 }
 
+func TestInstallerTranscriptParity(t *testing.T) {
+	t.Run("fresh install", func(t *testing.T) {
+		assertInstallerTranscript(t, false)
+	})
+	t.Run("reinstall", func(t *testing.T) {
+		assertInstallerTranscript(t, true)
+	})
+}
+
+func assertInstallerTranscript(t *testing.T, reinstall bool) {
+	t.Helper()
+	t.Setenv("NO_COLOR", "1")
+	t.Setenv("TERM", "dumb")
+	t.Setenv("PATH", "")
+
+	home := t.TempDir()
+	if runtime.GOOS == "windows" {
+		t.Setenv("WAGO_TEST_USER_PATH", `C:\Windows\System32`)
+		t.Setenv("WAGO_PATH_SETUP", "yes")
+	} else {
+		t.Setenv("SHELL", filepath.Join(string(os.PathSeparator), "bin", "zsh"))
+		t.Setenv("ZDOTDIR", home)
+		t.Setenv("WAGO_PATH_SETUP", "0")
+	}
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("WAGO_BIN_DIR", filepath.Join(home, ".wago", "bin"))
+
+	var output bytes.Buffer
+	installer, err := newInstaller(&output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	installer.welcome()
+	installer.installLocation()
+	if reinstall {
+		installer.field("Reinstall method", "Full")
+	}
+	fmt.Fprintln(&output)
+	statuses := []string{
+		"Downloaded Wago manager canary-deadbee",
+		"Fetched Wago source",
+	}
+	if reinstall {
+		statuses = append(statuses, "Cleaned existing Wago installation")
+	}
+	statuses = append(statuses,
+		"Installed Wago command",
+		"Saved Wago source",
+		"Verified installation",
+	)
+	for _, status := range statuses {
+		installer.done(status)
+	}
+	pathReady, configFile := installer.offerPathSetup()
+	installed := filepath.Join(installer.binDir, executableName("wago"))
+	if runtime.GOOS != "windows" {
+		if err := os.MkdirAll(filepath.Dir(installed), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(installed, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		installer.offerCompletions(installed, configFile)
+	}
+	installer.finish("canary-deadbee", installed, pathReady, configFile)
+
+	separator := string(os.PathSeparator)
+	command := "~" + separator + ".wago" + separator + "bin" + separator + executableName("wago")
+	want := "Welcome to Wago! Let’s get you set up.\n\n" +
+		"Install location: ~" + separator + ".wago" + separator + "bin\n"
+	if reinstall {
+		want += "Reinstall method: Full\n"
+	}
+	want += "\n" +
+		"✓ Downloaded Wago manager canary-deadbee\n" +
+		"✓ Fetched Wago source\n"
+	if reinstall {
+		want += "✓ Cleaned existing Wago installation\n"
+	}
+	want +=
+		"✓ Installed Wago command\n" +
+			"✓ Saved Wago source\n" +
+			"✓ Verified installation\n\n"
+	if runtime.GOOS == "windows" {
+		want += "Add Wago to PATH? Yes\n" +
+			"✓ Added Wago to PATH\n\n" +
+			"Sweet, Wago canary-deadbee is ready at " + command + "\n\n" +
+			"Open a new terminal.\n\n"
+	} else {
+		want += "Add Wago to PATH in ~/.zshrc? Yes\n" +
+			"✓ Added Wago to PATH\n\n" +
+			"Enable zsh completions? Yes\n" +
+			"✓ Enabled zsh completions\n\n" +
+			"Sweet, Wago canary-deadbee is ready at " + command + "\n\n" +
+			"Open a new terminal or run:\n\n" +
+			"source ~/.zshrc\n\n"
+	}
+	want += "Then install the Wago version you want:\n\n" +
+		"wago version install\n"
+	if got := output.String(); got != want {
+		t.Fatalf("installer transcript:\n--- got ---\n%s--- want ---\n%s", got, want)
+	}
+}
+
 func TestInstallerWarmFinishAfterPathSetup(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("shell activation command is Unix-specific")
