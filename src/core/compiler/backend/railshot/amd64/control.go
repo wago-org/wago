@@ -1121,8 +1121,8 @@ func (f *fn) opEnd() error {
 		// fall-through jumps over the stub.
 		needLoads := false
 		if f.usesCalls && fr.branchState != nil && fr.entryState != nil {
-			for x := 0; x < f.nLocals; x++ {
-				if _, _, ok := f.pinReg(x); ok && fr.branchState[x] == lsStackReg && fr.entryState[x] == lsMem {
+			for i := range f.pinnedLocals {
+				if fr.branchState[i] == lsStackReg && fr.entryState[i] == lsMem {
 					needLoads = true
 					break
 				}
