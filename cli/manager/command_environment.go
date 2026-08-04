@@ -58,9 +58,13 @@ func (commandEnvironment) Compile(options compilecmd.Options) {
 		output = managerstandalone.DefaultOutput(options.Input, target)
 	}
 	if automation.DryRun() {
-		automation.PrintPlan("build standalone executable", map[string]any{
+		plan := map[string]any{
 			"input": options.Input, "output": output, "target": target.String(),
-		})
+		}
+		if options.Invoke != "" {
+			plan["invoke"] = options.Invoke
+		}
+		automation.PrintPlan("build standalone executable", plan)
 		return
 	}
 	progress := managerprogress.NewProgress(os.Stderr)
@@ -70,7 +74,7 @@ func (commandEnvironment) Compile(options compilecmd.Options) {
 	progress.Title("Compiling " + filepath.Base(options.Input))
 	progress.Begin("Building " + target.String())
 	result, err := managerstandalone.Build(managerstandalone.Request{
-		Input: options.Input, Output: output, Target: target, Verbose: options.Verbose,
+		Input: options.Input, Output: output, Target: target, Invoke: options.Invoke, Verbose: options.Verbose,
 	})
 	if err != nil {
 		progress.Fail("Standalone build failed")

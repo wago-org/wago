@@ -10,14 +10,15 @@ import (
 	"path/filepath"
 
 	"github.com/wago-org/wago"
+	"github.com/wago-org/wago/cli/internal/wasmcall"
 )
 
 // Run executes source as a command and returns its process exit code. Plugins
 // must already be linked into the executable through their register packages;
 // pluginConfig selects and configures those providers without reading files at
 // runtime.
-func Run(source, pluginConfig []byte, args []string) int {
-	if err := execute(source, pluginConfig, args); err != nil {
+func Run(source, pluginConfig []byte, invoke string, args []string) int {
+	if err := execute(source, pluginConfig, invoke, args); err != nil {
 		var exit *wago.ExitError
 		if errors.As(err, &exit) {
 			return int(exit.Code)
@@ -32,7 +33,7 @@ func Run(source, pluginConfig []byte, args []string) int {
 	return 0
 }
 
-func execute(source, pluginConfig []byte, args []string) error {
+func execute(source, pluginConfig []byte, invoke string, args []string) error {
 	var plugins []wago.PluginConfig
 	if len(pluginConfig) != 0 {
 		if err := json.Unmarshal(pluginConfig, &plugins); err != nil {
@@ -49,14 +50,43 @@ func execute(source, pluginConfig []byte, args []string) error {
 	if err != nil {
 		return err
 	}
-	if _, ok := module.Compiled().Exports["_start"]; !ok {
-		return errors.New("module does not export _start")
+	explicitInvoke := invoke != ""
+	if !explicitInvoke {
+		invoke = "_start"
+	}
+	if invoke == "_start" {
+		if _, ok := module.Compiled().Exports[invoke]; !ok {
+			return errors.New("module does not export _start")
+		}
+	} else if _, ok := module.Compiled().Exports[invoke]; !ok {
+		return fmt.Errorf("no exported function %q", invoke)
+	}
+	params, results, err := module.Compiled().Signature(invoke)
+	if err != nil {
+		return err
+	}
+	values := []uint64(nil)
+	if explicitInvoke {
+		callArgs := args
+		if len(callArgs) != 0 {
+			callArgs = callArgs[1:]
+		}
+		values, err = wasmcall.ParseArgs(callArgs, params)
+		if err != nil {
+			return err
+		}
 	}
 	instance, err := runtime.Instantiate(context.Background(), module)
 	if err != nil {
 		return err
 	}
 	defer instance.Close()
-	_, err = instance.Invoke("_start")
-	return err
+	result, err := instance.Invoke(invoke, values...)
+	if err != nil {
+		return err
+	}
+	if explicitInvoke {
+		fmt.Println(wasmcall.Format(invoke, values, result, params, results))
+	}
+	return nil
 }

@@ -41,6 +41,7 @@ func ParseTarget(value string) (Target, error) {
 
 type Request struct {
 	Input, Output string
+	Invoke        string
 	Target        Target
 	Verbose       bool
 	KeepSymbols   bool
@@ -112,7 +113,7 @@ func Build(request Request) (Result, error) {
 	if err := os.WriteFile(filepath.Join(buildDir, "module.wasm"), source, 0o644); err != nil {
 		return Result{}, err
 	}
-	if err := os.WriteFile(filepath.Join(buildDir, "main.go"), mainSource(inputs.Dependencies, config), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(buildDir, "main.go"), mainSource(inputs.Dependencies, config, request.Invoke), 0o644); err != nil {
 		return Result{}, err
 	}
 	environment := append(os.Environ(),
@@ -134,7 +135,7 @@ func Build(request Request) (Result, error) {
 	return Result{Output: output, Target: request.Target, Plugins: len(inputs.Dependencies)}, nil
 }
 
-func mainSource(dependencies []string, pluginConfig []byte) []byte {
+func mainSource(dependencies []string, pluginConfig []byte, invoke string) []byte {
 	dependencies = append([]string(nil), dependencies...)
 	sort.Strings(dependencies)
 	var source bytes.Buffer
@@ -145,7 +146,7 @@ func mainSource(dependencies []string, pluginConfig []byte) []byte {
 	}
 	source.WriteString(")\n\n//go:embed module.wasm\nvar module []byte\n\n")
 	fmt.Fprintf(&source, "var pluginConfig = []byte(%q)\n\n", pluginConfig)
-	source.WriteString("func main() { os.Exit(standalone.Run(module, pluginConfig, os.Args)) }\n")
+	fmt.Fprintf(&source, "func main() { os.Exit(standalone.Run(module, pluginConfig, %q, os.Args)) }\n", invoke)
 	return source.Bytes()
 }
 

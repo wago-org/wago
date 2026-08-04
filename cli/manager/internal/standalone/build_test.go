@@ -22,6 +22,13 @@ func TestParseTargetAndDefaultOutput(t *testing.T) {
 	}
 }
 
+func TestMainSourceBakesInvokeExport(t *testing.T) {
+	source := string(mainSource(nil, nil, "fib"))
+	if !strings.Contains(source, `standalone.Run(module, pluginConfig, "fib", os.Args)`) {
+		t.Fatalf("generated main does not invoke fib:\n%s", source)
+	}
+}
+
 func TestBuildSelectsOnlyTargetBackend(t *testing.T) {
 	root, err := filepath.Abs(filepath.Join("..", "..", "..", ".."))
 	if err != nil {
