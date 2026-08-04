@@ -26,7 +26,7 @@ func Command(environment Environment) *command.Cmd {
 			{Name: "output", Short: "o", Arg: "<file>", Help: "output executable path"},
 			{Name: "target", Arg: "<os/arch>", Help: "target platform (default: current platform)"},
 			{Name: "invoke", Short: "e", Arg: "<name>", Help: "exported function to call"},
-			{Name: "global", Bool: true, Help: "include shared user-wide plugins"},
+			{Name: "global", Short: "g", Bool: true, Help: "include shared user-wide plugins"},
 			{Name: "local", Bool: true, Help: "include this project's plugins"},
 			{Name: "bare", Bool: true, Help: "build without plugins"},
 			{Name: "verbose", Short: "v", Bool: true, Help: "show Go build output"},

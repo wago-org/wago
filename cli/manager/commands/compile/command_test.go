@@ -23,3 +23,13 @@ func TestCommandPassesStandaloneOptions(t *testing.T) {
 		t.Fatalf("compile options = %#v, want %#v", environment.options, want)
 	}
 }
+
+func TestCommandAcceptsGlobalShortAndLongFlags(t *testing.T) {
+	for _, flag := range []string{"-g", "--global"} {
+		environment := &testEnvironment{}
+		Command(environment).Dispatch("wago compile", []string{flag, "app.wasm"})
+		if !environment.options.Global {
+			t.Fatalf("compile %s did not select global plugins", flag)
+		}
+	}
+}
