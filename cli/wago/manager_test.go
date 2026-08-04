@@ -215,7 +215,7 @@ func TestManagerOwnsTopLevelHelp(t *testing.T) {
 	for _, want := range []string{
 		"Usage: wago <command> [flags]",
 		"update or uninstall Wago",
-		"View the registry:           https://plugins.wago.sh",
+		"Plugins:     https://plugins.wago.sh",
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("manager help missing %q:\n%s", want, text)

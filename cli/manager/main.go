@@ -373,28 +373,28 @@ func runActiveRunner(args []string) {
 }
 
 func managerUsage(w *os.File) {
-	fmt.Fprintf(w, "%s is a pure-Go (no cgo) WebAssembly engine. (v%s)\n\n", bold("wago"), versionString())
+	fmt.Fprintf(w, "%s is a wonderfully quick, compact, and extensible WebAssembly runtime for Go.\n\n", bold("Wago"))
 	fmt.Fprintf(w, "%s wago %s\n\n", bold("Usage:"), dim("<command> [flags]"))
 	fmt.Fprintf(w, "%s\n", bold("Commands:"))
 	commands := []struct {
 		name, args, summary string
 	}{
-		{"run", "<file> [args...]", "compile and execute a WebAssembly module (default)"},
-		{"status", "", "show the active runtime, project, plugins, and lockfile"},
-		{"update", "", "update Wago, the active runtime, and plugins"},
-		{"init", "", "initialize a local Wago project"},
-		{"add", "<module>[@version]...", "add and enable plugins, then rebuild Wago"},
-		{"rm", "<name>", "remove and disable a plugin"},
-		{"plugin", "<command>", "install, update, and publish plugins"},
-		{"auth", "<command>", "authenticate to the registry (plugins.wago.sh)"},
-		{"module", "<command>", "inspect a module's imports and required capabilities"},
+		{"run", "<file> [args...]", "run a WebAssembly module (default)"},
+		{"status", "", "show the runtime, project, plugins, and lockfile"},
+		{"update", "", "update Wago, the runtime, and plugins"},
+		{"init", "", "create a Wago project"},
+		{"add", "<module>[@version]...", "add plugins and rebuild Wago"},
+		{"rm", "<name>", "remove a plugin"},
+		{"plugin", "<command>", "manage and publish plugins"},
+		{"auth", "<command>", "sign in to plugins.wago.sh"},
+		{"module", "<command>", "inspect module imports and capabilities"},
 		{"self", "<command>", "update or uninstall Wago"},
-		{"build", "<file>", "precompile a WebAssembly module to a .wago artifact"},
-		{"validate", "<file>", "decode and validate a module"},
-		{"version", "<command>", "install, select, update, and remove Wago runtimes"},
-		{"cache", "<command>", "inspect and clean regenerable Wago data"},
+		{"build", "<file>", "precompile a module to .wago"},
+		{"validate", "<file>", "validate a WebAssembly module"},
+		{"version", "<command>", "manage Wago runtimes"},
+		{"cache", "<command>", "inspect and clean cached data"},
 		{"config", "<command>", "configure Wago"},
-		{"commands", "", "describe the command interface as JSON"},
+		{"commands", "", "describe commands as JSON"},
 	}
 	nameWidth, argsWidth := 0, 0
 	for _, command := range commands {
@@ -405,13 +405,9 @@ func managerUsage(w *os.File) {
 		fmt.Fprintf(w, "  %-*s  %s  %s\n", nameWidth, command.name, dim(fmt.Sprintf("%-*s", argsWidth, command.args)), command.summary)
 	}
 	fmt.Fprintf(w, "\n%s\n", bold("Flags:"))
-	fmt.Fprintf(w, "  %-27s %s\n", "--version, -v", "print version and supported features")
+	fmt.Fprintf(w, "  %-27s %s\n", "--version, -v", "show version and supported features")
 	fmt.Fprintf(w, "  %-27s %s\n", "--help, -h", "show this help")
-	fmt.Fprintf(w, "  %-27s %s\n", "--json, -j", "emit machine-readable JSON when supported")
-	fmt.Fprintf(w, "  %-27s %s\n", "--no-input", "never prompt; fail when input is missing")
-	fmt.Fprintf(w, "  %-27s %s\n", "--dry-run", "show supported mutation plans")
-	fmt.Fprintf(w, "  %-27s %s\n", "--locked", "do not change project manifests or lockfiles")
-	fmt.Fprintf(w, "  %-27s %s\n", "--offline", "use only installed and cached resources")
-	fmt.Fprintf(w, "\n%-29s%s\n", "View the repo:", "https://github.com/wago-org/wago")
-	fmt.Fprintf(w, "%-29s%s\n", "View the registry:", "https://plugins.wago.sh")
+	fmt.Fprintf(w, "  %-27s %s\n", "--json, -j", "emit JSON when supported")
+	fmt.Fprintf(w, "\n%-13s%s\n", "Repository:", "https://github.com/wago-org/wago")
+	fmt.Fprintf(w, "%-13s%s\n", "Plugins:", "https://plugins.wago.sh")
 }
