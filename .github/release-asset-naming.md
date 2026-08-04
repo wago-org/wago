@@ -4,7 +4,8 @@ Start with the Wago CLI for your platform:
 
 `wago-<os>-<arch>`
 
-The curl bootstrap scripts use the matching installer executable:
+The bootstrap scripts download and launch the matching installer executable;
+the executable owns the complete cross-platform installation flow:
 
 `wago-installer-<os>-<arch>`
 
