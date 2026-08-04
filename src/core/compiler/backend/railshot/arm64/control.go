@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"github.com/wago-org/wago/src/core/runtime/abi"
 )
 
 // Control flow: block / loop / if / else / end / br / br_if / br_table / return /
@@ -36,6 +37,7 @@ const (
 	cfBlock
 	cfLoop
 	cfIf
+	cfTry
 )
 
 // ctrlFrame is one open control construct (or the implicit function frame).
@@ -56,6 +58,9 @@ type ctrlFrame struct {
 	baseTypes       []machineType
 	paramTypes      []machineType
 	resultTypes     []machineType
+	baseGCRoots     []bool
+	paramGCRoots    []bool
+	resultGCRoots   []bool
 
 	// cfLoop only (P6.2 foundation): locals set anywhere in the loop body, and
 	// whether the body grows memory — from a scan-ahead at the loop header. A local
@@ -79,6 +84,26 @@ type ctrlFrame struct {
 	branchState []locState
 	entryState  []locState
 	coldEdges   []coldEdge // deferred non-empty unlikely br_if edges targeting this frame
+
+	// cfTry only: one fixed native-stack handler record plus an ordered catch
+	// dispatch table. Scalar exceptions carry at most two payload words; reference
+	// catches copy those words into a fixed rooted exception slot before exposing
+	// its stable frame-relative address.
+	ehTargetSite  int
+	ehRecordIndex int
+	ehCatches     []ehCatchClause
+	ehRefResults  [3]bool
+}
+
+type ehCatchClause struct {
+	kind        wasm.CatchKind
+	tag         uint32
+	frame       int
+	scalarN     int
+	payloadN    int
+	payloadType [3]machineType
+	rootIndex   int
+	matchSite   int
 }
 
 type coldEdge struct {
@@ -214,6 +239,52 @@ func slotOfLogicalTypes(types []machineType, logical int) int {
 
 func (f *fn) currentLogicalTypes() []machineType { return f.logicalTypes(f.rootsBottomToTop()) }
 
+func gcRootFlags(roots []*elem) []bool {
+	flags := make([]bool, len(roots))
+	for i, root := range roots {
+		flags[i] = root.kind == ekValue && root.st.gcRoot
+	}
+	return flags
+}
+
+func (f *fn) captureGCFrameShape(fr *ctrlFrame) {
+	if !f.tracksGCFrameRoots() {
+		return
+	}
+	roots := f.rootsBottomToTop()
+	if fr.height < 0 || fr.height+fr.paramN > len(roots) {
+		return
+	}
+	fr.baseGCRoots = gcRootFlags(roots[:fr.height])
+	fr.paramGCRoots = gcRootFlags(roots[fr.height : fr.height+fr.paramN])
+}
+
+func (f *fn) recordGCBranchResults(fr *ctrlFrame, n int) {
+	if !f.tracksGCFrameRoots() || n == 0 {
+		return
+	}
+	roots := f.rootsBottomToTop()
+	if n > len(roots) {
+		return
+	}
+	if len(fr.resultGCRoots) < n {
+		fr.resultGCRoots = make([]bool, n)
+	}
+	for i, root := range roots[len(roots)-n:] {
+		fr.resultGCRoots[i] = fr.resultGCRoots[i] || (root.kind == ekValue && root.st.gcRoot)
+	}
+}
+
+func frameGCRootFlags(base, suffix []bool) []bool {
+	if len(base)+len(suffix) == 0 {
+		return nil
+	}
+	flags := make([]bool, 0, len(base)+len(suffix))
+	flags = append(flags, base...)
+	flags = append(flags, suffix...)
+	return flags
+}
+
 // flushSuffix canonicalizes the stack and returns its logical types plus the
 // physical slot where the last n logical operands begin. Logical depth and slot
 // depth differ whenever values below the suffix include v128.
@@ -228,6 +299,9 @@ func (f *fn) dropFlushedSuffix(types []machineType, n int) {
 }
 
 func (f *fn) moveBranchValues(fr *ctrlFrame, d, a int) {
+	if fr.kind != cfLoop {
+		f.recordGCBranchResults(fr, a)
+	}
 	types := f.currentLogicalTypes()
 	fromSlot := slotOfLogicalTypes(types, d-a)
 	toSlot := slotsOfTypes(fr.baseTypes)
@@ -251,7 +325,15 @@ func (f *fn) flush() {
 	f.invalidateGlobalsCache() // the cached cell ptr must not span a call/control boundary
 	f.invalidateBoundsCert()   // bounds facts are valid only within a straight-line region
 	roots := f.rootsBottomToTop()
-	if f.flushWideStack(roots) {
+	var gcRoots []bool
+	if f.tracksGCFrameRoots() {
+		gcRoots = f.tmpGCRoots[:0]
+		for _, root := range roots {
+			gcRoots = append(gcRoots, root.kind == ekValue && root.st.gcRoot)
+		}
+		f.tmpGCRoots = gcRoots
+	}
+	if f.flushWideStack(roots, gcRoots) {
 		return
 	}
 	types := f.tmpTypes[:0]
@@ -296,13 +378,13 @@ func (f *fn) flush() {
 		slot++
 	}
 	f.tmpTypes = types
-	f.setDepthTypes(types)
+	f.setDepthTypesWithGCRoots(types, gcRoots)
 }
 
 // flushWideStack stages unusually wide operand stacks in a disjoint frame range
 // before copying them to canonical slots. This avoids overwriting earlier
 // allocation spills while the one-pass canonicalizer is still reloading them.
-func (f *fn) flushWideStack(roots []*elem) bool {
+func (f *fn) flushWideStack(roots []*elem, gcRoots []bool) bool {
 	const wideFlushSlots = 64
 
 	types := f.tmpFlushTypes[:0]
@@ -350,15 +432,47 @@ func (f *fn) flushWideStack(roots []*elem) bool {
 	f.spillFloor = oldFloor
 
 	f.moveSlots(stageBase, 0, total)
-	f.setDepthTypes(types)
+	f.setDepthTypesWithGCRoots(types, gcRoots)
 	return true
 }
 
+// setDepth consumes the top operands while preserving the exact machine types
+// (and therefore slot widths) of the l values below them.
+func (f *fn) setDepth(l int) {
+	roots := f.rootsBottomToTop()
+	if l < 0 || l > len(roots) {
+		panic("arm64: invalid operand depth")
+	}
+	types := f.tmpTypes[:0]
+	var gcRoots []bool
+	if f.tracksGCFrameRoots() {
+		gcRoots = f.tmpGCRoots[:0]
+	}
+	for _, root := range roots[:l] {
+		types = append(types, root.st.typ)
+		if gcRoots != nil {
+			gcRoots = append(gcRoots, root.kind == ekValue && root.st.gcRoot)
+		}
+	}
+	f.tmpTypes = types
+	if gcRoots != nil {
+		f.tmpGCRoots = gcRoots
+	}
+	f.setDepthTypesWithGCRoots(types, gcRoots)
+}
+
 func (f *fn) setDepthTypes(types []machineType) {
+	f.setDepthTypesWithGCRoots(types, nil)
+}
+
+func (f *fn) setDepthTypesWithGCRoots(types []machineType, gcRoots []bool) {
 	f.s.head.prev, f.s.head.next = f.s.head, f.s.head
 	slot := 0
-	for _, typ := range types {
-		f.pushValue(storage{kind: stSlot, typ: typ, slot: slot})
+	for i, typ := range types {
+		value := f.pushValue(storage{kind: stSlot, typ: typ, slot: slot})
+		if i < len(gcRoots) {
+			value.st.gcRoot = gcRoots[i]
+		}
 		slot += typ.stackSlots()
 	}
 	if slot > f.maxSpill {
@@ -388,10 +502,10 @@ func (f *fn) moveSlots(fromBase, toBase, n int) {
 
 func isValByte(b byte) bool {
 	switch b {
-	case 0x7F, 0x7E, 0x7D, 0x7C, 0x7B, 0x70, 0x6F:
+	case 0x7F, 0x7E, 0x7D, 0x7C, 0x7B:
 		return true
 	}
-	return false
+	return b >= 0x69 && b <= 0x74
 }
 
 // valByteMT maps a value-type byte to its machine type.
@@ -407,7 +521,7 @@ func valByteMT(b byte) machineType {
 		return mtF64
 	case 0x7B:
 		return mtV128
-	case 0x70, 0x6F:
+	case 0x69, 0x6A, 0x6B, 0x6C, 0x6D, 0x6E, 0x6F, 0x70, 0x71, 0x72, 0x73, 0x74:
 		return mtI64
 	}
 	return mtNone
@@ -428,6 +542,16 @@ func (f *fn) blockType(r *wasm.Reader) (params, results []machineType, res0 mach
 		_, _ = r.Byte()
 		mt := valByteMT(b)
 		return nil, []machineType{mt}, mt, nil
+	}
+	if b == 0x63 || b == 0x64 { // ref null <heaptype> / ref <heaptype>
+		_, _ = r.Byte()
+		if next, ok := r.Peek(); ok && next == 0x62 { // exact indexed heap prefix
+			_, _ = r.Byte()
+		}
+		if _, e := r.S33(); e != nil {
+			return nil, nil, mtNone, e
+		}
+		return nil, []machineType{mtI64}, mtI64, nil
 	}
 	x, e := r.I64()
 	if e != nil {
@@ -485,6 +609,7 @@ func (f *fn) reconcileMerge1(fr *ctrlFrame) {
 // depth d-1; load it into mergeReg so the merge finds the value there. The slot
 // copy is left intact so a br_if fall-through still sees the value.
 func (f *fn) branchEdgeToMerge1(fr *ctrlFrame, d int) {
+	f.recordGCBranchResults(fr, 1)
 	slot := slotOfLogicalTypes(f.currentLogicalTypes(), d-1)
 	if fr.res0.isFloat() {
 		f.fld(mergeFReg, SP, f.spillOff(slot), fr.res0 == mtF64)
@@ -577,7 +702,7 @@ func (f *fn) alignLoopHeader() {
 // locals it sets and whether it grows memory, then restores the reader. Reuses
 // skipImmediates for operand skipping; br_table (not covered there) is handled
 // inline. Post-validation, so a decode error just ends the scan.
-func scanLoopBody(r *wasm.Reader) (setLocals map[uint32]bool, hasGrow, hasCall, hasNested, hasTable bool) {
+func scanLoopBody(r *wasm.Reader, memory64 bool) (setLocals map[uint32]bool, hasGrow, hasCall, hasNested, hasTable bool) {
 	start := r.Offset()
 	setLocals = map[uint32]bool{}
 	depth := 0
@@ -598,7 +723,7 @@ scan:
 			depth++
 		case 0x10, 0x11: // call / call_indirect
 			hasCall = true
-			if err := skipImmediates(r, op); err != nil {
+			if err := skipImmediatesWithMemory64(r, op, memory64); err != nil {
 				break scan
 			}
 		case 0x0b: // end
@@ -627,7 +752,7 @@ scan:
 				break scan
 			}
 		default:
-			if err := skipImmediates(r, op); err != nil {
+			if err := skipImmediatesWithMemory64(r, op, memory64); err != nil {
 				break scan
 			}
 		}
@@ -665,11 +790,11 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 	// of a frame slot. Excludes loops (params, back-edge) and multi-value.
 	fr.regMerge1 = f.regMerge && (kind == cfBlock || kind == cfIf) && rN == 1 && res0 != mtNone && res0 != mtV128
 	if kind == cfLoop && !f.unreachable {
-		fr.loopSetLocals, fr.loopHasGrow, fr.loopHasCall, fr.loopHasNested, fr.loopHasTable = scanLoopBody(r) // P6.2 + region-pin foundation (reader restored)
+		fr.loopSetLocals, fr.loopHasGrow, fr.loopHasCall, fr.loopHasNested, fr.loopHasTable = scanLoopBody(r, f.memoryAddr64(0)) // P6.2 + region-pin foundation (reader restored)
 		// P6.2 loop versioning: hoist invariant-base bounds checks out of the loop
 		// via a precheck + fast/slow bodies. Explicit mode only (guard has no inline
 		// check to elide) and not while already inside a versioned body.
-		if loopPrecheckEnabled && f.memSizeReg != regNone && !f.inVersionedLoop {
+		if loopPrecheckEnabled && !f.memoryAddr64(0) && f.memSizeReg != regNone && !f.inVersionedLoop {
 			if cands, elidable, hasGrow := scanLoopHoistable(r); len(cands) > 0 && !hasGrow && elidable >= loopPrecheckMinChecks {
 				if f.compileVersionedLoop(r, paramTypes, resultTypes, res0, cands) {
 					return nil
@@ -689,6 +814,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 			cc := f.condenseToFlags(cond)
 			fr.height = f.depth() - pN
 			fr.baseTypes = append([]machineType(nil), f.currentLogicalTypes()[:fr.height]...)
+			f.captureGCFrameShape(&fr)
 			fr.elseSite = f.a.Bcond(invertCond(cc)) // to else/end when false
 			f.ctrl = append(f.ctrl, fr)
 			return nil
@@ -696,6 +822,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 		creg, cOwned := f.materializeRead(f.popValue()) // the test only reads: a pinned local needs no copy
 		fr.height = f.depth() - pN
 		fr.baseTypes = append([]machineType(nil), f.currentLogicalTypes()[:fr.height]...)
+		f.captureGCFrameShape(&fr)
 		f.flush()
 		f.a.CmpImm32(creg, 0) // CMP creg, #0 — sets NZCV (no x86 test/flag side effect)
 		if cOwned {
@@ -705,6 +832,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 	} else {
 		fr.height = f.depth() - pN
 		fr.baseTypes = append([]machineType(nil), f.currentLogicalTypes()[:fr.height]...)
+		f.captureGCFrameShape(&fr)
 		if kind == cfLoop {
 			// Loop tops converge eagerly (all lsStackReg): hoists any post-call
 			// reload OUT of the body — a lazy (lsMem) loop target would push the
@@ -840,6 +968,372 @@ func (f *fn) trySimpleIfLocalSet(r *wasm.Reader) (bool, error) {
 	return true, nil
 }
 
+const (
+	ehRecordSlots    = 7
+	ehRootSlots      = 3
+	maxEHTryRecords  = 4
+	maxEHRootRecords = 4
+	maxEHCatches     = 8
+	ehPrevOff        = 0
+	ehSavedSPOff     = 8
+	ehTagOff         = 16
+	ehPayload0Off    = 24
+	ehPayload1Off    = 32
+	ehTargetOff      = 40
+	ehSavedLinMemOff = 48
+	offEHTagDirPtr   = abi.EHTagDirPtrOffset
+	ehReg            = X22
+)
+
+func exceptionPayloadMachineType(m *wasm.Module, typ wasm.ValType) (machineType, bool) {
+	if wasm.EqualValType(typ, wasm.I32) || wasm.EqualValType(typ, wasm.I64) || wasm.EqualValType(typ, wasm.F32) || wasm.EqualValType(typ, wasm.F64) {
+		return mtOf(typ), true
+	}
+	if typ.Kind != wasm.ValRef || typ.Ref.Nullable || typ.Ref.Exact || typ.Ref.Heap.Kind != wasm.HeapTypeIndex {
+		return mtNone, false
+	}
+	if ft, ok := m.ResolvedTypeFunc(typ.Ref.Heap.Type.Index); !ok || ft == nil {
+		return mtNone, false
+	}
+	return mtI64, true
+}
+
+func moduleTagType(m *wasm.Module, index uint32) (wasm.TagType, bool) {
+	for i := range m.Imports {
+		im := &m.Imports[i]
+		if im.Type.Kind != wasm.ExternTag {
+			continue
+		}
+		if index == 0 {
+			return im.Type.Tag, true
+		}
+		index--
+	}
+	if int(index) >= len(m.Tags) {
+		return wasm.TagType{}, false
+	}
+	return m.Tags[index], true
+}
+
+func (f *fn) opTryTable(r *wasm.Reader) error {
+	paramTypes, resultTypes, res0, err := f.blockType(r)
+	if err != nil {
+		return err
+	}
+	n, err := r.U32()
+	if err != nil {
+		return err
+	}
+	if n > maxEHCatches {
+		return fmt.Errorf("bounded exception handling supports at most %d catches per try_table", maxEHCatches)
+	}
+	fr := ctrlFrame{kind: cfTry, paramN: len(paramTypes), resultN: len(resultTypes), branchN: len(resultTypes), elseSite: -1, entryUnreach: f.unreachable, res0: res0, paramTypes: paramTypes, resultTypes: resultTypes}
+	for i := uint32(0); i < n; i++ {
+		kindByte, err := r.Byte()
+		if err != nil {
+			return err
+		}
+		kind := wasm.CatchKind(kindByte)
+		clause := ehCatchClause{kind: kind}
+		switch kind {
+		case wasm.CatchTag, wasm.CatchRef:
+			clause.tag, err = r.U32()
+			if err != nil {
+				return err
+			}
+			tagType, ok := moduleTagType(f.m, clause.tag)
+			if !ok {
+				return fmt.Errorf("bounded exception handling catch tag %d is unavailable", clause.tag)
+			}
+			ft, ok := f.m.ResolvedTypeFunc(tagType.Type.Index)
+			if !ok || len(ft.Params) > 2 {
+				return fmt.Errorf("bounded exception handling catch tag %d signature unavailable", clause.tag)
+			}
+			clause.scalarN = len(ft.Params)
+			clause.payloadN = clause.scalarN
+			for j, typ := range ft.Params {
+				mt, ok := exceptionPayloadMachineType(f.m, typ)
+				if !ok {
+					return fmt.Errorf("bounded exception handling requires scalar or non-null indexed-function tag payloads")
+				}
+				clause.payloadType[j] = mt
+			}
+			if kind == wasm.CatchRef {
+				if f.ehRootCount >= maxEHRootRecords {
+					return fmt.Errorf("bounded exception handling supports at most %d rooted exception values per function", maxEHRootRecords)
+				}
+				clause.rootIndex = f.ehRootCount
+				f.ehRootCount++
+				clause.payloadType[clause.payloadN] = mtI64
+				clause.payloadN++
+			}
+		case wasm.CatchAll:
+		case wasm.CatchAllRef:
+			if f.ehRootCount >= maxEHRootRecords {
+				return fmt.Errorf("bounded exception handling supports at most %d rooted exception values per function", maxEHRootRecords)
+			}
+			clause.rootIndex = f.ehRootCount
+			f.ehRootCount++
+			clause.payloadType[0] = mtI64
+			clause.payloadN = 1
+		default:
+			return fmt.Errorf("bounded exception handling rejects unknown catch kind %d", kind)
+		}
+		label, err := r.U32()
+		if err != nil {
+			return err
+		}
+		clause.frame = len(f.ctrl) - 1 - int(label)
+		if clause.frame < 0 {
+			return errBadLabel
+		}
+		if f.ctrl[clause.frame].branchN != clause.payloadN {
+			return fmt.Errorf("bounded exception handler payload arity mismatch")
+		}
+		if kind == wasm.CatchRef || kind == wasm.CatchAllRef {
+			f.ctrl[clause.frame].ehRefResults[clause.payloadN-1] = true
+		}
+		f.ctrl[clause.frame].regMerge1 = false
+		fr.ehCatches = append(fr.ehCatches, clause)
+	}
+	fr.height = f.depth() - fr.paramN
+	fr.baseTypes = append([]machineType(nil), f.currentLogicalTypes()[:fr.height]...)
+	if f.unreachable {
+		f.ctrl = append(f.ctrl, fr)
+		return nil
+	}
+	if f.ehTryDepth >= maxEHTryRecords {
+		return fmt.Errorf("bounded exception handling supports at most %d nested try_table records", maxEHTryRecords)
+	}
+	fr.ehRecordIndex = f.ehTryDepth
+	f.ehTryDepth++
+	f.reconcileLocals()
+	f.flush()
+	for i := range fr.ehCatches {
+		clause := &fr.ehCatches[i]
+		if clause.kind != wasm.CatchRef && clause.kind != wasm.CatchAllRef {
+			continue
+		}
+		rootOff := f.ehRootOff(clause.rootIndex)
+		for word := int32(0); word < ehRootSlots*8; word += 8 {
+			f.st64(SP, rootOff+word, ZR)
+		}
+		f.stats.peep("eh-root-init")
+	}
+	recordOff := f.ehRecordOff(fr.ehRecordIndex)
+	f.leaDisp(X16, SP, recordOff, true)
+	f.st64(X16, ehPrevOff, ehReg)
+	f.a.AddImm64(X17, SP, 0)
+	f.st64(X16, ehSavedSPOff, X17)
+	fr.ehTargetSite = f.a.Adr(X17)
+	f.st64(X16, ehTargetOff, X17)
+	f.st64(X16, ehSavedLinMemOff, linMemReg)
+	f.a.MovReg64(ehReg, X16)
+	f.ctrl = append(f.ctrl, fr)
+	return nil
+}
+
+func (f *fn) opThrow(r *wasm.Reader) error {
+	tag, err := r.U32()
+	if err != nil {
+		return err
+	}
+	tagType, ok := moduleTagType(f.m, tag)
+	if !ok {
+		return fmt.Errorf("bounded exception handling throw tag %d is unavailable", tag)
+	}
+	ft, ok := f.m.ResolvedTypeFunc(tagType.Type.Index)
+	if !ok || len(ft.Params) > 2 {
+		return fmt.Errorf("bounded exception handling tag signature unavailable")
+	}
+	types := f.currentLogicalTypes()
+	if len(types) < len(ft.Params) {
+		return fmt.Errorf("bounded exception handling payload stack underflow")
+	}
+	f.reconcileLocals()
+	f.flush()
+	f.cmpImm(ehReg, 0, true)
+	noHandler := f.a.Bcond(condE)
+	f.ld64(X16, linMemReg, -int32(offEHTagDirPtr))
+	f.ld64(X16, X16, int32(tag*8))
+	f.st64(ehReg, ehTagOff, X16)
+	base := len(types) - len(ft.Params)
+	for i := range ft.Params {
+		slot := slotOfLogicalTypes(types, base+i)
+		f.ld64(X16, SP, f.spillOff(slot))
+		off := int32(ehPayload0Off)
+		if i == 1 {
+			off = ehPayload1Off
+		}
+		f.st64(ehReg, off, X16)
+	}
+	f.ld64(X17, ehReg, ehSavedSPOff)
+	f.ld64(X16, ehReg, ehTargetOff)
+	f.a.AddImm64(SP, X17, 0)
+	f.a.Br(X16)
+	f.a.PatchBranch19(noHandler, f.a.Len())
+	f.trapAlways(trapUnhandledException)
+	f.unreachable = true
+	return nil
+}
+
+func (f *fn) opThrowRef() error {
+	types := f.currentLogicalTypes()
+	if len(types) == 0 || types[len(types)-1] != mtI64 {
+		return fmt.Errorf("bounded exception handling throw_ref requires an exception reference")
+	}
+	refSlot := slotOfLogicalTypes(types, len(types)-1)
+	f.reconcileLocals()
+	f.flush()
+	f.ld64(X16, SP, f.spillOff(refSlot))
+	f.cmpImm(X16, 0, true)
+	f.trapIf(condE, trapNullReference)
+	f.cmpImm(ehReg, 0, true)
+	noHandler := f.a.Bcond(condE)
+	for _, off := range [...]int32{0, 8, 16} {
+		f.ld64(X17, X16, off)
+		f.st64(ehReg, ehTagOff+off, X17)
+	}
+	f.ld64(X17, ehReg, ehSavedSPOff)
+	f.ld64(X16, ehReg, ehTargetOff)
+	f.a.AddImm64(SP, X17, 0)
+	f.a.Br(X16)
+	f.a.PatchBranch19(noHandler, f.a.Len())
+	f.trapAlways(trapUnhandledException)
+	f.unreachable = true
+	return nil
+}
+
+func (f *fn) emitEHCatchRoute(fr *ctrlFrame, clause *ehCatchClause, recordOff int32) {
+	target := &f.ctrl[clause.frame]
+	f.ld64(ehReg, SP, recordOff+ehPrevOff)
+
+	rootOff := int32(0)
+	if clause.kind == wasm.CatchRef || clause.kind == wasm.CatchAllRef {
+		rootOff = f.ehRootOff(clause.rootIndex)
+		for _, off := range [...]int32{ehTagOff, ehPayload0Off, ehPayload1Off} {
+			f.ld64(X16, SP, recordOff+off)
+			f.st64(SP, rootOff+off-ehTagOff, X16)
+		}
+	}
+
+	loadPayload := func(reg Reg, i int) {
+		if i == clause.scalarN {
+			f.leaDisp(reg, SP, rootOff, true)
+			return
+		}
+		off := recordOff + ehPayload0Off
+		if i == 1 {
+			off = recordOff + ehPayload1Off
+		}
+		f.ld64(reg, SP, off)
+	}
+	if target.regMerge1 && clause.payloadN == 1 {
+		if clause.scalarN == 0 {
+			f.leaDisp(mergeReg, SP, rootOff, true)
+		} else if clause.payloadType[0].isFloat() {
+			off := recordOff + ehPayload0Off
+			f.fld(mergeFReg, SP, off, clause.payloadType[0] == mtF64)
+		} else {
+			loadPayload(mergeReg, 0)
+		}
+	} else {
+		toSlot := slotsOfTypes(target.baseTypes)
+		for i := 0; i < clause.payloadN; i++ {
+			loadPayload(X16, i)
+			f.st64(SP, f.spillOff(toSlot+i), X16)
+		}
+	}
+
+	var savedState [16]locState
+	var savedLocal [16]int
+	savedN := 0
+	if f.usesCalls {
+		for x := range f.locals {
+			if _, _, ok := f.pinReg(x); !ok {
+				continue
+			}
+			if savedN == len(savedState) {
+				panic("arm64: too many pinned locals in EH route")
+			}
+			savedLocal[savedN] = x
+			savedState[savedN] = f.locals[x].state
+			savedN++
+			f.locals[x].state = lsMem
+		}
+	}
+	f.convergeBranchLocals(target)
+	f.branchJump(target)
+	for i := 0; i < savedN; i++ {
+		f.locals[savedLocal[i]].state = savedState[i]
+	}
+}
+
+func (f *fn) emitEHHandler(fr *ctrlFrame) {
+	recordOff := f.ehRecordOff(fr.ehRecordIndex)
+	handlerPos := f.a.Len()
+	if !f.a.PatchAdr(fr.ehTargetSite, handlerPos) {
+		panic("arm64: exception handler ADR out of range")
+	}
+	f.ld64(linMemReg, SP, recordOff+ehSavedLinMemOff)
+	if f.memSizeReg != regNone {
+		f.ld64(f.memSizeReg, linMemReg, -bdCurBytes)
+	}
+	f.deriveModuleGlobals()
+	f.derivePinnedGlobals()
+
+	dispatchN := len(fr.ehCatches)
+	for i := range fr.ehCatches {
+		clause := &fr.ehCatches[i]
+		if clause.kind == wasm.CatchAll || clause.kind == wasm.CatchAllRef {
+			clause.matchSite = f.a.Branch()
+			dispatchN = i + 1
+			break
+		}
+		f.ld64(X16, SP, recordOff+ehTagOff)
+		f.ld64(X17, linMemReg, -int32(offEHTagDirPtr))
+		f.ld64(X17, X17, int32(clause.tag*8))
+		f.cmpRR(X16, X17, true)
+		clause.matchSite = f.a.Bcond(condE)
+	}
+
+	f.leaDisp(X16, SP, recordOff, true)
+	f.ld64(X17, X16, ehPrevOff)
+	f.cmpImm(X17, 0, true)
+	noPrevious := f.a.Bcond(condE)
+	for _, off := range [...]int32{ehTagOff, ehPayload0Off, ehPayload1Off} {
+		f.ld64(X9, X16, off)
+		f.st64(X17, off, X9)
+	}
+	f.a.MovReg64(ehReg, X17)
+	f.ld64(X16, X17, ehTargetOff)
+	f.ld64(X17, X17, ehSavedSPOff)
+	f.a.AddImm64(SP, X17, 0)
+	f.a.Br(X16)
+	f.a.PatchBranch19(noPrevious, f.a.Len())
+	f.trapAlways(trapUnhandledException)
+
+	for i := 0; i < dispatchN; i++ {
+		clause := &fr.ehCatches[i]
+		if clause.kind == wasm.CatchAll || clause.kind == wasm.CatchAllRef {
+			f.a.PatchBranch26(clause.matchSite, f.a.Len())
+		} else {
+			f.a.PatchBranch19(clause.matchSite, f.a.Len())
+		}
+		f.emitEHCatchRoute(fr, clause, recordOff)
+	}
+}
+
+func (f *fn) markEHReferenceResults(fr *ctrlFrame) {
+	e := f.s.back()
+	for i := len(fr.resultTypes) - 1; i >= 0; i-- {
+		if i < len(fr.ehRefResults) && fr.ehRefResults[i] {
+			e.st.ehRoot = true
+		}
+		e = e.prev
+	}
+}
+
 func (f *fn) opElse() error {
 	fr := &f.ctrl[len(f.ctrl)-1]
 	if fr.entryUnreach {
@@ -851,6 +1345,7 @@ func (f *fn) opElse() error {
 		// The then-branch jumps to the if's end — a merge edge like any br
 		// (#68's root cause was skipping this). Converge to the end's recorded
 		// state; as the chronologically first end edge it usually fixes it.
+		f.recordGCBranchResults(fr, fr.resultN)
 		f.convergeEdgeTo(&fr.branchState)
 		if fr.regMerge1 {
 			f.reconcileMerge1(fr) // then-branch result → mergeReg
@@ -863,7 +1358,7 @@ func (f *fn) opElse() error {
 	f.a.PatchBranch19(fr.elseSite, f.a.Len()) // the false edge is a B.cond (imm19)
 	fr.elseSite = -1
 	fr.hasElse = true
-	f.setDepthTypes(f.frameDepthTypes(fr.baseTypes, fr.paramTypes))
+	f.setDepthTypesWithGCRoots(f.frameDepthTypes(fr.baseTypes, fr.paramTypes), frameGCRootFlags(fr.baseGCRoots, fr.paramGCRoots))
 	// The else body is entered via the if's false edge: locals are exactly in the
 	// header-snapshot state (no code).
 	f.setLocalsState(fr.entryState)
@@ -911,6 +1406,7 @@ func (f *fn) opEnd() error {
 		f.releaseLoopPins(&fr)
 	}
 	if fallthroughReachable {
+		f.recordGCBranchResults(&fr, fr.resultN)
 		if fr.kind != cfLoop {
 			// Merge edge: converge to the end's recorded state (or fix it).
 			// A loop end is NOT a merge — br edges target the loop TOP — so the
@@ -925,6 +1421,12 @@ func (f *fn) opEnd() error {
 	}
 	// An if without else: the cond-false path reaches end with params == results.
 	if fr.kind == cfIf && !fr.hasElse && !fr.entryUnreach {
+		for i := 0; i < len(fr.paramGCRoots) && i < fr.resultN; i++ {
+			if len(fr.resultGCRoots) < fr.resultN {
+				fr.resultGCRoots = append(fr.resultGCRoots, make([]bool, fr.resultN-len(fr.resultGCRoots))...)
+			}
+			fr.resultGCRoots[i] = fr.resultGCRoots[i] || fr.paramGCRoots[i]
+		}
 		// The cond-false edge arrives in the header-snapshot state; if then-side
 		// edges fixed a stronger end state (or a regMerge1 passthrough needs its
 		// value in mergeReg), a stub on this edge converges it. The then
@@ -1010,15 +1512,35 @@ func (f *fn) opEnd() error {
 		if fr.regMerge1 {
 			// Every reaching edge left the result in the merge register (int→mergeReg,
 			// float→mergeFReg) and the operands below in canonical slots [0, height).
-			f.setDepthTypes(fr.baseTypes)
+			f.setDepthTypesWithGCRoots(fr.baseTypes, fr.baseGCRoots)
+			var result *elem
 			if fr.res0.isFloat() {
-				f.pushFReg(mergeFReg, fr.res0)
+				result = f.pushFReg(mergeFReg, fr.res0)
 			} else {
-				f.pushReg(mergeReg, fr.res0)
+				result = f.pushReg(mergeReg, fr.res0)
+			}
+			if len(fr.resultGCRoots) != 0 {
+				result.st.gcRoot = fr.resultGCRoots[0]
 			}
 		} else {
-			f.setDepthTypes(f.frameDepthTypes(fr.baseTypes, fr.resultTypes))
+			f.setDepthTypesWithGCRoots(f.frameDepthTypes(fr.baseTypes, fr.resultTypes), frameGCRootFlags(fr.baseGCRoots, fr.resultGCRoots))
 		}
+		f.markEHReferenceResults(&fr)
+	}
+	if fr.kind == cfTry && !fr.entryUnreach {
+		recordOff := f.ehRecordOff(fr.ehRecordIndex)
+		if endReachable {
+			f.ld64(ehReg, SP, recordOff+ehPrevOff)
+		}
+		skip := -1
+		if endReachable {
+			skip = f.a.Branch()
+		}
+		f.emitEHHandler(&fr)
+		if skip != -1 {
+			f.a.PatchBranch26(skip, f.a.Len())
+		}
+		f.ehTryDepth--
 	}
 	// The popped frame no longer owns these temporary buffers. Recycle them for
 	// later frames at the same or a shallower nesting depth.
@@ -1134,6 +1656,110 @@ func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
 	return nil
 }
 
+func (f *fn) brOnNull(r *wasm.Reader) error {
+	value := f.popValue()
+	gcRoot := value.st.gcRoot
+	ref := f.materialize(value)
+	idx, err := r.U32()
+	if err != nil {
+		return err
+	}
+	fi := len(f.ctrl) - 1 - int(idx)
+	if fi < 0 {
+		return errBadLabel
+	}
+	fr := &f.ctrl[fi]
+	f.convergeBranchLocals(fr)
+	d := f.depth()
+	f.flush()
+	refSlot := f.allocSpillSlot()
+	f.st64(SP, f.spillOff(refSlot), ref)
+	f.cmpImm(ref, 0, true)
+	f.release(ref)
+	over := f.a.Bcond(condNE)
+	if fr.regMerge1 {
+		f.branchEdgeToMerge1(fr, d)
+	} else {
+		f.moveBranchValues(fr, d, fr.branchN)
+	}
+	f.branchJump(fr)
+	f.a.PatchBranch19(over, f.a.Len())
+	fallthroughRef := f.allocReg(0)
+	f.ld64(fallthroughRef, SP, f.spillOff(refSlot))
+	f.pushReg(fallthroughRef, mtI64).st.gcRoot = gcRoot
+	return nil
+}
+
+func (f *fn) brOnNonNull(r *wasm.Reader) error {
+	value := f.popValue()
+	gcRoot := value.st.gcRoot
+	ref := f.materialize(value)
+	f.pushReg(ref, mtI64).st.gcRoot = gcRoot
+	idx, err := r.U32()
+	if err != nil {
+		return err
+	}
+	fi := len(f.ctrl) - 1 - int(idx)
+	if fi < 0 {
+		return errBadLabel
+	}
+	fr := &f.ctrl[fi]
+	f.convergeBranchLocals(fr)
+	allTypes := append([]machineType(nil), f.currentLogicalTypes()...)
+	d := len(allTypes)
+	refSlot := slotsOfTypes(allTypes) - 1
+	f.flush()
+	condition := f.allocReg(0)
+	f.ld64(condition, SP, f.spillOff(refSlot))
+	f.cmpImm(condition, 0, true)
+	f.release(condition)
+	over := f.a.Bcond(condE)
+	if fr.regMerge1 {
+		f.branchEdgeToMerge1(fr, d)
+	} else {
+		f.moveBranchValues(fr, d, fr.branchN)
+	}
+	f.branchJump(fr)
+	f.a.PatchBranch19(over, f.a.Len())
+	_ = f.popValue()
+	return nil
+}
+
+// brOnCastResult consumes the helper's i32 match result while leaving the
+// original reference at the top of the logical stack. Both edges retain the
+// same compact reference identity; validation supplies only the refined type.
+func (f *fn) brOnCastResult(idx uint32, branchOnMatch bool) error {
+	matched, owned := f.materializeRead(f.popValue())
+	fi := len(f.ctrl) - 1 - int(idx)
+	if fi < 0 {
+		if owned {
+			f.release(matched)
+		}
+		return errBadLabel
+	}
+	fr := &f.ctrl[fi]
+	f.convergeBranchLocals(fr)
+	d := f.depth()
+	f.flush()
+	f.cmpImm(matched, 0, false)
+	if owned {
+		f.release(matched)
+	}
+	skipCond := condE
+	if !branchOnMatch {
+		skipCond = condNE
+	}
+	over := f.a.Bcond(skipCond)
+	if fr.regMerge1 {
+		f.branchEdgeToMerge1(fr, d)
+	} else {
+		f.moveBranchValues(fr, d, fr.branchN)
+	}
+	f.branchJump(fr)
+	f.a.PatchBranch19(over, f.a.Len())
+	return nil
+}
+
 func (f *fn) opBrTable(r *wasm.Reader) error {
 	if f.unreachable {
 		n, err := r.U32()
@@ -1238,9 +1864,24 @@ func (f *fn) opBrTable(r *wasm.Reader) error {
 			f.unreachable = true
 			return nil
 		}
-		stubAt := map[uint32]int{}
+		// Branch labels are control-stack depths, so use one reusable dense scratch
+		// table instead of allocating a hash map for every duplicate-heavy br_table.
+		// Initialize only the labels used by this table; stale entries for other
+		// depths are unreachable until a later table initializes them.
+		sc := f.scratchState()
+		stubAt := sc.brTableStubAt
+		if cap(stubAt) < len(f.ctrl) {
+			stubAt = make([]int, len(f.ctrl))
+		} else {
+			stubAt = stubAt[:len(f.ctrl)]
+		}
+		sc.brTableStubAt = stubAt
+		for _, lbl := range labels {
+			stubAt[lbl] = -1
+		}
+		stubAt[def] = -1
 		stub := func(lbl uint32) int {
-			if p, ok := stubAt[lbl]; ok {
+			if p := stubAt[lbl]; p >= 0 {
 				return p
 			}
 			p := f.a.Len()
@@ -1251,7 +1892,7 @@ func (f *fn) opBrTable(r *wasm.Reader) error {
 		for i, lbl := range labels {
 			f.a.PatchU32(tablePos+4*i, uint32(stub(lbl)-tablePos))
 		}
-		if p, ok := stubAt[def]; ok {
+		if p := stubAt[def]; p >= 0 {
 			f.a.PatchBranch19(defSite, p)
 		} else {
 			f.a.PatchBranch19(defSite, f.a.Len())
@@ -1298,6 +1939,13 @@ func (f *fn) opReturn() error {
 	sc.retSites = append(sc.retSites, f.a.Branch())
 	f.unreachable = true
 	return nil
+}
+
+func skipImmediatesWithMemory64(r *wasm.Reader, op byte, memory64 bool) error {
+	if memory64 {
+		return wasm.SkipInstructionImmediateWithMemarg64(r, op, true)
+	}
+	return skipImmediates(r, op)
 }
 
 // skipImmediates advances over a dead-code opcode's operands without emitting.
@@ -1366,7 +2014,7 @@ func skipImmediates(r *wasm.Reader, op byte) error {
 			return err
 		}
 		return nil
-	case op == 0xfd: // SIMD prefix: vector immediates vary by sub-opcode.
+	case op == 0xfb || op == 0xfd: // GC/SIMD prefixes have subopcode-specific immediates.
 		return wasm.SkipInstructionImmediate(r, op)
 	}
 	return nil

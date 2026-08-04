@@ -22,25 +22,25 @@ import (
 // carry through the control frame. v128 values use two slots; host imports with
 // many scalar params also need more than eight. Changing it shifts hcResults, so
 // the hand-assembled stubs that hard-code that offset must move too.
-const maxHostArity = 16
+const maxHostArity = 64
 
 // Control-frame field offsets (bytes). Off-heap; the frame's address is
 // installed in basedata at offCustomCtx, so native code reaches it as
 // [linMem-offCustomCtx]. hostCallStub writes the hcSaved* slots; Go reads
 // hcImportIdx/hcNArgs/hcArgs and writes hcResults; resumeNative reads hcSaved*.
 const (
-	hcSavedRSP    = 0                       // u64: wasm RSP at the call site (points at the resume address)
-	hcSavedRBX    = 8                       // u64
-	hcSavedRBP    = 16                      // u64
-	hcSavedR12    = 24                      // u64
-	hcSavedR13    = 32                      // u64
-	hcSavedR14    = 40                      // u64
-	hcSavedR15    = 48                      // u64
-	hcTrampoline  = 56                      // u64: hostCallStub address (per-instance constant, published by CallWithHost)
-	hcImportIdx   = 64                      // u32: native -> Go, which import
-	hcNArgs       = 68                      // u32: low 16 bits = param slots, high 16 bits = result slots (native -> Go)
-	hcArgs        = 72                      // [maxHostArity]u64: native -> Go
-	hcResults     = hcArgs + maxHostArity*8 // [maxHostArity]u64: Go -> native (== 200 for maxHostArity=16)
+	hcSavedRSP    = abi.SyncHostCallSavedNativeSPOffset // u64: wasm RSP at the call site (points at the resume address)
+	hcSavedRBX    = 8                                   // u64
+	hcSavedRBP    = 16                                  // u64
+	hcSavedR12    = 24                                  // u64
+	hcSavedR13    = 32                                  // u64
+	hcSavedR14    = 40                                  // u64
+	hcSavedR15    = 48                                  // u64
+	hcTrampoline  = 56                                  // u64: hostCallStub address (per-instance constant, published by CallWithHost)
+	hcImportIdx   = 64                                  // u32: native -> Go, which import
+	hcNArgs       = 68                                  // u32: low 16 bits = param slots, high 16 bits = result slots (native -> Go)
+	hcArgs        = 72                                  // [maxHostArity]u64: native -> Go
+	hcResults     = hcArgs + maxHostArity*8             // [maxHostArity]u64: Go -> native
 	ctrlFrameSize = hcResults + maxHostArity*8
 )
 

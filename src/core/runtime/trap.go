@@ -8,8 +8,7 @@ import (
 	"strings"
 )
 
-// TrapCode is Wago's stable native-to-Go trap ABI. Codes 0 through 14 mirror
-// vb::TrapCode (src/core/common/TrapCode.hpp); Wago-specific codes are appended.
+// TrapCode mirrors vb::TrapCode (src/core/common/TrapCode.hpp).
 type TrapCode uint32
 
 const (
@@ -28,10 +27,14 @@ const (
 	TrapInterrupted          TrapCode = 12
 	TrapStackFenceBreached   TrapCode = 13
 	TrapCalledFnNotLinked    TrapCode = 14
-	TrapTableOutOfBounds     TrapCode = 15
+	TrapUnsupportedTailCall  TrapCode = 15
+	TrapNullReference        TrapCode = 16
+	TrapUnhandledException   TrapCode = 17
+	TrapCastFailure          TrapCode = 18
+	TrapTableOutOfBounds     TrapCode = 19
 )
 
-var trapMessages = map[TrapCode]string{
+var trapMessages = [...]string{
 	TrapNone:                 "no trap",
 	TrapUnreachable:          "unreachable instruction executed",
 	TrapBuiltin:              "builtin.trap executed",
@@ -47,12 +50,16 @@ var trapMessages = map[TrapCode]string{
 	TrapInterrupted:          "runtime interrupt requested",
 	TrapStackFenceBreached:   "stack fence breached",
 	TrapCalledFnNotLinked:    "called function not linked",
+	TrapUnsupportedTailCall:  "tail call target requires an unsupported context switch",
+	TrapNullReference:        "null reference",
+	TrapUnhandledException:   "unhandled WebAssembly exception",
+	TrapCastFailure:          "cast failure",
 	TrapTableOutOfBounds:     "table access out of bounds",
 }
 
 func (c TrapCode) String() string {
-	if m, ok := trapMessages[c]; ok {
-		return m
+	if uint32(c) < uint32(len(trapMessages)) && trapMessages[c] != "" {
+		return trapMessages[c]
 	}
 	return fmt.Sprintf("trap(%d)", uint32(c))
 }

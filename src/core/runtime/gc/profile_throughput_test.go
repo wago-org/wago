@@ -2,6 +2,24 @@ package gc
 
 import "testing"
 
+func TestThroughputBackingGrowthIsGeometricAfterFirstPage(t *testing.T) {
+	h := throughputHeap{pageBytes: 64 << 10, limit: 4 << 20}
+	h.mem = makeAlignedBytes(512<<10, 16)
+	if err := h.growBacking(576 << 10); err != nil {
+		t.Fatal(err)
+	}
+	if got := len(h.mem); got != 768<<10 {
+		t.Fatalf("small backing growth = %d, want %d", got, 768<<10)
+	}
+	h.mem = makeAlignedBytes(1<<20, 16)
+	if err := h.growBacking((1 << 20) + (64 << 10)); err != nil {
+		t.Fatal(err)
+	}
+	if got := len(h.mem); got != 1536<<10 {
+		t.Fatalf("geometric backing growth = %d, want %d", got, 1536<<10)
+	}
+}
+
 func TestProfileNormalization(t *testing.T) {
 	c := newTestCollector(t, Config{})
 	if c.cfg.Profile != ProfileThroughput || c.cfg.Allocator != AllocatorPagedSizeClass || c.cfg.Runtime != RuntimeGenerational {
@@ -16,6 +34,75 @@ func TestProfileNormalization(t *testing.T) {
 	}
 	if _, err := NewCollector(Config{Profile: ProfileThroughput, Allocator: AllocatorTinyFixedBlock, Runtime: RuntimeGenerational}, testTypes(t)); err == nil {
 		t.Fatal("expected invalid throughput allocator/runtime combination rejection")
+	}
+	if _, err := NewCollector(Config{Profile: ProfileTiny, DisableCollection: true}, testTypes(t)); err == nil {
+		t.Fatal("expected collection-disabled tiny profile rejection")
+	}
+}
+
+func TestCollectionDisabledHeapIsBoundedAndStable(t *testing.T) {
+	c := newTestCollector(t, Config{
+		DisableCollection:    true,
+		ThroughputHeapBytes:  4096,
+		ThroughputPageBytes:  4096,
+		ThroughputClassLimit: 4096,
+	})
+	first, err := c.NewStructDefault(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.StructSet(first, 0, I32Value(77)); err != nil {
+		t.Fatal(err)
+	}
+	allocations := 1
+	for {
+		_, err = c.NewStructDefault(0)
+		if err != nil {
+			break
+		}
+		allocations++
+	}
+	if allocations == 0 || err == nil {
+		t.Fatalf("collection-disabled allocations=%d err=%v", allocations, err)
+	}
+	if got, getErr := c.StructGet(first, 0); getErr != nil || got.I32() != 77 {
+		t.Fatalf("first object after exhaustion = %v, %v; want 77, nil", got, getErr)
+	}
+	stats := c.Stats()
+	if stats.MinorCollections != 0 || stats.FullCollections != 0 {
+		t.Fatalf("collection-disabled collector ran minor/full collections %d/%d", stats.MinorCollections, stats.FullCollections)
+	}
+}
+
+func TestThroughputClassFreeMetadataIsReused(t *testing.T) {
+	c := newTestCollector(t, Config{
+		StressNurseryBytes:   64,
+		ThroughputHeapBytes:  4096,
+		ThroughputPageBytes:  4096,
+		ThroughputClassLimit: 4096,
+	})
+	root := Root(Null())
+	cls := -1
+	for i := 0; i < 1024; i++ {
+		obj, err := c.NewStructDefaultWithRoots(0, Slots{&root})
+		if err != nil {
+			t.Fatal(err)
+		}
+		root = Root(obj)
+		if err := c.CollectMinor(Slots{&root}); err != nil {
+			t.Fatal(err)
+		}
+		cls = int(c.entry(obj).class)
+		root = Root(Null())
+		if err := c.CollectFull(Slots{&root}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := len(c.throughput.freeSlots[cls]); got != 1 {
+		t.Fatalf("throughput free-record metadata grew to %d entries, want 1 reusable entry", got)
+	}
+	if err := c.Verify(nil); err != nil {
+		t.Fatal(err)
 	}
 }
 

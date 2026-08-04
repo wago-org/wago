@@ -2,6 +2,8 @@
 
 package amd64
 
+import "github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
+
 // WARP's STACK_REG lazy local-spill model (Common.cpp saveLocalsAndParamsFor
 // FuncCall / recoverLocalToReg / recoverAllLocalsToRegBranch), for CALL-MAKING
 // functions. Each pinned local has a dedicated register AND a frame slot; the
@@ -138,6 +140,40 @@ func (f *fn) markLocalDirty(x int) {
 // spillLocalsForCall stores dirty pinned locals to their slots and marks all
 // pinned locals clobbered (lsMem) — the WARP save-before-call step. No reload
 // follows; the next read recovers lazily. Callers must emit this before a call.
+func (f *fn) materializeGCFrameRootLocalsForCall(importIdx int) {
+	if importIdx < 0 || f.gcFrameRoots == nil || !f.gcFrameRoots.Candidate {
+		return
+	}
+	dispatch := uint32(importIdx)
+	if dispatch&gcStructDispatchBit == 0 {
+		return
+	}
+	helper, _ := shared.DecodeGCDispatch(dispatch &^ gcStructDispatchBit)
+	if !gcHelperMayAllocate(helper) {
+		return
+	}
+	f.materializeGCFrameLocals(^uint64(0))
+}
+
+func (f *fn) materializeGCFrameLocals(mask uint64) {
+	if f.gcFrameRoots == nil || !f.lazyZero {
+		return
+	}
+	for i, index := range f.gcFrameRoots.LocalIndexes {
+		if mask&(uint64(1)<<uint(i)) == 0 {
+			continue
+		}
+		x := int(index)
+		if x < 0 || x >= f.nLocals {
+			f.gcFrameRoots.Exact = false
+			continue
+		}
+		if f.locals[x].state == lsConstZero {
+			f.materializeZeroLocal(x, true)
+		}
+	}
+}
+
 func (f *fn) spillLocalsForCall() {
 	for _, x := range f.pinnedLocals {
 		reg, isFloat := f.locals[x].reg, f.locals[x].isFloat
@@ -174,9 +210,11 @@ func (f *fn) reloadLocalsForCall() {
 // post-call reloads out of the body) and br_table (one state satisfying every
 // target). Other edges use convergeEdgeTo's lazier per-frame agreement.
 func (f *fn) reconcileLocals() {
-	for x := 0; x < f.nLocals; x++ {
-		if f.locals[x].state == lsConstZero {
-			f.materializeZeroLocal(x, true) // leaves pinned locals in lsStackReg
+	if f.lazyZero {
+		for x := 0; x < f.nLocals; x++ {
+			if f.locals[x].state == lsConstZero {
+				f.materializeZeroLocal(x, true) // leaves pinned locals in lsStackReg
+			}
 		}
 	}
 	if !f.usesCalls {
@@ -206,31 +244,31 @@ func (f *fn) reconcileLocals() {
 // recorded) — always safe: the merge assumes only the target. The merge point
 // itself must then install the recorded target as the tracked state
 // (setLocalsState).
-// newLocStateBuf returns a length-nLocals []locState for a frame merge target,
-// recycled from lsPool when available. Callers overwrite every element (both
-// convergeEdgeTo callers do), so the buffer is not zeroed. freeLocStateBuf
-// returns one to the pool when its owning frame is popped.
+// newLocStateBuf returns one state byte per pinned local for a frame merge
+// target, recycled from lsPool when available. Unpinned locals are canonical in
+// frame slots and never participate in merge-state reconciliation.
 func (f *fn) newLocStateBuf() []locState {
+	n := len(f.pinnedLocals)
 	for i := len(f.lsPool) - 1; i >= 0; i-- {
 		b := f.lsPool[i]
-		if cap(b) < f.nLocals {
+		if cap(b) < n {
 			continue
 		}
 		last := len(f.lsPool) - 1
 		f.lsPool[i] = f.lsPool[last]
 		f.lsPool[last] = nil
 		f.lsPool = f.lsPool[:last]
-		return b[:f.nLocals]
+		return b[:n]
 	}
 	if last := len(f.lsPool) - 1; last >= 0 {
 		f.lsPool[last] = nil
 		f.lsPool = f.lsPool[:last]
 	}
-	return make([]locState, f.nLocals)
+	return make([]locState, n)
 }
 
 func (f *fn) freeLocStateBuf(b []locState) {
-	if cap(b) >= f.nLocals && f.nLocals > 0 {
+	if n := len(f.pinnedLocals); cap(b) >= n && n > 0 {
 		f.lsPool = append(f.lsPool, b[:cap(b)])
 	}
 }
@@ -260,13 +298,16 @@ func (f *fn) convergeEdgeTo(target *[]locState) {
 	// Lazy zeros always materialize to the slot so unpinned declared-zero locals
 	// have a real slot value on every edge (all locals — const-zero ones may be
 	// unpinned). materializeZeroLocal leaves a pinned local in lsStackReg, so the
-	// pinned-spill pass below correctly skips it.
-	for x := 0; x < f.nLocals; x++ {
-		if f.locals[x].state == lsConstZero {
-			f.materializeZeroLocal(x, true)
+	// pinned-spill pass below correctly skips it. Non-lazy functions can never
+	// contain lsConstZero and skip this whole local-array scan.
+	if f.lazyZero {
+		for x := 0; x < f.nLocals; x++ {
+			if f.locals[x].state == lsConstZero {
+				f.materializeZeroLocal(x, true)
+			}
 		}
 	}
-	if !f.usesCalls {
+	if !f.usesCalls || len(f.pinnedLocals) == 0 {
 		return
 	}
 	// Dirty pinned registers materialize to the slot too.
@@ -278,15 +319,15 @@ func (f *fn) convergeEdgeTo(target *[]locState) {
 	}
 	if *target == nil { // first edge fixes the frame's merge state
 		t := f.newLocStateBuf()
-		for x := range t {
-			t[x] = f.locals[x].state
+		for i, x := range f.pinnedLocals {
+			t[i] = f.locals[x].state
 		}
 		*target = t
 		return
 	}
 	t := *target
-	for _, x := range f.pinnedLocals {
-		if t[x] == lsStackReg && f.locals[x].state == lsMem {
+	for i, x := range f.pinnedLocals {
+		if t[i] == lsStackReg && f.locals[x].state == lsMem {
 			f.loadLocalReg(x, f.locals[x].reg, f.locals[x].isFloat)
 			f.locals[x].state = lsStackReg
 		}
@@ -299,7 +340,7 @@ func (f *fn) setLocalsState(t []locState) {
 	if !f.usesCalls || t == nil {
 		return
 	}
-	for _, x := range f.pinnedLocals {
-		f.locals[x].state = t[x]
+	for i, x := range f.pinnedLocals {
+		f.locals[x].state = t[i]
 	}
 }

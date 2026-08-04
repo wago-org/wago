@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"runtime"
 	"strings"
 
 	"github.com/wago-org/wago/src/core/compiler/frontend"
@@ -33,12 +34,29 @@ const (
 	CoreFeatureReferenceTypes
 	// CoreFeatureSignExtensionOps: i32/i64.extend{8,16,32}_s.
 	CoreFeatureSignExtensionOps
-	// CoreFeatureSIMD: the v128 vector instructions.
+	// CoreFeatureSIMD: core and relaxed v128 vector instructions. This remains
+	// one admission bit for compatibility with the existing executable SIMD
+	// surface; relaxed SIMD is therefore represented by this bit in CoreFeaturesV3.
 	CoreFeatureSIMD
 	// CoreFeatureExtendedConst: integer add/sub/mul in constant expressions.
 	CoreFeatureExtendedConst
-	// CoreFeatureTailCall: return_call / return_call_indirect.
+	// CoreFeatureTailCall: return_call / return_call_indirect / return_call_ref.
 	CoreFeatureTailCall
+	// CoreFeatureExtendedConstExpressions: integer add/sub/mul and references to
+	// previously declared immutable globals in constant expressions.
+	CoreFeatureExtendedConstExpressions
+	// CoreFeatureTypedFunctionReferences: typed refs, call_ref, and related casts.
+	CoreFeatureTypedFunctionReferences
+	// CoreFeatureGC: struct, array, i31, and GC-managed reference instructions.
+	CoreFeatureGC
+	// CoreFeatureExceptionHandling: tags, throw/throw_ref, and try_table.
+	CoreFeatureExceptionHandling
+	// CoreFeatureMultiMemory: multiple memories and indexed memory operations.
+	CoreFeatureMultiMemory
+	// CoreFeatureMemory64: 64-bit linear-memory limits and addresses.
+	CoreFeatureMemory64
+	// CoreFeatureTable64: 64-bit table limits and indexes.
+	CoreFeatureTable64
 )
 
 // Feature groups for WebAssembly Core releases.
@@ -52,21 +70,36 @@ const (
 		CoreFeatureNonTrappingFloatToIntConversion |
 		CoreFeatureReferenceTypes |
 		CoreFeatureSignExtensionOps |
-		CoreFeatureSIMD |
-		CoreFeatureExtendedConst
+		CoreFeatureSIMD
 
-	// coreFeaturesWago is the optional set wago's single-pass backend lowers
-	// today; it is the default and the ceiling WithCoreFeatures is validated
-	// against. Reference-types covers the executable Release 2 funcref/externref
-	// surface; tail-call remains rejected up front rather than silently mis-running.
-	coreFeaturesWago = CoreFeatureMutableGlobal |
+	// CoreFeaturesV3 is the mandatory WebAssembly Core 3.0 release feature set.
+	// CoreFeatureSIMD represents both core and relaxed SIMD in wago's existing
+	// admission model. The set describes release scope, not current executability;
+	// intersect it with SupportedFeatures before configuring a runtime.
+	CoreFeaturesV3 = CoreFeaturesV2 |
+		CoreFeatureTailCall |
+		CoreFeatureExtendedConstExpressions |
+		CoreFeatureTypedFunctionReferences |
+		CoreFeatureGC |
+		CoreFeatureExceptionHandling |
+		CoreFeatureMultiMemory |
+		CoreFeatureMemory64 |
+		CoreFeatureTable64
+
+	// coreFeaturesWago is the optional set wago's backend lowers and the ceiling
+	// validated by WithCoreFeatures. Core 3 features are opt-in so existing users
+	// retain the Release 2-compatible default behavior.
+	coreFeaturesWago = CoreFeaturesV3 | CoreFeatureExtendedConst
+
+	defaultCoreFeatures = CoreFeatureMutableGlobal |
 		CoreFeatureSignExtensionOps |
 		CoreFeatureMultiValue |
 		CoreFeatureBulkMemoryOperations |
 		CoreFeatureNonTrappingFloatToIntConversion |
 		CoreFeatureReferenceTypes |
 		CoreFeatureSIMD |
-		CoreFeatureExtendedConst
+		CoreFeatureExtendedConst |
+		CoreFeatureExtendedConstExpressions
 )
 
 // IsEnabled returns true if all bits in feature are set.
@@ -106,6 +139,13 @@ var featureNames = []struct {
 	{CoreFeatureSIMD, "simd"},
 	{CoreFeatureExtendedConst, "extended-constant-expressions"},
 	{CoreFeatureTailCall, "tail-call"},
+	{CoreFeatureExtendedConstExpressions, "extended-const-expressions"},
+	{CoreFeatureTypedFunctionReferences, "typed-function-references"},
+	{CoreFeatureGC, "gc"},
+	{CoreFeatureExceptionHandling, "exception-handling"},
+	{CoreFeatureMultiMemory, "multi-memory"},
+	{CoreFeatureMemory64, "memory64"},
+	{CoreFeatureTable64, "table64"},
 }
 
 // BoundsCheckMode selects how out-of-bounds linear-memory accesses are caught.
@@ -115,10 +155,11 @@ const (
 	// BoundsChecksExplicit emits an inline bounds check on every access. The
 	// default; needs no signal handler.
 	BoundsChecksExplicit BoundsCheckMode = iota
-	// BoundsChecksSignalsBased elides the inline check and relies on a guard-page
-	// mapping plus a SIGSEGV/SIGBUS handler (see docs/guardpage-spike.md). Faster
-	// on memory-heavy code, but installs process-wide signal handlers and requires
-	// a binary built with the `wago_guardpage` tag.
+	// BoundsChecksSignalsBased elides eligible memory-0 memory32 checks and relies
+	// on a guard-page mapping plus a SIGSEGV/SIGBUS handler (see
+	// docs/guardpage-spike.md). Indexed nonzero memories and memory64 retain
+	// explicit checks. The mode is faster on memory-heavy code, but installs
+	// process-wide signal handlers and requires a `wago_guardpage` build.
 	BoundsChecksSignalsBased
 )
 
@@ -161,7 +202,7 @@ func NewRuntimeConfig() *RuntimeConfig {
 		bounds = BoundsChecksExplicit
 	}
 	return &RuntimeConfig{
-		features:        coreFeaturesWago,
+		features:        defaultCoreFeatures,
 		maxMemoryPages:  defaultMaxMemoryPages,
 		boundsChecks:    bounds,
 		functionWorkers: 1,
@@ -198,6 +239,12 @@ func (c *RuntimeConfig) WithFeatures(features ...CoreFeatures) *RuntimeConfig {
 func (c *RuntimeConfig) WithFeature(feature CoreFeatures, enabled bool) *RuntimeConfig {
 	n := *c
 	n.features = n.features.SetEnabled(feature, enabled)
+	// The legacy arithmetic bit predates the Core 3 umbrella bit. Explicitly
+	// disabling it keeps the historical promise that extended-constant arithmetic
+	// is off, even when the default also enables prior immutable globals.
+	if !enabled && feature.IsEnabled(CoreFeatureExtendedConst) {
+		n.features &^= CoreFeatureExtendedConstExpressions
+	}
 	return &n
 }
 
@@ -218,8 +265,9 @@ func (c *RuntimeConfig) WithBoundsChecks(mode BoundsCheckMode) *RuntimeConfig {
 
 // WithDeferBoundsChecks controls whether the compiler skips a bounds check that a
 // prior check in the same straight-line region already proved safe (explicit mode
-// only; guard-page mode has no inline checks). On by default — pass false to bounds-
-// check every memory access, e.g. for A/B testing or maximal defensiveness. The
+// only; signal mode uses its fixed hybrid policy). On by default — pass false to
+// bounds-check every eligible explicit-mode memory access, e.g. for A/B testing or
+// maximal defensiveness. The
 // WAGO_NO_BOUNDS_FACTS=1 env var disables it globally.
 func (c *RuntimeConfig) WithDeferBoundsChecks(enabled bool) *RuntimeConfig {
 	n := *c
@@ -292,11 +340,35 @@ func (c *RuntimeConfig) String() string {
 // compile. Intersect a desired set with it to stay portable:
 //
 //	feats := want & wago.SupportedFeatures()
-func SupportedFeatures() CoreFeatures {
-	if !hostSupportsSIMD() {
-		return coreFeaturesWago &^ CoreFeatureSIMD
+func supportsCompleteCore3Backend(goos, goarch string) bool {
+	return (goos == "linux" && goarch == "amd64") ||
+		(goarch == "arm64" && (goos == "linux" || goos == "darwin"))
+}
+
+func platformCoreFeatures() CoreFeatures {
+	supported := coreFeaturesWago
+	if !supportsCompleteCore3Backend(runtime.GOOS, runtime.GOARCH) {
+		// Targets outside linux/amd64 and Linux/Darwin arm64 retain the portable
+		// Release 2 surface plus extended constant expressions and reject the
+		// incomplete Core 3 families at configuration time.
+		unsupported := CoreFeatureTailCall |
+			CoreFeatureTypedFunctionReferences |
+			CoreFeatureGC |
+			CoreFeatureExceptionHandling |
+			CoreFeatureMultiMemory |
+			CoreFeatureMemory64 |
+			CoreFeatureTable64
+		supported &^= unsupported
 	}
-	return coreFeaturesWago
+	return supported
+}
+
+func SupportedFeatures() CoreFeatures {
+	supported := platformCoreFeatures()
+	if !hostSupportsSIMD() {
+		supported &^= CoreFeatureSIMD
+	}
+	return supported
 }
 
 // GuardPageSupported reports whether this binary was built with guard-page
@@ -324,10 +396,15 @@ func IsGuardPageUnavailable(err error) bool {
 type UnsupportedFeatureError struct {
 	Requested CoreFeatures // the specific unsupported features
 	Supported CoreFeatures // what this build does support
+	Platform  string       // GOOS/GOARCH admission target
 }
 
 func (e *UnsupportedFeatureError) Error() string {
-	return fmt.Sprintf("wago: unsupported feature(s) %s; this build supports %s", e.Requested, e.Supported)
+	platform := e.Platform
+	if platform == "" {
+		platform = "unknown platform"
+	}
+	return fmt.Sprintf("wago: unsupported feature(s) %s; this %s build supports %s", e.Requested, platform, e.Supported)
 }
 
 // frontendFeatures maps the config's feature set onto the frontend support
@@ -342,12 +419,27 @@ func (c *RuntimeConfig) frontendFeatures() frontend.Features {
 		simd = false
 	}
 	return frontend.Features{
-		SignExtension:   c.features.IsEnabled(CoreFeatureSignExtensionOps),
-		BulkMemory:      c.features.IsEnabled(CoreFeatureBulkMemoryOperations),
-		SaturatingTrunc: c.features.IsEnabled(CoreFeatureNonTrappingFloatToIntConversion),
-		ReferenceTypes:  c.features.IsEnabled(CoreFeatureReferenceTypes),
-		SIMD:            simd,
-		ExtendedConst:   c.features.IsEnabled(CoreFeatureExtendedConst),
+		SignExtension:           c.features.IsEnabled(CoreFeatureSignExtensionOps),
+		BulkMemory:              c.features.IsEnabled(CoreFeatureBulkMemoryOperations),
+		SaturatingTrunc:         c.features.IsEnabled(CoreFeatureNonTrappingFloatToIntConversion),
+		ReferenceTypes:          c.features.IsEnabled(CoreFeatureReferenceTypes),
+		TypedFunctionReferences: c.features.IsEnabled(CoreFeatureTypedFunctionReferences),
+		TailCalls:               c.features.IsEnabled(CoreFeatureTailCall),
+		TypedTailCalls:          c.features.IsEnabled(CoreFeatureTailCall),
+		MultiMemory:             c.features.IsEnabled(CoreFeatureMultiMemory),
+		Memory64:                c.features.IsEnabled(CoreFeatureMemory64),
+		Table64:                 c.features.IsEnabled(CoreFeatureTable64),
+		ExceptionHandling:       c.features.IsEnabled(CoreFeatureExceptionHandling),
+		ExceptionReferences:     c.features.IsEnabled(CoreFeatureExceptionHandling),
+		NullReferenceProducts:   c.features.IsEnabled(CoreFeatureGC),
+		StructuralTypeProducts:  c.features.IsEnabled(CoreFeatureGC),
+		GCTypeSubtypingProducts: c.features.IsEnabled(CoreFeatureGC),
+		GCStructProducts:        c.features.IsEnabled(CoreFeatureGC),
+		GCArrayProducts:         c.features.IsEnabled(CoreFeatureGC),
+		GCI31Products:           c.features.IsEnabled(CoreFeatureGC),
+		SIMD:                    simd,
+		ExtendedConst:           c.features.IsEnabled(CoreFeatureExtendedConst) || c.features.IsEnabled(CoreFeatureExtendedConstExpressions),
+		ExtendedConstGlobals:    c.features.IsEnabled(CoreFeatureExtendedConstExpressions),
 	}
 }
 
@@ -360,8 +452,17 @@ func (c *RuntimeConfig) Validate() error {
 	if c.functionWorkers < 0 {
 		return fmt.Errorf("wago: function workers must be non-negative, got %d", c.functionWorkers)
 	}
-	if unsupported := c.features &^ coreFeaturesWago; unsupported != 0 {
-		return &UnsupportedFeatureError{Requested: unsupported, Supported: coreFeaturesWago}
+	// SIMD remains configurable on builds whose host CPU cannot execute it so
+	// scalar modules still compile under the default config; the frontend clears
+	// SIMD admission for those modules. Architecture-incomplete Core 3 families,
+	// in contrast, fail here before decoding or lowering.
+	supported := platformCoreFeatures()
+	if unsupported := c.features &^ supported; unsupported != 0 {
+		return &UnsupportedFeatureError{
+			Requested: unsupported,
+			Supported: supported,
+			Platform:  runtime.GOOS + "/" + runtime.GOARCH,
+		}
 	}
 	if c.boundsChecks == BoundsChecksSignalsBased && !guardPageBuilt {
 		return &GuardPageUnavailableError{}

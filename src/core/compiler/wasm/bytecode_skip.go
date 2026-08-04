@@ -25,6 +25,10 @@ func classifyExprOpAfterOpcode(r *reader, op byte, imm *InstructionImmediate) (d
 }
 
 func classifyExprOpAfterOpcodeWithMemarg64(r *reader, op byte, imm *InstructionImmediate, memarg64 bool) (directOpKind, error) {
+	return classifyExprOpAfterOpcodeWithFeatures(r, op, imm, memarg64, false)
+}
+
+func classifyExprOpAfterOpcodeWithFeatures(r *reader, op byte, imm *InstructionImmediate, memarg64, multiMemory bool) (directOpKind, error) {
 	if k := simpleOpcode[op]; k != InstrInvalid {
 		imm.Kind = k
 		return directInstr, nil
@@ -93,10 +97,19 @@ func classifyExprOpAfterOpcodeWithMemarg64(r *reader, op byte, imm *InstructionI
 		imm.Kind, imm.TouchesMemory = memOpcodeKind[op], true
 		return directInstr, classifyMemArgBytes(r, imm, memarg64)
 	case 0x3f, 0x40:
-		if err := readReservedZeroByte(r); err != nil {
+		var (
+			idx uint32
+			err error
+		)
+		if multiMemory {
+			idx, err = r.u32()
+		} else {
+			err = readReservedZeroByte(r)
+		}
+		if err != nil {
 			return directInstr, err
 		}
-		imm.Kind, imm.TouchesMemory = InstrMemorySize, true
+		imm.Kind, imm.Index, imm.TouchesMemory = InstrMemorySize, idx, true
 		if op == 0x40 {
 			imm.Kind = InstrMemoryGrow
 		}
@@ -247,7 +260,7 @@ func classifyFCBytes(r *reader, imm *InstructionImmediate) error {
 	if err != nil {
 		return err
 	}
-	if k, ok := fcNoImm[sub]; ok {
+	if k, ok := lookupPrefixKind(fcNoImm[:], sub); ok {
 		imm.Kind = k
 		return nil
 	}
@@ -307,7 +320,7 @@ func classifyFBBytes(r *reader, imm *InstructionImmediate) error {
 	if err != nil {
 		return err
 	}
-	if k, ok := fbNoImm[sub]; ok {
+	if k, ok := lookupPrefixKind(fbNoImm[:], sub); ok {
 		imm.Kind = k
 		return nil
 	}
@@ -465,11 +478,11 @@ func classifyFDBytes(r *reader, imm *InstructionImmediate, memarg64 bool) error 
 		}
 		return nil
 	}
-	if k, ok := fdNoImm[sub]; ok {
+	if k, ok := lookupPrefixKind(fdNoImm[:], sub); ok {
 		imm.Kind = k
 		return nil
 	}
-	if k, ok := fdMem[sub]; ok {
+	if k, ok := lookupPrefixKind(fdMem[:], sub); ok {
 		imm.Kind = k
 		imm.TouchesMemory = true
 		if err = classifyMemArgBytes(r, imm, memarg64); err != nil {
@@ -481,7 +494,7 @@ func classifyFDBytes(r *reader, imm *InstructionImmediate, memarg64 bool) error 
 		}
 		return nil
 	}
-	if k, ok := fdLane[sub]; ok {
+	if k, ok := lookupPrefixKind(fdLane[:], sub); ok {
 		imm.Kind = k
 		_, err := r.byte()
 		return err
@@ -516,7 +529,7 @@ func classifyFEBytes(r *reader, imm *InstructionImmediate, memarg64 bool) error 
 		imm.Index2, err = r.u32()
 		return err
 	}
-	if k, ok := feMem[sub]; ok {
+	if k, ok := lookupPrefixKind(feMem[:], sub); ok {
 		imm.Kind = k
 		imm.TouchesMemory = true
 		return classifyMemArgBytes(r, imm, memarg64)

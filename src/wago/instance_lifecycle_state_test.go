@@ -9,7 +9,7 @@ import (
 func newReferenceStoreStateTest(t *testing.T) (*referenceStore, *Instance, *Instance) {
 	t.Helper()
 	store := newReferenceStore(false)
-	in := &Instance{}
+	in := &Instance{c: &Compiled{}}
 	if err := store.registerInstance(in); err != nil {
 		t.Fatalf("registerInstance: %v", err)
 	}

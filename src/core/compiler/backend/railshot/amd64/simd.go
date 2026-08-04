@@ -233,7 +233,7 @@ func (f *fn) pinnedV128LocalCount() int {
 // emulation constants (read-only masks/tables, never loop-carried) are still
 // reserved. Mirrors preloadFloatConsts / arm64 preloadV128Consts.
 func (f *fn) preloadV128Consts(code []byte) {
-	if f.usesCalls || !v128ConstCacheEnabled {
+	if f.usesCalls || f.syncHostCalls || !v128ConstCacheEnabled {
 		return
 	}
 	highPressure := f.pinnedV128LocalCount() >= 2
@@ -2117,38 +2117,52 @@ func (f *fn) v128ReplaceLane(kind uint32, lane byte) {
 	f.pushVReg(x)
 }
 
-func (f *fn) v128Load(r *wasm.Reader) error {
-	if _, err := r.U32(); err != nil { // align
-		return err
+func (f *fn) simdMemAddr(memoryIndex uint32, off uint64, size int) (base, ea Reg, disp int32, baseOwned, eaOwned bool) {
+	if memoryIndex != 0 {
+		base, ea, disp = f.indexedMemAddr(memoryIndex, off, size)
+		f.pinned = f.pinned.add(base).add(ea)
+		return base, ea, disp, true, true
 	}
-	off, err := r.U32()
-	if err != nil {
-		return err
+	if f.memoryAddr64(0) {
+		ea, eaOwned, _, disp = f.memAddr64(off, size)
+		return RBX, ea, disp, false, eaOwned
 	}
-	ea, eaOwned, _, disp := f.memAddr(off, 16, true)
-	x := f.allocFReg(0)
-	f.a.VMovdquLoadIdx(x, RBX, ea, disp)
+	ea, eaOwned, _, disp = f.memAddr(uint32(off), size, true)
+	return RBX, ea, disp, false, eaOwned
+}
+
+func (f *fn) releaseSIMDMemAddr(base, ea Reg, baseOwned, eaOwned bool) {
+	if baseOwned {
+		f.pinned = f.pinned.remove(base).remove(ea)
+		f.release(base)
+	}
 	if eaOwned {
 		f.release(ea)
 	}
+}
+
+func (f *fn) v128Load(r *wasm.Reader) error {
+	memoryIndex, off, err := f.readMemArg(r)
+	if err != nil {
+		return err
+	}
+	base, ea, disp, baseOwned, eaOwned := f.simdMemAddr(memoryIndex, off, 16)
+	x := f.allocFReg(0)
+	f.a.VMovdquLoadIdx(x, base, ea, disp)
+	f.releaseSIMDMemAddr(base, ea, baseOwned, eaOwned)
 	f.pushVReg(x)
 	return nil
 }
 
 func (f *fn) v128LoadExtend(r *wasm.Reader, sub uint32) error {
-	if _, err := r.U32(); err != nil { // align
-		return err
-	}
-	off, err := r.U32()
+	memoryIndex, off, err := f.readMemArg(r)
 	if err != nil {
 		return err
 	}
-	ea, eaOwned, _, disp := f.memAddr(off, 8, true)
+	base, ea, disp, baseOwned, eaOwned := f.simdMemAddr(memoryIndex, off, 8)
 	t := f.allocReg(0)
-	f.a.LoadIdx(t, RBX, ea, disp, 8, false, true)
-	if eaOwned {
-		f.release(ea)
-	}
+	f.a.LoadIdx(t, base, ea, disp, 8, false, true)
+	f.releaseSIMDMemAddr(base, ea, baseOwned, eaOwned)
 	x := f.allocFReg(0)
 	f.a.MovGprToXmm(x, t, true)
 	f.release(t)
@@ -2205,20 +2219,15 @@ func simdLoadSplatSize(sub uint32) int {
 }
 
 func (f *fn) v128LoadSplat(r *wasm.Reader, sub uint32) error {
-	if _, err := r.U32(); err != nil { // align
-		return err
-	}
-	off, err := r.U32()
+	memoryIndex, off, err := f.readMemArg(r)
 	if err != nil {
 		return err
 	}
 	size := simdLoadSplatSize(sub)
-	ea, eaOwned, _, disp := f.memAddr(off, size, true)
+	base, ea, disp, baseOwned, eaOwned := f.simdMemAddr(memoryIndex, off, size)
 	t := f.allocReg(0)
-	f.a.LoadIdx(t, RBX, ea, disp, size, false, size == 8)
-	if eaOwned {
-		f.release(ea)
-	}
+	f.a.LoadIdx(t, base, ea, disp, size, false, size == 8)
+	f.releaseSIMDMemAddr(base, ea, baseOwned, eaOwned)
 	x := f.v128SplatScalar(t, size)
 	f.release(t)
 	f.pushVReg(x)
@@ -2236,20 +2245,15 @@ func simdLoadZeroSize(sub uint32) int {
 }
 
 func (f *fn) v128LoadZero(r *wasm.Reader, sub uint32) error {
-	if _, err := r.U32(); err != nil { // align
-		return err
-	}
-	off, err := r.U32()
+	memoryIndex, off, err := f.readMemArg(r)
 	if err != nil {
 		return err
 	}
 	size := simdLoadZeroSize(sub)
-	ea, eaOwned, _, disp := f.memAddr(off, size, true)
+	base, ea, disp, baseOwned, eaOwned := f.simdMemAddr(memoryIndex, off, size)
 	t := f.allocReg(0)
-	f.a.LoadIdx(t, RBX, ea, disp, size, false, size == 8)
-	if eaOwned {
-		f.release(ea)
-	}
+	f.a.LoadIdx(t, base, ea, disp, size, false, size == 8)
+	f.releaseSIMDMemAddr(base, ea, baseOwned, eaOwned)
 	x := f.allocFReg(0)
 	f.a.MovGprToXmm(x, t, size == 8)
 	f.release(t)
@@ -2258,10 +2262,7 @@ func (f *fn) v128LoadZero(r *wasm.Reader, sub uint32) error {
 }
 
 func (f *fn) v128Store(r *wasm.Reader) error {
-	if _, err := r.U32(); err != nil { // align
-		return err
-	}
-	off, err := r.U32()
+	memoryIndex, off, err := f.readMemArg(r)
 	if err != nil {
 		return err
 	}
@@ -2269,12 +2270,10 @@ func (f *fn) v128Store(r *wasm.Reader) error {
 	v := f.popValue()
 	x := f.materializeV128(v)
 	f.fpinned = f.fpinned.add(x)
-	ea, eaOwned, _, disp := f.memAddr(off, 16, true)
-	f.a.VMovdquStoreIdx(RBX, ea, x, disp)
+	base, ea, disp, baseOwned, eaOwned := f.simdMemAddr(memoryIndex, off, 16)
+	f.a.VMovdquStoreIdx(base, ea, x, disp)
 	f.fpinned = f.fpinned.remove(x)
-	if eaOwned {
-		f.release(ea)
-	}
+	f.releaseSIMDMemAddr(base, ea, baseOwned, eaOwned)
 	f.releaseF(x)
 	return nil
 }
@@ -2294,10 +2293,7 @@ func simdLaneMemSize(sub uint32) int {
 }
 
 func (f *fn) v128LoadLane(r *wasm.Reader, sub uint32) error {
-	if _, err := r.U32(); err != nil { // align
-		return err
-	}
-	off, err := r.U32()
+	memoryIndex, off, err := f.readMemArg(r)
 	if err != nil {
 		return err
 	}
@@ -2310,12 +2306,10 @@ func (f *fn) v128LoadLane(r *wasm.Reader, sub uint32) error {
 	v := f.popValue()
 	x := f.materializeV128(v)
 	f.fpinned = f.fpinned.add(x)
-	ea, eaOwned, _, disp := f.memAddr(off, size, true)
+	base, ea, disp, baseOwned, eaOwned := f.simdMemAddr(memoryIndex, off, size)
 	t := f.allocReg(0)
-	f.a.LoadIdx(t, RBX, ea, disp, size, false, size == 8)
-	if eaOwned {
-		f.release(ea)
-	}
+	f.a.LoadIdx(t, base, ea, disp, size, false, size == 8)
+	f.releaseSIMDMemAddr(base, ea, baseOwned, eaOwned)
 	f.fpinned = f.fpinned.remove(x)
 	switch size {
 	case 1:
@@ -2333,10 +2327,7 @@ func (f *fn) v128LoadLane(r *wasm.Reader, sub uint32) error {
 }
 
 func (f *fn) v128StoreLane(r *wasm.Reader, sub uint32) error {
-	if _, err := r.U32(); err != nil { // align
-		return err
-	}
-	off, err := r.U32()
+	memoryIndex, off, err := f.readMemArg(r)
 	if err != nil {
 		return err
 	}
@@ -2350,7 +2341,7 @@ func (f *fn) v128StoreLane(r *wasm.Reader, sub uint32) error {
 	v := f.popValue()
 	x := f.materializeV128(v)
 	f.fpinned = f.fpinned.add(x)
-	ea, eaOwned, _, disp := f.memAddr(off, size, true)
+	base, ea, disp, baseOwned, eaOwned := f.simdMemAddr(memoryIndex, off, size)
 	t := f.allocReg(0)
 	switch size {
 	case 1:
@@ -2362,12 +2353,10 @@ func (f *fn) v128StoreLane(r *wasm.Reader, sub uint32) error {
 	case 8:
 		f.a.Pextrq(t, x, lane)
 	}
-	f.a.StoreIdx(RBX, ea, t, disp, size)
+	f.a.StoreIdx(base, ea, t, disp, size)
 	f.release(t)
 	f.fpinned = f.fpinned.remove(x)
-	if eaOwned {
-		f.release(ea)
-	}
+	f.releaseSIMDMemAddr(base, ea, baseOwned, eaOwned)
 	f.releaseF(x)
 	return nil
 }

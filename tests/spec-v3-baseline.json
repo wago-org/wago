@@ -1,0 +1,206 @@
+{
+  "command": "make spec3",
+  "exit_code": 0,
+  "inventory": {
+    "by_family": {
+      "core-and-cross-cutting": {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 0
+        },
+        "gaps": {},
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 0
+        },
+        "parser_failures": 0,
+        "red_files": 0
+      },
+      "exception-handling": {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 0
+        },
+        "gaps": {},
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 0
+        },
+        "parser_failures": 0,
+        "red_files": 0
+      },
+      "extended-constant-expressions": {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 0
+        },
+        "gaps": {},
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 0
+        },
+        "parser_failures": 0,
+        "red_files": 0
+      },
+      "gc": {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 0
+        },
+        "gaps": {},
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 0
+        },
+        "parser_failures": 0,
+        "red_files": 0
+      },
+      "memory64": {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 0
+        },
+        "gaps": {},
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 0
+        },
+        "parser_failures": 0,
+        "red_files": 0
+      },
+      "multi-memory": {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 0
+        },
+        "gaps": {},
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 0
+        },
+        "parser_failures": 0,
+        "red_files": 0
+      },
+      "relaxed-simd": {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 0
+        },
+        "gaps": {},
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 0
+        },
+        "parser_failures": 0,
+        "red_files": 0
+      },
+      "table64": {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 0
+        },
+        "gaps": {},
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 0
+        },
+        "parser_failures": 0,
+        "red_files": 0
+      },
+      "tail-calls": {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 0
+        },
+        "gaps": {},
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 0
+        },
+        "parser_failures": 0,
+        "red_files": 0
+      },
+      "typed-function-references": {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 0
+        },
+        "gaps": {},
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 0
+        },
+        "parser_failures": 0,
+        "red_files": 0
+      }
+    },
+    "files": [],
+    "green_files": 258,
+    "interpreter_fallbacks": 28,
+    "parser_failures": 0,
+    "red_files": 0
+  },
+  "result": "pass",
+  "schema": 2,
+  "suite": {
+    "commit": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+    "repository": "WebAssembly/spec",
+    "tag": "wg-3.0",
+    "wast_files": 258
+  },
+  "tools": {
+    "fallback": {
+      "name": "wasm",
+      "project": "WebAssembly/spec",
+      "revision": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+      "version": "3.0.0"
+    },
+    "primary": {
+      "linux_amd64_asset_sha256": "83f8122e924745fcd70636e3594bc01c4c47f2d4c8f3c63b5d70d3f83a482677",
+      "name": "wast2json",
+      "project": "WebAssembly/wabt",
+      "version": "1.0.41"
+    }
+  },
+  "totals_excluding_parser_failures": {
+    "assertions": {
+      "failed": 0,
+      "passed": 58038,
+      "skipped": 0
+    },
+    "gaps": {
+      "absent-export": 0,
+      "compile-rejected": 0,
+      "instantiate-rejected": 0,
+      "module-unavailable": 0,
+      "reference-argument": 0,
+      "reference-global": 0,
+      "reference-result": 0
+    },
+    "modules": {
+      "failed": 0,
+      "passed": 2226,
+      "skipped": 0
+    }
+  }
+}

@@ -1,0 +1,284 @@
+{
+  "commands": [
+    {
+      "filename": "commands.0.wasm",
+      "line": 1,
+      "type": "module_definition"
+    },
+    {
+      "line": 19,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "0"
+          }
+        ],
+        "field": "t1",
+        "type": "invoke"
+      },
+      "expected": [],
+      "line": 20,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "1"
+          }
+        ],
+        "field": "t1",
+        "type": "invoke"
+      },
+      "line": 21,
+      "text": "uninitialized element",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "2"
+          }
+        ],
+        "field": "t1",
+        "type": "invoke"
+      },
+      "line": 22,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "0"
+          }
+        ],
+        "field": "t1-wrong-type",
+        "type": "invoke"
+      },
+      "line": 23,
+      "text": "call type mismatch",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "1"
+          }
+        ],
+        "field": "t1-wrong-type",
+        "type": "invoke"
+      },
+      "line": 24,
+      "text": "uninitialized element",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "2"
+          }
+        ],
+        "field": "t1-wrong-type",
+        "type": "invoke"
+      },
+      "line": 25,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "0"
+          }
+        ],
+        "field": "t2",
+        "type": "invoke"
+      },
+      "expected": [],
+      "line": 26,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "1"
+          }
+        ],
+        "field": "t2",
+        "type": "invoke"
+      },
+      "line": 27,
+      "text": "uninitialized element",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "2"
+          }
+        ],
+        "field": "t2",
+        "type": "invoke"
+      },
+      "line": 28,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "0"
+          }
+        ],
+        "field": "t2-wrong-type",
+        "type": "invoke"
+      },
+      "line": 29,
+      "text": "call type mismatch",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "1"
+          }
+        ],
+        "field": "t2-wrong-type",
+        "type": "invoke"
+      },
+      "line": 30,
+      "text": "uninitialized element",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "2"
+          }
+        ],
+        "field": "t2-wrong-type",
+        "type": "invoke"
+      },
+      "line": 31,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "0"
+          }
+        ],
+        "field": "t3",
+        "type": "invoke"
+      },
+      "expected": [],
+      "line": 32,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "1"
+          }
+        ],
+        "field": "t3",
+        "type": "invoke"
+      },
+      "expected": [],
+      "line": 33,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "2"
+          }
+        ],
+        "field": "t3",
+        "type": "invoke"
+      },
+      "line": 34,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "0"
+          }
+        ],
+        "field": "t3-wrong-type",
+        "type": "invoke"
+      },
+      "line": 35,
+      "text": "call type mismatch",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "1"
+          }
+        ],
+        "field": "t3-wrong-type",
+        "type": "invoke"
+      },
+      "line": 36,
+      "text": "call type mismatch",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "2"
+          }
+        ],
+        "field": "t3-wrong-type",
+        "type": "invoke"
+      },
+      "line": 37,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    }
+  ],
+  "source": "WebAssembly/spec interpreter 3.0.0"
+}

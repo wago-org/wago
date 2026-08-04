@@ -76,7 +76,7 @@ func (cmd implementation) Run(c *command.Ctx) {
 	if wago.IsCompiled(source) {
 		ui.Fatal("build: %s is already a .wago artifact", input)
 	}
-	cfg, err := runcmd.Config(deferredBoundsChecking, runcmd.ResolveParallel(c.Str("parallel"), defaults, configured))
+	cfg, err := runcmd.Config("", deferredBoundsChecking, runcmd.ResolveParallel(c.Str("parallel"), defaults, configured))
 	if err != nil {
 		ui.Usage("build: %v", err)
 	}

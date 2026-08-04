@@ -56,6 +56,8 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 		case 0x01: // nop
 		case 0x02, 0x03, 0x04: // block / loop / if
 			err = f.opBlock(r, op)
+		case 0x1f: // try_table
+			err = f.opTryTable(r)
 		case 0x05: // else
 			err = f.opElse()
 		case 0x0b: // end
@@ -68,7 +70,7 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 			err = f.opReturn()
 		default:
 			if f.unreachable {
-				err = skipImmediates(r, op)
+				err = skipImmediatesWithMemory64(r, op, f.memoryAddr64(0))
 			} else {
 				err = f.emitPlain(r, op)
 			}
@@ -99,39 +101,25 @@ func (f *fn) fcmpMaybeDefer(r *wasm.Reader, op wOp, f64 bool) {
 // conversions). Called only when reachable; dead code is skipped by the body loop.
 func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 	switch op {
+	case 0x08: // throw
+		return f.opThrow(r)
+	case 0x0a: // throw_ref
+		return f.opThrowRef()
 	case 0x10: // call
 		return f.callOp(r)
 	case 0x11: // call_indirect
 		return f.callIndirect(r)
+	case 0x12: // return_call
+		return f.returnCall(r)
+	case 0x13: // return_call_indirect
+		return f.returnCallIndirect(r)
+	case 0x14: // call_ref
+		return f.callRef(r)
+	case 0x15: // return_call_ref
+		return f.returnCallRef(r)
 
 	case 0x1a: // drop
-		e := f.popValue()
-		switch e.st.kind {
-		case stReg:
-			if e.st.typ == mtCustom {
-				for _, reg := range e.st.vregs {
-					f.releaseF(reg)
-				}
-			} else if e.st.typ.isXMM() {
-				f.releaseF(e.st.reg)
-			} else {
-				f.release(e.st.reg)
-			}
-		case stMemRef:
-			// In guard-page mode the load itself is the OOB trap, so a dropped load
-			// must still be emitted; with explicit checks the bounds check already ran.
-			if f.guardMode {
-				if e.st.typ.isFloat() {
-					x := f.allocFReg(0)
-					f.loadFMemRef(x, e.st)
-					f.releaseF(x)
-				} else {
-					r := f.memRefValue(e.st) // never write a borrowed address register
-					f.release(r)
-				}
-			}
-			f.releaseMemRef(e.st)
-		}
+		f.dropValue()
 	case 0x1b: // select
 		if done, err := f.trySelectLocalSet(r); done || err != nil {
 			return err
@@ -171,19 +159,21 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 			return err
 		}
 		x := uint32(int(x32) + f.localBase) // localBase remaps an inlined callee's locals; 0 otherwise
+		var value *elem
 		if f.localConstZero(int(x)) {
 			if pr, _, ok := f.pinReg(int(x)); ok {
 				f.recoverLocal(int(x)) // materialize the lazy zero into the pinned register
-				f.pushValue(storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: int(x)})
+				value = f.pushValue(storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: int(x)})
 			} else {
-				f.pushValue(zeroStorage(f.localType[x]))
+				value = f.pushValue(zeroStorage(f.localType[x]))
 			}
 		} else if pr, _, ok := f.pinReg(int(x)); ok {
 			f.recoverLocal(int(x)) // reload lazily if it was spilled around a call
-			f.pushValue(storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: int(x)})
+			value = f.pushValue(storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: int(x)})
 		} else {
-			f.pushValue(storage{kind: stLocalRef, typ: f.localType[x], idx: int(x)})
+			value = f.pushValue(storage{kind: stLocalRef, typ: f.localType[x], idx: int(x)})
 		}
+		value.st.gcRoot = f.gcFrameLocal(int(x))
 	case 0x21, 0x22: // local.set / local.tee
 		x, err := r.U32()
 		if err != nil {
@@ -645,6 +635,14 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 		return f.refFunc(r)
 	case 0xd3: // ref.eq
 		f.refEq()
+	case 0xd4: // ref.as_non_null
+		f.refAsNonNull()
+	case 0xd5: // br_on_null
+		return f.brOnNull(r)
+	case 0xd6: // br_on_non_null
+		return f.brOnNonNull(r)
+	case 0xfb: // GC
+		return f.emitFB(r)
 	case 0xfc: // misc (multi-byte) opcodes
 		return f.emitFC(r)
 	case 0xfd: // SIMD
@@ -957,6 +955,7 @@ func (f *fn) emitSelect() {
 	f.pinned = f.pinned.add(condReg)
 	b := f.popValue()
 	a := f.popValue()
+	gcRoot := (a.kind == ekValue && a.st.gcRoot) || (b.kind == ekValue && b.st.gcRoot)
 
 	// V registers have no CSEL fold worth branching around here, so for the
 	// value-copy cases we branch: skip the copy when cond != 0 (keep a). Scalar
@@ -1011,7 +1010,7 @@ func (f *fn) emitSelect() {
 	f.pinned = f.pinned.remove(bReg)
 	f.release(condReg)
 	f.release(bReg)
-	f.pushReg(aReg, mtI32OrWide(w))
+	f.pushReg(aReg, mtI32OrWide(w)).st.gcRoot = gcRoot
 }
 
 func mtI32OrWide(wide bool) machineType {
@@ -1044,6 +1043,7 @@ func (f *fn) trySelectOnFlags(cond *elem) bool {
 	// Materialize both branches into owned registers BEFORE the compare: their loads
 	// clobber flags harmlessly (the CMP comes after and sets them cleanly), and they
 	// are pinned so condensing the compare's operands cannot spill them.
+	gcRoot := (aRoot.kind == ekValue && aRoot.st.gcRoot) || (bRoot.kind == ekValue && bRoot.st.gcRoot)
 	aReg := f.materialize(aRoot)
 	f.pinned = f.pinned.add(aReg)
 	bReg := f.materialize(bRoot)
@@ -1056,7 +1056,7 @@ func (f *fn) trySelectOnFlags(cond *elem) bool {
 	f.release(bReg)
 	f.erase(bRoot)
 	f.erase(aRoot)
-	f.pushReg(aReg, mtI32OrWide(w))
+	f.pushReg(aReg, mtI32OrWide(w)).st.gcRoot = gcRoot
 	return true
 }
 

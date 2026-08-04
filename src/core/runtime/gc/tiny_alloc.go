@@ -42,16 +42,25 @@ func newTinyCollector(config Config, types []TypeDesc) (*Collector, error) {
 	if err := ValidateTypeDescs(types); err != nil {
 		return nil, err
 	}
-	c := &Collector{cfg: config, types: append([]TypeDesc(nil), types...), handles: []handleEntry{{}}}
+	requiredAlign := requiredObjectAlignment(types)
+	objectAlign := requiredAlign
+	if objectAlign < 16 && config.TinyBlockBytes >= 16 {
+		objectAlign = 16
+	}
+	if config.TinyBlockBytes < objectAlign {
+		return nil, fmt.Errorf("gc: tiny block size %d is smaller than required object alignment %d", config.TinyBlockBytes, objectAlign)
+	}
+	c := &Collector{cfg: config, types: append([]TypeDesc(nil), types...), objectAlign: objectAlign, handles: []handleEntry{{}}}
 	if err := c.initTypeIndex(); err != nil {
 		return nil, err
 	}
 	blocks := config.TinyHeapBytes / config.TinyBlockBytes
-	c.tiny = tinyHeap{mem: make([]byte, config.TinyHeapBytes), blocks: make([]tinyBlock, blocks), blockBytes: config.TinyBlockBytes, freeHead: 0}
+	c.tiny = tinyHeap{mem: makeAlignedBytes(config.TinyHeapBytes, uintptr(objectAlign)), blocks: make([]tinyBlock, blocks), blockBytes: config.TinyBlockBytes, freeHead: 0}
 	c.tiny.blocks[0] = tinyBlock{next: tinyNoBlock, prev: tinyNoBlock, size: blocks}
 	c.tinyGC.state = tinyIdle
 	c.tinyGC.sweep = 1
 	c.tinyGC.color = []tinyColor{tinyWhite}
+	c.initNativeView()
 	return c, nil
 }
 
@@ -258,6 +267,7 @@ func (c *Collector) tinyAlloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref,
 	c.writeHeader(r, ObjHeader{TypeID: uint32(d.ID), Size: size, Aux: aux, Flags: flags})
 	c.tinyPostAlloc(r, d)
 	c.stats.Allocations++
+	c.refreshNativeView()
 	return r, nil
 }
 

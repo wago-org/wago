@@ -2,6 +2,14 @@ package wasm
 
 func (v *funcValidator) proposalStep(in *Instruction) (bool, error) {
 	switch in.Kind {
+	case InstrThrow:
+		return true, v.stepThrow(*in)
+	case InstrThrowRef:
+		if err := v.popExpect(RefVal(AbsRef(HeapExn))); err != nil {
+			return true, err
+		}
+		v.unreachable()
+		return true, nil
 	case InstrTryTable:
 		return true, v.stepTryTable(*in)
 	case InstrCallRef, InstrReturnCallRef:
@@ -27,6 +35,18 @@ func (v *funcValidator) proposalStep(in *Instruction) (bool, error) {
 	return false, nil
 }
 
+func (v *funcValidator) stepThrow(in Instruction) error {
+	ft, ok := v.tagFuncType(in.Index)
+	if !ok {
+		return v.verr(ErrUnknownTag, "throw")
+	}
+	if err := v.popAll(ft.Params); err != nil {
+		return err
+	}
+	v.unreachable()
+	return nil
+}
+
 func (v *funcValidator) stepCallRef(in Instruction) error {
 	ft := v.funcTypeFromTypeIdx(TypeIdx{Index: in.Index})
 	if ft == nil {
@@ -36,15 +56,18 @@ func (v *funcValidator) stepCallRef(in Instruction) error {
 	if err != nil {
 		return err
 	}
-	wantTyped := RefVal(Ref(false, IndexedHeap(TypeIdx{Index: in.Index}), false))
-	if !callee.unknown && !v.subtype(callee.t, wantTyped) && !v.subtype(callee.t, FuncRef) {
+	wantTyped := RefVal(Ref(true, IndexedHeap(TypeIdx{Index: in.Index}), false))
+	if !callee.unknown && !v.subtype(callee.t, wantTyped) {
+		// call_ref requires a reference to the selected function type. Nullable
+		// typed references remain valid and trap dynamically when null; abstract
+		// funcref has no exact callable signature.
 		return v.verr(ErrTypeMismatch, "call_ref callee")
 	}
 	if err := v.popAll(ft.Params); err != nil {
 		return err
 	}
 	if in.Kind == InstrReturnCallRef {
-		if !sameValTypes(ft.Results, v.ctrls[0].out) {
+		if !v.matchValTypes(ft.Results, v.ctrls[0].out) {
 			return v.verr(ErrTypeMismatch, "return_call_ref")
 		}
 		v.unreachable()
@@ -76,7 +99,9 @@ func (v *funcValidator) stepTryTable(in Instruction) error {
 			payload = append(payload, ft.Params...)
 		}
 		if c.Kind == CatchRef || c.Kind == CatchAllRef {
-			payload = append(payload, RefVal(AbsRef(HeapExn)))
+			// Reference catches materialize a non-null exception reference. The
+			// target label may widen it to nullable exnref, but not vice versa.
+			payload = append(payload, RefVal(Ref(false, AbsHeap(HeapExn), false)))
 		}
 		if c.Kind == CatchAll && len(lt) != 0 {
 			return v.verr(ErrTypeMismatch, "catch_all label must expect no values")
@@ -90,7 +115,7 @@ func (v *funcValidator) stepTryTable(in Instruction) error {
 			}
 		}
 	}
-	if err := v.pushCtrl(ctrlBlock, ins, outs); err != nil {
+	if err := v.pushCtrl(ctrlTry, ins, outs); err != nil {
 		return err
 	}
 	for _, child := range in.Body().Instrs {
@@ -98,7 +123,12 @@ func (v *funcValidator) stepTryTable(in Instruction) error {
 			return err
 		}
 	}
-	_, err = v.popCtrl()
+	fr, err := v.popCtrl()
+	if err == nil && fr.unreachable {
+		// A try_table whose body has no normal completion leaves its parent path
+		// unreachable; catches branch directly to their declared outer labels.
+		v.unreachable()
+	}
 	return err
 }
 
@@ -164,95 +194,118 @@ func (v *funcValidator) stepAtomic(in Instruction) error {
 		v.push(I32)
 		return nil
 	}
-	if eff, ok := atomicLoadEffects[in.Kind]; ok {
-		addr, err := v.checkSharedMemArg(in.MemArg(), eff.align)
+	if eff, ok := lookupAtomicEffect(atomicLoadEffects[:], InstrI32AtomicLoad, in.Kind); ok {
+		addr, err := v.checkSharedMemArg(in.MemArg(), uint32(eff.align))
 		if err != nil {
 			return err
 		}
 		if err := v.popExpect(addr); err != nil {
 			return err
 		}
-		v.push(eff.t)
+		v.push(eff.typ.valType())
 		return nil
 	}
-	if eff, ok := atomicStoreEffects[in.Kind]; ok {
-		addr, err := v.checkSharedMemArg(in.MemArg(), eff.align)
+	if eff, ok := lookupAtomicEffect(atomicLoadEffects[:], InstrI32AtomicStore, in.Kind); ok {
+		addr, err := v.checkSharedMemArg(in.MemArg(), uint32(eff.align))
 		if err != nil {
 			return err
 		}
-		if err := v.popExpect(eff.t); err != nil {
+		if err := v.popExpect(eff.typ.valType()); err != nil {
 			return err
 		}
 		return v.popExpect(addr)
 	}
 	if in.Kind == InstrAtomicRmw {
 		eff := atomicRmwEffect(in.AtomicOp)
-		addr, err := v.checkSharedMemArg(in.MemArg(), eff.align)
+		typ := eff.typ.valType()
+		addr, err := v.checkSharedMemArg(in.MemArg(), uint32(eff.align))
 		if err != nil {
 			return err
 		}
-		if err := v.popExpect(eff.t); err != nil {
+		if err := v.popExpect(typ); err != nil {
 			return err
 		}
 		if err := v.popExpect(addr); err != nil {
 			return err
 		}
-		v.push(eff.t)
+		v.push(typ)
 		return nil
 	}
 	if in.Kind == InstrAtomicCmpxchg {
 		eff := atomicCmpxchgEffect(in.AtomicOp)
-		addr, err := v.checkSharedMemArg(in.MemArg(), eff.align)
+		typ := eff.typ.valType()
+		addr, err := v.checkSharedMemArg(in.MemArg(), uint32(eff.align))
 		if err != nil {
 			return err
 		}
-		if err := v.popExpect(eff.t); err != nil {
+		if err := v.popExpect(typ); err != nil {
 			return err
 		}
-		if err := v.popExpect(eff.t); err != nil {
+		if err := v.popExpect(typ); err != nil {
 			return err
 		}
 		if err := v.popExpect(addr); err != nil {
 			return err
 		}
-		v.push(eff.t)
+		v.push(typ)
 		return nil
 	}
 	return v.verr(ErrUnsupportedValidationOpcode, in.Kind.String())
 }
 
-var atomicLoadEffects = map[InstrKind]memeff{InstrI32AtomicLoad: {I32, 2}, InstrI64AtomicLoad: {I64, 3}, InstrI32AtomicLoad8U: {I32, 0}, InstrI32AtomicLoad16U: {I32, 1}, InstrI64AtomicLoad8U: {I64, 0}, InstrI64AtomicLoad16U: {I64, 1}, InstrI64AtomicLoad32U: {I64, 2}}
-var atomicStoreEffects = map[InstrKind]memeff{InstrI32AtomicStore: {I32, 2}, InstrI64AtomicStore: {I64, 3}, InstrI32AtomicStore8: {I32, 0}, InstrI32AtomicStore16: {I32, 1}, InstrI64AtomicStore8: {I64, 0}, InstrI64AtomicStore16: {I64, 1}, InstrI64AtomicStore32: {I64, 2}}
+type atomicEffect struct {
+	typ   effectValue
+	align uint8
+}
 
-func atomicRmwEffect(op uint32) memeff {
+var atomicLoadEffects = [...]atomicEffect{
+	{typ: effectI32, align: 2},
+	{typ: effectI64, align: 3},
+	{typ: effectI32},
+	{typ: effectI32, align: 1},
+	{typ: effectI64},
+	{typ: effectI64, align: 1},
+	{typ: effectI64, align: 2},
+}
+
+func lookupAtomicEffect(table []atomicEffect, first, kind InstrKind) (atomicEffect, bool) {
+	index := uint32(kind) - uint32(first)
+	if index >= uint32(len(table)) {
+		return atomicEffect{}, false
+	}
+	return table[index], true
+}
+
+func atomicRmwEffect(op uint32) atomicEffect {
 	if op == 0 {
 		op = 30
 	}
 	pos := (op - 30) % 7
 	if pos == 0 {
-		return memeff{I32, 2}
+		return atomicEffect{typ: effectI32, align: 2}
 	}
 	if pos == 1 {
-		return memeff{I64, 3}
+		return atomicEffect{typ: effectI64, align: 3}
 	}
 	if pos == 2 || pos == 3 {
-		return memeff{I32, pos - 2}
+		return atomicEffect{typ: effectI32, align: uint8(pos - 2)}
 	}
-	return memeff{I64, pos - 4}
+	return atomicEffect{typ: effectI64, align: uint8(pos - 4)}
 }
-func atomicCmpxchgEffect(op uint32) memeff {
+
+func atomicCmpxchgEffect(op uint32) atomicEffect {
 	if op == 0 {
 		op = 72
 	}
 	switch op {
 	case 72:
-		return memeff{I32, 2}
+		return atomicEffect{typ: effectI32, align: 2}
 	case 73:
-		return memeff{I64, 3}
+		return atomicEffect{typ: effectI64, align: 3}
 	case 74, 75:
-		return memeff{I32, op - 74}
+		return atomicEffect{typ: effectI32, align: uint8(op - 74)}
 	default:
-		return memeff{I64, op - 76}
+		return atomicEffect{typ: effectI64, align: uint8(op - 76)}
 	}
 }
 
@@ -294,8 +347,14 @@ func (v *funcValidator) stepGC(in Instruction) error {
 		if !ok {
 			return v.verr(ErrUnknownType, "invalid descriptor target reftype")
 		}
-		if !x.unknown && !v.descriptorCompatible(x.t.Ref, target.Ref) {
-			return v.verr(ErrTypeMismatch, "target does not match operand type")
+		if !x.unknown {
+			compatible := v.refTestCompatible(x.t.Ref, target.Ref)
+			if in.Kind == InstrRefTestDesc {
+				compatible = v.descriptorCompatible(x.t.Ref, target.Ref)
+			}
+			if !compatible {
+				return v.verr(ErrTypeMismatch, "target does not match operand type")
+			}
 		}
 		v.push(I32)
 		return nil
@@ -423,6 +482,9 @@ func (v *funcValidator) stepGC(in Instruction) error {
 		if !ok {
 			return v.verr(ErrUnknownType, "array.fill")
 		}
+		if f.Mut != Var {
+			return v.verr(ErrTypeMismatch, "immutable array")
+		}
 		if err := v.popExpect(I32); err != nil {
 			return err
 		}
@@ -434,10 +496,22 @@ func (v *funcValidator) stepGC(in Instruction) error {
 		}
 		return v.popExpect(RefVal(Ref(true, IndexedHeap(TypeIdx{Index: in.Index}), false)))
 	case InstrArrayCopy:
-		_, _, okDst := v.arrayField(TypeIdx{Index: in.Index})
-		_, _, okSrc := v.arrayField(TypeIdx{Index: in.Index2})
+		dst, _, okDst := v.arrayField(TypeIdx{Index: in.Index})
+		src, _, okSrc := v.arrayField(TypeIdx{Index: in.Index2})
 		if !okDst || !okSrc {
 			return v.verr(ErrUnknownType, "array.copy")
+		}
+		if dst.Mut != Var {
+			return v.verr(ErrTypeMismatch, "immutable array")
+		}
+		storageMatches := false
+		if dst.Storage.Packed || src.Storage.Packed {
+			storageMatches = dst.Storage.Packed && src.Storage.Packed && dst.Storage.Pack == src.Storage.Pack
+		} else {
+			storageMatches = v.subtype(src.Storage.Val, dst.Storage.Val)
+		}
+		if !storageMatches {
+			return v.verr(ErrTypeMismatch, "array types do not match")
 		}
 		if err := v.popExpect(I32); err != nil {
 			return err
@@ -453,31 +527,47 @@ func (v *funcValidator) stepGC(in Instruction) error {
 		}
 		return v.popExpect(RefVal(Ref(true, IndexedHeap(TypeIdx{Index: in.Index}), false)))
 	case InstrArrayInitData:
-		if _, _, ok := v.arrayField(TypeIdx{Index: in.Index}); !ok {
+		field, _, ok := v.arrayField(TypeIdx{Index: in.Index})
+		if !ok {
 			return v.verr(ErrUnknownType, "array.init_data")
+		}
+		if field.Mut != Var {
+			return v.verr(ErrTypeMismatch, "immutable array")
+		}
+		if !field.Storage.Packed && field.Storage.Val.Kind == ValRef {
+			return v.verr(ErrTypeMismatch, "array type is not numeric or vector")
 		}
 		if int(in.Index2) >= len(v.m.Data) {
 			return v.verr(ErrInvalidDataCount, "array.init_data")
 		}
-		if err := v.popExpect(I32); err != nil {
-			return err
-		}
-		if err := v.popExpect(I32); err != nil {
-			return err
+		for range 3 {
+			if err := v.popExpect(I32); err != nil {
+				return err
+			}
 		}
 		return v.popExpect(RefVal(Ref(true, IndexedHeap(TypeIdx{Index: in.Index}), false)))
 	case InstrArrayInitElem:
-		if _, _, ok := v.arrayField(TypeIdx{Index: in.Index}); !ok {
+		field, _, ok := v.arrayField(TypeIdx{Index: in.Index})
+		if !ok {
 			return v.verr(ErrUnknownType, "array.init_elem")
 		}
-		if int(in.Index2) >= len(v.m.Elements) {
-			return v.verr(ErrUnknownTable, "array.init_elem")
+		if field.Mut != Var {
+			return v.verr(ErrTypeMismatch, "immutable array")
 		}
-		if err := v.popExpect(I32); err != nil {
+		if field.Storage.Packed || field.Storage.Val.Kind != ValRef {
+			return v.verr(ErrTypeMismatch, "array.init_elem destination is not a reference array")
+		}
+		elemRef, err := v.elemRefType(in.Index2)
+		if err != nil {
 			return err
 		}
-		if err := v.popExpect(I32); err != nil {
-			return err
+		if !v.refSubtype(elemRef, field.Storage.Val.Ref) {
+			return v.verr(ErrTypeMismatch, "array.init_elem element type")
+		}
+		for range 3 {
+			if err := v.popExpect(I32); err != nil {
+				return err
+			}
 		}
 		return v.popExpect(RefVal(Ref(true, IndexedHeap(TypeIdx{Index: in.Index}), false)))
 	}
@@ -540,12 +630,28 @@ func (v *funcValidator) stepArrayNew(in Instruction) error {
 			return err
 		}
 	case InstrArrayNewFixed:
-		for i := uint32(0); i < in.Index2; i++ {
+		available := len(v.vals) - v.top().height
+		if uint64(in.Index2) > uint64(available) && !v.top().unreachable {
+			return v.verr(ErrTypeMismatch, "stack underflow")
+		}
+		count := available
+		if uint64(in.Index2) < uint64(count) {
+			count = int(in.Index2)
+		} else if uint64(in.Index2) > uint64(available) {
+			// The remaining operands are polymorphic bottom values. Validate only
+			// the concrete stack suffix so an untrusted u32 count cannot turn a
+			// tiny unreachable body into billions of validation iterations.
+			count = available
+		}
+		for range count {
 			if err := v.popExpect(elem); err != nil {
 				return err
 			}
 		}
 	case InstrArrayNewData:
+		if !f.Storage.Packed && f.Storage.Val.Kind == ValRef {
+			return v.verr(ErrTypeMismatch, "array type is not numeric or vector")
+		}
 		if int(in.Index2) >= len(v.m.Data) {
 			return v.verr(ErrInvalidDataCount, "array.new_data")
 		}
@@ -556,8 +662,15 @@ func (v *funcValidator) stepArrayNew(in Instruction) error {
 			return err
 		}
 	case InstrArrayNewElem:
-		if int(in.Index2) >= len(v.m.Elements) {
-			return v.verr(ErrUnknownTable, "array.new_elem")
+		if f.Storage.Packed || f.Storage.Val.Kind != ValRef {
+			return v.verr(ErrTypeMismatch, "array.new_elem destination is not a reference array")
+		}
+		elemRef, err := v.elemRefType(in.Index2)
+		if err != nil {
+			return err
+		}
+		if !v.refSubtype(elemRef, f.Storage.Val.Ref) {
+			return v.verr(ErrTypeMismatch, "array.new_elem element type")
 		}
 		if err := v.popExpect(I32); err != nil {
 			return err
@@ -594,12 +707,20 @@ func (v *funcValidator) stepBrOnCast(in Instruction) error {
 	if !x.unknown && (x.t.Kind != ValRef || !v.refSubtype(x.t.Ref, rt1)) {
 		return v.verr(ErrTypeMismatch, "br_on_cast operand")
 	}
+	// A nullable target consumes null on the successful cast edge. The failed
+	// edge is therefore known non-null even when the declared source is nullable.
+	// When the target is non-null, null remains a possible failed value and the
+	// source nullability is preserved.
+	failed := rt1
+	if rt2.Nullable {
+		failed.Nullable = false
+	}
 	branchTypes := append([]ValType(nil), lt...)
 	if in.Kind == InstrBrOnCastFail {
-		if !v.subtype(RefVal(rt1), labelRef) {
-			return v.verr(ErrTypeMismatch, "rt1 does not match label rt")
+		if !v.subtype(RefVal(failed), labelRef) {
+			return v.verr(ErrTypeMismatch, "failed source does not match label rt")
 		}
-		branchTypes[len(branchTypes)-1] = RefVal(rt1)
+		branchTypes[len(branchTypes)-1] = RefVal(failed)
 		if err := v.popAll(branchTypes[:len(branchTypes)-1]); err != nil {
 			return err
 		}
@@ -613,55 +734,9 @@ func (v *funcValidator) stepBrOnCast(in Instruction) error {
 	if err := v.popAll(branchTypes[:len(branchTypes)-1]); err != nil {
 		return err
 	}
-	v.push(RefVal(rt1))
+	v.push(RefVal(failed))
 	return nil
 }
-
-var simdAll = func() map[InstrKind]struct{} {
-	m := map[InstrKind]struct{}{InstrV128Const: {}, InstrV128Store: {}}
-	for k := range simdLoads {
-		m[k] = struct{}{}
-	}
-	for k := range simdMemLane {
-		m[k] = struct{}{}
-	}
-	for k := range simdSplat {
-		m[k] = struct{}{}
-	}
-	for k := range simdExtract {
-		m[k] = struct{}{}
-	}
-	for k := range simdReplace {
-		m[k] = struct{}{}
-	}
-	for k := range simdUnary {
-		m[k] = struct{}{}
-	}
-	for k := range simdBinary {
-		m[k] = struct{}{}
-	}
-	for k := range simdTernary {
-		m[k] = struct{}{}
-	}
-	for k := range simdShift {
-		m[k] = struct{}{}
-	}
-	m[InstrV128AnyTrue] = struct{}{}
-	m[InstrI8x16AllTrue] = struct{}{}
-	m[InstrI16x8AllTrue] = struct{}{}
-	m[InstrI32x4AllTrue] = struct{}{}
-	m[InstrI64x2AllTrue] = struct{}{}
-	m[InstrI8x16Bitmask] = struct{}{}
-	m[InstrI16x8Bitmask] = struct{}{}
-	m[InstrI32x4Bitmask] = struct{}{}
-	m[InstrI64x2Bitmask] = struct{}{}
-	m[InstrV128Bitselect] = struct{}{}
-	m[InstrI8x16RelaxedLaneselect] = struct{}{}
-	m[InstrI16x8RelaxedLaneselect] = struct{}{}
-	m[InstrI32x4RelaxedLaneselect] = struct{}{}
-	m[InstrI64x2RelaxedLaneselect] = struct{}{}
-	return m
-}()
 
 func (v *funcValidator) stepSIMD(in Instruction) error {
 	e := simdEffects[in.Kind]
@@ -670,7 +745,7 @@ func (v *funcValidator) stepSIMD(in Instruction) error {
 	}
 	switch e.cat {
 	case simdEffLoad:
-		addr, err := v.checkMemArg(in.MemArg(), e.align)
+		addr, err := v.checkMemArg(in.MemArg(), uint32(e.align))
 		if err != nil {
 			return err
 		}
@@ -689,7 +764,7 @@ func (v *funcValidator) stepSIMD(in Instruction) error {
 		}
 		return v.popExpect(addr)
 	case simdEffMemLoadLane:
-		addr, err := v.checkMemArg(in.MemArg(), e.align)
+		addr, err := v.checkMemArg(in.MemArg(), uint32(e.align))
 		if err != nil {
 			return err
 		}
@@ -702,7 +777,7 @@ func (v *funcValidator) stepSIMD(in Instruction) error {
 		v.push(V128)
 		return nil
 	case simdEffMemStoreLane:
-		addr, err := v.checkMemArg(in.MemArg(), e.align)
+		addr, err := v.checkMemArg(in.MemArg(), uint32(e.align))
 		if err != nil {
 			return err
 		}
@@ -711,7 +786,7 @@ func (v *funcValidator) stepSIMD(in Instruction) error {
 		}
 		return v.popExpect(addr)
 	case simdEffSplat:
-		if err := v.popExpect(e.scalar); err != nil {
+		if err := v.popExpect(e.scalar.valType()); err != nil {
 			return err
 		}
 		v.push(V128)
@@ -720,10 +795,10 @@ func (v *funcValidator) stepSIMD(in Instruction) error {
 		if err := v.popExpect(V128); err != nil {
 			return err
 		}
-		v.push(e.scalar)
+		v.push(e.scalar.valType())
 		return nil
 	case simdEffReplace:
-		if err := v.popExpect(e.scalar); err != nil {
+		if err := v.popExpect(e.scalar.valType()); err != nil {
 			return err
 		}
 		if err := v.popExpect(V128); err != nil {
@@ -814,73 +889,362 @@ const (
 
 type simdEffect struct {
 	cat       simdEffectCat
-	scalar    ValType
-	align     uint32
+	scalar    effectValue
+	align     uint8
 	laneLimit LaneIdx
 }
 
 var simdEffects [numInstrKinds]simdEffect
 
-var simdLoads = map[InstrKind]memeff{InstrV128Load: {V128, 4}, InstrV128Load8x8S: {V128, 3}, InstrV128Load8x8U: {V128, 3}, InstrV128Load16x4S: {V128, 3}, InstrV128Load16x4U: {V128, 3}, InstrV128Load32x2S: {V128, 3}, InstrV128Load32x2U: {V128, 3}, InstrV128Load8Splat: {V128, 0}, InstrV128Load16Splat: {V128, 1}, InstrV128Load32Splat: {V128, 2}, InstrV128Load64Splat: {V128, 3}, InstrV128Load32Zero: {V128, 2}, InstrV128Load64Zero: {V128, 3}}
-var simdMemLane = map[InstrKind]memeff{InstrV128Load8Lane: {V128, 0}, InstrV128Load16Lane: {V128, 1}, InstrV128Load32Lane: {V128, 2}, InstrV128Load64Lane: {V128, 3}, InstrV128Store8Lane: {V128, 0}, InstrV128Store16Lane: {V128, 1}, InstrV128Store32Lane: {V128, 2}, InstrV128Store64Lane: {V128, 3}}
-
-// Lane immediates are decoded as raw bytes; validation enforces each shape's
-// lane count so unsupported SIMD still obeys proposal validation boundaries.
-var simdLaneLimits = map[InstrKind]LaneIdx{
-	InstrI8x16ExtractLaneS: 16, InstrI8x16ExtractLaneU: 16, InstrI8x16ReplaceLane: 16,
-	InstrI16x8ExtractLaneS: 8, InstrI16x8ExtractLaneU: 8, InstrI16x8ReplaceLane: 8,
-	InstrI32x4ExtractLane: 4, InstrI32x4ReplaceLane: 4, InstrF32x4ExtractLane: 4, InstrF32x4ReplaceLane: 4,
-	InstrI64x2ExtractLane: 2, InstrI64x2ReplaceLane: 2, InstrF64x2ExtractLane: 2, InstrF64x2ReplaceLane: 2,
-	InstrV128Load8Lane: 16, InstrV128Store8Lane: 16,
-	InstrV128Load16Lane: 8, InstrV128Store16Lane: 8,
-	InstrV128Load32Lane: 4, InstrV128Store32Lane: 4,
-	InstrV128Load64Lane: 2, InstrV128Store64Lane: 2,
+type simdMemEffect struct {
+	kind  InstrKind
+	align uint8
 }
 
-var simdSplat = map[InstrKind]ValType{InstrI8x16Splat: I32, InstrI16x8Splat: I32, InstrI32x4Splat: I32, InstrI64x2Splat: I64, InstrF32x4Splat: F32, InstrF64x2Splat: F64}
-var simdExtract = map[InstrKind]ValType{InstrI8x16ExtractLaneS: I32, InstrI8x16ExtractLaneU: I32, InstrI16x8ExtractLaneS: I32, InstrI16x8ExtractLaneU: I32, InstrI32x4ExtractLane: I32, InstrI64x2ExtractLane: I64, InstrF32x4ExtractLane: F32, InstrF64x2ExtractLane: F64}
-var simdReplace = map[InstrKind]ValType{InstrI8x16ReplaceLane: I32, InstrI16x8ReplaceLane: I32, InstrI32x4ReplaceLane: I32, InstrI64x2ReplaceLane: I64, InstrF32x4ReplaceLane: F32, InstrF64x2ReplaceLane: F64}
-var simdShift = map[InstrKind]struct{}{InstrI8x16Shl: {}, InstrI8x16ShrS: {}, InstrI8x16ShrU: {}, InstrI16x8Shl: {}, InstrI16x8ShrS: {}, InstrI16x8ShrU: {}, InstrI32x4Shl: {}, InstrI32x4ShrS: {}, InstrI32x4ShrU: {}, InstrI64x2Shl: {}, InstrI64x2ShrS: {}, InstrI64x2ShrU: {}}
-var simdUnary = map[InstrKind]struct{}{InstrI8x16Swizzle: {}, InstrV128Not: {}, InstrF32x4DemoteF64x2Zero: {}, InstrF64x2PromoteLowF32x4: {}, InstrI8x16Abs: {}, InstrI8x16Neg: {}, InstrI8x16Popcnt: {}, InstrI16x8ExtaddPairwiseI8x16S: {}, InstrI16x8ExtaddPairwiseI8x16U: {}, InstrI32x4ExtaddPairwiseI16x8S: {}, InstrI32x4ExtaddPairwiseI16x8U: {}, InstrF32x4Ceil: {}, InstrF32x4Floor: {}, InstrF32x4Trunc: {}, InstrF32x4Nearest: {}, InstrF64x2Ceil: {}, InstrF64x2Floor: {}, InstrF64x2Trunc: {}, InstrF64x2Nearest: {}, InstrI16x8Abs: {}, InstrI16x8Neg: {}, InstrI32x4Abs: {}, InstrI32x4Neg: {}, InstrI64x2Abs: {}, InstrI64x2Neg: {}, InstrI64x2ExtendLowI32x4S: {}, InstrI64x2ExtendHighI32x4S: {}, InstrI64x2ExtendLowI32x4U: {}, InstrI64x2ExtendHighI32x4U: {}, InstrF32x4Abs: {}, InstrF32x4Neg: {}, InstrF32x4Sqrt: {}, InstrF64x2Abs: {}, InstrF64x2Neg: {}, InstrF64x2Sqrt: {}, InstrI32x4TruncSatF32x4S: {}, InstrI32x4TruncSatF32x4U: {}, InstrF32x4ConvertI32x4S: {}, InstrF32x4ConvertI32x4U: {}, InstrI32x4TruncSatF64x2SZero: {}, InstrI32x4TruncSatF64x2UZero: {}, InstrF64x2ConvertLowI32x4S: {}, InstrF64x2ConvertLowI32x4U: {}, InstrI32x4RelaxedTruncF32x4S: {}, InstrI32x4RelaxedTruncF32x4U: {}, InstrI32x4RelaxedTruncZeroF64x2S: {}, InstrI32x4RelaxedTruncZeroF64x2U: {}, InstrI16x8ExtendLowI8x16S: {}, InstrI16x8ExtendHighI8x16S: {}, InstrI16x8ExtendLowI8x16U: {}, InstrI16x8ExtendHighI8x16U: {}, InstrI32x4ExtendLowI16x8S: {}, InstrI32x4ExtendHighI16x8S: {}, InstrI32x4ExtendLowI16x8U: {}, InstrI32x4ExtendHighI16x8U: {}}
-var simdBinary = map[InstrKind]struct{}{InstrI8x16Shuffle: {}, InstrI8x16RelaxedSwizzle: {}, InstrV128And: {}, InstrV128Andnot: {}, InstrV128Or: {}, InstrV128Xor: {}, InstrI8x16Eq: {}, InstrI8x16Ne: {}, InstrI8x16LtS: {}, InstrI8x16LtU: {}, InstrI8x16GtS: {}, InstrI8x16GtU: {}, InstrI8x16LeS: {}, InstrI8x16LeU: {}, InstrI8x16GeS: {}, InstrI8x16GeU: {}, InstrI16x8Eq: {}, InstrI16x8Ne: {}, InstrI16x8LtS: {}, InstrI16x8LtU: {}, InstrI16x8GtS: {}, InstrI16x8GtU: {}, InstrI16x8LeS: {}, InstrI16x8LeU: {}, InstrI16x8GeS: {}, InstrI16x8GeU: {}, InstrI32x4Eq: {}, InstrI32x4Ne: {}, InstrI32x4LtS: {}, InstrI32x4LtU: {}, InstrI32x4GtS: {}, InstrI32x4GtU: {}, InstrI32x4LeS: {}, InstrI32x4LeU: {}, InstrI32x4GeS: {}, InstrI32x4GeU: {}, InstrF32x4Eq: {}, InstrF32x4Ne: {}, InstrF32x4Lt: {}, InstrF32x4Gt: {}, InstrF32x4Le: {}, InstrF32x4Ge: {}, InstrF64x2Eq: {}, InstrF64x2Ne: {}, InstrF64x2Lt: {}, InstrF64x2Gt: {}, InstrF64x2Le: {}, InstrF64x2Ge: {}, InstrI8x16NarrowI16x8S: {}, InstrI8x16NarrowI16x8U: {}, InstrI8x16Shl: {}, InstrI8x16ShrS: {}, InstrI8x16ShrU: {}, InstrI8x16Add: {}, InstrI8x16AddSatS: {}, InstrI8x16AddSatU: {}, InstrI8x16Sub: {}, InstrI8x16SubSatS: {}, InstrI8x16SubSatU: {}, InstrI8x16MinS: {}, InstrI8x16MinU: {}, InstrI8x16MaxS: {}, InstrI8x16MaxU: {}, InstrI8x16AvgrU: {}, InstrI16x8Q15mulrSatS: {}, InstrI16x8NarrowI32x4S: {}, InstrI16x8NarrowI32x4U: {}, InstrI16x8Shl: {}, InstrI16x8ShrS: {}, InstrI16x8ShrU: {}, InstrI16x8Add: {}, InstrI16x8AddSatS: {}, InstrI16x8AddSatU: {}, InstrI16x8Sub: {}, InstrI16x8SubSatS: {}, InstrI16x8SubSatU: {}, InstrI16x8Mul: {}, InstrI16x8MinS: {}, InstrI16x8MinU: {}, InstrI16x8MaxS: {}, InstrI16x8MaxU: {}, InstrI16x8AvgrU: {}, InstrI16x8ExtmulLowI8x16S: {}, InstrI16x8ExtmulHighI8x16S: {}, InstrI16x8ExtmulLowI8x16U: {}, InstrI16x8ExtmulHighI8x16U: {}, InstrI32x4Add: {}, InstrI32x4Sub: {}, InstrI32x4Mul: {}, InstrI32x4MinS: {}, InstrI32x4MinU: {}, InstrI32x4MaxS: {}, InstrI32x4MaxU: {}, InstrI32x4DotI16x8S: {}, InstrI32x4ExtmulLowI16x8S: {}, InstrI32x4ExtmulHighI16x8S: {}, InstrI32x4ExtmulLowI16x8U: {}, InstrI32x4ExtmulHighI16x8U: {}, InstrI64x2Add: {}, InstrI64x2Sub: {}, InstrI64x2Mul: {}, InstrI64x2ExtmulLowI32x4S: {}, InstrI64x2ExtmulHighI32x4S: {}, InstrI64x2ExtmulLowI32x4U: {}, InstrI64x2ExtmulHighI32x4U: {}, InstrI64x2Eq: {}, InstrI64x2Ne: {}, InstrI64x2LtS: {}, InstrI64x2GtS: {}, InstrI64x2LeS: {}, InstrI64x2GeS: {}, InstrF32x4Add: {}, InstrF32x4Sub: {}, InstrF32x4Mul: {}, InstrF32x4Div: {}, InstrF32x4Min: {}, InstrF32x4Max: {}, InstrF32x4Pmin: {}, InstrF32x4Pmax: {}, InstrF64x2Add: {}, InstrF64x2Sub: {}, InstrF64x2Mul: {}, InstrF64x2Div: {}, InstrF64x2Min: {}, InstrF64x2Max: {}, InstrF64x2Pmin: {}, InstrF64x2Pmax: {}, InstrF32x4RelaxedMin: {}, InstrF32x4RelaxedMax: {}, InstrF64x2RelaxedMin: {}, InstrF64x2RelaxedMax: {}, InstrI16x8RelaxedQ15mulrS: {}, InstrI16x8RelaxedDotI8x16I7x16S: {}}
-var simdTernary = map[InstrKind]struct{}{InstrF32x4RelaxedMadd: {}, InstrF32x4RelaxedNmadd: {}, InstrF64x2RelaxedMadd: {}, InstrF64x2RelaxedNmadd: {}, InstrI32x4RelaxedDotI8x16I7x16AddS: {}}
+type simdScalarEffect struct {
+	kind   InstrKind
+	scalar effectValue
+}
+
+type simdLaneLimit struct {
+	kind  InstrKind
+	limit LaneIdx
+}
+
+var simdLoads = [...]simdMemEffect{
+	{kind: InstrV128Load, align: 4},
+	{kind: InstrV128Load8x8S, align: 3},
+	{kind: InstrV128Load8x8U, align: 3},
+	{kind: InstrV128Load16x4S, align: 3},
+	{kind: InstrV128Load16x4U, align: 3},
+	{kind: InstrV128Load32x2S, align: 3},
+	{kind: InstrV128Load32x2U, align: 3},
+	{kind: InstrV128Load8Splat, align: 0},
+	{kind: InstrV128Load16Splat, align: 1},
+	{kind: InstrV128Load32Splat, align: 2},
+	{kind: InstrV128Load64Splat, align: 3},
+	{kind: InstrV128Load32Zero, align: 2},
+	{kind: InstrV128Load64Zero, align: 3},
+}
+
+var simdMemLane = [...]simdMemEffect{
+	{kind: InstrV128Load8Lane, align: 0},
+	{kind: InstrV128Load16Lane, align: 1},
+	{kind: InstrV128Load32Lane, align: 2},
+	{kind: InstrV128Load64Lane, align: 3},
+	{kind: InstrV128Store8Lane, align: 0},
+	{kind: InstrV128Store16Lane, align: 1},
+	{kind: InstrV128Store32Lane, align: 2},
+	{kind: InstrV128Store64Lane, align: 3},
+}
+
+var simdLaneLimits = [...]simdLaneLimit{
+	{kind: InstrI8x16ExtractLaneS, limit: 16},
+	{kind: InstrI8x16ExtractLaneU, limit: 16},
+	{kind: InstrI8x16ReplaceLane, limit: 16},
+	{kind: InstrI16x8ExtractLaneS, limit: 8},
+	{kind: InstrI16x8ExtractLaneU, limit: 8},
+	{kind: InstrI16x8ReplaceLane, limit: 8},
+	{kind: InstrI32x4ExtractLane, limit: 4},
+	{kind: InstrI32x4ReplaceLane, limit: 4},
+	{kind: InstrF32x4ExtractLane, limit: 4},
+	{kind: InstrF32x4ReplaceLane, limit: 4},
+	{kind: InstrI64x2ExtractLane, limit: 2},
+	{kind: InstrI64x2ReplaceLane, limit: 2},
+	{kind: InstrF64x2ExtractLane, limit: 2},
+	{kind: InstrF64x2ReplaceLane, limit: 2},
+	{kind: InstrV128Load8Lane, limit: 16},
+	{kind: InstrV128Store8Lane, limit: 16},
+	{kind: InstrV128Load16Lane, limit: 8},
+	{kind: InstrV128Store16Lane, limit: 8},
+	{kind: InstrV128Load32Lane, limit: 4},
+	{kind: InstrV128Store32Lane, limit: 4},
+	{kind: InstrV128Load64Lane, limit: 2},
+	{kind: InstrV128Store64Lane, limit: 2},
+}
+
+var simdSplat = [...]simdScalarEffect{
+	{kind: InstrI8x16Splat, scalar: effectI32},
+	{kind: InstrI16x8Splat, scalar: effectI32},
+	{kind: InstrI32x4Splat, scalar: effectI32},
+	{kind: InstrI64x2Splat, scalar: effectI64},
+	{kind: InstrF32x4Splat, scalar: effectF32},
+	{kind: InstrF64x2Splat, scalar: effectF64},
+}
+
+var simdExtract = [...]simdScalarEffect{
+	{kind: InstrI8x16ExtractLaneS, scalar: effectI32},
+	{kind: InstrI8x16ExtractLaneU, scalar: effectI32},
+	{kind: InstrI16x8ExtractLaneS, scalar: effectI32},
+	{kind: InstrI16x8ExtractLaneU, scalar: effectI32},
+	{kind: InstrI32x4ExtractLane, scalar: effectI32},
+	{kind: InstrI64x2ExtractLane, scalar: effectI64},
+	{kind: InstrF32x4ExtractLane, scalar: effectF32},
+	{kind: InstrF64x2ExtractLane, scalar: effectF64},
+}
+
+var simdReplace = [...]simdScalarEffect{
+	{kind: InstrI8x16ReplaceLane, scalar: effectI32},
+	{kind: InstrI16x8ReplaceLane, scalar: effectI32},
+	{kind: InstrI32x4ReplaceLane, scalar: effectI32},
+	{kind: InstrI64x2ReplaceLane, scalar: effectI64},
+	{kind: InstrF32x4ReplaceLane, scalar: effectF32},
+	{kind: InstrF64x2ReplaceLane, scalar: effectF64},
+}
+
+var simdShift = [...]InstrKind{
+	InstrI8x16Shl,
+	InstrI8x16ShrS,
+	InstrI8x16ShrU,
+	InstrI16x8Shl,
+	InstrI16x8ShrS,
+	InstrI16x8ShrU,
+	InstrI32x4Shl,
+	InstrI32x4ShrS,
+	InstrI32x4ShrU,
+	InstrI64x2Shl,
+	InstrI64x2ShrS,
+	InstrI64x2ShrU,
+}
+
+var simdUnary = [...]InstrKind{
+	InstrI8x16Swizzle,
+	InstrV128Not,
+	InstrF32x4DemoteF64x2Zero,
+	InstrF64x2PromoteLowF32x4,
+	InstrI8x16Abs,
+	InstrI8x16Neg,
+	InstrI8x16Popcnt,
+	InstrI16x8ExtaddPairwiseI8x16S,
+	InstrI16x8ExtaddPairwiseI8x16U,
+	InstrI32x4ExtaddPairwiseI16x8S,
+	InstrI32x4ExtaddPairwiseI16x8U,
+	InstrF32x4Ceil,
+	InstrF32x4Floor,
+	InstrF32x4Trunc,
+	InstrF32x4Nearest,
+	InstrF64x2Ceil,
+	InstrF64x2Floor,
+	InstrF64x2Trunc,
+	InstrF64x2Nearest,
+	InstrI16x8Abs,
+	InstrI16x8Neg,
+	InstrI32x4Abs,
+	InstrI32x4Neg,
+	InstrI64x2Abs,
+	InstrI64x2Neg,
+	InstrI64x2ExtendLowI32x4S,
+	InstrI64x2ExtendHighI32x4S,
+	InstrI64x2ExtendLowI32x4U,
+	InstrI64x2ExtendHighI32x4U,
+	InstrF32x4Abs,
+	InstrF32x4Neg,
+	InstrF32x4Sqrt,
+	InstrF64x2Abs,
+	InstrF64x2Neg,
+	InstrF64x2Sqrt,
+	InstrI32x4TruncSatF32x4S,
+	InstrI32x4TruncSatF32x4U,
+	InstrF32x4ConvertI32x4S,
+	InstrF32x4ConvertI32x4U,
+	InstrI32x4TruncSatF64x2SZero,
+	InstrI32x4TruncSatF64x2UZero,
+	InstrF64x2ConvertLowI32x4S,
+	InstrF64x2ConvertLowI32x4U,
+	InstrI32x4RelaxedTruncF32x4S,
+	InstrI32x4RelaxedTruncF32x4U,
+	InstrI32x4RelaxedTruncZeroF64x2S,
+	InstrI32x4RelaxedTruncZeroF64x2U,
+	InstrI16x8ExtendLowI8x16S,
+	InstrI16x8ExtendHighI8x16S,
+	InstrI16x8ExtendLowI8x16U,
+	InstrI16x8ExtendHighI8x16U,
+	InstrI32x4ExtendLowI16x8S,
+	InstrI32x4ExtendHighI16x8S,
+	InstrI32x4ExtendLowI16x8U,
+	InstrI32x4ExtendHighI16x8U,
+}
+
+var simdBinary = [...]InstrKind{
+	InstrI8x16Shuffle,
+	InstrI8x16RelaxedSwizzle,
+	InstrV128And,
+	InstrV128Andnot,
+	InstrV128Or,
+	InstrV128Xor,
+	InstrI8x16Eq,
+	InstrI8x16Ne,
+	InstrI8x16LtS,
+	InstrI8x16LtU,
+	InstrI8x16GtS,
+	InstrI8x16GtU,
+	InstrI8x16LeS,
+	InstrI8x16LeU,
+	InstrI8x16GeS,
+	InstrI8x16GeU,
+	InstrI16x8Eq,
+	InstrI16x8Ne,
+	InstrI16x8LtS,
+	InstrI16x8LtU,
+	InstrI16x8GtS,
+	InstrI16x8GtU,
+	InstrI16x8LeS,
+	InstrI16x8LeU,
+	InstrI16x8GeS,
+	InstrI16x8GeU,
+	InstrI32x4Eq,
+	InstrI32x4Ne,
+	InstrI32x4LtS,
+	InstrI32x4LtU,
+	InstrI32x4GtS,
+	InstrI32x4GtU,
+	InstrI32x4LeS,
+	InstrI32x4LeU,
+	InstrI32x4GeS,
+	InstrI32x4GeU,
+	InstrF32x4Eq,
+	InstrF32x4Ne,
+	InstrF32x4Lt,
+	InstrF32x4Gt,
+	InstrF32x4Le,
+	InstrF32x4Ge,
+	InstrF64x2Eq,
+	InstrF64x2Ne,
+	InstrF64x2Lt,
+	InstrF64x2Gt,
+	InstrF64x2Le,
+	InstrF64x2Ge,
+	InstrI8x16NarrowI16x8S,
+	InstrI8x16NarrowI16x8U,
+	InstrI8x16Shl,
+	InstrI8x16ShrS,
+	InstrI8x16ShrU,
+	InstrI8x16Add,
+	InstrI8x16AddSatS,
+	InstrI8x16AddSatU,
+	InstrI8x16Sub,
+	InstrI8x16SubSatS,
+	InstrI8x16SubSatU,
+	InstrI8x16MinS,
+	InstrI8x16MinU,
+	InstrI8x16MaxS,
+	InstrI8x16MaxU,
+	InstrI8x16AvgrU,
+	InstrI16x8Q15mulrSatS,
+	InstrI16x8NarrowI32x4S,
+	InstrI16x8NarrowI32x4U,
+	InstrI16x8Shl,
+	InstrI16x8ShrS,
+	InstrI16x8ShrU,
+	InstrI16x8Add,
+	InstrI16x8AddSatS,
+	InstrI16x8AddSatU,
+	InstrI16x8Sub,
+	InstrI16x8SubSatS,
+	InstrI16x8SubSatU,
+	InstrI16x8Mul,
+	InstrI16x8MinS,
+	InstrI16x8MinU,
+	InstrI16x8MaxS,
+	InstrI16x8MaxU,
+	InstrI16x8AvgrU,
+	InstrI16x8ExtmulLowI8x16S,
+	InstrI16x8ExtmulHighI8x16S,
+	InstrI16x8ExtmulLowI8x16U,
+	InstrI16x8ExtmulHighI8x16U,
+	InstrI32x4Add,
+	InstrI32x4Sub,
+	InstrI32x4Mul,
+	InstrI32x4MinS,
+	InstrI32x4MinU,
+	InstrI32x4MaxS,
+	InstrI32x4MaxU,
+	InstrI32x4DotI16x8S,
+	InstrI32x4ExtmulLowI16x8S,
+	InstrI32x4ExtmulHighI16x8S,
+	InstrI32x4ExtmulLowI16x8U,
+	InstrI32x4ExtmulHighI16x8U,
+	InstrI64x2Add,
+	InstrI64x2Sub,
+	InstrI64x2Mul,
+	InstrI64x2ExtmulLowI32x4S,
+	InstrI64x2ExtmulHighI32x4S,
+	InstrI64x2ExtmulLowI32x4U,
+	InstrI64x2ExtmulHighI32x4U,
+	InstrI64x2Eq,
+	InstrI64x2Ne,
+	InstrI64x2LtS,
+	InstrI64x2GtS,
+	InstrI64x2LeS,
+	InstrI64x2GeS,
+	InstrF32x4Add,
+	InstrF32x4Sub,
+	InstrF32x4Mul,
+	InstrF32x4Div,
+	InstrF32x4Min,
+	InstrF32x4Max,
+	InstrF32x4Pmin,
+	InstrF32x4Pmax,
+	InstrF64x2Add,
+	InstrF64x2Sub,
+	InstrF64x2Mul,
+	InstrF64x2Div,
+	InstrF64x2Min,
+	InstrF64x2Max,
+	InstrF64x2Pmin,
+	InstrF64x2Pmax,
+	InstrF32x4RelaxedMin,
+	InstrF32x4RelaxedMax,
+	InstrF64x2RelaxedMin,
+	InstrF64x2RelaxedMax,
+	InstrI16x8RelaxedQ15mulrS,
+	InstrI16x8RelaxedDotI8x16I7x16S,
+}
+
+var simdTernary = [...]InstrKind{
+	InstrF32x4RelaxedMadd,
+	InstrF32x4RelaxedNmadd,
+	InstrF64x2RelaxedMadd,
+	InstrF64x2RelaxedNmadd,
+	InstrI32x4RelaxedDotI8x16I7x16AddS,
+}
 
 func init() {
-	for k, eff := range simdLoads {
-		simdEffects[k] = simdEffect{cat: simdEffLoad, align: eff.align}
+	for _, effect := range simdLoads {
+		simdEffects[effect.kind] = simdEffect{cat: simdEffLoad, align: effect.align}
 	}
 	simdEffects[InstrV128Store] = simdEffect{cat: simdEffStore}
-	for k, eff := range simdMemLane {
+	for _, effect := range simdMemLane {
 		cat := simdEffMemLoadLane
-		if k >= InstrV128Store8Lane && k <= InstrV128Store64Lane {
+		if effect.kind >= InstrV128Store8Lane && effect.kind <= InstrV128Store64Lane {
 			cat = simdEffMemStoreLane
 		}
-		simdEffects[k] = simdEffect{cat: cat, align: eff.align}
+		simdEffects[effect.kind] = simdEffect{cat: cat, align: effect.align}
 	}
-	for k, scalar := range simdSplat {
-		simdEffects[k] = simdEffect{cat: simdEffSplat, scalar: scalar}
+	for _, effect := range simdSplat {
+		simdEffects[effect.kind] = simdEffect{cat: simdEffSplat, scalar: effect.scalar}
 	}
-	for k, scalar := range simdExtract {
-		simdEffects[k] = simdEffect{cat: simdEffExtract, scalar: scalar}
+	for _, effect := range simdExtract {
+		simdEffects[effect.kind] = simdEffect{cat: simdEffExtract, scalar: effect.scalar}
 	}
-	for k, scalar := range simdReplace {
-		simdEffects[k] = simdEffect{cat: simdEffReplace, scalar: scalar}
+	for _, effect := range simdReplace {
+		simdEffects[effect.kind] = simdEffect{cat: simdEffReplace, scalar: effect.scalar}
 	}
-	for k := range simdShift {
-		simdEffects[k] = simdEffect{cat: simdEffShift}
+	for _, kind := range simdShift {
+		simdEffects[kind] = simdEffect{cat: simdEffShift}
 	}
-	for k := range simdUnary {
-		simdEffects[k] = simdEffect{cat: simdEffUnary}
+	for _, kind := range simdUnary {
+		simdEffects[kind] = simdEffect{cat: simdEffUnary}
 	}
 	simdEffects[InstrI8x16Swizzle] = simdEffect{cat: simdEffBinary}
-	for k := range simdBinary {
-		if _, isShift := simdShift[k]; isShift {
+	for _, kind := range simdBinary {
+		if simdEffects[kind].cat == simdEffShift {
 			continue
 		}
-		simdEffects[k] = simdEffect{cat: simdEffBinary}
+		simdEffects[kind] = simdEffect{cat: simdEffBinary}
 	}
-	for k := range simdTernary {
-		simdEffects[k] = simdEffect{cat: simdEffTernary}
+	for _, kind := range simdTernary {
+		simdEffects[kind] = simdEffect{cat: simdEffTernary}
 	}
 	for _, k := range [...]InstrKind{
 		InstrV128AnyTrue,
@@ -896,11 +1260,18 @@ func init() {
 		simdEffects[k] = simdEffect{cat: simdBitselect}
 	}
 	simdEffects[InstrV128Const] = simdEffect{cat: simdConst}
-	for k, limit := range simdLaneLimits {
-		eff := simdEffects[k]
-		eff.laneLimit = limit
-		simdEffects[k] = eff
+	for _, lane := range simdLaneLimits {
+		effect := simdEffects[lane.kind]
+		effect.laneLimit = lane.limit
+		simdEffects[lane.kind] = effect
 	}
+}
+
+// IsSIMDValidationInstructionKind reports whether wasm validation admits kind
+// as a SIMD instruction. It is allocation-free and shares the validator's
+// compact effect table.
+func IsSIMDValidationInstructionKind(kind InstrKind) bool {
+	return kind < numInstrKinds && simdEffects[kind].cat != simdNone
 }
 
 // SIMDValidationInstructionKinds returns an immutable snapshot of the SIMD
@@ -908,9 +1279,11 @@ func init() {
 // support/admission parity checks; callers receive a copy so the validator's
 // internal tables cannot be mutated.
 func SIMDValidationInstructionKinds() map[InstrKind]struct{} {
-	out := make(map[InstrKind]struct{}, len(simdAll))
-	for k := range simdAll {
-		out[k] = struct{}{}
+	out := make(map[InstrKind]struct{}, 268)
+	for kind, effect := range simdEffects {
+		if effect.cat != simdNone {
+			out[InstrKind(kind)] = struct{}{}
+		}
 	}
 	return out
 }

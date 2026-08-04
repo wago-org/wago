@@ -79,6 +79,120 @@ func TestAllocationStructArrayAccess(t *testing.T) {
 	}
 }
 
+func TestTypedStructAccessChecksFinalAndOpenTypes(t *testing.T) {
+	base, err := NewStructDesc(0, []StorageKind{StorageI32})
+	if err != nil {
+		t.Fatal(err)
+	}
+	base.Final = false
+	child, err := NewStructDesc(1, []StorageKind{StorageI32})
+	if err != nil {
+		t.Fatal(err)
+	}
+	child.HasSuper = true
+	child.Super = 0
+	c := newTestCollectorWithTypes(t, Config{}, []TypeDesc{base, child})
+	ref, err := c.NewStructDefault(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if actual, matched, err := c.StructSetTyped(ref, 0, false, 0, I32Value(42)); err != nil || !matched || actual != 1 {
+		t.Fatalf("open typed set = actual %d matched %v err %v", actual, matched, err)
+	}
+	value, actual, matched, err := c.StructGetTyped(ref, 0, false, 0)
+	if err != nil || !matched || actual != 1 || value.I32() != 42 {
+		t.Fatalf("open typed get = value %+v actual %d matched %v err %v", value, actual, matched, err)
+	}
+	if _, actual, matched, err := c.StructGetTyped(ref, 0, true, 0); err != nil || matched || actual != 1 {
+		t.Fatalf("exact base get = actual %d matched %v err %v, want mismatch", actual, matched, err)
+	}
+	if value, actual, matched, err := c.StructGetTyped(ref, 1, true, 0); err != nil || !matched || actual != 1 || value.I32() != 42 {
+		t.Fatalf("exact child get = value %+v actual %d matched %v err %v", value, actual, matched, err)
+	}
+	if _, _, _, err := c.StructGetTyped(ref, 99, true, 0); err == nil {
+		t.Fatal("exact typed get accepted unknown required type")
+	}
+}
+
+func TestFinalStructReferenceAccessChecksExactTypeAndField(t *testing.T) {
+	left, err := NewStructDesc(0, []StorageKind{StorageRefNull})
+	if err != nil {
+		t.Fatal(err)
+	}
+	right, err := NewStructDesc(1, []StorageKind{StorageRefNull})
+	if err != nil {
+		t.Fatal(err)
+	}
+	numeric, err := NewStructDesc(2, []StorageKind{StorageI32})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := newTestCollectorWithTypes(t, Config{}, []TypeDesc{left, right, numeric})
+	ref, err := c.NewStructDefault(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if value, matched, err := c.StructGetFinalRef(ref, 1, 0); err != nil || !matched || !value.IsNull() {
+		t.Fatalf("final ref get = %v, %v, %v; want null match", value, matched, err)
+	}
+	if _, matched, err := c.StructGetFinalRef(ref, 0, 0); err != nil || matched {
+		t.Fatalf("mismatched final ref get = %v, %v; want clean mismatch", matched, err)
+	}
+	if _, _, err := c.StructGetFinalRef(ref, 1, 1); err == nil {
+		t.Fatal("final ref get accepted out-of-range field")
+	}
+	if _, _, err := c.StructGetFinalRef(ref, 2, 0); err == nil {
+		t.Fatal("final ref get accepted numeric field")
+	}
+	if _, _, err := c.StructGetFinalRef(I31New(0), 1, 0); err == nil {
+		t.Fatal("final ref get accepted i31")
+	}
+}
+
+func TestTypedArrayAccessChecksFinalAndOpenTypes(t *testing.T) {
+	base, err := NewArrayDesc(0, StorageI32)
+	if err != nil {
+		t.Fatal(err)
+	}
+	base.Final = false
+	child, err := NewArrayDesc(1, StorageI32)
+	if err != nil {
+		t.Fatal(err)
+	}
+	child.HasSuper = true
+	child.Super = 0
+	c := newTestCollectorWithTypes(t, Config{}, []TypeDesc{base, child})
+	ref, err := c.NewArrayDefault(1, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if actual, matched, err := c.ArraySetTyped(ref, 0, false, 1, I32Value(42)); err != nil || !matched || actual != 1 {
+		t.Fatalf("open typed set = actual %d matched %v err %v", actual, matched, err)
+	}
+	value, actual, matched, err := c.ArrayGetTyped(ref, 0, false, 1)
+	if err != nil || !matched || actual != 1 || value.I32() != 42 {
+		t.Fatalf("open typed get = value %+v actual %d matched %v err %v", value, actual, matched, err)
+	}
+	if _, actual, matched, err := c.ArrayGetTyped(ref, 0, true, 1); err != nil || matched || actual != 1 {
+		t.Fatalf("exact base get = actual %d matched %v err %v, want mismatch", actual, matched, err)
+	}
+	if value, actual, matched, err := c.ArrayGetTyped(ref, 1, true, 1); err != nil || !matched || actual != 1 || value.I32() != 42 {
+		t.Fatalf("exact child get = value %+v actual %d matched %v err %v", value, actual, matched, err)
+	}
+	if length, actual, matched, err := c.ArrayLenTyped(ref, 0, false); err != nil || !matched || actual != 1 || length != 2 {
+		t.Fatalf("open typed len = length %d actual %d matched %v err %v", length, actual, matched, err)
+	}
+	if _, actual, matched, err := c.ArrayLenTyped(ref, 0, true); err != nil || matched || actual != 1 {
+		t.Fatalf("exact base len = actual %d matched %v err %v, want mismatch", actual, matched, err)
+	}
+	if length, actual, matched, err := c.ArrayLenTyped(ref, 1, true); err != nil || !matched || actual != 1 || length != 2 {
+		t.Fatalf("exact child len = length %d actual %d matched %v err %v", length, actual, matched, err)
+	}
+	if _, _, _, err := c.ArrayGetTyped(ref, 0, false, 2); err == nil {
+		t.Fatal("typed array get accepted out-of-range index")
+	}
+}
+
 func TestArrayInitializerRefSurvivesAllocationCollection(t *testing.T) {
 	c := newTestCollector(t, Config{})
 	child, err := c.NewStructDefault(0)
@@ -106,6 +220,81 @@ func TestArrayInitializerRefSurvivesAllocationCollection(t *testing.T) {
 	}
 	if field.I32() != 42 {
 		t.Fatalf("field = %d, want 42", field.I32())
+	}
+}
+
+func TestAtomicConstructorRefsSurviveAllocationCollection(t *testing.T) {
+	c := newTestCollector(t, Config{})
+	left, err := c.NewStructDefault(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	right, err := c.NewStructDefault(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.StructSet(left, 0, I32Value(11)); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.StructSet(right, 0, I32Value(22)); err != nil {
+		t.Fatal(err)
+	}
+	c.cfg.CollectEveryAlloc = true
+	values := []Value{RefValue(left), RefValue(right)}
+	var initializerRoots InitializerRootScratch
+	pair, err := c.NewStructWithRootScratch(1, values, Slots{}, &initializerRoots)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, want := range []int32{11, 22} {
+		stored, err := c.StructGet(pair, uint32(i))
+		if err != nil {
+			t.Fatal(err)
+		}
+		field, err := c.StructGet(stored.Ref, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if field.I32() != want {
+			t.Fatalf("struct field %d child = %d, want %d", i, field.I32(), want)
+		}
+	}
+
+	pairRoot := Root(pair)
+	first, err := c.NewStructDefaultWithRoots(0, Slots{&pairRoot})
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstRoot := Root(first)
+	second, err := c.NewStructDefaultWithRoots(0, Slots{&pairRoot, &firstRoot})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pair, first = Ref(pairRoot), Ref(firstRoot)
+	if err := c.StructSet(first, 0, I32Value(33)); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.StructSet(second, 0, I32Value(44)); err != nil {
+		t.Fatal(err)
+	}
+	arrayValues := []Value{RefValue(first), RefValue(second)}
+	pairRoot = Root(pair)
+	array, err := c.NewArrayFixedWithRoots(3, arrayValues, Slots{&pairRoot})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, want := range []int32{33, 44} {
+		stored, err := c.ArrayGet(array, uint32(i))
+		if err != nil {
+			t.Fatal(err)
+		}
+		field, err := c.StructGet(stored.Ref, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if field.I32() != want {
+			t.Fatalf("array element %d child = %d, want %d", i, field.I32(), want)
+		}
 	}
 }
 
@@ -425,6 +614,13 @@ func TestCardMetadataRetainsFullIndexes(t *testing.T) {
 
 	const elementIndex = uint32(0x1_0001)
 	c.CardMarkArray(arr, elementIndex)
+	if len(c.objectCards) != 0 {
+		t.Fatalf("nursery array recorded generational cards: %d", len(c.objectCards))
+	}
+	if err := c.ForcePromote(arr); err != nil {
+		t.Fatal(err)
+	}
+	c.CardMarkArray(arr, elementIndex)
 	if len(c.objectCards) != 1 {
 		t.Fatalf("object cards=%d, want 1", len(c.objectCards))
 	}
@@ -433,14 +629,14 @@ func TestCardMetadataRetainsFullIndexes(t *testing.T) {
 	}
 
 	c.BulkWriteBarrier(arr, ^uint32(0)-1, 4)
-	if len(c.objectCards) != 3 {
-		t.Fatalf("object cards=%d, want 3", len(c.objectCards))
+	if len(c.objectCards) != 1 {
+		t.Fatalf("object card ranges=%d, want 1", len(c.objectCards))
 	}
-	if got := c.objectCards[1].index; got != ^uint32(0)-1 {
-		t.Fatalf("bulk start index=%#x, want %#x", got, ^uint32(0)-1)
+	if got := c.objectCards[0].index; got != elementIndex {
+		t.Fatalf("coalesced start index=%#x, want %#x", got, elementIndex)
 	}
-	if got := c.objectCards[2].index; got != ^uint32(0) {
-		t.Fatalf("bulk end index=%#x, want saturated %#x", got, ^uint32(0))
+	if got := c.objectCards[0].end; got != ^uint32(0) {
+		t.Fatalf("coalesced end index=%#x, want saturated %#x", got, ^uint32(0))
 	}
 }
 
@@ -469,8 +665,15 @@ func TestSlotCardsAreNotRemovedAsObjectCards(t *testing.T) {
 		t.Fatalf("slot card removed as object card; remaining=%d", len(c.slotCards))
 	}
 
-	c.objectCards = append(c.objectCards, objectCard{handle: 7, index: 0})
-	c.removeCardsForHandle(7)
+	arr, err := c.NewArrayDefault(3, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.ForcePromote(arr); err != nil {
+		t.Fatal(err)
+	}
+	c.CardMarkArray(arr, 0)
+	c.removeCardsForHandle(handleOf(arr))
 	if len(c.objectCards) != 0 {
 		t.Fatalf("object card for freed handle remained: %v", c.objectCards)
 	}

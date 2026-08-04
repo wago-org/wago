@@ -58,6 +58,24 @@ func BenchmarkCrossBoundaryCall(b *testing.B) {
 // Go runs the host function on the goroutine stack, then native is re-entered to
 // resume (second crossing). So this is ~2x BenchmarkCrossBoundaryCall plus the
 // Go closure invocation.
+func BenchmarkBindInstanceContextBytes(b *testing.B) {
+	jm, err := NewJobMemory(linMemBytes)
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer jm.Close()
+	ctx := make([]byte, InstanceContextBytes)
+	for i := 0; i < InstanceContextGCDomainOffset/8; i++ {
+		binary.LittleEndian.PutUint64(ctx[i*8:], uint64(i+1))
+	}
+	binary.LittleEndian.PutUint64(ctx[InstanceContextGCNativeViewOffset:], 10)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		jm.BindInstanceContextBytes(ctx)
+	}
+}
+
 func BenchmarkHostCall(b *testing.B) {
 	eng, err := NewEngine()
 	if err != nil {

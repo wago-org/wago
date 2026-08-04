@@ -9,6 +9,7 @@ import (
 
 func TestExtendedConstValidation(t *testing.T) {
 	root := filepath.Clean("../../../../tests/regressions/extended-const")
+	features := ValidationFeatures{ExtendedConstGlobals: true}
 	var valid, invalid, malformedBinary, malformedText int
 	for _, base := range []string{"data", "elem", "global"} {
 		raw, err := os.ReadFile(filepath.Join(root, base+".json"))
@@ -36,7 +37,7 @@ func TestExtendedConstValidation(t *testing.T) {
 					t.Errorf("%s:%d valid module decode: %v", base, cmd.Line, err)
 					continue
 				}
-				if err := ValidateModule(m); err != nil {
+				if err := ValidateModuleWithFeatures(m, features); err != nil {
 					t.Errorf("%s:%d valid module validate: %v", base, cmd.Line, err)
 				}
 			case "assert_invalid":
@@ -48,7 +49,7 @@ func TestExtendedConstValidation(t *testing.T) {
 				m, decodeErr := DecodeModule(data)
 				var validateErr error
 				if decodeErr == nil {
-					validateErr = ValidateModule(m)
+					validateErr = ValidateModuleWithFeatures(m, features)
 				}
 				if decodeErr == nil && validateErr == nil {
 					t.Errorf("%s:%d invalid module accepted: %s", base, cmd.Line, cmd.Text)

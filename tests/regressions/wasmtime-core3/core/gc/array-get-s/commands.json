@@ -1,0 +1,113 @@
+{
+  "commands": [
+    {
+      "filename": "commands.0.wasm",
+      "line": 1,
+      "type": "module_definition"
+    },
+    {
+      "line": 16,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "get-s-neg-i8",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "4294967168"
+        }
+      ],
+      "line": 17,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "get-s-neg1-i8",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "4294967295"
+        }
+      ],
+      "line": 18,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "get-s-pos-i8",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "127"
+        }
+      ],
+      "line": 19,
+      "type": "assert_return"
+    },
+    {
+      "filename": "commands.1.wasm",
+      "line": 20,
+      "type": "module_definition"
+    },
+    {
+      "line": 35,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "get-s-neg-i16",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "4294934528"
+        }
+      ],
+      "line": 36,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "get-s-neg1-i16",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "4294967295"
+        }
+      ],
+      "line": 37,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "get-s-pos-i16",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "32767"
+        }
+      ],
+      "line": 38,
+      "type": "assert_return"
+    }
+  ],
+  "source": "WebAssembly/spec interpreter 3.0.0"
+}

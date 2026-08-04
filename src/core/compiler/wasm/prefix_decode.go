@@ -1,11 +1,19 @@
 package wasm
 
+func lookupPrefixKind(table []InstrKind, sub uint32) (InstrKind, bool) {
+	if sub >= uint32(len(table)) {
+		return InstrInvalid, false
+	}
+	kind := table[sub]
+	return kind, kind != InstrInvalid
+}
+
 func decodeFC(r *reader) (Instruction, error) {
 	sub, err := r.u32()
 	if err != nil {
 		return Instruction{}, err
 	}
-	if k, ok := fcNoImm[sub]; ok {
+	if k, ok := lookupPrefixKind(fcNoImm[:], sub); ok {
 		return Instruction{Kind: k}, nil
 	}
 	switch sub {
@@ -35,14 +43,14 @@ func decodeFC(r *reader) (Instruction, error) {
 	}
 }
 
-var fcNoImm = map[uint32]InstrKind{0: InstrI32TruncSatF32S, 1: InstrI32TruncSatF32U, 2: InstrI32TruncSatF64S, 3: InstrI32TruncSatF64U, 4: InstrI64TruncSatF32S, 5: InstrI64TruncSatF32U, 6: InstrI64TruncSatF64S, 7: InstrI64TruncSatF64U}
+var fcNoImm = [...]InstrKind{0: InstrI32TruncSatF32S, 1: InstrI32TruncSatF32U, 2: InstrI32TruncSatF64S, 3: InstrI32TruncSatF64U, 4: InstrI64TruncSatF32S, 5: InstrI64TruncSatF32U, 6: InstrI64TruncSatF64S, 7: InstrI64TruncSatF64U}
 
 func decodeFB(r *reader) (Instruction, error) {
 	sub, err := r.u32()
 	if err != nil {
 		return Instruction{}, err
 	}
-	if k, ok := fbNoImm[sub]; ok {
+	if k, ok := lookupPrefixKind(fbNoImm[:], sub); ok {
 		return Instruction{Kind: k}, nil
 	}
 	switch sub {
@@ -157,7 +165,7 @@ func decodeFB(r *reader) (Instruction, error) {
 	}
 }
 
-var fbNoImm = map[uint32]InstrKind{15: InstrArrayLen, 26: InstrAnyConvertExtern, 27: InstrExternConvertAny, 28: InstrRefI31, 29: InstrI31GetS, 30: InstrI31GetU}
+var fbNoImm = [...]InstrKind{15: InstrArrayLen, 26: InstrAnyConvertExtern, 27: InstrExternConvertAny, 28: InstrRefI31, 29: InstrI31GetS, 30: InstrI31GetU}
 
 func decodeCastOp(r *reader) (CastOp, error) {
 	b, err := r.byte()
@@ -214,7 +222,7 @@ func decodeFEWithMemarg64(r *reader, memarg64 bool) (Instruction, error) {
 		}
 		return Instruction{Kind: k, AtomicOrder: order, Index: typeIdx, Index2: fieldIdx}, nil
 	}
-	if k, ok := feMem[sub]; ok {
+	if k, ok := lookupPrefixKind(feMem[:], sub); ok {
 		ma, err := decodeMemArgWithWidth(r, memarg64)
 		return Instruction{Kind: k, AtomicOp: sub, ext: &instrExt{MemArg: ma}}, err
 	}
@@ -240,7 +248,7 @@ func decodeAtomicOrder(r *reader) (AtomicOrder, error) {
 	return 0, &DecodeError{Code: ErrInvalidInstruction, Offset: r.off() - 1}
 }
 
-var feMem = map[uint32]InstrKind{0x00: InstrMemoryAtomicNotify, 0x01: InstrMemoryAtomicWait32, 0x02: InstrMemoryAtomicWait64, 0x10: InstrI32AtomicLoad, 0x11: InstrI64AtomicLoad, 0x12: InstrI32AtomicLoad8U, 0x13: InstrI32AtomicLoad16U, 0x14: InstrI64AtomicLoad8U, 0x15: InstrI64AtomicLoad16U, 0x16: InstrI64AtomicLoad32U, 0x17: InstrI32AtomicStore, 0x18: InstrI64AtomicStore, 0x19: InstrI32AtomicStore8, 0x1a: InstrI32AtomicStore16, 0x1b: InstrI64AtomicStore8, 0x1c: InstrI64AtomicStore16, 0x1d: InstrI64AtomicStore32}
+var feMem = [...]InstrKind{0x00: InstrMemoryAtomicNotify, 0x01: InstrMemoryAtomicWait32, 0x02: InstrMemoryAtomicWait64, 0x10: InstrI32AtomicLoad, 0x11: InstrI64AtomicLoad, 0x12: InstrI32AtomicLoad8U, 0x13: InstrI32AtomicLoad16U, 0x14: InstrI64AtomicLoad8U, 0x15: InstrI64AtomicLoad16U, 0x16: InstrI64AtomicLoad32U, 0x17: InstrI32AtomicStore, 0x18: InstrI64AtomicStore, 0x19: InstrI32AtomicStore8, 0x1a: InstrI32AtomicStore16, 0x1b: InstrI64AtomicStore8, 0x1c: InstrI64AtomicStore16, 0x1d: InstrI64AtomicStore32}
 
 func decodeFDWithMemarg64(r *reader, memarg64 bool) (Instruction, error) {
 	sub, err := r.u32()
@@ -272,10 +280,10 @@ func decodeFDWithMemarg64(r *reader, memarg64 bool) (Instruction, error) {
 		}
 		return Instruction{Kind: InstrI8x16Shuffle, ext: &instrExt{Lanes: lanes}}, nil
 	}
-	if k, ok := fdNoImm[sub]; ok {
+	if k, ok := lookupPrefixKind(fdNoImm[:], sub); ok {
 		return Instruction{Kind: k}, nil
 	}
-	if k, ok := fdMem[sub]; ok {
+	if k, ok := lookupPrefixKind(fdMem[:], sub); ok {
 		ma, err := decodeMemArgWithWidth(r, memarg64)
 		if err != nil {
 			return Instruction{}, err
@@ -291,16 +299,16 @@ func decodeFDWithMemarg64(r *reader, memarg64 bool) (Instruction, error) {
 		}
 		return in, nil
 	}
-	if k, ok := fdLane[sub]; ok {
+	if k, ok := lookupPrefixKind(fdLane[:], sub); ok {
 		lane, err := r.byte()
 		return Instruction{Kind: k, Lane: LaneIdx(lane)}, err
 	}
 	return Instruction{}, &DecodeError{Code: ErrInvalidInstruction, Offset: r.off()}
 }
 
-var fdMem = map[uint32]InstrKind{0: InstrV128Load, 1: InstrV128Load8x8S, 2: InstrV128Load8x8U, 3: InstrV128Load16x4S, 4: InstrV128Load16x4U, 5: InstrV128Load32x2S, 6: InstrV128Load32x2U, 7: InstrV128Load8Splat, 8: InstrV128Load16Splat, 9: InstrV128Load32Splat, 10: InstrV128Load64Splat, 11: InstrV128Store, 84: InstrV128Load8Lane, 85: InstrV128Load16Lane, 86: InstrV128Load32Lane, 87: InstrV128Load64Lane, 88: InstrV128Store8Lane, 89: InstrV128Store16Lane, 90: InstrV128Store32Lane, 91: InstrV128Store64Lane, 92: InstrV128Load32Zero, 93: InstrV128Load64Zero}
-var fdLane = map[uint32]InstrKind{21: InstrI8x16ExtractLaneS, 22: InstrI8x16ExtractLaneU, 23: InstrI8x16ReplaceLane, 24: InstrI16x8ExtractLaneS, 25: InstrI16x8ExtractLaneU, 26: InstrI16x8ReplaceLane, 27: InstrI32x4ExtractLane, 28: InstrI32x4ReplaceLane, 29: InstrI64x2ExtractLane, 30: InstrI64x2ReplaceLane, 31: InstrF32x4ExtractLane, 32: InstrF32x4ReplaceLane, 33: InstrF64x2ExtractLane, 34: InstrF64x2ReplaceLane}
-var fdNoImm = map[uint32]InstrKind{
+var fdMem = [...]InstrKind{0: InstrV128Load, 1: InstrV128Load8x8S, 2: InstrV128Load8x8U, 3: InstrV128Load16x4S, 4: InstrV128Load16x4U, 5: InstrV128Load32x2S, 6: InstrV128Load32x2U, 7: InstrV128Load8Splat, 8: InstrV128Load16Splat, 9: InstrV128Load32Splat, 10: InstrV128Load64Splat, 11: InstrV128Store, 84: InstrV128Load8Lane, 85: InstrV128Load16Lane, 86: InstrV128Load32Lane, 87: InstrV128Load64Lane, 88: InstrV128Store8Lane, 89: InstrV128Store16Lane, 90: InstrV128Store32Lane, 91: InstrV128Store64Lane, 92: InstrV128Load32Zero, 93: InstrV128Load64Zero}
+var fdLane = [...]InstrKind{21: InstrI8x16ExtractLaneS, 22: InstrI8x16ExtractLaneU, 23: InstrI8x16ReplaceLane, 24: InstrI16x8ExtractLaneS, 25: InstrI16x8ExtractLaneU, 26: InstrI16x8ReplaceLane, 27: InstrI32x4ExtractLane, 28: InstrI32x4ReplaceLane, 29: InstrI64x2ExtractLane, 30: InstrI64x2ReplaceLane, 31: InstrF32x4ExtractLane, 32: InstrF32x4ReplaceLane, 33: InstrF64x2ExtractLane, 34: InstrF64x2ReplaceLane}
+var fdNoImm = [...]InstrKind{
 	14:  InstrI8x16Swizzle,
 	15:  InstrI8x16Splat,
 	16:  InstrI16x8Splat,

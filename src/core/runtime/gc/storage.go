@@ -22,8 +22,10 @@ func (c *Collector) loadValue(r Ref, off uint64, k StorageKind) (Value, error) {
 		return Value{Kind: k, Bits: uint64(binary.LittleEndian.Uint16(b[off:]))}, nil
 	case StorageI32, StorageF32:
 		return Value{Kind: k, Bits: uint64(binary.LittleEndian.Uint32(b[off:]))}, nil
-	case StorageI64, StorageF64:
+	case StorageI64, StorageF64, StorageFuncRef, StorageFuncRefNull, StorageExternRef, StorageExternRefNull:
 		return Value{Kind: k, Bits: binary.LittleEndian.Uint64(b[off:])}, nil
+	case StorageV128:
+		return Value{Kind: k, Bits: binary.LittleEndian.Uint64(b[off:]), BitsHi: binary.LittleEndian.Uint64(b[off+8:])}, nil
 	case StorageRef, StorageRefNull:
 		return Value{Kind: k, Ref: Ref(binary.LittleEndian.Uint32(b[off:]))}, nil
 	}
@@ -49,8 +51,11 @@ func (c *Collector) storeValue(r Ref, d TypeDesc, off uint64, k StorageKind, v V
 		binary.LittleEndian.PutUint16(b[off:], uint16(v.Bits))
 	case StorageI32, StorageF32:
 		binary.LittleEndian.PutUint32(b[off:], uint32(v.Bits))
-	case StorageI64, StorageF64:
+	case StorageI64, StorageF64, StorageFuncRef, StorageFuncRefNull, StorageExternRef, StorageExternRefNull:
 		binary.LittleEndian.PutUint64(b[off:], v.Bits)
+	case StorageV128:
+		binary.LittleEndian.PutUint64(b[off:], v.Bits)
+		binary.LittleEndian.PutUint64(b[off+8:], v.BitsHi)
 	case StorageRef, StorageRefNull:
 		binary.LittleEndian.PutUint32(b[off:], uint32(v.Ref))
 	default:
@@ -59,16 +64,54 @@ func (c *Collector) storeValue(r Ref, d TypeDesc, off uint64, k StorageKind, v V
 	return nil
 }
 
+func storeWordsUnchecked(dst []byte, off uint64, k StorageKind, words []uint64) {
+	switch k {
+	case StorageI8:
+		dst[off] = byte(words[0])
+	case StorageI16:
+		binary.LittleEndian.PutUint16(dst[off:], uint16(words[0]))
+	case StorageI32, StorageF32, StorageRef, StorageRefNull:
+		binary.LittleEndian.PutUint32(dst[off:], uint32(words[0]))
+	case StorageI64, StorageF64, StorageFuncRef, StorageFuncRefNull, StorageExternRef, StorageExternRefNull:
+		binary.LittleEndian.PutUint64(dst[off:], words[0])
+	case StorageV128:
+		binary.LittleEndian.PutUint64(dst[off:], words[0])
+		binary.LittleEndian.PutUint64(dst[off+8:], words[1])
+	default:
+		panic("gc: unchecked raw store with bad storage kind")
+	}
+}
+
+func storeValueUnchecked(dst []byte, off uint64, k StorageKind, v Value) {
+	switch k {
+	case StorageI8:
+		dst[off] = byte(v.Bits)
+	case StorageI16:
+		binary.LittleEndian.PutUint16(dst[off:], uint16(v.Bits))
+	case StorageI32, StorageF32:
+		binary.LittleEndian.PutUint32(dst[off:], uint32(v.Bits))
+	case StorageI64, StorageF64, StorageFuncRef, StorageFuncRefNull, StorageExternRef, StorageExternRefNull:
+		binary.LittleEndian.PutUint64(dst[off:], v.Bits)
+	case StorageV128:
+		binary.LittleEndian.PutUint64(dst[off:], v.Bits)
+		binary.LittleEndian.PutUint64(dst[off+8:], v.BitsHi)
+	case StorageRef, StorageRefNull:
+		binary.LittleEndian.PutUint32(dst[off:], uint32(v.Ref))
+	default:
+		panic("gc: unchecked store with bad storage kind")
+	}
+}
+
 func checkDefaultable(d TypeDesc) error {
 	switch d.Kind {
 	case KindStruct:
 		for i, f := range d.Fields {
-			if f.Kind == StorageRef {
+			if f.Kind == StorageRef || f.Kind == StorageFuncRef || f.Kind == StorageExternRef {
 				return fmt.Errorf("gc: struct type %d field %d is non-null ref and not defaultable", d.ID, i)
 			}
 		}
 	case KindArray:
-		if d.Elem == StorageRef {
+		if d.Elem == StorageRef || d.Elem == StorageFuncRef || d.Elem == StorageExternRef {
 			return fmt.Errorf("gc: array type %d element is non-null ref and not defaultable", d.ID)
 		}
 	}
@@ -81,19 +124,31 @@ func checkValueCompatible(k StorageKind, v Value) error {
 		if v.Kind != StorageI32 && v.Kind != k {
 			return fmt.Errorf("gc: value kind %d incompatible with packed storage %d", v.Kind, k)
 		}
-	case StorageI32, StorageI64, StorageF32, StorageF64:
+	case StorageI32, StorageI64, StorageF32, StorageF64, StorageV128,
+		StorageFuncRef, StorageExternRef:
 		if v.Kind != k {
 			return fmt.Errorf("gc: value kind %d incompatible with storage %d", v.Kind, k)
 		}
+		if (k == StorageFuncRef || k == StorageExternRef) && v.Bits == 0 {
+			return errors.New("gc: cannot store null in non-null opaque ref slot")
+		}
+	case StorageFuncRefNull:
+		if v.Kind != StorageFuncRef && v.Kind != StorageFuncRefNull {
+			return fmt.Errorf("gc: value kind %d incompatible with nullable funcref storage", v.Kind)
+		}
+	case StorageExternRefNull:
+		if v.Kind != StorageExternRef && v.Kind != StorageExternRefNull {
+			return fmt.Errorf("gc: value kind %d incompatible with nullable externref storage", v.Kind)
+		}
 	case StorageRef:
-		if !isRefKind(v.Kind) {
+		if !isCollectorRefKind(v.Kind) {
 			return fmt.Errorf("gc: value kind %d incompatible with non-null ref storage", v.Kind)
 		}
 		if v.Ref.IsNull() {
 			return errors.New("gc: cannot store null in non-null ref slot")
 		}
 	case StorageRefNull:
-		if !isRefKind(v.Kind) {
+		if !isCollectorRefKind(v.Kind) {
 			return fmt.Errorf("gc: value kind %d incompatible with nullable ref storage", v.Kind)
 		}
 	default:

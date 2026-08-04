@@ -1,0 +1,45 @@
+{
+  "commands": [
+    {
+      "filename": "commands.0.wasm",
+      "line": 3,
+      "type": "module"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "2305843009213693952"
+          }
+        ],
+        "field": "grow",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i64",
+          "value": "-1"
+        }
+      ],
+      "line": 10,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "size",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i64",
+          "value": "0"
+        }
+      ],
+      "line": 11,
+      "type": "assert_return"
+    }
+  ],
+  "source": "wasm-tools 1.251.0 json-from-wast"
+}

@@ -452,20 +452,10 @@ func marshalDirectArtifacts(entries []regressioncorpus.DirectArtifact) []byte {
 	return []byte(out.String())
 }
 
-func adaptSource(path string, upstream []byte) ([]byte, error) {
-	if !strings.HasPrefix(path, "embenchen_") {
-		return upstream, nil
-	}
-	const notice = ";; Wago port modification: register the named env provider explicitly so the standard WAST replay can resolve its imports.\n"
-	const moduleBoundary = "\n)\n\n(module\n"
-	if bytes.Contains(upstream, []byte("(register \"env\" $env)")) {
-		return nil, fmt.Errorf("%s upstream now registers env; remove the Wago adaptation", path)
-	}
-	if !bytes.Contains(upstream, []byte(moduleBoundary)) {
-		return nil, fmt.Errorf("%s env-module boundary not found", path)
-	}
-	adapted := bytes.Replace(upstream, []byte(moduleBoundary), []byte("\n)\n\n(register \"env\" $env)\n\n(module\n"), 1)
-	return append([]byte(notice), adapted...), nil
+func adaptSource(_ string, upstream []byte) ([]byte, error) {
+	// Runtime replay resolves named modules directly, so checked-in regression
+	// sources remain byte-identical to the pinned upstream corpus.
+	return upstream, nil
 }
 
 type normalizedWABTDocument struct {

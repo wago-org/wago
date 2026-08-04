@@ -1,9 +1,52 @@
 package gc
 
 import (
+	"errors"
 	"strings"
 	"testing"
 )
+
+func TestAllocationMinorRetriesAfterFullOldSpaceReclamation(t *testing.T) {
+	c := newTestCollector(t, Config{
+		StressNurseryBytes:  8192,
+		ThroughputHeapBytes: 4096,
+		ThroughputPageBytes: 4096,
+		VerifyAfterCollect:  true,
+	})
+	var survivor Ref
+	for {
+		ref, err := c.NewStructDefault(1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := c.ForcePromote(ref); err != nil {
+			if !errors.Is(err, errThroughputHeapExhausted) {
+				t.Fatal(err)
+			}
+			survivor = ref
+			break
+		}
+	}
+	root := Root(survivor)
+	before := c.Stats()
+	promotionErr := c.CollectMinor(Slots{&root})
+	if !errors.Is(promotionErr, errThroughputHeapExhausted) {
+		t.Fatalf("initial promotion error = %v, want throughput exhaustion", promotionErr)
+	}
+	if err := c.retryAllocationMinorAfterPromotionFailure(Slots{&root}, promotionErr); err != nil {
+		t.Fatalf("allocation minor fallback: %v", err)
+	}
+	after := c.Stats()
+	if after.FullCollections != before.FullCollections+1 {
+		t.Fatalf("full collections = %d, want %d", after.FullCollections, before.FullCollections+1)
+	}
+	if got := c.entry(Ref(root)).space; got != spaceOld {
+		t.Fatalf("survivor space = %v, want old", got)
+	}
+	if err := c.Verify(Slots{&root}); err != nil {
+		t.Fatal(err)
+	}
+}
 
 func TestCollectMinorPromotionFailureLeavesNurserySurvivorsUnmoved(t *testing.T) {
 	c := newTestCollector(t, Config{
@@ -35,6 +78,14 @@ func TestCollectMinorPromotionFailureLeavesNurserySurvivorsUnmoved(t *testing.T)
 	}
 	if c.nurseryBump != bumpBefore {
 		t.Fatalf("nursery bump changed after failed promotion: got %d want %d", c.nurseryBump, bumpBefore)
+	}
+	if len(c.promotionScratch) != 0 || cap(c.promotionScratch) == 0 {
+		t.Fatalf("promotion scratch after rollback len/cap=%d/%d", len(c.promotionScratch), cap(c.promotionScratch))
+	}
+	for i, plan := range c.promotionScratch[:cap(c.promotionScratch)] {
+		if plan != (plannedPromotion{}) {
+			t.Fatalf("promotion scratch %d retained stale plan %+v", i, plan)
+		}
 	}
 	for i, root := range roots {
 		if !Ref(root).IsObj() || !c.validObjectRef(Ref(root)) {
@@ -68,6 +119,9 @@ func TestCollectMinorPromotionFailureLeavesNurserySurvivorsUnmoved(t *testing.T)
 	}
 	if got := c.entry(Ref(roots[0])).space; got != spaceOld {
 		t.Fatalf("remaining survivor space=%v, want old", got)
+	}
+	if len(c.promotionScratch) != 0 {
+		t.Fatalf("promotion scratch retained live length %d", len(c.promotionScratch))
 	}
 	if err := c.Verify(slots); err != nil {
 		t.Fatalf("heap inconsistent after recovery minor collection: %v", err)

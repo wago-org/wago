@@ -5,6 +5,7 @@ package runtime
 import (
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"unsafe"
 
@@ -17,6 +18,10 @@ import (
 const (
 	_ = uint(abi.TrapCellPtrOffset - 104)
 	_ = uint(104 - abi.TrapCellPtrOffset)
+	_ = uint(TrapLinMemOutOfBounds - 3)
+	_ = uint(3 - TrapLinMemOutOfBounds)
+	_ = uint(TrapLinMemCouldNotExtend - 4)
+	_ = uint(4 - TrapLinMemCouldNotExtend)
 )
 
 // Guard-page trap handler (EXPERIMENTAL). When linear memory is backed by a
@@ -35,8 +40,9 @@ const (
 //     acts if the frame's linMem matches that reservation's linMem base, which
 //     rejects the astronomically-unlikely case of a wild non-wasm pointer landing
 //     inside a live reservation.
-//   - It then writes TrapLinMemOutOfBounds to the frame's *trap and rewrites only
-//     the saved RIP to the ABI-specific trap exit: amd64 restores the trampoline's
+//   - It then writes TrapLinMemOutOfBounds, or TrapLinMemCouldNotExtend when a
+//     lazy page commit fails, to the frame's *trap and rewrites only the saved RIP
+//     to the ABI-specific trap exit: amd64 restores the trampoline's
 //     handler-jump re-entry SP and returns straight to enterNative; framed amd64
 //     performs the old one-frame `leave; ret` unwind.
 //
@@ -44,13 +50,13 @@ const (
 // in a Go asm stub installed via raw rt_sigaction.
 
 // guardRegion describes one live guarded reservation. Layout is read directly by
-// the asm handler: start@0, end@8, linMem@16, size 32 bytes. A zero start means
-// the slot is free.
+// the asm handler: start@0, end@8, linMem@16, ownerLinMem@24, size 32 bytes.
+// A zero start means the slot is free.
 type guardRegion struct {
-	start  uintptr
-	end    uintptr
-	linMem uintptr
-	_      uintptr // pad to 32 bytes for asm indexing
+	start       uintptr
+	end         uintptr
+	linMem      uintptr
+	ownerLinMem uintptr
 }
 
 const maxGuardRegions = 256
@@ -60,7 +66,8 @@ var (
 	guardRegionMu              sync.Mutex                   // serialises registry mutation only
 	guardTrapExitFramedPC      uintptr                      // entry of nativeTrapExitFramed
 	guardTrapExitHandlerJumpPC uintptr                      // entry of nativeTrapExitHandlerJump
-	guardOldHandler            uintptr                      // Go's previous SIGSEGV/SIGBUS handler
+	guardOldSEGVHandler        uintptr                      // previous SIGSEGV handler
+	guardOldBUSHandler         uintptr                      // previous SIGBUS handler
 
 	guardMu        sync.Mutex
 	guardInstalled bool
@@ -74,6 +81,7 @@ func registerGuardRegion(start, end, linMem uintptr) error {
 	for i := range guardRegions {
 		if guardRegions[i].start == 0 {
 			guardRegions[i].linMem = linMem
+			guardRegions[i].ownerLinMem = linMem
 			guardRegions[i].end = end
 			guardRegions[i].start = start // enable last
 			return nil
@@ -84,6 +92,17 @@ func registerGuardRegion(start, end, linMem uintptr) error {
 
 // unregisterGuardRegion frees a reservation's slot. start is cleared first so the
 // handler immediately stops matching it.
+func setGuardRegionOwner(start, ownerLinMem uintptr) {
+	guardRegionMu.Lock()
+	defer guardRegionMu.Unlock()
+	for i := range guardRegions {
+		if guardRegions[i].start == start {
+			atomic.StoreUintptr(&guardRegions[i].ownerLinMem, ownerLinMem)
+			return
+		}
+	}
+}
+
 func unregisterGuardRegion(start uintptr) {
 	guardRegionMu.Lock()
 	defer guardRegionMu.Unlock()
@@ -92,12 +111,16 @@ func unregisterGuardRegion(start uintptr) {
 			guardRegions[i].start = 0 // disable first
 			guardRegions[i].end = 0
 			guardRegions[i].linMem = 0
+			guardRegions[i].ownerLinMem = 0
 			return
 		}
 	}
 }
 
-func init() { guardCloseHook = unregisterGuardRegion }
+func init() {
+	guardCloseHook = unregisterGuardRegion
+	guardOwnerHook = setGuardRegionOwner
+}
 
 // nativeTrapExitFramed and nativeTrapExitHandlerJump are signal-rewrite landing
 // pads. Never called from Go.
@@ -139,6 +162,42 @@ func rtSigaction(sig uintptr, act, old *kernelSigaction) error {
 	return nil
 }
 
+func installLinuxSignalHandlers(act *kernelSigaction, call func(uintptr, *kernelSigaction, *kernelSigaction) error) error {
+	var oldSEGV kernelSigaction
+	if err := call(uintptr(syscall.SIGSEGV), nil, &oldSEGV); err != nil {
+		return fmt.Errorf("read SIGSEGV handler: %w", err)
+	}
+	if oldSEGV.handler <= 1 {
+		return fmt.Errorf("install SIGSEGV handler: previous disposition %#x is not chainable", oldSEGV.handler)
+	}
+	var oldBUS kernelSigaction
+	if err := call(uintptr(syscall.SIGBUS), nil, &oldBUS); err != nil {
+		return fmt.Errorf("read SIGBUS handler: %w", err)
+	}
+	if oldBUS.handler <= 1 {
+		return fmt.Errorf("install SIGBUS handler: previous disposition %#x is not chainable", oldBUS.handler)
+	}
+
+	// Publish both predecessors before either replacement can receive a fault.
+	guardOldSEGVHandler = oldSEGV.handler
+	guardOldBUSHandler = oldBUS.handler
+	if err := call(uintptr(syscall.SIGSEGV), act, nil); err != nil {
+		guardOldSEGVHandler = 0
+		guardOldBUSHandler = 0
+		return fmt.Errorf("install SIGSEGV handler: %w", err)
+	}
+	if err := call(uintptr(syscall.SIGBUS), act, nil); err != nil {
+		rollback := call(uintptr(syscall.SIGSEGV), &oldSEGV, nil)
+		guardOldSEGVHandler = 0
+		guardOldBUSHandler = 0
+		if rollback != nil {
+			return fmt.Errorf("install SIGBUS handler: %w (restore SIGSEGV: %v)", err, rollback)
+		}
+		return fmt.Errorf("install SIGBUS handler: %w", err)
+	}
+	return nil
+}
+
 // InstallGuardTrapHandler installs the guard-page SIGSEGV/SIGBUS handler
 // (idempotent). Call once before any CallGuarded.
 func InstallGuardTrapHandler() error {
@@ -154,14 +213,8 @@ func InstallGuardTrapHandler() error {
 		flags:    _SA_SIGINFO | _SA_ONSTACK | _SA_RESTORER,
 		restorer: addrGuardSigRestorer(),
 	}
-	var old kernelSigaction
-	if err := rtSigaction(uintptr(syscall.SIGSEGV), &act, &old); err != nil {
-		return fmt.Errorf("install SIGSEGV handler: %w", err)
-	}
-	guardOldHandler = old.handler
-	var oldBus kernelSigaction
-	if err := rtSigaction(uintptr(syscall.SIGBUS), &act, &oldBus); err != nil {
-		return fmt.Errorf("install SIGBUS handler: %w", err)
+	if err := installLinuxSignalHandlers(&act, rtSigaction); err != nil {
+		return err
 	}
 	guardInstalled = true
 	return nil

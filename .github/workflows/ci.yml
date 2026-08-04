@@ -132,6 +132,11 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: false
+      # Several amd64 runtime tests discover the pinned Core 3 checkout before
+      # deciding whether an unavailable conversion tool makes the case skippable.
+      # Fetch the corpus so the race lane reports races rather than checkout noise.
+      - name: Initialize Release 3 suite
+        run: git submodule update --init --depth=1 tests/spec-v3
       - name: Run focused runtime race suites
         run: go test -race -count=1 ./src/wago ./src/core/runtime
 
@@ -194,19 +199,39 @@ jobs:
           # No go.sum (stdlib-only module) -> nothing to cache; avoids a warning.
           cache: false
 
-      # Codegen and corpus tests use wat2wasm. Install it on every platform so
-      # missing tooling cannot turn coverage into a silent skip.
-      - name: Install wabt (Linux)
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y wabt
-      - name: Install wabt (macOS)
-        if: runner.os == 'macOS'
-        run: brew install wabt
+      # Runtime codegen uses syntax unavailable in distro WABT releases. Publish
+      # the checksum-pinned tool directory on every supported Unix runtime host.
+      - name: Bootstrap pinned WABT
+        if: matrix.runtime && runner.os != 'Windows'
+        run: |
+          scripts/bootstrap-wabt.sh --verify
+          echo "$(dirname "$(scripts/bootstrap-wabt.sh --print-path)")" >> "$GITHUB_PATH"
+
+      # Only linux/amd64 builds the supplementary official Core 3 tests during
+      # ordinary package testing. Initialize and build their authoritative
+      # interpreter fallback there; other runtime cells avoid the large OCaml
+      # toolchain and verify the portable/backend surface directly.
+      - name: Initialize Release 3 suite
+        if: matrix.goos == 'linux' && matrix.goarch == 'amd64'
+        run: git submodule update --init --depth=1 tests/spec-v3
+
+      - name: Install Release 3 interpreter toolchain
+        if: matrix.goos == 'linux' && matrix.goarch == 'amd64'
+        run: sudo apt-get update && sudo apt-get install -y ocaml-nox ocaml-dune menhir
+
+      - name: Bootstrap pinned Release 3 interpreter
+        if: matrix.goos == 'linux' && matrix.goarch == 'amd64'
+        run: |
+          interpreter="$(scripts/bootstrap-spec-interpreter.sh --print-path)"
+          scripts/bootstrap-spec-interpreter.sh --verify
+          echo "WAGO_SPEC_INTERPRETER=$interpreter" >> "$GITHUB_ENV"
+          echo "WAGO_SPEC_INTERPRETER_REVISION=$(scripts/bootstrap-spec-interpreter.sh --print-revision)" >> "$GITHUB_ENV"
+
+      # WABT does not publish a Chocolatey package. Its checksum-pinned official
+      # Windows x64 build runs natively on amd64 and under Windows 11 ARM emulation.
       - name: Install wabt (Windows)
-        if: runner.os == 'Windows'
+        if: matrix.runtime && runner.os == 'Windows'
         shell: pwsh
-        # WABT does not publish a Chocolatey package. Its official Windows x64
-        # build runs natively on amd64 and through Windows 11 ARM emulation.
         run: ./tests/scripts/install-wabt-windows.ps1
 
       - name: Verify native runner
@@ -320,6 +345,52 @@ jobs:
       - name: Run exact Core v2 validation and execution
         run: make spec2
 
+  core-v3:
+    name: Core v3 conformance / ${{ matrix.name }}
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux amd64 / explicit
+            runner: ubuntu-24.04
+            target: spec3
+          - name: Linux amd64 / signals
+            runner: ubuntu-24.04
+            target: spec3-signals
+          - name: Linux arm64 / explicit
+            runner: ubuntu-24.04-arm
+            target: spec3
+          - name: Linux arm64 / signals
+            runner: ubuntu-24.04-arm
+            target: spec3-signals
+          - name: Darwin arm64 / explicit
+            runner: macos-15
+            target: spec3
+          - name: Darwin arm64 / signals
+            runner: macos-15
+            target: spec3-signals
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+      - name: Install Release 3 interpreter toolchain
+        run: |
+          if [ "${{ runner.os }}" = Linux ]; then
+            sudo apt-get update
+            sudo apt-get install -y ocaml-nox ocaml-dune menhir
+          else
+            brew install ocaml dune menhir
+          fi
+      - name: Fetch pinned Core v3 corpus
+        run: git submodule update --init tests/spec-v3
+      - name: Run exact Core v3 validation and execution
+        run: make ${{ matrix.target }}
+
   tinygo:
     name: TinyGo / ${{ matrix.name }}
     needs: changes
@@ -409,10 +480,22 @@ jobs:
           # No go.sum (stdlib-only module) -> nothing to cache; avoids a warning.
           cache: false
 
-      # wabt provides wast2json for the WebAssembly spec-suite card producer (and
-      # wat2wasm for the codegen tests that feed coverage).
-      - name: Install wabt (wast2json / wat2wasm)
-        run: sudo apt-get update && sudo apt-get install -y wabt
+      - name: Initialize Release 3 suite
+        run: git submodule update --init --depth=1 tests/spec-v3
+
+      # Coverage executes the same Core 3 tests as the native matrix, including
+      # source forms that require the official interpreter fallback.
+      - name: Install Release 3 interpreter toolchain
+        run: sudo apt-get update && sudo apt-get install -y ocaml-nox ocaml-dune menhir
+
+      - name: Bootstrap pinned Core 3 tools
+        run: |
+          scripts/bootstrap-wabt.sh --verify
+          echo "$(dirname "$(scripts/bootstrap-wabt.sh --print-path)")" >> "$GITHUB_PATH"
+          interpreter="$(scripts/bootstrap-spec-interpreter.sh --print-path)"
+          scripts/bootstrap-spec-interpreter.sh --verify
+          echo "WAGO_SPEC_INTERPRETER=$interpreter" >> "$GITHUB_ENV"
+          echo "WAGO_SPEC_INTERPRETER_REVISION=$(scripts/bootstrap-spec-interpreter.sh --print-revision)" >> "$GITHUB_ENV"
 
       # Produce the coverage/tests/spec fragments. On PRs, CARD_BASELINE_REF
       # measures main in a worktree for the "Δ vs main" columns, so fetch main.

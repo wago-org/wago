@@ -1,0 +1,121 @@
+{
+  "commands": [
+    {
+      "filename": "commands.0.wasm",
+      "line": 1,
+      "name": "$env",
+      "type": "module_definition"
+    },
+    {
+      "line": 6,
+      "module": "$env",
+      "name": "$env",
+      "type": "module_instance"
+    },
+    {
+      "as": "env",
+      "line": 7,
+      "type": "register"
+    },
+    {
+      "filename": "commands.1.wasm",
+      "line": 8,
+      "name": "$i31ref_of_global_const_expr_and_tables",
+      "type": "module_definition"
+    },
+    {
+      "line": 18,
+      "module": "$i31ref_of_global_const_expr_and_tables",
+      "name": "$i31ref_of_global_const_expr_and_tables",
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "0"
+          }
+        ],
+        "field": "get",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "42"
+        }
+      ],
+      "line": 20,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "1"
+          }
+        ],
+        "field": "get",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "42"
+        }
+      ],
+      "line": 21,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "2"
+          }
+        ],
+        "field": "get",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "99"
+        }
+      ],
+      "line": 22,
+      "type": "assert_return"
+    },
+    {
+      "filename": "commands.2.wasm",
+      "line": 23,
+      "name": "$i31ref_of_global_const_expr_and_globals",
+      "type": "module_definition"
+    },
+    {
+      "line": 31,
+      "module": "$i31ref_of_global_const_expr_and_globals",
+      "name": "$i31ref_of_global_const_expr_and_globals",
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "get",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "42"
+        }
+      ],
+      "line": 33,
+      "type": "assert_return"
+    }
+  ],
+  "source": "WebAssembly/spec interpreter 3.0.0"
+}

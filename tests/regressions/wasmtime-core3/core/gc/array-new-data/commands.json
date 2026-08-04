@@ -1,0 +1,262 @@
+{
+  "commands": [
+    {
+      "filename": "commands.0.wasm",
+      "line": 1,
+      "type": "module_definition"
+    },
+    {
+      "line": 10,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          }
+        ],
+        "field": "array-new-data",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "heap_type": "array",
+          "type": "ref"
+        }
+      ],
+      "line": 11,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "4"
+          }
+        ],
+        "field": "array-new-data",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "heap_type": "array",
+          "type": "ref"
+        }
+      ],
+      "line": 15,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "1"
+          },
+          {
+            "type": "i32",
+            "value": "2"
+          }
+        ],
+        "field": "array-new-data",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "heap_type": "array",
+          "type": "ref"
+        }
+      ],
+      "line": 19,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "4"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          }
+        ],
+        "field": "array-new-data",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "heap_type": "array",
+          "type": "ref"
+        }
+      ],
+      "line": 23,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "5"
+          }
+        ],
+        "field": "array-new-data",
+        "type": "invoke"
+      },
+      "line": 27,
+      "text": "out of bounds memory access",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "5"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          }
+        ],
+        "field": "array-new-data",
+        "type": "invoke"
+      },
+      "line": 31,
+      "text": "out of bounds memory access",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "1"
+          },
+          {
+            "type": "i32",
+            "value": "4"
+          }
+        ],
+        "field": "array-new-data",
+        "type": "invoke"
+      },
+      "line": 35,
+      "text": "out of bounds memory access",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "4"
+          },
+          {
+            "type": "i32",
+            "value": "1"
+          }
+        ],
+        "field": "array-new-data",
+        "type": "invoke"
+      },
+      "line": 39,
+      "text": "out of bounds memory access",
+      "type": "assert_trap"
+    },
+    {
+      "filename": "commands.1.wasm",
+      "line": 43,
+      "type": "module_definition"
+    },
+    {
+      "line": 53,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "array-new-data-contents",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "187"
+        },
+        {
+          "type": "i32",
+          "value": "204"
+        }
+      ],
+      "line": 54,
+      "type": "assert_return"
+    },
+    {
+      "filename": "commands.2.wasm",
+      "line": 59,
+      "type": "module_definition"
+    },
+    {
+      "line": 69,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "array-new-data-little-endian",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "3721182122"
+        }
+      ],
+      "line": 70,
+      "type": "assert_return"
+    },
+    {
+      "filename": "commands.3.wasm",
+      "line": 71,
+      "type": "module_definition"
+    },
+    {
+      "line": 80,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "array-new-data-unaligned",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "8721"
+        }
+      ],
+      "line": 81,
+      "type": "assert_return"
+    }
+  ],
+  "source": "WebAssembly/spec interpreter 3.0.0"
+}

@@ -475,7 +475,7 @@ func TestSIMDV128IndirectCallMixedSignature(t *testing.T) {
 		binary.LittleEndian.PutUint64(funcDescs[runtime.FuncRefContextOffset:], context)
 		canonical := funcDescs[runtime.FuncRefDescBytes:]
 		binary.LittleEndian.PutUint64(canonical[runtime.TableEntryCodePtrOffset:], uint64(entry)+uint64(cm.Entry[1]))
-		binary.LittleEndian.PutUint32(canonical[runtime.TableEntrySigIDOffset:], m.StructuralTypeID(1))
+		binary.LittleEndian.PutUint64(canonical[runtime.TableEntrySigKeyOffset:], m.StructuralTypeKey(1))
 		binary.LittleEndian.PutUint64(canonical[runtime.TableEntryHomeLinMemOffset:], uint64(jm.LinMemBase()))
 		binary.LittleEndian.PutUint64(canonical[runtime.TableEntryRefSlotOffset:], uint64(uintptr(unsafe.Pointer(&canonical[0]))))
 		binary.LittleEndian.PutUint64(canonical[runtime.FuncRefContextOffset:], context)

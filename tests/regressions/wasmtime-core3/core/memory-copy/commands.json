@@ -1,0 +1,2355 @@
+{
+  "commands": [
+    {
+      "filename": "commands.0.wasm",
+      "line": 6,
+      "type": "module"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "1000"
+          }
+        ],
+        "field": "is hello?",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "1"
+        }
+      ],
+      "line": 95,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "2000"
+          }
+        ],
+        "field": "is olleh?",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "1"
+        }
+      ],
+      "line": 98,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "500"
+          },
+          {
+            "type": "i32",
+            "value": "1000"
+          },
+          {
+            "type": "i32",
+            "value": "5"
+          }
+        ],
+        "field": "memory.copy",
+        "type": "invoke"
+      },
+      "line": 102,
+      "type": "action"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "500"
+          }
+        ],
+        "field": "is hello?",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "1"
+        }
+      ],
+      "line": 104,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "1500"
+          },
+          {
+            "type": "i32",
+            "value": "1000"
+          },
+          {
+            "type": "i32",
+            "value": "5"
+          }
+        ],
+        "field": "memory.copy",
+        "type": "invoke"
+      },
+      "line": 108,
+      "type": "action"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "1500"
+          }
+        ],
+        "field": "is hello?",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "1"
+        }
+      ],
+      "line": 110,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "1998"
+          },
+          {
+            "type": "i32",
+            "value": "2000"
+          },
+          {
+            "type": "i32",
+            "value": "5"
+          }
+        ],
+        "field": "memory.copy",
+        "type": "invoke"
+      },
+      "line": 114,
+      "type": "action"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "1998"
+          }
+        ],
+        "field": "is olleh?",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "1"
+        }
+      ],
+      "line": 116,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "2000"
+          },
+          {
+            "type": "i32",
+            "value": "1998"
+          },
+          {
+            "type": "i32",
+            "value": "5"
+          }
+        ],
+        "field": "memory.copy",
+        "type": "invoke"
+      },
+      "line": 120,
+      "type": "action"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "2000"
+          }
+        ],
+        "field": "is olleh?",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "1"
+        }
+      ],
+      "line": 122,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "2000"
+          },
+          {
+            "type": "i32",
+            "value": "2000"
+          },
+          {
+            "type": "i32",
+            "value": "5"
+          }
+        ],
+        "field": "memory.copy",
+        "type": "invoke"
+      },
+      "line": 126,
+      "type": "action"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "2000"
+          }
+        ],
+        "field": "is olleh?",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "1"
+        }
+      ],
+      "line": 128,
+      "type": "assert_return"
+    },
+    {
+      "filename": "commands.1.wasm",
+      "line": 132,
+      "type": "module"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          }
+        ],
+        "field": "m32_to_same",
+        "type": "invoke"
+      },
+      "expected": [],
+      "line": 181,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "65536"
+          }
+        ],
+        "field": "m32_to_same",
+        "type": "invoke"
+      },
+      "expected": [],
+      "line": 182,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "65537"
+          }
+        ],
+        "field": "m32_to_same",
+        "type": "invoke"
+      },
+      "line": 183,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "100"
+          },
+          {
+            "type": "i32",
+            "value": "200"
+          },
+          {
+            "type": "i32",
+            "value": "65336"
+          }
+        ],
+        "field": "m32_to_same",
+        "type": "invoke"
+      },
+      "expected": [],
+      "line": 184,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "200"
+          },
+          {
+            "type": "i32",
+            "value": "100"
+          },
+          {
+            "type": "i32",
+            "value": "65336"
+          }
+        ],
+        "field": "m32_to_same",
+        "type": "invoke"
+      },
+      "expected": [],
+      "line": 185,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "201"
+          },
+          {
+            "type": "i32",
+            "value": "100"
+          },
+          {
+            "type": "i32",
+            "value": "65336"
+          }
+        ],
+        "field": "m32_to_same",
+        "type": "invoke"
+      },
+      "line": 186,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "200"
+          },
+          {
+            "type": "i32",
+            "value": "101"
+          },
+          {
+            "type": "i32",
+            "value": "65336"
+          }
+        ],
+        "field": "m32_to_same",
+        "type": "invoke"
+      },
+      "expected": [],
+      "line": 187,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "200"
+          },
+          {
+            "type": "i32",
+            "value": "100"
+          },
+          {
+            "type": "i32",
+            "value": "65337"
+          }
+        ],
+        "field": "m32_to_same",
+        "type": "invoke"
+      },
+      "line": 188,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "-1"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          }
+        ],
+        "field": "m32_to_same",
+        "type": "invoke"
+      },
+      "line": 189,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "-1"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          }
+        ],
+        "field": "m32_to_same",
+        "type": "invoke"
+      },
+      "line": 190,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "-1"
+          }
+        ],
+        "field": "m32_to_same",
+        "type": "invoke"
+      },
+      "line": 191,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "100"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "-1"
+          }
+        ],
+        "field": "m32_to_same",
+        "type": "invoke"
+      },
+      "line": 192,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "100"
+          },
+          {
+            "type": "i32",
+            "value": "-1"
+          }
+        ],
+        "field": "m32_to_same",
+        "type": "invoke"
+      },
+      "line": 193,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "-1"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "100"
+          }
+        ],
+        "field": "m32_to_same",
+        "type": "invoke"
+      },
+      "line": 194,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "-1"
+          },
+          {
+            "type": "i32",
+            "value": "100"
+          }
+        ],
+        "field": "m32_to_same",
+        "type": "invoke"
+      },
+      "line": 195,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          }
+        ],
+        "field": "m32_to_m32",
+        "type": "invoke"
+      },
+      "expected": [],
+      "line": 197,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "65536"
+          }
+        ],
+        "field": "m32_to_m32",
+        "type": "invoke"
+      },
+      "expected": [],
+      "line": 198,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "65537"
+          }
+        ],
+        "field": "m32_to_m32",
+        "type": "invoke"
+      },
+      "line": 199,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "100"
+          },
+          {
+            "type": "i32",
+            "value": "200"
+          },
+          {
+            "type": "i32",
+            "value": "65336"
+          }
+        ],
+        "field": "m32_to_m32",
+        "type": "invoke"
+      },
+      "expected": [],
+      "line": 200,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "200"
+          },
+          {
+            "type": "i32",
+            "value": "100"
+          },
+          {
+            "type": "i32",
+            "value": "65336"
+          }
+        ],
+        "field": "m32_to_m32",
+        "type": "invoke"
+      },
+      "expected": [],
+      "line": 201,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "201"
+          },
+          {
+            "type": "i32",
+            "value": "100"
+          },
+          {
+            "type": "i32",
+            "value": "65336"
+          }
+        ],
+        "field": "m32_to_m32",
+        "type": "invoke"
+      },
+      "line": 202,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "200"
+          },
+          {
+            "type": "i32",
+            "value": "101"
+          },
+          {
+            "type": "i32",
+            "value": "65336"
+          }
+        ],
+        "field": "m32_to_m32",
+        "type": "invoke"
+      },
+      "expected": [],
+      "line": 203,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "200"
+          },
+          {
+            "type": "i32",
+            "value": "100"
+          },
+          {
+            "type": "i32",
+            "value": "65337"
+          }
+        ],
+        "field": "m32_to_m32",
+        "type": "invoke"
+      },
+      "line": 204,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "-1"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          }
+        ],
+        "field": "m32_to_m32",
+        "type": "invoke"
+      },
+      "line": 205,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "-1"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          }
+        ],
+        "field": "m32_to_m32",
+        "type": "invoke"
+      },
+      "line": 206,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "-1"
+          }
+        ],
+        "field": "m32_to_m32",
+        "type": "invoke"
+      },
+      "line": 207,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "100"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "-1"
+          }
+        ],
+        "field": "m32_to_m32",
+        "type": "invoke"
+      },
+      "line": 208,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "100"
+          },
+          {
+            "type": "i32",
+            "value": "-1"
+          }
+        ],
+        "field": "m32_to_m32",
+        "type": "invoke"
+      },
+      "line": 209,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "-1"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "100"
+          }
+        ],
+        "field": "m32_to_m32",
+        "type": "invoke"
+      },
+      "line": 210,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "-1"
+          },
+          {
+            "type": "i32",
+            "value": "100"
+          }
+        ],
+        "field": "m32_to_m32",
+        "type": "invoke"
+      },
+      "line": 211,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          }
+        ],
+        "field": "m32_to_m64",
+        "type": "invoke"
+      },
+      "expected": [],
+      "line": 213,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "65536"
+          }
+        ],
+        "field": "m32_to_m64",
+        "type": "invoke"
+      },
+      "expected": [],
+      "line": 214,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "65537"
+          }
+        ],
+        "field": "m32_to_m64",
+        "type": "invoke"
+      },
+      "line": 215,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "100"
+          },
+          {
+            "type": "i32",
+            "value": "200"
+          },
+          {
+            "type": "i32",
+            "value": "65336"
+          }
+        ],
+        "field": "m32_to_m64",
+        "type": "invoke"
+      },
+      "expected": [],
+      "line": 216,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "200"
+          },
+          {
+            "type": "i32",
+            "value": "100"
+          },
+          {
+            "type": "i32",
+            "value": "65336"
+          }
+        ],
+        "field": "m32_to_m64",
+        "type": "invoke"
+      },
+      "expected": [],
+      "line": 217,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "201"
+          },
+          {
+            "type": "i32",
+            "value": "100"
+          },
+          {
+            "type": "i32",
+            "value": "65336"
+          }
+        ],
+        "field": "m32_to_m64",
+        "type": "invoke"
+      },
+      "line": 218,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "200"
+          },
+          {
+            "type": "i32",
+            "value": "101"
+          },
+          {
+            "type": "i32",
+            "value": "65336"
+          }
+        ],
+        "field": "m32_to_m64",
+        "type": "invoke"
+      },
+      "expected": [],
+      "line": 219,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "200"
+          },
+          {
+            "type": "i32",
+            "value": "100"
+          },
+          {
+            "type": "i32",
+            "value": "65337"
+          }
+        ],
+        "field": "m32_to_m64",
+        "type": "invoke"
+      },
+      "line": 220,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "-1"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          }
+        ],
+        "field": "m32_to_m64",
+        "type": "invoke"
+      },
+      "line": 221,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "-1"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          }
+        ],
+        "field": "m32_to_m64",
+        "type": "invoke"
+      },
+      "line": 222,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "-1"
+          }
+        ],
+        "field": "m32_to_m64",
+        "type": "invoke"
+      },
+      "line": 223,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "100"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "-1"
+          }
+        ],
+        "field": "m32_to_m64",
+        "type": "invoke"
+      },
+      "line": 224,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "100"
+          },
+          {
+            "type": "i32",
+            "value": "-1"
+          }
+        ],
+        "field": "m32_to_m64",
+        "type": "invoke"
+      },
+      "line": 225,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "-1"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "100"
+          }
+        ],
+        "field": "m32_to_m64",
+        "type": "invoke"
+      },
+      "line": 226,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "-1"
+          },
+          {
+            "type": "i32",
+            "value": "100"
+          }
+        ],
+        "field": "m32_to_m64",
+        "type": "invoke"
+      },
+      "line": 227,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "0"
+          },
+          {
+            "type": "i64",
+            "value": "0"
+          },
+          {
+            "type": "i64",
+            "value": "0"
+          }
+        ],
+        "field": "m64_to_same",
+        "type": "invoke"
+      },
+      "expected": [],
+      "line": 229,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "0"
+          },
+          {
+            "type": "i64",
+            "value": "0"
+          },
+          {
+            "type": "i64",
+            "value": "65536"
+          }
+        ],
+        "field": "m64_to_same",
+        "type": "invoke"
+      },
+      "expected": [],
+      "line": 230,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "0"
+          },
+          {
+            "type": "i64",
+            "value": "0"
+          },
+          {
+            "type": "i64",
+            "value": "65537"
+          }
+        ],
+        "field": "m64_to_same",
+        "type": "invoke"
+      },
+      "line": 231,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "100"
+          },
+          {
+            "type": "i64",
+            "value": "200"
+          },
+          {
+            "type": "i64",
+            "value": "65336"
+          }
+        ],
+        "field": "m64_to_same",
+        "type": "invoke"
+      },
+      "expected": [],
+      "line": 232,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "200"
+          },
+          {
+            "type": "i64",
+            "value": "100"
+          },
+          {
+            "type": "i64",
+            "value": "65336"
+          }
+        ],
+        "field": "m64_to_same",
+        "type": "invoke"
+      },
+      "expected": [],
+      "line": 233,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "201"
+          },
+          {
+            "type": "i64",
+            "value": "100"
+          },
+          {
+            "type": "i64",
+            "value": "65336"
+          }
+        ],
+        "field": "m64_to_same",
+        "type": "invoke"
+      },
+      "line": 234,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "200"
+          },
+          {
+            "type": "i64",
+            "value": "101"
+          },
+          {
+            "type": "i64",
+            "value": "65336"
+          }
+        ],
+        "field": "m64_to_same",
+        "type": "invoke"
+      },
+      "expected": [],
+      "line": 235,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "200"
+          },
+          {
+            "type": "i64",
+            "value": "100"
+          },
+          {
+            "type": "i64",
+            "value": "65337"
+          }
+        ],
+        "field": "m64_to_same",
+        "type": "invoke"
+      },
+      "line": 236,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "-1"
+          },
+          {
+            "type": "i64",
+            "value": "0"
+          },
+          {
+            "type": "i64",
+            "value": "0"
+          }
+        ],
+        "field": "m64_to_same",
+        "type": "invoke"
+      },
+      "line": 237,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "0"
+          },
+          {
+            "type": "i64",
+            "value": "-1"
+          },
+          {
+            "type": "i64",
+            "value": "0"
+          }
+        ],
+        "field": "m64_to_same",
+        "type": "invoke"
+      },
+      "line": 238,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "0"
+          },
+          {
+            "type": "i64",
+            "value": "0"
+          },
+          {
+            "type": "i64",
+            "value": "-1"
+          }
+        ],
+        "field": "m64_to_same",
+        "type": "invoke"
+      },
+      "line": 239,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "100"
+          },
+          {
+            "type": "i64",
+            "value": "0"
+          },
+          {
+            "type": "i64",
+            "value": "-1"
+          }
+        ],
+        "field": "m64_to_same",
+        "type": "invoke"
+      },
+      "line": 240,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "0"
+          },
+          {
+            "type": "i64",
+            "value": "100"
+          },
+          {
+            "type": "i64",
+            "value": "-1"
+          }
+        ],
+        "field": "m64_to_same",
+        "type": "invoke"
+      },
+      "line": 241,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "-1"
+          },
+          {
+            "type": "i64",
+            "value": "0"
+          },
+          {
+            "type": "i64",
+            "value": "100"
+          }
+        ],
+        "field": "m64_to_same",
+        "type": "invoke"
+      },
+      "line": 242,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "0"
+          },
+          {
+            "type": "i64",
+            "value": "-1"
+          },
+          {
+            "type": "i64",
+            "value": "100"
+          }
+        ],
+        "field": "m64_to_same",
+        "type": "invoke"
+      },
+      "line": 243,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "0"
+          },
+          {
+            "type": "i64",
+            "value": "0"
+          },
+          {
+            "type": "i64",
+            "value": "0"
+          }
+        ],
+        "field": "m64_to_m64",
+        "type": "invoke"
+      },
+      "expected": [],
+      "line": 245,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "0"
+          },
+          {
+            "type": "i64",
+            "value": "0"
+          },
+          {
+            "type": "i64",
+            "value": "65536"
+          }
+        ],
+        "field": "m64_to_m64",
+        "type": "invoke"
+      },
+      "expected": [],
+      "line": 246,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "0"
+          },
+          {
+            "type": "i64",
+            "value": "0"
+          },
+          {
+            "type": "i64",
+            "value": "65537"
+          }
+        ],
+        "field": "m64_to_m64",
+        "type": "invoke"
+      },
+      "line": 247,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "100"
+          },
+          {
+            "type": "i64",
+            "value": "200"
+          },
+          {
+            "type": "i64",
+            "value": "65336"
+          }
+        ],
+        "field": "m64_to_m64",
+        "type": "invoke"
+      },
+      "expected": [],
+      "line": 248,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "200"
+          },
+          {
+            "type": "i64",
+            "value": "100"
+          },
+          {
+            "type": "i64",
+            "value": "65336"
+          }
+        ],
+        "field": "m64_to_m64",
+        "type": "invoke"
+      },
+      "expected": [],
+      "line": 249,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "201"
+          },
+          {
+            "type": "i64",
+            "value": "100"
+          },
+          {
+            "type": "i64",
+            "value": "65336"
+          }
+        ],
+        "field": "m64_to_m64",
+        "type": "invoke"
+      },
+      "line": 250,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "200"
+          },
+          {
+            "type": "i64",
+            "value": "101"
+          },
+          {
+            "type": "i64",
+            "value": "65336"
+          }
+        ],
+        "field": "m64_to_m64",
+        "type": "invoke"
+      },
+      "expected": [],
+      "line": 251,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "200"
+          },
+          {
+            "type": "i64",
+            "value": "100"
+          },
+          {
+            "type": "i64",
+            "value": "65337"
+          }
+        ],
+        "field": "m64_to_m64",
+        "type": "invoke"
+      },
+      "line": 252,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "-1"
+          },
+          {
+            "type": "i64",
+            "value": "0"
+          },
+          {
+            "type": "i64",
+            "value": "0"
+          }
+        ],
+        "field": "m64_to_m64",
+        "type": "invoke"
+      },
+      "line": 253,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "0"
+          },
+          {
+            "type": "i64",
+            "value": "-1"
+          },
+          {
+            "type": "i64",
+            "value": "0"
+          }
+        ],
+        "field": "m64_to_m64",
+        "type": "invoke"
+      },
+      "line": 254,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "0"
+          },
+          {
+            "type": "i64",
+            "value": "0"
+          },
+          {
+            "type": "i64",
+            "value": "-1"
+          }
+        ],
+        "field": "m64_to_m64",
+        "type": "invoke"
+      },
+      "line": 255,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "100"
+          },
+          {
+            "type": "i64",
+            "value": "0"
+          },
+          {
+            "type": "i64",
+            "value": "-1"
+          }
+        ],
+        "field": "m64_to_m64",
+        "type": "invoke"
+      },
+      "line": 256,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "0"
+          },
+          {
+            "type": "i64",
+            "value": "100"
+          },
+          {
+            "type": "i64",
+            "value": "-1"
+          }
+        ],
+        "field": "m64_to_m64",
+        "type": "invoke"
+      },
+      "line": 257,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "-1"
+          },
+          {
+            "type": "i64",
+            "value": "0"
+          },
+          {
+            "type": "i64",
+            "value": "100"
+          }
+        ],
+        "field": "m64_to_m64",
+        "type": "invoke"
+      },
+      "line": 258,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "0"
+          },
+          {
+            "type": "i64",
+            "value": "-1"
+          },
+          {
+            "type": "i64",
+            "value": "100"
+          }
+        ],
+        "field": "m64_to_m64",
+        "type": "invoke"
+      },
+      "line": 259,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i64",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          }
+        ],
+        "field": "m64_to_m32",
+        "type": "invoke"
+      },
+      "expected": [],
+      "line": 261,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i64",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "65536"
+          }
+        ],
+        "field": "m64_to_m32",
+        "type": "invoke"
+      },
+      "expected": [],
+      "line": 262,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i64",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "65537"
+          }
+        ],
+        "field": "m64_to_m32",
+        "type": "invoke"
+      },
+      "line": 263,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "100"
+          },
+          {
+            "type": "i64",
+            "value": "200"
+          },
+          {
+            "type": "i32",
+            "value": "65336"
+          }
+        ],
+        "field": "m64_to_m32",
+        "type": "invoke"
+      },
+      "expected": [],
+      "line": 264,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "200"
+          },
+          {
+            "type": "i64",
+            "value": "100"
+          },
+          {
+            "type": "i32",
+            "value": "65336"
+          }
+        ],
+        "field": "m64_to_m32",
+        "type": "invoke"
+      },
+      "expected": [],
+      "line": 265,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "201"
+          },
+          {
+            "type": "i64",
+            "value": "100"
+          },
+          {
+            "type": "i32",
+            "value": "65336"
+          }
+        ],
+        "field": "m64_to_m32",
+        "type": "invoke"
+      },
+      "line": 266,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "200"
+          },
+          {
+            "type": "i64",
+            "value": "101"
+          },
+          {
+            "type": "i32",
+            "value": "65336"
+          }
+        ],
+        "field": "m64_to_m32",
+        "type": "invoke"
+      },
+      "expected": [],
+      "line": 267,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "200"
+          },
+          {
+            "type": "i64",
+            "value": "100"
+          },
+          {
+            "type": "i32",
+            "value": "65337"
+          }
+        ],
+        "field": "m64_to_m32",
+        "type": "invoke"
+      },
+      "line": 268,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "-1"
+          },
+          {
+            "type": "i64",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          }
+        ],
+        "field": "m64_to_m32",
+        "type": "invoke"
+      },
+      "line": 269,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i64",
+            "value": "-1"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          }
+        ],
+        "field": "m64_to_m32",
+        "type": "invoke"
+      },
+      "line": 270,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i64",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "-1"
+          }
+        ],
+        "field": "m64_to_m32",
+        "type": "invoke"
+      },
+      "line": 271,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "100"
+          },
+          {
+            "type": "i64",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "-1"
+          }
+        ],
+        "field": "m64_to_m32",
+        "type": "invoke"
+      },
+      "line": 272,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i64",
+            "value": "100"
+          },
+          {
+            "type": "i32",
+            "value": "-1"
+          }
+        ],
+        "field": "m64_to_m32",
+        "type": "invoke"
+      },
+      "line": 273,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "-1"
+          },
+          {
+            "type": "i64",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "100"
+          }
+        ],
+        "field": "m64_to_m32",
+        "type": "invoke"
+      },
+      "line": 274,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i64",
+            "value": "-1"
+          },
+          {
+            "type": "i32",
+            "value": "100"
+          }
+        ],
+        "field": "m64_to_m32",
+        "type": "invoke"
+      },
+      "line": 275,
+      "text": "out of bounds",
+      "type": "assert_trap"
+    },
+    {
+      "filename": "commands.2.wasm",
+      "line": 279,
+      "type": "module"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "run",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "187"
+        }
+      ],
+      "line": 289,
+      "type": "assert_return"
+    }
+  ],
+  "source": "wasm-tools 1.251.0 json-from-wast"
+}

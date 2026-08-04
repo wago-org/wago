@@ -57,7 +57,11 @@ fib(20) = 6765
 
 ```sh
 wago fib.wasm 20
+wago run --core 3 --invoke main generated-wasmgc.wasm
 ```
+
+The CLI preserves the WebAssembly 2 compatibility default. Pass `--core 3` to
+compile and execute modules with the complete opt-in `CoreFeaturesV3` set.
 
 Validate or precompile a module:
 

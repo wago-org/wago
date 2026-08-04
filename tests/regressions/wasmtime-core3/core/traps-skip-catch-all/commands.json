@@ -1,0 +1,164 @@
+{
+  "commands": [
+    {
+      "filename": "commands.0.wasm",
+      "line": 1,
+      "type": "module_definition"
+    },
+    {
+      "line": 15,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "0"
+          }
+        ],
+        "field": "run",
+        "type": "invoke"
+      },
+      "line": 16,
+      "text": "unreachable",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "g",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "0"
+        }
+      ],
+      "line": 17,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "1"
+          }
+        ],
+        "field": "run",
+        "type": "invoke"
+      },
+      "line": 18,
+      "text": "divide by zero",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "g",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "0"
+        }
+      ],
+      "line": 19,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "2"
+          }
+        ],
+        "field": "run",
+        "type": "invoke"
+      },
+      "line": 20,
+      "text": "call stack exhausted",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "g",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "0"
+        }
+      ],
+      "line": 21,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "3"
+          }
+        ],
+        "field": "run",
+        "type": "invoke"
+      },
+      "expected": [],
+      "line": 22,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "g",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "1"
+        }
+      ],
+      "line": 23,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "0"
+          }
+        ],
+        "field": "run",
+        "type": "invoke"
+      },
+      "line": 24,
+      "text": "unreachable",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "g",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "0"
+        }
+      ],
+      "line": 25,
+      "type": "assert_return"
+    }
+  ],
+  "source": "WebAssembly/spec interpreter 3.0.0"
+}

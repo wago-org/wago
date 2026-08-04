@@ -1,0 +1,40 @@
+{
+  "commands": [
+    {
+      "filename": "commands.0.wasm",
+      "line": 1,
+      "name": "$X",
+      "type": "module_definition"
+    },
+    {
+      "line": 40,
+      "module": "$X",
+      "name": "$X",
+      "type": "module_instance"
+    },
+    {
+      "filename": "commands.1.wasm",
+      "line": 41,
+      "type": "module_definition"
+    },
+    {
+      "line": 93,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "0"
+          }
+        ],
+        "field": "",
+        "type": "invoke"
+      },
+      "line": 94,
+      "type": "action"
+    }
+  ],
+  "source": "WebAssembly/spec interpreter 3.0.0"
+}

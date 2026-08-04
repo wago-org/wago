@@ -1,0 +1,28 @@
+{
+  "commands": [
+    {
+      "filename": "commands.0.wasm",
+      "line": 1,
+      "name": "$m",
+      "type": "module_definition"
+    },
+    {
+      "line": 5,
+      "module": "$m",
+      "name": "$m",
+      "type": "module_instance"
+    },
+    {
+      "filename": "commands.1.wasm",
+      "line": 6,
+      "type": "module_definition"
+    },
+    {
+      "line": 10,
+      "module_type": "instance",
+      "text": "expected 64-bit memory, found 32-bit memory",
+      "type": "assert_unlinkable"
+    }
+  ],
+  "source": "WebAssembly/spec interpreter 3.0.0"
+}

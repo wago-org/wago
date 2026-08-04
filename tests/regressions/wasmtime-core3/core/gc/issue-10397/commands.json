@@ -1,0 +1,24 @@
+{
+  "commands": [
+    {
+      "filename": "commands.0.wasm",
+      "line": 1,
+      "type": "module_definition"
+    },
+    {
+      "line": 13,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "",
+        "type": "invoke"
+      },
+      "expected": [],
+      "line": 14,
+      "type": "assert_return"
+    }
+  ],
+  "source": "WebAssembly/spec interpreter 3.0.0"
+}

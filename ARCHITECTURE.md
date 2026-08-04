@@ -13,7 +13,7 @@ on amd64 and arm64. Linux and Darwin/arm64 additionally support signal-backed
 guard-page bounds checks; all six targets support explicit bounds checks and
 cooperative cancellation safepoints.
 
-<!-- artifact:codec-version 23 -->
+<!-- artifact:codec-version 31 -->
 
 **CPU baseline: modern x86-64 with SSSE3/SSE4.1 plus AVX/VEX.128 XMM encodings.** The backend emits
 some instructions beyond original x86-64 without a CPUID gate or fallback:
@@ -46,6 +46,83 @@ packed float/int conversions and f32/f64 lane-width demote/promote, plus compari
 qword-lane sequences that mask shift counts modulo 64 and avoid SSE4.2 `pcmpgtq`.
 Unsupported `0xfd` opcodes remain frontend errors instead of falling through to
 backend codegen.
+
+WasmGC uses stable compact references and bounded collector heaps. Generated
+modules collect only where exact native roots are published; unsupported root
+shapes remain fail-closed rather than using approximate scanning. A bounded linux/amd64 slice
+admits in-invocation collection for local call graphs with numeric host imports,
+module-local GC globals, private immutable local-function tables, one private
+collector-reference table, direct recursion, and no start/tag/EH state. A
+structured-CFG dataflow pass computes exact local liveness per allocation and
+callsite; amd64 adds hidden operand spill offsets, compact safepoint IDs, frame
+size, adapter return, and recursive call return-PC maps. The synchronous helper
+control frame publishes parked RSP, and Go exposes validated off-heap slots from
+each walked frame directly as mutable collector roots. Throughput/Tiny stress
+collection and the root walker remain zero-allocation after warm-up. Codec v31
+persists and strictly revalidates the map, including dynamic-import stack
+adjustments. Direct tail calls discard their caller frame. Numeric host callbacks
+use a bounded suspended-activation stack plus separate nested foreign stacks, and
+mutable module-local GC globals synchronize checked collector slots before every
+allocating helper. Private local `call_indirect` and `return_call_indirect` sites publish exact
+caller roots, while collector-reference table entries are scanned directly from
+the mutable off-heap descriptor. Generic struct/array execution is also admitted
+with guard-page bounds checks on linux/amd64. Local-only `call_ref` and
+`return_call_ref` are admitted when no function descriptor can enter through a
+parameter, result, global, import, or mutable/exported table. EH functions use
+conservative all-local masks plus fixed GC-payload record offsets; record
+initialization and clearing remain part of the native EH lowering. A bounded
+same-Runtime cross-instance slice gives structurally compatible modules one
+canonical collector domain, translates immutable module-local type indexes at helper
+and snapshot boundaries, transfers compact GC references without copying, and switches root-map
+ownership across foreign return PCs. Mutable and immutable imported/exported GC
+globals use direct domain-wide alias-cell roots plus checked barrier slots. Multiple
+heterogeneous imported/exported collector-reference tables use the same domain-wide
+descriptor-root scan across growth, attachment rollback, and producer-first close.
+Exact cross-instance GC-reference calls coexist with those shared persistent roots and
+retain the same foreign-frame ownership across compiled-code codec reload. Generic
+struct/array results may leave the domain as up to 64 opaque retained `GCRef` tokens
+per producer. Partial multi-result issuance rolls back atomically; exact store/producer
+ownership survives producer close, and non-null tokens may re-enter the same collector
+domain through structural subtype checks plus reusable checked argument roots; stale
+and foreign tokens reject. Explicit cross-Runtime transfer uses
+`target.CloneGCRefFrom(source, ref)`: a bounded stable-ID graph clone maps
+structurally equivalent target types, preserves cycles/internal sharing, assigns
+new target identity, and rejects non-null opaque store-owned payloads. Direct
+cross-Runtime compact-handle sharing remains impossible. `CaptureDomain` separately quiesces an exhaustive ordered
+collector domain and persists every member, internal function/global/table edge,
+memory32/memory64 and tag aliases, typed live passive roots, and one stable-ID heap
+graph in `WGDN` v3 with strict v1/v2 loading; restore publishes the complete member
+slice only after transactional graph reconstruction. Codec v31 persists helper admission and
+the 16-byte `v128` storage contract, but never compact handles.
+Snapshot v4 persists reachable local-global object graphs with stable IDs and
+two-pass cycle/sharing reconstruction; snapshot v5 adds one owned local
+collector-reference table, while snapshot v6 adds multiple heterogeneous local
+tables with indexed lengths, barriers, sharing, and exact structural root
+validation. AMD64 final scalar struct/array accesses and initialized final-struct
+allocation use collector native ABI v3: a stable allocation/collection/card-refreshed
+view at basedata offset 280 validates handle, space, object extent, canonical type,
+array bounds, remembered membership, any existing object-card interval, and the
+transactional native-allocation epoch before direct heap access. Final abstract
+reference stores may bypass helpers only when no metadata growth is required;
+vector, non-final, bulk, cardless/unremembered, and Tiny barrier paths remain
+helper-bound. Arm64 builds lower struct/array/i31 and dynamic cast/test helpers
+through the synchronous ABI. The
+bounded arm64 native-root product publishes liveness-exact locals and hidden
+spills from parked SP, then follows saved-LR callsites through direct/recursive
+calls, suspended direct-host activations, and same-domain foreign frames. Mutable
+local/shared GC globals, local/shared collector tables, indirect/reference calls,
+discarded-frame direct/indirect/reference tails, and fixed EH payload records are
+exact. ARM64 `try_table`, `throw`, `throw_ref`, function subtype identity, indexed
+multi-memory, memory64, and table64 are part of both ARM64 Core 3 bounds modes.
+Signal mode guard-checks eligible memory-0 memory32 accesses while indexed memories
+and memory64 retain explicit checks. Polymorphic local `call_indirect` and same-domain foreign `call_ref`
+publish each possible native return PC; cross-instance wrapper paths carry their
+64-byte save-area adjustment into frame walking. Descriptor-resolved `return_call_ref` uses bounded discarded-frame transfer for
+local internal, host-wrapper, and retained same-Runtime cross-instance targets,
+including mutable/imported funcref-table loads. GC-bearing typed tails compare the
+numeric collector-domain identities stored in trailing native instance-context
+metadata before the caller is discarded; ordinary host and direct foreign-domain
+GC transfers remain fail-closed when exact ownership is unproved.
 
 ---
 
@@ -215,7 +292,7 @@ re-decoding:
 (`MarshalBinary`/`UnmarshalBinary`, magic `WAGO` + version byte). `Load` accepts
 either a precompiled blob (fast reload, no recompile) or raw wasm (compiled on
 load); `IsCompiled` distinguishes them. `validate()` hardens every blob against
-malformed metadata before any memory is mapped. Codec v23 persists the
+malformed metadata before any memory is mapped. Codec v21 persists the
 binding-independent imported-call shape, so modules with function imports can be
 serialized before host or instance targets are known; live addresses and store
 identity are installed only during instantiation.
@@ -246,24 +323,36 @@ WARP's `basedataoffsets.hpp`:
 | 112 | globals pointer table |
 | 120 / 128 | passive element/data descriptor arrays |
 | 136 | imported-function dispatch table |
+| 280 | versioned per-instance native GC metadata view |
 
-Memory-size/growth fields belong to the memory backing. The pointer subset from
-40 and 80–136 is modeled as a 64-byte `InstanceContext`, captured in the
-instance arena and rebound before every public native entry. Shared-memory users
-serialize entry while rebinding, so one linear-memory mapping can safely serve
-instances with independent globals, tables, host state, segments, and import
-bindings. Direct and indirect cross-instance calls copy the target context into
-its home basedata and restore the caller context on normal return.
+Memory-size/growth fields belong to the memory backing. Nine pointer fields from
+40 and 80–136 form the 72-byte Go `InstanceContext`. Each instance owns a 112-byte
+native context buffer: those nine pointers, an immutable numeric GC-domain identity,
+three process-serialized descriptor-tail scratch words, and the per-instance native
+GC-view pointer at byte 104. Binding copies the pointer prefix and GC-view pointer into
+basedata, so shared-memory context switches select the target module's canonical type
+map without aliasing EH tags or the wrapper argument bank. Shared-memory users serialize entry while rebinding, so one
+linear-memory mapping can safely serve instances with independent globals, tables,
+host state, segments, and import bindings. Direct and indirect cross-instance calls
+copy the target pointer context into its home basedata and restore the exact caller
+context on normal return.
 
-Mapping off-heap is essential: every native-visible address must be **stable**
-for the lifetime of execution (the Go GC must never move it).
+Every native-visible address must be stable for the duration in which native code
+can consume it. Most runtime state is off-heap. Native GC ABI v3 is the narrow
+exception: standard Go and the release TinyGo conservative collector are non-moving;
+typed Collector/Instance fields retain the view, heap/handle/card backing, fixed
+32-handle allocation state, epoch, nursery bump, and semantic counter. Generated
+code reloads relocatable slice pointers after helper allocation, collection, or
+card-backing refresh rather than caching them across safepoints. Native allocation
+reserves identities only; collection cancels unused reservations before tracing.
 
 ### Off-heap allocation
 
 `Arena` hands out stable, off-heap, 8-byte-aligned buffers for everything native
 code touches: the globals pointer table and cells, the table descriptor, the
-host-call log, and the per-call argument/result/trap slots. Native code never
-receives a Go heap pointer.
+host-call log, and the per-call argument/result/trap slots. Outside the explicitly
+versioned collector metadata exception above, native code never receives a Go heap
+pointer.
 
 ### Mapping code (W^X)
 
@@ -285,14 +374,6 @@ enters native code through `enterNative` (`trampoline_amd64.s`), which:
 Running on a separate stack keeps native wasm code off the goroutine stack,
 which Go may grow/move (`morestack`) — that would be catastrophic mid-execution.
 After the call returns, a non-zero trap slot becomes a Go `*TrapError`.
-
-Every public, prepared, and managed native entry acquires an invocation lease.
-`Instance.Close` first marks the instance logically closed, publishes
-`TrapInterrupted` to an active caller, and prevents new entries. Executable
-mappings, engine stacks, arenas, and owned memory are released only after both
-invocation leases and retained reference/import roots reach zero. This ordering
-allows a host-parked activation to unwind without a use-after-unmap while still
-making close interruption bounded at generated safepoints.
 
 ---
 
@@ -367,12 +448,9 @@ same context slot.
 
 Linear memory is the mmap-backed tail of JobMemory, exposed zero-copy via
 `Instance.Memory().Bytes()` — writes are visible in both directions without
-copying. Because a raw `[]byte` cannot own or release the mmap lifetime,
-`Memory.Bytes`, access through a returned slice, and `Instance.Close`/`Memory.Close`
-must be externally synchronized; the view is invalid once its owner closes.
-Explicit mode checks the current size cached in basedata; supported platforms
-can instead use guard-page reservations. `memory.grow` raises the logical size
-within a stable pre-reserved mapping, preserving the native base.
+copying. Explicit mode checks the current size cached in basedata; supported
+platforms can instead use guard-page reservations. `memory.grow` raises the
+logical size within a stable pre-reserved mapping, preserving the native base.
 Active and passive data operations retain strict bounds and dropped-state checks.
 
 ---

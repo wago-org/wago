@@ -161,6 +161,7 @@ func TestRunParallelFlagForms(t *testing.T) {
 		wantParallel   string
 		wantInvoke     string
 		wantNoDeferred bool
+		wantCore       string
 		wantPlugin     string
 	}{
 		{name: "bare short", args: []string{"-p", "module.wasm"}, wantParallel: "auto"},
@@ -171,6 +172,7 @@ func TestRunParallelFlagForms(t *testing.T) {
 		{name: "equal long", args: []string{"--parallel=8", "module.wasm"}, wantParallel: "8"},
 		{name: "after separated invoke", args: []string{"-e", "add", "-p8", "module.wasm"}, wantParallel: "8", wantInvoke: "add"},
 		{name: "after bounds knob", args: []string{"--no-deferred-bounds-checking", "-p", "module.wasm"}, wantParallel: "auto", wantNoDeferred: true},
+		{name: "after separated core", args: []string{"--core", "3", "-p", "module.wasm"}, wantParallel: "auto", wantCore: "3"},
 		{name: "after separated plugin", args: []string{"--plugin", "wasi", "--parallel=4", "module.wasm"}, wantParallel: "4", wantPlugin: "wasi"},
 		{name: "parallel-looking invoke value", args: []string{"-e", "-p8", "module.wasm"}, wantInvoke: "-p8"},
 	} {
@@ -191,6 +193,9 @@ func TestRunParallelFlagForms(t *testing.T) {
 			}
 			if got := ctx.Bool("no-deferred-bounds-checking"); got != tc.wantNoDeferred {
 				t.Fatalf("no deferred bounds checking = %v, want %v (normalized %v)", got, tc.wantNoDeferred, args)
+			}
+			if got := ctx.Str("core"); got != tc.wantCore {
+				t.Fatalf("core = %q, want %q (normalized %v)", got, tc.wantCore, args)
 			}
 			if got := ctx.Str("plugin"); got != tc.wantPlugin {
 				t.Fatalf("plugin = %q, want %q (normalized %v)", got, tc.wantPlugin, args)
@@ -214,6 +219,26 @@ func TestRunParallelFlagForms(t *testing.T) {
 	}
 }
 
+func TestRunConfigCoreVersion(t *testing.T) {
+	defaultConfig, err := Config("", true, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if defaultConfig.CoreFeatures().IsEnabled(wago.CoreFeatureGC) {
+		t.Fatal("default run config unexpectedly enabled Core 3 GC")
+	}
+	core3, err := Config("3", true, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if core3.CoreFeatures() != wago.CoreFeaturesV3 {
+		t.Fatalf("--core 3 features = %v, want %v", core3.CoreFeatures(), wago.CoreFeaturesV3)
+	}
+	if _, err := Config("4", true, ""); err == nil {
+		t.Fatal("unsupported core version accepted")
+	}
+}
+
 func TestRunConfigParallelism(t *testing.T) {
 	for _, tc := range []struct {
 		parallel string
@@ -225,7 +250,7 @@ func TestRunConfigParallelism(t *testing.T) {
 		{"1", 1},
 		{"8", 8},
 	} {
-		cfg, err := Config(true, tc.parallel)
+		cfg, err := Config("", true, tc.parallel)
 		if err != nil {
 			t.Fatalf("parallel %q: %v", tc.parallel, err)
 		}
@@ -234,11 +259,11 @@ func TestRunConfigParallelism(t *testing.T) {
 		}
 	}
 	for _, value := range []string{"-1", "many"} {
-		if _, err := Config(true, value); err == nil {
+		if _, err := Config("", true, value); err == nil {
 			t.Fatalf("parallel %q accepted", value)
 		}
 	}
-	cfg, err := Config(false, "8")
+	cfg, err := Config("", false, "8")
 	if err != nil || cfg.DeferBoundsChecks() {
 		t.Fatalf("combined config = %v, %v", cfg, err)
 	}

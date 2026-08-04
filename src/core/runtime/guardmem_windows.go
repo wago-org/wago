@@ -52,10 +52,11 @@ func NewJobMemoryGuarded(linBytes, maxBytes int) (*JobMemory, error) {
 
 func (j *JobMemory) putGuardedSizeCaches(linBytes, maxBytes int) {
 	j.putU32(offActualLinMemByteSize, uint32(linBytes))
+	j.putU64(offActualLinMemByteSize64, uint64(linBytes))
 	j.putU32(offLinMemWasmSize, uint32(linBytes/wasmPageBytes))
 	maxPages := maxBytes / wasmPageBytes
-	if maxPages > 65535 {
-		maxPages = 65535
+	if maxPages > 65536 {
+		maxPages = 65536
 	}
 	if maxPages < linBytes/wasmPageBytes {
 		maxPages = linBytes / wasmPageBytes
@@ -71,6 +72,7 @@ var jobMemoryGuardedCache struct {
 func init() {
 	guardReleaseHook = releaseGuardedJobMemory
 	guardCloseHook = unregisterGuardRegion
+	guardOwnerHook = setGuardRegionOwner
 }
 
 func AcquireJobMemoryGuarded(linBytes, maxBytes int) (*JobMemory, error) {
@@ -145,10 +147,10 @@ func growGuardedHostView(j *JobMemory, logicalBytes int) error {
 }
 
 type guardRegion struct {
-	start  uintptr
-	end    uintptr
-	linMem uintptr
-	_      uintptr
+	start       uintptr
+	end         uintptr
+	linMem      uintptr
+	ownerLinMem uintptr
 }
 
 const maxGuardRegions = 256
@@ -164,12 +166,24 @@ func registerGuardRegion(start, end, linMem uintptr) error {
 	for i := range guardRegions {
 		if guardRegions[i].start == 0 {
 			guardRegions[i].linMem = linMem
+			guardRegions[i].ownerLinMem = linMem
 			guardRegions[i].end = end
 			atomic.StoreUintptr(&guardRegions[i].start, start)
 			return nil
 		}
 	}
 	return fmt.Errorf("guard region table full (%d)", maxGuardRegions)
+}
+
+func setGuardRegionOwner(start, ownerLinMem uintptr) {
+	guardRegionMu.Lock()
+	defer guardRegionMu.Unlock()
+	for i := range guardRegions {
+		if guardRegions[i].start == start {
+			atomic.StoreUintptr(&guardRegions[i].ownerLinMem, ownerLinMem)
+			return
+		}
+	}
 }
 
 func unregisterGuardRegion(start uintptr) {
@@ -180,6 +194,7 @@ func unregisterGuardRegion(start uintptr) {
 			atomic.StoreUintptr(&guardRegions[i].start, 0)
 			guardRegions[i].end = 0
 			guardRegions[i].linMem = 0
+			guardRegions[i].ownerLinMem = 0
 			return
 		}
 	}

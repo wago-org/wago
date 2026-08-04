@@ -43,27 +43,39 @@ type Instance struct {
 	passiveDataDesc        []byte        // per-instance data-segment descriptors; active slots start dropped
 	thunkMem               []byte        // executable mapping for host-func-in-table log thunks (nil if none)
 	gc                     *gc.Collector // nil for modules with no Wasm GC descriptors/runtime use
+	gcTypeMap              *gcTypeMapping
+	gcNativeView           *gc.NativeInstanceView
 	serArgs, results, trap []byte
 	resultVals             []uint64       // reusable Invoke result buffer (valid until the next call)
 	ic                     [4]invokeCache // tiny fixed export resolution cache
 	icNext                 uint8          // round-robin replacement cursor
 	refStore               *referenceStore
 	lifeMu                 sync.Mutex
-	resourceRefs           int32
+	resourceRefs           int
 	invocationState        atomic.Uint32 // high bit closes entry; low bits count active public invocations
 	closed                 bool          // logical close; retained references may defer physical release
-	finalizing             bool          // one goroutine owns the quiescent root snapshot/release transition
+	finalizing             bool          // one goroutine owns quiescent finalization
 	resourcesClosed        bool
-	ownsMem                bool    // false when memory is host-imported (don't close it)
-	syncMode               bool    // true when host imports use the synchronous re-entry protocol
-	nativeControlShared    bool    // entered from another instance; prepared control fields may be overwritten
-	nativeContext          uintptr // arena-backed context bytes rebound before every native entry
+	ownsMem                bool                     // false when memory 0 is host-imported (don't close it)
+	memoryDir              *instanceMemoryDirectory // allocated only for indexed memory execution
+	syncMode               bool                     // true when host imports use the synchronous re-entry protocol
+	nativeControlShared    bool                     // entered from another instance; prepared control fields may be overwritten
+	nativeContext          uintptr                  // arena-backed context bytes rebound before every native entry
 	instructionState       instructionState
 
 	// rt is set when the instance is created through Runtime.Instantiate, so
 	// Instance.Call and Instance.Close can fire lifecycle hooks. It is nil for
 	// low-level package-level Instantiate, which stays hook-free.
 	rt *Runtime
+}
+
+// instanceMemoryDirectory is allocated only after indexed memory execution is
+// admitted. Memory 0 stays in Instance.memory/ownsMem so ordinary single-memory
+// instances carry only this nil sidecar pointer.
+type instanceMemoryDirectory struct {
+	memories []*Memory
+	owns     []bool
+	native   []byte // fixed 16-byte entries consumed by indexed native code
 }
 
 // invokeCache memoizes per-export work so hot Invoke loops skip the exports map

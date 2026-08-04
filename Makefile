@@ -22,6 +22,11 @@ BENCHTIME ?= 1s
 COUNT     ?= 1
 BENCH_RUN ?= bench/.bench-run.txt
 BENCH_ISA ?= 0
+STARSHINE_WASM ?=
+MOONBIT ?= moon
+MOONBIT_JSON_DIR := $(CURDIR)/testdata/moonbit-json-smoke
+MOONBIT_JSON_WASM := $(MOONBIT_JSON_DIR)/_build/wasm-gc/release/build/cmd/main/main.wasm
+MOONBIT_JSON_COMPILER := moon 0.1.20260703 (6fbf8c3 2026-07-03)
 # Per-engine -bench filters. wago = the stage suite + the _wago comparisons;
 # wazero = every benchmark carrying "azero" (BenchmarkWazero* and *_wazero).
 WAGO_BENCH_RE   ?= ^Benchmark(Decode|Validate|Compile|CompileFull|Instantiate|Exec)$$|_wago$$
@@ -56,7 +61,7 @@ lint: lint-fmt lint-generate lint-vet lint-staticcheck ## Run all lint checks (h
 
 .PHONY: lint-fmt
 lint-fmt:
-	@unformatted="$$(gofmt -l . | grep -vE '^(tests/spec|\.claude)/' || true)"; \
+	@unformatted="$$(git ls-files -z -- '*.go' | xargs -0 gofmt -l)"; \
 	if [ -n "$$unformatted" ]; then \
 		echo "::error::These files are not gofmt-ed:"; echo "$$unformatted"; exit 1; \
 	fi
@@ -92,6 +97,35 @@ test: ## Build and run the test suite (host)
 	go test -count=1 ./...
 	go test -count=1 -tags wago_runtime ./cli/...
 
+.PHONY: test-starshine
+test-starshine: ## Compile/link/instantiate a MoonBit Starshine wasm-gc artifact (STARSHINE_WASM=/path/cmd.wasm)
+	@test -n "$(STARSHINE_WASM)" || { echo "set STARSHINE_WASM=/path/to/cmd.wasm"; exit 1; }
+	WAGO_STARSHINE_SMOKE_WASM="$(STARSHINE_WASM)" go test ./src/wago -run '^TestMoonBitStarshineWasmGCSmoke(Compile|Instantiate)$$' -count=1 -v
+
+.PHONY: bench-starshine
+bench-starshine: ## Benchmark Starshine compile, cold link/JIT, compile+link, and instantiate (STARSHINE_WASM=/path/cmd.wasm)
+	@test -n "$(STARSHINE_WASM)" || { echo "set STARSHINE_WASM=/path/to/cmd.wasm"; exit 1; }
+	WAGO_STARSHINE_SMOKE_WASM="$(STARSHINE_WASM)" go test ./src/wago -run '^$$' -bench '^BenchmarkMoonBitStarshineWasmGC' -benchmem -count $(COUNT) -benchtime $(BENCHTIME)
+
+.PHONY: build-moonbit-json
+build-moonbit-json: ## Build the pinned deterministic MoonBit JSON wasm-gc workload
+	@command -v "$(MOONBIT)" >/dev/null 2>&1 || { echo "$(MOONBIT) not found"; exit 1; }
+	@actual="$$($(MOONBIT) version | head -n 1)"; \
+		test "$$actual" = "$(MOONBIT_JSON_COMPILER)" || { \
+			echo "MoonBit compiler mismatch: got '$$actual'"; \
+			echo "want '$(MOONBIT_JSON_COMPILER)'"; \
+			exit 1; \
+		}
+	cd $(MOONBIT_JSON_DIR) && $(MOONBIT) check --target wasm-gc -d && $(MOONBIT) build --target wasm-gc --release
+
+.PHONY: test-moonbit-json
+test-moonbit-json: build-moonbit-json ## Build and execute the deterministic MoonBit JSON WasmGC smoke workload
+	WAGO_MOONBIT_JSON_SMOKE_WASM="$(MOONBIT_JSON_WASM)" go test ./src/wago -run '^TestMoonBitJSONWasmGCSmoke$$' -count=1 -v
+
+.PHONY: bench-moonbit-json
+bench-moonbit-json: build-moonbit-json ## Benchmark MoonBit JSON decode, validation, JIT compile, instantiate, and execution
+	WAGO_MOONBIT_JSON_SMOKE_WASM="$(MOONBIT_JSON_WASM)" go test ./src/wago -run '^$$' -bench '^BenchmarkMoonBitJSONWasmGC' -benchmem -count $(COUNT) -benchtime $(BENCHTIME)
+
 .PHONY: test-guard
 test-guard: ## Guard-page (signals-based) tests: full public-API suite (incl. the SIGSEGV fault->trap path) + in-bounds differential
 	go test -count=1 -tags wago_guardpage ./src/wago/
@@ -125,14 +159,14 @@ regression-stress: ## Repeat lifecycle tests, optimizer and guard modes, and fuz
 
 # Run the WebAssembly spec suites as native execution oracles for the x64
 # backend. The preserved MVP baseline is WebAssembly/testsuite at tests/spec;
-# Release 2.0 is independently pinned from WebAssembly/spec at tests/spec-v2,
-# whose official core corpus lives under test/core. Release 3.0 remains the
-# proposal aggregate in the legacy testsuite until it gets its own release pin.
-# Needs wast2json (wabt) on PATH; env paths are absolute because `go test` runs
-# in the package directory.
+# Release 2.0 and Release 3.0 are independently pinned from WebAssembly/spec at
+# tests/spec-v2 and tests/spec-v3; both official core corpora live under
+# test/core. Release 3 bootstraps the checksum-pinned WABT tool below; older
+# suites retain their existing PATH behavior. Env paths are absolute because
+# `go test` runs in the package directory.
 SPEC1_DIR = $(CURDIR)/tests/spec
 SPEC2_DIR = $(CURDIR)/tests/spec-v2
-SPEC3_DIR = $(SPEC1_DIR)
+SPEC3_DIR = $(CURDIR)/tests/spec-v3
 define run-spec
 	@command -v wast2json >/dev/null 2>&1 || { echo "wast2json (wabt) not on PATH; install wabt (e.g. apt-get install wabt)"; exit 1; }
 	@test -f $(2)/$(3) || git submodule update --init $(4)
@@ -150,9 +184,39 @@ spec2: ## Run the pinned official WebAssembly 2.0 core suite against x64 (needs 
 	go test -count=1 -run '^TestCoreV2Validation$$' -v ./src/core/compiler/wasm/
 	go test -count=1 -run '^TestCoreV2SpecExecution$$' -v ./src/wago/
 
+.PHONY: wabt
+wabt: ## Bootstrap and verify the checksum-pinned WABT used by Release 3
+	@scripts/bootstrap-wabt.sh --verify
+
+.PHONY: spec-interpreter
+spec-interpreter: ## Bootstrap and verify the official Release 3 reference interpreter
+	@scripts/bootstrap-spec-interpreter.sh --verify
+
 .PHONY: spec3
-spec3: ## Run the WebAssembly 3.0 proposal spec tests against x64 (needs wast2json)
-	$(call run-spec,3.0,$(SPEC3_DIR),i32.wast,tests/spec)
+spec3: wabt spec-interpreter ## Run the pinned official WebAssembly 3.0 core suite on the current supported host
+	@wast2json="$$(scripts/bootstrap-wabt.sh --print-path)"; \
+		interpreter="$$(scripts/bootstrap-spec-interpreter.sh --print-path)"; \
+		interpreter_revision="$$(scripts/bootstrap-spec-interpreter.sh --print-revision)"; \
+		test -f $(SPEC3_DIR)/test/core/i32.wast || git submodule update --init tests/spec-v3; \
+		WAGO_WAST2JSON="$$wast2json" WAGO_WABT_VERSION=1.0.41 \
+		WAGO_SPEC_INTERPRETER="$$interpreter" WAGO_SPEC_INTERPRETER_REVISION="$$interpreter_revision" \
+		WAGO_SPECTEST_DIR=$(SPEC3_DIR) WAGO_SPEC_VERSION=3.0 \
+		go test -count=1 -run TestSpecSuiteExec -v ./src/wago/
+
+.PHONY: spec3-signals
+spec3-signals: wabt spec-interpreter ## Run zero-gap Core 3 with linux/amd64 signal-backed bounds
+	@wast2json="$$(scripts/bootstrap-wabt.sh --print-path)"; \
+		interpreter="$$(scripts/bootstrap-spec-interpreter.sh --print-path)"; \
+		interpreter_revision="$$(scripts/bootstrap-spec-interpreter.sh --print-revision)"; \
+		test -f $(SPEC3_DIR)/test/core/i32.wast || git submodule update --init tests/spec-v3; \
+		WAGO_BOUNDS=signals WAGO_WAST2JSON="$$wast2json" WAGO_WABT_VERSION=1.0.41 \
+		WAGO_SPEC_INTERPRETER="$$interpreter" WAGO_SPEC_INTERPRETER_REVISION="$$interpreter_revision" \
+		WAGO_SPECTEST_DIR=$(SPEC3_DIR) WAGO_SPEC_VERSION=3.0 \
+		go test -tags wago_guardpage -count=1 -run TestSpecSuiteExec -v ./src/wago/
+
+.PHONY: spec3-baseline
+spec3-baseline: ## Refresh tests/spec-v3-baseline.json and return the spec3 status
+	@scripts/spec3-baseline.sh
 
 .PHONY: simd
 simd: ## Run the official SIMD proposal execution suite (needs wast2json)
@@ -203,13 +267,24 @@ build-runtime-minimal-tinygo: ## Build the run-only runtime with TinyGo
 build-release: ## Build the host CLI plus all supported runtime profiles/builds
 	GOOS="$$(go env GOOS)" GOARCH="$$(go env GOARCH)" WAGO_VERSION="$(WAGO_VERSION)" scripts/build-release-assets.sh
 
+.PHONY: build-engine
+build-engine: ## Diagnostic run-only Minimal/Tiny runtime -> ./wago-engine
+	$(TINYGO) build -scheduler=$(TINYGO_SCHEDULER) -no-debug -opt=z -gc=conservative \
+		-tags wago_runtime,wago_lean,wago_minimal \
+		-ldflags "-X main.version=$(WAGO_VERSION)" -o wago-engine ./cli/wago
+	@if [ "$$(go env GOOS)" = linux ]; then \
+		strip -s --strip-section-headers --remove-section=.eh_frame \
+			--remove-section=.eh_frame_hdr --remove-section=.comment wago-engine; \
+	fi
+	@echo "wago-engine $(WAGO_VERSION): $$(du -h wago-engine | cut -f1)"
+
 .PHONY: tinygo-build
 tinygo-build: ## Build the Minimal runtime with TinyGo (no cgo, debug) -> ./wago-tinygo
 	$(TINYGO) build -scheduler=$(TINYGO_SCHEDULER) -tags wago_runtime,wago_lean,wago_minimal -o wago-tinygo ./cli/wago
 
 .PHONY: tinygo-test
 tinygo-test: ## Run the runtime + public-API suites under TinyGo
-	$(TINYGO) test -scheduler=$(TINYGO_SCHEDULER) ./src/core/runtime/ ./src/wago/
+	$(TINYGO) test -v -scheduler=$(TINYGO_SCHEDULER) ./src/core/runtime/ ./src/wago/
 
 .PHONY: cover
 cover: ## Run all five public gates with merged cross-package coverage
@@ -255,6 +330,11 @@ bench-noguard: ## Run the full suite under explicit bounds and write the capture
 .PHONY: bench-wago
 bench-wago: ## Run only the wago benchmarks
 	cd bench && go test -run '^$$' -bench '$(WAGO_BENCH_RE)' -benchmem -count $(COUNT) -benchtime $(BENCHTIME) -timeout 0 $(BENCH_ISA_GO_FLAG) .
+
+.PHONY: bench-jit
+bench-jit: ## Benchmark railshot JIT edge cases and corpus raw/end-to-end compilation
+	go test ./src/core/compiler/backend/railshot/amd64 -run '^$$' -bench '^BenchmarkRailshotCompile' -benchmem -count $(COUNT) -benchtime $(BENCHTIME)
+	cd bench && go test -run '^$$' -bench '^BenchmarkCompile(Full)?$$' -benchmem -count $(COUNT) -benchtime $(BENCHTIME) -timeout 0 .
 
 .PHONY: bench-wazero
 bench-wazero: ## Run only the wazero benchmarks

@@ -36,28 +36,82 @@ type proposalReplayState struct {
 }
 
 type proposalReplayCounts struct {
-	returns        int
-	traps          int
-	invalid        int
-	unlinkable     int
-	uninstantiable int
-	skipped        int
+	modules, unsupportedModules               int
+	registers                                 int
+	actions, unsupportedActions               int
+	returns, unsupportedReturns               int
+	traps, unsupportedTraps                   int
+	exceptions, unsupportedExceptions         int
+	invalid, supersededInvalid, malformedText int
+	unlinkable, uninstantiable                int
 }
 
-func TestTypedFunctionReferenceAssertionsReplayRegisteredProviders(t *testing.T) {
-	dir := filepath.Clean("../../tests/regressions/spectest-proposals/typed-function-references")
-	for _, tc := range []struct {
-		file string
-		want proposalReplayCounts
-	}{
-		{file: "elem", want: proposalReplayCounts{returns: 23, traps: 3, invalid: 27, uninstantiable: 12}},
-		{file: "linking", want: proposalReplayCounts{returns: 65, traps: 18, unlinkable: 47, uninstantiable: 7}},
-	} {
-		t.Run(tc.file, func(t *testing.T) {
-			got := replayProposalAssertionsFile(t, dir, tc.file)
-			if got != tc.want {
-				t.Fatalf("negative replay accounting = %+v, want %+v", got, tc.want)
+func (c *proposalReplayCounts) add(other proposalReplayCounts) {
+	c.modules += other.modules
+	c.unsupportedModules += other.unsupportedModules
+	c.registers += other.registers
+	c.actions += other.actions
+	c.unsupportedActions += other.unsupportedActions
+	c.returns += other.returns
+	c.unsupportedReturns += other.unsupportedReturns
+	c.traps += other.traps
+	c.unsupportedTraps += other.unsupportedTraps
+	c.exceptions += other.exceptions
+	c.unsupportedExceptions += other.unsupportedExceptions
+	c.invalid += other.invalid
+	c.supersededInvalid += other.supersededInvalid
+	c.malformedText += other.malformedText
+	c.unlinkable += other.unlinkable
+	c.uninstantiable += other.uninstantiable
+}
+
+func TestProposalAssertionsReplay(t *testing.T) {
+	root := filepath.Clean("../../tests/regressions/spectest-proposals")
+	// These totals pin both executed assertions and commands whose provider is
+	// rejected by an explicit proposal boundary. Unsupported commands are not
+	// skipped: their provider rejection and exact command accounting are asserted.
+	wants := map[string]proposalReplayCounts{
+		"exception-handling": {
+			modules: 12, unsupportedModules: 12, registers: 3,
+			unsupportedReturns: 50, unsupportedTraps: 2, unsupportedExceptions: 18,
+			invalid: 16, malformedText: 2, unlinkable: 2,
+		},
+		"tail-call": {
+			modules: 6, unsupportedModules: 6,
+			unsupportedReturns: 71, unsupportedTraps: 7,
+			invalid: 24, malformedText: 11,
+		},
+		"threads": {
+			modules: 5, unsupportedModules: 5, unsupportedActions: 65,
+			unsupportedReturns: 154, unsupportedTraps: 55, invalid: 48,
+		},
+		"typed-function-references": {
+			modules: 159, unsupportedModules: 62, registers: 16,
+			actions: 2, unsupportedActions: 2,
+			returns: 311, unsupportedReturns: 327,
+			traps: 28, unsupportedTraps: 28,
+			invalid: 332, supersededInvalid: 1, malformedText: 40, unlinkable: 47, uninstantiable: 19,
+		},
+	}
+	for _, proposal := range []string{"exception-handling", "tail-call", "threads", "typed-function-references"} {
+		proposal := proposal
+		t.Run(proposal, func(t *testing.T) {
+			dir := filepath.Join(root, proposal)
+			paths, err := filepath.Glob(filepath.Join(dir, "*.json"))
+			if err != nil {
+				t.Fatal(err)
 			}
+			var got proposalReplayCounts
+			for _, path := range paths {
+				base := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+				t.Run(base, func(t *testing.T) {
+					got.add(replayProposalAssertionsFile(t, dir, base))
+				})
+			}
+			if want, ok := wants[proposal]; ok && got != want {
+				t.Fatalf("proposal replay accounting = %+v, want %+v", got, want)
+			}
+			t.Logf("proposal replay accounting: %+v", got)
 		})
 	}
 }
@@ -95,6 +149,7 @@ func replayProposalAssertionsFile(t *testing.T, dir, base string) (counts propos
 	for _, cmd := range sf.Commands {
 		switch cmd.Type {
 		case "module":
+			counts.modules++
 			state.current = nil
 			data, err := os.ReadFile(filepath.Join(dir, cmd.Filename))
 			if err != nil {
@@ -110,6 +165,7 @@ func replayProposalAssertionsFile(t *testing.T, dir, base string) (counts propos
 			mod, compileErr := state.rt.Compile(data)
 			if compileErr != nil {
 				if isExplicitProposalRejection(compileErr) {
+					counts.unsupportedModules++
 					m := &proposalReplayModule{schema: schema}
 					state.current = m
 					if cmd.Name != "" {
@@ -137,6 +193,7 @@ func replayProposalAssertionsFile(t *testing.T, dir, base string) (counts propos
 				state.named[cmd.Name] = m
 			}
 		case "register":
+			counts.registers++
 			m := state.current
 			if cmd.Name != "" {
 				m = state.named[cmd.Name]
@@ -144,6 +201,16 @@ func replayProposalAssertionsFile(t *testing.T, dir, base string) (counts propos
 			if m != nil && cmd.As != "" {
 				state.registered[cmd.As] = m
 			}
+		case "action":
+			target := state.actionTarget(cmd.Action)
+			if target == nil || target.inst == nil {
+				counts.unsupportedActions++
+				continue
+			}
+			if _, err := state.executeAction(target, cmd.Action); err != nil {
+				t.Fatalf("%s.wast:%d replay action: %v", base, cmd.Line, err)
+			}
+			counts.actions++
 		case "assert_return":
 			executed, err := state.replayAssertReturn(cmd.Action, cmd.Expected)
 			if err != nil {
@@ -152,7 +219,7 @@ func replayProposalAssertionsFile(t *testing.T, dir, base string) (counts propos
 			if executed {
 				counts.returns++
 			} else {
-				counts.skipped++
+				counts.unsupportedReturns++
 			}
 		case "assert_trap":
 			executed, err := state.replayAssertTrap(cmd.Action, cmd.Text)
@@ -162,8 +229,18 @@ func replayProposalAssertionsFile(t *testing.T, dir, base string) (counts propos
 			if executed {
 				counts.traps++
 			} else {
-				counts.skipped++
+				counts.unsupportedTraps++
 			}
+		case "assert_exception":
+			target := state.actionTarget(cmd.Action)
+			if target == nil || target.inst == nil {
+				counts.unsupportedExceptions++
+				continue
+			}
+			if _, err := state.executeAction(target, cmd.Action); err == nil {
+				t.Fatalf("%s.wast:%d action succeeded, want exception", base, cmd.Line)
+			}
+			counts.exceptions++
 		case "assert_invalid":
 			data, err := os.ReadFile(filepath.Join(dir, cmd.Filename))
 			if err != nil {
@@ -174,12 +251,31 @@ func replayProposalAssertionsFile(t *testing.T, dir, base string) (counts propos
 				validationErr = corewasm.ValidateModule(module)
 			}
 			if validationErr == nil {
+				if base == "type-equivalence" && cmd.Filename == "type-equivalence.2.wasm" && cmd.Text == "unknown type" {
+					// This proposal-era assertion predates standardized implicit
+					// singleton recursion. The exact binary is valid under the final
+					// rectype grammar, so pin the semantic drift rather than rejecting
+					// a current-spec module or silently dropping the command.
+					counts.supersededInvalid++
+					continue
+				}
 				t.Fatalf("%s.wast:%d invalid module validated successfully, want %q", base, cmd.Line, cmd.Text)
 			}
 			if !proposalNegativeFailureMatches(cmd.Text, validationErr) {
 				t.Fatalf("%s.wast:%d validation error = %v, want %q", base, cmd.Line, validationErr, cmd.Text)
 			}
 			counts.invalid++
+		case "assert_malformed":
+			// Wago intentionally has no WAT parser. Keep text-format proposal
+			// negatives explicit and fully accounted rather than reporting a skip.
+			data, err := os.ReadFile(filepath.Join(dir, cmd.Filename))
+			if err != nil {
+				t.Fatalf("%s.wast:%d read malformed text %q: %v", base, cmd.Line, cmd.Filename, err)
+			}
+			if cmd.ModuleType != "text" || filepath.Ext(cmd.Filename) != ".wat" || len(data) == 0 || cmd.Text == "" {
+				t.Fatalf("%s.wast:%d malformed text fixture metadata is incomplete", base, cmd.Line)
+			}
+			counts.malformedText++
 		case "assert_unlinkable", "assert_uninstantiable":
 			data, err := os.ReadFile(filepath.Join(dir, cmd.Filename))
 			if err != nil {
@@ -248,6 +344,8 @@ func replayProposalAssertionsFile(t *testing.T, dir, base string) (counts propos
 				t.Fatalf("%s.wast:%d instantiate error = %v, want %q", base, cmd.Line, instantiateErr, cmd.Text)
 			}
 			counts.uninstantiable++
+		default:
+			t.Fatalf("%s.wast:%d unsupported command type %q", base, cmd.Line, cmd.Type)
 		}
 	}
 	return counts
@@ -320,12 +418,15 @@ func (s *proposalReplayState) executeAction(target *proposalReplayModule, action
 
 func (s *proposalReplayState) proposalValueBits(value proposalFixtureValue) (uint64, error) {
 	switch value.Type {
-	case "i32":
-		v, err := strconv.ParseInt(value.Value, 10, 64)
-		return uint64(uint32(int32(v))), err
-	case "i64":
-		v, err := strconv.ParseInt(value.Value, 10, 64)
-		return uint64(v), err
+	case "i32", "f32":
+		return proposalDecimalBits(value.Value, 32)
+	case "i64", "f64":
+		return proposalDecimalBits(value.Value, 64)
+	case "funcref", "refnull":
+		if value.Value == "" || value.Value == "null" {
+			return 0, nil
+		}
+		return 0, fmt.Errorf("unsupported non-null %s argument", value.Type)
 	case "externref":
 		if value.Value == "null" {
 			return 0, nil
@@ -348,8 +449,51 @@ func (s *proposalReplayState) proposalValueBits(value proposalFixtureValue) (uin
 	}
 }
 
+func proposalDecimalBits(value string, width int) (uint64, error) {
+	if strings.HasPrefix(value, "-") {
+		v, err := strconv.ParseInt(value, 10, width)
+		if width == 32 {
+			return uint64(uint32(v)), err
+		}
+		return uint64(v), err
+	}
+	v, err := strconv.ParseUint(value, 10, width)
+	return v, err
+}
+
 func (s *proposalReplayState) compareActionResult(inst *Instance, index int, got uint64, expected proposalFixtureValue) error {
-	if expected.Type != "externref" {
+	switch expected.Type {
+	case "externref":
+		if expected.Value == "null" {
+			if got != 0 {
+				return fmt.Errorf("result %d = non-null externref, want null", index)
+			}
+			return nil
+		}
+		id, err := strconv.ParseInt(expected.Value, 10, 64)
+		if err != nil {
+			return fmt.Errorf("expected result %d: %w", index, err)
+		}
+		value, ok := inst.ExternRefValue(ValueOf(ValExternRef, got).ExternRef())
+		if !ok || value != id {
+			return fmt.Errorf("result %d externref = %#v, %v; want %d", index, value, ok, id)
+		}
+		return nil
+	case "funcref":
+		if expected.Value == "null" {
+			if got != 0 {
+				return fmt.Errorf("result %d = non-null funcref, want null", index)
+			}
+		} else if got == 0 {
+			return fmt.Errorf("result %d = null funcref, want non-null", index)
+		}
+		return nil
+	case "refnull":
+		if got != 0 {
+			return fmt.Errorf("result %d = non-null reference, want null", index)
+		}
+		return nil
+	default:
 		want, err := s.proposalValueBits(expected)
 		if err != nil {
 			return fmt.Errorf("expected result %d: %w", index, err)
@@ -359,21 +503,6 @@ func (s *proposalReplayState) compareActionResult(inst *Instance, index int, got
 		}
 		return nil
 	}
-	if expected.Value == "null" {
-		if got != 0 {
-			return fmt.Errorf("result %d = non-null externref, want null", index)
-		}
-		return nil
-	}
-	id, err := strconv.ParseInt(expected.Value, 10, 64)
-	if err != nil {
-		return fmt.Errorf("expected result %d: %w", index, err)
-	}
-	value, ok := inst.ExternRefValue(ValueOf(ValExternRef, got).ExternRef())
-	if !ok || value != id {
-		return fmt.Errorf("result %d externref = %#v, %v; want %d", index, value, ok, id)
-	}
-	return nil
 }
 
 func proposalSpectestImports(table *Table, memory *Memory) Imports {
@@ -428,15 +557,18 @@ const (
 	proposalExternGlobal
 	proposalExternMemory
 	proposalExternTable
+	proposalExternTag
 )
 
 type proposalExternType struct {
-	kind   proposalExternKind
-	module *corewasm.Module
-	fn     *corewasm.CompType
-	global corewasm.GlobalType
-	memory corewasm.MemType
-	table  corewasm.TableType
+	kind         proposalExternKind
+	module       *corewasm.Module
+	fn           *corewasm.CompType
+	typeIndex    uint32
+	hasTypeIndex bool
+	global       corewasm.GlobalType
+	memory       corewasm.MemType
+	table        corewasm.TableType
 }
 
 type proposalImportType struct {
@@ -461,6 +593,7 @@ func proposalModuleTypes(data []byte) (exports map[string]proposalExternType, im
 		switch imp.Type.Kind {
 		case corewasm.ExternFunc:
 			typ.kind = proposalExternFunc
+			typ.typeIndex, typ.hasTypeIndex = imp.Type.Type.Index, true
 			typ.fn, _ = module.TypeFunc(imp.Type.Type.Index)
 		case corewasm.ExternGlobal:
 			typ.kind, typ.global = proposalExternGlobal, imp.Type.Global
@@ -468,6 +601,10 @@ func proposalModuleTypes(data []byte) (exports map[string]proposalExternType, im
 			typ.kind, typ.memory = proposalExternMemory, imp.Type.Mem
 		case corewasm.ExternTable:
 			typ.kind, typ.table = proposalExternTable, imp.Type.Table
+		case corewasm.ExternTag:
+			typ.kind = proposalExternTag
+			typ.typeIndex, typ.hasTypeIndex = imp.Type.Tag.Type.Index, true
+			typ.fn, _ = module.TypeFunc(imp.Type.Tag.Type.Index)
 		default:
 			continue
 		}
@@ -483,6 +620,9 @@ func proposalModuleTypes(data []byte) (exports map[string]proposalExternType, im
 		case corewasm.ExternFunc:
 			typ.kind = proposalExternFunc
 			typ.fn, _ = module.FuncSignature(exp.Index.Index)
+			if typeIdx, ok := module.FuncTypeIndex(exp.Index.Index); ok {
+				typ.typeIndex, typ.hasTypeIndex = typeIdx.Index, true
+			}
 		case corewasm.ExternGlobal:
 			typ.kind = proposalExternGlobal
 			typ.global, _ = module.GlobalTypeByIndex(exp.Index.Index)
@@ -492,12 +632,36 @@ func proposalModuleTypes(data []byte) (exports map[string]proposalExternType, im
 		case corewasm.ExternTable:
 			typ.kind = proposalExternTable
 			typ.table, _ = module.TableType(exp.Index.Index)
+		case corewasm.ExternTag:
+			typ.kind = proposalExternTag
+			if tag, ok := proposalTagTypeByIndex(module, exp.Index.Index); ok {
+				typ.typeIndex, typ.hasTypeIndex = tag.Type.Index, true
+				typ.fn, _ = module.TypeFunc(tag.Type.Index)
+			}
 		default:
 			continue
 		}
 		exports[exp.Name] = typ
 	}
 	return exports, imports, nil
+}
+
+func proposalTagTypeByIndex(module *corewasm.Module, index uint32) (corewasm.TagType, bool) {
+	var current uint32
+	for i := range module.Imports {
+		if module.Imports[i].Type.Kind != corewasm.ExternTag {
+			continue
+		}
+		if current == index {
+			return module.Imports[i].Type.Tag, true
+		}
+		current++
+	}
+	local := int(index - current)
+	if index < current || local < 0 || local >= len(module.Tags) {
+		return corewasm.TagType{}, false
+	}
+	return module.Tags[local], true
 }
 
 func proposalMemoryTypeByIndex(module *corewasm.Module, index uint32) (corewasm.MemType, bool) {
@@ -643,7 +807,7 @@ func proposalExternTypesCompatible(actual, expected proposalExternType) bool {
 	}
 	switch actual.kind {
 	case proposalExternFunc:
-		return proposalFuncTypesEquivalent(actual.fn, actual.module, expected.fn, expected.module, 0)
+		return proposalExternFuncTypesEquivalent(actual, expected)
 	case proposalExternGlobal:
 		if actual.global.Mutable != expected.global.Mutable {
 			return false
@@ -656,9 +820,22 @@ func proposalExternTypesCompatible(actual, expected proposalExternType) bool {
 		return actual.memory.Shared == expected.memory.Shared && proposalLimitsCompatible(actual.memory.Limits, expected.memory.Limits)
 	case proposalExternTable:
 		return proposalValTypesEquivalent(corewasm.RefVal(actual.table.Ref), actual.module, corewasm.RefVal(expected.table.Ref), expected.module, 0) && proposalLimitsCompatible(actual.table.Limits, expected.table.Limits)
+	case proposalExternTag:
+		return proposalExternFuncTypesEquivalent(actual, expected)
 	default:
 		return false
 	}
+}
+
+func proposalExternFuncTypesEquivalent(a, b proposalExternType) bool {
+	if a.module != nil && b.module != nil && a.hasTypeIndex && b.hasTypeIndex {
+		ak, aok := a.module.StructuralTypeKeyChecked(a.typeIndex)
+		bk, bok := b.module.StructuralTypeKeyChecked(b.typeIndex)
+		if aok && bok {
+			return ak == bk
+		}
+	}
+	return proposalFuncTypesEquivalent(a.fn, a.module, b.fn, b.module, 0)
 }
 
 func proposalFuncTypesEquivalent(a *corewasm.CompType, am *corewasm.Module, b *corewasm.CompType, bm *corewasm.Module, depth int) bool {
@@ -806,8 +983,13 @@ func proposalNegativeFailureMatches(want string, err error) bool {
 	}
 	want = strings.ToLower(want)
 	got := strings.ToLower(err.Error())
-	if strings.HasPrefix(want, "unknown global") {
-		return strings.Contains(got, "unknown global")
+	if strings.HasPrefix(want, "type mismatch") {
+		return strings.Contains(got, "type mismatch")
+	}
+	for _, prefix := range []string{"unknown function", "unknown global", "unknown tag"} {
+		if strings.HasPrefix(want, prefix) {
+			return strings.Contains(got, prefix)
+		}
 	}
 	switch want {
 	case "incompatible import type":
@@ -820,6 +1002,10 @@ func proposalNegativeFailureMatches(want string, err error) bool {
 		return strings.Contains(got, "unknown import")
 	case "unknown table":
 		return strings.Contains(got, "unknown table")
+	case "invalid result arity":
+		return strings.Contains(got, "select type arity") || strings.Contains(got, "invalid result arity")
+	case "size minimum must not be greater than maximum":
+		return strings.Contains(got, "invalid limits") && strings.Contains(got, "max < min")
 	case "constant expression required":
 		// The typed-reference corpus predates extended-constant expressions.
 		// When Wago accepts the arithmetic expression under that enabled proposal,
