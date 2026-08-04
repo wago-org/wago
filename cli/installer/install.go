@@ -44,6 +44,7 @@ type installer struct {
 	managerFromRelease  bool
 	sourceMethod        string
 	progressActive      bool
+	pathAdded           bool
 }
 
 type release struct {
@@ -176,23 +177,22 @@ func (i *installer) run() error {
 	if stamp == "" {
 		stamp = i.version
 	}
-	fmt.Fprintln(i.out)
-	i.done("Wago " + stamp + " is ready")
-	i.detail("Command", displayPath(installed, i.home))
-	i.next(pathReady, configFile)
+	i.finish(stamp, installed, pathReady, configFile)
 	return nil
 }
 
 func (i *installer) welcome() {
 	s := colors()
-	fmt.Fprintf(i.out, "%s%sWago%s\n", s.bold, s.cyan, s.reset)
-	fmt.Fprintf(i.out, "%sA fast, extensible WebAssembly JIT for Go.%s\n\n", s.dim, s.reset)
+	fmt.Fprintf(i.out, "%s%sWelcome to wago!%s Let's get you set up!\n\n", s.bold, s.cyan, s.reset)
 }
 
 func (i *installer) installLocation() {
+	i.answer("Where should Wago be installed?", displayPath(i.binDir, i.home))
+}
+
+func (i *installer) answer(question, answer string) {
 	s := colors()
-	fmt.Fprintf(i.out, "%sInstall location%s\n", s.bold, s.reset)
-	fmt.Fprintf(i.out, "  %s%s%s\n\n", s.cyan, displayPath(i.binDir, i.home), s.reset)
+	fmt.Fprintf(i.out, "%s%s%s %s%s%s\n\n", s.bold, question, s.reset, s.cyan, answer, s.reset)
 }
 
 func (i *installer) plan() {
@@ -286,7 +286,7 @@ func (i *installer) chooseReinstallMode() (string, bool, error) {
 		{"Minimal", "Replace binaries and keep existing state", "minimal", ""},
 	}, 2)
 	if ok {
-		fmt.Fprintf(i.out, "Reinstall mode: %s\n\n", reinstallLabel(value))
+		i.answer("How should it be reinstalled?", reinstallLabel(value))
 	}
 	return value, ok, nil
 }
@@ -654,8 +654,7 @@ func (i *installer) offerPathSetup() (bool, string) {
 		choice = value
 	}
 	if strings.EqualFold(choice, "no") || strings.EqualFold(choice, "n") || choice == "none" {
-		fmt.Fprintln(i.out, "PATH setup: skipped")
-		fmt.Fprintln(i.out)
+		i.answer(pathSetupQuestion(), "Not now")
 		return pathContains(i.binDir), ""
 	}
 	selectedIndex := 0
@@ -667,10 +666,7 @@ func (i *installer) offerPathSetup() (bool, string) {
 		selectedIndex = parsed
 	}
 	target := targets[selectedIndex]
-	if message := pathSetupTargetMessage(target, i.home); message != "" {
-		fmt.Fprintln(i.out, message)
-		fmt.Fprintln(i.out)
-	}
+	i.answer(pathSetupQuestion(), pathSetupAnswer(target, i.home))
 	already, err := addPath(i.binDir, target.configFile, target.shell)
 	if err != nil {
 		i.retry("Could not add Wago to PATH")
@@ -679,6 +675,7 @@ func (i *installer) offerPathSetup() (bool, string) {
 	if already {
 		i.done("Wago is already on PATH")
 	} else {
+		i.pathAdded = true
 		i.done("Added Wago to PATH")
 	}
 	return true, target.configFile
@@ -699,9 +696,12 @@ func (i *installer) offerCompletions(installed, configFile string) {
 	if !ok {
 		return
 	}
+	answer := "No"
+	if value == "yes" {
+		answer = "Yes"
+	}
+	i.answer("Enable Wago completions for "+shellName+"?", answer)
 	if value != "yes" {
-		fmt.Fprintln(i.out, "Completions: skipped")
-		fmt.Fprintln(i.out)
 		return
 	}
 	if err := exec.Command(installed, "config", "completions", shellName, "--install", "--rc", configFile).Run(); err != nil {
@@ -711,21 +711,26 @@ func (i *installer) offerCompletions(installed, configFile string) {
 	i.done("Enabled completions for " + shellName)
 }
 
-func (i *installer) next(pathReady bool, configFile string) {
+func (i *installer) finish(stamp, installed string, pathReady bool, configFile string) {
 	s := colors()
 	pathReady = pathReady || pathContains(i.binDir)
-	fmt.Fprintf(i.out, "\n%sNext%s\n", s.bold, s.reset)
-	if pathReady && configFile != "" && !pathContains(i.binDir) {
-		fmt.Fprintln(i.out, "  Open a new shell, or run:")
-		fmt.Fprintf(i.out, "    %s%s%s\n", s.cyan, sourceCommand(configFile)+" && wago version install", s.reset)
-		return
+	fmt.Fprintf(i.out, "\n%sSweet, we've installed Wago %s at %s%s\n", s.bold, stamp, displayPath(installed, i.home), s.reset)
+	if i.pathAdded {
+		if command := sourceCommand(configFile); command != "" {
+			fmt.Fprintln(i.out, "Since we added it to your PATH just now, please run")
+			fmt.Fprintf(i.out, "\n%s%s%s\n", s.cyan, command, s.reset)
+		} else {
+			fmt.Fprintln(i.out, "Since we added it to your PATH just now, open a new terminal.")
+		}
+	} else if pathReady && configFile != "" && !pathContains(i.binDir) {
+		fmt.Fprintln(i.out, "Wago is already configured in your PATH. Please run")
+		fmt.Fprintf(i.out, "\n%s%s%s\n", s.cyan, sourceCommand(configFile), s.reset)
+	} else if !pathReady {
+		fmt.Fprintf(i.out, "Before you continue, add %s to your PATH.\n", displayPath(i.binDir, i.home))
 	}
-	if pathReady {
-		fmt.Fprintf(i.out, "  %swago version install%s\n", s.cyan, s.reset)
-		return
-	}
-	fmt.Fprintf(i.out, "  Add %s to PATH, then run:\n", displayPath(i.binDir, i.home))
-	fmt.Fprintf(i.out, "    %swago version install%s\n", s.cyan, s.reset)
+	fmt.Fprintln(i.out, "\nAnd then, go ahead and install a version of your choice with,")
+	fmt.Fprintf(i.out, "\n%s%s%s\n", s.cyan, "wago version install", s.reset)
+	fmt.Fprintln(i.out, "\nHave fun!")
 }
 
 func executableName(name string) string {

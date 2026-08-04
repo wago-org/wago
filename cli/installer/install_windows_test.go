@@ -32,8 +32,8 @@ func TestWindowsPathSetupUsesUserPathWithoutShellFiles(t *testing.T) {
 	}
 }
 
-func TestWindowsPathPromptMatchesLegacyInstaller(t *testing.T) {
-	if got, want := pathSetupQuestion(), "Add Wago to your user PATH?"; got != want {
+func TestWindowsPathPromptMatchesWarmInstaller(t *testing.T) {
+	if got, want := pathSetupQuestion(), "Want to add Wago to PATH?"; got != want {
 		t.Fatalf("PATH prompt = %q, want %q", got, want)
 	}
 }
@@ -47,7 +47,33 @@ func TestWindowsSkippedPathSetupKeepsStatus(t *testing.T) {
 		t.Fatal(err)
 	}
 	installer.offerPathSetup()
-	if got, want := output.String(), "PATH setup: skipped\n\n"; got != want {
+	if got, want := output.String(), "Want to add Wago to PATH? Not now\n\n"; got != want {
 		t.Fatalf("skipped PATH output = %q, want %q", got, want)
+	}
+}
+
+func TestWindowsWarmFinishAfterPathSetup(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("NO_COLOR", "1")
+	var output bytes.Buffer
+	installer, err := newInstaller(&output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	installer.pathAdded = true
+	installed := filepath.Join(home, ".wago", "bin", "wago.exe")
+	installer.finish("canary-deadbee", installed, true, "")
+	text := output.String()
+	for _, fragment := range []string{
+		"Sweet, we've installed Wago canary-deadbee at ~\\.wago\\bin\\wago.exe",
+		"Since we added it to your PATH just now, open a new terminal.",
+		"wago version install",
+		"Have fun!",
+	} {
+		if !strings.Contains(text, fragment) {
+			t.Fatalf("warm finish missing %q:\n%s", fragment, text)
+		}
 	}
 }

@@ -181,7 +181,7 @@ func TestWineCmdBootstrapDownloadsVerifiesAndExecutesInstaller(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Wine CMD download bootstrap: %v\n%s", err, output)
 	}
-	if text := strings.ReplaceAll(string(output), "\r", ""); !strings.Contains(text, "Install location") || !strings.Contains(text, "Dry run · no changes made.") {
+	if text := strings.ReplaceAll(string(output), "\r", ""); !strings.Contains(text, "Where should Wago be installed? ROOT\\bin") || !strings.Contains(text, "Dry run · no changes made.") {
 		t.Fatalf("Wine CMD download bootstrap output:\n%s", text)
 	}
 }
@@ -241,7 +241,9 @@ func TestWineInstallerCompletesNativeInstallFlow(t *testing.T) {
 		"Downloaded Wago manager " + tag,
 		"Fetched Wago source archive",
 		"Verified installation",
-		"Wago " + tag + " is ready",
+		"Sweet, we've installed Wago " + tag,
+		"wago version install",
+		"Have fun!",
 	} {
 		if !strings.Contains(text, fragment) {
 			t.Fatalf("Wine install output missing %q:\n%s", fragment, text)
