@@ -85,17 +85,22 @@ func TestHelpRecognitionAfterSeparatedParallelism(t *testing.T) {
 	}
 }
 
-func TestFriendlyInstantiationErrorSuggestsWASI(t *testing.T) {
-	err := fmt.Errorf(`module imports "wasi_snapshot_preview1.fd_write": %w`, wago.ErrMissingImport)
-	got := friendlyInstantiationError(err).Error()
-	if !strings.Contains(got, "requires WASI support") ||
-		!strings.Contains(got, "wago add wago-org/wasi") {
-		t.Fatalf("WASI import error = %q", got)
+func TestFriendlyInstantiationErrorIsProviderNeutral(t *testing.T) {
+	for _, importName := range []string{"wasi_snapshot_preview1.fd_write", "acme_host.render"} {
+		err := fmt.Errorf(`module imports %q, but nothing provides it: %w`, importName, wago.ErrMissingImport)
+		got := friendlyInstantiationError(err).Error()
+		if !strings.Contains(got, importName) ||
+			!strings.Contains(got, "Add a plugin that provides it.") {
+			t.Fatalf("missing import error = %q", got)
+		}
+		if strings.Contains(strings.ToLower(got), "wasi support") || strings.Contains(got, "wago-org/wasi") {
+			t.Fatalf("missing import error endorses a provider: %q", got)
+		}
 	}
 
-	other := fmt.Errorf(`module imports "env.log": %w`, wago.ErrMissingImport)
+	other := errors.New("compile failed")
 	if got := friendlyInstantiationError(other); !errors.Is(got, other) {
-		t.Fatalf("generic import error = %v, want original", got)
+		t.Fatalf("unrelated error = %v, want original", got)
 	}
 }
 
