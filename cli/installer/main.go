@@ -90,7 +90,7 @@ func main() {
 	case "radio":
 		value, ok = environmentRadio()
 	case "reinstall":
-		value, ok = radio("How should it be reinstalled?", []radioItem{
+		value, ok = radio("Reinstall method", []radioItem{
 			{"Full", "Reset everything, including plugins and settings", "full", ""},
 			{"Partial", "Reset Wago but keep global plugins for reinstall", "partial", ""},
 			{"Minimal", "Replace binaries and keep existing state", "minimal", ""},
