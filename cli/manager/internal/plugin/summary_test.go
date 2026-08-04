@@ -12,7 +12,7 @@ func TestSummary(t *testing.T) {
 		{Module: "github.com/wago-org/wasi", Version: "0.0.0"},
 		{Module: "example.com/acme/log", Version: "1.2.3"},
 	}, 2400*time.Microsecond)
-	want := "\n+ wago-org/wasi@0.0.0\n+ example.com/acme/log@1.2.3\n\n2 packages installed [2.4ms]\n"
+	want := "+ wago-org/wasi@0.0.0\n+ example.com/acme/log@1.2.3\n\n2 packages installed [2.4ms]\n"
 	if got := output.String(); got != want {
 		t.Fatalf("package install summary = %q, want %q", got, want)
 	}
@@ -29,5 +29,15 @@ func TestDisplayVersion(t *testing.T) {
 		if got := DisplayVersion(input); got != want {
 			t.Errorf("DisplayVersion(%q) = %q, want %q", input, got, want)
 		}
+	}
+}
+
+func TestPackageNotFoundMessage(t *testing.T) {
+	var output bytes.Buffer
+	printPackageNotFound(&output, "github.com/wago-org/asi", "wago-org/wasi")
+	want := "\nWe couldn’t find github.com/wago-org/asi. Check the package name or make sure you have access.\n" +
+		"\nClosest match: wago-org/wasi\n\n  wago add wago-org/wasi\n"
+	if got := output.String(); got != want {
+		t.Fatalf("package not found message = %q, want %q", got, want)
 	}
 }

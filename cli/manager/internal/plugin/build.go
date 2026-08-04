@@ -7,6 +7,7 @@ package plugin
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"sort"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/wago-org/wago/cli/internal/automation"
 	"github.com/wago-org/wago/cli/internal/project"
+	"github.com/wago-org/wago/cli/internal/ui"
 	pluginbuild "github.com/wago-org/wago/cli/manager/internal/plugin/build"
 	managerprogress "github.com/wago-org/wago/cli/manager/internal/progress"
 	"github.com/wago-org/wago/cli/manager/internal/registry"
@@ -36,7 +38,12 @@ func pkgAddMany(specs []string, o pkgOpts) {
 	if o.verbose {
 		progress.DisableAnimation()
 	}
-	progress.Title("Installing packages")
+	title := "Installing packages"
+	if len(specs) == 1 {
+		module, _ := splitModuleVersion(normalizeModuleRef(specs[0]))
+		title = "Installing " + strings.TrimPrefix(module, "github.com/")
+	}
+	progress.Title(title)
 	progress.Begin("Resolving packages")
 	packages, err := ResolvePackages(specs, registry.ResolveModule)
 	if err != nil {
@@ -68,6 +75,14 @@ func pkgAddMany(specs []string, o pkgOpts) {
 			getErr = pluginbuild.Get(buildDir, getSpec, o.verbose)
 		}
 		if getErr != nil {
+			if pluginbuild.IsNotFound(getErr) {
+				progress.Fail("Package not found")
+				if automation.JSON() {
+					fatal("add: package %s was not found", getSpec)
+				}
+				printPackageNotFound(os.Stderr, pkg.Module, registry.Closest(pkg.Module))
+				os.Exit(1)
+			}
 			progress.Fail("Package download failed")
 			if _, haveSrc := pluginbuild.SourceDir(); !haveSrc {
 				fatal("add: fetching %s: %v\n  (during dev, set WAGO_SRC to a wago checkout so sibling plugins resolve locally)", getSpec, getErr)
@@ -136,6 +151,14 @@ func pkgAddMany(specs []string, o pkgOpts) {
 		summary[index] = SummaryPackage{Module: pkg.Module, Version: pkg.Resolved}
 	}
 	PrintSummary(os.Stdout, summary, elapsed)
+}
+
+func printPackageNotFound(output io.Writer, module, closest string) {
+	fmt.Fprintf(output, "\nWe couldn’t find %s. Check the package name or make sure you have access.\n", module)
+	if closest == "" {
+		return
+	}
+	fmt.Fprintf(output, "\nClosest match: %s\n\n  %s\n", closest, ui.Cyan("wago add "+closest))
 }
 
 // reviewInstalledCapabilities fires the capability review for a just-installed

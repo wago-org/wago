@@ -23,7 +23,6 @@ func DisplayVersion(version string) string {
 }
 
 func PrintSummary(output io.Writer, packages []SummaryPackage, elapsed time.Duration) {
-	fmt.Fprintln(output)
 	for _, pkg := range packages {
 		name := strings.TrimPrefix(pkg.Module, "github.com/")
 		fmt.Fprintf(output, "%s %s@%s\n", ui.Cyan("+"), name, pkg.Version)

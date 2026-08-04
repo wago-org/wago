@@ -12,6 +12,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -201,7 +202,40 @@ func runGo(dir string, verbose bool, args ...string) error {
 
 // goGetDep runs `go get modspec` in the build module (verbose streams output).
 func Get(dir, modspec string, verbose bool) error {
-	return RunGo(dir, verbose, "get", modspec)
+	if verbose {
+		return RunGo(dir, true, "get", modspec)
+	}
+	return withBuildLock(dir, func() error {
+		cmd := exec.Command("go", "get", modspec)
+		cmd.Dir = dir
+		cmd.Env = os.Environ()
+		automation.ConfigureCommand(cmd)
+		out, err := cmd.CombinedOutput()
+		if err == nil {
+			return nil
+		}
+		return &FetchError{Err: err, Output: string(out)}
+	})
+}
+
+// FetchError retains Go's diagnostic so callers can classify common failures
+// without dumping Git and module-cache implementation details into the UI.
+type FetchError struct {
+	Err    error
+	Output string
+}
+
+func (e *FetchError) Error() string { return e.Err.Error() }
+func (e *FetchError) Unwrap() error { return e.Err }
+
+func IsNotFound(err error) bool {
+	var fetch *FetchError
+	if !errors.As(err, &fetch) {
+		return false
+	}
+	output := strings.ToLower(fetch.Output)
+	return strings.Contains(output, "repository not found") ||
+		strings.Contains(output, "unrecognized import path")
 }
 
 // goUpdate runs `go get -u target` (update to latest) in the build module.
