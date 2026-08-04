@@ -64,6 +64,9 @@ func (commandEnvironment) Compile(options compilecmd.Options) {
 		if options.Invoke != "" {
 			plan["invoke"] = options.Invoke
 		}
+		if options.Plugins != "" {
+			plan["plugins"] = options.Plugins
+		}
 		automation.PrintPlan("build standalone executable", plan)
 		return
 	}
@@ -74,7 +77,7 @@ func (commandEnvironment) Compile(options compilecmd.Options) {
 	progress.Title("Compiling " + filepath.Base(options.Input))
 	progress.Begin("Building " + target.String())
 	result, err := managerstandalone.Build(managerstandalone.Request{
-		Input: options.Input, Output: output, Target: target, Invoke: options.Invoke, Verbose: options.Verbose,
+		Input: options.Input, Output: output, Target: target, Invoke: options.Invoke, Plugins: options.Plugins, Verbose: options.Verbose,
 	})
 	if err != nil {
 		progress.Fail("Standalone build failed")

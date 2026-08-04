@@ -2,12 +2,15 @@
 package compile
 
 import (
+	"strings"
+
 	"github.com/wago-org/wago/cli/internal/command"
 	"github.com/wago-org/wago/cli/internal/ui"
 )
 
 type Options struct {
 	Input, Output, Target, Invoke string
+	Plugins                       string
 	Global, Local, Bare           bool
 	Verbose                       bool
 }
@@ -26,6 +29,8 @@ func Command(environment Environment) *command.Cmd {
 			{Name: "output", Short: "o", Arg: "<file>", Help: "output executable path"},
 			{Name: "target", Arg: "<os/arch>", Help: "target platform (default: current platform)"},
 			{Name: "invoke", Short: "e", Arg: "<name>", Help: "exported function to call"},
+			{Name: "plugin", Arg: "<names>", Help: "comma-separated extra plugins to enable"},
+			{Name: "plugins", Arg: "<names>", Help: "alias for --plugin"},
 			{Name: "global", Short: "g", Bool: true, Help: "include shared user-wide plugins"},
 			{Name: "local", Bool: true, Help: "include this project's plugins"},
 			{Name: "bare", Bool: true, Help: "build without plugins"},
@@ -39,11 +44,23 @@ func Command(environment Environment) *command.Cmd {
 			if len(context.Args) != 1 {
 				ui.Usage("compile: need exactly one <file>")
 			}
+			plugins := joinPluginLists(context.Str("plugin"), context.Str("plugins"))
 			environment.Compile(Options{
 				Input: context.Args[0], Output: context.Str("output"), Target: context.Str("target"), Invoke: context.Str("invoke"),
-				Global: context.Bool("global"), Local: context.Bool("local"), Bare: context.Bool("bare"),
+				Plugins: plugins,
+				Global:  context.Bool("global"), Local: context.Bool("local"), Bare: context.Bool("bare"),
 				Verbose: context.Bool("verbose"),
 			})
 		},
 	}
+}
+
+func joinPluginLists(values ...string) string {
+	plugins := make([]string, 0, len(values))
+	for _, value := range values {
+		if value = strings.TrimSpace(value); value != "" {
+			plugins = append(plugins, value)
+		}
+	}
+	return strings.Join(plugins, ",")
 }

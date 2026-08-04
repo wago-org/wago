@@ -131,6 +131,14 @@ func TestRunPluginScopeOverrides(t *testing.T) {
 	t.Setenv("WAGO_GLOBAL", "")
 	t.Setenv("WAGO_LOCAL", "")
 	t.Setenv("WAGO_BARE", "")
+	applyTestPluginScope(t, []string{"run", "-g", "module.wasm"})
+	if !projectconfig.Truthy("WAGO_GLOBAL") {
+		t.Fatal("-g did not select global plugins")
+	}
+
+	t.Setenv("WAGO_GLOBAL", "")
+	t.Setenv("WAGO_LOCAL", "")
+	t.Setenv("WAGO_BARE", "")
 	applyTestPluginScope(t, []string{"run", "--bare", "module.wasm"})
 	if !projectconfig.Truthy("WAGO_BARE") || projectconfig.Truthy("WAGO_GLOBAL") {
 		t.Fatal("--bare did not disable plugins")
@@ -155,9 +163,25 @@ func TestRunPluginScopeOverrides(t *testing.T) {
 	t.Setenv("WAGO_GLOBAL", "")
 	t.Setenv("WAGO_LOCAL", "")
 	t.Setenv("WAGO_BARE", "")
+	applyTestPluginScope(t, []string{"run", "--plugins", "wasi,metrics", "--global", "module.wasm"})
+	if !projectconfig.Truthy("WAGO_GLOBAL") {
+		t.Fatal("plural plugin flag hid --global")
+	}
+
+	t.Setenv("WAGO_GLOBAL", "")
+	t.Setenv("WAGO_LOCAL", "")
+	t.Setenv("WAGO_BARE", "")
 	applyTestPluginScope(t, []string{"run", "--local", "module.wasm"})
 	if !projectconfig.Truthy("WAGO_LOCAL") || projectconfig.Truthy("WAGO_GLOBAL") || projectconfig.Truthy("WAGO_BARE") {
 		t.Fatal("--local did not select project plugins")
+	}
+}
+
+func TestExtraStandalonePluginsAreNormalizedAndDeduplicated(t *testing.T) {
+	intents := []projectconfig.PluginIntent{{Name: "wago-org/wasi"}}
+	got := appendExtraPluginIntents(intents, "github.com/wago-org/wasi, acme/metrics,acme/metrics")
+	if len(got) != 2 || got[0].Name != "wago-org/wasi" || got[1].Name != "acme/metrics" {
+		t.Fatalf("extra plugin intents = %#v", got)
 	}
 }
 

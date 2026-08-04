@@ -13,8 +13,9 @@ import (
 func Flags() []command.Flag {
 	return []command.Flag{
 		{Name: "plugin", Arg: "<names>", Help: "comma-separated extra plugins to enable, on top of wago.json (see: wago plugin list)"},
+		{Name: "plugins", Arg: "<names>", Help: "alias for --plugin"},
 		{Name: "local", Bool: true, Help: "use this project's plugins (default when wago.json exists)"},
-		{Name: "global", Bool: true, Help: "use the shared user-wide plugins"},
+		{Name: "global", Short: "g", Bool: true, Help: "use the shared user-wide plugins"},
 		{Name: "bare", Bool: true, Help: "run without local or global plugins"},
 	}
 }

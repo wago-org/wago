@@ -66,7 +66,11 @@ func (cmd implementation) Run(c *command.Ctx) {
 		output = strings.TrimSuffix(input, ext) + ".wago"
 	}
 	if automation.DryRun() {
-		automation.PrintPlan("build artifact", map[string]any{"input": input, "output": output, "parallel": c.Str("parallel"), "deferredBoundsChecking": deferredBoundsChecking})
+		plan := map[string]any{"input": input, "output": output, "parallel": c.Str("parallel"), "deferredBoundsChecking": deferredBoundsChecking}
+		if plugins := runcmd.PluginList(c); plugins != "" {
+			plan["plugins"] = plugins
+		}
+		automation.PrintPlan("build artifact", plan)
 		return
 	}
 	source, err := os.ReadFile(input)
@@ -81,7 +85,7 @@ func (cmd implementation) Run(c *command.Ctx) {
 		ui.Usage("build: %v", err)
 	}
 	cfg = runcmd.ApplyFeatureDefaults(cfg, defaults, configured)
-	rt := cmd.environment.LoadRuntime(cfg, c.Str("plugin"))
+	rt := cmd.environment.LoadRuntime(cfg, runcmd.PluginList(c))
 	defer rt.Close()
 	module, err := rt.Compile(source)
 	if err != nil {

@@ -42,6 +42,7 @@ func ParseTarget(value string) (Target, error) {
 type Request struct {
 	Input, Output string
 	Invoke        string
+	Plugins       string
 	Target        Target
 	Verbose       bool
 	KeepSymbols   bool
@@ -102,7 +103,7 @@ func Build(request Request) (Result, error) {
 		return Result{}, err
 	}
 	defer os.RemoveAll(buildDir)
-	inputs, err := managerplugin.PrepareStandalone(buildDir, request.Verbose)
+	inputs, err := managerplugin.PrepareStandalone(buildDir, request.Verbose, request.Plugins)
 	if err != nil {
 		return Result{}, fmt.Errorf("prepare plugins: %w", err)
 	}

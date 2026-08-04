@@ -160,8 +160,9 @@ func fallbackRuntimeSchemaCommands() []*command.Cmd {
 	parallel := command.Flag{Name: "parallel", Short: "p", Arg: "[workers]", Help: "parallel function validation and compilation"}
 	pluginFlags := []command.Flag{
 		{Name: "plugin", Arg: "<names>", Help: "comma-separated extra plugins to enable"},
+		{Name: "plugins", Arg: "<names>", Help: "alias for --plugin"},
 		{Name: "local", Bool: true, Help: "use this project's plugins"},
-		{Name: "global", Bool: true, Help: "use shared user-wide plugins"},
+		{Name: "global", Short: "g", Bool: true, Help: "use shared user-wide plugins"},
 		{Name: "bare", Bool: true, Help: "run without plugins"},
 	}
 	runFlags := []command.Flag{
