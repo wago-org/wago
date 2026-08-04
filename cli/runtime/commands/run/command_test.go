@@ -2,6 +2,7 @@ package run
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -84,26 +85,18 @@ func TestHelpRecognitionAfterSeparatedParallelism(t *testing.T) {
 	}
 }
 
-func TestAutoHostsDoesNotOverrideRuntimeImports(t *testing.T) {
-	provided := wago.Imports{
-		"plugin.host": wago.HostFunc(func(wago.HostModule, []uint64, []uint64) {}),
+func TestFriendlyInstantiationErrorSuggestsWASI(t *testing.T) {
+	err := fmt.Errorf(`module imports "wasi_snapshot_preview1.fd_write": %w`, wago.ErrMissingImport)
+	got := friendlyInstantiationError(err).Error()
+	if !strings.Contains(got, "requires WASI support") ||
+		!strings.Contains(got, "wago add wago-org/wasi") {
+		t.Fatalf("WASI import error = %q", got)
 	}
-	hosts := autoHosts(&wago.Compiled{Imports: []string{
-		"plugin.host",
-		"env.fallback",
-	}}, false, provided)
-	if _, ok := hosts["plugin.host"]; ok {
-		t.Fatal("auto host replaced a runtime-provided plugin import")
+
+	other := fmt.Errorf(`module imports "env.log": %w`, wago.ErrMissingImport)
+	if got := friendlyInstantiationError(other); !errors.Is(got, other) {
+		t.Fatalf("generic import error = %v, want original", got)
 	}
-	if _, ok := hosts["env.fallback"]; !ok {
-		t.Fatal("auto host omitted an unprovided import")
-	}
-	traced := autoHosts(&wago.Compiled{Imports: []string{"env.trace"}}, true, nil)
-	fn, ok := traced["env.trace"].(wago.HostFunc)
-	if !ok {
-		t.Fatalf("traced host type = %T", traced["env.trace"])
-	}
-	fn(nil, []uint64{wago.I32(4)}, nil)
 }
 
 func TestTrapReasonIncludesWasmFrame(t *testing.T) {

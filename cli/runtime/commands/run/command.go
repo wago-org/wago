@@ -92,15 +92,14 @@ func (cmd implementation) Run(ctx *command.Ctx) {
 	export := mustResolveExport(compiled, ctx.Str("invoke"))
 
 	if export == "_start" {
-		runStart(runtime, module, compiled)
+		runStart(runtime, module)
 		return
 	}
 	params, results, _ := compiled.Signature(export)
 	values := mustParseArgs(positionals[1:], params)
-	imports := autoHosts(compiled, true, runtime.HostImports())
-	instance, err := runtime.Instantiate(context.Background(), module, wago.WithImports(imports))
+	instance, err := runtime.Instantiate(context.Background(), module)
 	if err != nil {
-		ui.Fatal("%v", err)
+		ui.Fatal("%v", friendlyInstantiationError(err))
 	}
 	defer instance.Close()
 	result, err := instance.Invoke(export, values...)
@@ -110,11 +109,10 @@ func (cmd implementation) Run(ctx *command.Ctx) {
 	fmt.Println(format(export, values, result, params, results))
 }
 
-func runStart(runtime *wago.Runtime, module *wago.Module, compiled *wago.Compiled) {
-	imports := autoHosts(compiled, false, runtime.HostImports())
-	instance, err := runtime.Instantiate(context.Background(), module, wago.WithImports(imports))
+func runStart(runtime *wago.Runtime, module *wago.Module) {
+	instance, err := runtime.Instantiate(context.Background(), module)
 	if err != nil {
-		ui.Fatal("%v", err)
+		ui.Fatal("%v", friendlyInstantiationError(err))
 	}
 	defer instance.Close()
 	if _, err := instance.Invoke("_start"); err != nil {
@@ -125,6 +123,15 @@ func runStart(runtime *wago.Runtime, module *wago.Module, compiled *wago.Compile
 		}
 		ui.Fatal("%s %s", ui.Red("trap:"), trapReason(err))
 	}
+}
+
+func friendlyInstantiationError(err error) error {
+	if errors.Is(err, wago.ErrMissingImport) &&
+		(strings.Contains(err.Error(), `"wasi_snapshot_preview1.`) ||
+			strings.Contains(err.Error(), `"wasi_unstable.`)) {
+		return fmt.Errorf("this module requires WASI support\n\nInstall it with:\n\n  wago add wago-org/wasi")
+	}
+	return err
 }
 
 func trapReason(err error) string {
