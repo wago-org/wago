@@ -24,6 +24,10 @@ func pathTargets(home string) []pathTarget {
 
 func pathSetupQuestion() string { return "Add Wago to PATH?" }
 
+func pathSetupItems(targets []pathTarget) []radioItem {
+	return []radioItem{{"Yes", "", "0", ""}, {"No", "", "none", ""}}
+}
+
 func pathSetupSelectionQuestion(target pathTarget, home string) string { return pathSetupQuestion() }
 
 func addPath(binDir, configFile, shellName string) (bool, error) {

@@ -96,10 +96,8 @@ func main() {
 			{"Minimal", "Replace binaries and keep existing state", "minimal", ""},
 		}, 2)
 	case "path":
-		value, ok = radio(pathSetupQuestion(), []radioItem{
-			{"Command Prompt", "User PATH", "yes", "current"},
-			{"Not now", "", "none", ""},
-		}, 0)
+		home := firstEnv("HOME", "USERPROFILE")
+		value, ok = radio(pathSetupQuestion(), pathSetupItems(pathTargets(home)), 0)
 	default:
 		os.Exit(2)
 	}
@@ -158,13 +156,13 @@ func spinner(stop, label string) {
 	}
 	defer os.Remove(running)
 	s := colors()
-	frames := []string{"\u280b", "\u2819", "\u2839", "\u2838", "\u283c", "\u2834", "\u2826", "\u2827", "\u2807", "\u280f"}
 	for index := 0; ; index++ {
 		if _, err := os.Stat(stop); err == nil {
-			fmt.Fprint(os.Stderr, "\r\x1b[2K")
+			clearProgressLine()
 			return
 		}
-		fmt.Fprintf(os.Stderr, "\r\x1b[2K%s%s%s %s", s.dim, frames[index%len(frames)], s.reset, label)
+		clearProgressLine()
+		fmt.Fprintf(os.Stderr, "%s%s%s %s", s.dim, spinnerFrames[index%len(spinnerFrames)], s.reset, label)
 		time.Sleep(80 * time.Millisecond)
 	}
 }
@@ -172,7 +170,7 @@ func spinner(stop, label string) {
 func status(kind, label string) {
 	if stderrIsConsole() {
 		enableVirtualTerminal()
-		fmt.Fprint(os.Stderr, "\r\x1b[2K")
+		clearProgressLine()
 	}
 	s := colors()
 	switch kind {
@@ -196,11 +194,7 @@ func colorsFor(isConsole bool) style {
 	return style{cyan: "\x1b[36m", red: "\x1b[31m", dim: "\x1b[2m", bold: "\x1b[1m", reset: "\x1b[0m"}
 }
 
-func clear(lines int) {
-	if lines > 0 {
-		fmt.Fprintf(os.Stderr, "\x1b[%dA\x1b[J", lines)
-	}
-}
+var spinnerFrames = []string{"\u280b", "\u2819", "\u2839", "\u2838", "\u283c", "\u2834", "\u2826", "\u2827", "\u2807", "\u280f"}
 
 func radio(title string, items []radioItem, cursor int) (string, bool) {
 	c, interactive := openConsole()
@@ -221,7 +215,7 @@ func radio(title string, items []radioItem, cursor int) (string, bool) {
 	painted := false
 	render := func() {
 		if painted {
-			clear(len(items) + 2)
+			clearConsoleLines(len(items) + 2)
 		}
 		fmt.Fprintf(os.Stderr, "%s%s%s\n", s.bold, title, s.reset)
 		for index, item := range items {
@@ -257,10 +251,10 @@ func radio(title string, items []radioItem, cursor int) (string, bool) {
 				cursor++
 			}
 		case "enter", "right":
-			clear(len(items) + 2)
+			clearConsoleLines(len(items) + 2)
 			return items[cursor].value, true
 		case "escape":
-			clear(len(items) + 2)
+			clearConsoleLines(len(items) + 2)
 			return "", false
 		default:
 			if pressed.rune == 'k' || pressed.rune == 'K' {
@@ -272,7 +266,7 @@ func radio(title string, items []radioItem, cursor int) (string, bool) {
 					cursor++
 				}
 			} else if pressed.rune == 'q' || pressed.rune == 'Q' {
-				clear(len(items) + 2)
+				clearConsoleLines(len(items) + 2)
 				return "", false
 			} else {
 				continue
@@ -304,7 +298,7 @@ func installDir() (string, bool) {
 			suggestionCursor = 0
 		}
 		if paintedLines > 0 {
-			clear(paintedLines)
+			clearConsoleLines(paintedLines)
 		}
 		fmt.Fprintf(os.Stderr, "%sWhere should Wago be installed?%s\n", s.bold, s.reset)
 		if focus == 0 {
@@ -338,15 +332,15 @@ func installDir() (string, bool) {
 		pressed := c.readKey()
 		switch pressed.name {
 		case "escape":
-			clear(paintedLines)
+			clearConsoleLines(paintedLines)
 			return "", false
 		case "enter":
 			if focus == 0 {
-				clear(paintedLines)
+				clearConsoleLines(paintedLines)
 				return defaultDir, true
 			}
 			if input != "" {
-				clear(paintedLines)
+				clearConsoleLines(paintedLines)
 				return resolvePath(input, cwd, home), true
 			}
 		case "up":
@@ -363,7 +357,7 @@ func installDir() (string, bool) {
 			}
 		case "right", "tab":
 			if focus == 0 && pressed.name == "right" {
-				clear(paintedLines)
+				clearConsoleLines(paintedLines)
 				return defaultDir, true
 			}
 			if focus == 1 && suggestionCursor >= 0 {

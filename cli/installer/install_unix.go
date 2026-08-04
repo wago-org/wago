@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 )
 
@@ -81,6 +82,18 @@ func pathTargets(home string) []pathTarget {
 }
 
 func pathSetupQuestion() string { return "Add Wago to PATH?" }
+
+func pathSetupItems(targets []pathTarget) []radioItem {
+	items := make([]radioItem, 0, len(targets)+1)
+	for index, target := range targets {
+		status := ""
+		if target.current {
+			status = "current"
+		}
+		items = append(items, radioItem{target.label, target.description, strconv.Itoa(index), status})
+	}
+	return append(items, radioItem{"Not now", "", "none", ""})
+}
 
 func pathSetupSelectionQuestion(target pathTarget, home string) string {
 	return "Add Wago to PATH in " + displayPath(target.configFile, home) + "?"
