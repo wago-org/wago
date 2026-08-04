@@ -22,9 +22,9 @@ func pathTargets(home string) []pathTarget {
 	return []pathTarget{{label: "Command Prompt", description: "User PATH", shell: "cmd", current: true}}
 }
 
-func pathSetupQuestion() string { return "Add Wago to your user PATH?" }
+func pathSetupQuestion() string { return "Want to add Wago to PATH?" }
 
-func pathSetupTargetMessage(target pathTarget, home string) string { return "" }
+func pathSetupAnswer(target pathTarget, home string) string { return target.description }
 
 func addPath(binDir, configFile, shellName string) (bool, error) {
 	userPath, pathType := os.Getenv("WAGO_TEST_USER_PATH"), "REG_EXPAND_SZ"

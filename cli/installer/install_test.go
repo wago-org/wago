@@ -31,9 +31,8 @@ func TestInstallerDryRunPresentation(t *testing.T) {
 		t.Fatal(err)
 	}
 	separator := string(os.PathSeparator)
-	want := "Wago\n" +
-		"A fast, extensible WebAssembly JIT for Go.\n\n" +
-		"Install location\n  ~" + separator + ".wago" + separator + "bin\n\n" +
+	want := "Welcome to wago! Let's get you set up!\n\n" +
+		"Where should Wago be installed? ~" + separator + ".wago" + separator + "bin\n\n" +
 		"Plan\n  Version  canary\n  Command  ~" + separator + ".wago" + separator + "bin" + separator + executableName("wago") + "\n  Source   ~" + separator + ".wago" + separator + "src\n\n" +
 		"Dry run · no changes made.\n"
 	if got := output.String(); got != want {
@@ -180,7 +179,7 @@ func TestInstallerScriptedPathSetupKeepsStatusDetails(t *testing.T) {
 	if !ready || configFile != filepath.Join(home, ".zshrc") {
 		t.Fatalf("PATH setup = %v, %q", ready, configFile)
 	}
-	want := "Adding to PATH: ~/.zshrc\n\n✓ Added Wago to PATH\n"
+	want := "Want to add Wago to PATH? ~/.zshrc\n\n✓ Added Wago to PATH\n"
 	if got := output.String(); got != want {
 		t.Fatalf("PATH setup output = %q, want %q", got, want)
 	}
@@ -192,16 +191,13 @@ func TestInstallerScriptedPathSetupKeepsStatusDetails(t *testing.T) {
 		t.Fatal(err)
 	}
 	installer.offerPathSetup()
-	if got, want := output.String(), "PATH setup: skipped\n\n"; got != want {
+	if got, want := output.String(), "Want to add Wago to PATH? Not now\n\n"; got != want {
 		t.Fatalf("skipped PATH output = %q, want %q", got, want)
 	}
 }
 
-func TestInstallerPromptWordingMatchesLegacyFlow(t *testing.T) {
-	want := "Add Wago to your PATH?"
-	if runtime.GOOS == "windows" {
-		want = "Add Wago to your user PATH?"
-	}
+func TestInstallerPromptWordingMatchesWarmFlow(t *testing.T) {
+	want := "Want to add Wago to PATH?"
 	if got := pathSetupQuestion(); got != want {
 		t.Fatalf("PATH prompt = %q, want %q", got, want)
 	}
@@ -209,6 +205,33 @@ func TestInstallerPromptWordingMatchesLegacyFlow(t *testing.T) {
 		if got := reinstallLabel(mode); got != want {
 			t.Fatalf("reinstall label %q = %q, want %q", mode, got, want)
 		}
+	}
+}
+
+func TestInstallerWarmFinishAfterPathSetup(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell activation command is Unix-specific")
+	}
+	home := filepath.Join(string(os.PathSeparator), "home", "wago")
+	t.Setenv("HOME", home)
+	t.Setenv("PATH", "")
+	t.Setenv("NO_COLOR", "1")
+	var output bytes.Buffer
+	installer, err := newInstaller(&output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	installer.pathAdded = true
+	installed := filepath.Join(home, ".wago", "bin", "wago")
+	installer.finish("canary-deadbee", installed, true, filepath.Join(home, ".zshrc"))
+	want := "\nSweet, we've installed Wago canary-deadbee at ~/.wago/bin/wago\n" +
+		"Since we added it to your PATH just now, please run\n\n" +
+		"source ~/.zshrc\n\n" +
+		"And then, go ahead and install a version of your choice with,\n\n" +
+		"wago version install\n\n" +
+		"Have fun!\n"
+	if got := output.String(); got != want {
+		t.Fatalf("warm finish:\n--- got ---\n%s--- want ---\n%s", got, want)
 	}
 }
 

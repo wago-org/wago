@@ -97,6 +97,10 @@ test: ## Build and run the test suite (host)
 	go test -count=1 ./...
 	go test -count=1 -tags wago_runtime ./cli/...
 
+.PHONY: install-local
+install-local: ## Run the installer from this checkout
+	@go run ./cli/installer install
+
 .PHONY: test-starshine
 test-starshine: ## Compile/link/instantiate a MoonBit Starshine wasm-gc artifact (STARSHINE_WASM=/path/cmd.wasm)
 	@test -n "$(STARSHINE_WASM)" || { echo "set STARSHINE_WASM=/path/to/cmd.wasm"; exit 1; }
