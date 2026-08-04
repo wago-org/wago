@@ -89,20 +89,20 @@ func (target *Target) Configured() bool  { return target.configured }
 func (target *Target) Config() Config    { return cloneConfig(target.config) }
 func (target *Target) ResetBase() Config { return cloneConfig(target.base) }
 
-func (target *Target) Set(key, value string) error {
-	return Set(&target.config, key, value)
+func (target *Target) Set(key, value string, experimental bool) error {
+	return Set(&target.config, key, value, experimental)
 }
 
 func (target *Target) Get(key string) (string, error) {
 	return Get(target.config, key)
 }
 
-func (target *Target) Reset(key string) error {
+func (target *Target) Reset(key string, experimental bool) error {
 	value, err := Get(target.base, key)
 	if err != nil {
 		return err
 	}
-	return Set(&target.config, key, value)
+	return Set(&target.config, key, value, experimental)
 }
 
 func (target *Target) ResetAll() { target.config = cloneConfig(target.base) }

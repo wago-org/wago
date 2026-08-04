@@ -77,10 +77,9 @@ func Print(w io.Writer, config settings.Config, includeExperimental bool, scope,
 		for _, setting := range settings.Experimental() {
 			value := "unavailable"
 			if setting.Available {
-				name := strings.TrimPrefix(setting.Key, "optimizations.")
-				value = onOff(config.Optimizations[name])
+				value = onOff(booleanValue(config, setting))
 			}
-			printSetting(w, strings.TrimPrefix(strings.TrimPrefix(setting.Key, "preview."), "optimizations."), value, setting.Key, overridden)
+			printSetting(w, settingName(setting), value, setting.Key, overridden)
 		}
 	}
 }
@@ -150,9 +149,8 @@ func chooseExperimental(config *settings.Config) bool {
 		if !setting.Available {
 			description += " · planned"
 		}
-		name := strings.TrimPrefix(setting.Key, "optimizations.")
 		items = append(items, tui.SelectItem{
-			Label: setting.Label, Description: description, On: setting.Available && config.Optimizations[name], Disabled: !setting.Available,
+			Label: setting.Label, Description: description, On: setting.Available && booleanValue(*config, setting), Disabled: !setting.Available,
 		})
 	}
 	selector := &tui.MultiSelect{Title: "Experimental features (preview)", Items: items, Prompt: "↑/↓ move · space toggle available · enter/→ save · ←/esc back"}
@@ -165,9 +163,8 @@ func chooseExperimental(config *settings.Config) bool {
 		if !setting.Available {
 			continue
 		}
-		name := strings.TrimPrefix(setting.Key, "optimizations.")
-		if config.Optimizations[name] != selector.Items[index].On {
-			config.Optimizations[name] = selector.Items[index].On
+		if booleanValue(*config, setting) != selector.Items[index].On {
+			setBooleanValue(config, setting, selector.Items[index].On)
 			changed = true
 		}
 	}
@@ -262,6 +259,27 @@ func availableExperimental() int {
 		}
 	}
 	return count
+}
+
+func settingName(setting settings.BoolSetting) string {
+	return setting.Key[strings.IndexByte(setting.Key, '.')+1:]
+}
+
+func booleanValue(config settings.Config, setting settings.BoolSetting) bool {
+	name := settingName(setting)
+	if strings.HasPrefix(setting.Key, "features.") {
+		return config.Features[name]
+	}
+	return config.Optimizations[name]
+}
+
+func setBooleanValue(config *settings.Config, setting settings.BoolSetting, enabled bool) {
+	name := settingName(setting)
+	if strings.HasPrefix(setting.Key, "features.") {
+		config.Features[name] = enabled
+		return
+	}
+	config.Optimizations[name] = enabled
 }
 
 func parallelLabel(value string) string {

@@ -2,6 +2,8 @@
 
 package arm64
 
+import "github.com/wago-org/wago/src/core/compiler/optimization"
+
 // Central registry of the CLI-exposable optimization knobs. Each entry points at
 // a package-level bool whose built-in default is set from a WAGO_* env var at
 // init (env stays the fallback); the CLI overrides it at runtime via SetOptKnob.
@@ -11,57 +13,67 @@ package arm64
 // script using `--no-v128-pins` works on either architecture.
 
 type optKnob struct {
-	name     string
-	desc     string
-	ptr      *bool
-	inverted bool // ptr is a disable flag: stored value == !enabled
+	definition optimization.Definition
+	ptr        *bool
+	inverted   bool // ptr is a disable flag: stored value == !enabled
 }
 
 // optKnobRegistry lists every boolean codegen knob. Keep names kebab-case and
 // stable — they are the CLI flag surface (`--<name>` / `--no-<name>`).
 var optKnobRegistry = []optKnob{
-	{"bounds-facts", "straight-line bounds-check elision", &boundsFactsEnabled, false},
-	{"st-flags", "keep comparison results in the flags register", &stFlagsEnabled, false},
-	{"reg-merge", "single-result block values stay in registers across joins", &regMergeEnabled, false},
-	{"tee-sink", "sink local.tee expressions into the local's register", &teeLocalSinkEnabled, false},
-	{"unary-sink", "sink unary/convert local.set expressions in place", &unaryLocalSinkEnabled, false},
-	{"three-op-sink", "sink binary ops into pinned locals (3-operand form)", &threeOperandSinkEnabled, false},
-	{"olddest-rhs-sink", "reuse an old-dest register as a binary op's RHS", &oldDestRHSSinkEnabled, false},
-	{"branch-fold", "fold branch pairs into one inverted conditional branch", &branchFoldEnabled, false},
-	{"store-load-fwd", "post-assembly store to load forwarding peephole", &storeLoadFwdEnabled, false},
-	{"uxtw-add", "fold a zero-extend into ADD ...,UXTW", &uxtwAddEnabled, false},
-	{"entry-arg-pins", "pin entry arguments in their incoming registers", &entryArgPinsEnabled, false},
-	{"x8-pin", "pin a scratch value in x8 for call-free functions", &callFreeX8PinEnabled, false},
-	{"deep-fp-pins", "pin extra float locals in call-free functions", &deepFPPinsEnabled, false},
-	{"ext-fp-pins", "extend the float pin pool in call-free functions", &extendedFPPinsEnabled, false},
-	{"leaf-scratch-pins", "pin scratch values in leaf functions", &leafScratchPinsEnabled, false},
-	{"immutable-table", "specialize calls through never-written tables", &immutableLocalTableEnabled, false},
-	{"immutable-table-type", "skip the type check on immutable-table calls", &immutableTableTypeEnabled, false},
-	{"inline-callfree", "hint call-free callees for inlining", &inlineCallFreeHintsEnabled, false},
-	{"store-forward", "straight-line store to load forwarding", &linearStoreForwardEnabled, false},
-	{"frame-elide-reghomed", "omit the frame when locals are register-homed", &frameElideRegHomed, false},
-	{"small-frame", "use the small-frame stack adjustment form", &smallFrameAdjustEnabled, false},
-	{"v128-const-cache", "reserve V registers for repeated v128 constants", &v128ConstCacheEnabled, false},
-	{"v128-pins", "pin hot v128 locals in V registers for call-free functions", &v128LocalPinsEnabled, false},
-	{"v128-sink", "sink v128 binary ops into pinned locals", &v128LocalSinkEnabled, false},
-	{"reg-abi", "internal register calling convention", &regABIEnabled, false},
-	{"inline", "inline eligible callees", &inlineEnabled, false},
-	{"inline-loop-callees", "inline callees called from inside a loop", &inlineLoopCallees, false},
-	{"loop-precheck", "hoist a loop-invariant bounds check to a pre-loop check", &loopPrecheckEnabled, false},
-	{"loop-region-pins", "pin loop-carried values across the loop region", &loopRegionPinsEnabled, false},
-	{"immutable-poly-fastpath", "polymorphic fast path for immutable-table calls", &immutableLocalPolyFastPath, false},
-	{"legacy-fp-pins", "legacy float-pin allocation (fallback)", &legacyFPPinsEnabled, false},
-	{"legacy-gp-pins", "legacy integer-pin allocation (fallback)", &legacyGPPinsEnabled, false},
-	{"stack-fence", "emit the stack-overflow guard fence", &noStackFence, true},
-	{"stack-reg", "keep the guest stack pointer in a register", &noStackReg, true},
+	bindOptKnob("bounds-facts", &boundsFactsEnabled, false),
+	bindOptKnob("st-flags", &stFlagsEnabled, false),
+	bindOptKnob("reg-merge", &regMergeEnabled, false),
+	bindOptKnob("tee-sink", &teeLocalSinkEnabled, false),
+	bindOptKnob("unary-sink", &unaryLocalSinkEnabled, false),
+	bindOptKnob("three-op-sink", &threeOperandSinkEnabled, false),
+	bindOptKnob("olddest-rhs-sink", &oldDestRHSSinkEnabled, false),
+	bindOptKnob("branch-fold", &branchFoldEnabled, false),
+	bindOptKnob("store-load-fwd", &storeLoadFwdEnabled, false),
+	bindOptKnob("uxtw-add", &uxtwAddEnabled, false),
+	bindOptKnob("entry-arg-pins", &entryArgPinsEnabled, false),
+	bindOptKnob("x8-pin", &callFreeX8PinEnabled, false),
+	bindOptKnob("deep-fp-pins", &deepFPPinsEnabled, false),
+	bindOptKnob("ext-fp-pins", &extendedFPPinsEnabled, false),
+	bindOptKnob("leaf-scratch-pins", &leafScratchPinsEnabled, false),
+	bindOptKnob("immutable-table", &immutableLocalTableEnabled, false),
+	bindOptKnob("immutable-table-type", &immutableTableTypeEnabled, false),
+	bindOptKnob("inline-callfree", &inlineCallFreeHintsEnabled, false),
+	bindOptKnob("store-forward", &linearStoreForwardEnabled, false),
+	bindOptKnob("frame-elide-reghomed", &frameElideRegHomed, false),
+	bindOptKnob("small-frame", &smallFrameAdjustEnabled, false),
+	bindOptKnob("v128-const-cache", &v128ConstCacheEnabled, false),
+	bindOptKnob("v128-pins", &v128LocalPinsEnabled, false),
+	bindOptKnob("v128-sink", &v128LocalSinkEnabled, false),
+	bindOptKnob("reg-abi", &regABIEnabled, false),
+	bindOptKnob("inline", &inlineEnabled, false),
+	bindOptKnob("inline-loop-callees", &inlineLoopCallees, false),
+	bindOptKnob("loop-precheck", &loopPrecheckEnabled, false),
+	bindOptKnob("loop-region-pins", &loopRegionPinsEnabled, false),
+	bindOptKnob("immutable-poly-fastpath", &immutableLocalPolyFastPath, false),
+	bindOptKnob("legacy-fp-pins", &legacyFPPinsEnabled, false),
+	bindOptKnob("legacy-gp-pins", &legacyGPPinsEnabled, false),
+	bindOptKnob("stack-fence", &noStackFence, true),
+	bindOptKnob("stack-reg", &noStackReg, true),
+}
+
+func bindOptKnob(name string, ptr *bool, inverted bool) optKnob {
+	definition, ok := optimization.Lookup("arm64", name)
+	if !ok {
+		panic("arm64 optimization binding is not registered: " + name)
+	}
+	return optKnob{definition: definition, ptr: ptr, inverted: inverted}
 }
 
 // KnobInfo describes one optimization knob for the CLI: its stable name, a
 // one-line description, and whether it is currently enabled.
 type KnobInfo struct {
-	Name string
-	Desc string
-	On   bool
+	Name         string
+	Label        string
+	Desc         string
+	On           bool
+	Default      bool
+	Experimental bool
 }
 
 // OptKnobs returns the current state of every optimization knob (public sense:
@@ -73,7 +85,7 @@ func OptKnobs() []KnobInfo {
 		if k.inverted {
 			on = !on
 		}
-		out[i] = KnobInfo{Name: k.name, Desc: k.desc, On: on}
+		out[i] = KnobInfo{Name: k.definition.Name, Label: k.definition.Label, Desc: k.definition.Description, On: on, Default: k.definition.Default, Experimental: k.definition.Experimental}
 	}
 	return out
 }
@@ -82,7 +94,7 @@ func OptKnobs() []KnobInfo {
 // knob has that name.
 func SetOptKnob(name string, on bool) bool {
 	for _, k := range optKnobRegistry {
-		if k.name != name {
+		if k.definition.Name != name {
 			continue
 		}
 		v := on

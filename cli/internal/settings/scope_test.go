@@ -14,7 +14,7 @@ func TestLocalSettingsOverrideGlobalAndResetToGlobal(t *testing.T) {
 	globalPath := filepath.Join(t.TempDir(), "settings.json")
 	t.Setenv("WAGO_CONFIG", globalPath)
 	global := Default()
-	if err := Set(&global, "simd", "off"); err != nil {
+	if err := Set(&global, "simd", "off", false); err != nil {
 		t.Fatal(err)
 	}
 	if err := Save(global); err != nil {
@@ -30,7 +30,7 @@ func TestLocalSettingsOverrideGlobalAndResetToGlobal(t *testing.T) {
 	if target.Scope() != ScopeLocal || value != "false" {
 		t.Fatalf("initial target = scope %q, simd %q", target.Scope(), value)
 	}
-	if err := target.Set("simd", "on"); err != nil {
+	if err := target.Set("simd", "on", false); err != nil {
 		t.Fatal(err)
 	}
 	if err := target.Save(); err != nil {
@@ -66,7 +66,7 @@ func TestLocalSettingsOverrideGlobalAndResetToGlobal(t *testing.T) {
 		t.Fatalf("explicit global runtime settings = %#v, configured %v", resolved.Features, configured)
 	}
 	t.Setenv(project.GlobalEnv, "")
-	if err := target.Reset("simd"); err != nil {
+	if err := target.Reset("simd", false); err != nil {
 		t.Fatal(err)
 	}
 	if err := target.Save(); err != nil {
@@ -92,7 +92,7 @@ func TestLocalRuntimeOverrideIsSparse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := target.Set("runtime.parallel", "auto"); err != nil {
+	if err := target.Set("runtime.parallel", "auto", false); err != nil {
 		t.Fatal(err)
 	}
 	if err := target.Save(); err != nil {

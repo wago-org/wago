@@ -209,7 +209,7 @@ func ValidateParallel(value string) error {
 	return nil
 }
 
-func Set(config *Config, key, value string) error {
+func Set(config *Config, key, value string, experimental bool) error {
 	key = CanonicalKey(key)
 	switch key {
 	case "runtime.parallel":
@@ -231,7 +231,10 @@ func Set(config *Config, key, value string) error {
 		return fmt.Errorf("unknown setting %q", key)
 	}
 	if !setting.Available {
-		return fmt.Errorf("%s is preview-only and not available in this build", key)
+		return fmt.Errorf("%s is not available in this build", key)
+	}
+	if setting.Experimental && !experimental {
+		return fmt.Errorf("%s is experimental; pass --experimental to change it", key)
 	}
 	enabled, err := ParseBool(value)
 	if err != nil {
@@ -271,14 +274,14 @@ func Get(config Config, key string) (string, error) {
 	return strconv.FormatBool(config.Optimizations[name]), nil
 }
 
-func Reset(config *Config, key string) error {
+func Reset(config *Config, key string, experimental bool) error {
 	key = CanonicalKey(key)
 	defaults := Default()
 	value, err := Get(defaults, key)
 	if err != nil {
 		return err
 	}
-	return Set(config, key, value)
+	return Set(config, key, value, experimental)
 }
 
 func canonicalParallel(value string) string {

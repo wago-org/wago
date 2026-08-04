@@ -40,6 +40,7 @@ func TestConfigRootFlagsProvideOneShotActions(t *testing.T) {
 		{[]string{"--set", "runtime.parallel=auto"}, options.Set, "runtime.parallel", "auto", false, false, false},
 		{[]string{"--set", "simd=off", "--json"}, options.Set, "simd", "off", false, false, false},
 		{[]string{"--list", "--experimental"}, options.List, "", "", true, false, false},
+		{[]string{"--enable", "tail-call", "--experimental"}, options.Set, "tail-call", "on", true, false, false},
 	} {
 		environment := &testEnvironment{}
 		Command(environment).Dispatch("wago config", test.args)
@@ -48,6 +49,14 @@ func TestConfigRootFlagsProvideOneShotActions(t *testing.T) {
 			got.Global != test.wantGlobal || got.Local != test.wantLocal {
 			t.Fatalf("Dispatch(%v) = %#v", test.args, got)
 		}
+	}
+}
+
+func TestConfigSetRequiresExplicitExperimentalFlag(t *testing.T) {
+	environment := &testEnvironment{}
+	Command(environment).Child("set").Dispatch("wago config set", []string{"tail-call", "on", "--experimental"})
+	if !environment.request.Experimental {
+		t.Fatal("config set did not forward --experimental")
 	}
 }
 
