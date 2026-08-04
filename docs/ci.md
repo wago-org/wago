@@ -21,7 +21,7 @@ no Darwin/amd64 binary for 1.0.41, that runner builds `wast2json` from the
 checksum-pinned release source with CMake. Windows downloads the checksum-pinned
 official WABT archive because the project does not publish a Chocolatey package;
 Windows 11 ARM runs that x64 tool through its application emulation layer.
-Linux/amd64 and coverage
+Linux/amd64 and pull-request coverage
 additionally initialize the pinned `tests/spec-v3` submodule, build the
 interpreter from that exact checkout, and export its path and revision. The
 focused Linux/amd64 race lane initializes the same submodule without building
@@ -43,8 +43,10 @@ single-P, parallel-fault, unrelated-fault chaining, public API, and
 corpus-differential guard-page gates. Windows runs the equivalent Go commands
 directly from PowerShell rather than through Make.
 
-Linux/amd64 continues to host architecture-independent lint, TinyGo, coverage,
-and binary-size jobs. TinyGo mirrors the native matrix: Linux/amd64 and
+Linux/amd64 continues to host architecture-independent lint, TinyGo, and
+binary-size jobs on pull requests and pushes to `main`; coverage runs only for
+pull requests because it feeds the review card rather than the release gate.
+TinyGo mirrors the native matrix: Linux/amd64 and
 Linux/arm64 build, test, and smoke-run the CLI; Darwin/arm64 runs the runtime and
 public API suites; Darwin/amd64 runs the same portable compiler/encoder scope as
 Big Go. TinyGo runtime tests use verbose output so architecture-specific panics
@@ -52,7 +54,7 @@ identify the active test instead of reporting only an anonymous package failure.
 `SupportedFeatures` and `RuntimeConfig.Validate` expose the complete Core 3
 families only on linux/amd64; other runtime targets reject backend-incomplete
 families before decoding or native lowering.
-The CI card runs the WebAssembly 1.0, 2.0, and 3.0 suites
+The pull-request CI card runs the WebAssembly 1.0, 2.0, and 3.0 suites
 for visibility without making their current gaps required checks. The final
 `CI` aggregation job is the stable branch-protection check and fails if any
 required matrix cell or supporting job fails.
