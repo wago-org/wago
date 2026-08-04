@@ -3,6 +3,7 @@ package manager
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/wago-org/wago/cli/internal/automation"
@@ -13,6 +14,7 @@ import (
 	cacheclean "github.com/wago-org/wago/cli/manager/commands/cache/clean"
 	cacheoptions "github.com/wago-org/wago/cli/manager/commands/cache/options"
 	cacheprune "github.com/wago-org/wago/cli/manager/commands/cache/prune"
+	compilecmd "github.com/wago-org/wago/cli/manager/commands/compile"
 	configcompletions "github.com/wago-org/wago/cli/manager/commands/config/completions"
 	configoptions "github.com/wago-org/wago/cli/manager/commands/config/options"
 	pluginadd "github.com/wago-org/wago/cli/manager/commands/plugin/add"
@@ -30,8 +32,10 @@ import (
 	managercache "github.com/wago-org/wago/cli/manager/internal/cache"
 	managerconfig "github.com/wago-org/wago/cli/manager/internal/config"
 	managerplugin "github.com/wago-org/wago/cli/manager/internal/plugin"
+	managerprogress "github.com/wago-org/wago/cli/manager/internal/progress"
 	"github.com/wago-org/wago/cli/manager/internal/registry"
 	managerself "github.com/wago-org/wago/cli/manager/internal/self"
+	managerstandalone "github.com/wago-org/wago/cli/manager/internal/standalone"
 	managerstatus "github.com/wago-org/wago/cli/manager/internal/status"
 	managerversion "github.com/wago-org/wago/cli/manager/internal/version"
 	"github.com/wago-org/wago/internal/wagopaths"
@@ -40,6 +44,41 @@ import (
 // commandEnvironment adapts manager-owned domain modules to command packages.
 // Parsing, validation, and command-level orchestration stay in command.go.
 type commandEnvironment struct{}
+
+func (commandEnvironment) Compile(options compilecmd.Options) {
+	if err := managerplugin.Select(options.Global, options.Local, options.Bare); err != nil {
+		fatal("compile: %v", err)
+	}
+	target, err := managerstandalone.ParseTarget(options.Target)
+	if err != nil {
+		fatal("compile: %v", err)
+	}
+	output := options.Output
+	if output == "" {
+		output = managerstandalone.DefaultOutput(options.Input, target)
+	}
+	if automation.DryRun() {
+		automation.PrintPlan("build standalone executable", map[string]any{
+			"input": options.Input, "output": output, "target": target.String(),
+		})
+		return
+	}
+	progress := managerprogress.NewProgress(os.Stderr)
+	if options.Verbose {
+		progress.DisableAnimation()
+	}
+	progress.Title("Compiling " + filepath.Base(options.Input))
+	progress.Begin("Building " + target.String())
+	result, err := managerstandalone.Build(managerstandalone.Request{
+		Input: options.Input, Output: output, Target: target, Verbose: options.Verbose,
+	})
+	if err != nil {
+		progress.Fail("Standalone build failed")
+		fatal("compile: %v", err)
+	}
+	progress.Finish("Built standalone executable")
+	fmt.Printf("\n%s\n", displayPath(result.Output))
+}
 
 func (e commandEnvironment) Status() {
 	report, err := managerstatus.Inspect(e.dirs(), versionString(), executablePath())

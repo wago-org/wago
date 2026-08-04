@@ -5,6 +5,7 @@ import (
 	"github.com/wago-org/wago/cli/internal/handoff"
 	authcmd "github.com/wago-org/wago/cli/manager/commands/auth"
 	cachecmd "github.com/wago-org/wago/cli/manager/commands/cache"
+	compilecmd "github.com/wago-org/wago/cli/manager/commands/compile"
 	configcmd "github.com/wago-org/wago/cli/manager/commands/config"
 	initcmd "github.com/wago-org/wago/cli/manager/commands/init"
 	plugincmd "github.com/wago-org/wago/cli/manager/commands/plugin"
@@ -30,6 +31,7 @@ func buildCommandRegistry() *command.Cmd {
 		Name: "wago",
 		Children: []*command.Cmd{
 			statuscmd.Command(environment),
+			compilecmd.Command(environment),
 			updatecmd.Command(environment),
 			versioncmd.Command(environment),
 			authcmd.Command(environment),

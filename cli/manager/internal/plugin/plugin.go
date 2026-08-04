@@ -4,6 +4,7 @@ package plugin
 
 import (
 	"github.com/wago-org/wago/cli/internal/project"
+	pluginbuild "github.com/wago-org/wago/cli/manager/internal/plugin/build"
 )
 
 type AddRequest struct {
@@ -23,6 +24,11 @@ type MutationRequest struct {
 	Capabilities  []string
 	GrantAll      bool
 	DenyAll       bool
+}
+
+type StandaloneInputs struct {
+	Dependencies []string
+	Plugins      []project.PluginIntent
 }
 
 var configuredManagerVersion = "0.0.0"
@@ -78,6 +84,32 @@ func mustMutationScope(global, local bool) bool {
 
 func RuntimeBinary() (string, bool, error) {
 	return pluginRuntimeBinary()
+}
+
+// PrepareStandalone resolves the active plugin scope into an isolated build
+// module and returns the configuration that must be baked into an executable.
+func PrepareStandalone(buildDir string, verbose bool) (StandaloneInputs, error) {
+	environment, err := resolvePluginEnvironment()
+	if err != nil {
+		return StandaloneInputs{}, err
+	}
+	if err := pluginbuild.EnsureModule(buildDir); err != nil {
+		return StandaloneInputs{}, err
+	}
+	if len(environment.dependencies) == 0 {
+		return StandaloneInputs{}, nil
+	}
+	if _, err := syncLockedPluginVersions(buildDir, environment.manifestDir, verbose); err != nil {
+		return StandaloneInputs{}, err
+	}
+	plugins, err := project.PluginIntents(environment.manifestDir)
+	if err != nil {
+		return StandaloneInputs{}, err
+	}
+	return StandaloneInputs{
+		Dependencies: append([]string(nil), environment.dependencies...),
+		Plugins:      plugins,
+	}, nil
 }
 
 func Select(global, local, bare bool) error {

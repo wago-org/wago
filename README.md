@@ -71,6 +71,18 @@ wago build fib.wasm -o fib.wago
 wago run --invoke fib fib.wago 20
 ```
 
+Build a command module as a standalone native executable:
+
+```sh
+wago compile app.wasm -o app
+wago compile app.wasm --target linux/arm64 -o app-linux-arm64
+```
+
+The module must export `_start`. The executable embeds Wago, the Wasm module,
+and the active local or global plugin configuration, so it runs without a Wago
+installation. Use `--bare`, `--local`, or `--global` to choose the plugin scope.
+Cross-builds support Darwin, Linux, and Windows on AMD64 and ARM64.
+
 Inspect its host requirements:
 
 ```sh
