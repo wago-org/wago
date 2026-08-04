@@ -66,9 +66,9 @@ func rex(w, r, x, b bool) byte {
 	return v
 }
 
-// addrMode selects the shortest ModRM displacement form. RBP/R13 cannot use
-// mod=00 with a zero displacement because r/m=101 denotes RIP-relative
-// addressing, so they use an explicit zero disp8 instead.
+// addrMode selects the shortest ModRM displacement form. With mod=00, direct
+// ModRM r/m=101 denotes RIP-relative addressing, while SIB base=101 denotes no
+// base. RBP/R13 therefore use an explicit zero disp8 in either form.
 func addrMode(base Reg, disp int32) byte {
 	if disp == 0 && base&7 != 5 {
 		return 0x00
@@ -192,6 +192,8 @@ func (a *Asm) Store32(base Reg, disp int32, src Reg) { a.memOp(0x89, byte(src), 
 func (a *Asm) Load64(dst Reg, base Reg, disp int32)  { a.memOp(0x8B, byte(dst), base, disp, true) }
 func (a *Asm) Store64(base Reg, disp int32, src Reg) { a.memOp(0x89, byte(src), base, disp, true) }
 
+// StoreImm32Mem routes addressing through baseAddr so RSP/R12 receive their
+// mandatory SIB byte; the previous direct ModRM form was malformed for them.
 func (a *Asm) StoreImm32Mem(base Reg, disp int32, v int32) {
 	rb := base >= 8
 	if rb {
