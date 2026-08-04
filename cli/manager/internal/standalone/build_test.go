@@ -84,7 +84,19 @@ func TestBuildSelectsOnlyTargetBackend(t *testing.T) {
 	}
 }
 
-func TestBuildRunsNativeCore3WithCommandLinePlugin(t *testing.T) {
+func TestBuildRejectsCore3OnUnsupportedTarget(t *testing.T) {
+	project := t.TempDir()
+	input := filepath.Join(project, "hello.wasm")
+	if err := os.WriteFile(input, tailCallStartModule(), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := Build(Request{Input: input, Target: Target{OS: "windows", Arch: "amd64"}, Core: 3})
+	if err == nil || err.Error() != "WebAssembly Core 3 is not supported for target windows/amd64" {
+		t.Fatalf("build error = %v", err)
+	}
+}
+
+func TestBuildRunsNativeWithCommandLinePlugin(t *testing.T) {
 	root, err := filepath.Abs(filepath.Join("..", "..", "..", ".."))
 	if err != nil {
 		t.Fatal(err)
@@ -93,10 +105,14 @@ func TestBuildRunsNativeCore3WithCommandLinePlugin(t *testing.T) {
 	writeTestPluginProxy(t, proxy)
 	project := t.TempDir()
 	input := filepath.Join(project, "hello.wasm")
-	if err := os.WriteFile(input, tailCallStartModule(), 0o644); err != nil {
+	target := Target{OS: runtime.GOOS, Arch: runtime.GOARCH}
+	core, module := 2, emptyStartModule()
+	if target.supportsCore3() {
+		core, module = 3, tailCallStartModule()
+	}
+	if err := os.WriteFile(input, module, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	target := Target{OS: runtime.GOOS, Arch: runtime.GOARCH}
 	output := filepath.Join(project, "hello")
 	if target.OS == "windows" {
 		output += ".exe"
@@ -119,7 +135,7 @@ func TestBuildRunsNativeCore3WithCommandLinePlugin(t *testing.T) {
 
 	if _, err := Build(Request{
 		Input: input, Output: output, Target: target,
-		Core: 3, FunctionWorkers: 2, Plugins: "example.com/standalone-plugin@v0.0.0",
+		Core: core, FunctionWorkers: 2, Plugins: "example.com/standalone-plugin@v0.0.0",
 	}); err != nil {
 		t.Fatalf("build with command-line plugin: %v", err)
 	}

@@ -16,6 +16,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -1341,7 +1342,7 @@ func resolveSpecInterpreter() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("configured spec interpreter %q is unavailable: %w", path, err)
 	}
-	if info.IsDir() || info.Mode()&0o111 == 0 {
+	if info.IsDir() || (runtime.GOOS != "windows" && info.Mode()&0o111 == 0) {
 		return "", fmt.Errorf("configured spec interpreter %q is not executable", path)
 	}
 	want := os.Getenv("WAGO_SPEC_INTERPRETER_REVISION")
@@ -1355,7 +1356,7 @@ func resolveSpecInterpreter() (string, error) {
 	if got := strings.TrimSpace(string(stamp)); got != want {
 		return "", fmt.Errorf("configured spec interpreter %q source revision = %q, want %q", path, got, want)
 	}
-	out, err := exec.Command(path, "-v", "--help").CombinedOutput()
+	out, err := executableCommand(path, "-v", "--help").CombinedOutput()
 	if err != nil {
 		return "", fmt.Errorf("configured spec interpreter %q identity check failed: %w: %s", path, err, firstLine(out))
 	}
@@ -1378,11 +1379,11 @@ func resolveWast2JSON() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("configured wast2json %q is unavailable: %w", path, err)
 	}
-	if info.IsDir() || info.Mode()&0o111 == 0 {
+	if info.IsDir() || (runtime.GOOS != "windows" && info.Mode()&0o111 == 0) {
 		return "", fmt.Errorf("configured wast2json %q is not executable", path)
 	}
 	if want := os.Getenv("WAGO_WABT_VERSION"); want != "" {
-		out, err := exec.Command(path, "--version").CombinedOutput()
+		out, err := executableCommand(path, "--version").CombinedOutput()
 		if err != nil {
 			return "", fmt.Errorf("configured wast2json %q version check failed: %w: %s", path, err, firstLine(out))
 		}
@@ -1393,12 +1394,38 @@ func resolveWast2JSON() (string, error) {
 	return path, nil
 }
 
-func TestResolveWast2JSONChecksPinnedVersion(t *testing.T) {
-	t.Setenv("PATH", "")
-	tool := filepath.Join(t.TempDir(), "wast2json")
-	if err := os.WriteFile(tool, []byte("#!/bin/sh\nprintf '1.0.41\\n'\n"), 0o700); err != nil {
+func executableCommand(path string, args ...string) *exec.Cmd {
+	if runtime.GOOS == "windows" {
+		switch strings.ToLower(filepath.Ext(path)) {
+		case ".bat", ".cmd":
+			shell := os.Getenv("ComSpec")
+			if shell == "" {
+				shell = `C:\Windows\System32\cmd.exe`
+			}
+			return exec.Command(shell, append([]string{"/d", "/c", path}, args...)...)
+		}
+	}
+	return exec.Command(path, args...)
+}
+
+func writeExecutableFixture(t *testing.T, path, output string) string {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		path += ".cmd"
+		if err := os.WriteFile(path, []byte("@echo off\r\necho "+output+"\r\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+	if err := os.WriteFile(path, []byte("#!/bin/sh\nprintf '%s\\n' '"+output+"'\n"), 0o700); err != nil {
 		t.Fatal(err)
 	}
+	return path
+}
+
+func TestResolveWast2JSONChecksPinnedVersion(t *testing.T) {
+	t.Setenv("PATH", "")
+	tool := writeExecutableFixture(t, filepath.Join(t.TempDir(), "wast2json"), "1.0.41")
 	t.Setenv("WAGO_WAST2JSON", tool)
 	t.Setenv("WAGO_WABT_VERSION", "1.0.41")
 	if got, err := resolveWast2JSON(); err != nil || got != tool {
@@ -1412,10 +1439,7 @@ func TestResolveWast2JSONChecksPinnedVersion(t *testing.T) {
 
 func TestResolveSpecInterpreterChecksPinnedRevisionAndIdentity(t *testing.T) {
 	dir := t.TempDir()
-	tool := filepath.Join(dir, "wasm")
-	if err := os.WriteFile(tool, []byte("#!/bin/sh\nprintf 'wasm 3.0.0 reference interpreter\\n'\n"), 0o700); err != nil {
-		t.Fatal(err)
-	}
+	tool := writeExecutableFixture(t, filepath.Join(dir, "wasm"), "wasm 3.0.0 reference interpreter")
 	if err := os.WriteFile(filepath.Join(dir, "source-revision"), []byte(release3SpecRevision+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}

@@ -73,7 +73,14 @@ func TestExecuteRejectsUnknownOptimization(t *testing.T) {
 }
 
 func TestExecuteSupportsCore3(t *testing.T) {
-	if err := execute(tailCallStartModule(), nil, Options{Core: 3, DeferBoundsChecks: true}, []string{"hello"}); err != nil {
+	err := execute(tailCallStartModule(), nil, Options{Core: 3, DeferBoundsChecks: true}, []string{"hello"})
+	if wago.CoreFeaturesV3&^wago.SupportedFeatures() != 0 {
+		if err == nil {
+			t.Fatal("execute Core 3 module succeeded on an incomplete Core 3 backend")
+		}
+		return
+	}
+	if err != nil {
 		t.Fatalf("execute Core 3 module: %v", err)
 	}
 }

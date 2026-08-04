@@ -23,6 +23,11 @@ type Target struct {
 
 func (t Target) String() string { return t.OS + "/" + t.Arch }
 
+func (t Target) supportsCore3() bool {
+	return (t.OS == "linux" && (t.Arch == "amd64" || t.Arch == "arm64")) ||
+		(t.OS == "darwin" && t.Arch == "arm64")
+}
+
 func ParseTarget(value string) (Target, error) {
 	if value == "" {
 		return Target{OS: runtime.GOOS, Arch: runtime.GOARCH}, nil
@@ -84,6 +89,9 @@ func Build(request Request) (Result, error) {
 		if err != nil {
 			return Result{}, err
 		}
+	}
+	if request.Core == 3 && !request.Target.supportsCore3() {
+		return Result{}, fmt.Errorf("WebAssembly Core 3 is not supported for target %s", request.Target)
 	}
 	if request.Output == "" {
 		request.Output = DefaultOutput(request.Input, request.Target)
