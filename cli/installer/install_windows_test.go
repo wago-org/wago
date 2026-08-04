@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
@@ -28,5 +29,25 @@ func TestWindowsPathSetupUsesUserPathWithoutShellFiles(t *testing.T) {
 	targets := pathTargets(t.TempDir())
 	if len(targets) != 1 || targets[0].label != "Command Prompt" || targets[0].description != "User PATH" {
 		t.Fatalf("Windows PATH targets = %#v", targets)
+	}
+}
+
+func TestWindowsPathPromptMatchesLegacyInstaller(t *testing.T) {
+	if got, want := pathSetupQuestion(), "Add Wago to your user PATH?"; got != want {
+		t.Fatalf("PATH prompt = %q, want %q", got, want)
+	}
+}
+
+func TestWindowsSkippedPathSetupKeepsStatus(t *testing.T) {
+	t.Setenv("WAGO_PATH_SETUP", "none")
+	t.Setenv("WAGO_TEST_USER_PATH", `C:\Windows\System32`)
+	var output bytes.Buffer
+	installer, err := newInstaller(&output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	installer.offerPathSetup()
+	if got, want := output.String(), "PATH setup: skipped\n\n"; got != want {
+		t.Fatalf("skipped PATH output = %q, want %q", got, want)
 	}
 }

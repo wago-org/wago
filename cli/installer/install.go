@@ -285,7 +285,21 @@ func (i *installer) chooseReinstallMode() (string, bool, error) {
 		{"Partial", "Reset Wago but keep global plugins for reinstall", "partial", ""},
 		{"Minimal", "Replace binaries and keep existing state", "minimal", ""},
 	}, 2)
+	if ok {
+		fmt.Fprintf(i.out, "Reinstall mode: %s\n\n", reinstallLabel(value))
+	}
 	return value, ok, nil
+}
+
+func reinstallLabel(mode string) string {
+	switch mode {
+	case "full":
+		return "Full"
+	case "partial":
+		return "Partial"
+	default:
+		return "Minimal"
+	}
 }
 
 func (i *installer) downloadManager(target string) error {
@@ -612,19 +626,16 @@ func (i *installer) verify(commandPath string) error {
 }
 
 func (i *installer) offerPathSetup() (bool, string) {
-	if pathContains(i.binDir) {
-		return true, ""
-	}
 	if i.noModifyPath {
-		return false, ""
+		return pathContains(i.binDir), ""
 	}
 	targets := pathTargets(i.home)
 	if len(targets) == 0 {
-		return false, ""
+		return pathContains(i.binDir), ""
 	}
 	choice := os.Getenv("WAGO_PATH_SETUP")
 	if choice == "" && i.noTUI {
-		return false, ""
+		return pathContains(i.binDir), ""
 	}
 	if choice == "" {
 		items := make([]radioItem, 0, len(targets)+1)
@@ -636,24 +647,30 @@ func (i *installer) offerPathSetup() (bool, string) {
 			items = append(items, radioItem{target.label, target.description, strconv.Itoa(index), status})
 		}
 		items = append(items, radioItem{"Not now", "", "none", ""})
-		value, selected := radio("Add Wago to your PATH?", items, 0)
+		value, selected := radio(pathSetupQuestion(), items, 0)
 		if !selected {
-			return false, ""
+			return pathContains(i.binDir), ""
 		}
 		choice = value
 	}
 	if strings.EqualFold(choice, "no") || strings.EqualFold(choice, "n") || choice == "none" {
-		return false, ""
+		fmt.Fprintln(i.out, "PATH setup: skipped")
+		fmt.Fprintln(i.out)
+		return pathContains(i.binDir), ""
 	}
 	selectedIndex := 0
 	if !strings.EqualFold(choice, "yes") && !strings.EqualFold(choice, "y") {
 		parsed, err := strconv.Atoi(choice)
 		if err != nil || parsed < 0 || parsed >= len(targets) {
-			return false, ""
+			return pathContains(i.binDir), ""
 		}
 		selectedIndex = parsed
 	}
 	target := targets[selectedIndex]
+	if message := pathSetupTargetMessage(target, i.home); message != "" {
+		fmt.Fprintln(i.out, message)
+		fmt.Fprintln(i.out)
+	}
 	already, err := addPath(i.binDir, target.configFile, target.shell)
 	if err != nil {
 		i.retry("Could not add Wago to PATH")
@@ -679,7 +696,12 @@ func (i *installer) offerCompletions(installed, configFile string) {
 		{"Yes", "Enable command completion", "yes", ""},
 		{"No", "", "no", ""},
 	}, 0)
-	if !ok || value != "yes" {
+	if !ok {
+		return
+	}
+	if value != "yes" {
+		fmt.Fprintln(i.out, "Completions: skipped")
+		fmt.Fprintln(i.out)
 		return
 	}
 	if err := exec.Command(installed, "config", "completions", shellName, "--install", "--rc", configFile).Run(); err != nil {
@@ -691,6 +713,7 @@ func (i *installer) offerCompletions(installed, configFile string) {
 
 func (i *installer) next(pathReady bool, configFile string) {
 	s := colors()
+	pathReady = pathReady || pathContains(i.binDir)
 	fmt.Fprintf(i.out, "\n%sNext%s\n", s.bold, s.reset)
 	if pathReady && configFile != "" && !pathContains(i.binDir) {
 		fmt.Fprintln(i.out, "  Open a new shell, or run:")
