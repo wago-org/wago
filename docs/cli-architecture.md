@@ -82,27 +82,39 @@ an invocation live beside that contract and are tested independently. Runtime
 command descriptions needed for cohesive manager help also live there, so the
 manager never imports or links runtime command implementations.
 
-`cli/internal/settings` owns runtime-default storage and scope, but not the
-feature or optimization inventory. Its `Target` interface hides the global
-settings file and sparse local `wago.json` adapter from command and TUI callers.
-Runtime precedence is built-in/environment defaults, global settings, local
-overrides, then explicit command flags.
+`cli/internal/settings` owns runtime-default behavior, storage, and scope, but
+not the feature or optimization inventory. A registered boolean setting owns
+its canonical identity, value access, mutation, maturity, availability, and
+grouping; persistence and terminal adapters must not interpret section prefixes
+or select configuration maps themselves. Its `Target` interface hides the
+global settings file and sparse local `wago.json` adapter from command and TUI
+callers. Runtime precedence is built-in/environment defaults, global settings,
+local overrides, then explicit command flags.
 
 Feature and optimization surfaces are registration-driven:
 
 - register a WebAssembly feature once in `src/wago/config.go`'s
   `featureRegistry`, alongside its runtime bit, label, description, and
   experimental status;
-- register optimization metadata once in
-  `src/core/compiler/optimization/catalog.go`, then bind its name to the
-  backend boolean in each supported backend's `knobs.go`.
+- register an Optimization Definition once in
+  `src/core/compiler/optimization/catalog.go`, then provide its Optimization
+  Binding in every supported backend's `knobs.go`. Backend initialization
+  rejects missing, duplicate, unknown, and nil bindings.
 
 The config TUI, `config list` JSON, setting lookup and validation, `run`/`build`
 flags, and cross-target `compile` flags derive from those registrations. Marking
 an entry experimental keeps it out of the stable selectors and requires
-`--experimental` for non-interactive mutation. `schema_test.go` also requires
-every registered local setting to be present in `schema.json`, so registration
-cannot silently outrun editor validation.
+`--experimental` for non-interactive mutation. `go generate ./...` derives the
+feature and optimization name enums in `schema.json`; `schema_test.go` rejects a
+stale artifact, so registration cannot silently outrun editor validation.
+
+An Optimization Selection is immutable runtime compilation configuration.
+`RuntimeConfig.WithOptimization` and `WithOptimizations` return copies; run,
+build, standalone execution, and artifact-cache identity consume that selection
+instead of mutating process-global knobs. Railshot currently adapts a selection
+to its legacy booleans under one compile-scoped lock. Those booleans are an
+implementation detail and can move into compiler-owned state without changing
+callers.
 
 ## Commands
 

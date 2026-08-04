@@ -170,15 +170,11 @@ func decodeLocalLayer(value any) (localLayer, bool, error) {
 }
 
 func validateLayer(layer localLayer) error {
-	for name := range layer.Features {
-		if setting, ok := Lookup("features." + name); !ok || !setting.Available {
-			return fmt.Errorf("unknown feature setting %q", name)
-		}
+	if err := ValidateFeatureValues(layer.Features); err != nil {
+		return err
 	}
-	for name := range layer.Optimizations {
-		if setting, ok := Lookup("optimizations." + name); !ok || !setting.Available {
-			return fmt.Errorf("unknown optimization setting %q", name)
-		}
+	if err := ValidateOptimizationValues(layer.Optimizations); err != nil {
+		return err
 	}
 	if layer.Runtime != nil && layer.Runtime.Parallel != nil {
 		if err := ValidateParallel(*layer.Runtime.Parallel); err != nil {
@@ -190,10 +186,12 @@ func validateLayer(layer localLayer) error {
 
 func applyLayer(config *Config, layer localLayer) {
 	for name, value := range layer.Features {
-		config.Features[name] = value
+		setting, _ := Lookup("features." + name)
+		setting.SetValue(config, value)
 	}
 	for name, value := range layer.Optimizations {
-		config.Optimizations[name] = value
+		setting, _ := Lookup("optimizations." + name)
+		setting.SetValue(config, value)
 	}
 	if layer.Runtime == nil {
 		return
@@ -208,20 +206,21 @@ func applyLayer(config *Config, layer localLayer) {
 
 func diffLayer(config, base Config) localLayer {
 	layer := localLayer{}
-	for name, value := range config.Features {
-		if value != base.Features[name] {
-			if layer.Features == nil {
-				layer.Features = map[string]bool{}
+	for _, setting := range allKnownBoolean() {
+		value := setting.Value(config)
+		if value != setting.Value(base) {
+			name := setting.Name()
+			if setting.kind == featureSettingKind {
+				if layer.Features == nil {
+					layer.Features = map[string]bool{}
+				}
+				layer.Features[name] = value
+			} else {
+				if layer.Optimizations == nil {
+					layer.Optimizations = map[string]bool{}
+				}
+				layer.Optimizations[name] = value
 			}
-			layer.Features[name] = value
-		}
-	}
-	for name, value := range config.Optimizations {
-		if value != base.Optimizations[name] {
-			if layer.Optimizations == nil {
-				layer.Optimizations = map[string]bool{}
-			}
-			layer.Optimizations[name] = value
 		}
 	}
 	if config.Runtime.Parallel != base.Runtime.Parallel || config.Runtime.DeferredBoundsChecking != base.Runtime.DeferredBoundsChecking {

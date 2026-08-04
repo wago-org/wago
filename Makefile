@@ -12,10 +12,10 @@
 
 .DEFAULT_GOAL := help
 
-# Files written by `go generate ./...` (the genfacade output). The staleness
+# Files written by `go generate ./...` (the public facade and schema enums). The staleness
 # check diffs only these, so `make lint` is usable with unrelated uncommitted
 # work in the tree (CI starts clean, so it behaves identically there).
-GENERATED := wago.go
+GENERATED := wago.go schema.json
 
 # Suite knobs and where `make bench` caches its run.
 BENCHTIME ?= 1s

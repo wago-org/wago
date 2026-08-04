@@ -1,6 +1,7 @@
 package settings
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -42,5 +43,20 @@ func TestProjectSchemaCoversEveryLocalSetting(t *testing.T) {
 	}
 	for key := range known {
 		t.Errorf("schema.json contains unregistered setting %s", key)
+	}
+}
+
+func TestProjectSchemaIsGeneratedFromRegistrations(t *testing.T) {
+	path := filepath.Join("..", "..", "..", "schema.json")
+	source, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	generated, err := GenerateSchema(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(generated, source) {
+		t.Fatal("schema.json is stale; run go generate ./cli/internal/settings")
 	}
 }

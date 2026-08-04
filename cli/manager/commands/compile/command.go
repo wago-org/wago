@@ -83,12 +83,10 @@ func compileKnobFlags() []command.Flag {
 	}
 	flags := pairedFlag(deferredBoundsCheckingFlag, deferred, "skip provably redundant explicit bounds checks")
 	for _, knob := range settings.OptimizationCatalog() {
-		name := strings.TrimPrefix(knob.Key, "optimizations.")
+		name := knob.Name()
 		on := knob.Default
 		if hasConfig {
-			if value, ok := configured.Optimizations[name]; ok {
-				on = value
-			}
+			on = knob.Value(configured)
 		}
 		flags = append(flags, pairedFlag(name, on, knob.Description)...)
 	}
@@ -113,7 +111,7 @@ func compileKnobOverrides(context *command.Ctx) (*bool, map[string]bool) {
 	}
 	overrides := map[string]bool{}
 	for _, knob := range settings.OptimizationCatalog() {
-		name := strings.TrimPrefix(knob.Key, "optimizations.")
+		name := knob.Name()
 		if value, set := pairedOverride(context, name); set {
 			overrides[name] = value
 		}

@@ -46,10 +46,10 @@ func Default() Config {
 		Runtime: RuntimeDefaults{Parallel: "1", DeferredBoundsChecking: true},
 	}
 	for _, setting := range Features() {
-		config.Features[strings.TrimPrefix(setting.Key, "features.")] = setting.Default
+		setting.SetValue(&config, setting.Default)
 	}
 	for _, setting := range Optimizations() {
-		config.Optimizations[strings.TrimPrefix(setting.Key, "optimizations.")] = setting.Default
+		setting.SetValue(&config, setting.Default)
 	}
 	return config
 }
@@ -106,19 +106,17 @@ func LoadFile(path string) (Config, error) {
 		return Config{}, fmt.Errorf("unsupported settings version %d (want %d)", stored.Version, Version)
 	}
 	for name, value := range stored.Features {
-		key := "features." + name
-		if setting, ok := Lookup(key); !ok || !setting.Available {
+		if setting, ok := Lookup("features." + name); !ok || !setting.Available {
 			return Config{}, fmt.Errorf("unknown feature setting %q", name)
 		} else {
-			config.Features[name] = value
+			setting.SetValue(&config, value)
 		}
 	}
 	for name, value := range stored.Optimizations {
-		key := "optimizations." + name
-		if setting, ok := Lookup(key); !ok || !setting.Available {
+		if setting, ok := Lookup("optimizations." + name); !ok || !setting.Available {
 			return Config{}, fmt.Errorf("unknown optimization setting %q for %s", name, filepath.Base(path))
 		} else {
-			config.Optimizations[name] = value
+			setting.SetValue(&config, value)
 		}
 	}
 	if stored.Runtime.Parallel != "" {
@@ -184,15 +182,11 @@ func Validate(config Config) error {
 	if err := ValidateParallel(config.Runtime.Parallel); err != nil {
 		return err
 	}
-	for name := range config.Features {
-		if setting, ok := Lookup("features." + name); !ok || !setting.Available {
-			return fmt.Errorf("unknown feature setting %q", name)
-		}
+	if err := ValidateFeatureValues(config.Features); err != nil {
+		return err
 	}
-	for name := range config.Optimizations {
-		if setting, ok := Lookup("optimizations." + name); !ok || !setting.Available {
-			return fmt.Errorf("unknown optimization setting %q", name)
-		}
+	if err := ValidateOptimizationValues(config.Optimizations); err != nil {
+		return err
 	}
 	return nil
 }
@@ -240,15 +234,7 @@ func Set(config *Config, key, value string, experimental bool) error {
 	if err != nil {
 		return err
 	}
-	name := key[strings.IndexByte(key, '.')+1:]
-	switch {
-	case strings.HasPrefix(key, "features."):
-		config.Features[name] = enabled
-	case strings.HasPrefix(key, "optimizations."):
-		config.Optimizations[name] = enabled
-	default:
-		return fmt.Errorf("unknown setting %q", key)
-	}
+	setting.SetValue(config, enabled)
 	return nil
 }
 
@@ -267,11 +253,7 @@ func Get(config Config, key string) (string, error) {
 	if !setting.Available {
 		return "unavailable", nil
 	}
-	name := key[strings.IndexByte(key, '.')+1:]
-	if strings.HasPrefix(key, "features.") {
-		return strconv.FormatBool(config.Features[name]), nil
-	}
-	return strconv.FormatBool(config.Optimizations[name]), nil
+	return strconv.FormatBool(setting.Value(config)), nil
 }
 
 func Reset(config *Config, key string, experimental bool) error {

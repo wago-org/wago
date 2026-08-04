@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/wago-org/wago/src/core/compiler/frontend"
+	"github.com/wago-org/wago/src/core/compiler/optimization"
 )
 
 // CoreFeatures is a bit set of WebAssembly Core specification features. A
@@ -215,6 +216,7 @@ func (m BoundsCheckMode) String() string {
 // WithXxx returns a copy, so a base config can be shared and specialised safely.
 type RuntimeConfig struct {
 	features        CoreFeatures
+	optimizations   map[string]bool
 	maxMemoryPages  uint32
 	boundsChecks    BoundsCheckMode
 	noDeferBounds   bool // disable skipping of provably-redundant bounds checks (default: enabled)
@@ -238,8 +240,13 @@ func NewRuntimeConfig() *RuntimeConfig {
 	case "explicit", "inline":
 		bounds = BoundsChecksExplicit
 	}
+	optimizations := make(map[string]bool)
+	for _, info := range OptKnobs() {
+		optimizations[info.Name] = info.On
+	}
 	return &RuntimeConfig{
 		features:        defaultCoreFeatures,
+		optimizations:   optimizations,
 		maxMemoryPages:  defaultMaxMemoryPages,
 		boundsChecks:    bounds,
 		functionWorkers: 1,
@@ -281,6 +288,26 @@ func (c *RuntimeConfig) WithFeature(feature CoreFeatures, enabled bool) *Runtime
 	// is off, even when the default also enables prior immutable globals.
 	if !enabled && feature.IsEnabled(CoreFeatureExtendedConst) {
 		n.features &^= CoreFeatureExtendedConstExpressions
+	}
+	return &n
+}
+
+// WithOptimization returns a configuration with one compiler optimization
+// selected on or off. Unknown names are rejected by Validate and Compile.
+func (c *RuntimeConfig) WithOptimization(name string, enabled bool) *RuntimeConfig {
+	n := *c
+	n.optimizations = c.optimizationValues()
+	n.optimizations[name] = enabled
+	return &n
+}
+
+// WithOptimizations returns a configuration with all supplied optimization
+// selections applied to the current selection.
+func (c *RuntimeConfig) WithOptimizations(values map[string]bool) *RuntimeConfig {
+	n := *c
+	n.optimizations = c.optimizationValues()
+	for name, enabled := range values {
+		n.optimizations[name] = enabled
 	}
 	return &n
 }
@@ -331,6 +358,26 @@ func (c *RuntimeConfig) WithCompileWorkers(workers int) *RuntimeConfig {
 // CoreFeatures reports the configured feature set.
 func (c *RuntimeConfig) CoreFeatures() CoreFeatures { return c.features }
 
+// OptimizationInfos reports this configuration's immutable selection in stable
+// backend order.
+func (c *RuntimeConfig) OptimizationInfos() []OptKnobInfo {
+	infos := OptimizationInfosForArch(runtime.GOARCH)
+	for index := range infos {
+		if enabled, ok := c.optimizations[infos[index].Name]; ok {
+			infos[index].On = enabled
+		}
+	}
+	return infos
+}
+
+func (c *RuntimeConfig) optimizationValues() map[string]bool {
+	values := make(map[string]bool, len(c.optimizations))
+	for name, enabled := range c.optimizations {
+		values[name] = enabled
+	}
+	return values
+}
+
 // BoundsChecks reports the configured bounds-check mode.
 func (c *RuntimeConfig) BoundsChecks() BoundsCheckMode { return c.boundsChecks }
 
@@ -369,8 +416,8 @@ func (c *RuntimeConfig) MustCompile(wasmBytes []byte) *Compiled {
 }
 
 func (c *RuntimeConfig) String() string {
-	return fmt.Sprintf("RuntimeConfig{features: %s, bounds: %s, maxMemoryPages: %d, functionWorkers: %d}",
-		c.features, c.boundsChecks, c.maxMemoryPages, c.functionWorkers)
+	return fmt.Sprintf("RuntimeConfig{features: %s, optimizations: %d, bounds: %s, maxMemoryPages: %d, functionWorkers: %d}",
+		c.features, len(c.optimizations), c.boundsChecks, c.maxMemoryPages, c.functionWorkers)
 }
 
 // SupportedFeatures reports the WebAssembly feature set this wago build can
@@ -488,6 +535,11 @@ func (c *RuntimeConfig) frontendFeatures() frontend.Features {
 func (c *RuntimeConfig) Validate() error {
 	if c.functionWorkers < 0 {
 		return fmt.Errorf("wago: function workers must be non-negative, got %d", c.functionWorkers)
+	}
+	for name := range c.optimizations {
+		if _, ok := optimization.Lookup(runtime.GOARCH, name); !ok {
+			return fmt.Errorf("wago: unknown %s optimization %q", runtime.GOARCH, name)
+		}
 	}
 	// SIMD remains configurable on builds whose host CPU cannot execute it so
 	// scalar modules still compile under the default config; the frontend clears

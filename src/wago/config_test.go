@@ -434,6 +434,33 @@ func TestConfigValidateAndIntrospection(t *testing.T) {
 	}
 }
 
+func TestConfigOptimizationSelectionIsImmutableAndValidated(t *testing.T) {
+	base := NewRuntimeConfig()
+	infos := base.OptimizationInfos()
+	if len(infos) == 0 {
+		t.Fatal("runtime config has no optimization selection")
+	}
+	changed := base.WithOptimization(infos[0].Name, !infos[0].On)
+	if base.OptimizationInfos()[0].On == changed.OptimizationInfos()[0].On {
+		t.Fatal("WithOptimization mutated the base selection")
+	}
+	if err := changed.Validate(); err != nil {
+		t.Fatalf("selected optimization should validate: %v", err)
+	}
+	processDefault := OptKnobs()[0].On
+	compiled, err := changed.Compile(benchAddOneModule())
+	if err != nil {
+		t.Fatalf("compile with runtime-local optimization selection: %v", err)
+	}
+	compiled.Close()
+	if got := OptKnobs()[0].On; got != processDefault {
+		t.Fatalf("compile leaked optimization selection: process default = %v, want %v", got, processDefault)
+	}
+	if err := base.WithOptimization("not-a-knob", true).Validate(); err == nil || !strings.Contains(err.Error(), "not-a-knob") {
+		t.Fatalf("unknown optimization validation = %v", err)
+	}
+}
+
 func TestFunctionWorkersImportedCodeAndSerialization(t *testing.T) {
 	producerCode := MustCompile(benchAddOneModule())
 	defer producerCode.Close()
