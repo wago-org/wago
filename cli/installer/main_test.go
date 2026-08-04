@@ -85,3 +85,14 @@ func TestNoColorDisablesConsoleStyling(t *testing.T) {
 		t.Fatalf("NO_COLOR style = %#v, want no ANSI styling", got)
 	}
 }
+
+func TestProgressUsesAnimatedLoader(t *testing.T) {
+	if len(spinnerFrames) < 2 {
+		t.Fatalf("spinner frames = %q", spinnerFrames)
+	}
+	for _, frame := range spinnerFrames {
+		if frame == "◇" {
+			t.Fatal("progress still uses the static diamond")
+		}
+	}
+}

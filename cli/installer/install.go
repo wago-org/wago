@@ -44,6 +44,8 @@ type installer struct {
 	managerFromRelease  bool
 	sourceMethod        string
 	progressActive      bool
+	progressStop        chan struct{}
+	progressDone        chan struct{}
 	pathAdded           bool
 }
 
@@ -67,8 +69,7 @@ func runInstaller() error {
 	}
 	err = i.run()
 	if i.progressActive {
-		fmt.Fprint(i.out, "\r\x1b[2K")
-		i.progressActive = false
+		i.stopProgress()
 	}
 	return err
 }
@@ -216,26 +217,49 @@ func (i *installer) detail(label, value string) {
 
 func (i *installer) begin(label string) {
 	if stderrIsConsole() {
-		s := colors()
-		fmt.Fprintf(i.out, "\r\x1b[2K%s◇%s %s", s.dim, s.reset, label)
+		i.progressStop = make(chan struct{})
+		i.progressDone = make(chan struct{})
 		i.progressActive = true
+		s := colors()
+		go func() {
+			defer close(i.progressDone)
+			ticker := time.NewTicker(80 * time.Millisecond)
+			defer ticker.Stop()
+			for index := 0; ; index++ {
+				clearProgressLine()
+				fmt.Fprintf(i.out, "%s%s%s %s", s.dim, spinnerFrames[index%len(spinnerFrames)], s.reset, label)
+				select {
+				case <-i.progressStop:
+					clearProgressLine()
+					return
+				case <-ticker.C:
+				}
+			}
+		}()
 		return
 	}
 	fmt.Fprintf(i.out, "  … %s\n", label)
 }
+
+func (i *installer) stopProgress() {
+	close(i.progressStop)
+	<-i.progressDone
+	i.progressStop = nil
+	i.progressDone = nil
+	i.progressActive = false
+}
+
 func (i *installer) done(label string) {
 	s := colors()
 	if i.progressActive {
-		fmt.Fprint(i.out, "\r\x1b[2K")
-		i.progressActive = false
+		i.stopProgress()
 	}
 	fmt.Fprintf(i.out, "%s✓%s %s\n", s.cyan, s.reset, label)
 }
 func (i *installer) retry(label string) {
 	s := colors()
 	if i.progressActive {
-		fmt.Fprint(i.out, "\r\x1b[2K")
-		i.progressActive = false
+		i.stopProgress()
 	}
 	fmt.Fprintf(i.out, "%s→%s %s\n", s.dim, s.reset, label)
 }
@@ -649,15 +673,7 @@ func (i *installer) offerPathSetup() (bool, string) {
 	}
 	fmt.Fprintln(i.out)
 	if choice == "" {
-		items := make([]radioItem, 0, len(targets)+1)
-		for index, target := range targets {
-			status := ""
-			if target.current {
-				status = "current"
-			}
-			items = append(items, radioItem{target.label, target.description, strconv.Itoa(index), status})
-		}
-		items = append(items, radioItem{"Not now", "", "none", ""})
+		items := pathSetupItems(targets)
 		value, selected := radio(pathSetupQuestion(), items, 0)
 		if !selected {
 			return pathContains(i.binDir), ""
@@ -727,8 +743,9 @@ func (i *installer) offerCompletions(installed, configFile string) {
 func (i *installer) finish(stamp, installed string, pathReady bool, configFile string) {
 	s := colors()
 	pathReady = pathReady || pathContains(i.binDir)
-	fmt.Fprintf(i.out, "\n%sSweet, Wago %s is ready at %s%s\n\n", s.bold, stamp, displayPath(installed, i.home), s.reset)
+	fmt.Fprintf(i.out, "\n%sSweet, Wago %s is ready at %s%s\n", s.bold, stamp, displayPath(installed, i.home), s.reset)
 	if i.pathAdded {
+		fmt.Fprintln(i.out)
 		if command := sourceCommand(configFile); command != "" {
 			fmt.Fprintln(i.out, "Open a new terminal or run:")
 			fmt.Fprintf(i.out, "\n%s%s%s\n", s.cyan, command, s.reset)
@@ -736,9 +753,11 @@ func (i *installer) finish(stamp, installed string, pathReady bool, configFile s
 			fmt.Fprintln(i.out, "Open a new terminal.")
 		}
 	} else if pathReady && configFile != "" && !pathContains(i.binDir) {
+		fmt.Fprintln(i.out)
 		fmt.Fprintln(i.out, "Open a new terminal or run:")
 		fmt.Fprintf(i.out, "\n%s%s%s\n", s.cyan, sourceCommand(configFile), s.reset)
 	} else if !pathReady {
+		fmt.Fprintln(i.out)
 		fmt.Fprintf(i.out, "Before you continue, add %s to your PATH.\n", displayPath(i.binDir, i.home))
 	}
 	fmt.Fprintln(i.out, "\nThen install the Wago version you want:")

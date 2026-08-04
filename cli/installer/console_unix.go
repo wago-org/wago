@@ -4,6 +4,7 @@ package main
 
 import (
 	"bufio"
+	"fmt"
 	"os"
 	"os/exec"
 	"strings"
@@ -99,6 +100,16 @@ func stderrIsConsole() bool {
 }
 
 func enableVirtualTerminal() {}
+
+func clearProgressLine() {
+	fmt.Fprint(os.Stderr, "\r\x1b[2K")
+}
+
+func clearConsoleLines(lines int) {
+	if lines > 0 {
+		fmt.Fprintf(os.Stderr, "\x1b[%dA\x1b[J", lines)
+	}
+}
 
 func stty(input *os.File, args ...string) error {
 	command := exec.Command("stty", args...)

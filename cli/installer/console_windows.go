@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"syscall"
 	"unicode/utf16"
@@ -27,7 +28,31 @@ var (
 	getConsoleMode   = kernel32.NewProc("GetConsoleMode")
 	setConsoleMode   = kernel32.NewProc("SetConsoleMode")
 	readConsoleInput = kernel32.NewProc("ReadConsoleInputW")
+	getConsoleInfo   = kernel32.NewProc("GetConsoleScreenBufferInfo")
+	setCursor        = kernel32.NewProc("SetConsoleCursorPosition")
+	fillCharacters   = kernel32.NewProc("FillConsoleOutputCharacterW")
+	fillAttributes   = kernel32.NewProc("FillConsoleOutputAttribute")
 )
+
+type coord struct {
+	X int16
+	Y int16
+}
+
+type smallRect struct {
+	Left   int16
+	Top    int16
+	Right  int16
+	Bottom int16
+}
+
+type consoleScreenBufferInfo struct {
+	Size              coord
+	CursorPosition    coord
+	Attributes        uint16
+	Window            smallRect
+	MaximumWindowSize coord
+}
 
 type inputRecord struct {
 	EventType uint16
@@ -118,4 +143,38 @@ func enableVirtualTerminal() {
 	if result, _, _ := getConsoleMode.Call(uintptr(output), uintptr(unsafe.Pointer(&mode))); result != 0 {
 		setConsoleMode.Call(uintptr(output), uintptr(mode|enableVTOutput))
 	}
+}
+
+func clearProgressLine() {
+	clearWindowsConsole(0)
+}
+
+func clearConsoleLines(lines int) {
+	if lines > 0 {
+		clearWindowsConsole(lines)
+	}
+}
+
+func clearWindowsConsole(lines int) {
+	output := syscall.Handle(os.Stderr.Fd())
+	var info consoleScreenBufferInfo
+	if result, _, _ := getConsoleInfo.Call(uintptr(output), uintptr(unsafe.Pointer(&info))); result == 0 {
+		if lines == 0 {
+			fmt.Fprint(os.Stderr, "\r\x1b[2K")
+		} else {
+			fmt.Fprintf(os.Stderr, "\x1b[%dA\x1b[J", lines)
+		}
+		return
+	}
+	start := coord{Y: info.CursorPosition.Y - int16(lines)}
+	if start.Y < 0 {
+		start.Y = 0
+	}
+	rows := info.CursorPosition.Y - start.Y + 1
+	cells := uint32(info.Size.X) * uint32(rows)
+	position := uintptr(uint16(start.X)) | uintptr(uint32(uint16(start.Y)))<<16
+	var written uint32
+	fillCharacters.Call(uintptr(output), uintptr(' '), uintptr(cells), position, uintptr(unsafe.Pointer(&written)))
+	fillAttributes.Call(uintptr(output), uintptr(info.Attributes), uintptr(cells), position, uintptr(unsafe.Pointer(&written)))
+	setCursor.Call(uintptr(output), position)
 }
