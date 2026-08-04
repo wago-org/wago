@@ -109,7 +109,7 @@ func TestManyInlinedTrapFunctionsCompile(t *testing.T) {
 func BenchmarkManyInlinedTrapFunctions(b *testing.B) {
 	m := manyInlinedTrapFunctionsModule(b, 1024)
 	b.ReportAllocs()
-	for b.Loop() {
+	for i := 0; i < b.N; i++ {
 		if _, err := CompileModule(m); err != nil {
 			b.Fatal(err)
 		}
@@ -119,7 +119,7 @@ func BenchmarkManyInlinedTrapFunctions(b *testing.B) {
 func BenchmarkRepeatedInlinedTrapSites(b *testing.B) {
 	m := repeatedInlinedTrapFunctionModule(b, 16*1024)
 	b.ReportAllocs()
-	for b.Loop() {
+	for i := 0; i < b.N; i++ {
 		if _, err := CompileModule(m); err != nil {
 			b.Fatal(err)
 		}

@@ -55,7 +55,7 @@ func TestPureDeferredDropElimination(t *testing.T) {
 func BenchmarkPureDeferredDrops(b *testing.B) {
 	m := pureDeferredDropModule(b, 512)
 	b.ReportAllocs()
-	for b.Loop() {
+	for i := 0; i < b.N; i++ {
 		cm, err := CompileModule(m)
 		if err != nil {
 			b.Fatal(err)

@@ -55,7 +55,7 @@ func TestPureDeferredDropEliminationArm64(t *testing.T) {
 func BenchmarkPureDeferredDropsArm64(b *testing.B) {
 	m := pureDeferredDropModuleArm64(b, 512)
 	b.ReportAllocs()
-	for b.Loop() {
+	for i := 0; i < b.N; i++ {
 		cm, err := CompileModule(m)
 		if err != nil {
 			b.Fatal(err)

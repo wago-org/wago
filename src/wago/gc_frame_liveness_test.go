@@ -129,7 +129,7 @@ func BenchmarkGCFrameLocalLiveness(b *testing.B) {
 	body := gcFrameLivenessBenchmarkBody(16 * 1024)
 	b.ReportAllocs()
 	b.SetBytes(int64(len(body)))
-	for b.Loop() {
+	for i := 0; i < b.N; i++ {
 		var callMasks []uint64
 		masks, err := gcFrameLocalLiveness(body, []uint32{0}, &callMasks)
 		if err != nil {
