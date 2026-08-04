@@ -45,7 +45,6 @@ type installer struct {
 	sourceMethod        string
 	progressActive      bool
 	pathAdded           bool
-	reinstall           bool
 }
 
 type release struct {
@@ -184,21 +183,26 @@ func (i *installer) run() error {
 
 func (i *installer) welcome() {
 	s := colors()
-	fmt.Fprintf(i.out, "%s%sWelcome to wago!%s Let's get you set up.\n\n", s.bold, s.cyan, s.reset)
+	fmt.Fprintf(i.out, "%s%sWelcome to Wago!%s Let’s get you set up.\n\n", s.bold, s.cyan, s.reset)
 }
 
 func (i *installer) installLocation() {
-	i.answer("Where should Wago be installed?", displayPath(i.binDir, i.home))
+	i.field("Install location", displayPath(i.binDir, i.home))
+}
+
+func (i *installer) field(label, value string) {
+	s := colors()
+	fmt.Fprintf(i.out, "%s%s:%s %s%s%s\n", s.bold, label, s.reset, s.cyan, value, s.reset)
 }
 
 func (i *installer) answer(question, answer string) {
 	s := colors()
-	fmt.Fprintf(i.out, "%s%s%s %s%s%s\n\n", s.bold, question, s.reset, s.cyan, answer, s.reset)
+	fmt.Fprintf(i.out, "%s%s%s %s%s%s\n", s.bold, question, s.reset, s.cyan, answer, s.reset)
 }
 
 func (i *installer) plan() {
 	s := colors()
-	fmt.Fprintf(i.out, "%sPlan%s\n", s.bold, s.reset)
+	fmt.Fprintf(i.out, "\n%sPlan%s\n", s.bold, s.reset)
 	i.detail("Version", i.version)
 	i.detail("Command", displayPath(filepath.Join(i.binDir, executableName("wago")), i.home))
 	i.detail("Source", displayPath(i.srcDir, i.home))
@@ -269,25 +273,30 @@ func (i *installer) chooseInstallDir() bool {
 func (i *installer) chooseReinstallMode() (string, bool, error) {
 	installed := filepath.Join(i.binDir, executableName("wago"))
 	if _, err := os.Stat(installed); errors.Is(err, os.ErrNotExist) {
+		fmt.Fprintln(i.out)
 		return "minimal", true, nil
 	}
-	i.reinstall = true
 	if value := os.Getenv("WAGO_REINSTALL_MODE"); value != "" {
 		if value == "full" || value == "partial" || value == "minimal" {
+			i.field("Reinstall method", reinstallLabel(value))
+			fmt.Fprintln(i.out)
 			return value, true, nil
 		}
 		return "", false, errors.New("WAGO_REINSTALL_MODE must be full, partial, or minimal")
 	}
 	if i.noTUI {
+		i.field("Reinstall method", "Minimal")
+		fmt.Fprintln(i.out)
 		return "minimal", true, nil
 	}
-	value, ok := radio("How should it be reinstalled?", []radioItem{
+	value, ok := radio("Reinstall method", []radioItem{
 		{"Full", "Reset everything, including plugins and settings", "full", ""},
 		{"Partial", "Reset Wago but keep global plugins for reinstall", "partial", ""},
 		{"Minimal", "Replace binaries and keep existing state", "minimal", ""},
 	}, 2)
 	if ok {
-		i.answer("How should it be reinstalled?", reinstallLabel(value))
+		i.field("Reinstall method", reinstallLabel(value))
+		fmt.Fprintln(i.out)
 	}
 	return value, ok, nil
 }
@@ -461,7 +470,7 @@ func (i *installer) fetchSource() (string, error) {
 	gitLog, gitErr := exec.Command("git", "clone", "--depth", "1", "--branch", sourceVersion, i.repoURL, target).CombinedOutput()
 	if gitErr == nil {
 		i.sourceMethod = "git"
-		i.done("Fetched Wago source with Git")
+		i.done("Fetched Wago source")
 		return target, nil
 	}
 	_ = os.RemoveAll(target)
@@ -474,7 +483,7 @@ func (i *installer) fetchSource() (string, error) {
 		return "", fmt.Errorf("unpack source archive: %w", err)
 	}
 	i.sourceMethod = "archive"
-	i.done("Fetched Wago source archive")
+	i.done("Fetched Wago source")
 	return target, nil
 }
 
@@ -571,7 +580,7 @@ func (i *installer) cleanExisting(mode string) error {
 	if err := cleanPlatformInstall(mode, i.home, i.binDir, i.srcDir, i.dataDir, i.configDir, i.cacheDir); err != nil {
 		return fmt.Errorf("clean existing installation: %w", err)
 	}
-	i.done("Cleaned existing Wago installation (" + mode + ")")
+	i.done("Cleaned existing Wago installation")
 	return nil
 }
 
@@ -656,7 +665,7 @@ func (i *installer) offerPathSetup() (bool, string) {
 		choice = value
 	}
 	if strings.EqualFold(choice, "no") || strings.EqualFold(choice, "n") || choice == "none" {
-		i.answer(pathSetupQuestion(), "Not now")
+		i.answer(pathSetupQuestion(), "No")
 		return pathContains(i.binDir), ""
 	}
 	selectedIndex := 0
@@ -668,7 +677,7 @@ func (i *installer) offerPathSetup() (bool, string) {
 		selectedIndex = parsed
 	}
 	target := targets[selectedIndex]
-	i.answer(pathSetupQuestion(), pathSetupAnswer(target, i.home))
+	i.answer(pathSetupSelectionQuestion(target, i.home), "Yes")
 	already, err := addPath(i.binDir, target.configFile, target.shell)
 	if err != nil {
 		i.retry("Could not add Wago to PATH")
@@ -692,7 +701,8 @@ func (i *installer) offerCompletions(installed, configFile string) {
 		return
 	}
 	fmt.Fprintln(i.out)
-	value, ok := radio("Enable Wago completions for "+shellName+"?", []radioItem{
+	question := "Enable " + shellName + " completions?"
+	value, ok := radio(question, []radioItem{
 		{"Yes", "Enable command completion", "yes", ""},
 		{"No", "", "no", ""},
 	}, 0)
@@ -703,7 +713,7 @@ func (i *installer) offerCompletions(installed, configFile string) {
 	if value == "yes" {
 		answer = "Yes"
 	}
-	i.answer("Enable Wago completions for "+shellName+"?", answer)
+	i.answer(question, answer)
 	if value != "yes" {
 		return
 	}
@@ -711,31 +721,27 @@ func (i *installer) offerCompletions(installed, configFile string) {
 		i.retry("Could not enable Wago completions")
 		return
 	}
-	i.done("Enabled completions for " + shellName)
+	i.done("Enabled " + shellName + " completions")
 }
 
 func (i *installer) finish(stamp, installed string, pathReady bool, configFile string) {
 	s := colors()
 	pathReady = pathReady || pathContains(i.binDir)
-	fmt.Fprintf(i.out, "\n%sSweet, we've installed Wago %s at %s%s\n", s.bold, stamp, displayPath(installed, i.home), s.reset)
+	fmt.Fprintf(i.out, "\n%sSweet, Wago %s is ready at %s%s\n\n", s.bold, stamp, displayPath(installed, i.home), s.reset)
 	if i.pathAdded {
 		if command := sourceCommand(configFile); command != "" {
-			if i.reinstall {
-				fmt.Fprintln(i.out, "Since we added it to your PATH just now, open a new shell or run")
-			} else {
-				fmt.Fprintln(i.out, "Since we added it to your PATH just now, open a new terminal or run,")
-			}
+			fmt.Fprintln(i.out, "Open a new terminal or run:")
 			fmt.Fprintf(i.out, "\n%s%s%s\n", s.cyan, command, s.reset)
 		} else {
-			fmt.Fprintln(i.out, "Since we added it to your PATH just now, open a new terminal.")
+			fmt.Fprintln(i.out, "Open a new terminal.")
 		}
 	} else if pathReady && configFile != "" && !pathContains(i.binDir) {
-		fmt.Fprintln(i.out, "Wago is already configured in your PATH. Please run")
+		fmt.Fprintln(i.out, "Open a new terminal or run:")
 		fmt.Fprintf(i.out, "\n%s%s%s\n", s.cyan, sourceCommand(configFile), s.reset)
 	} else if !pathReady {
 		fmt.Fprintf(i.out, "Before you continue, add %s to your PATH.\n", displayPath(i.binDir, i.home))
 	}
-	fmt.Fprintln(i.out, "\nAnd then, go ahead and install a version of your choice with,")
+	fmt.Fprintln(i.out, "\nThen install the Wago version you want:")
 	fmt.Fprintf(i.out, "\n%s%s%s\n", s.cyan, "wago version install", s.reset)
 }
 
