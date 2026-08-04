@@ -817,23 +817,6 @@ var effectValTypes = [...]ValType{
 	effectV128: {Kind: ValVec},
 }
 
-func compactEffectValue(t ValType) effectValue {
-	switch {
-	case equalValType(t, I32):
-		return effectI32
-	case equalValType(t, I64):
-		return effectI64
-	case equalValType(t, F32):
-		return effectF32
-	case equalValType(t, F64):
-		return effectF64
-	case equalValType(t, V128):
-		return effectV128
-	default:
-		panic("wasm: non-primitive validation effect")
-	}
-}
-
 func (t effectValue) valType() ValType { return effectValTypes[t] }
 
 type opEffect struct {

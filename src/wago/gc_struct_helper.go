@@ -50,10 +50,6 @@ func (in *Instance) gcObjectTypeMatches(actual gc.TypeID, want uint32) bool {
 	return err == nil && matched
 }
 
-func (in *Instance) dispatchGCStructHelper(helper uint32, args, results []uint64) {
-	in.dispatchGCStructHelperParked(0, helper, 0, args, results)
-}
-
 func gcHelperMayAllocate(helper uint32) bool {
 	switch helper {
 	case gcStructAllocDefault, gcStructAllocOne,
@@ -65,6 +61,7 @@ func gcHelperMayAllocate(helper uint32) bool {
 	}
 }
 
+//lint:ignore U1000 used by builds with wago_gcstats enabled
 func gcHelperMayMutate(helper uint32) bool {
 	switch helper {
 	case gcStructSet, gcStructTableSet,

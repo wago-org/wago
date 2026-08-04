@@ -115,7 +115,7 @@ func TestFriendlyInstantiationErrorIsProviderNeutral(t *testing.T) {
 		err := fmt.Errorf(`module imports %q, but nothing provides it: %w`, importName, wago.ErrMissingImport)
 		got := friendlyInstantiationError(err).Error()
 		if !strings.Contains(got, importName) ||
-			!strings.Contains(got, "Add a plugin that provides it.") {
+			!strings.Contains(got, "Add a plugin that provides it") {
 			t.Fatalf("missing import error = %q", got)
 		}
 		if strings.Contains(strings.ToLower(got), "wasi support") || strings.Contains(got, "wago-org/wasi") {
