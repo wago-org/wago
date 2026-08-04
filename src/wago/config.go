@@ -115,9 +115,9 @@ func (f CoreFeatures) SetEnabled(feature CoreFeatures, enabled bool) CoreFeature
 
 func (f CoreFeatures) String() string {
 	var names []string
-	for _, e := range featureNames {
-		if f.IsEnabled(e.bit) {
-			names = append(names, e.name)
+	for _, feature := range featureRegistry {
+		if f.IsEnabled(feature.Feature) {
+			names = append(names, feature.Name)
 		}
 	}
 	if len(names) == 0 {
@@ -126,26 +126,63 @@ func (f CoreFeatures) String() string {
 	return strings.Join(names, "|")
 }
 
-var featureNames = []struct {
-	bit  CoreFeatures
-	name string
-}{
-	{CoreFeatureBulkMemoryOperations, "bulk-memory-operations"},
-	{CoreFeatureMultiValue, "multi-value"},
-	{CoreFeatureMutableGlobal, "mutable-global"},
-	{CoreFeatureNonTrappingFloatToIntConversion, "nontrapping-float-to-int-conversion"},
-	{CoreFeatureReferenceTypes, "reference-types"},
-	{CoreFeatureSignExtensionOps, "sign-extension-ops"},
-	{CoreFeatureSIMD, "simd"},
-	{CoreFeatureExtendedConst, "extended-constant-expressions"},
-	{CoreFeatureTailCall, "tail-call"},
-	{CoreFeatureExtendedConstExpressions, "extended-const-expressions"},
-	{CoreFeatureTypedFunctionReferences, "typed-function-references"},
-	{CoreFeatureGC, "gc"},
-	{CoreFeatureExceptionHandling, "exception-handling"},
-	{CoreFeatureMultiMemory, "multi-memory"},
-	{CoreFeatureMemory64, "memory64"},
-	{CoreFeatureTable64, "table64"},
+// FeatureInfo describes one configurable WebAssembly feature. FeatureInfos is
+// the source consumed by the CLI; registering a feature here automatically adds
+// config discovery, validation, JSON output, and the experimental preview.
+type FeatureInfo struct {
+	Feature      CoreFeatures `json:"-"`
+	Name         string       `json:"name"`
+	Label        string       `json:"label"`
+	Description  string       `json:"description"`
+	Default      bool         `json:"default"`
+	Experimental bool         `json:"experimental"`
+	Available    bool         `json:"available"`
+}
+
+var featureRegistry = []FeatureInfo{
+	{Feature: CoreFeatureBulkMemoryOperations, Name: "bulk-memory-operations", Label: "Bulk memory", Description: "memory.copy, memory.fill, and segment operations"},
+	{Feature: CoreFeatureMultiValue, Name: "multi-value", Label: "Multi-value", Description: "multiple block and function results"},
+	{Feature: CoreFeatureMutableGlobal, Name: "mutable-global", Label: "Mutable globals", Description: "import and export mutable globals"},
+	{Feature: CoreFeatureNonTrappingFloatToIntConversion, Name: "nontrapping-float-to-int-conversion", Label: "Non-trapping conversions", Description: "saturating float-to-integer conversions"},
+	{Feature: CoreFeatureReferenceTypes, Name: "reference-types", Label: "Reference types", Description: "funcref, externref, tables, and reference instructions"},
+	{Feature: CoreFeatureSignExtensionOps, Name: "sign-extension-ops", Label: "Sign extension", Description: "integer sign-extension instructions"},
+	{Feature: CoreFeatureSIMD, Name: "simd", Label: "SIMD", Description: "128-bit vector instructions"},
+	{Feature: CoreFeatureExtendedConst, Name: "extended-constant-expressions", Label: "Extended constants", Description: "integer arithmetic in constant expressions"},
+	{Feature: CoreFeatureExtendedConstExpressions, Name: "extended-const-expressions", Label: "Extended constant expressions", Description: "imported globals in constant expressions"},
+	{Feature: CoreFeatureTailCall, Name: "tail-call", Label: "Tail calls", Description: "return_call, return_call_indirect, and return_call_ref", Experimental: true},
+	{Feature: CoreFeatureTypedFunctionReferences, Name: "typed-function-references", Label: "Typed function references", Description: "typed references, call_ref, and related casts", Experimental: true},
+	{Feature: CoreFeatureGC, Name: "gc", Label: "Garbage collection", Description: "struct, array, i31, and managed reference instructions", Experimental: true},
+	{Feature: CoreFeatureExceptionHandling, Name: "exception-handling", Label: "Exception handling", Description: "tags, throw, and try_table", Experimental: true},
+	{Feature: CoreFeatureMultiMemory, Name: "multi-memory", Label: "Multiple memories", Description: "multiple memories and indexed memory instructions", Experimental: true},
+	{Feature: CoreFeatureMemory64, Name: "memory64", Label: "64-bit memory", Description: "64-bit linear-memory limits and addresses", Experimental: true},
+	{Feature: CoreFeatureTable64, Name: "table64", Label: "64-bit tables", Description: "64-bit table limits and indexes", Experimental: true},
+}
+
+// FeatureInfos returns every registered feature in stable display order. Its
+// default and availability fields describe the current build.
+func FeatureInfos() []FeatureInfo {
+	// Configuration describes the build's compiler surface, not the current
+	// machine's optional CPU instructions. SIMD remains configurable on a host
+	// without SIMD just as RuntimeConfig.Validate permits it; compilation still
+	// fails closed when a module actually requires unavailable instructions.
+	supported := platformCoreFeatures()
+	result := make([]FeatureInfo, len(featureRegistry))
+	for index, feature := range featureRegistry {
+		feature.Default = defaultCoreFeatures.IsEnabled(feature.Feature)
+		feature.Available = supported.IsEnabled(feature.Feature)
+		result[index] = feature
+	}
+	return result
+}
+
+// FeatureInfoByName resolves a registered feature name.
+func FeatureInfoByName(name string) (FeatureInfo, bool) {
+	for _, feature := range FeatureInfos() {
+		if feature.Name == name {
+			return feature, true
+		}
+	}
+	return FeatureInfo{}, false
 }
 
 // BoundsCheckMode selects how out-of-bounds linear-memory accesses are caught.

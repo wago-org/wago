@@ -237,7 +237,7 @@ func (commandEnvironment) Configure(request configoptions.Request) {
 		fmt.Println(value)
 	case configoptions.Set:
 		key := settings.CanonicalKey(request.Key)
-		if err := target.Set(key, request.Value); err != nil {
+		if err := target.Set(key, request.Value, request.Experimental); err != nil {
 			fatal("config set: %v", err)
 		}
 		if automation.DryRun() {
@@ -260,7 +260,7 @@ func (commandEnvironment) Configure(request configoptions.Request) {
 		}
 		if request.All {
 			target.ResetAll()
-		} else if err := target.Reset(request.Key); err != nil {
+		} else if err := target.Reset(request.Key, request.Experimental); err != nil {
 			fatal("config reset: %v", err)
 		}
 		if err := target.Save(); err != nil {

@@ -346,6 +346,25 @@ func TestConfiguredFeaturesAndOptimizationsMatchRuntimeCatalog(t *testing.T) {
 	}
 }
 
+func TestEveryRegisteredFeatureCanBeAppliedWithoutCLIMapping(t *testing.T) {
+	defaults := settings.Default()
+	var selected wago.FeatureInfo
+	for _, feature := range wago.FeatureInfos() {
+		if feature.Experimental && feature.Available {
+			selected = feature
+			break
+		}
+	}
+	if selected.Name == "" {
+		t.Skip("build has no available experimental feature")
+	}
+	defaults.Features[selected.Name] = true
+	configured := ApplyFeatureDefaults(wago.NewRuntimeConfig(), defaults, true)
+	if !configured.CoreFeatures().IsEnabled(selected.Feature) {
+		t.Fatalf("registered feature %q was not applied", selected.Name)
+	}
+}
+
 func TestRunExecValueMode(t *testing.T) {
 	t.Setenv("WAGO_BARE", "1") // exercise the CLI execution path without project/global plugin handoff.
 	wasm := []byte{'\x00', 'a', 's', 'm', 1, 0, 0, 0,

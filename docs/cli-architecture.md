@@ -82,12 +82,27 @@ an invocation live beside that contract and are tested independently. Runtime
 command descriptions needed for cohesive manager help also live there, so the
 manager never imports or links runtime command implementations.
 
-`cli/internal/settings` is the sole definition of runtime defaults and their
-scope. Its `Target` interface hides the global settings file and sparse local
-`wago.json` adapter from command and TUI callers. Runtime precedence is
-built-in/environment defaults, global settings, local overrides, then explicit
-command flags. Unsupported proposal previews are catalog entries only and
-cannot be persisted as enabled features.
+`cli/internal/settings` owns runtime-default storage and scope, but not the
+feature or optimization inventory. Its `Target` interface hides the global
+settings file and sparse local `wago.json` adapter from command and TUI callers.
+Runtime precedence is built-in/environment defaults, global settings, local
+overrides, then explicit command flags.
+
+Feature and optimization surfaces are registration-driven:
+
+- register a WebAssembly feature once in `src/wago/config.go`'s
+  `featureRegistry`, alongside its runtime bit, label, description, and
+  experimental status;
+- register optimization metadata once in
+  `src/core/compiler/optimization/catalog.go`, then bind its name to the
+  backend boolean in each supported backend's `knobs.go`.
+
+The config TUI, `config list` JSON, setting lookup and validation, `run`/`build`
+flags, and cross-target `compile` flags derive from those registrations. Marking
+an entry experimental keeps it out of the stable selectors and requires
+`--experimental` for non-interactive mutation. `schema_test.go` also requires
+every registered local setting to be present in `schema.json`, so registration
+cannot silently outrun editor validation.
 
 ## Commands
 
@@ -111,9 +126,10 @@ schemas always place `Knobs` last, after plugin, automation, and help flags.
 
 `wago config` opens the shared selector UI. Stable WebAssembly features and
 compiler optimizations are toggleable, runtime parallelism and deferred bounds
-checking have editable defaults, and planned proposals appear in a disabled
+checking have editable defaults, and registered experiments appear in the
 experimental preview. Every mutation also has a non-interactive `list`, `get`,
-`set`, or `reset` form.
+`set`, or `reset` form; experimental `set`, `enable`, `disable`, and targeted
+`reset` operations require `--experimental`.
 
 The root packages contain only entrypoint behavior, command composition,
 environment adapters, forwarding, and top-level output:

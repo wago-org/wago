@@ -19,19 +19,9 @@ func ApplyFeatureDefaults(config *wago.RuntimeConfig, defaults settings.Config, 
 	if !configured {
 		return config
 	}
-	features := map[string]wago.CoreFeatures{
-		"bulk-memory-operations":              wago.CoreFeatureBulkMemoryOperations,
-		"multi-value":                         wago.CoreFeatureMultiValue,
-		"mutable-global":                      wago.CoreFeatureMutableGlobal,
-		"nontrapping-float-to-int-conversion": wago.CoreFeatureNonTrappingFloatToIntConversion,
-		"reference-types":                     wago.CoreFeatureReferenceTypes,
-		"sign-extension-ops":                  wago.CoreFeatureSignExtensionOps,
-		"simd":                                wago.CoreFeatureSIMD,
-		"extended-constant-expressions":       wago.CoreFeatureExtendedConst,
-	}
 	for name, enabled := range defaults.Features {
-		if feature, ok := features[name]; ok {
-			config = config.WithFeature(feature, enabled)
+		if feature, ok := wago.FeatureInfoByName(name); ok && feature.Available {
+			config = config.WithFeature(feature.Feature, enabled)
 		}
 	}
 	return config

@@ -22,14 +22,14 @@ func TestLocalRootClearsOverrides(t *testing.T) {
 	}
 }
 
-func TestExperimentalPreviewDisablesUnavailableProposals(t *testing.T) {
+func TestExperimentalPreviewIsGeneratedFromRuntimeFeatures(t *testing.T) {
 	catalog := settings.Experimental()
 	found := false
 	for _, setting := range catalog {
-		if setting.Key == "preview.tail-call" {
+		if setting.Key == "features.tail-call" {
 			found = true
-			if setting.Available {
-				t.Fatal("tail calls should be preview-only")
+			if !setting.Experimental {
+				t.Fatal("tail calls should remain experimental")
 			}
 		}
 	}

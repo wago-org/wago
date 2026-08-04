@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 )
 
@@ -36,11 +35,12 @@ func TestProjectSchemaCoversEveryLocalSetting(t *testing.T) {
 		}
 	}
 	for _, setting := range allKnownBoolean() {
-		if strings.HasPrefix(setting.Key, "preview.") {
-			continue
-		}
 		if !known[setting.Key] {
 			t.Errorf("schema.json omits %s", setting.Key)
 		}
+		delete(known, setting.Key)
+	}
+	for key := range known {
+		t.Errorf("schema.json contains unregistered setting %s", key)
 	}
 }

@@ -149,13 +149,21 @@
           "propertyNames": {
             "enum": [
               "bulk-memory-operations",
+              "exception-handling",
+              "extended-const-expressions",
               "extended-constant-expressions",
+              "gc",
+              "memory64",
               "multi-value",
+              "multi-memory",
               "mutable-global",
               "nontrapping-float-to-int-conversion",
               "reference-types",
               "sign-extension-ops",
-              "simd"
+              "simd",
+              "table64",
+              "tail-call",
+              "typed-function-references"
             ]
           },
           "additionalProperties": { "type": "boolean" }

@@ -42,6 +42,7 @@ type (
 	ExtensionInfo             = impl.ExtensionInfo
 	ExternRef                 = impl.ExternRef
 	ExternRefHostModule       = impl.ExternRefHostModule
+	FeatureInfo               = impl.FeatureInfo
 	FieldTypeDescriptor       = impl.FieldTypeDescriptor
 	FuncRef                   = impl.FuncRef
 	FuncSig                   = impl.FuncSig
@@ -313,6 +314,10 @@ func F32(v float32) uint64 { return impl.F32(v) }
 
 func F64(v float64) uint64 { return impl.F64(v) }
 
+func FeatureInfoByName(name string) (FeatureInfo, bool) { return impl.FeatureInfoByName(name) }
+
+func FeatureInfos() []FeatureInfo { return impl.FeatureInfos() }
+
 func GuardPageSupported() bool { return impl.GuardPageSupported() }
 
 func GuestArgs() []string { return impl.GuestArgs() }
@@ -392,6 +397,10 @@ func NullGCRef() GCRef { return impl.NullGCRef() }
 func NullI31Ref() I31Ref { return impl.NullI31Ref() }
 
 func OptKnobs() []OptKnobInfo { return impl.OptKnobs() }
+
+func OptimizationInfos() []OptKnobInfo { return impl.OptimizationInfos() }
+
+func OptimizationInfosForArch(arch string) []OptKnobInfo { return impl.OptimizationInfosForArch(arch) }
 
 func ProvideService(reg *Registry, name string, value any) error {
 	return impl.ProvideService(reg, name, value)

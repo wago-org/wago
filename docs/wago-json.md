@@ -53,6 +53,12 @@ removes its override so it inherits the global value again. This field is
 separate from opaque per-plugin `config`, which remains authority-bearing and
 lockfile-owned.
 
+Experimental features and optimizations are deliberately opt-in. Discover them
+with `wago config list --experimental`, and pass `--experimental` when changing
+one, for example `wago config set tail-call on --experimental`. The available
+list is generated from the runtime feature and compiler optimization
+registrations for the current build.
+
 ## Plugin requirements
 
 `plugins` maps GitHub-relative plugin IDs to semantic-version constraints. A

@@ -3,6 +3,7 @@ package settings
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -15,10 +16,10 @@ func TestSettingsRoundTripAndDefaults(t *testing.T) {
 	if !config.Features["simd"] || config.Runtime.Parallel != "1" || !config.Runtime.DeferredBoundsChecking {
 		t.Fatalf("defaults = %#v", config)
 	}
-	if err := Set(&config, "simd", "off"); err != nil {
+	if err := Set(&config, "simd", "off", false); err != nil {
 		t.Fatal(err)
 	}
-	if err := Set(&config, "runtime.parallel", "auto"); err != nil {
+	if err := Set(&config, "runtime.parallel", "auto", false); err != nil {
 		t.Fatal(err)
 	}
 	if err := SaveFile(path, config); err != nil {
@@ -49,23 +50,43 @@ func TestPartialSettingsKeepBuiltInDefaults(t *testing.T) {
 
 func TestSettingsRejectPreviewAndUnknown(t *testing.T) {
 	config := Default()
-	if err := Set(&config, "tail-call", "on"); err == nil {
-		t.Fatal("preview-only feature was enabled")
+	var experimental BoolSetting
+	for _, setting := range Experimental() {
+		if setting.Available {
+			experimental = setting
+			break
+		}
 	}
-	if err := Set(&config, "not-a-setting", "on"); err == nil {
+	if experimental.Key == "" {
+		t.Fatal("no available experimental setting")
+	}
+	if err := Set(&config, experimental.Key, "on", false); err == nil {
+		t.Fatal("experimental setting was enabled without the flag")
+	}
+	if err := Set(&config, experimental.Key, "on", true); err != nil {
+		t.Fatalf("experimental setting was not enabled with flag: %v", err)
+	}
+	name := experimental.Key[strings.IndexByte(experimental.Key, '.')+1:]
+	if strings.HasPrefix(experimental.Key, "features.") && !config.Features[name] {
+		t.Fatal("experimental feature was not stored")
+	}
+	if strings.HasPrefix(experimental.Key, "optimizations.") && !config.Optimizations[name] {
+		t.Fatal("experimental optimization was not stored")
+	}
+	if err := Set(&config, "not-a-setting", "on", false); err == nil {
 		t.Fatal("unknown setting was accepted")
 	}
-	if err := Set(&config, "runtime.parallel", "many"); err == nil {
+	if err := Set(&config, "runtime.parallel", "many", false); err == nil {
 		t.Fatal("invalid parallel default was accepted")
 	}
 }
 
 func TestResetRestoresBuiltInValue(t *testing.T) {
 	config := Default()
-	if err := Set(&config, "features.simd", "off"); err != nil {
+	if err := Set(&config, "features.simd", "off", false); err != nil {
 		t.Fatal(err)
 	}
-	if err := Reset(&config, "features.simd"); err != nil {
+	if err := Reset(&config, "features.simd", false); err != nil {
 		t.Fatal(err)
 	}
 	if !config.Features["simd"] {

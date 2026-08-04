@@ -315,6 +315,27 @@ func TestCoreFeaturesV3ReleaseScopeAndAdmission(t *testing.T) {
 	}
 }
 
+func TestFeatureRegistryCoversEveryRuntimeFeature(t *testing.T) {
+	seen := map[string]bool{}
+	var registered CoreFeatures
+	for _, feature := range FeatureInfos() {
+		if feature.Name == "" || feature.Label == "" || feature.Description == "" {
+			t.Fatalf("incomplete feature registration: %#v", feature)
+		}
+		if seen[feature.Name] {
+			t.Fatalf("duplicate feature registration %q", feature.Name)
+		}
+		seen[feature.Name] = true
+		registered |= feature.Feature
+		if feature.Experimental && feature.Default {
+			t.Fatalf("experimental feature %q defaults on", feature.Name)
+		}
+	}
+	if registered != coreFeaturesWago {
+		t.Fatalf("registered features = %s, runtime features = %s", registered, coreFeaturesWago)
+	}
+}
+
 func TestCompleteCore3BackendPlatforms(t *testing.T) {
 	for _, tc := range []struct {
 		goos, goarch string
