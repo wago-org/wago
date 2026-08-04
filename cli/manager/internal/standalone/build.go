@@ -42,8 +42,10 @@ func ParseTarget(value string) (Target, error) {
 type Request struct {
 	Input, Output          string
 	Invoke                 string
+	Core                   int
 	Plugins                string
 	DeferredBoundsChecking bool
+	FunctionWorkers        int
 	Optimizations          map[string]bool
 	Target                 Target
 	Verbose                bool
@@ -116,7 +118,7 @@ func Build(request Request) (Result, error) {
 	if err := os.WriteFile(filepath.Join(buildDir, "module.wasm"), source, 0o644); err != nil {
 		return Result{}, err
 	}
-	if err := os.WriteFile(filepath.Join(buildDir, "main.go"), mainSource(inputs.Dependencies, config, request.Invoke, request.DeferredBoundsChecking, request.Optimizations), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(buildDir, "main.go"), mainSource(inputs.Dependencies, config, request.Invoke, request.Core, request.DeferredBoundsChecking, request.FunctionWorkers, request.Optimizations), 0o644); err != nil {
 		return Result{}, err
 	}
 	environment := append(os.Environ(),
@@ -138,7 +140,7 @@ func Build(request Request) (Result, error) {
 	return Result{Output: output, Target: request.Target, Plugins: len(inputs.Dependencies)}, nil
 }
 
-func mainSource(dependencies []string, pluginConfig []byte, invoke string, deferredBoundsChecking bool, optimizations map[string]bool) []byte {
+func mainSource(dependencies []string, pluginConfig []byte, invoke string, core int, deferredBoundsChecking bool, functionWorkers int, optimizations map[string]bool) []byte {
 	dependencies = append([]string(nil), dependencies...)
 	sort.Strings(dependencies)
 	var source bytes.Buffer
@@ -149,7 +151,7 @@ func mainSource(dependencies []string, pluginConfig []byte, invoke string, defer
 	}
 	source.WriteString(")\n\n//go:embed module.wasm\nvar module []byte\n\n")
 	fmt.Fprintf(&source, "var pluginConfig = []byte(%q)\n\n", pluginConfig)
-	fmt.Fprintf(&source, "var options = standalone.Options{Invoke: %q, DeferBoundsChecks: %t, OptimizationKnobs: map[string]bool{", invoke, deferredBoundsChecking)
+	fmt.Fprintf(&source, "var options = standalone.Options{Invoke: %q, Core: %d, DeferBoundsChecks: %t, FunctionWorkers: %d, OptimizationKnobs: map[string]bool{", invoke, core, deferredBoundsChecking, functionWorkers)
 	names := make([]string, 0, len(optimizations))
 	for name := range optimizations {
 		names = append(names, name)

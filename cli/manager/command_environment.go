@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/wago-org/wago/cli/internal/automation"
+	internalparallel "github.com/wago-org/wago/cli/internal/parallel"
 	"github.com/wago-org/wago/cli/internal/project"
 	"github.com/wago-org/wago/cli/internal/settings"
 	"github.com/wago-org/wago/cli/internal/ui"
@@ -54,17 +55,22 @@ func (commandEnvironment) Compile(options compilecmd.Options) {
 	if err != nil {
 		fatal("compile: %v", err)
 	}
+	core, err := standaloneCoreFeatures(options.Core)
+	if err != nil {
+		fatal("compile: %v", err)
+	}
 	output := options.Output
 	if output == "" {
 		output = managerstandalone.DefaultOutput(options.Input, target)
 	}
-	deferredBoundsChecking, optimizations, err := standaloneRuntimeOptions(target.Arch, options)
+	deferredBoundsChecking, functionWorkers, optimizations, err := standaloneRuntimeOptions(target.Arch, options)
 	if err != nil {
 		fatal("compile: %v", err)
 	}
 	if automation.DryRun() {
 		plan := map[string]any{
-			"input": options.Input, "output": output, "target": target.String(), "deferredBoundsChecking": deferredBoundsChecking,
+			"input": options.Input, "output": output, "target": target.String(), "core": core,
+			"functionWorkers": functionWorkers, "deferredBoundsChecking": deferredBoundsChecking,
 		}
 		if options.Invoke != "" {
 			plan["invoke"] = options.Invoke
@@ -85,8 +91,8 @@ func (commandEnvironment) Compile(options compilecmd.Options) {
 	progress.Title("Compiling " + filepath.Base(options.Input))
 	progress.Begin("Building " + target.String())
 	result, err := managerstandalone.Build(managerstandalone.Request{
-		Input: options.Input, Output: output, Target: target, Invoke: options.Invoke, Plugins: options.Plugins, Verbose: options.Verbose,
-		DeferredBoundsChecking: deferredBoundsChecking, Optimizations: optimizations,
+		Input: options.Input, Output: output, Target: target, Invoke: options.Invoke, Core: core, Plugins: options.Plugins, Verbose: options.Verbose,
+		DeferredBoundsChecking: deferredBoundsChecking, FunctionWorkers: functionWorkers, Optimizations: optimizations,
 	})
 	if err != nil {
 		progress.Fail("Standalone build failed")
@@ -96,10 +102,21 @@ func (commandEnvironment) Compile(options compilecmd.Options) {
 	fmt.Printf("\n%s\n", displayPath(result.Output))
 }
 
-func standaloneRuntimeOptions(arch string, options compilecmd.Options) (bool, map[string]bool, error) {
+func standaloneCoreFeatures(value string) (int, error) {
+	switch value {
+	case "", "2":
+		return 2, nil
+	case "3":
+		return 3, nil
+	default:
+		return 0, fmt.Errorf("unknown --core %q (want: 2, 3)", value)
+	}
+}
+
+func standaloneRuntimeOptions(arch string, options compilecmd.Options) (bool, int, map[string]bool, error) {
 	configured, hasConfig, err := settings.LoadConfigured()
 	if err != nil {
-		return false, nil, err
+		return false, 0, nil, err
 	}
 	deferred := true
 	if hasConfig {
@@ -107,6 +124,14 @@ func standaloneRuntimeOptions(arch string, options compilecmd.Options) (bool, ma
 	}
 	if options.DeferredBoundsChecking != nil {
 		deferred = *options.DeferredBoundsChecking
+	}
+	parallel := options.Parallel
+	if parallel == "" && hasConfig {
+		parallel = configured.Runtime.Parallel
+	}
+	functionWorkers, err := internalparallel.Policy(parallel)
+	if err != nil {
+		return false, 0, nil, err
 	}
 	supported := map[string]bool{}
 	for _, knob := range settings.OptimizationsForArch(arch) {
@@ -122,11 +147,11 @@ func standaloneRuntimeOptions(arch string, options compilecmd.Options) (bool, ma
 	}
 	for name, enabled := range options.Optimizations {
 		if !supported[name] {
-			return false, nil, fmt.Errorf("optimization %q is unavailable on %s", name, arch)
+			return false, 0, nil, fmt.Errorf("optimization %q is unavailable on %s", name, arch)
 		}
 		optimizations[name] = enabled
 	}
-	return deferred, optimizations, nil
+	return deferred, functionWorkers, optimizations, nil
 }
 
 func (e commandEnvironment) Status() {

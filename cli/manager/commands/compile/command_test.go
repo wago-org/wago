@@ -73,3 +73,30 @@ func TestCommandAcceptsSingularAndPluralPluginFlags(t *testing.T) {
 		}
 	}
 }
+
+func TestCommandAcceptsCoreFeatureSet(t *testing.T) {
+	environment := &testEnvironment{}
+	Command(environment).Dispatch("wago compile", []string{"--core", "3", "app.wasm"})
+	if environment.options.Core != "3" {
+		t.Fatalf("compile core = %q, want 3", environment.options.Core)
+	}
+}
+
+func TestCommandAcceptsRunParallelForms(t *testing.T) {
+	for _, test := range []struct {
+		args []string
+		want string
+	}{
+		{args: []string{"-p", "app.wasm"}, want: "auto"},
+		{args: []string{"-p8", "app.wasm"}, want: "8"},
+		{args: []string{"-p", "8", "app.wasm"}, want: "8"},
+		{args: []string{"--parallel", "app.wasm"}, want: "auto"},
+		{args: []string{"--parallel=8", "app.wasm"}, want: "8"},
+	} {
+		environment := &testEnvironment{}
+		Command(environment).Dispatch("wago compile", test.args)
+		if environment.options.Parallel != test.want {
+			t.Errorf("compile %v parallel = %q, want %q", test.args, environment.options.Parallel, test.want)
+		}
+	}
+}

@@ -72,6 +72,22 @@ func TestExecuteRejectsUnknownOptimization(t *testing.T) {
 	}
 }
 
+func TestExecuteSupportsCore3(t *testing.T) {
+	if err := execute(tailCallStartModule(), nil, Options{Core: 3, DeferBoundsChecks: true}, []string{"hello"}); err != nil {
+		t.Fatalf("execute Core 3 module: %v", err)
+	}
+}
+
+func TestRuntimeConfigUsesBakedFunctionWorkers(t *testing.T) {
+	config, err := runtimeConfig(Options{Core: 2, DeferBoundsChecks: true, FunctionWorkers: 4})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := config.FunctionWorkers(); got != 4 {
+		t.Fatalf("function workers = %d, want 4", got)
+	}
+}
+
 func emptyStartModule() []byte {
 	return []byte{
 		'\x00', 'a', 's', 'm', 1, 0, 0, 0,
@@ -89,5 +105,15 @@ func addModule() []byte {
 		3, 2, 1, 0,
 		7, 7, 1, 3, 'a', 'd', 'd', 0, 0,
 		10, 9, 1, 7, 0, 0x20, 0, 0x20, 1, 0x6a, 0x0b,
+	}
+}
+
+func tailCallStartModule() []byte {
+	return []byte{
+		'\x00', 'a', 's', 'm', 1, 0, 0, 0,
+		1, 4, 1, 0x60, 0, 0,
+		3, 3, 2, 0, 0,
+		7, 10, 1, 6, '_', 's', 't', 'a', 'r', 't', 0, 1,
+		10, 9, 2, 2, 0, 0x0b, 4, 0, 0x12, 0, 0x0b,
 	}
 }

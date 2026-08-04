@@ -177,11 +177,18 @@ func TestRunPluginScopeOverrides(t *testing.T) {
 	}
 }
 
-func TestExtraStandalonePluginsAreNormalizedAndDeduplicated(t *testing.T) {
+func TestInstalledStandalonePluginIsNormalizedAndDeduplicated(t *testing.T) {
+	dependencies := []string{"github.com/wago-org/wasi"}
 	intents := []projectconfig.PluginIntent{{Name: "wago-org/wasi"}}
-	got := appendExtraPluginIntents(intents, "github.com/wago-org/wasi, acme/metrics,acme/metrics")
-	if len(got) != 2 || got[0].Name != "wago-org/wasi" || got[1].Name != "acme/metrics" {
-		t.Fatalf("extra plugin intents = %#v", got)
+	gotDependencies, gotIntents, err := addStandalonePlugins("", false, dependencies, intents, "github.com/wago-org/wasi,wago-org/wasi")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(gotDependencies) != 1 || gotDependencies[0] != "github.com/wago-org/wasi" {
+		t.Fatalf("standalone dependencies = %#v", gotDependencies)
+	}
+	if len(gotIntents) != 1 || gotIntents[0].Name != "wago-org/wasi" {
+		t.Fatalf("standalone plugin intents = %#v", gotIntents)
 	}
 }
 

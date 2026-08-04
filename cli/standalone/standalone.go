@@ -16,7 +16,9 @@ import (
 // Options is the compile-time runtime configuration baked into an executable.
 type Options struct {
 	Invoke            string
+	Core              int
 	DeferBoundsChecks bool
+	FunctionWorkers   int
 	OptimizationKnobs map[string]bool
 }
 
@@ -53,7 +55,10 @@ func execute(source, pluginConfig []byte, options Options, args []string) error 
 			return fmt.Errorf("unknown optimization %q", name)
 		}
 	}
-	config := wago.NewRuntimeConfig().WithDeferBoundsChecks(options.DeferBoundsChecks)
+	config, err := runtimeConfig(options)
+	if err != nil {
+		return err
+	}
 	runtime := wago.NewRuntime(wago.WithRuntimeConfig(config))
 	defer runtime.Close()
 	if err := runtime.LoadPlugins(plugins); err != nil {
@@ -103,4 +108,16 @@ func execute(source, pluginConfig []byte, options Options, args []string) error 
 		fmt.Println(wasmcall.Format(invoke, values, result, params, results))
 	}
 	return nil
+}
+
+func runtimeConfig(options Options) (*wago.RuntimeConfig, error) {
+	config := wago.NewRuntimeConfig().WithDeferBoundsChecks(options.DeferBoundsChecks).WithFunctionWorkers(options.FunctionWorkers)
+	switch options.Core {
+	case 0, 2:
+	case 3:
+		config = config.WithCoreFeatures(wago.CoreFeaturesV3)
+	default:
+		return nil, fmt.Errorf("unknown WebAssembly core feature set %d", options.Core)
+	}
+	return config, nil
 }

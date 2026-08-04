@@ -77,6 +77,8 @@ Build a command module as a standalone native executable:
 wago compile app.wasm -o app
 wago compile app.wasm --target linux/arm64 -o app-linux-arm64
 wago compile fib.wasm --invoke fib -o fib
+wago compile component.wasm --core 3 -p -o component
+wago compile app.wasm --plugin wago-org/wasi -o app
 ./fib 20
 # fib(20) = 6765
 ```
@@ -86,9 +88,11 @@ different exported function; executable arguments are parsed from its typed Wasm
 signature just like `wago run --invoke`. The executable embeds Wago, the Wasm
 module, and the active local or global plugin configuration, so it runs without
 a Wago installation. Use `--bare`, `--local`, or `--global` to choose the plugin
-scope. Compiler flags such as `--no-inline` and
-`--no-deferred-bounds-checking` are baked into the executable. Cross-builds
-support Darwin, Linux, and Windows on AMD64 and ARM64.
+scope; `--plugin` and `--plugins` resolve and link additional plugins directly
+into the executable. `--core 3`, `--parallel`, and compiler flags such as
+`--no-inline` and `--no-deferred-bounds-checking` are baked into the executable.
+There is no standalone watch mode because the module is immutable once embedded.
+Cross-builds support Darwin, Linux, and Windows on AMD64 and ARM64.
 
 Inspect its host requirements:
 
